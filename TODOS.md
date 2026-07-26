@@ -70,3 +70,69 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 (화이트리스트↔CHECK 정합 테스트 + 상수 단일화) 한 번에 drift 근원 3겹을 2겹으로 줄인다. **의존**. FR-PJ PR-2 머지
 후(shared-kernel 상수 실재해야 함). shared-kernel 은 9 모듈이 의존하므로 변경 시 광범위 재컴파일 — 리뷰 단위를 권한
 변경과 섞지 않게 별도 PR.
+
+## project-workflow — 워크플로우 스킴 프론트↔백엔드 계약 파손 (PR #314 plan-eng-review outside voice)
+
+**결정 (Maxi 확정, 2026-07-26 D9=B)**. **이번 PR 범위 밖.** 선재 결함이고, 보안 봉합 PR 을 프론트 계약
+리팩토링으로 번지게 하면 리뷰 단위가 무너진다. 대신 여기 등재한다.
+
+**★차단 사안**. 이 부채가 남는 한 **스킴 기능의 어떤 PR 도 프론트 테스트로 "회귀 없음" 을 증명할 수 없다.**
+초록은 MSW 가 MSW 와 맞는다는 뜻이다.
+
+**불일치 3종 (2026-07-26 실측)**.
+
+| Zod 스키마 | 요구 필드 | 백엔드 실제 반환 | 상태 |
+|---|---|---|---|
+| `assignmentResponseSchema` (`workflow-schemes.types.ts:48-52`) | `projectKey`·`schemeKey`·`schemeName` | `SchemeResponse{id,key,name,description,isDefault}` (`ProjectWorkflowSchemeController.kt:160-166`) | **교집합 0** |
+| `schemeResponseSchema` (`:21-28`) | `schemeKey`·`isStandard`·`description`(non-null) | `WorkflowSchemeDetailResponse{key,isDefault,description:String?}` (`WorkflowSchemeDto.kt:116-126`) | `schemeKey`·`isStandard` 부재, nullability 불일치 |
+| `mappingResponseSchema` (`:31-39`) | `isDefault` | `MappingResponseDetail` 에 해당 필드 없음 | 필드 부재 |
+
+`workflow-schemes.types.ts:25` 주석이 "backend 의 isDefault 와 동일 의미, 후속 PR 에서 backend 계약 정렬
+예정" 이라고 적혀 있어 **일부는 의도된 부채**로 보인다. 그러나 `assignmentResponseSchema` 의 교집합 0 은
+의도로 설명되지 않는다.
+
+**착수 시 첫 단계**. 추측하지 말고 **조립 부팅 실측부터** — dev postgres 5433 + `:app:test` 또는
+`ProdAssemblyHttpTestBase` 로 실제 응답을 받아 어느 쪽이 정본인지 확정한다. 화면이 실서버에서
+동작한 적이 없는 것인지, 내가 못 본 변환 계층이 있는 것인지가 먼저 확정돼야 한다.
+
+**Depends on / blocked by**. 없음. 단 이 작업 전에는 스킴 관련 PR 의 프론트 회귀 주장을 신뢰하지 말 것.
+
+## project-workflow — ProjectWorkflowSchemeController 의 404/403 순서 (PR #314 plan-eng-review)
+
+**결정 (Maxi 확정, 2026-07-26 D4=2A)**. **이번 PR 범위 밖.** 한계 노출량이 0(같은 정보를 기존 2핸들러로
+이미 얻을 수 있음)이고, 순서 변경은 3핸들러 동시 수정이라 보안 봉합 PR 의 리뷰 단위를 흐린다.
+
+**무엇이 문제인가**. 세 핸들러 모두 `projectLookupPort.findIdByKey`(404) 를 `requirePermission`(403)
+**보다 먼저** 호출한다(`ProjectWorkflowSchemeController.kt:86-93` 외 2곳). 인증됐지만 권한 없는 사용자가
+응답 코드 차이(404 vs 403)로 프로젝트 키의 실재를 열거할 수 있다.
+
+**착수 시 함정**. 순서를 바꾸면 `fetchProjectAssignment`(`workflow-schemes.ts:233-243`)의
+**404 → null = "미할당"** 로직이 깨진다. 미할당 상태를 404 가 아닌 다른 신호로 표현하도록 계약을 먼저
+정해야 한다. 세 핸들러를 한꺼번에 정렬할 것 — 한 개만 바꾸면 같은 컨트롤러 안에서 순서가 갈린다.
+
+**Depends on / blocked by**. 없음. 우선순위 낮음(한계 노출량 0).
+
+## identity-access — MANAGE_WORKFLOW 시드가 기본 권한 스킴에만 존재 (PR #314 plan-eng-review outside voice)
+
+**결정 (Maxi 확정, 2026-07-26 D10=A)**. **이번 PR 범위 밖.** 신규 기능 손실이 아니다 — 배정 실행(PUT)이
+이미 같은 게이트라 해당 사용자는 오늘도 적용 단계에서 403 을 맞는다. 마이그레이션 0 이라는 PR 전제를
+깨면서까지 지금 할 일이 아니다.
+
+**무엇이 안 잠겨 있나**. `V013__manage_workflow_permission.sql:14-16` 이 `MANAGE_WORKFLOW` 를
+**기본 권한 스킴(`00000000-0000-0000-0000-000000000001`)의 `PROJECT_ADMIN`** 에만 1행 시드한다.
+프로젝트가 어느 스킴을 쓰는지는 `COALESCE(project_permission_scheme, permission_schemes WHERE is_default)`
+로 결정된다(`JdbcPermissionSchemeRepository.kt:65-72`).
+
+⇒ **비-기본 권한 스킴에 명시 매핑된 프로젝트**의 관리자는 `roleHasPermission` 이 false 가 되어
+워크플로우 스킴 배정이 불가능하다. ADR `2026-07-26-workflow-scheme-read-permission-gate` D4 의
+"시드 변경 0" 은 **기본 스킴 프로젝트에 한해** 참이다.
+
+**함께 등재 — 프로젝트 비멤버인 SYSTEM_ADMIN**. `WorkflowSchemeScope.Project` 판정에 시스템 관리자
+fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76-78`). 멤버십 조회가 null 이면
+곧바로 거부다. 사내 전체 관리자가 자기가 멤버가 아닌 프로젝트의 워크플로우를 배정할 수 없다.
+이것이 의도된 정책인지 누락인지는 **미확정** — 착수 시 먼저 정할 것.
+
+**동반 필요**. 시드를 넓히면 `PermissionSchemaMigrationTest` 의 정확 카운트 단언을 함께 갱신해야 한다
+(메모리 `fr-pm-permission-seed-migration-test-coupling`).
+
+**Depends on / blocked by**. 권한 스킴을 실제로 둘 이상 운용하기 시작하는 시점. 그전까지는 잠복.

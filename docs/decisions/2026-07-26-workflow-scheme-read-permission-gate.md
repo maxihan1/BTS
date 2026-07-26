@@ -88,16 +88,38 @@ prod resolver 의 Global 판정은 `isSystemAdmin`(`IdentityAccessWorkflowScheme
 
 **B (채택)** — 기존 두 권한을 스코프로 나눠 재사용. 마이그레이션 0 · enum 0.
 
-### B 를 택한 결정적 근거 — 게이트가 이미 그 화면에서 동작 중이다
+### B 를 택한 근거 — 게이트 자체가 기존 배정 동작과 동일하다
 
 `ProjectWorkflowSchemeController` 는 GET(L107) · PUT(L78) **둘 다**
-`ASSIGN_SCHEME` + `WorkflowSchemeScope.Project(projectKey)` 로 게이트돼 있고,
-문제의 배정 화면이 그 GET 을 `useGetAssignment` 로 **이미 호출해 정상 동작 중**이다
-(`projects.$projectKey.settings.workflow-scheme.tsx:60`).
+`ASSIGN_SCHEME` + `WorkflowSchemeScope.Project(projectKey)` 로 게이트돼 있다.
+D2 는 새 권한 경로를 여는 것이 아니라 **이미 존재하는 게이트에 엔드포인트 하나를 더 붙이는 것**이다.
+읽기 게이트가 쓰기(배정) 게이트와 정확히 같으므로 "보이는데 안 되는" 상태가 생기지 않는다.
 
-⇒ "프로젝트 관리자가 `ASSIGN_SCHEME`/Project 게이트를 통과한다"는 가정이 아니라
-**바로 그 화면에서 이미 실증된 사실**이다. D2 는 새 권한 경로를 여는 것이 아니라
-이미 열려 있고 검증된 경로에 엔드포인트 하나를 더 붙이는 것이다.
+프로젝트 관리자가 이 게이트를 통과한다는 근거는 **코드 읽기**다 —
+`IdentityAccessWorkflowSchemePermissionResolver.hasProjectPermission`(L71-79)이
+`projectDirectory.resolveKeyToId` → 멤버십 → `roleHasPermission(projectId, role, "MANAGE_WORKFLOW")`
+순으로 평가하고, V013 이 기본 권한 스킴의 `PROJECT_ADMIN` 에 그 행을 시드한다.
+
+> ### ⚠️ 초안의 오류 — 철회 (2026-07-26, plan-eng-review outside voice 가 반증)
+>
+> 초안은 여기에 **"배정 화면이 그 GET 을 `useGetAssignment` 로 이미 호출해 정상 동작 중이므로
+> 실증된 사실"** 이라고 적었다. **사실이 아니다. 철회한다.**
+>
+> `fetchProjectAssignment`(`apps/web/src/api/workflow-schemes.ts:242`)는
+> `dataOf(assignmentResponseSchema).parse(raw)` 를 태우는데,
+>
+> | 프론트가 요구 (`workflow-schemes.types.ts:48-52`) | 백엔드가 반환 (`ProjectWorkflowSchemeController.kt:160-166`) |
+> |---|---|
+> | `projectKey` · `schemeKey` · `schemeName` | `id` · `key` · `name` · `description` · `isDefault` |
+>
+> **필드 교집합이 0개다.** 실서버 응답에는 Zod 가 던진다. 그 화면이 동작해 온 것은
+> MSW(`scheme-handlers.ts:212-221`)가 프론트 형태를 돌려주기 때문이다.
+> ⇒ **아무도 프로젝트 관리자가 이 게이트를 통과하는 것을 관측한 적이 없다.**
+>
+> **교훈.** "이미 동작 중이다" 를 근거로 쓸 때는 **그 동작이 실서버 경로였는지**까지 확인해야 한다.
+> 프론트 테스트의 초록은 MSW 가 MSW 와 맞는다는 뜻일 수 있다.
+> [[frontend-zod-backend-dto-contract-gap]] · [[authenticated-error-path-token-leak-done]]("실측했다"는
+> 단언은 표본 범위까지 확인) 의 재발.
 
 ## 결과
 
@@ -108,15 +130,35 @@ prod resolver 의 Global 판정은 `isSystemAdmin`(`IdentityAccessWorkflowScheme
 
 ## 잔여 위험
 
-1. **`list` 를 소비하는 다른 지점이 있으면 같이 깨진다.** 프론트 전수 확인은 spec/plan 단계에서 수행한다.
-   현재까지 확인된 소비자는 관리자 화면 3개(`/admin/workflow-schemes*`, 4-가드로 systemAdmin 보장)와
-   배정 화면 1개뿐이다.
-2. **음성 테스트의 판별자.** "여전히 403" 류의 vacuous 단언을 피해야 한다
-   (메모리 `negative-guard-needs-body-discriminator`). 게이트 추가 전후로 응답이 실제로 달라지는
-   본문 판별자를 잡아야 한다.
-3. **봉합이 기존 가드의 눈을 가릴 수 있다**(메모리 `seal-blinds-existing-guard`). 기존 테스트가
-   "권한 없이도 200" 을 판별자로 쓰고 있었다면 봉합 후 전량 green 으로 눈이 먼다.
-   기존 스킴 테스트가 무권한 호출을 전제하는지 plan 단계에서 전수 확인한다.
-4. **`AlwaysAllowWorkflowSchemePermissionResolver`(`@Profile("!prod")`) 때문에 non-prod 테스트는
-   전부 통과한다.** 게이트가 실제로 걸리는지는 resolver 를 실판정으로 두거나 mock 으로 거부시키는
-   테스트가 있어야 확인된다.
+1. **소비자 전수 (확정).** outside voice 가 레포 전체를 훑어 확정했다 —
+   `GET /workflow-schemes` → `WorkflowSchemeSidebar.tsx:193` · `settings.workflow-scheme.tsx:61`,
+   `GET /workflow-schemes/{key}` → `useWorkflowSchemeDetail` → `admin.workflow-schemes.$schemeKey.tsx:93`.
+   그 외 백엔드 모듈·시드 SQL·스크립트·docs 에서 호출 **0건**.
+   `WorkflowSchemeControllerIntegrationTest` 는 컨트롤러를 우회해 서비스를 직접 호출하므로 무영향.
+2. **음성 테스트의 판별자.** "여전히 403" 류의 vacuous 단언을 피한다
+   (메모리 `negative-guard-needs-body-discriminator`). 판별자는 **본문의 스킴 key 문자열 부재**다.
+3. **봉합이 기존 가드의 눈을 가린다**(메모리 `seal-blinds-existing-guard`).
+   `WorkflowSchemeControllerTest.kt:84` 의 resolver 가 `mockk(relaxed = true)` 라
+   게이트를 추가해도 기존 GET 테스트가 전부 green 을 유지한다. 이것이 D1 을 필요하게 만든 조건 자체다.
+4. **`AlwaysAllowWorkflowSchemePermissionResolver`(`@Profile("!prod")`) 때문에 non-prod 는 전부 통과한다.**
+   게이트 실효는 resolver 가 **던지도록 세운** 테스트로만 확인된다.
+5. **★prod 에서만 거부되는 주체 2종 (Maxi 결정 D10 — 게이트 폭을 넓히지 않고 문서화).**
+   - **프로젝트 비멤버인 SYSTEM_ADMIN.** `WorkflowSchemeScope.Project` 판정에 시스템 관리자 fallback 이
+     없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76-78`). 멤버십 조회가 null → 거부.
+   - **비-기본 권한 스킴에 매핑된 프로젝트의 관리자.** `MANAGE_WORKFLOW` 는 기본 스킴
+     (`00000000-…-001`)의 `PROJECT_ADMIN` 에만 시드돼 있다(V013). 따라서 D4 의 "시드 변경 0" 은
+     **기본 스킴 프로젝트에 한해** 참이다.
+
+   **두 경우 모두 신규 기능 손실이 아니다** — 배정 실행(PUT L78-93)과 현재 배정 조회(GET L107-121)가
+   이미 같은 게이트라 오늘도 적용 단계에서 403 을 맞는다. 신규 엔드포인트는 그 거부를
+   **적용 시점에서 목록 시점으로 앞당길 뿐**이고, 명시적 403 안내와 합치면 진단성이 개선된다.
+   TODOS.md 에 등재.
+6. **★선재 계약 파손 (범위 밖, Maxi 결정 D9).** 워크플로우 스킴 프론트의 Zod 3종이 백엔드 DTO 와
+   불일치한다(위 철회 박스 + `schemeResponseSchema` 의 `schemeKey`/`isStandard` 부재,
+   `mappingResponseSchema` 의 `isDefault` 부재). **이 부채가 남는 한 스킴 기능의 어떤 PR 도
+   프론트 테스트로 "회귀 없음" 을 증명할 수 없다** — 초록은 MSW 가 MSW 와 맞는다는 뜻이다.
+   TODOS.md 에 등재. 착수 시 조립 부팅 실측부터.
+7. **`instance` 자동채움.** 이 BC 의 `WorkflowSchemeExceptionHandler.problem()` 은 `pd.instance` 를
+   설정하지 않아 Spring 이 요청 URI 로 채운다. 경로에 비밀값이 없어 유출은 아니나, N3(#313)의 봉인은
+   **선택자 없는 전역 advice 만** 덮으므로 `basePackages` 를 가진 이 핸들러는 영구히 봉인 밖이다.
+   같은 트랙의 후속 판단 대상으로 명시해 둔다.

@@ -125,8 +125,28 @@ GET /api/v1/projects/{projectKey}/assignable-workflow-schemes
   **던지도록** 세워야 실제 검증이 된다. (§8 T1 판별자)
 - **EC-2. 기존 `WorkflowSchemeControllerTest` 의 resolver 는 `mockk(relaxed = true)`**
   (`WorkflowSchemeControllerTest.kt:84`) — `requirePermission` 이 no-op 이라
-  **게이트를 추가해도 기존 GET 테스트 6개가 전부 green 을 유지한다.**
+  **게이트를 추가해도 기존 테스트가 전부 green 을 유지한다.**
   메모리 `seal-blinds-existing-guard` 의 정확한 재현. 기존 테스트는 회귀 감지에 무력하다.
+  (실측 — 이 클래스는 `@Test` **20개** · GET 요청 **5개**. 초안의 "GET 테스트 6개" 는 오기였다.
+  메모리 `spec-stated-count-becomes-blindfold` 재발이라 실측치로 고정한다.)
+
+- **EC-12. ★그 mock 은 Spring 싱글턴이고 `clearMocks` 가 없다 — 신규 (outside voice 발견).**
+  `@BeforeEach setUp()`(`WorkflowSchemeControllerTest.kt:114-117`)은 MockMvc 만 재생성한다.
+  `clearMocks` · `@DirtiesContext` **0건**(실측). 따라서 EC-2 를 뚫으려고 세우는
+  `every { … } throws` 가 **클래스의 나머지 테스트로 새어 나가** 순서 의존적으로 403 을 만든다.
+  ⇒ RED 를 넣는 task 가 `@BeforeEach` 에 `clearMocks(permissionResolver)` 를 **함께** 넣어야 한다.
+  이것 없이는 게이트 테스트가 자기 클래스를 깨뜨린다.
+
+- **EC-13. MockK 제약의 귀속 정정 — `requirePermission` 은 mockk 가능하다.**
+  `WorkflowSchemePermissionResolver.requirePermission(UUID, enum, sealed)` 에는
+  `@JvmInline value class` 파라미터가 **없다**. MockK 1.13.x 제약은
+  **application service**(`ActorId` · `WorkflowSchemeKey` 파라미터) 쪽이다
+  (`ProjectWorkflowSchemeControllerTest.kt:52-55` KDoc). 따라서
+  `WorkflowSchemeControllerTest` 의 `every … throws` 는 정상 동작하고,
+  `ProjectWorkflowSchemeControllerTest` 가 손수 stub 을 쓰는 이유는 **service 쪽 제약** 때문이다.
+
+- **EC-14. `WorkflowSchemeExceptionHandler` 빈은 이미 등록돼 있다.**
+  `WorkflowSchemeControllerTest.kt:96` 에 `@Bean` 존재. 초안의 "없으면 추가" 사전확인은 불요.
 - **EC-3. 404 가 403 보다 먼저 나온다** (R3). 인증됐지만 권한 없는 사용자가 projectKey 존재 여부를
   probe 할 수 있다. **기존 두 핸들러가 이미 이 순서**(`ProjectWorkflowSchemeController.kt:86-93`)이며
   KDoc L50-52 가 "인증을 가장 앞에 둔다"까지만 정당화한다. 본 작업은 **기존 순서를 그대로 따르고**
@@ -140,8 +160,21 @@ GET /api/v1/projects/{projectKey}/assignable-workflow-schemes
 - **EC-6. `description` 은 nullable** (`SchemeResponse.description: String?`). 현행 관리용 스키마는
   `z.string()`(non-null)이라 **같은 이름의 필드가 두 창구에서 다른 nullability** 를 갖는다.
   신규 스키마에서 `.nullable()` 로 정확히 반영한다.
-- **EC-7. 배정 화면의 Select 옵션 키.** 현행은 `SchemeResponse.schemeKey`(프론트 필드명)를 쓰는데
-  신규 응답의 필드명은 `key` 다. 화면 코드의 참조를 함께 바꿔야 한다.
+- **EC-7. 배정 화면의 Select 옵션 키 — ★정정됨 (Maxi 결정 D3=1A).**
+  ~~신규 응답의 필드명은 `key` 이므로 화면 코드의 `scheme.schemeKey` 참조를 `scheme.key` 로 전수 교체~~
+  → **반대로 한다.** 신규 Zod 스키마가 경계에서 백엔드 이름(`key`·`isDefault`)을
+  **프론트 어휘(`schemeKey`·`isStandard`)로 정규화**한다. 화면 코드의 `scheme.schemeKey` 참조는
+  **그대로 둔다.** 프론트에 어휘 두 벌이 생기는 것을 막기 위함.
+  (초안대로 교체했다면 같은 레이어에 `isStandard` 와 `isDefault` 가 공존했다.)
+
+- **EC-11. 권한 없는 사용자의 배정 화면 — ★신규 (Maxi 결정 D6=4A, REGRESSION).**
+  배정 화면 라우트 가드는 `requireAuthAndPasswordChanged`(인증+비번+MFA)뿐이라
+  `MANAGE_WORKFLOW` 없는 사원도 도달한다. 오늘은 무권한 엔드포인트라 200 이지만
+  **이 PR 이후 403** 이다. 그런데 화면에 error 분기가 없다 —
+  `const schemeOptions = schemes ?? []`(`settings.workflow-scheme.tsx:78`)가 `undefined` 를 빈 배열로
+  삼켜 **빈 드롭다운 + 설명 0** 이 된다. 무음 실패.
+  ⇒ 403 전용 안내(`이 프로젝트의 워크플로우 설정 권한이 없습니다`)를 렌더하고,
+  **빈 목록(200 + [])과 구분**한다. 회귀 테스트 필수.
 - **EC-8. `useWorkflowSchemes` 캐시 키 충돌 없음.** 신규 훅은
   `['projects', projectKey, 'assignable-workflow-schemes']` 로 별도 네임스페이스.
 - **EC-9. 배정 성공 후 무효화 대상.** 신규 훅 캐시는 배정 mutation 과 무관(후보 목록은 배정으로
