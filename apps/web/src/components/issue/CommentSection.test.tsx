@@ -74,7 +74,7 @@ function renderSection(canUpdate = true): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  const wrapper = ({ children }: { children: ReactNode }): JSX.Element => (
+  const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
   render(<CommentSection issueKey={ISSUE_KEY} canUpdate={canUpdate} />, { wrapper })
@@ -160,14 +160,14 @@ describe('CommentSection — (a) 목록 렌더', () => {
 
 describe('CommentSection — (b) 작성 폼', () => {
   it('본문을 입력해 제출하면 성공 토스트가 뜨고 입력이 비워진다', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     server.use(
       http.post(LIST_URL, () => HttpResponse.json({ data: earlierComment }, { status: 201 })),
     )
     renderSection()
 
     const textarea = await screen.findByLabelText(commentStrings.commentBodyLabel)
-    await user.type(textarea, '새 댓글', { delay: null })
+    await user.type(textarea, '새 댓글')
     await user.click(screen.getByRole('button', { name: commentStrings.commentAddButton }))
 
     await waitFor(() => {
@@ -184,7 +184,7 @@ describe('CommentSection — (b) 작성 폼', () => {
   })
 
   it('작성 실패 시 에러 토스트가 뜨고 입력 본문이 보존된다', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     server.use(
       http.post(LIST_URL, () =>
         HttpResponse.json({ errorCode: 'COMMENT_BODY_TOO_LONG' }, { status: 400 }),
@@ -193,7 +193,7 @@ describe('CommentSection — (b) 작성 폼', () => {
     renderSection()
 
     const textarea = await screen.findByLabelText(commentStrings.commentBodyLabel)
-    await user.type(textarea, '실패할 댓글', { delay: null })
+    await user.type(textarea, '실패할 댓글')
     await user.click(screen.getByRole('button', { name: commentStrings.commentAddButton }))
 
     await waitFor(() => {

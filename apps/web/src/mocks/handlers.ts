@@ -57,6 +57,7 @@ import { webauthnHandlers } from './webauthn-handlers'
 import { webhookHandlers } from './webhook-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { worklogHandlers } from './worklog-handlers'
+import { commentHandlers } from './comment-handlers'
 import { worklogAggregateHandlers } from './worklog-aggregate-handlers'
 import { samlHandlers } from './saml-handlers'
 import { oidcHandlers } from './oidc-handlers'
@@ -141,6 +142,7 @@ export const handlers = [
   ...webauthnHandlers,
   ...webhookHandlers,
   ...worklogHandlers,
+  ...commentHandlers,
   ...worklogAggregateHandlers,
   ...savedFilterHandlers,
   ...searchHandlers,

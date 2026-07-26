@@ -355,8 +355,10 @@ export const issueDetailStrings = {
   activityWorklogTabLabel: '작업로그',
   /** 활동 영역 — 연결 탭 라벨 */
   activityLinksTabLabel: '연결',
-  /** 활동 영역 — 이력 탭 라벨 (기본 활성 탭, D1) */
+  /** 활동 영역 — 이력 탭 라벨 (기본 활성 탭, D1 / FR-CO-01 D8 에서도 기본 유지) */
   activityHistoryTabLabel: '이력',
+  /** 활동 영역 — 댓글 탭 라벨 (FR-CO-01). 탭 라벨은 E2E 계약이므로 하드코딩 금지 */
+  activityCommentTabLabel: '댓글',
 } as const
 
 /** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */
@@ -872,6 +874,39 @@ export const worklogStrings = {
   /** 워크로그 삭제 실패 토스트 메시지 */
   worklogDeleteError: '작업 기록 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
+
+/**
+ * 댓글 섹션 UI 문자열 (FR-CO-01).
+ *
+ * 빈 상태(`commentEmptyState`) · 로드 실패(`commentLoadError`) · 권한 없음(`commentNoPermission`)
+ * 은 **서로 다른 문구여야 한다.** 셋 다 "댓글이 안 보인다" 는 같은 증상으로 나타나므로
+ * 문구가 겹치면 사용자가 원인을 구분할 수 없다 (`ko.test.ts` 가 이 구분을 단정한다).
+ */
+export const commentStrings = {
+  /** 댓글 섹션 제목 (aria-label 겸용) */
+  commentSectionTitle: '댓글',
+  /** 본문 입력 레이블 */
+  commentBodyLabel: '댓글 입력',
+  /** 본문 입력 placeholder */
+  commentBodyPlaceholder: '댓글을 입력하세요. Markdown 을 쓸 수 있습니다.',
+  /** 작성 버튼 텍스트 */
+  commentAddButton: '댓글 작성',
+  /** 작성 중(제출 진행) 버튼 텍스트 */
+  commentAddPending: '작성 중...',
+  /** 작성 성공 토스트 */
+  commentAddSuccess: '댓글을 작성했습니다.',
+  /** 작성 실패 토스트 */
+  commentAddError: '댓글 작성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 댓글 0건 — 정상이지만 비어 있는 상태 */
+  commentEmptyState: '아직 댓글이 없습니다.',
+  /** 목록 조회 중 */
+  commentLoading: '댓글을 불러오는 중...',
+  /** 목록 조회 실패 (403 포함) — 빈 상태와 반드시 구분 */
+  commentLoadError: '댓글을 불러올 수 없습니다. 이 이슈의 댓글을 볼 권한이 없을 수 있습니다.',
+  /** 쓰기 권한 없음 — 폼 대신 표시 */
+  commentNoPermission: '이 이슈에 댓글을 작성할 권한이 없습니다.',
+} as const
+
 
 /** 에픽 자식 이슈 목록 섹션 문자열 — FR-EP-01 D6 */
 export const epicChildrenStrings = {
