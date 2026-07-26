@@ -61,7 +61,7 @@ function PageHeader(): JSX.Element {
  *
  * - useGetAssignment(projectKey): 현재 할당된 스킴 조회. 404 → null (EC-1 정상 케이스).
  * - useAssignableWorkflowSchemes(projectKey): 이 프로젝트에 배정 가능한 스킴 목록 (Select 옵션용).
- *   조회 실패 시 빈 Select 방치 금지 — 403(MANAGE_WORKFLOW 권한 없음)은 ForbiddenSchemeCard,
+ *   조회 실패 시 빈 Select 방치 금지 — 403(ASSIGN_SCHEME 권한 없음)은 ForbiddenSchemeCard,
  *   그 외(404/500/네트워크 단절 등)는 SchemeLoadErrorCard로 대체.
  * - assignment null 분기 → UnassignedSchemeCard + 신규 할당 선택 UI.
  * - assignment 있음 → 현재 스킴 카드 + 「현재 적용」 indicator + 변경 select.
@@ -89,7 +89,7 @@ export function ProjectWorkflowSchemeSettingsPage({
   }
 
   // 스킴 목록 조회 실패 — 스킴 0건(200 + [])과는 원인이 다르므로 빈 Select로 방치하지 않는다.
-  // 403(MANAGE_WORKFLOW 권한 없음)은 전용 안내를, 그 외(404/500/네트워크 단절 등)는 별도 안내를 보여준다.
+  // 403(ASSIGN_SCHEME 권한 없음)은 전용 안내를, 그 외(404/500/네트워크 단절 등)는 별도 안내를 보여준다.
   if (schemesError != null) {
     return (
       <div className="p-8 space-y-6 max-w-2xl">
@@ -214,7 +214,7 @@ export function UnassignedSchemeCard(): JSX.Element {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 프로젝트에 배정 가능한 워크플로우 스킴 목록 조회가 403(MANAGE_WORKFLOW 권한 없음)으로
+ * 프로젝트에 배정 가능한 워크플로우 스킴 목록 조회가 403(ASSIGN_SCHEME 권한 없음)으로
  * 실패한 경우 표시되는 안내 카드. 스킴 0건(200 + `[]`)인 정상 상태와는 원인이 다르므로
  * 빈 Select로 방치하지 않고 이 카드로 대체한다.
  * named export로 다른 페이지에서 재사용 가능하다.

@@ -39,7 +39,27 @@ import org.springframework.web.bind.annotation.RequestMapping
  *   [HANDLER_CLASSIFICATION] 맵에 없는 매핑 메서드가 하나라도 있으면 실패.
  *
  * ### ⚠️ 이 테스트가 **덮지 않는 것** (초록이 곧 정당함이 아니다)
- * 축 2 는 핸들러가 맵에 **등록돼 있는지**(`containsKey`)만 본다.
+ *
+ * **(1) 축 1 은 "호출이 바이트코드에 존재하는가" 만 본다 — 도달하지 않는 분기의 가드도 통과한다.**
+ * 실증(2026-07-26 코드리뷰 주입) — 아래 핸들러는 **양 축을 통과**한다.
+ * ```
+ * @GetMapping("/probe")
+ * fun probe(): … {
+ *     val schemes = applicationService.listWithCounts()
+ *     if (schemes.isEmpty()) { permissionResolver.requirePermission(…) }  // 정상 경로에선 안 탄다
+ *     return ResponseEntity.ok(DataEnvelope(schemes))
+ * }
+ * ```
+ * 즉 N4 와 실질이 같은(인증만 되면 전 스킴을 읽는) 핸들러가 봉인을 그대로 빠져나간다.
+ * 대조군으로 `requirePermission` 을 **아예 빼면** 양 축이 FAILED 이므로, 이 축이 잡는 것은
+ * 정확히 **"호출 0건"** 이지 **"가드가 실효한다"** 가 아니다.
+ *
+ * **(2) 판별 범위가 [SCHEME_WEB_PACKAGE] 한정이다.**
+ * `WorkflowSchemeApplicationService.list()`·`listWithCounts()` 자체는 권한 호출이 0건이므로,
+ * **다른 패키지의 컨트롤러**가 그 서비스를 소비하는 읽기 엔드포인트를 만들면 이 봉인은
+ * 그 클래스를 임포트조차 하지 않아 무음 통과한다.
+ *
+ * **(3) 축 2 는 핸들러가 맵에 등록돼 있는지(`containsKey`)만 본다.**
  * **맵에 적힌 `(permission, scopeKind)` 가 코드가 실제로 넘기는 인자와 일치하는지는 검사하지 않는다.**
  *
  * 실증(2026-07-26 뮤테이션 M3) — `ProjectWorkflowSchemeController.listAssignableSchemes` 의 스코프를

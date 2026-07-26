@@ -200,7 +200,7 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
   /**
    * R2. ★CRITICAL 회귀 테스트 — assignable 엔드포인트가 403을 반환하면
    * 권한 안내 카드를 보여주고 빈 Select로 방치하지 않는다.
-   * MANAGE_WORKFLOW 권한이 없는 사용자가 배정 화면에 도달했을 때의 무음 실패 방지.
+   * ASSIGN_SCHEME 권한이 없는 사용자가 배정 화면에 도달했을 때의 무음 실패 방지.
    */
   it('R2: 403이면 권한 안내를 보여주고 빈 Select로 두지 않는다', async () => {
     server.use(

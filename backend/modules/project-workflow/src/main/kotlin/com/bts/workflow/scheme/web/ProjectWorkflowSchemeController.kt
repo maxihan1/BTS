@@ -1,4 +1,4 @@
-// ProjectWorkflowSchemeController — Project ↔ WorkflowScheme assignment 2 endpoint (spec §4.3)
+// ProjectWorkflowSchemeController — Project ↔ WorkflowScheme assignment + 배정 후보 목록 3 endpoint (spec §4.3)
 
 package com.bts.workflow.scheme.web
 

@@ -137,7 +137,7 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 
 **Depends on / blocked by**. 권한 스킴을 실제로 둘 이상 운용하기 시작하는 시점. 그전까지는 잠복.
 
-## project-workflow — SchemeHandlerPermissionMatrix 축2 가 맵 값과 코드의 일치를 검사하지 않는다 (PR #314 Task 5 뮤테이션 M3)
+## project-workflow — SchemeHandlerPermissionMatrix 봉인의 3가지 한계 (PR #314 뮤테이션 M3 + 코드리뷰 주입)
 
 **결정 (Maxi 확정, 2026-07-26 D12=B)**. **이번 PR 범위 밖.** N4 의 결함 클래스(가드 자체가 없음)는
 축1(호출 강제)이 이미 완전히 막고 있고, 맵 값 drift 는 더 좁은 클래스다. 대신 테스트 KDoc 에 한계를
@@ -161,3 +161,16 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 
 **Depends on / blocked by**. 없음. 이 갭이 남는 동안에는 **축2 의 green 을 "권한/스코프가 맞다"로
 읽지 말 것** — "핸들러가 등록은 돼 있다" 까지만 참이다.
+
+**추가 한계 2종 (2026-07-26 코드리뷰가 직접 주입해 실증)**.
+
+- **축1 도 "호출이 존재하는가" 만 본다.** 가드가 `if (schemes.isEmpty()) { requirePermission(…) }` 처럼
+  **정상 응답 경로 밖**에 있어도 양 축을 통과한다. 즉 N4 와 실질이 같은 핸들러가 봉인을 빠져나간다.
+  대조군(호출 아예 제거)에서는 FAILED — 이 축이 잡는 것은 정확히 "호출 0건" 이다.
+- **판별 범위가 `com.bts.workflow.scheme.web` 패키지 한정이다.**
+  `WorkflowSchemeApplicationService.list()`·`listWithCounts()` 자체는 권한 호출 0건이므로,
+  다른 패키지 컨트롤러가 그 서비스를 소비하면 봉인이 그 클래스를 임포트조차 하지 않아 무음 통과한다.
+
+⇒ **런타임 대조(MockMvc + capturing stub 전수 호출)로 강화하면 축1·축2 한계가 동시에 해소된다** —
+실제로 핸들러를 태워 캡처값을 보므로 "안 타는 분기" 도 잡힌다. 범위는 스킴 서비스를 소비하는
+핸들러 전체로 잡을 것(패키지가 아니라 **의존 관계**를 판별식으로).
