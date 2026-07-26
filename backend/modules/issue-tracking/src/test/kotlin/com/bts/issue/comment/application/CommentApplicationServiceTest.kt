@@ -461,7 +461,13 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val body = "가".repeat(MAX_BODY_LENGTH + 1)
 
         val comment =
-            service.createImported(actor, issue.key, body, ActorId(authorUuid), createdAt = Instant.parse("2019-01-01T00:00:00Z"))
+            service.createImported(
+                actor,
+                issue.key,
+                body,
+                ActorId(authorUuid),
+                createdAt = Instant.parse("2019-01-01T00:00:00Z"),
+            )
 
         assertThat(comment.body).hasSize(MAX_BODY_LENGTH + 1)
     }

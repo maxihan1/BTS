@@ -124,7 +124,14 @@ class CommentApplicationService(
         body: String,
         authorId: ActorId,
         createdAt: Instant? = null,
-    ): Comment = insertComment(actor = actor, issueKey = issueKey, body = body, authorId = authorId, createdAt = createdAt)
+    ): Comment =
+        insertComment(
+            actor = actor,
+            issueKey = issueKey,
+            body = body,
+            authorId = authorId,
+            createdAt = createdAt,
+        )
 
     /**
      * 이슈의 댓글 목록을 조회한다.
@@ -176,7 +183,9 @@ class CommentApplicationService(
      */
     private fun validateBody(body: String) {
         if (body.isBlank()) throw CommentBodyBlankException()
-        if (body.length > MAX_BODY_LENGTH) throw CommentBodyTooLongException(actual = body.length, max = MAX_BODY_LENGTH)
+        if (body.length > MAX_BODY_LENGTH) {
+            throw CommentBodyTooLongException(actual = body.length, max = MAX_BODY_LENGTH)
+        }
     }
 
     /**
