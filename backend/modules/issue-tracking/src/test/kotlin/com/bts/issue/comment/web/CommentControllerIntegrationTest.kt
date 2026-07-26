@@ -257,7 +257,11 @@ class CommentControllerIntegrationTest {
     @Test
     fun `POST 댓글 작성 — 201 Created plus 생성된 댓글`() {
         every {
-            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"), body = "확인했습니다.")
+            commentApplicationService.create(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                body = "확인했습니다.",
+            )
         } returns sampleComment
 
         postComment("ATLAS-1", """{"body":"확인했습니다."}""")
