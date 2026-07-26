@@ -104,6 +104,12 @@ class WorkflowSchemeController(
      */
     @GetMapping
     fun list(): ResponseEntity<DataEnvelope<List<WorkflowSchemeDetailResponse>>> {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.debug("WorkflowSchemeController.list")
         val schemes = applicationService.listWithCounts()
         return ResponseEntity.ok(DataEnvelope(schemes))
@@ -122,6 +128,12 @@ class WorkflowSchemeController(
     fun get(
         @PathVariable schemeKey: String,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeDetailResponse>> {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.debug("WorkflowSchemeController.get schemeKey={}", schemeKey)
         val detail = applicationService.findDetail(WorkflowSchemeKey(schemeKey))
         return ResponseEntity.ok(DataEnvelope(detail))

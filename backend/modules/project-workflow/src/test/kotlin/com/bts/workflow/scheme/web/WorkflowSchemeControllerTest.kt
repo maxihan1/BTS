@@ -154,6 +154,7 @@ class WorkflowSchemeControllerTest {
     // ── C2. GET /api/v1/workflow-schemes — 200 목록 ───────────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 목록 — 200 + data 배열`() {
         val schemes =
             listOf(
@@ -172,6 +173,7 @@ class WorkflowSchemeControllerTest {
     // ── C3. GET /api/v1/workflow-schemes/{schemeKey} — 200 단건 ──────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 단건 — 200 + key 포함`() {
         val schemeDetail =
             buildSchemeDetail(key = "software-scheme", name = "Software 스킴")
@@ -184,6 +186,7 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 단건 — mappings 리스트 동봉 (task-4 RED)`() {
         val scheme = buildScheme("software-scheme", "Software 스킴")
         val workflowId = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000001")
@@ -218,6 +221,7 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 목록 — usedByProjectsCount + mappingsCount 카운트 포함 (task-4 RED)`() {
         val schemes =
             listOf(
@@ -246,6 +250,7 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 단건 — 없는 키 404 SCHEME_NOT_FOUND`() {
         every { applicationService.findDetail(WorkflowSchemeKey("missing-scheme")) } throws
             WorkflowSchemeNotFoundException(key = "missing-scheme")
