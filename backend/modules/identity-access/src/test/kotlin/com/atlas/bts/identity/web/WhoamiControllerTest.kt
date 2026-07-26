@@ -888,7 +888,8 @@ class WhoamiControllerTest {
                 createdAt = now,
                 updatedAt = now,
             )
-        every { storedPasswordCredentialRepository.findByUserId(adminId) } returns credential(adminId, mustChange = false)
+        every { storedPasswordCredentialRepository.findByUserId(adminId) } returns
+            credential(adminId, mustChange = false)
         every { systemPermissionResolver.isSystemAdmin(adminId) } returns true
         // 포트 계약: SYSTEM_ADMIN 은 개별 grant 없이도 hasGlobalPermission 이 true(grant OR isSystemAdmin).
         every { systemPermissionResolver.hasGlobalPermission(adminId, "CREATE_PROJECT") } returns true

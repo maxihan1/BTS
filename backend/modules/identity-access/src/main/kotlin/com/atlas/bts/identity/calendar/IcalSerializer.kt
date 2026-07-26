@@ -123,7 +123,7 @@ object IcalSerializer {
         val dtEnd = worklog.startedAt.plusSeconds(displaySeconds.toLong())
         val summary =
             "${formatDuration(worklog.timeSpentSeconds)} — ${worklog.issueKey}" +
-                (worklog.issueSummary?.let { " $it" } ?: "")
+                worklog.issueSummary?.let { " $it" }.orEmpty()
 
         return listOf(
             "BEGIN:VEVENT",

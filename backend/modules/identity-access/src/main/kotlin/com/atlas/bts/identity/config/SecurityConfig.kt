@@ -222,18 +222,36 @@ class SecurityConfig(
                 auth.requestMatchers("/api/**").authenticated()
                 // ★★ /error 를 permitAll 로 열지 말 것 — 위 permitAll 3경로군의 토큰이 동시에 샌다 (FR-AT-07 PR-C T15)
                 // 서블릿은 컨트롤러 @ExceptionHandler 가 잡지 않는 에러(415·405 등)를 sendError → **/error 로 ERROR
-                // 디스패치**한다. /error 가 이 anyRequest() 에 걸려 authenticated 인 덕분에 BasicErrorController 가
-                // 실행되지 못하고 필터가 빈 401 을 준다 — 즉 **지금의 안전은 이 한 줄에 얹혀 있다**.
+                // 디스패치**한다. /error 가 이 anyRequest() 에 걸려 authenticated 이면 **익명 요청**에 한해
+                // BasicErrorController 가 실행되지 못하고 필터가 빈 401 을 준다.
+                // ★ 정정(N2) — 이 한 줄은 **익명만** 막는다. 인증(JWT) 요청은 BearerTokenAuthenticationFilter 가
+                //   SecurityContext 를 RequestAttributeSecurityContextRepository(STATELESS 기본 저장소 = 요청
+                //   attribute)에 저장하므로 **같은 요청의 ERROR 디스패치에서 복원**되고, 여기 authenticated 를
+                //   그대로 통과해 BasicErrorController 가 살아난다. 아래 T15 실측의 표본이 전부 익명이라
+                //   여태 관측되지 않았을 뿐이다(AuthenticatedErrorPathTokenLeakTest 가 405·404 두 축으로 실증).
+                //   그래서 토큰 비노출의 실제 근거는 이 줄이 아니라 `server.error.include-path: never`(조립
+                //   application.yml)다. 이 줄은 그 위의 defense-in-depth 로 유지한다.
                 // permitAll 로 바꾸면 BasicErrorController 가 살아나고, Spring Boot 기본 에러 본문의 `path` 필드는
                 // **요청 URI 원문**을 담는다(opt-in 인 message/trace 와 달리 path 는 항상 포함). 위 permitAll 경로군은
                 // 셋 다 **경로 세그먼트에 비밀 토큰**을 싣는다 — 공개 대시보드 공유 토큰·iCal 피드 토큰·웹훅 토큰.
                 // 그 순간 세 종류가 한꺼번에 에러 응답으로 나가고, 응답 로그·프록시 캐시·GitHub 웹훅 delivery 기록에
                 // 적재되면 그것이 곧 평문 토큰 저장이다(DEVELOPMENT.md §1.1-1·§1.1-2).
                 // 실측(T15): /error 를 permitAll 로 뒤집으면 form-urlencoded 요청의 415 본문에
-                // `"path":"/api/v1/webhooks/git/<원문토큰>"` 이 그대로 실렸다. GitWebhookInboundPermitAllTest 의
-                // T15-6 이 이 회귀를 잡는다(뒤집으면 fail).
+                // `"path":"/api/v1/webhooks/git/<원문토큰>"` 이 그대로 실렸다.
+                // ★ 정정(N2) — 이 회귀를 잡는 것은 T15-6 이 **아니다**. 컨트롤러가 415 를 자기 핸들러 안에서
+                //   응답하게 된 뒤로 T15-6 의 요청은 /error 를 아예 타지 않는다(그 테스트 자신의 주석이 명시).
+                //   더구나 `server.error.include-path: never` 이후로는 본문에서 토큰이 사라져 **토큰 문자열을
+                //   판별자로 쓰던 축이 전부**(T15-6·T15-7 포함) permitAll 로 뒤집어도 초록으로 남는다
+                //   (PR #312 에서 뮤테이션으로 재현 확인).
+                //   현재 이 회귀를 잡는 유일한 가드는 AuthenticatedErrorPathTokenLeakTest 의 **N2-D** 다 —
+                //   판별자가 되려면 요청이 REQUEST 디스패치에서 **인가를 통과**하고(entry point 가 아니라
+                //   sendError 로 가야 한다) 컨트롤러 밖에서 오류가 나야 하므로, **익명 + permitAll 경로 + 404**
+                //   조합(익명 iCal 피드)만이 /error 의 권한 설정에 반응한다.
                 // ★ 익명 경로가 제대로 된 에러 JSON 을 못 받는다는 이유로 열고 싶다면, **먼저 ErrorAttributes 에서
                 //   path 를 제거**하고 나서 열 것. 순서를 바꾸면 그 사이에 토큰이 샌다.
+                //   (N2 로 그 선행조건은 충족됐다 — `server.error.include-path: never`. 그래도 **열지 말 것**:
+                //   path 제거는 본문 한 필드를 없앤 것일 뿐, permitAll 로 열면 익명에게 상태코드 오라클이
+                //   생기고 N3(잠복 전역 advice) 같은 다른 통로가 익명에게도 열린다.)
                 auth.anyRequest().authenticated()
             }
             // PAT Bearer 필터: JWT 필터보다 먼저 실행하여 pat_ prefix 토큰을 SecurityContext 에 설정
