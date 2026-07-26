@@ -3,6 +3,24 @@
 
 server:
   port: ${BTS_SERVER_PORT:8080}
+  # ★★ 경로 토큰 유출 봉합 (N2) — 값을 되돌리지 말 것. AuthenticatedErrorPathTokenLeakTest 가 회귀를 잡는다.
+  #
+  # Spring Boot 기본 에러 본문(BasicErrorController)의 `path` 필드는 **요청 URI 원문**이고,
+  # includePath 기본값은 ALWAYS 다(message/stacktrace 와 달리 opt-out 이 아니라 opt-in 이 아님).
+  # BTS 에는 경로 세그먼트에 원문 비밀 토큰을 싣는 permitAll 경로가 4개 있다 —
+  # 공개 대시보드 공유 토큰 · iCal 피드 토큰 · git 웹훅 토큰 · automation 웹훅 토큰.
+  #
+  # SecurityConfig 의 `/error` authenticated 한 줄은 **익명 요청만** 막는다(실측 확정).
+  # 인증(JWT) 요청은 BearerTokenAuthenticationFilter 가 SecurityContext 를
+  # RequestAttributeSecurityContextRepository(STATELESS 기본 저장소 = 요청 attribute)에 저장하므로
+  # 같은 요청의 ERROR 디스패치에서 복원되고, `/error` 의 authenticated 를 **통과해**
+  # BasicErrorController 가 살아난다. 그 순간 405/404 본문에 원문 토큰이 실린다.
+  #
+  # 처방을 경로 판별식(비밀-경로 목록)으로 두지 않는 이유는 ADR 2026-07-25 §D1 과 같다 —
+  # 목록은 새 비밀-경로가 생길 때마다 갱신돼야 하고 빠뜨리면 조용히 샌다. 전역 제거가 단일 지점이다.
+  # 소비처 0건 확인 — 프론트(apps/web/src)·백엔드 어디도 이 필드를 읽지 않는다.
+  error:
+    include-path: never
   servlet:
     session:
       cookie:
