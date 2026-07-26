@@ -122,6 +122,30 @@ class ProjectWorkflowSchemeController(
         val scheme = appService.findAssignedScheme(projectId, projectKey)
         return ResponseEntity.ok(DataResponse(data = scheme.toResponse()))
     }
+
+    /**
+     * 프로젝트에 배정 가능한 워크플로우 스킴 전체 목록을 조회한다.
+     *
+     * @param projectKey 배정 후보를 조회할 프로젝트 키 (예. "ATLAS").
+     * @return 200 + `{ "data": [ { id, key, name, description, isDefault }, ... ] }`
+     * @throws ResponseStatusException(404) [projectKey] 에 해당하는 프로젝트가 없을 때.
+     */
+    @GetMapping("/{projectKey}/assignable-workflow-schemes")
+    fun listAssignableSchemes(
+        @PathVariable projectKey: String,
+    ): ResponseEntity<DataResponse<List<SchemeResponse>>> {
+        log.info("listAssignableSchemes: projectKey={}", projectKey)
+        val actor = CurrentActor.current()
+        val key = ProjectKey(projectKey)
+        projectLookupPort.findIdByKey(key)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
+        return ResponseEntity.ok(DataResponse(data = appService.list().map { it.toResponse() }))
+    }
 }
 
 // ── Request / Response DTO ────────────────────────────────────────────────────
