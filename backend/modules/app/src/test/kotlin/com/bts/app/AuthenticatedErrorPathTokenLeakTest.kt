@@ -124,6 +124,11 @@ class AuthenticatedErrorPathTokenLeakTest : ProdAssemblyHttpTestBase() {
 
         val response = get("http://localhost:$port/ical/feed/$ICAL_RAW_TOKEN.ics", jwt)
 
+        // ★ 양성 증거 — N2-A 의 `Allow` 가드와 같은 역할이다. 이 단언이 없으면 축이 공허해진다.
+        // 필터 401(MFA 게이트·sid 정책 변경으로 JWT 가 거부되는 경우)도, 미등록 토큰을 빈 캘린더 200 으로
+        // 바꾸는 변경도 둘 다 "토큰 없음"이라 아래 단언을 그냥 통과한다. 404 고정만이 "인증이 통과해
+        // 컨트롤러까지 갔고 거기서 404 로 수렴했다"를 확정한다.
+        assertThat(response.statusCode()).isEqualTo(HTTP_NOT_FOUND)
         assertThat(response.body()).doesNotContain(ICAL_RAW_TOKEN)
     }
 
@@ -139,6 +144,18 @@ class AuthenticatedErrorPathTokenLeakTest : ProdAssemblyHttpTestBase() {
         // 필터가 REQUEST 디스패치에서 잘랐다면 매핑 조회 자체가 없어 Allow 가 붙을 수 없다.
         assertThat(response.headers().firstValue(HEADER_ALLOW)).isEmpty
         assertThat(response.body()).doesNotContain(GIT_RAW_TOKEN)
+        // ★★ `/error` authenticated(SecurityConfig anyRequest) 의 **유일한** 회귀 가드다. 지우지 말 것.
+        //
+        // 이 PR 이전에는 `path` 필드가 살아 있어서 위 doesNotContain 이 그 회귀를 대신 잡았다
+        // (GitWebhookInboundPermitAllTest T15-7 도 같은 원리였다). 그런데 `include-path: never` 로
+        // path 를 없앤 지금은, `/error` 를 permitAll 로 열어도 본문이
+        // `{"timestamp":…,"status":401,"error":"Unauthorized"}` 가 될 뿐 **토큰이 없어** 그 단언들이
+        // 전부 초록으로 남는다 — 봉합이 기존 감시 장치의 눈을 가린 것이다(PR #312 코드리뷰 C1).
+        //
+        // 빈 본문만이 남은 판별자다. `/error` 가 authenticated 라 필터가 빈 401 로 덮어쓰는 현재 동작은
+        // GitWebhookInboundPermitAllTest KDoc 이 실측으로 확립했고, permitAll 로 뒤집으면
+        // BasicErrorController 가 살아나 본문이 생기므로 이 단언만 빨강이 된다.
+        assertThat(response.body()).isEmpty()
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -208,6 +225,7 @@ class AuthenticatedErrorPathTokenLeakTest : ProdAssemblyHttpTestBase() {
 
         const val HTTP_OK = 200
         const val HTTP_UNAUTHORIZED = 401
+        const val HTTP_NOT_FOUND = 404
 
         val ACCESS_TOKEN_REGEX = Regex(""""access_token"\s*:\s*"([^"]+)"""")
     }
