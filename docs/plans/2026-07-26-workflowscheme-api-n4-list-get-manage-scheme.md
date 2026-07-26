@@ -175,6 +175,241 @@ D1(읽기 게이트) · D2(배정용 프로젝트 스코프 창구) · D3(배정
 **편차.** `office-hours`·`superpowers:brainstorming` 미호출 (사유는 spec §9·§10).
 **남은 편향** — 작성자=리뷰어. outside voice(`codex`) 미설치로 #308~#311 과 동형 편향 잔존.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### 착수 전 확인된 테스트 하네스 제약 (RED 설계를 좌우함)
+
+| 제약 | 근거 | 처치 |
+|---|---|---|
+| `WorkflowSchemeControllerTest` 의 resolver 는 `mockk(relaxed = true)` — `requirePermission` no-op | `WorkflowSchemeControllerTest.kt:84` | T1 RED 는 `every { … } throws` 로 **던지게** 세워야 성립 |
+| `ProjectWorkflowSchemeControllerTest` 는 MockK 대신 **손수 짠 stub** 사용 (MockK 1.13.x 가 `@JvmInline value class` 파라미터 서명 생성 실패) | 같은 파일 L51-55, L65-88 | T2 는 mockk 못 씀. 기존 `CapturingPermissionResolverStub` 을 **확장**해야 함 |
+| 그 stub 의 `requirePermission` 은 **캡처만 하고 절대 안 던진다** | L71-80 | T2 RED 를 위해 `var denyWith: RuntimeException? = null` 추가 필요 |
+| `StubWorkflowSchemeApplicationService` 는 `assignToProject`·`findAssignedScheme` 만 override. `list()` 는 부모 구현 → `schemeRepo`(비-relaxed `mockk()`)를 타 예외 | L96-130 | T2 는 stub 에 `list()` override + `listResponse` 필드 추가 필요 |
+
+---
+
+### Task 1. `WorkflowSchemeController.list`·`get` 에 MANAGE_SCHEME/Global 게이트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeController.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeControllerTest.kt`]
+- depends-on: []
+
+**RED**. `WorkflowSchemeControllerTest.kt` 에 2개 추가.
+
+```kotlin
+@Test
+@WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+fun `GET 스킴 목록 — 권한 거부 시 403 + 본문에 스킴 정보 0건`() {
+    every { applicationService.listWithCounts() } returns listOf(/* key = "software-scheme" 포함 */)
+    every { permissionResolver.requirePermission(any(), any(), any()) } throws
+        WorkflowSchemeAccessDeniedException(authActorUuid, MANAGE_SCHEME, WorkflowSchemeScope.Global)
+
+    mockMvc.perform(get("/api/v1/workflow-schemes").accept(APPLICATION_JSON))
+        .andExpect(status().isForbidden)
+        // ★ 판별자 — 상태코드가 아니라 본문. 게이트 이전에는 200 + 목록이 나온다.
+        .andExpect(content().string(not(containsString("software-scheme"))))
+}
+```
+
+`get` 도 동형(판별자 = 매핑의 `workflowKey` 문자열 미출현).
+
+**실패 메시지 (예상)**. `Status expected:<403> but was:<200>` — `requirePermission` 이 호출되지 않아
+예외 자체가 발생하지 않는다. **본문 판별자도 동시에 실패**(목록이 그대로 실림).
+
+⚠️ 선행 확인. 이 테스트 클래스의 `TestMvcConfig` 에 `WorkflowSchemeExceptionHandler` 빈이 등록돼
+있는지 확인. 없으면 등록해야 403 매핑이 슬라이스에서 동작한다
+(`ProjectWorkflowSchemeControllerTest.kt:155` 가 선례).
+
+**GREEN**. 두 핸들러 진입 직후에 기존 쓰기 5개와 **완전히 동일한 3줄**.
+
+```kotlin
+val actor = CurrentActor.current()
+permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+```
+
+**REFACTOR**. 클래스 KDoc L49-53 "모든 mutating endpoint 는 …" → "모든 endpoint 는 …" 으로 정정
+(현재 문구가 읽기 제외를 정당화하는 것처럼 읽힌다). 각 핸들러 KDoc 에 `@throws … 403` 추가.
+
+**검증**. `cd backend && ./gradlew :modules:project-workflow:test --tests '*WorkflowSchemeControllerTest'`
+
+**주의**. 기존 GET 테스트 6개는 relaxed mock 이라 **그대로 green 을 유지한다.** 이는 정상이며,
+"기존 테스트가 안 깨졌으니 안전하다" 로 해석하면 안 된다(spec EC-2).
+
+---
+
+### Task 2. `GET /projects/{projectKey}/assignable-workflow-schemes` 신설
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/ProjectWorkflowSchemeController.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/ProjectWorkflowSchemeControllerTest.kt`]
+- depends-on: []
+
+**RED**. 먼저 stub 2개를 확장한 뒤(테스트 하네스 변경도 RED 커밋에 포함) 테스트 4개 추가.
+
+1. `CapturingPermissionResolverStub` 에 `var denyWith: RuntimeException? = null` 추가.
+   `requirePermission` 본문 끝에 `denyWith?.let { throw it }`. `reset()` 에도 `denyWith = null`.
+2. `StubWorkflowSchemeApplicationService` 에 `var listResponse: List<WorkflowScheme> = emptyList()` +
+   `override fun list(): List<WorkflowScheme> = listResponse`.
+
+```kotlin
+@Test @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+fun `GET assignable — 200 + 스킴 배열`()                      // T3-a
+@Test @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+fun `GET assignable — ASSIGN_SCHEME + Project(projectKey) 스코프로 호출`()  // T3-b ★
+@Test @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+fun `GET assignable — 권한 거부 시 403 + 본문에 스킴 key 0건`()  // T4-a
+@Test @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+fun `GET assignable — 미해석 projectKey 404`()                 // T4-b
+```
+
+**T3-b 가 가장 중요하다.** `capturedPermission == ASSIGN_SCHEME` **그리고**
+`capturedScope == WorkflowSchemeScope.Project("ATLAS")` 를 둘 다 단언한다.
+Global 로 잘못 쓰면 프로젝트 관리자가 403 을 맞아 S4 가 다시 깨지는데, **이 단언이 그 회귀의 유일한 방어선**이다.
+
+**실패 메시지 (예상)**. `Status expected:<200> but was:<404>` — 핸들러 미존재.
+
+**GREEN**. 기존 `getAssignedScheme`(L107-124)와 **동일한 4단계 순서**로 핸들러 추가.
+
+```kotlin
+@GetMapping("/{projectKey}/assignable-workflow-schemes")
+fun listAssignableSchemes(@PathVariable projectKey: String): ResponseEntity<DataResponse<List<SchemeResponse>>> {
+    val actor = CurrentActor.current()                                    // 1. 인증 먼저 (KDoc L50-52 계약)
+    val projectId = projectLookupPort.findIdByKey(ProjectKey(projectKey)) // 2. 404
+        ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+    permissionResolver.requirePermission(                                  // 3. 403
+        actor.toUuid(), WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+    return ResponseEntity.ok(DataResponse(data = appService.list().map { it.toResponse() }))  // 4.
+}
+```
+
+- `SchemeResponse` · `toResponse()` (L160·L178) **재사용**. 신규 DTO 0.
+- `appService.list()` (L246) **재사용**. 신규 서비스 메서드 0.
+- `projectId` 는 404 판정에만 쓰이고 조회에는 안 쓴다(전역 목록). 미사용 경고 시 `_` 대신
+  기존 핸들러와 동일하게 변수로 두되 KDoc 에 "존재 검증 전용" 명시.
+
+**REFACTOR**. 클래스 KDoc 의 endpoint 목록(L33-35)에 3번째 줄 추가. `@RequestMapping` 주석 정합.
+
+**검증**. `cd backend && ./gradlew :modules:project-workflow:test --tests '*ProjectWorkflowSchemeControllerTest'`
+
+---
+
+### Task 3. 프론트 계약 + 훅 + MSW 핸들러
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/workflow-schemes.types.ts`, `apps/web/src/api/workflow-schemes.ts`, `apps/web/src/hooks/use-workflow-schemes.ts`, `apps/web/src/mocks/scheme-handlers.ts`, `apps/web/src/api/__tests__/workflow-schemes.test.ts`, `apps/web/src/hooks/__tests__/use-workflow-schemes.test.tsx`]
+- depends-on: [2]
+
+> `depends-on: [2]` 는 **계약 의존**이다. 응답 형태를 Task 2 의 실제 Kotlin `SchemeResponse` 에서
+> 확정해야 한다(메모리 `frontend-zod-backend-dto-contract-gap` — DTO invent 금지).
+
+**RED**.
+
+```ts
+// api/__tests__/workflow-schemes.test.ts
+it('assignableSchemeResponseSchema — id/description null 을 허용한다', () => { ... })
+it('fetchAssignableWorkflowSchemes — /projects/:key/assignable-workflow-schemes 를 호출한다', () => { ... })
+// hooks/__tests__/use-workflow-schemes.test.tsx  (기존 케이스는 유지 — 관리용은 살아 있다)
+it('useAssignableWorkflowSchemes — 프로젝트 스코프 목록을 반환한다', () => { ... })
+```
+
+**실패 메시지 (예상)**. `assignableSchemeResponseSchema is not exported` / 훅 미존재.
+
+**GREEN**.
+
+```ts
+// workflow-schemes.types.ts — ★ 기존 schemeResponseSchema 재사용 금지 (필수 필드 3개가 응답에 없다, EC-4)
+export const assignableSchemeResponseSchema = z.object({
+  id: z.number().int().nullable(),        // EC-5 — backend SchemeResponse.id: Long?
+  key: z.string().min(1),                 // EC-7 — 관리용의 schemeKey 와 필드명이 다르다
+  name: z.string().min(1),
+  description: z.string().nullable(),     // EC-6 — 관리용은 non-null, 여기는 nullable
+  isDefault: z.boolean(),
+})
+export type AssignableSchemeResponse = z.infer<typeof assignableSchemeResponseSchema>
+```
+
+- `workflow-schemes.ts` — `fetchAssignableWorkflowSchemes(projectKey)`,
+  `apiGet('/api/v1/projects/${projectKey}/assignable-workflow-schemes', dataOf(z.array(...)))`
+- `use-workflow-schemes.ts` — `useAssignableWorkflowSchemes(projectKey)`,
+  queryKey `['projects', projectKey, 'assignable-workflow-schemes']` (EC-8 충돌 없음), `staleTime: 30_000`
+- `scheme-handlers.ts` — **10번째 핸들러 추가.** 기존 9개 무변경.
+  파일 상단 KDoc 의 endpoint 목록(L60-68)에도 한 줄 추가
+
+**REFACTOR**. `SCHEME_KEYS` 에 `assignable: (projectKey) => [...]` 상수 추가(매직 문자열 방지, 기존 관례).
+
+**검증**. `pnpm test -- workflow-schemes`
+
+**주의**. `useWorkflowSchemes`·`fetchWorkflowSchemes`·기존 9개 MSW 핸들러는 **건드리지 않는다**(R7).
+
+---
+
+### Task 4. 배정 화면을 신규 훅으로 교체
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.settings.workflow-scheme.tsx`, `apps/web/src/routes/__tests__/projects.$projectKey.settings.workflow-scheme.test.tsx`]
+- depends-on: [3]
+
+**RED**. 기존 테스트 파일에서 관리용 목록 엔드포인트 의존을 신규 엔드포인트 의존으로 바꾼다.
+바꾸는 순간 화면이 아직 옛 훅을 쓰므로 **Select 옵션 0개**로 실패한다.
+
+```tsx
+it('배정 Select 가 assignable 엔드포인트의 스킴으로 채워진다', () => { ... })
+```
+
+**실패 메시지 (예상)**. Select 옵션 미발견 (화면이 여전히 `useWorkflowSchemes` 호출).
+
+**GREEN**.
+- L21 import → `useAssignableWorkflowSchemes`
+- L61 `useWorkflowSchemes()` → `useAssignableWorkflowSchemes(projectKey)`
+- **EC-7** — 옵션 렌더/선택 로직의 `scheme.schemeKey` 참조를 `scheme.key` 로 전수 교체
+- L49-50 KDoc 주석의 "전체 스킴 목록" 설명 갱신
+
+**REFACTOR**. 없음(교체만).
+
+**검증**. `pnpm test -- projects.\$projectKey.settings.workflow-scheme`
+
+---
+
+### Task 5. E2E 확인 + 뮤테이션으로 봉인 실효 검증
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/workflow-scheme-assignment.spec.ts`]
+- depends-on: [1, 2, 4]
+
+**절차** (TDD 사이클 아님 — 검증 task).
+
+1. **배정 E2E 통과 확인.** `pnpm test:e2e -- workflow-scheme-assignment`.
+   깨지면 MSW 핸들러 경로/응답 형태 불일치 — Task 3 으로 되돌린다.
+   ⚠️ 필터 인자가 삼켜지는 함정 있음(메모리 `e2e-playwright-filter-arg-drop`) — **실행 개수를 눈으로 확인**.
+2. **관리 E2E 4개 무변경 확인.** `workflow-scheme-crud` · `-mappings` · `-standard-protect` · `-in-use-modal`.
+3. **★ 뮤테이션 (spec §8 T6).** **반드시 커밋 후**에 수행(메모리 `mutation-test-requires-committed-baseline` —
+   미커밋 상태에서 `git checkout --` 원복은 작업 소실).
+   - 기준선. `./gradlew :modules:project-workflow:test` **EXIT=0 선확인**
+   - M1. `list` 의 `requirePermission` 한 줄 삭제 → T1 의 list 테스트가 **red** 여야 함
+   - M2. `get` 의 한 줄 삭제 → T1 의 get 테스트가 **red**
+   - M3. Task 2 의 스코프를 `Project(projectKey)` → `Global` 로 변경 → **T3-b 가 red**
+   - **`BUILD SUCCESSFUL` 은 나쁜 소식이다**(메모리 `seal-blinds-existing-guard`). 하나라도 green 이면
+     그 테스트는 봉인이 아니라 장식이다
+   - 각 뮤테이션 후 `git checkout -- <파일>` 로 원복
+4. **전체 통과.** `cd backend && ./gradlew :modules:project-workflow:test ktlintCheck detekt` ·
+   `pnpm verify` · `bash scripts/verify-master-plan.sh`
+
+**검증**. 위 4단계 전부 기록으로 남긴다(뮤테이션은 M1~M3 각각의 red 확인 로그 포함).
+
+## Plan 메타
+
+- **task 수**: 5 (T1·T2 backend / T3·T4 frontend / T5 qa)
+- **의존 그래프**: `T1 ⟂ T2` → `T3(계약: T2)` → `T4` → `T5(T1,T2,T4)`
+- **예상 wave**: 4 (wave1 = T1+T2, wave2 = T3, wave3 = T4, wave4 = T5)
+  - ⚠️ T1·T2 는 같은 Gradle 모듈이라 **컴파일이 직렬화**된다(메모리 `bts-plan-wave-gradle-module-compile`).
+    병렬 dispatch 해도 벽시계 이득은 제한적이며, 두 task 가 **서로 다른 파일**이므로 충돌은 없다.
+- **TDD 강제**: yes (T5 제외 — 검증 task)
+- **추가 검증**: ktlint · detekt · vitest · playwright · verify-master-plan · **뮤테이션 3종**
+- **신규 코드 총량**: 백엔드 핸들러 1 + 게이트 6줄 · 프론트 스키마 1 + fetch 1 + 훅 1 + MSW 핸들러 1
+- **변경 없음 보장**: 마이그레이션 · enum · 서비스 메서드 · DTO · 관리 화면 · 관리 E2E 4개
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
