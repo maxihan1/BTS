@@ -47,13 +47,13 @@ import org.springframework.web.bind.annotation.RestController
  * 트랜잭션 개시는 [WorkflowSchemeApplicationService] 가 담당한다.
  *
  * ### 권한 검증
- * 모든 mutating endpoint (create/update/delete) 는 컨트롤러 진입 직후
+ * 모든 endpoint (create/update/delete 뿐 아니라 list/get 읽기 포함) 는 컨트롤러 진입 직후
  * [WorkflowSchemePermissionResolver.requirePermission] 을 호출한다 (Guard 패턴).
  * 인증 연동 전에는 [com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver]
  * stub 이 모든 요청을 허용한다.
  *
  * ### 인증 주체 actor 결선
- * 모든 mutating endpoint 는 [CurrentActor.current] 로 Spring Security 인증 주체를
+ * 모든 endpoint 는 [CurrentActor.current] 로 Spring Security 인증 주체를
  * [com.bts.workflow.port.outbound.ActorId] 로 변환하여 권한 평가와 유스케이스 호출에 사용한다.
  * 미인증·익명·비-UUID 주체는 [CurrentActor] 가 401 을 던진다.
  *
@@ -101,9 +101,16 @@ class WorkflowSchemeController(
      * usedByProjectsCount + mappingsCount 카운트를 동봉한다. mappings 는 빈 리스트.
      *
      * @return 200 OK + [WorkflowSchemeDetailResponse] 목록.
+     * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException 권한이 없을 때 → 403.
      */
     @GetMapping
     fun list(): ResponseEntity<DataEnvelope<List<WorkflowSchemeDetailResponse>>> {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.debug("WorkflowSchemeController.list")
         val schemes = applicationService.listWithCounts()
         return ResponseEntity.ok(DataEnvelope(schemes))
@@ -117,11 +124,18 @@ class WorkflowSchemeController(
      * @param schemeKey 조회할 스킴 키 (경로 변수).
      * @return 200 OK + [WorkflowSchemeDetailResponse] body.
      * @throws com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException 스킴이 없을 때 → 404.
+     * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException 권한이 없을 때 → 403.
      */
     @GetMapping("/{schemeKey}")
     fun get(
         @PathVariable schemeKey: String,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeDetailResponse>> {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.debug("WorkflowSchemeController.get schemeKey={}", schemeKey)
         val detail = applicationService.findDetail(WorkflowSchemeKey(schemeKey))
         return ResponseEntity.ok(DataEnvelope(detail))

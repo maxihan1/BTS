@@ -3,6 +3,7 @@
 package com.bts.workflow.scheme.web
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
@@ -21,6 +22,7 @@ import com.bts.workflow.scheme.web.dto.MappingResponseDetail
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -113,6 +115,7 @@ class WorkflowSchemeControllerTest {
 
     @BeforeEach
     fun setUp() {
+        clearMocks(permissionResolver) // 신규 — 없으면 아래 throws 스터빙이 클래스 전체로 샌다
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).build()
     }
 
@@ -151,6 +154,7 @@ class WorkflowSchemeControllerTest {
     // ── C2. GET /api/v1/workflow-schemes — 200 목록 ───────────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 목록 — 200 + data 배열`() {
         val schemes =
             listOf(
@@ -169,6 +173,7 @@ class WorkflowSchemeControllerTest {
     // ── C3. GET /api/v1/workflow-schemes/{schemeKey} — 200 단건 ──────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 단건 — 200 + key 포함`() {
         val schemeDetail =
             buildSchemeDetail(key = "software-scheme", name = "Software 스킴")
@@ -181,6 +186,7 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 단건 — mappings 리스트 동봉 (task-4 RED)`() {
         val scheme = buildScheme("software-scheme", "Software 스킴")
         val workflowId = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000001")
@@ -215,6 +221,7 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 목록 — usedByProjectsCount + mappingsCount 카운트 포함 (task-4 RED)`() {
         val schemes =
             listOf(
@@ -243,6 +250,7 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET 스킴 단건 — 없는 키 404 SCHEME_NOT_FOUND`() {
         every { applicationService.findDetail(WorkflowSchemeKey("missing-scheme")) } throws
             WorkflowSchemeNotFoundException(key = "missing-scheme")
@@ -250,6 +258,83 @@ class WorkflowSchemeControllerTest {
         mockMvc.perform(get("/api/v1/workflow-schemes/missing-scheme").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value("SCHEME_NOT_FOUND"))
+    }
+
+    // ── N4. GET 읽기 endpoint 권한 게이트 (task-1 RED) — 스펙 준수 복원 ────────
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET 스킴 목록 — 권한 거부 시 403 + 본문에 스킴 정보 0건`() {
+        val schemes =
+            listOf(
+                buildSchemeDetail(key = "software-scheme", name = "Software 스킴"),
+            )
+        every { applicationService.listWithCounts() } returns schemes
+        every {
+            permissionResolver.requirePermission(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+
+        val result =
+            mockMvc.perform(get("/api/v1/workflow-schemes").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden)
+                .andReturn()
+
+        val body = result.response.contentAsString
+        assert(!body.contains("software-scheme")) {
+            "권한 거부 응답에 스킴 key 가 노출됨: $body"
+        }
+    }
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET 스킴 단건 — 권한 거부 시 403 + 매핑 정보 0건`() {
+        val schemeWithMappings =
+            buildSchemeDetail(
+                key = "software-scheme",
+                name = "Software 스킴",
+                mappings =
+                    listOf(
+                        buildMappingResponse(
+                            id = 5L,
+                            issueTypeKey = "bug",
+                            issueTypeName = "버그",
+                            workflowKey = "software-default",
+                            workflowName = "소프트웨어 기본",
+                        ),
+                    ),
+            )
+        every { applicationService.findDetail(WorkflowSchemeKey("software-scheme")) } returns schemeWithMappings
+        every {
+            permissionResolver.requirePermission(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+
+        val result =
+            mockMvc.perform(get("/api/v1/workflow-schemes/software-scheme").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden)
+                .andReturn()
+
+        val body = result.response.contentAsString
+        assert(!body.contains("software-default")) {
+            "권한 거부 응답에 workflowKey 가 노출됨: $body"
+        }
     }
 
     // ── C4. PUT /api/v1/workflow-schemes/{schemeKey} — 200 수정 ──────────────

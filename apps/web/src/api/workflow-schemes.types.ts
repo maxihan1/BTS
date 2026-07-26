@@ -51,6 +51,29 @@ export const assignmentResponseSchema = z.object({
   schemeName: z.string().min(1),
 })
 
+/**
+ * 프로젝트에 할당 가능한 워크플로우 스킴 목록 응답 Zod 스키마.
+ * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes 전용 — 관리자용 schemeResponseSchema와는
+ * 필드 구성이 달라(usedByProjectsCount·mappingsCount 없음) 재사용하지 않는다.
+ * backend DTO(`ProjectWorkflowSchemeController.SchemeResponse`)는 `key`/`isDefault` 어휘를 쓰지만,
+ * 프론트는 이미 관리 화면에서 `schemeKey`/`isStandard` 어휘를 쓰고 있어 경계에서 `.transform()`으로 정규화한다.
+ */
+export const assignableSchemeResponseSchema = z
+  .object({
+    id: z.number().int().nullable(),
+    key: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().nullable(),
+    isDefault: z.boolean(),
+  })
+  .transform((s) => ({
+    id: s.id,
+    schemeKey: s.key,
+    name: s.name,
+    description: s.description,
+    isStandard: s.isDefault,
+  }))
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 추론된 타입 (interface 중복 정의 금지)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +89,9 @@ export type SchemeDetailResponse = z.infer<typeof schemeDetailResponseSchema>
 
 /** 프로젝트-스킴 할당 응답 타입 */
 export type AssignmentResponse = z.infer<typeof assignmentResponseSchema>
+
+/** 프로젝트 할당 가능 스킴 응답 타입 (정규화된 프론트 어휘 — schemeKey/isStandard) */
+export type AssignableSchemeResponse = z.infer<typeof assignableSchemeResponseSchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Input 인터페이스 — 뮤테이션 요청 타입

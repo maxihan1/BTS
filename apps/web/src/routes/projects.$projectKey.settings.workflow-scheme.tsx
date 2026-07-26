@@ -18,8 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useGetAssignment, useUpdateAssignment } from '@/hooks/use-workflow-scheme-assignment'
-import { useWorkflowSchemes } from '@/hooks/use-workflow-schemes'
+import { useAssignableWorkflowSchemes } from '@/hooks/use-workflow-schemes'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
+import { ApiError } from '@/api/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -43,11 +44,25 @@ interface ProjectWorkflowSchemeSettingsPageProps {
   projectKey: string
 }
 
+/** 페이지 상단 헤더 — 정상/403 분기가 공통으로 사용 */
+function PageHeader(): JSX.Element {
+  return (
+    <header className="space-y-1">
+      <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
+      <p className="text-muted-foreground text-sm">
+        {workflowSchemeLabels.assignment.pageDescription}
+      </p>
+    </header>
+  )
+}
+
 /**
  * 프로젝트 워크플로우 스킴 할당 설정 페이지.
  *
  * - useGetAssignment(projectKey): 현재 할당된 스킴 조회. 404 → null (EC-1 정상 케이스).
- * - useWorkflowSchemes(): 전체 스킴 목록 (Select 옵션용).
+ * - useAssignableWorkflowSchemes(projectKey): 이 프로젝트에 배정 가능한 스킴 목록 (Select 옵션용).
+ *   조회 실패 시 빈 Select 방치 금지 — 403(ASSIGN_SCHEME 권한 없음)은 ForbiddenSchemeCard,
+ *   그 외(404/500/네트워크 단절 등)는 SchemeLoadErrorCard로 대체.
  * - assignment null 분기 → UnassignedSchemeCard + 신규 할당 선택 UI.
  * - assignment 있음 → 현재 스킴 카드 + 「현재 적용」 indicator + 변경 select.
  * - 적용 버튼 → useUpdateAssignment.mutate({ schemeKey }) → 낙관적 업데이트 + 토스트.
@@ -58,7 +73,7 @@ export function ProjectWorkflowSchemeSettingsPage({
   projectKey,
 }: ProjectWorkflowSchemeSettingsPageProps): JSX.Element {
   const { data: assignment, isLoading: assignmentLoading } = useGetAssignment(projectKey)
-  const { data: schemes, isLoading: schemesLoading } = useWorkflowSchemes()
+  const { data: schemes, isLoading: schemesLoading, error: schemesError } = useAssignableWorkflowSchemes(projectKey)
   const updateAssignment = useUpdateAssignment(projectKey)
 
   const [selectedSchemeKey, setSelectedSchemeKey] = useState<string>('')
@@ -73,6 +88,21 @@ export function ProjectWorkflowSchemeSettingsPage({
     )
   }
 
+  // 스킴 목록 조회 실패 — 스킴 0건(200 + [])과는 원인이 다르므로 빈 Select로 방치하지 않는다.
+  // 403(ASSIGN_SCHEME 권한 없음)은 전용 안내를, 그 외(404/500/네트워크 단절 등)는 별도 안내를 보여준다.
+  if (schemesError != null) {
+    return (
+      <div className="p-8 space-y-6 max-w-2xl">
+        <PageHeader />
+        {schemesError instanceof ApiError && schemesError.status === 403 ? (
+          <ForbiddenSchemeCard />
+        ) : (
+          <SchemeLoadErrorCard />
+        )}
+      </div>
+    )
+  }
+
   const schemeOptions = schemes ?? []
 
   function handleApply() {
@@ -83,12 +113,7 @@ export function ProjectWorkflowSchemeSettingsPage({
 
   return (
     <div className="p-8 space-y-6 max-w-2xl">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
-        <p className="text-muted-foreground text-sm">
-          {workflowSchemeLabels.assignment.pageDescription}
-        </p>
-      </header>
+      <PageHeader />
 
       {/* EC-1 — 할당 없음 안내 카드 */}
       {assignment === null || assignment === undefined ? (
@@ -179,6 +204,57 @@ export function UnassignedSchemeCard(): JSX.Element {
           {' '}가 자동 할당됩니다.
         </p>
         <p>원하는 스킴을 미리 지정할 수도 있습니다.</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ForbiddenSchemeCard — 403 안내 카드 (독립 named export — 재사용 가능)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트에 배정 가능한 워크플로우 스킴 목록 조회가 403(ASSIGN_SCHEME 권한 없음)으로
+ * 실패한 경우 표시되는 안내 카드. 스킴 0건(200 + `[]`)인 정상 상태와는 원인이 다르므로
+ * 빈 Select로 방치하지 않고 이 카드로 대체한다.
+ * named export로 다른 페이지에서 재사용 가능하다.
+ */
+export function ForbiddenSchemeCard(): JSX.Element {
+  return (
+    <Card className="border-destructive/40 bg-destructive/10">
+      <CardHeader>
+        <CardTitle className="text-destructive">
+          {workflowSchemeLabels.assignment.forbiddenTitle}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm text-muted-foreground">
+        <p>{workflowSchemeLabels.assignment.forbiddenMessage}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SchemeLoadErrorCard — 403 이외 조회 실패 안내 카드 (독립 named export — 재사용 가능)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트에 배정 가능한 워크플로우 스킴 목록 조회가 403 이외의 사유(404/500/네트워크 단절 등)로
+ * 실패한 경우 표시되는 안내 카드. 오타 프로젝트 키로 인한 404, 서버 오류로 인한 500 등도
+ * 빈 Select로 방치하지 않고 이 카드로 대체한다. 403 전용 안내(ForbiddenSchemeCard)와는
+ * 원인이 다르므로 별도 문구를 사용한다.
+ * named export로 다른 페이지에서 재사용 가능하다.
+ */
+export function SchemeLoadErrorCard(): JSX.Element {
+  return (
+    <Card className="border-destructive/40 bg-destructive/10">
+      <CardHeader>
+        <CardTitle className="text-destructive">
+          {workflowSchemeLabels.assignment.loadErrorTitle}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm text-muted-foreground">
+        <p>{workflowSchemeLabels.assignment.loadErrorMessage}</p>
       </CardContent>
     </Card>
   )

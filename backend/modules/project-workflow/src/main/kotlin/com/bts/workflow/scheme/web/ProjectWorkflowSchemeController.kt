@@ -1,4 +1,4 @@
-// ProjectWorkflowSchemeController — Project ↔ WorkflowScheme assignment 2 endpoint (spec §4.3)
+// ProjectWorkflowSchemeController — Project ↔ WorkflowScheme assignment + 배정 후보 목록 3 endpoint (spec §4.3)
 
 package com.bts.workflow.scheme.web
 
@@ -30,20 +30,21 @@ import java.util.UUID
 /**
  * 프로젝트 ↔ 워크플로우 스킴 배정 REST API 컨트롤러.
  *
- * spec §4.3 Project assignment 2 endpoint.
+ * spec §4.3 Project assignment 3 endpoint.
  * - PUT  /api/v1/projects/{projectKey}/workflow-scheme — 프로젝트에 스킴 배정 (UPSERT)
  * - GET  /api/v1/projects/{projectKey}/workflow-scheme — 현재 배정된 스킴 조회
+ * - GET  /api/v1/projects/{projectKey}/assignable-workflow-schemes — 배정 가능한 스킴 전체 목록 조회
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
  * 트랜잭션 개시는 [WorkflowSchemeApplicationService] 가 담당한다.
  *
  * ### 권한
- * 두 endpoint 모두 [WorkflowSchemePermission.ASSIGN_SCHEME] +
+ * 세 endpoint 모두 [WorkflowSchemePermission.ASSIGN_SCHEME] +
  * [WorkflowSchemeScope.Project] 범위 검증. spec §4.3 주석 참조.
  *
  * ### 인증 주체 actor 결선
- * 두 endpoint 모두 메서드 진입 직후 [CurrentActor.current] 로 Spring Security 인증 주체를
+ * 세 endpoint 모두 메서드 진입 직후 [CurrentActor.current] 로 Spring Security 인증 주체를
  * [com.bts.workflow.port.outbound.ActorId] 로 변환하여 권한 평가와 유스케이스 호출에 사용한다.
  * 미인증·익명·비-UUID 주체는 [CurrentActor] 가 401 을 던진다.
  *
@@ -121,6 +122,43 @@ class ProjectWorkflowSchemeController(
         )
         val scheme = appService.findAssignedScheme(projectId, projectKey)
         return ResponseEntity.ok(DataResponse(data = scheme.toResponse()))
+    }
+
+    /**
+     * 프로젝트에 배정 가능한 워크플로우 스킴 전체 목록을 조회한다.
+     *
+     * 전역 스킴 목록 창구([com.bts.workflow.scheme.web.WorkflowSchemeController] 의 `list` 는
+     * `MANAGE_SCHEME` + `Global` 게이트라 시스템 관리자만 접근 가능하다)가 막혀 있어도, 프로젝트
+     * 관리자가 스킴 배정 화면에서 배정 후보를 조회할 수 있도록 `ASSIGN_SCHEME` + `Project(projectKey)`
+     * 스코프로 평가하는 프로젝트 스코프 대체 창구다.
+     *
+     * [getAssignedScheme] 과의 차이. [getAssignedScheme] 은 프로젝트에 "지금 배정된 스킴 하나"를
+     * 반환하지만, 이 메서드는 프로젝트 배정 여부와 무관하게 "배정 후보가 될 수 있는 활성 스킴
+     * 전체 목록"([WorkflowSchemeApplicationService.list] 이 반환하는, 삭제되지 않은 스킴 전체)을 반환한다.
+     *
+     * @param projectKey 배정 후보를 조회할 프로젝트 키 (예. "ATLAS"). 이 컨트롤러가 프로젝트 스코프로
+     * 권한을 평가하고 존재 여부를 404 로 검증하는 데 쓰인다 — 목록 조회 자체는 프로젝트에 한정되지
+     * 않는 전역 활성 스킴 목록이다.
+     * @return 200 + `{ "data": [ { id, key, name, description, isDefault }, ... ] }`
+     * @throws ResponseStatusException(404) [projectKey] 에 해당하는 프로젝트가 없을 때.
+     * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException actor 가 [projectKey] 에 대해
+     * `ASSIGN_SCHEME` 권한이 없을 때. [WorkflowSchemeExceptionHandler] 가 403 으로 변환한다.
+     */
+    @GetMapping("/{projectKey}/assignable-workflow-schemes")
+    fun listAssignableSchemes(
+        @PathVariable projectKey: String,
+    ): ResponseEntity<DataResponse<List<SchemeResponse>>> {
+        log.info("listAssignableSchemes: projectKey={}", projectKey)
+        val actor = CurrentActor.current()
+        val key = ProjectKey(projectKey)
+        projectLookupPort.findIdByKey(key)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
+        return ResponseEntity.ok(DataResponse(data = appService.list().map { it.toResponse() }))
     }
 }
 

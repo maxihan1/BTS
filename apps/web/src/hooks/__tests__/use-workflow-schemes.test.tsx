@@ -13,6 +13,7 @@ import {
   useDeleteWorkflowScheme,
   useAddMapping,
   useRemoveMapping,
+  useAssignableWorkflowSchemes,
 } from '../use-workflow-schemes'
 
 /** 테스트마다 독립 캐시를 가진 QueryClient 래퍼 */
@@ -104,6 +105,29 @@ describe('useWorkflowSchemeDetail', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.schemeKey).toBe('software-default-scheme')
     expect(result.current.data?.mappings).toHaveLength(1)
+  })
+})
+
+describe('useAssignableWorkflowSchemes', () => {
+  it('프로젝트 스코프의 할당 가능 스킴 목록을 정규화된 형태로 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/assignable-workflow-schemes', () =>
+        HttpResponse.json({
+          data: [
+            { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isDefault: true },
+          ],
+        }),
+      ),
+    )
+
+    const { result } = renderHook(() => useAssignableWorkflowSchemes('ATLAS'), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toHaveLength(1)
+    expect(result.current.data?.[0]?.schemeKey).toBe('software-scheme')
+    expect(result.current.data?.[0]?.isStandard).toBe(true)
   })
 })
 

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import {
   fetchWorkflowSchemes,
   fetchWorkflowScheme,
+  fetchAssignableWorkflowSchemes,
   createWorkflowScheme,
   updateWorkflowScheme,
   deleteWorkflowScheme,
@@ -32,6 +33,8 @@ export const SCHEME_KEYS = {
   list: ['workflow-schemes'] as const,
   /** 스킴 단건 queryKey */
   detail: (schemeKey: string) => ['workflow-schemes', schemeKey] as const,
+  /** 프로젝트별 할당 가능 스킴 목록 queryKey */
+  assignable: (projectKey: string) => ['projects', projectKey, 'assignable-workflow-schemes'] as const,
 } satisfies Record<string, readonly string[] | ((...args: string[]) => readonly string[])>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +63,20 @@ export function useWorkflowSchemeDetail(schemeKey: string) {
   return useQuery({
     queryKey: SCHEME_KEYS.detail(schemeKey),
     queryFn: () => fetchWorkflowScheme(schemeKey),
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * 프로젝트에 할당 가능한 워크플로우 스킴 목록을 조회한다.
+ * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → AssignableSchemeResponse[]
+ *
+ * @param projectKey 프로젝트 식별 키
+ */
+export function useAssignableWorkflowSchemes(projectKey: string) {
+  return useQuery({
+    queryKey: SCHEME_KEYS.assignable(projectKey),
+    queryFn: () => fetchAssignableWorkflowSchemes(projectKey),
     staleTime: 30_000,
   })
 }

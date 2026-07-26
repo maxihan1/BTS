@@ -1,12 +1,13 @@
 // 프로젝트 워크플로우 스킴 할당 설정 페이지 단위 테스트 — EC-1 (미할당 정상 케이스) + UPSERT + 에러 처리
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { schemeHandlers } from '@/mocks/scheme-handlers'
 import { ProjectWorkflowSchemeSettingsPage } from '@/routes/projects.$projectKey.settings.workflow-scheme'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // TanStack Router useParams mock
 vi.mock('@tanstack/react-router', () => ({
@@ -157,5 +158,136 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /적용/ })).toBeInTheDocument(),
     )
+  })
+
+  /**
+   * R1. 배정 Select가 관리자 목록(useWorkflowSchemes)이 아니라
+   * 프로젝트 assignable 엔드포인트(useAssignableWorkflowSchemes)의 스킴으로 채워진다.
+   *
+   * 구 관리자 엔드포인트(/api/v1/workflow-schemes)를 같은 schemeKey에 대해
+   * 다른 이름(미끼)으로 override하고, assignable 엔드포인트는 기본 fixture(실제 이름)를 유지한다.
+   * Select trigger에 실제 이름이 보이면 assignable 엔드포인트를 참조한다는 뜻이다.
+   */
+  it('R1: 배정 Select가 assignable 엔드포인트의 스킴으로 채워진다', async () => {
+    server.use(
+      http.get('/api/v1/workflow-schemes', () => {
+        return HttpResponse.json({
+          data: [
+            {
+              schemeKey: 'custom-scheme-alpha',
+              name: '미끼-관리자-이름',
+              description: '',
+              isStandard: false,
+              usedByProjectsCount: 0,
+              mappingsCount: 0,
+            },
+          ],
+        })
+      }),
+    )
+
+    renderPage('ATLAS')
+
+    const combobox = await screen.findByRole('combobox', {
+      name: workflowSchemeLabels.assignment.schemeSelectAriaLabel,
+    })
+
+    await waitFor(() => {
+      expect(within(combobox).getByText('사내 개발팀 커스텀 스킴')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * R2. ★CRITICAL 회귀 테스트 — assignable 엔드포인트가 403을 반환하면
+   * 권한 안내 카드를 보여주고 빈 Select로 방치하지 않는다.
+   * ASSIGN_SCHEME 권한이 없는 사용자가 배정 화면에 도달했을 때의 무음 실패 방지.
+   */
+  it('R2: 403이면 권한 안내를 보여주고 빈 Select로 두지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+        return HttpResponse.json({ code: 'FORBIDDEN', detail: '권한이 없습니다' }, { status: 403 })
+      }),
+    )
+
+    renderPage('ATLAS')
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowSchemeLabels.assignment.forbiddenMessage)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  /**
+   * R3 (권장). 스킴 0건(200 + [])은 403과 다른 상태다 — 권한 안내가 뜨지 않고
+   * Select는 정상 렌더(빈 옵션)된다. 같은 증상(빈 Select)의 두 원인이 실제로 구분됨을 못 박는다.
+   */
+  it('R3: 스킴 0건(200 + [])이면 권한 안내가 뜨지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+        return HttpResponse.json({ data: [] })
+      }),
+    )
+
+    renderPage('ATLAS')
+
+    const combobox = await screen.findByRole('combobox', {
+      name: workflowSchemeLabels.assignment.schemeSelectAriaLabel,
+    })
+    expect(combobox).toBeInTheDocument()
+
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.forbiddenMessage),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * N4-1. ★hotfix — assignable 엔드포인트가 404를 반환해도(오타 프로젝트 키 등)
+   * 빈 Select로 방치하지 않고 오류 안내를 보여준다. 403과는 원인이 다르므로 문구도 달라야 한다.
+   */
+  it('404 여도 빈 Select 로 방치하지 않고 오류 안내를 보여준다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+        return HttpResponse.json({ code: 'NOT_FOUND', detail: '프로젝트를 찾을 수 없습니다' }, { status: 404 })
+      }),
+    )
+
+    renderPage('TYPO')
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowSchemeLabels.assignment.loadErrorMessage)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    // 403 안내와는 다른 문구여야 한다 (원인이 다르므로)
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.forbiddenMessage),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * N4-2. ★hotfix — assignable 엔드포인트가 500을 반환해도 빈 Select로 방치하지 않고
+   * 오류 안내를 보여준다. 403과는 원인이 다르므로 문구도 달라야 한다.
+   */
+  it('500 이어도 빈 Select 로 방치하지 않고 오류 안내를 보여준다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+        return HttpResponse.json({ code: 'INTERNAL_SERVER_ERROR', detail: '서버 오류' }, { status: 500 })
+      }),
+    )
+
+    renderPage('ATLAS')
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowSchemeLabels.assignment.loadErrorMessage)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    // 403 안내와는 다른 문구여야 한다 (원인이 다르므로)
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.forbiddenMessage),
+    ).not.toBeInTheDocument()
   })
 })
