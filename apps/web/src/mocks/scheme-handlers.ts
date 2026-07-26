@@ -18,6 +18,24 @@ const toSummary = (scheme: SchemeDetailResponse): SchemeSummaryResponse => ({
   mappingsCount: scheme.mappingsCount,
 })
 
+/** backend 원본 어휘(key/isDefault)의 할당 가능 스킴 응답 형태 — assignableSchemeResponseSchema 파싱 전 mock 응답 shape */
+interface AssignableSchemeBackendShape {
+  id: number
+  key: string
+  name: string
+  description: string
+  isDefault: boolean
+}
+
+/** 스킴 fixture를 backend 원본 어휘(key/isDefault)로 변환하는 helper */
+const toAssignableBackendShape = (scheme: SchemeDetailResponse, index: number): AssignableSchemeBackendShape => ({
+  id: index + 1,
+  key: scheme.schemeKey,
+  name: scheme.name,
+  description: scheme.description,
+  isDefault: scheme.isStandard,
+})
+
 /** 스킴 키로 fixture를 찾는 helper */
 const findScheme = (schemeKey: string): SchemeDetailResponse | undefined =>
   allSchemeFixtures.find((s) => s.schemeKey === schemeKey)
@@ -246,14 +264,6 @@ export const schemeHandlers = [
    * `assignableSchemeResponseSchema`의 `.transform()`이 경계에서 담당하므로 이 mock이 미리 바꾸면 안 된다.
    */
   http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
-    const data = allSchemeFixtures.map((scheme, index) => ({
-      id: index + 1,
-      key: scheme.schemeKey,
-      name: scheme.name,
-      description: scheme.description,
-      isDefault: scheme.isStandard,
-    }))
-
-    return HttpResponse.json({ data })
+    return HttpResponse.json({ data: allSchemeFixtures.map(toAssignableBackendShape) })
   }),
 ]
