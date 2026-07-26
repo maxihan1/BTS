@@ -65,9 +65,21 @@ standalone MockMvc 로 경로 세그먼트에 토큰이 실린 요청을 재현�
 
 ## 결정 (Decision)
 
-### D1. `instance` 를 **고정값으로 명시**한다 — 요청 URI 가 아니다
+### D1. `instance` 를 **발생 UUID 로 명시**한다 — 요청 URI 가 아니다
 
-`INSTANCE_PATH = "/problems/project-archived"`.
+`instance = "urn:uuid:<UUID.randomUUID()>"`, 그리고 **같은 값을 서버 로그에** 싣는다
+(`PROJECT_ARCHIVED_409 occurrenceId=<uuid> …`).
+
+> **게이트 2 에서 Maxi 가 선택한 형태다.** 초안은 고정 문자열 `"/problems/project-archived"` 였고
+> 유출은 그것으로도 막혔다. 그러나 리뷰(S2)가 지적했듯 고정값은 RFC 9457 §3.1.5 의
+> "특정 **발생**을 식별하는 URI" 시맨틱을 잃고 `type` 의 경로 성분과 사실상 중복이었다.
+> 발생 UUID 는 **유출 위험 0**(요청 정보와 무관한 난수)을 유지하면서 시맨틱을 충족하고,
+> **#310 이 `instance` 를 정화하며 포기했던 진단성을 되찾는다** — 사용자가 붙여넣은 오류 응답
+> 하나로 서버 로그를 곧장 특정할 수 있다. 지금까지 그 연결고리는 아예 없었다.
+>
+> **상관관계 자체가 계약이다.** 로그와 응답 중 한쪽만 바꾸면 둘 다 형식은 맞는 채로 값어치가
+> 조용히 사라지므로, `ListAppender` 로 로그를 잡아 응답 UUID 와의 일치를 못 박는다
+> (레포 관례 — automation·identity-access 선례 동형).
 
 **왜 요청 경로를 살려 쓰지 않는가.** 이 advice 는 전역이라 고정 엔드포인트가 없다. 요청 URI 를 쓰려면
 "비밀 경로인가"를 가리는 판별식이 필요한데, 그 처방은 ADR #310 §D1 이 기각했다 — 목록은 새 비밀 경로가
@@ -135,6 +147,7 @@ automation 두 웹훅 컨트롤러가 그 형태다).
 | 4 | **`annotations = [RestController]`** advice 신설 | `SealTest` 축 1 단독 | **초안이 놓쳤던 형태**(리뷰 C1)를 이제 잡음 |
 | 5 | **제대로 좁힌** advice 신설 (`basePackages = ["com.bts.issue.nowhere"]`) | **없음 — 전부 green** | **과잉발동 아님** |
 | 6 | 스캔 패키지 파괴 | `SealTest` 축 1·3 함께 | vacuous 방어 작동 |
+| 7 | 로그의 UUID 를 응답과 **어긋나게** | `ProjectArchivedExceptionHandlerTest` 상관관계 축 | **D1 의 상관관계가 load-bearing** — 둘 다 형식은 맞지만 잡힌다 |
 
 **5 가 판별력의 핵심 대조군이다.** 3·4 와 5 가 모두 red 였다면 룰이 과잉결합된 것이고,
 4 가 green 이었다면(= 초안 상태) 룰이 위험을 놓치는 것이다. 둘 다 아니다.
@@ -160,12 +173,10 @@ automation 두 웹훅 컨트롤러가 그 형태다).
    중 `instance` 를 설정하는 곳은 4개뿐이다. 나머지는 **스코프가 좁아** 비밀 경로에 붙을 수 없어 안전하고
    봉인 축 2 도 광역 advice 만 본다. 구조적으로는 `problem()` 헬퍼가 shared-kernel 공용이 아니라
    곳곳에 복제된 상태다(#310 이 지적한 사실). 공용 헬퍼 추출은 46파일 cross-BC 리팩터링이라 **별도 트랙**.
-3. **`instance` 값이 RFC 9457 시맨틱과 다르다** (리뷰 S2). `"/problems/project-archived"` 는 "특정
-   **발생**을 식별하는 URI"가 아니라 문제 **종류**이고 `type` 의 경로 성분과 중복이다. 선행 3지점은
-   단일 엔드포인트라 "토큰 뺀 엔드포인트 경로"를 쓸 수 있었지만 전역 advice 에는 그 대상이 없다.
-   **의도적으로 포기한 시맨틱**이다. 리뷰가 제안한 대안(`urn:uuid:<random>` 을 `instance` 와 로그에
-   같이 실어 응답↔로그 상관관계를 만드는 방식)은 진단성을 되찾는 유일한 방향이라 **후속 검토 가치가 있다** —
-   다만 이 PR 은 유출 봉합이 목적이고 상관관계 도입은 로그 포맷 계약 변경이라 범위 밖.
+3. **~~`instance` 값이 RFC 9457 시맨틱과 다르다~~ → 해소.** 게이트 2 에서 `urn:uuid` 상관관계 방식을
+   채택해 §D1 에 반영했다. 남는 것은 **선행 3지점과의 비대칭** — `PublicDashboardController` ·
+   automation 두 웹훅 컨트롤러는 여전히 고정 엔드포인트 경로를 `instance` 로 쓴다(단일 엔드포인트라
+   시맨틱이 살아 있어 틀린 것은 아니지만, 상관관계 이득은 못 누린다). 그 3지점의 UUID 전환은 별도 PR.
 4. **다른 BC 의 광역 advice 전환.** 축 2 는 `ProblemDetail` 반환만 본다. `WorkflowExceptionHandler` 가
    손수 만든 `ErrorResponse` 를 `ProblemDetail` 로 전환하면 그때 축 2 가 발동해 `instance` 를 요구한다
    — 즉 이 전환은 봉인이 자동으로 잡는다.
