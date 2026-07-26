@@ -33,8 +33,10 @@ describe('commentResponseSchema', () => {
   })
 
   it('bodyHtml 누락 시 파싱에 실패한다 — 백엔드가 항상 채우는 필드다', () => {
-    const { bodyHtml: _omitted, ...withoutBodyHtml } = commentFixture
-    expect(() => commentResponseSchema.parse(withoutBodyHtml)).toThrow()
+    const { id, authorId, body, createdAt, updatedAt } = commentFixture
+    expect(() =>
+      commentResponseSchema.parse({ id, authorId, body, createdAt, updatedAt }),
+    ).toThrow()
   })
 
   it('id 가 UUID 형식이 아니면 파싱에 실패한다', () => {
