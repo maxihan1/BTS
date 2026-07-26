@@ -51,10 +51,32 @@ class ProjectArchivedExceptionHandler {
         log.info("PROJECT_ARCHIVED_409 message='{}'", ex.message)
         val pd = ProblemDetail.forStatus(HttpStatus.CONFLICT)
         pd.type = URI.create("https://bts.example.com/problems/project-archived")
+        // ★★ instance 를 반드시 명시한다 — 지우지 말 것 (N3).
+        // Spring MVC 의 RequestResponseBodyMethodProcessor 는 instance 가 null 이면 **요청 URI 로
+        // 자동으로 채운다**(#310 이 실측 확정한 기전). 이 advice 는 **선택자가 없어 레포의 어느
+        // 컨트롤러에도 붙고**, 그중 4개 경로가 경로 세그먼트에 원문 비밀 토큰을 싣는다
+        // (공유 대시보드 토큰·iCal 피드 토큰·git 웹훅 토큰·automation 웹훅 토큰).
+        // 그 경로에서 이 핸들러가 발동하면 응답 본문에 평문 토큰이 실린다(DEVELOPMENT.md §1.1-1·§1.1-2).
+        //
+        // 값이 요청 경로가 아니라 문제 종류인 이유. 이 advice 는 전역이라 고정 엔드포인트가 없다.
+        // 요청 URI 를 살려 쓰려면 "비밀 경로인가"를 가리는 판별식이 필요한데, 그 처방은
+        // ADR 2026-07-25 §D1 이 기각했다 — 목록은 새 비밀 경로가 생길 때마다 갱신돼야 하고
+        // 빠뜨리면 조용히 샌다. 진단은 위 log.info 와 접속 로그(#311 로 토큰만 마스킹됨)가 담당한다.
+        pd.instance = URI.create(INSTANCE_PATH)
         pd.title = "Project Archived"
         pd.detail = "아카이브된 프로젝트에는 쓰기를 할 수 없습니다."
         pd.setProperty("errorCode", "ISSUE_PROJECT_ARCHIVED")
         pd.setProperty("timestamp", Instant.now().toString())
         return pd
+    }
+
+    private companion object {
+        /**
+         * `instance` 고정값 — **요청 URI 가 아니다**(위 handleArchived 주석의 사유).
+         * automation 두 웹훅 컨트롤러와 `PublicDashboardController` 가 같은 처방(고정 경로)을 쓰지만,
+         * 그쪽은 단일 엔드포인트라 "토큰 뺀 그 엔드포인트 경로"를 쓸 수 있었다. 전역 advice 인 이 클래스는
+         * 그럴 대상이 없어 문제 종류를 가리키는 경로를 쓴다.
+         */
+        const val INSTANCE_PATH = "/problems/project-archived"
     }
 }
