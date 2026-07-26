@@ -327,6 +327,13 @@ class AutomationIssueMutationAdapterTest {
      * 2. 이 테스트 — 어댑터가 **그 `create`** 를 경유함 (다른 우회 경로를 쓰지 않음)
      *
      * 두 조각이 함께 있어야 명제가 성립한다. 어느 한쪽만으로는 vacuous 하다.
+     *
+     * ## "다른 경로를 쓰지 않음" 은 무엇이 보장하나
+     * [commentApplicationService] 가 **strict mock**(`mockk()`, relaxed 아님)이다. 따라서 어댑터가
+     * `createImported` 같은 다른 메서드를 부르면 stub 이 없어 `MockKException` 으로 **즉시 실패**한다.
+     * 별도 `verify(exactly = 0)` 은 중복이며, `IssueKey` 가 형식 검증을 가진 `@JvmInline value class` 라
+     * `any()` 매처가 무작위 문자열로 생성자를 때려 `IllegalArgumentException` 을 낸다(실측).
+     * strict mock 자체가 음성 가드다.
      */
     @Test
     fun `addComment delegates to 3-arg create without authorId (FR-CO-01 D4)`() {
@@ -354,11 +361,6 @@ class AutomationIssueMutationAdapterTest {
         assertThat(result.applied).isTrue()
         assertThat(result.version).isNull()
         assertThat(bodySlot.captured).isEqualTo("자동화 댓글")
-
-        // 저작자 지정 창구를 경유하지 않음을 명시 고정 — createImported 는 Import 전용이다
-        verify(exactly = 0) {
-            commentApplicationService.createImported(any(), any(), any(), any(), any())
-        }
     }
 
     @Test

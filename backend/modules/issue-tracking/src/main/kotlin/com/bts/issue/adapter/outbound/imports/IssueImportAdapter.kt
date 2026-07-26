@@ -726,7 +726,13 @@ class IssueImportAdapter(
                     resolution.resolvedEmails,
                     cmd.requesterUserId,
                 )
-            commentApplicationService.create(actor, key, importComment.body, ActorId(authorId), importComment.createdAt)
+            commentApplicationService.createImported(
+                actor,
+                key,
+                importComment.body,
+                ActorId(authorId),
+                importComment.createdAt,
+            )
         }
         if (unmatchedAuthorCount > 0) {
             warnings += "댓글 ${unmatchedAuthorCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체했습니다."
