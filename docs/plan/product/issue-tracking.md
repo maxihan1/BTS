@@ -371,8 +371,8 @@
 - [x] D3. 데이터 모델 — **마이그레이션 0건.** `V035__comments.sql` 이 부분 인덱스까지 이미 보유 (책임. db-engineer) — PR #315
 - [x] D4. 백엔드 — `POST /api/v1/issues/{key}/comments` (201). `AddCommentRequest(body)` **저작자 필드 없음**. 권한 `IssuePermission.UPDATE` + `IssueScope.Issue` 고정(보안등급 우회 차단, 기존 유지). 아카이브 프로젝트 차단(기존 `archiveGuard`). `IssueCommented` 발행 유지(outbox, `MANDATORY`). `CommentExceptionHandler` 400 매핑 2종. **`bodyHtml` 렌더링을 `CommentView.of` 로 단일 지점화** (책임. backend-engineer) — PR #315
 - [x] D5. 백엔드 테스트 — 서비스 14(경계 32000/32001 양쪽·공백·`createImported` 원본보존/상한면제) + 컨트롤러 12(GET 4 무회귀 + POST 8) + `IssueImportAdapterTest` 60 무회귀 + automation 어댑터 14. 모듈 전체 **306 클래스 3,128 tests 0 fail 0 skip**. **뮤테이션 봉인 2회** — 길이 검증 무력화 시 CO-2 red · actor 자기 제외 무력화 시 10건 red(역할 8종 + e2e) (책임. backend-engineer) — PR #315
-- [ ] D6. 프론트 UI — 이슈 상세 활동 영역 4번째 "댓글" 탭 + `CommentSection`(`WorklogSection` 미러). 기본 활성 탭은 **이력 유지**(D8) (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 이슈 상세 활동 영역 4번째 "댓글" 탭 + `CommentSection`(`WorklogSection` 미러). 기본 활성 탭은 **이력 유지**(D8) (책임. frontend-engineer) — PR #315 (`api/comments.ts` 11 tests · `commentStrings` 11키 · `comment-handlers.ts` stateful + `handlers.ts` 전역 등록 · 프론트 전체 515파일 8,044 tests 0 fail. ★형제와 의도적 차이 — `canUpdate=false` 에서 조용히 숨기지 않고 안내 표시)
+- [x] D7. E2E (책임. qa-engineer) — PR #315 (`issue-comment.spec.ts` 4시나리오: 기본탭 이력 회귀고정·빈상태·작성→반영·연속작성 2건 유지. **브라우저 눈확인 실시** — 선재 결함 1건 발견해 TODOS 등재)
 
 #### §4.4.2 FR-CO-02 — 댓글 수정 + 삭제 (소프트)
 
