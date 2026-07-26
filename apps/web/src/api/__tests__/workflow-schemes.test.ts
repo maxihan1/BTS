@@ -1,12 +1,16 @@
 // 워크플로우 스킴 API client 단위 테스트 — fixture mock + Zod 파싱 검증
 import { describe, it, expect } from 'vitest'
 import { ZodError } from 'zod'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/server'
 import {
   schemeResponseSchema,
   schemeDetailResponseSchema,
   mappingResponseSchema,
   assignmentResponseSchema,
+  assignableSchemeResponseSchema,
   toNullableIssueTypeKey,
+  fetchAssignableWorkflowSchemes,
 } from '../workflow-schemes'
 import type {
   SchemeResponse,
@@ -197,5 +201,81 @@ describe('Input 인터페이스 컴파일 가드', () => {
   it('T2-6d: AssignSchemeInput이 schemeKey를 필수로 가진다', () => {
     const input: AssignSchemeInput = { schemeKey: 'scheme-atlas' }
     expect(input.schemeKey).toBe('scheme-atlas')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2-7. assignableSchemeResponseSchema — backend 어휘(key/isDefault) → 프론트 어휘(schemeKey/isStandard) 정규화
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assignableSchemeResponseSchema', () => {
+  it('T2-7a: id와 description이 null이어도 파싱 성공한다', () => {
+    const result = assignableSchemeResponseSchema.parse({
+      id: null,
+      key: 'software-scheme',
+      name: '소프트웨어 스킴',
+      description: null,
+      isDefault: true,
+    })
+
+    expect(result.id).toBeNull()
+    expect(result.description).toBeNull()
+  })
+
+  it('T2-7b: backend 필드명(key, isDefault)을 프론트 어휘(schemeKey, isStandard)로 정규화한다', () => {
+    const result = assignableSchemeResponseSchema.parse({
+      id: 1,
+      key: 'x',
+      name: 'X 스킴',
+      description: null,
+      isDefault: true,
+    })
+
+    expect(result).toEqual({
+      id: 1,
+      schemeKey: 'x',
+      name: 'X 스킴',
+      description: null,
+      isStandard: true,
+    })
+    expect(result).not.toHaveProperty('key')
+    expect(result).not.toHaveProperty('isDefault')
+  })
+
+  it('T2-7c: 필수 필드 누락 시 ZodError를 throw한다', () => {
+    expect(() => assignableSchemeResponseSchema.parse({ key: 'only-key' })).toThrow(ZodError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2-8. fetchAssignableWorkflowSchemes — 프로젝트 스코프 할당 가능 스킴 목록 조회
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchAssignableWorkflowSchemes', () => {
+  it('T2-8a: GET /api/v1/projects/:projectKey/assignable-workflow-schemes 를 호출하고 정규화된 배열을 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/assignable-workflow-schemes', () =>
+        HttpResponse.json({
+          data: [
+            { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isDefault: true },
+          ],
+        }),
+      ),
+    )
+
+    const result = await fetchAssignableWorkflowSchemes('ATLAS')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.schemeKey).toBe('software-scheme')
+    expect(result[0]?.isStandard).toBe(true)
+    expect(result[0]?.id).toBe(1)
+  })
+
+  it('T2-8b: 비-2xx 응답 시 에러를 throw한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/assignable-workflow-schemes', () =>
+        HttpResponse.json({ message: 'Unauthorized' }, { status: 401 }),
+      ),
+    )
+
+    await expect(fetchAssignableWorkflowSchemes('ATLAS')).rejects.toThrow()
   })
 })
