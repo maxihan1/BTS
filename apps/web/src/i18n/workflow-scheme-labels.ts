@@ -160,6 +160,10 @@ export const workflowSchemeLabels = {
     schemeSelectAriaLabel: '워크플로우 스킴 선택',
     /** 적용 버튼 visible 텍스트 */
     applyButton: '적용',
+    /** 스킴 조회 권한 없음(403) 안내 카드 CardTitle */
+    forbiddenTitle: '권한이 없습니다',
+    /** 스킴 조회 권한 없음(403) 안내 문구 — 스킴 0건(정상 상태)과 구분되는 전용 메시지 */
+    forbiddenMessage: '이 프로젝트의 워크플로우 설정 권한이 없습니다. 프로젝트 관리자에게 문의하세요.',
   },
 } as const
 
