@@ -191,3 +191,27 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 이 맞는 방향이다. 그게 이 레포의 다른 훅 관례와 맞는지 먼저 확인할 것.
 
 **Depends on / blocked by**. 없음. 우선순위 낮음(30초 staleness, 두 역할 겸임자 한정).
+
+## issue-tracking — 핵심 엔티티 3종이 glossary 미등재 (PR #315 FR-CO-01 grill-with-docs 발견)
+
+**결정 (Maxi 확정, 2026-07-27 D6)**. **이번 PR 범위 밖.** 댓글만 등재하고 동질 부채는 여기 등재한다.
+기존 FR 소관이고, 기능 PR 을 용어사전 정리로 번지게 하면 리뷰 단위가 무너진다(#314 가 프론트 계약
+부채에 쓴 것과 같은 잣대).
+
+**미등재 3종 (2026-07-27 실측)**.
+
+| 엔티티 | 소관 FR | 실재 여부 | `domain/issue-tracking.md` 핵심 엔티티 목록 |
+|---|---|---|---|
+| Worklog (작업로그) | FR-TT-01 | 있음 — POST/GET/PATCH/DELETE 전량 + 작성자 한정 수정·삭제 | **FR-CO-01 에서 추가함**(Comment 선례라 같이 넣음) |
+| Attachment (어테처) | FR-AC-01/02 | 있음 — MinIO 업로드 + 미리보기 | 이미 있음 |
+| Watcher (워처) | FR-WT-01 | 있음 | 이미 있음 |
+
+**★판정 기준 자체가 흔들린다는 게 진짜 문제.** glossary 에는 `버전 상태`·`CFD`·`LexoRank`·`공유 토큰`
+처럼 **설명 없이는 모를 것**이 들어가 있고, `Worklog`·`Attachment`·`Watcher`·(이전의)`Comment` 처럼
+**이름만 들으면 아는 것**이 빠져 있다. 즉 암묵 기준은 "설명 필요도" 로 보인다. 그런데
+`domain/issue-tracking.md` 핵심 엔티티 목록엔 Attachment·Watcher 가 **이미 있어** 두 문서의 수록
+기준이 서로 다르다.
+
+**착수 시 첫 단계**. 등재 기준을 명문화한다 — glossary 는 "도메인 전문가에게 의미가 모호한 용어"만인지,
+"핵심 엔티티 전량"인지. 기준을 정한 뒤 누락분을 일괄 채운다. 기준 없이 개별 추가하면 같은 누락이 반복된다.
+`glossary.md` §변경 규칙에 기준 한 줄을 추가하는 것이 산출물.
