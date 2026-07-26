@@ -27,14 +27,20 @@ function generateUuidV4(): string {
 /** mock access token prefix — auth-fixtures.mockAccessToken과 동일 형식 */
 const MOCK_TOKEN_PREFIX = 'mock-access-token-'
 
-/** username → userId 매핑 (auth-fixtures AUTH_USERS 정본과 일치, RFC4122 v4 형식) */
+/**
+ * username → userId 매핑.
+ *
+ * ★값은 `auth-fixtures.ts` 의 `aliceUser.userId`/`bobUser.userId` **정본과 정확히 일치해야 한다.**
+ * 어긋나면 E2E 가 whoami 사용자와 댓글 작성자를 다른 사람으로 보고 "본인 댓글" 판정이 깨진다
+ * (메모리 `e2e-fixture-whoami-userid-alignment`). `worklog-handlers.ts` 와 같은 값을 쓴다.
+ */
 const USER_ID_MAP: Readonly<Record<string, string>> = {
-  alice: 'a0000000-0000-4000-a000-000000000001',
-  bob: 'b0000000-0000-4000-a000-000000000002',
+  alice: '00000000-0000-4000-8000-000000000001',
+  bob: '00000000-0000-4000-8000-000000000002',
 }
 
 /** 토큰 미해석 시 저작자 폴백 — 백엔드는 401 이지만 mock 은 목록 렌더를 막지 않는다 */
-const FALLBACK_AUTHOR_ID = 'a0000000-0000-4000-a000-000000000001'
+const FALLBACK_AUTHOR_ID = '00000000-0000-4000-8000-000000000001'
 
 /**
  * Authorization Bearer 헤더에서 현재 사용자 userId를 도출한다.
