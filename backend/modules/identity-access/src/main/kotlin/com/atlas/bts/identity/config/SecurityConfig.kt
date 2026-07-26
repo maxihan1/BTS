@@ -237,8 +237,16 @@ class SecurityConfig(
                 // 그 순간 세 종류가 한꺼번에 에러 응답으로 나가고, 응답 로그·프록시 캐시·GitHub 웹훅 delivery 기록에
                 // 적재되면 그것이 곧 평문 토큰 저장이다(DEVELOPMENT.md §1.1-1·§1.1-2).
                 // 실측(T15): /error 를 permitAll 로 뒤집으면 form-urlencoded 요청의 415 본문에
-                // `"path":"/api/v1/webhooks/git/<원문토큰>"` 이 그대로 실렸다. GitWebhookInboundPermitAllTest 의
-                // T15-6 이 이 회귀를 잡는다(뒤집으면 fail).
+                // `"path":"/api/v1/webhooks/git/<원문토큰>"` 이 그대로 실렸다.
+                // ★ 정정(N2) — 이 회귀를 잡는 것은 T15-6 이 **아니다**. 컨트롤러가 415 를 자기 핸들러 안에서
+                //   응답하게 된 뒤로 T15-6 의 요청은 /error 를 아예 타지 않는다(그 테스트 자신의 주석이 명시).
+                //   더구나 `server.error.include-path: never` 이후로는 본문에서 토큰이 사라져 **토큰 문자열을
+                //   판별자로 쓰던 축이 전부**(T15-6·T15-7 포함) permitAll 로 뒤집어도 초록으로 남는다
+                //   (PR #312 에서 뮤테이션으로 재현 확인).
+                //   현재 이 회귀를 잡는 유일한 가드는 AuthenticatedErrorPathTokenLeakTest 의 **N2-D** 다 —
+                //   판별자가 되려면 요청이 REQUEST 디스패치에서 **인가를 통과**하고(entry point 가 아니라
+                //   sendError 로 가야 한다) 컨트롤러 밖에서 오류가 나야 하므로, **익명 + permitAll 경로 + 404**
+                //   조합(익명 iCal 피드)만이 /error 의 권한 설정에 반응한다.
                 // ★ 익명 경로가 제대로 된 에러 JSON 을 못 받는다는 이유로 열고 싶다면, **먼저 ErrorAttributes 에서
                 //   path 를 제거**하고 나서 열 것. 순서를 바꾸면 그 사이에 토큰이 샌다.
                 //   (N2 로 그 선행조건은 충족됐다 — `server.error.include-path: never`. 그래도 **열지 말 것**:

@@ -144,17 +144,44 @@ class AuthenticatedErrorPathTokenLeakTest : ProdAssemblyHttpTestBase() {
         // 필터가 REQUEST 디스패치에서 잘랐다면 매핑 조회 자체가 없어 Allow 가 붙을 수 없다.
         assertThat(response.headers().firstValue(HEADER_ALLOW)).isEmpty
         assertThat(response.body()).doesNotContain(GIT_RAW_TOKEN)
-        // ★★ `/error` authenticated(SecurityConfig anyRequest) 의 **유일한** 회귀 가드다. 지우지 말 것.
+        // 필터 401 은 본문이 비어 있다(T15-3·T15-4 가 확립한 "컨트롤러 401 과 필터 401 을 가르는" 판별자).
         //
-        // 이 PR 이전에는 `path` 필드가 살아 있어서 위 doesNotContain 이 그 회귀를 대신 잡았다
-        // (GitWebhookInboundPermitAllTest T15-7 도 같은 원리였다). 그런데 `include-path: never` 로
-        // path 를 없앤 지금은, `/error` 를 permitAll 로 열어도 본문이
-        // `{"timestamp":…,"status":401,"error":"Unauthorized"}` 가 될 뿐 **토큰이 없어** 그 단언들이
-        // 전부 초록으로 남는다 — 봉합이 기존 감시 장치의 눈을 가린 것이다(PR #312 코드리뷰 C1).
-        //
-        // 빈 본문만이 남은 판별자다. `/error` 가 authenticated 라 필터가 빈 401 로 덮어쓰는 현재 동작은
-        // GitWebhookInboundPermitAllTest KDoc 이 실측으로 확립했고, permitAll 로 뒤집으면
-        // BasicErrorController 가 살아나 본문이 생기므로 이 단언만 빨강이 된다.
+        // ★ 이 단언은 `/error` permitAll 회귀를 **잡지 못한다** — 착각하지 말 것(실측 확인).
+        //   이 요청은 REQUEST 디스패치에서 `BearerTokenAuthenticationEntryPoint` 가 `setStatus(401)` 로
+        //   끝낸다. `sendError` 가 아니므로 **ERROR 디스패치를 아예 타지 않고**, 따라서 `/error` 의 권한
+        //   설정이 이 요청과 무관하다. 그 회귀를 잡는 것은 아래 N2-D 다.
+        assertThat(response.body()).isEmpty()
+    }
+
+    /**
+     * `/error` 를 permitAll 로 여는 회귀의 **유일한 가드**다. 지우지 말 것.
+     *
+     * ## 왜 이 조합이어야 하는가 (뮤테이션으로 확정)
+     * `/error` 의 권한 설정이 응답을 가르려면 요청이 **ERROR 디스패치를 타야** 하고, 그러려면
+     * (1) REQUEST 디스패치에서 **인가를 통과**하고(그래야 entry point 가 아니라 서블릿 에러로 간다)
+     * (2) 컨트롤러 밖에서 오류가 나 `sendError` 로 넘어가야 한다.
+     * **익명 + permitAll 경로 + 404** 가 정확히 그 조합이다 — iCal 피드는 GET permitAll 이라 익명이
+     * 컨트롤러까지 가고, 미등록 토큰이 `ResponseStatusException(404)` 로 수렴하는데 그 컨트롤러에는
+     * `@ExceptionHandler` 가 없어 `sendError` → `/error` 로 간다.
+     *
+     * 현재(= `/error` authenticated). 익명이라 인가 실패 → 필터가 **빈 401** 로 덮어쓴다.
+     * permitAll 로 뒤집으면. `BasicErrorController` 가 살아나 **404 + JSON 본문**이 나온다.
+     *
+     * ## 왜 다른 축들은 이 회귀를 못 잡는가 (전부 실측)
+     * - N2-C(익명 405 축) — `setStatus` 로 끝나 ERROR 디스패치 자체가 없다. `/error` 권한과 무관
+     * - N2-A/B(인증 축) — 이미 ERROR 디스패치를 타고 컨텍스트가 복원돼 `/error` 를 통과한다.
+     *   authenticated 든 permitAll 이든 응답이 같다
+     * - `GitWebhookInboundPermitAllTest` T15-6/T15-7 — `include-path: never` 이전에는 본문의 원문 토큰이
+     *   판별자였으나, path 필드가 사라진 뒤로는 permitAll 로 뒤집어도 전부 초록으로 남는다
+     *   (PR #312 코드리뷰 C1 지적 → 뮤테이션으로 재현 확인)
+     *
+     * 즉 이 PR 의 봉합이 기존 감시 장치의 눈을 가렸고, 이 테스트가 그 자리를 대신한다.
+     */
+    @Test
+    fun `익명 permitAll 경로의 오류는 -error authenticated 에 막혀 빈 401 로 수렴한다 (N2-D 봉인)`() {
+        val response = get("http://localhost:$port/ical/feed/$ICAL_RAW_TOKEN.ics", jwt = null)
+
+        assertThat(response.statusCode()).isEqualTo(HTTP_UNAUTHORIZED)
         assertThat(response.body()).isEmpty()
     }
 
