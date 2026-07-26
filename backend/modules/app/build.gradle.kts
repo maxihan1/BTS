@@ -78,6 +78,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         exclude(group = "org.junit.vintage", module = "junit-vintage-engine")
     }
+    // 조립 전역 아키텍처 봉인(GlobalControllerAdviceSealTest) — 9 BC 를 한 클래스패스에서 스캔한다.
+    // 다른 BC 모듈이 이미 같은 버전을 쓰고 있어 신규 의존성이 아니라 기존 도구의 조립 레벨 재사용이다.
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
     testImplementation("org.testcontainers:testcontainers:1.20.3")
     testImplementation("org.testcontainers:postgresql:1.20.3")
     testImplementation("org.testcontainers:junit-jupiter:1.20.3")
