@@ -240,4 +240,54 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
       screen.queryByText(workflowSchemeLabels.assignment.forbiddenMessage),
     ).not.toBeInTheDocument()
   })
+
+  /**
+   * N4-1. ★hotfix — assignable 엔드포인트가 404를 반환해도(오타 프로젝트 키 등)
+   * 빈 Select로 방치하지 않고 오류 안내를 보여준다. 403과는 원인이 다르므로 문구도 달라야 한다.
+   */
+  it('404 여도 빈 Select 로 방치하지 않고 오류 안내를 보여준다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+        return HttpResponse.json({ code: 'NOT_FOUND', detail: '프로젝트를 찾을 수 없습니다' }, { status: 404 })
+      }),
+    )
+
+    renderPage('TYPO')
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowSchemeLabels.assignment.loadErrorMessage)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    // 403 안내와는 다른 문구여야 한다 (원인이 다르므로)
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.forbiddenMessage),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * N4-2. ★hotfix — assignable 엔드포인트가 500을 반환해도 빈 Select로 방치하지 않고
+   * 오류 안내를 보여준다. 403과는 원인이 다르므로 문구도 달라야 한다.
+   */
+  it('500 이어도 빈 Select 로 방치하지 않고 오류 안내를 보여준다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+        return HttpResponse.json({ code: 'INTERNAL_SERVER_ERROR', detail: '서버 오류' }, { status: 500 })
+      }),
+    )
+
+    renderPage('ATLAS')
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowSchemeLabels.assignment.loadErrorMessage)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    // 403 안내와는 다른 문구여야 한다 (원인이 다르므로)
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.forbiddenMessage),
+    ).not.toBeInTheDocument()
+  })
 })
