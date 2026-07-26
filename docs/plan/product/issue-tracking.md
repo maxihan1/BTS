@@ -1,8 +1,8 @@
-<!-- issue-tracking BC — 이슈 코어 35 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동 + 프로젝트 관리) -->
+<!-- issue-tracking BC — 이슈 코어 37 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/댓글/Watcher + 링크/히스토리/템플릿 + 이동 + 프로젝트 관리) -->
 
 # issue-tracking BC
 
-**소속 FR**. 35개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4).
+**소속 FR**. 37개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4).
 **책임**. 이슈/댓글/첨부/관계/이력/템플릿/이동.
 **SDD 참조**. 05장 (데이터 모델), 11장 (API).
 **다른 BC와의 경계**. project-workflow의 상태 전이 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
@@ -276,7 +276,7 @@
 - [x] D6. 프론트 UI — 미리보기 + 복사 (책임. designer → frontend-engineer) — PR #110 (ReleaseNotesDialog radix Dialog + 클립보드 복사 graceful, VersionRow "릴리즈 노트" 버튼, Zod↔DTO 1:1, useReleaseNotes lazy fetch)
 - [x] D7. E2E (책임. qa-engineer) — PR #110 (version-release-notes.spec.ts 3 happy path(열림/복사/닫기) + 기존 version E2E 9 회귀, 클립보드 권한 grant, 한글 markdown Base64 헤더)
 
-## §4 첨부 / 멘션 / Watcher (5개)
+## §4 첨부 / 멘션 / 댓글 / Watcher (7개)
 
 ### §4.1 멘션 (FR-MN, 2개)
 
@@ -353,6 +353,45 @@
 - [x] D5. 백엔드 테스트 — repository 8 + service 21 + controller 11 + 자동watcher 8 + 마이그레이션 스키마 (책임. backend-engineer) — PR #151
 - [x] D6. 프론트 UI — Watch 버튼(지켜보기/지켜보는 중 토글) + 카운트 + 감시자 명단(본인 "(나)") (책임. designer → frontend-engineer) — PR #152 (메타패널 WatchersSection 자체-훅, 4상태·긴목록 상한 8·aria-pressed·invalidate-only. FR-7 담당자/컴포넌트 변경 시 자동 watcher 라이브 갱신. watcher userId/displayName z.string 완화(whoami 공간 정합·빈 displayName 허용). 적대리뷰 P1/P2/P3(로딩윈도우 토글가드·mutation 에러토스트·빈displayName ZodError) 수정)
 - [x] D7. E2E (책임. qa-engineer) — PR #152 (issue-watchers.spec.ts 3종: 초기 빈상태/watch(나 표시·카운트+1)/unwatch(카운트-1). 컨테이너 한정 셀렉터, 전체 E2E 108 통과 회귀 0)
+
+### §4.4 댓글 (FR-CO, 2개)
+
+> **왜 신규 FR 인가.** 댓글 백엔드는 `FR-IM-01` PR3(#224)의 **부산물**이다 — 외부 시스템에서 댓글을
+> 가져오려면 Comment 도메인이 필요했다. 그래서 `CommentController` 는 `@GetMapping` 하나뿐이고
+> 쓰기 REST 가 **0건**이며 프론트도 0건이었다. **REST 미노출 = 기능 없음.** `FR-MN-01`·`FR-IS-06`·
+> `FR-HS-01` 이 *"댓글 FR 도입 시"* 로 명시 이연하며 기다리고 있었다.
+> ADR [2026-07-27-fr-co-comment-feature](../../decisions/2026-07-27-fr-co-comment-feature.md).
+
+#### §4.4.1 FR-CO-01 — 이슈 댓글 작성 + 목록 조회
+
+**우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `fr-co-01`
+
+- [x] D1. 도메인 — 기존 `Comment`(Issue 종속 child entity, Worklog 동형) 재사용. `comment/domain/CommentExceptions.kt` 신설(`CommentBodyBlankException`·`CommentBodyTooLongException`, `RuntimeException` 직접 상속 = 형제 관례) (책임. backend-engineer) — PR #315
+- [x] D2. 명세 — 시나리오 10 · FR 22 · NFR 7 · 엣지 21 · 완료기준 14. **★D4 저작자 강제** — `create` 에서 `authorId` 파라미터를 제거해 위조를 컴파일 수준에서 차단, Import 는 `createImported` 로 분리. **★D7 검증 위치** — 본문 상한(32,000자)을 **서비스**에 둔다(생산자가 REST·automation 둘이고 `TemplateRenderer` 에 길이 제한이 없어 컨트롤러 검증은 automation 이 우회) (책임. backend-engineer) — PR #315
+- [x] D3. 데이터 모델 — **마이그레이션 0건.** `V035__comments.sql` 이 부분 인덱스까지 이미 보유 (책임. db-engineer) — PR #315
+- [x] D4. 백엔드 — `POST /api/v1/issues/{key}/comments` (201). `AddCommentRequest(body)` **저작자 필드 없음**. 권한 `IssuePermission.UPDATE` + `IssueScope.Issue` 고정(보안등급 우회 차단, 기존 유지). 아카이브 프로젝트 차단(기존 `archiveGuard`). `IssueCommented` 발행 유지(outbox, `MANDATORY`). `CommentExceptionHandler` 400 매핑 2종. **`bodyHtml` 렌더링을 `CommentView.of` 로 단일 지점화** (책임. backend-engineer) — PR #315
+- [x] D5. 백엔드 테스트 — 서비스 14(경계 32000/32001 양쪽·공백·`createImported` 원본보존/상한면제) + 컨트롤러 12(GET 4 무회귀 + POST 8) + `IssueImportAdapterTest` 60 무회귀 + automation 어댑터 14. 모듈 전체 **306 클래스 3,128 tests 0 fail 0 skip**. **뮤테이션 봉인 2회** — 길이 검증 무력화 시 CO-2 red · actor 자기 제외 무력화 시 10건 red(역할 8종 + e2e) (책임. backend-engineer) — PR #315
+- [ ] D6. 프론트 UI — 이슈 상세 활동 영역 4번째 "댓글" 탭 + `CommentSection`(`WorklogSection` 미러). 기본 활성 탭은 **이력 유지**(D8) (책임. frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+#### §4.4.2 FR-CO-02 — 댓글 수정 + 삭제 (소프트)
+
+**우선순위**. 필수 | **선행**. §4.4.1 | **Plan slug**. (미착수)
+
+> **분할 근거 (Maxi 확정 D1).** 작성과 수정·삭제의 위험 성격이 다르다. 작성은 `create()` 재사용으로
+> 얇고 실질 위험이 알림 입력 분포 하나인데, 수정·삭제는 도메인 확장(`Comment` 전 필드 `val` → 본문
+> 변경) + repo 쓰기 메서드 신설 + **"누가 남의 댓글을 지울 수 있나" 정책 결정**이 붙는다.
+>
+> **선례가 예고하는 것.** Worklog 는 수정·삭제를 **작성자 한정**(`existing.authorId != actor` → 403)으로
+> 두고 관리자 우회를 두지 않았다. 이 대칭을 따를지 모더레이션을 도입할지는 CO-02 자기 ADR 에서 결정한다.
+
+- [ ] D1. 도메인 — `Comment` 본문 변경 허용(전 필드 `val` 해제) + `updatedAt` 갱신 (책임. backend-engineer)
+- [ ] D2. 명세 — 모더레이션 정책 결정 (작성자 한정 vs PROJECT_ADMIN 우회) (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — 마이그레이션 0건 예상 (`deleted_at` 기존) (책임. db-engineer)
+- [ ] D4. 백엔드 — `PATCH`/`DELETE /api/v1/issues/{key}/comments/{commentId}` + repo `update`/`softDelete` (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 수정/삭제 버튼 · 인라인 편집 (책임. frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
 
 ## §5 링크 / 히스토리 / 템플릿 (6개)
 
@@ -550,7 +589,7 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§7 (35 FR) 모두 `[x]` 마킹
+- [ ] §2~§7 (37 FR) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] DATA.md §이슈키 영속성 자가 점검
 - [ ] CHANGELOG.md 정리

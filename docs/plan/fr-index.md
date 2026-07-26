@@ -1,11 +1,11 @@
-<!-- 129개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 131개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (129개 전수)
+## §A.1 FR 역인덱스 (131개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 129개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 131개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -77,6 +77,13 @@
 | FR-MN-02 | 멘션 자동완성 | 높음 | issue-tracking | §4.1.2 |
 | FR-HS-01 | 이슈 변경 이력 | 필수 | issue-tracking | §5.1.1 |
 | FR-HS-02 | 히스토리 조회 UI | 필수 | issue-tracking | §5.1.2 |
+
+### 댓글 (FR-CO, 2개)
+
+| FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
+|---|---|---|---|---|
+| FR-CO-01 | 이슈 댓글 작성 + 목록 조회 | 필수 | issue-tracking | §4.4.1 |
+| FR-CO-02 | 댓글 수정 + 삭제 (소프트) | 필수 | issue-tracking | §4.4.2 |
 
 ### 템플릿 / 링크 / 첨부 / Watcher (FR-TM, FR-LK, FR-AC, FR-WT, 7개)
 
@@ -231,7 +238,7 @@
 | BC | FR 카운트 | 주요 그룹 |
 |---|---|---|
 | identity-access | 25 | AU(10) + MF(5) + PM(10) |
-| issue-tracking | 35 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) + PJ(4) |
+| issue-tracking | 37 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + CO(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) + PJ(4) |
 | project-workflow | 3 | WF(3) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
@@ -239,7 +246,7 @@
 | slack-integration | 6 | SL(6) |
 | personalization | 13 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06(4) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **129** | |
+| **합계** | **131** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
