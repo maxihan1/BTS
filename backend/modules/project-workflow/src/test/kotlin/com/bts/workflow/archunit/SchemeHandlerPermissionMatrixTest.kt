@@ -37,6 +37,22 @@ import org.springframework.web.bind.annotation.RequestMapping
  *   헬퍼 1단계를 통해) 호출하지 않으면 실패.
  * - **축 2 (분류 강제)** — `요청 매핑 핸들러는 permission-scope 분류맵에 등록돼 있어야 한다` 테스트.
  *   [HANDLER_CLASSIFICATION] 맵에 없는 매핑 메서드가 하나라도 있으면 실패.
+ *
+ * ### ⚠️ 이 테스트가 **덮지 않는 것** (초록이 곧 정당함이 아니다)
+ * 축 2 는 핸들러가 맵에 **등록돼 있는지**(`containsKey`)만 본다.
+ * **맵에 적힌 `(permission, scopeKind)` 가 코드가 실제로 넘기는 인자와 일치하는지는 검사하지 않는다.**
+ *
+ * 실증(2026-07-26 뮤테이션 M3) — `ProjectWorkflowSchemeController.listAssignableSchemes` 의 스코프를
+ * `Project(projectKey)` → `Global` 로 바꿨을 때 **이 테스트는 green 을 유지**했다.
+ * 그 뮤테이션을 잡은 것은 축 2 가 아니라 컨트롤러 단위 테스트
+ * (`ProjectWorkflowSchemeControllerTest` 의 `capturedScope` 단언)였다.
+ *
+ * ⇒ **맵 값과 코드의 일치는 여전히 개별 단위 테스트의 책임이다.** 이 맵은 "새 핸들러를 추가하면
+ * 권한/스코프를 의식적으로 선언하게 강제하는 등록부" 이지, 그 선언이 참임을 보증하는 장치가 아니다.
+ * 런타임 대조(MockMvc + capturing stub 으로 10 핸들러를 전수 호출해 캡처값을 맵과 비교)로 이 축을
+ * 강화하는 것은 별도 작업으로 `TODOS.md` 에 등재돼 있다(Maxi 결정 D12=B, 2026-07-26).
+ *
+ * 관련 교훈 — `archunit-vacuous-rule-silent-pass` · `seal-blinds-existing-guard`.
  */
 class SchemeHandlerPermissionMatrixTest {
     /** `com.bts.workflow.scheme.web` 패키지 클래스 전체 (테스트 클래스 제외). */
