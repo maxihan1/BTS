@@ -44,6 +44,18 @@ interface ProjectWorkflowSchemeSettingsPageProps {
   projectKey: string
 }
 
+/** 페이지 상단 헤더 — 정상/403 분기가 공통으로 사용 */
+function PageHeader(): JSX.Element {
+  return (
+    <header className="space-y-1">
+      <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
+      <p className="text-muted-foreground text-sm">
+        {workflowSchemeLabels.assignment.pageDescription}
+      </p>
+    </header>
+  )
+}
+
 /**
  * 프로젝트 워크플로우 스킴 할당 설정 페이지.
  *
@@ -79,12 +91,7 @@ export function ProjectWorkflowSchemeSettingsPage({
   if (schemesError instanceof ApiError && schemesError.status === 403) {
     return (
       <div className="p-8 space-y-6 max-w-2xl">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
-          <p className="text-muted-foreground text-sm">
-            {workflowSchemeLabels.assignment.pageDescription}
-          </p>
-        </header>
+        <PageHeader />
         <ForbiddenSchemeCard />
       </div>
     )
@@ -100,12 +107,7 @@ export function ProjectWorkflowSchemeSettingsPage({
 
   return (
     <div className="p-8 space-y-6 max-w-2xl">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
-        <p className="text-muted-foreground text-sm">
-          {workflowSchemeLabels.assignment.pageDescription}
-        </p>
-      </header>
+      <PageHeader />
 
       {/* EC-1 — 할당 없음 안내 카드 */}
       {assignment === null || assignment === undefined ? (
