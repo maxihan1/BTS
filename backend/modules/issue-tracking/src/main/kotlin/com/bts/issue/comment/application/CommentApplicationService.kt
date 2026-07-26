@@ -160,16 +160,7 @@ class CommentApplicationService(
 
         log.debug("comment_list issueKey={} actor={} count={}", issueKey.value, actor.value, comments.size)
 
-        return comments.map { comment ->
-            CommentView(
-                id = comment.id,
-                authorId = comment.authorId,
-                body = comment.body,
-                bodyHtml = MarkdownRenderer.renderSafe(comment.body),
-                createdAt = comment.createdAt,
-                updatedAt = comment.updatedAt,
-            )
-        }
+        return comments.map(CommentView::of)
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
