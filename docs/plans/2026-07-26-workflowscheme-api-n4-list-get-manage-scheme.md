@@ -130,9 +130,50 @@ D1(읽기 게이트) · D2(배정용 프로젝트 스코프 창구) · D3(배정
 대신 이 단계의 실질 산출물인 **ADR 1건은 정상 생성**했다.
 (선례 — 2026-07-26 N1 작업도 같은 사유로 생략하고 기록함.)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-26-workflowscheme-api-n4-list-get-manage-scheme.md](../specs/2026-07-26-workflowscheme-api-n4-list-get-manage-scheme.md)
+
+### 핵심 3줄
+
+- `GET /workflow-schemes` · `GET /workflow-schemes/{key}` 를 `MANAGE_SCHEME`/Global 로 잠근다 (= 시스템 관리자 전용)
+- 배정 화면용 읽기는 `GET /api/v1/projects/{projectKey}/assignable-workflow-schemes` 로 분리하고
+  `ASSIGN_SCHEME`/Project(projectKey) 로 게이트한다
+- 프론트는 배정 전용 훅 `useAssignableWorkflowSchemes(projectKey)` 를 신설해 그 화면만 갈아끼운다.
+  관리용 `useWorkflowSchemes` 는 그대로 둔다 (소비자가 admin 4-가드 라우트 2개뿐임을 실측 확인)
+
+### ★ 재사용으로 신규 코드를 최소화한 지점 (실측)
+
+| 필요한 것 | 이미 있음 | 위치 |
+|---|---|---|
+| 배정용 최소 응답 DTO | `SchemeResponse` = `{id, key, name, description, isDefault}` | `ProjectWorkflowSchemeController.kt:160` |
+| 카운트 없는 스킴 목록 조회 | `WorkflowSchemeApplicationService.list()` — **프로덕션 소비처 0건인 채 존재** | `WorkflowSchemeApplicationService.kt:246` |
+| 403 매핑 | `@ExceptionHandler(WorkflowSchemeAccessDeniedException)` + 본문 미노출 계약 | `WorkflowSchemeExceptionHandler.kt:202` |
+| 프로젝트 스코프 권한 경로 | `ASSIGN_SCHEME`/`Project(key)` — 같은 화면에서 이미 동작 중 | `ProjectWorkflowSchemeController.kt:117` |
+
+⇒ **신규 DTO 0 · 신규 서비스 메서드 0 · 신규 예외 0 · 마이그레이션 0 · enum 0.**
+
+### ★ 이 작업의 가장 큰 함정 — 기존 테스트가 회귀를 못 잡는다
+
+`WorkflowSchemeControllerTest.kt:84` 의 `permissionResolver` 는 **`mockk(relaxed = true)`** 다.
+`requirePermission` 이 no-op 이므로 **게이트를 추가해도 기존 GET 테스트 6개가 전부 green 을 유지한다.**
+메모리 `seal-blinds-existing-guard` 의 정확한 재현.
+
+⇒ RED 를 만들려면 resolver mock 이 **던지도록** 세워야 하고, 판별자는 상태코드가 아니라
+**응답 본문에 스킴 정보가 0건인지**여야 한다 (메모리 `negative-guard-needs-body-discriminator`).
+
+## Brainstorming Check
+
+✅ **통과 (1회 iteration).** 검증 안 된 단언 5건 실측 → 4건 해소 · **1건 진짜 gap 발견 후 스펙 보강**.
+
+- **G4 (gap→해소).** E2E/MSW 파급을 "있으면 확인" 으로 미뤄 뒀던 것을 **실측 목록으로 승격**.
+  배정 E2E `workflow-scheme-assignment.spec.ts` + MSW `scheme-handlers.ts:83` 이 확정 파급 대상.
+  안 잡았으면 impl 에서 배정 E2E 가 **빈 Select / timeout** 으로 깨지고, 그 증상이 권한 버그처럼 보였을 것.
+- G1·G2·G3·G5 해소 — 403 매핑 실재(basePackages 가 두 컨트롤러 다 커버) · OpenAPI 스냅샷 0건 ·
+  사이드바 사용처 admin 2라우트뿐 · `verify-master-plan` 신규 3파일 포함 상태에서 **PASS(EXIT=0)**.
+
+**편차.** `office-hours`·`superpowers:brainstorming` 미호출 (사유는 spec §9·§10).
+**남은 편향** — 작성자=리뷰어. outside voice(`codex`) 미설치로 #308~#311 과 동형 편향 잔존.
 
 ## Plan (← /bts-plan 채움)
 
