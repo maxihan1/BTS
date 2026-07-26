@@ -6,6 +6,7 @@ import {
   schemeDetailResponseSchema,
   mappingResponseSchema,
   assignmentResponseSchema,
+  assignableSchemeResponseSchema,
   dataOf,
 } from './workflow-schemes.types'
 import type {
@@ -13,6 +14,7 @@ import type {
   SchemeDetailResponse,
   MappingResponse,
   AssignmentResponse,
+  AssignableSchemeResponse,
   CreateSchemeInput,
   UpdateSchemeInput,
   AddMappingInput,
@@ -24,6 +26,7 @@ export {
   schemeDetailResponseSchema,
   mappingResponseSchema,
   assignmentResponseSchema,
+  assignableSchemeResponseSchema,
 } from './workflow-schemes.types'
 
 export type {
@@ -31,6 +34,7 @@ export type {
   SchemeDetailResponse,
   MappingResponse,
   AssignmentResponse,
+  AssignableSchemeResponse,
   CreateSchemeInput,
   UpdateSchemeInput,
   AddMappingInput,
@@ -252,5 +256,20 @@ export async function fetchProjectAssignment(projectKey: string): Promise<Assign
 export async function assignSchemeToProject(projectKey: string, input: AssignSchemeInput): Promise<AssignmentResponse> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/workflow-scheme`, { method: 'PUT', body: input })
   const wrapped = await parseSchemeResponse(res, dataOf(assignmentResponseSchema))
+  return wrapped.data
+}
+
+/**
+ * 프로젝트에 할당 가능한 워크플로우 스킴 목록을 조회한다.
+ * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → { data: AssignableSchemeResponse[] }
+ * 프로젝트 설정 화면(스킴 선택 UI)에서 사용 — 관리자 전용 fetchWorkflowSchemes와는 별개 엔드포인트.
+ *
+ * @param projectKey 프로젝트 식별 키
+ */
+export async function fetchAssignableWorkflowSchemes(projectKey: string): Promise<AssignableSchemeResponse[]> {
+  const wrapped = await apiGet(
+    `/api/v1/projects/${projectKey}/assignable-workflow-schemes`,
+    dataOf(z.array(assignableSchemeResponseSchema)),
+  )
   return wrapped.data
 }

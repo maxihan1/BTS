@@ -66,6 +66,7 @@ const nextMappingId = (): number => {
  * - DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId     — 매핑 삭제
  * - GET    /api/v1/projects/:projectKey/workflow-scheme               — 할당 조회
  * - PUT    /api/v1/projects/:projectKey/workflow-scheme               — 할당 갱신
+ * - GET    /api/v1/projects/:projectKey/assignable-workflow-schemes   — 할당 가능 스킴 목록 (backend key/isDefault 원형 응답)
  *
  * errorCode 시뮬레이션 규칙:
  * - 표준 스킴 DELETE                     → 409 SCHEME_STANDARD_NOT_DELETABLE
@@ -237,5 +238,22 @@ export const schemeHandlers = [
     }
 
     return HttpResponse.json({ data: assignment })
+  }),
+
+  /**
+   * GET /api/v1/projects/:projectKey/assignable-workflow-schemes — 프로젝트 할당 가능 스킴 목록.
+   * backend 원본 어휘(`key`/`isDefault`)로 응답한다 — 프론트 어휘(`schemeKey`/`isStandard`) 정규화는
+   * `assignableSchemeResponseSchema`의 `.transform()`이 경계에서 담당하므로 이 mock이 미리 바꾸면 안 된다.
+   */
+  http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
+    const data = allSchemeFixtures.map((scheme, index) => ({
+      id: index + 1,
+      key: scheme.schemeKey,
+      name: scheme.name,
+      description: scheme.description,
+      isDefault: scheme.isStandard,
+    }))
+
+    return HttpResponse.json({ data })
   }),
 ]
