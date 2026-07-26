@@ -171,7 +171,8 @@ class SchemeHandlerPermissionMatrixTest {
                 ) {
                     val satisfied = reachesRequirePermission(item)
                     val verb = if (satisfied) "calls" else "does not call"
-                    events.add(SimpleConditionEvent(item, satisfied, "${item.fullName} $verb $REQUIRE_PERMISSION_METHOD_NAME"))
+                    val message = "${item.fullName} $verb $REQUIRE_PERMISSION_METHOD_NAME"
+                    events.add(SimpleConditionEvent(item, satisfied, message))
                 }
             }
 
