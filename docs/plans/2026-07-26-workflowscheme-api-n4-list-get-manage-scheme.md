@@ -80,7 +80,55 @@ security-engineer 의 주 작업 영역은 `identity-access/**` 이므로) + 권
 - **C안 — `VIEW_SCHEME` enum 신설.** shared-kernel enum + prod resolver 분기 + 권한 시드 마이그레이션 +
   `PermissionSchemaMigrationTest` 커플링. 폭발 반경이 셋 중 가장 크다.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: project-workflow (단일). identity-access 의 prod resolver 는 **읽기만 하고 수정하지 않음** → cross-BC 변경 0
+- **영향 엔티티**: `WorkflowScheme` · `WorkflowSchemeMapping` (둘 다 기존). **신규 엔티티 0**
+- **새 용어**: **0건.** `MANAGE_SCHEME` · `ASSIGN_SCHEME` · `WorkflowSchemeScope.Global/Project` 전부 기존 등재.
+  glossary L71 "시스템 관리자 — 전역 자원(워크플로우 스킴 등) 관리 주체" 가 이미 본 작업의 판정 모델을 서술한다.
+  → **glossary 갱신 불요**
+- **기존 결정 충돌**: **없음. 오히려 정합 복원.**
+
+### ★ 핵심 발견 — 이것은 신규 정책이 아니라 스펙 준수 복원이다
+
+`docs/specs/2026-05-28-fr-wf-02-d6-ui-crud.md:57`.
+
+> base `/api/v1`. **모든 endpoint 권한 검증** — `WorkflowSchemePermission.MANAGE_SCHEME` (**4.1**, 4.2, 4.4)
+> / `ASSIGN_SCHEME` (4.3).
+
+§4.1 = 스킴 CRUD 5개이고 그 안에 `list`·`get` 이 포함된다. **스펙은 처음부터 읽기에도 `MANAGE_SCHEME` 을
+요구했고 구현이 이행하지 않았다.** 같은 spec L119 가 "권한 없는 사용자 — FR-PM-04 후속 정식 RBAC 도입 시
+401/403 분기 추가" 로 이연했으나, FR-PM-04(#73)가 쓰기 5개만 결선하고 읽기 2개를 남겼다. **문서↔구현 drift.**
+
+BC 관례도 반대 방향 — `PostActionController.kt:74` 는 GET 에도 `MANAGE_SCHEME` 요구.
+
+### 기존 ADR 과의 정합
+
+[2026-06-04-workflow-scheme-permission-prod-resolver](../decisions/2026-06-04-workflow-scheme-permission-prod-resolver.md)
+§spec 단계 확정(2026-06-05).
+
+| ADR 확정 사항 | 본 작업 |
+|---|---|
+| D3 Global — 스킴 CRUD(`MANAGE_SCHEME`/Global) = **시스템 관리자 전용** (Jira Cloud 모델, 스킴은 전역 자원) | D1 이 읽기까지 일관 적용 |
+| D3 Project — 스킴 배정(`ASSIGN_SCHEME`/Project) = **프로젝트 관리자** | D2 가 배정용 읽기 창구에 그대로 적용 |
+| D4 시드 — `MANAGE_WORKFLOW` × `PROJECT_ADMIN` 1행(V013), Global 은 매트릭스 미경유 | **시드 변경 0** — 기존 시드로 판정됨 |
+
+[2026-06-05-workflow-scheme-controller-actor-wiring](../decisions/2026-06-05-workflow-scheme-controller-actor-wiring.md)
+이 확립한 `CurrentActor.current()` → `actor.toUuid()` 결선 패턴을 읽기 2개에도 동일 적용한다.
+
+### 신규 ADR
+
+[docs/decisions/2026-07-26-workflow-scheme-read-permission-gate.md](../decisions/2026-07-26-workflow-scheme-read-permission-gate.md) **생성됨**.
+D1(읽기 게이트) · D2(배정용 프로젝트 스코프 창구) · D3(배정용 응답은 부분집합) · D4(enum·마이그레이션 0).
+엔드포인트 경로·응답 DTO 형태는 **spec 단계로 이연**(2026-06-04 ADR 이 판정 모델을 spec 으로 이연한 선례와 동형).
+
+### 워크플로우 편차 기록 — `grill-with-docs` 생략
+
+**사유.** 이 단계의 목적은 (a) 새 용어 발굴 (b) 도메인 모델 검증 (c) 기존 결정 충돌 탐지인데,
+읽기 전 조사에서 셋 다 결론이 났다 — 새 용어 0 · 신규 엔티티 0 · 충돌 0(오히려 기존 ADR·spec 과 정합).
+대화형 grilling 이 추가로 밝힐 미지가 없고 세션 예산만 소모한다.
+대신 이 단계의 실질 산출물인 **ADR 1건은 정상 생성**했다.
+(선례 — 2026-07-26 N1 작업도 같은 사유로 생략하고 기록함.)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
