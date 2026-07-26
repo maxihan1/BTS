@@ -106,7 +106,9 @@ issue-tracking 의 **쓰기 서비스**다. 위 표의 뒤 2경로는 그 코드
 | T4 | 봉인 — 선택자 없는 advice 전수 열거 + vacuous 방어 | ✅ `GlobalControllerAdviceSealTest` |
 | T5 | 뮤테이션 4종으로 판별력 확정 | ✅ ADR §검증 |
 | T6 | ADR 작성 | ✅ `docs/decisions/2026-07-26-global-advice-instance-token-leak.md` |
-| T7 | 회귀 — `:modules:issue-tracking:test` 전량 | ✅ 307클래스 3,116테스트 실패0 |
+| T7 | 회귀 — `:modules:issue-tracking:test` 전량 | ✅ |
+| T8 | **독립 리뷰 반영** — C1(봉인 실효 구멍) · C2(스코프) · C3(instance 미강제) | ✅ 봉인 재설계, 뮤테이션 6종 |
+| T9 | 최종 회귀 | ✅ app 9클래스 44테스트 · issue-tracking 306클래스 3,114테스트, 실패0 |
 
 **TDD 순서 준수** — `test:` → `feat:`.
 

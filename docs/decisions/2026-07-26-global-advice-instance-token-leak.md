@@ -85,34 +85,62 @@ standalone MockMvc 로 경로 세그먼트에 토큰이 실린 요청을 재현�
   `ProjectArchivedException` 은 Version·Component·CustomField·Issue·Attachment·Worklog·Link·Move 등
   다수 컨트롤러에서 표면화되며, 좁히면 누락된 컨트롤러가 **500(내부 누출)** 로 샌다. 지금이 더 안전하다.
 
-### D2. 재발 방지 — 선택자 없는 advice **전수 열거 + 미등재 실패**
+### D2. 재발 방지 — **실효 광역** advice 전수 열거 + `instance` 강제 (3축)
 
-`GlobalControllerAdviceSealTest` 가 `com.bts.issue` 의 `@ControllerAdvice`(메타 어노테이션 포함)를
-전수 열거하고, **선택자가 하나도 없는** 것이 기대 표본에 없으면 실패시킨다.
+`GlobalControllerAdviceSealTest` — **`:modules:app` 조립 테스트**. `com.bts` 와 `com.atlas.bts` 를
+둘 다 스캔해 `@ControllerAdvice`(메타 어노테이션 포함) **46개**를 전수로 본다.
+
+| 축 | 내용 |
+|---|---|
+| 1 | **실효 광역** advice 전수 열거 → 기대 표본 미등재면 실패 |
+| 2 | 광역 advice 의 `@ExceptionHandler` 중 `ProblemDetail` 반환 메서드는 **반드시 `setInstance` 호출** |
+| 3 | vacuous 방어 — advice 총 개수 하한(35, 실측 46) |
+
+**★ "선택자 유무"가 아니라 실효 범위로 판정한다 (리뷰 C1 — 뮤테이션으로 실증).**
+초안은 네 속성이 **전부 비었는가**로 광역을 판정했다. 그 판정은 Spring 의
+`HandlerTypePredicate.hasSelectors()` 와 정확히 일치하지만 **막으려는 위험과는 어긋난다** —
+다음 둘은 선택자가 "있어서" 통과하면서 실효는 전역이다.
+
+- `@RestControllerAdvice(annotations = [RestController::class])` — 레포의 **모든** `@RestController` 에 붙는다
+- `@RestControllerAdvice(basePackages = ["com.bts"])` — 루트 접두사라 사실상 전체
+
+`isEffectivelyBroad` 는 (1) 선택자 전무 (2) `annotations` 에 컨트롤러 스테레오타입 (3) `basePackages` 에
+루트 접두사 — 셋 중 하나면 광역으로 본다.
+
+**★ 축 2 가 없으면 "등재만 하고 처방은 빼먹는" 통로가 남는다 (리뷰 C3).**
+축 1 은 등재를 강제할 뿐 처방 적용을 강제하지 않는다. 축 2 가 ArchUnit 메서드 호출 검사로
+`ProblemDetail.setInstance` 호출을 강제한다(같은 클래스의 `problem()` 헬퍼 경유도 허용 —
+automation 두 웹훅 컨트롤러가 그 형태다).
+
+**★ 스코프는 조립 전역 (리뷰 C2).** 초안은 issue-tracking 만 스캔했다. 그런데 위험 모델은
+`BtsApplication` 이 두 루트를 **둘 다** 스캔한다는 것이므로 **조립 전역**이다 — 가드 범위가 위험
+모델보다 좁으면 46개 중 23개만 지켜진다. BC 격리는 프로덕션 의존 규칙이고, 조립 모듈은 이미 9 BC 를
+전부 물고 있으며 형제 PR #312 도 조립 레벨에 보안 테스트를 두었다. `archunit` 은 다른 BC 가 이미 쓰는
+버전의 **조립 레벨 재사용**이다(신규 의존성 아님).
 
 - **개수를 세지 않고 열거한다** — `guard-handler-matrix-blindfold` 의 교훈
-- `@RestControllerAdvice` 는 `@ControllerAdvice` 의 메타 어노테이션이므로
-  `AnnotatedElementUtils.findMergedAnnotation` 으로 속성을 병합해 읽는다. 둘을 따로 처리하면 한쪽을 빠뜨린다
-- **vacuous 방어 별도 축** — 스캔 0건이면 "미등재 없음"이 자동으로 참이 되어 봉인이 무력해진다.
-  advice 총 개수의 하한(15, 현재 실측 21)을 두 번째 테스트로 단언한다
-
-**스코프는 issue-tracking 만.** BC 격리 원칙에 따른다. 다른 BC 에 같은 봉인이 필요하면 그 BC 의 PR 에서 복제한다.
+- **FQN** 으로 비교한다 — 단순명은 패키지 다른 동명 클래스를 구분 못 한다
+- `containsExactlyInAnyOrder` — 순서 불일치로 깨지면 실패 메시지("미등재")와 원인이 어긋난다
 
 ## 검증 (Verification)
 
-**뮤테이션 3종.** 전부 커밋된 기준선(`c6558f6c7`) 위에서 수행하고 원복했다.
+**뮤테이션 6종.** 전부 커밋된 기준선 위에서 수행하고 원복했다.
+클래스명을 명시한다 — `SealTest` 와 `ProjectArchivedExceptionHandlerTest` 는 **서로 다른 것**을 지킨다.
 
-| # | 뮤테이션 | 결과 | 판정 |
+| # | 뮤테이션 | red 가 된 축 | 판정 |
 |---|---|---|---|
-| 1 | `instance` 고정 제거 (= RED 커밋 `상태`) | 봉인 테스트 red, 나머지 3축 green | 판별력이 `instance` 한 줄에 붙음 |
-| 2 | 미등재 **전역** advice 신설 | **열거 봉인 단독 red**, vacuous 축 green | 추가 방향의 재발을 실제로 잡음 |
-| 3 | **선택자 있는** advice 신설 | 전부 green | **과잉발동 아님** — 정상 advice 추가를 방해하지 않음 |
-| 4 | 스캔 패키지 파괴 | **두 축 함께 red** | vacuous 방어가 실제로 작동 |
+| 1 | `instance` 고정 제거 | `ProjectArchivedExceptionHandlerTest` N3 축 | 봉합 판별력이 그 한 줄에 붙음 |
+| 2 | `instance` 고정 제거 (봉인 재설계 **후**) | `SealTest` 축 2 | 처방 누락을 구조적으로 잡음 (리뷰 C3 해소) |
+| 3 | **미등재 무선택자** advice 신설 | `SealTest` 축 1 단독 | 추가 방향 재발 탐지 |
+| 4 | **`annotations = [RestController]`** advice 신설 | `SealTest` 축 1 단독 | **초안이 놓쳤던 형태**(리뷰 C1)를 이제 잡음 |
+| 5 | **제대로 좁힌** advice 신설 (`basePackages = ["com.bts.issue.nowhere"]`) | **없음 — 전부 green** | **과잉발동 아님** |
+| 6 | 스캔 패키지 파괴 | `SealTest` 축 1·3 함께 | vacuous 방어 작동 |
 
-**뮤테이션 3 이 판별력의 핵심 대조군이다.** 2 와 3 이 모두 red 였다면 룰이 과잉결합된 것이고,
-2 가 green 이었다면 룰이 공허한 것이다. 둘 다 아니었다.
+**5 가 판별력의 핵심 대조군이다.** 3·4 와 5 가 모두 red 였다면 룰이 과잉결합된 것이고,
+4 가 green 이었다면(= 초안 상태) 룰이 위험을 놓치는 것이다. 둘 다 아니다.
 
-**회귀.** `:modules:issue-tracking:test` **307클래스 3,116테스트 전량 통과**(실패 0 · 에러 0 · 스킵 0) — XML 집계.
+**회귀.** `:modules:app:test` 9클래스 44테스트 · `:modules:issue-tracking:test` 306클래스 3,114테스트
+— **전량 통과**(실패 0 · 에러 0 · 스킵 0), XML 집계.
 
 ## 결과 (Consequences)
 
@@ -128,13 +156,22 @@ standalone MockMvc 로 경로 세그먼트에 토큰이 실린 요청을 재현�
 1. **`IcalFeedController` 4번째 봉인 미완** (identity-access BC — 별도 PR). 그 컨트롤러는
    `@ExceptionHandler` 가 0개라 자기 BC 의 예외도 `/error` 로 넘긴다. #312 가 `include-path: never` 로
    전역 차단했으므로 **실제 유출은 없다**. 구조적 비대칭만 남는다(#312 ADR 잔여위험 5 와 동일 항목).
-2. **다른 BC 에는 같은 열거 봉인이 없다.** 현재 선택자 없는 advice 가 있는 다른 BC 는 project-workflow
-   하나이고 그쪽은 `ErrorResponse` 반환이라 통로가 아니다. 그 BC 가 `ProblemDetail` 로 전환하면 위험이 생긴다.
-3. **`instance` 미설정은 이 advice 만의 문제가 아니다.** 레포의 `ProblemDetail` 생성 지점 약 45곳 중
-   `instance` 를 설정하는 곳은 4개뿐이다. 나머지는 **스코프가 좁아** 비밀 경로에 붙을 수 없어 안전하지만,
-   구조적으로는 `problem()` 헬퍼가 shared-kernel 공용이 아니라 곳곳에 복제된 상태다(#310 이 지적한 사실).
-   공용 헬퍼 추출은 45파일 cross-BC 리팩터링이라 **별도 트랙**.
-4. **교차모델 검증 부재.** `codex` CLI 미설치. 단 `superpowers:code-reviewer` 독립 리뷰는 적용한다.
+2. **`instance` 미설정은 이 advice 만의 문제가 아니다.** 레포의 `ProblemDetail` 생성 지점 **51곳(46파일)**
+   중 `instance` 를 설정하는 곳은 4개뿐이다. 나머지는 **스코프가 좁아** 비밀 경로에 붙을 수 없어 안전하고
+   봉인 축 2 도 광역 advice 만 본다. 구조적으로는 `problem()` 헬퍼가 shared-kernel 공용이 아니라
+   곳곳에 복제된 상태다(#310 이 지적한 사실). 공용 헬퍼 추출은 46파일 cross-BC 리팩터링이라 **별도 트랙**.
+3. **`instance` 값이 RFC 9457 시맨틱과 다르다** (리뷰 S2). `"/problems/project-archived"` 는 "특정
+   **발생**을 식별하는 URI"가 아니라 문제 **종류**이고 `type` 의 경로 성분과 중복이다. 선행 3지점은
+   단일 엔드포인트라 "토큰 뺀 엔드포인트 경로"를 쓸 수 있었지만 전역 advice 에는 그 대상이 없다.
+   **의도적으로 포기한 시맨틱**이다. 리뷰가 제안한 대안(`urn:uuid:<random>` 을 `instance` 와 로그에
+   같이 실어 응답↔로그 상관관계를 만드는 방식)은 진단성을 되찾는 유일한 방향이라 **후속 검토 가치가 있다** —
+   다만 이 PR 은 유출 봉합이 목적이고 상관관계 도입은 로그 포맷 계약 변경이라 범위 밖.
+4. **다른 BC 의 광역 advice 전환.** 축 2 는 `ProblemDetail` 반환만 본다. `WorkflowExceptionHandler` 가
+   손수 만든 `ErrorResponse` 를 `ProblemDetail` 로 전환하면 그때 축 2 가 발동해 `instance` 를 요구한다
+   — 즉 이 전환은 봉인이 자동으로 잡는다.
+5. **교차모델 검증 부재.** `codex` CLI 미설치. 단 `superpowers:code-reviewer` 독립 리뷰를 적용했고
+   **그 리뷰가 C1(봉인의 실효 구멍)을 잡았다** — 구현자 단독이었으면 "봉인을 세웠다"고 믿고 넘어갔을
+   결함이다. #312 에 이어 두 번째로 독립 리뷰가 봉인 자체의 결함을 잡았다.
 
 ## 함정 기록 (다음 사람을 위해)
 
