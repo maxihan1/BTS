@@ -215,3 +215,23 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 **착수 시 첫 단계**. 등재 기준을 명문화한다 — glossary 는 "도메인 전문가에게 의미가 모호한 용어"만인지,
 "핵심 엔티티 전량"인지. 기준을 정한 뒤 누락분을 일괄 채운다. 기준 없이 개별 추가하면 같은 누락이 반복된다.
 `glossary.md` §변경 규칙에 기준 한 줄을 추가하는 것이 산출물.
+
+## 워크플로우 — `bts-review-plan` 분기 표에 `type=backend` 가 없다 (PR #315 발견)
+
+**증상**. `.claude/skills/bts-review-plan/SKILL.md` Step 2 의 타입별 리뷰 체인 표는
+`auth`·`migration`·`ui`·`api`·`feature`·`design` + `{bugfix,chore,qa}` skip **7종만** 다룬다.
+그런데 `scripts/workflow/classify-task.ts` 는 `backend` 를 내보낸다(PR #315 실측). **매칭되는 행이
+없어 분기가 미정의**다.
+
+**임시 대응 (PR #315)**. 메모리 `bts-review-plan-autoplan-overkill`(Maxi 피드백)에 따라
+**eng 집중 + UI 포함이면 design 추가**로 수동 선택했다. CEO·DevEx 는 제외.
+
+**★같은 형태의 누락이 더 있을 수 있다.** classify 가 낼 수 있는 타입 집합과 스킬 분기 표의 행 집합을
+**대조**해야 한다 — 표에 없는 타입이 조용히 미정의로 떨어지는 구조다. 하드코딩 목록끼리 어긋나는
+전형적 형태(메모리 `guard-handler-matrix-blindfold` 와 동질).
+
+**착수 시 첫 단계**. `classify-task.ts` 의 type 유니온을 열거하고 `bts-review-plan`·`bts-spec`·`bts-plan`·
+`bts-impl` 각 스킬의 분기 표와 **집합 차이**를 낸다. 차집합이 0 이 되게 채우고, 앞으로 어긋나면 깨지는
+검증을 하나 둔다(스킬 문서 대조 스크립트 또는 classify 출력 화이트리스트).
+
+**산출물**. 분기 표 보강 + 타입 집합 정합 검증. 개별 타입 추가만으로 끝내지 말 것 — 판별식이 없으면 재발한다.
