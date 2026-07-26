@@ -1,8 +1,11 @@
-// CommentApplicationService 통합 테스트 — create(UPDATE 게이트)·list(VIEW+Issue scope 게이트, 렌더링, 정렬) (FR-IM-01 PR3)
+// CommentApplicationService 통합 테스트 — create(actor 강제)·createImported(원본 보존)·list 게이트/렌더링/정렬 (FR-CO-01)
 
 package com.bts.issue.comment.application
 
+import com.bts.issue.comment.application.CommentApplicationService.Companion.MAX_BODY_LENGTH
 import com.bts.issue.comment.domain.Comment
+import com.bts.issue.comment.domain.CommentBodyBlankException
+import com.bts.issue.comment.domain.CommentBodyTooLongException
 import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
@@ -44,12 +47,23 @@ import java.util.UUID
  *
  * 시나리오.
  * - T3-A. create — UPDATE 권한 없는 actor → [IssueAccessDeniedException] (403).
- * - T3-B. create — 권한 보유 시 저장된 comment.authorId == 주입 authorId (actor 와 다름).
+ * - T3-B. create — 저장된 comment.authorId == **actor** (FR-CO-01 D4 — 저작자 위조 차단).
  * - T3-C. list — VIEW 권한 없는 actor → [IssueAccessDeniedException] (403), scope=[IssueScope.Issue].
  * - T3-D. list — bodyHtml 은 [com.bts.issue.markdown.MarkdownRenderer.renderSafe] 로 렌더링됨.
  * - T3-E. list — created_at ASC 정렬.
  * - T3-H. create — [IssueEventPublisher.publish] 가 [IssueCommented] 이벤트로 호출됨 (FR-AT-01 Task 10,
  *   mockk — [IssueEventPublisher] 는 pgmq 발행 아웃바운드 어댑터라 실 DB 검증 대상이 아니다).
+ *
+ * ## FR-CO-01 신규 시나리오
+ * - CO-1/CO-2. 본문 길이 경계 — 32,000자 통과 / 32,001자 [CommentBodyTooLongException].
+ * - CO-3. 공백만 본문 → [CommentBodyBlankException].
+ * - CO-4. [CommentApplicationService.createImported] — 원본 authorId·createdAt 보존 (Import 전용).
+ * - CO-5. createImported 는 길이 상한 **면제** (원본 데이터 충실성, ADR D7 잔여위험 등재분).
+ *
+ * ## ★ 이관 기록 (FR-CO-01 D4)
+ * 기존 T3-B("create 는 authorId 를 주입값 그대로 저장한다")와 T3-F("create 는 createdAt 인자를
+ * 그대로 저장한다")는 **지금 제거되는 동작**을 단정하고 있었다. 두 단정은 [CommentApplicationService.createImported]
+ * 로 **이관**했다(CO-4). 단순 시그니처 교체가 아니라 의미의 소유자가 바뀐 것이다.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentApplicationServiceTest : IssueTestcontainersBase() {
@@ -164,30 +178,32 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         resolver.deniedPermission = IssuePermission.UPDATE
 
         assertThatThrownBy {
-            service.create(actor, issue.key, "본문", ActorId(authorUuid))
+            service.create(actor, issue.key, "본문")
         }.isInstanceOf(IssueAccessDeniedException::class.java)
     }
 
-    // ── T3-B. create — authorId 는 주입값 그대로 저장 ─────────────────────────
+    // ── T3-B. create — authorId 는 actor 로 강제 (FR-CO-01 D4) ────────────────
 
     /**
      * Given  UPDATE 권한 보유 actor
-     * When   actor 와 다른 authorId 로 create 호출
-     * Then   반환/저장된 comment.authorId == 주입 authorId (actor 아님).
+     * When   create 호출 (저작자를 지정할 창구가 없다)
+     * Then   반환/저장된 comment.authorId == **actor**.
+     *
+     * 이 단정이 저작자 위조 차단의 본체다 — 시그니처에 `authorId` 파라미터가 없어야
+     * 컴파일 자체가 위조를 막는다. 원본 저작자 보존이 필요한 Import 는 CO-4 참조.
      */
     @Test
     @Order(2)
-    fun `T3-B - create 는 authorId 를 주입값 그대로 저장한다 (actor 아님)`() {
+    fun `T3-B - create 는 authorId 를 actor 로 강제한다`() {
         val issue = insertIssue(2L)
 
-        val comment = service.create(actor, issue.key, "본문", ActorId(authorUuid))
+        val comment = service.create(actor, issue.key, "본문")
 
-        assertThat(comment.authorId).isEqualTo(authorUuid)
-        assertThat(comment.authorId).isNotEqualTo(actorUuid)
+        assertThat(comment.authorId).isEqualTo(actorUuid)
 
         val stored = commentRepository.listByIssue(issue.id.value)
         assertThat(stored).hasSize(1)
-        assertThat(stored[0].authorId).isEqualTo(authorUuid)
+        assertThat(stored[0].authorId).isEqualTo(actorUuid)
     }
 
     // ── T3-C. list — VIEW + IssueScope.Issue 게이트 ───────────────────────────
@@ -223,7 +239,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
     @Order(4)
     fun `T3-D - list 는 bodyHtml 을 renderSafe 로 렌더링한다`() {
         val issue = insertIssue(4L)
-        service.create(actor, issue.key, "**bold**", ActorId(authorUuid))
+        service.create(actor, issue.key, "**bold**")
 
         val result = service.list(actor, issue.key)
 
@@ -256,26 +272,33 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         assertThat(result[1].body).isEqualTo("나중 댓글")
     }
 
-    // ── T3-F/T3-G. create — createdAt 파라미터 (FR-IM-01 PR3 Task 8) ──────────
+    // ── CO-4. createImported — 원본 authorId·createdAt 보존 (T3-B/T3-F 이관분) ─
 
     /**
-     * Given  import 시나리오처럼 과거 특정 시각을 createdAt 인자로 주입
-     * When   create 호출
-     * Then   반환/저장된 comment 의 createdAt·updatedAt 모두 주입값 그대로(now() 무시) — S1/R7/E5 결함 수정.
+     * Given  Import 시나리오 — 원작성자 authorUuid, 원 작성시각 2019-05-01
+     * When   createImported 호출
+     * Then   저장된 comment 의 authorId 는 **주입값**(actor 아님), createdAt·updatedAt 은 주입값 그대로.
+     *
+     * 기존 T3-B/T3-F 가 `create` 에 대해 단정하던 내용의 **이관 대상**이다 (FR-CO-01 D4).
+     * 이 경로만 원본을 보존할 수 있어야 하고, REST 로는 재현 불가능해야 한다(스펙 S10).
      */
     @Test
     @Order(6)
-    fun `T3-F - create 는 createdAt 인자가 있으면 그 값을 createdAt updatedAt 에 그대로 저장한다`() {
+    fun `CO-4 - createImported 는 원본 authorId 와 createdAt 을 보존한다`() {
         val issue = insertIssue(6L)
         val importedAt = Instant.parse("2019-05-01T12:00:00Z")
 
-        val comment = service.create(actor, issue.key, "본문", ActorId(authorUuid), createdAt = importedAt)
+        val comment =
+            service.createImported(actor, issue.key, "본문", ActorId(authorUuid), createdAt = importedAt)
 
+        assertThat(comment.authorId).isEqualTo(authorUuid)
+        assertThat(comment.authorId).isNotEqualTo(actorUuid)
         assertThat(comment.createdAt).isEqualTo(importedAt)
         assertThat(comment.updatedAt).isEqualTo(importedAt)
 
         val stored = commentRepository.listByIssue(issue.id.value)
         assertThat(stored).hasSize(1)
+        assertThat(stored[0].authorId).isEqualTo(authorUuid)
         assertThat(stored[0].createdAt).isEqualTo(importedAt)
         assertThat(stored[0].updatedAt).isEqualTo(importedAt)
     }
@@ -294,7 +317,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val fixedClockService =
             CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard, fixedClock)
 
-        val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
+        val comment = fixedClockService.create(actor, issue.key, "본문")
 
         assertThat(comment.createdAt).isEqualTo(fixedInstant)
         assertThat(comment.updatedAt).isEqualTo(fixedInstant)
@@ -317,7 +340,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val fixedClockService =
             CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard, fixedClock)
 
-        val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
+        val comment = fixedClockService.create(actor, issue.key, "본문")
 
         verify(exactly = 1) {
             eventPublisher.publish(
@@ -346,7 +369,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val issue = insertIssueInArchivedProject(9L)
 
         assertThatThrownBy {
-            service.create(actor, issue.key, "본문", ActorId(authorUuid))
+            service.create(actor, issue.key, "본문")
         }.isInstanceOf(ProjectArchivedException::class.java)
     }
 
@@ -360,9 +383,93 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
     fun `아카이브 잠금 - create 는 활성 프로젝트 이슈에 2xx (판별자 baseline)`() {
         val issue = insertIssue(10L)
 
-        val comment = service.create(actor, issue.key, "본문", ActorId(authorUuid))
+        val comment = service.create(actor, issue.key, "본문")
 
         assertThat(comment.body).isEqualTo("본문")
+    }
+
+    // ── CO-1/CO-2/CO-3. 본문 검증 — 길이 상한 + 공백 (FR-CO-01 D5/D7) ─────────
+
+    /**
+     * Given  정확히 [MAX_BODY_LENGTH] 자 본문
+     * When   create 호출
+     * Then   통과 — 경계 안쪽은 허용한다.
+     *
+     * 경계 양쪽을 모두 테스트한다(CO-2 와 쌍). 한쪽만 두면 off-by-one 이 잡히지 않는다.
+     */
+    @Test
+    @Order(11)
+    fun `CO-1 - create 는 32000자 본문을 허용한다`() {
+        val issue = insertIssue(11L)
+        val body = "가".repeat(MAX_BODY_LENGTH)
+
+        val comment = service.create(actor, issue.key, body)
+
+        assertThat(comment.body).hasSize(MAX_BODY_LENGTH)
+    }
+
+    /**
+     * Given  [MAX_BODY_LENGTH] + 1 자 본문
+     * When   create 호출
+     * Then   [CommentBodyTooLongException] — 도메인 예외다.
+     *
+     * ★ `ResponseStatusException`(웹 관심사)이 아니어야 한다. 이 서비스는 REST 뿐 아니라
+     * automation `AddCommentAction` 도 호출하며, 그 경로는 HTTP 를 모른다 (리뷰 C2).
+     */
+    @Test
+    @Order(12)
+    fun `CO-2 - create 는 32001자 본문에 CommentBodyTooLongException 을 던진다`() {
+        val issue = insertIssue(12L)
+        val body = "가".repeat(MAX_BODY_LENGTH + 1)
+
+        assertThatThrownBy {
+            service.create(actor, issue.key, body)
+        }.isInstanceOf(CommentBodyTooLongException::class.java)
+
+        assertThat(commentRepository.listByIssue(issue.id.value)).isEmpty()
+    }
+
+    /**
+     * Given  공백·개행만으로 이루어진 본문
+     * When   create 호출
+     * Then   [CommentBodyBlankException] — 빈 댓글은 만들 수 없다.
+     */
+    @Test
+    @Order(13)
+    fun `CO-3 - create 는 공백만인 본문에 CommentBodyBlankException 을 던진다`() {
+        val issue = insertIssue(13L)
+
+        assertThatThrownBy {
+            service.create(actor, issue.key, "   \n\t  ")
+        }.isInstanceOf(CommentBodyBlankException::class.java)
+
+        assertThat(commentRepository.listByIssue(issue.id.value)).isEmpty()
+    }
+
+    /**
+     * Given  [MAX_BODY_LENGTH] + 1 자 원본 댓글 (Jira 등 외부 시스템)
+     * When   createImported 호출
+     * Then   통과 — Import 는 길이 상한을 **면제**한다.
+     *
+     * 근거. Import 는 `authorId`·`createdAt` 도 면제하는 원본 보존 계약이다(ADR D7).
+     * 이 면제는 ADR 잔여위험 표에 등재돼 있다 — 조용한 면제가 아니라 기록된 면제다.
+     */
+    @Test
+    @Order(14)
+    fun `CO-5 - createImported 는 32001자 본문을 허용한다 (상한 면제)`() {
+        val issue = insertIssue(14L)
+        val body = "가".repeat(MAX_BODY_LENGTH + 1)
+
+        val comment =
+            service.createImported(
+                actor,
+                issue.key,
+                body,
+                ActorId(authorUuid),
+                createdAt = Instant.parse("2019-01-01T00:00:00Z"),
+            )
+
+        assertThat(comment.body).hasSize(MAX_BODY_LENGTH + 1)
     }
 
     /** 댓글 도메인 객체 생성 헬퍼 (직접 insert 용 — createdAt 제어 목적). */

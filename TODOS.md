@@ -191,3 +191,86 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 이 맞는 방향이다. 그게 이 레포의 다른 훅 관례와 맞는지 먼저 확인할 것.
 
 **Depends on / blocked by**. 없음. 우선순위 낮음(30초 staleness, 두 역할 겸임자 한정).
+
+## issue-tracking — 핵심 엔티티 3종이 glossary 미등재 (PR #315 FR-CO-01 grill-with-docs 발견)
+
+**결정 (Maxi 확정, 2026-07-27 D6)**. **이번 PR 범위 밖.** 댓글만 등재하고 동질 부채는 여기 등재한다.
+기존 FR 소관이고, 기능 PR 을 용어사전 정리로 번지게 하면 리뷰 단위가 무너진다(#314 가 프론트 계약
+부채에 쓴 것과 같은 잣대).
+
+**미등재 3종 (2026-07-27 실측)**.
+
+| 엔티티 | 소관 FR | 실재 여부 | `domain/issue-tracking.md` 핵심 엔티티 목록 |
+|---|---|---|---|
+| Worklog (작업로그) | FR-TT-01 | 있음 — POST/GET/PATCH/DELETE 전량 + 작성자 한정 수정·삭제 | **FR-CO-01 에서 추가함**(Comment 선례라 같이 넣음) |
+| Attachment (어테처) | FR-AC-01/02 | 있음 — MinIO 업로드 + 미리보기 | 이미 있음 |
+| Watcher (워처) | FR-WT-01 | 있음 | 이미 있음 |
+
+**★판정 기준 자체가 흔들린다는 게 진짜 문제.** glossary 에는 `버전 상태`·`CFD`·`LexoRank`·`공유 토큰`
+처럼 **설명 없이는 모를 것**이 들어가 있고, `Worklog`·`Attachment`·`Watcher`·(이전의)`Comment` 처럼
+**이름만 들으면 아는 것**이 빠져 있다. 즉 암묵 기준은 "설명 필요도" 로 보인다. 그런데
+`domain/issue-tracking.md` 핵심 엔티티 목록엔 Attachment·Watcher 가 **이미 있어** 두 문서의 수록
+기준이 서로 다르다.
+
+**착수 시 첫 단계**. 등재 기준을 명문화한다 — glossary 는 "도메인 전문가에게 의미가 모호한 용어"만인지,
+"핵심 엔티티 전량"인지. 기준을 정한 뒤 누락분을 일괄 채운다. 기준 없이 개별 추가하면 같은 누락이 반복된다.
+`glossary.md` §변경 규칙에 기준 한 줄을 추가하는 것이 산출물.
+
+## 워크플로우 — `bts-review-plan` 분기 표에 `type=backend` 가 없다 (PR #315 발견)
+
+**증상**. `.claude/skills/bts-review-plan/SKILL.md` Step 2 의 타입별 리뷰 체인 표는
+`auth`·`migration`·`ui`·`api`·`feature`·`design` + `{bugfix,chore,qa}` skip **7종만** 다룬다.
+그런데 `scripts/workflow/classify-task.ts` 는 `backend` 를 내보낸다(PR #315 실측). **매칭되는 행이
+없어 분기가 미정의**다.
+
+**임시 대응 (PR #315)**. 메모리 `bts-review-plan-autoplan-overkill`(Maxi 피드백)에 따라
+**eng 집중 + UI 포함이면 design 추가**로 수동 선택했다. CEO·DevEx 는 제외.
+
+**★같은 형태의 누락이 더 있을 수 있다.** classify 가 낼 수 있는 타입 집합과 스킬 분기 표의 행 집합을
+**대조**해야 한다 — 표에 없는 타입이 조용히 미정의로 떨어지는 구조다. 하드코딩 목록끼리 어긋나는
+전형적 형태(메모리 `guard-handler-matrix-blindfold` 와 동질).
+
+**착수 시 첫 단계**. `classify-task.ts` 의 type 유니온을 열거하고 `bts-review-plan`·`bts-spec`·`bts-plan`·
+`bts-impl` 각 스킬의 분기 표와 **집합 차이**를 낸다. 차집합이 0 이 되게 채우고, 앞으로 어긋나면 깨지는
+검증을 하나 둔다(스킬 문서 대조 스크립트 또는 classify 출력 화이트리스트).
+
+**산출물**. 분기 표 보강 + 타입 집합 정합 검증. 개별 타입 추가만으로 끝내지 말 것 — 판별식이 없으면 재발한다.
+
+## apps/web mocks — auth-fixtures 와 user-fixtures 의 사용자 id 교집합이 0 이다 (PR #315 브라우저 눈확인 발견)
+
+**증상**. 모든 "작성자 이름" 표시가 mock/E2E/로컬 dev 에서 **원시 UUID 로 나온다.** 헤더는 `김앨리스`
+를 정상 표시하고 담당자 드롭다운도 정상인데, 목록 항목의 작성자만 UUID 다.
+
+**근본 원인 (2026-07-27 실측)**. 같은 `username: 'alice'` 가 두 픽스처 파일에서 **다른 id** 를 갖는다.
+
+| 파일 | 필드 | 값 |
+|---|---|---|
+| `src/mocks/auth-fixtures.ts` | `aliceUser.userId` | `00000000-0000-4000-8000-000000000001` |
+| `src/mocks/user-fixtures.ts` | `userListFixture[0].id` | `c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f` |
+
+`grep -c "00000000-0000-4000-8000" src/mocks/user-fixtures.ts` → **0**. 교집합이 공집합이다.
+
+**왜 드롭다운은 되고 목록은 안 되나.** `GET /api/v1/users` 의 두 모드가 다른 픽스처를 탄다 —
+`?query=` 모드는 `userListFixture` 를 그대로 반환하므로 `김앨리스` 가 보이고, `?ids=` 모드는
+`userListFixture.filter(u => ids.includes(u.id))` 이므로 **auth UUID 로는 아무것도 안 걸린다.**
+그러면 `useUsersByIds` 가 빈 배열을 받고 컴포넌트가 UUID 폴백을 탄다.
+
+**범위 — 이 PR 만의 문제가 아니다.** `useUsersByIds` 를 쓰는 모든 화면이 같다.
+`WorklogSection`(작성자) · `CommentSection`(작성자) · 그 외 authorId → displayName 을 해석하는 곳 전부.
+`worklog-handlers`·`comment-handlers` 가 Bearer 토큰(=auth-fixtures UUID)에서 저작자를 도출하기 때문이다.
+
+**프로덕션은 정상이다.** 실 `/api/v1/users?ids=` 는 실제 사용자를 돌려주므로 이름이 해석된다.
+**mock 전용 결함**이며, UUID 폴백 자체는 탈퇴·삭제 사용자를 위한 **의도된 동작**이다(고장 아님).
+
+**★왜 아무도 몰랐나.** 컴포넌트 테스트가 `useUsersByIds` 를 `vi.mock` 으로 대체해 실제 조회 경로를
+타지 않는다. E2E 도 작성자 이름을 단정하지 않았다. **브라우저 눈확인에서만 드러났다** —
+FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 그 절차다.
+
+**PR #315 에서 고치지 않은 이유**. `user-fixtures.ts` 는 공유 mock 데이터이고 프론트 8,044 테스트가
+의존한다(항목 수·드롭다운 내용을 단정하는 테스트가 있을 수 있다). mock 전용 표시 문제를 위해
+기능 PR 에서 공유 픽스처를 바꾸는 것은 폭발 반경이 맞지 않는다.
+
+**착수 시 첫 단계**. 어느 쪽을 정본으로 삼을지 먼저 정한다 — `auth-fixtures` UUID 를 정본으로 두고
+`user-fixtures` 를 맞추는 편이 자연스럽다(토큰에서 도출되는 값이 곧 실사용 id 이므로). 바꾼 뒤
+**`useUsersByIds` 를 mock 하지 않는 통합 테스트 1건**을 남겨 같은 회귀가 다시 숨지 못하게 한다.
+

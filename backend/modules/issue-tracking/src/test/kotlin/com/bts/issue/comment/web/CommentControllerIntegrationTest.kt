@@ -3,19 +3,25 @@
 package com.bts.issue.comment.web
 
 import com.bts.issue.comment.application.CommentApplicationService
+import com.bts.issue.comment.application.CommentApplicationService.Companion.MAX_BODY_LENGTH
 import com.bts.issue.comment.application.CommentView
+import com.bts.issue.comment.domain.Comment
+import com.bts.issue.comment.domain.CommentBodyBlankException
+import com.bts.issue.comment.domain.CommentBodyTooLongException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -23,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -31,6 +38,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -66,11 +74,21 @@ class CommentControllerIntegrationTest {
     @Configuration
     @EnableWebMvc
     open class TestMvcConfig {
+        /**
+         * ★ 프로덕션 설정을 미러링한다 (FR-CO-01 발견).
+         *
+         * Spring Boot 의 Jackson 자동설정은 `FAIL_ON_UNKNOWN_PROPERTIES` 를 **비활성**으로 둔다.
+         * 이 슬라이스는 맨 `ObjectMapper()` 를 쓰므로 그 값이 **활성**(Jackson 기본)이어서,
+         * 미지 필드가 온 요청에 대해 프로덕션은 무시하고 슬라이스는 400 을 내는 **불일치**가 있었다.
+         * 저작자 위조 시도(요청에 `authorId` 를 끼워 넣는 케이스)를 프로덕션과 같은 조건에서
+         * 검증하려면 이 설정을 맞춰야 한다 — 아니면 "테스트는 400, 실서버는 통과" 가 된다.
+         */
         @Bean
         open fun objectMapper(): ObjectMapper =
             ObjectMapper()
                 .registerModule(JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 
         @Bean
         open fun commentApplicationService(): CommentApplicationService = mockk(relaxed = true)
@@ -210,5 +228,153 @@ class CommentControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/issues/ATLAS-1/comments"))
             .andExpect(status().isUnauthorized)
+    }
+
+    // ══ FR-CO-01 — POST /comments ════════════════════════════════════════════
+
+    private val sampleComment =
+        Comment(
+            id = commentId,
+            issueId = UUID.fromString("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+            authorId = actorUuid,
+            body = "확인했습니다.",
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+        )
+
+    private fun postComment(
+        key: String,
+        json: String,
+    ) = mockMvc.perform(
+        post("/api/v1/issues/$key/comments")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(json),
+    )
+
+    /**
+     * CO-P1. 댓글 작성 → 201 Created + 생성된 댓글 (스펙 S1).
+     */
+    @Test
+    fun `POST 댓글 작성 — 201 Created plus 생성된 댓글`() {
+        every {
+            commentApplicationService.create(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                body = "확인했습니다.",
+            )
+        } returns sampleComment
+
+        postComment("ATLAS-1", """{"body":"확인했습니다."}""")
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.id").value(commentId.toString()))
+            .andExpect(jsonPath("$.data.authorId").value(actorUuid.toString()))
+            .andExpect(jsonPath("$.data.body").value("확인했습니다."))
+            .andExpect(jsonPath("$.data.bodyHtml").exists())
+    }
+
+    /**
+     * CO-P2. ★저작자 위조 시도 → 무시되고 authorId 는 actor (스펙 S2 / EC-5).
+     *
+     * 요청 본문에 `authorId` 를 끼워 넣어도 [com.bts.issue.comment.web.AddCommentRequest] 에
+     * 그 필드가 **존재하지 않아** 바인딩되지 않는다. 서비스 호출도 3인자여서 저작자를 넘길 방법이 없다.
+     */
+    @Test
+    fun `POST 요청의 authorId 필드는 무시되고 actor 가 저작자다`() {
+        val otherUuid = UUID.fromString("99999999-9999-4999-8999-999999999999")
+        every {
+            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"), body = "위조 시도")
+        } returns sampleComment
+
+        postComment("ATLAS-1", """{"body":"위조 시도","authorId":"$otherUuid"}""")
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.authorId").value(actorUuid.toString()))
+
+        // 저작자를 넘기는 창구가 없음을 호출 형태로 고정 — 3인자만 존재한다
+        verify(exactly = 1) {
+            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"), body = "위조 시도")
+        }
+    }
+
+    /**
+     * CO-P3. 미인증 POST → 401 (이슈 존재 여부와 무관, actor 추출이 먼저).
+     */
+    @Test
+    fun `POST 미인증 — 401 Unauthorized`() {
+        SecurityContextHolder.clearContext()
+
+        postComment("ATLAS-1", """{"body":"본문"}""")
+            .andExpect(status().isUnauthorized)
+    }
+
+    /**
+     * CO-P4. UPDATE 권한 없음 → 403 (스펙 S4).
+     */
+    @Test
+    fun `POST UPDATE 권한 없음 — 403 Forbidden`() {
+        every {
+            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"), body = "본문")
+        } throws
+            IssueAccessDeniedException(
+                actor = ActorId(actorUuid),
+                permission = IssuePermission.UPDATE,
+                scope = IssueScope.Issue("ATLAS-1"),
+            )
+
+        postComment("ATLAS-1", """{"body":"본문"}""")
+            .andExpect(status().isForbidden)
+    }
+
+    /**
+     * CO-P5. 이슈 미존재 → 404.
+     */
+    @Test
+    fun `POST 이슈 미존재 — 404 Not Found`() {
+        every {
+            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-99"), body = "본문")
+        } throws IssueNotFoundException(IssueKey("ATLAS-99"))
+
+        postComment("ATLAS-99", """{"body":"본문"}""")
+            .andExpect(status().isNotFound)
+    }
+
+    /**
+     * CO-P6. `body` 필드 누락 → 400 (EC-4). 요청 형식 문제는 웹 계층 소관.
+     */
+    @Test
+    fun `POST body 누락 — 400 Bad Request`() {
+        postComment("ATLAS-1", "{}")
+            .andExpect(status().isBadRequest)
+    }
+
+    /**
+     * CO-P7. 공백만 본문 → 400. 서비스의 [CommentBodyBlankException] 이 400 으로 번역돼야 한다.
+     *
+     * ★핸들러 미등록 시 catch-all `Exception` 이 삼켜 **500** 이 된다 — 본문 코드까지 판별자로 잡는다
+     * (learnings: catch-all-exceptionhandler-swallows-responsestatusexception).
+     */
+    @Test
+    fun `POST 공백만 본문 — 400 이고 500 이 아니다`() {
+        every {
+            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"), body = "   ")
+        } throws CommentBodyBlankException()
+
+        postComment("ATLAS-1", """{"body":"   "}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_BODY_BLANK"))
+    }
+
+    /**
+     * CO-P8. 길이 초과 본문 → 400 + 상한 값이 응답에 담긴다.
+     */
+    @Test
+    fun `POST 길이 초과 본문 — 400 이고 상한을 알려준다`() {
+        val tooLong = "가".repeat(MAX_BODY_LENGTH + 1)
+        every {
+            commentApplicationService.create(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"), body = tooLong)
+        } throws CommentBodyTooLongException(actual = tooLong.length, max = MAX_BODY_LENGTH)
+
+        postComment("ATLAS-1", """{"body":"$tooLong"}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_BODY_TOO_LONG"))
     }
 }

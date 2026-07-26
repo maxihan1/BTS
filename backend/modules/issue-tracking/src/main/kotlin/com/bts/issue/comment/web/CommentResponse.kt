@@ -45,5 +45,16 @@ data class CommentResponse(
                 createdAt = view.createdAt,
                 updatedAt = view.updatedAt,
             )
+
+        /**
+         * [com.bts.issue.comment.domain.Comment] 로부터 응답 DTO 를 생성한다 (작성 응답용, FR-CO-01).
+         *
+         * `bodyHtml` 렌더링은 [CommentView.of] 에 위임한다 — 목록 조회와 **같은 단일 지점**을 쓰므로
+         * 두 경로의 렌더 정책이 갈라질 수 없다.
+         *
+         * @param comment 변환할 댓글 엔티티.
+         * @return 변환된 응답 DTO.
+         */
+        fun from(comment: com.bts.issue.comment.domain.Comment): CommentResponse = from(CommentView.of(comment))
     }
 }

@@ -1,9 +1,10 @@
-// 이슈 상세 활동 영역(작업로그/연결/이력) 탭 컨테이너 — ui/tabs 첫 소비자 (FR-UX-06 PR19 Task 1)
+// 이슈 상세 활동 영역(작업로그/연결/이력/댓글) 탭 컨테이너 — ui/tabs 첫 소비자 (FR-UX-06 PR19 Task 1 / FR-CO-01)
 import type { JSX } from 'react'
 import type { IssueResponse } from '@/api/issues'
 import type { ChangelogRefs } from '@/lib/changelog-labels'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { WorklogSection } from '@/components/issue/WorklogSection'
+import { CommentSection } from '@/components/issue/CommentSection'
 import { IssueLinksPanel } from '@/components/issue/IssueLinksPanel'
 import { EpicChildrenSection } from '@/components/issue/EpicChildrenSection'
 import { LinkGraph } from '@/components/issue/LinkGraph'
@@ -16,12 +17,13 @@ import { issueDetailStrings } from '@/i18n/ko'
 
 /**
  * 활동 탭 value 상수.
- * TabsList 렌더 순서(작업로그 → 연결 → 이력)와 일치한다.
+ * TabsList 렌더 순서(작업로그 → 연결 → 이력 → 댓글)와 일치한다.
  */
 export const ACTIVITY_TABS = {
   WORKLOG: 'worklog',
   LINKS: 'links',
   HISTORY: 'history',
+  COMMENT: 'comment',
 } as const
 
 /** ACTIVITY_TABS 값 유니온 타입 */
@@ -80,6 +82,9 @@ export function IssueActivityTabs({
         <TabsTrigger value={ACTIVITY_TABS.HISTORY}>
           {issueDetailStrings.activityHistoryTabLabel}
         </TabsTrigger>
+        <TabsTrigger value={ACTIVITY_TABS.COMMENT}>
+          {issueDetailStrings.activityCommentTabLabel}
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value={ACTIVITY_TABS.WORKLOG}>
@@ -102,6 +107,10 @@ export function IssueActivityTabs({
 
       <TabsContent value={ACTIVITY_TABS.HISTORY}>
         <IssueChangelog issueKey={issueKey} refs={changelogRefs} />
+      </TabsContent>
+
+      <TabsContent value={ACTIVITY_TABS.COMMENT}>
+        <CommentSection issueKey={issueKey} canUpdate={canUpdate} />
       </TabsContent>
     </Tabs>
   )

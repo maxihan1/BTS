@@ -17,6 +17,12 @@ vi.mock('@/components/issue/WorklogSection', () => ({
   ),
 }))
 
+vi.mock('@/components/issue/CommentSection', () => ({
+  CommentSection: ({ issueKey, canUpdate }: { issueKey: string; canUpdate: boolean }) => (
+    <div data-testid="mock-comment">{`comment:${issueKey}:${String(canUpdate)}`}</div>
+  ),
+}))
+
 vi.mock('@/components/issue/IssueLinksPanel', () => ({
   IssueLinksPanel: (props: {
     issueKey: string
@@ -78,21 +84,38 @@ function getTab(name: string) {
 }
 
 describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
-  it('(a) role="tablist"와 탭 3개(작업로그/연결/이력)를 렌더한다', () => {
+  it('(a) role="tablist"와 탭 4개(작업로그/연결/이력/댓글)를 렌더한다', () => {
     renderTabs()
 
     expect(screen.getByRole('tablist')).toBeInTheDocument()
     expect(getTab(issueDetailStrings.activityWorklogTabLabel)).toBeInTheDocument()
     expect(getTab(issueDetailStrings.activityLinksTabLabel)).toBeInTheDocument()
     expect(getTab(issueDetailStrings.activityHistoryTabLabel)).toBeInTheDocument()
+    expect(getTab(issueDetailStrings.activityCommentTabLabel)).toBeInTheDocument()
+
+    // ★개수를 단정한다 — 탭이 조용히 늘거나 줄면 여기서 걸린다 (열거 눈가리개 방지)
+    expect(screen.getAllByRole('tab')).toHaveLength(4)
   })
 
-  it('(b) 기본 활성 탭은 이력이다 — IssueChangelog만 초기 렌더되고 작업로그/연결은 미마운트', () => {
+  it('(b) 기본 활성 탭은 이력이다 — IssueChangelog만 초기 렌더되고 작업로그/연결/댓글은 미마운트', () => {
     renderTabs()
 
     expect(screen.getByTestId('mock-changelog')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-worklog')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mock-links')).not.toBeInTheDocument()
+    // ★FR-CO-01 리뷰 G6 — 댓글 탭 추가 시 이 열거를 늘리지 않으면 테스트가 초록인 채로
+    // 댓글 섹션의 초기 마운트 여부를 보지 못한다. 목록이 곧 눈가리개다.
+    expect(screen.queryByTestId('mock-comment')).not.toBeInTheDocument()
+  })
+
+  it('(b-2) 댓글 탭 클릭 시 CommentSection이 보이고 canUpdate가 전달된다', async () => {
+    const user = userEvent.setup()
+    renderTabs()
+
+    await user.click(getTab(issueDetailStrings.activityCommentTabLabel))
+
+    expect(screen.getByTestId('mock-comment')).toHaveTextContent('comment:ATLAS-1:true')
+    expect(screen.queryByTestId('mock-changelog')).not.toBeInTheDocument()
   })
 
   it('(c) 작업로그 탭 클릭 시 WorklogSection이 보이고 이력은 숨는다', async () => {

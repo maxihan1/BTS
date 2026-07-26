@@ -133,15 +133,24 @@ class AutomationIssueMutationAdapter(
     }
 
     /**
-     * [cmd.body] 를 [CommentApplicationService.create] 에 위임한다. 작성자(authorId)는 actor(룰
-     * 실행 주체)와 동일하게 전달한다(FR-AT-02 확정 — actor=authorId=rule actor). 댓글은 OCC 버전
-     * 대상이 아니므로 재시도가 필요 없고, 결과 [MutationResult.version] 은 항상 null 이다.
+     * [cmd.body] 를 [CommentApplicationService.create] 에 위임한다. 댓글은 OCC 버전 대상이 아니므로
+     * 재시도가 필요 없고, 결과 [MutationResult.version] 은 항상 null 이다.
+     *
+     * ## 저작자 = actor (FR-CO-01 D4 로 구조화됨)
+     * FR-AT-02 는 `actor = authorId = rule actor` 로 확정했고, FR-CO-01 이 `create` 에서 `authorId`
+     * 파라미터를 제거해 그 계약을 **시그니처로 못 박았다.** 이제 이 경로가 다른 저작자를 지정할
+     * 방법이 없다. 원본 저작자 보존이 필요한 Import 만 `createImported` 를 쓴다.
+     *
+     * ## 본문 길이 상한이 이 경로에도 걸린다 (FR-CO-01 D7)
+     * [cmd.body] 는 `TemplateRenderer.render` 결과이고 렌더러에는 길이 제한이 없다. 상한 검증이
+     * `create` **안에** 있으므로 이 경로도 구속된다 — 컨트롤러에만 있었다면 우회됐다.
+     * dryRun 이어도 [runAttempt] 가 실제로 호출하므로 위반이 사전에 감지된다.
      */
     override fun addComment(cmd: AddCommentCommand): MutationResult {
         val actor = ActorId(cmd.actorUserId)
         val key = IssueKey(cmd.issueKey)
         runAttempt(cmd.dryRun) {
-            commentApplicationService.create(actor = actor, issueKey = key, body = cmd.body, authorId = actor)
+            commentApplicationService.create(actor = actor, issueKey = key, body = cmd.body)
         }
         return MutationResult(issueKey = key.value, applied = !cmd.dryRun, version = null)
     }

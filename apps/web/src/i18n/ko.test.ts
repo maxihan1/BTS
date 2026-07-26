@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings, worklogStrings, epicChildrenStrings } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings, worklogStrings, epicChildrenStrings, commentStrings } from './ko'
 import { attachmentLabels } from './attachment-labels'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
@@ -809,5 +809,76 @@ describe('epicChildrenStrings — 에픽 자식 이슈 섹션 문자열 (FR-EP-0
         expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
       }
     }
+  })
+})
+
+// ── FR-CO-01 댓글 문구 ────────────────────────────────────────────────────────
+//
+// ★이 블록이 없으면 검증이 조용히 비어 있다(vacuous). ko.test.ts 는 named import 로
+// 검사 대상을 명시 열거하므로, 새 export 를 만들어도 import 목록에 넣지 않으면 아무것도
+// 확인하지 않는다 — FR-CO-01 리뷰 G5.
+
+describe('commentStrings — FR-CO-01 댓글 문구 키 존재 검증', () => {
+  type CommentStrings = typeof commentStrings
+
+  it('commentSectionTitle 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentSectionTitle')
+  })
+
+  it('commentBodyLabel 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentBodyLabel')
+  })
+
+  it('commentAddButton 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentAddButton')
+  })
+
+  it('commentAddPending 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentAddPending')
+  })
+
+  it('commentAddSuccess 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentAddSuccess')
+  })
+
+  it('commentAddError 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentAddError')
+  })
+
+  it('commentEmptyState 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentEmptyState')
+  })
+
+  it('commentLoading 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentLoading')
+  })
+
+  it('commentLoadError 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentLoadError')
+  })
+
+  it('commentNoPermission 키가 존재한다', () => {
+    expectTypeOf<CommentStrings>().toHaveProperty('commentNoPermission')
+  })
+
+  it('빈 상태와 권한 안내는 서로 다른 문구다 — 같은 증상에 원인이 둘이다', () => {
+    expect(commentStrings.commentEmptyState).not.toBe(commentStrings.commentNoPermission)
+    expect(commentStrings.commentEmptyState).not.toBe(commentStrings.commentLoadError)
+  })
+})
+
+describe('issueDetailStrings — FR-CO-01 댓글 탭 라벨', () => {
+  it('activityCommentTabLabel 키가 존재한다', () => {
+    expectTypeOf<typeof issueDetailStrings>().toHaveProperty('activityCommentTabLabel')
+  })
+
+  it('댓글 탭 라벨은 다른 활동 탭 라벨과 겹치지 않는다 — 탭 라벨은 E2E 계약이다', () => {
+    const labels = [
+      issueDetailStrings.activityWorklogTabLabel,
+      issueDetailStrings.activityLinksTabLabel,
+      issueDetailStrings.activityHistoryTabLabel,
+      issueDetailStrings.activityCommentTabLabel,
+    ]
+    expect(new Set(labels).size).toBe(labels.length)
   })
 })

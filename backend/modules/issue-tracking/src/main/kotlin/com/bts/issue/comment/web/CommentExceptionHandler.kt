@@ -2,6 +2,8 @@
 
 package com.bts.issue.comment.web
 
+import com.bts.issue.comment.domain.CommentBodyBlankException
+import com.bts.issue.comment.domain.CommentBodyTooLongException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueNotFoundException
 import org.slf4j.LoggerFactory
@@ -74,6 +76,46 @@ class CommentExceptionHandler {
             title = "Issue Not Found",
             errorCode = "ISSUE_NOT_FOUND",
             detail = "이슈를 찾을 수 없습니다.",
+        )
+    }
+
+    // ── 400 COMMENT_BODY_* (FR-CO-01) ─────────────────────────────────────────
+
+    /**
+     * 본문이 공백만 — 400.
+     *
+     * 서비스 계층([com.bts.issue.comment.application.CommentApplicationService.create])이 던지는
+     * **도메인 예외**를 여기서 HTTP 상태로 번역한다. 서비스가 `ResponseStatusException` 을 던지지
+     * 않는 이유는 그 서비스를 automation 도 호출하며 그 경로는 HTTP 를 모르기 때문이다
+     * ([com.bts.issue.comment.domain.CommentBodyTooLongException] KDoc 참조).
+     */
+    @ExceptionHandler(CommentBodyBlankException::class)
+    fun handleBodyBlank(ex: CommentBodyBlankException): ProblemDetail {
+        log.info("COMMENT_400 body_blank message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "comment-body-blank",
+            title = "Bad Request",
+            errorCode = "COMMENT_BODY_BLANK",
+            detail = "댓글 본문은 비어 있을 수 없습니다.",
+        )
+    }
+
+    /**
+     * 본문이 허용 길이 초과 — 400.
+     *
+     * detail 에 상한과 실제 길이를 담는다 — 사용자가 얼마를 줄여야 하는지 알 수 있어야 한다.
+     * 내부 구조가 아닌 입력 정책 값이라 노출해도 무해하다(403 과 달리 정보 은닉 대상이 아니다).
+     */
+    @ExceptionHandler(CommentBodyTooLongException::class)
+    fun handleBodyTooLong(ex: CommentBodyTooLongException): ProblemDetail {
+        log.info("COMMENT_400 body_too_long actual={} max={}", ex.actual, ex.max)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "comment-body-too-long",
+            title = "Bad Request",
+            errorCode = "COMMENT_BODY_TOO_LONG",
+            detail = "댓글 본문은 ${ex.max}자를 넘을 수 없습니다. (현재 ${ex.actual}자)",
         )
     }
 

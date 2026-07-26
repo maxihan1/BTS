@@ -316,15 +316,33 @@ class AutomationIssueMutationAdapterTest {
 
     // ── addComment ──────────────────────────────────────────────────────────
 
+    /**
+     * automation 경로가 **저작자 지정 없는 3인자 `create`** 를 경유함을 고정한다 (FR-CO-01 D4).
+     *
+     * ## 이 테스트가 증명하는 것과 증명하지 않는 것
+     * 이 클래스는 [commentApplicationService] 를 MockK 로 대체하므로 **길이 상한 자체는 증명할 수 없다**
+     * (mock 은 시키는 대로 반환한다). 상한이 automation 경로에도 걸린다는 명제는 두 조각의 사슬로 증명한다.
+     *
+     * 1. `CommentApplicationServiceTest.CO-2` — **실제 서비스**로 `create` 가 32,001자를 거부함
+     * 2. 이 테스트 — 어댑터가 **그 `create`** 를 경유함 (다른 우회 경로를 쓰지 않음)
+     *
+     * 두 조각이 함께 있어야 명제가 성립한다. 어느 한쪽만으로는 vacuous 하다.
+     *
+     * ## "다른 경로를 쓰지 않음" 은 무엇이 보장하나
+     * [commentApplicationService] 가 **strict mock**(`mockk()`, relaxed 아님)이다. 따라서 어댑터가
+     * `createImported` 같은 다른 메서드를 부르면 stub 이 없어 `MockKException` 으로 **즉시 실패**한다.
+     * 별도 `verify(exactly = 0)` 은 중복이며, `IssueKey` 가 형식 검증을 가진 `@JvmInline value class` 라
+     * `any()` 매처가 무작위 문자열로 생성자를 때려 `IllegalArgumentException` 을 낸다(실측).
+     * strict mock 자체가 음성 가드다.
+     */
     @Test
-    fun `addComment delegates to create with actor as both actor and authorId`() {
+    fun `addComment delegates to 3-arg create without authorId (FR-CO-01 D4)`() {
         val bodySlot = slot<String>()
         every {
             commentApplicationService.create(
                 actor = actor,
                 issueKey = issueKey,
                 body = capture(bodySlot),
-                authorId = actor,
             )
         } returns
             Comment(
@@ -348,7 +366,7 @@ class AutomationIssueMutationAdapterTest {
     @Test
     fun `addComment dryRun sets rollback only and returns applied false`() {
         every {
-            commentApplicationService.create(actor = actor, issueKey = issueKey, body = any(), authorId = actor)
+            commentApplicationService.create(actor = actor, issueKey = issueKey, body = any())
         } returns
             Comment(
                 id = UUID.randomUUID(),
