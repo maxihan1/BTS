@@ -14,11 +14,17 @@ import { issueDetailStrings } from '@/i18n/ko'
  * F1이 아직 없는 wave 병렬 환경을 위해 로컬 정의 유지.
  */
 export interface ChangeItem {
-  /** 변경된 필드 키 (예: "priority", "customField:my_key") */
+  /** 변경된 필드 키 (예: "priority", "customField:my_key", "comment:<commentId>") */
   field: string
-  /** 변경 전 raw 값 (null = 미설정) */
+  /**
+   * 변경 전 raw 값 (null = 미설정).
+   * 단 `comment:` 항목의 null 은 미설정이 아니라 **삭제된 댓글의 마스킹**이다 (FR-CO-02 S10).
+   */
   fromValue: string | null
-  /** 변경 후 raw 값 (null = 미설정) */
+  /**
+   * 변경 후 raw 값 (null = 미설정).
+   * 단 `comment:` 항목의 null 은 미설정이 아니라 **삭제된 댓글의 마스킹**이다 (FR-CO-02 S10).
+   */
   toValue: string | null
   /** 변경 전 박제 표시명 (assignee/securityLevel만 non-null) */
   fromLabel: string | null
@@ -65,6 +71,10 @@ const COMMENT_FIELD_PREFIX = 'comment:'
  * 자르지 않으면 댓글 수정 1건이 화면을 덮어 상태·담당자 변경 같은 다른 항목을 밀어낸다.
  * 120자면 두 벌 합쳐 240자로, 무엇을 고쳤는지 알아볼 만하면서 한 행이 서너 줄을 넘지 않는다.
  * 저장은 전문 그대로이고 여기서 자르는 것은 화면 표시뿐이다.
+ *
+ * **NFR-5b — 피드 희석은 수용한다(회귀 아님).** 절단은 *길이*만 줄인다. 변경 이력이
+ * 페이지네이션이라 댓글 수정 *항목 수*가 상태·담당자 변경을 뒷 페이지로 미는 것은 그대로다.
+ * 이번 범위에서 필터를 만들지 않기로 한 의도된 선택이므로 버그로 보고 되돌리지 말 것.
  */
 const COMMENT_BODY_DISPLAY_MAX_LENGTH = 120
 
@@ -198,9 +208,12 @@ export function resolveFieldLabel(field: string, refs: ChangelogRefs): string {
  * 해석 우선순위(스펙 FR6).
  * 1. 박제 label (fromLabel/toLabel non-null) — 그대로 반환.
  * 2. lifecycle 특수 처리 — toValue 기준으로 "이슈를 생성/삭제했습니다" 반환.
- * 3. 텍스트/labels 필드 — raw 값 그대로.
- * 4. ID/숫자 필드 — refs로 해석 (priority/impact/type/components/versions/resolution/status).
- * 5. raw·label 모두 null(clear) — "(없음)".
+ * 3. `comment:` 항목 — null이면 "(삭제된 댓글)", 아니면 본문을 절단해 반환 (FR-CO-02).
+ *    **공통 null 폴백(5)보다 먼저**여야 한다. 순서가 뒤집히면 마스킹이 "(없음)"으로 새고,
+ *    "가려졌다"가 "비어 있었다"로 잘못 읽힌다.
+ * 4. 텍스트/labels 필드 — raw 값 그대로 (절단하지 않는다).
+ * 5. ID/숫자 필드 — refs로 해석 (priority/impact/type/components/versions/resolution/status).
+ * 6. raw·label 모두 null(clear) — "(없음)".
  *
  * @param item - 변경 항목
  * @param side - 'from' 또는 'to'
@@ -231,7 +244,7 @@ export function resolveValueLabel(
     return raw ?? issueDetailStrings.changelogValueNone
   }
 
-  // 댓글 본문 항목 — 아래 공통 null 폴백보다 **먼저** 판정해야 한다.
+  // 우선순위 3. 댓글 본문 항목 — 아래 공통 null 폴백보다 **먼저** 판정해야 한다.
   // 백엔드가 삭제된 댓글의 값 4종을 null로 마스킹해 보내므로(FR-CO-02 S10),
   // 여기서의 null은 "값이 비어 있었다"가 아니라 "값은 있었지만 가려졌다"는 뜻이다.
   // 공통 폴백에 맡기면 "(없음)"이 나와 사용자가 빈 댓글로 고친 것으로 오해한다.
@@ -247,12 +260,12 @@ export function resolveValueLabel(
     return issueDetailStrings.changelogValueNone
   }
 
-  // 우선순위 3. 텍스트/labels 필드 — raw 그대로
+  // 우선순위 4. 텍스트/labels 필드 — raw 그대로. **절단하지 않는다**(위 truncateCommentBody 주석 참조)
   if (RAW_TEXT_FIELDS.has(item.field)) {
     return raw
   }
 
-  // 우선순위 4. ID/숫자 필드 refs 해석
+  // 우선순위 5. ID/숫자 필드 refs 해석
 
   if (item.field === 'priority') {
     const num = parseInt(raw, 10)
