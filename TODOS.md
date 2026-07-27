@@ -972,7 +972,17 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 **→ 닫으면서 아래 신규 1건을 분리 등재한다** (댓글이 아니라 이슈 description 소관이라 같은 항목이 아니다).
 
-## issue-tracking — `descriptionHtml` 생산 지점이 2개고 그중 하나는 죽은 분기 (2026-07-27 등재)
+## ✅ issue-tracking — `descriptionHtml` 생산 지점 1개로 수렴 (해소 2026-07-27)
+
+**해소.** `IssueResponse.from` 의 `renderHtml: Boolean` 파라미터와 그 `renderSafe` 분기를 제거해
+**생산 지점을 `IssueApplicationService.withSingleDetail()` 하나로 굳혔다.** 호출자 0건인 죽은 분기였다.
+
+살려두면 XSS 방어의 검증 대상이 두 갈래로 갈려, 한 쪽을 깨도 다른 쪽 테스트가 초록을 유지한다.
+**뮤테이션 확증** — 남은 단일 지점의 `renderSafe(...)` 를 원문 통과로 바꾸자
+`IssueControllerIntegrationTest` 의 「PATCH description Markdown 렌더 후 GET descriptionHtml XSS 차단」 FAILED.
+내 변경이 만든 고아 import 도 함께 제거했다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. 댓글은 렌더 단일 지점(`CommentView.of`)이 확립돼 우회 경로가 0인데,
 **이슈 `description` 은 `MarkdownRenderer.renderSafe` 직접 호출이 2곳**이다.
@@ -996,3 +1006,5 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 **소관**. `backend/modules/issue-tracking/.../issue/web/IssueResponse.kt` +
 `.../issue/application/IssueApplicationService.kt`.
+
+</details>

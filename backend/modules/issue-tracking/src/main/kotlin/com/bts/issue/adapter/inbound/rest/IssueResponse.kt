@@ -5,7 +5,6 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssuePriority
-import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldRef
 import com.fasterxml.jackson.annotation.JsonFormat
@@ -305,9 +304,15 @@ data class IssueResponse(
         /**
          * [Issue] Aggregate, 프로젝트 키, 이슈 타입 요약 정보를 받아 [IssueResponse] DTO를 생성한다.
          *
-         * C3 — [renderHtml] = true 이면 [Issue.description] 을 [MarkdownRenderer.renderSafe] 로 렌더하여
-         * [IssueResponse.descriptionHtml] 에 채운다. false(기본값)이면 null 을 유지한다.
-         * 목록(listWithType) 경로에서는 N건 렌더 비용 방지를 위해 renderHtml=false 로 호출한다.
+         * ★[IssueResponse.descriptionHtml] 은 **여기서 채우지 않는다** — 항상 null 로 둔다.
+         * 렌더 생산 지점은 `IssueApplicationService.withSingleDetail()` **한 곳**이며,
+         * 단건 경로만 그것을 통과한다. 목록(listWithType) 경로는 N건 렌더 비용 때문에 null 을 유지한다.
+         *
+         * 2026-07-27 — 예전에는 `renderHtml: Boolean` 파라미터로 여기서도 렌더할 수 있었으나
+         * **호출자가 0건인 죽은 분기**였다. 살려두면 XSS 방어(`renderSafe`)의 검증 대상이 두 갈래로
+         * 갈려, 뮤테이션으로 한 쪽을 깨도 다른 쪽 테스트가 초록을 유지한다
+         * (FR-MN-01 에서 XSS SUPPRESS 회귀가 실제로 났던 영역이다).
+         * 죽어 있는 지금이 폭발 반경이 가장 작은 시점이라 제거해 **생산 지점을 1개로 굳혔다**.
          *
          * FR-IS-07 B11 — [resolution] 은 단건 경로에서 ApplicationService 가 채워 주입한다.
          * 목록 경로(listWithType)는 null 로 호출한다.
@@ -325,7 +330,6 @@ data class IssueResponse(
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
          * @param typeInfo 이슈 타입 요약 (id, key, name).
-         * @param renderHtml true 이면 descriptionHtml 을 렌더. 단건 경로에서만 true 로 호출한다. 기본값 false.
          * @param resolution 현재 할당된 Resolution 요약. null 이면 미설정. 기본값 null.
          * @param parent 부모 이슈 요약(key, summary). 단건 경로에서 self LEFT JOIN 결과로 채운다. 기본값 null.
          * @param epic 에픽 이슈 요약(key, summary). 단건 경로에서 epic LEFT JOIN 결과로 채운다. 기본값 null.
@@ -335,7 +339,6 @@ data class IssueResponse(
             issue: Issue,
             projectKey: String,
             typeInfo: IssueTypeInfo,
-            renderHtml: Boolean = false,
             resolution: ResolutionSummary? = null,
             parent: ParentSummary? = null,
             epic: EpicSummary? = null,
@@ -354,7 +357,8 @@ data class IssueResponse(
                 typeKey = typeInfo.key,
                 typeName = typeInfo.name,
                 description = issue.description,
-                descriptionHtml = if (renderHtml) issue.description?.let { MarkdownRenderer.renderSafe(it) } else null,
+                // 항상 null — 렌더 단일 지점은 IssueApplicationService.withSingleDetail() 이다.
+                descriptionHtml = null,
                 priority = issue.priority,
                 priorityName = IssuePriority.fromNumber(issue.priority).displayName,
                 labels = issue.labels,
