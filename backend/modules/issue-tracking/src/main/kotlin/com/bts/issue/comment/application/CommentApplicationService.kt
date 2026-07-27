@@ -1,4 +1,4 @@
-// 댓글 유스케이스 오케스트레이션 서비스 — create(UPDATE 게이트) + list(VIEW 게이트+렌더링) (FR-IM-01 PR3)
+// 댓글 유스케이스 오케스트레이션 서비스 — create(UPDATE 게이트) + update(작성자 한정) + list(VIEW 게이트+렌더링)
 
 package com.bts.issue.comment.application
 
@@ -31,7 +31,7 @@ import java.util.UUID
  * 댓글 유스케이스 오케스트레이션 서비스 (FR-IM-01 PR3).
  *
  * ## 권한 scope 설계 — 왜 Project 가 아닌 Issue 인가
- * [create]/[list] 모두 권한 평가 scope 를 [IssueScope.Issue] 로 고정한다.
+ * [create]·[update]·[list] 모두 권한 평가 scope 를 [IssueScope.Issue] 로 고정한다.
  * 이슈 보안 등급(security level, FR-PM-06)은 이슈 단위로 지정되므로, 프로젝트 단위([IssueScope.Project])
  * 로 게이트하면 기밀 이슈에 접근 불가한 사용자도 해당 이슈의 댓글을 열람/작성할 수 있게 되어
  * 보안 등급 우회(정보 누출)로 이어진다. worklog `listForIssue`/`create` 와 동일한 이유로 Issue scope 를 쓴다.
@@ -142,6 +142,27 @@ class CommentApplicationService(
     /**
      * 댓글 본문을 수정한다 — **작성자 본인만 가능하다.**
      *
+     * ## ★ 수정 게이트를 삭제 게이트와 공용 헬퍼로 합치지 말 것
+     * 합치는 순간 모더레이터가 수정까지 통과한다. 삭제는 `작성자 OR SOFT_DELETE 보유자`,
+     * 수정은 `작성자` 뿐이다 — 술어가 다르므로 술어를 공유해서는 안 된다. 두 게이트가 "같아 보인다"는
+     * 이유로 하나로 묶으면, 넓은 쪽(삭제)의 술어가 좁은 쪽(수정)에 조용히 이식된다.
+     *
+     * 근거. 모더레이션의 실제 필요는 **지우기**이고, "남의 글 고치기"는 그 필요를 채우지 못하면서
+     * 기록의 신뢰만 깎는다. 관리자가 타인 명의 글의 내용을 바꿀 수 있으면 그 글이 원래 무엇이었는지
+     * 아무도 알 수 없기 때문이다. Jira 도 `Edit All Comments` 와 `Delete All Comments` 를 별도
+     * 권한으로 나눈다. `CommentApplicationServiceTest` CO2-2 가 이 경계의 판별자이며,
+     * 작성자 대조를 지우면 **정확히 그 한 건**이 죽는다(뮤테이션 실증).
+     *
+     * ## 본문이 같으면 완전 no-op 인 이유
+     * 내용이 안 바뀌었는데 `updatedAt` 이 갱신되면 화면의 "(수정됨)" 표시가 거짓말을 한다.
+     * 그래서 저장(`UPDATE` 문)도 이력 기록도 **둘 다** 건너뛴다. 이력만 거르고 `updatedAt` 은
+     * 갱신하는 절충은 같은 거짓말을 남긴다 — 프론트가 `updatedAt != createdAt` 으로 표시를 결정하기 때문이다.
+     *
+     * ## 검증 순서를 [create] 와 같게 두는 이유
+     * 권한 검증을 이슈·댓글 조회보다 **먼저** 둔다. 순서가 뒤집히면 권한 없는 사용자가 404 와 403 의
+     * 차이만으로 "그 이슈·그 댓글이 존재하는가"를 알아낼 수 있다(존재 probe). 같은 서비스 안에서
+     * 두 메서드의 순서가 달라지면 어느 쪽이 정답인지 알 수 없게 되므로 순서 자체를 관례로 고정한다.
+     *
      * ## 실행 순서 ([create] 와 동일)
      * 1. 본문 검증 — 공백/길이.
      * 2. [IssuePermission.UPDATE] 검증, scope=[IssueScope.Issue].
@@ -177,7 +198,7 @@ class CommentApplicationService(
             commentRepository.findActive(commentId, issue.id.value)
                 ?: throw CommentNotFoundException(commentId)
 
-        // 수정은 작성자 한정. 모더레이터 우회 없음 — 삭제 게이트와 술어가 다르다 (KDoc 참조).
+        // 수정은 작성자 한정. 모더레이터 우회 없음 — 삭제 게이트와 술어가 다르므로 헬퍼 공유 금지 (KDoc 참조).
         if (existing.authorId != actor.value) {
             throw IssueAccessDeniedException(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
         }
