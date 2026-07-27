@@ -126,4 +126,57 @@ class IssueHistoryRecorder(
             group.createdAt,
         )
     }
+
+    /**
+     * 댓글 본문 수정 이력을 기록한다 (FR-CO-02).
+     *
+     * @param issueId 댓글이 달린 이슈의 UUID.
+     * @param issueKey 기록 시점의 이슈 키 스냅샷.
+     * @param actor 본문을 수정한 행위자.
+     * @param commentId 수정된 댓글의 UUID. [COMMENT_FIELD_PREFIX] 와 결합해 field 에 싣는다.
+     * @param beforeBody 수정 전 본문.
+     * @param afterBody 수정 후 본문.
+     */
+    @Transactional
+    fun recordCommentEdited(
+        issueId: UUID,
+        issueKey: String,
+        actor: ActorId,
+        commentId: UUID,
+        beforeBody: String,
+        afterBody: String,
+    ) {
+        val group =
+            IssueChangeGroup(
+                issueId = issueId,
+                issueKey = issueKey,
+                actorId = actor.value,
+                items =
+                    listOf(
+                        IssueChangeItem(
+                            field = "$COMMENT_FIELD_PREFIX$commentId",
+                            fromValue = beforeBody,
+                            toValue = afterBody,
+                        ),
+                    ),
+                // createdAt 미지정 → DB DEFAULT NOW(). import 와 달리 "지금" 이 정답이다.
+            )
+        repository.record(group)
+        log.info(
+            "history_recorded_comment_edited issueKey={} commentId={} actor={}",
+            issueKey,
+            commentId,
+            actor.value,
+        )
+    }
+
+    companion object {
+        /**
+         * 댓글 본문 변경 항목의 field prefix.
+         *
+         * `"comment:" + UUID(36자)` = 44자로 `issue_change_item.field VARCHAR(64)` 안에 들어간다.
+         * Task 11 의 삭제 댓글 마스킹과 프론트 i18n 이 같은 값을 참조해야 하므로 public 이다.
+         */
+        const val COMMENT_FIELD_PREFIX = "comment:"
+    }
 }
