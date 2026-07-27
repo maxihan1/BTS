@@ -23,6 +23,9 @@ import java.util.UUID
  * ## 메서드 목록
  * - [insert] — 댓글 1건 삽입.
  * - [listByIssue] — issueId 기준 활성 댓글 목록 (`created_at` ASC).
+ * - [findActive] — issueId 까지 대조한 활성 댓글 단건 조회.
+ * - [updateBody] — 활성 댓글의 본문·수정 시각 갱신.
+ * - [softDelete] — 활성 댓글의 `deleted_at` 기록.
  */
 @Repository
 class CommentRepository(
@@ -65,6 +68,68 @@ class CommentRepository(
             .orderBy(COMMENTS.CREATED_AT.asc())
             .fetch()
             .map(::toComment)
+    }
+
+    /**
+     * `id` + `issueId` 가 모두 일치하는 활성 댓글 1건을 반환한다.
+     *
+     * @param id      조회할 댓글 UUID.
+     * @param issueId 댓글이 속해야 하는 이슈 UUID.
+     * @return 활성 댓글. 없거나 다른 이슈 소속이거나 이미 삭제됐으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findActive(
+        id: UUID,
+        issueId: UUID,
+    ): Comment? {
+        log.debug("findActive id={} issueId={}", id, issueId)
+        return dsl.selectFrom(COMMENTS)
+            .where(COMMENTS.ID.eq(id))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
+            .fetchOne()
+            ?.let(::toComment)
+    }
+
+    /**
+     * 활성 댓글의 본문과 수정 시각을 갱신한다.
+     *
+     * @param id        수정할 댓글 UUID.
+     * @param body      새 본문 (raw markdown 원문).
+     * @param updatedAt 새 수정 시각.
+     * @return 영향 행 수. 1 = 갱신됨, 0 = 대상 없음(미존재 또는 이미 삭제됨).
+     */
+    @Transactional
+    fun updateBody(
+        id: UUID,
+        body: String,
+        updatedAt: Instant,
+    ): Int {
+        log.debug("updateBody id={}", id)
+        return dsl.update(COMMENTS)
+            .set(COMMENTS.BODY, body)
+            .set(COMMENTS.UPDATED_AT, updatedAt.toOffsetDateTime())
+            .where(COMMENTS.ID.eq(id).and(COMMENTS.DELETED_AT.isNull))
+            .execute()
+    }
+
+    /**
+     * 활성 댓글에 `deleted_at` 을 기록해 소프트 삭제한다.
+     *
+     * @param id        삭제할 댓글 UUID.
+     * @param deletedAt 삭제 시각.
+     * @return 영향 행 수. 1 = 삭제됨, 0 = 대상 없음(미존재 또는 이미 삭제됨).
+     */
+    @Transactional
+    fun softDelete(
+        id: UUID,
+        deletedAt: Instant,
+    ): Int {
+        log.debug("softDelete id={}", id)
+        return dsl.update(COMMENTS)
+            .set(COMMENTS.DELETED_AT, deletedAt.toOffsetDateTime())
+            .where(COMMENTS.ID.eq(id).and(COMMENTS.DELETED_AT.isNull))
+            .execute()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
