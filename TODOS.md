@@ -2,6 +2,41 @@
 
 # TODOS
 
+## 인프라 — 전체 스위트 동시 실행 시 flaky (2026-07-27 실측 등재)
+
+**증상.** 동일 코드에서 전체 스위트를 반복 실행하면 **실패 대상이 회차마다 바뀐다.** 단독 실행은 통과한다.
+
+**백엔드 실측 (`:modules:notification:test`, 동일 커밋 6회).**
+```
+회차1 SUCCESS · 회차2 FAILED(RR-1) · 회차3 SUCCESS · 회차4 FAILED(IC-1)
+회차5 FAILED(RR-1,RR-2) · 회차6 SUCCESS
+단독 실행 → 항상 SUCCESS
+```
+**프론트 실측 (`pnpm vitest run` 4회).** 1·2회차 실패 대상이 다르고, 3회차는
+`AutomationYamlImportDialog` + `workflows.$key`, 4회차는 **전량 통과**(519파일 8,122건).
+
+**서명.** 실패 증상이 **awaitility 15초 타임아웃**이다(비동기 pgmq 워커가 제때 처리하지 못함).
+값이 틀린 것이 아니라 **제때 안 온다**. 프론트도 같은 성격(5초 기본 타임아웃).
+⇒ 로직 결함이 아니라 **동시 실행 자원 경합**이다.
+
+**★판정 근거 — 1회 대조로 단정하지 않았다.** 같은 명령을 반복 실행해 **실패 대상이 바뀌는 것**을
+확인했다([[flaky-determination-needs-repeat-not-single-contrast]]).
+변경 전 코드(stash)에서도 **또 다른** 테스트가 실패해 선재임을 확인했다.
+
+**왜 지금 중요해졌나.** 2026-07-27 에 **백엔드 CI 를 신설**했다. 지금까지는 로컬에서 눈으로 넘기던
+것이 이제 **PR 마다 빨간불**이 된다. 첫 CI 실행에서 이것이 터질 가능성이 높다.
+
+**착수 시 첫 단계.**
+1. **먼저 flaky 목록을 확정**한다 — 같은 명령을 연속 5회 이상 돌려 실패 대상을 수집한다.
+   1회 실패로 회귀라 단정하면 존재하지 않는 버그를 쫓는다.
+2. 원인 축을 가른다 — ①Testcontainers 컨테이너 동시 기동 경합
+   ([[concurrent-testcontainers-suite-flaky]]) ②pgmq 워커 폴링 주기 대비 타임아웃 여유 부족
+   ③테스트 간 DB 상태 공유(`DELETE FROM` 범위가 정책 테이블을 안 지운다).
+3. 타임아웃을 늘리는 것은 **마지막 수단**이다 — 증상만 미루고 원인을 남긴다.
+   워커 폴링을 테스트에서 동기 트리거할 수 있는지 먼저 본다.
+
+**소관**. 인프라 / QA. **백엔드 CI 안정화의 선행 조건.**
+
 ## 📌 [프로그램] 인프라 — 계약 검증 확대 (2026-07-27 커버리지 판별식 신설)
 
 **★이 항목은 단일 결함이 아니라 프로그램이다.** 292 endpoint 를 덮는 것은 endpoint 마다
@@ -1001,7 +1036,44 @@ offset 모드에는 같은 가드가 없다.
 
 </details>
 
-## 📌 [기능 요청] issue-tracking / notification — 댓글 수정·삭제 이벤트 (2026-07-27 성격 재분류)
+## ✅ issue-tracking / notification — 댓글 삭제 이벤트 + 모더레이션 통지 (해소 2026-07-27)
+
+**해소.** FR-CO-02 모더레이션의 **빠진 절반**을 구현했다 — 내 댓글이 모더레이터에게 지워지면
+작성자에게 인앱 알림이 간다. 감사 이력은 조회해야 보이는 기록이지 밀어주는 신호가 아니었다.
+
+**★비용의 핵심이던 cross-BC 조회 포트를 만들지 않았다.** 알림 BC 가 댓글 저작자를 알아야 하는데,
+조회로 얻으려면 notification → issue-tracking 방향 신규 포트가 필요하다. 대신
+**이벤트 페이로드에 `commentAuthorId` 를 실었다** — `IssueMentioned.mentionedUserIds` 가 이미
+같은 방식으로 동작한다(`EventRecipientResolver.resolveMentioned` — 포트 조회 없음).
+이 한 가지 판단이 예상 범위를 3 BC 대공사에서 **얇은 수직 슬라이스**로 줄였다.
+
+**구현 (6지점).**
+| 지점 | 내용 |
+|---|---|
+| `IssueDomainEvent` | `IssueCommentDeleted` + `@JsonSubTypes` 등록 |
+| `IssueEventPublisher` | 웹훅·automation 분류 `when` 2곳 (**컴파일러가 강제** — else 없는 exhaustive) |
+| `CommentApplicationService.delete` | 발행. **자기 삭제도 발행**한다 — 자기제외는 수신자 해석 단계 책임 |
+| `NotificationEventType` | `ISSUE_COMMENT_DELETED` (`publishable=false` — 삭제 사실이 외부로 새면 안 된다) |
+| `RecipientRole` | `COMMENT_AUTHOR` — 페이로드에서 해석 |
+| V410 마이그레이션 | 전역 기본 정책 1행. **수신자가 작성자 하나뿐**인 이유를 주석에 명시 |
+
+**수신자를 작성자로만 한정한 이유.** 다른 이벤트는 REPORTER/ASSIGNEE/WATCHER 에게도 알리지만,
+삭제는 다르다 — 「누군가의 댓글이 지워졌다」를 참여자 전체에 알리면 **삭제된 내용이 있었다는 사실
+자체가 확산**돼 모더레이션 목적에 반한다.
+
+**뮤테이션 확증** — 페이로드에 작성자 대신 **삭제자**를 실으면(알림이 엉뚱한 사람에게 간다)
+`CO2-10b` FAILED. 그래서 테스트를 **모더레이션 삭제**(actor ≠ author) 상황으로 짰다 —
+자기 삭제로 검증하면 두 값이 같아 뒤바뀜을 못 잡는다(vacuous).
+
+**개수 가드 4종이 정확히 작동했다** ([[enum-add-breaks-crossmodule-count-guard]] 예고대로) —
+`NotificationEventType` 10→11 · `RecipientRole` 9→10 · 구독 매트릭스 20→22셀 · publishable 8→9종.
+전부 갱신했다.
+
+**의도적으로 하지 않은 것.**
+- **`IssueCommentUpdated`** — 수요 근거가 없다. 수정은 이력에 before/after 가 남고 당사자가 본인이다.
+- **automation 트리거** — 대응 `TriggerType` 이 없고(ADR D2 의 6종에 없음) 룰 스키마·조건 평가까지
+  번진다. 그 수요가 확인되면 이벤트는 **이미 있으므로** 소비만 추가하면 된다.
+  `isAutomationPublishable` 의 `false` 분기에 그 사유를 주석으로 남겼다.
 
 **★이 항목은 기술부채가 아니라 미구현 기능이다.** 결함이 아니라 **없는 기능**이며,
 착수 전 **제품 판단**(무엇을 위해 필요한가)이 선행돼야 한다. 부채 목록에서 성격을 구분해 둔다.

@@ -106,12 +106,12 @@ class UserNotificationSubscriptionControllerTest {
     // ── GET-1. 인증 사용자 → 200 + subscriptions 20개 ───────────────────────────
 
     @Test
-    fun `GET users me notifications — 인증 사용자면 200과 20개 셀 반환`() {
+    fun `GET users me notifications — 인증 사용자면 200과 22개 셀 반환`() {
         every { userSubscriptionService.getMatrix(actorId) } returns fullMatrix(allEnabled = true)
 
         mockMvc.perform(get("/api/v1/users/me/notifications").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.subscriptions.length()").value(20))
+            .andExpect(jsonPath("$.data.subscriptions.length()").value(22))
     }
 
     // ── GET-2. 셀 형식 검증 ────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ class UserNotificationSubscriptionControllerTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.subscriptions.length()").value(20))
+            .andExpect(jsonPath("$.data.subscriptions.length()").value(22))
 
         verify { userSubscriptionService.patch(actorId, any()) }
     }

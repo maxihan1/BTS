@@ -55,12 +55,12 @@ class UserSubscriptionServiceTest : DescribeSpec({
 
     describe("getMatrix — 저장 이력 0건(opt-out 기본)") {
 
-        it("findByUser 가 빈 리스트 반환 시 20셀 모두 enabled=true") {
+        it("findByUser 가 빈 리스트 반환 시 22셀 모두 enabled=true") {
             every { repository.findByUser(userId) } returns emptyList()
 
             val result: List<SubscriptionCell> = service.getMatrix(userId)
 
-            result shouldHaveSize 20
+            result shouldHaveSize 22
             result.all { cell -> cell.enabled } shouldBe true
         }
 
@@ -94,13 +94,13 @@ class UserSubscriptionServiceTest : DescribeSpec({
 
     describe("getMatrix — 저장 행으로 오버레이") {
 
-        it("(ISSUE_COMMENTED, EMAIL, false) 저장 시 해당 셀만 false, 나머지 19개는 true") {
+        it("(ISSUE_COMMENTED, EMAIL, false) 저장 시 해당 셀만 false, 나머지 21개는 true") {
             val storedSub = buildSub(NotificationEventType.ISSUE_COMMENTED, Channel.EMAIL, false)
             every { repository.findByUser(userId) } returns listOf(storedSub)
 
             val result: List<SubscriptionCell> = service.getMatrix(userId)
 
-            result shouldHaveSize 20
+            result shouldHaveSize 22
             val targetCell =
                 result.find { cell ->
                     cell.eventType == NotificationEventType.ISSUE_COMMENTED && cell.channel == Channel.EMAIL
@@ -119,7 +119,7 @@ class UserSubscriptionServiceTest : DescribeSpec({
 
             val result: List<SubscriptionCell> = service.getMatrix(userId)
 
-            result shouldHaveSize 20
+            result shouldHaveSize 22
             result.find { cell ->
                 cell.eventType == NotificationEventType.ISSUE_CREATED && cell.channel == Channel.IN_APP
             }!!.enabled shouldBe false
@@ -147,7 +147,7 @@ class UserSubscriptionServiceTest : DescribeSpec({
             val result: List<SubscriptionCell> = service.patch(userId, emptyList())
 
             verify(exactly = 0) { repository.upsert(any()) }
-            result shouldHaveSize 20
+            result shouldHaveSize 22
             result.all { cell -> cell.enabled } shouldBe true
         }
 
@@ -178,7 +178,7 @@ class UserSubscriptionServiceTest : DescribeSpec({
                     },
                 )
             }
-            result shouldHaveSize 20
+            result shouldHaveSize 22
         }
 
         it("여러 entry → 각각 upsert 호출 후 최신 매트릭스 반환") {
@@ -197,7 +197,7 @@ class UserSubscriptionServiceTest : DescribeSpec({
             val result: List<SubscriptionCell> = service.patch(userId, entries)
 
             verify(exactly = 2) { repository.upsert(any()) }
-            result shouldHaveSize 20
+            result shouldHaveSize 22
             result.find { cell ->
                 cell.eventType == NotificationEventType.ISSUE_CREATED && cell.channel == Channel.EMAIL
             }!!.enabled shouldBe false

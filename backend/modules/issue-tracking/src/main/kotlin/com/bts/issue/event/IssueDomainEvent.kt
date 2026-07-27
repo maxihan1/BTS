@@ -30,6 +30,7 @@ import java.util.UUID
     JsonSubTypes.Type(value = IssueDueSoon::class, name = "issue.due_soon"),
     JsonSubTypes.Type(value = IssueOverdue::class, name = "issue.overdue"),
     JsonSubTypes.Type(value = IssueCommented::class, name = "issue.commented"),
+    JsonSubTypes.Type(value = IssueCommentDeleted::class, name = "issue.comment_deleted"),
     JsonSubTypes.Type(value = IssueAssigned::class, name = "issue.assigned"),
 )
 sealed interface IssueDomainEvent
@@ -183,6 +184,43 @@ data class IssueCommented(
     val issueKey: IssueKey,
     val projectKey: String,
     val commentId: UUID,
+    val actorId: ActorId,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 이슈 댓글이 **삭제**되었을 때 발행되는 이벤트.
+ *
+ * ## 왜 필요한가 — FR-CO-02 모더레이션의 마무리
+ * 댓글 삭제는 작성자 **또는 `SOFT_DELETE` 보유자(모더레이터)** 가 할 수 있다. 그런데
+ * **내 댓글이 모더레이터에게 지워져도 아무 신호가 없었다.** 감사 이력(`issue_change_group`)에는
+ * 남지만 그건 조회해야 보이는 기록이지 밀어주는 신호가 아니다.
+ * 즉 이 이벤트는 새 기능이 아니라 **이미 배포된 모더레이션 기능의 빠진 절반**이다.
+ *
+ * ## [commentAuthorId] 를 페이로드에 싣는 이유 — cross-BC 포트를 만들지 않기 위해
+ * 알림 BC 가 「누구에게 알릴지」 를 알려면 댓글 저작자가 필요하다. 그것을 조회로 얻으려면
+ * notification → issue-tracking 방향의 **신규 cross-BC 포트**가 필요한데, 페이로드에 실으면 불요다.
+ * `IssueMentioned` 의 `mentionedUserIds` 가 같은 방식으로 이미 동작한다
+ * (`EventRecipientResolver.resolveMentioned` — 포트 조회 없이 페이로드에서 바로 해석).
+ *
+ * ## 자기 자신에게는 알리지 않는다
+ * [actorId] == [commentAuthorId] 인 자기 삭제는 알릴 이유가 없다. 그 판정은 수신자 해석 단계의
+ * **자기제외**가 담당하므로 이벤트는 두 값을 모두 싣기만 한다(발행 조건으로 거르지 않는다) —
+ * 발행을 조건부로 만들면 automation 이 나중에 이 이벤트를 소비할 때 누락이 생긴다.
+ *
+ * @property issueKey 댓글이 달렸던 이슈의 키.
+ * @property projectKey 소속 프로젝트 키.
+ * @property commentId 삭제된 댓글의 UUID.
+ * @property commentAuthorId 삭제된 댓글의 **작성자** ID — 알림 수신자.
+ * @property actorId 삭제를 **수행한** 행위자 ID. 자기제외 판정에 쓴다.
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.comment_deleted")
+data class IssueCommentDeleted(
+    val issueKey: IssueKey,
+    val projectKey: String,
+    val commentId: UUID,
+    val commentAuthorId: ActorId,
     val actorId: ActorId,
     val occurredAt: Instant,
 ) : IssueDomainEvent

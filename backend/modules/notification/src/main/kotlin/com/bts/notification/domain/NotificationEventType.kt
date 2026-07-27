@@ -30,6 +30,14 @@ enum class NotificationEventType(
     /** 이슈 댓글 작성 */
     ISSUE_COMMENTED("issue.commented", false),
 
+    /**
+     * 이슈 댓글 삭제 — FR-CO-02 모더레이션 통지.
+     *
+     * `publishable = false` (외부 채널 불가). 삭제된 댓글의 존재 자체가 외부 웹훅으로 새면
+     * 모더레이션 목적에 반한다. 인앱으로 **작성자에게만** 알린다.
+     */
+    ISSUE_COMMENT_DELETED("issue.comment_deleted", false),
+
     /** 이슈 마감 임박 */
     ISSUE_DUE_SOON("issue.due_soon", false),
 

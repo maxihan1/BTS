@@ -106,6 +106,8 @@ class IssueEventPublisher(
             is IssueOverdue -> false
             is IssueCommented -> false
             is IssueAssigned -> false
+            // 외부 웹훅 미발행 — 삭제된 댓글의 존재 자체가 외부로 새면 모더레이션 목적에 반한다.
+            is IssueCommentDeleted -> false
         }
 
     /**
@@ -126,6 +128,10 @@ class IssueEventPublisher(
             is IssueCreated -> true
             is IssueUpdated -> true
             is IssueCommented -> true
+            // automation 미대상 — 대응 TriggerType 이 아직 없다(ADR D2 의 6종에 comment_deleted 없음).
+            // 트리거를 추가하려면 TriggerType enum · 룰 스키마 · 조건 평가까지 함께 가야 하며,
+            // 그 수요는 아직 확인되지 않았다(TODOS §댓글 이벤트 항목 — 알림 슬라이스만 먼저 구현).
+            is IssueCommentDeleted -> false
             is IssueTransitioned -> false
             is IssueSoftDeleted -> false
             is IssueMentioned -> false

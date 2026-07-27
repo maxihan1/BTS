@@ -8,10 +8,10 @@ import io.kotest.matchers.shouldBe
 
 class NotificationEventTypeTest : DescribeSpec({
 
-    describe("NotificationEventType — 10종 존재 및 메타 검증") {
+    describe("NotificationEventType — 11종 존재 및 메타 검증") {
 
-        it("enum 상수가 정확히 10종이어야 한다") {
-            NotificationEventType.entries.size shouldBe 10
+        it("enum 상수가 정확히 11종이어야 한다") {
+            NotificationEventType.entries.size shouldBe 11
         }
 
         context("wireValue 검증") {
@@ -57,12 +57,12 @@ class NotificationEventTypeTest : DescribeSpec({
             it("ISSUE_MENTIONED.publishable == false") {
                 NotificationEventType.ISSUE_MENTIONED.publishable shouldBe false
             }
-            it("나머지 8종은 publishable == false") {
+            it("나머지 9종은 publishable == false") {
                 val nonPublishable =
                     NotificationEventType.entries.filter {
                         it != NotificationEventType.ISSUE_CREATED && it != NotificationEventType.ISSUE_TRANSITIONED
                     }
-                nonPublishable.size shouldBe 8
+                nonPublishable.size shouldBe 9
                 nonPublishable.forEach { eventType ->
                     eventType.publishable shouldBe false
                 }
@@ -85,10 +85,10 @@ class NotificationEventTypeTest : DescribeSpec({
         }
     }
 
-    describe("RecipientRole — 9종 존재 및 fromWire") {
+    describe("RecipientRole — 10종 존재 및 fromWire") {
 
-        it("enum 상수가 정확히 9종이어야 한다") {
-            RecipientRole.entries.size shouldBe 9
+        it("enum 상수가 정확히 10종이어야 한다") {
+            RecipientRole.entries.size shouldBe 10
         }
 
         it("모든 enum명이 entries에 포함된다") {
@@ -96,6 +96,8 @@ class NotificationEventTypeTest : DescribeSpec({
                 setOf(
                     "REPORTER", "ASSIGNEE", "PREVIOUS_ASSIGNEE", "WATCHER",
                     "COMPONENT_LEAD", "MENTIONED", "PROJECT_MEMBER", "RULE_OWNER", "PROJECT_ADMIN",
+                    // FR-CO-02 모더레이션 통지 — 삭제된 댓글의 작성자 (2026-07-27 추가)
+                    "COMMENT_AUTHOR",
                 )
             RecipientRole.entries.map { it.name }.toSet() shouldBe expected
         }

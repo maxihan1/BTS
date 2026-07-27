@@ -29,6 +29,7 @@ class NotificationTitleBuilder {
             NotificationEventType.ISSUE_TRANSITIONED -> "$issueRef 상태가 변경되었습니다"
             NotificationEventType.ISSUE_ASSIGNED -> "$issueRef 이슈가 할당되었습니다"
             NotificationEventType.ISSUE_COMMENTED -> "$issueRef 에 댓글이 작성되었습니다"
+            NotificationEventType.ISSUE_COMMENT_DELETED -> "$issueRef 에 작성한 댓글이 삭제되었습니다"
             NotificationEventType.ISSUE_DUE_SOON -> "$issueRef 마감이 임박했습니다"
             NotificationEventType.ISSUE_OVERDUE -> "$issueRef 마감이 초과되었습니다"
             NotificationEventType.SPRINT_STARTED -> "스프린트가 시작되었습니다"

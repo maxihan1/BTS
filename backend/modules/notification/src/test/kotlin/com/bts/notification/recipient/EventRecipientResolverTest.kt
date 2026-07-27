@@ -53,6 +53,7 @@ class EventRecipientResolverTest : DescribeSpec({
         issueKey: String? = "ATLAS-42",
         projectKey: String? = "ATLAS",
         mentionedUserIds: List<UUID> = emptyList(),
+        commentAuthorId: UUID? = null,
         reporterId: UUID? = reporter,
         actorId: UUID? = actor,
         occurredAt: Instant = fixedNow,
@@ -61,6 +62,7 @@ class EventRecipientResolverTest : DescribeSpec({
         issueKey = issueKey,
         projectKey = projectKey,
         mentionedUserIds = mentionedUserIds,
+        commentAuthorId = commentAuthorId,
         reporterId = reporterId,
         actorId = actorId,
         occurredAt = occurredAt,
@@ -70,6 +72,42 @@ class EventRecipientResolverTest : DescribeSpec({
         clearMocks(port, projectPort, visibilityPort)
         // 기본값: 모든 후보가 이슈를 볼 수 있다(전원 통과). visibility 전용 테스트에서 개별 override.
         every { visibilityPort.filterVisibleUserIds(any(), any()) } answers { secondArg() }
+    }
+
+    describe("COMMENT_AUTHOR 역할 해석 (FR-CO-02 모더레이션 통지)") {
+        /**
+         * ★포트 조회 없이 **이벤트 페이로드**에서 해석한다는 것이 이 역할의 핵심이다.
+         * 알림 BC 가 댓글 저작자를 조회하려면 notification → issue-tracking 방향의 신규 cross-BC 포트가
+         * 필요한데, 발행 측이 실어 보내면 그 의존이 생기지 않는다(MENTIONED 와 같은 방식).
+         */
+        it("commentAuthorId 를 수신자로 해석한다 — 포트 조회 없음") {
+            val author = UUID.randomUUID()
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_COMMENT_DELETED,
+                    commentAuthorId = author,
+                )
+            val matches = listOf(PolicyMatch(RecipientRole.COMMENT_AUTHOR, Channel.IN_APP))
+
+            val result = resolver.resolve(event, matches)
+
+            result shouldHaveSize 1
+            result.first().userId shouldBe author
+            result.first().channel shouldBe Channel.IN_APP
+            // 판별자 — 이슈 수신자 포트를 부르지 않는다(cross-BC 의존 부재의 증거).
+            verify(exactly = 0) { port.findRecipients(any()) }
+        }
+
+        it("commentAuthorId 가 없으면 빈 목록을 반환한다 (다른 이벤트 타입 안전)") {
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_COMMENT_DELETED,
+                    commentAuthorId = null,
+                )
+            val matches = listOf(PolicyMatch(RecipientRole.COMMENT_AUTHOR, Channel.IN_APP))
+
+            resolver.resolve(event, matches) shouldHaveSize 0
+        }
     }
 
     describe("MENTIONED 역할 해석") {
