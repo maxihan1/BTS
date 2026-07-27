@@ -1,7 +1,7 @@
-// CommentSection 컴포넌트 단위 테스트 — FR-CO-01 T6 TDD RED
+// CommentSection 컴포넌트 단위 테스트 — FR-CO-01 T6 목록·작성 / FR-CO-02 T7 수정·삭제·bodyHtml
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -224,5 +224,277 @@ describe('CommentSection — (c) 권한 게이팅', () => {
 
     expect(await screen.findByLabelText(commentStrings.commentBodyLabel)).toBeInTheDocument()
     expect(screen.queryByText(commentStrings.commentNoPermission)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-CO-02 T7 — 수정·삭제 어포던스 / 인라인 편집 / bodyHtml 렌더
+//
+// 저작자 판정은 `authStore` 의 userId 정본을 쓴다. 위 (a)~(c) 픽스처의 ALICE_UUID 는
+// 표시 이름 해석용 값이라 로그인 사용자 id 와 다르다 — 여기서는 정본을 직접 참조한다
+// (메모리 e2e-fixture-whoami-userid-alignment).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 현재 로그인 사용자(alice)가 쓴 댓글 */
+const myComment: CommentResponse = {
+  id: CM_ID_1,
+  authorId: aliceUser.userId,
+  body: '내가 쓴 댓글',
+  bodyHtml: '<p>내가 쓴 댓글</p>\n',
+  createdAt: '2026-07-27T09:00:00Z',
+  updatedAt: '2026-07-27T09:00:00Z',
+}
+
+/** 남이 쓴 댓글 (bob) */
+const othersComment: CommentResponse = {
+  id: CM_ID_2,
+  authorId: BOB_UUID,
+  body: '남이 쓴 댓글',
+  bodyHtml: '<p>남이 쓴 댓글</p>\n',
+  createdAt: '2026-07-27T10:00:00Z',
+  updatedAt: '2026-07-27T10:00:00Z',
+}
+
+/** 댓글 단건 엔드포인트 (수정·삭제) */
+const ITEM_URL = `${LIST_URL}/:commentId`
+
+/**
+ * 이슈 권한 응답을 고정한다.
+ *
+ * 훅을 `vi.mock` 하지 않고 실제 `useIssuePermissions` 를 태운 뒤 응답만 바꾼다 —
+ * 훅을 통째로 대체하면 "권한 응답 → 버튼 노출" 배선 자체가 검증 대상에서 빠진다.
+ *
+ * @param softDelete SOFT_DELETE(모더레이터) 보유 여부
+ * @returns 권한 요청이 실제로 처리된 횟수를 읽는 함수 (응답 도착 대기용)
+ */
+function stubIssuePermissions(softDelete: boolean): { servedCount: () => number } {
+  let count = 0
+  server.use(
+    http.get('*/api/v1/users/me/issue-permissions', ({ request }) => {
+      count += 1
+      const issueKey = new URL(request.url).searchParams.get('issueKey') ?? ISSUE_KEY
+      return HttpResponse.json({
+        issueKey,
+        permissions: { UPDATE: true, SOFT_DELETE: softDelete, TRANSITION: true },
+      })
+    }),
+  )
+  return { servedCount: () => count }
+}
+
+/** 댓글 목록 응답을 고정한다 */
+function stubCommentList(comments: CommentResponse[]): void {
+  server.use(http.get(LIST_URL, () => HttpResponse.json({ data: comments })))
+}
+
+describe('CommentSection — (d) 수정·삭제 버튼 노출 조건', () => {
+  it('자기 댓글에 수정·삭제 버튼이 보인다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([myComment])
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    expect(
+      within(item).getByRole('button', { name: commentStrings.commentEditButton }),
+    ).toBeInTheDocument()
+    expect(
+      within(item).getByRole('button', { name: commentStrings.commentDeleteButton }),
+    ).toBeInTheDocument()
+  })
+
+  it('남의 댓글에는 수정·삭제 버튼이 모두 없다 (SOFT_DELETE 미보유)', async () => {
+    const permissions = stubIssuePermissions(false)
+    stubCommentList([othersComment])
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    // 권한 응답 도착 전(로딩 중)에도 버튼이 없어야 한다 — fail-open 이면 여기서 걸린다
+    expect(
+      within(item).queryByRole('button', { name: commentStrings.commentEditButton }),
+    ).not.toBeInTheDocument()
+
+    // 권한 응답이 도착해 반영된 뒤에도 여전히 없어야 한다
+    await waitFor(() => {
+      expect(permissions.servedCount()).toBeGreaterThan(0)
+    })
+    expect(
+      within(item).queryByRole('button', { name: commentStrings.commentEditButton }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(item).queryByRole('button', { name: commentStrings.commentDeleteButton }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('SOFT_DELETE 보유자에게는 남의 댓글에 삭제 버튼만 보인다 (수정 버튼 없음)', async () => {
+    stubIssuePermissions(true)
+    stubCommentList([othersComment])
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    // ★이 화면의 핵심 판별자 — 삭제 권한이 수정 어포던스까지 열면 백엔드는 403 을 주는데
+    //   UI 는 버튼을 보여주는 거짓 어포던스가 된다. 사용자가 누르고 거부당한다.
+    //   백엔드 술어가 다르다. 수정 = 작성자 뿐 / 삭제 = 작성자 OR SOFT_DELETE 보유자.
+    expect(
+      await within(item).findByRole('button', { name: commentStrings.commentDeleteButton }),
+    ).toBeInTheDocument()
+    expect(
+      within(item).queryByRole('button', { name: commentStrings.commentEditButton }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('CommentSection — (e) 인라인 편집', () => {
+  it('인라인 편집 — 취소하면 원문이 복원된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    const patchSpy = vi.fn()
+    stubIssuePermissions(false)
+    stubCommentList([myComment])
+    server.use(
+      http.patch(ITEM_URL, () => {
+        patchSpy()
+        return HttpResponse.json({ data: myComment })
+      }),
+    )
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    await user.click(within(item).getByRole('button', { name: commentStrings.commentEditButton }))
+
+    const textarea = screen.getByLabelText(commentStrings.commentEditBodyLabel)
+    expect(textarea).toHaveValue(myComment.body)
+    await user.clear(textarea)
+    await user.type(textarea, '버릴 초안')
+    await user.click(screen.getByRole('button', { name: commentStrings.commentEditCancelButton }))
+
+    // 편집 폼이 닫히고 원문이 그대로 보인다
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText(commentStrings.commentEditBodyLabel),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByText(myComment.body)).toBeInTheDocument()
+    expect(screen.queryByText('버릴 초안')).not.toBeInTheDocument()
+    // 취소는 서버를 부르지 않는다
+    expect(patchSpy).not.toHaveBeenCalled()
+
+    // 다시 열면 버린 초안이 아니라 원문이 들어 있다
+    await user.click(within(item).getByRole('button', { name: commentStrings.commentEditButton }))
+    expect(screen.getByLabelText(commentStrings.commentEditBodyLabel)).toHaveValue(myComment.body)
+  })
+
+  it('인라인 편집 — 저장하면 목록에 반영된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    stubIssuePermissions(false)
+    let stored: CommentResponse[] = [myComment]
+    server.use(
+      http.get(LIST_URL, () => HttpResponse.json({ data: stored })),
+      http.patch(ITEM_URL, async ({ request }) => {
+        const payload = (await request.json()) as { body?: unknown }
+        const body = typeof payload.body === 'string' ? payload.body : ''
+        const updated: CommentResponse = {
+          ...myComment,
+          body,
+          bodyHtml: `<p>${body}</p>\n`,
+          updatedAt: '2026-07-27T12:00:00Z',
+        }
+        stored = [updated]
+        return HttpResponse.json({ data: updated })
+      }),
+    )
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    await user.click(within(item).getByRole('button', { name: commentStrings.commentEditButton }))
+
+    const textarea = screen.getByLabelText(commentStrings.commentEditBodyLabel)
+    await user.clear(textarea)
+    await user.type(textarea, '고쳐 쓴 댓글')
+    await user.click(screen.getByRole('button', { name: commentStrings.commentEditSaveButton }))
+
+    // 캐시 무효화 → 재조회 결과가 화면에 반영된다
+    await waitFor(() => {
+      expect(screen.getByText('고쳐 쓴 댓글')).toBeInTheDocument()
+    })
+    expect(screen.queryByLabelText(commentStrings.commentEditBodyLabel)).not.toBeInTheDocument()
+    expect(screen.queryByText(myComment.body)).not.toBeInTheDocument()
+  })
+})
+
+describe('CommentSection — (f) 삭제 확인', () => {
+  it('삭제는 확인 다이얼로그를 거친다 (취소하면 삭제되지 않는다)', async () => {
+    const deleteSpy = vi.fn()
+    stubIssuePermissions(false)
+    stubCommentList([myComment])
+    server.use(
+      http.delete(ITEM_URL, () => {
+        deleteSpy()
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    // Radix AlertDialog 는 fireEvent 로 조작한다 (AccountLinkList.test 선례 —
+    // 다이얼로그가 열리면 body 의 pointer-events 가 꺼져 userEvent 검사에 걸린다)
+    fireEvent.click(within(item).getByRole('button', { name: commentStrings.commentDeleteButton }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(commentStrings.commentDeleteDialogTitle)).toBeInTheDocument()
+
+    // 취소 — 확인을 거치지 않은 삭제는 절대 일어나지 않는다
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: commentStrings.commentDeleteDialogCancel }),
+    )
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+    expect(deleteSpy).not.toHaveBeenCalled()
+    expect(screen.getByText(myComment.body)).toBeInTheDocument()
+
+    // 확인하면 그때 삭제된다 — 게이트가 "영원히 안 지운다" 가 아님을 함께 고정한다
+    fireEvent.click(within(item).getByRole('button', { name: commentStrings.commentDeleteButton }))
+    const reopened = await screen.findByRole('alertdialog')
+    fireEvent.click(
+      within(reopened).getByRole('button', { name: commentStrings.commentDeleteDialogConfirm }),
+    )
+    await waitFor(() => {
+      expect(deleteSpy).toHaveBeenCalledTimes(1)
+    })
+  })
+})
+
+describe('CommentSection — (g) 수정됨 표시 / bodyHtml 렌더', () => {
+  it('updatedAt !== createdAt 이면 "(수정됨)" 이 보인다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([{ ...myComment, updatedAt: '2026-07-27T12:00:00Z' }])
+    renderSection()
+
+    expect(await screen.findByText(commentStrings.commentEditedBadge)).toBeInTheDocument()
+  })
+
+  it('updatedAt === createdAt 이면 "(수정됨)" 이 없다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([myComment])
+    renderSection()
+
+    await screen.findByRole('listitem')
+    expect(screen.queryByText(commentStrings.commentEditedBadge)).not.toBeInTheDocument()
+  })
+
+  it('서버가 준 bodyHtml 이 텍스트가 아니라 HTML 로 렌더된다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([
+      { ...myComment, body: '본문 **강조**', bodyHtml: '<p>본문 <strong>강조</strong></p>\n' },
+    ])
+    renderSection()
+
+    // ★단언 범위 — "받은 bodyHtml 을 이스케이프하지 않고 DOM 에 넣었는가"(배선)만 본다.
+    //   MSW 모크는 마크다운 변환도 정화도 하지 않으므로 "강조가 <strong> 으로 바뀐다" 나
+    //   "스크립트가 차단된다" 를 여기서 단언하면 모크를 검증하는 거짓 초록이 된다.
+    //   그 두 주장은 백엔드 CommentControllerIntegrationTest 가 증명한다.
+    const emphasized = await screen.findByText('강조')
+    expect(emphasized.tagName).toBe('STRONG')
+    // 원문 body 를 텍스트로 뿌리던 이전 동작이 남아 있으면 여기서 걸린다
+    expect(screen.queryByText('본문 **강조**')).not.toBeInTheDocument()
   })
 })
