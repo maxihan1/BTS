@@ -422,6 +422,30 @@ grep -o '"assignedAt"[^,]*' ../docs/contracts/workflow-schemes.snapshot.json
 
 **RED**. Task 1 이 커밋한 스냅샷을 **현행 Zod** 로 파싱한다. 7건이 실패해야 한다 — 그 실패가 파손의 증거다.
 
+> ✅ **A9-② 증거 확보 (2026-07-27 실측)** — 스냅샷을 **현행** Zod 로 파싱한 결과 **파손 7/8 · 정합 1/8**.
+> 임시 측정 테스트로 1회 실행 후 폐기했다(영구 테스트는 아래 코드블록 = Task 4 이후 초록이 되는 판본).
+> 같은 실행에서 프론트 전체 **516 files / 8,045 tests 전건 통과** — 측정이 기존 스위트를 건드리지 않았다.
+>
+> | endpoint | 현행 스키마 | 실패 필드 |
+> |---|---|---|
+> | GET `/workflow-schemes` | `schemeResponseSchema` | `schemeKey`·`isStandard`·`description`(null 변형) |
+> | GET `/workflow-schemes/{key}` | `schemeDetailResponseSchema` | `schemeKey`·`isStandard`·`mappings[].id`(too_small)·`mappings[].isDefault` |
+> | POST `/workflow-schemes` | `schemeResponseSchema` | `schemeKey`·`isStandard`·`usedByProjectsCount`·`mappingsCount` |
+> | PUT `/workflow-schemes/{key}` | `schemeResponseSchema` | 위 4종 + `description` |
+> | POST `/workflow-schemes/{key}/mappings` | `mappingResponseSchema` | `id`(too_small)·`issueTypeKey`·`issueTypeName`·`workflowKey`·`workflowName`·`isDefault` |
+> | GET `/projects/{k}/workflow-scheme` | `assignmentResponseSchema` | `projectKey`·`schemeKey`·`schemeName` |
+> | PUT `/projects/{k}/workflow-scheme` | `assignmentResponseSchema` | `projectKey`·`schemeKey`·`schemeName` |
+> | GET `/projects/{k}/assignable-workflow-schemes` | `assignableSchemeResponseSchema` | **없음 (정합)** |
+>
+> **★근본 원인이 실측으로 확정됐다.** `schemeResponseSchema` 가 **3 endpoint**(목록·생성·수정)에,
+> `assignmentResponseSchema` 가 **2 endpoint**(배정 조회·배정)에 재사용되는데 각 짝의 백엔드 형태가
+> 서로 다르다. 특히 배정 2종은 `SchemeResponse` ↔ `AssignmentResponse` 로 **필드가 하나도 안 겹친다**.
+> `mappings[].id:too_small` 은 어휘 문제가 아니라 **정규화 id `0` 이 `z.number().int().positive()` 에
+> 걸린 것**이므로 계약 파손이 아니다 — Task 4 에서 `nonnegative()` 로 완화하거나 스냅샷 표준값을
+> 1 로 바꾼다(전자 권장. 백엔드 BIGSERIAL 은 1부터라 실제로 0 이 오지 않지만, 계약 테스트는 값이
+> 아니라 형태를 봐야 하므로 값 제약을 계약 판정에 섞지 않는다).
+> 유일 정합인 assignable 은 이미 `.transform()` 으로 `key`→`schemeKey` 정규화를 하고 있던 endpoint 다.
+
 ```ts
 // 백엔드가 생성한 계약 스냅샷을 프론트 Zod 로 파싱해 계약 drift 를 차단하는 테스트
 import { describe, it, expect } from 'vitest'
