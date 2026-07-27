@@ -404,3 +404,132 @@ offset 모드에는 같은 가드가 없다.
 둘 다 하드코딩 목록끼리의 정합을 아무도 안 보고 있다.
 
 **소관**. `scripts/workflow/classify-task.ts`.
+
+## identity-access — CORS `allowedMethods` 에 `PATCH` 가 없다 (PR #316 후속, 선재 / 2026-07-27 등재)
+
+**증상**. `CorsConfig.kt:24` 의 허용 메서드 목록이
+`listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")` 로 **`PATCH` 가 빠져 있다.**
+
+**폭발 반경**. 프로덕션 `@PatchMapping` **40개**
+(2026-07-27 실측 — `grep -rn "@PatchMapping" backend/modules --include='*.kt' | grep -v "/test/" | wc -l`).
+댓글 수정·이슈 수정을 포함한 전 PATCH 표면이 한꺼번에 걸린다.
+
+**지금 무해한 이유**. `infra/prod/nginx.conf:51~100` 이 **단일 `server` 블록**이다 —
+SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오리진이므로
+브라우저가 preflight(사전 확인 요청) 자체를 보내지 않는다. 즉 현 토폴로지에서 CORS 설정은 사문이다.
+
+**언제 터지나**. `backend/modules/app/src/main/resources/application.yml:83` 에
+`BTS_CORS_ALLOWED_ORIGINS` 오버라이드가 이미 배선돼 있다. 프론트를 별도 도메인으로 분리하는 순간
+**PATCH 40개가 동시에 preflight 에서 차단**된다.
+
+**★왜 어떤 테스트도 못 잡나**. MSW 는 네트워크 계층 이전에서 가로채고, Vite dev 프록시는 요청을
+동일 오리진으로 만들며, MockMvc 는 `CorsFilter` 를 타지 않는다. **전 계층 초록 + 실배포만 빨강**
+이라는, 이 저장소에서 가장 늦게 발견되는 유형이다.
+
+**착수 시 첫 단계**. `PATCH` 한 단어 추가로 끝내지 말 것. `allowedMethods` 하드코딩 목록과
+**실제 컨트롤러 매핑 애너테이션이 쓰는 메서드 집합의 차집합**을 낸다(`HEAD` 필요 여부도 이때 판정).
+차집합 0 을 강제하는 검증을 하나 둔다. 위의 *`bts-review-plan` 분기 표* · *`BC_KEYWORDS`* 항목과
+**같은 뿌리** — 하드코딩 목록끼리의 정합을 아무도 안 보고 있다.
+
+**소관**. `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/CorsConfig.kt`.
+
+## issue-tracking — 댓글 수정→삭제→이력을 관통하는 실 DB 테스트가 없다 (PR #316 발견 / 2026-07-27 등재)
+
+**증상**. FR-CO-02 의 쓰기 경로 전 구간이 **실 PostgreSQL 을 한 번도 통과한 적이 없다.**
+
+**실측 (2026-07-27)**. 댓글 테스트 3종의 성격이 이름과 다르다.
+
+| 파일 | 실제 성격 |
+|---|---|
+| `comment/web/CommentControllerIntegrationTest.kt` | **MockMvc 슬라이스** (L1 주석이 그렇게 밝힘, `MockMvcBuilders.webAppContextSetup`, 서비스는 `every { }` 스텁) |
+| `comment/application/CommentApplicationServiceTest.kt` | mock |
+| `comment/repository/CommentRepositoryTest.kt` | **실 DB** (`IssueTestcontainersBase` 상속) — 단, 리포지토리 단층 |
+
+**끊긴 구간**. 컨트롤러 → 서비스 → 리포지토리 → `IssueHistoryRecorder` →
+`issue_change_group`/`item` 기록 → 조회 시 `maskDeletedCommentBodies`.
+각 층은 개별 검증되지만 **이어붙인 상태로 실 DB 를 통과한 적이 없다.**
+
+**왜 중요한가**. 트랜잭션 경계·실제 SQL 제약·마스킹 조인은 mock 으로 드러나지 않는다.
+메모리 `transaction-aware-dslcontext-rollback-test-gap` 의 거짓 red 기전과 같은 계열이다.
+특히 **삭제 후 이력 본문이 실제로 가려지는지**를 단정하는 테스트가 지금은 mock 위에만 있다.
+
+**착수 시 첫 단계**. `history/IssueChangeHistoryE2EIntegrationTest`(같은 `IssueTestcontainersBase`
+선례)를 따라 **수정 → 삭제 → 이력 조회 마스킹까지 한 테스트로 관통**시킨다. 통과를 확인한 뒤
+`maskDeletedCommentBodies` 호출을 지우는 뮤테이션으로 그 테스트가 실제로 red 가 되는지 확증한다
+(메모리 `verify-logic-vs-verify-guard`).
+
+**소관**. `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/`.
+
+## issue-tracking — `IssueChangeHistoryRepository.findByIssue` 에 삭제 댓글 마스킹이 없다 (PR #316 코드리뷰 / 2026-07-27 등재)
+
+**증상**. 이력 읽기 경로가 **셋인데 마스킹은 둘에만** 있다.
+
+| 읽기 경로 | 마스킹 |
+|---|---|
+| `IssueChangelogService.kt:246` (offset) | ✅ `maskDeletedCommentBodies` |
+| `IssueChangelogService.kt:301` (cursor) | ✅ `maskDeletedCommentBodies` |
+| `IssueChangeHistoryRepository.findByIssue` (`:40`, 구현 `JdbcIssueChangeHistoryRepository.kt:85`) | **❌ 없음** |
+
+**현재 노출은 0**. 2026-07-27 실측 — `findByIssue(` 호출 지점이 **전부 테스트**다
+(`IssueChangeHistoryE2EIntegrationTest` · `IssueMoveHistoryIntegrationTest` ·
+`JdbcIssueChangeHistoryRepositoryIntegrationTest` 등 33곳). 프로덕션 호출자 0 건.
+
+**그런데 왜 등재하나**. FR-CO-02 D7 이 마스킹을 **조회 시점 정책**으로 정했기 때문이다.
+새 기능이 이 메서드를 호출하는 순간 삭제된 댓글 본문이 그대로 응답에 실린다. 가드를 만들고
+생산 지점 일부에만 주입한 상태 — 메모리 `mutation-site-count-equals-verified-scope` 의 정확한 재현이다.
+
+**착수 시 첫 단계**. 개별 경로에 마스킹을 하나 더 붙이는 방향으로 가지 말 것.
+**마스킹을 단일 지점으로 끌어내리거나**(메모리 `fr-db-03-public-dashboard-error-instance-token-leak-done`
+의 "헬퍼 단일 지점화" 처방과 동형), `findByIssue` 를 프로덕션에서 못 쓰게 막는다(ArchUnit 규칙).
+어느 쪽이든 **읽기 경로 3종을 먼저 전수 열거**하고 시작한다.
+
+**소관**. `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/` +
+`.../issue/application/IssueChangelogService.kt`.
+
+## apps/web mocks — 댓글 MSW 모크가 백엔드와 에러 형태·판정 순서 둘 다 다르다 (PR #316 발견 / 2026-07-27 등재)
+
+**증상 (a) — 에러 본문 형태**. MSW 는 `{ errorCode: 'COMMENT_NOT_FOUND' }` 를 낸다
+(`comment-handlers.ts:219 · 225 · 232 · 262 · 271`). 백엔드는 RFC 7807 `ProblemDetail` 이다
+(`comment/web/CommentExceptionHandler.kt`, issue-tracking 예외 핸들러 공통 관례).
+
+**증상 (b) — 판정 순서 역전**. 백엔드는 `CommentApplicationService.update:194` ·
+`delete:279` 에서 **이슈 `UPDATE` 권한 게이트를 가장 먼저** 통과시킨다 → 권한 없는 사용자는
+**댓글 존재 여부와 무관하게 403**. MSW 에는 그 게이트가 **아예 없고** 댓글 조회 404 를 먼저 낸다
+(`comment-handlers.ts:224` PATCH · `:260` DELETE) → 같은 상황에서 **404**.
+
+**어긋나는 지점은 정확히 하나다**. 작성자 판정(404 → 403)은 양쪽이 일치한다
+(백엔드 `update:200 → 203`, MSW `224 → 231`). 갈리는 건 **이슈 수준 권한 게이트의 부재**다.
+
+**왜 안 걸렸나**. 프론트 테스트는 mock 만 본다. 모크가 백엔드와 다르게 답해도 전량 초록이며,
+「MSW 가 MSW 와 맞는」 상태가 유지된다(위 §워크플로우 스킴 계약 파손 항목의 L91 과 같은 기전).
+
+**착수 시 첫 단계**. `comment-handlers` 에 게이트를 하나 끼워 넣는 것으로 끝내지 말 것 —
+다음 엔드포인트에서 또 갈린다. **모크와 백엔드의 판정 순서를 대조하는 기준을 먼저 정한다.**
+에러 형태 정렬(`errorCode` → ProblemDetail)은 **프론트 에러 파서가 실제로 무엇을 읽는지**
+확인한 뒤에 착수한다 — 파서까지 같이 안 바꾸면 화면 문구가 조용히 깨진다.
+관련 — 위 *`ProjectWorkflowSchemeController` 의 404/403 순서* 항목과 같은 계열,
+메모리 `msw-dual-handler-e2e-shadow`.
+
+**소관**. `apps/web/src/mocks/comment-handlers.ts`.
+
+## issue-tracking — 렌더 단일 지점 판별자 관련 (PR #316 코드리뷰, ★미검증 이월 / 2026-07-27 등재)
+
+**이 항목은 주장이 아니라 미해결 질문이다.** 재확인에서 원 진술을 확증하지 못했으므로,
+사실로 등재하지 않고 **질문 형태로 보존**한다.
+
+**원 메모 인용**. "하네스 판별자가 단일 단정(`CommentControllerIntegrationTest:498`)에 의존".
+
+**2026-07-27 재확인 결과**. `:498` 은 `updatedAt` 단정이다. 렌더 단일 지점(`CommentView.of`)이
+살아 있는지는 **세 테스트가 다중 단정**한다 — CO2-P2(`:508`, `<strong>`·`<code>`),
+CO2-P3(`:527`, `<script>` 제거), CO2-P4(이벤트 핸들러 속성 제거). 원 진술과 맞지 않는다.
+
+**착수 시 첫 단계**. "어떤 판별자가 단일 단정에 의존하는가" 를 **먼저 특정**한다.
+특정되지 않으면 이 항목을 닫는다. 원 근거는
+`~/.gstack/projects/maxihan1-BTS/checkpoints/20260727-164910-*.md` 뿐이다.
+
+**★이 항목이 미검증으로 남은 경위 (재발 방지)**. 위 4건과 이 1건은 체크포인트 메모에
+*"TODOS.md 등재 6건"* 이라고 적혀 있었으나 **실제로는 5건 전부 미등재**였다.
+2026-07-27 `git show c90ca8fb6 -- TODOS.md | grep "^+## "` 로 확정 — PR #316 이 추가한 섹션은
+5개이고 그 목록에 없었다. **체크포인트의 "등재했다" 진술은 저장소에서 검증해야 한다.**
+
+**소관**. 판별자 특정 후 결정.
