@@ -457,7 +457,26 @@ IdentityAccessIssuePermissionResolver.kt:86
 
 **소관**. FR-PM-06.
 
-## issue-tracking — 이력 조회 응답 크기에 애플리케이션 상한이 없다 (PR #316 증폭, 선재)
+## ✅ issue-tracking — offset 페이징 응답 크기 상한 (해소 2026-07-27)
+
+**해소.** `requirePageSizeWithinLimit(pageable)` 단일 헬퍼를 **offset 분기 2곳 전수**에 주입했다.
+cursor 모드와 같은 상한(100)·같은 400 을 쓴다.
+
+**★실측이 범위를 넓혔다.** 원 기록은 changelog 단독 문제로 적었으나 `@PageableDefault` 전수 grep 결과
+`IssueController` 에 offset 지점이 **2개**였다 — `list()` 와 `changelog()`. 한 곳만 막으면 절반만 닫힌다.
+
+**★문서가 구현보다 앞서 있었다.** `MAX_CURSOR_LIMIT` 의 KDoc 이 이미 *"cursor 모드 + offset 모드
+공통 최대 페이지 크기"* 라 적고 있었는데 offset 은 강제하지 않았다. 이번 변경으로 그 문장이 참이 됐다.
+
+**무음 절단 대신 400 을 택한 이유** — 무음 절단은 **API 를 직접 호출하는 소비자**에게 "덜 받았다" 를
+알리지 않아, 페이지네이션을 직접 도는 스크립트가 데이터를 조용히 누락한다.
+
+**뮤테이션 확증** — 두 주입 지점을 모두 제거하자 대응 테스트 2건이 각각 FAILED.
+경계값(size=100 → 200) 테스트도 함께 뒀다 — "전부 400" 으로 무너진 상태를 초록으로 오인하지 않기 위해서다.
+
+**TODOS 옵션 (c)(이력 본문 서버 절단)는 별건으로 남긴다** — 상한과 직교이고 마스킹 계약과 얽힌다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. `GET /api/v1/issues/{key}/changelog` 의 offset 모드는 `@PageableDefault(size = 20)`
 (`IssueController.kt:514`) **기본값만** 있고 애플리케이션 정책 상한이 없다. `?size=` 로 올릴 수 있고,
@@ -476,6 +495,8 @@ offset 모드에는 같은 가드가 없다.
 유일한 지점이다. 셋은 배타적이지 않다. 결정 후 **큰 `size` 로 요청하는 통합 테스트 1건**을 남긴다.
 
 **소관**. 페이지네이션 정책. 이 PR 이 만든 성질이 아니라 드러낸 성질이다.
+
+</details>
 
 ## issue-tracking / notification — 댓글 수정·삭제 이벤트가 발행되지 않는다 (PR #316 범위 밖)
 
@@ -544,7 +565,32 @@ offset 모드에는 같은 가드가 없다.
 
 </details>
 
-## identity-access — CORS `allowedMethods` 에 `PATCH` 가 없다 (PR #316 후속, 선재 / 2026-07-27 등재)
+## ✅ identity-access — CORS `PATCH`·`Content-Disposition` 누락 (해소 2026-07-27)
+
+**해소.** `allowedMethods` 에 `PATCH` 추가 + `exposedHeaders = listOf("Content-Disposition")` 신설.
+조립 레벨 판별식 `CorsAllowedMethodsCoverageTest`(app 모듈)로 차집합 0 을 강제한다.
+
+**★누락이 하나가 아니라 둘이었다.** `exposedHeaders` 자체가 없었다 — `Content-Disposition` 은
+CORS-safelisted 응답 헤더가 아니라 명시하지 않으면 cross-origin 에서 JS 가 읽지 못한다.
+프론트 4곳(`search.ts:222·298`, `automation-rules.ts:186`, `imports.ts:137`)이 이 헤더에서
+다운로드 파일명을 뽑는다. **PATCH 만 고치고 두면 같은 사고가 한 번 더 난다.**
+
+**★테스트가 결함을 정답으로 못박고 있었다.** `CorsConfigTest` 가 `containsExactlyInAnyOrder` 로
+PATCH 없는 집합을 단정해, 결함 상태가 "테스트 통과" 로 보였다. 하드코딩 목록끼리의 대조라 필연이다.
+
+**판별식** — `RequestMappingInfoHandlerMapping` 에서 **실제 등록된** 핸들러의 메서드 집합을 뽑아
+`allowedMethods` 와 차집합을 낸다. 목록끼리 대조하지 않는다. 조립 모듈에 둔 이유는 `CorsConfig` 가
+identity-access 에 있어도 그 설정은 **9 BC 전체 요청**에 적용되기 때문이다.
+수집 0건 방지 하한 + PATCH 등록 존재 단언으로 공허 통과를 막았다.
+
+**HEAD 는 불필요 판정** — `RequestMethod.HEAD` / `@RequestMapping(method=HEAD)` 생산 지점 0건.
+
+**뮤테이션 확증** — `allowedMethods` 에서 PATCH 를 빼자 커버리지 테스트 FAILED.
+
+**부수 — ktlint baseline 633→632.** 이 파일 편집으로 줄이 밀리자 baseline 이 **line 번호로** 고정하던
+선재 위반이 되살아났다. baseline 을 늘리지 않고 코드로 해소한 뒤 stale 엔트리를 제거했다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. `CorsConfig.kt:24` 의 허용 메서드 목록이
 `listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")` 로 **`PATCH` 가 빠져 있다.**
@@ -571,6 +617,8 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 **같은 뿌리** — 하드코딩 목록끼리의 정합을 아무도 안 보고 있다.
 
 **소관**. `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/CorsConfig.kt`.
+
+</details>
 
 ## issue-tracking — 댓글 수정→삭제→이력을 관통하는 실 DB 테스트가 없다 (PR #316 발견 / 2026-07-27 등재)
 
