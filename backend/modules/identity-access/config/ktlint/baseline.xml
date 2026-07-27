@@ -233,7 +233,6 @@
         <error line="33" column="31" source="standard:function-signature" />
         <error line="33" column="72" source="standard:function-signature" />
         <error line="33" column="84" source="standard:function-signature" />
-        <error line="78" column="20" source="standard:argument-list-wrapping" />
         <error line="78" column="28" source="standard:argument-list-wrapping" />
         <error line="78" column="35" source="standard:argument-list-wrapping" />
         <error line="78" column="45" source="standard:argument-list-wrapping" />

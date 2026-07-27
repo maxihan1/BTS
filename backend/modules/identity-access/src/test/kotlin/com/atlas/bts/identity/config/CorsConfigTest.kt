@@ -69,14 +69,41 @@ class CorsConfigTest {
 
     // --- methods ---
 
+    /**
+     * ★이 테스트는 2026-07-27 이전까지 **결함을 박제하고 있었다.**
+     * `containsExactlyInAnyOrder` 로 `PATCH` 없는 집합을 정답으로 못박아, 프로덕션
+     * `@PatchMapping` 40개가 CORS 에서 막히는 상태가 "테스트 통과" 로 보였다.
+     *
+     * 하드코딩 목록 대조라는 성질은 그대로 두되(이 파일은 단위 슬라이스다), **차집합 0 강제**는
+     * 조립 컨텍스트에서 실제 핸들러 매핑을 읽는 `CorsAllowedMethodsCoverageTest`(app 모듈)가 진다.
+     * 여기는 "무엇을 의도했는가", 거기는 "의도가 실제를 덮는가" 를 각각 고정한다.
+     */
     @Test
-    fun `allowed methods 에 GET POST PUT DELETE OPTIONS 가 포함된다`() {
+    fun `allowed methods 에 GET POST PUT PATCH DELETE OPTIONS 가 포함된다`() {
         val source = buildSource(listOf("http://localhost:5173"))
         val cfg = resolveConfig(source, "/api/v1/issues")
 
         assertThat(cfg!!.allowedMethods).containsExactlyInAnyOrder(
-            "GET", "POST", "PUT", "DELETE", "OPTIONS",
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS",
         )
+    }
+
+    /**
+     * `Content-Disposition` 은 CORS-safelisted 응답 헤더가 아니다 — 명시하지 않으면
+     * cross-origin 에서 JS 가 읽을 수 없다(`headers.get(...)` → null).
+     * 프론트 4곳이 이 헤더에서 다운로드 파일명을 뽑으므로, 빠지면 파일명이 조용히 사라진다.
+     */
+    @Test
+    fun `exposed headers 에 Content-Disposition 이 포함된다`() {
+        val source = buildSource(listOf("http://localhost:5173"))
+        val cfg = resolveConfig(source, "/api/v1/issues")
+
+        assertThat(cfg!!.exposedHeaders).contains("Content-Disposition")
     }
 
     // --- headers ---
@@ -87,7 +114,9 @@ class CorsConfigTest {
         val cfg = resolveConfig(source, "/api/v1/issues")
 
         assertThat(cfg!!.allowedHeaders).containsExactlyInAnyOrder(
-            "Authorization", "X-XSRF-TOKEN", "Content-Type",
+            "Authorization",
+            "X-XSRF-TOKEN",
+            "Content-Type",
         )
     }
 
