@@ -272,6 +272,35 @@ FR-CO-02 분류를 받았을 상황이었다). **plan 이 진실출처.**
 > **선행 조건.** dev postgres 5433 가동(`docker ps --filter name=bts-postgres-dev`).
 > 기존 조립 테스트의 컨텍스트 설정을 발명하지 말고 복사할 것.
 
+**★실현 가능성 실측 완료 (2026-07-27, impl 착수 직전).** 조립에서 스킴 endpoint 를 호출하려면
+#314 가 붙인 `MANAGE_SCHEME`/Global 게이트를 통과하는 **실제 인증**이 필요하고, prod 프로파일이라
+`AlwaysAllowWorkflowSchemePermissionResolver`(`@Profile("!prod")`)가 꺼져 있어 **실 권한 데이터**가 필요하다.
+그 조리법이 이미 있다 — **`ProjectCreatePermissionProdBootTest.kt` 를 복사한다.**
+
+| 필요한 것 | 기존 헬퍼 | 위치 |
+|---|---|---|
+| 실 Tomcat + prod 프로파일 + JWT 키 | `ProdAssemblyHttpTestBase` 상속 | `app/src/test/.../ProdAssemblyHttpTestBase.kt` |
+| 사용자 시드 | `seedUser(id, username)` — `INSERT INTO users (id, username)` | `ProjectCreatePermissionProdBootTest.kt:166-171` |
+| 토큰 | `seedPat(userId, rawToken)` — `token_hash` = SHA-256(raw) | `:173-174` |
+| SYSTEM_ADMIN | `seedSystemAdmin(userId)` | `:96` |
+| 전역 권한 grant | `seedGrant(userId)` | `:89` |
+
+> ⚠️ **★PAT Bearer 를 써야 하는 이유 (`:50-51` 이 명시).** `Authorization: Bearer pat_…` 는
+> ① 중앙 `SecurityConfig` 의 `patBearerMatcher` 로 **CSRF-ignore** 되고
+> ② **비-Jwt principal 이라 `MfaEnrollmentGateFilter` 를 우회**한다.
+> SYSTEM_ADMIN 은 MFA 미등록 시 그 게이트에서 **403** 이므로, JWT 로 하면 관리자 endpoint 를
+> 조립에서 관측할 수 없다. 이 우회를 모르고 짜면 전 endpoint 가 403 으로 나와 "파손"으로 오판한다.
+>
+> ⚠️ **반대 함정도 있다.** 메모리 [[authenticated-error-path-token-leak-done]] 이
+> *"PAT 측정 = 거짓음성(saveContext 미호출)"* 을 기록한다. 그것은 `/error` 경로 측정에 한정된 이야기이나,
+> PAT 경로가 JWT 경로와 **다른 필터 조합**을 탄다는 사실 자체는 유효하다. 스냅샷은 **본문 형태**만
+> 취하므로 영향 없으나, 이 스냅샷을 "인증 동작의 증거"로는 쓰지 말 것.
+
+**추가 시드 필요분 (스킴 8 endpoint 용).** 위 4종 외에 ① 프로젝트 1개 + 그 프로젝트의 `PROJECT_ADMIN`
+멤버십(=`ASSIGN_SCHEME`/Project 통과용) ② 표준 스킴은 `V201` 시드로 이미 존재 ③ 매핑추가·생성·수정은
+테스트가 직접 만든다. #314 잔여위험 5 주의 — `MANAGE_WORKFLOW` 는 **기본 권한 스킴**의 `PROJECT_ADMIN`
+에만 시드돼 있으므로 프로젝트를 기본 스킴에 두어야 배정 endpoint 가 통과한다.
+
 **왜 이것이 1번인가.** 이 파일이 이 PR 의 **유일한 계약 정본**이 된다. 프론트는 이것을 파싱해 검증하고,
 백엔드는 이것이 stale 하면 실패한다. 양방향이 닫힌다.
 
