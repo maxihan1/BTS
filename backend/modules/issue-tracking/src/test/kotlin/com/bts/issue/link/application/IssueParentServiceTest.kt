@@ -13,6 +13,7 @@ import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssuePermissionResolver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
@@ -26,7 +27,17 @@ class IssueParentServiceTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
     val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
-    val sut = IssueParentService(repo, archiveGuard)
+
+    // 이 파일은 부모-자식 도메인 규칙(순환·자기참조·미존재)을 검증한다. 권한 판정은 관심사가 아니므로
+    // 전부 허용으로 고정한다 — 권한 거부 경로는 IssueLinkControllerIntegrationTest 가 덮는다.
+    val permissionResolver =
+        mockk<IssuePermissionResolver> {
+            every { hasPermission(any(), any(), any()) } returns true
+        }
+    val sut = IssueParentService(repo, archiveGuard, permissionResolver)
+
+    /** 권한이 관심사가 아닌 테스트용 actor. */
+    val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
     // 공통 픽스처
     val childId = UUID.fromString("00000000-0000-4000-8000-000000000001")
@@ -70,12 +81,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, parentKey) }
+                runCatching { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -88,7 +99,7 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
         }
@@ -101,12 +112,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, parentKey) }
+                runCatching { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -118,12 +129,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("ParentSelfReferenceException(422) 을 던진다") {
                 shouldThrow<ParentSelfReferenceException> {
-                    sut.setParent(childKey, childKey)
+                    sut.setParent(actor, childKey, childKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, childKey) }
+                runCatching { sut.setParent(actor, childKey, childKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -144,7 +155,7 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("childId == parentId 이면 ParentSelfReferenceException 을 던진다") {
                 shouldThrow<ParentSelfReferenceException> {
-                    sut.setParent(key1, key2)
+                    sut.setParent(actor, key1, key2)
                 }
             }
         }
@@ -160,12 +171,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("ParentCycleException(409) 을 던진다") {
                 shouldThrow<ParentCycleException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, parentKey) }
+                runCatching { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -180,7 +191,7 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("ParentCycleException(409) 을 던진다") {
                 shouldThrow<ParentCycleException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
         }
@@ -194,7 +205,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, parentId) 가 1회 호출된다") {
-                sut.setParent(childKey, parentKey)
+                sut.setParent(actor, childKey, parentKey)
                 verify(exactly = 1) { repo.updateParent(childId, parentId) }
             }
         }
@@ -208,7 +219,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, parentId) 가 1회 호출된다") {
-                sut.setParent(childKey, parentKey)
+                sut.setParent(actor, childKey, parentKey)
                 verify(exactly = 1) { repo.updateParent(childId, parentId) }
             }
         }
@@ -225,12 +236,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.clearParent(childKey)
+                    sut.clearParent(actor, childKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.clearParent(childKey) }
+                runCatching { sut.clearParent(actor, childKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -242,7 +253,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, null) 가 1회 호출된다") {
-                sut.clearParent(childKey)
+                sut.clearParent(actor, childKey)
                 verify(exactly = 1) { repo.updateParent(childId, null) }
             }
         }
@@ -254,7 +265,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, null) 가 1회 호출된다") {
-                sut.clearParent(childKey)
+                sut.clearParent(actor, childKey)
                 verify(exactly = 1) { repo.updateParent(childId, null) }
             }
         }
@@ -271,7 +282,7 @@ class IssueParentServiceTest : DescribeSpec({
             it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
                 every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
 
-                shouldThrow<ProjectArchivedException> { sut.setParent(childKey, parentKey) }
+                shouldThrow<ProjectArchivedException> { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -280,7 +291,7 @@ class IssueParentServiceTest : DescribeSpec({
             it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
                 every { archiveGuard.checkByIssue(parentKey) } throws ProjectArchivedException(parentKey.value)
 
-                shouldThrow<ProjectArchivedException> { sut.setParent(childKey, parentKey) }
+                shouldThrow<ProjectArchivedException> { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -292,7 +303,7 @@ class IssueParentServiceTest : DescribeSpec({
                 every { repo.collectAncestors(parentId) } returns emptyList()
                 every { repo.updateParent(childId, parentId) } returns Unit
 
-                sut.setParent(childKey, parentKey)
+                sut.setParent(actor, childKey, parentKey)
 
                 verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
                 verify(exactly = 1) { archiveGuard.checkByIssue(parentKey) }
@@ -303,7 +314,7 @@ class IssueParentServiceTest : DescribeSpec({
             it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
                 every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
 
-                shouldThrow<ProjectArchivedException> { sut.clearParent(childKey) }
+                shouldThrow<ProjectArchivedException> { sut.clearParent(actor, childKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -313,7 +324,7 @@ class IssueParentServiceTest : DescribeSpec({
                 every { repo.findByKey(childKey) } returns makeIssue(childId, childKey, pid = parentId)
                 every { repo.updateParent(childId, null) } returns Unit
 
-                sut.clearParent(childKey)
+                sut.clearParent(actor, childKey)
 
                 verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
             }

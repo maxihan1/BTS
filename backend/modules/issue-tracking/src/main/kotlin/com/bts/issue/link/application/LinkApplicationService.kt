@@ -2,6 +2,8 @@
 
 package com.bts.issue.link.application
 
+import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.DuplicateLinkException
 import com.bts.issue.link.domain.IssueLink
@@ -13,6 +15,9 @@ import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.link.repository.LinkedIssueRow
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -88,6 +93,7 @@ class LinkApplicationService(
     private val issueRepository: IssueRepository,
     private val linkRepository: IssueLinkRepository,
     private val archiveGuard: ProjectArchiveGuard,
+    private val permissionResolver: IssuePermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -113,6 +119,7 @@ class LinkApplicationService(
      */
     @Transactional
     fun createLink(
+        actor: ActorId,
         sourceKey: IssueKey,
         targetKey: IssueKey,
         linkTypeCode: String,
@@ -123,6 +130,14 @@ class LinkApplicationService(
             targetKey.value,
             linkTypeCode,
         )
+        // ★권한을 **리소스 조회보다 먼저** 건다 — 뒤에 두면 권한 없는 사용자가 404/409 차이로
+        // 이슈 실재를 열거한다([[auth-extraction-before-resource-lookup]]).
+        //
+        // ★★양끝을 모두 검사한다. source 만 보면 볼 수 없는 이슈를 target 으로 지목해
+        // 「존재하지 않음(404)」 과 「이미 링크됨(409)」 의 차이로 실재를 확인할 수 있다.
+        // 링크는 양방향 관계이므로 쓰기 권한도 양쪽에 필요하다는 것이 의미상으로도 맞다.
+        checkPermission(actor, sourceKey, IssuePermission.UPDATE)
+        checkPermission(actor, targetKey, IssuePermission.UPDATE)
         // 아카이브 잠금 — source/target 어느 한쪽이라도 아카이브된 프로젝트 소속이면 409 (양방향 관계 쓰기).
         archiveGuard.checkByIssue(sourceKey)
         archiveGuard.checkByIssue(targetKey)
@@ -199,8 +214,13 @@ class LinkApplicationService(
      * @throws LinkedIssueNotFoundException 이슈가 없거나 소프트삭제된 경우.
      */
     @Transactional(readOnly = true)
-    fun listLinks(key: IssueKey): LinkListResult {
+    fun listLinks(
+        actor: ActorId,
+        key: IssueKey,
+    ): LinkListResult {
         log.debug("listLinks key={}", key.value)
+        // 읽기이므로 VIEW. 조회보다 먼저 걸어야 404 로 실재를 열거당하지 않는다.
+        checkPermission(actor, key, IssuePermission.VIEW)
 
         val issue =
             issueRepository.findByKey(key)
@@ -227,10 +247,12 @@ class LinkApplicationService(
      */
     @Transactional
     fun deleteLink(
+        actor: ActorId,
         key: IssueKey,
         linkId: Long,
     ) {
         log.debug("deleteLink key={} linkId={}", key.value, linkId)
+        checkPermission(actor, key, IssuePermission.UPDATE)
         archiveGuard.checkByIssue(key)
 
         issueRepository.findByKey(key)
@@ -261,4 +283,30 @@ class LinkApplicationService(
             otherCurrentStateKey = otherCurrentStateKey,
             otherIssueId = otherIssueId,
         )
+
+    /**
+     * 이슈 스코프 권한을 강제한다 — 미보유 시 [IssueAccessDeniedException].
+     *
+     * 형제 `WorklogService.checkPermission` 과 **같은 형태**다. 술어를 새로 만들지 않는다.
+     *
+     * ## 2026-07-27 이전에는 이 게이트가 아예 없었다
+     * 이 서비스는 `permissionResolver` 를 주입조차 받지 않았고, 막고 있던 것은
+     * `SecurityConfig` 의 `.authenticated()` 뿐이었다. ⇒ 인증만 통과하면 누구나
+     * **자기가 멤버가 아닌 프로젝트의, 볼 수도 없는 기밀 이슈**에 링크를 걸고 지울 수 있었다.
+     *
+     * 잠복한 이유는 컨트롤러 KDoc 이 *"issue_links / parent_id 는 created_by 를 저장하지 않으므로
+     * actor 추출이 불필요하다"* 라고 적어둔 데 있다 — **「누가 만들었는지 기록 안 함」 을
+     * 「누가 만들어도 되는지 검사 안 해도 됨」 의 근거로** 쓴 문장이다. 감사 흔적의 부재는
+     * 권한 검사 면제의 근거가 아니다.
+     */
+    private fun checkPermission(
+        actor: ActorId,
+        issueKey: IssueKey,
+        permission: IssuePermission,
+    ) {
+        val scope = IssueScope.Issue(issueKey.value)
+        if (!permissionResolver.hasPermission(actor.value, permission, scope)) {
+            throw IssueAccessDeniedException(actor, permission, scope)
+        }
+    }
 }

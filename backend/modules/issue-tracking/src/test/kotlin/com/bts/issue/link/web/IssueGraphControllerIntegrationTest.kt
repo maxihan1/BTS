@@ -11,6 +11,9 @@ import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -28,6 +31,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -122,18 +127,41 @@ class IssueGraphControllerIntegrationTest {
             return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
         }
 
+        /**
+         * 이 파일은 그래프 조회를 검증한다 — 권한 판정은 관심사가 아니므로 전부 허용.
+         * 권한 거부 경로는 [IssueLinkControllerIntegrationTest] 가 덮는다.
+         */
+        @Bean
+        open fun issuePermissionResolver(): IssuePermissionResolver =
+            object : IssuePermissionResolver {
+                override fun hasPermission(
+                    actorId: UUID,
+                    permission: IssuePermission,
+                    scope: IssueScope,
+                ): Boolean = true
+            }
+
         @Bean
         open fun linkApplicationService(
             issueRepository: IssueRepository,
             issueLinkRepository: IssueLinkRepository,
             archiveGuard: ProjectArchiveGuard,
-        ): LinkApplicationService = LinkApplicationService(issueRepository, issueLinkRepository, archiveGuard)
+            permissionResolver: IssuePermissionResolver,
+        ): LinkApplicationService {
+            return LinkApplicationService(
+                issueRepository,
+                issueLinkRepository,
+                archiveGuard,
+                permissionResolver,
+            )
+        }
 
         @Bean
         open fun issueParentService(
             issueRepository: IssueRepository,
             archiveGuard: ProjectArchiveGuard,
-        ): IssueParentService = IssueParentService(issueRepository, archiveGuard)
+            permissionResolver: IssuePermissionResolver,
+        ): IssueParentService = IssueParentService(issueRepository, archiveGuard, permissionResolver)
 
         @Bean
         open fun issueGraphService(
@@ -189,6 +217,14 @@ class IssueGraphControllerIntegrationTest {
     @BeforeEach
     fun setUpEach() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // 링크 API 가 2026-07-27 부터 CurrentActor 로 actor 를 추출한다 — 인증 컨텍스트 없으면 401 이다.
+        // 이 파일은 그래프 조회를 검증하므로 링크 생성 헬퍼가 통과할 수 있도록 컨텍스트를 심는다.
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+                emptyList(),
+            )
         conn().use { c ->
             c.createStatement().use { stmt ->
                 stmt.execute("DELETE FROM issue_links")
