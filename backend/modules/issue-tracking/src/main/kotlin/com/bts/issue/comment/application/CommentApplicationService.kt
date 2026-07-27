@@ -1,4 +1,5 @@
 // 댓글 유스케이스 오케스트레이션 서비스 — create(UPDATE 게이트) + update(작성자 한정) + list(VIEW 게이트+렌더링)
+// + delete(작성자 OR SOFT_DELETE 모더레이터, FR-CO-02)
 
 package com.bts.issue.comment.application
 
@@ -225,6 +226,62 @@ class CommentApplicationService(
 
         log.info("comment_updated issueKey={} commentId={} actor={}", issueKey.value, commentId, actor.value)
         return existing.copy(body = body, updatedAt = now)
+    }
+
+    /**
+     * 댓글을 소프트 삭제한다 — **작성자 본인 또는 [IssuePermission.SOFT_DELETE] 보유자(모더레이터).**
+     *
+     * 권한 평가 scope 는 [IssueScope.Issue] 고정이다 (클래스 KDoc "권한 scope 설계" 참조).
+     *
+     * ## 실행 순서
+     * 1. [IssuePermission.UPDATE] 검증 — 공통 전제. 작성자·모더레이터 판정보다 먼저다(존재 probe 방지).
+     * 2. 아카이브 가드.
+     * 3. 이슈 resolve → 댓글 resolve([CommentRepository.findActive] — `issue_id` 대조 포함).
+     * 4. 작성자 **또는** 모더레이터 판정 — 둘 다 아니면 403.
+     * 5. [CommentRepository.softDelete] — 영향 행 0 이면 404 (동시 삭제 레이스).
+     *
+     * @param actor 삭제를 수행하는 행위자.
+     * @param issueKey 댓글이 속한 이슈 키.
+     * @param commentId 삭제할 댓글 UUID.
+     * @throws [IssueAccessDeniedException] UPDATE 미보유, 또는 작성자도 모더레이터도 아닐 때 (403).
+     * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
+     * @throws [CommentNotFoundException] 댓글 미존재·이미 삭제됨·다른 이슈 소속일 때 (404).
+     */
+    @Suppress("ThrowsCount") // 403/404 각기 다른 오류코드라 분리 throw 가 명확 ([update] 와 동일 사유)
+    fun delete(
+        actor: ActorId,
+        issueKey: IssueKey,
+        commentId: UUID,
+    ) {
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
+
+        val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+        val existing =
+            commentRepository.findActive(commentId, issue.id.value)
+                ?: throw CommentNotFoundException(commentId)
+
+        // 작성자 OR 모더레이터. hasPermission 은 질의형(던지지 않는다) — 여기서 던지는 판정을 쓰면
+        // SOFT_DELETE 미보유 작성자가 자기 댓글도 못 지운다.
+        val scope = IssueScope.Issue(issueKey.value)
+        val isAuthor = existing.authorId == actor.value
+        val isModerator = permissionResolver.hasPermission(actor.value, IssuePermission.SOFT_DELETE, scope)
+        if (!isAuthor && !isModerator) {
+            throw IssueAccessDeniedException(actor, IssuePermission.SOFT_DELETE, scope)
+        }
+
+        // 동시 삭제 레이스 방어 — findActive 통과 후 다른 트랜잭션이 삭제를 커밋한 경우 0 행이 돌아온다.
+        if (commentRepository.softDelete(commentId, issue.id.value, Instant.now(clock)) == 0) {
+            throw CommentNotFoundException(commentId)
+        }
+
+        log.info(
+            "comment_deleted issueKey={} commentId={} actor={} moderated={}",
+            issueKey.value,
+            commentId,
+            actor.value,
+            !isAuthor,
+        )
     }
 
     /**
