@@ -1,4 +1,4 @@
-// 댓글(issue-tracking BC) REST API 클라이언트 — 목록 조회 + 작성 2함수 + Zod 스키마
+// 댓글(issue-tracking BC) REST API 클라이언트 — 목록 조회·작성·수정·삭제 4함수 + Zod 스키마
 import { z } from 'zod'
 import { apiFetch, ApiError } from './client'
 
@@ -40,6 +40,10 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 
 /** 이슈별 댓글 엔드포인트 경로 */
 const commentsPath = (key: string): string => `/api/v1/issues/${key}/comments`
+
+/** 댓글 단건 엔드포인트 경로 (수정·삭제) */
+const commentItemPath = (key: string, commentId: string): string =>
+  `${commentsPath(key)}/${commentId}`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 쿼리 키
@@ -111,4 +115,54 @@ export async function addComment(key: string, body: string): Promise<CommentResp
   }
   const raw: unknown = await res.json()
   return dataResponseSchema(commentResponseSchema).parse(raw).data
+}
+
+/**
+ * 댓글 본문을 수정한다 — 작성자 본인만 가능하다.
+ *
+ * PATCH /api/v1/issues/{key}/comments/{commentId} → 200 { data: CommentResponse }
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @param commentId 수정할 댓글 UUID
+ * @param body 새 댓글 본문 (Markdown 원문)
+ * @returns 수정된 댓글
+ * @throws ApiError(400) 본문 공백 또는 32,000자 초과
+ * @throws ApiError(403) UPDATE 권한 없음 또는 타인 댓글
+ * @throws ApiError(404) 이슈·댓글 없음
+ * @throws ApiError(409) 아카이브된 프로젝트
+ */
+export async function updateComment(
+  key: string,
+  commentId: string,
+  body: string,
+): Promise<CommentResponse> {
+  const res = await apiFetch(commentItemPath(key, commentId), {
+    method: 'PATCH',
+    body: { body },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  return dataResponseSchema(commentResponseSchema).parse(raw).data
+}
+
+/**
+ * 댓글을 소프트 삭제한다 — 작성자 본인 또는 SOFT_DELETE 보유자(모더레이터).
+ *
+ * DELETE /api/v1/issues/{key}/comments/{commentId} → 204 (본문 없음)
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @param commentId 삭제할 댓글 UUID
+ * @throws ApiError(403) UPDATE 권한 없음, 또는 작성자도 모더레이터도 아님
+ * @throws ApiError(404) 이슈·댓글 없음 (이미 삭제된 댓글 포함)
+ * @throws ApiError(409) 아카이브된 프로젝트
+ */
+export async function deleteComment(key: string, commentId: string): Promise<void> {
+  const res = await apiFetch(commentItemPath(key, commentId), { method: 'DELETE' })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
 }
