@@ -194,17 +194,21 @@ describe('DELETE /api/v1/workflow-schemes/:schemeKey — 스킴 삭제', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('POST /api/v1/workflow-schemes/:schemeKey/mappings — 매핑 추가', () => {
-  it('S6-1 happy: 새 매핑 추가 → 201 + 생성된 매핑 반환', async () => {
+  it('S6-1 happy: 새 매핑 추가 → 200 + 생성 응답(MappingResponse 형태)', async () => {
     const res = await fetch('/api/v1/workflow-schemes/custom-scheme-beta/mappings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issueTypeKey: 'epic', workflowKey: 'kanban-basic' }),
     })
 
-    expect(res.status).toBe(201)
-    const body = await res.json() as { data: { issueTypeKey: string; workflowKey: string } }
-    expect(body.data.issueTypeKey).toBe('epic')
-    expect(body.data.workflowKey).toBe('kanban-basic')
+    // 백엔드 컨트롤러에 @ResponseStatus 가 없어 기본 200 이다(계약 스냅샷 테스트도 200 으로 단정).
+    expect(res.status).toBe(200)
+    // 생성 응답은 상세(키·이름)가 아니라 내부 PK 형태다 — 두 DTO 를 섞으면 클라이언트 파싱이 터진다.
+    const body = await res.json() as { data: { id: number; schemeId: number; issueTypeId: number | null; workflowId: string; createdAt: string } }
+    expect(typeof body.data.schemeId).toBe('number')
+    expect(body.data.issueTypeId).toBe(1)
+    expect(typeof body.data.workflowId).toBe('string')
+    expect(body.data).not.toHaveProperty('issueTypeKey')
   })
 
   it('S6-2 error-409 MAPPING_DUPLICATE: 이미 존재하는 issueTypeKey 매핑 추가 시 409를 반환한다', async () => {

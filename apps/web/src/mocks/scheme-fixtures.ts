@@ -8,7 +8,9 @@ import type {
   SchemeListItem,
   SchemeDetail,
   MappingDetail,
+  MappingCreated,
   AssignedScheme,
+  SchemeMutationResult,
 } from '@/api/workflow-schemes'
 
 /**
@@ -70,6 +72,40 @@ export const makeMapping = (overrides: Partial<MappingDetail>): MappingDetail =>
   workflowKey: 'software-default',
   workflowName: '소프트웨어 개발 기본 워크플로우',
   isDefault: true,
+  ...overrides,
+})
+
+/**
+ * 스킴 **생성·수정 응답**(`POST`·`PUT /workflow-schemes`) fixture — 백엔드 `WorkflowSchemeResponse`.
+ *
+ * ★ 목록 항목([SchemeListItem])과 달리 카운트·`mappings` 를 싣지 않는다. 목이 목록 형태를
+ * 반환하면 클라이언트의 `schemeMutationResultSchema`(strict) 파싱이 터진다 — 이 PR 이 스키마를
+ * 형태별로 나눈 뒤 실제로 드러난 불일치다.
+ */
+export const makeSchemeMutationResult = (overrides: Partial<SchemeMutationResult>): SchemeMutationResult => ({
+  id: 1,
+  key: 'default-scheme-key',
+  name: '기본 스킴 이름',
+  description: '',
+  isStandard: false,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+  ...overrides,
+})
+
+/**
+ * 매핑 **생성 응답**(`POST /{key}/mappings`) fixture — 백엔드 `MappingResponse`.
+ *
+ * ★ [makeMapping] 이 만드는 `MappingDetail`(키·이름 형태)과 **다른 DTO** 다. 생성 응답은 내부 PK
+ * (`schemeId`·`issueTypeId`·`workflowId`)를 싣는다. 목이 detail 형태를 반환하면 클라이언트의
+ * `mappingCreatedSchema` 파싱이 ZodError 로 터져 화면에 오류 토스트만 뜬다(독립 리뷰 B2 실측).
+ */
+export const makeMappingCreated = (overrides: Partial<MappingCreated>): MappingCreated => ({
+  id: 1,
+  schemeId: 1,
+  issueTypeId: null,
+  workflowId: 'e4b722f6-255e-4550-be96-113b9542f1fb',
+  createdAt: '2026-01-01T00:00:00Z',
   ...overrides,
 })
 

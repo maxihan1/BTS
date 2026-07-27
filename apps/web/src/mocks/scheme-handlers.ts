@@ -4,8 +4,8 @@ import {
   SCHEME_SCENARIO_KEY,
   allSchemeFixtures,
   assignmentFixtures,
-  makeScheme,
-  makeMapping,
+  makeMappingCreated,
+  makeSchemeMutationResult,
 } from './scheme-fixtures'
 import type { AssignedScheme, SchemeDetail, SchemeListItem } from '@/api/workflow-schemes'
 
@@ -68,6 +68,14 @@ const hasDuplicateMapping = (schemeKey: string, issueTypeKey: string | null): bo
   return scheme.mappings.some((m) => m.issueTypeKey === issueTypeKey)
 }
 
+/** 이슈타입 키 → 목 내부 PK. 실 시드(V001 issue_types)의 순서를 미러링한다. */
+const issueTypeIdOf = (key: string | null): number | null => {
+  if (key === null) return null
+  const order = ['epic', 'story', 'task', 'subtask', 'bug']
+  const idx = order.indexOf(key)
+  return idx >= 0 ? idx + 1 : 99
+}
+
 /** 다음 매핑 ID 생성 helper (fixture 내 최대 ID + 1) */
 const nextMappingId = (): number => {
   const allIds = allSchemeFixtures.flatMap((s) => s.mappings.map((m) => m.id))
@@ -87,7 +95,7 @@ const nextMappingId = (): number => {
  * - DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId     — 매핑 삭제
  * - GET    /api/v1/projects/:projectKey/workflow-scheme               — 할당 조회
  * - PUT    /api/v1/projects/:projectKey/workflow-scheme               — 할당 갱신
- * - GET    /api/v1/projects/:projectKey/assignable-workflow-schemes   — 할당 가능 스킴 목록 (backend key/isDefault 원형 응답)
+ * - GET    /api/v1/projects/:projectKey/assignable-workflow-schemes   — 할당 가능 스킴 목록 (key/isStandard)
  *
  * errorCode 시뮬레이션 규칙:
  * - 표준 스킴 DELETE                     → 409 SCHEME_STANDARD_NOT_DELETABLE
@@ -127,13 +135,12 @@ export const schemeHandlers = [
 
     const body = await request.json() as { name?: string; description?: string }
     const newSchemeKey = `custom-scheme-${Date.now()}`
-    const created = makeScheme({
+    // ★ 생성 응답은 목록 형태가 아니라 WorkflowSchemeResponse(카운트·mappings 없음)다.
+    const created = makeSchemeMutationResult({
       key: newSchemeKey,
       name: body.name ?? '새 스킴',
       description: body.description ?? '',
       isStandard: false,
-      usedByProjectsCount: 0,
-      mappingsCount: 0,
     })
 
     return HttpResponse.json({ data: created }, { status: 201 })
@@ -163,10 +170,13 @@ export const schemeHandlers = [
       return HttpResponse.json({ errorCode: 'SCHEME_STANDARD_FIELD_LOCKED', message: '표준 스킴의 이름은 변경할 수 없습니다' }, { status: 409 })
     }
 
-    const updated = toSummary({
-      ...scheme,
+    // ★ 수정 응답도 생성과 같은 WorkflowSchemeResponse 형태다(카운트·mappings 없음).
+    const updated = makeSchemeMutationResult({
+      id: scheme.id,
+      key: scheme.key,
       name: body.name ?? scheme.name,
       description: body.description ?? scheme.description,
+      isStandard: scheme.isStandard,
     })
 
     return HttpResponse.json({ data: updated })
@@ -196,7 +206,8 @@ export const schemeHandlers = [
   http.post('/api/v1/workflow-schemes/:schemeKey/mappings', async ({ params, request }) => {
     const schemeKey = params['schemeKey'] as string
 
-    if (findScheme(schemeKey) === undefined) {
+    const scheme = findScheme(schemeKey)
+    if (scheme === undefined) {
       return HttpResponse.json({ errorCode: 'SCHEME_NOT_FOUND', message: '워크플로우 스킴을 찾을 수 없습니다' }, { status: 404 })
     }
 
@@ -211,15 +222,17 @@ export const schemeHandlers = [
       return HttpResponse.json({ errorCode: 'MAPPING_DUPLICATE', message: '이미 존재하는 이슈 타입 매핑입니다' }, { status: 409 })
     }
 
-    const newMapping = makeMapping({
+    // ★ 생성 응답은 상세(MappingResponseDetail)가 아니라 MappingResponse(내부 PK 형태)다.
+    // 상태코드도 200 이다 — 컨트롤러에 @ResponseStatus 가 없어 기본 200 으로 나간다
+    // (WorkflowSchemeController.addMapping). 201 로 두면 목이 백엔드와 어긋난다.
+    const created = makeMappingCreated({
       id: nextMappingId(),
-      issueTypeKey: body.issueTypeKey,
-      issueTypeName: body.issueTypeKey,
-      workflowKey: body.workflowKey,
-      isDefault: isDefaultMapping,
+      schemeId: scheme.id ?? 1,
+      issueTypeId: isDefaultMapping ? null : issueTypeIdOf(body.issueTypeKey),
+      createdAt: '2026-01-01T00:00:00Z',
     })
 
-    return HttpResponse.json({ data: newMapping }, { status: 201 })
+    return HttpResponse.json({ data: created })
   }),
 
   /** DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId — 매핑 삭제 */
@@ -227,7 +240,8 @@ export const schemeHandlers = [
     const schemeKey = params['schemeKey'] as string
     const mappingId = Number(params['mappingId'])
 
-    if (findScheme(schemeKey) === undefined) {
+    const scheme = findScheme(schemeKey)
+    if (scheme === undefined) {
       return HttpResponse.json({ errorCode: 'SCHEME_NOT_FOUND', message: '워크플로우 스킴을 찾을 수 없습니다' }, { status: 404 })
     }
 
@@ -274,8 +288,8 @@ export const schemeHandlers = [
 
   /**
    * GET /api/v1/projects/:projectKey/assignable-workflow-schemes — 프로젝트 할당 가능 스킴 목록.
-   * backend 원본 어휘(`key`/`isDefault`)로 응답한다 — 프론트 어휘(`schemeKey`/`isStandard`) 정규화는
-   * `assignableSchemeResponseSchema`의 `.transform()`이 경계에서 담당하므로 이 mock이 미리 바꾸면 안 된다.
+   * 백엔드 어휘 그대로(`key`/`isStandard`) 응답한다. 이 PR 이전에는 백엔드가 `isDefault` 를 내보내고
+   * 프론트가 `.transform()` 으로 뒤집었으나, 뷰 레이어 정렬로 그 변환 지점이 사라졌다.
    */
   http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
     return HttpResponse.json({ data: allSchemeFixtures.map(toAssignableShape) })

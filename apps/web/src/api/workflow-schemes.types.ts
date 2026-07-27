@@ -23,6 +23,10 @@ export const dataOf = <T>(innerSchema: z.ZodSchema<T>) =>
 //   가 강제한다 — 스키마를 고치면 그 테스트가 먼저 말해준다.
 //
 // ★ 선언 순서. `const` 는 호이스팅되지 않는다. 참조되는 스키마가 반드시 위에 있어야 한다(TDZ).
+//
+// ★★ `.strict()` 는 **base 스키마에** 건다. 계약 테스트가 바깥 래퍼에만 `.strict()` 를 걸면
+//   `data` 안쪽·`mappings[]` 원소의 필드 **추가**가 통과해 봉인이 절반만 닫힌다(독립 리뷰 B1 실측).
+//   Zod 는 `.strict()` 를 `.extend()` 로 전파하므로 base 4장만 닫으면 파생·배열 원소까지 닫힌다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -32,13 +36,15 @@ export const dataOf = <T>(innerSchema: z.ZodSchema<T>) =>
  * `is_default` 이지만 뷰 레이어가 `isStandard` 로 노출한다 — 매핑의 `isDefault`(기본 매핑)와
  * 다른 개념이라 이름을 분리했다.
  */
-const schemeCoreSchema = z.object({
-  id: z.number().int().nullable(),
-  key: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().nullable(),
-  isStandard: z.boolean(),
-})
+const schemeCoreSchema = z
+  .object({
+    id: z.number().int().nullable(),
+    key: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().nullable(),
+    isStandard: z.boolean(),
+  })
+  .strict()
 
 /**
  * GET `/api/v1/projects/{k}/workflow-scheme` · GET `.../assignable-workflow-schemes`.
@@ -64,14 +70,16 @@ export const schemeMutationResultSchema = schemeCoreSchema.extend({
  * `issue_type_id IS NULL` 로 판정해 명시적으로 실어 보낸다 — `issueTypeKey === null` 로
  * 프론트가 유도하면 cross-BC 조회 실패와 구분되지 않는다(EC-4).
  */
-export const mappingDetailSchema = z.object({
-  id: z.number().int().positive(),
-  issueTypeKey: z.string().min(1).nullable(),
-  issueTypeName: z.string().nullable(),
-  workflowKey: z.string().min(1),
-  workflowName: z.string().min(1),
-  isDefault: z.boolean(),
-})
+export const mappingDetailSchema = z
+  .object({
+    id: z.number().int().positive(),
+    issueTypeKey: z.string().min(1).nullable(),
+    issueTypeName: z.string().nullable(),
+    workflowKey: z.string().min(1),
+    workflowName: z.string().min(1),
+    isDefault: z.boolean(),
+  })
+  .strict()
 
 /**
  * GET `/api/v1/workflow-schemes` — 백엔드 `WorkflowSchemeDetailResponse`(목록 판본).
@@ -95,24 +103,28 @@ export const schemeDetailSchema = schemeListItemSchema.extend({
  * POST `/{key}/mappings` — 백엔드 `MappingResponse`.
  * 상세용 `MappingResponseDetail` 과 **완전히 다른 형태**다(키가 아니라 내부 PK 를 싣는다).
  */
-export const mappingCreatedSchema = z.object({
-  id: z.number().int().positive(),
-  schemeId: z.number().int().positive(),
-  issueTypeId: z.number().int().nullable(),
-  workflowId: z.string().min(1),
-  createdAt: z.string(),
-})
+export const mappingCreatedSchema = z
+  .object({
+    id: z.number().int().positive(),
+    schemeId: z.number().int().positive(),
+    issueTypeId: z.number().int().nullable(),
+    workflowId: z.string().min(1),
+    createdAt: z.string(),
+  })
+  .strict()
 
 /**
  * PUT `/api/v1/projects/{k}/workflow-scheme` — 백엔드 `AssignmentResponse`(배정 이력).
  * 화면은 이 값을 쓰지 않지만, 파싱해 두어야 백엔드가 형태를 바꿨을 때 계약 테스트가 잡는다.
  */
-export const assignmentRecordSchema = z.object({
-  projectId: z.string().min(1),
-  workflowSchemeId: z.number().int().positive(),
-  assignedAt: z.string(),
-  assignedBy: z.string().min(1),
-})
+export const assignmentRecordSchema = z
+  .object({
+    projectId: z.string().min(1),
+    workflowSchemeId: z.number().int().positive(),
+    assignedAt: z.string(),
+    assignedBy: z.string().min(1),
+  })
+  .strict()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 추론된 타입 (interface 중복 정의 금지)

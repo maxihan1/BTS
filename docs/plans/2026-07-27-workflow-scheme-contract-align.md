@@ -944,6 +944,49 @@ cd backend && ./gradlew :modules:project-workflow:test :modules:project-workflow
 
 빈 값·깨진 라벨·분류 붕괴 **0건**. `schemeKey`→`key` 정렬이 화면 끝까지 이어졌음을 육안으로 확인했다.
 
+## 독립 리뷰 결과 (2026-07-27, 게이트 2 전)
+
+Maxi 가 게이트 2 에서 「독립 리뷰 먼저」를 선택해 outside voice 를 돌렸다. **실제 결함 2건(BLOCKER)을
+잡았고 둘 다 내가 만든 것이었다.** #313·#314 에 이은 4연속 적발이다.
+
+| # | 지적 | 판정 | 처리 |
+|---|---|---|---|
+| **B1** | `.strict()` 가 래퍼에만 걸려 `data` 안쪽·`mappings[]` 원소의 **필드 추가**를 못 잡는다 | **사실** (실측 재현) | base 스키마 4장에 `.strict()`. Zod 가 `.extend()` 로 전파함을 실측 확인 |
+| **B2** | MSW `POST /mappings` 가 `MappingDetail` 을 반환하는데 클라이언트는 `mappingCreatedSchema` 로 파싱 → **목 환경에서 매핑 추가가 항상 실패** | **사실** (파싱 실측 재현) | `makeMappingCreated` 신설, 핸들러 교체 |
+| **M2** | `frontend-ci` 경로 필터에 `docs/contracts/**` 가 없어 **계약을 바꾸는 PR 에서 프론트 검증이 안 돈다** | **사실** | pull_request·push 양쪽에 추가 |
+| **M3** | 목은 201, 백엔드는 200(`@ResponseStatus` 없음). E2E 가 201 을 못박고 있었다 | **사실** | 목·E2E·목 테스트를 200 으로 정렬 |
+| **M4** | 불리언 정규화가 이 PR 의 판정축(`isStandard` 극성)을 통째로 지운다 | **사실** | 원본 응답으로 극성을 못박는 조립 테스트 신설 |
+| **M1** | 백엔드 CI 부재 — 봉인의 백엔드 절반을 돌리는 것이 없다 | **사실, 선재** | 저장소 전반 사안. TODOS 기존 항목 |
+| m1·m2·m3·m4·m7 | 숫자 타입 붕괴 · description 왕복 · 낙관적 배정 name 불일치 · 롤백 가드 비대칭 · 404 해석 | 타당 | 이연 (아래) |
+| m5 | stale 주석 2건 | 사실 | 정리 |
+| m6 | 파일 350줄(plan 은 340 으로 기록) | 사실 | 숫자 정정. 초과는 유지(사유 기존과 동일) |
+
+**★처방 검증에서 내가 또 틀렸다 — 기록해 둔다.** M4 가드를 만들고 뮤테이션으로 확인할 때, 처음엔
+`WorkflowSchemeDto.kt` 의 `from()` 을 뒤집었는데 **테스트가 통과했다**. 가드가 목록 endpoint 만 읽고
+있었기 때문이다. 극성을 만드는 조립 지점은 **3개**다 — 목록(`WorkflowSchemeApplicationService.
+toListItemResponse`) · 생성/수정(`WorkflowSchemeResponse.from`) · 상세(`WorkflowSchemeDetailResponse.from`).
+가드를 3지점 전부로 넓힌 뒤에야 두 뮤테이션이 모두 잡혔다. **「가드를 만들었다」와 「가드가 그 회귀를
+덮는다」는 다른 문장이다** — 뮤테이션 지점을 하나만 잡으면 그 하나만 검증한 것이다.
+
+**B1·B2 가 3겹 테스트를 통과한 이유(리뷰가 규명).** `useAddMapping` 테스트는 전부 `server.use` 로
+전역 핸들러를 덮었고, 목 핸들러 테스트는 raw `fetch` 라 파서를 안 탔고, `MappingTable` 테스트는
+`sonner` 를 `vi.mock` 해서 오류 토스트 단정이 공허했다. **「기존 E2E 16건 전량 통과」는 사실이지만
+이 파손의 증거가 되지 못한다** — 통과 개수는 커버리지의 증거가 아니다.
+
+**이연 (TODOS 등재 대상).**
+- **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경(`1.0` 직렬화)을
+  스냅샷이 못 잡는다. 프론트 `z.number().int()` 는 `1.0` 을 거부하므로 양쪽 초록 + 프로덕션 파손이 가능하다.
+- **`description` `null`↔`''` 왕복** — `SchemeMetaPanel` 이 `?? ''` 로 정규화해 그대로 되보낸다.
+  이름만 고쳐 저장해도 DB `NULL` 이 `''` 가 된다. 왕복 검증 테스트 없음(spec EC-12 미결).
+- **낙관적 배정의 key↔name 불일치** — `key` 는 새 스킴, `name` 은 옛 스킴이라 재조회 전까지 카드가
+  옛 이름을 보여준다. `useAssignableWorkflowSchemes` 캐시에서 찾아 맞출 수 있다.
+- **롤백 가드 비대칭** — 캐시 쓰기는 무조건, 롤백은 `prevAssignment !== undefined` 조건부.
+- **`fetchProjectAssignment` 의 404 해석(선재)** — 백엔드는 미배정에 404 를 내지 않는다(자동 배정).
+  실제 404 는 「프로젝트 없음」이라, 오타 키로 들어가면 「배정 없음」 화면이 뜬다.
+
+**리뷰가 확인하지 못한 것(남은 사각).** 리뷰어는 dev postgres 부재로 백엔드를 한 줄도 실행하지 못했다
+(조립 테스트·ktlint·detekt·E2E 미실행). 그 부분은 내가 실행해 메웠다 — 아래 최종 검증.
+
 ## Plan 메타
 
 - **task 수**. 9
@@ -1179,8 +1222,8 @@ search-export-import/.../OpenApiConfig.kt:60-63     (동일)
   - ⚠️ **선언 외 파일 1건** — `backend/modules/app/build.gradle.kts` 에 3줄 배선 추가.
     Gradle 이 CLI `-D` 를 fork 된 테스트 JVM 에 전달하지 않아, 이 배선 없이는
     `-Dcontract.snapshot.update=true` 가 **조용히 무시**되어 스냅샷을 영원히 생성할 수 없다.
-  - ⚠️ **스타일 이탈 1건** — 테스트 파일 340줄로 `DEVELOPMENT.md §2.1` 의 「파일 300줄 이내」 초과.
-    분리하면 단일 소비자용 추상이 생겨 `CLAUDE.md §2 Simplicity`(single-use 추상 금지)와 충돌한다.
+  - ⚠️ **스타일 이탈 1건** — 테스트 파일 385줄로 `DEVELOPMENT.md §2.1` 의 「파일 300줄 이내」 초과.
+    (독립 리뷰 지적 m6 로 340→350 정정, 극성 가드 추가 후 385). 분리하면 단일 소비자용 추상이 생겨 `CLAUDE.md §2 Simplicity`(single-use 추상 금지)와 충돌한다.
     초과분 대부분이 함정을 기록한 KDoc(로직 아님)이라 유지 쪽을 택했다 — 게이트 2 판단 대상.
 - [x] **T4-mod (P2, human: ~20min / CC: ~3min)** — `apps/web/src/api` — `mappings` 를 `z.array(mappingDetailSchema)` 로 + 선언 순서 준수
   - Surfaced by: Code Quality F4 — `z.unknown()` 이 목록 endpoint 의 봉인을 무력화

@@ -90,7 +90,14 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
 프론트는 같은 파일을 `.strict()` 로 파싱한다(`workflow-schemes.contract.test.ts`). 한쪽이 어긋나면
 그 지점에서 즉시 빨간불이 켜진다 — 「MSW 가 MSW 와 맞는다」 상태가 끝났다.
 
-**신규 이연 3건.**
+**신규 이연 8건.** (아래 3건 + 독립 리뷰가 추가로 잡은 5건 — 상세는 plan §독립 리뷰 결과)
+- 계약 스냅샷의 **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡는다
+- `description` 의 **`null`↔`''` 왕복** — 이름만 고쳐도 DB `NULL` 이 `''` 가 된다(왕복 테스트 없음)
+- **낙관적 배정의 key↔name 불일치** — 재조회 전까지 카드가 옛 스킴 이름을 보여준다
+- **롤백 가드 비대칭** — 캐시 쓰기는 무조건, 롤백은 조건부
+- **`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다(자동 배정). 실제 404 는 「프로젝트 없음」
+
+**기존 이연 3건.**
 - **도메인·DB 어휘 이연** — 도메인 `WorkflowScheme.isDefault` 와 DB 컬럼 `is_default` 는 그대로다
   (ADR D2 — 이번 변경은 뷰 레이어 한정, 마이그레이션 0). 이름이 「표준 스킴」 의미인데 `default` 라
   DB 주석(`V201__workflow_schemes.sql:37`)과도 어긋나 있다. rename 하려면 마이그레이션 + jOOQ 재생성이

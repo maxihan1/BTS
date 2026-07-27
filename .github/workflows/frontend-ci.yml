@@ -11,6 +11,9 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/frontend-ci.yml'
+      # 계약 정본. 백엔드 DTO 를 고치고 스냅샷만 재생성하는 PR 은 backend/** + docs/** 만 건드려
+      # 이 워크플로우가 아예 안 돌았다 — 계약을 바꾸는 바로 그 PR 에서 프론트 검증이 빠진다.
+      - 'docs/contracts/**'
   push:
     branches: [main]
     paths:
@@ -18,6 +21,9 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/frontend-ci.yml'
+      # 계약 정본. 백엔드 DTO 를 고치고 스냅샷만 재생성하는 PR 은 backend/** + docs/** 만 건드려
+      # 이 워크플로우가 아예 안 돌았다 — 계약을 바꾸는 바로 그 PR 에서 프론트 검증이 빠진다.
+      - 'docs/contracts/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

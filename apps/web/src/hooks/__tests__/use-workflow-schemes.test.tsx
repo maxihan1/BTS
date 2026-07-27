@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import type { SchemeDetail, MappingCreated, SchemeListItem } from '@/api/workflow-schemes'
+import type { SchemeDetail, MappingCreated, SchemeListItem, SchemeMutationResult } from '@/api/workflow-schemes'
 import {
   useWorkflowSchemes,
   useWorkflowSchemeDetail,
@@ -139,18 +139,16 @@ describe('useAssignableWorkflowSchemes', () => {
 
 describe('useCreateWorkflowScheme', () => {
   it('스킴 생성 성공 시 onSuccess를 호출한다', async () => {
-    const created: SchemeListItem = {
-      id: 1,
-      key: 'new-scheme',
-      name: '새 스킴',
-      description: '',
-      isStandard: false,
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-      usedByProjectsCount: 0,
-      mappingsCount: 0,
-      mappings: [],
-    }
+    // 생성·수정 응답은 카운트·mappings 를 싣지 않는다(백엔드 WorkflowSchemeResponse).
+      const created: SchemeMutationResult = {
+        id: 1,
+        key: 'new-scheme',
+        name: '새 스킴',
+        description: '',
+        isStandard: false,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }
 
     server.use(
       http.post('/api/v1/workflow-schemes', () =>
@@ -174,18 +172,16 @@ describe('useCreateWorkflowScheme', () => {
 
 describe('useUpdateWorkflowScheme', () => {
   it('스킴 수정 성공 시 낙관적 업데이트 후 서버 응답으로 갱신한다', async () => {
-    const updated: SchemeListItem = {
-      id: 1,
-      key: 'custom-scheme-beta',
-      name: '수정된 스킴 이름',
-      description: '수정된 설명',
-      isStandard: false,
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-      usedByProjectsCount: 0,
-      mappingsCount: 1,
-      mappings: [],
-    }
+    // 생성·수정 응답은 카운트·mappings 를 싣지 않는다(백엔드 WorkflowSchemeResponse).
+      const updated: SchemeMutationResult = {
+        id: 1,
+        key: 'custom-scheme-beta',
+        name: '수정된 스킴 이름',
+        description: '수정된 설명',
+        isStandard: false,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }
 
     server.use(
       http.put('/api/v1/workflow-schemes/custom-scheme-beta', () =>

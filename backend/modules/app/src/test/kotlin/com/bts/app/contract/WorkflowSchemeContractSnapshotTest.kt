@@ -124,6 +124,41 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
     }
 
     @Test
+    fun `isStandard 극성이 뒤집히지 않는다 (정규화가 지우는 축의 가드)`() {
+        // D-6 정규화는 모든 불리언을 true 로 만든다. 그래서 `isStandard = !scheme.isDefault` 로
+        // 뒤집어도 스냅샷은 바이트 동일이고 프론트 계약 테스트도 초록이다(독립 리뷰 M4).
+        // 값 축은 스냅샷이 못 지키므로 여기서 원본 응답으로 직접 못박는다.
+        // ★ 조립 지점이 3개다 — 목록은 WorkflowSchemeApplicationService.toListItemResponse,
+        // 생성·수정은 WorkflowSchemeResponse.from, 상세는 WorkflowSchemeDetailResponse.from.
+        // 목록만 보면 나머지 두 곳의 극성 뒤집힘을 놓친다(자체 뮤테이션으로 실증).
+        val createdBody = send("POST", SCHEMES, CREATE_BODY, 201).path("data")
+        val list = send("GET", SCHEMES, null, 200).path("data")
+        val createdDetail = send("GET", "$SCHEMES/$SCHEME_KEY", null, 200).path("data")
+        val standardDetail = send("GET", "$SCHEMES/$STANDARD_SCHEME_KEY", null, 200).path("data")
+
+        // 사용자가 만든 스킴은 표준이 아니고, V201 이 시드한 스킴은 표준이다.
+        assertPolarity(createdBody, expected = false, where = "생성 응답")
+        assertPolarity(list.first { it.path("key").textValue() == SCHEME_KEY }, expected = false, where = "목록(생성 스킴)")
+        assertPolarity(
+            list.first { it.path("key").textValue() == STANDARD_SCHEME_KEY },
+            expected = true,
+            where = "목록(표준 스킴)",
+        )
+        assertPolarity(createdDetail, expected = false, where = "상세(생성 스킴)")
+        assertPolarity(standardDetail, expected = true, where = "상세(표준 스킴)")
+    }
+
+    private fun assertPolarity(
+        node: JsonNode,
+        expected: Boolean,
+        where: String,
+    ) {
+        assertThat(node.path("isStandard").booleanValue())
+            .`as`("$where 의 isStandard 극성이 뒤집혔다 — 정규화된 스냅샷은 이 회귀를 못 잡는다")
+            .isEqualTo(expected)
+    }
+
+    @Test
     fun `배정 응답의 assignedAt 이 ISO-8601 문자열이다 (리뷰 발견 1 회귀 가드)`() {
         val body = """{"schemeKey":"$STANDARD_SCHEME_KEY"}"""
         val assignResult = send("PUT", "$PROJECTS/$PROJECT_KEY/workflow-scheme", body, 200)
