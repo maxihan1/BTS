@@ -92,7 +92,9 @@ class CommentControllerIntegrationTest {
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
      * [CommentController], [CommentExceptionHandler], MockK stub Bean 을 등록한다.
-     * ObjectMapper 에 JavaTimeModule 을 등록하여 Instant ISO 직렬화가 동작하도록 한다.
+     * [objectMapper] 를 [extendMessageConverters] 로 HTTP 메시지 컨버터에 결선해
+     * `Instant` ISO-8601 직렬화와 [org.springframework.http.ProblemDetail] property 평탄화가
+     * 프로덕션과 같게 동작하도록 한다.
      */
     @Configuration
     @EnableWebMvc

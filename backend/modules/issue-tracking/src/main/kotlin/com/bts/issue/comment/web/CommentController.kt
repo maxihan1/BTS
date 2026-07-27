@@ -1,4 +1,4 @@
-// 댓글 REST 컨트롤러 — 목록 조회 엔드포인트 (FR-IM-01 PR3)
+// 댓글 REST 컨트롤러 — 목록 조회·작성·수정·삭제 4종 엔드포인트 (FR-IM-01 PR3 / FR-CO-01 / FR-CO-02)
 
 package com.bts.issue.comment.web
 
@@ -29,10 +29,13 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * 댓글 REST 컨트롤러 (FR-IM-01 PR3).
+ * 댓글 REST 컨트롤러 (FR-IM-01 PR3 / FR-CO-01 / FR-CO-02).
  *
  * 엔드포인트 목록.
- * - GET /api/v1/issues/{key}/comments — 댓글 목록 조회 (200)
+ * - `GET    /api/v1/issues/{key}/comments` — 댓글 목록 조회 (200)
+ * - `POST   /api/v1/issues/{key}/comments` — 댓글 작성 (201)
+ * - `PATCH  /api/v1/issues/{key}/comments/{commentId}` — 댓글 본문 수정 (200, 작성자 한정)
+ * - `DELETE /api/v1/issues/{key}/comments/{commentId}` — 댓글 소프트 삭제 (204, 작성자 또는 모더레이터)
  *
  * ### ActorId 결선
  * [CurrentActor.current] 로 SecurityContextHolder 의 인증 주체를 actor 로 추출한다.
@@ -40,9 +43,19 @@ import java.util.UUID
  * actor 추출은 리소스 조회보다 앞서 수행하여 미인증자가 404 로 리소스 존재를 probe 하지 못하게 한다
  * ([com.bts.issue.worklog.web.WorklogController] 선례와 동일 근거).
  *
+ * ### 응답 변환은 [CommentResponse] 팩토리로 단일화한다
+ * 네 엔드포인트 모두 [CommentResponse.from] 만 쓴다. 그 팩토리가
+ * [com.bts.issue.comment.application.CommentView.of] → `MarkdownRenderer.renderSafe` 로 이어지는
+ * **정화 단일 지점**이라, 컨트롤러가 렌더러를 직접 부르면 경로마다 XSS 방어가 비대칭이 된다.
+ *
+ * ### 아카이브 프로젝트는 409 다 (403 아님)
+ * 쓰기 3종(작성·수정·삭제)은 서비스에서 `ProjectArchiveGuard` 를 통과해야 하며, 거부는
+ * [com.bts.issue.project.archive.web.ProjectArchivedExceptionHandler] 가 **409 Conflict** 로 매핑한다
+ * (`@Order(HIGHEST_PRECEDENCE)` 전역 advice). 아래 `@ApiResponses` 의 409 행이 그것이다.
+ *
  * @param service 댓글 유스케이스 서비스.
  */
-@Tag(name = "Comments", description = "이슈 댓글 조회 API (FR-IM-01 PR3)")
+@Tag(name = "Comments", description = "이슈 댓글 조회·작성·수정·삭제 API (FR-IM-01 PR3 / FR-CO-01 / FR-CO-02)")
 @RestController
 @RequestMapping("/api/v1/issues/{key}/comments")
 class CommentController(
@@ -98,14 +111,18 @@ class CommentController(
      * @throws com.bts.issue.comment.domain.CommentBodyTooLongException 본문이 상한 초과일 때 → 400.
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 시 → 403.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제 시 → 404.
+     * @throws com.bts.issue.project.archive.ProjectArchivedException 아카이브된 프로젝트일 때 → 409.
      */
     @Operation(operationId = "addComment", summary = "댓글 작성")
     @ApiResponses(
         ApiResponse(responseCode = "201", description = "생성 성공"),
         ApiResponse(responseCode = "400", description = "요청 형식 오류·본문 공백·길이 초과", content = [Content()]),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
-        ApiResponse(responseCode = "403", description = "UPDATE 권한 없음 · 아카이브 프로젝트", content = [Content()]),
+        // 아카이브 프로젝트를 403 으로 적어뒀던 오기를 정정한다 — 실제 매핑은 아래 409 다
+        // ([com.bts.issue.project.archive.web.ProjectArchivedExceptionHandler]).
+        ApiResponse(responseCode = "403", description = "UPDATE 권한 없음", content = [Content()]),
         ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "아카이브된 프로젝트", content = [Content()]),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
@@ -149,6 +166,20 @@ class CommentController(
      * @throws com.bts.issue.comment.domain.CommentNotFoundException 댓글 미존재·삭제됨·이슈 불일치 시 → 404.
      * @throws com.bts.issue.project.archive.ProjectArchivedException 아카이브된 프로젝트일 때 → 409.
      */
+    @Operation(operationId = "updateComment", summary = "댓글 수정")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "수정 성공"),
+        ApiResponse(
+            responseCode = "400",
+            description = "요청 형식 오류(비-UUID commentId·깨진 JSON·body 누락)·본문 공백·길이 초과",
+            content = [Content()],
+        ),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "UPDATE 권한 없음 · 타인 댓글", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 또는 댓글 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "아카이브된 프로젝트", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{commentId}")
     fun updateComment(
         @PathVariable key: String,
@@ -179,6 +210,20 @@ class CommentController(
      * @throws com.bts.issue.comment.domain.CommentNotFoundException 댓글 미존재·이미 삭제됨·이슈 불일치 시 → 404.
      * @throws com.bts.issue.project.archive.ProjectArchivedException 아카이브된 프로젝트일 때 → 409.
      */
+    @Operation(operationId = "deleteComment", summary = "댓글 삭제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "400", description = "비-UUID commentId", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(
+            responseCode = "403",
+            description = "UPDATE 권한 없음 · 작성자도 SOFT_DELETE 보유자도 아님",
+            content = [Content()],
+        ),
+        ApiResponse(responseCode = "404", description = "이슈 또는 댓글 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "아카이브된 프로젝트", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{commentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deleteComment(
