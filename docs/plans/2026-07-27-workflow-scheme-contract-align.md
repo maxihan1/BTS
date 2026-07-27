@@ -319,48 +319,76 @@ FR-CO-02 분류를 받았을 상황이었다). **plan 이 진실출처.**
 **왜 이것이 1번인가.** 이 파일이 이 PR 의 **유일한 계약 정본**이 된다. 프론트는 이것을 파싱해 검증하고,
 백엔드는 이것이 stale 하면 실패한다. 양방향이 닫힌다.
 
-**RED**. `WorkflowSchemeContractSnapshotTest.kt` 신설. 8 endpoint 를 MockMvc 로 호출해 응답 본문을
-모아 `docs/contracts/workflow-schemes.snapshot.json` 과 **문자열 동등** 비교한다.
+> 🔧 **impl 정정 (2026-07-27) — 아래 RED/GREEN 은 리뷰 발견 1 이전 슬라이스 판본이었다.**
+> 결정표의 「리뷰 발견1 = 1A(조립, 슬라이스 금지)」가 정본이므로 조립 판본으로 교체한다.
+> 교체 전 문단은 `MockMvc`·`package com.bts.workflow.scheme.web`·`@WebMvcTest 설정 재사용`·
+> `:modules:project-workflow:test` 를 지시해 **함정 1·2 와 정면 충돌**했다(메타 `files`·인용문·검증
+> 블록은 이미 조립을 가리키고 있었다 — 문단만 갱신 누락).
+
+**D-6 (impl 결정) — 스냅샷은 값이 아니라 「값의 종류」를 고정한다 (Maxi 확정).**
+조립 응답에는 자동증가 `id`·실행 시각·랜덤 UUID·환경마다 다른 목록 길이가 섞여 있어 원본 값을 그대로
+박제하면 **문자열 동등 비교가 매 실행 실패**한다(스냅샷 기전 자체가 성립 불가). 따라서 leaf 값을
+타입별 표준값으로 치환한 뒤 비교한다.
+
+| 원본 | 스냅샷 |
+|---|---|
+| 숫자 (id·카운트) | `0` |
+| 불리언 | `true` |
+| UUID 문자열 | `"00000000-0000-4000-8000-000000000000"` |
+| ISO-8601 instant 문자열 | `"2026-01-01T00:00:00Z"` |
+| 그 외 문자열 | `"string"` |
+| `null` | `null` (그대로 — nullability 가 계약이다) |
+| 배열 | 원소 정규화 후 **중복 제거 + 정렬** (행 수 비의존) |
+| 객체 | 키 **사전순 정렬** |
+
+**타입이 보존되므로 Task 2 의 Zod `.parse()` 설계는 그대로 유효하다** — 필드명 누락·오타·추가는
+잡히고, 값 변동은 안 잡힌다(의도). `assignedAt` 이 숫자로 나가면 `"2026-01-01T00:00:00Z"` 가 아니라
+`0` 으로 찍혀 **리뷰 발견 1 가드가 스냅샷 본문에서 직접 드러난다**. 추가로 원본 응답 단계에서
+`assignedAt` 이 JSON **문자열**인지 단정하는 전용 테스트를 함께 둔다(grep 검증을 단정으로 승격).
+
+**RED**. `WorkflowSchemeContractSnapshotTest.kt` 신설 — **`:modules:app` 조립 테스트**로,
+`ProdAssemblyHttpTestBase` 를 **상속만** 하고 JDK `java.net.http.HttpClient` + PAT Bearer 로
+8 endpoint 를 실제 HTTP 왕복시켜 응답 본문을 모은다(함정 1·2·3). 정규화 후
+`docs/contracts/workflow-schemes.snapshot.json` 과 **문자열 동등** 비교한다.
 
 ```kotlin
-// 워크플로우 스킴 8 endpoint 응답을 계약 스냅샷으로 고정해 프론트 Zod 와의 drift 를 차단하는 테스트
-package com.bts.workflow.scheme.web
+// 워크플로우 스킴 8 endpoint 응답을 조립 컨텍스트에서 계약 스냅샷으로 고정해 프론트 Zod drift 를 차단
+package com.bts.app.contract
 
-// (기존 WorkflowSchemeControllerTest 의 @WebMvcTest 슬라이스 설정·@MockkBean 구성을 그대로 재사용한다.
-//  새 컨텍스트 설정을 발명하지 말고 그 파일 상단 30줄을 복사해 맞출 것)
+class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
+    // @LocalServerPort port + @Autowired JdbcTemplate.
+    // @SpringBootTest·@ActiveProfiles·@DynamicPropertySource 자체 선언 금지(베이스 KDoc :37-43).
 
-private val SNAPSHOT_PATH: Path = Path.of("..", "docs", "contracts", "workflow-schemes.snapshot.json")
-
-@Test
-fun `계약 스냅샷이 실제 응답과 일치한다`() {
-    val actual = buildJsonObject {  // 8 endpoint 응답을 endpoint 이름 키로 모은다
-        put("GET /api/v1/workflow-schemes", getListResponseAsJson())
-        put("GET /api/v1/workflow-schemes/{key}", getDetailResponseAsJson())
-        put("POST /api/v1/workflow-schemes", postCreateResponseAsJson())
-        put("PUT /api/v1/workflow-schemes/{key}", putUpdateResponseAsJson())
-        put("GET /api/v1/projects/{k}/workflow-scheme", getAssignmentResponseAsJson())
-        put("PUT /api/v1/projects/{k}/workflow-scheme", putAssignResponseAsJson())
-        put("POST /api/v1/workflow-schemes/{key}/mappings", postMappingResponseAsJson())
-        put("GET /api/v1/projects/{k}/assignable-workflow-schemes", getAssignableResponseAsJson())
-    }
-    val pretty = prettyPrint(actual)
-
-    if (System.getProperty("contract.snapshot.update") == "true") {
-        SNAPSHOT_PATH.parent.createDirectories()
-        SNAPSHOT_PATH.writeText(pretty)
+    @Test
+    fun `계약 스냅샷이 실제 조립 응답과 일치한다`() {
+        val raw = collectRawResponses()          // 8회 실 HTTP. 상태코드 선단정(시드 오류를 파손으로 오진 차단)
+        val pretty = prettyPrint(canonical(raw)) // D-6 정규화 + 키 정렬 + 배열 중복제거
+        if (System.getProperty("contract.snapshot.update") == "true") { /* 파일 생성 */ }
+        assertThat(SNAPSHOT_PATH).exists()       // 부재 = 실패 (RED)
+        assertThat(SNAPSHOT_PATH.readText()).isEqualTo(pretty)
     }
 
-    assertThat(SNAPSHOT_PATH).exists()
-        .`as`("계약 스냅샷 부재. -Dcontract.snapshot.update=true 로 생성할 것")
-    assertThat(SNAPSHOT_PATH.readText()).isEqualTo(pretty)
+    @Test
+    fun `배정 응답의 assignedAt 이 ISO-8601 문자열이다 (리뷰 발견 1 회귀 가드)`() { /* 원본 노드 타입 단정 */ }
 }
 ```
+
+**스냅샷 경로 해석**. `Path.of("..")` 상대경로는 금지 — Gradle 테스트 CWD 가 `backend/modules/app`
+이라 `..` 는 repo 루트가 아니다(리뷰가 Task 2 에 적용한 「repo 루트 기준」을 여기에도 적용).
+CWD 에서 위로 올라가며 `docs/` 디렉토리 + `CLAUDE.md` 를 동시에 가진 디렉토리를 repo 루트로 판정한다.
+
+**시드 (전부 실측 확인)**. 사용자 1 + PAT + `system_role_assignments`(SYSTEM_ADMIN — Global 축은
+`isSystemAdmin` 단독 판정) + 프로젝트 `WFSNAP` + `PROJECT_ADMIN` 멤버십.
+`project_permission_scheme` 매핑은 **넣지 않는다** — 없으면 `permission_schemes.is_default=TRUE` 로
+폴백하고 그 기본 스킴이 `PROJECT_ADMIN → MANAGE_WORKFLOW` 를 이미 시드하고 있다(#314 잔여위험 5 해소).
+정리 순서는 **배정 → 스킴 → 프로젝트 → 사용자** (배정이 `workflow_schemes` 를 `ON DELETE RESTRICT` 로
+잡고 있어 역순이면 FK 위반).
 
 **예상 실패 메시지**. `계약 스냅샷 부재` (파일이 아직 없다)
 
 **GREEN**.
 ```bash
-cd backend && ./gradlew :modules:project-workflow:test \
+cd backend && ./gradlew :modules:app:test \
   --tests "*WorkflowSchemeContractSnapshotTest*" -Dcontract.snapshot.update=true
 ```
 생성된 `docs/contracts/workflow-schemes.snapshot.json` 을 커밋한다. 이 시점 파일에는 **파손 상태**
@@ -377,9 +405,10 @@ cd backend && ./gradlew :modules:app:test --tests "*WorkflowSchemeContractSnapsh
 # XML 실측 — BUILD SUCCESSFUL 만 믿지 않는다 (메모리 gradle-batched-task-partial-test-run)
 grep -o 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' \
   modules/app/build/test-results/test/TEST-*ContractSnapshotTest.xml
-# 발견 1 회귀 가드 — Instant 가 ISO 문자열로 담겼는지 눈으로 확인
+# 발견 1 회귀 가드 — Instant 가 ISO 문자열로 담겼는지 눈으로 확인 (D-6 정규화 후 값)
 grep -o '"assignedAt"[^,]*' ../docs/contracts/workflow-schemes.snapshot.json
-# 기대. ISO-8601 문자열 (숫자·배열이면 조립 설정이 아니라는 뜻 → 중단하고 보고)
+# 기대. "2026-01-01T00:00:00Z" (정규화된 instant). 0 이나 배열이면 조립이 Instant 를 숫자/배열로
+# 내보냈다는 뜻 → 중단하고 보고. 단정 판본은 `배정 응답의 assignedAt 이 ISO-8601 문자열이다` 테스트.
 ```
 
 ---
