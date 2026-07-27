@@ -135,11 +135,15 @@ class ContractCoverageTest : ProdAssemblyHttpTestBase() {
 
     private companion object {
         /**
-         * 현재 계약 스냅샷이 덮는 endpoint 수 (2026-07-27 실측 = 8).
+         * 현재 계약 스냅샷이 덮는 endpoint 수.
          *
          * **줄이는 방향으로 갱신하지 마라.** 늘리는 방향으로만 갱신한다.
+         *
+         * 이력 — 2026-07-27 착수 시 **8**(워크플로우 스킴 전용) →
+         * 같은 날 `core-read.snapshot.json` 추가로 **11**
+         * (`whoami` · `issue-types` · `projects` — 소비 폭이 넓고 시드가 싼 축 우선).
          */
-        const val COVERED_FLOOR = 8
+        const val COVERED_FLOOR = 11
 
         /** 등록 endpoint 수집이 고장나지 않았음을 확인하는 하한 (실측 300+). */
         const val MIN_REGISTERED = 100
