@@ -9,10 +9,10 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §4.1~§4.5 (프로젝트 권한) 완료
-- [ ] issue-tracking §2.1.1 (FR-IS-01 이슈 CRUD) 완료
-- [ ] project-workflow §2 (FR-WF) 완료
-- [ ] §1 기술 검증 통과 (아래)
+- [x] identity-access §4.1~§4.5 (프로젝트 권한) 완료 — 2026-07-27 실측: identity-access.md L256~326 D단계 `[x]` 33 / 미완 0
+- [x] issue-tracking §2.1.1 (FR-IS-01 이슈 CRUD) 완료 — 2026-07-27 실측: issue-tracking.md L28~51 D단계 `[x]` 8 / 미완 0
+- [x] project-workflow §2 (FR-WF) 완료 — 2026-07-27 실측: project-workflow.md L38~80 D단계 `[x]` 18 / 미완 0
+- [ ] §1 기술 검증 통과 (아래) — 미측정. §1.1 부하/지연·§1.2 FPS 실측이 기록되지 않았고 §1.3 은 ADR 로 대체됨. 이 줄은 §1 잔여 항목이 닫혀야 판정 가능
 
 ## §1 기술 검증
 
@@ -20,25 +20,25 @@
 
 **SDD**. 13.4. **checklist.md 위임**. §1.3. **ADR 후보**. 없음 (자체 구현).
 
-- [ ] 자체 구현 `backend/shared/lexorank.kt`
-- [ ] 1,000개 정렬 시나리오 부하 테스트 통과 (JUnit5)
-- [ ] insert/move 평균 시간 < 5ms
+- [x] 자체 구현 `backend/shared/lexorank.kt` — 2026-07-27 실측: 실경로는 `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/lexorank/Rank.kt` + `RankSpaceExhaustedException.kt` (외부 라이브러리 0)
+- [ ] 1,000개 정렬 시나리오 부하 테스트 통과 (JUnit5) — 미측정. `RankTest.kt` 는 단위/불변식 테스트(최대 `repeat(10)`)뿐. 1,000건 규모 부하 테스트 클래스를 새로 작성해 실행해야 한다
+- [ ] insert/move 평균 시간 < 5ms — 미측정. §NFR 측정표 "LexoRank insert/move" 칸이 공란. JUnit + Testcontainers 로 평균 지연을 재서 기입해야 한다
 
 ### §1.2 @dnd-kit 1K 백로그 드래그 PoC (1일)
 
 **SDD**. 21.3. **checklist.md 위임**. §1.9. **ADR 후보**. 없음.
 
-- [ ] 1,000개 가상 스크롤 + 드래그앤드롭 60 FPS 유지
-- [ ] Performance Observer 측정값 기록
-- [ ] LexoRank 호출 시뮬레이션 (§1.1 결과 활용)
+- [ ] 1,000개 가상 스크롤 + 드래그앤드롭 60 FPS 유지 — 미측정. `apps/web/package.json` 에 가상 스크롤 라이브러리가 없고(`grep -i virtual` 0건) 백로그는 `@dnd-kit/sortable` 만 사용. 1K 렌더 FPS 를 재야 한다
+- [ ] Performance Observer 측정값 기록 — 미측정. `grep -rn "PerformanceObserver" apps/web/src` 0건. 계측 코드부터 필요
+- [ ] LexoRank 호출 시뮬레이션 (§1.1 결과 활용) — 미측정. §1.1 부하 결과가 없어 시뮬레이션 입력값이 없다
 
 ### §1.3 Gantt 차트 비교 PoC (2일)
 
 **SDD**. 13.3. **checklist.md 위임**. §1.7. **ADR 후보**. **Gantt 라이브러리 선정** (fr-index.md §A.3 #2).
 
-- [ ] 자체 SVG 프로토타입 (100개 막대)
-- [ ] Recharts 프로토타입 (동일 시나리오)
-- [ ] 성능 비교 측정값 기록 (FPS, 메모리, 번들 영향)
+- [ ] 자체 SVG 프로토타입 (100개 막대) — ⚠️ 대체됨. 프로토타입 없이 ADR 정성 분석으로 자체 SVG/CSS 채택(`docs/adr/2026-06-26-gantt-rendering-self-svg.md` D1), 실물은 `apps/web/src/components/timeline/GanttChart.tsx`·`DependencyOverlay.tsx`. (2026-07-27 실측)
+- [ ] Recharts 프로토타입 (동일 시나리오) — ⚠️ 대체됨. ADR 후보 비교표의 정성 평가로 대체(recharts 는 워크로그/번다운/사이클타임 차트에만 사용). (2026-07-27 실측)
+- [ ] 성능 비교 측정값 기록 (FPS, 메모리, 번들 영향) — ⚠️ 대체됨. PR #194 Deviation 대로 성능 임계는 §4.1 FR-TL-01 NFR 표(500건 2s)에서 추적하기로 이관. (2026-07-27 실측)
 - [x] ADR 작성 (`docs/adr/2026-06-26-gantt-rendering-self-svg.md`, PR #194)
 
 > **Deviation(PR #194)**. 실측 프로토타입 비교(자체 SVG/Recharts/성능 측정)는 생략하고 ADR 정성 분석으로 직접 **자체 SVG/CSS** 결정 — 1K·≤500 이슈 규모에서 div 좌표 단순 기하로 충분, 신규 의존성 환각위험 회피(learnings 정신). 성능 임계(500건 2s)는 §4.1 NFR 표에서 실측 추적.
@@ -268,9 +268,9 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§7 (14 FR) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] Gantt ADR (§A.3 #2) 발행 완료
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "agile-planning BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "agile-planning BC 완료"
+- [x] §2~§7 (14 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: §2~§7 구간 FR 헤더 14개, D단계 `[x]` 98 / 미완(`[ ]`·`[~]`·`[!]`) 0
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정표 8행의 "실측 (p95)" 칸이 전부 `___`. 보드 200건·타임라인 500건·1K 드래그 FPS·LexoRank 지연·카드 이동 응답·Epic 집계·LCP·axe 를 실측해 기입해야 한다
+- [x] Gantt ADR (§A.3 #2) 발행 완료 — 2026-07-27 실측: `docs/adr/2026-06-26-gantt-rendering-self-svg.md` 실재(상태 채택, §A.3 #2 해소 명시). `docs/decisions/` 에는 동명 파일 없음
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 루트 `CHANGELOG.md` §BC 요약에 agile-planning 행 존재(14 FR · 2026-06-19~06-29 · PR 15건 #168~#202 · 대표 산출 5종)
+- [ ] README.md §7 변경 이력에 "agile-planning BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 기입할 날짜가 아래 선언 시점이라 선언 전에는 쓸 수 없다. `docs/plan/README.md §7` 에 해당 행 없음(2026-07-27 확인)
+- [ ] Maxi 1인 선언 — "agile-planning BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

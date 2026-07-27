@@ -9,11 +9,11 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.1 (`AuthenticationProvider`), §4.2 (`PERMISSION` 가드) 완료
-- [ ] project-workflow §1 (FSM PoC) + §2.1 (FR-WF-01) 진입 시 의존 (이슈 상태 전이)
-- [ ] notification-dashboard §1 (STOMP PoC), pgmq 트랜잭션 PoC 통과
-- [ ] DATA.md §이슈키 영속성 + 소프트 삭제 규칙 숙지
-- [ ] §A.3 #5 (이슈 키 prefix) 결정 — DATA.md 가이드
+- [x] identity-access §2.1 (`AuthenticationProvider`), §4.2 (`PERMISSION` 가드) 완료 — 2026-07-27 실측: `docs/plan/product/identity-access.md` §2.1 FR-AU-01 D1~D7 · §4.2 FR-PM-02 D1~D7 전량 `[x]`
+- [x] project-workflow §1 (FSM PoC) + §2.1 (FR-WF-01) 진입 시 의존 (이슈 상태 전이) — 2026-07-27 실측: `docs/plan/product/project-workflow.md` §1.1 FSM PoC 5항목 · §1.2 pgmq PoC 5항목 · §2.1 FR-WF-01 D1~D7 전량 `[x]` (PR #10/#13/#19)
+- [ ] notification-dashboard §1 (STOMP PoC), pgmq 트랜잭션 PoC 통과 — 미측정. pgmq 트랜잭션 PoC 는 `project-workflow.md` §1.2 5항목 전량 `[x]` 로 통과했으나, `notification-dashboard.md` §1.1 STOMP PoC 5항목은 전부 미완이고 그중 "알림 지연 p95 < 1s" 는 해당 BC §NFR 표에서도 실측값 `___`. 측정 필요 — 지수 백오프 5s→60s · 네트워크 분리/복귀 통합테스트 · 알림 지연 p95. (STOMP 기능 자체는 FR-NT-01 D4/D6/D7, PR #137 로 구현됨) (2026-07-27 실측)
+- [x] DATA.md §이슈키 영속성 + 소프트 삭제 규칙 숙지 — 2026-07-27 실측: DATA.md §2 4규칙이 구현에 반영됨 (`projects.key_sequence` 발번 · `issue_key_redirects.old_key` PRIMARY KEY · `IssueExceptionHandler.kt:292` `HttpStatus.PERMANENT_REDIRECT` · `V001__issues_initial.sql` `issues.deleted_at` 소프트 삭제)
+- [x] §A.3 #5 (이슈 키 prefix) 결정 — DATA.md 가이드 — 2026-07-27 실측: ADR `docs/adr/2026-05-22-issue-key-prefix-policy.md` 발행. 구현은 `IssueKey.kt` REGEX `^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$` + `IssueKeyPrefixReservedWords` 예약어 차단
 
 ## §1 기술 검증
 
@@ -594,9 +594,9 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§7 (37 FR) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] DATA.md §이슈키 영속성 자가 점검
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "issue-tracking BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "issue-tracking BC 완료"
+- [x] §2~§7 (37 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: 이 파일의 완료 D 줄 260건 / 미완 D 줄 0건 (`grep -cE '^- \[[ ~!]\] D[0-9]+\.'` = 0), FR 헤더 37건
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 13행의 실측 열이 전부 `___`. 측정 필요 — k6(조회/목록/생성/이동/히스토리) · Playwright(첨부 업로드·미리보기·이동 후 redirect 308) · Lighthouse CI(LCP/INP) · bundle-analyzer · axe-core · XSS 페이로드 10종
+- [ ] DATA.md §이슈키 영속성 자가 점검 — 부분 확인. 4규칙은 구현 확인됨(발번 `key_sequence` + `pg_advisory_xact_lock` · `old_key` PRIMARY KEY 로 재-redirect 차단 · `PERMANENT_REDIRECT` 308 · `deleted_at` 소프트 삭제). 미확인 1건 — DATA.md §2 "새 키 발급 시 `IssueKeyRedirect.new_key` 도 체크(옛 키와 충돌 방지)" 에 대응하는 명시적 검사가 `IssueMoveService.kt` 에 보이지 않음(시퀀스 단조 증가 + `issues.key` UNIQUE 에 의존). 이 1건 확인 후 체크. (2026-07-27 실측)
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` `[Unreleased] — Phase 1 §BC 요약` 에 issue-tracking 행 존재 (37 FR · 2026-05-22~07-27 · PR 67건 · 대표 산출)
+- [ ] README.md §7 변경 이력에 "issue-tracking BC 완료 — YYYY-MM-DD" 추가 — 미완. 2026-07-27 실측: `docs/plan/README.md` §7 에 해당 행 없음(3행 모두 2026-05-20/07-17 재편성·초안·FR 신설). Maxi 완료 선언 이후에 기재하는 항목
+- [ ] Maxi 1인 선언 — "issue-tracking BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

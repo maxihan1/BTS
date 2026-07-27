@@ -9,9 +9,9 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.9 (세션) 완료 (Inbox는 사용자 의존)
-- [ ] issue-tracking §2.1.1 (이벤트 발행 대상) 완료
-- [ ] §1 기술 검증 통과 (아래)
+- [x] identity-access §2.9 (세션) 완료 (Inbox는 사용자 의존) — 2026-07-27 실측: `docs/plan/product/identity-access.md` §2.9 FR-AU-09 D1~D7 7줄 전부 `[x]`
+- [x] issue-tracking §2.1.1 (이벤트 발행 대상) 완료 — 2026-07-27 실측: `docs/plan/product/issue-tracking.md` §2.1.1 FR-IS-01 D1~D7 8줄 전부 `[x]`
+- [ ] §1 기술 검증 통과 (아래) — 미측정. 하위 5항목 중 2건 대체(reconnecting-websocket·지수 백오프) · 2건 미측정(재연결 통합 테스트·p95). 하위 항목 판정이 끝나야 이 게이트를 판정할 수 있다
 
 ## §1 기술 검증
 
@@ -19,11 +19,11 @@
 
 **SDD**. 21.8. **checklist.md 위임**. §1.10. **ADR 후보**. 없음.
 
-- [ ] Spring WebSocket (STOMP) 서버 동작
-- [ ] `@stomp/stompjs` + `reconnecting-websocket` 클라이언트 동작
-- [ ] 지수 백오프 5s → 60s 검증
-- [ ] 네트워크 분리/복귀 시나리오 통합 테스트 통과
-- [ ] 알림 지연 p95 < 1s
+- [x] Spring WebSocket (STOMP) 서버 동작 — 2026-07-27 실측: `backend/modules/notification/src/main/kotlin/com/bts/notification/config/WebSocketConfig.kt` (`@EnableWebSocketMessageBroker`, 엔드포인트 `/ws`, simple broker `/queue`) + `InAppChannelSender` 가 `SimpMessagingTemplate.convertAndSendToUser` 로 실제 push. 의존성 `spring-boot-starter-websocket` (notification/build.gradle.kts:53). 테스트 `config/WebSocketConfigTest.kt` · `config/StompAuthChannelInterceptorTest.kt`
+- [ ] `@stomp/stompjs` + `reconnecting-websocket` 클라이언트 동작 — ⚠️ 대체됨. `@stomp/stompjs@^7.3.0` 단독 채택(`apps/web/src/api/notifications-stream.ts`). `reconnecting-websocket` 은 package.json·소스 어디에도 없음 — stompjs 내장 `reconnectDelay` 가 그 역할을 흡수했다. (2026-07-27 실측)
+- [ ] 지수 백오프 5s → 60s 검증 — ⚠️ 대체됨. `notifications-stream.ts` 는 `reconnectDelay: 5_000` **고정 지연**만 쓴다. 지수 증가도 60s 상한도 코드에 없다. (2026-07-27 실측)
+- [ ] 네트워크 분리/복귀 시나리오 통합 테스트 통과 — 미측정. repo 전체에서 `reconnect` 를 언급하는 파일은 `notifications-stream.ts`/`.test.ts` 2개뿐이고, 그 테스트는 `reconnectDelay` 옵션 전달만 확인한다. 연결 끊김→복귀를 실제로 태우는 통합/E2E 테스트를 새로 써야 판정 가능
+- [ ] 알림 지연 p95 < 1s — 미측정. 아래 §NFR 측정표의 "WebSocket 알림 지연" 칸이 `___` 로 비어 있다. Playwright + STOMP trace 로 p95 를 실측해 기록해야 한다
 
 ## §2 알림 (FR-NT, 5개)
 
@@ -247,8 +247,8 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§5 (14 FR) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "notification-dashboard BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "notification-dashboard BC 완료"
+- [x] §2~§5 (14 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: `grep -cE '^- \[x\] D[0-9]+\.'` → 98, `grep -nE '^- \[[ ~!]\] D[0-9]+\.'` → 0건. FR 절 헤더 14개(NT 5 · DB 3 · RP 4 · UX 2) 전수 확인
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정표 9개 항목의 실측 칸이 전부 `___` 다. WebSocket 지연·이메일 발송·대시보드 렌더·차트 조회·CFD·Inbox 페이지네이션·LCP·번들·axe 를 각 비고란 도구로 측정해 기록해야 한다
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` L31 에 `| notification-dashboard | 14 (NT 5 · RP 4 · DB 3 · UX 2) | 2026-06-11 ~ 07-03 | 28 (#118~#231) | ... |` 행 존재
+- [ ] README.md §7 변경 이력에 "notification-dashboard BC 완료 — YYYY-MM-DD" 추가 — 미측정. `docs/plan/README.md` §7(L165~) 은 현재 3줄이며 마지막이 2026-07-17 FR-PJ/FR-PM 항목이다. 이 BC 완료 행이 없다 — 추가는 README 파일 수정이라 이 작업 범위 밖
+- [ ] Maxi 1인 선언 — "notification-dashboard BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)
