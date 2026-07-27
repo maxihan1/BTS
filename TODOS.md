@@ -24,7 +24,18 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 
 **후속 작업**. 공통 베이스 클래스 또는 shared-kernel 유틸로 추출 — 별도 PR로 분리해 리팩토링 리뷰 단위를 권한 변경과 섞지 않는다.
 
-## identity-access — ADR D-1 이중 방어의 "두 겹이 같은 집합" 정합 무가드 (PR #277 codereview)
+## ✅ identity-access — ADR D-1 이중 방어 정합 무가드 (해소 2026-07-27)
+
+**해소.** `GlobalPermissionGrantSchemaMigrationTest` 에 화이트리스트↔CHECK 정합 단언을 추가했다.
+`ALLOWED_GLOBAL_PERMISSIONS` 를 `private` → `internal` 로 승격해 리플렉션 없이 직접 읽는다
+(리플렉션 가드는 필드명 변경에 조용히 깨진다). `assertThat(allowed).isNotEmpty()` 선단언으로
+빈 집합 vacuous 통과를 막았다.
+
+**뮤테이션 확증** — 화이트리스트에 `"MANAGE_NOTHING"` 을 넣자 새 테스트가 FAILED (커밋된 기준선에서 수행 후 원복).
+**잡는 방향은 화이트리스트→CHECK 한 쪽뿐**임을 KDoc 에 명시했다 — 반대 방향(CHECK 만 확장)은
+다음 마이그레이션 작성 시점의 문제이고, V036 `COMMENT ON COLUMN` 이 그 지점에서 이 테스트를 가리킨다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, 2026-07-17 게이트 2)**. **후속으로 미룬다.** ADR이 이미 **잔여 위험 4**로 의식적으로 수용한
 항목이고, 두 집합이 **현재 일치하므로 잠복 부채이지 현행 결함이 아니다**. 가드를 넣으려면 private companion
@@ -50,7 +61,21 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 꺼려지면 `internal`로 승격해 직접 참조하는 편이 깔끔하다. **빈 집합이면 루프가 vacuous하게 통과하므로
 `assertThat(allowed).isNotEmpty()` 선단언 필수**([[verify-logic-vs-verify-guard]]).
 
-## CREATE_PROJECT 상수 — identity 화이트리스트를 shared-kernel 상수로 이전 (FR-PJ PR-2 plan-eng-review)
+</details>
+
+## ✅ CREATE_PROJECT 상수 단일화 (해소 2026-07-27)
+
+**해소.** identity 의 리터럴을 shared-kernel `GlobalPermissionCodes.CREATE_PROJECT` 참조로 교체했다.
+
+**★기록보다 겹이 하나 더 많았다.** 원 기록은 "shared-kernel · identity 화이트리스트 · DB CHECK 3겹" 이라
+적었으나 **앱 안에만 2벌**이었다 — `GlobalPermissionGrantService:129` 와
+`WhoamiController:94` 의 자체 상수 `PERMISSION_CREATE_PROJECT`. 둘 다 교체했고,
+`WhoamiController` 의 companion 은 이 상수만 담고 있어 함께 제거했다(내 변경이 만든 고아).
+
+**DB 겹(V036 CHECK)은 이전 대상이 아니다** — 적용된 마이그레이션 편집 금지([[app-test-persistent-db-migration-checksum-trap]]).
+DB 축 드리프트 방어는 위 ADR D-1 정합 테스트가 담당한다. 그래서 상수 통일 → 정합 테스트 순서였다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, 2026-07-18 plan-eng-review)**. **후속으로 미룬다.** FR-PJ PR-2 가 issue-tracking 게이트에서
 쓸 `CREATE_PROJECT` 문자열을 **shared-kernel `com.bts.shared.permission`에 `const val` 로 신설**한다(그 패키지의
@@ -71,6 +96,8 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 후(shared-kernel 상수 실재해야 함). shared-kernel 은 9 모듈이 의존하므로 변경 시 광범위 재컴파일 — 리뷰 단위를 권한
 변경과 섞지 않게 별도 PR.
 
+</details>
+
 ## ✅ project-workflow — 워크플로우 스킴 프론트↔백엔드 계약 파손 (해소 #317)
 
 **해소 (2026-07-27, PR #317).** 계약 스냅샷 기전 + 뷰 어휘 정렬 + Zod 형태별 분리로 봉합했다.
@@ -90,12 +117,16 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
 프론트는 같은 파일을 `.strict()` 로 파싱한다(`workflow-schemes.contract.test.ts`). 한쪽이 어긋나면
 그 지점에서 즉시 빨간불이 켜진다 — 「MSW 가 MSW 와 맞는다」 상태가 끝났다.
 
-**신규 이연 8건.** (아래 3건 + 독립 리뷰가 추가로 잡은 5건 — 상세는 plan §독립 리뷰 결과)
-- 계약 스냅샷의 **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡는다
-- `description` 의 **`null`↔`''` 왕복** — 이름만 고쳐도 DB `NULL` 이 `''` 가 된다(왕복 테스트 없음)
-- **낙관적 배정의 key↔name 불일치** — 재조회 전까지 카드가 옛 스킴 이름을 보여준다
-- **롤백 가드 비대칭** — 캐시 쓰기는 무조건, 롤백은 조건부
-- **`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다(자동 배정). 실제 404 는 「프로젝트 없음」
+**신규 이연 8건 → 2026-07-27 현재 3건 해소 · 2건 잔여.**
+- ✅ `description` 의 **`null`↔`''` 왕복** — `SchemeMetaPanel.handleSave` 에서 역변환 +
+  `UpdateSchemeInput.description` 을 `string | null` 로 확장. 전송 body 를 단정하는 회귀 테스트 1건 추가.
+- ✅ **낙관적 배정의 key↔name 불일치** — 배정 후보 캐시(`useAssignableWorkflowSchemes`)의 정합 객체를
+  통째로 낙관값으로 쓴다. 못 찾으면 낙관적 쓰기를 **생략**한다(틀린 이름보다 옛 카드 유지가 낫다).
+- ✅ **롤백 가드 비대칭** — 조건 두 개를 맞추는 대신 `applied` 플래그로 **구조로** 짝지었다.
+  쓰기 시점의 사실을 컨텍스트로 넘겨 onError 가 같은 것을 본다. 캐시 엔트리가 없던 경우는
+  `removeQueries` 로 원상복구(값을 쓰는 게 아니라 엔트리를 없애야 한다).
+- ⬜ 계약 스냅샷의 **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡는다
+- ⬜ **`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다(자동 배정). 실제 404 는 「프로젝트 없음」
 
 **기존 이연 3건.**
 - **도메인·DB 어휘 이연** — 도메인 `WorkflowScheme.isDefault` 와 DB 컬럼 `is_default` 는 그대로다
@@ -108,6 +139,9 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
 - **`classify-task.ts:45` 의 `'스키마'` 키워드가 Zod·GraphQL·JSON schema 작업을 전부 `migration` 으로
   오분류한다.** 같은 작업 제목 3종이 `migration`/`qa`/`backend` 3개 결과를 냈다. 기존 항목
   「`bts-review-plan` 분기 표에 `type=backend` 가 없다」의 형제 — 하드코딩 키워드가 아니라 **판별식**이 필요하다.
+  > 2026-07-27 — 형제 2건(BC_KEYWORDS · 분기표)은 판별식 2종으로 해소했고
+  > (`bc-keyword-coverage.test.ts` · `skill-type-coverage.test.ts`), **`'스키마'` → `migration`
+  > 오분류는 아직 남아 있다**. type 축은 BC 축과 달리 대조할 정본 목록이 없어 별도 접근이 필요하다.
 
 **별도 작업으로 남은 것 — ★2026-07-27 실측으로 판정이 뒤집혔다.** 아래 §springdoc 항목으로 이관.
 
@@ -241,7 +275,20 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 실제로 핸들러를 태워 캡처값을 보므로 "안 타는 분기" 도 잡힌다. 범위는 스킴 서비스를 소비하는
 핸들러 전체로 잡을 것(패키지가 아니라 **의존 관계**를 판별식으로).
 
-## apps/web — SCHEME_KEYS.assignable 캐시가 스킴 뮤테이션으로 무효화되지 않는다 (PR #314 코드리뷰 CONCERNS 5)
+## ✅ apps/web — SCHEME_KEYS.assignable 캐시 무효화 (해소 2026-07-27)
+
+**해소.** queryKey 를 레포 지배 관례인 **리소스-우선**(`['assignable-workflow-schemes', projectKey]`,
+`use-components`·`use-boards` 동형)으로 바꿔 prefix 하나로 잡고, 생성·수정·삭제 **3지점 전수**에
+`invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })` 를 넣었다.
+
+**★원 기록의 처방을 채택하지 않았다.** 원 기록은 `predicate` 기반 부분 매칭을 "맞는 방향" 이라 적고
+"이 레포의 다른 훅 관례와 맞는지 먼저 확인할 것" 이라 단서를 달았다. 확인 결과
+**`predicate:` 선례가 저장소 전체에 0건**이다(`invalidateQueries` 호출 359건 / 115파일이 전부 완전키 또는 prefix).
+키 구조를 관례에 맞추면 predicate 없이 같은 목적을 달성하므로 그쪽을 택했다.
+
+생산 지점 3곳을 전수 검증하는 테스트를 뒀다 — 하나만 걸면 나머지가 무방비다([[mutation-site-count-equals-verified-scope]]).
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, 2026-07-26 게이트 2 = A)**. **범위 밖.** 영향이 작고, 성급한 처방이 더 위험하다.
 
@@ -257,6 +304,8 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 이 맞는 방향이다. 그게 이 레포의 다른 훅 관례와 맞는지 먼저 확인할 것.
 
 **Depends on / blocked by**. 없음. 우선순위 낮음(30초 staleness, 두 역할 겸임자 한정).
+
+</details>
 
 ## ✅ issue-tracking — 핵심 엔티티 glossary 미등재 (해소 2026-07-27)
 
@@ -287,7 +336,16 @@ glossary 70개 term 과 대조한 결과다. **`IssueHistory` 는 원 기록이 
 3. 판별식을 **기등재 70개에 역적용해 검증**하라는 후속을 규칙 안에 남겼다 (메모리
    [[rule-reverse-validated-on-completed-batch]] — 하드코딩 목록이 아니라 판별식이어야 재발하지 않는다).
 
-## 워크플로우 — `bts-review-plan` 분기 표에 `type=backend` 가 없다 (PR #315 발견)
+## ✅ 워크플로우 — `bts-review-plan` 분기 표에 `type=backend` 가 없다 (해소 2026-07-27)
+
+**해소.** 표에 `backend` 행 + **fallback 행**(「그 외(표에 없는 타입)」)을 추가하고,
+`scripts/workflow/skill-type-coverage.test.ts` 로 **차집합 0 을 강제**했다.
+`backend` 매핑은 `bts-workflow/SKILL.md` 가 이미 갖고 있던 것이라 새 결정이 아니라 **미러 누락**이었다.
+
+**뮤테이션 확증** — `backend` 행을 지우자 새 테스트 FAILED. fallback 행 존재도 별도 단언.
+개별 타입 추가로 끝내지 않은 이유는 원 기록이 지적한 대로다 — 판별식이 없으면 재발한다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. `.claude/skills/bts-review-plan/SKILL.md` Step 2 의 타입별 리뷰 체인 표는
 `auth`·`migration`·`ui`·`api`·`feature`·`design` + `{bugfix,chore,qa}` skip **7종만** 다룬다.
@@ -306,6 +364,8 @@ glossary 70개 term 과 대조한 결과다. **`IssueHistory` 는 원 기록이 
 검증을 하나 둔다(스킬 문서 대조 스크립트 또는 classify 출력 화이트리스트).
 
 **산출물**. 분기 표 보강 + 타입 집합 정합 검증. 개별 타입 추가만으로 끝내지 말 것 — 판별식이 없으면 재발한다.
+
+</details>
 
 ## apps/web mocks — auth-fixtures 와 user-fixtures 의 사용자 id 교집합이 0 이다 (PR #315 브라우저 눈확인 발견)
 
@@ -439,7 +499,29 @@ offset 모드에는 같은 가드가 없다.
 
 **소관**. notification BC 와 공동. FR-AT(automation) 또는 FR-NT.
 
-## 워크플로우 — `BC_KEYWORDS['issue-tracking']` 에 `댓글` 이 없다 (PR #316 발견)
+## ✅ 워크플로우 — `BC_KEYWORDS` 누락 + 한국어 부분일치 (해소 2026-07-27)
+
+**해소.** 원 기록보다 **증상이 나빴다**. `--title "댓글 리액션 추가"` 는 BC=null 이 아니라
+**`automation` 으로 조용히 오라우팅**된다 — `리`+`액션` 의 `액션` 이 automation 키워드에 부분일치했다.
+미정의(null)보다 나쁜 결함이다.
+
+**근본 처방 3단.**
+1. **한국어 경계 규칙** — `includes` → `includesWithBoundary`. 한글 키워드는 **앞에 한글 음절이 붙으면
+   매치로 치지 않는다**(조사는 뒤에 붙으므로 뒤는 막지 않는다). ASCII 키워드는 무영향.
+2. **키워드 배치 교정** — `aql`·`검색`·`search` 가 automation 에 잘못 있었다 →
+   `search-export-import` BC 를 신설해 이관. `personalization` 도 함께 신설.
+   누락 도메인 명사 보강(댓글·링크·히스토리·타임라인·워크로그·대시보드·가젯·인박스 등).
+3. **판별식** — `bc-keyword-coverage.test.ts` 가 `docs/plan/product/*.md` 의 FR 제목 131건을
+   classify 에 태워 소속 BC 와 대조한다. 불일치 **80건(61.1%) → 49건(37.4%)**.
+
+**★남은 49건을 0 으로 만들지 않았다.** 상당수가 **오라클의 모호성**이다 — 예로 FR-IS-01
+"이슈 CRUD, 상태 변경 시 워크플로우 검증 + 알림" 은 제목 하나에 3개 BC 어휘가 동시에 들어 있다.
+계획 문서 편제에 맞추려고 키워드를 더 밀어넣으면 **실사용 입력의 라우팅이 오히려 나빠진다**(과적합).
+그래서 baseline 으로 동결하고 **회귀만 차단**하며, baseline 이 느슨해지면 알려주는 하한 단언도 함께 뒀다.
+
+**뮤테이션 확증** — `'댓글'` 키워드 제거 → FAILED, 경계 규칙 무력화 → FAILED.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. `scripts/workflow/classify-task.ts:122` 의 issue-tracking 키워드 목록은
 `'이슈', 'issue', '코멘트', 'comment', '첨부', 'attachment', ...` 인데 **`댓글` 이 빠져 있다.**
@@ -459,6 +541,8 @@ offset 모드에는 같은 가드가 없다.
 둘 다 하드코딩 목록끼리의 정합을 아무도 안 보고 있다.
 
 **소관**. `scripts/workflow/classify-task.ts`.
+
+</details>
 
 ## identity-access — CORS `allowedMethods` 에 `PATCH` 가 없다 (PR #316 후속, 선재 / 2026-07-27 등재)
 
