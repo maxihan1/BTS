@@ -404,7 +404,7 @@ interface CommentSectionProps {
 }
 
 /**
- * 이슈 상세 활동 영역의 댓글 섹션 (FR-CO-01).
+ * 이슈 상세 활동 영역의 댓글 섹션 (FR-CO-01 목록·작성 / FR-CO-02 수정·삭제).
  *
  * `WorklogSection` 을 미러링한다 — 같은 위치·같은 구조·같은 캐시 방침.
  *
@@ -415,6 +415,14 @@ interface CommentSectionProps {
  *
  * ## 빈 상태 / 로드 실패 / 권한 없음은 서로 다른 문구다
  * 셋 다 "댓글이 안 보인다" 는 같은 증상으로 나타나므로 원인을 구분할 수 있어야 한다.
+ *
+ * ## 현재 사용자·SOFT_DELETE 는 props 가 아니라 훅으로 얻는다
+ * 수정·삭제 어포던스 판정에는 `canUpdate` 외에 **현재 사용자 id** 와 **SOFT_DELETE 보유 여부**가
+ * 더 필요하다. 이 둘을 props 로 올리면 `IssueActivityTabs` → `issues.$key` 까지 같은 값을 나르는
+ * 배관이 번지고, 그 경로의 모든 컴포넌트가 댓글 권한 모델을 알아야 하는 결합이 생긴다.
+ * 두 값 모두 전역 소스(`authStore` / 이슈 권한 쿼리)에서 곧바로 읽을 수 있으므로 여기서 훅으로
+ * 취득한다. 권한 쿼리는 `staleTime` 30초로 같은 화면의 다른 소비자(`IssueMetaPanel`)와 캐시를
+ * 공유하므로 중복 호출도 생기지 않는다.
  *
  * @param issueKey 대상 이슈 키
  * @param canUpdate 쓰기 권한 여부
