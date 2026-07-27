@@ -122,6 +122,10 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
     '이슈', 'issue', '코멘트', 'comment', '첨부', 'attachment',
     '라벨', 'label', '컴포넌트', '버전', 'version',
     '워처', 'watcher',
+    // 보강 (2026-07-27 — FR 제목 전수 대조로 누락 실측)
+    // '댓글' 은 한국어 실사용에서 '코멘트' 보다 압도적으로 흔한데 빠져 있었다.
+    '댓글', '링크', '히스토리', '이력', '커스텀 필드', '커스텀필드',
+    '템플릿', '프로젝트', 'resolution', '해결책', '클론', '인쇄',
   ],
   'project-workflow': [
     'project-workflow', 'project workflow',
@@ -137,6 +141,11 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
     '보드', 'board', '칸반', 'kanban',
     '에픽', 'epic',
     '번다운', 'burndown',
+    // 보강
+    '타임라인', 'timeline', '로드맵', 'roadmap', 'gantt', '간트',
+    '워크로그', 'worklog', '스윔레인', 'swimlane', 'wip',
+    '벨로시티', 'velocity', '번업', 'burnup', 'lexorank',
+    '추정', '일정',
   ],
   'automation': [
     'automation',
@@ -144,13 +153,37 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
     '룰', 'rule',
     '트리거', 'trigger',
     '액션', 'action',
+    // 보강
+    '규칙', '웹훅', 'webhook', 'gitops',
+  ],
+  // ★'aql'·'검색'·'search' 는 여기가 아니라 automation 에 잘못 들어 있었다 (2026-07-27 실측).
+  //   검색/Export/Import 는 별개 BC 이고 모듈도 backend/modules/search-export-import 로 분리돼 있다.
+  'search-export-import': [
+    'search-export-import',
     'aql', '검색', 'search',
+    'export', '내보내기', 'import', '가져오기',
+    'csv', 'xlsx', 'openapi', 'swagger',
+    '필터', 'filter',
+  ],
+  'personalization': [
+    'personalization',
+    '프로필', 'profile',
+    '환경설정', '개인 설정', 'preference',
+    '퀵 필터', '퀵필터',
+    '캘린더', 'calendar',
+    '즐겨찾기', 'favorite',
+    '테마', 'theme',
   ],
   'notification': [
     'notification', 'notify',
     '알림',
     '멘션', 'mention',
     '이메일', 'email',
+    // 보강
+    '대시보드', 'dashboard', '가젯', 'gadget', '위젯', 'widget',
+    '인박스', 'inbox', '받은 편지함',
+    'stomp', 'websocket', '웹소켓',
+    '리포트', 'report', 'cfd', '사이클 타임', '사이클타임',
   ],
   'slack-integration': [
     'slack-integration', 'slack integration',
@@ -198,9 +231,39 @@ export const toSlug = (title: string): string => {
   return s.slice(0, ASCII_SLUG_MAX).replace(/-+$/, '');
 };
 
-// 키워드 매치 (case-insensitive, 단어 경계 검사 없이 substring)
+/** 한글 음절 1자 판정 — 키워드 경계 검사에 쓴다 */
+const isHangulSyllable = (ch: string | undefined): boolean =>
+  ch !== undefined && ch >= '가' && ch <= '힣';
+
+/**
+ * 키워드 1개가 문자열에 **경계를 지켜** 나타나는지.
+ *
+ * ★왜 단순 `includes` 가 아닌가. 한국어는 단어 사이에 공백 보장이 없어 접미사 오탐이 난다 —
+ * 실측 사례로 "댓글 리액션 추가" 가 automation 으로 갔다. '리**액션**' 이 automation 키워드
+ * '액션' 에 걸렸기 때문이다. BC 가 null 로 떨어지는 것(미정의)보다 나쁜 **조용한 오라우팅**이다.
+ *
+ * 판별식 — 한글 키워드는 **바로 앞에 한글 음절이 붙어 있으면 매치로 치지 않는다.**
+ * 한국어 조사는 뒤에 붙으므로('액션을', '이슈의') 뒤는 막지 않고 앞만 막는다.
+ * ASCII 키워드('api', 'saml')는 이 규칙과 무관하므로 기존 substring 그대로 둔다 —
+ * 영문에 한글 접두사가 붙는 형태는 이 도메인에 없다.
+ */
+const includesWithBoundary = (haystack: string, keyword: string): boolean => {
+  const kw = keyword.toLowerCase();
+  if (kw.length === 0) return false;
+
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(kw, from);
+    if (at === -1) return false;
+    // 키워드 첫 글자가 한글일 때만 앞 경계를 본다.
+    if (!isHangulSyllable(kw[0]) || !isHangulSyllable(haystack[at - 1])) return true;
+    from = at + 1;
+  }
+};
+
+// 키워드 매치 (case-insensitive + 한글 접두사 경계 검사)
 const hasAny = (lower: string, keywords: string[]): boolean =>
-  keywords.some((kw) => lower.includes(kw.toLowerCase()));
+  keywords.some((kw) => includesWithBoundary(lower, kw));
 
 const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
   patterns.some((p) => p.test(raw));
@@ -291,7 +354,7 @@ const detectBoundedContext = (raw: string, type: TaskType): BoundedContext | nul
   // 각 BC 키워드 점수 합산
   const scores = (Object.entries(BC_KEYWORDS) as [BoundedContext, string[]][]).map(
     ([bc, kws]) => {
-      const score = kws.filter((kw) => lower.includes(kw.toLowerCase())).length;
+      const score = kws.filter((kw) => includesWithBoundary(lower, kw)).length;
       return [bc, score] as const;
     }
   );
