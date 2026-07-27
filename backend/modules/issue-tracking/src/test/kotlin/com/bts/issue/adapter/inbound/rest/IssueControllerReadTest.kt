@@ -218,6 +218,44 @@ class IssueControllerReadTest {
             .andExpect(status().isUnauthorized)
     }
 
+    // ── R-3b: offset 모드 페이지 크기 상한 (TODOS §이력/목록 offset 페이징 상한) ────
+
+    /**
+     * offset 모드에는 애플리케이션 상한이 없었다 — `@PageableDefault(size = 20)` 은 기본값일 뿐
+     * `?size=` 로 얼마든지 올릴 수 있고, 남는 것은 Spring Data Web 프레임워크 기본값(2000)뿐인데
+     * 그 키는 이 저장소 설정에 없다. cursor 모드는 이미 `limit > 100` 을 400 으로 막고 있었다.
+     *
+     * **changelog 뿐 아니라 목록에도 같은 가드가 필요하다** — 한 지점만 막으면 절반만 닫힌다
+     * ([[mutation-site-count-equals-verified-scope]]).
+     */
+    @Test
+    fun `GET 이슈 목록 조회 — offset size 가 상한을 넘으면 400`() {
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("size", "2000")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    /** 경계값(100)은 통과해야 한다 — 위 단언이 "전부 400" 으로 무너지지 않았음을 확인한다. */
+    @Test
+    fun `GET 이슈 목록 조회 — offset size 가 상한과 같으면 200`() {
+        val pageable = PageRequest.of(0, 100)
+        every {
+            issueApplicationService.listIssues(any(), any(), any(), any())
+        } returns PageImpl(emptyList<IssueResponse>(), pageable, 0L)
+
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("size", "100")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+    }
+
     // ── R-4: GET /issues projectKey 생략 → 200 + 빈 Page ──────────────────────
 
     @Test
