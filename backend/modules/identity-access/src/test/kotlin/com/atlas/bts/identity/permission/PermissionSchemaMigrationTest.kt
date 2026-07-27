@@ -311,6 +311,36 @@ class PermissionSchemaMigrationTest {
         assertThat(defaultCount).isEqualTo(1)
     }
 
+    /**
+     * 권한 스킴은 마이그레이션 종료 시점에 **총 1개**여야 한다 — 기본 스킴 하나뿐.
+     *
+     * ## 이 단언이 지키는 것
+     * `role_permissions` 시드 마이그레이션 9종(V008 · V009 · V013 · V014 · V016 · V017 · V018 ·
+     * V024 · V035)은 **전부 기본 스킴 UUID `...0001` 한 곳에만** 권한을 넣는다(scheme_id 리터럴
+     * 18개가 모두 동일). 프로덕션 코드에는 `permission_schemes` / `project_permission_scheme` 에
+     * INSERT/UPDATE 하는 경로가 **하나도 없다**(마이그레이션과 테스트 픽스처가 전부).
+     * 그래서 "비-기본 스킴에 매핑된 프로젝트는 MANAGE_WORKFLOW 가 없어 워크플로우 스킴을 배정할 수
+     * 없다"는 결함은 **도달 불가**다 — 비-기본 스킴 자체를 만들 수 없기 때문이다.
+     *
+     * ## 이 단언이 깨지면 해야 할 일
+     * 누군가 두 번째 스킴을 시드/생성하는 순간 그 도달 불가 전제가 무너진다. 그때는 **이 테스트만
+     * 고치지 말고**, 위 9종 시드가 새 스킴에도 적용되도록 마이그레이션을 함께 추가해야 한다
+     * (그러지 않으면 새 스킴을 쓰는 프로젝트의 PROJECT_ADMIN 이 권한을 통째로 잃는다).
+     *
+     * 기존 `기본 스킴은 단 하나만 존재한다` 는 `is_default = TRUE` 행만 세므로 **비-기본 스킴이
+     * 늘어나는 것을 못 잡는다**. 그 사각을 이 단언이 막는다.
+     */
+    @Test
+    fun `권한 스킴은 기본 스킴 하나뿐이다 — 비-기본 스킴은 생성 경로가 없다`() {
+        val schemeCount =
+            jdbc.queryForObject(
+                "SELECT count(*) FROM permission_schemes",
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(schemeCount).isEqualTo(1)
+    }
+
     @Test
     fun `project_permission_scheme 테이블이 존재한다`() {
         // 시드는 없고 테이블만 존재 — 미매핑 프로젝트는 기본 스킴 fallback 동작

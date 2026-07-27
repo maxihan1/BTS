@@ -742,7 +742,34 @@ IssueAttachmentService.kt:227   checkPermission(actor, IssuePermission.UPDATE, i
 
 </details>
 
-## issue-tracking / identity-access — 이슈 보안등급이 댓글 수정·삭제를 막지 않는다 (PR #316 리뷰 발견, 선재)
+## ✅ issue-tracking / identity-access — 보안등급 게이트 확대 (해소 2026-07-27)
+
+**해소.** 등급 게이트를 `VIEW` 단독에서 **이슈 내용 접근 계열 전체**로 넓혔다 —
+`SECURITY_GATED_PERMISSIONS = {VIEW, UPDATE, TRANSITION, SOFT_DELETE, HARD_DELETE}`.
+`IssuePermission` 8종을 전수 판정한 결과이며, 판정표를 상수 KDoc 에 박았다.
+
+**제외 2종.**
+- `BROWSE`·`CREATE` — 프로젝트 스코프라 특정 이슈의 등급과 무관하다.
+- **`SET_SECURITY` — 의도적 제외.** 등급 변경 권한까지 게이트에 넣으면 **잘못 설정된 등급을
+  아무도 되돌릴 수 없다**(등급 멤버가 아니라 못 보고, 못 보니 못 고친다). 우회로 없는 락아웃이다.
+  **이 결정을 고정하는 테스트를 뒀다** — 없으면 다음 사람이 "빠뜨렸네" 하고 넣어 락아웃을 만든다.
+  그 테스트는 `securityLookup` 을 스텁하지 **않는 것**으로 "게이트를 안 탄다" 를 증명한다(strict mock).
+
+**★게이트를 매트릭스 판정 뒤에 뒀다.** `TRANSITION`·`HARD_DELETE` 는 `toCodeOrNull` 매핑이 없어
+`code == null` 조기 반환으로 매트릭스를 건너뛴다. 게이트를 그 앞에 두면 **그 둘이 게이트도 빠져나간다.**
+
+**뮤테이션 확증** — `UPDATE`·`TRANSITION` 을 집합에서 빼자(확대 이전 상태) 대응 테스트 2건 FAILED.
+**대조군** — 등급 미지정 이슈는 `UPDATE` 통과("전부 거부" 로 무너지지 않았음을 확인).
+
+**회귀 1건 — 확대가 드러낸 의존.** `MyIssuePermissionIntegrationTest` 가 깨졌다.
+`UPDATE` 판정이 이제 `IssueSecurityLookup` 을 타면서 cross-BC `issues` 테이블을 읽는데,
+그 테스트 DB 에는 `projects` 스텁만 있었다. 기존 `ensureProjectsTableExists` 와 **같은 방식**으로
+`issues` 최소 스텁을 추가했다(등급 NULL = 공개로 시드). 결함이 아니라 **의존이 늘어난 결과**다.
+
+**비용 인식** — `UPDATE`/`TRANSITION`/`SOFT_DELETE` 판정마다 `issues` 조회 1회가 추가된다.
+`VIEW` 는 원래 그 비용을 내고 있었다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. 이슈 보안 등급(security level, FR-PM-06)은 **`VIEW` 에만** 적용된다. `UPDATE`·`SOFT_DELETE`
 는 등급 게이트를 통과하지 않는다.
@@ -786,6 +813,8 @@ IdentityAccessIssuePermissionResolver.kt:86
 방향이라 회귀 폭이 크다 — 프로젝트 멤버십 시드가 걸린 테스트를 전 모듈 grep 할 것.
 
 **소관**. FR-PM-06.
+
+</details>
 
 ## ✅ issue-tracking — offset 페이징 응답 크기 상한 (해소 2026-07-27)
 
