@@ -35,8 +35,11 @@ import java.util.UUID
  *
  * 테스트 시나리오 (FR-CO-02 Task 1 — findActive / updateBody / softDelete).
  * - findActive 3건. 활성 조회 · 다른 이슈 소속 차단 · 삭제된 건 차단.
- * - updateBody 2건. 본문·updatedAt 갱신 + createdAt·authorId 보존 · 삭제된 건 0 반환.
- * - softDelete 2건. deleted_at 기록 + listByIssue 제외 · 재삭제 0 반환(최초 시각 보존).
+ * - updateBody 3건. 본문·updatedAt 갱신 + createdAt·authorId 보존 · 삭제된 건 0 · 타 이슈 소속 0.
+ * - softDelete 3건. deleted_at 기록 + listByIssue 제외 · 재삭제 0(최초 시각 보존) · 타 이슈 소속 0.
+ *
+ * 세 메서드 모두 `issueId` 를 받으므로 "다른 이슈 소속 차단" 을 **세 번 각각** 검증한다
+ * (FR-CO-01 §D4 — 소속 대조를 상위 계층의 성실성에 맡기지 않고 쿼리 술어로 고정).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentRepositoryTest : IssueTestcontainersBase() {
@@ -293,7 +296,7 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         commentRepository.insert(comment)
         val editedAt = Instant.parse("2024-03-02T11:30:00Z")
 
-        val affected = commentRepository.updateBody(comment.id, "수정된 본문", editedAt)
+        val affected = commentRepository.updateBody(comment.id, issue.id.value, "수정된 본문", editedAt)
 
         assertThat(affected).isEqualTo(1)
         val reloaded = requireNotNull(commentRepository.findActive(comment.id, issue.id.value))
@@ -316,11 +319,39 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         commentRepository.insert(comment)
         softDeleteComment(comment.id)
 
-        val affected = commentRepository.updateBody(comment.id, "되살리기 시도", Instant.parse("2024-03-02T11:30:00Z"))
+        val affected =
+            commentRepository.updateBody(
+                comment.id,
+                issue.id.value,
+                "되살리기 시도",
+                Instant.parse("2024-03-02T11:30:00Z"),
+            )
 
         assertThat(affected).isZero()
         // 반환값 0 과 별개로 실제 UPDATE 가 나가지 않았는지 DB 상태로 확인한다.
         assertThat(readBody(comment.id)).isEqualTo("삭제된 원본 본문")
+    }
+
+    /**
+     * Given  이슈 A 에 속한 활성 댓글 1건 + 무관한 이슈 B
+     * When   updateBody(commentId, issueB.id, ...) — 경로 위조 시뮬레이션
+     * Then   0 반환 + 본문 미변경. 소속 대조가 서비스가 아닌 쿼리 술어에 고정돼 있음을 증명한다.
+     */
+    @Test
+    @Order(10)
+    fun `updateBody 는 다른 이슈 소속 commentId 에 0 을 반환한다`() {
+        val issueA = insertIssue(1L)
+        val issueB = insertIssue(2L)
+        val comment = buildComment(issueA.id.value, body = "이슈 A 원본 본문")
+        commentRepository.insert(comment)
+        val editedAt = Instant.parse("2024-03-02T11:30:00Z")
+
+        val affected = commentRepository.updateBody(comment.id, issueB.id.value, "위조 경로 수정 시도", editedAt)
+
+        assertThat(affected).isZero()
+        assertThat(readBody(comment.id)).isEqualTo("이슈 A 원본 본문")
+        // 대조군 — 올바른 issueId 로는 갱신된다. 없으면 "무조건 0" 구현도 위 단언을 통과한다.
+        assertThat(commentRepository.updateBody(comment.id, issueA.id.value, "정상 수정", editedAt)).isEqualTo(1)
     }
 
     // ── softDelete ────────────────────────────────────────────────────────────
@@ -340,7 +371,7 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         commentRepository.insert(survivor)
         val deletedAt = Instant.parse("2024-03-03T12:00:00Z")
 
-        val affected = commentRepository.softDelete(target.id, deletedAt)
+        val affected = commentRepository.softDelete(target.id, issue.id.value, deletedAt)
 
         assertThat(affected).isEqualTo(1)
         assertThat(readDeletedAt(target.id)).isEqualTo(deletedAt)
@@ -361,12 +392,34 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         val comment = buildComment(issue.id.value, body = "두 번 삭제될 댓글")
         commentRepository.insert(comment)
         val firstDeletedAt = Instant.parse("2024-03-03T12:00:00Z")
-        assertThat(commentRepository.softDelete(comment.id, firstDeletedAt)).isEqualTo(1)
+        assertThat(commentRepository.softDelete(comment.id, issue.id.value, firstDeletedAt)).isEqualTo(1)
 
-        val affected = commentRepository.softDelete(comment.id, Instant.parse("2024-03-04T13:00:00Z"))
+        val affected = commentRepository.softDelete(comment.id, issue.id.value, Instant.parse("2024-03-04T13:00:00Z"))
 
         assertThat(affected).isZero()
         // 재삭제가 실제로 차단됐는지 — 반환값 0 만으로는 deleted_at 덮어쓰기를 배제하지 못한다.
         assertThat(readDeletedAt(comment.id)).isEqualTo(firstDeletedAt)
+    }
+
+    /**
+     * Given  이슈 A 에 속한 활성 댓글 1건 + 무관한 이슈 B
+     * When   softDelete(commentId, issueB.id, ...) — 경로 위조 시뮬레이션
+     * Then   0 반환 + deleted_at 여전히 NULL(활성 유지).
+     */
+    @Test
+    @Order(11)
+    fun `softDelete 는 다른 이슈 소속 commentId 에 0 을 반환한다`() {
+        val issueA = insertIssue(1L)
+        val issueB = insertIssue(2L)
+        val comment = buildComment(issueA.id.value, body = "이슈 A 댓글")
+        commentRepository.insert(comment)
+        val deletedAt = Instant.parse("2024-03-03T12:00:00Z")
+
+        val affected = commentRepository.softDelete(comment.id, issueB.id.value, deletedAt)
+
+        assertThat(affected).isZero()
+        assertThat(readDeletedAt(comment.id)).isNull()
+        // 대조군 — 올바른 issueId 로는 삭제된다. 없으면 "무조건 0" 구현도 위 단언을 통과한다.
+        assertThat(commentRepository.softDelete(comment.id, issueA.id.value, deletedAt)).isEqualTo(1)
     }
 }
