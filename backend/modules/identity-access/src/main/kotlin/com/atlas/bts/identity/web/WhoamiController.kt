@@ -16,6 +16,7 @@ import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.status.UserStatusRepository
 import com.atlas.bts.identity.user.UserRepository
+import com.bts.shared.permission.GlobalPermissionCodes
 import com.bts.shared.permission.SystemPermissionResolver
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
@@ -89,11 +90,6 @@ class WhoamiController(
     private val userPreferencesService: UserPreferencesService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    companion object {
-        // 전역 권한코드 — GlobalPermissionGrantService.ALLOWED_GLOBAL_PERMISSIONS / V036 CHECK / SDD 12 와 동일 문자열.
-        private const val PERMISSION_CREATE_PROJECT = "CREATE_PROJECT"
-    }
-
     /**
      * `GET /api/v1/users/me/whoami` — 현재 인증된 사용자 정보 반환.
      *
@@ -145,7 +141,13 @@ class WhoamiController(
                 isSystemAdmin = systemPermissionResolver.isSystemAdmin(userId),
                 // FR-PJ-01/FR-PM-10: 프로젝트 생성 권한 힌트. hasGlobalPermission(=grant OR isSystemAdmin)에 위임 —
                 // hasGrant 직접호출 금지(SYSTEM_ADMIN 이 grant 없이도 통과해야 하므로). 미부여/판정 불가는 false(fail-closed).
-                canCreateProject = systemPermissionResolver.hasGlobalPermission(userId, PERMISSION_CREATE_PROJECT),
+                // 전역 권한코드 문자열의 단일 출처는 shared-kernel GlobalPermissionCodes 다.
+                // 예전에는 이 파일이 자체 상수를 들고 있어, 같은 문자열이 앱 안에만 2벌 있었다.
+                canCreateProject =
+                    systemPermissionResolver.hasGlobalPermission(
+                        userId,
+                        GlobalPermissionCodes.CREATE_PROJECT,
+                    ),
                 mfaEnrollmentRequired = mfaEnrollmentRequired,
                 displayName = user.displayName,
                 avatarUrl = avatarUrlFor(userId),
