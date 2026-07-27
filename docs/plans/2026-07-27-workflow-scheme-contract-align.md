@@ -255,12 +255,22 @@ FR-CO-02 분류를 받았을 상황이었다). **plan 이 진실출처.**
 
 ---
 
-### Task 1. 계약 스냅샷 기전 신설 (백엔드가 정본을 생성·검증)
+### Task 1. 계약 스냅샷 기전 신설 — **조립 컨텍스트에서 생성** (리뷰 발견 1 반영)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeContractSnapshotTest.kt`, `docs/contracts/workflow-schemes.snapshot.json`]
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/contract/WorkflowSchemeContractSnapshotTest.kt`, `docs/contracts/workflow-schemes.snapshot.json`]
 - depends-on: []
+
+> 🔴 **리뷰 발견 1 (P1) 반영 — 슬라이스가 아니라 조립에서 만든다.**
+> `WorkflowSchemeControllerTest` 는 `:80 @EnableWebMvc` + `:108 ObjectMapper().registerKotlinModule()`
+> (JavaTimeModule 부재)이고, 이번에 다루는 `AssignmentResponse` 가 `assignedAt: Instant` ·
+> `projectId`/`assignedBy: UUID` 를 갖는다. 메모리 [[enablewebmvc-slice-localdate-array-serialization]] 이
+> 이 저장소에서 이 설정으로 `LocalDate` 가 배열로 나간 사고를 기록한다.
+> 슬라이스에서 만들면 **봉인이 틀린 계약을 박제**한다.
+> ⇒ 위치를 `:app` 테스트로, 부팅 기반을 `ProdAssemblyHttpTestBase`(또는 `:app:test` 의 기존 조립 베이스)로 둔다.
+> **선행 조건.** dev postgres 5433 가동(`docker ps --filter name=bts-postgres-dev`).
+> 기존 조립 테스트의 컨텍스트 설정을 발명하지 말고 복사할 것.
 
 **왜 이것이 1번인가.** 이 파일이 이 PR 의 **유일한 계약 정본**이 된다. 프론트는 이것을 파싱해 검증하고,
 백엔드는 이것이 stale 하면 실패한다. 양방향이 닫힌다.
@@ -318,10 +328,14 @@ cd backend && ./gradlew :modules:project-workflow:test \
 
 **검증**.
 ```bash
-cd backend && ./gradlew :modules:project-workflow:test --tests "*WorkflowSchemeContractSnapshotTest*"
-# XML 실측 — BUILD SUCCESSFUL 만 믿지 않는다
+docker ps --filter name=bts-postgres-dev --format '{{.Names}} {{.Status}}'   # 5433 가동 선확인
+cd backend && ./gradlew :modules:app:test --tests "*WorkflowSchemeContractSnapshotTest*"
+# XML 실측 — BUILD SUCCESSFUL 만 믿지 않는다 (메모리 gradle-batched-task-partial-test-run)
 grep -o 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' \
-  modules/project-workflow/build/test-results/test/TEST-*ContractSnapshotTest.xml
+  modules/app/build/test-results/test/TEST-*ContractSnapshotTest.xml
+# 발견 1 회귀 가드 — Instant 가 ISO 문자열로 담겼는지 눈으로 확인
+grep -o '"assignedAt"[^,]*' ../docs/contracts/workflow-schemes.snapshot.json
+# 기대. ISO-8601 문자열 (숫자·배열이면 조립 설정이 아니라는 뜻 → 중단하고 보고)
 ```
 
 ---
@@ -500,8 +514,14 @@ cd backend && ./gradlew :modules:project-workflow:ktlintCheck :modules:project-w
 **RED**. Task 2 의 계약 테스트가 이미 RED 다. 여기서는 그것을 GREEN 으로 만든다
 (추가 RED 를 새로 쓰지 않는다 — 같은 검증을 두 벌 만들지 않음).
 
-**GREEN**. `workflow-schemes.types.ts` 를 아래 6 스키마로 재구성한다. `schemeResponseSchema` ·
+**GREEN**. `workflow-schemes.types.ts` 를 아래 스키마로 재구성한다. `schemeResponseSchema` ·
 `assignmentResponseSchema` · `mappingResponseSchema` 3장은 **삭제**한다.
+
+> ⚠️ **선언 순서 (F4 반영 후 필수).** `const` 는 호이스팅되지 않으므로 아래 순서를 지킬 것 —
+> `schemeCoreSchema` → `assignedSchemeSchema` → `schemeMutationResultSchema` →
+> **`mappingDetailSchema`** → `schemeListItemSchema`(mappingDetailSchema 참조) →
+> `schemeDetailSchema` → `mappingCreatedSchema` → `assignmentRecordSchema`.
+> 아래 코드 블록은 개념 순서로 적혀 있으니 파일에는 이 순서로 배치한다(그대로 옮기면 TDZ 에러).
 
 ```ts
 /** 스킴 공통 필드 — 목록·상세·배정조회·배정후보가 공유하는 최소 집합 */
@@ -527,7 +547,9 @@ export const schemeMutationResultSchema = schemeCoreSchema.extend({
 export const schemeListItemSchema = schemeMutationResultSchema.extend({
   usedByProjectsCount: z.number().int().nonnegative(),
   mappingsCount: z.number().int().nonnegative(),
-  mappings: z.array(z.unknown()),       // 목록에서는 항상 빈 배열
+  // 리뷰 F4 반영 — z.unknown() 이면 목록 endpoint 에서 봉인이 무력해진다.
+  // 목록은 빈 배열이지만 스키마는 실제 원소 형태를 요구한다(빈 배열은 그대로 통과).
+  mappings: z.array(mappingDetailSchema),
 })
 
 /** 매핑 상세 — 상세 응답 안의 원소 (백엔드 MappingResponseDetail) */
@@ -840,4 +862,193 @@ T6 의 `AssignedScheme` 는 그 스키마의 `z.infer` 별칭이다.
 명시했다. bts-impl 의 verifier 가 이를 실패로 오판하지 않도록 **T2 dispatch 시 "이 task 의 성공 기준은
 테스트가 실패하는 것"임을 prompt 에 명시**해야 한다.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-27)
+
+**Step 0 범위 도전.** 복잡도 게이트 발동(29파일 > 기준 8). **Maxi 결정 = 그대로 진행.**
+근거 — 어휘 소비처 9파일 + 그 테스트 7파일은 rename 의 본질적 파급이고, 유일하게 뺄 수 있는 3파일
+(계약 스냅샷)이 하필 재발 방지 장치 전부다. T5 로 픽스처가 Zod 를 참조하게 되면 픽스처↔Zod 는 묶이나
+**Zod↔백엔드는 스냅샷만이 묶는다.**
+
+**리뷰 체인 편차 (사유 기록).** SKILL.md Step 2 표는 `ui → plan-design-review` 이나
+**시각 변경 0**(순수 계약 정렬, NFR N4)이라 design 리뷰의 한계효용이 낮다고 판단해 `plan-eng-review`
+단독으로 실행했다. 메모리 [[bts-review-plan-autoplan-overkill]](Maxi 피드백 — eng 집중) 근거.
+
+> ⚠️ **outside voice 부재 — 게이트 1 에서 감안할 위험.** `codex` 미설치 + 이 세션은 AgentTool 미승인이라
+> **독립·교차모델 리뷰를 실행하지 못했다.** #313·#314 에서 독립 리뷰가 **3연속으로 사실오류를 적발**했고
+> #314 는 ADR 의 결정적 근거가 거짓임을 그렇게 밝혀냈다. 이 리뷰는 자기검토이므로 같은 종류의
+> 사각을 놓쳤을 수 있다. `npm install -g @openai/codex` 한 번이면 다음부터 진짜 교차모델이 된다.
+
+#### 🔴 발견 1 (P1, 신뢰도 9/10) — 스냅샷을 슬라이스에서 만들면 틀린 계약을 박제한다
+
+**Maxi 결정 = 1A (조립 환경에서 생성).**
+
+인용 근거.
+```
+WorkflowSchemeControllerTest.kt:76  @ContextConfiguration(classes = [WorkflowSchemeControllerTest.TestMvcConfig::class])
+WorkflowSchemeControllerTest.kt:80      @EnableWebMvc
+WorkflowSchemeControllerTest.kt:108     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
+```
+
+`JavaTimeModule` 부재. 그런데 이번에 다루는 `AssignmentResponse` 가 `assignedAt: Instant` ·
+`projectId: UUID` · `assignedBy: UUID` 를 갖는다. 메모리
+[[enablewebmvc-slice-localdate-array-serialization]] 이 **이 저장소에서 이 설정으로 `LocalDate` 가
+배열로 직렬화된 사고**를 기록한다.
+
+**왜 지금 버그보다 나쁜가.** 슬라이스가 `Instant` 를 숫자로 내면 스냅샷에 숫자가 담기고, 프론트
+`.strict()` 를 통과시키려 Zod 를 숫자로 바꾼다 → 조립(Spring Boot 자동설정 + `JavaTimeModule`)은
+ISO 문자열을 내므로 **봉인이 틀린 계약을 박제한 채 초록**이 된다.
+Prior learning applied — [[already-works-is-not-proof-unless-real-server]] (9/10). 그때는
+"MSW 끼리의 일치"였고 이번은 **"슬라이스끼리의 일치"** 로 같은 구조다.
+
+**처방 (T1 재구성).** 스냅샷 생성을 조립 컨텍스트(`:app:test` 또는 `ProdAssemblyHttpTestBase`)로 옮긴다.
+⇒ **T1 이 dev postgres 5433 을 요구하게 되고 T8(조립 부팅)과 같은 인프라를 쓴다.**
+task 순서를 `T1(조립) → T2 → T3 → …` 로 유지하되 T1 의 agent 를 `backend-engineer`, 검증 명령을
+`:app:test` 로 교체한다. 백엔드 CI 부재는 기존 조건이라(메모리
+[[no-backend-ci-and-assembly-merge-verification-traps]]) 로컬 검증 체계와 정합한다.
+
+#### ✅ 발견 2 (P2, 신뢰도 9/10) — A9-③ 은 조건부가 아니라 확정 사실이다 (실측으로 해소)
+
+Prior learning applied — [[completion-criterion-without-task-or-feasibility]] (9/10) ·
+[[spec-requires-what-repo-cannot-do]] (9/10). 두 학습이 *"완료기준을 쓸 때 (1) 어느 task 가 하는지
+(2) 이 저장소에서 실현 가능한지를 세트로 확인하라"* 고 지시한다. 그대로 실측했다.
+
+| 확인 | 근거 |
+|---|---|
+| springdoc 이 조립에 활성인가 | `:app/build.gradle.kts:52,55` 가 springdoc 보유 모듈 2개에 의존 |
+| 경로가 열려 있는가 | `:app/application.yml:100` `path: /v3/api-docs` |
+| 관측 수단이 실재하는가 | `OpenApiAnnotationTest.kt:209` 가 이미 그 경로를 GET 하는 선례 |
+
+⇒ **스킴 컨트롤러 2개는 `/v3/api-docs` 에 노출된다(확정).** 응답 필드명은 **문서화된 계약**이다.
+소비자 0건 실측이 있어 실질 위험은 낮으나 A9-③ 문구를 조건부("테스트 부재 시 curl")에서
+**확정 + 기존 테스트 패턴 복사**로 교체한다.
+
+#### ⚪ 발견 3 (범위 밖, 신뢰도 8/10) — `/v3/api-docs` 가 보안 필터 체인 밖이다
+
+**Maxi 결정 = 3A' (별도 작업으로 바로 진행).** 처음 3B(이번 PR 포함)를 택했으나, 같은 등록이
+**두 곳**에 있어 이 PR 이 3개 BC 를 건드려야 함이 드러나 재확인 후 단위를 분리했다.
+
+```
+issue-tracking/.../OpenApiSecurityConfig.kt:20-23   web.ignoring().requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+search-export-import/.../OpenApiConfig.kt:60-63     (동일)
+```
+
+`permitAll` 이 아니라 **`WebSecurityCustomizer.ignoring()`** — 경로를 필터 체인에서 통째로 제외한다.
+**한 곳만 고치면 효과 0**(둘 중 하나라도 ignoring 하면 체인 밖). 소관은 `security-engineer`,
+선례는 #275(「문을 열기 전에 잠금장치를 고친다」 — 잠금만 단독 PR).
+잠금 수준(로그인만 / SYSTEM_ADMIN / prod 한정)은 그 작업에서 결정.
+
+#### 🟡 접힌 발견 3건 (trade-off 없어 권고로 반영)
+
+| # | 발견 | 처방 |
+|---|---|---|
+| F4 (P2, 7/10) | `schemeListItemSchema.mappings: z.array(z.unknown())` 가 목록 응답의 매핑 내용을 안 본다 → 그 endpoint 에서 봉인이 무력 | `z.array(mappingDetailSchema)` 로 교체. 빈 배열은 그대로 통과하므로 손실 0 |
+| F5 (P2, 6/10) | T2 의 스냅샷 경로가 상대경로 6단계(`../../../../../docs/...`)로 취약 | vitest `resolve` 를 repo 루트 기준으로 잡거나 별칭 도입 |
+| F6 (P2, 8/10) | EC-9(403) 회귀를 무엇이 잡는지 불명. D-Q7 로 **에러 경로는 Zod 를 안 타므로** 계약 테스트가 못 잡는다 | T8 E2E 에 403 시나리오를 명시 배정. "초록이어도 계약 증거 아님"은 유지 |
+
+### 필수 산출물
+
+#### NOT in scope (고려했으나 명시적으로 이연)
+
+| 항목 | 사유 |
+|---|---|
+| 도메인 `WorkflowScheme.isDefault` · DB 컬럼 `is_default` → `isStandard` | ADR D2. 결함 원인이 아니고 리뷰 단위를 도메인 리팩토링과 섞는다. 마이그레이션 0 유지 |
+| `/v3/api-docs` 필터 체인 제외 봉합 | 발견 3 → 별도 작업(3A'). 2 BC + security-engineer 소관 |
+| cross-BC 이슈타입 조회 실패 무음 | 선재 결함. D3 이 `isDefault` 오표시만 막고 `issueTypeKey` null 표시는 그대로 |
+| `user-fixtures.ts` ↔ `auth-fixtures.ts` 교집합 0 | 프론트 8,009 테스트 의존. TODOS 기존 항목 |
+| `classify-task.ts` `'스키마'` 키워드 오분류 | 워크플로우 도구 결함. TODOS 신규 등재 |
+| design 리뷰 | 시각 변경 0 (NFR N4) |
+| 프론트 CI 배선 변경 | 기존 3잡 구조 유지 |
+
+#### What already exists (재사용 vs 재구축)
+
+| 기존 자산 | 이 계획의 처리 |
+|---|---|
+| `assignableSchemeResponseSchema` 의 `.transform()` (#314 D3=1A) | **제거** — D1 적용 후 불필요. 재구축 아니라 목적을 더 강하게 달성 |
+| `WorkflowSchemeControllerTest` 슬라이스 설정 | **재사용**하되 스냅샷은 조립으로 이동(발견 1) |
+| `CapturingPermissionResolverStub` · 403 핸들러 | **재사용** — 신규 인프라 0 |
+| `OpenApiAnnotationTest.kt:209` GET `/v3/api-docs` 패턴 | **복사** — A9-③ 관측 수단 |
+| `MappingResponseDetail.from()` | **확장** (필드 1 추가), 신규 DTO 0 |
+| 프론트 E2E 16건 | **보강** (필드명 단정 추가), 신규 스펙 파일 0 |
+
+#### 실패 모드 (신규 코드경로별 1개 + 테스트·에러처리·가시성)
+
+| 코드경로 | 현실적 실패 | 테스트 | 에러처리 | 사용자 가시성 |
+|---|---|---|---|---|
+| 스냅샷 생성(조립) | dev postgres 미가동 → 부팅 실패 | T1 검증 명령 | 부팅 실패는 명시적 | 개발자만 (사용자 영향 0) |
+| 스냅샷 stale | 백엔드 DTO 변경 후 재생성 누락 | T1 문자열 동등 단정 | 테스트 실패 | 개발자만 |
+| 프론트 `.strict()` 파싱 | 백엔드가 필드 추가 | T2 계약 테스트 | ZodError → 테스트 실패 | 개발자만 |
+| `MappingResponseDetail.isDefault` | cross-BC 조회 실패 매핑을 기본 매핑으로 오판 | **T3 EC-4 RED (필수)** | 산출식이 도메인 필드 기반 | ★ 잡지 않으면 UI 가 잘못된 ★ 표시 |
+| 낙관적 업데이트 | 캐시 타입 불일치 | T6 | 롤백 존재 | 서버 성공인데 실패 표시 (현재 증상) |
+| 배정 조회 404 | EC-1 미할당을 에러로 오해 | T4 명시 | `null` 반환 | ★ 깨지면 배정 화면 에러 |
+
+**critical gap 0건** — 모든 실패 모드에 테스트 또는 명시적 에러처리가 있다. 단 `MappingResponseDetail.isDefault`
+와 `EC-1 404` 두 건은 **테스트가 유일한 방어선**이라 T3·T4 의 해당 테스트를 삭제·skip 하면 무음으로 변한다.
+
+#### 병렬화 전략
+
+| 단계 | 건드리는 모듈 | 의존 |
+|---|---|---|
+| T1 스냅샷(조립) | `backend/modules/{project-workflow,app}` | — |
+| T2 계약 테스트 | `apps/web/src/api` | T1 |
+| T3 백엔드 뷰 레이어 | `backend/modules/project-workflow` | T1 |
+| T4~T7 프론트 | `apps/web/src/{api,mocks,hooks,components,routes,i18n}` | T2·T3 |
+| T8 조립+E2E | `backend/modules/app` · `apps/web/e2e` | T3~T7 |
+| T9 문서 | `docs/` · `TODOS.md` | T8 |
+
+**Lane A**: T1 → T3 (순차, `project-workflow` 공유) · **Lane B**: T2 → T4 → T5 → T6 → T7 (순차, `apps/web` 공유)
+**⚠️ 충돌 플래그.** Lane A·B 는 모듈이 안 겹치나 **같은 worktree 라 git index.lock·공유 stash 레이스**가 난다
+(메모리 3종 + 학습 `parallel-frontend-edit-only-controller-commit` 5/10 — 구현자는 Edit 만, controller 가 순차 커밋).
+⇒ **직렬 실행 권고 유지.** 병렬을 쓰려면 구현자에게 git 조작을 금지하고 controller 가 커밋을 직렬화해야 한다.
+
+### 판정
+
+**BLOCKER 0건.** P1 2건(발견 1·2)은 Maxi 결정으로 처방 확정. 접힌 발견 3건은 권고 반영.
+**DONE_WITH_CONCERNS** — 유일한 concern 은 **outside voice 부재**다.
+
+### 리뷰 완료 요약
+
+| 항목 | 결과 |
+|---|---|
+| Step 0 범위 도전 | 게이트 발동(29파일) → **그대로 진행** (Maxi 결정) |
+| Architecture | **2건** (발견 1 P1 · 발견 3 범위밖) |
+| Code Quality | **2건** (F4 스키마 무력화 · F5 상대경로 취약) |
+| Test | 커버리지 표 작성, **1 gap** (F6 — 403 회귀 담당 불명) |
+| Performance | **0건** (스냅샷 파일 I/O 뿐, DB 접근 패턴 무변경) |
+| NOT in scope | 작성 (7항목) |
+| What already exists | 작성 (6항목, 재사용 5 · 제거 1) |
+| 실패 모드 | **critical gap 0** (단 2건은 테스트가 유일 방어선) |
+| TODOS | 4항목 (T9 3건 + api-docs 별도작업 1건) |
+| Outside voice | **미실행** — codex 미설치 + AgentTool 미승인 |
+| 병렬화 | 2 lane 식별, **직렬 권고**(같은 worktree git 레이스) |
+| Lake Score | 6/6 — 모든 발견에서 완전한 쪽을 택함 |
+
+### 구현 task 추가 (리뷰 발견에서 파생)
+
+- [ ] **T1-mod (P1, human: ~3h / CC: ~20min)** — `backend/modules/app` — 스냅샷 생성을 조립 컨텍스트로 이동
+  - Surfaced by: Architecture 발견 1 — 슬라이스 `@EnableWebMvc` + `JavaTimeModule` 부재
+  - Files: `backend/modules/app/src/test/kotlin/com/bts/app/contract/WorkflowSchemeContractSnapshotTest.kt`
+  - Verify: `./gradlew :modules:app:test --tests "*ContractSnapshot*"` + 스냅샷의 `assignedAt` 이 ISO 문자열
+- [ ] **T4-mod (P2, human: ~20min / CC: ~3min)** — `apps/web/src/api` — `mappings` 를 `z.array(mappingDetailSchema)` 로 + 선언 순서 준수
+  - Surfaced by: Code Quality F4 — `z.unknown()` 이 목록 endpoint 의 봉인을 무력화
+  - Verify: `npx vitest run src/api` + `npx tsc --noEmit -p tsconfig.app.json`
+- [ ] **T2-mod (P2, human: ~10min / CC: ~2min)** — `apps/web/src/api/__tests__` — 스냅샷 경로를 repo 루트 기준으로
+  - Surfaced by: Code Quality F5 — 상대경로 6단계 취약
+- [ ] **T8-mod (P2, human: ~30min / CC: ~5min)** — `apps/web/e2e` — 403 시나리오 명시 배정
+  - Surfaced by: Test F6 — 에러 경로는 Zod 를 안 타므로 계약 테스트가 403 회귀를 못 잡는다
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex 미설치 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 6 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | 시각 변경 0 이라 스킵 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** ENG CLEARED — ready to implement. Outside voice 는 실행 불가(codex 미설치 + AgentTool 미승인)이며
+이 부재는 게이트 1 에서 Maxi 가 감안할 위험으로 명시했다.
+
+NO UNRESOLVED DECISIONS

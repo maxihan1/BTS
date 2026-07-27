@@ -289,7 +289,7 @@ queryKey 에 들어 있어(`ASSIGNMENT_KEYS.byProject(projectKey)`) 값에서 �
 | A6 | 프론트 회귀 0 | `pnpm test` — 기준선과 **같은 집계법**으로 재측정 후 델타 대조 (메모리 [[test-count-baseline-grep-vs-xml]] — `grep -c "@Test"` 류 금지) |
 | A7 | 백엔드 회귀 0 | `./gradlew :modules:project-workflow:test` 후 **`build/test-results/test/TEST-*.xml` 로 실행 수·skipped 실측**. `BUILD SUCCESSFUL` 만으로 판정 금지 (메모리 [[gradle-batched-task-partial-test-run]]) |
 | A8 | 린트·타입 0 | `pnpm lint` · `pnpm typecheck`(**파이프 없이** — `$?` 가 `tail` 것이 됨) · `ktlintCheck` · `detekt --rerun-tasks`(캐시 false-green) |
-| A9 | **조립 부팅 실증** | dev postgres 5433 + `:app:test`. **판정식 3개** — ① 8 endpoint 응답 JSON 의 최상위 키 집합이 프론트 Zod 의 요구 키 집합을 **포함**한다 ② 파손 7종이 수정 전에는 실제로 실패했음을 재현(수정 전 커밋에서 1회) ③ `/v3/api-docs` 에 이 컨트롤러가 나오는지 확정 (ADR 잔여위험 3). ②가 §이것은 새 기능이 아니라 기능 복원이다 의 단정을 **관측으로 승격**한다 |
+| A9 | **조립 부팅 실증** | dev postgres 5433 + `:app:test`. **판정식 3개** — ① 8 endpoint 응답 JSON 의 최상위 키 집합이 프론트 Zod 의 요구 키 집합을 **포함**한다 ② 파손 7종이 수정 전에는 실제로 실패했음을 재현(수정 전 커밋에서 1회) ③ **`/v3/api-docs` 노출은 plan-eng-review 발견 2 에서 실측 확정됨 — 조건부 절차 아님.** `OpenApiAnnotationTest.kt:209` 패턴을 복사해 스킴 경로 2개가 spec 에 나오는지 단정한다. ②가 §이것은 새 기능이 아니라 기능 복원이다 의 단정을 **관측으로 승격**한다.<br>⚠️ **스냅샷은 조립에서 생성한다**(발견 1) — 슬라이스는 `JavaTimeModule` 부재라 `Instant` 형식이 실서버와 다를 수 있고, 그러면 봉인이 틀린 계약을 박제한다 |
 | A10 | **브라우저 눈확인** | 스킴 목록·상세·생성·배정 4화면을 실제로 열어 렌더 확인. **★MSW 로 확인한 것은 계약 증거가 아니다** — 계약은 A9 가 담당하고 A10 은 **시각 회귀** 확인 전용이다. 이 구분을 두지 않으면 "MSW 가 MSW 와 맞는다"를 또 증거로 오인한다. FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 절차이며, 그 미실시가 auth-fixtures ↔ user-fixtures 교집합 0 을 늦게 발견하게 만들었다 |
 | A11 | 문서 동기화 | FR 카운트 불변 131 이므로 `verify-master-plan.sh` 대상 무변경. 단 **실행해 통과 확인** + TODOS.md 의 계약 파손 항목을 **해소 처리**하고 신규 이연 항목(도메인·DB rename · cross-BC 조회 실패 무음 · classify 키워드 충돌) 등재 |
 
