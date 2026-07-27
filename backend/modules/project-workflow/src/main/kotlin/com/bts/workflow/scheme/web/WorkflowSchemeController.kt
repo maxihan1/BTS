@@ -145,7 +145,7 @@ class WorkflowSchemeController(
      * 스킴의 name/description 을 수정한다.
      *
      * spec §4.1 PUT — key/is_default 는 변경 불가.
-     * 표준 스킴(isDefault=true) 의 잠긴 필드 변경 시 403 SCHEME_STANDARD_FIELD_LOCKED.
+     * 표준 스킴(`isStandard=true`, DB 컬럼 `is_default`) 의 잠긴 필드 변경 시 403 SCHEME_STANDARD_FIELD_LOCKED.
      *
      * @param schemeKey 수정할 스킴 키 (경로 변수).
      * @param request 수정 요청 바디.

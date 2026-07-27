@@ -5,14 +5,14 @@
       {
         "description" : "string",
         "id" : 0,
-        "isDefault" : true,
+        "isStandard" : true,
         "key" : "string",
         "name" : "string"
       },
       {
         "description" : null,
         "id" : 0,
-        "isDefault" : true,
+        "isStandard" : true,
         "key" : "string",
         "name" : "string"
       }
@@ -22,7 +22,7 @@
     "data" : {
       "description" : null,
       "id" : 0,
-      "isDefault" : true,
+      "isStandard" : true,
       "key" : "string",
       "name" : "string"
     }
@@ -33,7 +33,7 @@
         "createdAt" : "2026-01-01T00:00:00Z",
         "description" : "string",
         "id" : 0,
-        "isDefault" : true,
+        "isStandard" : true,
         "key" : "string",
         "mappings" : [ ],
         "mappingsCount" : 0,
@@ -45,7 +45,7 @@
         "createdAt" : "2026-01-01T00:00:00Z",
         "description" : null,
         "id" : 0,
-        "isDefault" : true,
+        "isStandard" : true,
         "key" : "string",
         "mappings" : [ ],
         "mappingsCount" : 0,
@@ -60,11 +60,12 @@
       "createdAt" : "2026-01-01T00:00:00Z",
       "description" : "string",
       "id" : 0,
-      "isDefault" : true,
+      "isStandard" : true,
       "key" : "string",
       "mappings" : [
         {
           "id" : 0,
+          "isDefault" : true,
           "issueTypeKey" : "string",
           "issueTypeName" : "string",
           "workflowKey" : "string",
@@ -72,6 +73,7 @@
         },
         {
           "id" : 0,
+          "isDefault" : true,
           "issueTypeKey" : null,
           "issueTypeName" : null,
           "workflowKey" : "string",
@@ -89,7 +91,7 @@
       "createdAt" : "2026-01-01T00:00:00Z",
       "description" : "string",
       "id" : 0,
-      "isDefault" : true,
+      "isStandard" : true,
       "key" : "string",
       "name" : "string",
       "updatedAt" : "2026-01-01T00:00:00Z"
@@ -117,7 +119,7 @@
       "createdAt" : "2026-01-01T00:00:00Z",
       "description" : null,
       "id" : 0,
-      "isDefault" : true,
+      "isStandard" : true,
       "key" : "string",
       "name" : "string",
       "updatedAt" : "2026-01-01T00:00:00Z"
