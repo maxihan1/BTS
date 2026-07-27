@@ -109,9 +109,59 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
   오분류한다.** 같은 작업 제목 3종이 `migration`/`qa`/`backend` 3개 결과를 냈다. 기존 항목
   「`bts-review-plan` 분기 표에 `type=backend` 가 없다」의 형제 — 하드코딩 키워드가 아니라 **판별식**이 필요하다.
 
-**별도 작업으로 남은 것.** `/v3/api-docs` 가 미인증 노출이다(`OpenApiSecurityConfig.kt` +
-`OpenApiConfig.kt` **두 곳**, 한 곳만 고치면 효과 0). 2 BC + security-engineer 소관이라 이 PR 에
-넣지 않았다(결정 3A'). 이번 정렬로 **응답 필드명이 문서화된 공개 계약**임이 확정됐으므로 우선순위가 올랐다.
+**별도 작업으로 남은 것 — ★2026-07-27 실측으로 판정이 뒤집혔다.** 아래 §springdoc 항목으로 이관.
+
+## ✅ springdoc `/v3/api-docs` — "미인증 노출" 판정 뒤집힘 + 봉인 신설 (해소 2026-07-27)
+
+**해소.** 원 기록(#317 §별도 작업)이 **두 군데 틀렸다**. 실측으로 정정하고, 지금 안전한 이유를
+고정하는 봉인을 세웠다 — `scripts/verify/springdoc-not-exposed.sh` + `infra-ci.yml` 잡.
+
+**정정 ① — 지목 파일이 틀렸다.** 원 기록은 "`OpenApiSecurityConfig.kt` + `OpenApiConfig.kt` 두 곳" 이라
+적었는데, `OpenApiConfig.kt` 는 **두 모듈에 동명으로 존재**하고 보안 코드가 있는 쪽은 search 모듈이다.
+
+| 파일 | `web.ignoring()` |
+|---|---|
+| `issue-tracking/.../issue/config/OpenApiSecurityConfig.kt:20-23` | ✅ 보안 지점 1 |
+| `search-export-import/.../search/config/OpenApiConfig.kt:60-63` | ✅ 보안 지점 2 |
+| `issue-tracking/.../issue/config/OpenApiConfig.kt` | ❌ 메타데이터만 (`@OpenAPIDefinition`) |
+
+원 기록대로 두 파일을 열면 **issue-tracking 의 메타데이터 파일을 고치고 search 의 진짜 빈을 놓친다.**
+"한 곳만 고치면 효과 0" 이라는 경고 자체는 유효하다 — 대상만 틀렸다.
+
+**정정 ② — "노출" 전제가 성립하지 않는다.** 외부 도달 표면이 **0** 이다.
+
+```
+infra/prod/nginx.conf:87
+  location ~ ^/(api|\.well-known|ical|slack|saml2|oauth2|login/(oauth2|saml2))(/|$)
+      → /v3/api-docs · /swagger-ui 는 어디에도 안 걸려 L98 `location /` SPA fallback 으로 떨어진다
+infra/docker-compose.prod.yml
+      → bts-backend 에 `ports:` 키 자체가 없다. 호스트 발행은 bts-web "18080:80" 하나뿐
+        (bts-minio 콘솔은 "127.0.0.1:19001:9001" 루프백 한정)
+```
+
+⇒ 미인증인 것은 사실이나 도달 가능 주체는 `bts-net` 도커 네트워크 내부 컨테이너뿐이다.
+따라서 *"이번 정렬로 공개 계약임이 확정됐으므로 우선순위가 올랐다"* 는 판단 근거가 무너진다 —
+**공개된 적이 없다.**
+
+**그래서 무엇을 했나.** 두 Kotlin 빈을 고치는 대신 **지금 안전한 이유를 고정**했다. 안전성이
+배포 토폴로지라는 우연한 성질에 얹혀 있어서, 누가 nginx 정규식에 `v3` 를 한 단어 넣거나
+bts-backend 에 `ports:` 를 열면 즉시 노출된다. **어떤 Kotlin 테스트도 이것을 못 잡는다** —
+MockMvc 는 nginx 를 모르고 Gradle 은 compose 파일을 읽지 않는다.
+
+봉인 3축(모두 **위반 주입으로 비-공허 확증**, 기준선 EXIT=0 선확인).
+
+| 축 | 불변식 | 주입 뮤테이션 | 결과 |
+|---|---|---|---|
+| C(대조군) | 알려진 프록시 경로 7개가 매치된다 | 정규식 location 제거 | EXIT=3 ✅ |
+| A(라우팅) | springdoc 경로 5개가 백엔드로 안 간다 | 정규식에 `v3\|swagger-ui` 추가 | EXIT=1 ✅ |
+| B(포트) | bts-backend 호스트 발행 포트 0개 | `ports: ["8080:8080"]` 추가 | EXIT=2 ✅ |
+
+축 C 를 **가장 먼저** 판정한다 — 정규식 추출이 고장나 빈 목록이 되면 축 A 가 공허하게 통과하기
+때문이다([[archunit-vacuous-rule-silent-pass]] 와 같은 실패 양식).
+`mapfile`(bash 4+)은 쓰지 않았다 — macOS 기본 bash 3.2 에 없어 로컬에서 조용히 빈 목록이 된다.
+
+**남은 것 (심층방어를 하려면).** 두 빈에 `@Profile("!prod")` 를 **함께** 붙인다. 2 BC +
+security-engineer 소관. 현 토폴로지에서는 노출량 0 이므로 우선순위는 낮다.
 
 ## project-workflow — ProjectWorkflowSchemeController 의 404/403 순서 (PR #314 plan-eng-review)
 
@@ -208,29 +258,34 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 
 **Depends on / blocked by**. 없음. 우선순위 낮음(30초 staleness, 두 역할 겸임자 한정).
 
-## issue-tracking — 핵심 엔티티 3종이 glossary 미등재 (PR #315 FR-CO-01 grill-with-docs 발견)
+## ✅ issue-tracking — 핵심 엔티티 glossary 미등재 (해소 2026-07-27)
 
-**결정 (Maxi 확정, 2026-07-27 D6)**. **이번 PR 범위 밖.** 댓글만 등재하고 동질 부채는 여기 등재한다.
-기존 FR 소관이고, 기능 PR 을 용어사전 정리로 번지게 하면 리뷰 단위가 무너진다(#314 가 프론트 계약
-부채에 쓴 것과 같은 잣대).
+**해소.** `Maxi_wiki/BTS/glossary.md` 에 누락 2종을 등재하고 §변경 규칙에 **배치 판별식**을 명문화했다.
 
-**미등재 3종 (2026-07-27 실측)**.
+**★원 기록이 틀렸다 — 개수도 구성원도.** 원문은 "미등재 3종 = Worklog · Attachment · Watcher" 였으나
+실측하면 **Attachment·Watcher 는 이미 등재돼 있었다**.
 
-| 엔티티 | 소관 FR | 실재 여부 | `domain/issue-tracking.md` 핵심 엔티티 목록 |
-|---|---|---|---|
-| Worklog (작업로그) | FR-TT-01 | 있음 — POST/GET/PATCH/DELETE 전량 + 작성자 한정 수정·삭제 | **FR-CO-01 에서 추가함**(Comment 선례라 같이 넣음) |
-| Attachment (어테처) | FR-AC-01/02 | 있음 — MinIO 업로드 + 미리보기 | 이미 있음 |
-| Watcher (워처) | FR-WT-01 | 있음 | 이미 있음 |
+```
+glossary.md:50  | 워처   | Watcher. 이슈 변경 알림 수신자 |
+glossary.md:51  | 어테처 | Attachment. 이슈에 첨부된 파일 |
+```
 
-**★판정 기준 자체가 흔들린다는 게 진짜 문제.** glossary 에는 `버전 상태`·`CFD`·`LexoRank`·`공유 토큰`
-처럼 **설명 없이는 모를 것**이 들어가 있고, `Worklog`·`Attachment`·`Watcher`·(이전의)`Comment` 처럼
-**이름만 들으면 아는 것**이 빠져 있다. 즉 암묵 기준은 "설명 필요도" 로 보인다. 그런데
-`domain/issue-tracking.md` 핵심 엔티티 목록엔 Attachment·Watcher 가 **이미 있어** 두 문서의 수록
-기준이 서로 다르다.
+둘은 §핵심 엔티티가 아니라 **§관계/연결** 섹션(L41~51)에 있었다. 원 기록은 §핵심 엔티티만 훑고
+그 섹션을 놓쳤다. 이 오류가 항목의 논거 전체를 무너뜨린다 — "domain 엔 있는데 glossary 엔 없다,
+그래서 두 문서 기준이 다르다" 는 주장이 Attachment·Watcher 에 대해 **성립하지 않는다**.
 
-**착수 시 첫 단계**. 등재 기준을 명문화한다 — glossary 는 "도메인 전문가에게 의미가 모호한 용어"만인지,
-"핵심 엔티티 전량"인지. 기준을 정한 뒤 누락분을 일괄 채운다. 기준 없이 개별 추가하면 같은 누락이 반복된다.
-`glossary.md` §변경 규칙에 기준 한 줄을 추가하는 것이 산출물.
+**실제 차집합은 {Worklog, IssueHistory} 2종**이었다. `domain/issue-tracking.md` §핵심 엔티티 12종을
+glossary 70개 term 과 대조한 결과다. **`IssueHistory` 는 원 기록이 아예 언급조차 하지 않은 누락**이고,
+`댓글` 정의문의 `[[작업로그]]` 는 **대상 문서가 없는 깨진 백링크**였다.
+
+⇒ 메모리 [[spec-stated-count-becomes-blindfold]] 의 정확한 재현. **기록된 개수를 물려받으면 안 된다.**
+
+**산출물.**
+1. glossary §핵심 엔티티에 `작업로그(Worklog)` · `이슈 변경 이력(IssueHistory)` 2행 추가 (깨진 백링크 해소).
+2. §변경 규칙에 **배치 판별식** 표 추가 — 「자체 테이블 + 자체 생명주기 → 핵심 엔티티 / 이슈에 딸린
+   연결·참조 → 관계·연결」. 원 기록이 추측한 "설명 필요도" 기준은 실제 배치와 맞지 않아 채택하지 않았다.
+3. 판별식을 **기등재 70개에 역적용해 검증**하라는 후속을 규칙 안에 남겼다 (메모리
+   [[rule-reverse-validated-on-completed-batch]] — 하드코딩 목록이 아니라 판별식이어야 재발하지 않는다).
 
 ## 워크플로우 — `bts-review-plan` 분기 표에 `type=backend` 가 없다 (PR #315 발견)
 
@@ -512,24 +567,55 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 **소관**. `apps/web/src/mocks/comment-handlers.ts`.
 
-## issue-tracking — 렌더 단일 지점 판별자 관련 (PR #316 코드리뷰, ★미검증 이월 / 2026-07-27 등재)
+## ✅ issue-tracking — 렌더 단일 지점 판별자 (기각 · 2026-07-27 종결)
 
-**이 항목은 주장이 아니라 미해결 질문이다.** 재확인에서 원 진술을 확증하지 못했으므로,
-사실로 등재하지 않고 **질문 형태로 보존**한다.
+**닫는다.** 이 항목이 스스로 정한 종료 조건 — *"'어떤 판별자가 단일 단정에 의존하는가' 를 먼저 특정한다.
+특정되지 않으면 이 항목을 닫는다"* — 이 충족됐다. **원 체크포인트 메모는 기각**이다.
 
-**원 메모 인용**. "하네스 판별자가 단일 단정(`CommentControllerIntegrationTest:498`)에 의존".
+**원 메모**. "하네스 판별자가 단일 단정(`CommentControllerIntegrationTest:498`)에 의존".
 
-**2026-07-27 재확인 결과**. `:498` 은 `updatedAt` 단정이다. 렌더 단일 지점(`CommentView.of`)이
-살아 있는지는 **세 테스트가 다중 단정**한다 — CO2-P2(`:508`, `<strong>`·`<code>`),
-CO2-P3(`:527`, `<script>` 제거), CO2-P4(이벤트 핸들러 속성 제거). 원 진술과 맞지 않는다.
+**실측 (2026-07-27)**. 렌더 단일 지점은 `CommentView.kt:44-52` 의 `fun of(comment)` 안
+`bodyHtml = MarkdownRenderer.renderSafe(comment.body)` (L49) 이고, KDoc 이 스스로 그렇게 선언한다.
 
-**착수 시 첫 단계**. "어떤 판별자가 단일 단정에 의존하는가" 를 **먼저 특정**한다.
-특정되지 않으면 이 항목을 닫는다. 원 근거는
-`~/.gstack/projects/maxihan1-BTS/checkpoints/20260727-164910-*.md` 뿐이다.
+1. **프로덕션 진입 경로 3개 전부 그 지점을 통과한다.** 목록 `CommentApplicationService.kt:337`
+   (`comments.map(CommentView::of)`) · 작성 `CommentController.kt:141` · 수정 `:197` — 뒤 둘은
+   `CommentResponse.kt:58` 의 `from(comment) = from(CommentView.of(comment))` 로 수렴한다. **우회 0.**
+2. **`bodyHtml` 을 값으로 생산하는 지점은 `CommentView.kt:49` 단 하나다** (src/main 전수 grep — 나머지는
+   선언·전달·KDoc). 단일 지점 밖에서 댓글 HTML 을 만드는 경로가 없다.
+3. **검증 테스트는 5개·단정 8개다** — `CommentApplicationServiceTest:300` T3-D(목록 경로 실렌더) ·
+   `CommentControllerIntegrationTest` CO2-P1 `:497` · CO2-P2 `:516,517` · CO2-P3 `:533,534` · CO2-P4 `:550`.
+   어느 한 줄을 지워도 나머지가 사망을 잡는다. ⇒ **단일 단정 의존이라는 판별자 자체가 존재하지 않는다.**
 
-**★이 항목이 미검증으로 남은 경위 (재발 방지)**. 위 4건과 이 1건은 체크포인트 메모에
-*"TODOS.md 등재 6건"* 이라고 적혀 있었으나 **실제로는 5건 전부 미등재**였다.
-2026-07-27 `git show c90ca8fb6 -- TODOS.md | grep "^+## "` 로 확정 — PR #316 이 추가한 섹션은
-5개이고 그 목록에 없었다. **체크포인트의 "등재했다" 진술은 저장소에서 검증해야 한다.**
+원 기록이 "세 테스트"라 적은 것도 과소집계였다(서비스 계층 T3-D 와 CO2-P1 누락 → 실제 5개).
+`:498` 이 `updatedAt` 단정이라는 재확인은 정확했다.
 
-**소관**. 판별자 특정 후 결정.
+**★이 항목이 미검증으로 남은 경위 (재발 방지 — 존치)**. 체크포인트 메모에 *"TODOS.md 등재 6건"* 으로
+적혀 있었으나 **실제로는 5건 전부 미등재**였다(`git show c90ca8fb6 -- TODOS.md | grep "^+## "` 로 확정).
+**체크포인트의 "등재했다" 진술은 저장소에서 검증해야 한다.**
+
+**→ 닫으면서 아래 신규 1건을 분리 등재한다** (댓글이 아니라 이슈 description 소관이라 같은 항목이 아니다).
+
+## issue-tracking — `descriptionHtml` 생산 지점이 2개고 그중 하나는 죽은 분기 (2026-07-27 등재)
+
+**증상**. 댓글은 렌더 단일 지점(`CommentView.of`)이 확립돼 우회 경로가 0인데,
+**이슈 `description` 은 `MarkdownRenderer.renderSafe` 직접 호출이 2곳**이다.
+
+| 생산 지점 | 상태 |
+|---|---|
+| `IssueApplicationService.kt:2028` | 살아 있음 |
+| `IssueResponse.kt:357` (`renderHtml=true` 분기) | **호출자 0건 — 죽은 분기** |
+
+**왜 지금 등재하나**. `renderHtml` 분기가 죽어 있는 **지금이 폭발 반경이 가장 작은 시점**이다.
+누군가 이 파라미터를 다시 쓰는 순간 XSS 방어(`renderSafe`)의 검증 대상이 두 갈래로 갈린다 —
+메모리 [[mutation-site-count-equals-verified-scope]] 가 말한 "가드를 만들고 일부 지점에만 주입한" 상태의
+이슈 description 판이다. 실제로 FR-MN-01 에서 XSS SUPPRESS 회귀가 한 번 났던 영역이다
+([[fr-mn-01-xss-suppress-inline-html-regression]]).
+
+**착수 시 첫 단계**. 둘 중 하나로 **수렴**시킨다 — ① `IssueResponse.kt:357` 의 `renderHtml` 파라미터와
+그 `renderSafe` 분기를 제거해 `withSingleDetail()` 을 유일 생산자로 굳히거나, ② 반대로
+`withSingleDetail()` 을 걷어내고 `from(renderHtml=true)` 로 모은다. 목표는 **생산 지점 1개**다.
+굳힌 뒤 그 지점의 `renderSafe(...)` 를 원문 통과로 바꾸는 **뮤테이션으로 테스트가 실제로 빨강이 되는지**
+확증한다(기준선 EXIT=0 선확인 — [[verify-logic-vs-verify-guard]]).
+
+**소관**. `backend/modules/issue-tracking/.../issue/web/IssueResponse.kt` +
+`.../issue/application/IssueApplicationService.kt`.

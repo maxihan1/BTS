@@ -15,6 +15,7 @@ on:
       # 그 순간 nginx 판별식(40자 이상)이 토큰을 못 가리게 된다.
       - 'backend/**'
       - 'scripts/verify/nginx-log-masking.sh'
+      - 'scripts/verify/springdoc-not-exposed.sh'
       - '.github/workflows/infra-ci.yml'
   push:
     branches: [main]
@@ -22,6 +23,7 @@ on:
       - 'infra/**'
       - 'backend/**'
       - 'scripts/verify/nginx-log-masking.sh'
+      - 'scripts/verify/springdoc-not-exposed.sh'
       - '.github/workflows/infra-ci.yml'
 
 jobs:
@@ -36,3 +38,17 @@ jobs:
       # 문법 검증(nginx -t)과 실효 검증(실제 요청 → 로그에 원문 토큰 0회)을 수행한다.
       - name: 봉인 3축 + 문법 + 실효 검증
         run: bash scripts/verify/nginx-log-masking.sh
+
+  springdoc-not-exposed:
+    name: springdoc 외부 미노출 봉인
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # 도커 불요 — nginx.conf 라우팅 정규식과 compose 포트 발행만 정적으로 판정한다.
+      # 백엔드가 springdoc 경로를 WebSecurityCustomizer.ignoring 으로 필터체인 밖에 두므로,
+      # 지금 안전한 유일한 이유는 "nginx 가 그 경로를 프록시하지 않고 백엔드 포트가 안 열려 있다" 는
+      # 배포 토폴로지다. 그 두 성질이 깨지는 순간을 이 잡이 잡는다.
+      - name: 봉인 3축 (대조군 · 라우팅 · 포트)
+        run: bash scripts/verify/springdoc-not-exposed.sh
