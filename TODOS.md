@@ -727,6 +727,23 @@ IdentityAccessIssuePermissionResolver.kt:86
 우회 차단"* 이라고 적어둔 것이 **사실과 달랐다**(PR #316 독립 리뷰 F5 가 실측으로 반증). 다만 이 PR 이
 `UPDATE` 를 요구하는 **쓰기 표면을 2개 늘렸으므로**(댓글 `PATCH`·`DELETE`) 노출 면적은 커졌다.
 
+**★2026-07-27 설계 결정 (실측 후 확정).** `IssuePermission` 전 8종을 열거해 판정했다 —
+`BROWSE · VIEW · CREATE · UPDATE · TRANSITION · SOFT_DELETE · SET_SECURITY · HARD_DELETE`.
+
+| 권한 | 게이트 적용 | 근거 |
+|---|---|---|
+| `VIEW` | ✅ (현행) | 원 설계 |
+| `UPDATE` · `TRANSITION` · `SOFT_DELETE` · `HARD_DELETE` | ✅ **확대 대상** | **볼 수 없는 것을 바꿀 수는 더더욱 없어야 한다.** 내용 접근을 전제하는 조작들 |
+| `BROWSE` · `CREATE` | ❌ | `IssueScope.Issue` 가 아니라 프로젝트 스코프 — 특정 이슈의 등급과 무관 |
+| `SET_SECURITY` | ❌ **의도적 제외** | 아래 참조 |
+
+**`SET_SECURITY` 를 제외하는 이유 — 복구 불가 상태 방지.** 등급 변경 권한까지 게이트에 넣으면
+**잘못 설정된 등급을 아무도 되돌릴 수 없다**(등급 멤버가 아니라서 못 보고, 못 보니 못 고친다).
+우회로가 없는 락아웃이라 운영상 치명적이다. 반대급부로 `SET_SECURITY` 보유자에게는
+「등급을 자기가 볼 수 있는 것으로 바꾼 뒤 열람」 이라는 경로가 남지만, 그 권한은 이미 높은 권한이고
+현행도 동일하다. **제외는 누락이 아니라 결정이므로, 그 사실을 고정하는 테스트를 함께 둔다** —
+안 그러면 다음 사람이 "빠뜨렸네" 하고 넣어 락아웃을 만든다.
+
 **착수 시 첫 단계**. 등급 게이트를 어느 권한까지 확대할지 **먼저 결정**한다 — 전 권한인지, 쓰기 계열
 (`UPDATE`·`SOFT_DELETE`·`TRANSITION`)인지. 그 다음 `IdentityAccessIssuePermissionResolver:86` 의
 조건을 넓히고, **넓히기 전에 실패하는 테스트를 먼저** 둔다(현재 이 성질을 고정한 테스트가 0건이라
