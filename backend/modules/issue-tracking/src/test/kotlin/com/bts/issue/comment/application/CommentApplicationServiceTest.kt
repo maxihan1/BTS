@@ -1,5 +1,6 @@
 // CommentApplicationService 통합 테스트 — create(actor 강제)·createImported(원본 보존)·list 게이트/렌더링/정렬
 // (FR-CO-01) + update(작성자 한정 — 모더레이터도 403) (FR-CO-02 Task 3)
+// + delete(작성자 OR SOFT_DELETE 모더레이터 — 3클래스 전수) (FR-CO-02 Task 4)
 
 package com.bts.issue.comment.application
 
@@ -39,6 +40,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Clock
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -78,6 +80,18 @@ import java.util.UUID
  * - CO2-6. 수정 성공 시 [IssueHistoryRecorder.recordCommentEdited] 가 이전·이후 본문으로 1회 호출.
  * - CO2-7. 본문 동일 → 완전 no-op (DB 쓰기 0 · updatedAt 미갱신 · 이력 미기록).
  * - CO2-8. 다른 이슈 소속 commentId → [CommentNotFoundException].
+ *
+ * ## FR-CO-02 Task 4 시나리오 — [CommentApplicationService.delete]
+ * 삭제 게이트는 `UPDATE` **AND** (작성자 **OR** `SOFT_DELETE`) 로, 수정 게이트(`UPDATE` AND 작성자)와
+ * 술어가 다르다. 그래서 3클래스(작성자 / 모더레이터 / 제3자)를 **전수**로 고정한다 — 하나라도 빠지면
+ * `OR` 의 한쪽 변이 검증되지 않은 채 남는다.
+ * - CO2-9.  작성자는 `SOFT_DELETE` 가 없어도 자기 댓글을 삭제한다 (클래스 1 · 소프트 삭제 확인).
+ * - CO2-10. `SOFT_DELETE` 보유자는 남의 댓글을 삭제한다 (클래스 2 — 모더레이션).
+ * - CO2-11. `UPDATE` 는 있고 `SOFT_DELETE` 만 없는 제3자는 403 (클래스 3).
+ * - CO2-12. 자동화가 만든 댓글을 룰 소유자가 아닌 `SOFT_DELETE` 보유자가 삭제한다 (ADR 근거 해소).
+ * - CO2-13. `UPDATE` 권한 자체가 없으면 작성자여도 403 — 작성자 판정보다 먼저다.
+ * - CO2-14. 이미 삭제된 댓글 재삭제는 [CommentNotFoundException] (최초 삭제 시각 보존).
+ * - CO2-15. 다른 이슈 소속 commentId 는 [CommentNotFoundException].
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentApplicationServiceTest : IssueTestcontainersBase() {
@@ -746,6 +760,214 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         assertThat(requireNotNull(commentRepository.findActive(commentOnA.id, issueA.id.value)).body)
             .isEqualTo("A 의 댓글")
     }
+
+    // ── CO2-9~CO2-15. delete — 작성자 OR SOFT_DELETE 모더레이터 (FR-CO-02 Task 4) ─
+
+    /**
+     * **삭제 3클래스 중 클래스 1 — 작성자 본인.**
+     *
+     * Given  actor 가 작성한 댓글. actor 는 [IssuePermission.UPDATE] 는 보유하되
+     *        [IssuePermission.SOFT_DELETE] 는 **미보유**다.
+     * When   2030-01-01 로 고정된 시계로 delete 호출
+     * Then   삭제된다. 행은 물리적으로 남고 `deleted_at` 만 채워진다 (소프트 삭제 — DEVELOPMENT.md §1.2 #7).
+     *
+     * ## 왜 `SOFT_DELETE` 를 일부러 뺐는가
+     * 모더레이터 분기를 **던지는** 판정(`checkPermission`)으로 구현하면 `SOFT_DELETE` 미보유자는
+     * 작성자여도 즉시 403 이 되어 작성자 경로가 조용히 죽는다. 이 테스트가 그 회귀의 유일한
+     * 판별자다 — 질의형 `hasPermission` 을 던지는 판정으로 바꾸면 정확히 이 한 건이 실패한다.
+     */
+    @Test
+    @Order(23)
+    fun `CO2-9 - 작성자는 SOFT_DELETE 가 없어도 자기 댓글을 삭제한다 (소프트 삭제)`() {
+        val issue = insertIssue(24L)
+        val deletedAt = Instant.parse("2030-01-01T00:00:00Z")
+        val own = service.create(actor, issue.key, "내 댓글")
+        resolver.deniedPermission = IssuePermission.SOFT_DELETE
+
+        serviceAt(deletedAt).delete(actor, issue.key, own.id)
+
+        assertThat(commentRepository.findActive(own.id, issue.id.value)).isNull()
+        assertThat(commentRepository.listByIssue(issue.id.value)).isEmpty()
+        // 행이 남아 있어야 읽힌다 — 읽히면 하드 삭제가 아니다.
+        assertThat(readDeletedAt(own.id)).isEqualTo(deletedAt)
+    }
+
+    /**
+     * **삭제 3클래스 중 클래스 2 — 모더레이터.** ★ 삭제 게이트가 수정 게이트와 갈라지는 지점.
+     *
+     * Given  authorUuid 가 쓴 **남의** 댓글. actor 는 `UPDATE` 와 `SOFT_DELETE` 를 **둘 다** 보유.
+     * When   delete 호출
+     * Then   삭제된다.
+     *
+     * 같은 권한 조합으로 `update` 는 403 이다(CO2-2). 두 테스트가 쌍으로 "삭제만 모더레이션이
+     * 열린다" 를 고정한다 — 게이트를 공용 헬퍼로 합치면 CO2-2 가 죽는다.
+     */
+    @Test
+    @Order(24)
+    fun `CO2-10 - SOFT_DELETE 보유자는 남의 댓글을 삭제한다 (모더레이션)`() {
+        val issue = insertIssue(25L)
+        val others =
+            buildComment(issue.id.value, body = "남의 댓글", createdAt = Instant.parse("2024-03-01T00:00:00Z"))
+        commentRepository.insert(others)
+        assertThat(others.authorId).isNotEqualTo(actorUuid)
+
+        val scope = IssueScope.Issue(issue.key.value)
+        assertThat(resolver.hasPermission(actorUuid, IssuePermission.UPDATE, scope)).isTrue()
+        assertThat(resolver.hasPermission(actorUuid, IssuePermission.SOFT_DELETE, scope)).isTrue()
+
+        service.delete(actor, issue.key, others.id)
+
+        assertThat(commentRepository.findActive(others.id, issue.id.value)).isNull()
+    }
+
+    /**
+     * **삭제 3클래스 중 클래스 3 — 제3자.**
+     *
+     * Given  authorUuid 가 쓴 **남의** 댓글. actor 는 `UPDATE` 는 보유하고 `SOFT_DELETE` 만 **미보유**.
+     * When   delete 호출
+     * Then   [IssueAccessDeniedException] (403) 이고 댓글은 그대로 살아 있다.
+     *
+     * ## vacuous 방지
+     * `UPDATE` 까지 없으면 어느 쪽 때문에 403 인지 구분되지 않아 이 테스트가 아무것도 검증하지 못한다.
+     * 그래서 `UPDATE` 보유 · `SOFT_DELETE` 미보유를 resolver 에 직접 물어 선언한다.
+     * CO2-9 와의 차이는 오직 **"작성자인가"** 뿐이다 — `OR` 의 왼쪽 변만 다르다.
+     */
+    @Test
+    @Order(25)
+    fun `CO2-11 - UPDATE 만 있고 SOFT_DELETE 없는 제3자는 남의 댓글을 삭제할 수 없다 (403)`() {
+        val issue = insertIssue(26L)
+        val others =
+            buildComment(issue.id.value, body = "남의 댓글", createdAt = Instant.parse("2024-03-01T00:00:00Z"))
+        commentRepository.insert(others)
+        resolver.deniedPermission = IssuePermission.SOFT_DELETE
+
+        val scope = IssueScope.Issue(issue.key.value)
+        assertThat(resolver.hasPermission(actorUuid, IssuePermission.UPDATE, scope)).isTrue()
+        assertThat(resolver.hasPermission(actorUuid, IssuePermission.SOFT_DELETE, scope)).isFalse()
+
+        assertThatThrownBy {
+            service.delete(actor, issue.key, others.id)
+        }.isInstanceOf(IssueAccessDeniedException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(others.id, issue.id.value)).body)
+            .isEqualTo("남의 댓글")
+    }
+
+    /**
+     * ADR 이 모더레이션을 도입한 **근거 자체**를 검증한다.
+     *
+     * 근거. 자동화 룰이 남긴 댓글은 `authorId` 가 **룰 소유자**라, 작성자 한정 삭제만 있으면
+     * 룰 소유자 외에는 아무도 못 지워 사실상 방치된다. 근거로 쓴 이상 그 근거가 실제로 해소되는지도
+     * 확인해야 한다.
+     *
+     * Given  룰 소유자(authorUuid)를 actor 로 만든 댓글 — automation `AddCommentAction` 의 경로와 동일
+     * When   룰 소유자가 아닌 `SOFT_DELETE` 보유자(actor)가 delete 호출
+     * Then   삭제된다.
+     */
+    @Test
+    @Order(26)
+    fun `CO2-12 - 자동화가 만든 댓글을 룰 소유자가 아닌 SOFT_DELETE 보유자가 삭제한다`() {
+        val issue = insertIssue(27L)
+        val ruleOwner = ActorId(authorUuid)
+        val automationComment = service.create(ruleOwner, issue.key, "자동화가 남긴 댓글")
+
+        assertThat(automationComment.authorId).isEqualTo(authorUuid)
+        assertThat(automationComment.authorId).isNotEqualTo(actorUuid)
+
+        service.delete(actor, issue.key, automationComment.id)
+
+        assertThat(commentRepository.findActive(automationComment.id, issue.id.value)).isNull()
+    }
+
+    /**
+     * Given  `UPDATE` 권한이 없는 actor (댓글의 **작성자 본인**, `SOFT_DELETE` 는 보유)
+     * When   delete 호출
+     * Then   403 — 공통 전제인 `UPDATE` 가 작성자·모더레이터 판정보다 먼저다 (이슈 존재 probe 방지).
+     *
+     * `SOFT_DELETE` 를 남겨둔 것이 의도다. 모더레이터 분기만으로는 통과할 조건이므로,
+     * 이 테스트가 실패한다면 `UPDATE` 전제 게이트가 사라졌다는 뜻이다.
+     */
+    @Test
+    @Order(27)
+    fun `CO2-13 - delete 는 UPDATE 권한이 없으면 작성자여도 403`() {
+        val issue = insertIssue(28L)
+        val own = service.create(actor, issue.key, "원본 본문")
+        resolver.deniedPermission = IssuePermission.UPDATE
+
+        assertThatThrownBy {
+            service.delete(actor, issue.key, own.id)
+        }.isInstanceOf(IssueAccessDeniedException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(own.id, issue.id.value)).body).isEqualTo("원본 본문")
+    }
+
+    /**
+     * Given  이미 삭제된 댓글 (2030-01-01 삭제)
+     * When   2031-01-01 시계로 다시 delete 호출
+     * Then   [CommentNotFoundException] 이고 **최초** 삭제 시각이 보존된다.
+     *
+     * 재삭제가 `deleted_at` 을 덮어쓰면 "언제 지워졌나" 라는 감사 정보가 소실된다.
+     * 저장소 `WHERE` 의 `deleted_at IS NULL` 이 그 덮어쓰기를 막는다 — 시각 단정이 그 판별자다.
+     */
+    @Test
+    @Order(28)
+    fun `CO2-14 - 이미 삭제된 댓글 재삭제는 CommentNotFoundException`() {
+        val issue = insertIssue(29L)
+        val firstDeletedAt = Instant.parse("2030-01-01T00:00:00Z")
+        val own = service.create(actor, issue.key, "내 댓글")
+        serviceAt(firstDeletedAt).delete(actor, issue.key, own.id)
+
+        assertThatThrownBy {
+            serviceAt(Instant.parse("2031-01-01T00:00:00Z")).delete(actor, issue.key, own.id)
+        }.isInstanceOf(CommentNotFoundException::class.java)
+
+        assertThat(readDeletedAt(own.id)).isEqualTo(firstDeletedAt)
+    }
+
+    /**
+     * Given  이슈 A 에 달린 댓글 + 같은 actor 가 볼 수 있는 이슈 B
+     * When   경로에는 B, 본문에는 A 의 commentId 로 delete 호출
+     * Then   [CommentNotFoundException] — 소속 대조가 저장소 `WHERE` 에 있어 통과할 수 없다.
+     *
+     * commentId 는 전역 UUID 라 이 대조가 없으면 "내가 볼 수 있는 아무 이슈 키 + 남의 댓글 id"
+     * 조합으로 이슈 단위 권한 검사를 우회해 **삭제**까지 할 수 있다 (CO2-8 의 삭제판).
+     */
+    @Test
+    @Order(29)
+    fun `CO2-15 - delete 는 다른 이슈 소속 commentId 에 CommentNotFoundException`() {
+        val issueA = insertIssue(30L)
+        val issueB = insertIssue(31L)
+        val commentOnA = service.create(actor, issueA.key, "A 의 댓글")
+
+        assertThatThrownBy {
+            service.delete(actor, issueB.key, commentOnA.id)
+        }.isInstanceOf(CommentNotFoundException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(commentOnA.id, issueA.id.value)).body)
+            .isEqualTo("A 의 댓글")
+    }
+
+    /**
+     * `comments` 행의 `deleted_at` 을 저장소를 거치지 않고 직접 읽는다.
+     *
+     * 저장소 조회는 `deleted_at IS NULL` 을 항상 붙이므로 삭제된 행을 볼 수 없다. 그래서
+     * "행이 물리적으로 남아 있는가(= 하드 삭제가 아닌가)" 와 "언제 지워졌는가" 는 원시 SQL 로만
+     * 확인할 수 있다.
+     *
+     * @param commentId 확인할 댓글 UUID.
+     * @return `deleted_at` 값. 활성 행이면 null.
+     * @throws IllegalStateException 행이 아예 없을 때 — 물리 삭제는 규칙 위반이다.
+     */
+    private fun readDeletedAt(commentId: UUID): Instant? =
+        withJdbcConnection { conn ->
+            conn.prepareStatement("SELECT deleted_at FROM comments WHERE id = ?").use { stmt ->
+                stmt.setObject(1, commentId)
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "댓글 행이 물리 삭제됐습니다 — 소프트 삭제여야 합니다 (DEVELOPMENT.md §1.2 #7)." }
+                    rs.getObject(1, OffsetDateTime::class.java)?.toInstant()
+                }
+            }
+        }
 
     /** 댓글 도메인 객체 생성 헬퍼 (직접 insert 용 — createdAt 제어 목적). */
     private fun buildComment(
