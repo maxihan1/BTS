@@ -18,7 +18,6 @@ import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.mockk.Runs
 import io.mockk.clearMocks
 import io.mockk.every
@@ -35,6 +34,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -51,6 +53,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
 
@@ -93,7 +96,7 @@ class CommentControllerIntegrationTest {
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
         /**
          * ★ 프로덕션 설정을 미러링한다 (FR-CO-01 발견).
          *
@@ -102,13 +105,48 @@ class CommentControllerIntegrationTest {
          * 미지 필드가 온 요청에 대해 프로덕션은 무시하고 슬라이스는 400 을 내는 **불일치**가 있었다.
          * 저작자 위조 시도(요청에 `authorId` 를 끼워 넣는 케이스)를 프로덕션과 같은 조건에서
          * 검증하려면 이 설정을 맞춰야 한다 — 아니면 "테스트는 400, 실서버는 통과" 가 된다.
+         *
+         * ## 왜 맨 `ObjectMapper()` 가 아니라 [Jackson2ObjectMapperBuilder] 인가 (FR-CO-02 발견)
+         * 이 빌더는 (1) [org.springframework.http.ProblemDetail] 의 확장 property(`errorCode`·
+         * `timestamp`)를 최상위 필드로 펴는 `ProblemDetailJacksonMixin` 과 (2) 클래스패스에 있는
+         * well-known 모듈(`jackson-module-kotlin`·`JavaTimeModule` 등)을 자동 등록한다.
+         * 맨 `ObjectMapper()` 로는 전자가 없어 `errorCode` 가 응답에서 사라지고, 후자가 없어
+         * Kotlin data class 요청 본문 바인딩이 통째로 실패한다(모든 `@RequestBody` 가 400).
+         * Boot 도 같은 빌더로 매퍼를 만드므로 이쪽이 프로덕션에 더 가깝다.
+         *
+         * **모듈을 `modules(...)` 로 명시하지 않는다** — 그 메서드는 목록을 *교체*해서 자동 등록을
+         * 꺼버리므로 Kotlin 모듈이 빠진다. 기능 토글만 얹는다.
          */
         @Bean
         open fun objectMapper(): ObjectMapper =
-            ObjectMapper()
-                .registerModule(JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            Jackson2ObjectMapperBuilder
+                .json()
+                .featuresToDisable(
+                    SerializationFeature.WRITE_DATES_AS_TIMESTAMPS,
+                    DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+                )
+                .build()
+
+        /**
+         * ★ [objectMapper] 빈을 HTTP 메시지 컨버터에 **실제로 꽂는다** (FR-CO-02 Task 5 발견).
+         *
+         * `@EnableWebMvc` 는 컨텍스트의 [ObjectMapper] 빈을 쓰지 않고 `Jackson2ObjectMapperBuilder`
+         * 로 자기 것을 새로 만든다. 그래서 위 빈은 선언만 돼 있고 직렬화 경로에는 **닿지 않고 있었다** —
+         * 위 KDoc 이 주장하는 "프로덕션 미러링" 이 사실은 발효되지 않은 상태였다.
+         *
+         * 증상. Boot 가 기본으로 끄는 `WRITE_DATES_AS_TIMESTAMPS` 가 이 슬라이스에서는 켜져 있어
+         * `Instant` 가 프로덕션의 ISO-8601 문자열(`"2026-06-20T10:30:00Z"`)이 아니라 숫자
+         * (`1781951400.000000000`)로 나갔다. `updatedAt` 을 단정하는 첫 테스트(CO2-P1)가 이를 드러냈다.
+         * 날짜 필드를 단정하지 않던 기존 테스트들은 이 불일치를 지나쳤다.
+         *
+         * `configureMessageConverters` 로 목록을 통째 교체하지 않고 `extend` 로 Jackson 컨버터의
+         * 매퍼만 바꾼다 — 나머지 기본 컨버터 구성을 프로덕션과 다르게 만들지 않기 위해서다.
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper = objectMapper() }
+        }
 
         @Bean
         open fun commentApplicationService(): CommentApplicationService = mockk(relaxed = true)

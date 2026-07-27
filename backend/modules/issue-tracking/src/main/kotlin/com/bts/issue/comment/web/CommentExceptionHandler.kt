@@ -4,13 +4,16 @@ package com.bts.issue.comment.web
 
 import com.bts.issue.comment.domain.CommentBodyBlankException
 import com.bts.issue.comment.domain.CommentBodyTooLongException
+import com.bts.issue.comment.domain.CommentNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
@@ -25,10 +28,18 @@ import java.time.Instant
  * ([com.bts.issue.worklog.web.WorklogExceptionHandler] 와 동일 근거로 4종을 그대로 미러한다).
  *
  * 매핑 규칙.
+ * - [MethodArgumentTypeMismatchException] → 400 Bad Request (경로 UUID 형식 오류)
+ * - [HttpMessageNotReadableException] → 400 Bad Request (JSON 역직렬화 실패)
+ * - [CommentBodyBlankException] / [CommentBodyTooLongException] → 400 Bad Request
  * - [IssueNotFoundException] → 404 Not Found
+ * - [CommentNotFoundException] → 404 Not Found
  * - [IssueAccessDeniedException] → 403 Forbidden (detail 에 내부 정보 비노출)
  * - [ResponseStatusException] → 상태 코드 전파 (401 등 catch-all 변질 차단)
  * - [Exception] (fallback) → 500 Internal Server Error
+ *
+ * 아카이브된 프로젝트에 대한 쓰기(409)는 여기가 아니라
+ * [com.bts.issue.project.archive.web.ProjectArchivedExceptionHandler] 가 처리한다
+ * (`@Order(HIGHEST_PRECEDENCE)` 전역 advice — 이 핸들러보다 우선한다).
  *
  * ### catch-all 설계 원칙 (FR-WT-01 교훈, worklog 미러)
  * catch-all [handleInternalError] 를 최후 fallback 으로 두되, [ResponseStatusException] 을
@@ -36,12 +47,56 @@ import java.time.Instant
  * 던지는 401 이 500 으로 변질되지 않도록 한다
  * (learnings: catch-all-exceptionhandler-swallows-responsestatusexception).
  *
- * [CommentController] 는 GET 단건(문자열 path variable {key})만 가지므로
- * `MethodArgumentTypeMismatchException`/`HttpMessageNotReadableException` 핸들러는 대상이 없어 생략한다.
+ * ### 400 핸들러 2종의 도입 경위 (FR-CO-02 — 생략 사유가 만료됐다)
+ * FR-CO-01 까지 [CommentController] 는 문자열 path variable `{key}` 와 컬렉션 경로만 가져
+ * `MethodArgumentTypeMismatchException`/`HttpMessageNotReadableException` 이 발생할 수 없었고,
+ * 이 KDoc 은 그래서 두 핸들러를 "대상이 없어 생략" 한다고 적어뒀다. FR-CO-02 가
+ * `@PathVariable commentId: UUID` 와 `@RequestBody` 를 추가하면서 **그 전제가 깨졌다** —
+ * `/comments/abc` 나 깨진 JSON 이 catch-all 에 떨어져 400 이 아니라 500 이 된다.
+ * 따라서 두 핸들러를 추가하고 생략 사유 문장을 이 경위로 대체한다.
  */
 @RestControllerAdvice(assignableTypes = [CommentController::class])
 class CommentExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    // ── 400 COMMENT_VALIDATION_FAILED (요청 형식, FR-CO-02) ────────────────────
+
+    /**
+     * [MethodArgumentTypeMismatchException] — 경로 변수 타입 불일치 — 400.
+     *
+     * `PATCH`/`DELETE /comments/{commentId}` 에 UUID 형식이 아닌 값이 오면 발생한다.
+     * 이 핸들러가 없으면 catch-all 이 삼켜 500 이 된다 (클래스 KDoc "400 핸들러 2종의 도입 경위").
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatch(ex: MethodArgumentTypeMismatchException): ProblemDetail {
+        log.info("COMMENT_400 type_mismatch param='{}'", ex.name)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "comment-validation-failed",
+            title = "Bad Request",
+            errorCode = COMMENT_VALIDATION_FAILED,
+            detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * [HttpMessageNotReadableException] — 요청 본문 역직렬화 실패 — 400.
+     *
+     * 깨진 JSON 또는 필드 타입 불일치 시 Jackson 이 발생시킨다.
+     * detail 에 파서 메시지를 싣지 않는다 — 내부 클래스명·필드 경로가 노출되기 때문이다
+     * (403 과 동일한 정보 은닉 관례).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info("COMMENT_400 message_not_readable cause='{}'", ex.cause?.message ?: ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "comment-validation-failed",
+            title = "Bad Request",
+            errorCode = COMMENT_VALIDATION_FAILED,
+            detail = "요청 본문을 읽을 수 없습니다. JSON 형식 또는 필드 값을 확인해 주세요.",
+        )
+    }
 
     // ── 403 ACCESS_DENIED ─────────────────────────────────────────────────────
 
@@ -76,6 +131,27 @@ class CommentExceptionHandler {
             title = "Issue Not Found",
             errorCode = "ISSUE_NOT_FOUND",
             detail = "이슈를 찾을 수 없습니다.",
+        )
+    }
+
+    // ── 404 COMMENT_NOT_FOUND (FR-CO-02) ──────────────────────────────────────
+
+    /**
+     * 댓글 미존재·이미 삭제됨·다른 이슈 소속 — 404.
+     *
+     * 세 경우를 구분해 알리지 않는다 — "그 id 는 존재하지만 다른 이슈 소속" 이라는 사실 자체가
+     * 정보 누출이다([CommentNotFoundException] KDoc). 예외 message 의 `commentId` 도 응답에 싣지
+     * 않고 로그에만 남긴다(메모리 fr-pm-04-guard-exception-message-http-leak).
+     */
+    @ExceptionHandler(CommentNotFoundException::class)
+    fun handleCommentNotFound(ex: CommentNotFoundException): ProblemDetail {
+        log.info("COMMENT_404 comment_not_found commentId={}", ex.commentId)
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "comment-not-found",
+            title = "Comment Not Found",
+            errorCode = "COMMENT_NOT_FOUND",
+            detail = "댓글을 찾을 수 없습니다.",
         )
     }
 
@@ -185,5 +261,15 @@ class CommentExceptionHandler {
         pd.setProperty("errorCode", errorCode)
         pd.setProperty("timestamp", Instant.now().toString())
         return pd
+    }
+
+    companion object {
+        /**
+         * 댓글 API 의 클라이언트 입력 형식 오류 에러 코드 (비-UUID 경로 변수 · 깨진 JSON 공용).
+         *
+         * 두 핸들러가 같은 코드를 쓰는 이유 — 프론트 입장에서 처방이 같다("요청을 고쳐 다시 보내라").
+         * 어느 쪽이었는지는 서버 로그의 `type_mismatch`/`message_not_readable` 로 구분한다.
+         */
+        const val COMMENT_VALIDATION_FAILED = "COMMENT_VALIDATION_FAILED"
     }
 }
