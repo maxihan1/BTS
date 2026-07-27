@@ -301,6 +301,21 @@ FR-CO-02 분류를 받았을 상황이었다). **plan 이 진실출처.**
 테스트가 직접 만든다. #314 잔여위험 5 주의 — `MANAGE_WORKFLOW` 는 **기본 권한 스킴**의 `PROJECT_ADMIN`
 에만 시드돼 있으므로 프로젝트를 기본 스킴에 두어야 배정 endpoint 가 통과한다.
 
+> ⚠️ **★★두 번째 함정 — 베이스의 `rest`(TestRestTemplate)를 쓰면 안 된다**
+> (`ProjectCreatePermissionProdBootTest.kt:67-70` 이 실측으로 기록).
+> `:modules:app` 에 Apache HttpComponents 5 가 없어 `TestRestTemplate` 이 `HttpURLConnection` 으로
+> 떨어지고, **본문 있는 요청이 401/403 을 받으면 본문을 못 읽는다.**
+> T1 은 8 endpoint 의 **응답 본문**을 모으는 것이 목적이므로 이 함정에 정면으로 걸린다 —
+> 시드가 하나라도 틀려 403 이 나면 본문이 비어 "파손"으로 오진한다.
+> ⇒ **JDK 내장 `java.net.http.HttpClient` 로 원 응답을 직접 관측한다**
+> (`GitWebhookInboundPermitAllTest` KDoc 이 같은 결론). `@LocalServerPort` 로 포트를 받고
+> `@SpringBootTest`·`@ActiveProfiles`·`@DynamicPropertySource` 는 **자체 선언하지 않는다**
+> (베이스만 상속 — 컨텍스트 캐시 키가 갈리면 9-BC prod 컨텍스트가 2회 부팅되고
+> `@Scheduled` 워커가 2벌이 같은 pgmq 큐를 동시 폴링한다, 베이스 KDoc `:37-43`).
+>
+> **정리 규약.** `@BeforeEach cleanup()` + `@AfterEach cleanup()` — 공유 dev postgres(5433)에
+> 잔여물을 남기지 않는다(선례 `:83-102`).
+
 **왜 이것이 1번인가.** 이 파일이 이 PR 의 **유일한 계약 정본**이 된다. 프론트는 이것을 파싱해 검증하고,
 백엔드는 이것이 stale 하면 실패한다. 양방향이 닫힌다.
 
