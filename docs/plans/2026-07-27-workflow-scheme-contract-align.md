@@ -229,6 +229,615 @@ FR-CO-02 분류를 받았을 상황이었다). **plan 이 진실출처.**
 잔여위험 1 은 미관측이라 했다. 본문에 주장 강도 구분 박스를 넣고 A9-② (수정 전 실패 재현)로
 관측 승격 경로를 만들었다. **#314 가 다친 지점("이미 동작 중"을 관측 없이 근거로 씀)의 역방향.**
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**Goal.** 워크플로우 스킴의 프론트 Zod ↔ 백엔드 DTO 계약을 정본 어휘(`key`+`isStandard`)로 정렬해
+스킴 관리·배정 화면이 실서버에서 동작하게 하고, 다시 어긋나면 깨지는 봉인을 남긴다.
+
+**Architecture.** 계약을 **하나의 정본 파일**(백엔드가 생성하는 스냅샷 JSON)로 만들고 양쪽이 그것을
+대조한다. 백엔드는 뷰 레이어 DTO 3파일만 바꾸고(도메인·DB 불변), 프론트는 Zod 를 응답 형태별로
+분리하며 MSW 픽스처는 **자체 인터페이스 선언을 버리고 Zod 추론 타입을 참조**해 drift 근원을 없앤다.
+
+**Tech Stack.** Kotlin/Spring MockMvc · Jackson · Zod v4 · TanStack Query v5 · MSW v2 · vitest · Playwright
+
+### 추가 실측 (plan 단계에서 확정)
+
+- **`WorkflowSchemeController.kt` 의 `isDefault` 1참조는 KDoc 주석(`:148`)이다.** 코드 참조 0건.
+  ⇒ 백엔드 코드 변경은 **2파일 12참조** + KDoc 1줄. (메모리 [[global-advice-instance-token-leak-done]] 의
+  "넓은 grep 이 KDoc 포함" 함정 — 개수를 그대로 쓰지 않았다)
+- **★계약이 3곳에 중복 선언돼 있다.** 백엔드 DTO · 프론트 Zod · **`scheme-fixtures.ts` 가 자체
+  `interface` 4개**(`SchemeSummaryResponse`·`SchemeMappingResponse`·`SchemeDetailResponse`·`AssignmentResponse`,
+  `:4-32`)를 프론트 어휘로 손수 선언한다. 이름이 Zod 추론 타입과 **충돌**하기까지 한다.
+  ⇒ 픽스처가 정본을 참조하게 바꾸는 것이 학습 2026-05-23 「fixture 옵션 B 패턴 — drift 본질 차단」이다.
+- **`SchemeIssueTypeMapping`**(`:29-34`) = `{id: Long?, schemeId: WorkflowSchemeId, issueTypeId: IssueTypeId?, workflowId: UUID, createdAt: Instant}`
+- **`WorkflowSchemeControllerTest.kt:739-740` 이 `MappingResponseDetail` 을 직접 생성**한다.
+  필드 추가 시 이 헬퍼 동반 수정 필수(기본값 주지 않는다 — 명시 강제).
+
+---
+
+### Task 1. 계약 스냅샷 기전 신설 (백엔드가 정본을 생성·검증)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeContractSnapshotTest.kt`, `docs/contracts/workflow-schemes.snapshot.json`]
+- depends-on: []
+
+**왜 이것이 1번인가.** 이 파일이 이 PR 의 **유일한 계약 정본**이 된다. 프론트는 이것을 파싱해 검증하고,
+백엔드는 이것이 stale 하면 실패한다. 양방향이 닫힌다.
+
+**RED**. `WorkflowSchemeContractSnapshotTest.kt` 신설. 8 endpoint 를 MockMvc 로 호출해 응답 본문을
+모아 `docs/contracts/workflow-schemes.snapshot.json` 과 **문자열 동등** 비교한다.
+
+```kotlin
+// 워크플로우 스킴 8 endpoint 응답을 계약 스냅샷으로 고정해 프론트 Zod 와의 drift 를 차단하는 테스트
+package com.bts.workflow.scheme.web
+
+// (기존 WorkflowSchemeControllerTest 의 @WebMvcTest 슬라이스 설정·@MockkBean 구성을 그대로 재사용한다.
+//  새 컨텍스트 설정을 발명하지 말고 그 파일 상단 30줄을 복사해 맞출 것)
+
+private val SNAPSHOT_PATH: Path = Path.of("..", "docs", "contracts", "workflow-schemes.snapshot.json")
+
+@Test
+fun `계약 스냅샷이 실제 응답과 일치한다`() {
+    val actual = buildJsonObject {  // 8 endpoint 응답을 endpoint 이름 키로 모은다
+        put("GET /api/v1/workflow-schemes", getListResponseAsJson())
+        put("GET /api/v1/workflow-schemes/{key}", getDetailResponseAsJson())
+        put("POST /api/v1/workflow-schemes", postCreateResponseAsJson())
+        put("PUT /api/v1/workflow-schemes/{key}", putUpdateResponseAsJson())
+        put("GET /api/v1/projects/{k}/workflow-scheme", getAssignmentResponseAsJson())
+        put("PUT /api/v1/projects/{k}/workflow-scheme", putAssignResponseAsJson())
+        put("POST /api/v1/workflow-schemes/{key}/mappings", postMappingResponseAsJson())
+        put("GET /api/v1/projects/{k}/assignable-workflow-schemes", getAssignableResponseAsJson())
+    }
+    val pretty = prettyPrint(actual)
+
+    if (System.getProperty("contract.snapshot.update") == "true") {
+        SNAPSHOT_PATH.parent.createDirectories()
+        SNAPSHOT_PATH.writeText(pretty)
+    }
+
+    assertThat(SNAPSHOT_PATH).exists()
+        .`as`("계약 스냅샷 부재. -Dcontract.snapshot.update=true 로 생성할 것")
+    assertThat(SNAPSHOT_PATH.readText()).isEqualTo(pretty)
+}
+```
+
+**예상 실패 메시지**. `계약 스냅샷 부재` (파일이 아직 없다)
+
+**GREEN**.
+```bash
+cd backend && ./gradlew :modules:project-workflow:test \
+  --tests "*WorkflowSchemeContractSnapshotTest*" -Dcontract.snapshot.update=true
+```
+생성된 `docs/contracts/workflow-schemes.snapshot.json` 을 커밋한다. 이 시점 파일에는 **파손 상태**
+(`key`·`isDefault`, `mappings[].isDefault` 부재, create/update 응답에 카운트 부재)가 그대로 담긴다 —
+그것이 **A9-② 의 증거**다.
+
+**REFACTOR**. 8 endpoint 호출 헬퍼를 `private fun` 으로 분리 + KDoc 에
+"이 파일이 프론트 Zod 의 정본이다. 손으로 편집하지 말고 `-Dcontract.snapshot.update=true` 로 재생성한다" 명시.
+
+**검증**.
+```bash
+cd backend && ./gradlew :modules:project-workflow:test --tests "*WorkflowSchemeContractSnapshotTest*"
+# XML 실측 — BUILD SUCCESSFUL 만 믿지 않는다
+grep -o 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' \
+  modules/project-workflow/build/test-results/test/TEST-*ContractSnapshotTest.xml
+```
+
+---
+
+### Task 2. 프론트 스냅샷 파싱 테스트 → 현행 7종 파손 RED 실증 (A9-②)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/__tests__/workflow-schemes.contract.test.ts`]
+- depends-on: [1]
+
+**RED**. Task 1 이 커밋한 스냅샷을 **현행 Zod** 로 파싱한다. 7건이 실패해야 한다 — 그 실패가 파손의 증거다.
+
+```ts
+// 백엔드가 생성한 계약 스냅샷을 프론트 Zod 로 파싱해 계약 drift 를 차단하는 테스트
+import { describe, it, expect } from 'vitest'
+import { readFileSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { z } from 'zod'
+import {
+  schemeListItemSchema, schemeDetailSchema, schemeMutationResultSchema,
+  assignedSchemeSchema, assignmentRecordSchema, mappingCreatedSchema,
+} from '../workflow-schemes.types'
+
+const SNAPSHOT = resolve(__dirname, '../../../../../docs/contracts/workflow-schemes.snapshot.json')
+
+const CASES: Array<[string, z.ZodTypeAny]> = [
+  ['GET /api/v1/workflow-schemes', z.object({ data: z.array(schemeListItemSchema) }).strict()],
+  ['GET /api/v1/workflow-schemes/{key}', z.object({ data: schemeDetailSchema }).strict()],
+  ['POST /api/v1/workflow-schemes', z.object({ data: schemeMutationResultSchema }).strict()],
+  ['PUT /api/v1/workflow-schemes/{key}', z.object({ data: schemeMutationResultSchema }).strict()],
+  ['GET /api/v1/projects/{k}/workflow-scheme', z.object({ data: assignedSchemeSchema }).strict()],
+  ['PUT /api/v1/projects/{k}/workflow-scheme', z.object({ data: assignmentRecordSchema }).strict()],
+  ['POST /api/v1/workflow-schemes/{key}/mappings', z.object({ data: mappingCreatedSchema }).strict()],
+  ['GET /api/v1/projects/{k}/assignable-workflow-schemes', z.object({ data: z.array(assignedSchemeSchema) }).strict()],
+]
+
+describe('워크플로우 스킴 계약 스냅샷', () => {
+  it('스냅샷 파일이 존재한다', () => {
+    // skip 금지 — 파일이 없으면 실패다 (vacuous 통과 차단)
+    expect(existsSync(SNAPSHOT)).toBe(true)
+  })
+
+  const snapshot = existsSync(SNAPSHOT)
+    ? (JSON.parse(readFileSync(SNAPSHOT, 'utf-8')) as Record<string, unknown>)
+    : {}
+
+  it.each(CASES)('%s 응답이 Zod 와 정합한다', (endpoint, schema) => {
+    expect(Object.keys(snapshot)).toContain(endpoint)   // 항목 누락도 실패
+    expect(() => schema.parse(snapshot[endpoint])).not.toThrow()
+  })
+})
+```
+
+**예상 실패 메시지**. `schemeListItemSchema` 등 신규 스키마 미존재 → import 에러. 스키마를 아직
+만들지 않았으므로 **Task 4 이후에 초록**이 된다. 이 task 는 **`test:` 커밋으로 RED 를 남기는 것이 목적**이다.
+
+**GREEN (이 task 범위)**. 없다. 의도된 RED 다. 실패 출력을 그대로 캡처해 PR 본문에 붙인다
+(= 완료기준 A9-② 「수정 전 실패 재현」의 증거).
+
+**REFACTOR**. `.strict()` 를 쓰는 이유를 주석으로 명시 — "백엔드가 필드를 **추가**해도 걸리게 하려면
+strict 가 필요하다. 축2 가 삭제만 잡고 추가를 놓치는 구멍을 막는다"(spec §D-Q5).
+
+**검증**.
+```bash
+cd apps/web && npx vitest run src/api/__tests__/workflow-schemes.contract.test.ts
+# 기대. FAIL (신규 스키마 미존재). 출력 저장 → PR 본문
+```
+
+---
+
+### Task 3. 백엔드 뷰 레이어 어휘 정렬 + `MappingResponseDetail.isDefault` 신설
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/dto/WorkflowSchemeDto.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/ProjectWorkflowSchemeController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeController.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeControllerTest.kt`, `docs/contracts/workflow-schemes.snapshot.json`]
+- depends-on: [1]
+
+**RED — EC-4 회귀 테스트가 먼저다.** `WorkflowSchemeControllerTest.kt` 에 추가.
+
+```kotlin
+@Test
+fun `issueTypeId 가 있으나 cross-BC 조회 실패면 issueTypeKey 는 null 이지만 isDefault 는 false 다`() {
+    val mapping = SchemeIssueTypeMapping(
+        id = 1L,
+        schemeId = WorkflowSchemeId(10L),
+        issueTypeId = IssueTypeId(99L),          // 이슈타입이 실재한다
+        workflowId = UUID.randomUUID(),
+        createdAt = Instant.parse("2026-07-27T00:00:00Z"),
+    )
+
+    // issueTypeRef = null → cross-BC 조회 실패 상황 (기본 매핑이 아니다)
+    val detail = MappingResponseDetail.from(mapping, issueTypeRef = null, workflow = someWorkflow())
+
+    assertThat(detail.issueTypeKey).isNull()
+    assertThat(detail.isDefault).isFalse()   // ★ 핵심 — issueTypeRef 가 아니라 issueTypeId 로 판정해야 통과
+}
+
+@Test
+fun `issueTypeId 가 null 이면 isDefault 는 true 다`() {
+    val mapping = SchemeIssueTypeMapping(
+        id = 2L, schemeId = WorkflowSchemeId(10L), issueTypeId = null,
+        workflowId = UUID.randomUUID(), createdAt = Instant.parse("2026-07-27T00:00:00Z"),
+    )
+    val detail = MappingResponseDetail.from(mapping, issueTypeRef = null, workflow = someWorkflow())
+    assertThat(detail.isDefault).isTrue()
+}
+```
+
+**예상 실패 메시지**. `No value passed for parameter 'isDefault'` 또는 `Unresolved reference: isDefault` (컴파일 실패)
+
+**GREEN**. 3파일 편집.
+
+```kotlin
+// WorkflowSchemeDto.kt — MappingResponseDetail 에 필드 추가 (기본값 주지 않는다)
+data class MappingResponseDetail(
+    val id: Long,
+    val issueTypeKey: String?,
+    val issueTypeName: String?,
+    val workflowKey: String,
+    val workflowName: String,
+    /** 기본 매핑 여부. issueTypeId 가 null 인 매핑이 기본 매핑이다. issueTypeRef 로 판정하면 cross-BC 조회 실패와 구분되지 않는다. */
+    val isDefault: Boolean,
+) {
+    companion object {
+        fun from(mapping: SchemeIssueTypeMapping, issueTypeRef: IssueTypeRef?, workflow: Workflow) =
+            MappingResponseDetail(
+                id = requireNotNull(mapping.id) { "SchemeIssueTypeMapping.id must not be null" },
+                issueTypeKey = issueTypeRef?.key,
+                issueTypeName = issueTypeRef?.name,
+                workflowKey = workflow.key,
+                workflowName = workflow.name,
+                isDefault = mapping.issueTypeId == null,   // ★ 도메인 필드로 판정
+            )
+    }
+}
+
+// WorkflowSchemeDto.kt — WorkflowSchemeDetailResponse / WorkflowSchemeResponse
+// `val isDefault: Boolean` → `val isStandard: Boolean`
+// 두 companion from() 의 `isDefault = scheme.isDefault` → `isStandard = scheme.isDefault`
+// (도메인은 isDefault 그대로 — ADR D2)
+
+// ProjectWorkflowSchemeController.kt — 내부 SchemeResponse (`:198-204`)
+// `val isDefault: Boolean` → `val isStandard: Boolean`
+// `private fun WorkflowScheme.toResponse()` 의 `isDefault = isDefault` → `isStandard = isDefault`
+```
+
+동반 수정 — `WorkflowSchemeControllerTest.kt:739-740` 의 `MappingResponseDetail(...)` 헬퍼에
+`isDefault = <해당 매핑의 issueTypeId == null>` 인자 추가. `WorkflowSchemeController.kt:148` KDoc 의
+"표준 스킴(isDefault=true)" → "표준 스킴(`isStandard=true`, DB 컬럼 `is_default`)".
+
+**REFACTOR**. 스냅샷 재생성 + 커밋.
+```bash
+cd backend && ./gradlew :modules:project-workflow:test \
+  --tests "*WorkflowSchemeContractSnapshotTest*" -Dcontract.snapshot.update=true
+```
+
+**검증**.
+```bash
+cd backend && ./gradlew :modules:project-workflow:test
+grep -o 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' \
+  modules/project-workflow/build/test-results/test/TEST-*.xml
+# 기준선 553 대비 실패 0 · skipped 0
+cd backend && ./gradlew :modules:project-workflow:ktlintCheck :modules:project-workflow:detekt --rerun-tasks
+```
+
+---
+
+### Task 4. 프론트 Zod 를 응답 형태별로 분리 + 요청 타입 정정
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/workflow-schemes.types.ts`, `apps/web/src/api/workflow-schemes.ts`, `apps/web/src/api/__tests__/workflow-schemes.test.ts`]
+- depends-on: [2, 3]
+
+**RED**. Task 2 의 계약 테스트가 이미 RED 다. 여기서는 그것을 GREEN 으로 만든다
+(추가 RED 를 새로 쓰지 않는다 — 같은 검증을 두 벌 만들지 않음).
+
+**GREEN**. `workflow-schemes.types.ts` 를 아래 6 스키마로 재구성한다. `schemeResponseSchema` ·
+`assignmentResponseSchema` · `mappingResponseSchema` 3장은 **삭제**한다.
+
+```ts
+/** 스킴 공통 필드 — 목록·상세·배정조회·배정후보가 공유하는 최소 집합 */
+const schemeCoreSchema = z.object({
+  id: z.number().int().nullable(),
+  key: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().nullable(),
+  isStandard: z.boolean(),
+})
+
+/** GET /api/v1/projects/{k}/workflow-scheme · GET .../assignable-workflow-schemes — 둘 다 백엔드 SchemeResponse */
+export const assignedSchemeSchema = schemeCoreSchema
+
+/** POST · PUT /api/v1/workflow-schemes — 카운트 없음 (백엔드 WorkflowSchemeResponse) */
+export const schemeMutationResultSchema = schemeCoreSchema.extend({
+  id: z.number().int(),                 // 이 응답에서는 non-null
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+/** GET /api/v1/workflow-schemes — 카운트 포함 (백엔드 WorkflowSchemeDetailResponse, mappings 는 빈 배열) */
+export const schemeListItemSchema = schemeMutationResultSchema.extend({
+  usedByProjectsCount: z.number().int().nonnegative(),
+  mappingsCount: z.number().int().nonnegative(),
+  mappings: z.array(z.unknown()),       // 목록에서는 항상 빈 배열
+})
+
+/** 매핑 상세 — 상세 응답 안의 원소 (백엔드 MappingResponseDetail) */
+export const mappingDetailSchema = z.object({
+  id: z.number().int().positive(),
+  issueTypeKey: z.string().min(1).nullable(),
+  issueTypeName: z.string().nullable(),
+  workflowKey: z.string().min(1),
+  workflowName: z.string().min(1),
+  isDefault: z.boolean(),
+})
+
+/** GET /api/v1/workflow-schemes/{key} */
+export const schemeDetailSchema = schemeListItemSchema.extend({
+  mappings: z.array(mappingDetailSchema),
+})
+
+/** POST /{key}/mappings — 백엔드 MappingResponse (내부 PK 형태, 상세와 다르다) */
+export const mappingCreatedSchema = z.object({
+  id: z.number().int().positive(),
+  schemeId: z.number().int().positive(),
+  issueTypeId: z.number().int().nullable(),
+  workflowId: z.string().min(1),
+  createdAt: z.string(),
+})
+
+/** PUT /api/v1/projects/{k}/workflow-scheme — 배정 이력. 파싱만 하고 소비하지 않는다 */
+export const assignmentRecordSchema = z.object({
+  projectId: z.string().min(1),
+  workflowSchemeId: z.number().int().positive(),
+  assignedAt: z.string(),
+  assignedBy: z.string().min(1),
+})
+```
+
+요청 타입 정정.
+```ts
+/** 스킴 생성 입력 — 백엔드 CreateWorkflowSchemeRequest{key,name,description?} 와 1:1 */
+export interface CreateSchemeInput {
+  key: string            // was schemeKey
+  name: string
+  description?: string
+}
+
+/** 스킴 수정 입력 — 백엔드 UpdateWorkflowSchemeRequest.name 은 non-null 이다 */
+export interface UpdateSchemeInput {
+  name: string           // was name?
+  description?: string
+}
+```
+
+`workflow-schemes.ts` 배선 — 각 함수의 스키마를 위 표대로 교체하고
+`assignableSchemeResponseSchema` 의 `.transform()` 을 **삭제**(`assignedSchemeSchema` 사용).
+`fetchProjectAssignment` 의 **404 → null 은 유지**(EC-1).
+
+**REFACTOR**. 파일 상단에 "각 스키마 = endpoint 1개 또는 **형태가 동일한** endpoint 묶음" 주석 +
+어느 백엔드 DTO 에 대응하는지 각 스키마 KDoc 에 명시.
+
+**검증**.
+```bash
+cd apps/web && npx vitest run src/api/__tests__/workflow-schemes.contract.test.ts   # 기대. PASS (8/8)
+cd apps/web && npx tsc --noEmit -p tsconfig.app.json                                 # 파이프 없이
+```
+
+---
+
+### Task 5. MSW 픽스처·핸들러를 백엔드 형태로 + 자체 인터페이스 제거 (진짜 RED)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/scheme-fixtures.ts`, `apps/web/src/mocks/scheme-handlers.ts`, `apps/web/src/mocks/__tests__/scheme-handlers.test.ts`]
+- depends-on: [4]
+
+**RED**. 픽스처를 백엔드 형태로 바꾸면 이를 소비하는 기존 프론트 테스트가 **대량 실패**한다.
+그 실패가 이 작업의 본체다.
+
+**GREEN**.
+1. `scheme-fixtures.ts` 의 자체 `interface` 4개(`:4-32`)를 **삭제**하고 Zod 추론 타입을 import 한다.
+   ```ts
+   import type { z } from 'zod'
+   import { schemeListItemSchema, schemeDetailSchema, mappingDetailSchema, assignedSchemeSchema }
+     from '@/api/workflow-schemes.types'
+
+   type SchemeListItem = z.infer<typeof schemeListItemSchema>
+   type SchemeDetail = z.infer<typeof schemeDetailSchema>
+   type MappingDetail = z.infer<typeof mappingDetailSchema>
+   type AssignedScheme = z.infer<typeof assignedSchemeSchema>
+   ```
+   ⇒ **drift 본질 차단** — 픽스처가 Zod 를 벗어나면 타입 에러다 (학습 2026-05-23 옵션 B 패턴).
+2. `makeScheme` 등 helper 의 필드를 `schemeKey`→`key`, `isStandard` 유지, `description` nullable 로 조정.
+   `id`·`createdAt`·`updatedAt` 을 추가한다(백엔드가 보내므로).
+3. `scheme-handlers.ts` 의 각 핸들러 반환값을 endpoint 별 실제 형태로 맞춘다 — 특히
+   **`POST /{key}/mappings` 는 `mappingCreatedSchema` 형태**(`schemeId`·`issueTypeId`·`workflowId`·`createdAt`),
+   **`PUT /projects/{k}/workflow-scheme` 는 `assignmentRecordSchema` 형태**로 바꾼다. 지금 둘 다 프론트 형태다.
+
+**REFACTOR**. 픽스처 파일 L1 주석을
+`// 워크플로우 스킴 MSW fixture — 타입은 api/workflow-schemes.types.ts 의 Zod 추론을 참조한다(자체 선언 금지)` 로 갱신.
+
+**검증**.
+```bash
+cd apps/web && npx vitest run src/mocks src/api                # 픽스처·핸들러 단위
+cd apps/web && npx tsc --noEmit -p tsconfig.app.json
+```
+
+---
+
+### Task 6. 낙관적 업데이트 3지점 정합 (FR C9)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-workflow-schemes.ts`, `apps/web/src/hooks/use-workflow-scheme-assignment.ts`, `apps/web/src/hooks/__tests__/use-workflow-schemes.test.tsx`, `apps/web/src/hooks/__tests__/use-workflow-scheme-assignment.test.tsx`]
+- depends-on: [4]
+
+**왜 별도 task 인가.** 세 지점이 캐시에 **객체를 직접 써 넣고** 그중 하나는 새 타입으로 만들 수 없다
+(spec §D-Q8). 뭉개면 타입 에러로 막힌다.
+
+**RED**. 훅 테스트에 낙관적 상태 단정을 추가한다.
+```tsx
+it('배정 낙관적 업데이트가 조회 응답 타입을 만족한다', async () => {
+  // 낙관적 반영 직후 캐시 값이 assignedSchemeSchema 를 통과해야 한다
+  const cached = queryClient.getQueryData(['projects', 'ATLAS', 'workflow-scheme'])
+  expect(() => assignedSchemeSchema.parse(cached)).not.toThrow()
+})
+```
+**예상 실패 메시지**. `Unrecognized key(s) in object: 'projectKey'` 또는 `Required: id, isStandard`
+
+**GREEN**.
+```ts
+// use-workflow-scheme-assignment.ts:65-69 — projectKey 제거, 조회 응답 타입 준수
+// projectKey 는 queryKey(ASSIGNMENT_KEYS.byProject) 에 이미 있어 값에서 빼도 정보 손실이 없다
+const optimistic: AssignedScheme = {
+  id: prevAssignment?.id ?? null,
+  key: input.schemeKey,
+  name: prevAssignment?.name ?? '',        // 서버 응답 대기 (onSettled invalidate 가 교체)
+  description: prevAssignment?.description ?? null,
+  isStandard: prevAssignment?.isStandard ?? false,
+}
+
+// use-workflow-schemes.ts:140 — 목록 낙관적 갱신
+prevList.map((s) => (s.key === schemeKey ? { ...s, ...patch } : s))
+
+// use-workflow-schemes.ts:220-227 — 낙관적 매핑은 캐시가 담는 detail 원소 타입을 쓴다
+const optimisticMapping: MappingDetail = {
+  id: -Date.now(),
+  issueTypeKey: input.issueTypeKey,
+  issueTypeName: input.issueTypeKey,
+  workflowKey: input.workflowKey,
+  workflowName: input.workflowKey,
+  isDefault: input.issueTypeKey === null,   // input 에서는 모호하지 않다
+}
+```
+`useMutation` 제네릭도 새 타입으로 교체 — `useMutation<SchemeMutationResult, …>` 등.
+
+**REFACTOR**. 각 낙관적 블록에 `// 낙관적 객체는 이 캐시가 담는 타입(조회 응답 타입)을 만족해야 한다 (FR C9)` 주석.
+
+**검증**.
+```bash
+cd apps/web && npx vitest run src/hooks
+cd apps/web && npx tsc --noEmit -p tsconfig.app.json
+```
+
+---
+
+### Task 7. 컴포넌트·라우트 어휘 참조 정정
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/admin/WorkflowSchemeSidebar.tsx`, `apps/web/src/components/admin/SchemeMetaPanel.tsx`, `apps/web/src/components/admin/MappingTable.tsx`, `apps/web/src/routes/admin.workflow-schemes.tsx`, `apps/web/src/routes/admin.workflow-schemes.new.tsx`, `apps/web/src/routes/admin.workflow-schemes.$schemeKey.tsx`, `apps/web/src/routes/projects.$projectKey.settings.workflow-scheme.tsx`, `apps/web/src/i18n/workflow-scheme-labels.ts`]
+- depends-on: [4, 5, 6]
+
+**RED**. Task 5 가 만든 대량 실패가 그대로 RED 다.
+
+**GREEN**. `.schemeKey` → `.key` (응답 객체 프로퍼티 접근 21곳). **URL 경로 변수명·라우트 파일명·함수
+인자명의 `schemeKey` 는 바꾸지 않는다** — 그것들은 응답 필드가 아니다. `SchemeMetaPanel.tsx:63` 의
+`mutate({ name, description })` 는 `name` 이 이제 필수이므로 그대로 유효하다.
+생성 폼(`admin.workflow-schemes.new.tsx`)이 `CreateSchemeInput` 에 `key` 를 넣도록 조정한다.
+
+**REFACTOR**. 판별식 확인 — `grep -rn "\.schemeKey" apps/web/src | grep -v "__tests__"` 가 0 이어야 한다.
+남으면 그 지점이 응답 필드인지 경로 변수인지 판정해 기록.
+
+**검증**.
+```bash
+cd apps/web && npx vitest run                                   # 전체
+cd apps/web && npx tsc --noEmit -p tsconfig.app.json
+cd apps/web && npx eslint --max-warnings 0 src
+```
+
+---
+
+### Task 8. 조립 부팅 실증(A9) + E2E 회귀
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/workflow-scheme.spec.ts`, `docs/plans/2026-07-27-workflow-scheme-contract-align.md`]
+- depends-on: [3, 4, 5, 6, 7]
+
+**RED**. E2E 가 스킴 목록·상세·배정 시나리오에서 **작성자·표준 배지·★ 기본 매핑 표시**를 단정하도록
+보강한다(현행 E2E 16건은 필드명을 단정하지 않아 이 회귀를 못 잡는다).
+
+**GREEN**. A9 판정식 3개를 실행하고 결과를 plan 에 기록한다.
+
+```bash
+# ① 8 endpoint 실응답의 키 집합 ⊇ 프론트 Zod 요구 키 집합
+docker ps --filter name=bts-postgres-dev --format '{{.Names}} {{.Status}}'   # 5433 가동 확인
+cd backend && ./gradlew :app:test
+# ② 수정 전 실패 재현 — Task 2 가 남긴 RED 출력을 증거로 인용 (재실행 불요)
+# ③ springdoc 노출 확정
+cd backend && ./gradlew :app:test --tests "*OpenApi*" || \
+  echo "OpenApi 테스트 부재 — 조립 부팅 후 curl -s localhost:PORT/v3/api-docs | jq '.paths | keys' 로 확인"
+```
+
+**REFACTOR**. plan §Plan 메타 아래에 「A9 실증 결과」 표를 추가한다 — 판정식별 통과/미통과 + `/v3/api-docs`
+노출 여부. ③이 "노출됨"이면 ADR 잔여위험 3 을 "확정 — 응답 필드명이 문서화된 계약이다"로 갱신한다.
+
+**검증**.
+```bash
+cd apps/web && npx playwright test e2e/workflow-scheme.spec.ts   # 개수 실측 (positional 필터 삼킴 함정 회피)
+```
+
+---
+
+### Task 9. A10 브라우저 눈확인 + 문서 동기화
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`TODOS.md`, `docs/decisions/2026-07-27-workflow-scheme-canonical-vocabulary.md`, `docs/plans/2026-07-27-workflow-scheme-contract-align.md`]
+- depends-on: [8]
+
+**RED**. 없음 (문서 + 육안 확인 task).
+
+**GREEN**.
+1. **A10 브라우저 눈확인** — 스킴 목록·상세·생성·배정 4화면을 열어 렌더 확인.
+   ⚠️ **MSW 로 본 것은 계약 증거가 아니다.** 계약은 A9 가 담당하고 A10 은 **시각 회귀** 확인 전용이다.
+   확인 항목 — 표준 배지 표시 · ★ 기본 매핑 표시 및 정렬 최상단 · 사용 프로젝트 수/매핑 수 · 배정 드롭다운.
+2. **TODOS.md** — 「project-workflow 워크플로우 스킴 프론트↔백엔드 계약 파손」 항목을 **해소 처리**
+   (`✅ #<PR번호>` + 실제 규모가 3종이 아니라 응답 7 + 요청 1 이었음, 지목 DTO 2건 오기였음을 기록).
+   신규 이연 3건 등재.
+   - 도메인 객체 `WorkflowScheme.isDefault` · DB 컬럼 `is_default` → `isStandard` rename (ADR D2 이연분)
+   - cross-BC 이슈타입 조회 실패가 무음 (`issueTypeKey`/`issueTypeName` null 로만 표현, ADR 잔여위험 2)
+   - `classify-task.ts:45` 의 `'스키마'` 키워드가 Zod/GraphQL/JSON schema 작업을 전부 `migration` 으로
+     오분류. 기존 항목 「`bts-review-plan` 분기 표에 `type=backend` 가 없다」의 형제 — **판별식 필요**
+3. **ADR 잔여위험 갱신** — 1번(조립 부팅 미실시)을 A9 결과로 해소 또는 잔여 명시. 3번(springdoc) 확정.
+
+**REFACTOR**. `bash scripts/verify-master-plan.sh` 실행. FR 카운트 불변 131 이므로 통과해야 한다.
+
+**검증**.
+```bash
+bash scripts/verify-master-plan.sh; echo "EXIT=$?"    # 0 기대
+cd apps/web && npx vitest run && npx tsc --noEmit -p tsconfig.app.json
+cd backend && ./gradlew :modules:project-workflow:test :modules:project-workflow:ktlintCheck :modules:project-workflow:detekt --rerun-tasks
+```
+
+---
+
+## Plan 메타
+
+- **task 수**. 9
+- **예상 wave**. 직렬 전제 — T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9.
+  T2·T3 은 depends-on 이 `[1]` 로 같아 이론상 병렬이나, **같은 worktree 에서 백엔드·프론트가 동시 커밋하면
+  git index.lock / 공유 stash 레이스**가 난다(메모리 [[parallel-dispatch-precommit-hook-race]] ·
+  [[worktree-lint-staged-shared-git-stash-collision]] · [[subagent-git-stash-worktree-shared-collision]]).
+  #314 도 직렬로 회피했다. **직렬 dispatch 를 권고한다.**
+- **TDD 강제**. yes. 단 **T2 는 의도된 RED 커밋**(`test:`)이며 T4 에서 GREEN 이 된다 —
+  bts-impl 의 "test: 가 feat: 보다 먼저" 검증과 정합한다.
+- **추가 검증**. typecheck(파이프 없이) · eslint · ktlintCheck · detekt(`--rerun-tasks`) · vitest ·
+  playwright(`apps/web` 에서 직접 호출) · `:app:test` 조립 부팅 · `verify-master-plan.sh`
+- **`.bts-cache/classify.json` 미기록 (의도된 편차).** bts-plan SKILL.md Step 3 은 이 파일에 `task_count`
+  를 쓰라고 하지만 **동시 세션 `backend/fr-co-02` 소유**다(메모리 [[bts-cache-multisession-collision]]).
+  task 수는 이 plan 파일에만 기록한다 — **plan 이 진실출처**.
+
+### Self-Review (writing-plans 체크리스트)
+
+**1. 스펙 커버리지.** FR C1~C9 · NFR N1~N6 · EC-1~EC-12 · 완료기준 A1~A11 전부 task 에 매핑됨.
+
+| 스펙 항목 | task |
+|---|---|
+| C1 응답 8 정합 | T3(백엔드) + T4(프론트) + T2(검증) |
+| C2 요청 4 정합 | T4 |
+| C3 정본 어휘 | T3 + T4 + T7 |
+| C4 형태별 스키마 분리 | T4 |
+| C5 `mappings[].isDefault` | T3 |
+| C6 픽스처 백엔드 형태 | T5 |
+| C7 `.transform()` 제거 | T4 |
+| C8 `name` 필수화 | T4 |
+| C9 낙관적 객체 타입 | T6 |
+| A1·A3·A4 | T2 · T4 |
+| A2 | T3 |
+| A5 | T3 (EC-4 RED) |
+| A6·A7·A8 | T7 · T3 · T9 |
+| A9 | T8 |
+| A10 | T9 |
+| A11 | T9 |
+| EC-1 404=미할당 유지 | T4 (명시) |
+| EC-4 조회 실패 ≠ 기본 매핑 | T3 RED |
+| EC-9 403 경로 | T8 (E2E 회귀 확인, 계약 증거로 쓰지 않음) |
+| EC-10·EC-11 | T6 |
+| EC-12 `description` 빈문자↔null | **T4 에서 계약 고정** — 착수 시 프론트가 무엇을 보내는지 확인 후 결정 |
+
+**2. 플레이스홀더 스캔.** "TBD"·"적절히"·"나중에" 0건. 다만 T1 의 8 endpoint 호출 헬퍼는
+기존 `WorkflowSchemeControllerTest` 의 슬라이스 설정 재사용을 지시하는 형태로 남겼다 —
+그 파일의 `@WebMvcTest` / `@MockkBean` 구성을 발명하지 말고 복사하라는 것이 의도다.
+
+**3. 타입 일관성.** T4 가 정의한 6 스키마 이름(`assignedSchemeSchema` · `schemeMutationResultSchema` ·
+`schemeListItemSchema` · `mappingDetailSchema` · `schemeDetailSchema` · `mappingCreatedSchema` ·
+`assignmentRecordSchema`)을 T2 · T5 · T6 이 동일하게 참조한다. T5 의 `MappingDetail` ·
+T6 의 `AssignedScheme` 는 그 스키마의 `z.infer` 별칭이다.
+
+**보완 1건 (self-review 에서 발견).** T2 가 참조하는 스키마는 T4 가 만든다 — **task 순서상 T2 가
+먼저이므로 T2 는 컴파일되지 않는다.** 이는 의도된 RED 이며 T2 §GREEN 에 "없다. 의도된 RED"로
+명시했다. bts-impl 의 verifier 가 이를 실패로 오판하지 않도록 **T2 dispatch 시 "이 task 의 성공 기준은
+테스트가 실패하는 것"임을 prompt 에 명시**해야 한다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
