@@ -99,7 +99,27 @@ CI 매트릭스 ↔ Gradle 모듈). 안 돌리면 봉인이 로컬 1회성 확�
 
 </details>
 
-## identity-access — 컨트롤러 권한 게이트 DRY 부채 (D19, PR #277)
+## ✅ identity-access — 컨트롤러 권한 게이트 DRY 추출 (해소 2026-07-27)
+
+**해소.** `web/support/ControllerAuthSupport.kt` 신설로 중복 3종을 단일 지점에 모았다 (**-113줄**).
+
+**★기록의 "14파일" 은 과다 계상이었다.** grep 패턴이 접미사 부분일치라 **별개 상수**
+`PAT_FORBIDDEN_RESPONSE` 8건을 삼켰다. 단어경계로 재측정하면 **6파일**이다.
+
+**합치지 않은 것 2종 (실측 근거).**
+- `PAT_FORBIDDEN_RESPONSE` 8파일 — 본문 오류코드가 3종으로 갈리고(`session_management_…` /
+  `account_linking_…` / `calendar_feed_…`) `CalendarFeedController` 는 타입까지 다르다.
+  합치면 프론트가 분기하는 오류코드가 뭉개진다.
+- `My*PermissionController` 의 `resolveActorId(request, jwt)` — 이름만 같고 인자·반환·실패처리가
+  전부 다르다(PAT 검사 + throw). 추출 대신 **`resolveActorIdOrThrow` 로 rename** 해 혼동을 없앴다.
+
+shared-kernel 로 올리지 않았다 — 반환이 웹 계층 타입이고 타 모듈 동명 함수는 throw 계약이다.
+
+**뮤테이션 2회.** 가드 무력화 → 15건 FAILED(3개 컨트롤러 전부). 공유 상수 변조 → 4파일 반응.
+**★M2 가 6파일 중 4파일만 잡은 것도 원인을 규명했다** — 나머지 2파일의 401 케이스는 토큰 없음 →
+필터체인 401 이라 컨트롤러 상수를 아예 안 탄다. **선재 커버리지 갭이며 이번 변경이 만든 것이 아니다.**
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, plan-eng-review D19)**. `FORBIDDEN_RESPONSE`/`UNAUTHORIZED_RESPONSE` 상수 · `resolveActorId` ·
 `requireSystemAdmin` 3종 복제는 **선재 부채**다. `global_permission_grants`(FR-PM-10, PR-1)가 신설한
@@ -120,6 +140,8 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 > `resolveActorId`는 검색 결과 8개 파일에서 매치되나, 1개(`GlobalPermissionGrantControllerTest.kt`)는 KDoc/주석에서 개념을 언급할 뿐 실제 중복 구현이 아니라 제외했다(`src/main`만 집계).
 
 **후속 작업**. 공통 베이스 클래스 또는 shared-kernel 유틸로 추출 — 별도 PR로 분리해 리팩토링 리뷰 단위를 권한 변경과 섞지 않는다.
+
+</details>
 
 ## ✅ identity-access — ADR D-1 이중 방어 정합 무가드 (해소 2026-07-27)
 
@@ -301,7 +323,17 @@ MockMvc 는 nginx 를 모르고 Gradle 은 compose 파일을 읽지 않는다.
 **남은 것 (심층방어를 하려면).** 두 빈에 `@Profile("!prod")` 를 **함께** 붙인다. 2 BC +
 security-engineer 소관. 현 토폴로지에서는 노출량 0 이므로 우선순위는 낮다.
 
-## project-workflow — ProjectWorkflowSchemeController 의 404/403 순서 (PR #314 plan-eng-review)
+## ✅ project-workflow — 404/403 순서 (해소 2026-07-27)
+
+**해소.** 세 핸들러 **전수**에서 `requirePermission` 을 `findIdByKey` 앞으로 옮겼다.
+한 개만 바꾸면 같은 컨트롤러 안에서 순서가 갈린다.
+
+**★기록된 착수 함정이 이미 무효였다.** 원 기록은 "순서를 바꾸면 프론트 `fetchProjectAssignment` 의
+404→null=미할당 로직이 깨진다" 고 적었으나, 백엔드는 **미배정에 404 를 내지 않는다**
+(`WorkflowSchemeApplicationService` 가 자동 배정). 그 404 는 「프로젝트 없음」 하나뿐이다.
+착수 전 재확인했고, 프론트 쪽 404 해석도 같은 라운드에서 함께 정리했다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, 2026-07-26 D4=2A)**. **이번 PR 범위 밖.** 한계 노출량이 0(같은 정보를 기존 2핸들러로
 이미 얻을 수 있음)이고, 순서 변경은 3핸들러 동시 수정이라 보안 봉합 PR 의 리뷰 단위를 흐린다.
@@ -316,7 +348,34 @@ security-engineer 소관. 현 토폴로지에서는 노출량 0 이므로 우선
 
 **Depends on / blocked by**. 없음. 우선순위 낮음(한계 노출량 0).
 
-## identity-access — MANAGE_WORKFLOW 시드가 기본 권한 스킴에만 존재 (PR #314 plan-eng-review outside voice)
+</details>
+
+## ✅ identity-access — MANAGE_WORKFLOW 시드 (기각 · 도달 불가 · 2026-07-27)
+
+**기각(REJECTED_AS_NOT_REAL).** 결함 서술 자체는 참이지만 **그 상태에 도달할 방법이 프로덕션에 없다.**
+
+```
+# 비-기본 권한 스킴을 만드는 프로덕션 쓰기 경로
+grep -rniE "insert into (permission_schemes|project_permission_scheme|role_permissions)|update ..." \
+  backend --include="*.kt" --include="*.sql" | grep "/src/main/" | grep -v "/db/migration/"
+→ 0줄 (전 9모듈)
+```
+쓰기는 마이그레이션과 **테스트**뿐이다(`project_permission_scheme` INSERT 6건 전부 `/src/test/`).
+
+⇒ **도달 불가 상태에 마이그레이션을 넣는 것은 dead 시드다.** 대신 두 가지를 남겼다.
+1. `PermissionSchemeRepository` KDoc — 도달 불가 근거 + **전제가 깨지는 조건과 그때 할 일**
+   (9종 시드를 새 스킴에도 적용하는 마이그레이션 동반).
+2. **tripwire 테스트** — 두 번째 스킴이 생기는 순간 깨져서 다음 담당자를 KDoc 으로 보낸다.
+
+**★부수 발견 — 이 결함은 `MANAGE_WORKFLOW` 고유가 아니다.** 같은 구조의 시드가 9종이다.
+V013 만의 문제로 등재돼 있던 것이 좁은 시야였다.
+
+**함께 등재분 (코드 미변경, 실측만).** `IdentityAccessWorkflowSchemePermissionResolver:77` 이
+멤버십 null 이면 즉시 거부하며 SYSTEM_ADMIN 을 다시 묻지 않는다(fallback 부재 확인).
+클래스 KDoc 은 이를 **의도된 deny-by-default 로 서술**하고 있어 문서상 누락이 아니다.
+다만 "전역 관리자가 남의 프로젝트를 관리할 수 있어야 하는가" 는 제품 판단이라 **Maxi 확인 필요**.
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, 2026-07-26 D10=A)**. **이번 PR 범위 밖.** 신규 기능 손실이 아니다 — 배정 실행(PUT)이
 이미 같은 게이트라 해당 사용자는 오늘도 적용 단계에서 403 을 맞는다. 마이그레이션 0 이라는 PR 전제를
@@ -341,7 +400,22 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 
 **Depends on / blocked by**. 권한 스킴을 실제로 둘 이상 운용하기 시작하는 시점. 그전까지는 잠복.
 
-## project-workflow — SchemeHandlerPermissionMatrix 봉인의 한계 (부분 해소 2026-07-27)
+</details>
+
+## ✅ project-workflow — SchemeHandlerPermissionMatrix 봉인 (해소 2026-07-27)
+
+**해소.** 런타임 대조 테스트로 세 한계를 동시에 닫았다.
+`CapturingPermissionResolverStub` 을 최상위로 추출하고, MockMvc 로 **10핸들러를 전수 호출**해
+캡처된 `(permission, scope)` 를 `HANDLER_CLASSIFICATION` 과 대조한다.
+
+**★이 작업의 본질은 「맵 값을 처음으로 읽게 만드는 것」이었다.** 그 전까지
+`HandlerClassification(permission, scopeKind)` 의 두 필드는 **읽는 코드가 0곳인 죽은 데이터**였고,
+축2 는 `containsKey` 로 등록 여부만 봤다. 실제로 핸들러를 태우므로 축1 의 "안 타는 분기" 도 해소된다.
+
+**판별 범위를 패키지가 아니라 의존 관계로** 바꿨다 — `WorkflowSchemeApplicationService` 를 주입받는
+`@RestController` 를 ArchUnit 으로 수집한다. 패키지 밖 컨트롤러가 생기면 자동 편입된다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **부분 해소.** 감사가 제시한 **즉시 조치**를 적용했다 — `WorkflowSchemeControllerTest` 의
 `PUT 수정`·`DELETE 삭제` 테스트에 `verify { permissionResolver.requirePermission(actor,
@@ -401,6 +475,8 @@ MANAGE_SCHEME, Global) }` 를 추가해 **무방비였던 2핸들러의 권한 �
 ⇒ **런타임 대조(MockMvc + capturing stub 전수 호출)로 강화하면 축1·축2 한계가 동시에 해소된다** —
 실제로 핸들러를 태워 캡처값을 보므로 "안 타는 분기" 도 잡힌다. 범위는 스킴 서비스를 소비하는
 핸들러 전체로 잡을 것(패키지가 아니라 **의존 관계**를 판별식으로).
+
+</details>
 
 ## ✅ apps/web — SCHEME_KEYS.assignable 캐시 무효화 (해소 2026-07-27)
 
@@ -494,7 +570,17 @@ glossary 70개 term 과 대조한 결과다. **`IssueHistory` 는 원 기록이 
 
 </details>
 
-## apps/web mocks — auth-fixtures 와 user-fixtures 의 사용자 id 교집합이 0 이다 (PR #315 브라우저 눈확인 발견)
+## ✅ apps/web mocks — fixtures id 정합 (해소 2026-07-27)
+
+**해소.** `auth-fixtures` 를 정본으로 두고 id 상수를 export, `user-fixtures` 가 그것을 참조하게 했다.
+**형제 mock 5파일**(issue·board·changelog·audit-log·timeline)의 하드코딩 리터럴도 함께 스윕했다 —
+mock 데이터라 안 고치면 담당자/작성자 해석이 깨진 채 남는다.
+
+**회귀 봉인** — `useUsersByIds` 를 `vi.mock` 하지 **않는** 통합 테스트를 남겼다.
+원 결함이 브라우저 눈확인에서만 드러난 이유가 바로 전 테스트가 그 훅을 통째로 mock 했기 때문이다.
+판별식 — **"토큰이 만든 authorId 를 사용자 디렉터리가 되찾아 이름으로 바꿔줄 수 있는가."**
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. 모든 "작성자 이름" 표시가 mock/E2E/로컬 dev 에서 **원시 UUID 로 나온다.** 헤더는 `김앨리스`
 를 정상 표시하고 담당자 드롭다운도 정상인데, 목록 항목의 작성자만 UUID 다.
@@ -532,7 +618,31 @@ FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 그 절차다.
 `user-fixtures` 를 맞추는 편이 자연스럽다(토큰에서 도출되는 값이 곧 실사용 id 이므로). 바꾼 뒤
 **`useUsersByIds` 를 mock 하지 않는 통합 테스트 1건**을 남겨 같은 회귀가 다시 숨지 못하게 한다.
 
-## 🚨 issue-tracking — 이슈 링크/부모 설정에 권한 가드가 **0건**이다 (2026-07-27 발견, 선재)
+</details>
+
+## ✅ issue-tracking — 이슈 링크/부모 권한 가드 (해소 2026-07-27)
+
+**해소.** `LinkApplicationService` · `IssueParentService` 두 서비스에 `IssuePermissionResolver` 를
+주입하고 4 핸들러 전수에 게이트를 걸었다. 형제 `WorklogService.checkPermission` 과 **같은 형태**다.
+
+- `createLink` — source·target **양끝** `UPDATE`. 한쪽만 보면 볼 수 없는 이슈를 target 으로 지목해
+  404/409 차이로 실재를 확인할 수 있다. 링크는 양방향 관계라 의미상으로도 양쪽이 맞다.
+- `setParent` 양끝 · `clearParent`/`deleteLink` `UPDATE` · `listLinks` `VIEW`
+- **권한을 리소스 조회보다 먼저** 건다([[auth-extraction-before-resource-lookup]]).
+
+**파생 결함 2건도 함께 닫았다.**
+1. `LinkExceptionHandler` 에 `IssueAccessDeniedException` → 403 매핑이 없어 **500 으로 변질**됐다
+   (형제 Watcher·Comment·CycleTime 은 전부 갖고 있다). detail 에 actor/permission/scope 미노출.
+2. `ResponseStatusException` 전파 핸들러가 없어 catch-all 이 **401 을 500 으로** 삼켰다
+   ([[catch-all-exceptionhandler-swallows-responsestatusexception]] 재현).
+   ★핸들러 KDoc 이 *"컨트롤러가 actor 를 추출하지 않아 401 경로가 구조적으로 없다"* 는 전제를
+   적어두었는데 **이 작업이 바로 그 전제를 뒤집었다.** 낡은 전제도 함께 정정했다.
+
+**뮤테이션 확증** — target 게이트 제거 시 SEC2 FAILED.
+테스트 7건 — 양끝 거부 4 · 조회순서 1(존재하지 않는 키로도 403) · VIEW 1 · **대조군 1**.
+대조군이 없으면 권한을 과하게 걸어도 6건이 통과해 초록으로 보인다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **등급.** 보안. 다른 부채와 달리 **현행 결함**이며 잠복 부채가 아니다.
 
@@ -596,6 +706,8 @@ IssuePermission.UPDATE)` 를, `listLinks` 에 `VIEW` 를 건다. 컨트롤러가
 `IssueLinkController`·`LinkApplicationService` 테스트에서 actor 시드가 없는 케이스를 전수 열거할 것.
 
 **소관**. security-engineer 공동 검토 필요 (FR-LK).
+
+</details>
 
 ## ✅ issue-tracking — 자식 엔티티 소유권 정책 정본화 (해소 2026-07-27 · 결함 2건은 분리)
 
@@ -979,7 +1091,17 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 </details>
 
-## issue-tracking — 댓글 수정→삭제→이력을 관통하는 실 DB 테스트가 없다 (PR #316 발견 / 2026-07-27 등재)
+## ✅ issue-tracking — 댓글 관통 실 DB 테스트 (해소 2026-07-27)
+
+**해소.** `CommentEditDeleteHistoryE2EIntegrationTest` 신설 —
+컨트롤러 → 서비스 → 리포지토리 → `IssueHistoryRecorder` → `issue_change_group`/`item` →
+조회 시 `maskDeletedCommentBodies` 까지 **한 테스트로 관통**한다.
+`IssueChangeHistoryE2EIntegrationTest` 의 빈 배선 구조를 선례로 재사용했다.
+
+**뮤테이션 확증** — `maskDeletedCommentBodies` 호출을 지우자 이 테스트가 red 가 됐다.
+그전까지 "삭제 후 이력 본문이 실제로 가려지는지" 는 mock 위에만 있었다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. FR-CO-02 의 쓰기 경로 전 구간이 **실 PostgreSQL 을 한 번도 통과한 적이 없다.**
 
@@ -1005,6 +1127,8 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 (메모리 `verify-logic-vs-verify-guard`).
 
 **소관**. `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/`.
+
+</details>
 
 ## ✅ issue-tracking — `findByIssue` 마스킹 갭 (해소 2026-07-27 · ArchUnit 차단)
 
