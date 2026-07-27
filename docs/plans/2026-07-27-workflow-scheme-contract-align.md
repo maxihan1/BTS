@@ -1099,10 +1099,22 @@ search-export-import/.../OpenApiConfig.kt:60-63     (동일)
 
 ### 구현 task 추가 (리뷰 발견에서 파생)
 
-- [ ] **T1-mod (P1, human: ~3h / CC: ~20min)** — `backend/modules/app` — 스냅샷 생성을 조립 컨텍스트로 이동
+- [x] **T1-mod (P1, human: ~3h / CC: ~20min)** — `backend/modules/app` — 스냅샷 생성을 조립 컨텍스트로 이동
   - Surfaced by: Architecture 발견 1 — 슬라이스 `@EnableWebMvc` + `JavaTimeModule` 부재
   - Files: `backend/modules/app/src/test/kotlin/com/bts/app/contract/WorkflowSchemeContractSnapshotTest.kt`
+    · `docs/contracts/workflow-schemes.snapshot.json` · **`backend/modules/app/build.gradle.kts` (선언 외 1건 추가)**
   - Verify: `./gradlew :modules:app:test --tests "*ContractSnapshot*"` + 스냅샷의 `assignedAt` 이 ISO 문자열
+  - ✅ **완료 (2026-07-27)** — `test:` 2bf6f1476 → `feat:` 066b0a998 → `refactor:` 70d1147d3.
+    `tests=2 skipped=0 failures=0 errors=0`(XML 실측), `--rerun-tasks` 2회 독립 실행 모두 통과.
+    스냅샷 `assignedAt` = `"2026-01-01T00:00:00Z"`(정규화 instant) — **조립은 `Instant` 를 ISO
+    문자열로 낸다**가 실증됐다(발견 1 이 우려한 숫자·배열 직렬화는 조립에 없음). 전용 단정
+    테스트 `배정 응답의 assignedAt 이 ISO-8601 문자열이다` 가 grep 검증을 대체한다.
+  - ⚠️ **선언 외 파일 1건** — `backend/modules/app/build.gradle.kts` 에 3줄 배선 추가.
+    Gradle 이 CLI `-D` 를 fork 된 테스트 JVM 에 전달하지 않아, 이 배선 없이는
+    `-Dcontract.snapshot.update=true` 가 **조용히 무시**되어 스냅샷을 영원히 생성할 수 없다.
+  - ⚠️ **스타일 이탈 1건** — 테스트 파일 340줄로 `DEVELOPMENT.md §2.1` 의 「파일 300줄 이내」 초과.
+    분리하면 단일 소비자용 추상이 생겨 `CLAUDE.md §2 Simplicity`(single-use 추상 금지)와 충돌한다.
+    초과분 대부분이 함정을 기록한 KDoc(로직 아님)이라 유지 쪽을 택했다 — 게이트 2 판단 대상.
 - [ ] **T4-mod (P2, human: ~20min / CC: ~3min)** — `apps/web/src/api` — `mappings` 를 `z.array(mappingDetailSchema)` 로 + 선언 순서 준수
   - Surfaced by: Code Quality F4 — `z.unknown()` 이 목록 endpoint 의 봉인을 무력화
   - Verify: `npx vitest run src/api` + `npx tsc --noEmit -p tsconfig.app.json`
