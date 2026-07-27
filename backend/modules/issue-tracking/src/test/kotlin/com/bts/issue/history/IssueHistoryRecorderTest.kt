@@ -1,4 +1,4 @@
-// IssueHistoryRecorder 단위 테스트 — created/deleted/수정/no-op 경로 검증 (MockK)
+// IssueHistoryRecorder 단위 테스트 — created/deleted/수정/no-op/댓글본문수정 경로 검증 (MockK)
 
 package com.bts.issue.history
 
@@ -7,9 +7,13 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldStartWith
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import java.time.Instant
 import java.util.UUID
@@ -187,6 +191,66 @@ class IssueHistoryRecorderTest : DescribeSpec({
                     match { group -> group.actorId == null },
                 )
             }
+        }
+    }
+
+    describe("recordCommentEdited — 댓글 본문 수정 경로 (FR-CO-02)") {
+        val commentId = UUID.randomUUID()
+        val beforeBody = "수정 전 본문"
+        val afterBody = "수정 후 본문"
+
+        // detector/resolver 는 strict mock 이므로 stub 하지 않는다 —
+        // 이 진입점이 둘 중 하나라도 경유하면 테스트가 즉시 실패한다(음성 가드).
+        fun recordAndCapture(): IssueChangeGroup {
+            val captured = slot<IssueChangeGroup>()
+            every { repository.record(capture(captured)) } returns Unit
+
+            sut.recordCommentEdited(
+                issueId = issueId.value,
+                issueKey = issueKey.value,
+                actor = actor,
+                commentId = commentId,
+                beforeBody = beforeBody,
+                afterBody = afterBody,
+            )
+
+            return captured.captured
+        }
+
+        it("field=comment 접두사 항목 1건을 가진 그룹을 기록한다") {
+            val group = recordAndCapture()
+
+            group.issueId shouldBe issueId.value
+            group.issueKey shouldBe issueKey.value
+            group.actorId shouldBe actor.value
+            group.items shouldHaveSize 1
+            group.items[0].field shouldStartWith IssueHistoryRecorder.COMMENT_FIELD_PREFIX
+        }
+
+        it("field 에 commentId 를 실어 어느 댓글인지 식별 가능하다") {
+            val group = recordAndCapture()
+
+            // Task 11 의 삭제 댓글 마스킹이 이 값으로 대상 댓글을 역추적한다.
+            group.items[0].field shouldBe "${IssueHistoryRecorder.COMMENT_FIELD_PREFIX}$commentId"
+            group.items[0].field.removePrefix(IssueHistoryRecorder.COMMENT_FIELD_PREFIX) shouldBe
+                commentId.toString()
+        }
+
+        it("이전·이후 본문을 fromValue·toValue 에 담는다") {
+            val group = recordAndCapture()
+
+            group.items[0].fromValue shouldBe beforeBody
+            group.items[0].toValue shouldBe afterBody
+            // 본문은 라벨 해석 대상이 아니다 — resolver 미경유의 관측 가능한 증거.
+            group.items[0].fromLabel shouldBe null
+            group.items[0].toLabel shouldBe null
+        }
+
+        it("createdAt 을 null 로 두어 DB DEFAULT NOW 를 쓴다") {
+            val group = recordAndCapture()
+
+            // recordImported 와 달리 원본 시각 재생이 아니라 "지금" 이 정답이다.
+            group.createdAt shouldBe null
         }
     }
 })

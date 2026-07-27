@@ -3,12 +3,14 @@
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.cursor.CursorDecodeException
+import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueChangeGroup
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeItem
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldPermissionResolver
@@ -153,6 +155,10 @@ object ChangelogCursorCodec {
  * changelog 도 같은 필드의 과거 from/to 값·박제 라벨을 가려야 한다. 그렇지 않으면 특정 필드가 제한된
  * 사용자에게 과거 민감값이 누출된다. [maskInvisibleFields] 가 [FieldPermissionResolver.visibleFields] 로
  * 단건과 동일한 마스킹 정책을 적용한다.
+ *
+ * **삭제된 댓글의 이력 본문 마스킹(FR-CO-02).**
+ * 댓글 모더레이션과 댓글 수정 이력 보존은 각각 타당하지만 겹치면 충돌한다 — 상세 근거는
+ * [maskDeletedCommentBodies] KDoc 참조. 조회 시점에 삭제된 댓글의 본문만 가린다.
  */
 @Service
 class IssueChangelogService(
@@ -164,6 +170,9 @@ class IssueChangelogService(
     // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
     // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean 이 타입으로 주입돼 이 기본값을 대체한다.
     private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+    // 위 resolver 와 달리 기본값이 없다 — 삭제 댓글 판정은 선택적 기능이 아니다.
+    // 근거는 maskDeletedCommentBodies KDoc 참조.
+    private val commentRepository: CommentRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -186,6 +195,14 @@ class IssueChangelogService(
          */
         private val MASKABLE_CORE_FIELDS =
             setOf("description", "environment", "impact", "labels", "summary", "priority")
+
+        /**
+         * changelog 의 댓글 본문 변경 item field prefix.
+         *
+         * 기록 측([IssueHistoryRecorder.COMMENT_FIELD_PREFIX])과 조회 측이 같은 상수를 봐야
+         * 한쪽만 바뀌어 마스킹이 조용히 무력화되는 일이 없다.
+         */
+        private const val COMMENT_FIELD_PREFIX = IssueHistoryRecorder.COMMENT_FIELD_PREFIX
     }
 
     /**
@@ -225,7 +242,8 @@ class IssueChangelogService(
 
         val displayNames = resolveActorNames(groups)
 
-        val maskedGroups = maskInvisibleFields(actor, issue.projectKey, groups)
+        val fieldMasked = maskInvisibleFields(actor, issue.projectKey, groups)
+        val maskedGroups = maskDeletedCommentBodies(issueId, fieldMasked)
 
         val views = maskedGroups.map { group -> group.toView(displayNames) }
         return PageImpl(views, pageable, total)
@@ -279,7 +297,8 @@ class IssueChangelogService(
         val groups = pagePairs.map { it.second }
 
         val displayNames = resolveActorNames(groups)
-        val maskedGroups = maskInvisibleFields(actor, issue.projectKey, groups)
+        val fieldMasked = maskInvisibleFields(actor, issue.projectKey, groups)
+        val maskedGroups = maskDeletedCommentBodies(issueId, fieldMasked)
         val views = maskedGroups.map { group -> group.toView(displayNames) }
 
         val next =
@@ -389,6 +408,94 @@ class IssueChangelogService(
                 FieldRef(FieldKind.CUSTOM, field.removePrefix(CUSTOM_FIELD_PREFIX))
             field in MASKABLE_CORE_FIELDS -> FieldRef(FieldKind.CORE, field)
             else -> null
+        }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // 삭제된 댓글 본문 마스킹 (FR-CO-02)
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 소프트 삭제된 댓글의 수정 이력에서 **값·라벨만** 가린다.
+     *
+     * **왜 필요한가 — 두 결정이 겹치면 서로를 무력화한다.**
+     * 이 제품은 (a) `SOFT_DELETE` 보유자가 남의 부적절한 댓글을 지울 수 있고(모더레이션),
+     * (b) 댓글 본문 수정 시 이전·이후 본문을 감사 이력에 남긴다. 각각은 타당하지만 겹치면
+     * 우회 경로가 생긴다 — 무해한 댓글을 쓴 뒤 부적절한 내용으로 **수정**하면 그 본문이
+     * `issue_change_item.to_value` 에 영구 기록되고, 모더레이터가 댓글을 지워도 이력 탭에서
+     * VIEW 권한자 전원이 계속 읽는다. 삭제 버튼이 사실상 아무것도 지우지 못하는 상태다.
+     *
+     * **왜 지우지 않고 가리는가.**
+     * `issue_change_group`/`issue_change_item` 은 append-only 감사 이력이다(DATA.md §3).
+     * [IssueChangeHistoryRepository] 에 삭제·수정 메서드가 아예 없는 것도 그 원칙의 표현이다.
+     * 그래서 저장은 그대로 두고 **조회 시점에** 가린다. 행은 남아 있으므로 분쟁 시 관리자
+     * 직접 조회로 복원할 수 있고(감사 추적성 보존), 노출만 차단된다.
+     *
+     * **왜 항목을 지우지 않고 값만 비우는가.**
+     * "삭제된 댓글이 수정된 적 있다" 는 **사실 자체**는 감사 추적의 대상이라 남아야 한다.
+     * 항목을 목록에서 빼면 그 사실까지 사라져 이력이 거짓말을 한다. 필드 수준 마스킹
+     * ([maskItemIfInvisible])이 item 을 남긴 채 값만 null 로 만드는 것과 동일한 시맨틱이다.
+     *
+     * **fail-closed.**
+     * 활성 목록에 없으면 가린다. 미존재 id 도 형식이 깨진 field 도 전부 "가림" 으로 수렴한다 —
+     * 판정 불능일 때 노출하는 쪽으로 넘어지면 위 우회가 되살아난다.
+     *
+     * **[commentRepository] 의존은 선택적이 아니다.**
+     * 마스킹이 없으면 D1 모더레이션이 우회되므로 타입으로 필수를 못 박는다. nullable 로 두면
+     * 다음 사람이 "있으면 좋은 의존" 으로 읽고 주입을 빠뜨려도 컴파일이 통과하는데, 그 순간
+     * 이 봉인이 조용히 사라진다. 판정 불능 상태 자체를 만들지 않는 편이 런타임 fallback 보다 낫다.
+     *
+     * **배치 1회.**
+     * 이력 페이지 하나에 댓글 수정 항목이 여러 개 들어갈 수 있어 건별 조회는 N+1 이다.
+     * 페이지 내 댓글 id 를 모아 [CommentRepository.findActiveIds] 를 **페이지당 한 번만** 호출한다.
+     *
+     * @param issueId 조회 중인 이슈 UUID. 댓글 소속 대조에 그대로 넘긴다.
+     * @param groups 마스킹 전 변경 그룹 목록.
+     * @return 삭제된 댓글의 본문이 가려진 그룹 목록. 댓글 항목이 없으면 원본 그대로.
+     */
+    private fun maskDeletedCommentBodies(
+        issueId: UUID,
+        groups: List<IssueChangeGroup>,
+    ): List<IssueChangeGroup> {
+        val commentItems = groups.flatMap { it.items }.filter { it.field.startsWith(COMMENT_FIELD_PREFIX) }
+        if (commentItems.isEmpty()) return groups
+
+        // 파싱 실패분은 여기서 빠지고, maskIfDeletedComment 가 "활성 목록에 없음" 으로 가린다.
+        val activeIds =
+            commentRepository.findActiveIds(commentItems.mapNotNull { parseCommentId(it.field) }.toSet(), issueId)
+
+        return groups.map { group ->
+            group.copy(items = group.items.map { item -> maskIfDeletedComment(item, activeIds) })
+        }
+    }
+
+    /**
+     * 댓글 변경 item 1건을 [activeIds] 기준으로 마스킹한다.
+     *
+     * 댓글 항목이 아니거나 활성 댓글이면 원본을 그대로 반환하고, 그 외(삭제됨·미존재·
+     * commentId 파싱 실패)는 값·라벨 4종을 null 로 치환한다.
+     */
+    @Suppress("ReturnCount") // 비댓글 guard + 활성 guard + 마스킹 반환 — maskItemIfInvisible 과 동형
+    private fun maskIfDeletedComment(
+        item: IssueChangeItem,
+        activeIds: Set<UUID>,
+    ): IssueChangeItem {
+        if (!item.field.startsWith(COMMENT_FIELD_PREFIX)) return item
+        val commentId = parseCommentId(item.field)
+        if (commentId != null && commentId in activeIds) return item
+        return item.copy(fromValue = null, toValue = null, fromLabel = null, toLabel = null)
+    }
+
+    /**
+     * `comment:{commentId}` field 키에서 댓글 UUID 를 추출한다.
+     *
+     * 형식이 어긋나면 null 을 반환한다 — 호출자가 이를 "판정 불능" 으로 보고 마스킹한다(fail-closed).
+     */
+    private fun parseCommentId(field: String): UUID? =
+        try {
+            UUID.fromString(field.removePrefix(COMMENT_FIELD_PREFIX))
+        } catch (e: IllegalArgumentException) {
+            log.warn("comment_history_field_unparsable field={} — 판정 불능이므로 마스킹합니다", field, e)
+            null
         }
 
     // ──────────────────────────────────────────────────────────────────────────────

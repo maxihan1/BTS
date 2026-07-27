@@ -25,9 +25,22 @@ import java.util.UUID
  * 별도 @Service 빈이므로 [IssueApplicationService] 의 트랜잭션(REQUIRED)에 참여한다.
  * self-invocation 함정 없음 (메모리 트랜잭션-self-invocation-REQUIRES_NEW).
  *
- * **import 전용 진입점.**
- * [recordImported] 는 외부 소스(Jira changelog 등)가 이미 완성한 [IssueChangeGroup] 을
- * detector/resolver 없이 그대로 기록하는 별도 진입점이다. [record] 와 함께 참고할 것.
+ * **진입점 3종 비교.**
+ *
+ * | 진입점 | 용도 | diff 계산 | 시각 |
+ * |---|---|---|---|
+ * | [record] | 이슈 필드 변경 | detector + resolver | DB DEFAULT NOW() |
+ * | [recordImported] | 외부 시스템 이력 재생 | 없음(이미 조립됨) | **원본 보존** |
+ * | [recordCommentEdited] | 댓글 본문 수정 | 없음(단일 항목) | DB DEFAULT NOW() |
+ *
+ * 댓글 본문 수정이 [recordImported] 를 재사용하지 않는 이유는 시각 컬럼이다. [recordImported] 는
+ * `group.createdAt` 이 채워져 있으면 그 값을 보존하는데(원본 시각 재생이 목적), 댓글 수정에는
+ * "지금" 이 정답이라 그 동작이 오작동한다. 그래서 전용 진입점을 두고 repository 에 직접 위임한다.
+ *
+ * **[recordCommentEdited] 가 field 에 commentId 를 싣는 이유.**
+ * 삭제된 댓글의 이력 본문은 조회 시 마스킹해야 하는데, 그러려면 이력 항목이 어느 댓글의 것인지
+ * 식별할 수 있어야 한다. [IssueChangeItem] 에는 commentId 컬럼이 없으므로 field 에
+ * `comment:{commentId}` 형태로 싣는다 — [IssueChangeDetector] 의 `customField:{key}` 선례와 동형이다.
  *
  * @see IssueChangeDetector
  * @see IssueChangeLabelResolver
@@ -125,5 +138,63 @@ class IssueHistoryRecorder(
             group.items.size,
             group.createdAt,
         )
+    }
+
+    /**
+     * 댓글 본문 수정 이력을 기록한다 (FR-CO-02).
+     *
+     * Suppress 근거. `LongParameterList` — 이슈 좌표(issueId/issueKey) + 행위자 + 댓글 식별자 +
+     * 본문 2개로 6개다. 이 진입점 전용 VO 를 만들면 호출부가 조립 코드만 늘 뿐이라 명시적
+     * 시그니처를 유지한다 (OutboundWebhook.create · SavedFilterService 동일 사유).
+     *
+     * @param issueId 댓글이 달린 이슈의 UUID.
+     * @param issueKey 기록 시점의 이슈 키 스냅샷.
+     * @param actor 본문을 수정한 행위자.
+     * @param commentId 수정된 댓글의 UUID. [COMMENT_FIELD_PREFIX] 와 결합해 field 에 싣는다.
+     * @param beforeBody 수정 전 본문.
+     * @param afterBody 수정 후 본문.
+     */
+    @Suppress("LongParameterList")
+    @Transactional
+    fun recordCommentEdited(
+        issueId: UUID,
+        issueKey: String,
+        actor: ActorId,
+        commentId: UUID,
+        beforeBody: String,
+        afterBody: String,
+    ) {
+        val group =
+            IssueChangeGroup(
+                issueId = issueId,
+                issueKey = issueKey,
+                actorId = actor.value,
+                items =
+                    listOf(
+                        IssueChangeItem(
+                            field = "$COMMENT_FIELD_PREFIX$commentId",
+                            fromValue = beforeBody,
+                            toValue = afterBody,
+                        ),
+                    ),
+                // createdAt 미지정 → DB DEFAULT NOW(). import 와 달리 "지금" 이 정답이다.
+            )
+        repository.record(group)
+        log.info(
+            "history_recorded_comment_edited issueKey={} commentId={} actor={}",
+            issueKey,
+            commentId,
+            actor.value,
+        )
+    }
+
+    companion object {
+        /**
+         * 댓글 본문 변경 항목의 field prefix.
+         *
+         * `"comment:" + UUID(36자)` = 44자로 `issue_change_item.field VARCHAR(64)` 안에 들어간다.
+         * Task 11 의 삭제 댓글 마스킹과 프론트 i18n 이 같은 값을 참조해야 하므로 public 이다.
+         */
+        const val COMMENT_FIELD_PREFIX = "comment:"
     }
 }

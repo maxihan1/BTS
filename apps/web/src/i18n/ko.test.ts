@@ -867,6 +867,19 @@ describe('commentStrings — FR-CO-01 댓글 문구 키 존재 검증', () => {
   })
 })
 
+// ── commentStrings — 콜론 종결 가드 (FR-CO-02) ────────────────────────────────
+//
+// changelogFieldLabels(:488) 에는 이 가드가 있었지만 commentStrings 에는 없었다.
+// FR-CO-02 가 키를 13개 늘리면서 사람이 수기로 확인했는데, 가드가 없으면 다음 사람이 어긴다.
+
+describe('commentStrings — 콜론 종결 가드 (FR-CO-02)', () => {
+  it('모든 댓글 문구 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(commentStrings)) {
+      expect(value, `commentStrings["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+    }
+  })
+})
+
 describe('issueDetailStrings — FR-CO-01 댓글 탭 라벨', () => {
   it('activityCommentTabLabel 키가 존재한다', () => {
     expectTypeOf<typeof issueDetailStrings>().toHaveProperty('activityCommentTabLabel')

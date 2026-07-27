@@ -301,6 +301,22 @@ export const issueDetailStrings = {
   changelogValueNone: '(없음)',
   /** 변경 이력 — 삭제된 엔티티 폴백 표시 */
   changelogDeletedEntity: '(삭제됨)',
+  /**
+   * 변경 이력 — 댓글 본문 수정 항목의 필드 표시명 (FR-CO-02).
+   *
+   * 백엔드가 보내는 field 는 `comment:{commentId}` 라 `changelogFieldLabels` 테이블에
+   * 넣을 수 없다(키가 댓글마다 다르다). commentId 는 사용자에게 의미 없는 UUID 이므로
+   * 표시명에 싣지 않는다.
+   */
+  changelogCommentFieldLabel: '댓글',
+  /**
+   * 변경 이력 — 삭제된 댓글이라 본문이 가려진 항목 표시 (FR-CO-02 S10).
+   *
+   * `changelogValueNone`("(없음)") 과 **반드시 다른 문구**다. 전자는 "값이 비어 있었다",
+   * 이쪽은 "값은 있었지만 댓글이 삭제돼 가렸다" 로 의미가 다르다. 같은 문구를 쓰면
+   * 사용자가 "빈 댓글로 고쳤나" 로 오해한다.
+   */
+  changelogCommentMasked: '(삭제된 댓글)',
   /** 변경 이력 섹션 제목 */
   changelogSectionTitle: '변경 이력',
   /** 변경 이력 없을 때 빈 상태 메시지 */
@@ -905,6 +921,38 @@ export const commentStrings = {
   commentLoadError: '댓글을 불러올 수 없습니다. 이 이슈의 댓글을 볼 권한이 없을 수 있습니다.',
   /** 쓰기 권한 없음 — 폼 대신 표시 */
   commentNoPermission: '이 이슈에 댓글을 작성할 권한이 없습니다.',
+
+  // ── FR-CO-02 수정·삭제 ────────────────────────────────────────────────
+  /** 댓글 행의 수정 버튼 (작성자 본인에게만 노출) */
+  commentEditButton: '수정',
+  /** 댓글 행의 삭제 버튼 (작성자 본인 또는 SOFT_DELETE 보유자에게 노출) */
+  commentDeleteButton: '삭제',
+  /** 인라인 편집 textarea 레이블 */
+  commentEditBodyLabel: '댓글 수정 입력',
+  /** 인라인 편집 저장 버튼 */
+  commentEditSaveButton: '저장',
+  /** 인라인 편집 취소 버튼 */
+  commentEditCancelButton: '취소',
+  /** 저장 진행 중 버튼 텍스트 */
+  commentEditPending: '저장 중...',
+  /** 수정 성공 토스트 */
+  commentEditSuccess: '댓글을 수정했습니다.',
+  /** 수정 실패 토스트 */
+  commentEditError: '댓글 수정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 수정 이력 표시 — updatedAt 이 createdAt 과 다를 때만 노출 */
+  commentEditedBadge: '(수정됨)',
+  /** 삭제 확인 다이얼로그 제목 */
+  commentDeleteDialogTitle: '댓글을 삭제할까요?',
+  /** 삭제 확인 다이얼로그 본문 — 되돌릴 수 없음을 알린다 */
+  commentDeleteDialogBody: '삭제한 댓글은 목록에서 사라지며 되돌릴 수 없습니다.',
+  /** 삭제 확인 다이얼로그의 확인 버튼 */
+  commentDeleteDialogConfirm: '삭제',
+  /** 삭제 확인 다이얼로그의 취소 버튼 */
+  commentDeleteDialogCancel: '취소',
+  /** 삭제 성공 토스트 */
+  commentDeleteSuccess: '댓글을 삭제했습니다.',
+  /** 삭제 실패 토스트 */
+  commentDeleteError: '댓글 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 

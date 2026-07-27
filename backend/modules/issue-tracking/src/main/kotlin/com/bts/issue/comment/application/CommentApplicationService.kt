@@ -1,10 +1,12 @@
-// 댓글 유스케이스 오케스트레이션 서비스 — create(UPDATE 게이트) + list(VIEW 게이트+렌더링) (FR-IM-01 PR3)
+// 댓글 유스케이스 오케스트레이션 서비스 — create(UPDATE 게이트) + update(작성자 한정) + list(VIEW 게이트+렌더링)
+// + delete(작성자 OR SOFT_DELETE 모더레이터, FR-CO-02)
 
 package com.bts.issue.comment.application
 
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.comment.domain.CommentBodyBlankException
 import com.bts.issue.comment.domain.CommentBodyTooLongException
+import com.bts.issue.comment.domain.CommentNotFoundException
 import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
@@ -12,6 +14,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
@@ -29,7 +32,7 @@ import java.util.UUID
  * 댓글 유스케이스 오케스트레이션 서비스 (FR-IM-01 PR3).
  *
  * ## 권한 scope 설계 — 왜 Project 가 아닌 Issue 인가
- * [create]/[list] 모두 권한 평가 scope 를 [IssueScope.Issue] 로 고정한다.
+ * [create]·[update]·[list] 모두 권한 평가 scope 를 [IssueScope.Issue] 로 고정한다.
  * 이슈 보안 등급(security level, FR-PM-06)은 이슈 단위로 지정되므로, 프로젝트 단위([IssueScope.Project])
  * 로 게이트하면 기밀 이슈에 접근 불가한 사용자도 해당 이슈의 댓글을 열람/작성할 수 있게 되어
  * 보안 등급 우회(정보 누출)로 이어진다. worklog `listForIssue`/`create` 와 동일한 이유로 Issue scope 를 쓴다.
@@ -39,16 +42,20 @@ import java.util.UUID
  * @param permissionResolver 이슈 권한 판정 포트.
  * @param eventPublisher 댓글 생성 시 [IssueCommented] 이벤트를 발행하는 아웃바운드 어댑터
  *   (FR-AT-01 Task 10 — automation COMMENTED 트리거 감지).
+ * @param archiveGuard 아카이브된 프로젝트의 쓰기를 잠그는 가드 (FR-PJ-04).
+ * @param historyRecorder 댓글 본문 수정 이력 기록 facade (FR-CO-02 — [update] 전용).
  * @param clock 현재 시각 공급자 (테스트 제어 가능).
  */
 @Service
 @Transactional
+@Suppress("LongParameterList") // 협력자 6 + clock. IssueAttachmentService 와 동일 사유(모듈 선례)
 class CommentApplicationService(
     private val commentRepository: CommentRepository,
     private val issueRepository: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val eventPublisher: IssueEventPublisher,
     private val archiveGuard: ProjectArchiveGuard,
+    private val historyRecorder: IssueHistoryRecorder,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -132,6 +139,173 @@ class CommentApplicationService(
             authorId = authorId,
             createdAt = createdAt,
         )
+
+    /**
+     * 댓글 본문을 수정한다 — **작성자 본인만 가능하다.**
+     *
+     * ## ★ 수정 게이트를 삭제 게이트와 공용 헬퍼로 합치지 말 것
+     * 합치는 순간 모더레이터가 수정까지 통과한다. 삭제는 `작성자 OR SOFT_DELETE 보유자`,
+     * 수정은 `작성자` 뿐이다 — 술어가 다르므로 술어를 공유해서는 안 된다. 두 게이트가 "같아 보인다"는
+     * 이유로 하나로 묶으면, 넓은 쪽(삭제)의 술어가 좁은 쪽(수정)에 조용히 이식된다.
+     *
+     * 근거. 모더레이션의 실제 필요는 **지우기**이고, "남의 글 고치기"는 그 필요를 채우지 못하면서
+     * 기록의 신뢰만 깎는다. 관리자가 타인 명의 글의 내용을 바꿀 수 있으면 그 글이 원래 무엇이었는지
+     * 아무도 알 수 없기 때문이다. Jira 도 `Edit All Comments` 와 `Delete All Comments` 를 별도
+     * 권한으로 나눈다. `CommentApplicationServiceTest` CO2-2 가 이 경계의 판별자이며,
+     * 작성자 대조를 지우면 **정확히 그 한 건**이 죽는다(뮤테이션 실증).
+     *
+     * ## 본문이 같으면 완전 no-op 인 이유
+     * 내용이 안 바뀌었는데 `updatedAt` 이 갱신되면 화면의 "(수정됨)" 표시가 거짓말을 한다.
+     * 그래서 저장(`UPDATE` 문)도 이력 기록도 **둘 다** 건너뛴다. 이력만 거르고 `updatedAt` 은
+     * 갱신하는 절충은 같은 거짓말을 남긴다 — 프론트가 `updatedAt != createdAt` 으로 표시를 결정하기 때문이다.
+     *
+     * ## 검증 순서를 [create] 와 같게 두는 이유
+     * 권한 검증을 이슈·댓글 조회보다 **먼저** 둔다. 순서가 뒤집히면 권한 없는 사용자가 404 와 403 의
+     * 차이만으로 "그 이슈·그 댓글이 존재하는가"를 알아낼 수 있다(존재 probe). 같은 서비스 안에서
+     * 두 메서드의 순서가 달라지면 어느 쪽이 정답인지 알 수 없게 되므로 순서 자체를 관례로 고정한다.
+     *
+     * ## 실행 순서 ([create] 와 동일)
+     * 1. 본문 검증 — 공백/길이.
+     * 2. [IssuePermission.UPDATE] 검증, scope=[IssueScope.Issue].
+     * 3. 아카이브 가드.
+     * 4. 이슈 resolve → 댓글 resolve([CommentRepository.findActive] — `issue_id` 대조 포함).
+     * 5. 작성자 대조 — actor 가 저작자가 아니면 403.
+     * 6. 본문 동일하면 no-op 반환, 다르면 [CommentRepository.updateBody] + 이력 기록.
+     *
+     * @param actor 수정을 수행하는 행위자. **저작자 본인이어야 한다.**
+     * @param issueKey 댓글이 속한 이슈 키.
+     * @param commentId 수정할 댓글 UUID.
+     * @param body 새 본문 (raw markdown).
+     * @return 수정된 [Comment]. 본문이 동일하면 기존 [Comment] 를 그대로 반환한다.
+     * @throws [CommentBodyBlankException] 본문이 공백만일 때 (400).
+     * @throws [CommentBodyTooLongException] 본문이 [MAX_BODY_LENGTH] 초과일 때 (400).
+     * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 또는 타인 댓글 수정 시 (403).
+     * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
+     * @throws [CommentNotFoundException] 댓글 미존재·이미 삭제됨·다른 이슈 소속일 때 (404).
+     */
+    @Suppress("ThrowsCount") // 400/403/404 각기 다른 오류코드라 분리 throw 가 명확 (WorklogService.update 선례)
+    fun update(
+        actor: ActorId,
+        issueKey: IssueKey,
+        commentId: UUID,
+        body: String,
+    ): Comment {
+        validateBody(body)
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
+
+        val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+        val existing =
+            commentRepository.findActive(commentId, issue.id.value)
+                ?: throw CommentNotFoundException(commentId)
+
+        // 수정은 작성자 한정. 모더레이터 우회 없음 — 삭제 게이트와 술어가 다르므로 헬퍼 공유 금지 (KDoc 참조).
+        if (existing.authorId != actor.value) {
+            throw IssueAccessDeniedException(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+        }
+
+        if (existing.body == body) {
+            log.debug("comment_update_noop issueKey={} commentId={}", issueKey.value, commentId)
+            return existing
+        }
+
+        val now = Instant.now(clock)
+        // 동시 삭제 레이스 방어 — findActive 통과 후 다른 트랜잭션이 삭제를 커밋한 경우 0 행이 돌아온다.
+        if (commentRepository.updateBody(commentId, issue.id.value, body, now) == 0) {
+            throw CommentNotFoundException(commentId)
+        }
+
+        historyRecorder.recordCommentEdited(
+            issueId = issue.id.value,
+            issueKey = issueKey.value,
+            actor = actor,
+            commentId = commentId,
+            beforeBody = existing.body,
+            afterBody = body,
+        )
+
+        log.info("comment_updated issueKey={} commentId={} actor={}", issueKey.value, commentId, actor.value)
+        return existing.copy(body = body, updatedAt = now)
+    }
+
+    /**
+     * 댓글을 소프트 삭제한다 — **작성자 본인 또는 [IssuePermission.SOFT_DELETE] 보유자(모더레이터).**
+     *
+     * 권한 평가 scope 는 [IssueScope.Issue] 고정이다 (클래스 KDoc "권한 scope 설계" 참조).
+     *
+     * ## ★ 모더레이터 분기는 질의형 `hasPermission` 이어야 한다 — `checkPermission` 금지
+     * [checkPermission] 은 **거부 시 던진다.** 이 `OR` 분기에 그걸 쓰면
+     * `SOFT_DELETE` 미보유자는 **작성자여도 그 지점에서 즉시 403** 이 되어, `OR` 의 왼쪽 변
+     * (작성자 경로)이 실행되기도 전에 조용히 죽는다. `OR` 는 두 변을 **모두 계산할 수 있어야**
+     * 성립하므로, 판정은 던지지 않는 질의형([IssuePermissionResolver.hasPermission])으로 하고
+     * **최종 거부만 한 번** 던진다.
+     *
+     * 이 함정이 실재함은 뮤테이션으로 실증했다 — 이 줄을
+     * `checkPermission(actor, issueKey, SOFT_DELETE)` 로 바꾸면
+     * `CommentApplicationServiceTest` CO2-9(“작성자는 `SOFT_DELETE` 가 없어도 자기 댓글을 삭제한다”)가
+     * **정확히 한 건** 실패한다. 그래서 CO2-9 의 actor 는 `SOFT_DELETE` 를 일부러 갖지 않는다.
+     *
+     * ## ★ 삭제 게이트를 [update] 의 수정 게이트와 합치지 말 것
+     * 술어가 다르다. 삭제는 `UPDATE AND (작성자 OR SOFT_DELETE)`, 수정은 `UPDATE AND 작성자` 다.
+     * 공용 헬퍼로 묶으면 **넓은 쪽(삭제)의 술어가 좁은 쪽(수정)에 이식되어 모더레이터가 남의 글을
+     * 수정**하게 된다. 모더레이션의 실제 필요는 지우기이고, 남의 글 고치기는 그 필요를 못 채우면서
+     * 기록의 신뢰만 깎는다 ([update] KDoc 참조 — Jira 도 두 권한을 분리한다).
+     *
+     * ## `moderated` 로그 필드
+     * 모더레이터가 **타인의 댓글**을 지운 경우에만 `true` 다(`= !isAuthor`). 자기 글 삭제와
+     * 모더레이션 삭제는 감사상 무게가 전혀 다른데 요청 형태로는 구분되지 않으므로, 운영에서
+     * "누가 남의 글을 지웠나"를 로그만으로 골라낼 수 있게 이 판정 결과를 그대로 남긴다.
+     *
+     * ## 실행 순서
+     * 1. [IssuePermission.UPDATE] 검증 — 공통 전제. 작성자·모더레이터 판정보다 먼저다(존재 probe 방지).
+     * 2. 아카이브 가드.
+     * 3. 이슈 resolve → 댓글 resolve([CommentRepository.findActive] — `issue_id` 대조 포함).
+     * 4. 작성자 **또는** 모더레이터 판정 — 둘 다 아니면 403.
+     * 5. [CommentRepository.softDelete] — 영향 행 0 이면 404 (동시 삭제 레이스).
+     *
+     * @param actor 삭제를 수행하는 행위자.
+     * @param issueKey 댓글이 속한 이슈 키.
+     * @param commentId 삭제할 댓글 UUID.
+     * @throws [IssueAccessDeniedException] UPDATE 미보유, 또는 작성자도 모더레이터도 아닐 때 (403).
+     * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
+     * @throws [CommentNotFoundException] 댓글 미존재·이미 삭제됨·다른 이슈 소속일 때 (404).
+     */
+    @Suppress("ThrowsCount") // 403/404 각기 다른 오류코드라 분리 throw 가 명확 ([update] 와 동일 사유)
+    fun delete(
+        actor: ActorId,
+        issueKey: IssueKey,
+        commentId: UUID,
+    ) {
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
+
+        val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+        val existing =
+            commentRepository.findActive(commentId, issue.id.value)
+                ?: throw CommentNotFoundException(commentId)
+
+        // 작성자 OR 모더레이터. hasPermission 은 질의형(던지지 않는다) — 여기서 던지는 판정을 쓰면
+        // SOFT_DELETE 미보유 작성자가 자기 댓글도 못 지운다.
+        val scope = IssueScope.Issue(issueKey.value)
+        val isAuthor = existing.authorId == actor.value
+        val isModerator = permissionResolver.hasPermission(actor.value, IssuePermission.SOFT_DELETE, scope)
+        if (!isAuthor && !isModerator) {
+            throw IssueAccessDeniedException(actor, IssuePermission.SOFT_DELETE, scope)
+        }
+
+        // 동시 삭제 레이스 방어 — findActive 통과 후 다른 트랜잭션이 삭제를 커밋한 경우 0 행이 돌아온다.
+        if (commentRepository.softDelete(commentId, issue.id.value, Instant.now(clock)) == 0) {
+            throw CommentNotFoundException(commentId)
+        }
+
+        log.info(
+            "comment_deleted issueKey={} commentId={} actor={} moderated={}",
+            issueKey.value,
+            commentId,
+            actor.value,
+            !isAuthor,
+        )
+    }
 
     /**
      * 이슈의 댓글 목록을 조회한다.

@@ -23,6 +23,51 @@ import java.util.UUID
  * ## 메서드 목록
  * - [insert] — 댓글 1건 삽입.
  * - [listByIssue] — issueId 기준 활성 댓글 목록 (`created_at` ASC).
+ * - [findActive] — 활성 댓글 단건 조회.
+ * - [findActiveIds] — 주어진 id 중 활성인 것만 배치 조회.
+ * - [updateBody] — 활성 댓글의 본문·수정 시각 갱신.
+ * - [softDelete] — 활성 댓글의 `deleted_at` 기록.
+ *
+ * ## 왜 id 로 찾는 메서드가 모두 `issueId` 를 함께 받는가
+ * **소속 대조를 서비스의 성실성에 맡기지 않고 쿼리 술어로 고정한다.**
+ * FR-CO-01 §D4 와 같은 원칙 — 파라미터를 열어둔 채 두면 상위 계층의 성실성에만
+ * 의존하게 되고, **그 의존은 테스트로 고정되지 않는다.**
+ *
+ * 댓글은 Issue 애그리거트의 자식이라 단독 조회 창구가 없고 항상 이슈를 경유한다
+ * (`/issues/{key}/comments/{commentId}`). 그런데 `commentId` 는 전역 UUID 이므로,
+ * `id` 만으로 찾거나 고치면 **자기가 볼 수 있는 아무 이슈 키**에 남의 이슈 댓글 id 를 붙인
+ * 경로가 그대로 통과한다 — 이슈 단위 권한 검사를 우회하는 경로 위조다.
+ *
+ * "서비스가 [findActive] 를 먼저 부르면 되지 않나" 는 답이 못 된다. 그 계약은 KDoc 에만
+ * 존재하고 컴파일러도 테스트도 강제하지 못하며, 이 저장소는 **생산자가 하나뿐이라는 전제가
+ * 깨진 전력**이 있다 (댓글 생산자가 REST 하나인 줄 알았다가 automation `AddCommentAction`
+ * 이 드러나 FR-CO-01 D7 의 검증 위치가 뒤집혔다). 지금 우회 경로가 0 인 것과 앞으로도
+ * 0 인 것은 다르므로, 대조를 `WHERE` 안으로 내려 **호출자가 누구든** 성립하게 만든다.
+ * 그 결과 위조 경로는 조회는 `null`, 쓰기는 `0` 이 되어 404 로 수렴하고,
+ * "id 는 존재하지만 다른 이슈 소속"이라는 사실도 응답에서 구분되지 않는다.
+ *
+ * 배치 조회인 [findActiveIds] 도 예외가 아니다. 오히려 여기서 대조가 빠지면 피해가 더 크다 —
+ * 호출자가 이 결과로 **다른 이슈의 이력 마스킹 여부**를 판정하므로, 타 이슈의 활성 댓글 id 가
+ * 섞여 들어오면 가려야 할 본문이 그대로 노출된다.
+ *
+ * ## 왜 모든 `WHERE` 에 `deleted_at IS NULL` 이 들어가는가
+ * DEVELOPMENT.md §1.2 #7 — "`DELETE` 는 항상 `WHERE` + 소프트 삭제 우선". 이 규칙에는
+ * 이 저장소에서만 성립하는 **두 번째 효과**가 있다.
+ *
+ * 1. **삭제된 행의 부활 차단.** 필터가 없으면 [updateBody] 가 이미 삭제된 댓글의 본문을
+ *    갱신하고, [softDelete] 가 최초 삭제 시각을 나중 시각으로 덮어쓴다. 감사 관점에서
+ *    "언제 지워졌나"가 소실된다.
+ * 2. **서비스의 404 판정 근거.** 쓰기 메서드는 영향 행 수(`Int`)를 그대로 반환하고,
+ *    서비스는 `0` 을 보고 [com.bts.issue.comment.domain.CommentNotFoundException] 을 던진다.
+ *    즉 `0` 이 곧 "대상 없음"이라는 계약이므로, 필터가 빠지면 이미 삭제된 댓글에도 `1` 이
+ *    돌아가 404 판정이 통째로 무력화된다. 조회(`SELECT`)와 판정(`UPDATE`)을 분리해
+ *    "먼저 조회 → 있으면 수정"으로 짜지 않는 이유도 같다 — 그 사이에 삭제가 끼어들면
+ *    TOCTOU(검사-사용 시점 불일치)가 생기지만, 조건을 `WHERE` 안에 넣으면 판정과 갱신이
+ *    한 문장에서 원자적으로 일어난다.
+ *
+ * 위 두 술어가 장식이 아님은 `CommentRepositoryTest` 의 뮤테이션으로 실증했다 — 단건 메서드
+ * 셋의 `WHERE` 에서 `issue_id` 대조와 `deleted_at IS NULL` 을 하나씩 제거하면(6가지),
+ * 매번 대응 테스트가 **정확히 1건씩** 실패한다. 이 술어를 지우려면 먼저 테스트를 지워야 한다.
  */
 @Repository
 class CommentRepository(
@@ -65,6 +110,119 @@ class CommentRepository(
             .orderBy(COMMENTS.CREATED_AT.asc())
             .fetch()
             .map(::toComment)
+    }
+
+    /**
+     * `id` + `issueId` 가 모두 일치하는 활성 댓글 1건을 반환한다.
+     *
+     * `issueId` 대조와 `deleted_at IS NULL` 이 필요한 이유는 클래스 KDoc 참조.
+     *
+     * @param id      조회할 댓글 UUID.
+     * @param issueId 댓글이 속해야 하는 이슈 UUID.
+     * @return 활성 댓글. 없거나 다른 이슈 소속이거나 이미 삭제됐으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findActive(
+        id: UUID,
+        issueId: UUID,
+    ): Comment? {
+        log.debug("findActive id={} issueId={}", id, issueId)
+        return dsl.selectFrom(COMMENTS)
+            .where(COMMENTS.ID.eq(id))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
+            .fetchOne()
+            ?.let(::toComment)
+    }
+
+    /**
+     * [ids] 중 `issueId` 소속이면서 활성(`deleted_at IS NULL`) 인 댓글 id 만 반환한다.
+     *
+     * [com.bts.issue.application.IssueChangelogService] 의 삭제 댓글 이력 마스킹 판정용이다.
+     * 이력 한 페이지에 댓글 수정 항목이 여러 개 들어갈 수 있어 건별로 [findActive] 를 부르면
+     * N+1 쿼리가 되므로, 페이지 내 댓글 id 를 모아 한 번에 조회한다.
+     *
+     * [ids] 가 비면 **쿼리를 실행하지 않고** 빈 집합을 반환한다. `IN ()` 은 어차피 빈 결과라
+     * 불필요한 DB 왕복일 뿐이고, 이력에 댓글 항목이 하나도 없는 페이지가 흔하다.
+     *
+     * 존재하지 않는 id 는 예외 없이 결과에서 빠진다 — 호출자는 "활성 목록에 없으면 가린다"
+     * 는 fail-closed 판정을 하므로 미존재도 삭제와 같은 취급이 안전하다.
+     *
+     * @param ids     판정할 댓글 UUID 집합.
+     * @param issueId 댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
+     * @return [ids] 중 해당 이슈 소속 활성 댓글 id 집합. 없으면 빈 집합.
+     */
+    @Transactional(readOnly = true)
+    fun findActiveIds(
+        ids: Set<UUID>,
+        issueId: UUID,
+    ): Set<UUID> {
+        if (ids.isEmpty()) return emptySet()
+        log.debug("findActiveIds idCount={} issueId={}", ids.size, issueId)
+        return dsl.select(COMMENTS.ID)
+            .from(COMMENTS)
+            .where(COMMENTS.ID.`in`(ids))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
+            .fetch(COMMENTS.ID)
+            .filterNotNull()
+            .toSet()
+    }
+
+    /**
+     * 활성 댓글의 본문과 수정 시각을 갱신한다.
+     *
+     * `WHERE` 의 `deleted_at IS NULL` 이 "삭제된 댓글 부활 차단" 과 "서비스의 404 판정 근거"
+     * 두 역할을 겸한다 — 클래스 KDoc 참조.
+     *
+     * @param id        수정할 댓글 UUID.
+     * @param issueId   댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
+     * @param body      새 본문 (raw markdown 원문).
+     * @param updatedAt 새 수정 시각.
+     * @return 영향 행 수. 1 = 갱신됨, 0 = 대상 없음(미존재 · 이미 삭제됨 · 다른 이슈 소속).
+     */
+    @Transactional
+    fun updateBody(
+        id: UUID,
+        issueId: UUID,
+        body: String,
+        updatedAt: Instant,
+    ): Int {
+        log.debug("updateBody id={} issueId={}", id, issueId)
+        return dsl.update(COMMENTS)
+            .set(COMMENTS.BODY, body)
+            .set(COMMENTS.UPDATED_AT, updatedAt.toOffsetDateTime())
+            .where(COMMENTS.ID.eq(id))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
+     * 활성 댓글에 `deleted_at` 을 기록해 소프트 삭제한다.
+     *
+     * 물리 `DELETE` 가 아닌 `UPDATE` 다 — DEVELOPMENT.md §1.2 #7 "소프트 삭제 우선,
+     * 하드 삭제는 ADR 필수". `WHERE` 의 `deleted_at IS NULL` 은 재삭제를 막아 최초 삭제 시각을
+     * 보존하고, 동시에 반환 `0` 을 서비스의 404 판정 근거로 만든다 — 클래스 KDoc 참조.
+     *
+     * @param id        삭제할 댓글 UUID.
+     * @param issueId   댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
+     * @param deletedAt 삭제 시각.
+     * @return 영향 행 수. 1 = 삭제됨, 0 = 대상 없음(미존재 · 이미 삭제됨 · 다른 이슈 소속).
+     */
+    @Transactional
+    fun softDelete(
+        id: UUID,
+        issueId: UUID,
+        deletedAt: Instant,
+    ): Int {
+        log.debug("softDelete id={} issueId={}", id, issueId)
+        return dsl.update(COMMENTS)
+            .set(COMMENTS.DELETED_AT, deletedAt.toOffsetDateTime())
+            .where(COMMENTS.ID.eq(id))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
+            .execute()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

@@ -244,6 +244,8 @@ class IssueChangelogControllerIntegrationTest {
                 userLookupPort = userLookupPort,
                 issueRepository = issueRepository,
                 fieldPermissionResolver = fieldPermissionResolver,
+                // 이 테스트의 이력 항목에는 댓글 변경(`comment:` 접두사)이 없어 조회가 일어나지 않는다.
+                commentRepository = mockk(relaxed = true),
             )
 
         @Bean

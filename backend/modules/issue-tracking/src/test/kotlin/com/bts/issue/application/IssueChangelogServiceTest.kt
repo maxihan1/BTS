@@ -3,6 +3,7 @@
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
+import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
@@ -10,6 +11,7 @@ import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueChangeGroup
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeItem
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.FieldPermissionResolver
 import com.bts.shared.permission.FieldRef
@@ -35,6 +37,10 @@ class IssueChangelogServiceTest : DescribeSpec({
     val userLookupPort = mockk<UserLookupPort>()
     val issueRepository = mockk<IssueRepository>()
 
+    // strict mock — 스텁하지 않은 호출은 예외다. 댓글 항목이 없는 케이스에서 이 저장소를
+    // 건드리면(불필요한 DB 왕복) 해당 테스트가 죽는다.
+    val commentRepository = mockk<CommentRepository>()
+
     // 기본은 allow-all — 마스킹을 검증하는 케이스에서만 제한 resolver 로 override 한다.
     val sut =
         IssueChangelogService(
@@ -43,6 +49,7 @@ class IssueChangelogServiceTest : DescribeSpec({
             userLookupPort = userLookupPort,
             issueRepository = issueRepository,
             fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+            commentRepository = commentRepository,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -84,7 +91,13 @@ class IssueChangelogServiceTest : DescribeSpec({
         )
 
     beforeEach {
-        clearMocks(issueApplicationService, changeHistoryRepository, userLookupPort, issueRepository)
+        clearMocks(
+            issueApplicationService,
+            changeHistoryRepository,
+            userLookupPort,
+            issueRepository,
+            commentRepository,
+        )
         // projectId 조회는 마스킹 candidate 구성의 전제 — 모든 정상 경로에서 동일하게 stub.
         every { issueRepository.findProjectIdByKey("BTS") } returns projectId
     }
@@ -346,6 +359,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 userLookupPort = userLookupPort,
                 issueRepository = issueRepository,
                 fieldPermissionResolver = descriptionInvisibleResolver,
+                commentRepository = commentRepository,
             )
 
         fun groupWith(vararg items: IssueChangeItem): IssueChangeGroup =
@@ -426,6 +440,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     userLookupPort = userLookupPort,
                     issueRepository = issueRepository,
                     fieldPermissionResolver = assigneeInvisibleResolver,
+                    commentRepository = commentRepository,
                 )
 
             val assigneeItem =
@@ -481,6 +496,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     userLookupPort = userLookupPort,
                     issueRepository = issueRepository,
                     fieldPermissionResolver = customInvisibleResolver,
+                    commentRepository = commentRepository,
                 )
 
             val secretItem =
@@ -533,6 +549,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     userLookupPort = userLookupPort,
                     issueRepository = issueRepository,
                     fieldPermissionResolver = denyAllResolver,
+                    commentRepository = commentRepository,
                 )
 
             val statusItem = IssueChangeItem(field = "status", fromValue = "open", toValue = "closed")
@@ -579,6 +596,197 @@ class IssueChangelogServiceTest : DescribeSpec({
             it("음수 OFFSET 없이 Int.MAX_VALUE 로 클램프된 offset 으로 repository 를 호출한다") {
                 sut.findChangelog(actor, issueKey, PageRequest.of(bigPage, size))
                 verify(exactly = 1) { changeHistoryRepository.findByIssuePaged(issueId, size, Int.MAX_VALUE) }
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // (g) 삭제된 댓글의 이력 본문 마스킹 (FR-CO-02 Task 11 — 모더레이션 우회 차단)
+    //
+    // 악의적 사용자가 무해한 댓글을 쓴 뒤 부적절한 내용으로 수정하면 그 본문이
+    // issue_change_item.to_value 에 남는다. 모더레이터가 댓글을 소프트 삭제해도 이력 탭에서
+    // 계속 읽히면 삭제가 무력화된다. 이력은 append-only 라 행을 지울 수 없으므로 조회 시점에 가린다.
+    //
+    // offset(findChangelog)·cursor(findChangelogByCursor) 두 경로를 **모두** 덮는다.
+    // 한쪽만 검증하면 나머지 경로의 마스킹 호출을 지워도 전 테스트가 통과한다(코드리뷰 C1 뮤테이션 실증).
+    // ──────────────────────────────────────────────────────────────────────────────
+    describe("삭제된 댓글 본문 마스킹 — offset·cursor 두 경로") {
+
+        val commentSut =
+            IssueChangelogService(
+                issueApplicationService = issueApplicationService,
+                changeHistoryRepository = changeHistoryRepository,
+                userLookupPort = userLookupPort,
+                issueRepository = issueRepository,
+                // 필드 권한 마스킹과 직교시킨다 — 여기서 가려지면 원인이 댓글 삭제인지 필드 권한인지 구분 못 한다.
+                fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+                commentRepository = commentRepository,
+            )
+
+        val activeCommentId = UUID.randomUUID()
+        val deletedCommentId = UUID.randomUUID()
+        val activeField = "${IssueHistoryRecorder.COMMENT_FIELD_PREFIX}$activeCommentId"
+        val deletedField = "${IssueHistoryRecorder.COMMENT_FIELD_PREFIX}$deletedCommentId"
+
+        fun commentItem(
+            field: String,
+            before: String,
+            after: String,
+        ): IssueChangeItem =
+            IssueChangeItem(
+                field = field,
+                fromValue = before,
+                toValue = after,
+                fromLabel = "이전 라벨",
+                toLabel = "새 라벨",
+            )
+
+        fun groupWith(vararg items: IssueChangeItem): IssueChangeGroup =
+            IssueChangeGroup(
+                issueId = issueId,
+                issueKey = issueKey.value,
+                actorId = actorId1,
+                items = items.toList(),
+                createdAt = Instant.parse("2026-06-01T10:00:00Z"),
+            )
+
+        beforeEach {
+            every { issueApplicationService.findByKey(actor, issueKey) } returns makeIssueResponse()
+            every { changeHistoryRepository.countByIssue(issueId) } returns 1L
+            every { userLookupPort.findDisplayNamesByIds(setOf(actorId1)) } returns mapOf(actorId1 to "Alice")
+        }
+
+        context("활성 댓글 1건 + 삭제된 댓글 1건의 수정 이력이 같은 그룹에 존재") {
+
+            val activeItem = commentItem(activeField, "활성 댓글 원본", "활성 댓글 수정본")
+            val deletedItem = commentItem(deletedField, "무해한 위장 본문", "삭제 사유가 된 부적절한 본문")
+
+            beforeEach {
+                every {
+                    changeHistoryRepository.findByIssuePaged(issueId, 20, 0)
+                } returns listOf(groupWith(activeItem, deletedItem))
+                every { commentRepository.findActiveIds(any(), issueId) } returns setOf(activeCommentId)
+            }
+
+            it("삭제된 댓글의 이력 항목은 fromValue·toValue 가 마스킹된다") {
+                val page = commentSut.findChangelog(actor, issueKey, PageRequest.of(0, 20))
+
+                val masked = page.content[0].items.first { it.field == deletedField }
+                masked.fromValue.shouldBeNull()
+                masked.toValue.shouldBeNull()
+                masked.fromLabel.shouldBeNull()
+                masked.toLabel.shouldBeNull()
+                // N+1 금지 — 페이지 내 댓글 id 를 모아 단 한 번만 배치 조회해야 한다.
+                verify(exactly = 1) {
+                    commentRepository.findActiveIds(setOf(activeCommentId, deletedCommentId), issueId)
+                }
+            }
+
+            it("활성 댓글의 이력 항목은 본문이 그대로 보인다") {
+                val page = commentSut.findChangelog(actor, issueKey, PageRequest.of(0, 20))
+
+                val visible = page.content[0].items.first { it.field == activeField }
+                visible.fromValue shouldBe "활성 댓글 원본"
+                visible.toValue shouldBe "활성 댓글 수정본"
+                visible.fromLabel shouldBe "이전 라벨"
+                visible.toLabel shouldBe "새 라벨"
+            }
+
+            it("마스킹돼도 항목 자체는 목록에서 사라지지 않는다") {
+                val page = commentSut.findChangelog(actor, issueKey, PageRequest.of(0, 20))
+
+                // "삭제된 댓글이 수정된 적 있다" 는 사실 자체는 감사 추적을 위해 남아야 한다.
+                page.content[0].items shouldHaveSize 2
+                page.content[0].items.map { it.field } shouldContainExactlyInAnyOrder
+                    listOf(activeField, deletedField)
+            }
+        }
+
+        // 위 offset 시나리오와 같은 데이터를 cursor 진입점으로 다시 통과시킨다.
+        // 인증 사용자는 `?cursor=` 쿼리 하나로 이 경로에 도달하므로(IssueController)
+        // 봉인이 여기에도 없으면 모더레이션 우회가 그대로 살아 있다.
+        context("커서 조회 — 활성 댓글 1건 + 삭제된 댓글 1건의 수정 이력이 같은 그룹에 존재") {
+
+            val activeItem = commentItem(activeField, "활성 댓글 원본", "활성 댓글 수정본")
+            val deletedItem = commentItem(deletedField, "무해한 위장 본문", "삭제 사유가 된 부적절한 본문")
+
+            beforeEach {
+                // cursor=null → 첫 페이지. 반환 1건 < limit 이므로 hasNext=false.
+                every {
+                    changeHistoryRepository.findByIssueCursor(issueId, null, null, 20)
+                } returns listOf(1L to groupWith(activeItem, deletedItem))
+                every { commentRepository.findActiveIds(any(), issueId) } returns setOf(activeCommentId)
+            }
+
+            it("삭제된 댓글의 이력 항목은 fromValue·toValue 가 마스킹된다") {
+                val items = commentSut.findChangelogByCursor(actor, issueKey, null, 20).items
+
+                val masked = items[0].items.first { it.field == deletedField }
+                masked.fromValue.shouldBeNull()
+                masked.toValue.shouldBeNull()
+                masked.fromLabel.shouldBeNull()
+                masked.toLabel.shouldBeNull()
+                // N+1 금지 — offset 경로와 동일하게 페이지당 배치 조회 1회여야 한다.
+                verify(exactly = 1) {
+                    commentRepository.findActiveIds(setOf(activeCommentId, deletedCommentId), issueId)
+                }
+            }
+
+            it("활성 댓글의 이력 항목은 본문이 그대로 보인다") {
+                val items = commentSut.findChangelogByCursor(actor, issueKey, null, 20).items
+
+                val visible = items[0].items.first { it.field == activeField }
+                visible.fromValue shouldBe "활성 댓글 원본"
+                visible.toValue shouldBe "활성 댓글 수정본"
+                visible.fromLabel shouldBe "이전 라벨"
+                visible.toLabel shouldBe "새 라벨"
+            }
+
+            it("마스킹돼도 항목 자체는 목록에서 사라지지 않는다") {
+                val items = commentSut.findChangelogByCursor(actor, issueKey, null, 20).items
+
+                // "삭제된 댓글이 수정된 적 있다" 는 사실 자체는 감사 추적을 위해 남아야 한다.
+                items[0].items shouldHaveSize 2
+                items[0].items.map { it.field } shouldContainExactlyInAnyOrder
+                    listOf(activeField, deletedField)
+            }
+        }
+
+        context("comment 접두사가 아닌 기존 필드가 같은 그룹에 섞여 있음") {
+
+            val statusItem = IssueChangeItem(field = "status", fromValue = "open", toValue = "closed")
+            val assigneeItem =
+                IssueChangeItem(
+                    field = "assignee",
+                    fromValue = "11111111-1111-4111-8111-111111111111",
+                    toValue = "22222222-2222-4222-8222-222222222222",
+                    fromLabel = "이전 담당자",
+                    toLabel = "새 담당자",
+                )
+            val deletedItem = commentItem(deletedField, "이전 본문", "이후 본문")
+
+            beforeEach {
+                every {
+                    changeHistoryRepository.findByIssuePaged(issueId, 20, 0)
+                } returns listOf(groupWith(statusItem, assigneeItem, deletedItem))
+                // 모든 댓글이 삭제된 극단 — 그래도 댓글이 아닌 필드는 손대면 안 된다.
+                every { commentRepository.findActiveIds(any(), issueId) } returns emptySet()
+            }
+
+            it("comment: 접두사가 아닌 기존 필드(status·assignee 등)는 영향받지 않는다") {
+                val page = commentSut.findChangelog(actor, issueKey, PageRequest.of(0, 20))
+
+                val status = page.content[0].items.first { it.field == "status" }
+                status.fromValue shouldBe "open"
+                status.toValue shouldBe "closed"
+                val assignee = page.content[0].items.first { it.field == "assignee" }
+                assignee.fromValue shouldBe "11111111-1111-4111-8111-111111111111"
+                assignee.toValue shouldBe "22222222-2222-4222-8222-222222222222"
+                assignee.fromLabel shouldBe "이전 담당자"
+                assignee.toLabel shouldBe "새 담당자"
+                // 대조군 — 같은 그룹의 삭제된 댓글 항목은 실제로 가려진다.
+                // 없으면 "아무것도 마스킹하지 않는" 구현도 위 단언을 전부 통과한다.
+                page.content[0].items.first { it.field == deletedField }.toValue.shouldBeNull()
             }
         }
     }

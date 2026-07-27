@@ -8,6 +8,7 @@ import com.bts.issue.comment.application.CommentView
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.comment.domain.CommentBodyBlankException
 import com.bts.issue.comment.domain.CommentBodyTooLongException
+import com.bts.issue.comment.domain.CommentNotFoundException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
@@ -17,11 +18,14 @@ import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import io.mockk.Runs
 import io.mockk.clearMocks
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -30,6 +34,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -37,13 +44,16 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
 
@@ -60,6 +70,19 @@ import java.util.UUID
  * - CM-2. GET 권한 없음 → 403 Forbidden
  * - CM-3. GET 이슈 미존재 → 404 Not Found
  * - CM-4. GET 미인증(SecurityContext 없음) → 401 (★C1 — catch-all 이 500 으로 변질시키지 않는지 검증)
+ * - CO-P1~P8. POST /comments → 201·401·403·404·400 (FR-CO-01)
+ * - CO2-P1~P12. PATCH·DELETE /comments/{commentId} → 200·204·400·401·404 (FR-CO-02 Task 5)
+ *
+ * ## ★ 이 파일이 검증할 수 있는 것과 없는 것 (슬라이스의 한계)
+ * 서비스가 stub 이므로 **권한 게이트는 여기서 검증되지 않는다** — 403 을 단정해도 "stub 이 던지도록
+ * 시킨 예외를 되받는 것"이라 게이트 로직이 바뀌어도 그대로 초록이다. 수정=작성자 한정,
+ * 삭제=작성자 OR `SOFT_DELETE` 의 실제 판별자는
+ * [com.bts.issue.comment.application.CommentApplicationServiceTest] 에 있다.
+ *
+ * 여기서만 증명 가능한 것은 **상태코드 매핑 · 직렬화 · 정화(sanitize) 경로**다. 특히 정화는
+ * stub 이 [Comment] 를 반환하고 [CommentResponse.from] 이 **진짜**
+ * [com.bts.issue.markdown.MarkdownRenderer] 를 태우므로 유효하다 — 프론트 테스트는 MSW 모크가
+ * `bodyHtml` 을 `<p>` 로 감싸기만 해서 변환기·정화기를 거치지 않아 증명할 수 없다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [CommentControllerIntegrationTest.TestMvcConfig::class])
@@ -69,11 +92,13 @@ class CommentControllerIntegrationTest {
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
      * [CommentController], [CommentExceptionHandler], MockK stub Bean 을 등록한다.
-     * ObjectMapper 에 JavaTimeModule 을 등록하여 Instant ISO 직렬화가 동작하도록 한다.
+     * [objectMapper] 를 [extendMessageConverters] 로 HTTP 메시지 컨버터에 결선해
+     * `Instant` ISO-8601 직렬화와 [org.springframework.http.ProblemDetail] property 평탄화가
+     * 프로덕션과 같게 동작하도록 한다.
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
         /**
          * ★ 프로덕션 설정을 미러링한다 (FR-CO-01 발견).
          *
@@ -82,13 +107,48 @@ class CommentControllerIntegrationTest {
          * 미지 필드가 온 요청에 대해 프로덕션은 무시하고 슬라이스는 400 을 내는 **불일치**가 있었다.
          * 저작자 위조 시도(요청에 `authorId` 를 끼워 넣는 케이스)를 프로덕션과 같은 조건에서
          * 검증하려면 이 설정을 맞춰야 한다 — 아니면 "테스트는 400, 실서버는 통과" 가 된다.
+         *
+         * ## 왜 맨 `ObjectMapper()` 가 아니라 [Jackson2ObjectMapperBuilder] 인가 (FR-CO-02 발견)
+         * 이 빌더는 (1) [org.springframework.http.ProblemDetail] 의 확장 property(`errorCode`·
+         * `timestamp`)를 최상위 필드로 펴는 `ProblemDetailJacksonMixin` 과 (2) 클래스패스에 있는
+         * well-known 모듈(`jackson-module-kotlin`·`JavaTimeModule` 등)을 자동 등록한다.
+         * 맨 `ObjectMapper()` 로는 전자가 없어 `errorCode` 가 응답에서 사라지고, 후자가 없어
+         * Kotlin data class 요청 본문 바인딩이 통째로 실패한다(모든 `@RequestBody` 가 400).
+         * Boot 도 같은 빌더로 매퍼를 만드므로 이쪽이 프로덕션에 더 가깝다.
+         *
+         * **모듈을 `modules(...)` 로 명시하지 않는다** — 그 메서드는 목록을 *교체*해서 자동 등록을
+         * 꺼버리므로 Kotlin 모듈이 빠진다. 기능 토글만 얹는다.
          */
         @Bean
         open fun objectMapper(): ObjectMapper =
-            ObjectMapper()
-                .registerModule(JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            Jackson2ObjectMapperBuilder
+                .json()
+                .featuresToDisable(
+                    SerializationFeature.WRITE_DATES_AS_TIMESTAMPS,
+                    DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+                )
+                .build()
+
+        /**
+         * ★ [objectMapper] 빈을 HTTP 메시지 컨버터에 **실제로 꽂는다** (FR-CO-02 Task 5 발견).
+         *
+         * `@EnableWebMvc` 는 컨텍스트의 [ObjectMapper] 빈을 쓰지 않고 `Jackson2ObjectMapperBuilder`
+         * 로 자기 것을 새로 만든다. 그래서 위 빈은 선언만 돼 있고 직렬화 경로에는 **닿지 않고 있었다** —
+         * 위 KDoc 이 주장하는 "프로덕션 미러링" 이 사실은 발효되지 않은 상태였다.
+         *
+         * 증상. Boot 가 기본으로 끄는 `WRITE_DATES_AS_TIMESTAMPS` 가 이 슬라이스에서는 켜져 있어
+         * `Instant` 가 프로덕션의 ISO-8601 문자열(`"2026-06-20T10:30:00Z"`)이 아니라 숫자
+         * (`1781951400.000000000`)로 나갔다. `updatedAt` 을 단정하는 첫 테스트(CO2-P1)가 이를 드러냈다.
+         * 날짜 필드를 단정하지 않던 기존 테스트들은 이 불일치를 지나쳤다.
+         *
+         * `configureMessageConverters` 로 목록을 통째 교체하지 않고 `extend` 로 Jackson 컨버터의
+         * 매퍼만 바꾼다 — 나머지 기본 컨버터 구성을 프로덕션과 다르게 만들지 않기 위해서다.
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper = objectMapper() }
+        }
 
         @Bean
         open fun commentApplicationService(): CommentApplicationService = mockk(relaxed = true)
@@ -376,5 +436,269 @@ class CommentControllerIntegrationTest {
         postComment("ATLAS-1", """{"body":"$tooLong"}""")
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("COMMENT_BODY_TOO_LONG"))
+    }
+
+    // ══ FR-CO-02 — PATCH / DELETE /comments/{commentId} ══════════════════════
+
+    /** 수정 결과 시각. `createdAt` 과 달라야 프론트의 "(수정됨)" 표시가 성립한다. */
+    private val editedAt = Instant.parse("2026-06-20T10:30:00Z")
+
+    /** 존재하지 않는 댓글 UUID — 404 판정용. */
+    private val missingCommentId = UUID.fromString("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+
+    private fun patchComment(
+        key: String,
+        id: String,
+        json: String,
+    ) = mockMvc.perform(
+        patch("/api/v1/issues/$key/comments/$id")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(json),
+    )
+
+    private fun deleteComment(
+        key: String,
+        id: String,
+    ) = mockMvc.perform(delete("/api/v1/issues/$key/comments/$id"))
+
+    /**
+     * `service.update` 가 돌려줄 [Comment] — 본문과 수정 시각만 바꾼다.
+     *
+     * ★ [CommentResponse] 가 아니라 **[Comment]** 를 반환해야 컨트롤러가
+     * [CommentResponse.from] → [CommentView.of] → `MarkdownRenderer.renderSafe` 경로를 실제로 탄다.
+     * DTO 를 바로 돌려주면 정화 테스트가 stub 값을 되받는 거짓 초록이 된다.
+     */
+    private fun editedComment(body: String) = sampleComment.copy(body = body, updatedAt = editedAt)
+
+    /** `service.update` 를 [body] 로 stub 하고 수정된 [Comment] 를 반환하게 한다. */
+    private fun stubUpdate(body: String) {
+        every {
+            commentApplicationService.update(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                commentId = commentId,
+                body = body,
+            )
+        } returns editedComment(body)
+    }
+
+    /**
+     * CO2-P1. 댓글 수정 → 200 OK + 수정된 본문/시각 (스펙 S1).
+     */
+    @Test
+    fun `PATCH 댓글 수정 — 200 OK plus 렌더된 bodyHtml`() {
+        stubUpdate("수정된 본문")
+
+        patchComment("ATLAS-1", commentId.toString(), """{"body":"수정된 본문"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.id").value(commentId.toString()))
+            .andExpect(jsonPath("$.data.authorId").value(actorUuid.toString()))
+            .andExpect(jsonPath("$.data.body").value("수정된 본문"))
+            .andExpect(jsonPath("$.data.bodyHtml").value(containsString("<p>수정된 본문</p>")))
+            .andExpect(jsonPath("$.data.updatedAt").value(editedAt.toString()))
+    }
+
+    /**
+     * CO2-P2. ★수정 응답의 `bodyHtml` 은 [CommentView] 를 경유한다 — 마크다운이 HTML 로 변환된다 (FR-15).
+     *
+     * 컨트롤러가 렌더링을 건너뛰거나 원문을 그대로 담으면 `<strong>` 이 나오지 않아 실패한다.
+     * 목록·작성·수정 세 경로의 렌더 단일 지점([CommentView.of])이 살아 있음을 고정한다.
+     */
+    @Test
+    fun `PATCH 응답 bodyHtml 은 CommentView 를 경유한다 — 마크다운이 HTML 로 변환됨`() {
+        val markdown = "**굵게** 그리고 `코드`"
+        stubUpdate(markdown)
+
+        patchComment("ATLAS-1", commentId.toString(), """{"body":"$markdown"}""")
+            .andExpect(status().isOk)
+            // 원문은 그대로 보존된다 (편집 폼이 다시 마크다운을 보여줘야 하므로)
+            .andExpect(jsonPath("$.data.body").value(markdown))
+            .andExpect(jsonPath("$.data.bodyHtml").value(containsString("<strong>굵게</strong>")))
+            .andExpect(jsonPath("$.data.bodyHtml").value(containsString("<code>코드</code>")))
+    }
+
+    /**
+     * CO2-P3. ★수정 응답의 `bodyHtml` 에서 `script` 태그가 제거된다 (C8 — 정화 회귀).
+     *
+     * 프론트 테스트는 MSW 모크가 `bodyHtml` 을 `<p>` 로 감싸기만 해 정화기를 타지 않는다.
+     * 따라서 이 단정은 **백엔드에서만** 가능하다 (`MarkdownRendererTest` 1번과 동일 판별자).
+     */
+    @Test
+    fun `PATCH 응답 bodyHtml 에서 script 태그가 제거된다`() {
+        val payload = "<script>alert(1)</script>"
+        stubUpdate(payload)
+
+        patchComment("ATLAS-1", commentId.toString(), """{"body":"$payload"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.bodyHtml").value(not(containsString("<script"))))
+            .andExpect(jsonPath("$.data.bodyHtml").value(not(containsString("</script>"))))
+    }
+
+    /**
+     * CO2-P4. ★수정 응답의 `bodyHtml` 에서 이벤트 핸들러 속성이 제거된다 (C8 — 정화 회귀).
+     *
+     * 브라우저가 평가하는 `onerror=값` 형태가 남지 않아야 한다
+     * (`MarkdownRendererTest` 2번과 동일 판별자 — 엔티티 escape 형태는 실행 불가라 허용).
+     */
+    @Test
+    fun `PATCH 응답 bodyHtml 에서 이벤트 핸들러 속성이 제거된다`() {
+        val payload = "<img src=x onerror=alert(1)>"
+        stubUpdate(payload)
+
+        patchComment("ATLAS-1", commentId.toString(), """{"body":"$payload"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.bodyHtml").value(not(containsString("onerror="))))
+    }
+
+    /**
+     * CO2-P5. 공백만 본문 → 400. 서비스의 [CommentBodyBlankException] 이 400 으로 번역돼야 한다.
+     */
+    @Test
+    fun `PATCH 공백만 본문 — 400 이고 500 이 아니다`() {
+        every {
+            commentApplicationService.update(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                commentId = commentId,
+                body = "   ",
+            )
+        } throws CommentBodyBlankException()
+
+        patchComment("ATLAS-1", commentId.toString(), """{"body":"   "}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_BODY_BLANK"))
+    }
+
+    /**
+     * CO2-P6. ★비-UUID `commentId` → 400. **500 아님** (F3 회귀 차단).
+     *
+     * `@PathVariable commentId: UUID` 가 생기면서 [MethodArgumentTypeMismatchException] 이
+     * 처음으로 이 컨트롤러에서 발생 가능해진다. 전용 핸들러가 없으면 catch-all `Exception` 이
+     * 삼켜 500 이 된다 — 상태코드만이 아니라 `errorCode` 본문까지 판별자로 잡는다.
+     */
+    @Test
+    fun `PATCH 비-UUID commentId — 400 이고 500 이 아니다`() {
+        patchComment("ATLAS-1", "abc", """{"body":"본문"}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_VALIDATION_FAILED"))
+    }
+
+    /**
+     * CO2-P7. ★깨진 JSON 본문 → 400. **500 아님** (F3 회귀 차단).
+     *
+     * `@RequestBody` 가 생기면서 [HttpMessageNotReadableException] 이 발생 가능해진다.
+     * CO2-P6 과 같은 이유로 전용 핸들러가 필요하다.
+     */
+    @Test
+    fun `PATCH 깨진 JSON 본문 — 400 이고 500 이 아니다`() {
+        patchComment("ATLAS-1", commentId.toString(), "{\"body\":}")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_VALIDATION_FAILED"))
+    }
+
+    /**
+     * CO2-P8. 미존재 `commentId` → 404 (스펙 E1).
+     *
+     * 상태코드만 보면 "매핑 자체가 없어서 나온 404" 와 구별되지 않으므로 `errorCode` 를 함께 단정한다.
+     */
+    @Test
+    fun `PATCH 미존재 commentId — 404 Not Found`() {
+        every {
+            commentApplicationService.update(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                commentId = missingCommentId,
+                body = "본문",
+            )
+        } throws CommentNotFoundException(missingCommentId)
+
+        patchComment("ATLAS-1", missingCommentId.toString(), """{"body":"본문"}""")
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_NOT_FOUND"))
+    }
+
+    /**
+     * CO2-P9. 댓글 삭제 → 204 No Content (본문 없음).
+     */
+    @Test
+    fun `DELETE 댓글 삭제 — 204 No Content`() {
+        every {
+            commentApplicationService.delete(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                commentId = commentId,
+            )
+        } just Runs
+
+        deleteComment("ATLAS-1", commentId.toString())
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) {
+            commentApplicationService.delete(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                commentId = commentId,
+            )
+        }
+    }
+
+    /**
+     * CO2-P10. ★DELETE 비-UUID `commentId` → 400. **500 아님**.
+     *
+     * PATCH(CO2-P6)만 고치고 DELETE 를 빠뜨리는 형태의 부분 봉합을 막는다.
+     */
+    @Test
+    fun `DELETE 비-UUID commentId — 400 이고 500 이 아니다`() {
+        deleteComment("ATLAS-1", "not-a-uuid")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("COMMENT_VALIDATION_FAILED"))
+    }
+
+    /**
+     * CO2-P11. 미인증 PATCH·DELETE → 401 (500 도 404 도 아님).
+     *
+     * `CurrentActor.current()` 를 리소스 조회보다 **먼저** 호출하므로 댓글 존재 여부와 무관하게 401 이다
+     * (미인증자가 404/403 차이로 리소스 존재를 probe 하지 못한다 — DEVELOPMENT.md §1.1 #4).
+     * "여전히 401" 이 공허해지지 않도록 `errorCode` 를 함께 단정한다.
+     */
+    @Test
+    fun `PATCH·DELETE 미인증 — 401 Unauthorized`() {
+        SecurityContextHolder.clearContext()
+
+        patchComment("ATLAS-1", commentId.toString(), """{"body":"본문"}""")
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("UNAUTHENTICATED"))
+
+        deleteComment("ATLAS-1", commentId.toString())
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("UNAUTHENTICATED"))
+    }
+
+    /**
+     * CO2-P12. 기존 GET·POST 무회귀 — 신규 하위경로 매핑이 컬렉션 경로를 가리지 않는다.
+     *
+     * ★이 한 건은 **RED 단계에서도 통과한다** — 보존을 단정하는 회귀 가드라 성질상 그렇다.
+     * 실패 조건은 이 task 이후 `/{commentId}` 매핑이 `/comments` 컬렉션 경로를 잠식하는 경우다.
+     */
+    @Test
+    fun `기존 GET·POST 는 신규 하위경로 매핑에 가려지지 않는다`() {
+        every {
+            commentApplicationService.list(actor = ActorId(actorUuid), issueKey = IssueKey("ATLAS-1"))
+        } returns listOf(sampleView)
+        every {
+            commentApplicationService.create(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                body = "확인했습니다.",
+            )
+        } returns sampleComment
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-1/comments"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].id").value(commentId.toString()))
+
+        postComment("ATLAS-1", """{"body":"확인했습니다."}""")
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.id").value(commentId.toString()))
     }
 }
