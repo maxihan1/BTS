@@ -647,7 +647,27 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 **소관**. `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/`.
 
-## issue-tracking — `IssueChangeHistoryRepository.findByIssue` 에 삭제 댓글 마스킹이 없다 (PR #316 코드리뷰 / 2026-07-27 등재)
+## ✅ issue-tracking — `findByIssue` 마스킹 갭 (해소 2026-07-27 · ArchUnit 차단)
+
+**해소.** 마스킹을 이 메서드에 하나 더 붙이는 대신 **프로덕션 유입 경로 자체를 0 으로 고정**했다.
+`IssueBcArchTest` 에 룰 3 을 추가 — `com.bts.issue.history` 밖의 프로덕션 클래스가
+`IssueChangeHistoryRepository.findByIssue` 를 호출하면 실패한다.
+
+**왜 마스킹을 추가하지 않았나.** 계층 역전(history repo → comment repo)이 생기고,
+**다음 읽기 메서드가 추가되면 같은 실수가 반복된다.** 가드를 만들고 생산 지점 일부에만 주입한
+상태가 정확히 지금 문제다([[mutation-site-count-equals-verified-scope]]).
+정말 필요해지면 `findByIssuePaged(issueId, limit, 0)` 가 상위집합이다.
+
+**★ArchUnit 의 green 은 두 가지를 뜻할 수 있다** — "위반이 없다" 또는 "대상 집합이 비었다".
+프로덕션 호출자가 0건이라 이 룰은 즉시 green 이므로, **비-공허 테스트를 별도로 뒀다**
+(대상 클래스가 import 범위에 실재하는지 + import 된 프로덕션 클래스 수 하한).
+
+**뮤테이션 확증** — `IssueChangelogService` 에 `findByIssue` 호출을 주입하자 룰이 FAILED.
+
+**남은 후속** — 마스킹이 실 DB 에서 동작한다는 증거는 아직 mock 위에만 있다.
+아래 §관통 실 DB 테스트 항목이 그것을 세운다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상**. 이력 읽기 경로가 **셋인데 마스킹은 둘에만** 있다.
 
@@ -672,6 +692,8 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 **소관**. `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/` +
 `.../issue/application/IssueChangelogService.kt`.
+
+</details>
 
 ## apps/web mocks — 댓글 MSW 모크가 백엔드와 에러 형태·판정 순서 둘 다 다르다 (PR #316 발견 / 2026-07-27 등재)
 

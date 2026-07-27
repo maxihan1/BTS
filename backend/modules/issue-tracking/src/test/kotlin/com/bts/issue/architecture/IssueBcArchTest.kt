@@ -187,4 +187,78 @@ class IssueBcArchTest {
 
         rule.check(importedClasses)
     }
+
+    /**
+     * 룰 3 — `IssueChangeHistoryRepository.findByIssue` 는 프로덕션에서 호출하지 않는다.
+     *
+     * ## 무엇을 막는가
+     * 이력 읽기 경로는 셋인데 **삭제된 댓글 본문 마스킹은 둘에만** 있다.
+     *
+     * | 읽기 경로 | 마스킹 |
+     * |---|---|
+     * | `IssueChangelogService` offset 모드 | ✅ `maskDeletedCommentBodies` |
+     * | `IssueChangelogService` cursor 모드 | ✅ |
+     * | `IssueChangeHistoryRepository.findByIssue` | ❌ 없음 |
+     *
+     * FR-CO-02 D7 이 마스킹을 **조회 시점 정책**으로 정했으므로, 새 기능이 이 메서드를 호출하는
+     * 순간 삭제된 댓글 본문이 그대로 응답에 실린다. 마스킹을 안 하면 "부적절한 내용으로 수정한 뒤
+     * 삭제" 로 삭제가 무력화된다.
+     *
+     * ## 왜 마스킹을 이 메서드에 하나 더 붙이지 않았나
+     * 계층 역전(history repo → comment repo)이 생기고, **다음 읽기 메서드가 추가되면 같은 실수가
+     * 반복된다**. 가드를 만들고 생산 지점 일부에만 주입하는 상태가 정확히 지금 문제다
+     * ([[mutation-site-count-equals-verified-scope]]). 마스킹 지점을 늘리는 대신 **프로덕션에서
+     * 이 메서드로 들어오는 경로 자체를 0 으로 유지**한다.
+     *
+     * ## 현재 상태 (2026-07-27 실측)
+     * 프로덕션 호출자 **0건** — 호출 지점은 전부 테스트다. 즉 이 룰은 지금 즉시 green 이며,
+     * 그 green 은 "위반이 없다" 는 뜻이지 "룰이 동작한다" 는 뜻이 아니다. 아래 비-공허 테스트가
+     * 대상 클래스를 실제로 import 했는지 별도로 확인한다([[archunit-vacuous-rule-silent-pass]]).
+     *
+     * 이 메서드가 정말 필요해지면 `findByIssuePaged(issueId, limit, 0)` 가 상위집합이다.
+     */
+    @Test
+    fun findByIssueMustNotBeCalledFromProduction() {
+        val rule =
+            noClasses()
+                .that().resideInAPackage("com.bts.issue..")
+                .and().resideOutsideOfPackage("com.bts.issue.history..")
+                .should().callMethodWhere(
+                    com.tngtech.archunit.base.DescribedPredicate.describe(
+                        "IssueChangeHistoryRepository.findByIssue 호출",
+                    ) { call: com.tngtech.archunit.core.domain.JavaMethodCall ->
+                        call.targetOwner.name.endsWith("IssueChangeHistoryRepository") &&
+                            call.target.name == "findByIssue"
+                    },
+                )
+                .because(
+                    "findByIssue 는 삭제된 댓글 본문 마스킹을 하지 않는다. " +
+                        "프로덕션에서 쓰면 삭제된 댓글 본문이 이력 응답에 그대로 실린다 " +
+                        "(FR-CO-02 D7 조회 시점 마스킹 정책). " +
+                        "필요하면 findByIssuePaged(issueId, limit, 0) 를 쓸 것.",
+                )
+
+        rule.check(importedClasses)
+    }
+
+    /**
+     * 위 룰이 **공허하지 않은지** 확인한다.
+     *
+     * ArchUnit 은 대상 클래스 집합이 비면 조용히 통과한다. `IssueChangeHistoryRepository` 가
+     * import 범위 밖으로 나가면(패키지 이동 등) 룰 3 은 영원히 green 이 되면서 아무것도 막지 않는다.
+     */
+    @Test
+    fun findByIssueRuleTargetIsActuallyImported() {
+        val targetExists =
+            importedClasses.any { it.name.endsWith("IssueChangeHistoryRepository") }
+        assert(targetExists) {
+            "IssueChangeHistoryRepository 가 import 범위에 없다 — 룰 3 이 공허하게 통과한다. " +
+                "패키지가 이동했는지 확인하라."
+        }
+
+        val callerCandidates = importedClasses.count { it.packageName.startsWith("com.bts.issue") }
+        assert(callerCandidates > 50) {
+            "import 된 프로덕션 클래스가 $callerCandidates 개뿐이다 — importer 설정이 고장났을 수 있다."
+        }
+    }
 }
