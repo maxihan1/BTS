@@ -165,19 +165,25 @@ DB rename 은 동시 세션 V번호 충돌 + 체크섬 함정 + `type` 이 migra
 
 ## 잔여 위험
 
-1. **★조립 부팅 실측 미실시.** 이 ADR 의 파손 판정은 **코드 대조**로 세웠다(변환 층 부재 3축 확정 포함).
-   "화면이 실서버에서 한 번도 동작한 적 없다"는 더 강한 주장은 조립 부팅
-   (dev postgres 5433 + `:app:test` 또는 `ProdAssemblyHttpTestBase`)으로 실응답을 받아야 단정할 수 있다.
-   **spec 단계의 첫 작업으로 지정한다.** 메모리 [[workflow-scheme-read-permission-gate-done]] 의
-   교훈("이미 동작 중이다"를 근거로 쓸 때는 실서버 경로였는지까지 확인) 역방향 적용 —
-   **"동작한 적 없다"도 실측 없이 단정하지 않는다.**
+1. ~~**★조립 부팅 실측 미실시.**~~ → **해소 (2026-07-27, Task 1·8).**
+   `WorkflowSchemeContractSnapshotTest`(`:modules:app`, 실 Tomcat + prod 프로파일 + PAT 인증)가
+   8 endpoint 를 **실 HTTP 로 왕복**해 응답 본문을 떴다. 코드 대조가 아니라 실응답이 정본이 됐다.
+   실측이 뒤집은 것 — **`assignedAt` 은 조립에서 ISO 문자열로 나온다**(슬라이스에서 숫자·배열로
+   나가는 사고를 우려했으나 조립에는 없다). 실측이 확인한 것 — 파손 7/8 은 그대로였다.
 2. **cross-BC 조회 실패가 여전히 무음이다.** D3 은 `isDefault` 오표시를 막지만, `issueTypeId` 가
    있는데 조회 실패한 매핑은 `issueTypeKey`/`issueTypeName` 이 null 인 채 표시된다. 선재 결함이며
    이 PR 이 만든 것이 아니다. TODOS.md 등재.
-3. **springdoc 노출 범위 미확인.** 의존성은 issue-tracking · search-export-import 모듈에만 있으나
-   조립 시 클래스패스 전역 스캔으로 project-workflow 컨트롤러가 `/v3/api-docs` 에 나올 수 있다.
-   나온다면 응답 필드명이 문서화된 계약이 된다. 조립 부팅 시 함께 확인한다.
+3. ~~**springdoc 노출 범위 미확인.**~~ → **확정 (2026-07-27, Task 8 A9-③). 노출된다.**
+   조립 `application.yml:99-105` 가 `/v3/api-docs` 를 활성화하고, `OpenApiSecurityConfig.kt:17-25` 의
+   `WebSecurityCustomizer.ignoring()` 이 그 경로를 **필터체인에서 통째로 제외**한다(미인증 접근).
+   springdoc 은 조립 컨텍스트의 전 `@RestController` 를 스캔하므로 두 스킴 컨트롤러의 응답 필드명이
+   그대로 게시된다. ⇒ **응답 필드명은 문서화된 공개 계약이다.** 어휘를 미루면 잘못된 계약이 그만큼
+   더 오래 게시된다는 뜻이므로, 이 ADR 의 정렬 결정을 더 강하게 지지한다.
+   **api-docs 를 인증 뒤로 돌리는 봉합은 별도 작업**(결정 3A' — `OpenApiSecurityConfig` +
+   `OpenApiConfig` **두 곳**, 한 곳만 고치면 효과 0. 2 BC + security-engineer 소관).
+   판정 방식 한정 — `:modules:app` 에 OpenApi 테스트가 없어 **정적 증거**(설정 2개소)로 확정했다.
+   `ignoring()` 은 조건 분기가 없는 무조건 제외라 정적 판정으로 충분하다.
 4. **도메인 ↔ DTO 어휘 갈림.** D2 의 의도된 결과다. `toResponse()` / `from()` 매핑 지점이
    유일한 변환 지점이 되므로 그 한 줄이 load-bearing 이다. 이연된 도메인 rename 까지는 이 상태가 유지된다.
-5. **`UpdateSchemeInput.name` nullability 비대칭.** 프론트는 optional, 백엔드는 non-null.
-   화면이 항상 보내면 잠복이나 계약상 불일치다. 이 PR 범위에 포함할지는 spec 이 판정한다.
+5. ~~**`UpdateSchemeInput.name` nullability 비대칭.**~~ → **해소 (Task 4).**
+   `UpdateSchemeInput.name` 을 필수로 바꿔 백엔드 `UpdateWorkflowSchemeRequest.name`(non-null)과 맞췄다.

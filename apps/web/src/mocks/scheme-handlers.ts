@@ -1,6 +1,7 @@
 // 워크플로우 스킴 MSW 핸들러 + 시뮬레이션 errorCode
 import { http, HttpResponse } from 'msw'
 import {
+  SCHEME_SCENARIO_KEY,
   allSchemeFixtures,
   assignmentFixtures,
   makeScheme,
@@ -28,6 +29,15 @@ const toAssignableShape = (scheme: SchemeDetail): AssignedScheme => ({
   description: scheme.description,
   isStandard: scheme.isStandard,
 })
+
+/** E2E 시나리오 플래그 읽기 — 노드 환경(localStorage 부재)에서는 항상 false. */
+const scenarioFlag = (key: string): boolean => {
+  try {
+    return localStorage.getItem(key) === 'true'
+  } catch {
+    return false
+  }
+}
 
 /** 스킴 키로 fixture를 찾는 helper */
 const findScheme = (schemeKey: string): SchemeDetail | undefined =>
@@ -131,6 +141,14 @@ export const schemeHandlers = [
 
   /** PUT /api/v1/workflow-schemes/:schemeKey — 스킴 수정 */
   http.put('/api/v1/workflow-schemes/:schemeKey', async ({ params, request }) => {
+    // E2E 전용 — 에러 경로(403)를 밟기 위한 시나리오 토글. 플래그가 없으면 평소 동작 그대로다.
+    if (scenarioFlag(SCHEME_SCENARIO_KEY.UPDATE_FORBIDDEN)) {
+      return HttpResponse.json(
+        { code: 'SCHEME_STANDARD_FIELD_LOCKED', detail: '표준 스킴의 잠긴 필드는 변경할 수 없습니다' },
+        { status: 403 },
+      )
+    }
+
     const schemeKey = params['schemeKey'] as string
     const scheme = findScheme(schemeKey)
 

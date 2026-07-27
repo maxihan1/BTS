@@ -71,31 +71,40 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 후(shared-kernel 상수 실재해야 함). shared-kernel 은 9 모듈이 의존하므로 변경 시 광범위 재컴파일 — 리뷰 단위를 권한
 변경과 섞지 않게 별도 PR.
 
-## project-workflow — 워크플로우 스킴 프론트↔백엔드 계약 파손 (PR #314 plan-eng-review outside voice)
+## ✅ project-workflow — 워크플로우 스킴 프론트↔백엔드 계약 파손 (해소 #317)
 
-**결정 (Maxi 확정, 2026-07-26 D9=B)**. **이번 PR 범위 밖.** 선재 결함이고, 보안 봉합 PR 을 프론트 계약
-리팩토링으로 번지게 하면 리뷰 단위가 무너진다. 대신 여기 등재한다.
+**해소 (2026-07-27, PR #317).** 계약 스냅샷 기전 + 뷰 어휘 정렬 + Zod 형태별 분리로 봉합했다.
+정본 어휘는 **`key` + `isStandard`**(스킴), **`isDefault`**(기본 매핑)이다. 마이그레이션 0.
 
-**★차단 사안**. 이 부채가 남는 한 **스킴 기능의 어떤 PR 도 프론트 테스트로 "회귀 없음" 을 증명할 수 없다.**
-초록은 MSW 가 MSW 와 맞는다는 뜻이다.
+**★이 항목의 기록이 두 군데 틀렸다 — 정정.**
+1. **규모.** "불일치 3종" 이 아니라 **응답 7종 + 요청 1종**이었다. 8 endpoint 중 정합은 1건뿐이었다
+   (이미 `.transform()` 정규화를 하던 assignable 목록). 실측 근거는
+   `docs/plans/2026-07-27-workflow-scheme-contract-align.md` §Task 2 A9-② 증거표.
+2. **지목 DTO 2건이 오기.** `assignmentResponseSchema` 의 대응 백엔드는 `ProjectWorkflowSchemeController.kt`
+   의 `SchemeResponse`(GET)와 `AssignmentResponse`(PUT) **두 개**다 — 한 스키마가 서로 다른 DTO 2개를
+   덮고 있던 것이 교집합 0 의 실제 원인이다. 근본 원인은 endpoint 수가 아니라 **형태 수**만큼 스키마를
+   나누지 않은 것이었다(스키마 3장이 각각 백엔드 DTO 2개씩을 겸했다).
 
-**불일치 3종 (2026-07-26 실측)**.
+**봉합 방식.** `docs/contracts/workflow-schemes.snapshot.json` 이 유일 계약 정본이다. 백엔드는
+prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응답과 문자열 동등을 단정하고,
+프론트는 같은 파일을 `.strict()` 로 파싱한다(`workflow-schemes.contract.test.ts`). 한쪽이 어긋나면
+그 지점에서 즉시 빨간불이 켜진다 — 「MSW 가 MSW 와 맞는다」 상태가 끝났다.
 
-| Zod 스키마 | 요구 필드 | 백엔드 실제 반환 | 상태 |
-|---|---|---|---|
-| `assignmentResponseSchema` (`workflow-schemes.types.ts:48-52`) | `projectKey`·`schemeKey`·`schemeName` | `SchemeResponse{id,key,name,description,isDefault}` (`ProjectWorkflowSchemeController.kt:160-166`) | **교집합 0** |
-| `schemeResponseSchema` (`:21-28`) | `schemeKey`·`isStandard`·`description`(non-null) | `WorkflowSchemeDetailResponse{key,isDefault,description:String?}` (`WorkflowSchemeDto.kt:116-126`) | `schemeKey`·`isStandard` 부재, nullability 불일치 |
-| `mappingResponseSchema` (`:31-39`) | `isDefault` | `MappingResponseDetail` 에 해당 필드 없음 | 필드 부재 |
+**신규 이연 3건.**
+- **도메인·DB 어휘 이연** — 도메인 `WorkflowScheme.isDefault` 와 DB 컬럼 `is_default` 는 그대로다
+  (ADR D2 — 이번 변경은 뷰 레이어 한정, 마이그레이션 0). 이름이 「표준 스킴」 의미인데 `default` 라
+  DB 주석(`V201__workflow_schemes.sql:37`)과도 어긋나 있다. rename 하려면 마이그레이션 + jOOQ 재생성이
+  필요하다.
+- **cross-BC 이슈타입 조회 실패가 무음** — `issueTypeKey`/`issueTypeName` 이 null 로만 표현돼, 화면은
+  「조회 실패」와 「기본 매핑」을 구분해 보여줄 수 없다. `isDefault` 신설로 **오분류는 막았으나**
+  실패 자체를 사용자에게 알리는 신호는 아직 없다(ADR 잔여위험 2).
+- **`classify-task.ts:45` 의 `'스키마'` 키워드가 Zod·GraphQL·JSON schema 작업을 전부 `migration` 으로
+  오분류한다.** 같은 작업 제목 3종이 `migration`/`qa`/`backend` 3개 결과를 냈다. 기존 항목
+  「`bts-review-plan` 분기 표에 `type=backend` 가 없다」의 형제 — 하드코딩 키워드가 아니라 **판별식**이 필요하다.
 
-`workflow-schemes.types.ts:25` 주석이 "backend 의 isDefault 와 동일 의미, 후속 PR 에서 backend 계약 정렬
-예정" 이라고 적혀 있어 **일부는 의도된 부채**로 보인다. 그러나 `assignmentResponseSchema` 의 교집합 0 은
-의도로 설명되지 않는다.
-
-**착수 시 첫 단계**. 추측하지 말고 **조립 부팅 실측부터** — dev postgres 5433 + `:app:test` 또는
-`ProdAssemblyHttpTestBase` 로 실제 응답을 받아 어느 쪽이 정본인지 확정한다. 화면이 실서버에서
-동작한 적이 없는 것인지, 내가 못 본 변환 계층이 있는 것인지가 먼저 확정돼야 한다.
-
-**Depends on / blocked by**. 없음. 단 이 작업 전에는 스킴 관련 PR 의 프론트 회귀 주장을 신뢰하지 말 것.
+**별도 작업으로 남은 것.** `/v3/api-docs` 가 미인증 노출이다(`OpenApiSecurityConfig.kt` +
+`OpenApiConfig.kt` **두 곳**, 한 곳만 고치면 효과 0). 2 BC + security-engineer 소관이라 이 PR 에
+넣지 않았다(결정 3A'). 이번 정렬로 **응답 필드명이 문서화된 공개 계약**임이 확정됐으므로 우선순위가 올랐다.
 
 ## project-workflow — ProjectWorkflowSchemeController 의 404/403 순서 (PR #314 plan-eng-review)
 

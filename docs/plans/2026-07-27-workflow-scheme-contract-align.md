@@ -922,6 +922,28 @@ cd backend && ./gradlew :modules:project-workflow:test :modules:project-workflow
 추가로 `e2e/workflow-scheme.spec.ts` **5건** 신설 — 기존 스펙이 구조(그룹 개수·버튼 존재)만 보아
 필드 회귀를 통과시키는 구멍을 막는다. 어휘가 바뀐 필드에서 온 **실제 값**을 단정한다.
 
+**★신규 E2E 봉인 검증 (뮤테이션 2건 주입).** "5건 통과"가 공허하지 않음을 실증했다.
+
+| 주입한 회귀 | 결과 |
+|---|---|
+| `MappingTable.tsx` 의 `mapping.isDefault` 판정을 `false` 로 고정 | `mappings[].isDefault 로 기본 매핑 행이 표시된다` **1건만** 실패 (4 passed) |
+| `WorkflowSchemeSidebar.tsx` 의 `isStandard` 분류 술어를 반전 | `isStandard 로 표준·커스텀 그룹이 갈린다` **1건만** 실패 (4 passed) |
+
+각 뮤테이션이 **정확히 대응하는 1건만** 실패시켰다 — 과탐지도 미탐지도 없다. 원복 후 5/5 재통과.
+
+## A10 브라우저 눈확인 결과 (2026-07-27, Task 9)
+
+실 Chromium 1440×900 캡처 4장을 **직접 눈으로 확인**했다(시각 회귀 전용 — 계약 증거는 A9 담당).
+
+| 화면 | 확인 항목 | 결과 |
+|---|---|---|
+| 스킴 목록 | 표준(4)/커스텀(2) 그룹 분리, 사용 프로젝트 수(3·1·2·0·2·0) | 정상 |
+| 스킴 상세 | 스킴 키 `custom-scheme-alpha` 표시, **★ 기본값 (모든 이슈 타입)** 행 + 「기본」 배지 + 최상단 정렬, 매핑 수 2 · 사용 중 프로젝트 2 | 정상 |
+| 스킴 생성 | 스킴 키/이름/설명 폼, 키 형식 안내(`소문자 영문자로 시작…`) | 정상 |
+| 프로젝트 배정 | 현재 할당 스킴 「사내 개발팀 커스텀 스킴」 + 「현재 적용」 배지, 변경 드롭다운 | 정상 |
+
+빈 값·깨진 라벨·분류 붕괴 **0건**. `schemeKey`→`key` 정렬이 화면 끝까지 이어졌음을 육안으로 확인했다.
+
 ## Plan 메타
 
 - **task 수**. 9
@@ -1160,12 +1182,12 @@ search-export-import/.../OpenApiConfig.kt:60-63     (동일)
   - ⚠️ **스타일 이탈 1건** — 테스트 파일 340줄로 `DEVELOPMENT.md §2.1` 의 「파일 300줄 이내」 초과.
     분리하면 단일 소비자용 추상이 생겨 `CLAUDE.md §2 Simplicity`(single-use 추상 금지)와 충돌한다.
     초과분 대부분이 함정을 기록한 KDoc(로직 아님)이라 유지 쪽을 택했다 — 게이트 2 판단 대상.
-- [ ] **T4-mod (P2, human: ~20min / CC: ~3min)** — `apps/web/src/api` — `mappings` 를 `z.array(mappingDetailSchema)` 로 + 선언 순서 준수
+- [x] **T4-mod (P2, human: ~20min / CC: ~3min)** — `apps/web/src/api` — `mappings` 를 `z.array(mappingDetailSchema)` 로 + 선언 순서 준수
   - Surfaced by: Code Quality F4 — `z.unknown()` 이 목록 endpoint 의 봉인을 무력화
   - Verify: `npx vitest run src/api` + `npx tsc --noEmit -p tsconfig.app.json`
-- [ ] **T2-mod (P2, human: ~10min / CC: ~2min)** — `apps/web/src/api/__tests__` — 스냅샷 경로를 repo 루트 기준으로
+- [x] **T2-mod (P2, human: ~10min / CC: ~2min)** — `apps/web/src/api/__tests__` — 스냅샷 경로를 repo 루트 기준으로
   - Surfaced by: Code Quality F5 — 상대경로 6단계 취약
-- [ ] **T8-mod (P2, human: ~30min / CC: ~5min)** — `apps/web/e2e` — 403 시나리오 명시 배정
+- [x] **T8-mod (P2, human: ~30min / CC: ~5min)** — `apps/web/e2e` — 403 시나리오 명시 배정
   - Surfaced by: Test F6 — 에러 경로는 Zod 를 안 타므로 계약 테스트가 403 회귀를 못 잡는다
 
 ## GSTACK REVIEW REPORT

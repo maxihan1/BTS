@@ -66,6 +66,26 @@ test('mappings[].isDefault 로 기본 매핑 행이 표시된다', async ({ page
   await expect(page.getByText(labels.mapping.defaultRowPrefix)).toBeVisible()
 })
 
+test('403 응답이 오면 화면이 조용히 멈추지 않고 오류를 알린다 (리뷰 F6)', async ({ page }) => {
+  await loginAsSystemAdmin(page)
+
+  // 계약 테스트는 이 경로를 못 지킨다 — client.ts 의 parseResponse 가 비-2xx 에서 Zod 를 우회하므로
+  // 에러 경로의 초록은 계약 정합의 증거가 아니다(spec D-Q7). 그래서 E2E 가 맡는다.
+  // page.route 는 못 쓴다 — MSW 가 브라우저 서비스워커로 응답해 요청이 Playwright 라우팅까지
+  // 내려오지 않는다. 이 저장소의 관례대로 localStorage 시나리오 플래그로 목을 분기시킨다.
+  await page.addInitScript(() => {
+    localStorage.setItem('bts-e2e-scheme-update-forbidden', 'true')
+  })
+
+  await navigateToSchemeDetail(page, 'custom-scheme-alpha')
+
+  await page.getByRole('textbox', { name: labels.metaPanel.nameLabel }).fill('바꾼 이름')
+  await page.getByRole('button', { name: labels.metaPanel.saveButton, exact: true }).click()
+
+  // errorCode 가 한국어 메시지로 매핑돼 사용자에게 보여야 한다 — 무음 실패면 이 단정이 잡는다.
+  await expect(page.getByText('표준 스킴의 키/이름은 변경할 수 없습니다')).toBeVisible()
+})
+
 test('배정 화면이 key 필드로 현재 스킴을 표시한다', async ({ page }) => {
   await loginAsSystemAdmin(page)
   await navigateToProjectAssignment(page, 'ATLAS')

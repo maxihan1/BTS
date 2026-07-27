@@ -11,6 +11,19 @@ import type {
   AssignedScheme,
 } from '@/api/workflow-schemes'
 
+/**
+ * E2E 시나리오 플래그 키 — `addInitScript` 로 localStorage 에 심어 목의 분기를 유발한다.
+ *
+ * 앱에는 403 을 만드는 사용자 조작이 없다(표준 스킴 편집·삭제는 클라이언트에서 이미 비활성).
+ * 그래서 에러 경로를 E2E 로 밟으려면 목 쪽에 토글이 필요하다. 네트워크 가로채기(`page.route`)는
+ * 쓸 수 없다 — MSW 가 브라우저 서비스워커로 응답해 Playwright 라우팅까지 요청이 내려오지 않는다
+ * ([[e2e-msw-serviceworker-block]] · [[e2e-msw-scenario-toggle-localstorage-flag]]).
+ */
+export const SCHEME_SCENARIO_KEY = {
+  /** 스킴 수정(PUT)이 403 SCHEME_STANDARD_FIELD_LOCKED 를 반환하게 한다. */
+  UPDATE_FORBIDDEN: 'bts-e2e-scheme-update-forbidden',
+} as const
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture helpers
 // ─────────────────────────────────────────────────────────────────────────────
