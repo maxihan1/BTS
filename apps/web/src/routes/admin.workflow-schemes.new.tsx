@@ -72,10 +72,11 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
     const description = values.description?.trim() === '' ? undefined : values.description?.trim()
 
     mutate(
-      { schemeKey: values.schemeKey, name: values.name, description },
+      // 백엔드 CreateWorkflowSchemeRequest 는 key 다 — 폼 필드명(schemeKey)과 계약 필드명을 여기서 맞춘다.
+      { key: values.schemeKey, name: values.name, description },
       {
         onSuccess: (created) => {
-          onSuccess?.(created.schemeKey)
+          onSuccess?.(created.key)
         },
       },
     )

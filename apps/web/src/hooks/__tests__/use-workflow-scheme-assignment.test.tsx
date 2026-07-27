@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import type { AssignmentResponse } from '@/api/workflow-schemes'
+import type { AssignedScheme, AssignmentRecord } from '@/api/workflow-schemes'
 import {
   useGetAssignment,
   useUpdateAssignment,
@@ -21,10 +21,12 @@ function createWrapper() {
 
 describe('useGetAssignment', () => {
   it('할당이 있을 때 AssignmentResponse를 반환한다', async () => {
-    const assignment: AssignmentResponse = {
-      projectKey: 'ATLAS',
-      schemeKey: 'custom-scheme-alpha',
-      schemeName: '사내 개발팀 커스텀 스킴',
+    const assignment: AssignedScheme = {
+      id: 1,
+      key: 'custom-scheme-alpha',
+      name: '사내 개발팀 커스텀 스킴',
+      description: null,
+      isStandard: false,
     }
 
     server.use(
@@ -72,11 +74,13 @@ describe('useGetAssignment', () => {
 })
 
 describe('useUpdateAssignment', () => {
-  it('UPSERT 성공 시 AssignmentResponse를 반환한다', async () => {
-    const updated: AssignmentResponse = {
-      projectKey: 'BTS',
-      schemeKey: 'software-default-scheme',
-      schemeName: '소프트웨어 개발 기본 스킴',
+  it('UPSERT 성공 시 배정 이력(AssignmentRecord)을 반환한다', async () => {
+    // 백엔드 PUT 응답은 배정 이력이다 — GET(스킴 객체)과 형태가 다르다.
+    const updated: AssignmentRecord = {
+      projectId: '11111111-1111-4111-8111-111111111111',
+      workflowSchemeId: 1,
+      assignedAt: '2026-01-01T00:00:00Z',
+      assignedBy: '22222222-2222-4222-8222-222222222222',
     }
 
     server.use(
@@ -98,10 +102,12 @@ describe('useUpdateAssignment', () => {
   })
 
   it('낙관적 업데이트 후 실패 시 이전 값으로 롤백한다', async () => {
-    const existing: AssignmentResponse = {
-      projectKey: 'BTS',
-      schemeKey: 'software-default-scheme',
-      schemeName: '소프트웨어 개발 기본 스킴',
+    const existing: AssignedScheme = {
+      id: 1,
+      key: 'software-default-scheme',
+      name: '소프트웨어 개발 기본 스킴',
+      description: null,
+      isStandard: false,
     }
 
     server.use(
@@ -133,7 +139,7 @@ describe('useUpdateAssignment', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     // 롤백 후 기존 캐시 복구 확인
-    const cached = client.getQueryData<AssignmentResponse | null>([
+    const cached = client.getQueryData<AssignedScheme | null>([
       'projects',
       'BTS',
       'workflow-scheme',
@@ -142,10 +148,11 @@ describe('useUpdateAssignment', () => {
   })
 
   it('성공 시 toast.success를 호출한다', async () => {
-    const updated: AssignmentResponse = {
-      projectKey: 'BTS',
-      schemeKey: 'new-scheme',
-      schemeName: '새 스킴',
+    const updated: AssignmentRecord = {
+      projectId: '11111111-1111-4111-8111-111111111111',
+      workflowSchemeId: 9,
+      assignedAt: '2026-01-01T00:00:00Z',
+      assignedBy: '22222222-2222-4222-8222-222222222222',
     }
 
     server.use(

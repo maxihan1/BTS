@@ -2,7 +2,7 @@
 import type { JSX, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWorkflowSchemes } from '@/hooks/use-workflow-schemes'
-import type { SchemeResponse } from '@/api/workflow-schemes'
+import type { SchemeListItem } from '@/api/workflow-schemes'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -17,8 +17,8 @@ const GROUP_LABEL_CUSTOM = workflowSchemeLabels.sidebar.customGroup
 /** 로딩 스켈레톤 행 수 */
 const SKELETON_ROW_COUNT = 6
 
-/** 사이드바 표시에 필요한 스킴 필드 — SchemeResponse 별칭 */
-type SchemeSummary = SchemeResponse
+/** 사이드바 표시에 필요한 스킴 필드 — SchemeListItem 별칭 */
+type SchemeSummary = SchemeListItem
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props 인터페이스
@@ -85,7 +85,7 @@ function SchemeRow({ scheme, isSelected, onSelect }: SchemeRowProps): JSX.Elemen
   const handleKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      onSelect(scheme.schemeKey)
+      onSelect(scheme.key)
     }
   }
 
@@ -103,7 +103,7 @@ function SchemeRow({ scheme, isSelected, onSelect }: SchemeRowProps): JSX.Elemen
           ? 'bg-card border border-border font-medium shadow-sm'
           : 'hover:bg-accent text-foreground',
       ].join(' ')}
-      onClick={() => onSelect(scheme.schemeKey)}
+      onClick={() => onSelect(scheme.key)}
       onKeyDown={handleKeyDown}
     >
       <span className="truncate">{scheme.name}</span>
@@ -139,10 +139,10 @@ function SchemeGroup({ label, schemes, selectedSchemeKey, onSelect }: SchemeGrou
       <SchemeGroupHeader label={label} count={schemes.length} />
       <ul className="space-y-0.5 px-2">
         {schemes.map((scheme) => (
-          <li key={scheme.schemeKey}>
+          <li key={scheme.key}>
             <SchemeRow
               scheme={scheme}
-              isSelected={selectedSchemeKey === scheme.schemeKey}
+              isSelected={selectedSchemeKey === scheme.key}
               onSelect={onSelect}
             />
           </li>

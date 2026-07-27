@@ -24,12 +24,12 @@ describe('GET /api/v1/workflow-schemes — 목록 조회', () => {
     expect((body.data as unknown[]).length).toBeGreaterThanOrEqual(6)
   })
 
-  it('S1-2 happy: 각 스킴은 schemeKey, name, usedByProjectsCount, mappingsCount 필드를 가진다', async () => {
+  it('S1-2 happy: 각 스킴은 key, name, usedByProjectsCount, mappingsCount 필드를 가진다', async () => {
     const res = await fetch('/api/v1/workflow-schemes')
-    const body = await res.json() as { data: Array<{ schemeKey: string; name: string; usedByProjectsCount: number; mappingsCount: number }> }
+    const body = await res.json() as { data: Array<{ key: string; name: string; usedByProjectsCount: number; mappingsCount: number }> }
 
     for (const scheme of body.data) {
-      expect(typeof scheme.schemeKey).toBe('string')
+      expect(typeof scheme.key).toBe('string')
       expect(typeof scheme.name).toBe('string')
       expect(typeof scheme.usedByProjectsCount).toBe('number')
       expect(typeof scheme.mappingsCount).toBe('number')
@@ -46,8 +46,8 @@ describe('GET /api/v1/workflow-schemes/:schemeKey — 단건 조회', () => {
     const res = await fetch('/api/v1/workflow-schemes/software-default-scheme')
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { data: { schemeKey: string; mappings: unknown[] } }
-    expect(body.data.schemeKey).toBe('software-default-scheme')
+    const body = await res.json() as { data: { key: string; mappings: unknown[] } }
+    expect(body.data.key).toBe('software-default-scheme')
     expect(Array.isArray(body.data.mappings)).toBe(true)
     expect((body.data.mappings as unknown[]).length).toBeGreaterThan(0)
   })
@@ -74,9 +74,9 @@ describe('POST /api/v1/workflow-schemes — 스킴 생성', () => {
     })
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { data: { schemeKey: string; name: string } }
+    const body = await res.json() as { data: { key: string; name: string } }
     expect(body.data.name).toBe('신규 스킴')
-    expect(typeof body.data.schemeKey).toBe('string')
+    expect(typeof body.data.key).toBe('string')
   })
 
   it('S3-2 error-403: X-Mock-Forbidden 헤더가 있으면 403을 반환한다', async () => {
@@ -105,8 +105,8 @@ describe('PUT /api/v1/workflow-schemes/:schemeKey — 스킴 수정', () => {
     })
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { data: { schemeKey: string; name: string } }
-    expect(body.data.schemeKey).toBe('custom-scheme-alpha')
+    const body = await res.json() as { data: { key: string; name: string } }
+    expect(body.data.key).toBe('custom-scheme-alpha')
     expect(body.data.name).toBe('수정된 이름')
   })
 
@@ -283,14 +283,15 @@ describe('DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId — 매
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 조회', () => {
-  it('S8-1 happy: 할당된 프로젝트 조회 → 200 + AssignmentResponse', async () => {
+  it('S8-1 happy: 할당된 프로젝트 조회 → 200 + 스킴 객체(프로젝트 키는 URL 에만 있다)', async () => {
     const res = await fetch('/api/v1/projects/ATLAS/workflow-scheme')
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { data: { projectKey: string; schemeKey: string; schemeName: string } }
-    expect(body.data.projectKey).toBe('ATLAS')
-    expect(typeof body.data.schemeKey).toBe('string')
-    expect(typeof body.data.schemeName).toBe('string')
+    const body = await res.json() as { data: { id: number | null; key: string; name: string; description: string | null; isStandard: boolean } }
+    // 백엔드 GET 응답은 SchemeResponse 하나다 — projectKey/schemeName 은 본문에 없다.
+    expect(body.data.key).toBe('custom-scheme-alpha')
+    expect(body.data.name).toBe('사내 개발팀 커스텀 스킴')
+    expect(body.data).not.toHaveProperty('projectKey')
   })
 
   it('S8-2 error-404: 할당 미존재 프로젝트 조회 → 404', async () => {
@@ -307,7 +308,7 @@ describe('GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스�
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('PUT /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 갱신', () => {
-  it('S9-1 happy: 유효한 schemeKey로 UPSERT → 200 + AssignmentResponse', async () => {
+  it('S9-1 happy: 유효한 schemeKey로 UPSERT → 200 + 배정 이력(AssignmentResponse)', async () => {
     const res = await fetch('/api/v1/projects/ATLAS/workflow-scheme', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -315,9 +316,11 @@ describe('PUT /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스�
     })
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { data: { projectKey: string; schemeKey: string } }
-    expect(body.data.projectKey).toBe('ATLAS')
-    expect(body.data.schemeKey).toBe('service-management-scheme')
+    // PUT 응답은 배정 이력이다 — GET(스킴 객체)과 형태가 다르다는 것이 이 PR 이 봉합한 지점이다.
+    const body = await res.json() as { data: { projectId: string; workflowSchemeId: number; assignedAt: string; assignedBy: string } }
+    expect(typeof body.data.projectId).toBe('string')
+    expect(body.data.workflowSchemeId).toBe(2)
+    expect(typeof body.data.assignedAt).toBe('string')
   })
 
   it('S9-2 error-404: 존재하지 않는 schemeKey로 할당 시 404를 반환한다', async () => {

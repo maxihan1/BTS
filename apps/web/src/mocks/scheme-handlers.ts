@@ -6,39 +6,32 @@ import {
   makeScheme,
   makeMapping,
 } from './scheme-fixtures'
-import type { SchemeDetailResponse, SchemeSummaryResponse } from './scheme-fixtures'
+import type { AssignedScheme, SchemeDetail, SchemeListItem } from '@/api/workflow-schemes'
 
-/** 스킴 배열의 요약 필드만 추출 (mappings 제외) */
-const toSummary = (scheme: SchemeDetailResponse): SchemeSummaryResponse => ({
-  schemeKey: scheme.schemeKey,
+/** 목록 응답 형태로 변환 — 백엔드 목록은 mappings 를 빈 배열로 싣는다(카운트만 유효). */
+const toSummary = (scheme: SchemeDetail): SchemeListItem => ({
+  ...scheme,
+  mappings: [],
+})
+
+/**
+ * 배정 후보 목록 응답 형태로 변환.
+ *
+ * 백엔드 `SchemeResponse` 는 카운트·시각을 싣지 않는다. 이 PR 이전에는 프론트가 `key`/`isDefault`
+ * 어휘를 `.transform()` 으로 뒤집고 있었으나, 이제 백엔드가 `isStandard` 를 직접 내보내므로
+ * 변환 없이 형태만 좁힌다.
+ */
+const toAssignableShape = (scheme: SchemeDetail): AssignedScheme => ({
+  id: scheme.id,
+  key: scheme.key,
   name: scheme.name,
   description: scheme.description,
   isStandard: scheme.isStandard,
-  usedByProjectsCount: scheme.usedByProjectsCount,
-  mappingsCount: scheme.mappingsCount,
-})
-
-/** backend 원본 어휘(key/isDefault)의 할당 가능 스킴 응답 형태 — assignableSchemeResponseSchema 파싱 전 mock 응답 shape */
-interface AssignableSchemeBackendShape {
-  id: number
-  key: string
-  name: string
-  description: string
-  isDefault: boolean
-}
-
-/** 스킴 fixture를 backend 원본 어휘(key/isDefault)로 변환하는 helper */
-const toAssignableBackendShape = (scheme: SchemeDetailResponse, index: number): AssignableSchemeBackendShape => ({
-  id: index + 1,
-  key: scheme.schemeKey,
-  name: scheme.name,
-  description: scheme.description,
-  isDefault: scheme.isStandard,
 })
 
 /** 스킴 키로 fixture를 찾는 helper */
-const findScheme = (schemeKey: string): SchemeDetailResponse | undefined =>
-  allSchemeFixtures.find((s) => s.schemeKey === schemeKey)
+const findScheme = (schemeKey: string): SchemeDetail | undefined =>
+  allSchemeFixtures.find((s) => s.key === schemeKey)
 
 /** 표준 스킴인지 확인하는 helper */
 const isStandard = (schemeKey: string): boolean => {
@@ -125,7 +118,7 @@ export const schemeHandlers = [
     const body = await request.json() as { name?: string; description?: string }
     const newSchemeKey = `custom-scheme-${Date.now()}`
     const created = makeScheme({
-      schemeKey: newSchemeKey,
+      key: newSchemeKey,
       name: body.name ?? '새 스킴',
       description: body.description ?? '',
       isStandard: false,
@@ -236,7 +229,8 @@ export const schemeHandlers = [
       return HttpResponse.json({ errorCode: 'ASSIGNMENT_NOT_FOUND', message: '프로젝트에 할당된 스킴이 없습니다' }, { status: 404 })
     }
 
-    return HttpResponse.json({ data: assignment })
+    // 백엔드 GET 응답은 스킴 객체 하나다 — projectKey 는 URL 에만 있고 본문에 없다.
+    return HttpResponse.json({ data: assignment.scheme })
   }),
 
   /** PUT /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 갱신 (UPSERT) */
@@ -249,13 +243,15 @@ export const schemeHandlers = [
       return HttpResponse.json({ errorCode: 'SCHEME_NOT_FOUND', message: '워크플로우 스킴을 찾을 수 없습니다' }, { status: 404 })
     }
 
-    const assignment = {
-      projectKey,
-      schemeKey: body.schemeKey,
-      schemeName: targetScheme.name,
+    // 백엔드 PUT 응답은 배정 "이력"(AssignmentResponse)이다 — GET 의 스킴 객체와 형태가 다르다.
+    const assignmentRecord = {
+      projectId: `00000000-0000-4000-8000-${projectKey.padEnd(12, '0').slice(0, 12)}`,
+      workflowSchemeId: targetScheme.id,
+      assignedAt: '2026-01-01T00:00:00Z',
+      assignedBy: '11111111-1111-4111-8111-111111111111',
     }
 
-    return HttpResponse.json({ data: assignment })
+    return HttpResponse.json({ data: assignmentRecord })
   }),
 
   /**
@@ -264,6 +260,6 @@ export const schemeHandlers = [
    * `assignableSchemeResponseSchema`의 `.transform()`이 경계에서 담당하므로 이 mock이 미리 바꾸면 안 된다.
    */
   http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
-    return HttpResponse.json({ data: allSchemeFixtures.map(toAssignableBackendShape) })
+    return HttpResponse.json({ data: allSchemeFixtures.map(toAssignableShape) })
   }),
 ]

@@ -120,7 +120,7 @@ export function WorkflowSchemeDetailPage({
 
       {/* 우 메타 패널 */}
       {detail !== undefined && (
-        <SchemeMetaPanel key={detail.schemeKey} scheme={detail} />
+        <SchemeMetaPanel key={detail.key} scheme={detail} />
       )}
     </div>
   )

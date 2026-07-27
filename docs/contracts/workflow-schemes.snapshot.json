@@ -4,14 +4,14 @@
     "data" : [
       {
         "description" : "string",
-        "id" : 0,
+        "id" : 1,
         "isStandard" : true,
         "key" : "string",
         "name" : "string"
       },
       {
         "description" : null,
-        "id" : 0,
+        "id" : 1,
         "isStandard" : true,
         "key" : "string",
         "name" : "string"
@@ -21,7 +21,7 @@
   "GET /api/v1/projects/{k}/workflow-scheme" : {
     "data" : {
       "description" : null,
-      "id" : 0,
+      "id" : 1,
       "isStandard" : true,
       "key" : "string",
       "name" : "string"
@@ -32,26 +32,26 @@
       {
         "createdAt" : "2026-01-01T00:00:00Z",
         "description" : "string",
-        "id" : 0,
+        "id" : 1,
         "isStandard" : true,
         "key" : "string",
         "mappings" : [ ],
-        "mappingsCount" : 0,
+        "mappingsCount" : 1,
         "name" : "string",
         "updatedAt" : "2026-01-01T00:00:00Z",
-        "usedByProjectsCount" : 0
+        "usedByProjectsCount" : 1
       },
       {
         "createdAt" : "2026-01-01T00:00:00Z",
         "description" : null,
-        "id" : 0,
+        "id" : 1,
         "isStandard" : true,
         "key" : "string",
         "mappings" : [ ],
-        "mappingsCount" : 0,
+        "mappingsCount" : 1,
         "name" : "string",
         "updatedAt" : "2026-01-01T00:00:00Z",
-        "usedByProjectsCount" : 0
+        "usedByProjectsCount" : 1
       }
     ]
   },
@@ -59,12 +59,12 @@
     "data" : {
       "createdAt" : "2026-01-01T00:00:00Z",
       "description" : "string",
-      "id" : 0,
+      "id" : 1,
       "isStandard" : true,
       "key" : "string",
       "mappings" : [
         {
-          "id" : 0,
+          "id" : 1,
           "isDefault" : true,
           "issueTypeKey" : "string",
           "issueTypeName" : "string",
@@ -72,7 +72,7 @@
           "workflowName" : "string"
         },
         {
-          "id" : 0,
+          "id" : 1,
           "isDefault" : true,
           "issueTypeKey" : null,
           "issueTypeName" : null,
@@ -80,17 +80,17 @@
           "workflowName" : "string"
         }
       ],
-      "mappingsCount" : 0,
+      "mappingsCount" : 1,
       "name" : "string",
       "updatedAt" : "2026-01-01T00:00:00Z",
-      "usedByProjectsCount" : 0
+      "usedByProjectsCount" : 1
     }
   },
   "POST /api/v1/workflow-schemes" : {
     "data" : {
       "createdAt" : "2026-01-01T00:00:00Z",
       "description" : "string",
-      "id" : 0,
+      "id" : 1,
       "isStandard" : true,
       "key" : "string",
       "name" : "string",
@@ -100,9 +100,9 @@
   "POST /api/v1/workflow-schemes/{key}/mappings" : {
     "data" : {
       "createdAt" : "2026-01-01T00:00:00Z",
-      "id" : 0,
-      "issueTypeId" : 0,
-      "schemeId" : 0,
+      "id" : 1,
+      "issueTypeId" : 1,
+      "schemeId" : 1,
       "workflowId" : "00000000-0000-4000-8000-000000000000"
     }
   },
@@ -111,14 +111,14 @@
       "assignedAt" : "2026-01-01T00:00:00Z",
       "assignedBy" : "00000000-0000-4000-8000-000000000000",
       "projectId" : "00000000-0000-4000-8000-000000000000",
-      "workflowSchemeId" : 0
+      "workflowSchemeId" : 1
     }
   },
   "PUT /api/v1/workflow-schemes/{key}" : {
     "data" : {
       "createdAt" : "2026-01-01T00:00:00Z",
       "description" : null,
-      "id" : 0,
+      "id" : 1,
       "isStandard" : true,
       "key" : "string",
       "name" : "string",

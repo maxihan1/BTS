@@ -220,7 +220,7 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
             node.isArray -> canonicalArray(node)
             node.isNull -> NullNode.instance
             node.isBoolean -> BooleanNode.TRUE
-            node.isNumber -> IntNode(0)
+            node.isNumber -> IntNode(CANONICAL_NUMBER)
             node.isTextual -> canonicalText(node.textValue())
             else -> TextNode(CANONICAL_STRING)
         }
@@ -316,6 +316,16 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
 
         val UUID_REGEX = Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
         val INSTANT_REGEX = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$""")
+
+        /**
+         * 숫자 표준값 — **0 이 아니라 1** 이다.
+         *
+         * id·schemeId 는 BIGSERIAL 이라 실값이 1 부터 시작하고, 프론트 Zod 가 그 불변식을
+         * `z.number().int().positive()` 로 못박고 있다. 0 을 쓰면 계약 테스트가 어휘 불일치가 아니라
+         * **값 제약**으로 실패해, 형태 검증에 값 검증이 섞인다. 1 은 positive·nonnegative·nullable
+         * 제약을 모두 만족하는 중립값이면서 실제 데이터에 더 가깝다.
+         */
+        const val CANONICAL_NUMBER = 1
 
         const val CANONICAL_STRING = "string"
         const val CANONICAL_UUID = "00000000-0000-4000-8000-000000000000"

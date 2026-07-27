@@ -106,7 +106,7 @@ export function ProjectWorkflowSchemeSettingsPage({
   const schemeOptions = schemes ?? []
 
   function handleApply() {
-    const target = selectedSchemeKey !== '' ? selectedSchemeKey : (assignment?.schemeKey ?? '')
+    const target = selectedSchemeKey !== '' ? selectedSchemeKey : (assignment?.key ?? '')
     if (target === '') return
     updateAssignment.mutate({ schemeKey: target })
   }
@@ -127,7 +127,7 @@ export function ProjectWorkflowSchemeSettingsPage({
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className="font-medium">{assignment.schemeName}</span>
+              <span className="font-medium">{assignment.name}</span>
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                 {workflowSchemeLabels.assignment.currentSchemeBadge}
               </span>
@@ -151,7 +151,7 @@ export function ProjectWorkflowSchemeSettingsPage({
         <CardContent>
           <div className="flex items-center gap-3">
             <Select
-              value={selectedSchemeKey !== '' ? selectedSchemeKey : (assignment?.schemeKey ?? '')}
+              value={selectedSchemeKey !== '' ? selectedSchemeKey : (assignment?.key ?? '')}
               onValueChange={setSelectedSchemeKey}
             >
               <SelectTrigger className="w-64" aria-label={workflowSchemeLabels.assignment.schemeSelectAriaLabel}>
@@ -159,7 +159,7 @@ export function ProjectWorkflowSchemeSettingsPage({
               </SelectTrigger>
               <SelectContent>
                 {schemeOptions.map((scheme) => (
-                  <SelectItem key={scheme.schemeKey} value={scheme.schemeKey}>
+                  <SelectItem key={scheme.key} value={scheme.key}>
                     {scheme.name}
                   </SelectItem>
                 ))}
