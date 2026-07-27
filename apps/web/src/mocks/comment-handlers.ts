@@ -13,6 +13,7 @@ import type { CommentResponse } from '@/api/comments'
 import {
   adminPermissionsFixture,
   memberPermissionsFixture,
+  viewerPermissionsFixture,
   type IssuePermissions,
 } from './issue-permission-fixtures'
 
@@ -92,6 +93,9 @@ function resolveUserIdFromRequest(request: Request): string | null {
 const PERMISSIONS_BY_USERNAME: Readonly<Record<string, IssuePermissions>> = {
   alice: adminPermissionsFixture,
   bob: memberPermissionsFixture,
+  // carol 은 읽기 전용 — 이슈 UPDATE 게이트의 **유일한 판별자**다.
+  // alice·bob 둘 다 UPDATE=true 라, carol 이 없으면 게이트를 지워도 전량 green 이다.
+  carol: viewerPermissionsFixture,
 }
 
 /**
@@ -107,6 +111,31 @@ function hasSoftDeletePermission(request: Request): boolean {
   const username = resolveUsernameFromRequest(request)
   if (username === null) return false
   return PERMISSIONS_BY_USERNAME[username]?.SOFT_DELETE ?? false
+}
+
+/**
+ * 이슈 수준 `UPDATE` 게이트 — 백엔드와 **같은 순서**로 통과시킨다.
+ *
+ * 백엔드 `CommentApplicationService` 는 댓글을 조회하기 **전에** 이 게이트를 통과시킨다
+ * (`create:150`, `update:194` → `:200`, `delete:279` → `:290`). 즉 권한 없는 사용자는
+ * **댓글 존재 여부와 무관하게 403** 이다.
+ *
+ * 모크에 이 게이트가 없던 동안 같은 상황에서 404 가 나가, 「권한이 없다」와 「그런 댓글이 없다」가
+ * 뒤바뀌어 있었다. 모크가 백엔드와 다르게 답해도 프론트 테스트는 전량 초록이라
+ * 「MSW 가 MSW 와 맞는」 상태가 유지된다 — 그래서 순서까지 맞춰야 한다.
+ *
+ * 미인증·미지 사용자는 `null` 이라 게이트를 통과시킨다 — 백엔드라면 401 이지만 모크는 흐름을
+ * 막지 않는 기존 태도(POST 의 `FALLBACK_AUTHOR_ID`)를 따른다.
+ *
+ * @param request MSW 요청
+ * @returns 게이트 거부 응답, 통과면 `null`
+ */
+function issueUpdateGate(request: Request): Response | null {
+  const username = resolveUsernameFromRequest(request)
+  if (username === null) return null
+  const allowed = PERMISSIONS_BY_USERNAME[username]?.UPDATE ?? true
+  if (allowed) return null
+  return HttpResponse.json({ errorCode: 'ISSUE_ACCESS_DENIED' }, { status: 403 })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,6 +211,11 @@ export const commentHandlers = [
   }),
 
   http.post('*/api/v1/issues/:key/comments', async ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 댓글 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = String(params['key'])
     const payload = (await request.json()) as { body?: unknown }
     const body = typeof payload.body === 'string' ? payload.body : ''
@@ -209,6 +243,11 @@ export const commentHandlers = [
   }),
 
   http.patch('*/api/v1/issues/:key/comments/:commentId', async ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 댓글 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = String(params['key'])
     const commentId = String(params['commentId'])
     const payload = (await request.json()) as { body?: unknown }
@@ -252,6 +291,11 @@ export const commentHandlers = [
   }),
 
   http.delete('*/api/v1/issues/:key/comments/:commentId', ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 댓글 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = String(params['key'])
     const commentId = String(params['commentId'])
 

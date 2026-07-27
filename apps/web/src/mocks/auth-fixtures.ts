@@ -123,10 +123,34 @@ export const bobUser: WhoamiResponse = {
   startPage: 'dashboards',
 }
 
+/**
+ * carol fixture — **읽기 전용(VIEWER)** 사용자.
+ *
+ * ★왜 세 번째 사용자가 필요한가. alice(ADMIN)·bob(MEMBER) 둘 다 `UPDATE=true` 라,
+ * **이슈 수준 쓰기 게이트의 유무를 관측할 수단이 모크에 없었다.** carol 은 그 판별자다
+ * (`viewerPermissionsFixture` 와 짝).
+ */
+export const carolUser: WhoamiResponse = {
+  username: 'carol',
+  email: 'carol@bts.local',
+  authMethod: 'jwt',
+  userId: '00000000-0000-4000-8000-000000000003',
+  mustChangePassword: false,
+  isSystemAdmin: false,
+  mfaEnrollmentRequired: false,
+  displayName: '박캐롤',
+  avatarUrl: null,
+  theme: 'system',
+  locale: 'ko',
+  dateFormat: 'iso',
+  startPage: 'dashboards',
+}
+
 /** username → fixture 사용자 맵 */
 export const AUTH_USERS: Readonly<Record<string, WhoamiResponse>> = {
   alice: aliceUser,
   bob: bobUser,
+  carol: carolUser,
 }
 
 /** username → 유효 비밀번호 맵 (mock 전용, 실제 비밀번호 아님) */

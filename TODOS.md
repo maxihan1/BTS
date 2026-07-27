@@ -881,7 +881,42 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 </details>
 
-## apps/web mocks — 댓글 MSW 모크가 백엔드와 에러 형태·판정 순서 둘 다 다르다 (PR #316 발견 / 2026-07-27 등재)
+## apps/web mocks — 댓글 MSW (b) 판정 순서 ✅ 해소 / (a) 에러 형태는 **기각** (2026-07-27)
+
+**두 주장을 분리 판정했다. (b)는 사실이라 고쳤고, (a)는 실해 0 이라 기각한다.**
+
+### ✅ (b) 판정 순서 역전 — 해소
+백엔드 `CommentApplicationService` 는 이슈 `UPDATE` 게이트를 **댓글 조회보다 먼저** 통과시킨다
+(`create:150` · `update:194`→`:200` · `delete:279`→`:290`). 모크에는 그 게이트가 아예 없어
+같은 상황에서 **404** 가 나갔다 — 「권한 없음」과 「댓글 없음」이 뒤바뀐다.
+
+`issueUpdateGate(request)` 헬퍼를 만들어 **POST·PATCH·DELETE 3지점 전수**에 **가장 먼저** 주입했다.
+
+**★이 갭이 안 보인 진짜 이유는 관측 수단의 부재였다.** `UPDATE=false` 인 픽스처 사용자가 없어
+(alice=ADMIN·bob=MEMBER 둘 다 `UPDATE=true`) **어떤 테스트도 게이트를 밟을 수 없었다.**
+`viewerPermissionsFixture` + `carolUser`(VIEWER) 를 신설해 판별자를 만들었다 —
+없으면 게이트를 지워도 전량 green 이다. 대조군(권한 보유자는 404·201)도 함께 뒀다.
+
+### ❌ (a) 에러 본문 형태 — 기각
+원 기록은 「MSW 는 `errorCode`, 백엔드는 RFC7807 ProblemDetail」 이라 적었으나 실측하면 **실해가 0**이다.
+- 백엔드 `CommentExceptionHandler.kt:261` 이 `pd.setProperty("errorCode", errorCode)` 로
+  **ProblemDetail 에 최상위 `errorCode` 를 같이 싣는다.**
+- 프론트 파서가 읽는 키가 정확히 그것이다 — `extract-error-code.ts:21` `b['errorCode'] ?? b['error']`.
+  인라인 파서 4곳도 동일. ⇒ **형태를 바꿔도 깨지는 파서는 0곳이고, 지금도 파싱은 성립한다.**
+- 댓글 UI 는 `errorCode` 를 아예 안 읽는다 — `CommentSection.tsx:54·318·330` 전부 고정 문구다.
+  원 기록이 경고한 "화면 문구가 조용히 깨진다" 는 댓글에 해당 없음.
+- **댓글만의 문제도 아니다** — `errorCode:` 를 쓰는 mock 파일 **55개** vs ProblemDetail 흉내 **16개**.
+  `errorCode`-only 가 오히려 지배 관례다(`worklog-handlers` 도 같다).
+
+⇒ comment-handlers 만 고치면 55 대 16 의 불일치는 그대로다. 굳이 한다면
+`problemDetail(status, type, errorCode, detail)` **공용 헬퍼**로 16파일 관례에 수렴시키는 **별건**으로 잡을 것.
+위 §계약 검증 8/303 항목의 하위 작업이 적절하다.
+
+### 잔여
+`worklog-handlers.ts`(PATCH `:247-` · DELETE `:310-`)에 **같은 게이트 갭**이 있다.
+같은 판별식으로 처리할지 명시 결정 필요 — 안 할 거면 사유를 여기 남길 것.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상 (a) — 에러 본문 형태**. MSW 는 `{ errorCode: 'COMMENT_NOT_FOUND' }` 를 낸다
 (`comment-handlers.ts:219 · 225 · 232 · 262 · 271`). 백엔드는 RFC 7807 `ProblemDetail` 이다
@@ -906,6 +941,8 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 메모리 `msw-dual-handler-e2e-shadow`.
 
 **소관**. `apps/web/src/mocks/comment-handlers.ts`.
+
+</details>
 
 ## ✅ issue-tracking — 렌더 단일 지점 판별자 (기각 · 2026-07-27 종결)
 
