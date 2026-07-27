@@ -10,9 +10,14 @@
 
 ## 이것은 새 기능이 아니라 기능 복원이다
 
-`docs/specs/2026-05-28-fr-wf-02-d6-ui-crud.md` 가 명세한 스킴 관리·배정 화면은 **실서버에서 동작할 수 없는
-상태**다. 응답 파싱 8 endpoint 중 7 이 `ZodError` 를 던지고, 생성 요청은 필드명이 달라 400 이다.
-화면 코드·라우트·테스트는 전부 존재하나 **실서버와 통신한 적이 없다.**
+`docs/specs/2026-05-28-fr-wf-02-d6-ui-crud.md` 가 명세한 스킴 관리·배정 화면은 **코드 대조 기준으로
+실서버에서 동작할 수 없다.** 응답 파싱 8 endpoint 중 7 이 `ZodError` 를 던지고, 생성 요청은 필드명이 달라 400 이다.
+
+> ⚠️ **주장의 강도를 구분한다.** 여기까지는 **코드 대조**(변환 계층 부재 3축 + 백엔드 테스트 34건의
+> 단정 필드)로 확정된 것이다. **"화면이 실서버와 통신한 적이 한 번도 없다"는 더 강한 주장은
+> 실서버 관측 없이 단정하지 않는다** — 완료 기준 **A9(조립 부팅)** 에서 확정한다.
+> 메모리 [[workflow-scheme-read-permission-gate-done]] 이 다친 지점("이미 동작 중이다"를 관측 없이
+> 근거로 씀)의 **역방향**이며, 같은 규율을 적용한다.
 
 학습 2026-07-17 「파일 존재 ≠ 기능 존재」의 프론트 판본이다. 그때는 *"도메인·서비스·repo 가 다 있어도
 REST 노출이 없으면 기능이 없다"* 였고, 이번은 *"화면·라우트·테스트가 다 있어도 계약이 안 맞으면
@@ -81,7 +86,8 @@ REST 노출이 없으면 기능이 없다"* 였고, 이번은 *"화면·라우�
 | C1 | 응답 파싱 8 endpoint 전부에서 프론트 Zod 가 백엔드 실제 응답을 파싱한다 | ADR D1·D4 |
 | C2 | 요청 4종 전부에서 프론트가 백엔드가 요구하는 필드명·nullability 로 보낸다 | ADR D1 |
 | C3 | 정본 어휘는 `key` + `isStandard`. 백엔드 응답 DTO 3파일이 `isStandard` 로 노출하고 프론트가 `key` 를 쓴다 | ADR D1 |
-| C4 | Zod 스키마는 endpoint 1개당 1개. 한 스키마가 두 응답을 검사하지 않는다 | ADR D4 |
+| C4 | **한 Zod 스키마가 형태가 다른 두 응답을 검사하지 않는다.** 형태가 같은 응답(예: `GET assignment` 와 `GET assignable` 이 둘 다 `SchemeResponse`)은 **재사용이 정답**이다 — "endpoint 수만큼 스키마"가 목표가 아니다 | ADR D4 |
+| C9 | **낙관적 업데이트 객체는 그 캐시가 담는 타입(= 조회 응답 타입)을 만족한다.** 부분 객체·다른 타입 금지 | 아래 §D-Q8 |
 | C5 | `MappingResponseDetail` 에 `isDefault` 를 추가하고 `mapping.issueTypeId == null` 로 산출한다 | ADR D3 |
 | C6 | MSW 픽스처·핸들러가 백엔드 응답 형태를 반환한다 | ADR D5 |
 | C7 | `assignableSchemeResponseSchema` 의 `.transform()` 을 제거한다 (D1 적용 후 무의미) | ADR D1 |
@@ -152,6 +158,50 @@ GET 이 돌려주는 `SchemeResponse` 에 둘 다 있어 **충분하다.**
 백엔드 테스트 실행의 부산물이어야 하고(수동 갱신 금지), 파일이 없으면 프론트 테스트가 **실패**해야 한다
 (skip 금지 — vacuous 통과 차단).
 
+**★축2 가 여전히 못 막는 것 (정직하게 남긴다).** 파일 생성이 백엔드 테스트의 부산물이어도,
+**백엔드 테스트 자체가 새 필드를 단정하지 않으면** 그 필드는 파일에 담기지 않는다.
+실측 근거 — 현재 `WorkflowSchemeControllerTest` 34건 중 `isDefault`/`isStandard` 를 단정하는 테스트가
+**0건**이다(스킴의 표준 여부를 아무도 검증하지 않는다). 즉 축2 는 "백엔드가 내보낸 것"만 대조하고
+"내보내야 할 것을 내보냈는가"는 못 본다.
+⇒ **보완.** 백엔드 응답 스냅샷은 **필드 집합 전체**를 직렬화해 저장하고(선택적 단정이 아니라 전량),
+프론트 Zod 는 `.strict()` 로 파싱해 **예상 밖 필드가 있으면 실패**하게 한다. 그러면 백엔드가 필드를
+추가·삭제할 때 양방향으로 걸린다.
+
+### D-Q6. DTO 만 개명해도 컴파일되는가 → **된다 (확정)**
+
+`src/main` 에서 응답 DTO 의 `isDefault` **프로퍼티를 읽는 코드 0건**. 생산 코드는 전부
+`WorkflowScheme.isDefault`(도메인)를 읽어 DTO 생성자에 넘길 뿐이다.
+`WorkflowSchemeRepositoryIntegrationTest.kt:196,215` 의 `saved.isDefault` 2건도 **도메인 객체**를 읽는다.
+⇒ `from()` / `toResponse()` 의 인자 이름만 바꾸면 되고 ADR D2 의 뷰 레이어 한정이 **실현 가능하다.**
+
+### D-Q7. ★에러 경로는 Zod 를 타지 않는다 — 봉인 판정에 직결
+
+`parseResponse`(`client.ts:127-134`)는 `!res.ok` 이면 `ApiError(status, errorBody)` 를 던지고
+**스키마 파싱을 건너뛴다.** `throwSchemeApiError` 의 `rfc7807ErrorSchema` 도 두 필드 모두 `.default()` 라
+safeParse 가 실패할 수 없다.
+
+**따라서.**
+- 403 / 404 / 409 경로 테스트가 초록인 것은 **계약 정합의 증거가 아니다.** 이 PR 전에도 초록이었고 후에도 초록이다
+- #314 가 추가한 403 안내 회귀 테스트는 이 변경에 **무영향** — 그 테스트로 "회귀 없음"을 주장할 수 없다
+- 완료 기준 **A1 은 성공(2xx) 경로에만** 해당한다
+- DELETE 2종을 "파싱 없음"으로 둔 판단은 **맞다** (`res.ok` 확인만, 본문 없음)
+
+메모리 [[negative-guard-needs-body-discriminator]] 계열 — 초록의 의미 범위를 좁게 읽는다.
+
+### D-Q8. ★낙관적 업데이트가 새 캐시 타입과 충돌한다 (구현 블로커)
+
+세 mutation 이 캐시에 **직접 객체를 써 넣는다.** 스키마를 분리·개명하면 그 객체들도 함께 바뀌어야 하며,
+한 곳은 **현재 형태로는 만들 수 없다.**
+
+| 위치 | 현재 낙관적 객체 | D1·D4 적용 후 문제 |
+|---|---|---|
+| `use-workflow-scheme-assignment.ts:65-69` | `{projectKey, schemeKey, schemeName}` | 캐시 타입이 GET 응답(`{id?,key,name,description?,isStandard}`) 기준이 되면 **`projectKey` 는 그 타입에 없다.** 낙관적 객체가 캐시 타입을 만족할 수 없다 |
+| `use-workflow-schemes.ts:140` | `prevList.map(s => s.schemeKey === schemeKey …)` | `s.schemeKey` → `s.key` |
+| `use-workflow-schemes.ts:220-227` | `MappingResponse` 타입으로 `{id,issueTypeKey,issueTypeName,workflowKey,workflowName,isDefault}` | D4 로 detail 의 매핑 원소 타입과 addMapping 응답 타입이 **분리**된다. 낙관적 객체는 **detail 원소 타입**을 써야 한다(캐시가 담는 것이 detail 이므로) |
+
+⇒ **C9 로 규칙화한다** — "낙관적 객체는 그 캐시가 담는 타입을 만족한다." `projectKey` 는 이미
+queryKey 에 들어 있어(`ASSIGNMENT_KEYS.byProject(projectKey)`) 값에서 제거해도 정보 손실이 없다.
+
 ## 비기능 요구사항 (NFR)
 
 | ID | 요구사항 | 측정 |
@@ -210,6 +260,10 @@ GET 이 돌려주는 `SchemeResponse` 에 둘 다 있어 **충분하다.**
 | EC-6 | 스킴 생성 직후 목록 | create 응답에 카운트 없음. `invalidateQueries(list)` 로 재조회 — **현행 구조 유지**(D-Q2) |
 | EC-7 | 표준 스킴 삭제 시도 | 409 `SCHEME_STANDARD_NOT_DELETABLE`. `isStandard` 로 UI 가 삭제 버튼 disabled (D11) |
 | EC-8 | `id` 가 null | `SchemeResponse.id: Long?` — 프론트 `z.number().int().nullable()`. 현행 유지 |
+| EC-9 | 비-`SYSTEM_ADMIN` 이 `/admin/workflow-schemes` 진입 | #314 게이트로 403. **이 경로는 Zod 를 타지 않으므로**(D-Q7) 이 PR 이 바꾸지 않는다. 다만 403 안내가 여전히 뜨는지 **회귀 확인 대상**이며, 초록이어도 계약 증거로 쓰지 않는다 |
+| EC-10 | 낙관적 업데이트 중 요청 실패 | 롤백 객체(`context.prev*`)는 **조회 응답 타입**이라 자동 정합. 반면 전진 객체는 C9 를 지켜야 한다. `projectKey` 는 queryKey 에 있으므로 값에서 제거 |
+| EC-11 | 배정 없는 프로젝트에 처음 배정 | `prevAssignment` 가 `null` → 낙관적 객체를 `null` 에서 만들어야 한다. 현재 `prevAssignment?.schemeName ?? ''` 로 빈 문자열을 넣는데, 새 타입에서는 `name` 이 필수라 같은 처리가 필요하다. `onSettled` invalidate 가 즉시 실제값으로 교체 |
+| EC-12 | `description` 을 빈 문자열로 지우기 | 백엔드 `UpdateWorkflowSchemeRequest.description: String?` — `null` 이면 설명 제거(KDoc `:199`). 프론트가 `''` 과 `null` 중 무엇을 보내는지 확인 후 계약 고정 |
 
 ## 제약 조건
 
@@ -227,17 +281,43 @@ GET 이 돌려주는 `SchemeResponse` 에 둘 다 있어 **충분하다.**
 
 | # | 기준 | 측정 방법 |
 |---|---|---|
-| A1 | 응답 8 endpoint 의 Zod 가 백엔드 실제 응답을 파싱한다 | 축2 계약 픽스처 대조 테스트 통과 |
-| A2 | 요청 4종이 백엔드 계약과 정합 | 백엔드 MockMvc 요청 테스트 + 프론트 타입 |
-| A3 | `schemeResponseSchema`·`assignmentResponseSchema`·`mappingResponseSchema` 3장이 사라지고 endpoint 별 스키마로 대체 | `grep -c` 로 구 스키마 0건 |
-| A4 | `.transform()` 잔존 0건 | `grep -c "\.transform(" apps/web/src/api/workflow-schemes.types.ts` = 0 |
-| A5 | `MappingResponseDetail.isDefault` 가 `issueTypeId == null` 로 산출 + EC-4 회귀 테스트 | 백엔드 단위 테스트 (조회 실패 매핑이 `isDefault=false`) |
-| A6 | 프론트 회귀 0 | `pnpm test` — 기준선 8009 대비 실패 0 |
-| A7 | 백엔드 회귀 0 | `./gradlew :modules:project-workflow:test` — 기준선 553 대비 실패 0 |
-| A8 | 린트·타입 0 | `pnpm lint` · `pnpm typecheck`(파이프 없이) · `ktlintCheck` · `detekt --rerun-tasks` |
-| A9 | **조립 부팅 스모크** | dev postgres 5433 + `:app:test`. 8 endpoint 실응답을 받아 A1 을 실환경에서 재확인 + springdoc 이 `/v3/api-docs` 에 이 컨트롤러를 노출하는지 확정 (ADR 잔여위험 3) |
-| A10 | **브라우저 눈확인** | 스킴 목록·상세·생성·배정 4화면을 실제로 열어 렌더 확인. FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 절차이며, 그 미실시가 [[auth-fixtures↔user-fixtures 교집합 0]] 을 늦게 발견하게 만들었다 |
+| A1 | **성공(2xx) 응답 8 endpoint** 의 Zod 가 백엔드 실제 응답을 파싱한다 | 축2 계약 스냅샷 대조 테스트 통과. ※ 에러 경로는 Zod 를 타지 않으므로 대상 밖 (D-Q7) |
+| A2 | 요청 4종이 백엔드 계약과 정합 | 백엔드 MockMvc 가 프론트가 보내는 **정확한 body 형태**로 요청해 2xx 를 받는다 (형태를 테스트에 하드코딩하지 말고 프론트 타입에서 유래한 예시 body 를 쓴다) |
+| A3 | **한 Zod 스키마가 형태 다른 두 응답에 쓰이지 않는다** | 판정식 — `workflow-schemes.ts` 의 각 API 함수가 참조하는 스키마를 열거해, **같은 스키마를 쓰는 함수 쌍의 백엔드 반환형이 동일**한지 대조. 스키마 개수·이름은 판정 기준이 아니다 |
+| A4 | `.transform()` 잔존 0건 | `grep -rn "\.transform(" apps/web/src/api/ apps/web/src/hooks/ \| grep -i scheme` = 0. **파일 한정 grep 금지** (다른 파일로 옮기면 통과하므로) |
+| A5 | `MappingResponseDetail.isDefault` 가 `issueTypeId == null` 로 산출 | 백엔드 단위 테스트 2건 — ① 기본 매핑 → `isDefault=true` ② **`issueTypeId` 는 있으나 cross-BC 조회 실패** → `issueTypeKey=null` 이면서 `isDefault=false` (EC-4). ②가 없으면 A5 미충족 |
+| A6 | 프론트 회귀 0 | `pnpm test` — 기준선과 **같은 집계법**으로 재측정 후 델타 대조 (메모리 [[test-count-baseline-grep-vs-xml]] — `grep -c "@Test"` 류 금지) |
+| A7 | 백엔드 회귀 0 | `./gradlew :modules:project-workflow:test` 후 **`build/test-results/test/TEST-*.xml` 로 실행 수·skipped 실측**. `BUILD SUCCESSFUL` 만으로 판정 금지 (메모리 [[gradle-batched-task-partial-test-run]]) |
+| A8 | 린트·타입 0 | `pnpm lint` · `pnpm typecheck`(**파이프 없이** — `$?` 가 `tail` 것이 됨) · `ktlintCheck` · `detekt --rerun-tasks`(캐시 false-green) |
+| A9 | **조립 부팅 실증** | dev postgres 5433 + `:app:test`. **판정식 3개** — ① 8 endpoint 응답 JSON 의 최상위 키 집합이 프론트 Zod 의 요구 키 집합을 **포함**한다 ② 파손 7종이 수정 전에는 실제로 실패했음을 재현(수정 전 커밋에서 1회) ③ `/v3/api-docs` 에 이 컨트롤러가 나오는지 확정 (ADR 잔여위험 3). ②가 §이것은 새 기능이 아니라 기능 복원이다 의 단정을 **관측으로 승격**한다 |
+| A10 | **브라우저 눈확인** | 스킴 목록·상세·생성·배정 4화면을 실제로 열어 렌더 확인. **★MSW 로 확인한 것은 계약 증거가 아니다** — 계약은 A9 가 담당하고 A10 은 **시각 회귀** 확인 전용이다. 이 구분을 두지 않으면 "MSW 가 MSW 와 맞는다"를 또 증거로 오인한다. FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 절차이며, 그 미실시가 auth-fixtures ↔ user-fixtures 교집합 0 을 늦게 발견하게 만들었다 |
+| A11 | 문서 동기화 | FR 카운트 불변 131 이므로 `verify-master-plan.sh` 대상 무변경. 단 **실행해 통과 확인** + TODOS.md 의 계약 파손 항목을 **해소 처리**하고 신규 이연 항목(도메인·DB rename · cross-BC 조회 실패 무음 · classify 키워드 충돌) 등재 |
 
 ## Brainstorming Check
 
-(← Phase B 채움)
+✅ **통과 (2회 iteration — gap 10건 발견 후 전량 보강).**
+
+`superpowers:brainstorming` 은 전체 대화형 설계 흐름이라 `bts-spec` Phase B 규약("스펙을 재작성하지 않고
+gap 만 보고")과 맞지 않아, 메모리에 기록된 #314 선례에 따라 **체크리스트 7번 Spec Self-Review 절만**
+적용했다(편차 사유 기록). 발견 gap 과 처방.
+
+| # | gap | 처방 |
+|---|---|---|
+| 1 | DELETE 2종 "파싱 없음" 판단의 근거가 없었다 | D-Q7 에 근거 명시 (`res.ok` 확인만, 본문 없음) |
+| 2 | **★에러 경로가 Zod 를 우회한다는 사실이 없었다** | D-Q7 신설. A1 을 "성공(2xx) 경로 한정"으로 좁힘. #314 의 403 회귀 테스트를 이 PR 의 증거로 쓰지 않음을 명시 |
+| 3 | 401/403 화면 경로가 EC 에 없었다 | EC-9 신설 (초록이어도 계약 증거 아님) |
+| 4 | **★낙관적 업데이트가 새 캐시 타입과 충돌 — 구현 블로커** | D-Q8 신설 (3지점 실측), FR **C9** 신설, EC-10·EC-11 신설 |
+| 5 | A3 "구 스키마 0건" 판정 불가 (무엇이 "구"인지 미정, 이름 재사용 가능) | 판정식을 **"같은 스키마를 쓰는 함수 쌍의 백엔드 반환형이 동일한가"** 로 교체. C4 문구도 정정 |
+| 6 | A9 조립 부팅의 통과 기준이 없었다 | 판정식 3개 명시. ②(수정 전 실패 재현)가 단정을 관측으로 승격 |
+| 7 | **★A10 을 MSW 로 하면 또 "MSW 가 MSW 와 맞는다"** | A10 을 **시각 회귀 전용**으로 한정하고 계약 증거는 A9 가 담당함을 명시 |
+| 8 | 본문이 "실서버와 통신한 적 없다"를 단정형으로 썼으나 ADR 잔여위험 1 은 미관측이라 함 — **내부 불일치** | 본문에 주장 강도 구분 박스 추가. #314 가 다친 지점의 역방향 규율 |
+| 9 | assignable 스키마 재사용이 "검토"로 미결 + D4 문구와 형식 충돌 | C4 를 "형태가 다른 두 응답" 으로 정정 — 같은 형태는 재사용이 정답 |
+| 10 | A4 `.transform()` 측정이 파일 한정이라 다른 파일로 옮기면 통과 | scheme 관련 전체 grep 으로 확대. 파일 한정 금지 명시 |
+
+**코드로 확정한 2건** (추측 아님).
+- D-Q6 — DTO 만 개명해도 컴파일된다. `src/main` 에서 응답 DTO 의 `isDefault` 를 읽는 코드 0건 ⇒ ADR D2 실현 가능
+- D-Q7 — `parseResponse:128-131` 이 비-2xx 에서 Zod 를 건너뛴다 ⇒ 에러 경로 초록은 계약 증거가 아니다
+
+**축2 봉인의 남은 구멍도 정직하게 기록했다** — 백엔드 테스트가 단정하지 않는 필드는 스냅샷에 담기지
+않는다(실측: 34건 중 `isStandard` 단정 0건). 보완으로 스냅샷은 필드 집합 전량 직렬화 + 프론트는
+`.strict()` 파싱을 요구한다.
