@@ -33,7 +33,36 @@ MSW 모크 핸들러              276   GET 117 · POST 81 · DELETE 40 · PATCH
 
 **소관**. 프론트↔백엔드 공동. Maxi 우선순위 결정 필요.
 
-## 인프라 — 백엔드 CI 가 없다 (2026-07-27 실측 등재)
+## ✅ 인프라 — 백엔드 CI 신설 (해소 2026-07-27)
+
+**해소.** `.github/workflows/backend-ci.yml` 신설 — 잡 4개.
+
+| 잡 | 내용 |
+|---|---|
+| `modules` (매트릭스 9) | BC 모듈별 `:modules:<m>:test` 병렬. `fail-fast: false` — 한 모듈이 깨져도 나머지 결과를 봐야 범위를 좁힌다 |
+| `assembly` | `:modules:app:test` — **서비스 컨테이너 필요**. `quay.io/tembo/pg16-pgmq` + **5433:5432** |
+| `lint` | `ktlintCheck detekt --rerun-tasks` — 캐시가 있으면 위반이 UP-TO-DATE 로 통과해 거짓 초록이 된다 |
+| `workflow-scripts` | `pnpm test:workflow` (아래 참조) |
+
+**★두 종류의 DB 의존을 구분해야 한다.** Testcontainers(428파일)는 러너 기본 Docker 로 스스로 뜨지만,
+`:modules:app` 조립 부팅(10파일)은 `ProdAssemblyHttpTestBase` 가 Testcontainers 를 관리하지 않고
+`application.yml` 의 `jdbc:postgresql://localhost:5433/bts` 를 그대로 쓴다. ⇒ 그 잡에만 서비스 컨테이너를 붙였다.
+이미지는 **반드시 pgmq 판** — 일반 `postgres:16` 은 마이그레이션에서 실패한다.
+
+**★부수 발견 — `pnpm test:workflow`(57건)를 어느 CI 도 돌리지 않고 있었다.**
+그 안에 하드코딩 목록 정합 판별식 3종이 들어 있다(BC 키워드 · 스킬 분기표 ↔ TaskType ·
+CI 매트릭스 ↔ Gradle 모듈). 안 돌리면 봉인이 로컬 1회성 확인으로 끝나고 썩는다 —
+`infra-ci.yml` 이 존재하는 이유와 같은 실패 양식이다. 전용 잡으로 배선했다.
+
+**매트릭스도 하드코딩 목록이라 판별식을 붙였다.** `ci-module-coverage.test.ts` 가
+`settings.gradle.kts` 와의 **차집합 0** 을 강제한다(+ pgmq 이미지·5433 포트·조립 잡 존재 단언).
+**뮤테이션 확증** — 매트릭스에서 `automation` 을 지우자 FAILED.
+
+**⚠️ 첫 실행 시 선재 flaky 가 드러날 수 있다.** 이 저장소는 로컬 검증을 전제로 굴러왔다
+([[concurrent-testcontainers-suite-flaky]] · [[flaky-determination-needs-repeat-not-single-contrast]]).
+빨간불이 나면 **같은 명령을 연속 2회** 돌려 flaky 인지 회귀인지 먼저 가를 것.
+
+<details><summary>원 기록 (보존)</summary>
 
 **증상.** `.github/workflows/` 에 `frontend-ci.yml` · `infra-ci.yml` 둘뿐이다.
 **백엔드 테스트가 CI 에서 한 번도 돌지 않는다** — 머지 검증이 전적으로 로컬 수동 실행에 의존한다
@@ -67,6 +96,8 @@ MSW 모크 핸들러              276   GET 117 · POST 81 · DELETE 40 · PATCH
 켜기 전에 같은 명령을 **연속 2회** 돌려 flaky 목록을 먼저 확보할 것.
 
 **소관**. 인프라 / Maxi 결정(빌드 시간 정책).
+
+</details>
 
 ## identity-access — 컨트롤러 권한 게이트 DRY 부채 (D19, PR #277)
 
