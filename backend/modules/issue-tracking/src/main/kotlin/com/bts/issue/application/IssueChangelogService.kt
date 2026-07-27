@@ -170,10 +170,9 @@ class IssueChangelogService(
     // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
     // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean 이 타입으로 주입돼 이 기본값을 대체한다.
     private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
-    // 삭제된 댓글 판정 전용. 위 resolver 와 같은 Kotlin optional-parameter 주입 규약을 따른다 —
-    // prod 는 @Repository CommentRepository 빈이 타입으로 주입되고, 이 빈이 없는 축약 테스트
-    // 컨텍스트에서만 null 로 남는다. null 일 때는 fail-closed(댓글 항목 전량 마스킹)다.
-    private val commentRepository: CommentRepository? = null,
+    // 위 resolver 와 달리 기본값이 없다 — 삭제 댓글 판정은 선택적 기능이 아니다.
+    // 근거는 maskDeletedCommentBodies KDoc 참조.
+    private val commentRepository: CommentRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -437,8 +436,13 @@ class IssueChangelogService(
      * ([maskItemIfInvisible])이 item 을 남긴 채 값만 null 로 만드는 것과 동일한 시맨틱이다.
      *
      * **fail-closed.**
-     * 활성 목록에 없으면 가린다. 미존재 id·형식이 깨진 field·[commentRepository] 미주입이
-     * 전부 "가림" 으로 수렴한다 — 판정 불능일 때 노출하는 쪽으로 넘어지면 위 우회가 되살아난다.
+     * 활성 목록에 없으면 가린다. 미존재 id 도 형식이 깨진 field 도 전부 "가림" 으로 수렴한다 —
+     * 판정 불능일 때 노출하는 쪽으로 넘어지면 위 우회가 되살아난다.
+     *
+     * **[commentRepository] 의존은 선택적이 아니다.**
+     * 마스킹이 없으면 D1 모더레이션이 우회되므로 타입으로 필수를 못 박는다. nullable 로 두면
+     * 다음 사람이 "있으면 좋은 의존" 으로 읽고 주입을 빠뜨려도 컴파일이 통과하는데, 그 순간
+     * 이 봉인이 조용히 사라진다. 판정 불능 상태 자체를 만들지 않는 편이 런타임 fallback 보다 낫다.
      *
      * **배치 1회.**
      * 이력 페이지 하나에 댓글 수정 항목이 여러 개 들어갈 수 있어 건별 조회는 N+1 이다.
@@ -455,22 +459,9 @@ class IssueChangelogService(
         val commentItems = groups.flatMap { it.items }.filter { it.field.startsWith(COMMENT_FIELD_PREFIX) }
         if (commentItems.isEmpty()) return groups
 
-        val repository = commentRepository
+        // 파싱 실패분은 여기서 빠지고, maskIfDeletedComment 가 "활성 목록에 없음" 으로 가린다.
         val activeIds =
-            if (repository == null) {
-                // 축약 테스트 컨텍스트 등 빈 미주입 — 판정 불능이므로 전량 마스킹으로 넘어진다.
-                // prod 조립은 @Repository 빈이 주입되므로 이 로그가 보이면 컨텍스트 구성 오류 신호다.
-                log.warn(
-                    "comment_history_mask_fail_closed issueId={} itemCount={} " +
-                        "— CommentRepository 미주입으로 댓글 이력 본문을 전량 마스킹합니다",
-                    issueId,
-                    commentItems.size,
-                )
-                emptySet()
-            } else {
-                // 파싱 실패분은 여기서 빠지고, maskIfDeletedComment 가 "활성 목록에 없음" 으로 가린다.
-                repository.findActiveIds(commentItems.mapNotNull { parseCommentId(it.field) }.toSet(), issueId)
-            }
+            commentRepository.findActiveIds(commentItems.mapNotNull { parseCommentId(it.field) }.toSet(), issueId)
 
         return groups.map { group ->
             group.copy(items = group.items.map { item -> maskIfDeletedComment(item, activeIds) })

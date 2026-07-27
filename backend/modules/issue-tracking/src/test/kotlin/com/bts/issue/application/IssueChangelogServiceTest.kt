@@ -37,6 +37,10 @@ class IssueChangelogServiceTest : DescribeSpec({
     val userLookupPort = mockk<UserLookupPort>()
     val issueRepository = mockk<IssueRepository>()
 
+    // strict mock — 스텁하지 않은 호출은 예외다. 댓글 항목이 없는 케이스에서 이 저장소를
+    // 건드리면(불필요한 DB 왕복) 해당 테스트가 죽는다.
+    val commentRepository = mockk<CommentRepository>()
+
     // 기본은 allow-all — 마스킹을 검증하는 케이스에서만 제한 resolver 로 override 한다.
     val sut =
         IssueChangelogService(
@@ -45,6 +49,7 @@ class IssueChangelogServiceTest : DescribeSpec({
             userLookupPort = userLookupPort,
             issueRepository = issueRepository,
             fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+            commentRepository = commentRepository,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -86,7 +91,13 @@ class IssueChangelogServiceTest : DescribeSpec({
         )
 
     beforeEach {
-        clearMocks(issueApplicationService, changeHistoryRepository, userLookupPort, issueRepository)
+        clearMocks(
+            issueApplicationService,
+            changeHistoryRepository,
+            userLookupPort,
+            issueRepository,
+            commentRepository,
+        )
         // projectId 조회는 마스킹 candidate 구성의 전제 — 모든 정상 경로에서 동일하게 stub.
         every { issueRepository.findProjectIdByKey("BTS") } returns projectId
     }
@@ -348,6 +359,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 userLookupPort = userLookupPort,
                 issueRepository = issueRepository,
                 fieldPermissionResolver = descriptionInvisibleResolver,
+                commentRepository = commentRepository,
             )
 
         fun groupWith(vararg items: IssueChangeItem): IssueChangeGroup =
@@ -428,6 +440,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     userLookupPort = userLookupPort,
                     issueRepository = issueRepository,
                     fieldPermissionResolver = assigneeInvisibleResolver,
+                    commentRepository = commentRepository,
                 )
 
             val assigneeItem =
@@ -483,6 +496,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     userLookupPort = userLookupPort,
                     issueRepository = issueRepository,
                     fieldPermissionResolver = customInvisibleResolver,
+                    commentRepository = commentRepository,
                 )
 
             val secretItem =
@@ -535,6 +549,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     userLookupPort = userLookupPort,
                     issueRepository = issueRepository,
                     fieldPermissionResolver = denyAllResolver,
+                    commentRepository = commentRepository,
                 )
 
             val statusItem = IssueChangeItem(field = "status", fromValue = "open", toValue = "closed")
@@ -594,8 +609,6 @@ class IssueChangelogServiceTest : DescribeSpec({
     // ──────────────────────────────────────────────────────────────────────────────
     describe("findChangelog — 삭제된 댓글 본문 마스킹") {
 
-        val commentRepository = mockk<CommentRepository>()
-
         val commentSut =
             IssueChangelogService(
                 issueApplicationService = issueApplicationService,
@@ -635,9 +648,6 @@ class IssueChangelogServiceTest : DescribeSpec({
             )
 
         beforeEach {
-            // 루트 beforeEach 의 clearMocks 대상이 아니므로 여기서 따로 초기화한다
-            // (호출 기록이 누적되면 아래 verify(exactly = 1) 가 두 번째 테스트부터 깨진다).
-            clearMocks(commentRepository)
             every { issueApplicationService.findByKey(actor, issueKey) } returns makeIssueResponse()
             every { changeHistoryRepository.countByIssue(issueId) } returns 1L
             every { userLookupPort.findDisplayNamesByIds(setOf(actorId1)) } returns mapOf(actorId1 to "Alice")
