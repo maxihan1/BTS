@@ -61,7 +61,11 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
   const deleteMutation = useDeleteWorkflowScheme()
 
   const handleSave = () => {
-    updateMutation.mutate({ name, description })
+    // ★ 위 useState 의 `?? ''` 정규화를 여기서 **되돌린다**.
+    // 안 되돌리면 이름만 고쳐도 DB 의 NULL 이 '' 로 바뀐다 — 두 값은 DB 에서 구분되고
+    // (`description TEXT`, V201) 백엔드 DTO 도 `String?` 라 받은 값을 그대로 저장한다.
+    // 어떤 화면도 NULL 과 '' 를 다르게 그리지 않아 눈으로는 못 잡는 변질이다.
+    updateMutation.mutate({ name, description: description.trim() === '' ? null : description })
   }
 
   const handleDelete = () => {

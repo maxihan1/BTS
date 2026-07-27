@@ -162,10 +162,17 @@ export interface CreateSchemeInput {
   description?: string
 }
 
-/** 스킴 수정 입력 — 백엔드 `UpdateWorkflowSchemeRequest.name` 은 non-null 이라 선택 필드가 아니다. */
+/**
+ * 스킴 수정 입력 — 백엔드 `UpdateWorkflowSchemeRequest.name` 은 non-null 이라 선택 필드가 아니다.
+ *
+ * `description` 이 `null` 을 받는 이유. DB 컬럼은 `description TEXT`(V201, NOT NULL 없음)라
+ * **NULL 과 '' 가 서로 다른 값**이고 백엔드 DTO 도 `String?` 이다. 폼은 textarea 제약 때문에
+ * null 을 '' 로 정규화해 들고 있으므로, 저장 시 **되돌려 보낼 수 있어야** 한다.
+ * 이 타입이 `string` 만 받으면 "설명 없음" 을 표현할 방법이 없어 NULL 이 '' 로 변질된다.
+ */
 export interface UpdateSchemeInput {
   name: string
-  description?: string
+  description?: string | null
 }
 
 /**

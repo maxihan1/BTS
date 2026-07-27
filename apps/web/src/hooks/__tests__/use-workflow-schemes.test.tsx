@@ -170,6 +170,106 @@ describe('useCreateWorkflowScheme', () => {
   })
 })
 
+/**
+ * assignable 캐시 무효화 회귀 방지 (TODOS §SCHEME_KEYS.assignable 캐시).
+ *
+ * `useAssignableWorkflowSchemes` 는 staleTime 30초인데 생성·수정·삭제 뮤테이션이
+ * list/detail 만 invalidate 했다. ⇒ SYSTEM_ADMIN 겸 PROJECT_ADMIN 이
+ * `/admin/workflow-schemes` 에서 스킴을 만든 뒤 30초 안에 배정 화면으로 가면
+ * 새 스킴이 드롭다운에 없다.
+ *
+ * 관리자 뮤테이션은 전역 자원을 다루므로 projectKey 를 모른다. 그래서 키를
+ * 레포 지배 관례인 **리소스-우선**(`['assignable-workflow-schemes', projectKey]`,
+ * use-components·use-boards 와 동형)으로 맞춰 prefix 하나로 전부 잡는다.
+ * (`predicate:` 방식은 이 레포에 선례가 0건이라 도입하지 않았다.)
+ *
+ * 뮤테이션 생산 지점 3곳을 **전수** 검증한다 — 하나만 검증하면 나머지가 무방비다
+ * ([[mutation-site-count-equals-verified-scope]]).
+ */
+describe('스킴 뮤테이션의 assignable 캐시 무효화', () => {
+  const ASSIGNABLE_PREFIX = ['assignable-workflow-schemes']
+
+  /** invalidateQueries 호출을 관측하기 위한 최소 형태 (전체 시그니처를 흉내 낼 필요가 없다) */
+  type InvalidateSpy = { mock: { calls: readonly (readonly unknown[])[] } }
+
+  /** invalidateQueries 를 감시하는 클라이언트 + 래퍼 */
+  function createSpyClient() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    return { client, spy, wrapper }
+  }
+
+  /** spy 호출 중 assignable prefix 를 무효화한 것이 있는가 */
+  function invalidatedAssignable(spy: InvalidateSpy): boolean {
+    return spy.mock.calls.some((call) => {
+      const arg = call[0] as { queryKey?: readonly unknown[] } | undefined
+      const key = arg?.queryKey
+      return Array.isArray(key) && key[0] === ASSIGNABLE_PREFIX[0]
+    })
+  }
+
+  it('생성 성공 시 assignable 캐시를 무효화한다', async () => {
+    const created: SchemeMutationResult = {
+      id: 1, key: 'new-scheme', name: '새 스킴', description: '',
+      isStandard: false, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+    }
+    server.use(
+      http.post('/api/v1/workflow-schemes', () => HttpResponse.json({ data: created }, { status: 201 })),
+    )
+
+    const { spy, wrapper } = createSpyClient()
+    const { result } = renderHook(() => useCreateWorkflowScheme(), { wrapper })
+
+    act(() => {
+      result.current.mutate({ key: 'new-scheme', name: '새 스킴' })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(invalidatedAssignable(spy)).toBe(true))
+  })
+
+  it('수정 성공 시 assignable 캐시를 무효화한다', async () => {
+    const updated: SchemeMutationResult = {
+      id: 1, key: 'alpha', name: '바뀐 이름', description: '',
+      isStandard: false, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z',
+    }
+    server.use(
+      http.put('/api/v1/workflow-schemes/alpha', () => HttpResponse.json({ data: updated })),
+    )
+
+    const { spy, wrapper } = createSpyClient()
+    const { result } = renderHook(() => useUpdateWorkflowScheme('alpha'), { wrapper })
+
+    act(() => {
+      result.current.mutate({ name: '바뀐 이름', description: null })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(invalidatedAssignable(spy)).toBe(true))
+  })
+
+  it('삭제 성공 시 assignable 캐시를 무효화한다', async () => {
+    server.use(
+      http.delete('/api/v1/workflow-schemes/alpha', () => new HttpResponse(null, { status: 204 })),
+    )
+
+    const { spy, wrapper } = createSpyClient()
+    const { result } = renderHook(() => useDeleteWorkflowScheme(), { wrapper })
+
+    act(() => {
+      result.current.mutate('alpha')
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(invalidatedAssignable(spy)).toBe(true))
+  })
+})
+
 describe('useUpdateWorkflowScheme', () => {
   it('스킴 수정 성공 시 낙관적 업데이트 후 서버 응답으로 갱신한다', async () => {
     // 생성·수정 응답은 카운트·mappings 를 싣지 않는다(백엔드 WorkflowSchemeResponse).

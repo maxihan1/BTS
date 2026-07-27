@@ -11,7 +11,7 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   verified --> [*]
   classDef category_todo fill:var(--muted),stroke:var(--border)
   classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  classDef category_done fill:oklch(from var(--success) l c h / 0.15),stroke:var(--success)
   class reported category_todo
   class triaged category_todo
   class fixing category_in_progress
@@ -28,7 +28,7 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   done --> [*]
   classDef category_todo fill:var(--muted),stroke:var(--border)
   classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  classDef category_done fill:oklch(from var(--success) l c h / 0.15),stroke:var(--success)
   class backlog category_todo
   class todo category_todo
   class doing category_in_progress
@@ -43,7 +43,7 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   closed --> [*]
   classDef category_todo fill:var(--muted),stroke:var(--border)
   classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  classDef category_done fill:oklch(from var(--success) l c h / 0.15),stroke:var(--success)
   class open category_todo
   class closed category_done"
 `;
@@ -59,7 +59,7 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   closed --> [*]
   classDef category_todo fill:var(--muted),stroke:var(--border)
   classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  classDef category_done fill:oklch(from var(--success) l c h / 0.15),stroke:var(--success)
   class open category_todo
   class in_progress category_in_progress
   class in_review category_in_progress
