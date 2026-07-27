@@ -192,7 +192,14 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
   쓰기 시점의 사실을 컨텍스트로 넘겨 onError 가 같은 것을 본다. 캐시 엔트리가 없던 경우는
   `removeQueries` 로 원상복구(값을 쓰는 게 아니라 엔트리를 없애야 한다).
 - ⬜ 계약 스냅샷의 **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡는다
-- ⬜ **`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다(자동 배정). 실제 404 는 「프로젝트 없음」
+- ⬜ **`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다. 실제 404 는 「프로젝트 없음」.
+  <br>2026-07-27 실측 — 프론트 `workflow-schemes.ts:243-247`(기록의 `:233-243` 은 줄 밀림)이 404→`null`→「미할당」로 읽는다.
+  백엔드 `ProjectWorkflowSchemeController.kt:115-117` 의 404 는 `projectLookupPort.findIdByKey` 실패 **한 곳뿐**이고,
+  배정 조회는 `WorkflowSchemeApplicationService.kt:468-477` 에서 미배정 시 **software-scheme 을 자동 배정**한다.
+  ⇒ **존재하지 않는 프로젝트 URL 로 들어가면 「스킴 미할당」 안내가 뜬다.**
+  처방 A(프론트를 백엔드에 맞춤)가 이연 범위에 맞으나, `UnassignedSchemeCard` 분기 · MSW 핸들러 ·
+  e2e `E2E-5 S10` 을 **함께** 제거해야 죽은 코드가 안 남는다. 처방 B(GET 의 자동 배정 = 부수효과 있는 GET 재고)는
+  계약 스냅샷 8 endpoint 전부에 영향 → 별도 스펙 작업.
 
 **기존 이연 3건.**
 - **도메인·DB 어휘 이연** — 도메인 `WorkflowScheme.isDefault` 와 DB 컬럼 `is_default` 는 그대로다
