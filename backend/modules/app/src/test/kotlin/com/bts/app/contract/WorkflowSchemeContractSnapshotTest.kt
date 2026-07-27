@@ -125,8 +125,8 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
 
     @Test
     fun `배정 응답의 assignedAt 이 ISO-8601 문자열이다 (리뷰 발견 1 회귀 가드)`() {
-        val assignResult =
-            send("PUT", "/api/v1/projects/$PROJECT_KEY/workflow-scheme", """{"schemeKey":"$STANDARD_SCHEME_KEY"}""", 200)
+        val body = """{"schemeKey":"$STANDARD_SCHEME_KEY"}"""
+        val assignResult = send("PUT", "$PROJECTS/$PROJECT_KEY/workflow-scheme", body, 200)
 
         val assignedAt = assignResult.path("data").path("assignedAt")
 
@@ -147,16 +147,19 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
      * 선단정하므로, 시드 누락으로 403 이 나면 그 본문이 계약으로 박제되지 않고 그 자리에서 실패한다.
      */
     private fun collectRawResponses(): Map<String, JsonNode> {
-        val created = send("POST", SCHEMES, """{"key":"$SCHEME_KEY","name":"계약 스냅샷 스킴","description":"contract"}""", 201)
-        val mappingCreated = send("POST", "$SCHEMES/$SCHEME_KEY/mappings", """{"issueTypeKey":"task","workflowKey":"simple"}""", 200)
+        val scheme = "$SCHEMES/$SCHEME_KEY"
+        val project = "$PROJECTS/$PROJECT_KEY"
+
+        val created = send("POST", SCHEMES, CREATE_BODY, 201)
+        val mappingCreated = send("POST", "$scheme/mappings", TYPED_MAPPING_BODY, 200)
         // 기본 매핑(issueTypeKey=null) 도 하나 심어 mappings[] 의 nullable 변형을 계약에 남긴다.
-        send("POST", "$SCHEMES/$SCHEME_KEY/mappings", """{"issueTypeKey":null,"workflowKey":"software-default"}""", 200)
-        val detail = send("GET", "$SCHEMES/$SCHEME_KEY", null, 200)
-        val updated = send("PUT", "$SCHEMES/$SCHEME_KEY", """{"name":"계약 스냅샷 스킴 v2","description":null}""", 200)
+        send("POST", "$scheme/mappings", DEFAULT_MAPPING_BODY, 200)
+        val detail = send("GET", scheme, null, 200)
+        val updated = send("PUT", scheme, UPDATE_BODY, 200)
         val list = send("GET", SCHEMES, null, 200)
-        val assignResult = send("PUT", "$PROJECTS/$PROJECT_KEY/workflow-scheme", """{"schemeKey":"$SCHEME_KEY"}""", 200)
-        val assignedScheme = send("GET", "$PROJECTS/$PROJECT_KEY/workflow-scheme", null, 200)
-        val assignable = send("GET", "$PROJECTS/$PROJECT_KEY/assignable-workflow-schemes", null, 200)
+        val assignResult = send("PUT", "$project/workflow-scheme", ASSIGN_BODY, 200)
+        val assignedScheme = send("GET", "$project/workflow-scheme", null, 200)
+        val assignable = send("GET", "$project/assignable-workflow-schemes", null, 200)
 
         return mapOf(
             "POST /api/v1/workflow-schemes" to created,
@@ -196,9 +199,16 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
 
     // ── 스냅샷 정규화 (plan D-6) ───────────────────────────────────────────────────
 
-    /** endpoint 라벨 맵 전체를 정규화한다. 라벨도 사전순으로 정렬해 삽입 순서에 의존하지 않게 만든다. */
+    /**
+     * endpoint 라벨 맵 전체를 정규화한다. 라벨도 사전순으로 정렬해 삽입 순서에 의존하지 않게 만든다.
+     *
+     * 선두에 `$comment` 를 박는다 — JSON 은 주석을 못 달아서, 파일만 열어본 사람이 실패를 보고
+     * 값을 손으로 고쳐 **계약을 조용히 위조**하는 것을 막을 안내가 파일 안에 없기 때문이다.
+     * Task 2 는 endpoint 라벨별로 파싱하므로 이 루트 키는 프론트 `.strict()` 검증에 영향을 주지 않는다.
+     */
     private fun canonical(raw: Map<String, JsonNode>): JsonNode {
         val root = JsonNodeFactory.instance.objectNode()
+        root.put("\$comment", SNAPSHOT_NOTE)
         raw.keys.sorted().forEach { root.set<JsonNode>(it, canonicalNode(raw.getValue(it))) }
         return root
     }
@@ -274,6 +284,13 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
         /** 스냅샷 재생성 스위치 — 손으로 편집하지 말고 이 시스템 프로퍼티로 재생성한다. */
         const val UPDATE_FLAG = "contract.snapshot.update"
 
+        /** 스냅샷 파일 선두에 박히는 안내 — JSON 에 주석을 달 수 없어 데이터로 넣는다. */
+        const val SNAPSHOT_NOTE =
+            "자동 생성 파일 — 손으로 편집하지 말 것. " +
+                "재생성: cd backend && ./gradlew :modules:app:test " +
+                "--tests '*WorkflowSchemeContractSnapshotTest*' -Dcontract.snapshot.update=true. " +
+                "값은 타입별 표준값으로 정규화돼 있다(plan D-6) — 계약은 필드명·타입·nullability 이지 값이 아니다."
+
         val USER_ID: UUID = UUID.fromString("44444444-4444-4444-8444-444444444444")
         val PROJECT_ID: UUID = UUID.fromString("55555555-5555-4555-8555-555555555555")
         const val USERNAME = "wfscheme-contract-snapshot-admin"
@@ -289,6 +306,13 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
 
         /** V201 이 시드하는 표준 스킴 — 회귀 가드 테스트가 스킴 생성 없이 배정만 할 때 쓴다. */
         const val STANDARD_SCHEME_KEY = "software-scheme"
+
+        // 요청 본문 — 호출부 줄 길이를 detekt MaxLineLength(120) 아래로 유지하려고 상수로 뺀다.
+        const val CREATE_BODY = """{"key":"$SCHEME_KEY","name":"계약 스냅샷 스킴","description":"contract"}"""
+        const val TYPED_MAPPING_BODY = """{"issueTypeKey":"task","workflowKey":"simple"}"""
+        const val DEFAULT_MAPPING_BODY = """{"issueTypeKey":null,"workflowKey":"software-default"}"""
+        const val UPDATE_BODY = """{"name":"계약 스냅샷 스킴 v2","description":null}"""
+        const val ASSIGN_BODY = """{"schemeKey":"$SCHEME_KEY"}"""
 
         val UUID_REGEX = Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
         val INSTANT_REGEX = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$""")

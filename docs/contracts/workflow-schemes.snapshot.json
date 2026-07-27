@@ -1,4 +1,5 @@
 {
+  "$comment" : "자동 생성 파일 — 손으로 편집하지 말 것. 재생성: cd backend && ./gradlew :modules:app:test --tests '*WorkflowSchemeContractSnapshotTest*' -Dcontract.snapshot.update=true. 값은 타입별 표준값으로 정규화돼 있다(plan D-6) — 계약은 필드명·타입·nullability 이지 값이 아니다.",
   "GET /api/v1/projects/{k}/assignable-workflow-schemes" : {
     "data" : [
       {
