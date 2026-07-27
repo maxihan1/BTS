@@ -24,6 +24,7 @@ import java.util.UUID
  * - [insert] — 댓글 1건 삽입.
  * - [listByIssue] — issueId 기준 활성 댓글 목록 (`created_at` ASC).
  * - [findActive] — 활성 댓글 단건 조회.
+ * - [findActiveIds] — 주어진 id 중 활성인 것만 배치 조회.
  * - [updateBody] — 활성 댓글의 본문·수정 시각 갱신.
  * - [softDelete] — 활성 댓글의 `deleted_at` 기록.
  *
@@ -128,6 +129,40 @@ class CommentRepository(
             .and(COMMENTS.DELETED_AT.isNull)
             .fetchOne()
             ?.let(::toComment)
+    }
+
+    /**
+     * [ids] 중 `issueId` 소속이면서 활성(`deleted_at IS NULL`) 인 댓글 id 만 반환한다.
+     *
+     * [com.bts.issue.application.IssueChangelogService] 의 삭제 댓글 이력 마스킹 판정용이다.
+     * 이력 한 페이지에 댓글 수정 항목이 여러 개 들어갈 수 있어 건별로 [findActive] 를 부르면
+     * N+1 쿼리가 되므로, 페이지 내 댓글 id 를 모아 한 번에 조회한다.
+     *
+     * [ids] 가 비면 **쿼리를 실행하지 않고** 빈 집합을 반환한다. `IN ()` 은 어차피 빈 결과라
+     * 불필요한 DB 왕복일 뿐이고, 이력에 댓글 항목이 하나도 없는 페이지가 흔하다.
+     *
+     * 존재하지 않는 id 는 예외 없이 결과에서 빠진다 — 호출자는 "활성 목록에 없으면 가린다"
+     * 는 fail-closed 판정을 하므로 미존재도 삭제와 같은 취급이 안전하다.
+     *
+     * @param ids     판정할 댓글 UUID 집합.
+     * @param issueId 댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
+     * @return [ids] 중 해당 이슈 소속 활성 댓글 id 집합. 없으면 빈 집합.
+     */
+    @Transactional(readOnly = true)
+    fun findActiveIds(
+        ids: Set<UUID>,
+        issueId: UUID,
+    ): Set<UUID> {
+        if (ids.isEmpty()) return emptySet()
+        log.debug("findActiveIds idCount={} issueId={}", ids.size, issueId)
+        return dsl.select(COMMENTS.ID)
+            .from(COMMENTS)
+            .where(COMMENTS.ID.`in`(ids))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
+            .fetch(COMMENTS.ID)
+            .filterNotNull()
+            .toSet()
     }
 
     /**
