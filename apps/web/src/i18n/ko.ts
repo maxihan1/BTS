@@ -301,6 +301,22 @@ export const issueDetailStrings = {
   changelogValueNone: '(없음)',
   /** 변경 이력 — 삭제된 엔티티 폴백 표시 */
   changelogDeletedEntity: '(삭제됨)',
+  /**
+   * 변경 이력 — 댓글 본문 수정 항목의 필드 표시명 (FR-CO-02).
+   *
+   * 백엔드가 보내는 field 는 `comment:{commentId}` 라 `changelogFieldLabels` 테이블에
+   * 넣을 수 없다(키가 댓글마다 다르다). commentId 는 사용자에게 의미 없는 UUID 이므로
+   * 표시명에 싣지 않는다.
+   */
+  changelogCommentFieldLabel: '댓글',
+  /**
+   * 변경 이력 — 삭제된 댓글이라 본문이 가려진 항목 표시 (FR-CO-02 S10).
+   *
+   * `changelogValueNone`("(없음)") 과 **반드시 다른 문구**다. 전자는 "값이 비어 있었다",
+   * 이쪽은 "값은 있었지만 댓글이 삭제돼 가렸다" 로 의미가 다르다. 같은 문구를 쓰면
+   * 사용자가 "빈 댓글로 고쳤나" 로 오해한다.
+   */
+  changelogCommentMasked: '(삭제된 댓글)',
   /** 변경 이력 섹션 제목 */
   changelogSectionTitle: '변경 이력',
   /** 변경 이력 없을 때 빈 상태 메시지 */
