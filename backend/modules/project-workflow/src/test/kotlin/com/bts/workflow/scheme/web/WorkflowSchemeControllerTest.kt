@@ -3,10 +3,14 @@
 package com.bts.workflow.scheme.web
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeRef
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.workflow.domain.StateCategory
+import com.bts.workflow.domain.Workflow
+import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
@@ -28,6 +32,7 @@ import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -708,6 +713,72 @@ class WorkflowSchemeControllerTest {
             createdAt = Instant.parse("2026-01-01T00:00:00Z"),
             updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
             deletedAt = null,
+        )
+
+    // ── EC-4. mappings[].isDefault 판정 축 ────────────────────────────────────────
+
+    @Test
+    fun `issueTypeId 가 있으나 cross-BC 조회 실패면 issueTypeKey 는 null 이지만 isDefault 는 false 다`() {
+        // 이슈타입이 실재하지만 issue-tracking 조회가 실패한 상황(삭제·권한·장애).
+        val mapping =
+            SchemeIssueTypeMapping(
+                id = 1L,
+                schemeId = WorkflowSchemeId(10L),
+                issueTypeId = IssueTypeId(99L),
+                workflowId = UUID.randomUUID(),
+                createdAt = Instant.parse("2026-07-27T00:00:00Z"),
+            )
+
+        val detail = MappingResponseDetail.from(mapping, issueTypeRef = null, workflow = someWorkflow())
+
+        assertThat(detail.issueTypeKey).isNull()
+        // ★ 핵심 — issueTypeRef 가 null 이라고 기본 매핑으로 단정하면 조회 실패가 기본 매핑으로 둔갑한다.
+        // 판정은 반드시 도메인 필드 issueTypeId 로 해야 한다.
+        assertThat(detail.isDefault).isFalse()
+    }
+
+    @Test
+    fun `issueTypeId 가 null 이면 isDefault 는 true 다`() {
+        val mapping =
+            SchemeIssueTypeMapping(
+                id = 2L,
+                schemeId = WorkflowSchemeId(10L),
+                issueTypeId = null,
+                workflowId = UUID.randomUUID(),
+                createdAt = Instant.parse("2026-07-27T00:00:00Z"),
+            )
+
+        val detail = MappingResponseDetail.from(mapping, issueTypeRef = null, workflow = someWorkflow())
+
+        assertThat(detail.isDefault).isTrue()
+    }
+
+    @Test
+    fun `issueTypeRef 가 있으면 키·이름이 실리고 isDefault 는 false 다`() {
+        val mapping =
+            SchemeIssueTypeMapping(
+                id = 3L,
+                schemeId = WorkflowSchemeId(10L),
+                issueTypeId = IssueTypeId(5L),
+                workflowId = UUID.randomUUID(),
+                createdAt = Instant.parse("2026-07-27T00:00:00Z"),
+            )
+
+        val detail =
+            MappingResponseDetail.from(mapping, issueTypeRef = IssueTypeRef(key = "bug", name = "버그"), workflow = someWorkflow())
+
+        assertThat(detail.issueTypeKey).isEqualTo("bug")
+        assertThat(detail.issueTypeName).isEqualTo("버그")
+        assertThat(detail.isDefault).isFalse()
+    }
+
+    /** 최소 유효 워크플로우 — 상태 1개, 전이 0개(도메인 invariant 는 states 비어있지 않음만 요구). */
+    private fun someWorkflow(): Workflow =
+        Workflow.of(
+            key = "simple",
+            name = "단순 워크플로우",
+            states = listOf(WorkflowState(key = "open", name = "열림", category = StateCategory.TODO, displayOrder = 0)),
+            transitions = emptyList(),
         )
 
     private fun buildSchemeDetail(
