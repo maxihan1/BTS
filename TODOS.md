@@ -237,7 +237,30 @@ fallback 이 없다(`IdentityAccessWorkflowSchemePermissionResolver.kt:52-56, 76
 
 **Depends on / blocked by**. 권한 스킴을 실제로 둘 이상 운용하기 시작하는 시점. 그전까지는 잠복.
 
-## project-workflow — SchemeHandlerPermissionMatrix 봉인의 3가지 한계 (PR #314 뮤테이션 M3 + 코드리뷰 주입)
+## project-workflow — SchemeHandlerPermissionMatrix 봉인의 한계 (부분 해소 2026-07-27)
+
+**부분 해소.** 감사가 제시한 **즉시 조치**를 적용했다 — `WorkflowSchemeControllerTest` 의
+`PUT 수정`·`DELETE 삭제` 테스트에 `verify { permissionResolver.requirePermission(actor,
+MANAGE_SCHEME, Global) }` 를 추가해 **무방비였던 2핸들러의 권한 인자를 고정**했다.
+뮤테이션 확증 — update 핸들러의 `MANAGE_SCHEME` → `ASSIGN_SCHEME` 주입 시 FAILED
+(봉인 축2 는 이 뮤테이션에 green 을 유지한다).
+
+**★한계 (3)이 기록보다 나쁘다 — 맵 값이 죽은 데이터다.** 원 기록은 축2 가 `containsKey` 만 본다고
+적었는데, 실측하면 `HandlerClassification(val permission, val scopeKind)` 의 **두 필드를 읽는 코드가
+0곳**이다(`HANDLER_CLASSIFICATION` 등장 위치 전수 = 선언·`containsKey`·메시지뿐).
+즉 맵은 등록부조차 아니고 **값의 절반이 아무 역할도 하지 않는다**.
+
+**잔여 — 런타임 대조로 3한계 동시 해소.** `CapturingPermissionResolverStub`
+(FQN `com.bts.workflow.scheme.web.ProjectWorkflowSchemeControllerTest.CapturingPermissionResolverStub`,
+중첩 클래스라 최상위로 추출 필요)을 써서 MockMvc 로 **10핸들러 전수 호출** → 캡처된
+`(permission, scope)` 를 `HANDLER_CLASSIFICATION` 과 대조한다. 이 작업의 본질은
+**맵 값을 처음으로 읽게 만드는 것**이다 — 그러면 축2 의 죽은 데이터가 살아나고, 실제로 핸들러를
+태우므로 축1 의 "안 타는 분기" 도 자동 해소된다.
+판별 범위는 패키지가 아니라 **의존 관계**로 바꾼다 — `WorkflowSchemeApplicationService` 를 주입받는
+`@RestController` 를 ArchUnit 으로 전 모듈 수집(현재 2클래스/10핸들러로 동일하나, 패키지 밖
+컨트롤러가 생기면 자동 편입).
+
+<details><summary>원 기록 (보존)</summary>
 
 **결정 (Maxi 확정, 2026-07-26 D12=B)**. **이번 PR 범위 밖.** N4 의 결함 클래스(가드 자체가 없음)는
 축1(호출 강제)이 이미 완전히 막고 있고, 맵 값 drift 는 더 좁은 클래스다. 대신 테스트 KDoc 에 한계를

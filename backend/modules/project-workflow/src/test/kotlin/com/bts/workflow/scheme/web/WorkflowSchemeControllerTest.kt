@@ -369,6 +369,18 @@ class WorkflowSchemeControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.key").value("team-a-scheme"))
             .andExpect(jsonPath("$.data.name").value("팀 A 스킴 수정"))
+
+        // ★권한 인자까지 대조한다 (TODOS §SchemeHandlerPermissionMatrix 봉인의 한계 — 즉시 조치).
+        // SchemeHandlerPermissionMatrix 는 "requirePermission 호출이 바이트코드에 존재하는가" 까지만 본다.
+        // 어떤 permission·scope 로 부르는지는 대조하지 않으므로, 여기서 인자를 고정하지 않으면
+        // MANAGE_SCHEME 을 다른 권한으로 바꿔도 봉인이 green 을 유지한다(뮤테이션 M3 로 실증된 성질).
+        verify {
+            permissionResolver.requirePermission(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        }
     }
 
     // ── C5. DELETE /api/v1/workflow-schemes/{schemeKey} — 204 삭제 ────────────
@@ -382,6 +394,18 @@ class WorkflowSchemeControllerTest {
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme"))
             .andExpect(status().isNoContent)
+
+        // ★권한 인자까지 대조한다 (TODOS §SchemeHandlerPermissionMatrix 봉인의 한계 — 즉시 조치).
+        // SchemeHandlerPermissionMatrix 는 "requirePermission 호출이 바이트코드에 존재하는가" 까지만 본다.
+        // 어떤 permission·scope 로 부르는지는 대조하지 않으므로, 여기서 인자를 고정하지 않으면
+        // MANAGE_SCHEME 을 다른 권한으로 바꿔도 봉인이 green 을 유지한다(뮤테이션 M3 로 실증된 성질).
+        verify {
+            permissionResolver.requirePermission(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        }
     }
 
     // ── M1. POST /api/v1/workflow-schemes/{schemeKey}/mappings — 200 매핑 추가 ─
