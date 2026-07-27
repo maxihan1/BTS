@@ -376,22 +376,27 @@
 
 #### §4.4.2 FR-CO-02 — 댓글 수정 + 삭제 (소프트)
 
-**우선순위**. 필수 | **선행**. §4.4.1 | **Plan slug**. (미착수)
+**우선순위**. 필수 | **선행**. §4.4.1 | **Plan slug**. `fr-co-02`
 
 > **분할 근거 (Maxi 확정 D1).** 작성과 수정·삭제의 위험 성격이 다르다. 작성은 `create()` 재사용으로
-> 얇고 실질 위험이 알림 입력 분포 하나인데, 수정·삭제는 도메인 확장(`Comment` 전 필드 `val` → 본문
-> 변경) + repo 쓰기 메서드 신설 + **"누가 남의 댓글을 지울 수 있나" 정책 결정**이 붙는다.
+> 얇고 실질 위험이 알림 입력 분포 하나인데, 수정·삭제는 도메인 확장(`copy()` 로 본문 변경 — 불변 유지)
+> + repo 쓰기 메서드 신설 + **"누가 남의 댓글을 지울 수 있나" 정책 결정**이 붙는다.
+>
+> **착수 후 정정.** 이 문단은 원래 *"`Comment` 전 필드 `val` → 본문 변경"* 이라고 적혀 있었다. 실제
+> 구현은 **`val` 을 해제하지 않았다** — `data class` 의 `copy()` 로 새 인스턴스를 만들어 FR-CO-01 의
+> 불변 도메인 원칙을 그대로 지켰다. 가변 필드를 열면 애그리거트 밖에서 본문이 바뀔 통로가 생기고,
+> 그 통로는 테스트로 고정되지 않는다.
 >
 > **선례가 예고하는 것.** Worklog 는 수정·삭제를 **작성자 한정**(`existing.authorId != actor` → 403)으로
 > 두고 관리자 우회를 두지 않았다. 이 대칭을 따를지 모더레이션을 도입할지는 CO-02 자기 ADR 에서 결정한다.
 
-- [ ] D1. 도메인 — `Comment` 본문 변경 허용(전 필드 `val` 해제) + `updatedAt` 갱신 (책임. backend-engineer)
-- [ ] D2. 명세 — 모더레이션 정책 결정 (작성자 한정 vs PROJECT_ADMIN 우회) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — 마이그레이션 0건 예상 (`deleted_at` 기존) (책임. db-engineer)
-- [ ] D4. 백엔드 — `PATCH`/`DELETE /api/v1/issues/{key}/comments/{commentId}` + repo `update`/`softDelete` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 수정/삭제 버튼 · 인라인 편집 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — `Comment` 는 **`val` 유지**, `data class` 의 `copy()` 로 본문·`updatedAt` 갱신(불변 도메인 원칙 보존 — 착수 전 추정이던 "전 필드 `val` 해제" 정정). `CommentNotFoundException` 신설(`RuntimeException` 직접 상속 = 형제 관례). 리포지토리 3종(`findActive`·`updateBody`·`softDelete`) **전부 `issueId` 술어 보유** — 소속 대조를 서비스의 성실성이 아니라 쿼리 술어로 고정 (책임. backend-engineer) — PR #316
+- [x] D2. 명세 — 시나리오 13 · FR 17 · NFR 8 · 엣지 10 · 완료기준 12. **모더레이션 B안(Maxi 확정)** — 수정=작성자 한정(**PROJECT_ADMIN 도 403**), 삭제=작성자 **OR** `SOFT_DELETE` 보유자. 근거는 모더레이션의 실제 필요가 "지우기"이고 "남의 글 고치기"는 그 필요를 못 채우면서 기록 신뢰만 깎는다는 것(Jira 도 `Edit All Comments`/`Delete All Comments` 분리). **★생산자 비대칭으로 Worklog 선례가 전이되지 않는다** — 댓글에는 automation `AddCommentAction` 이 있고 worklog 에는 automation 액션이 0건이라, 같은 "작성자 한정"이 댓글에서는 *자동화 댓글을 룰 소유자만 지울 수 있다*는 뜻이 된다. 선례가 조용했던 이유는 답이 같아서가 아니라 질문이 없어서다 (책임. backend-engineer) — PR #316
+- [x] D3. 데이터 모델 — **마이그레이션 0건.** `V035__comments.sql` 이 `deleted_at`·`updated_at`·부분 인덱스(`WHERE deleted_at IS NULL`)를 이미 보유. 수정 이력은 FR-HS-01 `issue_change_group`/`issue_change_item` **재사용** — 신규 테이블 0 · 신규 권한 enum 0 · 신규 시드 마이그레이션 0 (책임. db-engineer) — PR #316
+- [x] D4. 백엔드 — `PATCH`(200)/`DELETE`(204) `/api/v1/issues/{key}/comments/{commentId}` + repo `findActive`/`updateBody`/`softDelete`. `UpdateCommentRequest(body)` **저작자 필드 없음**(§4.4.1 D4 계승). 예외 핸들러 3종 추가 — `CommentNotFoundException`→404 · `MethodArgumentTypeMismatchException`→400 · `HttpMessageNotReadableException`→400(뒤 둘은 `@PathVariable UUID`·`@RequestBody` 도입으로 기존 KDoc 의 "대상 없어 생략" 전제가 깨진 자리 — 그대로 뒀으면 catch-all 로 떨어져 **500 회귀**). ★`IssueChangelogService` 마스킹 — 삭제된 댓글의 이력 본문을 **조회 시점에** 가려 모더레이션 우회를 막는다(저장은 손대지 않아 append-only 무손상) (책임. backend-engineer) — PR #316
+- [x] D5. 백엔드 테스트 — 서비스 29 + 컨트롤러 24 + 리포지토리 15 + 이력 24(`IssueChangelogServiceTest`) + 이력 기록 13(`IssueHistoryRecorderTest`) + `IssueImportAdapterTest` 60 무회귀. **뮤테이션 21종 전량 red** — T1 6(리포지토리 술어 2종 × 메서드 3) · T2 2 · T3 2 · T4 3 · T8 4 · T11 2 · T10 2(수정 게이트를 삭제 게이트 술어로 치환 → CO2-2 **단독** red / `recordCommentEdited` 호출 제거 → CO2-6 **단독** red) (책임. backend-engineer) — PR #316
+- [x] D6. 프론트 UI — 수정·삭제 버튼(**모더레이터에게는 삭제만** — `canEdit = canUpdate && isAuthor` / `canDelete = canUpdate && (isAuthor || canModerate)` 로 백엔드 술어를 그대로 미러) · 인라인 편집(취소 시 원문 복원) · Radix `AlertDialog` 삭제 확인 · `updatedAt != createdAt` 일 때 "(수정됨)" · `bodyHtml` 을 `dangerouslySetInnerHTML` 로 렌더(`IssueDescription` NFR1 선례 미러 — 패턴 재발명 0). 현재 사용자·`SOFT_DELETE` 보유 여부는 props 가 아니라 `useAuthUser`·`useIssuePermissions` 훅으로 취득해 상위 컴포넌트 3개로의 번짐 차단. 이력 탭에 `comment:` 라벨("댓글") · 삭제분 "(삭제된 댓글)" 표시 · 긴 본문 절단(**`comment:` 접두사 한정** — 공통 경로에 넣으면 `summary`·`description` 등 기존 필드가 잘리는 회귀) (책임. frontend-engineer) — PR #316
+- [x] D7. E2E (책임. qa-engineer) — PR #316 (`issue-comment-edit-delete.spec.ts` 5시나리오: 수정→반영·"(수정됨)" / 삭제→목록에서 사라짐 / 취소→원문 유지 / 남의 댓글에 수정 버튼 부재 / 본문 HTML 렌더. 기존 `issue-comment.spec.ts` 4시나리오 무회귀. **브라우저 눈확인 실시**)
 
 ## §5 링크 / 히스토리 / 템플릿 (6개)
 

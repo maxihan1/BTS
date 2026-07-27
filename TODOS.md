@@ -290,3 +290,117 @@ FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 그 절차다.
 `user-fixtures` 를 맞추는 편이 자연스럽다(토큰에서 도출되는 값이 곧 실사용 id 이므로). 바꾼 뒤
 **`useUsersByIds` 를 mock 하지 않는 통합 테스트 1건**을 남겨 같은 회귀가 다시 숨지 못하게 한다.
 
+## issue-tracking — 댓글은 모더레이터가 지울 수 있는데 Worklog 는 작성자 한정이다 (PR #316 결정 부산물)
+
+**무엇이 어긋나 있나.** 같은 이슈 화면의 두 자식 엔티티가 삭제 정책이 다르다.
+
+| 엔티티 | 수정 | 삭제 | 근거 |
+|---|---|---|---|
+| Comment (FR-CO-02) | 작성자 한정 | 작성자 **OR** `SOFT_DELETE` 보유자 | ADR `2026-07-27-fr-co-02-comment-moderation` |
+| Worklog (FR-WL) | 작성자 한정 | **작성자 한정** (`WorklogService.kt:254`·`:328`, 관리자 우회 분기 0건) | 선례 그대로 |
+
+**왜 정당한 비대칭인가.** 생산자 구성이 다르다. 댓글에는 automation `AddCommentAction` 이 있어
+자동화가 만든 댓글의 저작자가 **룰 소유자**로 고정된다 — 작성자 한정으로 두면 그 룰 소유자 말고는
+아무도 못 지운다. worklog 에는 automation 액션이 **0건**이라 이 문제 자체가 없다. 즉 Worklog 선례가
+조용했던 이유는 답이 같아서가 아니라 질문이 없어서다.
+
+**그런데 사용자에게는 그렇게 안 보인다.** 관리자가 부적절한 댓글은 지울 수 있는데 부적절한 작업
+기록은 못 지운다. 설명 없이 마주치면 일관성 없는 제품으로 읽힌다.
+
+**착수 시 첫 단계**. 먼저 **필요가 실재하는지** 확인한다 — 운영에서 "남의 워크로그를 지워야 했다"
+사례가 있었나. 없으면 비대칭을 유지하고 대신 **사유를 제품 문서에 명시**하는 것으로 끝낸다.
+있으면 worklog 삭제에 같은 `SOFT_DELETE` 술어를 적용하되, 댓글과 **같은 판별식**(작성자 OR
+모더레이터, 수정은 작성자 한정)을 쓴다. 술어를 새로 발명하면 세 번째 정책이 생긴다.
+
+**소관**. FR-WL. `docs/plan/product/issue-tracking.md` 워크로그 절.
+
+## issue-tracking / identity-access — 이슈 보안등급이 댓글 수정·삭제를 막지 않는다 (PR #316 리뷰 발견, 선재)
+
+**증상**. 이슈 보안 등급(security level, FR-PM-06)은 **`VIEW` 에만** 적용된다. `UPDATE`·`SOFT_DELETE`
+는 등급 게이트를 통과하지 않는다.
+
+```
+IdentityAccessIssuePermissionResolver.kt:86
+    if (permission == IssuePermission.VIEW && scope is IssueScope.Issue) {
+        return passesSecurityGate(actorId, scope.key, membership.role.name)
+    }
+    return true          ← UPDATE·SOFT_DELETE 는 여기로 빠진다
+```
+
+**결과.** 기밀 이슈를 **볼 수 없는** 프로젝트 멤버가, 매트릭스에 `EDIT_ISSUE` 만 있으면 그 이슈에
+대해 `UPDATE` 를 요구하는 경로를 통과한다. 댓글 수정·삭제는 물론 이슈 자체의 `PATCH` 도 해당한다.
+
+**선재 성질이다.** 이 PR 이 만든 결함이 아니고, FR-CO-01 스펙이 *"`IssueScope.Issue` 고정 = 보안등급
+우회 차단"* 이라고 적어둔 것이 **사실과 달랐다**(PR #316 독립 리뷰 F5 가 실측으로 반증). 다만 이 PR 이
+`UPDATE` 를 요구하는 **쓰기 표면을 2개 늘렸으므로**(댓글 `PATCH`·`DELETE`) 노출 면적은 커졌다.
+
+**착수 시 첫 단계**. 등급 게이트를 어느 권한까지 확대할지 **먼저 결정**한다 — 전 권한인지, 쓰기 계열
+(`UPDATE`·`SOFT_DELETE`·`TRANSITION`)인지. 그 다음 `IdentityAccessIssuePermissionResolver:86` 의
+조건을 넓히고, **넓히기 전에 실패하는 테스트를 먼저** 둔다(현재 이 성질을 고정한 테스트가 0건이라
+지금 상태로는 넓혀도 좁혀도 아무 테스트가 반응하지 않는다). 확대는 기존 사용자의 권한을 **줄이는**
+방향이라 회귀 폭이 크다 — 프로젝트 멤버십 시드가 걸린 테스트를 전 모듈 grep 할 것.
+
+**소관**. FR-PM-06.
+
+## issue-tracking — 이력 조회 응답 크기에 애플리케이션 상한이 없다 (PR #316 증폭, 선재)
+
+**증상**. `GET /api/v1/issues/{key}/changelog` 의 offset 모드는 `@PageableDefault(size = 20)`
+(`IssueController.kt:514`) **기본값만** 있고 애플리케이션 정책 상한이 없다. `?size=` 로 올릴 수 있고,
+남는 것은 Spring Data Web 프레임워크 기본값(`spring.data.web.pageable.max-page-size`, 기본 2000)뿐이다
+— 이 키는 설정 파일에 **없다**(전 backend grep 0건). cursor 모드는 `limit` 초과를 400 으로 막는데
+offset 모드에는 같은 가드가 없다.
+
+**이 FR 이 증폭 계수를 키운다.** 댓글 수정 이력 1건은 `from_value`(이전 본문) + `to_value`(새 본문)
+= 최대 32,000자 × 2 를 싣는다. 기존 필드 변경(`priority`, `status` 등)은 값이 짧아 문제가 드러나지
+않았다. 프레임워크 상한까지 긁으면 한 응답이 2,000행 × 64,000자 = 최대 1.28억 자(UTF-8 한글이면
+수백 MB) 가 된다.
+
+**착수 시 첫 단계**. 상한을 **어느 계층에 둘지** 정한다 — (a) `spring.data.web.pageable.max-page-size`
+를 명시 설정, (b) 컨트롤러에서 `size` 검증 후 400, (c) 이력 응답에서 `comment:` 항목 본문을 서버가
+절단. (c) 는 프론트가 이미 화면 절단을 하므로 중복이나, **API 를 직접 호출하는 소비자**까지 막는
+유일한 지점이다. 셋은 배타적이지 않다. 결정 후 **큰 `size` 로 요청하는 통합 테스트 1건**을 남긴다.
+
+**소관**. 페이지네이션 정책. 이 PR 이 만든 성질이 아니라 드러낸 성질이다.
+
+## issue-tracking / notification — 댓글 수정·삭제 이벤트가 발행되지 않는다 (PR #316 범위 밖)
+
+**현황**. 댓글 **작성**은 `IssueCommented` 를 발행한다(`IssueDomainEvent.kt:182`, automation COMMENTED
+트리거가 소비). 수정·삭제에 대응하는 이벤트 타입은 **없다** — `IssueCommentUpdated`·`IssueCommentDeleted`
+가 존재하지 않는다.
+
+**그래서 무엇이 안 되나.** 자동화 룰이 "댓글이 수정되면" / "댓글이 삭제되면" 을 조건으로 걸 수 없다.
+알림도 마찬가지 — 내 댓글이 모더레이터에게 지워져도 아무 통지가 없다. 감사(audit) 관점에서는
+`issue_change_group` 이력이 남지만, 그건 조회해야 보이는 기록이지 밀어주는 신호가 아니다.
+
+**왜 이 PR 에서 안 했나.** 신규 이벤트 타입 1개는 이벤트 클래스에서 끝나지 않는다 —
+`@JsonSubTypes` 등록 · pgmq 발행 · notification BC 의 알림 종류 시드 · 소비자 핸들러 · 사용자
+알림 설정(preferences) 항목까지 번진다. issue-tracking 한 BC 안에서 닫히지 않아 "한 PR = 한 BC" 가
+깨진다.
+
+**착수 시 첫 단계**. **수요가 있는 쪽을 먼저 정한다** — automation 트리거인지 알림인지. 둘은 필요한
+페이로드가 다르다(automation 은 변경 전후 본문이 필요할 수 있고, 알림은 누가 지웠는지가 핵심).
+정한 뒤 `IssueCommented` 의 발행·소비 경로를 그대로 미러한다. 알림 종류를 늘리면 **타 모듈의 알림
+종류 개수 가드**가 깨지므로(메모리 `enum-add-breaks-crossmodule-count-guard`) 추가 전 전 모듈 grep.
+
+**소관**. notification BC 와 공동. FR-AT(automation) 또는 FR-NT.
+
+## 워크플로우 — `BC_KEYWORDS['issue-tracking']` 에 `댓글` 이 없다 (PR #316 발견)
+
+**증상**. `scripts/workflow/classify-task.ts:122` 의 issue-tracking 키워드 목록은
+`'이슈', 'issue', '코멘트', 'comment', '첨부', 'attachment', ...` 인데 **`댓글` 이 빠져 있다.**
+한국어 실사용에서는 "코멘트" 보다 "댓글" 이 압도적으로 흔하다.
+
+**언제 터지나**. 제목에 `이슈` 가 함께 들어가면 그쪽이 매치돼 가려진다 — FR-CO-02 도 제목이
+`FR-CO-02 이슈 댓글 수정·삭제` 라 우연히 맞았다. 제목이 `댓글 리액션 추가` 처럼 `이슈` 없이
+`댓글` 만 담으면 **BC=null 로 떨어져** 후속 스킬의 BC 분기가 미정의가 된다.
+
+**같은 형태가 더 있을 수 있다.** 이건 하드코딩 목록의 누락이므로 개별 단어 추가로 끝내면 재발한다
+(메모리 `guard-handler-matrix-blindfold` 와 동질 — 행 집합 자체가 눈가리개).
+
+**착수 시 첫 단계**. `댓글` 한 단어만 넣지 말고, **BC 별 도메인 용어의 출처를 하나로 묶는다** —
+`Maxi_wiki/BTS/glossary.md` 와 `docs/plan/product/<bc>.md` 의 FR 제목에 등장하는 한국어 명사를
+뽑아 `BC_KEYWORDS` 와 **차집합**을 낸다. 차집합이 0 이 되게 채우고, 앞으로 어긋나면 깨지는 검증을
+하나 둔다. 위의 *"`bts-review-plan` 분기 표에 `type=backend` 가 없다"* 항목과 **같은 뿌리**다 —
+둘 다 하드코딩 목록끼리의 정합을 아무도 안 보고 있다.
+
+**소관**. `scripts/workflow/classify-task.ts`.
