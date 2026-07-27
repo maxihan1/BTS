@@ -543,7 +543,15 @@ IssuePermission.UPDATE)` 를 4지점(:111·:183·:241·:315)에서 호출한다.
 문장이다. 감사 흔적의 부재를 권한 검사 면제의 근거로 쓴 셈이고, 그 문장이 리뷰에서
 "의도된 설계" 로 읽히게 만들었다.
 
-**착수 시 첫 단계.** `LinkApplicationService` 에 `IssuePermissionResolver` 를 주입하고
+**★2026-07-27 추가 실측 — 무가드 서비스가 하나가 아니라 둘이다.**
+`IssueParentService`(같은 `link/application` 패키지, 생성자 = `issueRepository, archiveGuard`)도
+권한 검사 **0건**이다. 컨트롤러 `setParent`/`clearParent`(`PATCH /parent`)가 그 서비스를 쓴다.
+⇒ 봉합 대상은 **서비스 2개 · 핸들러 4개**다.
+
+**폭발 반경 실측.** `IssueLinkControllerIntegrationTest` **19 @Test** ·
+`LinkApplicationServiceTest` **0 @Test**(파일은 있으나 테스트가 없다 — 그 자체가 신호다).
+
+**착수 시 첫 단계.** `LinkApplicationService` 와 `IssueParentService` 에 `IssuePermissionResolver` 를 주입하고
 `createLink`·`deleteLink`·`setParent` 에 `checkPermission(actor, IssueScope.Issue(key),
 IssuePermission.UPDATE)` 를, `listLinks` 에 `VIEW` 를 건다. 컨트롤러가 현재 actor 를 **받지 않으므로**
 (`deleteLink(key, linkId)` 시그니처) `CurrentActor.current()` 결선이 함께 필요하다.
