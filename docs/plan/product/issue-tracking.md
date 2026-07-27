@@ -572,6 +572,29 @@
 - [x] D6. 프론트 UI — 아카이브 토글 (책임. designer → frontend-engineer) — PR #300
 - [x] D7. E2E (책임. qa-engineer) — PR #300
 
+## §A 참조 — 이슈 자식 엔티티 소유권 정책 행렬 (2026-07-27 실측)
+
+FR 이 아니라 **여러 FR 에 걸친 횡단 정책**이라 여기 참조로 둔다. 새 자식 엔티티를 추가할 때
+**여기 있는 판별식 중 하나를 고른다** — 새로 발명하면 여섯 번째 정책이 생긴다.
+
+| 엔티티 | 수정 | 삭제 | 근거 |
+|---|---|---|---|
+| Comment (FR-CO) | `UPDATE` ∧ 작성자 | `UPDATE` ∧ (작성자 ∨ `SOFT_DELETE`) | `CommentApplicationService:194·203` / `:279·290-293` |
+| Worklog (FR-TT) | `UPDATE` ∧ 작성자 | `UPDATE` ∧ 작성자 | `WorklogService:254`·`:328` |
+| Attachment (FR-AC) | — | ⚠️ **`UPDATE` 만 — 업로더 검사 0건** | `IssueAttachmentService:227` |
+| Watcher (FR-WT) | — | self→`VIEW` / 타인→`UPDATE` | `IssueWatcherService:206` |
+| Link (FR-LK) | 🚨 **권한 검사 0건** | 🚨 **권한 검사 0건** | `LinkApplicationService` 전체 |
+
+**Comment ↔ Worklog 비대칭은 의도된 것이다.** 생산자 구성이 다르다 — automation `ActionType` 5종
+(`SET_FIELD·ASSIGN·ADD_COMMENT·CALL_WEBHOOK·SET_FIX_VERSIONS`) 중 댓글을 만드는 액션이 있고,
+그 댓글의 저작자는 **룰 소유자로 고정**된다. 작성자 한정으로 두면 그 룰 소유자 말고는 아무도 못 지운다.
+worklog 에는 automation 액션이 **0건**이라 이 질문 자체가 없었다.
+⇒ **Worklog 선례가 조용했던 이유는 답이 같아서가 아니라 질문이 없어서다.**
+
+**Attachment·Link 는 정책 선택이 아니라 결함이다.** 위 표에서 Comment·Worklog·Watcher 는 의도된
+차이로 설명되지만, Attachment(업로더 무검사)와 Link(권한 무검사)는 **어느 정책에도 해당하지 않는다**.
+정책 통일 논의와 **분리해서** 먼저 닫아야 한다 — `TODOS.md` 의 🚨 항목 참조.
+
 ## §NFR issue-tracking BC 완료 게이트
 
 ### 측정값 기록표
