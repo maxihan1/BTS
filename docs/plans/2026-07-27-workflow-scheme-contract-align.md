@@ -901,6 +901,27 @@ cd backend && ./gradlew :modules:project-workflow:test :modules:project-workflow
 
 ---
 
+## A9 실증 결과 (2026-07-27, Task 8)
+
+| 판정식 | 결과 | 증거 |
+|---|---|---|
+| ① 8 endpoint 실응답의 키 집합 ⊇ 프론트 Zod 요구 키 집합 | **통과** | `:modules:app:test` **tests=46 skipped=0 failures=0 errors=0**. 그 안의 `WorkflowSchemeContractSnapshotTest` 가 prod 조립(실 Tomcat·prod 프로파일·PAT 인증)에서 8 endpoint 를 실 HTTP 로 왕복해 스냅샷과 문자열 동등을 단정하고, 프론트 `workflow-schemes.contract.test.ts` 가 **같은 파일**을 `.strict()` 로 파싱해 **9/9 통과**. 양방향이 한 파일에서 닫혔다 |
+| ② 수정 전 실패 재현 | **통과** | Task 2 §A9-② 증거표 — 현행 Zod 로 스냅샷 파싱 시 **파손 7/8 · 정합 1/8**(실측). 정합 1건은 이미 `.transform()` 정규화를 하고 있던 assignable endpoint |
+| ③ springdoc `/v3/api-docs` 노출 | **노출 확정** | 조립 `application.yml:99-105` 가 `springdoc.api-docs.path=/v3/api-docs` 를 활성화하고, `OpenApiSecurityConfig.kt:17-25` 의 `WebSecurityCustomizer.ignoring()` 이 `/v3/api-docs/**` 를 **필터체인에서 통째로 제외**한다(=미인증 접근). springdoc 은 조립 컨텍스트의 전 `@RestController` 를 스캔하므로 두 스킴 컨트롤러의 응답 필드명이 그대로 게시된다 |
+
+> **③ 판정 방식 한정.** `:modules:app` 에 OpenApi 테스트가 없어 **정적 증거**(설정 2개소)로 확정했다.
+> 런타임 `curl /v3/api-docs` 확인은 하지 않았다 — 다만 `ignoring()` 은 조건 분기가 없는 무조건 제외라
+> 정적 판정으로 충분하다. **api-docs 를 인증 뒤로 돌리는 봉합은 별도 작업**(결정 3A', 2 BC 소관).
+
+**ADR 잔여위험 갱신.**
+- 잔여위험 1(조립 부팅 미실시) → **해소**. 위 ①이 조립 부팅으로 실증했다.
+- 잔여위험 3(springdoc) → **확정**. 응답 필드명은 미인증으로 게시되는 **문서화된 계약**이다.
+  어휘 변경이 곧 공개 문서 변경이므로, 이번 정렬을 미루면 그만큼 잘못된 계약이 더 오래 게시된다.
+
+**E2E.** 기존 워크플로우 스킴 스펙 **16건 전량 통과**(계약 형태로 바뀐 MSW 픽스처 위에서).
+추가로 `e2e/workflow-scheme.spec.ts` **5건** 신설 — 기존 스펙이 구조(그룹 개수·버튼 존재)만 보아
+필드 회귀를 통과시키는 구멍을 막는다. 어휘가 바뀐 필드에서 온 **실제 값**을 단정한다.
+
 ## Plan 메타
 
 - **task 수**. 9
