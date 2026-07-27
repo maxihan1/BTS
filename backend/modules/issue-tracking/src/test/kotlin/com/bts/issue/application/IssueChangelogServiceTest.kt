@@ -606,8 +606,11 @@ class IssueChangelogServiceTest : DescribeSpec({
     // 악의적 사용자가 무해한 댓글을 쓴 뒤 부적절한 내용으로 수정하면 그 본문이
     // issue_change_item.to_value 에 남는다. 모더레이터가 댓글을 소프트 삭제해도 이력 탭에서
     // 계속 읽히면 삭제가 무력화된다. 이력은 append-only 라 행을 지울 수 없으므로 조회 시점에 가린다.
+    //
+    // offset(findChangelog)·cursor(findChangelogByCursor) 두 경로를 **모두** 덮는다.
+    // 한쪽만 검증하면 나머지 경로의 마스킹 호출을 지워도 전 테스트가 통과한다(코드리뷰 C1 뮤테이션 실증).
     // ──────────────────────────────────────────────────────────────────────────────
-    describe("findChangelog — 삭제된 댓글 본문 마스킹") {
+    describe("삭제된 댓글 본문 마스킹 — offset·cursor 두 경로") {
 
         val commentSut =
             IssueChangelogService(
@@ -695,6 +698,56 @@ class IssueChangelogServiceTest : DescribeSpec({
                 // "삭제된 댓글이 수정된 적 있다" 는 사실 자체는 감사 추적을 위해 남아야 한다.
                 page.content[0].items shouldHaveSize 2
                 page.content[0].items.map { it.field } shouldContainExactlyInAnyOrder
+                    listOf(activeField, deletedField)
+            }
+        }
+
+        // 위 offset 시나리오와 같은 데이터를 cursor 진입점으로 다시 통과시킨다.
+        // 인증 사용자는 `?cursor=` 쿼리 하나로 이 경로에 도달하므로(IssueController)
+        // 봉인이 여기에도 없으면 모더레이션 우회가 그대로 살아 있다.
+        context("커서 조회 — 활성 댓글 1건 + 삭제된 댓글 1건의 수정 이력이 같은 그룹에 존재") {
+
+            val activeItem = commentItem(activeField, "활성 댓글 원본", "활성 댓글 수정본")
+            val deletedItem = commentItem(deletedField, "무해한 위장 본문", "삭제 사유가 된 부적절한 본문")
+
+            beforeEach {
+                // cursor=null → 첫 페이지. 반환 1건 < limit 이므로 hasNext=false.
+                every {
+                    changeHistoryRepository.findByIssueCursor(issueId, null, null, 20)
+                } returns listOf(1L to groupWith(activeItem, deletedItem))
+                every { commentRepository.findActiveIds(any(), issueId) } returns setOf(activeCommentId)
+            }
+
+            it("삭제된 댓글의 이력 항목은 fromValue·toValue 가 마스킹된다") {
+                val items = commentSut.findChangelogByCursor(actor, issueKey, null, 20).items
+
+                val masked = items[0].items.first { it.field == deletedField }
+                masked.fromValue.shouldBeNull()
+                masked.toValue.shouldBeNull()
+                masked.fromLabel.shouldBeNull()
+                masked.toLabel.shouldBeNull()
+                // N+1 금지 — offset 경로와 동일하게 페이지당 배치 조회 1회여야 한다.
+                verify(exactly = 1) {
+                    commentRepository.findActiveIds(setOf(activeCommentId, deletedCommentId), issueId)
+                }
+            }
+
+            it("활성 댓글의 이력 항목은 본문이 그대로 보인다") {
+                val items = commentSut.findChangelogByCursor(actor, issueKey, null, 20).items
+
+                val visible = items[0].items.first { it.field == activeField }
+                visible.fromValue shouldBe "활성 댓글 원본"
+                visible.toValue shouldBe "활성 댓글 수정본"
+                visible.fromLabel shouldBe "이전 라벨"
+                visible.toLabel shouldBe "새 라벨"
+            }
+
+            it("마스킹돼도 항목 자체는 목록에서 사라지지 않는다") {
+                val items = commentSut.findChangelogByCursor(actor, issueKey, null, 20).items
+
+                // "삭제된 댓글이 수정된 적 있다" 는 사실 자체는 감사 추적을 위해 남아야 한다.
+                items[0].items shouldHaveSize 2
+                items[0].items.map { it.field } shouldContainExactlyInAnyOrder
                     listOf(activeField, deletedField)
             }
         }
