@@ -5,6 +5,7 @@ package com.bts.issue.comment.application
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.comment.domain.CommentBodyBlankException
 import com.bts.issue.comment.domain.CommentBodyTooLongException
+import com.bts.issue.comment.domain.CommentNotFoundException
 import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
@@ -12,6 +13,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
@@ -39,16 +41,20 @@ import java.util.UUID
  * @param permissionResolver 이슈 권한 판정 포트.
  * @param eventPublisher 댓글 생성 시 [IssueCommented] 이벤트를 발행하는 아웃바운드 어댑터
  *   (FR-AT-01 Task 10 — automation COMMENTED 트리거 감지).
+ * @param archiveGuard 아카이브된 프로젝트의 쓰기를 잠그는 가드 (FR-PJ-04).
+ * @param historyRecorder 댓글 본문 수정 이력 기록 facade (FR-CO-02 — [update] 전용).
  * @param clock 현재 시각 공급자 (테스트 제어 가능).
  */
 @Service
 @Transactional
+@Suppress("LongParameterList") // 협력자 6 + clock. IssueAttachmentService 와 동일 사유(모듈 선례)
 class CommentApplicationService(
     private val commentRepository: CommentRepository,
     private val issueRepository: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val eventPublisher: IssueEventPublisher,
     private val archiveGuard: ProjectArchiveGuard,
+    private val historyRecorder: IssueHistoryRecorder,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -132,6 +138,73 @@ class CommentApplicationService(
             authorId = authorId,
             createdAt = createdAt,
         )
+
+    /**
+     * 댓글 본문을 수정한다 — **작성자 본인만 가능하다.**
+     *
+     * ## 실행 순서 ([create] 와 동일)
+     * 1. 본문 검증 — 공백/길이.
+     * 2. [IssuePermission.UPDATE] 검증, scope=[IssueScope.Issue].
+     * 3. 아카이브 가드.
+     * 4. 이슈 resolve → 댓글 resolve([CommentRepository.findActive] — `issue_id` 대조 포함).
+     * 5. 작성자 대조 — actor 가 저작자가 아니면 403.
+     * 6. 본문 동일하면 no-op 반환, 다르면 [CommentRepository.updateBody] + 이력 기록.
+     *
+     * @param actor 수정을 수행하는 행위자. **저작자 본인이어야 한다.**
+     * @param issueKey 댓글이 속한 이슈 키.
+     * @param commentId 수정할 댓글 UUID.
+     * @param body 새 본문 (raw markdown).
+     * @return 수정된 [Comment]. 본문이 동일하면 기존 [Comment] 를 그대로 반환한다.
+     * @throws [CommentBodyBlankException] 본문이 공백만일 때 (400).
+     * @throws [CommentBodyTooLongException] 본문이 [MAX_BODY_LENGTH] 초과일 때 (400).
+     * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 또는 타인 댓글 수정 시 (403).
+     * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
+     * @throws [CommentNotFoundException] 댓글 미존재·이미 삭제됨·다른 이슈 소속일 때 (404).
+     */
+    @Suppress("ThrowsCount") // 400/403/404 각기 다른 오류코드라 분리 throw 가 명확 (WorklogService.update 선례)
+    fun update(
+        actor: ActorId,
+        issueKey: IssueKey,
+        commentId: UUID,
+        body: String,
+    ): Comment {
+        validateBody(body)
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
+
+        val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+        val existing =
+            commentRepository.findActive(commentId, issue.id.value)
+                ?: throw CommentNotFoundException(commentId)
+
+        // 수정은 작성자 한정. 모더레이터 우회 없음 — 삭제 게이트와 술어가 다르다 (KDoc 참조).
+        if (existing.authorId != actor.value) {
+            throw IssueAccessDeniedException(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+        }
+
+        if (existing.body == body) {
+            log.debug("comment_update_noop issueKey={} commentId={}", issueKey.value, commentId)
+            return existing
+        }
+
+        val now = Instant.now(clock)
+        // 동시 삭제 레이스 방어 — findActive 통과 후 다른 트랜잭션이 삭제를 커밋한 경우 0 행이 돌아온다.
+        if (commentRepository.updateBody(commentId, issue.id.value, body, now) == 0) {
+            throw CommentNotFoundException(commentId)
+        }
+
+        historyRecorder.recordCommentEdited(
+            issueId = issue.id.value,
+            issueKey = issueKey.value,
+            actor = actor,
+            commentId = commentId,
+            beforeBody = existing.body,
+            afterBody = body,
+        )
+
+        log.info("comment_updated issueKey={} commentId={} actor={}", issueKey.value, commentId, actor.value)
+        return existing.copy(body = body, updatedAt = now)
+    }
 
     /**
      * 이슈의 댓글 목록을 조회한다.
