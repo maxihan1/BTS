@@ -233,6 +233,29 @@ class CommentApplicationService(
      *
      * 권한 평가 scope 는 [IssueScope.Issue] 고정이다 (클래스 KDoc "권한 scope 설계" 참조).
      *
+     * ## ★ 모더레이터 분기는 질의형 `hasPermission` 이어야 한다 — `checkPermission` 금지
+     * [checkPermission] 은 **거부 시 던진다.** 이 `OR` 분기에 그걸 쓰면
+     * `SOFT_DELETE` 미보유자는 **작성자여도 그 지점에서 즉시 403** 이 되어, `OR` 의 왼쪽 변
+     * (작성자 경로)이 실행되기도 전에 조용히 죽는다. `OR` 는 두 변을 **모두 계산할 수 있어야**
+     * 성립하므로, 판정은 던지지 않는 질의형([IssuePermissionResolver.hasPermission])으로 하고
+     * **최종 거부만 한 번** 던진다.
+     *
+     * 이 함정이 실재함은 뮤테이션으로 실증했다 — 이 줄을
+     * `checkPermission(actor, issueKey, SOFT_DELETE)` 로 바꾸면
+     * `CommentApplicationServiceTest` CO2-9(“작성자는 `SOFT_DELETE` 가 없어도 자기 댓글을 삭제한다”)가
+     * **정확히 한 건** 실패한다. 그래서 CO2-9 의 actor 는 `SOFT_DELETE` 를 일부러 갖지 않는다.
+     *
+     * ## ★ 삭제 게이트를 [update] 의 수정 게이트와 합치지 말 것
+     * 술어가 다르다. 삭제는 `UPDATE AND (작성자 OR SOFT_DELETE)`, 수정은 `UPDATE AND 작성자` 다.
+     * 공용 헬퍼로 묶으면 **넓은 쪽(삭제)의 술어가 좁은 쪽(수정)에 이식되어 모더레이터가 남의 글을
+     * 수정**하게 된다. 모더레이션의 실제 필요는 지우기이고, 남의 글 고치기는 그 필요를 못 채우면서
+     * 기록의 신뢰만 깎는다 ([update] KDoc 참조 — Jira 도 두 권한을 분리한다).
+     *
+     * ## `moderated` 로그 필드
+     * 모더레이터가 **타인의 댓글**을 지운 경우에만 `true` 다(`= !isAuthor`). 자기 글 삭제와
+     * 모더레이션 삭제는 감사상 무게가 전혀 다른데 요청 형태로는 구분되지 않으므로, 운영에서
+     * "누가 남의 글을 지웠나"를 로그만으로 골라낼 수 있게 이 판정 결과를 그대로 남긴다.
+     *
      * ## 실행 순서
      * 1. [IssuePermission.UPDATE] 검증 — 공통 전제. 작성자·모더레이터 판정보다 먼저다(존재 probe 방지).
      * 2. 아카이브 가드.
