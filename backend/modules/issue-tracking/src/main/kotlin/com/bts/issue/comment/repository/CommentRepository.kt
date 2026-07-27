@@ -125,26 +125,26 @@ class CommentRepository(
      * `WHERE` 의 `deleted_at IS NULL` 이 "삭제된 댓글 부활 차단" 과 "서비스의 404 판정 근거"
      * 두 역할을 겸한다 — 클래스 KDoc 참조.
      *
-     * 소속 이슈는 대조하지 않는다. 호출 전 [findActive] 로 소속·권한을 이미 확인한 뒤
-     * 부르는 것이 계약이며, 여기서 다시 대조하면 같은 조건이 두 곳에 흩어져
-     * 한쪽만 바뀌는 drift 를 만든다.
-     *
      * @param id        수정할 댓글 UUID.
+     * @param issueId   댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
      * @param body      새 본문 (raw markdown 원문).
      * @param updatedAt 새 수정 시각.
-     * @return 영향 행 수. 1 = 갱신됨, 0 = 대상 없음(미존재 또는 이미 삭제됨).
+     * @return 영향 행 수. 1 = 갱신됨, 0 = 대상 없음(미존재 · 이미 삭제됨 · 다른 이슈 소속).
      */
     @Transactional
     fun updateBody(
         id: UUID,
+        issueId: UUID,
         body: String,
         updatedAt: Instant,
     ): Int {
-        log.debug("updateBody id={}", id)
+        log.debug("updateBody id={} issueId={}", id, issueId)
         return dsl.update(COMMENTS)
             .set(COMMENTS.BODY, body)
             .set(COMMENTS.UPDATED_AT, updatedAt.toOffsetDateTime())
-            .where(COMMENTS.ID.eq(id).and(COMMENTS.DELETED_AT.isNull))
+            .where(COMMENTS.ID.eq(id))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
             .execute()
     }
 
@@ -155,21 +155,23 @@ class CommentRepository(
      * 하드 삭제는 ADR 필수". `WHERE` 의 `deleted_at IS NULL` 은 재삭제를 막아 최초 삭제 시각을
      * 보존하고, 동시에 반환 `0` 을 서비스의 404 판정 근거로 만든다 — 클래스 KDoc 참조.
      *
-     * [updateBody] 와 마찬가지로 소속 이슈는 [findActive] 가 이미 확인한 것을 전제한다.
-     *
      * @param id        삭제할 댓글 UUID.
+     * @param issueId   댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
      * @param deletedAt 삭제 시각.
-     * @return 영향 행 수. 1 = 삭제됨, 0 = 대상 없음(미존재 또는 이미 삭제됨).
+     * @return 영향 행 수. 1 = 삭제됨, 0 = 대상 없음(미존재 · 이미 삭제됨 · 다른 이슈 소속).
      */
     @Transactional
     fun softDelete(
         id: UUID,
+        issueId: UUID,
         deletedAt: Instant,
     ): Int {
-        log.debug("softDelete id={}", id)
+        log.debug("softDelete id={} issueId={}", id, issueId)
         return dsl.update(COMMENTS)
             .set(COMMENTS.DELETED_AT, deletedAt.toOffsetDateTime())
-            .where(COMMENTS.ID.eq(id).and(COMMENTS.DELETED_AT.isNull))
+            .where(COMMENTS.ID.eq(id))
+            .and(COMMENTS.ISSUE_ID.eq(issueId))
+            .and(COMMENTS.DELETED_AT.isNull)
             .execute()
     }
 
