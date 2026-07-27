@@ -94,7 +94,10 @@ class IssueAttachmentServiceTest : DescribeSpec({
         } returns allowed
     }
 
-    fun makeAttachment(attachmentIssueId: UUID = issueId): Attachment =
+    fun makeAttachment(
+        attachmentIssueId: UUID = issueId,
+        uploader: UUID = actor.value,
+    ): Attachment =
         Attachment(
             id = UUID.randomUUID(),
             issueId = attachmentIssueId,
@@ -102,7 +105,7 @@ class IssueAttachmentServiceTest : DescribeSpec({
             contentType = "application/pdf",
             sizeBytes = 1024L,
             storageKey = "issues/$attachmentIssueId/${UUID.randomUUID()}",
-            uploadedBy = actor.value,
+            uploadedBy = uploader,
             createdAt = Instant.now(),
         )
 
@@ -404,6 +407,68 @@ class IssueAttachmentServiceTest : DescribeSpec({
 
     describe("delete") {
 
+        // ── 소유권 게이트 (2026-07-27 신설 — 이전에는 업로더 검사가 0건이었다) ──────
+
+        /**
+         * 삭제는 **업로더 ∨ `SOFT_DELETE`** 다 — 댓글 삭제와 **같은 술어**다.
+         *
+         * 2026-07-27 이전에는 이슈 `UPDATE` 하나만 보고 업로더를 확인하지 않아,
+         * `EDIT_ISSUE` 를 가진 사람이면 **누구나 남이 올린 첨부를 지울 수 있었다.**
+         * 이슈 자식 엔티티 소유권 정책은 `docs/plan/product/issue-tracking.md §A` 행렬이 정본이며,
+         * 거기 없는 술어를 만들면 여섯 번째 정책이 생긴다.
+         */
+        it("업로더가 아니고 SOFT_DELETE 도 없으면 IssueAccessDeniedException 던진다") {
+            stubIssueExists()
+            stubPermission(IssuePermission.UPDATE, true)
+            stubPermission(IssuePermission.SOFT_DELETE, false)
+            val attachmentId = UUID.randomUUID()
+            every { attachmentRepository.findById(attachmentId) } returns
+                makeAttachment(uploader = UUID.randomUUID())
+
+            shouldThrow<IssueAccessDeniedException> {
+                sut.delete(actor = actor, issueKey = issueKey, attachmentId = attachmentId)
+            }
+
+            // 스토리지 제거까지 갔다면 비가역 삭제가 일어난 것이다 — 게이트가 그 앞에 있어야 한다.
+            verify(exactly = 0) { storagePort.remove(any()) }
+            verify(exactly = 0) { attachmentRepository.deleteById(any()) }
+        }
+
+        /** 모더레이션 경로 — 남의 첨부라도 `SOFT_DELETE` 보유자는 지울 수 있다(악성 첨부 대응). */
+        it("업로더가 아니어도 SOFT_DELETE 보유자면 삭제된다") {
+            stubIssueExists()
+            stubPermission(IssuePermission.UPDATE, true)
+            stubPermission(IssuePermission.SOFT_DELETE, true)
+            val attachmentId = UUID.randomUUID()
+            val attachment = makeAttachment(uploader = UUID.randomUUID())
+            every { attachmentRepository.findById(attachmentId) } returns attachment
+            justRun { storagePort.remove(attachment.storageKey) }
+            every { attachmentRepository.deleteById(attachment.id) } returns true
+
+            sut.delete(actor = actor, issueKey = issueKey, attachmentId = attachmentId)
+
+            verify(exactly = 1) { attachmentRepository.deleteById(attachment.id) }
+        }
+
+        /**
+         * 대조군 — 게이트가 "전부 거부" 로 무너지지 않았음을 확인한다.
+         * `SOFT_DELETE` 가 **없어도** 업로더 본인은 지울 수 있어야 한다.
+         */
+        it("업로더 본인은 SOFT_DELETE 가 없어도 삭제된다") {
+            stubIssueExists()
+            stubPermission(IssuePermission.UPDATE, true)
+            stubPermission(IssuePermission.SOFT_DELETE, false)
+            val attachmentId = UUID.randomUUID()
+            val attachment = makeAttachment(uploader = actor.value)
+            every { attachmentRepository.findById(attachmentId) } returns attachment
+            justRun { storagePort.remove(attachment.storageKey) }
+            every { attachmentRepository.deleteById(attachment.id) } returns true
+
+            sut.delete(actor = actor, issueKey = issueKey, attachmentId = attachmentId)
+
+            verify(exactly = 1) { attachmentRepository.deleteById(attachment.id) }
+        }
+
         it("UPDATE 권한 없으면 IssueAccessDeniedException 던진다") {
             stubIssueExists()
             stubPermission(IssuePermission.UPDATE, false)
@@ -435,6 +500,8 @@ class IssueAttachmentServiceTest : DescribeSpec({
         it("UPDATE 권한 있고 issueId 일치하면 remove 후 deleteById 순서로 실행한다") {
             stubIssueExists()
             stubPermission(IssuePermission.UPDATE, true)
+            // 삭제는 업로더 ∨ SOFT_DELETE — 이 픽스처는 업로더 본인이라 모더레이터가 아니어도 통과한다.
+            stubPermission(IssuePermission.SOFT_DELETE, false)
             val attachment = makeAttachment()
             every { attachmentRepository.findById(attachment.id) } returns attachment
             justRun { storagePort.remove(attachment.storageKey) }
@@ -451,6 +518,8 @@ class IssueAttachmentServiceTest : DescribeSpec({
         it("MinIO remove 실패해도 deleteById 는 계속 호출한다") {
             stubIssueExists()
             stubPermission(IssuePermission.UPDATE, true)
+            // 삭제는 업로더 ∨ SOFT_DELETE — 이 픽스처는 업로더 본인이라 모더레이터가 아니어도 통과한다.
+            stubPermission(IssuePermission.SOFT_DELETE, false)
             val attachment = makeAttachment()
             every { attachmentRepository.findById(attachment.id) } returns attachment
             every { storagePort.remove(attachment.storageKey) } throws RuntimeException("MinIO 오류")
@@ -525,6 +594,8 @@ class IssueAttachmentServiceTest : DescribeSpec({
             it("archiveGuard.checkByIssue 가 호출되고 정상 삭제된다") {
                 stubIssueExists()
                 stubPermission(IssuePermission.UPDATE, true)
+                // 삭제는 업로더 ∨ SOFT_DELETE — 이 픽스처는 업로더 본인이라 모더레이터가 아니어도 통과한다.
+                stubPermission(IssuePermission.SOFT_DELETE, false)
                 val attachment = makeAttachment()
                 every { attachmentRepository.findById(attachment.id) } returns attachment
                 justRun { storagePort.remove(attachment.storageKey) }

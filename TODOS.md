@@ -676,7 +676,25 @@ worklog 에는 그 생산자가 없어 질문 자체가 없었다. **Worklog 선
 
 </details>
 
-## 🚨 issue-tracking — 첨부 삭제에 업로더 검사가 없다 (2026-07-27 발견, 선재)
+## ✅ issue-tracking — 첨부 삭제 소유권 게이트 (해소 2026-07-27)
+
+**해소.** `IssueAttachmentService.delete` 에 **업로더 ∨ `SOFT_DELETE`** 게이트를 넣었다 —
+댓글 삭제와 **같은 술어**다(§A 행렬에 없는 술어를 새로 만들지 않는다).
+
+질의형 `hasPermission` 을 쓴다 — throwing 검사를 쓰면 `SOFT_DELETE` 미보유 업로더가 조용히 403 이 된다
+(댓글과 같은 이유). 게이트는 `storagePort.remove` **앞**에 둔다 — 뒤면 비가역 삭제가 이미 일어난 뒤다.
+
+**뮤테이션 확증** — 게이트 조건을 무력화하자 「업로더가 아니고 SOFT_DELETE 도 없으면」 테스트 FAILED.
+**대조군 2건** — 업로더 본인은 `SOFT_DELETE` 없이도 삭제 가능 / 모더레이터는 남의 것도 삭제 가능.
+대조군이 없으면 "전부 거부" 로 무너져도 초록으로 보인다.
+
+**부수** — 기존 delete 테스트 3건이 strict mock 에서 `SOFT_DELETE` 미스텁으로 red 가 됐다.
+그 자체가 「새 권한 질의가 실제로 발생한다」 는 증거라, 스텁을 추가하며 사유를 주석으로 남겼다.
+
+**후속 (분리)** — 첨부 삭제는 **하드 삭제**(`deleteById` + MinIO `remove`)라 모더레이터 오삭제가
+비가역이다. 소프트 전환 또는 삭제 감사 로그가 있어야 사후 추적이 된다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **등급.** 보안. 위 🚨 Link 항목과 함께 **정책 차이가 아니라 결함**이다.
 
@@ -721,6 +739,8 @@ IssueAttachmentService.kt:227   checkPermission(actor, IssuePermission.UPDATE, i
 첨부 삭제 테스트에서 actor≠업로더인 케이스를 전수 열거할 것.
 
 **소관**. FR-AC. security-engineer 공동 검토.
+
+</details>
 
 ## issue-tracking / identity-access — 이슈 보안등급이 댓글 수정·삭제를 막지 않는다 (PR #316 리뷰 발견, 선재)
 

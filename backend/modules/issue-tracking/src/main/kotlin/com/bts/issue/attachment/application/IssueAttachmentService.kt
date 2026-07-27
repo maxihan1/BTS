@@ -229,6 +229,26 @@ class IssueAttachmentService(
         val issueId = resolveIssueId(issueKey)
         val attachment = findAttachmentForIssue(attachmentId, issueId, issueKey)
 
+        // ★소유권 게이트 — 2026-07-27 신설. 이전에는 이슈 UPDATE 만 보고 업로더를 확인하지 않아
+        // **EDIT_ISSUE 를 가진 사람이면 누구나 남이 올린 첨부를 지울 수 있었다.**
+        //
+        // 술어는 댓글 삭제와 **동일**하다(작성자 ∨ SOFT_DELETE). 새로 발명하지 않는다 —
+        // 이슈 자식 엔티티의 소유권 정책은 docs/plan/product/issue-tracking.md §A 행렬이 정본이고,
+        // 거기 없는 술어를 만들면 여섯 번째 정책이 생긴다.
+        //
+        // 왜 업로더 한정이 아니라 모더레이션을 허용하나. 첨부는 바이너리라 악성코드·불법물이
+        // 올라왔을 때 업로더만 지울 수 있으면 대응 경로가 없다. 텍스트 댓글보다 필요가 더 크다.
+        // (⚠️ 첨부 삭제는 하드 삭제라 모더레이터 오삭제가 비가역이다 — 소프트 전환/감사 로그는 후속.)
+        //
+        // 질의형 hasPermission 을 쓰는 이유는 댓글과 같다 — `업로더 OR 모더레이터` 두 변이 모두
+        // 계산돼야 하므로 throwing 검사를 쓰면 SOFT_DELETE 미보유 업로더가 조용히 403 이 된다.
+        val scope = IssueScope.Issue(issueKey.value)
+        val isUploader = attachment.uploadedBy == actor.value
+        val isModerator = permissionResolver.hasPermission(actor.value, IssuePermission.SOFT_DELETE, scope)
+        if (!isUploader && !isModerator) {
+            throw IssueAccessDeniedException(actor, IssuePermission.SOFT_DELETE, scope)
+        }
+
         try {
             storagePort.remove(attachment.storageKey)
         } catch (e: Exception) {
