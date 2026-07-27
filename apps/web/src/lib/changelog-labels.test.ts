@@ -476,3 +476,104 @@ describe('resolveValueLabel — 일정 필드 raw 반환 (FR-PL-01)', () => {
     expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('(없음)')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-CM. FR-CO-02 — 댓글 본문 수정 이력 (`comment:{commentId}`)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 백엔드가 실제로 보내는 field 값의 commentId 부분 (IssueHistoryRecorder.COMMENT_FIELD_PREFIX + UUID) */
+const COMMENT_ID = '3f9a1c2d-4e5b-4a6c-8d7e-9f0a1b2c3d4e'
+
+/** 백엔드가 실제로 보내는 field 값 */
+const COMMENT_FIELD = `comment:${COMMENT_ID}`
+
+describe('resolveFieldLabel — 댓글 본문 수정 (FR-CO-02)', () => {
+  it('T-FL-CM-01: comment:{commentId} → "댓글"을 반환한다', () => {
+    expect(resolveFieldLabel(COMMENT_FIELD, emptyRefs)).toBe('댓글')
+  })
+
+  it('T-FL-CM-02: commentId(UUID)를 화면 문자열에 노출하지 않는다', () => {
+    const label = resolveFieldLabel(COMMENT_FIELD, emptyRefs)
+    expect(label).not.toContain(COMMENT_ID)
+    expect(label).not.toContain('comment:')
+  })
+})
+
+describe('resolveValueLabel — 삭제된 댓글 마스킹 표시 (FR-CO-02 S10)', () => {
+  it('T-VL-CM-01: from/to 가 모두 null 인 댓글 항목은 "삭제된 댓글" 취지로 표시한다', () => {
+    // 백엔드가 삭제된 댓글의 값 4종을 null 로 마스킹해서 보낸다 (항목 자체는 남는다).
+    const item = makeItem({
+      field: COMMENT_FIELD,
+      fromValue: null,
+      toValue: null,
+      fromLabel: null,
+      toLabel: null,
+    })
+    expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('(삭제된 댓글)')
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('(삭제된 댓글)')
+  })
+
+  it('T-VL-CM-02: 마스킹 문구는 일반 필드의 "(없음)"과 달라야 한다 — 의미가 다르다', () => {
+    // "(없음)" = 값이 비어 있었다 / 마스킹 = 값은 있었지만 가려졌다.
+    const masked = makeItem({ field: COMMENT_FIELD, toValue: null, toLabel: null })
+    expect(resolveValueLabel(masked, 'to', emptyRefs)).not.toBe('(없음)')
+  })
+})
+
+describe('resolveValueLabel — 긴 댓글 본문 절단 (FR-CO-02 NFR-5)', () => {
+  /**
+   * 절단 후 표시 길이의 상한 — 구현 상수를 그대로 베끼지 않은 독립 오라클.
+   * 구현값을 복사하면 상수를 바꿀 때 테스트가 함께 따라가 아무것도 단정하지 못한다.
+   * 이력 한 행에 이전·이후 두 벌이 실리므로 한 벌이 이 정도 안에 들어와야 화면을 덮지 않는다.
+   */
+  const DISPLAY_UPPER_BOUND = 500
+
+  /** 댓글 본문 상한(32,000자)에 준하는 긴 본문 */
+  const longBody = '가'.repeat(2000)
+
+  it('T-VL-CM-03: 긴 댓글 본문은 절단되어 화면을 덮지 않는다', () => {
+    const item = makeItem({ field: COMMENT_FIELD, toValue: longBody, toLabel: null })
+    const text = resolveValueLabel(item, 'to', emptyRefs)
+
+    expect(text.length).toBeLessThan(longBody.length)
+    expect(text.length).toBeLessThanOrEqual(DISPLAY_UPPER_BOUND)
+    // 잘렸다는 사실이 보여야 한다 + 앞부분은 원문 그대로여야 한다
+    expect(text.endsWith('...')).toBe(true)
+    expect(longBody.startsWith(text.slice(0, -'...'.length))).toBe(true)
+  })
+
+  it('T-VL-CM-04: 짧은 댓글 본문은 손대지 않고 그대로 반환한다 (경계 가드)', () => {
+    const item = makeItem({ field: COMMENT_FIELD, toValue: '오타를 고쳤습니다', toLabel: null })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('오타를 고쳤습니다')
+  })
+})
+
+describe('resolveValueLabel — 절단은 comment: 항목 한정 (기존 필드 회귀 가드)', () => {
+  /**
+   * ★회귀 가드. 절단을 RAW_TEXT_FIELDS 같은 공통 경로에 넣으면 아래 필드들이 함께 잘린다.
+   * 기존 텍스트 필드 테스트(T-VL-TX-01~03)는 짧은 값만 써서 이 회귀를 못 잡는다.
+   * `return raw` 로 끝나는 두 경로(RAW_TEXT_FIELDS 7종 + 폴백 4종)를 모두 세운다.
+   */
+  const longText = '나'.repeat(2000)
+
+  const rawReturningFields = [
+    // RAW_TEXT_FIELDS 경로
+    'summary',
+    'description',
+    'environment',
+    'labels',
+    'startDate',
+    'dueDate',
+    'targetDate',
+    // 폴백 경로 (status/resolution/key/epic)
+    'status',
+    'resolution',
+    'key',
+    'epic',
+  ]
+
+  it.each(rawReturningFields)('T-VL-CM-05: %s 의 긴 값은 절단하지 않고 raw 그대로 반환한다', (field) => {
+    const item = makeItem({ field, toValue: longText, toLabel: null })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe(longText)
+  })
+})
