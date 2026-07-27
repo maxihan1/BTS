@@ -597,7 +597,27 @@ IssuePermission.UPDATE)` 를, `listLinks` 에 `VIEW` 를 건다. 컨트롤러가
 
 **소관**. security-engineer 공동 검토 필요 (FR-LK).
 
-## issue-tracking — 이슈 자식 엔티티 5종의 소유권 정책이 제각각이다 (2026-07-27 전수 실측으로 확대)
+## ✅ issue-tracking — 자식 엔티티 소유권 정책 정본화 (해소 2026-07-27 · 결함 2건은 분리)
+
+**해소 근거는 이 항목이 스스로 정한 종료 조건이다** — *"먼저 필요가 실재하는지 확인한다. 없으면
+비대칭을 유지하고 대신 **사유를 제품 문서에 명시**하는 것으로 끝낸다."*
+
+운영에서 "남의 워크로그를 지워야 했다" 사례는 제기된 바 없다. 따라서 **비대칭을 유지**하고
+`docs/plan/product/issue-tracking.md §A` 에 **5종 정책 행렬을 근거 위치와 함께 정본화**했다.
+새 자식 엔티티를 추가할 때 그 표의 판별식 중 하나를 고르게 해 여섯 번째 정책이 생기는 것을 막는다.
+
+**Comment↔Worklog 비대칭이 정당한 근거는 재확인됐다** — automation `ActionType` 전 5종
+(`SET_FIELD·ASSIGN·ADD_COMMENT·CALL_WEBHOOK·SET_FIX_VERSIONS`)에 worklog 액션이 **0건**이다
+(`rg -in "worklog" backend/modules/automation/src/main` → 0). 자동화가 만든 댓글은 저작자가
+룰 소유자로 고정돼 작성자 한정이면 방치되지만, worklog 엔 그 생산자가 없어 질문 자체가 없었다.
+
+**⚠️ 운영 필요가 나중에 확인되면** worklog 삭제에 댓글과 **같은 술어**(작성자 ∨ `SOFT_DELETE`)를
+적용한다. 새 술어를 발명하지 말 것.
+
+**★표의 5종 중 2종은 정책 선택이 아니라 결함이라 분리 등재했다** — 아래 🚨 Link 항목과
+🚨 Attachment 항목. 정책 통일 논의와 섞으면 결함이 "정책 차이" 로 읽혀 안 닫힌다.
+
+<details><summary>원 기록 (보존)</summary>
 
 **★원 기록은 "댓글 vs Worklog 2종 비대칭" 이었으나, 자식 엔티티를 전수 열거하면 5종에 정책이 5개다.**
 
@@ -628,6 +648,8 @@ worklog 에는 그 생산자가 없어 질문 자체가 없었다. **Worklog 선
 
 **소관**. FR-WL · FR-AC · FR-LK. `docs/plan/product/issue-tracking.md`.
 
+</details>
+
 <details><summary>원 기록 (보존)</summary>
 
 **무엇이 어긋나 있나.** 같은 이슈 화면의 두 자식 엔티티가 삭제 정책이 다르다.
@@ -653,6 +675,37 @@ worklog 에는 그 생산자가 없어 질문 자체가 없었다. **Worklog 선
 **소관**. FR-WL. `docs/plan/product/issue-tracking.md` 워크로그 절.
 
 </details>
+
+## 🚨 issue-tracking — 첨부 삭제에 업로더 검사가 없다 (2026-07-27 발견, 선재)
+
+**등급.** 보안. 위 🚨 Link 항목과 함께 **정책 차이가 아니라 결함**이다.
+
+**증상.** `IssueAttachmentService` 의 삭제 경로가 이슈 `UPDATE` **하나만** 보고 업로더를 확인하지 않는다.
+
+```
+IssueAttachmentService.kt:227   checkPermission(actor, IssuePermission.UPDATE, issueKey)
+                                ← 그 뒤로 소유자(업로더) 비교 없음
+```
+
+⇒ **`EDIT_ISSUE` 를 가진 사람이면 누구나 남이 올린 첨부를 지운다.**
+
+**형제와의 대조.** 같은 이슈의 자식 엔티티 중 소유자 검사가 없는 것은 이것과 Link 뿐이다.
+- Comment 삭제 = `UPDATE` ∧ (작성자 ∨ `SOFT_DELETE`) — 모더레이션 우회를 **명시적으로 설계**했다
+- Worklog 삭제 = `UPDATE` ∧ 작성자
+- Attachment 삭제 = `UPDATE` **만** ← 어느 쪽 판별식에도 해당하지 않는다
+
+**착수 시 첫 단계 — 정책을 먼저 고른다.** 새 술어를 발명하지 말고 위 §A 행렬의 둘 중 하나를 택한다.
+- **댓글형**(작성자 ∨ `SOFT_DELETE`) — 부적절한 첨부를 모더레이터가 지울 수 있어야 한다면 이쪽
+- **워크로그형**(작성자 한정) — 첨부는 증거물 성격이 강하니 업로더만 지우게 하려면 이쪽
+
+첨부는 **automation 생산자가 없다**(댓글의 모더레이션 근거였던 비대칭이 여기엔 없다) ⇒
+Worklog 와 같은 조건이므로 **작성자 한정이 기본값으로 정합**하다. 다만 실제 운영에서
+"올린 사람이 퇴사했는데 못 지운다" 가 나오면 댓글형이 맞다 — **Maxi 결정 필요**.
+
+**회귀 폭.** 권한을 **줄이는** 방향이라 기존 테스트가 깨진다. 착수 전
+첨부 삭제 테스트에서 actor≠업로더인 케이스를 전수 열거할 것.
+
+**소관**. FR-AC. security-engineer 공동 검토.
 
 ## issue-tracking / identity-access — 이슈 보안등급이 댓글 수정·삭제를 막지 않는다 (PR #316 리뷰 발견, 선재)
 
