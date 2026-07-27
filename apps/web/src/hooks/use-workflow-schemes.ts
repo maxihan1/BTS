@@ -12,9 +12,11 @@ import {
   deleteMapping,
 } from '@/api/workflow-schemes'
 import type {
-  SchemeResponse,
-  SchemeDetailResponse,
-  MappingResponse,
+  SchemeListItem,
+  SchemeDetail,
+  SchemeMutationResult,
+  MappingDetail,
+  MappingCreated,
   CreateSchemeInput,
   UpdateSchemeInput,
   AddMappingInput,
@@ -43,7 +45,7 @@ export const SCHEME_KEYS = {
 
 /**
  * 워크플로우 스킴 목록을 조회한다.
- * GET /api/v1/workflow-schemes → SchemeResponse[]
+ * GET /api/v1/workflow-schemes → SchemeListItem[]
  */
 export function useWorkflowSchemes() {
   return useQuery({
@@ -55,7 +57,7 @@ export function useWorkflowSchemes() {
 
 /**
  * 워크플로우 스킴 단건(매핑 동봉)을 조회한다.
- * GET /api/v1/workflow-schemes/{schemeKey} → SchemeDetailResponse
+ * GET /api/v1/workflow-schemes/{schemeKey} → SchemeDetail
  *
  * @param schemeKey 스킴 식별 키
  */
@@ -69,7 +71,7 @@ export function useWorkflowSchemeDetail(schemeKey: string) {
 
 /**
  * 프로젝트에 할당 가능한 워크플로우 스킴 목록을 조회한다.
- * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → AssignableSchemeResponse[]
+ * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → AssignedScheme[]
  *
  * @param projectKey 프로젝트 식별 키
  */
@@ -87,13 +89,13 @@ export function useAssignableWorkflowSchemes(projectKey: string) {
 
 /**
  * 워크플로우 스킴을 생성한다.
- * POST /api/v1/workflow-schemes → SchemeResponse
+ * POST /api/v1/workflow-schemes → SchemeMutationResult
  * 성공 시 스킴 목록 캐시를 무효화한다.
  */
 export function useCreateWorkflowScheme() {
   const queryClient = useQueryClient()
 
-  return useMutation<SchemeResponse, unknown, CreateSchemeInput>({
+  return useMutation<SchemeMutationResult, unknown, CreateSchemeInput>({
     mutationFn: createWorkflowScheme,
     onSuccess: async () => {
       toast.success('스킴이 생성됐습니다')
@@ -114,19 +116,19 @@ export function useCreateWorkflowScheme() {
 export function useUpdateWorkflowScheme(schemeKey: string) {
   const queryClient = useQueryClient()
 
-  return useMutation<SchemeResponse, unknown, UpdateSchemeInput>({
+  return useMutation<SchemeMutationResult, unknown, UpdateSchemeInput>({
     mutationFn: (input) => updateWorkflowScheme(schemeKey, input),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
       await queryClient.cancelQueries({ queryKey: SCHEME_KEYS.list })
 
-      const prevDetail = queryClient.getQueryData<SchemeDetailResponse>(
+      const prevDetail = queryClient.getQueryData<SchemeDetail>(
         SCHEME_KEYS.detail(schemeKey),
       )
-      const prevList = queryClient.getQueryData<SchemeResponse[]>(SCHEME_KEYS.list)
+      const prevList = queryClient.getQueryData<SchemeListItem[]>(SCHEME_KEYS.list)
 
       if (prevDetail !== undefined) {
-        queryClient.setQueryData<SchemeDetailResponse>(SCHEME_KEYS.detail(schemeKey), {
+        queryClient.setQueryData<SchemeDetail>(SCHEME_KEYS.detail(schemeKey), {
           ...prevDetail,
           ...(input.name !== undefined && { name: input.name }),
           ...(input.description !== undefined && { description: input.description }),
@@ -134,10 +136,10 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
       }
 
       if (prevList !== undefined) {
-        queryClient.setQueryData<SchemeResponse[]>(
+        queryClient.setQueryData<SchemeListItem[]>(
           SCHEME_KEYS.list,
           prevList.map((s) =>
-            s.schemeKey === schemeKey
+            s.key === schemeKey
               ? {
                   ...s,
                   ...(input.name !== undefined && { name: input.name }),
@@ -152,7 +154,7 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
     },
     onError: (error, _input, context) => {
       const ctx = context as
-        | { prevDetail?: SchemeDetailResponse; prevList?: SchemeResponse[] }
+        | { prevDetail?: SchemeDetail; prevList?: SchemeListItem[] }
         | undefined
 
       if (ctx?.prevDetail !== undefined) {
@@ -195,7 +197,10 @@ export function useDeleteWorkflowScheme() {
 
 /**
  * 스킴에 이슈 타입-워크플로우 매핑을 추가한다.
- * POST /api/v1/workflow-schemes/{schemeKey}/mappings → MappingResponse
+ * POST /api/v1/workflow-schemes/{schemeKey}/mappings → MappingCreated
+ *
+ * ★ 서버 응답(MappingCreated: 내부 PK 형태)과 낙관적으로 캐시에 넣는 값(MappingDetail: 키·이름 형태)은
+ * 형태가 다르다. 그래서 응답을 캐시에 직접 쓰지 않고 onSettled 의 invalidate 로 서버 형태를 다시 받는다.
  *
  * 낙관적 업데이트: onMutate에서 단건 캐시에 임시 매핑 선반영.
  * 409 MAPPING_DUPLICATE / MAPPING_DEFAULT_DUPLICATE 시 롤백 + toast.error.
@@ -206,18 +211,18 @@ export function useDeleteWorkflowScheme() {
 export function useAddMapping(schemeKey: string) {
   const queryClient = useQueryClient()
 
-  return useMutation<MappingResponse, unknown, AddMappingInput>({
+  return useMutation<MappingCreated, unknown, AddMappingInput>({
     mutationFn: (input) => addMapping(schemeKey, input),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
 
-      const prevDetail = queryClient.getQueryData<SchemeDetailResponse>(
+      const prevDetail = queryClient.getQueryData<SchemeDetail>(
         SCHEME_KEYS.detail(schemeKey),
       )
 
       if (prevDetail !== undefined) {
         // 임시 ID는 음수 — 서버 응답 후 onSettled invalidate로 교체됨
-        const optimisticMapping: MappingResponse = {
+        const optimisticMapping: MappingDetail = {
           id: -Date.now(),
           issueTypeKey: input.issueTypeKey,
           issueTypeName: input.issueTypeKey,
@@ -226,7 +231,7 @@ export function useAddMapping(schemeKey: string) {
           isDefault: input.issueTypeKey === null,
         }
 
-        queryClient.setQueryData<SchemeDetailResponse>(SCHEME_KEYS.detail(schemeKey), {
+        queryClient.setQueryData<SchemeDetail>(SCHEME_KEYS.detail(schemeKey), {
           ...prevDetail,
           mappings: [...prevDetail.mappings, optimisticMapping],
           mappingsCount: prevDetail.mappingsCount + 1,
@@ -236,7 +241,7 @@ export function useAddMapping(schemeKey: string) {
       return { prevDetail }
     },
     onError: (error, _input, context) => {
-      const ctx = context as { prevDetail?: SchemeDetailResponse } | undefined
+      const ctx = context as { prevDetail?: SchemeDetail } | undefined
 
       if (ctx?.prevDetail !== undefined) {
         queryClient.setQueryData(SCHEME_KEYS.detail(schemeKey), ctx.prevDetail)
@@ -266,12 +271,12 @@ export function useRemoveMapping(schemeKey: string) {
     onMutate: async (mappingId) => {
       await queryClient.cancelQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
 
-      const prevDetail = queryClient.getQueryData<SchemeDetailResponse>(
+      const prevDetail = queryClient.getQueryData<SchemeDetail>(
         SCHEME_KEYS.detail(schemeKey),
       )
 
       if (prevDetail !== undefined) {
-        queryClient.setQueryData<SchemeDetailResponse>(SCHEME_KEYS.detail(schemeKey), {
+        queryClient.setQueryData<SchemeDetail>(SCHEME_KEYS.detail(schemeKey), {
           ...prevDetail,
           mappings: prevDetail.mappings.filter((m) => m.id !== mappingId),
           mappingsCount: Math.max(0, prevDetail.mappingsCount - 1),
@@ -281,7 +286,7 @@ export function useRemoveMapping(schemeKey: string) {
       return { prevDetail }
     },
     onError: (error, _mappingId, context) => {
-      const ctx = context as { prevDetail?: SchemeDetailResponse } | undefined
+      const ctx = context as { prevDetail?: SchemeDetail } | undefined
 
       if (ctx?.prevDetail !== undefined) {
         queryClient.setQueryData(SCHEME_KEYS.detail(schemeKey), ctx.prevDetail)

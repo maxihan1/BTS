@@ -4,19 +4,22 @@ import { ZodError } from 'zod'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
-  schemeResponseSchema,
-  schemeDetailResponseSchema,
-  mappingResponseSchema,
-  assignmentResponseSchema,
-  assignableSchemeResponseSchema,
+  schemeListItemSchema,
+  schemeDetailSchema,
+  schemeMutationResultSchema,
+  mappingDetailSchema,
+  assignmentRecordSchema,
+  assignedSchemeSchema,
   toNullableIssueTypeKey,
   fetchAssignableWorkflowSchemes,
 } from '../workflow-schemes'
 import type {
-  SchemeResponse,
-  SchemeDetailResponse,
-  MappingResponse,
-  AssignmentResponse,
+  SchemeListItem,
+  SchemeDetail,
+  SchemeMutationResult,
+  MappingDetail,
+  AssignedScheme,
+  AssignmentRecord,
   CreateSchemeInput,
   UpdateSchemeInput,
   AddMappingInput,
@@ -27,7 +30,7 @@ import type {
 // Fixtures
 // ─────────────────────────────────────────────────────────────────────────────
 
-const mappingFixture: MappingResponse = {
+const mappingFixture: MappingDetail = {
   id: 1,
   issueTypeKey: 'bug',
   issueTypeName: '버그',
@@ -36,7 +39,7 @@ const mappingFixture: MappingResponse = {
   isDefault: false,
 }
 
-const defaultMappingFixture: MappingResponse = {
+const defaultMappingFixture: MappingDetail = {
   id: 2,
   issueTypeKey: null,
   issueTypeName: null,
@@ -45,39 +48,59 @@ const defaultMappingFixture: MappingResponse = {
   isDefault: true,
 }
 
-const schemeFixture: SchemeResponse = {
-  schemeKey: 'scheme-atlas',
+// 픽스처는 계약 스냅샷(docs/contracts/workflow-schemes.snapshot.json)의 형태를 따른다 —
+// 프론트가 임의로 만든 형태가 아니라 백엔드가 실제로 내보내는 형태다.
+const schemeFixture: SchemeListItem = {
+  id: 1,
+  key: 'scheme-atlas',
   name: 'Atlas 기본 스킴',
   description: 'Atlas 프로젝트 워크플로우 스킴',
   isStandard: false,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
   usedByProjectsCount: 2,
   mappingsCount: 3,
+  mappings: [],
 }
 
-const schemeDetailFixture: SchemeDetailResponse = {
-  schemeKey: 'scheme-atlas',
-  name: 'Atlas 기본 스킴',
-  description: 'Atlas 프로젝트 워크플로우 스킴',
-  isStandard: false,
-  usedByProjectsCount: 2,
-  mappingsCount: 3,
+const schemeDetailFixture: SchemeDetail = {
+  ...schemeFixture,
   mappings: [mappingFixture, defaultMappingFixture],
 }
 
-const assignmentFixture: AssignmentResponse = {
-  projectKey: 'ATLAS',
-  schemeKey: 'scheme-atlas',
-  schemeName: 'Atlas 기본 스킴',
+const mutationResultFixture: SchemeMutationResult = {
+  id: 1,
+  key: 'scheme-atlas',
+  name: 'Atlas 기본 스킴',
+  description: 'Atlas 프로젝트 워크플로우 스킴',
+  isStandard: false,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
+const assignmentRecordFixture: AssignmentRecord = {
+  projectId: '11111111-1111-4111-8111-111111111111',
+  workflowSchemeId: 1,
+  assignedAt: '2026-01-01T00:00:00Z',
+  assignedBy: '22222222-2222-4222-8222-222222222222',
+}
+
+const assignmentFixture: AssignedScheme = {
+  id: 1,
+  key: 'scheme-atlas',
+  name: 'Atlas 기본 스킴',
+  description: 'Atlas 프로젝트 워크플로우 스킴',
+  isStandard: false,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T2-1. schemeResponseSchema — 5 필드 파싱
+// T2-1. schemeListItemSchema — 5 필드 파싱
 // ─────────────────────────────────────────────────────────────────────────────
-describe('schemeResponseSchema', () => {
+describe('schemeListItemSchema', () => {
   it('T2-1a: 6 필드가 모두 있는 SchemeResponse를 파싱한다', () => {
-    const result = schemeResponseSchema.parse(schemeFixture)
+    const result = schemeListItemSchema.parse(schemeFixture)
 
-    expect(result.schemeKey).toBe('scheme-atlas')
+    expect(result.key).toBe('scheme-atlas')
     expect(result.name).toBe('Atlas 기본 스킴')
     expect(result.description).toBe('Atlas 프로젝트 워크플로우 스킴')
     expect(result.isStandard).toBe(false)
@@ -86,25 +109,25 @@ describe('schemeResponseSchema', () => {
   })
 
   it('T2-1b: description이 빈 문자열이어도 파싱 성공한다', () => {
-    const result = schemeResponseSchema.parse({ ...schemeFixture, description: '' })
+    const result = schemeListItemSchema.parse({ ...schemeFixture, description: '' })
     expect(result.description).toBe('')
   })
 
   it('T2-1c: 필수 필드 누락 시 ZodError를 throw한다', () => {
-    expect(() => schemeResponseSchema.parse({ schemeKey: 'only-key' })).toThrow(ZodError)
+    expect(() => schemeListItemSchema.parse({ schemeKey: 'only-key' })).toThrow(ZodError)
   })
 
   it('T2-1d: usedByProjectsCount가 음수면 ZodError를 throw한다', () => {
-    expect(() => schemeResponseSchema.parse({ ...schemeFixture, usedByProjectsCount: -1 })).toThrow(ZodError)
+    expect(() => schemeListItemSchema.parse({ ...schemeFixture, usedByProjectsCount: -1 })).toThrow(ZodError)
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T2-2. mappingResponseSchema — default 매핑 시 issueTypeKey/Name이 null
+// T2-2. mappingDetailSchema — default 매핑 시 issueTypeKey/Name이 null
 // ─────────────────────────────────────────────────────────────────────────────
-describe('mappingResponseSchema', () => {
+describe('mappingDetailSchema', () => {
   it('T2-2a: 일반 매핑 파싱 — issueTypeKey와 issueTypeName이 string이다', () => {
-    const result = mappingResponseSchema.parse(mappingFixture)
+    const result = mappingDetailSchema.parse(mappingFixture)
 
     expect(result.id).toBe(1)
     expect(result.issueTypeKey).toBe('bug')
@@ -114,7 +137,7 @@ describe('mappingResponseSchema', () => {
   })
 
   it('T2-2b: 기본(default) 매핑 파싱 — issueTypeKey/issueTypeName이 null이다', () => {
-    const result = mappingResponseSchema.parse(defaultMappingFixture)
+    const result = mappingDetailSchema.parse(defaultMappingFixture)
 
     expect(result.issueTypeKey).toBeNull()
     expect(result.issueTypeName).toBeNull()
@@ -123,43 +146,64 @@ describe('mappingResponseSchema', () => {
 
   it('T2-2c: id 필드 누락 시 ZodError를 throw한다', () => {
     const withoutId = { ...mappingFixture, id: undefined }
-    expect(() => mappingResponseSchema.parse(withoutId)).toThrow(ZodError)
+    expect(() => mappingDetailSchema.parse(withoutId)).toThrow(ZodError)
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T2-3. schemeDetailResponseSchema — mappings 배열 포함
+// T2-3. schemeDetailSchema — mappings 배열 포함
 // ─────────────────────────────────────────────────────────────────────────────
-describe('schemeDetailResponseSchema', () => {
+describe('schemeDetailSchema', () => {
   it('T2-3a: mappings 배열을 포함한 SchemeDetailResponse를 파싱한다', () => {
-    const result = schemeDetailResponseSchema.parse(schemeDetailFixture)
+    const result = schemeDetailSchema.parse(schemeDetailFixture)
 
-    expect(result.schemeKey).toBe('scheme-atlas')
+    expect(result.key).toBe('scheme-atlas')
     expect(result.mappings).toHaveLength(2)
     expect(result.mappings[0]?.issueTypeKey).toBe('bug')
     expect(result.mappings[1]?.issueTypeKey).toBeNull()
   })
 
   it('T2-3b: mappings 배열이 비어있어도 파싱 성공한다', () => {
-    const result = schemeDetailResponseSchema.parse({ ...schemeDetailFixture, mappings: [] })
+    const result = schemeDetailSchema.parse({ ...schemeDetailFixture, mappings: [] })
     expect(result.mappings).toHaveLength(0)
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T2-4. assignmentResponseSchema — projectKey + schemeKey + schemeName
+// T2-3b. schemeMutationResultSchema — 생성·수정 응답. 목록 응답과 형태가 다르다.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('assignmentResponseSchema', () => {
-  it('T2-4a: AssignmentResponse를 파싱한다', () => {
-    const result = assignmentResponseSchema.parse(assignmentFixture)
+describe('schemeMutationResultSchema', () => {
+  it('생성·수정 응답(카운트 없음)을 파싱한다', () => {
+    const result = schemeMutationResultSchema.parse(mutationResultFixture)
 
-    expect(result.projectKey).toBe('ATLAS')
-    expect(result.schemeKey).toBe('scheme-atlas')
-    expect(result.schemeName).toBe('Atlas 기본 스킴')
+    expect(result.key).toBe('scheme-atlas')
+    expect(result.isStandard).toBe(false)
+  })
+
+  it('목록 스키마는 이 응답을 통과시키지 못한다 — 한 스키마로 두 형태를 덮을 수 없다는 증명', () => {
+    // 이 PR 이전에는 두 endpoint 가 같은 스키마를 공유해 카운트 부재가 드러나지 않았다.
+    expect(() => schemeListItemSchema.parse(mutationResultFixture)).toThrow(ZodError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2-4. assignmentRecordSchema — 배정 이력(PUT 응답). 배정 조회(GET)와 형태가 다르다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assignmentRecordSchema', () => {
+  it('T2-4a: 배정 이력 응답을 파싱한다', () => {
+    const result = assignmentRecordSchema.parse(assignmentRecordFixture)
+
+    expect(result.projectId).toBe('11111111-1111-4111-8111-111111111111')
+    expect(result.workflowSchemeId).toBe(1)
+    expect(result.assignedBy).toBe('22222222-2222-4222-8222-222222222222')
   })
 
   it('T2-4b: 필수 필드 누락 시 ZodError를 throw한다', () => {
-    expect(() => assignmentResponseSchema.parse({ projectKey: 'ATLAS' })).toThrow(ZodError)
+    expect(() => assignmentRecordSchema.parse({ projectId: 'x' })).toThrow(ZodError)
+  })
+
+  it('T2-4c: 배정 조회(GET) 응답 형태는 이 스키마를 통과하지 못한다 — 두 형태가 다르다는 증명', () => {
+    expect(() => assignmentRecordSchema.parse(assignmentFixture)).toThrow(ZodError)
   })
 })
 
@@ -182,15 +226,16 @@ describe('toNullableIssueTypeKey', () => {
 // T2-6. 타입 컴파일 가드 — Input 인터페이스가 올바른 형태인지 컴파일 시 검증
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Input 인터페이스 컴파일 가드', () => {
-  it('T2-6a: CreateSchemeInput 인터페이스가 schemeKey와 name 필드를 가진다', () => {
-    const input: CreateSchemeInput = { schemeKey: 'new-scheme', name: '새 스킴', description: '설명' }
-    expect(input.schemeKey).toBe('new-scheme')
+  it('T2-6a: CreateSchemeInput 인터페이스가 key와 name 필드를 가진다 (백엔드 요청 DTO 와 동일 어휘)', () => {
+    const input: CreateSchemeInput = { key: 'new-scheme', name: '새 스킴', description: '설명' }
+    expect(input.key).toBe('new-scheme')
     expect(input.name).toBe('새 스킴')
   })
 
-  it('T2-6b: UpdateSchemeInput 인터페이스가 name과 description을 선택 필드로 가진다', () => {
-    const input: UpdateSchemeInput = {}
-    expect(input.name).toBeUndefined()
+  it('T2-6b: UpdateSchemeInput 의 name 은 필수다 (백엔드 UpdateWorkflowSchemeRequest.name 이 non-null)', () => {
+    const input: UpdateSchemeInput = { name: '수정된 이름' }
+    expect(input.name).toBe('수정된 이름')
+    expect(input.description).toBeUndefined()
   })
 
   it('T2-6c: AddMappingInput의 issueTypeKey가 null을 허용한다', () => {
@@ -205,44 +250,51 @@ describe('Input 인터페이스 컴파일 가드', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T2-7. assignableSchemeResponseSchema — backend 어휘(key/isDefault) → 프론트 어휘(schemeKey/isStandard) 정규화
+// T2-7. assignedSchemeSchema — backend 어휘(key/isDefault) → 프론트 어휘(schemeKey/isStandard) 정규화
 // ─────────────────────────────────────────────────────────────────────────────
-describe('assignableSchemeResponseSchema', () => {
+describe('assignedSchemeSchema', () => {
   it('T2-7a: id와 description이 null이어도 파싱 성공한다', () => {
-    const result = assignableSchemeResponseSchema.parse({
+    const result = assignedSchemeSchema.parse({
       id: null,
       key: 'software-scheme',
       name: '소프트웨어 스킴',
       description: null,
-      isDefault: true,
+      isStandard: true,
     })
 
     expect(result.id).toBeNull()
     expect(result.description).toBeNull()
   })
 
-  it('T2-7b: backend 필드명(key, isDefault)을 프론트 어휘(schemeKey, isStandard)로 정규화한다', () => {
-    const result = assignableSchemeResponseSchema.parse({
+  it('T2-7b: 백엔드 어휘를 그대로 쓴다 — 경계 .transform() 정규화가 사라졌다', () => {
+    // 이전에는 백엔드가 key/isDefault 를 내보내고 프론트가 schemeKey/isStandard 로 뒤집었다.
+    // 이제 백엔드 뷰 레이어가 key/isStandard 를 직접 내보내므로 변환 지점이 없다 —
+    // 변환이 남아 있으면 계약 스냅샷 파싱(workflow-schemes.contract.test.ts)이 먼저 깨진다.
+    const result = assignedSchemeSchema.parse({
       id: 1,
       key: 'x',
       name: 'X 스킴',
       description: null,
-      isDefault: true,
+      isStandard: true,
     })
 
     expect(result).toEqual({
       id: 1,
-      schemeKey: 'x',
+      key: 'x',
       name: 'X 스킴',
       description: null,
       isStandard: true,
     })
-    expect(result).not.toHaveProperty('key')
-    expect(result).not.toHaveProperty('isDefault')
+  })
+
+  it('T2-7c: 옛 백엔드 어휘(isDefault)는 더 이상 통과하지 못한다', () => {
+    expect(() =>
+      assignedSchemeSchema.parse({ id: 1, key: 'x', name: 'X', description: null, isDefault: true }),
+    ).toThrow(ZodError)
   })
 
   it('T2-7c: 필수 필드 누락 시 ZodError를 throw한다', () => {
-    expect(() => assignableSchemeResponseSchema.parse({ key: 'only-key' })).toThrow(ZodError)
+    expect(() => assignedSchemeSchema.parse({ key: 'only-key' })).toThrow(ZodError)
   })
 })
 
@@ -250,12 +302,12 @@ describe('assignableSchemeResponseSchema', () => {
 // T2-8. fetchAssignableWorkflowSchemes — 프로젝트 스코프 할당 가능 스킴 목록 조회
 // ─────────────────────────────────────────────────────────────────────────────
 describe('fetchAssignableWorkflowSchemes', () => {
-  it('T2-8a: GET /api/v1/projects/:projectKey/assignable-workflow-schemes 를 호출하고 정규화된 배열을 반환한다', async () => {
+  it('T2-8a: GET /api/v1/projects/:projectKey/assignable-workflow-schemes 를 호출하고 배열을 반환한다', async () => {
     server.use(
       http.get('/api/v1/projects/ATLAS/assignable-workflow-schemes', () =>
         HttpResponse.json({
           data: [
-            { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isDefault: true },
+            { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isStandard: true },
           ],
         }),
       ),
@@ -264,7 +316,7 @@ describe('fetchAssignableWorkflowSchemes', () => {
     const result = await fetchAssignableWorkflowSchemes('ATLAS')
 
     expect(result).toHaveLength(1)
-    expect(result[0]?.schemeKey).toBe('software-scheme')
+    expect(result[0]?.key).toBe('software-scheme')
     expect(result[0]?.isStandard).toBe(true)
     expect(result[0]?.id).toBe(1)
   })

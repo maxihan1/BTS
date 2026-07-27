@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import type { SchemeResponse } from '@/api/workflow-schemes'
+import type { SchemeMutationResult } from '@/api/workflow-schemes'
 import { WorkflowSchemeNewForm } from '../admin.workflow-schemes.new'
 
 // vi.hoisted로 mock 함수 선언 — vi.mock 호이스팅보다 먼저 초기화 보장
@@ -28,14 +28,15 @@ vi.mock('sonner', () => ({
   },
 }))
 
-/** 성공 fixture — createWorkflowScheme 201 응답 */
-const createdSchemeFixture: SchemeResponse = {
-  schemeKey: 'my-new-scheme',
+/** 성공 fixture — 생성 응답은 카운트·mappings 를 싣지 않는다(백엔드 WorkflowSchemeResponse). */
+const createdSchemeFixture: SchemeMutationResult = {
+  id: 1,
+  key: 'my-new-scheme',
   name: '새 스킴',
   description: '설명',
   isStandard: false,
-  usedByProjectsCount: 0,
-  mappingsCount: 0,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
 }
 
 /** QueryClientProvider 래퍼 */
@@ -154,7 +155,7 @@ describe('WorkflowSchemeNewForm', () => {
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({
         to: '/admin/workflow-schemes/$key',
-        params: { key: createdSchemeFixture.schemeKey },
+        params: { key: createdSchemeFixture.key },
       }),
     )
   })

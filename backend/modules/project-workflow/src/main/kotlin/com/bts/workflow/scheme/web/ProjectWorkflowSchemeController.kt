@@ -102,7 +102,7 @@ class ProjectWorkflowSchemeController(
      * spec §4.3 + EC-1 D10 — assignment 없는 신규 프로젝트는 software-scheme 자동 배정 후 반환.
      *
      * @param projectKey 스킴을 조회할 프로젝트 키 (예. "ATLAS").
-     * @return 200 + `{ "data": { id, key, name, description, isDefault, ... } }`
+     * @return 200 + `{ "data": { id, key, name, description, isStandard, ... } }`
      * @throws ResponseStatusException(404) [projectKey] 에 해당하는 프로젝트가 없을 때.
      */
     @GetMapping("/{projectKey}/workflow-scheme")
@@ -139,7 +139,7 @@ class ProjectWorkflowSchemeController(
      * @param projectKey 배정 후보를 조회할 프로젝트 키 (예. "ATLAS"). 이 컨트롤러가 프로젝트 스코프로
      * 권한을 평가하고 존재 여부를 404 로 검증하는 데 쓰인다 — 목록 조회 자체는 프로젝트에 한정되지
      * 않는 전역 활성 스킴 목록이다.
-     * @return 200 + `{ "data": [ { id, key, name, description, isDefault }, ... ] }`
+     * @return 200 + `{ "data": [ { id, key, name, description, isStandard }, ... ] }`
      * @throws ResponseStatusException(404) [projectKey] 에 해당하는 프로젝트가 없을 때.
      * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException actor 가 [projectKey] 에 대해
      * `ASSIGN_SCHEME` 권한이 없을 때. [WorkflowSchemeExceptionHandler] 가 403 으로 변환한다.
@@ -193,14 +193,15 @@ data class AssignmentResponse(
  * @property key 스킴 키.
  * @property name 스킴 이름.
  * @property description 스킴 설명.
- * @property isDefault 표준 스킴 여부.
+ * @property isStandard 시스템 표준 스킴 여부 (DB 컬럼 `is_default`, 도메인 `WorkflowScheme.isDefault`).
  */
 data class SchemeResponse(
     val id: Long?,
     val key: String,
     val name: String,
     val description: String?,
-    val isDefault: Boolean,
+    /** 시스템 표준 스킴 여부. 도메인·DB 는 `isDefault`/`is_default` 그대로다(ADR D2 — 뷰 레이어 한정). */
+    val isStandard: Boolean,
 )
 
 // ── extension mappers ─────────────────────────────────────────────────────────
@@ -219,5 +220,5 @@ private fun WorkflowScheme.toResponse() =
         key = key.value,
         name = name,
         description = description,
-        isDefault = isDefault,
+        isStandard = isDefault,
     )

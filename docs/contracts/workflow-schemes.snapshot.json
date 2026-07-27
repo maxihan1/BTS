@@ -1,0 +1,128 @@
+{
+  "$comment" : "자동 생성 파일 — 손으로 편집하지 말 것. 재생성: cd backend && ./gradlew :modules:app:test --tests '*WorkflowSchemeContractSnapshotTest*' -Dcontract.snapshot.update=true. 값은 타입별 표준값으로 정규화돼 있다(plan D-6) — 계약은 필드명·타입·nullability 이지 값이 아니다.",
+  "GET /api/v1/projects/{k}/assignable-workflow-schemes" : {
+    "data" : [
+      {
+        "description" : "string",
+        "id" : 1,
+        "isStandard" : true,
+        "key" : "string",
+        "name" : "string"
+      },
+      {
+        "description" : null,
+        "id" : 1,
+        "isStandard" : true,
+        "key" : "string",
+        "name" : "string"
+      }
+    ]
+  },
+  "GET /api/v1/projects/{k}/workflow-scheme" : {
+    "data" : {
+      "description" : null,
+      "id" : 1,
+      "isStandard" : true,
+      "key" : "string",
+      "name" : "string"
+    }
+  },
+  "GET /api/v1/workflow-schemes" : {
+    "data" : [
+      {
+        "createdAt" : "2026-01-01T00:00:00Z",
+        "description" : "string",
+        "id" : 1,
+        "isStandard" : true,
+        "key" : "string",
+        "mappings" : [ ],
+        "mappingsCount" : 1,
+        "name" : "string",
+        "updatedAt" : "2026-01-01T00:00:00Z",
+        "usedByProjectsCount" : 1
+      },
+      {
+        "createdAt" : "2026-01-01T00:00:00Z",
+        "description" : null,
+        "id" : 1,
+        "isStandard" : true,
+        "key" : "string",
+        "mappings" : [ ],
+        "mappingsCount" : 1,
+        "name" : "string",
+        "updatedAt" : "2026-01-01T00:00:00Z",
+        "usedByProjectsCount" : 1
+      }
+    ]
+  },
+  "GET /api/v1/workflow-schemes/{key}" : {
+    "data" : {
+      "createdAt" : "2026-01-01T00:00:00Z",
+      "description" : "string",
+      "id" : 1,
+      "isStandard" : true,
+      "key" : "string",
+      "mappings" : [
+        {
+          "id" : 1,
+          "isDefault" : true,
+          "issueTypeKey" : "string",
+          "issueTypeName" : "string",
+          "workflowKey" : "string",
+          "workflowName" : "string"
+        },
+        {
+          "id" : 1,
+          "isDefault" : true,
+          "issueTypeKey" : null,
+          "issueTypeName" : null,
+          "workflowKey" : "string",
+          "workflowName" : "string"
+        }
+      ],
+      "mappingsCount" : 1,
+      "name" : "string",
+      "updatedAt" : "2026-01-01T00:00:00Z",
+      "usedByProjectsCount" : 1
+    }
+  },
+  "POST /api/v1/workflow-schemes" : {
+    "data" : {
+      "createdAt" : "2026-01-01T00:00:00Z",
+      "description" : "string",
+      "id" : 1,
+      "isStandard" : true,
+      "key" : "string",
+      "name" : "string",
+      "updatedAt" : "2026-01-01T00:00:00Z"
+    }
+  },
+  "POST /api/v1/workflow-schemes/{key}/mappings" : {
+    "data" : {
+      "createdAt" : "2026-01-01T00:00:00Z",
+      "id" : 1,
+      "issueTypeId" : 1,
+      "schemeId" : 1,
+      "workflowId" : "00000000-0000-4000-8000-000000000000"
+    }
+  },
+  "PUT /api/v1/projects/{k}/workflow-scheme" : {
+    "data" : {
+      "assignedAt" : "2026-01-01T00:00:00Z",
+      "assignedBy" : "00000000-0000-4000-8000-000000000000",
+      "projectId" : "00000000-0000-4000-8000-000000000000",
+      "workflowSchemeId" : 1
+    }
+  },
+  "PUT /api/v1/workflow-schemes/{key}" : {
+    "data" : {
+      "createdAt" : "2026-01-01T00:00:00Z",
+      "description" : null,
+      "id" : 1,
+      "isStandard" : true,
+      "key" : "string",
+      "name" : "string",
+      "updatedAt" : "2026-01-01T00:00:00Z"
+    }
+  }
+}

@@ -11,7 +11,7 @@ import { loginAsSystemAdmin, navigateToSchemeDetail, i18nLabels } from './fixtur
  * - story, task, epic, subtask 이슈 타입은 미매핑 → S4 추가 가능
  *
  * MSW 핸들러는 stateless (메모리 변경 없음).
- * S4: POST 201 응답 body 를 assert (낙관적 업데이트 + 서버 응답 검증).
+ * S4: POST 200 응답 body 를 assert (낙관적 업데이트 + 서버 응답 검증).
  * S5: DELETE 204 응답 후 낙관적 삭제 row 제거 검증.
  * S6: hasDefaultMapping=true 시 sentinel 옵션 숨김 검증.
  * S6 보완: default 행 강조 (★ prefix + badge) 검증.
@@ -21,17 +21,17 @@ const labels = i18nLabels.workflowScheme
 const SCHEME_KEY = 'custom-scheme-alpha'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S4 — 매핑 추가 (POST 201 응답 body 검증)
+// S4 — 매핑 추가 (POST 200 응답 body 검증)
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('S4 — 매핑 추가: story 이슈 타입 + 워크플로우 선택 → 추가 클릭 → POST 201 응답 수신', async ({ page }) => {
+test('S4 — 매핑 추가: story 이슈 타입 + 워크플로우 선택 → 추가 클릭 → POST 200 응답 수신', async ({ page }) => {
   /*
    * Given. alice 로그인 + custom-scheme-alpha 상세 페이지 진입
    * When.  "이슈 타입 선택" select → "스토리" 선택
    *        "워크플로우 선택" select → 첫 번째 옵션 선택
    *        "추가" 버튼 클릭
    * Then.  POST /api/v1/workflow-schemes/.../mappings 요청 발생
-   *        응답 status 201 + body.data.issueTypeKey === 'story'
+   *        응답 status 200 + body.data 가 생성 응답(MappingResponse) 형태
    */
 
   await loginAsSystemAdmin(page)
@@ -67,11 +67,16 @@ test('S4 — 매핑 추가: story 이슈 타입 + 워크플로우 선택 → 추
   await expect(addButton).toBeEnabled()
   await addButton.click()
 
-  // Then — POST 201 응답 수신 + body.data.issueTypeKey === 'story'
+  // Then — POST 200 응답 수신 + 생성 응답 형태(내부 PK). 상세 형태와 섞이면 클라이언트가 못 읽는다.
   const response = await responsePromise
-  expect(response.status()).toBe(201)
-  const body = await response.json() as { data: { issueTypeKey: string } }
-  expect(body.data.issueTypeKey).toBe('story')
+  expect(response.status()).toBe(200)
+  const body = await response.json() as { data: { schemeId: number; issueTypeId: number | null } }
+  expect(typeof body.data.schemeId).toBe('number')
+  expect(body.data.issueTypeId).toBe(2)
+
+  // ★ 응답을 읽는 것만으로는 부족하다 — 클라이언트가 그 응답을 파싱하는 데 성공했는지까지 봐야 한다.
+  // 형태가 어긋나면 ZodError 로 오류 토스트가 뜨고 낙관적 행이 롤백된다.
+  await expect(page.getByText('요청 처리 중 오류가 발생했습니다')).toHaveCount(0)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

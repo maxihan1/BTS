@@ -65,6 +65,7 @@ data class MappingResponse(
  * @property issueTypeName 이슈 타입 표시 이름. null = default mapping 또는 조회 불가.
  * @property workflowKey 사용할 워크플로우 키.
  * @property workflowName 워크플로우 표시 이름.
+ * @property isDefault 기본 매핑 여부.
  */
 data class MappingResponseDetail(
     val id: Long,
@@ -72,6 +73,17 @@ data class MappingResponseDetail(
     val issueTypeName: String?,
     val workflowKey: String,
     val workflowName: String,
+    /**
+     * 기본 매핑 여부 — `issue_type_id IS NULL` 인 매핑이 기본 매핑이다.
+     *
+     * ★ [issueTypeKey] 가 null 인 것으로 판정하면 안 된다. 이슈타입이 실재하는데 cross-BC 조회만
+     * 실패한 경우([issueTypeRef] = null)와 진짜 기본 매핑이 구분되지 않아, 조회 실패가 기본 매핑으로
+     * 둔갑한다(EC-4). 판정은 도메인 필드 [SchemeIssueTypeMapping.issueTypeId] 로만 한다.
+     *
+     * 이름 주의 — 스킴의 `isStandard`(시스템 표준 스킴 4종 보호)와는 **다른 개념**이다.
+     * 여기서의 `isDefault` 는 스킴 안에서 이슈타입 지정 없이 적용되는 대체 매핑을 뜻한다.
+     */
+    val isDefault: Boolean,
 ) {
     companion object {
         /**
@@ -93,6 +105,8 @@ data class MappingResponseDetail(
                 issueTypeName = issueTypeRef?.name,
                 workflowKey = workflow.key,
                 workflowName = workflow.name,
+                // ★ issueTypeRef 가 아니라 도메인 필드로 판정한다 (EC-4 — 조회 실패 ≠ 기본 매핑).
+                isDefault = mapping.issueTypeId == null,
             )
     }
 }
@@ -106,7 +120,7 @@ data class MappingResponseDetail(
  * @property key 스킴 식별 키.
  * @property name 스킴 이름.
  * @property description 스킴 설명. null 허용.
- * @property isDefault 표준 스킴 여부.
+ * @property isStandard 시스템 표준 스킴 여부 (DB 컬럼 `is_default`, 도메인 `WorkflowScheme.isDefault`).
  * @property createdAt 생성 시각 (ISO-8601).
  * @property updatedAt 최종 변경 시각 (ISO-8601).
  * @property usedByProjectsCount 이 스킴을 사용하는 프로젝트 수.
@@ -118,7 +132,14 @@ data class WorkflowSchemeDetailResponse(
     val key: String,
     val name: String,
     val description: String?,
-    val isDefault: Boolean,
+    /**
+     * 시스템 표준 스킴 여부 — 삭제·잠긴 필드 변경이 차단되는 보호 대상(V201 시드 4종).
+     *
+     * 뷰 레이어만 `isStandard` 로 부른다. 도메인 `WorkflowScheme.isDefault` 와 DB 컬럼 `is_default`
+     * 는 그대로 둔다(ADR D2 — 변경 범위는 뷰 한정, 마이그레이션 0).
+     * [MappingResponseDetail.isDefault] 와 **다른 개념**임에 주의한다.
+     */
+    val isStandard: Boolean,
     val createdAt: String,
     val updatedAt: String,
     val usedByProjectsCount: Long = 0L,
@@ -138,7 +159,7 @@ data class WorkflowSchemeDetailResponse(
                 key = scheme.key.value,
                 name = scheme.name,
                 description = scheme.description,
-                isDefault = scheme.isDefault,
+                isStandard = scheme.isDefault,
                 createdAt = scheme.createdAt.toString(),
                 updatedAt = scheme.updatedAt.toString(),
             )
@@ -161,7 +182,7 @@ data class WorkflowSchemeDetailResponse(
                 key = scheme.key.value,
                 name = scheme.name,
                 description = scheme.description,
-                isDefault = scheme.isDefault,
+                isStandard = scheme.isDefault,
                 createdAt = scheme.createdAt.toString(),
                 updatedAt = scheme.updatedAt.toString(),
                 usedByProjectsCount = usedByProjectsCount,
@@ -206,7 +227,7 @@ data class UpdateWorkflowSchemeRequest(
  * @property key 스킴 식별 키.
  * @property name 스킴 이름.
  * @property description 스킴 설명. null 허용.
- * @property isDefault 표준 스킴 여부.
+ * @property isStandard 시스템 표준 스킴 여부 (DB 컬럼 `is_default`, 도메인 `WorkflowScheme.isDefault`).
  * @property createdAt 생성 시각 (ISO-8601).
  * @property updatedAt 최종 변경 시각 (ISO-8601).
  */
@@ -215,7 +236,8 @@ data class WorkflowSchemeResponse(
     val key: String,
     val name: String,
     val description: String?,
-    val isDefault: Boolean,
+    /** 시스템 표준 스킴 여부. 도메인·DB 는 `isDefault`/`is_default` 그대로다(ADR D2 — 뷰 레이어 한정). */
+    val isStandard: Boolean,
     val createdAt: String,
     val updatedAt: String,
 ) {
@@ -232,7 +254,7 @@ data class WorkflowSchemeResponse(
                 key = scheme.key.value,
                 name = scheme.name,
                 description = scheme.description,
-                isDefault = scheme.isDefault,
+                isStandard = scheme.isDefault,
                 createdAt = scheme.createdAt.toString(),
                 updatedAt = scheme.updatedAt.toString(),
             )

@@ -10,7 +10,7 @@ import {
 } from '@/hooks/use-workflow-schemes'
 import { fetchWorkflows } from '@/api/workflows'
 import { toNullableIssueTypeKey } from '@/api/workflow-schemes'
-import type { MappingResponse } from '@/api/workflow-schemes'
+import type { MappingDetail } from '@/api/workflow-schemes'
 import type { IssueTypeResponse as IssueTypeHookResponse } from '@/api/issue-types'
 import { cn } from '@/lib/utils'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
@@ -49,7 +49,7 @@ export interface MappingTableProps {
   /** 스킴 키 */
   schemeKey: string
   /** 현재 매핑 목록 */
-  mappings: MappingResponse[]
+  mappings: MappingDetail[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ function ConfirmDeleteDialog({ mappingId, onConfirm, onCancel }: ConfirmDeleteDi
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface MappingRowProps {
-  mapping: MappingResponse
+  mapping: MappingDetail
   onDeleteClick: (id: number) => void
   isConfirming: boolean
   onConfirmDelete: (id: number) => void
@@ -325,7 +325,7 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
   }
 
   /** default 매핑을 상단으로, 나머지는 issueTypeName 순 정렬 */
-  const sortedMappings = useMemo<MappingResponse[]>(
+  const sortedMappings = useMemo<MappingDetail[]>(
     () =>
       [...mappings].sort((a, b) => {
         if (a.isDefault) return -1

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { useUpdateWorkflowScheme, useDeleteWorkflowScheme } from '@/hooks/use-workflow-schemes'
 import { SchemeInUseModal } from './SchemeInUseModal'
 import { WorkflowSchemeApiError } from '@/api/workflow-schemes'
-import type { SchemeDetailResponse } from '@/api/workflow-schemes'
+import type { SchemeDetail } from '@/api/workflow-schemes'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ const STANDARD_DELETE_TOOLTIP = workflowSchemeLabels.standardProtect.deleteToolt
 /** SchemeMetaPanel 컴포넌트 props */
 export interface SchemeMetaPanelProps {
   /** 스킴 상세 응답 */
-  scheme: SchemeDetailResponse
+  scheme: SchemeDetail
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,7 +48,8 @@ export interface SchemeMetaPanelProps {
  */
 export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
   const [name, setName] = useState(scheme.name)
-  const [description, setDescription] = useState(scheme.description)
+  // 백엔드 description 은 nullable 이다(계약 스냅샷 기준). textarea 는 null 을 못 받으므로 빈 문자열로 정규화한다.
+  const [description, setDescription] = useState(scheme.description ?? '')
   const [isInUseModalOpen, setIsInUseModalOpen] = useState(false)
 
   const nameInputId = useId()
@@ -56,7 +57,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
   const standardTooltipId = useId()
   const deleteTooltipId = useId()
 
-  const updateMutation = useUpdateWorkflowScheme(scheme.schemeKey)
+  const updateMutation = useUpdateWorkflowScheme(scheme.key)
   const deleteMutation = useDeleteWorkflowScheme()
 
   const handleSave = () => {
@@ -64,7 +65,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
   }
 
   const handleDelete = () => {
-    deleteMutation.mutate(scheme.schemeKey, {
+    deleteMutation.mutate(scheme.key, {
       onError: (error) => {
         if (error instanceof WorkflowSchemeApiError) {
           // SCHEME_IN_USE 또는 파서가 errorCode → UNKNOWN으로 변환한 경우 모두 모달로 처리
@@ -99,7 +100,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
       <div className="space-y-1">
         <Label className="text-xs font-medium text-muted-foreground">{workflowSchemeLabels.metaPanel.schemeKeyLabel}</Label>
         <div className="rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm text-muted-foreground">
-          {scheme.schemeKey}
+          {scheme.key}
         </div>
       </div>
 

@@ -3,8 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import type { SchemeDetailResponse, MappingResponse } from '@/api/workflow-schemes'
-import type { SchemeResponse } from '@/api/workflow-schemes'
+import type { SchemeDetail, MappingCreated, SchemeListItem, SchemeMutationResult } from '@/api/workflow-schemes'
 import {
   useWorkflowSchemes,
   useWorkflowSchemeDetail,
@@ -27,15 +26,19 @@ function createWrapper() {
 }
 
 describe('useWorkflowSchemes', () => {
-  it('스킴 목록을 조회해 SchemeResponse 배열을 반환한다', async () => {
-    const schemes: SchemeResponse[] = [
+  it('스킴 목록을 조회해 SchemeListItem 배열을 반환한다', async () => {
+    const schemes: SchemeListItem[] = [
       {
-        schemeKey: 'software-default-scheme',
+        id: 1,
+        key: 'software-default-scheme',
         name: '소프트웨어 개발 기본 스킴',
         description: '',
         isStandard: true,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
         usedByProjectsCount: 3,
         mappingsCount: 5,
+        mappings: [],
       },
     ]
 
@@ -51,7 +54,7 @@ describe('useWorkflowSchemes', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toHaveLength(1)
-    expect(result.current.data?.[0]?.schemeKey).toBe('software-default-scheme')
+    expect(result.current.data?.[0]?.key).toBe('software-default-scheme')
   })
 
   it('로딩 중일 때 isLoading이 true다', () => {
@@ -72,11 +75,14 @@ describe('useWorkflowSchemes', () => {
 
 describe('useWorkflowSchemeDetail', () => {
   it('schemeKey로 단건 상세를 조회한다', async () => {
-    const detail: SchemeDetailResponse = {
-      schemeKey: 'software-default-scheme',
+    const detail: SchemeDetail = {
+      id: 1,
+      key: 'software-default-scheme',
       name: '소프트웨어 개발 기본 스킴',
       description: '설명',
       isStandard: true,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 1,
       mappingsCount: 1,
       mappings: [
@@ -103,18 +109,18 @@ describe('useWorkflowSchemeDetail', () => {
     )
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.schemeKey).toBe('software-default-scheme')
+    expect(result.current.data?.key).toBe('software-default-scheme')
     expect(result.current.data?.mappings).toHaveLength(1)
   })
 })
 
 describe('useAssignableWorkflowSchemes', () => {
-  it('프로젝트 스코프의 할당 가능 스킴 목록을 정규화된 형태로 반환한다', async () => {
+  it('프로젝트 스코프의 할당 가능 스킴 목록을 반환한다 (백엔드 어휘 그대로)', async () => {
     server.use(
       http.get('/api/v1/projects/ATLAS/assignable-workflow-schemes', () =>
         HttpResponse.json({
           data: [
-            { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isDefault: true },
+            { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isStandard: true },
           ],
         }),
       ),
@@ -126,21 +132,23 @@ describe('useAssignableWorkflowSchemes', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toHaveLength(1)
-    expect(result.current.data?.[0]?.schemeKey).toBe('software-scheme')
+    expect(result.current.data?.[0]?.key).toBe('software-scheme')
     expect(result.current.data?.[0]?.isStandard).toBe(true)
   })
 })
 
 describe('useCreateWorkflowScheme', () => {
   it('스킴 생성 성공 시 onSuccess를 호출한다', async () => {
-    const created: SchemeResponse = {
-      schemeKey: 'new-scheme',
-      name: '새 스킴',
-      description: '',
-      isStandard: false,
-      usedByProjectsCount: 0,
-      mappingsCount: 0,
-    }
+    // 생성·수정 응답은 카운트·mappings 를 싣지 않는다(백엔드 WorkflowSchemeResponse).
+      const created: SchemeMutationResult = {
+        id: 1,
+        key: 'new-scheme',
+        name: '새 스킴',
+        description: '',
+        isStandard: false,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }
 
     server.use(
       http.post('/api/v1/workflow-schemes', () =>
@@ -154,7 +162,7 @@ describe('useCreateWorkflowScheme', () => {
     })
 
     act(() => {
-      result.current.mutate({ schemeKey: 'new-scheme', name: '새 스킴' }, { onSuccess })
+      result.current.mutate({ key: 'new-scheme', name: '새 스킴' }, { onSuccess })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -164,14 +172,16 @@ describe('useCreateWorkflowScheme', () => {
 
 describe('useUpdateWorkflowScheme', () => {
   it('스킴 수정 성공 시 낙관적 업데이트 후 서버 응답으로 갱신한다', async () => {
-    const updated: SchemeResponse = {
-      schemeKey: 'custom-scheme-beta',
-      name: '수정된 스킴 이름',
-      description: '수정된 설명',
-      isStandard: false,
-      usedByProjectsCount: 0,
-      mappingsCount: 1,
-    }
+    // 생성·수정 응답은 카운트·mappings 를 싣지 않는다(백엔드 WorkflowSchemeResponse).
+      const updated: SchemeMutationResult = {
+        id: 1,
+        key: 'custom-scheme-beta',
+        name: '수정된 스킴 이름',
+        description: '수정된 설명',
+        isStandard: false,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }
 
     server.use(
       http.put('/api/v1/workflow-schemes/custom-scheme-beta', () =>
@@ -239,11 +249,14 @@ describe('useDeleteWorkflowScheme', () => {
 
 describe('useAddMapping', () => {
   it('onMutate에서 캐시에 낙관적 업데이트를 적용한다', async () => {
-    const existingDetail: SchemeDetailResponse = {
-      schemeKey: 'custom-scheme-beta',
+    const existingDetail: SchemeDetail = {
+      id: 1,
+      key: 'custom-scheme-beta',
       name: '파일럿',
       description: '',
       isStandard: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 0,
       mappingsCount: 1,
       mappings: [
@@ -258,13 +271,13 @@ describe('useAddMapping', () => {
       ],
     }
 
-    const newMapping: MappingResponse = {
+    // 백엔드 POST /mappings 응답은 MappingCreated(내부 PK 형태)다 — 상세의 MappingDetail 과 다르다.
+    const newMapping: MappingCreated = {
       id: 99,
-      issueTypeKey: 'bug',
-      issueTypeName: '버그',
-      workflowKey: 'bug-tracking',
-      workflowName: '버그 추적',
-      isDefault: false,
+      schemeId: 6,
+      issueTypeId: 5,
+      workflowId: '5b5a535a-b6ff-4a90-a3d1-9dd935137256',
+      createdAt: '2026-01-01T00:00:00Z',
     }
 
     server.use(
@@ -297,11 +310,14 @@ describe('useAddMapping', () => {
   })
 
   it('409 MAPPING_DUPLICATE 시 onError에서 롤백하고 toast.error를 호출한다', async () => {
-    const existingDetail: SchemeDetailResponse = {
-      schemeKey: 'software-default-scheme',
+    const existingDetail: SchemeDetail = {
+      id: 1,
+      key: 'software-default-scheme',
       name: '소프트웨어',
       description: '',
       isStandard: true,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 3,
       mappingsCount: 1,
       mappings: [
@@ -353,7 +369,7 @@ describe('useAddMapping', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     // 롤백 후 기존 캐시 유지 확인
-    const cachedDetail = client.getQueryData<SchemeDetailResponse>([
+    const cachedDetail = client.getQueryData<SchemeDetail>([
       'workflow-schemes',
       'software-default-scheme',
     ])
@@ -362,11 +378,14 @@ describe('useAddMapping', () => {
   })
 
   it('onSettled에서 invalidate를 호출해 캐시를 갱신한다', async () => {
-    const existingDetail: SchemeDetailResponse = {
-      schemeKey: 'custom-scheme-beta',
+    const existingDetail: SchemeDetail = {
+      id: 1,
+      key: 'custom-scheme-beta',
       name: '파일럿',
       description: '',
       isStandard: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 0,
       mappingsCount: 1,
       mappings: [
@@ -380,13 +399,13 @@ describe('useAddMapping', () => {
         },
       ],
     }
-    const newMapping: MappingResponse = {
+    // 백엔드 매핑 추가 응답은 MappingCreated(내부 PK 형태)다.
+    const newMapping: MappingCreated = {
       id: 70,
-      issueTypeKey: 'task',
-      issueTypeName: '작업',
-      workflowKey: 'simple',
-      workflowName: '단순 워크플로우',
-      isDefault: false,
+      schemeId: 6,
+      issueTypeId: 3,
+      workflowId: 'e4b722f6-255e-4550-be96-113b9542f1fb',
+      createdAt: '2026-01-01T00:00:00Z',
     }
 
     let fetchCount = 0
@@ -427,11 +446,14 @@ describe('useAddMapping', () => {
 
 describe('useRemoveMapping', () => {
   it('낙관적 업데이트로 캐시에서 매핑을 즉시 제거한다', async () => {
-    const existingDetail: SchemeDetailResponse = {
-      schemeKey: 'software-default-scheme',
+    const existingDetail: SchemeDetail = {
+      id: 1,
+      key: 'software-default-scheme',
       name: '소프트웨어',
       description: '',
       isStandard: true,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 3,
       mappingsCount: 2,
       mappings: [
@@ -488,7 +510,7 @@ describe('useRemoveMapping', () => {
 
     // onMutate에서 낙관적으로 제거 — 즉시 캐시 반영
     await waitFor(() => {
-      const cached = client.getQueryData<SchemeDetailResponse>([
+      const cached = client.getQueryData<SchemeDetail>([
         'workflow-schemes',
         'software-default-scheme',
       ])

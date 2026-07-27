@@ -2,19 +2,21 @@
 import { z } from 'zod'
 import { apiFetch, apiGet, apiPost, ApiError } from './client'
 import {
-  schemeResponseSchema,
-  schemeDetailResponseSchema,
-  mappingResponseSchema,
-  assignmentResponseSchema,
-  assignableSchemeResponseSchema,
+  schemeListItemSchema,
+  schemeDetailSchema,
+  schemeMutationResultSchema,
+  mappingCreatedSchema,
+  assignedSchemeSchema,
+  assignmentRecordSchema,
   dataOf,
 } from './workflow-schemes.types'
 import type {
-  SchemeResponse,
-  SchemeDetailResponse,
-  MappingResponse,
-  AssignmentResponse,
-  AssignableSchemeResponse,
+  SchemeListItem,
+  SchemeDetail,
+  SchemeMutationResult,
+  MappingCreated,
+  AssignedScheme,
+  AssignmentRecord,
   CreateSchemeInput,
   UpdateSchemeInput,
   AddMappingInput,
@@ -22,19 +24,23 @@ import type {
 } from './workflow-schemes.types'
 
 export {
-  schemeResponseSchema,
-  schemeDetailResponseSchema,
-  mappingResponseSchema,
-  assignmentResponseSchema,
-  assignableSchemeResponseSchema,
+  schemeListItemSchema,
+  schemeDetailSchema,
+  schemeMutationResultSchema,
+  mappingDetailSchema,
+  mappingCreatedSchema,
+  assignedSchemeSchema,
+  assignmentRecordSchema,
 } from './workflow-schemes.types'
 
 export type {
-  SchemeResponse,
-  SchemeDetailResponse,
-  MappingResponse,
-  AssignmentResponse,
-  AssignableSchemeResponse,
+  SchemeListItem,
+  SchemeDetail,
+  SchemeMutationResult,
+  MappingDetail,
+  MappingCreated,
+  AssignedScheme,
+  AssignmentRecord,
   CreateSchemeInput,
   UpdateSchemeInput,
   AddMappingInput,
@@ -122,27 +128,27 @@ export function toNullableIssueTypeKey(value: string): string | null {
 
 /**
  * 워크플로우 스킴 목록을 조회한다.
- * GET /api/v1/workflow-schemes → { data: SchemeResponse[] }
+ * GET /api/v1/workflow-schemes → { data: SchemeListItem[] }
  */
-export async function fetchWorkflowSchemes(): Promise<SchemeResponse[]> {
+export async function fetchWorkflowSchemes(): Promise<SchemeListItem[]> {
   const wrapped = await apiGet(
     '/api/v1/workflow-schemes',
-    dataOf(z.array(schemeResponseSchema)),
+    dataOf(z.array(schemeListItemSchema)),
   )
   return wrapped.data
 }
 
 /**
  * 워크플로우 스킴 단건(매핑 동봉)을 조회한다.
- * GET /api/v1/workflow-schemes/{schemeKey} → { data: SchemeDetailResponse }
+ * GET /api/v1/workflow-schemes/{schemeKey} → { data: SchemeDetail }
  *
  * @param schemeKey 스킴 식별 키
  * @throws ApiError(404) 스킴이 없을 때
  */
-export async function fetchWorkflowScheme(schemeKey: string): Promise<SchemeDetailResponse> {
+export async function fetchWorkflowScheme(schemeKey: string): Promise<SchemeDetail> {
   const wrapped = await apiGet(
     `/api/v1/workflow-schemes/${schemeKey}`,
-    dataOf(schemeDetailResponseSchema),
+    dataOf(schemeDetailSchema),
   ).catch((err: unknown) => {
     if (err instanceof ApiError && err.status === 404) {
       throw new ApiError(404, { message: `워크플로우 스킴을 찾을 수 없습니다: ${schemeKey}` })
@@ -154,30 +160,30 @@ export async function fetchWorkflowScheme(schemeKey: string): Promise<SchemeDeta
 
 /**
  * 워크플로우 스킴을 생성한다.
- * POST /api/v1/workflow-schemes → { data: SchemeResponse }
+ * POST /api/v1/workflow-schemes → { data: SchemeMutationResult }
  *
- * @param input schemeKey(필수) + name(필수) + description(선택)
- * @returns 생성된 SchemeResponse
+ * @param input key(필수) + name(필수) + description(선택)
+ * @returns 생성된 SchemeMutationResult
  */
-export async function createWorkflowScheme(input: CreateSchemeInput): Promise<SchemeResponse> {
+export async function createWorkflowScheme(input: CreateSchemeInput): Promise<SchemeMutationResult> {
   const wrapped = await apiPost(
     '/api/v1/workflow-schemes',
     input,
-    dataOf(schemeResponseSchema),
+    dataOf(schemeMutationResultSchema),
   )
   return wrapped.data
 }
 
 /**
  * 워크플로우 스킴 이름/설명을 수정한다.
- * PUT /api/v1/workflow-schemes/{schemeKey} → { data: SchemeResponse }
+ * PUT /api/v1/workflow-schemes/{schemeKey} → { data: SchemeMutationResult }
  *
  * @param schemeKey 수정할 스킴 키
- * @param input name(선택) + description(선택)
+ * @param input name(필수) + description(선택)
  */
-export async function updateWorkflowScheme(schemeKey: string, input: UpdateSchemeInput): Promise<SchemeResponse> {
+export async function updateWorkflowScheme(schemeKey: string, input: UpdateSchemeInput): Promise<SchemeMutationResult> {
   const res = await apiFetch(`/api/v1/workflow-schemes/${schemeKey}`, { method: 'PUT', body: input })
-  const wrapped = await parseSchemeResponse(res, dataOf(schemeResponseSchema))
+  const wrapped = await parseSchemeResponse(res, dataOf(schemeMutationResultSchema))
   return wrapped.data
 }
 
@@ -196,16 +202,16 @@ export async function deleteWorkflowScheme(schemeKey: string): Promise<void> {
 
 /**
  * 스킴에 이슈 타입-워크플로우 매핑을 추가한다.
- * POST /api/v1/workflow-schemes/{schemeKey}/mappings → { data: MappingResponse }
+ * POST /api/v1/workflow-schemes/{schemeKey}/mappings → { data: MappingCreated }
  *
  * @param schemeKey 매핑을 추가할 스킴 키
  * @param input issueTypeKey(null이면 default 매핑) + workflowKey
  * @throws WorkflowSchemeApiError(409, "MAPPING_DUPLICATE") 동일 issueTypeKey 중복 시
  * @throws WorkflowSchemeApiError(409, "MAPPING_DEFAULT_DUPLICATE") default 매핑 중복 시
  */
-export async function addMapping(schemeKey: string, input: AddMappingInput): Promise<MappingResponse> {
+export async function addMapping(schemeKey: string, input: AddMappingInput): Promise<MappingCreated> {
   const res = await apiFetch(`/api/v1/workflow-schemes/${schemeKey}/mappings`, { method: 'POST', body: input })
-  const wrapped = await parseSchemeResponse(res, dataOf(mappingResponseSchema))
+  const wrapped = await parseSchemeResponse(res, dataOf(mappingCreatedSchema))
   return wrapped.data
 }
 
@@ -228,13 +234,13 @@ export async function deleteMapping(schemeKey: string, mappingId: number): Promi
 
 /**
  * 프로젝트에 할당된 워크플로우 스킴을 조회한다.
- * GET /api/v1/projects/{projectKey}/workflow-scheme → { data: AssignmentResponse }
+ * GET /api/v1/projects/{projectKey}/workflow-scheme → { data: AssignedScheme }
  * 할당이 없을 때 404를 반환한다 (EC-1 — 404는 에러가 아니라 "미할당" 상태).
  *
  * @param projectKey 프로젝트 식별 키
- * @returns AssignmentResponse 또는 null (할당 없음)
+ * @returns AssignedScheme 또는 null (할당 없음)
  */
-export async function fetchProjectAssignment(projectKey: string): Promise<AssignmentResponse | null> {
+export async function fetchProjectAssignment(projectKey: string): Promise<AssignedScheme | null> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/workflow-scheme`, { method: 'GET' })
   if (res.status === 404) {
     return null
@@ -243,33 +249,33 @@ export async function fetchProjectAssignment(projectKey: string): Promise<Assign
     return throwSchemeApiError(res)
   }
   const raw: unknown = await res.json()
-  return dataOf(assignmentResponseSchema).parse(raw).data
+  return dataOf(assignedSchemeSchema).parse(raw).data
 }
 
 /**
  * 프로젝트에 워크플로우 스킴을 할당(UPSERT)한다.
- * PUT /api/v1/projects/{projectKey}/workflow-scheme → { data: AssignmentResponse }
+ * PUT /api/v1/projects/{projectKey}/workflow-scheme → { data: AssignmentRecord }
  *
  * @param projectKey 프로젝트 식별 키
  * @param input schemeKey
  */
-export async function assignSchemeToProject(projectKey: string, input: AssignSchemeInput): Promise<AssignmentResponse> {
+export async function assignSchemeToProject(projectKey: string, input: AssignSchemeInput): Promise<AssignmentRecord> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/workflow-scheme`, { method: 'PUT', body: input })
-  const wrapped = await parseSchemeResponse(res, dataOf(assignmentResponseSchema))
+  const wrapped = await parseSchemeResponse(res, dataOf(assignmentRecordSchema))
   return wrapped.data
 }
 
 /**
  * 프로젝트에 할당 가능한 워크플로우 스킴 목록을 조회한다.
- * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → { data: AssignableSchemeResponse[] }
+ * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → { data: AssignedScheme[] }
  * 프로젝트 설정 화면(스킴 선택 UI)에서 사용 — 관리자 전용 fetchWorkflowSchemes와는 별개 엔드포인트.
  *
  * @param projectKey 프로젝트 식별 키
  */
-export async function fetchAssignableWorkflowSchemes(projectKey: string): Promise<AssignableSchemeResponse[]> {
+export async function fetchAssignableWorkflowSchemes(projectKey: string): Promise<AssignedScheme[]> {
   const wrapped = await apiGet(
     `/api/v1/projects/${projectKey}/assignable-workflow-schemes`,
-    dataOf(z.array(assignableSchemeResponseSchema)),
+    dataOf(z.array(assignedSchemeSchema)),
   )
   return wrapped.data
 }

@@ -521,7 +521,8 @@ class WorkflowSchemeApplicationService(
             key = row.scheme.key.value,
             name = row.scheme.name,
             description = row.scheme.description,
-            isDefault = row.scheme.isDefault,
+            // 뷰 어휘는 isStandard, 도메인은 isDefault 그대로다(ADR D2 — 뷰 레이어 한정 정렬).
+            isStandard = row.scheme.isDefault,
             createdAt = row.scheme.createdAt.toString(),
             updatedAt = row.scheme.updatedAt.toString(),
             usedByProjectsCount = row.usedByProjectsCount,

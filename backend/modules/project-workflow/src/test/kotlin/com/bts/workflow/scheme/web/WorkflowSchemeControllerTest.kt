@@ -204,6 +204,7 @@ class WorkflowSchemeControllerTest {
                             issueTypeName = "버그",
                             workflowKey = "software-default",
                             workflowName = "소프트웨어 기본",
+                            isDefault = false,
                         ),
                     ),
             )
@@ -309,6 +310,7 @@ class WorkflowSchemeControllerTest {
                             issueTypeName = "버그",
                             workflowKey = "software-default",
                             workflowName = "소프트웨어 기본",
+                            isDefault = false,
                         ),
                     ),
             )
@@ -703,6 +705,7 @@ class WorkflowSchemeControllerTest {
             id = WorkflowSchemeId(1L),
             key = WorkflowSchemeKey(key),
             name = name,
+            // 도메인은 isDefault 그대로다 — 뷰 레이어만 isStandard 로 정렬한다(ADR D2).
             description = null,
             isDefault = false,
             createdAt = Instant.parse("2026-01-01T00:00:00Z"),
@@ -722,7 +725,7 @@ class WorkflowSchemeControllerTest {
             key = key,
             name = name,
             description = null,
-            isDefault = false,
+            isStandard = false,
             createdAt = "2026-01-01T00:00:00Z",
             updatedAt = "2026-01-01T00:00:00Z",
             usedByProjectsCount = usedByProjectsCount,
@@ -730,12 +733,18 @@ class WorkflowSchemeControllerTest {
             mappings = mappings,
         )
 
+    /**
+     * @param isDefault 기본 매핑 여부. 실제 판정은 `issueTypeId == null` 이므로 `issueTypeKey` 에서
+     * 유도하지 않고 호출부가 명시한다 — 유도하면 EC-4(조회 실패 ≠ 기본 매핑)를 테스트가 되풀이한다.
+     */
+    @Suppress("LongParameterList")
     private fun buildMappingResponse(
         id: Long,
         issueTypeKey: String?,
         issueTypeName: String?,
         workflowKey: String,
         workflowName: String,
+        isDefault: Boolean,
     ): MappingResponseDetail =
         MappingResponseDetail(
             id = id,
@@ -743,6 +752,7 @@ class WorkflowSchemeControllerTest {
             issueTypeName = issueTypeName,
             workflowKey = workflowKey,
             workflowName = workflowName,
+            isDefault = isDefault,
         )
 
     companion object {

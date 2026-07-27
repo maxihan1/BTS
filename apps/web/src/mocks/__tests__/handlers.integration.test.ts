@@ -38,15 +38,15 @@ describe('handlers 통합 배열 — schemeHandlers spread 포함', () => {
   it('GET /api/v1/workflow-schemes/:schemeKey — 존재하는 키 조회 시 200 반환', async () => {
     const res = await fetch('/api/v1/workflow-schemes/software-default-scheme')
     expect(res.status).toBe(200)
-    const body = await res.json() as { data: { schemeKey: string } }
-    expect(body.data.schemeKey).toBe('software-default-scheme')
+    const body = await res.json() as { data: { key: string } }
+    expect(body.data.key).toBe('software-default-scheme')
   })
 
   it('GET /api/v1/projects/:projectKey/workflow-scheme — 할당 조회 200 반환', async () => {
     const res = await fetch('/api/v1/projects/ATLAS/workflow-scheme')
     expect(res.status).toBe(200)
-    const body = await res.json() as { data: { projectKey: string } }
-    expect(body.data.projectKey).toBe('ATLAS')
+    const body = await res.json() as { data: { key: string } }
+    expect(body.data.key).toBe('custom-scheme-alpha')
   })
 })
 
