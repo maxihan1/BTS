@@ -2,6 +2,72 @@
 
 # TODOS
 
+## 인프라 — 백엔드↔프론트 계약 검증이 8/303 엔드포인트에만 있다 (2026-07-27 실측 등재)
+
+**증상.** PR #317 이 `docs/contracts/workflow-schemes.snapshot.json` 으로 워크플로우 스킴
+**8 endpoint** 에 계약 스냅샷을 세웠다. 나머지 **295 endpoint 는 「MSW 가 MSW 와 맞는」 상태**다.
+
+```
+백엔드 REST 매핑 (src/main)  303   GET 122 · POST 87 · DELETE 47 · PATCH 40 · PUT 7
+MSW 모크 핸들러              276   GET 117 · POST 81 · DELETE 40 · PATCH 33 · PUT 5
+계약 스냅샷 커버              8
+```
+
+**왜 중요한가.** 프론트 테스트 8,099건이 전량 초록이어도 **백엔드와의 정합을 보장하지 않는다.**
+모크가 백엔드와 다르게 답해도 아무도 모른다 — 이 저장소는 이 기전으로 이미 두 번 데였다.
+- #317 — 스킴 계약 8 endpoint 중 정합은 1건뿐이었다(응답 7종 + 요청 1종 파손)
+- 아래 §댓글 MSW 항목 — 에러 형태(RFC7807 vs `errorCode`)와 판정 순서가 둘 다 다르다
+
+**★즉 아래 「댓글 MSW 모크가 백엔드와 다르다」 항목은 이 구조적 갭의 한 사례일 뿐이다.**
+개별 핸들러를 하나씩 맞추는 방식으로는 295개를 다 못 쫓아간다.
+
+**착수 시 첫 단계.** #317 이 만든 기전(백엔드 prod 조립 부팅에서 실응답 스냅샷 생성 →
+프론트가 같은 파일을 `.strict()` 파싱)을 **엔드포인트 단위로 확장 가능한 형태**로 일반화한다.
+전량을 한 번에 덮으려 하지 말고 **우선순위 축**을 먼저 정할 것 — 후보는
+①쓰기(POST/PATCH/PUT/DELETE 174개, 파손 시 데이터 영향) ②에러 응답 형태(RFC7807 일관성)
+③다운로드/바이너리(헤더 계약).
+
+**⚠️ #317 이 남긴 스냅샷 자체의 한계 2건**(아래 §워크플로우 스킴 항목의 잔여)을 일반화 전에 닫을 것 —
+**숫자 타입 붕괴**(정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡음)를 안 고치고
+확장하면 295개에 같은 사각을 복제한다.
+
+**소관**. 프론트↔백엔드 공동. Maxi 우선순위 결정 필요.
+
+## 인프라 — 백엔드 CI 가 없다 (2026-07-27 실측 등재)
+
+**증상.** `.github/workflows/` 에 `frontend-ci.yml` · `infra-ci.yml` 둘뿐이다.
+**백엔드 테스트가 CI 에서 한 번도 돌지 않는다** — 머지 검증이 전적으로 로컬 수동 실행에 의존한다
+(메모리 `no-backend-ci-and-assembly-merge-verification-traps` 가 기록한 상태).
+
+**규모 (2026-07-27 실측).**
+
+| 항목 | 값 |
+|---|---|
+| 백엔드 테스트 파일 | 940 |
+| 실행 테스트 수 | **10,025** (XML 집계, 실패 0) |
+| 전체 소요 | 33분 9초 (로컬 M-series) |
+| Testcontainers 사용 파일 | 428 (러너 Docker 로 가능) |
+| 외부 5433 postgres 의존 | 10 (`modules/app` 조립 부팅) |
+
+**★`infra-ci.yml` 이 `backend/**` 를 경로 트리거로 걸고 있어 "백엔드도 CI 가 있다" 로 오인하기 쉽다.**
+그 잡이 돌리는 것은 nginx 마스킹 봉인과 springdoc 미노출 봉인뿐이고 Gradle 테스트는 0건이다.
+
+**착수 레시피 (실측 기반).**
+1. `services:` 로 postgres 를 띄운다 — 이미지는 **`quay.io/tembo/pg16-pgmq`** 여야 한다
+   (일반 `postgres:16` 은 pgmq 확장이 없어 조립 부팅이 실패한다. ADR `2026-05-22-pgmq-postgres-image`).
+   포트 매핑 **5433:5432**, `POSTGRES_DB/USER/PASSWORD = bts/bts/bts`
+   (`app` 모듈 `application.yml` 의 `spring.datasource.url` 기본값이 `jdbc:postgresql://localhost:5433/bts`).
+2. Testcontainers 는 러너 기본 Docker 로 동작한다 — 별도 설정 불요.
+3. 33분은 PR 마다 돌리기엔 길다. **모듈별 잡 분할**(9 BC 병렬)이 현실적이며,
+   `:modules:app:test`(조립 부팅)만 별도 잡으로 두면 서비스 컨테이너를 그 잡에만 붙일 수 있다.
+4. 경로 트리거는 `backend/**` + `.github/workflows/backend-ci.yml`.
+
+**⚠️ 착수 전 확인.** 이 저장소는 로컬 검증을 전제로 굴러왔다. CI 를 켜는 순간 **선재 flaky 가
+드러날 수 있다** — 메모리 `concurrent-testcontainers-suite-flaky` · `flaky-determination-needs-repeat-not-single-contrast`.
+켜기 전에 같은 명령을 **연속 2회** 돌려 flaky 목록을 먼저 확보할 것.
+
+**소관**. 인프라 / Maxi 결정(빌드 시간 정책).
+
 ## identity-access — 컨트롤러 권한 게이트 DRY 부채 (D19, PR #277)
 
 **결정 (Maxi 확정, plan-eng-review D19)**. `FORBIDDEN_RESPONSE`/`UNAUTHORIZED_RESPONSE` 상수 · `resolveActorId` ·
