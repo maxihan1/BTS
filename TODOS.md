@@ -2,40 +2,36 @@
 
 # TODOS
 
-## 인프라 — 전체 스위트 동시 실행 시 flaky (2026-07-27 실측 등재)
+## ✅ 인프라 — 전체 스위트 동시 실행 시 flaky (2026-07-27 해소)
 
-**증상.** 동일 코드에서 전체 스위트를 반복 실행하면 **실패 대상이 회차마다 바뀐다.** 단독 실행은 통과한다.
+**해소.** 근본 원인은 **느림이 아니라 메시지 도둑질**이었다. 타임아웃을 늘려도 절대 안 고쳐지는 종류다.
 
-**백엔드 실측 (`:modules:notification:test`, 동일 커밋 6회).**
+**진짜 원인.** `RecipientResolutionTestcontainersConfig` 는 **싱글턴 컨테이너**를 제공한다.
+`RecipientResolutionIntegrationTest` 와 `IssueCommentedNotificationIntegrationTest` 는 각자
+Spring 컨텍스트를 띄우므로 `@Scheduled` `NotificationWorker` 도 **두 벌**이 되고, 둘이
+**같은 pgmq 큐(`q_issue_events`)를 동시 폴링**한다. 먼저 읽은 쪽이 메시지를 소비하면
+다른 쪽은 **영원히 0건**을 본다 ⇒ `awaitility` 15초 타임아웃.
+「제때 안 온다」로 보였지만 실제로는 **아예 안 온다**.
+
+**처방 — 자동 폴링 제거 + 동기 드레인.**
+1. `@SpringBootTest(classes = ...)` 에서 `NotificationDeliverySchedulingConfig` 를 **뺐다**.
+   `NotificationTestBootApplication` 은 `@EnableScheduling` 이 없으므로 자동 폴링이 꺼지고,
+   이 컨텍스트가 남의 메시지를 훔칠 수 없게 된다.
+2. `await().atMost(15, SECONDS).untilAsserted { ... }` → `drainQueue()` (워커를 **동기 호출**).
+   대기가 사라지므로 회차당 30초 가까이 빨라지기까지 했다.
+
+**실측.**
 ```
-회차1 SUCCESS · 회차2 FAILED(RR-1) · 회차3 SUCCESS · 회차4 FAILED(IC-1)
-회차5 FAILED(RR-1,RR-2) · 회차6 SUCCESS
-단독 실행 → 항상 SUCCESS
+백엔드 :modules:notification:test --rerun-tasks  →  4/4 SUCCESS (이전 6회 중 3회 실패)
+프론트 pnpm vitest run                            →  5/5 SUCCESS (520 파일)
 ```
-**프론트 실측 (`pnpm vitest run` 4회).** 1·2회차 실패 대상이 다르고, 3회차는
-`AutomationYamlImportDialog` + `workflows.$key`, 4회차는 **전량 통과**(519파일 8,122건).
 
-**서명.** 실패 증상이 **awaitility 15초 타임아웃**이다(비동기 pgmq 워커가 제때 처리하지 못함).
-값이 틀린 것이 아니라 **제때 안 온다**. 프론트도 같은 성격(5초 기본 타임아웃).
-⇒ 로직 결함이 아니라 **동시 실행 자원 경합**이다.
+**뮤테이션 검증.** `drainQueue` 의 폴링 호출을 지우면 RR-1·RR-2 가 **FAILED** —
+드레인이 실제로 하중을 받는다(장식이 아니다).
 
-**★판정 근거 — 1회 대조로 단정하지 않았다.** 같은 명령을 반복 실행해 **실패 대상이 바뀌는 것**을
-확인했다([[flaky-determination-needs-repeat-not-single-contrast]]).
-변경 전 코드(stash)에서도 **또 다른** 테스트가 실패해 선재임을 확인했다.
-
-**왜 지금 중요해졌나.** 2026-07-27 에 **백엔드 CI 를 신설**했다. 지금까지는 로컬에서 눈으로 넘기던
-것이 이제 **PR 마다 빨간불**이 된다. 첫 CI 실행에서 이것이 터질 가능성이 높다.
-
-**착수 시 첫 단계.**
-1. **먼저 flaky 목록을 확정**한다 — 같은 명령을 연속 5회 이상 돌려 실패 대상을 수집한다.
-   1회 실패로 회귀라 단정하면 존재하지 않는 버그를 쫓는다.
-2. 원인 축을 가른다 — ①Testcontainers 컨테이너 동시 기동 경합
-   ([[concurrent-testcontainers-suite-flaky]]) ②pgmq 워커 폴링 주기 대비 타임아웃 여유 부족
-   ③테스트 간 DB 상태 공유(`DELETE FROM` 범위가 정책 테이블을 안 지운다).
-3. 타임아웃을 늘리는 것은 **마지막 수단**이다 — 증상만 미루고 원인을 남긴다.
-   워커 폴링을 테스트에서 동기 트리거할 수 있는지 먼저 본다.
-
-**소관**. 인프라 / QA. **백엔드 CI 안정화의 선행 조건.**
+**★교훈.** 타임아웃 증상을 「자원 경합」으로 뭉뚱그리면 늘리는 처방으로 간다.
+**「메시지가 늦게 오나, 아예 안 오나」를 먼저 가르면** 처방이 정반대가 된다.
+등재 시점의 원인 가설 3개(컨테이너 기동 경합 · 폴링 주기 여유 · DB 상태 공유)는 **전부 틀렸다.**
 
 ## ✅ 인프라 — 계약 검증 확대 (판별식 신설 + 1차 확대 · 2026-07-27)
 

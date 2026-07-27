@@ -3,11 +3,9 @@
 
 package com.bts.notification.worker
 
-import com.bts.notification.NotificationDeliverySchedulingConfig
 import com.bts.notification.NotificationTestBootApplication
 import com.bts.notification.TestPermissionConfig
 import org.assertj.core.api.Assertions.assertThat
-import org.awaitility.Awaitility.await
 import org.jooq.DSLContext
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -16,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 /**
  * issue.commented 이벤트 인앱 알림 전달 end-to-end 통합 테스트 (FR-AT-01 게이트2 옵션A).
@@ -41,23 +38,20 @@ import java.util.concurrent.TimeUnit
  * ## 포트 빈 출처
  * - [IssueCommentedRecipientTestPortsConfig] — 리포터/담당자/워처 고정 반환 + visibility 제외 빈
  * - [RecipientResolutionTestcontainersConfig] — pgmq 이미지 컨테이너 + DataSource + JwtDecoder stub
- * - [NotificationDeliverySchedulingConfig] — @EnableScheduling + poll-interval 50ms
  * - [TestPermissionConfig] — fake SystemPermissionResolver
+ *
+ * ★`NotificationDeliverySchedulingConfig` 는 **일부러 넣지 않는다** — 자동 폴링이 켜지면
+ * 이 컨텍스트의 워커가 형제 테스트의 메시지를 가져가 버린다. 아래 `drainQueue` 주석 참조.
  *
  * ## BC 격리
  * issue-tracking/identity-access 모듈 클래스패스 불포함. 이벤트 payload 는 issue-tracking
  * `IssueCommented`(issueKey, projectKey, commentId, actorId, occurredAt) 와 동일 필드명·형식의
  * JSON 문자열로 직접 구성한다.
- *
- * ## 주의 (memory: concurrent-testcontainers-suite-flaky)
- * 이 클래스를 단독으로 실행할 때는 안정적이나 다른 Testcontainers 클래스와 동시 실행 시
- * 워커 크래시가 발생할 수 있다. test-results XML 0-failure 면 단독 재실행으로 확정.
  */
 @SpringBootTest(
     classes = [
         NotificationTestBootApplication::class,
         RecipientResolutionTestcontainersConfig::class,
-        NotificationDeliverySchedulingConfig::class,
         TestPermissionConfig::class,
         IssueCommentedRecipientTestPortsConfig::class,
     ],
@@ -67,9 +61,42 @@ import java.util.concurrent.TimeUnit
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueCommentedNotificationIntegrationTest {
     @Autowired
+    private lateinit var worker: NotificationWorker
+
+    @Autowired
     lateinit var dsl: DSLContext
 
+    /**
+     * 큐가 빌 때까지 워커를 **동기로** 돌린다.
+     *
+     * ## 왜 awaitility 대기를 버렸나 — 근본 원인은 느림이 아니라 **메시지 도둑질**이었다
+     * 이 클래스와 형제 통합테스트는 `RecipientResolutionTestcontainersConfig` 의 **싱글턴 컨테이너**를
+     * 공유한다. 각자 Spring 컨텍스트를 띄우므로 `@Scheduled` 워커도 **두 벌**이 되고,
+     * 둘이 **같은 pgmq 큐(`q_issue_events`)를 동시 폴링**한다. 먼저 읽은 쪽이 메시지를 가져가면
+     * 다른 쪽 테스트는 영원히 0건이라 15초를 다 쓰고 타임아웃한다.
+     *
+     * 그래서 실패 대상이 회차마다 바뀌었다(2026-07-27 실측 — 동일 코드 6회 실행에서
+     * SUCCESS/RR-1/SUCCESS/IC-1/RR-1+RR-2/SUCCESS). **타임아웃을 늘려도 해결되지 않는다** —
+     * 메시지가 늦게 오는 게 아니라 **아예 오지 않기** 때문이다.
+     *
+     * ## 처방 — 스케줄러를 끄고 이 테스트가 직접 돌린다
+     * `NotificationDeliverySchedulingConfig` 를 `@SpringBootTest classes` 에서 뺐다.
+     * `NotificationTestBootApplication` 은 `@EnableScheduling` 을 선언하지 않으므로
+     * **이 컨텍스트에는 자동 폴링이 없다** = 남의 메시지를 훔치지 않는다.
+     * 대신 발행 직후 [NotificationWorker.pollAndProcess] 를 직접 호출한다 — 완전히 결정적이다.
+     *
+     * 배치 크기 때문에 1회 호출로 다 못 비울 수 있어 **빌 때까지** 반복한다.
+     */
+    private fun drainQueue() {
+        // 빈 큐면 pollAndProcess 가 즉시 반환하므로 고정 횟수 반복이 안전하다.
+        // (큐 실체 테이블명은 pgmq 내부 구현이라 직접 세지 않는다 — 구현 세부에 결합하지 않기 위해.)
+        repeat(DRAIN_MAX_ROUNDS) { worker.pollAndProcess() }
+    }
+
     companion object {
+        /** 큐를 비우기 위한 최대 폴링 횟수 — 배치 크기 때문에 1회로 못 비울 수 있다. */
+        private const val DRAIN_MAX_ROUNDS = 20
+
         /** pgmq 큐 이름 — NotificationWorker.QUEUE_NAME 과 동일 */
         const val QUEUE_NAME = "q_issue_events"
 
@@ -110,17 +137,16 @@ class IssueCommentedNotificationIntegrationTest {
         // insert+commit 하므로(단일 배치 트랜잭션 아님), ">0" 처럼 약한 조건으로 기다리면
         // 아직 일부만 커밋된 시점에 단언이 실행되는 레이스가 생긴다. 최종 안정 상태(3건)를
         // 명시적으로 기다려 이후 단언이 완전히 처리된 뒤 실행되게 한다.
-        await()
-            .atMost(15, TimeUnit.SECONDS)
-            .untilAsserted {
-                val count =
-                    dsl.fetchOne(
-                        "SELECT COUNT(*) FROM notifications WHERE event_type = ? AND issue_key = ?",
-                        "issue.commented",
-                        issueKey,
-                    )!!.get(0, Long::class.java)
-                assertThat(count).isEqualTo(3L)
-            }
+        // ★비동기 대기 대신 **동기 폴링**한다 — 아래 KDoc §결정성 참조.
+        drainQueue()
+
+        val count =
+            dsl.fetchOne(
+                "SELECT COUNT(*) FROM notifications WHERE event_type = ? AND issue_key = ?",
+                "issue.commented",
+                issueKey,
+            )!!.get(0, Long::class.java)
+        assertThat(count).isEqualTo(3L)
 
         // REPORTER 알림 기록 확인
         assertRecipientRecorded(
