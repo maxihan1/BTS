@@ -18,6 +18,7 @@ import org.junit.jupiter.api.TestMethodOrder
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -31,6 +32,11 @@ import java.util.UUID
  * 테스트 시나리오 (FR-IM-01 PR3 Task 2).
  * - T2-A. insert 여러 건 후 listByIssue — created_at ASC 정렬로 반환.
  * - T2-B. 소프트 삭제(deleted_at IS NOT NULL) 행은 listByIssue 에서 제외.
+ *
+ * 테스트 시나리오 (FR-CO-02 Task 1 — findActive / updateBody / softDelete).
+ * - findActive 3건. 활성 조회 · 다른 이슈 소속 차단 · 삭제된 건 차단.
+ * - updateBody 2건. 본문·updatedAt 갱신 + createdAt·authorId 보존 · 삭제된 건 0 반환.
+ * - softDelete 2건. deleted_at 기록 + listByIssue 제외 · 재삭제 0 반환(최초 시각 보존).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentRepositoryTest : IssueTestcontainersBase() {
@@ -124,6 +130,37 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         }
     }
 
+    /**
+     * 소프트 삭제 필터를 우회해 `body` 를 직접 읽는다.
+     *
+     * 리포지토리 조회 API 는 `deleted_at IS NULL` 을 강제하므로, 삭제된 행이 정말 그대로인지는
+     * 리포지토리로 확인할 수 없다. "0 을 반환했다" 만으로는 UPDATE 가 안 나갔다는 증거가 되지 않아
+     * (반환값만 맞추고 실제로는 갱신되는 구현도 통과) DB 상태를 직접 대조한다.
+     */
+    @Suppress("NestedBlockDepth")
+    private fun readBody(id: UUID): String? =
+        withJdbcConnection { conn ->
+            conn.prepareStatement("SELECT body FROM comments WHERE id = ?").use { stmt ->
+                stmt.setObject(1, id)
+                stmt.executeQuery().use { rs ->
+                    if (rs.next()) rs.getString(1) else null
+                }
+            }
+        }
+
+    /** 소프트 삭제 필터를 우회해 `deleted_at` 을 직접 읽는다. NULL(활성)이면 null. */
+    @Suppress("NestedBlockDepth")
+    private fun readDeletedAt(id: UUID): Instant? =
+        withJdbcConnection { conn ->
+            conn.prepareStatement("SELECT deleted_at FROM comments WHERE id = ?").use { stmt ->
+                stmt.setObject(1, id)
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "댓글 행이 존재하지 않습니다. id=$id" }
+                    rs.getObject(1, OffsetDateTime::class.java)?.toInstant()
+                }
+            }
+        }
+
     // ── T2-A. insert + listByIssue (created_at ASC) ──────────────────────────
 
     /**
@@ -174,5 +211,162 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
 
         assertThat(result).hasSize(1)
         assertThat(result[0].id).isEqualTo(c2.id)
+    }
+
+    // ── findActive ────────────────────────────────────────────────────────────
+
+    /**
+     * Given  활성 댓글 1건
+     * When   findActive(id, issueId)
+     * Then   해당 댓글을 반환하고 모든 필드가 삽입값과 일치.
+     */
+    @Test
+    @Order(3)
+    fun `findActive 는 활성 댓글을 반환한다`() {
+        val issue = insertIssue(1L)
+        val createdAt = Instant.parse("2024-03-01T10:00:00Z")
+        val comment = buildComment(issue.id.value, body = "활성 댓글", createdAt = createdAt)
+        commentRepository.insert(comment)
+
+        val found = commentRepository.findActive(comment.id, issue.id.value)
+
+        val actual = requireNotNull(found) { "활성 댓글은 findActive 로 조회돼야 한다." }
+        assertThat(actual.id).isEqualTo(comment.id)
+        assertThat(actual.issueId).isEqualTo(issue.id.value)
+        assertThat(actual.authorId).isEqualTo(comment.authorId)
+        assertThat(actual.body).isEqualTo("활성 댓글")
+        assertThat(actual.createdAt).isEqualTo(createdAt)
+        assertThat(actual.updatedAt).isEqualTo(createdAt)
+    }
+
+    /**
+     * Given  이슈 A 에 속한 댓글 1건 + 무관한 이슈 B
+     * When   findActive(commentId, issueB.id) — 경로 위조 시뮬레이션
+     * Then   null. 같은 commentId 를 이슈 A 로 조회하면 조회되므로 null 의 원인은 issueId 대조뿐.
+     */
+    @Test
+    @Order(4)
+    fun `findActive 는 다른 이슈 소속 commentId 에 null 을 반환한다`() {
+        val issueA = insertIssue(1L)
+        val issueB = insertIssue(2L)
+        val comment = buildComment(issueA.id.value, body = "이슈 A 댓글")
+        commentRepository.insert(comment)
+
+        val crossIssue = commentRepository.findActive(comment.id, issueB.id.value)
+
+        assertThat(crossIssue).isNull()
+        // 대조군 — 올바른 issueId 로는 조회된다. 없으면 "무조건 null" 구현도 위 단언을 통과한다.
+        assertThat(commentRepository.findActive(comment.id, issueA.id.value)).isNotNull
+    }
+
+    /**
+     * Given  활성 댓글 1건 (삭제 전 조회 가능함을 먼저 확인)
+     * When   소프트 삭제 후 findActive
+     * Then   null. 대조군 덕분에 null 의 원인은 deleted_at 필터임이 확정된다.
+     */
+    @Test
+    @Order(5)
+    fun `findActive 는 이미 삭제된 댓글에 null 을 반환한다`() {
+        val issue = insertIssue(1L)
+        val comment = buildComment(issue.id.value, body = "삭제될 댓글")
+        commentRepository.insert(comment)
+        assertThat(commentRepository.findActive(comment.id, issue.id.value)).isNotNull
+
+        softDeleteComment(comment.id)
+
+        assertThat(commentRepository.findActive(comment.id, issue.id.value)).isNull()
+    }
+
+    // ── updateBody ────────────────────────────────────────────────────────────
+
+    /**
+     * Given  활성 댓글 1건
+     * When   updateBody(id, 새 본문, 새 updatedAt)
+     * Then   1 반환 + body/updatedAt 갱신, createdAt·authorId 는 그대로.
+     */
+    @Test
+    @Order(6)
+    fun `updateBody 는 본문과 updatedAt 을 갱신하고 createdAt·authorId 는 보존한다`() {
+        val issue = insertIssue(1L)
+        val createdAt = Instant.parse("2024-03-01T10:00:00Z")
+        val comment = buildComment(issue.id.value, body = "원본 본문", createdAt = createdAt)
+        commentRepository.insert(comment)
+        val editedAt = Instant.parse("2024-03-02T11:30:00Z")
+
+        val affected = commentRepository.updateBody(comment.id, "수정된 본문", editedAt)
+
+        assertThat(affected).isEqualTo(1)
+        val reloaded = requireNotNull(commentRepository.findActive(comment.id, issue.id.value))
+        assertThat(reloaded.body).isEqualTo("수정된 본문")
+        assertThat(reloaded.updatedAt).isEqualTo(editedAt)
+        assertThat(reloaded.createdAt).isEqualTo(createdAt)
+        assertThat(reloaded.authorId).isEqualTo(comment.authorId)
+    }
+
+    /**
+     * Given  소프트 삭제된 댓글 1건
+     * When   updateBody
+     * Then   0 반환 + 본문 미변경. 서비스가 이 0 을 404 판정 근거로 쓴다.
+     */
+    @Test
+    @Order(7)
+    fun `updateBody 는 이미 삭제된 댓글에 0 을 반환한다`() {
+        val issue = insertIssue(1L)
+        val comment = buildComment(issue.id.value, body = "삭제된 원본 본문")
+        commentRepository.insert(comment)
+        softDeleteComment(comment.id)
+
+        val affected = commentRepository.updateBody(comment.id, "되살리기 시도", Instant.parse("2024-03-02T11:30:00Z"))
+
+        assertThat(affected).isZero()
+        // 반환값 0 과 별개로 실제 UPDATE 가 나가지 않았는지 DB 상태로 확인한다.
+        assertThat(readBody(comment.id)).isEqualTo("삭제된 원본 본문")
+    }
+
+    // ── softDelete ────────────────────────────────────────────────────────────
+
+    /**
+     * Given  같은 이슈에 활성 댓글 2건
+     * When   1건만 softDelete
+     * Then   1 반환 + 대상만 deleted_at 기록, 나머지는 활성 유지, listByIssue 에서 대상 제외.
+     */
+    @Test
+    @Order(8)
+    fun `softDelete 는 deleted_at 을 채우고 listByIssue 에서 사라진다`() {
+        val issue = insertIssue(1L)
+        val target = buildComment(issue.id.value, body = "삭제 대상")
+        val survivor = buildComment(issue.id.value, body = "남을 댓글")
+        commentRepository.insert(target)
+        commentRepository.insert(survivor)
+        val deletedAt = Instant.parse("2024-03-03T12:00:00Z")
+
+        val affected = commentRepository.softDelete(target.id, deletedAt)
+
+        assertThat(affected).isEqualTo(1)
+        assertThat(readDeletedAt(target.id)).isEqualTo(deletedAt)
+        // WHERE 절이 빠진 전체 UPDATE 였다면 여기서 걸린다.
+        assertThat(readDeletedAt(survivor.id)).isNull()
+        assertThat(commentRepository.listByIssue(issue.id.value).map { it.id }).containsExactly(survivor.id)
+    }
+
+    /**
+     * Given  이미 softDelete 된 댓글 1건
+     * When   같은 댓글을 다시 softDelete
+     * Then   0 반환 + 최초 삭제 시각이 덮어써지지 않음.
+     */
+    @Test
+    @Order(9)
+    fun `softDelete 는 이미 삭제된 댓글에 0 을 반환한다`() {
+        val issue = insertIssue(1L)
+        val comment = buildComment(issue.id.value, body = "두 번 삭제될 댓글")
+        commentRepository.insert(comment)
+        val firstDeletedAt = Instant.parse("2024-03-03T12:00:00Z")
+        assertThat(commentRepository.softDelete(comment.id, firstDeletedAt)).isEqualTo(1)
+
+        val affected = commentRepository.softDelete(comment.id, Instant.parse("2024-03-04T13:00:00Z"))
+
+        assertThat(affected).isZero()
+        // 재삭제가 실제로 차단됐는지 — 반환값 0 만으로는 deleted_at 덮어쓰기를 배제하지 못한다.
+        assertThat(readDeletedAt(comment.id)).isEqualTo(firstDeletedAt)
     }
 }
