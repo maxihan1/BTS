@@ -16,6 +16,7 @@ import com.atlas.bts.identity.project.UserNotFound
 import com.atlas.bts.identity.web.dto.AddMemberRequest
 import com.atlas.bts.identity.web.dto.ChangeRoleRequest
 import com.atlas.bts.identity.web.dto.ProjectMemberResponse
+import com.atlas.bts.identity.web.support.UNAUTHORIZED_RESPONSE
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -286,11 +287,6 @@ class ProjectMemberController(
         }
 
     private companion object {
-        /** actor 추출 실패(JWT/PAT 파싱 오류) 공용 401 응답. */
-        val UNAUTHORIZED_RESPONSE: ResponseEntity<Map<String, String>> =
-            ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("error" to "unauthorized"))
-
         /** invalid_role 공용 422 응답. */
         val INVALID_ROLE_RESPONSE: ResponseEntity<Map<String, String>> =
             ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)

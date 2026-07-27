@@ -18,7 +18,7 @@ const MOCK_PAGE = {
   items: [
     {
       id: 1,
-      userId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+      userId: '00000000-0000-4000-8000-000000000001',
       username: 'alice',
       displayName: '김앨리스',
       eventType: 'LOGIN_SUCCESS',

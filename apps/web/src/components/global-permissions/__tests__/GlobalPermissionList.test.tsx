@@ -102,7 +102,13 @@ describe('GlobalPermissionList — 목록 렌더', () => {
 
     expect(screen.getByText('프로젝트 생성')).toBeInTheDocument()
     expect(screen.getByText('사용자')).toBeInTheDocument()
-    expect(screen.getByText(userAliceFixture.displayName ?? userAliceFixture.username)).toBeInTheDocument()
+
+    // ★ grantee 셀만 겨냥한다. 부여자(grantedBy) 기본값도 alice 이므로 이름이 한 행에 두 번 나온다
+    // (예전에는 user-fixtures 의 alice id 가 auth 의 alice id 와 달라 부여자 칸이 원시 UUID 였다 —
+    // 그래서 `getByText` 가 우연히 유일했다). 표 셀 위치로 좁혀 그 우연에 기대지 않는다.
+    const aliceName = userAliceFixture.displayName ?? userAliceFixture.username
+    const cells = screen.getAllByRole('cell')
+    expect(cells[2]).toHaveTextContent(aliceName)
   })
 
   it('T-GPL-3: 시맨틱 table + th scope="col" 6개 컬럼 헤더가 렌더된다', async () => {

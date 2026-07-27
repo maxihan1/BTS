@@ -10,6 +10,7 @@
 // 프론트가 여기서 단언해도 되는 것은 "받은 `bodyHtml` 을 그대로 렌더한다" 는 배선뿐이다.
 import { http, HttpResponse } from 'msw'
 import type { CommentResponse } from '@/api/comments'
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 import {
   adminPermissionsFixture,
   memberPermissionsFixture,
@@ -43,17 +44,17 @@ const MOCK_TOKEN_PREFIX = 'mock-access-token-'
 /**
  * username → userId 매핑.
  *
- * ★값은 `auth-fixtures.ts` 의 `aliceUser.userId`/`bobUser.userId` **정본과 정확히 일치해야 한다.**
+ * ★값을 여기에 다시 적지 않고 `auth-fixtures.ts` 의 **정본 상수**를 import 한다.
  * 어긋나면 E2E 가 whoami 사용자와 댓글 작성자를 다른 사람으로 보고 "본인 댓글" 판정이 깨진다
- * (메모리 `e2e-fixture-whoami-userid-alignment`). `worklog-handlers.ts` 와 같은 값을 쓴다.
+ * (메모리 `e2e-fixture-whoami-userid-alignment`). `worklog-handlers.ts` 와 같은 상수를 쓴다.
  */
 const USER_ID_MAP: Readonly<Record<string, string>> = {
-  alice: '00000000-0000-4000-8000-000000000001',
-  bob: '00000000-0000-4000-8000-000000000002',
+  alice: ALICE_USER_ID,
+  bob: BOB_USER_ID,
 }
 
 /** 토큰 미해석 시 저작자 폴백 — 백엔드는 401 이지만 mock 은 목록 렌더를 막지 않는다 */
-const FALLBACK_AUTHOR_ID = '00000000-0000-4000-8000-000000000001'
+const FALLBACK_AUTHOR_ID = ALICE_USER_ID
 
 /**
  * Authorization Bearer 헤더에서 현재 사용자 username을 도출한다.

@@ -75,7 +75,7 @@ const componentFixtures = [
     projectId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     name: '프론트엔드',
     description: null,
-    leadUserId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', // alice
+    leadUserId: '00000000-0000-4000-8000-000000000001', // alice
   },
   {
     id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',

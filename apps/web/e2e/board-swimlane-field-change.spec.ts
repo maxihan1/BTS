@@ -102,7 +102,7 @@ const LABEL_UNASSIGNED = '미배정'
 const LABEL_NO_EPIC = '에픽 없음'
 
 /** user-fixtures.ts userBobFixture.id 와 동기화 — displayName null → username 'bob' 폴백 */
-const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+const BOB_USER_ID = '00000000-0000-4000-8000-000000000002'
 
 /** user-fixtures.ts userAliceFixture.displayName 과 동기화 (S8 회귀용) */
 const ALICE_GROUP_LABEL = '김앨리스'

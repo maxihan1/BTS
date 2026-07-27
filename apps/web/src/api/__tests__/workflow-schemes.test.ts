@@ -12,6 +12,8 @@ import {
   assignedSchemeSchema,
   toNullableIssueTypeKey,
   fetchAssignableWorkflowSchemes,
+  fetchProjectAssignment,
+  WorkflowSchemeApiError,
 } from '../workflow-schemes'
 import type {
   SchemeListItem,
@@ -329,5 +331,44 @@ describe('fetchAssignableWorkflowSchemes', () => {
     )
 
     await expect(fetchAssignableWorkflowSchemes('ATLAS')).rejects.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fetchProjectAssignment — 404 의 의미
+//
+// ★ 예전에는 404 를 「스킴 미할당」으로 읽어 `null` 을 돌려줬다. 백엔드는 그렇게 답하지 않는다 —
+//   `WorkflowSchemeApplicationService.findAssignedScheme` 이 배정이 없으면 software-scheme 을
+//   **자동 배정하고 그것을 반환**한다(EC-1 D10). 그래서 이 엔드포인트의 404 는
+//   `ProjectWorkflowSchemeController.getAssignedScheme` 의 `Project not found` 하나뿐이다.
+//
+//   그 오독의 증상은 조용했다 — 존재하지 않는 프로젝트 URL 로 들어가면 "이 프로젝트는 아직
+//   워크플로우 스킴이 할당되지 않았습니다" 라는 **틀린 안내**가 떴다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('fetchProjectAssignment', () => {
+  it('404 를 「미할당」으로 삼키지 않고 에러로 전파한다 (404 = 프로젝트 없음)', async () => {
+    server.use(
+      http.get('/api/v1/projects/NOPE/workflow-scheme', () =>
+        HttpResponse.json({ code: 'PROJECT_NOT_FOUND', detail: '프로젝트를 찾을 수 없습니다' }, { status: 404 }),
+      ),
+    )
+
+    await expect(fetchProjectAssignment('NOPE')).rejects.toBeInstanceOf(WorkflowSchemeApiError)
+    await expect(fetchProjectAssignment('NOPE')).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('대조군 — 200 이면 배정된 스킴을 그대로 돌려준다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/workflow-scheme', () =>
+        HttpResponse.json({
+          data: { id: 1, key: 'software-scheme', name: '소프트웨어 스킴', description: null, isStandard: true },
+        }),
+      ),
+    )
+
+    const result = await fetchProjectAssignment('ATLAS')
+
+    expect(result.key).toBe('software-scheme')
   })
 })

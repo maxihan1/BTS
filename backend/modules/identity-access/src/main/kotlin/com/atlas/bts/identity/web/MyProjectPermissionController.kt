@@ -132,7 +132,7 @@ class MyProjectPermissionController(
         @RequestParam projectKey: String,
     ): ProjectPermissionsResponse {
         if (projectKey.isBlank()) throw ResponseStatusException(HttpStatus.BAD_REQUEST)
-        val actorId = resolveActorId(request, jwt)
+        val actorId = resolveActorIdOrThrow(request, jwt)
         val scope = IssueScope.Project(projectKey)
         val issuePermissions =
             UI_PROJECT_PERMISSIONS.associate { permission ->
@@ -235,7 +235,7 @@ class MyProjectPermissionController(
      * @throws ResponseStatusException 미인증 시 401
      */
     @Suppress("ThrowsCount")
-    private fun resolveActorId(
+    private fun resolveActorIdOrThrow(
         request: HttpServletRequest,
         jwt: Jwt?,
     ): UUID {

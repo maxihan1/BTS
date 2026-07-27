@@ -8,8 +8,8 @@ import { loginAsAlice, i18nLabels } from './fixtures/issue-fixtures'
  * invalidateQueries 후 GET 단건 재조회 시 assigneeId 유지 (교훈: MSW mutation stateful refetch)
  *
  * 사용자 fixture (user-fixtures.ts):
- *   alice: id='c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', displayName='김앨리스'
- *   bob:   id='d4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', displayName=null (username='bob' 폴백)
+ *   alice: id='00000000-0000-4000-8000-000000000001', displayName='김앨리스'
+ *   bob:   id='00000000-0000-4000-8000-000000000002', displayName=null (username='bob' 폴백)
  */
 
 test.describe('FR-IS-03 이슈 담당자 (IssueMetaPanel > IssueAssigneeSelect)', () => {

@@ -68,24 +68,27 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
   })
 
   /**
-   * T9-3. assignment null (EC-1 — 404) — 안내 카드 + 신규 할당 select + 적용 버튼이 표시된다.
-   * 미할당 프로젝트키로 404를 시뮬레이션한다.
+   * T9-3. 배정 조회 404 → 「프로젝트를 찾을 수 없습니다」.
+   *
+   * ★ 예전에는 같은 404 를 「스킴 미할당」으로 읽어 "곧 software-default-scheme 이 자동
+   * 할당됩니다" 라는 안내 카드를 보여줬다. 백엔드는 배정이 없으면 **자동 배정 후 200** 을
+   * 돌려주므로(EC-1 D10) 그 상태는 이 엔드포인트로 관측되지 않는다 — 404 의 유일한 의미는
+   * 「프로젝트 없음」이고, 오타 난 프로젝트 키로 들어온 사용자가 보던 안내는 거짓이었다.
    */
-  it('T9-3: assignment가 없으면 안내 카드와 신규 할당 select가 표시된다', async () => {
-    renderPage('UNASSIGNED-PROJECT')
+  it('T9-3: 배정 조회 404 면 「프로젝트를 찾을 수 없습니다」 안내를 보여준다', async () => {
+    renderPage('NO-SUCH-PROJECT')
 
     await waitFor(() =>
       expect(
-        screen.getByText(/아직 워크플로우 스킴이 할당되지 않았습니다/),
+        screen.getByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
       ).toBeInTheDocument(),
     )
 
-    // 자동 할당 안내 텍스트
-    expect(screen.getByText(/software-default-scheme/)).toBeInTheDocument()
-
-    // 신규 할당 select + 적용 버튼
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /적용/ })).toBeInTheDocument()
+    // 옛 오독의 흔적이 남아 있으면 안 된다 — 「미할당」 안내는 존재하지 않는 상태의 UI 였다.
+    expect(screen.queryByText(/아직 워크플로우 스킴이 할당되지 않았습니다/)).not.toBeInTheDocument()
+    // 존재하지 않는 프로젝트에 스킴을 배정할 수단을 열어두지 않는다.
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /적용/ })).not.toBeInTheDocument()
   })
 
   /**
@@ -242,8 +245,12 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
   })
 
   /**
-   * N4-1. ★hotfix — assignable 엔드포인트가 404를 반환해도(오타 프로젝트 키 등)
-   * 빈 Select로 방치하지 않고 오류 안내를 보여준다. 403과는 원인이 다르므로 문구도 달라야 한다.
+   * N4-1. ★hotfix — assignable 엔드포인트가 404를 반환해도 빈 Select로 방치하지 않고
+   * 오류 안내를 보여준다. 403과는 원인이 다르므로 문구도 달라야 한다.
+   *
+   * ★ 프로젝트 키는 배정이 **있는** ATLAS 를 쓴다. 없는 키를 쓰면 배정 조회도 404 가 되어
+   * 「프로젝트를 찾을 수 없습니다」(더 구체적인 원인)가 먼저 걸리고, 이 테스트가 겨냥한
+   * "목록 조회만 실패한 상황" 이 재현되지 않는다.
    */
   it('404 여도 빈 Select 로 방치하지 않고 오류 안내를 보여준다', async () => {
     server.use(
@@ -252,7 +259,7 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
       }),
     )
 
-    renderPage('TYPO')
+    renderPage('ATLAS')
 
     await waitFor(() => {
       expect(screen.getByText(workflowSchemeLabels.assignment.loadErrorMessage)).toBeInTheDocument()

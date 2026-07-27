@@ -36,7 +36,7 @@ const ALICE_USER_ID = userAliceFixture.id
 const GHOST_USER_ID = 'f0e1d2c3-b4a5-4f6e-8d7c-9b0a1c2d3e4f'
 
 /** carol 사용자 UUID — userCarolFixture.id (user-fixtures.ts 단일 진실 원천) */
-const CAROL_USER_ID = '961fb10c-6317-47c8-b377-d8fc5594db82'
+const CAROL_USER_ID = '00000000-0000-4000-8000-000000000003'
 
 /** ATLAS 프로젝트 키 */
 const PROJECT_KEY = 'ATLAS'

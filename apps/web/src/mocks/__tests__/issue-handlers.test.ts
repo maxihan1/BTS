@@ -335,7 +335,7 @@ describe('GET /api/v1/issues/:key — descriptionHtml 단건 GET 모킹', () => 
 const COMP_A_ID = '40000000-0000-4000-8000-000000000001'
 
 /** bob UUID — user-fixtures.ts userBobFixture.id */
-const BOB_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+const BOB_ID = '00000000-0000-4000-8000-000000000002'
 
 async function listIssues(params: Record<string, string | string[]>): Promise<Response> {
   const sp = new URLSearchParams()

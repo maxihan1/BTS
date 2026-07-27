@@ -326,8 +326,8 @@ describe('POST /api/v1/boards/:id/cards/:issueKey/move', () => {
  * 아래 UUID 상수는 board-fixtures.ts ALICE_USER_ID / BOB_USER_ID / COMPONENT_C1_ID / COMPONENT_C2_ID 와 동기화.
  */
 
-const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
-const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+const ALICE_USER_ID = '00000000-0000-4000-8000-000000000001'
+const BOB_USER_ID = '00000000-0000-4000-8000-000000000002'
 const COMPONENT_C1_ID = '40000000-0000-4000-8000-000000000001'
 
 async function getBoardWithFilter(boardId: string, params: string): Promise<Response> {

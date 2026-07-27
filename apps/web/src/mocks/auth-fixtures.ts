@@ -76,6 +76,26 @@ export function resetMfaStore(): void {
   mfaStore.backupCodesRemaining = 0
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 픽스처 사용자 UUID — **정본**
+//
+// ★이 파일이 사용자 id 의 단일 진실 출처다. 다른 mock/테스트는 리터럴을 다시 타이핑하지 말고
+// 이 상수를 import 한다. 값을 각자 적어두면 정본이 셋 이상으로 갈라지고, 갈라진 사실은
+// 「사용자 디렉터리가 이 id 를 못 찾아 화면에 원시 UUID 가 뜬다」는 형태로만 드러난다 —
+// 테스트는 전량 초록인 채로. (2026-07-27 실측: auth ↔ user-fixtures 교집합이 공집합이었다.)
+//
+// RFC4122 v4 형식(version=4, variant=8) — Zod v4 `z.string().uuid()` 통과 보장.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** alice(ADMIN) 사용자 UUID */
+export const ALICE_USER_ID = '00000000-0000-4000-8000-000000000001'
+
+/** bob(MEMBER) 사용자 UUID */
+export const BOB_USER_ID = '00000000-0000-4000-8000-000000000002'
+
+/** carol(VIEWER) 사용자 UUID */
+export const CAROL_USER_ID = '00000000-0000-4000-8000-000000000003'
+
 /**
  * alice fixture — backend DB seed 사용자와 일치.
  * userId: RFC4122 v4 형식 (version=4, variant=8) — Zod v4 z.string().uuid() 통과 보장.
@@ -91,7 +111,7 @@ export const aliceUser: WhoamiResponse = {
   username: 'alice',
   email: 'alice@bts.local',
   authMethod: 'jwt',
-  userId: '00000000-0000-4000-8000-000000000001',
+  userId: ALICE_USER_ID,
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,
@@ -111,7 +131,7 @@ export const bobUser: WhoamiResponse = {
   username: 'bob',
   email: 'bob@bts.local',
   authMethod: 'jwt',
-  userId: '00000000-0000-4000-8000-000000000002',
+  userId: BOB_USER_ID,
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,
@@ -134,11 +154,13 @@ export const carolUser: WhoamiResponse = {
   username: 'carol',
   email: 'carol@bts.local',
   authMethod: 'jwt',
-  userId: '00000000-0000-4000-8000-000000000003',
+  userId: CAROL_USER_ID,
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,
-  displayName: '박캐롤',
+  // displayName 은 사용자 디렉터리(`user-fixtures.userCarolFixture`)와 같은 값이어야 한다.
+  // id 를 정렬한 뒤에도 이름이 다르면 **같은 사용자가 화면마다 다른 이름으로 보인다**.
+  displayName: '캐럴',
   avatarUrl: null,
   theme: 'system',
   locale: 'ko',

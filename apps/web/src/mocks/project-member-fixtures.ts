@@ -1,5 +1,6 @@
 // FR-PM-01 프로젝트 멤버 MSW fixture 데이터 — ATLAS/BTS 두 프로젝트 초기 상태
 import type { ProjectMember } from '../api/project-members.types'
+import { ALICE_USER_ID, BOB_USER_ID, CAROL_USER_ID } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 멤버 fixture 헬퍼
@@ -32,14 +33,14 @@ export const makeMember = (overrides: Partial<ProjectMember>): ProjectMember => 
 export const atlasInitialMembers: ProjectMember[] = [
   makeMember({
     projectId: 'project-atlas-uuid',
-    userId: '00000000-0000-4000-8000-000000000001',
+    userId: ALICE_USER_ID,
     role: 'PROJECT_ADMIN',
     displayName: '앨리스',
     username: 'alice',
   }),
   makeMember({
     projectId: 'project-atlas-uuid',
-    userId: '00000000-0000-4000-8000-000000000002',
+    userId: BOB_USER_ID,
     role: 'MEMBER',
     displayName: '밥',
     username: 'bob',
@@ -60,7 +61,7 @@ export const btsInitialMembers: ProjectMember[] = [
   makeMember({
     projectId: 'project-bts-uuid',
     // user-fixtures.ts userCarolFixture.id 와 동일
-    userId: '961fb10c-6317-47c8-b377-d8fc5594db82',
+    userId: CAROL_USER_ID,
     role: 'PROJECT_ADMIN',
     displayName: '캐럴',
     username: 'carol',

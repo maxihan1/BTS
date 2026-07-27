@@ -3,6 +3,13 @@
 // PATCH/DELETE 시 remaining은 불변(자동차감 없음) — 백엔드 시맨틱 정확 재현.
 import { http, HttpResponse } from 'msw'
 import type { WorklogResponse } from '@/api/worklogs'
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
+import {
+  adminPermissionsFixture,
+  memberPermissionsFixture,
+  viewerPermissionsFixture,
+  type IssuePermissions,
+} from './issue-permission-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UUID v4 생성 헬퍼 (attachment-handlers 패턴 동일)
@@ -27,21 +34,68 @@ function generateUuidV4(): string {
 /** mock access token prefix — auth-fixtures.mockAccessToken과 동일 형식 */
 const MOCK_TOKEN_PREFIX = 'mock-access-token-'
 
-/** Authorization Bearer 헤더에서 현재 사용자 userId를 도출한다. */
-function resolveUserIdFromRequest(request: Request): string | null {
+/** username → userId 매핑 — 값은 auth-fixtures 정본 상수를 import 한다 (재타이핑 금지) */
+const USER_ID_MAP: Readonly<Record<string, string>> = {
+  alice: ALICE_USER_ID,
+  bob: BOB_USER_ID,
+}
+
+/**
+ * username → 이슈 권한.
+ *
+ * `issue-permission-handlers.ts` · `comment-handlers.ts` 와 **같은 fixture 객체**를 참조한다 —
+ * 값을 여기에 다시 적으면 권한 조회 API 가 돌려주는 권한과 이 핸들러가 실제로 강제하는 권한이
+ * 갈라져, "버튼은 보이는데 누르면 403" 같은 모크 내부 모순이 생긴다.
+ */
+const PERMISSIONS_BY_USERNAME: Readonly<Record<string, IssuePermissions>> = {
+  alice: adminPermissionsFixture,
+  bob: memberPermissionsFixture,
+  // carol 은 읽기 전용 — 이슈 UPDATE 게이트의 **유일한 판별자**다.
+  // alice·bob 둘 다 UPDATE=true 라, carol 이 없으면 게이트를 지워도 전량 green 이다.
+  carol: viewerPermissionsFixture,
+}
+
+/** Authorization Bearer 헤더에서 현재 사용자 username을 도출한다. */
+function resolveUsernameFromRequest(request: Request): string | null {
   const authHeader = request.headers.get('Authorization')
   if (authHeader === null || !authHeader.startsWith('Bearer ')) return null
 
   const token = authHeader.slice('Bearer '.length)
   if (!token.startsWith(MOCK_TOKEN_PREFIX)) return null
 
-  const username = token.slice(MOCK_TOKEN_PREFIX.length)
-  // username → userId 매핑 (auth-fixtures AUTH_USERS 정본과 일치, RFC4122 v4 형식)
-  const USER_ID_MAP: Readonly<Record<string, string>> = {
-    alice: '00000000-0000-4000-8000-000000000001',
-    bob: '00000000-0000-4000-8000-000000000002',
-  }
+  return token.slice(MOCK_TOKEN_PREFIX.length)
+}
+
+/** Authorization Bearer 헤더에서 현재 사용자 userId를 도출한다. */
+function resolveUserIdFromRequest(request: Request): string | null {
+  const username = resolveUsernameFromRequest(request)
+  if (username === null) return null
   return USER_ID_MAP[username] ?? null
+}
+
+/**
+ * 이슈 수준 `UPDATE` 게이트 — 백엔드와 **같은 순서**로 통과시킨다.
+ *
+ * 백엔드 `WorklogService` 는 워크로그를 조회하기 **전에** 이 게이트를 통과시킨다
+ * (`create:111` · `createImported:183` · `update:241` · `delete:315` 모두 첫 줄이 `checkPermission`).
+ * 즉 권한 없는 사용자는 **워크로그 존재 여부와 무관하게 403** 이다. KDoc 이 그 이유를 "이슈 존재
+ * probe 방지" 라고 못박고 있다 — 404/403 의 차이로 리소스 실재를 열거당하지 않기 위함이다.
+ *
+ * 조회(GET 목록)에는 붙이지 않는다. 백엔드 `listForIssue:369` 가 요구하는 것은 `VIEW` 이고,
+ * 여기에 `UPDATE` 를 걸면 읽기 전용 참여자가 워크로그를 아예 못 보게 되어 계약이 반대로 어긋난다.
+ *
+ * 미인증·미지 사용자는 `null` 이라 게이트를 통과시킨다 — 백엔드라면 401 이지만 모크는 흐름을
+ * 막지 않는 기존 태도(POST 의 `ALICE_USER_ID` 폴백)를 따른다.
+ *
+ * @param request MSW 요청
+ * @returns 게이트 거부 응답, 통과면 `null`
+ */
+function issueUpdateGate(request: Request): Response | null {
+  const username = resolveUsernameFromRequest(request)
+  if (username === null) return null
+  const allowed = PERMISSIONS_BY_USERNAME[username]?.UPDATE ?? true
+  if (allowed) return null
+  return HttpResponse.json({ errorCode: 'ISSUE_ACCESS_DENIED' }, { status: 403 })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,6 +230,11 @@ const listWorklogsHandler = http.get('/api/v1/issues/:key/worklogs', ({ params }
  * authorId는 Authorization 토큰에서 도출한 현재 사용자 userId.
  */
 const addWorklogHandler = http.post('/api/v1/issues/:key/worklogs', async ({ params, request }) => {
+  // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+  // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 워크로그 실재를 열거한다.
+  const denied = issueUpdateGate(request)
+  if (denied !== null) return denied
+
   const issueKey = params['key'] as string
 
   const body = await request.clone().json() as {
@@ -186,7 +245,7 @@ const addWorklogHandler = http.post('/api/v1/issues/:key/worklogs', async ({ par
   }
 
   // 현재 사용자 도출 (인증 토큰 기반)
-  const authorId = resolveUserIdFromRequest(request) ?? '00000000-0000-4000-8000-000000000001'
+  const authorId = resolveUserIdFromRequest(request) ?? ALICE_USER_ID
 
   const now = new Date().toISOString()
   const newWorklog: WorklogResponse = {
@@ -237,6 +296,11 @@ const addWorklogHandler = http.post('/api/v1/issues/:key/worklogs', async ({ par
 const updateWorklogHandler = http.patch(
   '/api/v1/issues/:key/worklogs/:worklogId',
   async ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 워크로그 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = params['key'] as string
     const worklogId = params['worklogId'] as string
 
@@ -300,6 +364,11 @@ const updateWorklogHandler = http.patch(
 const deleteWorklogHandler = http.delete(
   '/api/v1/issues/:key/worklogs/:worklogId',
   ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 워크로그 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = params['key'] as string
     const worklogId = params['worklogId'] as string
 

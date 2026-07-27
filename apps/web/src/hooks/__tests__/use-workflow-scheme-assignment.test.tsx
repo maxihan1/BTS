@@ -43,19 +43,28 @@ describe('useGetAssignment', () => {
     expect(result.current.data).toEqual(assignment)
   })
 
-  it('404 (EC-1 — 미할당) 시 null을 정상 반환한다', async () => {
+  /**
+   * 404 를 성공(null)으로 삼키지 않는다.
+   *
+   * 백엔드는 배정 없는 프로젝트에 software-scheme 을 **자동 배정해 200** 을 돌려주므로
+   * (`WorkflowSchemeApplicationService.findAssignedScheme`, EC-1 D10), 이 엔드포인트의 404 는
+   * 「프로젝트 없음」 하나뿐이다. 예전처럼 null 로 삼키면 화면이 「스킴 미할당」이라는
+   * 존재하지 않는 상태를 사용자에게 보여준다.
+   */
+  it('404 (프로젝트 없음) 를 성공으로 삼키지 않고 에러 상태가 된다', async () => {
     server.use(
-      http.get('/api/v1/projects/UNASSIGNED/workflow-scheme', () =>
-        new HttpResponse(null, { status: 404 }),
+      http.get('/api/v1/projects/NO-SUCH-PROJECT/workflow-scheme', () =>
+        HttpResponse.json({ code: 'PROJECT_NOT_FOUND', detail: '없음' }, { status: 404 }),
       ),
     )
 
-    const { result } = renderHook(() => useGetAssignment('UNASSIGNED'), {
+    const { result } = renderHook(() => useGetAssignment('NO-SUCH-PROJECT'), {
       wrapper: createWrapper(),
     })
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data).toBeNull()
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.error).toMatchObject({ status: 404 })
   })
 
   it('로딩 중일 때 isPending이 true다', () => {

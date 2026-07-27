@@ -34,7 +34,7 @@ const componentWithLead: Component = {
   projectId: 'f1e2d3c4-b5a6-4f7e-8d9c-0b1a2c3d4e5f',
   name: 'Frontend',
   description: '프론트엔드 컴포넌트',
-  leadUserId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', // userAliceFixture.id
+  leadUserId: '00000000-0000-4000-8000-000000000001', // userAliceFixture.id
 }
 
 /** leadUserId가 null인 컴포넌트 픽스처 */
@@ -99,7 +99,7 @@ describe('ComponentRow — 렌더', () => {
         if (ids !== null) {
           return HttpResponse.json([
             {
-              id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+              id: '00000000-0000-4000-8000-000000000001',
               username: 'alice',
               displayName: '김앨리스',
               email: null,
@@ -323,7 +323,7 @@ describe('ComponentRow — 인라인 리드 변경', () => {
         if (ids !== null) {
           return HttpResponse.json([
             {
-              id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+              id: '00000000-0000-4000-8000-000000000001',
               username: 'alice',
               displayName: '김앨리스',
               email: null,
@@ -333,7 +333,7 @@ describe('ComponentRow — 인라인 리드 변경', () => {
         // 검색 결과
         return HttpResponse.json([
           {
-            id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
+            id: '00000000-0000-4000-8000-000000000002',
             username: 'bob',
             displayName: null,
             email: null,
@@ -378,7 +378,7 @@ describe('ComponentRow — 인라인 리드 변경', () => {
 
     await waitFor(() => {
       expect(patchLeadSpy).toHaveBeenCalledWith({
-        leadUserId: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
+        leadUserId: '00000000-0000-4000-8000-000000000002',
       })
     })
   })

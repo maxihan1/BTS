@@ -1,5 +1,6 @@
 // issue-tracking BC 이슈 목록 MSW fixture 데이터
 import type { IssueResponse, IssuePage } from '@/api/issues'
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FR-SR-01 D6 — 필터 분별 시드용 상수 (B3 vacuous 차단)
@@ -17,14 +18,14 @@ import type { IssueResponse, IssuePage } from '@/api/issues'
 //   COMP_A_ID = 보드 컴포넌트A UUID (board-fixtures.ts와 동기화).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** userBobFixture.id 와 동기화 — assignee 분별 시드 */
-export const ISSUE_FILTER_BOB_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+/** bob 사용자 UUID — assignee 분별 시드 (정본은 auth-fixtures) */
+export const ISSUE_FILTER_BOB_ID = BOB_USER_ID
 
 /**
- * userAliceFixture.id 와 동기화 — assignee 분별 시드.
+ * alice 사용자 UUID — assignee 분별 시드 (정본은 auth-fixtures).
  * ★ 이 값은 issueAtlas2Fixture.id 와 같은 UUID이므로 이슈 id 용도로 사용 금지.
  */
-export const ISSUE_FILTER_ALICE_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+export const ISSUE_FILTER_ALICE_ID = ALICE_USER_ID
 
 /** 컴포넌트A UUID — board-fixtures.ts COMP_A 상수와 동기화 */
 export const ISSUE_FILTER_COMP_A_ID = '40000000-0000-4000-8000-000000000001'
@@ -69,11 +70,11 @@ export const issueAtlas1Fixture: IssueResponse = {
  */
 export const issueAtlas2Fixture: IssueResponse = {
   key: 'ATLAS-2',
-  id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+  id: '00000000-0000-4000-8000-000000000001',
   projectKey: 'ATLAS',
   summary: '두 번째 이슈 — 이슈 목록 페이지 UI 구현. 긴 요약 텍스트: 모바일 반응형 + 페이지네이션 + 빈 상태 안내 + 접근성 WCAG AA 준수.',
   currentStateKey: 'in_progress',
-  reporterId: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
+  reporterId: ISSUE_FILTER_BOB_ID,
   // FR-SR-01 B3 분별 시드: bob 담당
   assigneeId: ISSUE_FILTER_BOB_ID,
   componentIds: [],

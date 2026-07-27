@@ -52,6 +52,17 @@ import java.util.UUID
  * 미인증 요청이 존재하지 않는 프로젝트엔 404, 존재하는 프로젝트엔 401 을 받아 프로젝트 존재 여부를
  * probe 할 수 있다(정보 노출). 따라서 인증을 가장 앞에서 강제한다.
  *
+ * ### 가드 순서 — 인증 → 권한 → 프로젝트 조회
+ * 세 핸들러 모두 [WorkflowSchemePermissionResolver.requirePermission](403) 을
+ * [ProjectLookupPort.findIdByKey](404) **보다 먼저** 호출한다. 순서가 반대면 인증은 됐지만 권한이 없는
+ * 사용자가 응답 코드 차이(존재하는 키 403 / 없는 키 404)로 프로젝트 키의 실재를 열거할 수 있다.
+ * 권한 스코프 [WorkflowSchemeScope.Project] 는 projectId 가 아니라 **키 기반**이라 조회 이전에도
+ * 평가할 수 있다.
+ *
+ * 프론트 계약과 무관하다 — 이 컨트롤러의 GET 핸들러는 "미배정" 을 404 로 표현하지 않는다.
+ * 미배정 프로젝트는 [WorkflowSchemeApplicationService.findAssignedScheme] 이 software-scheme 을
+ * 자동 배정해 200 을 반환하므로, 404 의 의미는 「프로젝트 없음」 하나뿐이다.
+ *
  * @param appService 워크플로우 스킴 application service.
  * @param permissionResolver 스킴 권한 평가 outbound port.
  * @param projectLookupPort projectKey → projects.id(UUID) 변환 outbound port.
@@ -83,15 +94,15 @@ class ProjectWorkflowSchemeController(
     ): ResponseEntity<DataResponse<AssignmentResponse>> {
         log.info("assignScheme: projectKey={} schemeKey={}", projectKey, body.schemeKey)
         val actor = CurrentActor.current()
-        val key = ProjectKey(projectKey)
-        val projectId =
-            projectLookupPort.findIdByKey(key)
-                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
             WorkflowSchemeScope.Project(projectKey),
         )
+        val key = ProjectKey(projectKey)
+        val projectId =
+            projectLookupPort.findIdByKey(key)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val assignment = appService.assignToProject(actor, projectId, projectKey, WorkflowSchemeKey(body.schemeKey))
         return ResponseEntity.ok(DataResponse(data = assignment.toResponse()))
     }
@@ -111,15 +122,15 @@ class ProjectWorkflowSchemeController(
     ): ResponseEntity<DataResponse<SchemeResponse>> {
         log.info("getAssignedScheme: projectKey={}", projectKey)
         val actor = CurrentActor.current()
-        val key = ProjectKey(projectKey)
-        val projectId =
-            projectLookupPort.findIdByKey(key)
-                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
             WorkflowSchemeScope.Project(projectKey),
         )
+        val key = ProjectKey(projectKey)
+        val projectId =
+            projectLookupPort.findIdByKey(key)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val scheme = appService.findAssignedScheme(projectId, projectKey)
         return ResponseEntity.ok(DataResponse(data = scheme.toResponse()))
     }
@@ -150,14 +161,14 @@ class ProjectWorkflowSchemeController(
     ): ResponseEntity<DataResponse<List<SchemeResponse>>> {
         log.info("listAssignableSchemes: projectKey={}", projectKey)
         val actor = CurrentActor.current()
-        val key = ProjectKey(projectKey)
-        projectLookupPort.findIdByKey(key)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
             WorkflowSchemeScope.Project(projectKey),
         )
+        val key = ProjectKey(projectKey)
+        projectLookupPort.findIdByKey(key)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         return ResponseEntity.ok(DataResponse(data = appService.list().map { it.toResponse() }))
     }
 }

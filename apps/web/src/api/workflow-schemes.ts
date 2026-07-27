@@ -235,16 +235,23 @@ export async function deleteMapping(schemeKey: string, mappingId: number): Promi
 /**
  * 프로젝트에 할당된 워크플로우 스킴을 조회한다.
  * GET /api/v1/projects/{projectKey}/workflow-scheme → { data: AssignedScheme }
- * 할당이 없을 때 404를 반환한다 (EC-1 — 404는 에러가 아니라 "미할당" 상태).
+ *
+ * ## 404 는 「미할당」이 아니라 「프로젝트 없음」이다
+ * 백엔드는 배정이 없는 프로젝트에 404 를 내지 않는다 —
+ * `WorkflowSchemeApplicationService.findAssignedScheme` 이 `software-scheme` 을 **자동 배정한 뒤
+ * 그것을 반환**한다(EC-1 D10). 그래서 이 엔드포인트가 404 를 내는 경우는
+ * `ProjectWorkflowSchemeController.getAssignedScheme` 의 `Project not found` 하나뿐이다.
+ *
+ * 예전에는 이 404 를 `null`(미할당)로 삼켜, 존재하지 않는 프로젝트 URL 로 들어가면
+ * 「스킴 미할당」이라는 **틀린 안내**가 떴다. 지금은 에러로 흘려보내고 화면이
+ * 「프로젝트를 찾을 수 없습니다」로 표시한다.
  *
  * @param projectKey 프로젝트 식별 키
- * @returns AssignedScheme 또는 null (할당 없음)
+ * @returns 배정된 AssignedScheme
+ * @throws WorkflowSchemeApiError(404) 프로젝트가 존재하지 않을 때
  */
-export async function fetchProjectAssignment(projectKey: string): Promise<AssignedScheme | null> {
+export async function fetchProjectAssignment(projectKey: string): Promise<AssignedScheme> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/workflow-scheme`, { method: 'GET' })
-  if (res.status === 404) {
-    return null
-  }
   if (!res.ok) {
     return throwSchemeApiError(res)
   }

@@ -148,7 +148,7 @@ describe('useAddMember', () => {
     const { result } = renderHook(() => useAddMember('ATLAS'), { wrapper })
 
     await act(async () => {
-      result.current.mutate({ userId: '961fb10c-6317-47c8-b377-d8fc5594db82', role: 'MEMBER' })
+      result.current.mutate({ userId: '00000000-0000-4000-8000-000000000003', role: 'MEMBER' })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))

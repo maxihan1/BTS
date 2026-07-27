@@ -1,4 +1,5 @@
 // 이슈 변경 이력 MSW fixture 데이터 — lifecycle/priority/assignee/components/status/securityLevel 케이스 포함 (FR-HS-02)
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UUID 상수 (RFC4122 v4 — zod-v4-uuid-fixture-strictness)
@@ -8,10 +9,10 @@
 export const ACTOR_ALICE_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
 /** Bob actor UUID */
 export const ACTOR_BOB_ID = 'b2c3d4e5-f6a7-4b8c-9d0e-f1a2b3c4d5e6'
-/** Alice 사용자 UUID (assignee 필드 값) */
-export const USER_ALICE_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
-/** Bob 사용자 UUID (assignee 필드 값) */
-export const USER_BOB_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+/** Alice 사용자 UUID (assignee 필드 값) — 정본은 auth-fixtures */
+export const USER_ALICE_ID = ALICE_USER_ID
+/** Bob 사용자 UUID (assignee 필드 값) — 정본은 auth-fixtures */
+export const USER_BOB_ID = BOB_USER_ID
 /** 컴포넌트 UUID */
 export const COMPONENT_UUID = 'e5f6a7b8-c9d0-4e1f-af2a-3b4c5d6e7f8a'
 /** securityLevel 변경 from ID */

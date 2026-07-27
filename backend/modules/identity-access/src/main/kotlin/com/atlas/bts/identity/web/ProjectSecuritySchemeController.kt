@@ -7,11 +7,12 @@ import com.atlas.bts.identity.issuesecurity.ProjectNotFoundException
 import com.atlas.bts.identity.issuesecurity.ProjectSchemeAccessDeniedException
 import com.atlas.bts.identity.issuesecurity.ProjectSecuritySchemeService
 import com.atlas.bts.identity.issuesecurity.SchemeNotFoundException
+import com.atlas.bts.identity.web.support.UNAUTHORIZED_RESPONSE
+import com.atlas.bts.identity.web.support.resolveActorId
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -142,23 +143,6 @@ class ProjectSecuritySchemeController(
     // ── 내부 헬퍼 (IssueSecuritySchemeController 동형) ───────────────────────────
 
     /**
-     * JWT 또는 PAT SecurityContext 에서 actor UUID 를 추출한다.
-     *
-     * - jwt != null → JWT subject 를 UUID 로 파싱.
-     * - jwt == null → SecurityContext principal(String)을 UUID 로 파싱(PAT 경로).
-     * - 파싱 실패 → null (호출 측 401).
-     */
-    @Suppress("ReturnCount")
-    private fun resolveActorId(jwt: Jwt?): UUID? {
-        if (jwt != null) {
-            return runCatching { UUID.fromString(jwt.subject) }.getOrNull()
-        }
-        val authentication = SecurityContextHolder.getContext().authentication
-        val rawPrincipal = authentication?.principal as? String ?: return null
-        return runCatching { UUID.fromString(rawPrincipal) }.getOrNull()
-    }
-
-    /**
      * 핸들러 본문을 실행하고 서비스 예외만 HTTP 응답으로 매핑한다.
      *
      * 잡는 예외를 세 종류로 한정한다(광범위 catch 금지, silently swallow 금지).
@@ -179,10 +163,6 @@ class ProjectSecuritySchemeController(
         }
 
     private companion object {
-        /** actor 추출 실패(JWT/PAT 파싱 오류) 공용 401 응답. */
-        val UNAUTHORIZED_RESPONSE: ResponseEntity<Map<String, String>> =
-            ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf("error" to "unauthorized"))
-
         /** 주어진 상태/코드로 error 키 단일 맵 응답을 만든다. */
         fun errorResponse(
             status: HttpStatus,

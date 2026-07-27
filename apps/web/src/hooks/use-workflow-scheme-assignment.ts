@@ -25,14 +25,15 @@ export const ASSIGNMENT_KEYS = {
 
 /**
  * 프로젝트에 할당된 워크플로우 스킴을 조회한다.
- * GET /api/v1/projects/{projectKey}/workflow-scheme → AssignedScheme | null
+ * GET /api/v1/projects/{projectKey}/workflow-scheme → AssignedScheme
  *
- * EC-1: 404는 "미할당" 정상 상태이며 null로 처리한다 (에러가 아님).
+ * 404 는 「프로젝트 없음」이며 에러로 전파된다 — 백엔드는 배정이 없으면 자동 배정하므로
+ * 「미할당」이라는 상태 자체가 이 엔드포인트로는 관측되지 않는다 (`fetchProjectAssignment` KDoc).
  *
  * @param projectKey 프로젝트 식별 키
  */
 export function useGetAssignment(projectKey: string) {
-  return useQuery<AssignedScheme | null>({
+  return useQuery<AssignedScheme>({
     queryKey: ASSIGNMENT_KEYS.byProject(projectKey),
     queryFn: () => fetchProjectAssignment(projectKey),
     staleTime: 30_000,
@@ -60,7 +61,7 @@ export function useUpdateAssignment(projectKey: string) {
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: ASSIGNMENT_KEYS.byProject(projectKey) })
 
-      const prevAssignment = queryClient.getQueryData<AssignedScheme | null>(
+      const prevAssignment = queryClient.getQueryData<AssignedScheme>(
         ASSIGNMENT_KEYS.byProject(projectKey),
       )
 
@@ -87,7 +88,7 @@ export function useUpdateAssignment(projectKey: string) {
         return { prevAssignment, applied: false }
       }
 
-      queryClient.setQueryData<AssignedScheme | null>(
+      queryClient.setQueryData<AssignedScheme>(
         ASSIGNMENT_KEYS.byProject(projectKey),
         optimistic,
       )
@@ -96,7 +97,7 @@ export function useUpdateAssignment(projectKey: string) {
     },
     onError: (error, _input, context) => {
       const ctx = context as
-        | { prevAssignment?: AssignedScheme | null; applied?: boolean }
+        | { prevAssignment?: AssignedScheme; applied?: boolean }
         | undefined
 
       // 쓴 경우에만 되돌린다. 안 썼으면 되돌릴 것도 없다 (위 `applied` 주석 참조).

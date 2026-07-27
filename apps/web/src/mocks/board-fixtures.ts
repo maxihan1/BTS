@@ -13,21 +13,12 @@ import type { QuickFilter } from '@/api/board-quick-filters'
 // seedBacklog는 backlog-fixtures.ts의 공개 API이므로 그 파일을 수정하지 않고 호출만 한다.
 import { seedBacklog } from './backlog-fixtures'
 import type { StoredBacklogProject } from './backlog-fixtures'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FILTER_BOARD 담당자 UUID 상수 — user-fixtures.ts와 동기화
-//
-// board-fixtures.ts는 모듈 레벨에서 import.meta.env.MODE를 참조하므로
-// E2E Node.js 런타임에서 직접 import 불가 (import.meta 접근 오류).
-// 따라서 user-fixtures를 import하는 대신 UUID를 인라인 상수로 동기화한다.
-// user-fixtures.ts 변경 시 이 두 상수도 함께 업데이트해야 한다.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** userAliceFixture.id 와 동기화 */
-const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
-
-/** userBobFixture.id 와 동기화 */
-const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+// FILTER_BOARD 담당자 UUID — 정본은 auth-fixtures.ts.
+// 예전에는 "board-fixtures 가 import.meta.env.MODE 를 참조해 E2E 에서 import 불가" 라는 이유로
+// UUID 를 인라인 복사했는데, 그 제약은 **이 파일을 남이 import 할 때**의 제약이지 이 파일이 남을
+// import 할 때의 제약이 아니다. auth-fixtures 는 import.meta 를 쓰지 않으므로 그대로 참조한다.
+// 복사본을 두면 정본이 바뀌어도 조용히 어긋난 채 테스트가 전부 초록으로 남는다.
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 store 전용 확장 타입 — 필터용 메타. 응답 DTO에 포함되지 않는다.
@@ -285,7 +276,7 @@ export const DEFAULT_BOARD: BoardDetail = {
         {
           issueKey: 'ATLAS-1',
           summary: '첫 번째 이슈 — 로그인 페이지 구현',
-          assigneeId: '00000000-0000-4000-8000-000000000001',
+          assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 1,
           epicKey: null,
@@ -316,7 +307,7 @@ export const DEFAULT_BOARD: BoardDetail = {
         {
           issueKey: 'ATLAS-2',
           summary: '두 번째 이슈 — 이슈 목록 페이지 UI 구현',
-          assigneeId: '00000000-0000-4000-8000-000000000001',
+          assigneeId: ALICE_USER_ID,
           version: 1,
           priority: 2,
           epicKey: null,
@@ -474,7 +465,7 @@ export const WIP_BOARD: StoredBoardDetail = {
         {
           issueKey: 'WIP-1',
           summary: 'WIP 테스트 이슈 1',
-          assigneeId: '00000000-0000-4000-8000-000000000001',
+          assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 1,
           epicKey: null,
@@ -496,7 +487,7 @@ export const WIP_BOARD: StoredBoardDetail = {
         {
           issueKey: 'WIP-2',
           summary: 'WIP 테스트 이슈 2',
-          assigneeId: '00000000-0000-4000-8000-000000000001',
+          assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 2,
           epicKey: null,
