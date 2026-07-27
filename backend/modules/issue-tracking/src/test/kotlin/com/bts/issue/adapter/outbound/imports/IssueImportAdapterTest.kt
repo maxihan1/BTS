@@ -303,6 +303,9 @@ class IssueImportAdapterTest {
                 permissionResolver = permissionResolver,
                 eventPublisher = eventPublisher,
                 archiveGuard = archiveGuard,
+                // import 경로는 createImported 만 쓰고 그 경로는 이력을 기록하지 않는다
+                // (댓글 본문 수정 이력은 FR-CO-02 update 전용) — importWorklogService 와 동일 근거.
+                historyRecorder = mockk(relaxed = true),
                 clock = clock,
             )
 

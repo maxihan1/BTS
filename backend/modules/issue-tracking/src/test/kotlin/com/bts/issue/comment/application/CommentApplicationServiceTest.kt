@@ -1,4 +1,5 @@
-// CommentApplicationService 통합 테스트 — create(actor 강제)·createImported(원본 보존)·list 게이트/렌더링/정렬 (FR-CO-01)
+// CommentApplicationService 통합 테스트 — create(actor 강제)·createImported(원본 보존)·list 게이트/렌더링/정렬
+// (FR-CO-01) + update(작성자 한정 — 모더레이터도 403) (FR-CO-02 Task 3)
 
 package com.bts.issue.comment.application
 
@@ -6,6 +7,7 @@ import com.bts.issue.comment.application.CommentApplicationService.Companion.MAX
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.comment.domain.CommentBodyBlankException
 import com.bts.issue.comment.domain.CommentBodyTooLongException
+import com.bts.issue.comment.domain.CommentNotFoundException
 import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
@@ -14,6 +16,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
@@ -23,6 +26,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -64,6 +68,16 @@ import java.util.UUID
  * 기존 T3-B("create 는 authorId 를 주입값 그대로 저장한다")와 T3-F("create 는 createdAt 인자를
  * 그대로 저장한다")는 **지금 제거되는 동작**을 단정하고 있었다. 두 단정은 [CommentApplicationService.createImported]
  * 로 **이관**했다(CO-4). 단순 시그니처 교체가 아니라 의미의 소유자가 바뀐 것이다.
+ *
+ * ## FR-CO-02 Task 3 시나리오 — [CommentApplicationService.update]
+ * - CO2-1. 작성자는 자기 댓글을 수정한다 — body·updatedAt 갱신, createdAt·authorId 보존.
+ * - **CO2-2. `SOFT_DELETE` 보유자여도 남의 댓글은 수정할 수 없다 (403).** ← 이 PR 의 핵심 판별자.
+ * - CO2-3. UPDATE 권한 없으면 작성자여도 403 — 권한 판정이 작성자 판정보다 먼저다.
+ * - CO2-4. 공백 본문 → [CommentBodyBlankException].
+ * - CO2-5. 32,001자 → [CommentBodyTooLongException] / 32,000자 통과 (경계 양쪽).
+ * - CO2-6. 수정 성공 시 [IssueHistoryRecorder.recordCommentEdited] 가 이전·이후 본문으로 1회 호출.
+ * - CO2-7. 본문 동일 → 완전 no-op (DB 쓰기 0 · updatedAt 미갱신 · 이력 미기록).
+ * - CO2-8. 다른 이슈 소속 commentId → [CommentNotFoundException].
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentApplicationServiceTest : IssueTestcontainersBase() {
@@ -74,6 +88,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
     private lateinit var resolver: RecordingPermissionResolver
     private lateinit var eventPublisher: IssueEventPublisher
     private lateinit var archiveGuard: ProjectArchiveGuard
+    private lateinit var historyRecorder: IssueHistoryRecorder
     private lateinit var service: CommentApplicationService
 
     private val actorUuid: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
@@ -88,13 +103,46 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         resolver = RecordingPermissionResolver()
         eventPublisher = mockk(relaxed = true)
         archiveGuard = ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
-        service = CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard)
+        historyRecorder = mockk(relaxed = true)
+        service =
+            CommentApplicationService(
+                commentRepository,
+                repository,
+                resolver,
+                eventPublisher,
+                archiveGuard,
+                historyRecorder,
+            )
         if (taskTypeId == null) {
             taskTypeId = loadTaskTypeId()
         }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * 지정 시각에 고정된 [Clock] 을 쓰는 서비스 인스턴스를 만든다.
+     *
+     * createdAt/updatedAt 을 결정적 값으로 고정해야 "updatedAt 이 갱신됐다/안 됐다"를 단정할 수
+     * 있다. 시스템 시계로 만든 시각은 DB TIMESTAMPTZ(마이크로초) 왕복에서 정밀도가 잘릴 수 있어
+     * 등치 비교의 판별력이 떨어진다.
+     *
+     * @param instant 고정할 시각.
+     * @param repo 사용할 댓글 저장소. 기본값은 실 저장소이며, CO2-7 만 쓰기 호출 수를 세기 위해 spy 를 넘긴다.
+     */
+    private fun serviceAt(
+        instant: Instant,
+        repo: CommentRepository = commentRepository,
+    ): CommentApplicationService =
+        CommentApplicationService(
+            repo,
+            repository,
+            resolver,
+            eventPublisher,
+            archiveGuard,
+            historyRecorder,
+            Clock.fixed(instant, ZoneOffset.UTC),
+        )
 
     private fun <T> withJdbcConnection(block: (Connection) -> T): T =
         DriverManager.getConnection(
@@ -315,7 +363,15 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
         val fixedClockService =
-            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard, fixedClock)
+            CommentApplicationService(
+                commentRepository,
+                repository,
+                resolver,
+                eventPublisher,
+                archiveGuard,
+                historyRecorder,
+                fixedClock,
+            )
 
         val comment = fixedClockService.create(actor, issue.key, "본문")
 
@@ -338,7 +394,15 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
         val fixedClockService =
-            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard, fixedClock)
+            CommentApplicationService(
+                commentRepository,
+                repository,
+                resolver,
+                eventPublisher,
+                archiveGuard,
+                historyRecorder,
+                fixedClock,
+            )
 
         val comment = fixedClockService.create(actor, issue.key, "본문")
 
@@ -470,6 +534,217 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
             )
 
         assertThat(comment.body).hasSize(MAX_BODY_LENGTH + 1)
+    }
+
+    // ── CO2-1~CO2-8. update — 작성자 한정 수정 (FR-CO-02 Task 3) ───────────────
+
+    /**
+     * Given  actor 가 작성한 댓글 (2024-03-01 생성)
+     * When   2030-01-01 로 고정된 시계로 update 호출
+     * Then   body 와 updatedAt 은 갱신되고 createdAt·authorId 는 보존된다 (반환값 · DB 양쪽).
+     */
+    @Test
+    @Order(15)
+    fun `CO2-1 - 작성자는 자기 댓글을 수정한다 (body·updatedAt 갱신, createdAt·authorId 보존)`() {
+        val issue = insertIssue(15L)
+        val createdAt = Instant.parse("2024-03-01T00:00:00Z")
+        val editedAt = Instant.parse("2030-01-01T00:00:00Z")
+        val created = serviceAt(createdAt).create(actor, issue.key, "원본 본문")
+
+        val updated = serviceAt(editedAt).update(actor, issue.key, created.id, "수정된 본문")
+
+        assertThat(updated.body).isEqualTo("수정된 본문")
+        assertThat(updated.updatedAt).isEqualTo(editedAt)
+        assertThat(updated.createdAt).isEqualTo(createdAt)
+        assertThat(updated.authorId).isEqualTo(actorUuid)
+
+        val stored = requireNotNull(commentRepository.findActive(created.id, issue.id.value))
+        assertThat(stored.body).isEqualTo("수정된 본문")
+        assertThat(stored.updatedAt).isEqualTo(editedAt)
+        assertThat(stored.createdAt).isEqualTo(createdAt)
+        assertThat(stored.authorId).isEqualTo(actorUuid)
+    }
+
+    /**
+     * ★ **이 PR 전체의 핵심 판별자.**
+     *
+     * Given  actor 가 [IssuePermission.UPDATE] 와 [IssuePermission.SOFT_DELETE] 를 **둘 다** 보유
+     *        (모더레이터 — Task 4 의 삭제 게이트는 이 조합으로 통과한다)
+     * When   authorUuid 가 쓴 **남의** 댓글에 update 호출
+     * Then   [IssueAccessDeniedException] (403) 이고 원문은 그대로다.
+     *
+     * ## 왜 대조군이 필요한가 (vacuous 방지)
+     * 권한이 없어서 403 이 나면 이 테스트는 "작성자 한정"을 전혀 검증하지 못한다. 그래서
+     * (a) 두 권한 보유를 resolver 에 직접 물어 선언하고, (b) **같은 actor 가 자기 댓글은 수정에
+     * 성공**함을 이어서 단정한다. 두 호출의 차이는 오직 "저작자가 누구인가" 뿐이다.
+     *
+     * ## 왜 모더레이터에게 수정을 허용하지 않는가 (ADR)
+     * 실제 필요는 "지우기"이고, "남의 글 고치기"는 그 필요를 못 채우면서 기록 신뢰만 깎는다.
+     * 관리자가 타인 명의 글의 내용을 바꿀 수 있으면 그 글이 원래 무엇이었는지 아무도 알 수 없다.
+     */
+    @Test
+    @Order(16)
+    fun `CO2-2 - SOFT_DELETE 보유자여도 남의 댓글은 수정할 수 없다 (403)`() {
+        val issue = insertIssue(16L)
+        val othersComment =
+            buildComment(issue.id.value, body = "남의 원본", createdAt = Instant.parse("2024-03-01T00:00:00Z"))
+        commentRepository.insert(othersComment)
+        val ownComment = service.create(actor, issue.key, "내 원본")
+
+        // (a) actor 는 UPDATE 와 SOFT_DELETE 를 모두 보유한다 — 403 이 권한 부족 탓이 아님을 고정.
+        val scope = IssueScope.Issue(issue.key.value)
+        assertThat(resolver.hasPermission(actorUuid, IssuePermission.UPDATE, scope)).isTrue()
+        assertThat(resolver.hasPermission(actorUuid, IssuePermission.SOFT_DELETE, scope)).isTrue()
+
+        assertThatThrownBy {
+            service.update(actor, issue.key, othersComment.id, "가로챈 본문")
+        }.isInstanceOf(IssueAccessDeniedException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(othersComment.id, issue.id.value)).body)
+            .isEqualTo("남의 원본")
+
+        // (b) 대조군 — 같은 actor·같은 이슈·같은 권한인데 자기 댓글은 수정된다.
+        assertThat(service.update(actor, issue.key, ownComment.id, "내 수정본").body).isEqualTo("내 수정본")
+    }
+
+    /**
+     * Given  UPDATE 권한이 없는 actor (댓글의 **작성자 본인**)
+     * When   update 호출
+     * Then   403 — 권한 판정이 작성자 판정보다 먼저 일어난다 (이슈 존재 probe 방지).
+     */
+    @Test
+    @Order(17)
+    fun `CO2-3 - update 는 UPDATE 권한이 없으면 작성자여도 403`() {
+        val issue = insertIssue(17L)
+        val own = service.create(actor, issue.key, "원본 본문")
+        resolver.deniedPermission = IssuePermission.UPDATE
+
+        assertThatThrownBy {
+            service.update(actor, issue.key, own.id, "수정된 본문")
+        }.isInstanceOf(IssueAccessDeniedException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(own.id, issue.id.value)).body).isEqualTo("원본 본문")
+    }
+
+    /**
+     * Given  공백·개행만으로 이루어진 새 본문
+     * When   update 호출
+     * Then   [CommentBodyBlankException] — 수정으로 빈 댓글을 만들 수 없다. 원문 유지.
+     */
+    @Test
+    @Order(18)
+    fun `CO2-4 - update 는 공백만인 본문에 CommentBodyBlankException 을 던진다`() {
+        val issue = insertIssue(18L)
+        val own = service.create(actor, issue.key, "원본 본문")
+
+        assertThatThrownBy {
+            service.update(actor, issue.key, own.id, "   \n\t  ")
+        }.isInstanceOf(CommentBodyBlankException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(own.id, issue.id.value)).body).isEqualTo("원본 본문")
+    }
+
+    /**
+     * Given  [MAX_BODY_LENGTH] + 1 자 / [MAX_BODY_LENGTH] 자 본문
+     * When   update 호출
+     * Then   초과분은 [CommentBodyTooLongException], 경계값은 통과.
+     *
+     * 경계 양쪽을 한 테스트에서 본다 — 한쪽만 두면 off-by-one 이 잡히지 않는다 (CO-1/CO-2 와 동일 근거).
+     * `create` 와 같은 상한을 쓰는지도 함께 고정한다. 수정 경로만 상한이 풀리면 우회로가 된다.
+     */
+    @Test
+    @Order(19)
+    fun `CO2-5 - update 는 32001자에 CommentBodyTooLongException, 32000자는 통과`() {
+        val issue = insertIssue(19L)
+        val own = service.create(actor, issue.key, "원본 본문")
+
+        assertThatThrownBy {
+            service.update(actor, issue.key, own.id, "가".repeat(MAX_BODY_LENGTH + 1))
+        }.isInstanceOf(CommentBodyTooLongException::class.java)
+        assertThat(requireNotNull(commentRepository.findActive(own.id, issue.id.value)).body).isEqualTo("원본 본문")
+
+        val updated = service.update(actor, issue.key, own.id, "가".repeat(MAX_BODY_LENGTH))
+
+        assertThat(updated.body).hasSize(MAX_BODY_LENGTH)
+    }
+
+    /**
+     * Given  "이전 본문" 댓글
+     * When   "이후 본문" 으로 update
+     * Then   [IssueHistoryRecorder.recordCommentEdited] 가 이전·이후 본문으로 **정확히 1회** 호출된다.
+     *
+     * 인자를 `any()` 없이 실값으로 단정한다 — 이력에 무엇이 실렸는지가 계약이기 때문이다.
+     */
+    @Test
+    @Order(20)
+    fun `CO2-6 - update 성공 시 recordCommentEdited 가 이전·이후 본문으로 1회 호출된다`() {
+        val issue = insertIssue(20L)
+        val own = service.create(actor, issue.key, "이전 본문")
+
+        service.update(actor, issue.key, own.id, "이후 본문")
+
+        verify(exactly = 1) {
+            historyRecorder.recordCommentEdited(
+                issueId = issue.id.value,
+                issueKey = issue.key.value,
+                actor = actor,
+                commentId = own.id,
+                beforeBody = "이전 본문",
+                afterBody = "이후 본문",
+            )
+        }
+    }
+
+    /**
+     * Given  "동일 본문" 댓글 (2024-03-01 생성)
+     * When   같은 본문으로 update (시계는 2030-01-01 로 고정 — 갱신되면 반드시 티가 난다)
+     * Then   **완전 no-op** — [CommentRepository.updateBody] 호출 0회, updatedAt 미갱신, 이력 미기록.
+     *
+     * 저장소를 [spyk] 로 감싸 "DB 쓰기 0" 을 시각 비교와 **독립적으로** 센다. 시각 단정만 두면
+     * "우연히 같은 시각으로 덮어썼다" 를 구분하지 못한다.
+     *
+     * 근거. 내용이 안 바뀌었는데 updatedAt 이 갱신되면 화면의 "(수정됨)" 표시가 거짓말을 한다.
+     */
+    @Test
+    @Order(21)
+    fun `CO2-7 - 본문이 동일하면 완전 no-op (DB 쓰기 0·updatedAt 미갱신·이력 미기록)`() {
+        val issue = insertIssue(21L)
+        val createdAt = Instant.parse("2024-03-01T00:00:00Z")
+        val created = serviceAt(createdAt).create(actor, issue.key, "동일 본문")
+        val spyRepository = spyk(commentRepository)
+
+        val result =
+            serviceAt(Instant.parse("2030-01-01T00:00:00Z"), spyRepository)
+                .update(actor, issue.key, created.id, "동일 본문")
+
+        verify(exactly = 0) { spyRepository.updateBody(any(), any(), any(), any()) }
+        verify(exactly = 0) { historyRecorder.recordCommentEdited(any(), any(), any(), any(), any(), any()) }
+        assertThat(result.updatedAt).isEqualTo(createdAt)
+        assertThat(requireNotNull(commentRepository.findActive(created.id, issue.id.value)).updatedAt)
+            .isEqualTo(createdAt)
+    }
+
+    /**
+     * Given  이슈 A 에 달린 댓글 + 같은 actor 가 볼 수 있는 이슈 B
+     * When   경로에는 B, 본문에는 A 의 commentId 로 update 호출
+     * Then   [CommentNotFoundException] — 소속 대조가 저장소 `WHERE` 에 있어 통과할 수 없다.
+     *
+     * commentId 는 전역 UUID 라 이 대조가 없으면 "내가 볼 수 있는 아무 이슈 키 + 남의 댓글 id"
+     * 조합으로 이슈 단위 권한 검사를 우회할 수 있다.
+     */
+    @Test
+    @Order(22)
+    fun `CO2-8 - 다른 이슈 소속 commentId 는 CommentNotFoundException`() {
+        val issueA = insertIssue(22L)
+        val issueB = insertIssue(23L)
+        val commentOnA = service.create(actor, issueA.key, "A 의 댓글")
+
+        assertThatThrownBy {
+            service.update(actor, issueB.key, commentOnA.id, "가로챈 본문")
+        }.isInstanceOf(CommentNotFoundException::class.java)
+
+        assertThat(requireNotNull(commentRepository.findActive(commentOnA.id, issueA.id.value)).body)
+            .isEqualTo("A 의 댓글")
     }
 
     /** 댓글 도메인 객체 생성 헬퍼 (직접 insert 용 — createdAt 제어 목적). */
