@@ -104,4 +104,10 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+
+    // 계약 스냅샷 재생성 스위치를 테스트 JVM 으로 전달한다.
+    // Gradle 은 CLI 의 -D 를 데몬 JVM 에만 심고 fork 된 테스트 JVM 에는 자동 전달하지 않으므로,
+    // 이 배선이 없으면 `-Dcontract.snapshot.update=true` 가 조용히 무시되어
+    // WorkflowSchemeContractSnapshotTest 가 스냅샷을 영원히 생성하지 못한다.
+    System.getProperty("contract.snapshot.update")?.let { systemProperty("contract.snapshot.update", it) }
 }
