@@ -405,7 +405,95 @@ FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 그 절차다.
 `user-fixtures` 를 맞추는 편이 자연스럽다(토큰에서 도출되는 값이 곧 실사용 id 이므로). 바꾼 뒤
 **`useUsersByIds` 를 mock 하지 않는 통합 테스트 1건**을 남겨 같은 회귀가 다시 숨지 못하게 한다.
 
-## issue-tracking — 댓글은 모더레이터가 지울 수 있는데 Worklog 는 작성자 한정이다 (PR #316 결정 부산물)
+## 🚨 issue-tracking — 이슈 링크/부모 설정에 권한 가드가 **0건**이다 (2026-07-27 발견, 선재)
+
+**등급.** 보안. 다른 부채와 달리 **현행 결함**이며 잠복 부채가 아니다.
+
+**증상.** `LinkApplicationService` 에 `IssuePermission` 검사가 **하나도 없다.**
+
+```
+$ grep -c "IssuePermission\|permissionResolver\|hasPermission\|checkPermission\|PreAuthorize" \
+    backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/application/LinkApplicationService.kt
+0
+
+# 생성자 (L87-91) — permissionResolver 자체가 주입되지 않는다
+class LinkApplicationService(
+    private val issueRepository: IssueRepository,
+    private val linkRepository: IssueLinkRepository,
+    private val archiveGuard: ProjectArchiveGuard,
+)
+```
+
+**대조군.** 형제 서비스는 전부 건다 — `WorklogService` 는 `checkPermission(actor, issueKey,
+IssuePermission.UPDATE)` 를 4지점(:111·:183·:241·:315)에서 호출한다.
+
+**무엇이 막고 있나 — 인증뿐이다.** `SecurityConfig:222` 의 `auth.requestMatchers("/api/**").authenticated()`
+가 유일한 게이트다. ⇒ **인증된 사용자면 누구나** 자기가 멤버가 아닌 프로젝트의, 심지어 **볼 수 없는
+기밀 이슈**에도 링크를 걸고 지우고 부모를 바꿀 수 있다. 영향 엔드포인트 4개 —
+`POST /links` · `GET /links` · `DELETE /links/{linkId}` · `PATCH /parent`
+(`IssueLinkController.kt:92·129·152·180`).
+
+**★가드 계약이 문서로 존재하는데 이 서비스만 안 지킨다.** `ProjectArchiveGuard` KDoc `:31` 이
+*"항상 `assertPermission` → `check`/`checkByIssue` 순서로 호출한다(D-ORDER)"* 라고 명시한다.
+`LinkApplicationService` 는 `archiveGuard.checkByIssue`(:127·:128·:234) 만 부르고
+`assertPermission` 을 **부르지 않는다** — 계약의 앞 절반을 건너뛴 것이다.
+
+**★왜 아무도 몰랐나.** `IssueLinkController` KDoc `:53-54` 가 이렇게 적어두었다.
+
+> ### actorId
+> issue_links / parent_id 는 created_by 를 저장하지 않으므로 actor 추출이 불필요하다.
+
+**"누가 만들었는지 기록하지 않는다" 와 "누가 만들어도 되는지 검사하지 않아도 된다" 를 혼동**한
+문장이다. 감사 흔적의 부재를 권한 검사 면제의 근거로 쓴 셈이고, 그 문장이 리뷰에서
+"의도된 설계" 로 읽히게 만들었다.
+
+**착수 시 첫 단계.** `LinkApplicationService` 에 `IssuePermissionResolver` 를 주입하고
+`createLink`·`deleteLink`·`setParent` 에 `checkPermission(actor, IssueScope.Issue(key),
+IssuePermission.UPDATE)` 를, `listLinks` 에 `VIEW` 를 건다. 컨트롤러가 현재 actor 를 **받지 않으므로**
+(`deleteLink(key, linkId)` 시그니처) `CurrentActor.current()` 결선이 함께 필요하다.
+**인증 추출은 리소스 조회보다 먼저** 둘 것([[auth-extraction-before-resource-lookup]]) — 안 그러면
+미인증자가 404/200 차이로 이슈 실재를 열거한다.
+
+⚠️ 링크는 **양끝 이슈**가 있다. source 만 검사하면 볼 수 없는 이슈를 target 으로 지목해
+존재를 확인할 수 있다. `createLink` 는 sourceKey·targetKey **둘 다** 게이트를 통과시킬 것.
+
+**회귀 폭.** 권한을 **줄이는** 방향이라 기존 테스트가 깨진다. 착수 전
+`IssueLinkController`·`LinkApplicationService` 테스트에서 actor 시드가 없는 케이스를 전수 열거할 것.
+
+**소관**. security-engineer 공동 검토 필요 (FR-LK).
+
+## issue-tracking — 이슈 자식 엔티티 5종의 소유권 정책이 제각각이다 (2026-07-27 전수 실측으로 확대)
+
+**★원 기록은 "댓글 vs Worklog 2종 비대칭" 이었으나, 자식 엔티티를 전수 열거하면 5종에 정책이 5개다.**
+
+| # | 엔티티 | 수정 | 삭제 | 근거 위치 |
+|---|---|---|---|---|
+| 1 | Comment | `UPDATE` ∧ 작성자 | `UPDATE` ∧ (작성자 ∨ `SOFT_DELETE`) | `CommentApplicationService:194·203` / `:279·290-293` |
+| 2 | Worklog | `UPDATE` ∧ 작성자 | `UPDATE` ∧ 작성자 | `WorklogService:254`·`:328` |
+| 3 | Attachment | — | **`UPDATE` 만 (업로더 검사 0건)** | `IssueAttachmentService:227` |
+| 4 | Watcher | — | self→`VIEW` / 타인→`UPDATE` | `IssueWatcherService:206` |
+| 5 | Link | **권한 검사 0건** | **권한 검사 0건** | 위 🚨 항목 참조 |
+
+3번은 **`EDIT_ISSUE` 보유자가 남의 첨부를 지울 수 있다**는 뜻이고, 5번은 별도 보안 항목으로 올렸다.
+
+**Comment↔Worklog 비대칭은 정당하다 (근거 재확인).** 생산자 구성이 다르다 —
+`ActionType` 전 5종은 `SET_FIELD · ASSIGN · ADD_COMMENT · CALL_WEBHOOK · SET_FIX_VERSIONS` 이고
+(`ActionType.kt:17-23`), `rg -in "worklog" backend/modules/automation/src/main` → **0건**.
+즉 자동화가 만드는 댓글은 저작자가 룰 소유자로 고정돼 작성자 한정이면 아무도 못 지우지만,
+worklog 에는 그 생산자가 없어 질문 자체가 없었다. **Worklog 선례가 조용했던 이유는 답이 같아서가
+아니라 질문이 없어서다.**
+
+**착수 시 첫 단계 (원 기록 유지).** 운영에서 "남의 워크로그를 지워야 했다" 사례가 실재하는지 먼저 확인한다.
+없으면 비대칭을 유지하고 **사유를 제품 문서에 명시**하는 것으로 끝낸다. 있으면 댓글과 **같은 판별식**을
+쓴다 — 술어를 새로 발명하면 여섯 번째 정책이 생긴다.
+
+**★단, 3·5번은 "정책 선택" 이 아니라 결함이다.** 위 표에서 1·2·4 는 의도된 차이로 설명되지만
+3(업로더 무검사)·5(권한 무검사)는 어느 정책에도 해당하지 않는다. 정책 통일 논의와 **분리해서**
+먼저 닫아야 한다.
+
+**소관**. FR-WL · FR-AC · FR-LK. `docs/plan/product/issue-tracking.md`.
+
+<details><summary>원 기록 (보존)</summary>
 
 **무엇이 어긋나 있나.** 같은 이슈 화면의 두 자식 엔티티가 삭제 정책이 다르다.
 
@@ -428,6 +516,8 @@ FR-UX-06 이 22 PR 을 끝내고도 미실시로 남긴 그 절차다.
 모더레이터, 수정은 작성자 한정)을 쓴다. 술어를 새로 발명하면 세 번째 정책이 생긴다.
 
 **소관**. FR-WL. `docs/plan/product/issue-tracking.md` 워크로그 절.
+
+</details>
 
 ## issue-tracking / identity-access — 이슈 보안등급이 댓글 수정·삭제를 막지 않는다 (PR #316 리뷰 발견, 선재)
 
