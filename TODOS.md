@@ -335,7 +335,8 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
 프론트는 같은 파일을 `.strict()` 로 파싱한다(`workflow-schemes.contract.test.ts`). 한쪽이 어긋나면
 그 지점에서 즉시 빨간불이 켜진다 — 「MSW 가 MSW 와 맞는다」 상태가 끝났다.
 
-**신규 이연 8건 → 2026-07-27 현재 3건 해소 · 2건 잔여.**
+**신규 이연 8건 → 2026-07-28 현재 전량 해소.**
+잔여 2건은 ✅ 섹션 본문에 묻혀 있어 「열림 0건」 오보고를 낳았다 — 아래 자기 섹션으로 **승격**했다.
 - ✅ `description` 의 **`null`↔`''` 왕복** — `SchemeMetaPanel.handleSave` 에서 역변환 +
   `UpdateSchemeInput.description` 을 `string | null` 로 확장. 전송 body 를 단정하는 회귀 테스트 1건 추가.
 - ✅ **낙관적 배정의 key↔name 불일치** — 배정 후보 캐시(`useAssignableWorkflowSchemes`)의 정합 객체를
@@ -343,15 +344,6 @@ prod 조립 부팅(`WorkflowSchemeContractSnapshotTest`)에서 8 endpoint 실응
 - ✅ **롤백 가드 비대칭** — 조건 두 개를 맞추는 대신 `applied` 플래그로 **구조로** 짝지었다.
   쓰기 시점의 사실을 컨텍스트로 넘겨 onError 가 같은 것을 본다. 캐시 엔트리가 없던 경우는
   `removeQueries` 로 원상복구(값을 쓰는 게 아니라 엔트리를 없애야 한다).
-- ⬜ 계약 스냅샷의 **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡는다
-- ⬜ **`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다. 실제 404 는 「프로젝트 없음」.
-  <br>2026-07-27 실측 — 프론트 `workflow-schemes.ts:243-247`(기록의 `:233-243` 은 줄 밀림)이 404→`null`→「미할당」로 읽는다.
-  백엔드 `ProjectWorkflowSchemeController.kt:115-117` 의 404 는 `projectLookupPort.findIdByKey` 실패 **한 곳뿐**이고,
-  배정 조회는 `WorkflowSchemeApplicationService.kt:468-477` 에서 미배정 시 **software-scheme 을 자동 배정**한다.
-  ⇒ **존재하지 않는 프로젝트 URL 로 들어가면 「스킴 미할당」 안내가 뜬다.**
-  처방 A(프론트를 백엔드에 맞춤)가 이연 범위에 맞으나, `UnassignedSchemeCard` 분기 · MSW 핸들러 ·
-  e2e `E2E-5 S10` 을 **함께** 제거해야 죽은 코드가 안 남는다. 처방 B(GET 의 자동 배정 = 부수효과 있는 GET 재고)는
-  계약 스냅샷 8 endpoint 전부에 영향 → 별도 스펙 작업.
 
 **기존 이연 3건.**
 - **도메인·DB 어휘 이연** — 도메인 `WorkflowScheme.isDefault` 와 DB 컬럼 `is_default` 는 그대로다
@@ -1478,3 +1470,36 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 `.../issue/application/IssueApplicationService.kt`.
 
 </details>
+
+## ✅ project-workflow — 계약 스냅샷 숫자 타입 붕괴 (승격 후 실측 해소 2026-07-28)
+
+> 원래 `## ✅ project-workflow — 계약 파손 (해소 #317)` **본문에 묻혀** 있었다.
+> ✅ 섹션 안의 미해결 마커 는 헤딩만 세는 집계에서 조용히 사라진다 — 그래서 자기 섹션으로 올렸다.
+> 재발 차단은 `scripts/workflow/todos-resolved-section-purity.test.ts` 가 한다.
+>
+> **★승격하고 보니 이미 닫혀 있었다.** 커밋 `1f283c7a0` 이 `ContractSnapshotCanonicalizer` 에
+> `CANONICAL_INTEGRAL`(정수) / `CANONICAL_FRACTIONAL`(실수) 분리를 넣었는데 **TODOS 만 안 고쳤다.**
+> 「부채 기록 자체가 부정확하다」 양식의 재발이다 — 착수 전에 실물부터 확인해야 하는 이유.
+>
+> 뮤테이션 실측 — 정규화를 `if (true) IntNode(...)` 로 되돌리면
+> `정수와 실수는 서로 다른 표준값으로 정규화된다` FAILED. 판별식이 살아 있다.
+
+계약 스냅샷의 **숫자 타입 붕괴** — 정규화가 모든 숫자를 `1` 로 만들어 `Long`→`Double` 변경을 못 잡는다
+
+## ✅ project-workflow — fetchProjectAssignment 404 해석 (승격 후 실측 해소 2026-07-28)
+
+> 위와 같은 이유로 승격했고, **역시 이미 닫혀 있었다** (같은 커밋 `1f283c7a0`).
+> `workflow-schemes.ts` 가 404 를 `null` 로 삼키지 않고, KDoc 이
+> 「404 는 미할당이 아니라 프로젝트 없음」을 정본으로 적어 두었다.
+>
+> 뮤테이션 실측 — `if (res.status === 404) return null` 을 되살리면
+> `promise resolved "null" instead of rejecting` 으로 FAILED.
+
+**`fetchProjectAssignment` 404 해석(선재)** — 백엔드는 미배정에 404 를 안 낸다. 실제 404 는 「프로젝트 없음」.
+  <br>2026-07-27 실측 — 프론트 `workflow-schemes.ts:243-247`(기록의 `:233-243` 은 줄 밀림)이 404→`null`→「미할당」로 읽는다.
+  백엔드 `ProjectWorkflowSchemeController.kt:115-117` 의 404 는 `projectLookupPort.findIdByKey` 실패 **한 곳뿐**이고,
+  배정 조회는 `WorkflowSchemeApplicationService.kt:468-477` 에서 미배정 시 **software-scheme 을 자동 배정**한다.
+  ⇒ **존재하지 않는 프로젝트 URL 로 들어가면 「스킴 미할당」 안내가 뜬다.**
+  처방 A(프론트를 백엔드에 맞춤)가 이연 범위에 맞으나, `UnassignedSchemeCard` 분기 · MSW 핸들러 ·
+  e2e `E2E-5 S10` 을 **함께** 제거해야 죽은 코드가 안 남는다. 처방 B(GET 의 자동 배정 = 부수효과 있는 GET 재고)는
+  계약 스냅샷 8 endpoint 전부에 영향 → 별도 스펙 작업.
