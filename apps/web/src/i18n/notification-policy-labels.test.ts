@@ -1,7 +1,7 @@
-// 알림 정책 i18n 라벨 단위 테스트 — enum 9/9/5 종 누락 0 + 미지 값 fallback + 페이지 문자열 검증
+// 알림 정책 i18n 라벨 단위 테스트 — enum 미러 대비 차집합 0 판별식 + 미지 값 fallback + 페이지 문자열 검증
 
 import { describe, it, expect } from 'vitest'
-import { RECIPIENT_ROLES } from '@/api/notification-policies'
+import { NOTIFICATION_EVENT_TYPES, RECIPIENT_ROLES, CHANNELS } from '@/api/notification-policies'
 import {
   eventTypeLabels,
   recipientRoleLabels,
@@ -11,28 +11,82 @@ import {
   labelFor,
 } from './notification-policy-labels'
 
+/**
+ * 기준 집합(enum 미러) 대비 라벨 맵의 미커버 키를 돌려주는 차집합 판별식.
+ *
+ * 하드코딩 목록끼리 눈으로 대조하는 대신 api/notification-policies.ts 의 미러를
+ * 유일한 기준으로 삼는다 — 백엔드 enum 이 늘면 미러가 늘고, 미러가 늘면 여기서 잡힌다.
+ *
+ * @param reference 기준 enum 미러 (wireValue 또는 NAME 배열)
+ * @param labels    검사할 키 → 한국어 라벨 Record
+ * @returns 라벨이 없거나 빈 문자열인 키 목록 (정상이면 빈 배열)
+ */
+function uncoveredKeys(reference: readonly string[], labels: Record<string, string>): string[] {
+  return reference.filter((key) => {
+    const label = labels[key]
+    return !label || label.trim() === ''
+  })
+}
+
+/**
+ * 라벨 맵에만 있고 기준 집합에는 없는 잉여 키를 돌려주는 반대 방향 차집합 판별식.
+ *
+ * 커버리지(미러 ⊆ 맵)만 닫으면 봉인이 절반이다 — 오타 키나 백엔드에서 제거된
+ * 죽은 라벨이 그대로 남는다. 두 방향을 함께 걸어야 두 목록이 서로를 본다.
+ *
+ * @param reference 기준 enum 미러 (wireValue 또는 NAME 배열)
+ * @param labels    검사할 키 → 한국어 라벨 Record
+ * @returns 기준 집합에 없는 키 목록 (정상이면 빈 배열)
+ */
+function surplusKeys(reference: readonly string[], labels: Record<string, string>): string[] {
+  const known = new Set<string>(reference)
+  return Object.keys(labels).filter((key) => !known.has(key))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// eventTypeLabels — wireValue 9종
+// uncoveredKeys — 판별식 자체의 양성 대조군
+// 판별식이 항상 []를 돌려주는 고장 상태면 아래 커버리지 테스트 전부가 공허하게 통과한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('uncoveredKeys 판별식', () => {
+  it('기준 집합에만 있는 키를 잡아낸다 (양성 대조군)', () => {
+    expect(uncoveredKeys(['a', 'b'], { a: '가' })).toEqual(['b'])
+  })
+
+  it('값이 빈 문자열이면 미커버로 잡아낸다', () => {
+    expect(uncoveredKeys(['a'], { a: '   ' })).toEqual(['a'])
+  })
+
+  it('전량 커버되면 빈 배열을 돌려준다 (음성 대조군)', () => {
+    expect(uncoveredKeys(['a', 'b'], { a: '가', b: '나' })).toEqual([])
+  })
+})
+
+describe('surplusKeys 판별식', () => {
+  it('라벨 맵에만 있는 키를 잡아낸다 (양성 대조군)', () => {
+    expect(surplusKeys(['a'], { a: '가', b: '나' })).toEqual(['b'])
+  })
+
+  it('기준 집합과 일치하면 빈 배열을 돌려준다 (음성 대조군)', () => {
+    expect(surplusKeys(['a', 'b'], { a: '가', b: '나' })).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// eventTypeLabels — NOTIFICATION_EVENT_TYPES 미러 전량 커버
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('eventTypeLabels', () => {
-  const EVENT_TYPE_WIRE_VALUES = [
-    'issue.created',
-    'issue.assigned',
-    'issue.transitioned',
-    'issue.commented',
-    'issue.due_soon',
-    'issue.overdue',
-    'sprint.started',
-    'sprint.ended',
-    'automation.failed',
-  ] as const
+  it('기준 집합 NOTIFICATION_EVENT_TYPES 가 비어있지 않다 (공허한 통과 차단)', () => {
+    expect(NOTIFICATION_EVENT_TYPES.length).toBeGreaterThan(0)
+  })
 
-  it('wireValue 9종 전부 한국어 라벨이 존재한다 (누락 0)', () => {
-    const missingKeys = EVENT_TYPE_WIRE_VALUES.filter(
-      (key) => !(key in eventTypeLabels) || !eventTypeLabels[key],
-    )
-    expect(missingKeys).toEqual([])
+  it('NOTIFICATION_EVENT_TYPES 전량에 한국어 라벨이 존재한다 (차집합 0)', () => {
+    expect(uncoveredKeys(NOTIFICATION_EVENT_TYPES, eventTypeLabels)).toEqual([])
+  })
+
+  it('NOTIFICATION_EVENT_TYPES 밖의 잉여 라벨이 없다 (역방향 차집합 0)', () => {
+    expect(surplusKeys(NOTIFICATION_EVENT_TYPES, eventTypeLabels)).toEqual([])
   })
 
   it('issue.created 라벨이 존재한다', () => {
@@ -70,30 +124,27 @@ describe('eventTypeLabels', () => {
   it('automation.failed 라벨이 존재한다', () => {
     expect(eventTypeLabels['automation.failed']).toBeTruthy()
   })
+
+  it('issue.comment_deleted 라벨이 존재한다 (FR-CO-02)', () => {
+    expect(eventTypeLabels['issue.comment_deleted']).toBeTruthy()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// recipientRoleLabels — NAME 9종
+// recipientRoleLabels — RECIPIENT_ROLES 미러 전량 커버
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('recipientRoleLabels', () => {
-  const RECIPIENT_ROLE_NAMES = [
-    'REPORTER',
-    'ASSIGNEE',
-    'PREVIOUS_ASSIGNEE',
-    'WATCHER',
-    'COMPONENT_LEAD',
-    'MENTIONED',
-    'PROJECT_MEMBER',
-    'RULE_OWNER',
-    'PROJECT_ADMIN',
-  ] as const
+  it('기준 집합 RECIPIENT_ROLES 가 비어있지 않다 (공허한 통과 차단)', () => {
+    expect(RECIPIENT_ROLES.length).toBeGreaterThan(0)
+  })
 
-  it('NAME 9종 전부 한국어 라벨이 존재한다 (누락 0)', () => {
-    const missingKeys = RECIPIENT_ROLE_NAMES.filter(
-      (key) => !(key in recipientRoleLabels) || !recipientRoleLabels[key],
-    )
-    expect(missingKeys).toEqual([])
+  it('RECIPIENT_ROLES 전량에 한국어 라벨이 존재한다 (차집합 0)', () => {
+    expect(uncoveredKeys(RECIPIENT_ROLES, recipientRoleLabels)).toEqual([])
+  })
+
+  it('RECIPIENT_ROLES 밖의 잉여 라벨이 없다 (역방향 차집합 0)', () => {
+    expect(surplusKeys(RECIPIENT_ROLES, recipientRoleLabels)).toEqual([])
   })
 
   it('REPORTER 라벨이 존재한다', () => {
@@ -131,20 +182,27 @@ describe('recipientRoleLabels', () => {
   it('PROJECT_ADMIN 라벨이 존재한다', () => {
     expect(recipientRoleLabels['PROJECT_ADMIN']).toBeTruthy()
   })
+
+  it('COMMENT_AUTHOR 라벨이 존재한다 (FR-CO-02)', () => {
+    expect(recipientRoleLabels['COMMENT_AUTHOR']).toBeTruthy()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// channelLabels — NAME 5종
+// channelLabels — CHANNELS 미러 전량 커버
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('channelLabels', () => {
-  const CHANNEL_NAMES = ['EMAIL', 'IN_APP', 'SLACK', 'TEAMS', 'WEBHOOK'] as const
+  it('기준 집합 CHANNELS 가 비어있지 않다 (공허한 통과 차단)', () => {
+    expect(CHANNELS.length).toBeGreaterThan(0)
+  })
 
-  it('NAME 5종 전부 한국어 라벨이 존재한다 (누락 0)', () => {
-    const missingKeys = CHANNEL_NAMES.filter(
-      (key) => !(key in channelLabels) || !channelLabels[key],
-    )
-    expect(missingKeys).toEqual([])
+  it('CHANNELS 전량에 한국어 라벨이 존재한다 (차집합 0)', () => {
+    expect(uncoveredKeys(CHANNELS, channelLabels)).toEqual([])
+  })
+
+  it('CHANNELS 밖의 잉여 라벨이 없다 (역방향 차집합 0)', () => {
+    expect(surplusKeys(CHANNELS, channelLabels)).toEqual([])
   })
 
   it('EMAIL 라벨이 존재한다', () => {
@@ -290,24 +348,27 @@ describe('notificationPolicyLabels', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('recipientRoleDescriptions', () => {
-  // RECIPIENT_ROLES를 진실 출처로 사용 — 프론트 미러와 descriptions 정합 보장
+  // RECIPIENT_ROLES 미러를 기준 집합으로 양방향 차집합을 건다.
+  // 추가로 recipientRoleLabels 와의 lockstep 을 둬서 "라벨은 넣고 설명은 빠뜨림"도 막는다.
 
-  it('RECIPIENT_ROLES 9종 키를 정확히 보유한다 (누락 0)', () => {
-    const missingKeys = RECIPIENT_ROLES.filter((key) => !(key in recipientRoleDescriptions))
-    expect(missingKeys).toEqual([])
+  it('RECIPIENT_ROLES 전량에 설명이 존재한다 (차집합 0)', () => {
+    expect(uncoveredKeys(RECIPIENT_ROLES, recipientRoleDescriptions)).toEqual([])
   })
 
-  it('recipientRoleDescriptions에 잉여 키가 없다 (RECIPIENT_ROLES 초과 0)', () => {
-    const knownSet = new Set<string>(RECIPIENT_ROLES)
-    const surplusKeys = Object.keys(recipientRoleDescriptions).filter((key) => !knownSet.has(key))
-    expect(surplusKeys).toEqual([])
+  it('RECIPIENT_ROLES 밖의 잉여 설명이 없다 (역방향 차집합 0)', () => {
+    expect(surplusKeys(RECIPIENT_ROLES, recipientRoleDescriptions)).toEqual([])
+  })
+
+  it('recipientRoleLabels 와 키 집합이 정확히 일치한다 (양방향 차집합 0)', () => {
+    const labelKeys = Object.keys(recipientRoleLabels).sort()
+    const descriptionKeys = Object.keys(recipientRoleDescriptions).sort()
+    expect(descriptionKeys).toEqual(labelKeys)
   })
 
   it('각 값이 비어있지 않은 문자열이다', () => {
-    const emptyValues = RECIPIENT_ROLES.filter((key) => {
-      const val = recipientRoleDescriptions[key]
-      return !val || val.trim() === ''
-    })
+    const emptyValues = Object.entries(recipientRoleDescriptions).filter(
+      ([, val]) => !val || val.trim() === '',
+    )
     expect(emptyValues).toEqual([])
   })
 
@@ -324,6 +385,10 @@ describe('recipientRoleDescriptions', () => {
 
   it('WATCHER 설명에 "구독" 문구가 포함된다 (recipientRoleLabels 용어 정합)', () => {
     expect(recipientRoleDescriptions['WATCHER']).toContain('구독')
+  })
+
+  it('COMMENT_AUTHOR 설명이 존재한다 (FR-CO-02)', () => {
+    expect(recipientRoleDescriptions['COMMENT_AUTHOR']).toBeTruthy()
   })
 })
 

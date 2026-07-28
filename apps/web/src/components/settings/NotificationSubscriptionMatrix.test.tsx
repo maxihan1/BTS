@@ -10,6 +10,7 @@ import {
   userNotificationSubscriptionHandlers,
   resetUserNotificationSubscriptionStore,
 } from '@/mocks/user-notification-subscription-handlers'
+import { subscriptionSeedData } from '@/mocks/user-notification-subscription-fixtures'
 import { NotificationSubscriptionMatrix } from './NotificationSubscriptionMatrix'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('NotificationSubscriptionMatrix — S1 매트릭스 렌더', () => {
-  it('응답 20셀에서 채널(IN_APP/EMAIL) 열 헤더가 표시된다', async () => {
+  it('응답 전체 셀에서 채널(IN_APP/EMAIL) 열 헤더가 표시된다', async () => {
     renderMatrix()
 
     await waitFor(() => {
@@ -75,14 +76,15 @@ describe('NotificationSubscriptionMatrix — S1 매트릭스 렌더', () => {
     })
   })
 
-  it('각 셀에 토글 컨트롤이 렌더된다 — 20개 이상', async () => {
+  it('각 셀에 토글 컨트롤이 렌더된다 — 시드 셀 수와 정확히 일치', async () => {
     renderMatrix()
 
     await waitFor(() => {
       // aria-label에 이벤트×채널 컨텍스트 포함 — getByRole('checkbox') or button
-      // 토글 수가 20개(10 eventType × 2 channel)
+      // 시드 셀 수와 정확히 같아야 한다. 이전엔 toBeGreaterThanOrEqual(20) 이라
+      // 백엔드 enum 이 늘어 셀이 22개가 돼도, 반대로 셀이 새어 나가도 통과했다.
       const toggles = screen.getAllByRole('checkbox')
-      expect(toggles.length).toBeGreaterThanOrEqual(20)
+      expect(toggles).toHaveLength(subscriptionSeedData.length)
     })
   })
 })

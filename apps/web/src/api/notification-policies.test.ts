@@ -1,5 +1,7 @@
-// 알림 정책 API 클라이언트 단위 테스트 — MSW + Zod 파싱 + CSRF 헤더 검증
+// 알림 정책 API 클라이언트 단위 테스트 — MSW + Zod 파싱 + CSRF 헤더 검증 + 백엔드 enum 미러 차집합 판별식
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { ApiError } from './client'
@@ -92,10 +94,10 @@ describe('notificationPolicySchema', () => {
 })
 
 describe('policyCatalogSchema', () => {
-  it('T-NP-S5: 카탈로그 응답을 파싱한다 — eventTypes 9종 + recipientRoles 9종 + channels 5종', () => {
+  it('T-NP-S5: 카탈로그 응답을 파싱한다 — eventTypes 11종 + recipientRoles 10종 + channels 5종', () => {
     const result = policyCatalogSchema.parse(catalogFixture)
-    expect(result.eventTypes).toHaveLength(9)
-    expect(result.recipientRoles).toHaveLength(9)
+    expect(result.eventTypes).toHaveLength(11)
+    expect(result.recipientRoles).toHaveLength(10)
     expect(result.channels).toHaveLength(5)
   })
 
@@ -110,25 +112,28 @@ describe('policyCatalogSchema', () => {
 // T-NP-E. enum 미러 검증
 // ─────────────────────────────────────────────────────────────────────────────
 describe('enum 미러', () => {
-  it('T-NP-E1: NOTIFICATION_EVENT_TYPES가 wireValue 9종을 포함한다', () => {
-    expect(NOTIFICATION_EVENT_TYPES).toHaveLength(9)
+  it('T-NP-E1: NOTIFICATION_EVENT_TYPES가 wireValue 11종을 포함한다', () => {
+    expect(NOTIFICATION_EVENT_TYPES).toHaveLength(11)
     expect(NOTIFICATION_EVENT_TYPES).toContain('issue.created')
     expect(NOTIFICATION_EVENT_TYPES).toContain('issue.assigned')
     expect(NOTIFICATION_EVENT_TYPES).toContain('issue.transitioned')
     expect(NOTIFICATION_EVENT_TYPES).toContain('issue.commented')
+    expect(NOTIFICATION_EVENT_TYPES).toContain('issue.comment_deleted')
     expect(NOTIFICATION_EVENT_TYPES).toContain('issue.due_soon')
     expect(NOTIFICATION_EVENT_TYPES).toContain('issue.overdue')
     expect(NOTIFICATION_EVENT_TYPES).toContain('sprint.started')
     expect(NOTIFICATION_EVENT_TYPES).toContain('sprint.ended')
     expect(NOTIFICATION_EVENT_TYPES).toContain('automation.failed')
+    expect(NOTIFICATION_EVENT_TYPES).toContain('issue.mentioned')
   })
 
-  it('T-NP-E2: RECIPIENT_ROLES가 NAME 9종을 포함한다', () => {
-    expect(RECIPIENT_ROLES).toHaveLength(9)
+  it('T-NP-E2: RECIPIENT_ROLES가 NAME 10종을 포함한다', () => {
+    expect(RECIPIENT_ROLES).toHaveLength(10)
     expect(RECIPIENT_ROLES).toContain('REPORTER')
     expect(RECIPIENT_ROLES).toContain('ASSIGNEE')
     expect(RECIPIENT_ROLES).toContain('PREVIOUS_ASSIGNEE')
     expect(RECIPIENT_ROLES).toContain('WATCHER')
+    expect(RECIPIENT_ROLES).toContain('COMMENT_AUTHOR')
     expect(RECIPIENT_ROLES).toContain('COMPONENT_LEAD')
     expect(RECIPIENT_ROLES).toContain('MENTIONED')
     expect(RECIPIENT_ROLES).toContain('PROJECT_MEMBER')
@@ -157,6 +162,129 @@ describe('enum 미러', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-NP-K. 백엔드 Kotlin enum ↔ 프론트 미러 차집합 판별식
+//
+// 왜 이 블록이 있나. 위 T-NP-E 는 **하드코딩 목록 두 개**(미러 ↔ 테스트)를 맞대볼 뿐이라,
+// 백엔드에 값이 추가돼도 둘 다 모른 채 나란히 통과한다. 실제로 `issue.mentioned` 는
+// i18n 라벨 맵에만 있고 미러에는 없는 상태로 지냈고, FR-CO-02 가 추가한
+// `issue.comment_deleted` / `COMMENT_AUTHOR` 도 미러에 반영되지 않았다.
+//
+// 처방은 목록을 하나 더 늘리는 것이 아니라 판별식이다 — 백엔드 Kotlin 소스를 파싱해
+// **양방향 차집합이 0** 인지 단언한다. 값이 늘거나 줄면 이 테스트가 먼저 깨진다.
+//
+// ⚠️ 파싱 대상 경로가 바뀌면 수집이 조용히 0건이 되고 차집합이 공허하게 통과한다.
+//    T-NP-K0 이 하한 + sentinel 로 그 경우를 막는다. 절대 지우지 말 것.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * repo 루트를 CWD 에서 위로 올라가며 찾는다.
+ *
+ * 상대경로 `../../../../..` 는 파일이 한 칸만 옮겨져도 조용히 빗나간다.
+ * `workflow-schemes.contract.test.ts` 와 **같은 판별식**(`CLAUDE.md` + `docs/` 동시 보유)을 쓴다.
+ */
+function repoRoot(): string {
+  let dir = process.cwd()
+  for (;;) {
+    if (
+      existsSync(resolve(dir, 'CLAUDE.md')) &&
+      statSync(resolve(dir, 'docs'), { throwIfNoEntry: false })?.isDirectory()
+    ) {
+      return dir
+    }
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error(`repo 루트를 찾지 못했다(CLAUDE.md + docs/ 기준). 시작: ${process.cwd()}`)
+    dir = parent
+  }
+}
+
+const NOTIFICATION_DOMAIN_DIR = 'backend/modules/notification/src/main/kotlin/com/bts/notification/domain'
+
+/** 백엔드 enum 소스를 읽는다. 파일이 없으면 즉시 throw — 조용한 0건 대신 시끄러운 실패. */
+function readEnumSource(fileName: string): string {
+  const file = resolve(repoRoot(), NOTIFICATION_DOMAIN_DIR, fileName)
+  if (!existsSync(file)) {
+    throw new Error(`백엔드 enum 소스를 찾지 못했다: ${file} — 파일이 옮겨졌다면 이 경로를 갱신할 것.`)
+  }
+  return readFileSync(file, 'utf-8')
+}
+
+/**
+ * `enum class <name>` 선언의 여는 중괄호 이후 ~ `;` 종결자 앞까지 본문만 잘라낸다.
+ *
+ * KDoc 본문(백틱 안의 enum 이름)과 companion object 를 상수로 오탐하지 않기 위해 범위를 좁힌다.
+ */
+function enumBody(src: string, name: string): string {
+  const decl = src.indexOf(`enum class ${name}`)
+  if (decl < 0) throw new Error(`enum class ${name} 선언을 찾지 못했다 — 선언 서식이 바뀌었다.`)
+  const open = src.indexOf('{', decl)
+  const end = src.indexOf('\n    ;', open)
+  if (open < 0 || end <= open) {
+    throw new Error(`${name} 의 enum 본문 경계(여는 중괄호 ~ '\\n    ;')를 찾지 못했다 — 선언 서식이 바뀌었다.`)
+  }
+  return src.slice(open + 1, end)
+}
+
+/** `NAME("wire", bool),` 형태 상수에서 wireValue 를 뽑는다 */
+function parseWireValues(body: string): string[] {
+  return [...body.matchAll(/^ {4}[A-Z][A-Z0-9_]*\("([^"]+)",/gm)].map((m) => m[1] as string)
+}
+
+/** `NAME,` 형태 단순 enum 상수의 이름을 뽑는다 */
+function parseEnumNames(body: string): string[] {
+  return [...body.matchAll(/^ {4}([A-Z][A-Z0-9_]*)[ \t]*,?[ \t]*$/gm)].map((m) => m[1] as string)
+}
+
+const backendEventWireValues = parseWireValues(
+  enumBody(readEnumSource('NotificationEventType.kt'), 'NotificationEventType'),
+)
+const backendRecipientRoles = parseEnumNames(enumBody(readEnumSource('RecipientRole.kt'), 'RecipientRole'))
+// 백엔드 enum 이름은 `Channel` 이다 (프론트 상수명 CHANNELS / 타입명 NotificationChannel 과 다름).
+const backendChannels = parseEnumNames(enumBody(readEnumSource('Channel.kt'), 'Channel'))
+
+/** a - b 차집합 */
+function difference(a: readonly string[], b: readonly string[]): string[] {
+  const known = new Set<string>(b)
+  return a.filter((x) => !known.has(x))
+}
+
+describe('백엔드 enum ↔ 프론트 미러 차집합', () => {
+  it('T-NP-K0: 백엔드 enum 파싱이 비어있지 않다 (경로/서식 변경 시 공허한 통과 차단)', () => {
+    // 하한 — 파싱이 0건을 내면 아래 차집합이 전부 공허하게 green 이 된다.
+    expect(backendEventWireValues.length).toBeGreaterThanOrEqual(9)
+    expect(backendRecipientRoles.length).toBeGreaterThanOrEqual(9)
+    expect(backendChannels.length).toBeGreaterThanOrEqual(5)
+    // sentinel — "무언가 뽑았지만 엉뚱한 것"까지 차단 (KDoc 단어를 상수로 오인하는 경우 등)
+    expect(backendEventWireValues).toContain('issue.created')
+    expect(backendRecipientRoles).toContain('REPORTER')
+    expect(backendChannels).toContain('EMAIL')
+  })
+
+  it('T-NP-K1: NOTIFICATION_EVENT_TYPES 에 백엔드 wireValue 누락이 없다', () => {
+    expect(difference(backendEventWireValues, NOTIFICATION_EVENT_TYPES)).toEqual([])
+  })
+
+  it('T-NP-K2: NOTIFICATION_EVENT_TYPES 에 백엔드에 없는 잉여 값이 없다', () => {
+    expect(difference(NOTIFICATION_EVENT_TYPES, backendEventWireValues)).toEqual([])
+  })
+
+  it('T-NP-K3: RECIPIENT_ROLES 에 백엔드 enum NAME 누락이 없다', () => {
+    expect(difference(backendRecipientRoles, RECIPIENT_ROLES)).toEqual([])
+  })
+
+  it('T-NP-K4: RECIPIENT_ROLES 에 백엔드에 없는 잉여 값이 없다', () => {
+    expect(difference(RECIPIENT_ROLES, backendRecipientRoles)).toEqual([])
+  })
+
+  it('T-NP-K5: CHANNELS 에 백엔드 enum NAME 누락이 없다', () => {
+    expect(difference(backendChannels, CHANNELS)).toEqual([])
+  })
+
+  it('T-NP-K6: CHANNELS 에 백엔드에 없는 잉여 값이 없다', () => {
+    expect(difference(CHANNELS, backendChannels)).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-NP-1. fetchCatalog — GET /api/v1/notification-policies/catalog
 // ─────────────────────────────────────────────────────────────────────────────
 describe('fetchCatalog', () => {
@@ -167,8 +295,8 @@ describe('fetchCatalog', () => {
       ),
     )
     const result = await fetchCatalog()
-    expect(result.eventTypes).toHaveLength(9)
-    expect(result.recipientRoles).toHaveLength(9)
+    expect(result.eventTypes).toHaveLength(11)
+    expect(result.recipientRoles).toHaveLength(10)
     expect(result.channels).toHaveLength(5)
   })
 
