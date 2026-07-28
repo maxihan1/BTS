@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
+import { useActiveProject } from '@/hooks/use-active-project'
 import type { WhoamiResponse } from '@/api/schemas'
 import { navLabels } from '@/i18n/nav-labels'
 import { ShellLayout } from '../ShellLayout'
@@ -14,13 +15,19 @@ import { ShellLayout } from '../ShellLayout'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const mockNavigate = vi.fn()
+
+/**
+ * useParams 반환값 — 테스트마다 갈아끼운다.
+ * FR-UX-07 `useTrackActiveProject`가 `/projects/$projectKey/*` 경로 키를 여기서 읽는다.
+ */
+let mockParams: Record<string, string | undefined> = {}
 vi.mock('@tanstack/react-router', () => ({
   Outlet: () => <div data-testid="outlet-content">content</div>,
   useNavigate: () => mockNavigate,
   // Sidebar가 배선하는 ProjectTree(FR-UX-06 PR12)가 useParams({strict:false})를 호출하므로
   // 라우터 컨텍스트 없는 isolation 렌더에서도 크래시하지 않도록 빈 파라미터로 모킹한다
   // (Sidebar.test.tsx 동일 패턴, 셸 랜드마크 계약과 무관).
-  useParams: () => ({}),
+  useParams: () => mockParams,
   Link: ({
     to,
     children,
@@ -76,6 +83,9 @@ function renderShell() {
 
 beforeEach(() => {
   window.localStorage.clear()
+  mockParams = {}
+  // zustand 스토어는 모듈 전역 싱글턴 — 테스트 간 활성 프로젝트가 새지 않게 리셋
+  useActiveProject.setState({ activeProjectKey: null })
   // Sidebar(FavoritesMenu)·TopBar(InboxBell)가 마운트 시 조회하는 엔드포인트
   server.use(
     http.get('/api/v1/favorites', () => HttpResponse.json({ data: { items: [] } })),
@@ -161,5 +171,37 @@ describe('ShellLayout', () => {
 
     expect(screen.getAllByRole('main')).toHaveLength(1)
     expect(within(screen.getByRole('main')).getByTestId('outlet-content')).toBeInTheDocument()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // FR-UX-07 — 활성 프로젝트 기록기 배선 (S4 / 리뷰 BLOCKER B1)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('인증 상태에서 $projectKey 경로 파라미터를 활성 프로젝트로 기록한다 (S4)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    mockParams = { projectKey: 'INFRA' }
+
+    renderShell()
+
+    expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
+  })
+
+  it('경로 파라미터가 없으면 활성 프로젝트를 건드리지 않는다 (/issues 등)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    useActiveProject.setState({ activeProjectKey: 'ATLAS' })
+    mockParams = {}
+
+    renderShell()
+
+    expect(useActiveProject.getState().activeProjectKey).toBe('ATLAS')
+  })
+
+  it('미인증이면 경로 파라미터가 있어도 기록하지 않는다 (공개 공유 라우트)', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+    mockParams = { projectKey: 'INFRA' }
+
+    renderShell()
+
+    expect(useActiveProject.getState().activeProjectKey).toBeNull()
   })
 })
