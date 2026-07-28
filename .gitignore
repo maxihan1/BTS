@@ -78,3 +78,6 @@ backend/.kotlin/
 
 # 브랜치 정리 시 남기는 로컬 백업 (삭제된 브랜치 SHA 기록 — 복원용, 공유 대상 아님)
 .branch-cleanup-backup-*.txt
+
+# 로컬 수동 실행용 (JWT 키 등) — 커밋 금지
+.local-run/
