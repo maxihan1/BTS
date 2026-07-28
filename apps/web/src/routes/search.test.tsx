@@ -17,6 +17,8 @@ import {
 import { DEFAULT_SEARCH_PAGE, SEARCH_HIT_BUG, SEARCH_HIT_UNASSIGNED } from '@/mocks/search-fixtures'
 import { savedFilterHandlers, seedSavedFilters, resetSavedFilterStore } from '@/mocks/saved-filter-handlers'
 import { useAuthStore } from '@/auth/authStore'
+import { projectListHandlers } from '@/mocks/project-list-handlers'
+import { useActiveProject } from '@/hooks/use-active-project'
 import { SearchPage, SearchRouteAdapter } from './search'
 import type { AqlHighlighterProps } from '@/components/search/AqlHighlighter'
 import { toast } from 'sonner'
@@ -678,5 +680,90 @@ describe('SearchPage — ⑦ FTS placeholder', () => {
     renderSearchPage()
     const input = screen.getByTestId('aql-input')
     expect(input).toHaveAttribute('placeholder', expect.stringContaining('text ~'))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-07 — SearchRouteAdapter 활성 프로젝트 해소 (DEFAULT_PROJECT_KEY 제거)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SearchRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
+  /** POST /api/v1/search/aql 본문의 projectKey 를 기록한다 */
+  let searchedProjectKeys: string[] = []
+
+  /**
+   * ★ 등록 순서 — capture 를 인자 맨 앞에 둬야 searchHandlers 를 이긴다.
+   * 한 번의 server.use(a,b,c) 안에서는 앞선 인자가 우선(첫 매칭이 이긴다).
+   */
+  function useCaptureHandlers(extra: Parameters<typeof server.use> = []) {
+    server.use(
+      ...extra,
+      http.post('/api/v1/search/aql', async ({ request }) => {
+        const body = (await request.json()) as { projectKey?: string }
+        if (typeof body.projectKey === 'string') searchedProjectKeys.push(body.projectKey)
+        return HttpResponse.json({ data: DEFAULT_SEARCH_PAGE })
+      }),
+      ...searchHandlers,
+      ...projectListHandlers,
+    )
+  }
+
+  beforeEach(() => {
+    searchedProjectKeys = []
+    localStorage.clear()
+    useActiveProject.setState({ activeProjectKey: null })
+    useAuthStore.getState().setAccessToken('mock-access-token-alice')
+  })
+
+  afterEach(() => {
+    useAuthStore.getState().clearSession()
+    vi.clearAllMocks()
+  })
+
+  it('SA1: ?projectKey=ZETA 면 그 프로젝트로 검색한다 (기존 동작 무회귀)', async () => {
+    useCaptureHandlers()
+    renderSearchAdapter('/search?q=text+~+%22a%22&projectKey=ZETA')
+
+    await waitFor(() => expect(searchedProjectKeys).toContain('ZETA'))
+  })
+
+  it('SA2 (S2): URL 에 projectKey 가 없으면 저장값 프로젝트로 검색한다', async () => {
+    useActiveProject.setState({ activeProjectKey: 'ZETA' })
+    useCaptureHandlers()
+    renderSearchAdapter('/search?q=text+~+%22a%22')
+
+    await waitFor(() => expect(searchedProjectKeys).toContain('ZETA'))
+    expect(searchedProjectKeys).not.toContain('ATLAS')
+  })
+
+  it('SA3 (S3): URL·저장값 둘 다 없으면 목록의 첫 프로젝트로 검색한다', async () => {
+    useCaptureHandlers()
+    renderSearchAdapter('/search?q=text+~+%22a%22')
+
+    await waitFor(() => expect(searchedProjectKeys).toContain('ATLAS'))
+  })
+
+  it('SA4 (S5/B4): 프로젝트가 0개면 검색하지 않고 빈 상태를 보여준다', async () => {
+    useCaptureHandlers([http.get('/api/v1/projects', () => HttpResponse.json({ data: [] }))])
+    renderSearchAdapter('/search?q=text+~+%22a%22')
+
+    await waitFor(() =>
+      expect(screen.getByText(/접근 가능한 프로젝트가 없습니다/)).toBeInTheDocument(),
+    )
+    expect(searchedProjectKeys).toHaveLength(0)
+    // B4 — SearchPage·SaveFilterDialog·ExportDialog 3소비처 모두 non-nullable 계약이라
+    // 어댑터가 조기 반환으로 흡수해야 한다. 툴바(저장·내보내기)도 함께 사라진다.
+    expect(screen.queryByRole('button', { name: '현재 검색 저장' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '검색 결과 내보내기' })).not.toBeInTheDocument()
+  })
+
+  it('SA5 (E2): 프로젝트 목록 조회 실패 시 검색하지 않고 에러를 표시한다', async () => {
+    useCaptureHandlers([
+      http.get('/api/v1/projects', () => new HttpResponse(null, { status: 500 })),
+    ])
+    renderSearchAdapter('/search?q=text+~+%22a%22')
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(searchedProjectKeys).toHaveLength(0)
   })
 })
