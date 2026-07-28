@@ -27,6 +27,25 @@
 
 ## §2 알림 (FR-NT, 5개)
 
+> **카탈로그 현황 (2026-07-27 실측 — 아래 D 줄의 개수는 각 PR 시점의 기록이라 현재값과 다르다)**
+>
+> | enum | 현재 | 파일 |
+> |---|---|---|
+> | `NotificationEventType` | **11종** | `backend/modules/notification/.../domain/NotificationEventType.kt` |
+> | `RecipientRole` | **10종** (해석 9 + `RULE_OWNER` skip) | `backend/modules/notification/.../domain/RecipientRole.kt` |
+> | `Channel` | 5종 (사용자 설정 가능 2 — `IN_APP`·`EMAIL`) | `backend/modules/notification/.../domain/Channel.kt` |
+>
+> **이 두 enum 은 notification BC 밖에서도 자란다.** 최근 증가분은 이 BC 의 FR 이 아니라
+> issue-tracking 의 댓글 삭제 모더레이션(FR-CO-02)이 만들었다 —
+> `ISSUE_COMMENT_DELETED`(`issue.comment_deleted`, `publishable=false`) 이벤트와
+> `COMMENT_AUTHOR` 수신자 역할, 그리고 기본 정책 시드 `V410__seed_comment_deleted_policy.sql`
+> (전역 · `COMMENT_AUTHOR` × `IN_APP` 1행). 외부 채널을 막은 이유는 삭제된 댓글이 있었다는
+> 사실 자체가 웹훅으로 퍼지면 모더레이션 목적에 반하기 때문이다.
+>
+> ⇒ **enum 을 늘리는 PR 은 이 표와 `docs/sdd/09-notifications-slack.md §9.1.2` 를 같이 고친다.**
+> 카탈로그 API·구독 매트릭스·프론트 라벨이 전부 `entries` 위에서 도는 파생물이라, 코드는
+> 조용히 늘어나고 문서만 옛 개수에 멈춘다.
+
 ### §2.1 FR-NT-01 — 이벤트별 알림 정책
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `notify/policy`
@@ -69,11 +88,22 @@
 - [x] D6. 프론트 UI — 정책 페이지 확장 (책임. frontend-engineer) — PR #164 (수신자 역할 설명 동적 헬퍼 + RULE_OWNER 미지원 비활성, 9줄 범례 대신 선택역할 1줄 헬퍼+상시 안내. 공유 select.tsx 변경 0, 서버 카탈로그 위에서만 동작)
 - [x] D7. E2E (책임. qa-engineer) — PR #164 (S6 활성역할 정책 생성→SPA 영속, S7 RULE_OWNER aria-disabled+동적헬퍼+상시안내. 기존 S1~S5 보존)
 
+> **후속 확장 (2026-07-27, FR-CO-02)**. `EventRecipientResolver` 에 `COMMENT_AUTHOR` 분기 추가 —
+> 해석 역할 9종(전체 10종 중 `RULE_OWNER` 만 skip). `MENTIONED` 와 같이 **이벤트 페이로드에서 직접**
+> 읽는다(`NotificationSourceEvent.commentAuthorId`). 댓글 저작자를 조회하려면 notification →
+> issue-tracking 방향의 신규 포트가 필요한데, 발행 측이 페이로드에 실어 보내면 그 의존이 생기지 않는다.
+> **BC 격리를 지키는 쪽이 포트를 늘리는 쪽보다 싸다.**
+
 ### §2.4 FR-NT-04 — 사용자별 알림 구독 설정
 
 **우선순위**. 높음 | **선행**. §2.1 | **Plan slug**. `notify/user-subscription`
 
-**범위**. opt-out 기본(행 없으면 수신) + 관리자 정책(FR-NT-01)과 AND 결합(사용자는 끄기만, reduce-only). 채널 IN_APP·EMAIL만 사용자 설정(SLACK=별도 BC·TEAMS=범위밖·WEBHOOK=FR-NT-05). 이벤트 NotificationEventType 10종 전부. NotificationWorker가 발송 직전 배치 필터. ADR `2026-06-19-fr-nt-04-user-notification-subscription`. **FR-NT-04 전체 완료**(PR #162).
+**범위**. opt-out 기본(행 없으면 수신) + 관리자 정책(FR-NT-01)과 AND 결합(사용자는 끄기만, reduce-only). 채널 IN_APP·EMAIL만 사용자 설정(SLACK=별도 BC·TEAMS=범위밖·WEBHOOK=FR-NT-05). 이벤트 `NotificationEventType` **전량**(고정 목록이 아니라 `entries` 파생 — 2026-07-27 실측 11종, §2 카탈로그 표 참조). NotificationWorker가 발송 직전 배치 필터. ADR `2026-06-19-fr-nt-04-user-notification-subscription`. **FR-NT-04 전체 완료**(PR #162).
+
+> **2026-07-27 정정.** 이 줄은 PR #162 시점의 "10종 전부" 를 그대로 두고 있었다. 구독 매트릭스는
+> `NotificationEventType.entries × 설정가능 채널 2종` 으로 **자동 파생**되므로 enum 이 11종이 된
+> 순간 셀 수도 20 → 22 로 늘었는데, 문서만 10 에 멈춰 거짓 단언이 됐다.
+> ⇒ **파생값은 개수를 적지 말고 파생식을 적는다.** 개수를 굳이 적으려면 실측 날짜를 붙인다.
 
 - [x] D1. 도메인 — UserSubscription (책임. backend-engineer) — PR #162 (CONFIGURABLE_CHANNELS 단일출처, Clock 주입)
 - [x] D2. 명세 — opt-in/out 단위 (책임. backend-engineer) — PR #162 (opt-out 기본 + AND 결합, 이벤트×채널 단위)
