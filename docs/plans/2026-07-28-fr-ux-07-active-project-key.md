@@ -628,3 +628,39 @@ NFR5 진입 후 URL 불변 · B2 필터 변경 후 projectKey 잔존
 - **변경 프로덕션 파일**. **8** (신규 4 + 수정 4) — 신규 `lib/active-project.ts` · `hooks/use-active-project.ts` · `hooks/use-resolved-active-project.ts` · `hooks/use-track-active-project.ts` / 수정 `router.ts` · `components/layout/ShellLayout.tsx` · `routes/issues.index.tsx` · `routes/search.tsx`
   > 로드맵 §F1 은 4개로 적었다. 리뷰가 B1(경로 기록기)·C2(조합 훅)를 적발해 **4 → 8**. 세어서 적는다([[spec-stated-count-becomes-blindfold]])
 - **diff 0 이어야 하는 파일**. `Sidebar.tsx` · `commands.ts` · `shortcuts.ts` · `lib/start-page.ts` (T8 이 봉인)
+
+
+## 검증 증거
+
+### T8 봉인 뮤테이션 (비-공허 증명, 2026-07-28)
+
+커밋 후 실행 → 원복 → 기준선 green 확인. 셋 다 **깨져야** 봉인이 실효한다.
+
+| 뮤테이션 | 주입 | 탐지 출력 |
+|---|---|---|
+| M1 | `issues.index.tsx` 에 `const DEFAULT_PROJECT_KEY = 'ATLAS'` | `routes/issues.index.tsx:49 [P1-상수선언] const DEFAULT_PROJECT_KEY = 'ATLAS'` |
+| M2 | `search.tsx` 에 `const fallback = { projectKey: 'ATLAS' }` | `routes/search.tsx:23 [P2-대입] const fallback = { projectKey: 'ATLAS' }` |
+| M3 | `Sidebar.tsx` 에 `use-active-project` import | `components/layout/Sidebar.tsx → use-active-project` |
+
+**★ M1 이 리뷰 BLOCKER B5 의 정확한 반증이다** — 초안 판별식(`projectKey` 대입형 하나)은 이 형태를 매치하지 못했다. 판별식을 2종으로 나눈 뒤에야 잡힌다.
+
+### 전체 스위트 (2026-07-28)
+
+| 항목 | 결과 |
+|---|---|
+| 유닛 | **526 파일 / 8,215 건 전량 통과** (기준선 7,935 → +280 신규, 회귀 0) |
+| typecheck | `tsc -p tsconfig.app.json --noEmit` EXIT 0 |
+| eslint | `eslint src` **0 error** (경고 8 — 사전 존재분과 동일) |
+| verify-master-plan | EXIT **0** · 132/132 PASS |
+| `DEFAULT_PROJECT_KEY` | 프로덕션 선언·사용 **0건** (잔존 4건은 전부 설명 주석) |
+| diff 0 계약 | `Sidebar.tsx`·`commands.ts`·`shortcuts.ts`·`start-page.ts` **4파일 전부 유지** |
+
+### 구현 중 자체 발견·정정 (5건)
+
+| # | 내용 |
+|---|---|
+| 1 | T4 fixture `id` 가 UUID 가 아니라 `projectSchema.id` 의 `z.string().uuid()` 에서 Zod parse 실패 → 6건이 원인과 무관하게 깨졌다. RED 가 "모듈 없음" 으로 먼저 터져 가리고 있었다 |
+| 2 | T4 에서 `first` 로 해소된 뒤 저장되면 다음 렌더는 `stored` 에서 해소된다 — 출처 전이가 정상이고 그게 저장의 증거다. transient 상태를 단언하던 기대를 정정 |
+| 3 | T6 계측 — capture 핸들러를 렌더 뒤에 등록해 최초 조회를 놓쳤다 |
+| 4 | T6 계측 — **한 번의 `server.use(a,b,c)` 안에서는 앞선 인자가 우선**(첫 매칭이 이긴다)인데 capture 를 마지막에 둬서 기본 핸들러가 이겼다. 호출 단위로는 나중 `server.use` 가 이기는 것과 **규칙이 반대**다 |
+| 5 | T9 — 완료 게이트 줄에 `(14 FR)` 과 `FR-UX-07` 을 같이 써서 verify 가 **사유 없이 EXIT 1**. 판별식은 **`(N FR)` 형식 + 같은 줄 FR ID 토큰** 조합이다 (기존 4줄은 `(FR-AU 10개)` 형태라 무사) |
