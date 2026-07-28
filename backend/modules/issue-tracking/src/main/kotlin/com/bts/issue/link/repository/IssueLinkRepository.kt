@@ -46,7 +46,7 @@ private const val SQL_EXISTS_BLOCKS_PATH =
  * - [findBySourceId] — source_id 기준 링크 목록 반환.
  * - [findByTargetId] — target_id 기준 링크 목록 반환.
  * - [existsLink] — (sourceId, targetId, linkType) 중복 여부 확인.
- * - [deleteById] — 링크 id 로 행 삭제. 삭제 성공 true / 존재하지 않으면 false.
+ * - [deleteByIdAndIssue] — 링크 id 로 행 삭제하되 **그 이슈 소속일 때만**. 성공 true / 없거나 남의 것이면 false.
  * - [existsBlocksPath] — blocks 그래프 재귀 CTE 로 도달 가능성 탐색.
  * - [findOutwardWithIssue] — source=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
  * - [findInwardWithIssue] — target=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
@@ -155,19 +155,36 @@ class IssueLinkRepository(
     }
 
     /**
-     * 링크 id 로 행을 삭제한다.
+     * 링크 id 로 행을 삭제하되, **그 링크가 [issueId] 에 걸린 것일 때만** 지운다.
      *
      * 물리 삭제(관계 해제) — `issue_links` 는 소프트 삭제가 없다 (DATA.md §3).
      *
+     * ## 왜 issueId 를 함께 받나 — 소유권 없는 삭제(IDOR) 차단
+     * 호출부의 권한 검사는 **경로 이슈**에 걸리는데 삭제 대상은 **전역 순번 `id`** 다.
+     * 두 인자를 묶지 않으면, UPDATE 를 가진 아무 이슈나 경로에 넣고 남의 프로젝트
+     * 링크 id 를 붙여 지울 수 있다. `id` 는 `GENERATED ALWAYS AS IDENTITY`(V021) 라
+     * 열거 가능하고, 링크는 소프트 삭제가 없어 복구도 안 된다.
+     *
+     * **WHERE 절에서 함께 좁히는 것**이 요점이다. 먼저 조회해 확인하고 지우면
+     * 그 사이에 다른 트랜잭션이 끼어드는 창이 열린다.
+     *
+     * `source` / `target` **양끝 모두** 소속으로 인정한다 — 링크는 두 이슈가 공유하는
+     * 관계이고, 목록 조회(`findOutwardWithIssue` / `findInwardWithIssue`)도 양방향을 준다.
+     *
      * @param linkId 삭제할 링크의 BIGINT id.
-     * @return 1행 삭제 성공 true / 이미 없어서 0행이면 false.
+     * @param issueId 링크가 걸려 있어야 할 이슈 UUID (경로 이슈).
+     * @return 1행 삭제 성공 true / 없거나 **다른 이슈 소속**이면 false.
      */
     @Transactional
-    fun deleteById(linkId: Long): Boolean {
-        log.debug("Deleting issue link id={}", linkId)
+    fun deleteByIdAndIssue(
+        linkId: Long,
+        issueId: UUID,
+    ): Boolean {
+        log.debug("Deleting issue link id={} scopedTo={}", linkId, issueId)
         val rows =
             dsl.deleteFrom(ISSUE_LINKS)
                 .where(ISSUE_LINKS.ID.eq(linkId))
+                .and(ISSUE_LINKS.SOURCE_ID.eq(issueId).or(ISSUE_LINKS.TARGET_ID.eq(issueId)))
                 .execute()
         return rows > 0
     }

@@ -271,7 +271,7 @@ class LinkApplicationServiceTest : DescribeSpec({
         context("linkId 에 해당하는 링크가 없는 경우") {
             it("LinkNotFoundException 을 던진다") {
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
-                every { linkRepository.deleteById(99L) } returns false
+                every { linkRepository.deleteByIdAndIssue(99L, sourceIssue.id.value) } returns false
 
                 shouldThrow<LinkNotFoundException> {
                     sut.deleteLink(actor, sourceKey, 99L)
@@ -280,13 +280,13 @@ class LinkApplicationServiceTest : DescribeSpec({
         }
 
         context("정상 흐름 — 링크 삭제 성공") {
-            it("deleteById 를 호출하고 Unit 을 반환한다") {
+            it("deleteByIdAndIssue 를 이슈 id 로 좁혀 호출한다") {
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
-                every { linkRepository.deleteById(1L) } returns true
+                every { linkRepository.deleteByIdAndIssue(1L, sourceIssue.id.value) } returns true
 
                 sut.deleteLink(actor, sourceKey, 1L)
 
-                verify(exactly = 1) { linkRepository.deleteById(1L) }
+                verify(exactly = 1) { linkRepository.deleteByIdAndIssue(1L, sourceIssue.id.value) }
             }
         }
     }
@@ -339,14 +339,14 @@ class LinkApplicationServiceTest : DescribeSpec({
                 shouldThrow<ProjectArchivedException> {
                     sut.deleteLink(actor, sourceKey, 1L)
                 }
-                verify(exactly = 0) { linkRepository.deleteById(any()) }
+                verify(exactly = 0) { linkRepository.deleteByIdAndIssue(any(), any()) }
             }
         }
 
         context("deleteLink — 활성 프로젝트 (판별자 baseline)") {
             it("archiveGuard.checkByIssue 가 호출되고 정상 삭제된다") {
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
-                every { linkRepository.deleteById(1L) } returns true
+                every { linkRepository.deleteByIdAndIssue(1L, sourceIssue.id.value) } returns true
 
                 sut.deleteLink(actor, sourceKey, 1L)
 

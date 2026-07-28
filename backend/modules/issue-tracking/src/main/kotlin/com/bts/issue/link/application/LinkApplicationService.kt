@@ -209,8 +209,17 @@ class LinkApplicationService(
      * N+1 없이 단일 JOIN 쿼리로 상대 이슈 정보를 함께 조회한다.
      * 소프트삭제된 상대 이슈는 쿼리 단에서 제외된다.
      *
+     * ## 읽기에도 양끝 검사 — 상대 이슈 VIEW 필터
+     * 중심 이슈 VIEW 만 확인하면, 응답에 실리는 상대 이슈의 `summary`·`statusKey` 가
+     * 볼 권한 없는 이슈의 내용까지 흘린다. 쓰기(`createLink`)는 양끝을 검사하면서
+     * 읽기만 한쪽이던 비대칭을 여기서 닫는다.
+     *
+     * **거부가 아니라 제외**다. 중심 이슈는 볼 수 있으므로 목록 자체는 성공해야 하고,
+     * 못 보는 상대만 빠진다. 403 으로 만들면 "이 이슈에는 내가 못 보는 링크가 있다" 는
+     * 사실 자체가 오라클이 된다.
+     *
      * @param key 링크를 조회할 이슈 키.
-     * @return [LinkListResult] — outward(source=key) + inward(target=key) 링크 목록.
+     * @return [LinkListResult] — outward + inward 중 **actor 가 상대를 볼 수 있는 것만**.
      * @throws LinkedIssueNotFoundException 이슈가 없거나 소프트삭제된 경우.
      */
     @Transactional(readOnly = true)
@@ -230,20 +239,45 @@ class LinkApplicationService(
         val inwardRows = linkRepository.findInwardWithIssue(issue.id.value)
 
         return LinkListResult(
-            outward = outwardRows.map { row -> row.toEntry(outward = true) },
-            inward = inwardRows.map { row -> row.toEntry(outward = false) },
+            outward = outwardRows.filter { canViewOther(actor, it) }.map { row -> row.toEntry(outward = true) },
+            inward = inwardRows.filter { canViewOther(actor, it) }.map { row -> row.toEntry(outward = false) },
         )
     }
+
+    /**
+     * 상대 이슈를 actor 가 볼 수 있는지 — **던지지 않는** 판정이다.
+     *
+     * [checkPermission] 과 술어는 같지만 예외 대신 Boolean 을 준다. 목록 필터에서는
+     * 한 건이 막혔다고 요청 전체를 실패시키면 안 되기 때문이다.
+     */
+    private fun canViewOther(
+        actor: ActorId,
+        row: LinkedIssueRow,
+    ): Boolean =
+        permissionResolver.hasPermission(
+            actor.value,
+            IssuePermission.VIEW,
+            IssueScope.Issue(row.otherIssueKey),
+        )
 
     /**
      * 링크를 해제(물리 삭제)한다.
      *
      * `issue_links` 는 소프트 삭제 없이 행을 물리 삭제한다 (DATA.md §3).
      *
-     * @param key 링크 대상 이슈 키 (존재 확인용).
+     * ## 권한이 거는 대상과 삭제가 지우는 대상을 **일치시킨다**
+     * 권한은 경로 이슈 [key] 에 걸리는데 삭제 대상은 전역 순번 [linkId] 다.
+     * 둘을 묶지 않으면 UPDATE 를 가진 아무 이슈나 경로에 넣고 **남의 링크 id** 를
+     * 붙여 지울 수 있다(IDOR). 그래서 [IssueLinkRepository.deleteByIdAndIssue] 로
+     * **WHERE 절에서 함께 좁힌다.**
+     *
+     * 소속이 아니면 **404** 다 — 403 이면 "그 id 는 존재한다" 는 오라클이 되어,
+     * 미존재 id 와 남의 링크 id 를 응답으로 구분할 수 있게 된다.
+     *
+     * @param key 링크 대상 이슈 키 (존재 확인 + **삭제 범위 한정**).
      * @param linkId 삭제할 링크 BIGINT id.
      * @throws LinkedIssueNotFoundException 이슈가 없거나 소프트삭제된 경우.
-     * @throws LinkNotFoundException 링크 id 에 해당하는 행이 없는 경우.
+     * @throws LinkNotFoundException 링크가 없거나 **[key] 소속이 아닌** 경우.
      */
     @Transactional
     fun deleteLink(
@@ -255,10 +289,11 @@ class LinkApplicationService(
         checkPermission(actor, key, IssuePermission.UPDATE)
         archiveGuard.checkByIssue(key)
 
-        issueRepository.findByKey(key)
-            ?: throw LinkedIssueNotFoundException(key)
+        val issue =
+            issueRepository.findByKey(key)
+                ?: throw LinkedIssueNotFoundException(key)
 
-        val deleted = linkRepository.deleteById(linkId)
+        val deleted = linkRepository.deleteByIdAndIssue(linkId, issue.id.value)
         if (!deleted) {
             throw LinkNotFoundException(linkId)
         }

@@ -369,6 +369,99 @@ class IssueLinkControllerIntegrationTest {
     }
 
     /**
+     * ★읽기에도 **양끝 검사**가 필요하다.
+     *
+     * `listLinks` 의 VIEW 가드는 **중심 이슈**에만 걸리는데, 응답 항목은 상대 이슈의
+     * `summary` 와 `statusKey` 를 싣는다. 쓰기(createLink)에는 양끝 검사를 적용해 놓고
+     * 읽기에는 안 해서, 볼 권한 없는 이슈의 제목이 링크 목록을 통해 새어 나갔다.
+     *
+     * **거부(403)가 아니라 제외(200 + 항목 누락)** 다 — 중심 이슈는 볼 수 있으므로
+     * 목록 자체는 성공해야 하고, 못 보는 상대만 빠져야 한다. 403 으로 만들면
+     * "이 이슈에는 내가 못 보는 링크가 있다" 는 사실 자체가 오라클이 된다.
+     */
+    @Test
+    fun `SEC10 GET links 200 - VIEW 없는 상대 이슈는 목록에서 제외된다`() {
+        val centerKey = createIssue("SEC10 중심")
+        val visibleKey = createIssue("SEC10 보이는 상대")
+        val secretKey = createIssue("SEC10 기밀 상대")
+
+        createLink(centerKey, visibleKey, "relates")
+        createLink(centerKey, secretKey, "blocks")
+
+        permissionResolver.deny(IssuePermission.VIEW, secretKey)
+
+        mockMvc.perform(get("/api/v1/issues/$centerKey/links"))
+            .andExpect(status().isOk)
+            // 기밀 상대가 빠져 1건만 남아야 한다.
+            .andExpect(jsonPath("$.data.outward.length()").value(1))
+            .andExpect(jsonPath("$.data.outward[0].otherIssue.key").value(visibleKey))
+    }
+
+    /**
+     * 대조군 — 위 필터가 "전부 제외" 로 무너지지 않았음을 확인한다.
+     * 이 짝이 없으면 목록을 통째로 비워도 SEC10 은 통과한다.
+     */
+    @Test
+    fun `SEC11 대조군 - VIEW 가 있는 상대는 목록에 남는다`() {
+        val centerKey = createIssue("SEC11 중심")
+        val otherKey = createIssue("SEC11 상대")
+        createLink(centerKey, otherKey, "relates")
+
+        mockMvc.perform(get("/api/v1/issues/$centerKey/links"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.outward.length()").value(1))
+            .andExpect(jsonPath("$.data.outward[0].otherIssue.key").value(otherKey))
+    }
+
+    /**
+     * ★가드가 거는 대상과 삭제가 지우는 대상이 **다른 것**이었다 (IDOR).
+     *
+     * `deleteLink(actor, key, linkId)` 는 권한을 **경로 이슈 `key`** 에 걸지만,
+     * 실제 삭제는 **전역 순번 `linkId`** 로 한다. 링크가 그 이슈 소속인지 확인하는 코드가
+     * 없으면, 내가 UPDATE 를 가진 아무 이슈나 경로에 넣고 **남의 프로젝트 링크 id** 를
+     * 붙여 지울 수 있다. `issue_links.id` 는 `GENERATED ALWAYS AS IDENTITY` 라 열거된다.
+     *
+     * 링크는 소프트 삭제가 없어(V021 · DATA.md §3) 복구도 불가능하다.
+     *
+     * **404 로 거부한다** — 403 이면 "그 id 는 존재한다" 는 오라클이 된다.
+     * 미존재 id(S10)와 남의 링크 id 가 **같은 응답**이어야 실재가 안 새어 나간다.
+     */
+    @Test
+    fun `SEC8 DELETE links 404 - 다른 이슈 소속 linkId 는 지울 수 없다`() {
+        val victimA = createIssue("SEC8 피해자 A")
+        val victimB = createIssue("SEC8 피해자 B")
+        val victimLinkId = createLink(victimA, victimB, "relates")
+
+        val attackerIssue = createIssue("SEC8 공격자 이슈")
+
+        // 공격자는 자기 이슈에 UPDATE 를 갖는다 (기본 스텁이 허용). 그래도 남의 링크는 못 지운다.
+        mockMvc.perform(delete("/api/v1/issues/$attackerIssue/links/$victimLinkId"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("LINK_NOT_FOUND"))
+
+        // 실제로 살아 있어야 한다 — 응답만 404 고 행은 지워졌으면 아무 의미가 없다.
+        mockMvc.perform(get("/api/v1/issues/$victimA/links"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.outward.length()").value(1))
+    }
+
+    /**
+     * 대조군 — 위 봉합이 "전부 404" 로 무너지지 않았음을 확인한다.
+     * 소속이 맞는 링크는 **여전히 지워져야** 한다. 이 짝이 없으면 SEC8 은
+     * 삭제 기능을 통째로 부숴도 통과한다.
+     */
+    @Test
+    fun `SEC9 대조군 - 소속이 맞으면 target 쪽 경로로도 지울 수 있다`() {
+        val sourceKey = createIssue("SEC9 소스")
+        val targetKey = createIssue("SEC9 타겟")
+        val linkId = createLink(sourceKey, targetKey, "relates")
+
+        // source 가 아니라 **target** 경로로 지운다 — 양끝 모두 소속으로 인정해야 한다.
+        mockMvc.perform(delete("/api/v1/issues/$targetKey/links/$linkId"))
+            .andExpect(status().isNoContent)
+    }
+
+    /**
      * 대조군 — 게이트가 "전부 403" 으로 무너지지 않았음을 확인한다.
      * 이 단언이 없으면 권한을 과하게 걸어도 위 6건이 통과해 초록으로 보인다.
      */
