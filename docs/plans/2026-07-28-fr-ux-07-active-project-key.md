@@ -72,7 +72,40 @@
 - 팔레트 `QUICK_LINKS` 4개와 **순서** — `command-palette.spec.ts:252-259` 가 "ArrowDown 1회 → 2번째=검색"을 단언
 - `<h1>` 단일 + 이름 verbatim — `getByRole('heading')` **250발생**
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC.** 논리 `personalization` / 물리 `apps/web` — FR-UX-05 D4 · FR-UX-06 D5 선례 승계. glossary가 이 패턴을 이미 정본화(퀵 필터 = 논리 personalization·물리 agile-planning / 캘린더 피드 토큰 = 논리 personalization·물리 identity-access)
+- **영향 엔티티.** 없음 — 도메인 엔티티·테이블·마이그레이션 **0**. 순수 프론트 상태·라우팅 계약
+- **새 용어.** **활성 프로젝트 (Active Project)** — glossary 추가 후보 (Maxi 승인 대기, 게이트 1에서 확인)
+- **기존 결정 충돌.** 없음. FR-UX-06 §4.4 는 완료로 **닫아 두고** 신규 FR-UX-07 을 연다(확장 시 진척률 역행)
+- **관련 ADR.** [2026-07-28-fr-ux-07-active-project-context.md](../decisions/2026-07-28-fr-ux-07-active-project-context.md) **(생성됨, D1~D5)**
+  · 승계 [FR-UX-06 §D5](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) · [FR-PR-01 §D1](../decisions/2026-07-05-fr-pr-01-user-profile-placement.md)
+  · 근거 [FR-UX-05 §D3](../decisions/2026-07-05-fr-ux-05-keymap.md) — `:78` *"후속 FR로 미룬다(Maxi 결정 2026-07-05)"*
+
+### 활성 프로젝트 — 4단 해소 순서 (ADR D3)
+
+```
+① 현재 URL 의 projectKey   (경로 /projects/$projectKey/* 또는 검색 ?projectKey=)
+② localStorage 마지막 저장값  (키 `bts.active-project`)
+③ 접근 가능한 첫 프로젝트     (GET /api/v1/projects 응답 순서)
+④ 프로젝트 0개 → 빈 상태     (/projects 로 안내)
+```
+
+**URL 이 최상위인 이유.** 링크 공유·뒤로가기·새로고침이 같은 화면을 재현해야 한다. 저장값이 URL을 이기면 공유 링크가 받는 사람에게 다른 프로젝트를 연다.
+**URL 이 프로젝트를 담으면 ②를 갱신한다.** 보드(`/projects/ATLAS/board`)를 보다 사이드바 "이슈"를 누르면 ATLAS 이슈가 나와야 한다 — 이게 "활성"의 의미다.
+
+### Maxi 확정 (2026-07-28, 도메인 단계)
+
+| # | 질문 | 결정 |
+|---|---|---|
+| D-a | 활성 프로젝트 영속 위치 | **localStorage**. 서버 `user_preferences` 확장은 기각(Flyway + identity-access 변경이 결정 2 초과) — **후속 FR 후보**로 남김. 해소 순서 ②의 소스만 교체되므로 폭발 반경 작음 |
+| D-b | 저장값·URL 둘 다 없는 첫 방문 | **접근 가능한 첫 프로젝트 자동 선택**. 빈 화면 대신 곧장 이슈 노출 |
+
+### 실측 근거 (도메인 단계에서 확인)
+
+- `user_preferences`(V031+V032) 실재 — `theme`·`locale`·`date_format`·`start_page`. PATCH API + `PreferencesProvider` 소비 중. **도메인상 자연스러운 자리이나 백엔드 변경이 필요해 v1 기각**
+- `Maxi_wiki/BTS/domain/` 에 `personalization.md` **부재**(7개 BC 노트만) — personalization 은 논리 BC 라 물리 노트가 없다. 정상
+- `/issues` 프로젝트 스코프 강제 지점 = `IssueApplicationService.kt:1021` `assertPermission(actor, BROWSE, IssueScope.Project(projectKey))`
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
