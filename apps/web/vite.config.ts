@@ -31,6 +31,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // ★`localhost` 를 IPv4 로 푸는 브라우저에서 접속 불가가 되지 않게 명시한다.
+    // 미지정 시 vite 가 `[::1]`(IPv6 루프백)에만 바인딩되는 환경이 있어,
+    // 터미널에는 "Local: http://localhost:5173" 이 찍히는데 실제로는 연결이 거부된다.
+    host: true,
     // /api/* 요청을 백엔드(8080)로 프록시 — 로컬 개발 시 CORS 없이 통신
     proxy: BACKEND_PROXY,
   },
@@ -47,6 +51,8 @@ export default defineConfig({
    */
   preview: {
     port: 4173,
+    // dev 와 같은 이유 — IPv6 전용 바인딩 회피.
+    host: true,
     proxy: BACKEND_PROXY,
   },
 })
