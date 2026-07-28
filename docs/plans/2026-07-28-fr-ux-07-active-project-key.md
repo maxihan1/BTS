@@ -107,9 +107,50 @@
 - `Maxi_wiki/BTS/domain/` 에 `personalization.md` **부재**(7개 BC 노트만) — personalization 은 논리 BC 라 물리 노트가 없다. 정상
 - `/issues` 프로젝트 스코프 강제 지점 = `IssueApplicationService.kt:1021` `assertPermission(actor, BROWSE, IssueScope.Project(projectKey))`
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-28-fr-ux-07-active-project-key.md](../specs/2026-07-28-fr-ux-07-active-project-key.md)
+
+### ★ 스펙에서 뒤집힌 것 — 링크가 아니라 라우트가 해소한다
+
+로드맵 §F1 은 "진입로 4곳 배선"(사이드바·팔레트·시작페이지·단축키)을 적었다. **불필요한 것으로 판명.** `/issues` 라우트가 스스로 활성 프로젝트를 해소하면 4곳이 동시에 낫는다.
+
+| | 로드맵 원안 (A) | 스펙 확정 (B) |
+|---|---|---|
+| 방식 | 링크가 `search={{projectKey}}` 를 실어 보냄 | 라우트가 `useActiveProject()` 로 해소 |
+| 변경 파일 | 7 | **4** |
+| 건드리는 계약 | `QUICK_LINKS` 순서 · `SHORTCUTS` 5종 동결 · nav 라벨 | **없음** |
+
+**A 기각 사유 3가지.** ①해소가 `useProjects()` 응답에 의존하는데 사이드바가 먼저 렌더된다(비동기 순서) ②`QUICK_LINKS` 를 동적으로 만들면 `command-palette.spec.ts` 의 "ArrowDown 1회 → 2번째=검색" 순서 계약이 흔들린다 ③`shortcuts.ts` 를 건드리면 **프론트 2단언 + 백엔드 `KeymapAction` enum + DB CHECK 제약**이 동시에 깨진다.
+
+**URL 정규화도 기각.** 마운트 직후 `replace` 로 projectKey 를 써넣는 방안은, 이 저장소에 **transient URL 관측 race 로 e2e 가 90초 hang 한 선례**(`saved-filters` SF-1/SF-3, `?filterId=`)가 있어 새로 들이지 않는다.
+
+### 핵심 시나리오 3줄
+
+- `/issues?projectKey=INFRA` 는 INFRA 를 보여주고 활성 프로젝트를 갱신한다 (명시 최우선)
+- URL 에 없으면 저장값 → 이름 오름차순 첫 프로젝트 순으로 내려간다. 프로젝트 0개면 빈 상태
+- 명시 지정이 권한 실패하면 **조용히 대체하지 않고 에러를 표시**한다 (권한 문제를 숨기지 않는다)
+
+### 변경 파일 (4 + 문서)
+
+| 파일 | 변경 |
+|---|---|
+| `apps/web/src/router.ts` | `issuesIndexRoute.validateSearch` 에 `projectKey?: string` |
+| `apps/web/src/hooks/use-active-project.ts` | **신규** — zustand + localStorage(`bts.active-project`) + 4단 해소 |
+| `apps/web/src/routes/issues.index.tsx` | 상수 제거 · 해소 결과 전달 · 로딩/0개 흡수 |
+| `apps/web/src/routes/search.tsx` | 상수 제거 · 폴백만 해소 결과로 교체 |
+| 문서 8종 | FR-UX-07 등록 131→132 |
+
+**diff 0 이어야 하는 파일.** `Sidebar.tsx` · `commands.ts` · `shortcuts.ts` · `lib/start-page.ts`
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). `office-hours` 미호출 — FR 이 이미 정의된 작업엔 프레임 불일치(2026-05-29 Maxi 확정). Phase B 는 **스펙의 사실 주장을 코드로 되짚는 방식**으로 수행.
+
+- **G1 갭→해소.** "접근 가능한 첫 프로젝트" 가 미정의 표현 → `ProjectQueryRepository.kt:62` `.orderBy(PROJECTS.NAME.asc())` 실측으로 **이름 오름차순 첫 번째** 확정
+- **G2 확증.** `QUICK_LINKS` 순서 계약이 e2e 주석으로 명문화돼 있음 — 설계 B 가 보존
+- **G3 갭→해소.** `IssueListPage` `projectKey: string` **non-nullable**(`issues.index.tsx:337`). nullable 화하면 5지점 파급 → **어댑터가 흡수**로 제약 명시
+- **한계.** 3건 모두 자기 검토. 독립 리뷰는 게이트 2 `bts-codereview` 가 안전망
 
 ## Plan (← /bts-plan 채움)
 
