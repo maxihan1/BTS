@@ -40,6 +40,8 @@ interface IssuesRouteSearchMock {
   component?: string | string[]
   sort?: string
   selected?: string
+  /** FR-UX-07 — 활성 프로젝트 명시 지정 (router.ts validateSearch 미러) */
+  projectKey?: string
 }
 
 /** 좁은폭/와이드 분기 제어용 mock — 기본값 true(와이드) */
@@ -1666,8 +1668,11 @@ describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
    * `/api/v1/issues` 가 이겨서 기록이 비고, 테스트가 원인과 무관하게 실패한다.
    * (호출 단위로는 나중 `server.use` 가 앞선 것을 이긴다 — 두 규칙이 다르다.)
    */
-  function renderWithCapture() {
+  function renderWithCapture(overrides: Parameters<typeof server.use> = []) {
     server.use(
+      // overrides 를 맨 앞에 둬야 기본 핸들러를 이긴다. 렌더 **뒤**에 등록하면 최초 조회가
+      // 이미 기본 응답으로 캐시돼 override 가 영영 반영되지 않는다.
+      ...overrides,
       http.get('/api/v1/issues', ({ request }) => {
         const key = new URL(request.url).searchParams.get('projectKey')
         if (key !== null) requestedProjectKeys.push(key)
@@ -1725,8 +1730,7 @@ describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
 
   it('AP5 (S5/FR8): 접근 가능한 프로젝트가 0개면 빈 상태를 보여주고 이슈를 조회하지 않는다', async () => {
     mockUseSearch.mockReturnValue({})
-    renderWithCapture()
-    server.use(http.get('/api/v1/projects', () => HttpResponse.json({ data: [] })))
+    renderWithCapture([http.get('/api/v1/projects', () => HttpResponse.json({ data: [] }))])
 
     await waitFor(() =>
       expect(screen.getByText(/접근 가능한 프로젝트가 없습니다/)).toBeInTheDocument(),
@@ -1737,8 +1741,9 @@ describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
 
   it('AP6 (E2): 프로젝트 목록 조회에 실패하면 에러를 표시하고 이슈를 조회하지 않는다', async () => {
     mockUseSearch.mockReturnValue({})
-    renderWithCapture()
-    server.use(http.get('/api/v1/projects', () => new HttpResponse(null, { status: 500 })))
+    renderWithCapture([
+      http.get('/api/v1/projects', () => new HttpResponse(null, { status: 500 })),
+    ])
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     expect(requestedProjectKeys).toHaveLength(0)
