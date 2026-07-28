@@ -79,8 +79,11 @@
 |---|---|
 | **FR1** | `router.ts` `issuesIndexRoute.validateSearch` 에 `projectKey?: string` 추가. 기존 7종(page·status·assignee·label·component·sort·selected) 파싱 방식과 동일하게 `typeof === 'string'` 가드 |
 | **FR2** | `hooks/use-active-project.ts` 신설 — localStorage 영속 스토어(zustand). 키 `bts.active-project`. `hooks/use-sidebar-collapsed.ts:15-45` 의 fail-safe 3중 폴백(SSR·스토리지 차단·파싱 실패) 패턴 복제 |
-| **FR3** | 해소 훅 — 우선순위 ① URL `projectKey` → ② 저장값(접근 가능 목록에 실재할 때만) → ③ 접근 가능한 첫 프로젝트 → ④ `null`(0개). **③의 "첫"은 이름 오름차순 첫 번째**로 정의한다 (G1) |
-| **FR4** | URL 이 projectKey 를 담을 때(①) 그 값을 저장값에 반영 |
+| **FR3** | 해소 — 우선순위 ① URL `projectKey`(검색 파라미터 **또는** 경로 파라미터 `/projects/$projectKey/*`) → ② 저장값(접근 가능 목록에 실재할 때만) → ③ 목록의 **첫 원소**(`projects[0]`) → ④ `null`(0개). **프론트 재정렬 금지** — 백엔드가 이미 `ORDER BY name ASC`(`ProjectQueryRepository.kt:62`)이고 저장소 관례가 "백엔드 정렬 신뢰, 프론트 재정렬 없음"(`routes/projects.index.tsx:42`·`hooks/use-projects.ts:10`)이다 (G1·C4) |
+| **FR3-b** | 조합 훅 `useResolvedActiveProject()` **1개**가 `useProjects()` + 저장값 + URL 을 묶는다. `/issues`·`/search` 가 각자 조합하면 드리프트가 확정된다 (C2) |
+| **FR3-c** | **경로 파라미터 기록기** — `/projects/$projectKey/*` 계열 라우트를 볼 때 그 키를 저장값에 기록한다. 전 인증 라우트 공통 셸(`ShellLayout`)에 훅 1개로 마운트. **이것이 없으면 S4 가 성립하지 않는다** (B1) |
+| **FR4** | 해소 출처가 **`url` 또는 `first`** 일 때 저장값에 반영한다. `first` 를 저장하지 않으면 S3("그 값이 저장된다")·S6/E3("저장값이 교정된다")가 미충족이고, `useProjects` 재조회(`refetchOnWindowFocus` 기본 true)로 첫 원소가 바뀌면 **사용자가 아무 조작도 안 했는데 프로젝트가 갈아탄다** (B3). 출처가 `stored` 면 write 생략(E7) |
+| **FR4-b** | URL 의 projectKey 를 **다른 navigate 가 지우지 않는다.** `issues.index.tsx` 의 navigate 5곳 중 `handleFilterChange`(`:767-770`)만 `...prev` 를 안 펼쳐 projectKey 가 증발한다. TanStack `search` 는 **객체형이면 병합이 아니라 치환**이고 전 필드가 optional 이라 **타입 체크로도 안 잡힌다** (B2) |
 | **FR5** | `routes/issues.index.tsx` — `DEFAULT_PROJECT_KEY` 상수 제거, 해소 결과를 `IssueListPage projectKey` 로 전달 |
 | **FR6** | `routes/search.tsx` — `DEFAULT_PROJECT_KEY` 상수 제거, `search.projectKey` 부재 시 해소 결과 사용 (기존 우선순위 구조 유지) |
 | **FR7** | 프로젝트 목록 로딩 중에는 이슈를 조회하지 않는다 (빈 projectKey 로 요청 금지) |
@@ -135,7 +138,12 @@
 - **`shortcuts.ts` 무변경** — 건드리면 프론트 2단언 + 백엔드 enum + DB CHECK 가 동시에 깨진다
 - **`components/ui/empty-state.tsx` 재사용** — 새 빈 상태 컴포넌트 신설 금지
 - **`hooks/use-projects.ts` 재사용** — 새 프로젝트 조회 훅 신설 금지
-- **★ `IssueListPage` 의 `projectKey: string` 계약을 nullable 로 바꾸지 않는다** (G3). 해소 전(로딩)·프로젝트 0개 상태는 **어댑터가 흡수**해 `IssueListPage` 를 아예 렌더하지 않는다. prop 을 `string | null` 로 바꾸면 `issues.index.tsx:453` `queryKey: ['issues', projectKey, …]` · `:456` `fetchIssues({ projectKey })` · `:469` `useProjectPermissions(projectKey)` · `:549` `invalidateQueries` · `:582` 하위 전달로 파급되고, 빈 문자열이 새면 백엔드가 빈 스코프 권한 평가로 조용히 차단한다(`IssueApplicationService.kt:1021`)
+- **★ `projectKey: string` non-nullable 계약을 가진 소비처가 4곳이다. 어느 것도 nullable 로 바꾸지 않는다** (G3, B4 로 확장)
+  - `IssueListPage`(`issues.index.tsx:337`) — nullable 화 시 `:453` queryKey · `:456` fetch · `:469` 권한 · `:549` invalidate · `:582` 하위전달 5지점 파급
+  - `SearchPage`(`search.tsx:242`, 전달 `:593`) · `SaveFilterDialog`(`:609`) · `ExportDialog`(`:616`)
+  - 해소 전(로딩)·0개 상태는 **각 라우트 어댑터가 조기 반환으로 흡수**한다. 빈 문자열이 새면 백엔드가 빈 스코프 권한 평가로 조용히 차단한다(`IssueApplicationService.kt:1021`)
+- **★ split view 상세 페인은 프로젝트 해소에 끌려가면 안 된다** (C5). `issues.index.tsx:786-822` 에서 `listPage` 는 `IssueListSplitView` 좌측 자식이다. 어댑터 **최상단** 조기 반환으로 구현하면 우측 `IssueDetailPage variant='pane'` 까지 사라져 `/issues?selected=ATLAS-3` 딥링크가 프로젝트 조회 실패에 끌려 죽는다. 조기 반환은 **목록 영역 한정**
+- **해소 결과는 `useMemo` 로 안정화**하고 effect 의존성엔 원시값(`key`·`source`)만 넣는다. 매 렌더 새 객체를 의존성 배열에 넣으면 무한 루프 (N3)
 
 ## 9. 측정 가능한 완료 기준
 
@@ -148,6 +156,18 @@
 - [ ] `bash scripts/verify-master-plan.sh` EXIT **0** (132/132)
 - [ ] `git diff --stat` 에 `backend/` 파일 **0건**
 - [ ] 브라우저 눈확인 — 프로젝트 전환이 이슈 목록에 반영되는지 (라이트/다크)
+- [ ] **필터를 바꿔도 URL 의 `?projectKey=` 가 남는다** (B2 회귀 가드)
+- [ ] **보드 → 사이드바 "이슈" 가 그 프로젝트를 연다** (S4/B1)
+- [ ] 봉인 테스트가 **`const DEFAULT_PROJECT_KEY = 'ATLAS'` 를 실제로 잡는다** (B5 — 판별식 비-공허 증명)
+
+## 10. 알려진 한계 (이 PR 범위 밖, 명시적으로 남김)
+
+| # | 한계 | 근거 / 후속 |
+|---|---|---|
+| L1 | **로그아웃 상태에서 `?projectKey=` 공유 링크를 열면 착지하지 못한다.** `routeGuard.ts:60-61` 의 `returnTo` 가 쿼리 포함 문자열을 `redirect({ to })` 로 넘기는데 router-core 는 `to` 를 **pathname 으로** 해석해 쿼리가 경로에 박힌다. 기존 결함이나 이 PR 이 `?projectKey=` 를 "공유해도 되는 것"으로 처음 승격시켜 비로소 실사용된다 (C7) | `routeGuard.test.tsx` returnTo 5종이 전부 쿼리 없는 경로만 검증 — 미검증 구간. 별도 수정 PR |
+| L2 | **`/issues/new` 가 활성 프로젝트를 못 받는다.** 진입점 2곳(`issues.index.tsx:392-399`·`TopBar.tsx:75`)이 컨텍스트를 안 넘기고 폼은 `defaultValues: { projectKey: '' }`(`issues.new.tsx:153`) (N1) | 로드맵 **F2(이슈 생성 모달)** 가 처리 |
+| L3 | **활성 프로젝트가 기기 간에 안 넘어간다.** localStorage 이므로 (ADR D4) | 서버 `user_preferences` 확장은 후속 FR 후보 |
+| L4 | **`bts.active-project` 에 사용자 스코프가 없다.** 로그아웃 시 정리되지 않는다 (C8) | 화면 오동작·정보 노출 없음 — FR3 ②가 "접근 가능 목록에 실재할 때만" 이라 다른 사용자에겐 탈락하고 FR4 의 `first` 저장이 첫 방문에 덮어쓴다. `use-column-visibility`·`use-timeline-zoom` 과 동급의 기기별 UI 선호값 |
 
 ## Brainstorming Check
 

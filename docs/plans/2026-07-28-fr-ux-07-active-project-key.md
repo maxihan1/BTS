@@ -152,7 +152,9 @@
 - **G3 갭→해소.** `IssueListPage` `projectKey: string` **non-nullable**(`issues.index.tsx:337`). nullable 화하면 5지점 파급 → **어댑터가 흡수**로 제약 명시
 - **한계.** 3건 모두 자기 검토. 독립 리뷰는 게이트 2 `bts-codereview` 가 안전망
 
-## Plan
+## Plan (v1 — ⚠️ 독립 리뷰로 **폐기**. 정본은 아래 §Plan v2)
+
+> **이 절은 감사 흔적으로만 남긴다.** 독립 엔지니어링 리뷰가 BLOCKER 5건을 적발했고 전부 실측 확인됐다. 무엇이 왜 바뀌었는지는 §리뷰 결과 참조. **구현자는 §Plan v2 를 따른다.**
 
 > `superpowers:writing-plans` 대신 직접 작성. 이 형식(메타 블록 `agent`/`files`/`depends-on`)은 BTS 전용이라 범용 스킬이 모른다.
 > **구조 선례 승계** — 순수 해소 함수는 `lib/`(`lib/start-page.ts:50` `resolveStartPageNav`·`lib/backlog-drag.ts` `resolveBacklogDropAction`), localStorage 스토어는 `hooks/`(`hooks/use-sidebar-collapsed.ts`), 그 테스트는 `hooks/__tests__/`.
@@ -368,4 +370,261 @@ NFR5 진입 후 URL 불변 (transient 정규화 없음)
 | `IssueListPage` prop nullable 화 파급 | T4 GREEN 에서 어댑터가 흡수, prop 무변경을 REFACTOR 에서 확인 |
 | verify 가 새 카운트 형식을 못 잡음 | T7 RED 에서 **선-실패 확인** 후 필요하면 verify 확장 |
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**방식.** `autoplan` 4종(CEO·design·eng·DevEx) 대신 **엔지니어링 집중 독립 리뷰** 1회. 근거 — 이 작업은 `type=ui` 지만 **시각 변화가 0**(라우팅·상태 배관)이라 design 리뷰가 무의미하고, *"plan 작성자가 자기 plan 을 리뷰하면 편향"* 이다([[bts-review-plan-autoplan-overkill]]).
+
+**결과. BLOCKER 5 · CONCERN 8 · NIT 4.** BLOCKER 5건은 전부 내가 직접 코드로 재확인했다 — *"지적은 채택하고 처방은 검증"*([[seal-blinds-existing-guard]]).
+
+### BLOCKER (전부 실측 확인)
+
+| # | 지적 | 실측 검증 | 처방 |
+|---|---|---|---|
+| **B1** | **S4(프로젝트 컨텍스트 추종)를 구현하는 태스크가 없다.** `/issues` 엔 `$projectKey` 경로 파라미터가 없고(`router.ts:122`), `useParams().projectKey` 를 읽는 프로덕션 코드는 전부 `/projects/$projectKey/*` 어댑터인데 **어느 것도 저장하지 않는다**(props 로 내리기만). T8 은 자기가 구현하지 않는 S4 를 e2e 로 검증하겠다고 적었다 | ✅ `grep useParams` 전수 — 저장 지점 0건 확인 | **T5 신설** — `ShellLayout` 에 경로 파라미터 기록기 |
+| **B2** | **`handleFilterChange` 가 URL 에서 projectKey 를 날린다.** navigate 5곳 중 이 한 곳만 `...prev` 를 안 펼친다. TanStack `search` 는 객체형이면 **병합이 아니라 치환**이고 전 필드 optional 이라 **타입 체크로도 안 잡힌다** | ✅ `issues.index.tsx:767-770` 실물 확인. 대조 — `:721`·`:746`·`:754`·`:782` 는 `...prev` 사용 | T6 GREEN 에 navigate 5곳 보존 명시 + RED 추가 |
+| **B3** | **"`source==='url'` 일 때만 저장" 이 S3·S6/E3 와 충돌.** 스펙은 ③도 저장하라고 명시. 게다가 `refetchOnWindowFocus` 기본 true 라 저장 안 하면 목록 재조회로 **아무 조작 없이 프로젝트가 갈아탄다** | ✅ 스펙 S3 `:49` "그 값이 저장된다" · E3 `:122` "저장값이 교정된다" 대조 | FR4 를 `url \|\| first` 로 확대 |
+| **B4** | **`search.tsx` 의 non-nullable 소비처가 3곳**인데 G3 는 `IssueListPage` 만 언급 | ✅ `search.tsx:242,593,609,616` — SearchPage·SaveFilterDialog·ExportDialog 확인 | 스펙 §8 G3 를 4소비처로 확장 |
+| **B5** | **봉인 판별식이 자기가 없애려는 형태를 못 잡는다.** 판별식은 "`projectKey` 로 대입되는 패턴" 인데 대상은 `const DEFAULT_PROJECT_KEY = 'ATLAS'` — 매치 안 됨. 뮤테이션도 판별식과 불일치. 스캔 범위 미정의라 `src/mocks/**` 60건+ 로 **처음부터 영구 RED** | ✅ 자명 + `mocks/` 실측 | 판별식·뮤테이션·스캔 목록 전면 재정의 |
+
+### 채택한 CONCERN
+
+**C1** `/search` 도 저장 갱신(조합 훅이 일괄) · **C2** 조합 훅 부재로 T4·T5 가 같은 로직 2벌 작성 → **T4 신설** · **C3** `onUnhandledRequest:'error'`(`test/setup.ts:19`) 인데 어댑터 harness 에 프로젝트 핸들러 없음 → 대량 RED → RED 목록에 명시 · **C4** ADR("응답 순서")과 FR3("이름 오름차순")이 불일치 → **"백엔드 정렬 신뢰, 프론트 재정렬 없음"**(저장소 관례)으로 통일 · **C5** 조기 반환이 split view 상세 페인까지 죽임 → 목록 영역 한정 · **C6** S6·S7·S8 검증 부재 → T10 에 추가 · **C7/C8/N1** → 스펙 §10 알려진 한계 L1~L4 로 등재 · **N2** T2 의 불필요한 `depends-on` 제거 · **N3** `useMemo` 안정화
+
+### 리뷰가 **반증에 실패한 것** (= 원안이 맞다)
+
+- **진입로 4파일 diff 0 — 성립.** `Sidebar.tsx:48` · `commands.ts:59` + `CommandPalette.tsx:156` · `shortcuts.ts:100` · `start-page.ts:65` 넷 다 **새 내비게이션**이라 projectKey 를 지우는 게 아니라 애초에 없는 상태에서 시작. §1 의 A 기각 3근거도 코드로 재확인됨
+- **URL 정규화 기각 — 지지.** 정규화를 넣으면 B2 와 결합해 필터 조작마다 URL 재기록이 발생
+- **cross-project 조회 제외 — 지지**
+- **하드코딩 전수 — 추가 발견 0.** `DEFAULT_PROJECT_KEY` 정확히 4발생, 프로덕션 프로젝트 키 리터럴 0건
+
+---
+
+## Plan v2 (정본)
+
+**변화.** task 8 → **10**, wave 4 → **4**(재배치). 신설 2개(T4 조합 훅 · T5 경로 기록기), 나머지는 RED/GREEN 보강.
+
+### Task 1. 활성 프로젝트 해소 순수 함수
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/lib/active-project.ts`, `apps/web/src/lib/active-project.test.ts`] · depends-on []
+
+**RED**. `resolveActiveProjectKey({ urlKey, storedKey, projects })` → `{ key, source: 'url'|'stored'|'first'|'none' }`
+```
+S1 url 우선           ('INFRA', stored 'ATLAS')        → { key:'INFRA', source:'url' }
+S2 저장값 폴백         (null, 'INFRA')                  → { key:'INFRA', source:'stored' }
+S3 첫 원소            (null, null)                     → { key: projects[0].key, source:'first' }
+S6 저장값이 목록에 없음 (null, 'GONE')                   → { key: projects[0].key, source:'first' }
+S5 프로젝트 0개        (null, null, [])                 → { key: null, source:'none' }
+S7 권한 없는 url       ('NOPERM', 'ATLAS')              → { key:'NOPERM', source:'url' }  ← 조용한 대체 금지
+```
+**★ 재정렬 금지 (C4).** `projects[0]` 을 그대로 쓴다. 백엔드가 `ORDER BY name ASC`(`ProjectQueryRepository.kt:62`)이고 저장소 관례가 "백엔드 정렬 신뢰, 프론트 재정렬 없음"(`routes/projects.index.tsx:42`)이다. 테스트명도 "이름 오름차순"이 아니라 **"목록의 첫 원소"** 로 쓴다
+
+**GREEN**. 순수 함수. React·스토리지 의존 0. `projects` 는 호출자가 주입(신규 조회 금지)
+
+**REFACTOR**. KDoc 에 4단 순서 + **왜 `source` 를 반환하는가**(호출자가 FR4 저장 여부를 판단하려면 출처를 알아야 한다) + **왜 URL 이 최상위인가**(공유 링크 재현)
+
+**검증**. `node_modules/.bin/vitest run src/lib/active-project.test.ts`
+
+---
+
+### Task 2. localStorage 영속 스토어
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/hooks/use-active-project.ts`, `apps/web/src/hooks/__tests__/use-active-project.test.ts`] · depends-on []
+
+> N2 — v1 의 `depends-on: [1]` 은 근거가 없었다. 이 태스크는 T1 산출물을 쓰지 않는 순수 스토어다. 제거해 W1 에 합류.
+
+**RED**. `use-sidebar-collapsed.test.ts` 템플릿 — 저장/복원 · `getItem` throw 시 null 폴백(NFR2) · 문자열 아닌 값 → null(E5) · 같은 값 재설정 시 write 생략(E7)
+
+**GREEN**. zustand `create` + fail-safe `readStored`/`writeStored`. 키 `bts.active-project`
+
+**REFACTOR**. KDoc — **§1.18 무관 근거**를 `use-sidebar-collapsed.ts:11-14` 형식으로 (NFR1)
+
+**검증**. `node_modules/.bin/vitest run src/hooks/__tests__/use-active-project.test.ts`
+
+---
+
+### Task 3. router validateSearch — projectKey
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/router.ts`, `apps/web/src/router.project-key.test.tsx`] · depends-on []
+
+**RED**. `router.split-search.test.tsx` 형식 승계 — `?projectKey=INFRA` 파싱 · 부재 시 undefined · 비-문자열 시 undefined · 기존 7종 무회귀
+
+**GREEN**. `issuesIndexRoute.validateSearch`(`router.ts:126-158`) 반환 타입 + 본문에 1행
+
+**REFACTOR**. 없음
+
+**검증**. `node_modules/.bin/vitest run src/router.project-key.test.tsx src/router.split-search.test.tsx`
+
+---
+
+### Task 4. 조합 훅 `useResolvedActiveProject()` — **신설 (C2)**
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/hooks/use-resolved-active-project.ts`, `apps/web/src/hooks/__tests__/use-resolved-active-project.test.tsx`] · depends-on [1, 2]
+
+**왜.** v1 은 `/issues` 와 `/search` 가 **같은 wave 에서 병렬로** 동일 조합 로직을 각자 짜게 돼 있었다. 드리프트 확정이고 T8 봉인은 하드코딩 리터럴만 봐서 못 잡는다.
+
+**RED**
+```
+- useProjects 로딩 중 → { key:null, source:'loading', isLoading:true }
+- 해소 결과가 T1 순수 함수와 일치
+- source 가 'url' 또는 'first' 면 저장값 갱신, 'stored' 면 write 0회 (FR4/B3/E7)
+- 프로젝트 조회 실패 → { key:null, source:'error' } (E2)
+- 반환 객체가 useMemo 로 안정화돼 있다 (N3 — 같은 입력이면 참조 동일)
+```
+
+**GREEN**. `useProjects()` + `useActiveProject()` + `useSearch({strict:false}).projectKey` + `resolveActiveProjectKey()` 조합. 저장은 `useEffect`(의존성은 **원시값 `key`·`source` 만**)
+
+**REFACTOR**. 반환 타입에 `isLoading`·`isError` 를 포함해 소비처가 조기 반환을 단순화할 수 있게
+
+**검증**. `node_modules/.bin/vitest run src/hooks/__tests__/use-resolved-active-project.test.tsx`
+
+---
+
+### Task 5. 경로 파라미터 기록기 — **신설 (B1)**
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/hooks/use-track-active-project.ts`, `apps/web/src/components/layout/ShellLayout.tsx`, `apps/web/src/components/layout/__tests__/ShellLayout.test.tsx`] · depends-on [2]
+
+**왜.** **S4 가 성립하는 유일한 자리.** `/projects/$projectKey/*` 를 볼 때 그 키를 저장해야 이후 `/issues` 가 그 프로젝트를 연다. 현재 `useParams().projectKey` 를 읽는 코드는 전부 props 로 내리기만 하고 저장하지 않는다.
+
+**RED**. `ShellLayout.test.tsx`
+```
+- /projects/INFRA/board 렌더 → 저장값이 'INFRA'
+- /issues 렌더 → 저장값 변화 0 (경로 파라미터 없음)
+- 같은 프로젝트 재방문 → write 0회 (E7)
+- 미인증 분기에서는 기록하지 않는다 (ShellLayout:52-56 passthrough)
+```
+
+**GREEN**. `useTrackActiveProject()` = `useParams({strict:false}).projectKey` 관측 → 변화 시 `setActiveProject`. `ShellLayout` **인증 분기에만** 마운트
+
+**REFACTOR**. 훅을 별 파일로 분리해 `ShellLayout` diff 를 1줄로 유지(랜드마크 구조 무변경 — `banner`/`main`/`complementary` e2e 계약)
+
+**검증**. `node_modules/.bin/vitest run src/components/layout/__tests__/ShellLayout.test.tsx` + `e2e/landmark.spec.ts`
+
+---
+
+### Task 6. 이슈 목록 배선 + navigate projectKey 보존
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/routes/issues.index.tsx`, `apps/web/src/routes/issues.index.test.tsx`] · depends-on [3, 4]
+
+**RED**
+```
+- ?projectKey=INFRA → fetchIssues 가 INFRA (S1)
+- 저장값 INFRA, URL 없음 → INFRA (S2)
+- ★ 필터 변경 후 URL 에 projectKey 가 남는다 (B2)
+- ★ 정렬·페이지·selected 변경 후에도 남는다 (B2 회귀 4지점)
+- 로딩 중 → fetchIssues 0회 (E1)
+- 프로젝트 0개 → EmptyState + fetchIssues 0회 + /projects 링크 (S5)
+- 조회 실패 → 에러 + 재시도 (E2)
+- ★ ?projectKey=NOPERM 이 403 → 에러 표시 + 저장값 미갱신 (S7/E4, 부정 단언)
+- ★ /issues?selected=KEY 에서 프로젝트 로딩 중에도 상세 페인은 산다 (C5)
+```
+**★ MSW 준비 (C3).** `test/setup.ts:19` 가 `onUnhandledRequest:'error'` 이고 `renderRouteAdapter()`(`issues.index.test.tsx:1367`)에 프로젝트 핸들러가 없다. **RED 착수 전 `GET /api/v1/projects` 핸들러를 harness 에 등록**하지 않으면 SV1~SV9 전량이 원인과 무관한 메시지로 깨진다
+
+**GREEN**. `DEFAULT_PROJECT_KEY` 삭제 · `useResolvedActiveProject()` 소비 · **navigate 5곳 전부 `...prev` 보존**(특히 `handleFilterChange:767-770` + `FilteredEmptyState` 초기화 `:604-607`) · 조기 반환은 **목록 영역 한정**(C5)
+
+**REFACTOR**. `IssueListPage` props 시그니처 **무변경** 확인(G3)
+
+**검증**. `node_modules/.bin/vitest run src/routes/issues.index.test.tsx`
+
+---
+
+### Task 7. 검색 라우트 — 3소비처 흡수
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/routes/search.tsx`, `apps/web/src/routes/search.test.tsx`] · depends-on [4]
+
+**RED**. `?projectKey=INFRA` 무회귀 · URL 없음 + 저장값 INFRA → INFRA · 프로젝트 0개 → AQL 조회 **0회** · 팔레트 `/search foo` 후에도 projectKey 유지 (C1/B2 동형 — `CommandPalette.tsx:88` 객체형 navigate)
+**★ MSW 준비 (C3).** `SearchRouteAdapter` describe 3종(`search.test.tsx:554,590,633`)에 프로젝트 핸들러 등록
+
+**GREEN**. 상수 삭제 · `useResolvedActiveProject()` 소비 · **`SearchRouteAdapter` 조기 반환 허용** — `SearchPage`(`:593`)·`SaveFilterDialog`(`:609`)·`ExportDialog`(`:616`) **3소비처 전부** non-nullable 계약 보존(B4)
+
+**REFACTOR**. `search.tsx:475-479` 우선순위 구조 보존(E8)
+
+**검증**. `node_modules/.bin/vitest run src/routes/search.test.tsx`
+
+---
+
+### Task 8. 회귀 봉인 — 판별식 재정의
+
+**메타**. agent `frontend-engineer` · files [`apps/web/src/__tests__/active-project-contract.test.ts`] · depends-on [6, 7]
+
+**★ v1 폐기 사유 (B5).** 판별식이 `const DEFAULT_PROJECT_KEY = 'ATLAS'` 를 **매치하지 못했다** — 없애려는 대상을 못 잡는 봉인. 뮤테이션도 판별식과 불일치. 스캔 범위 미정의로 `src/mocks/**` 60건+ 에 걸려 영구 RED.
+
+**RED**
+```
+판별식 (2종 OR)
+  /(?:DEFAULT_)?PROJECT_KEY\s*=\s*['"][A-Z][A-Z0-9]{1,9}['"]/     ← 상수 선언형
+  /projectKey\s*[:=]\s*['"][A-Z][A-Z0-9]{1,9}['"]/                ← 대입/프로퍼티형
+
+스캔 대상 = 명시적 파일 목록 (button-primitive-usage.test.ts 방식, 글롭 금지)
+  src/routes/**, src/components/**, src/hooks/**, src/lib/**, src/api/**
+  제외 — src/mocks/**, src/test/**, **/*.test.*, **/__tests__/**
+
+계약 2
+  위 목록에 매치 0건
+  Sidebar.tsx / commands.ts / shortcuts.ts / lib/start-page.ts 가
+  use-active-project·use-resolved-active-project 를 import 하지 않는다 (설계 B 고정)
+```
+
+**GREEN**. 테스트만 (프로덕션 변경 0)
+
+**REFACTOR**. **뮤테이션 3종으로 비-공허 증명** — ①`const DEFAULT_PROJECT_KEY = 'ATLAS'` 재삽입 ②`projectKey: 'ATLAS'` 삽입 ③`Sidebar.tsx` 에 import 삽입. **셋 다 fail 해야** 통과. 커밋 후에만 실행([[mutation-test-requires-committed-baseline]])하고 `git checkout` 으로 원복
+
+**검증**. 뮤테이션 3종 fail 확인 → 원복 → green
+
+---
+
+### Task 9. FR-UX-07 등록 — 정본 8종
+
+**메타**. agent `frontend-engineer` · files [`docs/plan/fr-index.md`, `docs/plan/product/personalization.md`, `docs/plan/README.md`, `docs/sdd/02-requirements.md`, `CLAUDE.md`, `docs/progress.html`] · depends-on []
+
+**RED**. **선-실패 확인** — FR-UX-07 행만 먼저 넣고 `verify-master-plan.sh` 가 EXIT 4(카운트 drift)를 내는지 본다. 안 내면 verify 가 이 형식을 못 잡는다는 뜻이라 **같은 PR 에서 verify 를 확장**한다(CLAUDE.md §강제)
+
+**GREEN**. 갱신 지점 (2026-07-28 실측 — 리뷰가 라인 정확성 확인)
+| 파일 | 지점 |
+|---|---|
+| `fr-index.md` | `:1` 주석 · `:5` §A.1 헤더 · `:8` 검증 문구 · `:175` `(FR-UX, 6개)`→7 · `:184` 뒤 행 추가 · `:247` personalization `13`→14 · `UX-01,04,05,06(4)`→`(5)` · `:249` 합계 · §A.4 이력 |
+| `personalization.md` | `:1` L1 · `:5` 소속 FR · `:110` §4 헤더 · 신규 `§4.5 FR-UX-07` + D1~D7 · `:204` 완료 게이트 |
+| `README.md` | `:113` BC 행 · `:117` 합계 · §7 이력 |
+| `sdd/02-requirements.md` | FR-UX-07 행 (**누락 시 verify EXIT 1**) |
+| `CLAUDE.md` | `:10` · `:57` |
+| `progress.html` | `node scripts/build-dashboard.mjs` |
+
+**REFACTOR**. `docs/plans`·`docs/decisions` 는 verify 스캔 대상 아님
+
+**검증**. `bash scripts/verify-master-plan.sh` **EXIT 0** + `132/132`
+
+---
+
+### Task 10. E2E — S1~S8 전수
+
+**메타**. agent `qa-engineer` · files [`apps/web/e2e/active-project.spec.ts`] · depends-on [5, 6, 7]
+
+**RED**. **S1~S8 전수 + NFR5** (v1 은 S6·S7·S8 이 없었다 — C6)
+```
+S1 ?projectKey=INFRA → INFRA + 저장 갱신
+S2 저장값 폴백 (addInitScript 로 localStorage 선주입)
+S3 첫 방문 → 목록 첫 원소 + 저장됨
+S4 /projects/INFRA/board → 사이드바 "이슈" → INFRA   ← T5 가 없으면 실패
+S5 프로젝트 0개 → 빈 상태 (MSW 시나리오 토글)
+S6 저장값 낡음 → 폴백 + 저장값 교정
+S7 권한 없는 projectKey → 에러 + 저장값 미갱신
+S8 시작 페이지 my_issues → 활성 프로젝트 담당 이슈
+NFR5 진입 후 URL 불변 · B2 필터 변경 후 projectKey 잔존
+```
+
+**GREEN**. MSW 는 **기존 `@/test/server` 단일 인스턴스**에만 등록([[msw-dual-setupserver-double-dispatch]])
+
+**REFACTOR**. 기존 셀렉터 재사용. **새 `aria-label` 도입 금지**
+
+**검증**. `node_modules/.bin/playwright test e2e/active-project.spec.ts` (**바이너리 직접 호출** — positional 필터 삼킴) + 회귀 `command-palette` · `issue-filter` · `landmark`
+
+---
+
+## Plan v2 메타
+
+- **task 수**. 10 (v1 8 + 신설 2)
+- **wave**. 4 — W1 `[T1, T2, T3, T9]` · W2 `[T4, T5]` · W3 `[T6, T7]` · W4 `[T8, T10]`
+- **TDD 강제**. yes (T9 문서는 선-실패 확인으로 대체)
+- **백엔드 변경**. 0 · 마이그레이션 0 · 신규 npm 0
+- **변경 프로덕션 파일**. **8** (신규 4 + 수정 4) — 신규 `lib/active-project.ts` · `hooks/use-active-project.ts` · `hooks/use-resolved-active-project.ts` · `hooks/use-track-active-project.ts` / 수정 `router.ts` · `components/layout/ShellLayout.tsx` · `routes/issues.index.tsx` · `routes/search.tsx`
+  > 로드맵 §F1 은 4개로 적었다. 리뷰가 B1(경로 기록기)·C2(조합 훅)를 적발해 **4 → 8**. 세어서 적는다([[spec-stated-count-becomes-blindfold]])
+- **diff 0 이어야 하는 파일**. `Sidebar.tsx` · `commands.ts` · `shortcuts.ts` · `lib/start-page.ts` (T8 이 봉인)
