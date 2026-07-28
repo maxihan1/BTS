@@ -27,6 +27,9 @@ class NotificationEventTypeTest : DescribeSpec({
             it("ISSUE_COMMENTED.wireValue == \"issue.commented\"") {
                 NotificationEventType.ISSUE_COMMENTED.wireValue shouldBe "issue.commented"
             }
+            it("ISSUE_COMMENT_DELETED.wireValue == \"issue.comment_deleted\"") {
+                NotificationEventType.ISSUE_COMMENT_DELETED.wireValue shouldBe "issue.comment_deleted"
+            }
             it("ISSUE_DUE_SOON.wireValue == \"issue.due_soon\"") {
                 NotificationEventType.ISSUE_DUE_SOON.wireValue shouldBe "issue.due_soon"
             }
