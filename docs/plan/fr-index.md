@@ -1,11 +1,11 @@
-<!-- 131개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 132개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (131개 전수)
+## §A.1 FR 역인덱스 (132개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 131개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 132개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -172,7 +172,7 @@
 | FR-PM-09 | 사용자 그룹 (전역 그룹 + 멤버십 인프라, FR-PM-06 선행) | 필수 | identity-access | §4.9 |
 | FR-PM-10 | 전역 권한 부여 (`global_permission_grants` — 그룹/사용자 grant + 관리 화면) | 필수 | identity-access | §4.10 |
 
-### 사용성 (FR-UX, 6개)
+### 사용성 (FR-UX, 7개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -182,6 +182,7 @@
 | FR-UX-04 | Slash 명령어 | 높음 | personalization | §4.2 |
 | FR-UX-05 | 키보드 단축키 | 높음 | personalization | §4.3 |
 | FR-UX-06 | UI/UX 전면 개편 (Jira Cloud 방식 — 통합 사이드바 + ADS v2 토큰) | 높음 | personalization | §4.4 |
+| FR-UX-07 | Jira 인터랙션 패리티 (활성 프로젝트·컨텍스트 단축키·인라인 편집·생성 모달) | 높음 | personalization | §4.5 |
 
 ### 인증 (FR-AU, 10개)
 
@@ -244,9 +245,9 @@
 | automation | 7 | AT(7) |
 | notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
-| personalization | 13 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06(4) |
+| personalization | 14 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06,07(5) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **131** | |
+| **합계** | **132** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -270,3 +271,4 @@
 - 2026-06-08. **FR-IS-10 신설**. 커스텀 필드 인프라 (issue-tracking). 합계 121→122.
 - 2026-06-14. **FR-NT-05 신설**. Webhook 알림 채널 (notification-dashboard, FR-NT-02에서 분리). 합계 122→123. FR-NT-02 "Webhook" 표기 정정(이메일/인앱만).
 - 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). 프로젝트 생성/목록·조회/설정변경/아카이브 + 전역 권한 부여(`global_permission_grants`). 합계 123→128. §A.1 상단 표기 drift 정정(122→128).
+- 2026-07-28. **FR-UX-07 신설**(personalization). Jira 인터랙션 패리티 — 활성 프로젝트 컨텍스트·컨텍스트 단축키·인라인 편집·생성 모달. 합계 131→132. FR-UX-05 §4.3이 후속 FR로 명시 제외한 범위를 승계한다.

@@ -7,7 +7,7 @@
 
 **BTS (Project Atlas)** — 사내 1,000명 규모 협업 워크스페이스. Atlas Issues (이슈 트래커) + Atlas Wiki (v0.5 예정). Kotlin/Spring + React 19, Naver Cloud Docker Compose 단일 호스트. Maxi 1인 + Claude Code 개발 모델.
 
-**현재 단계**. **Phase 1 — 131 FR 의 D1~D7 단계 전량 완료** (2026-07-27 실측. `- [x] D«n».` 909건 / 미완 0건).
+**현재 단계**. **Phase 1 — 132 FR** (FR-UX-07 착수, 나머지는 D1~D7 전량 완료) (2026-07-27 실측. `- [x] D«n».` 909건 / 미완 0건).
 남은 것은 각 BC 의 **완료 게이트**다 — §NFR 측정표 · `CHANGELOG.md` 정리 · **Maxi 1인 선언**.
 진척 현황은 `docs/progress.html`(`node scripts/build-dashboard.mjs` 로 재생성) / `docs/plan/README.md`.
 backend 10개 Gradle 모듈 = 9개 BC(identity-access · issue-tracking · project-workflow · shared-kernel ·
@@ -54,7 +54,7 @@ agile-planning · notification · search-export-import · slack-integration · a
 | 도메인 용어 사전 (DDD) | `Maxi_wiki/BTS/glossary.md` (Obsidian) |
 | 과거 사고/교훈 (회귀 방지) | `Maxi_wiki/BTS/learnings.md` (Obsidian) |
 | 바운디드 컨텍스트별 노트 | `Maxi_wiki/BTS/domain/<bc>.md` |
-| 기능 구현 진척 / FR 추적 | `docs/plan/README.md` (BC별 product/*.md, 131 FR) |
+| 기능 구현 진척 / FR 추적 | `docs/plan/README.md` (BC별 product/*.md, 132 FR) |
 
 ## 디렉토리 (한눈에)
 

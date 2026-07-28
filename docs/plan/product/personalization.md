@@ -1,8 +1,8 @@
-<!-- personalization BC — 프로필/설정/캘린더/퀵필터/Slash/단축키/UI개편 13 FR -->
+<!-- personalization BC — 프로필/설정/캘린더/퀵필터/Slash/단축키/UI개편/인터랙션패리티 14 FR -->
 
 # personalization BC
 
-**소속 FR**. 13개 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06 4).
+**소속 FR**. 14개 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07 5).
 **책임**. 사용자 프로필 / 환경 설정 / 캘린더 / UX 편의 (퀵 필터, Slash, 단축키).
 **SDD 참조**. 20장 (개인화).
 **다른 BC와의 경계**. identity-access의 user 식별 사용. issue-tracking의 할당/마감일 조회 (캘린더). agile-planning의 보드 필터 (퀵 필터). **import 금지 — 이벤트/API만**.
@@ -107,7 +107,7 @@
 - [x] D6. 프론트 UI — SHORTCUTS action ID 정규화 + resolveKeydown 병합 + 부트 GET + `/settings/keymap` 재배치·실시간충돌·기본복원 (책임. frontend-engineer)
 - [x] D7. E2E — 재배치→발화·충돌거부·기본복원(dead-leader·서버409 MSW토글) (책임. qa-engineer)
 
-## §4 UX 편의 (FR-UX-01, 04, 05, 06)
+## §4 UX 편의 (FR-UX-01, 04, 05, 06, 07)
 
 ### §4.1 FR-UX-01 — 퀵 필터 (보드 상단 즉시 필터)
 
@@ -175,6 +175,25 @@
 - [x] D6. 프론트 UI — 22 PR 체인 (프리미티브 → ADS 토큰 → Dialog 흡수 → `_shell`/사이드바 → 화면 6종 → 정리) (책임. frontend-engineer)
 - [x] D7. E2E — `aria-label` 4종 계약 보존 + 뷰 전환 `role=navigation` 회귀 가드 (책임. qa-engineer)
 
+### §4.5 FR-UX-07 — Jira 인터랙션 패리티
+
+**우선순위**. 높음 | **선행**. §4.4 (FR-UX-06) | **Plan slug**. `fr-ux-07-active-project-key` 외 다수
+
+FR-UX-06 이 **시각 계층**(ADS v2 토큰 70종 · 프리미티브 24종 · `_shell` 셸)을 완결했으나 **인터랙션 계층**은 손대지 않았다. 이 FR 은 그 격차를 메운다 — 활성 프로젝트 컨텍스트 · 컨텍스트 의존 단축키 · 인라인 편집 · 생성 모달 · 카드 밀도 · 백로그 세로 스택.
+
+**신설 근거가 문서에 선재한다** — §4.3(FR-UX-05)이 *"컨텍스트 의존 단축키(`j/k/e/m/s`)는 **후속 FR로 제외**(Maxi 결정 2026-07-05)"* 로 이 범위를 명시 이연했다. ADR [2026-07-28-fr-ux-07-active-project-context](../../decisions/2026-07-28-fr-ux-07-active-project-context.md) §D1 참조.
+
+> **★ 논리 ≠ 물리 (ADR §D2).** 논리 소속은 **personalization** 이나 물리 구현은 `apps/web` 이다. FR-UX-05 D4 · FR-UX-06 D5 선례를 승계한다.
+> **★ 백엔드 범위 (Maxi 결정 2026-07-28).** 생성 필드 확장·카드 필드 확장만 포함하고, **프로젝트 무관 조회(cross-project)는 제외**한다 — `IssueApplicationService` 의 visibility 술어가 단일 프로젝트 축으로 하드코딩돼 있어 합집합 조립이 fail-open 사고 위험이다.
+
+- [~] D1. 도메인 — 활성 프로젝트(Active Project) 4단 해소 개념 정립. ADR D1~D5 (책임. frontend-engineer)
+- [~] D2. 명세 — 시나리오 S1~S8 · FR1~FR9 · NFR1~NFR5 · 엣지 E1~E10 · 한계 L1~L4 (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — 없음 (클라이언트 localStorage 만, 마이그레이션 0) (책임. -)
+- [ ] D4. 백엔드 — 생성 필드 3종(담당자·우선순위·라벨) + 보드/백로그 카드 필드(타입·라벨·추정) (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 위 2건의 계약 테스트 (책임. backend-engineer)
+- [~] D6. 프론트 UI — 활성 프로젝트 · 생성 모달 · 팔레트 검색 · 단축키 · 인라인 편집 · 카드 밀도 · 백로그 · 프로젝트 스위처 · 전역 검색 (책임. frontend-engineer)
+- [ ] D7. E2E — 활성 프로젝트 S1~S8 · 단축키 · 인라인 편집 · 백로그 (책임. qa-engineer)
+
 ## §5 캘린더 (FR-CA, 2개)
 
 ### §5.1 FR-CA-01 — 개인 캘린더 (할당/마감일 통합)
@@ -218,10 +237,10 @@
 
 ### BC 완료 조건
 
-- [x] §2~§5 (13 FR) 모두 `[x]` 마킹 — **13/13 달성 (2026-07-25, UX 개편 PR22 머지로 D단계 91/91 완료)**
+- [~] §2~§5 (14 FR) 모두 `[x]` 마킹 — 13/14 (2026-07-25 UX 개편 PR22 로 13종 완료. 인터랙션 패리티 진행 중)
       <!-- ★ 이 줄에 `FR-XX-NN` 형태를 쓰지 말 것 — verify-master-plan.sh 의 "§N 헤더 (FR-XX, N개)"
            스캐너가 헤더 선언으로 오인해 `N개` 파싱에 실패하고 EXIT 1 이 된다(2026-07-25 실제 발생). -->
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 8행 전부 실측값이 `___` 공란. k6(프로필 조회·캘린더 30일·iCal Export) · Playwright(설정 적용·cmdk 응답) · E2E 전수(단축키) · Lighthouse CI(LCP) · axe-core(WCAG AA) 를 실제로 돌려 p95 를 채워야 한다 (2026-07-27 실측)
-- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (13 FR / 2026-07-05~07-25 / 대표 산출 4종 + 논리 BC 각주)
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (14 FR / 2026-07-05~07-25 / 대표 산출 4종 + 논리 BC 각주. FR-UX-07 은 완료 시 추가)
 - [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 2026-07-27 실측: `docs/plan/README.md` §7 은 3행뿐이고 BC 완료 행 없음 — 이 행의 날짜가 곧 선언일이므로 선언 이전에는 기입 불가
 - [ ] Maxi 1인 선언 — "personalization BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

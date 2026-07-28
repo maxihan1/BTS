@@ -110,11 +110,11 @@ identity-access  ─┐
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☑ D단계 |
-| personalization | [product/personalization.md](product/personalization.md) | 13 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06 4) | (없음) | ☑ D단계 |
+| personalization | [product/personalization.md](product/personalization.md) | 14 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07 5) | (없음) | ☑ D단계 |
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☑ D단계 |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 131 FR.
+**합계**. 132 FR.
 
 > **진척 열 판독**. `☑ D단계` = 그 BC 에 속한 FR 전량이 D1~D7 을 마쳤다는 뜻이고,
 > **BC 완료 선언과는 다르다**. 선언은 §NFR 측정표 통과 + `CHANGELOG.md` 정리 +
@@ -167,3 +167,4 @@ SDD `02-requirements.md §2.3` 임계를 강제. 3중 게이트로 PR 단위 회
 - 2026-05-20. **재편성**. SDD 17장의 Phase 0~4 분할 대신 9개 BC 단위 완제품 계획으로 전환. 기존 `phase-0-poc.md`, `phase-1-mvp.md` 폐기. `product/` 디렉토리 신설.
 - 2026-05-20. **초안**. `docs/plan/` 디렉토리 신설. 117개 FR 전수 매핑. NFR 3중 게이트 정의. `scripts/verify-master-plan.sh` 작성. `CLAUDE.md` 진입 트리 1행 추가.
 - 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). §1 BC 테이블 두 행 갱신(identity-access 24→25, issue-tracking 31→35). 합계 123→128.
+- 2026-07-28. **FR-UX-07 신설**(personalization 13→14). Jira 인터랙션 패리티. 합계 131→132.
