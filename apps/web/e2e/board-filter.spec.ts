@@ -50,7 +50,7 @@ const FILTER_BOARD_URL = `/projects/${FILTER_PROJECT_KEY}/board?board=${FILTER_B
  * board-fixtures.ts ALICE_USER_ID 인라인 상수와도 동기화.
  * FILTER_BOARD 카드 FILTER-1, FILTER-3의 assigneeId.
  */
-const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+const ALICE_USER_ID = '00000000-0000-4000-8000-000000000001'
 
 // COMPONENT_C1_ID / COMPONENT_C2_ID 상수는 E2E 스펙에서 직접 참조하지 않는다.
 // component-handlers.ts가 모듈 로드 시 IIFE로 컴포넌트A/컴포넌트B를 자동 시드한다.

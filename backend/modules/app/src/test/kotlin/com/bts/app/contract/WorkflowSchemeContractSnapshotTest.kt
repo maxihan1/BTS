@@ -7,11 +7,7 @@ import com.fasterxml.jackson.core.util.DefaultIndenter
 import com.fasterxml.jackson.core.util.DefaultPrettyPrinter
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.BooleanNode
-import com.fasterxml.jackson.databind.node.IntNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.NullNode
-import com.fasterxml.jackson.databind.node.TextNode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -65,10 +61,14 @@ import kotlin.io.path.writeText
  * 같은 pgmq 큐를 동시 폴링한다).
  *
  * ## 스냅샷 값 규칙 (plan D-6)
- * leaf 값은 [canonical] 로 **타입별 표준값**에 치환된다(숫자 0 · 불리언 true · UUID/instant/그 외
- * 문자열 각각 고정값 · null 은 보존 · 배열은 중복제거+정렬 · 객체 키는 사전순). 자동증가 id·실행
- * 시각·환경별 행 수에 무관하게 바이트 동일해지므로 문자열 동등 비교가 성립한다. 타입은 보존되므로
- * 프론트 Zod 파싱은 그대로 유효하고, 필드명 오타·누락·추가는 그대로 검출된다.
+ * leaf 값은 [ContractSnapshotCanonicalizer] 로 **타입별 표준값**에 치환된다(정수 1 · 실수 1.5 ·
+ * 불리언 true · UUID/instant/그 외 문자열 각각 고정값 · null 은 보존 · 배열은 중복제거+정렬 ·
+ * 객체 키는 사전순). 자동증가 id·실행 시각·환경별 행 수에 무관하게 바이트 동일해지므로 문자열
+ * 동등 비교가 성립한다. 타입은 보존되므로 프론트 Zod 파싱은 그대로 유효하고, 필드명 오타·누락·
+ * 추가는 그대로 검출된다.
+ *
+ * 정수와 실수를 **다른 표준값**으로 가르는 이유는 [ContractSnapshotCanonicalizer] KDoc 참조 —
+ * 예전 규칙은 모든 숫자를 `1` 로 눌러 DTO 의 `Long` → `Double` 변경을 놓쳤다(뮤테이션 실측).
  */
 class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
     @LocalServerPort
@@ -244,45 +244,11 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
     private fun canonical(raw: Map<String, JsonNode>): JsonNode {
         val root = JsonNodeFactory.instance.objectNode()
         root.put("\$comment", SNAPSHOT_NOTE)
-        raw.keys.sorted().forEach { root.set<JsonNode>(it, canonicalNode(raw.getValue(it))) }
+        raw.keys.sorted().forEach {
+            root.set<JsonNode>(it, ContractSnapshotCanonicalizer.canonicalNode(raw.getValue(it)))
+        }
         return root
     }
-
-    /** leaf 를 타입별 표준값으로 치환한다 — 값 변동은 지우고 **타입·필드명·nullability 는 보존**한다. */
-    private fun canonicalNode(node: JsonNode): JsonNode =
-        when {
-            node.isObject -> canonicalObject(node)
-            node.isArray -> canonicalArray(node)
-            node.isNull -> NullNode.instance
-            node.isBoolean -> BooleanNode.TRUE
-            node.isNumber -> IntNode(CANONICAL_NUMBER)
-            node.isTextual -> canonicalText(node.textValue())
-            else -> TextNode(CANONICAL_STRING)
-        }
-
-    private fun canonicalObject(node: JsonNode): JsonNode {
-        val out = JsonNodeFactory.instance.objectNode()
-        node.fieldNames().asSequence().sorted().forEach { out.set<JsonNode>(it, canonicalNode(node.get(it))) }
-        return out
-    }
-
-    /** 원소를 정규화한 뒤 중복 제거 + 정렬 — 행 수·정렬 순서가 환경마다 달라도 스냅샷이 흔들리지 않는다. */
-    private fun canonicalArray(node: JsonNode): JsonNode {
-        val out = JsonNodeFactory.instance.arrayNode()
-        node
-            .map { canonicalNode(it) }
-            .distinctBy { it.toString() }
-            .sortedBy { it.toString() }
-            .forEach { out.add(it) }
-        return out
-    }
-
-    private fun canonicalText(value: String): TextNode =
-        when {
-            UUID_REGEX.matches(value) -> TextNode(CANONICAL_UUID)
-            INSTANT_REGEX.matches(value) -> TextNode(CANONICAL_INSTANT)
-            else -> TextNode(CANONICAL_STRING)
-        }
 
     /** 들여쓰기를 OS 무관하게 고정한다 — 시스템 개행을 쓰면 플랫폼마다 파일이 달라진다. */
     private fun prettyPrint(node: JsonNode): String {
@@ -349,22 +315,8 @@ class WorkflowSchemeContractSnapshotTest : ProdAssemblyHttpTestBase() {
         const val UPDATE_BODY = """{"name":"계약 스냅샷 스킴 v2","description":null}"""
         const val ASSIGN_BODY = """{"schemeKey":"$SCHEME_KEY"}"""
 
-        val UUID_REGEX = Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
-        val INSTANT_REGEX = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$""")
-
-        /**
-         * 숫자 표준값 — **0 이 아니라 1** 이다.
-         *
-         * id·schemeId 는 BIGSERIAL 이라 실값이 1 부터 시작하고, 프론트 Zod 가 그 불변식을
-         * `z.number().int().positive()` 로 못박고 있다. 0 을 쓰면 계약 테스트가 어휘 불일치가 아니라
-         * **값 제약**으로 실패해, 형태 검증에 값 검증이 섞인다. 1 은 positive·nonnegative·nullable
-         * 제약을 모두 만족하는 중립값이면서 실제 데이터에 더 가깝다.
-         */
-        const val CANONICAL_NUMBER = 1
-
-        const val CANONICAL_STRING = "string"
-        const val CANONICAL_UUID = "00000000-0000-4000-8000-000000000000"
-        const val CANONICAL_INSTANT = "2026-01-01T00:00:00Z"
+        /** 정규화기와 같은 판정식을 쓴다 — 두 벌로 갈리면 계약 판정이 파일마다 달라진다. */
+        val INSTANT_REGEX = ContractSnapshotCanonicalizer.INSTANT_REGEX
 
         /**
          * repo 루트의 계약 정본. Gradle 테스트 CWD 는 `backend/modules/app` 이라 `..` 상대경로는

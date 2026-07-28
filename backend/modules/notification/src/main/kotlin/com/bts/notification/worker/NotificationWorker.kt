@@ -437,11 +437,16 @@ class NotificationWorker(
                 null
             }
 
+        // 삭제된 댓글의 작성자 — issue.comment_deleted 페이로드에만 있다.
+        // 다른 이벤트에서는 path() 가 missing 을 돌려주고 parseActorId 가 null 을 낸다.
+        val commentAuthorId = parseActorId(node.path("commentAuthorId"))
+
         return NotificationSourceEvent(
             eventType = eventType,
             issueKey = issueKey,
             projectKey = projectKey,
             mentionedUserIds = mentionedUserIds,
+            commentAuthorId = commentAuthorId,
             reporterId = reporterId,
             actorId = actorId,
             occurredAt = occurredAt,

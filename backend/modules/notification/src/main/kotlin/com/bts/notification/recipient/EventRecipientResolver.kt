@@ -19,6 +19,7 @@ import java.util.UUID
  *
  * ## 해석 규칙
  * - [RecipientRole.MENTIONED]: [NotificationSourceEvent.mentionedUserIds] 각각 → 수신자.
+ * - [RecipientRole.COMMENT_AUTHOR]: [NotificationSourceEvent.commentAuthorId] → 수신자 (포트 조회 없음).
  * - [RecipientRole.REPORTER]: [NotificationSourceEvent.reporterId] 있으면 직접 사용,
  *   없으면 [issueRecipientLookupPort] 로 조회.
  * - [RecipientRole.ASSIGNEE]: [NotificationSourceEvent.issueKey] 로 포트 조회.
@@ -125,6 +126,7 @@ class EventRecipientResolver(
     ): List<ResolvedRecipient> =
         when (match.recipientRole) {
             RecipientRole.MENTIONED -> resolveMentioned(event, match.channel)
+            RecipientRole.COMMENT_AUTHOR -> resolveCommentAuthor(event, match.channel)
             RecipientRole.REPORTER -> resolveReporter(event, match.channel, issueRecipients)
             RecipientRole.ASSIGNEE -> resolveAssignee(match.channel, issueRecipients)
             RecipientRole.WATCHER -> resolveWatcher(match.channel, issueRecipients)
@@ -148,6 +150,20 @@ class EventRecipientResolver(
         event: NotificationSourceEvent,
         channel: Channel,
     ): List<ResolvedRecipient> = event.mentionedUserIds.map { ResolvedRecipient(userId = it, channel = channel) }
+
+    /**
+     * 삭제된 댓글의 작성자 — 이벤트 페이로드에서 직접 해석한다(포트 조회 없음).
+     *
+     * [resolveMentioned] 와 같은 형태다. 자기 삭제(actor == author) 제외는 이 함수가 아니라
+     * 공통 **자기제외** 단계가 담당한다 — 여기서 걸면 자기제외 규칙이 두 곳에 생긴다.
+     */
+    private fun resolveCommentAuthor(
+        event: NotificationSourceEvent,
+        channel: Channel,
+    ): List<ResolvedRecipient> =
+        event.commentAuthorId
+            ?.let { listOf(ResolvedRecipient(userId = it, channel = channel)) }
+            ?: emptyList()
 
     private fun resolveReporter(
         event: NotificationSourceEvent,

@@ -15,6 +15,9 @@ import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.link.repository.LinkedIssueRow
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -38,12 +41,28 @@ class IssueGraphServiceTest : DescribeSpec({
     val linkRepository = mockk<IssueLinkRepository>()
     val graphRepository = mockk<IssueGraphRepository>()
 
+    /**
+     * 이 파일은 BFS 알고리즘을 검증한다 — 권한 판정은 [IssueGraphControllerIntegrationTest] 가 덮는다.
+     * 그쪽은 실제로 `deny` 를 걸어 거부 경로를 밟으므로, 여기 허용 스텁은 눈가림이 아니다.
+     */
+    val permissionResolver =
+        object : IssuePermissionResolver {
+            override fun hasPermission(
+                actorId: UUID,
+                permission: IssuePermission,
+                scope: IssueScope,
+            ): Boolean = true
+        }
+
     val sut =
         IssueGraphService(
             issueRepository = issueRepository,
             linkRepository = linkRepository,
             graphRepository = graphRepository,
+            permissionResolver = permissionResolver,
         )
+
+    val actor = ActorId(UUID.fromString("00000000-0000-4000-8000-1000000000ac"))
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
 
@@ -112,7 +131,7 @@ class IssueGraphServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(centerKey) } returns null
 
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.buildGraph(centerKey, null)
+                    sut.buildGraph(actor, centerKey, null)
                 }
             }
         }
@@ -148,7 +167,7 @@ class IssueGraphServiceTest : DescribeSpec({
             stubNoNeighbors(parentId)
             stubNoNeighbors(childId)
 
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
 
             result.centerKey shouldBe "BTS-1"
             result.depth shouldBe 1
@@ -211,7 +230,7 @@ class IssueGraphServiceTest : DescribeSpec({
             every { graphRepository.findChildren(hop1Id) } returns emptyList()
             stubNoNeighbors(hop2Id)
 
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
             val keys = result.nodes.map { it.key }
             keys.contains("BTS-3").shouldBeFalse()
         }
@@ -232,7 +251,7 @@ class IssueGraphServiceTest : DescribeSpec({
             every { graphRepository.findChildren(hop1Id) } returns emptyList()
             stubNoNeighbors(hop2Id)
 
-            val result = sut.buildGraph(centerKey, "2")
+            val result = sut.buildGraph(actor, centerKey, "2")
             val keys = result.nodes.map { it.key }
             keys.contains("BTS-3").shouldBeTrue()
         }
@@ -262,7 +281,7 @@ class IssueGraphServiceTest : DescribeSpec({
             every { graphRepository.findChildren(nodeAId) } returns emptyList()
 
             // depth=1, nodeB 는 등장하지 않음
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
 
             // BLOCKS 엣지는 linkId=99 로 dedup → 1개
             val blocksEdges = result.edges.filter { it.type == "BLOCKS" }
@@ -280,7 +299,7 @@ class IssueGraphServiceTest : DescribeSpec({
             every { issueRepository.findByKey(centerKey) } returns centerIssue
             stubNoNeighbors(centerId)
 
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
             result.truncated.shouldBeFalse()
             result.nodes shouldHaveSize 1
         }
@@ -298,7 +317,7 @@ class IssueGraphServiceTest : DescribeSpec({
             every { graphRepository.findParent(centerId) } returns null
             every { graphRepository.findChildren(centerId) } returns emptyList()
 
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
 
             result.truncated.shouldBeTrue()
             result.nodes shouldHaveSize IssueGraphService.NODE_CAP
@@ -331,7 +350,7 @@ class IssueGraphServiceTest : DescribeSpec({
             stubNoNeighbors(idB)
             stubNoNeighbors(idC)
 
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
 
             // depth=0: BTS-1, depth=1: BTS-2, BTS-3, BTS-4 (key ASC)
             result.nodes.map { it.key } shouldBe listOf("BTS-1", "BTS-2", "BTS-3", "BTS-4")
@@ -351,7 +370,7 @@ class IssueGraphServiceTest : DescribeSpec({
             stubNoNeighbors(idA)
             stubNoNeighbors(idC)
 
-            val result = sut.buildGraph(centerKey, "1")
+            val result = sut.buildGraph(actor, centerKey, "1")
 
             // fromKey=BTS-1, toKey BTS-2(BLOCKS) < BTS-4(RELATES) 순
             result.edges[0].toKey shouldBe "BTS-2"
@@ -369,7 +388,7 @@ class IssueGraphServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(centerKey) } returns centerIssue
                 stubNoNeighbors(centerId)
 
-                val result = sut.buildGraph(centerKey, null)
+                val result = sut.buildGraph(actor, centerKey, null)
                 result.depth shouldBe 2
             }
         }
@@ -379,7 +398,7 @@ class IssueGraphServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(centerKey) } returns centerIssue
                 stubNoNeighbors(centerId)
 
-                val result = sut.buildGraph(centerKey, "   ")
+                val result = sut.buildGraph(actor, centerKey, "   ")
                 result.depth shouldBe 2
             }
         }
@@ -387,7 +406,7 @@ class IssueGraphServiceTest : DescribeSpec({
         context("raw=\"abc\"") {
             it("InvalidGraphDepthException 을 던진다") {
                 shouldThrow<InvalidGraphDepthException> {
-                    sut.buildGraph(centerKey, "abc")
+                    sut.buildGraph(actor, centerKey, "abc")
                 }
             }
         }
@@ -395,7 +414,7 @@ class IssueGraphServiceTest : DescribeSpec({
         context("raw=\"0\"") {
             it("InvalidGraphDepthException 을 던진다") {
                 shouldThrow<InvalidGraphDepthException> {
-                    sut.buildGraph(centerKey, "0")
+                    sut.buildGraph(actor, centerKey, "0")
                 }
             }
         }
@@ -403,7 +422,7 @@ class IssueGraphServiceTest : DescribeSpec({
         context("raw=\"4\"") {
             it("InvalidGraphDepthException 을 던진다") {
                 shouldThrow<InvalidGraphDepthException> {
-                    sut.buildGraph(centerKey, "4")
+                    sut.buildGraph(actor, centerKey, "4")
                 }
             }
         }
@@ -411,7 +430,7 @@ class IssueGraphServiceTest : DescribeSpec({
         context("raw=\"-1\"") {
             it("InvalidGraphDepthException 을 던진다") {
                 shouldThrow<InvalidGraphDepthException> {
-                    sut.buildGraph(centerKey, "-1")
+                    sut.buildGraph(actor, centerKey, "-1")
                 }
             }
         }
@@ -421,7 +440,7 @@ class IssueGraphServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(centerKey) } returns centerIssue
                 stubNoNeighbors(centerId)
 
-                val result = sut.buildGraph(centerKey, "3")
+                val result = sut.buildGraph(actor, centerKey, "3")
                 result.depth shouldBe 3
             }
         }

@@ -9,21 +9,21 @@
 
 ## §0 진입 조건
 
-- [ ] DEVELOPMENT.md §1.1~§1.6 (보안 6개 절대 규칙) 숙지
-- [ ] DATA.md §사용자/세션 테이블 규칙 확인
-- [ ] `docs/poc/dependencies.md §2.3` (인증/보안 라이브러리) 확인
-- [ ] §1 기술 검증 통과 (아래)
+- [x] DEVELOPMENT.md §1.1~§1.6 (보안 6개 절대 규칙) 숙지 — 2026-07-27 실측: `DEVELOPMENT.md` L11 `### §1.1 보안 (6개)` 실재. 준수 증거 = Argon2id `MEMORY_KB = 65536`(`Argon2Params.kt` L20, §1.1 요구) + CSRF 쿠키 모드(`SecurityConfig.kt` L142~). 참고. 현행 `DEVELOPMENT.md §1` 은 §1.1~§1.4 뿐이며 §1.5·§1.6 번호는 문서 재편 전 표기다
+- [x] DATA.md §사용자/세션 테이블 규칙 확인 — 2026-07-27 실측: `DATA.md` L49 세션/임시 토큰(`sessions`·`refresh_tokens`) TTL·하드삭제 규칙 + L206 `§8. 토큰 / 비밀값 저장`(패스워드·PAT) 실재. (헤더명은 `§3 소프트 삭제`·`§8 토큰/비밀값 저장`으로, 위 표기와 다르다)
+- [x] `docs/poc/dependencies.md §2.3` (인증/보안 라이브러리) 확인 — 2026-07-27 실측: `docs/poc/dependencies.md` L54 `### §2.3 인증 / 보안 (SDD 19장)` 실재. 표의 3종이 모두 도입됨 — `spring-boot-starter-oauth2-client`(build.gradle.kts L67) · `-resource-server`(L71) · `de.mkammerer:argon2-jvm:2.11`(L75)
+- [x] §1 기술 검증 통과 (아래) — 2026-07-27 실측: 아래 §1 6개 항목 전부 `[x]` 확인 완료
 
 ## §1 기술 검증 (AuthN Provider + Keycloak PoC)
 
 **SDD**. 19장. **checklist.md 위임**. §1.4. **ADR 후보**. 없음 (LDAP/SAML/OIDC는 표준 라이브러리).
 
-- [ ] `AuthenticationProvider` 인터페이스 + `de.mkammerer:argon2-jvm` 패스워드 해싱 동작 (Argon2id, memory=64MB)
-- [ ] OIDC Authorization Code + PKCE 동작 (Keycloak 25 컨테이너)
-- [ ] Keycloak realm import 스크립트 (`infra/keycloak/realm-bts.json`)
-- [ ] Spring Security 필터 체인 — 1개 보호된 엔드포인트 동작 확인
-- [ ] CSRF 토큰 검증 동작 (DEVELOPMENT.md §1.5 준수)
-- [ ] Testcontainers Keycloak 통합 테스트 1개 통과
+- [x] `AuthenticationProvider` 인터페이스 + `de.mkammerer:argon2-jvm` 패스워드 해싱 동작 (Argon2id, memory=64MB) — 2026-07-27 실측: `identity/spi/AuthenticationProvider.kt` 실재(+ `ProviderRegistry`·`CompositeAuthenticationManager`), `build.gradle.kts` L75 `de.mkammerer:argon2-jvm:2.11`, `Argon2Params.MEMORY_KB = 65536`(=64MB)·ITERATIONS·PARALLELISM 을 `LocalCredentialService` 가 소비. `LocalCredentialServiceTest` 12/12 PASS
+- [x] OIDC Authorization Code + PKCE 동작 (Keycloak 25 컨테이너) — 2026-07-27 실측: `OidcAuthFlowIntegrationTest` 5/5 PASS (`quay.io/keycloak/keycloak:25.0` Testcontainers). 진입 302 의 `code_challenge` 비어있지 않음 + `code_challenge_method=S256` 단언(테스트 L213~214)
+- [x] Keycloak realm import 스크립트 (`infra/keycloak/realm-bts.json`) — 2026-07-27 실측: 파일 실재(1087 B, `"realm": "bts"` + `bts-web` 클라이언트). `infra/docker-compose.dev.yml` L28 `start-dev --import-realm` + L35 `/opt/keycloak/data/import/` 마운트로 결선됨
+- [x] Spring Security 필터 체인 — 1개 보호된 엔드포인트 동작 확인 — 2026-07-27 실측: `config/SecurityConfig.kt` 단일 `SecurityFilterChain` 빈(L98) + `auth.requestMatchers("/api/**").authenticated()`(L222). `RoutePermitAllIntegrationTest`·`WhoamiControllerTest` 가 보호 경로를 검증
+- [x] CSRF 토큰 검증 동작 (DEVELOPMENT.md §1.5 준수) — 2026-07-27 실측: `PreferencesControllerCsrfTest` 2/2 PASS. `CookieCsrfTokenRepository` + `CsrfTokenRequestAttributeHandler` + SameSite=Strict (`SecurityConfig.kt` L101~144, ADR `docs/decisions/2026-05-20-csrf-cookie-mode.md`)
+- [x] Testcontainers Keycloak 통합 테스트 1개 통과 — 2026-07-27 실측: `./gradlew :modules:identity-access:test --tests "*OidcAuthFlowIntegrationTest"` → BUILD SUCCESSFUL, XML 집계 5 tests / 0 failures / 0 errors. 동형 베이스로 `KeycloakSamlTestcontainersBase`(SAML) 도 존재
 
 ## §2 인증 (FR-AU, 10개)
 
@@ -419,11 +419,11 @@
 
 ### BC 완료 조건
 
-- [ ] §2 (FR-AU 10개) 모두 `[x]` 마킹
-- [ ] §3 (FR-MF 5개) 모두 `[x]` 마킹
-- [ ] §4 (FR-PM 10개) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] OWASP Top 10 자가 점검 (`docs/adr/<date>-identity-owasp-audit.md`)
-- [ ] CHANGELOG.md 정리 (BC 단위 변경 요약)
-- [ ] README.md §7 변경 이력에 "identity-access BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "identity-access BC 완료"
+- [x] §2 (FR-AU 10개) 모두 `[x]` 마킹 — 2026-07-27 실측: §2 구간에 `FR-AU-01~10` 헤더 10개, `- [x] D«n».` 70건 / 미완 0건
+- [x] §3 (FR-MF 5개) 모두 `[x]` 마킹 — 2026-07-27 실측: §3 구간에 `FR-MF-01~05` 헤더 5개, `- [x] D«n».` 35건 / 미완 0건
+- [x] §4 (FR-PM 10개) 모두 `[x]` 마킹 — 2026-07-27 실측: §4 구간에 `FR-PM-01~10` 헤더 10개, `- [x] D«n».` 64건 / 미완 0건 (파일 전체 미완 D 0건)
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정표 8행이 전부 `___` 공란이다. 필요한 측정. k6 p95 4종(LDAP 로그인 500ms · OIDC 로그인 800ms · JWT 검증 50ms · 권한 가드 10ms) · 감사 로그 1년 보존 DB 정책 확인 · 로그인 페이지 axe-core WCAG 2.1 AA 0 violations · Trivy+Dependabot 0 high/critical. (Argon2id memory=64MB 1행만 코드 실측으로 충족 — `Argon2Params.MEMORY_KB = 65536`)
+- [ ] OWASP Top 10 자가 점검 (`docs/adr/<date>-identity-owasp-audit.md`) — 미측정. 2026-07-27 실측: `docs/decisions/`·`docs/adr/` 어느 쪽에도 `owasp` 파일명이 없다. OWASP Top 10 항목별 자가 점검을 수행하고 그 결과 ADR 을 발행해야 한다
+- [x] CHANGELOG.md 정리 (BC 단위 변경 요약) — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` 실재. `[Unreleased] — Phase 1 §BC 요약` 표 L27 에 identity-access 행(25 FR · 2026-05-20~07-18 · PR 42건 · 대표 산출 5종) 등재됨
+- [ ] README.md §7 변경 이력에 "identity-access BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 2026-07-27 실측: `docs/plan/README.md §7`(L165~) 에 identity-access 완료 행 없음. 기재할 날짜가 아래 선언 시점이라 선언 확정 후에 추가한다
+- [ ] Maxi 1인 선언 — "identity-access BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

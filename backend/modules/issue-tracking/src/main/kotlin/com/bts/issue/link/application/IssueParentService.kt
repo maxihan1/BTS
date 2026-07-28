@@ -2,12 +2,17 @@
 
 package com.bts.issue.link.application
 
+import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.domain.ParentCycleException
 import com.bts.issue.link.domain.ParentSelfReferenceException
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -35,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional
 class IssueParentService(
     private val issueRepository: IssueRepository,
     private val archiveGuard: ProjectArchiveGuard,
+    private val permissionResolver: IssuePermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -50,10 +56,15 @@ class IssueParentService(
     @Transactional
     @Suppress("ThrowsCount") // child 404 / parent 404 / self 422 / cycle 409 — 검증 단계별 명시적 throw 4개, 리팩토링 시 복잡도 증가
     fun setParent(
+        actor: ActorId,
         childKey: IssueKey,
         parentKey: IssueKey,
     ) {
         // 아카이브 잠금 — child/parent 어느 한쪽이라도 아카이브된 프로젝트 소속이면 409.
+        // ★권한을 리소스 조회보다 먼저. 양끝 모두 검사한다 — child 만 보면 볼 수 없는 이슈를
+        // parent 로 지목해 404/409 차이로 실재를 확인할 수 있다(링크 생성과 같은 논리).
+        checkPermission(actor, childKey, IssuePermission.UPDATE)
+        checkPermission(actor, parentKey, IssuePermission.UPDATE)
         archiveGuard.checkByIssue(childKey)
         archiveGuard.checkByIssue(parentKey)
 
@@ -101,7 +112,11 @@ class IssueParentService(
      * @throws LinkedIssueNotFoundException child 이슈가 존재하지 않거나 소프트삭제된 경우(404).
      */
     @Transactional
-    fun clearParent(childKey: IssueKey) {
+    fun clearParent(
+        actor: ActorId,
+        childKey: IssueKey,
+    ) {
+        checkPermission(actor, childKey, IssuePermission.UPDATE)
         archiveGuard.checkByIssue(childKey)
 
         val child =
@@ -114,5 +129,22 @@ class IssueParentService(
         val childId = child.id.value
         log.debug("clearParent: childId={}", childId)
         issueRepository.updateParent(childId, null)
+    }
+
+    /**
+     * 이슈 스코프 권한을 강제한다 — 미보유 시 [IssueAccessDeniedException].
+     *
+     * [LinkApplicationService.checkPermission] 과 같은 형태다. 2026-07-27 이전에는 이 서비스도
+     * `permissionResolver` 를 주입받지 않아, 인증만 통과하면 누구나 임의 이슈의 부모를 바꿀 수 있었다.
+     */
+    private fun checkPermission(
+        actor: ActorId,
+        issueKey: IssueKey,
+        permission: IssuePermission,
+    ) {
+        val scope = IssueScope.Issue(issueKey.value)
+        if (!permissionResolver.hasPermission(actor.value, permission, scope)) {
+            throw IssueAccessDeniedException(actor, permission, scope)
+        }
     }
 }

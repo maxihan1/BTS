@@ -124,7 +124,7 @@ describe('AuditLogFilters', () => {
       http.get('/api/v1/users', () =>
         HttpResponse.json([
           {
-            id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+            id: '00000000-0000-4000-8000-000000000001',
             username: 'alice',
             displayName: '김앨리스',
             email: null,
@@ -149,7 +149,7 @@ describe('AuditLogFilters', () => {
       http.get('/api/v1/users', () =>
         HttpResponse.json([
           {
-            id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+            id: '00000000-0000-4000-8000-000000000001',
             username: 'alice',
             displayName: '김앨리스',
             email: null,
@@ -171,7 +171,7 @@ describe('AuditLogFilters', () => {
     await user.click(screen.getByText('김앨리스'))
 
     expect(onFilterChange).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f' }),
+      expect.objectContaining({ userId: '00000000-0000-4000-8000-000000000001' }),
     )
   })
 })

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { schemeHandlers } from '@/mocks/scheme-handlers'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
@@ -194,5 +195,75 @@ describe('WorkflowSchemeDetailPage', () => {
   it('PL7-2: 컴포넌트는 자체 <main>을 렌더하지 않는다', () => {
     const { container } = renderDetailPage()
     expect(container.querySelector('main')).toBeNull()
+  })
+
+  /**
+   * description 의 null↔'' 왕복 회귀 방지 (TODOS §description 의 null↔'' 왕복).
+   *
+   * DB 컬럼은 `description TEXT` (V201, NOT NULL 없음)라 **NULL 과 '' 는 서로 다른 값**이고,
+   * 백엔드 DTO 도 `String?` 이라 받은 값을 그대로 저장한다.
+   *
+   * 폼은 textarea 가 null 을 못 받아 `scheme.description ?? ''` 로 정규화해 들고 있는데,
+   * 저장할 때 **되돌리지 않고 그대로** 보냈다. ⇒ 이름만 고쳐도 DB 의 NULL 이 '' 로 바뀐다
+   * (조용한 데이터 변질 — 어떤 화면도 이 차이를 보여주지 않아 눈치채기 어렵다).
+   */
+  it('S9-1: 설명이 비어 있으면 null 로 보낸다 (빈 문자열이 아니라)', async () => {
+    let capturedBody: unknown = null
+
+    // ★ 순서가 중요하다. MSW 는 먼저 등록된 핸들러가 이긴다 —
+    //   ...schemeHandlers 를 앞에 두면 그 catch-all 이 아래 전용 핸들러를 가린다
+    //   (메모리 msw-dual-handler-e2e-shadow).
+    server.use(
+      // description 이 null 인 스킴을 상세로 돌려준다.
+      http.get('/api/v1/workflow-schemes/nullable-desc-scheme', () =>
+        HttpResponse.json({
+          data: {
+            id: 42,
+            key: 'nullable-desc-scheme',
+            name: '설명 없는 스킴',
+            description: null,
+            isStandard: false,
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+            usedByProjectsCount: 0,
+            mappingsCount: 0,
+            mappings: [],
+          },
+        }),
+      ),
+      http.put('/api/v1/workflow-schemes/nullable-desc-scheme', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({
+          data: {
+            id: 42,
+            key: 'nullable-desc-scheme',
+            name: '이름만 바꿈',
+            description: null,
+            isStandard: false,
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-02T00:00:00Z',
+          },
+        })
+      }),
+      ...schemeHandlers,
+      ...issueTypeHandlers,
+      ...workflowHandlers,
+    )
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <WorkflowSchemeDetailPage schemeKey="nullable-desc-scheme" />
+      </QueryClientProvider>,
+    )
+
+    const nameInput = await screen.findByLabelText('이름')
+    fireEvent.change(nameInput, { target: { value: '이름만 바꿈' } })
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(capturedBody).not.toBeNull())
+    expect(capturedBody).toEqual({ name: '이름만 바꿈', description: null })
   })
 })

@@ -35,8 +35,18 @@ export const SCHEME_KEYS = {
   list: ['workflow-schemes'] as const,
   /** 스킴 단건 queryKey */
   detail: (schemeKey: string) => ['workflow-schemes', schemeKey] as const,
-  /** 프로젝트별 할당 가능 스킴 목록 queryKey */
-  assignable: (projectKey: string) => ['projects', projectKey, 'assignable-workflow-schemes'] as const,
+  /**
+   * 프로젝트별 할당 가능 스킴 목록 queryKey.
+   *
+   * ★리소스-우선 구조인 이유. 관리자 뮤테이션(생성·수정·삭제)은 전역 자원을 다루므로
+   * `projectKey` 를 모른다. 프로젝트-우선(`['projects', key, ...]`)이면 정확한 키를 만들 수
+   * 없어 `['projects']` 전체를 무효화해야 하고, 그러면 사이드바 프로젝트 트리까지 재요청이
+   * 번진다. 리소스-우선이면 `assignableAll` prefix 하나로 정확히 이 계열만 잡는다.
+   * (`use-components`·`use-boards` 등 이 레포의 지배 관례와도 같은 형태다.)
+   */
+  assignable: (projectKey: string) => ['assignable-workflow-schemes', projectKey] as const,
+  /** 전 프로젝트의 할당 가능 스킴 캐시를 한 번에 무효화하는 prefix (관리자 뮤테이션용) */
+  assignableAll: ['assignable-workflow-schemes'] as const,
 } satisfies Record<string, readonly string[] | ((...args: string[]) => readonly string[])>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +110,9 @@ export function useCreateWorkflowScheme() {
     onSuccess: async () => {
       toast.success('스킴이 생성됐습니다')
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
+      // 새 스킴은 배정 드롭다운(assignable)에도 즉시 나타나야 한다.
+      // 없으면 staleTime 30초 동안 만든 스킴이 배정 화면에 안 보인다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })
     },
     onError: notifySchemeError,
   })
@@ -171,6 +184,8 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
+      // 이름 수정은 배정 드롭다운의 표시 문자열을 바꾼다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })
     },
   })
 }
@@ -189,6 +204,8 @@ export function useDeleteWorkflowScheme() {
     onSuccess: async (_data, schemeKey) => {
       toast.success('스킴이 삭제됐습니다')
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
+      // 삭제된 스킴이 배정 드롭다운에 남아 있으면 고를 수 있고, 고르면 404 가 난다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })
       queryClient.removeQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
     },
     onError: notifySchemeError,

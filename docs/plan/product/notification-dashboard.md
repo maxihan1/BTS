@@ -9,9 +9,9 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.9 (세션) 완료 (Inbox는 사용자 의존)
-- [ ] issue-tracking §2.1.1 (이벤트 발행 대상) 완료
-- [ ] §1 기술 검증 통과 (아래)
+- [x] identity-access §2.9 (세션) 완료 (Inbox는 사용자 의존) — 2026-07-27 실측: `docs/plan/product/identity-access.md` §2.9 FR-AU-09 D1~D7 7줄 전부 `[x]`
+- [x] issue-tracking §2.1.1 (이벤트 발행 대상) 완료 — 2026-07-27 실측: `docs/plan/product/issue-tracking.md` §2.1.1 FR-IS-01 D1~D7 8줄 전부 `[x]`
+- [ ] §1 기술 검증 통과 (아래) — 미측정. 하위 5항목 중 2건 대체(reconnecting-websocket·지수 백오프) · 2건 미측정(재연결 통합 테스트·p95). 하위 항목 판정이 끝나야 이 게이트를 판정할 수 있다
 
 ## §1 기술 검증
 
@@ -19,13 +19,32 @@
 
 **SDD**. 21.8. **checklist.md 위임**. §1.10. **ADR 후보**. 없음.
 
-- [ ] Spring WebSocket (STOMP) 서버 동작
-- [ ] `@stomp/stompjs` + `reconnecting-websocket` 클라이언트 동작
-- [ ] 지수 백오프 5s → 60s 검증
-- [ ] 네트워크 분리/복귀 시나리오 통합 테스트 통과
-- [ ] 알림 지연 p95 < 1s
+- [x] Spring WebSocket (STOMP) 서버 동작 — 2026-07-27 실측: `backend/modules/notification/src/main/kotlin/com/bts/notification/config/WebSocketConfig.kt` (`@EnableWebSocketMessageBroker`, 엔드포인트 `/ws`, simple broker `/queue`) + `InAppChannelSender` 가 `SimpMessagingTemplate.convertAndSendToUser` 로 실제 push. 의존성 `spring-boot-starter-websocket` (notification/build.gradle.kts:53). 테스트 `config/WebSocketConfigTest.kt` · `config/StompAuthChannelInterceptorTest.kt`
+- [ ] `@stomp/stompjs` + `reconnecting-websocket` 클라이언트 동작 — ⚠️ 대체됨. `@stomp/stompjs@^7.3.0` 단독 채택(`apps/web/src/api/notifications-stream.ts`). `reconnecting-websocket` 은 package.json·소스 어디에도 없음 — stompjs 내장 `reconnectDelay` 가 그 역할을 흡수했다. (2026-07-27 실측)
+- [ ] 지수 백오프 5s → 60s 검증 — ⚠️ 대체됨. `notifications-stream.ts` 는 `reconnectDelay: 5_000` **고정 지연**만 쓴다. 지수 증가도 60s 상한도 코드에 없다. (2026-07-27 실측)
+- [ ] 네트워크 분리/복귀 시나리오 통합 테스트 통과 — 미측정. repo 전체에서 `reconnect` 를 언급하는 파일은 `notifications-stream.ts`/`.test.ts` 2개뿐이고, 그 테스트는 `reconnectDelay` 옵션 전달만 확인한다. 연결 끊김→복귀를 실제로 태우는 통합/E2E 테스트를 새로 써야 판정 가능
+- [ ] 알림 지연 p95 < 1s — 미측정. 아래 §NFR 측정표의 "WebSocket 알림 지연" 칸이 `___` 로 비어 있다. Playwright + STOMP trace 로 p95 를 실측해 기록해야 한다
 
 ## §2 알림 (FR-NT, 5개)
+
+> **카탈로그 현황 (2026-07-27 실측 — 아래 D 줄의 개수는 각 PR 시점의 기록이라 현재값과 다르다)**
+>
+> | enum | 현재 | 파일 |
+> |---|---|---|
+> | `NotificationEventType` | **11종** | `backend/modules/notification/.../domain/NotificationEventType.kt` |
+> | `RecipientRole` | **10종** (해석 9 + `RULE_OWNER` skip) | `backend/modules/notification/.../domain/RecipientRole.kt` |
+> | `Channel` | 5종 (사용자 설정 가능 2 — `IN_APP`·`EMAIL`) | `backend/modules/notification/.../domain/Channel.kt` |
+>
+> **이 두 enum 은 notification BC 밖에서도 자란다.** 최근 증가분은 이 BC 의 FR 이 아니라
+> issue-tracking 의 댓글 삭제 모더레이션(FR-CO-02)이 만들었다 —
+> `ISSUE_COMMENT_DELETED`(`issue.comment_deleted`, `publishable=false`) 이벤트와
+> `COMMENT_AUTHOR` 수신자 역할, 그리고 기본 정책 시드 `V410__seed_comment_deleted_policy.sql`
+> (전역 · `COMMENT_AUTHOR` × `IN_APP` 1행). 외부 채널을 막은 이유는 삭제된 댓글이 있었다는
+> 사실 자체가 웹훅으로 퍼지면 모더레이션 목적에 반하기 때문이다.
+>
+> ⇒ **enum 을 늘리는 PR 은 이 표와 `docs/sdd/09-notifications-slack.md §9.1.2` 를 같이 고친다.**
+> 카탈로그 API·구독 매트릭스·프론트 라벨이 전부 `entries` 위에서 도는 파생물이라, 코드는
+> 조용히 늘어나고 문서만 옛 개수에 멈춘다.
 
 ### §2.1 FR-NT-01 — 이벤트별 알림 정책
 
@@ -69,11 +88,22 @@
 - [x] D6. 프론트 UI — 정책 페이지 확장 (책임. frontend-engineer) — PR #164 (수신자 역할 설명 동적 헬퍼 + RULE_OWNER 미지원 비활성, 9줄 범례 대신 선택역할 1줄 헬퍼+상시 안내. 공유 select.tsx 변경 0, 서버 카탈로그 위에서만 동작)
 - [x] D7. E2E (책임. qa-engineer) — PR #164 (S6 활성역할 정책 생성→SPA 영속, S7 RULE_OWNER aria-disabled+동적헬퍼+상시안내. 기존 S1~S5 보존)
 
+> **후속 확장 (2026-07-27, FR-CO-02)**. `EventRecipientResolver` 에 `COMMENT_AUTHOR` 분기 추가 —
+> 해석 역할 9종(전체 10종 중 `RULE_OWNER` 만 skip). `MENTIONED` 와 같이 **이벤트 페이로드에서 직접**
+> 읽는다(`NotificationSourceEvent.commentAuthorId`). 댓글 저작자를 조회하려면 notification →
+> issue-tracking 방향의 신규 포트가 필요한데, 발행 측이 페이로드에 실어 보내면 그 의존이 생기지 않는다.
+> **BC 격리를 지키는 쪽이 포트를 늘리는 쪽보다 싸다.**
+
 ### §2.4 FR-NT-04 — 사용자별 알림 구독 설정
 
 **우선순위**. 높음 | **선행**. §2.1 | **Plan slug**. `notify/user-subscription`
 
-**범위**. opt-out 기본(행 없으면 수신) + 관리자 정책(FR-NT-01)과 AND 결합(사용자는 끄기만, reduce-only). 채널 IN_APP·EMAIL만 사용자 설정(SLACK=별도 BC·TEAMS=범위밖·WEBHOOK=FR-NT-05). 이벤트 NotificationEventType 10종 전부. NotificationWorker가 발송 직전 배치 필터. ADR `2026-06-19-fr-nt-04-user-notification-subscription`. **FR-NT-04 전체 완료**(PR #162).
+**범위**. opt-out 기본(행 없으면 수신) + 관리자 정책(FR-NT-01)과 AND 결합(사용자는 끄기만, reduce-only). 채널 IN_APP·EMAIL만 사용자 설정(SLACK=별도 BC·TEAMS=범위밖·WEBHOOK=FR-NT-05). 이벤트 `NotificationEventType` **전량**(고정 목록이 아니라 `entries` 파생 — 2026-07-27 실측 11종, §2 카탈로그 표 참조). NotificationWorker가 발송 직전 배치 필터. ADR `2026-06-19-fr-nt-04-user-notification-subscription`. **FR-NT-04 전체 완료**(PR #162).
+
+> **2026-07-27 정정.** 이 줄은 PR #162 시점의 "10종 전부" 를 그대로 두고 있었다. 구독 매트릭스는
+> `NotificationEventType.entries × 설정가능 채널 2종` 으로 **자동 파생**되므로 enum 이 11종이 된
+> 순간 셀 수도 20 → 22 로 늘었는데, 문서만 10 에 멈춰 거짓 단언이 됐다.
+> ⇒ **파생값은 개수를 적지 말고 파생식을 적는다.** 개수를 굳이 적으려면 실측 날짜를 붙인다.
 
 - [x] D1. 도메인 — UserSubscription (책임. backend-engineer) — PR #162 (CONFIGURABLE_CHANNELS 단일출처, Clock 주입)
 - [x] D2. 명세 — opt-in/out 단위 (책임. backend-engineer) — PR #162 (opt-out 기본 + AND 결합, 이벤트×채널 단위)
@@ -247,8 +277,8 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§5 (14 FR) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "notification-dashboard BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "notification-dashboard BC 완료"
+- [x] §2~§5 (14 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: `grep -cE '^- \[x\] D[0-9]+\.'` → 98, `grep -nE '^- \[[ ~!]\] D[0-9]+\.'` → 0건. FR 절 헤더 14개(NT 5 · DB 3 · RP 4 · UX 2) 전수 확인
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정표 9개 항목의 실측 칸이 전부 `___` 다. WebSocket 지연·이메일 발송·대시보드 렌더·차트 조회·CFD·Inbox 페이지네이션·LCP·번들·axe 를 각 비고란 도구로 측정해 기록해야 한다
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` L31 에 `| notification-dashboard | 14 (NT 5 · RP 4 · DB 3 · UX 2) | 2026-06-11 ~ 07-03 | 28 (#118~#231) | ... |` 행 존재
+- [ ] README.md §7 변경 이력에 "notification-dashboard BC 완료 — YYYY-MM-DD" 추가 — 미측정. `docs/plan/README.md` §7(L165~) 은 현재 3줄이며 마지막이 2026-07-17 FR-PJ/FR-PM 항목이다. 이 BC 완료 행이 없다 — 추가는 README 파일 수정이라 이 작업 범위 밖
+- [ ] Maxi 1인 선언 — "notification-dashboard BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

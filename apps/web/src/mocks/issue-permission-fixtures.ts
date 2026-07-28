@@ -48,3 +48,24 @@ export const memberPermissionsFixture: IssuePermissions = {
   SOFT_DELETE: false,
   TRANSITION: true,
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIEWER 권한 fixture
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * VIEWER 권한 fixture — 읽기만 가능. 쓰기 계열 전부 불허.
+ *
+ * ★왜 필요한가. 이 fixture 가 없던 동안 **`UPDATE=false` 인 사용자가 모크에 존재하지 않아**,
+ * 이슈 수준 쓰기 게이트의 유무를 어떤 프론트 테스트도 관측할 수 없었다. 백엔드
+ * `CommentApplicationService.update:194` / `delete:279` 는 댓글을 조회하기 **전에**
+ * 이슈 `UPDATE` 게이트를 통과시키는데, 모크에는 그 게이트가 아예 없어 같은 상황에서
+ * 403 대신 404 를 냈다 — 모크와 백엔드의 판정 순서가 갈린 것이다.
+ *
+ * 관측 가능성이 없으면 정렬해도 그것이 유지되는지 알 수 없다. 이 fixture 가 판별자다.
+ */
+export const viewerPermissionsFixture: IssuePermissions = {
+  UPDATE: false,
+  SOFT_DELETE: false,
+  TRANSITION: false,
+}

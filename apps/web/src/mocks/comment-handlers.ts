@@ -10,9 +10,11 @@
 // 프론트가 여기서 단언해도 되는 것은 "받은 `bodyHtml` 을 그대로 렌더한다" 는 배선뿐이다.
 import { http, HttpResponse } from 'msw'
 import type { CommentResponse } from '@/api/comments'
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 import {
   adminPermissionsFixture,
   memberPermissionsFixture,
+  viewerPermissionsFixture,
   type IssuePermissions,
 } from './issue-permission-fixtures'
 
@@ -42,17 +44,17 @@ const MOCK_TOKEN_PREFIX = 'mock-access-token-'
 /**
  * username → userId 매핑.
  *
- * ★값은 `auth-fixtures.ts` 의 `aliceUser.userId`/`bobUser.userId` **정본과 정확히 일치해야 한다.**
+ * ★값을 여기에 다시 적지 않고 `auth-fixtures.ts` 의 **정본 상수**를 import 한다.
  * 어긋나면 E2E 가 whoami 사용자와 댓글 작성자를 다른 사람으로 보고 "본인 댓글" 판정이 깨진다
- * (메모리 `e2e-fixture-whoami-userid-alignment`). `worklog-handlers.ts` 와 같은 값을 쓴다.
+ * (메모리 `e2e-fixture-whoami-userid-alignment`). `worklog-handlers.ts` 와 같은 상수를 쓴다.
  */
 const USER_ID_MAP: Readonly<Record<string, string>> = {
-  alice: '00000000-0000-4000-8000-000000000001',
-  bob: '00000000-0000-4000-8000-000000000002',
+  alice: ALICE_USER_ID,
+  bob: BOB_USER_ID,
 }
 
 /** 토큰 미해석 시 저작자 폴백 — 백엔드는 401 이지만 mock 은 목록 렌더를 막지 않는다 */
-const FALLBACK_AUTHOR_ID = '00000000-0000-4000-8000-000000000001'
+const FALLBACK_AUTHOR_ID = ALICE_USER_ID
 
 /**
  * Authorization Bearer 헤더에서 현재 사용자 username을 도출한다.
@@ -92,6 +94,9 @@ function resolveUserIdFromRequest(request: Request): string | null {
 const PERMISSIONS_BY_USERNAME: Readonly<Record<string, IssuePermissions>> = {
   alice: adminPermissionsFixture,
   bob: memberPermissionsFixture,
+  // carol 은 읽기 전용 — 이슈 UPDATE 게이트의 **유일한 판별자**다.
+  // alice·bob 둘 다 UPDATE=true 라, carol 이 없으면 게이트를 지워도 전량 green 이다.
+  carol: viewerPermissionsFixture,
 }
 
 /**
@@ -107,6 +112,31 @@ function hasSoftDeletePermission(request: Request): boolean {
   const username = resolveUsernameFromRequest(request)
   if (username === null) return false
   return PERMISSIONS_BY_USERNAME[username]?.SOFT_DELETE ?? false
+}
+
+/**
+ * 이슈 수준 `UPDATE` 게이트 — 백엔드와 **같은 순서**로 통과시킨다.
+ *
+ * 백엔드 `CommentApplicationService` 는 댓글을 조회하기 **전에** 이 게이트를 통과시킨다
+ * (`create:150`, `update:194` → `:200`, `delete:279` → `:290`). 즉 권한 없는 사용자는
+ * **댓글 존재 여부와 무관하게 403** 이다.
+ *
+ * 모크에 이 게이트가 없던 동안 같은 상황에서 404 가 나가, 「권한이 없다」와 「그런 댓글이 없다」가
+ * 뒤바뀌어 있었다. 모크가 백엔드와 다르게 답해도 프론트 테스트는 전량 초록이라
+ * 「MSW 가 MSW 와 맞는」 상태가 유지된다 — 그래서 순서까지 맞춰야 한다.
+ *
+ * 미인증·미지 사용자는 `null` 이라 게이트를 통과시킨다 — 백엔드라면 401 이지만 모크는 흐름을
+ * 막지 않는 기존 태도(POST 의 `FALLBACK_AUTHOR_ID`)를 따른다.
+ *
+ * @param request MSW 요청
+ * @returns 게이트 거부 응답, 통과면 `null`
+ */
+function issueUpdateGate(request: Request): Response | null {
+  const username = resolveUsernameFromRequest(request)
+  if (username === null) return null
+  const allowed = PERMISSIONS_BY_USERNAME[username]?.UPDATE ?? true
+  if (allowed) return null
+  return HttpResponse.json({ errorCode: 'ISSUE_ACCESS_DENIED' }, { status: 403 })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,6 +212,11 @@ export const commentHandlers = [
   }),
 
   http.post('*/api/v1/issues/:key/comments', async ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 댓글 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = String(params['key'])
     const payload = (await request.json()) as { body?: unknown }
     const body = typeof payload.body === 'string' ? payload.body : ''
@@ -209,6 +244,11 @@ export const commentHandlers = [
   }),
 
   http.patch('*/api/v1/issues/:key/comments/:commentId', async ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 댓글 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = String(params['key'])
     const commentId = String(params['commentId'])
     const payload = (await request.json()) as { body?: unknown }
@@ -252,6 +292,11 @@ export const commentHandlers = [
   }),
 
   http.delete('*/api/v1/issues/:key/comments/:commentId', ({ params, request }) => {
+    // ★ 이슈 UPDATE 게이트를 **가장 먼저** — 백엔드와 같은 순서다.
+    // 리소스 조회보다 뒤에 두면 권한 없는 사용자가 404/403 차이로 댓글 실재를 열거한다.
+    const denied = issueUpdateGate(request)
+    if (denied !== null) return denied
+
     const issueKey = String(params['key'])
     const commentId = String(params['commentId'])
 

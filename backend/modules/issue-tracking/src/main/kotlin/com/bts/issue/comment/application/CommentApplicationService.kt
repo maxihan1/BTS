@@ -12,6 +12,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.event.IssueCommentDeleted
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.history.IssueHistoryRecorder
@@ -297,6 +298,24 @@ class CommentApplicationService(
         if (commentRepository.softDelete(commentId, issue.id.value, Instant.now(clock)) == 0) {
             throw CommentNotFoundException(commentId)
         }
+
+        // 삭제 이벤트 발행 — FR-CO-02 모더레이션의 빠진 절반.
+        // 내 댓글이 모더레이터에게 지워져도 신호가 없었다(감사 이력은 조회해야 보이는 기록이지
+        // 밀어주는 신호가 아니다). 작성자 id 를 페이로드에 실어 알림 BC 가 cross-BC 조회 없이
+        // 수신자를 정하게 한다(IssueMentioned.mentionedUserIds 와 같은 방식).
+        //
+        // 자기 삭제(actor == author)도 **발행은 한다** — 자기제외는 수신자 해석 단계의 책임이다.
+        // 발행을 조건부로 만들면 나중에 automation 이 이 이벤트를 소비할 때 누락이 생긴다.
+        eventPublisher.publish(
+            IssueCommentDeleted(
+                issueKey = issueKey,
+                projectKey = issueKey.projectPrefix,
+                commentId = commentId,
+                commentAuthorId = ActorId(existing.authorId),
+                actorId = actor,
+                occurredAt = Instant.now(clock),
+            ),
+        )
 
         log.info(
             "comment_deleted issueKey={} commentId={} actor={} moderated={}",

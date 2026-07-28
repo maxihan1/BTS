@@ -2,6 +2,7 @@
 
 package com.bts.issue.link.web
 
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.link.domain.DuplicateLinkException
 import com.bts.issue.link.domain.InvalidGraphDepthException
 import com.bts.issue.link.domain.InvalidLinkTypeCodeException
@@ -17,6 +18,7 @@ import org.springframework.http.ProblemDetail
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
 
@@ -25,9 +27,14 @@ import java.time.Instant
  *
  * [basePackages] 를 `com.bts.issue.link.web` 로 한정하여 타 컨트롤러 경로의 예외를 잡지 않는다.
  * catch-all [Exception] 핸들러는 이 스코프(link 컨트롤러) 안에서만 동작한다.
- * IssueLinkController 는 actor 를 추출하지 않아 401 ResponseStatusException 을 던지지 않으며
- * (인증 실패는 SecurityFilterChain 이 디스패치 이전에 401 처리), 따라서 catch-all 이
- * 401 을 500 으로 변질시킬 경로가 구조적으로 없다.
+ * ⚠️ **2026-07-27 — 이 전제가 뒤집혔다.** 예전 이 자리에는 *"IssueLinkController 는 actor 를
+ * 추출하지 않아 401 ResponseStatusException 을 던지지 않으며, 따라서 catch-all 이 401 을 500 으로
+ * 변질시킬 경로가 구조적으로 없다"* 라고 적혀 있었다. 권한 가드를 붙이면서 컨트롤러가
+ * [com.bts.issue.adapter.inbound.rest.CurrentActor] 로 actor 를 추출하게 됐고, **그 순간 401 경로가 생겼다.**
+ * 실제로 인증 컨텍스트 없는 요청이 catch-all 에 걸려 401 이 500 으로 나갔다
+ * ([[catch-all-exceptionhandler-swallows-responsestatusexception]] 재현).
+ * 그래서 [ResponseStatusException] 전파 핸들러를 catch-all 보다 우선하도록 명시 등록한다 —
+ * 형제 핸들러(Watcher · Comment)가 모두 갖고 있던 것이다.
  *
  * 매핑 규칙.
  * - [MethodArgumentNotValidException] → 400 + [LinkErrorCodes.VALIDATION_FAILED]
@@ -118,6 +125,31 @@ class LinkExceptionHandler {
         )
     }
 
+    // ── 403 ──────────────────────────────────────────────────────────────────
+
+    /**
+     * [IssueAccessDeniedException] — 이슈 권한 미보유 — 403.
+     *
+     * 2026-07-27 신설. 이전에는 링크 API 에 권한 검사 자체가 없어 이 예외가 발생하지 않았고,
+     * 게이트를 붙이자마자 매핑이 없어 **403 이어야 할 것이 500 으로 변질**됐다
+     * (형제 핸들러는 전부 이 매핑을 갖고 있다 — Watcher · Comment · CycleTime).
+     *
+     * detail 에 actor·permission·scope 를 싣지 않는다 — 예외 message 에는 그것이 들어 있어
+     * 그대로 흘리면 권한 구조가 응답으로 샌다([[fr-pm-04-guard-exception-message-http-leak]]).
+     * 진단 정보는 로그에만 남긴다.
+     */
+    @ExceptionHandler(IssueAccessDeniedException::class)
+    fun handleAccessDenied(ex: IssueAccessDeniedException): ProblemDetail {
+        log.info("LINK_403 access_denied message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.FORBIDDEN,
+            type = "access-denied",
+            title = "Access Denied",
+            errorCode = "ISSUE_ACCESS_DENIED",
+            detail = "이 작업을 수행할 권한이 없습니다.",
+        )
+    }
+
     // ── 409 ──────────────────────────────────────────────────────────────────
 
     /** [DuplicateLinkException] — 중복 링크 — 409. */
@@ -184,6 +216,38 @@ class LinkExceptionHandler {
             title = "Parent Self Reference",
             errorCode = LinkErrorCodes.PARENT_SELF_REFERENCE,
             detail = ex.message,
+        )
+    }
+
+    // ── ResponseStatusException 전파 (catch-all 변질 차단) ────────────────────
+
+    /**
+     * [ResponseStatusException] — 상태 코드를 **그대로 전파**한다.
+     *
+     * 이 핸들러가 없으면 아래 catch-all 이 잡아 401/400 을 **전부 500 으로 변질**시킨다.
+     * 특히 `CurrentActor.current()` 의 401 이 그렇게 삼켜지면, 프론트는 "세션 만료" 를
+     * 알 수 없어 재로그인 유도 대신 "서버 오류" 를 띄운다.
+     *
+     * `HttpStatus.valueOf` 는 표준 코드가 아니면 예외를 던져 핸들러 자체를 터뜨리므로
+     * ([[fr-db-03-public-dashboard-error-instance-token-leak-done]] 의 함정), 이 컨트롤러가
+     * 실제로 내는 코드(401)만 분기하고 나머지는 일반 메시지로 수렴시킨다.
+     */
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatus(ex: ResponseStatusException): ProblemDetail {
+        val status = HttpStatus.resolve(ex.statusCode.value()) ?: HttpStatus.INTERNAL_SERVER_ERROR
+        log.info("LINK_{} response_status reason='{}'", status.value(), ex.reason)
+        val (errorCode, detail) =
+            when (status) {
+                HttpStatus.UNAUTHORIZED -> "UNAUTHENTICATED" to "인증이 필요합니다. 세션이 만료되었을 수 있습니다."
+                HttpStatus.FORBIDDEN -> "ISSUE_ACCESS_DENIED" to "이 작업을 수행할 권한이 없습니다."
+                else -> LinkErrorCodes.INTERNAL_ERROR to "요청을 처리할 수 없습니다."
+            }
+        return problem(
+            status = status,
+            type = "response-status",
+            title = status.reasonPhrase,
+            errorCode = errorCode,
+            detail = detail,
         )
     }
 

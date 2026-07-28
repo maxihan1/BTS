@@ -30,7 +30,8 @@ import java.util.UUID
  * - T3-B. findBySourceId — source=issueId 인 링크 목록 반환.
  * - T3-C. findByTargetId — target=issueId 인 링크 목록 반환.
  * - T3-D. existsLink — 중복 검사 true/false 반환.
- * - T3-E. deleteById — 삭제 성공 true / 존재하지 않으면 false.
+ * - T3-E. deleteByIdAndIssue — 삭제 성공 true / 존재하지 않으면 false.
+ * - T3-E2. deleteByIdAndIssue — 무관한 이슈 id 로는 안 지워짐(IDOR 차단) + 양끝 인정.
  * - T3-F. existsBlocksPath — 직접 blocks 경로 (A→B) 도달성.
  * - T3-G. existsBlocksPath — 간접 경로 길이 2+ (A→B→C) 도달성.
  * - T3-H. existsBlocksPath — 경로 없는 케이스 false.
@@ -241,19 +242,50 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      */
     @Test
     @Order(5)
-    fun `T3-E - deleteById - 삭제 성공 true 및 없으면 false`() {
+    fun `T3-E - deleteByIdAndIssue - 삭제 성공 true 및 없으면 false`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
 
         val link = linkRepository.insert(IssueLink.create(issueA.id.value, issueB.id.value, LinkType.BLOCKS))
         val linkId = requireNotNull(link.id) { "insert 후 id 는 null 이 아니어야 한다." }
 
-        val firstDelete = linkRepository.deleteById(linkId)
+        val firstDelete = linkRepository.deleteByIdAndIssue(linkId, issueA.id.value)
         assertThat(firstDelete).isTrue()
         assertThat(rawLinkExists(linkId)).isFalse()
 
-        val secondDelete = linkRepository.deleteById(linkId)
+        val secondDelete = linkRepository.deleteByIdAndIssue(linkId, issueA.id.value)
         assertThat(secondDelete).isFalse()
+    }
+
+    /**
+     * ★소유권 없는 삭제(IDOR) 차단 — WHERE 절이 실제로 좁히는지 **DB 관통**으로 확인한다.
+     *
+     * 서비스 계층 mock 테스트는 이 술어를 못 본다. 여기서만 SQL 이 실제로 실행된다.
+     *
+     * `target` 쪽 경로도 성공해야 한다 — 링크는 두 이슈가 공유하는 관계다.
+     * 이 짝이 없으면 `SOURCE_ID` 만 보도록 좁혀도 위 케이스가 통과한다.
+     */
+    @Test
+    @Order(6)
+    fun `T3-E2 - deleteByIdAndIssue - 무관한 이슈 id 로는 지워지지 않는다`() {
+        val issueA = insertIssue(11L)
+        val issueB = insertIssue(12L)
+        val unrelated = insertIssue(13L)
+
+        val link = linkRepository.insert(IssueLink.create(issueA.id.value, issueB.id.value, LinkType.BLOCKS))
+        val linkId = requireNotNull(link.id) { "insert 후 id 는 null 이 아니어야 한다." }
+
+        // 무관한 이슈 id → 0행. 행은 살아 있어야 한다.
+        assertThat(linkRepository.deleteByIdAndIssue(linkId, unrelated.id.value)).isFalse()
+        assertThat(rawLinkExists(linkId))
+            .describedAs("무관한 이슈 id 로 호출했는데 행이 지워졌다 — WHERE 절이 좁히지 않는다")
+            .isTrue()
+
+        // target 쪽 경로 → 성공. 양끝 모두 소속으로 인정한다.
+        assertThat(linkRepository.deleteByIdAndIssue(linkId, issueB.id.value))
+            .describedAs("target 쪽 이슈로는 지울 수 없다 — 양끝 인정이 깨졌다")
+            .isTrue()
+        assertThat(rawLinkExists(linkId)).isFalse()
     }
 
     // ── T3-F. existsBlocksPath — 직접 경로 (A→B) ─────────────────────────────
@@ -264,7 +296,7 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      * Then   true.
      */
     @Test
-    @Order(6)
+    @Order(7)
     fun `T3-F - existsBlocksPath - 직접 blocks 경로 탐지`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
@@ -284,7 +316,7 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      * Then   false (역방향 경로 없음).
      */
     @Test
-    @Order(7)
+    @Order(8)
     fun `T3-G - existsBlocksPath - 간접 경로 길이 2 이상 도달성`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
@@ -307,7 +339,7 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      * Then   false (relates 는 blocks 그래프 제외).
      */
     @Test
-    @Order(8)
+    @Order(9)
     fun `T3-H - existsBlocksPath - 경로 없는 케이스 false`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
@@ -326,7 +358,7 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      * Then   issue_links 행도 자동 삭제 (ON DELETE CASCADE).
      */
     @Test
-    @Order(9)
+    @Order(10)
     fun `T3-I - FK CASCADE - 이슈 하드 삭제 시 링크 행 자동 정리`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
@@ -359,7 +391,7 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      * And    소프트삭제된 상대 이슈는 제외.
      */
     @Test
-    @Order(10)
+    @Order(11)
     fun `T5-J - findOutwardWithIssue - 단일 JOIN 으로 상대 이슈 요약 조회 및 소프트삭제 제외`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
@@ -400,7 +432,7 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
      * And    소프트삭제된 source 이슈(A)는 제외.
      */
     @Test
-    @Order(11)
+    @Order(12)
     fun `T5-K - findInwardWithIssue - 단일 JOIN 으로 inward 상대 이슈 조회 및 소프트삭제 제외`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)

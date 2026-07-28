@@ -20,7 +20,7 @@ const FILTER_ID = 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891'
 const quickFilterFixture = {
   filterId: FILTER_ID,
   name: '내 버그',
-  query: 'assignee=c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f&label=bug',
+  query: 'assignee=00000000-0000-4000-8000-000000000001&label=bug',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

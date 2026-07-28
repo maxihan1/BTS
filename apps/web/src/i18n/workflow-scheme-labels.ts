@@ -150,11 +150,15 @@ export const workflowSchemeLabels = {
     currentSchemeTitle: '현재 할당된 스킴',
     /** 현재 적용 badge 텍스트 */
     currentSchemeBadge: '현재 적용',
-    /** 스킴 미할당 카드 CardTitle */
-    unassignedTitle: '스킴 미할당',
-    /** 스킴 지정 섹션 CardTitle (할당 없을 때) */
-    assignTitle: '스킴 지정',
-    /** 스킴 변경 섹션 CardTitle (할당 있을 때) */
+    /**
+     * 배정 조회 404 카드 CardTitle.
+     * 이 엔드포인트의 404 는 「프로젝트 없음」 하나뿐이다 — 옛 `unassignedTitle`('스킴 미할당')은
+     * 404 오독의 산물이라 제거했다 (백엔드가 미배정 프로젝트에 자동 배정하므로 그 상태는 없다).
+     */
+    projectNotFoundTitle: '프로젝트를 찾을 수 없습니다',
+    /** 배정 조회 404 안내 문구 */
+    projectNotFoundMessage: '이 프로젝트가 존재하지 않거나 삭제됐습니다. 주소를 확인해 주세요.',
+    /** 스킴 변경 섹션 CardTitle */
     changeTitle: '스킴 변경',
     /** 스킴 select aria-label */
     schemeSelectAriaLabel: '워크플로우 스킴 선택',

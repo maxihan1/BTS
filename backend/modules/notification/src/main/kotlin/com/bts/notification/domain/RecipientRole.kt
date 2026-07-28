@@ -21,6 +21,15 @@ enum class RecipientRole {
     /** 이슈 구독자 */
     WATCHER,
 
+    /**
+     * 삭제된 댓글의 작성자 — `issue.comment_deleted` 전용.
+     *
+     * `MENTIONED` 와 같이 **이벤트 페이로드에서 직접** 해석한다(cross-BC 조회 포트 불요).
+     * 알림 BC 가 댓글 저작자를 조회하려면 notification → issue-tracking 방향의 신규 포트가
+     * 필요한데, 발행 측이 페이로드에 실어 보내면 그 의존이 생기지 않는다.
+     */
+    COMMENT_AUTHOR,
+
     /** 컴포넌트 담당자 */
     COMPONENT_LEAD,
 

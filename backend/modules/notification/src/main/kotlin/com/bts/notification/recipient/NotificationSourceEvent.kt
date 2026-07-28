@@ -31,6 +31,8 @@ data class NotificationSourceEvent(
     val issueKey: String?,
     val projectKey: String?,
     val mentionedUserIds: List<UUID> = emptyList(),
+    /** 삭제된 댓글의 작성자 — `issue.comment_deleted` 에서만 채워진다. 그 외 이벤트는 null. */
+    val commentAuthorId: UUID? = null,
     val reporterId: UUID?,
     val actorId: UUID?,
     val occurredAt: Instant,

@@ -125,7 +125,7 @@ beforeEach(() => {
 describe('MentionDropdown', () => {
   const candidates: UserSummary[] = [
     { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '김앨리스', email: null },
-    { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: null, email: null },
+    { id: '00000000-0000-4000-8000-000000000002', username: 'bob', displayName: null, email: null },
   ]
 
   it('role=listbox ul과 role=option li를 렌더한다', () => {
@@ -464,12 +464,12 @@ describe('useMentionAutocomplete', () => {
 
     const manyUsers: UserSummary[] = [
       { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null },
-      { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: '밥', email: null },
+      { id: '00000000-0000-4000-8000-000000000002', username: 'bob', displayName: '밥', email: null },
       { id: 'c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f', username: 'carol', displayName: '캐롤', email: null },
     ]
     const fewUsers: UserSummary[] = [
       { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null },
-      { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: '밥', email: null },
+      { id: '00000000-0000-4000-8000-000000000002', username: 'bob', displayName: '밥', email: null },
     ]
 
     const onChangeSpy = vi.fn()

@@ -15,14 +15,15 @@ export function labelFor(map: Record<string, string>, key: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// eventTypeLabels — wireValue 9종
+// eventTypeLabels — wireValue
 // 백엔드 NotificationEventType enum 추가 시 이 객체 + NOTIFICATION_EVENT_TYPES 미러도 갱신.
+// 누락은 notification-policy-labels.test.ts 의 차집합 판별식이 자동 차단한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 알림 이벤트 유형 wireValue(e.g. `"issue.created"`) → 한국어 라벨.
  *
- * - 백엔드 api 계약의 wireValue 9종 1:1 정합.
+ * - 백엔드 api 계약의 wireValue 전량과 1:1 정합 (개수는 테스트가 기계적으로 판정).
  * - 미지 값은 `labelFor(eventTypeLabels, key)` 경유 시 원문 fallback.
  */
 export const eventTypeLabels: Record<string, string> = {
@@ -30,6 +31,7 @@ export const eventTypeLabels: Record<string, string> = {
   'issue.assigned': '이슈 담당자 지정',
   'issue.transitioned': '이슈 상태 전이',
   'issue.commented': '이슈 댓글 작성',
+  'issue.comment_deleted': '이슈 댓글 삭제',
   'issue.mentioned': '이슈 멘션',
   'issue.due_soon': '이슈 기한 임박',
   'issue.overdue': '이슈 기한 초과',
@@ -39,14 +41,15 @@ export const eventTypeLabels: Record<string, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// recipientRoleLabels — enum NAME 9종
-// 백엔드 RecipientRole enum 추가 시 이 객체 + RECIPIENT_ROLES 미러도 갱신.
+// recipientRoleLabels — enum NAME
+// 백엔드 RecipientRole enum 추가 시 이 객체 + recipientRoleDescriptions + RECIPIENT_ROLES 미러도 갱신.
+// 누락은 notification-policy-labels.test.ts 의 차집합 판별식이 자동 차단한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 수신자 역할 enum NAME(e.g. `"REPORTER"`) → 한국어 라벨.
  *
- * - 백엔드 api 계약의 NAME 9종 1:1 정합.
+ * - 백엔드 api 계약의 NAME 전량과 1:1 정합 (개수는 테스트가 기계적으로 판정).
  * - 미지 값은 `labelFor(recipientRoleLabels, key)` 경유 시 원문 fallback.
  */
 export const recipientRoleLabels: Record<string, string> = {
@@ -54,6 +57,7 @@ export const recipientRoleLabels: Record<string, string> = {
   ASSIGNEE: '담당자',
   PREVIOUS_ASSIGNEE: '이전 담당자',
   WATCHER: '구독자',
+  COMMENT_AUTHOR: '댓글 작성자',
   COMPONENT_LEAD: '컴포넌트 담당자',
   MENTIONED: '멘션된 사용자',
   PROJECT_MEMBER: '프로젝트 멤버',
@@ -62,7 +66,7 @@ export const recipientRoleLabels: Record<string, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// recipientRoleDescriptions — enum NAME 9종 한국어 설명
+// recipientRoleDescriptions — enum NAME 한국어 설명 (recipientRoleLabels 와 키 집합 동일)
 // 백엔드 RecipientRole enum/지원범위 변경 시 이 객체 + recipientRoleLabels + (api)UNSUPPORTED_RECIPIENT_ROLES 동반 갱신.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -79,6 +83,7 @@ export const recipientRoleDescriptions: Record<string, string> = {
   ASSIGNEE: '현재 담당자',
   PREVIOUS_ASSIGNEE: '직전 담당자 1명',
   WATCHER: '이슈를 구독(지켜보기)한 사용자',
+  COMMENT_AUTHOR: '삭제된 댓글을 작성한 사용자',
   COMPONENT_LEAD: '이슈가 속한 컴포넌트의 담당자',
   MENTIONED: '본문·댓글에서 @로 멘션된 사용자',
   PROJECT_MEMBER: '프로젝트의 모든 멤버',

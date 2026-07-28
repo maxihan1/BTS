@@ -78,12 +78,19 @@ class IdentityAccessIssuePermissionResolver(
         val membership =
             membershipRepo.findByProjectAndUser(projectId, actorId)
                 ?: return false // 비멤버 → 거부
-        val code = permission.toCodeOrNull() ?: return true // 범위 밖 → 멤버 통과
-        if (!schemeRepo.roleHasPermission(projectId, membership.role.name, code)) {
+        val code = permission.toCodeOrNull()
+        if (code != null && !schemeRepo.roleHasPermission(projectId, membership.role.name, code)) {
             return false // 매트릭스 미보유 → 거부
         }
-        // VIEW(Issue) 는 매트릭스 통과 후 보안 등급 게이트를 추가 통과해야 한다(FR-PM-06).
-        if (permission == IssuePermission.VIEW && scope is IssueScope.Issue) {
+        // 보안 등급 게이트 — 이슈 스코프의 **내용 접근 계열 전부**가 추가 통과해야 한다(FR-PM-06).
+        //
+        // ★2026-07-27 확대. 이전에는 VIEW 에만 걸려, 기밀 이슈를 **볼 수 없는** 멤버가 매트릭스에
+        // EDIT_ISSUE 만 있으면 그 이슈를 수정·전이·삭제할 수 있었다(댓글 수정·삭제, 이슈 PATCH 포함).
+        // 볼 수 없는 것을 바꿀 수는 더더욱 없어야 한다.
+        //
+        // ★매트릭스 판정(code == null) 뒤에 둔다. TRANSITION·HARD_DELETE 는 toCodeOrNull 매핑이 없어
+        // 매트릭스를 건너뛰는데, 게이트를 그 앞의 조기 반환에 두면 그 둘이 게이트도 빠져나간다.
+        if (scope is IssueScope.Issue && permission in SECURITY_GATED_PERMISSIONS) {
             return passesSecurityGate(actorId, scope.key, membership.role.name)
         }
         return true
@@ -179,3 +186,33 @@ private fun IssuePermission.toCodeOrNull(): String? =
         IssuePermission.SET_SECURITY -> "SET_ISSUE_SECURITY"
         IssuePermission.TRANSITION, IssuePermission.HARD_DELETE -> null
     }
+
+/**
+ * 보안 등급 게이트를 통과해야 하는 권한 집합 — **이슈 내용 접근을 전제하는 조작들**.
+ *
+ * `IssuePermission` 8종을 전수 판정한 결과다.
+ *
+ * | 권한 | 포함 | 근거 |
+ * |---|---|---|
+ * | VIEW · UPDATE · TRANSITION · SOFT_DELETE · HARD_DELETE | ✅ | 이슈 내용을 읽거나 바꾼다 |
+ * | BROWSE · CREATE | ❌ | 프로젝트 스코프 — 특정 이슈의 등급과 무관하다 |
+ * | SET_SECURITY | ❌ | 아래 참조 |
+ *
+ * ## `SET_SECURITY` 제외는 누락이 아니라 결정이다
+ * 등급 변경 권한까지 게이트에 넣으면 **잘못 설정된 등급을 아무도 되돌릴 수 없다** —
+ * 등급 멤버가 아니라서 못 보고, 못 보니 못 고친다. 우회로 없는 락아웃이라 운영상 치명적이다.
+ * 반대급부로 `SET_SECURITY` 보유자에게 「등급을 자기가 볼 수 있는 것으로 바꾼 뒤 열람」 경로가
+ * 남지만, 그 권한은 이미 매트릭스에서 높은 등급이고 확대 이전에도 동일했다.
+ *
+ * 이 결정은 `IdentityAccessIssuePermissionResolverTest` 의
+ * 「SET_SECURITY 는 등급 게이트를 타지 않는다」 테스트가 고정한다 —
+ * 없으면 다음 사람이 "빠뜨렸네" 하고 넣어 락아웃을 만든다.
+ */
+private val SECURITY_GATED_PERMISSIONS: Set<IssuePermission> =
+    setOf(
+        IssuePermission.VIEW,
+        IssuePermission.UPDATE,
+        IssuePermission.TRANSITION,
+        IssuePermission.SOFT_DELETE,
+        IssuePermission.HARD_DELETE,
+    )

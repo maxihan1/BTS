@@ -2,6 +2,7 @@
 
 package com.bts.issue.link.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
@@ -51,7 +52,14 @@ import org.springframework.web.bind.annotation.RestController
  * (link 패키지 스코프 한정 — 타 컨트롤러 경로 예외를 잡지 않음).
  *
  * ### actorId
- * issue_links / parent_id 는 created_by 를 저장하지 않으므로 actor 추출이 불필요하다.
+ * **모든 핸들러가 [CurrentActor.current] 로 actor 를 먼저 추출한다** — 리소스 조회보다 앞이다.
+ * 뒤에 두면 미인증자가 404/200 차이로 이슈 실재를 열거한다.
+ *
+ * ⚠️ 2026-07-27 이전 이 자리에는 *"issue_links / parent_id 는 created_by 를 저장하지 않으므로
+ * actor 추출이 불필요하다"* 라고 적혀 있었고, 실제로 **권한 검사가 0건**이었다.
+ * 「누가 만들었는지 기록 안 함」 과 「누가 만들어도 되는지 검사 안 해도 됨」 은 다른 진술이다 —
+ * 감사 흔적의 부재는 권한 검사 면제의 근거가 아니다. 그 한 문장이 리뷰에서 "의도된 설계" 로
+ * 읽히게 만들어 무가드 상태를 오래 살렸다.
  * SecurityFilterChain 이 인증 없는 요청에 401 을 보장한다.
  *
  * @param linkApplicationService 링크 생성/조회/해제 Application Service.
@@ -94,9 +102,10 @@ class IssueLinkController(
         @PathVariable key: String,
         @Valid @RequestBody request: CreateLinkRequest,
     ): ResponseEntity<DataResponse<IssueLinkResponse>> {
+        val actor = CurrentActor.current()
         log.info("createLink source={} target={} type={}", key, request.targetKey, request.linkType)
         val targetKey = IssueKey(request.targetKey)
-        val result = linkApplicationService.createLink(IssueKey(key), targetKey, request.linkType)
+        val result = linkApplicationService.createLink(actor, IssueKey(key), targetKey, request.linkType)
         // 상대(target) 이슈 요약 — createLink 가 존재를 이미 검증했으므로 non-null 보장.
         val targetIssue =
             requireNotNull(issueRepository.findByKey(targetKey)) {
@@ -130,7 +139,8 @@ class IssueLinkController(
     fun listLinks(
         @PathVariable key: String,
     ): ResponseEntity<DataResponse<LinkListResponse>> {
-        val result = linkApplicationService.listLinks(IssueKey(key))
+        val actor = CurrentActor.current()
+        val result = linkApplicationService.listLinks(actor, IssueKey(key))
         return ResponseEntity.ok(DataResponse(data = LinkListResponse.from(result)))
     }
 
@@ -155,8 +165,9 @@ class IssueLinkController(
         @PathVariable key: String,
         @PathVariable linkId: Long,
     ) {
+        val actor = CurrentActor.current()
         log.info("deleteLink key={} linkId={}", key, linkId)
-        linkApplicationService.deleteLink(IssueKey(key), linkId)
+        linkApplicationService.deleteLink(actor, IssueKey(key), linkId)
     }
 
     /**
@@ -182,17 +193,18 @@ class IssueLinkController(
         @PathVariable key: String,
         @RequestBody request: SetParentRequest,
     ): ResponseEntity<DataResponse<IssueParentResponse>> {
+        val actor = CurrentActor.current()
         val childKey = IssueKey(key)
         val parentKeyValue = request.parentKey
         val body =
             if (parentKeyValue == null) {
                 log.info("clearParent child={}", key)
-                issueParentService.clearParent(childKey)
+                issueParentService.clearParent(actor, childKey)
                 IssueParentResponse.from(child = requireChild(childKey), parentIssue = null)
             } else {
                 val parentKey = IssueKey(parentKeyValue)
                 log.info("setParent child={} parent={}", key, parentKeyValue)
-                issueParentService.setParent(childKey, parentKey)
+                issueParentService.setParent(actor, childKey, parentKey)
                 val parentIssue =
                     requireNotNull(issueRepository.findByKey(parentKey)) {
                         "setParent 성공 후 parent 이슈는 존재해야 한다: ${parentKey.value}"

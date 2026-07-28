@@ -28,7 +28,9 @@ export type BoundedContext =
   | 'agile-planning'
   | 'automation'
   | 'notification'
-  | 'slack-integration';
+  | 'slack-integration'
+  | 'search-export-import'  // 검색(AQL)/Export/Import/OpenAPI — 이전에는 automation 으로 오분류됐다
+  | 'personalization';      // 프로필/환경설정/퀵필터/캘린더 — 논리 BC, 물리적으로는 identity-access 모듈
 
 export interface ClassifyResult {
   /** 사용자 원문 입력 */

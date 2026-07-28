@@ -9,10 +9,10 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.9 (PAT) — Slack 인증과 매핑
-- [ ] notification-dashboard §2.2 (FR-NT-02 채널) 완료
-- [ ] issue-tracking §2~§6 (URL 구조 안정) 완료
-- [ ] Slack 워크스페이스 + App 생성 + 권한 부여 (사전 수동 작업)
+- [x] identity-access §2.9 (PAT) — Slack 인증과 매핑 — 2026-07-27 실측: `docs/plan/product/identity-access.md` §2.9 D1~D7 전량 `[x]` (PR #37 완료 노트 포함)
+- [x] notification-dashboard §2.2 (FR-NT-02 채널) 완료 — 2026-07-27 실측: `docs/plan/product/notification-dashboard.md` §2.2 D1~D7 전량 `[x]` (인앱 PR #137 · 이메일 PR #139)
+- [x] issue-tracking §2~§6 (URL 구조 안정) 완료 — 2026-07-27 실측: `docs/plan/product/issue-tracking.md` §2~§6 구간의 D 체크박스 232개 전량 `[x]`, 미완 0
+- [ ] Slack 워크스페이스 + App 생성 + 권한 부여 (사전 수동 작업) — 미측정. 저장소 밖 수동 작업이라 확인 불가이며, 오히려 미완 증거만 있다(`infra/prod/.env.prod.example:70-78` SLACK 계열 7개가 전부 주석 + `CHANGE_ME` 자리표시자, `docs/decisions/2026-07-07-fr-sl-01-slack-bot-app.md:51` "실제 Slack 워크스페이스/App credentials가 없으므로 stub/mock"). 실 워크스페이스에 App 설치 후 봇 토큰이 `slack_installs` 에 실제로 적재되는지를 측정해야 한다
 
 ## §1 기술 검증
 
@@ -111,9 +111,9 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§3 (6 FR) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] Slack 정책 변경 대응 가이드 1줄 (CHANGELOG.md)
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "slack-integration BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "slack-integration BC 완료"
+- [x] §2~§3 (6 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: 본 파일 §2~§3 구간의 D 체크박스 42개(6 FR × 7단계) 전량 `[x]`, 미완 0
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정표 6행 중 5행(알림 발송 지연 · Unfurl 응답 · Slash 응답 · Interactive 응답 · 권한 위반 차단율)이 아직 `___`. k6 + Slack mock 부하 측정으로 p95 를 채워야 한다
+- [ ] Slack 정책 변경 대응 가이드 1줄 (CHANGELOG.md) — 미측정. 2026-07-27 실측: 루트 `CHANGELOG.md` 에 Slack 절은 있으나(L35) 정책 변경(3초 응답 제한 · 스코프 변경 · 토큰 회전) 대응 문장은 없다. 해당 1줄을 작성해야 한다
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 루트 `CHANGELOG.md` L35 에 이 BC 행 존재(6 FR · 2026-07-08~07-13 · PR 9건 #244~#267 · 대표 산출 3종)
+- [ ] README.md §7 변경 이력에 "slack-integration BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 2026-07-27 실측: `docs/plan/README.md` §7 의 마지막 항목은 2026-07-17 이고 이 BC 완료 행은 없다. 선언 날짜가 정해져야 기입 가능
+- [ ] Maxi 1인 선언 — "slack-integration BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

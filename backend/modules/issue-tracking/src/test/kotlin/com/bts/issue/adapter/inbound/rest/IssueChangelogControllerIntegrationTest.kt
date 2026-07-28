@@ -429,6 +429,33 @@ class IssueChangelogControllerIntegrationTest {
     }
 
     /**
+     * S4c offset 모드 페이지 크기 상한 — 초과 시 400.
+     *
+     * cursor 모드는 `limit > 100` 을 400 으로 막고 있었으나 **offset 모드에는 상한이 없었다**.
+     * `@PageableDefault(size = 20)` 은 기본값일 뿐이고, 남는 것은 Spring Data Web 프레임워크
+     * 기본값(`max-page-size`, 2000)뿐인데 그 키는 이 저장소 설정에 없다.
+     *
+     * 이력은 증폭 계수가 크다 — 댓글 수정 1건이 이전/이후 본문 각 최대 32,000자를 싣는다.
+     * 두 모드가 같은 상한·같은 응답 코드를 쓰는 것이 계약이다.
+     */
+    @Test
+    fun `S4c offset size 가 상한을 넘으면 400`() {
+        val issueKey = insertIssue(PROJECT_KEY, "S4c 상한 초과 이슈")
+
+        mockMvc.perform(get("/api/v1/issues/$issueKey/changelog?size=2000"))
+            .andExpect(status().isBadRequest)
+    }
+
+    /** S4d 상한 경계값(100)은 통과해야 한다 — 위 단언이 "전부 400" 으로 무너지지 않았음을 확인한다. */
+    @Test
+    fun `S4d offset size 가 상한과 같으면 200`() {
+        val issueKey = insertIssue(PROJECT_KEY, "S4d 상한 경계 이슈")
+
+        mockMvc.perform(get("/api/v1/issues/$issueKey/changelog?size=100"))
+            .andExpect(status().isOk)
+    }
+
+    /**
      * S4b 소프트 삭제된 이슈 → 404.
      *
      * Given  이슈 삽입 후 deleted_at 셋

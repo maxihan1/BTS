@@ -9,11 +9,11 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §4.4 (FR-PM-04 자동화 관리 권한) 완료 — **워크플로우 부분은 완료(PR #73)**, `MANAGE_AUTOMATION`은 automation BC 착수 시 동반 결선(ADR D1, dead 시드 회피)
-- [ ] issue-tracking §2~§6 (이슈 변경 이벤트 발행) 완료
-- [ ] project-workflow §2 (상태 전이 이벤트) 완료
-- [ ] notification-dashboard §1 (pgmq consumer 패턴 확립) 완료
-- [ ] AT는 다른 BC의 후행 작업. 가능한 한 마지막 진입 권장.
+- [x] identity-access §4.4 (FR-PM-04 자동화 관리 권한) 완료 — **워크플로우 부분은 완료(PR #73)**, `MANAGE_AUTOMATION`은 automation BC 착수 시 동반 결선(ADR D1, dead 시드 회피) — 2026-07-27 실측: `identity-access.md` §4.4 D1~D5 전부 `[x]`(D6/D7은 명시적 범위 외), 유예됐던 `MANAGE_AUTOMATION`도 FR-AT-01에서 동반 결선 완료 — `V035__manage_automation_permission.sql`(PROJECT_ADMIN 시드) + `IdentityAccessAutomationPermissionResolver` + `PermissionSchemaMigrationTest` 실재
+- [x] issue-tracking §2~§6 (이슈 변경 이벤트 발행) 완료 — 2026-07-27 실측: `issue-tracking.md` L24~L520(§2~§6) D단계 `[x]` 232건 / 미완 0건, `IssueEventPublisher`(`q_issue_events` + `q_automation_events` fan-out, `Propagation.MANDATORY`) 실재
+- [x] project-workflow §2 (상태 전이 이벤트) 완료 — 2026-07-27 실측: `project-workflow.md` L38~L80(§2 FR-WF 3개) D단계 `[x]` 18건 / 미완 0건, 전이 이벤트 경로 실재 — `RunAutomationPostAction`(`AutomationRequested` 발행 예약) + `V022__pgmq_queue_transition_events.sql`
+- [x] notification-dashboard §1 (pgmq consumer 패턴 확립) 완료 — 2026-07-27 실측: pgmq consumer 패턴은 prod 코드로 확립됨 — `notification` 모듈 `NotificationWorker`(`q_issue_events` 폴링) + `WebhookDispatchWorker`(`q_transition_events` 폴링), BC 전체 D단계 `[x]` 98건 / 미완 0건. **표기 어긋남**. `notification-dashboard.md` §1은 실제로는 STOMP 재연결 PoC 절이라 pgmq와 무관하다(그 절 체크박스 5개는 별건으로 미완) — 여기서 확인한 것은 괄호가 말하는 실질(pgmq consumer 패턴)이다
+- [ ] AT는 다른 BC의 후행 작업. 가능한 한 마지막 진입 권장. — 미측정. 완료 여부를 묻는 조건이 아니라 진입 순서 **권장**이라 판정 대상 명제가 없다. 참고로 2026-07-27 실측 진입 순서는 권장을 완전히 따르지는 않았다 — automation 착수는 PR #251(2026-07-10)로 9개 BC 중 8번째였고 slack-integration(2026-07-08~07-13)·personalization(~07-25)·issue-tracking(~07-27)이 겹치거나 후행했다
 
 ## §1 기술 검증
 
@@ -247,8 +247,8 @@
 
 ### BC 완료 조건
 
-- [ ] §2 (FR-AT 7개) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "automation BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "automation BC 완료"
+- [x] §2 (FR-AT 7개) 모두 `[x]` 마킹 — 2026-07-27 실측: 이 파일의 `- [x] D«n».` 49건 / `[ ]`·`[~]`·`[!]` D단계 0건 (FR-AT-01~07 7개 × D1~D7 = 49)
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 6행 중 2행만 실측됐다(규칙 충돌 정적 분석 0.876s · Webhook 응답 148ms). 남은 4행이 `___` 로 공란 — 트리거→액션 처리 지연(임계 5s) · 실행 이력 재실행(1s) · YAML import 100규칙(10s) · 권한 위반 액션 차단율(100%). 이 4개를 실측해 표에 기입해야 판정 가능
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` 실재(신설), `## [Unreleased] — Phase 1 › BC 요약` 표에 automation 행 존재 — "7 (AT 7) | 2026-07-10 ~ 07-18 | 14 (#73~#278) | 6 트리거 → pgmq → executor · YAML GitOps 룰 · Git 웹훅(HMAC 서명검증)"
+- [ ] README.md §7 변경 이력에 "automation BC 완료 — YYYY-MM-DD" 추가 — 미측정. 2026-07-27 실측 결과 `docs/plan/README.md` §7(변경 이력)에는 3개 항목만 있고 automation BC 완료 행이 없다(미수행). 추가는 이 파일 밖(`docs/plan/README.md`) 편집이라 이 작업 범위 밖이며, BC 완료 선언과 같은 날짜로 함께 기입해야 한다
+- [ ] Maxi 1인 선언 — "automation BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

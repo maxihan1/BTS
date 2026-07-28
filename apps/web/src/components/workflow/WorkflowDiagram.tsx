@@ -73,13 +73,14 @@ export function generateMermaidCode(workflow: WorkflowView): string {
     lines.push(`  ${doneState.key} --> [*]`)
   }
 
-  // classDef 정의 — DESIGN.md OKLCH 토큰 기반
-  // TODO: bg-muted/text-muted-foreground → --muted 토큰
-  // IN_PROGRESS: bg-primary/10 → --primary 토큰 (투명도 15%)
-  // DONE: bg-emerald-500/10 → --success 계열 (emerald)
+  // classDef 정의 — DESIGN.md 디자인 토큰 기반 (하드코딩 색상 금지)
+  //   TODO        → --muted / --border
+  //   IN_PROGRESS → --primary (투명도 15%)
+  //   DONE        → --success (투명도 15%)
+  // 세 카테고리 모두 토큰을 참조하므로 라이트/다크 테마가 자동으로 따라온다.
   lines.push(`  classDef category_todo fill:var(--muted),stroke:var(--border)`)
   lines.push(`  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)`)
-  lines.push(`  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)`)
+  lines.push(`  classDef category_done fill:oklch(from var(--success) l c h / 0.15),stroke:var(--success)`)
 
   // class 할당 — 각 state에 카테고리 클래스 부여
   for (const state of states) {

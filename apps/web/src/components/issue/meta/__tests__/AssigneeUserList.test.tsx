@@ -6,8 +6,8 @@ import type { UserSummary } from '@/api/users'
 import { AssigneeUserList } from '@/components/issue/meta/AssigneeUserList'
 
 const usersFixture: UserSummary[] = [
-  { id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', username: 'alice', displayName: '김앨리스', email: null },
-  { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: null, email: null },
+  { id: '00000000-0000-4000-8000-000000000001', username: 'alice', displayName: '김앨리스', email: null },
+  { id: '00000000-0000-4000-8000-000000000002', username: 'bob', displayName: null, email: null },
 ]
 
 describe('AssigneeUserList', () => {
@@ -23,7 +23,7 @@ describe('AssigneeUserList', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: '김앨리스' }))
     expect(onSelect).toHaveBeenCalledOnce()
-    expect(onSelect).toHaveBeenCalledWith('c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f')
+    expect(onSelect).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001')
   })
 
   it('WCAG AA — 각 버튼이 min-h-[44px] 클래스를 가진다', () => {

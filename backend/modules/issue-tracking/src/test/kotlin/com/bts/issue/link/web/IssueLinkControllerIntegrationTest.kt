@@ -9,6 +9,9 @@ import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -27,6 +30,8 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -127,18 +132,36 @@ class IssueLinkControllerIntegrationTest {
             return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
         }
 
+        /**
+         * 이슈 권한 resolver 스텁 — 테스트가 `deny` 로 특정 (권한, 이슈키) 조합을 막을 수 있다.
+         *
+         * 기본은 전부 허용이다. 기존 19개 시나리오는 권한을 다루지 않으므로 그대로 통과해야 하고,
+         * 새로 추가한 거부 시나리오만 명시적으로 `deny` 를 건다.
+         */
+        @Bean
+        open fun issuePermissionResolver(): TogglableIssuePermissionResolver = TogglableIssuePermissionResolver()
+
         @Bean
         open fun linkApplicationService(
             issueRepository: IssueRepository,
             issueLinkRepository: IssueLinkRepository,
             archiveGuard: ProjectArchiveGuard,
-        ): LinkApplicationService = LinkApplicationService(issueRepository, issueLinkRepository, archiveGuard)
+            permissionResolver: TogglableIssuePermissionResolver,
+        ): LinkApplicationService {
+            return LinkApplicationService(
+                issueRepository,
+                issueLinkRepository,
+                archiveGuard,
+                permissionResolver,
+            )
+        }
 
         @Bean
         open fun issueParentService(
             issueRepository: IssueRepository,
             archiveGuard: ProjectArchiveGuard,
-        ): IssueParentService = IssueParentService(issueRepository, archiveGuard)
+            permissionResolver: TogglableIssuePermissionResolver,
+        ): IssueParentService = IssueParentService(issueRepository, archiveGuard, permissionResolver)
 
         @Bean
         open fun issueLinkController(
@@ -151,8 +174,39 @@ class IssueLinkControllerIntegrationTest {
         open fun linkExceptionHandler(): LinkExceptionHandler = LinkExceptionHandler()
     }
 
+    /**
+     * (권한, 이슈키) 단위로 거부를 켤 수 있는 [IssuePermissionResolver] 스텁.
+     *
+     * 기본 허용인 이유 — 이 파일의 기존 19개 시나리오는 권한을 다루지 않는다. 기본을 거부로 두면
+     * 그 전부를 고쳐야 해서, 이번 봉합이 만든 회귀와 원래 있던 결함이 뒤섞인다.
+     */
+    class TogglableIssuePermissionResolver : IssuePermissionResolver {
+        private val denied = mutableSetOf<Pair<IssuePermission, String>>()
+
+        fun deny(
+            permission: IssuePermission,
+            issueKey: String,
+        ) {
+            denied += permission to issueKey
+        }
+
+        fun reset() = denied.clear()
+
+        override fun hasPermission(
+            actorId: UUID,
+            permission: IssuePermission,
+            scope: IssueScope,
+        ): Boolean {
+            val key = (scope as? IssueScope.Issue)?.key ?: return true
+            return (permission to key) !in denied
+        }
+    }
+
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    lateinit var permissionResolver: TogglableIssuePermissionResolver
 
     private lateinit var mockMvc: MockMvc
 
@@ -161,6 +215,9 @@ class IssueLinkControllerIntegrationTest {
 
     companion object {
         private const val PROJECT_KEY = "LKTEST"
+
+        /** 컨트롤러가 CurrentActor 로 읽는 테스트 actor UUID. */
+        private val TEST_ACTOR_ID: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
         private var migrated = false
         private var projectSeeded = false
 
@@ -184,6 +241,10 @@ class IssueLinkControllerIntegrationTest {
     @BeforeEach
     fun setUpEach() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // 컨트롤러가 CurrentActor.current() 로 actor 를 추출한다 — 인증 컨텍스트가 없으면 401 이다.
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(TEST_ACTOR_ID.toString(), null, emptyList())
+        permissionResolver.reset()
         conn().use { c ->
             c.createStatement().use { stmt ->
                 // 링크 + 이슈 초기화 (CASCADE 로 issue_links도 삭제)
@@ -211,6 +272,210 @@ class IssueLinkControllerIntegrationTest {
             .andExpect(jsonPath("$.data.direction").value("OUTWARD"))
             .andExpect(jsonPath("$.data.label").value("blocks"))
             .andExpect(jsonPath("$.data.otherIssue.key").value(targetKey))
+    }
+
+    // ── SEC. 권한 게이트 (2026-07-27 봉합 — 이전에는 검사가 0건이었다) ──────────
+
+    /**
+     * 링크 API 는 2026-07-27 이전까지 **`IssuePermission` 검사가 하나도 없었다.**
+     * `SecurityConfig` 의 `.authenticated()` 만 통과하면 자기가 멤버가 아닌 프로젝트의,
+     * 심지어 볼 수 없는 기밀 이슈에도 링크를 걸고 지울 수 있었다.
+     *
+     * 잠복한 이유는 컨트롤러 KDoc 의 *"created_by 를 저장하지 않으므로 actor 추출이 불필요하다"* 였다 —
+     * 「기록 안 함」을 「검사 안 해도 됨」의 근거로 쓴 문장이다.
+     */
+    @Test
+    fun `SEC1 POST links 403 - source 이슈 UPDATE 권한이 없으면 거부`() {
+        val sourceKey = createIssue("SEC1 소스")
+        val targetKey = createIssue("SEC1 타겟")
+        permissionResolver.deny(IssuePermission.UPDATE, sourceKey)
+
+        mockMvc.perform(
+            post("/api/v1/issues/$sourceKey/links")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("targetKey" to targetKey, "linkType" to "blocks"))),
+        )
+            .andExpect(status().isForbidden)
+    }
+
+    /**
+     * ★양끝 검사. source 만 보면 **볼 수 없는 이슈를 target 으로 지목**해
+     * 「없음(404)」과 「이미 링크됨(409)」의 차이로 실재를 확인할 수 있다.
+     */
+    @Test
+    fun `SEC2 POST links 403 - target 이슈 UPDATE 권한이 없으면 거부`() {
+        val sourceKey = createIssue("SEC2 소스")
+        val targetKey = createIssue("SEC2 타겟")
+        permissionResolver.deny(IssuePermission.UPDATE, targetKey)
+
+        mockMvc.perform(
+            post("/api/v1/issues/$sourceKey/links")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("targetKey" to targetKey, "linkType" to "blocks"))),
+        )
+            .andExpect(status().isForbidden)
+    }
+
+    /**
+     * ★권한을 **리소스 조회보다 먼저** 건다는 것이 판별자다.
+     * 존재하지 않는 이슈 키로 요청해도 404 가 아니라 403 이어야 한다 —
+     * 그렇지 않으면 응답 코드 차이로 이슈 실재를 열거당한다.
+     */
+    @Test
+    fun `SEC3 DELETE links 403 - 권한 검사가 리소스 조회보다 먼저다`() {
+        val missingKey = "LKTEST-9999"
+        permissionResolver.deny(IssuePermission.UPDATE, missingKey)
+
+        mockMvc.perform(delete("/api/v1/issues/$missingKey/links/1"))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `SEC4 GET links 403 - VIEW 권한이 없으면 거부`() {
+        val issueKey = createIssue("SEC4 이슈")
+        permissionResolver.deny(IssuePermission.VIEW, issueKey)
+
+        mockMvc.perform(get("/api/v1/issues/$issueKey/links"))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `SEC5 PATCH parent 403 - child UPDATE 권한이 없으면 거부`() {
+        val childKey = createIssue("SEC5 자식")
+        val parentKey = createIssue("SEC5 부모")
+        permissionResolver.deny(IssuePermission.UPDATE, childKey)
+
+        mockMvc.perform(
+            patch("/api/v1/issues/$childKey/parent")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("parentKey" to parentKey))),
+        )
+            .andExpect(status().isForbidden)
+    }
+
+    /** 부모 설정도 양끝 검사 — parent 쪽 권한만 없어도 거부한다. */
+    @Test
+    fun `SEC6 PATCH parent 403 - parent UPDATE 권한이 없으면 거부`() {
+        val childKey = createIssue("SEC6 자식")
+        val parentKey = createIssue("SEC6 부모")
+        permissionResolver.deny(IssuePermission.UPDATE, parentKey)
+
+        mockMvc.perform(
+            patch("/api/v1/issues/$childKey/parent")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("parentKey" to parentKey))),
+        )
+            .andExpect(status().isForbidden)
+    }
+
+    /**
+     * ★읽기에도 **양끝 검사**가 필요하다.
+     *
+     * `listLinks` 의 VIEW 가드는 **중심 이슈**에만 걸리는데, 응답 항목은 상대 이슈의
+     * `summary` 와 `statusKey` 를 싣는다. 쓰기(createLink)에는 양끝 검사를 적용해 놓고
+     * 읽기에는 안 해서, 볼 권한 없는 이슈의 제목이 링크 목록을 통해 새어 나갔다.
+     *
+     * **거부(403)가 아니라 제외(200 + 항목 누락)** 다 — 중심 이슈는 볼 수 있으므로
+     * 목록 자체는 성공해야 하고, 못 보는 상대만 빠져야 한다. 403 으로 만들면
+     * "이 이슈에는 내가 못 보는 링크가 있다" 는 사실 자체가 오라클이 된다.
+     */
+    @Test
+    fun `SEC10 GET links 200 - VIEW 없는 상대 이슈는 목록에서 제외된다`() {
+        val centerKey = createIssue("SEC10 중심")
+        val visibleKey = createIssue("SEC10 보이는 상대")
+        val secretKey = createIssue("SEC10 기밀 상대")
+
+        createLink(centerKey, visibleKey, "relates")
+        createLink(centerKey, secretKey, "blocks")
+
+        permissionResolver.deny(IssuePermission.VIEW, secretKey)
+
+        mockMvc.perform(get("/api/v1/issues/$centerKey/links"))
+            .andExpect(status().isOk)
+            // 기밀 상대가 빠져 1건만 남아야 한다.
+            .andExpect(jsonPath("$.data.outward.length()").value(1))
+            .andExpect(jsonPath("$.data.outward[0].otherIssue.key").value(visibleKey))
+    }
+
+    /**
+     * 대조군 — 위 필터가 "전부 제외" 로 무너지지 않았음을 확인한다.
+     * 이 짝이 없으면 목록을 통째로 비워도 SEC10 은 통과한다.
+     */
+    @Test
+    fun `SEC11 대조군 - VIEW 가 있는 상대는 목록에 남는다`() {
+        val centerKey = createIssue("SEC11 중심")
+        val otherKey = createIssue("SEC11 상대")
+        createLink(centerKey, otherKey, "relates")
+
+        mockMvc.perform(get("/api/v1/issues/$centerKey/links"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.outward.length()").value(1))
+            .andExpect(jsonPath("$.data.outward[0].otherIssue.key").value(otherKey))
+    }
+
+    /**
+     * ★가드가 거는 대상과 삭제가 지우는 대상이 **다른 것**이었다 (IDOR).
+     *
+     * `deleteLink(actor, key, linkId)` 는 권한을 **경로 이슈 `key`** 에 걸지만,
+     * 실제 삭제는 **전역 순번 `linkId`** 로 한다. 링크가 그 이슈 소속인지 확인하는 코드가
+     * 없으면, 내가 UPDATE 를 가진 아무 이슈나 경로에 넣고 **남의 프로젝트 링크 id** 를
+     * 붙여 지울 수 있다. `issue_links.id` 는 `GENERATED ALWAYS AS IDENTITY` 라 열거된다.
+     *
+     * 링크는 소프트 삭제가 없어(V021 · DATA.md §3) 복구도 불가능하다.
+     *
+     * **404 로 거부한다** — 403 이면 "그 id 는 존재한다" 는 오라클이 된다.
+     * 미존재 id(S10)와 남의 링크 id 가 **같은 응답**이어야 실재가 안 새어 나간다.
+     */
+    @Test
+    fun `SEC8 DELETE links 404 - 다른 이슈 소속 linkId 는 지울 수 없다`() {
+        val victimA = createIssue("SEC8 피해자 A")
+        val victimB = createIssue("SEC8 피해자 B")
+        val victimLinkId = createLink(victimA, victimB, "relates")
+
+        val attackerIssue = createIssue("SEC8 공격자 이슈")
+
+        // 공격자는 자기 이슈에 UPDATE 를 갖는다 (기본 스텁이 허용). 그래도 남의 링크는 못 지운다.
+        mockMvc.perform(delete("/api/v1/issues/$attackerIssue/links/$victimLinkId"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("LINK_NOT_FOUND"))
+
+        // 실제로 살아 있어야 한다 — 응답만 404 고 행은 지워졌으면 아무 의미가 없다.
+        mockMvc.perform(get("/api/v1/issues/$victimA/links"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.outward.length()").value(1))
+    }
+
+    /**
+     * 대조군 — 위 봉합이 "전부 404" 로 무너지지 않았음을 확인한다.
+     * 소속이 맞는 링크는 **여전히 지워져야** 한다. 이 짝이 없으면 SEC8 은
+     * 삭제 기능을 통째로 부숴도 통과한다.
+     */
+    @Test
+    fun `SEC9 대조군 - 소속이 맞으면 target 쪽 경로로도 지울 수 있다`() {
+        val sourceKey = createIssue("SEC9 소스")
+        val targetKey = createIssue("SEC9 타겟")
+        val linkId = createLink(sourceKey, targetKey, "relates")
+
+        // source 가 아니라 **target** 경로로 지운다 — 양끝 모두 소속으로 인정해야 한다.
+        mockMvc.perform(delete("/api/v1/issues/$targetKey/links/$linkId"))
+            .andExpect(status().isNoContent)
+    }
+
+    /**
+     * 대조군 — 게이트가 "전부 403" 으로 무너지지 않았음을 확인한다.
+     * 이 단언이 없으면 권한을 과하게 걸어도 위 6건이 통과해 초록으로 보인다.
+     */
+    @Test
+    fun `SEC7 대조군 - 권한이 있으면 링크 생성이 성공한다`() {
+        val sourceKey = createIssue("SEC7 소스")
+        val targetKey = createIssue("SEC7 타겟")
+
+        mockMvc.perform(
+            post("/api/v1/issues/$sourceKey/links")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("targetKey" to targetKey, "linkType" to "blocks"))),
+        )
+            .andExpect(status().isCreated)
     }
 
     // ── S2. POST /links 422 — self 참조 ─────────────────────────────────────

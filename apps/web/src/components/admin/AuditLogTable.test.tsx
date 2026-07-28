@@ -10,7 +10,7 @@ import { AuditLogTable } from './AuditLogTable'
 
 const aliceEntry: AuditLogEntry = {
   id: 1,
-  userId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+  userId: '00000000-0000-4000-8000-000000000001',
   username: 'alice',
   displayName: '김앨리스',
   eventType: 'LOGIN_SUCCESS',
@@ -23,7 +23,7 @@ const aliceEntry: AuditLogEntry = {
 
 const bobEntry: AuditLogEntry = {
   id: 2,
-  userId: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
+  userId: '00000000-0000-4000-8000-000000000002',
   username: 'bob',
   displayName: null,
   eventType: 'LOGIN_FAILURE',
@@ -49,7 +49,7 @@ const nullUserEntry: AuditLogEntry = {
 
 const unknownEventEntry: AuditLogEntry = {
   id: 4,
-  userId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+  userId: '00000000-0000-4000-8000-000000000001',
   username: 'alice',
   displayName: '김앨리스',
   eventType: 'FUTURE_UNKNOWN_EVENT',

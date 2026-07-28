@@ -1,14 +1,15 @@
 // 감사 로그 MSW fixture 데이터 — 20건+, 필터·페이지네이션 시나리오 포함
 import type { AuditLogEntry } from '@/api/audit-logs'
+import { ALICE_USER_ID as AUTH_ALICE_USER_ID, BOB_USER_ID as AUTH_BOB_USER_ID } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 사용자 UUID (v4 형식 — zod-v4-uuid-fixture-strictness)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** alice UUID — user-fixtures의 userAliceFixture.id와 일치 */
-export const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
-/** bob UUID — user-fixtures의 userBobFixture.id와 일치 */
-export const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+/** alice UUID — 정본은 auth-fixtures (user-fixtures 도 같은 상수를 참조한다) */
+export const ALICE_USER_ID = AUTH_ALICE_USER_ID
+/** bob UUID — 정본은 auth-fixtures (user-fixtures 도 같은 상수를 참조한다) */
+export const BOB_USER_ID = AUTH_BOB_USER_ID
 /** 미존재(삭제) 사용자 UUID — DB에 없는 값 */
 export const DELETED_USER_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
 

@@ -2,6 +2,8 @@
 
 package com.atlas.bts.identity.permission
 
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -101,5 +103,47 @@ class GlobalPermissionGrantSchemaMigrationTest {
                 mapOf("id" to UUID.randomUUID(), "by" to UUID.randomUUID()),
             )
         }.isInstanceOf(DataIntegrityViolationException::class.java)
+    }
+
+    /**
+     * ADR D-1 이중 방어의 **두 겹이 같은 집합인지** 확인한다.
+     *
+     * ## 무엇이 잠겨 있지 않았나 (2026-07-27 등재분 해소)
+     * 이중 방어는 앱 화이트리스트([GlobalPermissionGrantService.ALLOWED_GLOBAL_PERMISSIONS])와
+     * DB `CHECK (permission IN (...))` 가 **같은 집합**이어야 성립한다. 그런데 두 값을 함께 읽는
+     * 테스트가 0건이라, 서비스 KDoc 이 지시하는 수동 동기화를 강제하는 것이 아무것도 없었다.
+     *
+     * 드리프트 방향별 결과.
+     * - 화이트리스트만 확장 → 서비스는 통과, DB CHECK 위반 → **400 이어야 할 것이 500 으로 변질**
+     * - CHECK 만 확장 → 부여가 400 으로 조용히 거부
+     *
+     * ## 이 테스트가 잡는 방향 / 못 잡는 방향
+     * 잡는 것은 **화이트리스트 → CHECK** 방향뿐이다(앱이 허용하는 코드를 DB 가 거부하는 경우).
+     * 반대 방향(CHECK 만 넓어짐)은 다음 마이그레이션 작성 시점의 문제이며, V036 의
+     * `COMMENT ON COLUMN` 이 그 지점에서 이 테스트를 가리킨다.
+     *
+     * ## 빈 집합 선단언이 필수인 이유
+     * 화이트리스트가 비면 아래 루프가 **0회 반복**해 vacuous 하게 통과한다. 가드가 사라진 것을
+     * 초록불로 오인하게 된다([[verify-logic-vs-verify-guard]]).
+     */
+    @Test
+    fun `앱 화이트리스트의 전 권한코드가 DB CHECK 를 통과한다`() {
+        val allowed = GlobalPermissionGrantService.ALLOWED_GLOBAL_PERMISSIONS
+
+        // 선단언 — 빈 집합이면 아래 루프가 공허하게 통과한다.
+        assertThat(allowed).isNotEmpty()
+
+        allowed.forEach { code ->
+            // grantee_id 는 코드마다 새로 뽑는다 — 같은 값을 재사용하면 UNIQUE 와 얽혀
+            // 실패 원인이 CHECK 인지 UNIQUE 인지 흐려진다. 판별자는 permission 하나여야 한다.
+            assertThatCode {
+                jdbc.update(
+                    "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id, granted_by) " +
+                        "VALUES (:code, 'USER', :id, :by)",
+                    mapOf("code" to code, "id" to UUID.randomUUID(), "by" to UUID.randomUUID()),
+                )
+            }.describedAs("앱 화이트리스트의 '%s' 가 V036 CHECK 를 통과하지 못한다 — 두 겹이 어긋났다", code)
+                .doesNotThrowAnyException()
+        }
     }
 }

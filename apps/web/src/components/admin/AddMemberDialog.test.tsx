@@ -30,7 +30,7 @@ vi.mock('sonner', () => ({
 const PROJECT_KEY = 'ATLAS'
 
 const SEARCH_RESULTS = [
-  { id: '961fb10c-6317-47c8-b377-d8fc5594db82', username: 'carol', displayName: '캐럴', email: null },
+  { id: '00000000-0000-4000-8000-000000000003', username: 'carol', displayName: '캐럴', email: null },
   { id: 'e745adab-f152-44cb-987e-aff965d3db4f', username: 'dave', displayName: '데이브', email: null },
 ]
 
@@ -202,7 +202,7 @@ describe('AddMemberDialog — 멤버 추가 플로우', () => {
         HttpResponse.json(
           {
             projectId: 'project-atlas-uuid',
-            userId: '961fb10c-6317-47c8-b377-d8fc5594db82',
+            userId: '00000000-0000-4000-8000-000000000003',
             role: 'MEMBER',
             createdAt: '2026-06-01T00:00:00Z',
             updatedAt: '2026-06-01T00:00:00Z',

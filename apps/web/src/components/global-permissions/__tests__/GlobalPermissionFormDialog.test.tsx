@@ -21,7 +21,7 @@ const GRANT_PATH = '/api/v1/admin/global-permissions'
 const DEV_TEAM_GROUP_ID = '11111111-0000-4000-8000-000000000001'
 
 const SEARCH_RESULTS = [
-  { id: '961fb10c-6317-47c8-b377-d8fc5594db82', username: 'carol', displayName: '캐럴', email: null },
+  { id: '00000000-0000-4000-8000-000000000003', username: 'carol', displayName: '캐럴', email: null },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

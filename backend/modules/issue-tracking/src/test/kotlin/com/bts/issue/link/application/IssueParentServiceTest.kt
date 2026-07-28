@@ -4,6 +4,7 @@ package com.bts.issue.link.application
 
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
@@ -13,6 +14,7 @@ import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssuePermissionResolver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
@@ -26,7 +28,19 @@ class IssueParentServiceTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
     val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
-    val sut = IssueParentService(repo, archiveGuard)
+
+    // 이 파일은 부모-자식 도메인 규칙(순환·자기참조·미존재)을 검증한다. 권한 판정은 관심사가 아니므로
+    // 전부 허용으로 고정한다 — setParent 의 권한 거부 경로는 IssueLinkControllerIntegrationTest 의
+    // SEC5/SEC6 이 덮는다. clearParent 는 어느 계층에도 거부 단언이 없어 아래 「UPDATE 권한이 없으면」
+    // 컨텍스트가 전용 resolver 로 덮는다.
+    val permissionResolver =
+        mockk<IssuePermissionResolver> {
+            every { hasPermission(any(), any(), any()) } returns true
+        }
+    val sut = IssueParentService(repo, archiveGuard, permissionResolver)
+
+    /** 권한이 관심사가 아닌 테스트용 actor. */
+    val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
     // 공통 픽스처
     val childId = UUID.fromString("00000000-0000-4000-8000-000000000001")
@@ -70,12 +84,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, parentKey) }
+                runCatching { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -88,7 +102,7 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
         }
@@ -101,12 +115,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, parentKey) }
+                runCatching { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -118,12 +132,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("ParentSelfReferenceException(422) 을 던진다") {
                 shouldThrow<ParentSelfReferenceException> {
-                    sut.setParent(childKey, childKey)
+                    sut.setParent(actor, childKey, childKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, childKey) }
+                runCatching { sut.setParent(actor, childKey, childKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -144,7 +158,7 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("childId == parentId 이면 ParentSelfReferenceException 을 던진다") {
                 shouldThrow<ParentSelfReferenceException> {
-                    sut.setParent(key1, key2)
+                    sut.setParent(actor, key1, key2)
                 }
             }
         }
@@ -160,12 +174,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("ParentCycleException(409) 을 던진다") {
                 shouldThrow<ParentCycleException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.setParent(childKey, parentKey) }
+                runCatching { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -180,7 +194,7 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("ParentCycleException(409) 을 던진다") {
                 shouldThrow<ParentCycleException> {
-                    sut.setParent(childKey, parentKey)
+                    sut.setParent(actor, childKey, parentKey)
                 }
             }
         }
@@ -194,7 +208,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, parentId) 가 1회 호출된다") {
-                sut.setParent(childKey, parentKey)
+                sut.setParent(actor, childKey, parentKey)
                 verify(exactly = 1) { repo.updateParent(childId, parentId) }
             }
         }
@@ -208,7 +222,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, parentId) 가 1회 호출된다") {
-                sut.setParent(childKey, parentKey)
+                sut.setParent(actor, childKey, parentKey)
                 verify(exactly = 1) { repo.updateParent(childId, parentId) }
             }
         }
@@ -225,12 +239,12 @@ class IssueParentServiceTest : DescribeSpec({
 
             it("LinkedIssueNotFoundException(404) 을 던진다") {
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.clearParent(childKey)
+                    sut.clearParent(actor, childKey)
                 }
             }
 
             it("repo.updateParent 가 호출되지 않는다") {
-                runCatching { sut.clearParent(childKey) }
+                runCatching { sut.clearParent(actor, childKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -242,7 +256,7 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, null) 가 1회 호출된다") {
-                sut.clearParent(childKey)
+                sut.clearParent(actor, childKey)
                 verify(exactly = 1) { repo.updateParent(childId, null) }
             }
         }
@@ -254,8 +268,35 @@ class IssueParentServiceTest : DescribeSpec({
             }
 
             it("repo.updateParent(childId, null) 가 1회 호출된다") {
-                sut.clearParent(childKey)
+                sut.clearParent(actor, childKey)
                 verify(exactly = 1) { repo.updateParent(childId, null) }
+            }
+        }
+
+        /**
+         * ★clearParent 의 권한 게이트는 2026-07-27 봉합이 만든 7지점 중 **유일하게 거부 테스트가 없던
+         * 지점**이었다. setParent 는 SEC5/SEC6(IssueLinkControllerIntegrationTest)이 양끝을 덮는데,
+         * 부모 **해제**는 어느 계층에도 단언이 없어 `checkPermission` 줄을 지워도 전량 green 이었다.
+         * 남의 이슈를 계층에서 떼어내는 것도 엄연한 변경이다.
+         *
+         * 상단 `permissionResolver` 는 전부 허용으로 고정돼 있고 이 파일은 SingleInstance 격리라
+         * 스텁을 바꾸면 뒤 테스트로 누출된다. 그래서 거부 전용 resolver/sut 를 이 컨텍스트에서만 만든다.
+         */
+        context("UPDATE 권한이 없으면") {
+            val denyingResolver =
+                mockk<IssuePermissionResolver> {
+                    every { hasPermission(any(), any(), any()) } returns false
+                }
+            val denyingSut = IssueParentService(repo, archiveGuard, denyingResolver)
+
+            it("IssueAccessDeniedException 을 던지고 repo 조회·updateParent 미수행(probe 차단)") {
+                shouldThrow<IssueAccessDeniedException> {
+                    denyingSut.clearParent(actor, childKey)
+                }
+
+                // 권한 검사가 리소스 조회보다 먼저 — 404/200 차이로 이슈 실재를 열거당하지 않는다.
+                verify(exactly = 0) { repo.findByKey(childKey) }
+                verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
     }
@@ -271,7 +312,7 @@ class IssueParentServiceTest : DescribeSpec({
             it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
                 every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
 
-                shouldThrow<ProjectArchivedException> { sut.setParent(childKey, parentKey) }
+                shouldThrow<ProjectArchivedException> { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -280,7 +321,7 @@ class IssueParentServiceTest : DescribeSpec({
             it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
                 every { archiveGuard.checkByIssue(parentKey) } throws ProjectArchivedException(parentKey.value)
 
-                shouldThrow<ProjectArchivedException> { sut.setParent(childKey, parentKey) }
+                shouldThrow<ProjectArchivedException> { sut.setParent(actor, childKey, parentKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -292,7 +333,7 @@ class IssueParentServiceTest : DescribeSpec({
                 every { repo.collectAncestors(parentId) } returns emptyList()
                 every { repo.updateParent(childId, parentId) } returns Unit
 
-                sut.setParent(childKey, parentKey)
+                sut.setParent(actor, childKey, parentKey)
 
                 verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
                 verify(exactly = 1) { archiveGuard.checkByIssue(parentKey) }
@@ -303,7 +344,7 @@ class IssueParentServiceTest : DescribeSpec({
             it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
                 every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
 
-                shouldThrow<ProjectArchivedException> { sut.clearParent(childKey) }
+                shouldThrow<ProjectArchivedException> { sut.clearParent(actor, childKey) }
                 verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
@@ -313,7 +354,7 @@ class IssueParentServiceTest : DescribeSpec({
                 every { repo.findByKey(childKey) } returns makeIssue(childId, childKey, pid = parentId)
                 every { repo.updateParent(childId, null) } returns Unit
 
-                sut.clearParent(childKey)
+                sut.clearParent(actor, childKey)
 
                 verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
             }

@@ -150,6 +150,7 @@ class MyIssuePermissionIntegrationTest {
     private val projectId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000002")
     private val projectKey = "PERMTEST"
     private val issueKey = "PERMTEST-1"
+    private val issueId: UUID = UUID.fromString("dddddddd-0000-0000-0000-000000000001")
 
     @Suppress("UnusedPrivateProperty")
     private val defaultSchemeId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -159,10 +160,12 @@ class MyIssuePermissionIntegrationTest {
     @BeforeEach
     fun setUp() {
         ensureProjectsTableExists()
+        ensureIssuesTableExists()
         cleanTestData()
         seedUsers()
         seedSessions()
         seedProject()
+        seedIssue()
         seedMemberships()
     }
 
@@ -264,7 +267,45 @@ class MyIssuePermissionIntegrationTest {
         )
     }
 
+    /**
+     * cross-BC 조회 대상인 `issues` 최소 스텁 — `projects` 와 같은 이유·같은 방식이다.
+     *
+     * ★2026-07-27 부터 필요해졌다. 보안 등급 게이트가 `VIEW` 에서 **쓰기 계열 전체**로 확대되면서
+     * `IssueSecurityLookup` 이 `UPDATE`/`SOFT_DELETE` 판정에서도 `issues` 를 읽는다. 확대 이전에는
+     * 그 경로를 타지 않아 이 테이블 없이도 통과했다 — 즉 이 스텁의 부재는 결함이 아니라
+     * **의존이 늘어난 결과**다.
+     *
+     * `security_level_id` 는 NULL 로 심는다(등급 미지정 = 공개). 이 테스트의 관심사는 매트릭스 위임이지
+     * 등급 판정이 아니므로, 게이트가 곧장 통과하는 상태를 기본값으로 둔다.
+     */
+    private fun ensureIssuesTableExists() {
+        jdbc.jdbcTemplate.execute(
+            """
+            CREATE TABLE IF NOT EXISTS issues (
+                id                UUID PRIMARY KEY,
+                key               VARCHAR(64) UNIQUE,
+                security_level_id UUID,
+                reporter_id       UUID,
+                assignee_id       UUID,
+                deleted_at        TIMESTAMPTZ
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun seedIssue() {
+        jdbc.update(
+            """
+            INSERT INTO issues (id, key, security_level_id, reporter_id, assignee_id)
+            VALUES (:id, :key, NULL, :reporter, NULL)
+            ON CONFLICT (key) DO NOTHING
+            """.trimIndent(),
+            mapOf("id" to issueId, "key" to issueKey, "reporter" to adminId),
+        )
+    }
+
     private fun cleanTestData() {
+        jdbc.update("DELETE FROM issues WHERE key = :key", mapOf("key" to issueKey))
         jdbc.update("DELETE FROM project_permission_scheme WHERE project_id = :id", mapOf("id" to projectId))
         jdbc.update("DELETE FROM project_memberships WHERE project_id = :id", mapOf("id" to projectId))
         jdbc.update(

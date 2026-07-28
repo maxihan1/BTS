@@ -451,8 +451,8 @@ function setupUsersHandler() {
   server.use(
     http.get('/api/v1/users', () =>
       HttpResponse.json([
-        { id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', username: 'alice', displayName: '김앨리스', email: null },
-        { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: null, email: null },
+        { id: '00000000-0000-4000-8000-000000000001', username: 'alice', displayName: '김앨리스', email: null },
+        { id: '00000000-0000-4000-8000-000000000002', username: 'bob', displayName: null, email: null },
       ]),
     ),
   )
@@ -1263,7 +1263,7 @@ function setupAssigneeStatefulHandlers(initial: typeof issueAtlas1Fixture & { as
 }
 
 describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
-  const aliceId = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+  const aliceId = '00000000-0000-4000-8000-000000000001'
 
   beforeEach(() => {
     vi.mocked(toast.error).mockClear()

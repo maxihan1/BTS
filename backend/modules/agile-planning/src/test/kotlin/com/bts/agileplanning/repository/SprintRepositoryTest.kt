@@ -327,10 +327,47 @@ class SprintRepositoryTest {
         assertThat(sprintRepository.findIssueKeys(sprint.id)).isEmpty()
     }
 
-    // ── (9) E12 동시성 — UNIQUE(issue_key) 위반 ────────────────────────────
+    // ── (9) E12 동시성 — 한 이슈는 한 스프린트에만 ──────────────────────────
 
+    /**
+     * ★2026-07-28 — 단언을 「한쪽이 예외를 던진다」에서 **「행이 정확히 1개 남는다」**로 바꿨다.
+     *
+     * ## 왜 옛 단언이 틀렸나
+     * [SprintRepository.assignIssue] 는 **삭제 후 삽입**(이동 의미)이다 —
+     * 먼저 그 `issue_key` 를 전역에서 지우고 새 스프린트에 넣는다.
+     * 그래서 두 스레드의 인터리빙에 따라 **둘 다 성공할 수 있다.**
+     *
+     * | 인터리빙 | 결과 |
+     * |---|---|
+     * | A삭제 · B삭제 · A삽입 · B삽입 | B 가 UNIQUE 위반 → 1 성공 1 실패 |
+     * | A삭제 · A삽입 · B삭제 · B삽입 | **둘 다 성공** (B 의 삭제가 A 의 행을 치운다) |
+     *
+     * 옛 단언은 두 번째 인터리빙에서 `expected: 1 but was: 2` 로 깨졌다.
+     * 전체 스위트 부하에서만 재현되고 단독 6/6 은 통과해 오래 숨어 있었다
+     * (main 에도 같은 단언이 있는 **선재 결함**이다).
+     *
+     * ## 무엇이 진짜 불변식인가
+     * 프로덕션이 지켜야 하는 것은 「예외가 난다」가 아니라
+     * **「한 이슈는 어느 시점에도 한 스프린트에만 속한다」** 이다.
+     * 위 두 인터리빙 **모두**에서 최종 행은 정확히 1개다.
+     *
+     * 구현 세부(UNIQUE 위반이 표면화되는지)를 단언하면, 구현이 `ON CONFLICT` 로
+     * 바뀌기만 해도 의미 없이 깨진다. 불변식을 단언하면 그렇지 않다.
+     *
+     * ## 두 단언이 각각 무엇을 잡는지 (과장하지 않기 위해 명시)
+     * - **「최소 한쪽 성공」** — 동시 호출에서 **둘 다 실패**하는 것을 잡는다.
+     *   과도한 잠금이나 교착으로 이슈가 어디에도 안 붙는 회귀가 여기 걸린다.
+     * - **「보유 스프린트 정확히 1개」** — `V503__sprints.sql:46`
+     *   `sprint_issues_issue_key_unique UNIQUE (issue_key)` 의 **거울**이다.
+     *   제약이 살아 있는 한 「A삭제·B삭제·A삽입·B삽입」 인터리빙에서 B 가 튕겨 1개가 되지만,
+     *   **제약이 사라지면 그 인터리빙이 2개를 만든다** — 그때 이 단언이 유일한 탐지자다.
+     *
+     * ⚠️ 반대로, `assignIssue` 의 **전역 삭제를 지우는** 뮤테이션은 이 테스트가 **못 잡는다**
+     * (그 경우에도 보유 스프린트는 1개다). 그 축은 형제 두 테스트
+     * (`멱등 재할당은 no-op` · `다른 스프린트에서 이동시킨다`)가 덮는다 — 실측 확인함.
+     */
     @Test
-    fun `E12 동시 assignIssue 는 UNIQUE 위반으로 한쪽이 실패한다`() {
+    fun `E12 동시 assignIssue 후에도 이슈는 한 스프린트에만 속한다`() {
         val sprintA = sprintRepository.insert(buildSprint())
         val sprintB = sprintRepository.insert(buildSprint())
         val issueKey = "CONCURRENT-${UUID.randomUUID().toString().take(6)}"
@@ -354,16 +391,18 @@ class SprintRepositoryTest {
         executor.shutdown()
         val results = futures.map { it.get() }
 
-        val successCount = results.count { it.isSuccess }
-        val failureCount = results.count { it.isFailure }
+        // 최소 한쪽은 성공해야 한다 — 둘 다 실패하면 이슈가 어디에도 안 붙는다.
+        assertThat(results.count { it.isSuccess })
+            .`as`("둘 다 실패했다 — 동시 요청에서 이슈가 어느 스프린트에도 배정되지 않았다")
+            .isGreaterThanOrEqualTo(1)
 
-        // 정확히 한 쪽만 성공, 한 쪽은 UNIQUE 위반으로 실패
-        assertThat(successCount).isEqualTo(1)
-        assertThat(failureCount).isEqualTo(1)
-
-        // 성공한 스프린트에 해당 이슈가 할당되어 있어야 한다
-        val successIdx = results.indexOfFirst { it.isSuccess }
-        val winningSprint = if (successIdx == 0) sprintA else sprintB
-        assertThat(sprintRepository.findIssueKeys(winningSprint.id)).contains(issueKey)
+        // ★핵심 불변식 — 이 issue_key 를 가진 스프린트는 **정확히 하나**다.
+        val holders = listOf(sprintA, sprintB).filter { issueKey in sprintRepository.findIssueKeys(it.id) }
+        assertThat(holders)
+            .`as`(
+                "동시 assignIssue 후 이슈를 가진 스프린트가 %d 개다 — 한 이슈는 한 스프린트에만 속해야 한다",
+                holders.size,
+            )
+            .hasSize(1)
     }
 }

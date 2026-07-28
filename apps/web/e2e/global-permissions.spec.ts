@@ -37,10 +37,10 @@ const GROUP_ID_PLANNING = '11111111-0000-4000-8000-000000000002'
 const GROUP_NAME_PLANNING = '기획팀'
 
 /** user-fixtures.ts userAliceFixture — displayName '김앨리스' (부여자 표시용) */
-const USER_ID_ALICE_DIRECTORY = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+const USER_ID_ALICE_DIRECTORY = '00000000-0000-4000-8000-000000000001'
 
 /** user-fixtures.ts userBobFixture — displayName 없음(username 'bob' 폴백) */
-const USER_ID_BOB_DIRECTORY = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+const USER_ID_BOB_DIRECTORY = '00000000-0000-4000-8000-000000000002'
 
 /** user-fixtures.ts userCarolFixture — displayName '캐럴', 검색 대상 */
 const USER_NAME_CAROL_QUERY = 'carol'

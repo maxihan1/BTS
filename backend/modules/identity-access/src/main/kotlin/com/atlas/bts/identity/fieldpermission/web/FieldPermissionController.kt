@@ -10,12 +10,13 @@ import com.atlas.bts.identity.fieldpermission.application.ManageFieldPermissions
 import com.atlas.bts.identity.fieldpermission.web.dto.CreateFieldPermissionRequest
 import com.atlas.bts.identity.fieldpermission.web.dto.FieldPermissionResponse
 import com.atlas.bts.identity.project.ProjectDirectory
+import com.atlas.bts.identity.web.support.UNAUTHORIZED_RESPONSE
+import com.atlas.bts.identity.web.support.resolveActorId
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -138,22 +139,6 @@ class FieldPermissionController(
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────────
 
     /**
-     * JWT 또는 PAT SecurityContext 에서 actor UUID 를 추출한다.
-     *
-     * - jwt != null → JWT subject 를 UUID 로 파싱.
-     * - jwt == null → SecurityContext principal(String)을 UUID 로 파싱(PAT 경로).
-     * - 파싱 실패 → null (호출 측 401).
-     */
-    @Suppress("ReturnCount")
-    private fun resolveActorId(jwt: Jwt?): UUID? {
-        if (jwt != null) {
-            return runCatching { UUID.fromString(jwt.subject) }.getOrNull()
-        }
-        val rawPrincipal = SecurityContextHolder.getContext().authentication?.principal as? String ?: return null
-        return runCatching { UUID.fromString(rawPrincipal) }.getOrNull()
-    }
-
-    /**
      * projectIdOrKey 문자열을 활성 프로젝트 UUID 로 해석한다.
      *
      * UUID 파싱 성공 시 [ProjectDirectory.exists] 로 활성 여부 확인, 실패 시 key 로 간주해
@@ -194,10 +179,6 @@ class FieldPermissionController(
         }
 
     private companion object {
-        /** actor 추출 실패(JWT/PAT 파싱 오류) 공용 401 응답. */
-        val UNAUTHORIZED_RESPONSE: ResponseEntity<Map<String, String>> =
-            ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf("error" to "unauthorized"))
-
         /** 프로젝트 미존재 공용 404 응답. */
         val PROJECT_NOT_FOUND_RESPONSE: ResponseEntity<Map<String, String>> =
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "project_not_found"))

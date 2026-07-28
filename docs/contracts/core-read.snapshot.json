@@ -1,0 +1,46 @@
+{
+  "$comment" : "자동 생성 파일 — 손으로 고치지 말 것. 조립 실응답에서 재생성한다(CoreReadContractSnapshotTest).",
+  "GET /api/v1/issue-types" : {
+    "data" : [
+      {
+        "description" : "string",
+        "hierarchyLevel" : 1,
+        "iconName" : "string",
+        "id" : 1,
+        "isStandard" : true,
+        "key" : "string",
+        "name" : "string"
+      }
+    ]
+  },
+  "GET /api/v1/projects" : {
+    "data" : [
+      {
+        "archived" : true,
+        "id" : "00000000-0000-4000-8000-000000000000",
+        "key" : "string",
+        "name" : "string"
+      }
+    ]
+  },
+  "GET /api/v1/users/me/whoami" : {
+    "authMethod" : "string",
+    "avatarUrl" : null,
+    "canCreateProject" : true,
+    "dateFormat" : "string",
+    "displayName" : null,
+    "email" : "string",
+    "isSystemAdmin" : true,
+    "locale" : "string",
+    "mfaEnrollmentRequired" : true,
+    "mustChangePassword" : true,
+    "oooActive" : true,
+    "oooUntil" : null,
+    "startPage" : "string",
+    "statusEmoji" : null,
+    "statusText" : null,
+    "theme" : "string",
+    "userId" : "00000000-0000-4000-8000-000000000000",
+    "username" : "string"
+  }
+}

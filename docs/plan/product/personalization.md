@@ -9,9 +9,9 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.1 (FR-AU-01 Provider) 완료 (사용자 ID 안정)
-- [ ] issue-tracking §6.1 (FR-PL-01 일정) 완료 (캘린더 데이터)
-- [ ] agile-planning §2 (FR-BD 보드) 완료 (퀵 필터 컨텍스트)
+- [x] identity-access §2.1 (FR-AU-01 Provider) 완료 (사용자 ID 안정) — 2026-07-27 실측: `identity-access.md` §2.1 D1~D7 전량 `[x]` (D6/D7은 FR-AU-02 PR #11·#22 흡수)
+- [x] issue-tracking §6.1 (FR-PL-01 일정) 완료 (캘린더 데이터) — 2026-07-27 실측: FR-PL-01 D1~D7 전량 `[x]`. 단 소재는 issue-tracking 이 아니라 `agile-planning.md` §6.1 (fr-index 기준, 본문 참조 BC 표기가 stale)
+- [x] agile-planning §2 (FR-BD 보드) 완료 (퀵 필터 컨텍스트) — 2026-07-27 실측: `agile-planning.md` §2 의 FR-BD-01/02/03 D1~D7 21줄 전량 `[x]` (미완 0)
 
 ## §1 기술 검증
 
@@ -221,7 +221,7 @@
 - [x] §2~§5 (13 FR) 모두 `[x]` 마킹 — **13/13 달성 (2026-07-25, UX 개편 PR22 머지로 D단계 91/91 완료)**
       <!-- ★ 이 줄에 `FR-XX-NN` 형태를 쓰지 말 것 — verify-master-plan.sh 의 "§N 헤더 (FR-XX, N개)"
            스캐너가 헤더 선언으로 오인해 `N개` 파싱에 실패하고 EXIT 1 이 된다(2026-07-25 실제 발생). -->
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "personalization BC 완료"
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 8행 전부 실측값이 `___` 공란. k6(프로필 조회·캘린더 30일·iCal Export) · Playwright(설정 적용·cmdk 응답) · E2E 전수(단축키) · Lighthouse CI(LCP) · axe-core(WCAG AA) 를 실제로 돌려 p95 를 채워야 한다 (2026-07-27 실측)
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (13 FR / 2026-07-05~07-25 / 대표 산출 4종 + 논리 BC 각주)
+- [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 2026-07-27 실측: `docs/plan/README.md` §7 은 3행뿐이고 BC 완료 행 없음 — 이 행의 날짜가 곧 선언일이므로 선언 이전에는 기입 불가
+- [ ] Maxi 1인 선언 — "personalization BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

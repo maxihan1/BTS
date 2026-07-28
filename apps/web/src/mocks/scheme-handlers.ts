@@ -106,7 +106,7 @@ const nextMappingId = (): number => {
  * - X-Mock-Forbidden 헤더               → 403 FORBIDDEN
  * - 미존재 schemeKey                     → 404 SCHEME_NOT_FOUND
  * - 미존재 mappingId                     → 404 MAPPING_NOT_FOUND
- * - 미존재 프로젝트 할당                  → 404 ASSIGNMENT_NOT_FOUND
+ * - 미존재 프로젝트                       → 404 PROJECT_NOT_FOUND (배정 조회의 유일한 404 의미)
  */
 export const schemeHandlers = [
   /** GET /api/v1/workflow-schemes — 스킴 목록 */
@@ -252,13 +252,28 @@ export const schemeHandlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
-  /** GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 조회 */
+  /**
+   * GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 배정 조회.
+   *
+   * ## 404 는 「미할당」이 아니라 「프로젝트 없음」이다
+   * 백엔드 `WorkflowSchemeApplicationService.findAssignedScheme` 은 배정이 없으면
+   * `software-scheme` 을 **자동 배정하고 그것을 반환**한다(EC-1 D10). 따라서 이 엔드포인트로
+   * 「존재하지만 미배정」이라는 상태는 **관측될 수 없다** — 404 는
+   * `ProjectWorkflowSchemeController.getAssignedScheme` 의 `Project not found` 하나뿐이다.
+   *
+   * 이 모크는 그래서 fixture 에 없는 키를 「없는 프로젝트」로 다룬다. 예전에는 같은 분기가
+   * `ASSIGNMENT_NOT_FOUND`(미할당)를 냈고 프론트가 그것을 `null` 로 삼켜, 오타 난 프로젝트 키로
+   * 들어온 사용자에게 「곧 자동 할당됩니다」라는 틀린 안내를 보여줬다.
+   */
   http.get('/api/v1/projects/:projectKey/workflow-scheme', ({ params }) => {
     const projectKey = params['projectKey'] as string
     const assignment = assignmentFixtures.find((a) => a.projectKey === projectKey)
 
     if (assignment === undefined) {
-      return HttpResponse.json({ errorCode: 'ASSIGNMENT_NOT_FOUND', message: '프로젝트에 할당된 스킴이 없습니다' }, { status: 404 })
+      return HttpResponse.json(
+        { code: 'PROJECT_NOT_FOUND', detail: `Project not found: ${projectKey}` },
+        { status: 404 },
+      )
     }
 
     // 백엔드 GET 응답은 스킴 객체 하나다 — projectKey 는 URL 에만 있고 본문에 없다.

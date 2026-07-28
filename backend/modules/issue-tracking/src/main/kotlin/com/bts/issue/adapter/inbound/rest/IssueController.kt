@@ -58,8 +58,40 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 /** cursor 모드 기본 limit. */
 private const val DEFAULT_CURSOR_LIMIT = 20
 
-/** cursor 모드 + offset 모드 공통 최대 페이지 크기. */
+/**
+ * cursor 모드 + offset 모드 공통 최대 페이지 크기.
+ *
+ * ★2026-07-27 이전까지 이 KDoc 은 사실이 아니었다 — cursor 모드만 `limit` 초과를 400 으로 막고
+ * **offset 모드에는 어떤 애플리케이션 상한도 없었다**. `@PageableDefault(size = 20)` 은 기본값일 뿐
+ * `?size=` 로 얼마든지 올릴 수 있고, 남는 것은 Spring Data Web 프레임워크 기본값
+ * (`spring.data.web.pageable.max-page-size`, 기본 2000)뿐인데 그 키는 이 저장소 설정에 **없다**.
+ *
+ * 이력 조회에서는 증폭 계수가 크다 — 댓글 수정 이력 1건이 `from_value`(이전 본문) +
+ * `to_value`(새 본문) = 최대 32,000자 × 2 를 싣는다([`CommentApplicationService.MAX_BODY_LENGTH`]).
+ * 프레임워크 상한까지 긁으면 한 응답이 2,000행 × 64,000자가 된다.
+ *
+ * 지금은 [requirePageSizeWithinLimit] 가 두 offset 지점 모두에 주입돼 KDoc 이 참이 됐다.
+ */
 private const val MAX_CURSOR_LIMIT = 100
+
+/**
+ * offset 모드 페이지 크기 상한을 강제한다 — 초과 시 400.
+ *
+ * cursor 모드의 `limit` 가드와 **같은 상한·같은 응답 코드**를 쓴다. 두 모드가 다른 상한을 가지면
+ * 소비자는 어느 쪽을 믿을지 알 수 없다.
+ *
+ * 무음 절단(요청한 만큼 안 주고 조용히 자르기)이 아니라 400 을 택한 이유 — 무음 절단은
+ * **API 를 직접 호출하는 소비자**에게 "덜 받았다" 를 알리지 않아, 페이지네이션을 직접 도는
+ * 스크립트가 데이터를 조용히 누락한다. 이 저장소의 다수 선례도 400 이다.
+ */
+private fun requirePageSizeWithinLimit(pageable: Pageable) {
+    if (pageable.pageSize > MAX_CURSOR_LIMIT) {
+        throw ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "size 는 $MAX_CURSOR_LIMIT 이하여야 합니다.",
+        )
+    }
+}
 
 /**
  * 이슈 REST API 컨트롤러.
@@ -303,6 +335,7 @@ class IssueController(
                 ),
             )
         } else {
+            requirePageSizeWithinLimit(pageable)
             log.info("IssueController.list offset모드 projectKey={} pageable={}", projectKey, pageable)
             val page = service.listIssues(actor, projectKey ?: "", pageable, filter)
             ResponseEntity.ok<Any>(page)
@@ -544,6 +577,7 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
                 ),
             )
         } else {
+            requirePageSizeWithinLimit(pageable)
             log.info("IssueController.changelog offset모드 key={} pageable={}", key, pageable)
             val page = svc.findChangelog(actor, issueKey, pageable).map { IssueChangelogResponse.from(it) }
             ResponseEntity.ok<Any>(page)

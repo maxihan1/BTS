@@ -9,11 +9,11 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.1 (`AuthenticationProvider`), §4.2 (`PERMISSION` 가드) 완료
-- [ ] project-workflow §1 (FSM PoC) + §2.1 (FR-WF-01) 진입 시 의존 (이슈 상태 전이)
-- [ ] notification-dashboard §1 (STOMP PoC), pgmq 트랜잭션 PoC 통과
-- [ ] DATA.md §이슈키 영속성 + 소프트 삭제 규칙 숙지
-- [ ] §A.3 #5 (이슈 키 prefix) 결정 — DATA.md 가이드
+- [x] identity-access §2.1 (`AuthenticationProvider`), §4.2 (`PERMISSION` 가드) 완료 — 2026-07-27 실측: `docs/plan/product/identity-access.md` §2.1 FR-AU-01 D1~D7 · §4.2 FR-PM-02 D1~D7 전량 `[x]`
+- [x] project-workflow §1 (FSM PoC) + §2.1 (FR-WF-01) 진입 시 의존 (이슈 상태 전이) — 2026-07-27 실측: `docs/plan/product/project-workflow.md` §1.1 FSM PoC 5항목 · §1.2 pgmq PoC 5항목 · §2.1 FR-WF-01 D1~D7 전량 `[x]` (PR #10/#13/#19)
+- [ ] notification-dashboard §1 (STOMP PoC), pgmq 트랜잭션 PoC 통과 — 미측정. pgmq 트랜잭션 PoC 는 `project-workflow.md` §1.2 5항목 전량 `[x]` 로 통과했으나, `notification-dashboard.md` §1.1 STOMP PoC 5항목은 전부 미완이고 그중 "알림 지연 p95 < 1s" 는 해당 BC §NFR 표에서도 실측값 `___`. 측정 필요 — 지수 백오프 5s→60s · 네트워크 분리/복귀 통합테스트 · 알림 지연 p95. (STOMP 기능 자체는 FR-NT-01 D4/D6/D7, PR #137 로 구현됨) (2026-07-27 실측)
+- [x] DATA.md §이슈키 영속성 + 소프트 삭제 규칙 숙지 — 2026-07-27 실측: DATA.md §2 4규칙이 구현에 반영됨 (`projects.key_sequence` 발번 · `issue_key_redirects.old_key` PRIMARY KEY · `IssueExceptionHandler.kt:292` `HttpStatus.PERMANENT_REDIRECT` · `V001__issues_initial.sql` `issues.deleted_at` 소프트 삭제)
+- [x] §A.3 #5 (이슈 키 prefix) 결정 — DATA.md 가이드 — 2026-07-27 실측: ADR `docs/adr/2026-05-22-issue-key-prefix-policy.md` 발행. 구현은 `IssueKey.kt` REGEX `^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$` + `IssueKeyPrefixReservedWords` 예약어 차단
 
 ## §1 기술 검증
 
@@ -572,6 +572,67 @@
 - [x] D6. 프론트 UI — 아카이브 토글 (책임. designer → frontend-engineer) — PR #300
 - [x] D7. E2E (책임. qa-engineer) — PR #300
 
+## §A 참조 — 이슈 자식 엔티티 소유권 정책 행렬 (2026-07-27 봉합 후 실측)
+
+FR 이 아니라 **여러 FR 에 걸친 횡단 정책**이라 여기 참조로 둔다. 새 자식 엔티티를 추가할 때
+**여기 있는 판별식 중 하나를 고른다** — 새로 발명하면 여섯 번째 정책이 생긴다.
+
+`IssueAttachmentService.delete` 의 주석이 이 표를 정본으로 지목한다. 술어를 코드에서 바꾸면
+**같은 커밋에서 이 표도 고친다** — 안 그러면 코드가 가리키는 정본이 그 코드를 부정한다
+(2026-07-27 실제로 그렇게 됐다. §A.1 참조).
+
+| 엔티티 | 수정 | 삭제 | 근거 |
+|---|---|---|---|
+| Comment (FR-CO) | `UPDATE` ∧ 작성자 | `UPDATE` ∧ (작성자 ∨ `SOFT_DELETE`) | `CommentApplicationService:195·204` / `:280·291-294` |
+| Worklog (FR-TT) | `UPDATE` ∧ 작성자 | `UPDATE` ∧ 작성자 | `WorklogService:254`·`:328` |
+| Attachment (FR-AC) | — (수정 API 없음) | `UPDATE` ∧ (업로더 ∨ `SOFT_DELETE`) | `IssueAttachmentService:227`(UPDATE) · `:246-249`(소유권) |
+| Watcher (FR-WT) | — | self→`VIEW` / 타인→`UPDATE` | `IssueWatcherService:206` |
+| Link (FR-LK) | — (수정 API 없음. 생성은 **양끝** `UPDATE`) | `UPDATE` ∧ **소속 이슈 한정** — 미소속은 404 | `LinkApplicationService:139-140`(생성) · `:289·296`(삭제) |
+
+**Comment ↔ Worklog 비대칭은 의도된 것이다.** 생산자 구성이 다르다 — automation `ActionType` 5종
+(`SET_FIELD·ASSIGN·ADD_COMMENT·CALL_WEBHOOK·SET_FIX_VERSIONS`) 중 댓글을 만드는 액션이 있고,
+그 댓글의 저작자는 **룰 소유자로 고정**된다. 작성자 한정으로 두면 그 룰 소유자 말고는 아무도 못 지운다.
+worklog 에는 automation 액션이 **0건**이라 이 질문 자체가 없었다.
+⇒ **Worklog 선례가 조용했던 이유는 답이 같아서가 아니라 질문이 없어서다.**
+
+### §A.1 Attachment·Link 는 정책 선택이 아니라 결함이었다 — 2026-07-27 봉합 완료
+
+표에 처음 올렸을 때 Attachment 는 **업로더 검사가 0건**이었고(이슈 `UPDATE` 만 보고 남이 올린
+첨부를 지울 수 있었다), Link 는 `permissionResolver` 를 주입조차 받지 않아 **권한 검사가 0건**이었다.
+막고 있던 것은 `SecurityConfig` 의 `.authenticated()` 뿐이라, 인증만 통과하면 멤버가 아닌 프로젝트의
+이슈에도 링크를 걸고 지울 수 있었다. 둘 다 위 표의 어느 정책에도 해당하지 않아 정책 통일 논의와
+**분리해서** 먼저 닫았다. 봉합 내용은 다음과 같다.
+
+- **Attachment 삭제** — 댓글과 **같은 술어**(업로더 ∨ `SOFT_DELETE`)를 채택했다. 새 판별식을
+  만들지 않는다는 이 문서의 규칙을 그대로 따랐다. 모더레이션을 허용한 이유는 첨부가 바이너리라
+  악성코드·불법물 대응 경로가 업로더 한정이면 없어지기 때문이다.
+- **Link 생성** — source·target **양끝**에 `UPDATE`. 한쪽만 검사하면 볼 수 없는 이슈를 target 으로
+  지목해 404(미존재)와 409(이미 링크됨)의 차이로 실재를 열거할 수 있다.
+- **Link 삭제** — 권한은 경로 이슈에 걸리는데 삭제 대상은 전역 `linkId` 라 **남의 링크를 지울 수 있었다**
+  (IDOR). `deleteByIdAndIssue(linkId, issueId)` 로 WHERE 절에서 함께 좁혔다. 미소속은 403 이 아니라
+  **404** 다 — 403 이면 "그 id 는 존재한다" 가 오라클이 된다.
+- **부모(`parent_id`)** — 같은 형태로 `IssueParentService:66-67`(설정, 자식·부모 양끝) ·
+  `:119`(해제)가 닫혔다. **무가드 서비스는 하나가 아니라 둘이었다** — 표의 "Link" 한 줄만 보고
+  `LinkApplicationService` 만 고쳤으면 절반이 열린 채로 남았다.
+
+잠복 원인은 컨트롤러 KDoc 이 *"`issue_links`/`parent_id` 는 `created_by` 를 저장하지 않으므로 actor
+추출이 불필요하다"* 라고 적어둔 데 있다. **감사 흔적의 부재를 권한 검사 면제의 근거로 쓴 문장**이다.
+「누가 만들었는지 기록 안 함」과 「누가 만들어도 되는지 검사 안 함」은 다른 이야기다.
+
+### §A.2 읽기 경로도 같은 라운드에 닫혔다
+
+위 표는 쓰기(수정·삭제) 소유권만 다루지만, 링크 응답에는 **상대 이슈의 `summary`·`statusKey` 가 실린다.**
+쓰기만 양끝을 검사하고 읽기는 한쪽만 보던 비대칭을 함께 닫았다.
+
+| 읽기 경로 | 처리 | 근거 |
+|---|---|---|
+| `listLinks` | 중심 이슈 `VIEW` + 상대 이슈 `VIEW` 로 **행 제외**(거부 아님) | `LinkApplicationService:232·242-243` |
+| `IssueGraphService.buildGraph` | 중심 이슈 `VIEW` 없으면 **404**, 이웃은 `BfsTraversal.visit` 관문에서 필터 | `IssueGraphService:226·245` |
+
+**제외이지 거부가 아닌 이유.** 중심 이슈는 볼 수 있으므로 목록 요청 자체는 성공해야 한다. 못 보는
+상대가 하나 있다고 403 을 내면 "이 이슈에는 내가 못 보는 링크가 있다" 는 사실 자체가 오라클이 된다.
+그래서 필터는 던지지 않는 질의형(`hasPermission`)으로 판정한다.
+
 ## §NFR issue-tracking BC 완료 게이트
 
 ### 측정값 기록표
@@ -594,9 +655,9 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§7 (37 FR) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
-- [ ] DATA.md §이슈키 영속성 자가 점검
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "issue-tracking BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "issue-tracking BC 완료"
+- [x] §2~§7 (37 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: 이 파일의 완료 D 줄 260건 / 미완 D 줄 0건 (`grep -cE '^- \[[ ~!]\] D[0-9]+\.'` = 0), FR 헤더 37건
+- [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 13행의 실측 열이 전부 `___`. 측정 필요 — k6(조회/목록/생성/이동/히스토리) · Playwright(첨부 업로드·미리보기·이동 후 redirect 308) · Lighthouse CI(LCP/INP) · bundle-analyzer · axe-core · XSS 페이로드 10종
+- [ ] DATA.md §이슈키 영속성 자가 점검 — 부분 확인. 4규칙은 구현 확인됨(발번 `key_sequence` + `pg_advisory_xact_lock` · `old_key` PRIMARY KEY 로 재-redirect 차단 · `PERMANENT_REDIRECT` 308 · `deleted_at` 소프트 삭제). 미확인 1건 — DATA.md §2 "새 키 발급 시 `IssueKeyRedirect.new_key` 도 체크(옛 키와 충돌 방지)" 에 대응하는 명시적 검사가 `IssueMoveService.kt` 에 보이지 않음(시퀀스 단조 증가 + `issues.key` UNIQUE 에 의존). 이 1건 확인 후 체크. (2026-07-27 실측)
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` `[Unreleased] — Phase 1 §BC 요약` 에 issue-tracking 행 존재 (37 FR · 2026-05-22~07-27 · PR 67건 · 대표 산출)
+- [ ] README.md §7 변경 이력에 "issue-tracking BC 완료 — YYYY-MM-DD" 추가 — 미완. 2026-07-27 실측: `docs/plan/README.md` §7 에 해당 행 없음(3행 모두 2026-05-20/07-17 재편성·초안·FR 신설). Maxi 완료 선언 이후에 기재하는 항목
+- [ ] Maxi 1인 선언 — "issue-tracking BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

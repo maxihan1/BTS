@@ -298,12 +298,17 @@ describe('GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스�
     expect(body.data).not.toHaveProperty('projectKey')
   })
 
-  it('S8-2 error-404: 할당 미존재 프로젝트 조회 → 404', async () => {
-    const res = await fetch('/api/v1/projects/UNASSIGNED/workflow-scheme')
+  /**
+   * 404 의 의미는 「미할당」이 아니라 「프로젝트 없음」이다 — 백엔드가 미배정 프로젝트에는
+   * software-scheme 을 자동 배정해 200 을 돌려주므로(EC-1 D10), 이 엔드포인트로 관측되는 404 는
+   * `Project not found` 하나뿐이다. 본문 형태도 백엔드 RFC 7807 (`code`/`detail`) 을 따른다.
+   */
+  it('S8-2 error-404: 존재하지 않는 프로젝트 조회 → 404 PROJECT_NOT_FOUND', async () => {
+    const res = await fetch('/api/v1/projects/NO-SUCH-PROJECT/workflow-scheme')
 
     expect(res.status).toBe(404)
-    const body = await res.json() as { errorCode: string }
-    expect(body.errorCode).toBe('ASSIGNMENT_NOT_FOUND')
+    const body = await res.json() as { code: string }
+    expect(body.code).toBe('PROJECT_NOT_FOUND')
   })
 })
 

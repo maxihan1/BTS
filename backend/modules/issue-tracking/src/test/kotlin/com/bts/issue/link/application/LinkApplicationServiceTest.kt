@@ -19,6 +19,7 @@ import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssuePermissionResolver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -40,12 +41,23 @@ class LinkApplicationServiceTest : DescribeSpec({
     val linkRepository = mockk<IssueLinkRepository>()
     val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
+    // 이 파일은 링크 도메인 규칙(중복·순환·미존재)을 검증한다. 권한 판정은 관심사가 아니므로
+    // 전부 허용으로 고정한다 — 권한 거부 경로는 IssueLinkControllerIntegrationTest 가 덮는다.
+    val permissionResolver =
+        mockk<IssuePermissionResolver> {
+            every { hasPermission(any(), any(), any()) } returns true
+        }
+
     val sut =
         LinkApplicationService(
             issueRepository = issueRepository,
             linkRepository = linkRepository,
             archiveGuard = archiveGuard,
+            permissionResolver = permissionResolver,
         )
+
+    /** 권한이 관심사가 아닌 테스트용 actor. */
+    val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
 
@@ -83,7 +95,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(sourceKey) } returns null
 
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
                 }
             }
         }
@@ -94,7 +106,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(targetKey) } returns null
 
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
                 }
             }
         }
@@ -104,7 +116,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
 
                 shouldThrow<LinkSelfReferenceException> {
-                    sut.createLink(sourceKey, sourceKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, sourceKey, linkTypeCode)
                 }
             }
         }
@@ -118,7 +130,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 } returns true
 
                 shouldThrow<DuplicateLinkException> {
-                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
                 }
             }
         }
@@ -134,7 +146,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { linkRepository.existsBlocksPath(targetId, sourceId) } returns true
 
                 shouldThrow<LinkCycleException> {
-                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
                 }
             }
         }
@@ -157,7 +169,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                     )
                 every { linkRepository.insert(any()) } returns savedLink
 
-                val result = sut.createLink(sourceKey, targetKey, relatesCode)
+                val result = sut.createLink(actor, sourceKey, targetKey, relatesCode)
 
                 result.linkId shouldBe 1L
                 result.linkType shouldBe LinkType.RELATES
@@ -182,7 +194,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                     )
                 every { linkRepository.insert(any()) } returns savedLink
 
-                val result = sut.createLink(sourceKey, targetKey, linkTypeCode)
+                val result = sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
 
                 result.linkId shouldBe 42L
                 result.linkType shouldBe LinkType.BLOCKS
@@ -224,7 +236,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { linkRepository.findOutwardWithIssue(sourceId) } returns listOf(outwardRow)
                 every { linkRepository.findInwardWithIssue(sourceId) } returns listOf(inwardRow)
 
-                val result = sut.listLinks(sourceKey)
+                val result = sut.listLinks(actor, sourceKey)
 
                 result.outward.size shouldBe 1
                 result.inward.size shouldBe 1
@@ -246,7 +258,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(sourceKey) } returns null
 
                 shouldThrow<LinkedIssueNotFoundException> {
-                    sut.listLinks(sourceKey)
+                    sut.listLinks(actor, sourceKey)
                 }
             }
         }
@@ -259,22 +271,22 @@ class LinkApplicationServiceTest : DescribeSpec({
         context("linkId 에 해당하는 링크가 없는 경우") {
             it("LinkNotFoundException 을 던진다") {
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
-                every { linkRepository.deleteById(99L) } returns false
+                every { linkRepository.deleteByIdAndIssue(99L, sourceIssue.id.value) } returns false
 
                 shouldThrow<LinkNotFoundException> {
-                    sut.deleteLink(sourceKey, 99L)
+                    sut.deleteLink(actor, sourceKey, 99L)
                 }
             }
         }
 
         context("정상 흐름 — 링크 삭제 성공") {
-            it("deleteById 를 호출하고 Unit 을 반환한다") {
+            it("deleteByIdAndIssue 를 이슈 id 로 좁혀 호출한다") {
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
-                every { linkRepository.deleteById(1L) } returns true
+                every { linkRepository.deleteByIdAndIssue(1L, sourceIssue.id.value) } returns true
 
-                sut.deleteLink(sourceKey, 1L)
+                sut.deleteLink(actor, sourceKey, 1L)
 
-                verify(exactly = 1) { linkRepository.deleteById(1L) }
+                verify(exactly = 1) { linkRepository.deleteByIdAndIssue(1L, sourceIssue.id.value) }
             }
         }
     }
@@ -287,7 +299,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { archiveGuard.checkByIssue(sourceKey) } throws ProjectArchivedException(sourceKey.value)
 
                 shouldThrow<ProjectArchivedException> {
-                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
                 }
                 verify(exactly = 0) { linkRepository.insert(any()) }
             }
@@ -298,7 +310,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { archiveGuard.checkByIssue(targetKey) } throws ProjectArchivedException(targetKey.value)
 
                 shouldThrow<ProjectArchivedException> {
-                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                    sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
                 }
                 verify(exactly = 0) { linkRepository.insert(any()) }
             }
@@ -313,7 +325,7 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { linkRepository.insert(any()) } returns
                     IssueLink(id = 1L, sourceId = sourceId, targetId = targetId, linkType = LinkType.BLOCKS)
 
-                sut.createLink(sourceKey, targetKey, linkTypeCode)
+                sut.createLink(actor, sourceKey, targetKey, linkTypeCode)
 
                 verify(exactly = 1) { archiveGuard.checkByIssue(sourceKey) }
                 verify(exactly = 1) { archiveGuard.checkByIssue(targetKey) }
@@ -325,18 +337,18 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every { archiveGuard.checkByIssue(sourceKey) } throws ProjectArchivedException(sourceKey.value)
 
                 shouldThrow<ProjectArchivedException> {
-                    sut.deleteLink(sourceKey, 1L)
+                    sut.deleteLink(actor, sourceKey, 1L)
                 }
-                verify(exactly = 0) { linkRepository.deleteById(any()) }
+                verify(exactly = 0) { linkRepository.deleteByIdAndIssue(any(), any()) }
             }
         }
 
         context("deleteLink — 활성 프로젝트 (판별자 baseline)") {
             it("archiveGuard.checkByIssue 가 호출되고 정상 삭제된다") {
                 every { issueRepository.findByKey(sourceKey) } returns sourceIssue
-                every { linkRepository.deleteById(1L) } returns true
+                every { linkRepository.deleteByIdAndIssue(1L, sourceIssue.id.value) } returns true
 
-                sut.deleteLink(sourceKey, 1L)
+                sut.deleteLink(actor, sourceKey, 1L)
 
                 verify(exactly = 1) { archiveGuard.checkByIssue(sourceKey) }
             }

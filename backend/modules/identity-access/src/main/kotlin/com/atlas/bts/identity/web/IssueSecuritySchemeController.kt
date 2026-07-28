@@ -16,13 +16,13 @@ import com.atlas.bts.identity.issuesecurity.MemberType
 import com.atlas.bts.identity.issuesecurity.SchemeNameConflictException
 import com.atlas.bts.identity.issuesecurity.SchemeNotFoundException
 import com.atlas.bts.identity.issuesecurity.SecurityLevelMember
+import com.atlas.bts.identity.web.support.requireSystemAdmin
 import com.bts.shared.permission.SystemPermissionResolver
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -47,12 +47,13 @@ import java.util.UUID
  *
  * ## 이중 가드 (DEVELOPMENT.md §1.1 #4, UserGroupController 동형)
  * 1. 클래스 레벨 [PreAuthorize]("isAuthenticated()") — 미인증 요청을 필터 체인에서 차단.
- * 2. 각 핸들러가 [requireSystemAdmin] 으로 DB 기반 [SystemPermissionResolver.isSystemAdmin] 을
+ * 2. 각 핸들러가 `requireSystemAdmin`(web/support/ControllerAuthSupport.kt)으로 DB 기반
+ *    [SystemPermissionResolver.isSystemAdmin] 을
  *    수동 평가한다. `@PreAuthorize hasRole` 을 쓰지 않는 이유 — JWT claim 이 stale 일 수 있고
  *    PAT 경로에는 role claim 이 없어, 두 인증 경로에서 일관된 전역 관리자 판정을 보장하기 위해
  *    DB 진실원천을 직접 조회한다 (FR-PM-09 동형).
  *
- * ## Actor 추출 ([resolveActorId], UserGroupController 동형)
+ * ## Actor 추출 (`resolveActorId`, web/support/ControllerAuthSupport.kt 공용)
  * - jwt != null → JWT subject 를 UUID 로 파싱.
  * - jwt == null → SecurityContext principal(String, PatAuthenticationFilter 설정)을 UUID 로 파싱.
  * - 둘 다 실패 → null → 401.
@@ -83,7 +84,7 @@ class IssueSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @RequestBody body: CreateSchemeRequest,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             val created = service.createScheme(body.name, body.description)
             ResponseEntity.status(HttpStatus.CREATED).body(SchemeResponse.from(created, emptyList()))
@@ -99,7 +100,7 @@ class IssueSecuritySchemeController(
     fun listSchemes(
         @AuthenticationPrincipal jwt: Jwt?,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return ResponseEntity.ok(service.listSchemes().map { SchemeResponse.from(it) })
     }
 
@@ -113,7 +114,7 @@ class IssueSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable schemeId: UUID,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler { ResponseEntity.ok(SchemeResponse.from(service.getScheme(schemeId))) }
     }
 
@@ -128,7 +129,7 @@ class IssueSecuritySchemeController(
         @PathVariable schemeId: UUID,
         @RequestBody body: UpdateSchemeRequest,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             val updated = service.updateScheme(schemeId, body.name, body.description)
             ResponseEntity.ok(SchemeResponse.from(updated, emptyList()))
@@ -147,7 +148,7 @@ class IssueSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable schemeId: UUID,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             service.deleteScheme(schemeId)
             ResponseEntity.noContent().build<Unit>()
@@ -167,7 +168,7 @@ class IssueSecuritySchemeController(
         @PathVariable schemeId: UUID,
         @RequestBody body: CreateLevelRequest,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             val created = service.addLevel(schemeId, body.name, body.description, body.isDefault)
             ResponseEntity.status(HttpStatus.CREATED).body(LevelResponse.from(created))
@@ -185,7 +186,7 @@ class IssueSecuritySchemeController(
         @PathVariable levelId: UUID,
         @RequestBody body: UpdateLevelRequest,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             val updated = service.updateLevel(levelId, body.name, body.description, body.isDefault)
             ResponseEntity.ok(LevelResponse.from(updated))
@@ -202,7 +203,7 @@ class IssueSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable levelId: UUID,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             service.deleteLevel(levelId)
             ResponseEntity.noContent().build<Unit>()
@@ -222,7 +223,7 @@ class IssueSecuritySchemeController(
         @PathVariable levelId: UUID,
         @RequestBody body: AddMemberRequest,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         // 멤버 추가 한정 — 도메인 멤버값/타입 검증 IAE 는 member_value_invalid 로 매핑(N2, 스펙 EC1/EC3).
         return runHandler(validationCode = "member_value_invalid") {
             val created = service.addMember(levelId, body.memberType, body.memberValue)
@@ -242,7 +243,7 @@ class IssueSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable levelId: UUID,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             ResponseEntity.ok(service.listMembers(levelId).map { MemberResponse.from(it) })
         }
@@ -258,7 +259,7 @@ class IssueSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable memberId: UUID,
     ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
+        systemPermissionResolver.requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             service.removeMember(memberId)
             ResponseEntity.noContent().build<Unit>()
@@ -266,36 +267,6 @@ class IssueSecuritySchemeController(
     }
 
     // ── 내부 헬퍼 (UserGroupController 동형) ────────────────────────────────────
-
-    /**
-     * SYSTEM_ADMIN 가드 — 통과 시 `null`, 차단 시 에러 [ResponseEntity] 를 반환한다.
-     *
-     * - actor 추출 실패(미인증/비-UUID subject) → 401 `unauthorized`.
-     * - [SystemPermissionResolver.isSystemAdmin] = false → 403 `forbidden`.
-     */
-    @Suppress("ReturnCount")
-    private fun requireSystemAdmin(jwt: Jwt?): ResponseEntity<Map<String, String>>? {
-        val actorId = resolveActorId(jwt) ?: return UNAUTHORIZED_RESPONSE
-        if (!systemPermissionResolver.isSystemAdmin(actorId)) return FORBIDDEN_RESPONSE
-        return null
-    }
-
-    /**
-     * JWT 또는 PAT SecurityContext 에서 actor UUID 를 추출한다.
-     *
-     * - jwt != null → JWT subject 를 UUID 로 파싱.
-     * - jwt == null → SecurityContext principal(String)을 UUID 로 파싱(PAT 경로).
-     * - 파싱 실패 → null (호출 측 401).
-     */
-    @Suppress("ReturnCount")
-    private fun resolveActorId(jwt: Jwt?): UUID? {
-        if (jwt != null) {
-            return runCatching { UUID.fromString(jwt.subject) }.getOrNull()
-        }
-        val authentication = SecurityContextHolder.getContext().authentication
-        val rawPrincipal = authentication?.principal as? String ?: return null
-        return runCatching { UUID.fromString(rawPrincipal) }.getOrNull()
-    }
 
     /**
      * 핸들러 본문을 실행하고 도메인/검증/무결성 예외만 HTTP 응답으로 매핑한다.
@@ -338,14 +309,6 @@ class IssueSecuritySchemeController(
         }
 
     private companion object {
-        /** actor 추출 실패(JWT/PAT 파싱 오류) 공용 401 응답. */
-        val UNAUTHORIZED_RESPONSE: ResponseEntity<Map<String, String>> =
-            ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf("error" to "unauthorized"))
-
-        /** 전역 관리자가 아닌 행위자에 대한 공용 403 응답. */
-        val FORBIDDEN_RESPONSE: ResponseEntity<Map<String, String>> =
-            ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("error" to "forbidden"))
-
         /** 주어진 상태/코드로 error 키 단일 맵 응답을 만든다. */
         fun errorResponse(
             status: HttpStatus,

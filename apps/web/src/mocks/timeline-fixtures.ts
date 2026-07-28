@@ -9,16 +9,7 @@
 // (백엔드 TimelineController.kt 정렬 순서 미러)
 
 import type { TimelineDepEdge, TimelineItem } from '@/api/timeline'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UUID 상수 — user-fixtures.ts 와 동기화
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** userAliceFixture.id 와 동기화 */
-const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
-
-/** userBobFixture.id 와 동기화 */
-const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BTS 프로젝트 기본 타임라인 아이템 목록

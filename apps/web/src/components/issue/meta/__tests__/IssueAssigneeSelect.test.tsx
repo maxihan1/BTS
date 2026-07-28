@@ -7,13 +7,13 @@ import { IssueAssigneeSelect } from '@/components/issue/meta/IssueAssigneeSelect
 import { issueDetailStrings } from '@/i18n/ko'
 
 const aliceFixture: UserSummary = {
-  id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
+  id: '00000000-0000-4000-8000-000000000001',
   username: 'alice',
   displayName: '김앨리스',
   email: null,
 }
 const bobFixture: UserSummary = {
-  id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
+  id: '00000000-0000-4000-8000-000000000002',
   username: 'bob',
   displayName: null,
   email: null,

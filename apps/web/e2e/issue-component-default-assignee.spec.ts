@@ -30,10 +30,10 @@ import { issueCreateStrings } from '../src/i18n/ko'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** alice 사용자 UUID — userAliceFixture.id (user-fixtures.ts 단일 진실 원천) */
-const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+const ALICE_USER_ID = '00000000-0000-4000-8000-000000000001'
 
 /** bob 사용자 UUID — userBobFixture.id (user-fixtures.ts 단일 진실 원천) */
-const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+const BOB_USER_ID = '00000000-0000-4000-8000-000000000002'
 
 /** 리드(alice)가 지정된 컴포넌트 — 사전순 첫 번째 (자동배정 우선 대상) */
 const COMP_AUTH = {

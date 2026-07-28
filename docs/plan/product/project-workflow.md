@@ -9,9 +9,9 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §2.1, §4.4 (워크플로우 관리 권한) 완료
-- [ ] DATA.md §트랜잭션 + §pgmq 규칙 숙지
-- [ ] §1 기술 검증 통과 (아래)
+- [x] identity-access §2.1, §4.4 (워크플로우 관리 권한) 완료 — 2026-07-27 실측: `identity-access.md` §2.1 D1~D7 7/7 `[x]`, §4.4 D1~D5 5/5 `[x]` (D6/D7은 "범위 외" 명시), 미완 0
+- [ ] DATA.md §트랜잭션 + §pgmq 규칙 숙지 — 미측정. `DATA.md §6 트랜잭션 경계` · `§7 PostgreSQL 특화 (FTS / pgmq / 인덱스)` 두 절은 실재하나, "숙지"는 사람의 행위라 저장소에서 검증 불가. 규칙 준수의 간접 근거는 §1.2 마지막 항목(롤백 정합성 통합 테스트 `[x]`)
+- [x] §1 기술 검증 통과 (아래) — 2026-07-27 실측: §1.1 5/5 + §1.2 5/5 = 10/10 `[x]`, 미완 0
 
 ## §1 기술 검증
 
@@ -96,9 +96,9 @@
 
 > **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
-- [ ] §2 (FR-WF 3개) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후)
-- [ ] pgmq ADR (§A.3 #1) 발행 완료
-- [ ] CHANGELOG.md 정리
-- [ ] README.md §7 변경 이력에 "project-workflow BC 완료 — YYYY-MM-DD" 추가
-- [ ] Maxi 1인 선언 — "project-workflow BC 완료"
+- [x] §2 (FR-WF 3개) 모두 `[x]` 마킹 — 2026-07-27 실측: §2 D단계 18/18 `[x]` (WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5, D3/D6/D7 비해당 명시), 미완 0
+- [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요
+- [x] pgmq ADR (§A.3 #1) 발행 완료 — 2026-07-27 실측: `docs/adr/2026-05-22-pgmq-postgres-image.md` 실재 (일자 2026-05-22). `docs/decisions/` 에는 없음
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` §[Unreleased] BC 요약 표에 `project-workflow | 3 (WF 3) | 2026-05-22 ~ 07-11 | 9 (#10~#66 외)` 행 존재
+- [ ] README.md §7 변경 이력에 "project-workflow BC 완료 — YYYY-MM-DD" 추가 — 미측정. 2026-07-27 실측: `docs/plan/README.md §7` 3행(2026-05-20 ×2, 2026-07-17) 중 project-workflow 언급 0건. BC 완료 선언 시점에 README 소관 에이전트가 추가해야 함
+- [ ] Maxi 1인 선언 — "project-workflow BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

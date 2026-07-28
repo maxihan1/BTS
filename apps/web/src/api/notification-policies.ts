@@ -4,8 +4,9 @@ import { apiFetch, apiGet, ApiError } from './client'
 import { readXsrfToken } from './sessions'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 백엔드 enum 미러 (as const) — 백엔드 NotificationEventType.kt / RecipientRole.kt / NotificationChannel.kt 와 동기화
+// 백엔드 enum 미러 (as const) — 백엔드 NotificationEventType.kt / RecipientRole.kt / Channel.kt 와 동기화
 // enum 추가 시 이 배열 + notification-policy-labels.ts 라벨 맵도 함께 갱신할 것
+// 동기화는 notification-policies.test.ts 의 T-NP-K(차집합 판별식)가 Kotlin 소스를 파싱해 강제한다
 //
 // ⚠️ 에러 계약 주의:
 //   notification BC는 RFC 7807 ProblemDetail에 대문자 errorCode를 사용한다
@@ -24,11 +25,13 @@ export const NOTIFICATION_EVENT_TYPES = [
   'issue.assigned',
   'issue.transitioned',
   'issue.commented',
+  'issue.comment_deleted',
   'issue.due_soon',
   'issue.overdue',
   'sprint.started',
   'sprint.ended',
   'automation.failed',
+  'issue.mentioned',
 ] as const
 
 /** 알려진 이벤트 타입 유니온 */
@@ -43,6 +46,7 @@ export const RECIPIENT_ROLES = [
   'ASSIGNEE',
   'PREVIOUS_ASSIGNEE',
   'WATCHER',
+  'COMMENT_AUTHOR',
   'COMPONENT_LEAD',
   'MENTIONED',
   'PROJECT_MEMBER',

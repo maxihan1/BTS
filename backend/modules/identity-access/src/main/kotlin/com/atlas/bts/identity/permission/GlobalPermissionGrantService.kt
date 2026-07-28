@@ -4,6 +4,7 @@ package com.atlas.bts.identity.permission
 
 import com.atlas.bts.identity.group.UserGroupRepository
 import com.atlas.bts.identity.user.UserRepository
+import com.bts.shared.permission.GlobalPermissionCodes
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -119,13 +120,23 @@ class GlobalPermissionGrantService(
         if (!exists) throw GranteeNotFoundException(granteeType, granteeId)
     }
 
-    private companion object {
+    internal companion object {
         /**
          * 부여 가능한 전역 권한코드 화이트리스트 — V036 의 `CHECK (permission IN ('CREATE_PROJECT'))`
          * 와 **같은 집합을 유지해야 한다**(ADR D-1 이중 방어 / 잔여 위험 4).
          *
-         * 정본은 SDD 12(`docs/sdd/12-permissions.md`)다. 코드 추가 시 SDD·CHECK·이 집합 3곳을 함께 고친다.
+         * 정본은 SDD 12(`docs/sdd/12-permissions.md`)이고, **문자열 리터럴의 단일 출처는
+         * shared-kernel [GlobalPermissionCodes]** 다(2026-07-27 — 앱 겹 2곳이 각자 리터럴을
+         * 들고 있던 것을 그 상수 참조로 통일했다). 코드 추가 시 고칠 곳은 SDD · 마이그레이션 CHECK ·
+         * `GlobalPermissionCodes` 세 곳이다.
+         *
+         * ## `internal` 인 이유
+         * 앱 겹과 DB 겹이 **같은 집합인지 자동으로 확인하는 테스트**
+         * ([GlobalPermissionGrantSchemaMigrationTest] 의 화이트리스트↔CHECK 정합 단언)가
+         * 이 값을 직접 읽어야 한다. `private` 이면 리플렉션이 필요해지고, 리플렉션 가드는
+         * 필드명 변경에 조용히 깨진다. Kotlin `internal` 은 같은 Gradle 모듈 안에서만 보이므로
+         * 다른 BC 로는 새지 않는다.
          */
-        val ALLOWED_GLOBAL_PERMISSIONS = setOf("CREATE_PROJECT")
+        val ALLOWED_GLOBAL_PERMISSIONS = setOf(GlobalPermissionCodes.CREATE_PROJECT)
     }
 }

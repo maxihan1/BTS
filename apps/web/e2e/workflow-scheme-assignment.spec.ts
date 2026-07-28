@@ -47,40 +47,31 @@ test('E2E-5 S9 — ATLAS 스킴 변경 PUT UPSERT → 현재 적용 카드 갱�
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S10 — 미할당 프로젝트 진입 시 자동 할당 안내 카드 표시
+// S10 — 존재하지 않는 프로젝트 진입 시 「프로젝트를 찾을 수 없습니다」
 //
-// Given. alice 로그인 + assignmentFixtures 에 없는 프로젝트 키로 진입
-//        (MSW GET 핸들러가 404 ASSIGNMENT_NOT_FOUND 반환 → assignment === null)
-// When.  /projects/UNASSIGNED-PROJ/settings/workflow-scheme 페이지 진입
-// Then.  '스킴 미할당' 안내 카드 표시 + 변경 select 정상 사용 가능
+// ★ 이 케이스는 원래 「미할당 프로젝트 → 스킴 미할당 안내 카드」였다. 그 시나리오는 성립하지
+//   않는다 — 백엔드 `WorkflowSchemeApplicationService.findAssignedScheme` 은 배정이 없으면
+//   software-scheme 을 **자동 배정하고 200** 을 돌려주므로(EC-1 D10), 「존재하지만 미배정」은
+//   이 엔드포인트로 관측될 수 없는 상태다. 404 의 유일한 의미는 「프로젝트 없음」이고,
+//   프론트가 그것을 「미할당」으로 읽는 바람에 오타 난 URL 로 들어온 사용자가
+//   "곧 자동 할당됩니다" 라는 거짓 안내를 봤다.
 //
-// fixture 현황:
-//   assignmentFixtures = [ATLAS, BTS, PILOT] — 미할당 프로젝트 키 별도 fixture 없음.
-//   MSW GET 핸들러는 fixture 에 없는 키에 대해 404 를 반환하므로,
-//   'UNASSIGNED-PROJ' 키를 사용해 미할당 상태를 자연스럽게 재현한다.
+// Given. alice 로그인 + 존재하지 않는 프로젝트 키로 진입 (MSW GET 핸들러가 404 PROJECT_NOT_FOUND)
+// When.  /projects/NO-SUCH-PROJECT/settings/workflow-scheme 페이지 진입
+// Then.  '프로젝트를 찾을 수 없습니다' 안내 표시 + 배정 수단(select/적용) 미노출
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 미할당 시나리오용 프로젝트 키 — scheme-fixtures.ts 의 assignmentFixtures 에 없는 임의 키
-const UNASSIGNED_PROJECT_KEY = 'UNASSIGNED-PROJ'
+// 존재하지 않는 프로젝트 키 — scheme-fixtures.ts 의 assignmentFixtures 에 없는 임의 키
+const MISSING_PROJECT_KEY = 'NO-SUCH-PROJECT'
 
-test('E2E-5 S10 — 미할당 프로젝트 → 스킴 미할당 안내 카드 + 변경 select 정상', async ({ page }) => {
+test('E2E-5 S10 — 존재하지 않는 프로젝트 → 「프로젝트를 찾을 수 없습니다」 + 배정 수단 미노출', async ({ page }) => {
   await loginAsAlice(page)
-  await navigateToProjectAssignment(page, UNASSIGNED_PROJECT_KEY)
+  await navigateToProjectAssignment(page, MISSING_PROJECT_KEY)
 
-  // '스킴 미할당' 안내 카드 제목 표시 확인
   // CardTitle 은 <div data-slot="card-title"> 이므로 getByText 사용
-  await expect(page.getByText(labels.unassignedTitle)).toBeVisible()
+  await expect(page.getByText(labels.projectNotFoundTitle)).toBeVisible()
 
-  // 스킴 지정 섹션 (assignTitle) 표시 확인 — 할당 없을 때 changeTitle 대신 assignTitle
-  await expect(page.getByText(labels.assignTitle)).toBeVisible()
-
-  // 스킴 select 가 사용 가능 상태(disabled 아님) 인지 확인
-  const schemeSelect = page.getByRole('combobox', { name: labels.schemeSelectAriaLabel })
-  await expect(schemeSelect).toBeVisible()
-  await expect(schemeSelect).not.toBeDisabled()
-
-  // select 를 열면 스킴 옵션이 1개 이상 존재하는지 확인
-  await schemeSelect.click()
-  const options = page.getByRole('option')
-  await expect(options.first()).toBeVisible()
+  // 없는 프로젝트에 스킴을 배정할 수단을 열어두지 않는다
+  await expect(page.getByRole('combobox', { name: labels.schemeSelectAriaLabel })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: labels.applyButton })).toHaveCount(0)
 })

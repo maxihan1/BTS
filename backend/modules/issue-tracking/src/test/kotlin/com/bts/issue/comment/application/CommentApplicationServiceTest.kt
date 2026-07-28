@@ -15,6 +15,7 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.event.IssueCommentDeleted
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.history.IssueHistoryRecorder
@@ -818,6 +819,45 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         service.delete(actor, issue.key, others.id)
 
         assertThat(commentRepository.findActive(others.id, issue.id.value)).isNull()
+    }
+
+    /**
+     * **모더레이션 통지 — FR-CO-02 의 빠진 절반.**
+     *
+     * 삭제는 작성자 OR `SOFT_DELETE` 보유자가 할 수 있는데, **내 댓글이 모더레이터에게 지워져도
+     * 아무 신호가 없었다.** 감사 이력에는 남지만 그건 조회해야 보이는 기록이지 밀어주는 신호가 아니다.
+     *
+     * ★[IssueCommentDeleted.commentAuthorId] 가 **삭제자(actor)가 아니라 작성자**인지가 판별자다.
+     * 두 값을 바꿔 실으면 알림이 엉뚱한 사람에게 가고, 정작 당사자는 여전히 모른다.
+     * 그래서 둘이 **서로 다른 상황**(모더레이션 삭제)에서 각각을 단정한다 — 자기 삭제로 검증하면
+     * actor == author 라 뒤바뀜을 잡지 못한다(vacuous).
+     */
+    @Test
+    @Order(24)
+    fun `CO2-10b - 모더레이터 삭제는 작성자 id 를 실은 IssueCommentDeleted 를 발행한다`() {
+        val issue = insertIssue(35L)
+        val others =
+            buildComment(issue.id.value, body = "남의 댓글", createdAt = Instant.parse("2024-03-01T00:00:00Z"))
+        commentRepository.insert(others)
+        // 판별자 전제 — actor 와 작성자가 서로 달라야 뒤바뀜을 잡을 수 있다.
+        assertThat(others.authorId).isNotEqualTo(actorUuid)
+
+        service.delete(actor, issue.key, others.id)
+
+        verify(exactly = 1) {
+            eventPublisher.publish(
+                match {
+                    it is IssueCommentDeleted &&
+                        it.issueKey == issue.key &&
+                        it.projectKey == issue.key.projectPrefix &&
+                        it.commentId == others.id &&
+                        // 수신자 = 작성자
+                        it.commentAuthorId.value == others.authorId &&
+                        // 자기제외 판정용 = 삭제 수행자
+                        it.actorId == actor
+                },
+            )
+        }
     }
 
     /**

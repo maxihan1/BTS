@@ -62,41 +62,6 @@ import java.util.UUID
 @WebAppConfiguration
 class ProjectWorkflowSchemeControllerTest {
     /**
-     * ActorId inline value class MockK 우회용 권한 resolver stub.
-     *
-     * 마지막으로 호출된 [permission] 과 [scope] 를 캡처한다.
-     */
-    class CapturingPermissionResolverStub : WorkflowSchemePermissionResolver {
-        var capturedActorId: UUID? = null
-        var capturedPermission: WorkflowSchemePermission? = null
-        var capturedScope: WorkflowSchemeScope? = null
-        var callCount = 0
-
-        /** 설정 시 [requirePermission] 이 캡처를 마친 뒤 이 예외를 던진다(403 거부 시나리오 재현용). */
-        var denyWith: RuntimeException? = null
-
-        override fun requirePermission(
-            actorId: UUID,
-            permission: WorkflowSchemePermission,
-            scope: WorkflowSchemeScope,
-        ) {
-            capturedActorId = actorId
-            capturedPermission = permission
-            capturedScope = scope
-            callCount++
-            denyWith?.let { throw it }
-        }
-
-        fun reset() {
-            capturedActorId = null
-            capturedPermission = null
-            capturedScope = null
-            callCount = 0
-            denyWith = null
-        }
-    }
-
-    /**
      * ActorId inline value class MockK 우회용 application service stub.
      *
      * [assignToProjectResponse] 와 [findAssignedSchemeResponse] 를 설정해 응답을 제어한다.
@@ -486,6 +451,76 @@ class ProjectWorkflowSchemeControllerTest {
         every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
 
         mockMvc.perform(get("/api/v1/projects/UNKNOWN/assignable-workflow-schemes"))
+            .andExpect(status().isNotFound)
+    }
+
+    // ── Case 13~16. 권한 검증이 프로젝트 조회보다 먼저 — 키 열거 차단 ──────────
+    //
+    // 인증됐지만 권한이 없는 사용자가 응답 코드 차이(404 vs 403)로 프로젝트 키의 실재를
+    // 열거할 수 있으면 안 된다. 세 핸들러 전부 requirePermission 이 findIdByKey 보다 앞에
+    // 있어야 하고, 그때 없는 프로젝트키에도 403 이 나온다.
+    //
+    // 대조군(권한 보유자 → 404)은 Case 5(PUT) · Case 16(GET) · Case 12(GET assignable) 이
+    // 맡는다. 대조군이 없으면 "전부 403" 으로 무너져도 이 테스트들이 통과한다.
+
+    /** 권한 거부 시나리오용 예외 — [projectKey] 스코프 기준. */
+    private fun denyFor(projectKey: String) =
+        WorkflowSchemeAccessDeniedException(
+            authActorUuid,
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `PUT — 권한 없는 사용자가 없는 프로젝트키로 요청하면 404 아닌 403`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
+        config.permResolverStub.denyWith = denyFor("UNKNOWN")
+
+        val body = """{"schemeKey":"software-scheme"}"""
+
+        mockMvc.perform(
+            put("/api/v1/projects/UNKNOWN/workflow-scheme")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isForbidden)
+
+        assertThat(config.permResolverStub.callCount).isEqualTo(1)
+    }
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET — 권한 없는 사용자가 없는 프로젝트키로 요청하면 404 아닌 403`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
+        config.permResolverStub.denyWith = denyFor("UNKNOWN")
+
+        mockMvc.perform(get("/api/v1/projects/UNKNOWN/workflow-scheme"))
+            .andExpect(status().isForbidden)
+
+        assertThat(config.permResolverStub.callCount).isEqualTo(1)
+    }
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — 권한 없는 사용자가 없는 프로젝트키로 요청하면 404 아닌 403`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
+        config.permResolverStub.denyWith = denyFor("UNKNOWN")
+
+        mockMvc.perform(get("/api/v1/projects/UNKNOWN/assignable-workflow-schemes"))
+            .andExpect(status().isForbidden)
+
+        assertThat(config.permResolverStub.callCount).isEqualTo(1)
+    }
+
+    // ── Case 16. 대조군 — 권한 보유자 + 없는 프로젝트키는 여전히 404 ───────────
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET — 권한 보유자가 없는 프로젝트키로 요청하면 404`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
+
+        mockMvc.perform(get("/api/v1/projects/UNKNOWN/workflow-scheme"))
             .andExpect(status().isNotFound)
     }
 
