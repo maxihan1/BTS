@@ -131,6 +131,7 @@ const issuesIndexRoute = createRoute({
     component?: string | string[]
     sort?: string
     selected?: string
+    projectKey?: string
   } => ({
     page: typeof search['page'] === 'number' ? search['page'] : undefined,
     status: Array.isArray(search['status'])
@@ -155,6 +156,8 @@ const issuesIndexRoute = createRoute({
         : undefined,
     sort: typeof search['sort'] === 'string' ? search['sort'] : undefined,
     selected: typeof search['selected'] === 'string' ? search['selected'] : undefined,
+    // FR-UX-07 — 활성 프로젝트 명시 지정. 부재 시 어댑터가 저장값 → 첫 프로젝트로 해소한다.
+    projectKey: typeof search['projectKey'] === 'string' ? search['projectKey'] : undefined,
   }),
 })
 
