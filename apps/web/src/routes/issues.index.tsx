@@ -24,8 +24,8 @@ import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFil
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
-import { EmptyState } from '@/components/ui/empty-state'
 import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
+import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -139,47 +139,6 @@ function issueTableRegionClassName(isFetching: boolean): string | undefined {
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueEmptyState — 빈 이슈 목록 안내 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 활성 프로젝트가 아직 정해지지 않은 상태(로딩/에러/0개)를 목록 영역에 표시한다 — FR-UX-07.
- *
- * ⚠️ 이 패널은 **목록 영역만** 대체한다. 어댑터 최상단에서 조기 반환하면 split view 우측
- * 상세 페인까지 사라지는데, 상세는 `selected` 키 기준 독립 fetch라 프로젝트 해소와 무관하다
- * (스펙 E9 직교성, plan 리뷰 C5). `/issues?selected=ATLAS-3` 딥링크가 프로젝트 조회 실패에
- * 끌려 죽으면 안 된다.
- */
-function ActiveProjectGate({ status }: { status: 'loading' | 'error' | 'empty' }): JSX.Element {
-  if (status === 'loading') {
-    return (
-      <div className="flex items-center justify-center p-8 text-muted-foreground">로딩 중...</div>
-    )
-  }
-
-  if (status === 'error') {
-    return (
-      <div role="alert" className="p-8 text-destructive">
-        프로젝트 목록을 불러올 수 없습니다.
-      </div>
-    )
-  }
-
-  return (
-    <EmptyState
-      title="접근 가능한 프로젝트가 없습니다."
-      description="프로젝트에 참여하거나 새 프로젝트를 만들면 이슈를 볼 수 있습니다."
-      action={
-        // 이 파일의 기존 관례대로 plain anchor를 쓴다(`새 이슈` 진입점과 동일) —
-        // 라우터 Link는 라우터 컨텍스트를 요구해 단위 테스트에서 마운트할 수 없다.
-        <a
-          href="/projects"
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          프로젝트 목록으로 이동
-        </a>
-      }
-    />
-  )
-}
 
 /** 이슈가 없을 때 표시하는 빈 상태 안내 컴포넌트. */
 function IssueEmptyState(): JSX.Element {

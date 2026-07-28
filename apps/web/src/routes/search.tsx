@@ -13,12 +13,13 @@ import { Button } from '@/components/ui/button'
 import { SavedFilterMenu } from '@/components/search/SavedFilterMenu'
 import { SaveFilterDialog } from '@/components/search/SaveFilterDialog'
 import { ExportDialog } from '@/components/search/ExportDialog'
+import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
+import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_PROJECT_KEY = 'ATLAS'
 const PAGE_SIZE = 20
 
 /**
@@ -472,11 +473,11 @@ export function SearchRouteAdapter(): JSX.Element {
 
   const q = typeof search.q === 'string' ? search.q : ''
   const page = typeof search.page === 'number' ? search.page : 0
-  const projectKey =
-    typeof search.projectKey === 'string' && search.projectKey.length > 0
-      ? search.projectKey
-      : DEFAULT_PROJECT_KEY
   const filterId = typeof search.filterId === 'string' ? search.filterId : undefined
+
+  // FR-UX-07 — URL > 저장값 > 첫 프로젝트 순으로 해소한다. 우선순위 구조는 그대로이고
+  // 폴백만 DEFAULT_PROJECT_KEY 하드코딩에서 해소 결과로 바뀐다(스펙 E8).
+  const activeProject = useResolvedActiveProject(search.projectKey)
 
   // filterId 로딩 중 여부 — true이면 SearchPage 대신 로딩 안내를 표시한다
   const [filterIdLoading, setFilterIdLoading] = useState(filterId !== undefined)
@@ -555,6 +556,16 @@ export function SearchRouteAdapter(): JSX.Element {
     },
     [navigate],
   )
+
+  // 활성 프로젝트가 정해지기 전(로딩/에러/0개)에는 검색 화면 전체를 렌더하지 않는다.
+  // SearchPage·SaveFilterDialog·ExportDialog 3소비처가 모두 `projectKey: string`
+  // non-nullable 계약이라 어댑터가 흡수해야 한다(스펙 §8 G3, plan 리뷰 B4).
+  // `/issues`와 달리 여기엔 프로젝트 해소와 무관하게 살아야 할 영역(상세 페인)이 없으므로
+  // 최상단 반환이 맞다 — 툴바의 저장·내보내기도 projectKey를 요구한다.
+  if (activeProject.status !== 'ready') {
+    return <ActiveProjectGate status={activeProject.status} />
+  }
+  const projectKey = activeProject.projectKey
 
   return (
     <>

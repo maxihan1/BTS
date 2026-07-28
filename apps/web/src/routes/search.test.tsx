@@ -555,7 +555,7 @@ function renderSearchAdapter(initialUrl = '/search') {
 
 describe('SearchRouteAdapter — ⑩ 저장 버튼 + SavedFilterMenu 마운트', () => {
   beforeEach(() => {
-    server.use(...searchHandlers)
+    server.use(...searchHandlers, ...projectListHandlers)
     useAuthStore.getState().setAccessToken('mock-access-token-alice')
   })
   afterEach(() => {
@@ -592,7 +592,7 @@ describe('SearchRouteAdapter — ⑩ 저장 버튼 + SavedFilterMenu 마운트',
 describe('SearchRouteAdapter — ⑪ filterId 딥링크 자동 실행', () => {
   beforeEach(() => {
     resetSavedFilterStore()
-    server.use(...savedFilterHandlers, ...searchHandlers)
+    server.use(...savedFilterHandlers, ...searchHandlers, ...projectListHandlers)
     useAuthStore.getState().setAccessToken('mock-access-token-alice')
   })
   afterEach(() => {
@@ -635,7 +635,7 @@ describe('SearchRouteAdapter — ⑪ filterId 딥링크 자동 실행', () => {
 describe('SearchRouteAdapter — ⑫ filterId 에러 처리', () => {
   beforeEach(() => {
     resetSavedFilterStore()
-    server.use(...savedFilterHandlers, ...searchHandlers)
+    server.use(...savedFilterHandlers, ...searchHandlers, ...projectListHandlers)
     useAuthStore.getState().setAccessToken('mock-access-token-alice')
   })
   afterEach(() => {
