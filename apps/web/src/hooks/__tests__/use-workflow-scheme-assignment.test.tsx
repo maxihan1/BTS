@@ -110,6 +110,17 @@ describe('useUpdateAssignment', () => {
     expect(result.current.data).toEqual(updated)
   })
 
+  /**
+   * onError 롤백(이전 값 복원) 분기 검증.
+   *
+   * ★ 이 테스트를 공허하게 만드는 함정이 둘 있다 — 둘 다 밟지 않도록 구성한다.
+   *   1. **배정 후보 캐시를 안 채우면** `onMutate` 가 낙관값을 찾지 못해 쓰기를 통째로 생략하고
+   *      (`applied: false`) 롤백도 건너뛴다. 캐시는 처음부터 끝까지 그대로라 롤백 코드를
+   *      전부 지워도 통과한다.
+   *   2. **`useGetAssignment` 를 마운트하면** `onSettled` 의 무효화가 활성 쿼리를 재조회해
+   *      롤백 여부와 무관하게 GET 응답으로 캐시를 덮는다. 그래서 관찰자 없이
+   *      `setQueryData` 로만 착수 전 상태를 심는다.
+   */
   it('낙관적 업데이트 후 실패 시 이전 값으로 롤백한다', async () => {
     const existing: AssignedScheme = {
       id: 1,
@@ -118,14 +129,20 @@ describe('useUpdateAssignment', () => {
       description: null,
       isStandard: false,
     }
+    const candidates: AssignedScheme[] = [
+      existing,
+      { id: 2, key: 'doomed-scheme', name: '실패할 스킴', description: null, isStandard: true },
+    ]
+
+    // 낙관값을 관측할 창을 테스트가 직접 연다 — 즉시 실패하면 쓰기와 롤백을 구분할 수 없다.
+    let releaseFailure!: () => void
+    const failureGate = new Promise<void>((res) => { releaseFailure = res })
 
     server.use(
-      http.get('/api/v1/projects/BTS/workflow-scheme', () =>
-        HttpResponse.json({ data: existing }),
-      ),
-      http.put('/api/v1/projects/BTS/workflow-scheme', () =>
-        HttpResponse.json({ code: 'SCHEME_NOT_FOUND', detail: '없음' }, { status: 404 }),
-      ),
+      http.put('/api/v1/projects/BTS/workflow-scheme', async () => {
+        await failureGate
+        return HttpResponse.json({ code: 'SCHEME_NOT_FOUND', detail: '없음' }, { status: 404 })
+      }),
     )
 
     const client = new QueryClient({
@@ -135,25 +152,27 @@ describe('useUpdateAssignment', () => {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     )
 
-    // 먼저 assignment 캐시 채우기
-    const assignmentHook = renderHook(() => useGetAssignment('BTS'), { wrapper })
-    await waitFor(() => expect(assignmentHook.result.current.isSuccess).toBe(true))
+    const assignmentKey = ['projects', 'BTS', 'workflow-scheme']
+    client.setQueryData(assignmentKey, existing)
+    client.setQueryData(['assignable-workflow-schemes', 'BTS'], candidates)
 
     const { result } = renderHook(() => useUpdateAssignment('BTS'), { wrapper })
 
     act(() => {
-      result.current.mutate({ schemeKey: 'nonexistent-scheme' })
+      result.current.mutate({ schemeKey: 'doomed-scheme' })
     })
 
+    // 1) 낙관적 쓰기가 실제로 일어났는지 먼저 확인한다. 이 단언이 없으면 아래 단언은
+    //    「아무것도 안 건드렸다」로도 통과해버린다.
+    await waitFor(() =>
+      expect(client.getQueryData<AssignedScheme>(assignmentKey)?.key).toBe('doomed-scheme'),
+    )
+
+    releaseFailure()
     await waitFor(() => expect(result.current.isError).toBe(true))
 
-    // 롤백 후 기존 캐시 복구 확인
-    const cached = client.getQueryData<AssignedScheme | null>([
-      'projects',
-      'BTS',
-      'workflow-scheme',
-    ])
-    expect(cached).toEqual(existing)
+    // 2) 롤백 후 착수 전 값으로 복구
+    expect(client.getQueryData<AssignedScheme | null>(assignmentKey)).toEqual(existing)
   })
 
   it('성공 시 toast.success를 호출한다', async () => {
@@ -194,12 +213,25 @@ describe('useUpdateAssignment', () => {
    * 그 경로에서 낙관적 쓰기는 **캐시에 없던 항목을 새로 만들고**, 롤백 가드
    * (`prevAssignment !== undefined`)는 거짓이 되어 건너뛴다. ⇒ 요청이 실패했는데
    * 낙관값이 캐시에 남아 화면이 「배정됨」으로 보인다.
+   *
+   * ★ 비우는 것은 **배정 캐시 하나뿐**이다. 배정 후보 캐시까지 비우면 낙관적 쓰기 자체가
+   *   생략되어(`applied: false`) 이 테스트가 겨냥한 `removeQueries` 분기를 한 번도 밟지 않는다.
+   *   그 상태에서는 「엔트리 없음 → 여전히 엔트리 없음」이라 롤백 코드를 지워도 통과한다.
    */
   it('캐시가 비어 있을 때 실패해도 낙관값을 캐시에 남기지 않는다', async () => {
+    const candidates: AssignedScheme[] = [
+      { id: 2, key: 'doomed-scheme', name: '실패할 스킴', description: null, isStandard: true },
+    ]
+
+    // 낙관값을 관측할 창을 테스트가 직접 연다 (위 롤백 테스트와 같은 이유).
+    let releaseFailure!: () => void
+    const failureGate = new Promise<void>((res) => { releaseFailure = res })
+
     server.use(
-      http.put('/api/v1/projects/BTS/workflow-scheme', () =>
-        HttpResponse.json({ code: 'SCHEME_NOT_FOUND', detail: '없음' }, { status: 404 }),
-      ),
+      http.put('/api/v1/projects/BTS/workflow-scheme', async () => {
+        await failureGate
+        return HttpResponse.json({ code: 'SCHEME_NOT_FOUND', detail: '없음' }, { status: 404 })
+      }),
     )
 
     const client = new QueryClient({
@@ -209,20 +241,28 @@ describe('useUpdateAssignment', () => {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     )
 
-    // ★ 위 테스트와 달리 캐시를 **채우지 않는다**. 이것이 이 테스트의 전부다.
+    // ★ 위 테스트와 달리 **배정 캐시만** 비워둔다. 후보 캐시는 채운다.
     const key = ['projects', 'BTS', 'workflow-scheme']
+    client.setQueryData(['assignable-workflow-schemes', 'BTS'], candidates)
     expect(client.getQueryData(key)).toBeUndefined()
 
     const { result } = renderHook(() => useUpdateAssignment('BTS'), { wrapper })
 
     act(() => {
-      result.current.mutate({ schemeKey: 'nonexistent-scheme' })
+      result.current.mutate({ schemeKey: 'doomed-scheme' })
     })
 
+    // 1) 없던 엔트리가 낙관적 쓰기로 실제로 생겼는지 먼저 확인한다.
+    await waitFor(() =>
+      expect(client.getQueryData<AssignedScheme>(key)?.key).toBe('doomed-scheme'),
+    )
+
+    releaseFailure()
     await waitFor(() => expect(result.current.isError).toBe(true))
 
-    // 실패했으므로 캐시는 착수 전 상태(엔트리 없음)로 돌아가야 한다.
+    // 2) 실패했으므로 캐시는 착수 전 상태(엔트리 없음)로 돌아가야 한다.
     expect(client.getQueryData(key)).toBeUndefined()
+    expect(client.getQueryCache().find({ queryKey: key })).toBeUndefined()
   })
 
   /**
