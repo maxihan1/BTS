@@ -4,6 +4,7 @@ package com.bts.issue.link.application
 
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
@@ -29,7 +30,9 @@ class IssueParentServiceTest : DescribeSpec({
     val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     // 이 파일은 부모-자식 도메인 규칙(순환·자기참조·미존재)을 검증한다. 권한 판정은 관심사가 아니므로
-    // 전부 허용으로 고정한다 — 권한 거부 경로는 IssueLinkControllerIntegrationTest 가 덮는다.
+    // 전부 허용으로 고정한다 — setParent 의 권한 거부 경로는 IssueLinkControllerIntegrationTest 의
+    // SEC5/SEC6 이 덮는다. clearParent 는 어느 계층에도 거부 단언이 없어 아래 「UPDATE 권한이 없으면」
+    // 컨텍스트가 전용 resolver 로 덮는다.
     val permissionResolver =
         mockk<IssuePermissionResolver> {
             every { hasPermission(any(), any(), any()) } returns true
@@ -267,6 +270,33 @@ class IssueParentServiceTest : DescribeSpec({
             it("repo.updateParent(childId, null) 가 1회 호출된다") {
                 sut.clearParent(actor, childKey)
                 verify(exactly = 1) { repo.updateParent(childId, null) }
+            }
+        }
+
+        /**
+         * ★clearParent 의 권한 게이트는 2026-07-27 봉합이 만든 7지점 중 **유일하게 거부 테스트가 없던
+         * 지점**이었다. setParent 는 SEC5/SEC6(IssueLinkControllerIntegrationTest)이 양끝을 덮는데,
+         * 부모 **해제**는 어느 계층에도 단언이 없어 `checkPermission` 줄을 지워도 전량 green 이었다.
+         * 남의 이슈를 계층에서 떼어내는 것도 엄연한 변경이다.
+         *
+         * 상단 `permissionResolver` 는 전부 허용으로 고정돼 있고 이 파일은 SingleInstance 격리라
+         * 스텁을 바꾸면 뒤 테스트로 누출된다. 그래서 거부 전용 resolver/sut 를 이 컨텍스트에서만 만든다.
+         */
+        context("UPDATE 권한이 없으면") {
+            val denyingResolver =
+                mockk<IssuePermissionResolver> {
+                    every { hasPermission(any(), any(), any()) } returns false
+                }
+            val denyingSut = IssueParentService(repo, archiveGuard, denyingResolver)
+
+            it("IssueAccessDeniedException 을 던지고 repo 조회·updateParent 미수행(probe 차단)") {
+                shouldThrow<IssueAccessDeniedException> {
+                    denyingSut.clearParent(actor, childKey)
+                }
+
+                // 권한 검사가 리소스 조회보다 먼저 — 404/200 차이로 이슈 실재를 열거당하지 않는다.
+                verify(exactly = 0) { repo.findByKey(childKey) }
+                verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
     }

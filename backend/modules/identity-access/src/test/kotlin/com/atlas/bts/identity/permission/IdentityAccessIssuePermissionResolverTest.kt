@@ -29,6 +29,7 @@ import java.util.UUID
  * (d) 프로젝트 없음(resolveKeyToId null) → CREATE 거부 — EC-2
  * (f) BROWSE는 매트릭스 BROWSE_PROJECT 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-05)
  * (g) SET_SECURITY는 매트릭스 SET_ISSUE_SECURITY 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-06)
+ * (h) 보안 등급 게이트 대상 — IssuePermission 8종을 전수 열거해 집합 대조 (개수 단언 금지)
  *
  * MockK로 의존성을 격리하여 adapter 로직만 검증한다.
  */
@@ -156,6 +157,51 @@ class IdentityAccessIssuePermissionResolverTest {
         assertThat(
             resolver.hasPermission(actor, IssuePermission.SET_SECURITY, IssueScope.Issue("ATLAS-1")),
         ).isTrue()
+    }
+
+    /**
+     * ★게이트 대상을 **전량 열거해 대조**한다 — 개수 단언은 또 하나의 눈가리개다.
+     *
+     * 이 테스트가 생기기 전에는 `UPDATE`·`TRANSITION` 두 종만(+ 통합테스트의 `VIEW`) 단언돼 있어,
+     * 파괴적인 `SOFT_DELETE`·`HARD_DELETE` 를 `SECURITY_GATED_PERMISSIONS` 에서 빼도 전량 green 이었다.
+     * 「몇 개가 게이트를 탄다」가 아니라 「어느 값이 타고 어느 값이 안 타는지」를 8종 전부에 대해 고정한다.
+     *
+     * 판별식. 매트릭스를 **전부 허용**으로 고정했으므로, 여기서 `false` 가 나올 수 있는 경로는
+     * 보안 등급 게이트뿐이다. 따라서 `false` 집합 == 게이트 대상 집합이다.
+     * (`code == null` 인 `TRANSITION`·`HARD_DELETE` 는 매트릭스를 건너뛰므로 이 고정의 영향을 받지 않는다.)
+     *
+     * `IssuePermission.entries` 를 돌기 때문에 enum 값이 늘면 이 테스트가 곧바로 판정을 강요한다 —
+     * 새 값은 게이트에 넣든 빼든 여기서 명시돼야 컴파일이 아니라 단언으로 걸린다.
+     */
+    @Test
+    fun `보안 등급 게이트 대상 — IssuePermission 8종 전수 대조`() {
+        // 이 목록이 SECURITY_GATED_PERMISSIONS 의 정본 대조군이다.
+        // 제외 3종의 근거 — BROWSE·CREATE 는 프로젝트 스코프라 특정 이슈의 등급과 무관하고,
+        // SET_SECURITY 는 락아웃 방지를 위한 의도적 제외다(바로 위 전용 테스트가 그 결정을 고정한다).
+        val expectedGated =
+            setOf(
+                IssuePermission.VIEW,
+                IssuePermission.UPDATE,
+                IssuePermission.TRANSITION,
+                IssuePermission.SOFT_DELETE,
+                IssuePermission.HARD_DELETE,
+            )
+
+        every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
+        every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
+        // 매트릭스 전부 허용 — false 는 오직 등급 게이트에서만 나올 수 있게 만든다.
+        every { schemeRepo.roleHasPermission(projectId, "MEMBER", any()) } returns true
+        // 등급이 지정돼 있고 actor 는 그 등급의 멤버가 아니다 → 게이트를 타면 반드시 false.
+        every { securityLookup.lookup("ATLAS-1") } returns
+            IssueSecurityContext(securityLevelId = levelId, reporterId = otherUser, assigneeId = null)
+        every { securitySchemeRepo.listMembers(levelId) } returns emptyList()
+
+        val actualGated =
+            IssuePermission.entries
+                .filterNot { resolver.hasPermission(actor, it, IssueScope.Issue("ATLAS-1")) }
+                .toSet()
+
+        assertThat(actualGated).containsExactlyInAnyOrderElementsOf(expectedGated)
     }
 
     /** 대조군 — 등급 멤버라면 UPDATE 가 통과한다. "전부 거부" 로 무너지지 않았음을 확인한다. */
