@@ -18,11 +18,17 @@ function createWrapper() {
   return { wrapper }
 }
 
-/** 백엔드가 name 오름차순으로 내려주는 순서를 그대로 재현 (프론트 재정렬 없음) */
+/**
+ * 백엔드가 name 오름차순으로 내려주는 순서를 그대로 재현 (프론트 재정렬 없음).
+ *
+ * ⚠️ `id`는 반드시 유효한 UUID여야 한다 — `projectSchema.id`가 `z.string().uuid()`라
+ * 아무 문자열이나 넣으면 Zod parse 실패 → `useProjects`가 error 상태가 되고, 이 훅은
+ * status='error'를 반환해 **테스트가 원인과 무관한 메시지로 깨진다**.
+ */
 const PROJECTS = [
-  { id: 'p-alpha', key: 'ALPHA', name: '가 프로젝트' },
-  { id: 'p-infra', key: 'INFRA', name: '나 프로젝트' },
-  { id: 'p-atlas', key: 'ATLAS', name: '다 프로젝트' },
+  { id: '11111111-1111-4111-8111-111111111111', key: 'ALPHA', name: '가 프로젝트' },
+  { id: '22222222-2222-4222-8222-222222222222', key: 'INFRA', name: '나 프로젝트' },
+  { id: '33333333-3333-4333-8333-333333333333', key: 'ATLAS', name: '다 프로젝트' },
 ]
 
 function serveProjects(data: unknown[] = PROJECTS) {
@@ -99,8 +105,11 @@ describe('useResolvedActiveProject — URL·저장값·목록 조합', () => {
     const { result } = renderHook(() => useResolvedActiveProject(null), { wrapper })
 
     await waitFor(() => expect(result.current.status).toBe('ready'))
-    expect(result.current).toMatchObject({ projectKey: 'ALPHA', source: 'first' })
+    expect(result.current).toMatchObject({ projectKey: 'ALPHA' })
     expect(useActiveProject.getState().activeProjectKey).toBe('ALPHA')
+    // 저장 직후 다음 렌더는 저장값에서 해소되므로 출처가 first → stored 로 정착한다.
+    // 이 전이 자체가 "저장이 일어났다"는 증거다(키는 그대로라 화면 변화 없음).
+    expect(result.current).toMatchObject({ source: 'stored' })
   })
 
   it('T-RA-7 (S6): 저장값이 목록에 없으면 첫 원소로 내려가고 저장값이 교정된다', async () => {
@@ -111,7 +120,8 @@ describe('useResolvedActiveProject — URL·저장값·목록 조합', () => {
     const { result } = renderHook(() => useResolvedActiveProject(null), { wrapper })
 
     await waitFor(() => expect(result.current.status).toBe('ready'))
-    expect(result.current).toMatchObject({ projectKey: 'ALPHA', source: 'first' })
+    expect(result.current).toMatchObject({ projectKey: 'ALPHA' })
+    // 낡은 'GONE' 이 교정됐다 — 저장값이 목록에 실재하는 키로 바뀐다
     expect(useActiveProject.getState().activeProjectKey).toBe('ALPHA')
   })
 
