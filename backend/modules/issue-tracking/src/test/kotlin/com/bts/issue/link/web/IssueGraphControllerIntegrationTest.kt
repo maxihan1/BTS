@@ -12,8 +12,6 @@ import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
-import com.bts.shared.permission.IssuePermissionResolver
-import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -128,25 +126,23 @@ class IssueGraphControllerIntegrationTest {
         }
 
         /**
-         * 이 파일은 그래프 조회를 검증한다 — 권한 판정은 관심사가 아니므로 전부 허용.
-         * 권한 거부 경로는 [IssueLinkControllerIntegrationTest] 가 덮는다.
+         * ★예전에는 `hasPermission = true` 고정 스텁이었고, KDoc 에 "권한 거부 경로는
+         * [IssueLinkControllerIntegrationTest] 가 덮는다" 고 적혀 있었다. **사실이 아니었다** —
+         * 그 파일은 링크 컨트롤러를 덮지 그래프 컨트롤러를 덮지 않는다. 그래서 이 경로는
+         * 권한 검사가 아예 없는 채로 어떤 테스트에도 걸리지 않았다.
+         *
+         * 형제와 **같은 스텁**을 쓴다 — 여기서 새 스텁을 만들면 술어가 갈라진다.
          */
         @Bean
-        open fun issuePermissionResolver(): IssuePermissionResolver =
-            object : IssuePermissionResolver {
-                override fun hasPermission(
-                    actorId: UUID,
-                    permission: IssuePermission,
-                    scope: IssueScope,
-                ): Boolean = true
-            }
+        open fun issuePermissionResolver(): IssueLinkControllerIntegrationTest.TogglableIssuePermissionResolver =
+            IssueLinkControllerIntegrationTest.TogglableIssuePermissionResolver()
 
         @Bean
         open fun linkApplicationService(
             issueRepository: IssueRepository,
             issueLinkRepository: IssueLinkRepository,
             archiveGuard: ProjectArchiveGuard,
-            permissionResolver: IssuePermissionResolver,
+            permissionResolver: IssueLinkControllerIntegrationTest.TogglableIssuePermissionResolver,
         ): LinkApplicationService {
             return LinkApplicationService(
                 issueRepository,
@@ -160,7 +156,7 @@ class IssueGraphControllerIntegrationTest {
         open fun issueParentService(
             issueRepository: IssueRepository,
             archiveGuard: ProjectArchiveGuard,
-            permissionResolver: IssuePermissionResolver,
+            permissionResolver: IssueLinkControllerIntegrationTest.TogglableIssuePermissionResolver,
         ): IssueParentService = IssueParentService(issueRepository, archiveGuard, permissionResolver)
 
         @Bean
@@ -168,7 +164,8 @@ class IssueGraphControllerIntegrationTest {
             issueRepository: IssueRepository,
             issueLinkRepository: IssueLinkRepository,
             issueGraphRepository: IssueGraphRepository,
-        ): IssueGraphService = IssueGraphService(issueRepository, issueLinkRepository, issueGraphRepository)
+            permissionResolver: IssueLinkControllerIntegrationTest.TogglableIssuePermissionResolver,
+        ): IssueGraphService = IssueGraphService(issueRepository, issueLinkRepository, issueGraphRepository, permissionResolver)
 
         @Bean
         open fun issueGraphController(issueGraphService: IssueGraphService): IssueGraphController = IssueGraphController(issueGraphService)
@@ -186,6 +183,10 @@ class IssueGraphControllerIntegrationTest {
 
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
+
+    /** 권한 거부를 켜고 끄는 스텁 — 테스트마다 `reset()` 으로 상태가 새지 않게 한다. */
+    @Autowired
+    lateinit var permissionResolver: IssueLinkControllerIntegrationTest.TogglableIssuePermissionResolver
 
     private lateinit var mockMvc: MockMvc
 
@@ -217,6 +218,8 @@ class IssueGraphControllerIntegrationTest {
     @BeforeEach
     fun setUpEach() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // 스텁은 컨텍스트 스코프라 테스트 간 공유된다 — 앞 테스트의 deny 가 새면 뒤가 조용히 통과한다.
+        permissionResolver.reset()
         // 링크 API 가 2026-07-27 부터 CurrentActor 로 actor 를 추출한다 — 인증 컨텍스트 없으면 401 이다.
         // 이 파일은 그래프 조회를 검증하므로 링크 생성 헬퍼가 통과할 수 있도록 컨텍스트를 심는다.
         SecurityContextHolder.getContext().authentication =
@@ -293,6 +296,72 @@ class IssueGraphControllerIntegrationTest {
             .andExpect(jsonPath("$.data.edges[0].from").value(parentKey))
             .andExpect(jsonPath("$.data.edges[0].to").value(childKey))
             .andExpect(jsonPath("$.data.edges[0].type").value("PARENT"))
+    }
+
+    // ── SEC. 권한 게이트 ─────────────────────────────────────────────────────────
+
+    /**
+     * ★중심 이슈에 VIEW 가 없으면 **404** 다.
+     *
+     * 403 이 아니라 404 인 이유 — 형제 `GET /api/v1/issues/{key}` 가 이미 그렇게 한다
+     * (`IssueApplicationService.assertViewIssueOrNotFound`). 한쪽만 403 이면
+     * 응답 코드 차이로 기밀 이슈의 **실재**가 드러난다.
+     *
+     * 이 게이트가 없던 동안, 본체 조회는 404·링크 목록은 403 인데 그래프만 200 으로
+     * `summary` 와 `statusKey` 를 내주고 있었다.
+     */
+    @Test
+    fun `SEC-G1 GET graph 404 - 중심 이슈 VIEW 가 없으면 미존재와 같은 응답`() {
+        val secretKey = createIssue("기밀 중심")
+        permissionResolver.deny(IssuePermission.VIEW, secretKey)
+
+        mockMvc.perform(get("/api/v1/issues/$secretKey/graph"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_NOT_FOUND"))
+    }
+
+    /**
+     * ★중심만 막으면 부족하다 — **이웃도 걸러야** 한다.
+     *
+     * 내가 볼 수 있는 이슈에서 기밀 이슈로 링크를 걸면, 그 기밀 이슈가 BFS 이웃으로
+     * 딸려 들어온다. 노드가 빠지면 [BfsTraversal.finalEdges] 가 그 엣지도 함께 지운다
+     * (양 끝이 모두 방문된 엣지만 남기므로) — 그래서 관문 한 곳만 막으면 된다.
+     */
+    @Test
+    fun `SEC-G2 GET graph 200 - VIEW 없는 이웃은 노드와 엣지에서 함께 빠진다`() {
+        val centerKey = createIssue("중심")
+        val visibleKey = createIssue("보이는 이웃")
+        val secretKey = createIssue("기밀 이웃")
+
+        createLink(centerKey, visibleKey, "blocks")
+        createLink(centerKey, secretKey, "blocks")
+
+        permissionResolver.deny(IssuePermission.VIEW, secretKey)
+
+        mockMvc.perform(get("/api/v1/issues/$centerKey/graph"))
+            .andExpect(status().isOk)
+            // 중심 + 보이는 이웃 = 2개. 기밀 이웃은 빠진다.
+            .andExpect(jsonPath("$.data.nodes.length()").value(2))
+            .andExpect(jsonPath("$.data.nodes[?(@.key == '$secretKey')]").isEmpty)
+            // 노드가 빠지면 그 엣지도 사라져야 한다 — summary 는 없는데 관계만 남으면 여전히 누출이다.
+            .andExpect(jsonPath("$.data.edges.length()").value(1))
+            .andExpect(jsonPath("$.data.edges[?(@.to == '$secretKey')]").isEmpty)
+    }
+
+    /**
+     * 대조군 — 위 두 게이트가 "전부 막기" 로 무너지지 않았음을 확인한다.
+     * 이 짝이 없으면 그래프를 통째로 비워도 SEC-G1·G2 가 통과한다.
+     */
+    @Test
+    fun `SEC-G3 대조군 - VIEW 가 있으면 이웃이 그대로 들어온다`() {
+        val centerKey = createIssue("대조군 중심")
+        val neighborKey = createIssue("대조군 이웃")
+        createLink(centerKey, neighborKey, "blocks")
+
+        mockMvc.perform(get("/api/v1/issues/$centerKey/graph"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.nodes.length()").value(2))
+            .andExpect(jsonPath("$.data.edges.length()").value(1))
     }
 
     // ── G4. 404 — 존재하지 않는 키 → ISSUE_NOT_FOUND ─────────────────────────────

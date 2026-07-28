@@ -2,6 +2,7 @@
 
 package com.bts.issue.link.application
 
+import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.InvalidGraphDepthException
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
@@ -10,6 +11,9 @@ import com.bts.issue.link.repository.IssueGraphRepository
 import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.link.repository.LinkedIssueRow
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -94,6 +98,17 @@ private class BfsTraversal(
     private val maxDepth: Int,
     private val nodeCap: Int,
     center: QueueItem,
+    /**
+     * 이웃 노드를 그래프에 들일지 판정한다 (이슈 키 → 볼 수 있나).
+     *
+     * ★[visit] 이 **노드가 들어오는 유일한 관문**이라 여기 한 곳만 막으면 된다.
+     * 확장 지점(links·parent·children)마다 따로 걸면 하나를 빠뜨린다.
+     * 엣지는 [finalEdges] 가 「양 끝이 모두 방문된 것」만 남기므로 자동으로 함께 사라진다.
+     *
+     * 중심 노드는 생성자에서 이미 들어오므로 이 술어를 타지 않는다 — 중심은 호출부가
+     * 404 로 거른다(403 이면 실재가 드러난다).
+     */
+    private val canVisit: (String) -> Boolean,
 ) {
     val visited = mutableSetOf(center.id)
     val nodes = mutableListOf(center)
@@ -112,11 +127,17 @@ private class BfsTraversal(
     /**
      * 이웃 노드를 방문 처리한다.
      *
-     * 이미 방문했으면 무시한다. 미방문이지만 [nodeCap] 에 도달했으면 [truncated]=true 로 표시하고
-     * 추가하지 않는다. 그 외에는 visited·nodes 에 추가하고, depth 가 [maxDepth] 미만이면 큐에도 넣는다.
+     * 이미 방문했거나 **볼 권한이 없으면** 무시한다. 미방문이지만 [nodeCap] 에 도달했으면
+     * [truncated]=true 로 표시하고 추가하지 않는다.
+     * 그 외에는 visited·nodes 에 추가하고, depth 가 [maxDepth] 미만이면 큐에도 넣는다.
+     *
+     * ★권한 거부는 [truncated] 로 세지 **않는다** — "상한 때문에 잘렸다" 와
+     * "권한이 없어 숨겼다" 는 다른 사실이고, 후자를 플래그로 노출하면 그 자체가
+     * "여기 내가 못 보는 이웃이 있다" 는 오라클이 된다.
      */
     fun visit(item: QueueItem) {
-        if (item.id in visited) return
+        // 볼 수 없는 이웃은 아예 안 들인다.
+        if (item.id in visited || !canVisit(item.key)) return
         if (visited.size >= nodeCap) {
             truncated = true
             return
@@ -164,6 +185,7 @@ class IssueGraphService(
     private val issueRepository: IssueRepository,
     private val linkRepository: IssueLinkRepository,
     private val graphRepository: IssueGraphRepository,
+    private val permissionResolver: IssuePermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -181,6 +203,7 @@ class IssueGraphService(
     /**
      * 중심 이슈를 기점으로 BFS 그래프를 빌드해 반환한다.
      *
+     * @param actor 요청 주체 — 중심 이슈 VIEW 게이트와 이웃 필터에 함께 쓰인다.
      * @param centerKey 중심 이슈 키.
      * @param rawDepth 클라이언트가 전달한 depth 문자열. null 또는 blank 이면 [DEFAULT_DEPTH] 사용.
      * @return [IssueGraphResult] — 노드/엣지/truncated 포함.
@@ -189,11 +212,18 @@ class IssueGraphService(
      */
     @Transactional(readOnly = true)
     fun buildGraph(
+        actor: ActorId,
         centerKey: IssueKey,
         rawDepth: String?,
     ): IssueGraphResult {
         val depth = resolveDepth(rawDepth)
         log.debug("buildGraph centerKey={} depth={}", centerKey.value, depth)
+
+        // ★권한을 리소스 조회보다 먼저. 그리고 거부는 403 이 아니라 **404** 다 —
+        // 형제 `GET /api/v1/issues/{key}` 가 이미 404 로 실재를 숨긴다
+        // (IssueApplicationService.assertViewIssueOrNotFound). 여기만 403 이면
+        // 응답 코드 차이로 기밀 이슈의 존재가 드러난다.
+        if (!canView(actor, centerKey.value)) throw LinkedIssueNotFoundException(centerKey)
 
         val center =
             issueRepository.findByKey(centerKey)
@@ -207,7 +237,13 @@ class IssueGraphService(
                 statusKey = center.currentStateKey,
                 depth = 0,
             )
-        val traversal = BfsTraversal(maxDepth = depth, nodeCap = NODE_CAP, center = centerItem)
+        val traversal =
+            BfsTraversal(
+                maxDepth = depth,
+                nodeCap = NODE_CAP,
+                center = centerItem,
+                canVisit = { key -> canView(actor, key) },
+            )
 
         while (traversal.queue.isNotEmpty()) {
             val current = traversal.queue.removeFirst()
@@ -233,6 +269,22 @@ class IssueGraphService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * actor 가 이 이슈를 볼 수 있는지 — **던지지 않는** 판정이다.
+     *
+     * 그래프는 이웃을 걸러내야 하므로 한 건이 막혔다고 요청 전체를 실패시키면 안 된다.
+     * 형제 `LinkApplicationService.canViewOther` 와 **같은 술어**다.
+     */
+    private fun canView(
+        actor: ActorId,
+        issueKey: String,
+    ): Boolean =
+        permissionResolver.hasPermission(
+            actor.value,
+            IssuePermission.VIEW,
+            IssueScope.Issue(issueKey),
+        )
 
     /** BFS 큐의 단일 노드를 확장한다 — 링크(outward/inward) + parent + child. */
     private fun expandNode(

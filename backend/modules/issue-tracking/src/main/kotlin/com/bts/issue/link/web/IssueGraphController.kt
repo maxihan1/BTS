@@ -2,6 +2,7 @@
 
 package com.bts.issue.link.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
@@ -61,7 +62,7 @@ class IssueGraphController(
         ApiResponse(responseCode = "200", description = "그래프 (nodes + edges)"),
         ApiResponse(responseCode = "400", description = "depth 파라미터 범위 오류", content = [Content()]),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
-        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재 **또는 VIEW 권한 없음**", content = [Content()]),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/graph")
@@ -70,7 +71,9 @@ class IssueGraphController(
         @RequestParam(name = "depth", required = false) depth: String?,
     ): ResponseEntity<DataResponse<GraphResponse>> {
         log.debug("getGraph key={} depth={}", key, depth)
-        val result = issueGraphService.buildGraph(IssueKey(key), depth)
+        // 인증 추출은 리소스 조회보다 먼저 — 형제 IssueLinkController 와 같은 순서다.
+        val actor = CurrentActor.current()
+        val result = issueGraphService.buildGraph(actor, IssueKey(key), depth)
         return ResponseEntity.ok(DataResponse(data = GraphResponse.from(result)))
     }
 }
