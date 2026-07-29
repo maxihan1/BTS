@@ -32,8 +32,7 @@ class NonProdDevSeedRunnerTest {
         }
     }
 
-    private fun envOf(vararg profiles: String) =
-        MockEnvironment().apply { if (profiles.isNotEmpty()) setActiveProfiles(*profiles) }
+    private fun envOf(vararg profiles: String) = MockEnvironment().apply { setActiveProfiles(*profiles) }
 
     @Test
     fun `무프로파일(default) 이면 시드를 1회 호출한다`() {
