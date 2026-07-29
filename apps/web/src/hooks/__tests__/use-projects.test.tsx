@@ -1,7 +1,7 @@
 // 프로젝트 목록 TanStack Query 훅 테스트 — 정렬 반환 + 빈 목록 + 에러 fail-safe 검증 (FR-UX-06 PR12 Task 1)
 import React from 'react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -67,5 +67,25 @@ describe('useProjects', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.data).toBeUndefined()
+  })
+
+  it('CR3 회귀 가드 — enabled:false 면 요청을 발사하지 않는다 (미인증 셸이 인증 API 를 때리는 사고 방지)', async () => {
+    let calls = 0
+    server.use(
+      http.get('/api/v1/projects', () => {
+        calls += 1
+        return HttpResponse.json({ data: projectListFixtures })
+      }),
+    )
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useProjects(false, { enabled: false }), { wrapper })
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(result.current.isPending).toBe(true)
+    expect(calls).toBe(0)
   })
 })
