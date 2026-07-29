@@ -240,6 +240,76 @@ MSW 가 꺼져 있어 전 테스트가 API 호출부터 실패한다 — 거짓 
 - 추가 검증. eslint · tsc · vitest · `pnpm test:workflow` · verify-master-plan · 브라우저 손검증
 - FR 영향. **없음** (139 불변) · 마이그레이션 0 · 신규 의존성 0 · 백엔드 코드 0 (yml 트리거만)
 
+## 검증 실측 (2026-07-30)
+
+### TDD 순서 증거
+
+```
+973bb47e2 test: vite-preview-port-cors-align red — vite 로컬 포트가 CORS 허용목록 밖이다
+24abd56cd fix: vite-preview-port-cors-align green — preview 포트 5173 고정 + strictPort
+aded013ec chore: backend-ci 트리거에 apps/web/vite.config.ts 배선
+2a82bb110 fix: E2E 가 preview 서버를 재사용하지 못하게 차단
+```
+
+`test:` 커밋이 모든 수정 커밋보다 선행. RED 를 **출력으로 관측**한 뒤 GREEN 을 썼다.
+
+### RED → GREEN 전이
+
+| 단언 | RED (973bb47e2) | GREEN (2a82bb110) |
+|---|---|---|
+| 양성 대조군 | pass | pass |
+| 차집합 0 | **fail** `preview → http://localhost:4173` | pass |
+| 상한 (알려진 블록 밖 포트) | pass | pass |
+| strictPort | **fail** `server, preview` | pass |
+| 양쪽 트리거 배선 | **fail** `pull_request`·`push` 양쪽 | pass |
+| E2E 재사용 금지 | **fail** `reuseExistingServer: !CI` | pass |
+| **합계** | **4 fail / 2 pass** | **6 pass / 0 fail** |
+
+### 뮤테이션 7/7 — 전부 기대한 단언이 red
+
+M1 `preview.port`→4173 ⇒ 차집합 · M2 `server.port`→3000 ⇒ 차집합 · M3 `strictPort` 제거 ⇒ strictPort ·
+M4 CORS 기본값→9999 ⇒ 차집합 · M5 push 블록만 경로 제거 ⇒ CI 배선 · M6 `reuseExistingServer`→true ⇒
+E2E 재사용 · M7 정규식 고장 ⇒ 양성 대조군 **+ 상한**(예상보다 1건 더 잡음).
+각 주입 후 `git checkout --` 원복을 `git status` 로 확인, 최종 상태 클린.
+
+### 회귀
+
+| 검증 | 기준선 | 이번 | 결과 |
+|---|---|---|---|
+| `node --test scripts/workflow/*.test.ts` | 61 pass (main) | **67 pass / 0 fail** | 신설 6건만 증가 |
+| `tsc -p tsconfig.node.json` (vite.config.ts 를 덮는 유일 설정) | — | EXIT 0 | |
+| `tsc -p tsconfig.app.json` (프로젝트 typecheck 정본) | — | EXIT 0 | |
+| `eslint src` | — | EXIT 0 (warning 8, 전부 선재 `react-refresh`) | |
+| `vitest run` | — | **528 files / 8236 tests pass**, 194.92s | 산출물 신선도 확인 |
+| `verify-master-plan.sh` | — | EXIT 0, FR 139/139 | 카운트 불변 |
+
+### 손검증 — 실 백엔드 + 브라우저
+
+조립 앱 jar 부팅(무프로파일=`default`, `NonProdDevSeedRunner` 시드 동작) + `vite preview` 5173.
+`bootRun` 은 이 환경에서 백그라운드 즉시 kill 되므로 **`bootJar` → `java -jar`** 경로를 썼다.
+
+HTTP 대조군.
+
+| 요청 | 결과 |
+|---|---|
+| POST `/api/v1/auth/login` + `Origin: http://localhost:5173` | **200** + `access_token` |
+| 같은 요청 + `Origin: http://localhost:4173` | **403** `Invalid CORS request` (음성 대조군) |
+| GET `/api/v1/projects` (Origin 없음) | 401 — CORS 는 통과. 결함이 안 보였던 이유 재현 |
+
+브라우저(Playwright chromium). `/login` → identifier-first → Local → `alice`/`password` → 로그인 →
+`/dashboards` 도착. **4xx/5xx 응답 0건.** 대시보드가 빈 상태(`아직 대시보드가 없습니다`)로 정착 —
+dev 시드가 프로젝트/대시보드를 만들지 않는 설계와 일치.
+
+### 부수 관측 (이번 변경과 무관, 선재)
+
+1. **4173 에 지난 세션의 orphan preview 프로세스**(PID 98397)가 살아 있었다. R3 위험이 가정이 아니라
+   실재한다는 증거다 — preview 를 켜 둔 채 잊는 일이 이미 일어났다. 내가 만든 것이 아니라 손대지 않았다.
+2. `/dashboards` 빈 상태에 **`h1` 이 0건**. 체크포인트에 기록된 선재 결함 F21 재확인.
+3. `pnpm typecheck`(=`tsc -p tsconfig.app.json`)는 `include: ["src"]` 라 **`vite.config.ts`·
+   `playwright.config.ts` 를 타입체크하지 않는다.** `tsconfig.node.json` 이 `vite.config.ts` 를 덮지만
+   어느 스크립트도 그 설정으로 돌리지 않는다. 선재 갭이며 이 PR 범위 밖 — 기록만 남긴다.
+4. 콘솔 error 1건 `ws://localhost:5173/ws` 인증 실패 — STOMP 실시간 알림 연결, 화면 동작 무관(선재).
+
 ## 리뷰 결과 (← /bts-review-plan 채움)
 
 _fast-track 생략. `/bts-codereview` 는 정상 수행._
