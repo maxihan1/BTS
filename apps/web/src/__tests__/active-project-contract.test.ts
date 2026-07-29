@@ -36,7 +36,16 @@ function isExcluded(relPath: string): boolean {
 const HARDCODE_PATTERNS: readonly { readonly code: string; readonly re: RegExp }[] = [
   { code: 'P1-상수선언', re: /(?:DEFAULT_)?PROJECT_KEY\s*=\s*['"][A-Z][A-Z0-9]{1,9}['"]/ },
   { code: 'P2-대입', re: /projectKey\s*[:=]\s*['"][A-Z][A-Z0-9]{1,9}['"]/ },
+  // ★ P3 — 별칭 상수 우회 차단(코드리뷰 C7). P1 은 식별자가 `PROJECT_KEY` 로 **끝나야만**
+  // 잡으므로 `const FALLBACK = 'ATLAS'` 가 P1·P2 를 모두 빠져나간다.
+  // 판별식은 "프로덕션 코드(주석 제외)에 **시드 프로젝트 키 리터럴**이 있으면 안 된다" —
+  // 이 값들은 MSW 시드 전용이라 프로덕션 코드가 알 이유가 없다. 실측상 코드 히트 0건,
+  // KDoc 예시(`@param projectKey ... 예: "ATLAS"`)만 존재하며 주석은 스캔에서 제외된다.
+  { code: 'P3-시드리터럴', re: /['"](?:ATLAS|MIDDLE|ZETA|NOVA)['"]/ },
 ]
+
+// 한계. 이 판별식은 시드 4키만 막는다. 시드가 아닌 실 프로젝트 키를 임의 이름 상수에
+// 넣는 형태는 못 잡는다 — 형태 기반 판별식은 실측 95히트/40파일(정당한 enum 리터럴)이라 채택 불가.
 
 /**
  * 설계 B 고정 — 이슈 목록 진입로 4곳은 활성 프로젝트를 **모른다**.
@@ -83,18 +92,29 @@ describe('활성 프로젝트 계약 봉인 (FR-UX-07)', () => {
     expect(files.length).toBeGreaterThan(200)
   })
 
-  it('프로덕션 코드에 프로젝트 키 하드코딩이 없다', () => {
+  it('프로덕션 코드에 DEFAULT_PROJECT_KEY 계열·projectKey 대입·시드 키 리터럴이 없다', () => {
     const violations: string[] = []
 
     for (const rel of collectSourceFiles()) {
       const source = readFileSync(join(SRC_ROOT, rel), 'utf8')
       for (const { code, re } of HARDCODE_PATTERNS) {
         source.split('\n').forEach((line, i) => {
-          // 주석 줄은 제외한다 — 이 PR이 남긴 "DEFAULT_PROJECT_KEY 하드코딩 대체" 같은 설명문이
-          // 대상이 아니다. AST가 아니라 정규식이므로 줄 단위로 판정한다.
-          const trimmed = line.trim()
-          if (trimmed.startsWith('//') || trimmed.startsWith('*')) return
-          if (re.test(line)) violations.push(`${rel}:${i + 1} [${code}] ${trimmed}`)
+          // 주석은 제외한다 — 이 PR이 남긴 "DEFAULT_PROJECT_KEY 하드코딩 대체" 같은 설명문과
+          // KDoc 예시(`/** 프로젝트 키. 예: "ATLAS" */`)가 대상이 아니다. AST가 아니라
+          // 정규식이므로 줄 단위로 판정한다.
+          //
+          // ★ `/*`를 빠뜨리면 **한 줄 KDoc**(`/** … */`)이 그대로 새어 들어온다. P3를 넣고서야
+          // `api/boards.ts:25,224`로 드러났다 — 패턴을 넓히면 필터의 구멍이 함께 드러난다.
+          //
+          // ★ 줄 전체를 면제하는 대신 한 줄 블록주석(`/** … */`)만 걷어낸다. `.`는 개행을
+          // 안 먹으므로 줄 경계를 넘지 않고, 줄 수가 보존되므로 위반 메시지의 줄번호가
+          // 그대로 유효하다(전역 `/\/\*[\s\S]*?\*\//g` 제거는 줄번호를 무너뜨린다).
+          const scannable = line.replace(/\/\*.*?\*\//g, ' ')
+          const trimmed = scannable.trim()
+          if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+            return
+          }
+          if (re.test(scannable)) violations.push(`${rel}:${i + 1} [${code}] ${line.trim()}`)
         })
       }
     }
