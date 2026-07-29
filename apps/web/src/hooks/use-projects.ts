@@ -14,11 +14,14 @@ import type { Project } from '@/api/projects'
  * 처리할 수 있다.
  *
  * @param archived 아카이브 필터 — 기본 false(활성 프로젝트만)
+ * @param options.enabled false 면 쿼리를 발사하지 않는다. 미인증 분기에서 마운트되는
+ *   소비처(`useTrackActiveProject`)가 401→refresh 연쇄를 일으키지 않게 하려는 것이다.
  */
-export function useProjects(archived = false) {
+export function useProjects(archived = false, options: { enabled?: boolean } = {}) {
   return useQuery<Project[]>({
     queryKey: ['projects', archived],
     queryFn: () => listProjects(archived),
     staleTime: 30_000,
+    enabled: options.enabled ?? true,
   })
 }
