@@ -3,6 +3,25 @@ import { http, HttpResponse } from 'msw'
 import type { Project, ProjectArchiveResult } from '../api/projects'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글용 localStorage 키 (FR-UX-07 S5/E2 — e2e-msw-scenario-toggle-localstorage-flag 관례)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 'true'면 `GET /api/v1/projects`가 빈 목록을 반환한다.
+ * FR-UX-07 S5(접근 가능한 프로젝트 0개) 시나리오 재현용. 미설정 시 기존 시드(ATLAS·MIDDLE·ZETA)에
+ * 전혀 영향을 주지 않는다(무회귀).
+ */
+export const LS_KEY_PROJECT_LIST_EMPTY = '__bts_e2e_project_list_empty'
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 'true'면 `GET /api/v1/projects`가 500을 반환한다.
+ * FR-UX-07 E2(프로젝트 목록 조회 실패) 시나리오 재현용. 콜드 에러(캐시 없음)를 재현하려면
+ * `page.addInitScript`로 최초 진입 전부터 심어야 한다 — Sidebar의 `ProjectTree`도 같은
+ * queryKey(`['projects', false]`)를 공유해 먼저 실패를 캐싱한다.
+ */
+export const LS_KEY_PROJECT_LIST_ERROR = '__bts_e2e_project_list_error'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 내부 저장소 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -161,6 +180,17 @@ function toArchiveResult(stored: StoredProject): ProjectArchiveResult {
  * 재노출하는 shim이므로 export한다(project MSW 핸들러 단일 정본 통합).
  */
 export const listProjectsHandler = http.get('/api/v1/projects', ({ request }) => {
+  // FR-UX-07 E2 — 목록 조회 실패 시나리오. 저장소 상태와 무관하게 즉시 500을 반환한다.
+  if (globalThis.localStorage?.getItem(LS_KEY_PROJECT_LIST_ERROR) === 'true') {
+    return HttpResponse.json(
+      { message: '프로젝트 목록을 불러오는 중 오류가 발생했습니다.' },
+      { status: 500 },
+    )
+  }
+  // FR-UX-07 S5 — 접근 가능한 프로젝트 0개 시나리오. archived 필터와 무관하게 빈 배열을 반환한다.
+  if (globalThis.localStorage?.getItem(LS_KEY_PROJECT_LIST_EMPTY) === 'true') {
+    return HttpResponse.json({ data: [] })
+  }
   const url = new URL(request.url)
   const archived = url.searchParams.get('archived') === 'true'
   const items = Array.from(projectStore.values())

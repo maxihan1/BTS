@@ -2,6 +2,7 @@
 import { type JSX } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { useIsAuthenticated } from '@/auth/authStore'
+import { useTrackActiveProject } from '@/hooks/use-track-active-project'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 
@@ -47,6 +48,11 @@ import { Sidebar } from './Sidebar'
  */
 export function ShellLayout(): JSX.Element {
   const isAuthenticated = useIsAuthenticated()
+
+  // FR-UX-07 — `/projects/$projectKey/*` 를 볼 때 그 키를 활성 프로젝트로 기록한다.
+  // 전 인증 라우트가 공유하는 유일한 지점이라 여기 둔다(라우트마다 배선하면 빠뜨린다).
+  // 조기 반환 앞에서 호출해야 훅 규칙을 지킨다 — 미인증이면 인자로 끈다.
+  useTrackActiveProject(isAuthenticated)
 
   if (!isAuthenticated) {
     return (

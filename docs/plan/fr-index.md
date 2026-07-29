@@ -1,11 +1,11 @@
-<!-- 131개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 139개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (131개 전수)
+## §A.1 FR 역인덱스 (139개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 131개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 139개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -172,7 +172,7 @@
 | FR-PM-09 | 사용자 그룹 (전역 그룹 + 멤버십 인프라, FR-PM-06 선행) | 필수 | identity-access | §4.9 |
 | FR-PM-10 | 전역 권한 부여 (`global_permission_grants` — 그룹/사용자 grant + 관리 화면) | 필수 | identity-access | §4.10 |
 
-### 사용성 (FR-UX, 6개)
+### 사용성 (FR-UX, 14개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -182,6 +182,14 @@
 | FR-UX-04 | Slash 명령어 | 높음 | personalization | §4.2 |
 | FR-UX-05 | 키보드 단축키 | 높음 | personalization | §4.3 |
 | FR-UX-06 | UI/UX 전면 개편 (Jira Cloud 방식 — 통합 사이드바 + ADS v2 토큰) | 높음 | personalization | §4.4 |
+| FR-UX-07 | 활성 프로젝트 컨텍스트 (URL `?projectKey=` 승격 + 4단 해소) | 높음 | personalization | §4.5 |
+| FR-UX-08 | 프로젝트 전환 · 최근 항목 · 내 작업 (스위처 + 사이드바) | 높음 | personalization | §4.6 |
+| FR-UX-09 | 이슈 생성 흐름 (생성 모달 · 진입점 3곳 · 생성 필드 3종) | 높음 | personalization | §4.7 |
+| FR-UX-10 | 컨텍스트 의존 단축키 (목록 항법 + 상세 액션 — FR-UX-05 이연분 승계) | 높음 | personalization | §4.8 |
+| FR-UX-11 | 인라인 편집 (이슈 상세 제목/본문 · 목록 셀) | 높음 | personalization | §4.9 |
+| FR-UX-12 | 검색 진입 (커맨드 팔레트 · 상단바 전역 검색) | 높음 | personalization | §4.10 |
+| FR-UX-13 | 백로그 사용성 (세로 스택 · 스프린트 다이얼로그 · 필터바) | 높음 | personalization | §4.11 |
+| FR-UX-14 | 이슈 카드 밀도 (유형 아이콘 · 라벨 칩 · 추정 + 카드 필드) | 높음 | personalization | §4.12 |
 
 ### 인증 (FR-AU, 10개)
 
@@ -244,9 +252,9 @@
 | automation | 7 | AT(7) |
 | notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
-| personalization | 13 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06(4) |
+| personalization | 21 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06,07~14(12) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **131** | |
+| **합계** | **139** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -270,3 +278,6 @@
 - 2026-06-08. **FR-IS-10 신설**. 커스텀 필드 인프라 (issue-tracking). 합계 121→122.
 - 2026-06-14. **FR-NT-05 신설**. Webhook 알림 채널 (notification-dashboard, FR-NT-02에서 분리). 합계 122→123. FR-NT-02 "Webhook" 표기 정정(이메일/인앱만).
 - 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). 프로젝트 생성/목록·조회/설정변경/아카이브 + 전역 권한 부여(`global_permission_grants`). 합계 123→128. §A.1 상단 표기 drift 정정(122→128).
+- 2026-07-28. **FR-UX-07 신설**(personalization). Jira 인터랙션 패리티 — 활성 프로젝트 컨텍스트·컨텍스트 단축키·인라인 편집·생성 모달. 합계 131→132. FR-UX-05 §4.3이 후속 FR로 명시 제외한 범위를 승계한다.
+- 2026-07-29. **FR-UX-07 분할 — FR-UX-08~14 신설**(personalization, +7). 합계 132→139. FR-UX-07이 27 PR 로드맵 전체를 한 FR로 묶은 결과 `product/personalization.md §4.5`의 D1~D7이 `[~]`·`[x]`·`[ ]` 세 상태로 섞였다. **D 단계는 완주 단위**여야 한다 — "도메인 정리(D1)가 절반 완료"인 상태는 성립하지 않는다. 그래서 기능 축으로 쪼갠다. 선례 FR-UX-06(22 PR)이 단일 FR로 D1~D7을 함께 닫은 것은 디자인 스펙 1벌·ADR 1벌로 굴러가는 하나의 캠페인이었기 때문이고, FR-UX-07의 단축키·인라인 편집·생성 모달·백로그는 각자 도메인 정리와 명세가 따로 필요하다. 승계 관계는 F1→UX-07 / F12,F17→UX-08 / F2,F3,B1→UX-09 / F10,F11→UX-10 / F8,F9→UX-11 / F4,F13→UX-12 / F5,F15,F16→UX-13 / F14,B2→UX-14 (로드맵 정본 `~/.claude/plans/ui-ux-sorted-kay.md` §PR 체인의 F번호). 나머지 10 PR(F6·F7·F18~F25)은 기존 FR 결손 봉합이라 chore로 남는다 — 17 + 10 = 27 PR로 로드맵 총량은 불변이다. FR-UX-07은 D1~D7 전량 완료, FR-UX-08~14는 등록만(D1~D7 전량 미착수).
+- 2026-07-29. **B1·B2 백엔드 작업을 chore → D4로 승격**(2026-07-28 Maxi 결정 #3 정정, 조용한 변경 아님). 원 결정은 "B1/B2는 기존 FR 결손 봉합이라 chore"였다. 분할 후에는 B1(이슈 생성 시 담당자·우선순위·라벨)이 FR-UX-09의 D4, B2(보드/백로그 카드 필드)가 FR-UX-14의 D4가 된다. "백엔드 없음"으로 비던 칸이 실제 내용으로 채워지는 쪽이 정확하다.

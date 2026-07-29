@@ -24,6 +24,8 @@ import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFil
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
+import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
+import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -44,7 +46,6 @@ import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_PROJECT_KEY = 'ATLAS'
 const DEFAULT_PAGE_SIZE = 20
 
 /** 빈 필터 상수 — 매 렌더마다 새 객체 생성 방지 */
@@ -694,9 +695,12 @@ export function IssueListRouteAdapter(): JSX.Element {
     page?: number
     sort?: string
     selected?: string
+    projectKey?: string
   } & IssueFilterSearch
   const navigate = useNavigate()
   const isWide = useMediaQuery('(min-width: 1024px)')
+  // FR-UX-07 — URL > 저장값 > 첫 프로젝트 순으로 해소한다. DEFAULT_PROJECT_KEY 하드코딩 대체.
+  const activeProject = useResolvedActiveProject(search.projectKey)
   const page = typeof search.page === 'number' ? search.page : 0
   const sort = useMemo(() => parseSortParam(search.sort), [search.sort])
   const selected = normalizeSelectedKey(search.selected)
@@ -761,12 +765,25 @@ export function IssueListRouteAdapter(): JSX.Element {
    *
    * CONCERNS-1(NFR-3) — 상세 페인은 selected 키 기준 독립 fetch로, 목록 필터와 무관하게
    * 유지돼야 한다. search를 통째 nextSearch로 교체하지 않고 prev.selected를 보존한다.
+   *
+   * ★ FR-UX-07(B2) — `projectKey`도 같은 이유로 명시 보존한다. 어댑터의 navigate 5곳 중
+   * 이 함수만 `...prev`를 펼치지 않아, 고치지 않으면 필터를 한 번 누르는 것만으로 URL에서
+   * projectKey가 증발한다(TanStack `search`는 객체형이면 병합이 아니라 치환, 전 필드가
+   * optional이라 타입 체크로도 안 잡히는 조용한 회귀).
+   *
+   * ⚠️ 통짜 `...prev` 스프레드는 처방이 아니다 — `issueFilterToSearch`는 빈 필터 키를
+   * 생략하므로 prev를 통째 펼치면 **해제한 필터가 되살아난다**. 보존할 키만 명시한다.
    */
   function handleFilterChange(nextFilter: IssueFilterParams): void {
     const nextSearch = issueFilterToSearch(nextFilter)
     void navigate({
       to: '/issues',
-      search: (prev) => ({ ...nextSearch, page: 0, selected: prev.selected }),
+      search: (prev) => ({
+        ...nextSearch,
+        page: 0,
+        selected: prev.selected,
+        projectKey: prev.projectKey,
+      }),
     })
   }
 
@@ -783,19 +800,25 @@ export function IssueListRouteAdapter(): JSX.Element {
     })
   }
 
-  const listPage = (
-    <IssueListPage
-      projectKey={DEFAULT_PROJECT_KEY}
-      page={page}
-      onPageChange={handlePageChange}
-      onNavigate={handleNavigate}
-      filter={filter}
-      onFilterChange={handleFilterChange}
-      sort={sort}
-      onSortChange={handleSortChange}
-      selectedKey={isWide ? selected : null}
-    />
-  )
+  // 활성 프로젝트가 정해지기 전(로딩/에러/0개)에는 IssueListPage를 렌더하지 않는다 —
+  // `projectKey: string` non-nullable 계약을 지키기 위해서다(스펙 §8 G3). 조기 반환을
+  // 어댑터 최상단이 아니라 여기 두는 이유는 아래 split view 분기 주석 참조(C5).
+  const listPage =
+    activeProject.status === 'ready' ? (
+      <IssueListPage
+        projectKey={activeProject.projectKey}
+        page={page}
+        onPageChange={handlePageChange}
+        onNavigate={handleNavigate}
+        filter={filter}
+        onFilterChange={handleFilterChange}
+        sort={sort}
+        onSortChange={handleSortChange}
+        selectedKey={isWide ? selected : null}
+      />
+    ) : (
+      <ActiveProjectGate state={activeProject} />
+    )
 
   // D2 — 와이드 + selected일 때만 split view(2컬럼)로 전환한다. 그 외(미선택/좁은폭)는 목록 전체폭.
   if (isWide && selected !== undefined) {

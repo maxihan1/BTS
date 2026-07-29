@@ -293,13 +293,27 @@ function buildFilteredPage(params?: URLSearchParams): IssuePage {
 }
 
 /**
+ * FR-UX-07 S7 전용 sentinel 프로젝트 키 — 이 키로 조회하면 BROWSE 권한 없음(403)을 흉내낸다.
+ * `createIssueHandler`의 `'INVALID'`(PROJECT_NOT_FOUND) sentinel과 동형 관례.
+ */
+const ACCESS_DENIED_PROJECT_KEY = 'NOPERM'
+
+/**
  * GET /api/v1/issues — 이슈 목록 페이징 조회.
  * FR-SR-01 B2: query param(status/assignee/label/component)을 읽어 필터링 후 반환.
  * FR-UX-06 Phase 5 PR18 Task 6: sort(`<field>,<dir>`) 정렬 + page/size 실제 페이지네이션 적용.
  * 소프트 삭제된 이슈는 응답에서 제외 (gap-H).
+ * FR-UX-07 S7: projectKey가 {@link ACCESS_DENIED_PROJECT_KEY}('NOPERM')이면 403을 반환해
+ * "명시 지정이 실패하면 조용히 대체하지 않고 에러를 표시한다"를 재현한다.
  */
 const listIssuesHandler = http.get('/api/v1/issues', ({ request }) => {
   const params = new URL(request.url).searchParams
+  if (params.get('projectKey') === ACCESS_DENIED_PROJECT_KEY) {
+    return HttpResponse.json(
+      { errorCode: 'ACCESS_DENIED', message: '이 작업을 수행할 권한이 없습니다.' },
+      { status: 403 },
+    )
+  }
   return HttpResponse.json(buildFilteredPage(params))
 })
 

@@ -20,6 +20,8 @@ import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { userHandlers } from '@/mocks/user-handlers'
 import { componentHandlers } from '@/mocks/component-handlers'
 import { labelHandlers } from '@/mocks/label-handlers'
+import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
+import { useActiveProject } from '@/hooks/use-active-project'
 import { IssueListPage, IssueListRouteAdapter } from './issues.index'
 import type { IssueFilterParams } from '@/api/issues'
 import type { IssueTableSortState } from '@/components/issues/IssueTable'
@@ -38,6 +40,8 @@ interface IssuesRouteSearchMock {
   component?: string | string[]
   sort?: string
   selected?: string
+  /** FR-UX-07 — 활성 프로젝트 명시 지정 (router.ts validateSearch 미러) */
+  projectKey?: string
 }
 
 /** 좁은폭/와이드 분기 제어용 mock — 기본값 true(와이드) */
@@ -1365,7 +1369,17 @@ function getLastNavigateCall(): NavigateSearchCall | NavigateParamsCall {
  * IssueFilterBar 종속 핸들러(workflow/user/component/label) + 이슈 목록/상세 핸들러를 등록한다.
  */
 function renderRouteAdapter() {
-  server.use(...workflowHandlers, ...userHandlers, ...componentHandlers, ...labelHandlers, ...issueHandlers)
+  // ★ projectListHandlers 필수 — FR-UX-07 이후 어댑터가 useProjects()를 호출한다.
+  // test/setup.ts가 onUnhandledRequest:'error'라, 빠뜨리면 전 SV 테스트가 프로젝트 조회
+  // 실패로 원인과 무관한 메시지를 내며 깨진다(plan 리뷰 C3).
+  server.use(
+    ...workflowHandlers,
+    ...userHandlers,
+    ...componentHandlers,
+    ...labelHandlers,
+    ...issueHandlers,
+    ...projectListHandlers,
+  )
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -1625,5 +1639,189 @@ describe('IssueListRouteAdapter — split view 결선 (Task 5)', () => {
     await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
     expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
     expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-07 — 활성 프로젝트 해소 (DEFAULT_PROJECT_KEY 하드코딩 제거)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
+  /** 이슈 목록 조회에 실제로 실린 projectKey 를 기록한다 */
+  let requestedProjectKeys: string[] = []
+
+  beforeEach(() => {
+    requestedProjectKeys = []
+    localStorage.clear()
+    useActiveProject.setState({ activeProjectKey: null })
+    server.use(createTruePermissionHandler)
+    mockUseMediaQuery.mockReturnValue(true)
+    mockUseSearch.mockReturnValue({})
+    mockNavigate.mockClear()
+  })
+
+  /**
+   * 어댑터를 렌더하되 이슈 조회의 projectKey 를 가로채 기록한다.
+   *
+   * ★ 등록 순서가 중요하다 — 한 번의 `server.use(a, b, c)` 안에서는 **인자 순서상 앞선 것이
+   * 우선**한다(첫 매칭 핸들러가 이긴다). capture 를 뒤에 두면 `issueHandlers` 의
+   * `/api/v1/issues` 가 이겨서 기록이 비고, 테스트가 원인과 무관하게 실패한다.
+   * (호출 단위로는 나중 `server.use` 가 앞선 것을 이긴다 — 두 규칙이 다르다.)
+   */
+  function renderWithCapture(overrides: Parameters<typeof server.use> = []) {
+    server.use(
+      // overrides 를 맨 앞에 둬야 기본 핸들러를 이긴다. 렌더 **뒤**에 등록하면 최초 조회가
+      // 이미 기본 응답으로 캐시돼 override 가 영영 반영되지 않는다.
+      ...overrides,
+      http.get('/api/v1/issues', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey')
+        if (key !== null) requestedProjectKeys.push(key)
+        return HttpResponse.json(issuePageFixture)
+      }),
+      ...workflowHandlers,
+      ...userHandlers,
+      ...componentHandlers,
+      ...labelHandlers,
+      ...issueHandlers,
+      ...projectListHandlers,
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <IssueListRouteAdapter />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('AP1 (S1): ?projectKey=ZETA 면 그 프로젝트로 이슈를 조회한다', async () => {
+    mockUseSearch.mockReturnValue({ projectKey: 'ZETA' })
+    renderWithCapture()
+
+    await waitFor(() => expect(requestedProjectKeys).toContain('ZETA'))
+  })
+
+  it('AP2 (S2): URL 이 없으면 저장값 프로젝트로 조회한다', async () => {
+    useActiveProject.setState({ activeProjectKey: 'ZETA' })
+    mockUseSearch.mockReturnValue({})
+    renderWithCapture()
+
+    await waitFor(() => expect(requestedProjectKeys).toContain('ZETA'))
+    expect(requestedProjectKeys).not.toContain('ATLAS')
+  })
+
+  it('AP3 (S3): URL·저장값 둘 다 없으면 목록의 첫 프로젝트로 조회하고 저장한다', async () => {
+    mockUseSearch.mockReturnValue({})
+    renderWithCapture()
+
+    // project-handlers 활성 시드는 name 오름차순 ATLAS·MIDDLE·ZETA — 첫 원소는 ATLAS
+    await waitFor(() => expect(requestedProjectKeys).toContain('ATLAS'))
+    expect(useActiveProject.getState().activeProjectKey).toBe('ATLAS')
+  })
+
+  it('AP4 (FR7/E1): 프로젝트 목록 로딩 중에는 이슈를 조회하지 않는다', () => {
+    mockUseSearch.mockReturnValue({})
+    renderWithCapture()
+
+    // 프로젝트 응답 전 동기 시점 — 이슈 조회가 나가면 안 된다(빈 projectKey 요청 방지)
+    expect(requestedProjectKeys).toHaveLength(0)
+  })
+
+  it('AP5 (S5/FR8): 접근 가능한 프로젝트가 0개면 빈 상태를 보여주고 이슈를 조회하지 않는다', async () => {
+    mockUseSearch.mockReturnValue({})
+    renderWithCapture([http.get('/api/v1/projects', () => HttpResponse.json({ data: [] }))])
+
+    await waitFor(() =>
+      expect(screen.getByText(/접근 가능한 프로젝트가 없습니다/)).toBeInTheDocument(),
+    )
+    expect(requestedProjectKeys).toHaveLength(0)
+    expect(screen.getByRole('link', { name: /프로젝트/ })).toHaveAttribute('href', '/projects')
+  })
+
+  it('AP6 (E2): 프로젝트 목록 조회에 실패하면 에러를 표시하고 이슈를 조회하지 않는다', async () => {
+    mockUseSearch.mockReturnValue({})
+    renderWithCapture([
+      http.get('/api/v1/projects', () => new HttpResponse(null, { status: 500 })),
+    ])
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    // 재시도 수단이 있어야 사용자에게 탈출구가 생긴다 (스펙 E2). ★ 반드시 클릭 전에 단언한다 —
+    // 회복 후에는 이슈 조회가 나가 이 값이 1이 된다.
+    expect(requestedProjectKeys).toHaveLength(0)
+
+    // /api/v1/projects 전용 카운터 — requestedProjectKeys는 이슈 조회의 projectKey만 모으므로
+    // 재조회 검증에 재사용하면 항상 0인 공허 단언이 된다.
+    let projectListCalls = 0
+    server.use(
+      http.get('/api/v1/projects', () => {
+        projectListCalls += 1
+        return HttpResponse.json({ data: projectListFixtures })
+      }),
+    )
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => expect(projectListCalls).toBeGreaterThan(0))
+  })
+
+  /**
+   * ★ AP7 — plan 독립 리뷰 BLOCKER B2.
+   * handleFilterChange 만 `...prev` 를 펼치지 않아 필터를 한 번 누르면 projectKey 가 URL 에서
+   * 증발한다. TanStack `search` 는 객체형이면 병합이 아니라 치환이고 전 필드가 optional 이라
+   * 타입 체크로도 안 잡힌다 — 조용한 회귀다.
+   *
+   * 통짜 `...prev` 스프레드는 처방이 아니다 — issueFilterToSearch 가 빈 필터 키를 생략하므로
+   * prev 를 통째로 펼치면 해제한 필터가 되살아난다. projectKey 만 명시 보존해야 한다.
+   */
+  it('AP7 (B2): 필터를 바꿔도 projectKey 가 URL 에서 유지된다', async () => {
+    mockUseSearch.mockReturnValue({ projectKey: 'ZETA', status: 'open' })
+    renderWithCapture()
+
+    const resetBtn = await screen.findByRole('button', { name: /초기화/i })
+    const user = userEvent.setup()
+    await user.click(resetBtn)
+
+    const call = getNavigateCallAt(0)
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    const next = call.search({ projectKey: 'ZETA', status: 'open' })
+    expect(next).toEqual(expect.objectContaining({ projectKey: 'ZETA', page: 0 }))
+    // 해제한 필터는 되살아나면 안 된다 — 통짜 ...prev 스프레드 처방을 반증하는 가드
+    expect(next).not.toHaveProperty('status')
+  })
+
+  it('AP8 (B2): 정렬·페이지·선택 변경 navigate 도 projectKey 를 보존한다', async () => {
+    mockUseSearch.mockReturnValue({ projectKey: 'ZETA' })
+    renderWithCapture()
+
+    await waitFor(() => expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /키/ }))
+
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ projectKey: 'ZETA' })).toEqual(
+      expect.objectContaining({ projectKey: 'ZETA' }),
+    )
+  })
+
+  /**
+   * ★ AP9 — plan 독립 리뷰 CONCERN C5.
+   * 조기 반환을 어댑터 최상단에 두면 split view 우측 상세 페인까지 사라진다. 상세는 selected
+   * 키 기준 독립 fetch 라 프로젝트 해소와 무관해야 한다(스펙 E9 직교성).
+   */
+  it('AP9 (C5): 프로젝트 목록이 로딩 중이어도 split view 상세 페인은 렌더된다', async () => {
+    // ★ 코드리뷰 CR4 — 이전 버전은 waitFor 가 해소 완료(ready)까지 기다려서, 조기 반환을
+    // 어댑터 최상단으로 끌어올려도(=C5 결함을 재주입해도) 그대로 통과하는 공허 가드였다.
+    // 프로젝트 응답을 **영원히 pending** 으로 묶어 loading 시점 자체를 고정한다.
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderWithCapture([http.get('/api/v1/projects', () => new Promise(() => {}))])
+
+    // 목록 영역은 게이트(로딩)지만 우측 상세 페인은 살아 있어야 한다 — selected 키 기준
+    // 독립 fetch 라 프로젝트 해소와 직교한다(스펙 E9)
+    await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+    expect(screen.queryByRole('table', { name: '이슈 목록' })).not.toBeInTheDocument()
   })
 })

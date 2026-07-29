@@ -11,7 +11,8 @@
 #
 # 카운트 정합(종료 4) — CLAUDE.md §명세/범위 변경 시 전수 동기화 강제.
 #   FR ID 실집합(PLAN_COUNT)을 정본으로, fr-index 합계 / README 합계·BC테이블 /
-#   product·fr-index 의 (FR-XX, N개) 헤더 / CLAUDE.md 'N FR' 표기가 모두 일치해야 함.
+#   product·fr-index 의 (FR-XX, N개) 헤더 / CLAUDE.md·README·CHANGELOG 의 'N FR' 표기(룰 E)가
+#   모두 일치해야 함. 더해 README §1 진척 열 ⟺ product 미완 D 마커의 양방향 정합(룰 H).
 
 set -euo pipefail
 
@@ -80,10 +81,19 @@ fi
 # --- 3) 카운트 정합 검증 (CLAUDE.md §전수 동기화 강제) ---
 README="${PLAN_DIR}/README.md"
 CLAUDE_MD="${REPO_ROOT}/CLAUDE.md"
+CHANGELOG_MD="${REPO_ROOT}/CHANGELOG.md"
 
 count_fail() {
   echo "" >&2
   echo "FAIL. 카운트 drift — $1 (정본 FR=${PLAN_COUNT})." >&2
+  echo "  → 변경 시 모든 정본·미러·카운트 전수 동기화 (CLAUDE.md §명세/범위 변경 시 전수 동기화)." >&2
+  EXIT_CODE=4
+}
+
+# 카운트가 아니라 두 정본의 서술이 서로 어긋날 때 (룰 H). 종료 코드는 count_fail 과 같은 4다.
+sync_fail() {
+  echo "" >&2
+  echo "FAIL. 정합 drift — $1." >&2
   echo "  → 변경 시 모든 정본·미러·카운트 전수 동기화 (CLAUDE.md §명세/범위 변경 시 전수 동기화)." >&2
   EXIT_CODE=4
 }
@@ -132,12 +142,31 @@ while IFS= read -r hline; do
   fi
 done < <(grep -rnE '\(FR-[A-Z]+,? *[0-9]+개\)|\([0-9]+ FR\)' "$PRODUCT_DIR" "$FR_INDEX" || true)
 
-# E) CLAUDE.md 'N FR' 표기 (2자리+ 수만 — 'PR #54' 등 오탐 방지)
-if [[ -f "$CLAUDE_MD" ]]; then
+# E) 'N FR' 표기 — CLAUDE.md + docs/plan/README.md + CHANGELOG.md 의 **살아있는 구역**만
+#    (2026-07-29 확대. 그전까지 CLAUDE.md 만 봐서 131→132 동기화가 README·CHANGELOG 에서 멈춘 것을
+#     EXIT 0 으로 통과시켰다.)
+#
+#    2자리+ 수만 본다 — 이 가드를 떼면 README §0.5 헤더의 '§0.5 FR' 이 '5 FR' 로 오탐한다. 유지 필수.
+#
+#    동결 구역 제외.
+#      README      — `## §7. 변경 이력` 은 append-only 라 '합계 131→132' 같은 과거 표기가 정상이다.
+#      CHANGELOG   — `## [Unreleased]` 블록만 본다. 끊긴 릴리스 블록(장래 `## [0.1.0]`)은 그 시점의
+#                    FR 수를 동결 기록하므로, 스캔하면 카운트가 오를 때마다 영구 EXIT 4 가 된다.
+#      docs/poc/context-notes.md — 같은 이유(동결 이력)로 **의도적 제외**다. 우연히 빠진 것이 아니다.
+#
+#    fr-index.md 는 **의도적 미포함**. `:265` 의 'issue-tracking 29 FR' 처럼 BC 단위 값이 있어
+#    총계와 대조하면 오탐 EXIT 4 가 난다 (그 값 자체의 드리프트는 별건이다).
+for ef in "$CLAUDE_MD" "$README" "$CHANGELOG_MD"; do
+  [[ -f "$ef" ]] || continue
+  case "$(basename "$ef")" in
+    README.md)    elive="$(sed -n '1,/^## §7\. 변경 이력/p' "$ef" | sed '$d')" ;;
+    CHANGELOG.md) elive="$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[/{f=0} f' "$ef")" ;;
+    *)            elive="$(cat "$ef")" ;;
+  esac
   while IFS= read -r cnum; do
-    [[ -n "$cnum" && "$cnum" != "$PLAN_COUNT" ]] && count_fail "CLAUDE.md '${cnum} FR'"
-  done < <(grep -oE '[0-9]{2,} FR' "$CLAUDE_MD" | grep -oE '^[0-9]+' || true)
-fi
+    [[ -n "$cnum" && "$cnum" != "$PLAN_COUNT" ]] && count_fail "$(basename "$ef") '${cnum} FR'"
+  done < <(printf '%s\n' "$elive" | grep -oE '[0-9]{2,} FR' | grep -oE '^[0-9]+' || true)
+done
 
 # F) fr-index §A.2 BC 행 합 == 정본, product '소속 FR. N개' == §A.2 행 (per-BC drift)
 A2_SUM="$(grep -E '^\| [a-z][a-z-]+ \| [0-9]+ \|' "$FR_INDEX" | awk -F'|' '{gsub(/[^0-9]/,"",$3); s+=$3} END{print s+0}')"
@@ -176,6 +205,27 @@ if [[ -f "$APP_BUILD" ]]; then
         count_fail "$(basename "$af") '${bcnum}개 BC' ≠ 조립 BC 의존 ${BC_ACTUAL}"
     done < <(grep -oE '[0-9]+개 BC' "$af" | grep -oE '^[0-9]+' || true)
   done
+fi
+
+# H) README §1 진척 열 ⟺ product/<bc>.md 미완 D 마커 (양방향 ⟺, 2026-07-29 신설)
+#    한 방향만 닫으면 절반 봉인이다. 역방향(미완 0인데 '☑' 가 아님)은 가설이 아니라 이미 발생한
+#    사고다 — README §1 인용 블록이 "그전까지 9 BC 전부 ☐ 로 남아 실제와 어긋나 있었다" 로 기록한다.
+#    진척 셀은 표의 마지막 칸이므로 열 개수와 무관하게 $(NF-1) 로 집는다.
+if [[ -f "$README" ]]; then
+  while IFS= read -r rline; do
+    hrel="$(printf '%s' "$rline" | grep -oE '\]\(product/[a-z0-9-]+\.md\)' | head -1 | sed 's/^](//; s/)$//')"
+    [[ -z "$hrel" ]] && continue
+    hpf="${PLAN_DIR}/${hrel}"
+    [[ -f "$hpf" ]] || continue
+    hpending="$(grep -cE '^- \[[ ~!]\] D[0-9]+\.' "$hpf" || true)"
+    hprog="$(printf '%s' "$rline" | awk -F'|' '{print $(NF-1)}' | sed 's/^ *//; s/ *$//')"
+    if [[ "$hpending" -eq 0 && "$hprog" != "☑ D단계" ]]; then
+      sync_fail "README §1 $(basename "$hpf") 진척 '${hprog}' — 미완 D 단계 0건이므로 '☑ D단계' 여야 한다"
+    fi
+    if [[ "$hpending" -gt 0 && "$hprog" == "☑ D단계" ]]; then
+      sync_fail "README §1 $(basename "$hpf") 진척 '☑ D단계' — 실제 미완 D 단계 ${hpending}건"
+    fi
+  done < <(grep -E '\]\(product/' "$README" || true)
 fi
 
 # --- 4) 최종 결과 ---
