@@ -384,8 +384,19 @@ refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 
 > Maxi 가 게이트 1 시점에 **「이번 PR 에서 정리」**를 선택했다. 리뷰가 제시한 반대 근거
 > (#321 의 「다른 BC 0줄」 원칙 파기)는 **명시적으로 수용된 비용**이다.
 >
-> **파생 — NFR-1 개정.** 「다른 9개 BC `src/**` 0줄」 → **「다른 BC 는 `src/main/resources/` 의
-> `data-dev.sql`·`application-dev.yml` 4개 파일에 한정. Kotlin `src/**/kotlin/**` 은 0줄」**.
+> **파생 — NFR-1 개정 (2차 정정).** 「다른 9개 BC `src/**` 0줄」 → **실제 변경 6파일**.
+> 1차 개정문(「resources 4파일 한정, Kotlin 0줄」)은 **틀렸다** — 실제로는 Kotlin 테스트 파일 1개도 지웠다.
+>
+> | 모듈 | 파일 | 처리 |
+> |---|---|---|
+> | identity-access | `resources/data-dev.sql` | 삭제 |
+> | identity-access | `resources/application-dev.yml` | `sql.init` 제거 + 경고 주석 |
+> | identity-access | `test/.../DevSeedHashGenerator.kt` | **삭제** — 존재 이유가 `data-dev.sql` 의 해시 재생성이라 고아가 됨 |
+> | issue-tracking | `resources/data-dev.sql` | 삭제 |
+> | issue-tracking | `resources/application-dev.yml` | `sql.init` 제거 + 경고 주석 |
+> | issue-tracking | `resources/application-test.yml` | 낡은 대비 설명 정정 |
+>
+> 프로덕션 Kotlin(`src/main/kotlin`)은 **0줄** 유지. 삭제된 Kotlin 은 테스트 전용 도구 1개다.
 
 **🛑 착수 전 Maxi 확인 필요 — 「정리」의 형태가 두 갈래다.**
 
