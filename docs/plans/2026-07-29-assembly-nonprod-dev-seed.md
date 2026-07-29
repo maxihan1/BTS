@@ -145,6 +145,34 @@ prod 음성 테스트는 태그 없이 두면 기본 `test` 잡(`backend-ci.yml:
 
 ---
 
+### ⚠️ 구현 착수 실측 — T1~T3 의 「단위 테스트」 전제가 성립하지 않는다
+
+`/bts-impl` 진입 직후 테스트 가능성을 실측한 결과, 계획이 T1~T3 에서 가정한 **시더 단위 테스트**는
+현재 조립 모듈에서 **작성 불가**다.
+
+| 협력자 | 선언 | 결과 |
+|---|---|---|
+| `UserRepository` | `interface`(:27) | 손수 만든 가짜 구현 가능 (단 메서드 다수) |
+| `LocalCredentialService` | **`class`**(:31, final) | Kotlin 기본 final → 모의 불가 |
+| `GlobalPermissionGrantRepository` | **`class`**(:46, final) | 동일 |
+
+조립 모듈 테스트 의존은 `spring-boot-starter-test` · `archunit` · `testcontainers` 뿐이고
+**MockK 가 없다**(`build.gradle.kts:78-86` 실측). MockK 를 추가하면 스펙 §8 제약의 「신규 의존성 0」이 깨진다.
+`mock-maker-inline` 로 final 클래스를 뚫는 것도 같은 이유로 기각.
+
+**판단(라우틴 결정, 사유 기록).** T1~T3 의 단언을 **T5 실부팅 봉인 테스트로 흡수**한다. 근거 3가지 —
+① 조립 모듈은 애초에 **전 테스트가 부팅 테스트**다(`ProdAssemblyHttpTestBase` 상속 관례)
+② 계획 자신이 *"행 존재가 아니라 판정 결과가 계약"* 을 요구하는데, `hasGlobalPermission`·
+`MfaEnforcementPolicy.evaluate` 의 실판정은 실컨텍스트에서만 나온다
+③ 신규 의존성 0 을 지킨다.
+
+**TDD 는 유지된다** — 부팅 테스트 수준에서 `test:` 커밋이 `feat:` 보다 먼저다. 다만
+**로컬 실행에 dev postgres(5433) 가 필요**하다(`docker-compose -f infra/docker-compose.dev.yml up postgres`).
+현재 로컬에 5433 postgres 는 떠 있지 않다(실측 — docker ps 에 mysql `db` 4306 뿐).
+
+> **이 발견의 성격.** learning `spec-requires-what-repo-cannot-do`(스펙이 저장소가 못 하는 걸 요구) 와 동형이다.
+> 계획 리뷰 4개 섹션이 전부 통과시킨 항목이며, **구현자가 의존성을 실제로 조회해서야** 드러났다.
+
 > **리뷰 반영 (2026-07-29 `/plan-eng-review`).** 아래 3건이 계획에 이미 적용돼 있다 —
 > **D8 축소**(설정 전용 클래스 폐기, 생성자 `@Value` 흡수 → 7 task→6, 11파일→8, 신규 클래스 3→2) ·
 > **이슈 1A**(`SYSTEM_ADMIN` → `CREATE_PROJECT` 전역 부여) · **이슈 2A**(`@Profile` 부정 → 허용목록).
