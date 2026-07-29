@@ -78,6 +78,13 @@ describe('backend-ci 매트릭스 ↔ Gradle 모듈 정합', () => {
 
     // app 은 Testcontainers 를 관리하지 않고 외부 5433 postgres 를 쓰므로 서비스 컨테이너가 필요하다.
     assert.match(src, /:modules:app:test/, 'app 조립 부팅 잡이 없다 — 9 BC 를 한 컨텍스트에 올리는 검증이 빠진다.');
+    // 비-prod 조립 가드는 태그로 기본 test 태스크에서 제외돼 있다. 이 스텝이 없으면 가드가 CI 에서
+    // 0회 실행되고, 로컬 1회성 확인으로 끝나 썩는다(TODOS.md 의 pnpm test:workflow 미실행 사고와 동형).
+    assert.match(
+      src,
+      /:modules:app:nonProdAssemblyTest/,
+      '비-prod 조립 부팅 가드가 CI 에 배선되지 않았다 — 태그로 test 에서 제외돼 있어 아무 잡도 돌리지 않는다.',
+    );
     assert.match(
       src,
       /pg16-pgmq/,
