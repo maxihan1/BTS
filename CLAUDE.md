@@ -7,7 +7,8 @@
 
 **BTS (Project Atlas)** — 사내 1,000명 규모 협업 워크스페이스. Atlas Issues (이슈 트래커) + Atlas Wiki (v0.5 예정). Kotlin/Spring + React 19, Naver Cloud Docker Compose 단일 호스트. Maxi 1인 + Claude Code 개발 모델.
 
-**현재 단계**. **Phase 1 — 132 FR** (FR-UX-07 착수, 나머지는 D1~D7 전량 완료) (2026-07-27 실측. `- [x] D«n».` 909건 / 미완 0건).
+**현재 단계**. **Phase 1 — 139 FR**. 이 중 **FR-UX-08~14 7건이 등록만 된 미착수**이고, 나머지 전량은 D1~D7 을 마쳤다 (2026-07-29 실측 `- [x] D«n».` 916건 / 미완 49건 = FR-UX-08~14 의 D1~D7).
+FR-UX-07 은 **활성 프로젝트 컨텍스트**로 범위를 좁혀 PR #320 에서 완결됐고, 한 FR 에 묶여 있던 27 PR 로드맵의 나머지가 FR-UX-08~14 로 분리 등록됐다 (2026-07-29 Maxi 확정 분할).
 남은 것은 각 BC 의 **완료 게이트**다 — §NFR 측정표 · `CHANGELOG.md` 정리 · **Maxi 1인 선언**.
 진척 현황은 `docs/progress.html`(`node scripts/build-dashboard.mjs` 로 재생성) / `docs/plan/README.md`.
 backend 10개 Gradle 모듈 = 9개 BC(identity-access · issue-tracking · project-workflow · shared-kernel ·
@@ -34,13 +35,14 @@ agile-planning · notification · search-export-import · slack-integration · a
 1. `docs/plan/fr-index.md` — FR ID 행 · §A.2 BC 카운트 · 합계 · 상단 주석 카운트
 2. `docs/sdd/` — 해당 챕터 + `02-requirements.md` (FR ID 표)
 3. `docs/plan/product/<bc>.md` — FR § 본문 · D단계 체크박스 · §N 헤더 `(FR-XX, N개)` · 파일 L1 주석 · `소속 FR. N개` · BC 완료 게이트 `(FR-XX N개)`
-4. `docs/plan/README.md` — §1 BC 테이블 행 · 합계
+4. `docs/plan/README.md` — §1 BC 테이블 행(FR 수 **및 진척 열**) · 합계 · **본문 산문의 `N FR` 표기 전수**(`grep -nE '[0-9]{2,} FR' docs/plan/README.md`)
 5. `CLAUDE.md` — FR 총수 등 카운트/상태 표기
 6. ADR(`docs/decisions/` 또는 `docs/adr/`) · plan(`docs/plans/`) · `docs/progress.html`(`node scripts/build-dashboard.mjs` 재생성)
 7. Obsidian `Maxi_wiki/BTS/` — history · glossary · domain/<bc> · decisions·plans 미러
 8. 자동 메모리 (`~/.claude/projects/.../memory/`)
+9. `CHANGELOG.md` — `[Unreleased]` 블록의 `**범위**` · `**상태**` · §BC 요약 표 행 (동결된 릴리스 블록은 건드리지 않는다)
 
-**강제**. 머지 전 `bash scripts/verify-master-plan.sh` 통과 필수 — FR ID 정합(SDD↔plan) + 카운트 drift(fr-index 합계·§A.2 / README 합계·BC테이블 / product `(FR-XX,N개)` 헤더·`소속 FR` / CLAUDE `N FR`)를 자동 차단(종료 4). 새 카운트 표기를 verify가 못 잡는 형식으로 추가했다면 **verify 스크립트도 같은 PR에서 확장**한다(룰 추가 시 일부러 위반 넣어 fail 확인).
+**강제**. 머지 전 `bash scripts/verify-master-plan.sh` 통과 필수 — FR ID 정합(SDD↔plan) + 카운트 drift(fr-index 합계·§A.2 / README 합계·BC테이블 / product `(FR-XX,N개)` 헤더·`소속 FR` / CLAUDE·README·CHANGELOG 살아있는 구역의 `N FR` — 룰 E) + README §1 진척 열 ⟺ product 미완 D 마커 양방향 정합(룰 H)을 자동 차단(종료 4). 새 카운트 표기를 verify가 못 잡는 형식으로 추가했다면 **verify 스크립트도 같은 PR에서 확장**한다(룰 추가 시 일부러 위반 넣어 fail 확인).
 
 ## 진입 트리 — 어떤 상황에 어느 문서
 
@@ -54,7 +56,7 @@ agile-planning · notification · search-export-import · slack-integration · a
 | 도메인 용어 사전 (DDD) | `Maxi_wiki/BTS/glossary.md` (Obsidian) |
 | 과거 사고/교훈 (회귀 방지) | `Maxi_wiki/BTS/learnings.md` (Obsidian) |
 | 바운디드 컨텍스트별 노트 | `Maxi_wiki/BTS/domain/<bc>.md` |
-| 기능 구현 진척 / FR 추적 | `docs/plan/README.md` (BC별 product/*.md, 132 FR) |
+| 기능 구현 진척 / FR 추적 | `docs/plan/README.md` (BC별 product/*.md, 139 FR) |
 
 ## 디렉토리 (한눈에)
 

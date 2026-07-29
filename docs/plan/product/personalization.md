@@ -1,8 +1,8 @@
-<!-- personalization BC — 프로필/설정/캘린더/퀵필터/Slash/단축키/UI개편/인터랙션패리티 14 FR -->
+<!-- personalization BC — 프로필/설정/캘린더/퀵필터/Slash/단축키/UI개편/활성프로젝트/인터랙션 패리티 21 FR -->
 
 # personalization BC
 
-**소속 FR**. 14개 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07 5).
+**소속 FR**. 21개 (PR 4 + PF 3 + CA 2 + UX-01,04~14 12).
 **책임**. 사용자 프로필 / 환경 설정 / 캘린더 / UX 편의 (퀵 필터, Slash, 단축키).
 **SDD 참조**. 20장 (개인화).
 **다른 BC와의 경계**. identity-access의 user 식별 사용. issue-tracking의 할당/마감일 조회 (캘린더). agile-planning의 보드 필터 (퀵 필터). **import 금지 — 이벤트/API만**.
@@ -107,7 +107,7 @@
 - [x] D6. 프론트 UI — SHORTCUTS action ID 정규화 + resolveKeydown 병합 + 부트 GET + `/settings/keymap` 재배치·실시간충돌·기본복원 (책임. frontend-engineer)
 - [x] D7. E2E — 재배치→발화·충돌거부·기본복원(dead-leader·서버409 MSW토글) (책임. qa-engineer)
 
-## §4 UX 편의 (FR-UX-01, 04, 05, 06, 07)
+## §4 UX 편의 (FR-UX-01, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14)
 
 ### §4.1 FR-UX-01 — 퀵 필터 (보드 상단 즉시 필터)
 
@@ -175,24 +175,175 @@
 - [x] D6. 프론트 UI — 22 PR 체인 (프리미티브 → ADS 토큰 → Dialog 흡수 → `_shell`/사이드바 → 화면 6종 → 정리) (책임. frontend-engineer)
 - [x] D7. E2E — `aria-label` 4종 계약 보존 + 뷰 전환 `role=navigation` 회귀 가드 (책임. qa-engineer)
 
-### §4.5 FR-UX-07 — Jira 인터랙션 패리티
+### §4.5 FR-UX-07 — 활성 프로젝트 컨텍스트
 
-**우선순위**. 높음 | **선행**. §4.4 (FR-UX-06) | **Plan slug**. `fr-ux-07-active-project-key` 외 다수
+**우선순위**. 필수 | **선행**. §4.4 (FR-UX-06) | **Plan slug**. `fr-ux-07-active-project-key`
 
-FR-UX-06 이 **시각 계층**(ADS v2 토큰 70종 · 프리미티브 24종 · `_shell` 셸)을 완결했으나 **인터랙션 계층**은 손대지 않았다. 이 FR 은 그 격차를 메운다 — 활성 프로젝트 컨텍스트 · 컨텍스트 의존 단축키 · 인라인 편집 · 생성 모달 · 카드 밀도 · 백로그 세로 스택.
+이슈 목록으로 가는 진입로 4곳(사이드바 "이슈" · `g i` · 명령 팔레트 "내 이슈" · 로그인 후 시작 페이지)이 전부 `DEFAULT_PROJECT_KEY = 'ATLAS'` 하드코딩이라, ATLAS 외 프로젝트 사용자는 자기 이슈를 볼 수단이 아예 없었다. 이 FR 은 **활성 프로젝트(Active Project)** 를 "저장된 값 하나"가 아니라 **4단 해소 함수**(① URL `projectKey` → ② localStorage 저장값 → ③ 접근 가능한 첫 프로젝트 → ④ 빈 상태)로 정의해 4곳을 한 번에 푼다. 진입로 4곳은 **무변경** — 링크가 아니라 라우트가 해소하므로 자동으로 따라온다.
 
-**신설 근거가 문서에 선재한다** — §4.3(FR-UX-05)이 *"컨텍스트 의존 단축키(`j/k/e/m/s`)는 **후속 FR로 제외**(Maxi 결정 2026-07-05)"* 로 이 범위를 명시 이연했다. ADR [2026-07-28-fr-ux-07-active-project-context](../../decisions/2026-07-28-fr-ux-07-active-project-context.md) §D1 참조.
+**범위 정정 — 27 PR 로드맵에서 F1 로 좁힘 (Maxi 확정 2026-07-29).** 원안의 FR-UX-07 은 "Jira 인터랙션 패리티" 27 PR 로드맵 **전체**를 한 FR 로 묶고 있었고, 그 결과 D1(도메인)이 `[~]`("절반 완료")가 되는 모순이 생겼다. 단축키·인라인 편집·생성 모달·백로그는 **각자 도메인 정리와 스펙이 따로 필요한 별개 기능**이라 한 FR 의 D1 로 닫히지 않는다. 선례인 FR-UX-06(§4.4, 22 PR)이 단일 FR 로 성립한 것은 **디자인 스펙 1벌 · ADR 1벌로 굴러가는 하나의 캠페인**이었기 때문이고, 이 로드맵은 그렇지 않다. 따라서 FR-UX-07 은 F1 1 PR(PR #320)로 좁히고 나머지를 아래로 이관한다.
+
+| 이관처 | 이름 | 승계 PR |
+|---|---|---|
+| §4.6 FR-UX-08 | 프로젝트 전환 · 최근 항목 · 내 작업 | F12, F17 |
+| §4.7 FR-UX-09 | 이슈 생성 흐름 (모달 · 진입점) | F2, F3, **B1** |
+| §4.8 FR-UX-10 | 컨텍스트 의존 단축키 | F10, F11 |
+| §4.9 FR-UX-11 | 인라인 편집 | F8, F9 |
+| §4.10 FR-UX-12 | 검색 진입 (커맨드 팔레트 · 전역 검색) | F4, F13 |
+| §4.11 FR-UX-13 | 백로그 사용성 | F5, F15, F16 |
+| §4.12 FR-UX-14 | 이슈 카드 밀도 | F14, **B2** |
+| (FR 아님 — chore 10 PR) | F6 도움말 배선(§4.3 FR-UX-05 결손) · F7 댓글 기본탭(FR-CO 결손) · F18~F25 Tier 3 마감(§4.4 FR-UX-06 결손) | F6, F7, F18~F25 |
+
+FR-UX-07 1 + 이관 16 = 17 PR, chore 10 PR 을 더해 **27 PR** — 로드맵 총량은 불변이다. 로드맵 정본은 `~/.claude/plans/ui-ux-sorted-kay.md` 이고 F 번호는 그 §PR 체인의 것이다.
 
 > **★ 논리 ≠ 물리 (ADR §D2).** 논리 소속은 **personalization** 이나 물리 구현은 `apps/web` 이다. FR-UX-05 D4 · FR-UX-06 D5 선례를 승계한다.
-> **★ 백엔드 범위 (Maxi 결정 2026-07-28).** 생성 필드 확장·카드 필드 확장만 포함하고, **프로젝트 무관 조회(cross-project)는 제외**한다 — `IssueApplicationService` 의 visibility 술어가 단일 프로젝트 축으로 하드코딩돼 있어 합집합 조립이 fail-open 사고 위험이다.
+> **★ 백엔드 B1·B2 의 지위 정정 (2026-07-29).** 2026-07-28 Maxi 결정 #3 은 *"B1/B2 는 기존 FR 결손 봉합이라 chore"* 였다. 분할 후에는 **B1 = §4.7 FR-UX-09 의 D4/D5 · B2 = §4.12 FR-UX-14 의 D4/D5** 다 — 「백엔드 없음」으로 비던 칸이 실제 내용으로 채워지는 쪽이 정확하다. **조용한 변경이 아니라 원 결정의 명시적 승계·정정이다.**
+> **★ 여전히 범위 밖 — cross-project 조회(로드맵 B3).** `IssueApplicationService.kt:1021` 이 `assertPermission(actor, BROWSE, IssueScope.Project(projectKey))` 로 프로젝트 스코프를 강제하고 `UserCalendarLookupAdapter.kt:25-38` 이 *"모든 visibility 술어가 `PROJECTS.KEY.eq(projectKey)` 단일 축으로 하드코딩돼 재사용 불가"* 를 명시한다. 합집합 조립은 fail-open 사고라 v1 의 답은 "프로젝트 무관 조회"가 아니라 **"프로젝트 전환을 쉽게"**(§4.6 FR-UX-08)다.
 
-- [~] D1. 도메인 — 활성 프로젝트(Active Project) 4단 해소 개념 정립. ADR D1~D5 (책임. frontend-engineer)
-- [~] D2. 명세 — 시나리오 S1~S8 · FR1~FR9 · NFR1~NFR5 · 엣지 E1~E10 · 한계 L1~L4 (책임. frontend-engineer)
-- [x] D3. 데이터 모델 — 없음 (클라이언트 localStorage 만, 마이그레이션 0) (책임. -)
-- [ ] D4. 백엔드 — 생성 필드 3종(담당자·우선순위·라벨) + 보드/백로그 카드 필드(타입·라벨·추정) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 위 2건의 계약 테스트 (책임. backend-engineer)
-- [~] D6. 프론트 UI — 활성 프로젝트 · 생성 모달 · 팔레트 검색 · 단축키 · 인라인 편집 · 카드 밀도 · 백로그 · 프로젝트 스위처 · 전역 검색 (책임. frontend-engineer)
-- [ ] D7. E2E — 활성 프로젝트 S1~S8 · 단축키 · 인라인 편집 · 백로그 (책임. qa-engineer)
+- [x] D1. 도메인 — 활성 프로젝트(Active Project) = 4단 해소 함수(URL → 저장값 → 첫 프로젝트 → 빈 상태). ADR [decisions/2026-07-28-fr-ux-07-active-project-context.md](../../decisions/2026-07-28-fr-ux-07-active-project-context.md) D1~D5 착지 (책임. frontend-engineer)
+- [x] D2. 명세 — `docs/specs/2026-07-28-fr-ux-07-active-project-key.md`. 시나리오 S1~S8 · 기능 요구사항 FR1~FR9 · 비기능 NFR1~NFR5 · 엣지 케이스 E1~E10 · 알려진 한계 L1~L4 (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — 없음 (클라이언트 localStorage 키 `bts.active-project` 만. 마이그레이션 0, ADR D4 — 서버 `user_preferences` 확장은 기각·후속 FR 후보) (책임. -)
+- [x] D4. 백엔드 — 없음 (ADR §D2 논리 ≠ 물리, 백엔드 변경 0). 로드맵 B1·B2 는 §4.7 FR-UX-09 · §4.12 FR-UX-14 로 이관 (책임. -)
+- [x] D5. 백엔드 테스트 — 해당 없음 (백엔드 변경 0) (책임. -)
+- [x] D6. 프론트 UI — `DEFAULT_PROJECT_KEY` 프로덕션 코드 0건 · 4단 해소 훅 3종(`use-active-project`(영속 스토어) · `use-resolved-active-project`(조합 해소) · `use-track-active-project`(경로 파라미터 기록)) · `ActiveProjectGate`(프로젝트 0개·권한 거부 게이트) · 라우트 2곳(`routes/issues.index.tsx` · `routes/search.tsx`) (책임. frontend-engineer)
+- [x] D7. E2E — `apps/web/e2e/active-project.spec.ts` **13/13 통과 2회 연속**(S1~S7 · S8 · E8 · E2 2종 · B2 · NFR5). **알려진 한계 1건** — S8(시작 페이지 파생 결함)은 MSW 목이 이슈를 프로젝트로 필터링하지 않아 "빈 화면 → 채워짐"을 문자 그대로 재현하지 못했다. 대신 결함의 정확한 원인(`DEFAULT_PROJECT_KEY='ATLAS'` 하드코딩)이 사라졌다는 관측 가능 증거 — 재로그인 후 실제 `GET /api/v1/issues` 요청의 `projectKey` 쿼리가 활성 프로젝트(MIDDLE)로 나가는지 — 를 네트워크 인터셉트로 확인했다. 완전 검증에는 `GET /api/v1/issues` 의 실 project-scoping 이 필요하고 e2e 스펙 약 120건에 파급되므로 범위 밖이다. **e2e 라벨 정정 1건** — 기존에 `S8` 로 적혀 있던 "검색 화면도 같은 활성 프로젝트를 따른다" 테스트는 실제로는 스펙 §7 엣지 케이스 **E8**(`/search` 는 이미 `?projectKey=` 를 읽으므로 폴백 상수만 해소 결과로 교체)이다. E2E 파일은 정정 완료 (책임. qa-engineer)
+
+### §4.6 FR-UX-08 — 프로젝트 전환 · 최근 항목 · 내 작업
+
+**우선순위**. 높음 | **선행**. §4.5 (FR-UX-07) | **Plan slug**. `fr-ux-08-project-switcher`
+
+승계 PR 2건 (로드맵 §PR 체인 Tier 2).
+
+- **F12 — 프로젝트 스위처 + 트리 펼침 영속.** §4.5 가 활성 프로젝트라는 컨텍스트를 만들었지만 그것을 **손으로 바꿀 UI 가 없다**. 신규 `components/project/ProjectSwitcher.tsx` · `TopBar.tsx` · `ProjectTree.tsx:368-370` · 신규 `hooks/use-recent-projects.ts`.
+- **F17 — 사이드바 "내 작업"(프로젝트 스코프) + "최근 항목".** `i18n/nav-labels.ts:9` 의 제외 주석을 해제하고 `Sidebar.tsx:47-51` 에 배선한다. 지라의 cross-project "내 작업"은 로드맵 B3 로 제외됐으므로 v1 은 **활성 프로젝트 스코프**(`?assignee=me`)로 낸다.
+
+**아키텍처**. 프론트 전용 (기존 `useProjects()` 소비, 신규 API 0). 🛑 **스위처를 `<nav>` 로 만들면 안 된다** — `프로젝트` 가 기존 `aria-label="프로젝트 뷰 전환"` 의 substring 이라 `getByRole('navigation')` 계약과 충돌한다. `components/ui/popover.tsx`(현재 소비처 0) + `role="listbox"` 가 정답이다. localStorage 영속은 `hooks/use-sidebar-collapsed.ts:15-45`(zustand + fail-safe 3중 폴백) 템플릿을 §4.5 와 같은 방식으로 복제한다.
+
+- [ ] D1. 도메인 — 최근 프로젝트(Recent Projects) 목록의 정의·상한·정렬 정립 (책임. frontend-engineer)
+- [ ] D2. 명세 — 스위처 진입/선택/키보드 조작 · "내 작업" 스코프 계약 · 최근 항목 영속 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 예상 (클라이언트 localStorage. 마이그레이션 0) (책임. -)
+- [ ] D4. 백엔드 — 없음 예상 (기존 프로젝트 목록·이슈 조회 API 소비만) (책임. -)
+- [ ] D5. 백엔드 테스트 — 해당 없음 예상 (책임. -)
+- [ ] D6. 프론트 UI — F12 `ProjectSwitcher` + 트리 펼침 영속 · F17 사이드바 "내 작업"·"최근 항목" (책임. designer → frontend-engineer)
+- [ ] D7. E2E — 스위처 전환이 활성 프로젝트를 갱신하는지 · `role="navigation"` 계약 무회귀 (책임. qa-engineer)
+
+### §4.7 FR-UX-09 — 이슈 생성 흐름 (모달 · 진입점)
+
+**우선순위**. 필수 | **선행**. §4.5 (FR-UX-07) | **Plan slug**. `fr-ux-09-issue-create-flow`
+
+승계 PR 3건 (로드맵 §PR 체인 Tier 1 + 백엔드 B1).
+
+- **F2 — 이슈 생성 모달 + 유형·본문 필드.** 지금 생성 폼은 **프로젝트를 자유 텍스트로 타이핑**해야 하고 **이슈 유형을 못 고른다**. 백엔드 `CreateIssueRequest.kt:30-35` 에 `typeId`·`description` 이 **이미 있는데 프론트가 안 보낸다**(`routes/issues.new.tsx:215-232`). 신규 `components/issue/CreateIssueDialog.tsx` · `api/issues.ts:266-278,551-568` · `TopBar.tsx:69-78`. `routes/issues.new` 라우트는 **딥링크 계약이라 유지**한다.
+- **F3 — 만들기 진입점 3곳**(보드 컬럼 · 백로그 섹션 · 목록 헤더) + 담당자/우선순위/라벨 필드. `BoardColumn.tsx` · `BacklogColumn.tsx` · `SprintColumn.tsx`.
+- **B1 — 백엔드. 이슈 생성 시 담당자·우선순위·라벨** (`issue-tracking`). 지금은 create 후 PATCH 3회를 이어 붙여야 하고 **중간 실패 시 반쯤 만들어진 이슈가 남는다**(완제품 기준 위반). 생성 1회 제출로 확정한다.
+
+**아키텍처**. **B1 의 지위 정정 (2026-07-29).** 2026-07-28 Maxi 결정 #3 의 *"B1 = chore"* 를 승계·정정해 **이 FR 의 D4/D5** 로 승격한다(사유는 §4.5 의 세 번째 인용 블록). 신규 다이얼로그는 `role="dialog"` 가 e2e 에 164발생이라 **고유 `aria-label`** 없이는 strict mode 충돌이 난다. 필드 컨트롤은 새로 만들지 말고 `components/issue/meta/` **8종**(Assignee·Priority·Labels·Type·Impact·Environment·CustomFields·StateTransition)을 재사용한다.
+
+- [ ] D1. 도메인 — 생성 시점에 확정 가능한 필드 집합(유형·본문·담당자·우선순위·라벨) 정립 (책임. backend-engineer)
+- [ ] D2. 명세 — 모달 진입점 3곳 · 딥링크 라우트 유지 계약 · 필드별 optional 계약 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 예상 (기존 컬럼 소비. 마이그레이션 0) (책임. -)
+- [ ] D4. 백엔드 — **B1**. `CreateIssueRequest.kt:27-39` 에 nullable 3필드 추가 + `IssueController` create 핸들러 + `IssueApplicationService` create 경로. 전부 optional 추가라 기존 요청 무회귀 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — **B1**. `IssueControllerTest` · `IssueControllerIntegrationTest`("assigneeId/priority/labels 가 생성 시 반영") · `OpenApiContractTest` (책임. backend-engineer)
+- [ ] D6. 프론트 UI — F2 `CreateIssueDialog`(프로젝트 셀렉터·유형·본문) · F3 진입점 3곳 + 담당자/우선순위/라벨 (책임. designer → frontend-engineer)
+- [ ] D7. E2E — 모달 진입·1회 제출로 필드 확정·딥링크 라우트 무회귀 (책임. qa-engineer)
+
+### §4.8 FR-UX-10 — 컨텍스트 의존 단축키
+
+**우선순위**. 높음 | **선행**. §4.3 (FR-UX-05) · §4.9 (FR-UX-11 — F11 이 F8 에 의존) | **Plan slug**. `fr-ux-10-context-shortcuts`
+
+**정본이 이미 예약해 둔 범위다.** §4.3(FR-UX-05)이 *"컨텍스트 의존 단축키(`j/k/e/m/s`)는 **후속 FR로 제외**(Maxi 결정 2026-07-05)"* 로 명시 이연했고, 이 FR 이 그 **승계자**다. 현재 단축키는 전역 네비게이션 5종뿐이고 전부 "이동" 계열이라, 지라(25종+)를 쓰던 사람의 손이 기억하는 동작이 하나도 없다.
+
+승계 PR 2건 (로드맵 §PR 체인 Tier 2).
+
+- **F10 — 컨텍스트 단축키 아키텍처 + 목록 항법** `j`/`k`/`o`/`t`/`[`. 신규 `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` · `Sidebar.tsx`.
+- **F11 — 상세 액션 단축키** `a`/`i`/`m`/`e`/`l`/`w`/`.`. `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx`.
+
+**아키텍처**. 🛑 **`shortcuts.ts` 의 `SHORTCUTS` 를 건드리면 안 된다.** 여기에 키를 추가하면 `shortcuts.test.ts:121` `toHaveLength(5)` + `:147` `DEFAULT_KEYMAP` 완전일치 + 백엔드 `KeymapAction.kt` 5종 화이트리스트 + `user_keymap.action` CHECK 제약이 **동시에** 깨진다 — 이 4중 계약의 소유자는 §3.3 FR-PF-03 이다. 정답은 **`CONTEXT_SHORTCUTS` 별도 레지스트리 신설**이고, 성공 판정식은 "`shortcuts.test.ts:121` 이 **무수정 green** 을 유지" 다. 사용자 재배치(로드맵 B4)는 `KeymapAction` enum + `user_keymap` CHECK 신규 마이그레이션을 요구하므로 **v1 은 고정 키**로 출시한다.
+
+- [ ] D1. 도메인 — 컨텍스트(목록/상세/보드) 별 단축키 레지스트리 개념 정립. `SHORTCUTS`(전역) 와의 분리 경계 (책임. frontend-engineer)
+- [ ] D2. 명세 — 컨텍스트별 키 매핑 · 활성 컨텍스트 판정 · 입력포커스/IME 가드 · 도움말 모달 노출 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 (단축키 정의는 프론트 코드 상수. 사용자 재배치는 B4 로 범위 밖) (책임. -)
+- [ ] D4. 백엔드 — 없음 (v1 고정 키. `KeymapAction` enum·`user_keymap` CHECK 무변경이 계약이다) (책임. -)
+- [ ] D5. 백엔드 테스트 — 해당 없음 (백엔드 변경 0) (책임. -)
+- [ ] D6. 프론트 UI — F10 `CONTEXT_SHORTCUTS`·`useContextShortcuts` + 목록 항법 · F11 상세 액션 7종 (책임. frontend-engineer)
+- [ ] D7. E2E — 컨텍스트별 발화 · `shortcuts.test.ts:121` `toHaveLength(5)` 무수정 green 유지 (책임. qa-engineer)
+
+### §4.9 FR-UX-11 — 인라인 편집
+
+**우선순위**. 높음 | **선행**. 없음 (로드맵상 의존 0 — 즉시 착수 가능) | **Plan slug**. `fr-ux-11-inline-edit`
+
+승계 PR 2건 (로드맵 §PR 체인 Tier 2). 현재 BTS 는 인라인 편집이 **전무**해, 제목 한 글자를 고치려 해도 폼 화면으로 이동해야 한다.
+
+- **F8 — 이슈 상세 인라인 편집.** 제목/본문을 클릭해 진입, Enter 저장, Esc 취소. `routes/issues.$key.tsx:704-726` · `IssueDescription.tsx:123-144`.
+- **F9 — 이슈 목록 셀 인라인 편집**(담당자·우선순위·상태). `IssueTable.tsx` · `issue-columns.ts` · `components/issue/meta/*` 재사용 · `components/ui/popover.tsx`(소비처 0→1).
+
+**아키텍처**. 프론트 전용 예상 — 기존 이슈 PATCH API 를 소비한다. **F8 이 두 FR 의 공통 선행**이다(F9 가 F8 에, §4.8 의 F11 이 F8 에 의존). 목록 셀은 낙관적 동시성(OCC) 409 를 만나므로 `setQueryData` 부분 갱신 대신 invalidate 로 정합을 맞춘다.
+
+- [ ] D1. 도메인 — 인라인 편집 가능 필드 집합과 저장·취소·충돌 상태 모델 정립 (책임. frontend-engineer)
+- [ ] D2. 명세 — 진입/저장/취소 상호작용 · 필드별 편집 가능 조건 · 409 충돌 표시 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 예상 (기존 컬럼. 마이그레이션 0) (책임. -)
+- [ ] D4. 백엔드 — 없음 예상 (기존 이슈 PATCH API 소비) (책임. -)
+- [ ] D5. 백엔드 테스트 — 해당 없음 예상 (책임. -)
+- [ ] D6. 프론트 UI — F8 상세 제목/본문 · F9 목록 셀 3종(담당자·우선순위·상태) (책임. designer → frontend-engineer)
+- [ ] D7. E2E — 클릭 진입 → Enter 저장 → 재조회 반영 · Esc 취소가 원값 복원 (책임. qa-engineer)
+
+### §4.10 FR-UX-12 — 검색 진입 (커맨드 팔레트 · 전역 검색)
+
+**우선순위**. 필수 | **선행**. §4.5 (FR-UX-07) | **Plan slug**. `fr-ux-12-search-entry`
+
+승계 PR 2건 (로드맵 §PR 체인 Tier 1 F4 + Tier 2 F13).
+
+- **F4 — Cmd+K 실체 검색.** 지금은 슬래시 없이 텍스트를 치면 **화면이 비고 Enter 도 무반응**이다(`CommandPalette.tsx:131,165,180`). 이슈키 즉시매칭 + 프로젝트 로컬필터 + `text ~ "…"` AQL 디바운스를 얹는다. `components/ui/command.tsx`(소비처 0→1) · `api/search.ts`.
+- **F13 — 상단바 전역 검색 입력창 + 자연어 폴백.** 지금 전역 검색은 입력창이 아니라 아이콘 버튼이다. `TopBar.tsx:57-66` · `routes/search.tsx` · 신규 `lib/aql-natural.ts`.
+
+**아키텍처**. **이름표 분리 (Maxi 결정 2026-07-28 #4)** — 상단바 입력창은 `전역 검색`, 기존 `검색` 은 AQL 페이지 제출 버튼 전용이다. `검색` 정확일치가 e2e 3파일 6발생이라 이름표를 겹치면 strict mode 로 즉사한다. 팔레트 회귀 가드는 **"빈 입력 시 `QUICK_LINKS` 바로가기 4개와 순서 보존"**(`command-palette.spec.ts:252-259`). 진짜 전역 검색(프로젝트 무관 + 이슈/프로젝트/사용자 혼합)은 `AqlSearchRequest.kt:36-37` `projectKey @NotBlank` · `SearchController.kt:169` blank 거부 · `AqlFields.kt:72` 의 `project`·`assignee` 가 `PLANNED` 라는 **3층 차단**에 막혀 있어, v1 은 §4.5 의 활성 프로젝트 스코프로 낸다.
+
+- [ ] D1. 도메인 — 팔레트 입력의 3계층(슬래시 명령 · 이슈키 · 자유 텍스트) 판별 규칙 정립. §4.2 FR-UX-04 명령 레지스트리와의 경계 (책임. frontend-engineer)
+- [ ] D2. 명세 — 입력 판별 · 디바운스 · 결과 랭킹 · `전역 검색`/`검색` 이름표 계약 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 예상 (기존 AQL 검색 API 소비) (책임. -)
+- [ ] D4. 백엔드 — 없음 예상 (v1 은 프로젝트 스코프 유지. cross-project 검색은 3층 차단으로 범위 밖) (책임. -)
+- [ ] D5. 백엔드 테스트 — 해당 없음 예상 (책임. -)
+- [ ] D6. 프론트 UI — F4 팔레트 실체 검색 · F13 상단바 `전역 검색` 입력창 + 자연어 폴백 (책임. designer → frontend-engineer)
+- [ ] D7. E2E — 비-슬래시 입력이 AQL 검색을 호출 · 빈 입력은 바로가기 4개와 순서 보존 · `검색` 정확일치 무회귀 (책임. qa-engineer)
+
+### §4.11 FR-UX-13 — 백로그 사용성
+
+**우선순위**. 필수 | **선행**. 없음 (로드맵상 F5 의존 0) | **Plan slug**. `fr-ux-13-backlog-usability`
+
+승계 PR 3건 (로드맵 §PR 체인 Tier 1 F5 + Tier 2 F15·F16).
+
+- **F5 — 실동작 결함 2건 봉합.** 백로그/스프린트 카드의 담당자가 **전원 `?`(이름 미확인)로 렌더된다** — 빈 `Map` 을 만들어 그대로 넘기고 채우는 코드가 없다(`BacklogBoard.tsx:217`). 보드는 정상이고 백로그만 누락이다. 조회 실패 시엔 **빈 `<div/>`** 를 반환해 에러 안내도 재시도도 없다(`:214`). `board.tsx:333` 의 `useUsersByIds` 조립 패턴을 복제한다.
+- **F15 — 백로그 세로 스택 + 스프린트 다이얼로그 + 키보드 DnD.** 지금 백로그는 지라와 달리 **가로 칸반**이다. `BacklogBoard.tsx:246,248` · `SprintColumn.tsx`→`SprintSection.tsx` · 신규 `StartSprintDialog.tsx`·`CompleteSprintDialog.tsx` · `CreateSprintForm.tsx`.
+- **F16 — 백로그 필터바 + 에픽 패널.** `components/filters/FilterBar.tsx` 의 슬롯 4종(`leadingSection`/`leadingChips`/`extraActiveCount`/`onReset`)이 이미 확장용 설계라 그대로 쓴다.
+
+**아키텍처**. 프론트 전용 예상. 로드맵 **임계경로의 종점**이다(`B2 → F14 → F15 → F16`). 착수 전 `backlog.spec.ts`(536행)·`BacklogBoard.test.tsx`(759행) 재작성 범위를 먼저 산정한다. 키보드 DnD 공지는 `KanbanBoard.tsx:540` `buildDragAnnouncements`(한국어 4종, 조사 처리까지 완성)를 재사용한다. 스프린트 완료 시 미완료 이슈 이관 선택은 `SprintController.kt:221` `complete(id)` 에 이관 파라미터가 없어 **범위 밖** — v1 은 프론트가 완료 전 `DELETE /sprints/{id}/issues/{key}` 를 반복한다.
+
+- [ ] D1. 도메인 — 백로그 세로 스택의 섹션 모델(백로그 · 스프린트 N개)과 스프린트 시작/완료 상태 전이 정립 (책임. frontend-engineer)
+- [ ] D2. 명세 — 세로 스택 레이아웃 · 스프린트 시작/완료 다이얼로그 · 키보드 DnD · 필터바/에픽 패널 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 예상 (기존 스프린트/백로그 API 소비) (책임. -)
+- [ ] D4. 백엔드 — 없음 예상 (미완료 이슈 이관 파라미터는 범위 밖. 프론트가 기존 DELETE 를 반복) (책임. -)
+- [ ] D5. 백엔드 테스트 — 해당 없음 예상 (책임. -)
+- [ ] D6. 프론트 UI — F5 담당자·에러/로딩 봉합 · F15 세로 스택+스프린트 다이얼로그 · F16 필터바+에픽 패널 (책임. designer → frontend-engineer)
+- [ ] D7. E2E — `backlog.spec.ts` 재작성. "담당자 있는 카드는 이니셜 아바타"(현재 `?` 로 red) · 조회 실패 시 에러+재시도 (책임. qa-engineer)
+
+### §4.12 FR-UX-14 — 이슈 카드 밀도
+
+**우선순위**. 높음 | **선행**. 없음 (로드맵상 B2 의존 0) | **Plan slug**. `fr-ux-14-card-density`
+
+승계 PR 2건 (로드맵 §PR 체인 Tier 2 F14 + 백엔드 B2). 지금 보드 카드는 **3필드(제목·키·담당자)뿐**이라 지라 카드에 비해 한눈에 읽히는 정보가 없다.
+
+- **F14 — 보드/백로그 카드 밀도**(유형 아이콘 · 라벨 칩 · 추정). `BoardCard.tsx:103-136` · `BacklogCard.tsx` · `api/boards.ts:35-66` · `components/issue/IssueTypeIcon.tsx` **재사용**(epic/story/task/subtask/bug lucide 매핑 + `role="img"` 완비).
+- **B2 — 백엔드. 보드/백로그 카드 필드**(`shared-kernel` + `issue-tracking` + `agile-planning`). **F14 의 유일한 차단점** — `BoardCardResponse` 에 타입·라벨·추정이 없다.
+
+**아키텍처**. **B2 의 지위 정정 (2026-07-29).** 2026-07-28 Maxi 결정 #3 의 *"B2 = chore"* 를 승계·정정해 **이 FR 의 D4/D5** 로 승격한다(사유는 §4.5 의 세 번째 인용 블록, §4.7 FR-UX-09 의 B1 과 동일). 3모듈 동시 변경은 **선례 커밋 `dcbf130e6`**(shared-kernel 4 + agile-planning 6 + issue-tracking 3 파일 — 같은 조합으로 보드 필터 필드를 추가한 PR)을 템플릿으로 삼는다. 라벨은 `TEXT[]` 컬럼이라 조인이 불필요하고 타입은 `listWithType` 이 이미 조인 중이므로, **N+1 회귀 가드**가 성공 판정식이다.
+
+- [ ] D1. 도메인 — 보드/백로그 카드가 노출할 필드 집합(타입 · 라벨 · 추정) 정립 (책임. backend-engineer)
+- [ ] D2. 명세 — 카드 밀도 디자인 스펙 + 응답 필드 계약 (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 예상 (기존 컬럼 SELECT 확장. 마이그레이션 0) (책임. -)
+- [ ] D4. 백엔드 — **B2**. `shared-kernel .../board/BoardIssueLookupPort.kt:157-166` 의 `BoardIssueView` 에 `typeKey`·`typeIconName`·`labels`·`originalEstimateSeconds` 추가 + `issue-tracking .../repository/IssueRepository.kt` 보드 카드 SELECT·adapter 확장 + `agile-planning .../web/dto/BoardResponses.kt:155-162`·`BacklogResponses` (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — **B2**. `BoardControllerTest` 필드 · `IssueRepositoryIntegrationTest` SELECT · **N+1 미발생 가드** (책임. backend-engineer)
+- [ ] D6. 프론트 UI — F14 `BoardCard`·`BacklogCard` 밀도 + `api/boards.ts` 스키마 확장 (책임. designer → frontend-engineer)
+- [ ] D7. E2E — 카드에 유형 아이콘·라벨 칩·추정이 노출되는지 (책임. qa-engineer)
 
 ## §5 캘린더 (FR-CA, 2개)
 
@@ -237,10 +388,10 @@ FR-UX-06 이 **시각 계층**(ADS v2 토큰 70종 · 프리미티브 24종 · `
 
 ### BC 완료 조건
 
-- [~] §2~§5 (14 FR) 모두 `[x]` 마킹 — 13/14 (2026-07-25 UX 개편 PR22 로 13종 완료. 인터랙션 패리티 진행 중)
+- [~] §2~§5 (21 FR) 모두 `[x]` 마킹 — 14/21 (2026-07-29 활성 프로젝트 컨텍스트 완결로 14종. 인터랙션 패리티 잔여 7종은 등록만 된 미착수)
       <!-- ★ 이 줄에 `FR-XX-NN` 형태를 쓰지 말 것 — verify-master-plan.sh 의 "§N 헤더 (FR-XX, N개)"
            스캐너가 헤더 선언으로 오인해 `N개` 파싱에 실패하고 EXIT 1 이 된다(2026-07-25 실제 발생). -->
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 8행 전부 실측값이 `___` 공란. k6(프로필 조회·캘린더 30일·iCal Export) · Playwright(설정 적용·cmdk 응답) · E2E 전수(단축키) · Lighthouse CI(LCP) · axe-core(WCAG AA) 를 실제로 돌려 p95 를 채워야 한다 (2026-07-27 실측)
-- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (14 FR / 2026-07-05~07-25 / 대표 산출 4종 + 논리 BC 각주. FR-UX-07 은 완료 시 추가)
+- [x] CHANGELOG.md 정리 — 2026-07-29 실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (21 FR 등록 / 14 완료 / 2026-07-05~07-29 / 대표 산출 5종 + 논리 BC 각주. 인터랙션 패리티 잔여 7종은 완료 시 추가)
 - [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 2026-07-27 실측: `docs/plan/README.md` §7 은 3행뿐이고 BC 완료 행 없음 — 이 행의 날짜가 곧 선언일이므로 선언 이전에는 기입 불가
 - [ ] Maxi 1인 선언 — "personalization BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

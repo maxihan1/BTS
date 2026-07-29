@@ -20,7 +20,7 @@ SDD (docs/sdd/, v0.5.0 봉인)                           ← 설계 명세 26개
    │
 docs/plan/  ← 이 디렉토리                              ← 기능 구현 진척 (이 문서)
    ├ README.md       (이 파일 — 인덱스 + NFR 게이트 + 변경 이력)
-   ├ fr-index.md     (131 FR 역인덱스 + BC 매핑)
+   ├ fr-index.md     (139 FR 역인덱스 + BC 매핑)
    └ product/        (9개 BC 파일 — 각 BC가 자기 FR을 완전 추적)
    │
 docs/poc/   (dependencies.md, checklist.md, context-notes.md)  ← 의존성 도입 순서
@@ -70,7 +70,7 @@ Maxi_wiki/BTS/   (Obsidian 미러)                       ← 외부 단방향 �
 bash scripts/verify-master-plan.sh
 # exit 0이어야 통과
 # 내부 동작.
-#   SDD 02-requirements.md에서 FR ID 117개 추출
+#   SDD 02-requirements.md에서 FR ID 139개 추출
 #   docs/plan/product/*.md + fr-index.md에서 FR ID 추출
 #   diff 0이어야 통과
 ```
@@ -110,23 +110,30 @@ identity-access  ─┐
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☑ D단계 |
-| personalization | [product/personalization.md](product/personalization.md) | 14 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07 5) | (없음) | ☑ D단계 |
+| personalization | [product/personalization.md](product/personalization.md) | 21 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07,08~14 12) | (없음) | ☐ D단계 (FR-UX-08~14 미착수) |
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☑ D단계 |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 132 FR.
+**합계**. 139 FR.
 
 > **진척 열 판독**. `☑ D단계` = 그 BC 에 속한 FR 전량이 D1~D7 을 마쳤다는 뜻이고,
 > **BC 완료 선언과는 다르다**. 선언은 §NFR 측정표 통과 + `CHANGELOG.md` 정리 +
 > **Maxi 1인 선언**까지 끝나야 성립한다 (`product/<bc>.md §BC 완료 게이트`).
+> `☐ D단계` = 미완 D 단계가 1건 이상 남았다. 괄호는 그 원인 FR 이다.
 >
-> 2026-07-27 실측 — `grep -rhcE '^- \[x\] D[0-9]+\.' product/*.md` → **909**,
-> `[ ]`/`[~]`/`[!]` → **각 0**. 즉 131 FR 의 D 단계 미완은 0 건이다.
+> 2026-07-29 재실측 — `grep -rhoE '^- \[x\] D[0-9]+\.' product/*.md | wc -l` → **916**,
+> `[ ]` **49** · `[~]` **0** · `[!]` **0**. 즉 139 FR 중 D 단계 미완은 **49 건**이며
+> 전량 이날 신설된 FR-UX-08~14(`product/personalization.md §4`)의 D1~D7 이다.
+> FR-UX-07 은 활성 프로젝트 컨텍스트로 범위를 좁혀 PR #320 에서 D1~D7 전량 `[x]` 가 됐고,
+> 남은 27 PR 로드맵을 기능 단위 7개 FR 로 분리 등록했다 (2026-07-29 Maxi 확정 분할).
+> **미완 건수가 6 → 49 로 늘어난 것은 회귀가 아니라 의도한 결과다** — 로드맵 잔여가
+> 문서·대시보드에 보이게 하는 것이 이 분할의 목적이다.
 > 이 열은 그 실측에 따라 갱신됐다 (그전까지 9 BC 전부 `☐` 로 남아 실제와 어긋나 있었다).
+> `scripts/verify-master-plan.sh` 룰 H 가 이 열과 product 파일의 미완 마커를 **양방향**으로 대조한다.
 
 ## §A. 부록
 
-→ [fr-index.md](fr-index.md) — 131 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
+→ [fr-index.md](fr-index.md) — 139 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
 
 ## §6. NFR 검증 3중 게이트
 
@@ -164,7 +171,11 @@ SDD `02-requirements.md §2.3` 임계를 강제. 3중 게이트로 PR 단위 회
 
 ## §7. 변경 이력 (append-only)
 
+<!-- §7 이력에는 `N FR` 형식을 쓰지 않는다 — verify-master-plan.sh 룰 E 가 살아있는 구역만
+     스캔하도록 §7 을 제외하지만, 표기 관례도 함께 고정해 둔다 (합계는 `131→132` 형태로 적는다). -->
+
 - 2026-05-20. **재편성**. SDD 17장의 Phase 0~4 분할 대신 9개 BC 단위 완제품 계획으로 전환. 기존 `phase-0-poc.md`, `phase-1-mvp.md` 폐기. `product/` 디렉토리 신설.
 - 2026-05-20. **초안**. `docs/plan/` 디렉토리 신설. 117개 FR 전수 매핑. NFR 3중 게이트 정의. `scripts/verify-master-plan.sh` 작성. `CLAUDE.md` 진입 트리 1행 추가.
 - 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). §1 BC 테이블 두 행 갱신(identity-access 24→25, issue-tracking 31→35). 합계 123→128.
 - 2026-07-28. **FR-UX-07 신설**(personalization 13→14). Jira 인터랙션 패리티. 합계 131→132.
+- 2026-07-29. **FR-UX-07 분할 — FR-UX-08~14 신설**(personalization 14→21). 27 PR 로드맵 전체를 한 FR 로 묶어 D1 이 "절반 완료" 가 되던 상태를 해소. FR-UX-07 은 활성 프로젝트 컨텍스트(PR #320)로 좁혀 D1~D7 완료, 나머지는 기능 단위 7개 FR 로 등록만. 백엔드 B1·B2 는 chore → FR-UX-09/14 의 D4 로 승격(2026-07-28 결정 정정). 합계 132→139.
