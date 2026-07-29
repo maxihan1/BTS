@@ -74,8 +74,13 @@ export function resolveActiveProjectKey(input: ActiveProjectInput): ActiveProjec
     return { key: storedKey, source: 'stored' }
   }
 
-  const first = input.projects[0]
-  if (first !== undefined) return { key: first.key, source: 'first' }
+  // 목록에서 첫 번째로 **비어 있지 않은** 키를 고른다. `first.key`를 무검사로 통과시키면
+  // 위 두 입력에 `nonEmpty`를 건 이유(빈 스코프 권한 평가로 조용히 차단)가 이 경로에서만
+  // 무너진다 — `projectSchema.key`에 `.min(1)`이 없어 Zod도 막지 않는다.
+  for (const project of input.projects) {
+    const key = nonEmpty(project.key)
+    if (key !== null) return { key, source: 'first' }
+  }
 
   return { key: null, source: 'none' }
 }
