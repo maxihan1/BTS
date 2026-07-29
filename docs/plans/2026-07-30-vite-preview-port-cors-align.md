@@ -54,7 +54,153 @@ _fast-track 생략. 사용자 시나리오 없는 빌드 설정 변경._
 
 _fast-track 생략._
 
-## Plan (← /bts-plan 채움)
+## 이 변경이 새로 만드는 위험 (착수 전 식별)
+
+preview 를 dev 서버와 **같은 포트**로 옮기면 없던 충돌면이 생긴다. 전수 열거.
+
+| # | 위험 | 처방 | 이 PR 범위 |
+|---|---|---|---|
+| R1 | 5173 이 이미 점유돼 있으면 vite 가 **조용히 5174 로 옮겨** 붙는다 → 같은 403 이 다른 원인으로 재발 | `strictPort: true` 를 `server`·`preview` 양쪽에 | **포함** — 이게 없으면 수정이 성립하지 않는다 |
+| R2 | `pnpm dev` 와 `pnpm preview` 동시 기동 불가 | R1 처방으로 **즉시 명시적 실패**. MSW 때문에 애초에 배타적 용도 | 포함 (R1 과 동일 처방) |
+| R3 | `playwright.config.ts:20` 이 `reuseExistingServer: !CI` — 로컬에 preview 가 떠 있으면 E2E 가 **그것을 재사용**한다. 프로덕션 빌드는 MSW 가 꺼져 있어 전 테스트가 엉뚱한 이유로 깨진다 | `reuseExistingServer: false` 로 전환 또는 현행 유지 | **Maxi 판단 — 게이트 1 에서 확인** |
+
+R3 보충. 거짓 초록은 아니다(MSW 부재로 API 호출이 전부 실패해 **시끄럽게** 깨진다). 손실은
+「원인 찾는 시간」이다. 현행 유지 시 `lsof -ti:5173` 정리 절차가 preview 까지 덮는다는 이점은
+그대로 남는다.
+
+## Plan
+
+### Task 1. 차집합 판별식 신설 (RED)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`scripts/workflow/preview-cors-origin-alignment.test.ts`]
+- depends-on: []
+
+**RED**.
+- 파일. `scripts/workflow/preview-cors-origin-alignment.test.ts` (신규)
+- 선례. `scripts/workflow/ci-module-coverage.test.ts` — `node:test` + `node:assert/strict` + `fs` 로
+  두 소스 파일을 파싱해 차집합을 낸다. 스타일·주석 밀도·에러 메시지 형식을 그대로 따른다.
+- 수집기 3종 (**하드코딩 복사본이 아니라 실제 소스에서 수집**).
+  1. `viteLocalPorts()` — `apps/web/vite.config.ts` 의 `server` · `preview` 블록에서 `port` 를 뽑아
+     `{ server: 5173, preview: 4173 }` 형태로 반환. `strictPort` 존재 여부도 함께 반환.
+  2. `corsAllowedOrigins()` — `application.yml` 의
+     `allowed-origins: ${BTS_CORS_ALLOWED_ORIGINS:<기본값>}` 에서 기본값을 뽑아 콤마 분리.
+  3. `backendCiTriggerPaths()` — `backend-ci.yml` 의 `pull_request.paths` · `push.paths` 를
+     **각각** 집합으로 반환 (한 덩어리로 합치면 한쪽만 배선돼도 통과한다).
+- 테스트 5건.
+  - `판별식이 비어 있지 않다 (양성 대조군)` — 포트 ≥2건, 오리진 ≥1건, 트리거 블록 2개 각각 ≥3건.
+    0 은 「없다」가 아니라 「파서가 틀렸다」이므로 하한을 먼저 세운다.
+  - `vite 가 서빙하는 모든 로컬 포트가 CORS 허용목록에 있다` — 차집합 0.
+    **현재 red** (`preview 4173` 이 허용목록 밖).
+  - `포트 리터럴이 알려진 블록 밖에 없다` — 파일 전체 `port:` 리터럴 수 == 수집된 블록 수.
+    새 포트가 늘면 침묵하지 않고 깨진다 (상한 단언).
+  - `server·preview 가 strictPort 로 고정돼 있다` — **현재 red** (양쪽 다 부재).
+  - `양쪽 트리거 블록이 판별식 입력 3종을 전부 건다` — `backend/**` ·
+    `scripts/workflow/**` · `apps/web/vite.config.ts` 가 `pull_request` 와 `push` **양쪽**에.
+    **현재 red** (`apps/web/vite.config.ts` 부재).
+- 예상 실패. 3건 red / 2건 green.
+
+**GREEN**. 없음 — 이 task 는 결함을 드러내는 것이 목적이다.
+
+**REFACTOR**. 파일 L1 한국어 주석 + 「왜 이 테스트가 있나」 헤더 (선례 형식).
+
+**검증**. `node --test scripts/workflow/preview-cors-origin-alignment.test.ts` — red 3건을
+**출력으로 실측**하고 실패 메시지가 원인을 지목하는지 확인.
+
+**커밋**. `test:` 접두사 (TDD 순서 강제 — `feat:`/`fix:` 보다 먼저여야 한다).
+
+---
+
+### Task 2. preview 포트 5173 고정 + strictPort (GREEN-a)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/vite.config.ts`]
+- depends-on: [1]
+
+**RED**. Task 1 에서 이미 관측됨.
+
+**GREEN**.
+- `preview.port` `4173` → `5173`
+- `server.strictPort: true` · `preview.strictPort: true` 추가 (R1/R2 처방)
+
+**REFACTOR**.
+- 파일 L1 주석의 `dev 서버 (5173 포트)` 표기를 preview 포함으로 갱신
+- `preview` 블록 KDoc 에 **왜 dev 와 같은 포트인가**(CORS 허용목록이 단일 오리진) +
+  **왜 strictPort 인가**(조용한 포트 이동이 같은 403 을 다른 원인으로 재발시킨다) 명시
+
+**검증**. `node --test scripts/workflow/preview-cors-origin-alignment.test.ts` →
+차집합·strictPort 단언 2건 red→green 전이 관측. 나머지 1건(CI 배선)은 여전히 red 여야 한다.
+
+---
+
+### Task 3. backend-ci 트리거 배선 (GREEN-b)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`.github/workflows/backend-ci.yml`]
+- depends-on: [1]
+
+**RED**. Task 1 에서 이미 관측됨.
+
+**GREEN**.
+- `on.pull_request.paths` 와 `on.push.paths` **양쪽**에 `apps/web/vite.config.ts` 추가.
+  한쪽만 넣으면 봉인이 절반만 닫힌다 — 기존 `scripts/workflow/**` 주석과 같은 사유.
+
+**왜 backend-ci 이고 frontend-ci 가 아닌가.**
+판별식이 `pnpm test:workflow` 로 도는데 그 잡이 backend-ci 에 있다. 트리거 실측 —
+backend-ci 는 `backend/**`(application.yml 쪽) · `scripts/workflow/**`(판별식 자신)을 이미 걸고
+있어 **vite 쪽 한 축만 비어 있다**. 반대로 frontend-ci 에 두면 `application.yml` 만 바꾸는 PR 에서
+판별식이 안 돈다 (frontend-ci 트리거에 `backend/**` 가 없다). `vite.config.ts` 는 변경 빈도가
+극히 낮아 backend CI 추가 기동 비용이 사실상 0 이다.
+
+**REFACTOR**. 추가한 경로 옆에 사유 주석 (기존 `scripts/workflow/**` 주석과 같은 형식).
+
+**검증**. `node --test scripts/workflow/preview-cors-origin-alignment.test.ts` → 5/5 green.
+
+---
+
+### Task 4. 뮤테이션 검증 + 전체 회귀
+
+**메타**.
+- agent: `frontend-engineer`
+- files: []
+- depends-on: [2, 3]
+
+**뮤테이션 5종** (커밋 후에만 — 미커밋 상태로 주입하면 원복이 불확실해진다).
+각 주입마다 **어느 단언이 red 로 바뀌는지**까지 확인한다. red 가 안 뜨면 그 축은 무검증이다.
+
+| # | 주입 | 기대 red |
+|---|---|---|
+| M1 | `preview.port` → `4173` 되돌림 | 차집합 |
+| M2 | `server.port` → `3000` | 차집합 (dev 축도 실제로 덮는지) |
+| M3 | `application.yml` 기본값에서 `5173` 제거 | 차집합 (백엔드 쪽 축) |
+| M4 | `backend-ci.yml` **push 블록에서만** 경로 제거 | CI 배선 (절반 봉인 탐지) |
+| M5 | `viteLocalPorts()` 정규식을 고장내 0건 수집 | 양성 대조군 (공허 통과 차단) |
+
+**전체 회귀**.
+- `pnpm test:workflow` 전량 (기준선 실측 후 대조 — 판별식 신설분만 증가해야)
+- `apps/web/node_modules/.bin/eslint src` · `tsc -p tsconfig.app.json --noEmit` ·
+  `vitest run` (기준선 대조. **XML/출력 신선도까지 확인** — 린트가 먼저 깨지면 테스트는
+  안 돌고 직전 결과만 남는다)
+- `bash scripts/verify-master-plan.sh` EXIT 0 (FR 카운트 불변 확인)
+
+**손검증 (이 PR 의 존재 이유)**.
+`pnpm build && pnpm preview` → 브라우저에서 **로그인 POST 가 200** 인지 눈으로 확인.
+403 `Invalid CORS request` 가 사라지는 것이 이 작업의 성공 판정이다.
+백엔드는 조립 앱 비-prod 부팅(#322 의 dev 시드로 계정 존재).
+
+---
+
+## Plan 메타
+
+- task 수. 4
+- 예상 시간. 직렬 기준 약 20분 (T4 손검증 포함), wave 적용 시 약 15분 (예상 wave 3 — T1 → T2‖T3 → T4)
+- TDD 강제. yes (T1 `test:` 커밋이 T2/T3 보다 선행)
+- 병렬. T2·T3 는 파일 교집합이 없어 같은 wave 가능
+- 추가 검증. eslint · tsc · vitest · `pnpm test:workflow` · verify-master-plan · 브라우저 손검증
+- FR 영향. **없음** (139 불변) · 마이그레이션 0 · 신규 의존성 0 · 백엔드 코드 0 (yml 트리거만)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
 
