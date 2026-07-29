@@ -71,7 +71,7 @@ class NonProdDevSeeder(
     @Value("\${bts.dev-seed.password:password}") private val password: String,
     @Value("\${bts.dev-seed.email:alice@bts.local}") private val email: String,
     @Value("\${bts.dev-seed.display-name:Alice (Dev Seed)}") private val displayName: String,
-) {
+) : DevSeeder {
     private val log = LoggerFactory.getLogger(NonProdDevSeeder::class.java)
 
     /**
@@ -79,7 +79,7 @@ class NonProdDevSeeder(
      *
      * 비밀번호는 **절대 로깅하지 않는다** (DEVELOPMENT.md §1.1 규칙 2).
      */
-    fun seed() {
+    override fun seed() {
         val existing = userRepository.findByUsername(username)
         val user = existing ?: userRepository.create(username, email, displayName)
         if (existing == null) {

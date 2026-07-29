@@ -38,7 +38,7 @@ import org.springframework.stereotype.Component
 @Component
 @Profile(NonProdDevSeedRunner.PROFILE_EXPRESSION)
 class NonProdDevSeedRunner(
-    private val seeder: NonProdDevSeeder,
+    private val seeder: DevSeeder,
     private val environment: Environment,
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(NonProdDevSeedRunner::class.java)
