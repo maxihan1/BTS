@@ -312,9 +312,37 @@ refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 
 **검증**. `./gradlew :modules:app:test :modules:app:nonProdAssemblyTest` ·
 `./gradlew ktlintCheck detekt --rerun-tasks` · `bash scripts/verify-master-plan.sh`
 
+---
+
+### Task 7. 시드 장치 단일화 — 기존 `data-dev.sql` 정리 (**D6 번복 · Maxi 게이트1 결정**)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/data-dev.sql`, `backend/modules/identity-access/src/main/resources/application-dev.yml`, `backend/modules/issue-tracking/src/main/resources/data-dev.sql`, `backend/modules/issue-tracking/src/main/resources/application-dev.yml`]
+- depends-on: [6]
+
+> **⚠️ D6 이 뒤집혔다.** 원안은 *"기존 `data-dev.sql` 2개는 손대지 않는다"* 였으나,
+> Maxi 가 게이트 1 시점에 **「이번 PR 에서 정리」**를 선택했다. 리뷰가 제시한 반대 근거
+> (#321 의 「다른 BC 0줄」 원칙 파기)는 **명시적으로 수용된 비용**이다.
+>
+> **파생 — NFR-1 개정.** 「다른 9개 BC `src/**` 0줄」 → **「다른 BC 는 `src/main/resources/` 의
+> `data-dev.sql`·`application-dev.yml` 4개 파일에 한정. Kotlin `src/**/kotlin/**` 은 0줄」**.
+
+**🛑 착수 전 Maxi 확인 필요 — 「정리」의 형태가 두 갈래다.**
+
+| 안 | 내용 | 잃는 것 |
+|---|---|---|
+| (a) **삭제 단일화** | 모듈 `data-dev.sql` 2개 + `application-dev.yml` 의 `sql.init` 배선 제거. 시드 장치 = 조립 러너 1벌 | **단독 모듈 dev 실행 시 시드가 사라진다** (identity-access 단독 부팅 시 alice 없음) |
+| (b) **조립으로 이관** | 두 파일 내용을 조립 러너로 옮김(ATLAS 프로젝트 포함) | **D4「최소 시드」와 충돌** — 프로젝트를 다시 시드하게 된다 |
+
+Task 6 까지 완료한 시점에 이 갈림길을 Maxi 에게 제시한다. **추측 구현 금지** (`CLAUDE.md §컨텍스트 효율`).
+
+**검증**. `./gradlew :modules:identity-access:test :modules:issue-tracking:test` (모듈 단독 회귀) ·
+`./gradlew :modules:app:nonProdAssemblyTest` · `bash scripts/verify-master-plan.sh`
+
 ## Plan 메타
 
-- task 수: **6** (리뷰 D8 축소로 7→6)
+- task 수: **7** (리뷰 D8 축소로 7→6, D6 번복으로 +1)
 - 파일 수: **8** · 신규 클래스 **2** (`NonProdDevSeeder` · `NonProdDevSeedRunner`)
 - 예상 wave: **6 (전량 직렬)** — T1·T2·T3 이 `NonProdDevSeeder.kt` 를 공유하고 T4→T5→T6 이 선행 산출물에 의존.
   파일 겹침 자동 직렬화 규칙에 걸린다. 메모리 `bts-plan-wave-gradle-module-compile`(같은 Gradle 모듈 동시 컴파일 충돌)과도 정합.
