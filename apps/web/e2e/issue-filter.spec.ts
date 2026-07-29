@@ -17,7 +17,9 @@
 //       ATLAS-2: in_progress, BOB,    labels=['bug'],      componentIds=[]
 //       ATLAS-3: done,        ALICE,  labels=['frontend'], componentIds=[COMP_A_ID]
 //       ATLAS-5: in_review,  미배정,  labels=[],           componentIds=[]
-//   - IssueListRouteAdapter는 /issues 진입 시 DEFAULT_PROJECT_KEY='ATLAS' 사용.
+//   - IssueListRouteAdapter는 /issues 진입 시 **활성 프로젝트를 해소**해 쓴다 (FR-UX-07).
+//     저장값이 없는 첫 진입에서는 접근 가능 목록의 첫 프로젝트(시드 기준 ATLAS)로 떨어지므로
+//     이 스펙의 ATLAS 픽스처 전제는 유지된다. `DEFAULT_PROJECT_KEY='ATLAS'` 하드코딩은 제거됐다.
 //   - IssueFilterBar 셀렉터:
 //       · 담당자 typeahead: id="issue-filter-assignee-input"
 //       · 미배정 checkbox: aria-label="미배정" (role=checkbox로 한정)
