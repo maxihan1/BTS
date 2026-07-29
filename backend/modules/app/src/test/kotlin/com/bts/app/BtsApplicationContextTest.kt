@@ -31,6 +31,20 @@ class BtsApplicationContextTest : ProdAssemblyHttpTestBase() {
     }
 
     @Test
+    fun `프로파일 의존 포트 11종이 prod 조립에서 각각 정확히 1개다`() {
+        // ★ 비-prod 쪽 가드([NonProdAssemblyBootTest])와 **대칭**으로 두는 단언이다.
+        //
+        // 왜 필요한가 — [BtsApplication] 의 `excludeFilters` 는 **프로파일을 가리지 않는다.**
+        // 비-prod 중복을 없애려고 배제 목록을 만졌을 때 실수로 prod 에서 활성인 클래스를 넣으면
+        // prod 빈이 사라진다. "기존 prod 테스트가 통과하니까 괜찮다" 는 **간접 증거**일 뿐이고,
+        // 소비자가 아직 없는 포트(과거 ProjectMembershipWritePort 사례)는 빠져도 부팅이 성공한다.
+        // 삭제·추가 **양방향**으로 봉인해야 절반만 닫히지 않는다.
+        //
+        // 목록 정본은 [AssemblyPortContract] — 봉합 범위가 늘면 그 한 곳만 고치면 두 프로파일에 함께 적용된다.
+        AssemblyPortContract.assertExactlyOneEach(context, "prod")
+    }
+
+    @Test
     fun `automation 워커 빈이 조립 컨텍스트에 결선된다`() {
         // FullyQualifiedAnnotationBeanNameGenerator → 빈 이름 = FQN 클래스명.
         // automation 이 build 의존 + 스캔에 포함돼야만 이 빈이 존재한다.
