@@ -20,7 +20,7 @@ import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { userHandlers } from '@/mocks/user-handlers'
 import { componentHandlers } from '@/mocks/component-handlers'
 import { labelHandlers } from '@/mocks/label-handlers'
-import { projectListHandlers } from '@/mocks/project-list-handlers'
+import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { IssueListPage, IssueListRouteAdapter } from './issues.index'
 import type { IssueFilterParams } from '@/api/issues'
@@ -1746,7 +1746,24 @@ describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
     ])
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    // 재시도 수단이 있어야 사용자에게 탈출구가 생긴다 (스펙 E2). ★ 반드시 클릭 전에 단언한다 —
+    // 회복 후에는 이슈 조회가 나가 이 값이 1이 된다.
     expect(requestedProjectKeys).toHaveLength(0)
+
+    // /api/v1/projects 전용 카운터 — requestedProjectKeys는 이슈 조회의 projectKey만 모으므로
+    // 재조회 검증에 재사용하면 항상 0인 공허 단언이 된다.
+    let projectListCalls = 0
+    server.use(
+      http.get('/api/v1/projects', () => {
+        projectListCalls += 1
+        return HttpResponse.json({ data: projectListFixtures })
+      }),
+    )
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => expect(projectListCalls).toBeGreaterThan(0))
   })
 
   /**
@@ -1796,9 +1813,15 @@ describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
    * 키 기준 독립 fetch 라 프로젝트 해소와 무관해야 한다(스펙 E9 직교성).
    */
   it('AP9 (C5): 프로젝트 목록이 로딩 중이어도 split view 상세 페인은 렌더된다', async () => {
+    // ★ 코드리뷰 CR4 — 이전 버전은 waitFor 가 해소 완료(ready)까지 기다려서, 조기 반환을
+    // 어댑터 최상단으로 끌어올려도(=C5 결함을 재주입해도) 그대로 통과하는 공허 가드였다.
+    // 프로젝트 응답을 **영원히 pending** 으로 묶어 loading 시점 자체를 고정한다.
     mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
-    renderWithCapture()
+    renderWithCapture([http.get('/api/v1/projects', () => new Promise(() => {}))])
 
+    // 목록 영역은 게이트(로딩)지만 우측 상세 페인은 살아 있어야 한다 — selected 키 기준
+    // 독립 fetch 라 프로젝트 해소와 직교한다(스펙 E9)
     await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+    expect(screen.queryByRole('table', { name: '이슈 목록' })).not.toBeInTheDocument()
   })
 })

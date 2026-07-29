@@ -17,7 +17,7 @@ import {
 import { DEFAULT_SEARCH_PAGE, SEARCH_HIT_BUG, SEARCH_HIT_UNASSIGNED } from '@/mocks/search-fixtures'
 import { savedFilterHandlers, seedSavedFilters, resetSavedFilterStore } from '@/mocks/saved-filter-handlers'
 import { useAuthStore } from '@/auth/authStore'
-import { projectListHandlers } from '@/mocks/project-list-handlers'
+import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { SearchPage, SearchRouteAdapter } from './search'
 import type { AqlHighlighterProps } from '@/components/search/AqlHighlighter'
@@ -764,6 +764,23 @@ describe('SearchRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
     renderSearchAdapter('/search?q=text+~+%22a%22')
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    // 재시도 수단이 있어야 사용자에게 탈출구가 생긴다 (스펙 E2). ★ 반드시 클릭 전에 단언한다 —
+    // 회복 후에는 검색이 나가 이 값이 1이 된다.
     expect(searchedProjectKeys).toHaveLength(0)
+
+    // /api/v1/projects 전용 카운터 — searchedProjectKeys는 검색 본문의 projectKey만 모으므로
+    // 재조회 검증에 재사용하면 항상 0인 공허 단언이 된다.
+    let projectListCalls = 0
+    server.use(
+      http.get('/api/v1/projects', () => {
+        projectListCalls += 1
+        return HttpResponse.json({ data: projectListFixtures })
+      }),
+    )
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => expect(projectListCalls).toBeGreaterThan(0))
   })
 })
