@@ -115,7 +115,8 @@ FR-D 의 빈-개수 단언 헬퍼를 **prod 프로파일에서도** 돌린다 (�
 ## 비기능 요구사항 (NFR)
 
 - **N1. 다른 BC 소스 변경 0.** 변경 허용 경로는 `backend/modules/app/**` · `docs/**` ·
-  `.github/workflows/backend-ci.yml` · `scripts/workflow/ci-module-coverage.test.ts` (+ 필요 시 `CHANGELOG.md`).
+  `.github/workflows/backend-ci.yml` · `scripts/workflow/ci-module-coverage.test.ts` ·
+  `scripts/workflow/bc-keyword-coverage.test.ts`(D8 — 선재 실패 재동결) (+ 필요 시 `CHANGELOG.md`).
   **다른 9개 BC 모듈의 `src/**` 변경은 0줄**이어야 한다 (이것이 A안의 정의).
   *(CI 2파일은 eng-review BLOCKER-1 로 추가 — 가드가 실제로 도는 것까지가 이 PR 의 범위다.)*
 - **N2. prod 빈 구성 불변.** prod 프로파일의 빈 목록이 이 PR 전후로 동일하다.

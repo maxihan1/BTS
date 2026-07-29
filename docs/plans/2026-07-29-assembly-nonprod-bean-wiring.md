@@ -413,6 +413,44 @@ issue-tracking 의 `AlwaysAllow*`/`NonProdAllow*` 는 **8개**인데 중복인 �
 - 병렬 dispatch: 코드 봉합 축은 **직렬 성격**이 강하다 — 부팅 에러가 fail-fast 라 순차로만 드러난다
 - 추가 검증: ktlint · detekt · **뮤테이션 11종** · `pnpm test:workflow` · verify-master-plan · 실부팅 · CI 4잡
 
+## 구현 결과 (전부 실측, 2026-07-29)
+
+### 완료 기준 10개 전수
+
+| # | 기준 | 결과 |
+|---|---|---|
+| 1 | 프로파일 미지정 `bootRun` | ✅ **`Started BtsApplicationKt in 8.13 seconds`** — EC-1 의 10번째 고장 **없음** |
+| 2 | 뮤테이션 전량 RED | ✅ **11/11 RED.** 원인 확정 — M1 `NoUniqueBeanDefinitionException … found 2: AlwaysAllowIssuePermissionResolver, DevAllowIssuePermissionResolver` · M11 `NoSuchBeanDefinitionException: com.bts.shared.permission.IssueSecurityDirectory` |
+| 3 | `app:test` + `nonProdAssemblyTest` | ✅ 63 / 0 실패 (14 XML) · 2 / 0 실패 (1 XML) — XML 집계, 캐시 아님 |
+| 4 | 각 BC 회귀 0 | ✅ **구조적으로 불가** — 다른 BC `src/**` 0줄(기준 5). app 은 BC 를 의존하는 하류라 역방향 영향 없음. CI `modules` 매트릭스 9잡이 최종 확인 |
+| 5 | N1 경로 제약 | ✅ 변경 11파일 전부 허용 경로. **다른 BC `src/**` 0줄** |
+| 6 | prod 회귀 금지(S2) | ✅ `ProdAssemblyHttpTestBase` 하위 전량 GREEN + **신규 prod 대칭 단언이 XML 에 기록됨**(공허 통과 아님) |
+| 7 | ktlint + detekt | ✅ `--rerun-tasks` 로 캐시 우회, BUILD SUCCESSFUL |
+| 8 | `verify-master-plan.sh` | ✅ exit 0 · FR **139/139** · 카운트 정합 |
+| 9 | CI 4잡 그린 | ⏳ 푸시 후 확인. 로컬 선행 검증은 전부 통과 |
+| 10 | CI 룰 뮤테이션 확증 | ✅ yml 에서 태스크 이름 제거 → *"비-prod 조립 부팅 가드가 CI 에 배선되지 않았다"* FAIL → 복원 후 PASS |
+
+### D8 — 선재 실패 재동결 (Maxi 확정)
+
+`pnpm test:workflow` 의 `bc-keyword-coverage` 가 *"불일치 57건 > baseline 49"* 로 실패했다.
+**PRE_EXISTING 확정** — main 트리에서도 동일하게 **57건**이고, 이 PR 은 FR 문서·`classify-task` 를 **0줄** 바꿨다.
+원인은 PR #320 의 FR 분할(131→139, +8)이고, #320 은 `docs/**`·`apps/web/**` 만 건드려 **backend-ci 가
+트리거되지 않아** 가드가 안 돌았다. 이 PR 이 `scripts/workflow/**` 를 건드리며 처음 드러난 것이다.
+→ **A안 채택** — `MAX_MISMATCHES` 49 → 57 재동결 + 사유·출처 주석. 이후 `61/61 pass`.
+(그 가드의 세 번째 테스트가 "느슨해지면 낮춰라"를 강제하므로 방치되지 않는다.)
+★ **파생 발견 (별건).** FR 계획 문서만 바꾸는 PR 은 이 판별식의 **입력을 바꾸면서도 가드를 건너뛴다.**
+`backend-ci.yml` 트리거 경로에 FR 문서를 넣을지는 별도 판단 사안 — 주석에 남겼다.
+
+### TDD 커밋 사슬 (전부 `test:` → `feat:` 순서)
+
+| Task | RED | GREEN |
+|---|---|---|
+| T1 가드 | `ff2a20ece test:` | (T2·T3 이 GREEN) |
+| T8 CI 배선 | `54a71f9ca test:` | `4de37c6ad feat:` |
+| T2 중복 6종 배제 | ← T1 | `148270c39 feat:` |
+| T3 부재 3종 등록 | ← T1 | (같은 커밋 묶음) |
+| T7 prod 대칭 단언 + ADR | `test:` | — |
+
 ## 리뷰 결과
 
 ### plan-eng-review (2026-07-29)
