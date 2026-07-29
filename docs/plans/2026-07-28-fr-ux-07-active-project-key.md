@@ -40,9 +40,16 @@
 
 **파생 결함.** `lib/start-page.ts` 의 `my_issues`(FR-PF-02 완료 표시)는 ATLAS에 담당 이슈가 없는 사용자에게 **로그인 직후 빈 화면**을 준다.
 
-### 같은 PR에 싣는 것 — FR-UX-07 신설 (131 → 132)
+### 같은 PR에 싣는 것 — FR-UX-07 신설 + 기능 단위 분할 (131 → 139)
 
-로드맵 전체를 추적할 FR을 첫 PR에서 등록해 진척 가시성을 먼저 연다.
+착수 시점(2026-07-28)의 계획은 **로드맵 전체를 추적할 FR 하나**를 첫 PR에서 등록하는 것이었다(131 → 132).
+게이트 2 직전(2026-07-29) Maxi 지적으로 그 안이 **뒤집혔다** — 27 PR 을 한 FR 에 담자 `personalization.md §4.5` 의
+D1~D7 마커가 `[~] [~] [x] [ ] [ ] [~] [~]` 로 세 상태가 섞였고 D1 본문에 「미착수 — 27 PR 로드맵 잔여」가 붙었다.
+**D1(도메인 정리)이 「절반 완료」인 상태는 성립하지 않는다.** 그래서 FR-UX-07 을 **활성 프로젝트 컨텍스트**로 좁히고
+나머지를 기능 단위 일곱(FR-UX-08~14)으로 분리해 **등록만** 했다 (131 → **139**).
+
+근거·대조표·분할 매핑은 ADR [decisions/2026-07-28-fr-ux-07-active-project-context.md](../decisions/2026-07-28-fr-ux-07-active-project-context.md) **§D6** 이 정본이다.
+결과로 **이 PR 이 좁아진 FR-UX-07 의 D1~D7 을 전량 `[x]` 로 닫는다** — 원안에서는 1/27 만 진행한 상태로 남았을 것이다.
 
 **신설 근거가 이미 문서에 있다** — `docs/plan/product/personalization.md:142` (FR-UX-05 §4.3):
 > 컨텍스트 의존 단축키(`j/k/e/m/s`)는 **후속 FR로 제외**(Maxi 결정 2026-07-05)
@@ -60,6 +67,15 @@
 | 2 | 백엔드 = B1+B2만. **B3(프로젝트 무관 조회) 제외** → "내 작업"은 프로젝트 스코프 v1 |
 | 3 | **FR-UX-07 신설** (131→132). 백엔드 B1/B2는 기존 FR 결손 봉합이라 chore |
 | 4 | 검색 이름표 분리 — 상단바 입력창 `전역 검색`, 기존 `검색`은 AQL 제출 버튼 전용 (F13에서 적용) |
+
+**추가 확정 (Maxi, 2026-07-29 — 게이트 2 직전)**
+
+| # | 결정 |
+|---|---|
+| 5 | **FR-UX-07 을 기능 단위 여덟으로 분할** (131→**139**). 좁아진 FR-UX-07(활성 프로젝트 컨텍스트)은 이 PR 이 완결하고, FR-UX-08~14 는 등록만 한다. 근거 = D 마커는 완주 단위에 붙어야 한다 (ADR §D6) |
+| 6 | **결정 3 의 정정** — 분할 후 B1·B2 는 chore 가 아니라 **FR-UX-09 의 D4 · FR-UX-14 의 D4** 다. 「백엔드 없음」으로 비던 칸이 실제 내용으로 채워지는 쪽이 정확하다 |
+| 7 | E2E 스펙 **S5·S6·S7·S8 4종 + 엣지 E2(에러+재시도) 1종을 이번 PR 에 추가**한다. 계획서 Task 10 의 `S1~S8 전수` 요구를 실제로 충족시킨다 |
+| 8 | `personalization.md` FR-UX-07 의 D1·D2 는 **`[~]` 유지 후 분할로 해소** — 범위를 좁히자 `[x]` 가 정직해졌다. 당초 검토안(본문을 FR 전체 범위로 확대)은 분할이 채택되며 불필요해졌다 |
 
 ### classify 정정
 
@@ -139,7 +155,7 @@
 | `apps/web/src/hooks/use-active-project.ts` | **신규** — zustand + localStorage(`bts.active-project`) + 4단 해소 |
 | `apps/web/src/routes/issues.index.tsx` | 상수 제거 · 해소 결과 전달 · 로딩/0개 흡수 |
 | `apps/web/src/routes/search.tsx` | 상수 제거 · 폴백만 해소 결과로 교체 |
-| 문서 8종 | FR-UX-07 등록 131→132 |
+| 문서 9종 | FR-UX-07 등록 + 기능 단위 분할 131→**139** (2026-07-29 결정 5). `CHANGELOG.md` 가 9번째로 전수 동기화 체크리스트에 편입됐다 |
 
 **diff 0 이어야 하는 파일.** `Sidebar.tsx` · `commands.ts` · `shortcuts.ts` · `lib/start-page.ts`
 
@@ -315,14 +331,16 @@ resolveActiveProjectKey({ urlKey: 'NOPERM',storedKey: 'ATLAS', projects })  // '
 |---|---|
 | `fr-index.md` | `:1` 상단 주석 `131개` · `:5` §A.1 헤더 `(131개 전수)` · `:8` 검증 문구 · `:175` `### 사용성 (FR-UX, 6개)`→7개 · `:184` 뒤 FR-UX-07 행 · `:247` personalization `13`→14 및 `UX-01,04,05,06(4)`→`UX-01,04,05,06,07(5)` · `:249` 합계 · §A.4 변경이력 append |
 | `personalization.md` | `:1` L1 주석 `13 FR` · `:5` `소속 FR. 13개` · `:110` `## §4 UX 편의 (FR-UX-01, 04, 05, 06)` · 신규 `### §4.5 FR-UX-07` + D1~D7 체크박스 · `:204` §NFR 완료 게이트 |
-| `README.md` | `:113` personalization 행 `13` · `:117` `합계. 131 FR` · §7 변경이력 append |
+| `README.md` | `:113` BC 행 (FR 수 **+ 진척 열**) · `:117` 합계 · §7 이력 append · **`grep -n '[0-9]\{2,\} FR' docs/plan/README.md` 전수** (개수로 열거하면 남는다 — 실제로 `:23`·`:129` 산문 2지점이 누락됐다) |
+| `CHANGELOG.md` | `[Unreleased]` 블록만 — `:17` `**범위**` · `:19` `**상태**`(날짜 도장까지) · §BC 요약 표의 해당 BC 행 |
 | `sdd/02-requirements.md` | FR-UX-07 행 (**verify 가 SDD↔plan 양방향 차집합 검사** — 누락 시 EXIT 1) |
 | `CLAUDE.md` | `:10`·`:57` `131 FR` |
 | `progress.html` | `node scripts/build-dashboard.mjs` 재생성 |
 
 **REFACTOR**. `docs/plans/` · `docs/decisions/` 는 verify 스캔 대상이 아니므로 카운트 표기 불필요
 
-**검증**. `bash scripts/verify-master-plan.sh` **EXIT 0** + 출력이 `132/132`
+**검증**. `bash scripts/verify-master-plan.sh` **EXIT 0** + 출력이 `139/139`
+> 착수 시점 이 칸은 `132/132` 였다. 2026-07-29 결정 5(기능 단위 분할)로 최종 목표치가 바뀌었다.
 
 ---
 
@@ -583,14 +601,16 @@ S7 권한 없는 url       ('NOPERM', 'ATLAS')              → { key:'NOPERM', 
 |---|---|
 | `fr-index.md` | `:1` 주석 · `:5` §A.1 헤더 · `:8` 검증 문구 · `:175` `(FR-UX, 6개)`→7 · `:184` 뒤 행 추가 · `:247` personalization `13`→14 · `UX-01,04,05,06(4)`→`(5)` · `:249` 합계 · §A.4 이력 |
 | `personalization.md` | `:1` L1 · `:5` 소속 FR · `:110` §4 헤더 · 신규 `§4.5 FR-UX-07` + D1~D7 · `:204` 완료 게이트 |
-| `README.md` | `:113` BC 행 · `:117` 합계 · §7 이력 |
+| `README.md` | `:113` BC 행 (FR 수 **+ 진척 열**) · `:117` 합계 · §7 이력 · **`grep -n '[0-9]\{2,\} FR' docs/plan/README.md` 전수** (개수 열거는 눈가리개다 — `:23`·`:129` 산문 2지점이 실제로 남았다) |
+| `CHANGELOG.md` | `[Unreleased]` 블록만 — `:17` `**범위**` · `:19` `**상태**`(날짜 도장 포함) · §BC 요약 표 행 |
 | `sdd/02-requirements.md` | FR-UX-07 행 (**누락 시 verify EXIT 1**) |
 | `CLAUDE.md` | `:10` · `:57` |
 | `progress.html` | `node scripts/build-dashboard.mjs` |
 
 **REFACTOR**. `docs/plans`·`docs/decisions` 는 verify 스캔 대상 아님
 
-**검증**. `bash scripts/verify-master-plan.sh` **EXIT 0** + `132/132`
+**검증**. `bash scripts/verify-master-plan.sh` **EXIT 0** + `139/139`
+> 착수 시점 이 칸은 `132/132` 였다. 2026-07-29 결정 5(기능 단위 분할)로 최종 목표치가 바뀌었다.
 
 ---
 
@@ -644,16 +664,27 @@ NFR5 진입 후 URL 불변 · B2 필터 변경 후 projectKey 잔존
 
 **★ M1 이 리뷰 BLOCKER B5 의 정확한 반증이다** — 초안 판별식(`projectKey` 대입형 하나)은 이 형태를 매치하지 못했다. 판별식을 2종으로 나눈 뒤에야 잡힌다.
 
-### 전체 스위트 (2026-07-28)
+### 전체 스위트 — 봉합 전 / 봉합 후
 
-| 항목 | 결과 |
-|---|---|
-| 유닛 | **526 파일 / 8,215 건 전량 통과** (기준선 7,935 → +280 신규, 회귀 0) |
-| typecheck | `tsc -p tsconfig.app.json --noEmit` EXIT 0 |
-| eslint | `eslint src` **0 error** (경고 8 — 사전 존재분과 동일) |
-| verify-master-plan | EXIT **0** · 132/132 PASS |
-| `DEFAULT_PROJECT_KEY` | 프로덕션 선언·사용 **0건** (잔존 4건은 전부 설명 주석) |
-| diff 0 계약 | `Sidebar.tsx`·`commands.ts`·`shortcuts.ts`·`start-page.ts` **4파일 전부 유지** |
+**두 시점을 구분한다.** 「봉합 전」은 게이트 2 코드리뷰 봉합에 착수하기 **직전**(미커밋 diff 포함) 실측이고,
+「봉합 후」는 §코드리뷰 결과의 CR1~CR7 봉합을 전부 반영한 뒤의 재측정이다. **한 칸에 뭉치면 어느
+시점의 값인지 사라진다** — 아래 폐기된 `526 파일 / 8,215 건` 이 정확히 그렇게 망가진 값이다.
+
+| 항목 | 봉합 전 (2026-07-29, 오케스트레이터 실측) | 봉합 후 |
+|---|---|---|
+| 유닛 (vitest) | 미커밋 상태 **527 파일 / 8,222 건 전량 통과**. HEAD(커밋된 상태) **527 파일 / 8,219 건** | **528 파일 / 8,236 건 전량 통과** · EXIT 0. 순증 = 파일 +1(`ActiveProjectGate.test.tsx` 신설) · 건수 **+17**(HEAD 대비). 파생 산술 금지 — 이 값은 `node_modules/.bin/vitest run` 출력 절대값이다 |
+| E2E (playwright) | 신규 `e2e/active-project.spec.ts` **7/7** · 회귀 **35/35**. 출처는 e2e 커밋 `667526c90` 의 커밋 메시지이며 **코드리뷰 이전 시점**이다 — 봉합 후 재실행 전까지 현재 상태의 증거가 아니다 | `active-project.spec.ts` **13/13 통과 · 2회 연속**(23~24초). 회귀 `landmark`+`command-palette`+`issue-filter` **18/18**. 실행 = 임시 config 로 `baseURL`·`webServer.url` 을 **둘 다 5174 로 덮고** 바이너리 직접 호출 (`reuseExistingServer: !CI` + 5173 하드코딩 2곳이 남의 서버를 조용히 재사용하는 함정 회피). 임시 config 삭제·포트 잔류 0 확인 |
+| typecheck | `tsc -p tsconfig.app.json --noEmit` EXIT **0** | EXIT **0** (MSW 목 2파일 변경 후 재측정) |
+| eslint | `eslint src` **0 error** (경고 8 — 사전 존재분과 동일) | **0 error** · EXIT 0 (경고 8 — 사전 존재분과 동일, 증감 0) |
+| verify-master-plan | EXIT **0** · **132/132** PASS | EXIT **0** · **139/139** PASS — 기능 단위 분할(결정 5) 반영 후 실측. 파이프 없이 `$?` 로 직접 확인했다(`tail` 파이프를 물리면 종료코드가 `tail` 것이 잡혀 EXIT 4 가 0 으로 보인다) |
+| `DEFAULT_PROJECT_KEY` | 프로덕션 선언·사용 **0건** (잔존 4건은 전부 설명 주석) | 프로덕션(`apps/web/src`) 선언·사용 **0건** — 잔존 7건 전부 설명 주석·테스트명. `apps/web/e2e/*` 의 11건은 e2e 로컬 상수로 **봉인 스캔 대상 밖**(`SRC_ROOT` 가 `src/` 한정)이다. `issue-filter.spec.ts:20` 이 이 PR 로 **거짓이 된 주석**이라 함께 정정했다 |
+| diff 0 계약 | `Sidebar.tsx`·`commands.ts`·`shortcuts.ts`·`start-page.ts` **4파일 전부 유지** | **4파일 전부 유지** — `git diff main...HEAD` · `git diff` 둘 다 공집합. 「라우트가 활성 프로젝트를 해소한다」 설계 덕에 진입로 파일을 하나도 건드리지 않고 결함이 풀렸다 |
+
+> ⚠️ **폐기된 수치 — `526 파일 / 8,215 건`.** 이 값은 자기 커밋(`c4884b6f4`) 시점에도 **틀렸다**.
+> `8,215` 이 `7,935 + 280` 이라는 **산술 결과와 정확히 일치**하므로 측정이 아니라 계산으로 적힌 값이다
+> (게다가 `vitest.config.ts:17` 이 e2e 를 제외하므로 e2e 태스크는 유닛 수를 바꿀 수 없다).
+> 기준선 대비 증분(`기준선 7,935 → +280 신규`) 표기는 **같은 집계법으로 재측정하지 않는 한 쓰지 않는다**
+> ([[test-count-baseline-grep-vs-xml]]). 위 표는 절대값만 적는다.
 
 ### 구현 중 자체 발견·정정 (5건)
 
@@ -664,3 +695,134 @@ NFR5 진입 후 URL 불변 · B2 필터 변경 후 projectKey 잔존
 | 3 | T6 계측 — capture 핸들러를 렌더 뒤에 등록해 최초 조회를 놓쳤다 |
 | 4 | T6 계측 — **한 번의 `server.use(a,b,c)` 안에서는 앞선 인자가 우선**(첫 매칭이 이긴다)인데 capture 를 마지막에 둬서 기본 핸들러가 이겼다. 호출 단위로는 나중 `server.use` 가 이기는 것과 **규칙이 반대**다 |
 | 5 | T9 — 완료 게이트 줄에 `(14 FR)` 과 `FR-UX-07` 을 같이 써서 verify 가 **사유 없이 EXIT 1**. 판별식은 **`(N FR)` 형식 + 같은 줄 FR ID 토큰** 조합이다 (기존 4줄은 `(FR-AU 10개)` 형태라 무사) |
+
+---
+
+## 코드리뷰 결과 (게이트 2, 2026-07-29, PR #320)
+
+> 이 섹션의 `CR«n»` 은 §리뷰 결과(`:374`)의 plan CONCERN `C«n»` 과 **별개 네임스페이스**다.
+> 코드 주석의 접두사 없는 `(C«n»)`·`(N«n»)` 은 전부 plan 리뷰를 가리킨다 (`AP9 (C5)` · `T-RA-9 (N3)`).
+> 원본 보고서 소실 — 열거 축은 **`git diff --stat` 의 변경 파일 전수**이고, C 번호는 회수되면 붙이고
+> 안 되면 「번호 미상」으로 남긴다 (**개수는 눈가리개**다 — [[orchestrator-instruction-counts-are-blindfolds]]).
+
+| # | 지적 | 봉합 지점 · 가드 |
+|---|---|---|
+| CR1 | 캐시가 있는데 `isError` 를 먼저 평가해 화면 전체가 에러가 된다 | `use-resolved-active-project.ts` 해소 본문 · `T-RA-10` · `T-RA-12a/b` |
+| CR3 | 저장값 생산 지점 2곳 중 `useTrackActiveProject` 에 접근 가능 목록 대조 가드가 없다 | `use-track-active-project.ts` · `T-TR-7` · 파급 `ShellLayout.test.tsx` |
+| CR4 | AP9 가 `waitFor(ready)` 라 C5 결함을 되주입해도 통과하는 공허 가드 | `issues.index.test.tsx` AP9 재작성 (영구 pending + 목록 부재 단언) |
+| CR6 | `resolveActiveProjectKey` 의 `first` 경로만 빈 키를 무검사로 통과시킨다 | `lib/active-project.ts` · `T-RA-11` + 순수 단위 3종 |
+| CR7 | P1 이 `PROJECT_KEY` **접미사**만 잡아 별칭 상수로 우회된다 | `active-project-contract.test.ts` P3 신설 + 한 줄 블록주석 필터 |
+| 번호 미상 A | 스펙 E2 「에러 + 재시도」인데 재시도 수단이 없다 | `ActiveProjectGate.tsx` · `routes/search.tsx` — **소비처 2곳 중 1곳만 배선됐던 반쪽 봉합** |
+| 번호 미상 B | `CLAUDE.md` 현재 단계 문구가 「전량 완료」로 읽힐 소지 | `CLAUDE.md:10` |
+
+### ★ 가장 값어치 있던 것
+
+1. **반쪽 봉합을 타입으로 닫은 것 (번호 미상 A).** `onRetry?` 가 optional 이라 `/issues` 소비처가
+   빠졌는데도 `tsc` · `eslint` · `vitest` 3종이 전부 그린이었다. FR-UX-07 은 27 PR 로드맵이라
+   소비처가 늘어난다 — 삼항 복붙으로 막으면 **세 번째 소비처에서 같은 방식으로 다시 빠진다**.
+   `retry` 를 error 멤버 **안**에 넣어 호출부가 누락할 수 없게 했다.
+   > 인용된 선례 `SlackResultBanner` 는 소비처가 1곳뿐이라 그 관례를 2-소비처·증가 예정 컴포넌트로
+   > 이전하면 안 된다 — [[sibling-precedent-validation-placement-depends-on-producer-count]].
+2. **미인증 셸이 인증 API 를 때린 것 (CR3 파생).** `useProjects()` 가 훅 본문 최상단이라 `enabled`
+   와 무관하게 발사됐고, `ShellLayout` 이 미인증 조기 반환 **앞에서** 호출한다. `_shell` 아래 미인증
+   도달 라우트 2곳 중 `/dashboards/shared/$token` 은 파일 주석이 *"인증 훅·인증 store 는 절대
+   사용하지 않는다 — 401 자동 refresh 나 로그인 리다이렉트를 유발하면 익명 경로 UX 가 깨진다(EC-11)"*
+   로 못박은 경로다. **CR3 가 그 계약을 페이지가 아니라 부모 셸에서 깼다.**
+3. **「고쳤다는 증거」가 공허했던 것 (CR1·CR3 가드).** T-RA-10 은 refetch 이전 렌더를 읽어
+   결함판으로 되돌려도 통과했고, T-TR-7 의 `waitFor` 는 t=0 에 즉시 통과했다. 즉 **CR1·CR3 회귀를
+   잡는 테스트가 저장소에 0건**이었다. [[zero-measurement-means-wrong-discriminant]] 의 정확한 사례.
+
+### ★ 처방 검증에서 내가 틀린 것
+
+*"지적은 채택하고 처방은 검증"* ([[seal-blinds-existing-guard]]). 아래는 **반증 라운드가 죽인 대안**이다.
+다시 떠올라도 채택하지 마라.
+
+| 대상 | 죽은 대안 | 반증 |
+|---|---|---|
+| A(게이트) | `ResolvedActiveProject` 를 통째로 props 로 | `'ready'` 로 게이트를 렌더하는 상태가 표현 가능해져 **기존 타입 가드를 지운다** |
+| A(게이트) | `{status:'loading'\|'empty'} \| {status:'error';onRetry}` props 유니온 | 소비처가 넘기는 `activeProject.status` 는 리터럴이 아니라 유니온 *값*이라 **두 소비처가 모두 컴파일 실패** |
+| CR3 | `useQueryClient().getQueryData(['projects', false])` 로 읽기 | 구독이 없어 목록 도착 시 effect 가 재실행되지 않아 **T-TR-1 이 깨진다** |
+| CR3 | `useResolvedActiveProject` 에도 `enabled:false` | `isPending` 이 영구 true 라 **영구 스피너** |
+| CR3 가드 | `server.resetHandlers()` 후 프로젝트 핸들러만 빼고 재등록 | `test/server.ts` 초기 목록에 이미 `...projectHandlers` 가 있어 되돌아온다 — **여전히 handled** |
+| CR3 가드 | `render()` 직후 동기 `expect(count).toBe(0)` / `await waitFor(() => expect(count).toBe(0))` | 둘 다 **결함을 되주입해도 통과**한다 (요청은 마운트 effect 이후 마이크로태스크에 나가고, `waitFor` 는 첫 체크에서 즉시 성공) |
+| CR1 파생 | 빈 캐시 판정을 `projects.length > 0` 로 | **URL 키 경로(E4/S7)를 함께 죽인다** — `projects=[] && isError` 에서 `?projectKey=ATLAS` 가 화면 전체 에러가 된다 |
+| CR7 | 값이 아니라 형태로 (`=\s*['"][A-Z][A-Z0-9]{1,9}['"]`) | 실측 **95히트/40파일**이 전부 정당한 enum·판별자 리터럴 — 화이트리스트가 룰보다 커진다 |
+| CR7 | 블록주석 전역 제거 `/\/\*[\s\S]*?\*\//g` | **줄번호가 무너진다** (실측 6줄→4줄). 반드시 줄 안에서만 제거 |
+| 문서 | 진척 열에 `◪` 같은 새 글리프 | 검증 주체가 없고 Obsidian 미러·`build-dashboard.mjs` 가 모르는 기호가 는다. `☐` 는 이미 쓰이던 마커다 |
+| 문서 | 진척 열에 `13/14` 같은 숫자 | 그 자체가 **"verify 가 못 잡는 새 카운트 표기"** 가 되어 룰을 또 확장해야 한다 |
+| 문서 | 룰 E 대상에 `fr-index.md` 추가 | `fr-index.md:265` 의 `issue-tracking 29 FR` 은 **BC 단위 값**이라 총계 대조 시 오탐 EXIT 4 |
+| 문서 | `CLAUDE.md:10` 의 `909건 → 910건` 단독 치환 | 날짜 도장(`2026-07-27 실측`)을 옮기지 않으면 **존재하지 않는 측정 기록**이 된다. 그대로 둔다 |
+
+### 반증돼 범위가 늘지 않은 것
+
+- **`ResolvedActiveProject` 에 `isStale: true` 축 추가** — ready/empty 에서도 「목록을 새로 고치지
+  못했습니다 · 다시 시도」를 비차단 배너로 띄우면 ready 경로의 무음 실패까지 닫힌다. 소비처 2곳 +
+  게이트 + 테스트가 함께 움직여야 해서 **별도 PR**.
+- **트래커를 `<ActiveProjectTracker />` null 컴포넌트로 강등** — `useProjects` 시그니처를 안 건드리고
+  닫히지만, 이미 커밋된 `useTrackActiveProject(enabled)` 계약과 그 테스트 2벌을 함께 갈아엎어야 해
+  변경면이 넓다. **외과적 최소 변경은 `enabled` 게이팅** 쪽이다.
+- **하드코딩 전수 재조사** — 추가 발견 0. 게이트 1 리뷰의 결론이 유지된다.
+
+### 이연 (TODOS.md 등재)
+
+| # | 내용 | 근거 |
+|---|---|---|
+| 1 | **로그아웃이 TanStack Query 캐시를 비우지 않는다.** `authStore.ts` 의 `clearSession` 에 `queryClient.clear()` 히트 0건이라 이전 세션의 프로젝트 목록이 살아 있다 | 이번 PR 의 노출 창(리로드 없는 로그아웃 직후)은 `if (!enabled) return` 이 막지만, **사용자 전환 시 데이터 잔존은 별개의 위험**이다 |
+| 2 | **`fr-index.md:265` 의 `issue-tracking 29 FR` 이 실측 37 과 어긋난다** | **선재 드리프트**이며 이 PR 범위 밖이다. 룰 E 대상에 `fr-index.md` 를 넣지 않은 이유이기도 하다 (BC 단위 값이라 총계와 대조하면 오탐) |
+| 3 | **스펙 §10 「알려진 한계」에 L5(P3 판별식의 시드 4키 한정) 미등재** | 등재가 저장소 관례이나 `docs/specs/…` 는 이번 봉합의 어느 트랙 파일 목록에도 없었다. 한계 자체는 `active-project-contract.test.ts` 의 P3 정의 아래 주석으로 명시돼 있다 |
+
+### 봉합 비-공허 증명 (뮤테이션)
+
+**결과 칸은 비워 둔다.** 뮤테이션은 **커밋된 기준선 위에서만** 유효하고
+([[mutation-test-requires-committed-baseline]]) 오케스트레이터가 커밋 후 일괄 실행한다.
+절차는 항목마다 **주입 → RED 확인 → 원복 → 기준선 GREEN 재확인**이다.
+
+| # | 출처 | 주입 | 기대 | 결과 |
+|---|---|---|---|---|
+| X1 | A(게이트) | `ActiveProjectGate.tsx` 의 `<Button>` 블록 삭제 | `ActiveProjectGate.test.tsx` + AP6 + SA5 **3개 모두 RED** | |
+| X2 | A(게이트) | `issues.index.tsx` 의 `state={activeProject}` 삭제 | **컴파일 에러** (`tsc` EXIT ≠ 0) | |
+| X3 | A(게이트) | `use-resolved-active-project.ts` 의 `retry: () => void refetch()` → `retry: () => {}` | 훅 `retry` 배선 테스트 + AP6/SA5 RED | |
+| X4 | CR3 | `useProjects(false, { enabled })` 의 `{ enabled }` 인자 제거 | 훅 테스트 **와** `ShellLayout` 미인증 테스트 **둘 다** RED (한쪽만이면 아직 절반이다) | |
+| X5 | CR3 | `if (!enabled) return` 삭제 | `T-TR-3` **와** `ShellLayout` 미인증 테스트 | |
+| X6 | CR3 | `&& raw.length > 0` 삭제 | `T-TR-6` | |
+| X7 | CR3 | `const isKnownProject = projects !== undefined` 로 교체 | `T-TR-7` | |
+| X8 | CR1 | 해소 순서 되돌리기 (`if (isError)` 를 최상단으로) | `T-RA-10` | |
+| X9 | CR1 파생 | 빈 캐시 에러 승격 삭제 | `T-RA-12a` | |
+| X10 | CR1 파생 | 빈 캐시 판정을 `projects.length > 0` 로 (죽은 대안) | `T-RA-12b` (URL 키 경로 보호) | |
+| X11 | CR6 | `first` 루프의 `nonEmpty` 되돌리기 | `lib/active-project.test.ts` 1번 | |
+| X12 | CR6 | stored 지점 `nonEmpty` 제거 | `lib/active-project.test.ts` 3번 | |
+| X13 | CR7 | `/* 설명 */ const DEFAULT_PROJECT_KEY = 'ATLAS'` 주입 (M4) | `[P1-상수선언]` 으로 fail. **M1 은 주석 없는 형태만 덮어 필터 구멍을 통과한다** | |
+
+### verify-master-plan 룰 검증 (F9, 트랙 D — 실행 완료)
+
+룰을 추가할 때는 **일부러 위반을 넣어 fail 을 확인**한다 (`CLAUDE.md §강제`). 원복은 git 조작 없이
+사전 백업 파일 `cp` 로 했고, 마지막에 `diff -q` 로 4개 파일 전부 원본과 동일함을 확인했다.
+
+| 방향 | 주입 | 기대 | 실측 |
+|---|---|---|---|
+| 양성 1 | 살아있는 구역에 `131 FR` 잔존 (README `:23`·`:132`, CHANGELOG `:17`) | EXIT 4 | ✅ EXIT 4 · **3건 적발**. 파일명이 `README.md`/`CHANGELOG.md` 로 정확히 보고됨 (`basename` 정정 전에는 전부 `CLAUDE.md` 로 오보고됐다) |
+| 양성 2 | personalization 행을 `☑ D단계` 로 되돌림 | EXIT 4 | ✅ EXIT 4 — `README §1 personalization.md 진척 '☑ D단계' — 실제 미완 D 단계 6건` |
+| 양성 3 | 미완 0인 BC(`automation`) 행을 `☐ D단계` 로 (**역방향**) | EXIT 4 | ✅ EXIT 4 — `미완 D 단계 0건이므로 '☑ D단계' 여야 한다` |
+| 음성 1 | README §7 이력 · CHANGELOG `## [0.1.0]` 동결 블록에 `131 FR` | EXIT 0 | ✅ EXIT 0 (동결 구역 면제 작동) |
+| 음성 2 | 정상 문서 편집 (`FR-UX-02` 상호참조 + `132 FR` 표기) | EXIT 0 | ✅ EXIT 0 |
+| 최종 | 전부 원복 | EXIT 0 · `132/132` | ✅ EXIT 0 · `PASS. FR ID 132/132` |
+
+> **양성 1·2 는 주입 없이도 재현됐다.** 룰을 추가한 직후 문서를 고치기 **전에** 돌린 첫 실행이
+> 이미 EXIT 4 였다 — 즉 이 두 위반은 가설이 아니라 **저장소에 실제로 존재하던 드리프트**다.
+> 룰 추가 전 같은 상태에서 verify 는 **EXIT 0** 이었다. 그게 이 룰이 공허하지 않다는 증거다.
+
+### 수정 후 재검증
+
+수치는 §검증 증거 → **전체 스위트 — 봉합 전 / 봉합 후** 표에 적는다. 「봉합 후」 칸은
+오케스트레이터가 전 트랙 봉합 완료 후 실측으로 채운다 — **추측으로 채우지 않는다.**
+
+### 미확인 (추측하지 않음)
+
+- **E2E 봉합 후 재실행.** 봉합 전 수치(신규 7/7 · 회귀 35/35)는 **코드리뷰 이전 커밋 메시지**가 출처다.
+  실행 레시피는 포트 5174 + `baseURL`·`webServer.url` 을 **둘 다** 덮은 임시 config 다 —
+  `playwright.config.ts` 의 `reuseExistingServer: !CI` 때문에 5173 에 무엇이든 떠 있으면 조용히
+  재사용되고, 실제로 7/28 에 main 트리 dev 서버가 5173 을 점유한 사고가 있었다.
+  `apps/web/test-results/.last-run.json` 은 어떤 스펙이 돌았는지 기록이 없고 gitignore 대상이라
+  **증거로 인용하지 않는다**.
+  > **위험 수준**. 미확인이지만 고위험은 아니다 — `e2e/active-project.spec.ts` 의 대기가 `expect.poll`
+  > 이라 CR3 의 지연 기록을 이미 흡수하고, `ZETA` 가 단일 정본 시드(`project-handlers.ts`)에 있다.
