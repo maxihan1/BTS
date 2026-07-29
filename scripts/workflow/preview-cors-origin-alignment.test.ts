@@ -21,10 +21,44 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const VITE_CONFIG = path.join(REPO_ROOT, 'apps/web/vite.config.ts');
-const APP_YML = path.join(REPO_ROOT, 'backend/modules/app/src/main/resources/application.yml');
 const BACKEND_CI = path.join(REPO_ROOT, '.github/workflows/backend-ci.yml');
-const PLAYWRIGHT_CONFIG = path.join(REPO_ROOT, 'apps/web/playwright.config.ts');
+
+/**
+ * 이 판별식이 의존하는 입력 파일과, backend-ci 트리거에서 그 파일을 덮는 경로 패턴.
+ *
+ * ## ★ 왜 파일 경로와 CI 트리거 요구를 **한 선언**에서 파생시키나
+ * 따로 두면 갈라진다. 이 PR 의 코드리뷰에서 실제로 갈라졌다 — `playwright.config.ts` 를
+ * 입력으로 추가하면서 트리거 요구 목록에는 넣지 않아, `reuseExistingServer` 를 되돌리는 PR 이
+ * backend-ci 를 띄우지 않고 그 단언을 **0회 실행**하는 상태가 됐다. 봉인 안에서 봉인이 막으려던
+ * 결함 양식을 재생산한 것이다.
+ *
+ * 그래서 입력을 여기 한 곳에만 적고, 읽기 경로와 트리거 요구를 **둘 다 여기서 파생**시킨다.
+ * 새 입력을 추가하면 CI 배선 단언이 자동으로 그 트리거를 요구한다.
+ */
+const INPUTS = {
+  vite: { file: 'apps/web/vite.config.ts', coveredBy: 'apps/web/vite.config.ts' },
+  playwright: { file: 'apps/web/playwright.config.ts', coveredBy: 'apps/web/playwright.config.ts' },
+  appYml: {
+    file: 'backend/modules/app/src/main/resources/application.yml',
+    coveredBy: 'backend/**',
+  },
+  // 판별식 자신. 런타임에 읽지는 않지만, 이 파일을 고치는 PR 에서도 CI 가 돌아야 한다.
+  self: {
+    file: 'scripts/workflow/preview-cors-origin-alignment.test.ts',
+    coveredBy: 'scripts/workflow/**',
+  },
+} as const;
+
+/** 입력 파일 원문. 읽는 경로와 CI 트리거 요구가 같은 선언에서 나온다. */
+function read(input: { readonly file: string }): string {
+  return fs.readFileSync(path.join(REPO_ROOT, input.file), 'utf8');
+}
+
+/** `coveredBy` 패턴이 실제로 그 파일을 덮는지. 잘못 선언한 짝을 잡는다. */
+function globCovers(glob: string, file: string): boolean {
+  if (glob === file) return true;
+  return glob.endsWith('/**') && file.startsWith(glob.slice(0, -2));
+}
 
 /**
  * vite 가 로컬에서 브라우저에 서빙하는 블록.
@@ -38,16 +72,14 @@ const VITE_SERVE_BLOCKS = ['server', 'preview'] as const;
 const CI_TRIGGERS = ['pull_request', 'push'] as const;
 
 /**
- * 이 판별식의 **입력** 파일 경로. 어느 쪽이 바뀌어도 판별식이 CI 에서 돌아야 한다.
+ * 트리거에 반드시 있어야 하는 경로 — [INPUTS] 에서 파생한다(중복 제거).
  *
  * 판별식을 만들어도 CI 가 안 돌리면 로컬 1회성 확인으로 끝나고 썩는다
  * (`pnpm test:workflow` 를 어느 CI 도 돌리지 않던 2026-07-27 사고와 같은 양식).
  */
 const REQUIRED_CI_TRIGGER_PATHS = [
-  'backend/**', //               application.yml 의 CORS 허용목록
-  'scripts/workflow/**', //      이 판별식 자신
-  'apps/web/vite.config.ts', //  vite 의 로컬 포트
-] as const;
+  ...new Set(Object.values(INPUTS).map((input) => input.coveredBy)),
+];
 
 /** 파서가 고장났을 때 차집합이 공허하게 통과하는 것을 막는 하한. */
 const MIN_CORS_ORIGINS = 1;
@@ -66,7 +98,7 @@ interface ViteServeBlock {
  * @returns 블록 이름 → 파싱된 설정. 파싱 실패한 블록은 누락되고 양성 대조군 테스트가 잡는다.
  */
 function viteServeBlocks(): Map<string, ViteServeBlock> {
-  const src = fs.readFileSync(VITE_CONFIG, 'utf8');
+  const src = read(INPUTS.vite);
   const blocks = new Map<string, ViteServeBlock>();
 
   for (const name of VITE_SERVE_BLOCKS) {
@@ -83,7 +115,7 @@ function viteServeBlocks(): Map<string, ViteServeBlock> {
 
 /** `vite.config.ts` 전체에 등장하는 `port: <숫자>` 리터럴 수. 알려진 블록 밖의 포트를 탐지한다. */
 function vitePortLiteralCount(): number {
-  const src = fs.readFileSync(VITE_CONFIG, 'utf8');
+  const src = read(INPUTS.vite);
   return [...src.matchAll(/port:\s*\d+/g)].length;
 }
 
@@ -93,7 +125,7 @@ function vitePortLiteralCount(): number {
  * 기본값을 보는 이유. 로컬 손검증과 CI 는 환경변수를 주지 않으므로 이 기본값이 곧 실제 허용목록이다.
  */
 function corsAllowedOriginDefaults(): Set<string> {
-  const src = fs.readFileSync(APP_YML, 'utf8');
+  const src = read(INPUTS.appYml);
   const defaults = /allowed-origins:\s*\$\{BTS_CORS_ALLOWED_ORIGINS:([^}]*)\}/.exec(src)?.[1] ?? '';
 
   return new Set(
@@ -236,8 +268,22 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
     );
   });
 
+  test('선언한 coveredBy 패턴이 실제로 그 입력 파일을 덮는다', () => {
+    // 트리거 요구를 INPUTS 에서 파생시키므로, 짝을 잘못 적으면 위 단언이 **틀린 경로를 요구**하며
+    // 통과한다. 짝 자체가 맞는지 보는 눈이 따로 있어야 한다.
+    const mismatched = Object.entries(INPUTS)
+      .filter(([, input]) => !globCovers(input.coveredBy, input.file))
+      .map(([key, input]) => `${key}. '${input.coveredBy}' 가 '${input.file}' 를 덮지 않는다`);
+
+    assert.deepEqual(
+      mismatched,
+      [],
+      `INPUTS 의 coveredBy 선언이 실제 파일 경로를 덮지 않는다.\n${mismatched.join('\n')}`,
+    );
+  });
+
   test('E2E 가 이미 떠 있는 서버를 재사용하지 않는다', () => {
-    const src = fs.readFileSync(PLAYWRIGHT_CONFIG, 'utf8');
+    const src = read(INPUTS.playwright);
 
     // preview(프로덕션 빌드)와 dev 가 같은 포트를 쓰게 됐으므로, 손검증용 preview 를 켜 둔 채
     // E2E 를 돌리면 Playwright 가 그것을 재사용한다. 프로덕션 빌드는 MSW 가 꺼져 있어
@@ -249,6 +295,19 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
         `preview 와 dev 가 같은 포트(5173)를 쓰므로 재사용을 허용하면 E2E 가 프로덕션 빌드를 ` +
         `잡고 돌 수 있다. false 면 Playwright 가 항상 자기 dev 서버를 띄우고, 포트가 점유돼 ` +
         `있으면 strictPort 때문에 즉시 명시적으로 실패한다.`,
+    );
+
+    // ★존재 단언만으로는 절반만 닫힌다. `false` 를 남겨 둔 채 조건부 형태를 **추가**하면
+    // 위 match 는 통과하는데 실제 동작은 되돌아간다. 옛 형태의 **부재**까지 봐야 봉인이다.
+    const conditional = [...src.matchAll(/reuseExistingServer:\s*([^,\n]+)/g)]
+      .map((m) => (m[1] ?? '').trim())
+      .filter((value) => value !== 'false');
+
+    assert.deepEqual(
+      conditional,
+      [],
+      `reuseExistingServer 에 false 가 아닌 값이 남아 있다: ${conditional.join(', ')}\n` +
+        `조건부(!process.env['CI'] 등)로 되돌리면 로컬에서 preview 를 재사용한다.`,
     );
   });
 });
