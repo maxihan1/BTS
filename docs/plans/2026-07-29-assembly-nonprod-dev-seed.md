@@ -145,31 +145,21 @@ prod 음성 테스트는 태그 없이 두면 기본 `test` 잡(`backend-ci.yml:
 
 ---
 
-### Task 1. dev 시드 설정 표면 (DevSeedProperties)
+> **리뷰 반영 (2026-07-29 `/plan-eng-review`).** 아래 3건이 계획에 이미 적용돼 있다 —
+> **D8 축소**(설정 전용 클래스 폐기, 생성자 `@Value` 흡수 → 7 task→6, 11파일→8, 신규 클래스 3→2) ·
+> **이슈 1A**(`SYSTEM_ADMIN` → `CREATE_PROJECT` 전역 부여) · **이슈 2A**(`@Profile` 부정 → 허용목록).
+
+### Task 1. 사용자 + 로컬 자격증명 시드 (FR-1 · FR-2 · FR-8)
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/app/src/main/kotlin/com/bts/app/DevSeedProperties.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/DevSeedPropertiesTest.kt`]
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederTest.kt`, `backend/modules/app/src/main/resources/application.yml`]
 - depends-on: []
 
-**RED**. `DevSeedPropertiesTest` — 환경변수 미설정 시 `username="alice"`, `password="password"`, 설정 시 override.
-실패 예상. `DevSeedProperties` 클래스 없음.
-
-**GREEN**. `@ConfigurationProperties("bts.dev-seed")` data class. `username`/`password`/`email`/`displayName` 기본값.
-`application.yml` 에 `bts.dev-seed.password: ${BTS_DEV_SEED_PASSWORD:password}` 배선.
-
-**REFACTOR**. KDoc 에 **D8 근거** 명시 — 기본값이 기존 `data-dev.sql` 이 이미 문서화한 값과 동일하므로 새 비밀이 도입되지 않는다.
-
-**검증**. `./gradlew :modules:app:test --tests '*DevSeedPropertiesTest'`
-
----
-
-### Task 2. 사용자 + 로컬 자격증명 시드 (FR-1 · FR-2 · FR-8)
-
-**메타**.
-- agent: `security-engineer`
-- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederTest.kt`]
-- depends-on: [1]
+**설정 표면 (D8 축소 반영).** 전용 프로퍼티 클래스를 만들지 않고 생성자 `@Value` 로 흡수한다 —
+`bts.dev-seed.username:alice` · `bts.dev-seed.password:${BTS_DEV_SEED_PASSWORD:password}` ·
+`bts.dev-seed.email:alice@bts.local` · `bts.dev-seed.display-name`.
+기본 비밀번호가 기존 `data-dev.sql` 이 이미 문서화한 값과 같으므로 **새 비밀이 도입되지 않는다**(D8 근거).
 
 **RED**. 시드 실행 후 (a) `UserRepository.findByUsername("alice")` 가 non-null,
 (b) **`LocalCredentialService.verify` 가 시드한 평문으로 통과** — 해시가 실제로 유효함을 행 존재가 아니라 **검증 성공**으로 단언한다.
@@ -185,62 +175,77 @@ prod 음성 테스트는 태그 없이 두면 기본 `test` 잡(`backend-ci.yml:
 
 ---
 
-### Task 3. 시스템 관리자 역할 부여 (FR-3)
+### Task 2. 프로젝트 생성 권한 부여 (FR-3 — **이슈 1A 로 재정의**)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederTest.kt`]
+- depends-on: [1]
+
+> **⚠️ 원안 폐기 — `SYSTEM_ADMIN` 을 주면 안 된다.** `MfaEnforcementPolicy.kt:24` *"관리자(SYSTEM_ADMIN)는
+> 무조건 강제 대상이다"* · `:71` `systemPermissionResolver.isSystemAdmin(userId) ||` → `JwtIssuer.kt:109` 가
+> `mfa_enrollment_required=true` 를 토큰에 박고 → `MfaEnrollmentGateFilter.kt:54` 가 허용목록 밖 **전 경로 403**.
+> 즉 원안대로면 **로그인은 되지만 어떤 화면에도 못 간다** — 이 작업의 유일한 목적이 파괴된다.
+
+**RED**. 3 단언.
+- (a) `IdentityAccessSystemPermissionResolver.hasGlobalPermission(alice.id, CREATE_PROJECT)` = **true**
+- (b) `isSystemAdmin(alice.id)` = **false** (관리자가 아님을 명시적으로 고정)
+- (c) **`MfaEnforcementPolicy.evaluate(alice.id)` = false** ← 이슈 1 회귀 가드. 훗날 누가 `SYSTEM_ADMIN` 을
+  되살리면 이 단언이 즉시 깨진다. **행 존재가 아니라 게이트 통과 여부가 계약이다.**
+
+**GREEN**. 전역 부여 1행 삽입 (`grantRepo` 경로 — `IdentityAccessSystemPermissionResolver.kt:66`
+`hasGrant(actorId, permission) || isSystemAdmin(actorId)` 의 앞항).
+
+**REFACTOR**. 두 쓰기가 하나의 트랜잭션임을 KDoc 에 명시. **왜 관리자가 아닌지**(MFA 게이트 연쇄)를
+KDoc 에 인용과 함께 남긴다 — 근거 없이 보면 "관리자로 올리면 편한데" 로 되돌리기 쉽다.
+
+**검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeederTest'`
+
+---
+
+### Task 3. 멱등 + 부분 상태 보정 (FR-4 · E1 · E2 · E3 · E6)
 
 **메타**.
 - agent: `security-engineer`
 - files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederTest.kt`]
 - depends-on: [2]
 
-**RED**. 시드 후 `SystemRoleAssignmentRepository.findRolesByUser(alice.id)` 가 `SYSTEM_ADMIN` 포함.
-**추가 단언** — `IdentityAccessSystemPermissionResolver` 가 해당 사용자를 시스템 관리자로 **실제 판정**한다
-(행 존재가 아니라 판정 결과가 계약이다. #321 D5 로 비-prod 도 실판정이므로 이게 진짜 성공 조건).
+**RED**. 4 시나리오 (D8 축소로 시더 테스트 파일에 합침).
+- E1 2회 연속 시드 → `users` 행 수 1 불변, `created_at` 불변
+- E2 사용자만 있고 자격증명 없음 → 자격증명만 생성
+- E3 부여 이미 존재 → 제약 위반 없이 통과
+- **E6 기존 비밀번호가 다름 → 덮어쓰지 않는다** (기존 해시 문자열 불변을 직접 단언)
 
-**GREEN**. `systemRoleAssignmentRepository.assign(user.id, SystemRole.SYSTEM_ADMIN)` 추가.
+**GREEN**. 각 쓰기 앞에 존재 조회(`findByUsername` / 자격증명 조회 / `hasGrant`)를 두고 없을 때만 삽입.
 
-**REFACTOR**. 세 쓰기가 하나의 트랜잭션임을 KDoc 에 명시 (부분 시드 방지).
+**REFACTOR**. E6 의 「덮어쓰지 않음」이 **의도된 선택**임을 KDoc 에 남긴다 — 멱등 원칙이 편의보다 우선.
 
 **검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeederTest'`
 
 ---
 
-### Task 4. 멱등 + 부분 상태 보정 (FR-4 · E1 · E2 · E3 · E6)
-
-**메타**.
-- agent: `security-engineer`
-- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederIdempotencyTest.kt`]
-- depends-on: [3]
-
-**RED**. 4 시나리오.
-- E1 2회 연속 시드 → `users` 행 수 1 불변, `created_at` 불변
-- E2 사용자만 있고 자격증명 없음 → 자격증명만 생성
-- E3 역할 이미 존재 → `UNIQUE(user_id, role)` 위반 없이 통과
-- **E6 기존 비밀번호가 다름 → 덮어쓰지 않는다** (기존 해시 문자열 불변을 직접 단언)
-
-**GREEN**. 각 쓰기 앞에 존재 조회(`findByUsername` / 자격증명 조회 / `findRolesByUser`)를 두고 없을 때만 삽입.
-
-**REFACTOR**. E6 의 「덮어쓰지 않음」이 **의도된 선택**임을 KDoc 에 남긴다 — 멱등 원칙이 편의보다 우선.
-
-**검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeederIdempotencyTest'`
-
----
-
-### Task 5. ApplicationRunner 배선 + prod 격리 L1/L2 + 실패 비대칭 (FR-5 · FR-6 · FR-7 · FR-9 · D9)
+### Task 4. ApplicationRunner 배선 + prod 격리 L1/L2 + 실패 비대칭 (FR-5 · FR-6 · FR-7 · FR-9 · D9 · **이슈 2A**)
 
 **메타**.
 - agent: `security-engineer`
 - files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeedRunner.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeedRunnerTest.kt`]
-- depends-on: [4]
+- depends-on: [3]
 
-**RED**. 3 시나리오.
-- 비-prod 활성 프로파일 → `seeder.seed()` 1회 호출 + INFO 로그
+**RED**. 4 시나리오.
+- 허용 프로파일(무프로파일=`default`) → `seeder.seed()` 1회 호출 + INFO 로그
 - **활성 프로파일에 `prod` 포함 → 예외 전파(기동 실패)**. 조용한 return 이면 실패해야 한다
   (음성 판별자 확보 — 메모리 `negative-guard-needs-body-discriminator`)
+- **모르는 프로파일(`staging`) → 시드 미실행** ← 이슈 2A 허용목록 가드. 부정(`!prod`)이면 통과해버린다
 - **`seeder.seed()` 가 예외 → ERROR 로그 후 정상 반환**(부팅 계속). D9 비대칭
 
-**GREEN**. `@Component @Profile("!prod") class NonProdDevSeedRunner(...) : ApplicationRunner`.
-`run()` 진입부에서 `environment.activeProfiles` 검사 → `prod` 면 `IllegalStateException`.
+**GREEN**. `@Component @Profile("default | dev | local") class NonProdDevSeedRunner(...) : ApplicationRunner`.
+`run()` 진입부에서 `environment.activeProfiles` 를 **같은 허용목록**과 대조 → 불일치면 `IllegalStateException`.
 `seeder.seed()` 는 try/catch (트랜잭션 경계 **밖**이라 롤백 후 로그만 남는다).
+
+> **이슈 2A 근거.** 부정(`!prod`)은 앞으로 생기는 모든 프로파일에 대해 **fail-open** 이다.
+> 허용목록은 fail-closed. 조립 앱의 실제 기본 부팅은 **무프로파일**이므로 `default` 를 반드시 포함해야 한다
+> (`application-dev.yml` 은 `dev` 활성 시에만 병합된다 — 실측).
+> L1(빈 등록)과 L2(런타임 단언)가 **같은 목록 상수**를 공유해야 한 쪽만 고치는 drift 가 안 생긴다.
 
 **REFACTOR**. KDoc 에 **순서 근거**(G4) 기록 — `FlywayAssemblyConfig:45-65` 가 `InitializingBean` 이라
 refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 실행. **`@PostConstruct`/`InitializingBean` 으로
@@ -250,17 +255,18 @@ refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 
 
 ---
 
-### Task 6. L3 양방향 봉인 — 실부팅 대조 (§6 L3)
+### Task 5. L3 양방향 봉인 — 실부팅 대조 (§6 L3)
 
 **메타**.
 - agent: `security-engineer`
 - files: [`backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeedBootTest.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/ProdDevSeedAbsenceBootTest.kt`]
-- depends-on: [5]
+- depends-on: [4]
 
 **RED**. 두 방향을 **각각 다른 태스크에서** 돈다.
 - **양성** `NonProdDevSeedBootTest` — `@Tag("nonprod-assembly")` + `RANDOM_PORT`. 실부팅 후
-  `users`/`local_credentials`/`system_role_assignments` 각 1행 + **실 HTTP `POST /login` 200**
-  (행 존재가 아니라 로그인 성공이 계약)
+  `users`/`local_credentials`/전역 부여 각 1행 + **실 HTTP `POST /login` 200**
+  (행 존재가 아니라 로그인 성공이 계약) + **로그인 토큰으로 `GET /whoami` 200 · `canCreateProject=true` ·
+  `mfaEnrollmentRequired=false`** ← 이슈 1 을 실서버 응답으로 못 박는다
 - **음성** `ProdDevSeedAbsenceBootTest` — 기존 `ProdAssemblyHttpTestBase` 상속(prod 고정, 태그 없음).
   `NonProdDevSeedRunner` 빈 **0개** + `users` **0행**
 
@@ -273,27 +279,30 @@ refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 
 
 ---
 
-### Task 7. 뮤테이션 실증 + ADR + 문서 동기화
+### Task 6. 뮤테이션 실증 + ADR + 문서 동기화
 
 **메타**.
 - agent: `security-engineer`
 - files: [`docs/decisions/2026-07-29-assembly-nonprod-dev-seed.md`, `docs/plans/2026-07-29-assembly-nonprod-dev-seed.md`]
-- depends-on: [6]
+- depends-on: [5]
 
 **RED/GREEN 해당 없음** (검증 + 문서 task).
 
-**뮤테이션 5종** — 각각 주입 후 **실컨텍스트 부팅**으로 RED 확인, 원복. 커밋 후에만 수행
+**뮤테이션 6종** — 각각 주입 후 **실컨텍스트 부팅**으로 RED 확인, 원복. 커밋 후에만 수행
 (메모리 `mutation-test-requires-committed-baseline`).
 
 | # | 주입 | 기대 RED |
 |---|---|---|
-| M1 | `@Profile("!prod")` 제거 | 음성 부팅 테스트 (빈 0개 단언) |
+| M1 | `@Profile` 허용목록 제거 | 음성 부팅 테스트 (빈 0개 단언) |
 | M2 | L2 런타임 단언을 조용한 `return` 으로 교체 | 러너 단위 테스트 prod 시나리오 |
-| M3 | 멱등 존재 조회 제거 | 멱등 테스트 (중복/제약 위반) |
-| M4 | `assign(SYSTEM_ADMIN)` 호출 제거 | 역할 판정 테스트 + 양성 부팅 |
+| M3 | 멱등 존재 조회 제거 | 멱등 시나리오 (중복/제약 위반) |
+| M4 | 전역 부여 삽입 제거 | `hasGlobalPermission` 단언 + 양성 부팅 `canCreateProject` |
 | M5 | 러너를 `InitializingBean` 으로 이동 (순서 파괴) | 양성 부팅 (테이블 부재로 실패) |
+| **M6** | 전역 부여를 **`SYSTEM_ADMIN` 부여로 되돌림** | `MfaEnforcementPolicy.evaluate=false` 단언 + 양성 부팅 `mfaEnrollmentRequired` |
 
 **★M2 는 필수** — 조용한 스킵으로 바꿔도 음성 테스트가 통과하면 그 테스트는 **공허**하다.
+**★M6 은 이슈 1 전용 회귀 가드** — "관리자로 올리면 편한데" 로 되돌리는 순간 red 여야 한다.
+**★허용목록 drift** — L1 과 L2 가 같은 상수를 공유하는지 M1 이 실제로 판별하는지 확인할 것.
 
 **ADR**. `docs/decisions/2026-07-29-assembly-nonprod-dev-seed.md` — D4~D9 결정과 기각안(Flyway·통합) 근거 기록.
 
@@ -305,12 +314,152 @@ refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 
 
 ## Plan 메타
 
-- task 수: 7
-- 예상 wave: **7 (전량 직렬)** — T2·T3·T4 가 `NonProdDevSeeder.kt` 를 공유하고 T5→T6→T7 이 선행 산출물에 의존.
+- task 수: **6** (리뷰 D8 축소로 7→6)
+- 파일 수: **8** · 신규 클래스 **2** (`NonProdDevSeeder` · `NonProdDevSeedRunner`)
+- 예상 wave: **6 (전량 직렬)** — T1·T2·T3 이 `NonProdDevSeeder.kt` 를 공유하고 T4→T5→T6 이 선행 산출물에 의존.
   파일 겹침 자동 직렬화 규칙에 걸린다. 메모리 `bts-plan-wave-gradle-module-compile`(같은 Gradle 모듈 동시 컴파일 충돌)과도 정합.
 - TDD 강제: yes (`test:` 커밋이 `feat:` 보다 선행)
 - 병렬 dispatch: **없음** (전 task 가 `:modules:app` 단일 모듈 + 파일 공유)
-- 추가 검증: ktlint · detekt `--rerun-tasks` · 뮤테이션 5종 · 브라우저 눈확인
+- 추가 검증: ktlint · detekt `--rerun-tasks` · **뮤테이션 6종** · 브라우저 눈확인
 - CI: 신규 배선 **불필요** (실측 확인 — `backend-ci.yml:139-141` 기존 스텝이 태그로 자동 수집)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-29)
+
+**Step 0 범위 도전 → 축소 채택 (D8).** 복잡도 체크 트리거(11파일/3클래스 > 8파일/2클래스 기준).
+`DevSeedProperties` 전용 클래스를 생성자 `@Value` 로 흡수해 **6 task · 8파일 · 2클래스**로 축소.
+`NonProdDevSeeder`↔`NonProdDevSeedRunner` 분리는 **축소 불가** — D9 가 트랜잭션 경계 **밖** catch 를 요구하고,
+합치면 자기 호출(self-invocation)로 `@Transactional` 프록시가 우회된다(메모리 `transaction-self-invocation-requires-new`).
+
+**이슈 1 — [P1] (confidence 9/10) 계획이 자기 목적을 파괴했다. → 1A 채택.**
+`MfaEnforcementPolicy.kt:24` *"관리자(SYSTEM_ADMIN)는 무조건 강제 대상이다"* · `:71`
+`systemPermissionResolver.isSystemAdmin(userId) ||` → `JwtIssuer.kt:109` 가 `mfa_enrollment_required=true` 를
+토큰에 박고 → `MfaEnrollmentGateFilter.kt:54` 가 허용목록 밖 **전 경로 403**.
+원안(FR-3 `SYSTEM_ADMIN` 부여)대로면 **로그인은 성공하나 어떤 화면에도 도달 못 한다** — 유일한 목적이 파괴된다.
+처방 = `IdentityAccessSystemPermissionResolver.kt:66` `hasGrant(actorId, permission) || isSystemAdmin(actorId)` 의
+**앞항**을 쓴다. `CREATE_PROJECT` 전역 부여 1행이면 프로젝트 생성이 열리고 MFA 강제는 켜지지 않는다.
+> **Prior learning applied**: `bts-assembly-test-pat-bearer-and-httpclient` (confidence 9/10, 2026-07-27)
+> — *"SYSTEM_ADMIN 은 MFA 미등록 시 그 게이트에서 403"*. 이 기록이 없었으면 구현 완료 후 브라우저에서야 발견했다.
+
+**이슈 2 — [P2] (confidence 8/10) `@Profile("!prod")` 는 fail-open. → 2A 채택.**
+부정은 앞으로 생기는 모든 프로파일을 자동 포함한다(`staging`·`demo` 등). 허용목록으로 뒤집어 fail-closed.
+조립 앱 기본 부팅이 **무프로파일**이므로 `default` 를 반드시 포함(실측 — `application-dev.yml` 은 `dev` 활성 시에만 병합).
+L1(빈 등록)과 L2(런타임 단언)가 **같은 상수**를 공유해 drift 를 막는다.
+
+**Code Quality — 이슈 0건(주 보고).** 부록 1건 — 멱등 「조회 후 삽입」은 원리상 TOCTOU(검사·사용 시점 차)를 갖는다
+(confidence 6/10). 동시 부팅 2 프로세스에서만 발생하고 D9(시드 실패=ERROR 로그+부팅 계속)가 이미 흡수하므로 미조치.
+
+**Performance — 이슈 0건.** 부팅당 조회 3 + 삽입 최대 3. N+1 없음, 캐시 대상 없음.
+
+#### 테스트 커버리지 다이어그램
+
+```
+CODE PATHS                                        USER FLOWS
+[+] NonProdDevSeeder                              [+] dev 손검증 여정
+  ├── seed()                                        ├── [GAP→T5] 로그인 alice/password → 200
+  │   ├── [GAP→T1] 사용자 부재 → 생성                ├── [GAP→T5] whoami canCreateProject=true
+  │   ├── [GAP→T3] 사용자 존재 → 무변경               ├── [GAP→T5] whoami mfaEnrollmentRequired=false ★이슈1
+  │   ├── [GAP→T1] 자격증명 생성(실 Argon2 verify)    └── [수동]   /projects/new 에서 프로젝트 생성 (눈확인)
+  │   ├── [GAP→T3] 자격증명 존재 → 해시 불변(E6)
+  │   ├── [GAP→T2] 전역 부여 삽입 → hasGlobalPermission=true
+  │   ├── [GAP→T2] isSystemAdmin=false ★이슈1 회귀가드
+  │   └── [GAP→T3] 부여 존재 → 제약위반 0
+[+] NonProdDevSeedRunner
+  ├── run()
+  │   ├── [GAP→T4] 허용 프로파일 → seed() 1회 + INFO
+  │   ├── [GAP→T4] prod 포함 → 예외(기동 실패)  ★음성 판별자
+  │   ├── [GAP→T4] staging(미허용) → 미실행     ★이슈2 가드
+  │   └── [GAP→T4] seed() 예외 → ERROR 로그 + 정상 반환 (D9)
+[+] 봉인 (실부팅)
+  ├── [GAP→T5] 양성: 비-prod 조립 → 3행 + 로그인 200   [→E2E]
+  └── [GAP→T5] 음성: prod 조립 → 빈 0개 + users 0행    [→E2E]
+
+COVERAGE: 계획 반영 후 16/16 (100%)  |  현재 구현 0/16 (구현 전이므로 전량 GAP 이 정상)
+QUALITY(계획 기준): ★★★:16  |  미할당 GAP: 0
+```
+
+**모든 GAP 이 특정 task 에 배정돼 있다** — 「완료기준만 추가하고 소유자를 안 정하는」 실패
+(learning `completion-criterion-without-task-or-feasibility`)를 피했다.
+
+#### 실패 모드 (신규 코드경로별)
+
+| 코드경로 | 현실적 프로덕션 실패 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| `seed()` 삽입 | DB 제약 위반 / 연결 끊김 | T3·T4 | D9 ERROR 로그 + 부팅 계속 | 로그인 실패(계정 없음) — 로그에 원인 명시 |
+| 러너 프로파일 판정 | 새 프로파일 추가로 fail-open | T4(staging 시나리오) | 허용목록 fail-closed | 시드 미실행(안전측) |
+| 순서(Flyway 이전 실행) | 리팩터로 `InitializingBean` 이동 | T6 M5 뮤테이션 | 없음(구조로 보장) | 부팅 실패 — 즉시 관측 |
+| 전역 부여 누락 | 리팩터로 삭제 | T2·T5·M4 | 없음 | `/projects/new` 403 |
+| **SYSTEM_ADMIN 복귀** | "편하니까" 되돌림 | **T2(c)·T5·M6** | 없음 | 전 화면 403 — **이슈 1 재발** |
+
+**critical gap(테스트 0 + 에러처리 0 + 무음) = 0건.**
+
+#### NOT in scope (검토 후 명시적 이연)
+
+| 항목 | 사유 |
+|---|---|
+| 프로젝트·이슈·추가 사용자 시드 | D4 최소 결정. 프로젝트는 실 UI 경로로 만드는 것이 손검증 가치가 더 크다 |
+| 기존 `data-dev.sql` 2개 통합/삭제 | D6. 다른 BC 파일을 건드리면 #321 의 「다른 BC 0줄」이 깨진다 |
+| `classpath*` 로 모듈 시드 되살리기 | D6 에서 기각 — Flyway 대비 실행 순서 미검증 |
+| `/admin/*` 관리자 화면 손검증 | 이슈 1A 로 SYSTEM_ADMIN 을 안 주므로 도달 불가. 별도 과제 |
+| MFA 등록 상태 시드 | 1B 기각 — 로그인마다 TOTP 코드가 필요해 손검증이 더 번거로워진다 |
+| prod 시드 전략 | 해당 없음 — 영구 제외 |
+
+#### What already exists (재사용 vs 재구축)
+
+| 기존 자산 | 이 계획의 처리 |
+|---|---|
+| `UserRepository.create` · `findByUsername` | **재사용** (신규 도메인 로직 0) |
+| `LocalCredentialService.store/verify` (실 Argon2id) | **재사용** — 해시 리터럴을 저장소에 남기지 않는 근거 |
+| `IdentityAccessSystemPermissionResolver.hasGlobalPermission` | **재사용** — 1A 처방의 근거 |
+| `permission_schemes`(V008) · `workflow_schemes`(V201) 시드 | **재사용** — 5계층 전제가 낡았음을 실증 |
+| `data-dev.sql` 2개 | **의도적 미사용** (D6). 조립에서는 비활성 유지, 단독 모듈 실행용으로 존속 |
+| `nonProdAssemblyTest` 태스크 + `backend-ci.yml:139-141` | **재사용** — CI 신규 배선 0 |
+| `ProdAssemblyHttpTestBase` | **재사용** — 음성 봉인 테스트의 기반 |
+| `CreateLocalAccountService` | **의도적 미사용** (G2). 무작위 비밀번호 + `mustChange=true` 라 목적 불일치 |
+
+#### Worktree 병렬화
+
+**Sequential implementation, no parallelization opportunity.** 6 task 전량이 `:modules:app` 단일 모듈이고
+T1·T2·T3 이 `NonProdDevSeeder.kt` 를 공유한다.
+
+#### Outside voice
+
+**미실행.** `codex` CLI 미설치(`codex: NOT installed`)이고, 대체 경로인 Claude sub-agent dispatch 는
+**Maxi 의 세션 지시(에이전트 호출 금지)** 로 사용하지 않았다. ⇒ 이번 리뷰는 **단일 모델**이다.
+교차모델 검증 부재는 #308·#309·#310 과 동형의 잔여 위험이며 게이트 2 에서 재고 대상.
+
+#### Implementation Tasks
+
+이 리뷰의 findings 에서 파생된 것만. 계획 본문 Task 1~6 에 이미 흡수돼 있으므로 중복 나열하지 않는다.
+
+- [x] **T-R1 (P1, human: ~2h / CC: ~10min)** — `NonProdDevSeeder` — `SYSTEM_ADMIN` 대신 `CREATE_PROJECT` 전역 부여
+  - Surfaced by: Architecture — 이슈 1 (`MfaEnforcementPolicy.kt:24,71` → `MfaEnrollmentGateFilter.kt:54`)
+  - Files: `backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`
+  - Verify: `MfaEnforcementPolicy.evaluate(alice.id) == false` + 양성 부팅 `whoami.mfaEnrollmentRequired == false`
+  - → **계획 Task 2 에 반영 완료**
+- [x] **T-R2 (P2, human: ~1h / CC: ~10min)** — `NonProdDevSeedRunner` — `@Profile` 부정 → 허용목록
+  - Surfaced by: Architecture — 이슈 2 (fail-open 프로파일 판정)
+  - Files: `backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeedRunner.kt`
+  - Verify: `staging` 프로파일 시나리오에서 시드 미실행 + M1 뮤테이션 RED
+  - → **계획 Task 4 에 반영 완료**
+- [x] **T-R3 (P2, human: ~30min / CC: ~5min)** — 뮤테이션 — M6(SYSTEM_ADMIN 복귀) 추가
+  - Surfaced by: Failure modes — 「SYSTEM_ADMIN 복귀」가 이슈 1 재발 경로
+  - Files: `docs/plans/2026-07-29-assembly-nonprod-dev-seed.md` Task 6
+  - Verify: M6 주입 시 `evaluate=false` 단언 RED
+  - → **계획 Task 6 에 반영 완료**
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex CLI 미설치 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 2 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | UI 변경 0 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** ENG CLEARED — 구현 착수 가능. 이슈 2건(P1 1 · P2 1) 전량 계획에 반영 완료, 미해결 0.
+**단일 모델 리뷰** — outside voice 미실행(codex 미설치 + 에이전트 호출 금지 지시)이므로 교차모델 확인은 없다.
+
+NO UNRESOLVED DECISIONS
