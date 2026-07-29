@@ -129,6 +129,188 @@ Maxi 확정 결정 4건 (D4·D5·D6·D8) + 스펙 단계 파생 결정 2건 (D7 
 | G4 | 실행 순서는 이미 구조적으로 참 (`FlywayAssemblyConfig` 가 `InitializingBean`) | 가정 확인. 회귀 방지용 순서 뮤테이션은 유지 |
 | G5 | 시드 실패 시 부팅을 죽일지 미정 | D9 신설 — prod 격리 위반만 기동 실패, 시드 실패는 ERROR 로그 + 부팅 계속 |
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전 task 가 `:modules:app` 단일 모듈. 다른 9개 BC 의 `src/**` 는 **0줄**. 마이그레이션 0건. 신규 의존성 0건.
+> 패키지는 기존 관례를 따라 `com.bts.app` 평면 배치 (`NonProdAssemblyPortConfig.kt`·`FlywayAssemblyConfig.kt` 동형).
+
+### 선행 실측 — CI 배선은 이미 존재한다 (추가 작업 0)
+
+제약 4(「CI 배선까지가 범위」)를 착수 전에 확인했다. `backend-ci.yml:139-141` 에
+`Test — :modules:app (비-prod 조립 부팅 가드)` 스텝이 이미 있고 `:modules:app:nonProdAssemblyTest` 를 실행한다.
+`build.gradle.kts:114-118` 이 그 태스크에 `includeTags("nonprod-assembly")` 를 걸고 기본 `test` 는 같은 태그를
+`excludeTags` 한다. ⇒ **신규 테스트에 `@Tag("nonprod-assembly")` 를 붙이면 CI 에서 자동 실행된다.**
+prod 음성 테스트는 태그 없이 두면 기본 `test` 잡(`backend-ci.yml:133`)에서 돈다. **새 CI 배선 불필요.**
+단, 이 사실을 **CI 로그로 실제 확인**하는 것은 완료 기준에 남긴다 (#321 의 「0회 실행」 사고 방지).
+
+---
+
+### Task 1. dev 시드 설정 표면 (DevSeedProperties)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/DevSeedProperties.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/DevSeedPropertiesTest.kt`]
+- depends-on: []
+
+**RED**. `DevSeedPropertiesTest` — 환경변수 미설정 시 `username="alice"`, `password="password"`, 설정 시 override.
+실패 예상. `DevSeedProperties` 클래스 없음.
+
+**GREEN**. `@ConfigurationProperties("bts.dev-seed")` data class. `username`/`password`/`email`/`displayName` 기본값.
+`application.yml` 에 `bts.dev-seed.password: ${BTS_DEV_SEED_PASSWORD:password}` 배선.
+
+**REFACTOR**. KDoc 에 **D8 근거** 명시 — 기본값이 기존 `data-dev.sql` 이 이미 문서화한 값과 동일하므로 새 비밀이 도입되지 않는다.
+
+**검증**. `./gradlew :modules:app:test --tests '*DevSeedPropertiesTest'`
+
+---
+
+### Task 2. 사용자 + 로컬 자격증명 시드 (FR-1 · FR-2 · FR-8)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederTest.kt`]
+- depends-on: [1]
+
+**RED**. 시드 실행 후 (a) `UserRepository.findByUsername("alice")` 가 non-null,
+(b) **`LocalCredentialService.verify` 가 시드한 평문으로 통과** — 해시가 실제로 유효함을 행 존재가 아니라 **검증 성공**으로 단언한다.
+실패 예상. `NonProdDevSeeder` 없음.
+
+**GREEN**. `@Component @Transactional class NonProdDevSeeder(userRepository, localCredentialService, ...)`.
+`userRepository.create(username, email, displayName)` → `localCredentialService.store(user.id, plain, mustChange = false)`.
+
+**REFACTOR**. 평문 수명 — `store` 가 인자 `CharArray` 를 wipe 하므로 시드는 `String` → `CharArray` 변환 직후 넘기고
+별도 사본을 만들지 않는다. KDoc 에 **G2 함정**(`CreateLocalAccountService` 는 무작위 비밀번호 + `mustChange=true` 라 부적합)을 기록.
+
+**검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeederTest'`
+
+---
+
+### Task 3. 시스템 관리자 역할 부여 (FR-3)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederTest.kt`]
+- depends-on: [2]
+
+**RED**. 시드 후 `SystemRoleAssignmentRepository.findRolesByUser(alice.id)` 가 `SYSTEM_ADMIN` 포함.
+**추가 단언** — `IdentityAccessSystemPermissionResolver` 가 해당 사용자를 시스템 관리자로 **실제 판정**한다
+(행 존재가 아니라 판정 결과가 계약이다. #321 D5 로 비-prod 도 실판정이므로 이게 진짜 성공 조건).
+
+**GREEN**. `systemRoleAssignmentRepository.assign(user.id, SystemRole.SYSTEM_ADMIN)` 추가.
+
+**REFACTOR**. 세 쓰기가 하나의 트랜잭션임을 KDoc 에 명시 (부분 시드 방지).
+
+**검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeederTest'`
+
+---
+
+### Task 4. 멱등 + 부분 상태 보정 (FR-4 · E1 · E2 · E3 · E6)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeeder.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeederIdempotencyTest.kt`]
+- depends-on: [3]
+
+**RED**. 4 시나리오.
+- E1 2회 연속 시드 → `users` 행 수 1 불변, `created_at` 불변
+- E2 사용자만 있고 자격증명 없음 → 자격증명만 생성
+- E3 역할 이미 존재 → `UNIQUE(user_id, role)` 위반 없이 통과
+- **E6 기존 비밀번호가 다름 → 덮어쓰지 않는다** (기존 해시 문자열 불변을 직접 단언)
+
+**GREEN**. 각 쓰기 앞에 존재 조회(`findByUsername` / 자격증명 조회 / `findRolesByUser`)를 두고 없을 때만 삽입.
+
+**REFACTOR**. E6 의 「덮어쓰지 않음」이 **의도된 선택**임을 KDoc 에 남긴다 — 멱등 원칙이 편의보다 우선.
+
+**검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeederIdempotencyTest'`
+
+---
+
+### Task 5. ApplicationRunner 배선 + prod 격리 L1/L2 + 실패 비대칭 (FR-5 · FR-6 · FR-7 · FR-9 · D9)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/main/kotlin/com/bts/app/NonProdDevSeedRunner.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeedRunnerTest.kt`]
+- depends-on: [4]
+
+**RED**. 3 시나리오.
+- 비-prod 활성 프로파일 → `seeder.seed()` 1회 호출 + INFO 로그
+- **활성 프로파일에 `prod` 포함 → 예외 전파(기동 실패)**. 조용한 return 이면 실패해야 한다
+  (음성 판별자 확보 — 메모리 `negative-guard-needs-body-discriminator`)
+- **`seeder.seed()` 가 예외 → ERROR 로그 후 정상 반환**(부팅 계속). D9 비대칭
+
+**GREEN**. `@Component @Profile("!prod") class NonProdDevSeedRunner(...) : ApplicationRunner`.
+`run()` 진입부에서 `environment.activeProfiles` 검사 → `prod` 면 `IllegalStateException`.
+`seeder.seed()` 는 try/catch (트랜잭션 경계 **밖**이라 롤백 후 로그만 남는다).
+
+**REFACTOR**. KDoc 에 **순서 근거**(G4) 기록 — `FlywayAssemblyConfig:45-65` 가 `InitializingBean` 이라
+refresh 중 마이그레이션이 끝나고 `ApplicationRunner` 는 refresh 후 실행. **`@PostConstruct`/`InitializingBean` 으로
+옮기면 조용히 깨진다**고 경고문을 남긴다. 비밀번호 미로깅(NFR-3)도 단언.
+
+**검증**. `./gradlew :modules:app:test --tests '*NonProdDevSeedRunnerTest'`
+
+---
+
+### Task 6. L3 양방향 봉인 — 실부팅 대조 (§6 L3)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/NonProdDevSeedBootTest.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/ProdDevSeedAbsenceBootTest.kt`]
+- depends-on: [5]
+
+**RED**. 두 방향을 **각각 다른 태스크에서** 돈다.
+- **양성** `NonProdDevSeedBootTest` — `@Tag("nonprod-assembly")` + `RANDOM_PORT`. 실부팅 후
+  `users`/`local_credentials`/`system_role_assignments` 각 1행 + **실 HTTP `POST /login` 200**
+  (행 존재가 아니라 로그인 성공이 계약)
+- **음성** `ProdDevSeedAbsenceBootTest` — 기존 `ProdAssemblyHttpTestBase` 상속(prod 고정, 태그 없음).
+  `NonProdDevSeedRunner` 빈 **0개** + `users` **0행**
+
+**GREEN**. 테스트만 추가. 프로덕션 코드 변경 0.
+
+**REFACTOR**. 두 테스트가 **서로의 대조군**임을 KDoc 에 상호 링크. 메모리 `seal-closes-only-half-by-default` 인용.
+
+**검증**. `./gradlew :modules:app:test --tests '*ProdDevSeedAbsenceBootTest'` +
+`./gradlew :modules:app:nonProdAssemblyTest` (dev postgres 5433 필요)
+
+---
+
+### Task 7. 뮤테이션 실증 + ADR + 문서 동기화
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-07-29-assembly-nonprod-dev-seed.md`, `docs/plans/2026-07-29-assembly-nonprod-dev-seed.md`]
+- depends-on: [6]
+
+**RED/GREEN 해당 없음** (검증 + 문서 task).
+
+**뮤테이션 5종** — 각각 주입 후 **실컨텍스트 부팅**으로 RED 확인, 원복. 커밋 후에만 수행
+(메모리 `mutation-test-requires-committed-baseline`).
+
+| # | 주입 | 기대 RED |
+|---|---|---|
+| M1 | `@Profile("!prod")` 제거 | 음성 부팅 테스트 (빈 0개 단언) |
+| M2 | L2 런타임 단언을 조용한 `return` 으로 교체 | 러너 단위 테스트 prod 시나리오 |
+| M3 | 멱등 존재 조회 제거 | 멱등 테스트 (중복/제약 위반) |
+| M4 | `assign(SYSTEM_ADMIN)` 호출 제거 | 역할 판정 테스트 + 양성 부팅 |
+| M5 | 러너를 `InitializingBean` 으로 이동 (순서 파괴) | 양성 부팅 (테이블 부재로 실패) |
+
+**★M2 는 필수** — 조용한 스킵으로 바꿔도 음성 테스트가 통과하면 그 테스트는 **공허**하다.
+
+**ADR**. `docs/decisions/2026-07-29-assembly-nonprod-dev-seed.md` — D4~D9 결정과 기각안(Flyway·통합) 근거 기록.
+
+**문서 동기화**. FR 변경 0건이므로 `fr-index`·`README`·`CHANGELOG` 카운트는 **불변**.
+`verify-master-plan.sh` EXIT 0 · 139/139 확인만 수행.
+
+**검증**. `./gradlew :modules:app:test :modules:app:nonProdAssemblyTest` ·
+`./gradlew ktlintCheck detekt --rerun-tasks` · `bash scripts/verify-master-plan.sh`
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave: **7 (전량 직렬)** — T2·T3·T4 가 `NonProdDevSeeder.kt` 를 공유하고 T5→T6→T7 이 선행 산출물에 의존.
+  파일 겹침 자동 직렬화 규칙에 걸린다. 메모리 `bts-plan-wave-gradle-module-compile`(같은 Gradle 모듈 동시 컴파일 충돌)과도 정합.
+- TDD 강제: yes (`test:` 커밋이 `feat:` 보다 선행)
+- 병렬 dispatch: **없음** (전 task 가 `:modules:app` 단일 모듈 + 파일 공유)
+- 추가 검증: ktlint · detekt `--rerun-tasks` · 뮤테이션 5종 · 브라우저 눈확인
+- CI: 신규 배선 **불필요** (실측 확인 — `backend-ci.yml:139-141` 기존 스텝이 태그로 자동 수집)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
