@@ -36,6 +36,13 @@ import java.util.UUID
  * `NonProdAllowSystemAdminResolver`(isSystemAdmin 항상 true)가 살아나 세 시나리오가 전부 201 로
  * **무의미하게 통과**한다(grant/role 이 판정에 아무 영향을 못 준다). 이 상속을 떼면 그 순간 DoD 가 공허해진다.
  *
+ * ※ 2026-07-29(#321) 이후 **이 조립 컨텍스트에 한해** 위 공허화 경로가 하나 줄었다 —
+ * [BtsApplication] 이 `NonProdAllowSystemAdminResolver` 를 스캔에서 배제하므로, 조립에서는 비-prod 라도
+ * `IdentityAccessSystemPermissionResolver`(실제 DB 판정)가 쓰인다. 그래도 **상속을 떼면 안 된다** —
+ * 이 테스트의 grant 시드는 `global_permission_grants`(identity V036)와 prod 어댑터 계열 배선을 함께
+ * 전제하고, prod 프로파일이라야 `@Profile("prod")` 실구현들이 한 벌로 활성화된다.
+ * 즉 C1 의 결론(prod 강제 필수)은 그대로이고, 근거 중 하나가 조립 계층에서 이중화된 것이다.
+ *
  * ## ★ B8 판별자 — 이 테스트만이 잡는 회귀
  * prod 어댑터가 [com.bts.shared.permission.SystemPermissionResolver.hasGlobalPermission] override 를 잊으면
  * 인터페이스 default(`= isSystemAdmin` 뿐, grant 무시)가 살아나 `CREATE_PROJECT` 가 SYSTEM_ADMIN 전용으로
