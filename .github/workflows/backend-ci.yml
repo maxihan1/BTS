@@ -132,12 +132,23 @@ jobs:
         working-directory: backend
         run: ./gradlew :modules:app:test --console=plain
 
+      # 비-prod 조립 부팅 가드. 별도 태스크 = 별도 JVM 이어야 한다 — @ActiveProfiles 가 컨텍스트 캐시 키의
+      # 일부라, prod 조립 테스트와 같은 JVM 에 두면 9-BC 컨텍스트가 두 벌 뜨고 @Scheduled 워커도 두 벌이
+      # 같은 pgmq 큐를 동시 폴링한다. 위 잡의 서비스 컨테이너(pgmq + 5433)를 그대로 쓰므로 추가 인프라는 없다.
+      # ★ 이 스텝을 지우면 태그로 분리된 가드가 CI 에서 0회 실행된다 —
+      #   ci-module-coverage.test.ts 가 그 회귀를 차단한다.
+      - name: Test — :modules:app (비-prod 조립 부팅 가드)
+        working-directory: backend
+        run: ./gradlew :modules:app:nonProdAssemblyTest --console=plain
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-app
-          path: backend/modules/app/build/test-results/test/*.xml
+          path: |
+            backend/modules/app/build/test-results/test/*.xml
+            backend/modules/app/build/test-results/nonProdAssemblyTest/*.xml
           if-no-files-found: warn
           retention-days: 7
 
