@@ -43,14 +43,23 @@ class NonProdDevSeedRunner(
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(NonProdDevSeedRunner::class.java)
 
+    // TooGenericExceptionCaught 억제 — D9 는 "시드가 어떤 이유로 실패해도 부팅은 계속" 이 요구사항이다.
+    // 잡을 예외를 열거하면 DB 제약·연결·매핑 등 새 실패 유형이 생길 때마다 목록이 낡아 조용히 부팅을 깬다.
+    // 대신 Error 는 잡지 않아(Exception 한정) JVM 치명 오류는 그대로 전파된다 — 그 경계가 이 억제의 근거다.
+    @Suppress("TooGenericExceptionCaught")
     override fun run(args: ApplicationArguments) {
         assertNotProdContext()
-        runCatching { seeder.seed() }
-            .onSuccess { log.info("dev seed: completed (profiles={})", environment.activeProfiles.toList()) }
-            .onFailure { ex ->
-                // 부팅은 계속한다 (D9). 원인을 남기지 않으면 "로그인이 안 된다" 를 진단할 수 없다.
-                log.error("dev seed: FAILED — 로그인 계정이 없을 수 있다. 부팅은 계속한다.", ex)
-            }
+        try {
+            seeder.seed()
+            log.info("dev seed: completed (profiles={})", environment.activeProfiles.toList())
+        } catch (ex: Exception) {
+            // 부팅은 계속한다 (D9). 원인을 남기지 않으면 "로그인이 안 된다" 를 진단할 수 없다.
+            //
+            // ★ runCatching 을 쓰지 않는다 — 그것은 Throwable 을 잡아 OutOfMemoryError·StackOverflowError
+            //   같은 Error 까지 삼킨다. dev 편의 기능이 JVM 치명 오류를 감춰 부팅을 계속시키면
+            //   "왜 이상하게 도는지" 를 아무도 진단할 수 없는 상태가 된다. Error 는 전파시켜야 한다.
+            log.error("dev seed: FAILED — 로그인 계정이 없을 수 있다. 부팅은 계속한다.", ex)
+        }
     }
 
     /**

@@ -90,6 +90,18 @@ class NonProdDevSeedRunnerTest {
     }
 
     @Test
+    fun `시드가 Error 를 던지면 전파시킨다`() {
+        // D9 는 "시드 실패" 를 삼키라는 것이지 JVM 치명 오류까지 감추라는 게 아니다.
+        // runCatching 을 쓰면 Throwable 을 잡아 OutOfMemoryError 까지 삼킨다 — 이 단언이 그 회귀를 막는다.
+        val fatal = DevSeeder { throw OutOfMemoryError("치명 오류 시뮬레이션") }
+        val runner = NonProdDevSeedRunner(fatal, envOf())
+
+        assertThatThrownBy { runner.run(DefaultApplicationArguments()) }
+            .describedAs("Error 를 삼키면 '왜 이상하게 도는지' 를 아무도 진단할 수 없다")
+            .isInstanceOf(OutOfMemoryError::class.java)
+    }
+
+    @Test
     fun `L1 표현식과 L2 허용목록이 같은 집합이다`() {
         // 두 층이 갈리면 "빈은 등록되는데 단언이 막는다" 같은 모순이 조용히 생긴다.
         val fromExpression = NonProdDevSeedRunner.PROFILE_EXPRESSION.split("|").map { it.trim() }.toSet()
