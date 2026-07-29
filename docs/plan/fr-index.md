@@ -258,18 +258,26 @@
 
 ## §A.3 미해결 결정 (Open Questions)
 
-> 실행 직전 확정 필요. ADR 발행 시 이 표에서 제거하고 `docs/adr/<date>-<topic>.md` 생성.
+> 실행 직전 확정 필요.
+>
+> **해소된 항목은 표에서 지우지 않고 `✅ 해소` 로 마킹한다** — 지우면 "왜 그렇게 정했나" 의 추적선이
+> 끊긴다. #2 가 그 선례이고 2026-07-29 에 관례로 확정했다. (이 줄은 원래 *"ADR 발행 시 이 표에서
+> 제거"* 였으나 실제 운용이 마킹이었다. 규칙을 실측에 맞춘다.)
+>
+> ⚠️ **해소 판정은 BC 완료와 함께 갱신해야 한다.** 2026-07-29 실측에서 8건 중 5건이
+> 낡은 채 방치돼 있었다 — BC 가 완료돼 질문 자체가 무의미해졌는데도 표는 그대로였다.
+> **표와 BC 진척이 서로를 보지 않았다.** BC 완료 게이트를 닫을 때 이 표를 함께 훑는다.
 
 | # | 결정 항목 | 결정 시점 | 영향 BC | 상태 |
 |---|---|---|---|---|
-| 1 | pgmq 이미지 (자체 빌드 vs tembo-io vs coredb) | project-workflow §1 PoC | 전 BC (이벤트 통신) | 보류 — `docs/poc/context-notes.md` 2026-05-19 기록 |
+| 1 | pgmq 이미지 (자체 빌드 vs tembo-io vs coredb) | project-workflow §1 PoC | 전 BC (이벤트 통신) | ✅ 해소(2026-05-22) — Tembo 공식 이미지 채택. ADR `docs/adr/2026-05-22-pgmq-postgres-image.md`. dev `quay.io/tembo/pg16-pgmq:latest` · prod 동일 계열 digest 고정 |
 | 2 | Gantt 라이브러리 (자체 SVG vs Recharts vs syncfusion) | agile-planning §1 PoC | agile-planning §4 (타임라인) | ✅ 해소(PR #194) — 자체 SVG/CSS 채택, ADR `docs/adr/2026-06-26-gantt-rendering-self-svg.md` |
-| 3 | 9개 BC 진입 순서 (BC 의존 그래프 참조) | 첫 작업 시점 | 전체 | Maxi 결정 영역 — README §0.7 권장 순서 참조 |
-| 4 | `scripts/verify-master-plan.sh` CI 통합 시점 | 첫 BC 작업 진입 직전 | CI | 작성 후 즉시 통합 권장 |
-| 5 | 이슈 키 prefix 결정 (예. `ATL-`, 프로젝트별 prefix) | issue-tracking §2.1.1 진입 시 | issue-tracking + DATA.md | DATA.md §이슈키 영속성 가이드 따름 |
-| 6 | identity-access 우선순위 (FR-AU-01 → 02/03 → 04/05/06~10 순) | identity-access 진입 직전 | identity-access 전체 | LDAP/SAML 사내 우선 → OIDC/Passkey/감사 순 권장 |
-| 7 | TipTap 50블록 PoC (Wiki v0.5+ 준비) 시점 | issue-tracking §2.1.4 (Markdown 본문) 시점 또는 별도 | issue-tracking + 향후 wiki BC | 본문 에디터를 처음 만들 때 variant 추상 (issue-body | comment | wiki) 함께 검증 |
-| 8 | issue-tracking 내 FR 진입 순서 (코어 → 보강 → 정리) | issue-tracking 진입 직전 | issue-tracking 29 FR | IS-01~04, 07 우선 → CM/VR → AC/MN/WT → LK/HS/TM/MV/PDF 순 권장 |
+| 3 | 9개 BC 진입 순서 (BC 의존 그래프 참조) | 첫 작업 시점 | 전체 | ✅ 해소(2026-07-29) — 9 BC 전량 D1~D7 완료로 **질문이 소멸**했다. 실제 진입 순서는 README §7 변경 이력에 기록돼 있다 |
+| 4 | `scripts/verify-master-plan.sh` CI 통합 시점 | 첫 BC 작업 진입 직전 | CI | 🔴 **미해결** — 2026-07-29 실측 `.github/workflows/*` 에 `verify-master-plan` **0건**. 로컬·훅에서만 돌고 있어 CI 가 카운트 drift 를 막지 못한다 |
+| 5 | 이슈 키 prefix 결정 (예. `ATL-`, 프로젝트별 prefix) | issue-tracking §2.1.1 진입 시 | issue-tracking + DATA.md | ✅ 해소 — **프로젝트 키 prefix**(`PROJ-123`)로 확정. 정본은 `DATA.md §2 이슈 키 영속성`, 재발급 금지 + 이동/삭제 시 `IssueKeyRedirect` 보존 |
+| 6 | identity-access 우선순위 (FR-AU-01 → 02/03 → 04/05/06~10 순) | identity-access 진입 직전 | identity-access 전체 | ✅ 해소(2026-07-29) — identity-access 25 FR(AU 10 · MF 5 · PM 10) 전량 완료로 **질문이 소멸**했다 |
+| 7 | TipTap 50블록 PoC (Wiki v0.5+ 준비) 시점 | issue-tracking §2.1.4 (Markdown 본문) 시점 또는 별도 | issue-tracking + 향후 wiki BC | 🔴 **미해결(정당)** — Atlas Wiki v0.5+ 대상이라 Phase 1 범위 밖이다. 본문 에디터를 처음 만들 때 variant 추상 (issue-body \| comment \| wiki) 함께 검증 |
+| 8 | issue-tracking 내 FR 진입 순서 (코어 → 보강 → 정리) | issue-tracking 진입 직전 | issue-tracking **37 FR** | ✅ 해소(2026-07-29) — 37 FR 전량 완료로 **질문이 소멸**했다. 실제 진입 순서는 README §7 참조. (이 칸은 오래 `29 FR` 로 낡아 있었다 — 실측 37) |
 
 ## §A.4 변경 이력 (append-only)
 
@@ -281,3 +289,4 @@
 - 2026-07-28. **FR-UX-07 신설**(personalization). Jira 인터랙션 패리티 — 활성 프로젝트 컨텍스트·컨텍스트 단축키·인라인 편집·생성 모달. 합계 131→132. FR-UX-05 §4.3이 후속 FR로 명시 제외한 범위를 승계한다.
 - 2026-07-29. **FR-UX-07 분할 — FR-UX-08~14 신설**(personalization, +7). 합계 132→139. FR-UX-07이 27 PR 로드맵 전체를 한 FR로 묶은 결과 `product/personalization.md §4.5`의 D1~D7이 `[~]`·`[x]`·`[ ]` 세 상태로 섞였다. **D 단계는 완주 단위**여야 한다 — "도메인 정리(D1)가 절반 완료"인 상태는 성립하지 않는다. 그래서 기능 축으로 쪼갠다. 선례 FR-UX-06(22 PR)이 단일 FR로 D1~D7을 함께 닫은 것은 디자인 스펙 1벌·ADR 1벌로 굴러가는 하나의 캠페인이었기 때문이고, FR-UX-07의 단축키·인라인 편집·생성 모달·백로그는 각자 도메인 정리와 명세가 따로 필요하다. 승계 관계는 F1→UX-07 / F12,F17→UX-08 / F2,F3,B1→UX-09 / F10,F11→UX-10 / F8,F9→UX-11 / F4,F13→UX-12 / F5,F15,F16→UX-13 / F14,B2→UX-14 (로드맵 정본 `~/.claude/plans/ui-ux-sorted-kay.md` §PR 체인의 F번호). 나머지 10 PR(F6·F7·F18~F25)은 기존 FR 결손 봉합이라 chore로 남는다 — 17 + 10 = 27 PR로 로드맵 총량은 불변이다. FR-UX-07은 D1~D7 전량 완료, FR-UX-08~14는 등록만(D1~D7 전량 미착수).
 - 2026-07-29. **B1·B2 백엔드 작업을 chore → D4로 승격**(2026-07-28 Maxi 결정 #3 정정, 조용한 변경 아님). 원 결정은 "B1/B2는 기존 FR 결손 봉합이라 chore"였다. 분할 후에는 B1(이슈 생성 시 담당자·우선순위·라벨)이 FR-UX-09의 D4, B2(보드/백로그 카드 필드)가 FR-UX-14의 D4가 된다. "백엔드 없음"으로 비던 칸이 실제 내용으로 채워지는 쪽이 정확하다.
+- 2026-07-29. **§A.3 Open Questions 전수 재실측 — 8건 중 5건이 낡아 있었다.** 계기는 `issue-tracking 29 FR`(#8) 드리프트 1건이었으나, 알려진 1건만 고치지 않고 표 전체를 대조하니 **BC 가 완료돼 질문 자체가 소멸했는데도 상태가 그대로인 항목이 4건 더** 나왔다(#1 pgmq — ADR `2026-05-22-pgmq-postgres-image.md` 로 이미 해소된 것을 "보류"로 방치 / #3 9 BC 진입 순서 / #6 identity-access 우선순위 / #8 issue-tracking 진입 순서). **표와 BC 진척이 서로를 보지 않았다** — 지배적 결함 양식 그대로다. 실제 미해결은 2건뿐이다 — #4 `verify-master-plan.sh` CI 미통합(`.github/workflows/*` 실측 0건, 로컬·훅에서만 동작) · #7 TipTap PoC(Wiki v0.5+ 대상이라 Phase 1 범위 밖, 정당하게 열림). #8 의 `29 FR` 은 실측 **37** 로 정정했다. 표 머리말도 실측에 맞췄다 — 규칙은 *"ADR 발행 시 표에서 제거"* 였으나 실제 운용은 `✅ 해소` 마킹이었고(#2 선례), 지우면 "왜 그렇게 정했나" 의 추적선이 끊기므로 마킹 쪽을 정본으로 확정했다. **BC 완료 게이트를 닫을 때 이 표를 함께 훑는다**를 머리말에 못박았다.
