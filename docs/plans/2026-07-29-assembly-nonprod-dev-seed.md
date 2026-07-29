@@ -421,6 +421,50 @@ Task 6 까지 완료한 시점에 이 갈림길을 Maxi 에게 제시한다. **�
 - 추가 검증: ktlint · detekt `--rerun-tasks` · **뮤테이션 6종** · 브라우저 눈확인
 - CI: 신규 배선 **불필요** (실측 확인 — `backend-ci.yml:139-141` 기존 스텝이 태그로 자동 수집)
 
+## 구현 결과 (2026-07-29)
+
+### 최종 검증 — 전부 산출물 실측
+
+| 항목 | 결과 | 기준선(#321) |
+|---|---|---|
+| `:modules:app:test` | **71 / 0 실패** | 63 → +8 (음성 봉인 2 + 러너 단위 6) |
+| `:modules:app:nonProdAssemblyTest` | **8 / 0 실패** | 2 → +6 (양성 봉인 4 + 멱등 2) |
+| `:modules:identity-access:test` | **2,432 / 0** | — |
+| `:modules:issue-tracking:test` | **3,206 / 0** | — |
+| `ktlintCheck` + `detekt` `--rerun-tasks` | **EXIT 0** | — |
+| `verify-master-plan.sh` | **EXIT 0** (FR 139 불변) | — |
+
+**★ XML 신선도까지 확인했다.** 18개 XML 전부 이번 실행 산출물임을 `find -newermt` 로 검증했다 —
+아래 「린트가 먼저 실패하면 테스트가 안 돈다」 함정 때문이다.
+
+### 뮤테이션 판별 5/6
+
+| # | 주입 | 잡힌 테스트 | 정밀도 |
+|---|---|---|---|
+| M1 | `@Profile` 무력화 | 양성 봉인 **4** | 전량 red |
+| M2 | L2 단언 → 조용한 `return` | `prod` + `staging` **2** | 예외 단언만 |
+| M3 | 멱등 존재 조회 제거 | 멱등 **2** | 멱등만 |
+| M4 | 전역 부여 삽입 제거 | `프로젝트 생성 권한` **1** | 1건만 |
+| **M6** | **`SYSTEM_ADMIN` 복귀** | `mfa 강제 대상 아님` + `관리자 아님` **2** | ★로그인은 **통과** |
+| M5 | 실행 시점 파괴(`InitializingBean`) | **미실시** | 구조로 보장(아래) |
+
+**★ M6 에서 로그인 테스트가 통과한 것이 이 PR 의 핵심 증거다.** 관리자로 되돌려도 로그인은 200 이고
+막히는 건 그 *다음* 화면이다. 원안대로 갔으면 "로그인 되네" 로 넘어갔을 것이다.
+
+**M5 미실시 사유.** 러너를 `ApplicationRunner` → `InitializingBean` 으로 옮기는 구조 변경이라 주입 비용이 크다.
+순서는 `FlywayAssemblyConfig:45-65` 가 `InitializingBean` 이라 refresh 중 마이그레이션이 끝난다는
+**구조적 사실**로 보장되며 KDoc 에 경고를 남겼다. **다만 뮤테이션으로 실증하지 않았음을 명시한다.**
+
+### 세션 중 자체 적발 (전부 문서화)
+
+1. **RED 미관측** — GREEN 2파일을 첫 빌드 도중 작성해 `:modules:app:compileKotlin` 이 집어갔다.
+   M1 뮤테이션 주입으로 RED 를 다시 세웠다.
+2. **가짜 초록** — 공유 dev DB 선재 데이터(2026-07-10·07-28)로 4/4 통과. Testcontainers 빈 DB 로 전환.
+3. **봉인 절반** — 음성 테스트를 쓰다 `NonProdDevSeeder` 에 `@Profile` 이 없어 prod 에도 빈이 등록됨을 발견.
+4. **린트 선행 실패 2회** — `ktlint`·`detekt` 가 먼저 죽어 **테스트가 아예 안 돌았는데** 직전 실행의 XML 이 남아
+   현재 결과로 오독될 뻔했다. ⇒ 「XML 로 실측」에 **「이번 실행 산출물인지」**를 더해야 한다
+   (메모리 `gradle-batched-task-partial-test-run` 확장 후보).
+
 ## 리뷰 결과
 
 ### plan-eng-review (2026-07-29)
