@@ -186,9 +186,13 @@ issue-tracking 의 `AlwaysAllow*`/`NonProdAllow*` 는 **8개**인데 중복인 �
 - files: [`backend/modules/app/src/test/kotlin/com/bts/app/NonProdAssemblyBootTest.kt`, `backend/modules/app/build.gradle.kts`]
 - depends-on: []
 
+> **eng-review 반영.** CONCERN-1(webEnvironment) · CONCERN-3(태그 단일 출처) · CONCERN-4(`mustRunAfter`) 적용됨.
+
 **RED**.
-- 신규 `NonProdAssemblyBootTest` — `@SpringBootTest(webEnvironment = NONE)`, **`@ActiveProfiles` 미지정**(= 기본/비-prod),
-  `@Tag("nonprod-assembly")`.
+- 신규 `NonProdAssemblyBootTest` — **`@SpringBootTest(webEnvironment = RANDOM_PORT)`**,
+  **`@ActiveProfiles` 미지정**(= 기본/비-prod), `@Tag("nonprod-assembly")`.
+  ★ `NONE` 이 아니라 `RANDOM_PORT` 인 이유 — prod 가드와 **같은 충실도**. 별도 JVM 이라 컨텍스트가 1벌뿐이므로
+  EC-7 위험 없이 실 Tomcat·필터체인까지 태울 수 있다. `NONE` 이면 웹 계층 결함(EC-1 후보)을 그냥 통과한다.
 - 단언은 **컨텍스트 로드 성공만으로 끝내지 않는다**(EC-5 공허 회피). 봉합 대상 **9종 타입 각각**에 대해
   `context.getBeanNamesForType(T::class.java).size == 1` 을 단언하고, 실패 시 **발견된 빈 이름 전량을 메시지에 담는다**.
   - 중복 6종. `IssuePermissionResolver` · `ComponentPermissionResolver` · `CustomFieldPermissionResolver` ·
@@ -196,18 +200,27 @@ issue-tracking 의 `AlwaysAllow*`/`NonProdAllow*` 는 **8개**인데 중복인 �
   - 부재 3종. `AutomationPermissionResolver` · `IssueMutationPort` · `IssueSnapshotPort`
 - 추가 단언(FR-B 회귀 가드). `FieldPermissionResolver` · `IssueSecurityDirectory` 도 **각 1개**여야 한다
   — 배제 금지 2종을 실수로 빼면 여기서 잡힌다.
-- `build.gradle.kts`.
+- `build.gradle.kts` — **태그 분기를 기존 `withType<Test>` 한 블록 안에 둔다**(CONCERN-3 — 두 블록이면 선언 순서에 의존해
+  누군가 순서를 바꾸면 `excludeTags` 가 조용히 덮인다).
   ```kotlin
-  tasks.named<Test>("test") { useJUnitPlatform { excludeTags("nonprod-assembly") } }
+  tasks.withType<Test> {
+      useJUnitPlatform {
+          if (name == "nonProdAssemblyTest") includeTags("nonprod-assembly")
+          else excludeTags("nonprod-assembly")
+      }
+      System.getProperty("contract.snapshot.update")?.let { systemProperty("contract.snapshot.update", it) }  // 기존 유지
+  }
   val nonProdAssemblyTest = tasks.register<Test>("nonProdAssemblyTest") {
       group = "verification"
       testClassesDirs = sourceSets["test"].output.classesDirs
       classpath = sourceSets["test"].runtimeClasspath
-      useJUnitPlatform { includeTags("nonprod-assembly") }
+      mustRunAfter(tasks.named("test"))   // CONCERN-4 — 워커 두 벌 동시 폴링 방지
   }
   tasks.named("check") { dependsOn(nonProdAssemblyTest) }
   ```
   ★ **태그 분리가 EC-7 의 유일한 방어선**이다. 같은 JVM 에 두면 9-BC 컨텍스트 2벌 + pgmq 이중 폴링.
+  ★ KDoc 에 *"dev 앱(`bootRun`)을 띄운 채 이 테스트를 돌리지 말 것"* 을 명시한다 — FR-C 이후
+  automation 워커 4종이 비-prod 에서 **처음으로** 살아나 같은 `q_automation_events` 를 폴링한다.
 - 실패 메시지 (예상). `NoUniqueBeanDefinitionException: ... IssuePermissionResolver ... found 2`
   (컨텍스트 로드 자체 실패 — 정상적인 RED)
 
@@ -330,30 +343,169 @@ issue-tracking 의 `AlwaysAllow*`/`NonProdAllow*` 는 **8개**인데 중복인 �
 
 ---
 
-### Task 7. 최종 검증 — 완료 기준 8개 전수
+### Task 7. prod 대칭 단언 — FR-F (eng-review CONCERN-2)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/BtsApplicationContextTest.kt`]
+- depends-on: [4]
+
+**내용**. Task 1 이 만든 빈-개수 단언 헬퍼를 **prod 프로파일에서도** 실행한다.
+동일한 11종에 대해 `getBeanNamesForType(T).size == 1` 을 단언.
+
+**왜 필요한가.** `excludeFilters` 는 **프로파일을 가리지 않는다.** 실수로 prod 빈을 배제해도
+"기존 prod 테스트가 통과하니까 괜찮다"는 **간접 증거**로는 못 잡을 수 있다. 삭제·추가 양방향 봉인.
+
+**검증**. `:modules:app:test` GREEN. 뮤테이션 — 배제 목록에 prod 활성 클래스
+(`IdentityAccessSystemPermissionResolver`)를 넣으면 이 테스트가 RED 여야 한다.
+
+---
+
+### Task 8. CI 배선 — FR-E (eng-review BLOCKER-1)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.github/workflows/backend-ci.yml`, `scripts/workflow/ci-module-coverage.test.ts`]
+- depends-on: [1]
+
+**내용**.
+1. `backend-ci.yml` `assembly` 잡(L96~)의 Gradle 실행에 `:modules:app:nonProdAssemblyTest` 추가.
+   서비스 컨테이너(`quay.io/tembo/pg16-pgmq` + 5433:5432)는 이미 그 잡에 있으므로 **추가 인프라 0**.
+2. `ci-module-coverage.test.ts` 에 존재 단언 추가 — 현재 L80 이 `/:modules:app:test/` 만 단언한다.
+   `/:modules:app:nonProdAssemblyTest/` 단언을 같은 양식으로 추가.
+
+**왜 BLOCKER 였나.** 배선하지 않으면 태그로 분리된 신설 가드가 **CI 에서 0회 실행**된다.
+`TODOS.md §151` 이 이미 같은 실패 양식을 기록했다 — *"안 돌리면 봉인이 로컬 1회성 확인으로 끝나고 썩는다"*.
+
+**검증**. 신규 룰에 **일부러 위반을 주입해 FAIL 확인**(CI 파일에서 태스크 이름 삭제 → `pnpm test:workflow` RED) 후 원복.
+
+---
+
+### Task 9. 최종 검증 — 완료 기준 10개 전수
 
 **메타**.
 - agent: `backend-engineer`
 - files: []
-- depends-on: [5, 6]
+- depends-on: [5, 6, 7, 8]
 
 **절차**.
 1. `./backend/gradlew -p backend :modules:app:test :modules:app:nonProdAssemblyTest` → 전량 GREEN
 2. 각 BC 모듈 테스트 전량 GREEN (회귀 0) — 특히 identity-access · issue-tracking · automation
 3. `ktlintCheck` + `detekt` (app 모듈) — baseline 갱신 필요 시 갱신
-4. **N1 경로 제약 실증**. `git diff --stat origin/main` 에서 `backend/modules/app/**`·`docs/**` **밖 변경 0줄**
+4. **N1 경로 제약 실증**. `git diff --stat origin/main` 에서 허용 경로 밖 변경 **0줄**
+   (허용 = `backend/modules/app/**` · `docs/**` · `.github/workflows/backend-ci.yml` · `scripts/workflow/ci-module-coverage.test.ts`)
+   — 특히 **다른 BC `src/**` 0줄**
 5. **S2 회귀 금지 실증**. `ProdAssemblyHttpTestBase` 하위 전량 GREEN
 6. `bash scripts/verify-master-plan.sh` 종료 0
 7. 프로파일 미지정 `bootRun` 최종 1회 → `Started BtsApplication`
+8. `pnpm test:workflow` GREEN (신규 CI 룰 포함)
+9. **CI 4잡 전부 그린** — `assembly` 잡 로그에서 `nonProdAssemblyTest` 가 실제로 실행됐는지 확인
+   (⚠️ 첫 빨간불은 선재 flaky 일 수 있다 — `TODOS.md §160`. **같은 명령 연속 2회**로 flaky/회귀를 먼저 가른다)
 
-**검증**. 위 7개 결과를 plan `## 리뷰 결과` 위에 실측값으로 기록 (개수·초·종료코드).
+**검증**. 위 9개 결과를 plan 에 실측값으로 기록 (개수·초·종료코드·CI run URL).
 
 ## Plan 메타
 
-- task 수: 7
-- wave 예상: T1 → T2 → T3 → T4 → {T5, T6} → T7 (파일 겹침·의존으로 대부분 직렬, T5·T6 만 병렬 가능)
+- task 수: **9** (eng-review BLOCKER-1/CONCERN-2 반영으로 7 → 9)
+- wave 예상: T1 → {T2, T8} → T3 → T4 → {T5, T6, T7} → T9
+  (T8 은 CI 파일만 건드려 T2~T7 과 파일 겹침 0 → T1 직후 병렬 가능)
 - TDD 강제: yes (T1 = RED, T2·T3 = GREEN)
-- 병렬 dispatch: 이 작업은 **직렬 성격**이 강하다 — 부팅 에러가 순차로만 드러나기 때문(fail-fast)
-- 추가 검증: ktlint · detekt · 뮤테이션 11종 · verify-master-plan · 실부팅
+- 병렬 dispatch: 코드 봉합 축은 **직렬 성격**이 강하다 — 부팅 에러가 fail-fast 라 순차로만 드러난다
+- 추가 검증: ktlint · detekt · **뮤테이션 11종** · `pnpm test:workflow` · verify-master-plan · 실부팅 · CI 4잡
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-29)
+
+**Step 0 — 스코프 도전.** 코드 4파일(+CI 반영 시 6) · 신규 production 클래스 1개 · 신규 테스트 1개.
+복잡도 임계(8파일 / 2 신규 서비스) 미만 → 축소 권고 없음. 기존 코드 재사용 여지 확인 —
+`ProdAssemblyHttpTestBase` 의 프로파일 강제 패턴을 그대로 비-prod 로 복제하면 되므로 새 인프라 0.
+
+---
+
+#### 🛑 BLOCKER-1 — 신설 가드가 CI 에서 **0회** 실행된다
+
+`.github/workflows/backend-ci.yml` 의 `assembly` 잡(L96~)은 `:modules:app:test` **만** 돌린다.
+Task 1 이 `nonprod-assembly` 태그를 `test` 에서 제외하므로, 신설 가드는 **CI 에서 한 번도 실행되지 않는다.**
+이것은 `TODOS.md §151` 이 이미 기록한 실패 양식과 동일하다 —
+*"안 돌리면 봉인이 로컬 1회성 확인으로 끝나고 썩는다"*.
+
+**처방 (같은 PR 안에서).**
+1. `backend-ci.yml` `assembly` 잡의 Gradle 실행에 `:modules:app:nonProdAssemblyTest` 추가
+   (서비스 컨테이너 `quay.io/tembo/pg16-pgmq` + 5433 은 이미 그 잡에 있으므로 추가 인프라 0).
+2. `scripts/workflow/ci-module-coverage.test.ts` 에 **존재 단언 추가** — 현재 L80 이
+   `/:modules:app:test/` 만 단언한다. 하드코딩 목록에 판별식을 붙이는 이 저장소 관례를 그대로 따른다.
+   (룰 추가 시 일부러 위반을 넣어 FAIL 확인 — `CLAUDE.md §강제` 동형.)
+3. **N1(변경 허용 경로)을 넓힌다** — `.github/workflows/**` · `scripts/workflow/**` 추가.
+
+#### 🛑 BLOCKER-2 — 스펙의 "CI 부재" 전제가 낡았다
+
+스펙·계획이 메모리(`no-backend-ci-and-assembly-merge-verification-traps`)를 근거로 "백엔드 CI 없음"을
+전제했으나, **2026-07-27 에 `backend-ci.yml` 이 신설**돼 잡 4개(`modules` 매트릭스 9 · `assembly` ·
+`lint` · `workflow-scripts`)가 돌고 있다 (`TODOS.md §135 해소`). Task 7 의 검증 절차가 로컬 전용으로만
+쓰여 있어 CI 결과 확인이 빠졌다. → 완료 기준에 **CI 4잡 그린** 추가. 해당 메모리도 갱신 대상.
+
+---
+
+#### ⚠️ CONCERN-1 — 가드가 `bootRun` 보다 약하다 (`webEnvironment`)
+
+Task 1 이 `webEnvironment = NONE` 이면 서블릿·시큐리티 자동설정이 backoff 되어 **웹 계층 결함을 못 본다.**
+EC-1 의 "10번째 고장" 후보 중 필터체인/시큐리티 빈 문제가 있으면 가드를 그냥 통과한다.
+그런데 이 테스트는 **별도 Gradle 태스크 = 별도 JVM** 이라 그 JVM 안에는 컨텍스트가 1벌뿐이다
+→ **EC-7(이중 부팅) 위험 없이 `RANDOM_PORT` 로 올릴 수 있다.**
+**권고.** prod 가드(`ProdAssemblyHttpTestBase`)와 **같은 충실도**로 맞춘다. `webEnvironment = RANDOM_PORT`.
+
+#### ⚠️ CONCERN-2 — N2(prod 빈 구성 불변)를 **직접** 단언하는 테스트가 없다
+
+계획은 "기존 prod 테스트가 통과하면 prod 불변"이라는 **간접 증거**에만 기댄다.
+그런데 `excludeFilters` 는 프로파일을 가리지 않으므로 실수로 prod 빈을 지울 수 있는 유일한 축이다.
+**권고.** Task 1 의 빈-개수 단언 헬퍼를 **prod 프로파일에서도** 돌린다
+(기존 `BtsApplicationContextTest` 에 같은 11종 단언 추가). 삭제·추가 **양방향** 봉인
+(메모리 `seal-closes-only-half-by-default` — 봉인은 기본값으로 절반만 닫힌다).
+
+#### ⚠️ CONCERN-3 — Gradle 태그 설정이 두 블록으로 갈린다
+
+`tasks.withType<Test> { useJUnitPlatform() }`(기존)와 `tasks.named<Test>("test") { useJUnitPlatform { excludeTags } }`(신규)가
+분리되면 **선언 순서에 의존**한다. 누군가 블록을 위로 옮기면 `excludeTags` 가 조용히 덮인다.
+**권고.** 한 블록에서 `name` 으로 분기해 단일 출처로 둔다.
+```kotlin
+tasks.withType<Test> {
+    useJUnitPlatform {
+        if (name == "nonProdAssemblyTest") includeTags("nonprod-assembly") else excludeTags("nonprod-assembly")
+    }
+    // 기존 contract.snapshot.update 전달 유지
+}
+```
+
+#### ⚠️ CONCERN-4 — 비-prod 조립에서 automation 워커가 **처음으로** 살아난다
+
+FR-C 로 `IssueMutationPort`·`IssueSnapshotPort` 가 생기면 automation `@Scheduled` 워커 4종
+(`AutomationExecutionWorker` · `AutomationScheduleWorker` · `AutomationEventWorker` ·
+`GitWebhookDeliveryCleanupWorker`)이 **비-prod 에서 처음 활성화**된다. 지금까지는 부팅 자체가 실패해
+한 번도 없던 상태다. 이들은 dev postgres(5433)의 `q_automation_events` 를 폴링한다.
+
+- `test` ↔ `nonProdAssemblyTest` 는 같은 Gradle 프로젝트라 **기본 직렬** → 동시 폴링 위험은 낮다.
+- 그러나 개발자가 `bootRun` 을 띄운 채 테스트를 돌리면 **두 벌**이 된다 (메모리 `flaky-late-vs-never-arriving-message`).
+- 실피해는 낮다 — ADR `2026-07-11-automation-prod-assembly` §배포 런북이 *"룰이 없으면 전부 무해 delete"* 로 기록.
+
+**권고.** `nonProdAssemblyTest { mustRunAfter(tasks.named("test")) }` 로 순서를 못박고,
+테스트 KDoc 에 *"dev 앱을 띄운 채 실행 금지"* 를 명시한다. 이 상태 변화 자체를 ADR §결과 에 남긴다.
+
+---
+
+#### 💬 NIT-1 — 뮤테이션 개수 불일치
+
+스펙 §측정 가능한 완료 기준 2 는 "**9종** 각각에 뮤테이션", 계획 Task 5 표는 **11종**(M1~M11 — FR-B 위반 2종 포함).
+→ **11로 통일.** (이 저장소가 반복해서 다친 "문서 간 카운트 drift" 양식.)
+
+#### 💬 NIT-2 — ADR 에 BC 격리 예외를 명시할 것
+
+`NonProdAssemblyPortConfig` 가 다른 BC 의 **어댑터 내부 클래스 3종**을 직접 import·생성한다
+(`com.bts.issue.adapter.outbound.automation.*` 등). `BtsApplication` 이 이미 두 BC 의 `*Application` 을
+import 하는 선례가 있고 조립 모듈의 직무상 정당하지만, **기록이 없으면 다음 리뷰가 다시 문제 삼는다.**
+ADR §결정 에 "조립 모듈은 BC 격리 규칙의 명시적 예외" 를 근거와 함께 남긴다.
+
+---
+
+**BLOCKER: 2건 (CI 미배선 · 낡은 전제)** · CONCERN 4건 · NIT 2건
+**판정. 계획 수정 후 진행 권고** — BLOCKER-1/2 는 "만들었는데 안 도는 가드"를 낳으므로 착수 전 반영 필요.

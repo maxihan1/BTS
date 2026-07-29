@@ -86,12 +86,38 @@ issue-tracking 에는 `AlwaysAllow*`/`NonProdAllow*` 가 **8개** 있는데 중�
 ### FR-D. 재발 방지 가드 — 비-prod 조립 실부팅 테스트 (D6-B)
 
 1. 비-prod(기본) 프로파일로 조립 컨텍스트를 실제로 띄우는 테스트를 신설한다.
+   **`webEnvironment = RANDOM_PORT`** — prod 가드(`ProdAssemblyHttpTestBase`)와 **같은 충실도**로 맞춘다.
+   별도 JVM 이라 그 안에 컨텍스트가 1벌뿐이므로 EC-7 위험 없이 실 Tomcat 을 태울 수 있다
+   (`NONE` 이면 서블릿·시큐리티 자동설정이 backoff 되어 웹 계층 결함을 못 본다 — eng-review CONCERN-1).
 2. **별도 Gradle `Test` 태스크(= 별도 JVM)** 로 격리 실행한다. 기존 prod 조립 테스트와 같은 JVM 에 두지 않는다.
-3. 컨텍스트 로드 성공만으로는 공허하므로, 봉합 대상 **9종 각각의 빈이 정확히 1개**임을 단언한다.
+   태그 분기는 **`tasks.withType<Test>` 한 블록 안에서** `name` 으로 갈라 단일 출처로 둔다 (CONCERN-3).
+   `mustRunAfter(test)` 로 순서를 고정한다 (CONCERN-4).
+3. 컨텍스트 로드 성공만으로는 공허하므로, 봉합 대상 **9종 + 배제 금지 2종 = 11종 각각의 빈이 정확히 1개**임을 단언한다.
+
+### FR-E. ★ CI 배선 — 가드가 실제로 도는 것까지가 범위 (eng-review BLOCKER-1)
+
+`.github/workflows/backend-ci.yml` 의 `assembly` 잡은 `:modules:app:test` **만** 실행한다.
+FR-D 가 태그로 `test` 에서 분리되므로, 배선하지 않으면 신설 가드는 **CI 에서 0회 실행**된다
+(`TODOS.md §151` 이 기록한 실패 양식 — *"안 돌리면 봉인이 로컬 1회성 확인으로 끝나고 썩는다"*).
+
+1. `assembly` 잡의 Gradle 실행에 `:modules:app:nonProdAssemblyTest` 를 추가한다.
+   서비스 컨테이너(`quay.io/tembo/pg16-pgmq` + 5433)는 이미 그 잡에 있으므로 **추가 인프라 0**.
+2. `scripts/workflow/ci-module-coverage.test.ts` 에 존재 단언을 추가한다 — 현재 L80 이
+   `/:modules:app:test/` 만 단언한다. 하드코딩 목록에 판별식을 붙이는 저장소 관례를 따른다.
+   **룰 추가 시 일부러 위반을 넣어 FAIL 을 확인**한다 (`CLAUDE.md §강제` 동형).
+
+### FR-F. prod 빈 구성 불변을 **직접** 단언 (eng-review CONCERN-2)
+
+`excludeFilters` 는 프로파일을 가리지 않으므로 실수로 prod 빈을 지울 수 있는 유일한 축이다.
+FR-D 의 빈-개수 단언 헬퍼를 **prod 프로파일에서도** 돌린다 (기존 `BtsApplicationContextTest` 에 같은 11종 단언 추가).
+삭제·추가 **양방향** 봉인 — 간접 증거("기존 테스트가 통과하니까")에 기대지 않는다.
 
 ## 비기능 요구사항 (NFR)
 
-- **N1. 다른 BC 소스 변경 0.** `git diff --stat` 에서 `backend/modules/app/**` 와 `docs/**` 밖의 변경이 0이어야 한다.
+- **N1. 다른 BC 소스 변경 0.** 변경 허용 경로는 `backend/modules/app/**` · `docs/**` ·
+  `.github/workflows/backend-ci.yml` · `scripts/workflow/ci-module-coverage.test.ts` (+ 필요 시 `CHANGELOG.md`).
+  **다른 9개 BC 모듈의 `src/**` 변경은 0줄**이어야 한다 (이것이 A안의 정의).
+  *(CI 2파일은 eng-review BLOCKER-1 로 추가 — 가드가 실제로 도는 것까지가 이 PR 의 범위다.)*
 - **N2. prod 빈 구성 불변.** prod 프로파일의 빈 목록이 이 PR 전후로 동일하다.
 - **N3. 마이그레이션 0 · 신규 의존성 0 · FR 수 139 불변.**
 - **N4. 기존 테스트 회귀 0.** `:modules:app:test` 전량 + 각 BC 모듈 테스트 전량 통과.
@@ -133,13 +159,15 @@ issue-tracking 에는 `AlwaysAllow*`/`NonProdAllow*` 가 **8개** 있는데 중�
 ## 측정 가능한 완료 기준
 
 1. `./gradlew -p backend :modules:app:bootRun` (프로파일 미지정) → `Started BtsApplication` 로그 확인, 실패 0
-2. FR-D 테스트가 신설되고, **9종 각각에 뮤테이션을 주입했을 때 전부 RED**
-3. `:modules:app:test` + 신설 비-prod 태스크 전량 GREEN
+2. FR-D 테스트가 신설되고, **뮤테이션 11종을 주입했을 때 전부 RED** (봉합 9종 + 배제 금지 위반 2종)
+3. `:modules:app:test` + 신설 `nonProdAssemblyTest` 전량 GREEN
 4. 각 BC 모듈 테스트 전량 GREEN (회귀 0)
-5. `git diff --stat origin/main` 에서 `backend/modules/app/**`·`docs/**` 밖 변경 **0줄**
+5. `git diff --stat origin/main` 에서 **N1 허용 경로 밖 변경 0줄** — 특히 다른 BC `src/**` 0줄
 6. prod 조립 테스트(`ProdAssemblyHttpTestBase` 하위 전량) GREEN — S2 회귀 금지 실증
 7. `ktlintCheck` + `detekt` 통과 (app 모듈 baseline 갱신은 허용)
 8. `bash scripts/verify-master-plan.sh` 종료 0
+9. **`backend-ci.yml` 4잡 전부 그린** — 특히 `assembly` 잡이 `nonProdAssemblyTest` 를 실제로 실행한 로그 확인
+10. **`ci-module-coverage.test.ts` 신규 룰의 뮤테이션 확증** — CI 파일에서 태스크 이름을 지우면 FAIL
 
 ## Brainstorming Check
 
