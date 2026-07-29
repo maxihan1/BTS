@@ -563,7 +563,7 @@ export function SearchRouteAdapter(): JSX.Element {
   // `/issues`와 달리 여기엔 프로젝트 해소와 무관하게 살아야 할 영역(상세 페인)이 없으므로
   // 최상단 반환이 맞다 — 툴바의 저장·내보내기도 projectKey를 요구한다.
   if (activeProject.status !== 'ready') {
-    return <ActiveProjectGate status={activeProject.status} />
+    return <ActiveProjectGate state={activeProject} />
   }
   const projectKey = activeProject.projectKey
 

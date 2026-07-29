@@ -817,7 +817,7 @@ export function IssueListRouteAdapter(): JSX.Element {
         selectedKey={isWide ? selected : null}
       />
     ) : (
-      <ActiveProjectGate status={activeProject.status} />
+      <ActiveProjectGate state={activeProject} />
     )
 
   // D2 — 와이드 + selected일 때만 split view(2컬럼)로 전환한다. 그 외(미선택/좁은폭)는 목록 전체폭.
