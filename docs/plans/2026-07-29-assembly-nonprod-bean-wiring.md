@@ -130,9 +130,38 @@ pgmq 큐를 **동시 폴링**한다."*
 - **관련 ADR.** 위 3건 + `2026-06-03-version-component-permission-prod-resolver` · `2026-06-04-workflow-scheme-permission-prod-resolver`
 - **신규 ADR 필요.** 예 — `docs/decisions/2026-07-29-assembly-nonprod-bean-wiring.md` (스펙 확정 후 생성)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-29-assembly-nonprod-bean-wiring.md](../specs/2026-07-29-assembly-nonprod-bean-wiring.md)
+
+**Maxi 확정 결정 4건 (2026-07-29).**
+
+| ID | 질문 | 결정 |
+|---|---|---|
+| D4 | 중복 5종에서 어느 스텁을 조립에서 뺄까 | **A — issue-tracking 스텁 배제.** 규칙 한 줄 = *"조립에서 권한 리졸버 출처는 언제나 identity-access"* |
+| D5 | `SystemPermissionResolver` 스텁 배제 부작용(비-prod 실판정) 수용? | **A — 수용.** `2026-06-04-system-admin-role` L65 *"모든 프로파일에서 실제 판정"* 의 명시 결정 그대로. 시드는 별건 |
+| D6 | 재발 방지 가드 방식 | **B — 비-prod 실부팅 테스트 + 별도 Gradle 태스크(JVM 분리).** 고치는 증상이 "안 켜진다"라 실부팅만이 직접 증거. 분리로 pgmq 이중 폴링 원천 차단 |
+| D7 | 부재 3종에 실 구현 vs 스텁 | **A — 실 구현을 비-prod 에도 연결.** 스텁이면 dev 에서 자동화가 조용한 no-op → 손검증 목적을 깬다. 생성자 변경은 조립 모듈 컴파일 에러로 드러남 |
+
+**핵심 3줄 요약.**
+- 조립 스캔에서 issue-tracking 스텁 **정확히 6개**를 `ASSIGNABLE_TYPE` 으로 배제 (정규식 금지 — 조용한 무효화 회피)
+- `app` 모듈 `@Configuration @Profile("!prod")` 로 부재 3종의 **실 구현**을 `@Bean` 등록 (prod `@Component` 와 상호 배타)
+- 비-prod 실부팅 테스트를 **별도 Gradle Test 태스크**로 신설 + 9종 각각 빈 1개 단언 + 뮤테이션 9종 RED 실증
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration) — **gap 1건 발견 후 보강.**
+
+issue-tracking 의 `AlwaysAllow*`/`NonProdAllow*` 는 **8개**인데 중복인 것은 **6개뿐**이다.
+패턴(`AlwaysAllow*`)으로 배제하면 `AlwaysAllowFieldPermissionResolver`(`FieldPermissionResolver` 유일 비-prod 구현) ·
+`AlwaysAllowIssueSecurityDirectory`(`IssueSecurityDirectory` 유일 비-prod 구현) 가 함께 제거돼
+**새 "빈 부재" 2종이 생긴다.** 봉합이 새 결함을 만드는 양식(메모리 `seal-closes-only-half-by-default`).
+→ 스펙 FR-B 에 **배제 금지 목록**을 명시하고 와일드카드 배제를 금지했다.
+
+**추가로 스펙에 못박은 함정 3건.**
+- EC-1 **10번째 고장** — Spring fail-fast 라 9종 뒤에 가려진 항목이 있을 수 있다. 부팅 성공까지 반복 필수
+- EC-2 **정규식 배제의 조용한 무효화** — 이름 변경 시 매칭이 풀려 중복 부활. `ASSIGNABLE_TYPE`+import 로 컴파일 에러화
+- EC-5 **가드 공허화** — "컨텍스트만 뜨면 통과"면 무의미. 9종 각각 뮤테이션 주입해 RED 실증
 
 ## Plan (← /bts-plan 채움)
 
