@@ -773,25 +773,32 @@ NFR5 진입 후 URL 불변 · B2 필터 변경 후 projectKey 잔존
 
 ### 봉합 비-공허 증명 (뮤테이션)
 
-**결과 칸은 비워 둔다.** 뮤테이션은 **커밋된 기준선 위에서만** 유효하고
-([[mutation-test-requires-committed-baseline]]) 오케스트레이터가 커밋 후 일괄 실행한다.
-절차는 항목마다 **주입 → RED 확인 → 원복 → 기준선 GREEN 재확인**이다.
+**실행 완료 (2026-07-29, 커밋 `e2c1c65b4` 직후).** 뮤테이션은 **커밋된 기준선 위에서만** 유효하다
+([[mutation-test-requires-committed-baseline]]). 항목마다 **주입 → RED 확인 → 원복**을 자동 러너로
+일괄 수행했고, 마지막에 `git status --porcelain` 공집합으로 원복을 확인했다.
+
+**13건 전량 RED — 살아남은 뮤턴트 0.** 아래 표의 결과 칸이 실측이다.
+
+> ★ 1차 러너가 X3·X10·X12 를 빠뜨렸고, 초안은 그것을 「등가 뮤턴트로 흡수됐다」고 적었다.
+> **검증 없이 쓴 서술이라 정정한다** — 셋은 서로 다른 가드를 찌르는 독립 뮤턴트이고, 2차 러너로
+> 실제 실행해 전부 RED 를 확인했다. 「돌리지 않은 것」을 「돌릴 필요 없는 것」으로 바꿔 적는 것이
+> 바로 이 표가 막으려는 실패 양식이다.
 
 | # | 출처 | 주입 | 기대 | 결과 |
 |---|---|---|---|---|
-| X1 | A(게이트) | `ActiveProjectGate.tsx` 의 `<Button>` 블록 삭제 | `ActiveProjectGate.test.tsx` + AP6 + SA5 **3개 모두 RED** | |
-| X2 | A(게이트) | `issues.index.tsx` 의 `state={activeProject}` 삭제 | **컴파일 에러** (`tsc` EXIT ≠ 0) | |
-| X3 | A(게이트) | `use-resolved-active-project.ts` 의 `retry: () => void refetch()` → `retry: () => {}` | 훅 `retry` 배선 테스트 + AP6/SA5 RED | |
-| X4 | CR3 | `useProjects(false, { enabled })` 의 `{ enabled }` 인자 제거 | 훅 테스트 **와** `ShellLayout` 미인증 테스트 **둘 다** RED (한쪽만이면 아직 절반이다) | |
-| X5 | CR3 | `if (!enabled) return` 삭제 | `T-TR-3` **와** `ShellLayout` 미인증 테스트 | |
-| X6 | CR3 | `&& raw.length > 0` 삭제 | `T-TR-6` | |
-| X7 | CR3 | `const isKnownProject = projects !== undefined` 로 교체 | `T-TR-7` | |
-| X8 | CR1 | 해소 순서 되돌리기 (`if (isError)` 를 최상단으로) | `T-RA-10` | |
-| X9 | CR1 파생 | 빈 캐시 에러 승격 삭제 | `T-RA-12a` | |
-| X10 | CR1 파생 | 빈 캐시 판정을 `projects.length > 0` 로 (죽은 대안) | `T-RA-12b` (URL 키 경로 보호) | |
-| X11 | CR6 | `first` 루프의 `nonEmpty` 되돌리기 | `lib/active-project.test.ts` 1번 | |
-| X12 | CR6 | stored 지점 `nonEmpty` 제거 | `lib/active-project.test.ts` 3번 | |
-| X13 | CR7 | `/* 설명 */ const DEFAULT_PROJECT_KEY = 'ATLAS'` 주입 (M4) | `[P1-상수선언]` 으로 fail. **M1 은 주석 없는 형태만 덮어 필터 구멍을 통과한다** | |
+| X1 | A(게이트) | `ActiveProjectGate.tsx` 의 `<Button>` 블록 삭제 | `ActiveProjectGate.test.tsx` + AP6 + SA5 **3개 모두 RED** | ✅ RED — 3개 파일 / 3건 |
+| X2 | A(게이트) | `issues.index.tsx` 의 `state={activeProject}` 삭제 | **컴파일 에러** (`tsc` EXIT ≠ 0) | ✅ RED — `error TS2741: Property "state" is missing in type "{}"` |
+| X3 | A(게이트) | `use-resolved-active-project.ts` 의 `retry: () => void refetch()` → `retry: () => {}` | 훅 `retry` 배선 테스트 + AP6/SA5 RED | ✅ RED — 3개 파일 / 3건 (T-RA-13 · AP6 · SA5) |
+| X4 | CR3 | `useProjects(false, { enabled })` 의 `{ enabled }` 인자 제거 | 훅 테스트 **와** `ShellLayout` 미인증 테스트 **둘 다** RED (한쪽만이면 아직 절반이다) | ✅ RED — 2개 파일 / 3건 (T-TR-3b · ShellLayout 미인증 2종). **양쪽 다 빨개졌다** |
+| X5 | CR3 | `if (!enabled) return` 삭제 | `T-TR-3` **와** `ShellLayout` 미인증 테스트 | ✅ RED — 2개 파일 / 2건 (T-TR-3a · ShellLayout) |
+| X6 | CR3 | `&& raw.length > 0` 삭제 | `T-TR-6` | ✅ RED — 1개 파일 / 1건 (T-TR-6) |
+| X7 | CR3 | `const isKnownProject = projects !== undefined` 로 교체 | `T-TR-7` | ✅ RED — 1개 파일 / 1건 (T-TR-7) |
+| X8 | CR1 | 해소 순서 되돌리기 (`if (isError)` 를 최상단으로) | `T-RA-10` | ✅ RED — 1개 파일 / 2건 (T-RA-10 외) |
+| X9 | CR1 파생 | 빈 캐시 에러 승격 삭제 | `T-RA-12a` | ✅ RED — 1개 파일 / 1건 (T-RA-12a) |
+| X10 | CR1 파생 | 빈 캐시 판정을 `projects.length > 0` 로 (죽은 대안) | `T-RA-12b` (URL 키 경로 보호) | ✅ RED — 1개 파일 / 1건 (T-RA-12b). 기각안이 URL 키 경로를 죽인다는 실증 |
+| X11 | CR6 | `first` 루프의 `nonEmpty` 되돌리기 | `lib/active-project.test.ts` 1번 | ✅ RED — 1개 파일 / 3건 |
+| X12 | CR6 | stored 지점 `nonEmpty` 제거 | `lib/active-project.test.ts` 3번 | ✅ RED — 1개 파일 / 1건 (stored nonEmpty) |
+| X13 | CR7 | `/* 설명 */ const DEFAULT_PROJECT_KEY = 'ATLAS'` 주입 (M4) | `[P1-상수선언]` 으로 fail. **M1 은 주석 없는 형태만 덮어 필터 구멍을 통과한다** | ✅ RED — 1개 파일 / 1건 (`[P1-상수선언]` 적발) |
 
 ### verify-master-plan 룰 검증 (F9, 트랙 D — 실행 완료)
 
