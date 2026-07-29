@@ -15,6 +15,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -44,11 +48,23 @@ import java.net.http.HttpResponse
  * `HttpURLConnection` 으로 떨어지고 4xx 응답 **본문을 못 읽는다**
  * (learning `bts-assembly-test-pat-bearer-and-httpclient`). 응답 본문이 판별자이므로 원 응답을 직접 관측한다.
  *
+ * ## ★★ 공유 dev postgres(5433)를 쓰면 이 테스트는 **공허하다**
+ * 실측(2026-07-29) — 로컬 dev DB 에는 `alice`(2026-07-10 생성, `data-dev.sql` 산물)와
+ * `CREATE_PROJECT` 전역 부여(2026-07-28 생성)가 **이미 있었다**. 그 DB 로 돌리면 시더를 통째로 지워도
+ * 네 테스트가 전부 초록이다 — 판별력 0. 볼륨 `infra_bts-postgres-data` 가 영속이라 컨테이너를 지워도 남는다.
+ *
+ * 그래서 **매 실행마다 빈 DB** 를 띄운다. Flyway 가 스키마만 만든 상태에서 시작하므로
+ * `alice` 가 존재한다는 사실 자체가 **시더가 일했다는 증거**가 된다.
+ *
+ * 이미지는 `quay.io/tembo/pg16-pgmq` 여야 한다 — 일반 `postgres:16` 은 pgmq 확장이 없어 마이그레이션에서 죽는다
+ * (`backend-ci.yml:102-103` 의 같은 제약).
+ *
  * ## 사전 조건
- * dev postgres 기동 — `docker compose -f infra/docker-compose.dev.yml up -d postgres` (5433).
+ * Docker 데몬만 있으면 된다 (dev postgres 5433 불필요).
  * [NonProdAssemblyBootTest] 와 같은 `@Tag("nonprod-assembly")` 라 전용 `nonProdAssemblyTest` 태스크(별도 JVM)에서만 돈다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Testcontainers
 @Tag("nonprod-assembly")
 class NonProdDevSeedBootTest {
     @Autowired
@@ -71,9 +87,21 @@ class NonProdDevSeedBootTest {
         const val SEED_USERNAME = "alice"
         const val SEED_PASSWORD = "password"
 
+        /** 매 실행마다 빈 DB. 선재 데이터가 없어야 「시더가 만들었다」가 성립한다. */
+        @Container
+        @JvmStatic
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            ).withDatabaseName("bts").withUsername("bts").withPassword("bts")
+
         @JvmStatic
         @DynamicPropertySource
         fun props(registry: DynamicPropertyRegistry) {
+            registry.add("spring.datasource.url", postgres::getJdbcUrl)
+            registry.add("spring.datasource.username", postgres::getUsername)
+            registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("bts.auth.issuer-uri") { "http://localhost:8080" }
             registry.add("bts.slack.signing-secret") { ProdAssemblyHttpTestBase.TEST_SLACK_SIGNING_SECRET }
             registry.add("bts.automation-encryption.key") { ProdAssemblyHttpTestBase.TEST_AUTOMATION_ENCRYPTION_KEY }
