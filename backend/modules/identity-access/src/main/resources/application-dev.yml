@@ -1,7 +1,12 @@
-# dev profile 전용 설정 — 로컬 개발 자동 시드 (prod 영향 없음)
+# dev profile 전용 설정 (prod 영향 없음)
 # spring.profiles.active=dev 시에만 이 파일이 적용된다.
 # 기동 방법: ./gradlew :modules:identity-access:bootRun --args='--spring.profiles.active=dev'
 # 사전 조건: docker compose -f infra/docker-compose.dev.yml up -d postgres
+#
+# ★ dev 시드는 여기 없다 — 조립 앱(:modules:app)의 NonProdDevSeedRunner 한 벌로 단일화했다(2026-07-29).
+#   과거에는 이 파일이 classpath:data-dev.sql 을 로드했으나, 두 모듈이 같은 리소스 이름을 써서
+#   조립 클래스패스에서 충돌해 조립에서는 애초에 비활성이었다. 장치 2벌이 어긋나는 것을 막기 위해 삭제했다.
+#   ⇒ 이 모듈을 **단독으로** dev 로 띄우면 계정이 자동 생성되지 않는다. 조립 앱으로 띄울 것.
 server:
   # frontend vite proxy 가 :8080 으로 호출하도록 dev 한정 포트 정렬 (default 8090 override)
   port: 8080
@@ -10,10 +15,6 @@ spring:
   datasource:
     # docker compose 의 postgres 가 host 5432 (Homebrew postgres 흔히 점유) 와 충돌 회피 위해 5433 매핑.
     url: ${BTS_DB_URL:jdbc:postgresql://localhost:5433/bts}
-  sql:
-    init:
-      mode: always
-      data-locations: classpath:data-dev.sql
 
 bts:
   security:

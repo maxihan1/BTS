@@ -44,7 +44,9 @@ spring:
   # (identity V001~ ↔ issue V001~ 버전 충돌을 이력 테이블 분리로 회피).
   flyway:
     enabled: false
-  # dev seed(data-dev.sql) 는 모듈마다 존재해 classpath 충돌 → 조립 앱에선 비활성. 필요 시 별도 seed 전략.
+  # dev seed 는 SQL 파일이 아니라 NonProdDevSeedRunner(조립 모듈 코드)가 한다 — 2026-07-29 단일화.
+  # 과거에는 모듈마다 data-dev.sql 이 있었고 같은 리소스 이름이라 조립 클래스패스에서 충돌해 비활성이었다.
+  # 그 파일들은 삭제됐으므로 이 항목은 "SQL 초기화를 아예 쓰지 않는다" 는 선언으로 남는다.
   sql:
     init:
       mode: never
