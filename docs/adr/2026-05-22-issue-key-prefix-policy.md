@@ -72,7 +72,11 @@ prefix 정규식. ^[A-Z][A-Z0-9]{1,9}$
 FR-IS-01 본 PR은 **이슈 CRUD 코어**에 집중하므로 프로젝트 생성 API를 제공하지 않는다. 다음을 본 PR에서 도입:
 
 1. `projects` 테이블 (V007 마이그레이션에 함께 포함) — `key VARCHAR(10) NOT NULL UNIQUE`, `key_sequence BIGINT NOT NULL DEFAULT 0`, `name VARCHAR(255) NOT NULL`
-2. `data-dev.sql` 에 dev seed 프로젝트 1건 — `key='ATLAS'`, `name='Atlas Issues'`, `key_sequence=0`
+2. ~~`data-dev.sql` 에 dev seed 프로젝트 1건 — `key='ATLAS'`, `name='Atlas Issues'`, `key_sequence=0`~~
+   → **2026-07-29 무효**. `data-dev.sql` 은 삭제됐다(조립 앱 `NonProdDevSeedRunner` 로 시드 단일화).
+   프로젝트 생성 API·UI(`/projects/new`, #300)가 도입돼 dev 프로젝트는 **실 제품 경로**로 만든다 —
+   이 항목이 예고했던 *"Project Management 후속 PR"* 이 실제로 그 자리를 대체했다.
+   ADR `2026-07-29-assembly-nonprod-dev-seed` 참조.
 3. `IssueKeyPrefixReservedWords` 상수만 본 PR 도입 (검증 로직은 프로젝트 생성 API 도입 PR 에서 활용)
 
 프로젝트 생성/수정/삭제 API는 별도 PR (Project Management) 에서 사용자 입력 검증 + 예약어 차단 + UI 도입.
