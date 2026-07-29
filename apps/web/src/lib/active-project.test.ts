@@ -66,6 +66,24 @@ describe('resolveActiveProjectKey — 4단 해소', () => {
     ).toEqual({ key: 'INFRA', source: 'stored' })
   })
 
+  it('빈 문자열 키를 가진 프로젝트는 첫 원소 폴백에서 건너뛴다 (CR6)', () => {
+    expect(
+      resolveActiveProjectKey({ urlKey: null, storedKey: null, projects: [{ key: '' }, { key: 'ALPHA' }] }),
+    ).toEqual({ key: 'ALPHA', source: 'first' })
+  })
+
+  it('모든 키가 빈 문자열이면 none 으로 떨어진다 — CR6 가 새로 만든 fall-through', () => {
+    expect(
+      resolveActiveProjectKey({ urlKey: null, storedKey: null, projects: [{ key: '' }, { key: '' }] }),
+    ).toEqual({ key: null, source: 'none' })
+  })
+
+  it('빈 저장값은 빈 키 프로젝트와 매칭되지 않는다 — stored 지점 nonEmpty', () => {
+    expect(
+      resolveActiveProjectKey({ urlKey: null, storedKey: '', projects: [{ key: '' }, { key: 'ALPHA' }] }),
+    ).toEqual({ key: 'ALPHA', source: 'first' })
+  })
+
   it('undefined 입력을 null 과 동일하게 다룬다 (useSearch·스토어 미설정 값)', () => {
     expect(
       resolveActiveProjectKey({ urlKey: undefined, storedKey: undefined, projects: PROJECTS }),
