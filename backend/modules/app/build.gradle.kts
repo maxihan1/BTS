@@ -103,11 +103,43 @@ tasks.withType<KotlinCompile> {
 }
 
 tasks.withType<Test> {
-    useJUnitPlatform()
+    // ★ 태그 분기를 이 한 블록에 모은다 — 두 블록으로 나누면 선언 순서에 의존해, 누군가 순서를 바꾸면
+    // excludeTags 가 조용히 덮인다(가드가 기본 test 태스크로 새어 들어가 컨텍스트 이중 부팅).
+    //
+    // nonprod-assembly 태그는 조립 앱을 **기본(비-prod) 프로파일**로 부팅하는 NonProdAssemblyBootTest 다.
+    // @ActiveProfiles·webEnvironment 는 Spring 컨텍스트 캐시 키의 일부라, prod 조립 테스트와 같은 JVM 에
+    // 두면 9-BC 컨텍스트가 두 벌 뜨고 @Scheduled 워커도 두 벌이 같은 5433 dev postgres 의 pgmq 큐를
+    // 동시 폴링한다(ProdAssemblyHttpTestBase KDoc). 그래서 전용 태스크 = 전용 JVM 으로 격리한다.
+    useJUnitPlatform {
+        if (name == "nonProdAssemblyTest") {
+            includeTags("nonprod-assembly")
+        } else {
+            excludeTags("nonprod-assembly")
+        }
+    }
 
     // 계약 스냅샷 재생성 스위치를 테스트 JVM 으로 전달한다.
     // Gradle 은 CLI 의 -D 를 데몬 JVM 에만 심고 fork 된 테스트 JVM 에는 자동 전달하지 않으므로,
     // 이 배선이 없으면 `-Dcontract.snapshot.update=true` 가 조용히 무시되어
     // WorkflowSchemeContractSnapshotTest 가 스냅샷을 영원히 생성하지 못한다.
     System.getProperty("contract.snapshot.update")?.let { systemProperty("contract.snapshot.update", it) }
+}
+
+// 비-prod 조립 부팅 가드 — 전용 JVM. 위 useJUnitPlatform 분기가 태그로 이 태스크에만 실어 준다.
+// CI 배선은 .github/workflows/backend-ci.yml 의 assembly 잡(서비스 컨테이너 pgmq + 5433)에 있고,
+// scripts/workflow/ci-module-coverage.test.ts 가 그 배선의 존재를 강제한다.
+val nonProdAssemblyTest =
+    tasks.register<Test>("nonProdAssemblyTest") {
+        group = "verification"
+        description = "조립 앱을 기본(비-prod) 프로파일로 부팅해 프로파일 의존 포트 결선을 검증한다 (dev postgres 5433 필요)."
+        testClassesDirs = sourceSets["test"].output.classesDirs
+        classpath = sourceSets["test"].runtimeClasspath
+
+        // prod 조립 테스트와 순서를 못박는다. 두 태스크가 겹쳐 돌면 automation @Scheduled 워커가
+        // 두 벌이 되어 같은 pgmq 큐를 동시 폴링한다(비-prod 조립이 부팅되면서 처음 생기는 상태).
+        mustRunAfter(tasks.named("test"))
+    }
+
+tasks.named("check") {
+    dependsOn(nonProdAssemblyTest)
 }
