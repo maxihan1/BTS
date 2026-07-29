@@ -310,6 +310,74 @@ dev 시드가 프로젝트/대시보드를 만들지 않는 설계와 일치.
    어느 스크립트도 그 설정으로 돌리지 않는다. 선재 갭이며 이 PR 범위 밖 — 기록만 남긴다.
 4. 콘솔 error 1건 `ws://localhost:5173/ws` 인증 실패 — STOMP 실시간 알림 연결, 화면 동작 무관(선재).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과 (PR 단위, 2026-07-30)
+
+에이전트 호출 금지 지시로 sub-agent dispatch 없이 컨트롤러가 직접 수행.
+⇒ **교차모델 검증 부재**가 이 PR 의 잔여 위험이다 (#322 와 동일 조건).
+
+### 절대 규칙 (DEVELOPMENT.md §1) 19개
+
+| 항목 | 판정 |
+|---|---|
+| §1.11 `any` 금지 | PASS — 미사용, 파싱 실패는 `undefined` 로 좁힘 |
+| §1.12 `!!` 금지 | PASS — 신규 코드 0건 (`playwright.config.ts:6` `!!process.env` 는 선재) |
+| §1.13 빈 catch 금지 | PASS — catch 0건 |
+| §1.14 테스트 없는 기능 금지 | PASS — 판별식이 먼저(`test:` 커밋 선행) |
+| §1.15 `console.log` 금지 | PASS — 커밋 파일 0건 (손검증 스크립트는 scratchpad, 미커밋) |
+| §1.16 완제품 기준 | PASS — 임시/PoC 표현 0건 |
+| §1.17 신규 의존성 | PASS — 0건 (`node:test`·`node:fs` 표준 모듈만) |
+| §2.2 JSDoc | PASS — public 함수 5개 전부 |
+| §2.3 첫 줄 한국어 헤더 | PASS |
+| §2.3 함수 30줄 이내 | PASS — 최장 `backendCiTriggerPaths()` 26줄 |
+| 그 외 (보안 6 · 데이터 무결성 4) | N/A — DB·인증·SQL·엔드포인트 변경 0 |
+
+### 🛑 자체 적발 BLOCKER 1건 — **봉인 안에서 봉인이 막으려던 결함을 재생산**
+
+판별식이 입력 파일을 **4개** 읽는데 CI 트리거 요구 목록에는 **3개**만 손으로 적었다.
+빠진 것이 `apps/web/playwright.config.ts` — 즉 `reuseExistingServer` 를 `!CI` 로 되돌리는 PR 은
+backend-ci 를 띄우지 않아 **그 단언이 0회 실행**된다. 이 PR 이 없애려는 「두 목록이 서로를 안 본다」를
+봉인 자체가 다시 저질렀다.
+
+**처방은 목록을 늘리는 게 아니라 목록을 하나로 만드는 것.** `INPUTS` 한 선언에서 읽기 경로와
+트리거 요구를 **함께 파생**시켰다(`REQUIRED_CI_TRIGGER_PATHS = [...new Set(...map(coveredBy))]`).
+새 입력을 추가하면 CI 배선 단언이 자동으로 그 트리거를 요구한다.
+
+동반 봉합 2건.
+- **`coveredBy` 짝 검사** — 짝을 잘못 적으면 파생이 **틀린 경로를 요구하며 통과**한다. M9 로 실증.
+- **E2E 단언의 절반 봉인** — `false` 의 **존재**만 보던 것에 조건부 형태의 **부재**를 추가.
+  `false` 를 남긴 채 조건부를 덧붙이면 옛 단언은 통과했다. M10 으로 실증.
+
+### ⚠️ 내가 만든 절차 오류 1건 — 뮤테이션이 미커밋 수정을 지웠다
+
+`backend-ci.yml` GREEN 수정을 **커밋하지 않은 상태**로 뮤테이션 하네스를 돌려,
+M8 의 `git checkout --` 원복이 그 수정을 **삭제**했다. 이후 회차의 CI-배선 red 가 주입 때문인지
+삭제 때문인지 구분되지 않는 오염 상태였다 — 「최종 원복 후 클린인데 red」가 그 서명이었다.
+기록된 교훈 [[mutation-test-requires-committed-baseline]] 을 그대로 어긴 것이다.
+⇒ 수정을 복원·커밋해 기준선을 확정한 뒤 **M8~M11 전량 재실행**, 최종 원복 후 EXIT 0 확인.
+
+### 뮤테이션 (리뷰 반영분) 4/4 — 커밋된 기준선에서 재실행
+
+| # | 주입 | 기대 red | 결과 |
+|---|---|---|---|
+| M8 | playwright 경로를 **push 블록에서만** 제거 | CI 배선 | ✅ |
+| M9 | `coveredBy` 를 `backend/**` 로 오선언 | 짝 검사 | ✅ (CI 배선은 통과 — 짝 검사가 없으면 못 잡는 구멍을 실증) |
+| M10 | `false` 를 남긴 채 조건부 형태 **추가** | E2E 재사용 | ✅ |
+| M11 | `INPUTS` 에서 playwright 항목 제거 | 어떤 단언이든 | ✅ E2E 가 red (읽기가 깨져 **fail-closed**) |
+
+누적 뮤테이션 **11/11**.
+
+### 회귀 (리뷰 반영 후)
+
+| 검증 | 결과 |
+|---|---|
+| `node --test scripts/workflow/*.test.ts` | **68 pass / 0 fail** (main 기준선 61, 신설 7건) |
+| `verify-master-plan.sh` | EXIT 0, FR 139/139 |
+| `vitest run` | **재실행 불필요** — 마지막 전체 실행(528파일/8236건 pass) 이후 변경 파일이 `.github/` · `scripts/workflow/` · `docs/` 뿐이라 vitest 수집 범위(root `apps/web`) 밖 |
+| worktree | 클린 |
+
+### 판정
+
+**CONCERNS 해소 후 PASS.** BLOCKER 1건은 이 PR 안에서 구조적으로 봉합(목록 파생), CONCERNS 2건도 봉합.
+잔여 위험은 **교차모델 검증 부재** 하나.
 
 _fast-track 생략. `/bts-codereview` 는 정상 수행._
