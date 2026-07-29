@@ -3,6 +3,7 @@
 package com.bts.app
 
 import com.atlas.bts.identity.credential.LocalCredentialService
+import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.mfa.MfaEnforcementPolicy
 import com.atlas.bts.identity.user.UserRepository
 import com.bts.shared.permission.GlobalPermissionCodes
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
@@ -79,6 +81,15 @@ class NonProdDevSeedBootTest {
     @Autowired
     private lateinit var mfaEnforcementPolicy: MfaEnforcementPolicy
 
+    @Autowired
+    private lateinit var seeder: NonProdDevSeeder
+
+    @Autowired
+    private lateinit var credentialRepository: StoredPasswordCredentialRepository
+
+    @Autowired
+    private lateinit var jdbcTemplate: JdbcTemplate
+
     @LocalServerPort
     private var port: Int = 0
 
@@ -143,6 +154,50 @@ class NonProdDevSeedBootTest {
         assertThat(mfaEnforcementPolicy.evaluate(seededUserId()))
             .describedAs("MFA 강제 등록 대상이면 로그인 후 전 화면이 403 이 된다")
             .isFalse()
+    }
+
+    @Test
+    fun `재실행해도 행이 늘지 않고 기존 값이 바뀌지 않는다`() {
+        // 부팅 시 이미 1회 돌았다. 여기서 한 번 더 부르면 「재부팅」과 같은 상황이 된다.
+        val before = snapshot()
+
+        seeder.seed()
+
+        assertThat(snapshot())
+            .describedAs("멱등 — 재실행이 행을 늘리거나 기존 값을 바꾸면 안 된다 (기존=%s)", before)
+            .isEqualTo(before)
+    }
+
+    @Test
+    fun `기존 비밀번호가 달라도 덮어쓰지 않는다`() {
+        // 사람이 dev 에서 비밀번호를 바꿨는데 재부팅이 조용히 되돌리면 안 된다(E6).
+        // 시드 값과 다른 해시로 바꾼 뒤 재실행해도 그 해시가 유지돼야 한다.
+        val userId = seededUserId()
+        try {
+            localCredentialService.store(userId, "changed-by-human".toCharArray(), mustChange = false)
+            val humanHash = credentialRepository.findByUserId(userId)?.passwordHash
+
+            seeder.seed()
+
+            assertThat(credentialRepository.findByUserId(userId)?.passwordHash)
+                .describedAs("사람이 바꾼 비밀번호를 시드가 되돌리면 안 된다")
+                .isEqualTo(humanHash)
+        } finally {
+            // 이 테스트만 공유 컨텍스트의 상태를 바꾼다. JUnit 실행 순서는 보장되지 않으므로
+            // 반드시 원복해야 로그인·검증 테스트가 순서에 따라 깨지지 않는다.
+            localCredentialService.store(userId, SEED_PASSWORD.toCharArray(), mustChange = false)
+        }
+    }
+
+    /** 멱등 판정용 관측 — 행 수 + 자격증명 해시. 값이 하나라도 바뀌면 멱등이 깨진 것이다. */
+    private fun snapshot(): List<Any?> {
+        val userId = seededUserId()
+        return listOf(
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM users", Long::class.java),
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM local_credentials", Long::class.java),
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM global_permission_grants", Long::class.java),
+            credentialRepository.findByUserId(userId)?.passwordHash,
+        )
     }
 
     @Test
