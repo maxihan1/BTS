@@ -69,8 +69,6 @@ class NonProdDevSeeder(
     private val grantRepository: GlobalPermissionGrantRepository,
     @Value("\${bts.dev-seed.username:alice}") private val username: String,
     @Value("\${bts.dev-seed.password:password}") private val password: String,
-    @Value("\${bts.dev-seed.email:alice@bts.local}") private val email: String,
-    @Value("\${bts.dev-seed.display-name:Alice (Dev Seed)}") private val displayName: String,
 ) : DevSeeder {
     private val log = LoggerFactory.getLogger(NonProdDevSeeder::class.java)
 
@@ -81,7 +79,7 @@ class NonProdDevSeeder(
      */
     override fun seed() {
         val existing = userRepository.findByUsername(username)
-        val user = existing ?: userRepository.create(username, email, displayName)
+        val user = existing ?: userRepository.create(username, DEV_EMAIL, DEV_DISPLAY_NAME)
         if (existing == null) {
             log.info("dev seed: created user username={}", username)
         }
@@ -101,5 +99,15 @@ class NonProdDevSeeder(
             )
             log.info("dev seed: granted {} to username={}", GlobalPermissionCodes.CREATE_PROJECT, username)
         }
+    }
+
+    private companion object {
+        /**
+         * 이메일·표시이름은 **설정 대상이 아니다**. dev 계정의 장식값이라 바꿀 이유가 없고,
+         * 설정 표면을 넓히면 생성자가 detekt LongParameterList(임계값 7)를 넘는다.
+         * 실제로 바꿀 필요가 있는 건 username·password 둘뿐이다.
+         */
+        const val DEV_EMAIL = "alice@bts.local"
+        const val DEV_DISPLAY_NAME = "Alice (Dev Seed)"
     }
 }
