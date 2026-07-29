@@ -85,7 +85,50 @@ C(prod 프로파일로 개발) = 사용자·프로젝트 시드 0건이라 로�
 - 조립 앱 dev 시드 전략(사용자·프로젝트 0건 → 로그인 불가)은 **별건**. 이 PR 은 "부팅된다"까지만 책임진다
 - `verify-master-plan.sh` CI 미통합(Open Question #4)도 별건
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC.** 특정 BC 아님 — **조립 계층**(`backend/modules/app`). 계약 타입은 shared-kernel `com.bts.shared.permission` 의 포트들.
+  다른 BC(identity-access · issue-tracking · project-workflow · automation · slack-integration)는 **읽기만** 하고 수정 0.
+- **영향 엔티티.** 없음 (도메인 모델 무변경 · 마이그레이션 0 · 신규 권한 enum 0).
+- **glossary 신규 용어 후보 1건.** "**조립 컨텍스트**(assembly context)" — `BtsApplication` 이 `com.bts` + `com.atlas.bts` 전체를
+  한 `ApplicationContext` 로 스캔한 상태. 각 BC 단독 `@SpringBootApplication` 컨텍스트와 구별되는 개념인데
+  glossary 에 표제어가 없다. Maxi 승인 후 추가 (승인 전에는 plan/ADR 안에서만 사용).
+
+### 기존 결정 대조 — 3건 발견 (충돌 1 · 범위 한계 1 · 방향 일치 1)
+
+**① `2026-07-11-automation-prod-assembly.md` §fail-closed — 검증 범위가 prod 한정이었다 (무효화 아님, 한계 명시 필요).**
+그 ADR 은 *"automation main 빈 13개의 생성자 의존을 전수 추적한 결과 미충족 의존은 0"* 이라고 선언했으나,
+본문 그대로 **"조립+prod 컨텍스트에서"** 로 한정돼 있다(L36). 실제로 그 아래 열거가
+`AutomationPermissionResolver → IdentityAccessAutomationPermissionResolver(@Profile("prod")) ✓` ·
+`IssueMutationPort → AutomationIssueMutationAdapter(@Profile("prod")) ✓` 로, **prod 에서만 충족되는 항목을 ✓ 로 적었다.**
+D2 의 회귀 가드(`BtsApplicationContextTest`)도 `ProdAssemblyHttpTestBase` 상속으로 `@ActiveProfiles("prod")` 고정이다.
+→ **비-prod 조립 부팅은 처음부터 계약도 가드도 없었다.** 본 PR 이 그 공백을 메운다. 기존 결정 무효화는 아니고 **범위 확장**.
+
+**② `2026-06-04-system-admin-role.md` L65 와 issue-tracking 스텁이 모순 (중복 6번의 처방 근거).**
+그 ADR 은 명시적으로 결정했다 — *"판정기는 단순 DB 조회라 `@Profile` 분리(prod/non-prod stub)가 **불필요** —
+**모든 프로파일에서 실제 판정한다.** `AlwaysAllow*` 같은 stub 없음"*. 그래서 `IdentityAccessSystemPermissionResolver` 는
+`@Component` 만 달고 profile 이 없다. 그런데 issue-tracking 에 `NonProdAllowSystemAdminResolver`(`@Profile("!prod")`,
+`isSystemAdmin` 항상 true)가 **따로 존재**해 조립 컨텍스트에서 이 결정을 뒤집는다.
+→ 조립에서 스텁을 배제하는 것이 ADR 의도에 부합. **단, 부작용 있음** — `ProjectCreatePermissionProdBootTest` KDoc L34~37 이
+*"기본(비-prod) 프로파일이면 `NonProdAllowSystemAdminResolver`(항상 true)가 살아나 세 시나리오가 전부 201 로 무의미하게 통과"*
+라고 적었다. 즉 **스텁을 빼면 비-prod 조립에서 프로젝트 생성이 실제 권한 판정을 받는다.** 시드 0건 문제와 맞물리므로 스펙에서 결정.
+
+**③ `2026-05-22-issue-permission-resolver-port.md` L115 — 스텁 제거는 원래 예정된 방향 (A안과 상충 없음).**
+*"`AlwaysAllowIssuePermissionResolver` 제거 시점은 dev/staging 도 새 adapter 검증 완료 후"* 로 이미 예고돼 있다.
+A안(조립 한정 배제)은 각 BC 단독 부팅의 스텁을 남기므로 그 로드맵을 앞당기지도 막지도 않는다.
+
+### ★ 설계 제약 — 비-prod 가드를 순진하게 추가하면 알려진 지뢰를 밟는다
+
+`ProdAssemblyHttpTestBase` KDoc L37~43 경고. *"`webEnvironment` 는 컨텍스트 캐시 키의 일부 … 같은 JVM 안에 다른
+설정의 조립 테스트가 있으면 9-BC 컨텍스트가 **부팅 2회**로 중복되고 `@Scheduled` 워커도 2벌이 동일 5433 dev postgres 의
+pgmq 큐를 **동시 폴링**한다."*
+`@ActiveProfiles` 가 다르면 그 자체로 캐시 키가 갈리므로, **비-prod 조립 부팅 테스트를 그냥 추가하면 이 지뢰를 밟는다**
+(메모리 `flaky-late-vs-never-arriving-message` — 워커 두 벌의 pgmq 메시지 도둑질과 동일 양식).
+→ 가드 방식은 스펙에서 결정. 후보 (a) 부팅 없는 정적 빈 정의 검사 (b) 스케줄링 비활성 + `webEnvironment=NONE`
+(c) 별도 Gradle test 태스크/JVM 분리. **(a) 채택 시 ArchUnit 공허 룰 함정 주의** — 일부러 위반을 넣어 fail 확인 필수.
+
+- **관련 ADR.** 위 3건 + `2026-06-03-version-component-permission-prod-resolver` · `2026-06-04-workflow-scheme-permission-prod-resolver`
+- **신규 ADR 필요.** 예 — `docs/decisions/2026-07-29-assembly-nonprod-bean-wiring.md` (스펙 확정 후 생성)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
