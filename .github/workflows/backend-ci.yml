@@ -30,11 +30,14 @@ on:
       # ★scripts/workflow/** 는 실수가 아니다. `ci-module-coverage.test.ts` 가 이 파일의
       # 매트릭스와 settings.gradle.kts 의 차집합을 강제한다 — 한쪽만 걸면 판별식이 안 돈다.
       - 'scripts/workflow/**'
-      # ★apps/web/vite.config.ts 도 같은 사유다. `preview-cors-origin-alignment.test.ts` 가
-      # vite 의 로컬 포트와 application.yml 의 CORS 허용 오리진의 차집합을 강제한다.
-      # 백엔드 쪽 축은 backend/** 가 이미 덮지만, 프론트 쪽 축을 걸지 않으면 포트만 바꾼 PR 에서
-      # 판별식이 0회 실행된다(그 PR 이 정확히 이 결함을 만드는 PR 이다).
+      # ★아래 두 프론트 설정도 같은 사유다. `preview-cors-origin-alignment.test.ts` 가
+      # vite 의 로컬 포트와 application.yml 의 CORS 허용 오리진의 차집합을 강제하고,
+      # preview 가 dev 와 같은 포트를 쓰게 된 대가로 playwright 의 서버 재사용 금지까지 본다.
+      # 백엔드 쪽 축은 backend/** 가 이미 덮지만, 프론트 쪽 축을 걸지 않으면 그 파일만 바꾼 PR 에서
+      # 판별식이 0회 실행된다(그 PR 이 정확히 결함을 만드는 PR 이다).
+      # 이 목록은 손으로 유지하지 않는다 — 판별식의 INPUTS 선언에서 파생돼 자동으로 요구된다.
       - 'apps/web/vite.config.ts'
+      - 'apps/web/playwright.config.ts'
       - 'package.json'
   push:
     branches: [main]
@@ -44,6 +47,7 @@ on:
       - 'scripts/workflow/**'
       # pull_request 와 같은 사유. 한쪽 블록에만 넣으면 봉인이 절반만 닫힌다.
       - 'apps/web/vite.config.ts'
+      - 'apps/web/playwright.config.ts'
       - 'package.json'
 
 concurrency:
