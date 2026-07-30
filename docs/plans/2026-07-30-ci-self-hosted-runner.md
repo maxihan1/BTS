@@ -290,4 +290,78 @@ push 후 다음을 실측한다.
 - 추가 검증: `pnpm test:workflow` · `scripts/verify-master-plan.sh` · 실제 CI 실행 실측(T5) · 뮤테이션 7종(T6)
 - 예상 시간: 약 40분 (T5 의 CI 실행 대기 ~50분은 별도)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 컨트롤러 직접 적대적 리뷰 (2026-07-30)
+
+`bts-review-plan` 분기표는 `chore` 를 fast-track skip 으로 규정한다. 무거운 리뷰 체인은 건너뛰되,
+설계 갈림길이 3개 열려 있어 4개 축으로 직접 검토했다. sub-agent 호출 금지 + codex CLI 미설치.
+
+#### 🔴 P1-1 — 판별식 봉인이 절반만 닫힌다 (축 2)
+
+T1 의 단언 5종은 `INPUTS` **안에 있는** 파일만 검사한다. **새 워크플로우 파일을 추가하면서
+`INPUTS` 에 넣지 않으면 그 파일은 `ubuntu-latest` 를 써도 아무도 안 잡는다.**
+
+`INPUTS` 목록과 `.github/workflows/` 실제 파일 집합이 **서로를 안 보는 두 목록**이다 —
+MEMORY 최상단 지배 결함 양식 `two-lists-never-check-each-other` 그대로다.
+봉인 안에서 봉인이 막으려던 양식을 재생산했다(#323 과 동일한 재귀).
+
+**처방 — 단언 6 신설 (차집합, 양방향).**
+
+```
+단언 6. new Set(INPUTS.map(i => i.path))  ≡  new Set(glob('.github/workflows/*.yml'))
+        어느 방향의 차집합도 비어 있어야 한다.
+        - INPUTS 에만 있음 → 삭제된 워크플로우를 계속 요구 (파생이 틀린 경로를 만든다)
+        - 파일에만 있음   → 검사받지 않는 워크플로우 (이번 결함)
+```
+
+뮤테이션 M8 추가 — `.github/workflows/dummy-ci.yml` 을 만들고 `INPUTS` 에 안 넣으면 단언 6 red.
+
+#### 🔴 P1-2 — T4 와 D2=A 가 서로를 악화시킨다 (축 1, 자기 목적 파괴)
+
+T4 는 `backend-ci` 트리거에 `frontend-ci.yml`·`infra-ci.yml` 을 추가한다. `paths` 는
+**워크플로우 레벨**이라 잡별 필터가 없다 ⇒ **`frontend-ci.yml` 한 줄만 고치는 PR 이 backend 12잡을
+전부 끌고 온다.** `ubuntu-latest` 에서는 병렬이라 감내할 만했지만, D2=A(러너 1대) 에서는
+**맥이 50~60분 점유**된다. 프론트 CI 설정을 손보기가 사실상 불가능해진다.
+
+원인은 판별식을 **backend-ci 안에** 두기로 한 선택이다. 그 잡(`workflow-scripts`)이 backend 트리거에
+묶여 있는 이유는 `ci-module-coverage.test.ts` 가 `backend/settings.gradle.kts` 를 읽기 때문인데,
+이제 같은 잡이 **워크플로우 파일**도 입력으로 갖게 되면서 두 트리거 요구의 합집합이
+backend-ci 에 얹혔다.
+
+**처방 — D4 신설 (아래 갈림길 표).** 판별식 전용 경량 워크플로우로 분리하는 안을 권한다.
+
+#### 🟡 P2-1 — T5 자기검증의 주 단언이 공허에 가깝다 (축 4)
+
+T5 항목 1 `steps>0` 은 **R8 재확인일 뿐** 이번 변경의 판별자가 아니다. 러너가 잡을 집는 순간
+자동으로 만족한다. 이번 전환의 진짜 미지수는 **서비스 컨테이너가 macOS self-hosted 에서 뜨는가**이고,
+그건 잡 `conclusion` 이 아니라 **러너의 서비스 컨테이너 초기화 로그 구간**을 봐야 판별된다.
+
+**처방.** T5 항목 2 를 「`assembly` 잡 로그의 `Initialize containers` 그룹에서 컨테이너 생성 +
+헬스체크 통과가 보이는가」로 구체화. 잡이 다른 이유로 실패했을 때
+「컨테이너가 못 떴다」와 「테스트가 깨졌다」를 구분할 수 있어야 한다.
+
+#### ✅ 검증되어 finding 이 아닌 것
+
+- **D1=A 의 arm64 전제** — `quay.io/tembo/pg16-pgmq:latest` 는 `linux/amd64`·**`linux/arm64`**
+  멀티아치 매니페스트를 갖고, 로컬 캐시본도 `linux/arm64`. Apple Silicon 에서 QEMU 에뮬레이션 불요.
+- **세 워크플로우 모두 이 PR 에서 트리거된다** — 각자 자기 파일을 트리거 경로에 갖고 있어
+  T5 자기검증의 전제는 성립한다.
+- **D2=A·D3=A 는 근거와 일치**(축 3). D1=A 도 `shared-dev-db-preexisting-rows-fake-green` 근거와 일치.
+
+#### BLOCKER
+
+없음. P1 2건은 **착수 전 계획 수정으로 해소 가능**하며, 아래 갈림길에 반영했다.
+
+### 리뷰 반영 — 갈림길 D4 신설
+
+| ID | 갈림길 | 안 | 컨트롤러 추천 |
+|---|---|---|---|
+| **D4** | 판별식을 어디서 돌리나 (P1-2) | **A** 그대로 backend-ci 트리거에 추가 / **B** 판별식 전용 경량 워크플로우 신설, `workflow-scripts` 잡을 그쪽으로 이관(트리거는 `backend/settings.gradle.kts` + `.github/workflows/**` + `scripts/workflow/**` 합집합) / **C** A 유지하되 D2 를 B(러너 3대)로 바꿔 드래그 비용을 낮춤 | **B**. A 는 프론트 CI 한 줄 수정에 50~60분을 물린다. C 는 근본 원인(트리거 과대 결합)을 그대로 두고 리소스로 덮는 것이며 `concurrent-testcontainers-suite-flaky` 위험을 새로 들인다 |
+
+### 계획 수정 사항 (게이트 1 승인 시 적용)
+
+- T1 에 **단언 6**(`INPUTS` ⟺ 실제 워크플로우 파일 집합, 양방향 차집합) 추가
+- T6 에 **뮤테이션 M8**(INPUTS 미등록 신규 워크플로우 파일) 추가 → 뮤테이션 8종
+- T5 항목 2 를 서비스 컨테이너 **초기화 로그 구간** 확인으로 구체화
+- D4 선택에 따라 T4 의 대상 파일이 달라짐 (A → `backend-ci.yml` / B → 신규 워크플로우 파일)
