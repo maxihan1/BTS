@@ -1,9 +1,10 @@
 // 사이드바 프로젝트 트리 — GET /api/v1/projects 소비, 2단 그룹 아코디언(직접링크 3 + 리포트/설정 중첩그룹) — FR-UX-06 PR12 Task 2 (아직 Sidebar에 미배선, T3이 배선). "모든 프로젝트" 진입 링크(G2) + 설정 그룹 "일반" 링크(FE-4)는 FR-PJ PR-5 Task 7
 import { useState, useEffect, type JSX } from 'react'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useProjects } from '@/hooks/use-projects'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useProjectTreeExpanded } from '@/hooks/use-project-tree-expanded'
 import { navLabels } from '@/i18n/nav-labels'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Project } from '@/api/projects'
@@ -341,11 +342,20 @@ function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
  * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}/board`).
  * - 펼침 시 직접 링크 3(보드·백로그·타임라인) + `리포트` 중첩그룹(4) + `프로젝트 설정` 중첩그룹(12,
  *   "일반"이 최상단 — FE-4). 모든 서브링크는 실재 라우트만 사용한다(요약은 라우트 부재로 미포함, S3).
- * - 활성 프로젝트는 `useParams({ strict: false }).projectKey`와 프로젝트 key가 일치할 때
- *   결정되며, 자동 펼침 + `aria-current="page"`가 부여된다. 프로젝트 컨텍스트 밖(파라미터
- *   없음)이면 전부 접힌다. 라우트가 바뀌면 이 자동펼침 집합을 다시 계산해 이전 수동 펼침을
- *   덮어쓴다(FR5) — `expandedKeys`는 `activeProjectKey`가 바뀔 때마다 `useEffect`로 재설정된다.
- * - 수동 펼침(디스클로저 클릭)은 ephemeral `useState`이며 영속하지 않는다.
+ * - **자동 펼침의 근거는 URL이 담은 프로젝트 키다** — 경로 파라미터(`/projects/$projectKey/*`)
+ *   우선, 없으면 검색 파라미터(`/issues?projectKey=` · `/search?projectKey=`). 둘 다 없으면
+ *   (프로젝트 컨텍스트 밖) 자동 펼침이 일어나지 않는다. 검색 파라미터까지 보는 것은
+ *   FR-UX-08 이 닫은 선재 갭이다 — 그전에는 경로 파라미터만 봐서 `?projectKey=`로 온
+ *   사용자에게 트리가 아무것도 활성으로 표시하지 않았다(FR7).
+ * - **`aria-current="page"`는 경로 파라미터 일치일 때만** 부여한다. 검색 파라미터는 "이 링크가
+ *   현재 페이지"를 뜻하지 않으므로(사용자는 `/issues`에 있다) 붙이면 거짓말이 된다.
+ * - **★ 자동 펼침은 더하기만 한다 (FR-UX-06 PR12 FR5 정정, ADR 2026-07-30 §D2).** 예전에는
+ *   라우트가 바뀔 때마다 `setExpandedKeys(new Set([activeProjectKey]))`로 집합을 통째로
+ *   갈아엎어 사용자가 접어 둔 것이 다시 열렸다. 이제 {@link useProjectTreeExpanded}의
+ *   `expand`가 키를 **추가만** 하고 다른 키를 제거하지 않는다.
+ * - **수동 펼침(디스클로저 클릭)은 localStorage에 영속한다** — `bts.project-tree.expanded`.
+ *   영속 범위는 **프로젝트 레벨**이고, 중첩그룹("리포트"·"프로젝트 설정")은 여전히
+ *   {@link ProjectTreeRow} 로컬 `useState`라 영속되지 않는다(스펙 L6).
  * - 사이드바 접힘(64px 레일, {@link useSidebarCollapsed})이면 각 프로젝트는 아이콘(이니셜)만
  *   노출하고 텍스트는 `sr-only`로 감추며, 그룹 펼침은 비활성화된다(FR6). "모든 프로젝트" 링크는
  *   접힘 여부와 무관하게 항상 전체 텍스트로 노출한다(전용 아이콘 부재, 디자이너 미확인 — G2 최소구현).
@@ -356,30 +366,31 @@ function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
  *   숨는다(nav 전체가 null이므로).
  */
 export function ProjectTree(): JSX.Element | null {
-  const { projectKey: activeProjectKey } = useParams({ strict: false })
+  // 경로 파라미터 — `aria-current="page"` 의 유일한 근거다. 사용자가 **그 페이지에 있을 때만** 참이다.
+  const { projectKey: pathProjectKey } = useParams({ strict: false })
+  // 검색 파라미터 — `/issues?projectKey=` · `/search?projectKey=` (FR-UX-07 이 승격한 공유 링크 형태)
+  const { projectKey: searchProjectKey } = useSearch({ strict: false }) as {
+    projectKey?: string
+  }
   const { data: projects, isLoading, isError } = useProjects()
   const { collapsed } = useSidebarCollapsed()
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
-    () => new Set(activeProjectKey !== undefined ? [activeProjectKey] : []),
-  )
+  const { expandedKeys, toggle, expand } = useProjectTreeExpanded()
 
-  // 라우트 이동으로 활성 프로젝트가 바뀔 때마다 펼침 상태를 현재 프로젝트 기준으로 재계산한다.
-  // 이전 수동 펼침은 여기서 리셋된다(FR5 "현재 프로젝트 기준 재계산").
+  /**
+   * 자동 펼침의 근거 — **URL 이 담은** 프로젝트 키(경로 우선, 없으면 검색 파라미터).
+   *
+   * 저장값·첫 프로젝트 폴백까지 해소하는 `useResolvedActiveProject` 를 쓰지 않는 이유 —
+   * 그러면 `/dashboards` 처럼 URL 이 프로젝트를 전혀 안 담는 페이지에서도 항상 키가 나와
+   * "프로젝트 컨텍스트 밖이면 전부 접힘" 계약이 깨진다 (스펙 FR7 정정단락).
+   */
+  const urlProjectKey = pathProjectKey ?? searchProjectKey
+
+  // 활성 프로젝트가 바뀌면 그 키를 펼침 집합에 **더한다**. 다른 키를 제거하지 않는다.
+  // FR-UX-06 PR12 의 FR5(덮어쓰기)를 정정한 것이다 — ADR 2026-07-30 §D2.
   useEffect(() => {
-    setExpandedKeys(new Set(activeProjectKey !== undefined ? [activeProjectKey] : []))
-  }, [activeProjectKey])
-
-  const toggleProject = (key: string): void => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
+    if (urlProjectKey === undefined) return
+    expand(urlProjectKey)
+  }, [urlProjectKey, expand])
 
   if (isError) {
     return null
@@ -400,10 +411,10 @@ export function ProjectTree(): JSX.Element | null {
             <ProjectTreeRow
               key={project.id}
               project={project}
-              isActive={project.key === activeProjectKey}
+              isActive={project.key === pathProjectKey}
               expanded={expandedKeys.has(project.key)}
               collapsed={collapsed}
-              onToggle={() => toggleProject(project.key)}
+              onToggle={() => { toggle(project.key) }}
             />
           ))}
         </ul>

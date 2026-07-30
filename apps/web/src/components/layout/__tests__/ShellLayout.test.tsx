@@ -28,6 +28,9 @@ vi.mock('@tanstack/react-router', () => ({
   // 라우터 컨텍스트 없는 isolation 렌더에서도 크래시하지 않도록 빈 파라미터로 모킹한다
   // (Sidebar.test.tsx 동일 패턴, 셸 랜드마크 계약과 무관).
   useParams: () => mockParams,
+  // 같은 이유로 ProjectTree가 `useSearch({strict:false})`도 호출한다(FR-UX-08 FR7 —
+  // `/issues?projectKey=` 검색 파라미터까지 활성 프로젝트 근거로 읽는다).
+  useSearch: () => ({}),
   Link: ({
     to,
     children,
