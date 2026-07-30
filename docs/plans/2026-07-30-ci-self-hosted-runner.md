@@ -290,6 +290,87 @@ push 후 다음을 실측한다.
 - 추가 검증: `pnpm test:workflow` · `scripts/verify-master-plan.sh` · 실제 CI 실행 실측(T5) · 뮤테이션 7종(T6)
 - 예상 시간: 약 40분 (T5 의 CI 실행 대기 ~50분은 별도)
 
+## 구현 결과 (T1~T7 완료)
+
+### 🔴 T5 1차 실행에서 D1=A 가 **불가능**으로 판명 → 수단 교체
+
+1차 실행(`b5b491b61`) **16/17 초록**, `app (조립 부팅)` 만 실패.
+
+```
+##[error]Container operations are only supported on Linux runners
+```
+
+**GitHub Actions 의 `services:`(서비스 컨테이너)는 Linux 러너 전용이다. macOS 는 기능 자체가 없다.**
+착수 전 검증했던 arm64 매니페스트는 **필요조건이었을 뿐 충분조건이 아니었다** — 이미지가 도는 것과
+러너가 그 문법을 지원하는 것은 별개다. 계획의 D1=A 추천이 이 전제를 안 봤다.
+
+**P2-1 처방이 값을 했다.** 리뷰에서 T5 를 「잡 `conclusion`」이 아니라 「**초기화 로그 구간**」을
+보도록 고쳐뒀고, 실제로 그렇게 갈렸다 — 실패 스텝이 `2. Initialize containers`, 이후 테스트 스텝은
+전부 `skipped`. 「컨테이너가 못 떴다」와 「테스트가 깨졌다」가 즉시 구분됐다.
+
+**양성 대조군이 같은 실행 안에 있었다.** `infra-ci` 의 nginx 봉인 잡은 **success** 였고, 그 잡은
+`nginx:1.27-alpine` 을 **`docker run` 으로 직접** 띄운다 ⇒ 스텝 안의 Docker 는 정상, `services:`
+문법만 막힌 것. 결정(격리된 임시 DB · dev DB 재사용 금지 · 비충돌 포트)은 유지하고 **수단만 교체**했다.
+
+- `services:` → `docker run` 기동 · 헬스 대기 · **`if: always()` 정리** 3스텝
+- **정리 스텝이 self-hosted 고유 책임이다.** 머신이 살아남으므로 안 지우면 다음 실행이 55433
+  포트 충돌로 죽는다. GitHub 호스팅 러너에는 없던 책임
+- 회귀 차단을 **먼저** 붙였다 (TDD `test:` → `fix:`) — `services:` 금지 단언에 에러 원문·대안·
+  근거 run ID 를 실패 메시지에 박았다
+
+### T5 최종 실측 (`f3d41e85c`) — **17/17 초록**
+
+| 워크플로우 | 결과 |
+|---|---|
+| `workflow-scripts-ci` | ✅ 1/1 |
+| `frontend-ci` | ✅ 3/3 |
+| `infra-ci` | ✅ 2/2 |
+| `backend-ci` | ✅ 11/11 (`app (조립 부팅)` 포함) |
+
+**공허 통과 아님 — 스텝 단위 확인.** assembly 잡 10스텝 전부 success, 스킵 0.
+`postgres ready (2회차)` (헬스가 실제로 돌았다) · `BUILD SUCCESSFUL in 2m 2s` ·
+`nonProdAssemblyTest` 실행 · `postgres 정리` success.
+**잔재 0** — 러너 머신에 `bts-ci-postgres` 컨테이너 없음, 55433 해제, dev 5433 은 그대로.
+
+**나머지 위험 실측 결과.**
+
+| # | 예측 | 실측 |
+|---|---|---|
+| R2 | 워크스페이스 재사용 잔재 | ✅ 해소. `actions/checkout@v4` 가 `Removing node_modules/`·`Removing .husky/_/` 를 매 잡마다 수행 |
+| R3 | 12잡 직렬 50~60분 | **45.1분** (잡 합계 44.1분 = 거의 완전 직렬). 최장 `issue-tracking` 9.4분 · `identity-access` 7.0분 |
+| R7 | macOS ARM64 액션 지원 | ✅ `setup-java`·`setup-node`·`setup-gradle`·`pnpm/action-setup` 전부 정상 |
+| R10 | 캐시 서비스 동작 | ✅ 결제 차단 하에서도 정상 (`Post Setup Gradle`·`Post Setup JDK` 성공) |
+
+**D2 재검토 근거.** 45분은 예측(50~60분)보다 낫다. 러너 증설 없이 유지할 만하다.
+줄이려면 `issue-tracking`(9.4분) 하나가 벽시계의 21% 이므로 그 모듈 샤딩이 러너 증설보다 먼저다.
+
+### T6 뮤테이션 **9/9**
+
+기준선 커밋 후 실행(`f97c09e3f`), 하네스 첫 줄 dirty 검사 통과. 최종 원복 후 **클린 + green**.
+
+| M | 주입 | 기대 단언 | 결과 |
+|---|---|---|---|
+| M1·M2 | `frontend-ci`·`infra-ci` → `ubuntu-latest` | 라벨 | ✔ |
+| M3 | `pull_request` 트리거에서 경로 삭제 | pull_request | ✔ |
+| M4 | `push` 트리거에서**만** 삭제 (절반 봉인) | push | ✔ **+ 재지정한 `preview-cors` 도 red** |
+| M5 | `coveredBy` 짝 오류 | coveredBy | ✔ |
+| M6 | 판별식 실행 스텝 제거 | 실행 여부 | ✔ |
+| M7 | 훑기 정규식 훼손 → 0건 | 양성 대조군 | ✔ |
+| M8 | `INPUTS` 밖 신규 워크플로우 | 라벨 | ✔ **런타임 훑기 설계 실증** |
+| M9 | `services:` 재도입 | services 금지 | ✔ |
+
+### 리뷰 처방보다 강한 해법을 택한 지점
+
+P1-1(봉인 절반)에 대해 리뷰는 「`INPUTS` ⟺ 실제 파일 집합 **차집합 검사**」를 처방했다.
+채택한 것은 **목록을 아예 없애는 것** — 워크플로우 파일을 상수로 선언하지 않고 런타임에 훑는다.
+두 목록을 화해시키는 것보다 하나로 만드는 것이 근본적이다(메모리 「목록을 늘리지 말고 한 선언에서
+파생」). M8 이 이 설계를 실증했다 — `INPUTS` 에 없는 파일을 추가해도 잡힌다.
+
+### 로컬 검증 실측
+
+판별식 **92 pass / 0 fail** (main 기준선 84 + 신규 7 + suite rollup 1) ·
+`verify-master-plan.sh` **EXIT0, FR 139/139** · 뮤테이션 **9/9** · 실제 CI **17/17**.
+
 ## 리뷰 결과
 
 ### 컨트롤러 직접 적대적 리뷰 (2026-07-30)
