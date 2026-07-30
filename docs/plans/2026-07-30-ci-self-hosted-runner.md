@@ -359,6 +359,47 @@ T5 항목 1 `steps>0` 은 **R8 재확인일 뿐** 이번 변경의 판별자가 
 |---|---|---|---|
 | **D4** | 판별식을 어디서 돌리나 (P1-2) | **A** 그대로 backend-ci 트리거에 추가 / **B** 판별식 전용 경량 워크플로우 신설, `workflow-scripts` 잡을 그쪽으로 이관(트리거는 `backend/settings.gradle.kts` + `.github/workflows/**` + `scripts/workflow/**` 합집합) / **C** A 유지하되 D2 를 B(러너 3대)로 바꿔 드래그 비용을 낮춤 | **B**. A 는 프론트 CI 한 줄 수정에 50~60분을 물린다. C 는 근본 원인(트리거 과대 결합)을 그대로 두고 리소스로 덮는 것이며 `concurrent-testcontainers-suite-flaky` 위험을 새로 들인다 |
 
+### 🛑 게이트 1 결과 (2026-07-30, Maxi 확정)
+
+- **D1 = A** 서비스 컨테이너 유지 + 호스트 포트 `55433` + `BTS_DB_URL` env
+- **D2 = A** 러너 1대 유지, 12잡 직렬 (~50–60분). 실측 후 재검토
+- **D3 = A** 라벨 9곳 하드코딩
+- **D4 = B** 판별식 전용 경량 워크플로우 신설
+- **게이트 1 승인** → `/bts-impl` 진입
+
+### D4=B 의 필연적 귀결 (착수 후 실측, 계획에 없던 것)
+
+판별식 잡을 옮기려면 새 워크플로우의 트리거가 **모든 판별식 입력의 합집합**이어야 한다.
+그 합집합을 전수 실측한 결과 3건이 따라온다.
+
+**귀결 1 — `preview-cors-origin-alignment.test.ts` 를 같은 PR 에서 고쳐야 한다.**
+그 판별식은 `backend-ci.yml` 의 트리거를 검사한다(L24 `BACKEND_CI`, L151). 잡이 다른 워크플로우로
+가면 **검사 대상이 틀린 파일을 가리키게 된다** — 판별식이 조용히 무의미해진다.
+⇒ 검사 대상을 새 워크플로우 파일로 바꾼다.
+
+**귀결 2 — 판별식 입력 합집합 전수 (실측).**
+
+| 판별식 | 입력 | 필요한 트리거 경로 |
+|---|---|---|
+| `bc-keyword-coverage` | `docs/plan/product/*.md` | **`docs/plan/product/**`** ⚠️ |
+| `ci-module-coverage` | `backend/settings.gradle.kts` · `.github/workflows/backend-ci.yml` | `backend/**` · `.github/workflows/**` |
+| `preview-cors-origin-alignment` | `apps/web/vite.config.ts` · `apps/web/playwright.config.ts` · `backend/…/application.yml` · 워크플로우 파일 | 각 경로 · `backend/**` · `.github/workflows/**` |
+| `skill-type-coverage` | `scripts/workflow/types.ts` · `.claude/skills/bts-review-plan/SKILL.md` | `scripts/workflow/**` · **`.claude/skills/**`** ⚠️ |
+| `todos-resolved-section-purity` | `TODOS.md` | `TODOS.md` |
+| `ci-runner-label-alignment` (신규) | `.github/workflows/*.yml` | `.github/workflows/**` |
+| 판별식 자신 전부 | — | `scripts/workflow/**` |
+
+**귀결 3 — ⚠️ 표시 2건은 지금까지 아무 워크플로우도 안 걸고 있던 선재 갭이다.**
+
+- **`docs/plan/product/**`** — 이 세션 최초 과제였고 Brief 에서 「범위 밖」으로 미뤘던 바로 그 갭.
+  D4=B 를 정확히 배선하면 **필연적으로 닫힌다**(빼면 새 워크플로우가 틀린 트리거를 갖게 된다).
+- **`.claude/skills/**`** — **이번에 새로 발견.** `skill-type-coverage.test.ts` 가
+  `.claude/skills/bts-review-plan/SKILL.md` 의 분기표를 읽는데, 그 파일만 고치는 PR 은
+  어느 CI 도 안 띄운다. 분기표에서 타입 행을 지우는 변경이 무검증 통과한다.
+
+⇒ **이 두 건은 새로 만든 문제가 아니라 정확한 배선의 부산물이다.** 범위를 임의로 넓힌 것이 아니라,
+D4=B 를 틀리지 않게 하려면 빼놓을 수 없다. 넣지 않으면 새 워크플로우 자체가 절반만 닫힌 봉인이 된다.
+
 ### 계획 수정 사항 (게이트 1 승인 시 적용)
 
 - T1 에 **단언 6**(`INPUTS` ⟺ 실제 워크플로우 파일 집합, 양방향 차집합) 추가
