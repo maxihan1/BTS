@@ -118,12 +118,20 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 | **FR4** | 이슈 방문 기록 — `routes/issues.$key.tsx` 에서 **이슈 조회가 성공한 뒤에만** push. 조회 전에 기록하면 404·403 키가 목록을 오염시키고, 그 키는 다음 마운트에서 또 실패한다 |
 | **FR5** | `hooks/use-project-tree-expanded.ts` 신설 — 펼침 집합 영속. 저장 형식은 `string[]`(JSON), 메모리 표현은 `Set<string>`. localStorage `bts.project-tree.expanded` |
 | **FR6** | `ProjectTree` 자동펼침을 **더하기(`add`)로 변경**하고 **덮어쓰기(`new Set([key])`)를 폐지**한다. FR-UX-06 PR12 FR5 의 정정 (ADR §D2). JSDoc 의 *"이전 수동 펼침을 덮어쓴다"* · *"수동 펼침은 ephemeral 이며 영속하지 않는다"* 두 문장도 함께 정정 |
-| **FR7** | `ProjectTree` 의 활성 프로젝트 소스를 `useParams({strict:false}).projectKey` → **`useResolvedActiveProject`** 로 교체한다. 선재 갭(S6) 동시 해소 |
+| **FR7** | `ProjectTree` 의 활성 프로젝트 소스를 `useParams({strict:false}).projectKey` → **`useParams(...).projectKey ?? useSearch({strict:false}).projectKey`** 로 넓힌다. 선재 갭(S6) 해소. **`aria-current="page"` 는 경로 파라미터 일치일 때만 부여한다** — 검색 파라미터는 "이 링크가 현재 페이지"를 뜻하지 않는다 |
+
+> **★ FR7 정정 (2026-07-31, T4 구현 중).** 초안은 소스를 **`useResolvedActiveProject`** 로 바꾸라고 적었다. **과도했다.**
+>
+> 그 훅은 저장값·첫 프로젝트 폴백까지 해소하므로 `/dashboards` 처럼 **URL 이 프로젝트를 전혀 안 담는 페이지에서도 항상 활성 키를 돌려준다.** 그러면 (a) 기존 계약 *"프로젝트 컨텍스트 밖이면 전부 접힘"* (`ProjectTree.test.tsx` · e2e `project-tree.spec.ts:148` S5)이 깨지고, (b) 그 프로젝트 링크에 `aria-current="page"` 가 붙어 **접근성 의미가 틀린다** — 사용자는 그 페이지에 있지 않다.
+>
+> **선재 갭의 실제 정체는 「URL 대 저장값」이 아니라 「경로 파라미터 대 검색 파라미터」다.** S6 이 요구하는 것은 `/issues?projectKey=MIDDLE` — **URL 이 담은** 키다. 소스를 두 URL 원천의 합집합으로 넓히면 S6 을 만족하면서 기존 동작이 그대로 유지된다.
+>
+> **파생 — FR11-b · E14 는 철회한다.** 새 저장 생산 지점이 생기지 않으므로 리뷰 CONCERN C1 이 성립하지 않는다. `ProjectTree` 는 여전히 읽기 전용이다.
 | **FR8** | `components/project/ProjectSwitcher.tsx` 신설 — `components/ui/popover.tsx`(현재 소비처 0) + `role="listbox"` / `role="option"`. **`<nav>` 로 만들지 않는다** (ADR §D5). 기존 `role="listbox"` 소비처 5곳(`SenderAutocomplete.tsx:237` · `LabelAutocompleteInput.tsx:167` · `DashboardForm.tsx:167` · `MentionDropdown.tsx:55` · `UserMappingStep.tsx:82`)의 ARIA 관례를 따른다 |
 | **FR9** | 스위처 배치 — `TopBar.tsx`, 로고와 검색 버튼 사이. 트리거는 현재 활성 프로젝트명을 표시한다 |
 | **FR10** | 스위처 목록 = **최근 방문 그룹(MRU) + 나머지**. 나머지는 **백엔드 순서 그대로**(`ProjectQueryRepository.kt:62` `ORDER BY name ASC`). **프론트 재정렬 금지** 원칙(FR-UX-07 FR3 · `use-projects.ts:10`)은 "나머지" 구간에 그대로 적용되고, MRU 그룹은 재정렬이 아니라 **별도 구간 분리**다 |
 | **FR11** | 스위처 선택 동작 — §1-B **3갈래** 분기. ① 경로 파라미터 → 경로 치환 이동 ② 검색 파라미터 → `navigate({ search: (prev) => ({ ...prev, projectKey }) })` (**`...prev` 필수**) ③ 없음 → `setActiveProject` 만 |
-| **FR11-b** | **`ProjectTree` 가 `useResolvedActiveProject` 를 소비하면 저장값 쓰기가 전 인증 페이지로 넓어진다** — 그 훅은 읽기 전용이 아니라 `:85-91` 에서 해소 출처가 `url`·`first` 일 때 저장한다. 지금 소비처는 `/issues`·`/search` 어댑터 둘뿐이지만 `ProjectTree` 는 모든 인증 페이지의 사이드바다. **이 확장을 의도된 동작으로 채택**한다 — 가드가 훅 안에 있어 값이 수렴하고, 첫 방문 사용자가 어느 페이지로 들어와도 활성 프로젝트가 잡힌다. 조용히 넘어가지 않고 테스트로 단언한다 |
+| ~~**FR11-b**~~ | **철회 (2026-07-31).** FR7 정정으로 `ProjectTree` 가 `useResolvedActiveProject` 를 소비하지 않게 되어 새 저장 생산 지점이 생기지 않는다. 리뷰 CONCERN C1 이 성립하지 않는다 |
 | **FR12** | 사이드바 "내 작업" — `to='/issues' search={{ assignee: userId }}`. **`projectKey` 를 싣지 않는다**(§1-A). `useAuthUser()?.userId` 부재 시 항목을 렌더하지 않는다 |
 | **FR13** | 사이드바 "최근 항목" — 최근 이슈 키 5건, 각 키의 제목을 마운트 시 조회해 `KEY 제목` 형태로 렌더. 조회 실패(403/404) 항목은 **조용히 숨긴다**. 목록이 비면 섹션 자체를 렌더하지 않는다 |
 | **FR14** | `navLabels` 에 `myWork`(`'내 작업'`) · `recent`(`'최근 항목'`) 추가. `nav-labels.ts` 의 S3 주석에 "FR-UX-08 에서 추가됨" 근거를 남긴다 |

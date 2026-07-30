@@ -14,6 +14,8 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useProjectTreeExpanded } from '@/hooks/use-project-tree-expanded'
+import { useActiveProject } from '@/hooks/use-active-project'
 import { navLabels } from '@/i18n/nav-labels'
 import { ProjectTree } from '../ProjectTree'
 
@@ -75,8 +77,21 @@ function buildRouter(initialPath: string) {
     path: '/dashboards',
     component: ProjectTree,
   })
+  /**
+   * 검색 파라미터로만 프로젝트를 지정하는 경로 (FR-UX-08 FR7 / S6).
+   * `/projects/$projectKey/*` 와 달리 경로 파라미터가 없어, 트리가 `useParams`만 보면
+   * 활성 프로젝트를 못 찾는다 — 그것이 이 PR 이 닫는 선재 갭이다.
+   */
+  const issuesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/issues',
+    validateSearch: (search: Record<string, unknown>): { projectKey?: string } => ({
+      projectKey: typeof search['projectKey'] === 'string' ? search['projectKey'] : undefined,
+    }),
+    component: ProjectTree,
+  })
   return createRouter({
-    routeTree: rootRoute.addChildren([projectBoardRoute, outsideRoute]),
+    routeTree: rootRoute.addChildren([projectBoardRoute, outsideRoute, issuesRoute]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
     defaultPreload: false,
   })
@@ -100,6 +115,12 @@ async function findProjectNav() {
 beforeEach(() => {
   // useSidebarCollapsed는 모듈 전역 zustand 싱글톤 — 이전 테스트의 상태가 누출되지 않도록 리셋
   useSidebarCollapsed.setState({ collapsed: false })
+  // ★ FR-UX-08 — 펼침 집합이 영속되면서 같은 성질이 생겼다. 이 리셋이 없으면 아래
+  //   "나머지는 접힘" 계열 단언이 순서 의존이 되어 거짓 실패·거짓 통과가 둘 다 가능하다
+  //   (plan 리뷰 BLOCKER-2). 활성 프로젝트 저장값도 해소 ②의 입력이므로 함께 비운다.
+  localStorage.clear()
+  useProjectTreeExpanded.setState({ expandedKeys: new Set<string>() })
+  useActiveProject.setState({ activeProjectKey: null })
   // mocks/handlers.ts 전역 등록에 더해 명시 등록(use-projects.test.tsx와 동일 관례)
   server.use(...projectListHandlers)
 })
@@ -254,5 +275,104 @@ describe('ProjectTree', () => {
       expect(link.querySelector('span.sr-only')?.textContent).toBe(fixture.name)
     }
     expect(within(nav).queryAllByRole('button', { name: /하위 메뉴/ })).toHaveLength(0)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // FR-UX-08 PR-A Task 4 — 펼침 영속(FR6) + 검색 파라미터 활성 인식(FR7)
+  //
+  // ★ FR-UX-06 PR12 의 FR5("라우트가 바뀌면 이전 수동 펼침을 덮어쓴다")를 정정한다.
+  //   자동펼침은 이제 **더하기만** 한다 (ADR §D2).
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('T4-1 (FR6, S4): 펼친 상태가 언마운트/재마운트를 건너 유지된다 (영속)', async () => {
+    const user = userEvent.setup()
+    const first = renderProjectTree('/dashboards')
+
+    const nav = await findProjectNav()
+    const toggle = await within(nav).findByRole('button', {
+      name: `${atlasFixture.name} 하위 메뉴`,
+    })
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    // 새로고침에 해당 — 트리를 통째로 내렸다가 다시 올린다
+    first.unmount()
+    renderProjectTree('/dashboards')
+
+    const nav2 = await findProjectNav()
+    const toggle2 = await within(nav2).findByRole('button', {
+      name: `${atlasFixture.name} 하위 메뉴`,
+    })
+    expect(toggle2).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('T4-2 (FR6, S5): 활성 프로젝트 자동펼침이 기존 수동 펼침을 지우지 않는다 (덮어쓰기 폐지)', async () => {
+    const other = sortedFixtures.find((f) => f.key !== atlasFixture.key)
+    if (other === undefined) throw new Error('두 번째 프로젝트 fixture 가 필요하다')
+
+    const user = userEvent.setup()
+    const first = renderProjectTree('/dashboards')
+
+    // 사용자가 other 를 수동으로 펼친다
+    const nav = await findProjectNav()
+    const otherToggle = await within(nav).findByRole('button', {
+      name: `${other.name} 하위 메뉴`,
+    })
+    await user.click(otherToggle)
+    expect(otherToggle).toHaveAttribute('aria-expanded', 'true')
+
+    // 라우트가 ATLAS 로 바뀐다 — 자동펼침이 발동한다
+    first.unmount()
+    renderProjectTree(`/projects/${atlasFixture.key}/board`)
+
+    const nav2 = await findProjectNav()
+    // ★ 판별식: 덮어쓰기가 남아 있으면 other 가 접힌다
+    const otherToggle2 = await within(nav2).findByRole('button', {
+      name: `${other.name} 하위 메뉴`,
+    })
+    expect(otherToggle2).toHaveAttribute('aria-expanded', 'true')
+    // 자동펼침 자체는 정상 동작해야 한다
+    const atlasToggle2 = within(nav2).getByRole('button', {
+      name: `${atlasFixture.name} 하위 메뉴`,
+    })
+    expect(atlasToggle2).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('T4-3 (FR7, S6): 검색 파라미터 ?projectKey= 만 있어도 자동 펼침한다 (선재 갭)', async () => {
+    renderProjectTree(`/issues?projectKey=${atlasFixture.key}`)
+
+    const nav = await findProjectNav()
+    const atlasToggle = await within(nav).findByRole('button', {
+      name: `${atlasFixture.name} 하위 메뉴`,
+    })
+    // ★ 기존 구현은 useParams(경로 파라미터)만 봐서 여기가 'false' 였다
+    expect(atlasToggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('T4-4 (FR7): 검색 파라미터로 온 프로젝트에는 aria-current="page" 를 붙이지 않는다', async () => {
+    renderProjectTree(`/issues?projectKey=${atlasFixture.key}`)
+
+    const nav = await findProjectNav()
+    const atlasLink = await within(nav).findByRole('link', { name: atlasFixture.name })
+    // 사용자는 그 프로젝트의 보드 페이지에 있지 않다 — aria-current="page" 는 거짓말이 된다.
+    // 경로 파라미터 일치일 때만 부여한다.
+    expect(atlasLink).not.toHaveAttribute('aria-current')
+  })
+
+  it('T4-5 (E13): 영속된 펼침 키 중 접근 불가 프로젝트는 조용히 무시된다', async () => {
+    useProjectTreeExpanded.setState({
+      expandedKeys: new Set([atlasFixture.key, 'GHOST-PROJECT']),
+    })
+
+    renderProjectTree('/dashboards')
+
+    const nav = await findProjectNav()
+    // 실재 프로젝트는 펼쳐지고
+    const atlasToggle = await within(nav).findByRole('button', {
+      name: `${atlasFixture.name} 하위 메뉴`,
+    })
+    expect(atlasToggle).toHaveAttribute('aria-expanded', 'true')
+    // 유령 키는 어떤 행도 만들지 않는다 (렌더는 목록 기준이므로 자연 무시)
+    expect(within(nav).queryByRole('button', { name: /GHOST-PROJECT/ })).not.toBeInTheDocument()
   })
 })
