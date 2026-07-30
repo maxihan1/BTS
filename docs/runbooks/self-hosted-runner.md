@@ -2,7 +2,12 @@
 
 # self-hosted 러너 운영 (`maxi-mac-bts`)
 
-> 도입 2026-07-30 (PR #324). 도입 사유는 §1, 되돌리는 법은 §5.
+> 도입 2026-07-30 (PR #324). 도입 사유는 §1, 무료 한도 정책은 §6.
+>
+> **★이것은 임시 조치가 아니라 영구 설계다.** 2026-07-30 Maxi 확정 —
+> **유료 결제를 하지 않고 GitHub 무료 한도 안에서만 운영한다.** self-hosted 러너 잡은 분(minute)
+> 과금 대상이 아니므로 무료 한도를 **1분도 쓰지 않는다.** 「결제가 복구되면 되돌린다」는 전제로
+> 이 문서를 읽지 마라 — 되돌릴 계획이 없다. §5 는 조건이 바뀌었을 때를 위한 참고 절차일 뿐이다.
 
 ## 1. 왜 self-hosted 인가
 
@@ -94,7 +99,9 @@ gh api /repos/maxihan1/BTS/actions/runners \
 - **판별식 워크플로우는 `workflow-scripts-ci.yml` 이다.** backend-ci 가 아니다.
   `paths` 가 워크플로우 레벨이라 backend-ci 에 두면 워크플로우 파일 한 줄 수정이 12잡을 끌고 온다.
 
-## 5. 결제 복구 후 되돌리기
+## 5. (참고) GitHub 호스팅 러너로 되돌리는 절차
+
+**현재 계획에 없다** — §6 의 무료 한도 정책이 확정돼 있다. 조건이 바뀌었을 때만 쓴다.
 
 되돌리려면 **같은 PR 에서 세 가지를 함께** 바꾼다. 하나라도 빠지면 봉인이 어긋난다.
 
@@ -115,9 +122,36 @@ TOKEN=$(gh api -X POST /repos/maxihan1/BTS/actions/runners/remove-token --jq .to
 cd ~/actions-runner-bts && ./config.sh remove --token "$TOKEN"
 ```
 
-## 6. 근본 원인은 아직 안 풀렸다
+## 6. 무료 한도 정책 (2026-07-30 Maxi 확정)
 
-이 러너는 **결제 차단을 우회할 뿐 해결하지 않는다.** GitHub 호스팅 러너가 필요한 상황
-(러너 머신 부재 · 병렬 필요 · 외부 기여자)에서는 여전히 막힌다.
-https://github.com/settings/billing 의 **Payment information** 과
-**Spending limits → Actions** 를 확인해야 한다. BTS 는 private 저장소라 분 과금 대상이다.
+**유료 결제를 하지 않는다. GitHub 무료 한도 안에서만 운영한다.**
+self-hosted 전환이 이 정책의 **해답**이다 — 분 과금이 아예 발생하지 않는다.
+
+무료 한도 3종과 이 저장소의 소모 (2026-07-30 실측).
+
+| 항목 | 소모 | 무료 한도 | 비고 |
+|---|---|---|---|
+| **실행 시간(분)** | **0** | 2,000분/월 | self-hosted 잡은 과금 대상이 아니다 |
+| **아티팩트 스토리지** | 16 MB (73개) | 500 MB | `upload-artifact` 의 `retention-days: 7` 이 상한을 잡는다 |
+| **캐시** | 4,157 MB (63개) | 10 GB/저장소 | **과금 대상 아님.** 초과 시 오래된 것부터 자동 축출 |
+
+확인 명령.
+
+```bash
+gh api /repos/maxihan1/BTS/actions/cache/usage \
+  --jq '"캐시 \(.active_caches_size_in_bytes/1048576|floor) MB / \(.active_caches_count) 개"'
+gh api "/repos/maxihan1/BTS/actions/artifacts?per_page=100" \
+  --jq '[.artifacts[] | select(.expired==false) | .size_in_bytes] | add // 0 | ./1048576 | floor'
+```
+
+**감시할 것은 분이 아니라 스토리지다.** 분은 이제 안 쓰지만 아티팩트는 계속 쌓인다.
+500 MB 에 접근하면 `retention-days` 를 줄이거나 업로드 대상을 좁힌다
+(현재는 테스트 결과 XML 뿐이라 여유가 크다).
+
+**이 설계의 대가 — 맥이 꺼져 있으면 CI 가 안 돈다.** 게다가 실패가 아니라 `queued` 무한 대기다(§3).
+무료 한도만 쓰기로 한 이상 이건 피할 수 없는 교환이며, 받아들인 것이다.
+
+**현재 차단의 실체.** 무료 플랜 + 지출 한도 $0 + 이번 청구 주기 2,000분 소진으로 추정된다
+(에러 문구 "recent account payments have failed **or** your spending limit needs to be increased"
+는 두 경우를 한 문장으로 덮는 상용구다). 다음 주기에 자동으로 풀리지만, 모든 잡이 self-hosted 라
+풀리든 말든 동작에 차이가 없다.
