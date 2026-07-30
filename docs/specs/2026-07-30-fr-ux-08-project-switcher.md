@@ -35,16 +35,24 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 
 **검증 완료.** `routes/issues.index.tsx:711,717` 이 `search.assignee` → `searchToIssueFilter` → `IssueListPage.filter` 로 이미 소비한다. **`/issues` 라우트 무변경으로 동작한다.**
 
-### 1-B. 스위처 선택의 착지점은 **현재 라우트의 성격**이 정한다
+### 1-B. 스위처 선택의 착지점은 **URL 이 `projectKey` 를 담고 있는가**가 정한다
 
-| 현재 위치 | 선택 시 동작 | 이유 |
-|---|---|---|
-| URL 에 `$projectKey` **경로 파라미터**가 있다 (`/projects/ATLAS/board` 등) | 같은 하위 경로로 **치환 이동** (`/projects/INFRA/board`) | 활성 프로젝트 해소 ①(URL)이 최상위라, 활성값만 바꾸면 URL 이 이기고 `useTrackActiveProject` 가 원래 키를 **되기록**해 선택이 즉시 되돌려진다 |
-| 경로 파라미터가 없다 (`/issues` · `/search` · `/dashboards` 등) | **활성값만 갱신**, 라우트 유지 | 라우트가 해소 ②(저장값)로 스스로 갱신한다. 원치 않는 화면 이동을 만들지 않는다 |
+> **★ 판별자 정정 (plan 리뷰 BLOCKER-1).** 초안은 이 분기를 *"경로 파라미터 유무"* 로 적었다. **틀렸다.** 활성 프로젝트 해소 ①(ADR §D3)은 *"경로 파라미터 **또는** 검색 파라미터"* 를 **둘 다** URL 로 친다. 경로 파라미터만 보면 `/issues?projectKey=ATLAS` 가 분기에서 빠져 아래 3번째 행이 통째로 누락된다.
 
-**기각한 단순안 — "항상 `/projects/<key>/board` 로 이동".** 구현은 더 쉽지만, `/issues` 에서 프로젝트만 바꾸려던 사용자를 보드로 튕긴다. 위 분기는 `useParams({ strict: false }).projectKey` 유무 하나로 판정되므로 복잡도 증가가 사실상 없다.
+| 현재 위치 | 선택 시 동작 |
+|---|---|
+| URL 에 `$projectKey` **경로 파라미터** (`/projects/ATLAS/board` 등) | 같은 하위 경로로 **치환 이동** (`/projects/INFRA/board`) |
+| URL 에 **검색 파라미터** `?projectKey=` (`/issues?projectKey=ATLAS` · `/search?projectKey=`) | **검색 파라미터만 치환** — `navigate({ search: (prev) => ({ ...prev, projectKey: key }) })` |
+| URL 에 `projectKey` 가 **없다** (`/issues` · `/dashboards` 등) | **활성값만 갱신**(`setActiveProject`), 라우트 유지 |
 
-> **★ 이 결함은 설계 없이 구현했다면 반드시 났다.** "선택했는데 아무 일도 안 일어나고 목록이 원래대로 돌아온다" 는 재현은 쉽지만 원인 추적은 어렵다(`useTrackActiveProject` 의 되기록이 범인). E7 에 회귀 가드를 둔다.
+**왜 앞의 두 행이 필요한가 — 활성값만 바꾸면 선택이 되돌려진다.**
+1. 해소 ①(URL)이 저장값 ②를 **이긴다**. 화면이 안 바뀐다.
+2. 더 나쁜 것은 **저장값까지 원래대로 되돌아간다**. `useResolvedActiveProject.ts:85-91` 의 `useEffect` 가 해소 출처가 `url` 이면 그 키를 **다시 저장**한다(FR-UX-07 FR4). 경로 파라미터 경우에는 `useTrackActiveProject.ts:50` 도 같은 일을 한다. **되기록 지점이 둘**이다.
+3. 사용자에게는 "눌렀는데 아무 일도 안 일어난다" 로 보인다 — 재현은 쉽고 원인 추적은 어렵다.
+
+**★ 검색 파라미터 치환에서 `...prev` 를 반드시 펼친다.** TanStack Router 의 `search` 는 **객체형이면 병합이 아니라 치환**이고 전 필드가 optional 이라 **타입 체크로도 안 잡힌다** — FR-UX-07 FR4-b 가 정확히 이 함정으로 `?projectKey=` 증발을 겪었다. 펼치지 않으면 스위처 한 번에 사용자의 필터·정렬·`?selected=` 가 전부 날아간다.
+
+**기각한 단순안 — "항상 `/projects/<key>/board` 로 이동".** 구현은 더 쉽지만 `/issues` 에서 프로젝트만 바꾸려던 사용자를 보드로 튕긴다. 위 분기는 `useParams({strict:false}).projectKey` 와 `useSearch({strict:false}).projectKey` 두 값의 유무로 판정되므로 복잡도 증가가 사실상 없다.
 
 ## 2. 사용자 시나리오 (Given-When-Then)
 
@@ -114,7 +122,8 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 | **FR8** | `components/project/ProjectSwitcher.tsx` 신설 — `components/ui/popover.tsx`(현재 소비처 0) + `role="listbox"` / `role="option"`. **`<nav>` 로 만들지 않는다** (ADR §D5). 기존 `role="listbox"` 소비처 5곳(`SenderAutocomplete.tsx:237` · `LabelAutocompleteInput.tsx:167` · `DashboardForm.tsx:167` · `MentionDropdown.tsx:55` · `UserMappingStep.tsx:82`)의 ARIA 관례를 따른다 |
 | **FR9** | 스위처 배치 — `TopBar.tsx`, 로고와 검색 버튼 사이. 트리거는 현재 활성 프로젝트명을 표시한다 |
 | **FR10** | 스위처 목록 = **최근 방문 그룹(MRU) + 나머지**. 나머지는 **백엔드 순서 그대로**(`ProjectQueryRepository.kt:62` `ORDER BY name ASC`). **프론트 재정렬 금지** 원칙(FR-UX-07 FR3 · `use-projects.ts:10`)은 "나머지" 구간에 그대로 적용되고, MRU 그룹은 재정렬이 아니라 **별도 구간 분리**다 |
-| **FR11** | 스위처 선택 동작 — §1-B 분기. 경로 파라미터 있으면 같은 하위 경로로 치환 이동, 없으면 `setActiveProject` 만 |
+| **FR11** | 스위처 선택 동작 — §1-B **3갈래** 분기. ① 경로 파라미터 → 경로 치환 이동 ② 검색 파라미터 → `navigate({ search: (prev) => ({ ...prev, projectKey }) })` (**`...prev` 필수**) ③ 없음 → `setActiveProject` 만 |
+| **FR11-b** | **`ProjectTree` 가 `useResolvedActiveProject` 를 소비하면 저장값 쓰기가 전 인증 페이지로 넓어진다** — 그 훅은 읽기 전용이 아니라 `:85-91` 에서 해소 출처가 `url`·`first` 일 때 저장한다. 지금 소비처는 `/issues`·`/search` 어댑터 둘뿐이지만 `ProjectTree` 는 모든 인증 페이지의 사이드바다. **이 확장을 의도된 동작으로 채택**한다 — 가드가 훅 안에 있어 값이 수렴하고, 첫 방문 사용자가 어느 페이지로 들어와도 활성 프로젝트가 잡힌다. 조용히 넘어가지 않고 테스트로 단언한다 |
 | **FR12** | 사이드바 "내 작업" — `to='/issues' search={{ assignee: userId }}`. **`projectKey` 를 싣지 않는다**(§1-A). `useAuthUser()?.userId` 부재 시 항목을 렌더하지 않는다 |
 | **FR13** | 사이드바 "최근 항목" — 최근 이슈 키 5건, 각 키의 제목을 마운트 시 조회해 `KEY 제목` 형태로 렌더. 조회 실패(403/404) 항목은 **조용히 숨긴다**. 목록이 비면 섹션 자체를 렌더하지 않는다 |
 | **FR14** | `navLabels` 에 `myWork`(`'내 작업'`) · `recent`(`'최근 항목'`) 추가. `nav-labels.ts` 의 S3 주석에 "FR-UX-08 에서 추가됨" 근거를 남긴다 |
@@ -172,7 +181,9 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 | E4 | localStorage 에 배열 아닌 값·원소가 문자열 아님 (수동 변조) | 빈 목록으로 폴백 |
 | E5 | 같은 프로젝트/이슈를 연속 방문 | 이미 맨 앞이면 write 생략 (`use-active-project.ts:105` 의 no-op 가드와 같은 근거) |
 | E6 | 상한 초과 | 가장 오래된 항목 축출. **정확히 5를 유지한다** |
-| E7 | **★ 스위처 선택이 되돌려짐** — 경로 파라미터가 있는 라우트에서 활성값만 바꾸면 URL①이 이기고 `useTrackActiveProject` 가 원래 키를 되기록한다 | §1-B 분기로 차단. **회귀 가드 필수** — `/projects/ATLAS/board` 에서 INFRA 선택 후 활성값이 INFRA 로 **유지**되는지 단언 |
+| E7 | **★ 스위처 선택이 되돌려짐** — URL 이 `projectKey` 를 담은 상태에서 활성값만 바꾸면 해소①이 이기고, `useResolvedActiveProject:85-91` 과 `useTrackActiveProject:50` **두 지점**이 원래 키를 되기록한다 | §1-B **3갈래** 분기로 차단. **회귀 가드 2건 필수** — (a) `/projects/ATLAS/board` (b) **`/issues?projectKey=ATLAS`** 각각에서 INFRA 선택 후 활성값·화면이 INFRA 로 **유지**되는지 |
+| E7-b | 검색 파라미터 치환이 **다른 검색 파라미터를 지움** | `...prev` 를 펼친다. **회귀 가드** — 필터·정렬·`?selected=` 가 있는 URL 에서 스위처 사용 후 그 값들이 **살아 있는지** 단언 (FR-UX-07 FR4-b 재발 방지) |
+| E14 | `ProjectTree` 가 프로젝트 컨텍스트 밖 페이지에서 저장값을 쓴다 (FR11-b) | **의도된 동작.** `/dashboards` 진입 시 저장값이 첫 프로젝트로 설정되는 것을 테스트로 단언한다 — 우연이 아니라 결정임을 못박는다 |
 | E8 | 사이드바 "이슈"와 "내 작업" 이 같은 `/issues` 라 둘 다 활성 표시 | `activeOptions={{ includeSearch: true }}` 로 search 까지 비교. 없으면 두 링크가 동시에 `.active` 가 된다 |
 | E9 | `userId` 부재 (PAT 인증 등) | "내 작업" 항목 미렌더. 죽은 링크를 만들지 않는다 |
 | E10 | 사이드바 접힘(64px 레일) | 새 항목도 기존 관례를 따른다 — 아이콘만 노출, 텍스트는 `sr-only`(DOM 유지, `getByRole('link',{name})` 계약 보존) |

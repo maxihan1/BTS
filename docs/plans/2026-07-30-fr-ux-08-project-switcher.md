@@ -131,6 +131,8 @@
 
 **REFACTOR**. 직렬화/역직렬화를 모듈 내 순수 함수로 분리. **상한 없음**이 의도임을 KDoc 에 명시(NFR7).
 
+> **★ 리뷰 BLOCKER-2 반영 — 테스트 리셋 경로를 함께 낸다.** 이 스토어는 `use-sidebar-collapsed`·`use-active-project` 와 같은 **모듈 전역 zustand 싱글톤**이라 테스트 간에 상태가 누출된다. `ProjectTree.test.tsx:100-102` 가 이미 같은 이유로 `useSidebarCollapsed.setState({...})` 리셋을 두고 있다. T4 가 쓸 수 있도록 `setState` 로 초기화 가능한 형태(`expandedKeys: Set`)를 노출하고, **이 훅 자신의 테스트에도 `beforeEach` 리셋을 넣는다.**
+
 **검증**. `apps/web/node_modules/.bin/vitest run src/hooks/__tests__/use-project-tree-expanded.test.ts`
 
 ---
@@ -164,11 +166,15 @@
 - depends-on: [2]
 
 **RED**. 기존 `ProjectTree.test.tsx` 에 케이스 추가.
+- **★ `beforeEach` 리셋 먼저** — `useProjectTreeExpanded.setState({ expandedKeys: new Set() })` 를 기존 `useSidebarCollapsed` 리셋(`:100-102`) 옆에 추가한다. **이게 없으면 아래 단언들이 순서 의존이 되고, 하필 핵심 단언이 "나머지는 접힘"이라 거짓 실패·거짓 통과가 둘 다 가능하다** (리뷰 BLOCKER-2)
 - **덮어쓰기 폐지(FR6)** — INFRA 를 펼친 상태에서 활성 프로젝트가 ATLAS 로 바뀌면 ATLAS 가 **추가로** 펼쳐지고 **INFRA 는 펼쳐진 채 유지**된다 (S5)
 - **영속(FR6)** — 펼친 뒤 언마운트 → 재마운트 시 펼침이 유지된다 (S4)
 - **검색 파라미터 경로(FR7)** — 경로 파라미터가 없고 활성 프로젝트가 MIDDLE 일 때 MIDDLE 이 자동 펼침 + `aria-current="page"` (S6, 선재 갭)
 - **E13** — 영속된 키 중 접근 불가 프로젝트는 무시된다
+- **E14 / FR11-b** — 프로젝트 컨텍스트 밖(`/dashboards`)에서 저장값이 첫 프로젝트로 설정된다. **의도된 행동 변화임을 단언으로 못박는다**
 - 실패 메시지 (예상): INFRA 가 접힘 / MIDDLE 이 활성으로 표시 안 됨
+
+> **★ 리셋 누락의 비-공허 증명.** 구현 완료 후 `beforeEach` 리셋을 **일부러 제거**해 테스트가 실제로 red 가 되는지 1회 확인한다. red 가 안 되면 리셋이 무의미한 것이므로 단언 설계를 다시 본다.
 
 **GREEN**.
 - `useState<Set<string>>` + `useEffect` 재설정 블록(`:362-370`)을 `useProjectTreeExpanded()` 소비로 교체
@@ -186,24 +192,36 @@
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/project/ProjectSwitcher.tsx`, `apps/web/src/components/project/__tests__/ProjectSwitcher.test.tsx`, `apps/web/src/components/layout/TopBar.tsx`, `apps/web/src/components/layout/__tests__/TopBar.test.tsx`]
+- files: [`apps/web/src/components/project/ProjectSwitcher.tsx`, `apps/web/src/components/project/__tests__/ProjectSwitcher.test.tsx`, `apps/web/src/components/layout/TopBar.tsx`, `apps/web/src/components/layout/__tests__/TopBar.test.tsx`, `apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`]
 - depends-on: [1]
 
 **RED**. `ProjectSwitcher.test.tsx` 신설 + 기존 `TopBar.test.tsx` 보강.
 - 트리거가 현재 활성 프로젝트명을 표시한다
-- 열면 `role="listbox"` 와 `role="option"` 이 나온다. **`role="navigation"` 은 생기지 않는다**(FR8/NFR3) — `queryAllByRole('navigation')` 개수 불변 단언
+- 열면 `role="listbox"` 와 `role="option"` 이 나온다. **`role="navigation"` 은 생기지 않는다**(FR8/NFR3)
 - **정렬(FR10, S3)** — 최근 방문 그룹이 MRU 순으로 위, 나머지는 백엔드 순서 그대로, **중복 없음**(E11)
-- **★ E7 회귀 가드** — 경로 파라미터가 있는 라우트(`/projects/ATLAS/board`)에서 INFRA 선택 시 `navigate` 가 `/projects/INFRA/board` 로 불린다. 경로 파라미터가 없으면 `navigate` 가 **안 불리고** `setActiveProject` 만 불린다 (§1-B)
+- **★ E7 회귀 가드 — §1-B 3갈래 전부** (리뷰 BLOCKER-1)
+  - ① 경로 파라미터(`/projects/ATLAS/board`) → `navigate` 가 `/projects/INFRA/board` 로 불린다
+  - ② **검색 파라미터(`/issues?projectKey=ATLAS`) → `navigate({search})` 가 불린다.** 초안이 빠뜨린 분기
+  - ③ 없음(`/issues`) → `navigate` 가 **안 불리고** `setActiveProject` 만 불린다
+- **★ E7-b** — `?projectKey=ATLAS&status=open&selected=ATLAS-3` 에서 전환 시 `status`·`selected` 가 **살아남는다** (`...prev` 미펼침 시 red. FR-UX-07 FR4-b 재발 방지)
 - **키보드(NFR6)** — 열기 · ↑↓ · Enter 선택 · Esc 닫기
 - **E1** — 최근 목록에 접근 불가 키가 있으면 목록에서 탈락
 - **S10** — 프로젝트 0개면 스위처 미렌더
+- **긴 프로젝트명(리뷰 CONCERN-3)** — 트리거 폭이 `max-w` 로 제한되고 텍스트가 `truncate` 되며, **접근가능 이름은 잘리지 않는다**(`getByRole('button',{name:전체이름})` 성립)
 - 실패 메시지 (예상): `ProjectSwitcher` 모듈 없음
 
-**GREEN**. `components/ui/popover.tsx` 소비 + `role="listbox"`/`option`. `useProjects()` · `useRecentProjects()` · `useResolvedActiveProject()` 조합. 선택 핸들러는 §1-B 분기(`useParams({strict:false}).projectKey` 유무). `TopBar.tsx` 의 로고와 검색 버튼 사이에 배치.
+**GREEN**. `components/ui/popover.tsx` 소비 + `role="listbox"`/`option`. `useProjects()` · `useRecentProjects()` · `useResolvedActiveProject()` 조합. 선택 핸들러는 §1-B **3갈래** 분기(`useParams({strict:false}).projectKey` · `useSearch({strict:false}).projectKey`). `TopBar.tsx` 의 로고와 검색 버튼 사이에 배치하고 트리거에 `max-w-[180px] truncate` 를 준다.
 
-**REFACTOR**. 정렬 로직(최근 그룹 + 나머지, 중복 제거)을 모듈 내 순수 함수로 추출해 단독 테스트 가능하게. L1 한국어 주석 + **`<nav>` 금지 근거**(ADR §D5) KDoc 명시.
+**REFACTOR**. 정렬 로직(최근 그룹 + 나머지, 중복 제거)과 §1-B 착지점 판정을 **모듈 내 순수 함수 2개**로 추출해 단독 테스트 가능하게. L1 한국어 주석 + **`<nav>` 금지 근거**(ADR §D5) KDoc 명시.
 
-**검증**. `apps/web/node_modules/.bin/vitest run src/components/project/__tests__/ProjectSwitcher.test.tsx src/components/layout/__tests__/TopBar.test.tsx`
+**검증**.
+```
+cd apps/web && node_modules/.bin/vitest run \
+  src/components/project/__tests__/ProjectSwitcher.test.tsx \
+  src/components/layout/__tests__/TopBar.test.tsx \
+  src/components/layout/__tests__/navigation-contract.test.tsx
+```
+> **★ `navigation-contract.test.tsx` 가 이 task 의 1순위 가드다** (리뷰 CONCERN-2). 실제 `routeTree` 를 `RouterProvider` 로 마운트해 **`검색` 버튼 정확히 1개**(`:111`)와 **aria-label 4종 무위반**(`:149`)을 봉인한다. TopBar 를 건드리는 변경이 이 파일을 안 돌리면 봉인이 무의미하다. **이미 실재하는 비-공허 판별식이므로 같은 취지의 단언을 새로 만들지 않는다.**
 
 ---
 
@@ -217,7 +235,9 @@
 **RED**. `apps/web/e2e/project-switcher.spec.ts` 신설. `active-project.spec.ts` 의 `page.addInitScript` localStorage 심기 관례(`:46,65`)를 따른다.
 - **S1** — `/issues` 에서 스위처로 전환 → 같은 URL 유지, 목록이 그 프로젝트로 바뀐다
 - **S2** — `/projects/ATLAS/board` 에서 전환 → `/projects/INFRA/board` 로 이동
-- **★ E7** — S2 직후 활성값이 INFRA 로 **유지**된다 (되기록 차단 실증)
+- **★ E7 (a)** — S2 직후 활성값이 INFRA 로 **유지**된다 (되기록 차단 실증)
+- **★ E7 (b)** — `/issues?projectKey=ATLAS` 에서 전환 → URL 의 `projectKey` 가 INFRA 로 바뀌고 **유지**된다. **초안이 빠뜨린 분기이므로 e2e 필수**
+- **★ E7-b** — `?projectKey=ATLAS&status=open` 에서 전환 후 `status=open` 이 **URL 에 살아 있다**
 - **S4** — 두 프로젝트를 펼치고 `/dashboards` 왕복 → 둘 다 펼쳐진 채
 - **S6** — `/issues?projectKey=MIDDLE` 진입 시 트리에서 MIDDLE 이 `aria-current="page"`
 - **NFR3** — 기존 `project-tree.spec.ts` S3/S4/S5 가 **무수정 green**
@@ -245,6 +265,7 @@ git diff --stat | grep -c '^ backend/' ; echo "(backend 변경 0 이어야 함)"
 - **추가 검증**. typecheck(`tsconfig.app.json` — CI 와 동일 설정) · eslint · vitest · playwright · `verify-master-plan.sh`
 - **파일 예산**. 신규 4(훅 2 + 컴포넌트 1 + e2e 1) · 수정 5(`use-track-active-project` · `ProjectTree` · `TopBar` · `personalization.md` · plan)
 - **불변 단언**. 백엔드 0줄 · 마이그레이션 0 · `package.json` diff 0 · `issues.index.tsx` 무변경 · `shortcuts.ts` 무변경 · `Sidebar.tsx` 무변경(PR-B 소관) · `nav-labels.ts` 무변경(PR-B 소관) · FR 139/139 불변 · 진척 132 불변
+- **★ 후속 조건**. **PR-B 는 PR-A 머지 후 착수**한다 — 코드 파일은 교집합 0 이지만 문서 3개(`personalization.md` · spec · plan)를 공유한다 (리뷰 §후속 조건)
 
 ### 리스크
 
@@ -256,4 +277,56 @@ git diff --stat | grep -c '^ backend/' ; echo "(backend 변경 0 이어야 함)"
 | R4 | 워크트리 `pnpm exec` 가 main 을 오염시킨다 (선례 8회) | **`apps/web/node_modules/.bin/*` 직접 호출** + 커밋은 `--no-verify`. 위 검증 명령에 이미 반영 |
 | R5 | 펼침 영속이 e2e 간 누출 | `playwright.config.ts` 에 `storageState` 없음 실측 — 테스트마다 새 컨텍스트. 그래도 T6 는 `addInitScript` 로 **명시 초기화**한다 |
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 리뷰 방식 (2026-07-30)
+
+`type=ui` 분기의 정본은 `/plan-design-review` 다. 이 저장소의 최근 5 PR(#320~#325)과 동일하게 **컨트롤러가 직접 적대적 리뷰**를 수행했고, eng·design 두 관점을 모두 적용했다. **독립 모델 리뷰는 미실시** — 한계는 아래 §한계에 명시한다.
+
+리뷰는 계획서를 읽는 데 그치지 않고 **주장마다 코드로 되짚었다**(`useResolvedActiveProject:85-91` · `ProjectTree.test.tsx:100-102` · `navigation-contract.test.tsx:111,149` · `TopBar.tsx:38`).
+
+### 🛑 BLOCKER 2건 (둘 다 계획 수정으로 해소)
+
+**BLOCKER-1 — §1-B 의 판별자가 틀렸다. 스위처가 안 먹는 경로가 남아 있었다.**
+
+초안은 착지점 분기를 *"경로 파라미터 유무"* 로 잡았다. 그런데 ADR §D3 의 해소 ①은 *"경로 파라미터 **또는** 검색 파라미터"* 를 **둘 다** URL 로 친다. 그래서 **`/issues?projectKey=ATLAS` 가 어느 분기에도 안 걸린다** — 초안대로면 `setActiveProject(INFRA)` 만 하고, 해소 ①이 URL 의 ATLAS 로 이겨 **화면이 안 바뀐다.**
+
+더 나쁜 것은 **저장값까지 되돌아간다**. `useResolvedActiveProject.ts:85-91` 의 `useEffect` 가 해소 출처 `url` 이면 그 키를 다시 저장한다. 즉 **되기록 지점이 `useTrackActiveProject:50` 과 둘**이고, 초안은 하나만 보고 있었다.
+
+FR-UX-07 이 `?projectKey=` 를 **공유 가능한 링크로 승격**시켰으므로 이 경로는 드문 경우가 아니다.
+
+**해소.** §1-B 를 **3갈래**로 정정(경로 / 검색 / 없음). 검색 분기는 `navigate({ search: (prev) => ({ ...prev, projectKey }) })` 이고 **`...prev` 를 펼치지 않으면 필터·정렬·`?selected=` 가 전부 날아간다**(FR-UX-07 FR4-b 가 겪은 함정 — TanStack `search` 는 객체형이면 병합이 아니라 치환이고 전 필드 optional 이라 타입 체크로도 안 잡힌다). E7 을 (a)(b) 2건으로, E7-b 를 신설해 T5 유닛·T6 e2e 양쪽에 회귀 가드로 넣었다.
+
+**BLOCKER-2 — 새 zustand 싱글톤을 들이면서 테스트 리셋을 계획에 안 넣었다.**
+
+`ProjectTree.test.tsx:100-102` 가 이미 *"`useSidebarCollapsed` 는 모듈 전역 zustand 싱글톤 — 이전 테스트의 상태가 누출되지 않도록 리셋"* 을 두고 있다. `useProjectTreeExpanded` 도 같은 성질인데 초안에는 리셋이 없었다.
+
+**이게 왜 BLOCKER 인가.** T4 의 핵심 단언이 *"나머지는 접힘"* 이다. 리셋이 없으면 앞선 테스트가 펼친 상태가 새어 들어와 **거짓 실패**가 나고, 반대로 단언 순서가 바뀌면 **거짓 통과**가 난다. 검증 장치 자체가 고장 난 채로 green 을 받는 형태다.
+
+**해소.** T2 에 `setState` 초기화 가능한 형태 노출을 명시하고, T4 RED 첫 항목으로 `beforeEach` 리셋을 올렸다. **리셋을 일부러 빼서 실제로 red 가 되는지 확인**하는 비-공허 증명도 함께 넣었다.
+
+### ⚠️ CONCERN 3건 (전부 계획 반영)
+
+| # | 내용 | 반영 |
+|---|---|---|
+| **C1** | **`ProjectTree` 가 `useResolvedActiveProject` 를 쓰면 저장 생산 지점이 전 페이지로 넓어진다.** 그 훅은 읽기 전용이 아니다(`:85-91`). 현재 소비처는 `/issues`·`/search` 어댑터 둘뿐인데 `ProjectTree` 는 **모든 인증 페이지의 사이드바**다 — `/dashboards`·`/settings`·`/admin/*` 어디를 열어도 해소 ③(첫 프로젝트)이 저장된다. 해롭진 않지만(가드가 훅 안에 있어 값이 수렴) **계획에 없던 행동 변화**였다 | FR11-b 로 **의도된 동작으로 명시 채택** + E14 신설 + T4 RED 에 단언 추가. 조용히 넘어가지 않는다 |
+| **C2** | **T5 검증에 `navigation-contract.test.tsx` 가 빠졌다.** 이 파일은 실제 `routeTree` 를 마운트해 `검색` 버튼 **정확히 1개**(`:111`)와 aria-label 4종 무위반(`:149`)을 봉인한다 — TopBar 를 건드리는 T5 의 **1순위 가드**인데 안 돌리게 돼 있었다 | T5 `files`·검증 명령에 추가. **이미 실재하는 비-공허 판별식이므로 같은 취지의 단언을 새로 만들지 않는다**(중복 방지) |
+| **C3** | **(design) 스위처 트리거 폭이 미정의.** `TopBar` 는 `h-12` 고정에 좌측 3요소가 붙어 있다. 가변 길이 프로젝트명이 들어오면 긴 이름에서 검색·만들기 버튼을 밀어낸다 | T5 GREEN 에 `max-w-[180px] truncate` 명시 + RED 에 "**접근가능 이름은 잘리지 않는다**" 단언 추가 (시각 truncate ≠ 접근성 이름 손실) |
+
+### ✅ PASS 3건 (검토했고 변경 불필요)
+
+| # | 검토 항목 | 판정 |
+|---|---|---|
+| **P1** | T4 가 FR6(펼침 영속) + FR7(활성 소스 교체)을 한 task 에 묶은 것 | **정당.** 둘 다 `ProjectTree.tsx:362-370` **같은 블록**을 고친다. 쪼개면 같은 파일이라 어차피 직렬화되고 두 번째가 첫 번째 라인을 즉시 덮어쓴다. RED 단언은 S5/S4 vs S6 로 이미 분리돼 있어 실패 원인 구분이 된다 |
+| **P2** | wave 배치의 파일 교집합 0 판정 | **맞다.** W2 = `use-track-active-project.ts` / `ProjectTree.tsx` / `ProjectSwitcher.tsx`+`TopBar.tsx`+`navigation-contract.test.tsx` — C2 반영 후에도 교집합 0. `ProjectTree` 는 `useTrackActiveProject` 를 소비하지 않는다(`ShellLayout` 이 소유)라 T3↔T4 간 런타임 결합도 없다 |
+| **P3** | R1(FR-UX-06 PR12 FR5 정정)의 폭발 반경 판정 | **맞다, 단 BLOCKER-2 조건부.** `ProjectTree.test.tsx:186,199,211` 과 e2e S4/S5 는 전부 초기 상태 기준이고 `playwright.config.ts` 에 `storageState` 가 없어 e2e 는 컨텍스트마다 격리된다. **다만 유닛의 "초기 상태" 는 zustand 리셋이 있어야만 성립**하므로 BLOCKER-2 해소가 이 판정의 전제다 |
+
+### 📌 후속 조건 1건
+
+**PR-B 는 PR-A 머지 후에 착수한다.** 코드 파일은 교집합 0 이 맞지만 **문서 3개는 겹친다** — `docs/plan/product/personalization.md`(PR-A 는 분할 계획 추가, PR-B 는 D 마커 `[x]`) · 이 spec(§11) · 이 plan. 동시 진행하면 카운트 drift 와 충돌이 난다(`migration-vnumber-concurrent-branch-collision` 과 같은 결). Plan 메타 §불변 단언에 반영.
+
+### 한계
+
+**독립 모델 리뷰 미실시.** 위 BLOCKER 2건·CONCERN 3건은 **내가 쓴 계획을 내가 되짚어** 찾은 것이다. 이 저장소의 최근 이력에서 **독립 리뷰가 컨트롤러의 BLOCKER 를 반복 적발**했다(#317 4연속 · #314 2회 · #322 `plan-eng-review` 가 계획의 자기모순 적발). 게이트 2 의 `bts-codereview` 가 실질 안전망이다.
+
+**BLOCKER: 없음** (2건 발견, 2건 계획 수정으로 해소). `type=ui` 이고 `auth`/`migration` 이 아니므로 무시 옵션 있는 등급이었으나, 둘 다 실제 동작 결함이라 무시하지 않고 고쳤다.
