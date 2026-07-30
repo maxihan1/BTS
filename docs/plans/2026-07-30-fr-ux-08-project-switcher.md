@@ -285,8 +285,12 @@ git diff --stat | grep -c '^ backend/' ; echo "(backend 변경 0 이어야 함)"
 | **T2** `use-project-tree-expanded` | ✅ 완료 | 동상 | 14 테스트 · **뮤테이션 M1 통과**(`expand`를 덮어쓰기로 되돌리면 T-PE-4·13 red) |
 | **T3** `useTrackActiveProject` 확장 | ✅ 완료 | `924f443a3`(red) → `0be17b708`(green) | 12 테스트 · **뮤테이션 M2 통과**(push를 가드 밖으로 빼면 T-TR-9·10 red) |
 | **T4** `ProjectTree` 펼침 영속 + 소스 확장 | ✅ 완료 | `ebb0cf361`(red) → `89491b4f5`(green+refactor) | 16 테스트 · **전체 스위트 530/530** · typecheck 0 |
-| **T5** `ProjectSwitcher` + `TopBar` | ⏳ 미착수 | — | §1-B 3갈래 분기 · `role="listbox"` · `navigation-contract.test.tsx` 필수 |
-| **T6** e2e + 정본 + 전체 검증 | ⏳ 미착수 | — | E7(a)(b) · E7-b 회귀 가드 |
+| **T5** `ProjectSwitcher` + `TopBar` | ✅ 완료 | (red) → `b03ec9e7d`(green+refactor) | 13 테스트 · **전체 531/531** · typecheck 0 · eslint 0 error(경고 10→8) |
+| **T6** e2e + 정본 + 전체 검증 | ⏳ 미착수 | — | E7(a)(b) · E7-b 회귀 가드 · `personalization.md` §4.6 PR 분할 명시 · `verify-master-plan.sh` |
+
+**T5 에서 확정된 행동 변화 1건 (FR11-b 재성립).** 스위처가 `TopBar` 에 있어 `useResolvedActiveProject` 가 **전 인증 페이지에서 돈다**. 그 훅은 읽기 전용이 아니므로(`:85-91`) 낡은 저장값이 `/issues` 방문 전에도 교정된다(FR-UX-07 스펙 E3). **조용히 두지 않고** `ShellLayout.test.tsx` 에 전용 단언을 신설했다. 기존 테스트 1건은 저장값을 목록에 실재하는 키로 교정했다 — `'ATLAS'`(시드 목록 밖)는 그 자체가 교정 대상이라 `useTrackActiveProject` 가드 검증을 가리는 **교란 요인**이었다.
+
+> **FR11-b 왕복 이력.** 리뷰 CONCERN C1 제기 → `ProjectTree` 전제로 채택 → FR7 정정으로 철회 → T5 에서 `ProjectSwitcher` 소비로 **재성립**. 소비 주체만 바뀌었고 확장 자체는 실재한다.
 
 **구현 중 확정된 정정 1건.** **FR7 의 소스를 `useResolvedActiveProject` 가 아니라 `useParams ?? useSearch` 로 좁혔다** (스펙 FR7 정정단락). 초안대로면 `/dashboards` 에서도 첫 프로젝트가 펼쳐지고 `aria-current="page"` 가 붙어 기존 계약 2건이 깨지고 접근성 의미가 틀린다. 선재 갭의 정체는 「URL 대 저장값」이 아니라 「경로 파라미터 대 검색 파라미터」였다. **파생 — FR11-b·E14 철회, 리뷰 CONCERN C1 불성립.**
 
