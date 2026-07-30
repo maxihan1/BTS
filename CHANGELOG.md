@@ -155,6 +155,11 @@ BC "완료 선언" 은 별개 절차다 — 각 BC 의 §NFR 측정표 · 이 �
   워크플로우도 걸지 않아** 그 파일만 바꾸는 PR 에서 판별식이 0회 실행됐다 (#320 에서 실증)
 - assembly 잡 DB 를 `55433` 으로 분리 (로컬 dev postgres 5433 선점 회피 + 공유 dev DB 가짜초록 차단).
   `application.yml` 의 `${BTS_DB_URL:…}` 오버라이드 지점을 그대로 써 **Kotlin 0줄**
+- **★`services:` → `docker run` 스텝.** GitHub Actions 의 서비스 컨테이너는 **Linux 러너 전용**이라
+  macOS 에서는 `Initialize containers` 에서 죽는다(`Container operations are only supported on Linux
+  runners`, run `30514310932` 실측). 스텝 안 `docker run` 은 정상이다 — 같은 실행의 infra-ci nginx 잡이
+  양성 대조군이었다. 회귀는 판별식이 차단하고, 컨테이너 정리를 `if: always()` 로 돌린다
+  (self-hosted 는 머신이 살아남아 안 지우면 다음 실행이 포트 충돌로 죽는다)
 - 운영 절차 — `docs/runbooks/self-hosted-runner.md`. ★러너가 꺼지면 `failure` 가 아니라 **`queued`
   무한 대기**다 (`timeout-minutes` 는 큐 대기를 세지 않는다)
 - **근본 원인 미해결.** 이 러너는 결제 차단을 우회할 뿐이다 — GitHub 호스팅 러너가 필요한 상황은

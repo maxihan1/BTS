@@ -72,9 +72,20 @@ gh api /repos/maxihan1/BTS/actions/runners \
 - **`~/.gradle` · Docker 를 로컬 개발과 공유한다.** CI 실행 중 로컬 `./gradlew` 동시 실행은 피한다.
   워크스페이스 자체는 `actions/checkout@v4` 기본값 `clean: true`(`git clean -ffdx`)가 매 잡마다
   `build/`·`node_modules/`·테스트 XML 을 지우므로 잔재성 거짓 초록은 발생하지 않는다.
+- **★`services:` 블록을 쓰지 마라 — macOS 러너는 지원하지 않는다.** 2026-07-30 실측
+  (run `30514310932`)에서 `Initialize containers` 단계가 다음 에러로 죽었다.
+  ```
+  ##[error]Container operations are only supported on Linux runners
+  ```
+  이미지 아키텍처 문제가 아니다(pgmq 이미지는 arm64 매니페스트를 갖는다). **기능 자체가 없다.**
+  스텝 안에서 `docker run` 으로 직접 띄우는 것은 정상 동작한다 — 같은 실행에서 infra-ci 의 nginx
+  봉인 잡이 그렇게 돌고 통과했다(양성 대조군). `ci-runner-label-alignment.test.ts` 가 회귀를 차단한다.
 - **assembly 잡 DB 는 55433 이다.** 로컬 dev postgres(`bts-postgres-dev`)가 5433 을 상시 점유하므로
-  서비스 컨테이너를 55433 에 띄우고 `BTS_DB_URL` 로 덮는다. **그 dev DB 를 재사용하면 안 된다** —
+  전용 컨테이너를 55433 에 띄우고 `BTS_DB_URL` 로 덮는다. **그 dev DB 를 재사용하면 안 된다** —
   볼륨이 영속이라 선재 행이 가짜 초록을 만든다.
+- **컨테이너 정리는 우리 책임이다.** self-hosted 러너는 머신이 살아남으므로 `docker rm -f` 를
+  `if: always()` 로 돌리지 않으면 다음 실행이 **포트 충돌로 죽는다**. GitHub 호스팅 러너에는
+  없던 책임이다.
 - **판별식 워크플로우는 `workflow-scripts-ci.yml` 이다.** backend-ci 가 아니다.
   `paths` 가 워크플로우 레벨이라 backend-ci 에 두면 워크플로우 파일 한 줄 수정이 12잡을 끌고 온다.
 
@@ -85,9 +96,10 @@ gh api /repos/maxihan1/BTS/actions/runners \
 1. `.github/workflows/*.yml` 의 `runs-on: [self-hosted, bts-local]` → `ubuntu-latest` (**전수**)
 2. `scripts/workflow/ci-runner-label-alignment.test.ts` 의 `REQUIRED_RUNNER_LABEL` 단언 —
    되돌린다면 이 판별식도 함께 되돌린다. 그냥 두면 되돌리는 PR 이 차단된다 (의도된 래칫이다)
-3. `assembly` 잡의 `BTS_DB_URL` env 와 서비스 컨테이너 포트 — GitHub 호스팅 러너에는 로컬
-   dev postgres 가 없으므로 5433 으로 되돌려도 무방하나, **55433 을 유지해도 정상 동작한다**
-   (짝만 맞으면 된다). 굳이 바꾸지 않는 편이 안전하다
+3. `assembly` 잡의 postgres 기동 방식 — Linux 러너로 돌아가면 `docker run` 스텝 3종을
+   `services:` 블록으로 되돌릴 수 있다(그쪽이 헬스체크·정리를 GitHub 이 대신 해 준다).
+   되돌린다면 §4 의 `services:` 금지 단언도 함께 되돌린다. 포트는 **55433 을 유지해도 정상
+   동작한다** — `BTS_DB_URL` 과 짝만 맞으면 된다. 굳이 바꾸지 않는 편이 안전하다
 
 러너 제거.
 
