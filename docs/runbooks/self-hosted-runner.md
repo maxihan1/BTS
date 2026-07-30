@@ -67,8 +67,13 @@ gh api /repos/maxihan1/BTS/actions/runners \
 
 ## 4. 알아 둘 것
 
-- **직렬 실행.** 러너 1대라 동시 1잡이다. 전 워크플로우 합계 17잡이 순차 실행되므로 PR 피드백이
-  기존 병렬 대비 느리다 (2026-07-30 PR #324 에서 D2=A 로 확정. 실측 후 대수 재검토).
+- **직렬 실행.** 러너 1대라 동시 1잡이다. 전 워크플로우 합계 17잡이 순차 실행된다.
+  **실측 벽시계 45.1분** (잡 실행시간 합계 44.1분 = 거의 완전 직렬, 2026-07-30 PR #324).
+  최장 잡은 `issue-tracking` 9.4분 · `identity-access` 7.0분 · `frontend test` 5.4분.
+- **★러너를 증설하려면 assembly 잡을 함께 고쳐야 한다.** `CI_PG_CONTAINER` 이름과 55433 포트가
+  고정이라, assembly 잡 두 개가 동시에 뜨면 뒤에 온 잡의 `docker rm -f` 가 **앞 잡의 DB 를 테스트
+  도중에 죽인다.** 러너 1대일 때만 안전한 설계다.
+  줄이려면 증설보다 `issue-tracking` 샤딩이 먼저다 — 그 하나가 벽시계의 21% 다.
 - **`~/.gradle` · Docker 를 로컬 개발과 공유한다.** CI 실행 중 로컬 `./gradlew` 동시 실행은 피한다.
   워크스페이스 자체는 `actions/checkout@v4` 기본값 `clean: true`(`git clean -ffdx`)가 매 잡마다
   `build/`·`node_modules/`·테스트 XML 을 지우므로 잔재성 거짓 초록은 발생하지 않는다.

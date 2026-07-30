@@ -29,7 +29,7 @@ function ciMatrixModules(): Set<string> {
   return new Set([...src.matchAll(/^ {10}- ([a-z-]+)$/gm)].map((m) => m[1] as string));
 }
 
-/** 매트릭스 밖에서 별도 잡으로 도는 모듈 (조립 부팅은 서비스 컨테이너가 필요해 분리돼 있다) */
+/** 매트릭스 밖에서 별도 잡으로 도는 모듈 (조립 부팅은 전용 postgres 가 필요해 분리돼 있다) */
 const SEPARATE_JOB_MODULES = new Set(['app']);
 
 describe('backend-ci 매트릭스 ↔ Gradle 모듈 정합', () => {

@@ -11,15 +11,16 @@
 # (issue-tracking, 3,185 테스트) 수준으로 수렴한다.
 #
 # ## 두 종류의 DB 의존을 구분한다
-#  1. **Testcontainers** (428 파일) — 러너 기본 Docker 로 스스로 컨테이너를 띄운다. 서비스 컨테이너 불요.
-#  2. **외부 5433 postgres** (10 파일, `:modules:app` 조립 부팅) — `ProdAssemblyHttpTestBase` 가
-#     Testcontainers 를 관리하지 않고 `application.yml` 의 `jdbc:postgresql://localhost:5433/bts` 를 그대로 쓴다.
-#     ⇒ **이 잡에만** 서비스 컨테이너를 붙인다.
+#  1. **Testcontainers** (428 파일) — 러너 기본 Docker 로 스스로 컨테이너를 띄운다. 별도 DB 불요.
+#  2. **외부 postgres** (10 파일, `:modules:app` 조립 부팅) — `ProdAssemblyHttpTestBase` 가
+#     Testcontainers 를 관리하지 않고 `application.yml` 의 datasource 설정을 그대로 쓴다.
+#     ⇒ **이 잡에만** postgres 를 띄운다(`docker run` 스텝, 아래 assembly 잡 주석 참조).
 #
 # ## ★ postgres 이미지를 바꾸지 마라
 # 반드시 `quay.io/tembo/pg16-pgmq` 여야 한다. 일반 `postgres:16` 에는 pgmq 확장이 없어
 # 조립 부팅이 마이그레이션 단계에서 실패한다 (ADR `docs/adr/2026-05-22-pgmq-postgres-image.md`).
-# 포트도 **5433:5432** 로 고정 — 애플리케이션 기본값이 5433 이라 5432 로 매핑하면 조용히 못 붙는다.
+# 포트는 **55433:5432** 이고 `BTS_DB_URL` 이 그 짝이다 — 한쪽만 바꾸면 조용히 못 붙는다.
+# (5433 이 아닌 이유는 assembly 잡 주석에 있다 — 러너 머신의 dev postgres 가 그 포트를 쓴다.)
 #
 # ## 러너 — self-hosted (`bts-local`)
 # 2026-07-29 17:32 KST 부터 GitHub Actions 결제 차단으로 `ubuntu-latest` 잡이 배정조차 되지 않는다
@@ -136,6 +137,11 @@ jobs:
       # application.yml:39 이 `${BTS_DB_URL:...}` 로 이미 오버라이드 지점을 갖고 있어
       # Kotlin 변경 0 으로 포트만 옮긴다. prod 배포도 같은 키를 쓴다(docker-compose.prod.yml:113).
       BTS_DB_URL: jdbc:postgresql://localhost:55433/bts
+      # ★★러너를 2대 이상으로 늘리면 이 두 값을 실행별로 유일하게 만들어야 한다.
+      # 이름과 포트가 고정이라, assembly 잡 두 개가 동시에 뜨면 뒤에 온 잡의 `docker rm -f` 가
+      # **앞 잡의 DB 를 테스트 도중에 죽인다.** 지금은 러너 1대(D2=A)라 발생할 수 없지만,
+      # 증설이 곧 이 조건을 만든다 — 증설하는 PR 에서 함께 바꿔라
+      # (예: `-${{ github.run_id }}` 접미사 + `docker port` 로 동적 포트 조회 후 BTS_DB_URL 조립).
       CI_PG_CONTAINER: bts-ci-postgres
     steps:
       # ★pgmq 확장 필수 — 일반 postgres:16 으로 바꾸면 마이그레이션에서 실패한다
