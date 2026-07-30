@@ -134,8 +134,31 @@ BC "완료 선언" 은 별개 절차다 — 각 BC 의 §NFR 측정표 · 이 �
   이고, main 기준선 **428 을 정확히 재현**하는 것으로 생존을 확인했다. 브랜치 차집합은 **1건**
   (`CommentEditDeleteHistoryE2EIntegrationTest.kt`). 「개수를 잘못 셌다」가 주제인 문서에서
   같은 실수를 반복할 뻔했다 — 숫자를 적을 땐 기준선 재현부터 한다.
-- CI — `backend-ci.yml`(모듈 매트릭스 9 + 조립 부팅 + 린트 + 워크플로우 판별식) ·
-  `frontend-ci.yml`(lint·typecheck·test 3잡) · `infra-ci.yml`(nginx 마스킹 · springdoc 미노출 봉인)
+- CI — `backend-ci.yml`(모듈 매트릭스 9 + 조립 부팅 + 린트) · `frontend-ci.yml`(lint·typecheck·test 3잡) ·
+  `infra-ci.yml`(nginx 마스킹 · springdoc 미노출 봉인) · `workflow-scripts-ci.yml`(판별식 6종)
+  <br>※ 워크플로우 판별식 잡은 2026-07-30 에 `backend-ci` 에서 전용 워크플로우로 **이관**됐다.
+
+### CI 러너 — self-hosted 전환 (2026-07-30, PR #324)
+
+**2026-07-29 17:32 KST 부터 GitHub Actions 결제 차단으로 CI 전체가 죽어 있었다.** 잡이 `steps=0` 으로
+배정조차 되지 않았고(차단 이후 실행 **12/12** 동일 어노테이션), 그 사이 **#322 · #323 이 CI 0회로
+머지**됐다. 이 상태는 잡이 `failure` 로 표시돼 「테스트가 깨졌다」와 구분되지 않는 것이 더 나쁘다.
+
+- self-hosted 러너 `maxi-mac-bts`(osx-arm64) 등록. `runs-on` **9곳 전수** → `[self-hosted, bts-local]`.
+  결제 차단이 self-hosted 에는 적용되지 않음을 확인 사격(run `30508738275`, `steps=4 success`)으로 실증
+- **판별식 신설** `ci-runner-label-alignment.test.ts` — 워크플로우 파일 목록을 **선언하지 않고 런타임에
+  훑는다.** 목록을 상수로 두면 실제 디렉터리와 갈라지는 두 목록이 되기 때문이다(지배 결함 양식).
+  목록이 하나면 갈라질 수 없다. 뮤테이션 **8/8**, 그중 M8(INPUTS 밖 신규 워크플로우)이 이 설계를 실증
+- **판별식 워크플로우 분리** — `paths` 가 워크플로우 레벨이라 판별식 입력을 `backend-ci` 트리거에
+  얹으면 워크플로우 파일 한 줄 수정이 12잡(러너 1대에서 50~60분)을 끌고 온다
+- **선재 트리거 갭 2건 해소** — `docs/plan/product/**` 와 `.claude/skills/**` 는 지금까지 **어느
+  워크플로우도 걸지 않아** 그 파일만 바꾸는 PR 에서 판별식이 0회 실행됐다 (#320 에서 실증)
+- assembly 잡 DB 를 `55433` 으로 분리 (로컬 dev postgres 5433 선점 회피 + 공유 dev DB 가짜초록 차단).
+  `application.yml` 의 `${BTS_DB_URL:…}` 오버라이드 지점을 그대로 써 **Kotlin 0줄**
+- 운영 절차 — `docs/runbooks/self-hosted-runner.md`. ★러너가 꺼지면 `failure` 가 아니라 **`queued`
+  무한 대기**다 (`timeout-minutes` 는 큐 대기를 세지 않는다)
+- **근본 원인 미해결.** 이 러너는 결제 차단을 우회할 뿐이다 — GitHub 호스팅 러너가 필요한 상황은
+  여전히 막힌다
 
 ---
 
