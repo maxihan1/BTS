@@ -13,6 +13,11 @@ import { TopBar } from '../TopBar'
 const mockNavigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
+  // TopBar 가 배선하는 ProjectSwitcher(FR-UX-08 F12)가 URL 의 projectKey 를 읽는다.
+  // 이 파일의 계약(상단바 요소 구성·라벨)과 무관하므로 빈 값으로 모킹한다 —
+  // §1-B 착지점 분기 자체는 ProjectSwitcher.test.tsx 가 실 memory router 로 검증한다.
+  useParams: () => ({}),
+  useSearch: () => ({}),
   Link: ({
     to,
     children,

@@ -14,7 +14,8 @@ import {
   createRootRoute,
   createMemoryHistory,
 } from '@tanstack/react-router'
-import { projectListFixtures } from '@/mocks/project-list-handlers'
+import { server } from '@/test/server'
+import { projectListFixtures, projectListHandlers } from '@/mocks/project-list-handlers'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { useRecentProjects } from '@/hooks/use-recent-projects'
 import { ProjectSwitcher } from '../ProjectSwitcher'
@@ -85,6 +86,8 @@ describe('ProjectSwitcher — 프로젝트 전환 (F12)', () => {
     localStorage.clear()
     useActiveProject.setState({ activeProjectKey: null })
     useRecentProjects.setState({ recentProjectKeys: [] })
+    // 전역 등록에 더해 명시 등록 (use-projects.test.tsx·ProjectTree.test.tsx 동일 관례)
+    server.use(...projectListHandlers)
   })
 
   // ── FR8/NFR3 — ARIA 계약 ────────────────────────────────────────────────
