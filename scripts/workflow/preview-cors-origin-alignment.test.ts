@@ -21,15 +21,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const BACKEND_CI = path.join(REPO_ROOT, '.github/workflows/backend-ci.yml');
+// 판별식(`pnpm test:workflow`)을 실제로 돌리는 워크플로우. 2026-07-30 에 backend-ci 에서
+// 이관됐다 — 잡이 옮겨갔는데 이 상수를 안 바꾸면 **엉뚱한 파일의 트리거를 보며 통과**한다.
+const DISCRIMINANT_WORKFLOW = path.join(REPO_ROOT, '.github/workflows/workflow-scripts-ci.yml');
 
 /**
- * 이 판별식이 의존하는 입력 파일과, backend-ci 트리거에서 그 파일을 덮는 경로 패턴.
+ * 이 판별식이 의존하는 입력 파일과, workflow-scripts-ci 트리거에서 그 파일을 덮는 경로 패턴.
  *
  * ## ★ 왜 파일 경로와 CI 트리거 요구를 **한 선언**에서 파생시키나
  * 따로 두면 갈라진다. 이 PR 의 코드리뷰에서 실제로 갈라졌다 — `playwright.config.ts` 를
  * 입력으로 추가하면서 트리거 요구 목록에는 넣지 않아, `reuseExistingServer` 를 되돌리는 PR 이
- * backend-ci 를 띄우지 않고 그 단언을 **0회 실행**하는 상태가 됐다. 봉인 안에서 봉인이 막으려던
+ * CI 를 띄우지 않고 그 단언을 **0회 실행**하는 상태가 됐다. 봉인 안에서 봉인이 막으려던
  * 결함 양식을 재생산한 것이다.
  *
  * 그래서 입력을 여기 한 곳에만 적고, 읽기 경로와 트리거 요구를 **둘 다 여기서 파생**시킨다.
@@ -137,18 +139,18 @@ function corsAllowedOriginDefaults(): Set<string> {
 }
 
 /**
- * `backend-ci.yml` 의 `on.<trigger>.paths` 를 **트리거별로** 수집한다.
+ * `workflow-scripts-ci.yml` 의 `on.<trigger>.paths` 를 **트리거별로** 수집한다.
  *
  * 한 덩어리로 합치면 `pull_request` 에만 배선돼도 통과한다 — 봉인이 절반만 닫히는 양식이다.
  * 정규식으로 블록을 잘라내는 대신 줄 단위로 읽는다. YAML 은 들여쓰기가 곧 구조라
  * 들여쓰기를 상태로 쓰는 편이 주석·빈 줄에 견고하다.
  */
-function backendCiTriggerPaths(): Map<string, Set<string>> {
+function discriminantWorkflowTriggerPaths(): Map<string, Set<string>> {
   const collected = new Map<string, Set<string>>();
   let trigger: string | undefined;
   let inPaths = false;
 
-  for (const line of fs.readFileSync(BACKEND_CI, 'utf8').split('\n')) {
+  for (const line of fs.readFileSync(DISCRIMINANT_WORKFLOW, 'utf8').split('\n')) {
     const triggerKey = /^ {2}([a-z_]+):/.exec(line)?.[1];
     if (triggerKey !== undefined) {
       trigger = triggerKey;
@@ -180,7 +182,7 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
   test('판별식이 비어 있지 않다 (양성 대조군)', () => {
     const blocks = viteServeBlocks();
     const origins = corsAllowedOriginDefaults();
-    const triggers = backendCiTriggerPaths();
+    const triggers = discriminantWorkflowTriggerPaths();
 
     // 하한이 없으면 파서가 0건을 내도 아래 차집합이 전부 공허하게 통과한다.
     // 0 이라는 결과는 「없다」가 아니라 「내 판별식이 틀렸다」를 먼저 의심해야 한다.
@@ -197,7 +199,7 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
       const paths = triggers.get(trigger);
       assert.ok(
         paths !== undefined && paths.size >= REQUIRED_CI_TRIGGER_PATHS.length,
-        `backend-ci.yml 의 on.${trigger}.paths 를 ${paths?.size ?? 0}건 찾았다 — 파서가 고장났다.`,
+        `workflow-scripts-ci.yml 의 on.${trigger}.paths 를 ${paths?.size ?? 0}건 찾았다 — 파서가 고장났다.`,
       );
     }
   });
@@ -249,7 +251,7 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
   });
 
   test('양쪽 트리거가 판별식 입력 경로를 전부 건다', () => {
-    const triggers = backendCiTriggerPaths();
+    const triggers = discriminantWorkflowTriggerPaths();
 
     const missing = CI_TRIGGERS.flatMap((trigger) => {
       const paths = triggers.get(trigger) ?? new Set<string>();
@@ -263,7 +265,7 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
       [],
       `판별식 입력이 바뀌어도 CI 가 안 도는 경로가 있다.\n` +
         `${missing.join('\n')}\n` +
-        `이 판별식은 backend-ci 의 workflow-scripts 잡(pnpm test:workflow)에서 돈다. ` +
+        `이 판별식은 workflow-scripts-ci 의 discriminants 잡(pnpm test:workflow)에서 돈다. ` +
         `입력 파일이 트리거에 없으면 그 파일만 바꾼 PR 에서 판별식이 0회 실행된다.`,
     );
   });
