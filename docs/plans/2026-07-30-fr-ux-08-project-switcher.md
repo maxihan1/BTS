@@ -62,9 +62,24 @@
 | 이슈 단건 조회는 캐시된다 | `routes/issues.$key.tsx:186` `useQuery` + `fetchIssue(issueKey)` |
 | 스위처를 `<nav>` 로 만들면 깨진다 | `nav-labels.ts:23-26` — `'프로젝트'` 가 `'프로젝트 뷰 전환'` 의 substring, Playwright `getByRole` 기본 substring 매칭 |
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-30-fr-ux-08-project-switcher.md](../specs/2026-07-30-fr-ux-08-project-switcher.md) — S1~S10 · FR1~FR16 · NFR1~NFR7 · E1~E12 · L1~L5
+
+**핵심 설계 2건.**
+- **1-A. "내 작업" 링크는 `projectKey` 를 싣지 않는다.** `userId` 는 동기(`authStore`)라 링크에 실어도 되지만 `projectKey` 는 비동기(`useProjects` 의존)라 사이드바가 먼저 렌더된다 — FR-UX-07 §1 이 같은 이유로 같은 패턴을 기각했다. `to='/issues' search={{ assignee: userId }}` 만 보내고 프로젝트는 라우트가 해소한다. **`issues.index.tsx` 무변경으로 성립**(`:711,717` 이 이미 소비).
+- **1-B. 스위처 착지점은 현재 라우트의 성격이 정한다.** 경로 파라미터(`/projects/$projectKey/*`)가 있으면 같은 하위 경로로 치환 이동, 없으면 활성값만 갱신. 후자에서 활성값만 바꾸면 URL①이 이기고 `useTrackActiveProject:50` 이 원래 키를 **되기록**해 선택이 즉시 되돌려진다.
+
+**Phase B 갭 3건 (전부 해소).**
+1. **`?assignee=me` 는 400** — 정본대로 구현했으면 사이드바에 깨지는 링크를 박았다
+2. **`nav-labels.test.ts` 가 새 라벨을 안 본다** — 「두 목록이 서로를 안 본다」 양식. FR15 에서 목록 제거형 전수 판별식으로 교체
+3. **스위처 선택 되돌림** — §1-B 로 차단, E7 회귀 가드
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, 5건 검증 / 갭 3건 발견·해소). `office-hours`·`design-consultation`·`design-shotgun` 전부 스킵 — FR-UX-07 스펙 선례 승계. Phase B 는 추상 브레인스톰 대신 **스펙의 사실 주장을 코드로 되짚는 방식**.
+
+**부수 확증 2건.** D2 정정이 기존 테스트를 **깨지 않는다**(`ProjectTree.test.tsx:186,199,211` · e2e S4/S5 전부 초기 상태 기준 + `playwright.config.ts` 에 `storageState` 없음). FR5 의 덮어쓰기 동작을 직접 단언하는 테스트는 **0건** — JSDoc 에만 있고 봉인돼 있지 않다.
 
 ## Plan (← /bts-plan 채움)
 
