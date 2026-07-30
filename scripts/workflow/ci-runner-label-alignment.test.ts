@@ -234,6 +234,29 @@ describe('CI 러너 라벨 정합', () => {
     );
   });
 
+  test('self-hosted(macOS) 러너를 쓰는 워크플로우에 services: 블록이 없다', () => {
+    const offenders: string[] = [];
+
+    for (const workflow of workflowFiles()) {
+      const lines = fs.readFileSync(path.join(REPO_ROOT, workflow), 'utf8').split('\n');
+      lines.forEach((line, index) => {
+        if (/^\s{4}services:\s*$/.test(line)) offenders.push(`${workflow}:${index + 1}`);
+      });
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `services: 블록이 있다.\n${offenders.join('\n')}\n\n` +
+        `GitHub Actions 의 서비스 컨테이너는 **Linux 러너에서만 지원된다.** macOS 러너에서는\n` +
+        `잡이 'Initialize containers' 에서 다음 에러로 죽는다 (2026-07-30 실측, run 30514310932).\n` +
+        `  ##[error]Container operations are only supported on Linux runners\n\n` +
+        `이미지 아키텍처 문제가 아니다 — 기능 자체가 없다. 스텝 안에서 'docker run' 으로 직접\n` +
+        `띄우는 것은 정상 동작한다(infra-ci 의 nginx 봉인 잡이 그렇게 돌고 있다).\n` +
+        `대안은 docs/runbooks/self-hosted-runner.md §4 참조.`,
+    );
+  });
+
   test(`${DISCRIMINANT_WORKFLOW} 가 실제로 판별식을 실행한다`, () => {
     const abs = path.join(REPO_ROOT, DISCRIMINANT_WORKFLOW);
 
