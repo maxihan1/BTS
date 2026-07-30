@@ -277,6 +277,23 @@ git diff --stat | grep -c '^ backend/' ; echo "(backend 변경 0 이어야 함)"
 | R4 | 워크트리 `pnpm exec` 가 main 을 오염시킨다 (선례 8회) | **`apps/web/node_modules/.bin/*` 직접 호출** + 커밋은 `--no-verify`. 위 검증 명령에 이미 반영 |
 | R5 | 펼침 영속이 e2e 간 누출 | `playwright.config.ts` 에 `storageState` 없음 실측 — 테스트마다 새 컨텍스트. 그래도 T6 는 `addInitScript` 로 **명시 초기화**한다 |
 
+## 구현 진행 (2026-07-31 갱신)
+
+| Task | 상태 | 커밋 | 비고 |
+|---|---|---|---|
+| **T1** `use-recent-projects` | ✅ 완료 | `2d85f0498`(red) → `1271321cb`(green) | 15 테스트 |
+| **T2** `use-project-tree-expanded` | ✅ 완료 | 동상 | 14 테스트 · **뮤테이션 M1 통과**(`expand`를 덮어쓰기로 되돌리면 T-PE-4·13 red) |
+| **T3** `useTrackActiveProject` 확장 | ✅ 완료 | `924f443a3`(red) → `0be17b708`(green) | 12 테스트 · **뮤테이션 M2 통과**(push를 가드 밖으로 빼면 T-TR-9·10 red) |
+| **T4** `ProjectTree` 펼침 영속 + 소스 확장 | ✅ 완료 | `ebb0cf361`(red) → `89491b4f5`(green+refactor) | 16 테스트 · **전체 스위트 530/530** · typecheck 0 |
+| **T5** `ProjectSwitcher` + `TopBar` | ⏳ 미착수 | — | §1-B 3갈래 분기 · `role="listbox"` · `navigation-contract.test.tsx` 필수 |
+| **T6** e2e + 정본 + 전체 검증 | ⏳ 미착수 | — | E7(a)(b) · E7-b 회귀 가드 |
+
+**구현 중 확정된 정정 1건.** **FR7 의 소스를 `useResolvedActiveProject` 가 아니라 `useParams ?? useSearch` 로 좁혔다** (스펙 FR7 정정단락). 초안대로면 `/dashboards` 에서도 첫 프로젝트가 펼쳐지고 `aria-current="page"` 가 붙어 기존 계약 2건이 깨지고 접근성 의미가 틀린다. 선재 갭의 정체는 「URL 대 저장값」이 아니라 「경로 파라미터 대 검색 파라미터」였다. **파생 — FR11-b·E14 철회, 리뷰 CONCERN C1 불성립.**
+
+**선언 외 파일 수정 2건 (정당·test-only).** `Sidebar.test.tsx`·`ShellLayout.test.tsx` 의 라우터 mock 에 `useSearch` 추가. `ProjectTree` 가 새 훅을 호출하며 필요해졌다. **영향 범위는 추측이 아니라 전체 스위트 실측으로 확정** — 라우터를 mock 하는 65개 파일 중 `ProjectTree` 를 렌더하는 **2개만** 깨졌다.
+
+**구현 방식의 한계.** `bts-impl` 정본은 sub-agent 병렬 dispatch 지만, 이 세션은 에이전트 호출 금지 지시가 걸려 있어 **컨트롤러가 직접 TDD 를 수행**했다(#322·#323·#324 와 동일 조건). 따라서 **implementer ↔ verifier 의 독립성이 없다** — TDD 순서는 `git log` 로 기계 검증 가능하지만(`test:` → `feat:`), drift 판정은 자기 검증이다.
+
 ## 리뷰 결과
 
 ### 리뷰 방식 (2026-07-30)
