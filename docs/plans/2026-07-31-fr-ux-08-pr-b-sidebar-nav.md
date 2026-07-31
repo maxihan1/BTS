@@ -140,6 +140,320 @@ E7 회귀가드 · `ProjectTree` 덮어쓰기 0건 · `useResolvedActiveProject`
 (FR13-b · FR14-b · FR15-b · FR16-b · §11-B), Maxi 결정이 필요한 1건(G5 glossary 등재)만
 게이트 1 안건으로 남겼다. Phase A↔B 루프 재진입 없음.
 
-## Plan (← /bts-plan 채움)
+## Plan
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### 실측으로 확정한 관례 (task 가 이 경로를 그대로 쓴다)
+
+| 축 | 실측값 |
+|---|---|
+| 훅 테스트 | `src/hooks/__tests__/<name>.test.ts` |
+| 라우트 테스트 | `src/routes/__tests__/<name>.test.tsx` |
+| 컴포넌트 테스트 | `src/components/<dir>/__tests__/<Name>.test.tsx` |
+| e2e | `apps/web/e2e/<name>.spec.ts` |
+| 별도 항목을 nav 안에 렌더한 선례 | `Sidebar.tsx:18` import + `:100` `<FavoritesMenu />` (`components/favorite/`) |
+| MRU 훅 템플릿 | `hooks/use-recent-projects.ts` (PR-A 산출물, 145줄 — fail-safe 3중 + 복원 중복제거 CR2 반영본) |
+
+---
+
+### Task 1. `use-recent-issues` MRU 스토어 신설
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-recent-issues.ts`, `apps/web/src/hooks/__tests__/use-recent-issues.test.ts`]
+- depends-on: []
+
+**RED**. `use-recent-issues.test.ts` 신설.
+- `pushRecentIssue('ATLAS-12')` → 목록 맨 앞
+- **중복 push 시 맨 앞으로 이동하고 길이는 그대로** (E5 — 이미 맨 앞이면 write 생략)
+- **상한 5 초과 시 가장 오래된 항목 축출, 정확히 5 유지** (E6)
+- **변조 저장값 폴백 3종** (E4/NFR2) — ① 배열 아님 `{"a":1}` ② 원소가 객체 `[{}]` ③ `getItem` throw 주입
+- **복원 경로 중복 제거** — `["A-1","A-1","B-2"]` 저장 후 초기화 시 `["A-1","B-2"]` (PR-A CR2 동형 결함 선차단)
+- ⚠️ **`beforeEach` 스토어 리셋 필수** — zustand 스토어는 모듈 전역 싱글턴이라 리셋이 없으면
+  **거짓통과·거짓실패가 둘 다** 가능하다 (PR-A plan 리뷰 BLOCKER B2 의 정확한 재발 지점)
+
+**GREEN**. `use-recent-issues.ts` — `use-recent-projects.ts` 를 템플릿으로 복제.
+`RECENT_ISSUES_STORAGE_KEY = 'bts.recent-issues'` · `MAX_RECENT_ISSUES = 5`.
+
+**REFACTOR**. KDoc 에 **NFR1 근거**를 명시 — *"이슈 **키 문자열만** 저장한다. 제목·본문·담당자 등
+업무 내용을 저장하지 않는다"* + 근거(로그아웃이 `localStorage` 를 지우지 않음, `authStore.ts:34-37`).
+
+**검증**. `pnpm vitest run src/hooks/__tests__/use-recent-issues.test.ts`
+
+---
+
+### Task 2. 이슈 방문 기록 배선 (조회 성공 후에만)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/__tests__/issues.$key.recent.test.tsx`]
+- depends-on: [1]
+
+**RED**. 라우트 테스트 신설.
+- 이슈 조회 **성공** 시 `bts.recent-issues` 에 해당 키가 기록된다
+- ★ **404/403 응답 시 기록되지 않는다** (FR4) — 조회 전에 기록하면 죽은 키가 목록을 오염시키고
+  그 키는 다음 마운트에서 또 실패한다
+- ★ **키 리다이렉트**(`IssueRedirectError`, `:195`) 시 **새 키**가 기록되고 옛 키는 기록되지 않는다
+
+**GREEN**. `issues.$key.tsx` 의 `useQuery`(`:182-186`) 결과에 `useEffect` 를 걸어
+`data` 가 truthy 일 때만 `pushRecentIssue(issue.key)`.
+
+**REFACTOR**. 기록 지점이 **이 한 곳뿐**임을 주석으로 못박는다 (FR3 의 동형 원칙 — 생산 지점이
+둘이 되면 가드가 한쪽에만 붙는 FR-UX-07 CR3 결함이 재발한다).
+
+**검증**. `pnpm vitest run src/routes/__tests__/issues.$key.recent.test.tsx`
+
+---
+
+### Task 3. `navLabels` 2키 추가 + S3 가드 **부분 반전**
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/nav-labels.ts`, `apps/web/src/i18n/__tests__/nav-labels.test.ts`]
+- depends-on: []
+
+**RED**. `__tests__/nav-labels.test.ts:55-71` 의 `S3 — 백킹 없는 항목 제외 회귀 가드` 를 **부분 반전**.
+- `myWork` 키가 **존재하고** 값이 `'내 작업'` 이다 ← 반전
+- `recent` 키가 **존재하고** 값이 `'최근 항목'` 이다 ← 반전
+- `filters` 키가 **없다** ← **유지**
+- `projects` 키가 **없다** ← **유지**
+- describe 제목을 `S3 — 백킹 유무에 따른 항목 게이팅 (FR-UX-08 에서 2건 반전)` 으로 갱신
+
+**GREEN**. `nav-labels.ts` 에 `myWork: '내 작업'` · `recent: '최근 항목'` 추가.
+
+**REFACTOR**. `nav-labels.ts:9` S3 주석에 **왜 2건만 뒤집었는지**를 남긴다 —
+*"`myWork`·`recent` 는 FR-UX-08 이 실 라우트를 부여해 추가됨. `filters`·`projects` 는 백킹 없음 —
+가드 유지"*. 새 라벨 2종은 e2e 계약 문자열이 아니므로 🔒 표시를 붙이지 않는다.
+
+**★ 이 task 의 실패 양식.** describe 블록을 통째로 지우는 것. 그러면 `filters`·`projects` 가
+가드를 잃는다 — 「봉인은 절반만 닫힌다」. **양방향 실증**이 완료 조건이다
+(2건 지우면 red / 2건 추가하면 red, **둘 다** 확인).
+
+**검증**. `pnpm vitest run src/i18n/__tests__/nav-labels.test.ts`
+
+---
+
+### Task 4. nav 라벨 **전수 판별식** + 테스트 파일 통합
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/__tests__/nav-labels.test.ts`, `apps/web/src/i18n/nav-labels.test.ts`(삭제)]
+- depends-on: [3]
+
+**RED**. `__tests__/nav-labels.test.ts` 에 **목록 제거형** 판별식 추가.
+- `Object.entries(navLabels)` 를 **런타임으로 훑어** 모든 쌍의 양방향 substring 을 검사
+- 실재 예외 **1쌍만** 화이트리스트 — `['projectNav','projectViewNav']`
+- **비-공허 짝** — 수집된 쌍이 0건이면 실패시킨다 (라벨이 사라져도 조용히 통과하지 않게)
+- **화이트리스트 짝 검사** — 화이트리스트에 적힌 쌍이 **실제로 substring 관계가 아니면** 실패
+  (짝을 잘못 적으면 파생이 틀린 쌍을 면제하며 통과한다 — #323 M9 선례)
+- 흡수 대상 — 삭제될 `i18n/nav-labels.test.ts` 의 `breadcrumb` 비충돌 단언이
+  전수 판별식에 **포함되는지** 확인하는 단언 1건
+
+**GREEN**. 판별식 구현 + `apps/web/src/i18n/nav-labels.test.ts` **삭제**.
+
+**REFACTOR**. 파일 L1 주석에 *"nav 라벨 상수 단위 테스트의 단일 거처. 렌더 계약은
+`layout/__tests__/navigation-contract.test.tsx` 가 따로 본다"* 를 명시해 재분열을 막는다.
+
+**★ 비-공허 실증(완료 조건).** `navLabels` 에 일부러 `'프로젝트 뷰'` 를 넣으면 **실제 red**.
+
+**검증**. `pnpm vitest run src/i18n/`
+
+---
+
+### Task 5. 사이드바 "내 작업" 링크
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/Sidebar.tsx`, `apps/web/src/components/layout/__tests__/Sidebar.test.tsx`]
+- depends-on: [3]
+
+**RED**. `Sidebar.test.tsx` 에 추가.
+- `userId` 존재 시 `내 작업` 링크가 렌더되고 `href` 가 `/issues?assignee=<userId>` 다 (FR12)
+- ★ **`projectKey` 를 싣지 않는다** (§1-A) — `href` 에 `projectKey` 부재 단언
+- ★ **`userId` 부재 시 미렌더** (E9) — 죽은 링크를 만들지 않는다
+- ★ **"이슈" 와 "내 작업" 이 동시에 활성 표시되지 않는다** (E8) — `activeOptions={{ includeSearch: true }}`
+- ★ **접힘(64px) 시 텍스트가 `sr-only` 로 DOM 에 남는다** (E10) — `getByRole('link',{name})` 계약 보존
+- ★ **`getByRole('navigation')` 개수 불변** (FR13-b/NFR3)
+
+- ★ **위치가 `MAIN_NAV_LINKS` 3링크보다 앞이다** (§8-A D-A) — 렌더 순서 단언
+
+**GREEN**. `MAIN_NAV_LINKS` 배열 **밖**, 기존 `메인 메뉴` `<nav>` **안 최상단**에 조건부 렌더
+(§8 제약 — 배열을 nullable/optional 로 넓혀 기존 3항목까지 복잡해지게 하지 않는다).
+아이콘 **lucide `UserCheck`** + `NAV_ICON_CLASS`, 클래스 `NAV_LINK_CLASS` (§8-A D-C).
+
+**REFACTOR**. 왜 배열 밖인지 + 왜 최상단인지 1줄씩 주석 (§8-A D-A 링크).
+
+**검증**. `pnpm vitest run src/components/layout/__tests__/Sidebar.test.tsx src/components/layout/__tests__/navigation-contract.test.tsx`
+
+---
+
+### Task 6. 사이드바 "최근 항목" 섹션
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/RecentIssuesMenu.tsx`, `apps/web/src/components/issue/__tests__/RecentIssuesMenu.test.tsx`, `apps/web/src/components/layout/Sidebar.tsx`]
+- depends-on: [1, 3, 5]
+
+**RED**. `RecentIssuesMenu.test.tsx` 신설.
+- 최근 키 5건의 제목을 조회해 `KEY 제목` 으로 MRU 순 렌더 (FR13/S8)
+- ★ **403/404 항목은 조용히 숨기고 나머지는 렌더** (E2/S9/NFR5) — 5건 중 2건 403 주입 시 3건 렌더 + 사이드바 생존
+- ★ **목록이 비면 섹션 자체 미렌더** (E3) — 빈 헤더만 남기지 않는다
+- ★ **조회는 최대 5건** (NFR5)
+- ★ **새 `<nav>` 를 만들지 않는다** (FR13-b) — `<ul aria-label={navLabels.recent}>`, `navigation` 개수 불변
+- ★ **접힘(`collapsed=true`) 시 섹션 전체 미렌더** (§8-A D-B) — 헤더도 링크도 DOM 에 없다
+- ★ **전체 settle 전에는 아무것도 렌더하지 않는다** (§8-A D-D) — 헤더 플리커 방지.
+  `useQueries` 중 하나라도 `pending` 이면 `null`. 조회는 `retry: false`
+- ★ **하위 링크에 아이콘이 없다** (§8-A D-C) — 아이콘 요소 부재 단언
+
+**GREEN**. 별도 컴포넌트 `RecentIssuesMenu` 를 만들고 `Sidebar.tsx` 의 `메인 메뉴` nav
+**최하단**(`<FavoritesMenu />` **다음**)에 배치 (§8-A D-A).
+그룹 헤더는 관리 메뉴 헤더와 동일 타이포, 하위 링크는 `TREE_SUB_LINK_CLASS` 관례 (§8-A D-C).
+
+**REFACTOR**. 제목 조회는 `issues.$key.tsx` 와 **같은 `queryKey`**(`issueQueryKey`)를 써
+세션 중 캐시에 적중하게 한다 (L2 완화). 실패는 `null` 반환 (`ProjectTree` fail-safe 관례).
+`FavoritesMenu.FilterFavoritesGroup:120-169` 이 **같은 문제(비동기 이름 조회 + 404 숨김 +
+헤더 플리커)를 이미 푼 구현**이므로 구조를 그대로 참조한다 — 단, 그쪽은 드롭다운이고
+이쪽은 인라인 목록이라 **컨테이너·타이포는 사이드바 관례**를 쓴다.
+
+**검증**. `pnpm vitest run src/components/issue/__tests__/RecentIssuesMenu.test.tsx src/components/layout/`
+
+---
+
+### Task 7. e2e — S7·S8·S9
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/sidebar-my-work-recent.spec.ts`]
+- depends-on: [5, 6]
+
+**RED→GREEN**. 3 시나리오.
+- **S7** "내 작업" 클릭 → 담당 이슈 목록 도착
+- **S8** 이슈 2건을 순서대로 열람 → 사이드바 "최근 항목"이 MRU 순
+- **S9** 최근 목록에 죽은 키를 심고 → 그 항목만 빠지고 사이드바 생존
+
+**★ e2e 함정 2건 (PR-A 실측, 그대로 적용).**
+- `page.addInitScript` 는 이후 **모든 `goto` 에 재적용**된다. 1회성 초기화에 쓰면 왕복마다
+  값을 지워 **"영속 안 됨" 거짓 실패**가 난다 → 1회성은 `page.evaluate`.
+  (단 **시작 상태 심기**는 `active-project.spec.ts:46,65` 선례대로 `addInitScript` 가 맞다)
+- 실패 시 **2단계 분류** — 전체 1차 → 재실행 2차. 대상이 바뀌면 flaky, 고정이면
+  **내 변경 한 줄을 제거해 재실행**해 PRE_EXISTING 여부를 인과로 가른다.
+
+**검증**. `apps/web/node_modules/.bin/playwright test e2e/sidebar-my-work-recent.spec.ts`
+(필터 인자 삼킴 회피 — 바이너리 직접 호출)
+
+---
+
+### Task 8. FR16 정본 전수 동기화 + D 마커 + 진척 132→133
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`docs/plan/product/personalization.md`, `docs/plan/README.md`, `docs/progress.html`, `CHANGELOG.md`, `docs/specs/2026-07-30-fr-ux-08-project-switcher.md`]
+- depends-on: [1, 2, 3, 4, 5, 6, 7]
+
+**작업** (TDD 대상 아님 — 문서. 검증은 `verify-master-plan.sh` 가 대신한다).
+- `personalization.md` §4.6 **D1~D7 `[x]`** (F12+F17 완주 — ADR §D6 판별식)
+- §4.6 본문 `?assignee=me` → `?assignee=<whoami.userId>` 표기 정정
+- §4.6 D1 "최근 프로젝트" 문구를 ADR §D1 재배치에 맞게 정정
+- `docs/plan/README.md` §1 진척 열 **132 → 133**
+- `node scripts/build-dashboard.mjs` 로 `docs/progress.html` 재생성
+- `CHANGELOG.md` `[Unreleased]` **범위/상태/BC 요약 표**
+- **FR 총수 139 불변** (신설 아님)
+
+**검증**. `bash scripts/verify-master-plan.sh` EXIT **0** ·
+`grep -rn "assignee=me" apps/web/src docs/plan` **0건**
+
+---
+
+## Plan 메타
+
+- **task 수**. 8
+- **wave 예상**. 3 — W1{T1, T3} · W2{T2, T4, T5} · W3{T6} → T7 → T8
+  (`Sidebar.tsx` 를 T5·T6 이 공유하므로 자동 직렬화. `i18n/__tests__/nav-labels.test.ts` 를
+  T3·T4 가 공유하므로 직렬)
+- **TDD 강제**. yes (T8 문서 제외 — `verify-master-plan.sh` 가 대체 검증)
+- **추가 검증**. typecheck · eslint · vitest(**XML 실측 + 이번 실행 산출물 확인**) · playwright
+- **뮤테이션 필수 3종** (커밋 후 기준선에서만 — 미커밋 상태에서 돌리면 원복이 수정을 지운다).
+  M1 T3 부분 반전 **양방향** · M2 T4 판별식 비-공허 · M3 T6 403 숨김
+- **백엔드 0줄 · 마이그레이션 0 · 신규 의존성 0**
+
+## 리뷰 결과
+
+### plan-design-review (2026-07-31)
+
+`classify.type == "ui"` → 리뷰 체인은 `/plan-design-review` 단독 (bts-review-plan 분기표).
+
+**초기 6/10 → 확정 9/10.** 확정 결정 3건은 스펙 §8-A 에 정본으로 기록했다.
+
+| 패스 | 전 | 후 | 내용 |
+|---|---|---|---|
+| 1 정보 위계 | 5 | **10** | **D-A** 내 작업 = 메인 메뉴 최상단 / 최근 항목 = 최하단 |
+| 2 상태 커버리지 | 6 | **9** | 로딩 미지정 → 선례 강제(전체 settle 전 미렌더, `retry:false`) |
+| 3 사용자 여정 | 8 | **8** | **지적 철회** — ADR §D3 자동 기록이 이미 해결 |
+| 4 AI 슬롭 위험 | 9 | **9** | 앱 UI · 하드리젝션 7종 해당 없음 · 지적 0 |
+| 5 디자인 시스템 정합 | 5 | **9** | **D-C** 사이드바 선례 채택. `UserCheck` · 하위링크 무아이콘 |
+| 6 반응형·접근성 | 6 | **9** | **D-B** 접힘 시 최근 항목 섹션 전체 미렌더 |
+| 7 미해결 결정 | — | — | **3건 해결 · 0건 잔류** |
+
+**BLOCKER. 없음.**
+
+**★리뷰가 실제로 바꾼 것.** 6개 공백 중 **4개는 선례 실측으로 자동 소멸**했고(잘림·로딩·아이콘 규격·헤더 타이포),
+진짜 열린 결정은 3개뿐이었다. 초기 평점 6/10 의 절반은 **"정본이 없다"가 아니라 "정본을 안 찾아봤다"** 였다.
+`FavoritesMenu.FilterFavoritesGroup` 이 **비동기 이름 조회 + 404 숨김 + 헤더 플리커 방지**라는
+똑같은 세 문제를 이미 풀어 둔 것을 못 보고 plan 을 썼다.
+
+**★리뷰가 스스로 철회한 것 1건.** Pass 3 에서 *"첫 사용자가 기능 존재를 모른다"* 를 제기했으나
+ADR §D3 이 **자동 기록**으로 이미 닫아 둔 문제였다. 지적을 살려 뒀으면 없는 문제에
+빈 상태 UI 를 만들 뻔했다 — **리뷰의 지적도 검증 대상**이다.
+
+**외부 목소리 부재 (한계, PR-A 와 동일 조건).** `codex` 미설치 + 에이전트 호출 금지 지시로
+교차 모델 리뷰·독립 서브에이전트 리뷰 둘 다 없다. 위 판정은 전부 자기 검증이다.
+대가는 게이트 2 의 **브라우저 눈확인**으로 상쇄한다 (§11-B 완료 기준에 포함).
+
+### NOT in scope (검토 후 명시적 이연)
+
+| 항목 | 이연 사유 |
+|---|---|
+| 접힘 레일에서 최근 항목 접근 경로 | **D-B 의 의도된 대가.** TODOS.md 등록 완료. 실사용 신호 확보 전에는 추측 구현 |
+| 최근 항목에 이슈 외 타입(보드·필터·대시보드) | 스펙 L5 — v1 범위. 저장 형식만 바뀌면 확장 가능 |
+| 최근 이슈 제목 배치 조회 API | 스펙 L2 — 백엔드 변경이라 범위 밖. 세션 중에는 캐시 적중 |
+| 사용자 스코프 최근 목록 | 스펙 L1 — 키만 저장 + 403/404 자동 탈락으로 유출 없음 |
+| `nav-labels` 렌더 계약 테스트 통합 | `navigation-contract.test.tsx` 는 **렌더** 계약이라 대상이 다름. 통합은 FR15-b 범위 밖 |
+
+### What already exists (재사용 대상 — 새로 만들지 말 것)
+
+| 자산 | 위치 | 이 PR 에서의 쓰임 |
+|---|---|---|
+| `NAV_LINK_CLASS` · `NAV_ICON_CLASS` | `Sidebar.tsx:38-44` | "내 작업" 링크 스타일 |
+| `TREE_SUB_LINK_CLASS` | `ProjectTree.tsx:54` | "최근 항목" 하위 링크 스타일 |
+| 관리 메뉴 그룹 헤더 | `Sidebar.tsx:106-108` | "최근 항목" 그룹 헤더 타이포 |
+| `FilterFavoritesGroup` | `FavoritesMenu.tsx:120-169` | 비동기 이름 조회 + 404 숨김 + 플리커 방지 **구조 참조** |
+| `use-recent-projects.ts` | PR-A 산출물 145줄 | `use-recent-issues` 템플릿 |
+| `issueQueryKey` · `fetchIssue` | `api/issues.ts` · `issues.$key.tsx:182-186` | 제목 조회 (캐시 공유) |
+| `useAuthUser` | `authStore.ts:50` | `userId` 동기 조회 |
+| `--sidebar-*` 토큰 8종 | `index.css` | 신규 색값 도입 금지 |
+
+### Implementation Tasks (리뷰 발견 → 작업 반영)
+
+발견 전량이 **기존 T5·T6 에 흡수**됐다. 신규 task 0건 — 없는 작업을 지어내지 않는다.
+
+- [x] **T5 흡수** — 내 작업 최상단 배치 + `UserCheck` + 렌더 순서 단언 (D-A · D-C)
+- [x] **T6 흡수** — 접힘 시 섹션 미렌더 · settle 전 미렌더 · 무아이콘 하위링크 단언 (D-B · D-C · D-D)
+- [x] **스펙 §8-A** — 확정 3건 + 선례 강제 4건 + 철회 1건 정본화
+- [x] **TODOS.md** — 접힘 접근 경로 1건 등록 (의도된 대가 명시)
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex 미설치 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | BTS 분기표상 `type=ui` 는 design 단독 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (FULL) | score: 6/10 → 9/10, 3 decisions |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** DESIGN CLEARED (9/10, 0 unresolved). eng review not run — BTS `bts-review-plan`
+분기표가 `TYPE == "ui"` 에 `/plan-design-review` **단독**을 지정하므로 이 워크플로우에서는
+누락이 아니다. gstack 기본 게이트 기준으로는 미충족이며, 그 차이를 여기 명시해 둔다.
+
+NO UNRESOLVED DECISIONS
+
+
