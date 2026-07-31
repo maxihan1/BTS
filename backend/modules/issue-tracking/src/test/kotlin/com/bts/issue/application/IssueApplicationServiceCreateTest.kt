@@ -2,6 +2,7 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
@@ -9,6 +10,7 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -49,6 +51,16 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
+
+    // FR-UX-09 B1 — 자동 배정(resolveDefaultAssignee)의 호출 **여부**를 단언해야 하므로
+    // 인라인 mock 대신 val 로 꺼낸다. 「담당자가 null 이다」만 보면
+    // 자동 배정이 꺼진 것과 자동 배정이 돌았는데 결과가 null 인 것을 구분할 수 없다.
+    val componentRepository = mockk<ComponentRepository>(relaxed = true)
+    val projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true)
+
+    // autoWatch 는 watcherRepository 가 null 이면 no-op 이라, 주입하지 않으면 FR7 이 무검증으로 남는다.
+    val watcherRepository = mockk<com.bts.issue.watcher.repository.IssueWatcherRepository>(relaxed = true)
+
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
@@ -61,11 +73,12 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
             workflowPort = workflowPort,
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
-            componentRepository = mockk(relaxed = true),
-            projectLeadRepository = mockk(relaxed = true),
+            componentRepository = componentRepository,
+            projectLeadRepository = projectLeadRepository,
             versionRepository = mockk(relaxed = true),
             clock = clock,
             historyRecorder = mockk(relaxed = true),
+            watcherRepository = watcherRepository,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -326,6 +339,83 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 sut.createIssue(actor, request)
 
                 issueSlot.captured.labels shouldBe emptyList()
+            }
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        // FR-UX-09 B1 — assigneeId 3-state (ADR D-2)
+        //
+        // ★양성 대조군 전제. projectLeadRepository 가 리드를 반환하도록 스텁해
+        //   「Auto 면 담당자가 붙는다」를 먼저 성립시킨다. 그래야 None/User 에서
+        //   담당자가 안 붙는 것이 의미를 갖는다.
+        // ──────────────────────────────────────────────────────────────
+        context("assigneeId 3-state 로 담당자를 정할 때") {
+            val b1ProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000b2")
+            val projectLeadId = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
+            val explicitAssignee = UUID.fromString("00000000-0000-0000-0000-0000000000bb")
+            lateinit var issueSlot: CapturingSlot<com.bts.issue.domain.Issue>
+
+            beforeEach {
+                clearMocks(componentRepository, projectLeadRepository, watcherRepository, answers = false)
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
+                } returns true
+                every { repo.incrementKeySequence(projectKey) } returns 1L
+                every { repo.findProjectIdByKey(projectKey) } returns b1ProjectId
+                every { repo.insertComponents(any(), any()) } returns Unit
+                every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
+                every { componentRepository.findByProject(b1ProjectId) } returns emptyList()
+                every { projectLeadRepository.findLeadUserId(b1ProjectId) } returns projectLeadId
+                issueSlot = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+            }
+
+            // ★양성 대조군 — 이게 통과해야 아래 두 케이스가 의미를 갖는다.
+            it("Auto(키 생략)면 자동 배정 결과가 담당자가 된다") {
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.assigneeId?.value shouldBe projectLeadId
+                verify { projectLeadRepository.findLeadUserId(b1ProjectId) }
+            }
+
+            it("None(명시 null)이면 미할당이고 자동 배정이 아예 호출되지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
+
+                issueSlot.captured.assigneeId shouldBe null
+                verify(exactly = 0) { projectLeadRepository.findLeadUserId(any()) }
+                verify(exactly = 0) { componentRepository.findByProject(any()) }
+            }
+
+            it("User(값 지정)면 그 사용자가 담당자이고 자동 배정이 호출되지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                issueSlot.captured.assigneeId?.value shouldBe explicitAssignee
+                verify(exactly = 0) { projectLeadRepository.findLeadUserId(any()) }
+                verify(exactly = 0) { componentRepository.findByProject(any()) }
+            }
+
+            // ★R3 — 담당자 분기가 워처(autoWatch)까지 전파되는지. FR7.
+            it("None 이면 워처는 reporter 한 명뿐이다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
+
+                verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
+                verify(exactly = 1) { watcherRepository.add(any(), any()) }
+            }
+
+            it("User 면 워처가 reporter 와 담당자 두 명이다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
+                verify(exactly = 1) { watcherRepository.add(any(), explicitAssignee) }
+                verify(exactly = 2) { watcherRepository.add(any(), any()) }
             }
         }
 
