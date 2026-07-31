@@ -20,11 +20,29 @@ import { Sidebar } from '../Sidebar'
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
-    <a href={to} className={className}>
-      {children}
-    </a>
-  ),
+  // `search`를 href 쿼리스트링으로 직렬화한다 — "내 작업"(FR12)이 `search={{ assignee }}`를
+  // 싣는데, 직렬화하지 않으면 href 단언이 `projectKey` 미탑재(§1-A)를 검증할 수 없다.
+  // `activeOptions`(E8)는 활성 표시 계산용이라 DOM에 영향이 없어 받기만 하고 버린다.
+  Link: ({
+    to,
+    search,
+    children,
+    className,
+  }: {
+    to: string
+    search?: Record<string, string>
+    activeOptions?: { includeSearch?: boolean }
+    children: React.ReactNode
+    className?: string
+  }) => {
+    const query =
+      search === undefined ? '' : `?${new URLSearchParams(search).toString()}`
+    return (
+      <a href={`${to}${query}`} className={className}>
+        {children}
+      </a>
+    )
+  },
   useParams: () => ({}),
   // ProjectTree가 검색 파라미터 `?projectKey=`도 활성 프로젝트 근거로 읽는다(FR-UX-08 FR7).
   // 이 파일의 계약(사이드바 랜드마크·라벨)과는 무관하므로 빈 검색 파라미터로 모킹한다.
@@ -205,5 +223,77 @@ describe('Sidebar', () => {
     const issuesLink = within(mainNav).getByRole('link', { name: navLabels.issues })
     expect(issuesLink.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
     expect(issuesLink.querySelector('span')?.className).toContain('sr-only')
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // FR-UX-08 PR-B — "내 작업" (FR12 · §8-A D-A/D-C · E8/E9/E10)
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('"내 작업" 링크 (FR-UX-08 PR-B FR12)', () => {
+    it('T-MW-1 (S7): userId가 있으면 /issues?assignee=<userId> 링크가 렌더된다', () => {
+      renderSidebar()
+
+      const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+      expect(within(mainNav).getByRole('link', { name: navLabels.myWork })).toHaveAttribute(
+        'href',
+        '/issues?assignee=u1',
+      )
+    })
+
+    it('T-MW-2 (§1-A): href에 projectKey를 싣지 않는다 — 프로젝트는 라우트가 해소한다', () => {
+      // 사이드바는 useProjects() 응답보다 먼저 렌더되므로 링크가 활성 프로젝트를 계산해
+      // 붙이면 한 박자 늦게 바뀌고, 그 사이 클릭하면 빈 projectKey가 실린다(FR-UX-07 §1).
+      renderSidebar()
+
+      const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+      const href = within(mainNav)
+        .getByRole('link', { name: navLabels.myWork })
+        .getAttribute('href')
+
+      expect(href).not.toBeNull()
+      expect(href).not.toContain('projectKey')
+    })
+
+    it('T-MW-3 (E9): userId가 없으면 항목을 렌더하지 않는다 — 죽은 링크를 만들지 않는다', () => {
+      useAuthStore.setState({ accessToken: 'test-token', user: null })
+      renderSidebar()
+
+      expect(screen.queryByRole('link', { name: navLabels.myWork })).toBeNull()
+    })
+
+    it('T-MW-4 (§8-A D-A): 메인 메뉴 nav 안에서 "이슈"보다 앞에 온다', () => {
+      // 순서가 곧 중요도 신호다 — 매일 여는 진입점이 캘린더 밑에 묻히면 안 된다.
+      renderSidebar()
+
+      const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+      const linkNames = within(mainNav)
+        .getAllByRole('link')
+        .map((el) => el.textContent?.trim() ?? '')
+
+      expect(linkNames.indexOf(navLabels.myWork)).toBeGreaterThanOrEqual(0)
+      expect(linkNames.indexOf(navLabels.myWork)).toBeLessThan(linkNames.indexOf(navLabels.issues))
+    })
+
+    it('T-MW-5 (E10): 접힘 시 아이콘은 남고 텍스트만 sr-only가 된다 (DOM 유지)', async () => {
+      renderSidebar()
+      const toggle = screen.getByRole('button', { name: navLabels.collapseSidebar })
+      await userEvent.click(toggle)
+
+      const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+      const myWorkLink = within(mainNav).getByRole('link', { name: navLabels.myWork })
+      expect(myWorkLink.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+      expect(myWorkLink.querySelector('span')?.className).toContain('sr-only')
+    })
+
+    it('T-MW-6 (FR13-b/NFR3): 새 nav 랜드마크를 만들지 않는다', () => {
+      // ADR §D5 — `<nav>`를 늘리면 navigation-contract.test.tsx의 aria-label 4종 가드와
+      // e2e `getByRole('navigation')` 계약이 동시에 깨진다.
+      renderSidebar()
+
+      const navNames = screen
+        .getAllByRole('navigation')
+        .map((el) => el.getAttribute('aria-label'))
+
+      expect(navNames).toEqual([navLabels.projectNav, navLabels.mainNav])
+    })
   })
 })
