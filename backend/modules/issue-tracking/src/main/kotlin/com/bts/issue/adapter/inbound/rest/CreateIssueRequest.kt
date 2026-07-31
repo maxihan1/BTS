@@ -63,7 +63,11 @@ data class CreateIssueRequest(
     val labels: List<String>? = null,
 ) {
     /**
-     * 라벨 **개별 길이** 상한 검증 (FR-UX-09 B1).
+     * 라벨 **개별 길이 + 공백-only** 검증 (FR-UX-09 B1).
+     *
+     * 도메인 [com.bts.issue.domain.Issue] 는 빈 문자열은 **필터링**하지만
+     * 공백만 있는 문자열(`"   "`)은 `require(isNotBlank())` 로 **거부**한다.
+     * 길이만 막으면 공백-only 가 도메인까지 내려가 500 이 되므로 두 조건을 함께 본다.
      *
      * ★`List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약을 쓰지 않는 이유 —
      * `UpdateIssueRequest:80` 이 정확히 그 형태로 적혀 있지만 **실제로 동작하지 않는다**(실측 확인).
@@ -78,10 +82,14 @@ data class CreateIssueRequest(
      *
      * `@JsonIgnore` — 검증 전용 파생 속성이라 요청 스키마에 노출하지 않는다.
      */
-    @get:AssertTrue(message = "라벨 하나는 50자 이하여야 합니다.")
+    @get:AssertTrue(message = "라벨 하나는 50자 이하이고 공백만으로 이루어질 수 없습니다.")
     @get:JsonIgnore
     val isLabelsLengthValid: Boolean
-        get() = labels?.all { it.length <= LABEL_MAX_LENGTH } != false
+        get() =
+            labels?.all { label ->
+                // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다(Issue.kt:371 과 대칭).
+                label.isEmpty() || (label.isNotBlank() && label.length <= LABEL_MAX_LENGTH)
+            } != false
 
     private companion object {
         /** 라벨 한 개의 최대 글자 수. 도메인 `Issue.kt` 의 동명 상수(파일 private)와 값이 같아야 한다. */
