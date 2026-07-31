@@ -216,8 +216,15 @@ if (request.securityLevelId != null) {
 - `priority=1`·`labels=["urgent"]` 전달 → 저장된 Issue 에 반영 (E9 대응)
 - **생략 시** `priority == 3`(`PRIORITY_DEFAULT`) · `labels == []` — **무회귀 가드**
 
-**GREEN**. `Issue.create(...)` 호출에 `priority = request.priority ?: PRIORITY_DEFAULT` 상당 ·
-`labels = request.labels ?: emptyList()` 전달. **`Issue.create` 시그니처 변경 금지**(C2)
+**GREEN**. `Issue.create(...)` 호출에
+`priority = request.priority ?: IssuePriority.MEDIUM.number` · `labels = request.labels ?: emptyList()` 전달.
+**`Issue.create` 시그니처 변경 금지**(C2)
+
+> ★**R1 정정 (plan 리뷰).** 초안은 `PRIORITY_DEFAULT` 를 쓰려 했으나 그건
+> `Issue.kt:23` 의 **파일 private `const`** 라 응용 계층에서 참조하면 **컴파일 실패**한다.
+> `IssuePriority.MEDIUM.number`(`IssuePriority.kt:27`, public enum, 값 3)가 유일한 공개 출처다.
+> 매직넘버 `3` 을 직접 쓰면 detekt `MagicNumber` 대상이 되고,
+> `IssueResponse.kt:302` 가 자체 `DEFAULT_PRIORITY = 3` 을 또 선언한 중복을 3벌로 늘린다.
 
 **REFACTOR**. `createIssue` 가 이미 `@Suppress("LongMethod")` — 길이 임계 재확인, 초과 시 헬퍼 분리
 
@@ -236,6 +243,9 @@ if (request.securityLevelId != null) {
 - `Auto` → `resolveDefaultAssignee` 결과가 담당자
 - `None` → 담당자 `null` **이고 `resolveDefaultAssignee` 가 호출되지 않는다** (mock verify — 「값이 null」만 보면 자동배정이 null 을 낸 경우와 구분 불가. **양성 대조군** = 컴포넌트 리드가 있어 Auto 면 담당자가 붙는 픽스처)
 - `User(u)` → 담당자 `u`, `resolveDefaultAssignee` 미호출
+- **★R3 추가 (plan 리뷰) — `autoWatch` 인자 단언.** `None` → 워처가 **reporter 1명** /
+  `User(u)` → **reporter + u 2명**. `autoWatch(:290)` 가 `listOfNotNull(reporterId, resolvedAssignee)` 라
+  담당자 분기가 워처에까지 전파되는데, 초안엔 이 단언이 없어 **FR7 이 무검증**이었다
 
 **GREEN**. `when (request.assignee)` 분기로 `resolvedAssignee` 결정
 
@@ -261,8 +271,12 @@ if (request.securityLevelId != null) {
 - `Auto` 경로는 `userLookupPort.exists` 를 **호출하지 않는다** (자동배정 결과는 이미 유효 사용자)
 
 **GREEN**. `User` 분기에서만 `userLookupPort.exists(id)` → 미존재 시 `AssigneeNotFoundException`.
-**키 시퀀스 증가 이후·`repo.insert` 이전**에 배치(불필요한 키 소비를 줄이려면 더 앞이 낫지만,
-`resolveDefaultAssignee` 와 같은 지점에 두는 편이 읽기 쉽다 — 구현 시 판단 후 근거 기록)
+배치는 **`resolveDefaultAssignee` 자리(`:260`)** 로 **고정한다**.
+
+> ★**R5 정정 (plan 리뷰).** 초안은 배치 지점을 "구현 시 판단"으로 열어 뒀는데 그건 리뷰가
+> 검증할 수 없는 서술이다. **선례로 고정** — `assertSecurityLevelAssignable` 도 키 발급(`:228-229`)
+> **이후**인 `:240` 에 있다. 키 소비 낭비 우려는 없다 — `incrementKeySequence` 가
+> `pg_advisory_xact_lock` 아래 같은 트랜잭션이라 예외 시 롤백으로 되돌아간다.
 
 **REFACTOR**. KDoc 의 `@throws` 에 `AssigneeNotFoundException` 추가
 
@@ -292,6 +306,11 @@ if (request.securityLevelId != null) {
 발행 위치는 `IssueCreated` 직후, `recordHistory` 이전
 
 **REFACTOR**. 판정식을 한 줄 주석으로 고정 — "최종 assigneeId non-null **AND** REST 경로(D-5)"
+
+**★R4 확인 항목 (plan 리뷰, 테스트 아님)**. `recordHistory(before = null, after = saved)`(`:302`)가
+초기 `assigneeId`·`priority`·`labels` 를 감사 이력에 남기는지 **실측**한다.
+- 남긴다 → 그대로 두고 통합 테스트에 단언 1줄 추가
+- 안 남긴다 → **이 PR 이 만든 결함이 아니다**(생성 이력 전반의 성질). 별건으로 보고
 
 **검증**. 위와 동일
 
@@ -351,8 +370,12 @@ if (request.securityLevelId != null) {
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`IT/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerIntegrationTest.kt`]
+- files: [`IT/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerIntegrationTest.kt`, `IT/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterTest.kt`]
 - depends-on: [5, 7]
+
+> ★**R2 정정 (plan 리뷰).** 초안은 S8(Import 회귀)까지 `IssueControllerIntegrationTest` 에 넣었는데,
+> 그 테스트는 **REST 컨트롤러를 지나므로 `IssueImportAdapter` 를 아예 통과하지 않는다** —
+> 초록이 나와도 Import 경로를 검증한 게 아니다(공허한 테스트). **S8 은 `IssueImportAdapterTest.kt`** 로.
 
 **RED/GREEN**. (테스트만 추가 — 프로덕션 코드 변경 없음)
 - **S1** 1회 제출로 3필드 확정, 추가 PATCH 0회
@@ -402,4 +425,29 @@ if (request.securityLevelId != null) {
 - TDD 강제. **yes** — `test:` → `feat:` 커밋 쌍 9세트 기계 검증
 - 추가 검증. `ktlintCheck` · `detekt` (프론트 도구 해당 없음 — 백엔드 단일)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**eng 관점 1회. 결함 5건 발견 → 전량 plan 에 반영 완료.** BLOCKER 2건 포함.
+
+| # | 등급 | 발견 | 처리 |
+|---|---|---|---|
+| **R1** | 🔴 **BLOCKER** | T2 GREEN 이 `PRIORITY_DEFAULT` 참조 — `Issue.kt:23` 의 **파일 private `const`** 라 응용 계층에서 **컴파일 실패** | `IssuePriority.MEDIUM.number`(public enum, `IssuePriority.kt:27`)로 정정. 매직넘버 `3` 은 detekt `MagicNumber` + 중복 3벌화 |
+| **R2** | 🔴 **BLOCKER** | T8 이 S8(Import 회귀)을 `IssueControllerIntegrationTest` 에 배치 — 그 경로는 **`IssueImportAdapter` 를 통과하지 않아** 초록이어도 무의미(공허한 테스트) | `IssueImportAdapterTest.kt` 로 이동, T8 `files` 2개로 |
+| **R3** | 🟡 공백 | `autoWatch` 단언 없음 → **FR7 무검증**. 담당자 분기가 워처 목록까지 전파되는데 안 봄 | T3 RED 에 워처 수 단언 추가(`None`=1명 / `User`=2명) |
+| **R4** | 🟡 미확인 | `recordHistory(before=null)` 가 3필드 초기값을 남기는지 불명 | T5 에 **확인 항목**으로 등재. 안 남기면 선재 성질로 별건 보고 |
+| **R5** | 🟢 경미 | T4 검증 배치를 "구현 시 판단"으로 열어 둠 — 리뷰가 검증 불가능한 서술 | 선례(`assertSecurityLevelAssignable:240`)로 **고정**. 키 소비 우려는 advisory lock 트랜잭션 롤백으로 해소 |
+
+### ★리뷰가 뒤집은 것 — R1 은 "돌려보면 안다"가 아니었다
+
+R1 은 **구현을 시작했으면 첫 컴파일에서 막혔을** 결함이다. 그런데 plan 만 읽으면
+`PRIORITY_DEFAULT` 는 그럴듯한 이름이라 통과한다 — **가시성은 이름에 안 적혀 있다.**
+`sed -n '8,26p' domain/Issue.kt` 로 `private const val` 을 눈으로 본 게 판별식이었다.
+
+R2 는 더 나쁜 종류다. **컴파일도 되고 테스트도 초록인데 검증은 0**이다.
+"어느 파일에 두는가"가 곧 "무엇을 지나는가"인데 초안은 파일명만 보고 배치했다.
+
+### 한계 (명시)
+
+- **독립·교차모델 리뷰 부재.** codex 미설치 + 에이전트 호출 금지로 컨트롤러가 자기 plan 을 자기가 리뷰했다.
+  자기 초안의 사각지대는 구조적으로 안 보일 수 있다. #327 과 동일한 한계이며 개선되지 않았다
+- **ceo/design/devex 관점 미수행.** 백엔드 DTO 확장이라 해당 없음으로 판단(디자인 산출물 0, 사용자 대면 문구 0)
