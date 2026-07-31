@@ -285,6 +285,11 @@ class IssueApplicationService(
                 securityLevelId = request.securityLevelId,
                 customFields = customFieldValues,
                 description = resolvedDescription,
+                // FR-UX-09 B1 — 생성 시 1회 제출로 확정. null 이면 도메인 기본값에 맡긴다.
+                // Issue.kt 의 PRIORITY_DEFAULT 는 파일 private 이라 여기서 참조할 수 없어
+                // 공개 출처인 IssuePriority.MEDIUM.number 를 쓴다(값 동일, 매직넘버 회피).
+                priority = request.priority ?: IssuePriority.MEDIUM.number,
+                labels = request.labels ?: emptyList(),
             )
         val saved = repo.insert(issue)
         autoWatch(saved.id.value, listOfNotNull(saved.reporterId.value, resolvedAssignee?.value))
