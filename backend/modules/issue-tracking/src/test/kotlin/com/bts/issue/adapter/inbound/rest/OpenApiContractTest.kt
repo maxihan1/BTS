@@ -164,6 +164,56 @@ class OpenApiContractTest {
             .isTrue()
     }
 
+    // ── C1b(FR-UX-09 B1). 생성 요청 스키마 3필드 추가 · 응답 스키마 무변경 ──────
+
+    /**
+     * FR-UX-09 B1 — `CreateIssueRequest` 에 `assigneeId`·`priority`·`labels` 가
+     * **전부 optional** 로 추가됐는지, 그리고 `IssueResponse` 는 **변경되지 않았는지** 검증한다.
+     *
+     * 응답 무변경이 계약의 핵심이다 — 이 PR 은 요청만 넓히고 응답은 건드리지 않는다(C3).
+     * `isLabelsLengthValid` 는 검증 전용 파생 속성이라 `@JsonIgnore` 로 스키마에서 빠져야 한다.
+     */
+    @Test
+    fun `C1b 생성 요청 스키마에 3필드가 optional 로 추가되고 응답 스키마는 무변경이다`() {
+        val specResult =
+            mockMvc
+                .perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk)
+                .andReturn()
+        val specTree = objectMapper.readTree(specResult.response.contentAsString)
+        val schemas = specTree.path("components").path("schemas")
+
+        val createReq = schemas.path("CreateIssueRequest")
+        val createProps = createReq.path("properties")
+
+        listOf("assigneeId", "priority", "labels").forEach { field ->
+            assertThat(createProps.has(field))
+                .withFailMessage("CreateIssueRequest.properties 에 '$field' 가 없습니다.")
+                .isTrue()
+        }
+
+        // 전부 optional — required 목록에 들어가면 기존 클라이언트가 깨진다.
+        val required = createReq.path("required").map { it.asText() }
+        listOf("assigneeId", "priority", "labels").forEach { field ->
+            assertThat(required)
+                .withFailMessage("'$field' 는 optional 이어야 하지만 required=$required 에 포함됐습니다.")
+                .doesNotContain(field)
+        }
+
+        // @JsonIgnore 파생 속성은 스키마에 노출되지 않아야 한다.
+        assertThat(createProps.has("labelsLengthValid"))
+            .withFailMessage("검증 전용 파생 속성이 요청 스키마에 노출됐습니다.")
+            .isFalse()
+
+        // ★응답 스키마 무변경 — 3필드는 원래부터 IssueResponse 에 있었다(추가가 아니라 기존 보유).
+        val responseProps = schemas.path("IssueResponse").path("properties")
+        listOf("assigneeId", "priority", "priorityName", "labels").forEach { field ->
+            assertThat(responseProps.has(field))
+                .withFailMessage("IssueResponse.properties 에 '$field' 가 없습니다. 응답 계약이 바뀌었습니다.")
+                .isTrue()
+        }
+    }
+
     // ── C2. 이슈 단건 응답 data 래퍼 검증 ───────────────────────────────────
 
     /**

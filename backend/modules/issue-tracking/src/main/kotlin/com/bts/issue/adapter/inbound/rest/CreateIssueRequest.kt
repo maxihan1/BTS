@@ -3,6 +3,7 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -49,6 +50,11 @@ data class CreateIssueRequest(
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
+    // ★requiredMode 명시가 필요한 이유 — JsonNullable<UUID> 는 Kotlin non-null 타입이라
+    //   기본값이 있어도 springdoc 이 required 로 판정한다(실측 확인). 그대로 두면 생성된
+    //   클라이언트가 assigneeId 를 강제해 기존 소비자가 깨진다. 같은 함정이 componentIds 에
+    //   선재하지만(List<UUID> = emptyList()) 그건 이 PR 범위 밖이다.
+    @field:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val assigneeId: JsonNullable<UUID> = JsonNullable.undefined(),
     @field:Min(value = 1, message = "priority는 1 이상이어야 합니다.")
     @field:Max(value = 5, message = "priority는 5 이하여야 합니다.")
