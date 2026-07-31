@@ -17,6 +17,7 @@ import {
 import { useAuthUser } from '@/auth/authStore'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
+import { RecentIssuesMenu } from '@/components/issue/RecentIssuesMenu'
 import { navLabels } from '@/i18n/nav-labels'
 import { ProjectTree } from './ProjectTree'
 import { Button } from '@/components/ui/button'
@@ -129,6 +130,14 @@ export function Sidebar(): JSX.Element {
           </Link>
         ))}
         <FavoritesMenu />
+
+        {/*
+          "최근 항목"은 메인 메뉴 nav **최하단**에 온다(스펙 §8-A D-A) — 되돌아가기 용도라
+          매일 여는 진입점(내 작업)과 위아래로 갈라 그룹 성격이 섞이지 않게 한다.
+          자체 `<nav>`를 만들지 않고 `<ul aria-label>`을 쓴다(FR13-b) — 접힘·빈 목록·조회
+          미완 시 스스로 `null`을 반환하므로 여기서 조건 분기하지 않는다.
+        */}
+        <RecentIssuesMenu />
       </nav>
 
       {isAdmin && (

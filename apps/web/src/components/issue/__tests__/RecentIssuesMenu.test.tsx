@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { navLabels } from '@/i18n/nav-labels'
+import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { RecentIssuesMenu } from '../RecentIssuesMenu'
@@ -35,7 +36,13 @@ vi.mock('@tanstack/react-router', () => ({
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이슈 단건 조회 핸들러 — 지정한 키만 200, 나머지는 404 */
+/**
+ * 이슈 단건 조회 핸들러 — 지정한 키만 200, 나머지는 404.
+ *
+ * ⚠️ 응답 본문은 **실제 픽스처를 기반으로 만든다.** `fetchIssue`가 Zod로 `IssueResponse`
+ * 전체를 검증하므로 `{ key, summary }` 같은 최소 DTO를 지어내면 파싱이 실패하고 쿼리가
+ * 에러가 되어 "조회 실패로 숨김" 경로와 구분되지 않는다(DTO invent 금지).
+ */
 function issueTitleHandlers(titlesByKey: Record<string, string>, forbidden: string[] = []) {
   return [
     http.get('/api/v1/issues/:key', ({ params }) => {
@@ -47,7 +54,7 @@ function issueTitleHandlers(titlesByKey: Record<string, string>, forbidden: stri
       if (summary === undefined) {
         return HttpResponse.json({ detail: 'not found' }, { status: 404 })
       }
-      return HttpResponse.json({ data: { key, summary } })
+      return HttpResponse.json({ data: { ...issueAtlas1Fixture, key, summary } })
     }),
   ]
 }
@@ -193,7 +200,7 @@ describe('RecentIssuesMenu — 사이드바 "최근 항목" (FR-UX-08 PR-B FR13)
       http.get('/api/v1/issues/:key', ({ params }) => {
         const key = String(params.key)
         requested.push(key)
-        return HttpResponse.json({ data: { key, summary: `제목 ${key}` } })
+        return HttpResponse.json({ data: { ...issueAtlas1Fixture, key, summary: `제목 ${key}` } })
       }),
     )
 
