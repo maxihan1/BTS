@@ -137,6 +137,20 @@ describe('useRecentProjects — MRU 상한 5 localStorage 영속 스토어 (FR1)
     expect(fresh.useRecentProjects.getState().recentProjectKeys).toHaveLength(MAX_RECENT_PROJECTS)
   })
 
+  it('T-RP-11b (코드리뷰 CR2): 저장값에 중복이 있어도 복원 시 제거한다', async () => {
+    // 수동 변조·과거 버전 잔재로 중복이 들어오면 스위처가 같은 프로젝트를 두 번 렌더하고
+    // React `key` 중복 경고가 난다. push 경로에만 중복 제거가 있고 복원 경로에 없던 갭.
+    localStorage.setItem(
+      RECENT_PROJECTS_STORAGE_KEY,
+      JSON.stringify(['ATLAS', 'INFRA', 'ATLAS']),
+    )
+
+    vi.resetModules()
+    const fresh = await import('../use-recent-projects')
+
+    expect(fresh.useRecentProjects.getState().recentProjectKeys).toEqual(['ATLAS', 'INFRA'])
+  })
+
   it('T-RP-12 (NFR2): localStorage 읽기가 throw 해도 빈 목록으로 폴백한다', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError')

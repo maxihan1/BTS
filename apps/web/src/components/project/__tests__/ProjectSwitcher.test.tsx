@@ -245,6 +245,26 @@ describe('ProjectSwitcher — 프로젝트 전환 (F12)', () => {
     expect(router.state.location.pathname).toBe('/dashboards')
   })
 
+  it('T5-13b (코드리뷰 CR1): 경로·검색 파라미터가 동시에 있으면 경로가 이긴다', async () => {
+    // ProjectTree 는 `pathProjectKey ?? searchProjectKey`(경로 우선)인데 스위처가
+    // 반대 순서면 같은 화면에서 트리는 A 를 활성 표시하고 스위처는 B 를 표시한다.
+    // 두 소비처의 우선순위는 반드시 같아야 한다.
+    const user = userEvent.setup()
+    renderSwitcher(`/projects/${atlas.key}/board?projectKey=${other.key}`)
+
+    const trigger = await screen.findByRole('button', { name: /프로젝트 선택/ })
+    await waitFor(() => {
+      expect(trigger).toHaveTextContent(atlas.name)
+    })
+
+    // 착지점도 경로 분기여야 한다 — 검색 분기로 가면 경로의 프로젝트가 안 바뀐다
+    const { listbox } = await openSwitcher(user)
+    await user.click(await within(listbox).findByRole('option', { name: other.name }))
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+  })
+
   // ── NFR6 — 키보드 ───────────────────────────────────────────────────────
 
   it('T5-11 (NFR6): 키보드만으로 열고 이동하고 선택할 수 있다', async () => {
