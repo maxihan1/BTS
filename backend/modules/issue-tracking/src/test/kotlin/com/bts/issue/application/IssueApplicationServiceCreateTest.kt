@@ -4,6 +4,7 @@ package com.bts.issue.application
 
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
@@ -400,6 +401,45 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 issueSlot.captured.assigneeId?.value shouldBe explicitAssignee
                 verify(exactly = 0) { projectLeadRepository.findLeadUserId(any()) }
                 verify(exactly = 0) { componentRepository.findByProject(any()) }
+            }
+
+            // ──────────────────────────────────────────────────────────
+            // FR-UX-09 B1 — 명시 담당자 존재 검증 (S4·E10). changeAssignee:818 대칭.
+            // ──────────────────────────────────────────────────────────
+
+            it("User 로 지정한 사용자가 존재하지 않으면 AssigneeNotFoundException") {
+                every { userLookupPort.exists(explicitAssignee) } returns false
+
+                shouldThrow<AssigneeNotFoundException> {
+                    sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+                }
+            }
+
+            // ★예외만 보면 이슈가 안 만들어졌는지 알 수 없다 — insert 미호출을 함께 단언한다.
+            it("미존재 담당자면 이슈가 저장되지 않는다") {
+                every { userLookupPort.exists(explicitAssignee) } returns false
+
+                runCatching {
+                    sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+                }
+
+                verify(exactly = 0) { repo.insert(any()) }
+            }
+
+            // ★자동 배정 결과는 이미 유효 사용자다 — 불필요한 조회를 하지 않는지 확인.
+            it("Auto 경로는 userLookupPort.exists 를 호출하지 않는다") {
+                sut.createIssue(actor, request)
+
+                verify(exactly = 0) { userLookupPort.exists(any()) }
+            }
+
+            it("존재하는 사용자를 User 로 지정하면 정상 생성된다") {
+                every { userLookupPort.exists(explicitAssignee) } returns true
+
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                issueSlot.captured.assigneeId?.value shouldBe explicitAssignee
+                verify { userLookupPort.exists(explicitAssignee) }
             }
 
             // ★R3 — 담당자 분기가 워처(autoWatch)까지 전파되는지. FR7.
