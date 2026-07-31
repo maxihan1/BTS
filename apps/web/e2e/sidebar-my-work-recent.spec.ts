@@ -64,6 +64,33 @@ test.describe('FR-UX-08 PR-B — 사이드바 "내 작업"·"최근 항목"', ()
     expect(myWorkIndex).toBeLessThan(issuesIndex)
   })
 
+  test('E8: "이슈" 와 "내 작업" 이 동시에 활성 표시되지 않는다', async ({ page }) => {
+    // 둘 다 `/issues` 로 가므로 활성 판정이 경로만 보면 두 링크가 같이 강조된다.
+    // 유닛 테스트는 Link 목이 `activeOptions` 를 무시해 이걸 볼 수 없다 — e2e 가 유일한 판별자다.
+    await loginAsAlice(page)
+
+    const mainNav = page.getByRole('navigation', { name: navLabels.mainNav, exact: true })
+    const issuesLink = mainNav.getByRole('link', { name: navLabels.issues, exact: true })
+    const myWorkLink = mainNav.getByRole('link', { name: navLabels.myWork, exact: true })
+
+    // ⚠️ 판별자 주의 — `/active/` 로는 안 된다. Tailwind 임의 변형 유틸리티
+    // `[&.active]:bg-sidebar-accent` 가 class 속성에 **항상** 들어 있어 늘 매칭된다.
+    // TanStack Router 가 붙이는 것은 **독립 토큰 `active`** 이므로 공백 경계로 본다.
+    const ACTIVE_TOKEN = /(?:^|\s)active(?:\s|$)/
+
+    // (1) 기본 /issues — "이슈"만 활성
+    await issuesLink.click()
+    await expect(page).toHaveURL(/\/issues(\?|$)/)
+    await expect(issuesLink).toHaveClass(ACTIVE_TOKEN)
+    await expect(myWorkLink).not.toHaveClass(ACTIVE_TOKEN)
+
+    // (2) /issues?assignee= — "내 작업"만 활성
+    await myWorkLink.click()
+    await expect(page).toHaveURL(new RegExp(`assignee=${ALICE_USER_ID}`))
+    await expect(myWorkLink).toHaveClass(ACTIVE_TOKEN)
+    await expect(issuesLink).not.toHaveClass(ACTIVE_TOKEN)
+  })
+
   test('S8: 이슈를 열어보면 "최근 항목" 에 MRU 순으로 쌓인다', async ({ page }) => {
     await loginAsAlice(page)
 

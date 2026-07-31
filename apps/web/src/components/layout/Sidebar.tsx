@@ -52,6 +52,21 @@ const MAIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIco
   { to: '/calendar', label: navLabels.calendar, Icon: Calendar },
 ]
 
+/**
+ * 경로별 활성 판정 옵션 (FR-UX-08 PR-B, 스펙 E8 — 2026-07-31 Maxi 확정 A안).
+ *
+ * `/issues` 만 **정확히 일치**할 때 활성이다. 기본 판정(`exact: false`)은 경로 접두사만 보므로
+ * `/issues?assignee=<userId>`("내 작업")에서 **"이슈"까지 함께 강조**된다 — 링크의 `search`가
+ * 비어 있으면 언제나 현재 search 의 부분집합이라 `includeSearch` 로는 배제할 수 없다.
+ *
+ * **대가 (의도된 것).** 이슈 상세(`/issues/ATLAS-1`)에서 사이드바 "이슈"가 더 이상 강조되지
+ * 않는다. 그 화면의 위치 안내는 상단 탐색 경로(`Breadcrumb`)가 맡는다. 이 상태에 의존하는
+ * 기존 단언은 실측 결과 **0건**이었다.
+ */
+const ISSUES_ACTIVE_OPTIONS: Record<string, { exact: boolean } | undefined> = {
+  '/issues': { exact: true },
+}
+
 /** 관리 nav 링크 6종 — `Header.tsx` `ADMIN_LINKS` 정본 그대로(FR4). T7에서 Header 삭제로 중복 해소 */
 const ADMIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIcon }> = [
   { to: '/admin/workflow-schemes', label: '워크플로우 스킴', Icon: Workflow },
@@ -124,7 +139,7 @@ export function Sidebar(): JSX.Element {
         )}
 
         {MAIN_NAV_LINKS.map(({ to, label, Icon }) => (
-          <Link key={to} to={to} className={NAV_LINK_CLASS}>
+          <Link key={to} to={to} activeOptions={ISSUES_ACTIVE_OPTIONS[to]} className={NAV_LINK_CLASS}>
             <Icon aria-hidden="true" className={NAV_ICON_CLASS} />
             <span className={collapsed ? 'sr-only' : undefined}>{label}</span>
           </Link>
