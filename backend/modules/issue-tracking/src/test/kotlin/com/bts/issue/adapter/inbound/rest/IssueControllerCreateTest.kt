@@ -2,7 +2,9 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.application.AssigneeIntent
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -10,9 +12,13 @@ import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -216,25 +222,30 @@ class IssueControllerCreateTest {
     // ★상한만 막고 경계를 안 보면 off-by-one 을 놓친다 — 통과해야 하는 경계도 함께 단언한다.
     // ──────────────────────────────────────────────────────────────────────
 
+    /** 정상 생성 경로가 반환할 Issue stub. */
+    private fun capturedStubIssue(): Issue {
+        val fixedNow = Instant.parse("2026-05-26T00:00:00Z")
+        return Issue(
+            id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
+            key = IssueKey("ATLAS-1"),
+            projectId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
+            summary = "정상 요약",
+            reporterId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
+            currentStateKey = "open",
+            version = 1L,
+            deletedAt = null,
+            createdAt = fixedNow,
+            updatedAt = fixedNow,
+            typeId = IssueTypeId(3L),
+        )
+    }
+
     /** 정상 생성 경로 stub. 400 이 아님을 확인하는 경계 테스트에서 서비스까지 도달하므로 필요하다. */
     private fun stubSuccessfulCreate() {
         val fixedNow = Instant.parse("2026-05-26T00:00:00Z")
         val issueKey = IssueKey("ATLAS-1")
         val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
-        val stubIssue =
-            Issue(
-                id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
-                key = issueKey,
-                projectId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
-                summary = "정상 요약",
-                reporterId = actorId,
-                currentStateKey = "open",
-                version = 1L,
-                deletedAt = null,
-                createdAt = fixedNow,
-                updatedAt = fixedNow,
-                typeId = IssueTypeId(3L),
-            )
+        val stubIssue = capturedStubIssue()
         val stubResponse =
             IssueResponse(
                 key = "ATLAS-1",
@@ -299,5 +310,70 @@ class IssueControllerCreateTest {
         stubSuccessfulCreate()
         postCreate(mapOf("labels" to (1..20).map { "label$it" })).andExpect(status().isCreated)
         postCreate(mapOf("labels" to listOf("A".repeat(50)))).andExpect(status().isCreated)
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // FR-UX-09 B1 — 컨트롤러 배선 (FR3 · FR6')
+    //
+    // ★C1 — 응용 계층은 JsonNullable 을 보면 안 된다. 컨트롤러가 AssigneeIntent 로 변환한다.
+    // ──────────────────────────────────────────────────────────────────────
+
+    /** createIssue 에 전달된 application 계층 요청을 포착하도록 stub 을 재설정한다. */
+    private fun captureAppRequest(): CapturingSlot<AppCreateIssueRequest> {
+        stubSuccessfulCreate()
+        val slot = slot<AppCreateIssueRequest>()
+        val captured = capturedStubIssue()
+        every { issueApplicationService.createIssue(any(), capture(slot)) } returns captured
+        return slot
+    }
+
+    @Test
+    fun `POST 이슈 생성 — assigneeId 키를 생략하면 AssigneeIntent Auto 로 전달된다`() {
+        val slot = captureAppRequest()
+
+        postCreate(emptyMap()).andExpect(status().isCreated)
+
+        assertInstanceOf(AssigneeIntent.Auto::class.java, slot.captured.assignee)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — assigneeId 를 명시 null 로 보내면 AssigneeIntent None 으로 전달된다`() {
+        val slot = captureAppRequest()
+
+        postCreate(mapOf("assigneeId" to null)).andExpect(status().isCreated)
+
+        assertInstanceOf(AssigneeIntent.None::class.java, slot.captured.assignee)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — assigneeId 에 값을 주면 AssigneeIntent User 로 전달된다`() {
+        val slot = captureAppRequest()
+        val assignee = UUID.fromString("00000000-0000-0000-0000-0000000000cc")
+
+        postCreate(mapOf("assigneeId" to assignee.toString())).andExpect(status().isCreated)
+
+        val intent = slot.captured.assignee
+        assertInstanceOf(AssigneeIntent.User::class.java, intent)
+        assertEquals(assignee, (intent as AssigneeIntent.User).userId)
+    }
+
+    // ★D-5 — REST 생성 경로만 IssueAssigned 를 발행한다. 컨트롤러가 true 를 넘겨야 한다.
+    @Test
+    fun `POST 이슈 생성 — 컨트롤러는 notifyAssignment true 로 전달한다`() {
+        val slot = captureAppRequest()
+
+        postCreate(emptyMap()).andExpect(status().isCreated)
+
+        assertEquals(true, slot.captured.notifyAssignment)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — priority 와 labels 가 그대로 전달된다`() {
+        val slot = captureAppRequest()
+
+        postCreate(mapOf("priority" to 1, "labels" to listOf("urgent"))).andExpect(status().isCreated)
+
+        assertEquals(1, slot.captured.priority)
+        assertEquals(listOf("urgent"), slot.captured.labels)
     }
 }
