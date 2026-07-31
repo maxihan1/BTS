@@ -357,7 +357,16 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
             lateinit var issueSlot: CapturingSlot<com.bts.issue.domain.Issue>
 
             beforeEach {
-                clearMocks(componentRepository, projectLeadRepository, watcherRepository, answers = false)
+                // ★userLookupPort 를 반드시 포함한다 — mockk 의 verify 호출 횟수는 테스트 간에
+                //   누적되므로, 빼면 「Auto 는 exists 를 호출하지 않는다」가 앞 테스트의 호출을
+                //   보고 실패한다(실제로 그렇게 한 번 실패했다).
+                clearMocks(
+                    componentRepository,
+                    projectLeadRepository,
+                    watcherRepository,
+                    userLookupPort,
+                    answers = false,
+                )
                 every {
                     permissionResolver.hasPermission(
                         actor.value,
@@ -375,6 +384,8 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
                 every { componentRepository.findByProject(b1ProjectId) } returns emptyList()
                 every { projectLeadRepository.findLeadUserId(b1ProjectId) } returns projectLeadId
+                // 기본은 「존재하는 사용자」. 미존재 케이스는 각 테스트에서 false 로 덮어쓴다.
+                every { userLookupPort.exists(explicitAssignee) } returns true
                 issueSlot = slot()
                 every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
             }

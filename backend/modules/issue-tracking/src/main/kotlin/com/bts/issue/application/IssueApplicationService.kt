@@ -1705,11 +1705,14 @@ class IssueApplicationService(
      *   `null` 을 반환하는 것과 「자동 배정을 돌렸는데 결과가 null」 은 관측상 같아 보이지만,
      *   전자는 컴포넌트/프로젝트 리드 조회 자체를 하지 않는다.
      * - [AssigneeIntent.User] — 자동 배정을 수행하지 않고 지정된 사용자를 담당자로 한다.
+     *   **존재 검증을 수행한다** ([changeAssignee] 와 대칭). 자동 배정 결과는 컴포넌트/프로젝트 리드에서
+     *   나와 이미 유효 사용자이므로 [AssigneeIntent.Auto] 경로에서는 조회하지 않는다.
      *
      * @param intent 담당자 지정 의도.
      * @param projectId 이슈가 속한 프로젝트 UUID.
      * @param componentIds 정규화된 컴포넌트 UUID 목록. 자동 배정 후보 산출에 쓰인다.
      * @return 최종 담당자. 미할당이면 null.
+     * @throws AssigneeNotFoundException [AssigneeIntent.User] 의 사용자가 존재하지 않을 때 (422).
      */
     private fun resolveCreateAssignee(
         intent: AssigneeIntent,
@@ -1719,7 +1722,12 @@ class IssueApplicationService(
         when (intent) {
             is AssigneeIntent.Auto -> resolveDefaultAssignee(projectId, componentIds, current = null)
             is AssigneeIntent.None -> null
-            is AssigneeIntent.User -> ActorId(intent.userId)
+            is AssigneeIntent.User -> {
+                if (!userLookupPort.exists(intent.userId)) {
+                    throw AssigneeNotFoundException(intent.userId)
+                }
+                ActorId(intent.userId)
+            }
         }
 
     private fun resolveDefaultAssignee(
