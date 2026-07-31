@@ -1504,7 +1504,7 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
   e2e `E2E-5 S10` 을 **함께** 제거해야 죽은 코드가 안 남는다. 처방 B(GET 의 자동 배정 = 부수효과 있는 GET 재고)는
   계약 스냅샷 8 endpoint 전부에 영향 → 별도 스펙 작업.
 
-## personalization — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 **의도된 대가** · 미착수)
+## ⬜ personalization — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 **의도된 대가** · 미착수)
 
 > **⚠️ 이건 결함이 아니라 결정이다.** 「고쳐야 할 버그」로 오인해 조용히 되돌리지 말 것.
 
@@ -1528,7 +1528,7 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 ---
 
-## issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (FR-UX-09 B1 의 **의도된 이연** · 미착수)
+## ⬜ issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (FR-UX-09 B1 의 **의도된 이연** · 미착수)
 
 > **⚠️ 결함이지만 이 PR 이 만든 게 아니다.** FR-UX-09 B1 이 **생성 경로만** 봉합했다.
 
@@ -1558,7 +1558,7 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 ---
 
-## issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (미착수)
+## ⬜ issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (미착수)
 
 **무엇.** `cloneIssue` 는 `assigneeId = if (request.includeAssignee) source.assigneeId else null`
 로 담당자를 설정하면서 `IssueCreated` 만 발행한다(`IssueApplicationService.kt` clone 블록).
@@ -1575,7 +1575,7 @@ clone 은 별건으로 남긴다 — 회귀 표면과 PR 범위를 동시에 넓
 
 ---
 
-## search-export-import — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
+## ⬜ search-export-import — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
 
 **무엇.** `IssueImportAdapter` 는 `createIssue` 에 담당자를 넘기지 않는다(`:537-544`).
 그러면 `resolveDefaultAssignee` 가 컴포넌트/프로젝트 리드를 담당자로 넣는다.
@@ -1592,7 +1592,7 @@ Import 가 넘기면 자동 배정이 꺼진다. 코드 1줄 수준이나 **FR-I
 
 ---
 
-## issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (선재 · 미착수)
+## ⬜ issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (선재 · 미착수)
 
 **무엇.** `CreateIssueRequest.componentIds: List<UUID> = emptyList()` 는 기본값이 있는데도
 springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생성된 클라이언트가
