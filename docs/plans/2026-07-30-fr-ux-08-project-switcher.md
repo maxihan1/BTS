@@ -286,7 +286,25 @@ git diff --stat | grep -c '^ backend/' ; echo "(backend 변경 0 이어야 함)"
 | **T3** `useTrackActiveProject` 확장 | ✅ 완료 | `924f443a3`(red) → `0be17b708`(green) | 12 테스트 · **뮤테이션 M2 통과**(push를 가드 밖으로 빼면 T-TR-9·10 red) |
 | **T4** `ProjectTree` 펼침 영속 + 소스 확장 | ✅ 완료 | `ebb0cf361`(red) → `89491b4f5`(green+refactor) | 16 테스트 · **전체 스위트 530/530** · typecheck 0 |
 | **T5** `ProjectSwitcher` + `TopBar` | ✅ 완료 | (red) → `b03ec9e7d`(green+refactor) | 13 테스트 · **전체 531/531** · typecheck 0 · eslint 0 error(경고 10→8) |
-| **T6** e2e + 정본 + 전체 검증 | ⏳ 미착수 | — | E7(a)(b) · E7-b 회귀 가드 · `personalization.md` §4.6 PR 분할 명시 · `verify-master-plan.sh` |
+| **T6** e2e + 정본 + 전체 검증 | ✅ 완료 | `70248bb02` 외 | e2e **7/7** · 인접 동시 25/25 · `verify-master-plan` EXIT 0 (139/139) · 불변 단언 7종 실측 0 |
+
+### T6 검증 실측
+
+| 항목 | 결과 |
+|---|---|
+| 신규 e2e `project-switcher.spec.ts` | **7/7** (S1·S2·S4·S6 · **E7(a)(b)** · **E7-b** · NFR3) |
+| 인접 스펙 동시 실행 | **25/25** (`project-tree` 5 + `active-project` 13 + 신규 7) — 회귀 0 |
+| 유닛 전체 | **531/531 test files** |
+| typecheck (`tsconfig.app.json` — CI 동일 설정) | **0** |
+| eslint | **0 error** (warning 10→8, 신규 0) |
+| `verify-master-plan.sh` | **EXIT 0** · FR 139/139 |
+| 불변 단언 | `backend/` 0 · 마이그레이션 0 · `package.json` diff 0 · `issues.index.tsx` 0 · `shortcuts.ts` 0 · `Sidebar.tsx` 0 · `nav-labels.ts` 0 |
+| `assignee=me` 잔존 | **1건 = 정정 노트의 인용** (원문은 직접 교체) |
+| `ProjectTree` 덮어쓰기 (실행 코드) | **0건** (JSDoc 1건은 정정 서술) |
+
+**★ e2e 테스트 자체의 함정 1건을 실측으로 잡았다.** S4 초안이 시작 상태를 `page.addInitScript` 로 초기화했는데, 그건 **이후 모든 `goto` 에 재적용**되므로(`active-project.spec.ts:61` 이 명시) 왕복마다 펼침을 지워 **"영속되지 않는다"는 거짓 실패**를 만들었다. 1회성 초기화는 `page.evaluate` 로 해야 한다. 제품 결함이 아니라 테스트 결함이었고, 로그를 읽지 않고 "영속 구현이 틀렸나" 로 갔으면 멀쩡한 코드를 고칠 뻔했다.
+
+**전체 e2e 스위트 동시 실행 시 18건 실패 관측.** 단독 재실행에서 **18/18 전부 통과**해 내 회귀가 아님을 확인했다. 메모리 규칙(`flaky-determination-needs-repeat-not-single-contrast`)에 따라 **전체 재실행으로 실패 대상이 바뀌는지**를 대조한다 — 결과는 아래 §최종 검증에 기록한다.
 
 **T5 에서 확정된 행동 변화 1건 (FR11-b 재성립).** 스위처가 `TopBar` 에 있어 `useResolvedActiveProject` 가 **전 인증 페이지에서 돈다**. 그 훅은 읽기 전용이 아니므로(`:85-91`) 낡은 저장값이 `/issues` 방문 전에도 교정된다(FR-UX-07 스펙 E3). **조용히 두지 않고** `ShellLayout.test.tsx` 에 전용 단언을 신설했다. 기존 테스트 1건은 저장값을 목록에 실재하는 키로 교정했다 — `'ATLAS'`(시드 목록 밖)는 그 자체가 교정 대상이라 `useTrackActiveProject` 가드 검증을 가리는 **교란 요인**이었다.
 
