@@ -36,7 +36,8 @@ import java.util.UUID
  *   지정한 사용자가 존재하지 않으면 서비스가 422 (`ASSIGNEE_NOT_FOUND`) 로 거부한다.
  * @property priority 우선순위 1..5 (FR-UX-09 B1). 생략/null 이면 서비스가 도메인 기본값(3, Medium)을 적용한다.
  * @property labels 라벨 목록 (FR-UX-09 B1). 생략/null 이면 빈 목록.
- *   정규화(빈 문자열 제거·중복 제거)는 도메인이 수행하며, 여기서는 개수·길이 상한만 막는다.
+ *   정규화(빈 문자열 제거·중복 제거)는 도메인이 수행한다. 여기서는 **개수 상한 · 개별 길이 상한 ·
+ *   공백-only 거부** 세 가지를 막아 도메인 `require` 가 500 으로 새는 것을 차단한다.
  */
 data class CreateIssueRequest(
     @field:NotBlank(message = "projectKey는 비어 있을 수 없습니다.")
@@ -84,7 +85,7 @@ data class CreateIssueRequest(
      */
     @get:AssertTrue(message = "라벨 하나는 50자 이하이고 공백만으로 이루어질 수 없습니다.")
     @get:JsonIgnore
-    val isLabelsLengthValid: Boolean
+    val isLabelsValid: Boolean
         get() =
             labels?.all { label ->
                 // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다(Issue.kt:371 과 대칭).

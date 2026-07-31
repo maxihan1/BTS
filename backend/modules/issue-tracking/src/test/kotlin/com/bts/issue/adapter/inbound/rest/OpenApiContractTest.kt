@@ -171,7 +171,7 @@ class OpenApiContractTest {
      * **전부 optional** 로 추가됐는지, 그리고 `IssueResponse` 는 **변경되지 않았는지** 검증한다.
      *
      * 응답 무변경이 계약의 핵심이다 — 이 PR 은 요청만 넓히고 응답은 건드리지 않는다(C3).
-     * `isLabelsLengthValid` 는 검증 전용 파생 속성이라 `@JsonIgnore` 로 스키마에서 빠져야 한다.
+     * `isLabelsValid` 는 검증 전용 파생 속성이라 `@JsonIgnore` 로 스키마에서 빠져야 한다.
      */
     @Test
     fun `C1b 생성 요청 스키마에 3필드가 optional 로 추가되고 응답 스키마는 무변경이다`() {
@@ -201,7 +201,7 @@ class OpenApiContractTest {
         }
 
         // @JsonIgnore 파생 속성은 스키마에 노출되지 않아야 한다.
-        assertThat(createProps.has("labelsLengthValid"))
+        assertThat(createProps.has("labelsValid"))
             .withFailMessage("검증 전용 파생 속성이 요청 스키마에 노출됐습니다.")
             .isFalse()
 

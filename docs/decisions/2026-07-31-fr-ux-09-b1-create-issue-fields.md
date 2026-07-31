@@ -156,7 +156,7 @@ REST 컨트롤러만 `true` 를 넘긴다. Import 는 기본값을 그대로 받
    각자 자기 패키지 스코프라 `IssueController` 를 덮지 않는다 → **500**.
 3. 라벨 **개수** 제한(`@field:Size(max = 20)`)은 정상 동작한다. 원소 제약만 무효다.
 
-**결정.** 생성 경로는 `CreateIssueRequest.isLabelsLengthValid`(`@AssertTrue`)로 **길이 + 공백-only**
+**결정.** 생성 경로는 `CreateIssueRequest.isLabelsValid`(`@AssertTrue`)로 **길이 + 공백-only**
 둘 다 400 으로 막는다. 수정 경로(`PATCH`)의 동일한 선재 500 은 **TODOS 등재 후 이연**.
 
 - **기각.** 전역 `IllegalArgumentException → 400` 핸들러 — 진짜 버그까지 400 으로 위장해

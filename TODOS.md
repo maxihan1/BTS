@@ -1549,7 +1549,7 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 전역 `IllegalArgumentException → 400` 핸들러는 **진짜 버그까지 400 으로 위장**해
 살아있어야 할 500 을 숨긴다(`catch-all-exceptionhandler-swallows-responsestatusexception` 계열).
 
-**생성 경로는 어떻게 닫았나.** `CreateIssueRequest.isLabelsLengthValid` (`@AssertTrue`) —
+**생성 경로는 어떻게 닫았나.** `CreateIssueRequest.isLabelsValid` (`@AssertTrue`) —
 컨테이너 원소 제약을 복사하지 않고 실제로 동작하는 방식으로 길이 + 공백-only 를 400 으로 막았다.
 
 **착수 시 선택지.** ① `UpdateIssueRequest` 에도 동일한 `@AssertTrue` (좁고 안전, 비대칭 해소)
