@@ -1,6 +1,6 @@
 // 사이드바 "최근 항목" 섹션 단위 테스트 — MRU 렌더·403/404 숨김·빈 목록/접힘 미렌더·플리커 방지 (FR-UX-08 PR-B Task 6, RED)
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -157,17 +157,29 @@ describe('RecentIssuesMenu — 사이드바 "최근 항목" (FR-UX-08 PR-B FR13)
   })
 
   it('T-RM-7 (§8-A D-B): 사이드바 접힘 시 섹션 전체를 렌더하지 않는다', async () => {
-    useSidebarCollapsed.setState({ collapsed: true })
+    // ⚠️ 이 테스트는 **양성 대조군이 없으면 공허하다.** 처음엔 collapsed=true 로 바로 렌더하고
+    // `waitFor(...toBeNull())` 로 단언했는데, 그건 조회가 pending 인 t=0 에 **즉시 통과**한다
+    // (settle 전에는 접힘 여부와 무관하게 null 이다). 뮤테이션(접힘 가드 제거)이 red 가 되지
+    // 않아 발각됐다 — FR-UX-07 의 「waitFor t=0 즉시통과」와 같은 양식이다.
+    //
+    // 그래서 **먼저 펼침 상태로 목록이 실제로 뜨는 것을 확인**하고(= 조회가 끝났다는 증거),
+    // 그 다음 접어서 사라지는지 본다. 이러면 가드를 지웠을 때 목록이 남아 red 가 된다.
+    useSidebarCollapsed.setState({ collapsed: false })
     useRecentIssues.setState({ recentIssueKeys: ['ATLAS-12'] })
     server.use(...issueTitleHandlers({ 'ATLAS-12': '로그인 버그' }))
 
     renderMenu()
 
+    // 양성 대조군 — 펼침 상태에서는 확실히 보인다
+    await screen.findByRole('list', { name: navLabels.recent })
+
     // 64px 레일에서 5개 항목은 구분 불가능한 표시 5개가 되므로 정보가 아니라 소음이다.
     // E10 의 "아이콘만 노출 + sr-only" 는 단일 링크 관례지 목록 관례가 아니다.
-    await waitFor(() => {
-      expect(screen.queryByRole('list', { name: navLabels.recent })).toBeNull()
+    act(() => {
+      useSidebarCollapsed.setState({ collapsed: true })
     })
+
+    expect(screen.queryByRole('list', { name: navLabels.recent })).toBeNull()
     expect(screen.queryByText(navLabels.recent)).toBeNull()
     expect(screen.queryByRole('link', { name: /ATLAS-12/ })).toBeNull()
   })
