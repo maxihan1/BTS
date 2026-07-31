@@ -7,7 +7,7 @@
 
 **BTS (Project Atlas)** — 사내 1,000명 규모 협업 워크스페이스. Atlas Issues (이슈 트래커) + Atlas Wiki (v0.5 예정). Kotlin/Spring + React 19, Naver Cloud Docker Compose 단일 호스트. Maxi 1인 + Claude Code 개발 모델.
 
-**현재 단계**. **Phase 1 — 139 FR**. 이 중 **FR-UX-09~14 6건이 등록만 된 미착수**이고, 나머지 전량은 D1~D7 을 마쳤다 (2026-07-31 실측 `- [x] D«n».` 923건 / 미완 42건 = FR-UX-09~14 의 D1~D7).
+**현재 단계**. **Phase 1 — 139 FR**. 이 중 **FR-UX-09~14 6건이 미완**이고(FR-UX-09 는 D4/D5 백엔드만 PR #328 로 닫힘), 나머지 전량은 D1~D7 을 마쳤다 (2026-08-01 실측 `- [x] D«n».` 925건 / 미완 40건).
 FR-UX-07 은 **활성 프로젝트 컨텍스트**로 범위를 좁혀 PR #320 에서 완결됐고, 한 FR 에 묶여 있던 27 PR 로드맵의 나머지가 FR-UX-08~14 로 분리 등록됐다 (2026-07-29 Maxi 확정 분할). 그중 **FR-UX-08 은 PR-A #326(F12) + PR-B #327(F17) 로 완주**해 D1~D7 이 닫혔다.
 남은 것은 각 BC 의 **완료 게이트**다 — §NFR 측정표 · `CHANGELOG.md` 정리 · **Maxi 1인 선언**.
 진척 현황은 `docs/progress.html`(`node scripts/build-dashboard.mjs` 로 재생성) / `docs/plan/README.md`.
