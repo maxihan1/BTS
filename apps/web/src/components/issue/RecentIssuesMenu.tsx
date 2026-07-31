@@ -3,6 +3,7 @@ import { type JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQueries } from '@tanstack/react-query'
 import { fetchIssue } from '@/api/issues'
+import type { IssueResponse } from '@/api/issues'
 import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { navLabels } from '@/i18n/nav-labels'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
@@ -86,9 +87,7 @@ export function RecentIssuesMenu(): JSX.Element | null {
 
   const visible = keysToResolve
     .map((key, index) => ({ key, issue: queries[index]?.data }))
-    .filter((pair): pair is { key: string; issue: { key: string; summary: string } } =>
-      pair.issue !== undefined,
-    )
+    .filter((pair): pair is { key: string; issue: IssueResponse } => pair.issue !== undefined)
 
   if (visible.length === 0) return null
 
