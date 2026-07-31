@@ -110,7 +110,7 @@ identity-access  ─┐
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☑ D단계 |
-| personalization | [product/personalization.md](product/personalization.md) | 21 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07,08~14 12) | (없음) | ☐ D단계 (FR-UX-08~14 미착수) |
+| personalization | [product/personalization.md](product/personalization.md) | 21 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07,08~14 12) | (없음) | ☐ D단계 (FR-UX-09~14 미착수) |
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☑ D단계 |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
@@ -121,9 +121,11 @@ identity-access  ─┐
 > **Maxi 1인 선언**까지 끝나야 성립한다 (`product/<bc>.md §BC 완료 게이트`).
 > `☐ D단계` = 미완 D 단계가 1건 이상 남았다. 괄호는 그 원인 FR 이다.
 >
-> 2026-07-29 재실측 — `grep -rhoE '^- \[x\] D[0-9]+\.' product/*.md | wc -l` → **916**,
-> `[ ]` **49** · `[~]` **0** · `[!]` **0**. 즉 139 FR 중 D 단계 미완은 **49 건**이며
-> 전량 이날 신설된 FR-UX-08~14(`product/personalization.md §4`)의 D1~D7 이다.
+> 2026-07-31 재실측 — `grep -rhoE '^- \[x\] D[0-9]+\.' product/*.md | wc -l` → **923**,
+> `[ ]` **42** · `[~]` **0** · `[!]` **0**. 즉 139 FR 중 D 단계 미완은 **42 건**이며
+> 전량 FR-UX-09~14(`product/personalization.md §4`)의 D1~D7 이다.
+> FR-UX-08(프로젝트 전환·최근 항목·내 작업)은 PR-A #326(F12) + PR-B #327(F17) 로
+> D1~D7 전량 `[x]` 가 됐다 — D 마커는 **완주 단위**라 두 PR 이 모두 끝나야 닫힌다(ADR §D6).
 > FR-UX-07 은 활성 프로젝트 컨텍스트로 범위를 좁혀 PR #320 에서 D1~D7 전량 `[x]` 가 됐고,
 > 남은 27 PR 로드맵을 기능 단위 7개 FR 로 분리 등록했다 (2026-07-29 Maxi 확정 분할).
 > **미완 건수가 6 → 49 로 늘어난 것은 회귀가 아니라 의도한 결과다** — 로드맵 잔여가

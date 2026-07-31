@@ -136,9 +136,14 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 > **★ FR11-b 이력 (2026-07-31).** plan 리뷰가 CONCERN C1 로 제기 → 초안은 `ProjectTree` 소비를 전제로 채택 → **FR7 정정으로 한 번 철회** (트리는 URL 만 본다) → **T5 에서 `ProjectSwitcher` 소비로 재성립**. 소비 주체만 바뀌었고 확장 자체는 실재한다. 이 왕복을 남기는 이유는 다음 세션이 "철회됐다는데 왜 코드에 있나" 로 되돌아가지 않게 하려는 것이다.
 | **FR12** | 사이드바 "내 작업" — `to='/issues' search={{ assignee: userId }}`. **`projectKey` 를 싣지 않는다**(§1-A). `useAuthUser()?.userId` 부재 시 항목을 렌더하지 않는다 |
 | **FR13** | 사이드바 "최근 항목" — 최근 이슈 키 5건, 각 키의 제목을 마운트 시 조회해 `KEY 제목` 형태로 렌더. 조회 실패(403/404) 항목은 **조용히 숨긴다**. 목록이 비면 섹션 자체를 렌더하지 않는다 |
+| **FR13-b** | **★ 두 항목 모두 기존 `메인 메뉴` `<nav>` **안**에 렌더한다. 새 `<nav>` 를 만들지 않는다.** 실측 — `Sidebar.tsx:93-101` 의 `<nav aria-label={navLabels.mainNav}>` 안에 `MAIN_NAV_LINKS` 3링크 + `<FavoritesMenu/>` 가 이미 함께 들어 있어 **"배열 밖 항목을 같은 nav 안에 렌더"하는 선례가 이 파일에 이미 있다**. 새 `<nav>` 를 만들면 (a) ADR §D5 의 `<nav>` 추가 금지 (b) NFR3 의 `getByRole('navigation')` 개수 불변 (c) `navigation-contract.test.tsx:60` 의 **aria-label 4종 회귀 가드**가 동시에 깨진다. "최근 항목" 의 그룹 제목은 `ADMIN_NAV_LINKS` 위 `<p>` 헤더(`Sidebar.tsx:106-108`)와 같은 관례를 쓰되, 링크 묶음의 접근성 이름은 `<ul aria-label={navLabels.recent}>` 로 준다 — `list` 롤이라 `navigation` 개수에 영향이 없다 |
 | **FR14** | `navLabels` 에 `myWork`(`'내 작업'`) · `recent`(`'최근 항목'`) 추가. `nav-labels.ts` 의 S3 주석에 "FR-UX-08 에서 추가됨" 근거를 남긴다 |
-| **FR15** | **★ `nav-labels.test.ts` 를 전수 판별식으로 교체한다.** 현재 테스트는 계약 문자열 5개를 손으로 나열하고 대상은 `breadcrumb` 하나로 하드코딩돼 있어, **새 라벨을 추가해도 아무것도 검사하지 않는다**(`breadcrumb` 자신도 목록에 없다). `Object.entries(navLabels)` 를 런타임으로 훑어 **모든 쌍**에 대해 양방향 substring 을 검사하고, 실재하는 예외 1쌍(`projectNav '프로젝트'` ⊂ `projectViewNav '프로젝트 뷰 전환'`)만 명시 화이트리스트로 둔다. 목록을 없애면 다음 라벨 추가가 자동으로 검사 대상이 된다 |
+| **FR14-b** | **★ S3 제외 회귀 가드를 「부분 반전」한다 — 블록째 삭제 금지.** `i18n/__tests__/nav-labels.test.ts:55-71` 의 `S3 — 백킹 없는 항목 제외 회귀 가드` 가 **4개 키의 부재**를 단언한다(`myWork`·`recent`·`filters`·`projects`). FR14 가 앞의 **둘만** 추가하므로 이 4건 중 2건이 red 가 된다. **describe 블록을 통째로 지우면 `filters`·`projects` 가 가드를 잃는다** — 「봉인은 절반만 닫힌다」양식의 재현. ⇒ `myWork`·`recent` 는 **존재 단언으로 전환**하고, `filters`·`projects` 는 **부재 단언을 그대로 유지**하며, 왜 2건만 뒤집는지(백킹 라우트 유무)를 주석에 남긴다 |
+| **FR15** | **★ nav 라벨 substring 검사를 전수 판별식으로 교체한다.** 현재 `i18n/nav-labels.test.ts`(27줄, FR-UX-06 PR13 산출물)는 계약 문자열 5개를 손으로 나열하고 대상은 `breadcrumb` 하나로 하드코딩돼 있어, **새 라벨을 추가해도 아무것도 검사하지 않는다**(`breadcrumb` 자신도 목록에 없다). `Object.entries(navLabels)` 를 런타임으로 훑어 **모든 쌍**에 대해 양방향 substring 을 검사하고, 실재하는 예외 1쌍(`projectNav '프로젝트'` ⊂ `projectViewNav '프로젝트 뷰 전환'`)만 명시 화이트리스트로 둔다. 목록을 없애면 다음 라벨 추가가 자동으로 검사 대상이 된다 |
+| **FR15-b** | **★ 판별식의 거처를 하나로 정한다 — nav 라벨 테스트가 현재 3벌이다(실측).** ① `i18n/nav-labels.test.ts` 27줄(PR13, `breadcrumb` substring) ② `i18n/__tests__/nav-labels.test.ts` 72줄(PR11, 계약 4종 + 라벨 존재 7종 + S3 가드) ③ `components/layout/__tests__/navigation-contract.test.tsx` 167줄(렌더 기반 `aria-label` 계약). **①과 ②는 같은 모듈(`navLabels` 상수)을 대상으로 하면서 서로를 참조하지 않는다** — 「두 목록이 서로를 안 본다」양식이라 판별식을 한쪽에만 두면 다른 쪽을 고치는 사람이 못 본다. ⇒ **①을 ②로 흡수해 상수 단위 테스트를 `i18n/__tests__/nav-labels.test.ts` **한 파일**로 통일**하고 전수 판별식을 거기 둔다. ③은 **렌더 계약**이라 대상이 달라 유지한다(통합 대상 아님). 이 PR 이 만든 상황이 아니라 **선재 중복의 해소**임을 커밋 메시지에 명시 |
 | **FR16** | **정본 전수 동기화** — `docs/plan/product/personalization.md` §4.6 D1~D7 `[x]` · §4.6 본문의 `?assignee=me` → `?assignee=<whoami.userId>` 표기 정정 · D1 "최근 프로젝트" 문구를 ADR §D1 재배치에 맞게 정정 · `docs/plan/README.md` §1 진척 열 · `docs/progress.html` 재생성 · `CHANGELOG.md`. **FR 총수 139 불변**(신설 아님). `verify-master-plan.sh` EXIT 0 |
+
+| **FR16-b** | **glossary 등재 2종** — ADR §신규 용어 표가 **최근 프로젝트**(Recent Projects) · **최근 본 이슈**(Recent Issues) 를 등재 대상으로 지정했으나 `Maxi_wiki/BTS/glossary.md` 실측 결과 **둘 다 미등재**다(PR-A 가 「최근 프로젝트」를 스위처 정렬 축으로 실제 구현했는데도). glossary 는 `_index.md` §동기화 규칙상 **수동 영역**(자동 갱신 안 함)이라 **Maxi 승인이 선행 조건**이며, 승인 시 `/bts-merge` 의 Obsidian 동기화 단계에서 함께 반영한다. 미승인 시 이 항목만 빠지고 나머지 FR16 은 그대로 진행한다 |
 
 **FR 아님 (명시적 비-요구).**
 - `routes/issues.index.tsx` **무변경** — `search.assignee` 소비가 이미 있다(`:711,717`).
@@ -212,6 +217,54 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 - **`MAIN_NAV_LINKS` 는 `{ to, label, Icon }` 정적 배열이다.** "내 작업" 은 `search` 와 조건부 렌더(userId 유무)가 필요하므로 이 배열에 넣지 않고 별도 항목으로 렌더한다 — 배열 타입을 nullable·optional 로 넓혀 기존 3항목까지 복잡해지게 하지 않는다
 - **e2e 는 localStorage 를 `page.addInitScript` 로 심는 관례를 따른다** (`active-project.spec.ts:46,65` 선례). `playwright.config.ts` 에 `storageState` 가 없어 테스트마다 새 컨텍스트 = localStorage 빈 상태로 시작한다 (기존 `project-tree.spec.ts` S4/S5 의 "나머지 전부 접힘" 단언이 D2 정정 후에도 통과하는 근거)
 
+### 8-A. 디자인 리뷰 확정 (2026-07-31 · `/plan-design-review` · PR-B 한정)
+
+초기 평점 **6/10** → 확정 후 **9/10**. 아래는 **Maxi 확정**이며 구현자가 다시 고를 여지가 없다.
+
+**D-A. 메인 메뉴 nav 내 순서.**
+```
+내 작업  ← 신규, 최상단
+이슈
+대시보드
+캘린더
+즐겨찾기(FavoritesMenu 트리거 버튼)
+──────────────
+최근 항목  ← 신규, 최하단 (그룹 헤더 + 하위 링크 N개)
+```
+근거. "매일 여는 진입점을 위로" — 순서가 곧 중요도 신호다. 지라의 실제 순서(For you → Recent)와도
+정합하고, 단일 링크(항상 존재)와 목록(비었다 찼다 함)을 위아래로 갈라 그룹 성격이 섞이지 않는다.
+
+**D-B. 접힘(64px 레일)에서 "최근 항목" 은 섹션 전체를 렌더하지 않는다.**
+근거. E10 의 *"아이콘만 노출 · 텍스트 `sr-only`"* 는 **단일 링크** 관례지 5개짜리 목록 관례가 아니다.
+`ProjectTree.tsx:217-223` 의 첫 글자 뱃지를 그대로 쓰면 `ATLAS-12`·`ATLAS-13` 이 **둘 다 `A`** 라
+시각적으로 구분 불가능하다. 5칸을 먹으면서 정보는 0 이면 사이드바를 접은 목적을 배반한다.
+**대가 (의도된 것 — 결함 아님).** 접은 채 쓰는 사용자는 최근 항목에 접근할 수 없다. TODOS.md 등록.
+**"내 작업" 은 단일 링크이므로 기존 E10 관례를 그대로 따른다** (아이콘 + `sr-only` 텍스트, DOM 유지).
+
+**D-C. 아이콘·항목 스타일은 「사이드바 선례」를 따른다** (드롭다운 선례 아님).
+
+| 대상 | 확정 |
+|---|---|
+| "내 작업" 아이콘 | lucide **`UserCheck`** + `NAV_ICON_CLASS`(`size-4 shrink-0`). 기존 12종과 중복 없음 |
+| "최근 항목" 그룹 헤더 | `Sidebar.tsx:106-108` 관리 메뉴 헤더와 동일 — `px-2 pt-2 text-xs font-semibold uppercase text-sidebar-foreground/60`. **접힘 시 미렌더** |
+| "최근 항목" 하위 링크 | **아이콘 없음.** `ProjectTree.tsx:54` `TREE_SUB_LINK_CLASS` 관례 — `block truncate rounded-md px-2 py-1 text-sm text-sidebar-foreground/70` |
+
+근거. 둘 다 같은 사이드바 안에 있으므로 이웃(프로젝트 트리 하위 항목)과 맞추는 것이 한 시스템으로
+읽힌다. 반복되는 동일 아이콘 5개는 구분에 기여하지 않는 장식이다(subtraction default).
+
+**D-D. 선례가 강제한 것 (결정이 아니라 정렬 — 구현자 재량 없음).**
+
+| 축 | 값 | 출처 |
+|---|---|---|
+| 제목 잘림 | `<span className="truncate">` (컨테이너 `min-w-0`) | `FavoritesMenu.tsx:162` · `ProjectTree.tsx:37` |
+| 로딩 상태 | 개별 스켈레톤 없음. `useQueries` **전체 settle 전까지 아무것도 렌더하지 않는다** | `FavoritesMenu.tsx:133,146` — 헤더 플리커 방지가 명시 목적 |
+| 조회 옵션 | `retry: false` | `FavoritesMenu.tsx:129` — 403/404 재시도는 낭비 |
+| 빈 목록 | 섹션(헤더 포함) 미렌더 | `FavoritesMenu.tsx:146` 동형 · 스펙 E3 |
+
+**철회한 지적 1건.** 리뷰가 *"첫 사용자는 최근 목록이 비어 기능 존재를 모른다"* 를 제기했으나
+**ADR §D3 이 이미 해결**했다 — 기록이 방문 시 자동이라 이슈를 **하나만 열어도** 섹션이 나타난다.
+명시 선택 방식이었다면 성립했을 지적이고, 자동 기록에서는 성립하지 않는다.
+
 ## 9. 측정 가능한 완료 기준
 
 - [ ] S1~S10 시나리오가 유닛/e2e 로 커버된다
@@ -255,6 +308,29 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 - PR-B — S7·S8·S9 / E2·E3·E4·E8·E9
 
 **PR-A 에서 적용되지 않는 제약.** §8 의 `MAIN_NAV_LINKS` 항목은 F17 소관이다.
+
+### 11-B. PR-B 전용 완료 기준 (2026-07-31 추가)
+
+§9 는 FR 전체(F12+F17)의 기준이라 PR-A 소관 항목이 섞여 있다. **PR-B 의 게이트로는 아래를 쓴다.**
+
+- [ ] **S7·S8·S9** 가 유닛/e2e 로 커버된다
+- [ ] **E2·E3·E4·E8·E9** 각각에 대응 단언이 있다
+- [ ] **FR15 판별식이 비-공허하다** — `navLabels` 에 일부러 충돌 라벨(예 `'프로젝트 뷰'`)을 넣으면 새 테스트가 **실제로 red**
+- [ ] **FR14-b 부분 반전이 양방향으로 실증된다** — `myWork`/`recent` 를 지우면 red · `filters`/`projects` 를 추가하면 red (**둘 다** 확인, 한쪽만이면 봉인 절반)
+- [ ] **FR15-b 통합 실증** — `i18n/nav-labels.test.ts` 가 삭제되고 그 단언이 `i18n/__tests__/nav-labels.test.ts` 에 살아 있다 (`breadcrumb` 비충돌 단언이 전수 판별식에 흡수됐는지 확인)
+- [ ] `grep -rn "assignee=me" apps/web/src docs/plan` 결과가 **전부 「실재하지 않는다」를 설명하는
+      정정 노트**이고 **실제 사용 표기 0건**이다
+      (2026-07-31 정정 — 원안은 "0건"이었으나 그건 **충족 불가능한 기준**이다. 정정 노트가
+      틀린 표기를 인용해야 다음 세션이 같은 함정에 빠지지 않는데, 리터럴 0을 요구하면 그
+      노트까지 지워야 한다. 판별 대상은 「인용」이 아니라 「사용」이다)
+- [ ] `bts.recent-issues` 저장값이 이슈 키 형태(`^[A-Z][A-Z0-9]*-\d+$`)만 담는다 (제목 미저장 실증)
+- [ ] **`getByRole('navigation')` 개수 불변** — `navigation-contract.test.tsx` aria-label 4종 가드 green (FR13-b)
+- [ ] `shortcuts.test.ts` **무수정** green
+- [ ] `apps/web` typecheck 0 · eslint 0 error · 유닛 green (**XML 실측 + 이번 실행 산출물인지 확인**)
+- [ ] `bash scripts/verify-master-plan.sh` EXIT **0** (139/139)
+- [ ] **FR-UX-08 D1~D7 이 `[x]`** · `docs/plan/README.md` 진척 **132 → 133**
+- [ ] `git diff --stat` 에 `backend/` **0건** · `package.json` diff 0
+- [ ] **브라우저 눈확인** — "내 작업" 클릭 시 담당 이슈 목록 · "최근 항목" MRU 표시 · 접힘 레일 (라이트/다크)
 
 ## Brainstorming Check
 

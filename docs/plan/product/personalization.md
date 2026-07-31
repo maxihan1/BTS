@@ -234,13 +234,13 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **아키텍처**. 프론트 전용 (기존 `useProjects()` 소비, 신규 API 0). 🛑 **스위처를 `<nav>` 로 만들면 안 된다** — `프로젝트` 가 기존 `aria-label="프로젝트 뷰 전환"` 의 substring 이라 `getByRole('navigation')` 계약과 충돌한다. `components/ui/popover.tsx`(현재 소비처 0) + `role="listbox"` 가 정답이다. localStorage 영속은 `hooks/use-sidebar-collapsed.ts:15-45`(zustand + fail-safe 3중 폴백) 템플릿을 §4.5 와 같은 방식으로 복제한다.
 
-- [ ] D1. 도메인 — 최근 프로젝트(Recent Projects) 목록의 정의·상한·정렬 정립 (책임. frontend-engineer)
-- [ ] D2. 명세 — 스위처 진입/선택/키보드 조작 · "내 작업" 스코프 계약 · 최근 항목 영속 (책임. designer)
-- [ ] D3. 데이터 모델 — 없음 예상 (클라이언트 localStorage. 마이그레이션 0) (책임. -)
-- [ ] D4. 백엔드 — 없음 예상 (기존 프로젝트 목록·이슈 조회 API 소비만) (책임. -)
-- [ ] D5. 백엔드 테스트 — 해당 없음 예상 (책임. -)
-- [ ] D6. 프론트 UI — F12 `ProjectSwitcher` + 트리 펼침 영속 · F17 사이드바 "내 작업"·"최근 항목" (책임. designer → frontend-engineer)
-- [ ] D7. E2E — 스위처 전환이 활성 프로젝트를 갱신하는지 · `role="navigation"` 계약 무회귀 (책임. qa-engineer)
+- [x] D1. 도메인 — 최근 프로젝트(Recent Projects, 스위처 정렬 축 전용) · 최근 본 이슈(Recent Issues, 사이드바 "최근 항목") 정의·상한 5·MRU 정립. ADR [decisions/2026-07-30-fr-ux-08-project-switcher.md](../../decisions/2026-07-30-fr-ux-08-project-switcher.md) D1~D6 착지 (책임. frontend-engineer)
+- [x] D2. 명세 — `docs/specs/2026-07-30-fr-ux-08-project-switcher.md`. 시나리오 S1~S10 · FR1~FR16-b · NFR1~NFR7 · 엣지 E1~E14 · 한계 L1~L6 · §8-A 디자인 확정 · §11 PR 분할 · §11-B PR-B 완료 기준 (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — 없음 (클라이언트 localStorage 3키 `bts.recent-projects`·`bts.recent-issues`·`bts.project-tree.expanded` 만. 마이그레이션 0) (책임. -)
+- [x] D4. 백엔드 — 없음 (기존 `GET /api/v1/projects`·`GET /api/v1/issues/{key}`·`GET /api/v1/issues` 소비만. Kotlin 0줄) (책임. -)
+- [x] D5. 백엔드 테스트 — 해당 없음 (백엔드 변경 0) (책임. -)
+- [x] D6. 프론트 UI — PR-A(#326) F12 `ProjectSwitcher` + 트리 펼침 영속 · PR-B(#327) F17 사이드바 "내 작업"·"최근 항목" + nav 라벨 전수 판별식 (책임. designer → frontend-engineer)
+- [x] D7. E2E — `project-switcher.spec.ts`(PR-A) · `sidebar-my-work-recent.spec.ts`(PR-B, S7·S8·S9 + 접힘 미렌더). `role="navigation"` 계약 무회귀 (책임. qa-engineer)
 
 ### §4.7 FR-UX-09 — 이슈 생성 흐름 (모달 · 진입점)
 
@@ -403,7 +403,7 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 ### BC 완료 조건
 
-- [~] §2~§5 (21 FR) 모두 `[x]` 마킹 — 14/21 (2026-07-29 활성 프로젝트 컨텍스트 완결로 14종. 인터랙션 패리티 잔여 7종은 등록만 된 미착수)
+- [~] §2~§5 (21 FR) 모두 `[x]` 마킹 — 15/21 (2026-07-31 §4.6 프로젝트 전환·최근 항목·내 작업 완주로 15종. 인터랙션 패리티 잔여 6종 §4.7~§4.12 는 등록만 된 미착수)
       <!-- ★ 이 줄에 `FR-XX-NN` 형태를 쓰지 말 것 — verify-master-plan.sh 의 "§N 헤더 (FR-XX, N개)"
            스캐너가 헤더 선언으로 오인해 `N개` 파싱에 실패하고 EXIT 1 이 된다(2026-07-25 실제 발생). -->
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 8행 전부 실측값이 `___` 공란. k6(프로필 조회·캘린더 30일·iCal Export) · Playwright(설정 적용·cmdk 응답) · E2E 전수(단축키) · Lighthouse CI(LCP) · axe-core(WCAG AA) 를 실제로 돌려 p95 를 채워야 한다 (2026-07-27 실측)

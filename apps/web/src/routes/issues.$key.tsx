@@ -5,6 +5,7 @@ import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fetchIssue, updateIssue, transitionIssue, IssueRedirectError } from '@/api/issues'
+import { useRecentIssues } from '@/hooks/use-recent-issues'
 import type { IssueTransition, CustomFieldValues } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
@@ -208,6 +209,27 @@ export function IssueDetailPage({
 
   usePaneFocusOnLoad(variant, issue !== undefined, paneTitleRef)
   usePaneEscapeClose(variant, onClose)
+
+  // ── 최근 본 이슈 기록 (FR-UX-08 PR-B FR4) ──────────────────────────────────
+  /**
+   * 이 앱에서 최근 본 이슈를 기록하는 **유일한 지점**이다.
+   *
+   * 기록 지점을 늘리면 저장값 생산 지점이 둘이 되어, 가드가 한쪽에만 붙는 결함이 재발한다
+   * (FR-UX-07 코드리뷰 CR3). 사이드바 "최근 항목"은 이 스토어를 **읽기만** 한다.
+   *
+   * **조회 성공 후에만 기록한다.** `issue`가 확정된 뒤에 돌므로 404/403 키는 들어오지 않는다 —
+   * 조회 전에 기록하면 죽은 키가 목록을 오염시키고 그 키는 다음 마운트에서 또 실패한다.
+   * 308 옛 키 redirect도 `queryFn`이 re-throw하므로 `issue`가 확정되지 않고, 새 키로 이동한
+   * 뒤 그쪽 마운트에서 **새 키가** 기록된다(옛 키는 기록되지 않는다).
+   *
+   * `props.issueKey`가 아니라 **응답의 `issue.key`**를 쓴다 — 둘이 갈리는 경우(대소문자·리다이렉트)
+   * 저장값은 언제나 백엔드가 인정한 키여야 사이드바의 제목 조회가 성공한다.
+   */
+  const pushRecentIssue = useRecentIssues((s) => s.pushRecentIssue)
+  useEffect(() => {
+    if (issue === undefined) return
+    pushRecentIssue(issue.key)
+  }, [issue, pushRecentIssue])
 
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const {

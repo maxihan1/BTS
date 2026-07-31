@@ -9,6 +9,14 @@
  * S3(2026-07-20 Maxi 확정) — 백킹 라우트·기능이 없는 항목(내 작업·최근·필터)은
  * 포함하지 않는다. 각 항목은 해당 기능 FR에서 추가한다. **프로젝트는 PR12에서
  * `GET /api/v1/projects` 백킹이 확인되어 추가됨**(ProjectTree, FR-UX-06 PR12 Task 2).
+ *
+ * **S3 이연 항목 3종 중 2종이 FR-UX-08 PR-B에서 추가됐다**(F17).
+ * - `myWork` — `/issues?assignee=<userId>` 백킹. **`?assignee=me`는 실재하지 않는다**
+ *   (`IssueFilterQueryParser`의 센티널은 `unassigned` 하나뿐, 그 외는 UUID 파싱 실패 시 400)
+ * - `recent` — `/issues/$key` 백킹 (최근 본 이슈)
+ * - `filters`는 **여전히 백킹이 없어 미추가**다. `i18n/__tests__/nav-labels.test.ts`의
+ *   S3 가드가 `filters`·`projects` 부재를 계속 단언한다 — 그 블록을 통째로 지우면
+ *   남은 둘이 가드를 잃는다.
  */
 export const navLabels = {
   /** 사이드바 메인 nav aria-label (🔒 e2e 계약) */
@@ -32,6 +40,23 @@ export const navLabels = {
 
   /** 상단바 검색 버튼 aria-label (🔒 e2e 계약, 상단바 단일) */
   search: '검색',
+
+  /**
+   * 사이드바 "내 작업" 링크 라벨 (FR-UX-08 PR-B, FR12/FR14).
+   *
+   * 메인 메뉴 nav **최상단**에 온다(스펙 §8-A D-A) — 매일 여는 진입점이라 순서가
+   * 곧 중요도 신호다. e2e 계약 문자열이 아니므로 🔒 표시를 붙이지 않는다.
+   */
+  myWork: '내 작업',
+
+  /**
+   * 사이드바 "최근 항목" 그룹 헤더 라벨 (FR-UX-08 PR-B, FR13/FR14).
+   *
+   * 최근 본 **이슈** 목록이다 — 프로젝트가 아니다(ADR §D1). 프로젝트 목록은
+   * `ProjectTree`가 이미 전량 렌더하므로 중복이고, "최근 프로젝트"는 프로젝트
+   * 스위처 내부의 정렬 축으로만 쓰인다.
+   */
+  recent: '최근 항목',
 
   /** 사이드바 이슈 링크 라벨 */
   issues: '이슈',
