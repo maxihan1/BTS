@@ -278,6 +278,57 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
             }
         }
 
+        // ──────────────────────────────────────────────────────────────
+        // FR-UX-09 B1 — 생성 시 priority / labels 지정 (ADR D-2)
+        // ──────────────────────────────────────────────────────────────
+        context("priority·labels 를 생성 시 지정할 때") {
+            val b1ProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000b1")
+            lateinit var issueSlot: CapturingSlot<com.bts.issue.domain.Issue>
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
+                } returns true
+                every { repo.incrementKeySequence(projectKey) } returns 1L
+                every { repo.findProjectIdByKey(projectKey) } returns b1ProjectId
+                every { repo.insertComponents(any(), any()) } returns Unit
+                every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
+                issueSlot = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+            }
+
+            it("지정한 priority 와 labels 가 저장된 Issue 에 반영된다") {
+                sut.createIssue(
+                    actor,
+                    request.copy(priority = 1, labels = listOf("urgent")),
+                )
+
+                issueSlot.captured.priority shouldBe 1
+                issueSlot.captured.labels shouldBe listOf("urgent")
+            }
+
+            // ★무회귀 가드 — 3필드를 안 보내던 기존 요청이 그대로 동작해야 한다.
+            it("priority 를 생략하면 도메인 기본값(MEDIUM=3)이 적용된다") {
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.priority shouldBe com.bts.issue.domain.IssuePriority.MEDIUM.number
+            }
+
+            it("labels 를 생략하면 빈 목록이 적용된다") {
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.labels shouldBe emptyList()
+            }
+        }
+
         // A-2: CRITICAL-1 — 미존재 프로젝트 키 → IssueProjectNotFoundException
         context("프로젝트가 존재하지 않을 때") {
             beforeEach {
