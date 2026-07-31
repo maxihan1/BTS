@@ -22,10 +22,13 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -40,6 +43,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
 
@@ -66,12 +70,25 @@ class IssueControllerCreateTest {
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
         @Bean
         open fun issueApplicationService(): IssueApplicationService = mockk(relaxed = true)
 
         @Bean
         open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
+
+        /**
+         * `assigneeId` 의 `JsonNullable<UUID>` 역직렬화를 위해 [JsonNullableModule] 을 등록한다 (FR-UX-09 B1).
+         *
+         * 이 슬라이스는 `agile-planning` 의 `JacksonNullableConfiguration` 을 스캔하지 않아
+         * 자동 등록 경로가 없다. 등록하지 않으면 `assigneeId` 를 보내는 순간
+         * `HttpMessageConversionException` 이 난다 (`IssueControllerSecurityLevelTest:78-82` 동일 선례).
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper.registerModule(JsonNullableModule()) }
+        }
     }
 
     @Autowired

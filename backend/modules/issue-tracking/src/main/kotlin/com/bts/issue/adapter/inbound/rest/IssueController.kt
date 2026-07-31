@@ -7,6 +7,7 @@ import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
+import com.bts.issue.application.AssigneeIntent
 import com.bts.issue.application.BacklogRankService
 import com.bts.issue.application.ChangelogCursorCodec
 import com.bts.issue.application.DatePatch
@@ -188,6 +189,13 @@ class IssueController(
                 description = request.description,
                 componentIds = request.componentIds,
                 securityLevelId = request.securityLevelId,
+                // FR-UX-09 B1 — 3필드 1회 제출 (ADR D-2).
+                assignee = toAssigneeIntent(request.assigneeId),
+                priority = request.priority,
+                labels = request.labels,
+                // ADR D-5 — IssueAssigned 는 REST 생성 경로에서만 발행한다.
+                // Import 어댑터는 기본값(false)을 그대로 쓰므로 반입 시 알림이 늘지 않는다.
+                notifyAssignment = true,
             )
         val issue = service.createIssue(actor, appRequest)
         // createIssue 는 Issue 도메인 객체를 반환하므로, type 요약 포함 응답을 위해 findByKey 재조회한다.
@@ -959,6 +967,24 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
             !raw.isPresent -> SecurityLevelPatch.Unchanged
             raw.get() == null -> SecurityLevelPatch.Clear
             else -> SecurityLevelPatch.Assign(raw.get())
+        }
+
+    /**
+     * `JsonNullable<UUID>` 의 presence 를 [AssigneeIntent] 3-state 로 매핑한다 (FR-UX-09 B1, ADR D-2).
+     *
+     * 생성 시맨틱 — 필드 부재(undefined)=자동 배정 유지(기존 동작), 명시 null=자동 배정 비활성 후
+     * 미할당 확정, 값=해당 사용자로 확정.
+     * [toSecurityLevelPatch] 와 동일한 이유로 transport 계층에서 변환한다 —
+     * application 계층이 웹 직렬화 라이브러리(JsonNullable)에 결합되면 안 된다.
+     *
+     * @param raw 생성 요청의 assigneeId JsonNullable 값.
+     * @return 대응하는 [AssigneeIntent].
+     */
+    private fun toAssigneeIntent(raw: JsonNullable<UUID>): AssigneeIntent =
+        when {
+            !raw.isPresent -> AssigneeIntent.Auto
+            raw.get() == null -> AssigneeIntent.None
+            else -> AssigneeIntent.User(raw.get())
         }
 
     /**
