@@ -257,8 +257,8 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 - [ ] D1. 도메인 — 생성 시점에 확정 가능한 필드 집합(유형·본문·담당자·우선순위·라벨) 정립 (책임. backend-engineer)
 - [ ] D2. 명세 — 모달 진입점 3곳 · 딥링크 라우트 유지 계약 · 필드별 optional 계약 (책임. designer)
 - [ ] D3. 데이터 모델 — 없음 예상 (기존 컬럼 소비. 마이그레이션 0) (책임. -)
-- [ ] D4. 백엔드 — **B1**. `CreateIssueRequest.kt:27-39` 에 nullable 3필드 추가 + `IssueController` create 핸들러 + `IssueApplicationService` create 경로. 전부 optional 추가라 기존 요청 무회귀 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — **B1**. `IssueControllerTest` · `IssueControllerIntegrationTest`("assigneeId/priority/labels 가 생성 시 반영") · `OpenApiContractTest` (책임. backend-engineer)
+- [x] D4. 백엔드 — **B1 완료 (PR #328)**. `CreateIssueRequest` 에 `assigneeId`(JsonNullable 3-state)·`priority`·`labels` 추가 + `AssigneeIntent` sealed 신설 + `IssueApplicationService.createIssue` 배선. 요청/응답 계약 무회귀(응답 스키마 diff 0). **단 알림은 무회귀 아님** — ADR D-4 로 `IssueAssigned` 신규 발행(REST 경로 한정, D-5) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — **B1 완료 (PR #328)**. `IssueApplicationRequestsTest`·`IssueApplicationServiceCreateTest`·`IssueControllerCreateTest`·`OpenApiContractTest`·`IssueImportAdapterTest`(S8b Import 알림 회귀 가드). 뮤테이션 M1~M3 전량 red 확인 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — F2 `CreateIssueDialog`(프로젝트 셀렉터·유형·본문) · F3 진입점 3곳 + 담당자/우선순위/라벨 (책임. designer → frontend-engineer)
 - [ ] D7. E2E — 모달 진입·1회 제출로 필드 확정·딥링크 라우트 무회귀 (책임. qa-engineer)
 

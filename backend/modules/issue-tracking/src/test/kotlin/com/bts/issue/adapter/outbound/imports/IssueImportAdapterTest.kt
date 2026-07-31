@@ -1093,6 +1093,55 @@ class IssueImportAdapterTest {
         }
     }
 
+    // ── S8b(FR-UX-09 B1 / ADR D-5). Import 는 IssueAssigned 를 발행하지 않는다 ──
+
+    /**
+     * FR-UX-09 B1 이 `createIssue` 에 `IssueAssigned` 발행을 추가했지만, ADR D-5 에 따라
+     * **REST 생성 경로만** 발행한다(`notifyAssignment` 기본값 false).
+     *
+     * Import 는 `createIssue` 직후 `changeAssignee` 로 원본 담당자를 다시 지정하므로,
+     * 게이트가 없으면 이슈 1건당 `IssueAssigned` 가 2회 나가고
+     * 첫 번째는 곧 덮어쓰일 자동 배정 담당자에 대한 **거짓 알림**이 된다.
+     *
+     * ★비-공허성 확보 — 프로젝트 리드를 시드해 **자동 배정이 실제로 발동**하게 만든다.
+     *   리드가 없으면 `resolveDefaultAssignee` 가 null 을 반환해 게이트 유무와 무관하게
+     *   0건이 되고, 그러면 이 테스트는 아무것도 검증하지 못한다.
+     *
+     * Given 프로젝트 리드가 지정돼 자동 배정이 발동하는 상태
+     * When  담당자 없는 이슈를 반입
+     * Then  이슈는 담당자를 갖지만(자동 배정 동작 확인 = 양성 대조군)
+     * And   q_issue_events 에 `IssueAssigned` 가 **0건**이다
+     */
+    @Test
+    fun `S8b Import 경로는 자동 배정이 발동해도 IssueAssigned 를 발행하지 않는다`() {
+        setProjectLead(NORMAL_REQUESTER_ID)
+        try {
+            val cmd =
+                IssueImportCommand(
+                    projectKey = PROJECT_KEY,
+                    requesterUserId = NORMAL_REQUESTER_ID,
+                    summary = "S8b Import 알림 회귀 가드",
+                )
+
+            val result = issueImportAdapter.importIssue(cmd)
+            check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+
+            // 양성 대조군 — 자동 배정이 실제로 담당자를 붙였는지 먼저 확인한다.
+            assert(readAssigneeIdOf(result.issueKey) != null) {
+                "자동 배정이 발동하지 않아 이 테스트가 공허합니다. 프로젝트 리드 시드를 확인하세요."
+            }
+
+            val messages = readIssueEventsQueue()
+            val assignedCount = messages.count { it.contains("IssueAssigned") || it.contains("issue.assigned") }
+            assert(assignedCount == 0) {
+                "Import 경로는 IssueAssigned 를 발행하지 않아야 하지만 ${assignedCount}건 발행됐습니다. " +
+                    "messages=$messages"
+            }
+        } finally {
+            setProjectLead(null)
+        }
+    }
+
     // ── S9(C1). dryRun — update-유발 행은 UPDATE 권한도 미러 예측 ────────────────
 
     /**
@@ -2957,6 +3006,29 @@ class IssueImportAdapterTest {
                 }
             }
         }
+
+    /** 테스트 프로젝트의 lead_user_id 를 설정/해제한다 (S8b 자동 배정 발동용). */
+    private fun setProjectLead(userId: UUID?) {
+        conn().use { c ->
+            c.prepareStatement("UPDATE projects SET lead_user_id = ? WHERE key = ?").use { stmt ->
+                if (userId == null) stmt.setNull(1, java.sql.Types.OTHER) else stmt.setObject(1, userId)
+                stmt.setString(2, PROJECT_KEY)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    /** 반입된 이슈의 assignee_id 를 조회한다 (S8b 양성 대조군용). */
+    private fun readAssigneeIdOf(issueKey: String): UUID? {
+        // ResultSet 은 Statement 가 닫힐 때 함께 닫힌다 — use 를 한 겹 줄여 NestedBlockDepth 를 피한다.
+        conn().use { c ->
+            c.prepareStatement("SELECT assignee_id FROM issues WHERE key = ?").use { stmt ->
+                stmt.setString(1, issueKey)
+                val rs = stmt.executeQuery()
+                return if (rs.next()) rs.getObject(1) as UUID? else null
+            }
+        }
+    }
 
     /** q_issue_events 큐에서 최대 10건을 읽어 반환한다(visibility_timeout=1초). */
     @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음

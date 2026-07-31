@@ -257,7 +257,7 @@ class IssueApplicationService(
                 throw e
             }
 
-        val resolvedAssignee = resolveDefaultAssignee(projectId, normalizedComponentIds, current = null)
+        val resolvedAssignee = resolveCreateAssignee(request.assignee, projectId, normalizedComponentIds)
 
         // FR-IS-10: 커스텀 필드 검증 — 정의 로드 후 Validator 호출. null이면 빈 맵 처리.
         val customFieldValues = request.customFields ?: emptyMap()
@@ -285,6 +285,11 @@ class IssueApplicationService(
                 securityLevelId = request.securityLevelId,
                 customFields = customFieldValues,
                 description = resolvedDescription,
+                // FR-UX-09 B1 — 생성 시 1회 제출로 확정. null 이면 도메인 기본값에 맡긴다.
+                // Issue.kt 의 PRIORITY_DEFAULT 는 파일 private 이라 여기서 참조할 수 없어
+                // 공개 출처인 IssuePriority.MEDIUM.number 를 쓴다(값 동일, 매직넘버 회피).
+                priority = request.priority ?: IssuePriority.MEDIUM.number,
+                labels = request.labels ?: emptyList(),
             )
         val saved = repo.insert(issue)
         autoWatch(saved.id.value, listOfNotNull(saved.reporterId.value, resolvedAssignee?.value))
@@ -299,6 +304,15 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        // FR-UX-09 B1 (ADR D-4 + D-5) — 담당자가 확정됐고 REST 생성 경로일 때만 발행한다.
+        // 판정식은 「최종 assigneeId non-null AND notifyAssignment」 단일 술어다.
+        // notifyAssignment 를 빼면 Import 반입에서 이슈당 2회 발행된다
+        // (createIssue 자동배정 1회 + 직후 changeAssignee 1회, 첫 번째는 곧 덮어쓰일 거짓 알림).
+        if (request.notifyAssignment && resolvedAssignee != null) {
+            eventPublisher.publish(
+                IssueAssigned(issueKey = saved.key, actorId = actor, occurredAt = Instant.now(clock)),
+            )
+        }
         recordHistory(before = null, after = saved, actor = actor, projectId = projectId)
         log.info("issue_created key={} typeId={} actor={}", saved.key.value, resolvedTypeId.value, actor.value)
         return saved
@@ -1709,6 +1723,39 @@ class IssueApplicationService(
         val projectLead = projectLeadRepository.findLeadUserId(projectId)
         return DefaultAssigneeResolver.resolve(current = null, candidates = candidates, projectLeadUserId = projectLead)
     }
+
+    /**
+     * 생성 시 담당자 지정 의도([AssigneeIntent]) 를 최종 담당자로 해석한다 (FR-UX-09 B1, ADR D-2).
+     *
+     * - [AssigneeIntent.Auto] — 기존 동작. [resolveDefaultAssignee] 자동 배정을 수행한다.
+     * - [AssigneeIntent.None] — 자동 배정을 **수행하지 않고** 미할당으로 확정한다.
+     *   `null` 을 반환하는 것과 「자동 배정을 돌렸는데 결과가 null」 은 관측상 같아 보이지만,
+     *   전자는 컴포넌트/프로젝트 리드 조회 자체를 하지 않는다.
+     * - [AssigneeIntent.User] — 자동 배정을 수행하지 않고 지정된 사용자를 담당자로 한다.
+     *   **존재 검증을 수행한다** ([changeAssignee] 와 대칭). 자동 배정 결과는 컴포넌트/프로젝트 리드에서
+     *   나와 이미 유효 사용자이므로 [AssigneeIntent.Auto] 경로에서는 조회하지 않는다.
+     *
+     * @param intent 담당자 지정 의도.
+     * @param projectId 이슈가 속한 프로젝트 UUID.
+     * @param componentIds 정규화된 컴포넌트 UUID 목록. 자동 배정 후보 산출에 쓰인다.
+     * @return 최종 담당자. 미할당이면 null.
+     * @throws AssigneeNotFoundException [AssigneeIntent.User] 의 사용자가 존재하지 않을 때 (422).
+     */
+    private fun resolveCreateAssignee(
+        intent: AssigneeIntent,
+        projectId: UUID,
+        componentIds: List<UUID>,
+    ): ActorId? =
+        when (intent) {
+            is AssigneeIntent.Auto -> resolveDefaultAssignee(projectId, componentIds, current = null)
+            is AssigneeIntent.None -> null
+            is AssigneeIntent.User -> {
+                if (!userLookupPort.exists(intent.userId)) {
+                    throw AssigneeNotFoundException(intent.userId)
+                }
+                ActorId(intent.userId)
+            }
+        }
 
     /**
      * 단건 조회 응답에 필드 수준 마스킹(열람) + 편집 불가 필드 표기를 적용한다 (FR-PM-07 Task-7 + Task-1).

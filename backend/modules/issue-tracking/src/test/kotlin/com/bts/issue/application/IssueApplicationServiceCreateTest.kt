@@ -2,13 +2,17 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -49,6 +53,16 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
+
+    // FR-UX-09 B1 — 자동 배정(resolveDefaultAssignee)의 호출 **여부**를 단언해야 하므로
+    // 인라인 mock 대신 val 로 꺼낸다. 「담당자가 null 이다」만 보면
+    // 자동 배정이 꺼진 것과 자동 배정이 돌았는데 결과가 null 인 것을 구분할 수 없다.
+    val componentRepository = mockk<ComponentRepository>(relaxed = true)
+    val projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true)
+
+    // autoWatch 는 watcherRepository 가 null 이면 no-op 이라, 주입하지 않으면 FR7 이 무검증으로 남는다.
+    val watcherRepository = mockk<com.bts.issue.watcher.repository.IssueWatcherRepository>(relaxed = true)
+
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
@@ -61,11 +75,12 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
             workflowPort = workflowPort,
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
-            componentRepository = mockk(relaxed = true),
-            projectLeadRepository = mockk(relaxed = true),
+            componentRepository = componentRepository,
+            projectLeadRepository = projectLeadRepository,
             versionRepository = mockk(relaxed = true),
             clock = clock,
             historyRecorder = mockk(relaxed = true),
+            watcherRepository = watcherRepository,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -275,6 +290,232 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 shouldThrow<IssueWorkflowNotConfiguredException> {
                     sut.createIssue(actor, request)
                 }
+            }
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        // FR-UX-09 B1 — 생성 시 priority / labels 지정 (ADR D-2)
+        // ──────────────────────────────────────────────────────────────
+        context("priority·labels 를 생성 시 지정할 때") {
+            val b1ProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000b1")
+            lateinit var issueSlot: CapturingSlot<com.bts.issue.domain.Issue>
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
+                } returns true
+                every { repo.incrementKeySequence(projectKey) } returns 1L
+                every { repo.findProjectIdByKey(projectKey) } returns b1ProjectId
+                every { repo.insertComponents(any(), any()) } returns Unit
+                every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
+                issueSlot = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+            }
+
+            it("지정한 priority 와 labels 가 저장된 Issue 에 반영된다") {
+                sut.createIssue(
+                    actor,
+                    request.copy(priority = 1, labels = listOf("urgent")),
+                )
+
+                issueSlot.captured.priority shouldBe 1
+                issueSlot.captured.labels shouldBe listOf("urgent")
+            }
+
+            // ★무회귀 가드 — 3필드를 안 보내던 기존 요청이 그대로 동작해야 한다.
+            it("priority 를 생략하면 도메인 기본값(MEDIUM=3)이 적용된다") {
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.priority shouldBe com.bts.issue.domain.IssuePriority.MEDIUM.number
+            }
+
+            it("labels 를 생략하면 빈 목록이 적용된다") {
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.labels shouldBe emptyList()
+            }
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        // FR-UX-09 B1 — assigneeId 3-state (ADR D-2)
+        //
+        // ★양성 대조군 전제. projectLeadRepository 가 리드를 반환하도록 스텁해
+        //   「Auto 면 담당자가 붙는다」를 먼저 성립시킨다. 그래야 None/User 에서
+        //   담당자가 안 붙는 것이 의미를 갖는다.
+        // ──────────────────────────────────────────────────────────────
+        context("assigneeId 3-state 로 담당자를 정할 때") {
+            val b1ProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000b2")
+            val projectLeadId = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
+            val explicitAssignee = UUID.fromString("00000000-0000-0000-0000-0000000000bb")
+            lateinit var issueSlot: CapturingSlot<com.bts.issue.domain.Issue>
+
+            beforeEach {
+                // ★userLookupPort 를 반드시 포함한다 — mockk 의 verify 호출 횟수는 테스트 간에
+                //   누적되므로, 빼면 「Auto 는 exists 를 호출하지 않는다」가 앞 테스트의 호출을
+                //   보고 실패한다(실제로 그렇게 한 번 실패했다).
+                clearMocks(
+                    componentRepository,
+                    projectLeadRepository,
+                    watcherRepository,
+                    userLookupPort,
+                    answers = false,
+                )
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
+                } returns true
+                every { repo.incrementKeySequence(projectKey) } returns 1L
+                every { repo.findProjectIdByKey(projectKey) } returns b1ProjectId
+                every { repo.insertComponents(any(), any()) } returns Unit
+                every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
+                every { componentRepository.findByProject(b1ProjectId) } returns emptyList()
+                every { projectLeadRepository.findLeadUserId(b1ProjectId) } returns projectLeadId
+                // 기본은 「존재하는 사용자」. 미존재 케이스는 각 테스트에서 false 로 덮어쓴다.
+                every { userLookupPort.exists(explicitAssignee) } returns true
+                issueSlot = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+            }
+
+            // ★양성 대조군 — 이게 통과해야 아래 두 케이스가 의미를 갖는다.
+            it("Auto(키 생략)면 자동 배정 결과가 담당자가 된다") {
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.assigneeId?.value shouldBe projectLeadId
+                verify { projectLeadRepository.findLeadUserId(b1ProjectId) }
+            }
+
+            it("None(명시 null)이면 미할당이고 자동 배정이 아예 호출되지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
+
+                issueSlot.captured.assigneeId shouldBe null
+                verify(exactly = 0) { projectLeadRepository.findLeadUserId(any()) }
+                verify(exactly = 0) { componentRepository.findByProject(any()) }
+            }
+
+            it("User(값 지정)면 그 사용자가 담당자이고 자동 배정이 호출되지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                issueSlot.captured.assigneeId?.value shouldBe explicitAssignee
+                verify(exactly = 0) { projectLeadRepository.findLeadUserId(any()) }
+                verify(exactly = 0) { componentRepository.findByProject(any()) }
+            }
+
+            // ──────────────────────────────────────────────────────────
+            // FR-UX-09 B1 — 명시 담당자 존재 검증 (S4·E10). changeAssignee:818 대칭.
+            // ──────────────────────────────────────────────────────────
+
+            it("User 로 지정한 사용자가 존재하지 않으면 AssigneeNotFoundException") {
+                every { userLookupPort.exists(explicitAssignee) } returns false
+
+                shouldThrow<AssigneeNotFoundException> {
+                    sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+                }
+            }
+
+            // ★예외만 보면 이슈가 안 만들어졌는지 알 수 없다 — insert 미호출을 함께 단언한다.
+            it("미존재 담당자면 이슈가 저장되지 않는다") {
+                every { userLookupPort.exists(explicitAssignee) } returns false
+
+                runCatching {
+                    sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+                }
+
+                verify(exactly = 0) { repo.insert(any()) }
+            }
+
+            // ★자동 배정 결과는 이미 유효 사용자다 — 불필요한 조회를 하지 않는지 확인.
+            it("Auto 경로는 userLookupPort.exists 를 호출하지 않는다") {
+                sut.createIssue(actor, request)
+
+                verify(exactly = 0) { userLookupPort.exists(any()) }
+            }
+
+            it("존재하는 사용자를 User 로 지정하면 정상 생성된다") {
+                every { userLookupPort.exists(explicitAssignee) } returns true
+
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                issueSlot.captured.assigneeId?.value shouldBe explicitAssignee
+                verify { userLookupPort.exists(explicitAssignee) }
+            }
+
+            // ★R3 — 담당자 분기가 워처(autoWatch)까지 전파되는지. FR7.
+            it("None 이면 워처는 reporter 한 명뿐이다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
+
+                verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
+                verify(exactly = 1) { watcherRepository.add(any(), any()) }
+            }
+
+            it("User 면 워처가 reporter 와 담당자 두 명이다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
+                verify(exactly = 1) { watcherRepository.add(any(), explicitAssignee) }
+                verify(exactly = 2) { watcherRepository.add(any(), any()) }
+            }
+
+            // ──────────────────────────────────────────────────────────
+            // FR-UX-09 B1 — IssueAssigned 발행 게이트 (ADR D-4 + D-5)
+            //
+            // ★2×2 행렬을 전수 단언한다. (notifyAssignment=true, 담당자 non-null) 하나만 보면
+            //   게이트가 실제로 "막는지" 는 검증되지 않는다.
+            //   notifyAssignment=false 행이 곧 Import 경로 회귀 가드다.
+            // ──────────────────────────────────────────────────────────
+
+            it("notify=true + 담당자 non-null 이면 IssueAssigned 를 1회 발행한다") {
+                sut.createIssue(
+                    actor,
+                    request.copy(assignee = AssigneeIntent.User(explicitAssignee), notifyAssignment = true),
+                )
+
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            it("notify=true 인데 담당자가 null 이면 IssueAssigned 를 발행하지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None, notifyAssignment = true))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            // ★Import 경로 회귀 가드 — notifyAssignment 기본값(false)이 이 행이다.
+            it("notify=false 면 담당자가 있어도 IssueAssigned 를 발행하지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            it("notify=false + 담당자 null 이면 IssueAssigned 를 발행하지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            // ★IssueCreated 는 4케이스 전부 1회 — 무회귀.
+            it("IssueCreated 는 notify 값과 무관하게 항상 1회 발행된다") {
+                sut.createIssue(actor, request.copy(notifyAssignment = true))
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueCreated }) }
+
+                clearMocks(eventPublisher, answers = false)
+                every { eventPublisher.publish(any()) } returns Unit
+
+                sut.createIssue(actor, request.copy(notifyAssignment = false))
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueCreated }) }
             }
         }
 

@@ -21,6 +21,15 @@ import java.util.UUID
  *   non-null 이면 서비스가 SET_SECURITY 권한 + 적용 스킴 소속을 검증한다.
  * @param customFields 커스텀 필드 값 맵 (FR-IS-10). null 이면 빈 맵으로 처리한다.
  *   값 검증(타입/required/미정의키)은 서비스에서 수행한다.
+ * @param assignee 담당자 지정 의도 3-state (FR-UX-09 B1, ADR D-2). 기본 [AssigneeIntent.Auto].
+ * @param priority 우선순위 1..5 (FR-UX-09 B1). null 이면 서비스가 [com.bts.issue.domain.IssuePriority.MEDIUM] 기본값을 적용한다.
+ * @param labels 라벨 목록 (FR-UX-09 B1). null 이면 빈 목록. 정규화·상한 검증은 도메인 [com.bts.issue.domain.Issue] 가 수행한다.
+ * @param notifyAssignment 담당자 확정 시 `IssueAssigned` 발행 여부 (FR-UX-09 B1, ADR D-5).
+ *   **기본 false 는 의도된 fail-safe 다.** 이 함수의 생산자는 REST 컨트롤러 하나가 아니라
+ *   Import 어댑터(`IssueImportAdapter`)도 있고, Import 는 생성 직후 `changeAssignee` 로 담당자를
+ *   다시 지정해 그쪽에서 이미 `IssueAssigned` 를 발행한다. 기본값을 true 로 두면 반입 1건당
+ *   알림이 2회 나가고 첫 번째는 곧 덮어쓰일 임시 담당자에 대한 거짓 알림이 된다.
+ *   **기본값을 뒤집지 말 것** — 앞으로 생길 새 생산자도 알림이 꺼진 채로 태어나야 한다.
  */
 data class CreateIssueRequest(
     val projectKey: String,
@@ -31,7 +40,33 @@ data class CreateIssueRequest(
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
+    val assignee: AssigneeIntent = AssigneeIntent.Auto,
+    val priority: Int? = null,
+    val labels: List<String>? = null,
+    val notifyAssignment: Boolean = false,
 )
+
+/**
+ * 이슈 생성 시 담당자 지정 의도 3-state (FR-UX-09 B1, ADR D-2).
+ *
+ * 생성 시맨틱에서 "필드 부재(자동 배정 유지)" 와 "명시 null(미할당 확정)" 을 구분하기 위한 sealed 표현이다.
+ * 컨트롤러(transport)가 `JsonNullable<UUID>` 의 presence 를 이 타입으로 변환하여 서비스에 전달한다.
+ * 웹 직렬화 라이브러리(JsonNullable)에 application 계층이 결합되지 않도록 별도 타입으로 분리한다
+ * ([DatePatch] · [SecurityLevelPatch] 와 동일 선례).
+ *
+ * [Auto] 와 [None] 의 차이가 이 타입의 존재 이유다 — 2-state 로는
+ * "자동 배정을 끄고 미할당으로 두기" 를 표현할 수 없다.
+ */
+sealed interface AssigneeIntent {
+    /** 요청에 `assigneeId` 키가 없음 — `resolveDefaultAssignee` 자동 배정을 그대로 유지한다(기존 동작). */
+    data object Auto : AssigneeIntent
+
+    /** `assigneeId: null` 명시 — 자동 배정을 **비활성**하고 미할당으로 확정한다. */
+    data object None : AssigneeIntent
+
+    /** `assigneeId: <uuid>` — 자동 배정을 비활성하고 [userId] 를 담당자로 확정한다. */
+    data class User(val userId: UUID) : AssigneeIntent
+}
 
 /**
  * 이슈 일정 날짜 수정 의도 3-state (FR-PL-01).
