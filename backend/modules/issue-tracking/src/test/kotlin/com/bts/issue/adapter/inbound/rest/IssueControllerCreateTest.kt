@@ -4,7 +4,6 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.AssigneeIntent
 import com.bts.issue.application.IssueApplicationService
-import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -46,6 +45,7 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
+import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 
 /**
  * IssueController POST /api/v1/issues MockMvc 슬라이스 테스트.

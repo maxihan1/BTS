@@ -3019,13 +3019,16 @@ class IssueImportAdapterTest {
     }
 
     /** 반입된 이슈의 assignee_id 를 조회한다 (S8b 양성 대조군용). */
-    private fun readAssigneeIdOf(issueKey: String): UUID? =
+    private fun readAssigneeIdOf(issueKey: String): UUID? {
+        // ResultSet 은 Statement 가 닫힐 때 함께 닫힌다 — use 를 한 겹 줄여 NestedBlockDepth 를 피한다.
         conn().use { c ->
             c.prepareStatement("SELECT assignee_id FROM issues WHERE key = ?").use { stmt ->
                 stmt.setString(1, issueKey)
-                stmt.executeQuery().use { rs -> if (rs.next()) rs.getObject(1) as UUID? else null }
+                val rs = stmt.executeQuery()
+                return if (rs.next()) rs.getObject(1) as UUID? else null
             }
         }
+    }
 
     /** q_issue_events 큐에서 최대 10건을 읽어 반환한다(visibility_timeout=1초). */
     @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음

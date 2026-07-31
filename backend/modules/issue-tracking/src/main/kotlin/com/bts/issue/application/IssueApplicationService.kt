@@ -1706,6 +1706,24 @@ class IssueApplicationService(
      * @return 결정된 담당자 [ActorId]. 없으면 null.
      */
     @Suppress("ReturnCount") // current 조기 반환 + 정상 반환 — guard clause 패턴
+    private fun resolveDefaultAssignee(
+        projectId: UUID,
+        componentIds: List<UUID>,
+        current: ActorId?,
+    ): ActorId? {
+        if (current != null) return current
+        val componentIdSet = componentIds.toSet()
+        val candidates =
+            componentRepository.findByProject(projectId)
+                .filter { c -> c.id != null && c.id in componentIdSet && c.leadUserId != null }
+                .map { c ->
+                    val cid = c.id ?: error("component.id must not be null after DB read")
+                    ComponentLead(id = cid, name = c.name, leadUserId = c.leadUserId)
+                }
+        val projectLead = projectLeadRepository.findLeadUserId(projectId)
+        return DefaultAssigneeResolver.resolve(current = null, candidates = candidates, projectLeadUserId = projectLead)
+    }
+
     /**
      * 생성 시 담당자 지정 의도([AssigneeIntent]) 를 최종 담당자로 해석한다 (FR-UX-09 B1, ADR D-2).
      *
@@ -1738,24 +1756,6 @@ class IssueApplicationService(
                 ActorId(intent.userId)
             }
         }
-
-    private fun resolveDefaultAssignee(
-        projectId: UUID,
-        componentIds: List<UUID>,
-        current: ActorId?,
-    ): ActorId? {
-        if (current != null) return current
-        val componentIdSet = componentIds.toSet()
-        val candidates =
-            componentRepository.findByProject(projectId)
-                .filter { c -> c.id != null && c.id in componentIdSet && c.leadUserId != null }
-                .map { c ->
-                    val cid = c.id ?: error("component.id must not be null after DB read")
-                    ComponentLead(id = cid, name = c.name, leadUserId = c.leadUserId)
-                }
-        val projectLead = projectLeadRepository.findLeadUserId(projectId)
-        return DefaultAssigneeResolver.resolve(current = null, candidates = candidates, projectLeadUserId = projectLead)
-    }
 
     /**
      * 단건 조회 응답에 필드 수준 마스킹(열람) + 편집 불가 필드 표기를 적용한다 (FR-PM-07 Task-7 + Task-1).
