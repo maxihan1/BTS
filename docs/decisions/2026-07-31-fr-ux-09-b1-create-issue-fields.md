@@ -88,6 +88,47 @@
   발행 판정식은 "최종 `assigneeId` 가 non-null 인가" 단일 술어로 둔다.
 - **관련 사고 메모리.** `preseeded-event-producer-activates-notifications`
   — 사전 시드된 이벤트 생산자가 알림을 의도치 않게 활성화한 전례. 팬아웃 검증을 D5 에 포함한다.
+- **⚠️ 범위는 D-5 가 한정한다.** 아래 D-5 를 반드시 함께 읽을 것. "경로와 무관하게"는
+  `createIssue` 를 타는 **모든** 경로를 뜻하지 않는다.
+
+### D-5. D-4 의 적용 범위 — **REST 생성 경로만**. Import 제외, Clone 별건
+
+`IssueAssigned` 는 `POST /api/v1/issues`(사람의 생성 행위)에서만 발행한다.
+
+| 경로 | 진입점 | D-4 적용 |
+|---|---|---|
+| REST 생성 | `IssueController.create:192` | ✅ **발행** |
+| Import 반입 | `IssueImportAdapter.kt:534` | ❌ **미발행** |
+| Clone 복제 | `cloneIssue`(별도 함수, `createIssue` 미경유) | ❌ 현행 유지 (별건) |
+
+**근거 — 스펙 단계 실측(G1).** Import 는 `createIssue` 로 이슈를 만든 **직후**
+`applyAssigneeIfPresent`(`:593-607`)가 `changeAssignee` 를 호출해 원본 담당자를 다시 지정한다.
+`changeAssignee` 는 이미 `IssueAssigned` 를 발행하므로(`:836`), D-4 를 무제한 적용하면
+
+1. `createIssue` 의 `resolveDefaultAssignee` 결과로 **1회** (신규 — 곧 덮어쓰일 임시 담당자)
+2. `changeAssignee` 의 원본 담당자 적용으로 **1회** (기존)
+
+= **이슈 1건당 2회**, 그중 첫 번째는 **사실이 아닌 알림**이다. 알림 억제 장치는 없다(grep 0건).
+대량 반입에서 알림함이 마비된다.
+
+**설계 — fail-safe 기본값.** 발행 여부를 `AppCreateIssueRequest` 의 필드로 표현하고
+**기본값을 「미발행」으로 둔다.**
+
+```kotlin
+/** IssueAssigned 발행 여부. 기본 false — 새 생산자가 생겨도 알림이 조용히 켜지지 않는다(D-5). */
+val notifyAssignment: Boolean = false,
+```
+
+REST 컨트롤러만 `true` 를 넘긴다. Import 는 기본값을 그대로 받아 아무 변경이 없다.
+기본값을 반대로 두면(기본 true + Import 가 opt-out) 미래의 신규 생산자가
+**알림을 켠 채로 태어난다** — 메모리 `preseeded-event-producer-activates-notifications` 의 재발.
+
+**기각안.** `IssueImportAdapter` 에서 이벤트를 사후 필터링 — 발행은 이미 일어난 뒤라
+구독자 쪽에 억제 로직이 필요해지고 BC 경계를 넘는다.
+
+**남는 비대칭 (기록).** `cloneIssue` 는 `includeAssignee=true` 로 담당자를 설정하면서도
+`IssueCreated` 만 발행한다(`:365`). "담당자가 정해지면 알린다"가 clone 에는 적용되지 않는다.
+**별건 후속**으로 남긴다.
 
 ## 영향
 

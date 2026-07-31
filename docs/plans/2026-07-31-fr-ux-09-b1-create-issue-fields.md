@@ -145,9 +145,36 @@ if (request.securityLevelId != null) {
 
 
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-31-fr-ux-09-b1-create-issue-fields.md](../specs/2026-07-31-fr-ux-09-b1-create-issue-fields.md)
+
+핵심 시나리오 3줄.
+- 담당자·우선순위·라벨을 `POST /issues` 1회 제출로 확정 (추가 PATCH 0회)
+- `assigneeId` 3-state — 생략=자동배정 유지 / 명시 null=미할당 확정 / 값=그 사용자
+- 담당자가 확정되면 `IssueAssigned` 발행. **단 REST 생성 경로만** (D-5)
+
+**응답 계약 무변경** — `IssueResponse` 가 `priority`·`priorityName`·`labels`·`assigneeId` 를
+이미 보유(`IssueResponse.kt:93-99`). OpenAPI 응답 스키마 diff **0**.
+
+**실측 확정 수치.** priority `1..5`(기본 3) · label 길이 `≤50` · label 개수 `≤20` ·
+미존재 담당자 → **422** `ASSIGNEE_NOT_FOUND`(`IssueExceptionHandler:452`) ·
+범위 밖 priority → **400**(Jakarta). DTO 어노테이션은 `UpdateIssueRequest:75-82` 와 동일하게 맞춘다.
+
+**아키텍처 제약 (명문 규칙).** 응용 계층은 `JsonNullable` 을 보지 않는다
+(`IssueApplicationRequests.kt:41`). 컨트롤러가 전용 sealed `AssigneeIntent{Auto,None,User}` 로 변환 —
+`toSecurityLevelPatch`(`IssueController.kt:957`) 선례.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). **공백 3건 발견, 1건이 ADR 개정(D-5)으로 이어짐.**
+형식적 흔들기 대신 **생산자 전수 실측**으로 수행.
+
+| # | 발견 | 처리 |
+|---|---|---|
+| **G1** | `createIssue` 생산자가 REST 하나가 아님 — `IssueImportAdapter.kt:534`. Import 는 생성 직후 `changeAssignee`(`:601`)로 담당자를 다시 지정하는데 그쪽이 이미 `IssueAssigned` 발행 → D-4 무제한 적용 시 **이슈당 2회**, 첫 번째는 곧 덮어쓰일 임시 담당자에 대한 **거짓 알림** | **★ADR D-5 신설** (Maxi 확정) — REST 만 발행. `notifyAssignment` **기본 false**(fail-safe) |
+| **G2** | `cloneIssue` 는 담당자를 설정하며 `IssueCreated` 만 발행(`:365`). `createIssue` 미경유라 자동 포함 안 됨 | **별건 후속** (ADR D-5 에 기록) |
+| **G3** | Import 가 담당자를 안 넘겨 `resolveDefaultAssignee` 가 컴포넌트 리드를 넣고, `applyAssigneeIfPresent` 는 원본 담당자 부재 시 조기 반환(`:599`) → **원본에 없던 담당자가 생김**(반입 충실도 위반). 이 PR 의 D-2 「명시 null」이 처방이나 FR-IM 수정 | **범위 밖 · 선재 결함 후보. TODOS 등재** |
 
 ## Plan (← /bts-plan 채움)
 
