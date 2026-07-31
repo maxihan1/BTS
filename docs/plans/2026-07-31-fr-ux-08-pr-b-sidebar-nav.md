@@ -358,8 +358,16 @@ E7 회귀가드 · `ProjectTree` 덮어쓰기 0건 · `useResolvedActiveProject`
 - `CHANGELOG.md` `[Unreleased]` **범위/상태/BC 요약 표**
 - **FR 총수 139 불변** (신설 아님)
 
+**★FR16-b — glossary 등재 2종 (2026-07-31 Maxi 게이트 1 승인).**
+`Maxi_wiki/BTS/glossary.md` 는 `_index.md` §동기화 규칙상 **수동 영역**이라 자동 미러 대상이 아니다.
+승인됐으므로 **`/bts-merge` 의 Obsidian 동기화 단계에서 직접 추가**한다 — 정의 원문은
+ADR `2026-07-30-fr-ux-08-project-switcher.md` §신규 용어 표 그대로.
+- **최근 프로젝트**(Recent Projects) — 스위처 **정렬 축 전용**, 사이드바 미노출
+- **최근 본 이슈**(Recent Issues) — 사이드바 "최근 항목"의 데이터 소스, **키만 영속**
+
 **검증**. `bash scripts/verify-master-plan.sh` EXIT **0** ·
-`grep -rn "assignee=me" apps/web/src docs/plan` **0건**
+`grep -rn "assignee=me" apps/web/src docs/plan` **0건** ·
+머지 후 `grep -c "최근 프로젝트\|최근 본 이슈" Maxi_wiki/BTS/glossary.md` **≥2**
 
 ---
 
