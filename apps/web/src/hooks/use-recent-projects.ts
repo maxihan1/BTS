@@ -62,7 +62,10 @@ function readStoredRecentProjects(): string[] {
     if (raw === null) return [...DEFAULT_RECENT_PROJECTS]
     const parsed: unknown = JSON.parse(raw)
     if (!isStringArray(parsed)) return [...DEFAULT_RECENT_PROJECTS]
-    return parsed.slice(0, MAX_RECENT_PROJECTS)
+    // 중복을 제거한 뒤 상한을 적용한다 (코드리뷰 CR2). push 경로에는 중복 제거가 있었으나
+    // 복원 경로에 없어, 수동 변조·과거 버전 잔재가 스위처에 같은 프로젝트를 두 번 렌더하고
+    // React `key` 중복 경고를 냈다. **중복 제거가 slice 보다 먼저**여야 상한이 정확히 채워진다.
+    return [...new Set(parsed)].slice(0, MAX_RECENT_PROJECTS)
   } catch {
     // JSON 파싱 실패 또는 스토리지 접근 불가 — 빈 목록으로 폴백
     return [...DEFAULT_RECENT_PROJECTS]

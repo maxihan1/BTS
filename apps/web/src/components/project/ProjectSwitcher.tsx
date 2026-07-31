@@ -78,7 +78,11 @@ export function ProjectSwitcher(): JSX.Element | null {
   // ⚠️ 이 훅은 읽기 전용이 아니다(`:85-91`) — 해소 출처가 `url`·`first` 면 저장값을 갱신한다.
   // 스위처는 상단바에 있어 전 인증 페이지에서 도므로, 첫 방문자가 어느 페이지로 들어와도
   // 활성 프로젝트가 앵커된다. 의도된 확장이다 (스펙 FR11-b).
-  const resolved = useResolvedActiveProject(searchProjectKey ?? pathProjectKey)
+  // ★ 경로 파라미터 우선 (코드리뷰 CR1). `ProjectTree` 도 `pathProjectKey ?? searchProjectKey`
+  // 이므로 **두 소비처의 우선순위가 반드시 같아야 한다** — 반대면 같은 화면에서 트리는 A 를
+  // 활성 표시하고 스위처는 B 를 표시한다. 경로가 이기는 쪽이 맞다(사용자가 그 프로젝트의
+  // 페이지에 실제로 있다). `resolveSwitcherLanding` 의 분기 순서와도 일치한다.
+  const resolved = useResolvedActiveProject(pathProjectKey ?? searchProjectKey)
   const activeKey = resolved.status === 'ready' ? resolved.projectKey : undefined
   const activeProject = projects?.find((p) => p.key === activeKey)
 
