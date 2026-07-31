@@ -304,6 +304,15 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        // FR-UX-09 B1 (ADR D-4 + D-5) — 담당자가 확정됐고 REST 생성 경로일 때만 발행한다.
+        // 판정식은 「최종 assigneeId non-null AND notifyAssignment」 단일 술어다.
+        // notifyAssignment 를 빼면 Import 반입에서 이슈당 2회 발행된다
+        // (createIssue 자동배정 1회 + 직후 changeAssignee 1회, 첫 번째는 곧 덮어쓰일 거짓 알림).
+        if (request.notifyAssignment && resolvedAssignee != null) {
+            eventPublisher.publish(
+                IssueAssigned(issueKey = saved.key, actorId = actor, occurredAt = Instant.now(clock)),
+            )
+        }
         recordHistory(before = null, after = saved, actor = actor, projectId = projectId)
         log.info("issue_created key={} typeId={} actor={}", saved.key.value, resolvedTypeId.value, actor.value)
         return saved
