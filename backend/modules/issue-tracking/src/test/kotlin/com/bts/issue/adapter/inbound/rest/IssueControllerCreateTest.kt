@@ -313,6 +313,20 @@ class IssueControllerCreateTest {
         postCreate(mapOf("labels" to listOf("A".repeat(51)))).andExpect(status().isBadRequest)
     }
 
+    // ★E6 — 공백만 있는 라벨. 길이 상한은 통과하지만 도메인 require(isNotBlank) 에 걸린다.
+    //   DTO 에서 막지 않으면 IssueExceptionHandler 에 IllegalArgumentException 핸들러가 없어 500 이 된다.
+    @Test
+    fun `POST 이슈 생성 — 공백만 있는 label 이면 400`() {
+        postCreate(mapOf("labels" to listOf("   "))).andExpect(status().isBadRequest)
+    }
+
+    // 빈 문자열은 도메인이 필터링 대상으로 삼으므로(Issue.kt:371) 400 이 아니다 — 대비 축.
+    @Test
+    fun `POST 이슈 생성 — 빈 문자열 label 은 400 이 아니다`() {
+        stubSuccessfulCreate()
+        postCreate(mapOf("labels" to listOf(""))).andExpect(status().isCreated)
+    }
+
     // ── 경계 통과 (양성 대조군) ────────────────────────────────────────────
 
     @Test
