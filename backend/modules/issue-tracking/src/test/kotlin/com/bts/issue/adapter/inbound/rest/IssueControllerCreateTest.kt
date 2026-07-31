@@ -208,4 +208,96 @@ class IssueControllerCreateTest {
             .andExpect(jsonPath("$.data.summary").value("정상 요약"))
             .andExpect(header().string("Location", "/api/v1/issues/ATLAS-1"))
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // FR-UX-09 B1 — priority / labels Jakarta 검증 (S5·E8)
+    //
+    // 어노테이션 문구·상한은 UpdateIssueRequest:75-82 와 동일하게 맞춘다.
+    // ★상한만 막고 경계를 안 보면 off-by-one 을 놓친다 — 통과해야 하는 경계도 함께 단언한다.
+    // ──────────────────────────────────────────────────────────────────────
+
+    /** 정상 생성 경로 stub. 400 이 아님을 확인하는 경계 테스트에서 서비스까지 도달하므로 필요하다. */
+    private fun stubSuccessfulCreate() {
+        val fixedNow = Instant.parse("2026-05-26T00:00:00Z")
+        val issueKey = IssueKey("ATLAS-1")
+        val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+        val stubIssue =
+            Issue(
+                id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
+                key = issueKey,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
+                summary = "정상 요약",
+                reporterId = actorId,
+                currentStateKey = "open",
+                version = 1L,
+                deletedAt = null,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+                typeId = IssueTypeId(3L),
+            )
+        val stubResponse =
+            IssueResponse(
+                key = "ATLAS-1",
+                id = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                projectKey = "ATLAS",
+                summary = "정상 요약",
+                currentStateKey = "open",
+                reporterId = actorId.value,
+                version = 1L,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+                typeId = 3L,
+                typeKey = "task",
+                typeName = "Task",
+            )
+        every { issueApplicationService.createIssue(any(), any()) } returns stubIssue
+        every { issueApplicationService.findByKey(any(), issueKey) } returns stubResponse
+    }
+
+    private fun postCreate(extra: Map<String, Any?>) =
+        mockMvc.perform(
+            post("/api/v1/issues")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("projectKey" to "ATLAS", "summary" to "유효한 요약") + extra,
+                    ),
+                ),
+        )
+
+    @Test
+    fun `POST 이슈 생성 — priority 가 0 이면 400`() {
+        postCreate(mapOf("priority" to 0)).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — priority 가 6 이면 400`() {
+        postCreate(mapOf("priority" to 6)).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — labels 가 21개이면 400`() {
+        postCreate(mapOf("labels" to (1..21).map { "label$it" })).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — label 하나가 51자이면 400`() {
+        postCreate(mapOf("labels" to listOf("A".repeat(51)))).andExpect(status().isBadRequest)
+    }
+
+    // ── 경계 통과 (양성 대조군) ────────────────────────────────────────────
+
+    @Test
+    fun `POST 이슈 생성 — priority 경계값 1 과 5 는 400 이 아니다`() {
+        stubSuccessfulCreate()
+        postCreate(mapOf("priority" to 1)).andExpect(status().isCreated)
+        postCreate(mapOf("priority" to 5)).andExpect(status().isCreated)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — labels 경계값 20개 와 50자 는 400 이 아니다`() {
+        stubSuccessfulCreate()
+        postCreate(mapOf("labels" to (1..20).map { "label$it" })).andExpect(status().isCreated)
+        postCreate(mapOf("labels" to listOf("A".repeat(50)))).andExpect(status().isCreated)
+    }
 }
