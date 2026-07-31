@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.project.repository.ProjectLeadRepository
@@ -467,6 +468,54 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
                 verify(exactly = 1) { watcherRepository.add(any(), explicitAssignee) }
                 verify(exactly = 2) { watcherRepository.add(any(), any()) }
+            }
+
+            // ──────────────────────────────────────────────────────────
+            // FR-UX-09 B1 — IssueAssigned 발행 게이트 (ADR D-4 + D-5)
+            //
+            // ★2×2 행렬을 전수 단언한다. (notifyAssignment=true, 담당자 non-null) 하나만 보면
+            //   게이트가 실제로 "막는지" 는 검증되지 않는다.
+            //   notifyAssignment=false 행이 곧 Import 경로 회귀 가드다.
+            // ──────────────────────────────────────────────────────────
+
+            it("notify=true + 담당자 non-null 이면 IssueAssigned 를 1회 발행한다") {
+                sut.createIssue(
+                    actor,
+                    request.copy(assignee = AssigneeIntent.User(explicitAssignee), notifyAssignment = true),
+                )
+
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            it("notify=true 인데 담당자가 null 이면 IssueAssigned 를 발행하지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None, notifyAssignment = true))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            // ★Import 경로 회귀 가드 — notifyAssignment 기본값(false)이 이 행이다.
+            it("notify=false 면 담당자가 있어도 IssueAssigned 를 발행하지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            it("notify=false + 담당자 null 이면 IssueAssigned 를 발행하지 않는다") {
+                sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            // ★IssueCreated 는 4케이스 전부 1회 — 무회귀.
+            it("IssueCreated 는 notify 값과 무관하게 항상 1회 발행된다") {
+                sut.createIssue(actor, request.copy(notifyAssignment = true))
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueCreated }) }
+
+                clearMocks(eventPublisher, answers = false)
+                every { eventPublisher.publish(any()) } returns Unit
+
+                sut.createIssue(actor, request.copy(notifyAssignment = false))
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueCreated }) }
             }
         }
 
