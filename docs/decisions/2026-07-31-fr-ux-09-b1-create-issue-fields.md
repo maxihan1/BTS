@@ -142,3 +142,47 @@ REST 컨트롤러만 `true` 를 넘긴다. Import 는 기본값을 그대로 받
 - **생성 경로 필드 게이트 부재** — D-3 이 남긴 비대칭. `summary` 등 기존 필드까지 포함해
   `createIssue` 전반에 FR-PM-07 을 적용할지는 폭발 반경이 커 별도 PR. TODOS 등재.
 - **optional 필드 권한 규칙 이원화** — D-1 이 남긴 성질. `securityLevelId` 만 게이트가 있다.
+
+### D-6. 도메인 `require` 실패의 500 — **생성 경로만** 400 보장 (2026-07-31 Maxi 확정)
+
+구현 중 실측으로 드러난 선재 결함에 대한 범위 결정이다.
+
+**실측 3건.**
+1. `CreateIssueRequest`/`UpdateIssueRequest` 의 `List<@Size(max = 50) String>` **컨테이너 원소 제약은
+   동작하지 않는다.** 51자 라벨이 400 이 아니라 도메인까지 내려간다
+   (`IssueApplicationServiceTest.kt:955` 가 *"도메인 검증"* 이라 적어둔 게 증거).
+2. `IssueExceptionHandler` 에 `IllegalArgumentException` 핸들러가 **없다**.
+   기존 핸들러 2개(`BulkOperationExceptionHandler:99`·`EpicChildExceptionHandler:104`)는
+   각자 자기 패키지 스코프라 `IssueController` 를 덮지 않는다 → **500**.
+3. 라벨 **개수** 제한(`@field:Size(max = 20)`)은 정상 동작한다. 원소 제약만 무효다.
+
+**결정.** 생성 경로는 `CreateIssueRequest.isLabelsLengthValid`(`@AssertTrue`)로 **길이 + 공백-only**
+둘 다 400 으로 막는다. 수정 경로(`PATCH`)의 동일한 선재 500 은 **TODOS 등재 후 이연**.
+
+- **기각.** 전역 `IllegalArgumentException → 400` 핸들러 — 진짜 버그까지 400 으로 위장해
+  살아있어야 할 500 을 숨긴다(`catch-all-exceptionhandler-swallows-responsestatusexception` 계열).
+- **동작하지 않는 어노테이션은 복사하지 않았다.** 형제와 문자 단위로 맞추면 새 경로도 같은 500 을
+  물려받는다. 「선례 일치」보다 「실제 동작」이 우선이다.
+- **공백-only 는 별도 조건이다.** 길이만 막았을 때 `"   "` 가 여전히 500 이었다(E6 RED 로 실증).
+  빈 문자열(`""`)은 도메인이 필터링하므로 400 대상이 아니다 — 대비 축으로 함께 단언했다.
+
+## 구현 실측 (PR #328 완료 시점)
+
+| 항목 | 값 |
+|---|---|
+| FR 수 | 불변 **139** (`verify-master-plan.sh` EXIT 0) |
+| 마이그레이션 | **0** |
+| 프론트 `apps/web` | **0 파일** |
+| `package.json` | diff **0** |
+| cross-BC | **0 파일** (issue-tracking 단일) |
+| 응답 스키마 | diff **0** (`OpenApiContractTest.C1b`) |
+| **알림 동작** | **무회귀 아님** — D-4 로 `IssueAssigned` 신규 발행(REST 한정) |
+| 테스트 | 307 클래스 / **3245건** / 실패 0 |
+| ktlint · detekt | EXIT **0** (`--rerun-tasks`) |
+| TDD `test:`→`feat:` | **8쌍** 기계 검증 |
+| 뮤테이션 | **M1·M2·M3 전량 red**, 원복 후 green |
+
+**D-3 준수 실측.** `createIssue` 내 `assertEditableOrForbidden` 호출 **0건**
+(파일 전체 3건 — `changeAssignee` 등 수정 경로에만. 양성 대조군).
+**C1 준수 실측.** 응용 계층의 `JsonNullable` import **0건** / 코드 사용 **0건**
+(KDoc 언급 6건은 결합이 아니다). 컨트롤러엔 1건 — 양성 대조군.

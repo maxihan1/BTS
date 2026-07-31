@@ -1525,3 +1525,83 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 **선행 조건.** 「사이드바를 접은 채 쓰는 사용자 비율」에 대한 실사용 신호. 그 전에는 추측 구현이다.
 **착수 시 읽을 것.** 스펙 `docs/specs/2026-07-30-fr-ux-08-project-switcher.md` §8-A D-B · D-C.
+
+---
+
+## issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (FR-UX-09 B1 의 **의도된 이연** · 미착수)
+
+> **⚠️ 결함이지만 이 PR 이 만든 게 아니다.** FR-UX-09 B1 이 **생성 경로만** 봉합했다.
+
+**무엇.** `PATCH /api/v1/issues/{key}` 에 51자 라벨 또는 공백-only 라벨을 보내면
+도메인 `Issue.validateAndNormalizeLabels`(`Issue.kt:370-379`)의 `require` 가
+`IllegalArgumentException` 을 던지는데, `IssueExceptionHandler`
+(`@RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])`)에
+**`IllegalArgumentException` 핸들러가 없어 500** 이 된다. 사용자 입력 오류가 서버 장애로 기록된다.
+
+**실측 (2026-07-31).**
+- `IllegalArgumentException` 핸들러는 `BulkOperationExceptionHandler:99` · `EpicChildExceptionHandler:104`
+  **둘뿐이고 각자 자기 패키지 스코프**다. `IssueController` 는 어느 쪽도 안 덮는다
+- `UpdateIssueRequest.kt:80` 의 `List<@Size(max = 50) String>` **컨테이너 원소 제약은 동작하지 않는다**
+  (장식). 그래서 51자가 400 으로 안 걸리고 도메인까지 내려간다.
+  `IssueApplicationServiceTest.kt:955` 가 *"도메인 검증"* 이라고 적어둔 게 그 증거다
+
+**왜 지금 안 고치나.** 2026-07-31 **Maxi 확정 D-6 = A안**(생성 경로만 400 보장).
+전역 `IllegalArgumentException → 400` 핸들러는 **진짜 버그까지 400 으로 위장**해
+살아있어야 할 500 을 숨긴다(`catch-all-exceptionhandler-swallows-responsestatusexception` 계열).
+
+**생성 경로는 어떻게 닫았나.** `CreateIssueRequest.isLabelsLengthValid` (`@AssertTrue`) —
+컨테이너 원소 제약을 복사하지 않고 실제로 동작하는 방식으로 길이 + 공백-only 를 400 으로 막았다.
+
+**착수 시 선택지.** ① `UpdateIssueRequest` 에도 동일한 `@AssertTrue` (좁고 안전, 비대칭 해소)
+② 도메인에 전용 예외 타입 신설 후 422 매핑 (근본적, 폭발 반경 큼)
+**착수 시 읽을 것.** ADR `docs/decisions/2026-07-31-fr-ux-09-b1-create-issue-fields.md` §D-6 배경.
+
+---
+
+## issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (미착수)
+
+**무엇.** `cloneIssue` 는 `assigneeId = if (request.includeAssignee) source.assigneeId else null`
+로 담당자를 설정하면서 `IssueCreated` 만 발행한다(`IssueApplicationService.kt` clone 블록).
+FR-UX-09 B1 이 `createIssue` 에 「담당자가 확정되면 `IssueAssigned`」를 넣었으나
+**clone 은 `createIssue` 를 경유하지 않는 별도 함수**라 자동으로 포함되지 않았다.
+
+**결과.** 복제로 배정받은 사용자는 알림을 못 받는다. 같은 「배정」인데 경로에 따라 알림이 갈렸다.
+
+**왜 지금 안 하나.** ADR D-5 가 범위를 **REST 생성 경로**로 한정했다(2026-07-31 Maxi 확정).
+clone 은 별건으로 남긴다 — 회귀 표면과 PR 범위를 동시에 넓히지 않기 위해서다.
+
+**착수 시 주의.** clone 은 대량 복제 시나리오가 있으므로 `notifyAssignment` 같은
+**명시적 게이트 없이 무조건 발행하면 안 된다**. D-5 와 같은 fail-safe 기본값을 쓸 것.
+
+---
+
+## search-export-import — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
+
+**무엇.** `IssueImportAdapter` 는 `createIssue` 에 담당자를 넘기지 않는다(`:537-544`).
+그러면 `resolveDefaultAssignee` 가 컴포넌트/프로젝트 리드를 담당자로 넣는다.
+이후 `applyAssigneeIfPresent` 는 `resolution.assigneeId ?: return currentVersion`(`:599`) 이라
+**원본에 담당자가 없으면 그냥 반환**한다 → 자동 배정 담당자가 그대로 남는다.
+
+**결과.** 반입된 이슈가 원본에 없던 담당자를 갖는다. **반입 충실도(fidelity) 위반.**
+
+**처방이 이미 있다.** FR-UX-09 B1 이 도입한 `AssigneeIntent.None`(명시 미할당)을
+Import 가 넘기면 자동 배정이 꺼진다. 코드 1줄 수준이나 **FR-IM 스펙 확인이 선행**이다
+(「원본에 담당자가 없으면 미할당이어야 한다」가 명시돼 있는지).
+
+**착수 시 읽을 것.** `IssueImportAdapterTest` 의 `S8b` 테스트가 자동 배정 발동 픽스처를 이미 갖고 있다.
+
+---
+
+## issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (선재 · 미착수)
+
+**무엇.** `CreateIssueRequest.componentIds: List<UUID> = emptyList()` 는 기본값이 있는데도
+springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생성된 클라이언트가
+`componentIds` 를 강제한다.
+
+**어떻게 발견.** FR-UX-09 B1 의 `assigneeId`(`JsonNullable<UUID>`)에서 **같은 함정**이 재현돼
+`OpenApiContractTest.C1b` 가 잡았다. `assigneeId` 는
+`@field:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)` 로 봉합했으나
+`componentIds` 는 이 PR 범위 밖이라 그대로 뒀다.
+
+**주의.** 기본값이 있는 non-null Kotlin 프로퍼티는 **전부 같은 함정**이다.
+다른 DTO 에도 있는지 전수 조사가 필요하다(이번엔 `CreateIssueRequest` 만 봤다).
