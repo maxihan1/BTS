@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useActiveProject } from './use-active-project'
+import { useRecentProjects } from './use-recent-projects'
 import { useProjects } from './use-projects'
 
 /**
@@ -34,6 +35,7 @@ import { useProjects } from './use-projects'
 export function useTrackActiveProject(enabled: boolean): void {
   const params = useParams({ strict: false }) as { projectKey?: unknown }
   const setActiveProject = useActiveProject((s) => s.setActiveProject)
+  const pushRecentProject = useRecentProjects((s) => s.pushRecentProject)
   const { data: projects } = useProjects(false, { enabled })
 
   const raw = params.projectKey
@@ -48,5 +50,10 @@ export function useTrackActiveProject(enabled: boolean): void {
     if (!isKnownProject) return
     // 같은 값이면 스토어가 no-op 한다(E7) — 여기서 중복 가드를 또 두지 않는다
     setActiveProject(projectKey)
-  }, [enabled, projectKey, isKnownProject, setActiveProject])
+    // ★ 최근 목록도 **같은 가드 아래**에서 기록한다 (FR-UX-08 FR3).
+    // 이 줄을 위 세 가드 밖으로 빼거나 별도 훅으로 분리하면, 저장값 생산 지점이 둘이 되고
+    // 가드가 한쪽에만 걸린 상태가 된다 — CR3 가 정확히 그 결함이었다.
+    // 이미 맨 앞이면 스토어가 no-op 한다(E5).
+    pushRecentProject(projectKey)
+  }, [enabled, projectKey, isKnownProject, setActiveProject, pushRecentProject])
 }

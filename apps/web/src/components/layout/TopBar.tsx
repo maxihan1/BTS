@@ -4,6 +4,7 @@ import { PanelLeftClose, PanelLeftOpen, Search, Plus, HelpCircle, Settings } fro
 import { navLabels } from '@/i18n/nav-labels'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { InboxBell } from '@/components/inbox/InboxBell'
+import { ProjectSwitcher } from '@/components/project/ProjectSwitcher'
 import { AccountMenu } from './AccountMenu'
 import { Button } from '@/components/ui/button'
 
@@ -17,7 +18,8 @@ export interface TopBarProps {
 }
 
 /**
- * 상단바(48px 고정) — 좌→우: 사이드바 토글 · 로고(Atlas, →`/dashboards`) · 검색
+ * 상단바(48px 고정) — 좌→우: 사이드바 토글 · 로고(Atlas, →`/dashboards`) ·
+ * {@link ProjectSwitcher}(FR-UX-08 F12, `role="listbox"` — **`<nav>` 아님**) · 검색
  * (`aria-label="검색"`, 상단바 단일) · 만들기(→`/issues/new`) · 알림(`InboxBell`) · 도움말 ·
  * 설정(→`/settings` 인덱스) ·
  * 계정 드롭다운(`AccountMenu`).
@@ -53,6 +55,8 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         </span>
         Atlas
       </Link>
+
+      <ProjectSwitcher />
 
       <Button
         type="button"

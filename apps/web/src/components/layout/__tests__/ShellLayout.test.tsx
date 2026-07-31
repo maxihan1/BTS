@@ -28,6 +28,9 @@ vi.mock('@tanstack/react-router', () => ({
   // 라우터 컨텍스트 없는 isolation 렌더에서도 크래시하지 않도록 빈 파라미터로 모킹한다
   // (Sidebar.test.tsx 동일 패턴, 셸 랜드마크 계약과 무관).
   useParams: () => mockParams,
+  // 같은 이유로 ProjectTree가 `useSearch({strict:false})`도 호출한다(FR-UX-08 FR7 —
+  // `/issues?projectKey=` 검색 파라미터까지 활성 프로젝트 근거로 읽는다).
+  useSearch: () => ({}),
   Link: ({
     to,
     children,
@@ -215,12 +218,32 @@ describe('ShellLayout', () => {
 
   it('경로 파라미터가 없으면 활성 프로젝트를 건드리지 않는다 (/issues 등)', () => {
     useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
-    useActiveProject.setState({ activeProjectKey: 'ATLAS' })
+    // ★ 저장값은 **접근 가능 목록에 실재하는** 키여야 한다 (시드는 INFRA 하나).
+    // 예전에는 여기가 'ATLAS'(목록에 없는 키)였는데, FR-UX-08 이 상단바에 ProjectSwitcher 를
+    // 배선하면서 `useResolvedActiveProject` 가 전 페이지에서 돌게 됐다. 그 훅은 낡은 저장값을
+    // 폴백 ③(첫 프로젝트)으로 **교정**하므로(FR-UX-07 스펙 E3) 'ATLAS'는 'INFRA'로 바뀐다 —
+    // 스펙대로 맞는 동작이고, 이 테스트가 검증하려던 `useTrackActiveProject` 가드와는 무관한
+    // 교란 요인이었다. 유효한 키를 쓰면 교정이 일어나지 않아 가드만 단독으로 검증된다.
+    useActiveProject.setState({ activeProjectKey: 'INFRA' })
     mockParams = {}
 
     renderShell()
 
-    expect(useActiveProject.getState().activeProjectKey).toBe('ATLAS')
+    expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
+  })
+
+  it('FR-UX-08 FR11-b: 상단바 스위처가 낡은 저장값을 전 페이지에서 교정한다 (의도된 확장)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    // 접근 불가한 저장값 — 삭제·아카이브·권한 회수된 프로젝트를 흉내낸다
+    useActiveProject.setState({ activeProjectKey: 'GONE' })
+    mockParams = {}
+
+    renderShell()
+
+    // ★ 조용한 행동 변화로 두지 않고 단언으로 못박는다. FR-UX-07 이전에는 이 교정이
+    // `/issues`·`/search` 라우트에서만 일어났으나, 스위처가 상단바에 있어 이제 전 인증
+    // 페이지에서 일어난다. 첫 방문자가 어느 페이지로 들어와도 활성 프로젝트가 앵커된다.
+    expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
   })
 
   it('미인증이면 목록이 이미 있어도 기록하지 않는다 (공개 공유 라우트, effect 가드)', () => {

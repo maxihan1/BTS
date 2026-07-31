@@ -20,6 +20,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useActiveProject } from '../use-active-project'
+import { useRecentProjects } from '../use-recent-projects'
 import { useTrackActiveProject } from '../use-track-active-project'
 
 /**
@@ -60,6 +61,8 @@ describe('useTrackActiveProject — 경로 파라미터 기록기 (B1 + CR3)', (
   beforeEach(() => {
     localStorage.clear()
     useActiveProject.setState({ activeProjectKey: null })
+    // FR-UX-08 T3 — 최근 목록도 모듈 전역 zustand 싱글턴이라 테스트 간 누출을 차단한다
+    useRecentProjects.setState({ recentProjectKeys: [] })
     mockParams = {}
     projectsCalls = 0
     server.use(
@@ -167,5 +170,58 @@ describe('useTrackActiveProject — 경로 파라미터 기록기 (B1 + CR3)', (
 
     // 덮어썼다면 이 시점에 이미 'TYPO' 다 — 동기 단언으로 충분
     expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // FR-UX-08 PR-A Task 3 — 최근 프로젝트 기록 (FR3)
+  //
+  // ★ 기록 지점을 늘리지 않는다. 새 훅을 만들면 저장값 생산 지점이 둘이 되어
+  //   CR3 가 걸었던 결함("가드가 한쪽에만 있음")이 그대로 재발한다. 그래서
+  //   아래 세 테스트의 핵심은 "활성값과 최근 목록이 **같은 가드 아래** 있는가" 다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('T-TR-8 (FR3): 경로 파라미터 키를 활성값과 최근 목록에 함께 기록한다', () => {
+    mockParams = { projectKey: 'INFRA' }
+
+    renderTracker(true) // 캐시 선주입 → effect 즉시 실행
+
+    expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
+    expect(useRecentProjects.getState().recentProjectKeys).toEqual(['INFRA'])
+  })
+
+  it('T-TR-9 (FR3 + CR3 핵심): 접근 불가 키는 최근 목록에도 들어가지 않는다', () => {
+    mockParams = { projectKey: 'INFRA' }
+    const { rerender } = renderTracker(true)
+
+    // 양성 대조군 — 정상 키는 두 곳 모두에 기록된다
+    expect(useRecentProjects.getState().recentProjectKeys).toEqual(['INFRA'])
+
+    // 목록이 확정된 상태에서 접근 불가 키로 이동한다 (/projects/TYPO/board, 404)
+    mockParams = { projectKey: 'TYPO' }
+    rerender()
+
+    // ★ 가드가 두 기록 지점을 모두 덮어야 한다. push 를 가드 밖에 두면 여기서 TYPO 가 샌다.
+    expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
+    expect(useRecentProjects.getState().recentProjectKeys).toEqual(['INFRA'])
+  })
+
+  it('T-TR-10 (FR3): 미인증이면 최근 목록도 건드리지 않는다', () => {
+    mockParams = { projectKey: 'INFRA' }
+
+    renderTracker(false) // 선주입 — isKnownProject 가 우회로가 되지 못하는 상태
+
+    expect(useActiveProject.getState().activeProjectKey).toBeNull()
+    expect(useRecentProjects.getState().recentProjectKeys).toEqual([])
+  })
+
+  it('T-TR-11 (FR3, S3): 여러 프로젝트를 오가면 최근 목록이 MRU 순으로 쌓인다', () => {
+    mockParams = { projectKey: 'INFRA' }
+    const { rerender } = renderTracker(true)
+    expect(useRecentProjects.getState().recentProjectKeys).toEqual(['INFRA'])
+
+    mockParams = { projectKey: 'ATLAS' }
+    rerender()
+
+    expect(useRecentProjects.getState().recentProjectKeys).toEqual(['ATLAS', 'INFRA'])
   })
 })

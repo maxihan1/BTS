@@ -215,7 +215,22 @@ FR-UX-07 1 + 이관 16 = 17 PR, chore 10 PR 을 더해 **27 PR** — 로드맵 �
 승계 PR 2건 (로드맵 §PR 체인 Tier 2).
 
 - **F12 — 프로젝트 스위처 + 트리 펼침 영속.** §4.5 가 활성 프로젝트라는 컨텍스트를 만들었지만 그것을 **손으로 바꿀 UI 가 없다**. 신규 `components/project/ProjectSwitcher.tsx` · `TopBar.tsx` · `ProjectTree.tsx:368-370` · 신규 `hooks/use-recent-projects.ts`.
-- **F17 — 사이드바 "내 작업"(프로젝트 스코프) + "최근 항목".** `i18n/nav-labels.ts:9` 의 제외 주석을 해제하고 `Sidebar.tsx:47-51` 에 배선한다. 지라의 cross-project "내 작업"은 로드맵 B3 로 제외됐으므로 v1 은 **활성 프로젝트 스코프**(`?assignee=me`)로 낸다.
+- **F17 — 사이드바 "내 작업"(프로젝트 스코프) + "최근 항목".** `i18n/nav-labels.ts:9` 의 제외 주석을 해제하고 `Sidebar.tsx:47-51` 에 배선한다. 지라의 cross-project "내 작업"은 로드맵 B3 로 제외됐으므로 v1 은 **활성 프로젝트 스코프**(`?assignee=<whoami.userId>`)로 낸다.
+
+**PR 분할 (2026-07-30 Maxi 확정).** 위 승계 PR 2건을 그대로 두 PR 로 낸다 — 두 그룹은 **변경 파일 교집합이 0** 이다.
+
+| PR | 로드맵 | 범위 |
+|---|---|---|
+| **PR-A** (#326) | **F12** | 프로젝트 스위처 + 트리 펼침 영속 + 선재 갭 해소 |
+| **PR-B** (후속) | **F17** | 사이드바 "내 작업"·"최근 항목" + nav 라벨 전수 판별식 |
+
+D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[x]` 가 된다. PR-A 는 FR 카운트·D 마커·진척 열을 건드리지 않는다. **PR-B 는 PR-A 머지 후 착수**한다 — 코드 파일은 안 겹치지만 이 문서·스펙·plan 세 문서를 공유한다.
+
+> **★ 위 F17 의 `?assignee=` 표기는 2026-07-30 실측으로 정정됐다.** 원문은 `?assignee=me` 였으나 **`me` 센티널은 실재하지 않는다** — `IssueFilterQueryParser.kt:42` 가 인정하는 센티널은 `unassigned` 하나뿐이고 그 외 값은 UUID 로 파싱해 실패 시 **400** 이다. 정정 후는 `?assignee=<whoami.userId>` — `WhoamiResponse.userId`(`api/schemas.ts:22`) + 선례 `useGadgetData.ts:92-107` `assigneeIds: [userId]`. **신규 API 0 전제는 그대로 유지된다.** 정정 노트만 달고 원문을 남기면 PR-B 가 틀린 전제 위에서 만들어지므로 **원문 자체를 고쳤다.**
+>
+> **★ D1 의 "최근 프로젝트" 는 스위처 내부 정렬 축 전용이다.** 사이드바 "최근 항목"은 **최근 본 이슈**다 — 사이드바에 이미 전체 프로젝트 트리가 있어 중복이기 때문(ADR §D1).
+>
+> 상세는 [ADR 2026-07-30-fr-ux-08-project-switcher](../../decisions/2026-07-30-fr-ux-08-project-switcher.md) (D1~D6) · [스펙](../../specs/2026-07-30-fr-ux-08-project-switcher.md) (§11 PR 분할).
 
 **아키텍처**. 프론트 전용 (기존 `useProjects()` 소비, 신규 API 0). 🛑 **스위처를 `<nav>` 로 만들면 안 된다** — `프로젝트` 가 기존 `aria-label="프로젝트 뷰 전환"` 의 substring 이라 `getByRole('navigation')` 계약과 충돌한다. `components/ui/popover.tsx`(현재 소비처 0) + `role="listbox"` 가 정답이다. localStorage 영속은 `hooks/use-sidebar-collapsed.ts:15-45`(zustand + fail-safe 3중 폴백) 템플릿을 §4.5 와 같은 방식으로 복제한다.
 
