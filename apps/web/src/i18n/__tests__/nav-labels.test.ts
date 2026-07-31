@@ -52,20 +52,28 @@ describe('navLabels', () => {
     })
   })
 
-  describe('S3 — 백킹 없는 항목 제외 회귀 가드', () => {
-    it('myWork 키가 없다', () => {
-      expect(Object.keys(navLabels)).not.toContain('myWork')
+  describe('S3 — 백킹 유무에 따른 항목 게이팅 (FR-UX-08 PR-B 에서 2건 반전)', () => {
+    // ⚠️ 이 블록을 통째로 지우지 말 것 (FR14-b).
+    // S3 원 규칙은 "백킹 라우트·기능이 없는 항목(내 작업·최근·필터)은 포함하지 않는다.
+    // 각 항목은 해당 기능 FR 에서 추가한다" 였다. FR-UX-08 PR-B 가 앞의 **둘에만**
+    // 실 라우트를 부여했으므로 2건은 존재 단언으로 반전하고 2건은 부재 단언을 유지한다.
+    // 블록째 삭제하면 filters·projects 가 가드를 잃는다 — "봉인은 절반만 닫힌다" 양식.
+
+    it('myWork 키가 존재하고 "내 작업"이다 (FR-UX-08 PR-B 에서 추가 — /issues?assignee= 백킹)', () => {
+      expect(Object.keys(navLabels)).toContain('myWork')
+      expect(navLabels.myWork).toBe('내 작업')
     })
 
-    it('recent 키가 없다', () => {
-      expect(Object.keys(navLabels)).not.toContain('recent')
+    it('recent 키가 존재하고 "최근 항목"이다 (FR-UX-08 PR-B 에서 추가 — /issues/$key 백킹)', () => {
+      expect(Object.keys(navLabels)).toContain('recent')
+      expect(navLabels.recent).toBe('최근 항목')
     })
 
-    it('filters 키가 없다', () => {
+    it('filters 키가 없다 (백킹 라우트 없음 — 가드 유지)', () => {
       expect(Object.keys(navLabels)).not.toContain('filters')
     })
 
-    it('projects 키가 없다', () => {
+    it('projects 키가 없다 (백킹 라우트 없음 — 가드 유지)', () => {
       expect(Object.keys(navLabels)).not.toContain('projects')
     })
   })
