@@ -176,6 +176,230 @@ if (request.securityLevelId != null) {
 | **G2** | `cloneIssue` 는 담당자를 설정하며 `IssueCreated` 만 발행(`:365`). `createIssue` 미경유라 자동 포함 안 됨 | **별건 후속** (ADR D-5 에 기록) |
 | **G3** | Import 가 담당자를 안 넘겨 `resolveDefaultAssignee` 가 컴포넌트 리드를 넣고, `applyAssigneeIfPresent` 는 원본 담당자 부재 시 조기 반환(`:599`) → **원본에 없던 담당자가 생김**(반입 충실도 위반). 이 PR 의 D-2 「명시 null」이 처방이나 FR-IM 수정 | **범위 밖 · 선재 결함 후보. TODOS 등재** |
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모든 task 는 `agent: backend-engineer` (헤더 기본값). 파일 경로는 repo 루트 기준.
+> 축약. `IT/` = `backend/modules/issue-tracking/src/`
+
+### Task 1. `AssigneeIntent` sealed 타입 + `AppCreateIssueRequest` 확장
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`, `IT/test/kotlin/com/bts/issue/application/IssueApplicationRequestsTest.kt`]
+- depends-on: []
+
+**RED**. `IssueApplicationRequestsTest`
+- `AssigneeIntent` 3분기(`Auto`/`None`/`User(uuid)`)가 존재한다
+- **`AppCreateIssueRequest` 를 기존 인자만으로 생성하면 `assignee == AssigneeIntent.Auto` · `priority == null` · `labels == null` · `notifyAssignment == false`**
+- 실패 예상. `AssigneeIntent` 클래스 없음
+
+**GREEN**. `IssueApplicationRequests.kt`
+- `sealed interface AssigneeIntent { data object Auto; data object None; data class User(val userId: UUID) }`
+- `AppCreateIssueRequest` 에 `assignee: AssigneeIntent = Auto` · `priority: Int? = null` · `labels: List<String>? = null` · `notifyAssignment: Boolean = false` 추가
+
+**REFACTOR**. KDoc — `notifyAssignment` 기본 false 사유(fail-safe, D-5)를 주석으로 고정
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueApplicationRequestsTest'`
+
+> ★이 task 의 기본값 단언이 **측정 기준 9**(신규 생산자가 알림을 조용히 켜지 못함)의 회귀 가드다.
+
+---
+
+### Task 2. `createIssue` — `priority`·`labels` 배선
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `IT/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`]
+- depends-on: [1]
+
+**RED**.
+- `priority=1`·`labels=["urgent"]` 전달 → 저장된 Issue 에 반영 (E9 대응)
+- **생략 시** `priority == 3`(`PRIORITY_DEFAULT`) · `labels == []` — **무회귀 가드**
+
+**GREEN**. `Issue.create(...)` 호출에 `priority = request.priority ?: PRIORITY_DEFAULT` 상당 ·
+`labels = request.labels ?: emptyList()` 전달. **`Issue.create` 시그니처 변경 금지**(C2)
+
+**REFACTOR**. `createIssue` 가 이미 `@Suppress("LongMethod")` — 길이 임계 재확인, 초과 시 헬퍼 분리
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueApplicationServiceTest'`
+
+---
+
+### Task 3. `createIssue` — `assigneeId` 3-state
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `IT/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`]
+- depends-on: [2]
+
+**RED**. (E1·E2·E3)
+- `Auto` → `resolveDefaultAssignee` 결과가 담당자
+- `None` → 담당자 `null` **이고 `resolveDefaultAssignee` 가 호출되지 않는다** (mock verify — 「값이 null」만 보면 자동배정이 null 을 낸 경우와 구분 불가. **양성 대조군** = 컴포넌트 리드가 있어 Auto 면 담당자가 붙는 픽스처)
+- `User(u)` → 담당자 `u`, `resolveDefaultAssignee` 미호출
+
+**GREEN**. `when (request.assignee)` 분기로 `resolvedAssignee` 결정
+
+**REFACTOR**. 분기를 `private fun resolveAssignee(...)` 로 추출
+
+**검증**. 위와 동일
+
+> ★`None` 단언에 **호출 여부 verify** 를 반드시 넣는다. 값만 보면 공허한 테스트가 된다
+> (메모리 — `waitFor` t=0 즉시통과 / 뮤테이션 M4 계열).
+
+---
+
+### Task 4. `createIssue` — 명시 담당자 존재 검증 (422)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `IT/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`]
+- depends-on: [3]
+
+**RED**. (S4·E10)
+- `User(미존재 UUID)` → `AssigneeNotFoundException`
+- **이슈가 저장되지 않는다** (`repo.insert` 미호출 verify — 예외만 보면 롤백 여부를 모른다)
+- `Auto` 경로는 `userLookupPort.exists` 를 **호출하지 않는다** (자동배정 결과는 이미 유효 사용자)
+
+**GREEN**. `User` 분기에서만 `userLookupPort.exists(id)` → 미존재 시 `AssigneeNotFoundException`.
+**키 시퀀스 증가 이후·`repo.insert` 이전**에 배치(불필요한 키 소비를 줄이려면 더 앞이 낫지만,
+`resolveDefaultAssignee` 와 같은 지점에 두는 편이 읽기 쉽다 — 구현 시 판단 후 근거 기록)
+
+**REFACTOR**. KDoc 의 `@throws` 에 `AssigneeNotFoundException` 추가
+
+**검증**. 위와 동일
+
+---
+
+### Task 5. `createIssue` — `IssueAssigned` 발행 (`notifyAssignment` 게이트)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `IT/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`]
+- depends-on: [4]
+
+**RED**. (S6·S7·E14 — **2×2 행렬 전수**)
+
+| `notifyAssignment` | 최종 assignee | 기대 |
+|---|---|---|
+| `true` | non-null | `IssueAssigned` **1회** |
+| `true` | null | **0회** |
+| `false` | non-null | **0회** ← Import 회귀 가드 |
+| `false` | null | **0회** |
+
+`IssueCreated` 는 **4케이스 전부 1회**(무회귀).
+
+**GREEN**. `if (notifyAssignment && resolvedAssignee != null) publish(IssueAssigned(...))`.
+발행 위치는 `IssueCreated` 직후, `recordHistory` 이전
+
+**REFACTOR**. 판정식을 한 줄 주석으로 고정 — "최종 assigneeId non-null **AND** REST 경로(D-5)"
+
+**검증**. 위와 동일
+
+> ★행렬 4칸을 **전부** 단언한다. `true/non-null` 만 보면 게이트가 실제로 막는지 검증되지 않는다
+> (메모리 — 가드×핸들러 행렬 눈가리개).
+
+---
+
+### Task 6. REST DTO `CreateIssueRequest` 3필드 + Jakarta 검증
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/adapter/inbound/rest/CreateIssueRequest.kt`, `IT/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTest.kt`]
+- depends-on: []
+
+**RED**. (S5·E8) — 전부 **400**
+- `priority=0` · `priority=6` · `labels` 21개 · label 51자
+- **경계 통과 확인** — `priority=1` · `priority=5` · labels 20개 · label 50자는 **400 이 아니다**
+  (양성 대조군 — 상한만 막고 경계를 안 보면 off-by-one 을 놓친다)
+
+**GREEN**. `assigneeId: JsonNullable<UUID> = JsonNullable.undefined()` ·
+`@field:Min(1) @field:Max(5) priority: Int? = null` ·
+`@field:Size(max=20) labels: List<@Size(max=50) String>? = null`
+— **`UpdateIssueRequest:75-82` 와 문자 단위로 동일한 메시지 문구** 사용
+
+**REFACTOR**. KDoc `@property` 3건 추가, 3-state 시맨틱 명시
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueControllerTest'`
+
+---
+
+### Task 7. 컨트롤러 배선 + `toAssigneeIntent`
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `IT/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTest.kt`]
+- depends-on: [1, 6]
+
+**RED**. (FR3·FR6')
+- 키 생략 → `AssigneeIntent.Auto` / 명시 `null` → `None` / 값 → `User(uuid)`
+- **`notifyAssignment = true` 로 전달된다** (D-5 — REST 만 발행)
+- `priority`·`labels` 가 그대로 전달된다
+
+**GREEN**. `toAssigneeIntent(raw: JsonNullable<UUID>): AssigneeIntent` 를
+`toSecurityLevelPatch`(`:957`) **바로 옆**에 배치. `AppCreateIssueRequest(... , notifyAssignment = true)`
+
+**REFACTOR**. 헬퍼 KDoc — 3-state 매핑표
+
+**검증**. 위와 동일
+
+> ★C1 — 이 task 가 `JsonNullable` 누출 차단의 유일한 지점이다.
+> `IssueApplicationRequests.kt` 에 `JsonNullable` import 가 **0건**임을 grep 으로 확인한다.
+
+---
+
+### Task 8. 통합 테스트 — S1~S8 + Import 회귀
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerIntegrationTest.kt`]
+- depends-on: [5, 7]
+
+**RED/GREEN**. (테스트만 추가 — 프로덕션 코드 변경 없음)
+- **S1** 1회 제출로 3필드 확정, 추가 PATCH 0회
+- **S2** 3필드 생략 시 기존 응답과 동일
+- **S3** 명시 null → 미할당 (컴포넌트 리드 존재 픽스처)
+- **S4** 미존재 담당자 → 422 `ASSIGNEE_NOT_FOUND` + 이슈 미생성
+- **S6/S7** 알림 발행 유무
+- **S8 (★Import 회귀)** — `IssueImportAdapter` 경유 반입 1건당 `IssueAssigned` 발행 횟수가
+  **이 PR 전후 동일**. 자동배정이 발동하는 픽스처(컴포넌트 리드 존재)로 측정
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueControllerIntegrationTest'`
+
+---
+
+### Task 9. OpenAPI 계약 — 요청 3필드 · **응답 diff 0**
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`IT/test/kotlin/com/bts/issue/adapter/inbound/rest/OpenApiContractTest.kt`]
+- depends-on: [7]
+
+**RED/GREEN**.
+- 요청 스키마에 `assigneeId`·`priority`·`labels` 존재 + 전부 **optional**(required 미포함)
+- **응답 스키마 `IssueResponse` diff 0** (C3)
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*OpenApiContractTest'`
+
+---
+
+### 구현 후 전수 실측 (task 아님 — codereview 게이트 입력)
+
+- 마이그레이션 **0** · 프론트 **0줄** · `package.json` diff **0** · cross-BC **0**
+- `IssueApplicationRequests.kt` 의 `JsonNullable` import **0건** (C1)
+- `assertEditableOrForbidden` 호출이 `createIssue` 에 **0건** (D-3 준수 확인)
+- **E6 미해결 확인** — `labels=["   "]`(공백만) 요청의 실제 상태코드 실측.
+  400 이 아니면 **선재 결함으로 보고**하고 범위 편입 여부 Maxi 확인
+
+## Plan 메타
+
+- **task 수. 9**
+- **예상 wave. 6** — W1[T1,T6] → W2[T2,T7] → W3[T3,T9] → W4[T4] → W5[T5] → W6[T8]
+- **★병렬 이득 제한적.** 9 task 전부 `issue-tracking` **단일 Gradle 모듈**이라 컴파일이 직렬화된다
+  (메모리 `bts-plan-wave-gradle-module-compile`). wave 는 논리적 순서 보장용으로만 쓰고
+  시간 단축은 기대하지 않는다
+- **직렬 파일 3개.** `IssueApplicationService.kt`(T2→T3→T4→T5) ·
+  `IssueController.kt`(T7) · `IssueControllerTest.kt`(T6→T7)
+- TDD 강제. **yes** — `test:` → `feat:` 커밋 쌍 9세트 기계 검증
+- 추가 검증. `ktlintCheck` · `detekt` (프론트 도구 해당 없음 — 백엔드 단일)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
