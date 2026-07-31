@@ -318,7 +318,11 @@ FR-UX-07 이 **활성 프로젝트**를 세웠지만 **그것을 바꿀 UI 가 �
 - [ ] **FR15 판별식이 비-공허하다** — `navLabels` 에 일부러 충돌 라벨(예 `'프로젝트 뷰'`)을 넣으면 새 테스트가 **실제로 red**
 - [ ] **FR14-b 부분 반전이 양방향으로 실증된다** — `myWork`/`recent` 를 지우면 red · `filters`/`projects` 를 추가하면 red (**둘 다** 확인, 한쪽만이면 봉인 절반)
 - [ ] **FR15-b 통합 실증** — `i18n/nav-labels.test.ts` 가 삭제되고 그 단언이 `i18n/__tests__/nav-labels.test.ts` 에 살아 있다 (`breadcrumb` 비충돌 단언이 전수 판별식에 흡수됐는지 확인)
-- [ ] `grep -rn "assignee=me" apps/web/src docs/plan` → **0건**
+- [ ] `grep -rn "assignee=me" apps/web/src docs/plan` 결과가 **전부 「실재하지 않는다」를 설명하는
+      정정 노트**이고 **실제 사용 표기 0건**이다
+      (2026-07-31 정정 — 원안은 "0건"이었으나 그건 **충족 불가능한 기준**이다. 정정 노트가
+      틀린 표기를 인용해야 다음 세션이 같은 함정에 빠지지 않는데, 리터럴 0을 요구하면 그
+      노트까지 지워야 한다. 판별 대상은 「인용」이 아니라 「사용」이다)
 - [ ] `bts.recent-issues` 저장값이 이슈 키 형태(`^[A-Z][A-Z0-9]*-\d+$`)만 담는다 (제목 미저장 실증)
 - [ ] **`getByRole('navigation')` 개수 불변** — `navigation-contract.test.tsx` aria-label 4종 가드 green (FR13-b)
 - [ ] `shortcuts.test.ts` **무수정** green
