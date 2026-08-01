@@ -771,6 +771,14 @@ export const issueCreateStrings = {
   createProjectCta: '프로젝트 만들기',
   /** 담당자로 지정한 사용자가 존재하지 않을 때 (422 ASSIGNEE_NOT_FOUND) */
   errorAssigneeNotFound: '지정한 담당자를 찾을 수 없습니다.',
+  /** 생성 모달 제목 — role="dialog" 의 고유 접근성 이름이 된다 (NFR-1) */
+  dialogTitle: '새 이슈 만들기',
+  /** 생성 모달 취소 버튼 */
+  cancelButton: '취소',
+  /** 생성 성공 토스트 — {key} 를 이슈 키로 치환한다 (FR-16) */
+  createdToast: '이슈를 만들었습니다',
+  /** 생성 성공 토스트의 보기 액션 */
+  createdToastAction: '보기',
 } as const
 
 /** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
