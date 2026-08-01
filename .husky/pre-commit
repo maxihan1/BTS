@@ -1,1 +1,12 @@
 pnpm exec lint-staged
+
+# 문서 인덱스 자가진단 — 메모리는 저장소 밖이라 CI 가 볼 수 없다. 커밋 시점에 여기서 잡는다.
+#   --check 는 파일을 쓰지 않는다. 커밋에 예상치 못한 파일이 끼어드는 것을 막기 위함이다.
+#   `pnpm exec` 를 쓰지 않는다 — worktree 에서 심볼릭 node_modules 를 건드려 main 을 오염시킨 전례가 있다.
+if ! node scripts/build-doc-index.mjs --check > /dev/null 2>&1; then
+  echo "" >&2
+  echo "FAIL. 문서 인덱스가 최신이 아니다." >&2
+  node scripts/build-doc-index.mjs --check 2>&1 | grep -E '^(FAIL|WARN|  -)' >&2
+  echo "  → node scripts/build-doc-index.mjs 를 실행하고 다시 커밋할 것." >&2
+  exit 1
+fi
