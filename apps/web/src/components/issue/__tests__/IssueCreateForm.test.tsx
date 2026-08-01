@@ -10,6 +10,8 @@ import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { issueHandlers } from '@/mocks/issue-handlers'
 // 담당자 검색(GET /api/v1/users) — IssueAssigneeSelect 후보 목록의 출처
 import { userHandlers } from '@/mocks/user-handlers'
+// 고른 담당자 id 단언용 — user-fixtures 의 alice(표시 이름 '김앨리스') id
+import { ALICE_USER_ID } from '@/mocks/auth-fixtures'
 import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomField } from '@/api/custom-fields.types'
@@ -357,5 +359,101 @@ describe('IssueCreateForm — 담당자 후보는 검색해야 나온다', () =>
     await user.type(screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder), 'al')
 
     expect(await screen.findByRole('button', { name: '김앨리스' })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 게이트 2 B-1 — 담당자 검색창 Enter 가 폼을 제출하면 안 된다
+//
+// `IssueAssigneeSelect` 의 검색 input 은 이슈 상세에서는 `<form>` 밖이라 Enter 가 무해했다.
+// F2 가 **처음으로 폼 안에** 넣으면서 HTML 암묵적 제출(implicit submission)이 살아났다.
+// 사용자가 이름을 검색하려고 Enter 를 치면 이슈가 그대로 만들어진다.
+//
+// ★가드가 과잉이면 안 된다 — 제목 칸의 Enter 제출은 살아 있어야 한다. 두 테스트가 짝이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateForm — 담당자 검색창 Enter (게이트 2 B-1)', () => {
+  it('담당자 검색창에서 Enter 를 눌러도 이슈가 만들어지지 않는다', async () => {
+    const user = userEvent.setup()
+    const onSuccess = vi.fn()
+    renderForm(onSuccess)
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '검색 중 제출 금지')
+    await user.type(
+      screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      '김{Enter}',
+    )
+
+    // 제출이 걸렸다면 이 사이에 mutation 이 끝나 onSuccess 가 불린다
+    await waitFor(() => expect(screen.getByLabelText(issueCreateStrings.summaryLabel)).toBeInTheDocument())
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
+
+  it('★제목 칸에서 Enter 는 그대로 제출한다 — 가드가 과잉 차단하면 안 된다', async () => {
+    const user = userEvent.setup()
+    const onSuccess = vi.fn()
+    renderForm(onSuccess)
+
+    await waitForProjectSelect()
+    await user.type(
+      screen.getByLabelText(issueCreateStrings.summaryLabel),
+      '제목에서 엔터{Enter}',
+    )
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 게이트 2 B-2 — 고른 담당자 이름이 검색어 변경에 흔들리면 안 된다
+//
+// 현재 담당자를 `useUsers(검색어)` 결과에서 find() 하면, 검색어를 바꾸는 순간 골라둔 사람이
+// 목록에서 빠져 화면이 「미지정」으로 뒤집힌다. 전송값은 멀쩡한데 **표시만 거짓말**을 한다.
+// ★이슈 상세가 이미 겪고 고친 결함이다 (`routes/issues.$key.tsx` 의 `C1 버그 수정` 주석).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateForm — 고른 담당자 표시 유지 (게이트 2 B-2)', () => {
+  /** 담당자 검색 → 김앨리스 선택까지. */
+  async function pickAlice(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder), 'al')
+    await user.click(await screen.findByRole('button', { name: '김앨리스' }))
+  }
+
+  it('고른 직후 담당자 이름이 즉시 보인다 (깜빡임 없음)', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await pickAlice(user)
+
+    expect(screen.getByTestId('assignee-current-name').textContent).toBe('김앨리스')
+  })
+
+  it('다른 이름으로 검색어를 바꿔도 현재 담당자 이름이 유지된다', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await pickAlice(user)
+    const search = screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder)
+    await user.clear(search)
+    await user.type(search, 'bob')
+
+    // 검색 결과가 bob 으로 갈린 뒤에도 현재 담당자는 그대로여야 한다
+    await screen.findByRole('button', { name: 'bob' })
+    expect(screen.getByTestId('assignee-current-name').textContent).toBe('김앨리스')
+  })
+
+  it('고른 담당자의 id 가 본문 assigneeId 로 실린다 (3-state 「값」 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    renderForm()
+
+    await pickAlice(user)
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+    expect(body.get()['assigneeId']).toBe(ALICE_USER_ID)
   })
 })
