@@ -510,10 +510,12 @@ import('./scripts/doc-index/classify.mjs').then(async ({classify, splitFrHistory
 });
 "
 ```
-Expected: `FR축: 174 | 카테고리: 204` 그리고
-`{ workflow: 55, backend: 52, 'cross-bc': 33, frontend: 32, build: 27, uncategorized: 5 }`
+Expected: `FR축: 179 | 카테고리: 199` 그리고
+`{ workflow: 55, backend: 52, 'cross-bc': 33, frontend: 32, build: 27 }` (uncategorized 없음)
 
-수치가 다르면 **멈추고 원인을 찾는다.** 스펙 §검토 이력의 시뮬레이션 결과와 일치해야 한다.
+수치가 다르면 **멈추고 원인을 찾는다.** 다만 **스펙 초안의 시뮬레이션 값(174/204/5)을 기대값으로
+삼지 않는다** — 그 값은 수동 오버라이드 적용 전이라 실제와 다르다 (스펙 §검토 이력 R3).
+스펙이 적은 개수는 눈가리개가 될 수 있다. 실측이 정본이다.
 
 - [ ] **Step 6: 커밋**
 
@@ -757,9 +759,8 @@ main();
 Run: `node scripts/build-doc-index.mjs`
 Expected:
 ```
-→ 메모리 378건 = FR축 174 + 카테고리 204
-→ 분포. {"workflow":55,"backend":52,"cross-bc":33,"frontend":32,"build":27,"uncategorized":5}
-WARN. uncategorized 5건 — 눈으로 확인해 분류할 것.
+→ 메모리 378건 = FR축 179 + 카테고리 199
+→ 분포. {"workflow":55,"backend":52,"cross-bc":33,"frontend":32,"build":27}
 PASS. 고아 0 · 깨진 링크 0.
 ```
 
@@ -845,7 +846,7 @@ Expected: `category=` 값이 `workflow|backend|cross-bc|frontend|build|fr-histor
 `SKIP` 이 나오면 그 파일을 눈으로 확인한다.
 
 Run: `node scripts/doc-index/backfill.mjs --dry | grep -c 'priority=critical'`
-Expected: `45`
+Expected: `34` (실측. 스펙 초안의 45는 `★` 를 줄 전체로 오판정한 값이다 — §검토 이력 R3)
 
 - [ ] **Step 3: 실제 실행**
 
@@ -1315,8 +1316,12 @@ Expected: `sed -n '9p'` 가 `| 2026-… | … |` 형태 → 주입 시 `# fail 1
 
 - [ ] **Step 5: 룰 K 주입 — 없는 파일을 가리키는 링크를 넣는다**
 
+주입에 **가짜 FR ID 를 쓰지 않는다.** 이 계획 문서 자체가 스캔 대상이라, 정본에 없는 FR 을
+적으면 생성기가 매번 "정본에 없는 FR" 경고를 뱉는다 (그 경고를 설명하는 문장조차 유발한다).
+실재하는 FR 을 쓰고 **링크만** 깨뜨린다.
+
 ```bash
-echo "| FR-ZZ-99 | [2099-12-31](/docs/specs/2099-12-31-ghost.md) | — | — | — |" >> docs/INDEX-fr.md
+echo "| FR-CO-01 | [2099-12-31](/docs/specs/2099-12-31-ghost.md) | — | — | — |" >> docs/INDEX-fr.md
 node --test scripts/workflow/doc-index-coverage.test.ts 2>&1 | grep -E '^# (pass|fail)'
 git checkout docs/INDEX-fr.md
 ```

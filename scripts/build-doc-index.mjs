@@ -3,10 +3,23 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { MEMORY_DIR, AUTOGEN_HEADER } from './doc-index/config.mjs';
+import { MEMORY_DIR, REPO_ROOT, SOURCES, AUTOGEN_HEADER } from './doc-index/config.mjs';
 import { parseFrontmatter, parseLegacyIndex } from './doc-index/parse-memory.mjs';
-import { classify, partition } from './doc-index/classify.mjs';
-import { renderRouter, renderCategoryIndex, auditOrphans } from './doc-index/render.mjs';
+import { classify, partition, frIdOf } from './doc-index/classify.mjs';
+import {
+  parseDocMeta,
+  groupByFr,
+  groupByDate,
+  readCanonicalFrIds,
+} from './doc-index/scan-docs.mjs';
+import {
+  renderRouter,
+  renderCategoryIndex,
+  renderFrIndex,
+  renderRecentIndex,
+  renderDocsRouter,
+  auditOrphans,
+} from './doc-index/render.mjs';
 
 /**
  * 승계 원천을 읽는다.
@@ -85,6 +98,60 @@ function main() {
     fs.writeFileSync(path.join(indexDir, `${cat}.md`), renderCategoryIndex(cat, entries));
   }
 
+  // --- docs 인덱스 ---
+  const docs = [];
+  const stats = {};
+  for (const src of SOURCES) {
+    const dir = path.join(REPO_ROOT, src.dir);
+    const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
+    stats[src.key] = files.length;
+    for (const f of files) {
+      const meta = parseDocMeta(f, fs.readFileSync(path.join(dir, f), 'utf8'));
+      docs.push({ ...meta, kind: src.key, file: `${src.dir}/${f}` });
+    }
+  }
+  // memory 열은 **전체 메모리**에서 FR ID 로 모은다. 카테고리 분류와 무관하다.
+  //   fr-co-01-…-done 은 사람이 `백엔드` 그룹에 등록해 category=backend 지만,
+  //   FR-CO-01 을 작업할 때 반드시 보여야 한다. 두 축은 서로 배타적이지 않다 —
+  //   "FR 로 찾을 때"와 "백엔드 작업할 때" 양쪽에 나오는 것이 맞다.
+  const memoryByFr = new Map();
+  for (const e of all) {
+    const frId = frIdOf(e.slug);
+    if (!frId) continue;
+    if (!memoryByFr.has(frId)) memoryByFr.set(frId, []);
+    memoryByFr.get(frId).push(e.slug);
+  }
+  // FR 정본은 docs/plan/{fr-index.md,product/*.md} 다. 그 밖의 FR ID 는 오타이거나 폐기된 것이다.
+  // 조용히 버리지 않고 rejected 로 노출한다 — 버리기만 하면 오타를 영영 못 잡는다.
+  const planDir = path.join(REPO_ROOT, 'docs/plan');
+  const canonicalSrc = [fs.readFileSync(path.join(planDir, 'fr-index.md'), 'utf8')];
+  for (const f of fs.readdirSync(path.join(planDir, 'product')).filter((x) => x.endsWith('.md'))) {
+    canonicalSrc.push(fs.readFileSync(path.join(planDir, 'product', f), 'utf8'));
+  }
+  const canonical = readCanonicalFrIds(...canonicalSrc);
+  const { rows: frRows, rejected } = groupByFr(docs, canonical);
+  const frBody = renderFrIndex(frRows, memoryByFr);
+  const recentBody = renderRecentIndex(groupByDate(docs));
+  fs.writeFileSync(path.join(REPO_ROOT, 'docs/INDEX.md'), renderDocsRouter(stats));
+  fs.writeFileSync(path.join(REPO_ROOT, 'docs/INDEX-fr.md'), frBody);
+  fs.writeFileSync(path.join(REPO_ROOT, 'docs/INDEX-recent.md'), recentBody);
+
+  // docs 고아 — 렌더 **결과 문자열**에 실제로 나타나는지로 판정한다.
+  //
+  // ★ 여기서 `docs.map(d => d.file)` 같은 입력 배열로 검사하면 안 된다. 시간축은 입력 전량을
+  //   받으므로 차집합이 정의상 항상 공집합이 되어, 렌더가 통째로 망가져도 "고아 0"이 뜬다.
+  //   0 이 나오는 판별식은 먼저 판별식을 의심하라 — 렌더 산출물을 봐야 비-공허하다.
+  const docOrphans = docs.filter((d) => !recentBody.includes(`| ${d.slug} |`));
+  console.log(
+    `→ docs ${docs.length}건. FR축 ${frRows.length}/${canonical.size} FR · 시간축 등록 ${docs.length - docOrphans.length} · 고아 ${docOrphans.length}`,
+  );
+  if (rejected.length) {
+    console.warn(
+      `WARN. 정본에 없는 FR ID ${rejected.length}건 (오타·폐기 의심, 인덱스에서 제외).`,
+      rejected,
+    );
+  }
+
   // --- 자가진단. CI 가 못 보는 층이므로 여기서 막는다 ---
   const indexed = [...categorized, ...frHistory.map((f) => f.slug)];
   const { orphans, broken } = auditOrphans(
@@ -104,6 +171,13 @@ function main() {
   const critMissing = critExpected.filter((s) => !routerBody.includes(`[[${s}]]`));
 
   let bad = false;
+  if (docOrphans.length) {
+    console.error(
+      `FAIL. docs 고아 ${docOrphans.length}건.`,
+      docOrphans.slice(0, 10).map((d) => d.file),
+    );
+    bad = true;
+  }
   if (critMissing.length) {
     console.error(
       `FAIL. ★(critical) ${critExpected.length}건 중 ${critMissing.length}건이 라우터에 없다.`,
