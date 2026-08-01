@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, splitFrHistory } from './classify.mjs';
+import { classify, splitFrHistory, frIdOf, partition } from './classify.mjs';
 
 test('classify — 승계(legacy)가 패턴보다 우선한다', () => {
   // 파일명 패턴으로는 workflow 지만, 사람이 backend 로 분류해 두었다
@@ -67,4 +67,53 @@ test('splitFrHistory — 수동 오버라이드 5건은 FR 축으로 간다', ()
   const { frHistory } = splitFrHistory(['fr-pj-pr-4-archive-done'], new Map());
   assert.equal(frHistory.length, 1);
   assert.equal(frHistory[0].frId, 'FR-PJ');
+});
+
+test('frIdOf — 표준 형식과 수동 오버라이드 둘 다 처리한다', () => {
+  assert.equal(frIdOf('fr-co-01-comment-create-list-done'), 'FR-CO-01');
+  assert.equal(frIdOf('fr-pj-pr-4-archive-done'), 'FR-PJ');
+  assert.equal(frIdOf('msw-dual-handler-e2e-shadow'), null);
+});
+
+test('partition — frontmatter category 가 승계·패턴보다 우선한다 (멱등성의 근거)', () => {
+  // backfill 이후에는 frontmatter 가 정본이다. 승계 원천(MEMORY.md)이 자동 생성본으로
+  // 바뀌어 legacy 가 비어도 분류 결과가 흔들리면 안 된다 — 재생성 diff 가 매번 달라진다.
+  const entries = [
+    { slug: 'fr-workflow-scheme-contract-align-done', category: 'backend' },
+    { slug: 'fr-co-01-comment-create-list-done', category: 'fr-history' },
+  ];
+  const { frHistory, categorized } = partition(entries, new Map());
+  assert.deepEqual(categorized, ['fr-workflow-scheme-contract-align-done']);
+  assert.deepEqual(
+    frHistory.map((f) => f.slug),
+    ['fr-co-01-comment-create-list-done'],
+  );
+});
+
+test('partition — frontmatter category 가 없으면 승계+패턴으로 판정한다', () => {
+  const legacy = new Map([['fr-admin-x-done', { category: 'workflow', star: false, hook: '' }]]);
+  const entries = [
+    { slug: 'fr-admin-x-done', category: '' },
+    { slug: 'fr-co-02-x-done', category: '' },
+  ];
+  const { frHistory, categorized } = partition(entries, legacy);
+  assert.deepEqual(categorized, ['fr-admin-x-done']);
+  assert.deepEqual(
+    frHistory.map((f) => f.slug),
+    ['fr-co-02-x-done'],
+  );
+});
+
+test('partition — 같은 입력이면 legacy 유무와 무관하게 같은 결과 (멱등)', () => {
+  const entries = [
+    { slug: 'fr-co-01-x-done', category: 'fr-history' },
+    { slug: 'jooq-init-codegen-mirror', category: 'backend' },
+  ];
+  const withLegacy = partition(entries, new Map([['fr-co-01-x-done', { category: 'workflow' }]]));
+  const without = partition(entries, new Map());
+  assert.deepEqual(withLegacy.categorized, without.categorized);
+  assert.deepEqual(
+    withLegacy.frHistory.map((f) => f.slug),
+    without.frHistory.map((f) => f.slug),
+  );
 });
