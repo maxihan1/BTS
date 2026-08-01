@@ -25,6 +25,19 @@ test('parseDocMeta — 날짜 접두가 없으면 date 는 빈 문자열', () =>
   assert.equal(parseDocMeta('README.md', '# R').date, '');
 });
 
+test('parseDocMeta — NFR-XX-NN 을 FR ID 로 오인하지 않는다', () => {
+  // NFR = Non-Functional Requirement. `FR-[A-Z]{2,3}-\d{2}` 는 NFR-SEC-01 의 뒷부분을 잘라
+  // FR-SEC-01 로 잡는다. 실제로 이 오탐 5건이 "정본에 없는 FR" 경고로 떴다 —
+  // 문서가 틀린 게 아니라 판별식이 틀렸다.
+  const d = parseDocMeta('2026-01-01-x.md', '# T\n\n- **NFR-SEC-01** Access JWT 는 sessionStorage\n- **NFR-SEC-02** Refresh 는 HttpOnly');
+  assert.deepEqual(d.frIds, []);
+});
+
+test('parseDocMeta — 진짜 FR 과 NFR 이 섞여 있으면 FR 만 뽑는다', () => {
+  const d = parseDocMeta('2026-01-01-x.md', '# T\n\nFR-CO-01 구현. NFR-SEC-03 은 별건.');
+  assert.deepEqual(d.frIds, ['FR-CO-01']);
+});
+
 test('groupByFr — 같은 FR 의 spec·plan 을 한 행으로 묶는다', () => {
   const rows = groupByFr([
     {
