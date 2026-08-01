@@ -29,7 +29,11 @@ test.describe('FR-PM-06 이슈 보안등급 (IssueSecurityLevelSelect)', () => {
   test('S1 생성 — 보안등급 Internal 선택 후 생성 시 상세 페이지에 반영', async ({ page }) => {
     // Given. 이슈 생성 폼 진입 + projectKey 입력 (등급 목록 로드 트리거)
     await page.goto('/issues/new')
-    await page.getByLabel(i18nLabels.issueCreate.projectKeyLabel).fill('ATLAS')
+    // FR-UX-09 F2 — 라우트가 생성 모달을 열고, 프로젝트는 셀렉터다
+    await page
+      .getByRole('dialog', { name: '새 이슈 만들기' })
+      .getByLabel(i18nLabels.issueCreate.projectKeyLabel)
+      .selectOption('ATLAS')
     await page.getByLabel(i18nLabels.issueCreate.summaryLabel).fill('보안등급 E2E 테스트 이슈')
 
     // When. 보안등급 셀렉터에서 Internal 선택

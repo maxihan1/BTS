@@ -59,7 +59,11 @@ export async function createIssueViaUI(
   summary = 'E2E 테스트용 이슈',
 ): Promise<string> {
   await page.goto('/issues/new')
-  await page.getByLabel(issueCreateStrings.projectKeyLabel).fill('ATLAS')
+  // FR-UX-09 F2 — 라우트가 생성 모달을 열고, 프로젝트는 자유 텍스트가 아니라 셀렉터다
+  await page
+    .getByRole('dialog', { name: '새 이슈 만들기' })
+    .getByLabel(issueCreateStrings.projectKeyLabel)
+    .selectOption('ATLAS')
   await page.getByLabel(issueCreateStrings.summaryLabel).fill(summary)
   await page.getByRole('button', { name: issueCreateStrings.submitButton }).click()
   // 상세 페이지로 redirect 대기 — mock fixture 의 key 사용 (변경 시 자동 동기화).

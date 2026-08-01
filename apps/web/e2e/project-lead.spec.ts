@@ -269,9 +269,13 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
     await loginAsAlice(page)
 
     // 이슈 생성 폼 진입 — goto 후 SW 활성 상태에서 seed
-    await page.goto('/issues/new')
-    const projectKeyInput = page.getByLabel(issueCreateStrings.projectKeyLabel)
-    await expect(projectKeyInput).toBeVisible()
+    // 시드는 **컴포넌트 목록을 건드리지 않는 화면**에서 한다. /issues 에서 시드하면
+    // 그 화면이 이미 컴포넌트 쿼리를 캐시해, staleTime 때문에 이후 SPA 이동에서
+    // 재조회가 걸리지 않아 시드가 반영되지 않는다.
+    await page.goto('/dashboard')
+    // 시드 전에 앱(MSW ServiceWorker)이 뜰 때까지 기다린다 — 상단바 만들기 버튼이 그 신호다.
+    // 기다리지 않고 시드하면 핸들러가 아직 없어 500 이 돌아온다.
+    await expect(page.getByRole('button', { name: '만들기' })).toBeVisible()
 
     // ATLAS 프로젝트 리드=alice seed (goto 후 SW 활성 상태)
     await seedProjectLead(page, PROJECT_KEY, ATLAS_PROJECT_UUID, ALICE_USER_ID)
@@ -285,7 +289,22 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
     await seedComponentStore(page, PROJECT_KEY, [COMP_NO_LEAD])
 
     // 프로젝트 키 입력 — ComponentMultiSelect 활성화
-    await projectKeyInput.fill(PROJECT_KEY)
+
+    // FR-UX-09 F2 — 라우트가 생성 모달을 열고, 프로젝트는 자유 텍스트가 아니라 셀렉터다.
+    // 프로젝트가 **자동 선택**되면서 useComponents 가 마운트 직후 발사되므로,
+    // 시드를 먼저 하고 **페이지 리로드 없이** SPA 이동으로 들어간다
+    // (custom-fields.spec.ts:328 검증된 패턴 — page.goto 는 SW 를 재시작해 store 를 날린다).
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/issues/new')
+      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
+    })
+
+    // 상단바 ProjectSwitcher 와 이름이 겹치므로 모달 안으로 범위를 한정한다.
+    const projectKeyInput = page
+      .getByRole('dialog', { name: '새 이슈 만들기' })
+      .getByLabel(issueCreateStrings.projectKeyLabel)
+    await expect(projectKeyInput).toBeVisible()
+    await projectKeyInput.selectOption(PROJECT_KEY)
 
     // 이슈 제목 입력
     const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel)
