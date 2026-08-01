@@ -18,6 +18,12 @@
 # | skill-type-coverage            | scripts/workflow/types.ts · bts-review-plan/SKILL.md | scripts/workflow/** · .claude/skills/** |
 # | todos-resolved-section-purity  | TODOS.md                                 | TODOS.md |
 # | ci-runner-label-alignment      | .github/workflows/*.yml                  | .github/workflows/** |
+# | doc-index-coverage             | docs/** · scripts/doc-index/** · 이 파일  | docs/** · scripts/doc-index/** |
+#
+# `docs/plan/product/**` 는 2026-08-01 `docs/**` 로 넓혔다 — doc-index 판별식이 docs 전역
+# (plans·specs·decisions·adr)을 읽기 때문이다. 좁은 경로를 남겨두면 그 상위만 바꾸는 PR 에서
+# 판별식이 0회 실행된다. 이 정합은 이제 doc-index-coverage 의 룰 L 이 기계로 검사한다 —
+# SOURCES 에 디렉토리를 추가하고 여기 paths 를 안 고치면 CI 가 빨간불이 된다.
 #
 # `docs/plan/product/**` 와 `.claude/skills/**` 는 2026-07-30 이전까지 **어느 워크플로우도
 # 걸지 않던 선재 갭**이었다. #320 이 그 사각을 실증했다 — docs/** 와 apps/web/** 만 건드려
@@ -37,7 +43,8 @@ on:
       - 'scripts/workflow/**'
       - '.github/workflows/**'
       - '.claude/skills/**'
-      - 'docs/plan/product/**'
+      - 'docs/**'
+      - 'scripts/doc-index/**'
       - 'backend/**'
       - 'apps/web/vite.config.ts'
       - 'apps/web/playwright.config.ts'
@@ -52,7 +59,8 @@ on:
       - 'scripts/workflow/**'
       - '.github/workflows/**'
       - '.claude/skills/**'
-      - 'docs/plan/product/**'
+      - 'docs/**'
+      - 'scripts/doc-index/**'
       - 'backend/**'
       - 'apps/web/vite.config.ts'
       - 'apps/web/playwright.config.ts'
