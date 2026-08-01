@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { navLabels } from '@/i18n/nav-labels'
+import { issueCreateStrings } from '@/i18n/ko'
 import { inboxLabels } from '@/i18n/inbox-labels'
 import { TopBar } from '../TopBar'
 
@@ -118,12 +119,17 @@ describe('TopBar', () => {
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/search' })
   })
 
-  it('만들기 버튼 클릭 시 /issues/new로 이동한다', async () => {
+  it('만들기 버튼 클릭 시 URL 을 바꾸지 않고 제자리에서 생성 모달이 열린다 (FR-12)', async () => {
     const user = userEvent.setup()
     renderTopBar()
 
     await user.click(screen.getByRole('button', { name: navLabels.create }))
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/new' })
+
+    // 보드를 보던 사용자가 이슈 하나 만들려다 화면을 떠나면 안 된다
+    expect(mockNavigate).not.toHaveBeenCalled()
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
+    ).toBeInTheDocument()
   })
 
   it('사이드바가 펼쳐진 상태(collapsed=false)면 토글 버튼 aria-label이 "사이드바 접기"다', async () => {

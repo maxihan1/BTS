@@ -576,3 +576,50 @@ describe('IssueCreateForm', () => {
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-11 — 딥링크 라우트가 같은 모달을 열린 상태로 렌더한다 (design 리뷰 D3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateRouteAdapter — 딥링크가 모달을 연다 (FR-11)', () => {
+  beforeEach(() => {
+    server.use(...issueHandlers, ...componentHandlers, ...projectHandlers, ...issueTypeHandlers)
+    mockNavigate.mockReset()
+    mockUseSearch.mockReturnValue({})
+    vi.mocked(useCustomFields).mockReturnValue(
+      EMPTY_CUSTOM_FIELDS_RESULT as unknown as ReturnType<typeof useCustomFields>,
+    )
+  })
+
+  it('/issues/new 진입 시 생성 모달이 열린 상태로 렌더된다', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
+    ).toBeInTheDocument()
+  })
+
+  it('모달을 닫으면 /issues 로 이동한다 — 딥링크로 들어와 뒤로 갈 곳이 없을 수 있다', async () => {
+    const user = userEvent.setup()
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle })
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.cancelButton }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues' }))
+  })
+})
