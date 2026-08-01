@@ -23,12 +23,18 @@ import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
 import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
 import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
 import { IssueTypeSelect } from '@/components/issue/meta/IssueTypeSelect'
+import { IssueAssigneeSelect } from '@/components/issue/meta/IssueAssigneeSelect'
+import { IssuePrioritySelect } from '@/components/issue/meta/IssuePrioritySelect'
+import { LabelChipsEditor } from '@/components/issue/meta/LabelChipsEditor'
+import { Separator } from '@/components/ui/separator'
 import { useComponents } from '@/hooks/use-components'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { useProjects } from '@/hooks/use-projects'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { useAuthUser } from '@/auth/authStore'
 import { fetchIssueTypes } from '@/api/issue-types'
+import { useUsers } from '@/hooks/use-users'
+import { useDebounce } from '@/hooks/use-debounce'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomFieldValues } from '@/api/issues'
 import type { CustomField } from '@/api/custom-fields.types'
@@ -45,6 +51,9 @@ import type { CustomField } from '@/api/custom-fields.types'
  * FR-UX-09 F2 에서 200 으로 정렬한다.
  */
 const SUMMARY_MAX_LENGTH = 200
+
+/** 기본 우선순위 — 백엔드 도메인 기본값(3, Medium)과 같은 값이다. */
+const DEFAULT_PRIORITY = 3
 
 /** 이슈 생성 폼 입력 Zod 스키마 */
 const issueCreateSchema = z.object({
@@ -127,6 +136,10 @@ function resolveCreateErrorMessage(err: unknown): string {
       if (errorCode === 'PROJECT_NOT_FOUND') {
         return issueCreateStrings.errorProjectNotFound
       }
+      // FR-UX-09 F2 — 지정한 담당자가 존재하지 않을 때 백엔드가 내는 422.
+      if (errorCode === 'ASSIGNEE_NOT_FOUND') {
+        return issueCreateStrings.errorAssigneeNotFound
+      }
     }
   }
   return issueCreateStrings.errorDefault
@@ -175,6 +188,21 @@ export function IssueCreateForm({
   // FR-UX-09 F2 — 이슈 유형. zod 가 아니라 로컬 상태로 둔다(셀렉터라 텍스트 검증 대상이 아니다).
   const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null)
 
+  /**
+   * FR-UX-09 F2 — 담당자 **3-state** (백엔드 `JsonNullable`, ADR 2026-07-31 D-2).
+   *
+   * - `undefined` (초기값) — 사용자가 담당자를 건드리지 않았다. 요청 본문에서 **키를 뺀다**
+   *   → 서버 자동 배정(`resolveDefaultAssignee`)이 그대로 돈다.
+   * - `null` — 「해제」를 눌러 **명시적으로 미할당**을 골랐다. `null` 을 실어 자동 배정을 끈다.
+   * - 값 — 그 사용자로 확정.
+   *
+   * ★초기값을 `null` 로 바꾸면 **모든 생성 요청이 자동 배정을 조용히 끈다**. 되돌리지 말 것.
+   */
+  const [assigneeIntent, setAssigneeIntent] = useState<string | null | undefined>(undefined)
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
+  const [selectedPriority, setSelectedPriority] = useState(DEFAULT_PRIORITY)
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([])
+
   const form = useForm<IssueCreateFormValues>({
     resolver: zodResolver(issueCreateSchema),
     defaultValues: {
@@ -212,6 +240,18 @@ export function IssueCreateForm({
       form.setValue('projectKey', defaultProjectKey)
     }
   }, [defaultProjectKey, form])
+
+  // ── FR-6 담당자 검색 ──────────────────────────────────────────────────────
+  const debouncedAssigneeQuery = useDebounce(assigneeSearchQuery, 300)
+  const { data: assigneeCandidates = [] } = useUsers(debouncedAssigneeQuery)
+  /** 화면에 표시할 현재 담당자 — 후보 목록에서 찾는다(생성 폼은 서버 조회가 없다). */
+  const currentAssignee = useMemo(
+    () =>
+      typeof assigneeIntent === 'string'
+        ? assigneeCandidates.find((u) => u.id === assigneeIntent) ?? null
+        : null,
+    [assigneeIntent, assigneeCandidates],
+  )
 
   // ── FR-4 이슈 유형 ────────────────────────────────────────────────────────
   const { data: issueTypes = [], isLoading: isTypesLoading } = useQuery({
@@ -278,6 +318,10 @@ export function IssueCreateForm({
       ...(selectedTypeId !== null ? { typeId: selectedTypeId } : {}),
       // 본문이 비면 키를 빼 서버가 프로젝트 템플릿으로 채우게 한다 (FR-TM-01).
       ...(description.trim() !== '' ? { description } : {}),
+      // ★3-state — `undefined` 면 키 자체를 넣지 않는다. 스프레드로 키 존재를 제어한다.
+      ...(assigneeIntent !== undefined ? { assigneeId: assigneeIntent } : {}),
+      priority: selectedPriority,
+      labels: selectedLabels,
       componentIds: selectedComponentIds,
       // securityLevelId null은 명시적으로 전달 — 미선택(null)이면 body에 포함해 서버가 무등급으로 처리
       securityLevelId: selectedSecurityLevelId,
@@ -317,6 +361,11 @@ export function IssueCreateForm({
             {serverError}
           </p>
         )}
+
+        {/* ── 기본 ─────────────────────────────────────────────── */}
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {issueCreateStrings.groupBasicLabel}
+        </p>
 
         {/* 프로젝트 선택 — 자유 텍스트가 아니라 접근 가능한 프로젝트 목록에서 고른다 (FR-3) */}
         <FormField
@@ -413,6 +462,56 @@ export function IssueCreateForm({
             </FormItem>
           )}
         />
+
+        <Separator />
+
+        {/* ── 배정 ─────────────────────────────────────────────── */}
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {issueCreateStrings.groupAssignmentLabel}
+        </p>
+
+        {/* 담당자 — meta/IssueAssigneeSelect 재사용 (FR-6). 3-state 는 assigneeIntent 가 쥔다 */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium leading-none">
+            {issueDetailStrings.assigneeLabel}
+          </span>
+          <IssueAssigneeSelect
+            value={assigneeIntent ?? null}
+            currentAssignee={currentAssignee}
+            users={assigneeCandidates}
+            onSearch={setAssigneeSearchQuery}
+            onAssigneeChange={setAssigneeIntent}
+            canEdit
+          />
+          {/* 화면상 「비어 있음」이 두 뜻(자동 배정 / 미할당 확정)이라 안내가 필요하다 */}
+          <p className="text-xs text-muted-foreground">
+            {issueCreateStrings.assigneeAutoHint}
+          </p>
+        </div>
+
+        {/* 우선순위 — meta/IssuePrioritySelect 재사용 (FR-7) */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium leading-none">
+            {issueDetailStrings.priorityLabel}
+          </span>
+          <IssuePrioritySelect value={selectedPriority} onPriorityChange={setSelectedPriority} />
+        </div>
+
+        {/* 라벨 — 저장 버튼 없는 LabelChipsEditor (FR-8). IssueLabelsEdit 를 쓰면
+            폼 안에 「저장」이 생겨 「이슈 생성」과 헷갈린다 */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium leading-none">
+            {issueDetailStrings.labelsLabel}
+          </span>
+          <LabelChipsEditor value={selectedLabels} onChange={setSelectedLabels} />
+        </div>
+
+        <Separator />
+
+        {/* ── 추가 ─────────────────────────────────────────────── */}
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {issueCreateStrings.groupExtraLabel}
+        </p>
 
         {/* 컴포넌트 선택 — projectKey 미입력 시 disabled */}
         <div className="flex flex-col gap-1.5">

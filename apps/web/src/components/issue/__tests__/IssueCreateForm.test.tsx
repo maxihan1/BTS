@@ -8,6 +8,8 @@ import { server } from '@/test/server'
 import { projectHandlers, LS_KEY_PROJECT_LIST_EMPTY } from '@/mocks/project-handlers'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { issueHandlers } from '@/mocks/issue-handlers'
+// 담당자 검색(GET /api/v1/users) — IssueAssigneeSelect 후보 목록의 출처
+import { userHandlers } from '@/mocks/user-handlers'
 import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomField } from '@/api/custom-fields.types'
@@ -55,7 +57,7 @@ const EMPTY_CUSTOM_FIELDS_RESULT = {
 beforeEach(() => {
   vi.mocked(useCustomFields).mockReturnValue(EMPTY_CUSTOM_FIELDS_RESULT as never)
   localStorage.clear()
-  server.use(...issueHandlers, ...projectHandlers, ...issueTypeHandlers)
+  server.use(...issueHandlers, ...projectHandlers, ...issueTypeHandlers, ...userHandlers)
 })
 
 /** 폼을 QueryClient 로 감싸 렌더한다. */
@@ -232,7 +234,8 @@ describe('IssueCreateForm — 담당자 3-state (FR-6)', () => {
       screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
       'al',
     )
-    const candidate = await screen.findByRole('button', { name: /alice/i })
+    // user-fixtures 의 alice 는 displayName '김앨리스' 라 버튼 접근성 이름이 그 값이다
+    const candidate = await screen.findByRole('button', { name: '김앨리스' })
     await user.click(candidate)
     await user.click(
       await screen.findByRole('button', { name: issueDetailStrings.assigneeUnassignButton }),
