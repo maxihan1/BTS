@@ -252,14 +252,25 @@ export function IssueCreateForm({
 
   // ── FR-6 담당자 검색 ──────────────────────────────────────────────────────
   const debouncedAssigneeQuery = useDebounce(assigneeSearchQuery, 300)
-  const { data: assigneeCandidates = [] } = useUsers(debouncedAssigneeQuery)
+  const { data: allCandidates = [] } = useUsers(debouncedAssigneeQuery)
+  /**
+   * 후보 목록 — **검색어가 있을 때만** 노출한다.
+   *
+   * `useUsers('')` 는 전체 사용자 목록을 돌려준다. 그대로 넘기면 아직 아무것도 검색하지
+   * 않았는데 후보가 쌓여 모달 세로를 통째로 잡아먹는다(눈확인에서 4명 노출 확인).
+   * 사내 1,000명 규모에서는 더 나쁘다.
+   */
+  const assigneeCandidates = useMemo(
+    () => (debouncedAssigneeQuery.trim() === '' ? [] : allCandidates),
+    [debouncedAssigneeQuery, allCandidates],
+  )
   /** 화면에 표시할 현재 담당자 — 후보 목록에서 찾는다(생성 폼은 서버 조회가 없다). */
   const currentAssignee = useMemo(
     () =>
       typeof assigneeIntent === 'string'
-        ? assigneeCandidates.find((u) => u.id === assigneeIntent) ?? null
+        ? allCandidates.find((u) => u.id === assigneeIntent) ?? null
         : null,
-    [assigneeIntent, assigneeCandidates],
+    [assigneeIntent, allCandidates],
   )
 
   // ── FR-4 이슈 유형 ────────────────────────────────────────────────────────
