@@ -23,6 +23,12 @@ afterAll(() => server.close())
 const CREATE_URL = '/api/v1/issues'
 const LEAD_USER_ID = '99999999-9999-4999-8999-999999999999'
 const PICKED_USER_ID = '33333333-3333-4333-8333-333333333333'
+/**
+ * componentStore 에 **시드되지 않은** 컴포넌트 id.
+ * 핸들러의 default-assignee resolve 는 `componentIds.length > 0` 일 때만 돌고,
+ * 컴포넌트 리드를 못 찾으면 프로젝트 리드로 폴백한다. 그 폴백 경로를 타기 위한 값이다.
+ */
+const UNSEEDED_COMPONENT_ID = '11111111-1111-4111-8111-111111111111'
 
 /** POST /api/v1/issues 를 호출하고 응답 본문의 data 를 돌려준다. */
 async function postIssue(body: Record<string, unknown>): Promise<{
@@ -88,7 +94,7 @@ describe('POST /api/v1/issues — assigneeId 3-state', () => {
     const { data } = await postIssue({
       projectKey: 'ATLAS',
       summary: '자동 배정 이슈',
-      componentIds: [],
+      componentIds: [UNSEEDED_COMPONENT_ID],
     })
 
     expect(data['assigneeId']).toBe(LEAD_USER_ID)
@@ -101,7 +107,7 @@ describe('POST /api/v1/issues — assigneeId 3-state', () => {
     const { data } = await postIssue({
       projectKey: 'ATLAS',
       summary: '미할당 확정 이슈',
-      componentIds: [],
+      componentIds: [UNSEEDED_COMPONENT_ID],
       assigneeId: null,
     })
 
@@ -114,7 +120,7 @@ describe('POST /api/v1/issues — assigneeId 3-state', () => {
     const { data } = await postIssue({
       projectKey: 'ATLAS',
       summary: '담당자 지정 이슈',
-      componentIds: [],
+      componentIds: [UNSEEDED_COMPONENT_ID],
       assigneeId: PICKED_USER_ID,
     })
 

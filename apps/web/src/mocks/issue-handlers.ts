@@ -407,13 +407,21 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
 /**
  * POST /api/v1/issues — 이슈 생성 핸들러.
  * projectKey 가 'INVALID' 이면 PROJECT_NOT_FOUND(404) 반환.
- * 그 외는 201 + { data: createdIssueFixture } 반환.
+ * 그 외는 201 + { data: 요청 값이 반영된 IssueResponse } 반환.
  *
  * FR-CM-03: 요청 componentIds를 응답에 에코.
  * 백엔드 default-assignee resolve 규칙(미할당일 때만):
  *   componentStore(component-handlers.ts 단일 출처)에 정보가 없으면 assigneeId=null 유지.
  *   X-MSW-Seed-Components 헤더로 시드된 컴포넌트 중 리드 보유 컴포넌트를
  *   name 오름차순 → id 오름차순(tiebreak) 정렬 후 첫 번째의 leadUserId가 assigneeId로 에코된다.
+ *
+ * FR-UX-09 F2: `typeId`·`description`·`priority`·`labels` 를 요청에서 읽어 응답에 반영한다.
+ *   **fixture 스프레드로 두면 요청과 무관하게 같은 값이 돌아와, 프론트가 아무것도 안 보내도
+ *   상위 테스트가 통과하는 가짜 그린이 된다** (learnings 2026-06-25 동형).
+ *
+ * FR-UX-09 F2: `assigneeId` 는 백엔드 `JsonNullable` 3-state 라 **키 존재**로 분기한다
+ *   (ADR 2026-07-31 D-2). 키가 없을 때만 위 default-assignee resolve 를 돌린다 —
+ *   명시 `null` 은 「자동 배정을 끄고 미할당 확정」이므로 resolve 를 건너뛰어야 한다.
  */
 const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
   const body = await request.clone().json() as {
@@ -422,6 +430,11 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     componentIds?: string[]
     securityLevelId?: string | null
     customFields?: Record<string, unknown>
+    typeId?: number
+    description?: string
+    assigneeId?: string | null
+    priority?: number
+    labels?: string[]
   }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
@@ -429,14 +442,26 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
       { status: 404 },
     )
   }
+  // FR-UX-09 F2 — 미존재 사용자 시뮬레이션. 백엔드는 422 ASSIGNEE_NOT_FOUND 로 거부한다.
+  if (body.assigneeId === MOCK_ASSIGNEE_NOT_FOUND) {
+    return HttpResponse.json(
+      { errorCode: 'ASSIGNEE_NOT_FOUND', message: '지정한 담당자를 찾을 수 없습니다' },
+      { status: 422 },
+    )
+  }
 
   const componentIds = body.componentIds ?? []
+  // FR-UX-09 F2 — 3-state 판별. `!== undefined` 가 아니라 키 존재로 본다.
+  const hasAssigneeKey = Object.prototype.hasOwnProperty.call(body, 'assigneeId')
 
   // default-assignee resolve — componentStore(component-handlers.ts 단일 출처)에서 읽는다.
   // X-MSW-Seed-Components 헤더로 브라우저 시드된 컴포넌트에서 리드를 조회한다.
   // 정렬 기준: name 오름차순, name 동률이면 id 오름차순 (백엔드 DefaultAssigneeResolver 동일).
   let resolvedAssigneeId: string | null = createdIssueFixture.assigneeId
-  if (resolvedAssigneeId === null && componentIds.length > 0) {
+  if (hasAssigneeKey) {
+    // 클라이언트가 담당자 의사를 명시했다 — 자동 배정을 돌리지 않는다.
+    resolvedAssigneeId = body.assigneeId ?? null
+  } else if (resolvedAssigneeId === null && componentIds.length > 0) {
     // 우선순위 1: 컴포넌트 리드 (name 오름차순 → id 오름차순 tiebreak)
     const firstLead = getStoredComponentsByIds(componentIds)
       .filter((c) => c.leadUserId !== null)
@@ -471,6 +496,11 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     assigneeId: resolvedAssigneeId,
     securityLevelId: resolvedSecurityLevelId,
     customFields: resolvedCustomFields,
+    // FR-UX-09 F2 — 요청 값을 반영한다. fixture 고정값을 돌려주면 상위 테스트가 공허해진다.
+    typeId: body.typeId ?? createdIssueFixture.typeId,
+    description: body.description ?? createdIssueFixture.description,
+    priority: body.priority ?? DEFAULT_ISSUE_PRIORITY,
+    labels: body.labels ?? [],
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)
@@ -479,6 +509,15 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
 
 /** E2E-5 회귀 가드 트리거 — summary 값이 이 문자열이면 409 VERSION_CONFLICT 응답. */
 export const MOCK_CONFLICT_TRIGGER = '__TRIGGER_409__'
+
+/**
+ * FR-UX-09 F2 — 미존재 담당자 트리거. `assigneeId` 가 이 값이면 422 `ASSIGNEE_NOT_FOUND` 응답.
+ * 백엔드 `IssueApplicationService` 가 존재하지 않는 사용자에 대해 내는 응답과 같은 형태다.
+ */
+export const MOCK_ASSIGNEE_NOT_FOUND = '__ASSIGNEE_NOT_FOUND__'
+
+/** 백엔드 도메인 기본 우선순위 (Medium). 생성 요청에 priority 가 없을 때 서버가 적용하는 값. */
+const DEFAULT_ISSUE_PRIORITY = 3
 
 /** 전이 워크플로우 미설정 트리거 — toStatusKey 값이 이 문자열이면 422 응답. */
 export const MOCK_NO_WORKFLOW_TRIGGER = '__TRIGGER_422_NO_WORKFLOW__'
