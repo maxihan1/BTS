@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { MEMORY_DIR, REPO_ROOT, SOURCES, AUTOGEN_HEADER } from './doc-index/config.mjs';
+import { MEMORY_DIR, REPO_ROOT, SOURCES, AUTOGEN_HEADER, HOME } from './doc-index/config.mjs';
 import { parseFrontmatter, parseLegacyIndex } from './doc-index/parse-memory.mjs';
 import { classify, partition, frIdOf } from './doc-index/classify.mjs';
 import {
@@ -220,6 +220,35 @@ function main() {
   }
 
   if (bad) process.exit(1);
+
+  // --- Obsidian. 저장소 밖이고 CI 가 검증하지 못하므로 명시적 플래그를 요구한다 ---
+  if (process.argv.includes('--obsidian') && !CHECK) {
+    const OBS = path.join(HOME, 'Maxi_wiki/BTS');
+    if (fs.existsSync(OBS)) {
+      const files = fs
+        .readdirSync(OBS, { recursive: true })
+        .filter((f) => typeof f === 'string' && f.endsWith('.md') && f !== 'INDEX.md')
+        .sort();
+      // 낡음을 눈에 보이게 한다 — 자동 차단이 없는 층이므로 생성 시각이 유일한 신선도 신호다.
+      const stamp = new Date().toISOString().slice(0, 10);
+      fs.writeFileSync(
+        path.join(OBS, 'INDEX.md'),
+        [
+          AUTOGEN_HEADER,
+          '',
+          `# Maxi_wiki/BTS 인덱스 (${files.length}건 · 생성 ${stamp})`,
+          '',
+          '> ⚠ 저장소 밖이라 CI 가 검증하지 않는다. 낡았을 수 있다 — 생성일을 확인할 것.',
+          '> 재생성. `node scripts/build-doc-index.mjs --obsidian`',
+          '',
+          ...files.map((f) => `- [[${f.replace(/\.md$/, '')}]]`),
+          '',
+        ].join('\n'),
+      );
+      console.log(`→ Obsidian ${files.length}건 인덱스 생성 (CI 검증 없음).`);
+    }
+  }
+
   console.log(
     `PASS. 고아 0 · 깨진 링크 0 · ★ ${critRendered.length}/${critExpected.length} 렌더` +
       `${CHECK ? ' · drift 0' : ''}.`,
