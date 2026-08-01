@@ -7,7 +7,11 @@ import { issueHandlers, createdIssueFixture } from '@/mocks/issue-handlers'
 import { componentHandlers, resetComponentStore } from '@/mocks/component-handlers'
 import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
-import { IssueCreateForm, IssueCreateRouteAdapter } from './issues.new'
+// IssueCreateForm 은 components/issue/ 로 이동했다 (FR-UX-09 F2 T4).
+// CreateIssueDialog 가 폼을 감싸고 이 라우트가 모달을 감싸므로, 폼이 라우트 파일에 남아 있으면
+// routes/issues.new → CreateIssueDialog → routes/issues.new 순환 import 가 된다.
+import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
+import { IssueCreateRouteAdapter } from './issues.new'
 import type { CustomField } from '@/api/custom-fields.types'
 
 // useNavigate/useSearch mock — TanStack Router 의존 없이 폼/어댑터 테스트
