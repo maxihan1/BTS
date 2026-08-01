@@ -181,3 +181,151 @@ describe('IssueCreateForm — 제목 상한 200 (B-2 선재 결함 정렬)', () 
     expect(await screen.findByText(issueCreateStrings.summaryTooLong)).toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-6/FR-7/FR-8 — 담당자 3-state · 우선순위 · 라벨 (T6)
+//
+// 3-state 는 화면상 「비어 있음」이 두 가지 뜻을 갖는다는 게 핵심이다.
+// 안 건드림 = 서버 자동 배정 유지 / 해제 = 자동 배정 끄고 미할당 확정.
+// 요청 본문의 **키 존재 여부**로만 구분되므로 본문을 직접 캡처해 단언한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** POST /api/v1/issues 본문을 캡처하는 핸들러를 등록한다. */
+function captureSubmitBody(): { get: () => Record<string, unknown> } {
+  let captured: Record<string, unknown> = {}
+  server.use(
+    http.post('/api/v1/issues', async ({ request }) => {
+      captured = await request.json() as Record<string, unknown>
+      return HttpResponse.json({ data: { key: 'ATLAS-1' } }, { status: 201 })
+    }),
+  )
+  return { get: () => captured }
+}
+
+/** 제목만 채우고 제출한다 (프로젝트는 활성 프로젝트가 기본 선택돼 있다). */
+async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await waitForProjectSelect()
+  await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+  await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+}
+
+describe('IssueCreateForm — 담당자 3-state (FR-6)', () => {
+  it('담당자를 한 번도 건드리지 않으면 본문에 assigneeId 키가 없다 (자동 배정 유지)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    renderForm()
+
+    await fillAndSubmit(user)
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+    expect('assigneeId' in body.get()).toBe(false)
+  })
+
+  it('담당자를 고른 뒤 해제하면 본문에 assigneeId=null 이 실린다 (미할당 확정)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    renderForm()
+
+    await waitForProjectSelect()
+    // 검색 → 후보 선택 → 해제. 「해제」 버튼은 담당자가 있을 때만 노출된다.
+    await user.type(
+      screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      'al',
+    )
+    const candidate = await screen.findByRole('button', { name: /alice/i })
+    await user.click(candidate)
+    await user.click(
+      await screen.findByRole('button', { name: issueDetailStrings.assigneeUnassignButton }),
+    )
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect('assigneeId' in body.get()).toBe(true))
+    expect(body.get()['assigneeId']).toBeNull()
+  })
+
+  it('담당자 칸에 자동 배정 안내가 보인다', async () => {
+    renderForm()
+
+    expect(await screen.findByText(issueCreateStrings.assigneeAutoHint)).toBeInTheDocument()
+  })
+})
+
+describe('IssueCreateForm — 우선순위와 라벨 (FR-7/FR-8)', () => {
+  it('우선순위 기본값이 3(보통)이다', async () => {
+    renderForm()
+
+    const select = await screen.findByLabelText(issueDetailStrings.prioritySelectLabel)
+    expect((select as HTMLSelectElement).value).toBe('3')
+  })
+
+  it('우선순위를 바꾸면 본문에 그 값이 실린다', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.selectOptions(
+      await screen.findByLabelText(issueDetailStrings.prioritySelectLabel),
+      '1',
+    )
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['priority']).toBe(1))
+  })
+
+  it('라벨을 추가하면 본문 labels 에 실린다', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.type(
+      screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder),
+      'backend{Enter}',
+    )
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['labels']).toEqual(['backend']))
+  })
+
+  it('★폼 안에 라벨 「저장」 버튼이 없다 — 「이슈 생성」과 헷갈리면 안 된다', async () => {
+    renderForm()
+
+    await waitForProjectSelect()
+    expect(screen.queryByRole('button', { name: issueDetailStrings.labelsSaveButton })).toBeNull()
+  })
+})
+
+describe('IssueCreateForm — 422 ASSIGNEE_NOT_FOUND (스펙 §API 오류 계약)', () => {
+  it('422 응답 시 담당자를 찾을 수 없다는 에러가 보인다', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json({ errorCode: 'ASSIGNEE_NOT_FOUND' }, { status: 422 }),
+      ),
+    )
+    renderForm()
+
+    await fillAndSubmit(user)
+
+    expect(
+      await screen.findByText(issueCreateStrings.errorAssigneeNotFound),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('IssueCreateForm — 필드 3덩어리 구분 (FR-15, design 리뷰 D7)', () => {
+  it('기본·배정·추가 소제목과 구분선 2개가 렌더된다', async () => {
+    const { container } = renderForm()
+
+    await waitForProjectSelect()
+    expect(screen.getByText(issueCreateStrings.groupBasicLabel)).toBeInTheDocument()
+    expect(screen.getByText(issueCreateStrings.groupAssignmentLabel)).toBeInTheDocument()
+    expect(screen.getByText(issueCreateStrings.groupExtraLabel)).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-slot="separator"]').length).toBe(2)
+  })
+})
