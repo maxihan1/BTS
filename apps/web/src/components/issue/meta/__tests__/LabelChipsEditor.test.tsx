@@ -5,6 +5,15 @@ import userEvent from '@testing-library/user-event'
 import { LabelChipsEditor } from '@/components/issue/meta/LabelChipsEditor'
 import { issueDetailStrings } from '@/i18n/ko'
 
+// LabelAutocompleteInput 내부 useLabels/useDebounce mock — QueryClient 없이 렌더 가능하게 한다
+// (형제 IssueLabelsEdit.test.tsx:9-14 와 동일 관례)
+vi.mock('@/hooks/use-labels', () => ({
+  useLabels: vi.fn().mockReturnValue({ data: [], isLoading: false, isError: false }),
+}))
+vi.mock('@/hooks/use-debounce', () => ({
+  useDebounce: (value: string) => value,
+}))
+
 /** 라벨 입력창을 찾는다. */
 function labelInput(): HTMLElement {
   return screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
