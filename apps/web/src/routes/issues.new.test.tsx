@@ -12,6 +12,7 @@ import { http, HttpResponse } from 'msw'
 // routes/issues.new → CreateIssueDialog → routes/issues.new 순환 import 가 된다.
 import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
 import { IssueCreateRouteAdapter } from './issues.new'
+import { issueCreateStrings } from '@/i18n/ko'
 import type { CustomField } from '@/api/custom-fields.types'
 
 // useNavigate/useSearch mock — TanStack Router 의존 없이 폼/어댑터 테스트
@@ -72,6 +73,19 @@ function renderForm(onSuccess?: (key: string) => void) {
   )
 }
 
+/**
+ * 프로젝트 셀렉터에서 프로젝트를 고른다 (FR-UX-09 F2 — 자유 텍스트 입력이 셀렉터로 바뀌었다).
+ * 옵션은 MSW `GET /api/v1/projects` 가 채우므로 렌더 직후엔 비어 있을 수 있어 기다린다.
+ */
+async function selectProject(user: ReturnType<typeof userEvent.setup>, key: string): Promise<void> {
+  const select = await waitFor(() => {
+    const el = screen.getByLabelText(issueCreateStrings.projectKeyLabel) as HTMLSelectElement
+    expect(el.querySelectorAll('option').length).toBeGreaterThan(1)
+    return el
+  })
+  await user.selectOptions(select, key)
+}
+
 /** 컴포넌트 옵션 fixture — ComponentMultiSelect options 에 공급 */
 const componentFixtures = [
   {
@@ -111,7 +125,7 @@ describe('IssueCreateForm', () => {
     renderForm()
 
     // projectKey 입력, summary 는 비워둠
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     // 제출 버튼 클릭
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -138,7 +152,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '새 이슈 제목')
 
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -159,7 +173,14 @@ describe('IssueCreateForm', () => {
     const user = userEvent.setup()
     renderForm()
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'INVALID')
+    // 프로젝트가 셀렉터가 된 뒤로 'INVALID' 를 타이핑할 수 없다. 서버가 404 를 주는 쪽으로 바꾼다
+    // — 검증 대상은 「404 응답 시 role=alert 노출」이지 「잘못된 키를 칠 수 있는가」가 아니다.
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '어떤 제목')
 
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -182,7 +203,7 @@ describe('IssueCreateForm', () => {
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
 
     await waitFor(() =>
-      expect(screen.getByText('프로젝트 키를 입력하세요.')).toBeInTheDocument(),
+      expect(screen.getByText(issueCreateStrings.projectKeyRequired)).toBeInTheDocument(),
     )
 
     expect(mockNavigate).not.toHaveBeenCalled()
@@ -227,7 +248,7 @@ describe('IssueCreateForm', () => {
     renderForm(onSuccess)
 
     // projectKey 입력 → 컴포넌트 목록 로드
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     // 컴포넌트 옵션이 로드될 때까지 대기
     await waitFor(() =>
@@ -279,7 +300,7 @@ describe('IssueCreateForm', () => {
     const user = userEvent.setup()
     renderForm()
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     await waitFor(() =>
       expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
@@ -320,7 +341,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     await waitFor(() =>
       expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
@@ -368,7 +389,7 @@ describe('IssueCreateForm', () => {
     renderForm()
 
     // projectKey + summary 입력, required 커스텀 필드는 비워둠
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '이슈 제목')
 
     // 커스텀 필드 섹션이 렌더될 때까지 대기
@@ -417,7 +438,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '이슈 제목')
 
     await waitFor(() =>
@@ -455,7 +476,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '컴포넌트 없는 이슈')
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
 

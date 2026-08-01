@@ -731,18 +731,48 @@ export const linkGraphStrings = {
 /** 이슈 생성 폼 관련 문자열 */
 export const issueCreateStrings = {
   /** 폼 레이블 */
-  projectKeyLabel: '프로젝트 키',
+  projectKeyLabel: '프로젝트',
   summaryLabel: '제목',
   submitButton: '이슈 생성',
 
   /** Zod 검증 에러 메시지 */
-  projectKeyRequired: '프로젝트 키를 입력하세요.',
+  projectKeyRequired: '프로젝트를 선택하세요.',
   summaryRequired: '제목을 입력하세요.',
-  summaryTooLong: '제목은 500자 이하로 입력하세요.',
+  // 백엔드 CreateIssueRequest.summary 가 @Size(max = 200) 다. 프론트가 500 을 허용하던
+  // 선재 결함(201~500자가 프론트 통과 후 400)을 FR-UX-09 F2 에서 200 으로 정렬했다.
+  summaryTooLong: '제목은 200자 이하로 입력하세요.',
 
   /** 백엔드 에러 코드 → 사용자 메시지 */
   errorProjectNotFound: '존재하지 않는 프로젝트입니다.',
   errorDefault: '이슈 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── FR-UX-09 F2 — 생성 모달 신규 필드 ────────────────────────────────
+  /** 프로젝트 셀렉터 미선택 placeholder */
+  projectPlaceholder: '프로젝트 선택',
+  /** 이슈 유형 필드 레이블 */
+  typeLabel: '이슈 유형',
+  /** 본문 필드 레이블 */
+  descriptionLabel: '설명',
+  /** 본문 입력 placeholder */
+  descriptionPlaceholder: '이슈 내용을 입력하세요',
+  /** 본문 비움 시 서버가 템플릿으로 채운다는 안내 (FR-TM-01) */
+  descriptionTemplateHint: '비워두면 프로젝트 템플릿이 채워집니다.',
+  /** 담당자 미지정 시 자동 배정된다는 안내 (ADR 2026-07-31 D-2 3-state) */
+  assigneeAutoHint: '비워두면 자동으로 배정됩니다.',
+  /** 필드 그룹 소제목 — 기본 */
+  groupBasicLabel: '기본',
+  /** 필드 그룹 소제목 — 배정 */
+  groupAssignmentLabel: '배정',
+  /** 필드 그룹 소제목 — 추가 */
+  groupExtraLabel: '추가',
+  /** 접근 가능한 프로젝트가 0개일 때 빈 상태 제목 */
+  noProjectsTitle: '참여 중인 프로젝트가 없습니다',
+  /** 빈 상태 설명 */
+  noProjectsDescription: '이슈를 만들려면 먼저 프로젝트에 참여해야 합니다.',
+  /** 빈 상태에서 프로젝트 생성 권한이 있을 때 노출하는 CTA */
+  createProjectCta: '프로젝트 만들기',
+  /** 담당자로 지정한 사용자가 존재하지 않을 때 (422 ASSIGNEE_NOT_FOUND) */
+  errorAssigneeNotFound: '지정한 담당자를 찾을 수 없습니다.',
 } as const
 
 /** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
