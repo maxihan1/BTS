@@ -198,8 +198,12 @@
 - 유형 목록 로딩 중에는 셀렉터가 **비활성**이다 (B-3)
 - 제목 **201자**가 폼 검증에서 거부된다 (B-2 선재 결함 정렬 — 기존 상한 500)
 - 프로젝트를 바꾸면 `componentIds`·`customFields` 가 **초기화**된다 (E1/B-4)
+- **접근 가능한 프로젝트가 0개면 폼 대신 `EmptyState`** 가 뜬다. `canCreateProject` 가 참이면
+  [프로젝트 만들기] 버튼이 있고, 거짓이면 없다 (FR-17, design 리뷰 D9)
+- 프로젝트 목록 로딩 중에는 `ui/skeleton` 이 보인다 (상태 표)
 
 **GREEN**. `useProjects(false)` + `use-resolved-active-project` 로 셀렉터 구성 ·
+`ui/empty-state` + `whoami.canCreateProject`(선례 `ProjectListTable.tsx:93` `showCreateCta`) ·
 `fetchIssueTypes()` 쿼리 + `meta/IssueTypeSelect` 재사용 · `ui/textarea` 로 본문 ·
 `SUMMARY_MAX_LENGTH` 500 → **200** · 프로젝트 변경 `useEffect` 초기화.
 
@@ -250,9 +254,12 @@
 - **닫았다 다시 열면 폼이 초기화**된다 (E3)
 - 생성 성공 시 `onOpenChange(false)` + `onCreated(issue)` 발화
 - **URL 을 읽거나 바꾸지 않는다** — 라우터 훅 import 0 (FR-1, F3 재사용 조건)
+- 필드가 **3덩어리 + `separator` 2개**로 구분돼 렌더된다 (FR-15, design 리뷰 D7)
+- 필수 커스텀 필드 검증 실패 시 **그 칸으로 스크롤**된다 (세로가 길어 화면 밖일 수 있다)
 
-**GREEN**. `Dialog`/`DialogContent className="max-w-xl"`/`DialogTitle`/`DialogFooter` 조합.
-본문 래퍼 `max-h-[60vh] overflow-y-auto`, `DialogFooter` 는 스크롤 밖 (NFR-2).
+**GREEN**. `Dialog`/`DialogContent`/`DialogTitle`/`DialogFooter` 조합.
+**긴 폼 모달 선례 `ReleaseNotesDialog` 를 그대로 따른다** — `max-w-2xl max-h-[80vh] flex flex-col`,
+본문 래퍼만 `overflow-y-auto`, `DialogFooter` 는 스크롤 밖 (NFR-2/NFR-3).
 `open` 변화 시 `key` 를 바꿔 폼을 리마운트해 초기화.
 
 **REFACTOR**. `aria-describedby={undefined}` 등 기존 20개 모달 관례 정렬.
@@ -273,8 +280,12 @@
 - `issues.new.test.tsx` — 라우트 어댑터가 `CreateIssueDialog` 를 `open` 으로 렌더하고,
   닫으면 `/issues` 로 navigate 한다 (FR-11)
 - `TopBar.test.tsx` — 만들기 클릭 시 **navigate 가 호출되지 않고**(URL 불변) 모달이 열린다 (FR-12)
+- **성공 후 동작이 경로별로 다르다** (FR-16, design 리뷰 D8) —
+  라우트 경로는 `/issues/$key` 로 navigate · 상단바 경로는 **navigate 0회 + `toast` 호출**
 
 **GREEN**. 라우트 어댑터를 모달 마운트로 교체 · `TopBar` 에 로컬 `open` 상태 + `CreateIssueDialog` 렌더.
+성공 콜백은 **호출자가 주입**한다 — 폼·모달은 `onSuccess(key)` 를 부를 뿐 이동을 모른다.
+토스트는 `sonner`(`<Toaster />` 가 `main.tsx:38` 에 이미 마운트, 선례 `useNotificationStream.ts:70`).
 
 **REFACTOR**. `c` 단축키·커맨드 팔레트는 **현행 navigate 유지**임을 주석으로 명시
 (`shortcuts.ts` 무변경이 §4.8 4중 계약 조건).
@@ -294,7 +305,11 @@
 
 **RED→GREEN**. 신규 `e2e/issue-create-dialog.spec.ts`
 - S1. 상단바 만들기 → **URL 불변** + 모달 열림
-- S2. 7필드 입력 → 만들기 → **`POST /issues` 1회 · 후속 `PATCH` 0회** 를 네트워크로 단언 (C6)
+- S2a. **딥링크 경로** — `/issues/new` 진입 → 필드 입력 → 만들기 →
+  **`POST /issues` 1회 · 후속 `PATCH` 0회** + `/issues/$key` 상세에 5필드 반영 (C6)
+- S2b. **상단바 경로** — 제자리에서 열어 만들기 → **화면이 그대로**(URL 불변) + **토스트가 뜬다**
+  (FR-16 조합 효과. S2a 의 "상세에 반영" 단언을 이 경로에 그대로 쓰면 실패한다)
+- S3. 프로젝트 0개 사용자 → 폼 대신 빈 상태 안내 (FR-17)
 - S5. `/issues/new` 직접 진입 → 같은 모달 · 닫으면 `/issues`
 
 **회귀 확인 (수정 금지, 실행만)**. `keyboard-shortcuts.spec.ts` · `keymap.spec.ts` ·
@@ -340,4 +355,60 @@
 - **추가 검증**. `pnpm typecheck`(vitest 는 타입을 안 본다) · `pnpm lint` · `verify-master-plan.sh`
 - **백엔드 변경**. 0 (BC 격리 유지)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-08-01)
+
+리뷰 대상 = plan 문서 (Maxi 확정 D5). AI 목업 생성은 **건너뜀** (Maxi 확정 D6 — 기존 부품 8종과
+모달 틀 32곳을 그대로 쓰는 조립이라 생성 시안이 실제 부품과 무관하다). 대신 **구현 직후 브라우저
+눈확인**을 게이트 2 전에 넣는다.
+
+| 관점 | 처음 | 수정 후 | 근거 |
+|---|---|---|---|
+| Pass 1 정보 구조 | 4/10 | **9/10** | 필드 10종+N 의 **순서가 미정**이었다 → FR-15 3덩어리 + `separator` (D7) |
+| Pass 2 상태 커버리지 | 5/10 | **9/10** | 로딩·빈·부분 상태가 비어 있었다 → **상호작용 상태 표** 신설 (스펙) + FR-17 |
+| Pass 3 사용자 여정 | 6/10 | **8/10** | 만든 뒤 어디로 가는지가 미정이었다 → FR-16 진입 경로별 (D8) |
+| Pass 4 AI 슬롭 위험 | 8/10 | **8/10** | **지적 0건.** 신규 시각 컴포넌트 0 · 기존 토큰만 소비 · 카드 남용 없음. 분류 = APP UI |
+| Pass 5 디자인 시스템 정합 | 6/10 | **9/10** | 🔴 plan 이 `max-w-xl`·`max-h-[60vh]` 를 **새로 만들었다**. 실측 결과 코드베이스에 `max-w-xl` 선례 0, 긴 폼 모달 선례는 `ReleaseNotesDialog` 의 `max-w-2xl max-h-[80vh] flex flex-col` → 선례로 정렬 |
+| Pass 6 반응형·접근성 | 5/10 | **8/10** | 라벨 가시성·`role="alert"`·자동 스크롤을 상태 표에 명시. **모바일 폭은 선재 성질** — `DialogContent` 기본이 `w-full max-w-lg` 라 32곳 전부 375px 에서 화면 가득 찬다. 이 PR 이 단독으로 바꾸면 32곳에 영향 → TODO 후보 |
+| Pass 7 미해결 결정 | — | **3건 해소 / 0건 이연** | D7·D8·D9 전부 Maxi 확정 |
+
+**종합. 5/10 → 8.7/10.**
+
+**★조합 효과 1건 (개별 답으로는 안 보였던 것).** D8=C(경로별 이동)를 고르자 **스펙의 완료 기준
+C6 이 깨졌다** — "생성 후 상세에 5필드 반영" 단언은 딥링크 경로에서만 성립하고, 상단바 경로는
+상세로 가지 않는다. E2E 를 **S2a(딥링크) / S2b(상단바) 두 갈래**로 쪼개 반영했다.
+
+**아웃사이드 보이스 미실시 (한계).** `codex` **미설치**(`CODEX_NOT_AVAILABLE` 실측) + 세션 지시로
+AgentTool 금지라 독립 리뷰어를 못 붙였다. 컨트롤러가 7개 관점을 자기수행했다. #327·#328 과 동일한 한계.
+
+### 범위 밖 (의도적 이연)
+
+- **모달 모바일 폭** — `DialogContent` 프리미티브가 `w-full` 이라 375px 에서 화면 가득. 32곳 공통
+  성질이라 이 PR 이 단독으로 바꾸면 폭발 반경이 크다. TODOS 등재 후보.
+- **접기/펼치기** — `ui/` 에 collapsible·accordion 프리미티브가 **없다**. ③ 덩어리를 접으려면
+  신규 프리미티브가 필요해 이번 범위 밖. 구분선으로 충분하다고 판단.
+- **F3 진입점 3곳** — 후속 PR (ADR D-1).
+
+### 이미 있는 것 (재사용 대상)
+
+`DESIGN.md`(토큰·프리미티브·WCAG AA 대비표 전량) · `components/issue/meta/` 8종 ·
+`ui/dialog`·`separator`·`empty-state`·`skeleton`·`textarea`·`sonner` ·
+`useProjects`·`use-resolved-active-project`·`useUsers`·`fetchIssueTypes` ·
+`whoami.canCreateProject` · `IssueCreateForm`(이미 라우터 비의존)
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | UNAVAILABLE | `codex` 미설치 (실측 `CODEX_NOT_AVAILABLE`) |
+| Eng Review | `/plan-eng-review` | Architecture & tests | 0 | — | BTS 리뷰 체인은 `type=ui` → design 리뷰만 (bts-review-plan Step 2) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | score 5/10 → 9/10, 3 decisions, 조합 효과 1건 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** DESIGN CLEARED — 7개 관점 전부 8/10 이상, 미해결 0건. BTS 워크플로우상 `type=ui` 의
+리뷰 체인은 design 단독이므로 게이트 1 진입 가능. 단 **독립·교차모델 리뷰는 부재**하다
+(codex 미설치 + 세션 지시로 AgentTool 금지) — #327·#328 과 동일한 한계로 기록한다.
+
+NO UNRESOLVED DECISIONS
