@@ -50,8 +50,17 @@ node scripts/build-dashboard.mjs           # docs/progress.html 재생성
 bash scripts/verify-master-plan.sh         # FR 정합·카운트 drift
 pnpm test:workflow                         # 판별식 7종
 pnpm test:doc-index                        # 인덱스 생성기 단위 테스트
-bash scripts/doc-index/mutation-probe.sh   # 판별식 비-공허 확인 (클린 상태에서)
+bash scripts/doc-index/mutation-probe.sh   # 인덱스 판별식 비-공허 확인 (클린 상태에서)
+bash scripts/workflow/ci-trigger-mutation.sh  # CI 트리거 봉인 비-공허 확인 (클린 상태에서)
 ```
+
+## CI 트리거 원칙
+
+**워크플로우의 `paths` 는 그 워크플로우가 실제로 실행하는 것만 건다.**
+`backend-ci` 는 `./gradlew` 만 돌리므로 `backend/**` + 자기 파일만 본다.
+판별식 전용 경로(`scripts/workflow/**` 등)를 여기 넣으면 그 경로만 바꾸는 PR 이
+backend 12잡을 끌고 온다 — 러너 1대 직렬이라 50~60분이다 (PR #329 실측).
+`ci-runner-label-alignment.test.ts` 의 `DISCRIMINANT_ONLY_PATHS` 룰이 되돌림을 차단한다.
 
 ## 관련
 
