@@ -15,18 +15,23 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const CI_FILE = path.join(REPO_ROOT, '.github/workflows/workflow-scripts-ci.yml');
 const INDEX_FILES = ['docs/INDEX.md', 'docs/INDEX-fr.md', 'docs/INDEX-recent.md'];
 
-test('룰 I — 인덱스를 재생성해도 git diff 가 클린이다', () => {
-  execFileSync('node', ['scripts/build-doc-index.mjs'], { cwd: REPO_ROOT, stdio: 'pipe' });
-  const diff = execFileSync('git', ['diff', '--name-only', '--', ...INDEX_FILES], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-  }).trim();
-  assert.equal(
-    diff,
-    '',
-    `인덱스 drift. 재생성 결과가 커밋본과 다르다:\n${diff}\n` +
-      '→ node scripts/build-doc-index.mjs 후 커밋할 것.',
-  );
+test('룰 I — 현재 인덱스가 재생성 결과와 같다 (--check, 파일을 쓰지 않는다)', () => {
+  // ★ 여기서 생성기를 **쓰기 모드**로 돌리면 안 된다. 재생성이 검사 대상인 손 수정을
+  //   덮어써서 판별식이 스스로 증거를 지운다 — 뮤테이션에서 이 테스트뿐 아니라
+  //   뒤따르는 룰 J·K 까지 전부 green 이 됐다(1차 주입 실측). --check 는 비교만 한다.
+  let failed = false;
+  let out = '';
+  try {
+    out = execFileSync('node', ['scripts/build-doc-index.mjs', '--check'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+  } catch (e) {
+    failed = true;
+    out = `${(e as { stdout?: string }).stdout ?? ''}${(e as { stderr?: string }).stderr ?? ''}`;
+  }
+  assert.equal(failed, false, `인덱스 drift.\n${out}`);
 });
 
 test('룰 J — docs 문서 전량이 시간축 인덱스에 등록되어 있다', () => {
@@ -82,7 +87,18 @@ test('룰 L — 생성기 SOURCES 가 전부 CI 트리거 paths 에 있다 (pull
       ['pull_request', prBlock],
       ['push', pushBlock],
     ] as const) {
-      const covered = block.includes(`'${src.dir}/**'`) || block.includes(`'docs/**'`);
+      // 상위 와일드카드는 **그 접두를 실제로 가진 경로만** 커버한다.
+      //   `block.includes("'docs/**'")` 를 무조건 OR 로 붙이면 other/probe 같은 완전히 다른
+      //   경로까지 "커버됨"으로 판정한다 — 뮤테이션 주입에서 이 버그로 룰 L 이 green 이었다.
+      const covered =
+        block.includes(`'${src.dir}/**'`) ||
+        src.dir
+          .split('/')
+          .slice(0, -1)
+          .some((_, i) => {
+            const prefix = src.dir.split('/').slice(0, i + 1).join('/');
+            return block.includes(`'${prefix}/**'`);
+          });
       if (!covered) missing.push(`${src.dir} (${name})`);
     }
   }

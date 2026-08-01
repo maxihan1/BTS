@@ -1,5 +1,10 @@
 // 메모리·docs 인덱스를 생성하는 단일 진입점. 저장소 밖(메모리)은 CI 가 못 지키므로 여기서 자가진단한다
-// 실행. node scripts/build-doc-index.mjs
+// 실행. node scripts/build-doc-index.mjs [--check]
+//
+// --check. 파일을 **쓰지 않고** 현재 내용과 비교만 한다. 다르면 exit 1.
+//   왜 필요한가. 판별식이 "재생성 후 git diff" 로 drift 를 잡으려 하면, 그 재생성이
+//   검사 대상인 손 수정을 덮어써서 판별식이 스스로 증거를 지운다 — 항상 통과하는 장식이 된다.
+//   실제로 뮤테이션 주입에서 룰 I·J-삭제·K 가 이 이유로 전부 green 이었다.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,6 +58,16 @@ function readMemory() {
   });
 }
 
+const CHECK = process.argv.includes('--check');
+const drift = [];
+
+/** --check 면 비교만, 아니면 쓴다. 파일이 없거나 다르면 drift 에 기록. */
+function emit(filePath, body) {
+  const cur = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : null;
+  if (cur !== body) drift.push(path.relative(REPO_ROOT, filePath));
+  if (!CHECK) fs.writeFileSync(filePath, body);
+}
+
 function main() {
   const memoryMd = path.join(MEMORY_DIR, 'MEMORY.md');
   const { legacy, fromAutogen } = readLegacySource(memoryMd);
@@ -89,13 +104,13 @@ function main() {
 
   // --- 쓰기 ---
   const indexDir = path.join(MEMORY_DIR, 'index');
-  fs.mkdirSync(indexDir, { recursive: true });
+  if (!CHECK) fs.mkdirSync(indexDir, { recursive: true });
   // ★ 구획에는 **전량**을 넘긴다. categorized 만 넘기면 FR 축으로 간 ★ 가 라우터에서 사라진다.
   const routerBody = renderRouter(all, counts, frHistory.length);
-  fs.writeFileSync(path.join(MEMORY_DIR, 'MEMORY.md'), routerBody);
+  emit(path.join(MEMORY_DIR, 'MEMORY.md'), routerBody);
   for (const cat of Object.keys(counts)) {
     const entries = categorized.filter((s) => catOf.get(s) === cat).map((s) => bySlug.get(s));
-    fs.writeFileSync(path.join(indexDir, `${cat}.md`), renderCategoryIndex(cat, entries));
+    emit(path.join(indexDir, `${cat}.md`), renderCategoryIndex(cat, entries));
   }
 
   // --- docs 인덱스 ---
@@ -132,9 +147,9 @@ function main() {
   const { rows: frRows, rejected } = groupByFr(docs, canonical);
   const frBody = renderFrIndex(frRows, memoryByFr);
   const recentBody = renderRecentIndex(groupByDate(docs));
-  fs.writeFileSync(path.join(REPO_ROOT, 'docs/INDEX.md'), renderDocsRouter(stats));
-  fs.writeFileSync(path.join(REPO_ROOT, 'docs/INDEX-fr.md'), frBody);
-  fs.writeFileSync(path.join(REPO_ROOT, 'docs/INDEX-recent.md'), recentBody);
+  emit(path.join(REPO_ROOT, 'docs/INDEX.md'), renderDocsRouter(stats));
+  emit(path.join(REPO_ROOT, 'docs/INDEX-fr.md'), frBody);
+  emit(path.join(REPO_ROOT, 'docs/INDEX-recent.md'), recentBody);
 
   // docs 고아 — 렌더 **결과 문자열**에 실제로 나타나는지로 판정한다.
   //
@@ -196,8 +211,19 @@ function main() {
   if (uncat > 0) {
     console.warn(`WARN. uncategorized ${uncat}건 — 눈으로 확인해 분류할 것.`);
   }
+  // --check 는 파일을 쓰지 않으므로, 현재 내용과 생성 결과가 다르면 그것이 drift 다.
+  if (CHECK && drift.length) {
+    console.error(`FAIL. 인덱스 drift ${drift.length}건 — 재생성 결과와 현재 파일이 다르다.`);
+    drift.forEach((f) => console.error(`  - ${f}`));
+    console.error('  → node scripts/build-doc-index.mjs 후 커밋할 것.');
+    bad = true;
+  }
+
   if (bad) process.exit(1);
-  console.log(`PASS. 고아 0 · 깨진 링크 0 · ★ ${critRendered.length}/${critExpected.length} 렌더.`);
+  console.log(
+    `PASS. 고아 0 · 깨진 링크 0 · ★ ${critRendered.length}/${critExpected.length} 렌더` +
+      `${CHECK ? ' · drift 0' : ''}.`,
+  );
 }
 
 main();
