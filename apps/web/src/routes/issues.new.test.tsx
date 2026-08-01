@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { issueHandlers, createdIssueFixture } from '@/mocks/issue-handlers'
 import { componentHandlers, resetComponentStore } from '@/mocks/component-handlers'
+// FR-UX-09 F2 — 프로젝트가 셀렉터가 되고 유형 셀렉터가 생겨 두 목록 조회가 필요해졌다
+import { projectHandlers } from '@/mocks/project-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
 // IssueCreateForm 은 components/issue/ 로 이동했다 (FR-UX-09 F2 T4).
@@ -107,7 +110,7 @@ const componentFixtures = [
 describe('IssueCreateForm', () => {
   beforeEach(() => {
     resetComponentStore()
-    server.use(...issueHandlers, ...componentHandlers)
+    server.use(...issueHandlers, ...componentHandlers, ...projectHandlers, ...issueTypeHandlers)
     mockNavigate.mockReset()
     mockUseSearch.mockReturnValue({})
     // 기본값: 커스텀 필드 없음 — T9-* 테스트에서 개별 오버라이드
@@ -198,6 +201,9 @@ describe('IssueCreateForm', () => {
     const user = userEvent.setup()
     renderForm()
 
+    // FR-UX-09 F2 — 셀렉터는 활성 프로젝트를 기본 선택하므로, 「비어 있음」을 만들려면
+    // placeholder 옵션('')을 명시적으로 고른다.
+    await selectProject(user, '')
     await user.type(screen.getByLabelText('제목'), '어떤 제목')
 
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -540,12 +546,13 @@ describe('IssueCreateForm', () => {
       expect(screen.getByLabelText('제목')).toHaveValue('공백 포함 제목')
     })
 
-    it('FR7-4: URL summary가 500자를 넘으면 zod max(500)에 맞춰 잘린다', () => {
+    it('FR7-4: URL summary가 200자를 넘으면 zod max(200)에 맞춰 잘린다', () => {
+      // FR-UX-09 F2 — 백엔드 @Size(max = 200) 와 정렬하면서 상한이 500 → 200 이 됐다.
       mockUseSearch.mockReturnValue({ summary: 'a'.repeat(600) })
 
       renderRouteAdapter()
 
-      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(500))
+      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(200))
     })
 
     /**

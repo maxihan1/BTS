@@ -749,8 +749,6 @@ export const issueCreateStrings = {
   // ── FR-UX-09 F2 — 생성 모달 신규 필드 ────────────────────────────────
   /** 프로젝트 셀렉터 미선택 placeholder */
   projectPlaceholder: '프로젝트 선택',
-  /** 이슈 유형 필드 레이블 */
-  typeLabel: '이슈 유형',
   /** 본문 필드 레이블 */
   descriptionLabel: '설명',
   /** 본문 입력 placeholder */

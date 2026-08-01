@@ -5,9 +5,11 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { LS_KEY_PROJECT_LIST_EMPTY } from '@/mocks/project-handlers'
+import { projectHandlers, LS_KEY_PROJECT_LIST_EMPTY } from '@/mocks/project-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { issueHandlers } from '@/mocks/issue-handlers'
 import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
-import { issueCreateStrings } from '@/i18n/ko'
+import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomField } from '@/api/custom-fields.types'
 
 // useNavigate mock — 폼은 라우터 비의존이지만 하위 컴포넌트가 쓸 수 있어 방어적으로 둔다
@@ -53,6 +55,7 @@ const EMPTY_CUSTOM_FIELDS_RESULT = {
 beforeEach(() => {
   vi.mocked(useCustomFields).mockReturnValue(EMPTY_CUSTOM_FIELDS_RESULT as never)
   localStorage.clear()
+  server.use(...issueHandlers, ...projectHandlers, ...issueTypeHandlers)
 })
 
 /** 폼을 QueryClient 로 감싸 렌더한다. */
@@ -122,7 +125,7 @@ describe('IssueCreateForm — 이슈 유형과 본문 (FR-4/FR-5)', () => {
     renderForm()
 
     const typeSelect = await waitFor(() => {
-      const el = screen.getByLabelText(issueCreateStrings.typeLabel) as HTMLSelectElement
+      const el = screen.getByLabelText(issueDetailStrings.typeSelectLabel) as HTMLSelectElement
       expect(el.querySelectorAll('option').length).toBeGreaterThan(0)
       return el
     })
