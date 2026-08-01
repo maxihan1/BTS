@@ -44,6 +44,20 @@ export const LEGACY_GROUP_MAP = {
 // fr-scope-change-full-sync-rule(워크플로우 규칙)을 완료 이력으로 오분류한다 (스펙 R2).
 export const FR_ID_RE = /^fr-([a-z]{2,3})-(\d{2})/;
 
+/**
+ * 정본(`docs/plan/`)에 없지만 **오타가 아닌** FR ID.
+ *
+ * 계획 단계에서 쓰였다가 다른 FR 로 흡수·착지한 ID 다. 문서에 역사적 참조로 남아 있는 것이
+ * 정상이므로 경고에서 제외한다. 인덱스에는 여전히 들어가지 않는다 (정본이 아니므로).
+ *
+ * 근거. `docs/decisions/2026-07-28-fr-ux-07-active-project-context.md` §선점 검증 —
+ * "문서에만 있는 FR-AU-12·FR-IS-12 는 선점 아님. 둘 다 fr-index 미등록."
+ */
+export const KNOWN_HISTORICAL_FR_IDS = new Set([
+  'FR-AU-12', // ≡ FR-PM-02 로 흡수 확정 (docs/adr/2026-05-22-issue-permission-resolver-port.md)
+  'FR-IS-12', // 실제로는 FR-MV-02 로 착지
+]);
+
 // FR ID 형식이 비표준이라 자동 추출이 안 되는 완료 이력 5건 (스펙 §2).
 export const MANUAL_FR_OVERRIDE = {
   'fr-bl-d6-d7-backlog-sprint-done': 'FR-BL',

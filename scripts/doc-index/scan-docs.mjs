@@ -1,7 +1,11 @@
 // docs/ 문서에서 파일명(날짜·slug) · H1 제목 · 본문 FR ID 를 뽑아 FR축/시간축으로 묶는다
 const FILENAME_RE = /^(\d{4}-\d{2}-\d{2})-(.+)\.md$/;
-const FR_IN_BODY_RE = /FR-[A-Z]{2,3}-\d{2}/g;
-const FR_IN_NAME_RE = /fr-([a-z]{2,3})-(\d{2})/g;
+
+// ★ 앞에 대문자가 붙으면 FR ID 가 아니다. `NFR-SEC-01`(Non-Functional Requirement)의 뒷부분을
+//   잘라 `FR-SEC-01` 로 잡는 오탐이 실제로 5건 있었다 — 문서가 아니라 판별식이 틀린 것이었다.
+//   같은 계열 사고. verify-master-plan 의 헤더 스캐너가 산문 FR-XX-NN 을 오인해 EXIT 1 을 낸 건.
+const FR_IN_BODY_RE = /(?<![A-Z])FR-[A-Z]{2,3}-\d{2}/g;
+const FR_IN_NAME_RE = /(?<![a-z])fr-([a-z]{2,3})-(\d{2})/g;
 
 export function parseDocMeta(filename, content) {
   const m = filename.match(FILENAME_RE);

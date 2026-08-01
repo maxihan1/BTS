@@ -417,7 +417,7 @@
 | 2026-05-22 | pgmq-postgres-image | — | — | — | ✔ | — |
 | 2026-05-22 | project-workflow-fr-wf-01-frontend-2-pr | ✔ | ✔ | — | — | FR-WF-01 |
 | 2026-05-22 | workflow-diagram-c2-c3-followup | ✔ | ✔ | — | — | FR-WF-01 |
-| 2026-05-21 | fr-au-09-login-form-ui-d6 | ✔ | ✔ | — | — | FR-AU-09 FR-SEC-01 FR-SEC-02 FR-SEC-03 FR-SEC-04 FR-SEC-05 |
+| 2026-05-21 | fr-au-09-login-form-ui-d6 | ✔ | ✔ | — | — | FR-AU-09 |
 | 2026-05-21 | project-workflow-bc-fr-wf-01-fsm-1-pr | ✔ | ✔ | — | — | FR-AU-09 FR-WF-01 FR-WF-02 |
 | 2026-05-21 | v001-initial-schema-non-concurrent | — | — | — | ✔ | — |
 | 2026-05-21 | workflow-bc-cross-bc-port | — | — | — | ✔ | — |

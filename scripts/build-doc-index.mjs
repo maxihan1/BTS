@@ -8,7 +8,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { MEMORY_DIR, REPO_ROOT, SOURCES, AUTOGEN_HEADER, HOME } from './doc-index/config.mjs';
+import {
+  MEMORY_DIR,
+  REPO_ROOT,
+  SOURCES,
+  AUTOGEN_HEADER,
+  HOME,
+  KNOWN_HISTORICAL_FR_IDS,
+} from './doc-index/config.mjs';
 import { parseFrontmatter, parseLegacyIndex } from './doc-index/parse-memory.mjs';
 import { classify, partition, frIdOf } from './doc-index/classify.mjs';
 import {
@@ -160,10 +167,12 @@ function main() {
   console.log(
     `→ docs ${docs.length}건. FR축 ${frRows.length}/${canonical.size} FR · 시간축 등록 ${docs.length - docOrphans.length} · 고아 ${docOrphans.length}`,
   );
-  if (rejected.length) {
+  // 알려진 역사적 ID 는 경고에서 뺀다 — 매번 뜨면 경고 피로로 진짜 오타를 놓친다.
+  const unknownFr = rejected.filter((fr) => !KNOWN_HISTORICAL_FR_IDS.has(fr));
+  if (unknownFr.length) {
     console.warn(
-      `WARN. 정본에 없는 FR ID ${rejected.length}건 (오타·폐기 의심, 인덱스에서 제외).`,
-      rejected,
+      `WARN. 정본에 없는 FR ID ${unknownFr.length}건 (오타 의심, 인덱스에서 제외).`,
+      unknownFr,
     );
   }
 
