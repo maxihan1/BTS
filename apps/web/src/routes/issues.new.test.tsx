@@ -5,9 +5,17 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { issueHandlers, createdIssueFixture } from '@/mocks/issue-handlers'
 import { componentHandlers, resetComponentStore } from '@/mocks/component-handlers'
+// FR-UX-09 F2 — 프로젝트가 셀렉터가 되고 유형 셀렉터가 생겨 두 목록 조회가 필요해졌다
+import { projectHandlers } from '@/mocks/project-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
-import { IssueCreateForm, IssueCreateRouteAdapter } from './issues.new'
+// IssueCreateForm 은 components/issue/ 로 이동했다 (FR-UX-09 F2 T4).
+// CreateIssueDialog 가 폼을 감싸고 이 라우트가 모달을 감싸므로, 폼이 라우트 파일에 남아 있으면
+// routes/issues.new → CreateIssueDialog → routes/issues.new 순환 import 가 된다.
+import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
+import { IssueCreateRouteAdapter } from './issues.new'
+import { issueCreateStrings } from '@/i18n/ko'
 import type { CustomField } from '@/api/custom-fields.types'
 
 // useNavigate/useSearch mock — TanStack Router 의존 없이 폼/어댑터 테스트
@@ -68,6 +76,19 @@ function renderForm(onSuccess?: (key: string) => void) {
   )
 }
 
+/**
+ * 프로젝트 셀렉터에서 프로젝트를 고른다 (FR-UX-09 F2 — 자유 텍스트 입력이 셀렉터로 바뀌었다).
+ * 옵션은 MSW `GET /api/v1/projects` 가 채우므로 렌더 직후엔 비어 있을 수 있어 기다린다.
+ */
+async function selectProject(user: ReturnType<typeof userEvent.setup>, key: string): Promise<void> {
+  const select = await waitFor(() => {
+    const el = screen.getByLabelText(issueCreateStrings.projectKeyLabel) as HTMLSelectElement
+    expect(el.querySelectorAll('option').length).toBeGreaterThan(1)
+    return el
+  })
+  await user.selectOptions(select, key)
+}
+
 /** 컴포넌트 옵션 fixture — ComponentMultiSelect options 에 공급 */
 const componentFixtures = [
   {
@@ -89,7 +110,7 @@ const componentFixtures = [
 describe('IssueCreateForm', () => {
   beforeEach(() => {
     resetComponentStore()
-    server.use(...issueHandlers, ...componentHandlers)
+    server.use(...issueHandlers, ...componentHandlers, ...projectHandlers, ...issueTypeHandlers)
     mockNavigate.mockReset()
     mockUseSearch.mockReturnValue({})
     // 기본값: 커스텀 필드 없음 — T9-* 테스트에서 개별 오버라이드
@@ -107,7 +128,7 @@ describe('IssueCreateForm', () => {
     renderForm()
 
     // projectKey 입력, summary 는 비워둠
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     // 제출 버튼 클릭
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -134,7 +155,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '새 이슈 제목')
 
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -155,7 +176,14 @@ describe('IssueCreateForm', () => {
     const user = userEvent.setup()
     renderForm()
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'INVALID')
+    // 프로젝트가 셀렉터가 된 뒤로 'INVALID' 를 타이핑할 수 없다. 서버가 404 를 주는 쪽으로 바꾼다
+    // — 검증 대상은 「404 응답 시 role=alert 노출」이지 「잘못된 키를 칠 수 있는가」가 아니다.
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '어떤 제목')
 
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
@@ -173,12 +201,15 @@ describe('IssueCreateForm', () => {
     const user = userEvent.setup()
     renderForm()
 
+    // FR-UX-09 F2 — 셀렉터는 활성 프로젝트를 기본 선택하므로, 「비어 있음」을 만들려면
+    // placeholder 옵션('')을 명시적으로 고른다.
+    await selectProject(user, '')
     await user.type(screen.getByLabelText('제목'), '어떤 제목')
 
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
 
     await waitFor(() =>
-      expect(screen.getByText('프로젝트 키를 입력하세요.')).toBeInTheDocument(),
+      expect(screen.getByText(issueCreateStrings.projectKeyRequired)).toBeInTheDocument(),
     )
 
     expect(mockNavigate).not.toHaveBeenCalled()
@@ -223,7 +254,7 @@ describe('IssueCreateForm', () => {
     renderForm(onSuccess)
 
     // projectKey 입력 → 컴포넌트 목록 로드
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     // 컴포넌트 옵션이 로드될 때까지 대기
     await waitFor(() =>
@@ -275,7 +306,7 @@ describe('IssueCreateForm', () => {
     const user = userEvent.setup()
     renderForm()
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     await waitFor(() =>
       expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
@@ -316,7 +347,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
 
     await waitFor(() =>
       expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
@@ -364,7 +395,7 @@ describe('IssueCreateForm', () => {
     renderForm()
 
     // projectKey + summary 입력, required 커스텀 필드는 비워둠
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '이슈 제목')
 
     // 커스텀 필드 섹션이 렌더될 때까지 대기
@@ -413,7 +444,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '이슈 제목')
 
     await waitFor(() =>
@@ -451,7 +482,7 @@ describe('IssueCreateForm', () => {
     }
     renderForm(onSuccess)
 
-    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await selectProject(user, 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '컴포넌트 없는 이슈')
     await user.click(screen.getByRole('button', { name: '이슈 생성' }))
 
@@ -515,12 +546,13 @@ describe('IssueCreateForm', () => {
       expect(screen.getByLabelText('제목')).toHaveValue('공백 포함 제목')
     })
 
-    it('FR7-4: URL summary가 500자를 넘으면 zod max(500)에 맞춰 잘린다', () => {
+    it('FR7-4: URL summary가 200자를 넘으면 zod max(200)에 맞춰 잘린다', () => {
+      // FR-UX-09 F2 — 백엔드 @Size(max = 200) 와 정렬하면서 상한이 500 → 200 이 됐다.
       mockUseSearch.mockReturnValue({ summary: 'a'.repeat(600) })
 
       renderRouteAdapter()
 
-      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(500))
+      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(200))
     })
 
     /**
@@ -542,5 +574,52 @@ describe('IssueCreateForm', () => {
         expect(screen.getByLabelText('제목')).toHaveValue('두 번째 제목'),
       )
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-11 — 딥링크 라우트가 같은 모달을 열린 상태로 렌더한다 (design 리뷰 D3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateRouteAdapter — 딥링크가 모달을 연다 (FR-11)', () => {
+  beforeEach(() => {
+    server.use(...issueHandlers, ...componentHandlers, ...projectHandlers, ...issueTypeHandlers)
+    mockNavigate.mockReset()
+    mockUseSearch.mockReturnValue({})
+    vi.mocked(useCustomFields).mockReturnValue(
+      EMPTY_CUSTOM_FIELDS_RESULT as unknown as ReturnType<typeof useCustomFields>,
+    )
+  })
+
+  it('/issues/new 진입 시 생성 모달이 열린 상태로 렌더된다', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
+    ).toBeInTheDocument()
+  })
+
+  it('모달을 닫으면 /issues 로 이동한다 — 딥링크로 들어와 뒤로 갈 곳이 없을 수 있다', async () => {
+    const user = userEvent.setup()
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle })
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.cancelButton }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues' }))
   })
 })

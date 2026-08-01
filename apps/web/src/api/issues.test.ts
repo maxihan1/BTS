@@ -1632,3 +1632,82 @@ describe('fetchIssues — sort 파라미터 (PR18 Task 2)', () => {
     expect(params.has('sort')).toBe(false)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-F2-1. createIssue — FR-UX-09 F2 신규 5필드 전송 + assigneeId 3-state
+//
+// 백엔드 CreateIssueRequest(PR #328)가 typeId·description·assigneeId·priority·labels 를
+// 받는데 프론트가 보내지 않던 갭을 닫는다. assigneeId 는 JsonNullable 3-state 라
+// **키 부재 / 명시 null / 값** 세 가지가 서로 다른 서버 동작을 부른다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('createIssue — FR-UX-09 F2 신규 5필드', () => {
+  /** POST /api/v1/issues 요청 본문을 캡처하는 핸들러를 등록한다. */
+  function captureCreateBody(): { get: () => Record<string, unknown> } {
+    let captured: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        captured = await request.json() as Record<string, unknown>
+        return HttpResponse.json({ data: issueFixture }, { status: 201 })
+      }),
+    )
+    return { get: () => captured }
+  }
+
+  it('T-F2-1a: typeId·description·priority·labels 를 넘기면 POST body 에 그대로 실린다', async () => {
+    const body = captureCreateBody()
+
+    await createIssue({
+      projectKey: 'ATLAS',
+      summary: '5필드 이슈',
+      typeId: 2,
+      description: '본문입니다',
+      priority: 1,
+      labels: ['backend', 'urgent'],
+    })
+
+    expect(body.get()['typeId']).toBe(2)
+    expect(body.get()['description']).toBe('본문입니다')
+    expect(body.get()['priority']).toBe(1)
+    expect(body.get()['labels']).toEqual(['backend', 'urgent'])
+  })
+
+  it('T-F2-1b: 미전달 시 POST body 에 해당 키 자체가 없다 (서버 기본값 위임)', async () => {
+    const body = captureCreateBody()
+
+    await createIssue({ projectKey: 'ATLAS', summary: '기본 이슈' })
+
+    expect('typeId' in body.get()).toBe(false)
+    expect('description' in body.get()).toBe(false)
+    expect('priority' in body.get()).toBe(false)
+    expect('labels' in body.get()).toBe(false)
+  })
+
+  it('T-F2-1c: assigneeId 미전달 시 POST body 에 키 자체가 없다 (자동 배정 유지)', async () => {
+    const body = captureCreateBody()
+
+    await createIssue({ projectKey: 'ATLAS', summary: '자동 배정 이슈' })
+
+    expect('assigneeId' in body.get()).toBe(false)
+  })
+
+  it('T-F2-1d: assigneeId=null 전달 시 POST body 에 null 이 실린다 (자동 배정 비활성)', async () => {
+    const body = captureCreateBody()
+
+    await createIssue({ projectKey: 'ATLAS', summary: '미할당 확정 이슈', assigneeId: null })
+
+    expect('assigneeId' in body.get()).toBe(true)
+    expect(body.get()['assigneeId']).toBeNull()
+  })
+
+  it('T-F2-1e: assigneeId 에 값 전달 시 POST body 에 그 값이 실린다', async () => {
+    const body = captureCreateBody()
+
+    await createIssue({
+      projectKey: 'ATLAS',
+      summary: '담당자 지정 이슈',
+      assigneeId: '33333333-3333-4333-8333-333333333333',
+    })
+
+    expect(body.get()['assigneeId']).toBe('33333333-3333-4333-8333-333333333333')
+  })
+})

@@ -275,6 +275,29 @@ export interface CreateIssueInput {
    * 미전달 시 서버 기본값({}) 사용. 각 키-값은 프로젝트 필드 정의에 따라 처리됨.
    */
   customFields?: CustomFieldValues
+  /** FR-UX-09 F2 — 이슈 유형. 미전달이면 서버가 task 로 fallback 한다. */
+  typeId?: number
+  /**
+   * FR-UX-09 F2 — 이슈 본문(Markdown).
+   * 미전달/공백이면 서버가 프로젝트 템플릿으로 대체한다 (FR-TM-01 옵션 C).
+   */
+  description?: string
+  /**
+   * FR-UX-09 F2 — 담당자 **3-state** (백엔드 `JsonNullable`, ADR 2026-07-31 D-2).
+   *
+   * - **키 미전달(`undefined`)** — 서버 자동 배정(`resolveDefaultAssignee`) 유지. 기존 동작.
+   * - **명시 `null`** — 자동 배정을 **끄고** 미할당으로 확정.
+   * - **값** — 그 사용자로 확정. 미존재 사용자는 422 `ASSIGNEE_NOT_FOUND`.
+   *
+   * 2-state 로는 「자동 배정을 끄고 미할당으로 두기」를 표현할 수 없다.
+   * `createIssue` 가 `'assigneeId' in input` 으로 키 존재를 판별하므로,
+   * **`undefined` 를 명시적으로 넘겨도 키가 있는 것으로 취급되지 않도록** 주의한다.
+   */
+  assigneeId?: string | null
+  /** FR-UX-09 F2 — 우선순위 1..5. 미전달이면 서버가 도메인 기본값 3(Medium)을 적용한다. */
+  priority?: number
+  /** FR-UX-09 F2 — 라벨. 미전달이면 빈 목록. 개수 ≤20 · 개별 길이 ≤50 · 공백-only 금지. */
+  labels?: string[]
 }
 
 /**
@@ -562,6 +585,25 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueRespons
   // FR-IS-10 — customFields 미전달 시 필드 자체를 body에서 제외해 서버가 기본값({})으로 처리하게 한다.
   if (input.customFields !== undefined) {
     body['customFields'] = input.customFields
+  }
+  // FR-UX-09 F2 — typeId·description·priority·labels 는 미전달 시 키를 빼 서버 기본값에 위임한다.
+  if (input.typeId !== undefined) {
+    body['typeId'] = input.typeId
+  }
+  if (input.description !== undefined) {
+    body['description'] = input.description
+  }
+  if (input.priority !== undefined) {
+    body['priority'] = input.priority
+  }
+  if (input.labels !== undefined) {
+    body['labels'] = input.labels
+  }
+  // FR-UX-09 F2 — assigneeId 는 3-state 라 `!== undefined` 가 아니라 **키 존재**로 판별한다.
+  // 명시 null(미할당 확정)과 키 부재(자동 배정 유지)가 서버에서 다른 동작이므로,
+  // null 을 undefined 와 같이 취급하면 「자동 배정 끄기」를 영영 표현할 수 없다.
+  if ('assigneeId' in input) {
+    body['assigneeId'] = input.assigneeId
   }
   const wrapped = await apiPost(
     '/api/v1/issues',

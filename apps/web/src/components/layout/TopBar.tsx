@@ -1,8 +1,12 @@
 // 상단바 컴포넌트 — 사이드바 토글·로고·검색·만들기·알림·도움말·설정·계정 드롭다운 (FR-UX-06 PR11 Task 6, 트리 미배선)
+import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen, Search, Plus, HelpCircle, Settings } from 'lucide-react'
 import { navLabels } from '@/i18n/nav-labels'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
+import { toast } from 'sonner'
+import { issueCreateStrings } from '@/i18n/ko'
 import { InboxBell } from '@/components/inbox/InboxBell'
 import { ProjectSwitcher } from '@/components/project/ProjectSwitcher'
 import { AccountMenu } from './AccountMenu'
@@ -33,6 +37,8 @@ export interface TopBarProps {
  * 화면에 나타나지 않는다 — 클릭해도 아무 동작을 하지 않는 죽은 버튼을 방지한다.
  */
 export function TopBar({ onHelpClick }: TopBarProps) {
+  // FR-12 — 생성 모달을 제자리에서 연다 (URL 불변)
+  const [createOpen, setCreateOpen] = useState(false)
   const navigate = useNavigate()
   const { collapsed, toggle } = useSidebarCollapsed()
 
@@ -76,11 +82,28 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         variant="default"
         size="default"
         className="gap-1 rounded-md px-3 hover:bg-primary/90"
-        onClick={() => { void navigate({ to: '/issues/new' }) }}
+        onClick={() => { setCreateOpen(true) }}
       >
         <Plus className="size-4" />
         {navLabels.create}
       </Button>
+
+      {/* 생성 모달 — 제자리에서 연다. 보드를 보던 사용자가 이슈 하나 만들려다
+          화면을 떠나면 맥락이 끊긴다 (FR-12, design 리뷰 D8). */}
+      <CreateIssueDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(key) => {
+          // 제자리에 머무는 대신 만든 이슈로 갈 길을 토스트로 남긴다
+          toast(`${key} ${issueCreateStrings.createdToast}`, {
+            action: {
+              label: issueCreateStrings.createdToastAction,
+              onClick: () => { void navigate({ to: '/issues/$key', params: { key } }) },
+            },
+          })
+        }}
+        onCreateProject={() => { void navigate({ to: '/projects/new' }) }}
+      />
 
       <InboxBell />
 

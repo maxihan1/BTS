@@ -46,8 +46,12 @@ test.describe('E2E-4 UI 회귀 가드', () => {
     await loginAsAlice(page)
 
     await page.goto('/issues/new')
-    // projectKey 만 입력, summary 빈 채로 제출
-    await page.getByLabel(i18nLabels.issueCreate.projectKeyLabel).fill('ATLAS')
+    // FR-UX-09 F2 — 라우트가 모달을 열고, 프로젝트는 셀렉터로 고른다
+    await expect(page.getByRole('dialog', { name: '새 이슈 만들기' })).toBeVisible()
+    await page
+      .getByRole('dialog', { name: '새 이슈 만들기' })
+      .getByLabel(i18nLabels.issueCreate.projectKeyLabel)
+      .selectOption('ATLAS')
     await page.getByRole('button', { name: i18nLabels.issueCreate.submitButton }).click()
 
     // Zod 클라이언트 검증 메시지 노출 (FormMessage — issueCreateStrings.summaryRequired)

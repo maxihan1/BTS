@@ -332,12 +332,14 @@ test.describe('S5 이슈 생성 시 커스텀 필드 값 입력 (FR-IS-10)', () 
       window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
     })
 
-    // 이슈 생성 폼 렌더 대기
-    await expect(page.getByLabel('프로젝트 키')).toBeVisible()
+    // 이슈 생성 모달 렌더 대기 (FR-UX-09 F2 — 라우트가 모달을 연다)
+    await expect(page.getByRole('dialog', { name: '새 이슈 만들기' })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: '새 이슈 만들기' }).getByLabel('프로젝트')).toBeVisible()
 
-    // projectKey 입력 — useCustomFields(projectKey)로 커스텀 필드 정의 fetch 트리거
+    // 프로젝트 선택 — useCustomFields(projectKey)로 커스텀 필드 정의 fetch 트리거
+    // (FR-UX-09 F2 에서 자유 텍스트 입력이 셀렉터가 됐다)
     // 시드 fetch로 store가 초기화됐으므로 이후 GET 요청에 sprint_note 필드가 반환됩니다.
-    await page.getByLabel('프로젝트 키').fill('ATLAS')
+    await page.getByRole('dialog', { name: '새 이슈 만들기' }).getByLabel('프로젝트').selectOption('ATLAS')
 
     // 커스텀 필드 섹션이 렌더됨 (data-testid="custom-fields-section")
     await expect(page.getByTestId('custom-fields-section')).toBeVisible()

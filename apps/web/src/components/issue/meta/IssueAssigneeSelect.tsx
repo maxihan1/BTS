@@ -97,6 +97,13 @@ export function IssueAssigneeSelect({
         aria-label={issueDetailStrings.assigneeSearchPlaceholder}
         disabled={!canEdit}
         onChange={(e) => onSearch(e.target.value)}
+        // ★이 셀렉터가 <form> 안에 들어가면(이슈 생성 폼, FR-UX-09 F2) Enter 가 HTML
+        // 암묵적 제출을 일으켜 검색하려던 사용자가 이슈를 만들어 버린다. 여기는 값을 넣는
+        // 칸이 아니라 **검색창**이라 Enter 에 제출 의미가 없다. 형제 LabelAutocompleteInput
+        // 도 같은 이유로 Enter 를 가로챈다. 폼 밖(이슈 상세)에서는 원래 무동작이라 무변화.
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.preventDefault()
+        }}
       />
 
       {/* 검색 결과 사용자 목록 */}
