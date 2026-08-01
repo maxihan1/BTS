@@ -332,3 +332,30 @@ describe('IssueCreateForm — 필드 3덩어리 구분 (FR-15, design 리뷰 D7)
     expect(container.querySelectorAll('[data-slot="separator"]').length).toBe(2)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 눈확인이 잡은 결함 — 검색 전에 사용자 목록이 통째로 뜬다
+//
+// `useUsers('')` 는 **전체 사용자 목록**을 돌려준다. 그대로 넘기면 아직 아무것도 검색하지
+// 않았는데 후보가 쌓여 모달 세로를 잡아먹는다. 1,000명 규모에서는 더 나쁘다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateForm — 담당자 후보는 검색해야 나온다', () => {
+  it('검색어가 비어 있으면 사용자 후보 목록이 렌더되지 않는다', async () => {
+    renderForm()
+
+    await waitForProjectSelect()
+    // user-fixtures 의 alice 표시 이름
+    expect(screen.queryByRole('button', { name: '김앨리스' })).toBeNull()
+  })
+
+  it('검색어를 입력하면 후보가 나온다', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueDetailStrings.assigneeSearchPlaceholder), 'al')
+
+    expect(await screen.findByRole('button', { name: '김앨리스' })).toBeInTheDocument()
+  })
+})
