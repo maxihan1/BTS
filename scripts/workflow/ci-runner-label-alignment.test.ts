@@ -68,6 +68,29 @@ const DISCRIMINANT_WORKFLOW = '.github/workflows/workflow-scripts-ci.yml';
 /** 모든 잡이 요구받는 러너 라벨. 이 저장소 전용 self-hosted 러너를 가리킨다. */
 const REQUIRED_RUNNER_LABEL = 'bts-local';
 
+/**
+ * 판별식 **전용** 입력 경로 — 이 경로들을 트리거로 거는 것은 `DISCRIMINANT_WORKFLOW` 하나여야 한다.
+ *
+ * 왜 막나. 판별식은 `pnpm test:workflow` 로 workflow-scripts-ci 에서만 돈다(2026-07-30 이전
+ * 에는 backend-ci 에 있었다). 그런데 backend-ci 의 `paths` 에 이 경로들이 **이동 후에도
+ * 남아 있었다.** backend-ci 는 `./gradlew` 만 실행하므로 이 경로들은 잡 결과에 아무 영향이 없다.
+ *
+ * 비용은 실측됐다. PR #329(문서 인덱싱)는 backend 를 한 줄도 건드리지 않았는데
+ * `scripts/workflow/` 에 판별식 파일 하나를 추가한 것만으로 backend 12잡을 전부 끌고 왔다.
+ * 러너 1대 직렬이라 33분 스위트가 50~60분이 된다.
+ *
+ * 되돌리려면 이 상수를 함께 지워야 한다 — 그때 위 근거를 다시 검토하라.
+ */
+const DISCRIMINANT_ONLY_PATHS = [
+  'scripts/workflow/**',
+  'apps/web/vite.config.ts',
+  'apps/web/playwright.config.ts',
+  'package.json',
+] as const;
+
+/** 판별식을 돌리지 않는 워크플로우 — 위 경로를 트리거로 걸면 안 된다. */
+const NON_DISCRIMINANT_WORKFLOWS = ['.github/workflows/backend-ci.yml'] as const;
+
 /** 파서가 고장났을 때 차집합이 공허하게 통과하는 것을 막는 하한. */
 const MIN_WORKFLOW_FILES = 3;
 const MIN_RUNS_ON_ENTRIES = 8;
@@ -218,6 +241,29 @@ describe('CI 러너 라벨 정합', () => {
           `빠진 경로만 바꾸는 PR 은 이 판별식을 0회 실행하고 통과한다.`,
       );
     });
+  }
+
+  for (const workflow of NON_DISCRIMINANT_WORKFLOWS) {
+    for (const trigger of CI_TRIGGERS) {
+      test(`${workflow} 의 ${trigger} 트리거에 판별식 전용 입력이 없다`, () => {
+        const paths = triggerPaths(workflow).get(trigger);
+        assert.ok(
+          paths !== undefined && paths.size > 0,
+          `${workflow} 에 on.${trigger}.paths 가 없다 — 파서가 고장났거나 트리거가 사라졌다.`,
+        );
+
+        const leaked = DISCRIMINANT_ONLY_PATHS.filter((p) => paths.has(p));
+
+        assert.deepEqual(
+          leaked,
+          [],
+          `${workflow} 의 ${trigger} 트리거에 판별식 전용 경로가 있다: ${leaked.join(', ')}\n\n` +
+            `이 워크플로우는 ./gradlew 만 실행한다 — 위 경로는 잡 결과에 영향이 없다.\n` +
+            `판별식은 ${DISCRIMINANT_WORKFLOW} 의 discriminants 잡에서만 돈다.\n` +
+            `경로 하나 때문에 backend 12잡(러너 1대 직렬 50~60분)이 통째로 끌려온다 — PR #329 실측.`,
+        );
+      });
+    }
   }
 
   test('선언한 coveredBy 패턴이 실제로 그 입력을 덮는다', () => {

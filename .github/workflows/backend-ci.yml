@@ -30,33 +30,33 @@
 # 이 파일의 `runs-on` 을 되돌리면 scripts/workflow/ci-runner-label-alignment.test.ts 가 차단한다.
 name: backend-ci
 
+# ## 트리거는 이 워크플로우가 **실제로 실행하는 것**만 건다
+# 이 파일의 잡은 전부 `./gradlew` 다 — pnpm/node 를 쓰지 않는다.
+#
+# 2026-08-01 이전에는 `scripts/workflow/**` · `apps/web/vite.config.ts` ·
+# `apps/web/playwright.config.ts` · `package.json` 이 함께 걸려 있었다. 판별식이 backend-ci 에서
+# 돌던 시절(~2026-07-30)의 잔재로, 판별식을 `workflow-scripts-ci.yml` 로 옮기면서 트리거만
+# 정리되지 않은 것이다. 그 경로들은 이 워크플로우의 잡 결과에 아무 영향이 없다.
+#
+# 비용은 실측됐다. PR #329(문서 인덱싱)는 backend 를 한 줄도 안 건드렸는데
+# `scripts/workflow/` 에 판별식 파일 하나를 추가한 것만으로 12잡을 전부 끌고 왔다
+# (러너 1대 직렬, 33분 스위트가 50~60분).
+#
+# 판별식이 계속 도는지는 그대로다 — `workflow-scripts-ci.yml` 의 트리거가
+# `backend/**` · `.github/workflows/**` · `apps/web/vite.config.ts` ·
+# `apps/web/playwright.config.ts` · `package.json` 을 이미 전부 덮는다.
+# 되돌리면 `scripts/workflow/ci-runner-label-alignment.test.ts` 가 차단한다.
 on:
   pull_request:
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
-      # ★scripts/workflow/** 는 실수가 아니다. `ci-module-coverage.test.ts` 가 이 파일의
-      # 매트릭스와 settings.gradle.kts 의 차집합을 강제한다 — 한쪽만 걸면 판별식이 안 돈다.
-      - 'scripts/workflow/**'
-      # ★아래 두 프론트 설정도 같은 사유다. `preview-cors-origin-alignment.test.ts` 가
-      # vite 의 로컬 포트와 application.yml 의 CORS 허용 오리진의 차집합을 강제하고,
-      # preview 가 dev 와 같은 포트를 쓰게 된 대가로 playwright 의 서버 재사용 금지까지 본다.
-      # 백엔드 쪽 축은 backend/** 가 이미 덮지만, 프론트 쪽 축을 걸지 않으면 그 파일만 바꾼 PR 에서
-      # 판별식이 0회 실행된다(그 PR 이 정확히 결함을 만드는 PR 이다).
-      # 이 목록은 손으로 유지하지 않는다 — 판별식의 INPUTS 선언에서 파생돼 자동으로 요구된다.
-      - 'apps/web/vite.config.ts'
-      - 'apps/web/playwright.config.ts'
-      - 'package.json'
   push:
     branches: [main]
+    # ★양쪽 블록에 같은 목록. 한쪽만 걸면 봉인이 절반만 닫힌다.
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
-      - 'scripts/workflow/**'
-      # pull_request 와 같은 사유. 한쪽 블록에만 넣으면 봉인이 절반만 닫힌다.
-      - 'apps/web/vite.config.ts'
-      - 'apps/web/playwright.config.ts'
-      - 'package.json'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
