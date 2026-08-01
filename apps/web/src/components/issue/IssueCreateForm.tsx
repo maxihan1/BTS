@@ -38,6 +38,7 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomFieldValues } from '@/api/issues'
 import type { CustomField } from '@/api/custom-fields.types'
+import type { UserSummary } from '@/api/users'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 폼 스키마 — interface 중복 정의 금지
@@ -264,14 +265,26 @@ export function IssueCreateForm({
     () => (debouncedAssigneeQuery.trim() === '' ? [] : allCandidates),
     [debouncedAssigneeQuery, allCandidates],
   )
-  /** 화면에 표시할 현재 담당자 — 후보 목록에서 찾는다(생성 폼은 서버 조회가 없다). */
-  const currentAssignee = useMemo(
-    () =>
-      typeof assigneeIntent === 'string'
-        ? allCandidates.find((u) => u.id === assigneeIntent) ?? null
-        : null,
-    [assigneeIntent, allCandidates],
-  )
+  /**
+   * 화면에 표시할 현재 담당자 — **고를 때 붙잡아 둔 스냅샷**이다.
+   *
+   * ★`allCandidates.find(...)` 로 매번 찾으면 안 된다. `allCandidates` 는 검색 결과라
+   * 검색어를 바꾸는 순간 골라둔 사람이 목록에서 빠져 화면이 「미지정」으로 뒤집힌다
+   * (전송값은 멀쩡한데 표시만 거짓말). 이슈 상세가 이미 겪고 고친 결함이다 —
+   * `routes/issues.$key.tsx` 의 `C1 버그 수정` 주석.
+   *
+   * 상세 화면은 담당자 id 가 서버 데이터로 들어와 고르는 순간이 없어 `useUsersByIds` 로
+   * 재조회한다. 생성 폼은 **사용자가 후보에서 고른 순간 객체를 이미 손에 쥐고 있어**
+   * 재조회가 필요 없다 — 요청도 아끼고, 응답을 기다리는 동안 이름이 깜빡이지도 않는다.
+   */
+  const [pickedAssignee, setPickedAssignee] = useState<UserSummary | null>(null)
+  const currentAssignee = pickedAssignee
+
+  /** 담당자 선택/해제 — 3-state 의사와 표시용 스냅샷을 함께 갱신한다. */
+  function handleAssigneeChange(userId: string | null): void {
+    setAssigneeIntent(userId)
+    setPickedAssignee(userId === null ? null : allCandidates.find((u) => u.id === userId) ?? null)
+  }
 
   // ── FR-4 이슈 유형 ────────────────────────────────────────────────────────
   const { data: issueTypes = [], isLoading: isTypesLoading } = useQuery({
@@ -503,7 +516,7 @@ export function IssueCreateForm({
             currentAssignee={currentAssignee}
             users={assigneeCandidates}
             onSearch={setAssigneeSearchQuery}
-            onAssigneeChange={setAssigneeIntent}
+            onAssigneeChange={handleAssigneeChange}
             canEdit
           />
           {/* 화면상 「비어 있음」이 두 뜻(자동 배정 / 미할당 확정)이라 안내가 필요하다 */}
