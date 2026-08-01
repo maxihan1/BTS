@@ -169,6 +169,14 @@ interface IssueCreateFormProps {
    * 미전달(라우트 페이지 등)이면 기존처럼 폼 안에 제출 버튼을 그린다.
    */
   formId?: string
+  /**
+   * 제출 진행 상태 변경 콜백 (게이트 2 C-2).
+   *
+   * `formId` 를 준 호출자는 제출 버튼을 **폼 밖**에 두므로 `mutation.isPending` 을 볼 수 없다.
+   * 그대로 두면 모달 버튼만 눌러도 아무 반응이 없어 사용자가 다시 누른다.
+   * setState 함수를 그대로 넘기면 참조가 안정적이라 재발화가 없다.
+   */
+  onPendingChange?: (pending: boolean) => void
 }
 
 /**
@@ -188,6 +196,7 @@ export function IssueCreateForm({
   initialSummary,
   onCreateProject,
   formId,
+  onPendingChange,
 }: IssueCreateFormProps = {}): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null)
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
@@ -332,6 +341,11 @@ export function IssueCreateForm({
       setServerError(resolveCreateErrorMessage(err))
     },
   })
+
+  // 제출 상태를 폼 밖(모달 푸터)으로 흘려보낸다 (게이트 2 C-2).
+  useEffect(() => {
+    onPendingChange?.(mutation.isPending)
+  }, [mutation.isPending, onPendingChange])
 
   function handleSubmit(values: IssueCreateFormValues): void {
     // E7 — 제출 중 재클릭 차단. 푸터 버튼이 폼 밖에 있어 버튼 disabled 만으로는 부족하다.
@@ -616,7 +630,9 @@ export function IssueCreateForm({
             disabled={mutation.isPending}
             className="w-full sm:w-auto"
           >
-            {issueCreateStrings.submitButton}
+            {mutation.isPending
+              ? issueCreateStrings.submitButtonPending
+              : issueCreateStrings.submitButton}
           </Button>
         )}
       </form>

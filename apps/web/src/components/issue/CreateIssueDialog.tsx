@@ -1,5 +1,6 @@
 // 이슈 생성 모달 — URL 을 모르는 제어 컴포넌트 (FR-UX-09 F2)
 import type { JSX } from 'react'
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,12 @@ export function CreateIssueDialog({
   onCreateProject,
   initialSummary,
 }: CreateIssueDialogProps): JSX.Element {
+  /**
+   * 제출 진행 상태 — 푸터 버튼이 폼 **밖**이라 폼에서 받아와야 한다 (게이트 2 C-2).
+   * `setSubmitting` 은 참조가 안정적이라 폼의 알림 effect 가 헛돌지 않는다.
+   */
+  const [submitting, setSubmitting] = useState(false)
+
   function handleSuccess(key: string): void {
     onOpenChange(false)
     onCreated?.(key)
@@ -82,6 +89,7 @@ export function CreateIssueDialog({
             initialSummary={initialSummary}
             onSuccess={handleSuccess}
             onCreateProject={onCreateProject}
+            onPendingChange={setSubmitting}
           />
         </div>
 
@@ -90,8 +98,8 @@ export function CreateIssueDialog({
             {issueCreateStrings.cancelButton}
           </Button>
           {/* 폼 밖에서 제출한다 — `form` 속성이 id 로 폼을 가리킨다 (NFR-2) */}
-          <Button type="submit" form={CREATE_ISSUE_FORM_ID}>
-            {issueCreateStrings.submitButton}
+          <Button type="submit" form={CREATE_ISSUE_FORM_ID} disabled={submitting}>
+            {submitting ? issueCreateStrings.submitButtonPending : issueCreateStrings.submitButton}
           </Button>
         </DialogFooter>
       </DialogContent>
