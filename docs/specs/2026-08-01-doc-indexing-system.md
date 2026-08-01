@@ -188,14 +188,19 @@ FR 축 인덱스가 이미 그 정보를 담을 자리를 갖고 있어 중복�
 
 | 패턴 | 분류 | 실측 |
 |---|---|---|
-| `^fr-[a-z]{2,3}-\d{2}` + (미승계 또는 승계=`fr-done`) | → **`docs/INDEX-fr.md`** | 174 |
+| `^fr-[a-z]{2,3}-\d{2}` + (미승계 또는 승계=`fr-done`) · 수동 오버라이드 5건 | → **`docs/INDEX-fr.md`** | 179 |
 | `bts-*` `worktree-*` `parallel-*` `subagent-*` `two-lists-*` `seal-*` `mutation-*` … | `workflow` | 55 |
 | `jooq-*` `*-transaction-*` `*-exception-*` `pg-*` `path-token-*` `dev-seed-*` … | `backend` | 52 |
 | `crossbc-*` `shared-*` `*-permission-*` `*-resolver-*` `nonprod-*` … | `cross-bc` | 33 |
 | `*e2e*` `msw-*` `zod-*` `react-*` `vitest-*` `playwright-*` `jsdom-*` … | `frontend` | 32 |
 | `detekt-*` `ktlint-*` `migration-*` `archunit-*` `gradle-*` `flaky-*` `saml/oidc-*` … | `build` | 27 |
-| 미매칭 | **`uncategorized`** | 5 |
+| 미매칭 | **`uncategorized`** | **0** |
 | | **합계** | **378** |
+
+> **수치 출처.** 이 표는 구현 후 실행한 실측이다 (`node scripts/doc-index/classify.mjs` 경유).
+> 스펙 초안의 시뮬레이션 값(FR축 174 · 카테고리 204 · uncategorized 5)은 수동 오버라이드를
+> 적용하기 **전** 수치였다 — 오버라이드가 그 5건을 FR축으로 보내므로 179/199/0 이 맞다.
+> 초안 표와 오버라이드 설명이 서로 어긋나 있던 것을 구현이 드러냈다 (§검토 이력 R3).
 
 **`/^fr-/` 로 뭉뚱그리면 오분류한다.** `fr-scope-change-full-sync-rule`(FR 변경 동기화 규칙)과
 `fr-sizing-d-stage-must-be-completion-unit`(FR 크기 판정식)은 FR 완료 이력이 아니라
@@ -222,7 +227,7 @@ fr-pj-pr-5-project-crud-ui-done                   → FR-PJ
 ```markdown
 <!-- 자동 생성 — 직접 수정 금지 -->
 
-## ★ 항상 지킬 것 (45건)
+## ★ 항상 지킬 것 (34건)
 (metadata.priority: critical 인 메모리 전량. 현재 MEMORY.md 의 ★ 표기에서 승계)
 - 두 목록이 서로를 안 본다 → 차집합 판별식+비-공허 짝+CI  [[two-lists-never-check-each-other]]
 - 뮤테이션은 커밋 후에만 (2회 재발) → 하네스 dirty 검사  [[mutation-test-requires-committed-baseline]]
@@ -236,20 +241,20 @@ fr-pj-pr-5-project-crud-ui-done                   → FR-PJ
 | cross-BC·권한·shared-kernel | memory/index/cross-bc.md | 33 |
 | 프론트 (React/Zod/MSW/E2E/vitest) | memory/index/frontend.md | 32 |
 | 빌드·린트·마이그레이션·SSO | memory/index/build.md | 27 |
-| **FR 완료 이력 174건** | **docs/INDEX-fr.md** (memory 열) | 174 |
-| 미분류 — 정리 필요 | memory/index/uncategorized.md | 5 |
+| **FR 완료 이력** | **docs/INDEX-fr.md** (memory 열) | 179 |
 ```
 
 카테고리 5개는 **현재 `MEMORY.md`의 `## ` 그룹을 그대로 승계**한다. 새 분류 체계를 발명하지 않는다.
 (현재 6번째 그룹 "FR 스코프 / BC 완료 요약"은 FR 축 인덱스로 흡수되어 사라진다.)
+`uncategorized` 행은 건수가 0이면 렌더되지 않는다 — 지금은 0이라 표에 없다.
 
 **크기 추산.**
 
 | 구획 | 산출 근거 | 크기 |
 |---|---|---|
-| ★ 45건 | 실측 평균 55자 × 45 | 2.4KB |
-| 라우팅 표 + 헤더 | 7행 | ≈1.0KB |
-| **`MEMORY.md` 합계** | | **≈3.4KB** (현재 22.2KB) |
+| ★ 34건 | 실측 평균 55자 × 34 | ≈1.9KB |
+| 라우팅 표 + 헤더 | 6행 | ≈1.0KB |
+| **`MEMORY.md` 합계** | | **≈2.9KB** (현재 22.2KB) |
 | 작업 시 추가 1개 | 최대 카테고리 55건 × ≈100자 | ≈5.5KB |
 
 카테고리가 27~55건으로 고르게 나뉘어, 어느 작업을 하든 **라우터 3.4KB + 카테고리 1개**만 읽으면 된다.
@@ -377,17 +382,30 @@ skill-type-coverage · todos-resolved-section-purity · ci-runner-label-alignmen
 → `\d{2}`(FR 번호)까지 요구하는 엄격 패턴 + 승계 우선순위로 교정. 부작용으로 FR ID 비표준
 5건이 미분류로 남아, 수동 오버라이드 테이블에 명시했다.
 
-시뮬레이션 최종 결과. **378 = FR인덱스 174 + workflow 55 + backend 52 + cross-bc 33 +
-frontend 32 + build 27 + uncategorized 5**, ★ 45건 ≈2.4KB.
+**R3. 구현 후 실측이 시뮬레이션 두 값을 뒤집었다.** (2026-08-01, Task 1-2 완료 시점)
+
+| 값 | 초안(시뮬레이션) | 실측 | 무엇이 틀렸나 |
+|---|---|---|---|
+| FR축 / 카테고리 / 미분류 | 174 / 204 / 5 | **179 / 199 / 0** | 초안 표가 **수동 오버라이드 적용 전** 수치였다. 오버라이드가 그 5건을 FR축으로 보내므로 초안 표와 오버라이드 설명이 자기모순이었다 |
+| ★ (critical) | 45 | **34** | 시뮬레이션이 `★`를 **줄 전체**로 판정해 묶음 행 하나가 링크 5개를 전부 ★로 만들었다. `★`는 **직전 링크**에 귀속된다 |
+
+`★` 검산 — 원본 등장 39회 − 링크 없는 줄 1건 − 같은 항목 중복 4건 = **34**.
+귀속 규칙은 테스트 2건(`묶음 행의 ★는 직전 링크에만` · `★ 앞 링크는 ★가 아니다`)으로 고정했다.
+
+이는 메모리 `spec-stated-count-becomes-blindfold`(스펙이 적은 개수가 눈가리개가 된다)의 실례다.
+**스펙의 숫자를 기대값으로 삼지 않고 실측을 정본으로 삼는다.**
+
+시뮬레이션 최종 결과. **378 = FR인덱스 179 + workflow 55 + backend 52 + cross-bc 33 +
+frontend 32 + build 27 + uncategorized 0**, ★ 34건 ≈1.9KB.
 
 ## 성공 기준
 
 | 항목 | 현재 | 목표 |
 |---|---|---|
-| 매 세션 고정 비용 | 40.7KB | **≤20KB** (실측 추산 ≈16.7KB) |
+| 매 세션 고정 비용 | 40.7KB | **≤20KB** (실측 추산 ≈16.2KB) |
 | 인덱스 등록 메모리 | 200/378 (53%) | **378/378 (100%)** |
 | 인덱스 없는 문서 | 716 | **0** |
-| `uncategorized` 메모리 | 5 (시뮬레이션) | 눈 확인 후 **0** |
+| `uncategorized` 메모리 | 5 (초안 시뮬레이션) | **0** — 오버라이드로 달성 (R3) |
 | 최대 카테고리 인덱스 | — | **≤60건** (분할 실효성 유지) |
 | FR 관련 문서 찾기 | glob+grep 반복 | 인덱스 **1행** |
 | 룰 I~L 비-공허 확인 | — | **5/5 red 확인** |
