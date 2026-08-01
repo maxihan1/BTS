@@ -160,6 +160,14 @@ interface IssueCreateFormProps {
    * 미전달이면 버튼을 노출하지 않는다.
    */
   onCreateProject?: () => void
+  /**
+   * FR-UX-09 F2 — 폼 요소의 `id`. 모달이 **스크롤 영역 밖 푸터**에 제출 버튼을 두려면
+   * `<button form={formId} type="submit">` 로 폼 밖에서 제출을 걸어야 한다 (NFR-2).
+   *
+   * 전달하면 폼은 **내부 제출 버튼을 렌더하지 않는다** — 호출자가 푸터에 두기 때문이다.
+   * 미전달(라우트 페이지 등)이면 기존처럼 폼 안에 제출 버튼을 그린다.
+   */
+  formId?: string
 }
 
 /**
@@ -178,6 +186,7 @@ export function IssueCreateForm({
   onSuccess,
   initialSummary,
   onCreateProject,
+  formId,
 }: IssueCreateFormProps = {}): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null)
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
@@ -301,6 +310,8 @@ export function IssueCreateForm({
   })
 
   function handleSubmit(values: IssueCreateFormValues): void {
+    // E7 — 제출 중 재클릭 차단. 푸터 버튼이 폼 밖에 있어 버튼 disabled 만으로는 부족하다.
+    if (mutation.isPending) return
     // 스펙 E-3: required 커스텀 필드 빈값 1차 검사 — mutation 전 차단
     const hasRequiredEmpty = customFieldDefs.some(
       (field) => field.required && isRequiredFieldEmpty(field.fieldType, customFieldValues[field.key]),
@@ -351,6 +362,7 @@ export function IssueCreateForm({
   return (
     <Form {...form}>
       <form
+        id={formId}
         onSubmit={form.handleSubmit(handleSubmit)}
         noValidate
         className="space-y-4"
@@ -573,13 +585,16 @@ export function IssueCreateForm({
           </p>
         )}
 
-        <Button
-          type="submit"
-          disabled={mutation.isPending}
-          className="w-full sm:w-auto"
-        >
-          {issueCreateStrings.submitButton}
-        </Button>
+        {/* 제출 버튼 — formId 를 받은 경우(모달)는 호출자가 푸터에 그린다 (NFR-2) */}
+        {formId === undefined && (
+          <Button
+            type="submit"
+            disabled={mutation.isPending}
+            className="w-full sm:w-auto"
+          >
+            {issueCreateStrings.submitButton}
+          </Button>
+        )}
       </form>
     </Form>
   )
