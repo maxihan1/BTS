@@ -734,6 +734,8 @@ export const issueCreateStrings = {
   projectKeyLabel: '프로젝트',
   summaryLabel: '제목',
   submitButton: '이슈 생성',
+  /** 제출 진행 중 버튼 문구 — 모달·라우트 두 경로가 같은 피드백을 준다 (게이트 2 C-2) */
+  submitButtonPending: '이슈 생성 중…',
 
   /** Zod 검증 에러 메시지 */
   projectKeyRequired: '프로젝트를 선택하세요.',

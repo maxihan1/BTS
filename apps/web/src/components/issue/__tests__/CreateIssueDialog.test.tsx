@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { issueHandlers } from '@/mocks/issue-handlers'
 import { projectHandlers } from '@/mocks/project-handlers'
@@ -129,6 +130,47 @@ describe('CreateIssueDialog — 생성 성공 (FR-16)', () => {
 
     await waitFor(() => expect(onCreated).toHaveBeenCalled())
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 게이트 2 C-2 — 제출 중 피드백이 모달에도 있어야 한다
+//
+// 라우트 경로의 내부 제출 버튼은 `disabled={mutation.isPending}` 인데, 모달 푸터 버튼은
+// 폼 **밖**에 있어(NFR-2 스크롤 경계) 그 상태를 못 받았다. 눌러도 아무 반응이 없어
+// 사용자는 안 눌린 줄 알고 다시 누른다. 두 경로가 같은 피드백을 줘야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CreateIssueDialog — 제출 중 피드백 (게이트 2 C-2)', () => {
+  it('제출 중에는 푸터 만들기 버튼이 비활성화되고 진행 중 문구로 바뀐다', async () => {
+    const user = userEvent.setup()
+    // 응답을 붙잡아 pending 구간을 관찰 가능하게 만든다
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.post('/api/v1/issues', async () => {
+        await held
+        return HttpResponse.json({ data: { key: 'ATLAS-1' } }, { status: 201 })
+      }),
+    )
+    renderDialog({ open: true })
+
+    await screen.findByRole('dialog')
+    await waitFor(() => {
+      const sel = screen.getByLabelText(issueCreateStrings.projectKeyLabel) as HTMLSelectElement
+      expect(sel.querySelectorAll('option').length).toBeGreaterThan(1)
+    })
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제출 중 표시 확인')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    const pending = await screen.findByRole('button', {
+      name: issueCreateStrings.submitButtonPending,
+    })
+    expect(pending).toBeDisabled()
+
+    release()
   })
 })
 
