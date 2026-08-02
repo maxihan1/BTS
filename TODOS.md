@@ -1605,3 +1605,105 @@ springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생�
 
 **주의.** 기본값이 있는 non-null Kotlin 프로퍼티는 **전부 같은 함정**이다.
 다른 DTO 에도 있는지 전수 조사가 필요하다(이번엔 `CreateIssueRequest` 만 봤다).
+
+---
+
+## ⬜ apps/web — 이슈 상세 담당자 셀렉터가 **검색 전에 사용자 전량**을 노출한다 (선재 · 미착수)
+
+**무엇.** `useUsers(query)` 는 `enabled` 가드가 없어(`hooks/use-users.ts:16-22`) 빈 검색어에도
+조회가 나가고 **전체 사용자 목록**을 돌려준다. 이슈 상세는 그 결과를 그대로 후보로 넘긴다
+(`routes/issues.$key.tsx:246` → `:810` `users={users}`). `IssueAssigneeSelect:110` 의
+`users.length > 0 &&` 은 「검색했는가」가 아니라 「목록이 비었는가」만 본다.
+
+**결과.** 담당자 칸을 열자마자 **아무것도 검색하지 않았는데 사용자 목록이 펼쳐진다.**
+사내 1,000명 규모에서는 첫 페이지가 이름으로 가득 찬다.
+
+**어떻게 발견.** FR-UX-09 F2(#331) 의 **생성 폼에서 눈확인으로 먼저 잡혔다** — 데스크톱
+스크린샷에 검색도 안 했는데 4명(김앨리스·bob·캐럴·데이브)이 떠 있었다. 생성 폼은
+`debouncedQuery.trim() === '' ? [] : allCandidates` 로 그 PR 안에서 닫았고
+(`components/issue/create/use-assignee-picker.ts`), **상세 화면은 그 PR 범위 밖이라 그대로 뒀다.**
+게이트 2 코드리뷰에서 같은 구조임을 대조로 확정했다.
+
+**처방.** 생성 폼과 같은 형태 — 검색어가 비면 후보를 넘기지 않는다. 두 화면이 같은 규칙을
+갖게 되므로 `IssueAssigneeSelect` 안으로 내리는 것도 후보다(그러면 미래의 세 번째 소비처도
+자동으로 닫힌다). **단, 상세 화면은 `canEdit=false` 경로와 `useUsersByIds` 표시 경로가
+얽혀 있으니 그 둘을 건드리지 않는지 확인할 것.**
+
+**착수 시 읽을 것.** `use-assignee-picker.ts` 의 동일 처방과 그 주석 ·
+`IssueCreateForm.test.tsx` 의 「담당자 후보는 검색해야 나온다」 2건(그대로 상세용으로 복제 가능).
+
+---
+
+## ⬜ 인프라 — 전체 스위트 실행에서 `pnpm test` 가 **간헐적으로 exit≠0** 이 된다 (미착수)
+
+**무엇.** 유닛 테스트가 **전건 통과(8378/8378)인데 종료 코드가 0이 아닌** 실행이 섞인다.
+vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고, 발생 지점은
+`components/automation/AutomationYamlImportDialog.test.tsx` 를 도는 동안의
+`Mutation.execute` 다(`AutomationYamlImportDialog.tsx:340·345` 부근의 mutation 콜백).
+
+**재현율.** 2026-08-02 실측 — 같은 커밋에서 **2회 중 1회**. 해당 파일 **단독 실행은 항상 초록**
+(exit 0). `origin/main` 1회 실행은 초록이었다. ⇒ 파일 간 실행 간섭에 의한 **간헐**이며
+특정 PR 귀책이 아니다(`[[flaky-determination-needs-repeat-not-single-contrast]]` 적용).
+
+**결과.** **CI 가 무작위로 빨간불이 된다.** 더 나쁜 것은 진단 표면 —
+「Tests 8378 passed」만 읽고 초록으로 보고하면 종료 코드 실패를 놓친다.
+실제로 FR-UX-09 F2 세션 체크포인트가 **그렇게 기록돼 있었고** 게이트 2 재검증에서 교정됐다.
+
+**처방 방향.** mutation 의 rejection 이 테스트 종료 후 도착하는 것이라, 테스트가
+`unmount`/`queryClient.clear()` 없이 끝나 pending mutation 이 남는 경로를 찾는 것이 먼저다.
+`AutomationYamlImportDialog.test.tsx` 의 에러 케이스에서 `await` 누락 여부를 본다.
+
+**착수 시 읽을 것.** `[[lint-fails-first-leaves-stale-test-xml]]` ·
+`[[github-actions-billing-block-steps-zero]]` — 둘 다 **「통과 건수 ≠ 종료 코드」** 같은 양식이다.
+판별식으로 굳힐 거면 CI 가 `Errors` 줄을 별도로 낚아채게 하는 쪽이 싸다.
+
+---
+
+## ⬜ apps/web — **required MULTI_SELECT** 커스텀 필드가 클라이언트 검증을 그냥 통과한다 (선재 · 미착수)
+
+**무엇.** `isRequiredFieldEmpty` 의 MULTI_SELECT 분기가
+`return Array.isArray(raw) && raw.length === 0` 다(`components/issue/IssueCreateForm.tsx:63-64`).
+사용자가 그 필드를 **한 번도 건드리지 않으면** 값은 `undefined` 이고
+`Array.isArray(undefined)` 는 `false` 라 **「빈값 아님」으로 판정**된다.
+빈 배열(`[]`)만 잡고 **미입력(`undefined`)은 못 잡는다.**
+
+**결과.** **데이터 무결성은 안전하다** — 백엔드 `CustomFieldValueValidator.checkRequiredFields`
+가 `value == null` 을 거부한다(`customfield/domain/CustomFieldValueValidator.kt:79-92`).
+문제는 **사용자에게 보이는 것**이다. 폼 안 필드 옆의 친절한 경고
+(`custom-fields-required-error`) 대신 서버 왕복 후 **일반 에러**가 뜬다.
+게다가 `resolveCreateErrorMessage` 는 `PROJECT_NOT_FOUND`·`ASSIGNEE_NOT_FOUND` 만 매핑하므로
+`errorDefault` 인 **「이슈 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.」** 가 뜬다 —
+**재시도해도 안 되는데 재시도를 권하는 문구다.**
+
+**어떻게 발견.** FR-UX-09 F2(#331) 게이트 2 코드리뷰. `origin/main` 의
+`routes/issues.new.tsx` 와 **로직이 완전히 동일**(F2 는 파일만 옮겼다) ⇒ 선재.
+
+**처방.** `return raw === undefined || raw === null || (Array.isArray(raw) && raw.length === 0)`.
+**같은 PR 에서 에러 코드 매핑도 함께 볼 것** — 커스텀 필드 검증 실패의 errorCode 를
+`resolveCreateErrorMessage` 에 얹지 않으면 다른 경로에서 같은 오해가 반복된다.
+
+**착수 시 읽을 것.** 스펙 E-3(required 빈값 1차 클라 검사) ·
+`IssueCreateForm.test.tsx` 의 커스텀 필드 required 테스트(현재 MULTI_SELECT 케이스 부재).
+
+---
+
+## ⬜ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (선재 · 미착수)
+
+**무엇.** `placeholder="이슈 제목을 입력하세요"` 가 리터럴이다
+(`components/issue/create/IssueCreateBasicFields.tsx:110`).
+같은 폼의 **본문** placeholder 는 `issueCreateStrings.descriptionPlaceholder` 를 쓴다 —
+**한 폼 안에서 두 필드의 처리가 다르다.**
+
+**결과.** 지금 당장 깨지는 것은 없다(문구가 한국어 하나뿐). 비용은 **비대칭**이다 —
+문구를 바꿀 때 한쪽은 `i18n/ko.ts`, 한쪽은 컴포넌트를 고쳐야 하고,
+다국어를 열 때 이 한 줄만 조용히 번역에서 빠진다.
+
+**어떻게 발견.** FR-UX-09 F2(#331) 게이트 2 코드리뷰(체크리스트 Pass 2 「사용자 노출 문자열의
+i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 리터럴이 있었다 ⇒ 선재.
+**같은 PR 이 `descriptionPlaceholder` 는 i18n 에 새로 넣으면서 이 줄은 그대로 옮겼다** —
+비대칭이 그때 굳었다.
+
+**처방.** `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 한 줄짜리다.
+
+**착수 시 확인.** 이 리터럴을 참조하는 테스트/E2E 셀렉터가 있는지
+(`grep -rn "이슈 제목을 입력하세요" apps/web/`) — 현재는 이 1건뿐이다.
