@@ -149,6 +149,7 @@ vi.mock('@/hooks/use-backlog', () => ({
 }))
 
 import { BacklogBoard } from './BacklogBoard'
+import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -160,9 +161,9 @@ function makeQueryClient() {
 
 function renderBoard(
   projectKey = 'ATLAS',
-  opts: { canManageSprint?: boolean; canReorderIssue?: boolean } = {},
+  opts: { canManageSprint?: boolean; canReorderIssue?: boolean; canCreateIssue?: boolean } = {},
 ) {
-  const { canManageSprint = true, canReorderIssue = true } = opts
+  const { canManageSprint = true, canReorderIssue = true, canCreateIssue = false } = opts
   const qc = makeQueryClient()
   return render(
     <QueryClientProvider client={qc}>
@@ -170,6 +171,7 @@ function renderBoard(
         projectKey={projectKey}
         canManageSprint={canManageSprint}
         canReorderIssue={canReorderIssue}
+        canCreateIssue={canCreateIssue}
       />
     </QueryClientProvider>,
   )
@@ -755,5 +757,49 @@ describe('BacklogBoard', () => {
       renderBoard()
       expect(screen.queryByRole('alert')).toBeNull()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 모달 소유권 (FR-15) + 진입점 배선 (FR-1)
+//
+// ★「생성하면 칸에 나타난다」는 여기서 검증하지 않는다.
+// 이 파일은 `use-backlog` 를 통째로 mock 해 정적 데이터를 돌려주므로,
+// 무엇을 만들어도 목록이 변하지 않는다. 그 단언을 여기 두면 **영원히 거짓**이거나
+// 목을 흉내 내느라 진짜를 안 보게 된다. 나타남 판정은 실제 MSW 를 쓰는 E2E(T8) 몫이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogBoard — 이슈 생성 모달 소유권 (F3 FR-15)', () => {
+  it('백로그 칸 진입점을 누르면 모달이 열린다', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await user.click(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    )
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('★스프린트가 2개여도 모달 인스턴스는 1개다 (role="dialog" strict mode 방지)', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    )
+    await screen.findByRole('dialog')
+
+    // 픽스처의 스프린트는 2개다. 칸마다 모달을 두면 여기서 3개가 된다.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+
+  it('★canCreateIssue=false 면 진입점이 전부 비활성이다 (fail-closed)', () => {
+    renderBoard('ATLAS', { canCreateIssue: false })
+
+    expect(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    ).toBeDisabled()
   })
 })

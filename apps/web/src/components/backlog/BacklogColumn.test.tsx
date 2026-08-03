@@ -1,9 +1,11 @@
 // BacklogColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·드롭 영역
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue } from '@/api/backlog'
+import { backlogLabels } from '@/i18n/backlog-labels'
 
 // TanStack Router Link mock
 vi.mock('@tanstack/react-router', () => ({
@@ -65,10 +67,17 @@ function renderColumn(
   issues: BacklogIssue[] = [issue1, issue2],
   names: Map<string, string> = assigneeNames,
   isOver = false,
+  entry?: { canCreateIssue?: boolean; onCreateIssue?: () => void },
 ) {
   return render(
     <DndContext>
-      <BacklogColumn issues={issues} assigneeNames={names} isOver={isOver} />
+      <BacklogColumn
+        issues={issues}
+        assigneeNames={names}
+        isOver={isOver}
+        canCreateIssue={entry?.canCreateIssue}
+        onCreateIssue={entry?.onCreateIssue}
+      />
     </DndContext>,
   )
 }
@@ -172,5 +181,54 @@ describe('BacklogColumn — S5 concern-1 orderedKeys droppable data 결선', () 
     expect(dropZone).toBeInTheDocument()
     // orderedKeys가 DOM data 속성으로 노출되어야 한다 (구현 후 통과)
     expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-1,ATLAS-2')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 이슈 생성 진입점 (FR-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogColumn — 이슈 생성 진입점 (F3 FR-1)', () => {
+  it('onCreateIssue 를 주면 칸 헤더에 진입점이 있고 누르면 콜백이 발화한다', async () => {
+    const user = userEvent.setup()
+    const onCreateIssue = vi.fn()
+    renderColumn(undefined, undefined, false, { canCreateIssue: true, onCreateIssue })
+
+    const button = screen.getByRole('button', { name: backlogLabels.createIssueInBacklog })
+    await user.click(button)
+
+    expect(onCreateIssue).toHaveBeenCalledTimes(1)
+  })
+
+  it('★canCreateIssue=false 면 비활성이다 (fail-closed)', async () => {
+    const user = userEvent.setup()
+    const onCreateIssue = vi.fn()
+    renderColumn(undefined, undefined, false, { canCreateIssue: false, onCreateIssue })
+
+    const button = screen.getByRole('button', { name: backlogLabels.createIssueInBacklog })
+    expect(button).toBeDisabled()
+
+    await user.click(button)
+    expect(onCreateIssue).not.toHaveBeenCalled()
+  })
+
+  it('onCreateIssue 를 안 주면 진입점을 렌더하지 않는다 (기존 소비처 무회귀)', () => {
+    renderColumn()
+
+    expect(
+      screen.queryByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    ).toBeNull()
+  })
+
+  it('진입점은 드롭 영역 밖(헤더)에 있다 — 드래그 앤 드롭 무회귀 (NFR-5)', () => {
+    const { container } = renderColumn(undefined, undefined, false, {
+      canCreateIssue: true,
+      onCreateIssue: vi.fn(),
+    })
+
+    const dropArea = container.querySelector('[data-droppable="backlog"]')
+    const button = screen.getByRole('button', { name: backlogLabels.createIssueInBacklog })
+    expect(dropArea).not.toBeNull()
+    expect(dropArea?.contains(button)).toBe(false)
   })
 })
