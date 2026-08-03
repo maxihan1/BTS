@@ -184,6 +184,13 @@ pnpm --filter @bts/web test -- src/mocks/issue-handlers.test.ts src/mocks/backlo
 **GREEN**. `components/issue/CreateIssueEntryButton.tsx` 신설.
 props = `label` · `variant: 'icon' | 'text'` · `canCreate` · `onClick`. `Plus` 아이콘 + `Button` 프리미티브.
 
+**시각 규격 — 디자인 리뷰 확정 (DR-1·DR-3, 임의 값 금지).**
+
+| variant | Button variant | size | 근거 |
+|---|---|---|---|
+| `icon` (칸 헤더) | `ghost` | **`icon-xs`**(size-6) | 제목 행의 기존 배지가 `text-xs`/`py-0.5` 다. `icon`(size-8)은 **행 높이를 키운다** |
+| `text` (보드 헤더) | **`outline`** | `default` | 🛑 `default`(primary)를 쓰면 **상단바 「만들기」와 같은 화면에 primary CTA 2개**가 된다. 상단바 버튼은 모든 페이지에 항상 있다 |
+
 **REFACTOR**. 「왜 fail-closed 인가」 주석 — 로딩·에러도 **비활성**이다.
 선례 `routes/issues.index.tsx:379-390 NewIssueButton` 을 참조로 명시.
 
@@ -284,8 +291,13 @@ pnpm --filter @bts/web test -- src/components/backlog/
 - depends-on: [3, 4]
 
 **RED**. `routes/projects.$projectKey.board.test.tsx` **신설**(이 라우트는 현재 테스트 파일이 없다).
-- 보드 헤더에 진입점이 있고 누르면 모달이 열린다 (FR-3)
-- 권한 없음 → 비활성 (FR-6, `board.tsx:287 canCreate` 재사용)
+
+🛑 **범위를 배선 3점으로 좁힌다 (디자인 리뷰 DR-7).** 이 라우트는 600줄 + `useBoards`·`useBoard`·
+`useProjectPermissions`·라우터 의존이 많아 렌더 셋업이 비싸다. **fail-closed 판정은 T3 이 이미
+단독으로 검증**하므로 여기서 다시 전개하지 않는다.
+
+- 보드 헤더에 진입점이 **있다** (FR-3)
+- 진입점이 `canCreate` 를 **그대로 내려준다** — 권한 판정 자체가 아니라 **배선**을 본다 (FR-6, `board.tsx:287` 재사용)
 - 생성 성공 → **URL 불변** + 토스트 + 「보기」 액션 (FR-12/C4)
 
 **GREEN**. 보드 헤더 행(`FavoriteButton`·`ProjectNavTabs` 인접)에 `CreateIssueEntryButton variant='text'`
@@ -356,4 +368,30 @@ node scripts/build-doc-index.mjs                        # 고아·깨진 링크 
   1. **T2 의 red 를 먼저 본다** — 없으면 T5·T6 의 「나타난다」가 가짜 그린인지 알 수 없다 (C15)
   2. **T1 이 T3 보다 먼저다** — 이름을 정하기 전에 판별식이 있어야 충돌을 이름 단계에서 잡는다 (C16)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-08-03) — `type=ui` 체인
+
+**판정. BLOCKER 0 · 반영 4건 · 후속 후보 1건.** 지적은 전부 **코드베이스 선례로 근거를 댔고**,
+반영분은 plan task 본문에 **이미 접었다**(리뷰 결과에만 적고 task 는 그대로 두면 구현자가 못 본다).
+
+| # | 지적 | 근거 | 반영 |
+|---|---|---|---|
+| **DR-1** | 보드 헤더 진입점을 primary 로 만들면 **상단바 「만들기」와 같은 화면에 primary CTA 가 2개**가 된다. 상단바 버튼은 **모든 페이지에 항상** 있다 | `TopBar.tsx:80-89` 가 `variant="default"`. `SprintColumn` 도 「주 액션 1개」 규율을 이미 지킨다 — 시작/완료만 `default`, 번다운은 `bg-secondary` | T3 표에 **`outline` 고정** |
+| **DR-2** | 스프린트 칸 헤더는 이미 액션이 세로로 쌓인다(시작·완료 중 1 + 번다운). 3번째를 스택에 얹으면 **헤더가 계속 길어진다** | `SprintColumn.tsx:96-154` 가 `flex-col` | 진입점은 **제목 행**(이름·상태배지·개수)에 넣어 **세로 증가 0** — T5·T6 GREEN 의 「헤더」는 제목 행을 뜻한다 |
+| **DR-3** | 아이콘 버튼 크기 미지정 → 임의 값이 들어간다 | 제목 행 배지가 `text-xs`·`py-0.5`. `size="icon"`(size-8)은 행 높이를 키운다 | T3 표에 **`icon-xs`(size-6) 고정** |
+| **DR-7** | T7 이 **테스트가 하나도 없는 600줄 라우트**에 첫 테스트를 신설한다. 여기서 권한 판정까지 전개하면 T7 혼자 부푼다 | `routes/projects.$projectKey.board.tsx` 에 `.test.tsx` 부재(실측) | T7 RED 를 **배선 3점**으로 좁힘. fail-closed 판정은 T3 단독 시험대가 갖는다 |
+
+**후속 후보 1건 (이 PR 범위 밖).** 빈 칸(`이슈 없음` placeholder)이 CTA 를 겸하면 더 좋다.
+지금도 헤더 진입점으로 접근 가능하므로 **결손이 아니다**. 스코프 확대를 피해 기록만 남긴다.
+
+**확인만 하고 지나간 것 2건.**
+- 부분 성공 토스트 톤 — `toast.warning` 이 코드베이스에 **실재**한다(2건 사용). ADR D-C 의
+  「경고 톤」은 새 변형을 만들지 않고 이것을 쓴다.
+- `COMPLETED` 스프린트에서 진입점 미렌더 → 헤더가 짧아지는 것 외 레이아웃 영향 없음.
+
+### ★ 이 리뷰의 한계 (숨기지 않음)
+
+**독립·교차모델 리뷰가 아니다.** `codex` 미설치 + 세션 지시로 에이전트 호출이 막혀 있어
+**컨트롤러가 plan 리뷰를 자기수행**했다. #327·#328·#331 과 같은 조건이다.
+자기 리뷰가 위 4건을 실제로 잡았지만, **그것이 독립 리뷰의 대체재라는 근거는 없다.**
