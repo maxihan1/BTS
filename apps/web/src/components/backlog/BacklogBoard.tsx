@@ -11,7 +11,9 @@ import {
 } from '@dnd-kit/core'
 import type { CollisionDetection, DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
+  backlogKeys,
   useBacklog,
   useRerankIssue,
   useAssignToSprint,
@@ -119,6 +121,7 @@ export function BacklogBoard({
   canReorderIssue = true,
   canCreateIssue = false,
 }: BacklogBoardProps): JSX.Element {
+  const queryClient = useQueryClient()
   const [overDroppableId, setOverDroppableId] = useState<string | null>(null)
 
   /**
@@ -184,8 +187,16 @@ export function BacklogBoard({
   function handleIssueCreated(issueKey: string): void {
     const target = createTarget
     setCreateTarget(null)
+
     // 백로그 칸에서 열었으면 배정할 것이 없다 — 스프린트 미지정이 곧 백로그다.
-    if (target === null || target === 'backlog') return
+    //
+    // ★그러나 **목록 갱신은 필요하다** (FR-9). 스프린트 경로는 `useAssignToSprint` 의
+    // 성공 콜백이 무효화를 걸어주지만, 백로그 경로는 아무도 걸지 않아 만든 이슈가
+    // 화면에 나타나지 않는다 — E2E S1 이 실측으로 잡은 결함이다.
+    if (target === null || target === 'backlog') {
+      void queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      return
+    }
 
     assignToSprint.mutate(
       { sprintId: target, issueKey },
