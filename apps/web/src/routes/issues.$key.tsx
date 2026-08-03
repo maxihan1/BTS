@@ -643,6 +643,26 @@ export function IssueDetailPage({
     }
   }
 
+  // ── 제목 본문 ─────────────────────────────────────────────────────────────
+  // 수정 권한이 있으면 제목 텍스트 자체를 편집 진입면(button)으로 감싼다.
+  // heading 요소는 그대로 두고 "안쪽만" 감싸므로 heading 의 접근성 이름은
+  // 내부 텍스트에서 계산돼 보존된다 (jira-parity-contract §2 즉사 계약).
+  // <button> 이라 키보드 Tab·Enter 로도 도달·발동된다.
+  const titleContent = canEdit ? (
+    // PR22 OUT — P6 전체 클릭 영역: 제목 인라인 편집 트리거로 w-full text-left 가 필요하고,
+    // Button 프리미티브의 inline-flex justify-center · h-8 px-2.5 text-sm 과 충돌한다
+    // (DashboardTile 타일 제목 인라인 편집과 동형 — 같은 P6 판정).
+    <button
+      type="button"
+      onClick={handleEditStart}
+      className="text-left w-full rounded-sm hover:bg-(--bg-neutral-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+    >
+      {issue.summary}
+    </button>
+  ) : (
+    issue.summary
+  )
+
   // ── 성공 레이아웃 ─────────────────────────────────────────────────────────
   return (
     <div className="max-w-[960px] mx-auto px-6 py-10">
@@ -728,10 +748,10 @@ export function IssueDetailPage({
               {/* pane이면 h2로 강등 — 문서 h1 단일 계약 (FR-UX-06 PR20 Task 1) */}
               {variant === 'pane' ? (
                 <h2 ref={paneTitleRef} tabIndex={-1} className="text-2xl font-semibold leading-snug mb-1">
-                  {issue.summary}
+                  {titleContent}
                 </h2>
               ) : (
-                <h1 className="text-2xl font-semibold leading-snug mb-1">{issue.summary}</h1>
+                <h1 className="text-2xl font-semibold leading-snug mb-1">{titleContent}</h1>
               )}
               <Button
                 type="button"

@@ -101,6 +101,7 @@ export default tseslint.config(
       'src/components/issue/IssueChangelog.tsx',
       'src/components/layout/ProjectTree.tsx',
       'src/features/calendar/MonthGrid.tsx',
+      'src/routes/issues.$key.tsx',
     ],
     rules: {
       // 같은 파일의 animate-pulse 락은 살려 둔다 — button 예외가 스켈레톤 예외를 겸하면
