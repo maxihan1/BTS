@@ -128,6 +128,8 @@ export function IssueDescription({
     return (
       <EditMode
         draftMarkdown={draftMarkdown}
+        // 편집 진입 시 draftMarkdown 을 seed 한 값과 같은 식이어야 변경분 판정이 정확하다
+        initialMarkdown={description ?? ''}
         onDraftChange={setDraftMarkdown}
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -240,6 +242,8 @@ function ReadMode({ descriptionHtml, onEditClick, canEdit }: ReadModeProps): JSX
 
 interface EditModeProps {
   draftMarkdown: string
+  /** 편집 진입 시점의 원본 마크다운 — 변경분 유무 판정 기준 (편차 D-1) */
+  initialMarkdown: string
   onDraftChange: (value: string) => void
   activeTab: ActiveTab
   onTabChange: (tab: ActiveTab) => void
@@ -256,6 +260,7 @@ interface EditModeProps {
  */
 function EditMode({
   draftMarkdown,
+  initialMarkdown,
   onDraftChange,
   activeTab,
   onTabChange,
@@ -264,6 +269,13 @@ function EditMode({
   onCancel,
   isSaving,
 }: EditModeProps): JSX.Element {
+  /**
+   * 작성분 폐기 확인 패널 노출 여부 (편차 D-1).
+   * EditMode 는 편집 모드가 꺼지면 통째로 언마운트되므로 별도 초기화 없이
+   * 다음 편집 진입 시 항상 false 로 시작한다.
+   */
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+
   // FR-MN-02: 멘션 자동완성 배선 — textarea ref + 훅 연결
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const mention = useMentionAutocomplete({
@@ -307,7 +319,25 @@ function EditMode({
       if (isSaving) return
       // 부모의 handleSave 가 draftMarkdown 을 클로저로 읽으므로 인자를 넘기지 않는다
       onSave()
+    } else if (e.key === 'Escape') {
+      // 상위 pane 닫기와 이중 발화 차단 — usePaneEscapeClose 가 defaultPrevented 를 존중한다 (E1)
+      e.preventDefault()
+      requestCancel()
     }
+  }
+
+  /**
+   * 편집 취소 요청 (FR6) — 초안이 원본과 다르면 확인을 먼저 거친다.
+   *
+   * **편차 D-1.** Jira 는 `Esc` 에 확인 없이 작성분을 버리고, Atlassian 이 개선하지 않기로
+   * 공표했다(JRACLOUD-36670 · JRACLOUD-41814). 그 결함을 복제하지 않는다.
+   */
+  function requestCancel(): void {
+    if (draftMarkdown !== initialMarkdown) {
+      setConfirmDiscard(true)
+      return
+    }
+    onCancel()
   }
 
   return (
@@ -398,6 +428,41 @@ function EditMode({
           {issueDetailStrings.descriptionCancelButton}
         </Button>
       </div>
+
+      {/*
+        작성분 폐기 확인 패널 (편차 D-1) — 기존 삭제 확인 관례(issues.$key.tsx:815-838)를 따르고
+        새 다이얼로그 프리미티브를 도입하지 않는다.
+        ★ 버튼 문자열은 위 저장/취소와 **의도적으로 다르다**(리뷰 F-2) — 같은 화면에 '취소' 가
+        둘이면 E2E strict mode violation 이 나고 사용자도 「취소의 취소」를 이해하지 못한다.
+      */}
+      {confirmDiscard ? (
+        <div className="border border-destructive/40 rounded-md p-3 text-sm text-destructive space-y-2">
+          <p>{issueDetailStrings.descriptionDiscardConfirm}</p>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              className="min-h-[44px]"
+              onClick={() => {
+                setConfirmDiscard(false)
+                onCancel()
+              }}
+              aria-label={issueDetailStrings.descriptionDiscardConfirmButton}
+            >
+              {issueDetailStrings.descriptionDiscardConfirmButton}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-[44px]"
+              onClick={() => setConfirmDiscard(false)}
+              aria-label={issueDetailStrings.descriptionDiscardCancelButton}
+            >
+              {issueDetailStrings.descriptionDiscardCancelButton}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
