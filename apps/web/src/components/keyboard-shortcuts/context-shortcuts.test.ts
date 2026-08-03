@@ -56,40 +56,58 @@ describe('CONTEXT_SHORTCUTS 레지스트리', () => {
 
 describe('resolveContextKeydown — 컨텍스트 레이어 판별', () => {
   it('issue-list 에서 j 는 커서 아래로 이동한다', () => {
-    expect(resolveContextKeydown('j', 'issue-list')).toEqual({ kind: 'cursor-move', delta: 1 })
+    expect(resolveContextKeydown('j', 'issue-list')).toEqual({
+      layer: 'issue-list',
+      action: { kind: 'cursor-move', delta: 1 },
+    })
   })
 
   it('issue-list 에서 k 는 커서 위로 이동한다', () => {
-    expect(resolveContextKeydown('k', 'issue-list')).toEqual({ kind: 'cursor-move', delta: -1 })
+    expect(resolveContextKeydown('k', 'issue-list')).toEqual({
+      layer: 'issue-list',
+      action: { kind: 'cursor-move', delta: -1 },
+    })
   })
 
   it('issue-list 에서 o 는 현재 커서 이슈를 연다', () => {
-    expect(resolveContextKeydown('o', 'issue-list')).toEqual({ kind: 'open-current' })
+    expect(resolveContextKeydown('o', 'issue-list')).toEqual({
+      layer: 'issue-list',
+      action: { kind: 'open-current' },
+    })
   })
 
   it('issue-list 에서 t 는 상세 페인을 토글한다', () => {
-    expect(resolveContextKeydown('t', 'issue-list')).toEqual({ kind: 'toggle-detail-pane' })
+    expect(resolveContextKeydown('t', 'issue-list')).toEqual({
+      layer: 'issue-list',
+      action: { kind: 'toggle-detail-pane' },
+    })
   })
 
   it('★넓은 컨텍스트 폴백 — issue-list 에서도 [ 는 app-shell 항목으로 발화한다', () => {
-    expect(resolveContextKeydown('[', 'issue-list')).toEqual({ kind: 'toggle-sidebar' })
+    expect(resolveContextKeydown('[', 'issue-list')).toEqual({
+      layer: 'app-shell',
+      action: { kind: 'toggle-sidebar' },
+    })
   })
 
   it('★E12 — app-shell 에서 j/k/o/t 는 무동작이다 (목록 밖에서 커서가 움직이면 안 된다)', () => {
     for (const key of ['j', 'k', 'o', 't']) {
-      expect(resolveContextKeydown(key, 'app-shell')).toEqual({ kind: 'none' })
+      expect(resolveContextKeydown(key, 'app-shell')).toBeNull()
     }
   })
 
   it('app-shell 에서 [ 는 발화한다', () => {
-    expect(resolveContextKeydown('[', 'app-shell')).toEqual({ kind: 'toggle-sidebar' })
+    expect(resolveContextKeydown('[', 'app-shell')).toEqual({
+      layer: 'app-shell',
+      action: { kind: 'toggle-sidebar' },
+    })
   })
 
   it('등록되지 않은 키는 어느 컨텍스트에서도 무동작이다', () => {
     const contexts: ShortcutContext[] = ['issue-list', 'app-shell']
     for (const context of contexts) {
-      expect(resolveContextKeydown('z', context)).toEqual({ kind: 'none' })
-      expect(resolveContextKeydown('J', context)).toEqual({ kind: 'none' })
+      expect(resolveContextKeydown('z', context)).toBeNull()
+      expect(resolveContextKeydown('J', context)).toBeNull()
     }
   })
 })

@@ -1,7 +1,7 @@
 // 단축키 도움말 모달 — SHORTCUTS + CONTEXT_SHORTCUTS 단일 진실 출처를 그룹으로 렌더 (FR-UX-05 · FR-UX-10 F10)
 import type { JSX } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { PALETTE_HELP_ITEM, SHORTCUTS } from './shortcuts'
+import { DEFAULT_KEYMAP, PALETTE_HELP_ITEM, SHORTCUTS, type Keymap } from './shortcuts'
 import { CONTEXT_SHORTCUTS, type ShortcutContext } from './context-shortcuts'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,6 +14,23 @@ export interface ShortcutsHelpDialogProps {
   readonly open: boolean
   /** 열림/닫힘 상태 변경 시 호출(Esc·오버레이 클릭·`?` 토글은 Radix/호출부가 발화) */
   readonly onOpenChange: (open: boolean) => void
+  /**
+   * effective 키맵(기본값 + 사용자 override 병합) — 전역 5종 표기에 쓴다.
+   *
+   * ★생략하면 `DEFAULT_KEYMAP` 으로 폴백한다. `SHORTCUTS[].keys` 를 그대로 쓰면
+   * FR-PF-03 으로 재배치한 사용자에게 **없는 키를 광고**하게 된다(독립 리뷰 M-8).
+   */
+  readonly keymap?: Keymap
+}
+
+/**
+ * key_combo 문자열(`c`, `g i`)을 `<kbd>` 시퀀스용 배열로 쪼갠다.
+ *
+ * leader combo 는 공백 1칸으로 두 토큰이 되고, single 은 한 토큰이다
+ * (`shortcuts.ts` `parseKeyCombo` 와 같은 형식 규약).
+ */
+function keysOfCombo(keyCombo: string): readonly string[] {
+  return keyCombo.split(' ')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,14 +76,19 @@ function contextItems(context: ShortcutContext): readonly HelpItem[] {
 }
 
 /**
- * 도움말 그룹 — "이 키가 어디서 먹히는지"를 사용자 언어로 묶는다.
+ * 도움말 그룹을 만든다 — "이 키가 어디서 먹히는지"를 사용자 언어로 묶는다.
  *
  * 항목은 전부 레지스트리에서 파생한다. 하드코딩된 줄이 하나도 없으므로
  * 레지스트리에 없는 키(F11 상세 액션 8종)는 **표시될 방법이 없다**
  * — 비구현 단축키를 "동작하는 것처럼" 보여주지 않는다는 FR-UX-05 FR8 계약이
  * 구조로 지켜진다.
+ *
+ * 상수가 아니라 함수인 이유는 전역 5종 표기가 **실효 키맵을 따라야** 하기 때문이다.
+ * `SHORTCUTS[].keys` 는 정적 표기라 사용자 재배치를 반영하지 못한다.
+ *
+ * @param keymap effective 키맵(기본값 + 사용자 override 병합)
  */
-const HELP_GROUPS: readonly {
+function buildHelpGroups(keymap: Keymap): readonly {
   /**
    * `aria-labelledby` 로 헤딩과 묶을 때 쓸 ID 조각.
    *
@@ -78,25 +100,29 @@ const HELP_GROUPS: readonly {
   readonly id: string
   readonly label: string
   readonly items: readonly HelpItem[]
-}[] = [
-  {
-    id: 'global',
-    label: '어디서나',
-    items: [
-      ...SHORTCUTS.map((shortcut) => ({
-        keys: shortcut.keys,
-        description: shortcut.description,
-      })),
-      PALETTE_HELP_ITEM,
-      ...contextItems('app-shell'),
-    ],
-  },
-  {
-    id: 'issue-list',
-    label: '이슈 목록에서',
-    items: contextItems('issue-list'),
-  },
-]
+}[] {
+  return [
+    {
+      id: 'global',
+      label: '어디서나',
+      items: [
+        ...SHORTCUTS.map((shortcut) => ({
+          // ★`shortcut.keys`(정적 표기)가 아니라 실효 키맵을 읽는다 — 사용자가
+          // 재배치했으면 그 키를 보여줘야 한다.
+          keys: keysOfCombo(keymap[shortcut.action]),
+          description: shortcut.description,
+        })),
+        PALETTE_HELP_ITEM,
+        ...contextItems('app-shell'),
+      ],
+    },
+    {
+      id: 'issue-list',
+      label: '이슈 목록에서',
+      items: contextItems('issue-list'),
+    },
+  ]
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
@@ -118,7 +144,10 @@ const HELP_GROUPS: readonly {
 export function ShortcutsHelpDialog({
   open,
   onOpenChange,
+  keymap = DEFAULT_KEYMAP,
 }: ShortcutsHelpDialogProps): JSX.Element {
+  const helpGroups = buildHelpGroups(keymap)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm" aria-describedby={undefined}>
@@ -127,7 +156,7 @@ export function ShortcutsHelpDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {HELP_GROUPS.map((group) => (
+          {helpGroups.map((group) => (
             <section key={group.id} aria-labelledby={`shortcut-group-${group.id}`}>
               {/*
                 ★눈확인 반영 — 초안은 헤딩도 `text-muted-foreground` 라 항목 설명과 색이

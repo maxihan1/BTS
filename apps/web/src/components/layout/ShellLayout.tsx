@@ -67,9 +67,11 @@ export function ShellLayout(): JSX.Element {
   // FR-UX-10 F10 — `app-shell` 컨텍스트(`[` 사이드바 토글). 이 컴포넌트가 곧
   // "셸이 렌더된 화면"의 정의라 여기가 등록 지점이다. 발화는 전역 단일 리스너
   // (`useKeyboardShortcuts`)가 하고, 여기서는 핸들러만 등록한다(ADR D-2).
-  // 훅 규칙상 조기 반환 앞에서 호출하되, 미인증이면 애초에 전역 리스너 자체가
-  // 등록되지 않으므로(`enabled` 가드) 발화하지 않는다.
-  useContextShortcuts('app-shell', { onToggleSidebar: toggleSidebar })
+  //
+  // 훅 규칙상 조기 반환 앞에서 호출하되 `isAuthenticated` 를 그대로 넘긴다 —
+  // 미인증이면 셸(사이드바)이 렌더되지 않으므로 등록도 하지 않는 것이 맞다
+  // (`useTrackActiveProject(isAuthenticated)` 와 같은 형태).
+  useContextShortcuts('app-shell', { onToggleSidebar: toggleSidebar }, isAuthenticated)
 
   if (!isAuthenticated) {
     return (

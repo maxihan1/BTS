@@ -88,8 +88,8 @@ describe('dispatchContextAction — 액션 → 핸들러', () => {
     const onCursorMove = vi.fn()
     renderHook(() => useContextShortcuts('issue-list', { onCursorMove }))
 
-    dispatchContextAction({ kind: 'cursor-move', delta: 1 })
-    dispatchContextAction({ kind: 'cursor-move', delta: -1 })
+    dispatchContextAction({ layer: 'issue-list', action: { kind: 'cursor-move', delta: 1 } })
+    dispatchContextAction({ layer: 'issue-list', action: { kind: 'cursor-move', delta: -1 } })
 
     expect(onCursorMove).toHaveBeenNthCalledWith(1, 1)
     expect(onCursorMove).toHaveBeenNthCalledWith(2, -1)
@@ -100,8 +100,8 @@ describe('dispatchContextAction — 액션 → 핸들러', () => {
     const onToggleDetailPane = vi.fn()
     renderHook(() => useContextShortcuts('issue-list', { onOpenCurrent, onToggleDetailPane }))
 
-    dispatchContextAction({ kind: 'open-current' })
-    dispatchContextAction({ kind: 'toggle-detail-pane' })
+    dispatchContextAction({ layer: 'issue-list', action: { kind: 'open-current' } })
+    dispatchContextAction({ layer: 'issue-list', action: { kind: 'toggle-detail-pane' } })
 
     expect(onOpenCurrent).toHaveBeenCalledOnce()
     expect(onToggleDetailPane).toHaveBeenCalledOnce()
@@ -112,7 +112,7 @@ describe('dispatchContextAction — 액션 → 핸들러', () => {
     renderHook(() => useContextShortcuts('app-shell', { onToggleSidebar }))
     renderHook(() => useContextShortcuts('issue-list', {}))
 
-    dispatchContextAction({ kind: 'toggle-sidebar' })
+    dispatchContextAction({ layer: 'app-shell', action: { kind: 'toggle-sidebar' } })
 
     expect(onToggleSidebar).toHaveBeenCalledOnce()
   })
@@ -120,8 +120,8 @@ describe('dispatchContextAction — 액션 → 핸들러', () => {
   it('핸들러가 등록되지 않은 액션은 조용히 무동작이다 (던지지 않는다)', () => {
     renderHook(() => useContextShortcuts('issue-list', {}))
 
-    expect(() => dispatchContextAction({ kind: 'open-current' })).not.toThrow()
-    expect(() => dispatchContextAction({ kind: 'cursor-move', delta: 1 })).not.toThrow()
+    expect(() => dispatchContextAction({ layer: 'issue-list', action: { kind: 'open-current' } })).not.toThrow()
+    expect(() => dispatchContextAction({ layer: 'issue-list', action: { kind: 'cursor-move', delta: 1 } })).not.toThrow()
   })
 
   it('none 액션은 아무 핸들러도 호출하지 않는다', () => {
@@ -129,9 +129,68 @@ describe('dispatchContextAction — 액션 → 핸들러', () => {
     const onOpenCurrent = vi.fn()
     renderHook(() => useContextShortcuts('issue-list', { onCursorMove, onOpenCurrent }))
 
-    dispatchContextAction({ kind: 'none' })
+    dispatchContextAction(null)
 
     expect(onCursorMove).not.toHaveBeenCalled()
     expect(onOpenCurrent).not.toHaveBeenCalled()
+  })
+
+  it('★레이어를 그대로 따른다 — 판별이 지목한 레이어의 핸들러만 불린다', () => {
+    const listCursor = vi.fn()
+    const shellCursor = vi.fn()
+    renderHook(() => useContextShortcuts('issue-list', { onCursorMove: listCursor }))
+    renderHook(() => useContextShortcuts('app-shell', { onCursorMove: shellCursor }))
+
+    // 같은 액션이라도 레이어가 다르면 다른 핸들러로 간다. dispatch 가 액션 종류로
+    // 레이어를 재추론하면 이 단언이 깨진다 — 재배치를 잡는 지점이다.
+    dispatchContextAction({ layer: 'app-shell', action: { kind: 'cursor-move', delta: 1 } })
+
+    expect(shellCursor).toHaveBeenCalledWith(1)
+    expect(listCursor).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// enabled 게이트 (독립 리뷰 M-4 / I-3)
+//
+// 콜백만 undefined 로 넘기던 옛 방식은 등록이 남아 레이어가 활성이었고, 그래서 키를
+// 삼키고(preventDefault) 아무 일도 안 했다. 등록 자체를 끊으면 판별 단계에서 갈린다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useContextShortcuts — enabled 게이트', () => {
+  it('enabled=false 면 등록하지 않는다', () => {
+    renderHook(() => useContextShortcuts('issue-list', {}, false))
+
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeUndefined()
+    expect(resolveActiveContext()).toBe('app-shell')
+  })
+
+  it('★true → false 전환 시 기존 등록을 걷어낸다 (남으면 죽은 레이어가 활성으로 남는다)', () => {
+    const { rerender } = renderHook(
+      ({ enabled }) => useContextShortcuts('issue-list', {}, enabled),
+      { initialProps: { enabled: true } },
+    )
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeDefined()
+
+    rerender({ enabled: false })
+
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeUndefined()
+  })
+
+  it('false → true 전환 시 다시 등록된다', () => {
+    const { rerender } = renderHook(
+      ({ enabled }) => useContextShortcuts('issue-list', {}, enabled),
+      { initialProps: { enabled: false } },
+    )
+
+    rerender({ enabled: true })
+
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeDefined()
+  })
+
+  it('생략하면 기본값 true 다 (기존 호출부 무회귀)', () => {
+    renderHook(() => useContextShortcuts('issue-list', {}))
+
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeDefined()
   })
 })

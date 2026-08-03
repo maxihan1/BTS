@@ -177,6 +177,48 @@ combo(`g j`)는 leader 대기 중 컨텍스트로 넘어가지 않으므로(E6) 
 **예약 목록은 `CONTEXT_SHORTCUTS` 에서 파생한다.** 하드코딩하면 F11 이 상세 액션
 8종을 추가할 때 이 가드만 뒤처져 조용히 뚫린다 — `two-lists-never-check-each-other`.
 
+## D-5. 등록 게이트 · 레이어 라우팅 · 실효 키맵 표기 (독립 리뷰 반영, 2026-08-03)
+
+세 지적이 한 뿌리였다 — **"활성이 아닌데 레이어가 살아 있다"**.
+
+### D-5-a. `enabled` 게이트 — 콜백을 끊지 말고 등록을 끊는다
+
+초안은 좁은폭에서 콜백만 `undefined` 로 넘겼다. 그러면 등록이 남아 레이어가 활성이고,
+파이프라인은 판별에 성공해 **`preventDefault` 까지 한 뒤** 아무 일도 하지 않는다 —
+브라우저 기본 동작(Firefox quick-find 등)만 사라진다.
+
+`useContextShortcuts(context, handlers, enabled)` 로 **등록 자체를 끊는다.** 활성 조건.
+
+| 호출부 | 조건 |
+|---|---|
+| `ShellLayout` | `isAuthenticated` (미인증이면 셸 자체가 없다) |
+| `IssueListPage` | `cursorEnabled(=isWide)` ∧ 로딩 아님 ∧ 에러 아님 ∧ **모달 3종 안 열림** |
+
+### D-5-b. 모달 열림 중 차단 (독립 리뷰 I-3)
+
+일괄 편집·전이·결과 다이얼로그는 **입력 요소가 없어** `shouldIgnoreEvent`
+(input/textarea/select/contentEditable 만 검사)를 통과한다. 막지 않으면 다이얼로그가
+떠 있는데 `j` 가 배후 목록을 옮기고, **`o` 는 다이얼로그를 띄운 채 화면을 통째로
+갈아치운다.** D-5-a 의 활성 조건에 얹어 닫았다.
+
+> 전역 5종도 같은 구멍이 있다(`c` 가 동일 상태에서 `/issues/new` 로 간다). 그쪽은
+> **선재 결함**이라 이 PR 범위 밖 — 별건 FR 후보.
+
+### D-5-c. 판별이 레이어를 함께 반환한다
+
+`resolveContextKeydown` 이 `{ layer, action } | null` 을 돌려주고 dispatch 가
+`handlers[layer]` 로 조회한다. 예전에는 액션 종류로 소속을 **재추론**했는데, 그건
+`CONTEXT_SHORTCUTS.context` 가 이미 선언한 지식의 복제였다. 복제가 있으면 기존
+단축키를 다른 레이어로 옮길 때 판별은 성공하고 `preventDefault` 도 하는데 dispatch 만
+엉뚱한 레이어를 봐 조용히 무동작이 된다. `never` exhaustive 가드는 액션 *종류* 추가만
+잡지 이 재배치는 못 잡는다.
+
+### D-5-d. 도움말이 실효 키맵을 표기한다 (독립 리뷰 M-8)
+
+`SHORTCUTS[].keys` 는 정적 표기라 FR-PF-03 재배치를 반영하지 못했다 — 재배치 후 모달이
+**없는 키를 계속 광고**하던 **선재 결함**이다. 훅이 이미 계산해 두는 effective 키맵을
+반환해 모달에 넘긴다. 컨텍스트 키는 v1 고정이라 영향 없다.
+
 ## 남긴 것 — 스펙(D2)이 닫아야 할 것
 
 - **`## Jira 대조` 기록 부재.** 계약 §1 이 4단계 대조와 그 기록을 요구하는데 F10 의 키 선정

@@ -103,6 +103,24 @@ const CONTEXT_LAYERS: Record<ShortcutContext, readonly ShortcutContext[]> = {
 }
 
 /**
+ * 판별 결과 — **동작과 그것이 속한 레이어를 함께** 돌려준다.
+ *
+ * ★레이어를 버리지 않는 것이 요점이다. 예전에는 동작만 반환해서 dispatch 쪽이
+ * `handlers['issue-list']` / `handlers['app-shell']` 로 **소속을 재추론**했고, 그건
+ * `CONTEXT_SHORTCUTS` 가 이미 `context` 필드로 선언한 지식의 복제였다. 그 복제가 있으면
+ * 기존 단축키를 다른 레이어로 옮길 때(`[` 를 board 레이어로, 또는 board 가 `cursor-move`
+ * 를 소유) 판별은 성공하고 `preventDefault` 까지 하는데 dispatch 만 엉뚱한 레이어를 봐
+ * **아무 일도 안 일어난다**. `never` exhaustive 가드는 액션 *종류* 추가만 잡지 이 재배치는
+ * 못 잡는다.
+ */
+export type ContextShortcutHit = {
+  /** 이 동작을 소유한 레이어 — dispatch 가 그대로 핸들러 조회에 쓴다 */
+  readonly layer: ShortcutContext
+  /** 발화할 동작 */
+  readonly action: ContextShortcutAction
+} | null
+
+/**
  * keydown 키를 컨텍스트 단축키 동작으로 해석한다. 부수효과 없음(호출부=훅 책임).
  *
  * 전역 단축키(`shortcuts.ts` `resolveKeydown`)가 **먼저** 판별하고, 그 결과가
@@ -111,16 +129,16 @@ const CONTEXT_LAYERS: Record<ShortcutContext, readonly ShortcutContext[]> = {
  *
  * @param key keydown 이벤트의 `e.key` (수정자·IME 가드는 호출부가 선행 처리)
  * @param active 현재 활성 컨텍스트
- * @returns 해석된 동작. 등록되지 않은 키이거나 컨텍스트가 맞지 않으면 `none`
+ * @returns 소유 레이어 + 동작. 등록되지 않은 키이거나 컨텍스트가 맞지 않으면 `null`
  */
-export function resolveContextKeydown(key: string, active: ShortcutContext): ContextShortcutAction {
+export function resolveContextKeydown(key: string, active: ShortcutContext): ContextShortcutHit {
   for (const layer of CONTEXT_LAYERS[active]) {
-    const hit = CONTEXT_SHORTCUTS.find(
+    const found = CONTEXT_SHORTCUTS.find(
       (shortcut) => shortcut.context === layer && shortcut.key === key,
     )
-    if (hit) return hit.action
+    if (found) return { layer: found.context, action: found.action }
   }
-  return { kind: 'none' }
+  return null
 }
 
 /**

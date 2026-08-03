@@ -6,7 +6,7 @@
 // (ADR docs/decisions/2026-08-03-fr-ux-10-f10-context-shortcuts.md D-2)
 import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
-import type { ContextShortcutAction, ShortcutContext } from './context-shortcuts'
+import type { ContextShortcutHit, ShortcutContext } from './context-shortcuts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -97,31 +97,33 @@ export function resolveActiveContext(): ShortcutContext {
 }
 
 /**
- * 판별된 액션을 등록 핸들러로 흘린다. 미등록 핸들러는 조용히 무동작.
+ * 판별 결과를 **그 결과가 지목한 레이어**의 핸들러로 흘린다. 미등록이면 조용히 무동작.
  *
- * 핸들러는 **레이어 병합**으로 찾는다 — `issue-list` 가 활성이어도
- * `toggle-sidebar` 는 `app-shell` 이 등록한 핸들러로 간다. 액션 종류가 곧
- * 소속 레이어를 결정하므로 별도 컨텍스트 인자가 필요 없다.
+ * ★레이어를 여기서 재추론하지 않는다. `resolveContextKeydown` 이 소유 레이어를 함께
+ * 돌려주므로 그대로 조회한다 — 컨텍스트가 늘거나 기존 단축키가 다른 레이어로 옮겨가도
+ * 이 함수는 고칠 게 없다. 예전처럼 `handlers['issue-list']` 를 하드코딩하면 재배치 시
+ * 판별은 성공하는데 dispatch 만 엉뚱한 곳을 봐 조용히 무동작이 된다.
  *
- * @param action `resolveContextKeydown` 이 판별한 동작
+ * @param hit `resolveContextKeydown` 이 판별한 레이어 + 동작. `null` 이면 무동작
  */
-export function dispatchContextAction(action: ContextShortcutAction): void {
-  const { handlers } = useContextShortcutsStore.getState()
-  const list = handlers['issue-list']
-  const shell = handlers['app-shell']
+export function dispatchContextAction(hit: ContextShortcutHit): void {
+  if (hit === null) return
+
+  const target = useContextShortcutsStore.getState().handlers[hit.layer]
+  const { action } = hit
 
   switch (action.kind) {
     case 'cursor-move':
-      list?.onCursorMove?.(action.delta)
+      target?.onCursorMove?.(action.delta)
       return
     case 'open-current':
-      list?.onOpenCurrent?.()
+      target?.onOpenCurrent?.()
       return
     case 'toggle-detail-pane':
-      list?.onToggleDetailPane?.()
+      target?.onToggleDetailPane?.()
       return
     case 'toggle-sidebar':
-      shell?.onToggleSidebar?.()
+      target?.onToggleSidebar?.()
       return
     case 'none':
       return
@@ -149,12 +151,20 @@ export function dispatchContextAction(action: ContextShortcutAction): void {
  * 핸들러를 안정 래퍼 뒤에 숨겨** 등록은 마운트/언마운트 시 1회씩만 일어나되
  * 호출은 항상 최신 함수로 가게 한다(stale 클로저 방지).
  *
+ * ★`enabled=false` 면 **등록 자체를 하지 않는다.** 콜백만 `undefined` 로 넘기는 방식과
+ * 다른 점은 판별 단계에서 갈린다는 것이다 — 등록이 없으면 그 레이어가 활성이 아니므로
+ * `resolveContextKeydown` 이 `null` 을 내고, 파이프라인이 `preventDefault` 조차 하지
+ * 않는다. 콜백만 끊으면 키를 삼키고도 아무 일이 안 일어나 브라우저 기본 동작
+ * (Firefox quick-find 등)만 사라진다.
+ *
  * @param context 이 화면이 여는 컨텍스트 레이어
  * @param handlers 동작별 핸들러(전부 옵셔널)
+ * @param enabled 등록 여부 — 화면이 실제로 그 조작을 받을 수 있을 때만 true
  */
 export function useContextShortcuts(
   context: ShortcutContext,
   handlers: ContextShortcutHandlers,
+  enabled = true,
 ): void {
   const handlersRef = useRef(handlers)
 
@@ -171,6 +181,12 @@ export function useContextShortcuts(
 
   useEffect(() => {
     const { register, unregister } = useContextShortcutsStore.getState()
+    if (!enabled) {
+      // 비활성 전환 시 이전 등록을 반드시 걷어낸다 — 남겨두면 화면이 조작을 못 받는
+      // 상태(로딩·에러·좁은폭·모달 열림)인데도 레이어가 활성으로 남는다.
+      unregister(context)
+      return undefined
+    }
     register(context, {
       onCursorMove: (delta) => handlersRef.current.onCursorMove?.(delta),
       onOpenCurrent: () => handlersRef.current.onOpenCurrent?.(),
@@ -178,5 +194,5 @@ export function useContextShortcuts(
       onToggleSidebar: () => handlersRef.current.onToggleSidebar?.(),
     })
     return () => unregister(context)
-  }, [context])
+  }, [context, enabled])
 }

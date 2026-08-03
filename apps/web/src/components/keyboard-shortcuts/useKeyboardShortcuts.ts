@@ -18,6 +18,15 @@ import { dispatchContextAction, resolveActiveContext } from './useContextShortcu
 interface UseKeyboardShortcutsResult {
   /** 단축키 도움말 모달 열림 여부 */
   readonly helpOpen: boolean
+  /**
+   * effective 키맵(기본값 + 사용자 override 병합).
+   *
+   * ★도움말 모달이 이걸 받아야 거짓말을 멈춘다. `SHORTCUTS[].keys` 는 문서상
+   * **정적 표기**라 사용자가 FR-PF-03 으로 재배치해도 안 따라간다 — 재배치 후
+   * 모달은 없는 키를 계속 광고한다. 훅은 이미 이 값을 계산해 쓰고 있으므로
+   * 밖으로 내보내기만 하면 된다(독립 리뷰 M-8).
+   */
+  readonly keymap: Keymap
   /** 열림 상태를 직접 제어하는 setter — ShortcutsHelpDialog의 onOpenChange에 연결 */
   readonly setHelpOpen: (open: boolean) => void
 }
@@ -165,13 +174,13 @@ function attachShortcutListener(
     // 움직인다(E7).
     if (ctx.helpOpenRef.current) return
 
-    const contextAction = resolveContextKeydown(e.key, resolveActiveContext())
-    if (contextAction.kind === 'none') return
+    const contextHit = resolveContextKeydown(e.key, resolveActiveContext())
+    if (contextHit === null) return
 
     // 후행 bubble 리스너(예: `usePaneEscapeClose`)가 `defaultPrevented` 로 걸러낼
     // 수 있도록 발화 시 반드시 막는다(ADR D-2 파생).
     e.preventDefault()
-    dispatchContextAction(contextAction)
+    dispatchContextAction(contextHit)
   }
 
   document.addEventListener('keydown', handleKeyDown)
@@ -218,5 +227,5 @@ export function useKeyboardShortcuts(enabled: boolean): UseKeyboardShortcutsResu
     return attachShortcutListener(enabled, leader, { navigate, setHelpOpen, helpOpenRef }, keymap)
   }, [enabled, navigate, keymap])
 
-  return { helpOpen, setHelpOpen }
+  return { helpOpen, setHelpOpen, keymap }
 }

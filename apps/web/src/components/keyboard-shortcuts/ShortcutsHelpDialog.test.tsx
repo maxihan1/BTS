@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
-import { SHORTCUTS } from './shortcuts'
+import { DEFAULT_KEYMAP, SHORTCUTS } from './shortcuts'
 import { CONTEXT_SHORTCUTS } from './context-shortcuts'
 
 describe('ShortcutsHelpDialog', () => {
@@ -143,5 +143,52 @@ describe('ShortcutsHelpDialog — 컨텍스트 단축키 그룹 (FR-UX-10 F10)',
 
     const expected = SHORTCUTS.length + 1 + CONTEXT_SHORTCUTS.length // +1 = 명령 팔레트
     expect(screen.getByRole('dialog').querySelectorAll('dt')).toHaveLength(expected)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★M-8 — 전역 5종 표기가 실효 키맵을 따른다.
+//
+// `SHORTCUTS[].keys` 는 정적 표기라, 사용자가 FR-PF-03 으로 재배치하면 모달이
+// **없는 키를 계속 광고**했다(선재 결함). 훅이 이미 계산해 두는 실효 키맵을
+// 받아 표기한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ShortcutsHelpDialog — 실효 키맵 표기 (M-8)', () => {
+  it('★사용자가 재배치한 키를 표기한다 (정적 표기 c 가 아니라 n)', () => {
+    const remapped = { ...DEFAULT_KEYMAP, 'create-issue': 'n' }
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} keymap={remapped} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    const createIssueRow = within(globalGroup).getByText('새 이슈 생성').closest('div')
+    expect(createIssueRow).not.toBeNull()
+    expect(within(createIssueRow as HTMLElement).getByText('n')).toBeInTheDocument()
+    expect(within(createIssueRow as HTMLElement).queryByText('c')).not.toBeInTheDocument()
+  })
+
+  it('leader combo 재배치도 두 칸으로 쪼개 표기한다', () => {
+    const remapped = { ...DEFAULT_KEYMAP, 'goto-my-issues': 'g m' }
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} keymap={remapped} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    const row = within(globalGroup).getByText('내 이슈로 이동').closest('div')
+    expect(within(row as HTMLElement).getByText('g')).toBeInTheDocument()
+    expect(within(row as HTMLElement).getByText('m')).toBeInTheDocument()
+  })
+
+  it('keymap 을 생략하면 기본 키맵으로 폴백한다 (기존 호출부 무회귀)', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    const row = within(globalGroup).getByText('새 이슈 생성').closest('div')
+    expect(within(row as HTMLElement).getByText('c')).toBeInTheDocument()
+  })
+
+  it('컨텍스트 키는 재배치 대상이 아니므로 키맵과 무관하게 고정이다 (v1 고정 키)', () => {
+    const remapped = { ...DEFAULT_KEYMAP, 'create-issue': 'n' }
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} keymap={remapped} />)
+
+    const listGroup = screen.getByRole('region', { name: '이슈 목록에서' })
+    expect(within(listGroup).getByText('j')).toBeInTheDocument()
   })
 })

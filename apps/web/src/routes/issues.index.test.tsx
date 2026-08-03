@@ -1,7 +1,7 @@
 // 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션 + CREATE 권한 게이트 + 일괄 선택/액션 + 필터 결선 + 테이블/정렬/컬럼 결선 (Task 5)
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -2059,20 +2059,16 @@ describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
   // `onCursorTo={moveCursorTo}` 로 바꿔도 167건 전부 green 이었다. 구현 중 실측이
   // 스펙을 뒤집어 만든 계약인데 정작 그 계약만 무방비였다.
   // ───────────────────────────────────────────────────────────────────────────
-  it('★E13 — 좁은폭에서는 커서 콜백 3종이 전부 끊긴다 (j/k/o/t 무동작)', async () => {
+  it('★E13 — 좁은폭에서는 issue-list 컨텍스트를 아예 등록하지 않는다', async () => {
     mockUseMediaQuery.mockReturnValue(false)
     mockUseSearch.mockReturnValue({})
     renderRouteAdapter()
     await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
 
-    const handlers = listHandlers()
-    expect(handlers).toBeDefined()
-
-    handlers?.onCursorMove?.(1)
-    handlers?.onOpenCurrent?.()
-    handlers?.onToggleDetailPane?.()
-
-    // 세 줄 중 **하나라도** isWide 가드를 잃으면 이 단언이 깨진다.
+    // ★등록 자체가 없어야 한다. 콜백만 undefined 로 끊던 옛 방식은 등록이 남아
+    // 레이어가 활성이었고, 그래서 키를 삼키고(preventDefault) 아무 일도 안 했다.
+    // 등록이 없으면 판별 단계에서 갈려 브라우저 기본 동작도 보존된다.
+    expect(listHandlers()).toBeUndefined()
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
@@ -2085,5 +2081,26 @@ describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
     listHandlers()?.onCursorMove?.(1)
 
     expect(mockNavigate).toHaveBeenCalled()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ★I-3 — 일괄 작업 다이얼로그가 떠 있으면 컨텍스트 키가 죽는다.
+  //
+  // 이 다이얼로그들은 입력 요소가 없어 `shouldIgnoreEvent`(input/textarea/select/
+  // contentEditable 만 검사)를 통과한다. 막지 않으면 다이얼로그가 떠 있는데 `j` 가
+  // 배후 목록을 옮기고, `o` 는 다이얼로그를 띄운 채 화면을 통째로 갈아치운다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('★I-3 — 일괄 편집 다이얼로그가 열리면 컨텍스트 등록이 해제된다', async () => {
+    mockUseMediaQuery.mockReturnValue(true)
+    mockUseSearch.mockReturnValue({})
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(listHandlers()).toBeDefined()
+
+    // 행 하나를 선택해 일괄 액션 바를 띄우고 "일괄 편집"을 연다
+    fireEvent.click(screen.getByTestId('select-ATLAS-1'))
+    fireEvent.click(await screen.findByRole('button', { name: '일괄 편집' }))
+
+    await waitFor(() => expect(listHandlers()).toBeUndefined())
   })
 })

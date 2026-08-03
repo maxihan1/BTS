@@ -380,6 +380,15 @@ interface IssueListPageProps {
   onOpenCursor?: (key: string) => void
   /** `t` — 상세 페인을 닫는다(`selected` 제거). 여는 쪽은 `onCursorTo`가 겸한다 */
   onCloseDetailPane?: () => void
+  /**
+   * 커서 단축키(`j`/`k`/`o`/`t`) 활성 여부 — **와이드 전용 계약**(E13).
+   *
+   * 좁은폭에서는 `selectedKey` 를 null 로 받아 커서 강조 자체가 없으므로, 등록을
+   * 끊지 않으면 `j` 가 URL 만 바꾸고 화면은 그대로인 유령 상태가 된다. 어댑터가
+   * `isWide` 를 그대로 넘긴다. 이 컴포넌트는 로딩·에러·모달 열림을 여기에 AND 로
+   * 얹는다.
+   */
+  cursorEnabled?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -460,6 +469,7 @@ export function IssueListPage({
   onCursorTo,
   onOpenCursor,
   onCloseDetailPane,
+  cursorEnabled = true,
 }: IssueListPageProps): JSX.Element {
   const queryClient = useQueryClient()
 
@@ -579,7 +589,20 @@ export function IssueListPage({
       const first = pageKeys[0]
       if (first !== undefined) onCursorTo?.(first)
     },
-  })
+  },
+    // ★활성 조건. 이 화면이 실제로 커서 조작을 받을 수 있을 때만 등록한다.
+    //
+    // - `cursorEnabled` — 어댑터가 넘기는 와이드 여부(E13). 좁은폭에는 커서 강조 자체가
+    //   없어 `j` 가 URL 만 바꾸는 유령 상태가 된다.
+    // - 로딩/에러 — 목록이 없는데 레이어만 활성이면 키를 삼키고 아무 일도 안 한다.
+    // - 모달 3종 — 일괄 편집·전이·결과 다이얼로그는 입력 요소가 없어 `shouldIgnoreEvent`
+    //   를 통과한다. 막지 않으면 다이얼로그가 떠 있는데 `j` 가 배후 목록을 옮기고,
+    //   **`o` 는 다이얼로그를 띄운 채 화면을 통째로 갈아치운다**(독립 리뷰 I-3).
+    //
+    // 등록 자체를 끊으므로 `preventDefault` 도 하지 않는다 — 브라우저 기본 동작을
+    // 삼키지 않는다(콜백만 `undefined` 로 넘기던 옛 방식의 한계).
+    cursorEnabled && !isLoading && error === null && !editOpen && !transitionOpen && !resultOpen,
+  )
 
   /** 커서가 몇 번째 행인지 (0-indexed). 커서 없음/목록에 없음이면 -1 */
   const cursorIndex = selectedKey === null ? -1 : pageKeys.indexOf(selectedKey)
@@ -930,13 +953,15 @@ export function IssueListRouteAdapter(): JSX.Element {
         sort={sort}
         onSortChange={handleSortChange}
         selectedKey={isWide ? selected : null}
-        // FR-UX-10 F10 — 커서 단축키는 **와이드에서만** 산다.
-        // 좁은폭은 `selectedKey` 를 null 로 넘겨(위 줄) 커서 강조 자체가 없으므로,
-        // 여기서 콜백까지 끊지 않으면 `j` 가 URL 만 바꾸고 화면엔 아무 변화가 없는
-        // 유령 상태가 된다. 콜백이 undefined 면 핸들러가 조용히 무동작이다.
-        onCursorTo={isWide ? moveCursorTo : undefined}
-        onOpenCursor={isWide ? openCursorIssue : undefined}
-        onCloseDetailPane={isWide ? clearSelected : undefined}
+        // FR-UX-10 F10 — 커서 단축키는 **와이드에서만** 산다(E13). 좁은폭은
+        // `selectedKey` 를 null 로 넘겨(위 줄) 커서 강조 자체가 없으므로, 등록을 끊지
+        // 않으면 `j` 가 URL 만 바꾸고 화면엔 아무 변화가 없는 유령 상태가 된다.
+        // 콜백을 undefined 로 끊던 옛 방식과 달리 등록 자체를 막아 preventDefault 도
+        // 하지 않는다 — 브라우저 기본 동작을 삼키지 않는다.
+        cursorEnabled={isWide}
+        onCursorTo={moveCursorTo}
+        onOpenCursor={openCursorIssue}
+        onCloseDetailPane={clearSelected}
       />
     ) : (
       <ActiveProjectGate state={activeProject} />
