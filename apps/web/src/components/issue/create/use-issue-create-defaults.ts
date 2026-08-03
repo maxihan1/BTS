@@ -21,16 +21,27 @@ import type { IssueCreateFormValues } from '@/components/issue/create/issue-crea
 export function useDefaultProjectSelection(
   form: UseFormReturn<IssueCreateFormValues>,
   projects: Project[],
+  initialProjectKey?: string,
 ): void {
   const activeProjectKey = useActiveProject((s) => s.activeProjectKey)
 
   const defaultProjectKey = useMemo(() => {
     if (projects.length === 0) return ''
+    // ★명시 전달이 최우선이다 (FR-UX-09 F3 FR-7, 스펙 §8 D-A).
+    //
+    // 보드·백로그 진입점은 `/projects/$projectKey/*` 안에 있어 페이지가 프로젝트를 직접 안다.
+    // 활성 프로젝트를 경유하면 `useTrackActiveProject` 의 `isKnownProject`(목록 대조) 가드가
+    // 아직 통과하지 못한 순간에 **직전 프로젝트가 채워진 채로 모달이 열린다.**
+    //
+    // 목록 대조는 여기서도 그대로 한다 — 접근 권한이 없거나 아카이브된 키를 넣지 않는다.
+    if (initialProjectKey !== undefined && projects.some((p) => p.key === initialProjectKey)) {
+      return initialProjectKey
+    }
     if (activeProjectKey !== null && projects.some((p) => p.key === activeProjectKey)) {
       return activeProjectKey
     }
     return projects[0]?.key ?? ''
-  }, [projects, activeProjectKey])
+  }, [projects, activeProjectKey, initialProjectKey])
 
   useEffect(() => {
     if (defaultProjectKey !== '' && form.getValues('projectKey') === '') {

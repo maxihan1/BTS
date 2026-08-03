@@ -64,6 +64,13 @@ export function BacklogPage({ projectKey }: BacklogPageProps): JSX.Element {
   const canManageSprint: boolean = projectPermissions?.permissions.CREATE === true
   // UPDATE 권한 — 이슈 재정렬·할당·해제 드래그 게이팅
   const canReorderIssue: boolean = projectPermissions?.permissions.UPDATE === true
+  // CREATE 권한 — 칸 이슈 생성 진입점 게이팅 (FR-UX-09 F3 FR-6)
+  //
+  // 값은 canManageSprint 와 같지만 **이름을 따로 둔다** — 「스프린트 관리」와
+  // 「이슈 생성」은 다른 행위다. 한쪽 권한이 갈라지는 날 같은 변수를 쓰고 있으면
+  // 두 기능이 한꺼번에 잘못된다. 판정식은 선례(routes/issues.index.tsx NewIssueButton)와
+  // 같은 fail-closed — 로딩·에러·미보유는 전부 false 다.
+  const canCreateIssue: boolean = projectPermissions?.permissions.CREATE === true
 
   return (
     <div className="p-6 space-y-4">
@@ -77,6 +84,7 @@ export function BacklogPage({ projectKey }: BacklogPageProps): JSX.Element {
         projectKey={projectKey}
         canManageSprint={canManageSprint}
         canReorderIssue={canReorderIssue}
+        canCreateIssue={canCreateIssue}
       />
     </div>
   )

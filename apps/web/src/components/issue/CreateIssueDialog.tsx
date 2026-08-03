@@ -33,6 +33,17 @@ export interface CreateIssueDialogProps {
   onCreateProject?: () => void
   /** 제목 프리필 — 명령 팔레트 `/issue <제목>`(FR-UX-04 FR7) */
   initialSummary?: string
+  /**
+   * 프로젝트 프리필 — 진입점이 자기 프로젝트를 명시로 넘긴다 (FR-UX-09 F3 FR-7).
+   *
+   * 보드·백로그 진입점은 `/projects/$projectKey/*` 안에 있어 프로젝트를 직접 안다.
+   * 전역 활성 프로젝트를 경유하면 목록 대조 가드가 아직 통과하지 못한 순간에
+   * **직전 프로젝트가 채워진 채로 열린다** (스펙 §8 D-A).
+   *
+   * ⚠️ 이 prop 은 라우터 훅이 **아니다** — 값을 받을 뿐 URL 을 읽지 않으므로
+   * 「라우터 훅 import 0」 설계 조건(FR-1)을 깨지 않는다.
+   */
+  initialProjectKey?: string
 }
 
 /**
@@ -60,6 +71,7 @@ export function CreateIssueDialog({
   onCreated,
   onCreateProject,
   initialSummary,
+  initialProjectKey,
 }: CreateIssueDialogProps): JSX.Element {
   /**
    * 제출 진행 상태 — 푸터 버튼이 폼 **밖**이라 폼에서 받아와야 한다 (게이트 2 C-2).
@@ -87,6 +99,7 @@ export function CreateIssueDialog({
           <IssueCreateForm
             formId={CREATE_ISSUE_FORM_ID}
             initialSummary={initialSummary}
+            initialProjectKey={initialProjectKey}
             onSuccess={handleSuccess}
             onCreateProject={onCreateProject}
             onPendingChange={setSubmitting}

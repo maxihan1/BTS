@@ -148,7 +148,34 @@ vi.mock('@/hooks/use-backlog', () => ({
   backlogKeys: { detail: (key: string) => ['backlog', key] },
 }))
 
+// FR-UX-09 F3 — 생성 모달을 스텁으로 둔다.
+//
+// ★이 파일의 관심사는 **배선**이다 — 어느 칸에서 열었는지에 따라 어느 mutation 이 걸리는가.
+// 폼 자체(프로젝트·유형·커스텀필드 목 조립)를 여기서 구동하면 검증하려는 것보다
+// 목 셋업이 커지고, 폼이 바뀔 때마다 이 파일이 같이 깨진다.
+//
+// ⚠️ **대가를 명시한다** — 스텁은 진짜 모달이 실제로 열리고 제출되는지를 보지 못한다.
+// 그 판정은 실제 MSW 를 쓰는 E2E(T8, `issue-create-entry-points.spec.ts`)가 갖는다.
+const STUB_CREATED_KEY = 'ATLAS-42'
+vi.mock('@/components/issue/CreateIssueDialog', () => ({
+  CreateIssueDialog: ({
+    open,
+    onCreated,
+  }: {
+    open: boolean
+    onCreated?: (key: string) => void
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="이슈 생성 모달 스텁">
+        <button type="button" onClick={() => onCreated?.(STUB_CREATED_KEY)}>
+          스텁 생성 완료
+        </button>
+      </div>
+    ) : null,
+}))
+
 import { BacklogBoard } from './BacklogBoard'
+import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -160,9 +187,9 @@ function makeQueryClient() {
 
 function renderBoard(
   projectKey = 'ATLAS',
-  opts: { canManageSprint?: boolean; canReorderIssue?: boolean } = {},
+  opts: { canManageSprint?: boolean; canReorderIssue?: boolean; canCreateIssue?: boolean } = {},
 ) {
-  const { canManageSprint = true, canReorderIssue = true } = opts
+  const { canManageSprint = true, canReorderIssue = true, canCreateIssue = false } = opts
   const qc = makeQueryClient()
   return render(
     <QueryClientProvider client={qc}>
@@ -170,6 +197,7 @@ function renderBoard(
         projectKey={projectKey}
         canManageSprint={canManageSprint}
         canReorderIssue={canReorderIssue}
+        canCreateIssue={canCreateIssue}
       />
     </QueryClientProvider>,
   )
@@ -755,5 +783,125 @@ describe('BacklogBoard', () => {
       renderBoard()
       expect(screen.queryByRole('alert')).toBeNull()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 모달 소유권 (FR-15) + 진입점 배선 (FR-1)
+//
+// ★「생성하면 칸에 나타난다」는 여기서 검증하지 않는다.
+// 이 파일은 `use-backlog` 를 통째로 mock 해 정적 데이터를 돌려주므로,
+// 무엇을 만들어도 목록이 변하지 않는다. 그 단언을 여기 두면 **영원히 거짓**이거나
+// 목을 흉내 내느라 진짜를 안 보게 된다. 나타남 판정은 실제 MSW 를 쓰는 E2E(T8) 몫이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogBoard — 이슈 생성 모달 소유권 (F3 FR-15)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('백로그 칸 진입점을 누르면 모달이 열린다', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await user.click(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    )
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('★스프린트가 2개여도 모달 인스턴스는 1개다 (role="dialog" strict mode 방지)', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    )
+    await screen.findByRole('dialog')
+
+    // 픽스처의 스프린트는 2개다. 칸마다 모달을 두면 여기서 3개가 된다.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+
+  it('★canCreateIssue=false 면 진입점이 전부 비활성이다 (fail-closed)', () => {
+    renderBoard('ATLAS', { canCreateIssue: false })
+
+    expect(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    ).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 스프린트 배정 (FR-4) + 부분 성공 (FR-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR-4/FR-5)', () => {
+  // ⚠️ 이 블록은 위 `describe('BacklogBoard')` 밖이라 그쪽 beforeEach 가 닿지 않는다.
+  // 없으면 앞 테스트의 호출 기록이 넘어와 「부르지 않았다」 단언이 거짓 실패한다.
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('스프린트 칸에서 만들면 그 스프린트로 배정을 건다', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', {
+        name: backlogLabels.createIssueInSprint('스프린트 1'),
+      }),
+    )
+    await screen.findByRole('dialog')
+
+    await user.click(screen.getByRole('button', { name: '스텁 생성 완료' }))
+
+    await waitFor(() => {
+      expect(mockAssignMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ sprintId: 'sprint-uuid-0001' }),
+        expect.anything(),
+      )
+    })
+  })
+
+  it('백로그 칸에서 만들면 배정을 걸지 않는다 (기본 동작이 곧 백로그)', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    )
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: '스텁 생성 완료' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    expect(mockAssignMutate).not.toHaveBeenCalled()
+  })
+
+  it('★배정만 실패하면 이슈가 만들어졌음을 경고 톤으로 알린다 (FR-5, 에러 톤 금지)', async () => {
+    const user = userEvent.setup()
+    // 배정 mutation 이 onError 를 부르도록 만든다
+    mockAssignMutate.mockImplementation(
+      (_vars: unknown, opts?: { onError?: () => void }) => { opts?.onError?.() },
+    )
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', {
+        name: backlogLabels.createIssueInSprint('스프린트 1'),
+      }),
+    )
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: '스텁 생성 완료' }))
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalled()
+    })
+    // 빨간 실패 토스트는 「안 만들어졌다」로 읽혀 재시도 → 중복 이슈를 부른다
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })

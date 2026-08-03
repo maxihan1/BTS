@@ -37,6 +37,7 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 import { SprintColumn } from './SprintColumn'
+import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -87,6 +88,7 @@ function renderSprintColumn(
   onStart?: () => void,
   onComplete?: () => void,
   projectKey = 'ATLAS',
+  entry?: { canCreateIssue?: boolean; onCreateIssue?: () => void },
 ) {
   return render(
     <DndContext>
@@ -98,6 +100,8 @@ function renderSprintColumn(
         isOver={isOver}
         onStart={onStart}
         onComplete={onComplete}
+        canCreateIssue={entry?.canCreateIssue}
+        onCreateIssue={entry?.onCreateIssue}
       />
     </DndContext>,
   )
@@ -281,5 +285,67 @@ describe('SprintColumn — S6 번다운 진입 링크', () => {
   it('S6c: COMPLETED 스프린트에서도 번다운 링크가 렌더된다', () => {
     renderSprintColumn(completedSprint, [])
     expect(screen.getByRole('link', { name: /번다운/ })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 스프린트 칸 이슈 생성 진입점 (FR-2, FR-10, E-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SprintColumn — 이슈 생성 진입점 (F3 FR-2)', () => {
+  it('진입점 이름에 스프린트 이름이 들어간다 — 화면에 N개가 공존한다 (FR-10)', async () => {
+    const user = userEvent.setup()
+    const onCreateIssue = vi.fn()
+    renderSprintColumn(plannedSprint, [issue1], new Map(), false, undefined, undefined, 'ATLAS', {
+      canCreateIssue: true,
+      onCreateIssue,
+    })
+
+    const button = screen.getByRole('button', {
+      name: backlogLabels.createIssueInSprint(plannedSprint.name),
+    })
+    await user.click(button)
+
+    expect(onCreateIssue).toHaveBeenCalledTimes(1)
+  })
+
+  it('★canCreateIssue=false 면 비활성이다 (fail-closed)', async () => {
+    const user = userEvent.setup()
+    const onCreateIssue = vi.fn()
+    renderSprintColumn(plannedSprint, [issue1], new Map(), false, undefined, undefined, 'ATLAS', {
+      canCreateIssue: false,
+      onCreateIssue,
+    })
+
+    const button = screen.getByRole('button', {
+      name: backlogLabels.createIssueInSprint(plannedSprint.name),
+    })
+    expect(button).toBeDisabled()
+
+    await user.click(button)
+    expect(onCreateIssue).not.toHaveBeenCalled()
+  })
+
+  it('★COMPLETED 스프린트에는 진입점이 없다 (E-3 — 드롭이 막힌 것과 같은 기준)', () => {
+    renderSprintColumn(completedSprint, [], new Map(), false, undefined, undefined, 'ATLAS', {
+      canCreateIssue: true,
+      onCreateIssue: vi.fn(),
+    })
+
+    expect(
+      screen.queryByRole('button', {
+        name: backlogLabels.createIssueInSprint(completedSprint.name),
+      }),
+    ).toBeNull()
+  })
+
+  it('onCreateIssue 를 안 주면 진입점을 렌더하지 않는다 (기존 소비처 무회귀)', () => {
+    renderSprintColumn()
+
+    expect(
+      screen.queryByRole('button', {
+        name: backlogLabels.createIssueInSprint(plannedSprint.name),
+      }),
+    ).toBeNull()
   })
 })

@@ -14,6 +14,16 @@ export const boardLabels = {
     backlogLink: '백로그',
     /** 타임라인 뷰 전환 링크 텍스트 */
     timelineLink: '타임라인',
+    /**
+     * 보드 헤더 이슈 생성 진입점 (FR-UX-09 F3 FR-3).
+     *
+     * 🛑 **컬럼별이 아니라 보드 1곳**이다 — 생성 계약에 상태(`stateKey`)가 없어
+     * 컬럼별 버튼은 지키지 못할 약속이 된다 (ADR 2026-08-03 D-3).
+     *
+     * ⚠️ 값을 고칠 때 `i18n/__tests__/create-entry-point-names.test.ts` 를 먼저 읽을 것 —
+     * 상단바 `만들기` · 모달 제출 `이슈 생성` 을 부분 문자열로 포함하면 기존 e2e 가 깨진다.
+     */
+    createIssue: '이슈 추가',
   },
 
   /** WIP(Work In Progress) 제한 관련 라벨 */

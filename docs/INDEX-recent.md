@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (438건, 최신순)
+# 시간 축 인덱스 (439건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-08-03 | fr-ux-09-f3-create-issue-entry-points | ✔ | ✔ | ✔ | — | FR-UX-05 FR-UX-06 FR-UX-07 FR-UX-08 FR-UX-09 |
 | 2026-08-01 | doc-indexing-system | ✔ | ✔ | — | — | FR-CO-01 FR-UX-09 |
 | 2026-08-01 | fr-ux-09-f2-create-issue-dialog | ✔ | ✔ | ✔ | — | FR-CM-03 FR-IS-10 FR-PM-06 FR-TM-01 FR-UX-04 FR-UX-07 FR-UX-09 |
 | 2026-07-31 | fr-ux-08-pr-b-sidebar-nav | — | ✔ | — | — | FR-UX-05 FR-UX-06 FR-UX-07 FR-UX-08 |
