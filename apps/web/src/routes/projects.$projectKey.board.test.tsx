@@ -51,7 +51,7 @@ function renderBoardPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <BoardPage projectKey="ATLAS" selectedBoardId={undefined} filter={null} />
+      <BoardPage projectKey="ATLAS" selectedBoardId={undefined} />
     </QueryClientProvider>,
   )
 }

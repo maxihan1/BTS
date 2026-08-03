@@ -31,6 +31,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
+import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
+import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
+import { issueCreateStrings } from '@/i18n/ko'
 import { ProjectNavTabs, type ProjectNavTabLink } from '@/components/project/ProjectNavTabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
@@ -287,6 +290,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   const canCreate: boolean = projectPermissions?.permissions.CREATE === true
 
   // ── FR-UX-01 — 활성 퀵필터 id 추적 (FR6). navigate와 co-locate (리뷰 BLOCKER-B).
+  const [createIssueOpen, setCreateIssueOpen] = useState(false)
   const [activeQuickFilterId, setActiveQuickFilterId] = useState<string | null>(null)
 
   // C3-d: boardId가 바뀌면(보드 전환) 활성 퀵필터 표시를 초기화한다 — 다른 보드의 퀵필터이므로 무효.
@@ -394,10 +398,39 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     }
   }
 
-  // ── 공통 헤더 — projectKey 기반 즐겨찾기 버튼 (로딩/빈 보드 분기 무관하게 항상 노출)
+  // ── 공통 헤더 — projectKey 기반 즐겨찾기 버튼 + 이슈 생성 진입점
+  //    (로딩/빈 보드 분기 무관하게 항상 노출)
+  //
+  // 🛑 진입점을 아래 「헤더 행」(보드 2+개이거나 보드 상세가 있을 때만 렌더)에 두면
+  //    보드가 없거나 로딩 중일 때 사라진다. 이 변수는 **모든 분기가 공유**한다.
   const projectFavoriteHeader = (
     <div className="flex items-center justify-between px-6 pt-4 pb-0">
       <FavoriteButton targetType="PROJECT" targetId={projectKey} />
+      {/* 🛑 컬럼별이 아니라 보드 1곳이다 — 생성 계약에 상태(stateKey)가 없어
+          컬럼별 버튼은 「여기서 만들면 여기에 생긴다」는 지키지 못할 약속이 된다.
+          근거 = ADR docs/decisions/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md D-3.
+          `BoardColumn.tsx` 는 이 PR 에서 한 줄도 바뀌지 않는다. */}
+      <CreateIssueEntryButton
+        label={boardLabels.page.createIssue}
+        variant="text"
+        canCreate={canCreate}
+        onClick={() => { setCreateIssueOpen(true) }}
+      />
+      {/* 이슈 생성 모달 — 화면당 1개. 성공 후 이동은 진입 경로가 정한다(F2 D-8) —
+          보드는 상단바와 같이 **제자리에 머물고 토스트로 갈 길을 남긴다**. */}
+      <CreateIssueDialog
+        open={createIssueOpen}
+        onOpenChange={setCreateIssueOpen}
+        initialProjectKey={projectKey}
+        onCreated={(key) => {
+          toast(`${key} ${issueCreateStrings.createdToast}`, {
+            action: {
+              label: issueCreateStrings.createdToastAction,
+              onClick: () => { void navigate({ to: '/issues/$key', params: { key } }) },
+            },
+          })
+        }}
+      />
     </div>
   )
 
@@ -450,10 +483,8 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   return (
     <div className="p-6 space-y-4">
-      {/* 프로젝트 즐겨찾기 버튼 */}
-      <div className="flex items-center">
-        <FavoriteButton targetType="PROJECT" targetId={projectKey} />
-      </div>
+      {/* 프로젝트 즐겨찾기 + 이슈 생성 진입점 (분기 공통 헤더) */}
+      {projectFavoriteHeader}
 
       {/* 뷰 전환 nav — 백로그·타임라인 (ProjectNavTabs 공유 컴포넌트, FR-UX-06 PR12 Task 4) */}
       <ProjectNavTabs projectKey={projectKey} links={BOARD_VIEW_NAV_LINKS} />
