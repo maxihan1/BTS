@@ -103,19 +103,13 @@ test.describe('S2 스프린트 칸 진입점 (FR-2/FR-4)', () => {
     expect(writes.assigns).toHaveLength(1)
   })
 
-  test('S7 완료된 스프린트에는 진입점이 없다 (E-3)', async ({ page }) => {
-    await loginAsAlice(page)
-    await page.goto(BACKLOG_URL)
-
-    // 기본 시드의 스프린트는 전부 PLANNED/ACTIVE 다. COMPLETED 칸이 있다면 진입점이 없어야 한다.
-    const completedColumns = page.locator('[data-droppable-disabled="true"]')
-    const count = await completedColumns.count()
-    for (let i = 0; i < count; i += 1) {
-      await expect(
-        completedColumns.nth(i).getByRole('button', { name: /스프린트에 이슈 추가$/ }),
-      ).toHaveCount(0)
-    }
-  })
+  // ★S7(COMPLETED 스프린트 미렌더)은 여기 두지 않는다.
+  //
+  // 기본 시드에 `COMPLETED` 스프린트가 **0개**라(2026-08-03 실측 `backlog-fixtures.ts`),
+  // 「완료된 칸마다 진입점이 없다」를 여기서 쓰면 **루프가 한 번도 돌지 않고 통과하는
+  // 공허한 테스트**가 된다. 시드를 늘리는 대신, 상태를 직접 주입할 수 있는
+  // `SprintColumn.test.tsx`(「★COMPLETED 스프린트에는 진입점이 없다」)가 그 판정을 갖는다 —
+  // 그쪽은 completedSprint 픽스처를 실제로 렌더하므로 비-공허하다.
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

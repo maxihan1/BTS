@@ -133,7 +133,31 @@ export function BacklogBoard({
    */
   const [createTarget, setCreateTarget] = useState<string | null>(null)
 
-  const openCreateForBacklog = useCallback(() => { setCreateTarget('backlog') }, [])
+  /**
+   * 배정 대상 — **모달 가시성과 수명을 분리한** 사본.
+   *
+   * ★왜 상태를 그대로 못 읽나.
+   * `CreateIssueDialog.handleSuccess` 는 `onOpenChange(false)` 를 부른 **다음** `onCreated(key)` 를 부른다.
+   * 대상을 상태에서 읽으면 「그 시점에 `setCreateTarget(null)` 이 아직 반영되지 않았다」는
+   * **React 배칭 동작에 정확성을 의존**하게 된다 — 지금은 맞지만 조용히 깨질 수 있다.
+   *
+   * ★그렇다고 ref 를 닫힘과 함께 비우면 **더 확실히 깨진다**. ref 는 동기라
+   * `onOpenChange` 에서 비우는 순간 뒤이은 `onCreated` 가 이미 `null` 을 읽는다
+   * (2026-08-03 E2E 가 이 실수를 즉시 잡았다).
+   *
+   * 그래서 **닫힘은 상태만 끄고, 대상은 여기서 읽은 뒤에 비운다.**
+   * 취소로 닫혔을 때 값이 남지만 무해하다 — `handleIssueCreated` 는 생성 성공에만 불리고,
+   * 다시 열 때 덮어쓴다.
+   */
+  const createTargetRef = useRef<string | null>(null)
+
+  /** 모달을 연다 — 가시성(상태)과 대상(ref)을 함께 세운다. */
+  const openCreateFor = useCallback((target: string): void => {
+    createTargetRef.current = target
+    setCreateTarget(target)
+  }, [])
+
+  const openCreateForBacklog = useCallback(() => { openCreateFor('backlog') }, [openCreateFor])
   /**
    * 스프린트 칸별 열기 콜백 캐시.
    *
@@ -145,10 +169,10 @@ export function BacklogBoard({
     const cache = openCreateForSprintRef.current
     const existing = cache.get(sprintId)
     if (existing !== undefined) return existing
-    const fn = (): void => { setCreateTarget(sprintId) }
+    const fn = (): void => { openCreateFor(sprintId) }
     cache.set(sprintId, fn)
     return fn
-  }, [])
+  }, [openCreateFor])
 
   const { data: backlogView, isLoading } = useBacklog(projectKey)
   const rerankIssue = useRerankIssue(projectKey)
@@ -185,7 +209,10 @@ export function BacklogBoard({
    * 선례 — `backlogLabels.rerankFailedWarning`(이동은 됐고 순서만 실패)이 같은 형태다.
    */
   function handleIssueCreated(issueKey: string): void {
-    const target = createTarget
+    // ★상태가 아니라 ref 에서 읽는다 — 모달이 onOpenChange(false) 를 먼저 부르므로
+    //   상태로 읽으면 React 배칭 동작에 정확성을 기대게 된다 (위 createTargetRef 주석).
+    const target = createTargetRef.current
+    createTargetRef.current = null
     setCreateTarget(null)
 
     // 백로그 칸에서 열었으면 배정할 것이 없다 — 스프린트 미지정이 곧 백로그다.
@@ -352,6 +379,7 @@ export function BacklogBoard({
           아직 통과하지 못한 순간 다른 프로젝트가 채워진 채로 열린다 (스펙 §8 D-A). */}
       <CreateIssueDialog
         open={createTarget !== null}
+        // 닫힘은 **가시성만** 끈다 — 대상은 `handleIssueCreated` 가 읽은 뒤에 비운다.
         onOpenChange={(open) => { if (!open) setCreateTarget(null) }}
         initialProjectKey={projectKey}
         onCreated={handleIssueCreated}

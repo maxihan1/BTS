@@ -2,7 +2,7 @@
 import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
@@ -10,7 +10,7 @@ import { fetchUsers } from '@/api/users'
 import { buildBoardFilterQuery } from '@/api/boards'
 import type { BoardSummary, BoardDetail, BoardCardFilterParams, SwimlaneField } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
-import { useBoards, useBoard } from '@/hooks/use-boards'
+import { useBoards, useBoard, boardKeys } from '@/hooks/use-boards'
 import { useUpdateSwimlane } from '@/hooks/use-update-swimlane'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
@@ -290,6 +290,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   const canCreate: boolean = projectPermissions?.permissions.CREATE === true
 
   // ── FR-UX-01 — 활성 퀵필터 id 추적 (FR6). navigate와 co-locate (리뷰 BLOCKER-B).
+  const queryClient = useQueryClient()
   const [createIssueOpen, setCreateIssueOpen] = useState(false)
   const [activeQuickFilterId, setActiveQuickFilterId] = useState<string | null>(null)
 
@@ -423,6 +424,12 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         onOpenChange={setCreateIssueOpen}
         initialProjectKey={projectKey}
         onCreated={(key) => {
+          // ★목록 갱신 (FR-9). 없으면 만든 이슈가 보드에 나타나지 않는다 —
+          //   백로그는 무효화를 걸고 보드는 안 거는 비대칭이 되고, 사용자는
+          //   보고 있던 화면이 그대로인 채 토스트만 본다.
+          //   `boardKeys.detail(id)` 는 filter 를 포함한 3요소 키의 **접두**라 필터 변형까지 함께 무효화된다.
+          //   현재 필터에 걸려 안 보이는 경우는 정상이다 (스펙 E-4) — 그건 「갱신 안 함」과 다르다.
+          void queryClient.invalidateQueries({ queryKey: boardKeys.detail(currentBoardId) })
           toast(`${key} ${issueCreateStrings.createdToast}`, {
             action: {
               label: issueCreateStrings.createdToastAction,

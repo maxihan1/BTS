@@ -356,6 +356,16 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
 // 모듈 로드 시 기본 백로그를 자동 시드한다 — fr-bd-01 교훈 (신규 store 자동 시드 필수).
 // dev(pnpm dev) · E2E 진입 시 store가 비어 있어 빈 백로그가 노출되는 결함 방지.
 // Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
-if (import.meta.env.MODE !== 'test') {
+//
+// ★`import.meta.env` 는 **번들러가 주입하는 값이라 항상 있지 않다** (FR-UX-09 F3에서 실측).
+// Playwright 는 spec 파일을 Node 로더로 읽는데, spec 이 `src/mocks/*` 를 import 하면
+// 이 모듈이 그 로더 위에서 평가된다. 거기엔 `import.meta.env` 가 **없어서**
+// 가드 없이 `.MODE` 를 읽으면 `TypeError` 가 나고 **Playwright 수집이 통째로 실패**한다
+// (`Total: 0 tests in 0 files`). 파일 하나가 아니라 **E2E 전체**가 사라지는 형태라
+// 「테스트가 깨졌다」가 아니라 「테스트가 없다」로 보인다 — 가장 알아채기 어려운 실패다.
+//
+// 값이 없으면 시드하는 쪽이 맞다 — 건너뛰는 것은 vitest 가 스스로 제어할 때뿐이다.
+const bundlerEnv = (import.meta as { env?: { MODE?: string } }).env
+if (bundlerEnv?.MODE !== 'test') {
   seedBacklog(DEFAULT_BACKLOG)
 }
