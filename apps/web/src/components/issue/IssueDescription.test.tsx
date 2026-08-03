@@ -170,6 +170,51 @@ describe('IssueDescription', () => {
     expect(onSave).toHaveBeenCalledWith('')
   })
 
+  // ── 진입 시 포커스 (스펙 S4) ─────────────────────────────────────────────
+  //
+  // "본문 영역을 클릭한다 → 편집기가 열리고 포커스가 입력 영역에 놓인다".
+  // 포커스가 없으면 한 번 더 클릭해야 타이핑이 시작돼 클릭 진입의 의미가 반감된다.
+  // E2E 는 locator.press() 가 자동 포커스하므로 이 결함을 못 잡는다 — 유닛이 증인이다.
+
+  it('본문 클릭으로 진입하면 textarea 가 포커스를 갖는다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByTestId('description-preview-content'))
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
+  })
+
+  it('본문 편집 버튼으로 진입해도 textarea 가 포커스를 갖는다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
+  })
+
+  it('빈 본문 placeholder 클릭으로 진입해도 textarea 가 포커스를 갖는다', () => {
+    render(
+      <IssueDescription
+        descriptionHtml={null}
+        description={null}
+        onSave={vi.fn()}
+        isSaving={false}
+      />,
+      { wrapper: makeWrapper() },
+    )
+    fireEvent.click(screen.getByText('본문이 없습니다.'))
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
+  })
+
+  /**
+   * 커서 위치는 스펙 미규정이라 단언하지 않는다 — **의도적 판단**이다.
+   * `setSelectionRange` 로 커서를 끝에 옮기면 select 이벤트가 멘션 감지를 깨워
+   * 진입 직후 자동완성이 열리는 회귀가 난다(아래 멘션 describe 의 가드 테스트가 그 증인).
+   * 여기서는 진입이 초안 내용을 건드리지 않는다는 것만 고정한다.
+   */
+  it('진입해도 초안 내용은 원본 그대로다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByTestId('description-preview-content'))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    expect(textarea).toHaveValue('본문 마크다운')
+  })
+
   // ── 키보드 저장 (FR-UX-11 F8 Task 4 / FR5) ───────────────────────────────
   //
   // 본문은 여러 줄 마크다운 편집기다. 맨 Enter 를 저장에 쓰면 개행을 할 수 없으므로
@@ -488,6 +533,33 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
 
     fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 스펙 S4 포커스 부작용 가드 — 진입 시 커서 이동이 멘션 감지를 깨우면 안 된다.
+   *
+   * 본문이 `@이름` 으로 끝나는 이슈에서 커서를 끝에 놓으면, `onSelect` 경유 멘션 감지가
+   * 발화해 **열지도 않은 자동완성이 진입 직후 떠 있는** 상태가 될 수 있다.
+   * 그래서 커서 이동을 `focus()` 앞에 두었고, 이 테스트가 그 순서를 고정한다.
+   */
+  it('본문이 @이름 으로 끝나도 진입 직후 멘션 드롭다운이 열리지 않는다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription
+        descriptionHtml="<p>안녕 @al</p>"
+        description="안녕 @al"
+        onSave={vi.fn()}
+        isSaving={false}
+      />,
+      { wrapper: makeWrapper() },
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
+
+    // debounce(250ms) + 응답 시간을 충분히 넘겨도 드롭다운이 없어야 한다
+    await new Promise((resolve) => { setTimeout(resolve, 700) })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   /**
