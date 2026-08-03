@@ -2517,3 +2517,115 @@ describe('IssueDetailPage — 제목 편집 진입 포커스/커서 (FR-UX-11 F8
     expect(input.selectionStart).toBe(1)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 코드리뷰 봉합 — R-1 텍스트 선택 가드 · R-2 편집 종료 포커스 복귀
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 제목 진입 가드/포커스 복귀 (FR-UX-11 F8 R-1·R-2)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-R1-1. 텍스트를 선택 중이면 제목 클릭이 편집을 열지 않는다 (E2 / 편차 D-2).
+   *
+   * 본문(`IssueDescription`)이 같은 판정식으로 막는 동작이라 제목만 열리면 비대칭이다.
+   * 드래그로 제목을 복사하려는 참을 방해하지 않는다 — Jira 미해결 결함 JRA-64389 미복제.
+   *
+   * spy 를 `finally` 에서 직접 원복한다 — 이 프로젝트는 `restoreMocks` 를 켜지 않아
+   * 전역 spy 가 다음 테스트로 샌다(본문 테스트가 같은 이유로 같은 처리를 한다).
+   */
+  it('F8-R1-1: 제목 텍스트를 선택 중이면 클릭이 편집을 열지 않는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+    const titleButton = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+
+    const selectionSpy = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ isCollapsed: false } as Selection)
+    try {
+      await user.click(titleButton)
+      expect(
+        screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+      ).not.toBeInTheDocument()
+    } finally {
+      selectionSpy.mockRestore()
+    }
+
+    // 비-공허 짝 — 선택이 풀리면 같은 클릭이 편집을 연다.
+    // 이게 없으면 "클릭 자체가 원래 안 되는 상태" 여도 위 단언이 통과한다.
+    await user.click(titleButton)
+    expect(
+      screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * F8-R2-1. Esc 취소 후 포커스가 제목 진입면으로 돌아온다 (WCAG 2.4.3).
+   * 돌려주지 않으면 포커스가 `<body>` 로 떨어져 다음 Tab 이 문서 맨 앞부터 시작한다.
+   *
+   * 이름이 아니라 **h1 안의 button** 으로 집는다 — 저장 후 제목 문자열이 바뀌어도
+   * 같은 단언이 서게 하려는 것이고, F8-R2-2 와 판정 방식을 통일한다.
+   */
+  it('F8-R2-1: Esc 취소 후 포커스가 제목 진입면으로 돌아온다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+    const input = screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { level: 1 })
+      expect(within(heading).getByRole('button')).toHaveFocus()
+    })
+  })
+
+  /**
+   * F8-R2-2. Enter 저장 후에도 포커스가 제목 진입면으로 돌아온다.
+   * 저장은 `onSuccess` 에서 편집 모드를 닫으므로 취소와 종료 경로가 다르다 — 따로 잰다.
+   */
+  it('F8-R2-2: Enter 저장 후 포커스가 제목 진입면으로 돌아온다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key', () =>
+        HttpResponse.json({ data: { ...issueAtlas1Fixture, summary: '저장된 제목', version: 1 } }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+    const input = screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })
+    await user.clear(input)
+    await user.type(input, '저장된 제목')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+      ).not.toBeInTheDocument()
+    })
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { level: 1 })
+      expect(within(heading).getByRole('button')).toHaveFocus()
+    })
+  })
+
+  /**
+   * F8-R2-3. 마운트 직후에는 진입면으로 포커스를 훔치지 않는다.
+   * `wasEditingRef` 가드의 증인 — 없으면 페이지를 열자마자 제목 버튼이 포커스를 가져가
+   * pane 마운트 포커스(usePaneFocusOnLoad)와 싸운다.
+   */
+  it('F8-R2-3: 마운트 직후에는 제목 진입면이 포커스를 훔치지 않는다', async () => {
+    renderPage('ATLAS-1')
+
+    const titleButton = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+    expect(titleButton).not.toHaveFocus()
+    expect(document.body).toHaveFocus()
+  })
+})
