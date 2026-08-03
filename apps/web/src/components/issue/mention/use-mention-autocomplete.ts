@@ -213,6 +213,11 @@ export function useMentionAutocomplete({
     (e: SyntheticEvent<HTMLTextAreaElement>) => {
       // 코드가 옮긴 caret 은 사용자 의도가 아니다 — 플래그를 1회 소비하고 감지를 건너뛴다.
       // 사용자의 클릭·방향키로 생기는 select 는 플래그가 없으므로 종전대로 감지한다.
+      //
+      // ⚠️ 이 분기를 "커버리지 0 인 죽은 줄"로 오해해 지우지 말 것.
+      // jsdom 은 setSelectionRange 에서 select 를 **무조건** 발화하지만 실브라우저는
+      // 선택 범위가 **바뀔 때만** 발화한다. 그래서 유닛 환경에서 재현되는 경로와
+      // 실제로 이 줄이 일하는 경로가 어긋난다 — 증인은 브라우저 눈확인 쪽에 있다.
       if (suppressNextSelectRef.current) {
         suppressNextSelectRef.current = false
         return
