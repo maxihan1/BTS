@@ -1141,4 +1141,12 @@ export const keymapSettingsStrings = {
     `단일 키 "g"와 리더 시퀀스가 함께 배정될 수 없습니다. (${actionNames})`,
   /** dead leader(연속키가 leader 키와 동일, 예: "g g") 충돌 메시지 */
   conflictDeadLeader: (actionNames: string) => `"g g"는 사용할 수 없습니다. (${actionNames})`,
+  /**
+   * 컨텍스트 단축키 예약 키 충돌 메시지 (FR-UX-10 F10).
+   *
+   * 목록 항법 키(`j`/`k`/`o`/`t`/`[`)를 전역 단축키로 재배치하면 전역이 먼저 판별해
+   * 목록 항법이 죽는다. 저장 전에 막고 무엇에 쓰이는 키인지 알려준다.
+   */
+  conflictReservedContext: (keyCombo: string, contextUsage: string, actionNames: string) =>
+    `"${keyCombo}"는 ${contextUsage}에 예약된 키입니다. 다른 키를 선택해 주세요. (${actionNames})`,
 } as const

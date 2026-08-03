@@ -10,6 +10,7 @@ import {
 import type { KeymapActionId, KeymapBinding, KeymapBindingInput, KeymapConflictType } from '@/api/keymap'
 import type { ApiError } from '@/api/client'
 import { DEFAULT_KEYMAP, LEADER_KEY } from '@/components/keyboard-shortcuts/shortcuts'
+import { CONTEXT_SHORTCUTS } from '@/components/keyboard-shortcuts/context-shortcuts'
 import { keymapSettingsStrings } from '@/i18n/ko'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -21,8 +22,17 @@ import { Button } from '@/components/ui/button'
 // 구조적으로 불가능한 위반이라 로컬에서는 생략 — 최종 방어선은 저장 시 서버 400/409)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 로컬 위반 종류 — blank/format은 VALIDATION, 나머지는 서버 KeymapConflictType과 동일 */
-type LocalViolationType = 'blank' | 'format' | KeymapConflictType
+/**
+ * 로컬 위반 종류.
+ *
+ * - `blank`/`format` — VALIDATION 계열(서버는 400)
+ * - `reservedContext` — **프론트 전용**(FR-UX-10 F10). 서버 `KeymapValidator` 는 이 규칙을
+ *   모른다. 컨텍스트 단축키가 영속 상태 없는 프론트 규약이라(ADR D-1) 백엔드에 알릴
+ *   이유가 없고, 알리면 그 경계가 무너진다. 대신 이 폼이 유일한 게이트다 — API 직호출로는
+ *   우회되지만 그 경우 컨텍스트 키가 죽을 뿐 데이터 손상은 없다(fail-safe).
+ * - 나머지 — 서버 `KeymapConflictType` 과 동일
+ */
+type LocalViolationType = 'blank' | 'format' | 'reservedContext' | KeymapConflictType
 
 /** 로컬(또는 서버 409) 위반 하나 — 관련 action id 목록 + (완전중복이면) 겹치는 key_combo */
 interface LocalViolation {
@@ -101,8 +111,36 @@ function findDeadLeaderViolations(structurallyValid: readonly KeymapBindingInput
 }
 
 /**
- * [bindings]를 백엔드 KeymapValidator 규칙(화이트리스트 제외 5종)으로 검증한다.
+ * 컨텍스트 단축키(FR-UX-10 F10)가 선점한 키 → 그 용도 설명.
+ *
+ * `CONTEXT_SHORTCUTS` 에서 파생한다 — 하드코딩하면 컨텍스트 키가 늘 때 이 가드만
+ * 뒤처져 조용히 뚫린다(`two-lists-never-check-each-other`).
+ */
+const RESERVED_CONTEXT_KEYS: ReadonlyMap<string, string> = new Map(
+  CONTEXT_SHORTCUTS.map((shortcut) => [shortcut.key, shortcut.description]),
+)
+
+/**
+ * 컨텍스트 단축키 예약 키 위반 목록 (FR-UX-10 F10).
+ *
+ * **single 트리거만 검사한다.** 컨텍스트 단축키는 전부 단일 키이고, 전역 판별이
+ * 컨텍스트보다 먼저 돌기 때문에 같은 단일 키를 전역에 배정하면 목록 항법이 죽는다
+ * (그런데 도움말 모달은 여전히 그 키를 광고한다). 반면 leader combo(`g j`)는 leader
+ * 대기 중 컨텍스트로 넘어가지 않으므로(E6) 충돌하지 않는다 — 막을 이유가 없다.
+ */
+function findReservedContextViolations(
+  structurallyValid: readonly KeymapBindingInput[],
+): LocalViolation[] {
+  return structurallyValid
+    .filter((b) => triggerOf(b.keyCombo) === 'single' && RESERVED_CONTEXT_KEYS.has(b.keyCombo))
+    .map((b) => ({ type: 'reservedContext' as const, actions: [b.action], keyCombo: b.keyCombo }))
+}
+
+/**
+ * [bindings]를 백엔드 KeymapValidator 규칙(화이트리스트 제외 5종)
+ * + 프론트 전용 예약 키 규칙 1종으로 검증한다.
  * 저장 시 최종 방어선은 서버 400/409 — 이 함수는 즉시 UI 피드백용.
+ * (예약 키 규칙만은 서버가 모르므로 이 함수가 유일한 게이트다.)
  */
 function detectLocalViolations(bindings: readonly KeymapBindingInput[]): LocalViolation[] {
   const structurallyValid = bindings.filter((b) => b.keyCombo.trim().length > 0 && hasValidFormat(b.keyCombo))
@@ -114,6 +152,7 @@ function detectLocalViolations(bindings: readonly KeymapBindingInput[]): LocalVi
     ...findDuplicateViolations(structurallyValid),
     ...(leaderPrefix !== null ? [leaderPrefix] : []),
     ...findDeadLeaderViolations(structurallyValid),
+    ...findReservedContextViolations(structurallyValid),
   ]
 }
 
@@ -141,6 +180,12 @@ const VIOLATION_MESSAGE_BUILDERS: Record<LocalViolationType, (keyCombo: string, 
   duplicate: (keyCombo, actionNames) => keymapSettingsStrings.conflictDuplicate(keyCombo, actionNames),
   leaderPrefix: (_keyCombo, actionNames) => keymapSettingsStrings.conflictLeaderPrefix(actionNames),
   deadLeader: (_keyCombo, actionNames) => keymapSettingsStrings.conflictDeadLeader(actionNames),
+  reservedContext: (keyCombo, actionNames) =>
+    keymapSettingsStrings.conflictReservedContext(
+      keyCombo,
+      RESERVED_CONTEXT_KEYS.get(keyCombo) ?? '목록 항법',
+      actionNames,
+    ),
 }
 
 /** 위반 하나를 사용자 노출 메시지로 변환 */
