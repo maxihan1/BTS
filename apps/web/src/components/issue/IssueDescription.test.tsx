@@ -602,6 +602,38 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
   })
 
   /**
+   * ★ stale blur 타이머 회귀 가드 — E2E 가 잡아낸 실제 회귀의 증인.
+   *
+   * 진입 포커스(S4) 이후 사용자가 탭 등 다른 요소를 눌러 textarea 가 blur 되면
+   * `handleBlur` 가 150ms 지연 닫기를 예약한다. 그 뒤 입력칸으로 **돌아와** 타이핑해
+   * 드롭다운을 열면, 예약이 살아 있는 한 150ms 뒤 그 드롭다운이 죽는다.
+   * 실브라우저에서 정확히 그 증상(+150ms 에 listbox 소멸)이 관측됐다.
+   */
+  it('blur 로 닫기가 예약된 뒤 다시 타이핑하면 드롭다운이 150ms 뒤에도 살아 있다', async () => {
+    server.use(...userHandlers)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+
+    const textarea = enterEditMode()
+
+    // 다른 곳을 눌러 blur — 지연 닫기가 예약된다
+    act(() => { fireEvent.blur(textarea) })
+
+    // 입력칸으로 돌아와 타이핑 — 예약은 무효가 되어야 한다
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // blur 타이머(150ms)를 넉넉히 넘겨도 살아 있어야 한다
+    await new Promise((resolve) => { setTimeout(resolve, 400) })
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
+  /**
    * FR-UX-11 F8 Task 5 / E10 — 멘션 팝업이 Escape 도 먼저 소비한다.
    *
    * Escape 취소(FR6)가 붙은 뒤로 이 순서가 깨지면, 자동완성을 물리려던 Escape 가
