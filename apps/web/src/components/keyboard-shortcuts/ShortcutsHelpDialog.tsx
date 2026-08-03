@@ -129,9 +129,14 @@ export function ShortcutsHelpDialog({
         <div className="space-y-4">
           {HELP_GROUPS.map((group) => (
             <section key={group.id} aria-labelledby={`shortcut-group-${group.id}`}>
+              {/*
+                ★눈확인 반영 — 초안은 헤딩도 `text-muted-foreground` 라 항목 설명과 색이
+                같아 "라벨"로 읽히지 않고 목록에 섞여 보였다(라이트/다크 양쪽). 전경색 +
+                semibold 로 한 단계 올려 그룹 경계를 세운다.
+              */}
               <h3
                 id={`shortcut-group-${group.id}`}
-                className="mb-2 text-xs font-medium text-muted-foreground"
+                className="mb-2 text-xs font-semibold text-foreground"
               >
                 {group.label}
               </h3>
