@@ -66,7 +66,6 @@ const UI_PATH_PATTERNS = [
   /apps\/web\//,
   /\.tsx$/,
   /page\.tsx$/,
-  /packages\/ui\//,
 ];
 
 const API_KEYWORDS = [
@@ -89,7 +88,7 @@ const QA_KEYWORDS = [
 ];
 
 const QA_PATH_PATTERNS = [
-  /tests\/e2e\//,
+  /apps\/web\/e2e\//,
   /tests\/integration\//,
   /\.spec\.ts$/,
 ];
@@ -316,7 +315,7 @@ const detectType = (raw: string): TaskType => {
 // agent 매핑
 // ─────────────────────────────────────────────────────────
 
-const detectAgent = (type: TaskType): AgentName | null => {
+const detectAgent = (type: TaskType): AgentName => {
   switch (type) {
     case 'auth':
       return 'security-engineer';
@@ -334,8 +333,6 @@ const detectAgent = (type: TaskType): AgentName | null => {
     case 'bugfix':
     case 'chore':
       return 'backend-engineer';
-    case 'unknown':
-      return null;
   }
 };
 

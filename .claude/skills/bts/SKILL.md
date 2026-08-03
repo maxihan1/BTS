@@ -129,7 +129,6 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ## 실패 / 엣지 케이스
 
-- **classify가 모호**. `type = unknown` 시 Maxi에게 "이 작업의 타입은?" AskUserQuestion
 - **worktree 충돌**. 동일 slug가 이미 있으면 `-2` 접미사 자동
 - **plan-* 리뷰 BLOCKER**. 중단 후 사용자에게 수정안 제시. 승인 후 리뷰 재실행
 - **TDD 강제 위반**. spec-compliance-verifier가 BLOCKER 반환 → implementer 재dispatch

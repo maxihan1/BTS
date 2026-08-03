@@ -61,10 +61,6 @@ plan을 읽고 task별 메타(`agent` / `files` / `depends-on`)를 추출해 wav
 
 **병렬 발행 규칙**. wave `w`의 모든 task에 대해 **한 응답 안에 여러 Agent() tool 호출**을 동시에 발행. 응답이 두 개로 갈리면 직렬화되어 병렬 이점이 사라짐. controller는 wave 내 모든 응답이 돌아올 때까지 대기한 뒤 2-B 진행.
 
-**agent=null 처리** (`classify.type == "unknown"` 또는 Maxi가 reclassify 거부 시).
-- fallback. `backend-engineer`로 dispatch (모듈러 모놀리스 기본 영역)
-- prompt 맨 위에 "type 분류 모호함. 구현 전 작업 의도/영역을 한 번 더 확인하고 보고" 한 줄 추가
-
 wave 내 각 task에 대해 다음 형식으로 dispatch (병렬 발행).
 
 ```
@@ -208,7 +204,7 @@ Agent({
   description: "<slug> E2E 시나리오 추가",
   prompt: """
 plan의 핵심 시나리오에 대해 Playwright E2E 1~2개 추가.
-작업 디렉토리. .worktrees/<slug>. 작성 위치. tests/e2e/<slug>.spec.ts.
+작업 디렉토리. .worktrees/<slug>. 작성 위치. apps/web/e2e/<slug>.spec.ts.
 **구현 코드는 수정 금지** (테스트만).
 보고. ADDED / SKIPPED (이미 충분).
 """
@@ -279,7 +275,7 @@ worktree 훅이 연결돼 있으면(`/bts-start` Step 3) 이 재생성을 잊은
    ├─ wave 2 (병렬 dispatch, depends-on [1, 3])
    │   ├─ Task 2. MentionNotificationService — backend-engineer ✅ PASS
    │   └─ Task 4. 알림 채널 라우팅 — backend-engineer ✅ PASS
-   ├─ E2E 추가. qa-engineer → tests/e2e/issue-mention-notify.spec.ts (2 시나리오)
+   ├─ E2E 추가. qa-engineer → apps/web/e2e/issue-mention-notify.spec.ts (2 시나리오)
    └─ verification-before-completion ✅ (test 47 passed, lint clean)
 ```
 

@@ -16,15 +16,13 @@ description: Use when /bts has accepted a new coding request and the working env
 ### Step 1. 작업 분류 (캐시 적용)
 
 ```bash
-classify=$(npx tsx scripts/workflow/classify-task.ts \
+classify=$(node scripts/workflow/classify-task.ts \
   --title "<사용자 입력>" --cache)
-# 출력: { type, agent, slug, runtimeDeploy, ultraplan }
+# 출력: { title, slug, type, agent, primary_bc, task_count, cached_at }
 # 캐시: .bts-cache/classify.json (1시간 TTL)
 ```
 
-**type ∈ {auth, backend, ui, design, migration, api, qa, bugfix, chore, feature}**
-
-판정 모호 (`type=unknown`) 시 AskUserQuestion으로 Maxi에게 확인.
+**type ∈ {auth, backend, ui, design, migration, api, qa, bugfix, chore, feature}** — 신호 0이면 `backend` 기본값.
 
 ### Step 2. feature 신규 아이디어 게이트 (조건부)
 
