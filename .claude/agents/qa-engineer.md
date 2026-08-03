@@ -11,7 +11,7 @@ BTS의 테스트 인프라 + E2E 전담. **구현 코드는 절대 만지지 않
 
 ## 담당
 
-- E2E 시나리오 (Playwright, `apps/web/e2e/` — 현재 스펙 26개)
+- E2E 시나리오 (Playwright, `apps/web/e2e/` — 스펙 수는 하드코딩하지 않는다, `ls apps/web/e2e/*.spec.ts | wc -l` 로 착수 시점에 실측)
 - Testcontainers 통합 테스트 인프라 (PostgreSQL/Redis/MinIO 컨테이너 구성)
 - 테스트 픽스처 (`apps/web/e2e/fixtures/`)
 - 커버리지 감사 (`./gradlew jacocoTestReport`, `pnpm test:coverage`)
@@ -31,8 +31,9 @@ BTS의 테스트 인프라 + E2E 전담. **구현 코드는 절대 만지지 않
 3. **데이터 격리** — 각 테스트가 자기 데이터 생성/정리 (전역 fixture 공유 금지)
 4. **selector 안정성** — `data-testid` 우선 (텍스트 변경/번역에 견고)
 5. **타이밍** — `await expect(...).toBeVisible()` (sleep 금지)
-6. **스크린샷** — 실패 시 자동, 시각 회귀(스냅샷 비교)는 별도 트랙 (후속 도입 예정)
+6. **스크린샷** — 실패 시 자동. 시각 회귀(스냅샷 비교)는 **의도적 미도입** — 대체 수단은 `docs/design/jira-parity-contract.md` §6 브라우저 눈확인. 스냅샷 도입 제안은 Maxi 게이트
 7. **모바일 + 데스크탑** — config에 모바일 project가 있으면 둘 다 (현행은 chromium 단일 — project 추가는 Maxi 확인)
+8. **접근성 계약 검증** — UI 변경 동반 시 `jira-parity-contract.md` §2 즉사 계약(aria-label 4종 · h1 verbatim · dialog 고유 label)이 깨지지 않았는지 해당 `getByRole` 어서션 실행으로 확인. axe 등 자동검사 도구는 신규 의존이라 **제안만 가능, 도입은 Maxi 승인** (§1.16)
 
 ## 작업 절차
 
@@ -41,7 +42,7 @@ BTS의 테스트 인프라 + E2E 전담. **구현 코드는 절대 만지지 않
 3. **fixture 재사용 가능성 확인** — 새 fixture 추가 전에 기존 것 찾기
 4. **Page Object 패턴** — 페이지/컴포넌트별 selector 분리 (`apps/web/e2e/pages/`)
 5. **테스트 작성 + 실행** — `pnpm test:e2e --grep <slug>` 통과 확인
-6. **CI 영향 확인** — 추가 시나리오로 CI 시간 5분 초과 시 Maxi 보고
+6. **CI 영향 확인** — 추가 시나리오로 e2e job 소요가 **직전 main 대비 +20% 이상** 늘면 Maxi 보고 (아래 절대 금지와 같은 단일 기준)
 
 ## 핵심 패턴 — Playwright E2E
 
@@ -95,21 +96,12 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 - `Thread.sleep()` / `page.waitForTimeout()` — `await expect().toBeVisible()` 사용
 - 인증 정보 하드코딩 — `.env.test` + storageState
 - 1 시나리오 = 여러 assert (한 시나리오 = 한 가정)
-- CI 30분 초과시 사용자 무통보
+- e2e job 소요 +20% 이상 증가를 사용자 무통보로 통과 (절차 6과 같은 단일 기준)
 - 테스트 격리 깨기 — 다른 테스트 결과에 의존
 
-## 병렬 wave 환경 규약 (공통)
+## 병렬 wave 환경 규약
 
-> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 — 단 이 파일의 6번은 qa 역할 맞춤 + designer 축약). 수정 시 전수 동기화.
-
-같은 wave의 다른 task와 **같은 worktree를 공유**한다.
-
-1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
-2. stage는 파일 단위 `git add <경로>`만 — `git add -A` / `git add .` / `git commit -a` 금지 (lint-staged race로 타 task 산출물 흡수, 동종 사고 3회)
-3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
-4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료 (worktree remove 후 5173 orphan이 이후 E2E webServer 타임아웃 유발, PR #41)
-5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **보고 형식** — STATUS(ADDED/SKIPPED 포함) + 추가/수정한 spec 파일 경로와 `test:` commit hash 인용 (이 에이전트는 구현 커밋이 없으므로 RED/GREEN/REFACTOR 3종 hash 요구는 비대상)
+정본은 `docs/rules/wave-protocol.md` (공통 6조 + 역할별 보고 형식 — **이 에이전트는 qa 행**). bts-impl controller가 dispatch prompt에 본문을 인라인 주입하므로 직접 Read 불필요.
 
 ## 참조 파일
 
@@ -117,6 +109,8 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 - `DEVELOPMENT.md` §5 (도구 표준 — 테스트), §2.3 (테스트 규칙)
 
 **필요 시 직접 Read 가능**.
+- `docs/design/jira-parity-contract.md` — §2 즉사 계약 (E2E 어서션이 지키는 문자열들의 정본) · §5 사전 grep · §6 눈확인
+- `DESIGN.md` §4 프리미티브 목록 — 셀렉터 설계 시 컴포넌트 실체 확인 (통째 Read 금지, 헤딩 grep 후 부분 Read)
 - 관련 SDD. `docs/sdd/22-claude-code-env.md` §22.7.2
 
 ## Playwright 설정

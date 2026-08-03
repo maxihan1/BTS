@@ -15,6 +15,7 @@ controller(메인 에이전트)는 다음 4개를 **세션당 1회만 Read**하�
 - `DATA.md` (데이터 무결성 5원칙)
 - `Maxi_wiki/BTS/domain/<bc>.md` (해당 BC 노트)
 - 작업 관련 `Maxi_wiki/BTS/decisions/<adr>.md` (있을 때)
+- `docs/rules/wave-protocol.md` (병렬 wave 규약 정본 — 모든 dispatch prompt에 본문 인라인 주입. 에이전트 정의에는 포인터만 있다)
 
 **sub-agent는 위 4개 파일을 직접 Read 금지** (controller가 이미 prompt 본문에 첨부함, 중복 로드는 토큰 낭비). 각 agent.md의 "참조 파일" 섹션은 "controller inject" 표시가 있는 항목은 직접 Read 금지, "필요 시 직접 Read" 표시 항목만 직접 Read 가능.
 
@@ -89,6 +90,9 @@ plan 파일의 Task N을 구현. 작업 디렉토리: .worktrees/<slug>.
 작업 위치: .worktrees/<slug> 절대 경로 안에서만 Edit/Write.
 허용 파일: <plan 메타 files 인라인 주입>.
 참조 파일: DEVELOPMENT.md, DATA.md, Maxi_wiki/BTS/domain/<bc>.md.
+
+**병렬 wave 환경 규약.**
+<docs/rules/wave-protocol.md 본문 인라인 주입 — 공통 6조 + 이 task 역할의 보고 형식 행>
 
 상태 보고. DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED.
 DONE/DONE_WITH_CONCERNS 보고 시 RED/GREEN 각 commit hash 명시, REFACTOR는 있으면 함께 (controller가 git log와 대조).

@@ -34,11 +34,41 @@ BTS React 19 + TypeScript 5 strict 전반. 백엔드 통신/상태/렌더링 모
 ## 절차
 
 1. **기존 컴포넌트 조사** — `apps/web/src/components/`, `apps/web/src/routes/` 가까운 컴포넌트 2-3개 Read
-2. **디자인 스펙 확인** — designer 에이전트가 작성한 `docs/designs/<slug>.md` 또는 `public/mockups/<slug>.html`
-3. **TDD 강제** — Vitest + Testing Library. 컴포넌트 단위 + 통합
-4. **데이터 페칭** — TanStack Query `useQuery`/`useMutation`. Suspense 활용
-5. **반응형** — Tailwind `sm`/`md`/`lg`/`xl` 명시. 모바일 first
-6. **접근성** — Radix가 기본 처리, 추가 `aria-*` 필요 시 designer 확인
+2. **디자인 스펙 확인** — designer 에이전트가 작성한 `docs/design/<slug>.md` 또는 `public/mockups/<slug>.html`
+3. **사전 grep** — 수정 대상이 노출된 e2e/유닛 어서션을 먼저 잰다 (`jira-parity-contract.md` §5). 결과가 0이 아니면 해당 스펙 갱신을 같은 task 범위로 산정
+4. **테스트 규율** — Vitest + Testing Library. plan 이 지정한 트랙을 따른다 (로직 = TDD red→green, ui 시각 변경 = bts-impl §타입별 규율의 ui 행)
+5. **데이터 페칭** — TanStack Query `useQuery`/`useMutation`. Suspense 활용
+6. **반응형** — Tailwind `sm`/`md`/`lg`/`xl` 명시. 모바일 first
+7. **접근성 계약** — Radix가 기본 처리하되, **`jira-parity-contract.md` §2 즉사 계약**(aria-label 4종 · h1 verbatim · dialog 고유 label · 관리 메뉴 기본 펼침)을 절대 깨지 않는다. 신규 `aria-*` 필요 시 designer 확인
+
+## Jira 패리티 (UI 작업 필수)
+
+BTS 의 UI/UX 기준은 **Jira Cloud (2025)** 다. 정본은 `docs/design/jira-parity-contract.md`.
+
+- **새 UI 는 Jira 대조가 먼저** — 스펙의 `## Jira 대조` 섹션(계약 §1 절차 산출물)을 확인하고 구현. 스펙에 없는 UI 를 자체 발명하지 않는다
+- **즉사 계약 요지 (본문 암기 대상)** — ① nav `aria-label` 4종(`메인 메뉴`·`관리 메뉴`·`프로젝트 뷰 전환`·`검색`)과 `<h1>` 이름은 **글자 단위 verbatim 보존** ② `프로젝트 뷰 전환`을 Radix Tabs 로 바꾸면 `role="navigation"` 소멸로 e2e 즉사 ③ 신규 다이얼로그는 고유 `aria-label` ④ 기존 단축키 레지스트리(`SHORTCUTS` 5종)는 동결 — 나머지 4행은 계약 §2
+- **재사용 자산 먼저** — `command.tsx` · `popover.tsx` · `IssueTypeIcon` · `meta/` 8종 · `FilterBar` 슬롯 · `EmptyState` 등 계약 §4 레지스트리를 grep 후 소비. 새로 만들면 병렬 FR 간 add/add 충돌
+
+## 상태 3종 — 에러/로딩/빈 (필수)
+
+데이터를 그리는 모든 화면은 세 상태를 전부 처리한다. **빈 `<div/>` 반환 금지** —
+백로그 에러가 빈 화면으로 침묵한 실사고가 로드맵 결함 목록에 있다.
+
+- 로딩. Skeleton 계열 (기존 `*Skeleton` 컴포넌트 패턴 복제)
+- 에러. 안내 + 재시도 액션 (toast 단독 금지 — 화면에 남는 상태 표시)
+- 빈. `EmptyState` 프리미티브 재사용 (`DESIGN.md` §4)
+
+## 성능 기준
+
+- TanStack Query `staleTime` 명시 — 미지정 0 이 요청 폭증을 만든다 (실사고: staleTime 이 요청 축소의 열쇠였던 이력)
+- 목록 100행 이상 렌더 예상 시 가상화 여부를 plan 에 명시 (기본은 페이지네이션/필터 우선, 가상화는 Maxi 확인)
+- props 식별값 useState 는 `key` 재마운트 (회귀 방지 목록 참조) — 얕은 리렌더 최적화(memo)는 계측 근거 없이 붙이지 않는다
+
+## 브라우저 눈확인 (시각 변화 시 생략 금지)
+
+시각/조작 변화가 있는 task 는 `jira-parity-contract.md` §6 절차로 실제 브라우저에서
+라이트/다크 양쪽을 확인하고, 관찰 요지를 DONE 보고에 포함한다. 코드·테스트 초록만으로
+시각 변화를 닫지 않는다 (FR-UX-06 22 PR 이 눈확인 0회로 끝난 것이 기록된 프로세스 결함).
 
 ## 핵심 패턴 — 데이터 페칭
 
@@ -96,18 +126,9 @@ const form = useForm<FormValues>({ resolver: zodResolver(schema) });
 - npm/pnpm 외 패키지 매니저
 - `npm install <new-pkg>` 임의 도입 (Maxi 확인 필수, §1.16)
 
-## 병렬 wave 환경 규약 (공통)
+## 병렬 wave 환경 규약
 
-> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 동일 + designer 축약). 수정 시 전수 동기화.
-
-같은 wave의 다른 task와 **같은 worktree를 공유**한다.
-
-1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
-2. stage는 파일 단위 `git add <경로>`만 — `git add -A` / `git add .` / `git commit -a` 금지 (lint-staged race로 타 task 산출물 흡수, 동종 사고 3회)
-3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
-4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
-5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **DONE 보고 형식** — STATUS + RED/GREEN 각 commit hash 인용, REFACTOR는 있으면 함께 (controller가 git log와 대조)
+정본은 `docs/rules/wave-protocol.md` (공통 6조 + 역할별 보고 형식). bts-impl controller가 dispatch prompt에 본문을 인라인 주입하므로 직접 Read 불필요.
 
 ## React 19 주의사항
 
@@ -123,5 +144,7 @@ const form = useForm<FormValues>({ resolver: zodResolver(schema) });
 - 작업 영역. `Maxi_wiki/BTS/domain/<bc>.md`
 
 **필요 시 직접 Read 가능**.
-- `DESIGN.md` (이미 존재 — 디자인 토큰/컴포넌트 규칙의 정본)
+- `DESIGN.md` (이미 존재 — 디자인 토큰/컴포넌트 규칙의 정본. 통째 Read 금지, 헤딩 grep 후 부분 Read)
+- `docs/design/jira-parity-contract.md` (Jira 패리티 계약 — UI 작업 필수)
+- `docs/design/fr-ux-06-jira-redesign.md` (Jira 리디자인 설계 정본 — 레이아웃/셸 구조 참조 시)
 - 관련 SDD. `docs/sdd/21-frontend.md`, `docs/sdd/20-personalization.md`
