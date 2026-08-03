@@ -203,16 +203,17 @@ describe('IssueDescription', () => {
   })
 
   /**
-   * 커서 위치는 스펙 미규정이라 단언하지 않는다 — **의도적 판단**이다.
-   * `setSelectionRange` 로 커서를 끝에 옮기면 select 이벤트가 멘션 감지를 깨워
-   * 진입 직후 자동완성이 열리는 회귀가 난다(아래 멘션 describe 의 가드 테스트가 그 증인).
-   * 여기서는 진입이 초안 내용을 건드리지 않는다는 것만 고정한다.
+   * 진입 시 커서가 **본문 끝**에 놓인다 — 이어 쓰는 것이 자연스럽고 제목 편집(FR1)과도 같다.
+   * 맨 앞이면 타이핑한 글자가 기존 본문 앞에 끼어들고, 전체 선택이면 첫 타건에 원문이 지워진다.
    */
-  it('진입해도 초안 내용은 원본 그대로다', () => {
+  it('진입 시 커서가 본문 끝에 놓인다 (이어 쓰기)', () => {
     render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByTestId('description-preview-content'))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    expect(textarea).toHaveValue('본문 마크다운')
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
+    expect(textarea.value).toBe('본문 마크다운')
+    // 접혀 있고(start===end) 그 위치가 끝이어야 "커서가 끝"이다 — 전체 선택이면 start 가 0 이라 걸린다
+    expect(textarea.selectionStart).toBe(textarea.value.length)
+    expect(textarea.selectionEnd).toBe(textarea.value.length)
   })
 
   // ── 키보드 저장 (FR-UX-11 F8 Task 4 / FR5) ───────────────────────────────
@@ -536,13 +537,14 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
   })
 
   /**
-   * 스펙 S4 포커스 부작용 가드 — 진입 시 커서 이동이 멘션 감지를 깨우면 안 된다.
+   * 스펙 S4 부작용 가드 — **커서를 끝에 두고도** 멘션 감지가 깨어나면 안 된다.
    *
-   * 본문이 `@이름` 으로 끝나는 이슈에서 커서를 끝에 놓으면, `onSelect` 경유 멘션 감지가
-   * 발화해 **열지도 않은 자동완성이 진입 직후 떠 있는** 상태가 될 수 있다.
-   * 그래서 커서 이동을 `focus()` 앞에 두었고, 이 테스트가 그 순서를 고정한다.
+   * 본문이 `@이름` 으로 끝나는 이슈에서 진입 커서를 끝에 놓으면 `setSelectionRange` 가
+   * select 이벤트를 낳고, 억제가 없으면 **열지도 않은 자동완성이 진입 직후 떠 있는** 상태가 된다.
+   * 그 상태에서는 첫 `Enter` 가 줄바꿈이 아니라 후보 선택, 첫 `Esc` 가 취소가 아니라 팝업 닫기가
+   * 되어 FR5·FR6 이 첫 타건에 무력화된다. `suppressNextSelect()` 가 그것을 막는다.
    */
-  it('본문이 @이름 으로 끝나도 진입 직후 멘션 드롭다운이 열리지 않는다', async () => {
+  it('본문이 @이름 으로 끝나도(커서가 끝이어도) 진입 직후 멘션 드롭다운이 열리지 않는다', async () => {
     server.use(...userHandlers)
     render(
       <IssueDescription
@@ -555,11 +557,48 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
+    expect(textarea).toHaveFocus()
+    // 전제 강화 — 커서가 실제로 `@al` 바로 뒤(끝)에 있는 상태에서 검사한다.
+    // 이게 없으면 커서가 0 이라 드롭다운이 안 뜬 것인지 억제가 동작한 것인지 구별되지 않는다.
+    expect(textarea.selectionStart).toBe('안녕 @al'.length)
 
     // debounce(250ms) + 응답 시간을 충분히 넘겨도 드롭다운이 없어야 한다
     await new Promise((resolve) => { setTimeout(resolve, 700) })
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  /**
+   * ★ 억제 과잉 방지 — 진입 억제가 **사용자 타이핑까지** 삼키면 안 된다.
+   * `suppressNextSelect` 는 정확히 1회만 소비되어야 하고, 그 뒤 사용자가 `@al` 을 치면
+   * 드롭다운이 종전대로 떠야 한다. 이 수정의 최대 위험(자동완성이 아예 안 뜸)을 막는 증인이다.
+   */
+  it('진입 억제 뒤에도 사용자가 직접 @al 을 타이핑하면 드롭다운이 뜬다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription
+        descriptionHtml="<p>안녕 @al</p>"
+        description="안녕 @al"
+        onSave={vi.fn()}
+        isSaving={false}
+      />,
+      { wrapper: makeWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    // 진입 직후에는 안 뜬다
+    await new Promise((resolve) => { setTimeout(resolve, 400) })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    // 사용자가 실제로 타이핑하면 뜬다
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
   })
 
   /**
