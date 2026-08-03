@@ -115,13 +115,8 @@ git -C /Users/maxi.moff/Projects/BTS status
 **아래 진행 트리 위에 글로벌 §Explanation Style Work-Report Format(계층형 요약)을 먼저 얹는다.** 트리(verify-master-plan/orphan 5173 kill 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞에 `✅ 한 줄`+`💡 의미`로 "무엇이 실제 반영됐고, Maxi가 뭘 확인할 수 있는지"를 비전문가 문장으로 먼저 말한다.
 
 ```
-✅ 한 줄
-   이번 작업을 본줄기(main)에 합쳐 배포까지 끝냈어요.
-
-💡 의미
-   방금 만든 기능이 실제 서비스에 반영됐어요.
-   진척 현황판도 새로 그려졌으니 어디까지 왔는지 확인할 수 있어요.
-
+✅ 한 줄  <비전문가 한 문장 — 무엇이 반영됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
+💡 의미  <Maxi가 어디서 결과를 확인할 수 있는지>
 🔧 기술 상세 (안 봐도 됨)
 🔄 [8/8] /bts-merge
    ├─ 머지 전 확인: git status clean ✅

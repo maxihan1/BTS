@@ -11,8 +11,8 @@ plan의 task를 sub-agent에게 위임. **TDD 강제 (red → green → refactor
 
 controller(메인 에이전트)는 다음 4개를 **세션당 1회만 Read**하고, 모든 implementer/verifier prompt에 본문 인라인 주입.
 
-- `DEVELOPMENT.md` (절대 규칙 19개)
-- `DATA.md` (데이터 무결성 5원칙)
+- `DEVELOPMENT.md` — **§1(절대 규칙) + task agent 언어의 §2.x만 주입** (Kotlin task → §2.1, TS task → §2.2. 전문 주입 금지)
+- `DATA.md` — **db/backend/api/auth/migration task에만 전문 주입**. frontend/designer/qa task는 생략 (5원칙 요지 1줄로 대체)
 - `Maxi_wiki/BTS/domain/<bc>.md` (해당 BC 노트)
 - 작업 관련 `Maxi_wiki/BTS/decisions/<adr>.md` (있을 때)
 - `docs/rules/wave-protocol.md` (병렬 wave 규약 정본 — 모든 dispatch prompt에 본문 인라인 주입. 에이전트 정의에는 포인터만 있다)
@@ -263,14 +263,8 @@ worktree 훅이 연결돼 있으면(`/bts-start` Step 3) 이 재생성을 잊은
 **아래 진행 트리 위에 글로벌 §Explanation Style Work-Report Format(계층형 요약)을 먼저 얹는다.** 진행 트리(wave/dispatch/DRIFT 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞에 비전문가용 `✅ 한 줄`+`💡 의미`를 두어 Maxi가 트리를 읽지 않아도 무엇을·왜 했는지 알게 한다.
 
 ```
-✅ 한 줄
-   이슈에서 "@이름"으로 사람을 부르면 그 사람에게
-   알림이 가는 기능을 만들었어요.
-
-💡 의미
-   이제 담당자를 콕 집어 부를 수 있어, 놓치는 알림이 줄어요.
-   테스트도 통과해서 바로 검토(게이트 2)로 넘어갑니다.
-
+✅ 한 줄  <비전문가 한 문장 — 무엇이 됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
+💡 의미  <Maxi에게 무슨 뜻인지 + 다음 단계>
 🔧 기술 상세 (안 봐도 됨)
 🔄 [6/8] /bts-impl (4 tasks, 2 waves)
    ├─ wave 1 (병렬 dispatch)

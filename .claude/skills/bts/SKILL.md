@@ -21,7 +21,7 @@ BTS 모든 코드 작업의 **단일 진입점**. 8단계 스킬을 자연어 1�
 
 ```
 /bts <자연어>
-   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근 50줄) + learnings
+   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근 50줄) + learnings 헤딩 라우팅
 [1] /bts-start         → classify + worktree + Draft PR
 [2] /bts-domain        → grill-with-docs
 [3] /bts-spec          → office-hours (A) → brainstorming (B)
@@ -82,11 +82,21 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ### Phase B. 선행 읽기 (필수)
 
-다음 3개 Obsidian 노트를 Read tool로 로드. 모든 단계의 컨텍스트 기준.
+다음 2개 Obsidian 노트를 Read tool로 로드.
 
 - `/Users/maxi.moff/Maxi_wiki/BTS/_index.md`
 - `/Users/maxi.moff/Maxi_wiki/BTS/history.md` (마지막 50줄)
-- `/Users/maxi.moff/Maxi_wiki/BTS/learnings.md`
+
+**`learnings.md` 전량 Read 금지** (98KB — 전량 로드가 워크플로우당 수만 토큰을 태우는
+단일 최대 낭비였다). 대신 2단 라우팅.
+
+```bash
+grep -n '^### ' /Users/maxi.moff/Maxi_wiki/BTS/learnings.md   # 헤딩 인덱스만 (수십 줄)
+```
+
+1. 헤딩 인덱스에서 **이번 작업의 키워드·BC·타입과 관련된 항목 + 최근 5건**을 고른다
+2. 고른 항목만 Read(offset/limit)로 부분 로드한다 — 이것이 체인 전체의 learnings 컨텍스트
+   기준이고, `/bts-codereview`의 발췌 주입도 여기서 고른 항목을 재사용한다
 
 ### Phase C. 단계 체이닝 (호출 책임 = bts 컨트롤러)
 

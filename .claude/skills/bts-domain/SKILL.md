@@ -11,7 +11,7 @@ DDD의 유비쿼터스 언어를 다지는 단계. 작업이 어느 바운디드
 
 작업 진입 시 다음 노트를 Read tool로 로드.
 
-1. `/Users/maxi.moff/Maxi_wiki/BTS/glossary.md` — 전체 용어 사전
+1. `/Users/maxi.moff/Maxi_wiki/BTS/glossary.md` — **전량 Read 금지 (27KB)**. `grep -n '^## \|^### '`로 헤딩 인덱스를 뽑고 작업 키워드와 매칭되는 항목만 부분 Read
 2. `/Users/maxi.moff/Maxi_wiki/BTS/domain/<bc>.md` — `classify.primary_bc`가 가리키는 BC 노트
 3. `docs/decisions/` — 영향 받을 가능성 있는 ADR (관련 키워드 grep)
 

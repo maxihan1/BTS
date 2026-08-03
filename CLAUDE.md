@@ -87,6 +87,9 @@ agile-planning · notification · search-export-import · slack-integration · a
 ## 컨텍스트 효율
 
 - **한 번에 한 BC만** 작업. 여러 BC 동시 수정은 Maxi 확인.
+- **대용량 3파일 통째 Read 금지** — `TODOS.md`(126KB) · `Maxi_wiki/BTS/learnings.md`(98KB) ·
+  `DESIGN.md`(43KB)는 grep 또는 헤딩 인덱스(`grep -n '^#'`) 후 부분 Read.
+  `docs/INDEX-fr.md`·`INDEX-recent.md`는 **grep 전용** — 줄당 수백 바이트라 부분 Read가 방어가 안 된다.
 - 긴 명세는 `docs/sdd/` 챕터 링크. 본문 복사 금지.
 - Skills/agent의 트리거 조건이 맞으면 자동 활성화. 임의 호출 금지.
 - **모르겠으면 Maxi에게 물어보기.** 추측 구현 금지.
