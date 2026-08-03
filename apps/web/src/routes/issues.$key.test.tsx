@@ -1,6 +1,6 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -2195,5 +2195,173 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
       expect(onIssueClosed).toHaveBeenCalledTimes(1)
     })
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 Task 2 — 제목 편집 Enter 저장 / Esc 취소
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 제목 편집 모드로 들어가 입력창을 돌려준다.
+ * 진입은 기존 `✎ 제목 수정` 버튼을 쓴다 — Task 1 의 클릭 진입면과 무관하게
+ * 키 처리 계약만 검증하기 위해서다.
+ */
+async function enterTitleEdit(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(await screen.findByRole('button', { name: /제목 수정/ }))
+  return screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })
+}
+
+describe('IssueDetailPage — 제목 편집 Enter/Esc (FR-UX-11 F8 Task 2)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-T2-1. Enter 로 저장한다 (FR2). 버튼과 같은 handleEditSave 를 타므로
+   * PATCH 바디에 새 summary 와 OCC expectedVersion 이 함께 실려야 한다.
+   */
+  it('F8-T2-1: 제목 편집 중 Enter 를 누르면 새 summary 로 저장한다', async () => {
+    let patchBody: unknown = null
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ data: { ...issueAtlas1Fixture, summary: 'Enter 로 저장', version: 1 } })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, 'Enter 로 저장')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(patchBody).toMatchObject({
+        summary: 'Enter 로 저장',
+        expectedVersion: issueAtlas1Fixture.version,
+      })
+    })
+  })
+
+  /**
+   * F8-T2-2. E4 — 한글 IME 조합을 확정하는 Enter 는 저장이 아니다.
+   * 조합 Enter 로는 호출되지 않고, 이어진 **진짜 Enter** 로는 호출되는 것까지 확인해
+   * "아무 일도 안 일어나서 통과"하는 공허한 가드가 되지 않게 한다.
+   */
+  it('F8-T2-2: IME 조합 확정 Enter 는 저장하지 않는다 (진짜 Enter 는 저장한다)', async () => {
+    let patchCount = 0
+    server.use(
+      http.patch('/api/v1/issues/:key', () => {
+        patchCount += 1
+        return HttpResponse.json({ data: { ...issueAtlas1Fixture, summary: '한글 제목', version: 1 } })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, '한글 제목')
+
+    // 조합 확정 Enter — 저장되면 안 된다
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(patchCount).toBe(0)
+
+    // 같은 입력창에서 진짜 Enter 는 저장된다 — 위 단언이 공허하지 않다는 증인
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => {
+      expect(patchCount).toBe(1)
+    })
+  })
+
+  /**
+   * F8-T2-3. Esc 로 취소하고 원본 제목을 복원한다 (FR3).
+   */
+  it('F8-T2-3: 제목 편집 중 Esc 를 누르면 취소하고 원본을 복원한다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, '버려질 제목')
+
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * F8-T2-4. ★ E1 이중 발화 방지 — pane 에서 편집 중 Esc 는 **편집만** 취소하고
+   * 패널을 닫지 않는다. handleTitleKeyDown 의 `e.preventDefault()` 가
+   * usePaneEscapeClose 의 `if (e.defaultPrevented) return` 가드를 세우는 것이 근거다.
+   */
+  it('F8-T2-4: pane 에서 편집 중 Esc 는 편집만 취소하고 패널을 닫지 않는다', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    const input = await enterTitleEdit(user)
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+    ).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  /**
+   * F8-T2-5. E5 — 저장이 진행 중이면 Enter 가 중복 제출하지 않는다.
+   * 저장 버튼의 `disabled={updateMutation.isPending || !canEdit}` 와 같은 조건이다.
+   */
+  it('F8-T2-5: 저장 진행 중에는 Enter 가 중복 제출하지 않는다', async () => {
+    let patchCount = 0
+    server.use(
+      http.patch('/api/v1/issues/:key', async () => {
+        patchCount += 1
+        // 응답을 지연시켜 isPending 상태를 유지한다
+        await new Promise((resolve) => setTimeout(resolve, 10_000))
+        return HttpResponse.json({ data: issueAtlas1Fixture })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, '느린 저장')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => {
+      expect(patchCount).toBe(1)
+    })
+
+    // 저장이 끝나기 전 두 번째 Enter — 중복 제출되면 안 된다
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(patchCount).toBe(1)
   })
 })
