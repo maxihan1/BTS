@@ -1974,12 +1974,53 @@ describe('IssueListPage — 목록 항법 커서 (FR-UX-10 F10)', () => {
 
     expect(screen.getByTestId('issue-cursor-announcement').textContent).toBe('')
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ★FR10 — 커서가 뷰포트를 벗어나면 따라간다.
+  //
+  // 가드가 없어서 effect(그 안의 `tr[aria-current="true"]` 셀렉터 포함 — 주석이
+  // "방어의 핵심"이라 부르는 그 줄)를 통째로 지워도 전부 green 이었다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('★FR10 — 커서 행을 block:"nearest" 로 스크롤에 따라오게 한다', async () => {
+    const scrollIntoView = vi.fn()
+    const original = window.HTMLElement.prototype.scrollIntoView
+    // jsdom 은 scrollIntoView 를 구현하지 않는다 (CommandPalette.test.tsx:8-11 선례)
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      renderCursorPage('ATLAS-2', {})
+      await waitFor(() => expect(screen.getByText('ATLAS-2')).toBeInTheDocument())
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' }))
+    } finally {
+      window.HTMLElement.prototype.scrollIntoView = original
+    }
+  })
+
+  it('★FR10 셀렉터 — 커서가 없으면 스크롤하지 않는다 (엉뚱한 행을 끌고 오지 않는다)', async () => {
+    const scrollIntoView = vi.fn()
+    const original = window.HTMLElement.prototype.scrollIntoView
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      renderCursorPage(null, {})
+      await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    } finally {
+      window.HTMLElement.prototype.scrollIntoView = original
+    }
+  })
 })
 
 describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
   beforeEach(() => {
     mockNavigate.mockReset()
     useContextShortcutsStore.setState({ handlers: {} })
+    // ★와이드를 **명시**한다. 이전에는 다른 describe 가 남긴 값에 얹혀 돌아서,
+    // 그 블록을 지우거나 순서를 바꾸면 이 테스트가 무엇을 검증하는지 조용히 바뀌었다.
+    mockUseMediaQuery.mockReturnValue(true)
+    server.use(createTruePermissionHandler)
   })
 
   it('★replace:true — 커서 이동이 히스토리를 쌓지 않는다 (연타 후 뒤로가기 1회로 이탈)', async () => {
@@ -2005,6 +2046,44 @@ describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
     const nextSearch = call.search({ projectKey: 'ATLAS', status: 'open', sort: 'key,asc' })
 
     expect(nextSearch).toMatchObject({ projectKey: 'ATLAS', status: 'open', sort: 'key,asc' })
-    expect(nextSearch).toHaveProperty('selected')
+    // ★키 존재만 보면 `selected: prev.selected`(무동작)나 `selected: undefined`(삭제)
+    // 뮤테이션이 통과한다. 실제 이동 대상까지 못박는다.
+    expect(nextSearch).toMatchObject({ selected: 'ATLAS-1' })
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ★E13 — 커서 단축키는 와이드 전용이다.
+  //
+  // 어댑터의 `isWide ? fn : undefined` 세 줄이 유일한 강제 지점인데 가드가 없었다.
+  // 실측(뮤테이션 M7)으로 확인 — `onCursorTo={isWide ? moveCursorTo : undefined}` 를
+  // `onCursorTo={moveCursorTo}` 로 바꿔도 167건 전부 green 이었다. 구현 중 실측이
+  // 스펙을 뒤집어 만든 계약인데 정작 그 계약만 무방비였다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('★E13 — 좁은폭에서는 커서 콜백 3종이 전부 끊긴다 (j/k/o/t 무동작)', async () => {
+    mockUseMediaQuery.mockReturnValue(false)
+    mockUseSearch.mockReturnValue({})
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    const handlers = listHandlers()
+    expect(handlers).toBeDefined()
+
+    handlers?.onCursorMove?.(1)
+    handlers?.onOpenCurrent?.()
+    handlers?.onToggleDetailPane?.()
+
+    // 세 줄 중 **하나라도** isWide 가드를 잃으면 이 단언이 깨진다.
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('E13 대조군 — 같은 호출이 와이드에서는 실제로 navigate 한다 (비-공허 확인)', async () => {
+    mockUseMediaQuery.mockReturnValue(true)
+    mockUseSearch.mockReturnValue({})
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onCursorMove?.(1)
+
+    expect(mockNavigate).toHaveBeenCalled()
   })
 })

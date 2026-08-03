@@ -50,7 +50,14 @@ import { Sidebar } from './Sidebar'
  */
 export function ShellLayout(): JSX.Element {
   const isAuthenticated = useIsAuthenticated()
-  const { toggle: toggleSidebar } = useSidebarCollapsed()
+  // ★selector 로 액션만 뽑는다. 구조분해(`const { toggle } = useSidebarCollapsed()`)는
+  // 스토어 전체를 구독해 `collapsed` 가 바뀔 때마다 이 컴포넌트가 재렌더되고, 여기엔
+  // `<Outlet/>` 이 있어 라우트 본문까지 재렌더 경로에 오른다. 사이드바 토글은 `[` 키와
+  // 버튼 양쪽에서 나므로 빈도도 낮지 않다. `toggle` 은 스토어 생성 시 한 번 만들어진
+  // 안정 참조라 이 구독은 재렌더를 유발하지 않는다(`useAuthStore((s) => s.clearSession)` 선례).
+  // 다른 소비처(TopBar·Sidebar·ProjectTree·RecentIssuesMenu)가 구조분해를 쓰는 것은
+  // 그쪽이 `collapsed` 값을 실제로 그려서다 — 재렌더가 목적이라 정당하다.
+  const toggleSidebar = useSidebarCollapsed((state) => state.toggle)
 
   // FR-UX-07 — `/projects/$projectKey/*` 를 볼 때 그 키를 활성 프로젝트로 기록한다.
   // 전 인증 라우트가 공유하는 유일한 지점이라 여기 둔다(라우트마다 배선하면 빠뜨린다).

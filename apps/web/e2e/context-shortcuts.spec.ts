@@ -90,19 +90,26 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
 
     // When3. k — 되돌아온다
     await page.keyboard.press('k')
-    expect(selectedFromUrl(page)).toBe(first)
+    await expect.poll(() => selectedFromUrl(page)).toBe(first)
   })
 
   test('S1-b 첫 행에서 k 는 무동작이다 (감싸지 않는다, E3)', async ({ page }) => {
     await loginAndWaitForRootReady(page)
     await gotoIssueList(page)
 
+    // ★`first` 를 읽기 전에 URL 갱신을 반드시 기다린다. 안 기다리면 `first` 가 null 이 될
+    // 수 있고, 그러면 아래 단언이 `null === null` 로 **공허 통과**해 E3(감싸지 않음)
+    // 가드가 영영 안 도는 상태로 굳는다.
     await page.keyboard.press('j')
+    await expect(page).toHaveURL(/selected=/)
     const first = selectedFromUrl(page)
+    expect(first).not.toBeNull()
 
     await page.keyboard.press('k')
 
-    expect(selectedFromUrl(page)).toBe(first)
+    // negative 단언에도 settle barrier 를 준다 — `press` 는 이벤트 디스패치까지만
+    // 기다리고 라우터 히스토리 갱신은 그 뒤에 온다.
+    await expect.poll(() => selectedFromUrl(page)).toBe(first)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -113,6 +120,7 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
     await gotoIssueList(page)
 
     await page.keyboard.press('j')
+    await expect(page).toHaveURL(/selected=/)
     const cursor = selectedFromUrl(page)
     expect(cursor).not.toBeNull()
 
@@ -204,9 +212,34 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
     await page.keyboard.press('g')
     await page.keyboard.press('j')
 
-    // 커서도 안 움직이고 leader 이동도 안 일어난다
-    expect(selectedFromUrl(page)).toBeNull()
-    await expect(page).toHaveURL(/\/issues(\?|$)/)
+    // ★negative 단언에 settle barrier 를 세운다.
+    //
+    // `press` 는 이벤트 디스패치까지만 기다린다. 회귀(=`g` 직후 `j` 가 커서를 움직임)가
+    // 생기면 그 URL 갱신은 이 줄보다 **늦게** 도착하므로, 동기 읽기는 갱신 전 URL 을 보고
+    // 통과해버린다. 그러면 ADR D-2 의 대표 가드가 아무것도 막지 않는다.
+    //
+    // 배리어 방법 — 뒤이어 `t`(열림이 URL 로 관측되는 키)를 눌러 **한 왕복이 끝난 것을
+    // 확인**하고, 그 시점에 커서가 첫 행인지 본다. 회귀가 있었다면 `g`+`j` 가 이미 첫 행을
+    // 잡았을 것이고 `t` 는 그것을 닫아 `selected` 가 사라진다 — 즉 두 경우가 갈린다.
+    await page.keyboard.press('t')
+    await expect(page).toHaveURL(/selected=/)
+
+    // `t` 가 연 것은 **첫 행**이어야 한다. `g`+`j` 가 새어 커서를 이미 옮겼다면
+    // `t` 는 그 커서를 닫았을 것이므로 위 배리어에서 이미 실패한다.
+    const afterToggle = selectedFromUrl(page)
+    expect(afterToggle).not.toBeNull()
+
+    const firstRowKey = await page
+      .locator('table tbody tr')
+      .first()
+      .locator('td')
+      .nth(1)
+      .innerText()
+    expect(afterToggle).toBe(firstRowKey.trim())
+
+    // leader 네비게이션(`g i` 등)도 일어나지 않았다 — 목록 라우트를 벗어나지 않았다.
+    // 정규식을 `/issues` 로 끝나거나 `?` 가 붙는 형태로 한정한다(다른 라우트 배제).
+    expect(new URL(page.url()).pathname).toBe('/issues')
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -218,15 +251,20 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
     await expect(page.getByRole('navigation', { name: SIDEBAR_NAV_LABEL })).toBeVisible()
 
     const urlBefore = page.url()
-    await page.keyboard.press('j')
-    expect(page.url()).toBe(urlBefore)
-
-    // [ 는 app-shell 컨텍스트라 어디서나 산다
     const sidebar = page.getByRole('navigation', { name: SIDEBAR_NAV_LABEL })
     const widthBefore = await sidebar.evaluate((el) => el.getBoundingClientRect().width)
+
+    await page.keyboard.press('j')
+
+    // ★`j` 가 죽었다는 negative 를 동기로 읽으면, 회귀로 생긴 네비게이션이 이 줄보다
+    // 늦게 도착해 통과해버린다. `[`(여기서 살아 있어야 하는 키)를 눌러 **한 왕복이 끝난
+    // 것을 확인**한 뒤에 URL 불변을 단언한다 — negative 를 완료된 라운드트립 뒤로 민다.
     await page.keyboard.press('[')
     await expect
       .poll(async () => sidebar.evaluate((el) => el.getBoundingClientRect().width))
       .toBeLessThan(widthBefore)
+
+    // 사이드바 왕복이 끝난 지금도 경로·검색 파라미터가 그대로여야 한다 (j 무동작).
+    expect(page.url()).toBe(urlBefore)
   })
 })

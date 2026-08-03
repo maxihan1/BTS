@@ -157,7 +157,17 @@ export function useContextShortcuts(
   handlers: ContextShortcutHandlers,
 ): void {
   const handlersRef = useRef(handlers)
-  handlersRef.current = handlers
+
+  // ★렌더 본문이 아니라 커밋 후 effect 에서 미러링한다. React 19 는 렌더 중 `ref.current`
+  // 쓰기를 명시적으로 금지하는데, 여기서는 학술적 문제가 아니다 — TanStack Router 가
+  // 네비게이션을 `startTransition` 으로 감싸고 커서 이동(`moveCursorTo`)이 네비게이션이라,
+  // 커서를 옮길 때마다 이 컴포넌트가 중단 가능한 transition 렌더를 탄다. 버려진 렌더의
+  // 클로저가 ref 에 남으면 다음 `j` 가 **커밋된 적 없는 `selectedKey`** 로 계산한다.
+  // keydown 은 언제나 커밋 뒤에 도착하므로 effect 미러링에는 stale 창이 없다.
+  // deps 없음 = 매 커밋 후 갱신 (`useKeyboardShortcuts` 의 `helpOpenRef` 미러링 선례).
+  useEffect(() => {
+    handlersRef.current = handlers
+  })
 
   useEffect(() => {
     const { register, unregister } = useContextShortcutsStore.getState()

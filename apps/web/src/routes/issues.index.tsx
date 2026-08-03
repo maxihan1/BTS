@@ -606,7 +606,13 @@ export function IssueListPage({
     // 사이드바/브레드크럼과도 구분된다. 셀렉터에서 `tr` 을 빼면 이 방어가 사라진다.
     const row = document.querySelector('tr[aria-current="true"]')
     row?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedKey])
+    // ★deps 에 `pageKeys` 가 필요하다. `selectedKey` 만 보면 `?selected=` 를 달고 **직접
+    // 진입**했을 때(링크 공유·새로고침) effect 가 로딩 중에 한 번 돌고 끝난다 — 그 시점엔
+    // 테이블이 없어 `querySelector` 가 null 이고, 데이터가 도착해도 `selectedKey` 는
+    // 그대로라 재실행되지 않아 커서 행이 화면 밖에 남는다. `pageKeys` 는 `useMemo([data])`
+    // 라 데이터 도착 시 새 참조가 되어 재시도 지점이 된다.
+    // 재조회로 다시 돌더라도 `block:'nearest'` 는 이미 보이는 행을 움직이지 않는다.
+  }, [selectedKey, pageKeys])
 
   // ── Dialog onSubmitted 결선 ────────────────────────────────────────────────
   /**

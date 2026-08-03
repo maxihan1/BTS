@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { server } from '@/test/server'
 import { KEYMAP_QUERY_KEY } from '@/api/keymap'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import { LEADER_TIMEOUT_MS } from './shortcuts'
@@ -369,21 +369,73 @@ describe('useKeyboardShortcuts — 컨텍스트 단축키 폴백 (FR-UX-10 F10)'
 // 침묵한다. 그래서 디렉토리 소스를 직접 센다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('판별식 — keyboard-shortcuts 디렉토리의 keydown 리스너는 정확히 1개', () => {
-  it('document/window 에 keydown 을 거는 곳이 useKeyboardShortcuts.ts 한 곳뿐이다 (ADR D-2)', () => {
-    // jsdom 환경의 `import.meta.url` 은 file 스킴이 아니라 fileURLToPath 가 던진다.
-    // vitest 는 apps/web 을 cwd 로 돌므로 거기서 상대 경로로 짚는다.
-    const dir = join(process.cwd(), 'src/components/keyboard-shortcuts')
-    const sources = readdirSync(dir).filter(
-      (name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name),
-    )
+describe('판별식 — 전역 keydown 리스너 소유자 허용목록', () => {
+  /**
+   * 전역(document/window/body) keydown 리스너를 거는 것이 **허용된** 파일 전수.
+   *
+   * ★디렉토리가 아니라 `src/` 전체를 훑는 이유. 이전 판별식은
+   * `keyboard-shortcuts/` 안만 봤는데, 가장 그럴듯한 회귀는 바로 그 밖에서 온다 —
+   * 누가 `routes/issues.index.tsx` 나 새 `hooks/use-list-navigation.ts` 에 컨텍스트
+   * 키 처리를 직접 붙이면 옛 판별식은 아무 말도 하지 않는다. 여기 목록에 없는 파일이
+   * 리스너를 걸면 실패하고, **의식적으로 목록에 추가하는 행위 자체가 리뷰 체크포인트**가
+   * 된다(ADR D-2 가 실제로 원한 것).
+   *
+   * 컨텍스트 단축키는 `useKeyboardShortcuts.ts` 파이프라인에 합류해야 하며 새 리스너를
+   * 만들어선 안 된다. 나머지 4개는 키 공간이 분리된 선재 소유자다 —
+   * 팔레트는 `Cmd/Ctrl+K`, 페인/모달은 `Escape`, 타임라인은 `1`/`2`/`3`.
+   *
+   * `LinkGraph.tsx` 는 여기 없다 — 그쪽은 `nodeEl.addEventListener` 로 **DOM 요소 로컬**
+   * 리스너라 전역 키 공간을 공유하지 않는다. 판별식이 대상을 `document`/`window`/
+   * `globalThis` 로 한정하는 이유가 이것이다.
+   */
+  const ALLOWED_KEYDOWN_OWNERS = [
+    'src/components/command-palette/useCommandPalette.ts',
+    'src/components/dashboard/ShareDashboardModal.tsx',
+    'src/components/keyboard-shortcuts/useKeyboardShortcuts.ts',
+    'src/hooks/use-timeline-zoom.ts',
+    'src/routes/issues.$key.tsx',
+  ]
 
-    const owners = sources.filter((name) =>
-      /(?:document|window)\.addEventListener\(\s*['"]keydown['"]/.test(
-        readFileSync(join(dir, name), 'utf8'),
-      ),
-    )
+  /** `src/` 아래 소스 파일(테스트 제외)을 재귀 수집해 cwd 기준 상대 경로로 돌려준다 */
+  function collectSourceFiles(relDir: string): string[] {
+    const abs = join(process.cwd(), relDir)
+    return readdirSync(abs, { withFileTypes: true }).flatMap((entry) => {
+      const rel = `${relDir}/${entry.name}`
+      if (entry.isDirectory()) return collectSourceFiles(rel)
+      if (!/\.tsx?$/.test(entry.name)) return []
+      if (/\.(test|spec)\.tsx?$/.test(entry.name)) return []
+      return [rel]
+    })
+  }
 
-    expect(owners).toEqual(['useKeyboardShortcuts.ts'])
+  it('전역 keydown 리스너를 거는 파일이 허용목록과 정확히 일치한다 (ADR D-2)', () => {
+    // jsdom 의 `import.meta.url` 은 file 스킴이 아니라 fileURLToPath 가 던진다.
+    // vitest 는 apps/web 을 cwd 로 돌므로 상대 경로로 짚는다.
+    const owners = collectSourceFiles('src')
+      .filter((rel) =>
+        // document / window / globalThis / document.body 전부 포괄. 따옴표·공백 무관.
+        /(?:document(?:\.body)?|window|globalThis)\s*\.\s*addEventListener\(\s*['"`]keydown['"`]/.test(
+          readFileSync(join(process.cwd(), rel), 'utf8'),
+        ),
+      )
+      .sort()
+
+    expect(owners).toEqual(ALLOWED_KEYDOWN_OWNERS)
+  })
+
+  it('★비-공허 확인 — 허용목록이 실제로 파일을 찾고 있다 (0건 매치면 판별식이 죽은 것)', () => {
+    expect(ALLOWED_KEYDOWN_OWNERS.length).toBeGreaterThan(0)
+    for (const rel of ALLOWED_KEYDOWN_OWNERS) {
+      expect(existsSync(join(process.cwd(), rel))).toBe(true)
+    }
+  })
+
+  it('컨텍스트 단축키 모듈은 리스너를 만들지 않는다 (파이프라인 합류가 계약)', () => {
+    for (const rel of [
+      'src/components/keyboard-shortcuts/context-shortcuts.ts',
+      'src/components/keyboard-shortcuts/useContextShortcuts.ts',
+    ]) {
+      expect(ALLOWED_KEYDOWN_OWNERS).not.toContain(rel)
+    }
   })
 })

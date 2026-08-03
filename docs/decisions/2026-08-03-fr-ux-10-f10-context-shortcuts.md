@@ -124,9 +124,21 @@ issues.index.tsx:823  와이드 + selected 일 때만 2컬럼. 그 외는 목록
 타이밍에 의존하지 않는다. 구체적 지연 방식(debounce 값 · `replace` 옵션 · `staleTime`)은
 **D2 스펙에서 확정**한다.
 
-**좁은폭 동작.** `issues.index.tsx:823` 상 좁은폭은 split view 로 전환되지 않지만
-`getCurrentRowAttrs` 는 `selectedKey` 만 있으면 행 강조를 붙이므로 **커서 시각 피드백은
-유지**된다. 좁은폭에서 `o` 는 전체화면 상세로 이동한다.
+**좁은폭 동작 — ★초안이 틀렸고 구현 중 실측이 뒤집었다 (2026-08-03).**
+
+> 초안은 *"`getCurrentRowAttrs` 는 `selectedKey` 만 있으면 행 강조를 붙이므로 커서
+> 시각 피드백은 유지된다"* 고 적었다. **사실이 아니다.** 어댑터가
+> `selectedKey={isWide ? selected : null}` 로 넘겨(`issues.index.tsx`) 좁은폭에는
+> `selectedKey` 자체가 도달하지 않는다 — 강조를 붙일 근거값이 없다.
+>
+> **확정 동작.** 커서 단축키 4종(`j`·`k`·`o`·`t`)은 **와이드 전용**이다. 어댑터가
+> 좁은폭에서 `onCursorTo`·`onOpenCursor`·`onCloseDetailPane` 콜백을 `undefined` 로
+> 끊어 조용히 무동작시킨다. 끊지 않으면 `j` 가 URL 만 바꾸고 화면은 그대로인
+> 유령 상태가 된다. `[`(사이드바)는 폭과 무관하게 산다.
+>
+> 스펙 쪽 정정은 `docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md` §엣지 케이스
+> E13. **이 문단은 그 정정을 ADR 에 반영하지 않아 두 정본이 반대되는 말을 하던 것을
+> 닫는다** — 독립 코드리뷰 I-1 적발, 계열 교훈 `two-lists-never-check-each-other`.
 
 ## 남긴 것 — 스펙(D2)이 닫아야 할 것
 
