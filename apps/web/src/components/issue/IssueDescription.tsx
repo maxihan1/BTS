@@ -284,6 +284,9 @@ function EditMode({
     textareaRef,
   })
 
+  // 마운트 효과에서 쓰는 훅 함수 — useCallback([]) 이라 참조가 안정적이다(mentionReset 과 같은 패턴)
+  const suppressNextSelect = mention.suppressNextSelect
+
   /**
    * 편집 진입 시 입력 영역으로 포커스를 옮긴다 (스펙 S4 — "포커스가 입력 영역에 놓인다").
    *
@@ -292,21 +295,23 @@ function EditMode({
    * `handleEditClick` 이 `activeTab` 을 항상 'write' 로 되돌리므로 진입 시점에 textarea 는 반드시 존재한다.
    *
    * - `preventScroll` — 긴 이슈에서 포커스가 화면을 튀게 하지 않는다.
-   * - **커서를 프로그램으로 옮기지 않는다.** `setSelectionRange` 는 select 이벤트를 낳고
-   *   그것이 멘션 감지(`onSelect` → `detectAndUpdate`)를 깨운다. 본문이 `@이름` 으로 끝나는
-   *   이슈에서 **열지도 않은 자동완성이 진입 직후 떠 버리고**, 그 상태의 `Esc`/`Enter` 를
-   *   팝업이 먼저 삼켜(E10) 취소·저장이 먹통이 된다. 실측으로 확인한 회귀라 커서 이동을 뺐다.
-   *   감지는 debounce 뒤에 발화하므로 직후 `mention.reset()` 으로도 막히지 않고,
-   *   `setSelectionRange` 대신 `selectionStart/End` 대입으로 바꿔도 동일하다(셋 다 실측).
-   *   커서 위치는 스펙 미규정 사항이라, FR 을 깨지 않는 브라우저 기본 위치(맨 앞)를 택했다.
-   *   끝으로 옮기려면 `use-mention-autocomplete` 가 포커스 직후 select 를 무시해야 하는데
-   *   그 파일은 이 task 의 허용 범위 밖이다 — 보고에 후속 제안으로 남긴다.
+   * - 커서는 **끝**에 둔다 — 기존 본문에 이어 쓰는 것이 자연스럽고, 제목 편집(FR1)과도 같아진다.
+   * - **`suppressNextSelect()` 를 커서 이동 직전에 부른다.** `setSelectionRange` 는 사용자
+   *   조작과 구별되지 않는 `select` 이벤트를 낳고, 그것이 멘션 감지를 깨워 본문이 `@이름` 으로
+   *   끝나는 이슈에서 **열지도 않은 자동완성이 진입 직후 떠 버린다**. 그 상태에서는 첫 `Enter`
+   *   가 줄바꿈이 아니라 후보 선택, 첫 `Esc` 가 취소가 아니라 팝업 닫기가 되어 FR5·FR6 이
+   *   첫 타건에 무력화된다(실측 확인). 억제는 **정확히 1회**이고 사용자의 클릭·방향키 이동은
+   *   종전대로 감지된다.
    */
   useEffect(() => {
     const el = textareaRef.current
     if (el === null) return
     el.focus({ preventScroll: true })
-  }, [])
+    // 이 아래 setSelectionRange 가 낳을 select 1회만 멘션 감지에서 제외한다
+    suppressNextSelect()
+    const caret = el.value.length
+    el.setSelectionRange(caret, caret)
+  }, [suppressNextSelect])
 
   // 탭 전환 시 멘션 상태 즉시 초기화 — blur 타이머 타이밍에 의존하지 않음
   const mentionReset = mention.reset

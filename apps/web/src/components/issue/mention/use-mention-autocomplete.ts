@@ -82,6 +82,15 @@ export interface UseMentionAutocompleteReturn {
    * blur 타이머도 취소하므로 탭 전환 등 명시적 이탈 시 타이머 의존 없이 즉시 정리할 수 있다.
    */
   reset: () => void
+  /**
+   * 다음 `select` 이벤트 **1회**를 사용자 의도가 아닌 것으로 보고 멘션 감지에서 제외한다.
+   * 코드가 caret 을 옮기기 **직전**에 호출한다 (예: 편집 진입 시 커서를 끝으로 보내는 경우).
+   *
+   * 자동완성은 *사용자가* 타이핑하거나 커서를 옮겼을 때 뜨는 것이지, 코드가 포커스·커서를
+   * 옮긴 직후 저절로 뜰 것이 아니다. `setSelectionRange` 는 사용자 조작과 구별되지 않는
+   * `select` 이벤트를 낳으므로, 구별을 호출 측이 명시적으로 알려 준다.
+   */
+  suppressNextSelect: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +129,10 @@ export function useMentionAutocomplete({
 
   // blur 지연 타이머 ref — unmount 시 cleanup으로 타이머 잔재 방지
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 프로그램적 caret 이동이 낳는 select 1회를 감지에서 제외하기 위한 플래그.
+  // 시간 기반 억제(setTimeout N ms)는 타이밍 의존이라 쓰지 않는다 — 정확히 1회만 소비한다.
+  const suppressNextSelectRef = useRef(false)
 
   // debounce 된 쿼리 — MIN_QUERY_LENGTH 미만이면 빈 문자열(쿼리 비활성)
   const debouncedQuery = useDebounce(query.length >= MIN_QUERY_LENGTH ? query : '', DEBOUNCE_DELAY_MS)
@@ -170,6 +183,10 @@ export function useMentionAutocomplete({
   /** textarea onChange — 부모 onChange 전파 + 멘션 감지 */
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
+      // 사용자가 실제로 타이핑했다 — 소비되지 않고 남은 억제 플래그가 있더라도 여기서 버린다.
+      // (프로그램적 caret 이동이 select 를 안 낳는 환경에서 플래그가 남아 다음 사용자 조작을
+      //  삼키는 것을 막는 안전장치. 억제 범위를 "다음 타건 전까지"로 못 박는다.)
+      suppressNextSelectRef.current = false
       const text = e.currentTarget.value
       const caret = e.currentTarget.selectionStart ?? 0
       onChange(text)
@@ -186,6 +203,12 @@ export function useMentionAutocomplete({
    */
   const handleSelect = useCallback(
     (e: SyntheticEvent<HTMLTextAreaElement>) => {
+      // 코드가 옮긴 caret 은 사용자 의도가 아니다 — 플래그를 1회 소비하고 감지를 건너뛴다.
+      // 사용자의 클릭·방향키로 생기는 select 는 플래그가 없으므로 종전대로 감지한다.
+      if (suppressNextSelectRef.current) {
+        suppressNextSelectRef.current = false
+        return
+      }
       const el = e.currentTarget as HTMLTextAreaElement
       const text = el.value
       const caret = el.selectionStart ?? 0
@@ -311,6 +334,11 @@ export function useMentionAutocomplete({
     setActiveIndex(-1)
   }, [])
 
+  /** 다음 select 1회를 감지에서 제외한다 — 프로그램적 caret 이동 직전에 호출. */
+  const suppressNextSelect = useCallback(() => {
+    suppressNextSelectRef.current = true
+  }, [])
+
   // activeIndex clamp — candidates가 축소될 때 범위 초과 방지.
   // Enter 핸들러와 별개로, UI 하이라이트도 항상 유효 범위를 가리키도록 보장한다.
   useEffect(() => {
@@ -341,5 +369,6 @@ export function useMentionAutocomplete({
     onBlur: handleBlur,
     mentionDropdown,
     reset,
+    suppressNextSelect,
   }
 }
