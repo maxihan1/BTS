@@ -62,6 +62,7 @@ function renderDialog(props: {
   open: boolean
   onOpenChange?: (open: boolean) => void
   onCreated?: (key: string) => void
+  initialProjectKey?: string
 }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -72,6 +73,7 @@ function renderDialog(props: {
         open={props.open}
         onOpenChange={props.onOpenChange ?? vi.fn()}
         onCreated={props.onCreated}
+        initialProjectKey={props.initialProjectKey}
       />
     </QueryClientProvider>,
   )
@@ -184,5 +186,37 @@ describe('CreateIssueDialog — 스크롤 경계 (NFR-2)', () => {
 
     const submit = screen.getByRole('button', { name: issueCreateStrings.submitButton })
     expect(scrollArea?.contains(submit)).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 진입점이 프로젝트를 명시로 넘긴다 (스펙 §8 D-A)
+//
+// ★왜 활성 프로젝트 경유로 두지 않았나.
+// 보드·백로그는 `/projects/$projectKey/*` 라 `useTrackActiveProject` 가 활성 프로젝트를
+// 기록한다. 그런데 그 기록에는 `isKnownProject`(프로젝트 목록 대조) 가드가 있어서,
+// **목록이 아직 도착하지 않은 순간에는 활성 프로젝트가 직전 값이거나 없다.**
+// 그 순간 모달을 열면 **다른 프로젝트가 채워진 채로 열린다.** 페이지는 projectKey 를
+// 직접 알고 있으므로 전역 스토어를 한 바퀴 돌 이유가 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CreateIssueDialog — 프로젝트 명시 전달 (F3 FR-7)', () => {
+  it('initialProjectKey 를 주면 그 프로젝트가 선택된 채로 열린다', async () => {
+    renderDialog({ open: true, initialProjectKey: 'MIDDLE' })
+
+    const select = await screen.findByLabelText(issueCreateStrings.projectKeyLabel)
+    await waitFor(() => {
+      expect((select as HTMLSelectElement).value).toBe('MIDDLE')
+    })
+  })
+
+  it('★미전달이면 기존 기본값 경로가 그대로 산다 (무회귀 — 상단바·딥링크 2경로)', async () => {
+    renderDialog({ open: true })
+
+    const select = await screen.findByLabelText(issueCreateStrings.projectKeyLabel)
+    await waitFor(() => {
+      // 활성 프로젝트가 없으면 목록 첫 번째 — 기존 동작
+      expect((select as HTMLSelectElement).value).toBe('ATLAS')
+    })
   })
 })
