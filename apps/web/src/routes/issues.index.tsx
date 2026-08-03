@@ -600,7 +600,10 @@ export function IssueListPage({
   // 않고 벗어나야 최소로 스크롤해 항법 중 화면이 튀지 않는다.
   useEffect(() => {
     if (selectedKey === null) return
-    // 목록 행만 대상 — 사이드바 활성 링크는 `aria-current="page"` 라 겹치지 않는다.
+    // ★`tr` 태그 한정이 방어의 핵심이다. `aria-current="true"` 를 쓰는 곳은 앱 전체에
+    // 둘 — 이 목록 행(IssueTable `getCurrentRowAttrs`)과 WorkflowSchemeSidebar 의 선택
+    // 항목(버튼)이다. 후자는 `tr` 이 아니고 화면도 겹치지 않는다. 값이 `page` 인
+    // 사이드바/브레드크럼과도 구분된다. 셀렉터에서 `tr` 을 빼면 이 방어가 사라진다.
     const row = document.querySelector('tr[aria-current="true"]')
     row?.scrollIntoView?.({ block: 'nearest' })
   }, [selectedKey])

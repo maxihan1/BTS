@@ -66,16 +66,34 @@ export const useContextShortcutsStore = create<ContextShortcutsState>((set) => (
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 컨텍스트 우선순위 — 숫자가 작을수록 좁다(먼저 선택된다).
+ *
+ * ★`Record<ShortcutContext, …>` 로 둔 것이 요점이다. `ShortcutContext` 유니온에
+ * 새 레이어(F11 의 `issue-detail`, 보드 등)를 추가하면 여기 항목이 빠졌을 때
+ * **타입 에러로 즉시 막힌다**. 배열이나 if 분기로 두면 새 컨텍스트가 조용히
+ * 우선순위 밖으로 떨어져 영영 활성이 되지 않는다.
+ */
+const CONTEXT_PRIORITY: Record<ShortcutContext, number> = {
+  'issue-list': 0,
+  'app-shell': 1,
+}
+
+/** 좁은 순으로 정렬된 컨텍스트 목록 — 판정에서 앞에서부터 훑는다 */
+const CONTEXTS_NARROWEST_FIRST = (Object.keys(CONTEXT_PRIORITY) as ShortcutContext[]).sort(
+  (a, b) => CONTEXT_PRIORITY[a] - CONTEXT_PRIORITY[b],
+)
+
+/**
  * 등록된 것 중 **가장 좁은** 컨텍스트를 활성으로 판정한다.
  *
- * 좁은 순서로 훑어 처음 등록된 것을 고른다. 아무것도 없으면 `app-shell` 이
- * 기본값이다 — 셸이 미등록이어도 `[` 판별 자체는 성립해야 하기 때문.
+ * 아무것도 등록되지 않았으면 `app-shell` 이 기본값이다 — 셸이 미등록이어도
+ * `[` 판별 자체는 성립해야 하기 때문.
  *
  * @returns 현재 활성 컨텍스트
  */
 export function resolveActiveContext(): ShortcutContext {
   const { handlers } = useContextShortcutsStore.getState()
-  return handlers['issue-list'] !== undefined ? 'issue-list' : 'app-shell'
+  return CONTEXTS_NARROWEST_FIRST.find((context) => handlers[context] !== undefined) ?? 'app-shell'
 }
 
 /**
