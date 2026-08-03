@@ -75,7 +75,27 @@ F3 #333 3 PR 로 완주한 것과 같은 패턴이다.
 **classify 결과**. type=ui · agent=frontend-engineer · primary_bc=null — 논리 소속은
 personalization, 물리 구현은 `apps/web` (ADR §D2, FR-UX-05 D4 · FR-UX-06 D5 선례 승계).
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**. 논리 = personalization / 물리 = `apps/web` 프론트 전용. **백엔드 변경 0**이라
+  BC 침범 없음. 단 `SHORTCUTS` 는 identity-access 의 `KeymapAction` 과 1:1 계약이 걸려 있어
+  **건드리면 BC 격리 위반**이 된다 — 이것이 즉사 계약의 정체다.
+- **영향 개념**. `SHORTCUTS`(전역 5종, 무변경) · `CONTEXT_SHORTCUTS`(신규) ·
+  `selectedKey`(split view 선택 → **항법 커서 역할 겸함**)
+- **새 용어**. 없음 (glossary 미등재 — D-1 참조). "컨텍스트 단축키" 는 도메인 개념이 아니라
+  UI 구현 세부로 판정. 다만 **전역 단축키/`KeymapAction` 이 glossary 에 0건**인 것은
+  별건 등재 후보로 남긴다.
+- **기존 결정 충돌**. 없음. FR-UX-05(전역 5종) · FR-PF-03(키맵 커스터마이즈) ·
+  FR-UX-06 PR20(split view) 셋 다 **확장 방향으로 승계**한다.
+- **관련 ADR**. [2026-08-03-fr-ux-10-f10-context-shortcuts](../decisions/2026-08-03-fr-ux-10-f10-context-shortcuts.md) (생성됨)
+
+### 확정 3건 (ADR 본문 참조)
+
+| | 결정 | 한 줄 근거 |
+|---|---|---|
+| **D-1** | `CONTEXT_SHORTCUTS` 별도 레지스트리 — 경계는 **도메인 지위 차이** | 전역=영속(`user_keymap`)·identity-access 소속 / 컨텍스트=영속 0·화면 지역 규약. B4 승격 경로가 열림 |
+| **D-2** | **단일 리스너·단일 판별 파이프라인** (전역 우선 → 컨텍스트 폴백) | 리스너 2개면 ① `g`+`j` 가 `reset`(preventDefault 없음)을 타고 새 커서까지 발화 ② `helpOpen` 이 훅 내부 state 라 모달 열림 중 배후 목록이 움직임 |
+| **D-3** | **항법 커서 = 기존 `selectedKey` 재사용** (Maxi 확정) | 지라 이슈 네비게이터 동형. 선택 개념 증식 0 · 강조 표기(`aria-current`) 자산 그대로 · 연타는 상태 분리가 아니라 **요청 지연**으로 해소 |
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
