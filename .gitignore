@@ -58,7 +58,9 @@ e2e-results/
 .claude/settings.local.json
 
 # husky v9 shim 디렉토리 (sample/transition hooks)
-.husky/_/
+# 끝 슬래시를 붙이지 않는다 — worktree 는 이 디렉토리를 main 트리로 향하는 **심볼릭 링크**로
+# 갖는다(bts-start Step 3). `.husky/_/` 는 디렉토리만 매칭해 그 링크를 untracked 로 남긴다.
+.husky/_
 
 # Python (가능성 있는 보조 스크립트)
 __pycache__/

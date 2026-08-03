@@ -232,7 +232,25 @@ Skill({
 ./gradlew test ktlintCheck detekt   # 백엔드
 pnpm typecheck lint test            # 프론트엔드
 pnpm test:e2e                       # (qa-engineer 추가 시)
+pnpm test:workflow                  # ★ 워크플로우 판별식 — CI 와 같은 목록
 ```
+
+**★ `pnpm test:workflow` 를 빼지 말 것.** CI(workflow-scripts-ci)가 돌리는 것이 정확히 이
+명령이다. 로컬 목록에서 빠지면 로컬과 CI 가 서로를 안 보는 두 목록이 되고, "로컬 초록 → push →
+CI 빨강" 이 구조적으로 반복된다([[two-lists-never-check-each-other]]).
+
+새 문서(spec/plan/decision)를 만든 작업이면 인덱스를 먼저 재생성한다. 판별식 룰 I·J 가
+이것을 검사한다.
+
+```bash
+node scripts/build-doc-index.mjs                    # 파일을 쓴다
+git status --porcelain docs/INDEX*.md               # 변경이 있으면
+git add docs/INDEX*.md && git commit -m "chore: doc index regen — <slug> 등재"
+```
+
+worktree 훅이 연결돼 있으면(`/bts-start` Step 3) 이 재생성을 잊은 커밋은 pre-commit 에서
+막힌다 — 위 절차는 그 차단을 푸는 방법이다. 배선 강제는
+`scripts/workflow/worktree-hook-wiring.test.ts`.
 
 실패 시 implementer 재dispatch. 통과 시 다음 단계.
 
