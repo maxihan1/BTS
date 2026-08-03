@@ -284,6 +284,27 @@ function EditMode({
     textareaRef,
   })
 
+  /**
+   * 편집 진입 시 입력 영역으로 포커스를 옮긴다 (스펙 S4 — "포커스가 입력 영역에 놓인다").
+   *
+   * 진입 경로 3개(본문 텍스트 클릭 · 빈 본문 placeholder 클릭 · `본문 편집` 버튼)는 모두
+   * `handleEditClick` 을 거쳐 이 컴포넌트를 **마운트**시키므로, 마운트 1회 효과로 셋이 갈라지지 않는다.
+   * `handleEditClick` 이 `activeTab` 을 항상 'write' 로 되돌리므로 진입 시점에 textarea 는 반드시 존재한다.
+   *
+   * - `preventScroll` — 긴 이슈에서 포커스가 화면을 튀게 하지 않는다.
+   * - **커서를 프로그램으로 옮기지 않는다.** `setSelectionRange` 는 select 이벤트를 낳고
+   *   그것이 멘션 감지(`onSelect` → `detectAndUpdate`)를 깨운다. 본문이 `@이름` 으로 끝나는
+   *   이슈에서 **열지도 않은 자동완성이 진입 직후 떠 버리고**, 그 상태의 `Esc`/`Enter` 를
+   *   팝업이 먼저 삼켜(E10) 취소·저장이 먹통이 된다. 실측으로 확인한 회귀라 커서 이동을 뺐다.
+   *   감지는 debounce 뒤에 발화하므로 직후 `mention.reset()` 으로도 막히지 않는다(이것도 실측).
+   *   커서 위치는 스펙 미규정 사항이고, 브라우저 기본 위치를 그대로 쓴다.
+   */
+  useEffect(() => {
+    const el = textareaRef.current
+    if (el === null) return
+    el.focus({ preventScroll: true })
+  }, [])
+
   // 탭 전환 시 멘션 상태 즉시 초기화 — blur 타이머 타이밍에 의존하지 않음
   const mentionReset = mention.reset
   useEffect(() => {
