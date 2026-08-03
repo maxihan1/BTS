@@ -319,20 +319,29 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **우선순위**. 높음 | **선행**. 없음 (로드맵상 의존 0 — 즉시 착수 가능) | **Plan slug**. `fr-ux-11-inline-edit`
 
-승계 PR 2건 (로드맵 §PR 체인 Tier 2). 현재 BTS 는 인라인 편집이 **전무**해, 제목 한 글자를 고치려 해도 폼 화면으로 이동해야 한다.
+승계 PR 2건 (로드맵 §PR 체인 Tier 2). 착수 시점의 BTS 는 제목·본문을 **이슈 상세 화면 안에서 이미 편집할 수 있었다**(OCC `expectedVersion` 포함). 부족한 것은 **진입과 키보드**였다 — 진입이 버튼 클릭 한 경로뿐이라 지라를 쓰던 손이 텍스트를 클릭해도 아무 일이 일어나지 않았고, `Enter` 저장·`Esc` 취소가 없었다. F8 이 그 간극을 닫았고 목록 셀(F9)은 남아 있다.
 
-- **F8 — 이슈 상세 인라인 편집.** 제목/본문을 클릭해 진입, Enter 저장, Esc 취소. `routes/issues.$key.tsx:704-726` · `IssueDescription.tsx:123-144`.
+- **F8 — 이슈 상세 인라인 편집.** 제목/본문을 클릭해 진입, Enter 저장, Esc 취소. `routes/issues.$key.tsx` · `IssueDescription.tsx`. **완료 (PR #337)**.
 - **F9 — 이슈 목록 셀 인라인 편집**(담당자·우선순위·상태). `IssueTable.tsx` · `issue-columns.ts` · `components/issue/meta/*` 재사용 · `components/ui/popover.tsx`(소비처 0→1).
 
 **아키텍처**. 프론트 전용 예상 — 기존 이슈 PATCH API 를 소비한다. **F8 이 두 FR 의 공통 선행**이다(F9 가 F8 에, §4.8 의 F11 이 F8 에 의존). 목록 셀은 낙관적 동시성(OCC) 409 를 만나므로 `setQueryData` 부분 갱신 대신 invalidate 로 정합을 맞춘다.
 
-- [ ] D1. 도메인 — 인라인 편집 가능 필드 집합과 저장·취소·충돌 상태 모델 정립 (책임. frontend-engineer)
-- [ ] D2. 명세 — 진입/저장/취소 상호작용 · 필드별 편집 가능 조건 · 409 충돌 표시 (책임. designer)
-- [ ] D3. 데이터 모델 — 없음 예상 (기존 컬럼. 마이그레이션 0) (책임. -)
-- [ ] D4. 백엔드 — 없음 예상 (기존 이슈 PATCH API 소비) (책임. -)
-- [ ] D5. 백엔드 테스트 — 해당 없음 예상 (책임. -)
-- [ ] D6. 프론트 UI — F8 상세 제목/본문 · F9 목록 셀 3종(담당자·우선순위·상태) (책임. designer → frontend-engineer)
-- [ ] D7. E2E — 클릭 진입 → Enter 저장 → 재조회 반영 · Esc 취소가 원값 복원 (책임. qa-engineer)
+- [x] D1. 도메인 — **F8 완료 (PR #337)**. 인라인 편집을 *"새 저장 경로 신설"* 이 아니라 **기존 저장 경로에 진입면·키보드를 얹는 것**으로 정립했다 — 저장·취소·409 충돌 모델은 `useUpdateIssueSummary`(OCC `expectedVersion` · 롤백 · toast)를 **그대로 승계**한다. 편집 가능 필드 집합은 기존 `canEdit`(UPDATE 권한, fail-closed) 판정을 재사용한다 (책임. frontend-engineer)
+- [x] D2. 명세 — **F8 완료 (PR #337)**. `docs/specs/2026-08-03-fr-ux-11-f8-inline-edit.md`. 진입(텍스트 클릭 + 기존 버튼 병존) · 제목 `Enter` 저장 / 본문 `Ctrl`·`Cmd`+`Enter` 저장(맨 `Enter` 는 개행 보존) · `Esc` 취소 · 예외 E1~E10(pane 이중 발화 · IME 조합 · 중복 제출 · 텍스트 선택 · 링크 클릭 · 권한). 본문 `Esc` 는 **편차 D-1** 로 확인 절차를 둔다(지라 JRACLOUD-36670 결함 미복제) (책임. designer)
+- [x] D3. 데이터 모델 — **없음 확정**. 기존 컬럼만 쓴다. 마이그레이션 0 (책임. -)
+- [x] D4. 백엔드 — **없음 확정**. 기존 이슈 PATCH API 소비. `git diff --exit-code main -- backend/` **EXIT 0 실측** (백엔드 0줄) (책임. -)
+- [x] D5. 백엔드 테스트 — **해당 없음 확정** (백엔드 변경 0) (책임. -)
+- [ ] D6. 프론트 UI — **F8 완료 (PR #337)**. 상세 제목·본문 — 텍스트 클릭 진입면(`heading` 안쪽만 감싸 접근성 이름 보존) · 진입 시 포커스 + 커서 텍스트 끝 · `Enter`/`Ctrl`+`Enter` 저장 · `Esc` 취소 · 기존 `✎ 제목 수정`·`본문 편집` 버튼 병존(FR7). 원시 `<button>` 은 PR22 판정식상 OUT(P6)으로 `eslint.config.js`·`button-primitive-usage.test.ts` 에 등재. **F9 잔여** — 목록 셀 3종(담당자·우선순위·상태) (책임. designer → frontend-engineer)
+- [ ] D7. E2E — **F8 완료 (PR #337)**. `e2e/inline-edit.spec.ts` 4 시나리오(S1·S2 제목 클릭→`Enter` 저장 / S3 제목 `Esc` 원본 복원 / S4·S5 본문 클릭→`Ctrl`+`Enter` 저장 / S7 본문 `Esc` 확인 패널). 기존 `issue-crud-happy`·`issue-edit-conflict`·`issue-permission`·`issue-ui-regression` 동반 통과. **F9 잔여** (책임. qa-engineer)
+
+> **F8 완료 (PR #337, 2026-08-03).** 병행 wave 로 진행했고 독립 검증이 결함 3건을 적발해 봉합 —
+> **스펙 미충족 1**(진입 시 포커스·커서 끝이 미구현. E2E `locator.press()` 가 자동 포커스를 줘
+> **가짜 그린**으로 가려져 있었다) · **공허 가드 1**(본문 `Esc` 의 pane 이중 발화 방지에 증인 0 —
+> 컴포넌트 단독 테스트에 pane 컨텍스트가 없어 구조적 미커버였고 라우트 테스트로 이관) ·
+> **정본 서술 오류 1**(이 절의 *"인라인 편집이 전무"* 가 실측상 거짓 — 위 산문 정정).
+> 뮤테이션으로 전 가드의 비-공허를 확인했고, 그 과정에서 커서 단언 1건이 **jsdom 기본값과
+> 우연히 일치해 공허**함을 발견해 테스트 이름을 실제 잡는 범위로 좁혔다.
+> **완주 순서** — F9(목록 셀) → D6/D7 `[x]`. §4.8 F11 이 이 F8 에 의존한다.
 
 ### §4.10 FR-UX-12 — 검색 진입 (커맨드 팔레트 · 전역 검색)
 
