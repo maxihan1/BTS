@@ -117,7 +117,7 @@ Skill({
    - /plan-ceo-review: (skip, auth/migration 아님)
 
 다음 옵션:
-1. 승인 → 머지 + 배포 + sync-obsidian
+1. 승인 → /bts-merge (머지 + worktree 정리 + Obsidian sync)
 2. 짚은 점 수정 후 재리뷰 → /bts-impl 다시 (loop back)
 3. 보류
 ```

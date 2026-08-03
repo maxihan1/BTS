@@ -35,6 +35,7 @@ BTS 모든 코드 작업의 **단일 진입점**. 8단계 스킬을 자연어 1�
 ```
 
 `auth`/`migration`/큰 변경도 두 번 멈춤. **자동이라도 사용자 동의 없이 머지 안 감**.
+fast-track(`bugfix`/`chore`)은 게이트 1을 생략하고 **게이트 2 한 곳만** 멈춘다 (Phase C 게이트 정책).
 
 ## 절차
 
@@ -97,7 +98,12 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 4. `Skill({skill: "bts-plan"})`
 5. `Skill({skill: "bts-review-plan"})` (fast-track 시 스킵)
 
-#### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`)
+**Fast-track 게이트 정책 (`type ∈ {bugfix, chore}`)** — [5]가 스킵되면 **게이트 1도 함께 생략**한다.
+곧장 `bts-impl` → `bts-codereview` → 게이트 2로 진행한다. 대신 게이트 2 요약에
+"스킵된 단계([2]/[3]/[5] + 게이트 1)" 목록을 명시해 Maxi가 우회 사실을 보고 승인하게 한다.
+**머지 전 정지(게이트 2)는 어떤 타입도 생략하지 않는다.**
+
+#### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`, fast-track은 생략)
 
 응답 분기 — bts 컨트롤러가 직접 처리.
 
@@ -136,5 +142,5 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ## 관련 스킬
 
-- 전체 개요. [bts-workflow](../bts-workflow/SKILL.md)
-- 각 단계. [bts-start](../bts-start/SKILL.md), [bts-domain](../bts-domain/SKILL.md), [bts-spec](../bts-spec/SKILL.md), [bts-plan](../bts-plan/SKILL.md), [bts-review-plan](../bts-review-plan/SKILL.md), [bts-impl](../bts-impl/SKILL.md), [bts-codereview](../bts-codereview/SKILL.md)
+- 전체 참조 맵. [docs/rules/workflow-map.md](../../../docs/rules/workflow-map.md)
+- 각 단계. [bts-start](../bts-start/SKILL.md), [bts-domain](../bts-domain/SKILL.md), [bts-spec](../bts-spec/SKILL.md), [bts-plan](../bts-plan/SKILL.md), [bts-review-plan](../bts-review-plan/SKILL.md), [bts-impl](../bts-impl/SKILL.md), [bts-codereview](../bts-codereview/SKILL.md), [bts-merge](../bts-merge/SKILL.md)

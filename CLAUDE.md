@@ -39,7 +39,7 @@ agile-planning · notification · search-export-import · slack-integration · a
 | 워크플로우 / 작업 시작 | 이 파일 §워크플로우 + `.claude/skills/bts/SKILL.md` |
 | 절대 규칙 19개 / 코드 스타일 | `DEVELOPMENT.md` |
 | DB / 마이그레이션 / 트랜잭션 / 이슈키 영속성 | `DATA.md` |
-| 도메인 비전 / 기술 결정 / 26개 챕터 | `docs/sdd/README.md` |
+| 도메인 비전 / 기술 결정 / 24개 챕터 | `docs/sdd/README.md` |
 | 도메인 용어 사전 (DDD) | `Maxi_wiki/BTS/glossary.md` (Obsidian) |
 | 과거 사고/교훈 (회귀 방지) | `Maxi_wiki/BTS/learnings.md` (Obsidian) |
 | 바운디드 컨텍스트별 노트 | `Maxi_wiki/BTS/domain/<bc>.md` |
@@ -52,7 +52,7 @@ agile-planning · notification · search-export-import · slack-integration · a
 
 `/bts <자연어>` → start → domain → spec → plan → review-plan → 🛑게이트1 → impl → codereview → 🛑게이트2 → merge
 
-자세한 다이어그램 + 단계별 절차. `.claude/skills/bts-workflow/SKILL.md`.
+자세한 다이어그램 + 단계별 절차. `.claude/skills/bts/SKILL.md` · 참조 맵 [`docs/rules/workflow-map.md`](docs/rules/workflow-map.md).
 
 ## 핵심 패턴 (BTS만의)
 

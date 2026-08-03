@@ -28,17 +28,9 @@ cat .bts-cache/classify.json
 # 예. { type: "feature", agent: "backend-engineer", primary_bc: "issue-tracking" }
 ```
 
-`primary_bc`가 없으면 작업 제목/입력에서 추출.
-
-| BC | 키워드 신호 |
-|---|---|
-| identity-access | auth, 인증, 2fa, saml, oauth, ldap, 권한 |
-| issue-tracking | 이슈, 코멘트, 워처, 첨부, 라벨, 컴포넌트, 버전 |
-| project-workflow | 워크플로우, 전이, FSM, 상태, 게이트 |
-| agile-planning | 스프린트, 백로그, 보드, 에픽, 칸반 |
-| automation | 자동화, 룰, 트리거, 액션, AQL, 검색 |
-| notification | 알림, 멘션, 워치, 이메일 |
-| slack-integration | slack, 슬랙, unfurl, slash 명령, 인터랙티브 |
+`primary_bc`가 `null`이면 `scripts/workflow/classify-task.ts`의 `BC_KEYWORDS`(9개 BC 정본)를
+참조해 작업 제목에서 추출한다. **키워드 사본을 이 문서에 두지 않는다** — 두 목록은 서로를
+검사하지 않아 사본은 drift 가 된다 (실제로 이 자리의 구 사본은 7개 BC만 나열해 2개 BC가 누락돼 있었다).
 
 ### Step 2. grill-with-docs 스킬 호출
 
