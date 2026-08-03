@@ -752,11 +752,17 @@ export function IssueDetailPage({
     //    jira-parity-contract §2 즉사 계약(h1 verbatim)과 E2E `getByRole('heading',{name})`
     //    가 동시에 깨진다 (F8-T1-2 가 현재 보존의 증인).
     //    용도 설명이 필요하면 `aria-describedby` + 시각적 숨김 텍스트를 쓸 것.
+    //
+    // 🛑 `select-text` 를 지우지 마라 — 장식이 아니다. <button> 에서 `user-select: auto` 는
+    //    CSS UI 규격상 **none 으로 해석**된다(Chromium 실측. 이 클래스 없이 드래그하면 선택
+    //    길이 0). 제목을 버튼으로 감싼 순간 사용자가 **제목을 복사할 수 없게 되는** 회귀가
+    //    생기고(감싸기 전 <h1> 순수 텍스트에서는 됐다), 선택 자체가 안 생기니 아래
+    //    handleTitleClick 의 isCollapsed 가드도 영원히 발동하지 못한다.
     <button
       ref={titleButtonRef}
       type="button"
       onClick={handleTitleClick}
-      className="text-left w-full rounded-sm hover:bg-(--bg-neutral-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+      className="text-left w-full rounded-sm select-text hover:bg-(--bg-neutral-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
     >
       {issue.summary}
     </button>
