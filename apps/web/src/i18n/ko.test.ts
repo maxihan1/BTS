@@ -53,19 +53,29 @@ describe('issueDetailStrings — 본문/메타필드 신규 키 존재 검증', 
    * 「저장」 버튼 3개 실사고) 사용자도 「취소의 취소」를 이해하지 못한다.
    * 문자열이 다시 겹치면 이 단언이 막는다.
    */
-  it('확인 패널 문자열은 기존 저장/취소 버튼과 겹치지 않는다', () => {
-    expect(issueDetailStrings.descriptionDiscardConfirmButton).not.toBe(
+  it('확인 패널 문자열은 기존 저장/취소 버튼과 부분 문자열로도 겹치지 않는다', () => {
+    /**
+     * **양방향 부분 일치**로 본다 — 완전 일치(`not.toBe`)만 보면 실제 실패 양식을 놓친다.
+     * Playwright 의 `getByRole('button', { name })` 은 **부분 일치**라
+     * `'취소하고 나가기'` 같은 값은 `not.toBe('취소')` 를 통과하면서도
+     * `getByRole('button', { name: '취소' })` 를 strict mode violation 으로 깨뜨린다
+     * (learnings.md:631 · PR #47 「저장」 버튼 3개 실사고와 같은 양식).
+     */
+    const existing = [
       issueDetailStrings.descriptionCancelButton,
-    )
-    expect(issueDetailStrings.descriptionDiscardCancelButton).not.toBe(
-      issueDetailStrings.descriptionCancelButton,
-    )
-    expect(issueDetailStrings.descriptionDiscardConfirmButton).not.toBe(
       issueDetailStrings.descriptionSaveButton,
-    )
-    expect(issueDetailStrings.descriptionDiscardCancelButton).not.toBe(
-      issueDetailStrings.descriptionSaveButton,
-    )
+    ]
+    const added = [
+      issueDetailStrings.descriptionDiscardConfirmButton,
+      issueDetailStrings.descriptionDiscardCancelButton,
+    ]
+
+    for (const base of existing) {
+      for (const next of added) {
+        expect(next).not.toContain(base)
+        expect(base).not.toContain(next)
+      }
+    }
   })
 
   // ── 우선순위(priority) ──────────────────────────────────────────────

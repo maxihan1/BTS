@@ -323,6 +323,123 @@ describe('IssueDescription', () => {
     expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
   })
 
+  // ── 확인 패널 잔류 방지 (리뷰 R-1) ────────────────────────────────────────
+  //
+  // confirmDiscard 를 내리는 경로가 패널 버튼 2개뿐이면, isEditing 이 꺼지지 않는 경로
+  // (저장 · 타이핑 · 탭 전환)에서 패널이 남는다. 특히 저장 후에는 버릴 것이 없는데도
+  // "작성 중인 내용이 사라집니다" 가 계속 떠 있어 **문구가 거짓말**이 된다.
+
+  /** 편집 진입 → 초안 변경 → Esc 로 확인 패널을 띄운 상태까지 만든다. */
+  function openDiscardConfirm(draft: string): HTMLTextAreaElement {
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: draft } })
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(screen.getByText(issueDetailStrings.descriptionDiscardConfirm)).toBeInTheDocument()
+    return textarea
+  }
+
+  it('저장되어 초안이 원본과 같아지면 확인 패널이 사라진다', () => {
+    const { rerender } = render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    openDiscardConfirm('저장할 내용')
+
+    // 저장 성공 → invalidate → refetch 로 description prop 이 초안과 같아진 상태를 모사
+    rerender(<IssueDescription {...defaultProps} description="저장할 내용" />)
+
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+    // 편집은 계속 열려 있어야 한다 — 패널만 사라지는 것이다
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
+  })
+
+  it('확인 패널이 뜬 뒤 계속 타이핑하면 패널이 사라진다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    const textarea = openDiscardConfirm('쓰던 내용')
+
+    fireEvent.change(textarea, { target: { value: '쓰던 내용 더' } })
+
+    // 빨간 경고 아래에서 계속 작성하게 두지 않는다
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('쓰던 내용 더')
+  })
+
+  it('확인 패널이 뜬 뒤 미리보기 탭으로 전환하면 패널이 보이지 않는다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    openDiscardConfirm('쓰던 내용')
+
+    fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+
+    // 쓰기 탭으로 돌아와도 되살아나지 않는다 (플래그까지 내렸는지 확인)
+    fireEvent.click(screen.getByRole('tab', { name: '편집' }))
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+  })
+
+  it('확인 패널이 뜨면 포커스가 계속 편집 버튼으로 이동한다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    openDiscardConfirm('쓰던 내용')
+
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
+    ).toHaveFocus()
+  })
+
+  it('확인 문구에 role=alert 가 붙어 스크린리더에 알려진다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    openDiscardConfirm('쓰던 내용')
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(issueDetailStrings.descriptionDiscardConfirm)
+  })
+
+  // ── 확인 패널의 Escape (리뷰 R-2) ─────────────────────────────────────────
+
+  /**
+   * ★ 확인 패널이 뜬 상태의 `Escape` 는 **패널만** 닫고 상위 pane 닫기로 새면 안 된다.
+   *
+   * `usePaneEscapeClose` 는 document 전역 리스너이고 `e.defaultPrevented` 만 존중한다.
+   * 패널 버튼에 키 핸들러가 없으면 아무도 preventDefault 를 하지 않아 **pane 이 닫히고
+   * 작성분이 사라진다** — 확인 패널이 지키기로 한 바로 그것을 못 지킨다.
+   * 그 전역 리스너의 계약을 여기서 그대로 모사해 검증한다.
+   */
+  it('확인 패널이 뜬 상태의 Esc 는 패널만 닫고 pane 닫기로 새지 않는다', () => {
+    const onPaneClose = vi.fn()
+    function paneListener(e: KeyboardEvent): void {
+      if (e.key === 'Escape' && !e.defaultPrevented) onPaneClose()
+    }
+    document.addEventListener('keydown', paneListener)
+
+    try {
+      render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+      openDiscardConfirm('아까운 초안')
+
+      // 패널이 뜨면 포커스는 '계속 편집' 에 있다 — 그 지점에서 Esc 를 누른다
+      const keepEditing = screen.getByRole('button', {
+        name: issueDetailStrings.descriptionDiscardCancelButton,
+      })
+      fireEvent.keyDown(keepEditing, { key: 'Escape' })
+
+      // 패널만 닫힌다
+      expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+      // 편집 모드와 초안은 유지된다
+      expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('아까운 초안')
+      // ★ pane 은 닫히지 않는다
+      expect(onPaneClose).not.toHaveBeenCalled()
+    } finally {
+      document.removeEventListener('keydown', paneListener)
+    }
+  })
+
+  it('확인 패널이 뜬 상태에서 textarea 의 두 번째 Esc 도 패널을 닫는다 (죽은 키 방지)', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    const textarea = openDiscardConfirm('아까운 초안')
+
+    // 예전에는 이미 true 인 플래그를 다시 true 로 세워 화면이 전혀 변하지 않았다
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('아까운 초안')
+  })
+
   /**
    * ★ 리뷰 F-2 회귀 가드 — 확인 패널이 떠도 '취소'/'저장' 문자열은 화면에 하나뿐이어야 한다.
    * 둘이 되면 E2E 의 getByRole('button', { name: '취소' }) 가 strict mode violation 으로
