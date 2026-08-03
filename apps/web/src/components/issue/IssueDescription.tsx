@@ -1,5 +1,9 @@
 // 이슈 본문(description) 표시 및 편집 컴포넌트 — GitHub 스타일 Write/Preview 탭
-import type { JSX, MouseEvent as ReactMouseEvent } from 'react'
+import type {
+  JSX,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -276,6 +280,36 @@ function EditMode({
     }
   }, [activeTab, mentionReset])
 
+  /**
+   * 본문 편집 키 처리 (FR5) — `Ctrl`/`Cmd` + `Enter` 로 저장하고 맨 `Enter` 는 줄바꿈으로 남긴다.
+   *
+   * 본문은 여러 줄 마크다운 편집기라 맨 `Enter` 를 저장에 쓰면 개행 자체가 불가능해진다.
+   * 그래서 저장은 수식키를 요구한다(Jira 동일).
+   *
+   * **호출 순서가 계약이다 (E10).** 멘션 팝업이 **먼저** 볼 기회를 갖는다 —
+   * `use-mention-autocomplete.ts:222` 가 드롭다운이 열렸을 때만 Arrow/Enter/Tab/Escape 를
+   * 가로채 `preventDefault()` 하므로, `defaultPrevented` 로 "팝업이 소비했다"를 판정할 수 있다.
+   * 팝업이 열린 상태의 `Enter` 는 후보 선택이지 저장이 아니다.
+   *
+   * @param e textarea keydown 이벤트
+   */
+  function handleEditorKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>): void {
+    // 멘션 훅 호출은 **교체이지 삭제가 아니다** — 빠뜨리면 자동완성이 통째로 죽는다
+    mention.onKeyDown(e)
+    if (e.defaultPrevented) return
+
+    // 한글 IME 조합 확정 Enter 를 저장으로 오인하지 않는다 (E4)
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      // 저장 진행 중 연타로 중복 제출되지 않게 막는다 (E5)
+      if (isSaving) return
+      // 부모의 handleSave 가 draftMarkdown 을 클로저로 읽으므로 인자를 넘기지 않는다
+      onSave()
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {/* 탭 헤더 */}
@@ -314,7 +348,7 @@ function EditMode({
               className="w-full min-h-[120px] resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={draftMarkdown}
               onChange={mention.onChange}
-              onKeyDown={mention.onKeyDown}
+              onKeyDown={handleEditorKeyDown}
               onCompositionStart={mention.onCompositionStart}
               onCompositionEnd={mention.onCompositionEnd}
               onSelect={mention.onSelect}
