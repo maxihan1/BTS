@@ -2365,3 +2365,62 @@ describe('IssueDetailPage — 제목 편집 Enter/Esc (FR-UX-11 F8 Task 2)', () 
     expect(patchCount).toBe(1)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 Task 5 pane guard — 본문 Esc 의 이중 발화 방지 증인
+//
+// IssueDescription 의 `Escape` 분기에도 `e.preventDefault()`(E1)가 있지만, 그 가드의
+// 상대인 usePaneEscapeClose 는 **이 라우트**가 소유한다(document 전역 리스너, :91).
+// 컴포넌트 단독 테스트에는 pane 컨텍스트가 없어 구조적으로 못 잡으므로 증인을 여기 둔다.
+// 이 라우트 테스트에서 IssueDescription 은 목이 아니라 실제로 렌더된다(vi.mock 없음 — T6-1).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — pane 에서 본문 Esc 이중 발화 방지 (FR-UX-11 F8 Task 5 guard)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-T5G-1. pane 에서 본문 편집 중 Esc 는 편집만 취소하고 패널을 닫지 않는다.
+   *
+   * **변경분을 만들지 않고** Esc 를 누른다 — requestCancel 이 초안≠원본이면 확인 패널을
+   * 띄워 편집이 닫히지 않으므로(편차 D-1), 확인 패널을 타지 않는 경로로 고립시켜야
+   * "편집 종료 + onClose 미호출" 두 단언을 같이 세울 수 있다.
+   */
+  it('F8-T5G-1: pane 에서 본문 편집 중 Esc 는 편집만 취소하고 패널을 닫지 않는다', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    const { container } = renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    // 본문 편집 버튼/편집기는 <section aria-label="이슈 상세"> 안에 있다 (T6-2 와 동일 범위 좁힘)
+    const section = container.querySelector<HTMLElement>('section[aria-label="이슈 상세"]')
+    expect(section).not.toBeNull()
+    if (section === null) return
+
+    await user.click(
+      within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    )
+    const textarea = within(section).getByRole('textbox', {
+      name: issueDetailStrings.descriptionEditButton,
+    })
+
+    // 변경분 없이 Esc — 확인 패널을 거치지 않고 곧장 편집이 닫히는 경로
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+
+    // ① 본문이 읽기 모드로 돌아간다
+    expect(
+      within(section).queryByRole('textbox', { name: issueDetailStrings.descriptionEditButton }),
+    ).not.toBeInTheDocument()
+    // ② 패널은 열린 채 — IssueDescription 의 preventDefault 가 usePaneEscapeClose 를 막는다
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
