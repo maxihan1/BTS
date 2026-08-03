@@ -312,6 +312,22 @@ function EditMode({
   const showDiscardConfirm =
     confirmDiscard && draftMarkdown !== initialMarkdown && activeTab === 'write'
 
+  /**
+   * 상단 `저장`·`취소` 잠금 — 사유 2가지를 분리해 읽히게 둔다.
+   *
+   * - `isSaving`. 저장 진행 중 중복 제출 방지 (기존 조건, E5).
+   * - `showDiscardConfirm`. **확인을 띄워 놓고 확인 없이 버리는 모순 차단** (리뷰 C-1 3행).
+   *   확인 중에는 뒤의 결정 버튼을 잠그는 것이 다이얼로그의 자연스러운 관례다.
+   *
+   * 잠금은 `disabled` 로 하고 DOM 에서 제거하지 않는다 — 버튼이 사라지면 사용자가 위치를
+   * 잃고 패널을 닫을 때 레이아웃이 튀며, `getByRole('button', { name })` 로 찾는 기존 E2E 가
+   * 요소 부재로 깨질 수 있다. `disabled` 는 요소가 남아 strict mode 계산에 영향이 없다.
+   *
+   * 잠긴 이유는 바로 아래 확인 패널이 화면으로 설명한다 — `title` 은 붙이지 않는다.
+   * Button 프리미티브가 `disabled:pointer-events-none` 이라 툴팁이 뜨지도 않는다.
+   */
+  const actionsLocked = isSaving || showDiscardConfirm
+
   // 마운트 효과에서 쓰는 훅 함수 — useCallback([]) 이라 참조가 안정적이다(mentionReset 과 같은 패턴)
   const suppressNextSelect = mention.suppressNextSelect
 
@@ -512,7 +528,7 @@ function EditMode({
           size="sm"
           className="min-h-[44px]"
           onClick={onSave}
-          disabled={isSaving}
+          disabled={actionsLocked}
           aria-label={issueDetailStrings.descriptionSaveButton}
         >
           {issueDetailStrings.descriptionSaveButton}
@@ -522,7 +538,7 @@ function EditMode({
           size="sm"
           className="min-h-[44px]"
           onClick={onCancel}
-          disabled={isSaving}
+          disabled={actionsLocked}
           aria-label={issueDetailStrings.descriptionCancelButton}
         >
           {issueDetailStrings.descriptionCancelButton}
