@@ -150,6 +150,7 @@ vi.mock('@/hooks/use-backlog', () => ({
 
 import { BacklogBoard } from './BacklogBoard'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { issueCreateStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -801,5 +802,75 @@ describe('BacklogBoard — 이슈 생성 모달 소유권 (F3 FR-15)', () => {
     expect(
       screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
     ).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-09 F3 — 스프린트 배정 (FR-4) + 부분 성공 (FR-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR-4/FR-5)', () => {
+  it('스프린트 칸에서 만들면 그 스프린트로 배정을 건다', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', {
+        name: backlogLabels.createIssueInSprint('스프린트 1'),
+      }),
+    )
+    await screen.findByRole('dialog')
+
+    // 모달의 성공 콜백을 직접 부르는 대신, 생성 성공 경로를 폼 제출로 태운다.
+    await user.type(await screen.findByLabelText(issueCreateStrings.summaryLabel), '새 이슈')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => {
+      expect(mockAssignMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ sprintId: 'sprint-uuid-0001' }),
+        expect.anything(),
+      )
+    })
+  })
+
+  it('백로그 칸에서 만들면 배정을 걸지 않는다 (기본 동작이 곧 백로그)', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    )
+    await screen.findByRole('dialog')
+    await user.type(await screen.findByLabelText(issueCreateStrings.summaryLabel), '새 이슈')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    expect(mockAssignMutate).not.toHaveBeenCalled()
+  })
+
+  it('★배정만 실패하면 이슈가 만들어졌음을 경고 톤으로 알린다 (FR-5, 에러 톤 금지)', async () => {
+    const user = userEvent.setup()
+    // 배정 mutation 이 onError 를 부르도록 만든다
+    mockAssignMutate.mockImplementation(
+      (_vars: unknown, opts?: { onError?: () => void }) => { opts?.onError?.() },
+    )
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', {
+        name: backlogLabels.createIssueInSprint('스프린트 1'),
+      }),
+    )
+    await screen.findByRole('dialog')
+    await user.type(await screen.findByLabelText(issueCreateStrings.summaryLabel), '새 이슈')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalled()
+    })
+    // 빨간 실패 토스트는 「안 만들어졌다」로 읽혀 재시도 → 중복 이슈를 부른다
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })
