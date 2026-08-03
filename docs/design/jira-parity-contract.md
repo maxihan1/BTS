@@ -36,7 +36,7 @@ E2E 스펙 전수 실측 기반. **발생 수는 이 문서에 새기지 않는�
 | `검색` 이름 분리 | `grep -rn "name: '검색'" apps/web/e2e/` | 상단바 입력창은 `전역 검색`, `검색`은 AQL 페이지 제출 버튼 전용 (Maxi 확정 2026-07-28 결정 4) |
 | 프로젝트 스위처 nav 금지 | (`프로젝트`가 `프로젝트 뷰 전환`의 substring) | 스위처를 `<nav>`로 만들지 말 것 — popover + `role="listbox"` |
 | 팔레트 QUICK_LINKS 순서 | `grep -n "QUICK_LINKS" apps/web/e2e/command-palette.spec.ts` | 빈 입력 시 바로가기 4개와 순서 보존 |
-| 단축키 레지스트리 동결 | `grep -n "toHaveLength" apps/web/src/lib/shortcuts.test.ts` | 기존 `SHORTCUTS` 5종에 손대지 말 것 — 프론트 단언 + 백엔드 `KeymapAction` 화이트리스트 + DB CHECK 가 동시에 깨진다. 컨텍스트 단축키는 별도 레지스트리(`CONTEXT_SHORTCUTS`) 신설 |
+| 단축키 레지스트리 동결 | `grep -n "toHaveLength" apps/web/src/components/keyboard-shortcuts/shortcuts.test.ts` | 기존 `SHORTCUTS` 5종에 손대지 말 것 — 프론트 단언 2곳(`toHaveLength(5)` + `DEFAULT_KEYMAP` `toEqual`) + 백엔드 `KeymapAction` 화이트리스트 + DB CHECK(`V033__user_keymap.sql`)가 **동시에** 깨진다. 컨텍스트 단축키는 별도 레지스트리(`CONTEXT_SHORTCUTS`) 신설 |
 
 상세 이력·근거는 `~/.claude/projects/-Users-maxi-moff-Projects-BTS/memory/` 의
 `frontend-nav-aria-label-e2e-contract` 메모리와 `docs/plan/product/personalization.md` §4.4 🛑 경고.

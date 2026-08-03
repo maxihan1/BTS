@@ -1,0 +1,230 @@
+<!-- 컨텍스트 단축키 — 레지스트리 분리 경계 · 단일 판별 파이프라인 · 항법 커서의 정체 -->
+
+# FR-UX-10 F10 — 컨텍스트 단축키 아키텍처
+
+> **FR**. FR-UX-10 (컨텍스트 의존 단축키) §4.8
+> **PR**. #336 · **선행**. FR-UX-05(전역 단축키 5종) · FR-PF-03(키맵 커스터마이즈) · FR-UX-06 PR20(split view)
+> **BC**. 논리 = personalization / 물리 = `apps/web` 프론트 전용 (백엔드 0 · 마이그레이션 0)
+> **관련 계약**. [`docs/design/jira-parity-contract.md`](../design/jira-parity-contract.md) §2 단축키 레지스트리 동결
+
+## 배경 — 키를 늘리는 순간 4곳이 동시에 깨진다
+
+현재 BTS 의 단축키는 **전역 5종뿐이고 전부 "이동" 계열**이다(`?` 도움말 · `c` 생성 ·
+`/` 검색 · `g i` 내 이슈 · `g d` 대시보드). 지라(25종+)를 쓰던 사람의 손이 기억하는
+목록 항법·상세 액션이 하나도 없다. F10 은 그 첫 층인 목록 항법을 연다.
+
+문제는 **기존 5종이 손댈 수 없는 계약**이라는 점이다. 실측(2026-08-03)으로 4중 계약을
+전부 파일에서 확인했다.
+
+| 층 | 위치 | 내용 |
+|---|---|---|
+| DB | `V033__user_keymap.sql` | `user_keymap_action_chk CHECK (action IN ('help','create-issue','search','goto-my-issues','goto-dashboard'))` |
+| 백엔드 | `KeymapAction.kt` | enum 5종 + `WHITELIST_IDS` — 주석이 *"프론트 `SHORTCUTS` 와 1:1 대응해야 한다(계약)"* 를 명시 |
+| 프론트 ① | `shortcuts.test.ts:121` | `expect(SHORTCUTS).toHaveLength(5)` |
+| 프론트 ② | `shortcuts.test.ts:147` | `DEFAULT_KEYMAP` **완전일치** (`toEqual`) |
+
+`SHORTCUTS` 에 키 하나를 추가하면 네 곳이 **동시에** red 가 된다. 이 계약의 소유자는
+§3.3 FR-PF-03 이고 F10 이 아니다.
+
+**부수 발견 — 계약 문서의 실측 명령이 고장나 있다.** `jira-parity-contract.md:39` 가
+지시하는 `grep -n "toHaveLength" apps/web/src/lib/shortcuts.test.ts` 는 **존재하지 않는
+경로**라 종료코드 2 로 죽는다(실제 경로는 `apps/web/src/components/keyboard-shortcuts/`).
+계약 §2 는 *"개수 리터럴은 stale 해지는 순간 거짓이 된다 — 각 행의 명령으로 착수 시점에
+실측하라"* 로 실측을 강제하는데 **그 명령이 실측을 못 한다**. 지시대로 실행한 사람은
+0건을 보고 "계약 없음" 으로 오판한다. 같은 PR 에서 경로를 정정한다.
+
+## D-1. 분리 경계 — 도메인 지위가 다르다
+
+**결정.** `CONTEXT_SHORTCUTS` 를 **별도 레지스트리**로 신설한다. `SHORTCUTS` 는 무변경.
+경계의 근거를 "파일을 나눈다" 가 아니라 **도메인 지위 차이**로 정의한다.
+
+| | 전역 단축키 `SHORTCUTS` | 컨텍스트 단축키 `CONTEXT_SHORTCUTS` |
+|---|---|---|
+| 영속 상태 | **있음** — `user_keymap` (사용자별 override) | **없음** — 프론트 코드 상수 |
+| BC 소속 | identity-access | 없음 (화면 지역 규약) |
+| 사용자 재배치 | 가능 (FR-PF-03) | v1 불가 — 고정 키 |
+| 성격 | **개인화 도메인 개념** | **화면 지역 조작 규약** |
+
+**왜 이 정의인가.** "아직 안 만들어서 고정 키" 가 아니라 **지위가 달라서** 고정 키다.
+이렇게 정의하면 B4(사용자 재배치)가 들어올 때 컨텍스트 단축키가 identity-access 로
+올라가는 것이 **의도된 승격 경로**가 된다 — `KeymapAction` enum 확장 + `user_keymap`
+CHECK 마이그레이션이 그 승격의 대가다. 지금 그 대가를 치르지 않기로 한 것이 v1 범위 결정이다.
+
+**성공 판정식.** `shortcuts.test.ts` 의 `toHaveLength(5)` 가 **무수정 green** 유지.
+
+**glossary 등재.** 하지 않는다 — 컨텍스트 단축키는 위 정의상 도메인 개념이 아니라 UI 구현
+세부다. 다만 **전역 단축키/`KeymapAction` 은 도메인 개념인데 glossary 에 0건**이다.
+이번 FR 범위 밖이므로 별건 후보로 남긴다.
+
+## D-2. 단축키 파이프라인 단일화 — 컨텍스트 단축키는 새 리스너를 만들지 않는다
+
+**결정.** 컨텍스트 단축키를 **별도 `document` 리스너로 붙이지 않는다.** 기존
+`useKeyboardShortcuts`(RootLayout 단일 마운트)의 판별 파이프라인을 확장해
+**전역 우선 → 미매칭 시 컨텍스트 폴백** 순서로 한 리스너가 처리한다.
+
+> **★ 명제 정정 (plan 리뷰 실측, 2026-08-03).** 초안은 이 결정을 *"리스너는 하나"* 로
+> 적었으나 **사실과 다르다.** `document`/`window` keydown 리스너가 이미 **5개** 공존한다 —
+> `useKeyboardShortcuts:155`(전역 단축키) · `useCommandPalette:52`(팔레트) ·
+> `issues.$key.tsx:89`(페인 Escape 닫기) · `ShareDashboardModal:181` ·
+> `use-timeline-zoom:139`(window). 여러 리스너 공존은 BTS 의 **기존 설계**이고,
+> 이중 발화는 **`e.defaultPrevented` 체크로 조정**하는 관례가 이미 있다
+> (`usePaneEscapeClose` 주석 — *"Radix DismissableLayer 가 capture 단계에서
+> preventDefault 하므로 bubble 단계인 이 리스너는 이미 처리된 Escape 를 건너뛴다"*).
+>
+> 정확한 명제는 **"앱에 리스너가 하나"** 가 아니라 **"컨텍스트 단축키가 `SHORTCUTS`
+> 와 같은 키 공간을 공유하므로 그 둘은 반드시 한 파이프라인에서 판별돼야 한다"** 다.
+> 아래 두 결함은 **같은 키 공간을 나눠 가질 때만** 발생하며, 팔레트·타임라인처럼
+> 키 공간이 분리된 리스너와는 무관하다.
+>
+> **파생 — 컨텍스트 단축키는 발화 시 `preventDefault` 를 반드시 호출한다.** 그래야
+> 후행 bubble 리스너들이 `defaultPrevented` 로 걸러내는 기존 관례가 성립한다.
+
+**기각한 대안 — 독립 리스너 2개.** 코드 구조가 두 개의 실동작 결함을 강제한다.
+
+| 결함 | 근거 |
+|---|---|
+| `g` 누른 뒤 `j` → **커서가 움직인다** | `resolveKeydown` 은 leader 대기 중 미등록 키에 `reset` 을 반환하고(`shortcuts.ts:193`), `dispatchAction` 의 `reset` 분기는 **`preventDefault` 를 호출하지 않는다**(`useKeyboardShortcuts.ts:92-94`). 이벤트가 그대로 흘러 두 번째 리스너에 도달한다 |
+| 도움말 모달이 열렸는데 **배후 목록이 스크롤된다** | `helpOpen` 은 `useKeyboardShortcuts` 내부 `useState`(`:183`)라 외부 리스너가 알 수 없다. 전역은 모달 열림 중 help 외 전부 무동작(E7 이탈 방지)인데 그 가드가 컨텍스트에는 적용되지 않는다 |
+
+**계약 무손상 확인.** 확장 대상은 판별 **함수**와 **훅**이지 `SHORTCUTS` **배열**이 아니다.
+`shortcuts.test.ts:121` 은 배열 길이만 단언하므로 무영향. `resolveKeydown` 시그니처는
+`keymap` 인자가 이미 밟은 **옵셔널 기본값 확장 패턴**(`shortcuts.ts:175`)을 따라
+기존 호출부를 무회귀로 유지한다.
+
+**가드 재사용.** `shouldIgnoreEvent`(IME 조합 중 · meta/ctrl/alt · input/textarea/select/
+contentEditable)는 컨텍스트 단축키에도 그대로 선행 적용된다 — 한글 입력 중 `ㅓ`(j 자리)가
+커서를 움직이면 안 된다.
+
+## D-3. 항법 커서 = split 선택 재사용 (2026-08-03 Maxi 확정)
+
+**결정.** `j`/`k` 가 움직이는 커서를 **새로 만들지 않고** 기존 split view 선택
+(`selectedKey` = URL search param `selected`)을 그대로 커서로 쓴다.
+
+**실측한 현재 구조.** 이슈 목록에는 이미 선택 개념이 **둘** 있고, 코드가 그 혼동을
+명시적으로 경고하고 있다.
+
+```
+IssueTable.tsx:159  ★split 선택(selectedKey) ≠ bulk 선택(selection) — 이 둘은 완전히
+                     독립된 개념이다.
+IssueTable.tsx:211  const isCurrent = selectedKey != null && issue.key === selectedKey
+IssueTable.tsx:171  data-state="selected" + aria-current="true"   ← 강조 표기 완비
+issues.index.tsx:687  selected → split view 우측 상세 페인에 열린 이슈 키 (URL)
+issues.index.tsx:823  와이드 + selected 일 때만 2컬럼. 그 외는 목록 전체폭
+```
+
+**대안 2안을 놓고 Maxi 가 A 를 선택했다.**
+
+| 안 | 내용 | 기각/채택 사유 |
+|---|---|---|
+| **A** | **커서 = `selectedKey` 재사용** | **채택.** 지라 이슈 네비게이터와 동형 — 커서 이동이 곧 상세 교체. 새 개념 0 · 강조 표기 자산 그대로 · 새로고침/링크 공유 보존 |
+| B | 별도 커서 로컬 상태 신설 | 선택 개념이 **셋**이 된다. 코드가 이미 2개의 혼동을 경고하는 자리에 하나를 더 얹고, 강조 표기가 둘(커서·split)이라 시각 충돌 설계가 추가로 필요. 이후 F9(목록 셀 인라인 편집)·F11 이 전부 그 위에 쌓여 되돌리기가 비싸진다 |
+
+**연타 처리는 상태 분리가 아니라 요청 지연으로 푼다.** URL 은 즉시 갱신하되 우측 상세
+페치만 지연시킨다 — 값은 하나(URL)뿐이라 두 상태가 어긋나는 구간이 없고, 따라서 E2E 가
+타이밍에 의존하지 않는다. 구체적 지연 방식(debounce 값 · `replace` 옵션 · `staleTime`)은
+**D2 스펙에서 확정**한다.
+
+**좁은폭 동작 — ★초안이 틀렸고 구현 중 실측이 뒤집었다 (2026-08-03).**
+
+> 초안은 *"`getCurrentRowAttrs` 는 `selectedKey` 만 있으면 행 강조를 붙이므로 커서
+> 시각 피드백은 유지된다"* 고 적었다. **사실이 아니다.** 어댑터가
+> `selectedKey={isWide ? selected : null}` 로 넘겨(`issues.index.tsx`) 좁은폭에는
+> `selectedKey` 자체가 도달하지 않는다 — 강조를 붙일 근거값이 없다.
+>
+> **확정 동작.** 커서 단축키 4종(`j`·`k`·`o`·`t`)은 **와이드 전용**이다. 어댑터가
+> 좁은폭에서 `onCursorTo`·`onOpenCursor`·`onCloseDetailPane` 콜백을 `undefined` 로
+> 끊어 조용히 무동작시킨다. 끊지 않으면 `j` 가 URL 만 바꾸고 화면은 그대로인
+> 유령 상태가 된다. `[`(사이드바)는 폭과 무관하게 산다.
+>
+> 스펙 쪽 정정은 `docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md` §엣지 케이스
+> E13. **이 문단은 그 정정을 ADR 에 반영하지 않아 두 정본이 반대되는 말을 하던 것을
+> 닫는다** — 독립 코드리뷰 I-1 적발, 계열 교훈 `two-lists-never-check-each-other`.
+
+## D-4. 키맵 커스터마이즈 예약 키 — 프론트 단일 게이트 (2026-08-03 Maxi 확정)
+
+**독립 코드리뷰가 이 PR 이 만든 충돌면을 찾았다.** F10 이전에는 컨텍스트 키가 없어
+충돌 자체가 불가능했으므로 선재 결함이 아니라 **신규**다.
+
+**문제.** 전역 5종은 사용자가 재배치할 수 있고(FR-PF-03, `설정 → 키맵` 실배포),
+컨텍스트 5종과 **같은 키 공간**을 쓴다. 전역 판별이 먼저 돌므로 —
+
+| 단계 | 결과 |
+|---|---|
+| 사용자가 `새 이슈 생성` 을 `j` 로 재배치 | `KeymapForm` 로컬 검사 통과 (기존 5종끼리만 비교) |
+| 저장 요청 | 서버 `KeymapValidator` 6종 통과 (`CONTEXT_SHORTCUTS` 를 모름) |
+| 이후 `j` 입력 | 전역이 먼저 잡아 `/issues/new` 로 이동 |
+| 목록 항법 | **죽는다.** 그런데 도움말 모달은 여전히 `j → 다음 이슈로 이동` 을 광고 |
+
+**결정.** `KeymapForm` 의 로컬 충돌 검사에 **예약 키 규칙 1종**(`reservedContext`)을
+추가해 저장 전에 막는다. **백엔드는 무변경.**
+
+**대안 3안 중 A 채택.**
+
+| 안 | 내용 | 판정 |
+|---|---|---|
+| **A** | **프론트 예약어 — `KeymapForm` 로컬 규칙** | **채택.** 사용자가 실제로 막히고, D-1 경계(컨텍스트 키 = 영속 0 · 프론트 전용)를 지킨다 |
+| B | 백엔드 `KeymapValidator` 에도 규칙 추가 | 기각. 백엔드가 컨텍스트 키를 알면 D-1 이 정의한 "화면 지역 규약" 경계가 무너지고, 이 PR 의 `백엔드 0` 불변량도 깨진다 |
+| C | 문서에만 기록하고 후속 FR | 기각. 그때까지 사용자가 `j` 로 바꾸면 기능이 죽고 도움말이 거짓말한다 |
+
+**한계 — 명시해 둔다.** 프론트가 **유일한 게이트**다. API 를 직접 호출하면 우회된다.
+그 경우 컨텍스트 키가 죽을 뿐 데이터 손상은 없으므로 fail-safe 로 판단했다. 백엔드
+미러링은 D-1 경계를 포기할 때만 의미가 있다.
+
+**파생 규칙 — single 트리거만 막는다.** 컨텍스트 키는 전부 단일 키이고, leader
+combo(`g j`)는 leader 대기 중 컨텍스트로 넘어가지 않으므로(E6) 충돌하지 않는다.
+과잉 차단하지 않는다.
+
+**예약 목록은 `CONTEXT_SHORTCUTS` 에서 파생한다.** 하드코딩하면 F11 이 상세 액션
+8종을 추가할 때 이 가드만 뒤처져 조용히 뚫린다 — `two-lists-never-check-each-other`.
+
+## D-5. 등록 게이트 · 레이어 라우팅 · 실효 키맵 표기 (독립 리뷰 반영, 2026-08-03)
+
+세 지적이 한 뿌리였다 — **"활성이 아닌데 레이어가 살아 있다"**.
+
+### D-5-a. `enabled` 게이트 — 콜백을 끊지 말고 등록을 끊는다
+
+초안은 좁은폭에서 콜백만 `undefined` 로 넘겼다. 그러면 등록이 남아 레이어가 활성이고,
+파이프라인은 판별에 성공해 **`preventDefault` 까지 한 뒤** 아무 일도 하지 않는다 —
+브라우저 기본 동작(Firefox quick-find 등)만 사라진다.
+
+`useContextShortcuts(context, handlers, enabled)` 로 **등록 자체를 끊는다.** 활성 조건.
+
+| 호출부 | 조건 |
+|---|---|
+| `ShellLayout` | `isAuthenticated` (미인증이면 셸 자체가 없다) |
+| `IssueListPage` | `cursorEnabled(=isWide)` ∧ 로딩 아님 ∧ 에러 아님 ∧ **모달 3종 안 열림** |
+
+### D-5-b. 모달 열림 중 차단 (독립 리뷰 I-3)
+
+일괄 편집·전이·결과 다이얼로그는 **입력 요소가 없어** `shouldIgnoreEvent`
+(input/textarea/select/contentEditable 만 검사)를 통과한다. 막지 않으면 다이얼로그가
+떠 있는데 `j` 가 배후 목록을 옮기고, **`o` 는 다이얼로그를 띄운 채 화면을 통째로
+갈아치운다.** D-5-a 의 활성 조건에 얹어 닫았다.
+
+> 전역 5종도 같은 구멍이 있다(`c` 가 동일 상태에서 `/issues/new` 로 간다). 그쪽은
+> **선재 결함**이라 이 PR 범위 밖 — 별건 FR 후보.
+
+### D-5-c. 판별이 레이어를 함께 반환한다
+
+`resolveContextKeydown` 이 `{ layer, action } | null` 을 돌려주고 dispatch 가
+`handlers[layer]` 로 조회한다. 예전에는 액션 종류로 소속을 **재추론**했는데, 그건
+`CONTEXT_SHORTCUTS.context` 가 이미 선언한 지식의 복제였다. 복제가 있으면 기존
+단축키를 다른 레이어로 옮길 때 판별은 성공하고 `preventDefault` 도 하는데 dispatch 만
+엉뚱한 레이어를 봐 조용히 무동작이 된다. `never` exhaustive 가드는 액션 *종류* 추가만
+잡지 이 재배치는 못 잡는다.
+
+### D-5-d. 도움말이 실효 키맵을 표기한다 (독립 리뷰 M-8)
+
+`SHORTCUTS[].keys` 는 정적 표기라 FR-PF-03 재배치를 반영하지 못했다 — 재배치 후 모달이
+**없는 키를 계속 광고**하던 **선재 결함**이다. 훅이 이미 계산해 두는 effective 키맵을
+반환해 모달에 넘긴다. 컨텍스트 키는 v1 고정이라 영향 없다.
+
+## 남긴 것 — 스펙(D2)이 닫아야 할 것
+
+- **`## Jira 대조` 기록 부재.** 계약 §1 이 4단계 대조와 그 기록을 요구하는데 F10 의 키 선정
+  (`j`/`k`/`o`/`t`/`[`)은 **로드맵에 키만 있고 근거 기록이 없다**(레포 전수 grep 0건).
+  `j`/`k`/`o` 는 지라 관례가 확실하나 **`t`(뷰 전환 추정) · `[`(사이드바 토글 추정)는
+  확신도가 낮다** — 스펙 단계에서 실제 지라로 확인하고 기록을 남긴다.
+- 키별 의미 확정 · 활성 컨텍스트 판정 규칙 · 도움말 모달 노출 방식 (정본 D2 범위)
+- `[` 가 사이드바 토글이면 `hooks/use-sidebar-collapsed.ts`(zustand + localStorage
+  fail-safe, 계약 §4 재사용 자산 등재)를 소비한다 — 새로 만들지 않는다

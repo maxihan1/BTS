@@ -11,6 +11,7 @@ import { aliceUser, mockAccessToken } from '@/mocks/auth-fixtures'
 import { useAuthStore } from '@/auth/authStore'
 import { keymapHandlers, resetKeymapStore } from '@/mocks/keymap-handlers'
 import { KeymapForm } from './KeymapForm'
+import { CONTEXT_SHORTCUTS } from '@/components/keyboard-shortcuts/context-shortcuts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -149,6 +150,87 @@ describe('KeymapForm — 실시간 충돌 배지', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 컨텍스트 단축키 예약 키 (FR-UX-10 F10)
+//
+// F10 이 목록 항법 키(j/k/o/t/[)를 도입하면서 전역 단축키와 **같은 키 공간**을 공유하게
+// 됐다. 전역 판별이 컨텍스트보다 먼저 돌므로, 사용자가 전역 action 을 `j` 로 재배치하면
+// 목록 항법이 조용히 죽고 도움말 모달은 여전히 "j → 다음 이슈로 이동"이라고 광고한다.
+// 서버 KeymapValidator 6종은 CONTEXT_SHORTCUTS 를 모르므로(ADR D-1 — 컨텍스트 키는
+// 프론트 전용) 이 폼이 유일한 게이트다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('KeymapForm — 컨텍스트 단축키 예약 키 (FR-UX-10 F10)', () => {
+  it('★전역 action 을 목록 항법 키 "j" 로 재배치하면 예약 배지가 뜬다', async () => {
+    renderForm()
+    const createIssueInput = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+    fireEvent.keyDown(createIssueInput, { key: 'j' })
+
+    expect(createIssueInput).toHaveValue('j')
+    expect(
+      await screen.findByText(
+        '"j"는 다음 이슈로 이동에 예약된 키입니다. 다른 키를 선택해 주세요. (새 이슈 생성)',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('★예약 키 충돌 시 저장이 막힌다 (죽은 채로 저장되지 않는다)', async () => {
+    renderForm()
+    const createIssueInput = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+    fireEvent.keyDown(createIssueInput, { key: 'j' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '단축키 설정 저장' })).toBeDisabled()
+    })
+  })
+
+  it('컨텍스트 키 5종 전부가 예약된다 (레지스트리 파생 — 하드코딩 아님)', async () => {
+    // 정규식이 아니라 메시지 전문을 조립해 비교한다 — `[` 같은 키가 정규식 특수문자라
+    // 이스케이프 실수가 나기 쉽고, 전문 비교가 표기 drift 도 함께 잡는다.
+    for (const { key, description } of CONTEXT_SHORTCUTS) {
+      const { unmount } = renderForm()
+      const input = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+      fireEvent.keyDown(input, { key })
+
+      expect(
+        await screen.findByText(
+          `"${key}"는 ${description}에 예약된 키입니다. 다른 키를 선택해 주세요. (새 이슈 생성)`,
+        ),
+      ).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('★leader combo 는 막지 않는다 — "g j" 는 leader 대기 중이라 컨텍스트와 충돌하지 않는다 (E6)', async () => {
+    renderForm()
+    const createIssueInput = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+    fireEvent.keyDown(createIssueInput, { key: 'g' })
+    fireEvent.keyDown(createIssueInput, { key: 'j' })
+
+    expect(createIssueInput).toHaveValue('g j')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '단축키 설정 저장' })).toBeEnabled()
+    })
+    expect(screen.queryByText(/예약된 키입니다/)).not.toBeInTheDocument()
+  })
+
+  it('비-예약 키는 그대로 통과한다 (가드가 과잉 차단하지 않는다)', async () => {
+    renderForm()
+    const createIssueInput = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+    fireEvent.keyDown(createIssueInput, { key: 'n' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '단축키 설정 저장' })).toBeEnabled()
+    })
+    expect(screen.queryByText(/예약된 키입니다/)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 기본값 복원
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -179,7 +261,7 @@ describe('KeymapForm — 저장', () => {
           bindings: [
             { action: 'help', keyCombo: '?', trigger: 'single', customized: false },
             { action: 'create-issue', keyCombo: 'c', trigger: 'single', customized: false },
-            { action: 'search', keyCombo: 'k', trigger: 'single', customized: true },
+            { action: 'search', keyCombo: 'n', trigger: 'single', customized: true },
             { action: 'goto-my-issues', keyCombo: 'g i', trigger: 'leader', customized: false },
             { action: 'goto-dashboard', keyCombo: 'g d', trigger: 'leader', customized: false },
           ],
@@ -188,7 +270,8 @@ describe('KeymapForm — 저장', () => {
     )
     renderForm()
     const searchInput = await screen.findByLabelText('검색으로 이동 단축키 입력')
-    fireEvent.keyDown(searchInput, { key: 'k' })
+    // 'k' 는 FR-UX-10 F10 이 목록 항법에 예약한 키라 저장이 막힌다 — 비예약 키로 검증한다
+    fireEvent.keyDown(searchInput, { key: 'n' })
 
     fireEvent.click(screen.getByRole('button', { name: '단축키 설정 저장' }))
 
@@ -197,7 +280,7 @@ describe('KeymapForm — 저장', () => {
         bindings: [
           { action: 'help', keyCombo: '?' },
           { action: 'create-issue', keyCombo: 'c' },
-          { action: 'search', keyCombo: 'k' },
+          { action: 'search', keyCombo: 'n' },
           { action: 'goto-my-issues', keyCombo: 'g i' },
           { action: 'goto-dashboard', keyCombo: 'g d' },
         ],

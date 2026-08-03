@@ -274,20 +274,46 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **정본이 이미 예약해 둔 범위다.** §4.3(FR-UX-05)이 *"컨텍스트 의존 단축키(`j/k/e/m/s`)는 **후속 FR로 제외**(Maxi 결정 2026-07-05)"* 로 명시 이연했고, 이 FR 이 그 **승계자**다. 현재 단축키는 전역 네비게이션 5종뿐이고 전부 "이동" 계열이라, 지라(25종+)를 쓰던 사람의 손이 기억하는 동작이 하나도 없다.
 
+> **★ 이연 목록 대사표 — "승계"가 아니라 "기준 교체"다 (2026-08-03 판정).**
+> 이연 시점의 `j/k/e/m/s` 는 **Gmail/Linear 기준**이었다(§4.3 D2 가 *"Gmail/Linear 스타일"* 로
+> 참조 기준을 명시). 승계 시점의 F10·F11 은 **Jira 기준**이다. 두 세트가 달라 **글자만 겹치고
+> 동작이 다른 항목 2건 + 대응이 없어 조용히 빠진 항목 1건**이 생겼다. 전수 대조로 닫는다.
+>
+> | 이연 (Gmail 기준) | 승계 (Jira 기준) | 판정 |
+> |---|---|---|
+> | `j` 다음 항목 | `j` go down — **F10** | 동일 |
+> | `k` 이전 항목 | `k` go up — **F10** | 동일 |
+> | `e` 보관(archive) | `e` 편집(edit) — **F11** | **글자만 같음** |
+> | `m` 음소거(mute) | `m` 댓글(comment) — **F11** | **글자만 같음** |
+> | `s` 별표(star) | 지라 대응 없음 → **`s` 즐겨찾기 토글로 F11 에 배치** | **누락분 복원** |
+>
+> `s` 의 BTS 대응은 **이슈 즐겨찾기**이고 기능이 이미 완비돼 있다 — `useFavorites('ISSUE')` ·
+> `FavoriteController`(notification BC) 의 `@PostMapping`(201/200 멱등) ·
+> `@DeleteMapping`(204 멱등) · `@GetMapping` 실측. 지라의 `w`(관심)와는 **별개 기능**이라
+> F11 에서 `s`·`w` 두 키가 공존한다.
+> 두 목록이 서로를 검사하지 않아 항목이 빠진 사례 — 계열 교훈 `two-lists-never-check-each-other`.
+
 승계 PR 2건 (로드맵 §PR 체인 Tier 2).
 
-- **F10 — 컨텍스트 단축키 아키텍처 + 목록 항법** `j`/`k`/`o`/`t`/`[`. 신규 `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` · `Sidebar.tsx`.
-- **F11 — 상세 액션 단축키** `a`/`i`/`m`/`e`/`l`/`w`/`.`. `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx`.
+- **F10 — 컨텍스트 단축키 아키텍처 + 목록 항법** `j`/`k`/`o`/`t`/`[`. 신규 `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx`.
+- **F11 — 상세 액션 단축키** `a`/`i`/`m`/`e`/`l`/`s`/`w`/`.` (**8종** — `s` 복원분 포함). `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx` · 즐겨찾기(`api/favorites.ts`) 소비.
 
 **아키텍처**. 🛑 **`shortcuts.ts` 의 `SHORTCUTS` 를 건드리면 안 된다.** 여기에 키를 추가하면 `shortcuts.test.ts:121` `toHaveLength(5)` + `:147` `DEFAULT_KEYMAP` 완전일치 + 백엔드 `KeymapAction.kt` 5종 화이트리스트 + `user_keymap.action` CHECK 제약이 **동시에** 깨진다 — 이 4중 계약의 소유자는 §3.3 FR-PF-03 이다. 정답은 **`CONTEXT_SHORTCUTS` 별도 레지스트리 신설**이고, 성공 판정식은 "`shortcuts.test.ts:121` 이 **무수정 green** 을 유지" 다. 사용자 재배치(로드맵 B4)는 `KeymapAction` enum + `user_keymap` CHECK 신규 마이그레이션을 요구하므로 **v1 은 고정 키**로 출시한다.
 
-- [ ] D1. 도메인 — 컨텍스트(목록/상세/보드) 별 단축키 레지스트리 개념 정립. `SHORTCUTS`(전역) 와의 분리 경계 (책임. frontend-engineer)
-- [ ] D2. 명세 — 컨텍스트별 키 매핑 · 활성 컨텍스트 판정 · 입력포커스/IME 가드 · 도움말 모달 노출 (책임. designer)
-- [ ] D3. 데이터 모델 — 없음 (단축키 정의는 프론트 코드 상수. 사용자 재배치는 B4 로 범위 밖) (책임. -)
-- [ ] D4. 백엔드 — 없음 (v1 고정 키. `KeymapAction` enum·`user_keymap` CHECK 무변경이 계약이다) (책임. -)
-- [ ] D5. 백엔드 테스트 — 해당 없음 (백엔드 변경 0) (책임. -)
-- [ ] D6. 프론트 UI — F10 `CONTEXT_SHORTCUTS`·`useContextShortcuts` + 목록 항법 · F11 상세 액션 7종 (책임. frontend-engineer)
-- [ ] D7. E2E — 컨텍스트별 발화 · `shortcuts.test.ts:121` `toHaveLength(5)` 무수정 green 유지 (책임. qa-engineer)
+- [x] D1. 도메인 — **F10 완료 (PR #336)**. 컨텍스트를 **레이어**로 정립(`app-shell` ⊃ `issue-list`) + `SHORTCUTS`(전역) 와의 분리 경계를 **도메인 지위 차이**로 정의 — 전역은 `user_keymap` 영속을 가진 identity-access 개념, 컨텍스트는 영속 0 의 화면 지역 규약. B4 승격 경로가 의도된 경로가 된다 (책임. frontend-engineer)
+- [x] D2. 명세 — **F10 완료 (PR #336)**. 키 5종 매핑 + Jira Cloud 공식 문서 대조 기록(레포 근거 0건이던 것) · 활성 컨텍스트 라우트 기반 판정 · `shouldIgnoreEvent` 가드 승계 · 도움말 그룹 2종. 커서 단축키는 **와이드 전용**(E13 — 구현 중 실측이 초안을 뒤집음) (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — **없음 확정**. 단축키 정의는 프론트 코드 상수. 마이그레이션 0 (책임. -)
+- [x] D4. 백엔드 — **없음 확정**. v1 고정 키. `KeymapAction` enum·`user_keymap` CHECK **무변경 기계 확인**(`git diff --exit-code`). 키맵 예약 키 가드도 프론트 단일 게이트로 두어 백엔드 0 을 지켰다(ADR D-4) (책임. -)
+- [x] D5. 백엔드 테스트 — **해당 없음 확정** (백엔드 변경 0) (책임. -)
+- [ ] D6. 프론트 UI — **F10 완료 (PR #336)**. `context-shortcuts.ts`(레지스트리+판별+커서 경계) · `useContextShortcuts.ts`(zustand 등록/`enabled` 게이트) · `useKeyboardShortcuts` 폴백 확장 · `ShortcutsHelpDialog` 그룹 2종 + 실효 키맵 표기 · `issues.index.tsx` 커서 배선 · `ShellLayout` `[` 등록 · `KeymapForm` 예약 키 가드. **F11 잔여** — 상세 액션 **8종**(`s` 복원분 포함), F8(§4.9) 의존 (책임. frontend-engineer)
+- [ ] D7. E2E — **F10 완료 (PR #336)**. `context-shortcuts.spec.ts` 8 시나리오 + 회귀 30 동반. `shortcuts.test.ts` `toHaveLength(5)` 무수정 green 유지 확인. **F11 잔여** (책임. qa-engineer)
+
+> **F10 완료 (PR #336, 2026-08-03).** 독립 리뷰 3종이 결함 12건을 적발해 전량 봉합 —
+> 실버그 1(`?selected=` 직접 진입 시 스크롤 미동작) · **공허 가드 4**(E13 커버리지 0 ·
+> E2E S7/E12 negative 가 동기 URL 읽기 · FR10 테스트 0) · 신규 충돌면 1(키맵 재배치로
+> 기능 사망 → ADR D-4) · 선재 3(계약 문서 실측 명령 사망 · 도움말 정적 표기 · `s` 키 실종) ·
+> 문서 drift 3 · 성능·규칙 1. 뮤테이션 M1~M12 로 전 가드의 비-공허 확인.
+> **완주 순서** — §4.9 FR-UX-11(F8 → F9) → F11 → D6/D7 `[x]`.
 
 ### §4.9 FR-UX-11 — 인라인 편집
 

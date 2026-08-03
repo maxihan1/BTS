@@ -15,7 +15,7 @@ export const RootLayout = () => {
   // enabled로 인증 상태를 전달 — 비로그인 시 훅 내부에서 리스너 미등록(FR2, E5)
   const { open: isCommandPaletteOpen, setOpen: setCommandPaletteOpen } = useCommandPalette(isAuthenticated)
   // enabled로 인증 상태를 전달 — 비로그인 시 훅 내부에서 keydown 리스너 미등록(FR7, E8)
-  const { helpOpen, setHelpOpen } = useKeyboardShortcuts(isAuthenticated)
+  const { helpOpen, setHelpOpen, keymap } = useKeyboardShortcuts(isAuthenticated)
 
   return (
     <div>
@@ -24,7 +24,9 @@ export const RootLayout = () => {
           소유한다(C3, FR-UX-06 PR12 Task 5). RootLayout이 Outlet 전체를 <main>으로 감싸면 header(banner)·
           aside(complementary)가 main 안에 중첩돼 landmark가 오염되므로 여기서는 <main> 없이 Outlet만 렌더한다. */}
       {isAuthenticated && <CommandPalette open={isCommandPaletteOpen} onOpenChange={setCommandPaletteOpen} />}
-      {isAuthenticated && <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />}
+      {isAuthenticated && (
+        <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} keymap={keymap} />
+      )}
       <Outlet />
     </div>
   )
