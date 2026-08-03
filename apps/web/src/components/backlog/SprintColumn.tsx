@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { burndownLabels } from '@/i18n/burndown-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
+import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { BacklogCard } from './BacklogCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,6 +40,18 @@ export interface SprintColumnProps {
    * Task 8 부모가 주입한다.
    */
   onComplete?: () => void
+  /**
+   * 이슈 생성 진입점 클릭 콜백 (FR-UX-09 F3 FR-2).
+   *
+   * **미전달이면 진입점을 렌더하지 않는다** — 기존 소비처 무회귀.
+   * `COMPLETED` 스프린트에서도 렌더하지 않는다 — 드롭이 막힌 것과 같은 기준이다 (E-3).
+   * 모달은 이 칸이 아니라 **부모가 하나만** 소유한다 (FR-15).
+   */
+  onCreateIssue?: () => void
+  /**
+   * CREATE 권한 보유 여부. **fail-closed** — 로딩·에러·미보유는 전부 `false` 다.
+   */
+  canCreateIssue?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +86,8 @@ function SprintColumnInner({
   isOver = false,
   onStart,
   onComplete,
+  onCreateIssue,
+  canCreateIssue = false,
 }: SprintColumnProps) {
   const isCompleted = sprint.status === 'COMPLETED'
   const droppableId = `sprint-${sprint.sprintId}`
@@ -111,6 +126,17 @@ function SprintColumnInner({
           >
             {issueCount}
           </span>
+          {/* 이슈 생성 진입점 — 제목 행에 둔다. 이 헤더는 이미 시작/완료·번다운이 세로로
+              쌓이므로 스택에 3번째를 얹으면 헤더가 계속 길어진다 (design 리뷰 DR-2).
+              COMPLETED 는 드롭이 막힌 것과 같은 기준으로 미렌더한다 (E-3). */}
+          {onCreateIssue !== undefined && !isCompleted && (
+            <CreateIssueEntryButton
+              label={backlogLabels.createIssueInSprint(sprint.name)}
+              variant="icon"
+              canCreate={canCreateIssue}
+              onClick={onCreateIssue}
+            />
+          )}
         </div>
 
         {/* 버튼 슬롯 — PLANNED이면 시작, ACTIVE이면 완료, COMPLETED이면 없음 */}

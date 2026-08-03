@@ -1,6 +1,6 @@
 // 백로그·스프린트 보드 루트 컴포넌트 — DnD 오케스트레이션 + 라이프사이클 (FR-BL-01/02 D6/D7)
 import type { JSX } from 'react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -32,6 +32,7 @@ import { SprintColumn } from './SprintColumn'
 import { CreateSprintForm } from './CreateSprintForm'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { issueCreateStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -130,6 +131,21 @@ export function BacklogBoard({
   const [createTarget, setCreateTarget] = useState<string | null>(null)
 
   const openCreateForBacklog = useCallback(() => { setCreateTarget('backlog') }, [])
+  /**
+   * 스프린트 칸별 열기 콜백 캐시.
+   *
+   * 칸이 `memo` 라 매 렌더 새 함수를 주면 재렌더 스킵이 무력화된다 (NFR-4).
+   * 스프린트 수만큼 콜백이 필요하므로 id 를 키로 한 번 만든 것을 재사용한다.
+   */
+  const openCreateForSprintRef = useRef(new Map<string, () => void>())
+  const openCreateForSprint = useCallback((sprintId: string): (() => void) => {
+    const cache = openCreateForSprintRef.current
+    const existing = cache.get(sprintId)
+    if (existing !== undefined) return existing
+    const fn = (): void => { setCreateTarget(sprintId) }
+    cache.set(sprintId, fn)
+    return fn
+  }, [])
 
   const { data: backlogView, isLoading } = useBacklog(projectKey)
   const rerankIssue = useRerankIssue(projectKey)
@@ -149,6 +165,31 @@ export function BacklogBoard({
     rerankIssue.mutate(
       { issueKey, body: rerank },
       { onError: () => toast.warning(backlogLabels.rerankFailedWarning) },
+    )
+  }
+
+  /**
+   * 생성 성공 직후 처리 — 스프린트 칸에서 열었으면 그 스프린트에 배정한다 (FR-4).
+   *
+   * ### 왜 2회 호출인가
+   * `POST /issues` 계약에 `sprintId` 가 없다(2026-08-03 실측). 그래서 생성 후
+   * 기존 배정 API 를 한 번 더 부른다 (ADR D-2). 백엔드 확장은 별도 FR 후보다.
+   *
+   * ### 🛑 2차 실패를 1차 실패처럼 다루지 않는다
+   * 여기서 실패해도 **이슈는 온전히 만들어졌다.** 빨간 실패 토스트를 띄우면
+   * 「안 만들어졌다」로 읽혀 사용자가 다시 만들고 **중복 이슈**가 생긴다.
+   * 경고 톤 + 이슈 키 + 「백로그에서 확인」으로 낸다 (FR-5, ADR D-2).
+   * 선례 — `backlogLabels.rerankFailedWarning`(이동은 됐고 순서만 실패)이 같은 형태다.
+   */
+  function handleIssueCreated(issueKey: string): void {
+    const target = createTarget
+    setCreateTarget(null)
+    // 백로그 칸에서 열었으면 배정할 것이 없다 — 스프린트 미지정이 곧 백로그다.
+    if (target === null || target === 'backlog') return
+
+    assignToSprint.mutate(
+      { sprintId: target, issueKey },
+      { onError: () => toast.warning(issueCreateStrings.sprintAssignFailed(issueKey)) },
     )
   }
 
@@ -288,6 +329,8 @@ export function BacklogBoard({
               onComplete={canManageSprint ? () => completeSprint.mutate(sprint.sprintId, {
                 onError: () => toast.error(backlogLabels.moveFailedError),
               }) : undefined}
+              canCreateIssue={canCreateIssue}
+              onCreateIssue={openCreateForSprint(sprint.sprintId)}
             />
           ))}
         </div>
@@ -300,6 +343,7 @@ export function BacklogBoard({
         open={createTarget !== null}
         onOpenChange={(open) => { if (!open) setCreateTarget(null) }}
         initialProjectKey={projectKey}
+        onCreated={handleIssueCreated}
       />
     </div>
   )

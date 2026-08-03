@@ -148,9 +148,34 @@ vi.mock('@/hooks/use-backlog', () => ({
   backlogKeys: { detail: (key: string) => ['backlog', key] },
 }))
 
+// FR-UX-09 F3 — 생성 모달을 스텁으로 둔다.
+//
+// ★이 파일의 관심사는 **배선**이다 — 어느 칸에서 열었는지에 따라 어느 mutation 이 걸리는가.
+// 폼 자체(프로젝트·유형·커스텀필드 목 조립)를 여기서 구동하면 검증하려는 것보다
+// 목 셋업이 커지고, 폼이 바뀔 때마다 이 파일이 같이 깨진다.
+//
+// ⚠️ **대가를 명시한다** — 스텁은 진짜 모달이 실제로 열리고 제출되는지를 보지 못한다.
+// 그 판정은 실제 MSW 를 쓰는 E2E(T8, `issue-create-entry-points.spec.ts`)가 갖는다.
+const STUB_CREATED_KEY = 'ATLAS-42'
+vi.mock('@/components/issue/CreateIssueDialog', () => ({
+  CreateIssueDialog: ({
+    open,
+    onCreated,
+  }: {
+    open: boolean
+    onCreated?: (key: string) => void
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="이슈 생성 모달 스텁">
+        <button type="button" onClick={() => onCreated?.(STUB_CREATED_KEY)}>
+          스텁 생성 완료
+        </button>
+      </div>
+    ) : null,
+}))
+
 import { BacklogBoard } from './BacklogBoard'
 import { backlogLabels } from '@/i18n/backlog-labels'
-import { issueCreateStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -771,6 +796,10 @@ describe('BacklogBoard', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BacklogBoard — 이슈 생성 모달 소유권 (F3 FR-15)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('백로그 칸 진입점을 누르면 모달이 열린다', async () => {
     const user = userEvent.setup()
     renderBoard('ATLAS', { canCreateIssue: true })
@@ -810,6 +839,12 @@ describe('BacklogBoard — 이슈 생성 모달 소유권 (F3 FR-15)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR-4/FR-5)', () => {
+  // ⚠️ 이 블록은 위 `describe('BacklogBoard')` 밖이라 그쪽 beforeEach 가 닿지 않는다.
+  // 없으면 앞 테스트의 호출 기록이 넘어와 「부르지 않았다」 단언이 거짓 실패한다.
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('스프린트 칸에서 만들면 그 스프린트로 배정을 건다', async () => {
     const user = userEvent.setup()
     renderBoard('ATLAS', { canCreateIssue: true })
@@ -821,9 +856,7 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
     )
     await screen.findByRole('dialog')
 
-    // 모달의 성공 콜백을 직접 부르는 대신, 생성 성공 경로를 폼 제출로 태운다.
-    await user.type(await screen.findByLabelText(issueCreateStrings.summaryLabel), '새 이슈')
-    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+    await user.click(screen.getByRole('button', { name: '스텁 생성 완료' }))
 
     await waitFor(() => {
       expect(mockAssignMutate).toHaveBeenCalledWith(
@@ -841,8 +874,7 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
       screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
     )
     await screen.findByRole('dialog')
-    await user.type(await screen.findByLabelText(issueCreateStrings.summaryLabel), '새 이슈')
-    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+    await user.click(screen.getByRole('button', { name: '스텁 생성 완료' }))
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull()
@@ -864,8 +896,7 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
       }),
     )
     await screen.findByRole('dialog')
-    await user.type(await screen.findByLabelText(issueCreateStrings.summaryLabel), '새 이슈')
-    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+    await user.click(screen.getByRole('button', { name: '스텁 생성 완료' }))
 
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalled()
