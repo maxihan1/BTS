@@ -112,6 +112,12 @@ export const issueDetailStrings = {
   descriptionSaveButton: '저장',
   /** 본문 편집 취소 버튼 */
   descriptionCancelButton: '취소',
+  /** 본문 편집 취소 시 작성분 폐기 확인 문구 (편차 D-1) */
+  descriptionDiscardConfirm: '작성 중인 내용이 사라집니다. 편집을 그만둘까요?',
+  /** 확인 패널 — 작성분을 버리고 나간다 (기존 '취소'와 문자열을 분리해 중복 회피) */
+  descriptionDiscardConfirmButton: '편집 그만두기',
+  /** 확인 패널 — 편집으로 돌아간다 */
+  descriptionDiscardCancelButton: '계속 편집',
 
   // ── 우선순위(priority) ──────────────────────────────────────────────
   /** 메타패널 — 우선순위 레이블 */

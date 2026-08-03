@@ -1,5 +1,7 @@
 // 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
-import type { JSX, RefObject } from 'react'
+// KeyboardEvent 는 별칭으로 받는다 — 그냥 이름으로 들이면 usePaneEscapeClose(:79)가 쓰는
+// 전역 DOM KeyboardEvent 를 모듈 스코프에서 가려 document 리스너 타입이 조용히 바뀐다.
+import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -109,6 +111,50 @@ function usePaneFocusOnLoad(
   }, [variant, loaded, targetRef])
 }
 
+/**
+ * 제목 편집 진입 시 입력창으로 포커스를 옮기고 커서를 **텍스트 끝**에 놓는다 (FR1).
+ *
+ * 두 진입로(제목 텍스트 클릭 · `✎ 제목 수정` 버튼)가 모두 `isEditingTitle` 을 켜므로
+ * 여기 한 곳만 두면 경로가 갈리지 않는다.
+ *
+ * `autoFocus` 속성을 쓰지 않는 이유. 포커스만 줄 뿐 커서 위치가 브라우저마다 달라
+ * (전체 선택 / 맨 앞 / 맨 뒤) 스펙의 "커서는 텍스트 끝"을 보장하지 못한다.
+ * `preventScroll` 은 usePaneFocusOnLoad 와 같은 배려 — 포커스 이동이 스크롤 점프를 만들지 않게 한다.
+ *
+ * 의존성이 `isEditing` 뿐이라 편집 중 타이핑(`editSummary` 변경)으로는 재실행되지 않는다.
+ * 재실행되면 사용자가 옮겨 둔 커서를 매 타건마다 끝으로 되돌려 버린다.
+ *
+ * **편집이 끝나면 진입면(`returnRef`)으로 포커스를 되돌린다 (WCAG 2.4.3).**
+ * 되돌리지 않으면 `Input` 언마운트와 함께 포커스가 `<body>` 로 떨어져, 키보드 사용자의
+ * 다음 `Tab` 이 문서 맨 앞부터 다시 시작한다. `Enter` 저장·`Esc` 취소를 1급 키보드 경로로
+ * 승격시킨 이상 왕복이 닫혀야 한다.
+ *
+ * `wasEditingRef` 가 **마운트 시 포커스 탈취를 막는다** — 초기값 false 라 편집을 연 적이
+ * 없으면 복귀 분기가 돌지 않는다. 이게 없으면 usePaneFocusOnLoad 의 제목 포커스와 싸운다.
+ */
+function useTitleEditFocus(
+  isEditing: boolean,
+  inputRef: RefObject<HTMLInputElement | null>,
+  returnRef: RefObject<HTMLButtonElement | null>,
+): void {
+  const wasEditingRef = useRef(false)
+  useEffect(() => {
+    if (isEditing) {
+      const input = inputRef.current
+      if (input !== null) {
+        input.focus({ preventScroll: true })
+        const end = input.value.length
+        input.setSelectionRange(end, end)
+      }
+    } else if (wasEditingRef.current) {
+      // 편집이 방금 끝났다(저장·취소 공통). 진입면이 사라진 경우(권한이 false 로 뒤집힘)는
+      // optional chaining 으로 무해하게 넘긴다 — 없는 요소에 포커스를 강제하지 않는다.
+      returnRef.current?.focus({ preventScroll: true })
+    }
+    wasEditingRef.current = isEditing
+  }, [isEditing, inputRef, returnRef])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
 //
@@ -180,6 +226,11 @@ export function IssueDetailPage({
   // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
   const paneTitleRef = useRef<HTMLHeadingElement>(null)
 
+  // 제목 편집 입력창 — 진입 시 포커스 + 커서 끝 배치용 (FR-UX-11 F8 FR1)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  // 편집 종료 후 포커스 복귀 대상 — 제목 클릭 진입면 (WCAG 2.4.3)
+  const titleButtonRef = useRef<HTMLButtonElement>(null)
+
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
     queryFn: async () => {
@@ -209,6 +260,9 @@ export function IssueDetailPage({
 
   usePaneFocusOnLoad(variant, issue !== undefined, paneTitleRef)
   usePaneEscapeClose(variant, onClose)
+  // usePaneFocusOnLoad 와 충돌하지 않는다 — 그쪽은 hasFocusedRef 로 **데이터 로드 시 1회만**
+  // 발화하고 끝나므로, 그 뒤에 열리는 편집 포커스와 시점이 겹치지 않는다.
+  useTitleEditFocus(isEditingTitle, titleInputRef, titleButtonRef)
 
   // ── 최근 본 이슈 기록 (FR-UX-08 PR-B FR4) ──────────────────────────────────
   /**
@@ -471,12 +525,52 @@ export function IssueDetailPage({
     setEditSummary('')
   }
 
+  /**
+   * 제목 텍스트 클릭 → 편집 진입 (FR1). 본문(`IssueDescription.handleContentClick`)과
+   * **같은 판정식**으로 텍스트 선택 중을 배제한다 (E2 / 편차 D-2).
+   *
+   * 드래그로 제목을 복사하려는 참이면 열지 않는다 — Jira Cloud 는 이 경우에도 편집이
+   * 열려 선택이 날아가는 미해결 결함이 있다(JRA-64389 · JRA-29063). 결함까지 복제하지 않는다.
+   *
+   * 본문에 있는 `closest('a')` 배제는 **여기선 불필요하다 (실측)** — 제목은
+   * `{issue.summary}` 문자열이 텍스트 노드로만 들어가고 이 파일에 `dangerouslySetInnerHTML`
+   * 이 0건이라 버튼 안에 앵커가 생길 경로가 없다. 없는 경우를 위한 가드는 두지 않는다.
+   */
+  function handleTitleClick() {
+    if (window.getSelection()?.isCollapsed === false) return
+    handleEditStart()
+  }
+
   function handleEditSave() {
     if (issue === undefined) return
     updateMutation.mutate(
       { key: issue.key, summary: editSummary, expectedVersion: issue.version },
       { onSuccess: () => setIsEditingTitle(false) },
     )
+  }
+
+  /**
+   * 제목 편집 입력창의 키 처리 — Enter 저장 / Esc 취소 (FR2/FR3).
+   *
+   * 저장·취소는 버튼과 **같은 핸들러**를 탄다. 새 저장 경로를 만들면
+   * useUpdateIssueSummary 의 OCC(낙관적 동시성 제어)·409 롤백·toast 를 승계하지 못한다.
+   */
+  function handleTitleKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    // E4 — 한글 IME(입력기) 조합을 확정하는 Enter 를 저장으로 오인하지 않는다.
+    // keyCode 229 는 조합 중 keydown 을 쓰는 브라우저용 이중 방어.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      // E5 — 저장 진행 중이거나 권한이 없으면 중복 제출을 막는다 (저장 버튼 disabled 와 동일 조건)
+      if (updateMutation.isPending || !canEdit) return
+      handleEditSave()
+    } else if (e.key === 'Escape') {
+      // ★ E1 — 이 preventDefault 가 usePaneEscapeClose(:86)의 defaultPrevented 가드를 세운다.
+      // 지우면 pane 에서 Esc 한 번에 편집 취소와 패널 닫기가 동시 발화한다.
+      e.preventDefault()
+      handleEditCancel()
+    }
   }
 
   // ── 타입 변경 핸들러 ─────────────────────────────────────────────────────
@@ -643,6 +737,39 @@ export function IssueDetailPage({
     }
   }
 
+  // ── 제목 본문 ─────────────────────────────────────────────────────────────
+  // 수정 권한이 있으면 제목 텍스트 자체를 편집 진입면(button)으로 감싼다.
+  // heading 요소는 그대로 두고 "안쪽만" 감싸므로 heading 의 접근성 이름은
+  // 내부 텍스트에서 계산돼 보존된다 (jira-parity-contract §2 즉사 계약).
+  // <button> 이라 키보드 Tab·Enter 로도 도달·발동된다.
+  const titleContent = canEdit ? (
+    // PR22 OUT — P6 전체 클릭 영역: 제목 인라인 편집 트리거로 w-full text-left 가 필요하고,
+    // Button 프리미티브의 inline-flex justify-center · h-8 px-2.5 text-sm 과 충돌한다
+    // (DashboardTile 타일 제목 인라인 편집과 동형 — 같은 P6 판정).
+    //
+    // 🛑 이 버튼에 `aria-label` 을 붙이지 마라. 감싸는 h1/h2 의 접근성 이름은 자손 텍스트로
+    //    계산되는데, aria-label 이 붙으면 **heading 의 이름까지 그 문자열로 대체돼**
+    //    jira-parity-contract §2 즉사 계약(h1 verbatim)과 E2E `getByRole('heading',{name})`
+    //    가 동시에 깨진다 (F8-T1-2 가 현재 보존의 증인).
+    //    용도 설명이 필요하면 `aria-describedby` + 시각적 숨김 텍스트를 쓸 것.
+    //
+    // 🛑 `select-text` 를 지우지 마라 — 장식이 아니다. <button> 에서 `user-select: auto` 는
+    //    CSS UI 규격상 **none 으로 해석**된다(Chromium 실측. 이 클래스 없이 드래그하면 선택
+    //    길이 0). 제목을 버튼으로 감싼 순간 사용자가 **제목을 복사할 수 없게 되는** 회귀가
+    //    생기고(감싸기 전 <h1> 순수 텍스트에서는 됐다), 선택 자체가 안 생기니 아래
+    //    handleTitleClick 의 isCollapsed 가드도 영원히 발동하지 못한다.
+    <button
+      ref={titleButtonRef}
+      type="button"
+      onClick={handleTitleClick}
+      className="text-left w-full rounded-sm select-text hover:bg-(--bg-neutral-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+    >
+      {issue.summary}
+    </button>
+  ) : (
+    issue.summary
+  )
+
   // ── 성공 레이아웃 ─────────────────────────────────────────────────────────
   return (
     <div className="max-w-[960px] mx-auto px-6 py-10">
@@ -698,9 +825,11 @@ export function IssueDetailPage({
           {isEditingTitle ? (
             <div className="flex flex-col gap-2">
               <Input
+                ref={titleInputRef}
                 aria-label={issueDetailStrings.titleEditLabel}
                 value={editSummary}
                 onChange={(e) => setEditSummary(e.target.value)}
+                onKeyDown={handleTitleKeyDown}
                 className="text-xl font-semibold"
               />
               <div className="flex gap-2">
@@ -728,10 +857,10 @@ export function IssueDetailPage({
               {/* pane이면 h2로 강등 — 문서 h1 단일 계약 (FR-UX-06 PR20 Task 1) */}
               {variant === 'pane' ? (
                 <h2 ref={paneTitleRef} tabIndex={-1} className="text-2xl font-semibold leading-snug mb-1">
-                  {issue.summary}
+                  {titleContent}
                 </h2>
               ) : (
-                <h1 className="text-2xl font-semibold leading-snug mb-1">{issue.summary}</h1>
+                <h1 className="text-2xl font-semibold leading-snug mb-1">{titleContent}</h1>
               )}
               <Button
                 type="button"

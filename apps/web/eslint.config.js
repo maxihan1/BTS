@@ -74,10 +74,14 @@ export default tseslint.config(
     },
   },
   {
-    // FR-UX-06 PR22 — 원시 <button> 을 남기기로 판정한 파일 전수 (19파일 / 20발생).
-    // 목록은 세션 2 재열거로 확정했고 위 판정식으로 기계 도출했다. 각 발생 위의
-    // `// PR22 OUT — P4|P5|P6` 주석과 1:1 대응하며, button-primitive-usage.test.ts 가
-    // 그 대응을 전수 비교로 강제한다.
+    // FR-UX-06 PR22 — 원시 <button> 을 남기기로 판정한 파일 전수.
+    // **아래 목록이 정본이고 개수는 세지 않는다.** 개수 리터럴은 목록이 늘어나는 순간
+    // 거짓이 되는데 아무도 안 고쳐 조용히 오정보로 남는다(교훈
+    // `orchestrator-instruction-counts-are-blindfolds` — 실제로 `19파일 / 20발생` 이
+    // 낡은 채 방치돼 있었다). button-primitive-usage.test.ts:118 도 같은 이유로
+    // "여기 적힌 숫자를 신뢰 근거로 쓰지 않는다" 고 선언한다.
+    // 목록은 위 판정식으로 기계 도출했고, 각 발생 위의 `// PR22 OUT — P4|P5|P6` 주석과
+    // 1:1 대응하며 button-primitive-usage.test.ts 가 그 대응을 **전수 비교**로 강제한다.
     files: [
       // ── P4 role="tab" (탭 시맨틱 직접 지정) ──
       'src/components/issue/IssueDescription.tsx',
@@ -101,6 +105,7 @@ export default tseslint.config(
       'src/components/issue/IssueChangelog.tsx',
       'src/components/layout/ProjectTree.tsx',
       'src/features/calendar/MonthGrid.tsx',
+      'src/routes/issues.$key.tsx',
     ],
     rules: {
       // 같은 파일의 animate-pulse 락은 살려 둔다 — button 예외가 스켈레톤 예외를 겸하면

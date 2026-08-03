@@ -1,6 +1,6 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -379,6 +379,86 @@ describe('IssueDetailPage — 제목 인라인 편집', () => {
 
     expect(screen.queryByRole('textbox', { name: /제목 편집/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 Task 1 — 제목 텍스트 클릭으로 편집 진입
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 제목 텍스트 클릭 진입 (FR-UX-11 F8 Task 1)', () => {
+  /**
+   * F8-T1-1. 제목 텍스트 자체를 클릭하면 편집 모드로 진입한다 (FR1).
+   * 기존 "✎ 제목 수정" 버튼 경로와 별개의 두 번째 진입면이다.
+   */
+  it('F8-T1-1: 제목 텍스트 클릭 시 편집 모드로 진입한다', async () => {
+    setupIssueFoundHandler()
+    const user = userEvent.setup()
+
+    renderPage('ATLAS-1')
+
+    const title = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+    await user.click(title)
+
+    expect(screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })).toBeInTheDocument()
+  })
+
+  /**
+   * F8-T1-2. 클릭 진입면을 넣어도 heading 의 접근성 이름이 그대로다 (jira-parity-contract §2).
+   * heading 의 이름은 자손 텍스트에서 계산되므로 안쪽을 button 으로 감싸도 보존돼야 한다.
+   */
+  it('F8-T1-2: 제목 heading 의 접근성 이름이 클릭 진입면을 넣어도 보존된다', async () => {
+    setupIssueFoundHandler()
+
+    renderPage('ATLAS-1')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * F8-T1-3. 수정 권한이 없으면 클릭 진입면 자체가 없다 (FR8, fail-closed).
+   * heading 은 그대로 남아 읽기는 가능해야 한다.
+   */
+  it('F8-T1-3: 수정 권한이 없으면 클릭 진입면이 없고 heading 은 남는다', async () => {
+    vi.mocked(useIssuePermissions).mockReturnValue({
+      data: {
+        issueKey: 'ATLAS-1',
+        permissions: { UPDATE: false, SOFT_DELETE: false, TRANSITION: false },
+      },
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useIssuePermissions>)
+    setupIssueFoundHandler()
+
+    renderPage('ATLAS-1')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: issueAtlas1Fixture.summary }),
+    ).not.toBeInTheDocument()
   })
 })
 
@@ -2115,5 +2195,456 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
       expect(onIssueClosed).toHaveBeenCalledTimes(1)
     })
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 Task 2 — 제목 편집 Enter 저장 / Esc 취소
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 제목 편집 모드로 들어가 입력창을 돌려준다.
+ * 진입은 기존 `✎ 제목 수정` 버튼을 쓴다 — Task 1 의 클릭 진입면과 무관하게
+ * 키 처리 계약만 검증하기 위해서다.
+ */
+async function enterTitleEdit(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(await screen.findByRole('button', { name: /제목 수정/ }))
+  return screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })
+}
+
+describe('IssueDetailPage — 제목 편집 Enter/Esc (FR-UX-11 F8 Task 2)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-T2-1. Enter 로 저장한다 (FR2). 버튼과 같은 handleEditSave 를 타므로
+   * PATCH 바디에 새 summary 와 OCC expectedVersion 이 함께 실려야 한다.
+   */
+  it('F8-T2-1: 제목 편집 중 Enter 를 누르면 새 summary 로 저장한다', async () => {
+    let patchBody: unknown = null
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ data: { ...issueAtlas1Fixture, summary: 'Enter 로 저장', version: 1 } })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, 'Enter 로 저장')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(patchBody).toMatchObject({
+        summary: 'Enter 로 저장',
+        expectedVersion: issueAtlas1Fixture.version,
+      })
+    })
+  })
+
+  /**
+   * F8-T2-2. E4 — 한글 IME 조합을 확정하는 Enter 는 저장이 아니다.
+   * 조합 Enter 로는 호출되지 않고, 이어진 **진짜 Enter** 로는 호출되는 것까지 확인해
+   * "아무 일도 안 일어나서 통과"하는 공허한 가드가 되지 않게 한다.
+   */
+  it('F8-T2-2: IME 조합 확정 Enter 는 저장하지 않는다 (진짜 Enter 는 저장한다)', async () => {
+    let patchCount = 0
+    server.use(
+      http.patch('/api/v1/issues/:key', () => {
+        patchCount += 1
+        return HttpResponse.json({ data: { ...issueAtlas1Fixture, summary: '한글 제목', version: 1 } })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, '한글 제목')
+
+    // 조합 확정 Enter — 저장되면 안 된다
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(patchCount).toBe(0)
+
+    // 같은 입력창에서 진짜 Enter 는 저장된다 — 위 단언이 공허하지 않다는 증인
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => {
+      expect(patchCount).toBe(1)
+    })
+  })
+
+  /**
+   * F8-T2-3. Esc 로 취소하고 원본 제목을 복원한다 (FR3).
+   */
+  it('F8-T2-3: 제목 편집 중 Esc 를 누르면 취소하고 원본을 복원한다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, '버려질 제목')
+
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * F8-T2-4. ★ E1 이중 발화 방지 — pane 에서 편집 중 Esc 는 **편집만** 취소하고
+   * 패널을 닫지 않는다. handleTitleKeyDown 의 `e.preventDefault()` 가
+   * usePaneEscapeClose 의 `if (e.defaultPrevented) return` 가드를 세우는 것이 근거다.
+   */
+  it('F8-T2-4: pane 에서 편집 중 Esc 는 편집만 취소하고 패널을 닫지 않는다', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    const input = await enterTitleEdit(user)
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+    ).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  /**
+   * F8-T2-5. E5 — 저장이 진행 중이면 Enter 가 중복 제출하지 않는다.
+   * 저장 버튼의 `disabled={updateMutation.isPending || !canEdit}` 와 같은 조건이다.
+   */
+  it('F8-T2-5: 저장 진행 중에는 Enter 가 중복 제출하지 않는다', async () => {
+    let patchCount = 0
+    server.use(
+      http.patch('/api/v1/issues/:key', async () => {
+        patchCount += 1
+        // 응답을 지연시켜 isPending 상태를 유지한다
+        await new Promise((resolve) => setTimeout(resolve, 10_000))
+        return HttpResponse.json({ data: issueAtlas1Fixture })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    const input = await enterTitleEdit(user)
+    await user.clear(input)
+    await user.type(input, '느린 저장')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => {
+      expect(patchCount).toBe(1)
+    })
+
+    // 저장이 끝나기 전 두 번째 Enter — 중복 제출되면 안 된다
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(patchCount).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 Task 5 pane guard — 본문 Esc 의 이중 발화 방지 증인
+//
+// IssueDescription 의 `Escape` 분기에도 `e.preventDefault()`(E1)가 있지만, 그 가드의
+// 상대인 usePaneEscapeClose 는 **이 라우트**가 소유한다(document 전역 리스너, :91).
+// 컴포넌트 단독 테스트에는 pane 컨텍스트가 없어 구조적으로 못 잡으므로 증인을 여기 둔다.
+// 이 라우트 테스트에서 IssueDescription 은 목이 아니라 실제로 렌더된다(vi.mock 없음 — T6-1).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — pane 에서 본문 Esc 이중 발화 방지 (FR-UX-11 F8 Task 5 guard)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-T5G-1. pane 에서 본문 편집 중 Esc 는 편집만 취소하고 패널을 닫지 않는다.
+   *
+   * **변경분을 만들지 않고** Esc 를 누른다 — requestCancel 이 초안≠원본이면 확인 패널을
+   * 띄워 편집이 닫히지 않으므로(편차 D-1), 확인 패널을 타지 않는 경로로 고립시켜야
+   * "편집 종료 + onClose 미호출" 두 단언을 같이 세울 수 있다.
+   */
+  it('F8-T5G-1: pane 에서 본문 편집 중 Esc 는 편집만 취소하고 패널을 닫지 않는다', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    const { container } = renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    // 본문 편집 버튼/편집기는 <section aria-label="이슈 상세"> 안에 있다 (T6-2 와 동일 범위 좁힘)
+    const section = container.querySelector<HTMLElement>('section[aria-label="이슈 상세"]')
+    expect(section).not.toBeNull()
+    if (section === null) return
+
+    await user.click(
+      within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    )
+    const textarea = within(section).getByRole('textbox', {
+      name: issueDetailStrings.descriptionEditButton,
+    })
+
+    // 변경분 없이 Esc — 확인 패널을 거치지 않고 곧장 편집이 닫히는 경로
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+
+    // ① 본문이 읽기 모드로 돌아간다
+    expect(
+      within(section).queryByRole('textbox', { name: issueDetailStrings.descriptionEditButton }),
+    ).not.toBeInTheDocument()
+    // ② 패널은 열린 채 — IssueDescription 의 preventDefault 가 usePaneEscapeClose 를 막는다
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 FR1 — 제목 편집 진입 시 포커스 + 커서 텍스트 끝
+//
+// E2E 로는 잡히지 않는 공백이다 — Playwright `locator.press()` 가 대상에 **자동으로
+// 포커스를 주기 때문에** 앱이 포커스를 안 줘도 초록이 된다(가짜 그린). 유닛에서 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 제목 편집 진입 포커스/커서 (FR-UX-11 F8 FR1)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-FR1-1. 제목 텍스트를 클릭해 진입하면 입력창이 포커스를 갖는다.
+   * 포커스가 없으면 사용자가 마우스로 한 번 더 클릭해야 타이핑이 시작된다.
+   */
+  it('F8-FR1-1: 제목 텍스트 클릭 진입 시 입력창이 포커스를 갖는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+
+    expect(screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })).toHaveFocus()
+  })
+
+  /**
+   * F8-FR1-2. 진입 시 커서가 접혀 있고(전체 선택 아님) 맨 앞이 아니다.
+   *
+   * **이 테스트가 못 잡는 것 — 뮤테이션 실측 결과.** 프로덕션의
+   * `input.setSelectionRange(end, end)` 를 통째로 지워도 이 단언은 **초록으로 남는다**.
+   * jsdom 이 `value` 를 설정할 때 커서를 자동으로 끝에 두기 때문에 기본값이 기대값과
+   * 우연히 일치한다. 즉 이 단언은 "select-all 이나 맨 앞 커서로 **바뀌는**" 회귀는 잡지만,
+   * `setSelectionRange` 라인의 **실재 증인은 아니다**.
+   * 그 라인의 진짜 증인은 브라우저 눈확인(실제 Chromium 에서 `selectionStart` 실측)이다.
+   */
+  it('F8-FR1-2: 제목 텍스트 클릭 진입 시 커서가 전체 선택도 맨 앞도 아니다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+
+    const input = screen.getByRole<HTMLInputElement>('textbox', {
+      name: issueDetailStrings.titleEditLabel,
+    })
+    const end = issueAtlas1Fixture.summary.length
+    expect(input.value).toBe(issueAtlas1Fixture.summary)
+    // 선택 구간이 접혀 있어야 한다 — 전체 선택(0..end)이면 첫 타건에 원문이 통째로 지워진다
+    expect(input.selectionStart).toBe(input.selectionEnd)
+    expect(input.selectionStart).toBe(end)
+  })
+
+  /**
+   * F8-FR1-3. 기존 `✎ 제목 수정` 버튼 경로도 **같은 포커스 동작**이다
+   * (두 진입로가 갈라지면 안 된다). 커서 단언은 F8-FR1-2 와 같은 jsdom 한계를 가지므로
+   * 여기서는 **포커스만** 잰다 — 같은 한계를 두 곳에 복제하지 않는다.
+   */
+  it('F8-FR1-3: ✎ 제목 수정 버튼 경로도 입력창이 포커스를 갖는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: /제목 수정/ }))
+
+    expect(screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })).toHaveFocus()
+  })
+
+  /**
+   * F8-FR1-4. 편집 중 타이핑으로 커서가 끝으로 되돌아가지 않는다.
+   * useTitleEditFocus 의 의존성이 `isEditing` 뿐이라는 계약의 증인 —
+   * `editSummary` 를 의존성에 넣으면 매 타건마다 커서가 끝으로 튄다.
+   */
+  it('F8-FR1-4: 편집 중 커서를 앞으로 옮겨 타이핑해도 끝으로 튀지 않는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+    const input = screen.getByRole<HTMLInputElement>('textbox', {
+      name: issueDetailStrings.titleEditLabel,
+    })
+
+    // 커서를 맨 앞에 두고 한 글자 입력.
+    // `initialSelectionStart/End` 를 반드시 넘긴다 — userEvent.type 은 기본적으로 커서를
+    // **끝으로 옮긴 뒤** 타이핑하므로, 안 넘기면 라이브러리 동작을 재게 되어 가짜 신호가 된다.
+    await user.type(input, 'X', { initialSelectionStart: 0, initialSelectionEnd: 0 })
+
+    expect(input.value).toBe(`X${issueAtlas1Fixture.summary}`)
+    // 판별 지점 — 효과가 매 타건마다 재실행되면 커서가 끝(value.length)으로 튄다.
+    expect(input.selectionStart).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 코드리뷰 봉합 — R-1 텍스트 선택 가드 · R-2 편집 종료 포커스 복귀
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 제목 진입 가드/포커스 복귀 (FR-UX-11 F8 R-1·R-2)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-R1-1. 텍스트를 선택 중이면 제목 클릭이 편집을 열지 않는다 (E2 / 편차 D-2).
+   *
+   * 본문(`IssueDescription`)이 같은 판정식으로 막는 동작이라 제목만 열리면 비대칭이다.
+   * 드래그로 제목을 복사하려는 참을 방해하지 않는다 — Jira 미해결 결함 JRA-64389 미복제.
+   *
+   * spy 를 `finally` 에서 직접 원복한다 — 이 프로젝트는 `restoreMocks` 를 켜지 않아
+   * 전역 spy 가 다음 테스트로 샌다(본문 테스트가 같은 이유로 같은 처리를 한다).
+   */
+  it('F8-R1-1: 제목 텍스트를 선택 중이면 클릭이 편집을 열지 않는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+    const titleButton = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+
+    const selectionSpy = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ isCollapsed: false } as Selection)
+    try {
+      await user.click(titleButton)
+      expect(
+        screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+      ).not.toBeInTheDocument()
+    } finally {
+      selectionSpy.mockRestore()
+    }
+
+    // 비-공허 짝 — 선택이 풀리면 같은 클릭이 편집을 연다.
+    // 이게 없으면 "클릭 자체가 원래 안 되는 상태" 여도 위 단언이 통과한다.
+    await user.click(titleButton)
+    expect(
+      screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * F8-R2-1. Esc 취소 후 포커스가 제목 진입면으로 돌아온다 (WCAG 2.4.3).
+   * 돌려주지 않으면 포커스가 `<body>` 로 떨어져 다음 Tab 이 문서 맨 앞부터 시작한다.
+   *
+   * 이름이 아니라 **h1 안의 button** 으로 집는다 — 저장 후 제목 문자열이 바뀌어도
+   * 같은 단언이 서게 하려는 것이고, F8-R2-2 와 판정 방식을 통일한다.
+   */
+  it('F8-R2-1: Esc 취소 후 포커스가 제목 진입면으로 돌아온다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+    const input = screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { level: 1 })
+      expect(within(heading).getByRole('button')).toHaveFocus()
+    })
+  })
+
+  /**
+   * F8-R2-2. Enter 저장 후에도 포커스가 제목 진입면으로 돌아온다.
+   * 저장은 `onSuccess` 에서 편집 모드를 닫으므로 취소와 종료 경로가 다르다 — 따로 잰다.
+   */
+  it('F8-R2-2: Enter 저장 후 포커스가 제목 진입면으로 돌아온다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key', () =>
+        HttpResponse.json({ data: { ...issueAtlas1Fixture, summary: '저장된 제목', version: 1 } }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+    const input = screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })
+    await user.clear(input)
+    await user.type(input, '저장된 제목')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('textbox', { name: issueDetailStrings.titleEditLabel }),
+      ).not.toBeInTheDocument()
+    })
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { level: 1 })
+      expect(within(heading).getByRole('button')).toHaveFocus()
+    })
+  })
+
+  /**
+   * F8-R2-3. 마운트 직후에는 진입면으로 포커스를 훔치지 않는다.
+   * `wasEditingRef` 가드의 증인 — 없으면 페이지를 열자마자 제목 버튼이 포커스를 가져가
+   * pane 마운트 포커스(usePaneFocusOnLoad)와 싸운다.
+   */
+  it('F8-R2-3: 마운트 직후에는 제목 진입면이 포커스를 훔치지 않는다', async () => {
+    renderPage('ATLAS-1')
+
+    const titleButton = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+    expect(titleButton).not.toHaveFocus()
+    expect(document.body).toHaveFocus()
+  })
+
+  /**
+   * F8-R1-2. 제목 진입면이 `select-text` 를 유지한다 — **제목 복사 가능성의 대리 지표**.
+   *
+   * 근거(Chromium 실측). `<button>` 에서 `user-select: auto` 는 CSS UI 규격상 `none` 으로
+   * 해석돼, 이 클래스가 없으면 제목을 드래그해도 선택 길이가 **0** 이다. 즉 제목을 버튼으로
+   * 감싼 순간 사용자가 제목을 복사할 수 없게 되고, F8-R1-1 의 `isCollapsed` 가드도
+   * 선택이 생기지 않아 영원히 발동하지 못한다.
+   *
+   * **이 단언의 한계.** jsdom 은 Tailwind CSS 를 적용하지 않아 `user-select` **계산값을
+   * 검증하지 못한다**. 여기서 재는 것은 클래스 문자열의 잔존뿐이고, 실제 선택 동작의 증인은
+   * 브라우저 눈확인(드래그 후 `getSelection().toString()` 길이 11 실측)이다.
+   */
+  it('F8-R1-2: 제목 진입면이 select-text 클래스를 유지한다 (복사 가능성 대리 지표)', async () => {
+    renderPage('ATLAS-1')
+
+    const titleButton = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+    expect(titleButton.className).toContain('select-text')
   })
 })
