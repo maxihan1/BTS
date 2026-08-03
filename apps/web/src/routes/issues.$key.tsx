@@ -1,5 +1,7 @@
 // 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
-import type { JSX, RefObject } from 'react'
+// KeyboardEvent 는 별칭으로 받는다 — 그냥 이름으로 들이면 usePaneEscapeClose(:79)가 쓰는
+// 전역 DOM KeyboardEvent 를 모듈 스코프에서 가려 document 리스너 타입이 조용히 바뀐다.
+import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -479,6 +481,30 @@ export function IssueDetailPage({
     )
   }
 
+  /**
+   * 제목 편집 입력창의 키 처리 — Enter 저장 / Esc 취소 (FR2/FR3).
+   *
+   * 저장·취소는 버튼과 **같은 핸들러**를 탄다. 새 저장 경로를 만들면
+   * useUpdateIssueSummary 의 OCC(낙관적 동시성 제어)·409 롤백·toast 를 승계하지 못한다.
+   */
+  function handleTitleKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    // E4 — 한글 IME(입력기) 조합을 확정하는 Enter 를 저장으로 오인하지 않는다.
+    // keyCode 229 는 조합 중 keydown 을 쓰는 브라우저용 이중 방어.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      // E5 — 저장 진행 중이거나 권한이 없으면 중복 제출을 막는다 (저장 버튼 disabled 와 동일 조건)
+      if (updateMutation.isPending || !canEdit) return
+      handleEditSave()
+    } else if (e.key === 'Escape') {
+      // ★ E1 — 이 preventDefault 가 usePaneEscapeClose(:86)의 defaultPrevented 가드를 세운다.
+      // 지우면 pane 에서 Esc 한 번에 편집 취소와 패널 닫기가 동시 발화한다.
+      e.preventDefault()
+      handleEditCancel()
+    }
+  }
+
   // ── 타입 변경 핸들러 ─────────────────────────────────────────────────────
   function handleTypeChange(typeId: number) {
     if (issue === undefined) return
@@ -721,6 +747,7 @@ export function IssueDetailPage({
                 aria-label={issueDetailStrings.titleEditLabel}
                 value={editSummary}
                 onChange={(e) => setEditSummary(e.target.value)}
+                onKeyDown={handleTitleKeyDown}
                 className="text-xl font-semibold"
               />
               <div className="flex gap-2">
