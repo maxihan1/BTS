@@ -11,6 +11,8 @@ import {
   type KeymapActionId,
   type ShortcutAction,
 } from './shortcuts'
+import { resolveContextKeydown } from './context-shortcuts'
+import { dispatchContextAction, resolveActiveContext } from './useContextShortcuts'
 
 /** useKeyboardShortcuts 반환값 */
 interface UseKeyboardShortcutsResult {
@@ -149,7 +151,27 @@ function attachShortcutListener(
       ctx.helpOpenRef.current,
       keymap,
     )
-    dispatchAction(action, e, { ...ctx, leader })
+
+    // 전역이 처리했으면 거기서 끝 — 컨텍스트로 넘기지 않는다.
+    // `reset`(leader 대기 중 미등록 키)도 여기서 소비되므로 `g` 직후 `j` 는
+    // 시퀀스만 리셋하고 커서를 움직이지 않는다(E6, FR-UX-10 ADR D-2).
+    if (action.kind !== 'none') {
+      dispatchAction(action, e, { ...ctx, leader })
+      return
+    }
+
+    // 도움말 모달이 열려 있으면 `help` 키 외 전부 무동작이다. `resolveKeydown` 이
+    // 그 경우에도 `none` 을 돌려주므로 여기서 한 번 더 막지 않으면 배후 목록이
+    // 움직인다(E7).
+    if (ctx.helpOpenRef.current) return
+
+    const contextAction = resolveContextKeydown(e.key, resolveActiveContext())
+    if (contextAction.kind === 'none') return
+
+    // 후행 bubble 리스너(예: `usePaneEscapeClose`)가 `defaultPrevented` 로 걸러낼
+    // 수 있도록 발화 시 반드시 막는다(ADR D-2 파생).
+    e.preventDefault()
+    dispatchContextAction(contextAction)
   }
 
   document.addEventListener('keydown', handleKeyDown)
