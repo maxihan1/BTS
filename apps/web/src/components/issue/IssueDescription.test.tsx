@@ -169,6 +169,51 @@ describe('IssueDescription', () => {
     expect(onSave).toHaveBeenCalledWith('')
   })
 
+  // ── 키보드 저장 (FR-UX-11 F8 Task 4 / FR5) ───────────────────────────────
+  //
+  // 본문은 여러 줄 마크다운 편집기다. 맨 Enter 를 저장에 쓰면 개행을 할 수 없으므로
+  // 저장은 수식키(Ctrl/Cmd)를 요구하고 맨 Enter 는 줄바꿈으로 남긴다.
+
+  it('본문 편집 중 Ctrl+Enter 로 저장한다', () => {
+    const onSave = vi.fn()
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    fireEvent.change(textarea, { target: { value: '새 본문' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+    expect(onSave).toHaveBeenCalledWith('새 본문')
+  })
+
+  it('본문 편집 중 Cmd+Enter(metaKey) 로도 저장한다 (mac)', () => {
+    const onSave = vi.fn()
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    fireEvent.change(textarea, { target: { value: '맥에서 저장' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+    expect(onSave).toHaveBeenCalledWith('맥에서 저장')
+  })
+
+  it('본문 편집 중 맨 Enter 는 저장하지 않는다 (줄바꿈)', () => {
+    const onSave = vi.fn()
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    fireEvent.change(textarea, { target: { value: '첫 줄' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('한글 IME 조합 확정 중의 Ctrl+Enter 는 저장하지 않는다 (keyCode 229)', () => {
+    const onSave = vi.fn()
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    fireEvent.change(textarea, { target: { value: '한글' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true, keyCode: 229 })
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
   // ── 취소 흐름 ─────────────────────────────────────────────────────────────
 
   it('취소 버튼 클릭 시 편집 모드가 닫힌다', () => {
@@ -340,6 +385,38 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
     await waitFor(() => {
       expect(screen.getByRole('listbox')).toBeInTheDocument()
     }, { timeout: 2000 })
+  })
+
+  /**
+   * FR-UX-11 F8 Task 4 / E10 — 멘션 팝업이 키를 먼저 소비한다.
+   *
+   * 드롭다운이 열린 상태의 Enter 는 **후보 선택**이지 저장이 아니다.
+   * use-mention-autocomplete 의 onKeyDown 이 preventDefault() 하므로
+   * handleEditorKeyDown 은 defaultPrevented 를 보고 손을 뗀다.
+   * 이 순서가 깨지면 자동완성 확정이 그대로 저장으로 새는 회귀가 된다.
+   */
+  it('멘션 팝업이 열린 상태의 Ctrl+Enter 는 저장으로 새지 않는다', async () => {
+    server.use(...userHandlers)
+    const onSave = vi.fn()
+    render(
+      <IssueDescription {...defaultProps} onSave={onSave} />,
+      { wrapper: makeWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기 — 이 상태에서만 훅이 Enter 를 가로챈다
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+    expect(onSave).not.toHaveBeenCalled()
   })
 
   it('드롭다운 후보 클릭(onMouseDown) 시 textarea 값에 @<username> 공백이 반영된다', async () => {
