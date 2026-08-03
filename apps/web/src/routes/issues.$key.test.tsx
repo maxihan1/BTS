@@ -2424,3 +2424,95 @@ describe('IssueDetailPage — pane 에서 본문 Esc 이중 발화 방지 (FR-UX
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 FR1 — 제목 편집 진입 시 포커스 + 커서 텍스트 끝
+//
+// E2E 로는 잡히지 않는 공백이다 — Playwright `locator.press()` 가 대상에 **자동으로
+// 포커스를 주기 때문에** 앱이 포커스를 안 줘도 초록이 된다(가짜 그린). 유닛에서 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 제목 편집 진입 포커스/커서 (FR-UX-11 F8 FR1)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * F8-FR1-1. 제목 텍스트를 클릭해 진입하면 입력창이 포커스를 갖는다.
+   * 포커스가 없으면 사용자가 마우스로 한 번 더 클릭해야 타이핑이 시작된다.
+   */
+  it('F8-FR1-1: 제목 텍스트 클릭 진입 시 입력창이 포커스를 갖는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+
+    expect(screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })).toHaveFocus()
+  })
+
+  /**
+   * F8-FR1-2. 진입 시 커서가 **텍스트 끝**에 놓인다 (스펙 §1 S1).
+   * 맨 앞이면 이어서 타이핑할 때 글자가 앞에 끼어들고, 전체 선택이면 첫 타건에 전부 지워진다.
+   */
+  it('F8-FR1-2: 제목 텍스트 클릭 진입 시 커서가 텍스트 끝에 놓인다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+
+    const input = screen.getByRole<HTMLInputElement>('textbox', {
+      name: issueDetailStrings.titleEditLabel,
+    })
+    const end = issueAtlas1Fixture.summary.length
+    // 선택 구간이 접혀 있고(start===end) 그 위치가 끝이어야 "커서가 끝"이다.
+    // 전체 선택(0..end)이면 start 가 0 이라 여기서 걸린다.
+    expect(input.value).toBe(issueAtlas1Fixture.summary)
+    expect(input.selectionStart).toBe(end)
+    expect(input.selectionEnd).toBe(end)
+  })
+
+  /**
+   * F8-FR1-3. 기존 `✎ 제목 수정` 버튼 경로도 **같은 동작**이다 (두 진입로가 갈라지면 안 된다).
+   */
+  it('F8-FR1-3: ✎ 제목 수정 버튼 경로도 포커스 + 커서 끝이 동일하다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: /제목 수정/ }))
+
+    const input = screen.getByRole<HTMLInputElement>('textbox', {
+      name: issueDetailStrings.titleEditLabel,
+    })
+    const end = issueAtlas1Fixture.summary.length
+    expect(input).toHaveFocus()
+    expect(input.selectionStart).toBe(end)
+    expect(input.selectionEnd).toBe(end)
+  })
+
+  /**
+   * F8-FR1-4. 편집 중 타이핑으로 커서가 끝으로 되돌아가지 않는다.
+   * useTitleEditFocus 의 의존성이 `isEditing` 뿐이라는 계약의 증인 —
+   * `editSummary` 를 의존성에 넣으면 매 타건마다 커서가 끝으로 튄다.
+   */
+  it('F8-FR1-4: 편집 중 커서를 앞으로 옮겨 타이핑해도 끝으로 튀지 않는다', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueAtlas1Fixture.summary }))
+    const input = screen.getByRole<HTMLInputElement>('textbox', {
+      name: issueDetailStrings.titleEditLabel,
+    })
+
+    // 커서를 맨 앞에 두고 한 글자 입력.
+    // `initialSelectionStart/End` 를 반드시 넘긴다 — userEvent.type 은 기본적으로 커서를
+    // **끝으로 옮긴 뒤** 타이핑하므로, 안 넘기면 라이브러리 동작을 재게 되어 가짜 신호가 된다.
+    await user.type(input, 'X', { initialSelectionStart: 0, initialSelectionEnd: 0 })
+
+    expect(input.value).toBe(`X${issueAtlas1Fixture.summary}`)
+    // 판별 지점 — 효과가 매 타건마다 재실행되면 커서가 끝(value.length)으로 튄다.
+    expect(input.selectionStart).toBe(1)
+  })
+})
