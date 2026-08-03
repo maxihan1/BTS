@@ -23,6 +23,7 @@ import { labelHandlers } from '@/mocks/label-handlers'
 import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { IssueListPage, IssueListRouteAdapter } from './issues.index'
+import { useContextShortcutsStore } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import type { IssueFilterParams } from '@/api/issues'
 import type { IssueTableSortState } from '@/components/issues/IssueTable'
 
@@ -1823,5 +1824,187 @@ describe('IssueListRouteAdapter — 활성 프로젝트 (FR-UX-07)', () => {
     // 독립 fetch 라 프로젝트 해소와 직교한다(스펙 E9)
     await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
     expect(screen.queryByRole('table', { name: '이슈 목록' })).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-10 F10 — 목록 항법 커서 (j/k/o/t)
+//
+// 커서는 새 상태가 아니라 기존 split 선택(selectedKey)이다(ADR D-3). 여기서는
+// "다음 키 계산 + 콜백 위임"이 맞는지 본다. 실제 키 입력 → 판별은 T3(파이프라인)
+// 테스트가 덮으므로, 등록된 핸들러를 직접 불러 배선만 검증한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueListPage 를 커서 콜백과 함께 렌더한다 */
+function renderCursorPage(
+  selectedKey: string | null,
+  callbacks: {
+    onCursorTo?: (key: string) => void
+    onOpenCursor?: (key: string) => void
+    onCloseDetailPane?: () => void
+  },
+) {
+  server.use(
+    ...workflowHandlers,
+    ...userHandlers,
+    ...componentHandlers,
+    ...labelHandlers,
+    ...issueHandlers,
+    ...projectListHandlers,
+  )
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <IssueListPage
+        projectKey="ATLAS"
+        page={0}
+        onPageChange={() => undefined}
+        onNavigate={() => undefined}
+        filter={EMPTY_FILTER}
+        onFilterChange={() => undefined}
+        selectedKey={selectedKey}
+        {...callbacks}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+/** 등록된 issue-list 컨텍스트 핸들러를 꺼낸다 (전역 리스너 없이 배선만 검증) */
+function listHandlers() {
+  return useContextShortcutsStore.getState().handlers['issue-list']
+}
+
+describe('IssueListPage — 목록 항법 커서 (FR-UX-10 F10)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+    useContextShortcutsStore.setState({ handlers: {} })
+  })
+
+  it('마운트하면 issue-list 컨텍스트를 등록한다', async () => {
+    renderCursorPage(null, {})
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    expect(listHandlers()).toBeDefined()
+  })
+
+  it('커서가 없을 때 j 는 첫 행을 잡는다 (E2)', async () => {
+    const onCursorTo = vi.fn()
+    renderCursorPage(null, { onCursorTo })
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onCursorMove?.(1)
+
+    expect(onCursorTo).toHaveBeenCalledWith('ATLAS-1')
+  })
+
+  it('커서가 첫 행일 때 j 는 다음 행으로 간다', async () => {
+    const onCursorTo = vi.fn()
+    renderCursorPage('ATLAS-1', { onCursorTo })
+    await waitFor(() => expect(screen.getByText('ATLAS-2')).toBeInTheDocument())
+
+    listHandlers()?.onCursorMove?.(1)
+
+    expect(onCursorTo).toHaveBeenCalledWith('ATLAS-2')
+  })
+
+  it('E3 — 첫 행에서 k 는 무동작이다 (감싸지 않는다)', async () => {
+    const onCursorTo = vi.fn()
+    renderCursorPage('ATLAS-1', { onCursorTo })
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onCursorMove?.(-1)
+
+    expect(onCursorTo).not.toHaveBeenCalled()
+  })
+
+  it('o 는 커서 이슈를 전체화면으로 연다', async () => {
+    const onOpenCursor = vi.fn()
+    renderCursorPage('ATLAS-2', { onOpenCursor })
+    await waitFor(() => expect(screen.getByText('ATLAS-2')).toBeInTheDocument())
+
+    listHandlers()?.onOpenCurrent?.()
+
+    expect(onOpenCursor).toHaveBeenCalledWith('ATLAS-2')
+  })
+
+  it('커서가 없으면 o 는 무동작이다 (열 대상이 없다)', async () => {
+    const onOpenCursor = vi.fn()
+    renderCursorPage(null, { onOpenCursor })
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onOpenCurrent?.()
+
+    expect(onOpenCursor).not.toHaveBeenCalled()
+  })
+
+  it('t 는 열린 페인을 닫는다 (S4)', async () => {
+    const onCloseDetailPane = vi.fn()
+    renderCursorPage('ATLAS-2', { onCloseDetailPane })
+    await waitFor(() => expect(screen.getByText('ATLAS-2')).toBeInTheDocument())
+
+    listHandlers()?.onToggleDetailPane?.()
+
+    expect(onCloseDetailPane).toHaveBeenCalledOnce()
+  })
+
+  it('t 는 닫힌 페인을 첫 행으로 연다 (S4)', async () => {
+    const onCursorTo = vi.fn()
+    const onCloseDetailPane = vi.fn()
+    renderCursorPage(null, { onCursorTo, onCloseDetailPane })
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onToggleDetailPane?.()
+
+    expect(onCursorTo).toHaveBeenCalledWith('ATLAS-1')
+    expect(onCloseDetailPane).not.toHaveBeenCalled()
+  })
+
+  it('★FR11 — 커서 위치를 aria-live 로 공지한다 (총 개수·순번·키·제목)', async () => {
+    renderCursorPage('ATLAS-1', {})
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    const status = screen.getByTestId('issue-cursor-announcement')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(status.textContent).toMatch(/^\d+개 중 1번째, ATLAS-1, .+/)
+  })
+
+  it('커서가 없으면 공지문은 비어 있다 (빈 공지를 읽지 않는다)', async () => {
+    renderCursorPage(null, {})
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    expect(screen.getByTestId('issue-cursor-announcement').textContent).toBe('')
+  })
+})
+
+describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
+  beforeEach(() => {
+    mockNavigate.mockReset()
+    useContextShortcutsStore.setState({ handlers: {} })
+  })
+
+  it('★replace:true — 커서 이동이 히스토리를 쌓지 않는다 (연타 후 뒤로가기 1회로 이탈)', async () => {
+    mockUseSearch.mockReturnValue({})
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onCursorMove?.(1)
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '/issues', replace: true }),
+    )
+  })
+
+  it('★★다른 검색 파라미터가 살아남는다 — project-switcher.spec.ts 회귀 가드의 유닛 짝', async () => {
+    mockUseSearch.mockReturnValue({ projectKey: 'ATLAS', status: 'open', sort: 'key,asc' })
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    listHandlers()?.onCursorMove?.(1)
+
+    const call = mockNavigate.mock.calls.at(-1)?.[0] as { search: (p: object) => object }
+    const nextSearch = call.search({ projectKey: 'ATLAS', status: 'open', sort: 'key,asc' })
+
+    expect(nextSearch).toMatchObject({ projectKey: 'ATLAS', status: 'open', sort: 'key,asc' })
+    expect(nextSearch).toHaveProperty('selected')
   })
 })

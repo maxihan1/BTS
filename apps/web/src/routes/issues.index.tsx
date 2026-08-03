@@ -10,6 +10,8 @@ import { useIssueSelection } from '@/hooks/use-issue-selection'
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
 import { useUsersByIds } from '@/hooks/use-users'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import { nextCursorKey } from '@/components/keyboard-shortcuts/context-shortcuts'
 import { IssueBulkActionBar } from '@/components/issues/IssueBulkActionBar'
 import { BulkEditDialog } from '@/components/issues/BulkEditDialog'
 import { BulkTransitionDialog } from '@/components/issues/BulkTransitionDialog'
@@ -363,8 +365,21 @@ interface IssueListPageProps {
   /**
    * split view(FR-UX-06 PR20 Task 5) 우측 상세 페인에 현재 열린 이슈 키.
    * IssueListContent → IssueTable로 그대로 전달된다. undefined/null이면 강조 없음.
+   *
+   * FR-UX-10 F10 부터 이 값은 **항법 커서를 겸한다** — `j`/`k` 가 움직이는 대상이
+   * 곧 상세 페인에 열린 이슈다(ADR D-3, 지라 이슈 네비게이터 동형).
    */
   selectedKey?: string | null
+  /**
+   * 커서 이동 콜백(FR-UX-10 F10). 이 컴포넌트가 목록 순서로 다음 키를 계산해 넘기면
+   * 어댑터가 URL `selected` 를 **`replace`로** 갈아끼운다 — 연타가 히스토리를
+   * 오염시키지 않아야 하기 때문이다.
+   */
+  onCursorTo?: (key: string) => void
+  /** `o` — 커서 이슈를 전체화면 상세(`/issues/$key`)로 연다 */
+  onOpenCursor?: (key: string) => void
+  /** `t` — 상세 페인을 닫는다(`selected` 제거). 여는 쪽은 `onCursorTo`가 겸한다 */
+  onCloseDetailPane?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -442,6 +457,9 @@ export function IssueListPage({
   sort = null,
   onSortChange,
   selectedKey = null,
+  onCursorTo,
+  onOpenCursor,
+  onCloseDetailPane,
 }: IssueListPageProps): JSX.Element {
   const queryClient = useQueryClient()
 
@@ -538,6 +556,55 @@ export function IssueListPage({
     }
   }, [isAllPageSelected, pageKeys, clearPageSelection, selectAllOnPage])
 
+  // ── FR-UX-10 F10 — 목록 항법 커서 (j/k/o/t) ─────────────────────────────────
+  //
+  // 커서는 새 상태가 아니라 **기존 split 선택(`selectedKey`)** 이다(ADR D-3).
+  // 이 컴포넌트는 목록 데이터를 갖고 있으므로 "다음 키가 무엇인가"를 계산하고,
+  // URL 갱신·라우팅 같은 부수효과는 props 콜백으로 상위(어댑터)에 위임한다
+  // — "props 기반, 라우터 비의존" 계약 유지.
+  useContextShortcuts('issue-list', {
+    onCursorMove: (delta) => {
+      const next = nextCursorKey(pageKeys, selectedKey, delta)
+      if (next !== null) onCursorTo?.(next)
+    },
+    onOpenCurrent: () => {
+      if (selectedKey !== null) onOpenCursor?.(selectedKey)
+    },
+    onToggleDetailPane: () => {
+      // 열려 있으면 닫고, 닫혀 있으면 첫 행을 잡아 연다(S4).
+      if (selectedKey !== null) {
+        onCloseDetailPane?.()
+        return
+      }
+      const first = pageKeys[0]
+      if (first !== undefined) onCursorTo?.(first)
+    },
+  })
+
+  /** 커서가 몇 번째 행인지 (0-indexed). 커서 없음/목록에 없음이면 -1 */
+  const cursorIndex = selectedKey === null ? -1 : pageKeys.indexOf(selectedKey)
+
+  /**
+   * 스크린리더 공지 문구 — `aria-current` 속성 변경은 자동으로 읽히지 않는다(FR11).
+   *
+   * 위치 → 식별자 → 내용 순으로 싣는다. `polite` 는 연타 중 큐가 쌓이지 않고 손이
+   * 멈춘 지점만 읽으므로 총 개수를 매번 실어도 피로하지 않고, 멈췄을 때 위치 감각이
+   * 완결된다.
+   */
+  const cursorAnnouncement =
+    cursorIndex >= 0
+      ? `${pageKeys.length}개 중 ${cursorIndex + 1}번째, ${selectedKey ?? ''}, ${data?.content[cursorIndex]?.summary ?? ''}`
+      : ''
+
+  // 커서가 뷰포트 밖으로 나가면 따라간다(FR10). `nearest` 는 이미 보이면 움직이지
+  // 않고 벗어나야 최소로 스크롤해 항법 중 화면이 튀지 않는다.
+  useEffect(() => {
+    if (selectedKey === null) return
+    // 목록 행만 대상 — 사이드바 활성 링크는 `aria-current="page"` 라 겹치지 않는다.
+    const row = document.querySelector('tr[aria-current="true"]')
+    row?.scrollIntoView?.({ block: 'nearest' })
+  }, [selectedKey])
+
   // ── Dialog onSubmitted 결선 ────────────────────────────────────────────────
   /**
    * BulkEditDialog / BulkTransitionDialog 에서 접수 성공 시 호출.
@@ -577,6 +644,20 @@ export function IssueListPage({
         <h1 className="text-2xl font-semibold">이슈 목록</h1>
         <NewIssueButton canCreate={canCreate} />
       </header>
+
+      {/*
+        FR-UX-10 F10 — 커서 이동 스크린리더 공지(FR11).
+        `aria-current` 속성이 바뀌어도 스크린리더는 자동으로 읽지 않으므로
+        위치·식별자·제목을 라이브 리전으로 따로 알린다. 시각적으로는 숨긴다.
+      */}
+      <div
+        aria-live="polite"
+        role="status"
+        data-testid="issue-cursor-announcement"
+        className="sr-only"
+      >
+        {cursorAnnouncement}
+      </div>
 
       {/* G4 — 필터 바: 페이지 헤더 아래, 일괄 액션 바 위 (FR-SR-01 D6) */}
       <IssueFilterBar
@@ -759,6 +840,31 @@ export function IssueListRouteAdapter(): JSX.Element {
   }
 
   /**
+   * FR-UX-10 F10 — `j`/`k`/`t` 가 커서를 옮길 때 URL `selected` 를 갈아끼운다.
+   *
+   * `setSelectedKey` 와 갈라 두는 이유는 **`replace: true`** 다. 커서 이동은 연타가
+   * 전제라 매번 히스토리를 쌓으면 뒤로가기 한 번에 목록을 못 벗어난다. 지라 이슈
+   * 네비게이터도 같은 방식이다.
+   *
+   * ★`prev` 스프레드로 다른 검색 파라미터(projectKey·status·sort·page)를 보존한다 —
+   * `project-switcher.spec.ts` 의 "전환 시 다른 검색 파라미터가 살아남는다" 가 이걸
+   * 검증한다. TanStack `search` 는 객체형이면 병합이 아니라 **치환**이고 전 필드가
+   * optional 이라 타입 체크로도 안 잡힌다(handleFilterChange 주석의 같은 함정).
+   */
+  function moveCursorTo(nextKey: string): void {
+    void navigate({
+      to: '/issues',
+      search: (prev) => ({ ...prev, selected: nextKey }),
+      replace: true,
+    })
+  }
+
+  /** FR-UX-10 F10 — `o` 로 커서 이슈를 전체화면 상세로 연다(폭 무관) */
+  function openCursorIssue(key: string): void {
+    void navigate({ to: '/issues/$key', params: { key } })
+  }
+
+  /**
    * 필터 변경 핸들러 — issueFilterToSearch로 URL search params 갱신.
    * page=0 리셋은 IssueListPage.handleFilterChange가 onPageChange(0)로도 처리한다.
    * 빈 필터 필드는 issueFilterToSearch가 키 자체를 생략해 URL을 깔끔하게 유지한다.
@@ -815,6 +921,13 @@ export function IssueListRouteAdapter(): JSX.Element {
         sort={sort}
         onSortChange={handleSortChange}
         selectedKey={isWide ? selected : null}
+        // FR-UX-10 F10 — 커서 단축키는 **와이드에서만** 산다.
+        // 좁은폭은 `selectedKey` 를 null 로 넘겨(위 줄) 커서 강조 자체가 없으므로,
+        // 여기서 콜백까지 끊지 않으면 `j` 가 URL 만 바꾸고 화면엔 아무 변화가 없는
+        // 유령 상태가 된다. 콜백이 undefined 면 핸들러가 조용히 무동작이다.
+        onCursorTo={isWide ? moveCursorTo : undefined}
+        onOpenCursor={isWide ? openCursorIssue : undefined}
+        onCloseDetailPane={isWide ? clearSelected : undefined}
       />
     ) : (
       <ActiveProjectGate state={activeProject} />

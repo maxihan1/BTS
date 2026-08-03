@@ -3,6 +3,8 @@ import { type JSX } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { useIsAuthenticated } from '@/auth/authStore'
 import { useTrackActiveProject } from '@/hooks/use-track-active-project'
+import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 
@@ -48,11 +50,19 @@ import { Sidebar } from './Sidebar'
  */
 export function ShellLayout(): JSX.Element {
   const isAuthenticated = useIsAuthenticated()
+  const { toggle: toggleSidebar } = useSidebarCollapsed()
 
   // FR-UX-07 — `/projects/$projectKey/*` 를 볼 때 그 키를 활성 프로젝트로 기록한다.
   // 전 인증 라우트가 공유하는 유일한 지점이라 여기 둔다(라우트마다 배선하면 빠뜨린다).
   // 조기 반환 앞에서 호출해야 훅 규칙을 지킨다 — 미인증이면 인자로 끈다.
   useTrackActiveProject(isAuthenticated)
+
+  // FR-UX-10 F10 — `app-shell` 컨텍스트(`[` 사이드바 토글). 이 컴포넌트가 곧
+  // "셸이 렌더된 화면"의 정의라 여기가 등록 지점이다. 발화는 전역 단일 리스너
+  // (`useKeyboardShortcuts`)가 하고, 여기서는 핸들러만 등록한다(ADR D-2).
+  // 훅 규칙상 조기 반환 앞에서 호출하되, 미인증이면 애초에 전역 리스너 자체가
+  // 등록되지 않으므로(`enabled` 가드) 발화하지 않는다.
+  useContextShortcuts('app-shell', { onToggleSidebar: toggleSidebar })
 
   if (!isAuthenticated) {
     return (
