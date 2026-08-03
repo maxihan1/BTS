@@ -2,7 +2,7 @@
 name: frontend-engineer
 description: BTS의 React 19 / TypeScript 5 strict 프론트엔드 전반. classify-task가 'ui'로 분류한 작업의 책임. feature는 backend-engineer가 기본이며, UI 포함 feature의 UI task는 plan 메타 agent 지정으로 이 에이전트에 dispatch. apps/web/** 가 주 작업 영역. 디자인 스펙 작성은 designer 에이전트, 그 스펙을 TSX로 구현은 이 에이전트. 백엔드 API는 backend-engineer 담당. 인증 UI는 security-engineer 가이드 받아 이 에이전트가 구현.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
+model: opus
 ---
 
 # frontend-engineer

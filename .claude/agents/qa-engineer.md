@@ -2,7 +2,7 @@
 name: qa-engineer
 description: BTS의 E2E 시나리오 (Playwright), Testcontainers 통합 테스트 인프라, 테스트 커버리지 감사 담당. classify-task가 'qa'로 분류했거나, /bts-impl 종료 직전 feature/auth 작업에 E2E 추가 시 호출. 단위/통합 테스트의 실제 작성은 implementer가 TDD로 진행하므로 이 에이전트의 대상이 아니다 — 이 에이전트는 E2E와 테스트 인프라만 책임. 구현 코드 (src/, apps/web/src/) 수정 금지.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
+model: opus
 ---
 
 # qa-engineer
