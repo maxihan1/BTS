@@ -249,18 +249,24 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 승계 PR 3건 (로드맵 §PR 체인 Tier 1 + 백엔드 B1).
 
 - **F2 — 이슈 생성 모달 + 유형·본문 + 담당자·우선순위·라벨.** (2026-08-01 Maxi 확정 재분할 — 3필드를 F3 에서 F2 로 이관했다. `components/issue/meta/` 8종 재사용이라 신규 컴포넌트가 0이고, F3 로 미루면 같은 폼 스키마·제출 페이로드·단위테스트를 두 번 열어야 한다. ADR [`2026-08-01-fr-ux-09-f2-create-issue-dialog`](../../decisions/2026-08-01-fr-ux-09-f2-create-issue-dialog.md) D-1) 지금 생성 폼은 **프로젝트를 자유 텍스트로 타이핑**해야 하고 **이슈 유형을 못 고른다**. 백엔드 `CreateIssueRequest.kt:30-35` 에 `typeId`·`description` 이 **이미 있는데 프론트가 안 보낸다**(`routes/issues.new.tsx:215-232`). 신규 `components/issue/CreateIssueDialog.tsx` · `api/issues.ts:266-278,551-568` · `TopBar.tsx:69-78`. `routes/issues.new` 라우트는 **딥링크 계약이라 유지**한다.
-- **F3 — 만들기 진입점 3곳**(보드 컬럼 · 백로그 섹션 · 목록 헤더) 배선. `BoardColumn.tsx` · `BacklogColumn.tsx` · `SprintColumn.tsx`. 필드는 F2 에서 이미 완결됐고 이 PR 은 **진입점만** 붙인다(ADR D-1).
+- **F3 — 만들기 진입점 3곳**(백로그 칸 · 스프린트 칸 · **보드 헤더**) 배선. `BacklogColumn.tsx` · `SprintColumn.tsx` · `routes/projects.$projectKey.board.tsx`. 필드는 F2 에서 이미 완결됐다.
+
+> **★ 위 F3 서술은 2026-08-03 실측·Maxi 확정으로 두 군데가 정정됐다. 정정 노트만 달지 않고 원문을 고쳤다** — 남겨 두면 다음 세션이 틀린 전제 위에 짓는다(FR-UX-08 PR-A 의 `?assignee=me` 정정과 같은 이유).
+>
+> 1. **산문과 파일 목록이 서로 달랐다.** 산문은 세 번째 진입점을 「목록 헤더」로 적고 파일 목록은 `SprintColumn.tsx` 를 적었다. [F2 ADR D-1](../../decisions/2026-08-01-fr-ux-09-f2-create-issue-dialog.md) 이 이미 세 칸으로 확정했으므로 **산문 쪽이 stale** 이었다.
+> 2. **보드는 컬럼별이 아니라 보드 헤더 1곳이다.** 생성 계약(`CreateIssueRequest.kt`)에 **상태(`stateKey`)가 없어**(2026-08-03 실측) 컬럼별 버튼은 「여기서 만들면 여기에 생긴다」는 **지키지 못할 약속**이 된다. 지키지 못할 약속은 하지 않는 쪽이 정답이다. 따라서 `BoardColumn.tsx` 는 **이 PR 에서 diff 0줄**이다. 근거 = [ADR 2026-08-03 D-1·D-3](../../decisions/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md).
+> 3. **컨텍스트 반영은 스프린트만** (2026-08-03 Maxi 확정, 3안 중 B). 백로그는 스프린트 미지정이 곧 백로그라 기본 동작이 정답이고, 보드는 위 이유로 불가하다. 스프린트는 생성 후 기존 `POST /api/v1/sprints/{id}/issues` 를 한 번 더 부르며, **배정만 실패하면 「이슈는 만들어졌다」를 경고 톤으로 먼저 알린다**(ADR D-2). 백엔드에 `sprintId` 를 추가하는 안은 범위 2~3배라 **별도 FR 후보**로 남긴다.
 - **B1 — 백엔드. 이슈 생성 시 담당자·우선순위·라벨** (`issue-tracking`). 지금은 create 후 PATCH 3회를 이어 붙여야 하고 **중간 실패 시 반쯤 만들어진 이슈가 남는다**(완제품 기준 위반). 생성 1회 제출로 확정한다.
 
 **아키텍처**. **B1 의 지위 정정 (2026-07-29).** 2026-07-28 Maxi 결정 #3 의 *"B1 = chore"* 를 승계·정정해 **이 FR 의 D4/D5** 로 승격한다(사유는 §4.5 의 세 번째 인용 블록). 신규 다이얼로그는 `role="dialog"` 가 e2e 에 164발생이라 **고유 `aria-label`** 없이는 strict mode 충돌이 난다. 필드 컨트롤은 새로 만들지 말고 `components/issue/meta/` **8종**(Assignee·Priority·Labels·Type·Impact·Environment·CustomFields·StateTransition)을 재사용한다.
 
-- [ ] D1. 도메인 — 생성 시점에 확정 가능한 필드 집합(유형·본문·담당자·우선순위·라벨) 정립 (책임. backend-engineer)
+- [x] D1. 도메인 — **완료**. 생성 시점에 확정 가능한 필드 집합(유형·본문·담당자·우선순위·라벨)은 B1 ADR 이 확정했고, **진입점이 반영할 수 있는 컨텍스트 경계**를 [ADR 2026-08-03](../../decisions/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md) D-1 이 더해 닫았다 — 생성 계약에 `sprintId`·`stateKey` 가 없으므로 반영 가능한 것은 스프린트뿐이고 그것도 2회 호출이다 (책임. backend-engineer → frontend-engineer)
 - [x] D2. 명세 — **PR #331 완료**. 모달 진입점 · 딥링크 라우트 유지 계약(라우트가 모달을 연다) · 필드별 optional 계약 · `assigneeId` 3-state 의 프론트 표현 · 상호작용 상태표. spec [`2026-08-01-fr-ux-09-f2-create-issue-dialog`](../../specs/2026-08-01-fr-ux-09-f2-create-issue-dialog.md) (책임. designer)
-- [ ] D3. 데이터 모델 — 없음 예상 (기존 컬럼 소비. 마이그레이션 0) (책임. -)
+- [x] D3. 데이터 모델 — **없음 확정**. 기존 컬럼·기존 API 소비만. 마이그레이션 0 · 신규 API 0 (책임. -)
 - [x] D4. 백엔드 — **B1 완료 (PR #328)**. `CreateIssueRequest` 에 `assigneeId`(JsonNullable 3-state)·`priority`·`labels` 추가 + `AssigneeIntent` sealed 신설 + `IssueApplicationService.createIssue` 배선. 요청/응답 계약 무회귀(응답 스키마 diff 0). **단 알림은 무회귀 아님** — ADR D-4 로 `IssueAssigned` 신규 발행(REST 경로 한정, D-5) (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — **B1 완료 (PR #328)**. `IssueApplicationRequestsTest`·`IssueApplicationServiceCreateTest`·`IssueControllerCreateTest`·`OpenApiContractTest`·`IssueImportAdapterTest`(S8b Import 알림 회귀 가드). 뮤테이션 M1~M3 전량 red 확인 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — **F2 완료 (PR #331)**. `CreateIssueDialog` + 프로젝트 셀렉터·유형·본문·담당자·우선순위·라벨 · `LabelChipsEditor` 추출 · 진입점 2곳(딥링크 라우트 · 상단바). **F3 진입점 3곳(보드·백로그·스프린트)이 남아 미완**이다 — D 마커는 완주 단위다 (책임. designer → frontend-engineer)
-- [ ] D7. E2E — **F2 분 완료 (PR #331)**. `issue-create-dialog.spec.ts` 4 시나리오(상단바 URL 불변 · 딥링크 POST 1회/PATCH 0회 · 상단바 토스트 · 닫으면 `/issues`). **F3 진입점 3곳 E2E 가 남아 미완** (책임. qa-engineer)
+- [x] D6. 프론트 UI — **F2 완료 (PR #331)**. `CreateIssueDialog` + 프로젝트 셀렉터·유형·본문·담당자·우선순위·라벨 · `LabelChipsEditor` 추출 · 진입점 2곳(딥링크 라우트 · 상단바). **F3 완료 (PR #333)** — `CreateIssueEntryButton` 공용 진입점 + 백로그 칸 · 스프린트 칸 · 보드 헤더 3곳 배선 + `initialProjectKey` 명시 전달. `BoardColumn.tsx` diff 0줄 · `CreateIssueDialog` 라우터 훅 import 0 유지 (책임. designer → frontend-engineer)
+- [x] D7. E2E — **F2 분 완료 (PR #331)**. `issue-create-dialog.spec.ts` 4 시나리오(상단바 URL 불변 · 딥링크 POST 1회/PATCH 0회 · 상단바 토스트 · 닫으면 `/issues`). **F3 완료 (PR #333)**. `issue-create-entry-points.spec.ts` 5 시나리오(백로그 칸 · 스프린트 칸 생성1+배정1 · COMPLETED 미렌더 · 보드 제자리+토스트 · 보드 진입점 화면당 1개). ★E2E 가 단위 테스트가 구조적으로 못 보는 결함 1건을 잡았다 — 백로그 경로 목록 미갱신 (책임. qa-engineer)
 
 ### §4.8 FR-UX-10 — 컨텍스트 의존 단축키
 
