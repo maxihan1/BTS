@@ -111,6 +111,30 @@ function usePaneFocusOnLoad(
   }, [variant, loaded, targetRef])
 }
 
+/**
+ * 제목 편집 진입 시 입력창으로 포커스를 옮기고 커서를 **텍스트 끝**에 놓는다 (FR1).
+ *
+ * 두 진입로(제목 텍스트 클릭 · `✎ 제목 수정` 버튼)가 모두 `isEditingTitle` 을 켜므로
+ * 여기 한 곳만 두면 경로가 갈리지 않는다.
+ *
+ * `autoFocus` 속성을 쓰지 않는 이유. 포커스만 줄 뿐 커서 위치가 브라우저마다 달라
+ * (전체 선택 / 맨 앞 / 맨 뒤) 스펙의 "커서는 텍스트 끝"을 보장하지 못한다.
+ * `preventScroll` 은 usePaneFocusOnLoad 와 같은 배려 — 포커스 이동이 스크롤 점프를 만들지 않게 한다.
+ *
+ * 의존성이 `isEditing` 뿐이라 편집 중 타이핑(`editSummary` 변경)으로는 재실행되지 않는다.
+ * 재실행되면 사용자가 옮겨 둔 커서를 매 타건마다 끝으로 되돌려 버린다.
+ */
+function useTitleEditFocus(isEditing: boolean, inputRef: RefObject<HTMLInputElement | null>): void {
+  useEffect(() => {
+    if (!isEditing) return
+    const input = inputRef.current
+    if (input === null) return
+    input.focus({ preventScroll: true })
+    const end = input.value.length
+    input.setSelectionRange(end, end)
+  }, [isEditing, inputRef])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
 //
@@ -182,6 +206,9 @@ export function IssueDetailPage({
   // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
   const paneTitleRef = useRef<HTMLHeadingElement>(null)
 
+  // 제목 편집 입력창 — 진입 시 포커스 + 커서 끝 배치용 (FR-UX-11 F8 FR1)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
     queryFn: async () => {
@@ -211,6 +238,9 @@ export function IssueDetailPage({
 
   usePaneFocusOnLoad(variant, issue !== undefined, paneTitleRef)
   usePaneEscapeClose(variant, onClose)
+  // usePaneFocusOnLoad 와 충돌하지 않는다 — 그쪽은 hasFocusedRef 로 **데이터 로드 시 1회만**
+  // 발화하고 끝나므로, 그 뒤에 열리는 편집 포커스와 시점이 겹치지 않는다.
+  useTitleEditFocus(isEditingTitle, titleInputRef)
 
   // ── 최근 본 이슈 기록 (FR-UX-08 PR-B FR4) ──────────────────────────────────
   /**
@@ -744,6 +774,7 @@ export function IssueDetailPage({
           {isEditingTitle ? (
             <div className="flex flex-col gap-2">
               <Input
+                ref={titleInputRef}
                 aria-label={issueDetailStrings.titleEditLabel}
                 value={editSummary}
                 onChange={(e) => setEditSummary(e.target.value)}
