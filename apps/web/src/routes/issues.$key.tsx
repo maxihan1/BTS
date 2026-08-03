@@ -123,16 +123,36 @@ function usePaneFocusOnLoad(
  *
  * 의존성이 `isEditing` 뿐이라 편집 중 타이핑(`editSummary` 변경)으로는 재실행되지 않는다.
  * 재실행되면 사용자가 옮겨 둔 커서를 매 타건마다 끝으로 되돌려 버린다.
+ *
+ * **편집이 끝나면 진입면(`returnRef`)으로 포커스를 되돌린다 (WCAG 2.4.3).**
+ * 되돌리지 않으면 `Input` 언마운트와 함께 포커스가 `<body>` 로 떨어져, 키보드 사용자의
+ * 다음 `Tab` 이 문서 맨 앞부터 다시 시작한다. `Enter` 저장·`Esc` 취소를 1급 키보드 경로로
+ * 승격시킨 이상 왕복이 닫혀야 한다.
+ *
+ * `wasEditingRef` 가 **마운트 시 포커스 탈취를 막는다** — 초기값 false 라 편집을 연 적이
+ * 없으면 복귀 분기가 돌지 않는다. 이게 없으면 usePaneFocusOnLoad 의 제목 포커스와 싸운다.
  */
-function useTitleEditFocus(isEditing: boolean, inputRef: RefObject<HTMLInputElement | null>): void {
+function useTitleEditFocus(
+  isEditing: boolean,
+  inputRef: RefObject<HTMLInputElement | null>,
+  returnRef: RefObject<HTMLButtonElement | null>,
+): void {
+  const wasEditingRef = useRef(false)
   useEffect(() => {
-    if (!isEditing) return
-    const input = inputRef.current
-    if (input === null) return
-    input.focus({ preventScroll: true })
-    const end = input.value.length
-    input.setSelectionRange(end, end)
-  }, [isEditing, inputRef])
+    if (isEditing) {
+      const input = inputRef.current
+      if (input !== null) {
+        input.focus({ preventScroll: true })
+        const end = input.value.length
+        input.setSelectionRange(end, end)
+      }
+    } else if (wasEditingRef.current) {
+      // 편집이 방금 끝났다(저장·취소 공통). 진입면이 사라진 경우(권한이 false 로 뒤집힘)는
+      // optional chaining 으로 무해하게 넘긴다 — 없는 요소에 포커스를 강제하지 않는다.
+      returnRef.current?.focus({ preventScroll: true })
+    }
+    wasEditingRef.current = isEditing
+  }, [isEditing, inputRef, returnRef])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -208,6 +228,8 @@ export function IssueDetailPage({
 
   // 제목 편집 입력창 — 진입 시 포커스 + 커서 끝 배치용 (FR-UX-11 F8 FR1)
   const titleInputRef = useRef<HTMLInputElement>(null)
+  // 편집 종료 후 포커스 복귀 대상 — 제목 클릭 진입면 (WCAG 2.4.3)
+  const titleButtonRef = useRef<HTMLButtonElement>(null)
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
@@ -240,7 +262,7 @@ export function IssueDetailPage({
   usePaneEscapeClose(variant, onClose)
   // usePaneFocusOnLoad 와 충돌하지 않는다 — 그쪽은 hasFocusedRef 로 **데이터 로드 시 1회만**
   // 발화하고 끝나므로, 그 뒤에 열리는 편집 포커스와 시점이 겹치지 않는다.
-  useTitleEditFocus(isEditingTitle, titleInputRef)
+  useTitleEditFocus(isEditingTitle, titleInputRef, titleButtonRef)
 
   // ── 최근 본 이슈 기록 (FR-UX-08 PR-B FR4) ──────────────────────────────────
   /**
@@ -503,6 +525,22 @@ export function IssueDetailPage({
     setEditSummary('')
   }
 
+  /**
+   * 제목 텍스트 클릭 → 편집 진입 (FR1). 본문(`IssueDescription.handleContentClick`)과
+   * **같은 판정식**으로 텍스트 선택 중을 배제한다 (E2 / 편차 D-2).
+   *
+   * 드래그로 제목을 복사하려는 참이면 열지 않는다 — Jira Cloud 는 이 경우에도 편집이
+   * 열려 선택이 날아가는 미해결 결함이 있다(JRA-64389 · JRA-29063). 결함까지 복제하지 않는다.
+   *
+   * 본문에 있는 `closest('a')` 배제는 **여기선 불필요하다 (실측)** — 제목은
+   * `{issue.summary}` 문자열이 텍스트 노드로만 들어가고 이 파일에 `dangerouslySetInnerHTML`
+   * 이 0건이라 버튼 안에 앵커가 생길 경로가 없다. 없는 경우를 위한 가드는 두지 않는다.
+   */
+  function handleTitleClick() {
+    if (window.getSelection()?.isCollapsed === false) return
+    handleEditStart()
+  }
+
   function handleEditSave() {
     if (issue === undefined) return
     updateMutation.mutate(
@@ -708,9 +746,16 @@ export function IssueDetailPage({
     // PR22 OUT — P6 전체 클릭 영역: 제목 인라인 편집 트리거로 w-full text-left 가 필요하고,
     // Button 프리미티브의 inline-flex justify-center · h-8 px-2.5 text-sm 과 충돌한다
     // (DashboardTile 타일 제목 인라인 편집과 동형 — 같은 P6 판정).
+    //
+    // 🛑 이 버튼에 `aria-label` 을 붙이지 마라. 감싸는 h1/h2 의 접근성 이름은 자손 텍스트로
+    //    계산되는데, aria-label 이 붙으면 **heading 의 이름까지 그 문자열로 대체돼**
+    //    jira-parity-contract §2 즉사 계약(h1 verbatim)과 E2E `getByRole('heading',{name})`
+    //    가 동시에 깨진다 (F8-T1-2 가 현재 보존의 증인).
+    //    용도 설명이 필요하면 `aria-describedby` + 시각적 숨김 텍스트를 쓸 것.
     <button
+      ref={titleButtonRef}
       type="button"
-      onClick={handleEditStart}
+      onClick={handleTitleClick}
       className="text-left w-full rounded-sm hover:bg-(--bg-neutral-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
     >
       {issue.summary}
