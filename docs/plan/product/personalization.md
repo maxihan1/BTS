@@ -300,13 +300,20 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **아키텍처**. 🛑 **`shortcuts.ts` 의 `SHORTCUTS` 를 건드리면 안 된다.** 여기에 키를 추가하면 `shortcuts.test.ts:121` `toHaveLength(5)` + `:147` `DEFAULT_KEYMAP` 완전일치 + 백엔드 `KeymapAction.kt` 5종 화이트리스트 + `user_keymap.action` CHECK 제약이 **동시에** 깨진다 — 이 4중 계약의 소유자는 §3.3 FR-PF-03 이다. 정답은 **`CONTEXT_SHORTCUTS` 별도 레지스트리 신설**이고, 성공 판정식은 "`shortcuts.test.ts:121` 이 **무수정 green** 을 유지" 다. 사용자 재배치(로드맵 B4)는 `KeymapAction` enum + `user_keymap` CHECK 신규 마이그레이션을 요구하므로 **v1 은 고정 키**로 출시한다.
 
-- [ ] D1. 도메인 — 컨텍스트(목록/상세/보드) 별 단축키 레지스트리 개념 정립. `SHORTCUTS`(전역) 와의 분리 경계 (책임. frontend-engineer)
-- [ ] D2. 명세 — 컨텍스트별 키 매핑 · 활성 컨텍스트 판정 · 입력포커스/IME 가드 · 도움말 모달 노출 (책임. designer)
-- [ ] D3. 데이터 모델 — 없음 (단축키 정의는 프론트 코드 상수. 사용자 재배치는 B4 로 범위 밖) (책임. -)
-- [ ] D4. 백엔드 — 없음 (v1 고정 키. `KeymapAction` enum·`user_keymap` CHECK 무변경이 계약이다) (책임. -)
-- [ ] D5. 백엔드 테스트 — 해당 없음 (백엔드 변경 0) (책임. -)
-- [ ] D6. 프론트 UI — F10 `CONTEXT_SHORTCUTS`·`useContextShortcuts` + 목록 항법 · F11 상세 액션 **8종**(`s` 복원분 포함) (책임. frontend-engineer)
-- [ ] D7. E2E — 컨텍스트별 발화 · `shortcuts.test.ts:121` `toHaveLength(5)` 무수정 green 유지 (책임. qa-engineer)
+- [x] D1. 도메인 — **F10 완료 (PR #336)**. 컨텍스트를 **레이어**로 정립(`app-shell` ⊃ `issue-list`) + `SHORTCUTS`(전역) 와의 분리 경계를 **도메인 지위 차이**로 정의 — 전역은 `user_keymap` 영속을 가진 identity-access 개념, 컨텍스트는 영속 0 의 화면 지역 규약. B4 승격 경로가 의도된 경로가 된다 (책임. frontend-engineer)
+- [x] D2. 명세 — **F10 완료 (PR #336)**. 키 5종 매핑 + Jira Cloud 공식 문서 대조 기록(레포 근거 0건이던 것) · 활성 컨텍스트 라우트 기반 판정 · `shouldIgnoreEvent` 가드 승계 · 도움말 그룹 2종. 커서 단축키는 **와이드 전용**(E13 — 구현 중 실측이 초안을 뒤집음) (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — **없음 확정**. 단축키 정의는 프론트 코드 상수. 마이그레이션 0 (책임. -)
+- [x] D4. 백엔드 — **없음 확정**. v1 고정 키. `KeymapAction` enum·`user_keymap` CHECK **무변경 기계 확인**(`git diff --exit-code`). 키맵 예약 키 가드도 프론트 단일 게이트로 두어 백엔드 0 을 지켰다(ADR D-4) (책임. -)
+- [x] D5. 백엔드 테스트 — **해당 없음 확정** (백엔드 변경 0) (책임. -)
+- [ ] D6. 프론트 UI — **F10 완료 (PR #336)**. `context-shortcuts.ts`(레지스트리+판별+커서 경계) · `useContextShortcuts.ts`(zustand 등록/`enabled` 게이트) · `useKeyboardShortcuts` 폴백 확장 · `ShortcutsHelpDialog` 그룹 2종 + 실효 키맵 표기 · `issues.index.tsx` 커서 배선 · `ShellLayout` `[` 등록 · `KeymapForm` 예약 키 가드. **F11 잔여** — 상세 액션 **8종**(`s` 복원분 포함), F8(§4.9) 의존 (책임. frontend-engineer)
+- [ ] D7. E2E — **F10 완료 (PR #336)**. `context-shortcuts.spec.ts` 8 시나리오 + 회귀 30 동반. `shortcuts.test.ts` `toHaveLength(5)` 무수정 green 유지 확인. **F11 잔여** (책임. qa-engineer)
+
+> **F10 완료 (PR #336, 2026-08-03).** 독립 리뷰 3종이 결함 12건을 적발해 전량 봉합 —
+> 실버그 1(`?selected=` 직접 진입 시 스크롤 미동작) · **공허 가드 4**(E13 커버리지 0 ·
+> E2E S7/E12 negative 가 동기 URL 읽기 · FR10 테스트 0) · 신규 충돌면 1(키맵 재배치로
+> 기능 사망 → ADR D-4) · 선재 3(계약 문서 실측 명령 사망 · 도움말 정적 표기 · `s` 키 실종) ·
+> 문서 drift 3 · 성능·규칙 1. 뮤테이션 M1~M12 로 전 가드의 비-공허 확인.
+> **완주 순서** — §4.9 FR-UX-11(F8 → F9) → F11 → D6/D7 `[x]`.
 
 ### §4.9 FR-UX-11 — 인라인 편집
 
