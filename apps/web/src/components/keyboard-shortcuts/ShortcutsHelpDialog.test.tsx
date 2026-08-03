@@ -1,8 +1,10 @@
 // 단축키 도움말 모달 단위 테스트 — SHORTCUTS 레지스트리 렌더, 비구현 키 미표시, 닫힘 콜백 (FR-UX-05 Task-3)
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
+import { SHORTCUTS } from './shortcuts'
+import { CONTEXT_SHORTCUTS } from './context-shortcuts'
 
 describe('ShortcutsHelpDialog', () => {
   it('open=true이면 role=dialog로 표시되고 제목이 "키보드 단축키"이다', () => {
@@ -60,5 +62,86 @@ describe('ShortcutsHelpDialog', () => {
     render(<ShortcutsHelpDialog open onOpenChange={onOpenChange} />)
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 컨텍스트 단축키 그룹 (FR-UX-10 F10 Task-4)
+//
+// 현재 화면 것만 거르지 않고 전체를 보여주되 그룹으로 나눈다 — 화면마다 목록이
+// 바뀌면 학습이 안 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ShortcutsHelpDialog — 컨텍스트 단축키 그룹 (FR-UX-10 F10)', () => {
+  it('그룹 헤딩 2개(「어디서나」·「이슈 목록에서」)로 나뉜다', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: '어디서나' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '이슈 목록에서' })).toBeInTheDocument()
+  })
+
+  it('목록 항법 4종이 「이슈 목록에서」 그룹 안에 있다', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const listGroup = screen.getByRole('region', { name: '이슈 목록에서' })
+    expect(within(listGroup).getByText('다음 이슈로 이동')).toBeInTheDocument()
+    expect(within(listGroup).getByText('이전 이슈로 이동')).toBeInTheDocument()
+    expect(within(listGroup).getByText('선택한 이슈 열기')).toBeInTheDocument()
+    expect(within(listGroup).getByText('상세 패널 열기/닫기')).toBeInTheDocument()
+  })
+
+  it('★사이드바 토글은 목록 전용이 아니므로 「어디서나」 그룹에 있다', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    expect(within(globalGroup).getByText('사이드바 접기/펼치기')).toBeInTheDocument()
+  })
+
+  it('★C5-b 기존 5종 + Cmd/Ctrl K 는 「어디서나」에 문구 그대로 남는다 (e2e가 텍스트로 찾는다)', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    for (const description of [
+      '단축키 도움말 열기/닫기',
+      '새 이슈 생성',
+      '검색으로 이동',
+      '내 이슈로 이동',
+      '대시보드로 이동',
+      '명령 팔레트 열기',
+    ]) {
+      expect(within(globalGroup).getByText(description)).toBeInTheDocument()
+    }
+  })
+
+  it('컨텍스트 키 5종의 키 표기가 모두 렌더된다', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const dialog = screen.getByRole('dialog')
+    for (const key of ['j', 'k', 'o', 't', '[']) {
+      expect(within(dialog).getByText(key)).toBeInTheDocument()
+    }
+  })
+
+  it('★C5 F11 미구현 키(담당자·라벨·관심·즐겨찾기)는 표시되지 않는다 (FR8 승계)', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    for (const notYet of [
+      '담당자 지정',
+      '나에게 배정',
+      '댓글 작성',
+      '라벨 편집',
+      '관심 토글',
+      '즐겨찾기 토글',
+      '액션 메뉴',
+    ]) {
+      expect(screen.queryByText(notYet)).not.toBeInTheDocument()
+    }
+  })
+
+  it('★단일 진실 출처 — 렌더된 설명 수가 두 레지스트리 합계와 정확히 같다 (하드코딩 줄 0)', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const expected = SHORTCUTS.length + 1 + CONTEXT_SHORTCUTS.length // +1 = 명령 팔레트
+    expect(screen.getByRole('dialog').querySelectorAll('dt')).toHaveLength(expected)
   })
 })
