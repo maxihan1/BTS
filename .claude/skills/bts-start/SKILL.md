@@ -52,6 +52,9 @@ slug=<classify 결과의 slug>
 branch_prefix=<type> # feat, fix, refactor, chore, ...
 git worktree add ".worktrees/${slug}" -b "${branch_prefix}/${slug}"
 
+# ★ pre-commit 훅 연결 — 빠뜨리면 이 worktree 의 모든 커밋이 무방비다.
+ln -s "$(pwd)/.husky/_" ".worktrees/${slug}/.husky/_"
+
 echo "✅ Worktree: $(pwd)/.worktrees/${slug}"
 echo "👉 이후 모든 작업은 worktree 내부에서 진행"
 ```
@@ -59,6 +62,11 @@ echo "👉 이후 모든 작업은 worktree 내부에서 진행"
 **Atlas 고유 규칙**.
 - 위치 고정. `.worktrees/<slug>` (`.gitignore`됨)
 - 브랜치 명명. `<type>/<slug>` (예. `feat/issue-mention-notify`, `auth/2fa-totp`)
+- **훅 연결 필수**. husky 의 `core.hooksPath` 는 **상대 경로** `.husky/_` 인데 그 디렉토리는
+  `.gitignore` 대상이라 worktree 에 checkout 되지 않는다. git 은 훅을 못 찾으면 **실패가 아니라
+  침묵으로 건너뛴다** — 아무도 눈치채지 못한다. 연결이 없으면 인덱스 drift·lint 위반이
+  전부 통과해 CI 에서야 빨간불이 된다(PR #331·#333 실측, 5커밋 구간 red).
+  배선은 `scripts/workflow/worktree-hook-wiring.test.ts` 가 강제한다.
 
 ### Step 4. plan 스텁 생성
 
