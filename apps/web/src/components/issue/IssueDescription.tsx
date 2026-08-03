@@ -270,19 +270,47 @@ function EditMode({
   isSaving,
 }: EditModeProps): JSX.Element {
   /**
-   * 작성분 폐기 확인 패널 노출 여부 (편차 D-1).
-   * EditMode 는 편집 모드가 꺼지면 통째로 언마운트되므로 별도 초기화 없이
-   * 다음 편집 진입 시 항상 false 로 시작한다.
+   * 작성분 폐기 확인 패널 **요청** 플래그 (편차 D-1).
+   *
+   * 편집 진입 시점의 초기화는 언마운트가 해 준다 — `isEditing` 이 꺼지면 EditMode 가 통째로
+   * 사라지므로 다음 진입은 항상 false 로 시작한다.
+   * **다만 `isEditing` 이 꺼지지 않는 경로**(저장 · 타이핑 · 탭 전환)에서는 언마운트가 없어
+   * 이 플래그만으로는 패널이 남는다. 그래서 실제 노출은 아래 `showDiscardConfirm` 파생값이
+   * 결정하고, 타이핑·탭 전환은 별도로 플래그를 내린다(리뷰 R-1).
    */
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   // FR-MN-02: 멘션 자동완성 배선 — textarea ref + 훅 연결
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  /**
+   * 초안 변경 — 타이핑은 "계속 편집하겠다"는 의사표시다.
+   * 폐기 확인이 떠 있는 채로 빨간 경고 아래에서 계속 쓰게 두지 않는다 (R-1).
+   */
+  function handleDraftChange(next: string): void {
+    setConfirmDiscard(false)
+    onDraftChange(next)
+  }
+
   const mention = useMentionAutocomplete({
     value: draftMarkdown,
-    onChange: onDraftChange,
+    onChange: handleDraftChange,
     textareaRef,
   })
+
+  /**
+   * 폐기 확인 패널 **실제 노출** 여부 — 상태가 아니라 파생값이다 (리뷰 R-1).
+   *
+   * `confirmDiscard` 만으로 그리면 `isEditing` 이 꺼지지 않는 경로에서 패널이 남는다.
+   * 특히 **저장 후**에는 버릴 것이 없는데도 "작성 중인 내용이 사라집니다" 가 계속 떠 있고,
+   * 그 상태의 `편집 그만두기` 는 문구와 달리 아무것도 버리지 않아 **문구가 거짓말**이 된다.
+   * 초안이 원본과 같아지는 순간(저장 후 refetch · 사용자가 직접 되돌림) 자동 해소된다.
+   *
+   * 미리보기 탭에서는 그리지 않는다 — 이 패널은 쓰기 탭 편집 맥락의 확인이고,
+   * 탭 콘텐츠의 형제로 놓여 있어 조건이 없으면 미리보기 화면 위에 그대로 남는다.
+   */
+  const showDiscardConfirm =
+    confirmDiscard && draftMarkdown !== initialMarkdown && activeTab === 'write'
 
   // 마운트 효과에서 쓰는 훅 함수 — useCallback([]) 이라 참조가 안정적이다(mentionReset 과 같은 패턴)
   const suppressNextSelect = mention.suppressNextSelect
@@ -300,8 +328,10 @@ function EditMode({
    *   조작과 구별되지 않는 `select` 이벤트를 낳고, 그것이 멘션 감지를 깨워 본문이 `@이름` 으로
    *   끝나는 이슈에서 **열지도 않은 자동완성이 진입 직후 떠 버린다**. 그 상태에서는 첫 `Enter`
    *   가 줄바꿈이 아니라 후보 선택, 첫 `Esc` 가 취소가 아니라 팝업 닫기가 되어 FR5·FR6 이
-   *   첫 타건에 무력화된다(실측 확인). 억제는 **정확히 1회**이고 사용자의 클릭·방향키 이동은
-   *   종전대로 감지된다.
+   *   첫 타건에 무력화된다(실측 확인). 억제 범위는 **다음 타건 전까지 최대 1회**다 —
+   *   `select` 가 영영 오지 않으면(빈 본문의 `setSelectionRange(0,0)` 은 범위가 안 바뀌어
+   *   명세상 미발화) 플래그가 남지만, 다음 `change` 나 `select` 가 소비하므로 유계·자가치유다.
+   *   사용자의 클릭·방향키 이동은 종전대로 감지된다.
    */
   useEffect(() => {
     const el = textareaRef.current
@@ -318,6 +348,9 @@ function EditMode({
   useEffect(() => {
     if (activeTab !== 'write') {
       mentionReset()
+      // 탭을 떠나는 것은 편집을 계속하겠다는 뜻이다 — 대기 중인 폐기 확인 요청도 함께 내린다.
+      // (파생값이 미리보기에서 숨기긴 하지만, 플래그를 남겨 두면 쓰기 탭 복귀 시 되살아난다) — R-1
+      setConfirmDiscard(false)
     }
   }, [activeTab, mentionReset])
 
@@ -344,7 +377,11 @@ function EditMode({
 
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
-      // 저장 진행 중 연타로 중복 제출되지 않게 막는다 (E5)
+      // E5 중복 제출 방지의 **1차 방어는 아래 textarea 의 `disabled={isSaving}`** 이다.
+      // 저장 중에는 keydown 자체가 발화하지 않아 이 줄은 현재 도달 불가다(실측 — 지워도 전량 초록).
+      // 그럼에도 남기는 것은 `disabled` 가 제거될 때를 대비한 **이중 방어**이기 때문이다.
+      // PATCH 중복 발행은 되돌리기 어려운 쓰기 사고라 2줄 보험이 값싸다.
+      // (대조 — 제목 편집의 Input 에는 disabled 가 없어 같은 코드가 그쪽에선 유일한 가드다.)
       if (isSaving) return
       // 부모의 handleSave 가 draftMarkdown 을 클로저로 읽으므로 인자를 넘기지 않는다
       onSave()
@@ -356,17 +393,51 @@ function EditMode({
   }
 
   /**
+   * 폐기 확인을 내리고 입력 영역으로 포커스를 되돌린다 — `계속 편집` 의 동작.
+   * 포커스를 되돌리지 않으면 사용자가 버튼 위에 남아 바로 이어 쓰지 못한다.
+   * `focus()` 만 부르고 커서는 건드리지 않는다(멘션 감지를 깨우지 않는 경로 — 실측).
+   */
+  function dismissDiscardConfirm(): void {
+    setConfirmDiscard(false)
+    textareaRef.current?.focus({ preventScroll: true })
+  }
+
+  /**
    * 편집 취소 요청 (FR6) — 초안이 원본과 다르면 확인을 먼저 거친다.
    *
    * **편차 D-1.** Jira 는 `Esc` 에 확인 없이 작성분을 버리고, Atlassian 이 개선하지 않기로
    * 공표했다(JRACLOUD-36670 · JRACLOUD-41814). 그 결함을 복제하지 않는다.
+   *
+   * **확인이 이미 떠 있으면 `Escape` 는 `계속 편집` 이다 (리뷰 R-2 경로 B).**
+   * 예전에는 이미 true 인 플래그를 다시 true 로 세워 **화면이 전혀 변하지 않는데
+   * `preventDefault()` 는 발화**했다. 그 결과 키보드 사용자는 확인을 진행할 수도, pane 을
+   * 닫을 수도 없이 갇혔다. 두 번째 `Escape` 를 패널 닫기로 매핑해 그 죽은 키를 없앤다.
+   * (폐기로 매핑하지 않는다 — `Esc` 두 번에 초안이 날아가면 우리가 피하려던 Jira 결함이 된다.)
    */
   function requestCancel(): void {
+    if (showDiscardConfirm) {
+      dismissDiscardConfirm()
+      return
+    }
     if (draftMarkdown !== initialMarkdown) {
       setConfirmDiscard(true)
       return
     }
     onCancel()
+  }
+
+  /**
+   * 확인 패널 안에서의 `Escape` — `계속 편집` 으로 매핑한다 (다이얼로그 관례, 리뷰 R-2 경로 A).
+   *
+   * 패널이 뜨면 포커스가 `계속 편집` 으로 이동하므로 textarea 의 키 핸들러는 더 이상 발화하지
+   * 않는다. 여기서 `preventDefault()` 를 하지 않으면 `usePaneEscapeClose` 의 **document 전역
+   * 리스너**가 `e.defaultPrevented` 만 보고 pane 을 닫아 **작성분이 그대로 사라진다** —
+   * 확인 패널이 지키기로 한 바로 그것을 못 지키게 된다.
+   */
+  function handleConfirmKeyDown(e: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (e.key !== 'Escape') return
+    e.preventDefault()
+    dismissDiscardConfirm()
   }
 
   return (
@@ -464,9 +535,19 @@ function EditMode({
         ★ 버튼 문자열은 위 저장/취소와 **의도적으로 다르다**(리뷰 F-2) — 같은 화면에 '취소' 가
         둘이면 E2E strict mode violation 이 나고 사용자도 「취소의 취소」를 이해하지 못한다.
       */}
-      {confirmDiscard ? (
-        <div className="border border-destructive/40 rounded-md p-3 text-sm text-destructive space-y-2">
-          <p>{issueDetailStrings.descriptionDiscardConfirm}</p>
+      {showDiscardConfirm ? (
+        <div
+          onKeyDown={handleConfirmKeyDown}
+          className="border border-destructive/40 rounded-md p-3 text-sm text-destructive space-y-2"
+        >
+          {/*
+            role="alert" — 스크린리더에 패널 등장을 알린다 (리뷰 R-3).
+            이 패널은 `Esc` 로만 도달하는 **키보드 전용 결정 지점**이라, 무음이면
+            "편집을 빠져나갈 수 없다"고 느끼게 된다.
+            role="alertdialog" 는 쓰지 않는다 — 포커스 트랩 등 모달 계약을 구현하지 않으므로
+            틀린 role 을 붙이는 것이 아예 없는 것보다 나쁘다.
+          */}
+          <p role="alert">{issueDetailStrings.descriptionDiscardConfirm}</p>
           <div className="flex gap-2">
             <Button
               variant="destructive"
@@ -484,7 +565,10 @@ function EditMode({
               variant="outline"
               size="sm"
               className="min-h-[44px]"
-              onClick={() => setConfirmDiscard(false)}
+              // 패널이 뜨면 포커스를 여기로 옮긴다 — 안전한 선택지가 기본이고,
+              // 포커스가 패널 안에 있어야 위 handleConfirmKeyDown 이 Escape 를 받는다 (R-2·R-3)
+              autoFocus
+              onClick={dismissDiscardConfirm}
               aria-label={issueDetailStrings.descriptionDiscardCancelButton}
             >
               {issueDetailStrings.descriptionDiscardCancelButton}
