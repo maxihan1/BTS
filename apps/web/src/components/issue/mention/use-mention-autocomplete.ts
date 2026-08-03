@@ -187,6 +187,14 @@ export function useMentionAutocomplete({
       // (프로그램적 caret 이동이 select 를 안 낳는 환경에서 플래그가 남아 다음 사용자 조작을
       //  삼키는 것을 막는 안전장치. 억제 범위를 "다음 타건 전까지"로 못 박는다.)
       suppressNextSelectRef.current = false
+
+      // 지연된 blur 닫기 예약이 남아 있으면 취소한다.
+      // 타이핑은 사용자가 이 입력칸으로 **돌아왔다**는 뜻이라, 이전 blur 로 예약된 닫기는 무효다.
+      // 취소하지 않으면 방금 연 드롭다운을 150ms 뒤 stale 타이머가 닫아 버린다(실측 회귀).
+      if (blurTimerRef.current !== null) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
       const text = e.currentTarget.value
       const caret = e.currentTarget.selectionStart ?? 0
       onChange(text)
