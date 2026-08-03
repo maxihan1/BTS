@@ -207,14 +207,18 @@ office-hours 스킵 근거는 FR-UX-05 선례와 동형. Maxi 결정 필요 gap 
 - **도움말 열림 중 `j`/`[` → 무동작** (E7)
 - IME 조합 중 · 입력 포커스 중 무동작 (E9/E10 — 기존 `shouldIgnoreEvent` 선행)
 - 비로그인 시 리스너 미등록 (E11)
-- **리스너 개수가 1개임을 단언** (`addEventListener` 스파이 호출 수)
+- **컨텍스트 키 발화 시 `preventDefault` 호출** (ADR D-2 파생 — 후행 bubble 리스너가
+  `defaultPrevented` 로 걸러내는 기존 관례가 성립해야 한다)
+- **판별식** `keyboard-shortcuts/` 안의 `document.addEventListener('keydown'` 이 **정확히 1회**
+  (소스 전수 grep — 리뷰 F2 반영)
 
 **GREEN**. `resolveKeydown` 결과가 `none` 일 때만 컨텍스트 판별로 폴백. `reset`(leader 리셋)은
 폴백하지 않는다 — 이것이 E6 을 닫는 지점.
 
 **REFACTOR**. 판별 순서를 주석으로 명문화 (전역 → 좁은 컨텍스트 → 넓은 컨텍스트).
 
-**검증**. `pnpm test useKeyboardShortcuts` + **`shortcuts.test` 무수정 green (C1)**
+**검증**. `pnpm test useKeyboardShortcuts` + **`shortcuts.test` 무수정 green (C1)** +
+`grep -c "document.addEventListener('keydown'" apps/web/src/components/keyboard-shortcuts/*.ts` = 1
 
 ---
 
@@ -227,11 +231,16 @@ office-hours 스킵 근거는 FR-UX-05 선례와 동형. Maxi 결정 필요 gap 
 - depends-on: [1]
 
 **동반 테스트**.
-- 컨텍스트 5종이 컨텍스트 라벨과 함께 렌더된다 (`CONTEXT_SHORTCUTS` 단일 구동 — C4)
+- 그룹 헤딩 2개(**「어디서나」**·**「이슈 목록에서」**)로 렌더된다 (design 리뷰 D4)
+- 컨텍스트 5종이 올바른 그룹에 배치된다 — `[` 는 「어디서나」, `j`/`k`/`o`/`t` 는
+  「이슈 목록에서」 (`CONTEXT_SHORTCUTS` 단일 구동 — C4)
 - **F11 미구현 키(`a`/`i`/`m`/`e`/`l`/`s`/`w`/`.`)가 렌더되지 않는다** (C5, FR-UX-05 FR8 승계)
-- 기존 전역 5종 + `Cmd+K` 표기 무회귀
+- ★**기존 5종 + `Cmd/Ctrl K` 의 설명 문구·키 표기 verbatim 무변경** — e2e 가 텍스트로
+  찾는다 (계약 §2 h1 verbatim 과 같은 부류의 위험)
 
-**구현**. 기존 모달에 섹션 추가. 하드코딩 금지 — 상수를 map.
+**구현**. 현재는 **그룹 헤딩 없는 평평한 `<dl>`**(`SHORTCUTS.map` + `PALETTE_HELP_ITEM`)이라
+**그룹 구조를 도입**한다. 기존 항목도 그룹에 넣되 문구는 건드리지 않는다.
+하드코딩 금지 — 상수를 map.
 
 **검증**.
 - `pnpm test ShortcutsHelpDialog`
@@ -253,8 +262,10 @@ office-hours 스킵 근거는 FR-UX-05 선례와 동형. Maxi 결정 필요 gap 
 - ★**다른 검색 파라미터 보존** — `?projectKey=INFRA&status=open` 위에서 `j` 를 눌러도
   두 파라미터가 살아남는다 (`project-switcher.spec.ts:119` 회귀 가드의 유닛 짝)
 - `o` → `/issues/<KEY>` 이동 · `t` → `selected` 토글 (E13 좁은폭 포함)
-- 커서 이동 시 `scrollIntoView({ block: 'nearest' })` 호출 (FR10)
-- `aria-live="polite"` 공지 텍스트 갱신 (FR11)
+- 커서 이동 시 `scrollIntoView({ block: 'nearest' })` 호출 (FR10) +
+  **sticky 헤더에 첫 행이 가리지 않도록 `scroll-margin` 확인** (design 리뷰 D5)
+- `aria-live="polite"` 공지 문구가 **`"{총}개 중 {n}번째, {이슈키}, {제목}"`** 형식
+  (design 리뷰 D6 확정 — 예 *"25개 중 3번째, ATLAS-13, 로그인 실패 처리"*)
 
 **구현**. `useContextShortcuts('issue-list', handlers)` 호출 + 핸들러가 기존
 `selectedKey` 갱신 경로를 재사용 (**새 상태 신설 0** — C3).
@@ -263,8 +274,14 @@ office-hours 스킵 근거는 FR-UX-05 선례와 동형. Maxi 결정 필요 gap 
 - `pnpm test issues.index`
 - ★**기존 e2e 동반 실행** — `issue-split-view.spec.ts` · `issue-table.spec.ts` ·
   `project-switcher.spec.ts` (learnings #47 — 미루면 머지 시점까지 잠복)
-- **눈확인**. `j`/`k` 연타 시 커서·상세 페인 추종, 체감 지연 유무 · `o` 후 뒤로가기로
-  커서 보존 · `t` 와이드/좁은폭 · **라이트/다크 커서 강조 대비**
+- **눈확인**. `o` 후 뒤로가기로 커서 보존 · `t` 와이드/좁은폭 ·
+  **라이트/다크 커서 강조 대비** · 체크박스 체크 + 커서가 겹친 행의 표기(D2 — 다른
+  채널이라 충돌 없어야 정상)
+- ★**연타 판정선** (design 리뷰 D3). `j` 10회 연타 후 3항 관측 —
+  ① 우측 페인이 중간 상태(스켈레톤/빈 화면)를 거치는가
+  ② **커서 이동이 페인 로딩을 기다려 끊기는가**
+  ③ 네트워크 요청이 누적되는가
+  → **① 또는 ② 관측 시 결함으로 보고 즉시 대응. ③만이면 후속으로 기록**
 
 ---
 
@@ -301,4 +318,52 @@ E12 `/issues` 밖에서 `j` 무동작 · `[` 는 살아있음
   설계(ADR 3건 + 스펙 FR11종 + 사전 grep)가 선확정돼 분해 입력이 이미 완결이다.
   형식 준수 항목(메타/RED/GREEN/REFACTOR/검증·depends-on·files)은 전 task 충족.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 구조 리뷰 (실측 기반, 2026-08-03) — 결함 2건 발견·반영
+
+**F1 (MAJOR·반영완료).** ADR D-2 의 *"리스너는 하나"* 명제가 **사실과 다르다**.
+`document`/`window` keydown 리스너가 이미 **5개** 공존한다 — `useKeyboardShortcuts:155` ·
+`useCommandPalette:52` · `issues.$key.tsx:89` · `ShareDashboardModal:181` ·
+`use-timeline-zoom:139`. 여러 리스너 공존은 BTS 의 **기존 설계**이고 이중 발화는
+`e.defaultPrevented` 로 조정하는 관례가 이미 있다(`usePaneEscapeClose` 주석).
+→ ADR 에 명제 정정 + **컨텍스트 키 발화 시 `preventDefault` 필수** 파생 규칙 추가.
+
+**F2 (MAJOR·반영완료).** T3 의 *"addEventListener 스파이로 리스너 1개 단언"* 이
+**작동하지 않는다**. 테스트 환경에서 다른 훅이 함께 마운트되면 카운트가 1이 아니고,
+다른 파일에 리스너가 추가돼도 못 잡는다(가드가 자기 파일만 본다).
+→ **소스 전수 판별식**으로 교체 — `keyboard-shortcuts/` 안의
+`document.addEventListener('keydown'` 이 정확히 1회.
+
+**R1·R3·R5·R6·R7 판정** — R1 기존 `shortcuts.test.ts:121` 이 이미 가드이고
+Plan 메타의 `git diff 0` 확인이 그 가드의 무력화를 막으므로 추가 장치 불요 /
+R3 F9(목록 셀 편집)는 오히려 커서를 필요로 해 재사용이 이득, F11 은 상세 화면이라 무관 /
+R5 레이어 구조는 `issue-detail`·`board` 추가로 그대로 확장 /
+R6 T1→T2→T3 직렬은 층 구조상 불가피, T4 를 T1 의존으로 떼어 조기 병렬 /
+R7 `aria-live`·`scrollIntoView` 는 같은 파일이라 분리해도 직렬화만 늘어남.
+
+### plan-design-review (경량, Maxi 확정 2026-08-03)
+
+시각 변화가 도움말 모달 섹션 1개뿐이고 커서 강조는 FR-UX-06 PR20 에서 이미 토큰화된
+자산 재사용이라 mockup 생성·외부 모델 호출은 생략. D1~D6 을 실측으로 판정했다.
+
+| | 판정 | 근거 |
+|---|---|---|
+| **D1** 커서 = split 강조 동일 표기 | ✅ **옳다. 유지** | ADR D-3 이 둘을 같은 개념으로 정의했으므로 같은 표기가 일관적이다. 다르게 그리면 *"같은 것인데 달라 보이는"* 더 나쁜 상태가 된다 |
+| **D2** 체크박스 + 커서 겹침 | ✅ **충돌 구조적으로 불가** (실측) | bulk 선택은 **행 스타일을 안 바꾼다** — `selection.isSelected` 는 체크박스 `checked` 만 제어(`IssueTable.tsx:220`). 행 배경 `data-[state=selected]:bg-(--bg-selected)`(`ui/table.tsx:49`)는 `selectedKey` 전용. **다른 채널**이라 겹쳐도 안전 |
+| **D3** 연타 깜빡임 | ⚠️ **눈확인 판정선 구체화** | 관측 3항 — ① 우측 페인이 중간 상태(스켈레톤/빈 화면)를 거치는가 ② **커서 이동이 페인 로딩을 기다려 끊기는가** ③ 네트워크 요청이 누적되는가. **판정선 — ① 또는 ②면 결함(즉시 대응), ③만이면 후속** |
+| **D4** 도움말 모달 | 🔧 **구조 변경 필요 — T4 갱신** | 실측상 현재 모달은 **그룹 헤딩 없는 평평한 `<dl>`**(`SHORTCUTS.map` + `PALETTE_HELP_ITEM`). 섹션을 넣으려면 그룹 헤딩을 **도입**해야 하고, 그러면 기존 5종도 그룹에 들어가야 일관적이다 |
+| **D5** `scrollIntoView` `block:'nearest'` | ✅ **적절** | 이미 보이면 안 움직이고 벗어나야 최소로 이동 — 항법에 정확히 맞다. `center` 는 매 키마다 화면이 튄다. **단 sticky 헤더에 첫 행이 가리지 않도록 `scroll-margin` 확인** |
+| **D6** `aria-live` 공지 문구 | 🔧 **문구 확정** | **`"{총}개 중 {n}번째, {이슈키}, {제목}"`** (예 — *"25개 중 3번째, ATLAS-13, 로그인 실패 처리"*). 위치 → 식별자 → 내용 순. `polite` 는 연타 중 큐가 쌓이지 않고 멈춘 지점만 읽으므로 총 개수를 매번 실어도 피로하지 않고, 멈췄을 때 위치 감각이 완결된다 |
+
+**D4 파생 — 그룹 라벨 문구 확정 (한국어, 사용자 대상이라 "전역" 같은 개발 용어 배제).**
+
+| 그룹 | 포함 |
+|---|---|
+| **「어디서나」** | 기존 전역 5종 + `Cmd/Ctrl K` + **`[`**(app-shell 컨텍스트) |
+| **「이슈 목록에서」** | `j` · `k` · `o` · `t` |
+
+**T4 갱신 지시.** 평평한 `<dl>` → 그룹 헤딩 2개 구조로 변경하되 **기존 항목의 설명
+문구·키 표기는 verbatim 보존**한다(`keyboard-shortcuts.spec.ts`·`keymap.spec.ts` 가
+텍스트로 찾는다 — 계약 §2 h1 verbatim 규칙과 같은 부류의 위험). 동반 테스트에
+**"기존 5종 문구 무변경"** 단언을 추가한다.

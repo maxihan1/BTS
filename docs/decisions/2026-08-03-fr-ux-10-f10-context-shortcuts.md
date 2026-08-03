@@ -56,11 +56,28 @@ CHECK 마이그레이션이 그 승격의 대가다. 지금 그 대가를 치르
 세부다. 다만 **전역 단축키/`KeymapAction` 은 도메인 개념인데 glossary 에 0건**이다.
 이번 FR 범위 밖이므로 별건 후보로 남긴다.
 
-## D-2. 단일 리스너 · 단일 판별 파이프라인 — 리스너를 둘로 두면 안 된다
+## D-2. 단축키 파이프라인 단일화 — 컨텍스트 단축키는 새 리스너를 만들지 않는다
 
 **결정.** 컨텍스트 단축키를 **별도 `document` 리스너로 붙이지 않는다.** 기존
 `useKeyboardShortcuts`(RootLayout 단일 마운트)의 판별 파이프라인을 확장해
 **전역 우선 → 미매칭 시 컨텍스트 폴백** 순서로 한 리스너가 처리한다.
+
+> **★ 명제 정정 (plan 리뷰 실측, 2026-08-03).** 초안은 이 결정을 *"리스너는 하나"* 로
+> 적었으나 **사실과 다르다.** `document`/`window` keydown 리스너가 이미 **5개** 공존한다 —
+> `useKeyboardShortcuts:155`(전역 단축키) · `useCommandPalette:52`(팔레트) ·
+> `issues.$key.tsx:89`(페인 Escape 닫기) · `ShareDashboardModal:181` ·
+> `use-timeline-zoom:139`(window). 여러 리스너 공존은 BTS 의 **기존 설계**이고,
+> 이중 발화는 **`e.defaultPrevented` 체크로 조정**하는 관례가 이미 있다
+> (`usePaneEscapeClose` 주석 — *"Radix DismissableLayer 가 capture 단계에서
+> preventDefault 하므로 bubble 단계인 이 리스너는 이미 처리된 Escape 를 건너뛴다"*).
+>
+> 정확한 명제는 **"앱에 리스너가 하나"** 가 아니라 **"컨텍스트 단축키가 `SHORTCUTS`
+> 와 같은 키 공간을 공유하므로 그 둘은 반드시 한 파이프라인에서 판별돼야 한다"** 다.
+> 아래 두 결함은 **같은 키 공간을 나눠 가질 때만** 발생하며, 팔레트·타임라인처럼
+> 키 공간이 분리된 리스너와는 무관하다.
+>
+> **파생 — 컨텍스트 단축키는 발화 시 `preventDefault` 를 반드시 호출한다.** 그래야
+> 후행 bubble 리스너들이 `defaultPrevented` 로 걸러내는 기존 관례가 성립한다.
 
 **기각한 대안 — 독립 리스너 2개.** 코드 구조가 두 개의 실동작 결함을 강제한다.
 
