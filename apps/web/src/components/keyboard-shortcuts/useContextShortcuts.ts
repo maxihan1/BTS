@@ -125,6 +125,15 @@ export function dispatchContextAction(action: ContextShortcutAction): void {
       return
     case 'none':
       return
+    default: {
+      // ★exhaustive 가드 — `ContextShortcutAction` 에 새 액션을 추가하고 여기 case 를
+      // 빠뜨리면 **컴파일 에러**가 난다. 이 default 가 없으면 반환 타입이 void 라
+      // TypeScript 가 누락을 잡아주지 않아, 새 단축키가 판별까지는 되고 dispatch 에서
+      // 조용히 사라진다(발화는 하는데 아무 일도 안 일어나는 가장 찾기 힘든 형태).
+      const exhaustive: never = action
+      void exhaustive
+      return
+    }
   }
 }
 
