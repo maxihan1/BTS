@@ -129,6 +129,176 @@ personalization, 물리 구현은 `apps/web` (ADR §D2, FR-UX-05 D4 · FR-UX-06 
 ✅ 통과 (ui 경량 경로 — brainstorming 스킵, `## Jira 대조` + 즉사 계약 §2 교차가 대체).
 office-hours 스킵 근거는 FR-UX-05 선례와 동형. Maxi 결정 필요 gap 0.
 
-## Plan (← /bts-plan 채움)
+## 사전 grep 결과 (계약 §5 — 착수 전 실측, 2026-08-03)
+
+| 항목 | 실측 | 판정 |
+|---|---|---|
+| `/issues` 접촉 e2e | **33 파일** | 전량은 과도 — 계약 접촉분만 동반 실행 (아래) |
+| **`issue-split-view.spec.ts`** | *"?selected=<KEY> + 우측 상세 페인(h2) + 선택 행 aria-current"* | ★**최우선 회귀 가드** — 이번 커서 계약과 정확히 동일 |
+| **`issue-table.spec.ts`** | *"행 클릭은 `/issues?selected=<KEY>`"* | ★커서 진입 경로 계약 |
+| **`project-switcher.spec.ts:119`** | *"`?projectKey=&status=&selected=` 전환 시 **다른 검색 파라미터가 살아남는다**"* | ★★**회귀 위험 최고** — `j`/`k` 가 URL 갱신 시 기존 파라미터를 날리면 즉사 |
+| `keyboard-shortcuts.spec.ts` · `keymap.spec.ts` | 기존 전역 단축키 e2e | 새 키가 기존 발화를 방해하지 않는지 |
+| **즉사 계약** | `shortcuts.test.ts:121` `expect(SHORTCUTS).toHaveLength(5)` | **무수정 green 이 성공 판정식** |
+
+> `project-switcher.spec.ts:119` 는 이번 grep 이 아니었으면 놓쳤을 항목이다 — URL 을
+> 통째로 교체하지 말고 **`selected` 키만 갈아끼워야** 한다.
+
+## Plan
+
+### Task 1. `context-shortcuts.ts` — 레지스트리 + 순수 판별·커서 계산
+
+**메타**.
+- agent: `frontend-engineer`
+- 트랙: **red-first TDD** (순수 로직 — 시각 변화 0)
+- files: [`apps/web/src/components/keyboard-shortcuts/context-shortcuts.ts`, `apps/web/src/components/keyboard-shortcuts/context-shortcuts.test.ts`]
+- depends-on: []
+
+**RED**. `context-shortcuts.test.ts` 신규.
+- `CONTEXT_SHORTCUTS` 가 5종이고 각 항목이 `{ key, description, context, action }` 을 갖는다
+- `resolveContextKeydown('j', 'issue-list')` → `{ kind: 'cursor-move', delta: 1 }`
+- `resolveContextKeydown('j', 'app-shell')` → `{ kind: 'none' }` (컨텍스트 불일치, E12)
+- `resolveContextKeydown('[', 'issue-list')` → `{ kind: 'toggle-sidebar' }` (**넓은 컨텍스트 폴백** — FR2)
+- 커서 경계 — `nextCursorKey(keys, current, +1)`. E1(빈 목록 `null`) · E2(current 없음 → 첫 키) ·
+  E3(첫에서 -1 → 무동작) · E4(마지막에서 +1 → 무동작, wrap 없음) · E5(current 미포함 → 첫 키)
+- 실패 예상. `context-shortcuts` 모듈 없음
+
+**GREEN**. `context-shortcuts.ts` 신규. 상수 + 순수 함수 2개. **`shortcuts.ts` import 0**
+(단방향 — 계약 오염 차단).
+
+**REFACTOR**. 판별 유니온 타입에 KDoc. 컨텍스트 레이어 우선순위를 배열 순서로 명문화.
+
+**검증**. `pnpm test context-shortcuts` + **`pnpm test shortcuts.test` 무수정 green (C1)**
+
+---
+
+### Task 2. `useContextShortcuts` — 컨텍스트 등록 훅 + 스토어
+
+**메타**.
+- agent: `frontend-engineer`
+- 트랙: **red-first TDD**
+- files: [`apps/web/src/components/keyboard-shortcuts/useContextShortcuts.ts`, `apps/web/src/components/keyboard-shortcuts/useContextShortcuts.test.tsx`]
+- depends-on: [1]
+
+**RED**. 라우트가 자신의 컨텍스트와 핸들러를 등록/해제한다.
+- 마운트 시 컨텍스트가 활성, 언마운트 시 해제 (누수 0 — NFR5)
+- 두 라우트가 연속 마운트되면 나중 것이 활성 (스택 아님, 최신 1개)
+- 핸들러 미제공 액션은 무동작
+
+**GREEN**. zustand 스토어(활성 컨텍스트 + 핸들러 맵) + `useEffect` 등록/해제.
+**`document` 리스너 추가 금지 (C2)** — 이 훅은 등록만 하고 발화는 Task 3 이 한다.
+
+**REFACTOR**. `use-sidebar-collapsed.ts` 의 zustand 패턴에 맞춰 정리.
+
+**검증**. `pnpm test useContextShortcuts`
+
+---
+
+### Task 3. `useKeyboardShortcuts` 판별 파이프라인 확장
+
+**메타**.
+- agent: `frontend-engineer`
+- 트랙: **red-first TDD**
+- files: [`apps/web/src/components/keyboard-shortcuts/useKeyboardShortcuts.ts`, `apps/web/src/components/keyboard-shortcuts/useKeyboardShortcuts.test.tsx`]
+- depends-on: [2]
+
+**RED**. 기존 테스트 무회귀 + 신규 단언.
+- 전역 미매칭 키(`j`)가 활성 컨텍스트로 폴백해 발화한다 (FR2)
+- **leader 대기 중(`g` 직후) `j` → 무동작 + 시퀀스 리셋** (E6, ADR D-2)
+- **도움말 열림 중 `j`/`[` → 무동작** (E7)
+- IME 조합 중 · 입력 포커스 중 무동작 (E9/E10 — 기존 `shouldIgnoreEvent` 선행)
+- 비로그인 시 리스너 미등록 (E11)
+- **리스너 개수가 1개임을 단언** (`addEventListener` 스파이 호출 수)
+
+**GREEN**. `resolveKeydown` 결과가 `none` 일 때만 컨텍스트 판별로 폴백. `reset`(leader 리셋)은
+폴백하지 않는다 — 이것이 E6 을 닫는 지점.
+
+**REFACTOR**. 판별 순서를 주석으로 명문화 (전역 → 좁은 컨텍스트 → 넓은 컨텍스트).
+
+**검증**. `pnpm test useKeyboardShortcuts` + **`shortcuts.test` 무수정 green (C1)**
+
+---
+
+### Task 4. `ShortcutsHelpDialog` — 컨텍스트 섹션
+
+**메타**.
+- agent: `frontend-engineer`
+- 트랙: **ui 시각 검증 트랙** (동반 테스트 — red-first 순서 면제)
+- files: [`apps/web/src/components/keyboard-shortcuts/ShortcutsHelpDialog.tsx`, `apps/web/src/components/keyboard-shortcuts/ShortcutsHelpDialog.test.tsx`]
+- depends-on: [1]
+
+**동반 테스트**.
+- 컨텍스트 5종이 컨텍스트 라벨과 함께 렌더된다 (`CONTEXT_SHORTCUTS` 단일 구동 — C4)
+- **F11 미구현 키(`a`/`i`/`m`/`e`/`l`/`s`/`w`/`.`)가 렌더되지 않는다** (C5, FR-UX-05 FR8 승계)
+- 기존 전역 5종 + `Cmd+K` 표기 무회귀
+
+**구현**. 기존 모달에 섹션 추가. 하드코딩 금지 — 상수를 map.
+
+**검증**.
+- `pnpm test ShortcutsHelpDialog`
+- 기존 e2e — `keyboard-shortcuts.spec.ts` · `keymap.spec.ts`
+- **눈확인**. `?` 로 열어 컨텍스트 섹션 렌더 · F11 키 미노출 · **라이트/다크 양쪽** 대비
+
+---
+
+### Task 5. `issues.index.tsx` 배선 — 커서·스크롤·공지
+
+**메타**.
+- agent: `frontend-engineer`
+- 트랙: **ui 시각 검증 트랙**
+- files: [`apps/web/src/routes/issues.index.tsx`, `apps/web/src/routes/issues.index.test.tsx`]
+- depends-on: [3]
+
+**동반 테스트**.
+- `j` → `selected` 가 다음 이슈 키로. **`replace: true`** (C3)
+- ★**다른 검색 파라미터 보존** — `?projectKey=INFRA&status=open` 위에서 `j` 를 눌러도
+  두 파라미터가 살아남는다 (`project-switcher.spec.ts:119` 회귀 가드의 유닛 짝)
+- `o` → `/issues/<KEY>` 이동 · `t` → `selected` 토글 (E13 좁은폭 포함)
+- 커서 이동 시 `scrollIntoView({ block: 'nearest' })` 호출 (FR10)
+- `aria-live="polite"` 공지 텍스트 갱신 (FR11)
+
+**구현**. `useContextShortcuts('issue-list', handlers)` 호출 + 핸들러가 기존
+`selectedKey` 갱신 경로를 재사용 (**새 상태 신설 0** — C3).
+
+**검증**.
+- `pnpm test issues.index`
+- ★**기존 e2e 동반 실행** — `issue-split-view.spec.ts` · `issue-table.spec.ts` ·
+  `project-switcher.spec.ts` (learnings #47 — 미루면 머지 시점까지 잠복)
+- **눈확인**. `j`/`k` 연타 시 커서·상세 페인 추종, 체감 지연 유무 · `o` 후 뒤로가기로
+  커서 보존 · `t` 와이드/좁은폭 · **라이트/다크 커서 강조 대비**
+
+---
+
+### Task 6. E2E 신규 + 회귀 동반 실행
+
+**메타**.
+- agent: `qa-engineer`
+- 트랙: **ui 시각 검증 트랙**
+- files: [`apps/web/e2e/context-shortcuts.spec.ts`]
+- depends-on: [4, 5]
+
+**시나리오**. S1 커서 이동 + URL 반영 · S3 `o` 전체화면 · S4 `t` 토글 ·
+S5 `[` 사이드바(새로고침 후 영속) · S6 도움말 컨텍스트 노출 · **S7 `g`+`j` 무동작(E6)** ·
+E12 `/issues` 밖에서 `j` 무동작 · `[` 는 살아있음
+
+**회귀 동반 실행 (필수)**. `issue-split-view` · `issue-table` · `project-switcher` ·
+`keyboard-shortcuts` · `keymap`
+
+**검증**. 위 신규 + 회귀 5종 green · `pnpm typecheck && pnpm lint && pnpm test` ·
+`bash scripts/verify-master-plan.sh` EXIT 0
+
+---
+
+## Plan 메타
+
+- **task 수**. 6
+- **wave**. 4 — `[T1] → [T2, T4] → [T3] → [T5] → [T6]` (T4 는 T1 만 의존해 조기 병렬)
+- **구현 규율**. T1~T3 = red-first TDD (순수 로직·훅) / T4~T6 = ui 시각 검증 트랙
+  (기존 E2E 동반 실행 + 브라우저 눈확인 — `/bts-impl` §타입별 규율)
+- **파일 겹침**. 0 — 각 task 가 서로 다른 파일을 소유해 wave 계산이 단순하다
+- **추가 검증**. typecheck · lint · vitest 전량 · playwright(신규 1 + 회귀 5) ·
+  verify-master-plan · **`shortcuts.test.ts` 무수정 확인(git diff 0)**
+- **작성 방식**. `writing-plans` 미호출 — bts-plan §Step 2 가 BTS 고유 형식을 명시하고
+  설계(ADR 3건 + 스펙 FR11종 + 사전 grep)가 선확정돼 분해 입력이 이미 완결이다.
+  형식 준수 항목(메타/RED/GREEN/REFACTOR/검증·depends-on·files)은 전 task 충족.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
