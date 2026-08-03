@@ -1,5 +1,5 @@
 // 이슈 본문(description) 표시 및 편집 컴포넌트 — GitHub 스타일 Write/Preview 탭
-import type { JSX } from 'react'
+import type { JSX, MouseEvent as ReactMouseEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -155,24 +155,60 @@ interface ReadModeProps {
 }
 
 /**
+ * 클릭 진입이 가능할 때 본문 읽기 영역에 붙는 hover 어포던스 (FR-UX-11 F8 NFR5).
+ * hover 배경은 DESIGN.md §7 상태 토큰 — 라이트 `#F1F2F4` / 다크 `#A1BDD914` 가 이미 정의돼
+ * 두 테마에 자동 대응한다(임의 알파 금지). 좌우 음수 마진 + 같은 크기 패딩으로
+ * 본문 텍스트의 정렬은 그대로 두고 강조 영역만 넓힌다.
+ */
+const DESCRIPTION_CLICKABLE_CLS =
+  '-mx-2 rounded px-2 cursor-text hover:bg-(--bg-neutral-hover)'
+
+/**
  * 본문 읽기 모드 — descriptionHtml 렌더 또는 placeholder.
  * raw description은 이 컴포넌트에서 절대 사용하지 않는다 (NFR2).
+ *
+ * 편집 진입 경로는 2개다 — 본문 클릭(FR4)과 `본문 편집` 버튼(FR7).
+ * 버튼은 문자열·동작 모두 불변으로 유지하며, 이것이 키보드 사용자의 진입 경로가 되어
+ * FR9(WCAG 2.1.1 — 동등한 키보드 경로)를 충족한다.
  */
 function ReadMode({ descriptionHtml, onEditClick, canEdit }: ReadModeProps): JSX.Element {
+  /**
+   * 본문 클릭 → 편집 진입 (FR4). 세 경우를 의도적으로 배제한다.
+   *
+   * - 권한 없음(E7). `canEdit=false`면 아무 일도 일어나지 않는다(에러 토스트도 없음).
+   * - 텍스트 선택 중(E2 / 편차 D-2). 드래그로 본문을 복사하려는 참이면 열지 않는다.
+   *   Jira Cloud 는 이 경우에도 편집이 열려 버리는 미해결 결함이 있다(JRA-64389 · JRA-29063).
+   *   결함까지 복제하지 않도록 `Selection.isCollapsed` 로 판정한다.
+   * - 링크·멘션 클릭(E3). 클릭 지점이 `<a>` 안이면 그 요소가 먼저 동작해야 한다.
+   */
+  function handleContentClick(e: ReactMouseEvent<HTMLElement>): void {
+    if (!canEdit) return
+    if (window.getSelection()?.isCollapsed === false) return
+    if ((e.target as HTMLElement).closest('a') !== null) return
+    onEditClick()
+  }
+
+  // 편집 권한이 없으면 hover 어포던스를 붙이지 않는다 — 열리지 않는 진입면을 광고하지 않기 위함
+  const clickableCls = canEdit ? ` ${DESCRIPTION_CLICKABLE_CLS}` : ''
+
   return (
     <div className="flex flex-col gap-2">
-      {/* 본문 영역 — HTML 렌더 또는 placeholder */}
+      {/* 본문 영역 — HTML 렌더 또는 placeholder. 둘 다 클릭으로 편집 진입(빈 본문도 눌러 쓸 수 있어야 한다) */}
       <div className="min-h-[44px]">
         {descriptionHtml !== null ? (
           // NFR1: 백엔드 정화 HTML만 dangerouslySetInnerHTML로 렌더
           <div
             data-testid="description-preview-content"
-            className="prose prose-sm max-w-none text-sm text-foreground"
+            onClick={handleContentClick}
+            className={`prose prose-sm max-w-none text-sm text-foreground${clickableCls}`}
             // biome-ignore lint/security/noDangerouslySetInnerHtml: 백엔드 OWASP 정화 HTML만 허용
             dangerouslySetInnerHTML={{ __html: descriptionHtml }}
           />
         ) : (
-          <p className="text-sm text-muted-foreground italic">
+          <p
+            onClick={handleContentClick}
+            className={`text-sm text-muted-foreground italic${clickableCls}`}
+          >
             {issueDetailStrings.descriptionEmpty}
           </p>
         )}
