@@ -955,6 +955,95 @@ jsdom 이 `value` 설정 시 커서를 자동으로 끝에 두어 **기대값과
 **회귀를 잡지 못한다** ③ `CLAUDE.md §2 Simplicity First` 는 **speculative 코드**를 금지하는
 것이지 명시 스펙을 충족하는 2줄을 금지하는 것이 아니다.
 
+### wave 5 (2026-08-03) — 본문 커서 끝 통일 + Task 7
+
+**Maxi 확정 (2026-08-03).** 본문 커서를 끝에 두면 멘션 자동완성이 잘못 깨어나는 문제에 대해
+선택지 3개(멘션 훅 수정 / 현상 유지 / 제목도 맨 앞)를 올렸고 **훅 수정**으로 확정됐다.
+
+**본문 커서 끝 — PASS.** `feat: 5fa65a3c2` · `test: 1cc605a46` · `fix: 00789f961` · `test: 26c21999a`.
+훅에 `suppressNextSelect()` 를 신설해 **프로그램적 caret 이동 직전 1회만** 감지에서 제외한다.
+시간 기반 억제(`setTimeout` N ms)는 타이밍 의존이라 쓰지 않았고, 사용자의 클릭·방향키
+`select` 는 종전 그대로 감지된다. 플래그 잔류를 막으려 `handleChange` 에서도 버려 억제 범위를
+**"다음 타건 전까지"** 로 못 박았다.
+
+`restoreCaretAfterFrame`(`:42`)에는 억제가 **불필요**함을 실측했다 — `spliceMention` 결과가
+`@alice `(후행 공백)이라 `detectActiveMention` 이 "활성 멘션 없음"으로 판정해 닫기로 수렴한다.
+
+**뮤테이션 3종.** 억제 제거 → 2건 빨강 · `setSelectionRange` 제거 → 2건 빨강(**제목과 달리
+textarea 는 jsdom 이 커서를 0 에 둬 discriminate 한다**) · blur 타이머 취소 제거 → 1건 빨강.
+가드에 `selectionStart === 본문 길이` **전제를 넣은 이유**가 두 번째에서 드러난다 — 전제가 없으면
+"커서가 0 이라 안 뜬 것"과 구별되지 않아 공허해진다.
+
+### ★★★ E2E 가 선재 결함 1건을 추가로 적발했다 — 진입 포커스가 드러낸 것
+
+첫 E2E 실행에서 `issue-mention-autocomplete S1` 이 빨강이었다. 추측하지 않고 실브라우저에서
+**시간축으로 관찰**했다.
+
+```
+@al 타이핑 직후   listbox:true   options:[alice,bob,carol,dave,eve]
++150ms           listbox:false  ← 포커스·값·caret 은 그대로
+```
+
+150ms 는 `handleBlur` 의 지연 닫기 타이머와 일치한다. **진입 포커스(S4)가 생기면서 그 다음
+`편집` 탭 클릭이 textarea blur 를 만들고, 거기서 예약된 닫기가 나중에 열린 드롭다운을 죽이고
+있었다.** 포커스가 돌아와도 예약을 취소하는 경로가 없었다 — **이 PR 이전부터 있던 결함**이고
+진입 포커스가 조건을 만들어 드러났다.
+
+처방은 `handleChange` 에서 pending 타이머 취소 — 타이핑은 사용자가 그 입력칸으로 돌아왔다는
+뜻이므로 이전 blur 의 닫기 예약은 무효다. 봉합 후 `+2000ms` 까지 유지 확인.
+
+**"측정하니 드러났다"의 사례다.** 없던 버그를 만든 게 아니라 **잠복 조건을 실현시킨 것**이고,
+E2E 가 그것을 잡았다.
+
+### ★ 훅 단위 테스트를 만들지 않은 것이 옳았다
+
+담당 에이전트가 훅 단위 `select` 테스트를 쓰려다 **jsdom 에서 `fireEvent.select` 가 React 의
+`onSelect` 에 도달하지 않음**을 스파이로 실측했다(0회 — focus 선행·`keyUp` 병발 모두 0회).
+모르고 썼다면 **"억제가 동작해서 안 뜬 것"과 "이벤트가 안 와서 안 뜬 것"을 구별 못 하는 가짜
+초록**이 됐을 것이다. 작성했던 하네스를 되돌려 `use-mention-autocomplete.test.tsx` 는 **무수정**이고,
+증인은 컴포넌트 테스트(진입 실경로) · E2E · 눈확인이 맡는다.
+
+(부수 관찰) 같은 이유로 **기존 훅 테스트의 `onSelect` 경로 커버리지도 실효가 없을 가능성**이
+있다. 감지는 `onChange` 로 성립하므로 기능은 무사하다. 별도 확인 대상으로만 남긴다.
+
+### wave 5 — Task 7 정본 동기화 PASS
+
+`docs: bce44e6e7` — **pre-commit 정상 통과**(controller 가 미커밋 문서를 먼저 커밋해 drift 원인
+소멸). `verify-master-plan.sh` **종료 0** · `build-doc-index.mjs --check` **종료 0** ·
+대시보드 재생성 134/139(96%).
+
+**★ controller 가 준 측정 명령이 3건 과다 계상이었다.** 지시한 `grep -rc '^- \[x\] D'` 는
+**938/32** 를 냈으나, README·verify 룰 H 가 쓰는 **정본 패턴** `'^- \[x\] D[0-9]+\.'` 는 **935/30**
+이다. 느슨한 패턴이 `- [x] D단계` 같은 줄까지 센다. 담당 에이전트가 **정본 패턴을 채택**했다 —
+느슨한 값을 썼으면 룰 H 대조에서 어긋났을 것이다.
+
+| D 마커 | 전 | 후 |
+|---|---|---|
+| `[x]` | 935 | **940** (+5 = D1~D5) |
+| `[ ]` | 30 | **25** |
+
+**FR 수 불변 139.**
+
+### ★★ verify 가 못 잡는 구멍 1건 — 두 목록이 서로를 검사하지 않는다
+
+`CLAUDE.md`(935/30) · `CHANGELOG.md`(930/35)의 D 마커 수치가 실제(940/25)와 어긋나 있었는데
+**`verify-master-plan.sh` 룰 E 는 두 파일의 `N FR` 표기(139)만 검사하고 D 마커 수치는 검사하지
+않아 종료 0 으로 통과**했다. 계열 교훈 `two-lists-never-check-each-other` 의 새 사례다.
+
+→ controller 가 `docs: c6e297229` 로 두 파일을 **940/25 로 동기화**했다(`CLAUDE.md` 는 이 PR 이
+D 마커 5개를 바꿔 생긴 drift, `CHANGELOG.md` 는 `[Unreleased]` 라 이 PR 이 갱신 주체).
+**판별식에 D 마커 수치 대조를 추가하는 것은 별도 작업**으로 남긴다 — 게이트 2 보고 대상.
+
+### ★ 로드맵 FR-UX-10 행 선재 drift — 보고만, 고치지 않음
+
+`jira-parity-roadmap.md:38` 의 FR-UX-10 행이 아직 `⬜ 미착수` 인데 F10 은 **#336 으로 머지됐고**
+(`7100340d3`) `personalization.md §4.8` 은 `F10 완료 (PR #336)` 로 적고 있다. Tier 2 표의 F10 행에도
+완료 표기가 없다. controller 가 *"표기 관례는 FR-UX-10 행을 따르라"* 고 지시했으나 **그 행 자체가
+정본과 어긋나 참고 대상이 되지 못했다.**
+
+**고치지 않았다** — 다른 FR 소관이고 `CLAUDE.md §3 Surgical Changes`("모든 변경 줄은 사용자
+요청에 직접 추적돼야 한다")에 걸린다. 게이트 2 보고 대상.
+
 ### ★ 구현 중 발견 3건 — 계획이 놓친 것
 
 | # | 발견 | 조치 |
@@ -994,6 +1083,33 @@ jsdom 이 `value` 설정 시 커서를 자동으로 끝에 두어 **기대값과
   끝나는" 2단 조작**이 남는다.
 - (부수 관찰, 범위 밖) 모바일 폭에서 사이드바가 본문을 크게 밀어내는 반응형 문제가 보였으나
   **이번 변경과 무관한 선재 상태**라 손대지 않았다.
+
+### 최종 검증 (2026-08-03, 구현 완료 후 controller 직접 실행)
+
+| 항목 | 결과 |
+|---|---|
+| `tsc --noEmit` | **OK** |
+| `vitest run` | **542 files / 8546 tests passed** (착수 전 8535 → +11) |
+| `playwright test` (전체) | **629 passed** / 5 failed / 3 skipped (13.1m) |
+| `pnpm test:workflow` (CI 동일 목록) | **92/92 pass** · fail 0 |
+| `eslint . --max-warnings 0` | **0 errors** / 9 warnings — **전부 PRE_EXISTING** |
+| `verify-master-plan.sh` | **종료 0** |
+| 계약 무손상 3종 | **EXIT 0 · 0 · 0** |
+| 커밋 수 | **28** |
+
+**E2E 실패 5건 판정 — 전부 이 PR 무관.**
+- `board-swimlane-field-change` S1·S2·S7 — **PRE_EXISTING**. Task 6 이 main(`7ef1ca9d0`)을 별도
+  임시 worktree 에 `--detach` 로 띄워 **같은 줄·같은 메시지**로 실패함을 실측했다
+- 〃 S3 · `workflow-scheme-assignment` S9 — **flaky**. 풀 스위트에서만 실패하고 **단독 재실행은
+  통과**(`workflow-scheme-assignment` 2 passed 실측). 결정적 증거는 **실행마다 실패 대상이 바뀐다는
+  것** — Task 6 실행 때는 `issue-ui-regression` 이 실패하고 `workflow-scheme` 은 통과했는데, 이번엔
+  정반대다. 계열 교훈 `flaky-determination-needs-repeat-not-single-contrast` 의 *"실패 대상이
+  바뀌면 그게 flaky 서명"* 그대로다
+
+**lint 경고 9건 전수 확인.** 발생 파일은 `public/mockServiceWorker.js` ·
+`components/settings/SlackResultBanner.tsx` · `features/calendar/WeekGrid.tsx` **3개뿐이고
+이 PR 이 건드린 파일은 0개**다. 전부 `react-refresh/only-export-components` 로, 메모리 #286 의
+*"전부 PRE_EXISTING SlackResultBanner/WeekGrid"* 기록과 일치한다. **신규 경고 0.**
 
 ## 리뷰 결과
 
