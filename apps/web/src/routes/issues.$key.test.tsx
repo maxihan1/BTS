@@ -383,6 +383,86 @@ describe('IssueDetailPage — 제목 인라인 편집', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-11 F8 Task 1 — 제목 텍스트 클릭으로 편집 진입
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 제목 텍스트 클릭 진입 (FR-UX-11 F8 Task 1)', () => {
+  /**
+   * F8-T1-1. 제목 텍스트 자체를 클릭하면 편집 모드로 진입한다 (FR1).
+   * 기존 "✎ 제목 수정" 버튼 경로와 별개의 두 번째 진입면이다.
+   */
+  it('F8-T1-1: 제목 텍스트 클릭 시 편집 모드로 진입한다', async () => {
+    setupIssueFoundHandler()
+    const user = userEvent.setup()
+
+    renderPage('ATLAS-1')
+
+    const title = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+    await user.click(title)
+
+    expect(screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })).toBeInTheDocument()
+  })
+
+  /**
+   * F8-T1-2. 클릭 진입면을 넣어도 heading 의 접근성 이름이 그대로다 (jira-parity-contract §2).
+   * heading 의 이름은 자손 텍스트에서 계산되므로 안쪽을 button 으로 감싸도 보존돼야 한다.
+   */
+  it('F8-T1-2: 제목 heading 의 접근성 이름이 클릭 진입면을 넣어도 보존된다', async () => {
+    setupIssueFoundHandler()
+
+    renderPage('ATLAS-1')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * F8-T1-3. 수정 권한이 없으면 클릭 진입면 자체가 없다 (FR8, fail-closed).
+   * heading 은 그대로 남아 읽기는 가능해야 한다.
+   */
+  it('F8-T1-3: 수정 권한이 없으면 클릭 진입면이 없고 heading 은 남는다', async () => {
+    vi.mocked(useIssuePermissions).mockReturnValue({
+      data: {
+        issueKey: 'ATLAS-1',
+        permissions: { UPDATE: false, SOFT_DELETE: false, TRANSITION: false },
+      },
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useIssuePermissions>)
+    setupIssueFoundHandler()
+
+    renderPage('ATLAS-1')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: issueAtlas1Fixture.summary }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 삭제 버튼 테스트
 // ─────────────────────────────────────────────────────────────────────────────
 

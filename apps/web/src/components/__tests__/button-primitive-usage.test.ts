@@ -108,6 +108,10 @@ const EXPECTED_OUT = [
   'components/issue/IssueDescription.tsx::P4',
   'components/issue/IssueDescription.tsx::P4',
   'components/ooo/OooModal.tsx::P5',
+  // FR-UX-11 F8 T1 — 제목 인라인 편집 진입면. `w-full text-left` 보유로 판정식상 OUT이며
+  // DashboardTile(타일 제목 인라인 편집)과 동형이라 같은 P6로 분류한다.
+  // 배치1 구획에 두는 이유. 이 파일은 BATCH1_FILES 원소다(공용 Button을 이미 소비하는 파일).
+  'routes/issues.$key.tsx::P6',
   // ── 배치 2 (T7) 9발생 ──
   // 판정식 `role= OR text-left OR justify-start` 으로 기계 도출했고, 같은 규칙을 완료된 배치1에
   // 역적용해 IN=0/OUT=11 로 T6의 수동 분류를 100% 재현하는 것으로 규칙의 정확성을 확인했다.
