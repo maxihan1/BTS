@@ -2454,10 +2454,16 @@ describe('IssueDetailPage — 제목 편집 진입 포커스/커서 (FR-UX-11 F8
   })
 
   /**
-   * F8-FR1-2. 진입 시 커서가 **텍스트 끝**에 놓인다 (스펙 §1 S1).
-   * 맨 앞이면 이어서 타이핑할 때 글자가 앞에 끼어들고, 전체 선택이면 첫 타건에 전부 지워진다.
+   * F8-FR1-2. 진입 시 커서가 접혀 있고(전체 선택 아님) 맨 앞이 아니다.
+   *
+   * **이 테스트가 못 잡는 것 — 뮤테이션 실측 결과.** 프로덕션의
+   * `input.setSelectionRange(end, end)` 를 통째로 지워도 이 단언은 **초록으로 남는다**.
+   * jsdom 이 `value` 를 설정할 때 커서를 자동으로 끝에 두기 때문에 기본값이 기대값과
+   * 우연히 일치한다. 즉 이 단언은 "select-all 이나 맨 앞 커서로 **바뀌는**" 회귀는 잡지만,
+   * `setSelectionRange` 라인의 **실재 증인은 아니다**.
+   * 그 라인의 진짜 증인은 브라우저 눈확인(실제 Chromium 에서 `selectionStart` 실측)이다.
    */
-  it('F8-FR1-2: 제목 텍스트 클릭 진입 시 커서가 텍스트 끝에 놓인다', async () => {
+  it('F8-FR1-2: 제목 텍스트 클릭 진입 시 커서가 전체 선택도 맨 앞도 아니다', async () => {
     const user = userEvent.setup()
     renderPage('ATLAS-1')
 
@@ -2467,29 +2473,24 @@ describe('IssueDetailPage — 제목 편집 진입 포커스/커서 (FR-UX-11 F8
       name: issueDetailStrings.titleEditLabel,
     })
     const end = issueAtlas1Fixture.summary.length
-    // 선택 구간이 접혀 있고(start===end) 그 위치가 끝이어야 "커서가 끝"이다.
-    // 전체 선택(0..end)이면 start 가 0 이라 여기서 걸린다.
     expect(input.value).toBe(issueAtlas1Fixture.summary)
+    // 선택 구간이 접혀 있어야 한다 — 전체 선택(0..end)이면 첫 타건에 원문이 통째로 지워진다
+    expect(input.selectionStart).toBe(input.selectionEnd)
     expect(input.selectionStart).toBe(end)
-    expect(input.selectionEnd).toBe(end)
   })
 
   /**
-   * F8-FR1-3. 기존 `✎ 제목 수정` 버튼 경로도 **같은 동작**이다 (두 진입로가 갈라지면 안 된다).
+   * F8-FR1-3. 기존 `✎ 제목 수정` 버튼 경로도 **같은 포커스 동작**이다
+   * (두 진입로가 갈라지면 안 된다). 커서 단언은 F8-FR1-2 와 같은 jsdom 한계를 가지므로
+   * 여기서는 **포커스만** 잰다 — 같은 한계를 두 곳에 복제하지 않는다.
    */
-  it('F8-FR1-3: ✎ 제목 수정 버튼 경로도 포커스 + 커서 끝이 동일하다', async () => {
+  it('F8-FR1-3: ✎ 제목 수정 버튼 경로도 입력창이 포커스를 갖는다', async () => {
     const user = userEvent.setup()
     renderPage('ATLAS-1')
 
     await user.click(await screen.findByRole('button', { name: /제목 수정/ }))
 
-    const input = screen.getByRole<HTMLInputElement>('textbox', {
-      name: issueDetailStrings.titleEditLabel,
-    })
-    const end = issueAtlas1Fixture.summary.length
-    expect(input).toHaveFocus()
-    expect(input.selectionStart).toBe(end)
-    expect(input.selectionEnd).toBe(end)
+    expect(screen.getByRole('textbox', { name: issueDetailStrings.titleEditLabel })).toHaveFocus()
   })
 
   /**
