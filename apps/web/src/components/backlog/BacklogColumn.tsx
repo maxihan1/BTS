@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue } from '@/api/backlog'
+import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { BacklogCard } from './BacklogCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,13 +29,31 @@ export interface BacklogColumnProps {
   assigneeNames: Map<string, string>
   /** 드래그 카드가 이 칸 위에 있는지 여부. 하이라이트에 사용 */
   isOver?: boolean
+  /**
+   * 이슈 생성 진입점 클릭 콜백 (FR-UX-09 F3 FR-1).
+   *
+   * **미전달이면 진입점을 렌더하지 않는다** — 기존 소비처의 동작이 바뀌지 않는다.
+   * 모달은 이 칸이 아니라 **부모가 하나만** 소유한다 (FR-15).
+   */
+  onCreateIssue?: () => void
+  /**
+   * CREATE 권한 보유 여부. **fail-closed** — 로딩·에러·미보유는 전부 `false` 다.
+   * 부모가 `permissions.CREATE === true` 로만 `true` 를 만든다.
+   */
+  canCreateIssue?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BacklogColumnInner({ issues, assigneeNames, isOver = false }: BacklogColumnProps) {
+function BacklogColumnInner({
+  issues,
+  assigneeNames,
+  isOver = false,
+  onCreateIssue,
+  canCreateIssue = false,
+}: BacklogColumnProps) {
   const orderedKeys = issues.map((i) => i.key)
 
   const { setNodeRef } = useDroppable({
@@ -61,6 +80,16 @@ function BacklogColumnInner({ issues, assigneeNames, isOver = false }: BacklogCo
         >
           {issueCount}
         </span>
+        {/* 이슈 생성 진입점 — 제목 행에 둔다. 헤더를 세로로 늘리지 않는다 (design 리뷰 DR-2).
+            드롭 영역(아래 div) 밖이라 드래그 앤 드롭에 영향이 없다 (NFR-5). */}
+        {onCreateIssue !== undefined && (
+          <CreateIssueEntryButton
+            label={backlogLabels.createIssueInBacklog}
+            variant="icon"
+            canCreate={canCreateIssue}
+            onClick={onCreateIssue}
+          />
+        )}
       </div>
 
       {/* 드롭 영역 + 카드 목록 */}

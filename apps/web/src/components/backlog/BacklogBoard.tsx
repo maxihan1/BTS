@@ -1,6 +1,6 @@
 // 백로그·스프린트 보드 루트 컴포넌트 — DnD 오케스트레이션 + 라이프사이클 (FR-BL-01/02 D6/D7)
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -30,6 +30,7 @@ import type { BacklogDragData } from './BacklogCard'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
 import { CreateSprintForm } from './CreateSprintForm'
+import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
 import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +51,14 @@ export interface BacklogBoardProps {
    * false이면 드래그가 동작하지 않는다(DnD onDragEnd에서 조기 반환).
    */
   canReorderIssue?: boolean
+  /**
+   * 이슈 생성 권한(CREATE). **fail-closed** — 로딩·에러·미보유는 전부 false 다 (FR-UX-09 F3 FR-6).
+   *
+   * `canManageSprint` 와 출처는 같지만(`permissions.CREATE`) **이름을 분리한다** —
+   * 「스프린트 관리」와 「이슈 생성」은 다른 행위이고, 한쪽 권한이 갈라지는 날
+   * 같은 prop 을 쓰고 있으면 두 화면이 한꺼번에 잘못된다.
+   */
+  canCreateIssue?: boolean
 }
 
 // (드롭 존 파싱 헬퍼는 backlog-drag.ts의 순수 함수로 위임)
@@ -107,8 +116,20 @@ export function BacklogBoard({
   projectKey,
   canManageSprint = true,
   canReorderIssue = true,
+  canCreateIssue = false,
 }: BacklogBoardProps): JSX.Element {
   const [overDroppableId, setOverDroppableId] = useState<string | null>(null)
+
+  /**
+   * 이슈 생성 모달의 대상 — `null` 이면 닫힘, `'backlog'` 면 백로그 칸,
+   * 그 외에는 그 스프린트 id 다 (FR-15).
+   *
+   * ★모달은 **화면당 1개**다. 칸마다 두면 `role="dialog"` 가 N개가 되어
+   * 조회가 strict mode 로 깨진다 (F2 가 겪은 164발생 함정과 같은 결).
+   */
+  const [createTarget, setCreateTarget] = useState<string | null>(null)
+
+  const openCreateForBacklog = useCallback(() => { setCreateTarget('backlog') }, [])
 
   const { data: backlogView, isLoading } = useBacklog(projectKey)
   const rerankIssue = useRerankIssue(projectKey)
@@ -250,6 +271,8 @@ export function BacklogBoard({
             issues={backlog}
             assigneeNames={assigneeNames}
             isOver={overDroppableId === 'backlog'}
+            canCreateIssue={canCreateIssue}
+            onCreateIssue={openCreateForBacklog}
           />
           {sprints.map(({ sprint, issues }) => (
             <SprintColumn
@@ -269,6 +292,15 @@ export function BacklogBoard({
           ))}
         </div>
       </DndContext>
+
+      {/* 이슈 생성 모달 — 화면당 1개. 어느 칸이 눌렀는지는 `createTarget` 이 쥔다 (FR-15).
+          프로젝트는 명시로 넘긴다 — 전역 활성 프로젝트를 경유하면 목록 대조 가드가
+          아직 통과하지 못한 순간 다른 프로젝트가 채워진 채로 열린다 (스펙 §8 D-A). */}
+      <CreateIssueDialog
+        open={createTarget !== null}
+        onOpenChange={(open) => { if (!open) setCreateTarget(null) }}
+        initialProjectKey={projectKey}
+      />
     </div>
   )
 }
