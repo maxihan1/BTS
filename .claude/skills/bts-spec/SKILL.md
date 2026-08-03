@@ -149,6 +149,15 @@ worktree의 plan 파일에서 다음 섹션 채움.
 
 이유. 버그 수정은 스펙이 "기존 동작 복원"으로 자명. office-hours/brainstorming 비용 > 효익.
 
+## ui 경량 경로 (기존 화면 수정 — Maxi 확정 2026-08-03)
+
+`classify.type == "ui"` 이고 **기존 화면 수정**(신규 라우트/엔티티/도메인 개념 없음)이면.
+
+- Phase A. `office-hours` **단일 pass** (A-2 design-shotgun 은 신규 화면에만 — 기존 화면 수정은 스킵)
+- Phase B. brainstorming **스킵** — 대신 `## Jira 대조` 섹션(계약 §1)과 즉사 계약(§2) 체크가
+  sanity check 를 대신한다. 스펙에 시각 검증 기준(관련 E2E 목록 + 눈확인 항목) 필수
+- 신규 화면/신규 도메인 개념이 있으면 경량 경로 비대상 — 현행 2-Phase 전체를 돈다
+
 ## 실패 / 엣지 케이스
 
 - **office-hours가 builder mode로 들어가서 "이 기능 만들 가치 없음" 결론**. 사용자에게 "정말 진행할까요?" 확인. yes → 그대로 진행, no → 작업 중단 + worktree 정리

@@ -56,7 +56,7 @@ drift 가 사고가 된다 (`backend` 행이 리뷰 분기에서 3개월간 미�
 ## 핵심 원칙
 
 1. **PR + worktree = 작업 단위** — 어떤 Edit/Write도 worktree 없이 main에 적용 금지
-2. **TDD 강제 (`/bts-impl`)** — `test:` 커밋이 `feat:` 커밋보다 먼저 있어야 함 (verifier가 git log 검증)
+2. **TDD 강제 (`/bts-impl`)** — `test:` 커밋이 `feat:` 커밋보다 먼저 있어야 함 (verifier가 git log 검증). 예외: ui 시각 변경은 시각 검증 트랙 (`/bts-impl` §타입별 규율)
 3. **task 병렬 dispatch (`/bts-impl`)** — plan 메타 `depends-on` + `files` 로 wave 계산, 같은 wave task는 한 응답에 묶어 동시 dispatch. 파일 겹치면 자동 직렬화
 4. **코드 리뷰는 PR 단위 1회** — task별 quality review 없음, spec-compliance만 가벼운 drift 감지
 5. **`auth`/`migration` 작업** 특별 취급 — plan-eng + plan-ceo 둘 다, codereview에 추가 가이드 첨부

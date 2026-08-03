@@ -71,6 +71,7 @@ writing-plans 산출물이 BTS의 다음 형식을 따르는지 확인.
 - `depends-on`. 이 task가 시작하기 전에 완료돼야 하는 선행 task 번호 배열. 코드 의존성만 (커밋 순서 의존성 X). 비어 있으면 `[]`
 - `agent`. 생략 가능. 생략 시 plan 파일 헤더의 `agent:` 또는 classify-task agent 사용
 - **파일 겹침은 자동 직렬화**. 두 task의 `files` 교집합이 있으면 `depends-on` 미선언이어도 bts-impl이 같은 wave에 두지 않음
+- **ui 시각 검증 트랙** (`type == ui`, 기존 화면 수정 — bts-impl §타입별 규율). task의 `**검증**:` 필드에 ① 관련 기존 E2E spec 목록(계약 §5 사전 grep 결과) ② 브라우저 눈확인 항목(라이트/다크) 을 **필수 기재**. RED 라벨은 "동반 테스트" 명세로 읽는다 — red-first 순서 강제 없음
 
 형식 미준수 시 writing-plans 재호출 (메타 블록 강제 가이드 prompt 주입).
 
@@ -97,7 +98,7 @@ worktree plan 파일의 `## Plan` 섹션이 위 형식으로 채워짐.
 
 - task 수: 4
 - 예상 시간: task × 3분 = 약 12분 (직렬 기준), 병렬 wave 적용 시 약 6분 (예상 wave 수: 2)
-- TDD 강제: yes
+- 구현 규율: TDD | ui 시각 검증 트랙 (타입별 — bts-impl §타입별 규율)
 - 병렬 dispatch: bts-impl이 task 메타(depends-on + files)로 wave 계산
 - 추가 검증: typecheck, ktlint, detekt, vitest, playwright (qa-engineer)
 ```

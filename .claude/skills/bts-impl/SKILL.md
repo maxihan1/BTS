@@ -19,6 +19,26 @@ controller(메인 에이전트)는 다음 4개를 **세션당 1회만 Read**하�
 
 **sub-agent는 위 4개 파일을 직접 Read 금지** (controller가 이미 prompt 본문에 첨부함, 중복 로드는 토큰 낭비). 각 agent.md의 "참조 파일" 섹션은 "controller inject" 표시가 있는 항목은 직접 Read 금지, "필요 시 직접 Read" 표시 항목만 직접 Read 가능.
 
+## 타입별 규율 매트릭스 (Maxi 확정 2026-08-03)
+
+유지보수 모드 적응 — **로직은 TDD 유지, ui 시각 변경은 시각 검증 트랙**.
+
+| 타입 | domain | spec | 구현 규율 | 게이트 | 필수 검증 |
+|---|---|---|---|---|---|
+| auth · migration | 필수 | 필수 | TDD red→green 현행 | 1+2 | 현행 + ceo 리뷰 |
+| backend · api · feature | 필수 | 필수 | TDD red→green 현행 | 1+2 | 현행 |
+| **ui** (기존 화면 수정) | 스킵 — 신규 도메인 개념 감지 시만 진입, 모호하면 Maxi 질문 | 경량 (bts-spec §ui 경량 경로) | **시각 검증 트랙** — red-first 면제 (아래 상세) | task ≤3 + 신규 도메인 개념 없음 → **게이트 2만**, 그 외 1+2 | 관련 기존 E2E 동반 실행 + 브라우저 눈확인(라이트/다크) + 동반 테스트 존재 |
+| bugfix · chore | 스킵 (현행) | 스킵 (현행) | bugfix는 TDD 유지 (재현 테스트 먼저) | 게이트 2만 (/bts Phase C) | 현행 |
+
+**ui 시각 검증 트랙 상세** (`jira-parity-contract.md` 배선).
+1. 착수 전 계약 §5 사전 grep — 수정 표면이 노출된 기존 E2E/유닛 어서션 전수 식별
+2. 구현 커밋 + **동반 테스트 커밋** — 순서 무관, 단 `test:` 커밋 자체는 필수 (테스트 0개 금지)
+3. 1에서 식별한 **기존 E2E 동반 실행** — 실행 로그를 보고에 첨부
+4. **브라우저 눈확인** (계약 §6) — 라이트/다크 양쪽, 관찰 요지를 보고에 포함
+
+로직 변경(핸들러/유틸/api 클라이언트의 분기 추가 등)이 섞인 ui task 는 그 부분만 TDD 현행을
+따른다 — 시각 트랙은 "보이는 것"의 변경에만 적용된다. 판단이 모호하면 TDD 쪽이 기본값.
+
 ## 절차
 
 ### Step 1. subagent-driven-development 진입
@@ -98,6 +118,19 @@ plan 파일의 Task N을 구현. 작업 디렉토리: .worktrees/<slug>.
 DONE/DONE_WITH_CONCERNS 보고 시 RED/GREEN 각 commit hash 명시, REFACTOR는 있으면 함께 (controller가 git log와 대조).
 """
 })
+```
+
+**ui 시각 검증 트랙 변형** (§타입별 규율의 ui 행에 해당하는 task). 위 prompt의 "TDD 강제
+6단계" 블록을 다음으로 교체해 dispatch 한다.
+
+```
+**시각 검증 트랙 (red-first 면제).**
+1. jira-parity-contract.md §5 사전 grep — 수정 표면의 기존 E2E/유닛 어서션 식별, 결과를 보고에 첨부
+2. 구현 → 커밋 (`feat: <slug> task-N`)
+3. 동반 테스트 작성/갱신 → 커밋 (`test: <slug> task-N`) — 순서 무관이나 test 커밋 필수
+4. 1에서 식별한 기존 E2E 동반 실행 — 통과 로그 첨부. 즉사 계약(§2) 문자열 훼손 여부 확인
+5. 브라우저 눈확인 (§6) — 라이트/다크 양쪽 관찰 요지를 보고에 포함
+DONE 보고: feat/test 각 commit hash + E2E 실행 로그 + 눈확인 요지.
 ```
 
 #### 2-B. wave 상태 집계
@@ -190,11 +223,16 @@ TDD_VIOLATION:
 
 controller는 응답을 받은 후 PASS 응답에 실제 hash 문자열 (`a1b2c3d` 형태)이 포함되어 있는지 검증. 누락 시 TDD_VIOLATION으로 간주.
 
+**ui 시각 검증 트랙 verifier 변형**. §타입별 규율의 ui 행 task 는 판정 기준 1(TDD 순서)을
+다음 셋으로 교체한다 — ① `test:` 커밋이 존재하는가 (순서 무관) ② implementer 보고에 기존
+E2E 실행 로그가 인용돼 있는가 ③ 눈확인 관찰 요지가 인용돼 있는가. 셋 중 하나라도 없으면
+PASS 무효 (TDD_VIOLATION 대신 `TRACK_VIOLATION`으로 보고, 처리 동작은 동일).
+
 | verifier 응답 | 동작 |
 |---|---|
 | `PASS` | plan의 Task N 체크박스 `[x]` → 해당 task wave 졸업 |
 | `DRIFT` | drift 항목을 implementer에 전달 → 재dispatch (해당 task 단일) |
-| `TDD_VIOLATION` | systematic-debugging 후 implementer 재dispatch (테스트 먼저 작성) |
+| `TDD_VIOLATION` (ui 트랙은 `TRACK_VIOLATION`) | systematic-debugging 후 implementer 재dispatch |
 
 wave 내 모든 task PASS 면 다음 wave 진입.
 

@@ -111,6 +111,12 @@ grep -n '^### ' /Users/maxi.moff/Maxi_wiki/BTS/learnings.md   # 헤딩 인덱스
 **Fast-track 게이트 정책 (`type ∈ {bugfix, chore}`)** — [5]가 스킵되면 **게이트 1도 함께 생략**한다.
 곧장 `bts-impl` → `bts-codereview` → 게이트 2로 진행한다. 대신 게이트 2 요약에
 "스킵된 단계([2]/[3]/[5] + 게이트 1)" 목록을 명시해 Maxi가 우회 사실을 보고 승인하게 한다.
+
+**ui 소규모 게이트 정책 (Maxi 확정 2026-08-03)** — `type == ui` 이고 **plan task ≤3 + 신규
+도메인 개념 없음**이면 [5] plan-design-review 는 실행하되(자동 리뷰 유지, BLOCKER 는 여전히
+정지) **게이트 1 의 사용자 정지만 생략**하고 곧장 `bts-impl` 로 진행한다. 그 외 ui(신규 화면 /
+task 4+)는 2게이트 유지.
+
 **머지 전 정지(게이트 2)는 어떤 타입도 생략하지 않는다.**
 
 #### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`, fast-track은 생략)
