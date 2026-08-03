@@ -391,6 +391,44 @@ describe('IssueDescription', () => {
     expect(alert).toHaveTextContent(issueDetailStrings.descriptionDiscardConfirm)
   })
 
+  // ── 확인 중 상단 저장/취소 잠금 (리뷰 C-1 3행 / M-5) ──────────────────────
+  //
+  // 확인을 띄워 놓고 위쪽 `취소` 로 확인 없이 버릴 수 있으면 UI 모순이다.
+  // 버튼에 확인을 덧붙이는 대신 **확인 중에만 잠근다** — 확인이 없는 평상시 `취소` 동작은
+  // 그대로라 저장 후 `취소` 로 읽기 모드에 나가는 기존 E2E(issue-body-meta)에 영향이 없다.
+
+  it('평상시에는 상단 저장·취소가 활성이다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+
+    expect(screen.getByRole('button', { name: '저장' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: '취소' })).not.toBeDisabled()
+  })
+
+  it('확인 패널이 뜬 동안 상단 저장·취소가 비활성이다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    openDiscardConfirm('아까운 초안')
+
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
+  })
+
+  /**
+   * ★ 잠금이 영구화되지 않는다는 증인 — 이게 없으면 "잠그고 안 풀리는" 회귀를 못 잡는다.
+   */
+  it('계속 편집으로 패널을 닫으면 상단 저장·취소가 다시 활성이 된다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    openDiscardConfirm('아까운 초안')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
+    )
+
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '저장' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: '취소' })).not.toBeDisabled()
+  })
+
   // ── 확인 패널의 Escape (리뷰 R-2) ─────────────────────────────────────────
 
   /**
