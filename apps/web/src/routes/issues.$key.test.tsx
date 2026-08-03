@@ -2628,4 +2628,23 @@ describe('IssueDetailPage — 제목 진입 가드/포커스 복귀 (FR-UX-11 F8
     expect(titleButton).not.toHaveFocus()
     expect(document.body).toHaveFocus()
   })
+
+  /**
+   * F8-R1-2. 제목 진입면이 `select-text` 를 유지한다 — **제목 복사 가능성의 대리 지표**.
+   *
+   * 근거(Chromium 실측). `<button>` 에서 `user-select: auto` 는 CSS UI 규격상 `none` 으로
+   * 해석돼, 이 클래스가 없으면 제목을 드래그해도 선택 길이가 **0** 이다. 즉 제목을 버튼으로
+   * 감싼 순간 사용자가 제목을 복사할 수 없게 되고, F8-R1-1 의 `isCollapsed` 가드도
+   * 선택이 생기지 않아 영원히 발동하지 못한다.
+   *
+   * **이 단언의 한계.** jsdom 은 Tailwind CSS 를 적용하지 않아 `user-select` **계산값을
+   * 검증하지 못한다**. 여기서 재는 것은 클래스 문자열의 잔존뿐이고, 실제 선택 동작의 증인은
+   * 브라우저 눈확인(드래그 후 `getSelection().toString()` 길이 11 실측)이다.
+   */
+  it('F8-R1-2: 제목 진입면이 select-text 클래스를 유지한다 (복사 가능성 대리 지표)', async () => {
+    renderPage('ATLAS-1')
+
+    const titleButton = await screen.findByRole('button', { name: issueAtlas1Fixture.summary })
+    expect(titleButton.className).toContain('select-text')
+  })
 })
