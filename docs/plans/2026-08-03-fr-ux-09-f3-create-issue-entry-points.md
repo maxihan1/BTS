@@ -105,6 +105,255 @@ F3 과 같은 영역이라 **묶어서 처리하면 중복이 적다** — 스�
 - **정정 1건.** FR-6 이 권한 게이트를 신규 계산처럼 읽혀 중복 구현을 부를 수 있었다 —
   두 라우트가 이미 계산해 둔 값(`board.tsx:287` · `backlog.tsx:64`) 재사용으로 못 박았다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **명세 우선 원칙.** 아래 task 본문의 표기가 스펙과 어긋나면 **스펙이 이긴다**
+> (learnings 2026-05-22 plan/spec drift). 타입·필드명은 스펙 §4 FR 번호를 참조한다.
+> **에이전트는 전 task `frontend-engineer`** (plan 헤더 기본값).
+
+### Task 1. 접근 가능 이름 전수 판별식 + 진입점 i18n 문자열
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/backlog-labels.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/i18n/ko.ts`, `apps/web/src/i18n/__tests__/create-entry-point-names.test.ts`]
+- depends-on: []
+
+**RED**. `i18n/__tests__/create-entry-point-names.test.ts` 신설.
+- **같은 화면에 공존 가능한 버튼 이름 집합**을 상수로 모은다 — 백로그 화면(백로그 칸·스프린트 칸 N개·`스프린트 생성`·`스프린트 시작`·`스프린트 완료`·`번다운`·상단바 `만들기`·모달 `이슈 생성`·`취소`) / 보드 화면(보드 헤더·상단바 `만들기`·모달 `이슈 생성`).
+- 단언 = **집합 안 임의의 두 이름 `a≠b` 에 대해 `a.includes(b)` 가 참인 쌍이 0**.
+- 신규 문자열이 아직 없으므로 **import 실패로 red**.
+- 🛑 손으로 3~5개만 나열하지 말 것 — FR-UX-08 PR-B 의 `admin` ⊂ `adminNav` 가 정확히 손나열이 놓친 결함이다.
+
+**GREEN**. 문자열 신설. 기존 3개(`만들기`·`이슈 생성`·`스프린트 생성`)를 **부분 문자열로 포함하지 않는** 이름을 고른다.
+- `backlogLabels.createIssueInBacklog` — 백로그 칸
+- `backlogLabels.createIssueInSprint(sprintName)` — 스프린트 칸. **스프린트 이름을 포함해 서로 구분**(FR-10)
+- `boardLabels.page.createIssue` — 보드 헤더
+- `issueCreateStrings.sprintAssignFailed(key)` — 부분 성공 안내 (D-C, 경고 톤)
+
+**REFACTOR**. 판별식의 화면별 집합을 이름 있는 상수로 분리 + 「왜 부분 일치가 위험한가」 주석
+(Playwright `getByRole(name)`·Testing Library 정규식 **둘 다 기본이 부분 일치**).
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/i18n/__tests__/create-entry-point-names.test.ts
+```
+**비-공허 확인 (C16)** — 신규 이름 하나를 일부러 `이슈 생성` 으로 바꿔 **red 를 눈으로 본 뒤** 되돌린다.
+
+---
+
+### Task 2. MSW 목 — 생성한 이슈가 백로그 조회에 나타난다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/issue-handlers.ts`, `apps/web/src/mocks/backlog-fixtures.ts`, `apps/web/src/mocks/issue-handlers.test.ts`]
+- depends-on: []
+
+**RED**. `mocks/issue-handlers.test.ts` 에 목 계약 테스트 2건 추가.
+1. `POST /api/v1/issues` 로 만든 키가 **직후 `GET /api/v1/projects/{key}/backlog` 의 `backlog` 배열에 있다** → 현재 **실패**(생성 핸들러가 `backlogStore` 를 안 건드림).
+2. 그 키로 `POST /api/v1/sprints/{id}/issues` 후 **그 스프린트 `issues` 에 있고 `backlog` 에는 없다** → 현재 **실패**(모르는 키라 `backlog-handlers.ts:230` 이 201 멱등 no-op).
+
+**GREEN**. `createIssueHandler` 가 생성 이슈를 해당 프로젝트 `backlogStore` 의 백로그 칸에 추가.
+- 프로젝트 항목이 없으면 만들지 않고 **조용히 건너뛴다** — 백로그를 안 쓰는 기존 테스트에 영향 0.
+- 추가 위치는 **맨 끝**(rank 순서 관례).
+
+**REFACTOR**. 추가 로직을 `backlog-fixtures.ts` 의 이름 있는 헬퍼로 옮겨 두 핸들러가 같은 출처를 쓰게 한다
+(learnings 2026-05-23 「fixture 가 helper 를 호출해 drift 를 본질 차단」).
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/mocks/issue-handlers.test.ts src/mocks/backlog-handlers.test.ts
+```
+🛑 **이 task 의 red 를 건너뛰면 안 된다** — C15 가 요구하는 「확장 전 red」가 바로 이것이고,
+이게 없으면 뒤 task 의 「나타난다」 단언이 **가짜 그린인지 진짜인지 구분할 수 없다**.
+
+---
+
+### Task 3. `CreateIssueEntryButton` — 진입점 3곳이 공유하는 버튼
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/CreateIssueEntryButton.tsx`, `apps/web/src/components/issue/__tests__/CreateIssueEntryButton.test.tsx`]
+- depends-on: [1]
+
+**RED**. 단위 테스트 4건.
+- `canCreate=true` → 활성 버튼, 접근 가능 이름 = 전달한 `label`
+- `canCreate=false` → **`disabled`**, 클릭해도 `onClick` 미발화 (fail-closed, FR-6/E-6)
+- `variant='icon'` → 아이콘 + `sr-only` 이름 (칸용, D-B)
+- `variant='text'` → 아이콘 + 보이는 텍스트 (보드 헤더용, D-B)
+
+**GREEN**. `components/issue/CreateIssueEntryButton.tsx` 신설.
+props = `label` · `variant: 'icon' | 'text'` · `canCreate` · `onClick`. `Plus` 아이콘 + `Button` 프리미티브.
+
+**REFACTOR**. 「왜 fail-closed 인가」 주석 — 로딩·에러도 **비활성**이다.
+선례 `routes/issues.index.tsx:379-390 NewIssueButton` 을 참조로 명시.
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/components/issue/__tests__/CreateIssueEntryButton.test.tsx
+```
+
+---
+
+### Task 4. `initialProjectKey` — 모달이 프로젝트를 받아서 연다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/CreateIssueDialog.tsx`, `apps/web/src/components/issue/IssueCreateForm.tsx`, `apps/web/src/components/issue/create/use-issue-create-defaults.ts`, `apps/web/src/components/issue/__tests__/CreateIssueDialog.test.tsx`]
+- depends-on: []
+
+**RED**. `CreateIssueDialog.test.tsx` 에 2건 추가.
+- `initialProjectKey='INFRA'` 로 열면 프로젝트 칸이 **INFRA** → 현재 실패(prop 없음)
+- **미전달이면 기존 활성 프로젝트 기본값이 그대로** → 기존 동작 무회귀 (C12)
+
+**GREEN**. `CreateIssueDialog` → `IssueCreateForm` → `useDefaultProjectSelection` 으로 옵셔널 값 전달.
+`useDefaultProjectSelection` 의 기본값 계산에서 **명시값이 있으면 그것을 우선**하되,
+**「아직 사용자가 안 골랐을 때만 채운다」는 기존 가드는 유지**한다.
+
+**REFACTOR**. KDoc 에 D-A 근거 기록 — 활성 프로젝트 경유는 `isKnownProject` 가드가 아직
+통과 못한 순간 **다른 프로젝트가 채워진 채로 열린다**.
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/components/issue/__tests__/CreateIssueDialog.test.tsx src/routes/issues.new.test.tsx
+grep -c "@tanstack/react-router" apps/web/src/components/issue/CreateIssueDialog.tsx   # 반드시 0 (NFR-2/C9)
+```
+
+---
+
+### Task 5. 백로그 칸 진입점 + 모달 소유권
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/backlog/BacklogColumn.tsx`, `apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/components/backlog/BacklogColumn.test.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`]
+- depends-on: [2, 3, 4]
+
+**RED**. 4건.
+- 백로그 칸 헤더에 진입점이 있고 누르면 **`role="dialog"` 가 1개** 열린다 (FR-1/FR-15)
+- 권한 없음 → 비활성 (FR-6)
+- 생성 완료 → **백로그 칸에 새 이슈가 나타난다** (C1 — Task 2 없이는 이 단언이 성립하지 않는다)
+- 스프린트가 2개여도 **`role="dialog"` 는 1개** (C17)
+
+**GREEN**.
+- `BacklogColumn` 에 `onCreateIssue?` · `canCreateIssue?` prop 추가 → 헤더에 `CreateIssueEntryButton`
+- **`BacklogBoard` 가 모달 1개를 소유**하고 「어느 칸이 눌렀는가」를 상태로 갖는다 (FR-15)
+- 백로그 라우트가 `canCreateIssue` 를 내린다 — **`canManageSprint` 를 재사용하되 이름은 분리**(FR-6)
+
+**REFACTOR**. 콜백을 `useCallback` 으로 안정화 — 컬럼이 `memo` 라 매 렌더 새 함수를 주면
+재렌더 스킵이 무력화된다 (NFR-4). 드롭 영역 밖 헤더임을 주석으로 못 박는다 (NFR-5).
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/components/backlog/
+```
+
+---
+
+### Task 6. 스프린트 칸 진입점 + 배정 + 부분 성공
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/backlog/SprintColumn.tsx`, `apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/SprintColumn.test.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`]
+- depends-on: [5]
+
+**RED**. 4건.
+- 스프린트 칸에서 만들면 `POST /issues` **1회** + `POST /sprints/{id}/issues` **1회** 이고
+  **그 스프린트 칸에 나타난다** (C2)
+- 배정 실패 주입 → **이슈 키를 담은 부분 성공 안내**가 뜨고 생성이 되돌려지지 않는다 (C3/FR-5)
+- `COMPLETED` 스프린트 → **진입점 미렌더** (C7/E-3)
+- 배정은 **1회만** 발화한다 (E-8)
+
+**GREEN**. `SprintColumn` 에 같은 두 prop 추가. `BacklogBoard` 의 생성 성공 콜백이
+「어느 칸이 눌렀는가」로 분기해 스프린트면 기존 `useAssignToSprint` 를 부른다.
+목록 갱신은 **배정 성공 후 1회**(E-7) — 훅이 이미 invalidate-only 다.
+
+**REFACTOR**. 🛑 **2차 실패를 1차 실패처럼 다루지 않는다**를 주석으로 고정 (ADR D-2).
+`error` 토스트가 아니라 경고 톤 — 빨간 실패는 「안 만들어졌다」로 읽혀 **중복 이슈**를 부른다.
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/components/backlog/
+```
+
+---
+
+### Task 7. 보드 헤더 진입점
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.board.test.tsx`]
+- depends-on: [3, 4]
+
+**RED**. `routes/projects.$projectKey.board.test.tsx` **신설**(이 라우트는 현재 테스트 파일이 없다).
+- 보드 헤더에 진입점이 있고 누르면 모달이 열린다 (FR-3)
+- 권한 없음 → 비활성 (FR-6, `board.tsx:287 canCreate` 재사용)
+- 생성 성공 → **URL 불변** + 토스트 + 「보기」 액션 (FR-12/C4)
+
+**GREEN**. 보드 헤더 행(`FavoriteButton`·`ProjectNavTabs` 인접)에 `CreateIssueEntryButton variant='text'`
++ `CreateIssueDialog` 1개. `initialProjectKey={projectKey}`.
+
+**REFACTOR**. 🛑 **`BoardColumn.tsx` 는 건드리지 않는다** (C8). 왜 컬럼별이 아닌지를
+ADR D-3 링크와 함께 주석으로 남긴다 — 다음 사람이 「컬럼에 붙이는 걸 빠뜨렸다」로 오해하지 않게.
+
+**검증**.
+```bash
+pnpm --filter @bts/web test -- src/routes/projects.\$projectKey.board.test.tsx
+git diff --stat apps/web/src/components/board/BoardColumn.tsx   # 반드시 출력 0줄 (C8)
+```
+
+---
+
+### Task 8. E2E — 진입점 3곳 시나리오
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/issue-create-entry-points.spec.ts`]
+- depends-on: [6, 7]
+
+**RED→GREEN**. 신규 스펙 파일. S1·S2·S3·S4·S5·S7 을 각 1건.
+- 🛑 **셀렉터는 `exact: true` 를 기본으로** 쓴다. 부분 일치가 이 PR 의 G2 결함 양식이다.
+- 🛑 **기존 `issue-create-dialog.spec.ts` 를 수정하지 않는다** — 수정이 필요해졌다면
+  그건 이름 충돌이 실재한다는 신호이고, 답은 e2e 수정이 아니라 **이름 변경**이다.
+
+**검증**.
+```bash
+pnpm --filter @bts/web test:e2e -- issue-create-entry-points.spec.ts
+pnpm --filter @bts/web test:e2e -- backlog.spec.ts board-kanban.spec.ts issue-create-dialog.spec.ts   # 인접 무회귀 (C11)
+```
+
+---
+
+### Task 9. 문서 전수 동기화 + 정본 정정
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`docs/plan/product/personalization.md`, `TODOS.md`, `CHANGELOG.md`, `docs/plans/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md`]
+- depends-on: [8]
+
+**작업** (TDD 대상 아님 — 문서. 검증은 판별식 스크립트).
+- §4.7 F3 산문 정정 — 「목록 헤더」 → 보드 헤더, 「`BoardColumn.tsx` 배선」 → 보드 라우트 헤더.
+  **정정 노트가 아니라 원문 자체를 고친다** (ADR D-3).
+- §4.7 **D1·D3·D6·D7 → `[x]`** (ADR D-5). FR 카운트 139 불변.
+- 진척 열은 **머지 직전 재실측** — 계획 시점 합계는 유통기한이 있다.
+- `TODOS.md` 등재 1건 — 상단바 「만들기」 CREATE 권한 게이트 부재 (스펙 L3, 선재).
+- `CHANGELOG.md` 항목 추가.
+
+**검증**.
+```bash
+bash scripts/verify-master-plan.sh; echo "EXIT=$?"     # 0 필수
+node scripts/build-doc-index.mjs                        # 고아·깨진 링크 0
+```
+🛑 verify 스캐너는 §헤더에 `FR-UX-09` 토큰이 들어가면 **메시지 없이 EXIT 1** 을 낸다
+(FR-UX-08 PR-B 실측). 절 번호로 지칭한다.
+
+## Plan 메타
+
+- **task 수**. 9 (T1~T8 은 TDD 사이클, T9 는 문서 + 판별식)
+- **wave 예상**. 6 — W1 `[1,2,4]` · W2 `[3]` · W3 `[5,7]` · W4 `[6]` · W5 `[8]` · W6 `[9]`
+  (T5·T7 은 파일 교집합 0 이라 동시. T6 은 `BacklogBoard.tsx` 가 겹쳐 T5 뒤로 직렬)
+- **TDD 강제**. yes (T1~T8). `test:` 커밋이 `feat:` 보다 먼저인지 기계 검증
+- **추가 검증**. `typecheck` · `eslint`(신규 경고 0) · `vitest` 전체 · `playwright` 인접 무회귀 · `verify-master-plan.sh` EXIT 0
+- **★순서가 의미를 갖는 지점 2곳**.
+  1. **T2 의 red 를 먼저 본다** — 없으면 T5·T6 의 「나타난다」가 가짜 그린인지 알 수 없다 (C15)
+  2. **T1 이 T3 보다 먼저다** — 이름을 정하기 전에 판별식이 있어야 충돌을 이름 단계에서 잡는다 (C16)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
