@@ -32,8 +32,17 @@ test.describe('E2E-4 UI 회귀 가드', () => {
     await expect(page.getByText(i18nLabels.issueDetail.deleteConfirmMessage)).toBeVisible()
 
     // 다이얼로그의 취소 버튼 클릭 (issues.$key.tsx:200 — confirmDelete 영역 안 cancelButton)
-    // confirm/cancel 두 버튼 모두 i18nLabels.issueDetail.cancelButton 라벨이지만, 다이얼로그 안 외에 다른 cancel 버튼 없으므로 단일 매칭.
-    await page.getByRole('button', { name: i18nLabels.issueDetail.cancelButton }).click()
+    //
+    // ★ exact: true 필수 (FR-UX-11 F8 회귀 봉합).
+    // 이전 주석은 "다이얼로그 안 외에 다른 cancel 버튼 없으므로 단일 매칭"이었으나 **거짓이 됐다**.
+    // F8 이 제목 텍스트 자체를 인라인 편집 진입 버튼으로 만들면서 그 버튼의 접근성 이름이
+    // **이슈 제목 전문**이 됐고, getByRole 의 name 은 기본이 부분일치라
+    // 이 테스트의 제목 'E2E-4-2 삭제 취소 검증용' 이 '취소' 에 걸려 strict mode violation 이 났다.
+    // 즉 이 화면에서 짧은 라벨('취소'·'저장'·'확인' 등)은 **제목 문자열과 충돌할 수 있다** —
+    // 부분일치를 쓰면 이슈 제목이 바뀔 때마다 조용히 깨진다. exact 로 못박는다.
+    await page
+      .getByRole('button', { name: i18nLabels.issueDetail.cancelButton, exact: true })
+      .click()
 
     // 다이얼로그 닫힘 + 이슈 보존 (상세 페이지 유지, summary 그대로)
     await expect(page.getByText(i18nLabels.issueDetail.deleteConfirmMessage)).not.toBeVisible()
