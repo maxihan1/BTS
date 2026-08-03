@@ -88,6 +88,65 @@ describe('IssueDescription', () => {
     expect(screen.getByRole('tab', { name: '미리보기' })).toBeInTheDocument()
   })
 
+  // ── 본문 클릭 진입 (FR-UX-11 F8 Task 3 / FR4) ─────────────────────────────
+  //
+  // 진입 경로가 늘어난 만큼 **열리면 안 되는 경우**를 함께 고정한다.
+  // 특히 텍스트 선택 중 진입은 Jira Cloud 의 미해결 결함(JRA-64389 · JRA-29063)이라
+  // 편차 D-2 로 의도적으로 배제했다 — 이 테스트가 그 결함의 복제를 막는 가드다.
+
+  it('본문을 클릭하면 편집 모드로 진입한다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByTestId('description-preview-content'))
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
+  })
+
+  it('본문이 비어 있어도 placeholder 클릭으로 편집 모드에 진입한다', () => {
+    render(
+      <IssueDescription
+        descriptionHtml={null}
+        description={null}
+        onSave={vi.fn()}
+        isSaving={false}
+      />,
+      { wrapper: makeWrapper() },
+    )
+    fireEvent.click(screen.getByText('본문이 없습니다.'))
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
+  })
+
+  it('텍스트를 선택 중이면 본문 클릭이 편집을 열지 않는다 (편차 D-2)', () => {
+    // 드래그로 본문을 복사하려는 상태를 재현 — Selection.isCollapsed=false
+    const selectionSpy = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ isCollapsed: false } as Selection)
+    try {
+      render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+      fireEvent.click(screen.getByTestId('description-preview-content'))
+      expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
+    } finally {
+      // setup.ts에 restoreMocks 설정이 없으므로 전역 spy를 이 테스트 안에서 직접 원복한다
+      selectionSpy.mockRestore()
+    }
+  })
+
+  it('본문 안 링크를 클릭하면 편집이 열리지 않는다', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        descriptionHtml='<p><a href="/x">링크</a></p>'
+      />,
+      { wrapper: makeWrapper() },
+    )
+    fireEvent.click(screen.getByRole('link', { name: '링크' }))
+    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
+  })
+
+  it('수정 권한이 없으면 본문 클릭이 편집을 열지 않는다', () => {
+    render(<IssueDescription {...defaultProps} canEdit={false} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByTestId('description-preview-content'))
+    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
+  })
+
   // ── 저장 흐름 ─────────────────────────────────────────────────────────────
 
   it('저장 버튼 클릭 시 onSave(rawMarkdown)을 호출한다', () => {
