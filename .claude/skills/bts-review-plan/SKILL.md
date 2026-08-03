@@ -36,14 +36,7 @@ TASK_COUNT=$(jq -r '.task_count' .bts-cache/classify.json)
 | `TYPE ∈ {bugfix, chore, qa}` | **skip** (fast-track) |
 | **그 외 (표에 없는 타입)** | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
 
-> **왜 `backend` 행과 fallback 행이 따로 있나 (2026-07-27 추가).**
-> `scripts/workflow/classify-task.ts` 의 `detectType` 은 `backend` 를 반환하는데(L249 기본 분기)
-> 이 표에 대응 행이 없어 **분기가 미정의**였다. `bts-workflow/SKILL.md` 의 타입별 분기 표는
-> 이미 `backend → backend-engineer / plan-eng` 를 갖고 있었으므로 새 결정이 아니라 **미러 누락**이다.
->
-> fallback 행은 같은 사고의 재발을 막는다 — 표에 없는 타입이 생겨도 "정의되지 않음" 이 아니라
-> "eng 리뷰 + 확인" 으로 수렴한다. 하드코딩 목록끼리의 정합은
-> `scripts/workflow/skill-type-coverage.test.ts` 가 강제한다(차집합 0).
+> 행 구성 근거(backend 행 누락 사고)와 정합 강제는 `scripts/workflow/skill-type-coverage.test.ts` 헤더 주석 참조 — 이 표 ↔ TaskType 유니온의 차집합 0 을 CI 가 강제한다.
 
 ### Step 3. 리뷰 호출 (순차)
 

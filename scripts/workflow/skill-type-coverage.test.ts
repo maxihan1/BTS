@@ -59,9 +59,7 @@ describe('스킬 분기 표 ↔ TaskType 정합', () => {
     const types = parseTaskTypes();
     const covered = parseSkillTableTypes(REVIEW_PLAN_SKILL);
 
-    // 'unknown' 은 detectType 이 실제로 반환하지 않는다(신호 0이면 'backend' 로 떨어진다).
-    // 표에 행을 요구하는 대신 fallback 행이 받아내면 충분하다.
-    const missing = types.filter((t) => t !== 'unknown' && !covered.has(t));
+    const missing = types.filter((t) => !covered.has(t));
 
     assert.deepEqual(
       missing,

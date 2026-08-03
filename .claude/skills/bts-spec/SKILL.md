@@ -13,6 +13,7 @@ description: Use when a task needs a written specification with user scenarios, 
 2. `/Users/maxi.moff/Maxi_wiki/BTS/decisions/` — 관련 ADR 검색
 3. `docs/plans/<date>-<slug>.md` — `## 도메인 정리` 섹션 (직전 단계 결과)
 4. (UI 타입) `DESIGN.md` — 디자인 토큰/컴포넌트 컨벤션 (있을 때)
+5. (UI 타입) `docs/design/jira-parity-contract.md` — **Jira Cloud 대조 사고 절차(§1) + 즉사 계약(§2) + 재사용 자산(§4)**. ui/design 스펙은 이 계약 위에서 작성한다
 
 ## 절차
 
@@ -73,6 +74,7 @@ Skill({
 # <작업 제목> — 스펙
 
 ## 사용자 시나리오 (Given-When-Then)
+## Jira 대조 (ui/design 타입 필수)
 ## 기능 요구사항 (FR)
 ## 비기능 요구사항 (NFR)
 ## API 인터페이스 (REST)
@@ -81,6 +83,10 @@ Skill({
 ## 제약 조건
 ## 측정 가능한 완료 기준
 ```
+
+**`## Jira 대조` 작성법** (ui/design 타입, `jira-parity-contract.md` §1 절차의 산출물).
+Jira Cloud 의 대응 화면 → 조작감 갭 목록 → 즉사 계약(§2)·재사용 자산(§4)과의 교차 결과.
+대응 화면이 없으면 "Jira 대응 없음, ADS 준용" 을 명시. 비-UI 타입은 섹션 생략.
 
 ### Phase B. Brainstorming Sanity Check
 
@@ -142,6 +148,15 @@ worktree의 plan 파일에서 다음 섹션 채움.
 `classify.type ∈ {bugfix, chore}` 시 이 단계 전체 스킵.
 
 이유. 버그 수정은 스펙이 "기존 동작 복원"으로 자명. office-hours/brainstorming 비용 > 효익.
+
+## ui 경량 경로 (기존 화면 수정 — Maxi 확정 2026-08-03)
+
+`classify.type == "ui"` 이고 **기존 화면 수정**(신규 라우트/엔티티/도메인 개념 없음)이면.
+
+- Phase A. `office-hours` **단일 pass** (A-2 design-shotgun 은 신규 화면에만 — 기존 화면 수정은 스킵)
+- Phase B. brainstorming **스킵** — 대신 `## Jira 대조` 섹션(계약 §1)과 즉사 계약(§2) 체크가
+  sanity check 를 대신한다. 스펙에 시각 검증 기준(관련 E2E 목록 + 눈확인 항목) 필수
+- 신규 화면/신규 도메인 개념이 있으면 경량 경로 비대상 — 현행 2-Phase 전체를 돈다
 
 ## 실패 / 엣지 케이스
 

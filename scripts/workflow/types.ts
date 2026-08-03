@@ -10,8 +10,7 @@ export type TaskType =
   | 'qa'          // E2E / 테스트 인프라
   | 'bugfix'      // 버그 수정 (fast-track)
   | 'chore'       // 잡일 (fast-track)
-  | 'feature'     // 새 기능 (autoplan 후보)
-  | 'unknown';    // 분류 실패
+  | 'feature';    // 새 기능 (autoplan 후보)
 
 export type AgentName =
   | 'security-engineer'
@@ -39,8 +38,8 @@ export interface ClassifyResult {
   slug: string;
   /** 작업 타입 — 워크플로우 분기 기준 */
   type: TaskType;
-  /** 담당 sub-agent */
-  agent: AgentName | null;
+  /** 담당 sub-agent — detectType 이 항상 유효 타입을 반환하므로 null 이 없다 */
+  agent: AgentName;
   /** 주된 바운디드 컨텍스트 (해당 없으면 null) */
   primary_bc: BoundedContext | null;
   /** plan task 수 — /bts-plan 단계에서 jq로 머지됨. 초기 0 */

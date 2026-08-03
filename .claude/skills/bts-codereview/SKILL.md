@@ -10,11 +10,11 @@ PR 단위 1회 코드 리뷰. **두 종류의 리뷰를 병행**.
 ## 선행 읽기
 
 **모두 컨텍스트에 이미 있음. 재로드 금지** (`/bts` 진입 시 + `/bts-impl` controller inject로 로드 완료).
-- `Maxi_wiki/BTS/learnings.md` — `/bts` Phase B에서 로드됨
-- `DEVELOPMENT.md` 절대 규칙 19개 — `/bts-impl` controller가 inject
-- `DATA.md` 데이터 무결성 5원칙 — `/bts-impl` controller가 inject (`auth`/`migration` 시)
+- `Maxi_wiki/BTS/learnings.md` — `/bts` Phase B에서 **헤딩 인덱스 + 선별 발췌**로 로드됨 (전량 재로드 금지)
+- `DEVELOPMENT.md` §1 — `/bts-impl` controller가 inject
+- `DATA.md` §1 — `/bts-impl` controller가 inject (해당 타입 시)
 
-Step 2 agent prompt에 본문 inline 첨부할 때도 컨텍스트 내 내용을 그대로 사용 (재 Read 불필요).
+Step 2 agent prompt에 inline 첨부할 때도 컨텍스트 내 내용을 그대로 사용 (재 Read 불필요).
 
 ## 절차
 
@@ -39,7 +39,11 @@ BTS 프로젝트 PR 리뷰. 절대 규칙 19개 (DEVELOPMENT.md §1) + 데이터
 plan 파일. docs/plans/<date>-<slug>.md
 PR diff. <PR_DIFF>
 
-**중점 검증**. DEVELOPMENT.md §1 절대 규칙 19개 (NEVER-1~19) + DATA.md §1 데이터 무결성 5원칙 전부 위반 여부 검증. auth/migration 시 §1.1 보안 + §1.2 데이터 무결성 추가 강조. agent prompt에 DEVELOPMENT.md / DATA.md / learnings.md 본문 전체를 인라인 첨부 (controller가 주입).
+**중점 검증**. DEVELOPMENT.md §1 절대 규칙 19개 (NEVER-1~19) + DATA.md §1 데이터 무결성 5원칙 전부 위반 여부 검증. auth/migration 시 §1.1 보안 + §1.2 데이터 무결성 추가 강조.
+
+**주입 범위 (controller)**. agent prompt에는 **DEVELOPMENT.md §1 + DATA.md §1 섹션만** 인라인 첨부.
+learnings 는 Phase B에서 선별한 발췌 + `grep -n '^### '` 헤딩 인덱스 전체를 첨부 —
+**본문 전체(98KB) 인라인 금지**, 그 재복제가 이 하네스의 단일 최대 컨텍스트 낭비였다.
 
 보고. PASS / CONCERNS (수정 권장) / BLOCKER (수정 필수).
 """
@@ -96,28 +100,16 @@ Skill({
 ```
 🛑 게이트 2 — Maxi 검토 부탁드립니다.
 
-✅ 한 줄
-   댓글·멘션 기능 코드 검토를 마쳤어요. 큰 문제는 없고,
-   짚어볼 점 2가지가 있어요.
-
-💡 의미
-   지금 그대로 합쳐도(머지) 되지만, 아래 2가지를 고치면
-   더 안전해요. 승인할지 / 고치고 다시 볼지 골라 주세요.
-
+✅ 한 줄  <검토 결과를 비전문가 한 문장으로. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
+💡 의미  <그대로 머지해도 되는지 / 고칠지 판단 재료>
 🔧 기술 상세 (안 봐도 됨)
-   PR: https://github.com/maxihan1/BTS/pull/N (#<title>)
-   변경 요약: <files changed>, +<additions>/-<deletions>
-   - code-reviewer agent: ✅ PASS
-   - /review (gstack): ⚠️ CONCERNS 2건
-     1. 댓글 작성자 칸이 비어있어도 저장 가능하게 됨
-        (nullable — 값이 없어도 허용). 의도한 건가요?
-     2. 멘션(@이름) 인식 규칙이 특정 입력에서 서버를 느리게
-        만들 수 있음 (ReDoS — 정규식을 악용한 지연 공격).
-        예: @[a-zA-Z0-9_]+ → @\w{1,32}
-   - /plan-ceo-review: (skip, auth/migration 아님)
+   PR: <url> · 변경 요약: <files changed>, +<add>/-<del>
+   - code-reviewer agent / /review (gstack) / plan-ceo-review 결과 각 1줄
+   - CONCERNS·BLOCKER 는 항목별로: 쉬운 문장 요약 + (전문용어 괄호 풀이)
+   - fast-track 경로였다면 "스킵된 단계([2]/[3]/[5] + 게이트 1)" 목록 명시
 
 다음 옵션:
-1. 승인 → 머지 + 배포 + sync-obsidian
+1. 승인 → /bts-merge (머지 + worktree 정리 + Obsidian sync)
 2. 짚은 점 수정 후 재리뷰 → /bts-impl 다시 (loop back)
 3. 보류
 ```

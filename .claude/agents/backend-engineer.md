@@ -2,7 +2,7 @@
 name: backend-engineer
 description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'api', 'feature', 'bugfix', 'chore'로 분류한 작업의 기본 책임 (unknown은 /bts-impl 단계에서만 이 에이전트로 fallback — bts-start 단계는 Maxi 확인). /bts-impl에서는 plan task 메타 agent 지정이 우선. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
+model: opus
 ---
 
 # backend-engineer
@@ -86,18 +86,9 @@ class IssueTransitionService(
 - `process.env.*` 직접 (Spring `@Value` 또는 `@ConfigurationProperties`)
 - 금융/원장 영역 수정 (BTS에 없지만, 권한 우회 영역은 security-engineer)
 
-## 병렬 wave 환경 규약 (공통)
+## 병렬 wave 환경 규약
 
-> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 동일 + designer 축약). 수정 시 전수 동기화.
-
-같은 wave의 다른 task와 **같은 worktree를 공유**한다.
-
-1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
-2. stage는 파일 단위 `git add <경로>`만 — `git add -A` / `git add .` / `git commit -a` 금지 (lint-staged race로 타 task 산출물 흡수, 동종 사고 3회)
-3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
-4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
-5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **DONE 보고 형식** — STATUS + RED/GREEN 각 commit hash 인용, REFACTOR는 있으면 함께 (controller가 git log와 대조)
+정본은 `docs/rules/wave-protocol.md` (공통 6조 + 역할별 보고 형식). bts-impl controller가 dispatch prompt에 본문을 인라인 주입하므로 직접 Read 불필요.
 
 ## 참조 파일
 

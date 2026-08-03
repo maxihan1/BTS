@@ -11,12 +11,33 @@ plan의 task를 sub-agent에게 위임. **TDD 강제 (red → green → refactor
 
 controller(메인 에이전트)는 다음 4개를 **세션당 1회만 Read**하고, 모든 implementer/verifier prompt에 본문 인라인 주입.
 
-- `DEVELOPMENT.md` (절대 규칙 19개)
-- `DATA.md` (데이터 무결성 5원칙)
+- `DEVELOPMENT.md` — **§1(절대 규칙) + task agent 언어의 §2.x만 주입** (Kotlin task → §2.1, TS task → §2.2. 전문 주입 금지)
+- `DATA.md` — **db/backend/api/auth/migration task에만 전문 주입**. frontend/designer/qa task는 생략 (5원칙 요지 1줄로 대체)
 - `Maxi_wiki/BTS/domain/<bc>.md` (해당 BC 노트)
 - 작업 관련 `Maxi_wiki/BTS/decisions/<adr>.md` (있을 때)
+- `docs/rules/wave-protocol.md` (병렬 wave 규약 정본 — 모든 dispatch prompt에 본문 인라인 주입. 에이전트 정의에는 포인터만 있다)
 
 **sub-agent는 위 4개 파일을 직접 Read 금지** (controller가 이미 prompt 본문에 첨부함, 중복 로드는 토큰 낭비). 각 agent.md의 "참조 파일" 섹션은 "controller inject" 표시가 있는 항목은 직접 Read 금지, "필요 시 직접 Read" 표시 항목만 직접 Read 가능.
+
+## 타입별 규율 매트릭스 (Maxi 확정 2026-08-03)
+
+유지보수 모드 적응 — **로직은 TDD 유지, ui 시각 변경은 시각 검증 트랙**.
+
+| 타입 | domain | spec | 구현 규율 | 게이트 | 필수 검증 |
+|---|---|---|---|---|---|
+| auth · migration | 필수 | 필수 | TDD red→green 현행 | 1+2 | 현행 + ceo 리뷰 |
+| backend · api · feature | 필수 | 필수 | TDD red→green 현행 | 1+2 | 현행 |
+| **ui** (기존 화면 수정) | 스킵 — 신규 도메인 개념 감지 시만 진입, 모호하면 Maxi 질문 | 경량 (bts-spec §ui 경량 경로) | **시각 검증 트랙** — red-first 면제 (아래 상세) | task ≤3 + 신규 도메인 개념 없음 → **게이트 2만**, 그 외 1+2 | 관련 기존 E2E 동반 실행 + 브라우저 눈확인(라이트/다크) + 동반 테스트 존재 |
+| bugfix · chore | 스킵 (현행) | 스킵 (현행) | bugfix는 TDD 유지 (재현 테스트 먼저) | 게이트 2만 (/bts Phase C) | 현행 |
+
+**ui 시각 검증 트랙 상세** (`jira-parity-contract.md` 배선).
+1. 착수 전 계약 §5 사전 grep — 수정 표면이 노출된 기존 E2E/유닛 어서션 전수 식별
+2. 구현 커밋 + **동반 테스트 커밋** — 순서 무관, 단 `test:` 커밋 자체는 필수 (테스트 0개 금지)
+3. 1에서 식별한 **기존 E2E 동반 실행** — 실행 로그를 보고에 첨부
+4. **브라우저 눈확인** (계약 §6) — 라이트/다크 양쪽, 관찰 요지를 보고에 포함
+
+로직 변경(핸들러/유틸/api 클라이언트의 분기 추가 등)이 섞인 ui task 는 그 부분만 TDD 현행을
+따른다 — 시각 트랙은 "보이는 것"의 변경에만 적용된다. 판단이 모호하면 TDD 쪽이 기본값.
 
 ## 절차
 
@@ -61,10 +82,6 @@ plan을 읽고 task별 메타(`agent` / `files` / `depends-on`)를 추출해 wav
 
 **병렬 발행 규칙**. wave `w`의 모든 task에 대해 **한 응답 안에 여러 Agent() tool 호출**을 동시에 발행. 응답이 두 개로 갈리면 직렬화되어 병렬 이점이 사라짐. controller는 wave 내 모든 응답이 돌아올 때까지 대기한 뒤 2-B 진행.
 
-**agent=null 처리** (`classify.type == "unknown"` 또는 Maxi가 reclassify 거부 시).
-- fallback. `backend-engineer`로 dispatch (모듈러 모놀리스 기본 영역)
-- prompt 맨 위에 "type 분류 모호함. 구현 전 작업 의도/영역을 한 번 더 확인하고 보고" 한 줄 추가
-
 wave 내 각 task에 대해 다음 형식으로 dispatch (병렬 발행).
 
 ```
@@ -94,10 +111,26 @@ plan 파일의 Task N을 구현. 작업 디렉토리: .worktrees/<slug>.
 허용 파일: <plan 메타 files 인라인 주입>.
 참조 파일: DEVELOPMENT.md, DATA.md, Maxi_wiki/BTS/domain/<bc>.md.
 
+**병렬 wave 환경 규약.**
+<docs/rules/wave-protocol.md 본문 인라인 주입 — 공통 6조 + 이 task 역할의 보고 형식 행>
+
 상태 보고. DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED.
 DONE/DONE_WITH_CONCERNS 보고 시 RED/GREEN 각 commit hash 명시, REFACTOR는 있으면 함께 (controller가 git log와 대조).
 """
 })
+```
+
+**ui 시각 검증 트랙 변형** (§타입별 규율의 ui 행에 해당하는 task). 위 prompt의 "TDD 강제
+6단계" 블록을 다음으로 교체해 dispatch 한다.
+
+```
+**시각 검증 트랙 (red-first 면제).**
+1. jira-parity-contract.md §5 사전 grep — 수정 표면의 기존 E2E/유닛 어서션 식별, 결과를 보고에 첨부
+2. 구현 → 커밋 (`feat: <slug> task-N`)
+3. 동반 테스트 작성/갱신 → 커밋 (`test: <slug> task-N`) — 순서 무관이나 test 커밋 필수
+4. 1에서 식별한 기존 E2E 동반 실행 — 통과 로그 첨부. 즉사 계약(§2) 문자열 훼손 여부 확인
+5. 브라우저 눈확인 (§6) — 라이트/다크 양쪽 관찰 요지를 보고에 포함
+DONE 보고: feat/test 각 commit hash + E2E 실행 로그 + 눈확인 요지.
 ```
 
 #### 2-B. wave 상태 집계
@@ -190,11 +223,16 @@ TDD_VIOLATION:
 
 controller는 응답을 받은 후 PASS 응답에 실제 hash 문자열 (`a1b2c3d` 형태)이 포함되어 있는지 검증. 누락 시 TDD_VIOLATION으로 간주.
 
+**ui 시각 검증 트랙 verifier 변형**. §타입별 규율의 ui 행 task 는 판정 기준 1(TDD 순서)을
+다음 셋으로 교체한다 — ① `test:` 커밋이 존재하는가 (순서 무관) ② implementer 보고에 기존
+E2E 실행 로그가 인용돼 있는가 ③ 눈확인 관찰 요지가 인용돼 있는가. 셋 중 하나라도 없으면
+PASS 무효 (TDD_VIOLATION 대신 `TRACK_VIOLATION`으로 보고, 처리 동작은 동일).
+
 | verifier 응답 | 동작 |
 |---|---|
 | `PASS` | plan의 Task N 체크박스 `[x]` → 해당 task wave 졸업 |
 | `DRIFT` | drift 항목을 implementer에 전달 → 재dispatch (해당 task 단일) |
-| `TDD_VIOLATION` | systematic-debugging 후 implementer 재dispatch (테스트 먼저 작성) |
+| `TDD_VIOLATION` (ui 트랙은 `TRACK_VIOLATION`) | systematic-debugging 후 implementer 재dispatch |
 
 wave 내 모든 task PASS 면 다음 wave 진입.
 
@@ -208,7 +246,7 @@ Agent({
   description: "<slug> E2E 시나리오 추가",
   prompt: """
 plan의 핵심 시나리오에 대해 Playwright E2E 1~2개 추가.
-작업 디렉토리. .worktrees/<slug>. 작성 위치. tests/e2e/<slug>.spec.ts.
+작업 디렉토리. .worktrees/<slug>. 작성 위치. apps/web/e2e/<slug>.spec.ts.
 **구현 코드는 수정 금지** (테스트만).
 보고. ADDED / SKIPPED (이미 충분).
 """
@@ -263,14 +301,8 @@ worktree 훅이 연결돼 있으면(`/bts-start` Step 3) 이 재생성을 잊은
 **아래 진행 트리 위에 글로벌 §Explanation Style Work-Report Format(계층형 요약)을 먼저 얹는다.** 진행 트리(wave/dispatch/DRIFT 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞에 비전문가용 `✅ 한 줄`+`💡 의미`를 두어 Maxi가 트리를 읽지 않아도 무엇을·왜 했는지 알게 한다.
 
 ```
-✅ 한 줄
-   이슈에서 "@이름"으로 사람을 부르면 그 사람에게
-   알림이 가는 기능을 만들었어요.
-
-💡 의미
-   이제 담당자를 콕 집어 부를 수 있어, 놓치는 알림이 줄어요.
-   테스트도 통과해서 바로 검토(게이트 2)로 넘어갑니다.
-
+✅ 한 줄  <비전문가 한 문장 — 무엇이 됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
+💡 의미  <Maxi에게 무슨 뜻인지 + 다음 단계>
 🔧 기술 상세 (안 봐도 됨)
 🔄 [6/8] /bts-impl (4 tasks, 2 waves)
    ├─ wave 1 (병렬 dispatch)
@@ -279,7 +311,7 @@ worktree 훅이 연결돼 있으면(`/bts-start` Step 3) 이 재생성을 잊은
    ├─ wave 2 (병렬 dispatch, depends-on [1, 3])
    │   ├─ Task 2. MentionNotificationService — backend-engineer ✅ PASS
    │   └─ Task 4. 알림 채널 라우팅 — backend-engineer ✅ PASS
-   ├─ E2E 추가. qa-engineer → tests/e2e/issue-mention-notify.spec.ts (2 시나리오)
+   ├─ E2E 추가. qa-engineer → apps/web/e2e/issue-mention-notify.spec.ts (2 시나리오)
    └─ verification-before-completion ✅ (test 47 passed, lint clean)
 ```
 

@@ -36,7 +36,8 @@ FR 추가·삭제·범위 변경을 동반한 PR은 머지 전 카운트 drift�
 bash scripts/verify-master-plan.sh    # exit 0 확인
 ```
 
-실패(exit 4 등) 시 → 누락된 정본·미러·카운트를 **같은 PR에서** 동기화(CLAUDE.md §명세/범위 변경 시 전수 동기화, 8종 대상) 후 재실행. FR 무관 PR(순수 bugfix/chore)은 생략 가능.
+실패(exit 4 등) 시 → 누락된 정본·미러·카운트를 **같은 PR에서** 동기화 후 재실행.
+대상 목록의 정본은 [`docs/rules/fr-sync-checklist.md`](../../../docs/rules/fr-sync-checklist.md) 전 항목 (이 문서에 개수를 새기지 않는다 — 개수 리터럴은 drift 원천). FR 무관 PR(순수 bugfix/chore)은 생략 가능.
 
 ### Step 3. dashboard 재생성 — post-merge 훅이 자동 처리
 
@@ -78,6 +79,9 @@ git checkout main && git pull --ff-only origin main
 
 # E2E를 worktree에서 돌렸다면 orphan Vite dev 서버가 5173에 남는다 → kill
 lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+
+# classify 캐시 정리 — 작업 단위 산물이라 머지 후 잔존 이유 없음 (누적 방치 시 수십 파일)
+rm -rf .bts-cache/* 2>/dev/null || true
 ```
 
 ### Step 6. 공유 .git 오염 점검 (worktree 작업 후)
@@ -90,9 +94,9 @@ git -C /Users/maxi.moff/Projects/BTS status
 
 `"needs merge"`나 인덱스 stage 1/2/3가 보이면 오염. 복구는 **3중 백업 후** `git reset --hard origin/main` (stash ref는 보존됨). 무관한 main 미커밋 작업이 있었다면 먼저 그 작업부터 백업.
 
-### Step 7. Obsidian 동기화 (Phase 0 수동)
+### Step 7. Obsidian 동기화 (수동)
 
-스크립트(`sync-obsidian.ts`)가 아직 없어 메인 에이전트가 수동 수행.
+메인 에이전트가 수동 수행 (자동화는 백로그).
 
 1. `Maxi_wiki/BTS/history.md`에 1줄 append.
    ```
@@ -101,8 +105,6 @@ git -C /Users/maxi.moff/Projects/BTS status
 2. 새 `docs/decisions/*.md` → `Maxi_wiki/BTS/decisions/`에 복사
 3. 머지된 `docs/plans/*.md` → `Maxi_wiki/BTS/plans/`에 복사
 4. PR 라벨 `learning:<topic>` 있으면 → `Maxi_wiki/BTS/learnings.md` append
-
-> Phase 1에 `scripts/workflow/sync-obsidian.ts` + post-merge hook으로 자동화 예정.
 
 ### Step 8. 메모리 갱신
 
@@ -113,13 +115,8 @@ git -C /Users/maxi.moff/Projects/BTS status
 **아래 진행 트리 위에 글로벌 §Explanation Style Work-Report Format(계층형 요약)을 먼저 얹는다.** 트리(verify-master-plan/orphan 5173 kill 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞에 `✅ 한 줄`+`💡 의미`로 "무엇이 실제 반영됐고, Maxi가 뭘 확인할 수 있는지"를 비전문가 문장으로 먼저 말한다.
 
 ```
-✅ 한 줄
-   이번 작업을 본줄기(main)에 합쳐 배포까지 끝냈어요.
-
-💡 의미
-   방금 만든 기능이 실제 서비스에 반영됐어요.
-   진척 현황판도 새로 그려졌으니 어디까지 왔는지 확인할 수 있어요.
-
+✅ 한 줄  <비전문가 한 문장 — 무엇이 반영됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
+💡 의미  <Maxi가 어디서 결과를 확인할 수 있는지>
 🔧 기술 상세 (안 봐도 됨)
 🔄 [8/8] /bts-merge
    ├─ 머지 전 확인: git status clean ✅

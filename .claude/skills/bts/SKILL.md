@@ -21,7 +21,7 @@ BTS 모든 코드 작업의 **단일 진입점**. 8단계 스킬을 자연어 1�
 
 ```
 /bts <자연어>
-   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근 50줄) + learnings
+   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근 50줄) + learnings 헤딩 라우팅
 [1] /bts-start         → classify + worktree + Draft PR
 [2] /bts-domain        → grill-with-docs
 [3] /bts-spec          → office-hours (A) → brainstorming (B)
@@ -35,6 +35,7 @@ BTS 모든 코드 작업의 **단일 진입점**. 8단계 스킬을 자연어 1�
 ```
 
 `auth`/`migration`/큰 변경도 두 번 멈춤. **자동이라도 사용자 동의 없이 머지 안 감**.
+fast-track(`bugfix`/`chore`)은 게이트 1을 생략하고 **게이트 2 한 곳만** 멈춘다 (Phase C 게이트 정책).
 
 ## 절차
 
@@ -81,11 +82,21 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ### Phase B. 선행 읽기 (필수)
 
-다음 3개 Obsidian 노트를 Read tool로 로드. 모든 단계의 컨텍스트 기준.
+다음 2개 Obsidian 노트를 Read tool로 로드.
 
 - `/Users/maxi.moff/Maxi_wiki/BTS/_index.md`
 - `/Users/maxi.moff/Maxi_wiki/BTS/history.md` (마지막 50줄)
-- `/Users/maxi.moff/Maxi_wiki/BTS/learnings.md`
+
+**`learnings.md` 전량 Read 금지** (98KB — 전량 로드가 워크플로우당 수만 토큰을 태우는
+단일 최대 낭비였다). 대신 2단 라우팅.
+
+```bash
+grep -n '^### ' /Users/maxi.moff/Maxi_wiki/BTS/learnings.md   # 헤딩 인덱스만 (수십 줄)
+```
+
+1. 헤딩 인덱스에서 **이번 작업의 키워드·BC·타입과 관련된 항목 + 최근 5건**을 고른다
+2. 고른 항목만 Read(offset/limit)로 부분 로드한다 — 이것이 체인 전체의 learnings 컨텍스트
+   기준이고, `/bts-codereview`의 발췌 주입도 여기서 고른 항목을 재사용한다
 
 ### Phase C. 단계 체이닝 (호출 책임 = bts 컨트롤러)
 
@@ -97,7 +108,18 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 4. `Skill({skill: "bts-plan"})`
 5. `Skill({skill: "bts-review-plan"})` (fast-track 시 스킵)
 
-#### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`)
+**Fast-track 게이트 정책 (`type ∈ {bugfix, chore}`)** — [5]가 스킵되면 **게이트 1도 함께 생략**한다.
+곧장 `bts-impl` → `bts-codereview` → 게이트 2로 진행한다. 대신 게이트 2 요약에
+"스킵된 단계([2]/[3]/[5] + 게이트 1)" 목록을 명시해 Maxi가 우회 사실을 보고 승인하게 한다.
+
+**ui 소규모 게이트 정책 (Maxi 확정 2026-08-03)** — `type == ui` 이고 **plan task ≤3 + 신규
+도메인 개념 없음**이면 [5] plan-design-review 는 실행하되(자동 리뷰 유지, BLOCKER 는 여전히
+정지) **게이트 1 의 사용자 정지만 생략**하고 곧장 `bts-impl` 로 진행한다. 그 외 ui(신규 화면 /
+task 4+)는 2게이트 유지.
+
+**머지 전 정지(게이트 2)는 어떤 타입도 생략하지 않는다.**
+
+#### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`, fast-track은 생략)
 
 응답 분기 — bts 컨트롤러가 직접 처리.
 
@@ -129,7 +151,6 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ## 실패 / 엣지 케이스
 
-- **classify가 모호**. `type = unknown` 시 Maxi에게 "이 작업의 타입은?" AskUserQuestion
 - **worktree 충돌**. 동일 slug가 이미 있으면 `-2` 접미사 자동
 - **plan-* 리뷰 BLOCKER**. 중단 후 사용자에게 수정안 제시. 승인 후 리뷰 재실행
 - **TDD 강제 위반**. spec-compliance-verifier가 BLOCKER 반환 → implementer 재dispatch
@@ -137,5 +158,5 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ## 관련 스킬
 
-- 전체 개요. [bts-workflow](../bts-workflow/SKILL.md)
-- 각 단계. [bts-start](../bts-start/SKILL.md), [bts-domain](../bts-domain/SKILL.md), [bts-spec](../bts-spec/SKILL.md), [bts-plan](../bts-plan/SKILL.md), [bts-review-plan](../bts-review-plan/SKILL.md), [bts-impl](../bts-impl/SKILL.md), [bts-codereview](../bts-codereview/SKILL.md)
+- 전체 참조 맵. [docs/rules/workflow-map.md](../../../docs/rules/workflow-map.md)
+- 각 단계. [bts-start](../bts-start/SKILL.md), [bts-domain](../bts-domain/SKILL.md), [bts-spec](../bts-spec/SKILL.md), [bts-plan](../bts-plan/SKILL.md), [bts-review-plan](../bts-review-plan/SKILL.md), [bts-impl](../bts-impl/SKILL.md), [bts-codereview](../bts-codereview/SKILL.md), [bts-merge](../bts-merge/SKILL.md)

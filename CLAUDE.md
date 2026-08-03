@@ -39,7 +39,8 @@ agile-planning · notification · search-export-import · slack-integration · a
 | 워크플로우 / 작업 시작 | 이 파일 §워크플로우 + `.claude/skills/bts/SKILL.md` |
 | 절대 규칙 19개 / 코드 스타일 | `DEVELOPMENT.md` |
 | DB / 마이그레이션 / 트랜잭션 / 이슈키 영속성 | `DATA.md` |
-| 도메인 비전 / 기술 결정 / 26개 챕터 | `docs/sdd/README.md` |
+| 도메인 비전 / 기술 결정 / 24개 챕터 | `docs/sdd/README.md` |
+| UI/UX 작업 기준 (Jira 패리티 계약) | `docs/design/jira-parity-contract.md` |
 | 도메인 용어 사전 (DDD) | `Maxi_wiki/BTS/glossary.md` (Obsidian) |
 | 과거 사고/교훈 (회귀 방지) | `Maxi_wiki/BTS/learnings.md` (Obsidian) |
 | 바운디드 컨텍스트별 노트 | `Maxi_wiki/BTS/domain/<bc>.md` |
@@ -52,11 +53,11 @@ agile-planning · notification · search-export-import · slack-integration · a
 
 `/bts <자연어>` → start → domain → spec → plan → review-plan → 🛑게이트1 → impl → codereview → 🛑게이트2 → merge
 
-자세한 다이어그램 + 단계별 절차. `.claude/skills/bts-workflow/SKILL.md`.
+자세한 다이어그램 + 단계별 절차. `.claude/skills/bts/SKILL.md` · 참조 맵 [`docs/rules/workflow-map.md`](docs/rules/workflow-map.md).
 
 ## 핵심 패턴 (BTS만의)
 
-- **TDD red→green→refactor 강제** — `/bts-impl`이 git log에서 `test:` 커밋이 `feat:` 커밋보다 먼저인지 자동 검증. 위반 시 BLOCKED → implementer 재dispatch
+- **TDD red→green→refactor 강제** — `/bts-impl`이 git log에서 `test:` 커밋이 `feat:` 커밋보다 먼저인지 자동 검증. 위반 시 BLOCKED → implementer 재dispatch. **예외: ui 시각 변경은 시각 검증 트랙** (red-first 면제, 기존 E2E 동반 실행 + 브라우저 눈확인 — `/bts-impl` §타입별 규율)
 - **git worktree per 작업** — `.worktrees/<slug>` 안에서만 Edit/Write. main 트리 오염 차단. 머지 후 자동 정리
 - **BC 격리** — 한 PR = 한 바운디드 컨텍스트. 다른 BC 호출은 이벤트 발행만 (pgmq), 직접 import 금지
 - **Obsidian 단방향** — Repo → `Maxi_wiki/BTS/` 미러. Phase 0은 수동, Phase 1에 자동화
@@ -86,6 +87,9 @@ agile-planning · notification · search-export-import · slack-integration · a
 ## 컨텍스트 효율
 
 - **한 번에 한 BC만** 작업. 여러 BC 동시 수정은 Maxi 확인.
+- **대용량 3파일 통째 Read 금지** — `TODOS.md`(126KB) · `Maxi_wiki/BTS/learnings.md`(98KB) ·
+  `DESIGN.md`(43KB)는 grep 또는 헤딩 인덱스(`grep -n '^#'`) 후 부분 Read.
+  `docs/INDEX-fr.md`·`INDEX-recent.md`는 **grep 전용** — 줄당 수백 바이트라 부분 Read가 방어가 안 된다.
 - 긴 명세는 `docs/sdd/` 챕터 링크. 본문 복사 금지.
 - Skills/agent의 트리거 조건이 맞으면 자동 활성화. 임의 호출 금지.
 - **모르겠으면 Maxi에게 물어보기.** 추측 구현 금지.
