@@ -73,6 +73,24 @@ export const backlogLabels = {
 
   /** 이동 실패 에러 메시지 */
   moveFailedError: '이슈 이동에 실패했습니다. 다시 시도해 주세요.',
+
+  // ── FR-UX-09 F3 — 이슈 생성 진입점 ──────────────────────────────────────
+  //
+  // ⚠️ 이 두 값을 고칠 때는 `i18n/__tests__/create-entry-point-names.test.ts` 를 먼저 읽을 것.
+  // 같은 화면의 `만들기`(상단바) · `이슈 생성`(모달 제출) · `스프린트 생성` 중 어느 것도
+  // **부분 문자열로 포함하면 안 된다** — Playwright·Testing Library 둘 다 기본이 부분 일치라
+  // 기존 e2e 가 strict mode 로 깨진다.
+
+  /** 백로그 칸 이슈 생성 진입점 (아이콘 버튼의 sr-only 이름) */
+  createIssueInBacklog: '백로그 칸에 이슈 추가',
+
+  /**
+   * 스프린트 칸 이슈 생성 진입점 이름.
+   *
+   * **스프린트 이름을 포함하는 것이 요구사항이다** (FR-10) — 스프린트가 여러 개면
+   * 같은 화면에 진입점이 N개 뜨는데, 이름이 같으면 조회가 strict mode 로 깨진다.
+   */
+  createIssueInSprint: (sprintName: string): string => `${sprintName} 스프린트에 이슈 추가`,
 } as const
 
 /** backlogLabels const 추론 타입 */

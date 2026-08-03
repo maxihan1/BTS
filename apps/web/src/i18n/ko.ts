@@ -781,6 +781,17 @@ export const issueCreateStrings = {
   createdToast: '이슈를 만들었습니다',
   /** 생성 성공 토스트의 보기 액션 */
   createdToastAction: '보기',
+
+  // ── FR-UX-09 F3 — 스프린트 배정 부분 성공 ───────────────────────────────
+  /**
+   * 이슈는 만들어졌지만 스프린트 배정만 실패했을 때의 안내 (ADR 2026-08-03 D-2).
+   *
+   * 🛑 **실패 톤으로 내면 안 된다.** 이슈는 실제로 만들어졌으므로 빨간 실패 표시는
+   * 「안 만들어졌다」로 읽히고, 사용자가 다시 만들어 **중복 이슈**가 생긴다.
+   * 선례 — `backlogLabels.rerankFailedWarning`(이동은 됐고 순서만 실패)이 같은 형태다.
+   */
+  sprintAssignFailed: (key: string): string =>
+    `${key} 이슈는 만들었지만 스프린트에 넣지 못했습니다. 백로그에서 확인해 주세요.`,
 } as const
 
 /** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
