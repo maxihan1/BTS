@@ -9,6 +9,7 @@ import { getStoredProjectLead } from './project-lead-handlers'
 import { getFieldPermissionsForProject } from './field-permission-handlers'
 import { AUTH_USERS } from './auth-fixtures'
 import { appendToInbox } from './inbox-handlers'
+import { appendCreatedIssueToBacklog } from './backlog-fixtures'
 import type { InboxItem } from '@/api/inbox'
 import {
   issuePageFixture,
@@ -504,6 +505,20 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)
+
+  // FR-UX-09 F3 FR-13 — 백로그 목과 같은 출처를 보게 한다.
+  // 이게 없으면 「만들었더니 백로그 칸에 나타난다」가 구현이 옳아도 실패하고,
+  // 그 실패를 피해 단언을 「호출됐다」로 약화하면 언제나 통과하는 가짜 그린이 된다.
+  appendCreatedIssueToBacklog(created.projectKey, {
+    key: created.key,
+    summary: created.summary,
+    currentStateKey: created.currentStateKey,
+    assigneeId: created.assigneeId,
+    priority: created.priority,
+    version: created.version,
+    epicKey: null,
+  })
+
   return HttpResponse.json({ data: created }, { status: 201 })
 })
 

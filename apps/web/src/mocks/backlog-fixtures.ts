@@ -130,6 +130,45 @@ export function seedBacklog(project: StoredBacklogProject): void {
 }
 
 /**
+ * 새로 생성된 이슈를 해당 프로젝트의 **백로그 칸 맨 끝**에 붙인다 (FR-UX-09 F3 FR-13).
+ *
+ * ★왜 이 함수가 여기 있나.
+ * `POST /api/v1/issues`(issue-handlers)와 `GET /projects/{key}/backlog`(이 파일의 store)는
+ * 원래 **서로 다른 저장소**였다. 그래서 「만들었더니 백로그에 나타난다」를 검증하려는 테스트가
+ * **구현이 옳아도 실패**했고, 그 실패를 피해 「호출됐다」로 단언을 약화하면
+ * `assignToSprintHandler` 가 모르는 키를 201 로 멱등 처리하는 탓에 **항상 통과**하는
+ * 가짜 그린이 됐다. 두 목이 같은 출처를 보게 해서 그 갈림 자체를 없앤다.
+ *
+ * **store 에 없는 프로젝트면 아무것도 하지 않는다** — 백로그를 쓰지 않는 화면의
+ * 기존 테스트가 이 확장 때문에 깨지면 안 된다.
+ *
+ * @param projectKey 생성된 이슈의 프로젝트 키
+ * @param issue rank 를 제외한 백로그 이슈 필드 (rank 는 맨 끝 값으로 계산해 붙인다)
+ */
+export function appendCreatedIssueToBacklog(
+  projectKey: string,
+  issue: Omit<BacklogIssue, 'rank'>,
+): void {
+  const project = backlogStore.get(projectKey)
+  if (project === undefined) return
+
+  // ★같은 키는 두 번 들어가지 않는다 — store 의 불변식이다(실제 백로그도 같다).
+  //
+  // 이 가드가 없으면 실측으로 **한 번의 생성이 두 줄을 만든다**. 이 환경의 MSW 는
+  // 요청 1회에 리졸버를 2회 실행한다(2026-08-03 계측 — `request:start` 2회 발화,
+  // 백로그 길이 2 → 4). 그러면 배정이 한 줄만 옮겨 **백로그에 유령 한 줄이 남는다**.
+  // 게다가 생성 목의 키는 `createdIssueFixture.key` 고정값이라 같은 테스트에서
+  // 두 번 만들면 어차피 키가 겹친다 — 중복 금지가 우회가 아니라 올바른 의미다.
+  //
+  // ⚠️ **다른 append 형 목 핸들러도 같은 이유로 중복될 수 있다.** 이 PR 범위 밖이라
+  //    TODOS 로 넘긴다 — 여기서는 이 경로만 불변식으로 닫는다.
+  if (findIssueInProject(project, issue.key) !== undefined) return
+
+  const lastRank = project.backlog.at(-1)?.rank ?? null
+  project.backlog.push({ ...issue, rank: computeRank(lastRank, null) })
+}
+
+/**
  * store에서 이슈(key 기준)를 찾는다. backlog + 모든 스프린트에서 탐색.
  * 발견 시 해당 이슈 객체와 소속 컨테이너 참조를 반환한다.
  *
