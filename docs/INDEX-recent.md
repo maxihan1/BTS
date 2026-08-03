@@ -7,7 +7,7 @@
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-08-03 | fr-ux-09-f3-create-issue-entry-points | ✔ | ✔ | ✔ | — | FR-UX-05 FR-UX-06 FR-UX-07 FR-UX-08 FR-UX-09 |
-| 2026-08-03 | fr-ux-10-f10-context-shortcuts | — | ✔ | ✔ | — | FR-PF-03 FR-UX-05 FR-UX-06 FR-UX-09 FR-UX-10 FR-UX-11 |
+| 2026-08-03 | fr-ux-10-f10-context-shortcuts | ✔ | ✔ | ✔ | — | FR-PF-03 FR-UX-05 FR-UX-06 FR-UX-09 FR-UX-10 FR-UX-11 |
 | 2026-08-03 | worktree-hook-wiring | — | ✔ | — | — | — |
 | 2026-08-01 | doc-indexing-system | ✔ | ✔ | — | — | FR-CO-01 FR-UX-09 |
 | 2026-08-01 | fr-ux-09-f2-create-issue-dialog | ✔ | ✔ | ✔ | — | FR-CM-03 FR-IS-10 FR-PM-06 FR-TM-01 FR-UX-04 FR-UX-07 FR-UX-09 |

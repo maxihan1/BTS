@@ -274,10 +274,29 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **정본이 이미 예약해 둔 범위다.** §4.3(FR-UX-05)이 *"컨텍스트 의존 단축키(`j/k/e/m/s`)는 **후속 FR로 제외**(Maxi 결정 2026-07-05)"* 로 명시 이연했고, 이 FR 이 그 **승계자**다. 현재 단축키는 전역 네비게이션 5종뿐이고 전부 "이동" 계열이라, 지라(25종+)를 쓰던 사람의 손이 기억하는 동작이 하나도 없다.
 
+> **★ 이연 목록 대사표 — "승계"가 아니라 "기준 교체"다 (2026-08-03 판정).**
+> 이연 시점의 `j/k/e/m/s` 는 **Gmail/Linear 기준**이었다(§4.3 D2 가 *"Gmail/Linear 스타일"* 로
+> 참조 기준을 명시). 승계 시점의 F10·F11 은 **Jira 기준**이다. 두 세트가 달라 **글자만 겹치고
+> 동작이 다른 항목 2건 + 대응이 없어 조용히 빠진 항목 1건**이 생겼다. 전수 대조로 닫는다.
+>
+> | 이연 (Gmail 기준) | 승계 (Jira 기준) | 판정 |
+> |---|---|---|
+> | `j` 다음 항목 | `j` go down — **F10** | 동일 |
+> | `k` 이전 항목 | `k` go up — **F10** | 동일 |
+> | `e` 보관(archive) | `e` 편집(edit) — **F11** | **글자만 같음** |
+> | `m` 음소거(mute) | `m` 댓글(comment) — **F11** | **글자만 같음** |
+> | `s` 별표(star) | 지라 대응 없음 → **`s` 즐겨찾기 토글로 F11 에 배치** | **누락분 복원** |
+>
+> `s` 의 BTS 대응은 **이슈 즐겨찾기**이고 기능이 이미 완비돼 있다 — `useFavorites('ISSUE')` ·
+> `FavoriteController`(notification BC) 의 `@PostMapping`(201/200 멱등) ·
+> `@DeleteMapping`(204 멱등) · `@GetMapping` 실측. 지라의 `w`(관심)와는 **별개 기능**이라
+> F11 에서 `s`·`w` 두 키가 공존한다.
+> 두 목록이 서로를 검사하지 않아 항목이 빠진 사례 — 계열 교훈 `two-lists-never-check-each-other`.
+
 승계 PR 2건 (로드맵 §PR 체인 Tier 2).
 
-- **F10 — 컨텍스트 단축키 아키텍처 + 목록 항법** `j`/`k`/`o`/`t`/`[`. 신규 `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` · `Sidebar.tsx`.
-- **F11 — 상세 액션 단축키** `a`/`i`/`m`/`e`/`l`/`w`/`.`. `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx`.
+- **F10 — 컨텍스트 단축키 아키텍처 + 목록 항법** `j`/`k`/`o`/`t`/`[`. 신규 `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx`.
+- **F11 — 상세 액션 단축키** `a`/`i`/`m`/`e`/`l`/`s`/`w`/`.` (**8종** — `s` 복원분 포함). `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx` · 즐겨찾기(`api/favorites.ts`) 소비.
 
 **아키텍처**. 🛑 **`shortcuts.ts` 의 `SHORTCUTS` 를 건드리면 안 된다.** 여기에 키를 추가하면 `shortcuts.test.ts:121` `toHaveLength(5)` + `:147` `DEFAULT_KEYMAP` 완전일치 + 백엔드 `KeymapAction.kt` 5종 화이트리스트 + `user_keymap.action` CHECK 제약이 **동시에** 깨진다 — 이 4중 계약의 소유자는 §3.3 FR-PF-03 이다. 정답은 **`CONTEXT_SHORTCUTS` 별도 레지스트리 신설**이고, 성공 판정식은 "`shortcuts.test.ts:121` 이 **무수정 green** 을 유지" 다. 사용자 재배치(로드맵 B4)는 `KeymapAction` enum + `user_keymap` CHECK 신규 마이그레이션을 요구하므로 **v1 은 고정 키**로 출시한다.
 
@@ -286,7 +305,7 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 - [ ] D3. 데이터 모델 — 없음 (단축키 정의는 프론트 코드 상수. 사용자 재배치는 B4 로 범위 밖) (책임. -)
 - [ ] D4. 백엔드 — 없음 (v1 고정 키. `KeymapAction` enum·`user_keymap` CHECK 무변경이 계약이다) (책임. -)
 - [ ] D5. 백엔드 테스트 — 해당 없음 (백엔드 변경 0) (책임. -)
-- [ ] D6. 프론트 UI — F10 `CONTEXT_SHORTCUTS`·`useContextShortcuts` + 목록 항법 · F11 상세 액션 7종 (책임. frontend-engineer)
+- [ ] D6. 프론트 UI — F10 `CONTEXT_SHORTCUTS`·`useContextShortcuts` + 목록 항법 · F11 상세 액션 **8종**(`s` 복원분 포함) (책임. frontend-engineer)
 - [ ] D7. E2E — 컨텍스트별 발화 · `shortcuts.test.ts:121` `toHaveLength(5)` 무수정 green 유지 (책임. qa-engineer)
 
 ### §4.9 FR-UX-11 — 인라인 편집

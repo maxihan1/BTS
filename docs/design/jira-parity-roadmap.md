@@ -60,7 +60,7 @@ node scripts/build-dashboard.mjs && open docs/progress.html                     
 | **F8** | 이슈 상세 인라인 편집 — 제목/본문 클릭 진입, Enter 저장, Esc 취소 | `routes/issues.$key.tsx` · `IssueDescription.tsx` | 없음 |
 | **F9** | 이슈 목록 셀 인라인 편집 (담당자·우선순위·상태) | `IssueTable.tsx` · `issue-columns.ts` · `meta/*` 재사용 · `popover.tsx` | F8 |
 | **F10** ⭐ | 컨텍스트 단축키 아키텍처 + 목록 항법 `j`/`k`/`o`/`t`/`[` | **신규** `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` | 없음 |
-| **F11** | 상세 액션 단축키 `a`/`i`/`m`/`e`/`l`/`w`/`.` | `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx` | F10, F8 |
+| **F11** | 상세 액션 단축키 `a`/`i`/`m`/`e`/`l`/`s`/`w`/`.` (8종 — `s`=즐겨찾기, FR-UX-05 이연분 복원) | `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx` · `api/favorites.ts` | F10, F8 |
 | **F13** | 상단바 전역 검색 입력창 + 자연어 폴백 | `TopBar.tsx` · `routes/search.tsx` · **신규** `lib/aql-natural.ts` | (F1 ✅) |
 | **F14** | 보드/백로그 카드 밀도 (유형 아이콘·라벨 칩·추정) | `BoardCard.tsx` · `BacklogCard.tsx` · `api/boards.ts` · `IssueTypeIcon.tsx` 재사용 | **B2** |
 | **F15** | 백로그 세로 스택 + 스프린트 다이얼로그 + 키보드 DnD | `BacklogBoard.tsx` · **신규** `StartSprintDialog.tsx`·`CompleteSprintDialog.tsx` | F5 |

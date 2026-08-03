@@ -97,9 +97,37 @@ personalization, 물리 구현은 `apps/web` (ADR §D2, FR-UX-05 D4 · FR-UX-06 
 | **D-2** | **단일 리스너·단일 판별 파이프라인** (전역 우선 → 컨텍스트 폴백) | 리스너 2개면 ① `g`+`j` 가 `reset`(preventDefault 없음)을 타고 새 커서까지 발화 ② `helpOpen` 이 훅 내부 state 라 모달 열림 중 배후 목록이 움직임 |
 | **D-3** | **항법 커서 = 기존 `selectedKey` 재사용** (Maxi 확정) | 지라 이슈 네비게이터 동형. 선택 개념 증식 0 · 강조 표기(`aria-current`) 자산 그대로 · 연타는 상태 분리가 아니라 **요청 지연**으로 해소 |
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md](../specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md)
+
+**키 5종 확정** (Jira 공식 문서 대조 완료 — 근거가 레포에 0건이던 것을 이번에 처음 기록).
+
+| 키 | 동작 | 컨텍스트 |
+|---|---|---|
+| `j` / `k` | 목록 커서 아래 / 위 | `issue-list` |
+| `o` | 커서 이슈를 전체화면 상세로 | `issue-list` |
+| `t` | 상세 페인(split view) 토글 | `issue-list` |
+| `[` | 사이드바 접기/펼치기 | `app-shell` |
+
+**핵심 3줄.**
+- 컨텍스트는 **레이어**다 — `app-shell` ⊃ `issue-list`. 판별 순서는 전역 → 좁은 → 넓은
+- 커서는 기존 `selectedKey`(URL `?selected`) 재사용. `replace: true` 로 히스토리 보호
+- 요청 지연 **v1 미도입** — 지연이 오히려 E2E 를 타이밍 의존으로 만든다(ADR D-3 이 상태
+  분리를 기각한 논리와 동일). 후속 트리거만 명시
+
+**착수 중 정본 수정 2건** (같은 PR 동기화).
+1. `personalization.md §4.8` — 이연 목록 `s` 누락 복원. `j/k/e/m/s`(Gmail 기준) → F10/F11
+   (Jira 기준)의 **기준 교체**였음을 대사표로 명시. `e`·`m` 은 글자만 같고 동작이 다르며
+   `s`(별표)는 대응이 없어 빠져 있었다 → **즐겨찾기 토글로 F11 배치**(8종). 로드맵 정본
+   `jira-parity-roadmap.md:63` 동기화 완료
+2. `jira-parity-contract.md:39` — 실측 명령이 **존재하지 않는 경로**를 가리켜 종료코드 2 로
+   죽던 것을 정정 (`apps/web/src/lib/` → `apps/web/src/components/keyboard-shortcuts/`)
+
+## Brainstorming Check
+
+✅ 통과 (ui 경량 경로 — brainstorming 스킵, `## Jira 대조` + 즉사 계약 §2 교차가 대체).
+office-hours 스킵 근거는 FR-UX-05 선례와 동형. Maxi 결정 필요 gap 0.
 
 ## Plan (← /bts-plan 채움)
 
