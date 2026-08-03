@@ -125,6 +125,14 @@ interface IssueCreateFormProps {
    * setState 함수를 그대로 넘기면 참조가 안정적이라 재발화가 없다.
    */
   onPendingChange?: (pending: boolean) => void
+  /**
+   * FR-UX-09 F3 — 프로젝트 기본값 **명시 전달** (스펙 §8 D-A).
+   *
+   * 보드·백로그 진입점은 자기 프로젝트를 이미 알고 있으므로 전역 활성 프로젝트를
+   * 경유하지 않는다. **미전달이면 기존 활성 프로젝트 기본값 경로가 그대로 산다** —
+   * 상단바·딥링크 2경로는 이 값을 넘기지 않으므로 동작이 바뀌지 않는다.
+   */
+  initialProjectKey?: string
 }
 
 /**
@@ -147,6 +155,7 @@ export function IssueCreateForm({
   onCreateProject,
   formId,
   onPendingChange,
+  initialProjectKey,
 }: IssueCreateFormProps = {}): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null)
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
@@ -174,7 +183,7 @@ export function IssueCreateForm({
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects()
   const authUser = useAuthUser()
   const canCreateProject = authUser?.canCreateProject === true
-  useDefaultProjectSelection(form, projects)
+  useDefaultProjectSelection(form, projects, initialProjectKey)
   const {
     issueTypes,
     isLoading: isTypesLoading,
