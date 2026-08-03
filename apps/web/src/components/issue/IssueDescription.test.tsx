@@ -7,6 +7,7 @@ import type { ReactNode, JSX } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import { userHandlers } from '@/mocks/user-handlers'
+import { issueDetailStrings } from '@/i18n/ko'
 import { IssueDescription } from './IssueDescription'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -224,6 +225,76 @@ describe('IssueDescription', () => {
     expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
   })
 
+  // ── Esc 취소 + 작성분 확인 (FR-UX-11 F8 Task 5 / FR6 · 편차 D-1) ─────────
+  //
+  // Jira 는 Esc 에 확인 없이 작성분을 버리고 Atlassian 이 개선 거부를 공표했다
+  // (JRACLOUD-36670 · JRACLOUD-41814). BTS 는 확인을 거친다.
+
+  it('변경분이 없으면 Esc 가 즉시 편집을 닫는다 (S8)', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+  })
+
+  it('변경분이 있으면 Esc 가 확인을 먼저 띄운다 (S7)', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
+    fireEvent.change(textarea, { target: { value: '아까운 초안' } })
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(screen.getByText(issueDetailStrings.descriptionDiscardConfirm)).toBeInTheDocument()
+    // 아직 편집 모드다 — 확인 전에는 아무것도 버리지 않는다
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
+  })
+
+  it('확인을 거부(계속 편집)하면 편집 모드와 초안이 유지된다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '본문 편집' }), {
+      target: { value: '아까운 초안' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '본문 편집' }), { key: 'Escape' })
+    fireEvent.click(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
+    )
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('아까운 초안')
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+  })
+
+  it('확인을 수락(편집 그만두기)하면 편집이 닫힌다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '본문 편집' }), {
+      target: { value: '버릴 초안' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '본문 편집' }), { key: 'Escape' })
+    fireEvent.click(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardConfirmButton }),
+    )
+    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
+  })
+
+  /**
+   * ★ 리뷰 F-2 회귀 가드 — 확인 패널이 떠도 '취소'/'저장' 문자열은 화면에 하나뿐이어야 한다.
+   * 둘이 되면 E2E 의 getByRole('button', { name: '취소' }) 가 strict mode violation 으로
+   * 터진다 — 이 화면에서 실제로 난 사고다(learnings.md:631, PR #47 「저장」 버튼 3개).
+   */
+  it('확인 패널이 떠도 취소·저장 문자열 버튼이 화면에 둘 이상 생기지 않는다', () => {
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '본문 편집' }), {
+      target: { value: '중복 검사용 초안' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '본문 편집' }), { key: 'Escape' })
+    // 확인 패널이 실제로 떠 있는 상태에서 세는 것이 전제다 (공허한 초록 방지)
+    expect(screen.getByText(issueDetailStrings.descriptionDiscardConfirm)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '취소' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: '저장' })).toHaveLength(1)
+  })
+
   // ── isSaving 상태 ─────────────────────────────────────────────────────────
 
   it('isSaving=true이면 저장/취소 버튼이 disabled된다', () => {
@@ -417,6 +488,41 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
 
     fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  /**
+   * FR-UX-11 F8 Task 5 / E10 — 멘션 팝업이 Escape 도 먼저 소비한다.
+   *
+   * Escape 취소(FR6)가 붙은 뒤로 이 순서가 깨지면, 자동완성을 물리려던 Escape 가
+   * **편집 취소 확인 패널**을 띄우는 회귀가 된다. 기존 Escape 테스트는 값 유지만 보므로
+   * 확인 패널 부재를 여기서 따로 단언한다.
+   */
+  it('멘션 팝업이 열린 상태의 Escape 는 팝업만 닫고 취소 확인을 띄우지 않는다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+    // 편집은 그대로 — 취소 확인 패널이 뜨면 안 된다
+    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
   })
 
   it('드롭다운 후보 클릭(onMouseDown) 시 textarea 값에 @<username> 공백이 반영된다', async () => {

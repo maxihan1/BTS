@@ -34,6 +34,40 @@ describe('issueDetailStrings — 본문/메타필드 신규 키 존재 검증', 
     expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionCancelButton')
   })
 
+  // ── 본문 편집 취소 확인 (FR-UX-11 F8 / 편차 D-1) ──────────────────────
+  it('descriptionDiscardConfirm 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionDiscardConfirm')
+  })
+
+  it('descriptionDiscardConfirmButton 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionDiscardConfirmButton')
+  })
+
+  it('descriptionDiscardCancelButton 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionDiscardCancelButton')
+  })
+
+  /**
+   * ★ 리뷰 F-2 — 확인 패널 문자열은 기존 저장/취소와 **달라야** 한다.
+   * 같은 화면에 '취소' 가 둘이면 E2E strict mode violation 이 나고(learnings.md:631, PR #47
+   * 「저장」 버튼 3개 실사고) 사용자도 「취소의 취소」를 이해하지 못한다.
+   * 문자열이 다시 겹치면 이 단언이 막는다.
+   */
+  it('확인 패널 문자열은 기존 저장/취소 버튼과 겹치지 않는다', () => {
+    expect(issueDetailStrings.descriptionDiscardConfirmButton).not.toBe(
+      issueDetailStrings.descriptionCancelButton,
+    )
+    expect(issueDetailStrings.descriptionDiscardCancelButton).not.toBe(
+      issueDetailStrings.descriptionCancelButton,
+    )
+    expect(issueDetailStrings.descriptionDiscardConfirmButton).not.toBe(
+      issueDetailStrings.descriptionSaveButton,
+    )
+    expect(issueDetailStrings.descriptionDiscardCancelButton).not.toBe(
+      issueDetailStrings.descriptionSaveButton,
+    )
+  })
+
   // ── 우선순위(priority) ──────────────────────────────────────────────
   it('priorityLabel 키가 존재한다', () => {
     expectTypeOf<IssueDetailStrings>().toHaveProperty('priorityLabel')
