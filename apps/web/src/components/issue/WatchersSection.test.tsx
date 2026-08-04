@@ -1,7 +1,8 @@
 // WatchersSection 컴포넌트 단위 테스트 — FR-WT-01 D6 Task-2 (TDD RED)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { createRef } from 'react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -400,5 +401,48 @@ describe('WatchersSection — S8 mutation 실패 시 toast.error (P2)', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. FR-UX-10 F11 — 단축키 `w` 손잡이 (focusRef + aria-keyshortcuts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WatchersSection — S6 FR-UX-10 F11 단축키 `w` 손잡이', () => {
+  it('S6a: focusRef 로 토글 버튼에 포커스를 줄 수 있다 (Task 5 가 focus 후 click 한다)', async () => {
+    useWatcherGetHandler('ATLAS-1', { watchers: [], isWatching: false })
+    const focusRef = createRef<HTMLButtonElement>()
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-1" focusRef={focusRef} />, { wrapper: Wrapper })
+
+    const btn = await screen.findByTestId('watch-toggle-button')
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(btn).toHaveFocus()
+  })
+
+  it('S6b: focusRef 가 연결되면 토글 버튼이 aria-keyshortcuts="w" 를 알린다', async () => {
+    useWatcherGetHandler('ATLAS-1', { watchers: [], isWatching: false })
+    const focusRef = createRef<HTMLButtonElement>()
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-1" focusRef={focusRef} />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('watch-toggle-button')).toHaveAttribute(
+      'aria-keyshortcuts',
+      'w',
+    )
+  })
+
+  it('S6c: focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다', async () => {
+    useWatcherGetHandler('ATLAS-1', { watchers: [], isWatching: false })
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('watch-toggle-button')).not.toHaveAttribute(
+      'aria-keyshortcuts',
+    )
   })
 })

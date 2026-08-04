@@ -1,7 +1,8 @@
 // CommentSection 컴포넌트 단위 테스트 — FR-CO-01 T6 목록·작성 / FR-CO-02 T7 수정·삭제·bodyHtml
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { ReactNode } from 'react'
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
+import type { ReactNode, RefObject } from 'react'
+import { createRef } from 'react'
+import { render, screen, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -496,5 +497,74 @@ describe('CommentSection — (g) 수정됨 표시 / bodyHtml 렌더', () => {
     expect(emphasized.tagName).toBe('STRONG')
     // 원문 body 를 텍스트로 뿌리던 이전 동작이 남아 있으면 여기서 걸린다
     expect(screen.queryByText('본문 **강조**')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (e) FR-UX-10 F11 — 단축키 `m` 손잡이 (focusRef + aria-keyshortcuts + 포커스 표시)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `focusRef` 를 연결한 채로 섹션을 렌더한다.
+ *
+ * @param focusRef 작성 폼 textarea 를 받을 ref
+ * @param canUpdate 쓰기 권한 여부
+ */
+function renderSectionWithFocusRef(
+  focusRef: RefObject<HTMLTextAreaElement | null>,
+  canUpdate = true,
+): void {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  render(
+    <CommentSection issueKey={ISSUE_KEY} canUpdate={canUpdate} focusRef={focusRef} />,
+    { wrapper },
+  )
+}
+
+describe('CommentSection — (e) FR-UX-10 F11 단축키 `m` 손잡이', () => {
+  it('focusRef 로 댓글 작성 textarea 에 포커스를 줄 수 있다', async () => {
+    const focusRef = createRef<HTMLTextAreaElement>()
+    renderSectionWithFocusRef(focusRef)
+
+    const textarea = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(textarea).toHaveFocus()
+  })
+
+  it('focusRef 가 연결되면 textarea 가 aria-keyshortcuts="m" 을 알린다', async () => {
+    const focusRef = createRef<HTMLTextAreaElement>()
+    renderSectionWithFocusRef(focusRef)
+
+    expect(await screen.findByLabelText(commentStrings.commentBodyLabel)).toHaveAttribute(
+      'aria-keyshortcuts',
+      'm',
+    )
+  })
+
+  it('focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다', async () => {
+    renderSection()
+
+    expect(await screen.findByLabelText(commentStrings.commentBodyLabel)).not.toHaveAttribute(
+      'aria-keyshortcuts',
+    )
+  })
+
+  it('작성 textarea 에 포커스 표시가 있다 — `m` 은 화면 다른 곳에서 점프해 오는 이동이다 (F-1)', async () => {
+    // 담당자 검색(focus:ring-2)·라벨 입력(focus-visible:ring-3)과 달리 이 textarea 만
+    // 포커스 표시가 없었다. 브라우저 기본 outline 은 다크 모드 대비가 보장되지 않는다.
+    renderSection()
+
+    const textarea = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    expect(textarea).toHaveClass('focus-visible:ring-3')
+    expect(textarea).toHaveClass('focus-visible:border-ring')
   })
 })

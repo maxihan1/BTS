@@ -1,7 +1,8 @@
 // FavoriteButton 컴포넌트 단위 테스트 — FR-UX-02 D6/D7 Task-4 (TDD RED)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { createRef } from 'react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -229,5 +230,53 @@ describe('FavoriteButton — S5 isPending disabled 가드', () => {
     await waitFor(() => {
       expect(screen.getByRole('button')).toBeDisabled()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. FR-UX-10 F11 — 단축키 `s` 손잡이 (focusRef + aria-keyshortcuts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FavoriteButton — S6 FR-UX-10 F11 단축키 `s` 손잡이', () => {
+  it('S6a: focusRef 로 버튼에 포커스를 줄 수 있다 (Task 5 가 focus 후 click 한다)', async () => {
+    useFavoritesGetHandler([])
+    const focusRef = createRef<HTMLButtonElement>()
+    const Wrapper = createWrapper()
+    render(
+      <FavoriteButton targetType="ISSUE" targetId="PROJ-1" focusRef={focusRef} />,
+      { wrapper: Wrapper },
+    )
+
+    const btn = await screen.findByRole('button', { name: '즐겨찾기에 추가' })
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(btn).toHaveFocus()
+  })
+
+  it('S6b: focusRef 가 연결되면 버튼이 aria-keyshortcuts="s" 를 알린다', async () => {
+    useFavoritesGetHandler([])
+    const focusRef = createRef<HTMLButtonElement>()
+    const Wrapper = createWrapper()
+    render(
+      <FavoriteButton targetType="ISSUE" targetId="PROJ-1" focusRef={focusRef} />,
+      { wrapper: Wrapper },
+    )
+
+    const btn = await screen.findByRole('button', { name: '즐겨찾기에 추가' })
+    expect(btn).toHaveAttribute('aria-keyshortcuts', 's')
+  })
+
+  it('S6c: focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다 — 대시보드·보드·필터 목록엔 `s` 가 없다', async () => {
+    // 이 버튼은 이슈 상세 외에 SavedFilterMenu·대시보드·보드 화면도 쓴다.
+    // 무조건 붙이면 단축키가 없는 화면에서 스크린리더가 없는 기능을 안내한다.
+    useFavoritesGetHandler([])
+    const Wrapper = createWrapper()
+    render(<FavoriteButton targetType="ISSUE" targetId="PROJ-1" />, { wrapper: Wrapper })
+
+    const btn = await screen.findByRole('button', { name: '즐겨찾기에 추가' })
+    expect(btn).not.toHaveAttribute('aria-keyshortcuts')
   })
 })
