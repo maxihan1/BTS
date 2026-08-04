@@ -178,7 +178,7 @@ async function renderOpenedAssigneeCell(overrides: Partial<IssueResponse> = {}):
     </QueryClientProvider>,
   )
   await userEvent.click(
-    screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` }),
+    screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
   )
 }
 
@@ -247,11 +247,11 @@ describe('AssigneeCell — 낙관 갱신 중간 표기 (리뷰 C3)', () => {
     renderAfterOptimisticPatch()
 
     await userEvent.click(
-      screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` }),
+      screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
     )
     await userEvent.click(await screen.findByRole('button', { name: '맥시' }))
 
-    const trigger = screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` })
+    const trigger = screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) })
     expect(trigger).toHaveTextContent('맥시')
     expect(trigger).not.toHaveTextContent('미배정')
   })
@@ -271,7 +271,7 @@ describe('AssigneeCell — 낙관 갱신 중간 표기 (리뷰 C3)', () => {
     )
 
     expect(
-      screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` }),
+      screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
     ).toHaveTextContent('맵이 해석한 이름')
   })
 })

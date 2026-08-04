@@ -232,6 +232,8 @@ export function StatusCell({ issue, listQueryKey }: StatusCellProps): JSX.Elemen
         onOpenChange={setOpen}
         // ★목록은 행이 여러 개다. 이슈 키를 접두로 붙이지 않으면 e2e strict mode 로 즉사한다
         label={`${issue.key} 상태 변경`}
+        // 접근성 이름에 현재 값을 함께 싣는다 (리뷰 C4) — 배지에 보이는 것과 같은 문자열
+        valueLabel={issue.currentStateKey}
         display={<StatusCellDisplay currentStateKey={issue.currentStateKey} />}
       >
         <StatusCellPopoverBody

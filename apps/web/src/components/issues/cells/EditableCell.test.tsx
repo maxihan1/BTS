@@ -5,6 +5,14 @@ import userEvent from '@testing-library/user-event'
 import { Button } from '@/components/ui/button'
 import { EditableCell } from './EditableCell'
 
+/**
+ * 트리거 로케이터 — **접두 앵커 정규식**이다.
+ *
+ * 접근성 이름에 현재 값이 함께 실리므로(`우선순위 편집, 현재 보통` — 리뷰 C4) 완전일치
+ * 문자열로 잡으면 값이 바뀔 때마다 로케이터가 죽는다. 동작 부분만 앵커로 고정한다.
+ */
+const TRIGGER_NAME = /^우선순위 편집/
+
 describe('EditableCell', () => {
   it('셀 클릭이 행 클릭 핸들러로 전파되지 않는다 (FR3)', async () => {
     const onRowClick = vi.fn()
@@ -13,7 +21,7 @@ describe('EditableCell', () => {
         <tbody>
           <tr onClick={onRowClick}>
             <td>
-              <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+              <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
                 <div>편집 내용</div>
               </EditableCell>
             </td>
@@ -22,7 +30,7 @@ describe('EditableCell', () => {
       </table>,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: '우선순위 편집' }))
+    await userEvent.click(screen.getByRole('button', { name: TRIGGER_NAME }))
 
     expect(onRowClick).not.toHaveBeenCalled()
     expect(screen.getByText('편집 내용')).toBeInTheDocument()
@@ -36,7 +44,7 @@ describe('EditableCell', () => {
     }
 
     render(
-      <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+      <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
         <Probe />
       </EditableCell>,
     )
@@ -51,7 +59,7 @@ describe('EditableCell', () => {
         <tbody>
           <tr onClick={onRowClick}>
             <td>
-              <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+              <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
                 <div>편집 내용</div>
               </EditableCell>
             </td>
@@ -60,7 +68,7 @@ describe('EditableCell', () => {
       </table>,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: '우선순위 편집' }))
+    await userEvent.click(screen.getByRole('button', { name: TRIGGER_NAME }))
     await userEvent.keyboard('{Escape}')
 
     expect(screen.queryByText('편집 내용')).not.toBeInTheDocument()
@@ -69,12 +77,12 @@ describe('EditableCell', () => {
 
   it('hover 어포던스가 실재하는 토큰을 참조한다 (Pass 5 실버그 회귀 가드)', () => {
     render(
-      <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+      <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
         <div />
       </EditableCell>,
     )
 
-    const trigger = screen.getByRole('button', { name: '우선순위 편집' })
+    const trigger = screen.getByRole('button', { name: TRIGGER_NAME })
     // index.css 의 실제 토큰은 --border 다. --border-default 는 존재하지 않는다.
     // 계산값이 아니라 클래스 문자열을 본다 — jsdom 은 커스텀 프로퍼티를 해석하지 않아
     // 계산값 단언은 공허해진다 (F8 커서 단언 사고와 같은 함정).
@@ -84,7 +92,7 @@ describe('EditableCell', () => {
 
   it('트리거가 select-text 를 유지한다 — 셀 텍스트 복사 가능성 대리 지표 (F8 회귀 재발면)', () => {
     render(
-      <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+      <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
         <div />
       </EditableCell>,
     )
@@ -93,7 +101,48 @@ describe('EditableCell', () => {
     // 이 클래스가 없으면 셀을 트리거로 감싼 순간 드래그 복사가 죽는다 — F8 이 이슈 제목에서
     // 겪은 실사고와 같은 형태다. jsdom 은 Tailwind 를 적용하지 않아 계산값 단언이 공허해지므로
     // 클래스 문자열을 본다(`issues.$key.test.tsx` F8-R1-2 와 같은 처방·같은 한계).
-    expect(screen.getByRole('button', { name: '우선순위 편집' }).className).toContain('select-text')
+    expect(screen.getByRole('button', { name: TRIGGER_NAME }).className).toContain('select-text')
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // C4 — 접근성 이름에 **값**이 들어 있어야 한다
+  //
+  // `aria-label` 은 자식 텍스트를 덮는다. 값만 그리던 `<span>` 을 트리거로 감싸면서
+  // 동작 이름만 실으면 화면낭독기에는 "ATLAS-1 담당자 변경" 만 들리고 **실제 값이
+  // 사라진다**. main 의 평범한 `<span>` 에서는 값이 읽혔으므로 회귀다(NFR4).
+  //
+  // 이전 테스트는 `toHaveTextContent` 로 값을 따로 쟀는데, 그건 **DOM 텍스트**이지
+  // 계산된 접근성 이름이 아니다 — 값이 이름에서 빠져도 통과했다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('접근성 이름에 동작과 현재 값이 모두 들어 있다 (NFR4)', () => {
+    render(
+      <EditableCell label="ATLAS-1 담당자 변경" valueLabel="bob" display={<span>bob</span>}>
+        <div />
+      </EditableCell>,
+    )
+
+    // 완전일치로 잰다 — 부분일치로 재면 값이 빠져도 통과한다
+    expect(
+      screen.getByRole('button', { name: 'ATLAS-1 담당자 변경, 현재 bob' }),
+    ).toBeInTheDocument()
+  })
+
+  it('값이 바뀌면 접근성 이름도 따라 바뀐다 — 이름이 고정 문자열이 아니다', () => {
+    const { rerender } = render(
+      <EditableCell label="ATLAS-1 담당자 변경" valueLabel="미배정" display={<span>미배정</span>}>
+        <div />
+      </EditableCell>,
+    )
+    expect(screen.getByRole('button', { name: /미배정$/ })).toBeInTheDocument()
+
+    rerender(
+      <EditableCell label="ATLAS-1 담당자 변경" valueLabel="bob" display={<span>bob</span>}>
+        <div />
+      </EditableCell>,
+    )
+
+    expect(screen.getByRole('button', { name: /bob$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /미배정$/ })).not.toBeInTheDocument()
   })
 })
 
@@ -136,13 +185,13 @@ describe('EditableCell — 편집 중 목록 단축키 차단 (E10)', () => {
   /** 열린 popover 를 가진 셀을 렌더한다 — 선택지는 <input> 이 아닌 **버튼**이어야 함정을 재현한다 */
   async function renderOpenedCell(): Promise<void> {
     render(
-      <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+      <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
         <Button type="button" variant="ghost" size="sm">
           높음
         </Button>
       </EditableCell>,
     )
-    await userEvent.click(screen.getByRole('button', { name: '우선순위 편집' }))
+    await userEvent.click(screen.getByRole('button', { name: TRIGGER_NAME }))
   }
 
   it('popover 가 열려 있으면 목록 단축키가 문서로 새어나가지 않는다 (E10)', async () => {
@@ -178,11 +227,11 @@ describe('EditableCell — 편집 중 목록 단축키 차단 (E10)', () => {
 
   it('popover 가 닫혀 있으면 단축키를 막지 않는다 (목록 항법 무손상)', async () => {
     render(
-      <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+      <EditableCell label="우선순위 편집" valueLabel="보통" display={<span>보통</span>}>
         <div />
       </EditableCell>,
     )
-    screen.getByRole('button', { name: '우선순위 편집' }).focus()
+    screen.getByRole('button', { name: TRIGGER_NAME }).focus()
     const onDocumentKeyDown = spyOnDocumentKeydown()
 
     await userEvent.keyboard('j')

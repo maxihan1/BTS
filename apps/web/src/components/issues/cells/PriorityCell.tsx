@@ -230,6 +230,8 @@ export function PriorityCell({ issue, listQueryKey }: PriorityCellProps): JSX.El
       onOpenChange={setOpen}
       // ★목록은 행이 여러 개다. 이슈 키를 접두로 붙이지 않으면 e2e strict mode 로 즉사한다
       label={`${issue.key} 우선순위 변경`}
+      // 접근성 이름에 현재 값을 함께 싣는다 (리뷰 C4) — 표기 정본을 그대로 쓴다
+      valueLabel={resolvePriorityLabel(issue.priority)}
       display={<PriorityCellDisplay priority={issue.priority} />}
     >
       <PriorityCellPopoverBody issue={issue} isSaving={mutation.isPending} onChange={handleChange} />

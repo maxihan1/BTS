@@ -17,8 +17,19 @@ export const CELL_OPTION_CLASS = 'w-full justify-start pointer-coarse:min-h-[44p
 
 /** EditableCell props */
 export interface EditableCellProps {
-  /** 트리거의 접근성 이름 — 셀마다 고유해야 e2e strict mode 충돌이 없다 */
+  /** 트리거의 동작 이름 — 셀마다 고유해야 e2e strict mode 충돌이 없다. 예: `ATLAS-1 담당자 변경` */
   label: string
+  /**
+   * 현재 값의 **읽을 수 있는 표기** — 접근성 이름에 함께 실린다 (리뷰 C4).
+   *
+   * ★`aria-label` 은 자식 텍스트를 **덮는다.** 값만 그리던 `<span>` 을 트리거로 감싸면서
+   * `label` 만 이름으로 쓰면, 화면낭독기에는 "ATLAS-1 담당자 변경" 만 들리고 **실제 값이
+   * 사라진다**. main 의 평범한 `<span>` 에서는 값이 읽혔으므로 회귀다(NFR4).
+   *
+   * **선택이 아니라 필수로 둔다.** 빠뜨려도 화면에는 아무 표시가 없어 눈으로 못 잡는다 —
+   * 타입이 유일한 방어다.
+   */
+  valueLabel: string
   /** 닫힌 상태에서 보이는 내용 (배지·텍스트 등). role 을 가진 노드를 그대로 넣을 수 있다 */
   display: ReactNode
   /** popover 내용. **열렸을 때만 마운트된다** (FR12 — 전이·권한 조회를 지연시키는 장치) */
@@ -50,6 +61,7 @@ export interface EditableCellProps {
  */
 export function EditableCell({
   label,
+  valueLabel,
   display,
   children,
   open: controlledOpen,
@@ -62,7 +74,11 @@ export function EditableCell({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        aria-label={label}
+        // ★값과 동작을 **둘 다** 이름에 담는다 (리뷰 C4). `aria-label` 은 자식 텍스트를
+        // 덮으므로 여기에 값을 싣지 않으면 화면낭독기에서 셀 값이 통째로 사라진다.
+        // e2e 는 `^{key} {field} 변경, 현재 ` 앵커 정규식으로 잡는다 — 값이 바뀌어도
+        // 로케이터가 살아 있도록 **접두는 고정**이다.
+        aria-label={`${label}, 현재 ${valueLabel}`}
         // ★토큰명 주의 — `--border-default` 는 **존재하지 않는다**(index.css 실측). 실제 이름은
         // `--border`(라이트 #DCDFE4 · 다크 #2C333A). 없는 토큰을 쓰면 ring 색이 비어 hover
         // 어포던스(FR2)가 조용히 사라진다 — 디자인 리뷰 Pass 5 가 잡은 실버그.

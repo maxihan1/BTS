@@ -92,7 +92,15 @@ const RESOLUTION_DIALOG_TITLE = '종료 결의안 선택'
 
 /** 편집 트리거 로케이터 — 접근성 이름은 `<이슈키> <필드> 변경` 형태다 */
 function editTrigger(page: Page, issueKey: string, field: string): Locator {
-  return page.getByRole('button', { name: `${issueKey} ${field} 변경`, exact: true })
+  // ★접두 앵커 정규식이다. 접근성 이름에 **현재 값**이 함께 실리므로
+  // (`ATLAS-1 우선순위 변경, 현재 보통` — 리뷰 C4: aria-label 이 자식 텍스트를 덮어
+  // 화면낭독기에서 값이 사라지던 회귀를 봉합) 완전일치로 잡으면 값이 바뀌는 순간
+  // 로케이터가 죽는다. S2 처럼 같은 로케이터로 변경 전후를 재는 테스트가 그 예다.
+  //
+  // `exact: true` 규율은 **선택지 버튼**에서 그대로 유지한다 — `가장 높음` 이 `높음` 을
+  // 부분 포함하는 문제는 거기서 나온다. 트리거는 앵커 정규식이 완전일치보다 더 엄격하다
+  // (접두 고정 + 이슈 키로 행 특정).
+  return page.getByRole('button', { name: new RegExp(`^${issueKey} ${field} 변경`) })
 }
 
 /** alice 로 로그인하고 목록 테이블 + 대상 행이 뜰 때까지 기다린다 */

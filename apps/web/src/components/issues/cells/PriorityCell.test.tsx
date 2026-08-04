@@ -166,7 +166,7 @@ async function renderOpenedPriorityCell(overrides: Partial<IssueResponse> = {}):
     </QueryClientProvider>,
   )
   await userEvent.click(
-    screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 우선순위 변경` }),
+    screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 우선순위 변경`) }),
   )
 }
 

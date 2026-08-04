@@ -92,9 +92,15 @@ function renderTable(overrides: Partial<IssueTableProps> = {}): IssueTableProps 
   return props
 }
 
-/** 이슈 키를 접두로 붙인 편집 트리거의 접근성 이름 — 행이 여러 개라 고유해야 한다 */
-function editTriggerName(issueKey: string, field: '상태' | '우선순위' | '담당자'): string {
-  return `${issueKey} ${field} 변경`
+/**
+ * 편집 트리거 로케이터 — 이슈 키 접두 **앵커 정규식**.
+ *
+ * 행이 여러 개라 키 접두가 고유성의 근거다. 접근성 이름에는 현재 값도 함께 실리므로
+ * (`ATLAS-1 담당자 변경, 현재 bob` — 리뷰 C4) 완전일치로 잡으면 값이 바뀔 때마다
+ * 로케이터가 죽는다. 동작 부분만 앵커로 고정한다.
+ */
+function editTriggerName(issueKey: string, field: '상태' | '우선순위' | '담당자'): RegExp {
+  return new RegExp(`^${issueKey} ${field} 변경`)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
