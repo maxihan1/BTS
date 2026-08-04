@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
+import { Check } from 'lucide-react'
 import type { IssueResponse } from '@/api/issues'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
@@ -111,10 +112,33 @@ export function PriorityCellEditor({
           variant="ghost"
           size="sm"
           disabled={!canEdit || isSaving}
+          // 🛑 `aria-current` 를 지우지 마라 — 아래 체크 표시는 **추가**이지 대체가 아니다.
+          //    시각 표기만 남기면 스크린리더 경로가 사라진다.
           aria-current={p === value ? 'true' : undefined}
           onClick={() => onChange(p)}
           className={CELL_OPTION_CLASS}
         >
+          {/*
+            현재 값 표기 (QA F1). `aria-current` 만으로는 **눈으로 볼 수 없어** 스크린리더
+            사용자만 지금 값을 알았다.
+
+            ★`ProjectSwitcher.tsx:160` 의 체크 관례를 그대로 쓴다 — 같은 저장소의 popover
+            선택 목록 자산이고(`jira-parity-contract` §4), `ui/select.tsx:119` 의 Radix
+            `ItemIndicator` 도 같은 모양이다. Jira 역시 현재 값에 체크를 단다.
+
+            **항상 렌더하고 투명도만 토글한다.** 조건부로 넣고 빼면 현재 값 행만 라벨이
+            밀려 목록이 들쭉날쭉해진다.
+
+            **색을 새로 만들지 않는다** — 아이콘은 `currentColor` 를 상속하므로 라이트/다크
+            양쪽에서 버튼 글자와 같은 색이다. 대비가 글자와 동일해 별도 토큰이 필요 없다(NFR5).
+          */}
+          <Check
+            // lucide 가 기본으로 넣어 주지만 `ProjectSwitcher.tsx:161` 처럼 명시한다 —
+            // 의도를 코드에 남기고, lucide 기본값이 바뀌어도 이름이 오염되지 않는다.
+            aria-hidden="true"
+            data-testid={`cell-priority-mark-${p}`}
+            className={`size-3.5 shrink-0 ${p === value ? 'opacity-100' : 'opacity-0'}`}
+          />
           {issueDetailStrings.priorityNames[p]}
         </Button>
       ))}

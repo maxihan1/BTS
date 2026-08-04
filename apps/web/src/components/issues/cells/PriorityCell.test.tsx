@@ -54,4 +54,71 @@ describe('PriorityCellEditor', () => {
 
     expect(screen.getByRole('button', { name: '높음' })).toBeDisabled()
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // QA F1 — 현재 값이 **눈으로도** 구별돼야 한다
+  //
+  // `aria-current` 만 있으면 스크린리더 사용자만 지금 값을 안다. 담당자 셀은 현재 값을
+  // popover 맨 위에 보여주는데(`cell-assignee-current`) 우선순위만 빠져 있어, 같은 PR 안에서
+  // 규칙이 어긋나 있었다.
+  //
+  // jsdom 은 Tailwind 를 적용하지 않아 **계산값 단언이 공허해진다**(F8 커서 단언 사고와 같은
+  // 함정). 그래서 클래스 문자열을 본다 — `EditableCell` 의 `--border`·`select-text` 가드와
+  // 같은 처방이고, 최종 판정은 브라우저 눈확인이다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('현재 값에 시각 표기(체크)를 보이고 나머지는 숨긴다 (QA F1)', () => {
+    render(<PriorityCellEditor value={3} canEdit onChange={vi.fn()} isSaving={false} />)
+
+    // ★`.className` 을 쓰지 마라 — SVG 요소에서는 문자열이 아니라 `SVGAnimatedString` 객체라
+    // `toContain` 이 배열 포함 검사로 빠져 조용히 어긋난다(2026-08-04 실측). `class` 속성을 읽는다.
+    expect(screen.getByTestId('cell-priority-mark-3').getAttribute('class')).toContain('opacity-100')
+
+    for (const other of [1, 2, 4, 5] as const) {
+      expect(screen.getByTestId(`cell-priority-mark-${other}`).getAttribute('class')).not.toContain(
+        'opacity-100',
+      )
+    }
+  })
+
+  it('표기는 전 항목에 렌더돼 라벨 정렬이 흔들리지 않는다 (조건부 삽입 금지)', () => {
+    render(<PriorityCellEditor value={3} canEdit onChange={vi.fn()} isSaving={false} />)
+
+    for (const p of [1, 2, 3, 4, 5] as const) {
+      expect(screen.getByTestId(`cell-priority-mark-${p}`)).toBeInTheDocument()
+    }
+  })
+
+  it('시각 표기는 aria-current 를 대체하지 않는다 — 스크린리더 경로 보존', () => {
+    render(<PriorityCellEditor value={3} canEdit onChange={vi.fn()} isSaving={false} />)
+
+    expect(screen.getByRole('button', { name: issueDetailStrings.priorityNames[3] })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: issueDetailStrings.priorityNames[2] })).not.toHaveAttribute(
+      'aria-current',
+    )
+  })
+
+  it('표기가 버튼의 접근성 이름을 오염시키지 않는다 (QA E2E exact 셀렉터 보호)', () => {
+    render(<PriorityCellEditor value={3} canEdit onChange={vi.fn()} isSaving={false} />)
+
+    // QA E2E(S2)는 `getByRole('button', { name: '높음', exact: true })` 로 고른다.
+    // 표기를 보이는 텍스트(예: `현재` 배지)로 바꾸면 이름이 `현재 보통` 이 되어 그 셀렉터가
+    // 즉사한다 — 그래서 표기는 **아이콘**이어야 한다.
+    //
+    // ★`aria-hidden` **속성 자체**는 단언하지 않는다. lucide-react 가 모든 아이콘에 기본
+    // 부여하는 것을 실측했고(2026-08-04), 그러면 내 코드가 무엇을 하든 참이라 공허해진다.
+    // 대신 내가 실제로 통제하는 **결과**(접근성 이름)를 잰다.
+    //
+    // ★`exact` 를 붙이지 마라 — Playwright 의 `getByRole` 과 달리 Testing Library 에는 그런
+    // 옵션이 **없다**. 런타임은 여분 프로퍼티를 조용히 무시해 초록으로 지나가고 tsc 만 잡는다
+    // (2026-08-04 실측). 문자열 `name` 은 정규화 후 **완전 일치**라 이미 exact 다 —
+    // `높음` 은 `가장 높음` 과 매칭되지 않는다.
+    for (const p of [1, 2, 3, 4, 5] as const) {
+      expect(
+        screen.getByRole('button', { name: issueDetailStrings.priorityNames[p] }),
+      ).toBeInTheDocument()
+    }
+  })
 })
