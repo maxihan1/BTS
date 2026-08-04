@@ -3,11 +3,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AssigneeCell, AssigneeCellEditor } from './AssigneeCell'
+import { AssigneeCell, AssigneeCellDisplay, AssigneeCellEditor } from './AssigneeCell'
 import type { UserSummary } from '@/api/users'
 import type { IssueResponse } from '@/api/issues'
 import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
 import { issueDetailStrings } from '@/i18n/ko'
+import { ISSUE_COLUMNS } from '../issue-columns'
 
 // 권한 조회를 UPDATE:true 로 고정한다 — 그래야 **필드 단위** 가부만 분별할 수 있다.
 // 단위 테스트에는 인증 토큰이 없어 실제 조회는 401 이 되고, 그러면 이슈 단위 권한에
@@ -211,6 +212,137 @@ describe('AssigneeCell — 필드 단위 권한 (리뷰 C2)', () => {
     expect(
       screen.getByRole('button', { name: issueDetailStrings.assigneeUnassignButton }),
     ).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 재리뷰 — 열람 숨김(restrictedFields)
+//
+// `isFieldDisabled` 만으로는 **못 막는다.** 백엔드 `buildNoneditableKeys` 가
+// `.filter { key -> key !in restrictedSet }` 로 두 목록을 **배타적**으로 만들어, 열람 숨김
+// 키는 `noneditableFields` 에 절대 안 들어온다 ⇒ `isFieldDisabled('assigneeId', true, [])`
+// 는 false ⇒ 셀이 완전히 열린다. 그래서 `isFieldHidden` 을 **짝으로** 봐야 한다.
+//
+// 게다가 백엔드는 열람 불가 `assigneeId` 를 **null 로 마스킹**하므로, 그냥 그리면
+// 담당자가 있는데 "미배정" 이라고 말하는 **거짓 표시**가 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 편집 컨텍스트를 가진 담당자 셀을 렌더한다(열지 않는다) */
+function renderAssigneeCellWith(overrides: Partial<IssueResponse> = {}): void {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <AssigneeCell
+        issue={{ ...issueAtlas1Fixture, ...overrides }}
+        assigneeName={undefined}
+        listQueryKey={['issues', 'ATLAS', 0, {}, null]}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+describe('AssigneeCell — 열람 숨김 (재리뷰)', () => {
+  it('restrictedFields 에 assigneeId 가 있으면 편집 트리거를 아예 걸지 않는다', () => {
+    renderAssigneeCellWith({ restrictedFields: ['assigneeId'] })
+
+    // 클릭할 것 자체가 없어야 한다 — 눌러서야 못 한다는 걸 알게 되면 안 된다
+    expect(
+      screen.queryByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('restrictedFields 가 비어 있으면 정상 편집된다 (비-공허 짝)', () => {
+    // 이 짝이 없으면 위 단언은 "항상 잠근다" 와 구분되지 않아 공허해진다
+    renderAssigneeCellWith({ restrictedFields: [] })
+
+    expect(
+      screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
+    ).toBeInTheDocument()
+  })
+
+  it('열람 숨김이면 "미배정" 이라는 거짓 표시를 하지 않는다', () => {
+    // ★핵심. 백엔드가 assigneeId 를 null 로 마스킹하므로 그대로 그리면
+    // 담당자가 **있는데 없다고** 말하게 된다.
+    renderAssigneeCellWith({ restrictedFields: ['assigneeId'], assigneeId: null })
+
+    expect(screen.queryByText('미배정')).not.toBeInTheDocument()
+    expect(screen.getByTestId('cell-assignee-restricted')).toBeInTheDocument()
+  })
+
+  it('사유는 i18n 정본을 title 로 단다 — 표 열 폭을 넘기지 않으면서 이유를 남긴다', () => {
+    renderAssigneeCellWith({ restrictedFields: ['assigneeId'] })
+
+    expect(screen.getByTestId('cell-assignee-restricted')).toHaveAttribute(
+      'title',
+      issueDetailStrings.descriptionRestricted,
+    )
+  })
+
+  it('다른 필드가 숨겨져 있어도 담당자는 영향받지 않는다 (필드 키 정확도)', () => {
+    renderAssigneeCellWith({ restrictedFields: ['description', 'environment'] })
+
+    expect(
+      screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('AssigneeCellDisplay — 열람 숨김 (읽기 전용 경로)', () => {
+  it('isRestricted 면 이름 대신 사유를 보인다', () => {
+    render(<AssigneeCellDisplay assigneeName="bob" isRestricted />)
+
+    expect(screen.queryByText('bob')).not.toBeInTheDocument()
+    expect(screen.getByTestId('cell-assignee-restricted')).toBeInTheDocument()
+  })
+
+  it('isRestricted 가 아니면 기존대로 이름을 보인다 (비-공허 짝)', () => {
+    render(<AssigneeCellDisplay assigneeName="bob" />)
+
+    expect(screen.getByText('bob')).toBeInTheDocument()
+    expect(screen.queryByTestId('cell-assignee-restricted')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 읽기 전용 경로(`issue-columns.ts` renderAssigneeCell)의 열람 숨김
+//
+// ★이 블록이 왜 있나 — 뮤테이션이 잡았다. `AssigneeCell` 만 잠그는 가드로는
+// `issue-columns.ts` 의 `isRestricted` 전달을 지워도 **전부 초록**이었다. 편집이 꺼진
+// 경로(`ctx.edit` 부재)는 `AssigneeCell` 을 거치지 않고 `AssigneeCellDisplay` 를 직접
+// 그리므로 별도 증인이 필요하다. 컬럼 render 는 순수 함수라 여기서 직접 부를 수 있다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('renderAssigneeCell — 읽기 전용 경로 열람 숨김', () => {
+  /** 담당자 컬럼의 render 를 편집 컨텍스트 **없이** 호출한 결과를 그린다 */
+  function renderReadOnlyAssigneeColumn(overrides: Partial<IssueResponse> = {}): void {
+    const column = ISSUE_COLUMNS.find((c) => c.key === 'assignee')
+    if (column === undefined) throw new Error('assignee 컬럼이 없다 — 정의가 바뀌었다')
+
+    render(
+      <>
+        {column.render(
+          { ...issueAtlas1Fixture, ...overrides },
+          { assigneeName: 'bob', formatDate: () => '', onNavigate: () => undefined },
+        )}
+      </>,
+    )
+  }
+
+  it('열람 숨김이면 읽기 전용 경로도 이름을 그리지 않는다', () => {
+    renderReadOnlyAssigneeColumn({ restrictedFields: ['assigneeId'] })
+
+    expect(screen.queryByText('bob')).not.toBeInTheDocument()
+    expect(screen.queryByText('미배정')).not.toBeInTheDocument()
+    expect(screen.getByTestId('cell-assignee-restricted')).toBeInTheDocument()
+  })
+
+  it('열람 숨김이 아니면 기존대로 이름을 그린다 (비-공허 짝)', () => {
+    renderReadOnlyAssigneeColumn({ restrictedFields: [] })
+
+    expect(screen.getByText('bob')).toBeInTheDocument()
+    expect(screen.queryByTestId('cell-assignee-restricted')).not.toBeInTheDocument()
   })
 })
 

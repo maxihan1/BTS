@@ -88,6 +88,27 @@ GET /api/v1/users/me/issue-permissions?issueKey={key}    UPDATE / TRANSITION (�
 **상태(전이)는 대응 필드 키가 없다** — 전이는 `TRANSITION` 권한으로만 통제되고 상세 화면
 (`IssueStateTransition`)도 필드 권한을 보지 않는다. 목록도 같게 둔다.
 
+**★두 술어는 짝이다 — `isFieldDisabled` 만으로는 절반만 막힌다 (2026-08-04 재리뷰).**
+백엔드 `buildNoneditableKeys` 가 `.filter { key -> key !in restrictedSet }` 로 두 목록을
+**배타적**으로 만든다 — **열람 숨김 키는 `noneditableFields` 에 절대 들어오지 않는다.**
+따라서 `isFieldDisabled('assigneeId', true, [])` 는 `false` 를 내고 셀이 완전히 열린다.
+`isFieldHidden(fieldKey, restrictedFields)`(`IssueMetaPanel.tsx:127`)를 **함께** 봐야 한다.
+
+**열람 숨김 시 목록 동작 (Maxi 판단 대기 없이 확정 — 근거 아래).**
+담당자 셀은 **편집 트리거를 아예 걸지 않고** 값 대신 짧은 표기(`비공개`)를 보이며,
+사유 전문은 `issueDetailStrings.descriptionRestricted` 를 `title` 로 단다.
+- **거짓 표시 제거가 1순위.** 백엔드가 열람 불가 `assigneeId` 를 **null 로 마스킹**하므로
+  그대로 그리면 담당자가 **있는데 「미배정」** 이라고 말한다.
+- **트리거를 남기지 않는 이유.** 남기면 접근성 이름이 *"…담당자 변경"* 이라고 **할 수 없는
+  일을 약속**하고, 눌러서야 못 한다는 걸 알게 된다.
+- **열 정렬 유지.** 상세는 섹션을 통째로 숨기지만 표는 셀을 비우면 열이 어긋난다 —
+  같은 `<span>` 을 유지하고 내용만 바꾼다. 문장 전문을 화면에 쓰지 않는 이유도 `w-36` 열
+  폭이다.
+
+**우선순위는 해당 없음 (실측).** `IssueResponse.kt:142` *"non-null CORE(summary·priority):
+마스킹 대상 아님 — 항상 노출"*. `masked += "priority"` 가 코드 어디에도 없다 ⇒ `priority` 는
+`restrictedFields` 에 들어올 수 없다.
+
 ### D-4. 캐시 = 낙관적 필드 patch + `onSettled` invalidate
 
 `useChangeCardField`(보드)가 이미 쓰는 패턴을 승계한다 — `onMutate` 낙관 patch → `onError`

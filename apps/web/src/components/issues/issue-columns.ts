@@ -4,6 +4,8 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
 import { ISSUE_SORT_FIELDS } from '@/api/issues'
 import type { IssueResponse, IssueSortField } from '@/api/issues'
+// 열람 숨김 판정 정본 — 상세 화면(`IssueMetaPanel.tsx:306`)과 같은 술어를 재사용한다
+import { isFieldHidden } from '@/components/issue/IssueMetaPanel'
 import { AssigneeCell, AssigneeCellDisplay } from './cells/AssigneeCell'
 import { PriorityCell, PriorityCellDisplay } from './cells/PriorityCell'
 import { StatusCell, StatusCellDisplay } from './cells/StatusCell'
@@ -150,10 +152,20 @@ function renderStatusCell(issue: IssueResponse, ctx: IssueColumnRenderContext): 
   return createElement(StatusCell, { issue, listQueryKey: ctx.edit.listQueryKey })
 }
 
-/** 담당자 셀 렌더 — assigneeNameMap 해석 결과. 미배정/해석 실패 시 "미배정" */
+/**
+ * 담당자 셀 렌더 — assigneeNameMap 해석 결과. 미배정/해석 실패 시 "미배정".
+ *
+ * ★열람 숨김이면 **읽기 전용 경로에서도** 값을 그리지 않는다. 백엔드가 열람 불가
+ * `assigneeId` 를 null 로 마스킹하므로 그대로 그리면 담당자가 있는데 "미배정" 이라고
+ * 말하게 된다. 편집 경로의 차단은 {@link AssigneeCell} 이 스스로 한다(직접 렌더돼도
+ * 안전하도록) — 여기서는 편집이 꺼진 경로만 메운다.
+ */
 function renderAssigneeCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
   if (!isEditEnabled(ctx.edit)) {
-    return createElement(AssigneeCellDisplay, { assigneeName: ctx.assigneeName })
+    return createElement(AssigneeCellDisplay, {
+      assigneeName: ctx.assigneeName,
+      isRestricted: isFieldHidden('assigneeId', issue.restrictedFields),
+    })
   }
   return createElement(AssigneeCell, {
     issue,

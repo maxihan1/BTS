@@ -1954,3 +1954,27 @@ F3·F4 는 **main 대조군을 실측해 선재임을 확인**했다 — 「F9 �
   `hooks/__tests__/use-users.test.tsx` 의 `T-UU-6a`/`T-UU-6b` **짝**으로 봉합했다.
   두 번째 조회를 보류시켜 중간 창을 결정적으로 관측하고, 옵션 유무로 결과가 갈리는 것을
   양쪽에서 잰다. 양방향 뮤테이션(항상 켬 / 항상 끔)이 각각 짝의 한쪽을 red 로 만든다.
+
+### G. `isFieldDisabled`/`isFieldHidden` 을 `lib/` 로 추출 (재리뷰 Suggestion — 기록만)
+
+- **현황.** 두 술어의 정본이 450줄 컴포넌트 `components/issue/IssueMetaPanel.tsx`(`:127`·`:143`)
+  에 있고, 목록 셀 3파일(`AssigneeCell.tsx` · `issue-columns.ts`)이 거기서 **값 import** 한다.
+  순환 참조도 번들 증가도 없다(`issues.index.tsx` 가 이미 split view 로 `issues.$key` →
+  `IssueMetaPanel` 을 끌어온다). `meta/IssueCustomFieldsEdit.tsx:12` 라는 선례도 있다.
+- **그래도 냄새다.** 2줄짜리 순수 술어 때문에 목록 셀이 상세 메타패널의 15개 모듈 의존에
+  묶인다. `lib/transition-availability.ts` 를 뺀 것과 **같은 이유**로 `lib/field-permission.ts`
+  추출이 자연스럽다.
+- **이번에 안 옮긴 이유.** 정본을 옮기려면 `IssueMetaPanel.tsx` 와 그 소비처
+  (`meta/IssueCustomFieldsEdit.tsx` 등)를 함께 고쳐야 하는데 **허용 파일 밖**이라 BLOCKED 다.
+- **후속 시 주의.** `IssueMetaPanel.tsx:142` 의 `// eslint-disable-next-line
+  react-refresh/only-export-components` 주석은 추출이 끝나면 **함께 지워야** 한다 — 남으면
+  불필요한 예외가 방치된다.
+
+### H. 열람 숨김(restrictedFields) 목록 처리 — 담당자만 적용됨 (재리뷰 봉합)
+
+- **적용 대상은 `assigneeId` 하나다.** `priority` 는 `IssueResponse.kt:142` 규칙상 마스킹
+  대상이 아니고(`masked += "priority"` 부재), 상태 전이는 필드 키 자체가 없다.
+- **다른 마스킹 대상 필드는 목록 컬럼에 없다.** 마스킹되는 nullable CORE 는
+  `description` · `environment` · `labels` · `impact` · `assigneeId` 인데, 목록 6컬럼
+  (키·요약·상태·담당자·우선순위·수정일) 중 겹치는 것은 담당자뿐이다. 컬럼이 늘어나면
+  (예: 라벨 열) 같은 처리를 함께 해야 한다.

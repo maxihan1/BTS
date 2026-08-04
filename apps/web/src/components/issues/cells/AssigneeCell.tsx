@@ -6,9 +6,11 @@ import type { IssueResponse } from '@/api/issues'
 import type { UserSummary } from '@/api/users'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
-// 필드 단위 편집가부 판정 정본 — 복제하지 않고 재사용한다.
+// 필드 단위 열람/편집가부 판정 정본 — 복제하지 않고 재사용한다.
 // `meta/IssueCustomFieldsEdit.tsx:12` 가 같은 방식으로 값 import 하는 선례가 있다.
-import { isFieldDisabled } from '@/components/issue/IssueMetaPanel'
+// ★두 술어는 **짝**이다. `isFieldDisabled` 만 가져오면 열람 숨김이 통째로 열린다 —
+//   백엔드가 두 목록을 배타적으로 만들기 때문이다(아래 ASSIGNEE_RESTRICTED 주석).
+import { isFieldDisabled, isFieldHidden } from '@/components/issue/IssueMetaPanel'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useUsers } from '@/hooks/use-users'
 import { useIssueListCellField } from '@/hooks/use-issue-list-cell-field'
@@ -27,6 +29,19 @@ const ASSIGNEE_UNASSIGNED = '미배정'
 
 /** 담당자 검색 debounce (ms) — 상세 화면 `issues.$key.tsx` 와 같은 값 */
 const ASSIGNEE_SEARCH_DEBOUNCE_MS = 250
+
+/**
+ * 담당자 열람 권한이 없을 때 셀에 보이는 짧은 표기.
+ *
+ * ★**「미배정」으로 보이면 안 된다.** 백엔드는 열람 불가 필드를 `assigneeId: null` 로
+ * **마스킹**하고 키를 `restrictedFields` 에 넣는다(`IssueResponse.kt` maskInvisible —
+ * nullable CORE 마스킹 규칙). 그 null 을 그대로 그리면 담당자가 **있는데 없다고** 말하게 된다.
+ *
+ * 사유 전문은 `issueDetailStrings.descriptionRestricted`(*"이 필드를 볼 권한이 없습니다."*)를
+ * `title` 로 단다 — 같은 상황의 정본이고(`IssueDescription.tsx:122`) 키 신설이 필요 없다.
+ * 표 열은 `w-36` 이라 문장을 그대로 그리면 줄이 넘쳐 열 정렬이 무너지므로 화면에는 짧게 쓴다.
+ */
+const ASSIGNEE_RESTRICTED = '비공개'
 
 /** AssigneeCellEditor props */
 export interface AssigneeCellEditorProps {
@@ -179,9 +194,23 @@ export function AssigneeCellEditor({
  */
 export function AssigneeCellDisplay({
   assigneeName,
+  isRestricted = false,
 }: {
   assigneeName: string | undefined
+  /** 열람 권한 없음(`restrictedFields` 에 `assigneeId` 포함). true 면 값 대신 사유를 보인다 */
+  isRestricted?: boolean
 }): JSX.Element {
+  if (isRestricted) {
+    return (
+      <span
+        className="text-(--text-subtle)"
+        data-testid="cell-assignee-restricted"
+        title={issueDetailStrings.descriptionRestricted}
+      >
+        {ASSIGNEE_RESTRICTED}
+      </span>
+    )
+  }
   return <span className="text-(--text-default)">{assigneeName ?? ASSIGNEE_UNASSIGNED}</span>
 }
 
@@ -262,6 +291,22 @@ export function AssigneeCell({ issue, assigneeName, listQueryKey }: AssigneeCell
   const [open, setOpen] = useState(false)
   const mutation = useIssueListCellField(listQueryKey)
 
+  // ★열람 숨김이면 **편집 트리거를 아예 걸지 않는다** (재리뷰).
+  //
+  // `isFieldDisabled` 로는 못 막는다 — 백엔드 `buildNoneditableKeys` 가
+  // `.filter { key -> key !in restrictedSet }` 로 두 목록을 **배타적**으로 만들어,
+  // 열람 숨김 키는 `noneditableFields` 에 **절대** 안 들어온다. 그래서
+  // `isFieldDisabled('assigneeId', true, [])` 는 false 를 내고 셀이 완전히 열린다.
+  //
+  // popover 를 열어 "권한 없음" 을 보이는 대안도 있지만 택하지 않았다 — 트리거가 남으면
+  // 접근성 이름이 "…담당자 변경" 이라고 **할 수 없는 일을 약속**하고, 눌러서야 못 한다는
+  // 걸 알게 된다. 클릭 가능한 표시 자체를 없애는 쪽이 정직하다.
+  // 표시 노드는 같은 `<span>` 이라 열 정렬도 그대로다.
+  //
+  // 🛑 조기 반환은 **모든 훅 아래**에 둔다. 훅 사이에 두면 렌더마다 훅 개수가 달라져
+  //    `react-hooks/rules-of-hooks` 위반이다 — 실제로 처음엔 여기 뒀다가 eslint 가 잡았고,
+  //    **유닛 22건은 전부 초록이었다.** 테스트가 못 보는 종류의 결함이다.
+
   /**
    * 방금 고른 담당자 — 목록 이름 맵이 따라올 때까지의 임시 표기 (리뷰 C3).
    *
@@ -289,6 +334,11 @@ export function AssigneeCell({ issue, assigneeName, listQueryKey }: AssigneeCell
   // 맵이 이름을 알면 그쪽이 정본. 아직 모를 때만 방금 고른 이름으로 메운다.
   const shownName =
     assigneeName ?? (picked !== null && picked.id === issue.assigneeId ? picked.name : undefined)
+
+  // 열람 숨김 차단 — 위 주석 참조. 훅을 전부 부른 뒤에 반환한다.
+  if (isFieldHidden('assigneeId', issue.restrictedFields)) {
+    return <AssigneeCellDisplay assigneeName={undefined} isRestricted />
+  }
 
   return (
     <EditableCell
