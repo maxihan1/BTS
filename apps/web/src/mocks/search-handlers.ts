@@ -26,8 +26,77 @@ import {
 export const E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 최소 AQL 형태 검사
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * MSW 용 최소 AQL 형태 검사 — **파서 복제가 아니다.**
+ *
+ * ★왜 필요한가. 이전 핸들러는 쿼리를 아예 읽지 않고 항상 3건을 반환해,
+ * `/search 로그인 버그` 가 실서버에서 문법 오류를 내는 **선재 결함을 E2E 가 통과시켰다**
+ * (`command-palette.spec.ts` S4). 목이 진실을 말하지 않으면 테스트는 증인이 아니다.
+ *
+ * 백엔드 `AqlParser.parseComparison` 이 `필드 연산자 값` 을 요구하므로, 그 최소 형태를
+ * 만족하지 못하는 입력만 걸러낸다. 전체 문법 검증은 백엔드 통합 테스트의 몫이다.
+ *
+ * @param query AQL 쿼리 문자열
+ * @returns 최소 형태(필드 + 연산자)를 만족하면 true
+ */
+export function isSyntacticallyValidAql(query: string): boolean {
+  const trimmed = query.trim()
+  if (trimmed === '') return false
+  // 식별자 뒤에 비교 연산자(= != ~ < > <= >=) 또는 IN/NOT IN 이 오는가
+  return /[A-Za-z_][A-Za-z0-9_]*\s*(=|!=|~|<=|>=|<|>|\bNOT\s+IN\b|\bIN\b)/i.test(trimmed)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/search/aql
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 요청 body에서 AQL 쿼리 문자열을 추출한다.
+ *
+ * ★`Request.json()` 은 스트림이라 **1회만 소비 가능**하다. 분기마다 각자 호출하면
+ * 두 번째 호출이 조용히 빈 객체가 되고 `.catch(() => ({}))` 가 그 실패를 삼켜버린다.
+ * 핸들러 진입 시 한 번만 읽어 모든 분기가 같은 값을 공유하게 한다.
+ *
+ * @param request MSW가 넘겨준 요청 객체
+ * @returns body의 query 필드. 없거나 문자열이 아니면 빈 문자열
+ */
+const readAqlQuery = async (request: Request): Promise<string> => {
+  const rawBody: unknown = await request.json().catch(() => ({}))
+  if (rawBody === null || typeof rawBody !== 'object' || !('query' in rawBody)) return ''
+  const query: unknown = (rawBody as Record<string, unknown>)['query']
+  return typeof query === 'string' ? query : ''
+}
+
+/** E2E 'syntax-error' 시나리오가 보고하는 고정 오류 위치 — search.spec.ts가 "8번째 글자 근처" 문구로 검증한다 */
+const SYNTAX_ERROR_SCENARIO_POSITION = 7
+
+/** 형태 검사 실패 시 오류 위치 — 특정 토큰이 아니라 쿼리 전체 형태를 거부하므로 시작점(0)이다 */
+const SHAPE_REJECT_POSITION = 0
+
+/**
+ * SEARCH_SYNTAX_ERROR 400 응답을 만든다.
+ *
+ * 시나리오 분기와 형태 검사 분기가 같은 응답 형태를 쓰되 position만 다르므로 공유한다.
+ *
+ * @param query 오류 메시지에 그대로 실어 보낼 원본 쿼리
+ * @param position 오류 위치 — 0-based 문자 인덱스
+ * @returns SEARCH_SYNTAX_ERROR 400 응답
+ */
+const makeSyntaxErrorResponse = (query: string, position: number) =>
+  HttpResponse.json(
+    {
+      errorCode: 'SEARCH_SYNTAX_ERROR',
+      detail: `Unexpected token in query: "${query}"`,
+      position,
+      title: 'AQL syntax error',
+      status: 400,
+      timestamp: new Date().toISOString(),
+    },
+    { status: 400 },
+  )
 
 /**
  * POST /api/v1/search/aql — AQL 쿼리 검색 메인 핸들러.
@@ -52,27 +121,11 @@ const searchAqlHandler = http.post('/api/v1/search/aql', async ({ request }) => 
       ? localStorage.getItem(E2E_SEARCH_SCENARIO_KEY)
       : null
 
+  // body는 1회만 소비 가능하므로 분기 전에 한 번만 읽는다 (readAqlQuery 주석 참고)
+  const query = await readAqlQuery(request)
+
   if (scenario === 'syntax-error') {
-    // 요청 body에서 query를 읽어 에러 메시지에 포함 (position은 고정 7)
-    const rawBody: unknown = await request.json().catch(() => ({}))
-    const query =
-      rawBody !== null &&
-      typeof rawBody === 'object' &&
-      'query' in rawBody &&
-      typeof (rawBody as Record<string, unknown>)['query'] === 'string'
-        ? ((rawBody as Record<string, string>)['query'])
-        : ''
-    return HttpResponse.json(
-      {
-        errorCode: 'SEARCH_SYNTAX_ERROR',
-        detail: `Unexpected token in query: "${query}"`,
-        position: 7,
-        title: 'AQL syntax error',
-        status: 400,
-        timestamp: new Date().toISOString(),
-      },
-      { status: 400 },
-    )
+    return makeSyntaxErrorResponse(query, SYNTAX_ERROR_SCENARIO_POSITION)
   }
 
   if (scenario === 'empty') {
@@ -103,6 +156,11 @@ const searchAqlHandler = http.post('/api/v1/search/aql', async ({ request }) => 
       },
       { status: 403 },
     )
+  }
+
+  // 시나리오 플래그가 없을 때도 쿼리 형태를 검사한다 — 목이 진실을 말하게 한다(FR11)
+  if (!isSyntacticallyValidAql(query)) {
+    return makeSyntaxErrorResponse(query, SHAPE_REJECT_POSITION)
   }
 
   // 기본: 정상 3건 결과 반환

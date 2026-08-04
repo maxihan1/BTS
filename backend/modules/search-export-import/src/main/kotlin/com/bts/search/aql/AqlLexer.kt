@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
  * - 키워드: AND / OR / NOT / IN / ORDER / BY / ASC / DESC (대소문자 무시)
  * - 식별자 / bare word: 영문자·한글·숫자·언더스코어로 이루어진 연속 문자
  * - 따옴표 문자열: `"..."` (내부 공백·특수문자 보존, 따옴표는 lexeme에서 제외)
+ *   - 이스케이프 `\"` → `"`, `\\` → `\`. 그 외 `\X` 는 두 글자 그대로 보존. 근거는 [scanQuotedString]
  * - 숫자: 연속된 0..9
  * - 연산자: `=`, `!=`, `~`
  * - 구분자: `(`, `)`, `,`
@@ -113,10 +114,32 @@ class AqlLexer(private val input: String) {
         }
 
     /**
-     * 따옴표 문자열(`"..."`)을 스캔한다.
+     * 따옴표 문자열(`"..."`)을 스캔한다. lexeme 에는 **이스케이프를 푼** 값이 담긴다.
      *
-     * 여는 따옴표 위치를 position으로 기록한다.
+     * ### 왜 이스케이프가 필요한가
+     *
+     * 커맨드 팔레트(FR-UX-12 F4)는 사용자가 친 자유 텍스트를
+     * `text ~ "<이스케이프>"` 형태로 **프로그램이 조립**해 보낸다
+     * (`apps/web/src/lib/aql-text-query.ts` 의 `escapeAqlString`).
+     * 이스케이프 문법이 없으면 사용자가 큰따옴표 한 글자만 쳐도 문자열이 조기에 닫혀
+     * 구문 오류가 난다. AQL 검색 화면(FR-SR-02/04)에 사용자가 직접 따옴표를 쳐도 같다.
+     *
+     * ### 이스케이프 규칙
+     *
+     * - `\"` → 리터럴 `"` (문자열을 닫지 않는다)
+     * - `\\` → 리터럴 `\`
+     * - 그 외 `\X` → **원문 두 글자 `\X` 를 그대로 보존**한다.
+     *   판정 기준은 "사용자가 친 것이 검색어로 그대로 도달하는가" 다.
+     *   버리거나(`\t` → `t`) 예외를 던지면 이스케이프 도입 전까지 정상 동작하던
+     *   `"C:\temp"` 같은 손입력 쿼리가 검색어 훼손 또는 400 으로 회귀한다.
+     *   `text ~` 는 FTS(`plainto_tsquery`) 와 trigram `LIKE` 를 OR 로 결합하는데,
+     *   후자는 부분 문자열 매칭이라 역슬래시가 매칭에 그대로 관여한다 — 보존이 맞다.
+     *
+     * ### 오류
+     *
+     * 여는 따옴표 위치를 position 으로 기록한다.
      * 닫는 따옴표 없이 입력이 끝나면 [AqlLexException] 을 던진다.
+     * 입력 마지막 문자가 `\` 인 경우(`"abc\`)도 짝이 될 문자가 없으므로 같은 예외로 처리한다.
      */
     private fun scanQuotedString(): AqlToken {
         val start = pos
@@ -128,8 +151,16 @@ class AqlLexer(private val input: String) {
                 advance() // 닫는 '"' 소비
                 return AqlToken(AqlTokenType.QUOTED_STRING, sb.toString(), start)
             }
-            sb.append(ch)
-            advance()
+            if (ch == ESCAPE_CHAR) {
+                // 입력 끝의 단독 '\' — 짝이 될 문자가 없다. 닫히지 않은 문자열로 확정.
+                if (pos + 1 >= input.length) break
+                sb.append(resolveEscape(input[pos + 1]))
+                advance() // '\' 소비
+                advance() // 이스케이프 대상 문자 소비
+            } else {
+                sb.append(ch)
+                advance()
+            }
         }
         // 닫는 따옴표 없이 입력 끝
         throw AqlLexException(
@@ -187,6 +218,25 @@ class AqlLexer(private val input: String) {
     }
 
     companion object {
+        /** 따옴표 문자열 안에서 이스케이프를 여는 문자. */
+        private const val ESCAPE_CHAR = '\\'
+
+        /**
+         * `\` 뒤 문자 하나를 실제 문자열 값으로 변환한다.
+         *
+         * `"` 와 `\` 만 이스케이프 대상이고, 그 외는 원문 두 글자(`\X`)를 그대로 보존한다.
+         * 보존하는 이유는 [scanQuotedString] KDoc 참조.
+         *
+         * @param next `\` 바로 뒤 문자.
+         * @return 문자열 값에 덧붙일 조각.
+         */
+        private fun resolveEscape(next: Char): String =
+            if (next == '"' || next == ESCAPE_CHAR) {
+                next.toString()
+            } else {
+                "$ESCAPE_CHAR$next"
+            }
+
         /** 식별자 첫 문자 조건 — 영문자·한글·언더스코어. */
         private fun isIdentStart(ch: Char): Boolean = ch.isLetter() || ch == '_'
 
