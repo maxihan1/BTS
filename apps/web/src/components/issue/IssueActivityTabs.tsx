@@ -1,5 +1,5 @@
 // 이슈 상세 활동 영역(작업로그/연결/이력/댓글) 탭 컨테이너 — ui/tabs 첫 소비자 (FR-UX-06 PR19 Task 1 / FR-CO-01)
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import type { IssueResponse } from '@/api/issues'
 import type { ChangelogRefs } from '@/lib/changelog-labels'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -29,6 +29,22 @@ export const ACTIVITY_TABS = {
 /** ACTIVITY_TABS 값 유니온 타입 */
 export type ActivityTabValue = (typeof ACTIVITY_TABS)[keyof typeof ACTIVITY_TABS]
 
+/** 탭 value 전량 — Radix 가 돌려주는 `string` 을 유니온으로 좁히는 데 쓴다 */
+const ACTIVITY_TAB_VALUES = Object.values(ACTIVITY_TABS)
+
+/**
+ * Radix `onValueChange` 가 주는 `string` 을 {@link ActivityTabValue} 로 좁힌다.
+ *
+ * `as` 캐스팅 대신 실제 목록 조회로 좁히는 이유. 탭 value 상수를 고치면서 소비처를
+ * 빠뜨리면 캐스팅은 조용히 통과하지만 이 조회는 `null` 을 내 상위로 전달되지 않는다.
+ *
+ * @param value Radix 가 돌려준 탭 value 문자열
+ * @returns 알려진 탭이면 그 값, 아니면 null
+ */
+function toActivityTab(value: string): ActivityTabValue | null {
+  return ACTIVITY_TAB_VALUES.find((tab) => tab === value) ?? null
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,6 +59,18 @@ export interface IssueActivityTabsProps {
   issue: IssueResponse
   /** 변경 이력 값 표시명 해석용 참조 데이터 (이력 탭 — route가 수집해 주입) */
   changelogRefs: ChangelogRefs
+  // ── FR-UX-10 F11 단축키 `m` 배선 3종 ────────────────────────────────────────
+  //
+  // ★왜 탭 소유권을 밖으로 내보내는가. Radix Tabs 는 **비활성 탭 콘텐츠를 언마운트**한다.
+  // 기본 활성 탭이 「이력」이라 댓글 작성 textarea 는 평소 DOM 에 없고, ref 만 통과시키면
+  // `m` 이 언제나 null 을 만나 조용히 무동작이 된다(스펙 S3 는 포커스 이동을 요구한다).
+  // 단축키가 탭을 먼저 열어야 하므로 활성 탭을 라우트가 소유한다.
+  /** 활성 탭 값 — 전달하면 controlled, 미전달이면 기존대로 「이력」 기본 uncontrolled */
+  value?: ActivityTabValue
+  /** 탭 전환 콜백 — `value` 와 짝으로만 의미가 있다 */
+  onValueChange?: (value: ActivityTabValue) => void
+  /** 댓글 작성 textarea 로 통과시킬 ref — 단축키 `m` 의 포커스 대상 */
+  commentInputRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,17 +89,31 @@ export interface IssueActivityTabsProps {
  * @param canUpdate 수정 권한 여부
  * @param issue 부모/에픽/타입 판정에 필요한 이슈 데이터
  * @param changelogRefs 변경 이력 값 표시명 해석용 참조 데이터
+ * @param value 활성 탭 값 (controlled). 미전달이면 「이력」 기본 uncontrolled
+ * @param onValueChange 탭 전환 콜백 — `value` 와 짝
+ * @param commentInputRef 댓글 작성 textarea 로 통과시킬 ref (단축키 `m`)
  */
 export function IssueActivityTabs({
   issueKey,
   canUpdate,
   issue,
   changelogRefs,
+  value,
+  onValueChange,
+  commentInputRef,
 }: IssueActivityTabsProps): JSX.Element {
   const showEpicSection = issue.typeKey !== 'epic' && issue.typeKey !== 'subtask'
 
   return (
-    <Tabs defaultValue={ACTIVITY_TABS.HISTORY} className="mt-8">
+    <Tabs
+      value={value}
+      defaultValue={value === undefined ? ACTIVITY_TABS.HISTORY : undefined}
+      onValueChange={(next) => {
+        const tab = toActivityTab(next)
+        if (tab !== null) onValueChange?.(tab)
+      }}
+      className="mt-8"
+    >
       <TabsList>
         <TabsTrigger value={ACTIVITY_TABS.WORKLOG}>
           {issueDetailStrings.activityWorklogTabLabel}
@@ -110,7 +152,7 @@ export function IssueActivityTabs({
       </TabsContent>
 
       <TabsContent value={ACTIVITY_TABS.COMMENT}>
-        <CommentSection issueKey={issueKey} canUpdate={canUpdate} />
+        <CommentSection issueKey={issueKey} canUpdate={canUpdate} focusRef={commentInputRef} />
       </TabsContent>
     </Tabs>
   )

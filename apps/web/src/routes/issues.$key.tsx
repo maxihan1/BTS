@@ -3,6 +3,7 @@
 // 전역 DOM KeyboardEvent 를 모듈 스코프에서 가려 document 리스너 타입이 조용히 바뀐다.
 import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -31,10 +32,13 @@ import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
-import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
+import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
-import { IssueActivityTabs } from '@/components/issue/IssueActivityTabs'
+import { IssueActivityTabs, ACTIVITY_TABS } from '@/components/issue/IssueActivityTabs'
+import type { ActivityTabValue } from '@/components/issue/IssueActivityTabs'
+import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import { useAuthUser } from '@/auth/authStore'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
@@ -206,6 +210,26 @@ export function IssueDetailPage({
   const titleInputRef = useRef<HTMLInputElement>(null)
   // 편집 종료 후 포커스 복귀 대상 — 제목 클릭 진입면 (WCAG 2.4.3)
   const titleButtonRef = useRef<HTMLButtonElement>(null)
+
+  // ── FR-UX-10 F11 — 상세 액션 단축키가 조작할 컨트롤 손잡이 5종 ──────────────
+  // 전부 하위 컴포넌트가 자기 요소에 붙여 주는 ref다(Task 4). 이 라우트는 소비만 한다.
+  /** 담당자 검색 input — 단축키 `a` */
+  const assigneeSearchRef = useRef<HTMLInputElement>(null)
+  /** 라벨 입력 — 단축키 `l` */
+  const labelsInputRef = useRef<HTMLInputElement>(null)
+  /** 즐겨찾기 토글 버튼 — 단축키 `s` */
+  const favoriteToggleRef = useRef<HTMLButtonElement>(null)
+  /** 관심(watch) 토글 버튼 — 단축키 `w` */
+  const watchToggleRef = useRef<HTMLButtonElement>(null)
+  /** 댓글 작성 textarea — 단축키 `m` */
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+
+  /**
+   * 활동 영역 활성 탭 — 단축키 `m` 이 댓글 탭을 열어야 해서 라우트가 소유한다.
+   * Radix Tabs 는 비활성 탭 콘텐츠를 언마운트하므로, 탭을 열지 않으면 댓글 입력이
+   * DOM 에 없어 포커스를 줄 대상이 없다.
+   */
+  const [activityTab, setActivityTab] = useState<ActivityTabValue>(ACTIVITY_TABS.HISTORY)
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
@@ -471,6 +495,104 @@ export function IssueDetailPage({
       handleMetaMutationError(err, '커스텀 필드 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.')
     },
   })
+
+  // ── FR-UX-10 F11 — 상세 액션 단축키 7종 (`.` 은 app-shell 소관) ─────────────
+
+  /** 현재 로그인 사용자 id — `i`(나에게 할당)가 쓴다. 미인증이면 null */
+  const currentUserId = useAuthUser()?.userId ?? null
+
+  /**
+   * 댓글 작성 입력으로 포커스를 옮긴다 — 필요하면 댓글 탭을 먼저 연다 (단축키 `m`).
+   *
+   * ★`flushSync` 가 이 함수의 요점이다. Radix Tabs 는 **비활성 탭 콘텐츠를 언마운트**하고
+   * (기본 활성 탭은 「이력」), 활성으로 바뀐 첫 커밋에도 아직 콘텐츠를 붙이지 않는다 —
+   * `Presence` 가 layout effect 로 상태를 한 번 더 밀어 그다음 커밋에 마운트한다. 그런데 그
+   * 커밋은 **이 라우트를 다시 렌더하지 않으므로** 여기의 effect 로는 마운트 시점을 관측할 수
+   * 없다(실측: effect 가 `ref.current === null` 을 보고 끝난다). `flushSync` 로 탭 전환 렌더를
+   * 그 자리에서 끝내면 반환 시점에 textarea 가 DOM 에 있어 포커스를 바로 줄 수 있다.
+   *
+   * 이 함수는 React 이벤트가 아니라 document keydown 리스너에서 호출되므로 렌더 중
+   * `flushSync` 경고 대상이 아니다.
+   *
+   * `canUpdate=false` 여서 작성 폼이 없으면 ref 가 계속 null 이고 옵셔널 체이닝이 무동작으로
+   * 처리한다.
+   */
+  function focusCommentInput(): void {
+    if (activityTab !== ACTIVITY_TABS.COMMENT) {
+      flushSync(() => setActivityTab(ACTIVITY_TABS.COMMENT))
+    }
+    commentInputRef.current?.focus()
+  }
+
+  /**
+   * 상세 액션 단축키를 **등록할지** 여부 (ADR D-5-a).
+   *
+   * 콜백만 끊으면 판별이 성공해 `preventDefault` 까지 한 뒤 아무 일도 일어나지 않는다.
+   * 모달 3종과 삭제 확인은 입력 요소가 없어 `shouldIgnoreEvent` 를 통과하므로 여기서
+   * 막지 않으면 모달 위에서 단축키가 그대로 발화한다(E2).
+   */
+  const detailShortcutsEnabled =
+    issue !== undefined &&
+    error === null &&
+    pendingDoneTransition === null &&
+    !cloneDialogOpen &&
+    !moveDialogOpen &&
+    !confirmDelete
+
+  useContextShortcuts(
+    'issue-detail',
+    {
+      // ★필드 권한 두 목록을 **모두** 본다. 백엔드가 두 목록을 배타적으로 만들어
+      // 열람 숨김 필드는 수정 금지 목록에 절대 오지 않는다 — `noneditableFields` 만
+      // 보면 숨긴 필드를 단축키로 열어주게 된다(PR #338 F9 가 실제로 그랬다).
+      onFocusAssignee: () => {
+        if (issue === undefined) return
+        if (isFieldHidden('assigneeId', issue.restrictedFields)) return
+        if (isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)) return
+        assigneeSearchRef.current?.focus()
+      },
+      onAssignToMe: () => {
+        if (issue === undefined) return
+        if (isFieldHidden('assigneeId', issue.restrictedFields)) return
+        if (isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)) return
+        if (currentUserId === null) return // E7 — 미인증이면 누구에게 할당할지 알 수 없다
+        // Jira 문구가 `Toggle` 이다 — 이미 나면 해제한다. 저장 경로는 기존 핸들러 재사용.
+        handleAssigneeChange(issue.assigneeId === currentUserId ? null : currentUserId)
+      },
+      onFocusComment: focusCommentInput,
+      onEditTitle: () => {
+        if (issue === undefined) return
+        if (isFieldHidden('summary', issue.restrictedFields)) return
+        if (isFieldDisabled('summary', canEdit, issue.noneditableFields)) return
+        // 전용 진입 함수를 탄다 — `setIsEditingTitle(true)` 만 하면 입력창이 빈 값으로 열려
+        // Enter 한 번에 제목이 지워진다.
+        handleEditStart()
+      },
+      onFocusLabels: () => {
+        if (issue === undefined) return
+        if (isFieldHidden('labels', issue.restrictedFields)) return
+        if (isFieldDisabled('labels', canEdit, issue.noneditableFields)) return
+        labelsInputRef.current?.focus()
+      },
+      // ★F-2 — 포커스를 **먼저** 옮기고 누른다. 순서가 접근성의 전부다. 두 버튼은
+      // `aria-pressed` 를 올바로 갖고 있지만 포커스가 없으면 스크린리더가 그 변화를 읽지
+      // 않고, 성공 토스트도 `aria-live` 영역도 없어서 화면을 못 보는 사용자에게는
+      // **아무 일도 안 일어난 것과 구분되지 않는다.**
+      //
+      // `.click()` 으로 미는 이유. 두 버튼이 이미 가진 진행 중 `disabled` 판정과 토스트
+      // 처리를 재사용한다 — 복제하면 규칙이 두 벌이 되어 어긋난다. `disabled` 버튼의
+      // `click()` 은 브라우저가 무시하므로 중복 발행 금지(E8)도 공짜로 성립한다.
+      onToggleFavorite: () => {
+        favoriteToggleRef.current?.focus()
+        favoriteToggleRef.current?.click()
+      },
+      onToggleWatch: () => {
+        watchToggleRef.current?.focus()
+        watchToggleRef.current?.click()
+      },
+    },
+    detailShortcutsEnabled,
+  )
 
   // ── 로딩 상태 ──────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -926,6 +1048,10 @@ export function IssueDetailPage({
               onFixVersionsChange={handleFixVersionsChange}
               onSecurityLevelChange={handleSecurityLevelChange}
               onCustomFieldsSave={handleCustomFieldsSave}
+              assigneeSearchRef={assigneeSearchRef}
+              labelsInputRef={labelsInputRef}
+              favoriteToggleRef={favoriteToggleRef}
+              watchToggleRef={watchToggleRef}
             />
             {/* 일정 필드 — FR-PL-01 시작일·마감일·목표일 (IssueMetaPanel 인근 하단 배치) */}
             <div className="border border-border rounded-xl px-3.5 py-3">
@@ -954,6 +1080,9 @@ export function IssueDetailPage({
           impactMap: issueDetailStrings.impactNames as Record<number, string>,
           customFieldDefinitions,
         }}
+        value={activityTab}
+        onValueChange={setActivityTab}
+        commentInputRef={commentInputRef}
       />
 
       {/* DONE 전이 시 Resolution 선택 모달 (B9) */}
