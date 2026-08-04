@@ -251,8 +251,23 @@ function PaletteResults({
   const showSearching = !needsProject && (isSearching || fullSearchQuery === null)
   const hasResult = issueHit !== null || similarResults.length > 0
   const showEmptyNotice = !needsProject && errorMessage === null && !showSearching && !hasResult
-  // 프로젝트 미해소 상태에서는 검색 페이지도 같은 이유로 막히므로 탈출구가 되지 못한다.
-  const showAllResults = !needsProject && fullSearchQuery !== null
+  /**
+   * 「모든 결과 보기」 노출 조건.
+   *
+   * - 프로젝트 미해소면 검색 페이지도 같은 이유로 막히므로 탈출구가 되지 못한다.
+   * - ★**결과보다 먼저 마운트되면 안 된다.** `fullSearchQuery` 는 디바운스가 끝나는 즉시
+   *   확정되므로, 그것만 보고 렌더하면 응답이 오기 전 이 항목이 **혼자** 마운트된다.
+   *   cmdk 는 항목 등록 시 `n.current.value || W()` 로 **선택이 비어 있을 때만** 첫 항목을
+   *   잡으므로(dist 실측), 한 번 탈출구가 선택을 차지하면 뒤늦게 붙는 결과는 선택을 되찾지
+   *   못한다. 그 상태에서 Enter 는 첫 결과가 아니라 검색 페이지로 가고(스펙 S4 위반),
+   *   `loop` 미지정이라 마지막 항목에서 `ArrowDown` 이 무동작이라 **결과로 내려갈 수도 없다**
+   *   (브라우저 실측). 결과와 **같은 커밋**에 함께 붙여 첫 결과가 선택되게 한다.
+   * - `hasResult ||` 를 앞에 두는 이유. 결과가 이미 있으면 백그라운드 재조회 중에도 계속
+   *   보여 깜빡임을 막는다. 0건·검색 실패는 `!isSearching` 으로 들어와 **탈출구가 유지된다**
+   *   (스펙 E11 — 전체 페이지엔 더 있을 수 있다).
+   */
+  const showAllResults =
+    !needsProject && fullSearchQuery !== null && (hasResult || !isSearching)
 
   return (
     <>
