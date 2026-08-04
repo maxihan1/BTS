@@ -12,18 +12,62 @@ import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
 /** 선택 가능한 우선순위 (1=가장 높음 ~ 5=가장 낮음) — IssuePrioritySelect 와 동일 집합 */
 const PRIORITIES = [1, 2, 3, 4, 5] as const
 
+/** `PRIORITIES` 의 원소 타입 — 라벨 정본(`priorityNames`)의 키 타입과 같다 */
+type PriorityValue = (typeof PRIORITIES)[number]
+
+/**
+ * 우선순위 값이 라벨 정본의 키 범위(1~5)인지 좁힌다.
+ *
+ * `IssueResponse.priority` 의 TS 타입은 `number` 라서(zod `min(1).max(5)` 는 런타임 검증이라
+ * 리터럴 유니온으로 좁혀지지 않는다) 그대로는 `priorityNames` 를 인덱싱할 수 없다.
+ * `as Record<number, string>` 캐스팅 대신 명시적 가드를 쓴다 — 캐스팅은 정본에 없는 값이
+ * 들어와도 조용히 통과시킨다.
+ *
+ * @param value 검사할 우선순위 값
+ * @returns 라벨 정본의 키면 true
+ */
+function isPriorityValue(value: number): value is PriorityValue {
+  return Number.isInteger(value) && value >= 1 && value <= 5
+}
+
+/**
+ * 우선순위 값을 화면 표기로 바꾼다.
+ *
+ * ★표기 정본은 `issueDetailStrings.priorityNames` **하나**다 (Maxi 확정 2026-08-04).
+ * 백엔드 `priorityName`(`Medium`·`High` 등 영어)을 화면에 직접 쓰지 않는다 — 그러면 같은
+ * 셀이 닫힘/열림에 따라 다른 언어로 보이고, 목록·popover·이슈 상세가 서로 다른 말을 한다.
+ *
+ * **하류 이득.** 다국어(i18n)를 넣을 때 갈아끼울 지점이 `i18n/ko.ts` 한 곳으로 모인다.
+ * 영어 원문을 화면에 섞어 두면 나중에 찾아 고칠 자리가 컴포넌트마다 흩어진다.
+ *
+ * export 하지 않는다 — 이 파일은 컴포넌트 모듈이라 함수를 내보내면 react-refresh 경고가
+ * 나고(lint-staged 는 `--max-warnings 0`) 표기 해석이 밖으로 새어 정본이 둘이 된다.
+ * 검증은 {@link PriorityCellDisplay} 렌더 결과로 한다(내부가 아니라 동작을 잰다).
+ *
+ * @param priority 우선순위 1(가장 높음)~5(가장 낮음)
+ * @returns 한국어 표기. 정본 범위를 벗어난 값이면 숫자를 그대로 보인다(값을 숨기지 않는다)
+ */
+function resolvePriorityLabel(priority: number): string {
+  return isPriorityValue(priority) ? issueDetailStrings.priorityNames[priority] : String(priority)
+}
+
 /**
  * 닫힌 상태에서 보이는 우선순위 텍스트.
  *
- * ★`issue-columns.ts` 의 기존 `renderPriorityCell` 마크업을 **글자 단위로** 옮긴 것이다.
- * 편집 비활성(`ctx.edit` 부재) 경로도 이 컴포넌트를 소비하므로 두 경로가 같은 DOM 을
- * 낸다 — 이것이 회귀 0 의 장치다.
+ * 마크업(`<span>` + `text-(--text-default)`)은 `issue-columns.ts` 의 기존 `renderPriorityCell`
+ * 그대로다. 편집 비활성(`ctx.edit` 부재) 경로도 이 컴포넌트를 소비하므로 두 경로가 같은
+ * DOM 을 낸다 — 이것이 회귀 0 의 장치다. **표기만** 백엔드 영어에서 한국어 정본으로 바뀌었다.
  *
- * @param props 표시할 우선순위 이름 (백엔드 `priorityName`)
+ * `priorityName`(문자열)이 아니라 `priority`(숫자)를 받는 이유 — 라벨 조회를 이 컴포넌트
+ * 안에 두어야 정본이 하나로 유지된다. 호출부(`issue-columns.ts`)가 미리 해석해 넘기면
+ * 순수 컬럼 정의 모듈에 i18n 결합이 새어 들어가고, 형제 `PriorityCellEditor`(`value: number`)
+ * 와도 모양이 어긋난다.
+ *
+ * @param props 표시할 우선순위 값 1~5
  * @returns 우선순위 텍스트 span
  */
-export function PriorityCellDisplay({ priorityName }: { priorityName: string }): JSX.Element {
-  return <span className="text-(--text-default)">{priorityName}</span>
+export function PriorityCellDisplay({ priority }: { priority: number }): JSX.Element {
+  return <span className="text-(--text-default)">{resolvePriorityLabel(priority)}</span>
 }
 
 /** PriorityCellEditor props */
@@ -151,7 +195,7 @@ export function PriorityCell({ issue, listQueryKey }: PriorityCellProps): JSX.El
       onOpenChange={setOpen}
       // ★목록은 행이 여러 개다. 이슈 키를 접두로 붙이지 않으면 e2e strict mode 로 즉사한다
       label={`${issue.key} 우선순위 변경`}
-      display={<PriorityCellDisplay priorityName={issue.priorityName} />}
+      display={<PriorityCellDisplay priority={issue.priority} />}
     >
       <PriorityCellPopoverBody issue={issue} isSaving={mutation.isPending} onChange={handleChange} />
     </EditableCell>

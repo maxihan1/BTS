@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { issueAtlas1Fixture, issueAtlas2Fixture, ISSUE_FILTER_BOB_ID } from '@/mocks/issue-fixtures'
+import { issueDetailStrings } from '@/i18n/ko'
 import { IssueTable } from './IssueTable'
 import type { IssueTableProps, IssueTableSelectionProps } from './IssueTable'
 import type { IssueCellEditContext } from './issue-columns'
@@ -264,6 +265,15 @@ describe('IssueTable — 컬럼 렌더 내용', () => {
     renderTable()
     expect(screen.getByText('—')).toBeInTheDocument()
     expect(screen.getByText('2026-01-03')).toBeInTheDocument()
+  })
+
+  it('T-20b: 우선순위 — 한국어 라벨 정본을 쓴다(백엔드 영어 priorityName 미노출)', () => {
+    // ★표기 정본은 issueDetailStrings.priorityNames 하나다 (Maxi 확정 2026-08-04).
+    // fixture 2건 모두 priority=3 이라 '보통'이 2개다.
+    renderTable()
+
+    expect(screen.getAllByText(issueDetailStrings.priorityNames[3])).toHaveLength(2)
+    expect(screen.queryByText(issueAtlas1Fixture.priorityName)).not.toBeInTheDocument()
   })
 })
 

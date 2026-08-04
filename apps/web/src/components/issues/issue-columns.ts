@@ -162,10 +162,17 @@ function renderAssigneeCell(issue: IssueResponse, ctx: IssueColumnRenderContext)
   })
 }
 
-/** 우선순위 셀 렌더 — priorityName 텍스트 그대로 */
+/**
+ * 우선순위 셀 렌더.
+ *
+ * 표기 정본은 `issueDetailStrings.priorityNames`(한국어)이고 해석은
+ * {@link PriorityCellDisplay} 안에서 한다 — 백엔드 `issue.priorityName`(영어)은 화면에
+ * 쓰지 않는다(Maxi 확정 2026-08-04). 여기서 미리 해석해 넘기면 순수 컬럼 정의 모듈에
+ * i18n 결합이 새어 들어간다.
+ */
 function renderPriorityCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
   if (!isEditEnabled(ctx.edit)) {
-    return createElement(PriorityCellDisplay, { priorityName: issue.priorityName })
+    return createElement(PriorityCellDisplay, { priority: issue.priority })
   }
   return createElement(PriorityCell, { issue, listQueryKey: ctx.edit.listQueryKey })
 }
