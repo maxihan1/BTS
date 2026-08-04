@@ -444,7 +444,7 @@ useContextShortcuts(
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/issue/meta/IssueAssigneeSelect.tsx`, `apps/web/src/components/issue/meta/IssueLabelsEdit.tsx`, `apps/web/src/components/issue/CommentSection.tsx`, `apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/favorite/FavoriteButton.tsx`, `apps/web/src/components/issue/WatchersSection.tsx`, `apps/web/src/components/issue/meta/__tests__/IssueAssigneeSelect.test.tsx`, `apps/web/src/components/issue/meta/__tests__/IssueLabelsEdit.test.tsx`, `apps/web/src/components/issue/CommentSection.test.tsx`, `apps/web/src/components/favorite/FavoriteButton.test.tsx`, `apps/web/src/components/issue/WatchersSection.test.tsx`]
+- files: [`apps/web/src/components/issue/meta/IssueAssigneeSelect.tsx`, `apps/web/src/components/issue/meta/IssueLabelsEdit.tsx`, `apps/web/src/components/issue/CommentSection.tsx`, `apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/favorite/FavoriteButton.tsx`, `apps/web/src/components/issue/WatchersSection.tsx`, `apps/web/src/components/issue/meta/LabelChipsEditor.tsx`, `apps/web/src/components/labels/LabelAutocompleteInput.tsx`, `apps/web/src/components/issue/meta/__tests__/IssueAssigneeSelect.test.tsx`, `apps/web/src/components/issue/meta/__tests__/IssueLabelsEdit.test.tsx`, `apps/web/src/components/issue/CommentSection.test.tsx`, `apps/web/src/components/favorite/FavoriteButton.test.tsx`, `apps/web/src/components/issue/WatchersSection.test.tsx`, `apps/web/src/components/issue/meta/__tests__/LabelChipsEditor.test.tsx`, `apps/web/src/components/labels/LabelAutocompleteInput.test.tsx`]
 - depends-on: []
 
 **왜 분리하나.** `a`/`m`/`l` 은 상세 라우트가 **하위 컴포넌트 내부의 입력 요소**에 포커스를
@@ -464,6 +464,23 @@ useContextShortcuts(
 `s`/`w` 도 여기서 ref 를 받는다 — Task 5 가 `.click()` 으로 밀어야 그 버튼이 이미 가진
 **진행 중 `disabled` 판정과 토스트 처리를 재사용**할 수 있기 때문이다. ref 없이
 `document.querySelector` 로 찾는 것은 렌더 트리를 우회하는 안티패턴이라 쓰지 않는다.
+
+> **★ files 정정 (착수 중 발견, 2026-08-04).** 위 5종 중 **라벨만 `IssueLabelsEdit` 선에서
+> 닿지 않는다.** 실제 `<input>` 은 두 단계 아래에 있고 중간 컴포넌트가 **`...rest` 스프레드도
+> 받지 않아** 통로가 물리적으로 없다 —
+> `IssueLabelsEdit:56` → `LabelChipsEditor:82` → `LabelAutocompleteInput:136` (`CommandPrimitive.Input`).
+> plan 작성 시 컴포넌트 체인을 끝까지 따라가지 않은 누락이다. **files 에 2파일 + 테스트를
+> 추가**한다. `<div ref>` 로 감싸 `querySelector` 하는 우회는 쓰지 않는다 — 렌더 트리 우회이고,
+> 포커스 불가능한 div 에 `aria-keyshortcuts` 를 붙이면 스크린리더가 읽지 않아 **F-3 이 라벨에서만
+> 공허해진다**.
+
+> **★ 설계 규칙 추가 — `aria-keyshortcuts` 는 조건부로 붙인다 (구현 중 실측 반영).**
+> 5종 중 **2종이 단축키가 없는 화면과 컴포넌트를 공유**한다 — `IssueAssigneeSelect` 는 이슈
+> 생성 폼이, `FavoriteButton` 은 저장 필터·대시보드·보드 3화면이 함께 쓴다. 리터럴로 무조건
+> 붙이면 **그 화면들에서 없는 단축키를 스크린리더가 안내**한다. F-3 이 닫으려던 것보다 나쁜
+> 오안내다. 규칙 — **`focusRef` 가 연결된 화면에만 `aria-keyshortcuts` 를 부착한다.**
+> "손잡이가 연결된 화면에만 단축키가 있다"가 5종 공통 계약이고, Task 5 의 호출 방식은
+> 그대로다(ref 하나만 넘긴다).
 
 **RED** — 각 컴포넌트 테스트에 (담당자 예시, 라벨·댓글 동형).
 
@@ -537,8 +554,13 @@ export interface IssueAssigneeSelectProps {
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/__tests__/issues.$key.test.tsx`]
+- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/__tests__/issues.$key.test.tsx`, `apps/web/src/components/issue/IssueActivityTabs.tsx`]
 - depends-on: [2, 4]
+
+> **★ files 정정 2 (Task 4 가 인계).** `CommentSection` 은 라우트가 직접 렌더하지 않는다 —
+> `IssueActivityTabs.tsx:113` 이 렌더한다. 라우트의 `commentInputRef` 가 `CommentSection.focusRef`
+> 까지 닿으려면 이 파일에 통과 prop 이 필요하다. Task 4 가 라벨에서 부딪힌 것과 **같은 종류의
+> 벽**이라 미리 연다.
 
 **RED** — 라우트 테스트에 (7종 중 3개 예시, 나머지 동형).
 
@@ -719,6 +741,25 @@ it('예약 목록이 레지스트리와 정확히 같다 (하드코딩 회귀 �
   expect(reservedKeysForTest()).toEqual(new Set(CONTEXT_SHORTCUTS.map((s) => s.key)))
 })
 ```
+
+**★ 판별식 1건 추가 (Task 4 가 인계한 잔여 리스크).** Task 4 가 붙인 `aria-keyshortcuts` 의 키
+문자는 **JSX 리터럴**이라 `CONTEXT_SHORTCUTS` 와 조용히 어긋날 수 있다. 키를 재배치하면
+레지스트리만 바뀌고 화면이 스크린리더에 **옛 키를 계속 안내**한다 — 두 목록이 서로를 검사하지
+않는 지배 결함 양식(`two-lists-never-check-each-other`). 차집합으로 못 박는다.
+
+```ts
+it('aria-keyshortcuts 리터럴이 레지스트리 키와 일치한다', () => {
+  // 소스 전수 grep — 5곳의 리터럴을 뽑아 레지스트리와 대조한다. 런타임 렌더가 아니라
+  // 소스를 재는 이유는, 렌더 테스트는 그 컴포넌트가 쓰이는 화면에서만 돌아 누락을 놓치기 때문이다.
+  const declared = collectAriaKeyshortcutLiterals('apps/web/src')
+  const registry = new Set(CONTEXT_SHORTCUTS.filter((s) => s.context === 'issue-detail').map((s) => s.key))
+  expect(new Set(declared)).toEqual(registry)
+})
+```
+
+이 판별식이 **비-공허한지** 확인한다 — `aria-keyshortcuts="a"` 를 `"x"` 로 바꿔 red 가 나오는지
+보고 되돌린다. **되돌릴 때 `git checkout` 을 쓰지 마라**(미커밋 산출물이 통째로 날아간다 —
+F10 실사고). 역방향 Edit 으로 되돌린다.
 
 **실패 메시지 (예상).** 없음 — **이 테스트는 처음부터 green 이어야 정상**이다.
 red 가 나오면 파생이 깨진 것이므로 `KeymapForm.tsx` 를 고친다.
