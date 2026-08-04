@@ -1,9 +1,16 @@
 // useCommandPalette 훅 테스트 — Cmd+K/Ctrl+K 토글 및 enabled(인증) 가드 검증
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, fireEvent, act } from '@testing-library/react'
 import { useCommandPalette, useCommandPaletteStore } from './useCommandPalette'
 
 describe('useCommandPalette', () => {
+  beforeEach(() => {
+    // 열림 상태를 소유하는 zustand 스토어는 모듈 전역 싱글턴이다 — 리셋하지 않으면
+    // 앞 테스트가 연 팔레트가 다음 테스트의 출발 상태가 돼 토글 단언이 뒤집힌다
+    // (ShellLayout.test 의 `useActiveProject.setState` 리셋과 같은 이유).
+    useCommandPaletteStore.setState({ open: false })
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })
