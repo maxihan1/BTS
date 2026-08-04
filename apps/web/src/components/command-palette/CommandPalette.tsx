@@ -42,6 +42,11 @@ const commandPaletteStrings = {
   noResults: '결과가 없습니다.',
   needsProject: '프로젝트를 먼저 선택하세요.',
   pickProject: '프로젝트 선택하러 가기',
+  // ★문구 출처는 `ActiveProjectGate`(같은 사실을 다루는 정본). 「먼저 선택하세요」와 **반드시**
+  // 달라야 한다 — 프로젝트가 0개인 것과 목록을 못 불러온 것은 서로 다른 사실이고,
+  // 후자의 탈출구는 프로젝트 목록이 아니라 재시도다.
+  projectLoadFailed: '프로젝트 목록을 불러올 수 없습니다.',
+  retryProjects: '다시 시도',
   allResults: '모든 결과 보기',
   allResultsWithCount: (total: number) => `모든 결과 보기 (${total}건)`,
   foundCount: (count: number) => `${count}건 찾음`,
@@ -65,6 +70,7 @@ const RESULT_ITEM_CLASS = 'pointer-coarse:min-h-[44px]'
 /** cmdk 항목 value — 이슈 키와 겹치지 않도록 콜론 접두사를 쓴다(이슈 키에는 콜론이 없다) */
 const ALL_RESULTS_ITEM_VALUE = 'palette:all-results'
 const PROJECT_PICKER_ITEM_VALUE = 'palette:pick-project'
+const RETRY_PROJECTS_ITEM_VALUE = 'palette:retry-projects'
 
 /**
  * 슬래시 명령을 입력하는 동안 검색 훅에 넘기는 고정 입력.
@@ -244,17 +250,40 @@ function PaletteResults({
   onSelectAllResults,
   onSelectProjectPicker,
 }: PaletteResultsProps): JSX.Element {
-  const { issueHit, totalCount, isSearching, needsProject, errorMessage, fullSearchQuery } = search
+  const {
+    issueHit,
+    totalCount,
+    isSearching,
+    needsProject,
+    isResolvingProject,
+    projectError,
+    errorMessage,
+    fullSearchQuery,
+  } = search
+
+  /**
+   * 프로젝트 쪽 사정으로 자유 텍스트 검색이 **성립하지 않는** 상태 3종.
+   *
+   * ★셋을 함께 묶는 이유. 어느 쪽이든 요청이 0건이라 "결과"에 대해 말할 자격이 없다.
+   * 하나라도 빠뜨리면 그 갈래에서 0건 안내나 탈출구가 새어나온다(코드리뷰 C-1·C-2).
+   */
+  const searchBlocked = needsProject || isResolvingProject || projectError !== null
 
   // 디바운스가 아직 안 끝난 구간(질의 미확정)도 "검색 중"으로 본다. 그러지 않으면 250ms 동안
   // 「결과가 없습니다.」가 번쩍인 뒤 결과가 들어와 사용자가 같은 자리를 두 번 읽게 된다.
-  const showSearching = !needsProject && (isSearching || fullSearchQuery === null)
+  // ★프로젝트 해소 중도 같은 자리에 넣는다 — 사용자 입장에서 "치는 중이고 아직 답이 없다"는
+  // 같은 상황이고, 여기서 빠지면 요청 0건인 채로 「결과가 없습니다.」가 켜진다.
+  const showSearching =
+    !needsProject &&
+    projectError === null &&
+    (isSearching || isResolvingProject || fullSearchQuery === null)
   const hasResult = issueHit !== null || similarResults.length > 0
-  const showEmptyNotice = !needsProject && errorMessage === null && !showSearching && !hasResult
+  const showEmptyNotice = !searchBlocked && errorMessage === null && !showSearching && !hasResult
   /**
    * 「모든 결과 보기」 노출 조건.
    *
-   * - 프로젝트 미해소면 검색 페이지도 같은 이유로 막히므로 탈출구가 되지 못한다.
+   * - 프로젝트가 성립하지 않으면(`searchBlocked`) 검색 페이지도 **같은 이유로** 막히므로
+   *   탈출구가 되지 못한다. 해소 중에 먼저 띄우면 아래 선택 가로채기까지 겹친다.
    * - ★**결과보다 먼저 마운트되면 안 된다.** `fullSearchQuery` 는 디바운스가 끝나는 즉시
    *   확정되므로, 그것만 보고 렌더하면 응답이 오기 전 이 항목이 **혼자** 마운트된다.
    *   cmdk 는 항목 등록 시 `n.current.value || W()` 로 **선택이 비어 있을 때만** 첫 항목을
@@ -266,8 +295,7 @@ function PaletteResults({
    *   보여 깜빡임을 막는다. 0건·검색 실패는 `!isSearching` 으로 들어와 **탈출구가 유지된다**
    *   (스펙 E11 — 전체 페이지엔 더 있을 수 있다).
    */
-  const showAllResults =
-    !needsProject && fullSearchQuery !== null && (hasResult || !isSearching)
+  const showAllResults = !searchBlocked && fullSearchQuery !== null && (hasResult || !isSearching)
 
   return (
     <>
@@ -306,6 +334,24 @@ function PaletteResults({
             onSelect={onSelectProjectPicker}
           >
             {commandPaletteStrings.pickProject}
+          </CommandItem>
+        </>
+      )}
+      {projectError !== null && (
+        <>
+          <p role="alert" className={NOTICE_CLASS}>
+            {commandPaletteStrings.projectLoadFailed}
+          </p>
+          {/* ★탈출구가 프로젝트 목록이 아니라 **재시도**다. 목록을 못 불러온 상태에서
+              목록으로 보내면 같은 실패를 한 번 더 보여줄 뿐이다. `<button>` 이 아니라
+              CommandItem 인 이유 — 팔레트는 키보드 전용으로 완결돼야 하는데(NFR2) 포커스는
+              입력창에 있고 방향키 이동은 cmdk 항목에만 걸린다. */}
+          <CommandItem
+            value={RETRY_PROJECTS_ITEM_VALUE}
+            className={RESULT_ITEM_CLASS}
+            onSelect={projectError.retry}
+          >
+            {commandPaletteStrings.retryProjects}
           </CommandItem>
         </>
       )}
@@ -419,7 +465,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
   const paletteInput =
     parsed.kind === 'not-command' ? resolveNonCommandInput(inputValue) : NO_SEARCH_INPUT
 
-  const showQuickLinks = parsed.kind === 'not-command' && inputValue === ''
+  // ★`inputValue === ''` 를 보지 않는다. 판별 레이어가 `"   "` 를 이미 `empty` 로 분류하는데
+  // 원문을 다시 보면 그 결과를 버리는 셈이라, 공백 하나에 팔레트가 통째로 빈 화면이 된다
+  // (E12 위반 — 한글 입력 중 앞 공백으로 쉽게 도달한다).
+  // `parsed.kind === 'not-command'` 는 남긴다 — 슬래시 입력 시 `paletteInput` 은 검색을
+  // 끄기 위한 고정값 `NO_SEARCH_INPUT`(=empty)이라 그것만 보면 `/goto` 에도 바로가기가 뜬다.
+  const showQuickLinks = parsed.kind === 'not-command' && paletteInput.kind === 'empty'
   const guidanceMessage = buildGuidanceMessage(parsed)
 
   /** 팔레트를 닫고 입력을 초기화한다(FR6) */

@@ -35,8 +35,30 @@ export interface PaletteSearchResult {
   readonly totalCount: number
   /** 검색 진행 중 여부 */
   readonly isSearching: boolean
-  /** 활성 프로젝트 미해소로 자유 텍스트 검색이 불가한 상태 (FR7·S8) */
+  /**
+   * 접근 가능한 프로젝트가 **0개**라 자유 텍스트 검색이 불가한 상태 (FR7·S8).
+   *
+   * ★해소 중(`isResolvingProject`)·조회 실패(`projectError`)는 여기 들어오지 않는다.
+   * 셋을 한 갈래로 묶으면 "고를 프로젝트가 없다"는 안내가 **사실이 아닌 상황**에도 떠서
+   * 사용자를 빈 프로젝트 목록으로 보낸다.
+   */
   readonly needsProject: boolean
+  /**
+   * 활성 프로젝트를 **아직 불러오는 중**이라 검색을 보내지 않은 상태 (E8).
+   *
+   * ★렌더 층이 이것을 모르면 요청을 한 건도 안 보낸 채 「결과가 없습니다.」라고
+   * 단정한다 — `needsProject: false` 만으로는 "검색 가능"과 구분되지 않기 때문이다.
+   */
+  readonly isResolvingProject: boolean
+  /**
+   * 활성 프로젝트 목록 조회 **실패** (E9). 실패가 아니면 null.
+   *
+   * `retry` 를 멤버 **안**에 실어 소비처가 재시도 배선을 빠뜨릴 수 없게 한다
+   * (`ResolvedActiveProject` 의 error 멤버와 같은 설계 — 별도 optional 필드면
+   * 잊어도 tsc 가 못 잡는다). '0개'와 '못 불러왔다'는 서로 다른 사실이고,
+   * 후자의 유일한 탈출구가 재시도다(`use-resolved-active-project.ts:69-70`).
+   */
+  readonly projectError: { readonly retry: () => void } | null
   /** 검색 실패 메시지. 없으면 null (FR13) */
   readonly errorMessage: string | null
   /** 「모든 결과 보기」가 넘길 AQL 질의. 자유 텍스트가 아니면 null */
@@ -61,6 +83,7 @@ export function usePaletteSearch(input: PaletteInput): PaletteSearchResult {
   const active = useResolvedActiveProject(urlProjectKey)
   const projectKey = active.status === 'ready' ? active.projectKey : null
 
+  const isFreeText = input.kind === 'free-text'
   const issueKey = input.kind === 'issue-key' ? input.issueKey : null
   const rawQuery =
     input.kind === 'issue-key' ? input.issueKey : input.kind === 'free-text' ? input.query : ''
@@ -108,8 +131,10 @@ export function usePaletteSearch(input: PaletteInput): PaletteSearchResult {
     // 그대로 총계로 보고돼 design 리뷰 2-2 가 지적한 오독을 코드가 만들어낸다.
     totalCount: searchQuery.data?.meta.page.totalElements ?? 0,
     isSearching: searchQuery.isFetching,
-    // 이슈키 경로는 프로젝트가 없어도 동작하므로 안내를 띄우지 않는다(ADR D-4)
-    needsProject: input.kind === 'free-text' && projectKey === null && active.status !== 'loading',
+    // 이슈키 경로는 프로젝트가 없어도 동작하므로 안내 3종 모두 자유 텍스트에만 세운다(ADR D-4)
+    needsProject: isFreeText && active.status === 'empty',
+    isResolvingProject: isFreeText && active.status === 'loading',
+    projectError: isFreeText && active.status === 'error' ? { retry: active.retry } : null,
     errorMessage: searchQuery.error !== null ? '검색에 실패했습니다.' : null,
     fullSearchQuery: aqlQuery,
   }
