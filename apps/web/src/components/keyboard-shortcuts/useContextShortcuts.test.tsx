@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   dispatchContextAction,
+  getRegisteredContexts,
   resolveActiveContext,
   useContextShortcuts,
   useContextShortcutsStore,
@@ -76,6 +77,27 @@ describe('resolveActiveContext — 활성 레이어 판정', () => {
     unmount()
 
     expect(resolveActiveContext()).toBe('app-shell')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 등록 집합 노출 — 판별이 정적 폴백표를 그대로 믿지 않게 하는 입력(E5).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getRegisteredContexts — 등록 집합 노출', () => {
+  it('등록된 컨텍스트 집합을 그대로 돌려준다', () => {
+    useContextShortcutsStore.getState().register('issue-detail', {})
+    useContextShortcutsStore.getState().register('app-shell', {})
+
+    expect(getRegisteredContexts()).toEqual(new Set(['issue-detail', 'app-shell']))
+  })
+
+  it('★해제된 컨텍스트는 즉시 빠진다 — 와이드 split 에서 전체화면 상세로 넘어가면 목록이 사라진다', () => {
+    const { unmount } = renderHook(() => useContextShortcuts('issue-list', {}))
+    renderHook(() => useContextShortcuts('issue-detail', {}))
+    unmount()
+
+    expect(getRegisteredContexts()).toEqual(new Set(['issue-detail']))
   })
 })
 
