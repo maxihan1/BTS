@@ -307,6 +307,76 @@ describe('CommandPalette — 실체 검색 (FR-UX-12 F4)', () => {
     })
   })
 
+  it('★결과가 있으면 기본 하이라이트가 첫 결과다 — 탈출구가 선택을 가로채지 않는다 (S4)', async () => {
+    // ★회귀 근거(qa 실측 + 브라우저 재현). 「모든 결과 보기」는 디바운스가 끝나는 즉시 확정되는
+    // fullSearchQuery 만 보고 **결과 도착 전에** 먼저 마운트됐다. cmdk 는 항목 등록 시
+    // `n.current.value || W()` 로 **선택이 비어 있을 때만** 첫 항목을 잡으므로(dist 실측),
+    // 먼저 마운트된 탈출구가 선택을 차지한 뒤에는 결과가 뒤늦게 붙어도 선택을 되찾지 못한다.
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+    const firstResult = await screen.findByRole('option', { name: /ATLAS-1/ })
+
+    await waitFor(() => {
+      expect(firstResult).toHaveAttribute('aria-selected', 'true')
+    })
+    expect(screen.getByRole('option', { name: /모든 결과 보기/ })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    )
+  })
+
+  it('★자유 텍스트를 치고 바로 Enter 하면 첫 결과의 이슈로 간다 — 검색 페이지가 아니다 (S4)', async () => {
+    // 하이라이트 좌표가 아니라 **사용자가 겪는 결과**를 잰다. 봉합 전에는 이 Enter 가
+    // /search 로 갔다(브라우저 실측 URL `/search?q=text ~ "회원가입"`).
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+    await screen.findByRole('option', { name: /ATLAS-1/ })
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /ATLAS-1/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+    })
+    await user.keyboard('{Enter}')
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-1' } })
+  })
+
+  it('★검색이 끝나기 전에는 「모든 결과 보기」를 먼저 띄우지 않는다 (선택 가로채기 차단 기전)', async () => {
+    // 위 두 단언의 **기전**을 고정한다. 탈출구가 결과보다 먼저 마운트되면 cmdk 가 그것을
+    // 선택으로 잡아버리므로, 결과와 **같은 커밋**에 함께 붙어야 첫 결과가 선택된다.
+    let searchStarted = false
+    let releaseSearch: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      releaseSearch = resolve
+    })
+    server.use(
+      http.post('/api/v1/search/aql', async () => {
+        searchStarted = true
+        await held
+        return HttpResponse.json(DEFAULT_SEARCH_PAGE)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+    await waitFor(() => {
+      expect(searchStarted).toBe(true)
+    })
+
+    // 응답을 붙잡아 둔 동안 — 안내만 있고 선택 가능한 항목은 0개여야 한다
+    expect(screen.getByText('검색 중…')).toBeInTheDocument()
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+
+    releaseSearch()
+    await screen.findByRole('option', { name: /모든 결과 보기/ })
+  })
+
   it('★결과와 「모든 결과 보기」 사이에 구분선이 실제로 그려진다 (design 리뷰 5-1)', async () => {
     // cmdk Separator 는 입력이 비어 있을 때만 그린다(`!alwaysRender && !d ? null` — dist 실측).
     // 결과 화면은 늘 입력이 차 있으므로 `alwaysRender` 를 빠뜨리면 **조용히 사라진다** —
