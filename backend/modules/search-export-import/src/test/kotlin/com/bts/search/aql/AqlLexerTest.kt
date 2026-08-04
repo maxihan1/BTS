@@ -20,6 +20,7 @@ import org.junit.jupiter.params.provider.ValueSource
  * - 공백/탭/개행 무시
  * - 닫히지 않은 따옴표 → 컬럼 위치 포함 예외
  * - 각 토큰의 컬럼(position) 정확성
+ * - 문자열 이스케이프(`\"` · `\\`) 및 프론트 `escapeAqlString` 과의 크로스 레이어 round-trip 계약
  */
 class AqlLexerTest {
     private fun lex(input: String): List<AqlToken> = AqlLexer(input).tokenize()
@@ -430,5 +431,143 @@ class AqlLexerTest {
         assertThat(tokens[0].type).isEqualTo(AqlTokenType.IDENT)
         assertThat(tokens[0].lexeme).isEqualTo("label")
         assertThat(tokens[2].lexeme).isEqualTo("android")
+    }
+
+    // ── 문자열 이스케이프 — 프론트 escapeAqlString 과의 크로스 레이어 계약 ──────────────
+    //
+    // ★상대 층: apps/web/src/lib/aql-text-query.ts (escapeAqlString · buildTextQuery)
+    //
+    // 왜 이 계약이 필요한가.
+    // 커맨드 팔레트(FR-UX-12 F4)는 사용자가 친 자유 텍스트를 `text ~ "<이스케이프>"` 로
+    // **프로그램이 조립**해 백엔드로 보낸다. 프론트 규칙은 2단계다 —
+    // 역슬래시를 먼저 `\\` 로, 그다음 큰따옴표를 `\"` 로 치환한다(순서를 바꾸면 이중 이스케이프).
+    // 렉서가 그 문법을 모르면 사용자가 따옴표 한 글자만 쳐도 문자열이 조기에 닫혀 400 이 난다.
+    //
+    // 이 결함은 FR-UX-12 가 만든 것이 아니라 드러낸 것이다. AQL 검색 화면(FR-SR-02/04)에서
+    // 사용자가 직접 `summary ~ "그가 말한 "버그""` 를 쳐도 동일하게 실패했다.
+    // → search-export-import BC 선재 결함 hot-fix.
+    //
+    // 판정식은 **원문 복원(round-trip)** 이다. 사용자가 친 것이 검색어로 그대로 도달해야 한다.
+    // 아래 각 테스트는 두 층을 함께 고정한다.
+    //   (1) 프론트 규칙을 옮긴 미러 함수 == 박제한 쿼리 원문   → 프론트가 바뀌면 깨진다
+    //   (2) 그 쿼리를 렉싱한 QUOTED_STRING lexeme == 사용자 원문 → 렉서가 바뀌면 깨진다
+
+    /**
+     * 프론트 `escapeAqlString`(apps/web/src/lib/aql-text-query.ts) 을 그대로 옮긴 미러.
+     *
+     * 역슬래시를 **먼저** 치환한다. 큰따옴표를 먼저 치환하면 그때 삽입한 역슬래시가
+     * 다음 단계에서 다시 이스케이프돼 이중 이스케이프가 된다.
+     */
+    private fun escapeAqlStringMirror(raw: String): String = raw.replace("\\", "\\\\").replace("\"", "\\\"")
+
+    /** 프론트 `buildTextQuery`(같은 파일) 미러 — 자유 텍스트를 전문검색 쿼리로 감싼다. */
+    private fun buildTextQueryMirror(raw: String): String = "text ~ \"" + escapeAqlStringMirror(raw) + "\""
+
+    /**
+     * 프론트가 조립한 쿼리를 렉싱하면 사용자 원문이 복원되는지 단언한다.
+     *
+     * @param userInput 사용자가 검색창에 친 원문.
+     * @param expectedQuery 프론트가 보내는 쿼리 원문(박제값). 미러 함수 결과와 일치해야 한다.
+     */
+    private fun assertAqlEscapeRoundTrip(
+        userInput: String,
+        expectedQuery: String,
+    ) {
+        assertThat(buildTextQueryMirror(userInput))
+            .describedAs("프론트 이스케이프 규칙이 바뀌었다 — apps/web/src/lib/aql-text-query.ts 확인")
+            .isEqualTo(expectedQuery)
+
+        val tokens = lex(expectedQuery)
+        assertThat(tokens).hasSize(3)
+        assertThat(tokens[0].lexeme).isEqualTo("text")
+        assertThat(tokens[1].type).isEqualTo(AqlTokenType.TILDE)
+        assertThat(tokens[2].type).isEqualTo(AqlTokenType.QUOTED_STRING)
+        assertThat(tokens[2].lexeme)
+            .describedAs("round-trip 실패 — 사용자가 친 것이 검색어로 그대로 도달해야 한다")
+            .isEqualTo(userInput)
+    }
+
+    @Test
+    fun `큰따옴표가 섞인 검색어가 원문 그대로 복원된다`() {
+        // 사용자: 로그인"버그  →  쿼리: text ~ "로그인\"버그"
+        assertAqlEscapeRoundTrip(
+            userInput = "로그인\"버그",
+            expectedQuery = "text ~ \"로그인\\\"버그\"",
+        )
+    }
+
+    @Test
+    fun `역슬래시가 섞인 검색어가 원문 그대로 복원된다`() {
+        // 사용자: a\b  →  쿼리: text ~ "a\\b"
+        assertAqlEscapeRoundTrip(
+            userInput = "a\\b",
+            expectedQuery = "text ~ \"a\\\\b\"",
+        )
+    }
+
+    @Test
+    fun `역슬래시와 큰따옴표가 연달아 섞인 검색어가 원문 그대로 복원된다`() {
+        // 사용자: a\"b  →  쿼리: text ~ "a\\\"b"
+        assertAqlEscapeRoundTrip(
+            userInput = "a\\\"b",
+            expectedQuery = "text ~ \"a\\\\\\\"b\"",
+        )
+    }
+
+    @Test
+    fun `윈도 경로처럼 역슬래시가 여러 개인 검색어가 원문 그대로 복원된다`() {
+        // 사용자: C:\Users\temp  →  쿼리: text ~ "C:\\Users\\temp"
+        assertAqlEscapeRoundTrip(
+            userInput = "C:\\Users\\temp",
+            expectedQuery = "text ~ \"C:\\\\Users\\\\temp\"",
+        )
+    }
+
+    @Test
+    fun `이스케이프된 따옴표를 소비한 뒤 다음 토큰의 position이 정확하다`() {
+        // text ~ "a\"b" AND status = open
+        // 0123456789...
+        //   "  → 7 (여는 따옴표)   AND → 14   status → 18   = → 25   open → 27
+        // 이스케이프는 2글자를 소비한다. 1글자만 전진하면 이후 모든 position 이 밀린다.
+        val tokens = lex("text ~ \"a\\\"b\" AND status = open")
+        assertThat(tokens).hasSize(7)
+        assertThat(tokens[2].type).isEqualTo(AqlTokenType.QUOTED_STRING)
+        assertThat(tokens[2].lexeme).isEqualTo("a\"b")
+        assertThat(tokens[2].position).isEqualTo(7)
+        assertThat(tokens[3].type).isEqualTo(AqlTokenType.KW_AND)
+        assertThat(tokens[3].position).isEqualTo(14)
+        assertThat(tokens[6].lexeme).isEqualTo("open")
+        assertThat(tokens[6].position).isEqualTo(27)
+    }
+
+    @Test
+    fun `이스케이프 대상이 아닌 역슬래시는 원문 두 글자를 그대로 보존한다`() {
+        // 사용자가 AQL 화면에 직접 친 `text ~ "C:\temp"` — \t 는 정의된 이스케이프가 아니다.
+        // 이스케이프 도입 전과 동일하게 `C:\temp` 로 남아야 한다(하위호환 · 검색어 원문 도달).
+        val tokens = lex("text ~ \"C:\\temp\"")
+        assertThat(tokens).hasSize(3)
+        assertThat(tokens[2].type).isEqualTo(AqlTokenType.QUOTED_STRING)
+        assertThat(tokens[2].lexeme).isEqualTo("C:\\temp")
+    }
+
+    @Test
+    fun `역슬래시로 끝나고 닫히지 않은 문자열은 인덱스 초과 없이 예외를 던진다`() {
+        // "abc\  — 마지막 역슬래시 뒤에 문자가 없다. 조용히 삼키거나 인덱스를 넘겨선 안 된다.
+        assertThatThrownBy { lex("\"abc\\") }
+            .isInstanceOf(AqlLexException::class.java)
+            .asInstanceOf(InstanceOfAssertFactories.type(AqlLexException::class.java))
+            .extracting(AqlLexException::position)
+            .isEqualTo(0)
+    }
+
+    @Test
+    fun `이스케이프된 따옴표로 끝나면 문자열이 닫히지 않은 것으로 본다`() {
+        // text ~ "abc\"  — 끝의 \" 는 리터럴 따옴표이므로 닫는 따옴표가 없다.
+        // 여는 따옴표는 인덱스 7.
+        assertThatThrownBy { lex("text ~ \"abc\\\"") }
+            .isInstanceOf(AqlLexException::class.java)
+            .asInstanceOf(InstanceOfAssertFactories.type(AqlLexException::class.java))
+            .extracting(AqlLexException::position)
+            .isEqualTo(7)
     }
 }
