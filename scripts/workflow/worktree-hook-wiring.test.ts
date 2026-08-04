@@ -51,8 +51,34 @@ const INPUTS = {
    * 훅 본체에서 pnpm 래퍼를 걷어내도 이 파일이 래퍼를 쓰면 커밋은 같은 자리에서 죽는다.
    * 실제로 2026-08-04 에 그 절반 봉합 상태가 났다 — 본체는 고쳐졌는데 이 파일이 그대로라
    * `apps/web/**` 를 건드리는 커밋만 골라서 죽는, 더 찾기 어려운 형태였다.
+   *
+   * ★이 파일은 **존재 자체가 배선**이다. 아래 `lintStagedWeb` 주석의 `hasMultipleConfigs`
+   * 설명을 반드시 함께 읽을 것 — 지우면 프론트 lint 의 cwd 가 조용히 루트로 되돌아간다.
    */
   lintStaged: { file: '.lintstagedrc.json', coveredBy: '.lintstagedrc.json' },
+  /**
+   * 프론트 lint 를 **`apps/web` cwd 에서** 돌리는 설정.
+   *
+   * ## 왜 따로 있나
+   *
+   * `apps/web/eslint.config.js` 의 예외 목록(PR22 원시 `<button>` 19파일)은 `'src/routes/…'`
+   * 같은 **상대 패턴**이다. ESLint flat config 는 상대 `files` 패턴을 **cwd 기준**으로 푼다.
+   * 루트에서 돌리면 `apps/web/src/routes/…` 와 안 맞아 예외가 **한 건도 적용되지 않고**,
+   * 그 19파일을 건드리는 커밋만 골라서 죽는다. CI(`eslint src`, cwd=`apps/web`)는 통과하므로
+   * 훅과 CI 가 서로 다른 판정을 하는, 또 하나의 두-목록 결함이었다 (2026-08-04 실측).
+   *
+   * ## ★지우면 안 되는 이유 — `hasMultipleConfigs`
+   *
+   * lint-staged 는 설정이 **2개 이상일 때만** 각 그룹을 설정 파일의 디렉토리에서 실행한다.
+   * 하나뿐이면 프로세스 cwd(=저장소 루트)를 그대로 쓴다 (`runAll.js` 의
+   * `groupCwd = hasExplicitCwd || !hasMultipleConfigs ? cwd : path.dirname(configPath)`).
+   * 즉 루트 설정을 지워 이 파일만 남기면 cwd 가 루트로 돌아가 **결함이 부활한다** —
+   * 2026-08-04 샌드박스 실측으로 확인했다. 두 파일은 함께 있어야 의미가 있다.
+   */
+  lintStagedWeb: {
+    file: 'apps/web/.lintstagedrc.json',
+    coveredBy: 'apps/web/.lintstagedrc.json',
+  },
   /** 층 1 — worktree 생성 시 훅을 연결하는 곳. */
   start: { file: '.claude/skills/bts-start/SKILL.md', coveredBy: '.claude/skills/**' },
   /** 층 2 — PR push 전 최종 점검이 판별식을 돌리는 곳. */
@@ -134,19 +160,29 @@ function hookBodyLines(): ExecutionLine[] {
 }
 
 /**
+ * 훅이 부르는 lint-staged 설정 **전부**. 루트 하나만 보면 절반 봉합이 통과한다.
+ *
+ * 설정이 여러 벌인 이유는 `INPUTS.lintStagedWeb` 주석 참조.
+ */
+const LINT_STAGED_INPUTS = [INPUTS.lintStaged, INPUTS.lintStagedWeb] as const;
+
+/** 설정이 2개 미만이면 lint-staged 가 설정 디렉토리 cwd 를 쓰지 않는다 (`hasMultipleConfigs`). */
+const MIN_LINT_STAGED_CONFIGS = 2;
+
+/**
  * lint-staged 설정이 커밋마다 실행하는 명령. 키는 glob 이고 값이 명령이다.
  *
  * JSON 은 주석을 못 다니, 이 파일이 왜 pnpm 을 못 쓰는지는 여기와 아래 실패 메시지에만 남는다.
  */
-function lintStagedCommands(): ExecutionLine[] {
-  const parsed: unknown = JSON.parse(read(INPUTS.lintStaged));
+function lintStagedCommands(input: { file: string }): ExecutionLine[] {
+  const parsed: unknown = JSON.parse(read(input));
   if (typeof parsed !== 'object' || parsed === null) return [];
 
   return Object.entries(parsed as Record<string, unknown>).flatMap(([glob, value]) => {
     const commands = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
     return commands
       .filter((c): c is string => typeof c === 'string')
-      .map((command) => ({ where: `${INPUTS.lintStaged.file}  "${glob}"`, command }));
+      .map((command) => ({ where: `${input.file}  "${glob}"`, command }));
   });
 }
 
@@ -158,7 +194,7 @@ function lintStagedCommands(): ExecutionLine[] {
  * 두 목록이 서로를 검사하지 않는 것이 이 저장소의 지배적 결함 양식이다.
  */
 function hookExecutionLines(): ExecutionLine[] {
-  return [...hookBodyLines(), ...lintStagedCommands()];
+  return [...hookBodyLines(), ...LINT_STAGED_INPUTS.flatMap(lintStagedCommands)];
 }
 
 /**
@@ -233,11 +269,14 @@ describe('worktree 훅 배선 정합', () => {
     }
 
     // 실행선 추출이 0건이면 pnpm 래퍼 단언이 통째로 공허해진다. 출처별로 따로 센다 —
-    // 합계만 보면 한쪽이 0 이어도 다른 쪽 개수에 가려진다.
-    for (const [source, lines] of [
+    // 합계만 보면 한쪽이 0 이어도 다른 쪽 개수에 가려진다. lint-staged 설정이 여러 벌이므로
+    // **설정 파일마다** 따로 센다. 한 벌이 비면 그 벌의 명령은 검사 대상에서 통째로 빠진다.
+    const executionSources: (readonly [string, ExecutionLine[]])[] = [
       [INPUTS.hook.file, hookBodyLines()],
-      [INPUTS.lintStaged.file, lintStagedCommands()],
-    ] as const) {
+      ...LINT_STAGED_INPUTS.map((input) => [input.file, lintStagedCommands(input)] as const),
+    ];
+
+    for (const [source, lines] of executionSources) {
       assert.ok(
         lines.length > 0,
         `${source} 에서 실행 명령을 0건 뽑았다 — 추출기가 고장났거나 파일 형식이 바뀌었다.\n` +
@@ -327,6 +366,32 @@ describe('worktree 훅 배선 정합', () => {
         `훅 본체와 lint-staged 설정을 함께 보는 이유. 한쪽만 고치면 나머지 한쪽이 같은 자리에서\n` +
         `죽인다. 설정 쪽은 'apps/web/**' 가 staged 인 커밋에서만 터져 더 늦게 발견된다.\n` +
         PNPM_WRAPPER_REMEDY,
+    );
+  });
+
+  /**
+   * ★ 프론트 lint 의 cwd 를 지키는 유일한 조건.
+   *
+   * lint-staged 는 **설정이 2개 이상일 때만** 각 그룹을 그 설정 파일의 디렉토리에서 돌린다.
+   * 하나로 줄면 프로세스 cwd(= 저장소 루트)로 되돌아가고, `apps/web/eslint.config.js` 의
+   * 상대 예외 패턴이 전부 어긋나 PR22 예외 19파일을 건드리는 커밋만 골라서 죽는다.
+   *
+   * 되돌아감이 **조용하다**는 것이 핵심이다 — 에러가 아니라 "예외가 안 걸리는" 형태라
+   * 다른 파일만 만지는 동안에는 아무도 눈치채지 못한다. 그래서 개수를 못박는다.
+   */
+  test('lint-staged 설정이 2벌 이상이다 (설정 디렉토리 cwd 의 성립 조건)', () => {
+    const present = LINT_STAGED_INPUTS.filter((input) =>
+      fs.existsSync(path.join(REPO_ROOT, input.file)),
+    ).map((input) => input.file);
+
+    assert.ok(
+      present.length >= MIN_LINT_STAGED_CONFIGS,
+      `lint-staged 설정이 ${present.length}벌뿐이다: ${present.join(', ') || '(없음)'}\n\n` +
+        `lint-staged 는 설정이 2벌 이상일 때만 각 그룹을 설정 파일의 디렉토리에서 실행한다\n` +
+        `(runAll.js: groupCwd = hasExplicitCwd || !hasMultipleConfigs ? cwd : dirname(configPath)).\n` +
+        `한 벌로 줄면 cwd 가 저장소 루트로 돌아가고, apps/web/eslint.config.js 의 상대 예외\n` +
+        `패턴('src/routes/…')이 어긋나 PR22 예외 파일을 건드리는 커밋이 전부 막힌다.\n` +
+        `루트 설정을 지우고 apps/web 것만 남기는 것이 정확히 이 함정이다 (2026-08-04 실측).`,
     );
   });
 
