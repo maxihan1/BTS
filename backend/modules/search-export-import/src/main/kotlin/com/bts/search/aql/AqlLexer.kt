@@ -157,10 +157,10 @@ class AqlLexer(private val input: String) {
                 sb.append(resolveEscape(input[pos + 1]))
                 advance() // '\' 소비
                 advance() // 이스케이프 대상 문자 소비
-                continue
+            } else {
+                sb.append(ch)
+                advance()
             }
-            sb.append(ch)
-            advance()
         }
         // 닫는 따옴표 없이 입력 끝
         throw AqlLexException(
