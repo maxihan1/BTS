@@ -1,6 +1,6 @@
 // 이슈 상세 페이지 권한별 제목/본문 편집 버튼 disabled 단위 테스트 (FR-PM-02 Task 5)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -16,7 +16,7 @@ import {
   resetIssueWatcherStore,
   setCurrentWatcherUserId,
 } from '@/mocks/issue-watcher-handlers'
-import { commentHandlers } from '@/mocks/comment-handlers'
+import { commentHandlers, resetCommentStore, seedComments } from '@/mocks/comment-handlers'
 import { labelHandlers } from '@/mocks/label-handlers'
 import { keymapHandlers } from '@/mocks/keymap-handlers'
 import { componentHandlers } from '@/mocks/component-handlers'
@@ -32,6 +32,8 @@ import {
   getRegisteredContexts,
   useContextShortcutsStore,
 } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import { useOpenModalRegistry } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
+import { commentStrings } from '@/i18n/ko'
 import { IssueDetailPage } from '@/routes/issues.$key'
 import { useRecentIssues, RECENT_ISSUES_STORAGE_KEY } from '@/hooks/use-recent-issues'
 
@@ -300,9 +302,23 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
       })
     }
 
+    /** 앨리스가 쓴 댓글 1건 — 삭제 확인 다이얼로그를 여는 데 필요하다 (C-1 재현) */
+    const aliceComment = {
+      id: '00000000-0000-4000-8000-0000000c0001',
+      authorId: aliceUser.userId,
+      body: '확인 다이얼로그 재현용 댓글',
+      bodyHtml: '<p>확인 다이얼로그 재현용 댓글</p>',
+      createdAt: '2026-08-04T00:00:00Z',
+      updatedAt: '2026-08-04T00:00:00Z',
+    }
+
     beforeEach(() => {
       assigneePatchBodies = []
       useContextShortcutsStore.setState({ handlers: {} })
+      // 모달 레지스트리는 모듈 전역이라 테스트 간 누수를 여기서 끊는다 —
+      // 남아 있으면 다음 테스트가 「모달이 열려 있다」로 시작해 단축키가 통째로 죽는다.
+      useOpenModalRegistry.setState({ openIds: [] })
+      resetCommentStore()
       useAuthStore.setState({ accessToken: mockAccessToken('alice'), user: aliceUser })
       resetIssueWatcherStore()
       setCurrentWatcherUserId(aliceUser.userId)
@@ -322,6 +338,7 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
 
     afterEach(() => {
       resetIssueWatcherStore()
+      resetCommentStore()
       useAuthStore.setState({ accessToken: null, user: null })
     })
 
@@ -352,6 +369,47 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
       await user.click(screen.getByLabelText('이슈 삭제'))
 
       expect(getRegisteredContexts().has('issue-detail')).toBe(false)
+    })
+
+    // ── ★C-1 — 게이트가 **열거**가 아니라 한 신호를 읽는가 (리뷰 봉합) ─────────
+    //
+    // 게이트가 모달 4종을 손으로 열거하던 시절, 댓글 삭제 확인 다이얼로그는 그 목록에
+    // 없었다. 입력 요소가 없어 `shouldIgnoreEvent` 도 통과하므로 확인 창이 떠 있는 채로
+    // `i` 가 **실제 담당자 PATCH 를 발행**했다. 아래 두 개가 그 재현이다.
+    // 모집단 자체(이 페이지가 렌더하는 모달 전수)는 `issue-detail-modal-gate.test.ts` 가 잰다.
+
+    /** 댓글 탭을 열고 앨리스 댓글의 삭제 확인 다이얼로그를 띄운다 */
+    async function openCommentDeleteDialog(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+      await pressKey('m') // 댓글 탭 전환 — 비활성 탭 콘텐츠는 Radix Tabs 가 언마운트한다
+      const section = await screen.findByRole('region', {
+        name: commentStrings.commentSectionTitle,
+      })
+      await user.click(await within(section).findByLabelText(commentStrings.commentDeleteButton))
+    }
+
+    it('T-F11-16 (E2 · C-1): 댓글 삭제 확인 다이얼로그가 열리면 issue-detail 을 등록하지 않는다', async () => {
+      seedComments('ATLAS-1', [aliceComment])
+      const user = userEvent.setup()
+      renderDetail()
+      await waitForDetailLoaded()
+
+      await openCommentDeleteDialog(user)
+
+      expect(getRegisteredContexts().has('issue-detail')).toBe(false)
+    })
+
+    it('T-F11-17 (E2 · C-1): 댓글 삭제 확인 중에는 i 가 담당자 PATCH 를 보내지 않는다', async () => {
+      // ★등록만 재고 끝내면 안 된다 — 이 결함의 피해는 「의도치 않은 쓰기」였다.
+      seedComments('ATLAS-1', [aliceComment])
+      const user = userEvent.setup()
+      renderDetail()
+      await waitForDetailLoaded()
+
+      await openCommentDeleteDialog(user)
+      await pressKey('i')
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(assigneePatchBodies).toEqual([])
     })
 
     // ── 포커스 이동 4종 (S1 · S3 · S4 · S5) ──────────────────────────────────
@@ -462,19 +520,47 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
       })
     })
 
+    it('T-F11-18 (E8 · C-2): i 연타가 같은 버전으로 요청을 두 번 보내지 않는다', async () => {
+      // ★한 tick 안에서 keydown 을 흘린다 — 브라우저 키 auto-repeat 가 만드는 모양 그대로다.
+      //   `isPending` 같은 **state** 가드로는 절대 못 막는다. 세 keydown 사이에는 렌더가
+      //   없어 같은 클로저가 재사용되고, 셋 다 `isPending === false` 를 본다.
+      //   가드가 없으면 같은 expectedVersion 으로 3건이 나가 1건 200 · 2건 409 →
+      //   원인 불명 「버전 충돌」 토스트만 2개 남는다.
+      renderDetail()
+      await waitForDetailLoaded()
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: 'i' })
+        fireEvent.keyDown(document, { key: 'i' })
+        fireEvent.keyDown(document, { key: 'i' })
+      })
+
+      await waitFor(() => {
+        expect(assigneePatchBodies.length).toBeGreaterThan(0)
+      })
+      expect(assigneePatchBodies).toEqual([
+        { assigneeId: aliceUser.userId, expectedVersion: issueAtlas1Fixture.version },
+      ])
+    })
+
     // ── ★필드 권한 두 목록 (FR8 · E6) ────────────────────────────────────────
     //
     // 백엔드 `buildNoneditableKeys` 가 restrictedSet 을 filter 하므로 **열람 숨김 필드는
     // 수정 금지 목록에 절대 오지 않는다.** 따라서 한 목록만 보는 구현은 다른 목록
     // 시나리오에서 그대로 뚫린다 — 두 시나리오를 각각 재야 가드가 증명된다.
 
-    it('T-F11-11 (FR8 · E6 · restrictedFields): 담당자가 열람 숨김이면 a 가 포커스를 옮기지 않는다', async () => {
+    it('T-F11-11 (FR8 · E6 · restrictedFields): 담당자가 열람 숨김이면 담당자 섹션 자체가 렌더되지 않는다', async () => {
+      // 🛑 여기를 「a 가 포커스를 옮기지 않는다」로 되돌리지 마라 — **재는 척만 하는 단언이다.**
+      //    `restrictedFields: ['assigneeId']` 면 IssueMetaPanel 이 담당자 섹션을 통째로
+      //    언마운트하므로 `assigneeSearchRef.current` 가 null 이고 `?.focus()` 는 가드가
+      //    있든 없든 무동작이다. 즉 `onFocusAssignee` 의 권한 가드를 지워도 초록이었다.
+      //    이 시나리오에서 실제로 재야 하는 것은 「화면에서 사라졌다」는 구조이고,
+      //    `a`/`i` 의 권한 가드는 바로 아래 T-F11-12 가 증언한다(그쪽은 요청 발행을 잰다).
       renderDetail({ ...issueAtlas1Fixture, restrictedFields: ['assigneeId'] })
       await waitForDetailLoaded()
 
-      await pressKey('a')
-
-      expect(document.body).toHaveFocus()
+      expect(screen.queryByTestId('assignee-section')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('사용자 검색')).not.toBeInTheDocument()
     })
 
     it('T-F11-12 (FR8 · E6 · restrictedFields): 담당자가 열람 숨김이면 i 가 할당 요청을 보내지 않는다', async () => {
@@ -518,6 +604,42 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
       await pressKey('e')
 
       expect(screen.queryByLabelText('제목 편집')).not.toBeInTheDocument()
+    })
+
+    it('T-F11-19 (FR8 · E6 · restrictedFields): 제목이 열람 숨김이면 e 가 편집을 열지 않는다', async () => {
+      // ★제목은 `restrictedFields` 와 무관하게 **항상 렌더된다** — 담당자·라벨처럼 섹션이
+      //   사라져 주지 않는다. 그래서 이 시나리오를 막는 것은 `canUseField` 의 `isFieldHidden`
+      //   한 줄뿐이고, 이 테스트가 그 한 줄의 유일한 증인이다(위 T-F11-15 는 다른 목록을 잰다).
+      renderDetail({ ...issueAtlas1Fixture, restrictedFields: ['summary'] })
+      await waitForDetailLoaded()
+
+      await pressKey('e')
+
+      expect(screen.queryByLabelText('제목 편집')).not.toBeInTheDocument()
+    })
+
+    // ── e 재입력 (리뷰 NIT-6) ────────────────────────────────────────────────
+
+    it('T-F11-20 (NIT-6): 편집 중 e 재입력이 입력하던 제목을 되돌리지 않는다', async () => {
+      // 입력창 안에서는 `shouldIgnoreEvent` 가 `e` 를 삼키므로, blur 를 거쳐야만 도달하는
+      // 좁은 경로다. 그래도 사용자가 쓰던 글이 조용히 사라지는 것은 값이 크다 —
+      // `handleEditStart()` 가 `setEditSummary(issue.summary)` 로 통째로 덮기 때문이다.
+      const user = userEvent.setup()
+      renderDetail()
+      await waitForDetailLoaded()
+
+      await pressKey('e')
+      const input = await screen.findByLabelText('제목 편집')
+      await user.clear(input)
+      await user.type(input, '고쳐 쓰던 제목')
+      fireEvent.blur(input) // 입력창 밖 클릭을 흉내 낸다
+
+      await pressKey('e')
+
+      expect(screen.getByLabelText('제목 편집')).toHaveValue('고쳐 쓰던 제목')
+      // 되돌리지 않는 것만으로는 「아무 일도 안 일어났다」와 구분되지 않는다 —
+      // 포커스를 입력창으로 되돌려 `a`/`l`/`m` 과 같은 「그 컨트롤로 간다」 규칙을 지킨다.
+      expect(screen.getByLabelText('제목 편집')).toHaveFocus()
     })
   })
 })
