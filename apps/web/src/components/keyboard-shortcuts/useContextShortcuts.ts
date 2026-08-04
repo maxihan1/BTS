@@ -221,6 +221,38 @@ export function dispatchContextAction(hit: ContextShortcutHit): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 최신 핸들러를 가리키는 **안정 래퍼**를 만든다 — 등록 객체는 마운트 때 한 번만 만들어지되
+ * 호출은 ref 를 그 자리에서 읽어 항상 최신 함수로 간다(stale 클로저 방지).
+ *
+ * ★반환 타입이 `Required<…>` 인 것이 이 함수의 요점이다. `ContextShortcutHandlers` 에 동작을
+ * 추가하고 여기 한 줄을 빠뜨리면 **컴파일 에러**가 난다. 그 누락은 런타임에 가장 찾기 힘든
+ * 형태로 나타나기 때문이다 — 판별도 `preventDefault` 도 dispatch 도 전부 통과하는데, 등록
+ * 객체에 그 키가 없어 화면 핸들러만 영영 안 불린다(F10 이 4종을 일일이 나열한 이유이고,
+ * F11 이 8종을 더할 때 실제로 밟기 쉬운 지점이었다).
+ *
+ * @param ref 매 커밋 후 최신 핸들러로 갱신되는 ref
+ * @returns 동작 전종을 채운 등록용 핸들러 객체
+ */
+function mirrorLatestHandlers(ref: {
+  readonly current: ContextShortcutHandlers
+}): Required<ContextShortcutHandlers> {
+  return {
+    onCursorMove: (delta) => ref.current.onCursorMove?.(delta),
+    onOpenCurrent: () => ref.current.onOpenCurrent?.(),
+    onToggleDetailPane: () => ref.current.onToggleDetailPane?.(),
+    onToggleSidebar: () => ref.current.onToggleSidebar?.(),
+    onFocusAssignee: () => ref.current.onFocusAssignee?.(),
+    onAssignToMe: () => ref.current.onAssignToMe?.(),
+    onFocusComment: () => ref.current.onFocusComment?.(),
+    onEditTitle: () => ref.current.onEditTitle?.(),
+    onFocusLabels: () => ref.current.onFocusLabels?.(),
+    onToggleFavorite: () => ref.current.onToggleFavorite?.(),
+    onToggleWatch: () => ref.current.onToggleWatch?.(),
+    onOpenCommandPalette: () => ref.current.onOpenCommandPalette?.(),
+  }
+}
+
+/**
  * 이 화면의 컨텍스트 단축키 핸들러를 등록하고, 언마운트 시 해제한다.
  *
  * 핸들러 객체는 매 렌더 새로 만들어지는 것이 보통이라(인라인 화살표 함수)
@@ -264,20 +296,7 @@ export function useContextShortcuts(
       unregister(context)
       return undefined
     }
-    register(context, {
-      onCursorMove: (delta) => handlersRef.current.onCursorMove?.(delta),
-      onOpenCurrent: () => handlersRef.current.onOpenCurrent?.(),
-      onToggleDetailPane: () => handlersRef.current.onToggleDetailPane?.(),
-      onToggleSidebar: () => handlersRef.current.onToggleSidebar?.(),
-      onFocusAssignee: () => handlersRef.current.onFocusAssignee?.(),
-      onAssignToMe: () => handlersRef.current.onAssignToMe?.(),
-      onFocusComment: () => handlersRef.current.onFocusComment?.(),
-      onEditTitle: () => handlersRef.current.onEditTitle?.(),
-      onFocusLabels: () => handlersRef.current.onFocusLabels?.(),
-      onToggleFavorite: () => handlersRef.current.onToggleFavorite?.(),
-      onToggleWatch: () => handlersRef.current.onToggleWatch?.(),
-      onOpenCommandPalette: () => handlersRef.current.onOpenCommandPalette?.(),
-    })
+    register(context, mirrorLatestHandlers(handlersRef))
     return () => unregister(context)
   }, [context, enabled])
 }
