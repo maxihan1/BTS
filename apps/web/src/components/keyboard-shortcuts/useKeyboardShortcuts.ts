@@ -12,7 +12,11 @@ import {
   type ShortcutAction,
 } from './shortcuts'
 import { resolveContextKeydown } from './context-shortcuts'
-import { dispatchContextAction, resolveActiveContext } from './useContextShortcuts'
+import {
+  dispatchContextAction,
+  getRegisteredContexts,
+  resolveActiveContext,
+} from './useContextShortcuts'
 
 /** useKeyboardShortcuts 반환값 */
 interface UseKeyboardShortcutsResult {
@@ -174,7 +178,11 @@ function attachShortcutListener(
     // 움직인다(E7).
     if (ctx.helpOpenRef.current) return
 
-    const contextHit = resolveContextKeydown(e.key, resolveActiveContext())
+    const contextHit = resolveContextKeydown(
+      e.key,
+      resolveActiveContext(),
+      getRegisteredContexts(),
+    )
     if (contextHit === null) return
 
     // 후행 bubble 리스너(예: `usePaneEscapeClose`)가 `defaultPrevented` 로 걸러낼

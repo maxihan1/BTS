@@ -12,10 +12,11 @@
  * 레이어는 **중첩**된다 — `issue-list` 화면에서는 `app-shell` 항목도 함께 발화한다.
  * 판별은 좁은 레이어부터 훑는다([CONTEXT_LAYERS]).
  *
+ * - `issue-detail`: 이슈 상세 — 상세 액션(담당자·댓글·라벨 등)
  * - `issue-list`: 이슈 목록(`/issues`) — 목록 항법 `j`/`k`/`o`/`t`
  * - `app-shell`: 인증된 셸이 렌더된 모든 화면 — 사이드바 토글 `[`
  */
-export type ShortcutContext = 'issue-list' | 'app-shell'
+export type ShortcutContext = 'issue-detail' | 'issue-list' | 'app-shell'
 
 /**
  * 컨텍스트 단축키가 발화했을 때 호출부가 실행할 동작 — 판별 유니온.
@@ -98,6 +99,10 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
  * 반대로 `app-shell` 만 활성인 화면에서 `j` 는 발화하지 않는다(E12).
  */
 const CONTEXT_LAYERS: Record<ShortcutContext, readonly ShortcutContext[]> = {
+  // ★상세가 활성이어도 목록 항법이 살아 있어야 한다. 와이드 split view 는 목록과
+  // 상세가 **동시 마운트**라(`issues.index.tsx` 우측 페인), 상세를 좁다는 이유로 단독
+  // 활성으로 두면 F10 이 만든 `j`/`k` 가 그 화면에서만 죽는다(S9).
+  'issue-detail': ['issue-detail', 'issue-list', 'app-shell'],
   'issue-list': ['issue-list', 'app-shell'],
   'app-shell': ['app-shell'],
 }
@@ -129,10 +134,19 @@ export type ContextShortcutHit = {
  *
  * @param key keydown 이벤트의 `e.key` (수정자·IME 가드는 호출부가 선행 처리)
  * @param active 현재 활성 컨텍스트
+ * @param registered 지금 핸들러를 등록한 레이어 집합 — 폴백 대상을 여기로 좁힌다(E5)
  * @returns 소유 레이어 + 동작. 등록되지 않은 키이거나 컨텍스트가 맞지 않으면 `null`
  */
-export function resolveContextKeydown(key: string, active: ShortcutContext): ContextShortcutHit {
+export function resolveContextKeydown(
+  key: string,
+  active: ShortcutContext,
+  registered: ReadonlySet<ShortcutContext>,
+): ContextShortcutHit {
   for (const layer of CONTEXT_LAYERS[active]) {
+    // ★등록되지 않은 레이어는 건너뛴다. 정적 폴백표만 보면 전체화면 상세에서 `j` 가
+    // 판별에 성공해 `preventDefault` 까지 한 뒤 dispatch 에서 핸들러가 없어 아무 일도
+    // 일어나지 않는다 — 브라우저 기본 동작만 사라지는 ADR D-5-a 의 그 형태다(E5).
+    if (!registered.has(layer)) continue
     const found = CONTEXT_SHORTCUTS.find(
       (shortcut) => shortcut.context === layer && shortcut.key === key,
     )

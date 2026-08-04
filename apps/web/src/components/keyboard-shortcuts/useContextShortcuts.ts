@@ -74,8 +74,9 @@ export const useContextShortcutsStore = create<ContextShortcutsState>((set) => (
  * 우선순위 밖으로 떨어져 영영 활성이 되지 않는다.
  */
 const CONTEXT_PRIORITY: Record<ShortcutContext, number> = {
-  'issue-list': 0,
-  'app-shell': 1,
+  'issue-detail': 0,
+  'issue-list': 1,
+  'app-shell': 2,
 }
 
 /** 좁은 순으로 정렬된 컨텍스트 목록 — 판정에서 앞에서부터 훑는다 */
@@ -86,14 +87,24 @@ const CONTEXTS_NARROWEST_FIRST = (Object.keys(CONTEXT_PRIORITY) as ShortcutConte
 /**
  * 등록된 것 중 **가장 좁은** 컨텍스트를 활성으로 판정한다.
  *
- * 아무것도 등록되지 않았으면 `app-shell` 이 기본값이다 — 셸이 미등록이어도
- * `[` 판별 자체는 성립해야 하기 때문.
+ * 아무것도 등록되지 않았으면 `app-shell` 로 떨어진다 — 이 폴백값만으로 키가 발화하지는
+ * 않는다. 판별은 [getRegisteredContexts] 도 함께 보므로 셸이 미등록이면 `[` 역시
+ * `null` 이 된다(E5).
  *
  * @returns 현재 활성 컨텍스트
  */
 export function resolveActiveContext(): ShortcutContext {
   const { handlers } = useContextShortcutsStore.getState()
   return CONTEXTS_NARROWEST_FIRST.find((context) => handlers[context] !== undefined) ?? 'app-shell'
+}
+
+/**
+ * 현재 등록된 컨텍스트 집합. 판별이 정적 폴백표를 그대로 믿지 않게 하는 입력이다(E5).
+ *
+ * @returns 핸들러가 등록돼 있는 레이어 집합
+ */
+export function getRegisteredContexts(): ReadonlySet<ShortcutContext> {
+  return new Set(Object.keys(useContextShortcutsStore.getState().handlers) as ShortcutContext[])
 }
 
 /**
