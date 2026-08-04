@@ -12,11 +12,7 @@ import {
   type ShortcutAction,
 } from './shortcuts'
 import { resolveContextKeydown } from './context-shortcuts'
-import {
-  dispatchContextAction,
-  getRegisteredContexts,
-  resolveActiveContext,
-} from './useContextShortcuts'
+import { dispatchContextAction, readContextSnapshot } from './useContextShortcuts'
 
 /** useKeyboardShortcuts 반환값 */
 interface UseKeyboardShortcutsResult {
@@ -178,11 +174,10 @@ function attachShortcutListener(
     // 움직인다(E7).
     if (ctx.helpOpenRef.current) return
 
-    const contextHit = resolveContextKeydown(
-      e.key,
-      resolveActiveContext(),
-      getRegisteredContexts(),
-    )
+    // 활성 레이어와 등록 집합은 **한 스냅샷**으로 읽는다 — 따로 읽으면 그 사이의
+    // 등록 해제가 둘을 어긋나게 만들어 판별이 조용히 죽는다(readContextSnapshot 주석).
+    const { active, registered } = readContextSnapshot()
+    const contextHit = resolveContextKeydown(e.key, active, registered)
     if (contextHit === null) return
 
     // 후행 bubble 리스너(예: `usePaneEscapeClose`)가 `defaultPrevented` 로 걸러낼

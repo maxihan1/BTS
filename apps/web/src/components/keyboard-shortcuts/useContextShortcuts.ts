@@ -84,18 +84,44 @@ const CONTEXTS_NARROWEST_FIRST = (Object.keys(CONTEXT_PRIORITY) as ShortcutConte
   (a, b) => CONTEXT_PRIORITY[a] - CONTEXT_PRIORITY[b],
 )
 
+/** 판별 한 번이 필요로 하는 두 값 — 활성 레이어와 등록 집합 */
+export interface ContextSnapshot {
+  /** 등록된 것 중 가장 좁은 레이어. 아무것도 없으면 `app-shell` */
+  readonly active: ShortcutContext
+  /** 핸들러가 등록돼 있는 레이어 집합 — 폴백 대상을 여기로 좁힌다(E5) */
+  readonly registered: ReadonlySet<ShortcutContext>
+}
+
+/**
+ * 활성 레이어와 등록 집합을 **스토어 한 번 읽기로** 함께 계산한다.
+ *
+ * ★따로 읽으면 두 값이 서로 다른 시점의 스토어를 볼 수 있다. 두 읽기 사이에 등록 해제가
+ * 커밋되면(라우팅 중 상세 언마운트 등) `active` 는 이미 사라진 레이어를 가리키는데
+ * `registered` 에는 그게 없어, 판별이 폴백 첫 칸부터 건너뛰고 키가 조용히 죽는다.
+ * 한 번 읽어 둘을 함께 만들면 그 어긋난 짝이 성립할 수 없다.
+ *
+ * @returns 같은 시점의 활성 레이어 + 등록 집합
+ */
+export function readContextSnapshot(): ContextSnapshot {
+  const registered = new Set(
+    Object.keys(useContextShortcutsStore.getState().handlers) as ShortcutContext[],
+  )
+  return {
+    active: CONTEXTS_NARROWEST_FIRST.find((context) => registered.has(context)) ?? 'app-shell',
+    registered,
+  }
+}
+
 /**
  * 등록된 것 중 **가장 좁은** 컨텍스트를 활성으로 판정한다.
  *
  * 아무것도 등록되지 않았으면 `app-shell` 로 떨어진다 — 이 폴백값만으로 키가 발화하지는
- * 않는다. 판별은 [getRegisteredContexts] 도 함께 보므로 셸이 미등록이면 `[` 역시
- * `null` 이 된다(E5).
+ * 않는다. 판별은 등록 집합도 함께 보므로 셸이 미등록이면 `[` 역시 `null` 이 된다(E5).
  *
  * @returns 현재 활성 컨텍스트
  */
 export function resolveActiveContext(): ShortcutContext {
-  const { handlers } = useContextShortcutsStore.getState()
-  return CONTEXTS_NARROWEST_FIRST.find((context) => handlers[context] !== undefined) ?? 'app-shell'
+  return readContextSnapshot().active
 }
 
 /**
@@ -104,7 +130,7 @@ export function resolveActiveContext(): ShortcutContext {
  * @returns 핸들러가 등록돼 있는 레이어 집합
  */
 export function getRegisteredContexts(): ReadonlySet<ShortcutContext> {
-  return new Set(Object.keys(useContextShortcutsStore.getState().handlers) as ShortcutContext[])
+  return readContextSnapshot().registered
 }
 
 /**
