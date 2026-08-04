@@ -14,7 +14,7 @@
 //   S9.  이슈키 즉시매칭   — 소문자 `atlas-1` → 「이슈」 그룹 정확일치 + Enter로 이동
 //   S10. 자유 텍스트 검색  — 디바운스 후 결과 목록 렌더
 //   S11. 모든 결과 보기    — 팔레트가 만든 감싼 AQL 그대로 검색 페이지로 이동
-//   S12. 키보드 전용 완결  — Home+방향키+Enter로 검색 결과 열기(마우스 클릭 0)
+//   S12. 키보드 전용 완결  — 첫 결과 기본 하이라이트 + 방향키+Enter로 결과 열기(마우스 클릭 0)
 //   S13. 슬래시 무회귀     — `/goto ATLAS-1`이 이슈키 검색 경로로 새지 않음 (FR2 판별 순서)
 //   S14. 결과 0건          — 안내 표시 + 팔레트 유지 (FR12·E11)
 //
@@ -400,20 +400,23 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
   // ───────────────────────────────────────────────────────────────────────────
   // S12. 키보드 전용 완결 — NFR2
   //
-  // Given  alice로 로그인, 팔레트 열림, 검색 결과 렌더 완료
-  // When   `Home`(첫 항목) → `ArrowDown` 1회 → `Enter`
+  // Given  alice로 로그인, 팔레트 열림, 검색 결과 렌더 완료(첫 결과가 기본 하이라이트)
+  // When   `ArrowDown` 1회 → `Enter`
   // Then   2번째 검색 결과의 이슈 상세로 이동한다(마우스 클릭 0)
   //
   // NFR2 대체 테스트가 빈 입력의 QUICK_LINKS를, 이 테스트가 **검색 결과**를 커버해
   // 둘이 합쳐 "팔레트는 키보드만으로 완결된다"를 검증한다.
   //
-  // ★왜 `Home`으로 시작하는가 (2026-08-04 실측).
-  // 자유 텍스트는 250ms 디바운스 뒤에 조회되는데 「모든 결과 보기」는 질의가 확정되는
-  // 즉시(=결과 도착 **전**) 렌더된다. cmdk는 그 순간의 유일한 항목을 하이라이트하고,
-  // 뒤늦게 결과가 붙어도 유효한 선택은 유지한다. 그래서 검색이 끝난 시점의 기본
-  // 하이라이트는 목록 **맨 아래** 「모든 결과 보기」다. 출발점을 `Home`으로 못 박지 않으면
-  // ↓ 1회의 도착지가 확정되지 않는다. 이 하이라이트 위치 자체는 별건 보고 대상이며,
-  // 여기서 그 좌표를 단언하면 고쳐질 때 이 테스트가 함께 깨진다 — 그래서 단언하지 않는다.
+  // ★출발점(첫 결과 하이라이트)을 단언하는 이유 — 이 자리에 있던 결함의 회귀 가드다.
+  // 「모든 결과 보기」가 질의 확정 즉시(=결과 도착 **전**) 마운트되면 cmdk는 그 순간의
+  // 유일한 항목을 선택으로 잡고, 뒤늦게 붙는 결과는 선택을 되찾지 못한다. 그러면 기본
+  // 하이라이트가 목록 맨 아래에 앉아 Enter가 첫 결과 대신 검색 페이지로 가고, `loop`
+  // 미지정이라 `ArrowDown`이 무동작이 되어 **키보드로 결과에 닿는 길 자체가 막혔다**
+  // (봉합 전 브라우저 실측: ↓ 2회 무동작, ↑ 1회로만 마지막 결과 도달).
+  // 89835ecfe가 `showAllResults`에 `(hasResult || !isSearching)`을 더해 탈출구를 결과와
+  // **같은 커밋**에 붙이는 것으로 봉합했다. 그 조건을 되돌리면 아래 단언이 즉시 red다
+  // (뮤테이션 실측). jsdom 단위 가드가 이미 있지만 이 결함의 원인은 디바운스·마운트 순서·
+  // cmdk 스케줄이 얽힌 **실브라우저 타이밍**이라 그 층에도 증인을 남긴다.
   // ───────────────────────────────────────────────────────────────────────────
   test('S12 키보드만으로 검색 결과를 연다(마우스 클릭 0)', async ({ page }) => {
     await loginAndWaitForRootReady(page)
@@ -421,15 +424,12 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
 
     await dialog.getByRole('combobox').fill('로그인')
 
-    // Given. 결과가 도착한 뒤에 키 조작을 시작한다(항목 마운트가 하이라이트를 흔들지 않도록)
+    // Given. 결과가 도착하면 **첫 결과**가 기본 하이라이트 — ↓ 1회의 도착지를 확정하는
+    // 출발점이자 위 결함의 회귀 가드다(toHaveAttribute가 결과 도착까지 자동 대기한다)
     const firstResult = dialog.getByRole('option', { name: DEFAULT_SEARCH_RESULT_KEYS[0] })
-    await expect(firstResult).toBeVisible()
-
-    // When. Home = 첫 항목으로 — 출발점을 확정한다
-    await page.keyboard.press('Home')
     await expect(firstResult).toHaveAttribute('aria-selected', 'true')
 
-    // When2. ↓ 1회 — 하이라이트가 2번째 결과로 내려간다
+    // When. ↓ 1회 — 하이라이트가 2번째 결과로 내려간다
     const secondResult = dialog.getByRole('option', { name: DEFAULT_SEARCH_RESULT_KEYS[1] })
     await page.keyboard.press('ArrowDown')
     await expect(secondResult).toHaveAttribute('aria-selected', 'true')
