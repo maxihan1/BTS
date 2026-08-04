@@ -108,8 +108,9 @@ export const FavoriteButton = ({ targetType, targetId, focusRef }: FavoriteButto
       size="icon"
       aria-label={ariaLabel}
       aria-pressed={isFavorited}
-      // 단축키 `s`의 존재를 아는 경로가 `?` 도움말 모달뿐이라 스크린리더에 표준 속성으로도
-      // 알린다 (FR-UX-10 F11). 시각 툴팁은 만들지 않는다 — 신규 UI 0 제약.
+      // 단축키 존재를 알 경로가 `?` 도움말 모달뿐이라 표준 속성으로도 알린다.
+      // 키 문자 정본은 CONTEXT_SHORTCUTS(FR-UX-10 F11) — 재배치하면 여기도 같이 고친다.
+      // 시각 툴팁은 만들지 않는다(신규 UI 0 제약 + 툴팁은 키보드 사용자에게 닿지 않는다).
       aria-keyshortcuts={focusRef !== undefined ? 's' : undefined}
       disabled={isMutating}
       onClick={handleClick}
