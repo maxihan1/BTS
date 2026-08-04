@@ -1,5 +1,5 @@
 {
   "apps/web/**/*.{ts,tsx,js,jsx}": [
-    "pnpm --filter @bts/web exec eslint --max-warnings 0 --cache"
+    "apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.js --max-warnings 0 --cache"
   ]
 }
