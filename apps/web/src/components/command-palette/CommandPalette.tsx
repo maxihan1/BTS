@@ -86,18 +86,28 @@ interface CommandPaletteProps {
   readonly onOpenChange: (open: boolean) => void
 }
 
-/** PaletteResults props — 훅 반환값 한 덩어리 + 선택 콜백 3종 */
-interface PaletteResultsProps {
-  /** usePaletteSearch 반환값 그대로 */
-  readonly search: PaletteSearchResult
-  /** 정확일치와 겹치는 항목을 걷어낸 유사일치 목록 */
-  readonly similarResults: readonly PaletteResult[]
+/** 결과 영역이 부모에게서 받는 선택 콜백 3종 */
+interface PaletteSelectHandlers {
   /** 결과 한 줄 선택 — 이슈 상세로 이동 */
   readonly onSelectIssue: (issueKey: string) => void
   /** 「모든 결과 보기」 선택 — 검색 페이지로 같은 AQL 전달 */
   readonly onSelectAllResults: (aqlQuery: string) => void
   /** 「프로젝트 선택하러 가기」 선택 — 프로젝트 목록으로 이동 */
   readonly onSelectProjectPicker: () => void
+}
+
+/** PaletteResults props — 훅 반환값 한 덩어리 + 선택 콜백 3종 */
+interface PaletteResultsProps extends PaletteSelectHandlers {
+  /** usePaletteSearch 반환값 그대로 */
+  readonly search: PaletteSearchResult
+  /** 정확일치와 겹치는 항목을 걷어낸 유사일치 목록 */
+  readonly similarResults: readonly PaletteResult[]
+}
+
+/** PaletteSearchSection props */
+interface PaletteSearchSectionProps extends PaletteSelectHandlers {
+  /** palette-input 의 판별 결과 */
+  readonly input: PaletteInput
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -309,6 +319,50 @@ function PaletteResults({
   )
 }
 
+/**
+ * 검색 훅을 소유하는 영역 — **다이얼로그 안쪽**에 둔다.
+ *
+ * ★왜 부모(CommandPalette)가 아니라 여기서 `usePaletteSearch` 를 부르는가.
+ * `CommandPalette` 는 인증만 되면 `RootLayout` 에 **항상 마운트**돼 있고 `open` 은 prop 일
+ * 뿐이다. 훅을 부모에 두면 팔레트가 닫혀 있는 내내 프로젝트 목록 조회·디바운스 타이머가
+ * 전 페이지에서 돌아간다. 실제로 그것이 부팅 직후 렌더/네트워크 순서를 밀어
+ * `useKeyboardShortcuts` 의 리스너 재등록 타이밍과 겹치면서 leader 키(`g` `i`) 시퀀스를
+ * 지우는 회귀를 만들었다(e2e `keyboard-shortcuts.spec.ts` S3a 실측).
+ * cmdk 의 `Command.Dialog` 는 Radix Portal 이라 닫힌 동안 자식을 아예 렌더하지 않는다 —
+ * 훅을 이 안으로 내리면 **닫힌 팔레트의 비용이 0** 이 된다.
+ */
+function PaletteSearchSection({
+  input,
+  onSelectIssue,
+  onSelectAllResults,
+  onSelectProjectPicker,
+}: PaletteSearchSectionProps): JSX.Element {
+  const search = usePaletteSearch(input)
+  const similarResults = dedupeAgainstIssueHit(search.issueHit, search.results)
+  const visibleResultCount = (search.issueHit === null ? 0 : 1) + similarResults.length
+  const showResults = input.kind !== 'empty'
+
+  return (
+    <>
+      {showResults && (
+        <PaletteResults
+          search={search}
+          similarResults={similarResults}
+          onSelectIssue={onSelectIssue}
+          onSelectAllResults={onSelectAllResults}
+          onSelectProjectPicker={onSelectProjectPicker}
+        />
+      )}
+      {/* ★결과 도착은 시각 변화뿐이라 화면낭독기에는 무음이다. 개수를 live region 으로 알린다.
+          팔레트가 열려 있는 동안 **항상 마운트**해 두고 문구만 갈아끼운다 — 결과가 생길 때
+          영역째 새로 붙이면 낭독기가 삽입을 놓칠 수 있다. */}
+      <p aria-live="polite" className="sr-only">
+        {showResults ? buildResultAnnouncement(search, visibleResultCount) : ''}
+      </p>
+    </>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -347,15 +401,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
 
   const parsed = parseCommand(inputValue)
   // ★순서가 계약이다(FR2). 슬래시 판별이 먼저 끝나야 `/goto ATLAS-1`이 이슈키로 새지 않는다.
-  const paletteInput = parsed.kind === 'not-command' ? resolveNonCommandInput(inputValue) : NO_SEARCH_INPUT
-  const search = usePaletteSearch(paletteInput)
-  const similarResults = dedupeAgainstIssueHit(search.issueHit, search.results)
-  const visibleResultCount = (search.issueHit === null ? 0 : 1) + similarResults.length
+  const paletteInput =
+    parsed.kind === 'not-command' ? resolveNonCommandInput(inputValue) : NO_SEARCH_INPUT
 
   const showQuickLinks = parsed.kind === 'not-command' && inputValue === ''
-  const showResults = paletteInput.kind !== 'empty'
   const guidanceMessage = buildGuidanceMessage(parsed)
-  const resultAnnouncement = showResults ? buildResultAnnouncement(search, visibleResultCount) : ''
 
   /** 팔레트를 닫고 입력을 초기화한다(FR6) */
   function handleClose(): void {
@@ -462,15 +512,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
             </CommandGroup>
           </>
         )}
-        {showResults && (
-          <PaletteResults
-            search={search}
-            similarResults={similarResults}
-            onSelectIssue={handleIssueSelect}
-            onSelectAllResults={handleAllResultsSelect}
-            onSelectProjectPicker={handleProjectPickerSelect}
-          />
-        )}
+        <PaletteSearchSection
+          input={paletteInput}
+          onSelectIssue={handleIssueSelect}
+          onSelectAllResults={handleAllResultsSelect}
+          onSelectProjectPicker={handleProjectPickerSelect}
+        />
         {guidanceMessage !== null && (
           <p
             role="alert"
@@ -480,12 +527,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
           </p>
         )}
       </CommandList>
-      {/* ★결과 도착은 시각 변화뿐이라 화면낭독기에는 무음이다. 개수를 live region으로 알린다.
-          **항상 마운트**해 두고 문구만 갈아끼운다 — 결과가 생길 때 영역째 새로 붙이면
-          낭독기가 삽입을 놓칠 수 있다. */}
-      <p aria-live="polite" className="sr-only">
-        {resultAnnouncement}
-      </p>
     </CommandPrimitive.Dialog>
   )
 }
