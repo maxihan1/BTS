@@ -1,7 +1,19 @@
 // CommandPalette 단위 테스트 — 빈 목록 렌더/명령 힌트 prefill/goto·search·issue 실행/E1~E3/IME 가드 (FR-UX-04 Task-2)
+// + 이슈키·자유텍스트 결과 렌더 / 안내 4종 / 탈출구 2종 / 접근성 (FR-UX-12 F4 Task-7)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
+import type { ReactNode } from 'react'
+import { server } from '@/test/server'
+import { issueHandlers } from '@/mocks/issue-handlers'
+import {
+  searchHandlers,
+  searchAqlEmptyHandler,
+  searchAqlSyntaxErrorHandler,
+} from '@/mocks/search-handlers'
+import { DEFAULT_SEARCH_PAGE, makeSearchPage } from '@/mocks/search-fixtures'
 import { CommandPalette } from './CommandPalette'
 import { QUICK_LINKS, COMMANDS } from './commands'
 
@@ -15,17 +27,44 @@ if (typeof window.HTMLElement.prototype.scrollIntoView !== 'function') {
 const mockNavigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
+  // usePaletteSearch 가 URL 프로젝트 키를 읽는다. 라우터 컨텍스트 밖에서 실물 `useSearch` 는
+  // undefined 를 주는 게 아니라 **던진다**(use-palette-search.test.tsx 실측) — 최소 표면만 대체한다.
+  useSearch: () => ({}),
 }))
+
+// 활성 프로젝트 해소를 훅 경계에서 갈아끼운다 — 프로젝트 상태별 분기(FR7)를 네트워크 없이 검증.
+const mockResolved = vi.fn()
+vi.mock('@/hooks/use-resolved-active-project', () => ({
+  useResolvedActiveProject: () => mockResolved(),
+}))
+
+/** 전역 `retry: false`(main.tsx 기본값) 재현 — 실패 경로가 3회 재시도로 늘어지지 않게 한다 */
+const makeClient = (): QueryClient =>
+  new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+// 클라이언트를 wrapper 바깥에 둔다 — wrapper 본문에서 new 하면 rerender 마다 캐시가 통째로
+// 리셋돼 "재오픈 시 입력 초기화" 테스트가 엉뚱한 이유로 흔들린다.
+let queryClient = makeClient()
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+}
 
 /** CommandPalette를 열린 상태로 렌더하고 onOpenChange mock을 반환하는 헬퍼 */
 function renderPalette() {
   const onOpenChange = vi.fn()
-  render(<CommandPalette open onOpenChange={onOpenChange} />)
+  render(<CommandPalette open onOpenChange={onOpenChange} />, { wrapper })
   return { onOpenChange }
 }
 
 beforeEach(() => {
+  // `src/test/handlers.ts` 기본 목록은 auth refresh 하나뿐이라 BC 핸들러를 파일마다 등록한다
+  // (저장소 관례 — CreateIssueDialog.test.tsx 등). 빼먹으면 미핸들 에러가
+  // 「검색에 실패했습니다.」로 둔갑해 거짓 신호를 진짜로 착각하게 만든다.
+  server.use(...issueHandlers, ...searchHandlers)
+  queryClient = makeClient()
   mockNavigate.mockReset()
+  mockResolved.mockReturnValue({ status: 'ready', projectKey: 'ATLAS', source: 'stored' })
 })
 
 describe('CommandPalette', () => {
@@ -126,7 +165,7 @@ describe('CommandPalette', () => {
   it('외부 open이 false로 바뀌었다가 다시 true가 되면 입력을 초기화한다 (Cmd+K 토글 재오픈, codereview CONCERN-1)', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
-    const { rerender } = render(<CommandPalette open onOpenChange={onOpenChange} />)
+    const { rerender } = render(<CommandPalette open onOpenChange={onOpenChange} />, { wrapper })
 
     const input = screen.getByRole('combobox')
     await user.type(input, '/goto ')
@@ -210,5 +249,186 @@ describe('CommandPalette', () => {
 
     expect(mockNavigate).not.toHaveBeenCalled()
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-12 F4 Task-7 — 이슈키/자유텍스트 결과 렌더 · 안내 4종 · 탈출구 · 접근성
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CommandPalette — 실체 검색 (FR-UX-12 F4)', () => {
+  it('이슈키 입력 시 그 이슈가 결과 최상단에 뜨고 Enter 로 이동한다 (S1)', async () => {
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), 'ATLAS-1')
+    // 정확일치는 검색 결과에서 걷어내므로 ATLAS-1 항목은 정확히 하나다
+    const hit = await screen.findByRole('option', { name: /ATLAS-1/ })
+    expect(screen.getAllByRole('option')[0]).toBe(hit)
+
+    await user.keyboard('{Enter}')
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-1' } })
+  })
+
+  it('자유 텍스트 입력 시 결과 목록이 뜬다 (S4)', async () => {
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+
+    expect(await screen.findAllByRole('option')).not.toHaveLength(0)
+    // 즉사 계약 — 결과가 그려지는 상태에서도 팔레트 안에 option 「검색」을 새로 만들지 않는다
+    // (command-palette.spec.ts:259 가 전체 일치로 잡는다). 「검색 결과」는 그룹 heading 이라
+    // option 이 아니므로 이 단언에 걸리지 않아야 한다.
+    expect(screen.queryAllByRole('option', { name: '검색' })).toHaveLength(0)
+  })
+
+  it('이슈 정확일치와 검색 결과가 다른 그룹에 놓인다 (design 리뷰 1-1)', async () => {
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), 'ATLAS-1')
+
+    expect(await screen.findByText('이슈')).toBeInTheDocument()
+    expect(await screen.findByText('검색 결과')).toBeInTheDocument()
+  })
+
+  it('「모든 결과 보기」가 감싼 AQL 로 /search 에 넘긴다 (S5 · FR6)', async () => {
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+    await user.click(await screen.findByRole('option', { name: /모든 결과 보기/ }))
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/search',
+      search: { q: 'text ~ "로그인"' },
+    })
+  })
+
+  it('「모든 결과 보기」가 총 건수를 표기한다 — 7건이 전부로 오독되지 않는다 (design 리뷰 2-2)', async () => {
+    // ★기본 픽스처는 totalElements 가 결과 수(3)와 같아 `results.length` 대체를 못 잡는다.
+    // plan 스니펫의 「기본 MSW 는 totalElements=50」은 실측과 다르다 — makeSearchPage 가
+    // 오버라이드 없으면 hits.length 로 계산한다. 표시분 3 ↔ 총계 42 로 어긋나게 만든다.
+    server.use(
+      http.post('/api/v1/search/aql', () =>
+        HttpResponse.json(makeSearchPage(DEFAULT_SEARCH_PAGE.data, { totalElements: 42 })),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+
+    expect(await screen.findByRole('option', { name: /모든 결과 보기 \(42건\)/ })).toBeInTheDocument()
+  })
+
+  it('★검색 중에는 진행 표시가 뜬다 — isSearching 이 공허하지 않다 (design 리뷰 2-1)', async () => {
+    // ★디바운스 대기 구간도 「검색 중…」으로 덮이므로, 그것만으로 단언하면 `isSearching` 을
+    // 지워도 초록인 공허한 테스트가 된다. 응답을 붙잡아 두고 **요청이 실제로 나간 뒤**를
+    // 재면 남는 근거는 isSearching 하나뿐이다.
+    let searchStarted = false
+    let releaseSearch: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      releaseSearch = resolve
+    })
+    server.use(
+      http.post('/api/v1/search/aql', async () => {
+        searchStarted = true
+        await held
+        return HttpResponse.json(DEFAULT_SEARCH_PAGE)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+    await waitFor(() => {
+      expect(searchStarted).toBe(true)
+    })
+
+    expect(screen.getByText('검색 중…')).toBeInTheDocument()
+
+    releaseSearch()
+    await screen.findByRole('option', { name: /ATLAS-1/ })
+  })
+
+  it('결과 0건이면 안내를 표시한다 (FR12 · E11)', async () => {
+    server.use(searchAqlEmptyHandler)
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '없는것')
+
+    expect(await screen.findByText('결과가 없습니다.')).toBeInTheDocument()
+    // 「모든 결과 보기」는 0건에도 남는다 — 전체 페이지에선 더 나올 수 있다(E11).
+    // 총계를 모르는 상태에서 「(0건)」을 붙이지 않으므로 이름은 접미사 없는 원형이다.
+    expect(screen.getByRole('option', { name: '모든 결과 보기' })).toBeInTheDocument()
+  })
+
+  it('검색 실패 시 팔레트를 닫지 않고 안내만 표시한다 (FR13)', async () => {
+    server.use(searchAqlSyntaxErrorHandler)
+    const user = userEvent.setup()
+    const { onOpenChange } = renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+
+    expect(await screen.findByText('검색에 실패했습니다.')).toBeInTheDocument()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    // 탈출구는 남긴다 — 검색 페이지의 상세 진단(resolveErrorMessage 4갈래)으로 갈 길을 연다
+    expect(screen.getByRole('option', { name: '모든 결과 보기' })).toBeInTheDocument()
+  })
+
+  it('프로젝트 미해소 시 「프로젝트 선택하러 가기」로 탈출할 수 있다 (design 리뷰 3-2)', async () => {
+    mockResolved.mockReturnValue({ status: 'empty' })
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+
+    expect(await screen.findByText('프로젝트를 먼저 선택하세요.')).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: '프로젝트 선택하러 가기' }))
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects' })
+  })
+
+  it('★결과 개수가 스크린리더에 알려진다 (design 리뷰 6-2)', async () => {
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+
+    const live = await screen.findByText(/건 찾음/)
+    expect(live).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('★IME 조합 중 Enter 는 결과를 선택하지 않는다 (NFR4)', async () => {
+    // cmdk 루트가 `isComposing || keyCode === 229` 를 가드한다(dist 소스 실측).
+    // 우리 코드가 아니라 **라이브러리 동작**이므로, cmdk 업그레이드가 조용히 이걸
+    // 없애면 한국어 입력 중 Enter 가 엉뚱한 결과를 연다. 이 테스트가 그 증인이다.
+    const user = userEvent.setup()
+    renderPalette()
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, '로그인')
+    await screen.findAllByRole('option')
+    mockNavigate.mockClear()
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 })
+
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('★빈 입력 동작은 무회귀다 — 바로가기 4개와 순서 (즉사 계약 · S6)', () => {
+    renderPalette()
+
+    const options = screen.getAllByRole('option')
+    expect(options.slice(0, 4).map((o) => o.textContent)).toEqual([
+      '내 이슈',
+      '검색',
+      '대시보드',
+      '받은 편지함',
+    ])
   })
 })
