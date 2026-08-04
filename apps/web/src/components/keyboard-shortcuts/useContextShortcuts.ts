@@ -27,6 +27,22 @@ export interface ContextShortcutHandlers {
   readonly onToggleDetailPane?: () => void
   /** 사이드바 접기/펼치기 */
   readonly onToggleSidebar?: () => void
+  /** 담당자 선택 컨트롤로 포커스 이동 (F11 `a`) */
+  readonly onFocusAssignee?: () => void
+  /** 담당자를 나로 지정, 이미 나면 해제 (F11 `i`) */
+  readonly onAssignToMe?: () => void
+  /** 댓글 입력창으로 포커스 이동 (F11 `m`) */
+  readonly onFocusComment?: () => void
+  /** 제목 인라인 편집 진입 (F11 `e`) */
+  readonly onEditTitle?: () => void
+  /** 라벨 편집 컨트롤로 포커스 이동 (F11 `l`) */
+  readonly onFocusLabels?: () => void
+  /** 이 이슈 즐겨찾기 켜기/끄기 (F11 `s`) */
+  readonly onToggleFavorite?: () => void
+  /** 이 이슈 관심(watch) 켜기/끄기 (F11 `w`) */
+  readonly onToggleWatch?: () => void
+  /** 명령 팔레트 열기 (F11 `.`) */
+  readonly onOpenCommandPalette?: () => void
 }
 
 /** 컨텍스트별 등록 핸들러를 담는 스토어 상태 */
@@ -162,6 +178,30 @@ export function dispatchContextAction(hit: ContextShortcutHit): void {
     case 'toggle-sidebar':
       target?.onToggleSidebar?.()
       return
+    case 'focus-assignee':
+      target?.onFocusAssignee?.()
+      return
+    case 'assign-to-me':
+      target?.onAssignToMe?.()
+      return
+    case 'focus-comment':
+      target?.onFocusComment?.()
+      return
+    case 'edit-title':
+      target?.onEditTitle?.()
+      return
+    case 'focus-labels':
+      target?.onFocusLabels?.()
+      return
+    case 'toggle-favorite':
+      target?.onToggleFavorite?.()
+      return
+    case 'toggle-watch':
+      target?.onToggleWatch?.()
+      return
+    case 'open-command-palette':
+      target?.onOpenCommandPalette?.()
+      return
     case 'none':
       return
     default: {
@@ -229,6 +269,14 @@ export function useContextShortcuts(
       onOpenCurrent: () => handlersRef.current.onOpenCurrent?.(),
       onToggleDetailPane: () => handlersRef.current.onToggleDetailPane?.(),
       onToggleSidebar: () => handlersRef.current.onToggleSidebar?.(),
+      onFocusAssignee: () => handlersRef.current.onFocusAssignee?.(),
+      onAssignToMe: () => handlersRef.current.onAssignToMe?.(),
+      onFocusComment: () => handlersRef.current.onFocusComment?.(),
+      onEditTitle: () => handlersRef.current.onEditTitle?.(),
+      onFocusLabels: () => handlersRef.current.onFocusLabels?.(),
+      onToggleFavorite: () => handlersRef.current.onToggleFavorite?.(),
+      onToggleWatch: () => handlersRef.current.onToggleWatch?.(),
+      onOpenCommandPalette: () => handlersRef.current.onOpenCommandPalette?.(),
     })
     return () => unregister(context)
   }, [context, enabled])

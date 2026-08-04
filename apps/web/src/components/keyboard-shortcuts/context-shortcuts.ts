@@ -28,6 +28,14 @@ export type ShortcutContext = 'issue-detail' | 'issue-list' | 'app-shell'
  * - `open-current`: 커서 이슈를 전체화면 상세로 열기
  * - `toggle-detail-pane`: 우측 상세 페인(split view) 열기/닫기
  * - `toggle-sidebar`: 사이드바 접기/펼치기
+ * - `focus-assignee`: 담당자 선택 컨트롤로 포커스 이동(F11 `a`)
+ * - `assign-to-me`: 담당자를 나로 지정, 이미 나면 해제(F11 `i` — Jira `Toggle` 문구)
+ * - `focus-comment`: 댓글 입력창으로 포커스 이동(F11 `m`)
+ * - `edit-title`: 제목 인라인 편집 진입(F11 `e`)
+ * - `focus-labels`: 라벨 편집 컨트롤로 포커스 이동(F11 `l`)
+ * - `toggle-favorite`: 이 이슈 즐겨찾기 켜기/끄기(F11 `s`)
+ * - `toggle-watch`: 이 이슈 관심(watch) 켜기/끄기(F11 `w`)
+ * - `open-command-palette`: 명령 팔레트 열기(F11 `.`)
  * - `none`: 처리할 단축키 없음(무동작)
  */
 export type ContextShortcutAction =
@@ -35,6 +43,14 @@ export type ContextShortcutAction =
   | { kind: 'open-current' }
   | { kind: 'toggle-detail-pane' }
   | { kind: 'toggle-sidebar' }
+  | { kind: 'focus-assignee' }
+  | { kind: 'assign-to-me' }
+  | { kind: 'focus-comment' }
+  | { kind: 'edit-title' }
+  | { kind: 'focus-labels' }
+  | { kind: 'toggle-favorite' }
+  | { kind: 'toggle-watch' }
+  | { kind: 'open-command-palette' }
   | { kind: 'none' }
 
 /** 컨텍스트 단축키 정의 — 훅 dispatch 와 도움말 모달이 함께 구동하는 단일 진실 출처 */
@@ -50,14 +66,16 @@ export interface ContextShortcutDef {
 }
 
 /**
- * 컨텍스트 단축키 5종 — F10 범위(목록 항법 + 사이드바).
+ * 컨텍스트 단축키 13종 — 목록 항법 + 사이드바(F10 5종) · 이슈 상세 액션(F11 8종).
  *
- * 상세 액션 7종(`a`/`i`/`m`/`e`/`l`/`w`/`.`)과 즐겨찾기(`s`)는 **F11 범위**라
- * 여기 없다. 도움말 모달은 이 배열만 렌더하므로 미구현 키가 "동작하는 것처럼"
- * 표기되지 않는다(FR-UX-05 FR8 계약 승계).
+ * 도움말 모달·키맵 폼의 예약 키 가드가 **이 배열에서 파생**한다. 여기 없는 키는 표기될
+ * 수도 예약될 수도 없으므로, 미구현 키가 "동작하는 것처럼" 보이지 않는다
+ * (FR-UX-05 FR8 계약 승계).
  *
- * 키 선정 근거는 Jira Cloud 공식 문서 대조 —
- * `docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md` §Jira 대조.
+ * 키 선정 근거는 Jira Cloud 공식 문서 대조 — F10 5종은
+ * `docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md` §Jira 대조,
+ * F11 8종은 `docs/specs/2026-08-04-fr-ux-10-f11-detail-action-shortcuts.md` §Jira 대조.
+ * (`e`·`s` 는 Jira 미기재라 BTS 고유 배치다 — 근거는 그 §4 대응 없는 항목)
  */
 export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
   {
@@ -89,6 +107,56 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
     context: 'app-shell',
     description: '사이드바 접기/펼치기',
     action: { kind: 'toggle-sidebar' },
+  },
+  {
+    key: 'a',
+    context: 'issue-detail',
+    description: '담당자 지정',
+    action: { kind: 'focus-assignee' },
+  },
+  {
+    key: 'i',
+    context: 'issue-detail',
+    description: '나에게 할당 / 해제',
+    action: { kind: 'assign-to-me' },
+  },
+  {
+    key: 'm',
+    context: 'issue-detail',
+    description: '댓글 쓰기',
+    action: { kind: 'focus-comment' },
+  },
+  {
+    key: 'e',
+    context: 'issue-detail',
+    description: '제목 편집',
+    action: { kind: 'edit-title' },
+  },
+  {
+    key: 'l',
+    context: 'issue-detail',
+    description: '라벨 편집',
+    action: { kind: 'focus-labels' },
+  },
+  {
+    key: 's',
+    context: 'issue-detail',
+    description: '즐겨찾기 켜기/끄기',
+    action: { kind: 'toggle-favorite' },
+  },
+  {
+    key: 'w',
+    context: 'issue-detail',
+    description: '관심 켜기/끄기',
+    action: { kind: 'toggle-watch' },
+  },
+  // ★`.` 만 `app-shell` 이다. 팔레트는 전역 기능이라 목록·대시보드에서도 열려야 하고,
+  // Jira 도 `.` 을 전역에서 발화시킨다(스펙 §Jira 대조 3-a).
+  {
+    key: '.',
+    context: 'app-shell',
+    description: '명령 팔레트 열기',
+    action: { kind: 'open-command-palette' },
   },
 ]
 
