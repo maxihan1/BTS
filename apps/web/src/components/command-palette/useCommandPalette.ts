@@ -19,6 +19,8 @@ interface CommandPaletteState {
   readonly open: boolean
   /** 열림 상태를 직접 지정한다 */
   readonly setOpen: (open: boolean) => void
+  /** 열림 상태를 반전한다 — Cmd/Ctrl+K 전용 (`.` 는 여는 것만 한다) */
+  readonly toggle: () => void
 }
 
 /**
@@ -39,6 +41,10 @@ interface CommandPaletteState {
 export const useCommandPaletteStore = create<CommandPaletteState>((set) => ({
   open: false,
   setOpen: (open): void => set({ open }),
+  // ★반전은 스토어 안에서 한 단계로 한다. 호출부가 `setOpen(!getState().open)` 으로
+  // 읽고 쓰면 두 단계라, 리스너 클로저가 낡은 값을 읽을 여지가 생긴다
+  // (`use-sidebar-collapsed.ts` 의 `toggle` 과 같은 모양).
+  toggle: (): void => set((state) => ({ open: !state.open })),
 }))
 
 /**
@@ -72,6 +78,7 @@ function isToggleShortcut(e: KeyboardEvent): boolean {
 export function useCommandPalette(enabled: boolean): UseCommandPaletteResult {
   const open = useCommandPaletteStore((state) => state.open)
   const setOpen = useCommandPaletteStore((state) => state.setOpen)
+  const toggle = useCommandPaletteStore((state) => state.toggle)
 
   useEffect(() => {
     if (!enabled) {
@@ -82,16 +89,16 @@ export function useCommandPalette(enabled: boolean): UseCommandPaletteResult {
     function handleKeyDown(e: KeyboardEvent): void {
       if (!isToggleShortcut(e)) return
       e.preventDefault()
-      // ★`open` 클로저가 아니라 스토어를 그 자리에서 읽는다. 이 effect 는 `enabled`
+      // ★`open` 클로저가 아니라 스토어의 `toggle` 을 부른다. 이 effect 는 `enabled`
       // 가 바뀔 때만 다시 도므로 클로저의 `open` 은 등록 시점 값에 고정돼 있다.
-      setOpen(!useCommandPaletteStore.getState().open)
+      toggle()
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [enabled, setOpen])
+  }, [enabled, setOpen, toggle])
 
   return { open, setOpen }
 }
