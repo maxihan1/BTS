@@ -1,11 +1,19 @@
-// Cmd+K 명령 팔레트 — cmdk 기반 슬래시 명령(goto/search/issue) 실행 UI (FR-UX-04 Task-2)
+// Cmd+K 명령 팔레트 — 슬래시 명령(goto/search/issue) + 이슈키·자유텍스트 실체 검색 (FR-UX-04 Task-2 · FR-UX-12 F4)
 /* eslint-disable react-refresh/only-export-components -- runCommand 헬퍼를 컴포넌트와 같은 파일에 배치(응집도 우선, NodeMappingSection.tsx 선례) */
 import { useEffect, useState, type JSX, type KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Command as CommandPrimitive } from 'cmdk'
-import { CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import {
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command'
 import { buildTextQuery } from '@/lib/aql-text-query'
 import { parseCommand, COMMANDS, QUICK_LINKS, type ParsedCommand } from './commands'
+import { resolveNonCommandInput, type PaletteInput } from './palette-input'
+import { usePaletteSearch, type PaletteResult, type PaletteSearchResult } from './use-palette-search'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — UI 문구 (컴포넌트 내 *Strings 관례, C5)
@@ -26,9 +34,45 @@ const commandPaletteStrings = {
   inputPlaceholder: '검색하거나 슬래시 명령(/goto, /search, /issue)을 입력하세요',
   quickLinksHeading: '바로가기',
   commandsHeading: '명령어',
+  // ★그룹 이름을 「이슈」/「검색 결과」로 나눈다. 「검색」 단독은 쓰지 않는다 —
+  // e2e 가 팔레트 안 option `'검색'`(QUICK_LINKS 2번째)을 전체 일치로 잡는 즉사 계약이다.
+  issueHeading: '이슈',
+  resultsHeading: '검색 결과',
+  searching: '검색 중…',
+  noResults: '결과가 없습니다.',
+  needsProject: '프로젝트를 먼저 선택하세요.',
+  pickProject: '프로젝트 선택하러 가기',
+  allResults: '모든 결과 보기',
+  allResultsWithCount: (total: number) => `모든 결과 보기 (${total}건)`,
+  foundCount: (count: number) => `${count}건 찾음`,
   unknownCommand: (name: string) => `알 수 없는 명령입니다. /${name}`,
   invalidIssueKey: '이슈 키 형식이 올바르지 않습니다. 예: PROJ-12',
 }
+
+/** 안내·진행 문구 공통 스타일 — 4종 안내가 같은 옷을 입어야 상태 전환이 튀지 않는다 */
+const NOTICE_CLASS = 'px-4 py-3 text-sm text-muted-foreground'
+
+/**
+ * 결과·액션 항목 공통 클래스.
+ *
+ * 데스크톱 밀도(래퍼 `CommandItem` 기본 `py-1.5` ≈ 30px)는 그대로 두고 **터치 입력에서만**
+ * 44px를 채운다. `DESIGN.md §터치 타깃`이 모바일 최소 44×44를 규정하므로 래퍼 기본값을
+ * 그대로 쓰면 정본 위반이다. `pointer: coarse`는 정밀 포인터가 없는 입력에서만 참이라
+ * 마우스 사용자의 목록 밀도를 희생하지 않는다(`EditableCell.CELL_OPTION_CLASS` 선례).
+ */
+const RESULT_ITEM_CLASS = 'pointer-coarse:min-h-[44px]'
+
+/** cmdk 항목 value — 이슈 키와 겹치지 않도록 콜론 접두사를 쓴다(이슈 키에는 콜론이 없다) */
+const ALL_RESULTS_ITEM_VALUE = 'palette:all-results'
+const PROJECT_PICKER_ITEM_VALUE = 'palette:pick-project'
+
+/**
+ * 슬래시 명령을 입력하는 동안 검색 훅에 넘기는 고정 입력.
+ *
+ * `parseCommand`가 `not-command`를 돌려줄 때만 2차 판별을 부른다(FR2 호출 순서 계약).
+ * 먼저 부르면 `/goto ATLAS-1`이 자유 텍스트로 새어 슬래시 명령이 죽는다.
+ */
+const NO_SEARCH_INPUT: PaletteInput = { kind: 'empty' }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -40,6 +84,20 @@ interface CommandPaletteProps {
   readonly open: boolean
   /** 열림 상태 변경 콜백 — Esc/오버레이 클릭/명령 실행 후 호출 */
   readonly onOpenChange: (open: boolean) => void
+}
+
+/** PaletteResults props — 훅 반환값 한 덩어리 + 선택 콜백 3종 */
+interface PaletteResultsProps {
+  /** usePaletteSearch 반환값 그대로 */
+  readonly search: PaletteSearchResult
+  /** 정확일치와 겹치는 항목을 걷어낸 유사일치 목록 */
+  readonly similarResults: readonly PaletteResult[]
+  /** 결과 한 줄 선택 — 이슈 상세로 이동 */
+  readonly onSelectIssue: (issueKey: string) => void
+  /** 「모든 결과 보기」 선택 — 검색 페이지로 같은 AQL 전달 */
+  readonly onSelectAllResults: (aqlQuery: string) => void
+  /** 「프로젝트 선택하러 가기」 선택 — 프로젝트 목록으로 이동 */
+  readonly onSelectProjectPicker: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +121,41 @@ function buildGuidanceMessage(parsed: ParsedCommand): string | null {
       : COMMAND_USAGE_HINTS[parsed.name]
   }
   return null
+}
+
+/**
+ * 이슈키 정확일치와 겹치는 검색 결과를 걷어낸다.
+ *
+ * 같은 이슈가 「이슈」와 「검색 결과」에 두 줄로 나오면 그룹을 나눠 얻으려던
+ * "이건 정확히 그거야" 신호가 오히려 흐려진다.
+ *
+ * @param issueHit 이슈키 정확일치 결과(없으면 null)
+ * @param results 자유 텍스트 검색 결과
+ * @returns 정확일치를 제외한 유사일치 목록
+ */
+function dedupeAgainstIssueHit(
+  issueHit: PaletteResult | null,
+  results: readonly PaletteResult[],
+): readonly PaletteResult[] {
+  if (issueHit === null) return results
+  return results.filter((result) => result.key !== issueHit.key)
+}
+
+/**
+ * 결과 개수를 화면낭독기에 알릴 문구를 만든다.
+ *
+ * 안내 3종(프로젝트 미해소·검색 실패·0건)은 `role="alert"`가 이미 읽으므로 여기서는
+ * 비운다 — 같은 사실이 두 번 읽히면 방해가 된다. 진행 중에도 비운다(확정 전 숫자는 거짓말이다).
+ *
+ * @param search usePaletteSearch 반환값
+ * @param visibleCount 목록에 실제로 그려진 결과 수
+ * @returns 낭독 문구. 알릴 것이 없으면 빈 문자열
+ */
+function buildResultAnnouncement(search: PaletteSearchResult, visibleCount: number): string {
+  if (search.needsProject || search.errorMessage !== null) return ''
+  if (search.isSearching || search.fullSearchQuery === null) return ''
+  if (visibleCount === 0) return ''
+  return commandPaletteStrings.foundCount(visibleCount)
 }
 
 /**
@@ -96,6 +189,127 @@ export function runCommand(parsed: ParsedCommand, navigate: ReturnType<typeof us
 const EXECUTABLE_KINDS: ReadonlySet<ParsedCommand['kind']> = new Set(['goto', 'search', 'issue'])
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 하위 컴포넌트 — 결과 영역 (같은 파일 유지: 상태를 prop으로 길게 넘기지 않기 위함)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 결과 한 줄 — 키(고정폭) + 요약(1줄 말줄임) */
+function PaletteResultItem({
+  result,
+  onSelect,
+}: {
+  readonly result: PaletteResult
+  readonly onSelect: (issueKey: string) => void
+}): JSX.Element {
+  return (
+    <CommandItem
+      value={result.key}
+      className={RESULT_ITEM_CLASS}
+      onSelect={() => {
+        onSelect(result.key)
+      }}
+    >
+      <span className="shrink-0 font-mono text-xs text-muted-foreground">{result.key}</span>
+      {/* truncate 는 overflow:hidden 을 포함해 flex 아이템의 자동 최소너비를 0으로 만든다 —
+          375px 폭에서 긴 요약이 팔레트를 가로로 밀어내지 않는 근거다 */}
+      <span className="truncate">{result.summary}</span>
+    </CommandItem>
+  )
+}
+
+/**
+ * 검색 결과 영역 — 「이슈」(정확일치) / 「검색 결과」(유사일치) / 안내 4종 / 탈출구 2종.
+ *
+ * **그룹을 둘로 나누는 이유.** 정확일치와 유사일치가 한 그룹에 섞이면 "이건 정확히 그거야"
+ * 신호가 사라진다 (Jira Cloud 공식 *"Labels separate different types of results"*).
+ * 보이는 순서 = 확신의 순서 — 정확일치 → 유사일치 → 탈출구.
+ *
+ * **`CommandEmpty`를 쓰지 않는 이유.** `CommandEmpty`는 `filtered.count === 0`일 때만
+ * 렌더하는데 이 팔레트는 `shouldFilter={false}`라 cmdk가 `filtered.count`를 등록 아이템
+ * 수로 둔다. 「모든 결과 보기」가 늘 있으므로 0건이어도 count는 1이라 영영 발동하지 않는다.
+ */
+function PaletteResults({
+  search,
+  similarResults,
+  onSelectIssue,
+  onSelectAllResults,
+  onSelectProjectPicker,
+}: PaletteResultsProps): JSX.Element {
+  const { issueHit, totalCount, isSearching, needsProject, errorMessage, fullSearchQuery } = search
+
+  // 디바운스가 아직 안 끝난 구간(질의 미확정)도 "검색 중"으로 본다. 그러지 않으면 250ms 동안
+  // 「결과가 없습니다.」가 번쩍인 뒤 결과가 들어와 사용자가 같은 자리를 두 번 읽게 된다.
+  const showSearching = !needsProject && (isSearching || fullSearchQuery === null)
+  const hasResult = issueHit !== null || similarResults.length > 0
+  const showEmptyNotice = !needsProject && errorMessage === null && !showSearching && !hasResult
+  // 프로젝트 미해소 상태에서는 검색 페이지도 같은 이유로 막히므로 탈출구가 되지 못한다.
+  const showAllResults = !needsProject && fullSearchQuery !== null
+
+  return (
+    <>
+      {issueHit !== null && (
+        <CommandGroup heading={commandPaletteStrings.issueHeading}>
+          <PaletteResultItem result={issueHit} onSelect={onSelectIssue} />
+        </CommandGroup>
+      )}
+      {similarResults.length > 0 && (
+        <CommandGroup heading={commandPaletteStrings.resultsHeading}>
+          {similarResults.map((result) => (
+            <PaletteResultItem key={result.key} result={result} onSelect={onSelectIssue} />
+          ))}
+        </CommandGroup>
+      )}
+      {showSearching && <p className={NOTICE_CLASS}>{commandPaletteStrings.searching}</p>}
+      {showEmptyNotice && (
+        <p role="alert" className={NOTICE_CLASS}>
+          {commandPaletteStrings.noResults}
+        </p>
+      )}
+      {errorMessage !== null && (
+        <p role="alert" className={NOTICE_CLASS}>
+          {errorMessage}
+        </p>
+      )}
+      {needsProject && (
+        <>
+          <p role="alert" className={NOTICE_CLASS}>
+            {commandPaletteStrings.needsProject}
+          </p>
+          {/* 안내만 띄우면 팔레트 안에서 할 수 있는 게 없다 — 막다른 길을 열어 준다 */}
+          <CommandItem
+            value={PROJECT_PICKER_ITEM_VALUE}
+            className={RESULT_ITEM_CLASS}
+            onSelect={onSelectProjectPicker}
+          >
+            {commandPaletteStrings.pickProject}
+          </CommandItem>
+        </>
+      )}
+      {showAllResults && (
+        <>
+          {/* ★alwaysRender 필수 — cmdk Separator 는 입력이 비어 있을 때만 그려진다(dist 실측).
+              결과가 있는 화면은 항상 입력이 차 있으므로 이 prop 없이는 영영 안 보인다.
+              액션과 결과가 같은 옷을 입으면 무엇이 결과인지 구분이 안 된다. */}
+          {hasResult && <CommandSeparator alwaysRender className="my-1" />}
+          <CommandItem
+            value={ALL_RESULTS_ITEM_VALUE}
+            className={RESULT_ITEM_CLASS}
+            onSelect={() => {
+              onSelectAllResults(fullSearchQuery)
+            }}
+          >
+            {/* 총계를 모르는 상태(조회 전·실패·0건)에서 「(0건)」을 붙이면 거짓 정보가 된다.
+                아는 경우에만 표기한다 — 7건 상한만 보고 "이게 전부"라 오독하는 것을 막는 값이다. */}
+            {totalCount > 0
+              ? commandPaletteStrings.allResultsWithCount(totalCount)
+              : commandPaletteStrings.allResults}
+          </CommandItem>
+        </>
+      )}
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -103,16 +317,15 @@ const EXECUTABLE_KINDS: ReadonlySet<ParsedCommand['kind']> = new Set(['goto', 's
  * Cmd+K 명령 팔레트 컴포넌트.
  *
  * cmdk `Command.Dialog`(Radix Dialog 래핑 — focus trap/Esc 닫기/포커스 복원 기본 제공) 위에
- * shadcn 래퍼 `components/ui/command.tsx`의 `CommandInput`/`CommandList`/`CommandGroup`/
- * `CommandItem`으로 구성한다. `Command.Dialog`만 cmdk 프리미티브를 직접 쓰는데,
- * 래퍼가 `CommandDialog`를 "소비처 몫"이라며 의도적으로 제외했기 때문이다(래퍼 파일 L1).
- * `CommandEmpty`는 쓰지 않는다 — `shouldFilter={false}`라 cmdk가 `filtered.count`를
- * 등록 아이템 수로 두므로 0건 판정이 영영 성립하지 않는다(도달 불가 코드).
+ * shadcn 래퍼 `components/ui/command.tsx`의 프리미티브로 구성한다. `Command.Dialog`만 cmdk
+ * 프리미티브를 직접 쓰는데, 래퍼가 `CommandDialog`를 "소비처 몫"이라며 의도적으로 제외했기
+ * 때문이다(래퍼 파일 L1).
  *
  * - 입력이 비어 있으면 QUICK_LINKS(정적 바로가기) + COMMANDS(명령 힌트)를 렌더한다.
  * - 명령 힌트 선택 시 라우팅하지 않고 입력창에 prefix를 채운다(S2 보강).
  * - `/goto`·`/search`·`/issue` + Enter로 parseCommand 결과에 따라 navigate한다.
  * - 알 수 없는/불완전 명령은 안내 문구를 표시하고 실행하지 않는다(FR5).
+ * - 슬래시가 아닌 입력은 이슈키/자유텍스트로 판별해 결과를 인라인으로 그린다(FR-UX-12 F4).
  * - 명령 실행/정적 바로가기 선택 후 팔레트를 닫고 입력을 초기화한다(FR6).
  * - IME 조합 중 Enter는 실행하지 않는다(NFR4).
  *
@@ -133,8 +346,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
   }, [open])
 
   const parsed = parseCommand(inputValue)
+  // ★순서가 계약이다(FR2). 슬래시 판별이 먼저 끝나야 `/goto ATLAS-1`이 이슈키로 새지 않는다.
+  const paletteInput = parsed.kind === 'not-command' ? resolveNonCommandInput(inputValue) : NO_SEARCH_INPUT
+  const search = usePaletteSearch(paletteInput)
+  const similarResults = dedupeAgainstIssueHit(search.issueHit, search.results)
+  const visibleResultCount = (search.issueHit === null ? 0 : 1) + similarResults.length
+
   const showQuickLinks = parsed.kind === 'not-command' && inputValue === ''
+  const showResults = paletteInput.kind !== 'empty'
   const guidanceMessage = buildGuidanceMessage(parsed)
+  const resultAnnouncement = showResults ? buildResultAnnouncement(search, visibleResultCount) : ''
 
   /** 팔레트를 닫고 입력을 초기화한다(FR6) */
   function handleClose(): void {
@@ -162,12 +383,32 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
     handleClose()
   }
 
+  /** 결과 한 줄 선택 — 이슈 상세로 이동 후 닫는다 */
+  function handleIssueSelect(issueKey: string): void {
+    void navigate({ to: '/issues/$key', params: { key: issueKey } })
+    handleClose()
+  }
+
+  /** 「모든 결과 보기」 — 팔레트가 만든 것과 **같은** AQL을 검색 페이지에 넘긴다 */
+  function handleAllResultsSelect(aqlQuery: string): void {
+    void navigate({ to: '/search', search: { q: aqlQuery } })
+    handleClose()
+  }
+
+  /** 「프로젝트 선택하러 가기」 — 활성 프로젝트를 고르러 목록으로 보낸다 */
+  function handleProjectPickerSelect(): void {
+    void navigate({ to: '/projects' })
+    handleClose()
+  }
+
   /** 입력창 Enter 키 핸들러 — 슬래시 명령 실행(C3, NFR4) */
   function handleInputKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
     if (e.key !== 'Enter') return
     if (e.nativeEvent.isComposing) return // IME 조합 중 확정 Enter는 실행하지 않는다(NFR4)
 
-    if (parsed.kind === 'not-command') return // cmdk 기본 목록 선택(Enter)에 위임
+    // ★not-command는 cmdk에 위임한다. 여기서 Enter를 가로채면 하이라이트가 어디에 있든
+    // 늘 첫 항목으로 가버린다 — 각 CommandItem이 자기 라우팅을 소유해야 방향키 조작이 산다.
+    if (parsed.kind === 'not-command') return
 
     e.preventDefault()
     runCommand(parsed, navigate)
@@ -221,6 +462,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
             </CommandGroup>
           </>
         )}
+        {showResults && (
+          <PaletteResults
+            search={search}
+            similarResults={similarResults}
+            onSelectIssue={handleIssueSelect}
+            onSelectAllResults={handleAllResultsSelect}
+            onSelectProjectPicker={handleProjectPickerSelect}
+          />
+        )}
         {guidanceMessage !== null && (
           <p
             role="alert"
@@ -230,6 +480,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
           </p>
         )}
       </CommandList>
+      {/* ★결과 도착은 시각 변화뿐이라 화면낭독기에는 무음이다. 개수를 live region으로 알린다.
+          **항상 마운트**해 두고 문구만 갈아끼운다 — 결과가 생길 때 영역째 새로 붙이면
+          낭독기가 삽입을 놓칠 수 있다. */}
+      <p aria-live="polite" className="sr-only">
+        {resultAnnouncement}
+      </p>
     </CommandPrimitive.Dialog>
   )
 }
