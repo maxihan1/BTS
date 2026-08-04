@@ -1,5 +1,6 @@
 // 라벨 자동완성 입력 컴포넌트 — cmdk Command + 직접 구성 listbox, FR-IS-09 Task-5
 import * as React from 'react'
+import type { RefObject } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { useLabels } from '@/hooks/use-labels'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -36,6 +37,17 @@ interface LabelAutocompleteInputProps {
   existingLabels?: string[]
   /** 입력창 placeholder 텍스트 (선택사항, 기본값: '라벨 입력 또는 검색...') */
   placeholder?: string
+  /**
+   * 입력창으로 가는 ref — FR-UX-10 F11 단축키 `l`이 여기에 포커스를 준다.
+   * 소비처는 routes/issues.$key.tsx
+   * (IssueMetaPanel.labelsInputRef → IssueLabelsEdit → LabelChipsEditor → 여기).
+   *
+   * 이 ref의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다. 이 입력은 이슈 생성 폼
+   * (IssueCreateAssignmentFields → LabelChipsEditor)도 함께 쓰는데 거기엔 `l`이 없으므로,
+   * 무조건 붙이면 스크린리더가 없는 단축키를 안내한다.
+   * "손잡이를 연결한 화면에만 단축키가 있다"가 F11 5종 공통 계약이다.
+   */
+  focusRef?: RefObject<HTMLInputElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +68,7 @@ interface LabelAutocompleteInputProps {
  * @param onCommit 라벨 확정 콜백
  * @param disabled 비활성 여부
  * @param existingLabels 이미 추가된 라벨 목록 (후보에서 제외)
+ * @param focusRef 입력창으로 가는 ref (단축키 `l`)
  */
 export function LabelAutocompleteInput({
   value,
@@ -64,6 +77,7 @@ export function LabelAutocompleteInput({
   disabled = false,
   existingLabels = [],
   placeholder = '라벨 입력 또는 검색...',
+  focusRef,
 }: LabelAutocompleteInputProps) {
   const [open, setOpen] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(-1)
@@ -134,7 +148,12 @@ export function LabelAutocompleteInput({
         label="라벨 자동완성"
       >
         <CommandPrimitive.Input
+          ref={focusRef}
           aria-autocomplete="list"
+          // 단축키 존재를 알 경로가 `?` 도움말 모달뿐이라 표준 속성으로도 알린다.
+          // 키 문자 정본은 CONTEXT_SHORTCUTS(FR-UX-10 F11) — 재배치하면 여기도 같이 고친다.
+          // 시각 툴팁은 만들지 않는다(신규 UI 0 제약 + 툴팁은 키보드 사용자에게 닿지 않는다).
+          aria-keyshortcuts={focusRef !== undefined ? 'l' : undefined}
           aria-controls={showDropdown ? LISTBOX_ID : undefined}
           aria-expanded={showDropdown}
           aria-activedescendant={

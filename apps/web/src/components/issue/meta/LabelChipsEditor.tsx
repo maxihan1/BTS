@@ -1,5 +1,5 @@
 // 라벨 칩 편집기 — 저장 버튼 없는 순수 제어 컴포넌트 (FR-UX-09 F2)
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
@@ -24,6 +24,14 @@ export interface LabelChipsEditorProps {
   value: string[]
   /** 변경 콜백 — 추가·제거 즉시 발화한다 (저장 버튼 없음) */
   onChange: (labels: string[]) => void
+  /**
+   * 라벨 입력으로 **통과시킬** ref — FR-UX-10 F11 단축키 `l`. 이 컴포넌트는 소비하지 않는다.
+   *
+   * 이슈 상세는 `IssueLabelsEdit` 을 거쳐 내려오지만 생성 폼
+   * (`IssueCreateAssignmentFields`)은 이 컴포넌트를 **직접** 쓰고 ref 를 주지 않는다 —
+   * 그 화면엔 `l` 이 없기 때문이다. 미전달이면 `aria-keyshortcuts` 도 붙지 않는다.
+   */
+  focusRef?: RefObject<HTMLInputElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +51,11 @@ export interface LabelChipsEditorProps {
  * - 클라이언트 검증 4종. 공백 trim · 50자 초과 거부 · 20개 초과 거부 · 중복 거부.
  * - WCAG AA. 제거 버튼에 `aria-label`.
  */
-export function LabelChipsEditor({ value, onChange }: LabelChipsEditorProps): JSX.Element {
+export function LabelChipsEditor({
+  value,
+  onChange,
+  focusRef,
+}: LabelChipsEditorProps): JSX.Element {
   const [inputValue, setInputValue] = useState('')
 
   /**
@@ -86,6 +98,7 @@ export function LabelChipsEditor({ value, onChange }: LabelChipsEditorProps): JS
         disabled={isAtMax}
         existingLabels={value}
         placeholder={issueDetailStrings.labelAddPlaceholder}
+        focusRef={focusRef}
       />
     </div>
   )
