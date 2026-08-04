@@ -307,6 +307,21 @@ describe('CommandPalette — 실체 검색 (FR-UX-12 F4)', () => {
     })
   })
 
+  it('★결과와 「모든 결과 보기」 사이에 구분선이 실제로 그려진다 (design 리뷰 5-1)', async () => {
+    // cmdk Separator 는 입력이 비어 있을 때만 그린다(`!alwaysRender && !d ? null` — dist 실측).
+    // 결과 화면은 늘 입력이 차 있으므로 `alwaysRender` 를 빠뜨리면 **조용히 사라진다** —
+    // 렌더 코드는 그대로인데 화면에서만 없어지는 유형이라 눈확인 없이는 못 잡는다.
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '로그인')
+    // ★「모든 결과 보기」는 질의가 확정되는 순간(응답 **전**)부터 뜬다 — 그것으로 기다리면
+    // 결과가 아직 0건이라 구분선이 없는 시점을 재게 된다(실측으로 잡은 red). 결과 도착을 기다린다.
+    await screen.findByRole('option', { name: /ATLAS-1/ })
+
+    expect(screen.getByRole('separator')).toBeInTheDocument()
+  })
+
   it('「모든 결과 보기」가 총 건수를 표기한다 — 7건이 전부로 오독되지 않는다 (design 리뷰 2-2)', async () => {
     // ★기본 픽스처는 totalElements 가 결과 수(3)와 같아 `results.length` 대체를 못 잡는다.
     // plan 스니펫의 「기본 MSW 는 totalElements=50」은 실측과 다르다 — makeSearchPage 가
