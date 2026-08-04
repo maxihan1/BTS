@@ -171,6 +171,35 @@ describe('CommandPalette', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  it('입력창이 combobox 로, 바로가기가 option 으로 노출된다 (NFR5 무회귀)', () => {
+    renderPalette()
+
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    // RTL 의 ByRoleOptions 에는 exact 키가 없다(타입 에러) — 문자열 name 은 이미
+    // 접근성 이름 전체 일치로 매칭되므로 Playwright 의 exact:true 와 같은 의미다.
+    expect(screen.getByRole('option', { name: '내 이슈' })).toBeInTheDocument()
+  })
+
+  it('★래퍼 채택 후에도 팔레트 안에 「검색」 접근성 이름이 하나뿐이다 (즉사 계약)', () => {
+    renderPalette()
+
+    // command-palette.spec.ts:259 가 exact:true 로 이 이름을 잡는다. 래퍼 CommandInput 이
+    // 추가하는 돋보기 아이콘이 접근성 이름을 만들면 strict mode 로 즉사한다.
+    // 명령 힌트 '/search 검색 결과로 이동' 이 '검색' 을 부분 문자열로 품고 있으므로,
+    // 전체 일치가 아니면 이 단언은 2 가 되어 깨진다 — 공허하지 않다.
+    expect(screen.getAllByRole('option', { name: '검색' })).toHaveLength(1)
+
+    // 위 단언만으로는 아이콘을 재지 못한다(svg 는 애초에 option 이 아니다) — 아이콘이
+    // 접근성 트리에서 빠져 있다는 것 자체를 증인으로 세운다. lucide 는 children/aria-*/
+    // role/title 이 없을 때만 aria-hidden 을 자동 부여하므로, 누가 아이콘에 aria-label 을
+    // 붙이는 순간 이 단언이 깨진다.
+    const inputWrapper = screen.getByRole('combobox').closest('[data-slot="command-input-wrapper"]')
+    expect(inputWrapper).not.toBeNull()
+    const searchIcon = inputWrapper?.querySelector('svg') ?? null
+    expect(searchIcon).not.toBeNull()
+    expect(searchIcon?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('IME 조합 중 Enter는 명령을 실행하지 않는다 (NFR4)', async () => {
     const user = userEvent.setup()
     const { onOpenChange } = renderPalette()
