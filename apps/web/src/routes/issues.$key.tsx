@@ -32,7 +32,6 @@ import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
-import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
 import { IssueActivityTabs } from '@/components/issue/IssueActivityTabs'
@@ -40,32 +39,9 @@ import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
 import { issueDetailStrings, worklogStrings } from '@/i18n/ko'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 헬퍼 — 전이 컨트롤 사유 계산 (스펙 E5)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * GET /transitions 응답 상태를 바탕으로 전이 불가 사유를 결정한다.
- * - 에러 + 422 → 'no-workflow' (워크플로우 미설정)
- * - 정상 + 빈 배열 → 'terminal' (종료상태)
- * - 정상 + 전이 있음 → null (전이 가능)
- * - 에러 + 비422 → null (에러는 별도 처리, 전이 불가 사유 없음으로 처리)
- */
-function resolveTransitionUnavailableReason({
-  isError,
-  error,
-  transitionCount,
-}: {
-  isError: boolean
-  error: unknown
-  transitionCount: number
-}): TransitionUnavailableReason {
-  if (isError) {
-    return error instanceof ApiError && error.status === 422 ? 'no-workflow' : null
-  }
-  return transitionCount === 0 ? 'terminal' : null
-}
+// 전이 불가 사유 판정(스펙 E5) — 목록 상태 셀과 공용이라 lib 로 승격했다 (FR-UX-11 F9).
+// 복제하면 상세와 목록이 같은 응답을 서로 다르게 설명하게 된다.
+import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — pane variant 헤더/포커스/Escape (FR-UX-06 PR20 Task 1)

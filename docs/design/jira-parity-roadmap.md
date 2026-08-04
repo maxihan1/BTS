@@ -35,8 +35,8 @@ F번호는 아래 §PR 체인의 것. **이 표가 PR→FR 매핑의 정본**이
 | FR-UX-07 | 활성 프로젝트 컨텍스트 | F1 | ✅ **완주** — #320 |
 | FR-UX-08 | 프로젝트 전환 · 최근 항목 · 내 작업 | F12 · F17 | ✅ **완주** — PR A·B (D 마커 정본: personalization.md §4.6) |
 | FR-UX-09 | 이슈 생성 흐름 (모달 · 진입점) | F2 · F3 · B1 | ✅ **완주** — B1 #328 · F2 #331 · F3 #333 |
-| **FR-UX-10** | 컨텍스트 의존 단축키 | F10 · F11 | ⬜ 미착수 |
-| **FR-UX-11** | 인라인 편집 | F8 · F9 | 🔶 **진행 중** — F8 완료 #337 · F9 잔여 (D 마커 정본: personalization.md §4.9) |
+| **FR-UX-10** | 컨텍스트 의존 단축키 | F10 · F11 | 🔶 **진행 중** — F10 완료 #336 (D1~D5 `[x]`) · F11 잔여 (D 마커 정본: personalization.md §4.8) |
+| FR-UX-11 | 인라인 편집 | F8 · F9 | ✅ **완주** — F8 #337 · F9 #338 (D 마커 정본: personalization.md §4.9) |
 | **FR-UX-12** | 검색 진입 (커맨드 팔레트 · 전역 검색) | F4 · F13 | ⬜ 미착수 |
 | **FR-UX-13** | 백로그 사용성 | F5 · F15 · F16 | ⬜ 미착수 (F5 는 완료 여부 실측 후 착수) |
 | **FR-UX-14** | 이슈 카드 밀도 | F14 · B2 | ⬜ 미착수 |
@@ -58,8 +58,8 @@ node scripts/build-dashboard.mjs && open docs/progress.html                     
 |---|---|---|---|
 | **F4** | Cmd+K 실체 검색 — 이슈키 즉시매칭 + 프로젝트 로컬필터 + `text ~ "…"` AQL 디바운스 | `CommandPalette.tsx` · `components/ui/command.tsx`(소비처 0→1) · `api/search.ts` | (F1 ✅) |
 | **F8** ✅ **#337** | 이슈 상세 인라인 편집 — 제목/본문 클릭 진입, Enter 저장, Esc 취소 | `routes/issues.$key.tsx` · `IssueDescription.tsx` | 없음 |
-| **F9** | 이슈 목록 셀 인라인 편집 (담당자·우선순위·상태) | `IssueTable.tsx` · `issue-columns.ts` · `meta/*` 재사용 · `popover.tsx` | F8 |
-| **F10** ⭐ | 컨텍스트 단축키 아키텍처 + 목록 항법 `j`/`k`/`o`/`t`/`[` | **신규** `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` | 없음 |
+| **F9** ✅ **#338** | 이슈 목록 셀 인라인 편집 (담당자·우선순위·상태) | `IssueTable.tsx` · `issue-columns.ts` · **신규** `cells/{Editable,Assignee,Priority,Status}Cell.tsx`·`use-issue-list-cell-field.ts`·`lib/transition-availability.ts` · `popover.tsx`(소비처 1→2) | F8 |
+| **F10** ⭐ ✅ **#336** | 컨텍스트 단축키 아키텍처 + 목록 항법 `j`/`k`/`o`/`t`/`[` | **신규** `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` | 없음 |
 | **F11** | 상세 액션 단축키 `a`/`i`/`m`/`e`/`l`/`s`/`w`/`.` (8종 — `s`=즐겨찾기, FR-UX-05 이연분 복원) | `issues.$key.tsx` · `IssueMetaPanel.tsx` · `WatchersSection.tsx` · `CommentSection.tsx` · `api/favorites.ts` | F10, F8 |
 | **F13** | 상단바 전역 검색 입력창 + 자연어 폴백 | `TopBar.tsx` · `routes/search.tsx` · **신규** `lib/aql-natural.ts` | (F1 ✅) |
 | **F14** | 보드/백로그 카드 밀도 (유형 아이콘·라벨 칩·추정) | `BoardCard.tsx` · `BacklogCard.tsx` · `api/boards.ts` · `IssueTypeIcon.tsx` 재사용 | **B2** |

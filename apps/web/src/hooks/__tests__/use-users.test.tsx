@@ -132,6 +132,88 @@ describe('useUsersByIds', () => {
     expect(fetchCalled).toBe(false)
   })
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // T-UU-6 — keepPreviousWhileIdsChange 옵션 계약 (리뷰 C3 후속)
+  //
+  // queryKey 에 `ids` 가 들어가므로 id 하나만 늘어도 **캐시 미스**가 난다. 이 결과로 이름
+  // 맵을 만드는 화면(이슈 목록)은 그 순간 **이미 알던 이름까지 잃는다** — 담당자 낙관
+  // 갱신에서 실제로 "바꾸지도 않은 다른 행이 미배정으로 깜빡이는" 증상이 났다.
+  //
+  // ★**짝으로** 잰다. 한쪽만 재면 옵션이 아무 일도 안 해도 통과한다.
+  //   (a) 옵션 ON  → ids 가 바뀌는 동안 **이전 결과 유지**
+  //   (b) 옵션 OFF → ids 가 바뀌는 동안 **결과 없음**  ← 기본 동작 보존의 증인이기도 하다
+  //
+  // 두 번째 응답을 **보류(gate)** 시켜 그 중간 창을 결정적으로 관측한다. 지연(setTimeout)
+  // 으로 재면 느린 CI 에서 창을 놓쳐 flaky 가 된다.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('keepPreviousWhileIdsChange (리뷰 C3 후속)', () => {
+    const ID_A = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
+    const ID_B = 'b2c3d4e5-f6a7-4891-bcde-ef2345678901'
+
+    /**
+     * ids 가 A → A,B 로 바뀌는 동안의 **중간 상태**를 관측한다.
+     *
+     * @param options useUsersByIds 에 전달할 옵션
+     * @returns 두 번째 조회가 보류된 시점의 `data`
+     */
+    async function dataWhileSecondFetchPending(
+      options?: Parameters<typeof useUsersByIds>[1],
+    ): Promise<UserSummary[] | undefined> {
+      let releaseSecond: (() => void) | null = null
+      let callCount = 0
+
+      server.use(
+        http.get('/api/v1/users', async () => {
+          callCount += 1
+          if (callCount >= 2) {
+            // 두 번째 조회는 풀어 줄 때까지 응답하지 않는다 — 중간 창을 열어 둔다
+            await new Promise<void>((resolve) => {
+              releaseSecond = resolve
+            })
+          }
+          return HttpResponse.json(usersFixture)
+        }),
+      )
+
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      )
+
+      const { result, rerender } = renderHook(
+        ({ ids }: { ids: string[] }) => useUsersByIds(ids, options),
+        { wrapper, initialProps: { ids: [ID_A] } },
+      )
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      rerender({ ids: [ID_A, ID_B] })
+      // 두 번째 조회가 시작될 때까지 기다린다 — 시작 전에 재면 첫 결과를 보고 있는 것뿐이다
+      await waitFor(() => expect(callCount).toBe(2))
+
+      const snapshot = result.current.data
+
+      // 보류를 풀어 핸들러가 매달리지 않게 한다
+      if (releaseSecond !== null) (releaseSecond as () => void)()
+      return snapshot
+    }
+
+    it('T-UU-6a: 옵션이 있으면 ids 가 바뀌는 동안 이전 결과를 유지한다', async () => {
+      const data = await dataWhileSecondFetchPending({ keepPreviousWhileIdsChange: true })
+
+      expect(data).toHaveLength(usersFixture.length)
+      expect(data?.[0]?.username).toBe('alice')
+    })
+
+    it('T-UU-6b: 옵션이 없으면(기본) ids 가 바뀌는 동안 결과가 없다', async () => {
+      // ★기본 동작 보존의 증인. "id 는 있는데 조회 결과에 없다" 를 삭제/비활성 사용자의
+      // 신호로 쓰는 소비처(projects.$projectKey.settings.project-lead.tsx)가 있어
+      // 전역 기본값을 바꾸지 않았다 — 그 판단이 지켜지는지 여기서 잰다.
+      const data = await dataWhileSecondFetchPending()
+
+      expect(data).toBeUndefined()
+    })
+  })
+
   it('T-UU-5c: queryKey에 ids 배열이 포함된다 (캐시 분리)', async () => {
     server.use(
       http.get('/api/v1/users', () => HttpResponse.json(usersFixture)),

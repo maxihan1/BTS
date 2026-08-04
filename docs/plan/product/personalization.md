@@ -313,16 +313,17 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 > E2E S7/E12 negative 가 동기 URL 읽기 · FR10 테스트 0) · 신규 충돌면 1(키맵 재배치로
 > 기능 사망 → ADR D-4) · 선재 3(계약 문서 실측 명령 사망 · 도움말 정적 표기 · `s` 키 실종) ·
 > 문서 drift 3 · 성능·규칙 1. 뮤테이션 M1~M12 로 전 가드의 비-공허 확인.
-> **완주 순서** — §4.9 FR-UX-11(F8 → F9) → F11 → D6/D7 `[x]`.
+> **완주 순서** — §4.9 FR-UX-11 **완주**(F8 #337 · F9 #338, 2026-08-04) → **F11 잔여** → D6/D7 `[x]`.
+> 선행이 전부 닫혔으므로 이 FR 의 잔여는 F11 단 1건이다.
 
 ### §4.9 FR-UX-11 — 인라인 편집
 
 **우선순위**. 높음 | **선행**. 없음 (로드맵상 의존 0 — 즉시 착수 가능) | **Plan slug**. `fr-ux-11-inline-edit`
 
-승계 PR 2건 (로드맵 §PR 체인 Tier 2). 착수 시점의 BTS 는 제목·본문을 **이슈 상세 화면 안에서 이미 편집할 수 있었다**(OCC `expectedVersion` 포함). 부족한 것은 **진입과 키보드**였다 — 진입이 버튼 클릭 한 경로뿐이라 지라를 쓰던 손이 텍스트를 클릭해도 아무 일이 일어나지 않았고, `Enter` 저장·`Esc` 취소가 없었다. F8 이 그 간극을 닫았고 목록 셀(F9)은 남아 있다.
+승계 PR 2건 (로드맵 §PR 체인 Tier 2). 착수 시점의 BTS 는 제목·본문을 **이슈 상세 화면 안에서 이미 편집할 수 있었다**(OCC `expectedVersion` 포함). 부족한 것은 **진입과 키보드**였다 — 진입이 버튼 클릭 한 경로뿐이라 지라를 쓰던 손이 텍스트를 클릭해도 아무 일이 일어나지 않았고, `Enter` 저장·`Esc` 취소가 없었다. F8 이 그 간극을 닫았고, F9 가 목록 셀 3종(담당자·우선순위·상태)까지 넓혀 **FR-UX-11 은 완주**했다.
 
 - **F8 — 이슈 상세 인라인 편집.** 제목/본문을 클릭해 진입, Enter 저장, Esc 취소. `routes/issues.$key.tsx` · `IssueDescription.tsx`. **완료 (PR #337)**.
-- **F9 — 이슈 목록 셀 인라인 편집**(담당자·우선순위·상태). `IssueTable.tsx` · `issue-columns.ts` · `components/issue/meta/*` 재사용 · `components/ui/popover.tsx`(소비처 0→1).
+- **F9 — 이슈 목록 셀 인라인 편집**(담당자·우선순위·상태). `IssueTable.tsx` · `issue-columns.ts` · `components/issue/meta/*` 재사용 · `components/ui/popover.tsx`(소비처 **1→2** — `ProjectSwitcher.tsx:9` 가 이미 소비 중이다. 초안의 `0→1` 은 실측상 거짓이라 정정). **완료 (PR #338)**.
 
 **아키텍처**. 프론트 전용 예상 — 기존 이슈 PATCH API 를 소비한다. **F8 이 두 FR 의 공통 선행**이다(F9 가 F8 에, §4.8 의 F11 이 F8 에 의존). 목록 셀은 낙관적 동시성(OCC) 409 를 만나므로 `setQueryData` 부분 갱신 대신 invalidate 로 정합을 맞춘다.
 
@@ -331,8 +332,8 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 - [x] D3. 데이터 모델 — **없음 확정**. 기존 컬럼만 쓴다. 마이그레이션 0 (책임. -)
 - [x] D4. 백엔드 — **없음 확정**. 기존 이슈 PATCH API 소비. `git diff --exit-code main -- backend/` **EXIT 0 실측** (백엔드 0줄) (책임. -)
 - [x] D5. 백엔드 테스트 — **해당 없음 확정** (백엔드 변경 0) (책임. -)
-- [ ] D6. 프론트 UI — **F8 완료 (PR #337)**. 상세 제목·본문 — 텍스트 클릭 진입면(`heading` 안쪽만 감싸 접근성 이름 보존) · 진입 시 포커스 + 커서 텍스트 끝 · `Enter`/`Ctrl`+`Enter` 저장 · `Esc` 취소 · 기존 `✎ 제목 수정`·`본문 편집` 버튼 병존(FR7). 원시 `<button>` 은 PR22 판정식상 OUT(P6)으로 `eslint.config.js`·`button-primitive-usage.test.ts` 에 등재. **F9 잔여** — 목록 셀 3종(담당자·우선순위·상태) (책임. designer → frontend-engineer)
-- [ ] D7. E2E — **F8 완료 (PR #337)**. `e2e/inline-edit.spec.ts` 4 시나리오(S1·S2 제목 클릭→`Enter` 저장 / S3 제목 `Esc` 원본 복원 / S4·S5 본문 클릭→`Ctrl`+`Enter` 저장 / S7 본문 `Esc` 확인 패널). 기존 `issue-crud-happy`·`issue-edit-conflict`·`issue-permission`·`issue-ui-regression` 동반 통과. **F9 잔여** (책임. qa-engineer)
+- [x] D6. 프론트 UI — **F8 완료 (PR #337)**. 상세 제목·본문 — 텍스트 클릭 진입면(`heading` 안쪽만 감싸 접근성 이름 보존) · 진입 시 포커스 + 커서 텍스트 끝 · `Enter`/`Ctrl`+`Enter` 저장 · `Esc` 취소 · 기존 `✎ 제목 수정`·`본문 편집` 버튼 병존(FR7). 원시 `<button>` 은 PR22 판정식상 OUT(P6)으로 `eslint.config.js`·`button-primitive-usage.test.ts` 에 등재. **F9 완료 (PR #338)** — 목록 셀 3종. 공통 래퍼 `cells/EditableCell.tsx`(hover 어포던스 · 행 클릭 전파 차단 · popover) + `cells/{Assignee,Priority,Status}Cell.tsx` + 목록 캐시 전용 `hooks/use-issue-list-cell-field.ts`(낙관적 반영 · 409 롤백 · invalidate) · `lib/transition-availability.ts` 공용 승격(상세 라우트의 지역 함수를 옮겨 상세·목록이 같은 응답을 같게 설명한다) · 종료 전이는 `ResolutionModal` 경유 · popover 열림 동안 목록 단축키 차단(E10) (책임. designer → frontend-engineer)
+- [x] D7. E2E — **F8 완료 (PR #337)**. `e2e/inline-edit.spec.ts` 4 시나리오(S1·S2 제목 클릭→`Enter` 저장 / S3 제목 `Esc` 원본 복원 / S4·S5 본문 클릭→`Ctrl`+`Enter` 저장 / S7 본문 `Esc` 확인 패널). 기존 `issue-crud-happy`·`issue-edit-conflict`·`issue-permission`·`issue-ui-regression` 동반 통과. **F9 완료 (PR #338)** — `e2e/issue-list-inline-edit.spec.ts` 11 시나리오(S1 담당자 검색·선택 / S2 우선순위 / S3 가용 전이만 노출 / S4 요약·행 여백 클릭은 기존대로 상세 / FR3 편집 셀 클릭은 상세 미개방 / S6 `Esc` 후 이동 없음 / E14 결의안 모달 2건 — 미선택 시 전이 요청 0회 / E10 popover 중 `j`·`k` 커서 고정 / 드래그 텍스트 선택 회귀 가드). S3·E10 은 대조군을 Given 에 세워 비-공허를 보장했다 (책임. qa-engineer)
 
 > **F8 완료 (PR #337, 2026-08-03).** 병행 wave 로 진행했고 독립 검증이 결함 3건을 적발해 봉합 —
 > **스펙 미충족 1**(진입 시 포커스·커서 끝이 미구현. E2E `locator.press()` 가 자동 포커스를 줘
@@ -342,6 +343,39 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 > 뮤테이션으로 전 가드의 비-공허를 확인했고, 그 과정에서 커서 단언 1건이 **jsdom 기본값과
 > 우연히 일치해 공허**함을 발견해 테스트 이름을 실제 잡는 범위로 좁혔다.
 > **완주 순서** — F9(목록 셀) → D6/D7 `[x]`. §4.8 F11 이 이 F8 에 의존한다.
+
+> **F9 완료 (PR #338, 2026-08-04) — FR-UX-11 완주.** 목록 셀 3종(담당자·우선순위·상태)을
+> popover 인라인 편집으로 열었다. **백엔드 0줄**(`git diff --exit-code main -- backend/` EXIT 0) ·
+> **마이그레이션 0** · **신규 의존성 0**(`package.json`·`pnpm-lock.yaml` diff 0) ·
+> **FR 총수 139 불변**(다국어 전환·용어 직접 변경은 신규 FR 2건으로 분리 — 아래 후속).
+>
+> **구현 중 뒤집힌 정본 5건** (전부 실측이 문서를 이겼다).
+> ① 이 절의 *"`popover.tsx` 소비처 0→1"* 이 거짓 — `ProjectSwitcher.tsx:9` 가 이미 소비 중이라
+> **1→2**(위 산문 정정). ② plan 초안의 hover 어포던스 토큰 `--border-default` 가 `index.css` 에
+> **부재** — 없는 커스텀 프로퍼티는 에러가 아니라 **무효 선언**이라 FR2 어포던스가 통째로 침묵
+> 소멸한다. `--border` 로 교체하고 **클래스 문자열 단언**으로 못박았다(계산값 단언은 jsdom 이
+> 커스텀 프로퍼티를 해석하지 않아 공허해진다 — F8 커서 단언과 같은 함정).
+> ③ 훅 판별식의 부분 문자열 `pnpm exec` 가 `pnpm --filter @bts/web exec` 를 **못 잡았다**
+> (사이에 플래그가 낀다) — 판별식은 초록인데 결함은 사는 양식이라 정규식으로 교체.
+> ④ 초안 처방 *"루트 `.lintstagedrc.json` 에서 `apps/web/**` 항목 제거"* 가 **양쪽 다 불가** —
+> `lint-staged` 의 `runAll.js` 는 **설정이 2벌 이상일 때만** 설정 디렉토리를 cwd 로 삼는다.
+> 비우면 `ConfigEmptyError` 로 전 커밋 즉사, 지우면 1벌이 되어 cwd 가 루트로 돌아가 결함 부활.
+> 채택안은 **2벌 유지**이고, 되돌아감이 에러가 아니라 **침묵**이라 `설정 2벌 이상` 단언을 신설했다.
+> ⑤ 우선순위 표기가 **같은 칸에서 닫히면 `Medium`(영어) 열면 `보통`(한글)** — F9 이 만든 게
+> 아니라 목록(백엔드 `priorityName`)과 상세(`issueDetailStrings.priorityNames`)가 서로 다른
+> 정본을 보던 **선재 불일치**를 한 칸에서 만나게 해 드러났다. 한글 정본 1개로 통일(백엔드 0줄).
+>
+> **★봉합이 만든 신규 충돌면 1건.** pre-commit 훅 cwd 를 저장소 루트로 옮기자 ESLint 9 flat
+> config 의 상대 `files` 패턴이 기준을 잃어 `apps/web/eslint.config.js:85-109` 의 **PR22 원시
+> `<button>` 예외 19항이 통째로 무효화**됐다. Task 6 이 그 목록에 있는 파일(`issues.$key.tsx`)을
+> **처음** 건드리며 드러났다 — 그 전 커밋은 전부 목록 밖이라 **봉합이 자기 부작용을 가린 구간**이
+> 있었다(계열 `seal-blinds-existing-guard`). 처방은 `apps/web/.lintstagedrc.json` 신설로 프론트
+> 파일의 cwd 를 `apps/web` 으로 되돌려 **훅과 CI 가 같은 조건에서 같은 판정**을 하게 한 것.
+>
+> **후속 (이번 PR 에서 의도적으로 남김 — FR 신설 아님).** 신규 FR 후보 2건(한글/영어 전환 ·
+> 우선순위 용어 직접 변경) · QA F2 hover 어포던스 대비 미달 · QA F3/F4 목록 가로 오버플로와
+> 375px 붕괴(둘 다 선재) · 루트 `.lintstagedrc.json` 의 도달 불가 항목 · worktree Playwright
+> `webServer` 함정. 전량 `docs/plans/2026-08-04-fr-ux-11-f9-list-cell-inline-edit.md §후속 항목`.
 
 ### §4.10 FR-UX-12 — 검색 진입 (커맨드 팔레트 · 전역 검색)
 
@@ -444,10 +478,10 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 ### BC 완료 조건
 
-- [~] §2~§5 (21 FR) 모두 `[x]` 마킹 — 15/21 (2026-07-31 §4.6 프로젝트 전환·최근 항목·내 작업 완주로 15종. 인터랙션 패리티 잔여 6종 §4.7~§4.12 는 등록만 된 미착수)
+- [~] §2~§5 (21 FR) 모두 `[x]` 마킹 — **17/21** (2026-08-04 실측. 2026-07-31 §4.6 프로젝트 전환·최근 항목·내 작업 완주로 15종 → 08-03 §4.7 이슈 생성 흐름 완주로 16종 → 08-04 §4.9 인라인 편집 완주로 17종. 잔여 4종 = §4.8(D1~D5 만 완료 — D6/D7 은 상세 액션 단축키 대기) · §4.10 · §4.11 · §4.12)
       <!-- ★ 이 줄에 `FR-XX-NN` 형태를 쓰지 말 것 — verify-master-plan.sh 의 "§N 헤더 (FR-XX, N개)"
            스캐너가 헤더 선언으로 오인해 `N개` 파싱에 실패하고 EXIT 1 이 된다(2026-07-25 실제 발생). -->
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 8행 전부 실측값이 `___` 공란. k6(프로필 조회·캘린더 30일·iCal Export) · Playwright(설정 적용·cmdk 응답) · E2E 전수(단축키) · Lighthouse CI(LCP) · axe-core(WCAG AA) 를 실제로 돌려 p95 를 채워야 한다 (2026-07-27 실측)
-- [x] CHANGELOG.md 정리 — 2026-07-29 실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (21 FR 등록 / 14 완료 / 2026-07-05~07-29 / 대표 산출 5종 + 논리 BC 각주. 인터랙션 패리티 잔여 7종은 완료 시 추가)
+- [x] CHANGELOG.md 정리 — 2026-08-04 재실측: 저장소 루트 `CHANGELOG.md` 의 `[Unreleased] — Phase 1` §BC 요약 표에 personalization 행 존재 (21 FR 등록 / **17 완료** / 2026-07-05~08-04 / 대표 산출 8종 + 논리 BC 각주. 인터랙션 패리티 잔여 4종은 완료 시 추가)
 - [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가 — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가). 2026-07-27 실측: `docs/plan/README.md` §7 은 3행뿐이고 BC 완료 행 없음 — 이 행의 날짜가 곧 선언일이므로 선언 이전에는 기입 불가
 - [ ] Maxi 1인 선언 — "personalization BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

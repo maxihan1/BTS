@@ -1,8 +1,14 @@
 // 이슈 테이블 컬럼 정의 — key·header·sortable·required·render 메타데이터 (FR-UX-06 Phase 5 PR18 Task 4)
 import { createElement } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
+import type { QueryKey } from '@tanstack/react-query'
 import { ISSUE_SORT_FIELDS } from '@/api/issues'
 import type { IssueResponse, IssueSortField } from '@/api/issues'
+// 열람 숨김 판정 정본 — 상세 화면(`IssueMetaPanel.tsx:306`)과 같은 술어를 재사용한다
+import { isFieldHidden } from '@/components/issue/IssueMetaPanel'
+import { AssigneeCell, AssigneeCellDisplay } from './cells/AssigneeCell'
+import { PriorityCell, PriorityCellDisplay } from './cells/PriorityCell'
+import { StatusCell, StatusCellDisplay } from './cells/StatusCell'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -19,9 +25,30 @@ import type { IssueResponse, IssueSortField } from '@/api/issues'
 export type IssueColumnKey = 'key' | 'summary' | 'status' | 'assignee' | 'priority' | 'updatedAt'
 
 /**
+ * 셀 인라인 편집에 필요한 컨텍스트 (FR-UX-11 F9).
+ *
+ * 없거나(`undefined`) `enabled: false`면 3종 셀(담당자·우선순위·상태)이 **기존 읽기 전용
+ * 마크업 그대로** 렌더된다 — 이것이 회귀 0 의 장치다.
+ */
+export interface IssueCellEditContext {
+  /**
+   * 목록 queryKey — mutation 훅이 이 캐시를 낙관적으로 patch 한다.
+   *
+   * ★`issues.index.tsx`의 `useQuery({ queryKey })`와 **같은 배열**이어야 한다. 두 곳에서
+   * 따로 만들면 값이 어긋나 patch 가 아무 캐시에도 닿지 않고, 테스트는 초록인데 화면만
+   * 안 바뀌는 가짜 그린이 난다.
+   */
+  listQueryKey: QueryKey
+  /** 편집 기능 자체를 끌 때 false (상위 판단) */
+  enabled: boolean
+}
+
+/**
  * 컬럼 렌더 함수가 행 단위로 필요로 하는 컨텍스트.
  * - assigneeName/formatDate — 훅 호출 결과({@link IssueTable}이 계산해 전달)를
  *   그대로 소비한다. `issue-columns.ts`는 훅을 직접 호출하지 않는 순수 함수 모음이다.
+ * - edit — 셀 컴포넌트에 **위임만** 한다. 훅은 셀 컴포넌트가 소유하므로 이 모듈의
+ *   순수 함수 계약은 유지된다(D-5).
  */
 export interface IssueColumnRenderContext {
   /** assigneeId → 표시 이름 해석 결과. 미배정이거나 매핑 실패 시 undefined */
@@ -30,6 +57,18 @@ export interface IssueColumnRenderContext {
   formatDate: (iso: string | null) => string
   /** 행 네비게이션 콜백 — 키 링크 클릭 시 preventDefault 후 호출 */
   onNavigate: () => void
+  /** 셀 인라인 편집 컨텍스트. 미전달이면 읽기 전용(기존 동작) */
+  edit?: IssueCellEditContext
+}
+
+/**
+ * 편집 컨텍스트가 실제로 살아 있는지 좁힌다.
+ *
+ * @param edit 렌더 컨텍스트의 편집 컨텍스트
+ * @returns 편집 셀을 렌더해도 되면 true
+ */
+function isEditEnabled(edit: IssueCellEditContext | undefined): edit is IssueCellEditContext {
+  return edit !== undefined && edit.enabled
 }
 
 /** 이슈 테이블 컬럼 정의 */
@@ -99,26 +138,55 @@ function renderSummaryCell(issue: IssueResponse): ReactNode {
   )
 }
 
-/** 상태 배지 셀 렌더 — ★e2e 계약 보존(role=status) */
-function renderStatusCell(issue: IssueResponse): ReactNode {
-  return createElement(
-    'span',
-    {
-      role: 'status',
-      className: `inline-block shrink-0 rounded-full bg-(--bg-neutral) px-2 py-0.5 text-xs font-medium ${SUBTLE_TEXT_CLASS}`,
-    },
-    issue.currentStateKey,
-  )
+/**
+ * 상태 배지 셀 렌더 — ★e2e 계약 보존(role=status).
+ *
+ * `ctx.edit`가 있으면 편집 셀로 바뀌지만 배지의 `role="status"`는 그대로 살아 있다
+ * (즉사 계약, FR9). 배지 마크업 정본은 {@link StatusCellDisplay} 하나뿐이라 두 경로가
+ * 어긋날 수 없다.
+ */
+function renderStatusCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+  if (!isEditEnabled(ctx.edit)) {
+    return createElement(StatusCellDisplay, { currentStateKey: issue.currentStateKey })
+  }
+  return createElement(StatusCell, { issue, listQueryKey: ctx.edit.listQueryKey })
 }
 
-/** 담당자 셀 렌더 — assigneeNameMap 해석 결과. 미배정/해석 실패 시 "미배정" */
-function renderAssigneeCell(_issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
-  return createElement('span', { className: DEFAULT_TEXT_CLASS }, ctx.assigneeName ?? '미배정')
+/**
+ * 담당자 셀 렌더 — assigneeNameMap 해석 결과. 미배정/해석 실패 시 "미배정".
+ *
+ * ★열람 숨김이면 **읽기 전용 경로에서도** 값을 그리지 않는다. 백엔드가 열람 불가
+ * `assigneeId` 를 null 로 마스킹하므로 그대로 그리면 담당자가 있는데 "미배정" 이라고
+ * 말하게 된다. 편집 경로의 차단은 {@link AssigneeCell} 이 스스로 한다(직접 렌더돼도
+ * 안전하도록) — 여기서는 편집이 꺼진 경로만 메운다.
+ */
+function renderAssigneeCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+  if (!isEditEnabled(ctx.edit)) {
+    return createElement(AssigneeCellDisplay, {
+      assigneeName: ctx.assigneeName,
+      isRestricted: isFieldHidden('assigneeId', issue.restrictedFields),
+    })
+  }
+  return createElement(AssigneeCell, {
+    issue,
+    assigneeName: ctx.assigneeName,
+    listQueryKey: ctx.edit.listQueryKey,
+  })
 }
 
-/** 우선순위 셀 렌더 — priorityName 텍스트 그대로 */
-function renderPriorityCell(issue: IssueResponse): ReactNode {
-  return createElement('span', { className: DEFAULT_TEXT_CLASS }, issue.priorityName)
+/**
+ * 우선순위 셀 렌더.
+ *
+ * 표기 정본은 `issueDetailStrings.priorityNames`(한국어)이고 해석은
+ * {@link PriorityCellDisplay} 안에서 한다 — 백엔드 `issue.priorityName`(영어)은 화면에
+ * 쓰지 않는다(Maxi 확정 2026-08-04). 여기서 미리 해석해 넘기면 순수 컬럼 정의 모듈에
+ * i18n 결합이 새어 들어간다.
+ */
+function renderPriorityCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+  if (!isEditEnabled(ctx.edit)) {
+    return createElement(PriorityCellDisplay, { priority: issue.priority })
+  }
+  return createElement(PriorityCell, { issue, listQueryKey: ctx.edit.listQueryKey })
 }
 
 /** 수정일 셀 렌더 — 사용자 dateFormat 프리셋 기준(GAP-4, 보조 정보라 subtle) */

@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useDateFormat } from '@/hooks/use-date-format'
 import type { IssueResponse, IssueSortField } from '@/api/issues'
 import { ISSUE_COLUMNS, getSortField } from './issue-columns'
-import type { IssueColumnDef } from './issue-columns'
+import type { IssueCellEditContext, IssueColumnDef } from './issue-columns'
 import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +50,11 @@ export interface IssueTableProps {
    * 완전히 독립된 별개 강조다. undefined/null이면 어떤 행도 강조하지 않는다.
    */
   selectedKey?: string | null
+  /**
+   * 셀 인라인 편집 컨텍스트 (FR-UX-11 F9). 미전달이면 읽기 전용(기존 동작).
+   * `listQueryKey`는 호출 측의 `useQuery` queryKey와 **같은 값**이어야 한다.
+   */
+  edit?: IssueCellEditContext
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,6 +187,8 @@ interface IssueTableDataRowProps {
   formatDate: (iso: string | null) => string
   /** split view 현재 선택 이슈 키(IssueTableProps.selectedKey 그대로 전파) */
   selectedKey?: string | null
+  /** 셀 인라인 편집 컨텍스트(IssueTableProps.edit 그대로 전파) */
+  edit?: IssueCellEditContext
 }
 
 /**
@@ -206,6 +213,7 @@ function IssueTableDataRow({
   assigneeNameMap,
   formatDate,
   selectedKey,
+  edit,
 }: IssueTableDataRowProps): JSX.Element {
   const handleRowNavigate = (): void => onNavigate(issue.key)
   const isCurrent = selectedKey != null && issue.key === selectedKey
@@ -229,6 +237,7 @@ function IssueTableDataRow({
             assigneeName: issue.assigneeId !== null ? assigneeNameMap.get(issue.assigneeId) : undefined,
             formatDate,
             onNavigate: handleRowNavigate,
+            edit,
           })}
         </TableCell>
       ))}
@@ -264,6 +273,7 @@ export function IssueTable({
   onNavigate,
   assigneeNameMap,
   selectedKey,
+  edit,
 }: IssueTableProps): JSX.Element {
   const { formatDate } = useDateFormat()
   const visibleSet = new Set(visibleColumnKeys)
@@ -291,6 +301,7 @@ export function IssueTable({
             assigneeNameMap={assigneeNameMap}
             formatDate={formatDate}
             selectedKey={selectedKey}
+            edit={edit}
           />
         ))}
       </TableBody>
