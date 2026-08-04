@@ -502,6 +502,28 @@ export function IssueDetailPage({
   const currentUserId = useAuthUser()?.userId ?? null
 
   /**
+   * 단축키가 이 필드를 조작해도 되는가 — **열람 숨김과 수정 금지 두 목록을 모두** 본다.
+   *
+   * 🛑 한쪽만 보는 판정으로 줄이지 마라. 백엔드 `buildNoneditableKeys` 가 `restrictedSet` 을
+   * filter 하므로 **열람 숨김 필드는 수정 금지 목록에 절대 오지 않는다.** 그래서
+   * `noneditableFields` 만 보는 구현은 화면에서 숨긴 필드를 단축키가 서버로 밀어 넣어 403 과
+   * 원인 불명 토스트를 만들고, `restrictedFields` 만 보는 구현은 수정 금지 필드를 열어 준다.
+   * 두 목록이 배타적이라 **한쪽만 보면 다른 쪽 시나리오에서 그대로 뚫린다**
+   * (PR #338 F9 가 실제로 낸 결함).
+   *
+   * `lib/` 로 올리지 않는 이유. 목록 셀 인라인 편집과 공유할 후속 항목이 이미 F9 에 잡혀
+   * 있어, 여기서 먼저 올리면 그 정리와 충돌한다.
+   *
+   * @param fieldKey 판정할 필드 키 (`assigneeId` · `labels` · `summary`)
+   * @returns 단축키로 조작해도 되면 true. 이슈 미로드·열람 숨김·수정 금지면 false
+   */
+  function canUseField(fieldKey: string): boolean {
+    if (issue === undefined) return false
+    if (isFieldHidden(fieldKey, issue.restrictedFields)) return false
+    return !isFieldDisabled(fieldKey, canEdit, issue.noneditableFields)
+  }
+
+  /**
    * 댓글 작성 입력으로 포커스를 옮긴다 — 필요하면 댓글 탭을 먼저 연다 (단축키 `m`).
    *
    * ★`flushSync` 가 이 함수의 요점이다. Radix Tabs 는 **비활성 탭 콘텐츠를 언마운트**하고
@@ -542,36 +564,27 @@ export function IssueDetailPage({
   useContextShortcuts(
     'issue-detail',
     {
-      // ★필드 권한 두 목록을 **모두** 본다. 백엔드가 두 목록을 배타적으로 만들어
-      // 열람 숨김 필드는 수정 금지 목록에 절대 오지 않는다 — `noneditableFields` 만
-      // 보면 숨긴 필드를 단축키로 열어주게 된다(PR #338 F9 가 실제로 그랬다).
+      // 필드 권한 판정은 전부 `canUseField` 한 곳을 지난다 — 두 목록을 모두 보는 규칙이
+      // 키마다 흩어지면 한 키만 뒤처져 조용히 뚫린다(그 함수의 🛑 주석 참조).
       onFocusAssignee: () => {
-        if (issue === undefined) return
-        if (isFieldHidden('assigneeId', issue.restrictedFields)) return
-        if (isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)) return
+        if (!canUseField('assigneeId')) return
         assigneeSearchRef.current?.focus()
       },
       onAssignToMe: () => {
-        if (issue === undefined) return
-        if (isFieldHidden('assigneeId', issue.restrictedFields)) return
-        if (isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)) return
+        if (!canUseField('assigneeId')) return
         if (currentUserId === null) return // E7 — 미인증이면 누구에게 할당할지 알 수 없다
         // Jira 문구가 `Toggle` 이다 — 이미 나면 해제한다. 저장 경로는 기존 핸들러 재사용.
-        handleAssigneeChange(issue.assigneeId === currentUserId ? null : currentUserId)
+        handleAssigneeChange(issue?.assigneeId === currentUserId ? null : currentUserId)
       },
       onFocusComment: focusCommentInput,
       onEditTitle: () => {
-        if (issue === undefined) return
-        if (isFieldHidden('summary', issue.restrictedFields)) return
-        if (isFieldDisabled('summary', canEdit, issue.noneditableFields)) return
+        if (!canUseField('summary')) return
         // 전용 진입 함수를 탄다 — `setIsEditingTitle(true)` 만 하면 입력창이 빈 값으로 열려
         // Enter 한 번에 제목이 지워진다.
         handleEditStart()
       },
       onFocusLabels: () => {
-        if (issue === undefined) return
-        if (isFieldHidden('labels', issue.restrictedFields)) return
-        if (isFieldDisabled('labels', canEdit, issue.noneditableFields)) return
+        if (!canUseField('labels')) return
         labelsInputRef.current?.focus()
       },
       // ★F-2 — 포커스를 **먼저** 옮기고 누른다. 순서가 접근성의 전부다. 두 버튼은
