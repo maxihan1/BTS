@@ -7,6 +7,8 @@ import { useAuthStore } from '@/auth/authStore'
 import { useActiveProject } from '@/hooks/use-active-project'
 import type { WhoamiResponse } from '@/api/schemas'
 import { navLabels } from '@/i18n/nav-labels'
+import { dispatchContextAction } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
 import { ShellLayout } from '../ShellLayout'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,5 +332,38 @@ describe('ShellLayout', () => {
 
     expect(screen.queryByRole('banner')).not.toBeInTheDocument()
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // FR-UX-10 F11 — `.` (명령 팔레트 열기) 배선
+  //
+  // 셸이 `app-shell` 레이어의 등록 지점이므로 `.` 의 콜백도 여기 있어야 한다.
+  // 등록만 하고 콜백을 빠뜨리면 키를 삼키고도(preventDefault) 팔레트가 안 열리는
+  // ADR D-5-a 의 그 형태가 된다 — 아래 두 테스트가 그 구멍을 막는다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('인증 상태에서 `.` 액션이 명령 팔레트를 연다 (F11)', () => {
+    // 팔레트 스토어는 모듈 전역 zustand — 실행 순서에 무관하게 닫힌 상태에서 출발시킨다
+    useCommandPaletteStore.setState({ open: false })
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    renderShell()
+
+    act(() => {
+      dispatchContextAction({ layer: 'app-shell', action: { kind: 'open-command-palette' } })
+    })
+
+    expect(useCommandPaletteStore.getState().open).toBe(true)
+  })
+
+  it('미인증이면 `.` 액션이 무동작이다 — app-shell 미등록 (E5)', () => {
+    useCommandPaletteStore.setState({ open: false })
+    useAuthStore.setState({ accessToken: null, user: null })
+    renderShell()
+
+    act(() => {
+      dispatchContextAction({ layer: 'app-shell', action: { kind: 'open-command-palette' } })
+    })
+
+    expect(useCommandPaletteStore.getState().open).toBe(false)
   })
 })
