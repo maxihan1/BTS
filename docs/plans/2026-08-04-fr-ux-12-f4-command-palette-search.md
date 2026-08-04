@@ -1136,7 +1136,8 @@ describe('경계 가드 3 — 호출 순서 계약 (FR2)', () => {
 ## Plan 메타
 
 - task 수: **9**
-- 예상 wave: **4** (W1 = T1·T2·T4 병렬 → W2 = T3·T5 → W3 = T6 → T7 → W4 = T8·T9)
+- ~~예상 wave: 4~~ → **실제 wave 6** (계획 시 `T8 → T9` 의존을 빠뜨려 오산했다).
+  W1 = T1·T2·T4 병렬 → W2 = T3·T5 병렬 → W3 = T6 → W4 = T7 → W5 = T8 → W6 = T9
   - T5·T6·T7 은 `CommandPalette.tsx` 를 공유하므로 **파일 겹침 자동 직렬화** 대상
 - 구현 규율: **ui 시각 검증 트랙** (T6·T7 red-first 면제) + **통상 TDD** (T1·T2·T4·T8 순수 로직)
 - 병렬 dispatch: bts-impl 이 `depends-on` + `files` 로 wave 계산
@@ -1321,3 +1322,96 @@ Task 7 **눈확인 항목에 추가**. ⑤ **375px 폭**에서 요약이 말줄�
   독립 리뷰가 매번 결함을 잡았다(F10 12건 · F8 7건 · F9 7건 · F11 실사용 결함 2건).
 - **`totalCount` 추가로 훅 반환 계약이 늘었다.** Task 3 의 `PaletteSearchResult` 에
   `totalCount: number` 를 더한다 — Task 3 이 Task 7 보다 먼저이므로 Task 3 구현 시 반영.
+
+## 구현 결과 — plan 정정 8건
+
+구현 중 실측이 **plan(내가 쓴 것)의 오류 8건**을 적발했다. 아래는 그 기록이다.
+"계획이 맞았는지"가 아니라 "무엇이 틀렸고 왜 그랬는지"가 다음 작업의 자산이다.
+
+### ★ 내가 쓴 가드 2개가 공허했다 (Task 8 이 뮤테이션으로 적발)
+
+가장 아픈 정정이다. **공허 가드를 막으려고 만든 task 의 가드 자체가 공허했다.**
+
+| # | plan 원안 | 왜 공허했나 | 처방 |
+|---|---|---|---|
+| 1 | 가드 1 `/from\s+['"]\.\/palette-input['"]/` | plan 이 **스스로 지정한 뮤테이션**이 부수효과 import `import './palette-input'` 인데 거기엔 **`from` 이 없다**. 뮤테이션 상태에서 매치 = `false` — 잡아야 할 것을 정확히 못 잡았다 | 모듈 지정자 자체를 막도록 확대. `from './x'` · `import './x'` · 동적 `import('./x')` 3형태 전부 |
+| 2 | 가드 2 `COMMANDS_SRC.match(/kind:\s*'[a-z-]+'/g)` | 파일 **전체를 무필터로** 긁어 **주석 안의 `kind: 'xxx'` 표기까지** 수집한다. 실측 — `commands.ts` 에 주석 한 줄만 넣어도 가짜 red | ①`export type ParsedCommand =` **선언 블록**만 잘라 판정(+ 추출 실패를 통과로 오독하지 않게 `not.toBe('')` 선행) ②선언 **밖** 유출은 주석을 걷어낸 원문으로 전수 판정 |
+
+**교훈.** 가드를 쓸 때 **그 가드가 막겠다고 선언한 뮤테이션을 실제로 넣어 봐야** 한다.
+"이 정규식이 잡을 것이다"는 추측이고, 이번엔 그 추측이 틀렸다.
+계열 — [[seal-blinds-existing-guard]] · [[two-lists-never-check-each-other]].
+Task 8 테스트 수도 **5 → 6** 으로 늘었다(가드 2 를 2단으로 쪼갠 결과).
+
+### 사실관계 오류 3건
+
+| # | plan 이 적은 것 | 실측 | 영향 |
+|---|---|---|---|
+| 3 | Task 4 의 body 이중 읽기가 **"실버그"** | **아니다.** `syntax-error` 분기가 early return 이라 두 `request.json()` 이 상호배타 경로였다. 다만 `.catch(() => ({}))` 가 실패를 삼켜, 누가 fall-through 분기를 더하는 순간 조용히 빈 객체가 되는 **잠복 함정**이었다 | 처방(상단 1회 읽기 통합)은 유효. **근거를 정정** |
+| 4 | MSW 기본 `totalElements` = **50** | **`hits.length`(=3)** 다. `makeSearchPage` 가 오버라이드 없으면 그렇게 계산한다 | 총계 단언이 **공허해질 뻔했다** — 표시분과 총계가 같으면 `results.length` 대체를 못 잡는다. Task 3·7 이 `42` 로 덮어 어긋나게 만들어 해결 |
+| 5 | Task 1 검증 **"10/10 통과"** | 코드 블록을 세면 **9건** | 산문 오타. 구현은 코드 블록을 정본으로 삼아 9/9 |
+
+### 설계 함정 2건 (plan 이 예견 못 함)
+
+| # | 내용 |
+|---|---|
+| 6 | **`exact: true` 는 RTL `ByRoleOptions` 에 없는 키다.** `tsc` 가 TS2769 로 거부하는데 **vitest 는 타입을 안 봐서 그대로 통과**한다(PR #46 교훈 재현). plan 스니펫 다수에 들어 있었고 Task 6·7 이 제거. **Playwright 에서는 유효**하므로 E2E 는 그대로 둔다 |
+| 7 | **`src/test/server.ts` 의 기본 핸들러는 `auth/refresh` 1개뿐이다.** `src/mocks/handlers.ts` 가 아니라 `src/test/handlers.ts` 를 읽는다. 등록 없이 훅을 테스트하면 미핸들 에러가 **`errorMessage: '검색에 실패했습니다.'` 로 둔갑해** 테스트가 거짓 신호를 진짜로 착각한다 |
+
+### NFR3 가드 교체 (8번째 정정)
+
+| # | 내용 |
+|---|---|
+| 8 | plan 의 `expect(results.length).toBeLessThanOrEqual(7)` 는 **공허**했다 — MSW 가 `size` 를 무시하고 항상 3건을 주므로 우변이 7이든 50이든 통과한다. **응답이 아니라 요청**을 증인으로 교체(요청 body 의 `size === 7`). 기대값 `7` 을 상수 import 로 쓰지 않고 **하드코딩**한 것이 핵심 — import 하면 상한을 바꿀 때 단언이 같이 따라 움직여 **같은 공허함이 재발**한다. 뮤테이션 7→50 에서 **정확히 1건만** red 로 확인 |
+
+## 구현 중 발생·봉합한 사고 2건
+
+### ★ 자기가 만든 회귀를 A/B 실측으로 잡았다 (Task 7)
+
+`usePaletteSearch` 를 `CommandPalette` **부모 레벨**에서 호출했더니 `keyboard-shortcuts.spec.ts`
+S3a(`g` `i` → `/issues`)가 30초 타임아웃으로 죽었다(2회 재현, flaky 아님).
+
+**원인.** `CommandPalette` 는 인증만 되면 `__root.tsx` 에 **항상 마운트**돼 있고 `open` 은 prop 일
+뿐이다. 훅을 부모에서 부르면 **팔레트가 닫힌 내내 프로젝트 조회·디바운스가 전 페이지에서 돈다.**
+그 부팅 부하가 `useKeyboardShortcuts` 의 effect 재등록(cleanup 이 `clearLeader` 호출)과 겹쳐
+leader 시퀀스를 지웠다.
+
+**귀속 방법이 중요하다.** `git checkout` 이 아니라 **파일 내용 스왑 A/B** 로 확정했다 —
+task-6 컴포넌트=green / task-7=red / 훅 하향 후=green 2회.
+
+**처방.** 훅을 `PaletteSearchSection` 으로 내려 **다이얼로그 안쪽**에서 호출. cmdk `Command.Dialog`
+는 Radix Portal 이라 닫힌 동안 자식을 렌더하지 않으므로 **닫힌 팔레트 비용이 0** 이 됐다.
+
+**남은 위험(범위 밖).** `useKeyboardShortcuts` 의 effect cleanup 이 leader 를 지우는 구조는 그대로다.
+증상만 사라졌고 원인은 남았다 — 후속 과제 후보.
+
+### ★ 실사용 결함 — 탈출구가 기본 선택을 가로챘다 (Task 9 적발 → Task 7 봉합)
+
+자유 텍스트 검색 후 **기본 하이라이트가 첫 결과가 아니라 「모든 결과 보기」에 걸렸다.**
+`fullSearchQuery` 가 디바운스 종료 즉시 확정돼 탈출구가 **결과 도착 전에** 마운트되고, cmdk 가 그
+순간의 유일한 항목을 선택으로 잡은 뒤 결과가 붙어도 유지한 것.
+
+**사용자 영향.** 글자 치고 바로 Enter → 첫 결과가 아니라 검색 페이지로 간다.
+**스펙 S4 위반**이고 plan 리뷰가 못박은 *"보이는 순서 = 확신의 순서"* 와 어긋난다.
+
+**qa 의 처리가 모범이었다.** S12 를 `Home` 으로 출발점 고정해 통과시키되 **하이라이트 좌표 자체는
+일부러 단언하지 않았다** — 이 흠이 고쳐질 때 테스트가 같이 깨지지 않게. 그리고 구현을 고치지 않고
+**보고만** 했다(역할 경계 준수).
+
+## 범위 밖이었으나 이 PR 에서 처리한 것 1건
+
+**worktree 에서 E2E 가 아예 못 돌던 것을 봉합** (Maxi 확정).
+`playwright.config.ts` 의 `webServer.command` 가 `pnpm dev` 라, worktree 의 심볼릭 `node_modules` 에서
+pnpm 이 install 을 자동 트리거하며 죽었다. `reuseExistingServer: false` 가 봉인돼 Playwright 는
+**항상 자기 서버를 띄우므로** 이 명령이 죽으면 우회로가 없다. CLAUDE.md §핵심 패턴이 "worktree per
+작업"을 강제하니 곧 **모든 작업의 E2E 가 막혀 있었다**는 뜻이다.
+
+`node_modules/.bin/vite` 로 교체 + **판별식 3단 신설** — ①pnpm 래퍼 부재 ②vite 직접호출 존재
+③`apps/web` 의 `dev` 스크립트가 `'vite'` 인지(두 목록 drift 방지). `INPUTS` 에 `apps/web/package.json`
+을 추가하니 배선 단언이 자동으로 CI 트리거를 요구해 `workflow-scripts-ci.yml` 의 `paths`
+**pull_request·push 양쪽**도 같은 PR 에서 고쳤다. 뮤테이션 2건으로 비-공허 확인.
+
+**★ controller 가 낸 사고 1건.** 그 뮤테이션 검증 때 **미커밋 상태에서 `git checkout --` 로 원복해
+작업분을 통째로 날렸다.** 메모리 [[mutation-test-requires-committed-baseline]] 에 정확히 적혀 있는
+함정을 그대로 밟은 것이다. 판별식·CI 배선은 살아남고 `playwright.config.ts` 만 소실돼 재적용했다.
+**교훈. 뮤테이션 전에 GREEN 을 먼저 커밋한다.** 이후 전 sub-agent prompt 에 이 금지를 명시했고,
+그 뒤로는 전원이 역방향 Edit 을 썼다.
