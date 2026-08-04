@@ -3,6 +3,7 @@
 import { useEffect, useState, type JSX, type KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Command as CommandPrimitive } from 'cmdk'
+import { CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { buildTextQuery } from '@/lib/aql-text-query'
 import { parseCommand, COMMANDS, QUICK_LINKS, type ParsedCommand } from './commands'
 
@@ -28,14 +29,6 @@ const commandPaletteStrings = {
   unknownCommand: (name: string) => `알 수 없는 명령입니다. /${name}`,
   invalidIssueKey: '이슈 키 형식이 올바르지 않습니다. 예: PROJ-12',
 }
-
-/** cmdk Group heading 스타일 — 두 그룹(바로가기/명령어)에서 공유 */
-const GROUP_HEADING_CLASS =
-  '[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground'
-
-/** cmdk Item 공통 스타일 — 바로가기/명령 힌트 항목에서 공유 */
-const ITEM_CLASS =
-  'flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm outline-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -110,7 +103,11 @@ const EXECUTABLE_KINDS: ReadonlySet<ParsedCommand['kind']> = new Set(['goto', 's
  * Cmd+K 명령 팔레트 컴포넌트.
  *
  * cmdk `Command.Dialog`(Radix Dialog 래핑 — focus trap/Esc 닫기/포커스 복원 기본 제공) 위에
- * `Command.Input`/`Command.List`/`Command.Item`으로 구성한다.
+ * shadcn 래퍼 `components/ui/command.tsx`의 `CommandInput`/`CommandList`/`CommandGroup`/
+ * `CommandItem`으로 구성한다. `Command.Dialog`만 cmdk 프리미티브를 직접 쓰는데,
+ * 래퍼가 `CommandDialog`를 "소비처 몫"이라며 의도적으로 제외했기 때문이다(래퍼 파일 L1).
+ * `CommandEmpty`는 쓰지 않는다 — `shouldFilter={false}`라 cmdk가 `filtered.count`를
+ * 등록 아이템 수로 두므로 0건 판정이 영영 성립하지 않는다(도달 불가 코드).
  *
  * - 입력이 비어 있으면 QUICK_LINKS(정적 바로가기) + COMMANDS(명령 힌트)를 렌더한다.
  * - 명령 힌트 선택 시 라우팅하지 않고 입력창에 prefix를 채운다(S2 보강).
@@ -189,47 +186,39 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
       overlayClassName="fixed inset-0 z-50 bg-black/40"
       contentClassName="fixed left-1/2 top-[15vh] z-50 w-full max-w-lg -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-popover shadow-xl"
     >
-      <CommandPrimitive.Input
+      <CommandInput
         value={inputValue}
         onValueChange={setInputValue}
         onKeyDown={handleInputKeyDown}
         placeholder={commandPaletteStrings.inputPlaceholder}
-        className="w-full border-b border-border bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground"
       />
-      <CommandPrimitive.List className="max-h-80 overflow-y-auto p-2">
+      {/* p-2 만 넘긴다 — max-h/overflow 는 래퍼 기본값(max-h-[300px])이 담당한다 */}
+      <CommandList className="p-2">
         {showQuickLinks && (
           <>
-            <CommandPrimitive.Group
-              heading={commandPaletteStrings.quickLinksHeading}
-              className={GROUP_HEADING_CLASS}
-            >
+            <CommandGroup heading={commandPaletteStrings.quickLinksHeading}>
               {QUICK_LINKS.map((link) => (
-                <CommandPrimitive.Item
+                <CommandItem
                   key={link.to}
                   value={link.to}
                   onSelect={() => handleQuickLinkSelect(link.to)}
-                  className={ITEM_CLASS}
                 >
                   {link.label}
-                </CommandPrimitive.Item>
+                </CommandItem>
               ))}
-            </CommandPrimitive.Group>
-            <CommandPrimitive.Group
-              heading={commandPaletteStrings.commandsHeading}
-              className={GROUP_HEADING_CLASS}
-            >
+            </CommandGroup>
+            <CommandGroup heading={commandPaletteStrings.commandsHeading}>
               {COMMANDS.map((cmd) => (
-                <CommandPrimitive.Item
+                <CommandItem
                   key={cmd.name}
                   value={cmd.name}
                   onSelect={() => handleCommandHintSelect(cmd.prefix)}
-                  className={ITEM_CLASS}
                 >
                   <span className="font-mono text-xs text-muted-foreground">{cmd.prefix.trim()}</span>
                   <span>{cmd.description}</span>
-                </CommandPrimitive.Item>
+                </CommandItem>
               ))}
-            </CommandPrimitive.Group>
+            </CommandGroup>
           </>
         )}
         {guidanceMessage !== null && (
@@ -240,7 +229,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
             {guidanceMessage}
           </p>
         )}
-      </CommandPrimitive.List>
+      </CommandList>
     </CommandPrimitive.Dialog>
   )
 }
