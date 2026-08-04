@@ -703,6 +703,40 @@ it('「이슈 상세에서」 그룹에 7종이 렌더된다', () => {
 
 `.` 은 `app-shell` 이라 기존 「어디서나」 그룹에 **자동으로** 들어간다 — 별도 배선 없음.
 
+> **★ Task 2 인계 — 「자동으로 들어간다」가 절반만 맞았다. 3건이 red 다.**
+>
+> | 증상 | 원인 |
+> |---|---|
+> | `렌더 수 = 두 레지스트리 합계` 가 `19 ≠ 12` | 「이슈 상세에서」 그룹 부재 → 위 GREEN 이 닫는다 |
+> | `Found multiple elements: 명령 팔레트 열기` 2건 | **`PALETTE_HELP_ITEM`(Cmd/Ctrl K)과 새 `.` 항목이 같은 description 으로 「어디서나」에 두 행** |
+>
+> React 도 `Encountered two children with the same key, 명령 팔레트 열기` 를 경고한다
+> (`ShortcutsHelpDialog.tsx:174` 가 `key={item.description}`).
+>
+> **처방 — 두 행이 아니라 한 행 · 키 칩 2개로 병합한다.** `.` 은 Cmd/Ctrl+K 와 **같은 동작의
+> 두 번째 열쇠**이므로(Maxi 확정 §Jira 대조 3-b) 도움말도 그렇게 보여야 한다. 같은 문구가
+> 두 줄 뜨는 것은 Jira 패리티상 부자연스럽다. 병합은 `buildHelpGroups` 안에서 한다 —
+> `shortcuts.ts` 는 동결이다.
+>
+> ```tsx
+> // `.` 과 Cmd/Ctrl+K 는 같은 팔레트를 연다. description 이 같으므로 행을 합치고
+> // 키 칩만 둘로 둔다 — 합치지 않으면 접근성 이름이 중복돼 e2e 가 strict mode 로 죽고
+> // React key 도 충돌한다(둘 다 실측).
+> const paletteItem: HelpItem = {
+>   keys: [...PALETTE_HELP_ITEM.keys, '.'],
+>   description: PALETTE_HELP_ITEM.description,
+> }
+> ```
+> 그리고 `contextItems('app-shell')` 에서 `.` 을 **제외**해 이중 렌더를 막는다. 제외를
+> 하드코딩하지 말고 "이미 병합된 키"를 기준으로 걸러 다음 사람이 같은 함정을 안 밟게 한다.
+>
+> **★ 가드 1건 은퇴 (같은 PR 필수).** `★C5 F11 미구현 키(담당자·라벨…)는 표시되지 않는다` 는
+> **F11 이 구현되는 순간 거짓이 된다** — 금지 문구 목록에 `담당자 지정`·`라벨 편집` 이 들어
+> 있는데 그게 이제 정식 description 이다. 이 가드는 "아직 없는 키를 광고하지 마라"는
+> FR-UX-05 FR8 계약의 F10 시점 스냅샷이었다. **삭제가 아니라 교체**한다 — 계약 자체는
+> 살아 있어야 하므로 "레지스트리에 없는 키는 표시되지 않는다"는 **파생형 단언**으로 바꾼다.
+> 그래야 F12 이후에도 같은 보호가 유지된다.
+
 **REFACTOR**. 그룹 3개가 같은 모양이다. 순서(어디서나 → 목록 → 상세)가 **화면 계층 순**임을
 주석 한 줄로 남긴다.
 
