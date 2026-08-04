@@ -55,6 +55,55 @@ function createWrapper() {
 }
 
 /**
+ * 실브라우저 규칙을 jsdom 에 재현한다 — `disabled` 로 전환된 요소는 포커스를 잃고,
+ * 다시 enabled 가 돼도 포커스는 돌아오지 않는다 (activeElement 는 `<body>` 로 떨어진다).
+ *
+ * jsdom 29 는 이 규칙을 구현하지 않는다(실측: `disabled=true` 이후에도 activeElement 유지).
+ * 그래서 "유닛 초록 · 실브라우저에서는 스크린리더 무음" 이 그대로 통과했다.
+ *
+ * body 에 `tabindex=-1` 을 잠시 붙이는 이유는 jsdom 이 focusable 하지 않은 요소의
+ * `focus()` 를 무시하기 때문이다 — 실브라우저의 "activeElement=BODY" 를 만들기 위한 최소 장치다.
+ *
+ * (FavoriteButton.test.tsx 에도 같은 헬퍼가 있다. 테스트 전용 장치를 공유 모듈로 올리면
+ *  프로덕션 번들 경계가 흐려져 각 파일에 국소 보관한다.)
+ *
+ * @returns 관찰을 해제하고 body 를 원상 복구하는 함수
+ */
+function emulateDisabledFocusLoss(): () => void {
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      const el = record.target
+      if (el instanceof HTMLButtonElement && el.disabled && document.activeElement === el) {
+        document.body.tabIndex = -1
+        document.body.focus()
+      }
+    }
+  })
+  observer.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['disabled'],
+    subtree: true,
+  })
+  return () => {
+    observer.disconnect()
+    document.body.removeAttribute('tabindex')
+  }
+}
+
+/**
+ * 수동으로 열어줄 때까지 응답하지 않는 게이트를 만든다 — mutation in-flight 구간을 고정한다.
+ *
+ * @returns 대기용 promise 와 이를 여는 release 함수
+ */
+function createGate(): { gate: Promise<void>; release: () => void } {
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { gate, release }
+}
+
+/**
  * GET /api/v1/issues/:key/watchers 핸들러를 server.use()로 등록한다.
  *
  * @param issueKey 이슈 키
@@ -274,12 +323,17 @@ describe('WatchersSection — S6 data-testid', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S7. P1 — 로딩/에러 윈도우 토글 가드
-// GET in-flight 또는 data===undefined 상태에서 버튼이 disabled 이어야 하고,
+// GET in-flight 또는 data===undefined 상태에서 버튼이 비활성으로 표시돼야 하고,
 // 클릭해도 mutate가 발사되지 않아야 한다.
+//
+// FR-UX-10 F11 Task-5b 이후 비활성 표기는 네이티브 disabled 가 아니라 aria-disabled 다
+// (네이티브 disabled 는 포커스를 <body> 로 떨어뜨려 스크린리더를 무음으로 만든다).
+// 따라서 "클릭해도 안 나간다"의 증인이 브라우저에서 handleToggle 첫 줄 `if (!canToggle) return`
+// 으로 옮겨왔다 — S7b 가 그 가드의 짝 테스트다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('WatchersSection — S7 로딩 윈도우 토글 가드 (P1)', () => {
-  it('S7a: GET 로딩 중에 토글 버튼이 disabled다', async () => {
+  it('S7a: GET 로딩 중에 토글 버튼이 aria-disabled 로 비활성을 알린다 (네이티브 disabled 금지)', async () => {
     // GET이 절대 응답하지 않도록 하여 로딩 상태를 고정한다.
     server.use(
       http.get('/api/v1/issues/ATLAS-LOADING/watchers', () => {
@@ -292,9 +346,10 @@ describe('WatchersSection — S7 로딩 윈도우 토글 가드 (P1)', () => {
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-LOADING" />, { wrapper: Wrapper })
 
-    // 버튼은 즉시 렌더되어야 하고, 로딩 중에는 disabled 이어야 한다.
+    // 버튼은 즉시 렌더되어야 하고, 로딩 중에는 비활성으로 표시돼야 한다.
     const btn = screen.getByTestId('watch-toggle-button')
-    expect(btn).toBeDisabled()
+    expect(btn).toHaveAttribute('aria-disabled', 'true')
+    expect(btn).not.toBeDisabled()
   })
 
   it('S7b: GET 로딩 중 클릭해도 mutate가 발사되지 않는다', async () => {
@@ -415,11 +470,12 @@ describe('WatchersSection — S6 FR-UX-10 F11 단축키 `w` 손잡이', () => {
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" focusRef={focusRef} />, { wrapper: Wrapper })
 
-    // ★GET 응답 도착까지 기다린다 — 로딩 윈도우에서는 버튼이 disabled 라 포커스를 못 받는다.
-    //   그 자체가 의도된 fail-safe(헛 POST 차단)이므로 여기서 완화하지 않고 전제를 맞춘다.
+    // ★GET 응답 도착까지 기다린다 — 로딩 윈도우에서는 토글이 차단(aria-disabled)이라
+    //   포커스를 줘도 아무 일도 일어나지 않는다. 그 자체가 의도된 fail-safe(헛 POST 차단)이므로
+    //   여기서 완화하지 않고 전제를 맞춘다.
     await screen.findByText('0명')
     const btn = screen.getByTestId('watch-toggle-button')
-    expect(btn).not.toBeDisabled()
+    expect(btn).toHaveAttribute('aria-disabled', 'false')
 
     // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
     expect(focusRef.current).not.toBeNull()
@@ -449,5 +505,144 @@ describe('WatchersSection — S6 FR-UX-10 F11 단축키 `w` 손잡이', () => {
     expect(await screen.findByTestId('watch-toggle-button')).not.toHaveAttribute(
       'aria-keyshortcuts',
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S9. FR-UX-10 F11 Task-5b — 뮤테이션 중/후 포커스 보존 (F-2 봉합)
+//
+// Task 5 는 `w` 핸들러를 focus() → click() 순서로 고쳤고 유닛이 초록이었다.
+// 그런데 실브라우저 추적은 그다음을 보여줬다.
+//   뮤테이션 시작 → disabled=true → activeElement=BODY
+//   뮤테이션 완료 → disabled=false → activeElement=BODY (복귀 없음)
+//   aria-pressed 가 바뀌는 시점에 포커스가 버튼에 없어 스크린리더가 읽지 않는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WatchersSection — S9 뮤테이션 중/후 포커스 보존 (Task-5b)', () => {
+  it('S9a: 뮤테이션 진행 중에도 포커스가 토글 버튼에 남는다', async () => {
+    const user = userEvent.setup()
+    const { gate, release } = createGate()
+    let postStarted = false
+
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/watchers', () =>
+        HttpResponse.json({ data: { watchers: [], count: 0, isWatching: false } }),
+      ),
+      http.post('/api/v1/issues/ATLAS-1/watchers', async () => {
+        postStarted = true
+        await gate
+        return new HttpResponse(null, { status: 201 })
+      }),
+    )
+
+    const stopEmulation = emulateDisabledFocusLoss()
+    try {
+      const focusRef = createRef<HTMLButtonElement>()
+      const Wrapper = createWrapper()
+      render(<WatchersSection issueKey="ATLAS-1" focusRef={focusRef} />, { wrapper: Wrapper })
+
+      await screen.findByText('0명')
+      const btn = screen.getByTestId('watch-toggle-button')
+      // `w` 단축키 경로와 동일하게 focus() 후 click() 한다
+      act(() => {
+        focusRef.current?.focus()
+      })
+      await user.click(btn)
+
+      // in-flight 진입을 중립적으로 확인한다 (disabled/aria-disabled 어느 구현이든 참)
+      await waitFor(() => {
+        expect(postStarted).toBe(true)
+      })
+
+      expect(btn).toHaveFocus()
+    } finally {
+      release()
+      stopEmulation()
+    }
+  })
+
+  it('S9b: 뮤테이션 완료 후 aria-pressed 가 바뀌는 시점에도 포커스가 버튼에 남는다', async () => {
+    const user = userEvent.setup()
+    const { gate, release } = createGate()
+    let getCallCount = 0
+
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/watchers', () => {
+        getCallCount++
+        return getCallCount === 1
+          ? HttpResponse.json({ data: { watchers: [], count: 0, isWatching: false } })
+          : HttpResponse.json({
+              data: { watchers: [aliceWatcher], count: 1, isWatching: true },
+            })
+      }),
+      http.post('/api/v1/issues/ATLAS-1/watchers', async () => {
+        await gate
+        return new HttpResponse(null, { status: 201 })
+      }),
+    )
+
+    const stopEmulation = emulateDisabledFocusLoss()
+    try {
+      const focusRef = createRef<HTMLButtonElement>()
+      const Wrapper = createWrapper()
+      render(<WatchersSection issueKey="ATLAS-1" focusRef={focusRef} />, { wrapper: Wrapper })
+
+      await screen.findByText('0명')
+      const btn = screen.getByTestId('watch-toggle-button')
+      act(() => {
+        focusRef.current?.focus()
+      })
+      await user.click(btn)
+      release()
+
+      // 상태가 실제로 뒤집힌 시점 — 스크린리더가 aria-pressed 변화를 읽어야 하는 순간이다
+      await waitFor(() => {
+        expect(btn).toHaveAttribute('aria-pressed', 'true')
+      })
+      expect(btn).toHaveFocus()
+    } finally {
+      release()
+      stopEmulation()
+    }
+  })
+
+  it('S9c: 뮤테이션 진행 중 재클릭해도 POST 는 한 번만 나간다 — 증인은 컴포넌트 자체 가드다', async () => {
+    // aria-disabled 는 브라우저가 클릭을 막아주지 않는다. 네이티브 disabled 를 벗기면
+    // 중복 발행을 막는 책임이 전적으로 handleToggle 첫 줄 `if (!canToggle) return` 으로 옮겨간다.
+    // 그 가드를 지우면 이 테스트가 red 여야 한다 (E8 짝 테스트).
+    const user = userEvent.setup()
+    const { gate, release } = createGate()
+    let postCount = 0
+
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/watchers', () =>
+        HttpResponse.json({ data: { watchers: [], count: 0, isWatching: false } }),
+      ),
+      http.post('/api/v1/issues/ATLAS-1/watchers', async () => {
+        postCount++
+        await gate
+        return new HttpResponse(null, { status: 201 })
+      }),
+    )
+
+    try {
+      const Wrapper = createWrapper()
+      render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
+
+      await screen.findByText('0명')
+      const btn = screen.getByTestId('watch-toggle-button')
+      await user.click(btn)
+      await waitFor(() => {
+        expect(postCount).toBe(1)
+      })
+
+      // in-flight 상태에서 재클릭 — 가드가 없으면 여기서 POST 가 더 나간다
+      await user.click(btn)
+      await user.click(btn)
+
+      expect(postCount).toBe(1)
+    } finally {
+      release()
+    }
   })
 })
