@@ -13,6 +13,15 @@ const GROUP_LABEL_OF: Record<ShortcutContext, string> = {
   'issue-detail': '이슈 상세에서',
 }
 
+/**
+ * 별칭 구분자 문구 — 컴포넌트의 `ALIAS_SEPARATOR` 미러.
+ *
+ * export 하지 않는 이유는 이 모듈의 다른 문자열(모달 제목·그룹 라벨)과 같은 관례이며
+ * (e2e 도 "하드코딩 선례"로 문서화), 문구가 바뀌면 아래 **양성 단언이 먼저 red** 라
+ * 조용히 어긋나지 않기 때문이다.
+ */
+const ALIAS_SEPARATOR = '또는'
+
 /** 모달에 렌더된 설명(`<dt>`) 전량 — 파생형 단언들이 공유하는 실측값 */
 function renderedDescriptions(): readonly string[] {
   return [...screen.getByRole('dialog').querySelectorAll('dt')].map((dt) => dt.textContent ?? '')
@@ -169,6 +178,50 @@ describe('ShortcutsHelpDialog — 컨텍스트 단축키 그룹 (FR-UX-10 F10)',
     for (const key of [...PALETTE_HELP_ITEM.keys, '.']) {
       expect(within(paletteRow as HTMLElement).getByText(key)).toBeInTheDocument()
     }
+  })
+
+  /**
+   * ★대안(둘 중 아무거나)과 순차 입력(차례로)을 눈으로 가르는 구분자.
+   *
+   * 칩만 나란히 두면 `Cmd/Ctrl` `K` `.` 이 `g` `i` 와 모양이 같아 "셋을 차례로 누른다"로
+   * 읽힌다(눈확인 실측 → Maxi 확정). 색만 흐리게 하는 안은 「못 쓰는 키」로 오해되고
+   * 색약자·스크린리더에 닿지 않아 기각됐다. 그래서 **텍스트**로 넣고 톤만 낮춘다.
+   */
+  it('★별칭이 둘이면 키 사이에 「또는」 구분자가 들어간다 (칩 아님 · 낭독 순서 유지)', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    const paletteRow = within(globalGroup).getByText(PALETTE_HELP_ITEM.description).closest('div')
+    expect(paletteRow).not.toBeNull()
+
+    const separator = within(paletteRow as HTMLElement).getByText(ALIAS_SEPARATOR)
+    // 칩과 톤이 구별돼야 한다 — `<kbd>` 로 렌더되면 세 번째 키처럼 보인다.
+    expect(separator.tagName).not.toBe('KBD')
+    expect(separator).toHaveClass('text-muted-foreground')
+
+    // 스크린리더 낭독 순서가 "Cmd/Ctrl K 또는 ." 이어야 한다.
+    const keysText = (paletteRow as HTMLElement).querySelector('dd')?.textContent ?? ''
+    expect(keysText.indexOf(ALIAS_SEPARATOR)).toBeGreaterThan(keysText.indexOf('K'))
+    expect(keysText.lastIndexOf('.')).toBeGreaterThan(keysText.indexOf(ALIAS_SEPARATOR))
+  })
+
+  it('★대안이 하나뿐인 행에는 구분자가 없다 (순차 입력 `g` `i` 와 구별되는 짝)', () => {
+    render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
+
+    const globalGroup = screen.getByRole('region', { name: '어디서나' })
+    for (const description of ['새 이슈 생성', '내 이슈로 이동']) {
+      const row = within(globalGroup).getByText(description).closest('div')
+      expect(row).not.toBeNull()
+      expect(within(row as HTMLElement).queryByText(ALIAS_SEPARATOR)).not.toBeInTheDocument()
+    }
+
+    // 모달 전체에서 구분자가 있는 행은 별칭이 실제로 둘인 행뿐이다.
+    const aliasRowCount = CONTEXT_SHORTCUTS.filter(
+      (s) => s.description === PALETTE_HELP_ITEM.description,
+    ).length
+    expect(within(screen.getByRole('dialog')).getAllByText(ALIAS_SEPARATOR)).toHaveLength(
+      aliasRowCount,
+    )
   })
 
   /**
