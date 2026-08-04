@@ -537,6 +537,13 @@ export interface PaletteSearchResult {
   readonly issueHit: PaletteResult | null
   /** 자유 텍스트 검색 결과 (최대 PALETTE_RESULT_LIMIT 건) */
   readonly results: readonly PaletteResult[]
+  /**
+   * 서버가 보고한 **전체** 일치 건수 (`meta.page.totalElements`).
+   *
+   * ★`results.length` 와 다르다. 팔레트는 7건만 보여주므로 이 값 없이는 사용자가
+   * "7건이 전부"라고 오독한다(design 리뷰 2-2). 「모든 결과 보기 (N건)」에 쓴다.
+   */
+  readonly totalCount: number
   /** 검색 진행 중 여부 */
   readonly isSearching: boolean
   /** 활성 프로젝트 미해소로 자유 텍스트 검색이 불가한 상태 (FR7·S8) */
@@ -598,6 +605,9 @@ export function usePaletteSearch(input: PaletteInput): PaletteSearchResult {
   return {
     issueHit,
     results,
+    // ?? 0 은 조회 전/실패 시. results.length 로 대체하지 않는다 — 그러면 7건 상한이
+    // 그대로 총계로 보고돼 design 리뷰 2-2 가 지적한 오독을 코드가 만들어낸다.
+    totalCount: searchQuery.data?.meta.page.totalElements ?? 0,
     isSearching: searchQuery.isFetching,
     // 이슈키 경로는 프로젝트가 없어도 동작하므로 안내를 띄우지 않는다(ADR D-4)
     needsProject: input.kind === 'free-text' && projectKey === null && active.status !== 'loading',
@@ -1135,4 +1145,179 @@ describe('경계 가드 3 — 호출 순서 계약 (FR2)', () => {
 - **worktree 주의**. `pnpm` 래퍼 금지 — `node_modules/.bin/*` 직접 호출
   (메모리 `worktree-pnpm-verify-deps-symlink`)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-08-04) — 7패스 전량 실행
+
+**분류.** APP UI (workspace-driven · data-dense · task-focused). 랜딩 규칙 미적용.
+
+**목업 미생성 — 근거.** design 바이너리는 `DESIGN_READY` 였으나 생성하지 않았다. 지시 우선순위상
+프로젝트 `CLAUDE.md` 가 gstack 스킬 기본값보다 위이고, `jira-parity-contract.md §3` 이
+**"팔레트 스크린샷·블로그는 정본이 아니다, 토큰 값은 DESIGN.md 만 믿는다"** 를 못박는다. 이번
+변경은 동결 토큰(`DESIGN.md §2`)과 기존 래퍼 스타일에 갇혀 열린 미적 선택지가 없어, 새로 생성한
+목업은 실제 시스템과 다른 그림이 되어 판단을 흐린다.
+**outside voices 2종 미실행** — `codex` 미설치 + 이 세션은 Agent 사용 금지. 교차 검증 없음을 명시한다.
+
+| 패스 | 전 | 후 | 요지 |
+|---|---|---|---|
+| 1. 정보 구조 | 6 | 9 | 이슈키 정확일치 ↔ 검색 결과 그룹 분리 · 영역 다이어그램 신설 |
+| 2. 상태 커버리지 | 5 | 9 | **로딩 미명세**(공허한 `isSearching`) · **총 건수 미노출** 봉합 |
+| 3. 사용자 여정 | 5 | 9 | **막다른 안내** 봉합 (Maxi 확정 A) |
+| 4. AI 슬롭 | 9 | 9 | 지적 1건(긴 요약 오버플로) |
+| 5. 디자인 시스템 | 8 | 10 | 액션↔결과 시각 계층 분리 (`CommandSeparator` 소비처 0→1) |
+| 6. 반응형·접근성 | **3** | 9 | **DESIGN.md 정본 위반 1건** + 스크린리더 무음 + 375px 미명세 |
+| 7. 미결 결정 | — | — | 1건 Maxi 확정, 2건 Jira 대조가 해소, 1건 후속 이연 |
+
+**종합. 5/10 → 9/10.** 미해결 0건.
+
+#### ★ Pass 6 이 최대 구멍이었다 — 정본 위반 1건 포함
+
+- **6-1 (정본 위반).** `DESIGN.md:337` 이 **"모바일 터치 타깃 최소 44px × 44px"** 를 규정하는데
+  래퍼 `CommandItem` 은 `py-1.5`(6px) + `text-sm` 이라 **약 30px** 이다. 선례도 명확하다 —
+  `FilterBar.tsx:236,258,267,336` · `QuickFilterChips.tsx:187,199,210` 이 전부 `min-h-[44px]`.
+  FR-UX-11 F9 에서 Maxi 가 **터치 44px `pointer-coarse`** 를 확정한 것과도 어긋난다.
+  → **처방.** 결과 항목에 `pointer-coarse` 미디어 쿼리로 `min-h-[44px]` 적용. 데스크톱 밀도는 유지.
+- **6-2 (스크린리더 무음).** 결과가 **비동기로** 채워지는데 도착을 알리는 장치가 없다. cmdk 는
+  `aria-activedescendant` 만 준다. FR-UX-10 F11 에서 「`s`/`w` 스크린리더 무음」이 High 로
+  지적된 계열의 재발이다. `aria-live` 선례는 레포에 이미 8+파일 존재.
+  → **처방.** 결과 개수 변화를 `aria-live="polite"` 로 알린다 (예. "3건 찾음").
+- **6-3 (375px 미명세).** 팔레트는 `max-w-lg`(512px) 고정 + `top-[15vh]`. 375px 에서 "키 + 요약"
+  한 줄이 어떻게 되는지 계획에 0줄이다. FR-UX-11 F9 후속 항목에 **「375px 붕괴(선재)」** 가 이미
+  기록돼 있어 방치하면 같은 자리에서 재발한다.
+  → **처방.** 눈확인에 375px 추가 + 요약 1줄 말줄임 명시.
+
+#### Pass 1~5 지적과 처방
+
+- **1-1.** 이슈키 정확일치와 검색 결과가 같은 그룹이면 **"이건 정확히 그거야"** 신호가 사라진다.
+  Jira Cloud 공식 문서가 *"Labels separate different types of results"* 라고 명시 —
+  **Jira 대조가 이 결정을 해소한다**(Maxi 질문 불필요). → 그룹 2개로 분리.
+- **1-2.** 팔레트 영역 구조 다이어그램 부재 → 신설(아래).
+- **2-1 (공허한 반환값).** 훅이 `isSearching` 을 반환하는데 **쓰는 곳이 계획에 없다.** 250ms
+  디바운스 + 왕복 동안 목록이 빈 채로 남아 "고장났나?" 순간이 생긴다. FR-UX-10/11 이 반복해서
+  잡은 **공허 가드** 계열의 사전 차단. → 로딩 표시 명세 + 테스트.
+- **2-2 (7건이 전부로 오독).** `searchAql` 응답에 `meta.page.totalElements` 가 있는데 안 쓴다.
+  상한 7건만 보이면 사용자는 그게 전부라고 믿는다. → 「모든 결과 보기」에 총 건수 표기.
+- **3-1.** 검색 실패 시 다음 행동 부재 → 실패해도 「모든 결과 보기」를 남겨 검색 페이지의 상세
+  진단(`resolveErrorMessage` 4갈래)으로 갈 길을 연다.
+- **3-2 (막다른 안내 — Maxi 확정 A).** 「프로젝트를 먼저 선택하세요」만 띄우면 팔레트 안에서 할 수
+  있는 게 없다. → 안내 밑에 **「프로젝트 선택하러 가기」 항목**(→ `/projects`)을 둔다. 신규 UI 0
+  (기존 `QUICK_LINKS` 와 같은 `CommandItem` 재사용). 대안 C(팔레트 안 프로젝트 선택)는 FR-UX-08
+  스위처의 책임과 중복이라 기각.
+- **4-1.** 긴 요약 오버플로 미명세 → 1줄 말줄임(`truncate`) 명시.
+- **5-1.** 「모든 결과 보기」가 결과와 **같은 옷**을 입어 액션인지 결과인지 구분 안 됨.
+  래퍼에 `CommandSeparator` 가 이미 있고 **소비처 0** 이다. → 결과와 액션 사이에 삽입(소비처 0→1).
+
+#### 팔레트 영역 구조 (신설 — Pass 1 처방)
+
+```
+┌─ CommandPrimitive.Dialog (max-w-lg · top-15vh) ────────────┐
+│ CommandInput  🔍 [검색하거나 슬래시 명령…]                    │  ← 항상
+├────────────────────────────────────────────────────────────┤
+│ CommandList (max-h-300px)                                  │
+│                                                            │
+│  [빈 입력]           [이슈키 입력]        [자유 텍스트]        │
+│  ─────────           ───────────         ────────────       │
+│  「바로가기」 4개      「이슈」 1건         「검색 결과」 N건     │
+│   내 이슈             ATLAS-12 요약        ATLAS-3 요약       │
+│   검색                                     ATLAS-9 요약       │
+│   대시보드           「검색 결과」 N건       …(최대 7)          │
+│   받은 편지함         (같은 문자열로 검색)                     │
+│                                          ── separator ──    │
+│  「명령어」 3개                            모든 결과 보기 (N건) │
+│   /goto /search /issue                                     │
+│                                                            │
+│  [안내 상태 — 위 목록 대신]                                   │
+│   · 검색 중…                    (isSearching)               │
+│   · 결과가 없습니다.             (0건)                        │
+│   · 검색에 실패했습니다.          (+ 모든 결과 보기 유지)        │
+│   · 프로젝트를 먼저 선택하세요.   (+ 프로젝트 선택하러 가기)      │
+└────────────────────────────────────────────────────────────┘
+```
+
+**보이는 순서 = 확신의 순서.** 정확일치(이슈키) → 유사일치(검색) → 탈출구(모든 결과/프로젝트).
+
+#### NOT in scope (의도적 이연)
+
+| 항목 | 이연 사유 |
+|---|---|
+| 팔레트 안에서 프로젝트 전환 | FR-UX-08 스위처가 이미 소유한 책임 — 중복 |
+| 결과에 프로젝트명 열 | v1 은 단일 프로젝트 스코프라 전 행 동일 = 소음 (스펙 편차 X2) |
+| 최근 본 이슈를 빈 입력에 노출 | 빈 입력 동작은 **즉사 계약**이라 이 PR 에서 건드리지 않는다 |
+| 결과 항목 hover 어포던스 | F9 후속(hover 대비 미달)과 같은 자리 — 별건으로 처리 |
+| 모션/전환 | APP UI 는 즉시성이 미덕. 팔레트에 모션 0 이 정답 |
+
+#### What already exists (재사용 — 신규 0)
+
+`components/ui/command.tsx` 8종(소비처 0→1, `CommandSeparator` 포함) · `useDebounce`(250ms 선례
+`LabelAutocompleteInput`) · `useResolvedActiveProject` + `ActiveProjectGate` · `fetchIssue` ·
+`searchAql` · `--bg-selected`/`--text-selected` 토큰 · `min-h-[44px]` 선례(`FilterBar`·
+`QuickFilterChips`) · `aria-live` 선례 8+파일 · `QUICK_LINKS` CommandItem 패턴.
+
+### 리뷰가 만든 plan 변경 — Task 7 보강 6건
+
+Task 7 의 구현/테스트에 다음을 **추가**한다 (task 수는 9 유지).
+
+1. **그룹 분리** — 「이슈」(정확일치)와 「검색 결과」를 별도 `CommandGroup` 으로. (1-1)
+2. **로딩 표시** — `isSearching` 이 true 면 "검색 중…" 을 렌더. **반환만 하고 안 쓰면 공허하다.** (2-1)
+3. **총 건수** — 「모든 결과 보기 (N건)」. `meta.page.totalElements` 소비. 훅 반환에 `totalCount` 추가. (2-2)
+4. **탈출구 2종** — 검색 실패 시 「모든 결과 보기」 유지 · 프로젝트 미해소 시 **「프로젝트 선택하러
+   가기」**(→`/projects`). (3-1 · 3-2 Maxi 확정 A)
+5. **`CommandSeparator`** 를 결과와 액션 사이에 삽입 (소비처 0→1). (5-1)
+6. **접근성 3종** — `pointer-coarse` 에서 항목 `min-h-[44px]`(DESIGN.md:337 준수) ·
+   결과 개수 `aria-live="polite"` · 요약 `truncate`. (6-1 · 6-2 · 4-1)
+
+추가 테스트 (Task 7 동반).
+
+```tsx
+  it('이슈 정확일치와 검색 결과가 다른 그룹에 놓인다 (1-1)', async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette open onOpenChange={vi.fn()} />)
+    await user.type(screen.getByRole('combobox'), 'ATLAS-1')
+    expect(await screen.findByText('이슈')).toBeInTheDocument()
+    expect(await screen.findByText('검색 결과')).toBeInTheDocument()
+  })
+
+  it('★검색 중에는 진행 표시가 뜬다 — isSearching 이 공허하지 않다 (2-1)', async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette open onOpenChange={vi.fn()} />)
+    await user.type(screen.getByRole('combobox'), '로그인')
+    expect(await screen.findByText('검색 중…')).toBeInTheDocument()
+  })
+
+  it('「모든 결과 보기」가 총 건수를 표기한다 — 7건이 전부로 오독되지 않는다 (2-2)', async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette open onOpenChange={vi.fn()} />)
+    await user.type(screen.getByRole('combobox'), '로그인')
+    // 기본 MSW 는 totalElements=50 — 상한 7 과 다른 수여야 비-공허하다
+    expect(await screen.findByRole('option', { name: /모든 결과 보기 \(50건\)/ })).toBeInTheDocument()
+  })
+
+  it('프로젝트 미해소 시 「프로젝트 선택하러 가기」로 탈출할 수 있다 (3-2)', async () => {
+    mockResolved.mockReturnValue({ status: 'empty' })
+    const user = userEvent.setup()
+    render(<CommandPalette open onOpenChange={vi.fn()} />)
+    await user.type(screen.getByRole('combobox'), '로그인')
+    await user.click(await screen.findByRole('option', { name: '프로젝트 선택하러 가기' }))
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects' })
+  })
+
+  it('★결과 개수가 스크린리더에 알려진다 (6-2)', async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette open onOpenChange={vi.fn()} />)
+    await user.type(screen.getByRole('combobox'), '로그인')
+    const live = await screen.findByText(/건 찾음/)
+    expect(live).toHaveAttribute('aria-live', 'polite')
+  })
+```
+
+Task 7 **눈확인 항목에 추가**. ⑤ **375px 폭**에서 요약이 말줄임되고 가로 스크롤이 생기지 않는가
+(F9 후속 「375px 붕괴」 재발 방지) ⑥ 터치 모드에서 항목 높이가 44px 이상인가
+⑦ separator 가 결과와 「모든 결과 보기」를 시각적으로 가르는가.
+
+### 남은 위험 (BLOCKER 아님)
+
+- **교차 검증 부재.** codex 미설치 + Agent 금지로 outside voices 2종을 못 돌렸다. 이 리뷰는
+  **단일 시각**이다. 게이트 2 의 `/bts-codereview` 가 독립 리뷰를 붙여야 한다 — FR-UX-10/11 에서
+  독립 리뷰가 매번 결함을 잡았다(F10 12건 · F8 7건 · F9 7건 · F11 실사용 결함 2건).
+- **`totalCount` 추가로 훅 반환 계약이 늘었다.** Task 3 의 `PaletteSearchResult` 에
+  `totalCount: number` 를 더한다 — Task 3 이 Task 7 보다 먼저이므로 Task 3 구현 시 반영.
