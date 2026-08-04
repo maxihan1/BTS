@@ -21,8 +21,10 @@ hs_err_pid*
 **/src/generated/jooq/
 
 # Node / pnpm (프론트엔드)
-node_modules/
-apps/web/node_modules/
+# 끝 슬래시를 붙이지 않는다 — worktree 는 이 경로를 main 트리로 향하는 **심볼릭 링크**로
+# 갖는다(bts-start Step 3). 끝 슬래시는 디렉토리만 매칭해 그 링크를 untracked 로 남긴다.
+node_modules
+apps/web/node_modules
 .pnpm-store/
 .pnpm-debug.log*
 pnpm-debug.log

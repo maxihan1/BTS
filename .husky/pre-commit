@@ -1,4 +1,6 @@
-pnpm exec lint-staged
+# `pnpm exec` 를 쓰지 않는다 — worktree 의 심볼릭 node_modules 에서 의존성 검사가
+# pnpm install 을 트리거해 무-TTY 로 죽는다(아래 build-doc-index 주석과 같은 이유).
+node_modules/.bin/lint-staged
 
 # 문서 인덱스 자가진단 — 메모리는 저장소 밖이라 CI 가 볼 수 없다. 커밋 시점에 여기서 잡는다.
 #   --check 는 파일을 쓰지 않는다. 커밋에 예상치 못한 파일이 끼어드는 것을 막기 위함이다.
