@@ -12,6 +12,7 @@ import { useAuthStore } from '@/auth/authStore'
 import { keymapHandlers, resetKeymapStore } from '@/mocks/keymap-handlers'
 import { KeymapForm } from './KeymapForm'
 import { CONTEXT_SHORTCUTS } from '@/components/keyboard-shortcuts/context-shortcuts'
+import { LEADER_KEY } from '@/components/keyboard-shortcuts/shortcuts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -227,6 +228,92 @@ describe('KeymapForm — 컨텍스트 단축키 예약 키 (FR-UX-10 F10)', () =
       expect(screen.getByRole('button', { name: '단축키 설정 저장' })).toBeEnabled()
     })
     expect(screen.queryByText(/예약된 키입니다/)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 예약 목록이 레지스트리에서 **파생**되는지의 증명 (FR-UX-10 F11 Task 7 / FR7)
+//
+// F10 의 ADR D-4 가 *"하드코딩하면 F11 이 상세 액션 8종을 추가할 때 이 가드만 뒤처져
+// 조용히 뚫린다"* 고 **F11 을 지목해** 경고했다. `KeymapForm.tsx` 는 이미
+// `CONTEXT_SHORTCUTS` 에서 파생하므로(`RESERVED_CONTEXT_KEYS`) **프로덕션 코드는 한 줄도
+// 바뀌지 않는다** — 아래 세 테스트는 처음부터 green 이다.
+//
+// green-first 는 TDD 규율의 예외가 아니라 **회귀 가드**다. 그 green 이 가짜가 아님은
+// `RESERVED_CONTEXT_KEYS` 를 `new Map([['j','x']])` 로 바꾸는 뮤테이션이 아래 2·3번을
+// **모두 red** 로 만드는 것으로 확인했다(계열 `two-lists-never-check-each-other`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * F11 이 추가한 상세 액션 8종 — **레지스트리에서 파생하지 않고 손으로 적는다.**
+ *
+ * 파생하면 「레지스트리는 레지스트리와 같다」는 항진명제가 되어 키가 통째로 사라져도
+ * 조용히 통과한다. 두 목록이 서로를 검사하려면 한쪽은 독립이어야 한다.
+ * (`.` 만 `app-shell` 레이어이고 나머지 7종은 `issue-detail` 이다 — 예약 가드는
+ * 레이어를 가리지 않으므로 8종을 한 묶음으로 잰다.)
+ */
+const F11_DETAIL_ACTION_KEYS: readonly string[] = ['a', 'i', 'm', 'e', 'l', 's', 'w', '.']
+
+/**
+ * 예약 여부를 물어볼 후보 키 — 소문자 26종 + 흔한 구두점.
+ *
+ * 레지스트리 키는 호출부가 합집합으로 더하므로 여기서 빠져도 검사망이 새지 않는다.
+ * 이 목록의 역할은 **레지스트리 밖 키가 예약되지 않는다**는 반대 방향을 재는 것이다.
+ */
+const CANDIDATE_KEY_ALPHABET: readonly string[] = [
+  ...'abcdefghijklmnopqrstuvwxyz',
+  ...'[].,;/-=`\'',
+]
+
+describe('KeymapForm — F11 상세 액션 8종 예약 (FR-UX-10 F11 Task 7)', () => {
+  it('★F11 8종이 레지스트리에 실재한다 (독립 목록이 낡았는지 먼저 잰다)', () => {
+    const registryKeys = new Set(CONTEXT_SHORTCUTS.map((s) => s.key))
+
+    // 개수가 아니라 **원소 전수 비교** — 개수 가드는 원소가 바뀌어도 숫자만 맞으면 통과한다.
+    expect(F11_DETAIL_ACTION_KEYS.filter((key) => !registryKeys.has(key))).toEqual([])
+  })
+
+  it('★F11 8종이 전부 예약 키로 막힌다 (KeymapForm.tsx 변경 없이 파생)', async () => {
+    for (const key of F11_DETAIL_ACTION_KEYS) {
+      const { unmount } = renderForm()
+      const input = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+      fireEvent.keyDown(input, { key })
+
+      // 캡처 자체가 됐는지를 먼저 확인한다 — 값이 안 바뀐 채 배지만 없는 상태를
+      // "예약이 아니다"로 오독하지 않기 위함이다.
+      expect(input).toHaveValue(key)
+      expect(await screen.findByRole('alert')).toHaveTextContent('예약된 키입니다')
+      unmount()
+    }
+  })
+
+  it('★예약 판정이 레지스트리와 정확히 일치한다 — 후보 키 전수 차집합 0 (하드코딩 회귀 차단)', async () => {
+    const registryKeys = new Set<string>(CONTEXT_SHORTCUTS.map((s) => s.key))
+
+    // leader 키는 후보에서 뺀다 — 누르면 draft 가 바뀌지 않고 leader 대기로 들어가
+    // 「예약이 아니다」와 「캡처되지 않았다」가 구분되지 않는다. 제외를 정당화하는
+    // 전제(leader 키는 컨텍스트 키가 아니다) 자체를 여기서 함께 잰다.
+    expect(registryKeys.has(LEADER_KEY)).toBe(false)
+
+    const candidates = [...new Set([...CANDIDATE_KEY_ALPHABET, ...registryKeys])].filter(
+      (key) => key !== LEADER_KEY,
+    )
+
+    // 후보마다 재마운트하지 않는다 — 키 캡처는 draft 를 통째로 덮어쓰므로 한 폼으로
+    // 순회할 수 있고, 40회 가까운 재마운트는 이 스위트에서 워커 기아를 부른다.
+    renderForm()
+    const input = await screen.findByLabelText('새 이슈 생성 단축키 입력')
+
+    const reserved = new Set<string>()
+    for (const key of candidates) {
+      fireEvent.keyDown(input, { key })
+      // 완전중복(`/` 처럼 다른 action 의 기본 배정과 겹치는 키)은 **다른** 문구라 잡히지
+      // 않는다 — 예약 가드가 과잉 차단하지 않는 것까지 같은 순회로 확인된다.
+      if (screen.queryAllByText(/예약된 키입니다/).length > 0) reserved.add(key)
+    }
+
+    expect(reserved).toEqual(registryKeys)
   })
 })
 
