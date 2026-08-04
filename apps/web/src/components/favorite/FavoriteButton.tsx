@@ -67,7 +67,8 @@ function isFavoriteMatch(
  *
  * - 전체 즐겨찾기 목록에서 (targetType AND targetId) 일치 여부로 isFavorited를 도출한다.
  * - isFavorited=true이면 채운 별(★, aria-pressed=true), false이면 빈 별(☆, aria-pressed=false).
- * - mutation in-flight 동안 버튼을 disabled 처리해 중복 클릭을 방지한다.
+ * - mutation in-flight 동안 aria-disabled로 비활성을 알리고, 중복 발행은 handleClick의
+ *   isMutating 가드가 막는다 (네이티브 disabled를 쓰지 않는 이유는 아래 주석 참조).
  * - 낙관적 업데이트 없이 invalidate-only 방식으로 캐시를 갱신한다.
  *
  * @param targetType 즐겨찾기 대상 타입
@@ -84,6 +85,8 @@ export const FavoriteButton = ({ targetType, targetId, focusRef }: FavoriteButto
   const isFavorited = favorites !== undefined && isFavoriteMatch(favorites, targetType, targetId)
 
   const handleClick = () => {
+    // 중복 발행 차단의 유일한 증인 — 네이티브 disabled를 벗겼으므로 브라우저가 클릭을
+    // 막아주지 않는다. 이 한 줄을 지우면 FavoriteButton.test.tsx S7c가 red다.
     if (isMutating) return
 
     if (isFavorited) {
@@ -112,7 +115,19 @@ export const FavoriteButton = ({ targetType, targetId, focusRef }: FavoriteButto
       // 키 문자 정본은 CONTEXT_SHORTCUTS(FR-UX-10 F11) — 재배치하면 여기도 같이 고친다.
       // 시각 툴팁은 만들지 않는다(신규 UI 0 제약 + 툴팁은 키보드 사용자에게 닿지 않는다).
       aria-keyshortcuts={focusRef !== undefined ? 's' : undefined}
-      disabled={isMutating}
+      // ★네이티브 disabled가 아니라 aria-disabled인 이유 (FR-UX-10 F11 Task-5b).
+      //   브라우저는 disabled로 전환된 요소의 포커스를 <body>로 떨어뜨리고, 다시
+      //   enabled가 돼도 되돌려주지 않는다. 그러면 뮤테이션이 끝나 aria-pressed가
+      //   뒤집히는 순간 포커스가 이 버튼에 없어 스크린리더가 상태 변화를 읽지 않는다
+      //   (`s` 단축키 사용자에게는 아무 일도 안 일어난 것과 같다).
+      //   실측 추적: 뮤테이션 시작 active=BODY → 완료 후에도 active=BODY.
+      //   aria-disabled는 포커스를 유지하면서 비활성만 알린다. 중복 발행은 handleClick의
+      //   isMutating 가드가 막는다. pointer-events-none은 쓰지 않는다 — 클릭이 죽어
+      //   같은 문제가 형태만 바꿔 재발한다.
+      aria-disabled={isMutating}
+      // disabled: 스타일은 aria-disabled로 발동하지 않으므로 등가 표기를 직접 붙인다.
+      // (프리미티브 button.tsx는 14개 화면이 공유하므로 여기서만 처리한다.)
+      className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
       onClick={handleClick}
       data-testid="favorite-button"
     >
