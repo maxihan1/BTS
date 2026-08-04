@@ -17,7 +17,17 @@ Atlas Issues (BTS) 의 변경 이력. **바운디드 컨텍스트(BC — 책임 
 **범위**. 139 FR / 9 BC. **2026-05-20 ~ 2026-07-31**, PR 311건, 커밋 600건.
 
 **상태 (2026-08-04 재실측)**. 139 FR 중 **FR-UX-12~14 를 제외한 전량**의 D1~D7 단계 완료
-(`- [x] D«n».` 944건 / 미완 21건 — 전량 FR-UX-12~14, `docs/plan/product/personalization.md §4`).
+(`- [x] D«n».` 949건 / 미완 16건 — 전량 FR-UX-12~14, `docs/plan/product/personalization.md §4`).
+**FR-UX-12(검색 진입)가 F4(PR #340)로 D1~D5 를 닫았다** — Cmd+K 팔레트에서 슬래시 없는 입력이
+실제로 동작한다(이슈키 즉시매칭 · 활성 프로젝트 스코프 `text ~ "…"` AQL 250ms 디바운스 ·
+「모든 결과 보기」 탈출구). **선재 결함 1건을 같은 PR 에서 봉합** — `/search <질의>` 가 자유
+텍스트를 날것으로 넘겨 실서버에서 `SEARCH_SYNTAX_ERROR` 였는데, MSW 목이 쿼리를 읽지 않아
+E2E 가 그것을 가려 왔다(목을 진짜 증인으로 교체). **백엔드 0줄 · 마이그레이션 0 · 신규 API 0 ·
+신규 의존성 0 · 신규 UI 컴포넌트 0**(`components/ui/command.tsx` 소비처 0→1). D6 이 F13(상단바
+전역 검색)을 함께 요구하므로 **D6/D7 은 `[ ]` 로 남는다**.
+부수로 **worktree 에서 E2E 가 아예 못 돌던 차단을 해소**했다 — `playwright.config.ts` 의
+`webServer.command` 가 `pnpm dev` 라 심볼릭 `node_modules` 에서 죽었고, `reuseExistingServer:false`
+때문에 우회로가 없었다(`worktree per 작업`이 강제이므로 **모든 작업의 E2E** 가 막혀 있었다).
 **FR-UX-11(인라인 편집)이 F8(PR #337) + F9(PR #338)로 완주**했다 — F8 이 상세 제목/본문의 텍스트 클릭
 진입 · `Enter` 저장 · `Esc` 취소를 얹었고, F9 가 목록 셀 3종(담당자·우선순위·상태)을 popover 인라인
 편집으로 열었다. 둘 다 **백엔드 0줄 · 마이그레이션 0 · 신규 의존성 0**(기존 이슈 PATCH·전이 API 소비).
