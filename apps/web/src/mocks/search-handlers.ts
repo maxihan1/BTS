@@ -26,6 +26,30 @@ import {
 export const E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 최소 AQL 형태 검사
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * MSW 용 최소 AQL 형태 검사 — **파서 복제가 아니다.**
+ *
+ * ★왜 필요한가. 이전 핸들러는 쿼리를 아예 읽지 않고 항상 3건을 반환해,
+ * `/search 로그인 버그` 가 실서버에서 문법 오류를 내는 **선재 결함을 E2E 가 통과시켰다**
+ * (`command-palette.spec.ts` S4). 목이 진실을 말하지 않으면 테스트는 증인이 아니다.
+ *
+ * 백엔드 `AqlParser.parseComparison` 이 `필드 연산자 값` 을 요구하므로, 그 최소 형태를
+ * 만족하지 못하는 입력만 걸러낸다. 전체 문법 검증은 백엔드 통합 테스트의 몫이다.
+ *
+ * @param query AQL 쿼리 문자열
+ * @returns 최소 형태(필드 + 연산자)를 만족하면 true
+ */
+export function isSyntacticallyValidAql(query: string): boolean {
+  const trimmed = query.trim()
+  if (trimmed === '') return false
+  // 식별자 뒤에 비교 연산자(= != ~ < > <= >=) 또는 IN/NOT IN 이 오는가
+  return /[A-Za-z_][A-Za-z0-9_]*\s*(=|!=|~|<=|>=|<|>|\bNOT\s+IN\b|\bIN\b)/i.test(trimmed)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/search/aql
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -102,6 +126,30 @@ const searchAqlHandler = http.post('/api/v1/search/aql', async ({ request }) => 
         timestamp: new Date().toISOString(),
       },
       { status: 403 },
+    )
+  }
+
+  // 시나리오 플래그가 없을 때도 쿼리 형태를 검사한다 — 목이 진실을 말하게 한다(FR11)
+  const rawBody: unknown = await request.json().catch(() => ({}))
+  const query =
+    rawBody !== null &&
+    typeof rawBody === 'object' &&
+    'query' in rawBody &&
+    typeof (rawBody as Record<string, unknown>)['query'] === 'string'
+      ? ((rawBody as Record<string, string>)['query'])
+      : ''
+
+  if (!isSyntacticallyValidAql(query)) {
+    return HttpResponse.json(
+      {
+        errorCode: 'SEARCH_SYNTAX_ERROR',
+        detail: `Unexpected token in query: "${query}"`,
+        position: 0,
+        title: 'AQL syntax error',
+        status: 400,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 400 },
     )
   }
 
