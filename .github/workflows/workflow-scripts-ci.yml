@@ -18,7 +18,7 @@
 # | skill-type-coverage            | scripts/workflow/types.ts · bts-review-plan/SKILL.md | scripts/workflow/** · .claude/skills/** |
 # | todos-resolved-section-purity  | TODOS.md                                 | TODOS.md |
 # | ci-runner-label-alignment      | .github/workflows/*.yml                  | .github/workflows/** |
-# | worktree-hook-wiring           | .gitignore · .husky/pre-commit · bts-start·bts-impl SKILL | .gitignore · .husky/** · .claude/skills/** |
+# | worktree-hook-wiring           | .gitignore · .husky/pre-commit · .lintstagedrc.json · bts-start·bts-impl SKILL | .gitignore · .husky/** · .lintstagedrc.json · .claude/skills/** |
 # | doc-index-coverage             | docs/** · scripts/doc-index/** · 이 파일  | docs/** · scripts/doc-index/** |
 #
 # `docs/plan/product/**` 는 2026-08-01 `docs/**` 로 넓혔다 — doc-index 판별식이 docs 전역
@@ -45,6 +45,7 @@ on:
       - '.github/workflows/**'
       - '.claude/skills/**'
       - '.husky/**'
+      - '.lintstagedrc.json'
       - '.gitignore'
       - 'docs/**'
       - 'scripts/doc-index/**'
@@ -63,6 +64,7 @@ on:
       - '.github/workflows/**'
       - '.claude/skills/**'
       - '.husky/**'
+      - '.lintstagedrc.json'
       - '.gitignore'
       - 'docs/**'
       - 'scripts/doc-index/**'
