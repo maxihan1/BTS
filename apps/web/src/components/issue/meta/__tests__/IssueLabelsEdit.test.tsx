@@ -1,6 +1,7 @@
 // IssueLabelsEdit 단위 테스트 — IssueMetaPanel 분해 A (FR-UX-06 PR19 Task 2)
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { createRef } from 'react'
+import { render, screen, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { IssueLabelsEdit } from '@/components/issue/meta/IssueLabelsEdit'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -60,5 +61,45 @@ describe('IssueLabelsEdit', () => {
     const { rerender } = render(<IssueLabelsEdit value={[]} onSave={vi.fn()} canEdit={true} />)
     rerender(<IssueLabelsEdit value={['refactored']} onSave={vi.fn()} canEdit={true} />)
     expect(within(screen.getByText('refactored').parentElement as HTMLElement).getByText('refactored')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-10 F11 — 단축키 `l` 손잡이 (Task 5 가 소비하는 계약 지점)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueLabelsEdit — FR-UX-10 F11 단축키 `l` 손잡이', () => {
+  /** 라벨 입력창을 찾는다. */
+  function labelInput(): HTMLElement {
+    return screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
+  }
+
+  it('focusRef 로 라벨 입력에 포커스를 줄 수 있다 (2단 통과 — LabelChipsEditor → LabelAutocompleteInput)', () => {
+    const focusRef = createRef<HTMLInputElement>()
+    render(
+      <IssueLabelsEdit value={[]} onSave={vi.fn()} canEdit={true} focusRef={focusRef} />,
+    )
+
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(labelInput()).toHaveFocus()
+  })
+
+  it('focusRef 가 연결되면 라벨 입력이 aria-keyshortcuts="l" 을 알린다', () => {
+    const focusRef = createRef<HTMLInputElement>()
+    render(
+      <IssueLabelsEdit value={[]} onSave={vi.fn()} canEdit={true} focusRef={focusRef} />,
+    )
+
+    expect(labelInput()).toHaveAttribute('aria-keyshortcuts', 'l')
+  })
+
+  it('focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다', () => {
+    render(<IssueLabelsEdit value={[]} onSave={vi.fn()} canEdit={true} />)
+
+    expect(labelInput()).not.toHaveAttribute('aria-keyshortcuts')
   })
 })
