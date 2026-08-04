@@ -653,9 +653,18 @@ export function IssueDetailPage({
       // 않고, 성공 토스트도 `aria-live` 영역도 없어서 화면을 못 보는 사용자에게는
       // **아무 일도 안 일어난 것과 구분되지 않는다.**
       //
-      // `.click()` 으로 미는 이유. 두 버튼이 이미 가진 진행 중 `disabled` 판정과 토스트
-      // 처리를 재사용한다 — 복제하면 규칙이 두 벌이 되어 어긋난다. `disabled` 버튼의
-      // `click()` 은 브라우저가 무시하므로 중복 발행 금지(E8)도 공짜로 성립한다.
+      // `.click()` 으로 미는 이유. 두 버튼이 이미 가진 진행 중 판정과 토스트 처리를
+      // 재사용한다 — 복제하면 규칙이 두 벌이 되어 어긋난다.
+      //
+      // 🛑 중복 발행 금지(E8)의 증인이 **어디에 있는지 착각하지 마라.** 예전 주석은
+      //    "`disabled` 버튼의 `click()` 은 브라우저가 무시하므로 공짜로 성립한다" 고 적혀
+      //    있었는데, Task-5b 가 두 버튼에서 네이티브 `disabled` 를 벗기고 `aria-disabled` 로
+      //    바꾼 순간(포커스 보존 목적) **그 문장은 거짓이 됐다** — 브라우저는 이제 이
+      //    `.click()` 을 막지 않는다. 지금 막는 것은 각 컴포넌트의 첫 줄 가드다.
+      //      · 즐겨찾기 — `FavoriteButton.handleClick` 의 `if (isMutating) return`
+      //      · 관심     — `WatchersSection.handleToggle` 의 `if (!canToggle) return`
+      //    짝 테스트도 그쪽에 있다(`FavoriteButton.test.tsx` S7c · `WatchersSection.test.tsx` S9c).
+      //    두 컴포넌트 자기 파일의 주석은 이미 이 사실을 정확히 적고 있다.
       onToggleFavorite: () => {
         favoriteToggleRef.current?.focus()
         favoriteToggleRef.current?.click()
