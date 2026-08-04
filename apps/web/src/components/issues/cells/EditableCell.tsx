@@ -66,7 +66,13 @@ export function EditableCell({
         // ★토큰명 주의 — `--border-default` 는 **존재하지 않는다**(index.css 실측). 실제 이름은
         // `--border`(라이트 #DCDFE4 · 다크 #2C333A). 없는 토큰을 쓰면 ring 색이 비어 hover
         // 어포던스(FR2)가 조용히 사라진다 — 디자인 리뷰 Pass 5 가 잡은 실버그.
-        className="w-full rounded px-1 text-left ring-1 ring-transparent hover:ring-(--border) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        //
+        // 🛑 `select-text` 를 지우지 마라 — 장식이 아니다. `PopoverTrigger` 는 `<button>` 으로
+        //    렌더되고, `<button>` 에서 `user-select: auto` 는 CSS UI 규격상 **none 으로
+        //    해석**된다(Chromium 실측). 셀을 트리거로 감싼 순간 그 셀 텍스트를 **드래그 복사할
+        //    수 없게 되는** 회귀가 생긴다 — F8 이 이슈 제목에서 실제로 겪고 같은 클래스로
+        //    막았다(`issues.$key.tsx:741`). 스펙 §시각 검증 7번이 이 항목이다.
+        className="w-full select-text rounded px-1 text-left ring-1 ring-transparent hover:ring-(--border) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => event.stopPropagation()}
       >
         {display}

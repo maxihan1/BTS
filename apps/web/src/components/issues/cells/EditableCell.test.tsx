@@ -80,4 +80,18 @@ describe('EditableCell', () => {
     expect(trigger.className).toContain('hover:ring-(--border)')
     expect(trigger.className).not.toContain('--border-default')
   })
+
+  it('트리거가 select-text 를 유지한다 — 셀 텍스트 복사 가능성 대리 지표 (F8 회귀 재발면)', () => {
+    render(
+      <EditableCell label="우선순위 편집" display={<span>보통</span>}>
+        <div />
+      </EditableCell>,
+    )
+
+    // ★`<button>` 에서 `user-select: auto` 는 CSS UI 규격상 none 으로 해석된다(Chromium 실측).
+    // 이 클래스가 없으면 셀을 트리거로 감싼 순간 드래그 복사가 죽는다 — F8 이 이슈 제목에서
+    // 겪은 실사고와 같은 형태다. jsdom 은 Tailwind 를 적용하지 않아 계산값 단언이 공허해지므로
+    // 클래스 문자열을 본다(`issues.$key.test.tsx` F8-R1-2 와 같은 처방·같은 한계).
+    expect(screen.getByRole('button', { name: '우선순위 편집' }).className).toContain('select-text')
+  })
 })
