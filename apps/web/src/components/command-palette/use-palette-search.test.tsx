@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 import { server } from '@/test/server'
+import { issueHandlers } from '@/mocks/issue-handlers'
+import { searchHandlers } from '@/mocks/search-handlers'
 import { DEFAULT_SEARCH_PAGE, makeSearchPage } from '@/mocks/search-fixtures'
 import type { PaletteInput } from './palette-input'
 import { usePaletteSearch } from './use-palette-search'
@@ -60,6 +62,10 @@ function renderPalette(initial: PaletteInput) {
 }
 
 beforeEach(() => {
+  // `src/test/handlers.ts` 기본 목록에는 auth refresh 하나뿐이라 필요한 BC 핸들러를
+  // 파일마다 등록한다(저장소 관례 — CreateIssueDialog.test.tsx 등). 등록을 빼먹으면
+  // 요청이 미핸들 에러로 떨어져 "검색이 실패했다"는 **거짓 신호**가 된다.
+  server.use(...issueHandlers, ...searchHandlers)
   queryClient = makeClient()
   vi.useFakeTimers({ shouldAdvanceTime: true })
   mockResolved.mockReturnValue({ status: 'ready', projectKey: 'ATLAS', source: 'stored' })
