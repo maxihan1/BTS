@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { changeAssignee, updateIssue, transitionIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
 import { ApiError } from '@/api/client'
+import { issueQueryKey } from '@/api/useUpdateIssueSummary'
+import { issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { issueDetailStrings } from '@/i18n/ko'
 
@@ -258,8 +260,21 @@ export function useIssueListCellField(listQueryKey: QueryKey) {
       )
     },
 
-    onSettled: () => {
+    onSettled: (_data, _error, vars) => {
+      // ★목록만 무효화하면 **상세 페인이 낡은 채로 남는다** (리뷰 C1).
+      //
+      // 와이드 폭 `/issues` 는 목록과 상세 페인을 **동시에** 마운트한다
+      // (`issues.index.tsx` split view). 상세는 `['issue', key]`·`['issue-transitions', key]`
+      // 를 자기 캐시로 갖는데, 목록에서 값을 바꾸면 서버 version 이 올라간 뒤에도 페인은 옛
+      // version 을 들고 있다. 그 상태에서 페인으로 뭔가 바꾸면 **409 VERSION_CONFLICT** 가
+      // 나고 "다른 사용자가 이미 수정했습니다" 가 뜬다 — 다른 사용자는 없다.
+      // 상태 전이는 옛 전이 목록까지 남아 409 TRANSITION_NOT_ALLOWED 로도 이어진다.
+      //
+      // 처방은 저장소 선례를 그대로 따른다 — `useTransitionIssue`(use-issue-transitions.ts)
+      // 가 이미 두 캐시를 함께 무효화한다.
       void queryClient.invalidateQueries({ queryKey: listQueryKey })
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(vars.issueKey) })
+      void queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(vars.issueKey) })
     },
   })
 }

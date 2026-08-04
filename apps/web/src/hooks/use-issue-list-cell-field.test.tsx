@@ -174,4 +174,90 @@ describe('useIssueListCellField', () => {
     expect(secondMessage).toBe(issueDetailStrings.transitionVersionConflictError)
     expect(firstMessage).not.toBe(secondMessage)
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // C1 — 상세 캐시 무효화
+  //
+  // 와이드 폭 `/issues` 는 목록과 상세 페인을 **동시에** 마운트한다. 목록에서 값을 바꾸면
+  // 서버 version 이 오르는데 페인 캐시(`['issue', key]`)는 그대로라, 이어서 페인에서 뭘
+  // 바꾸면 409 VERSION_CONFLICT 가 나고 "다른 사용자가 이미 수정했습니다" 가 뜬다.
+  // 다른 사용자는 없다. 전이 목록(`['issue-transitions', key]`)도 같은 이유로 낡는다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('저장 후 상세 이슈·전이 목록 캐시까지 무효화한다 (리뷰 C1)', async () => {
+    vi.mocked(updateIssue).mockResolvedValue(makeIssue({ priority: 1, version: 2 }))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        field: 'priority',
+        toPriority: 1,
+        expectedVersion: 1,
+      })
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map((call) =>
+      JSON.stringify(call[0]?.queryKey),
+    )
+    expect(invalidatedKeys).toContain(JSON.stringify(LIST_KEY))
+    expect(invalidatedKeys).toContain(JSON.stringify(['issue', 'ATLAS-1']))
+    expect(invalidatedKeys).toContain(JSON.stringify(['issue-transitions', 'ATLAS-1']))
+  })
+
+  it('실패해도 상세 캐시를 무효화한다 — onSettled 경로 (리뷰 C1)', async () => {
+    // 실패 시에도 서버 상태를 다시 읽어야 한다. 성공 경로에만 걸면 409 를 맞은 뒤
+    // 페인이 낡은 version 을 계속 들고 있어 같은 409 가 반복된다.
+    vi.mocked(updateIssue).mockRejectedValue(new ApiError(409, { errorCode: 'VERSION_CONFLICT' }))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        field: 'priority',
+        toPriority: 1,
+        expectedVersion: 1,
+      })
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map((call) =>
+      JSON.stringify(call[0]?.queryKey),
+    )
+    expect(invalidatedKeys).toContain(JSON.stringify(['issue', 'ATLAS-1']))
+  })
+
+  it('무효화 대상 이슈 키는 vars 에서 온다 — 다른 이슈를 건드리지 않는다 (리뷰 C1)', async () => {
+    queryClient.setQueryData(LIST_KEY, { content: [makeIssue(), makeIssue({ key: 'ATLAS-2' })] })
+    vi.mocked(updateIssue).mockResolvedValue(makeIssue({ key: 'ATLAS-2', priority: 1, version: 2 }))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-2',
+        field: 'priority',
+        toPriority: 1,
+        expectedVersion: 1,
+      })
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map((call) =>
+      JSON.stringify(call[0]?.queryKey),
+    )
+    expect(invalidatedKeys).toContain(JSON.stringify(['issue', 'ATLAS-2']))
+    expect(invalidatedKeys).not.toContain(JSON.stringify(['issue', 'ATLAS-1']))
+  })
 })
