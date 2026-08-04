@@ -97,15 +97,36 @@ describe('usePaletteSearch — 자유 텍스트', () => {
     })
   })
 
-  it('결과 상한은 7건이다 (NFR3)', async () => {
-    const { result, rerender } = renderPalette({ kind: 'empty' })
+  it('결과 상한 7건을 서버에 요청한다 (NFR3)', async () => {
+    // ★응답 길이가 아니라 **요청** 을 증인으로 삼는다.
+    // `results.length <= 7` 은 절대 깨지지 않는 공허한 단언이었다 — 기본 목이 요청 body 의
+    // `size` 를 읽지 않고 3건짜리 픽스처를 고정 반환하므로 좌변이 늘 3이다. 목을 slice 하게
+    // 고쳐도 `min(3, 상한) = 3` 이라 그대로고, 픽스처를 8건으로 늘리면 정확히 3건을 기대하는
+    // search.spec.ts 가 깨진다. NFR3 이 실제로 요구하는 것은 "팔레트가 7건만 요청한다" 이므로
+    // 요청 body 를 잰다 — 이 축은 픽스처 총량과 무관해 항상 비-공허하다.
+    // 기대값 7 은 상수를 import 하지 않고 **하드코딩** 한다. import 하면 상한을 50 으로 바꿔도
+    // 단언이 따라 움직여 다시 공허해진다.
+    const requestedSizes: unknown[] = []
+    server.use(
+      http.post('/api/v1/search/aql', async ({ request }) => {
+        const body: unknown = await request.json()
+        requestedSizes.push(
+          body !== null && typeof body === 'object'
+            ? (body as Record<string, unknown>)['size']
+            : undefined,
+        )
+        return HttpResponse.json(DEFAULT_SEARCH_PAGE)
+      }),
+    )
+    const { rerender } = renderPalette({ kind: 'empty' })
     rerender({ kind: 'free-text', query: '로그인' })
     act(() => {
       vi.advanceTimersByTime(250)
     })
     await waitFor(() => {
-      expect(result.current.results.length).toBeLessThanOrEqual(7)
+      expect(requestedSizes).toHaveLength(1)
     })
+    expect(requestedSizes[0]).toBe(7)
   })
 
   it('totalCount 는 서버 전체 건수다 — results.length 로 대체되지 않는다 (design 리뷰 2-2)', async () => {
