@@ -1,5 +1,5 @@
 // 단축키 도움말 모달 — SHORTCUTS + CONTEXT_SHORTCUTS 단일 진실 출처를 그룹으로 렌더 (FR-UX-05 · FR-UX-10 F10/F11)
-import type { JSX } from 'react'
+import { Fragment, type JSX } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DEFAULT_KEYMAP, PALETTE_HELP_ITEM, SHORTCUTS, type Keymap } from './shortcuts'
 import { CONTEXT_SHORTCUTS, type ShortcutContext } from './context-shortcuts'
@@ -38,20 +38,49 @@ function keysOfCombo(keyCombo: string): readonly string[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 단축키 키 배열을 `<kbd>` 시퀀스로 표기한다 (예: `['g', 'i']` → `g` `i`).
+ * 별칭 구분자 — 「Cmd/Ctrl K **또는** .」.
  *
- * @param keys 표기할 키 목록
+ * 순차 입력(`g` 다음 `i`)과 **대안**(둘 중 아무거나)을 눈으로 가른다. 칩만 나란히 두면
+ * `g` `i` 와 모양이 같아 "Cmd → K → . 순서로 누른다"로 읽힌다(눈확인 실측).
+ * 색만 흐리게 하는 안은 기각됐다 — 연한 회색은 「못 쓰는 키」로 오해되고, 색만으로
+ * 의미를 전하면 색약자·스크린리더에 닿지 않는다. 그래서 **텍스트**로 넣어 낭독 순서가
+ * 그대로 "…K 또는 ." 이 되게 하고, 톤만 한 단계 낮춘다.
+ *
+ * ★i18n 실측 — 이 모듈은 사용자 문자열을 인라인으로 둔다. 모달 제목·그룹 라벨·설명 21종이
+ * 전부 인라인이고 `src/i18n/` 에 keyboard-shortcuts 라벨 모듈이 없다(e2e 도 "하드코딩
+ * 선례"로 문서화). 한 문자열만 `ko.ts` 로 빼면 모듈이 반쪽만 이주해 오히려 drift 가 된다.
  */
-function ShortcutKeys({ keys }: { readonly keys: readonly string[] }): JSX.Element {
+const ALIAS_SEPARATOR = '또는'
+
+/**
+ * 단축키 표기를 `<kbd>` 시퀀스로 그린다 (예: `[['g', 'i']]` → `g` `i`).
+ *
+ * 대안이 둘 이상이면 사이에 [ALIAS_SEPARATOR] 를 끼운다
+ * (`[['Cmd/Ctrl', 'K'], ['.']]` → `Cmd/Ctrl` `K` 또는 `.`).
+ *
+ * @param keyGroups 대안 목록. 각 원소는 키 시퀀스 하나
+ */
+function ShortcutKeys({
+  keyGroups,
+}: {
+  readonly keyGroups: readonly (readonly string[])[]
+}): JSX.Element {
   return (
-    <span className="flex gap-1">
-      {keys.map((key, index) => (
-        <kbd
-          key={`${key}-${index}`}
-          className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono"
-        >
-          {key}
-        </kbd>
+    <span className="flex items-center gap-1">
+      {keyGroups.map((keys, groupIndex) => (
+        <Fragment key={`group-${groupIndex}`}>
+          {groupIndex > 0 && (
+            <span className="text-xs text-muted-foreground">{ALIAS_SEPARATOR}</span>
+          )}
+          {keys.map((key, index) => (
+            <kbd
+              key={`${key}-${index}`}
+              className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono"
+            >
+              {key}
+            </kbd>
+          ))}
+        </Fragment>
       ))}
     </span>
   )
@@ -61,9 +90,22 @@ function ShortcutKeys({ keys }: { readonly keys: readonly string[] }): JSX.Eleme
 // 그룹 구성 — 두 레지스트리를 화면 기준으로 묶는다 (단일 진실 출처 유지)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 도움말 한 줄 — 두 레지스트리의 서로 다른 키 표기를 공통 형태로 맞춘다 */
+/** 도움말 한 줄(접기 전) — 두 레지스트리의 서로 다른 키 표기를 공통 형태로 맞춘다 */
 interface HelpItem {
   readonly keys: readonly string[]
+  readonly description: string
+}
+
+/** 도움말 한 줄(접힌 뒤) — 같은 동작을 여는 **대안**들을 나눠 들고 있다 */
+interface HelpRow {
+  /**
+   * 대안 목록. 각 원소가 키 시퀀스 하나다.
+   *
+   * `[['g','i']]` = 대안 1개(순차 입력) · `[['Cmd/Ctrl','K'], ['.']]` = 대안 2개.
+   * ★대안을 **평평한 배열로 합치지 않는 이유**가 여기다 — 합치면 순차 입력과 구별할
+   * 정보가 사라져 구분자를 넣을 자리를 잃는다.
+   */
+  readonly keyGroups: readonly (readonly string[])[]
   readonly description: string
 }
 
@@ -79,7 +121,7 @@ interface HelpGroup {
    */
   readonly id: string
   readonly label: string
-  readonly items: readonly HelpItem[]
+  readonly items: readonly HelpRow[]
 }
 
 /** 컨텍스트 단축키를 도움말 표기 형태로 변환한다 (단건 키 → 1칸 배열) */
@@ -91,7 +133,7 @@ function contextItems(context: ShortcutContext): readonly HelpItem[] {
 }
 
 /**
- * 설명이 같은 행을 하나로 접고 키 표기만 이어 붙인다 — **한 동작에 열쇠가 둘**인 경우.
+ * 설명이 같은 행을 하나로 접고 키 표기를 **대안으로 나란히** 든다 — 한 동작에 열쇠가 둘인 경우.
  *
  * `.` 은 `Cmd/Ctrl+K` 와 같은 팔레트를 여는 두 번째 열쇠다(스펙 §Jira 대조 3-b).
  * 두 행으로 두면 ① 같은 접근성 이름이 둘이라 텍스트 조회가 strict 위반으로 죽고
@@ -101,17 +143,20 @@ function contextItems(context: ShortcutContext): readonly HelpItem[] {
  * ★특정 키(`.`)를 이름으로 제외하지 않는다. "설명이 같으면 같은 동작"이라는 규칙으로
  * 접어야 별칭이 하나 더 늘어도 다음 사람이 같은 함정을 다시 밟지 않는다.
  *
+ * ★대안은 **한 배열로 합치지 않고 그룹째 쌓는다**. 렌더가 그룹 경계에서만 구분자
+ * (「또는」)를 넣기 때문이며, 그래서 대안이 1개인 행은 표기가 예전 그대로다.
+ *
  * @param items 접기 전 행 목록(레지스트리 순서)
  * @returns 첫 등장 순서를 유지한 채 별칭이 접힌 행 목록
  */
-function mergeAliasRows(items: readonly HelpItem[]): readonly HelpItem[] {
-  const keysByDescription = new Map<string, string[]>()
+function mergeAliasRows(items: readonly HelpItem[]): readonly HelpRow[] {
+  const groupsByDescription = new Map<string, (readonly string[])[]>()
   for (const item of items) {
-    const merged = keysByDescription.get(item.description)
-    if (merged === undefined) keysByDescription.set(item.description, [...item.keys])
-    else merged.push(...item.keys)
+    const merged = groupsByDescription.get(item.description)
+    if (merged === undefined) groupsByDescription.set(item.description, [item.keys])
+    else merged.push(item.keys)
   }
-  return [...keysByDescription].map(([description, keys]) => ({ description, keys }))
+  return [...groupsByDescription].map(([description, keyGroups]) => ({ description, keyGroups }))
 }
 
 /**
@@ -130,7 +175,7 @@ function buildHelpGroups(keymap: Keymap): readonly HelpGroup[] {
   // ★순서는 **화면 계층 순**이다 — 어디서나(전역) → 이슈 목록 → 이슈 상세.
   // 사용자가 화면을 파고드는 순서라 "여기까지 오면 이 키가 더 생긴다"로 읽힌다
   // (`CONTEXT_LAYERS` 의 폴백 순서를 뒤집은 것과 같다).
-  const groups: readonly HelpGroup[] = [
+  const groups: readonly (Omit<HelpGroup, 'items'> & { readonly items: readonly HelpItem[] })[] = [
     {
       id: 'global',
       label: '어디서나',
@@ -205,7 +250,7 @@ export function ShortcutsHelpDialog({
                   <div key={item.description} className="flex items-center justify-between gap-4">
                     <dt className="text-sm text-muted-foreground">{item.description}</dt>
                     <dd>
-                      <ShortcutKeys keys={item.keys} />
+                      <ShortcutKeys keyGroups={item.keyGroups} />
                     </dd>
                   </div>
                 ))}
