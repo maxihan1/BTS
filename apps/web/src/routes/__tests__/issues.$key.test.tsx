@@ -415,9 +415,15 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     it('T-F11-8 (S7 · F-2): w 는 관심 버튼에 포커스를 준 뒤 누른다', async () => {
       renderDetail()
       await waitForDetailLoaded()
-      // 워처 GET 이 도착하기 전에는 버튼이 disabled 라 헛 POST 가 나가지 않는다(E8).
+      // 워처 GET 이 도착하기 전에는 버튼이 `aria-disabled` 이고 `handleToggle` 의 canToggle
+      // 가드가 헛 POST 를 막는다(E8). 그 창이 닫힐 때까지 기다린 뒤에 눌러야 토글이 성립한다.
+      //
+      // 🛑 `toBeEnabled()` 로 되돌리지 마라 — **그 matcher 는 `aria-disabled` 를 보지 않는다.**
+      // Task-5b 가 네이티브 `disabled` 를 벗기면서(포커스 유지 목적) 이 관문이 항상 즉시 참이
+      // 되어 대기가 통째로 사라진다. 그때도 위 `waitForDetailLoaded` 덕에 우연히 초록이라
+      // 「다른 이유로 초록인 상태」가 되고, 타이밍이 조금만 흔들리면 flaky 로 돌아선다.
       await waitFor(() => {
-        expect(screen.getByTestId('watch-toggle-button')).toBeEnabled()
+        expect(screen.getByTestId('watch-toggle-button')).toHaveAttribute('aria-disabled', 'false')
       })
 
       await pressKey('w')
