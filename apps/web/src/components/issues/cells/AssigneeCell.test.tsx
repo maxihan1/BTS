@@ -2,8 +2,29 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AssigneeCellEditor } from './AssigneeCell'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AssigneeCell, AssigneeCellEditor } from './AssigneeCell'
 import type { UserSummary } from '@/api/users'
+import type { IssueResponse } from '@/api/issues'
+import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
+import { issueDetailStrings } from '@/i18n/ko'
+
+// 권한 조회를 UPDATE:true 로 고정한다 — 그래야 **필드 단위** 가부만 분별할 수 있다.
+// 단위 테스트에는 인증 토큰이 없어 실제 조회는 401 이 되고, 그러면 이슈 단위 권한에
+// 가려져 필드 권한 가드가 공허해진다.
+vi.mock('@/hooks/use-issue-permissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/use-issue-permissions')>()
+  return {
+    ...actual,
+    useIssuePermissions: () => ({
+      data: {
+        issueKey: 'ATLAS-1',
+        permissions: { UPDATE: true, SOFT_DELETE: true, TRANSITION: true },
+      },
+      isLoading: false,
+    }),
+  }
+})
 
 /**
  * 후보 1명 픽스처.
@@ -108,5 +129,64 @@ describe('AssigneeCellEditor', () => {
     input.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C2 — 필드 단위 권한
+//
+// 이슈 단위 UPDATE 만 보면, 관리자가 `assigneeId` 를 편집 불가로 잠가도 목록에서는 그대로
+// 고칠 수 있어 보인다(저장은 서버가 거절 → 사용자는 이유 모를 실패를 본다). 상세 화면
+// `IssueMetaPanel.tsx:315` 가 이미 같은 판정을 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 열린 담당자 셀을 렌더한다 */
+async function renderOpenedAssigneeCell(overrides: Partial<IssueResponse> = {}): Promise<void> {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <AssigneeCell
+        issue={{ ...issueAtlas1Fixture, ...overrides }}
+        assigneeName={undefined}
+        listQueryKey={['issues', 'ATLAS', 0, {}, null]}
+      />
+    </QueryClientProvider>,
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` }),
+  )
+}
+
+describe('AssigneeCell — 필드 단위 권한 (리뷰 C2)', () => {
+  it('noneditableFields 에 assigneeId 가 있으면 UPDATE 권한이 있어도 검색창이 비활성이다', async () => {
+    await renderOpenedAssigneeCell({ noneditableFields: ['assigneeId'] })
+
+    expect(screen.getByRole('textbox', { name: '담당자 검색' })).toBeDisabled()
+    expect(screen.getByText('편집 권한이 없습니다.')).toBeInTheDocument()
+  })
+
+  it('noneditableFields 가 비어 있으면 검색창이 활성이다 (비-공허 짝)', async () => {
+    await renderOpenedAssigneeCell({ noneditableFields: [] })
+
+    expect(screen.getByRole('textbox', { name: '담당자 검색' })).toBeEnabled()
+  })
+
+  it('다른 필드가 잠겨 있어도 assigneeId 는 영향받지 않는다 (필드 키 정확도)', async () => {
+    await renderOpenedAssigneeCell({ noneditableFields: ['priority', 'labels'] })
+
+    expect(screen.getByRole('textbox', { name: '담당자 검색' })).toBeEnabled()
+  })
+
+  it('담당자 해제 버튼도 필드 권한을 따른다', async () => {
+    await renderOpenedAssigneeCell({
+      assigneeId: '11111111-1111-1111-1111-111111111111',
+      noneditableFields: ['assigneeId'],
+    })
+
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.assigneeUnassignButton }),
+    ).toBeDisabled()
   })
 })

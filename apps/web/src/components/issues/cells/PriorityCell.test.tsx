@@ -2,8 +2,28 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { issueDetailStrings } from '@/i18n/ko'
-import { PriorityCellDisplay, PriorityCellEditor } from './PriorityCell'
+import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
+import type { IssueResponse } from '@/api/issues'
+import { PriorityCell, PriorityCellDisplay, PriorityCellEditor } from './PriorityCell'
+
+// 권한 조회를 UPDATE:true 로 고정한다 — 그래야 **필드 단위** 가부만 분별할 수 있다.
+// 단위 테스트에는 인증 토큰이 없어 실제 조회는 401 이 되고, 그러면 이슈 단위 권한에
+// 가려져 필드 권한 가드가 공허해진다.
+vi.mock('@/hooks/use-issue-permissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/use-issue-permissions')>()
+  return {
+    ...actual,
+    useIssuePermissions: () => ({
+      data: {
+        issueKey: 'ATLAS-1',
+        permissions: { UPDATE: true, SOFT_DELETE: true, TRANSITION: true },
+      },
+      isLoading: false,
+    }),
+  }
+})
 
 describe('PriorityCellDisplay', () => {
   it('닫힌 셀도 한국어 라벨 정본을 쓴다 — 백엔드 영어 표기를 화면에 내지 않는다 (Maxi 확정 2026-08-04)', () => {
@@ -120,5 +140,53 @@ describe('PriorityCellEditor', () => {
         screen.getByRole('button', { name: issueDetailStrings.priorityNames[p] }),
       ).toBeInTheDocument()
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C2 — 필드 단위 권한
+//
+// 이슈 단위 UPDATE 만 보면, 관리자가 `priority` 를 편집 불가로 잠가도 목록에서는 그대로
+// 고칠 수 있어 보인다(저장은 서버가 거절 → 사용자는 이유 모를 실패를 본다). 상세 화면
+// `IssueMetaPanel.tsx:315` 는 이미 필드 단위까지 본다. `noneditableFields` 는 목록 응답에도
+// 실려 오므로 추가 요청 0 이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 열린 우선순위 셀을 렌더한다 */
+async function renderOpenedPriorityCell(overrides: Partial<IssueResponse> = {}): Promise<void> {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PriorityCell
+        issue={{ ...issueAtlas1Fixture, ...overrides }}
+        listQueryKey={['issues', 'ATLAS', 0, {}, null]}
+      />
+    </QueryClientProvider>,
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 우선순위 변경` }),
+  )
+}
+
+describe('PriorityCell — 필드 단위 권한 (리뷰 C2)', () => {
+  it('noneditableFields 에 priority 가 있으면 UPDATE 권한이 있어도 선택지가 비활성이다', async () => {
+    await renderOpenedPriorityCell({ noneditableFields: ['priority'] })
+
+    expect(screen.getByRole('button', { name: issueDetailStrings.priorityNames[2] })).toBeDisabled()
+  })
+
+  it('noneditableFields 가 비어 있으면 선택지가 활성이다 (비-공허 짝)', async () => {
+    // 이 짝이 없으면 위 단언은 "항상 비활성"과 구분되지 않아 공허해진다
+    await renderOpenedPriorityCell({ noneditableFields: [] })
+
+    expect(screen.getByRole('button', { name: issueDetailStrings.priorityNames[2] })).toBeEnabled()
+  })
+
+  it('다른 필드가 잠겨 있어도 priority 는 영향받지 않는다 (필드 키 정확도)', async () => {
+    await renderOpenedPriorityCell({ noneditableFields: ['assigneeId', 'labels'] })
+
+    expect(screen.getByRole('button', { name: issueDetailStrings.priorityNames[2] })).toBeEnabled()
   })
 })

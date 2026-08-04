@@ -6,6 +6,9 @@ import { Check } from 'lucide-react'
 import type { IssueResponse } from '@/api/issues'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
+// 필드 단위 편집가부 판정 정본 — 복제하지 않고 재사용한다.
+// `meta/IssueCustomFieldsEdit.tsx:12` 가 같은 방식으로 값 import 하는 선례가 있다.
+import { isFieldDisabled } from '@/components/issue/IssueMetaPanel'
 import { useIssueListCellField } from '@/hooks/use-issue-list-cell-field'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
@@ -180,8 +183,16 @@ function PriorityCellPopoverBody({
   return (
     <PriorityCellEditor
       value={issue.priority}
-      // fail-closed — 권한이 확정되기 전에는 false (D-6)
-      canEdit={permissions.data?.permissions.UPDATE === true}
+      // fail-closed — 권한이 확정되기 전에는 false (D-6).
+      // ★이슈 단위 UPDATE **와** 필드 단위 편집가부를 둘 다 본다 (리뷰 C2).
+      // `noneditableFields` 는 목록 응답에도 이미 실려 오므로 **추가 요청 0** 이다.
+      canEdit={
+        !isFieldDisabled(
+          'priority',
+          permissions.data?.permissions.UPDATE === true,
+          issue.noneditableFields,
+        )
+      }
       isSaving={isSaving}
       onChange={onChange}
     />

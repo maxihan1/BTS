@@ -76,8 +76,17 @@ GET /api/v1/users/me/issue-permissions?issueKey={key}    UPDATE / TRANSITION (�
 존재하는 전이 **교집합**"*(`api/issues.ts:243`)이라 행별 편집에 쓰면 실제 가능한 전이를
 **빠뜨린다**. 일괄 전이 전용이다.
 
-**필드 권한은 예외** — `useFieldPermissions(projectKey)` 는 **프로젝트 단위**라 목록당 1회면
-족하다(행별 아님).
+**필드 권한은 조회 자체가 불필요하다 (2026-08-04 실측 정정).**
+초안은 *"`useFieldPermissions(projectKey)` 로 목록당 1회"* 라고 적었으나 **그것조차 필요 없다.**
+백엔드가 목록 응답의 **행마다** `noneditableFields` 를 채워 보내기 때문이다
+(`IssueFieldVisibilityTest.kt:455` *"listIssues — noneditableFields (목록 경로)"* 가 봉인).
+따라서 셀은 `issue.noneditableFields` 를 그대로 읽고 상세 화면과 같은 판정 함수
+`isFieldDisabled(fieldKey, canEdit, noneditableFields)`(`IssueMetaPanel.tsx:143`)를 재사용한다 —
+**추가 요청 0**. 판정식은 이슈 단위 `UPDATE` **AND** 필드 단위 편집가부다.
+
+적용 필드. 담당자 = `assigneeId` · 우선순위 = `priority`.
+**상태(전이)는 대응 필드 키가 없다** — 전이는 `TRANSITION` 권한으로만 통제되고 상세 화면
+(`IssueStateTransition`)도 필드 권한을 보지 않는다. 목록도 같게 둔다.
 
 ### D-4. 캐시 = 낙관적 필드 patch + `onSettled` invalidate
 
