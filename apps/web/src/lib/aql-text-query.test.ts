@@ -29,7 +29,11 @@ describe('buildTextQuery', () => {
     expect(buildTextQuery('  로그인  ')).toBe('text ~ "로그인"')
   })
 
-  it('따옴표가 든 질의도 유효한 AQL 이 된다', () => {
+  // ★이름 주의. 이 단언이 재는 것은 **출력 문자열의 모양**이지 AQL 유효성이 아니다 —
+  // 여기에는 파서가 없으므로 "유효하다"를 주장할 증인이 없다. 실제 유효성(이스케이프
+  // 시퀀스를 렉서가 받아들이는가)의 증인은 백엔드에 있다.
+  // `backend/modules/search-export-import/src/test/kotlin/com/bts/search/aql/AqlLexerTest.kt`
+  it('따옴표가 든 질의를 이스케이프한 모양으로 감싼다 (유효성 증인은 백엔드 AqlLexerTest)', () => {
     expect(buildTextQuery('로그인"버그')).toBe('text ~ "로그인\\"버그"')
   })
 

@@ -197,6 +197,29 @@ describe('usePaletteSearch — 활성 프로젝트 게이트 (FR7·S8·E8·E9)',
     })
     expect(result.current.needsProject).toBe(true)
     expect(result.current.results).toEqual([])
+    // '0개'는 해소가 끝난 사실이다 — 진행/실패 갈래와 섞이지 않는다
+    expect(result.current.isResolvingProject).toBe(false)
+    expect(result.current.projectError).toBeNull()
+  })
+
+  it('★error 는 needsProject 로 뭉개지지 않고 projectError 로 갈린다 (E9)', () => {
+    // ★'0개'와 '못 불러왔다'는 서로 다른 사실이고, 후자의 유일한 탈출구가 재시도다
+    // (`use-resolved-active-project.ts:69-70`). `retry` 를 멤버 안에 실어 소비처가
+    // 배선을 빠뜨릴 수 없게 한다 — optional prop 이면 잊어도 tsc 가 못 잡는다(CR-A 교훈).
+    const retry = vi.fn()
+    mockResolved.mockReturnValue({ status: 'error', retry })
+    const { result, rerender } = renderPalette({ kind: 'empty' })
+    rerender({ kind: 'free-text', query: '로그인' })
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+
+    expect(result.current.needsProject).toBe(false)
+    expect(result.current.projectError).not.toBeNull()
+    expect(result.current.results).toEqual([])
+
+    result.current.projectError?.retry()
+    expect(retry).toHaveBeenCalledTimes(1)
   })
 
   it('★empty 여도 이슈키 조회는 계속 동작한다 (ADR D-4 — 프로젝트 무관)', async () => {
@@ -218,6 +241,10 @@ describe('usePaletteSearch — 활성 프로젝트 게이트 (FR7·S8·E8·E9)',
     expect(result.current.results).toEqual([])
     // 아직 해소 중일 뿐이라 "프로젝트가 없다"고 단정하지 않는다(E8)
     expect(result.current.needsProject).toBe(false)
+    // ★"단정하지 않는다"를 렌더 층이 알아들으려면 **진행 중이라는 사실 자체**가 필요하다.
+    // needsProject:false 만 내보내면 소비처는 그것을 "검색 가능"으로 읽고 0건 안내를 켠다.
+    expect(result.current.isResolvingProject).toBe(true)
+    expect(result.current.projectError).toBeNull()
   })
 })
 
@@ -230,5 +257,7 @@ describe('usePaletteSearch — empty 입력 (E12)', () => {
     expect(result.current.results).toEqual([])
     expect(result.current.issueHit).toBeNull()
     expect(result.current.needsProject).toBe(false)
+    expect(result.current.isResolvingProject).toBe(false)
+    expect(result.current.projectError).toBeNull()
   })
 })
