@@ -18,6 +18,8 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { PALETTE_HELP_ITEM, SHORTCUTS } from '../src/components/keyboard-shortcuts/shortcuts'
+import { CONTEXT_SHORTCUTS } from '../src/components/keyboard-shortcuts/context-shortcuts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -31,6 +33,31 @@ const HELP_DIALOG_TITLE = '키보드 단축키'
 
 /** Sidebar 메인 메뉴 nav aria-label — 즉사 계약 §2 의 4종 중 하나 */
 const SIDEBAR_NAV_LABEL = '메인 메뉴'
+
+/**
+ * 도움말 모달에 떠도 되는 설명 전량 — **두 레지스트리에서 파생**한다.
+ *
+ * ★F10 시절 이 자리는 「미구현 키 금지 문구」 하드코딩 목록이었다. 그 목록은 F10 시점의
+ * 스냅샷이라 두 가지로 썩었다 — F11 이 `담당자 지정` 을 정식 description 으로 만들자
+ * 한 줄은 **거짓**이 됐고, 다른 한 줄(`즐겨찾기 토글`)은 레지스트리 실제 문구가
+ * `즐겨찾기 켜기/끄기` 라 그 키가 화면에 떠도 **영원히 통과**하는 공허한 단언이었다.
+ *
+ * 지켜야 할 계약(FR-UX-05 FR8 — 비구현 단축키를 동작하는 것처럼 보여주지 않는다)은
+ * 그대로 살리되, 스냅샷이 아니라 파생형으로 바꾼다. 정렬한 배열 등식이므로
+ * **레지스트리에 없는 것은 뜨지 않고(FR8) 있는 것은 빠짐없이 한 번씩 뜬다**(누락·중복 회귀
+ * 차단)를 한 단언이 함께 잰다. F12 이후 키가 늘어도 이 보호는 그대로 유지된다.
+ *
+ * 유닛(`ShortcutsHelpDialog.test.tsx`)은 같은 계약을 **집합 등식 + 개수 등식** 두 단언으로
+ * 나눠 지킨다. 여기는 정렬 배열 등식 하나로 두 성질을 함께 재는 것뿐이고 기준은 같다.
+ * `.`(팔레트 별칭)은 `명령 팔레트 열기` 로 팔레트 행에 접히므로 중복 제거가 곧 정본이다.
+ */
+const EXPECTED_HELP_DESCRIPTIONS: string[] = [
+  ...new Set([
+    ...SHORTCUTS.map((shortcut) => shortcut.description),
+    PALETTE_HELP_ITEM.description,
+    ...CONTEXT_SHORTCUTS.map((shortcut) => shortcut.description),
+  ]),
+].sort()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -174,7 +201,9 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
   // ───────────────────────────────────────────────────────────────────────────
   // S6. ? — 도움말 그룹
   // ───────────────────────────────────────────────────────────────────────────
-  test('S6 ? → 도움말에 컨텍스트 그룹이 보이고 F11 미구현 키는 안 보인다', async ({ page }) => {
+  test('S6 ? → 도움말에 컨텍스트 그룹이 보이고 표시 항목이 레지스트리와 정확히 일치한다', async ({
+    page,
+  }) => {
     await loginAndWaitForRootReady(page)
     await gotoIssueList(page)
 
@@ -182,9 +211,10 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
     const dialog = page.getByRole('dialog', { name: HELP_DIALOG_TITLE })
     await expect(dialog).toBeVisible()
 
-    // 그룹 2개
+    // 그룹 3개 — F11 이 「이슈 상세에서」를 더했다
     await expect(dialog.getByRole('heading', { name: '어디서나' })).toBeVisible()
     await expect(dialog.getByRole('heading', { name: '이슈 목록에서' })).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: '이슈 상세에서' })).toBeVisible()
 
     // 컨텍스트 5종 설명
     await expect(dialog.getByText('다음 이슈로 이동', { exact: true })).toBeVisible()
@@ -193,9 +223,13 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
     // 기존 5종 문구 verbatim 무회귀 (C5-b)
     await expect(dialog.getByText('새 이슈 생성', { exact: true })).toBeVisible()
 
-    // F11 미구현 키는 표기 금지 (C5, FR-UX-05 FR8 승계)
-    await expect(dialog.getByText('담당자 지정', { exact: true })).toHaveCount(0)
-    await expect(dialog.getByText('즐겨찾기 토글', { exact: true })).toHaveCount(0)
+    // ★FR-UX-05 FR8 — 표시 항목 집합이 레지스트리와 정확히 같다(양방향).
+    // 하드코딩 금지 문구 목록을 파생형으로 교체한 자리다([EXPECTED_HELP_DESCRIPTIONS] 주석 참조).
+    await expect
+      .poll(async () =>
+        (await dialog.locator('dt').allTextContents()).map((text) => text.trim()).sort(),
+      )
+      .toEqual(EXPECTED_HELP_DESCRIPTIONS)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
