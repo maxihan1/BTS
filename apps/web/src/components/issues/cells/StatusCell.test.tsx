@@ -1,10 +1,104 @@
 // 이슈 목록 상태 셀 테스트 — role="status" 보존 · 전이 선택 · 사유 2종 · 권한 · 종료 전이 (FR-UX-11 F9 FR7·FR8·FR9·FR10·FR14)
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { IssueTransition } from '@/api/issues'
+import { transitionIssue } from '@/api/issues'
+import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
 import { issueDetailStrings } from '@/i18n/ko'
-import { StatusCellDisplay, StatusCellEditor } from './StatusCell'
+import { StatusCell, StatusCellDisplay, StatusCellEditor } from './StatusCell'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C6 — FR14 **성공 경로** 배선 가드용 mock
+//
+// 기존 테스트는 순수 표현부(`StatusCellEditor`)만 렌더했고 e2e 는 **취소 경로**만 덮었다.
+// 그래서 `runTransition(pendingDone.toStateKey)` 로 `resolutionId` 인자를 빠뜨려도 전
+// 테스트가 초록이었다 — 결의안을 고르고 확인했는데 서버에는 안 실려 가는 상태다.
+//
+// `ResolutionModal` 자체는 자체 테스트(`issue/__tests__/ResolutionModal.test.tsx`)가 덮으므로
+// 여기서는 stub 으로 갈아끼우고 **StatusCell 의 이음매**만 잰다. Radix Select 를 jsdom 에서
+// 조작하는 60줄짜리 mock 을 복제하지 않는 이유이기도 하다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { RESOLUTION_ID, DONE_TRANSITION, PLAIN_TRANSITION, transitionState } = vi.hoisted(() => {
+  const done = {
+    key: 'finish',
+    name: '완료',
+    fromStateKey: 'open',
+    toStateKey: 'DONE',
+    toCategory: 'DONE',
+  }
+  return {
+    RESOLUTION_ID: '99999999-9999-4999-8999-999999999999',
+    DONE_TRANSITION: done,
+    PLAIN_TRANSITION: {
+      key: 'start',
+      name: '진행 시작',
+      fromStateKey: 'open',
+      toStateKey: 'IN_PROGRESS',
+      toCategory: 'IN_PROGRESS',
+    },
+    // 테스트마다 갈아끼우는 가용 전이 — 종료/비종료 두 경로를 같은 배선으로 재기 위함
+    transitionState: { current: [done] as { toCategory?: string | null }[] },
+  }
+})
+
+vi.mock('@/api/issues', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/issues')>()
+  return { ...actual, transitionIssue: vi.fn() }
+})
+
+vi.mock('@/hooks/use-issue-transitions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/use-issue-transitions')>()
+  return {
+    ...actual,
+    useIssueTransitions: () => ({
+      data: transitionState.current,
+      isLoading: false,
+      isError: false,
+      error: null,
+    }),
+  }
+})
+
+vi.mock('@/hooks/use-issue-permissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/use-issue-permissions')>()
+  return {
+    ...actual,
+    useIssuePermissions: () => ({
+      data: {
+        issueKey: 'ATLAS-1',
+        permissions: { UPDATE: true, SOFT_DELETE: true, TRANSITION: true },
+      },
+      isLoading: false,
+    }),
+  }
+})
+
+vi.mock('@/components/issue/ResolutionModal', async () => {
+  const { Button } = await vi.importActual<typeof import('@/components/ui/button')>(
+    '@/components/ui/button',
+  )
+  return {
+    ResolutionModal: ({
+      onConfirm,
+      onCancel,
+    }: {
+      onConfirm: (resolutionId: string) => void
+      onCancel: () => void
+    }) => (
+      <>
+        <Button type="button" onClick={() => onConfirm(RESOLUTION_ID)}>
+          결의안 확인(stub)
+        </Button>
+        <Button type="button" onClick={onCancel}>
+          결의안 취소(stub)
+        </Button>
+      </>
+    ),
+  }
+})
 
 /**
  * 비종료 전이 1건.
@@ -164,5 +258,84 @@ describe('StatusCellEditor', () => {
     expect(onDoneTransition).toHaveBeenCalledWith(doneTransition)
     // ★결의안 없이 전이하지 않는다 — 해결 결과는 종료 전이의 필수 입력이다
     expect(onTransition).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C6 — FR14 성공 경로 (결의안 확인 → resolutionId 가 실려 나간다)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StatusCell — 종료 전이 성공 경로 (리뷰 C6)', () => {
+  beforeEach(() => {
+    // ★mock 호출 이력을 반드시 비운다 — 안 비우면 앞 테스트의 호출이 남아
+    // "요청이 나가지 않았다" 단언이 남의 호출을 보고 실패한다 (2026-08-04 실측)
+    vi.clearAllMocks()
+    transitionState.current = [DONE_TRANSITION]
+    vi.mocked(transitionIssue).mockResolvedValue({ ...issueAtlas1Fixture, currentStateKey: 'DONE' })
+  })
+
+  /** 상태 셀을 열고 첫 전이를 고른다 */
+  async function openAndPickTransition(name: string): Promise<void> {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StatusCell issue={issueAtlas1Fixture} listQueryKey={['issues', 'ATLAS', 0, {}, null]} />
+      </QueryClientProvider>,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 상태 변경`) }),
+    )
+    await userEvent.click(await screen.findByRole('button', { name }))
+  }
+
+  /** 종료 전이를 골라 결의안 모달까지 간다 */
+  async function openAndPickDoneTransition(): Promise<void> {
+    await openAndPickTransition(DONE_TRANSITION.name)
+  }
+
+  it('결의안을 확인하면 그 resolutionId 를 실어 전이한다 (FR14)', async () => {
+    await openAndPickDoneTransition()
+
+    // 이 지점까지는 전이 요청이 나가면 안 된다 — 결의안은 종료 전이의 **필수** 입력이다
+    expect(vi.mocked(transitionIssue)).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: '결의안 확인(stub)' }))
+
+    await waitFor(() => expect(vi.mocked(transitionIssue)).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(transitionIssue)).toHaveBeenCalledWith(
+      issueAtlas1Fixture.key,
+      expect.objectContaining({
+        toStatusKey: DONE_TRANSITION.toStateKey,
+        expectedVersion: issueAtlas1Fixture.version,
+        // ★인자를 빠뜨리면 여기서 죽는다 — 종료 전이가 결의안 없이 나가던 구멍
+        resolutionId: RESOLUTION_ID,
+      }),
+    )
+  })
+
+  it('결의안을 취소하면 전이 요청이 나가지 않는다 (E14 — 상태 불변)', async () => {
+    await openAndPickDoneTransition()
+
+    await userEvent.click(screen.getByRole('button', { name: '결의안 취소(stub)' }))
+
+    expect(vi.mocked(transitionIssue)).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: '결의안 확인(stub)' })).not.toBeInTheDocument()
+  })
+
+  it('비종료 전이는 결의안 모달 없이 즉시 전이하고 resolutionId 를 싣지 않는다', async () => {
+    // 같은 배선이 비종료 전이에까지 결의안을 실어 보내면 백엔드 계약 위반이다.
+    // 이 짝이 없으면 위 단언은 "항상 resolutionId 를 싣는다" 와 구분되지 않아 공허해진다.
+    transitionState.current = [PLAIN_TRANSITION]
+
+    await openAndPickTransition(PLAIN_TRANSITION.name)
+
+    expect(screen.queryByRole('button', { name: '결의안 확인(stub)' })).not.toBeInTheDocument()
+    await waitFor(() => expect(vi.mocked(transitionIssue)).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(transitionIssue).mock.calls[0]?.[1]).toMatchObject({
+      toStatusKey: PLAIN_TRANSITION.toStateKey,
+    })
+    expect(vi.mocked(transitionIssue).mock.calls[0]?.[1]?.resolutionId).toBeUndefined()
   })
 })
