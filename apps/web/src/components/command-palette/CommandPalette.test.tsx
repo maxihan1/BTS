@@ -65,7 +65,7 @@ describe('CommandPalette', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('/search 로그인 버그 입력 후 Enter → 검색 결과로 navigate한다 (S4)', async () => {
+  it('/search 로그인 버그 입력 후 Enter → text ~ 로 감싼 AQL 로 navigate 한다 (S7 · FR9)', async () => {
     const user = userEvent.setup()
     const { onOpenChange } = renderPalette()
 
@@ -73,8 +73,25 @@ describe('CommandPalette', () => {
     await user.type(input, '/search 로그인 버그')
     await user.keyboard('{Enter}')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/search', search: { q: '로그인 버그' } })
+    // 봉합 전에는 { q: '로그인 버그' } 였고 그것은 실서버에서 SEARCH_SYNTAX_ERROR 다
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/search',
+      search: { q: 'text ~ "로그인 버그"' },
+    })
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('/search 에 따옴표가 들어가도 유효한 AQL 이 된다 (E4)', async () => {
+    const user = userEvent.setup()
+    renderPalette()
+
+    await user.type(screen.getByRole('combobox'), '/search 로그인"버그')
+    await user.keyboard('{Enter}')
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/search',
+      search: { q: 'text ~ "로그인\\"버그"' },
+    })
   })
 
   it('/issue 결제 실패 조사 입력 후 Enter → 새 이슈 폼으로 navigate한다 (S5)', async () => {
