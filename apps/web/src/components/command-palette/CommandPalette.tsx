@@ -3,6 +3,7 @@
 import { useEffect, useState, type JSX, type KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Command as CommandPrimitive } from 'cmdk'
+import { buildTextQuery } from '@/lib/aql-text-query'
 import { parseCommand, COMMANDS, QUICK_LINKS, type ParsedCommand } from './commands'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,7 +86,14 @@ export function runCommand(parsed: ParsedCommand, navigate: ReturnType<typeof us
   if (parsed.kind === 'goto') {
     void navigate({ to: '/issues/$key', params: { key: parsed.issueKey } })
   } else if (parsed.kind === 'search') {
-    void navigate({ to: '/search', search: { q: parsed.query } })
+    // ★자유 텍스트를 그대로 q 로 보내면 백엔드 AqlParser 가 SEARCH_SYNTAX_ERROR 를 낸다
+    // (선재 결함, ADR D-3). text ~ "…" 로 감싸야 유효한 AQL 이다.
+    const aql = buildTextQuery(parsed.query)
+    // null 은 parseCommand 가 이미 걸러 도달하지 않는다(arg 는 trim 후 빈 문자열이면
+    // incomplete). 타입 좁히기용 가드다 — `!` 단언 금지(DEVELOPMENT.md §1).
+    if (aql !== null) {
+      void navigate({ to: '/search', search: { q: aql } })
+    }
   } else if (parsed.kind === 'issue') {
     void navigate({ to: '/issues/new', search: { summary: parsed.summary } })
   }
