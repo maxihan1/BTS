@@ -1,5 +1,5 @@
 // 이슈 라벨 칩 편집 컴포넌트 (IssueMetaPanel 분해 A, FR-IS-04)
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { LabelChipsEditor } from '@/components/issue/meta/LabelChipsEditor'
@@ -21,6 +21,14 @@ export interface IssueLabelsEditProps {
   onSave: (labels: string[]) => void
   /** 수정 권한 — false이면 저장 버튼 disabled (fail-closed) */
   canEdit: boolean
+  /**
+   * 라벨 입력으로 **통과시킬** ref — FR-UX-10 F11 단축키 `l`. 여기서 소비하지 않는다.
+   *
+   * 소비처는 routes/issues.$key.tsx(IssueMetaPanel.labelsInputRef 경유).
+   * 실제 <input>은 두 단계 아래(LabelChipsEditor → LabelAutocompleteInput)에 있고,
+   * `aria-keyshortcuts` 조건부 부착 규칙도 그 최하단이 소유한다(계약 본문은 거기 참조).
+   */
+  focusRef?: RefObject<HTMLInputElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,7 +47,12 @@ export interface IssueLabelsEditProps {
  *   (검증 본체는 [LabelChipsEditor] 소유)
  * - WCAG AA: aria-label
  */
-export function IssueLabelsEdit({ value, onSave, canEdit }: IssueLabelsEditProps): JSX.Element {
+export function IssueLabelsEdit({
+  value,
+  onSave,
+  canEdit,
+  focusRef,
+}: IssueLabelsEditProps): JSX.Element {
   const [chips, setChips] = useState<string[]>(value)
 
   // props가 바뀌면(refetch 후) 로컬 편집 상태를 동기화한다 — stale 방지
@@ -53,7 +66,7 @@ export function IssueLabelsEdit({ value, onSave, canEdit }: IssueLabelsEditProps
 
   return (
     <div className="flex flex-col gap-1.5">
-      <LabelChipsEditor value={chips} onChange={setChips} />
+      <LabelChipsEditor value={chips} onChange={setChips} focusRef={focusRef} />
 
       {/* 저장 버튼 — 이슈 상세는 명시 저장. 생성 폼은 이 래퍼를 쓰지 않는다. */}
       <Button

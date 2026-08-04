@@ -12,10 +12,11 @@
  * 레이어는 **중첩**된다 — `issue-list` 화면에서는 `app-shell` 항목도 함께 발화한다.
  * 판별은 좁은 레이어부터 훑는다([CONTEXT_LAYERS]).
  *
+ * - `issue-detail`: 이슈 상세 — 상세 액션(담당자·댓글·라벨 등)
  * - `issue-list`: 이슈 목록(`/issues`) — 목록 항법 `j`/`k`/`o`/`t`
  * - `app-shell`: 인증된 셸이 렌더된 모든 화면 — 사이드바 토글 `[`
  */
-export type ShortcutContext = 'issue-list' | 'app-shell'
+export type ShortcutContext = 'issue-detail' | 'issue-list' | 'app-shell'
 
 /**
  * 컨텍스트 단축키가 발화했을 때 호출부가 실행할 동작 — 판별 유니온.
@@ -27,6 +28,14 @@ export type ShortcutContext = 'issue-list' | 'app-shell'
  * - `open-current`: 커서 이슈를 전체화면 상세로 열기
  * - `toggle-detail-pane`: 우측 상세 페인(split view) 열기/닫기
  * - `toggle-sidebar`: 사이드바 접기/펼치기
+ * - `focus-assignee`: 담당자 선택 컨트롤로 포커스 이동(F11 `a`)
+ * - `assign-to-me`: 담당자를 나로 지정, 이미 나면 해제(F11 `i` — Jira `Toggle` 문구)
+ * - `focus-comment`: 댓글 입력창으로 포커스 이동(F11 `m`)
+ * - `edit-title`: 제목 인라인 편집 진입(F11 `e`)
+ * - `focus-labels`: 라벨 편집 컨트롤로 포커스 이동(F11 `l`)
+ * - `toggle-favorite`: 이 이슈 즐겨찾기 켜기/끄기(F11 `s`)
+ * - `toggle-watch`: 이 이슈 관심(watch) 켜기/끄기(F11 `w`)
+ * - `open-command-palette`: 명령 팔레트 열기(F11 `.`)
  * - `none`: 처리할 단축키 없음(무동작)
  */
 export type ContextShortcutAction =
@@ -34,6 +43,14 @@ export type ContextShortcutAction =
   | { kind: 'open-current' }
   | { kind: 'toggle-detail-pane' }
   | { kind: 'toggle-sidebar' }
+  | { kind: 'focus-assignee' }
+  | { kind: 'assign-to-me' }
+  | { kind: 'focus-comment' }
+  | { kind: 'edit-title' }
+  | { kind: 'focus-labels' }
+  | { kind: 'toggle-favorite' }
+  | { kind: 'toggle-watch' }
+  | { kind: 'open-command-palette' }
   | { kind: 'none' }
 
 /** 컨텍스트 단축키 정의 — 훅 dispatch 와 도움말 모달이 함께 구동하는 단일 진실 출처 */
@@ -49,14 +66,16 @@ export interface ContextShortcutDef {
 }
 
 /**
- * 컨텍스트 단축키 5종 — F10 범위(목록 항법 + 사이드바).
+ * 컨텍스트 단축키 13종 — 목록 항법 + 사이드바(F10 5종) · 이슈 상세 액션(F11 8종).
  *
- * 상세 액션 7종(`a`/`i`/`m`/`e`/`l`/`w`/`.`)과 즐겨찾기(`s`)는 **F11 범위**라
- * 여기 없다. 도움말 모달은 이 배열만 렌더하므로 미구현 키가 "동작하는 것처럼"
- * 표기되지 않는다(FR-UX-05 FR8 계약 승계).
+ * 도움말 모달·키맵 폼의 예약 키 가드가 **이 배열에서 파생**한다. 여기 없는 키는 표기될
+ * 수도 예약될 수도 없으므로, 미구현 키가 "동작하는 것처럼" 보이지 않는다
+ * (FR-UX-05 FR8 계약 승계).
  *
- * 키 선정 근거는 Jira Cloud 공식 문서 대조 —
- * `docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md` §Jira 대조.
+ * 키 선정 근거는 Jira Cloud 공식 문서 대조 — F10 5종은
+ * `docs/specs/2026-08-03-fr-ux-10-f10-context-shortcuts.md` §Jira 대조,
+ * F11 8종은 `docs/specs/2026-08-04-fr-ux-10-f11-detail-action-shortcuts.md` §Jira 대조.
+ * (`e`·`s` 는 Jira 미기재라 BTS 고유 배치다 — 근거는 그 §4 대응 없는 항목)
  */
 export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
   {
@@ -89,6 +108,56 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
     description: '사이드바 접기/펼치기',
     action: { kind: 'toggle-sidebar' },
   },
+  {
+    key: 'a',
+    context: 'issue-detail',
+    description: '담당자 지정',
+    action: { kind: 'focus-assignee' },
+  },
+  {
+    key: 'i',
+    context: 'issue-detail',
+    description: '나에게 할당 / 해제',
+    action: { kind: 'assign-to-me' },
+  },
+  {
+    key: 'm',
+    context: 'issue-detail',
+    description: '댓글 쓰기',
+    action: { kind: 'focus-comment' },
+  },
+  {
+    key: 'e',
+    context: 'issue-detail',
+    description: '제목 편집',
+    action: { kind: 'edit-title' },
+  },
+  {
+    key: 'l',
+    context: 'issue-detail',
+    description: '라벨 편집',
+    action: { kind: 'focus-labels' },
+  },
+  {
+    key: 's',
+    context: 'issue-detail',
+    description: '즐겨찾기 켜기/끄기',
+    action: { kind: 'toggle-favorite' },
+  },
+  {
+    key: 'w',
+    context: 'issue-detail',
+    description: '관심 켜기/끄기',
+    action: { kind: 'toggle-watch' },
+  },
+  // ★`.` 만 `app-shell` 이다. 팔레트는 전역 기능이라 목록·대시보드에서도 열려야 하고,
+  // Jira 도 `.` 을 전역에서 발화시킨다(스펙 §Jira 대조 3-a).
+  {
+    key: '.',
+    context: 'app-shell',
+    description: '명령 팔레트 열기',
+    action: { kind: 'open-command-palette' },
+  },
 ]
 
 /**
@@ -98,6 +167,10 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
  * 반대로 `app-shell` 만 활성인 화면에서 `j` 는 발화하지 않는다(E12).
  */
 const CONTEXT_LAYERS: Record<ShortcutContext, readonly ShortcutContext[]> = {
+  // ★상세가 활성이어도 목록 항법이 살아 있어야 한다. 와이드 split view 는 목록과
+  // 상세가 **동시 마운트**라(`issues.index.tsx` 우측 페인), 상세를 좁다는 이유로 단독
+  // 활성으로 두면 F10 이 만든 `j`/`k` 가 그 화면에서만 죽는다(S9).
+  'issue-detail': ['issue-detail', 'issue-list', 'app-shell'],
   'issue-list': ['issue-list', 'app-shell'],
   'app-shell': ['app-shell'],
 }
@@ -129,10 +202,19 @@ export type ContextShortcutHit = {
  *
  * @param key keydown 이벤트의 `e.key` (수정자·IME 가드는 호출부가 선행 처리)
  * @param active 현재 활성 컨텍스트
+ * @param registered 지금 핸들러를 등록한 레이어 집합 — 폴백 대상을 여기로 좁힌다(E5)
  * @returns 소유 레이어 + 동작. 등록되지 않은 키이거나 컨텍스트가 맞지 않으면 `null`
  */
-export function resolveContextKeydown(key: string, active: ShortcutContext): ContextShortcutHit {
+export function resolveContextKeydown(
+  key: string,
+  active: ShortcutContext,
+  registered: ReadonlySet<ShortcutContext>,
+): ContextShortcutHit {
   for (const layer of CONTEXT_LAYERS[active]) {
+    // ★등록되지 않은 레이어는 건너뛴다. 정적 폴백표만 보면 전체화면 상세에서 `j` 가
+    // 판별에 성공해 `preventDefault` 까지 한 뒤 dispatch 에서 핸들러가 없어 아무 일도
+    // 일어나지 않는다 — 브라우저 기본 동작만 사라지는 ADR D-5-a 의 그 형태다(E5).
+    if (!registered.has(layer)) continue
     const found = CONTEXT_SHORTCUTS.find(
       (shortcut) => shortcut.context === layer && shortcut.key === key,
     )

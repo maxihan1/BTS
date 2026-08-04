@@ -3,6 +3,7 @@
 // 전역 DOM KeyboardEvent 를 모듈 스코프에서 가려 document 리스너 타입이 조용히 바뀐다.
 import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -31,10 +32,17 @@ import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
-import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
+import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
-import { IssueActivityTabs } from '@/components/issue/IssueActivityTabs'
+import { IssueActivityTabs, ACTIVITY_TABS } from '@/components/issue/IssueActivityTabs'
+import type { ActivityTabValue } from '@/components/issue/IssueActivityTabs'
+import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import {
+  useHasOpenModal,
+  useReportModalOpen,
+} from '@/components/keyboard-shortcuts/useOpenModalRegistry'
+import { useAuthUser } from '@/auth/authStore'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
@@ -206,6 +214,26 @@ export function IssueDetailPage({
   const titleInputRef = useRef<HTMLInputElement>(null)
   // 편집 종료 후 포커스 복귀 대상 — 제목 클릭 진입면 (WCAG 2.4.3)
   const titleButtonRef = useRef<HTMLButtonElement>(null)
+
+  // ── FR-UX-10 F11 — 상세 액션 단축키가 조작할 컨트롤 손잡이 5종 ──────────────
+  // 전부 하위 컴포넌트가 자기 요소에 붙여 주는 ref다(Task 4). 이 라우트는 소비만 한다.
+  /** 담당자 검색 input — 단축키 `a` */
+  const assigneeSearchRef = useRef<HTMLInputElement>(null)
+  /** 라벨 입력 — 단축키 `l` */
+  const labelsInputRef = useRef<HTMLInputElement>(null)
+  /** 즐겨찾기 토글 버튼 — 단축키 `s` */
+  const favoriteToggleRef = useRef<HTMLButtonElement>(null)
+  /** 관심(watch) 토글 버튼 — 단축키 `w` */
+  const watchToggleRef = useRef<HTMLButtonElement>(null)
+  /** 댓글 작성 textarea — 단축키 `m` */
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+
+  /**
+   * 활동 영역 활성 탭 — 단축키 `m` 이 댓글 탭을 열어야 해서 라우트가 소유한다.
+   * Radix Tabs 는 비활성 탭 콘텐츠를 언마운트하므로, 탭을 열지 않으면 댓글 입력이
+   * DOM 에 없어 포커스를 줄 대상이 없다.
+   */
+  const [activityTab, setActivityTab] = useState<ActivityTabValue>(ACTIVITY_TABS.HISTORY)
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
@@ -471,6 +499,183 @@ export function IssueDetailPage({
       handleMetaMutationError(err, '커스텀 필드 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.')
     },
   })
+
+  // ── FR-UX-10 F11 — 상세 액션 단축키 7종 (`.` 은 app-shell 소관) ─────────────
+
+  /** 현재 로그인 사용자 id — `i`(나에게 할당)가 쓴다. 미인증이면 null */
+  const currentUserId = useAuthUser()?.userId ?? null
+
+  /**
+   * `i` 가 마지막으로 발행한 요청의 서명 — `«이슈 버전»:«대상 담당자»`. 같은 서명이 또 오면 버린다.
+   *
+   * ★state 가 아니라 **ref** 인 것이 요점이다. 브라우저 키 auto-repeat 는 한 tick 안에서
+   * keydown 을 여러 번 흘리는데 그 사이에는 렌더가 없다. `changeAssigneeMutation.isPending`
+   * 같은 state 로 막으려 하면 반복 호출이 전부 같은(아직 false 인) 클로저를 보고 통과한다.
+   *
+   * ★해제 기준이 「요청 종료」가 아니라 **버전 변화**인 이유. `useChangeAssignee` 는
+   * `onSettled` 에서 invalidate 만 하므로(setQueryData 금지 — descriptionHtml 플리커 전력)
+   * 응답이 와도 `issue.version` 은 재조회가 도착할 때까지 옛 값이다. 그 창에서 재입력을
+   * 허용하면 같은 `expectedVersion` 이 또 나가 409 「버전 충돌」 토스트만 쌓인다.
+   * 버전이 실제로 움직였을 때만 다음 요청을 허용하면 그 창이 사라진다.
+   */
+  const lastAssignToMeRequestRef = useRef<string | null>(null)
+
+  /**
+   * 단축키가 이 필드를 조작해도 되는가 — **열람 숨김과 수정 금지 두 목록을 모두** 본다.
+   *
+   * 🛑 한쪽만 보는 판정으로 줄이지 마라. 백엔드 `buildNoneditableKeys` 가 `restrictedSet` 을
+   * filter 하므로 **열람 숨김 필드는 수정 금지 목록에 절대 오지 않는다.** 그래서
+   * `noneditableFields` 만 보는 구현은 화면에서 숨긴 필드를 단축키가 서버로 밀어 넣어 403 과
+   * 원인 불명 토스트를 만들고, `restrictedFields` 만 보는 구현은 수정 금지 필드를 열어 준다.
+   * 두 목록이 배타적이라 **한쪽만 보면 다른 쪽 시나리오에서 그대로 뚫린다**
+   * (PR #338 F9 가 실제로 낸 결함).
+   *
+   * `lib/` 로 올리지 않는 이유. 목록 셀 인라인 편집과 공유할 후속 항목이 이미 F9 에 잡혀
+   * 있어, 여기서 먼저 올리면 그 정리와 충돌한다.
+   *
+   * @param fieldKey 판정할 필드 키 (`assigneeId` · `labels` · `summary`)
+   * @returns 단축키로 조작해도 되면 true. 이슈 미로드·열람 숨김·수정 금지면 false
+   */
+  function canUseField(fieldKey: string): boolean {
+    if (issue === undefined) return false
+    if (isFieldHidden(fieldKey, issue.restrictedFields)) return false
+    return !isFieldDisabled(fieldKey, canEdit, issue.noneditableFields)
+  }
+
+  /**
+   * 댓글 작성 입력으로 포커스를 옮긴다 — 필요하면 댓글 탭을 먼저 연다 (단축키 `m`).
+   *
+   * ★`flushSync` 가 이 함수의 요점이다. Radix Tabs 는 **비활성 탭 콘텐츠를 언마운트**하고
+   * (기본 활성 탭은 「이력」), 활성으로 바뀐 첫 커밋에도 아직 콘텐츠를 붙이지 않는다 —
+   * `Presence` 가 layout effect 로 상태를 한 번 더 밀어 그다음 커밋에 마운트한다. 그런데 그
+   * 커밋은 **이 라우트를 다시 렌더하지 않으므로** 여기의 effect 로는 마운트 시점을 관측할 수
+   * 없다(실측: effect 가 `ref.current === null` 을 보고 끝난다). `flushSync` 로 탭 전환 렌더를
+   * 그 자리에서 끝내면 반환 시점에 textarea 가 DOM 에 있어 포커스를 바로 줄 수 있다.
+   *
+   * 이 함수는 React 이벤트가 아니라 document keydown 리스너에서 호출되므로 렌더 중
+   * `flushSync` 경고 대상이 아니다.
+   *
+   * `canUpdate=false` 여서 작성 폼이 없으면 ref 가 계속 null 이고 옵셔널 체이닝이 무동작으로
+   * 처리한다.
+   */
+  function focusCommentInput(): void {
+    if (activityTab !== ACTIVITY_TABS.COMMENT) {
+      flushSync(() => setActivityTab(ACTIVITY_TABS.COMMENT))
+    }
+    commentInputRef.current?.focus()
+  }
+
+  /**
+   * 이 라우트가 **직접 소유한** 차단 상태를 모달 레지스트리에 보고한다.
+   *
+   * 아래 3종은 `open` 을 prop 으로 내려받는 자식이라 자기 파일에서 보고할 값이 없고,
+   * 삭제 확인은 Dialog 가 아니라 메타패널 자리를 대체하는 `<aside>` 라 애초에 모달이
+   * 아니다 — 그래서 이 네 가지만 여기서 보고한다. 나머지 모달은 **자기가 보고한다**.
+   */
+  useReportModalOpen(
+    pendingDoneTransition !== null || cloneDialogOpen || moveDialogOpen || confirmDelete,
+  )
+
+  /**
+   * 이 화면 어딘가에 모달이 열려 있는가 — 게이트가 읽는 **단 하나의** 신호.
+   *
+   * 게이트 식에 `useHasOpenModal()` 을 직접 넣지 않는다. `&&` 는 단락 평가라 앞 항이
+   * false 인 렌더에서 훅 호출이 통째로 건너뛰어지고, 그건 렌더마다 훅 개수가 달라지는
+   * 조건부 훅이다(로딩 → 로드 완료 전환에서 바로 터진다).
+   */
+  const hasOpenModal = useHasOpenModal()
+
+  /**
+   * 상세 액션 단축키를 **등록할지** 여부 (ADR D-5-a).
+   *
+   * 콜백만 끊으면 판별이 성공해 `preventDefault` 까지 한 뒤 아무 일도 일어나지 않는다.
+   * 모달은 입력 요소가 없으면 `shouldIgnoreEvent` 를 그냥 통과하므로 여기서 막아야 한다(E2).
+   *
+   * ★🛑 여기에 모달을 **다시 열거하지 마라.** 원래 이 식은 모달 4종을 손으로 나열했는데,
+   * 이 페이지가 실제로 렌더하는 모달은 6종이었다 — 빠진 둘(댓글 삭제 확인 · 첨부 미리보기)
+   * 위에서 `i` 가 담당자 PATCH 를 실제로 발행했다(리뷰 실측). 열거를 2건 늘리는 처방은
+   * **다음 모달이 생기는 순간 똑같이 뚫린다**. 그래서 판정을 「내가 아는 모달이 열렸나」에서
+   * 「무엇이든 열렸나」로 뒤집었다 — 새 모달은 `useReportModalOpen` 한 줄이면 자동으로 막히고,
+   * 그 한 줄을 빠뜨렸는지는 `routes/__tests__/issue-detail-modal-gate.test.ts` 가
+   * 소스 전수 스캔으로 되잰다(차집합 0).
+   */
+  const detailShortcutsEnabled = issue !== undefined && error === null && !hasOpenModal
+
+  useContextShortcuts(
+    'issue-detail',
+    {
+      // 필드 권한 판정은 전부 `canUseField` 한 곳을 지난다 — 두 목록을 모두 보는 규칙이
+      // 키마다 흩어지면 한 키만 뒤처져 조용히 뚫린다(그 함수의 🛑 주석 참조).
+      onFocusAssignee: () => {
+        if (!canUseField('assigneeId')) return
+        assigneeSearchRef.current?.focus()
+      },
+      onAssignToMe: () => {
+        if (issue === undefined) return
+        if (!canUseField('assigneeId')) return
+        if (currentUserId === null) return // E7 — 미인증이면 누구에게 할당할지 알 수 없다
+        // Jira 문구가 `Toggle` 이다 — 이미 나면 해제한다. 저장 경로는 기존 핸들러 재사용.
+        const nextAssigneeId = issue.assigneeId === currentUserId ? null : currentUserId
+        // ★중복 발행 금지(E8). `s`/`w` 는 버튼이 가진 진행 중 판정을 재사용하는데 `i` 만
+        //   그 짝이 없어, 키를 누르고 있으면 같은 expectedVersion 으로 N건이 나갔다
+        //   (1건 200 · 나머지 409 → 원인 불명 「버전 충돌」 토스트 N-1개). 판정 근거는
+        //   lastAssignToMeRequestRef 의 주석 참조.
+        const requestSignature = `${issue.version}:${nextAssigneeId ?? 'null'}`
+        if (lastAssignToMeRequestRef.current === requestSignature) return
+        lastAssignToMeRequestRef.current = requestSignature
+        handleAssigneeChange(nextAssigneeId)
+      },
+      onFocusComment: focusCommentInput,
+      onEditTitle: () => {
+        if (!canUseField('summary')) return
+        // ★이미 편집 중이면 **다시 열지 않는다.** `handleEditStart()` 는 입력값을
+        //   `issue.summary` 로 되돌리므로, 입력창 밖을 클릭해 blur 시킨 뒤 `e` 를 다시 누르면
+        //   고쳐 쓰던 제목이 조용히 사라진다(입력창 안에서는 shouldIgnoreEvent 가 삼켜서
+        //   blur 를 거쳐야만 닿는 좁은 경로다). 게이트(detailShortcutsEnabled)가 아니라
+        //   여기서 막는 이유 — 게이트에 넣으면 편집 중에 `s`/`w`/`m` 까지 전부 죽는다.
+        //   문제는 `e` 하나뿐이므로 차단 범위도 `e` 하나여야 한다.
+        if (isEditingTitle) {
+          // 무동작으로 끝내면 「아무 일도 안 일어났다」와 구분되지 않는다 —
+          // `a`/`l`/`m` 과 같은 「그 컨트롤로 간다」 규칙을 지켜 입력창으로 되돌린다.
+          titleInputRef.current?.focus()
+          return
+        }
+        // 전용 진입 함수를 탄다 — `setIsEditingTitle(true)` 만 하면 입력창이 빈 값으로 열려
+        // Enter 한 번에 제목이 지워진다.
+        handleEditStart()
+      },
+      onFocusLabels: () => {
+        if (!canUseField('labels')) return
+        labelsInputRef.current?.focus()
+      },
+      // ★F-2 — 포커스를 **먼저** 옮기고 누른다. 순서가 접근성의 전부다. 두 버튼은
+      // `aria-pressed` 를 올바로 갖고 있지만 포커스가 없으면 스크린리더가 그 변화를 읽지
+      // 않고, 성공 토스트도 `aria-live` 영역도 없어서 화면을 못 보는 사용자에게는
+      // **아무 일도 안 일어난 것과 구분되지 않는다.**
+      //
+      // `.click()` 으로 미는 이유. 두 버튼이 이미 가진 진행 중 판정과 토스트 처리를
+      // 재사용한다 — 복제하면 규칙이 두 벌이 되어 어긋난다.
+      //
+      // 🛑 중복 발행 금지(E8)의 증인이 **어디에 있는지 착각하지 마라.** 예전 주석은
+      //    "`disabled` 버튼의 `click()` 은 브라우저가 무시하므로 공짜로 성립한다" 고 적혀
+      //    있었는데, Task-5b 가 두 버튼에서 네이티브 `disabled` 를 벗기고 `aria-disabled` 로
+      //    바꾼 순간(포커스 보존 목적) **그 문장은 거짓이 됐다** — 브라우저는 이제 이
+      //    `.click()` 을 막지 않는다. 지금 막는 것은 각 컴포넌트의 첫 줄 가드다.
+      //      · 즐겨찾기 — `FavoriteButton.handleClick` 의 `if (isMutating) return`
+      //      · 관심     — `WatchersSection.handleToggle` 의 `if (!canToggle) return`
+      //    짝 테스트도 그쪽에 있다(`FavoriteButton.test.tsx` S7c · `WatchersSection.test.tsx` S9c).
+      //    두 컴포넌트 자기 파일의 주석은 이미 이 사실을 정확히 적고 있다.
+      onToggleFavorite: () => {
+        favoriteToggleRef.current?.focus()
+        favoriteToggleRef.current?.click()
+      },
+      onToggleWatch: () => {
+        watchToggleRef.current?.focus()
+        watchToggleRef.current?.click()
+      },
+    },
+    detailShortcutsEnabled,
+  )
 
   // ── 로딩 상태 ──────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -926,6 +1131,10 @@ export function IssueDetailPage({
               onFixVersionsChange={handleFixVersionsChange}
               onSecurityLevelChange={handleSecurityLevelChange}
               onCustomFieldsSave={handleCustomFieldsSave}
+              assigneeSearchRef={assigneeSearchRef}
+              labelsInputRef={labelsInputRef}
+              favoriteToggleRef={favoriteToggleRef}
+              watchToggleRef={watchToggleRef}
             />
             {/* 일정 필드 — FR-PL-01 시작일·마감일·목표일 (IssueMetaPanel 인근 하단 배치) */}
             <div className="border border-border rounded-xl px-3.5 py-3">
@@ -954,6 +1163,9 @@ export function IssueDetailPage({
           impactMap: issueDetailStrings.impactNames as Record<number, string>,
           customFieldDefinitions,
         }}
+        value={activityTab}
+        onValueChange={setActivityTab}
+        commentInputRef={commentInputRef}
       />
 
       {/* DONE 전이 시 Resolution 선택 모달 (B9) */}

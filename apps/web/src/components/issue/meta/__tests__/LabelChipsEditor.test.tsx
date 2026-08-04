@@ -1,6 +1,7 @@
 // LabelChipsEditor 단위 테스트 — 저장 버튼 없는 순수 라벨 편집기 (FR-UX-09 F2)
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { createRef } from 'react'
+import { render, screen, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LabelChipsEditor } from '@/components/issue/meta/LabelChipsEditor'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -93,5 +94,38 @@ describe('LabelChipsEditor', () => {
     render(<LabelChipsEditor value={labels} onChange={vi.fn()} />)
 
     expect(labelInput()).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-10 F11 — 단축키 `l` 손잡이 통과 (IssueLabelsEdit → 여기 → LabelAutocompleteInput)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LabelChipsEditor — FR-UX-10 F11 단축키 `l` 손잡이 통과', () => {
+  it('focusRef 를 라벨 입력까지 통과시킨다', () => {
+    const focusRef = createRef<HTMLInputElement>()
+    render(<LabelChipsEditor value={[]} onChange={vi.fn()} focusRef={focusRef} />)
+
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(labelInput()).toHaveFocus()
+  })
+
+  it('focusRef 를 주면 aria-keyshortcuts="l" 도 함께 통과한다', () => {
+    const focusRef = createRef<HTMLInputElement>()
+    render(<LabelChipsEditor value={[]} onChange={vi.fn()} focusRef={focusRef} />)
+
+    expect(labelInput()).toHaveAttribute('aria-keyshortcuts', 'l')
+  })
+
+  it('focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다 — 생성 폼이 이 컴포넌트를 직접 쓴다', () => {
+    // ★생성 폼(IssueCreateAssignmentFields)은 IssueLabelsEdit 을 건너뛰고 이 컴포넌트를
+    //   직접 쓴다. 그 경로에는 `l` 이 없으므로 여기서 새는지 반드시 확인해야 한다.
+    render(<LabelChipsEditor value={[]} onChange={vi.fn()} />)
+
+    expect(labelInput()).not.toHaveAttribute('aria-keyshortcuts')
   })
 })

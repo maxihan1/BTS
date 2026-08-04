@@ -1,5 +1,5 @@
 // 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import { useState } from 'react'
 import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
@@ -108,6 +108,18 @@ export interface IssueMetaPanelProps {
    * route가 customFieldsMutation 소유. 미전달 시 no-op.
    */
   onCustomFieldsSave?: (customFields: CustomFieldValues) => void
+  // ── FR-UX-10 F11 단축키 손잡이 4종 ──────────────────────────────────────────
+  // 아래 넷은 이 패널이 **소비하지 않고 그대로 통과시키는** ref다. 실제 소비처는
+  // routes/issues.$key.tsx의 useContextShortcuts('issue-detail') 핸들러다.
+  // 미전달이면 해당 컨트롤에 aria-keyshortcuts도 붙지 않는다(하위 컴포넌트 규칙).
+  /** 담당자 검색 input으로 통과시킬 ref — 단축키 `a` */
+  assigneeSearchRef?: RefObject<HTMLInputElement | null>
+  /** 라벨 입력으로 통과시킬 ref — 단축키 `l` (IssueLabelsEdit에서 2단 더 내려간다) */
+  labelsInputRef?: RefObject<HTMLInputElement | null>
+  /** 즐겨찾기 토글 버튼으로 통과시킬 ref — 단축키 `s` */
+  favoriteToggleRef?: RefObject<HTMLButtonElement | null>
+  /** Watch 토글 버튼으로 통과시킬 ref — 단축키 `w` */
+  watchToggleRef?: RefObject<HTMLButtonElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,6 +198,10 @@ export function IssueMetaPanel({
   onFixVersionsChange = () => { /* no-op */ },
   onSecurityLevelChange = () => { /* no-op */ },
   onCustomFieldsSave = () => { /* no-op */ },
+  assigneeSearchRef,
+  labelsInputRef,
+  favoriteToggleRef,
+  watchToggleRef,
 }: IssueMetaPanelProps): JSX.Element {
   // 프로젝트 커스텀 필드 정의 조회 (FR-IS-10)
   const { data: customFieldDefs = [] } = useCustomFields(issue.projectKey)
@@ -298,6 +314,7 @@ export function IssueMetaPanel({
               value={issue.labels}
               onSave={onLabelsSave}
               canEdit={!isFieldDisabled('labels', canEdit, issue.noneditableFields)}
+              focusRef={labelsInputRef}
             />
           </div>
         )}
@@ -313,18 +330,19 @@ export function IssueMetaPanel({
               onSearch={onAssigneeSearch}
               onAssigneeChange={onAssigneeChange}
               canEdit={!isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)}
+              focusRef={assigneeSearchRef}
             />
           </div>
         )}
 
         {/* 즐겨찾기 — FavoriteButton (FR-UX-02). 감시자 섹션 위 배치. */}
         <div className="px-3.5 py-2 border-b border-border flex items-center" data-testid="favorite-section">
-          <FavoriteButton targetType="ISSUE" targetId={issue.key} />
+          <FavoriteButton targetType="ISSUE" targetId={issue.key} focusRef={favoriteToggleRef} />
         </div>
 
         {/* 감시자 — WatchersSection (FR-WT-01). 담당자/사람 관련 섹션 근처에 배치. */}
         <div className="px-3.5 py-3 border-b border-border" data-testid="watchers-section-wrapper">
-          <WatchersSection issueKey={issue.key} />
+          <WatchersSection issueKey={issue.key} focusRef={watchToggleRef} />
         </div>
 
         {/* 컴포넌트 — ComponentMultiSelect (FR-CM-02) */}

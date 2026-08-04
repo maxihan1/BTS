@@ -27,6 +27,22 @@ export interface ContextShortcutHandlers {
   readonly onToggleDetailPane?: () => void
   /** 사이드바 접기/펼치기 */
   readonly onToggleSidebar?: () => void
+  /** 담당자 선택 컨트롤로 포커스 이동 (F11 `a`) */
+  readonly onFocusAssignee?: () => void
+  /** 담당자를 나로 지정, 이미 나면 해제 (F11 `i`) */
+  readonly onAssignToMe?: () => void
+  /** 댓글 입력창으로 포커스 이동 (F11 `m`) */
+  readonly onFocusComment?: () => void
+  /** 제목 인라인 편집 진입 (F11 `e`) */
+  readonly onEditTitle?: () => void
+  /** 라벨 편집 컨트롤로 포커스 이동 (F11 `l`) */
+  readonly onFocusLabels?: () => void
+  /** 이 이슈 즐겨찾기 켜기/끄기 (F11 `s`) */
+  readonly onToggleFavorite?: () => void
+  /** 이 이슈 관심(watch) 켜기/끄기 (F11 `w`) */
+  readonly onToggleWatch?: () => void
+  /** 명령 팔레트 열기 (F11 `.`) */
+  readonly onOpenCommandPalette?: () => void
 }
 
 /** 컨텍스트별 등록 핸들러를 담는 스토어 상태 */
@@ -74,8 +90,9 @@ export const useContextShortcutsStore = create<ContextShortcutsState>((set) => (
  * 우선순위 밖으로 떨어져 영영 활성이 되지 않는다.
  */
 const CONTEXT_PRIORITY: Record<ShortcutContext, number> = {
-  'issue-list': 0,
-  'app-shell': 1,
+  'issue-detail': 0,
+  'issue-list': 1,
+  'app-shell': 2,
 }
 
 /** 좁은 순으로 정렬된 컨텍스트 목록 — 판정에서 앞에서부터 훑는다 */
@@ -83,17 +100,53 @@ const CONTEXTS_NARROWEST_FIRST = (Object.keys(CONTEXT_PRIORITY) as ShortcutConte
   (a, b) => CONTEXT_PRIORITY[a] - CONTEXT_PRIORITY[b],
 )
 
+/** 판별 한 번이 필요로 하는 두 값 — 활성 레이어와 등록 집합 */
+export interface ContextSnapshot {
+  /** 등록된 것 중 가장 좁은 레이어. 아무것도 없으면 `app-shell` */
+  readonly active: ShortcutContext
+  /** 핸들러가 등록돼 있는 레이어 집합 — 폴백 대상을 여기로 좁힌다(E5) */
+  readonly registered: ReadonlySet<ShortcutContext>
+}
+
+/**
+ * 활성 레이어와 등록 집합을 **스토어 한 번 읽기로** 함께 계산한다.
+ *
+ * ★따로 읽으면 두 값이 서로 다른 시점의 스토어를 볼 수 있다. 두 읽기 사이에 등록 해제가
+ * 커밋되면(라우팅 중 상세 언마운트 등) `active` 는 이미 사라진 레이어를 가리키는데
+ * `registered` 에는 그게 없어, 판별이 폴백 첫 칸부터 건너뛰고 키가 조용히 죽는다.
+ * 한 번 읽어 둘을 함께 만들면 그 어긋난 짝이 성립할 수 없다.
+ *
+ * @returns 같은 시점의 활성 레이어 + 등록 집합
+ */
+export function readContextSnapshot(): ContextSnapshot {
+  const registered = new Set(
+    Object.keys(useContextShortcutsStore.getState().handlers) as ShortcutContext[],
+  )
+  return {
+    active: CONTEXTS_NARROWEST_FIRST.find((context) => registered.has(context)) ?? 'app-shell',
+    registered,
+  }
+}
+
 /**
  * 등록된 것 중 **가장 좁은** 컨텍스트를 활성으로 판정한다.
  *
- * 아무것도 등록되지 않았으면 `app-shell` 이 기본값이다 — 셸이 미등록이어도
- * `[` 판별 자체는 성립해야 하기 때문.
+ * 아무것도 등록되지 않았으면 `app-shell` 로 떨어진다 — 이 폴백값만으로 키가 발화하지는
+ * 않는다. 판별은 등록 집합도 함께 보므로 셸이 미등록이면 `[` 역시 `null` 이 된다(E5).
  *
  * @returns 현재 활성 컨텍스트
  */
 export function resolveActiveContext(): ShortcutContext {
-  const { handlers } = useContextShortcutsStore.getState()
-  return CONTEXTS_NARROWEST_FIRST.find((context) => handlers[context] !== undefined) ?? 'app-shell'
+  return readContextSnapshot().active
+}
+
+/**
+ * 현재 등록된 컨텍스트 집합. 판별이 정적 폴백표를 그대로 믿지 않게 하는 입력이다(E5).
+ *
+ * @returns 핸들러가 등록돼 있는 레이어 집합
+ */
+export function getRegisteredContexts(): ReadonlySet<ShortcutContext> {
+  return readContextSnapshot().registered
 }
 
 /**
@@ -125,6 +178,30 @@ export function dispatchContextAction(hit: ContextShortcutHit): void {
     case 'toggle-sidebar':
       target?.onToggleSidebar?.()
       return
+    case 'focus-assignee':
+      target?.onFocusAssignee?.()
+      return
+    case 'assign-to-me':
+      target?.onAssignToMe?.()
+      return
+    case 'focus-comment':
+      target?.onFocusComment?.()
+      return
+    case 'edit-title':
+      target?.onEditTitle?.()
+      return
+    case 'focus-labels':
+      target?.onFocusLabels?.()
+      return
+    case 'toggle-favorite':
+      target?.onToggleFavorite?.()
+      return
+    case 'toggle-watch':
+      target?.onToggleWatch?.()
+      return
+    case 'open-command-palette':
+      target?.onOpenCommandPalette?.()
+      return
     case 'none':
       return
     default: {
@@ -142,6 +219,38 @@ export function dispatchContextAction(hit: ContextShortcutHit): void {
 // ─────────────────────────────────────────────────────────────────────────────
 // 훅
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 최신 핸들러를 가리키는 **안정 래퍼**를 만든다 — 등록 객체는 마운트 때 한 번만 만들어지되
+ * 호출은 ref 를 그 자리에서 읽어 항상 최신 함수로 간다(stale 클로저 방지).
+ *
+ * ★반환 타입이 `Required<…>` 인 것이 이 함수의 요점이다. `ContextShortcutHandlers` 에 동작을
+ * 추가하고 여기 한 줄을 빠뜨리면 **컴파일 에러**가 난다. 그 누락은 런타임에 가장 찾기 힘든
+ * 형태로 나타나기 때문이다 — 판별도 `preventDefault` 도 dispatch 도 전부 통과하는데, 등록
+ * 객체에 그 키가 없어 화면 핸들러만 영영 안 불린다(F10 이 4종을 일일이 나열한 이유이고,
+ * F11 이 8종을 더할 때 실제로 밟기 쉬운 지점이었다).
+ *
+ * @param ref 매 커밋 후 최신 핸들러로 갱신되는 ref
+ * @returns 동작 전종을 채운 등록용 핸들러 객체
+ */
+function mirrorLatestHandlers(ref: {
+  readonly current: ContextShortcutHandlers
+}): Required<ContextShortcutHandlers> {
+  return {
+    onCursorMove: (delta) => ref.current.onCursorMove?.(delta),
+    onOpenCurrent: () => ref.current.onOpenCurrent?.(),
+    onToggleDetailPane: () => ref.current.onToggleDetailPane?.(),
+    onToggleSidebar: () => ref.current.onToggleSidebar?.(),
+    onFocusAssignee: () => ref.current.onFocusAssignee?.(),
+    onAssignToMe: () => ref.current.onAssignToMe?.(),
+    onFocusComment: () => ref.current.onFocusComment?.(),
+    onEditTitle: () => ref.current.onEditTitle?.(),
+    onFocusLabels: () => ref.current.onFocusLabels?.(),
+    onToggleFavorite: () => ref.current.onToggleFavorite?.(),
+    onToggleWatch: () => ref.current.onToggleWatch?.(),
+    onOpenCommandPalette: () => ref.current.onOpenCommandPalette?.(),
+  }
+}
 
 /**
  * 이 화면의 컨텍스트 단축키 핸들러를 등록하고, 언마운트 시 해제한다.
@@ -187,12 +296,7 @@ export function useContextShortcuts(
       unregister(context)
       return undefined
     }
-    register(context, {
-      onCursorMove: (delta) => handlersRef.current.onCursorMove?.(delta),
-      onOpenCurrent: () => handlersRef.current.onOpenCurrent?.(),
-      onToggleDetailPane: () => handlersRef.current.onToggleDetailPane?.(),
-      onToggleSidebar: () => handlersRef.current.onToggleSidebar?.(),
-    })
+    register(context, mirrorLatestHandlers(handlersRef))
     return () => unregister(context)
   }, [context, enabled])
 }

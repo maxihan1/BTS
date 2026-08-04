@@ -1,6 +1,6 @@
 // LabelAutocompleteInput 자동완성 입력 컴포넌트 단위 테스트 — FR-IS-09 Task-5
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LabelAutocompleteInput } from './LabelAutocompleteInput'
@@ -180,5 +180,61 @@ describe('LabelAutocompleteInput', () => {
       expect(screen.getByRole('option', { name: 'bug' })).toBeInTheDocument()
       expect(screen.getByRole('option', { name: 'feature' })).toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-10 F11 — 단축키 `l` 손잡이 (focusRef + aria-keyshortcuts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LabelAutocompleteInput — FR-UX-10 F11 단축키 `l` 손잡이', () => {
+  beforeEach(() => {
+    mockUseLabels([])
+  })
+
+  /**
+   * focusRef 유무만 다르게 렌더한다. 포커스 확인만 하므로 controlled 상태는 필요 없다.
+   *
+   * @param focusRef 입력으로 내려보낼 ref (생략하면 미연결 케이스)
+   * @returns 라벨 입력 요소
+   */
+  function renderInput(focusRef?: React.RefObject<HTMLInputElement | null>): HTMLElement {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <LabelAutocompleteInput
+          value=""
+          onChange={vi.fn()}
+          onCommit={vi.fn()}
+          focusRef={focusRef}
+        />
+      </QueryClientProvider>,
+    )
+    return screen.getByRole('combobox', { name: /라벨 자동완성/i })
+  }
+
+  it('focusRef 로 라벨 입력에 포커스를 줄 수 있다', () => {
+    const focusRef = React.createRef<HTMLInputElement>()
+    const input = renderInput(focusRef)
+
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    // focus 는 onFocus 로 드롭다운 open 상태를 바꾸므로 act 로 감싼다
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(input).toHaveFocus()
+  })
+
+  it('focusRef 가 연결되면 aria-keyshortcuts="l" 을 알린다', () => {
+    const focusRef = React.createRef<HTMLInputElement>()
+    expect(renderInput(focusRef)).toHaveAttribute('aria-keyshortcuts', 'l')
+  })
+
+  it('focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다 — 이슈 생성 폼에 `l` 은 없다', () => {
+    // 이 입력은 이슈 상세(IssueLabelsEdit)와 이슈 생성 폼(IssueCreateAssignmentFields →
+    // LabelChipsEditor)이 공유한다. 무조건 붙이면 단축키가 없는 생성 폼에서
+    // 스크린리더가 없는 기능을 안내한다.
+    expect(renderInput()).not.toHaveAttribute('aria-keyshortcuts')
   })
 })

@@ -3,10 +3,17 @@ import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   dispatchContextAction,
+  getRegisteredContexts,
   resolveActiveContext,
   useContextShortcuts,
   useContextShortcutsStore,
+  type ContextShortcutHandlers,
 } from './useContextShortcuts'
+import {
+  CONTEXT_SHORTCUTS,
+  type ContextShortcutAction,
+  type ShortcutContext,
+} from './context-shortcuts'
 
 /** 각 테스트가 깨끗한 스토어에서 시작하도록 등록분을 비운다 */
 beforeEach(() => {
@@ -80,6 +87,27 @@ describe('resolveActiveContext — 활성 레이어 판정', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 등록 집합 노출 — 판별이 정적 폴백표를 그대로 믿지 않게 하는 입력(E5).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getRegisteredContexts — 등록 집합 노출', () => {
+  it('등록된 컨텍스트 집합을 그대로 돌려준다', () => {
+    useContextShortcutsStore.getState().register('issue-detail', {})
+    useContextShortcutsStore.getState().register('app-shell', {})
+
+    expect(getRegisteredContexts()).toEqual(new Set(['issue-detail', 'app-shell']))
+  })
+
+  it('★해제된 컨텍스트는 즉시 빠진다 — 와이드 split 에서 전체화면 상세로 넘어가면 목록이 사라진다', () => {
+    const { unmount } = renderHook(() => useContextShortcuts('issue-list', {}))
+    renderHook(() => useContextShortcuts('issue-detail', {}))
+    unmount()
+
+    expect(getRegisteredContexts()).toEqual(new Set(['issue-detail']))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // dispatch — 판별된 액션을 등록 핸들러로 흘린다. 미등록이면 조용히 무동작.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -147,6 +175,120 @@ describe('dispatchContextAction — 액션 → 핸들러', () => {
 
     expect(shellCursor).toHaveBeenCalledWith(1)
     expect(listCursor).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// dispatch — F11 상세 액션 8종 (FR-UX-10 F11)
+//
+// ★스토어의 `register()` 를 직접 부르지 않고 **훅을 렌더**한다. 직접 등록하면 훅이 세우는
+// 안정 래퍼(`onFocusAssignee: () => handlersRef.current.onFocusAssignee?.()`)를 건너뛰어,
+// 그 한 줄을 빠뜨려도 테스트가 초록으로 남는다 — 판별도 dispatch 도 통과하는데 화면
+// 핸들러만 영영 안 불리는, 가장 찾기 힘든 형태다(F10 이 4종을 일일이 나열한 이유).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 액션 하나와 그것을 받아야 할 핸들러 자리를 짝지은 표 — 이름 오배선이 한 줄로 드러난다 */
+interface DispatchCase {
+  readonly label: string
+  readonly layer: ShortcutContext
+  readonly action: ContextShortcutAction
+  /** 스파이를 그 액션이 가야 할 핸들러 자리에 꽂아 등록 객체를 만든다 */
+  readonly withSpy: (spy: () => void) => ContextShortcutHandlers
+}
+
+const F11_DISPATCH_CASES: readonly DispatchCase[] = [
+  {
+    label: 'a → focus-assignee',
+    layer: 'issue-detail',
+    action: { kind: 'focus-assignee' },
+    withSpy: (spy) => ({ onFocusAssignee: spy }),
+  },
+  {
+    label: 'i → assign-to-me',
+    layer: 'issue-detail',
+    action: { kind: 'assign-to-me' },
+    withSpy: (spy) => ({ onAssignToMe: spy }),
+  },
+  {
+    label: 'm → focus-comment',
+    layer: 'issue-detail',
+    action: { kind: 'focus-comment' },
+    withSpy: (spy) => ({ onFocusComment: spy }),
+  },
+  {
+    label: 'e → edit-title',
+    layer: 'issue-detail',
+    action: { kind: 'edit-title' },
+    withSpy: (spy) => ({ onEditTitle: spy }),
+  },
+  {
+    label: 'l → focus-labels',
+    layer: 'issue-detail',
+    action: { kind: 'focus-labels' },
+    withSpy: (spy) => ({ onFocusLabels: spy }),
+  },
+  {
+    label: 's → toggle-favorite',
+    layer: 'issue-detail',
+    action: { kind: 'toggle-favorite' },
+    withSpy: (spy) => ({ onToggleFavorite: spy }),
+  },
+  {
+    label: 'w → toggle-watch',
+    layer: 'issue-detail',
+    action: { kind: 'toggle-watch' },
+    withSpy: (spy) => ({ onToggleWatch: spy }),
+  },
+  {
+    label: '. → open-command-palette',
+    layer: 'app-shell',
+    action: { kind: 'open-command-palette' },
+    withSpy: (spy) => ({ onOpenCommandPalette: spy }),
+  },
+]
+
+describe('dispatchContextAction — F11 상세 액션 8종', () => {
+  it.each(F11_DISPATCH_CASES)('$label 을 등록 핸들러로 흘린다', ({ layer, action, withSpy }) => {
+    const spy = vi.fn()
+    renderHook(() => useContextShortcuts(layer, withSpy(spy)))
+
+    dispatchContextAction({ layer, action })
+
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('★레지스트리 전량이 핸들러를 정확히 하나 부른다 (판별은 되는데 무동작인 키 0)', () => {
+    // 레지스트리에서 파생하므로 키가 늘어도 이 단언은 따라온다 — switch case 누락(0회) ·
+    // 래퍼 미러링 누락(0회) · 두 핸들러 동시 발화(2회)를 한 자리에서 잡는다.
+    const spies = {
+      onCursorMove: vi.fn(),
+      onOpenCurrent: vi.fn(),
+      onToggleDetailPane: vi.fn(),
+      onToggleSidebar: vi.fn(),
+      onFocusAssignee: vi.fn(),
+      onAssignToMe: vi.fn(),
+      onFocusComment: vi.fn(),
+      onEditTitle: vi.fn(),
+      onFocusLabels: vi.fn(),
+      onToggleFavorite: vi.fn(),
+      onToggleWatch: vi.fn(),
+      onOpenCommandPalette: vi.fn(),
+    } satisfies Required<ContextShortcutHandlers>
+    const totalCalls = (): number =>
+      Object.values(spies).reduce((sum, spy) => sum + spy.mock.calls.length, 0)
+
+    renderHook(() => useContextShortcuts('issue-detail', spies))
+    renderHook(() => useContextShortcuts('issue-list', spies))
+    renderHook(() => useContextShortcuts('app-shell', spies))
+
+    for (const shortcut of CONTEXT_SHORTCUTS) {
+      const before = totalCalls()
+      dispatchContextAction({ layer: shortcut.context, action: shortcut.action })
+
+      expect(totalCalls() - before, `"${shortcut.key}" 가 핸들러를 정확히 1회 부르지 않았다`).toBe(
+        1,
+      )
+    }
   })
 })
 

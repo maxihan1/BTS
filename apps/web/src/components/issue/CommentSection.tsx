@@ -1,5 +1,5 @@
 // 이슈 상세 활동 영역의 댓글 섹션 — 목록 조회 + 작성 폼 (FR-CO-01) + 수정·삭제 (FR-CO-02)
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertDialog } from 'radix-ui'
@@ -16,6 +16,7 @@ import { useAuthUser } from '@/auth/authStore'
 import { useUsersByIds } from '@/hooks/use-users'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { useDateFormat } from '@/hooks/use-date-format'
+import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 import { commentStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,8 @@ import { cn } from '@/lib/utils'
 interface CommentAddFormProps {
   /** 대상 이슈 키 */
   issueKey: string
+  /** 본문 textarea 로 가는 ref — 단축키 `m` 이 포커스를 준다 (`CommentSectionProps.focusRef` 참조) */
+  focusRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 /**
@@ -38,8 +41,9 @@ interface CommentAddFormProps {
  * 이슈 단건 쿼리는 무효화하지 않는다 — 댓글은 이슈 행을 바꾸지 않으므로 불필요한 재조회다.
  *
  * @param issueKey 대상 이슈 키
+ * @param focusRef 본문 textarea 로 가는 ref (단축키 `m`)
  */
-function CommentAddForm({ issueKey }: CommentAddFormProps): JSX.Element {
+function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Element {
   const [body, setBody] = useState('')
   const queryClient = useQueryClient()
 
@@ -64,13 +68,22 @@ function CommentAddForm({ issueKey }: CommentAddFormProps): JSX.Element {
         {commentStrings.commentBodyLabel}
       </label>
       <textarea
+        ref={focusRef}
         id="comment-body"
         aria-label={commentStrings.commentBodyLabel}
+        // 단축키 존재를 알 경로가 `?` 도움말 모달뿐이라 표준 속성으로도 알린다.
+        // 키 문자 정본은 CONTEXT_SHORTCUTS(FR-UX-10 F11) — 재배치하면 여기도 같이 고친다.
+        // 시각 툴팁은 만들지 않는다(신규 UI 0 제약 + 툴팁은 키보드 사용자에게 닿지 않는다).
+        aria-keyshortcuts={focusRef !== undefined ? 'm' : undefined}
         placeholder={commentStrings.commentBodyPlaceholder}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={3}
-        className="w-full rounded border border-border bg-background p-2 text-sm"
+        // ★포커스 표시는 선택이 아니다 — `m` 은 화면 다른 곳에서 **점프해 오는** 이동이라
+        //   "내가 지금 어디 있나"를 표시가 대신 말해줘야 한다. 브라우저 기본 outline 은
+        //   다크 모드 대비가 보장되지 않고 옆 두 필드(담당자 검색·라벨 입력)와 모양도 다르다.
+        //   라벨 입력(LabelAutocompleteInput)과 같은 표기로 맞춘다.
+        className="w-full rounded border border-border bg-background p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       />
       <Button
         type="button"
@@ -179,11 +192,17 @@ interface CommentDeleteDialogProps {
  * 삭제는 되돌릴 수 없으므로 확인 단계를 반드시 거친다. 트리거 버튼 클릭만으로는
  * 서버를 부르지 않는다.
  *
+ * ★열림을 전역 레지스트리에 보고한다 (FR-UX-10 F11 리뷰 C-1). 이 다이얼로그에는 입력
+ * 요소가 없어 단축키 파이프라인의 `shouldIgnoreEvent` 를 그냥 통과한다 — 보고하지 않으면
+ * 「정말 삭제할까요」가 떠 있는 채로 `i` 가 담당자 PATCH 를, `s`/`w` 가 POST 를 실제로
+ * 발행한다(실측). 보고 한 줄이 상세 화면의 단축키 등록을 통째로 끊는다.
+ *
  * @param isDeleting 삭제 진행 중 여부
  * @param onConfirm 확인 콜백
  */
 function CommentDeleteDialog({ isDeleting, onConfirm }: CommentDeleteDialogProps): JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
+  useReportModalOpen(isOpen)
 
   function handleConfirm(): void {
     setIsOpen(false)
@@ -401,6 +420,17 @@ interface CommentSectionProps {
   issueKey: string
   /** 쓰기 권한 여부 — false 이면 작성 폼 대신 안내를 표시한다 */
   canUpdate: boolean
+  /**
+   * 댓글 작성 textarea 로 가는 ref — FR-UX-10 F11 단축키 `m` 이 여기에 포커스를 준다.
+   * 소비처는 `routes/issues.$key.tsx`(`IssueActivityTabs` 경유).
+   *
+   * `canUpdate=false` 면 작성 폼 자체가 렌더되지 않으므로 ref 는 계속 null 이다 —
+   * 쓰기 권한이 없는 사용자에게 `m` 이 무동작인 것은 의도된 결과다.
+   *
+   * 이 ref 의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다 —
+   * "손잡이를 연결한 화면에만 단축키가 있다" (`IssueAssigneeSelect` 와 같은 규칙).
+   */
+  focusRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 /**
@@ -426,8 +456,9 @@ interface CommentSectionProps {
  *
  * @param issueKey 대상 이슈 키
  * @param canUpdate 쓰기 권한 여부
+ * @param focusRef 댓글 작성 textarea 로 가는 ref (단축키 `m`)
  */
-export function CommentSection({ issueKey, canUpdate }: CommentSectionProps): JSX.Element {
+export function CommentSection({ issueKey, canUpdate, focusRef }: CommentSectionProps): JSX.Element {
   const currentUser = useAuthUser()
 
   /**
@@ -462,7 +493,7 @@ export function CommentSection({ issueKey, canUpdate }: CommentSectionProps): JS
       {/* 작성 폼 (canUpdate=true) 또는 권한 안내 (canUpdate=false) */}
       <div className="mb-4">
         {canUpdate ? (
-          <CommentAddForm issueKey={issueKey} />
+          <CommentAddForm issueKey={issueKey} focusRef={focusRef} />
         ) : (
           <p className="text-sm text-muted-foreground">{commentStrings.commentNoPermission}</p>
         )}

@@ -14,6 +14,7 @@ import type { AttachmentResponse } from '@/api/attachments'
 import { downloadAttachment } from '@/api/attachments'
 import { previewCategory } from '@/lib/attachment-preview'
 import { attachmentLabels } from '@/i18n/attachment-labels'
+import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -44,6 +45,10 @@ interface AttachmentPreviewModalProps {
  *
  * open=true 시 downloadAttachment로 Blob을 내려받아 objectURL을 생성한다.
  * 닫힘·prop 전환·언마운트 시 이전 objectURL을 revokeObjectURL로 해제한다 (G4/C1).
+ *
+ * ★열림을 전역 레지스트리에 보고한다 (FR-UX-10 F11 리뷰 C-1). 미리보기 안에는 포커스를
+ * 받는 입력이 없어 단축키 파이프라인의 `shouldIgnoreEvent` 를 통과한다 — 보고하지 않으면
+ * 이미지를 띄워 둔 채 `e` 가 뒤에서 제목 편집을 열고 `m` 이 활동 탭을 조용히 바꾼다.
  */
 export function AttachmentPreviewModal({
   issueKey,
@@ -51,6 +56,7 @@ export function AttachmentPreviewModal({
   open,
   onOpenChange,
 }: AttachmentPreviewModalProps): JSX.Element {
+  useReportModalOpen(open)
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [hasError, setHasError] = useState(false)

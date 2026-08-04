@@ -5,6 +5,7 @@ import { useIsAuthenticated } from '@/auth/authStore'
 import { useTrackActiveProject } from '@/hooks/use-track-active-project'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 
@@ -58,20 +59,34 @@ export function ShellLayout(): JSX.Element {
   // 다른 소비처(TopBar·Sidebar·ProjectTree·RecentIssuesMenu)가 구조분해를 쓰는 것은
   // 그쪽이 `collapsed` 값을 실제로 그려서다 — 재렌더가 목적이라 정당하다.
   const toggleSidebar = useSidebarCollapsed((state) => state.toggle)
+  // 같은 이유로 셀렉터다 — 팔레트 열림 값(`open`)은 여기서 그리지 않으므로 구독하지
+  // 않는다. 액션만 뽑으면 팔레트를 여닫아도 `<Outlet/>` 이 재렌더되지 않는다.
+  const setCommandPaletteOpen = useCommandPaletteStore((state) => state.setOpen)
 
   // FR-UX-07 — `/projects/$projectKey/*` 를 볼 때 그 키를 활성 프로젝트로 기록한다.
   // 전 인증 라우트가 공유하는 유일한 지점이라 여기 둔다(라우트마다 배선하면 빠뜨린다).
   // 조기 반환 앞에서 호출해야 훅 규칙을 지킨다 — 미인증이면 인자로 끈다.
   useTrackActiveProject(isAuthenticated)
 
-  // FR-UX-10 F10 — `app-shell` 컨텍스트(`[` 사이드바 토글). 이 컴포넌트가 곧
-  // "셸이 렌더된 화면"의 정의라 여기가 등록 지점이다. 발화는 전역 단일 리스너
-  // (`useKeyboardShortcuts`)가 하고, 여기서는 핸들러만 등록한다(ADR D-2).
+  // FR-UX-10 F10/F11 — `app-shell` 컨텍스트(`[` 사이드바 토글 · `.` 명령 팔레트).
+  // 이 컴포넌트가 곧 "셸이 렌더된 화면"의 정의라 여기가 등록 지점이다. 발화는 전역
+  // 단일 리스너(`useKeyboardShortcuts`)가 하고, 여기서는 핸들러만 등록한다(ADR D-2).
   //
   // 훅 규칙상 조기 반환 앞에서 호출하되 `isAuthenticated` 를 그대로 넘긴다 —
   // 미인증이면 셸(사이드바)이 렌더되지 않으므로 등록도 하지 않는 것이 맞다
   // (`useTrackActiveProject(isAuthenticated)` 와 같은 형태).
-  useContextShortcuts('app-shell', { onToggleSidebar: toggleSidebar }, isAuthenticated)
+  useContextShortcuts(
+    'app-shell',
+    {
+      onToggleSidebar: toggleSidebar,
+      // ★`.` 은 **여는 것만** 한다(토글이 아니다). 팔레트가 열리면 입력창이 포커스를
+      // 가져가고 판별 파이프라인의 `shouldIgnoreEvent` 가 input 안의 키를 통과시키므로
+      // `.` 로는 닫히지 않는다(E3) — 마침표를 검색어로 칠 수 있어야 한다. 닫기는 `Esc`.
+      // `Cmd/Ctrl+K` 는 기존대로 토글이다(두 열쇠의 동작이 다른 것이 의도).
+      onOpenCommandPalette: () => setCommandPaletteOpen(true),
+    },
+    isAuthenticated,
+  )
 
   if (!isAuthenticated) {
     return (

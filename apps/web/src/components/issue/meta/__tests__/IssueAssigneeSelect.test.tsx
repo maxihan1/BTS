@@ -1,6 +1,7 @@
 // IssueAssigneeSelect 단위 테스트 — IssueMetaPanel 분해 B (FR-UX-06 PR19 Task 3)
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { createRef } from 'react'
+import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { UserSummary } from '@/api/users'
 import { IssueAssigneeSelect } from '@/components/issue/meta/IssueAssigneeSelect'
@@ -132,5 +133,69 @@ describe('IssueAssigneeSelect', () => {
     )
     expect(screen.getByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })).toBeDisabled()
     expect(screen.getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-10 F11 — 단축키 `a` 손잡이 (focusRef + aria-keyshortcuts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueAssigneeSelect — FR-UX-10 F11 단축키 `a` 손잡이', () => {
+  /** 검색 input locator — 세 테스트가 같은 좌표를 쓴다 */
+  function searchInput(): HTMLElement {
+    return screen.getByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })
+  }
+
+  it('focusRef 로 검색 입력에 포커스를 줄 수 있다', () => {
+    const focusRef = createRef<HTMLInputElement>()
+    render(
+      <IssueAssigneeSelect
+        value={null}
+        currentAssignee={null}
+        users={[]}
+        onSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
+        canEdit
+        focusRef={focusRef}
+      />,
+    )
+    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    expect(focusRef.current).not.toBeNull()
+    act(() => {
+      focusRef.current?.focus()
+    })
+    expect(searchInput()).toHaveFocus()
+  })
+
+  it('focusRef 가 연결되면 검색 입력이 aria-keyshortcuts="a" 를 알린다', () => {
+    const focusRef = createRef<HTMLInputElement>()
+    render(
+      <IssueAssigneeSelect
+        value={null}
+        currentAssignee={null}
+        users={[]}
+        onSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
+        canEdit
+        focusRef={focusRef}
+      />,
+    )
+    expect(searchInput()).toHaveAttribute('aria-keyshortcuts', 'a')
+  })
+
+  it('focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다 — 이슈 생성 폼에 `a` 는 없다', () => {
+    // 이 셀렉터는 이슈 상세와 이슈 생성 폼(IssueCreateAssignmentFields)이 공유한다.
+    // 무조건 붙이면 단축키가 없는 생성 폼에서 스크린리더가 없는 기능을 안내한다.
+    render(
+      <IssueAssigneeSelect
+        value={null}
+        currentAssignee={null}
+        users={[]}
+        onSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
+        canEdit
+      />,
+    )
+    expect(searchInput()).not.toHaveAttribute('aria-keyshortcuts')
   })
 })
