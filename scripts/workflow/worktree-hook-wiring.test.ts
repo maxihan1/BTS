@@ -56,6 +56,18 @@ const INPUTS = {
   },
 } as const;
 
+/**
+ * worktree 에서 실행 불가능한 명령. 훅 본체가 이걸 쓰면 연결해도 **매번 죽는다.**
+ *
+ * worktree 의 `node_modules` 는 main 을 가리키는 심볼릭 링크다. pnpm 11 의 실행 전
+ * 의존성 검사가 경로 불일치를 감지해 `pnpm install` 을 자동 트리거하고,
+ * TTY 가 없어 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 중단된다 (2026-08-04 실측).
+ */
+const HOOK_FORBIDDEN_COMMANDS = ['pnpm exec', 'pnpm run', 'pnpm install'] as const;
+
+/** worktree 가 심볼릭 링크로 갖는 경로 — 끝 슬래시를 붙이면 링크를 놓친다. */
+const SYMLINKED_IGNORE_PATHS = ['node_modules', 'apps/web/node_modules', '.husky/_'] as const;
+
 /** `on:` 아래에서 입력을 걸어야 하는 트리거. 한쪽만 걸면 봉인이 절반만 닫힌다. */
 const CI_TRIGGERS = ['pull_request', 'push'] as const;
 
@@ -185,6 +197,23 @@ describe('worktree 훅 배선 정합', () => {
     );
   });
 
+  test('.gitignore 가 worktree 심볼릭 링크를 전부 무시한다 (끝 슬래시 없음)', () => {
+    const lines = read(INPUTS.gitignore)
+      .split('\n')
+      .map((l) => l.trim());
+
+    const bad = SYMLINKED_IGNORE_PATHS.filter((p) => lines.includes(`${p}/`));
+
+    assert.deepEqual(
+      bad,
+      [],
+      `다음 규칙이 끝 슬래시로 적혀 있다: ${bad.join(', ')}\n\n` +
+        `끝 슬래시는 **디렉토리만** 매칭한다. worktree 가 갖는 것은 심볼릭 링크라 매칭되지 않아\n` +
+        `매 작업이 untracked 를 달고 다닌다. #329 가 '.husky/_' 에 대해 같은 결함을 고쳤다 —\n` +
+        `node_modules 갈래도 같은 규칙을 따라야 한다.`,
+    );
+  });
+
   test('pre-commit 훅이 문서 인덱스를 실제로 검사한다', () => {
     assert.match(
       read(INPUTS.hook),
@@ -192,6 +221,26 @@ describe('worktree 훅 배선 정합', () => {
       `${INPUTS.hook.file} 이 '${HOOK_REQUIRED_CHECK}' 를 돌리지 않는다.\n\n` +
         `훅을 worktree 에 연결해도 본체가 검사를 안 하면 아무것도 막지 못한다 — ` +
         `연결 배선만 초록인 채 drift 가 그대로 커밋된다.`,
+    );
+  });
+
+  test('pre-commit 훅이 worktree 에서 실행 가능한 명령만 쓴다', () => {
+    const hook = read(INPUTS.hook);
+    const offending = hook
+      .split('\n')
+      .map((line, i) => ({ line: line.trim(), no: i + 1 }))
+      .filter(({ line }) => !line.startsWith('#'))
+      .filter(({ line }) => HOOK_FORBIDDEN_COMMANDS.some((cmd) => line.includes(cmd)))
+      .map(({ line, no }) => `${INPUTS.hook.file}:${no}  ${line}`);
+
+    assert.deepEqual(
+      offending,
+      [],
+      `훅이 worktree 에서 실행 불가능한 명령을 쓴다.\n${offending.join('\n')}\n\n` +
+        `BTS 의 모든 실작업은 worktree 안에서 이뤄진다. 훅을 연결해도(층 1) 본체가 이 명령을\n` +
+        `쓰면 매 커밋이 ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 로 죽는다 — 결국\n` +
+        `--no-verify 로 우회하게 되고 훅은 다시 장식이 된다.\n` +
+        `처방. 'node_modules/.bin/<도구>' 를 직접 호출한다 (pnpm 래퍼 우회).`,
     );
   });
 
