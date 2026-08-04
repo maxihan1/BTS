@@ -1863,3 +1863,47 @@ grep -rho '^- \[ \] D[0-9]*\.' docs/plan/product/*.md | wc -l   # 미완
 `resolveTransitionUnavailableReason`(공용 승격) · `issueDetailStrings` 전이 에러 문구 3종 ·
 `useUsers`/`useUsersByIds` · `useIssueTransitions` · `useIssuePermissions` ·
 `IssuePrioritySelect` 의 값 집합·라벨 정본 · `--border`/`--bg-neutral`/`--text-subtle` ADS 토큰
+
+## 후속 항목 (이번 PR 이 의도적으로 남긴 것)
+
+**FR 총수 139 는 불변이다.** 아래 신규 FR 후보 2건은 **정식 등록을 하지 않았다** — 등록은 별도
+작업이고, 이 절은 그때 옮겨 담을 근거를 모아 둔 곳이다.
+
+### A. 신규 FR 후보 2건 (Maxi 확정 2026-08-04 — 분리하기로 결정)
+
+| # | 후보 | 왜 이번 PR 밖인가 | 실측 근거 |
+|---|---|---|---|
+| A1 | **한글/영어 전환** | 프론트에 전환 장치가 **0** 이고 다국어 라이브러리도 없다. 화면 문자열 전량 교체 규모 | 사용자 환경설정 `locale` 필드는 **이미 있다**(`preferences-handlers.ts:42` 기본값 `ko`). `apps/web/src/i18n/` **53파일 7,813줄**이 전부 한국어 상수 |
+| A2 | **우선순위 용어 직접 변경** | **백엔드 필수** — 이번 PR 의 백엔드 0줄 원칙과 정면 충돌 | `IssuePriority` 가 Kotlin enum 하드코딩이고 DB 에는 숫자 1~5 만 저장된다. 테이블 신설 + 마이그레이션 + API + 관리 화면이 필요. 선례는 **「해결 결과(Resolution)」**(표준 세트 불변 + 커스텀 추가 가능 구조) |
+
+F9 이 우선순위 표기를 한글 정본 1개(`issueDetailStrings.priorityNames`)로 통일해 둔 덕에,
+A1·A2 모두 **교체 지점이 한 곳**으로 모여 있다. 섞인 채 뒀다면 흩어진 자리를 다시 찾아야 했다.
+
+### B. QA 지적 잔여 3건 (F1 은 이번 PR 에서 봉합 — `e31781f5c`)
+
+| # | 지적 | 실측 | 판정 |
+|---|---|---|---|
+| F2 | **hover 어포던스 대비 미달** | 라이트 **1.34:1** · 다크 **1.37:1**. WCAG 비-텍스트 대비 기준 **3:1** 미달 | 저장소에 **더 강한 테두리 토큰이 없다** — 신설은 **디자인 시스템 변경**이라 designer 경유가 맞다. F9 단독 봉합 불가 |
+| F3 | **목록 가로 오버플로** | **선재**. main 대조군 실측 있음. F9 영향 **+16px** | 선재 결함이라 F9 범위 밖. 봉합은 컬럼 폭 정책 결정을 요구 |
+| F4 | **375px 레이아웃 붕괴** | **선재**. main 대조군 실측 있음. F9 영향 **0** | 위와 같음 |
+
+F3·F4 는 **main 대조군을 실측해 선재임을 확인**했다 — 「F9 가 만들었다」로 오귀속되지 않게
+숫자를 남긴다.
+
+### C. 도구·환경 부채 2건
+
+- **루트 `.lintstagedrc.json` 의 `apps/web/**` 항목이 도달 불가.** lint-staged 는 파일을
+  디렉토리 기준으로 **깊은 설정에 먼저 배정**하고 글롭 매칭은 그 다음이라, `apps/web` 안의
+  어떤 파일도 루트 설정에 닿지 않는다(프로브 E — 루트 태스크가 작업 목록에 뜨지도 않았다).
+  **지울 수는 없다** — 설정이 1벌이 되면 `runAll.js` 의
+  `hasMultipleConfigs` 분기가 cwd 를 루트로 되돌려 결함이 부활한다.
+  **해소안**. `.husky/pre-commit` 을 `(cd apps/web && …)` 로 바꿔 1벌로도 cwd 를 잡게 하고 죽은
+  항목을 제거한다(**프로브 F 로 검증됨**). 대안 ②(루트 설정에 루트 스코프 실제 lint 부여)는
+  `scripts/**` 24개 JS/TS 에 린터가 **없어** 신규 도입이 필요해 보류했다(추측 구현 금지).
+  **위험은 낮다** — 판별식이 2벌을 강제하고 `INPUTS` 가 `apps/web` 설정의 존재를 못박아,
+  깊은 설정이 사라지면 판별식이 먼저 빨개진다.
+- **worktree Playwright 함정.** 저장소 `playwright.config.ts` 의
+  `webServer.command: 'pnpm dev'` 가 worktree 에서 돌지 않는다(pnpm 이 심볼릭 `node_modules` 를
+  감지해 auto install 로 넘어간다 — 계열 `worktree-pnpm-verify-deps-symlink`).
+  현재는 **매 실행마다 임시 config 로 우회**하고 있다. 항구 처방은 `webServer.command` 를
+  `node_modules/.bin/vite` 직접 호출로 바꾸는 것이지만, 공유 자원이라 신규 충돌면을 먼저 세야 한다.
