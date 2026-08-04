@@ -149,7 +149,24 @@ function buildOptimisticPatch(vars: IssueCellFieldVars): IssueCellPatch {
 }
 
 /**
+ * 상태 변경의 일반 실패 안내 문구.
+ *
+ * ★`i18n/ko.ts` 에 **대응 정본이 없다.** 있는 것은 사유별 3종
+ * (`transitionNotAllowedError` · `transitionVersionConflictError` ·
+ * `transitionWorkflowNotConfiguredError`)뿐이고, 상세 화면(`issues.$key.tsx:354`)은 일반
+ * 실패(네트워크 등)에도 `transitionNotAllowedError` 를 재사용한다 — 타임아웃에
+ * *"현재 상태에서 허용되지 않는 전이입니다"* 라고 말하는 셈이라 그대로 베끼지 않는다.
+ *
+ * 키 신설은 이 PR 범위 밖이므로(§제약) 인라인으로 두고 후속 과제로 남긴다.
+ */
+const STATUS_CHANGE_ERROR = '상태 변경 중 문제가 발생했습니다. 다시 시도해 주세요.'
+
+/**
  * field 별 일반 실패 안내 문구를 반환한다.
+ *
+ * ★문구를 새로 짓지 않는다 — 담당자·우선순위는 `issueDetailStrings` 정본을 쓴다.
+ * 상세 화면(`useChangeAssignee.ts:49` · `issues.$key.tsx:420`)이 소비하는 바로 그 값이라,
+ * 같은 실패가 상세와 목록에서 **다른 말**로 안내되지 않는다.
  *
  * @param field 실패한 변경 필드
  * @returns 한국어 안내 문구
@@ -157,11 +174,11 @@ function buildOptimisticPatch(vars: IssueCellFieldVars): IssueCellPatch {
 function buildErrorMessage(field: IssueCellFieldVars['field']): string {
   switch (field) {
     case 'assignee':
-      return '담당자 변경 중 문제가 발생했습니다. 다시 시도해 주세요.'
+      return issueDetailStrings.assigneeChangeError
     case 'priority':
-      return '우선순위 변경 중 문제가 발생했습니다. 다시 시도해 주세요.'
+      return issueDetailStrings.priorityChangeError
     case 'status':
-      return '상태 변경 중 문제가 발생했습니다. 다시 시도해 주세요.'
+      return STATUS_CHANGE_ERROR
     default: {
       const exhaustiveCheck: never = field
       throw new Error(`Unsupported field: ${String(exhaustiveCheck)}`)

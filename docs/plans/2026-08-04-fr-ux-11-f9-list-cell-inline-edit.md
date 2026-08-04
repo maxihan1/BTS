@@ -1907,3 +1907,31 @@ F3·F4 는 **main 대조군을 실측해 선재임을 확인**했다 — 「F9 �
   감지해 auto install 로 넘어간다 — 계열 `worktree-pnpm-verify-deps-symlink`).
   현재는 **매 실행마다 임시 config 로 우회**하고 있다. 항구 처방은 `webServer.command` 를
   `node_modules/.bin/vite` 직접 호출로 바꾸는 것이지만, 공유 자원이라 신규 충돌면을 먼저 세야 한다.
+
+### D. i18n 정본 부채 3건 (리뷰 C5 봉합 중 실측)
+
+- **컴포넌트 리터럴 5건에 대응 정본이 없다.** `'편집 권한이 없습니다.'`(`PriorityCell` ·
+  `AssigneeCell`) · `'전이 권한이 없습니다.'`(`StatusCell`) · `'검색 중…'` ·
+  `'검색 결과가 없습니다.'`(`AssigneeCell`) · `'불러오는 중…'`(`StatusCell`).
+  `i18n/ko.ts` 키 신설은 이 PR 범위 밖(§제약)이라 인라인으로 두었다. 다국어 도입 시 이 5건이
+  교체 대상이다.
+- **상태 변경 일반 실패 문구의 정본이 없다.** `i18n/ko.ts` 에 있는 것은 사유별 3종
+  (`transitionNotAllowedError` · `transitionVersionConflictError` ·
+  `transitionWorkflowNotConfiguredError`)뿐이다. 상세 화면(`issues.$key.tsx:354`)은 일반
+  실패(네트워크 등)에도 `transitionNotAllowedError` 를 재사용하는데, **타임아웃에 "현재
+  상태에서 허용되지 않는 전이입니다" 라고 말하는 셈**이라 목록은 베끼지 않고 인라인 상수
+  (`STATUS_CHANGE_ERROR`)로 두었다. 상세 쪽 fallback 도 함께 손볼 후속 과제다.
+- **★보드 훅에 같은 drift 가 있다 (이 PR 범위 밖).** `hooks/use-change-card-field.ts:264-268`
+  이 담당자·우선순위 실패에 `issueDetailStrings` 정본이 아니라 자체 문구
+  (*"…변경 중 **문제가** 발생했습니다. 다시 시도해 주세요."*)를 쓴다. 정본은
+  *"…변경 중 **오류가** 발생했습니다. **잠시 후** 다시 시도해 주세요."* 다. 목록(F9)은 정본으로
+  맞췄으므로 지금은 **보드만 어긋나 있다**. `board-swimlane-field-change.spec.ts:524` 가 그
+  문구를 단언하고 있어 함께 고쳐야 한다.
+
+### E. 가드 미배치 1건 (허용 파일 밖이라 controller 확인 필요)
+
+- **`useUsersByIds` 의 `keepPreviousWhileIdsChange` 옵션에 직접 가드가 없다** (리뷰 C3 ①).
+  화면 증상(다른 행 이름 유지)은 `issues.index.tsx` 레벨에서만 관측되고, 옵션 자체의 단위
+  가드는 `hooks/__tests__/use-users.test.tsx` 가 자리다 — **둘 다 이번 허용 파일 목록에
+  없다.** 넣을 테스트는 "ids 가 바뀌는 동안 옵션이 있으면 이전 결과가 유지되고, 없으면
+  빈 결과가 된다" 짝이다.

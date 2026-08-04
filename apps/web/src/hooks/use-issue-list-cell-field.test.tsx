@@ -15,7 +15,7 @@ vi.mock('sonner', () => ({
   },
 }))
 
-import { updateIssue, transitionIssue } from '@/api/issues'
+import { updateIssue, transitionIssue, changeAssignee } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { toast } from 'sonner'
@@ -234,6 +234,41 @@ describe('useIssueListCellField', () => {
     )
     expect(invalidatedKeys).toContain(JSON.stringify(['issue', 'ATLAS-1']))
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // C5 — 실패 문구는 정본을 소비한다
+  //
+  // 같은 실패가 상세와 목록에서 다른 말로 안내되면 사용자는 다른 일이 일어난 줄 안다.
+  // 이 훅은 `extractErrorCode` 를 공유하면서 정작 문구는 새로 지어 자기모순이었다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it.each([
+    ['assignee', issueDetailStrings.assigneeChangeError],
+    ['priority', issueDetailStrings.priorityChangeError],
+  ] as const)(
+    '%s 일반 실패는 i18n 정본 문구를 쓴다 (리뷰 C5)',
+    async (field, expected) => {
+      // 409/422 가 아닌 일반 실패 — 사유별 분기가 아니라 fallback 경로를 탄다
+      vi.mocked(updateIssue).mockRejectedValue(new Error('network down'))
+      vi.mocked(changeAssignee).mockRejectedValue(new Error('network down'))
+
+      const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await act(async () => {
+        result.current.mutate({
+          issueKey: 'ATLAS-1',
+          field,
+          toAssigneeId: null,
+          toPriority: 1,
+          expectedVersion: 1,
+        })
+      })
+      await waitFor(() => expect(result.current.isError).toBe(true))
+
+      expect(vi.mocked(toast.error).mock.calls.at(-1)?.[0]).toBe(expected)
+    },
+  )
 
   it('무효화 대상 이슈 키는 vars 에서 온다 — 다른 이슈를 건드리지 않는다 (리뷰 C1)', async () => {
     queryClient.setQueryData(LIST_KEY, { content: [makeIssue(), makeIssue({ key: 'ATLAS-2' })] })
