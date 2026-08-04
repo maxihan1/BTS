@@ -111,9 +111,54 @@ diff 에 섞지 않아 리뷰 초점이 선명하다 ③FR-UX-09(3PR)·10(2PR)·
    또 D-1 의 경계는 **코드에 흔적을 남기지 않아** 다음 편집자가 되돌려도 아무도 못 막는다.
    → 순수/훅 분리 + 경계 가드 3종(D-5).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-08-04-fr-ux-12-f4-command-palette-search.md](../specs/2026-08-04-fr-ux-12-f4-command-palette-search.md)
+
+핵심 시나리오 3줄 요약.
+- 이슈키(`ATLAS-12`, 대소문자 무관)를 치면 그 이슈가 결과 최상단에 뜨고 Enter 로 이동한다
+- 자유 텍스트는 250ms 디바운스 후 `text ~ "…"` 를 활성 프로젝트 스코프로 검색해 팔레트 안에
+  7건까지 보여주고, 끝의 「모든 결과 보기」가 `/search` 로 같은 질의를 넘긴다
+- 활성 프로젝트가 없으면 자유 텍스트만 안내로 막고 이슈키 경로는 계속 살린다
+
+FR 13건 · NFR 6건 · 엣지 12건 · 완료 기준 10항목. **신규 API 0 · 마이그레이션 0 · 영속 상태 0.**
+
+### Maxi 확정 (누적 4건)
+
+| # | 결정 | 단계 |
+|---|---|---|
+| 1 | 범위 = **F4 만** (F13 은 후속) | 착수 |
+| 2 | 판별은 **별도 레이어** — `ParsedCommand` 6갈래 동결 | domain |
+| 3 | 선재 결함 `/search <질의>` **같은 PR 봉합** + MSW 핸들러 교체 | domain |
+| 4 | 활성 프로젝트 미해소 시 **이슈키는 살리고 자유텍스트만 안내** | domain |
+| 5 | `components/ui/command.tsx` **래퍼 전면 채택** (소비처 0→1) | spec |
+
+### Jira 대조 결과 (계약 §1)
+
+**공식 문서 대조 6건** — `J1` 이슈키 즉시 이동(**DC 공식**, Cloud 팔레트 문서엔 미기재) ·
+`J2` instant results + View all results(**Cloud 공식**) · `J3` 결과 행 = 키·요약·프로젝트
+(**Cloud 공식**) · `J4` 검색 대상 = Summary/Description/any text field(**Cloud 공식**) ·
+`J5` 입력 중 팔레트 미개방(**Cloud 공식**, F11 이 이미 구현) · `J6` `/` 의 의미.
+
+**★ 의도적 편차 3건.**
+- **X1. `/` 의 의미가 Jira 와 정반대다.** Jira 는 `/` = 「명령이 아니라 항목을 검색한다」는 표시
+  (*"The forward slash … indicates you are **not** searching for commands"*), BTS 는 `/` = 슬래시
+  명령이다. 뒤집으면 FR-UX-04 ADR D3 · `commands.ts` · 유닛 2파일 · E2E S1~S5 가 동시에 깨진다.
+  **사용자 체감 결과는 같다** — 텍스트를 치면 이슈가 나온다. 다른 건 명령 문법뿐이고
+  VS Code·Linear·GitHub 도 `/`·`>` 를 명령 접두사로 쓴다.
+- **X2. 결과 행에서 프로젝트명 제외** — v1 이 활성 프로젝트 스코프라 전 행이 같은 값. 소음.
+- **X3. 이슈키 즉시매칭의 근거를 Jira Cloud 로 주장하지 않는다** — J1 은 DC 문서에만 있다.
+  채택 근거는 정본 §4.10 명시 + 조작 효율이다.
+
+## Brainstorming Check
+
+✅ **ui 경량 경로** (Maxi 확정 2026-08-03) — Phase B brainstorming 스킵. `## Jira 대조`(계약 §1) +
+즉사 계약(§2) 교차 + `## 시각 검증 기준` 이 sanity check 를 대신한다.
+
+office-hours 는 **"fully formed plan" 경로**로 실행 — Phase 2 수요 검증 6대 질문은 스킵(이미 승인된
+유지보수 FR), Phase 3 전제 검증 5건 + Phase 4 대안 3종은 수행. **대안 C(부분 래퍼 채택)는 토큰
+실측으로 탈락** — `--accent`(#F1F2F4 회색) ≠ `--bg-selected`(#E9F2FF 파란 tint)라 한 팔레트 안에서
+하이라이트 색이 항목마다 갈린다.
 
 ## Plan (← /bts-plan 채움)
 
