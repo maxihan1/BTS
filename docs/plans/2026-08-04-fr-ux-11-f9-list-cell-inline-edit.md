@@ -145,8 +145,66 @@ vitest + Testing Library · Playwright · MSW.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`scripts/workflow/worktree-hook-wiring.test.ts`, `.husky/pre-commit`, `.gitignore`]
+- files: [`scripts/workflow/worktree-hook-wiring.test.ts`, `.husky/pre-commit`, `.gitignore`, `.lintstagedrc.json`, `apps/web/.lintstagedrc.json`, `.github/workflows/workflow-scripts-ci.yml`]
 - depends-on: []
+
+> **범위 확대 2회 (구현 중 실측이 초안을 넓혔다).**
+>
+> **① `.lintstagedrc.json` — 봉합이 절반이었다.** 훅 본체를 고쳐도 훅이 **부르는 설정**이
+> `pnpm --filter @bts/web exec eslint` 를 써서, `apps/web/**` 가 staged 인 커밋에서 같은 자리에
+> 다시 죽는다. 이 PR 의 Task 2~9 가 전부 그 경로다. 게다가 초안의 `HOOK_FORBIDDEN_COMMANDS`
+> 부분 문자열 `pnpm exec` 는 **`pnpm --filter @bts/web exec` 를 못 잡는다**(사이에 플래그가
+> 낀다) — 판별식이 초록인데 결함은 사는 양식이라 정규식으로 교체했다.
+>
+> **② `.github/workflows/workflow-scripts-ci.yml` — `INPUTS` 확장의 필연적 귀결.**
+> 판별식의 CI 트리거 검사가 `INPUTS[].coveredBy` 에서 **파생**되므로, `.lintstagedrc.json` 을
+> 입력에 넣는 순간 `on.pull_request.paths` 와 `on.push.paths` **양쪽**이 그 경로를 걸어야 한다.
+> 안 걸면 *"`.lintstagedrc.json` 만 고쳐 pnpm 을 되살리는 PR 에서 이 판별식이 0회 실행"* 된다.
+> `CLAUDE.md §문서 인덱싱 규칙`의 "판별식 룰 L" 과 같은 정신이다.
+>
+> **③ `apps/web/.lintstagedrc.json` — ★봉합이 만든 신규 충돌면 (Maxi 확정 2026-08-04).**
+> ②까지의 처방은 lint-staged 의 **cwd 를 저장소 루트로 옮겼다**. ESLint 9 flat config 는
+> `--config` 사용 시 상대 `files` 패턴의 기준을 **cwd** 로 잡는데, `apps/web/eslint.config.js:85-109`
+> 의 PR22 원시 `<button>` 예외 목록 19항이 `'src/routes/issues.$key.tsx'` 형태(`**/` 접두 없음)라
+> **루트 기준으로는 한 건도 매칭되지 않는다** → 예외가 통째로 무효화돼 선재 코드가 걸린다.
+>
+> Task 6 이 그 목록에 있는 파일(`issues.$key.tsx`)을 **처음으로** 건드리면서 드러났다.
+> 그 전 커밋들은 전부 목록 밖 파일이라 이 경로를 밟지 않았다 — **봉합이 자기 부작용을 가린
+> 구간**이 있었던 셈이다. 계열 [[seal-blinds-existing-guard]] ·
+> "공유자원을 옮기면 신규 충돌면을 표로 세라"([[vite-preview-port-cors-align-done]]).
+>
+> **처방은 원인 치료.** `apps/web/.lintstagedrc.json` 을 신설해 프론트 파일의 cwd 를
+> `apps/web` 으로 되돌린다(lint-staged 는 대상 파일에서 가장 가까운 설정을 찾고 그 위치를 cwd 로
+> 삼는다). 그러면 **CI(`eslint src`, cwd=`apps/web`)와 훅이 같은 조건에서 같은 판정**을 하게 된다 —
+> 지금은 둘이 서로 다른 답을 낸다. 기각안. `eslint.config.js` 19줄에 `**/` 접두(증상 치료 —
+> cwd 불일치가 남아 다른 상대 패턴에서 재발하고, PR22 봉인 목록은 `button-primitive-usage.test.ts`
+> 와 **짝**이라 한쪽만 고치면 어긋난다) · 별도 PR 이연(그 사이 모든 커밋이 `--no-verify`).
+>
+> **③-실측 정정 — 처방의 세부가 구현 중에 뒤집혔다.** 초안 지시는 *"루트 설정에서
+> `apps/web/**` 항목 제거"* 였는데 **둘 다 불가**임이 샌드박스 프로브 5개로 확인됐다.
+> `lint-staged` 의 `runAll.js` 가 결정적이다.
+>
+> ```js
+> const groupCwd = hasExplicitCwd || !hasMultipleConfigs ? cwd : path.dirname(configPath)
+> ```
+>
+> **설정이 2벌 이상일 때만** 설정 파일의 디렉토리가 cwd 가 된다. 그래서 루트 설정을
+> 빈 객체로 두면 `ConfigEmptyError` 로 **모든 커밋이 즉사**하고, 삭제하면 1벌이 되어
+> **cwd 가 루트로 돌아가 결함이 부활**한다. 채택안은 **2벌 유지**다.
+>
+> 이 불변식은 **되돌아감이 에러가 아니라 침묵**이라 개수 외에 탐지 수단이 없다 —
+> `lint-staged 설정이 2벌 이상이다` 단언을 신설해 못박았고, 실패 메시지에 `runAll.js`
+> 원문을 실었다.
+>
+> **미해결 1건 (코드리뷰 이관).** 루트 `.lintstagedrc.json` 의 `apps/web/**` 항목이 이제
+> **도달 불가**다 — lint-staged 는 파일을 디렉토리 기준으로 깊은 설정에 먼저 배정하고
+> 글롭 매칭은 그 다음이라, `apps/web` 안의 어떤 파일도 루트 설정에 닿지 않는다(프로브 E 에서
+> 루트 태스크가 작업 목록에 뜨지도 않았다). **위험은 낮다** — 판별식이 2벌을 강제하고
+> `INPUTS` 가 `apps/web` 설정의 존재를 못박아, 깊은 설정이 사라지면 판별식이 먼저 빨개진다.
+> 해소안 두 가지가 실측과 함께 남아 있다. ① `.husky/pre-commit` 을 `(cd apps/web && …)` 로
+> 바꿔 1벌로도 cwd 를 잡게 하고 죽은 항목 제거(프로브 F 로 검증) ② 루트 설정에 루트 스코프의
+> 실제 lint 작업 부여(현재 `scripts/**` 24개 JS/TS 에 린터가 **없어** 신규 도입이 필요 —
+> 추측 구현 금지에 걸려 보류).
 
 **RED**. `scripts/workflow/worktree-hook-wiring.test.ts` 의 `INPUTS` 아래에 상수 2개와 테스트
 2개를 추가한다. 기존 `describe` 블록 안에 넣는다.
@@ -1288,6 +1346,28 @@ export function StatusCellEditor({
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/issues/issue-columns.ts`, `apps/web/src/components/issues/IssueTable.tsx`, `apps/web/src/routes/issues.index.tsx`, `apps/web/src/components/issues/cells/PriorityCell.tsx`, `apps/web/src/components/issues/cells/AssigneeCell.tsx`, `apps/web/src/components/issues/cells/StatusCell.tsx`, `apps/web/src/components/issues/cells/EditableCell.tsx`, `apps/web/src/hooks/use-issue-list-cell-field.ts`, `apps/web/src/components/issues/IssueTable.test.tsx`]
 - depends-on: [4, 5, 6]
+
+**★우선순위 표기 한글 통일 (Maxi 확정 2026-08-04 — 구현 중 발견).**
+
+배선하고 보니 **같은 칸에서 닫히면 `Medium`(영어), 열면 `보통`(한글)** 이었다. F9 이 만든 것이
+아니라 **선재 불일치** 다 — 목록은 백엔드 `priorityName`(`IssuePriority.kt` enum 의 영어
+`displayName`)을, 상세는 `issueDetailStrings.priorityNames`(한글)를 써 왔고, F9 이 그 둘을
+**한 칸 안에서 만나게** 하면서 드러났다.
+
+**처방.** 닫힌 셀도 `issueDetailStrings.priorityNames[issue.priority]` 를 쓴다. 목록·popover·
+상세가 **한 정본**을 본다. `e2e/` 에 우선순위 텍스트 단언이 **0건**임을 grep 으로 확인했다
+(`issue-body-meta.spec.ts:79` 는 상세 화면 셀렉터). 백엔드 0줄 불변.
+
+**하류 이득.** 나중에 다국어를 넣을 때 교체 지점이 **한 곳**으로 모인다 — 섞인 채 두면 찾아
+고칠 자리가 흩어진다.
+
+**신규 FR 2건으로 분리 (Maxi 확정).** ① **한글/영어 전환** — 사용자 환경설정에 `locale`
+필드는 **이미 있으나**(`preferences-handlers.ts:42` 기본값 `ko`) 프론트에 전환 장치가 없다
+(`i18n/` 53파일 7,813줄이 전부 한국어 상수, 다국어 라이브러리 0). ② **용어 직접 변경** —
+`IssuePriority` 가 Kotlin enum 하드코딩이고 DB 에는 숫자 1~5 만 저장된다. 테이블 신설 +
+마이그레이션 + API + 관리 화면이 필요해 **백엔드 필수**. 선례는 「해결 결과(Resolution)」
+(표준 세트 불변 + 커스텀 추가 가능 구조). 둘 다 이번 PR 의 백엔드 0줄 원칙과 충돌하므로
+**FR 정식 등록은 별도 작업**으로 하고 이번 PR 은 FR 총수 139 를 불변으로 둔다.
 
 **★저장 후 popover 를 닫는다 (Maxi 확정 2026-08-04 — 디자인 리뷰 Pass 3).**
 3종 셀 모두 선택 즉시 `setOpen(false)` 를 부른다. 낙관적 반영이라 닫아도 결과가 셀에 바로
