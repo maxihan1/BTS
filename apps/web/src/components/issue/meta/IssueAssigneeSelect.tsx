@@ -1,5 +1,5 @@
 // 이슈 담당자 선택 셀렉터 (IssueMetaPanel 분해 B, FR-IS-03)
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import type { UserSummary } from '@/api/users'
 import { issueDetailStrings } from '@/i18n/ko'
 import { AssigneeUserList } from '@/components/issue/meta/AssigneeUserList'
@@ -33,6 +33,15 @@ export interface IssueAssigneeSelectProps {
    * fail-closed: 권한 미확정 시 false 전달 권장.
    */
   canEdit: boolean
+  /**
+   * 검색 input으로 가는 ref — FR-UX-10 F11 단축키 `a`가 여기에 포커스를 준다.
+   * 소비처는 routes/issues.$key.tsx(IssueMetaPanel.assigneeSearchRef 경유).
+   *
+   * 이 ref의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다. 이 셀렉터는 이슈 생성 폼
+   * (IssueCreateAssignmentFields)도 함께 쓰는데 거기엔 `a`가 없으므로, 무조건 붙이면
+   * 스크린리더가 없는 단축키를 안내한다. "손잡이를 연결한 화면에만 단축키가 있다"가 규칙.
+   */
+  focusRef?: RefObject<HTMLInputElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,6 +67,7 @@ export function IssueAssigneeSelect({
   onSearch,
   onAssigneeChange,
   canEdit,
+  focusRef,
 }: IssueAssigneeSelectProps): JSX.Element {
   /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
   function getDisplayName(user: UserSummary): string {
@@ -91,10 +101,14 @@ export function IssueAssigneeSelect({
 
       {/* 검색 input — canEdit=false이면 disabled (FR-PM-02) */}
       <input
+        ref={focusRef}
         type="text"
         className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
         placeholder={issueDetailStrings.assigneeSearchPlaceholder}
         aria-label={issueDetailStrings.assigneeSearchPlaceholder}
+        // 단축키 `a` 의 존재를 아는 경로가 `?` 도움말 모달뿐이라 스크린리더에 표준 속성으로도
+        // 알린다 (FR-UX-10 F11). 시각 툴팁은 만들지 않는다 — 신규 UI 0 제약.
+        aria-keyshortcuts={focusRef !== undefined ? 'a' : undefined}
         disabled={!canEdit}
         onChange={(e) => onSearch(e.target.value)}
         // ★이 셀렉터가 <form> 안에 들어가면(이슈 생성 폼, FR-UX-09 F2) Enter 가 HTML

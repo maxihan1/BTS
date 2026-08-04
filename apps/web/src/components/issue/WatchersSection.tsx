@@ -1,4 +1,5 @@
 // 이슈 상세 감시자 섹션 — Watch 토글 + 카운트 + 명단 (FR-WT-01 D6)
+import type { RefObject } from 'react'
 import { useAuthUser } from '@/auth/authStore'
 import { useWatchers, useAddWatcher, useRemoveWatcher } from '@/api/issue-watchers'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -11,6 +12,17 @@ const WATCHER_LIST_MAX = 8
 interface WatchersSectionProps {
   /** 이슈 키 (예: "ATLAS-1") */
   issueKey: string
+  /**
+   * Watch 토글 버튼으로 가는 ref — FR-UX-10 F11 단축키 `w`가 여기에 포커스를 준 뒤 click()한다.
+   * 소비처는 routes/issues.$key.tsx(IssueMetaPanel.watchToggleRef 경유).
+   *
+   * 핸들러를 복제하지 않고 버튼을 미는 이유는 이 버튼이 이미 가진 canToggle 판정
+   * (in-flight · 미인증 · GET 로딩/에러 윈도우)과 에러 토스트를 그대로 재사용하기 위해서다.
+   *
+   * 이 ref의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다 —
+   * "손잡이를 연결한 화면에만 단축키가 있다" (FavoriteButton과 같은 규칙).
+   */
+  focusRef?: RefObject<HTMLButtonElement | null>
 }
 
 /**
@@ -24,8 +36,9 @@ interface WatchersSectionProps {
  * - mutation 실패 시 toast.error로 사용자에게 피드백을 제공한다.
  *
  * @param issueKey 이슈 키
+ * @param focusRef Watch 토글 버튼으로 가는 ref (단축키 `w`)
  */
-export const WatchersSection = ({ issueKey }: WatchersSectionProps) => {
+export const WatchersSection = ({ issueKey, focusRef }: WatchersSectionProps) => {
   const user = useAuthUser()
   const { data, isLoading, isError } = useWatchers(issueKey)
   const addWatcher = useAddWatcher(issueKey)
@@ -69,12 +82,16 @@ export const WatchersSection = ({ issueKey }: WatchersSectionProps) => {
 
       {/* 토글 버튼 */}
       <Button
+        ref={focusRef}
         variant="outline"
         size="sm"
         className="mb-3"
         onClick={handleToggle}
         disabled={!canToggle}
         aria-pressed={data?.isWatching ?? false}
+        // 단축키 `w`의 존재를 아는 경로가 `?` 도움말 모달뿐이라 스크린리더에 표준 속성으로도
+        // 알린다 (FR-UX-10 F11). 시각 툴팁은 만들지 않는다 — 신규 UI 0 제약.
+        aria-keyshortcuts={focusRef !== undefined ? 'w' : undefined}
         data-testid="watch-toggle-button"
       >
         {data?.isWatching ? issueDetailStrings.unwatchButton : issueDetailStrings.watchButton}

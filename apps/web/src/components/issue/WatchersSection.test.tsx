@@ -415,7 +415,12 @@ describe('WatchersSection — S6 FR-UX-10 F11 단축키 `w` 손잡이', () => {
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" focusRef={focusRef} />, { wrapper: Wrapper })
 
-    const btn = await screen.findByTestId('watch-toggle-button')
+    // ★GET 응답 도착까지 기다린다 — 로딩 윈도우에서는 버튼이 disabled 라 포커스를 못 받는다.
+    //   그 자체가 의도된 fail-safe(헛 POST 차단)이므로 여기서 완화하지 않고 전제를 맞춘다.
+    await screen.findByText('0명')
+    const btn = screen.getByTestId('watch-toggle-button')
+    expect(btn).not.toBeDisabled()
+
     // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
     expect(focusRef.current).not.toBeNull()
     act(() => {
