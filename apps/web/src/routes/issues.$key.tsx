@@ -38,6 +38,10 @@ import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
 import { IssueActivityTabs, ACTIVITY_TABS } from '@/components/issue/IssueActivityTabs'
 import type { ActivityTabValue } from '@/components/issue/IssueActivityTabs'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import {
+  useHasOpenModal,
+  useReportModalOpen,
+} from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 import { useAuthUser } from '@/auth/authStore'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
@@ -502,6 +506,21 @@ export function IssueDetailPage({
   const currentUserId = useAuthUser()?.userId ?? null
 
   /**
+   * `i` 가 마지막으로 발행한 요청의 서명 — `«이슈 버전»:«대상 담당자»`. 같은 서명이 또 오면 버린다.
+   *
+   * ★state 가 아니라 **ref** 인 것이 요점이다. 브라우저 키 auto-repeat 는 한 tick 안에서
+   * keydown 을 여러 번 흘리는데 그 사이에는 렌더가 없다. `changeAssigneeMutation.isPending`
+   * 같은 state 로 막으려 하면 반복 호출이 전부 같은(아직 false 인) 클로저를 보고 통과한다.
+   *
+   * ★해제 기준이 「요청 종료」가 아니라 **버전 변화**인 이유. `useChangeAssignee` 는
+   * `onSettled` 에서 invalidate 만 하므로(setQueryData 금지 — descriptionHtml 플리커 전력)
+   * 응답이 와도 `issue.version` 은 재조회가 도착할 때까지 옛 값이다. 그 창에서 재입력을
+   * 허용하면 같은 `expectedVersion` 이 또 나가 409 「버전 충돌」 토스트만 쌓인다.
+   * 버전이 실제로 움직였을 때만 다음 요청을 허용하면 그 창이 사라진다.
+   */
+  const lastAssignToMeRequestRef = useRef<string | null>(null)
+
+  /**
    * 단축키가 이 필드를 조작해도 되는가 — **열람 숨김과 수정 금지 두 목록을 모두** 본다.
    *
    * 🛑 한쪽만 보는 판정으로 줄이지 마라. 백엔드 `buildNoneditableKeys` 가 `restrictedSet` 을
@@ -547,19 +566,40 @@ export function IssueDetailPage({
   }
 
   /**
+   * 이 라우트가 **직접 소유한** 차단 상태를 모달 레지스트리에 보고한다.
+   *
+   * 아래 3종은 `open` 을 prop 으로 내려받는 자식이라 자기 파일에서 보고할 값이 없고,
+   * 삭제 확인은 Dialog 가 아니라 메타패널 자리를 대체하는 `<aside>` 라 애초에 모달이
+   * 아니다 — 그래서 이 네 가지만 여기서 보고한다. 나머지 모달은 **자기가 보고한다**.
+   */
+  useReportModalOpen(
+    pendingDoneTransition !== null || cloneDialogOpen || moveDialogOpen || confirmDelete,
+  )
+
+  /**
+   * 이 화면 어딘가에 모달이 열려 있는가 — 게이트가 읽는 **단 하나의** 신호.
+   *
+   * 게이트 식에 `useHasOpenModal()` 을 직접 넣지 않는다. `&&` 는 단락 평가라 앞 항이
+   * false 인 렌더에서 훅 호출이 통째로 건너뛰어지고, 그건 렌더마다 훅 개수가 달라지는
+   * 조건부 훅이다(로딩 → 로드 완료 전환에서 바로 터진다).
+   */
+  const hasOpenModal = useHasOpenModal()
+
+  /**
    * 상세 액션 단축키를 **등록할지** 여부 (ADR D-5-a).
    *
    * 콜백만 끊으면 판별이 성공해 `preventDefault` 까지 한 뒤 아무 일도 일어나지 않는다.
-   * 모달 3종과 삭제 확인은 입력 요소가 없어 `shouldIgnoreEvent` 를 통과하므로 여기서
-   * 막지 않으면 모달 위에서 단축키가 그대로 발화한다(E2).
+   * 모달은 입력 요소가 없으면 `shouldIgnoreEvent` 를 그냥 통과하므로 여기서 막아야 한다(E2).
+   *
+   * ★🛑 여기에 모달을 **다시 열거하지 마라.** 원래 이 식은 모달 4종을 손으로 나열했는데,
+   * 이 페이지가 실제로 렌더하는 모달은 6종이었다 — 빠진 둘(댓글 삭제 확인 · 첨부 미리보기)
+   * 위에서 `i` 가 담당자 PATCH 를 실제로 발행했다(리뷰 실측). 열거를 2건 늘리는 처방은
+   * **다음 모달이 생기는 순간 똑같이 뚫린다**. 그래서 판정을 「내가 아는 모달이 열렸나」에서
+   * 「무엇이든 열렸나」로 뒤집었다 — 새 모달은 `useReportModalOpen` 한 줄이면 자동으로 막히고,
+   * 그 한 줄을 빠뜨렸는지는 `routes/__tests__/issue-detail-modal-gate.test.ts` 가
+   * 소스 전수 스캔으로 되잰다(차집합 0).
    */
-  const detailShortcutsEnabled =
-    issue !== undefined &&
-    error === null &&
-    pendingDoneTransition === null &&
-    !cloneDialogOpen &&
-    !moveDialogOpen &&
-    !confirmDelete
+  const detailShortcutsEnabled = issue !== undefined && error === null && !hasOpenModal
 
   useContextShortcuts(
     'issue-detail',
@@ -571,14 +611,35 @@ export function IssueDetailPage({
         assigneeSearchRef.current?.focus()
       },
       onAssignToMe: () => {
+        if (issue === undefined) return
         if (!canUseField('assigneeId')) return
         if (currentUserId === null) return // E7 — 미인증이면 누구에게 할당할지 알 수 없다
         // Jira 문구가 `Toggle` 이다 — 이미 나면 해제한다. 저장 경로는 기존 핸들러 재사용.
-        handleAssigneeChange(issue?.assigneeId === currentUserId ? null : currentUserId)
+        const nextAssigneeId = issue.assigneeId === currentUserId ? null : currentUserId
+        // ★중복 발행 금지(E8). `s`/`w` 는 버튼이 가진 진행 중 판정을 재사용하는데 `i` 만
+        //   그 짝이 없어, 키를 누르고 있으면 같은 expectedVersion 으로 N건이 나갔다
+        //   (1건 200 · 나머지 409 → 원인 불명 「버전 충돌」 토스트 N-1개). 판정 근거는
+        //   lastAssignToMeRequestRef 의 주석 참조.
+        const requestSignature = `${issue.version}:${nextAssigneeId ?? 'null'}`
+        if (lastAssignToMeRequestRef.current === requestSignature) return
+        lastAssignToMeRequestRef.current = requestSignature
+        handleAssigneeChange(nextAssigneeId)
       },
       onFocusComment: focusCommentInput,
       onEditTitle: () => {
         if (!canUseField('summary')) return
+        // ★이미 편집 중이면 **다시 열지 않는다.** `handleEditStart()` 는 입력값을
+        //   `issue.summary` 로 되돌리므로, 입력창 밖을 클릭해 blur 시킨 뒤 `e` 를 다시 누르면
+        //   고쳐 쓰던 제목이 조용히 사라진다(입력창 안에서는 shouldIgnoreEvent 가 삼켜서
+        //   blur 를 거쳐야만 닿는 좁은 경로다). 게이트(detailShortcutsEnabled)가 아니라
+        //   여기서 막는 이유 — 게이트에 넣으면 편집 중에 `s`/`w`/`m` 까지 전부 죽는다.
+        //   문제는 `e` 하나뿐이므로 차단 범위도 `e` 하나여야 한다.
+        if (isEditingTitle) {
+          // 무동작으로 끝내면 「아무 일도 안 일어났다」와 구분되지 않는다 —
+          // `a`/`l`/`m` 과 같은 「그 컨트롤로 간다」 규칙을 지켜 입력창으로 되돌린다.
+          titleInputRef.current?.focus()
+          return
+        }
         // 전용 진입 함수를 탄다 — `setIsEditingTitle(true)` 만 하면 입력창이 빈 값으로 열려
         // Enter 한 번에 제목이 지워진다.
         handleEditStart()

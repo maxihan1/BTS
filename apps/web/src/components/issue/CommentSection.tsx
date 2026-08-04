@@ -16,6 +16,7 @@ import { useAuthUser } from '@/auth/authStore'
 import { useUsersByIds } from '@/hooks/use-users'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { useDateFormat } from '@/hooks/use-date-format'
+import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 import { commentStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -191,11 +192,17 @@ interface CommentDeleteDialogProps {
  * 삭제는 되돌릴 수 없으므로 확인 단계를 반드시 거친다. 트리거 버튼 클릭만으로는
  * 서버를 부르지 않는다.
  *
+ * ★열림을 전역 레지스트리에 보고한다 (FR-UX-10 F11 리뷰 C-1). 이 다이얼로그에는 입력
+ * 요소가 없어 단축키 파이프라인의 `shouldIgnoreEvent` 를 그냥 통과한다 — 보고하지 않으면
+ * 「정말 삭제할까요」가 떠 있는 채로 `i` 가 담당자 PATCH 를, `s`/`w` 가 POST 를 실제로
+ * 발행한다(실측). 보고 한 줄이 상세 화면의 단축키 등록을 통째로 끊는다.
+ *
  * @param isDeleting 삭제 진행 중 여부
  * @param onConfirm 확인 콜백
  */
 function CommentDeleteDialog({ isDeleting, onConfirm }: CommentDeleteDialogProps): JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
+  useReportModalOpen(isOpen)
 
   function handleConfirm(): void {
     setIsOpen(false)
