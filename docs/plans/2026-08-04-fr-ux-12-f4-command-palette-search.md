@@ -57,7 +57,59 @@ diff 에 섞지 않아 리뷰 초점이 선명하다 ③FR-UX-09(3PR)·10(2PR)·
 **F4 범위 내 영향** — 팔레트 option `'검색'` 1건만. 봉인 단언 3건(버튼 1개)은 **F13 소관**이나,
 본 PR 이 팔레트에 새 UI 를 추가하므로 **`'검색'` 텍스트를 새로 만들지 않는지** 확인이 필요하다.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**. 논리 = `personalization` / 물리 = `apps/web` (프론트 전용). FR-UX-04 ADR §D2 의
+  "논리 ≠ 물리" 패턴 승계 — fr-index BC 매핑·카운트 불변.
+- **영향 모듈**. `commands.ts`(FR-UX-04 소유, 경계 상대) · `CommandPalette.tsx` ·
+  **신규** 판별 레이어 + **신규** `lib/aql-text-query.ts`(중립) · `mocks/search-handlers.ts`
+- **소비하는 기존 자산 (신규 의존성 0)**. `useDebounce`(250ms 선례 `LabelAutocompleteInput`,
+  cmdk 조합까지 동일) · `useResolvedActiveProject`(판별 유니온 `loading`/`error`/`empty`/`ready`) ·
+  `fetchIssue(key)` · `searchAql({projectKey,query,page,size})` · `components/ui/command.tsx`(소비처 0→1)
+- **새 용어**. 없음 — glossary 신규 항목 0. 기존 「활성 프로젝트」(4단 해소 함수) 를 그대로 소비한다.
+- **기존 결정 충돌**. 없음. FR-UX-04 ADR D1(프론트 전용)·D3(명령 3종 네비게이션)을 **침범하지 않는
+  방향**으로 경계를 그었다(아래 D-1).
+- **정본 drift 1건 (본 PR 에서 정정)**. FR-UX-04 ADR **D3** 이 `/search <질의>` → `/issues?q=` 라고
+  적었으나 실제는 `/search?q=` (`router.ts:534,544`). ADR 에 정정 각주를 단다.
+- **관련 ADR (신규 생성)**.
+  [docs/decisions/2026-08-04-fr-ux-12-f4-command-palette-search.md](../decisions/2026-08-04-fr-ux-12-f4-command-palette-search.md)
+
+### ★ 실측이 밝힌 선재 결함 — `/search <질의>` 는 실서버에서 깨진다
+
+`runCommand:88` → `navigate({to:'/search', search:{q}})` · `search.tsx:311` 이 그 `q` 를 **가공 없이**
+`searchAql({query: q})` 에 넘긴다. 프론트 전수 grep 결과 `text ~` **래핑 코드 0건**.
+백엔드 `AqlParser.parseComparison:166` 이 `expectIdent("필드명")` → 연산자를 요구하므로 `로그인 버그` 는
+`AqlSyntaxException`. 통과해도 `로그인` 이 `MVP_FIELDS`(`status·label·summary·priority·text`)에 없어
+`SEARCH_UNKNOWN_FIELD`.
+
+**가짜 그린의 정체.** `mocks/search-handlers.ts:48` 의 MSW 핸들러가 **쿼리를 읽지 않고** localStorage
+시나리오 플래그로만 분기해 기본 3건을 반환한다(주석에도 *"쿼리 문자열 무관 고정 3건"*). 그래서
+`command-palette.spec.ts:162` S4 가 결과 3건을 단언하며 통과한다. 유닛(`CommandPalette.test.tsx:68`)은
+`navigate` 호출 인자만 검증해 더더욱 못 잡는다. 사용법 힌트(`CommandPalette.tsx:18`)는
+**`예: /search 로그인 버그`** 라며 깨지는 입력을 광고 중이다.
+
+### ADR 결정 5건 (상세는 ADR 본문)
+
+| # | 결정 | 출처 |
+|---|---|---|
+| **D-1** | 판별은 **별도 레이어**. `ParsedCommand` 6갈래 동결, `not-command` 일 때만 2차 호출 | Maxi 확정 |
+| **D-2** | 자유텍스트→AQL 래핑은 **제3의 중립 모듈** `lib/aql-text-query.ts` 소유 (이스케이프 포함) | **합산 되짚기 산물** |
+| **D-3** | 선재 결함 `/search <질의>` 를 **같은 PR 에서 봉합** + MSW 핸들러를 진짜 증인으로 교체 | Maxi 확정 |
+| **D-4** | 활성 프로젝트 미해소 시 **이슈키는 살리고 자유텍스트만 안내** | Maxi 확정 |
+| **D-5** | **순수 판별 / 훅 조회 분리** + 경계 가드 3종(역방향 import 차단 · 유니온 6갈래 동결 · 호출 순서) | **합산 되짚기 산물** |
+
+### ★ 합산 되짚기 — 개별 질문에선 안 보였던 결과 2건
+
+메모리 `split-questions-hide-their-combination`(각 답은 합리적인데 합치면 가드 0개) 절차 적용.
+
+1. **D-1 × D-3 → 역방향 의존 함정.** 별도 레이어(D-1)와 `/search` 봉합(D-3)을 합치면 래핑 함수를
+   `commands.ts`(FR-UX-04 소유)와 신규 레이어(FR-UX-12 소유)가 **둘 다** 필요로 한다. 래퍼를 신규
+   레이어에 두면 `commands.ts → 신규 레이어` 역방향 의존이 생겨 **D-1 이 그은 경계가 첫날부터
+   무너진다**. → 중립 모듈 신설(D-2).
+2. **D-1 × D-4 → 순수성 파괴 + 무가드 경계.** 판별 레이어(D-1)는 순수 함수여야 하는데 활성
+   프로젝트(D-4)는 **훅**이다. 한 모듈에 넣으면 판별을 훅 없이 단위 테스트할 수 없다.
+   또 D-1 의 경계는 **코드에 흔적을 남기지 않아** 다음 편집자가 되돌려도 아무도 못 막는다.
+   → 순수/훅 분리 + 경계 가드 3종(D-5).
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
