@@ -26,6 +26,27 @@ vi.mock('@/hooks/use-issue-permissions', async (importOriginal) => {
   }
 })
 
+// 사용자 검색을 고정한다. 단위 테스트에는 인증 토큰이 없어 MSW 실경로가 빈 결과를 주고,
+// 그러면 "후보를 고른다" 자체가 성립하지 않는다. 검색 플러밍은 AssigneeCellEditor 테스트가
+// 따로 덮으므로 여기서는 **표시 동작**만 잰다.
+vi.mock('@/hooks/use-users', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/use-users')>()
+  return {
+    ...actual,
+    useUsers: () => ({
+      data: [
+        {
+          id: '11111111-1111-1111-1111-111111111111',
+          username: 'maxi',
+          displayName: '맥시',
+          email: null,
+        },
+      ],
+      isLoading: false,
+    }),
+  }
+})
+
 /**
  * 후보 1명 픽스처.
  *
@@ -53,7 +74,9 @@ describe('AssigneeCellEditor', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '맥시' }))
 
-    expect(onChange).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')
+    // ★표시 이름도 함께 넘긴다 — 고르는 순간 이름을 아는 곳은 여기뿐이라, 목록 이름 맵이
+    // 따라올 때까지의 임시 표기에 쓴다 (리뷰 C3).
+    expect(onChange).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111', '맥시')
   })
 
   it('담당자가 있으면 해제 버튼이 null 로 onChange 를 부른다 (FR5)', async () => {
@@ -67,7 +90,7 @@ describe('AssigneeCellEditor', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '담당자 해제' }))
 
-    expect(onChange).toHaveBeenCalledWith(null)
+    expect(onChange).toHaveBeenCalledWith(null, null)
   })
 
   it('검색 결과가 없으면 빈 상태를 안내한다 (E6)', () => {
@@ -188,5 +211,67 @@ describe('AssigneeCell — 필드 단위 권한 (리뷰 C2)', () => {
     expect(
       screen.getByRole('button', { name: issueDetailStrings.assigneeUnassignButton }),
     ).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C3 — 낙관 갱신 중간 상태
+//
+// 목록 이름 맵(`useUsersByIds`)은 조회 결과라 새 담당자 이름이 **한 왕복 뒤**에 온다.
+// 그 사이 방금 고친 셀이 '미배정' 으로 보이면 낙관적 반영(FR11·S1)이 깨져 보인다.
+// e2e 는 auto-retry 때문에 이 창을 못 잰다 — **중간 상태를 직접 재는** 유닛이 유일한 증인이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AssigneeCell — 낙관 갱신 중간 표기 (리뷰 C3)', () => {
+  /**
+   * 이름 맵이 아직 새 담당자를 모르는 상태(`assigneeName=undefined`)를 재현한다.
+   * 부모가 낙관적 patch 로 `issue.assigneeId` 만 먼저 바꾼 그 순간이다.
+   */
+  function renderAfterOptimisticPatch(): void {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AssigneeCell
+          issue={{ ...issueAtlas1Fixture, assigneeId: MAXI.id }}
+          // ★맵은 아직 모른다 — 조회가 끝나기 전이다
+          assigneeName={undefined}
+          listQueryKey={['issues', 'ATLAS', 0, {}, null]}
+        />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('맵이 아직 이름을 모르면 방금 고른 이름을 보인다 — 미배정으로 깜빡이지 않는다', async () => {
+    renderAfterOptimisticPatch()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` }),
+    )
+    await userEvent.click(await screen.findByRole('button', { name: '맥시' }))
+
+    const trigger = screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` })
+    expect(trigger).toHaveTextContent('맥시')
+    expect(trigger).not.toHaveTextContent('미배정')
+  })
+
+  it('맵이 이름을 알면 맵이 정본이다 — 임시 표기가 이기지 않는다', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AssigneeCell
+          issue={{ ...issueAtlas1Fixture, assigneeId: MAXI.id }}
+          assigneeName="맵이 해석한 이름"
+          listQueryKey={['issues', 'ATLAS', 0, {}, null]}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(
+      screen.getByRole('button', { name: `${issueAtlas1Fixture.key} 담당자 변경` }),
+    ).toHaveTextContent('맵이 해석한 이름')
   })
 })

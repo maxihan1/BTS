@@ -54,8 +54,14 @@ export interface AssigneeCellEditorProps {
   isSaving: boolean
   /** 검색어 변경 콜백 */
   onSearch: (query: string) => void
-  /** 담당자 변경 콜백 — UUID 또는 null(해제) */
-  onChange: (userId: string | null) => void
+  /**
+   * 담당자 변경 콜백 — UUID 또는 null(해제).
+   *
+   * `displayName` 을 함께 넘긴다. 목록의 이름 맵(`useUsersByIds`)은 새 담당자를 조회로
+   * 알아내므로 한 왕복만큼 늦는데, 그동안 방금 고른 셀이 '미배정' 으로 보이면 낙관적
+   * 반영(FR11·S1)이 깨져 보인다. 고르는 순간 이름을 아는 곳은 **여기뿐**이다.
+   */
+  onChange: (userId: string | null, displayName: string | null) => void
 }
 
 /**
@@ -125,7 +131,7 @@ export function AssigneeCellEditor({
           variant="ghost"
           size="sm"
           disabled={!canEdit || isSaving}
-          onClick={() => onChange(null)}
+          onClick={() => onChange(null, null)}
           className={`${CELL_OPTION_CLASS} text-muted-foreground hover:text-destructive`}
         >
           {/* ★문구 정본은 i18n 상수다. 여기 리터럴을 복제하면 상세 화면
@@ -149,7 +155,7 @@ export function AssigneeCellEditor({
                 variant="ghost"
                 size="sm"
                 disabled={!canEdit || isSaving}
-                onClick={() => onChange(user.id)}
+                onClick={() => onChange(user.id, getDisplayName(user))}
                 className={CELL_OPTION_CLASS}
               >
                 {getDisplayName(user)}
@@ -194,7 +200,7 @@ interface AssigneeCellPopoverBodyProps {
   issue: IssueResponse
   assigneeName: string | undefined
   isSaving: boolean
-  onChange: (userId: string | null) => void
+  onChange: (userId: string | null, displayName: string | null) => void
 }
 
 /**
@@ -256,9 +262,22 @@ export function AssigneeCell({ issue, assigneeName, listQueryKey }: AssigneeCell
   const [open, setOpen] = useState(false)
   const mutation = useIssueListCellField(listQueryKey)
 
+  /**
+   * 방금 고른 담당자 — 목록 이름 맵이 따라올 때까지의 임시 표기 (리뷰 C3).
+   *
+   * 이름 맵은 `useUsersByIds` 조회 결과라 새 담당자는 **한 왕복 뒤**에야 이름이 생긴다.
+   * 그동안 방금 고친 셀이 '미배정' 으로 보이면 낙관적 반영(FR11·S1)이 깨져 보인다.
+   *
+   * ★stale 방지 — 표시할 때 **현재 `issue.assigneeId` 와 대조**한다. 저장이 실패해 롤백되면
+   * id 가 되돌아가 자동으로 무시되고, 맵이 따라오면 그쪽이 우선한다. 그래서 되돌리는
+   * 뒷정리 코드가 필요 없다 (props 파생 useState 의 stale 함정을 구조로 피한다).
+   */
+  const [picked, setPicked] = useState<{ id: string; name: string } | null>(null)
+
   /** 담당자 선택/해제 — 먼저 닫고 저장한다. 낙관적 patch 라 닫아도 결과가 셀에 즉시 보인다 */
-  function handleChange(userId: string | null): void {
+  function handleChange(userId: string | null, displayName: string | null): void {
     setOpen(false)
+    setPicked(userId !== null && displayName !== null ? { id: userId, name: displayName } : null)
     mutation.mutate({
       issueKey: issue.key,
       field: 'assignee',
@@ -267,17 +286,21 @@ export function AssigneeCell({ issue, assigneeName, listQueryKey }: AssigneeCell
     })
   }
 
+  // 맵이 이름을 알면 그쪽이 정본. 아직 모를 때만 방금 고른 이름으로 메운다.
+  const shownName =
+    assigneeName ?? (picked !== null && picked.id === issue.assigneeId ? picked.name : undefined)
+
   return (
     <EditableCell
       open={open}
       onOpenChange={setOpen}
       // ★목록은 행이 여러 개다. 이슈 키를 접두로 붙이지 않으면 e2e strict mode 로 즉사한다
       label={`${issue.key} 담당자 변경`}
-      display={<AssigneeCellDisplay assigneeName={assigneeName} />}
+      display={<AssigneeCellDisplay assigneeName={shownName} />}
     >
       <AssigneeCellPopoverBody
         issue={issue}
-        assigneeName={assigneeName}
+        assigneeName={shownName}
         isSaving={mutation.isPending}
         onChange={handleChange}
       />

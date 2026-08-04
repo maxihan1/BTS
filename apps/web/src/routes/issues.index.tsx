@@ -282,7 +282,13 @@ function IssueListContent({
       ),
     [data.content],
   )
-  const { data: assignees = [] } = useUsersByIds(assigneeIds)
+  // ★`keepPreviousWhileIdsChange` — 셀 인라인 편집(F9)의 낙관 갱신이 목록 캐시에 새
+  // assigneeId 를 심으면 이 훅의 queryKey 가 바뀐다. 옵션이 없으면 캐시 미스로 결과가 빈
+  // 배열이 되고, 아래 맵이 통째로 비어 **바꾸지도 않은 다른 행들까지 '미배정'** 으로 깜빡인다
+  // (리뷰 C3). 이전 결과를 유지하면 이미 아는 이름은 그대로 남는다.
+  const { data: assignees = [] } = useUsersByIds(assigneeIds, {
+    keepPreviousWhileIdsChange: true,
+  })
   const assigneeNameMap = useMemo<Map<string, string>>(() => {
     const map = new Map<string, string>()
     for (const user of assignees) {
