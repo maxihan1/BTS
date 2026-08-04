@@ -22,9 +22,17 @@ Atlas Issues (BTS) 의 변경 이력. **바운디드 컨텍스트(BC — 책임 
 실제로 동작한다(이슈키 즉시매칭 · 활성 프로젝트 스코프 `text ~ "…"` AQL 250ms 디바운스 ·
 「모든 결과 보기」 탈출구). **선재 결함 1건을 같은 PR 에서 봉합** — `/search <질의>` 가 자유
 텍스트를 날것으로 넘겨 실서버에서 `SEARCH_SYNTAX_ERROR` 였는데, MSW 목이 쿼리를 읽지 않아
-E2E 가 그것을 가려 왔다(목을 진짜 증인으로 교체). **백엔드 0줄 · 마이그레이션 0 · 신규 API 0 ·
-신규 의존성 0 · 신규 UI 컴포넌트 0**(`components/ui/command.tsx` 소비처 0→1). D6 이 F13(상단바
-전역 검색)을 함께 요구하므로 **D6/D7 은 `[ ]` 로 남는다**.
+E2E 가 그것을 가려 왔다(목을 진짜 증인으로 교체). **FR-UX-12 의 백엔드 0줄 · 마이그레이션 0 ·
+신규 API 0 · 신규 의존성 0 · 신규 UI 컴포넌트 0**(`components/ui/command.tsx` 소비처 0→1).
+D6 이 F13(상단바 전역 검색)을 함께 요구하므로 **D6/D7 은 `[ ]` 로 남는다**.
+**게이트 2 독립 코드리뷰가 BLOCKER 1 + CONCERNS 3 을 적발해 같은 PR 에서 봉합했다.**
+BLOCKER 는 **또 하나의 선재 결함** — `search-export-import` 의 `AqlLexer.scanQuotedString` 에
+문자열 이스케이프가 없어(여는 `"` 이후 첫 `"` 에서 무조건 닫힘) 프론트가 조립한
+`text ~ "로그인\"버그"` 가 400 이었고, `text ~ "a\\b"` 는 통과하되 검색어가 훼손됐다.
+AQL 검색 페이지 손입력에도 있던 결함이라 **PRE_EXISTING hot-fix** 로 처리했다(D4/D5 「없음」 유지).
+**크로스 레이어 계약 테스트**가 프론트 `escapeAqlString` 출력을 렉서가 round-trip 하는지 단언해
+**두 층 중 하나만 바뀌어도 red** 다. CONCERNS 3 은 렌더층 프로젝트 상태 거짓말 3종
+(해소 중에 「결과가 없습니다」 · 조회 실패를 「고를 게 없다」로 뭉갬 · 공백 입력 시 빈 화면).
 부수로 **worktree 에서 E2E 가 아예 못 돌던 차단을 해소**했다 — `playwright.config.ts` 의
 `webServer.command` 가 `pnpm dev` 라 심볼릭 `node_modules` 에서 죽었고, `reuseExistingServer:false`
 때문에 우회로가 없었다(`worktree per 작업`이 강제이므로 **모든 작업의 E2E** 가 막혀 있었다).

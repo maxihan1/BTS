@@ -2,7 +2,13 @@
 
 > FR: **FR-UX-12** (정본 `docs/plan/product/personalization.md §4.10`) · 승계 PR **F4** ·
 > ADR [`2026-08-04-fr-ux-12-f4-command-palette-search.md`](../decisions/2026-08-04-fr-ux-12-f4-command-palette-search.md) ·
-> PR #340 · type `ui` · agent `frontend-engineer` · 백엔드 0 · 마이그레이션 0 · 신규 의존성 0
+> PR #340 · type `ui` · agent `frontend-engineer` · **FR-UX-12 의 백엔드 0** · 마이그레이션 0 ·
+> 신규 의존성 0
+>
+> ⚠️ **단, PRE_EXISTING hot-fix 1건 동승** (게이트 2 독립 리뷰 적발 · Maxi 확정 2026-08-05) —
+> `search-export-import` BC 의 `AqlLexer` 에 문자열 이스케이프가 없어 프론트가 조립한
+> `text ~ "…\"…"` 가 400 이었다. **AQL 검색 페이지 손입력에도 있던 선재 결함**이라 D4/D5 는
+> 「없음」 유지. 상세는 ADR §결과.
 
 ## 요약
 
