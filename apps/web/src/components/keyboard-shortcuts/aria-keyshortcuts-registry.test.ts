@@ -170,10 +170,37 @@ const IN_REGISTRY_DECLARATIONS = DECLARATIONS.filter((d) => !OUT_OF_REGISTRY_FIL
 /** 화면이 실제로 스크린리더에 안내하는 키 전량 */
 const DECLARED_KEYS = new Set(IN_REGISTRY_DECLARATIONS.flatMap((d) => d.keys))
 
+/**
+ * 레지스트리 키 전량 — **레이어를 가리지 않는다.**
+ *
+ * ★비교 범위를 `issue-detail` 로 좁히면 **옳은 변경이 가드에 막힌다.** 예컨대 사이드바
+ * 토글 버튼에 `aria-keyshortcuts="["` 를 붙이는 것은 레지스트리에 실재하는 키
+ * (`app-shell` 레이어)를 정확히 안내하는 정당한 선언인데, 상세 레이어 목록에만 대면
+ * "레지스트리와 불일치" red 가 난다. 그러면 다음 사람은 그 선언을 지우거나 **가드를
+ * 약화시키는 쪽**으로 손을 대고, 이 파일이 지키려던 것이 통째로 사라진다.
+ * 오늘 두 집합이 우연히 같은 것은 마침 선언이 상세 컨트롤 5곳뿐이기 때문이지 설계가 아니다.
+ *
+ * 그래서 "선언 → 레지스트리" 방향은 **전량**으로 넓히고, 예외 목록이 지키는
+ * "레지스트리 → 선언" 방향만 `issue-detail` 로 남긴다(아래 두 가드).
+ */
+const REGISTRY_KEYS = new Set(CONTEXT_SHORTCUTS.map((s) => s.key))
+
 /** `issue-detail` 레이어의 레지스트리 키 전량 */
 const DETAIL_REGISTRY_KEYS = new Set(
   CONTEXT_SHORTCUTS.filter((s) => s.context === 'issue-detail').map((s) => s.key),
 )
+
+/**
+ * 레지스트리 **어디에도** 없는 키를 안내하는 선언 지점 — `파일:행`.
+ *
+ * 실물 스캔과 픽스처가 **같은 술어**를 쓰도록 함수로 뽑는다. 픽스처가 다른 코드 경로를
+ * 재면 "범위를 넓힌 뒤에도 가드가 살아 있다"는 증명이 성립하지 않는다.
+ */
+function orphanDeclarations(declarations: readonly KeyshortcutDeclaration[]): string[] {
+  return declarations
+    .filter((d) => d.keys.some((key) => !REGISTRY_KEYS.has(key)))
+    .map((d) => `${d.file}:${d.line}`)
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 가드
@@ -212,12 +239,31 @@ describe('FR-UX-10 F11 — aria-keyshortcuts 리터럴 ↔ CONTEXT_SHORTCUTS 차
     expect(stale).toEqual([])
   })
 
-  it('★화면이 안내하는 키 집합이 issue-detail 레지스트리와 정확히 일치한다', () => {
-    const expected = new Set(
-      [...DETAIL_REGISTRY_KEYS].filter((key) => !KEYS_WITHOUT_ANNOUNCED_CONTROL.has(key)),
+  it('★화면이 안내하는 키가 전부 레지스트리에 실재한다 (레이어 무관)', () => {
+    // 레지스트리에서 키를 재배치·삭제해도 이 리터럴만 제자리에 남는 지배 결함을 여기서 막는다.
+    // 소스 스캔으로는 "이 컨트롤이 어느 레이어 소속인가"를 알 수 없으므로(파일 경로는
+    // 레이어를 뜻하지 않는다) 레이어 대조까지는 하지 않는다 — 그건 이 가드의 사거리 밖이고,
+    // 억지로 흉내 내면 위 주석의 거짓 red 를 그대로 되살린다.
+    expect(orphanDeclarations(IN_REGISTRY_DECLARATIONS)).toEqual([])
+  })
+
+  it('넓힌 범위가 다른 레이어의 정당한 선언을 통과시키되, 레지스트리 밖 글자는 그대로 막는다', () => {
+    // 좁은 범위였다면 `[`(app-shell)는 red 였다. 넓힌 뒤에도 가드가 공허하지 않다는 증거를
+    // 픽스처로 영구 고정한다 — 실물 소스가 언젠가 `[` 를 선언해도 이 짝은 계속 유효하다.
+    const otherLayer = declarationsInSource('<button aria-keyshortcuts="[" />', 'shell.tsx')
+    expect(orphanDeclarations(otherLayer)).toEqual([])
+
+    const notInRegistry = declarationsInSource('<button aria-keyshortcuts="z" />', 'shell.tsx')
+    expect(orphanDeclarations(notInRegistry)).toEqual(['shell.tsx:1'])
+  })
+
+  it('★issue-detail 레지스트리 키는 예외를 뺀 전부가 안내된다', () => {
+    const unannounced = [...DETAIL_REGISTRY_KEYS].filter(
+      (key) => !KEYS_WITHOUT_ANNOUNCED_CONTROL.has(key) && !DECLARED_KEYS.has(key),
     )
 
-    expect(DECLARED_KEYS).toEqual(expected)
+    // 개수가 아니라 **어느 키가 빠졌는지**를 실패 메시지에 그대로 띄운다.
+    expect(unannounced).toEqual([])
   })
 
   it('예외 목록이 낡지 않았다 — 레지스트리에 실재하고, 소스에는 선언되지 않았다', () => {
@@ -226,7 +272,7 @@ describe('FR-UX-10 F11 — aria-keyshortcuts 리터럴 ↔ CONTEXT_SHORTCUTS 차
     // ← 방향. 레지스트리에서 사라진 키를 계속 예외로 두면 예외 목록이 조용히 검사망을 넓힌다.
     expect(exceptions.filter((key) => !DETAIL_REGISTRY_KEYS.has(key))).toEqual([])
 
-    // → 방향. 전용 컨트롤이 생겨 속성을 붙였다면 예외에서 빼야 한다(그래야 위 일치 검사가 그 키를 맡는다).
+    // → 방향. 전용 컨트롤이 생겨 속성을 붙였다면 예외에서 빼야 한다(그래야 위 안내 검사가 그 키를 맡는다).
     expect(exceptions.filter((key) => DECLARED_KEYS.has(key))).toEqual([])
   })
 
