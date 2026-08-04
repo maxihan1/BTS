@@ -135,9 +135,15 @@ Then   S1 과 동일하게 동작한다 (이슈키는 프로젝트에 의존하�
 | **FR7** | 활성 프로젝트가 `ready` 가 아니면 자유 텍스트 검색을 호출하지 않고 안내를 표시한다. 이슈키 경로는 계속 동작한다 |
 | **FR8** | 빈 입력 시 기존 바로가기 4개 + 명령 힌트 3개를 순서 그대로 노출한다 (무회귀) |
 | **FR9** | `/search <질의>` 슬래시 명령이 FR5 의 같은 래핑 함수를 거쳐 유효한 AQL 로 나간다 (선재 결함 봉합) |
-| **FR10** | 결과 렌더는 `components/ui/command.tsx` 래퍼를 소비한다 (`CommandInput`/`CommandList`/`CommandGroup`/`CommandItem`/`CommandEmpty`). 다이얼로그 셸은 래퍼에 없으므로 `CommandPrimitive.Dialog` 를 유지한다 |
+| **FR10** | 결과 렌더는 `components/ui/command.tsx` 래퍼를 소비한다 (`CommandInput`/`CommandList`/`CommandGroup`/`CommandItem`). 다이얼로그 셸은 래퍼에 없으므로 `CommandPrimitive.Dialog` 를 유지한다. **`CommandEmpty` 는 쓰지 않는다** — 아래 주석 참조 |
 | **FR11** | MSW `search/aql` 핸들러가 쿼리를 실제로 검사해, 필드/연산자 형태가 아닌 bare 텍스트에 `SEARCH_SYNTAX_ERROR` 를 반환한다 (가짜 그린 제거) |
-| **FR12** | 결과 0건이면 "결과가 없습니다" 를 표시한다 (`CommandEmpty`) |
+| **FR12** | 결과 0건이면 "결과가 없습니다." 를 **직접 렌더**한다 (`role="alert"`, 기존 `guidanceMessage` 와 동일 방식) |
+
+> **★ `CommandEmpty` 배제 근거 (plan 단계 cmdk 소스 실측).** `CommandEmpty` 는
+> `filtered.count === 0` 일 때만 렌더한다. 이 팔레트는 `shouldFilter={false}` 라 cmdk 가 필터를
+>건너뛰고 `filtered.count = 등록된 아이템 수` 로 둔다(`cmdk/dist/index.mjs` 의 `J()`).
+> 「모든 결과 보기」(FR6)가 항상 렌더되므로 **결과 0건이어도 count 는 1** 이고 `CommandEmpty` 는
+> **영영 발동하지 않는다** — 넣었으면 도달 불가한 죽은 코드였다.
 | **FR13** | 검색 실패(400/403/500)는 팔레트 안에서 안내로 표시하고, 팔레트를 닫거나 라우팅하지 않는다 |
 
 ## 비기능 요구사항 (NFR)
@@ -147,7 +153,7 @@ Then   S1 과 동일하게 동작한다 (이슈키는 프로젝트에 의존하�
 | **NFR1** | 디바운스 250ms — `LabelAutocompleteInput` 선례와 동일 상수 관례 | 타이머 테스트로 1회 호출 확인 |
 | **NFR2** | 키보드만으로 완결 — 방향키 이동 + Enter 실행, 마우스 불필요 | E2E 에서 `page.keyboard` 만으로 S1·S4·S5 완주 |
 | **NFR3** | 팔레트 결과 상한 = **7건**. 초과분은 「모든 결과 보기」로 유도 | `searchAql({size: 7})` |
-| **NFR4** | IME 조합 중 Enter 는 실행하지 않는다 (기존 가드 유지) | `isComposing` 단언 |
+| **NFR4** | IME 조합 중 Enter 는 실행하지 않는다. **슬래시 경로는 우리 코드가**(`handleInputKeyDown` 의 `isComposing`), **결과 선택 경로는 cmdk 루트가** 막는다(`isComposing \|\| keyCode === 229`, `dist/index.mjs` 실측) | 두 경로 각각 단언. **cmdk 쪽은 라이브러리 동작이라 업그레이드가 조용히 없앨 수 있어 회귀 가드가 필수다** |
 | **NFR5** | 접근성 — 결과는 `role="option"`, 목록은 cmdk 가 부여하는 `role="listbox"`. 하이라이트는 `data-selected` | 유닛에서 role 조회 |
 | **NFR6** | 라이트/다크 양쪽 눈확인 (계약 §6) | 브라우저 확인 결과를 게이트 2 요약에 기록 |
 
