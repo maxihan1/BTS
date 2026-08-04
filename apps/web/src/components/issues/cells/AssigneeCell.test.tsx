@@ -25,7 +25,7 @@ describe('AssigneeCellEditor', () => {
     const onChange = vi.fn()
     render(
       <AssigneeCellEditor
-        value={null} currentAssignee={null} users={USERS} isLoading={false} canEdit isSaving={false}
+        value={null} currentAssigneeName={null} users={USERS} isLoading={false} canEdit isSaving={false}
         onSearch={vi.fn()} onChange={onChange}
       />,
     )
@@ -39,7 +39,7 @@ describe('AssigneeCellEditor', () => {
     const onChange = vi.fn()
     render(
       <AssigneeCellEditor
-        value={MAXI.id} currentAssignee={MAXI} users={[]} isLoading={false} canEdit isSaving={false}
+        value={MAXI.id} currentAssigneeName={MAXI.displayName} users={[]} isLoading={false} canEdit isSaving={false}
         onSearch={vi.fn()} onChange={onChange}
       />,
     )
@@ -52,7 +52,7 @@ describe('AssigneeCellEditor', () => {
   it('검색 결과가 없으면 빈 상태를 안내한다 (E6)', () => {
     render(
       <AssigneeCellEditor
-        value={null} currentAssignee={null} users={[]} isLoading={false} canEdit isSaving={false}
+        value={null} currentAssigneeName={null} users={[]} isLoading={false} canEdit isSaving={false}
         onSearch={vi.fn()} onChange={vi.fn()}
       />,
     )
@@ -63,7 +63,7 @@ describe('AssigneeCellEditor', () => {
   it('검색 중에는 "결과 없음" 대신 진행 상태를 보인다 (디자인 리뷰 Pass 2)', () => {
     render(
       <AssigneeCellEditor
-        value={null} currentAssignee={null} users={[]} isLoading canEdit isSaving={false}
+        value={null} currentAssigneeName={null} users={[]} isLoading canEdit isSaving={false}
         onSearch={vi.fn()} onChange={vi.fn()}
       />,
     )
@@ -75,7 +75,7 @@ describe('AssigneeCellEditor', () => {
   it('popover 맨 위에 현재 담당자를 보인다 (디자인 리뷰 Pass 1)', () => {
     render(
       <AssigneeCellEditor
-        value={MAXI.id} currentAssignee={MAXI} users={[]} isLoading={false} canEdit isSaving={false}
+        value={MAXI.id} currentAssigneeName={MAXI.displayName} users={[]} isLoading={false} canEdit isSaving={false}
         onSearch={vi.fn()} onChange={vi.fn()}
       />,
     )
@@ -86,7 +86,7 @@ describe('AssigneeCellEditor', () => {
   it('권한이 없으면 검색창이 비활성이다 (FR10 fail-closed)', () => {
     render(
       <AssigneeCellEditor
-        value={null} currentAssignee={null} users={USERS} isLoading={false} canEdit={false} isSaving={false}
+        value={null} currentAssigneeName={null} users={USERS} isLoading={false} canEdit={false} isSaving={false}
         onSearch={vi.fn()} onChange={vi.fn()}
       />,
     )
@@ -97,7 +97,7 @@ describe('AssigneeCellEditor', () => {
   it('Enter 로 폼이 제출되지 않도록 기본동작을 막는다 (FR-UX-09 F2 회귀 방지)', () => {
     render(
       <AssigneeCellEditor
-        value={null} currentAssignee={null} users={USERS} isLoading={false} canEdit isSaving={false}
+        value={null} currentAssigneeName={null} users={USERS} isLoading={false} canEdit isSaving={false}
         onSearch={vi.fn()} onChange={vi.fn()}
       />,
     )
