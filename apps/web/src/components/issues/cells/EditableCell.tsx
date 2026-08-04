@@ -79,7 +79,27 @@ export function EditableCell({
       </PopoverTrigger>
       {/* onClick 전파 차단 — popover 내용은 DOM 상 행 밖(portal)이지만 React 합성 이벤트는
           트리거 기준으로 버블링하므로 내용 클릭도 행까지 올라간다. */}
-      <PopoverContent className="w-64 p-2" onClick={(event) => event.stopPropagation()}>
+      <PopoverContent
+        className="w-64 p-2"
+        onClick={(event) => event.stopPropagation()}
+        // ★편집 중에는 목록 단축키를 막는다 (E10).
+        //
+        // `shortcuts.ts` 의 `shouldIgnoreEvent` 는 `isComposing` · 수식키 ·
+        // `isEditableTarget`(input/textarea/select/contentEditable)만 본다. popover 안에서
+        // 포커스가 **버튼**에 있으면 편집 요소가 아니라 `j`/`k`(F10 커서 이동)가 그대로
+        // 발동해 편집 도중 목록 커서가 움직이고 상세가 바뀐다. 담당자 셀의 검색 `<input>`
+        // 은 우연히 안전하지만 우선순위·상태 셀은 아니다 (2026-08-04 실측).
+        //
+        // 발화 지점(`useKeyboardShortcuts.ts:186`)이 **bubble 단계** document 리스너라
+        // 여기서 끊으면 도달하지 않는다. React 합성 `stopPropagation` 은 네이티브
+        // `stopPropagation` 도 함께 호출한다.
+        //
+        // 🛑 `Escape` 는 **통과시킨다.** Radix `DismissableLayer` 가 document keydown 으로
+        //    닫기를 처리하므로 막으면 popover 가 Esc 로 닫히지 않아 E2·FR4 가 깨진다.
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') event.stopPropagation()
+        }}
+      >
         {children}
       </PopoverContent>
     </Popover>
