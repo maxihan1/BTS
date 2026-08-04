@@ -45,6 +45,14 @@ const INPUTS = {
   gitignore: { file: '.gitignore', coveredBy: '.gitignore' },
   /** 연결해봐야 훅 본체가 검사를 안 하면 무의미하다. */
   hook: { file: '.husky/pre-commit', coveredBy: '.husky/**' },
+  /**
+   * 훅이 **부르는** 설정. 훅 본체와 한 몸으로 봐야 한다.
+   *
+   * 훅 본체에서 pnpm 래퍼를 걷어내도 이 파일이 래퍼를 쓰면 커밋은 같은 자리에서 죽는다.
+   * 실제로 2026-08-04 에 그 절반 봉합 상태가 났다 — 본체는 고쳐졌는데 이 파일이 그대로라
+   * `apps/web/**` 를 건드리는 커밋만 골라서 죽는, 더 찾기 어려운 형태였다.
+   */
+  lintStaged: { file: '.lintstagedrc.json', coveredBy: '.lintstagedrc.json' },
   /** 층 1 — worktree 생성 시 훅을 연결하는 곳. */
   start: { file: '.claude/skills/bts-start/SKILL.md', coveredBy: '.claude/skills/**' },
   /** 층 2 — PR push 전 최종 점검이 판별식을 돌리는 곳. */
@@ -57,13 +65,30 @@ const INPUTS = {
 } as const;
 
 /**
- * worktree 에서 실행 불가능한 명령. 훅 본체가 이걸 쓰면 연결해도 **매번 죽는다.**
+ * worktree 에서 실행 불가능한 것 — pnpm 래퍼 호출 **전체**.
  *
  * worktree 의 `node_modules` 는 main 을 가리키는 심볼릭 링크다. pnpm 11 의 실행 전
  * 의존성 검사가 경로 불일치를 감지해 `pnpm install` 을 자동 트리거하고,
  * TTY 가 없어 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 중단된다 (2026-08-04 실측).
+ *
+ * ## 왜 하위 명령 열거가 아니라 낱말 금지인가
+ *
+ * 처음엔 `['pnpm exec', 'pnpm run', 'pnpm install']` 로 적었다. 그런데 `.lintstagedrc.json`
+ * 의 실제 명령은 `pnpm --filter @bts/web exec eslint` 였고, 사이에 낀 플래그 때문에
+ * **셋 다 안 걸렸다.** 판별식은 초록인데 결함은 살아 있는, 이 저장소가 반복해온 형태다.
+ * 하위 명령 열거는 플래그가 하나만 끼어도 뚫린다 — 그래서 `pnpm` 이라는 낱말 자체를 막는다.
+ *
+ * 경계를 `\b` 가 아니라 문자 클래스로 잡는 이유. `\bpnpm\b` 는 `node_modules/.pnpm/` 같은
+ * **정상 경로**까지 잡아 오탐이 난다. 명령어가 올 수 있는 자리(줄머리 · 공백 · 파이프 ·
+ * 경로 구분자 뒤)만 본다.
  */
-const HOOK_FORBIDDEN_COMMANDS = ['pnpm exec', 'pnpm run', 'pnpm install'] as const;
+const PNPM_WRAPPER = /(?:^|[\s;|&(]|\/)pnpm(?:[\s;|&)]|$)/;
+
+/** pnpm 래퍼를 대신하는 처방 — 실패 메시지에 그대로 실어 막힌 사람이 바로 고치게 한다. */
+const PNPM_WRAPPER_REMEDY =
+  `처방. 바이너리를 직접 부른다 — 'node_modules/.bin/<도구>' 또는\n` +
+  `      'apps/web/node_modules/.bin/<도구>' (루트에 없는 도구는 후자에만 있다).\n` +
+  `      워크스페이스 필터(--filter)로 cwd 를 옮기던 명령은 '--config <경로>' 로 대체한다.`;
 
 /** worktree 가 심볼릭 링크로 갖는 경로 — 끝 슬래시를 붙이면 링크를 놓친다. */
 const SYMLINKED_IGNORE_PATHS = ['node_modules', 'apps/web/node_modules', '.husky/_'] as const;
@@ -92,6 +117,48 @@ const MIN_FENCED_BLOCKS = 3;
 
 function read(input: { file: string }): string {
   return fs.readFileSync(path.join(REPO_ROOT, input.file), 'utf8');
+}
+
+/** 한 줄의 실행 명령과 그 출처. 실패 메시지가 어느 파일 어디인지 바로 가리키게 한다. */
+interface ExecutionLine {
+  where: string;
+  command: string;
+}
+
+/** 훅 본체에서 실제로 실행되는 줄만. 주석(`#`)과 빈 줄은 실행되지 않으므로 뺀다. */
+function hookBodyLines(): ExecutionLine[] {
+  return read(INPUTS.hook)
+    .split('\n')
+    .map((line, i) => ({ where: `${INPUTS.hook.file}:${i + 1}`, command: line.trim() }))
+    .filter(({ command }) => command.length > 0 && !command.startsWith('#'));
+}
+
+/**
+ * lint-staged 설정이 커밋마다 실행하는 명령. 키는 glob 이고 값이 명령이다.
+ *
+ * JSON 은 주석을 못 다니, 이 파일이 왜 pnpm 을 못 쓰는지는 여기와 아래 실패 메시지에만 남는다.
+ */
+function lintStagedCommands(): ExecutionLine[] {
+  const parsed: unknown = JSON.parse(read(INPUTS.lintStaged));
+  if (typeof parsed !== 'object' || parsed === null) return [];
+
+  return Object.entries(parsed as Record<string, unknown>).flatMap(([glob, value]) => {
+    const commands = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+    return commands
+      .filter((c): c is string => typeof c === 'string')
+      .map((command) => ({ where: `${INPUTS.lintStaged.file}  "${glob}"`, command }));
+  });
+}
+
+/**
+ * 훅이 커밋마다 실행하는 명령 **전부** — 본체 + 본체가 부르는 설정.
+ *
+ * 두 파일을 한 목록으로 합치는 것이 핵심이다. 따로 검사하면 한쪽만 고친 절반 봉합이
+ * 통과한다 — 훅이 살아나도 훅이 부르는 설정이 래퍼를 쓰면 결국 같은 자리에서 죽는다.
+ * 두 목록이 서로를 검사하지 않는 것이 이 저장소의 지배적 결함 양식이다.
+ */
+function hookExecutionLines(): ExecutionLine[] {
+  return [...hookBodyLines(), ...lintStagedCommands()];
 }
 
 /**
@@ -164,6 +231,19 @@ describe('worktree 훅 배선 정합', () => {
           `0 이면 아래 배선 단언이 전부 공허하게 통과한다.`,
       );
     }
+
+    // 실행선 추출이 0건이면 pnpm 래퍼 단언이 통째로 공허해진다. 출처별로 따로 센다 —
+    // 합계만 보면 한쪽이 0 이어도 다른 쪽 개수에 가려진다.
+    for (const [source, lines] of [
+      [INPUTS.hook.file, hookBodyLines()],
+      [INPUTS.lintStaged.file, lintStagedCommands()],
+    ] as const) {
+      assert.ok(
+        lines.length > 0,
+        `${source} 에서 실행 명령을 0건 뽑았다 — 추출기가 고장났거나 파일 형식이 바뀌었다.\n` +
+          `0 이면 'worktree 에서 실행 가능한 명령만 쓴다' 단언이 검사할 것 없이 통과한다.`,
+      );
+    }
   });
 
   /**
@@ -224,23 +304,29 @@ describe('worktree 훅 배선 정합', () => {
     );
   });
 
+  /**
+   * ★ 훅 본체와 lint-staged 설정을 **한 목록으로** 검사한다.
+   *
+   * 훅 본체만 보면 절반 봉합이 통과한다. 2026-08-04 에 실제로 그랬다 — `.husky/pre-commit`
+   * 의 `pnpm exec` 는 걷어냈는데 그 훅이 부르는 `.lintstagedrc.json` 이 여전히
+   * `pnpm --filter @bts/web exec eslint` 였다. `apps/web/**` 파일이 staged 인 커밋에서만
+   * 죽으므로, 그 경로를 밟지 않는 커밋만 하는 동안에는 결함이 보이지도 않았다.
+   */
   test('pre-commit 훅이 worktree 에서 실행 가능한 명령만 쓴다', () => {
-    const hook = read(INPUTS.hook);
-    const offending = hook
-      .split('\n')
-      .map((line, i) => ({ line: line.trim(), no: i + 1 }))
-      .filter(({ line }) => !line.startsWith('#'))
-      .filter(({ line }) => HOOK_FORBIDDEN_COMMANDS.some((cmd) => line.includes(cmd)))
-      .map(({ line, no }) => `${INPUTS.hook.file}:${no}  ${line}`);
+    const offending = hookExecutionLines()
+      .filter(({ command }) => PNPM_WRAPPER.test(command))
+      .map(({ where, command }) => `${where}\n    ${command}`);
 
     assert.deepEqual(
       offending,
       [],
       `훅이 worktree 에서 실행 불가능한 명령을 쓴다.\n${offending.join('\n')}\n\n` +
-        `BTS 의 모든 실작업은 worktree 안에서 이뤄진다. 훅을 연결해도(층 1) 본체가 이 명령을\n` +
-        `쓰면 매 커밋이 ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 로 죽는다 — 결국\n` +
-        `--no-verify 로 우회하게 되고 훅은 다시 장식이 된다.\n` +
-        `처방. 'node_modules/.bin/<도구>' 를 직접 호출한다 (pnpm 래퍼 우회).`,
+        `BTS 의 모든 실작업은 worktree 안에서 이뤄진다. 훅을 연결해도(층 1) 실행선이 pnpm\n` +
+        `래퍼를 부르면 매 커밋이 ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 로 죽는다 —\n` +
+        `결국 --no-verify 로 우회하게 되고 훅은 다시 장식이 된다.\n` +
+        `훅 본체와 lint-staged 설정을 함께 보는 이유. 한쪽만 고치면 나머지 한쪽이 같은 자리에서\n` +
+        `죽인다. 설정 쪽은 'apps/web/**' 가 staged 인 커밋에서만 터져 더 늦게 발견된다.\n` +
+        PNPM_WRAPPER_REMEDY,
     );
   });
 
@@ -298,6 +384,26 @@ describe('worktree 훅 배선 정합', () => {
       '산문에만 있는 언급을 배선으로 오인했다 — 코드블록 한정이 풀렸다.',
     );
     assert.equal(fencedBlocks(wired).length, 1, '펜스 파서가 블록 수를 틀리게 셌다.');
+
+    // pnpm 탐지. 아래 첫 줄이 실제로 놓쳤던 문자열이다 — 하위 명령을 열거하던 시절의
+    // 'pnpm exec' 는 사이에 낀 --filter 때문에 이걸 못 잡았고, 그 갭이 결함을 살려뒀다.
+    for (const caught of [
+      'pnpm --filter @bts/web exec eslint --max-warnings 0 --cache',
+      'pnpm exec lint-staged',
+      'npx pnpm install',
+    ]) {
+      assert.ok(PNPM_WRAPPER.test(caught), `pnpm 래퍼를 놓쳤다: ${caught}`);
+    }
+
+    // 오탐 대조. 정상 처방과 pnpm 가상 스토어 경로를 위반으로 읽으면 훅을 고칠 방법이 없어진다.
+    for (const allowed of [
+      'apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.js --cache',
+      'node_modules/.bin/lint-staged',
+      'node scripts/build-doc-index.mjs --check',
+      'node_modules/.pnpm/foo/bar',
+    ]) {
+      assert.equal(PNPM_WRAPPER.test(allowed), false, `정상 명령을 위반으로 읽었다: ${allowed}`);
+    }
   });
 
   for (const trigger of CI_TRIGGERS) {
