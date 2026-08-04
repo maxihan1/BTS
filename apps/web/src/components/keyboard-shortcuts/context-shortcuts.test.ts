@@ -12,9 +12,23 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CONTEXT_SHORTCUTS 레지스트리', () => {
-  it('F10 범위인 5종만 담는다 — F11 상세 액션 키는 아직 없다', () => {
-    expect(CONTEXT_SHORTCUTS).toHaveLength(5)
-    expect(CONTEXT_SHORTCUTS.map((s) => s.key)).toEqual(['j', 'k', 'o', 't', '['])
+  it('13종(F10 목록·셸 5 + F11 상세 액션 8)이 순서대로 등록돼 있다', () => {
+    expect(CONTEXT_SHORTCUTS).toHaveLength(13)
+    expect(CONTEXT_SHORTCUTS.map((s) => s.key)).toEqual([
+      'j',
+      'k',
+      'o',
+      't',
+      '[',
+      'a',
+      'i',
+      'm',
+      'e',
+      'l',
+      's',
+      'w',
+      '.',
+    ])
   })
 
   it('각 항목이 key·context·description·action 을 모두 채운다', () => {
@@ -22,7 +36,7 @@ describe('CONTEXT_SHORTCUTS 레지스트리', () => {
       expect(shortcut.key).toBeTruthy()
       expect(shortcut.description).toBeTruthy()
       expect(shortcut.action.kind).not.toBe('none')
-      expect(['issue-list', 'app-shell']).toContain(shortcut.context)
+      expect(['issue-detail', 'issue-list', 'app-shell']).toContain(shortcut.context)
     }
   })
 
@@ -35,6 +49,17 @@ describe('CONTEXT_SHORTCUTS 레지스트리', () => {
     expect(contextOf('o')).toBe('issue-list')
     expect(contextOf('t')).toBe('issue-list')
     expect(contextOf('[')).toBe('app-shell')
+  })
+
+  it('F11 상세 액션 7종은 issue-detail 레이어이고 팔레트만 app-shell 이다', () => {
+    const contextOf = (key: string): string =>
+      CONTEXT_SHORTCUTS.find((s) => s.key === key)?.context ?? 'MISSING'
+
+    for (const key of ['a', 'i', 'm', 'e', 'l', 's', 'w']) {
+      expect(contextOf(key)).toBe('issue-detail')
+    }
+    // `.` 은 팔레트를 여는데 팔레트는 전역 기능이다 — 목록 화면에서도 눌러야 열린다.
+    expect(contextOf('.')).toBe('app-shell')
   })
 
   it('키가 중복되지 않는다 — 한 키가 두 동작으로 갈리면 판별이 모호해진다', () => {
@@ -109,6 +134,26 @@ describe('resolveContextKeydown — 컨텍스트 레이어 판별', () => {
     expect(resolveContextKeydown('[', 'app-shell', ALL_LAYERS)).toEqual({
       layer: 'app-shell',
       action: { kind: 'toggle-sidebar' },
+    })
+  })
+
+  it('issue-detail 에서 a 는 담당자 선택 포커스로 판별된다 (F11)', () => {
+    expect(resolveContextKeydown('a', 'issue-detail', ALL_LAYERS)).toEqual({
+      layer: 'issue-detail',
+      action: { kind: 'focus-assignee' },
+    })
+  })
+
+  it('★상세 액션 키는 목록 화면에서 발화하지 않는다 — 좁은 레이어는 넓은 쪽으로 새지 않는다', () => {
+    for (const key of ['a', 'i', 'm', 'e', 'l', 's', 'w']) {
+      expect(resolveContextKeydown(key, 'issue-list', ALL_LAYERS)).toBeNull()
+    }
+  })
+
+  it('★넓은 컨텍스트 폴백 — 목록 화면에서도 . 는 app-shell 항목으로 팔레트를 연다', () => {
+    expect(resolveContextKeydown('.', 'issue-list', ALL_LAYERS)).toEqual({
+      layer: 'app-shell',
+      action: { kind: 'open-command-palette' },
     })
   })
 
