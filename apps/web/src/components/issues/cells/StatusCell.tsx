@@ -1,10 +1,17 @@
 // 이슈 목록 상태 셀 — 클릭해 가용 전이를 고른다 (FR-UX-11 F9)
 import type { JSX } from 'react'
-import type { IssueTransition } from '@/api/issues'
+import { useState } from 'react'
+import type { QueryKey } from '@tanstack/react-query'
+import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
-import { CELL_OPTION_CLASS } from './EditableCell'
+import { ResolutionModal } from '@/components/issue/ResolutionModal'
+import { useIssueTransitions } from '@/hooks/use-issue-transitions'
+import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+import { useIssueListCellField } from '@/hooks/use-issue-list-cell-field'
+import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
+import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
 
 /**
  * 닫힌 상태에서 보이는 상태 배지.
@@ -111,5 +118,145 @@ export function StatusCellEditor({
         </Button>
       ))}
     </div>
+  )
+}
+
+/** StatusCell props */
+export interface StatusCellProps {
+  /** 대상 이슈 — 현재 상태·`expectedVersion`·기존 결의안의 출처 */
+  issue: IssueResponse
+  /** 목록 queryKey — mutation 이 이 캐시를 낙관적으로 patch 한다 */
+  listQueryKey: QueryKey
+}
+
+/** StatusCellPopoverBody props */
+interface StatusCellPopoverBodyProps {
+  issue: IssueResponse
+  isSaving: boolean
+  onTransition: (toStateKey: string) => void
+  onDoneTransition: (transition: IssueTransition) => void
+}
+
+/**
+ * popover 가 열렸을 때만 마운트된다 — 전이·권한 조회가 여기서만 발생한다 (FR12·NFR1).
+ *
+ * 이 컴포넌트를 `EditableCell` **밖으로** 끌어올리면 목록 초기 렌더에서 행 수만큼 전이·권한
+ * 조회가 터진다(D-3 가 막으려던 N+1 그 자체). `IssueTable.test.tsx` 의 FR12 가드가 잡는다.
+ *
+ * @param props 대상 이슈 · 저장 진행 여부 · 전이 콜백 2종
+ * @returns 가용 전이 목록 또는 사유 안내
+ */
+function StatusCellPopoverBody({
+  issue,
+  isSaving,
+  onTransition,
+  onDoneTransition,
+}: StatusCellPopoverBodyProps): JSX.Element {
+  const { data: transitions = [], isLoading, isError, error } = useIssueTransitions(issue.key)
+  const permissions = useIssuePermissions(issue.key)
+
+  return (
+    <StatusCellEditor
+      transitions={transitions}
+      // ★공용 헬퍼 — 422(워크플로우 미설정)와 200+빈 배열(종료 상태)을 가른다 (FR8·E16)
+      unavailableReason={resolveTransitionUnavailableReason({
+        isError,
+        error,
+        transitionCount: transitions.length,
+      })}
+      // fail-closed — 권한이 확정되기 전에는 false (D-6)
+      canTransition={permissions.data?.permissions.TRANSITION === true}
+      isLoading={isLoading || permissions.isLoading}
+      isSaving={isSaving}
+      onTransition={onTransition}
+      onDoneTransition={onDoneTransition}
+    />
+  )
+}
+
+/**
+ * 상태 셀 조립 — 배지(닫힘) + 전이 목록(열림) + 종료 전이 결의안 모달.
+ *
+ * mutation 훅은 popover **밖**(이 컴포넌트)에 둔다. 저장은 popover 를 닫은 뒤 시작하고
+ * 종료 전이는 popover 가 닫힌 뒤 모달에서 확정되므로, 훅이 popover 안에 있으면 관찰자가
+ * 이미 언마운트된 상태가 된다. `useMutation` 은 네트워크를 유발하지 않으므로 밖에 두어도
+ * FR12(조회 지연)와 무관하다.
+ *
+ * @param props 대상 이슈 · 목록 queryKey
+ * @returns 편집 가능한 상태 셀
+ */
+export function StatusCell({ issue, listQueryKey }: StatusCellProps): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [pendingDone, setPendingDone] = useState<IssueTransition | null>(null)
+  const mutation = useIssueListCellField(listQueryKey)
+
+  /**
+   * 전이 실행 — 종료 전이면 `resolutionId` 를 함께 싣는다.
+   *
+   * @param toStateKey 목표 상태 키
+   * @param resolutionId 종료 전이의 결의안 UUID. 비종료 전이면 undefined
+   */
+  function runTransition(toStateKey: string, resolutionId?: string): void {
+    mutation.mutate({
+      issueKey: issue.key,
+      field: 'status',
+      toStatusKey: toStateKey,
+      expectedVersion: issue.version,
+      resolutionId,
+    })
+  }
+
+  /** 비종료 전이 — 먼저 닫고 저장한다. 낙관적 patch 라 닫아도 결과가 배지에 즉시 보인다 */
+  function handleTransition(toStateKey: string): void {
+    setOpen(false)
+    runTransition(toStateKey)
+  }
+
+  /** 종료 전이 선택 — popover 를 닫고 결의안 모달로 넘긴다 (FR14·E14) */
+  function handleDoneTransition(transition: IssueTransition): void {
+    setOpen(false)
+    setPendingDone(transition)
+  }
+
+  /** 결의안 확정 — resolutionId 를 실어 전이한다 */
+  function handleResolutionConfirm(resolutionId: string): void {
+    if (pendingDone === null) return
+    runTransition(pendingDone.toStateKey, resolutionId)
+    setPendingDone(null)
+  }
+
+  return (
+    <>
+      <EditableCell
+        open={open}
+        onOpenChange={setOpen}
+        // ★목록은 행이 여러 개다. 이슈 키를 접두로 붙이지 않으면 e2e strict mode 로 즉사한다
+        label={`${issue.key} 상태 변경`}
+        display={<StatusCellDisplay currentStateKey={issue.currentStateKey} />}
+      >
+        <StatusCellPopoverBody
+          issue={issue}
+          isSaving={mutation.isPending}
+          onTransition={handleTransition}
+          onDoneTransition={handleDoneTransition}
+        />
+      </EditableCell>
+
+      {pendingDone !== null && (
+        // ★행 클릭 전파 차단. 모달은 portal 로 행 밖에 그려지지만 React 합성 이벤트는 **트리
+        //   기준**으로 버블링하므로, 모달 안 클릭이 `<TableRow onClick>` 까지 올라가 상세로
+        //   튄다. `EditableCell` 의 `PopoverContent` 와 같은 처방이다.
+        //   `contents` = 이 래퍼가 박스를 만들지 않게 해 셀 레이아웃을 건드리지 않는다.
+        <div className="contents" onClick={(event) => event.stopPropagation()}>
+          <ResolutionModal
+            open
+            // DONE→DONE 재전이면 기존 결의안으로 pre-fill (상세 화면과 같은 계약)
+            prefilledResolution={issue.resolution ?? null}
+            onConfirm={handleResolutionConfirm}
+            onCancel={() => setPendingDone(null)}
+          />
+        </div>
+      )}
+    </>
   )
 }

@@ -66,6 +66,13 @@ export interface IssueCellFieldVars {
   toPriority?: number
   /** field 가 'status' 일 때 목표 상태 키 */
   toStatusKey?: string
+  /**
+   * field 가 'status' 이고 **종료(DONE) 전이**일 때 선택된 결의안 UUID (FR14).
+   *
+   * 해결 결과는 종료 전이의 필수 입력이라 `ResolutionModal` 이 확정한 값을 여기 싣는다.
+   * `TransitionIssueInput` 이 이미 받는 선택 필드이므로 그대로 통과시킨다.
+   */
+  resolutionId?: string
   /** 낙관적 잠금(OCC)을 위한 현재 버전 번호 */
   expectedVersion: number
 }
@@ -106,6 +113,8 @@ function requestCellChange(vars: IssueCellFieldVars): Promise<IssueResponse> {
       return transitionIssue(vars.issueKey, {
         toStatusKey: vars.toStatusKey,
         expectedVersion: vars.expectedVersion,
+        // 종료 전이에만 실린다 — 비종료 전이는 undefined 라 body 에서 빠진다 (FR14)
+        resolutionId: vars.resolutionId,
       })
     }
     default: {

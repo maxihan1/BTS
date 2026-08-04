@@ -22,6 +22,7 @@ import { IssueTable } from '@/components/issues/IssueTable'
 import type { IssueTableSortState } from '@/components/issues/IssueTable'
 import { ColumnSelector } from '@/components/issues/ColumnSelector'
 import { ISSUE_COLUMNS } from '@/components/issues/issue-columns'
+import type { IssueCellEditContext } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
@@ -241,6 +242,8 @@ interface IssueListContentProps {
    * undefined/null이면 어떤 행도 강조하지 않는다(bulk 체크박스 선택과는 완전히 별개).
    */
   selectedKey?: string | null
+  /** 셀 인라인 편집 컨텍스트(FR-UX-11 F9) — IssueTable.edit으로 그대로 전달된다 */
+  edit?: IssueCellEditContext
 }
 
 /**
@@ -269,6 +272,7 @@ function IssueListContent({
   onSort,
   isFetching,
   selectedKey,
+  edit,
 }: IssueListContentProps): JSX.Element {
   // ── 담당자 이름 해석 — 현재 페이지 assigneeId만 조회 ───────────────────────
   const assigneeIds = useMemo(
@@ -318,6 +322,7 @@ function IssueListContent({
         onNavigate={onNavigate}
         assigneeNameMap={assigneeNameMap}
         selectedKey={selectedKey}
+        edit={edit}
       />
 
       <IssuePagination
@@ -478,8 +483,22 @@ export function IssueListPage({
   // (use-boards.ts normalizeFilter 미러 — PR #168 선례)
   const normalizedFilter = useMemo(() => normalizeIssueFilter(filter), [filter])
 
+  // ★목록 queryKey 정본 — useQuery와 셀 편집 mutation이 **같은 값**을 써야 한다 (FR-UX-11 F9).
+  // 두 곳에서 따로 조립하면 한 글자만 어긋나도 낙관적 patch가 아무 캐시에도 닿지 않아,
+  // 테스트는 초록인데 화면만 안 바뀌는 가짜 그린이 된다.
+  const listQueryKey = useMemo(
+    () => ['issues', projectKey, page, normalizedFilter, sort],
+    [projectKey, page, normalizedFilter, sort],
+  )
+
+  // 셀 인라인 편집 컨텍스트 — 위 queryKey 정본을 그대로 실어 보낸다 (FR-UX-11 F9)
+  const editContext = useMemo<IssueCellEditContext>(
+    () => ({ listQueryKey, enabled: true }),
+    [listQueryKey],
+  )
+
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['issues', projectKey, page, normalizedFilter, sort],
+    queryKey: listQueryKey,
     queryFn: () =>
       fetchIssues({
         projectKey,
@@ -734,6 +753,7 @@ export function IssueListPage({
           onSort={handleSort}
           isFetching={isFetching}
           selectedKey={selectedKey}
+          edit={editContext}
         />
       )}
 
