@@ -22,11 +22,11 @@ export interface IssueLabelsEditProps {
   /** 수정 권한 — false이면 저장 버튼 disabled (fail-closed) */
   canEdit: boolean
   /**
-   * 라벨 입력으로 가는 ref — FR-UX-10 F11 단축키 `l`이 여기에 포커스를 준다.
-   * 소비처는 routes/issues.$key.tsx(IssueMetaPanel.labelsInputRef 경유).
+   * 라벨 입력으로 **통과시킬** ref — FR-UX-10 F11 단축키 `l`. 여기서 소비하지 않는다.
    *
-   * 실제 <input>은 두 단계 아래(LabelChipsEditor → LabelAutocompleteInput)에 있어
-   * 그대로 통과시킨다. 이 ref의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다.
+   * 소비처는 routes/issues.$key.tsx(IssueMetaPanel.labelsInputRef 경유).
+   * 실제 <input>은 두 단계 아래(LabelChipsEditor → LabelAutocompleteInput)에 있고,
+   * `aria-keyshortcuts` 조건부 부착 규칙도 그 최하단이 소유한다(계약 본문은 거기 참조).
    */
   focusRef?: RefObject<HTMLInputElement | null>
 }

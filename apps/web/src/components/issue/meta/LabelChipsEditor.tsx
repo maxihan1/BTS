@@ -27,9 +27,10 @@ export interface LabelChipsEditorProps {
   /**
    * 라벨 입력으로 **통과시킬** ref — FR-UX-10 F11 단축키 `l`. 이 컴포넌트는 소비하지 않는다.
    *
-   * 이슈 상세는 `IssueLabelsEdit` 을 거쳐 내려오지만 생성 폼
-   * (`IssueCreateAssignmentFields`)은 이 컴포넌트를 **직접** 쓰고 ref 를 주지 않는다 —
-   * 그 화면엔 `l` 이 없기 때문이다. 미전달이면 `aria-keyshortcuts` 도 붙지 않는다.
+   * ★이 컴포넌트에는 소비처가 둘이고 **한쪽만 ref 를 준다**. 이슈 상세는
+   * `IssueLabelsEdit` 을 거쳐 내려오지만, 생성 폼(`IssueCreateAssignmentFields`)은
+   * 이 컴포넌트를 **직접** 쓰면서 ref 를 주지 않는다 — 그 화면엔 `l` 이 없기 때문이다.
+   * 조건부 부착 규칙 본문은 최하단 `LabelAutocompleteInput.focusRef` 참조.
    */
   focusRef?: RefObject<HTMLInputElement | null>
 }
