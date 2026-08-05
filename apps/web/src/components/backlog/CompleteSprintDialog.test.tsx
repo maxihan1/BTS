@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { z } from 'zod'
 import { server } from '@/test/server'
+import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { issueCreateStrings } from '@/i18n/ko'
 import type { BacklogIssue, BacklogView, SprintMeta, SprintWithIssues } from '@/api/backlog'
@@ -202,6 +203,8 @@ const assignBodySchema = z.object({ issueKey: z.string() })
 
 function installHandlers(): void {
   server.use(
+    // `test/handlers.ts` 는 refresh 하나뿐이다 — 이 파일이 쓰는 엔드포인트는 전부 여기서 깐다.
+    http.get('/api/v1/workflows', () => HttpResponse.json({ data: allWorkflowFixtures })),
     http.delete('/api/v1/sprints/:sprintId/issues/:issueKey', async ({ params }) => {
       const issueKey = String(params['issueKey'])
       calls.push(`DELETE ${String(params['sprintId'])}/${issueKey}`)
