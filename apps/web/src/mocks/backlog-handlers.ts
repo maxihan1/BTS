@@ -14,6 +14,7 @@ import {
   computeRank,
   findIssueInProject,
 } from './backlog-fixtures'
+import type { SprintMeta } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글
@@ -455,8 +456,37 @@ const createSprintHandler = http.post('/api/v1/sprints', async ({ request }) => 
 // PATCH /api/v1/sprints/:id (스프린트 메타 수정 — 3-state partial)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** {@link patchSprintHandler} 가 3-state 로 반영하는 필드 전수 */
+/**
+ * {@link applySprintPatch} 가 3-state 로 반영하는 필드 전수.
+ *
+ * `api/backlog.ts` 의 `UPDATE_SPRINT_PATCHABLE_FIELDS` 와 **일부러 따로 적는다.** 저쪽은
+ * 「클라이언트가 무엇을 보내는가」이고 이쪽은 「백엔드가 무엇을 받아 반영하는가」다. 한 상수를
+ * 공유하면 클라이언트가 필드를 빠뜨렸을 때 목도 똑같이 빠뜨려 테스트가 초록으로 남는다.
+ */
 const PATCHABLE_SPRINT_FIELDS = ['name', 'goal', 'startDate', 'endDate'] as const
+
+/**
+ * 3-state partial 을 스프린트 메타에 반영하고 `version` 을 +1 한다.
+ *
+ * 키가 있을 때만 건드린다 — 값이 `undefined` 인지가 아니라 **키가 있는지**로 판단해야
+ * 「미전송(무변경)」과 「명시 `null`(삭제)」이 갈린다. 이것이 백엔드 `JsonNullable` 계약이다.
+ *
+ * @param sprint 변이 대상 (store 안의 객체를 그대로 고친다)
+ * @param body 검증이 끝난 요청 body
+ */
+function applySprintPatch(sprint: SprintMeta, body: Record<string, unknown>): void {
+  for (const field of PATCHABLE_SPRINT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) continue
+    const value = body[field]
+    if (field === 'name') {
+      // 백엔드는 name 에 null 을 허용하지 않는다 (JsonNullable<String> 이지만 검증이 막는다)
+      if (typeof value === 'string') sprint.name = value
+      continue
+    }
+    sprint[field] = typeof value === 'string' ? value : null
+  }
+  sprint.version = sprint.version + 1
+}
 
 /**
  * PATCH /api/v1/sprints/{id} — 스프린트 이름·목표·기간 수정 (FR-UX-13 F15 FR-14).
@@ -517,19 +547,7 @@ const patchSprintHandler = http.patch('/api/v1/sprints/:id', async ({ params, re
     )
   }
 
-  // 3-state 반영 — 키가 있을 때만 건드린다. `undefined` 인지가 아니라 **키가 있는지**로 판단해야
-  // 「미전송(무변경)」과 「명시 null(삭제)」이 갈린다.
-  for (const field of PATCHABLE_SPRINT_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(body, field)) continue
-    const value = body[field]
-    if (field === 'name') {
-      // 백엔드는 name 에 null 을 허용하지 않는다 (JsonNullable<String>)
-      if (typeof value === 'string') storedSprint.sprint.name = value
-      continue
-    }
-    storedSprint.sprint[field] = typeof value === 'string' ? value : null
-  }
-  storedSprint.sprint.version = storedSprint.sprint.version + 1
+  applySprintPatch(storedSprint.sprint, body)
 
   return HttpResponse.json({ data: storedSprint.sprint })
 })

@@ -11,7 +11,7 @@ import {
   resolveBacklogDropAction,
   resolveOverToDropZone,
 } from '@/lib/backlog-drag'
-import type { NeighborResult } from '@/lib/backlog-drag'
+import type { BacklogDropAction, NeighborResult } from '@/lib/backlog-drag'
 import { isZeroMoveDrop } from '@/lib/backlog-keyboard-coordinates'
 import type { BacklogView } from '@/api/backlog'
 import { backlogLabels } from '@/i18n/backlog-labels'
@@ -24,6 +24,15 @@ import type { BacklogDragData } from './BacklogCard'
  * (`core.esm.js:3015,3105`). `KeyboardSensor` 의 활성화 핸들러는 `onKeyDown` 이라 여기엔
  * `KeyboardEvent` 가 들어온다. `instanceof` 대신 `'key' in` 으로 보는 이유는 realm 이 다르면
  * (jsdom·iframe) `instanceof` 가 조용히 false 가 되기 때문이다 — 가드가 소리 없이 죽는다.
+ *
+ * ### 왜 「이동 0」 가드에 이 조건을 함께 거나
+ * 스펙 I-2 의 처방은 조건 없는 `isZeroMoveDrop(event.delta)` 였다. 그런데 그대로 넣으면
+ * `BacklogBoard.test.tsx` 의 합성 드래그 8건이 red 가 된다 — 그 하네스가 `delta: {x:0,y:0}` 을
+ * **자리표시자로 하드코딩**해 두고 S1~S5 를 재현하기 때문이다(그 파일은 Task 6 소유라 이 task
+ * 가 고칠 수 없다). 실제 결함 경로는 스펙 자신이 "마우스는 5px 활성화 임계 때문에 이 경로가
+ * 없다"고 적은 대로 키보드에만 있으므로, 활성화 이벤트로 한정하는 편이 결함에 더 정확히
+ * 대응한다. 하네스가 실제 delta 를 싣도록 고쳐지면 이 조건은 그대로 넓힐 수 있다 —
+ * **넓히는 쪽을 막는 단언은 두지 않았다.**
  */
 function isKeyboardActivated(activatorEvent: Event | null): boolean {
   return activatorEvent !== null && 'key' in activatorEvent
@@ -76,49 +85,8 @@ export function useBacklogDrag(
     setOverDroppableId(event.over ? String(event.over.id) : null)
   }
 
-  function handleDragEnd(event: DragEndEvent): void {
-    setOverDroppableId(null)
-
-    // 키보드로 집자마자 그대로 놓은 드롭(이동 0)은 아무 일도 하지 않는다 (T-KB-3).
-    //
-    // 왜 필요한가 — Space 두 번(집기·놓기)만 누르면 translate 가 `{0,0}` 인데, 이때 카드 자신의
-    // droppable 은 `disabled: isDragging` 으로 충돌 후보에서 빠져 있어 칸 droppable 로 폴백하고
-    // `dropIndex = orderedKeys.length` 가 잡혀 **카드가 맨 뒤로 날아간다**.
-    //
-    // 왜 키보드로 한정하나 — 스펙 I-2 의 처방은 조건 없는 `isZeroMoveDrop(event.delta)` 였지만,
-    // 그대로 넣으면 `BacklogBoard.test.tsx` 의 합성 드래그 8건이 red 가 된다. 그 하네스가
-    // `delta: {x:0,y:0}` 을 **자리표시자로 하드코딩**해 두고 S1~S5 를 재현하기 때문이다
-    // (그 파일은 Task 6 소유라 이 task 가 고칠 수 없다). 실제 결함 경로는 스펙 자신이
-    // "마우스는 5px 활성화 임계 때문에 이 경로가 없다"고 적은 대로 키보드에만 있으므로
-    // 활성화 이벤트로 한정하는 편이 결함에 더 정확히 대응한다. 하네스가 실제 delta 를 싣도록
-    // 고쳐지면 이 조건은 그대로 넓힐 수 있다 — 넓히는 쪽을 막는 단언은 두지 않았다.
-    if (isKeyboardActivated(event.activatorEvent) && isZeroMoveDrop(event.delta)) return
-
-    // UPDATE 권한 없으면 드래그 결과를 무시한다
-    if (!canReorderIssue) return
-
-    const activeData = event.active.data.current as BacklogDragData | undefined
-
-    if (activeData === undefined || event.over === null) return
-
-    const { issueKey, context: fromContext, sprintId: fromSprintId } = activeData
-
-    // 칸/카드 droppable 양쪽의 입력 구성은 `lib/backlog-drag` 로 공용화돼 있다 —
-    // 드래그 공지 모듈이 같은 함수를 써야 공지와 mutation 이 어긋나지 않는다 (C-5).
-    const dropZone = resolveOverToDropZone(backlogView, event.over)
-
-    if (dropZone === null) return
-
-    const action = resolveBacklogDropAction({
-      issueKey,
-      fromContext,
-      fromSprintId,
-      toContext: dropZone.context,
-      toSprintId: dropZone.sprintId,
-      targetKeys: dropZone.orderedKeys,
-      dropIndex: dropZone.dropIndex,
-    })
-
+  /** 판정된 액션을 해당 mutation 으로 보낸다. 판정과 발사를 분리해 둘 다 30줄 아래로 유지한다 */
+  function dispatchDropAction(action: BacklogDropAction, issueKey: string): void {
     if (action.kind === 'noop' || action.kind === 'noop-move') return
 
     if (action.kind === 'assign') {
@@ -147,6 +115,45 @@ export function useBacklogDrag(
     rerankIssue.mutate(
       { issueKey, body: action.rerank },
       { onError: () => toast.error(backlogLabels.moveFailedError) },
+    )
+  }
+
+  function handleDragEnd(event: DragEndEvent): void {
+    setOverDroppableId(null)
+
+    // 키보드로 집자마자 그대로 놓은 드롭(이동 0)은 아무 일도 하지 않는다 (T-KB-3).
+    // Space 두 번이면 translate 가 `{0,0}` 인데, 이때 카드 자신의 droppable 은
+    // `disabled: isDragging` 으로 충돌 후보에서 빠져 있어 칸 droppable 로 폴백하고
+    // `dropIndex = orderedKeys.length` 가 잡혀 **카드가 맨 뒤로 날아간다**.
+    // 키보드로 한정하는 근거는 `isKeyboardActivated` KDoc.
+    if (isKeyboardActivated(event.activatorEvent) && isZeroMoveDrop(event.delta)) return
+
+    // UPDATE 권한 없으면 드래그 결과를 무시한다
+    if (!canReorderIssue) return
+
+    const activeData = event.active.data.current as BacklogDragData | undefined
+
+    if (activeData === undefined || event.over === null) return
+
+    const { issueKey, context: fromContext, sprintId: fromSprintId } = activeData
+
+    // 칸/카드 droppable 양쪽의 입력 구성은 `lib/backlog-drag` 로 공용화돼 있다 —
+    // 드래그 공지 모듈이 같은 함수를 써야 공지와 mutation 이 어긋나지 않는다 (C-5).
+    const dropZone = resolveOverToDropZone(backlogView, event.over)
+
+    if (dropZone === null) return
+
+    dispatchDropAction(
+      resolveBacklogDropAction({
+        issueKey,
+        fromContext,
+        fromSprintId,
+        toContext: dropZone.context,
+        toSprintId: dropZone.sprintId,
+        targetKeys: dropZone.orderedKeys,
+        dropIndex: dropZone.dropIndex,
+      }),
+      issueKey,
     )
   }
 
