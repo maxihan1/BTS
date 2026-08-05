@@ -220,6 +220,10 @@ export function BacklogBoard({
         collisionDetection={cardFirstCollision}
         onDragOver={drag.handleDragOver}
         onDragEnd={drag.handleDragEnd}
+        // 취소(Esc)는 `onDragOver(null)` 을 부르지 않아(`active` 가 이미 null 이라 조기 반환)
+        // 마지막 하이라이트가 섹션에 그대로 남는다. 「아무 데도 올라가 있지 않다」를
+        // 같은 통로로 알려 지운다 — mutation 경로인 `handleDragEnd` 는 쓸 수 없다.
+        onDragCancel={(event) => { drag.handleDragOver({ ...event, over: null }) }}
         accessibility={{ announcements, screenReaderInstructions: backlogScreenReaderInstructions }}
       >
         {/* 세로 스택 (F15 FR-1) — 스프린트가 먼저, 백로그가 맨 마지막이다 (Jira 와 같은 순서).

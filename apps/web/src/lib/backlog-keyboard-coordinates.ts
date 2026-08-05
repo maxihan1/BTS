@@ -180,11 +180,19 @@ export const backlogCoordinateGetter: KeyboardCoordinateGetter = (event, { conte
  *
  * ※ 보드 화면(`KanbanBoard.tsx`)도 같은 선재 결함을 갖지만 **이 PR 범위 밖**이다 —
  *   한 PR = 한 관심사. 별도 후속으로 남긴다.
+ *
+ * ### 🛑 `end` 와 `cancel` 에 같은 키를 넣지 말 것
+ * `KeyboardSensor.handleKeyDown` 은 `end` 를 **먼저** 검사하고 즉시 `return` 한다
+ * (`@dnd-kit/core@6.3.1` `dist/core.cjs.development.js:1196-1203`). 그래서 Esc 를 `end` 에도
+ * 넣으면 `cancel` 분기가 **영영 실행되지 않고** Esc 가 취소가 아니라 드롭이 되어
+ * `handleDragEnd` 의 mutation 이 발사된다. 「스페이스바로 놓거나 Esc 로 취소합니다」라고
+ * 읽어 주는 안내(`backlogLabels.announce.instructions`)가 스크린리더 사용자에게 거짓이 된다.
+ * 서로소임은 `backlog-keyboard-coordinates.test.ts` 의 교집합 단언이 지킨다.
  */
 export const backlogKeyboardCodes: KeyboardCodes = {
   start: [KeyboardCode.Space],
   cancel: [KeyboardCode.Esc],
-  end: [KeyboardCode.Space, KeyboardCode.Esc],
+  end: [KeyboardCode.Space],
 }
 
 /** `useSensor(KeyboardSensor, backlogKeyboardSensorOptions)` 로 넘길 옵션 묶음. */
