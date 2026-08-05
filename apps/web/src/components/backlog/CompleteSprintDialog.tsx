@@ -175,12 +175,14 @@ function buildView(issues: readonly BacklogIssue[], map: StateCategoryMap): Comp
  * @param projectKey 백로그 queryKey 대상 프로젝트 키
  * @param sprint 완료할 스프린트 + 이슈
  * @param categoryMap 상태 키 → 카테고리 집합 사상 (FR-7)
+ * @param open 다이얼로그 열림 여부. 닫히면 회차 상태를 비운다
  * @param onCompleted 완료가 성공했을 때 호출된다
  */
 function useSprintCompletion(
   projectKey: string,
   sprint: SprintWithIssues,
   categoryMap: StateCategoryMap,
+  open: boolean,
   onCompleted: () => void,
 ) {
   const queryClient = useQueryClient()
@@ -196,6 +198,18 @@ function useSprintCompletion(
 
   const derived = useMemo(() => buildView(sprint.issues, categoryMap), [sprint.issues, categoryMap])
   const view = snapshot ?? derived
+
+  // 닫힘 전이에서 회차 상태를 비운다 — 같은 스프린트로 다시 열면 처음부터다.
+  // 상태를 가진 훅 안에 두어야 setter 만 의존성이 되어 exhaustive-deps 를 그대로 만족한다.
+  useEffect(() => {
+    if (open) return
+    setSnapshot(null)
+    setRowStatus({})
+    setRunning(false)
+    setProgress(0)
+    setProgressTotal(0)
+    setFailure(null)
+  }, [open])
 
   /** 이관 1건 — 백로그행은 DELETE 1회, 다른 스프린트행은 DELETE → POST 2회 */
   const transfer = useMutation<void, unknown, TransferInput>({
@@ -283,6 +297,8 @@ function useSprintCompletion(
       setRunning(false)
       onCompleted()
     } catch {
+      // 완료 자체가 실패했다 — 가장 흔한 갈래가 409(이미 완료됐거나 ACTIVE 가 아니다)이고,
+      // 어느 갈래든 사용자가 할 일은 「최신 값을 확인하고 다시 시도」로 같다. 조용히 닫지 않는다.
       setRunning(false)
       setFailure({ kind: 'stale' })
       await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
@@ -317,17 +333,7 @@ function useSprintCompletion(
     await finish()
   }
 
-  /** 다이얼로그를 닫을 때 회차 상태를 비운다. 같은 스프린트로 다시 열면 처음부터다 */
-  function reset(): void {
-    setSnapshot(null)
-    setRowStatus({})
-    setRunning(false)
-    setProgress(0)
-    setProgressTotal(0)
-    setFailure(null)
-  }
-
-  return { view, rowStatus, running, progress, progressTotal, failure, submit, reset }
+  return { view, rowStatus, running, progress, progressTotal, failure, submit }
 }
 
 /** 미완료 이슈 한 행 */
@@ -416,13 +422,7 @@ export function CompleteSprintDialog({
   const workflows = useWorkflows()
   const categoryMap = useMemo(() => buildStateCategoryMap(workflows.data), [workflows.data])
   const [moveTarget, setMoveTarget] = useState<string>(BACKLOG_TARGET_VALUE)
-  const flow = useSprintCompletion(projectKey, sprint, categoryMap, () => onOpenChange(false))
-
-  useEffect(() => {
-    if (!open) flow.reset()
-    // 닫힘 전이에서만 초기화한다. flow 는 매 렌더 새 객체라 의존성에 넣으면 무한 루프가 된다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  const flow = useSprintCompletion(projectKey, sprint, categoryMap, open, () => onOpenChange(false))
 
   const moveTargets = buildMoveTargets(allSprints, sprint.sprint.sprintId)
   const blockedByTruncation = isSubmitBlockedByTruncation(truncated)
