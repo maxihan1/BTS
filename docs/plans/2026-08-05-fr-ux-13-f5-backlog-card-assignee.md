@@ -252,8 +252,21 @@ export function buildAssigneeNameMap(
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/hooks/use-users.ts`, `apps/web/src/hooks/use-users.test.tsx`]
+- files: [`apps/web/src/hooks/use-users.ts`, `apps/web/src/hooks/__tests__/use-users.test.tsx`]
 - depends-on: []
+
+> **★ 구현 중 정정 2건 (2026-08-05, implementer 보고 → controller 실측 확인).**
+> 1. **테스트 파일 경로 정정.** plan 원안의 `src/hooks/use-users.test.tsx` 는 **이미 존재하는**
+>    `src/hooks/__tests__/use-users.test.tsx` 와 같은 basename 의 두 번째 파일이 된다.
+>    plan 작성 시 `ls src/hooks/*.test.*` 로만 확인해 **하위 디렉터리를 못 본 것**이 원인.
+>    신규 테스트는 기존 `__tests__/use-users.test.tsx` 에 합친다.
+> 2. **반환값 참조 안정성.** `results.flatMap(...)` 은 매 렌더 새 배열을 만든다.
+>    `BacklogColumn` 은 `memo(BacklogColumnInner)` 이고 주석이 「`assigneeNames` 가 변하지
+>    않으면 재렌더 스킵」이라 적고 있어, 그대로 두면 **기존 최적화가 통째로 죽는다**
+>    (드래그 중 `overDroppableId` 변경으로 상시 재렌더). 처방은 `useQueries` 의
+>    **`combine` 옵션** — 설치본 `@tanstack/react-query@^5.100.11` 이 지원한다
+>    (`_tsup-dts-rollup.d.ts:869` 실측). 회귀 가드로 **T2-8 참조 유지 테스트**를 추가하고
+>    비-공허 확인(combine 제거 → red)을 거친다.
 
 **RED**. `apps/web/src/hooks/use-users.test.tsx` (신규 파일)
 
