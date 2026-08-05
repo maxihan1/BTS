@@ -1,5 +1,6 @@
 // 백로그·스프린트 보드 루트 컴포넌트 — DnD 오케스트레이션 + 라이프사이클 (FR-BL-01/02 D6/D7)
 import type { JSX } from 'react'
+import { useMemo } from 'react'
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import {
@@ -8,6 +9,8 @@ import {
   useStartSprint,
   useCompleteSprint,
 } from '@/hooks/use-backlog'
+import { useUsersByIdsChunked } from '@/hooks/use-users'
+import { collectAssigneeIds, buildAssigneeNameMap } from './backlog-assignee-names'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
 import { CreateSprintForm } from './CreateSprintForm'
@@ -77,6 +80,17 @@ export function BacklogBoard({
 
 
   const { data: backlogView, isLoading } = useBacklog(projectKey)
+
+  // 담당자 이름 — 화면에 등장하는 id 만 모아 50개씩 나눠 전량 조회한다 (스펙 M1).
+  // ★조기 반환(`isLoading`)보다 **위**에 있어야 한다. 아래로 내리면 렌더마다 훅 개수가
+  //   달라져 React 가 즉사한다. 그래서 두 순수 함수가 `undefined` 를 받아낸다.
+  const assigneeIds = useMemo(() => collectAssigneeIds(backlogView), [backlogView])
+  const { data: assigneeUsers } = useUsersByIdsChunked(assigneeIds)
+  const assigneeNames = useMemo(
+    () => buildAssigneeNameMap(backlogView, assigneeUsers),
+    [backlogView, assigneeUsers],
+  )
+
   const createSprint = useCreateSprint(projectKey)
   const startSprint = useStartSprint(projectKey)
   const completeSprint = useCompleteSprint(projectKey)
@@ -99,7 +113,6 @@ export function BacklogBoard({
   if (backlogView === undefined) return <div />
 
   const { backlog, sprints, truncated } = backlogView
-  const assigneeNames = new Map<string, string>()
 
   return (
     <div className="flex flex-col gap-4">
