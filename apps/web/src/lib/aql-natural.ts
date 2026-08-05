@@ -28,7 +28,11 @@ export type GlobalSearchIntent =
  * ★판정 정본은 백엔드 렉서다. 여기는 「AQL 을 치려던 것인가」를 가르는 최소 휴리스틱이라
  * 보수적으로 잡는다 — 애매하면 자유 텍스트로 보내는 편이 안전하다(전문검색은 항상 성립하지만
  * 잘못 통과시킨 AQL 은 400 이 된다).
- * ★연산자는 긴 것부터 정렬해야 `!=` 가 `=` 에 먼저 먹히지 않는다.
+ * ★긴 연산자부터 정렬하는 것은 **현재 동작에 영향이 없는 방어**다(실측). 정규식 교대는
+ * 역추적으로 모든 가지를 시도하므로 `test()` 결과는 순서와 무관하고, 현 3종(`=` `!=` `~`)은
+ * 서로 접두사 관계가 아니라 `exec()` 로 바꿔도 결과가 같다 — `!=` 는 `!` 로 시작해 `=` 에
+ * 먹힐 수 없다. 정렬이 실제로 갈리는 시점은 `>` 와 `>=` 처럼 **접두사를 공유하는** 연산자가
+ * 백엔드에 추가되고, 이 파일이 매치 문자열까지 읽을 때다. 그때를 위해 미리 세워 둔다.
  */
 const AQL_OPERATOR_ALTERNATION = [...AQL_OPERATORS]
   .sort((a, b) => b.length - a.length)
@@ -63,6 +67,9 @@ export function resolveGlobalSearchInput(input: string): GlobalSearchIntent {
     return { kind: 'aql', query: trimmed }
   }
 
-  // buildTextQuery 는 공백만일 때 null 을 주지만 위에서 이미 걸렀다
+  // ★`as string` 근거. buildTextQuery 는 「공백만 또는 빈 문자열」일 때만 null 을 주는데
+  // (aql-text-query.ts line 31~32), 이 함수 첫머리에서 `trimmed === ''` 를 이미 empty 로
+  // 걸러 반환했으므로 여기 도달한 trimmed 는 비어 있을 수 없다. 즉 null 이 불가능한 지점이라
+  // 좁히는 단언이지, null 을 덮는 `!` 단언이 아니다(DEVELOPMENT.md §1.3-12).
   return { kind: 'text', query: buildTextQuery(trimmed) as string }
 }
