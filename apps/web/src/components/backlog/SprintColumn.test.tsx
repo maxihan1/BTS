@@ -1,5 +1,5 @@
-// SprintColumn 컴포넌트 단위 테스트 — 헤더(name+status)·드롭 영역·COMPLETED 비활성화·버튼 슬롯
-import { describe, it, expect, vi } from 'vitest'
+// SprintColumn 컴포넌트 단위 테스트 — 헤더(name+status)·드롭 영역·COMPLETED 비활성화·버튼 슬롯·섹션 접기
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -38,6 +38,10 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { SprintColumn } from './SprintColumn'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import {
+  backlogCollapsedStorageKey,
+  useBacklogCollapsedStore,
+} from '@/hooks/use-backlog-collapsed'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -106,6 +110,17 @@ function renderSprintColumn(
     </DndContext>,
   )
 }
+
+/** 스프린트 섹션의 접기 토글 접근 이름 (하드코딩 금지 — i18n 경유) */
+function collapseToggleName(sprint: SprintMeta): string {
+  return backlogLabels.collapseSection(sprint.name)
+}
+
+// 접힘 스토어는 모듈 전역 zustand 싱글턴이라 테스트 간 상태가 샌다.
+beforeEach(() => {
+  window.localStorage.clear()
+  useBacklogCollapsedStore.setState({ byProject: {} })
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S1. 헤더 렌더
@@ -347,5 +362,197 @@ describe('SprintColumn — 이슈 생성 진입점 (F3 FR-2)', () => {
         name: backlogLabels.createIssueInSprint(plannedSprint.name),
       }),
     ).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 — 세로 스택 레이아웃 + 헤더 한 줄 (FR-1 · §시각 사양)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SprintColumn — 세로 스택 레이아웃 (F15 FR-1)', () => {
+  it('섹션이 전폭(w-full)이고 288px 고정폭 클래스를 갖지 않는다', () => {
+    renderSprintColumn()
+    const region = screen.getByRole('region')
+
+    // 짝 단언 — 「없다」만 재면 클래스명 오타로 조용히 공허해진다.
+    expect(region.className).toContain('w-full')
+    expect(region.className).not.toMatch(/\bmin-w-72\b/)
+    expect(region.className).not.toMatch(/\bw-72\b/)
+  })
+
+  it('★섹션 textContent 가 여전히 스프린트 이름으로 시작한다 — e2e 의 ^ 앵커 보호 (FR-2)', () => {
+    // backlog.spec.ts·sprint-burndown.spec.ts 가 filter({ hasText: /^스프린트 1/ }) 로 칸을 찾는다.
+    renderSprintColumn(plannedSprint)
+    const region = screen.getByRole('region')
+
+    expect(region.textContent?.startsWith(plannedSprint.name)).toBe(true)
+    const toggle = screen.getByRole('button', { name: collapseToggleName(plannedSprint) })
+    expect(toggle.textContent).toBe('')
+  })
+
+  it('헤더 액션이 제목과 같은 줄에 선다 — self-start 를 쓰지 않고 헤더가 한 줄 flex 다', () => {
+    renderSprintColumn(plannedSprint)
+    const region = screen.getByRole('region')
+    const header = region.firstElementChild
+
+    expect(header).not.toBeNull()
+    expect(header?.className).toContain('items-center')
+    expect(header?.className).toContain('flex-wrap')
+    expect(header?.className).not.toContain('flex-col')
+
+    // 시작 버튼·번다운 링크가 세로 스택 잔재(self-start)를 갖지 않는다
+    const startButton = screen.getByRole('button', { name: backlogLabels.startSprint })
+    const burndownLink = screen.getByRole('link', { name: /번다운/ })
+    expect(startButton.className).not.toContain('self-start')
+    expect(burndownLink.className).not.toContain('self-start')
+  })
+
+  it('★NFR-6: 헤더 액션이 모바일에서 44px 터치 타깃을 갖고 md 부터 해제된다', () => {
+    renderSprintColumn(plannedSprint)
+
+    for (const el of [
+      screen.getByRole('button', { name: backlogLabels.startSprint }),
+      screen.getByRole('link', { name: /번다운/ }),
+    ]) {
+      expect(el.className).toContain('min-h-11')
+      expect(el.className).toContain('md:min-h-0')
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 — 섹션 접기/펼치기 (FR-2 · E3 · E4 · C-3 · C-9 · C-10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SprintColumn — 섹션 접기/펼치기 (F15 FR-2)', () => {
+  it('기본은 펼침이다 — aria-expanded=true 이고 카드 목록이 보인다', () => {
+    renderSprintColumn(plannedSprint, [issue1])
+
+    expect(
+      screen.getByRole('button', { name: collapseToggleName(plannedSprint) }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('ATLAS-5')).toBeInTheDocument()
+  })
+
+  it('★E3: 접으면 카드 목록이 사라지고 헤더의 이름·상태·개수·액션은 남는다', async () => {
+    const user = userEvent.setup()
+    renderSprintColumn(plannedSprint, [issue1])
+
+    await user.click(screen.getByRole('button', { name: collapseToggleName(plannedSprint) }))
+
+    expect(screen.queryByText('ATLAS-5')).toBeNull()
+    // 헤더는 전부 남는다 — 이름·상태 배지·개수·시작 버튼·번다운 링크
+    expect(screen.getByText(plannedSprint.name)).toBeInTheDocument()
+    expect(screen.getByLabelText('스프린트 상태: PLANNED')).toBeInTheDocument()
+    expect(screen.getByLabelText('이슈 1개')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: backlogLabels.startSprint })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /번다운/ })).toBeInTheDocument()
+  })
+
+  it('★E4: 접힌 섹션은 드롭 후보에서 빠진다 — droppable div 가 렌더되지 않는다', async () => {
+    const user = userEvent.setup()
+    const selector = `[data-droppable="sprint-${plannedSprint.sprintId}"]`
+    renderSprintColumn(plannedSprint, [issue1])
+
+    // 펼침 상태에서는 있다 (짝 단언)
+    expect(document.querySelector(selector)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: collapseToggleName(plannedSprint) }))
+
+    expect(document.querySelector(selector)).toBeNull()
+  })
+
+  it('다시 누르면 펼쳐진다 — 카드와 드롭 영역이 함께 돌아온다', async () => {
+    const user = userEvent.setup()
+    renderSprintColumn(plannedSprint, [issue1])
+    const toggle = screen.getByRole('button', { name: collapseToggleName(plannedSprint) })
+
+    await user.click(toggle)
+    await user.click(toggle)
+
+    expect(screen.getByText('ATLAS-5')).toBeInTheDocument()
+    expect(
+      document.querySelector(`[data-droppable="sprint-${plannedSprint.sprintId}"]`),
+    ).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('★C-3: aria-controls 를 갖지 않는다 — 접히면 대상 id 가 사라져 dangling IDREF 가 된다', async () => {
+    const user = userEvent.setup()
+    renderSprintColumn(plannedSprint, [issue1])
+    const toggle = screen.getByRole('button', { name: collapseToggleName(plannedSprint) })
+
+    expect(toggle).not.toHaveAttribute('aria-controls')
+    await user.click(toggle)
+    expect(toggle).not.toHaveAttribute('aria-controls')
+  })
+
+  it('★C-9: 토글 이름은 접힘/펼침에서 동일하다 — 상태는 aria-expanded 가 말한다', async () => {
+    const user = userEvent.setup()
+    renderSprintColumn(plannedSprint, [issue1])
+    const toggle = screen.getByRole('button', { name: collapseToggleName(plannedSprint) })
+    const nameWhenExpanded = toggle.getAttribute('aria-label')
+
+    await user.click(toggle)
+
+    expect(toggle.getAttribute('aria-label')).toBe(nameWhenExpanded)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('★토글 이름은 스프린트마다 다르다 — 같은 화면에 N개가 공존한다 (FR-10)', () => {
+    expect(collapseToggleName(plannedSprint)).not.toBe(collapseToggleName(activeSprint))
+  })
+
+  it('★C-10: 모바일 터치 타깃이 44px 이상이고 md 부터 해제된다 (NFR-6)', () => {
+    renderSprintColumn(plannedSprint, [issue1])
+    const toggle = screen.getByRole('button', { name: collapseToggleName(plannedSprint) })
+
+    expect(toggle.className).toContain('min-h-11')
+    expect(toggle.className).toContain('min-w-11')
+    expect(toggle.className).toContain('md:min-h-0')
+    expect(toggle.className).toContain('md:min-w-0')
+  })
+
+  it('★COMPLETED 스프린트도 접을 수 있다 — 접기는 상태·권한과 무관하다 (FR-12)', async () => {
+    const user = userEvent.setup()
+    renderSprintColumn(completedSprint, [])
+
+    // 펼침 상태에서는 비활성 드롭 영역이 그려져 있다 (짝 단언)
+    expect(document.querySelector('[data-droppable-disabled="true"]')).toBeInTheDocument()
+
+    const toggle = screen.getByRole('button', { name: collapseToggleName(completedSprint) })
+    expect(toggle).toBeEnabled()
+    await user.click(toggle)
+
+    expect(document.querySelector('[data-droppable-disabled="true"]')).toBeNull()
+    expect(screen.getByText('COMPLETED')).toBeInTheDocument()
+  })
+
+  it('저장된 접힘 상태를 첫 렌더에서 복원한다 — 새로고침해도 접힌 채', () => {
+    window.localStorage.setItem(
+      backlogCollapsedStorageKey('ATLAS'),
+      JSON.stringify([`sprint-${plannedSprint.sprintId}`]),
+    )
+
+    renderSprintColumn(plannedSprint, [issue1])
+
+    expect(
+      screen.getByRole('button', { name: collapseToggleName(plannedSprint) }),
+    ).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('ATLAS-5')).toBeNull()
+  })
+
+  it('★다른 스프린트를 접은 기억이 이 스프린트를 접지 않는다 — 섹션 id 는 sprintId 로 갈린다', () => {
+    window.localStorage.setItem(
+      backlogCollapsedStorageKey('ATLAS'),
+      JSON.stringify([`sprint-${activeSprint.sprintId}`]),
+    )
+
+    renderSprintColumn(plannedSprint, [issue1])
+
+    expect(
+      screen.getByRole('button', { name: collapseToggleName(plannedSprint) }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('ATLAS-5')).toBeInTheDocument()
   })
 })

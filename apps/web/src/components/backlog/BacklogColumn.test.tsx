@@ -1,11 +1,15 @@
-// BacklogColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·드롭 영역
-import { describe, it, expect, vi } from 'vitest'
+// BacklogColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·드롭 영역·섹션 접기
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue } from '@/api/backlog'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import {
+  backlogCollapsedStorageKey,
+  useBacklogCollapsedStore,
+} from '@/hooks/use-backlog-collapsed'
 
 // TanStack Router Link mock
 vi.mock('@tanstack/react-router', () => ({
@@ -63,15 +67,23 @@ const issue2: BacklogIssue = {
 
 const assigneeNames = new Map<string, string>([['ATLAS-1', '박지현']])
 
+/** 테스트 프로젝트 키 — 접힘 영속 키(`bts.backlog.collapsed.{projectKey}`)의 네임스페이스 */
+const PROJECT_KEY = 'ATLAS'
+
+/** 백로그 섹션의 접기 토글 접근 이름 (하드코딩 금지 — i18n 경유) */
+const COLLAPSE_TOGGLE_NAME = backlogLabels.collapseSection(backlogLabels.backlogTitle)
+
 function renderColumn(
   issues: BacklogIssue[] = [issue1, issue2],
   names: Map<string, string> = assigneeNames,
   isOver = false,
   entry?: { canCreateIssue?: boolean; onCreateIssue?: () => void },
+  projectKey: string = PROJECT_KEY,
 ) {
   return render(
     <DndContext>
       <BacklogColumn
+        projectKey={projectKey}
         issues={issues}
         assigneeNames={names}
         isOver={isOver}
@@ -81,6 +93,13 @@ function renderColumn(
     </DndContext>,
   )
 }
+
+// 접힘 스토어는 모듈 전역 zustand 싱글턴이라 테스트 간 상태가 샌다.
+// localStorage 도 함께 비운다 — 훅이 스토어에 없는 프로젝트만 저장값을 읽기 때문이다.
+beforeEach(() => {
+  window.localStorage.clear()
+  useBacklogCollapsedStore.setState({ byProject: {} })
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S1. 헤더 렌더
@@ -230,5 +249,170 @@ describe('BacklogColumn — 이슈 생성 진입점 (F3 FR-1)', () => {
     const button = screen.getByRole('button', { name: backlogLabels.createIssueInBacklog })
     expect(dropArea).not.toBeNull()
     expect(dropArea?.contains(button)).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 — 세로 스택 레이아웃 (FR-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogColumn — 세로 스택 레이아웃 (F15 FR-1)', () => {
+  it('섹션이 전폭(w-full)이고 288px 고정폭 클래스를 갖지 않는다', () => {
+    renderColumn()
+    const region = screen.getByRole('region')
+
+    // 짝 단언 — 「없다」만 재면 클래스명을 오타 내도 통과한다.
+    expect(region.className).toContain('w-full')
+    expect(region.className).not.toMatch(/\bmin-w-72\b/)
+    expect(region.className).not.toMatch(/\bw-72\b/)
+  })
+
+  it('★섹션 textContent 가 여전히 "백로그" 로 시작한다 — e2e 의 ^ 앵커 보호 (FR-2)', () => {
+    // `backlog.spec.ts` 의 getColumnLocator 는 filter({ hasText: /^백로그/ }) 로 칸을 찾는다.
+    // 접기 토글에 sr-only 텍스트를 넣으면 그 글자가 맨 앞에 끼어 이 정규식이 즉사한다.
+    renderColumn()
+    const region = screen.getByRole('region')
+
+    expect(region.textContent?.startsWith(backlogLabels.backlogTitle)).toBe(true)
+    // 토글은 접근 이름을 갖되 보이는 텍스트는 없다 — 두 조건을 함께 재야 공허하지 않다.
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+    expect(toggle.textContent).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 — 섹션 접기/펼치기 (FR-2 · E3 · E4 · C-3 · C-9 · C-10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogColumn — 섹션 접기/펼치기 (F15 FR-2)', () => {
+  it('기본은 펼침이다 — aria-expanded=true 이고 카드 목록이 보인다', () => {
+    renderColumn()
+
+    expect(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
+  })
+
+  it('★E3: 접으면 카드 목록이 사라지고 헤더의 이름·개수·액션은 남는다', async () => {
+    const user = userEvent.setup()
+    renderColumn(undefined, undefined, false, {
+      canCreateIssue: true,
+      onCreateIssue: vi.fn(),
+    })
+
+    await user.click(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME }))
+
+    // 카드 목록은 통째로 사라진다
+    expect(screen.queryByText('ATLAS-1')).toBeNull()
+    expect(screen.queryByText('ATLAS-2')).toBeNull()
+    // 헤더는 남는다 — 이름·개수·생성 진입점·토글
+    expect(screen.getByText(backlogLabels.backlogTitle)).toBeInTheDocument()
+    expect(screen.getByLabelText('이슈 2개')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: backlogLabels.createIssueInBacklog }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
+  it('★E4: 접힌 섹션은 드롭 후보에서 빠진다 — droppable div 가 렌더되지 않는다', async () => {
+    const user = userEvent.setup()
+    renderColumn()
+
+    // 펼침 상태에서는 있다 (짝 단언 — 「없다」만 재면 셀렉터 오타로 공허해진다)
+    expect(document.querySelector('[data-droppable="backlog"]')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME }))
+
+    expect(document.querySelector('[data-droppable="backlog"]')).toBeNull()
+  })
+
+  it('다시 누르면 펼쳐진다 — 카드와 드롭 영역이 함께 돌아온다', async () => {
+    const user = userEvent.setup()
+    renderColumn()
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+
+    await user.click(toggle)
+    await user.click(toggle)
+
+    expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
+    expect(document.querySelector('[data-droppable="backlog"]')).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('★C-3: aria-controls 를 갖지 않는다 — 접히면 대상 id 가 사라져 dangling IDREF 가 된다', async () => {
+    const user = userEvent.setup()
+    renderColumn()
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+
+    expect(toggle).not.toHaveAttribute('aria-controls')
+    await user.click(toggle)
+    expect(toggle).not.toHaveAttribute('aria-controls')
+  })
+
+  it('★C-9: 토글 이름은 접힘/펼침에서 동일하다 — 상태는 aria-expanded 가 말한다', async () => {
+    const user = userEvent.setup()
+    renderColumn()
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+    const nameWhenExpanded = toggle.getAttribute('aria-label')
+
+    await user.click(toggle)
+
+    expect(toggle.getAttribute('aria-label')).toBe(nameWhenExpanded)
+    expect(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })).toBeInTheDocument()
+  })
+
+  it('★C-10: 모바일 터치 타깃이 44px 이상이고 md 부터 해제된다 (NFR-6)', () => {
+    renderColumn()
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+
+    expect(toggle.className).toContain('min-h-11')
+    expect(toggle.className).toContain('min-w-11')
+    expect(toggle.className).toContain('md:min-h-0')
+    expect(toggle.className).toContain('md:min-w-0')
+  })
+
+  it('★FR-12: 접기는 권한과 무관하다 — 생성 권한이 없어도 토글은 활성이다', async () => {
+    const user = userEvent.setup()
+    renderColumn(undefined, undefined, false, {
+      canCreateIssue: false,
+      onCreateIssue: vi.fn(),
+    })
+
+    // 생성 진입점은 fail-closed 로 비활성인데
+    expect(screen.getByRole('button', { name: backlogLabels.createIssueInBacklog })).toBeDisabled()
+
+    // 접기 토글은 활성이고 실제로 동작한다
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+    expect(toggle).toBeEnabled()
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('저장된 접힘 상태를 첫 렌더에서 복원한다 — 새로고침해도 접힌 채', () => {
+    window.localStorage.setItem(backlogCollapsedStorageKey(PROJECT_KEY), JSON.stringify(['backlog']))
+
+    renderColumn()
+
+    expect(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(screen.queryByText('ATLAS-1')).toBeNull()
+  })
+
+  it('다른 프로젝트에서 접은 기억이 이 프로젝트를 접지 않는다', () => {
+    window.localStorage.setItem(backlogCollapsedStorageKey('OTHER'), JSON.stringify(['backlog']))
+
+    renderColumn()
+
+    expect(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
   })
 })
