@@ -118,6 +118,80 @@ const FAILURE_MESSAGE: Record<FailureKind, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 날짜 필드 — 시작일·종료일이 같은 모양이라 한 벌로 묶는다
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** {@link DateField} props */
+interface DateFieldProps {
+  /** input id. `Label htmlFor` 와 짝이다 */
+  readonly id: string
+  /** 필드 라벨 (i18n 문구) */
+  readonly label: string
+  /** 현재 값 (ISO 8601 date 또는 빈 문자열) */
+  readonly value: string
+  /** 요청 진행 중 잠금 */
+  readonly disabled: boolean
+  /** 필드 에러. 있으면 `aria-invalid` + 필드 아래 문구가 함께 붙는다 */
+  readonly error?: { readonly id: string; readonly message: string }
+  /** 값 변경 콜백 */
+  readonly onChange: (value: string) => void
+}
+
+/** `Input type="date"` 한 칸. 선례 `AuditLogFilters.tsx` · `WorklogAggregateReport.tsx` */
+function DateField({ id, label, value, disabled, error, onChange }: DateFieldProps): JSX.Element {
+  return (
+    <div className="flex flex-1 flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="date"
+        value={value}
+        disabled={disabled}
+        aria-invalid={error !== undefined}
+        aria-describedby={error?.id}
+        onChange={(event) => {
+          onChange(event.target.value)
+        }}
+      />
+      {error !== undefined && (
+        <p id={error.id} className="text-sm text-destructive">
+          {error.message}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** {@link FailureAlert} props */
+interface FailureAlertProps {
+  /** 실패 종류 */
+  readonly kind: FailureKind
+  /** 요청 진행 중 재시도 잠금 */
+  readonly disabled: boolean
+}
+
+/**
+ * 중간 실패 안내 + 재시도.
+ *
+ * 재시도 버튼은 `type="submit"` 이라 푸터의 제출과 **같은 핸들러**를 지난다 —
+ * 재시도 전용 경로를 따로 만들면 두 경로가 갈라져 한쪽만 고쳐지는 날이 온다.
+ * 무엇을 다시 보낼지는 그때의 변경분이 정한다(`PATCH` 가 이미 성공했으면 0이므로 `start` 만).
+ */
+function FailureAlert({ kind, disabled }: FailureAlertProps): JSX.Element {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-start gap-2 rounded-md border border-destructive bg-destructive/10 px-3 py-2 text-sm text-danger-text"
+    >
+      <p>{FAILURE_MESSAGE[kind]}</p>
+      <Button type="submit" variant="outline" size="sm" disabled={disabled}>
+        {backlogLabels.retry}
+      </Button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -235,8 +309,9 @@ export function StartSprintDialog({
   async function runStart(): Promise<void> {
     try {
       await startSprint.mutateAsync(sprint.sprintId)
+      // 훅이 이미 invalidate 했다 — 닫기 게이트가 한 번 더 부르지 않도록 깃발을 내린다
       patchAppliedRef.current = false
-      onOpenChange(false)
+      closeDialog()
     } catch (error) {
       if (!isConflict(error)) {
         setFailure('start')
@@ -245,7 +320,7 @@ export function StartSprintDialog({
       toast.error(backlogLabels.startDialog.startConflict)
       patchAppliedRef.current = false
       await invalidateBacklog()
-      onOpenChange(false)
+      closeDialog()
     }
   }
 
@@ -260,14 +335,23 @@ export function StartSprintDialog({
     await runStart()
   }
 
-  /** 닫힘 경로 단일 창구 — `PATCH` 만 성공한 채 닫히면 목록을 새로 받아야 한다 */
+  /**
+   * 닫힘 경로 **단일 창구**. Esc·바깥 클릭·취소·성공·E10 이 전부 여기를 지난다.
+   *
+   * `PATCH` 만 성공한 채 닫히면 목록을 새로 받는다 — 안 하면 재개봉 시 기준값이
+   * 낡은 `version` 으로 리셋돼 다음 `PATCH` 가 409 다.
+   */
   function handleOpenChange(next: boolean): void {
     if (!next && patchAppliedRef.current) {
-      // 안 하면 재개봉 시 기준값이 낡은 `version` 으로 리셋돼 다음 `PATCH` 가 409 다
       patchAppliedRef.current = false
       void invalidateBacklog()
     }
     onOpenChange(next)
+  }
+
+  /** 닫기 — 게이트를 우회하는 경로를 만들지 않기 위한 얇은 별칭 */
+  function closeDialog(): void {
+    handleOpenChange(false)
   }
 
   return (
@@ -285,37 +369,29 @@ export function StartSprintDialog({
           }}
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor={startDateId}>{backlogLabels.startDialog.startDateLabel}</Label>
-              <Input
-                id={startDateId}
-                type="date"
-                value={values.startDate}
-                disabled={pending}
-                onChange={(event) => {
-                  setValues((prev) => ({ ...prev, startDate: event.target.value }))
-                }}
-              />
-            </div>
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor={endDateId}>{backlogLabels.startDialog.endDateLabel}</Label>
-              <Input
-                id={endDateId}
-                type="date"
-                value={values.endDate}
-                disabled={pending}
-                aria-invalid={rangeInvalid}
-                aria-describedby={rangeInvalid ? rangeErrorId : undefined}
-                onChange={(event) => {
-                  setValues((prev) => ({ ...prev, endDate: event.target.value }))
-                }}
-              />
-              {rangeInvalid && (
-                <p id={rangeErrorId} className="text-sm text-destructive">
-                  {backlogLabels.startDialog.endBeforeStart}
-                </p>
-              )}
-            </div>
+            <DateField
+              id={startDateId}
+              label={backlogLabels.startDialog.startDateLabel}
+              value={values.startDate}
+              disabled={pending}
+              onChange={(next) => {
+                setValues((prev) => ({ ...prev, startDate: next }))
+              }}
+            />
+            <DateField
+              id={endDateId}
+              label={backlogLabels.startDialog.endDateLabel}
+              value={values.endDate}
+              disabled={pending}
+              error={
+                rangeInvalid
+                  ? { id: rangeErrorId, message: backlogLabels.startDialog.endBeforeStart }
+                  : undefined
+              }
+              onChange={(next) => {
+                setValues((prev) => ({ ...prev, endDate: next }))
+              }}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -331,26 +407,14 @@ export function StartSprintDialog({
             />
           </div>
 
-          {failure !== null && (
-            <div
-              role="alert"
-              className="flex flex-col items-start gap-2 rounded-md border border-destructive bg-destructive/10 px-3 py-2 text-sm text-danger-text"
-            >
-              <p>{FAILURE_MESSAGE[failure]}</p>
-              <Button type="submit" variant="outline" size="sm" disabled={pending}>
-                {backlogLabels.retry}
-              </Button>
-            </div>
-          )}
+          {failure !== null && <FailureAlert kind={failure} disabled={pending} />}
 
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               disabled={pending}
-              onClick={() => {
-                handleOpenChange(false)
-              }}
+              onClick={closeDialog}
             >
               {issueCreateStrings.cancelButton}
             </Button>
