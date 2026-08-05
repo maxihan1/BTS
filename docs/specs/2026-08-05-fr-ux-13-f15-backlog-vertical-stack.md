@@ -1071,3 +1071,72 @@ T1 은 그러지 않고 `components/backlog/` 를 **`readdirSync` 로 도출**�
 생긴 요구다. 이름을 적으면 같은 함정을 되풀이한다. 도출하면 **파일명이 무엇이든 생기는 즉시
 스캔 대상**이 되고, T7·T8 이 만들 파일을 기다릴 필요도 없어 **wave 순서 문제까지 사라진다**.
 비-공허 가드(`SprintColumn.tsx` 포함 · 길이 > 1 · 테스트 파일 제외)도 함께 넣었다.
+
+### I-6. 다이얼로그 props 계약이 불완전했다 (T7·T8 적발)
+
+plan 이 못박은 props(`open`·`onOpenChange`·`sprint`[+`allSprints`·`truncated`])는 같이 명령한
+「훅을 직접 호출한다」와 **양립하지 않는다.**
+
+- `useUpdateSprint(projectKey)`·`useStartSprint(projectKey)`·`useCompleteSprint(projectKey)` 가
+  전부 `projectKey` 를 요구하는데 **`SprintMeta` 에 `projectKey` 필드가 없다**(`sprintMetaSchema` 실측)
+- 전역 활성 프로젝트 경유는 `BacklogBoard.tsx` 주석이 **명시적으로 금지**한 경로다
+
+→ **`projectKey` 를 두 다이얼로그 모두의 필수 prop 으로 추가**한다. 추가로
+`CompleteSprintDialog` 는 **`canReorderIssue` 도 required** 다(C-15 게이팅 입력) — 기본값을 주지
+않아 배선이 빠뜨리면 **컴파일 에러로 즉사**하게 했다.
+
+### I-7. ★ 비가시 이슈 경로 — 실재하되 프론트에서 막을 수 없다 (T8 실측)
+
+착수 최우선 확인 항목의 결론이다.
+
+| 물음 | 답 |
+|---|---|
+| 드롭 경로가 실재하는가 | **그렇다.** `BacklogApplicationService.kt:144-150` `keys.mapNotNull { issueByKey[it] }` 가 `sprint_issues` 에 있으나 가시 목록에 없는 키를 조용히 버리고, `truncated` 는 카드 LIMIT 초과에서만 오므로 **서지 않는다** |
+| 언제 활성인가 | `IdentityAccessIssueSecurityDirectory.kt:77-79` — **프로젝트에 이슈 보안 스킴이 배정됐을 때만**. `INSERT INTO project_security_scheme` 이 마이그레이션·시더에 **0건**이라 **신규 배포에서는 휴면** |
+| 운영 인스턴스는 | **미확인.** 배정 여부는 런타임 DB 행이고 이 세션에서 관측할 수단이 없다. 추측하지 않는다 |
+| 같은 양식이 또 있는가 | **있다 (신규 발견).** `IssueRepository.kt:955` 의 `ISSUES.DELETED_AT.isNull` — soft delete 된 이슈가 `sprint_issues` 에 남아 있으면 똑같이 조용히 빠지고 `truncated` 도 안 선다. 삭제된 이슈라 피해는 작지만 양식은 동일하다 |
+| 프론트가 막을 수 있는가 | **없다.** 백로그 응답에 「몇 건이 빠졌는가」 신호가 **0개**다. 관측 불가능한 것에 가드를 달면 **그 가드 자체가 가짜 그린**이 된다 |
+
+**후속 (B3 와 함께 백엔드 몫).** 응답에 `hiddenIssueCount`(또는 `sprint_issues` 키 수 대비 반환 수)를
+실어야 프론트가 `truncated` 와 같은 차단을 걸 수 있다.
+
+### I-8. 내가 인용한 jsdom 폴리필 선례가 틀렸다 (T8 적발)
+
+plan·dispatch 가 인용한 `ResolutionPickerModal.test.tsx`·`GitWebhookRegisterDialog.test.tsx` 는
+`hasPointerCapture` 를 폴리필하지 **않는다** — 실제로는 **`vi.mock('@/components/ui/select')` 로
+네이티브 `<select>` 를 대체**한다. 정본 템플릿은 `PatCreateForm.test.tsx` 다.
+
+부수 실측 — **vitest 의 MSW 기본 핸들러는 `test/handlers.ts` 이고 refresh 하나뿐**이다.
+`mocks/handlers.ts`(전량)는 브라우저용이라 vitest 에 붙어 있지 않아, `GET /api/v1/workflows` 가
+unhandled 로 전량 red 였다. 필요한 핸들러는 `server.use` 로 직접 깔아야 한다.
+
+### I-9. E2E S1 도 갱신 범위다 (T6 실측 — 정본에 없던 항목)
+
+세로 전환 후 `backlog.spec.ts` 의 **S1·S2·S3 이 red** 다. 브라우저 실측 좌표.
+
+```
+viewportH 720 / 스크롤 0
+  스프린트 1 섹션.  top=415  bottom=647   → 화면 안
+  백로그 섹션.      top=822  bottom=1055  → 화면 밖
+```
+
+`dragCardToColumn`(`backlog.spec.ts:204-231`)이 출발·도착 boundingBox 를 **먼저 둘 다 계산**한 뒤
+마우스를 움직이는데, 백로그가 맨 아래로 가며 뷰포트를 벗어났다. 백로그가 안 끼는
+**S5(스프린트 내부 재정렬)는 통과**한다.
+
+§시각 검증 기준의 `backlog.spec.ts` 갱신 표는 S2·S3 만 「갱신 필요」로 적었다.
+**S1 도 같은 원인이므로 T10 범위에 포함한다.**
+
+### I-10. 셸 반응형 선재 결함 (T6 발견 — 이 PR 범위 밖)
+
+375px 에서 본문 폭이 **111px** 로 짜부라진다. 셸 사이드바(264px)가 md 미만에서 접히지 않기
+때문이다. **이 PR 이 건드리지 않은 보드·이슈 목록 화면도 `main=111px` 로 동일** —
+**선재 결함**이며 원인이 이 변경이 아니다. 다만 세로 스택이 되면서 증상 모양이 바뀐다
+(전에는 288px 고정폭이 보드 안쪽에서 가로 스크롤됐고, 지금은 섹션이 111px 로 짜부라진다).
+수정 대상이 `components/layout/` 이라 **후속 항목으로 등록**한다.
+
+### I-11. `completeDialog.staleSnapshot` 전용 문구 신설 권고 (T8)
+
+C-7 재검증에서 「목록이 달라졌다」를 알릴 문구가 `completeDialog` 문구군에 없어
+`startDialog.patchConflict`(「다른 사람이 먼저 수정했습니다…」)를 재사용했다. 뜻이 정확히
+같고 하드코딩을 만들지 않기 위한 선택이다. **후속으로 전용 키를 신설**하는 편이 낫다.
