@@ -430,7 +430,7 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 승계 PR 3건 (로드맵 §PR 체인 Tier 1 F5 + Tier 2 F15·F16).
 
-- **F5 — 실동작 결함 2건 봉합.** 백로그/스프린트 카드의 담당자가 **전원 `?`(이름 미확인)로 렌더된다** — 빈 `Map` 을 만들어 그대로 넘기고 채우는 코드가 없다(`BacklogBoard.tsx:217`). 보드는 정상이고 백로그만 누락이다. 조회 실패 시엔 **빈 `<div/>`** 를 반환해 에러 안내도 재시도도 없다(`:214`). `board.tsx:333` 의 `useUsersByIds` 조립 패턴을 복제한다.
+- **F5 — 실동작 결함 2건 봉합.** ✅ **완료 (PR #342)**. 백로그/스프린트 카드의 담당자가 **전원 `?`(이름 미확인)로 렌더**됐다 — 빈 `Map` 을 만들어 그대로 넘기고 채우는 코드가 없었다(`BacklogBoard.tsx:102`). 조회 실패 시엔 **빈 `<div/>`** 를 반환해 에러 안내도 재시도도 없었다(`:99`). **★ 이 항목의 원래 서술 3건이 착수 시 실측으로 뒤집혔다** — 줄번호 `:217`·`:214` 는 실제 `:102`·`:99` 였고(파일 전체가 174줄), 처방으로 적혀 있던 *"`board.tsx:333` 의 `useUsersByIds` 조립 패턴을 복제한다"* 는 **두 겹으로 틀렸다**. 보드 라우트(`projects.$projectKey.board.tsx:335`)는 `useUsersByIds` 가 아니라 `useQuery(['users'], fetchUsers)` **전체 목록**을 쓰고, 그 방식은 `UsersController.kt:53` 의 `MAX_RESULTS = 50` 때문에 **1,000명 조직에서 임의의 50명만** 돌려준다. 즉 **보드 화면이 같은 잠재 결함을 이미 갖고 있고**(개발 시드 5명이라 안 드러남), 복제했으면 결함을 옮기는 것이었다. 실제 처방은 **담당자 id 만 모아 50개씩 나눠 전량 조회**(`useUsersByIdsChunked`)다. **보드의 동일 결함은 별도 후속 항목** (Maxi 확정 2026-08-05 M2 — 한 PR = 한 관심사).
 - **F15 — 백로그 세로 스택 + 스프린트 다이얼로그 + 키보드 DnD.** 지금 백로그는 지라와 달리 **가로 칸반**이다. `BacklogBoard.tsx:246,248` · `SprintColumn.tsx`→`SprintSection.tsx` · 신규 `StartSprintDialog.tsx`·`CompleteSprintDialog.tsx` · `CreateSprintForm.tsx`.
 - **F16 — 백로그 필터바 + 에픽 패널.** `components/filters/FilterBar.tsx` 의 슬롯 4종(`leadingSection`/`leadingChips`/`extraActiveCount`/`onReset`)이 이미 확장용 설계라 그대로 쓴다.
 
