@@ -211,12 +211,24 @@
 - `PATCH` 성공 후 그 응답의 `SprintMeta` 로 **기준값과 `version` 을 갱신**한다. 이것이 S5 재시도의 정확성을 보장한다.
 - 이어서 `POST /api/v1/sprints/{id}/start` 를 보낸다 (파라미터 0, `SprintController.kt:200-203`).
 - 두 요청이 모두 성공해야 다이얼로그를 닫고 백로그 쿼리를 invalidate 한다.
-- 중간 실패 문구는 **세 갈래로 분리한다**. 하나로 뭉뚱그리면 거짓말이 된다.
+- 중간 실패 문구는 **네 갈래로 분리한다**. 하나로 뭉뚱그리면 거짓말이 된다.
   | 실패 지점 | 문구 (신규 i18n 키) | 재시도 시 보내는 것 |
   |---|---|---|
   | `PATCH` 실패 (비-409) | 「기간·목표를 저장하지 못했습니다. 스프린트는 시작되지 않았습니다.」 | `PATCH` + `start` |
   | `PATCH` 409 | 「다른 사람이 먼저 수정했습니다. 최신 값을 불러왔으니 확인 후 다시 시도해 주세요.」 | 백로그 invalidate 후 기준값 교체 → 사용자가 재확인 |
-  | `start` 실패 | 「기간·목표는 저장했지만 스프린트를 시작하지 못했습니다.」 | `start` 만 (변경분이 0이므로 자동으로 그렇게 된다) |
+  | `start` 실패 (비-409) | 「기간·목표는 저장했지만 스프린트를 시작하지 못했습니다.」 | `start` 만 (변경분이 0이므로 자동으로 그렇게 된다) |
+  | **`start` 409** | 「이미 시작된 스프린트입니다.」 | **재시도 없음** — 백로그 invalidate + 다이얼로그 닫기 (E10) |
+
+  ★ **네 번째 행은 2026-08-05 리뷰가 적발한 누락이다.** 원래 표가 「세 갈래」를 선언하면서
+  `start` 실패를 하나로 묶었는데, **E10 이 정의한 409 처방은 나머지 셋과 정반대**다
+  (다이얼로그를 닫고 재시도 버튼을 주지 않는다). 표가 스스로 "하나로 뭉뚱그리면 거짓말이
+  된다"고 쓴 그 잘못을 표 자신이 저지르고 있었다.
+
+- **기준값은 다이얼로그 내부 state 에 둔다.** 부모 props 를 그대로 기준값으로 쓰면
+  `PATCH` 성공 후에도 props 가 바뀌지 않아(두 요청이 모두 성공해야 invalidate 하므로)
+  재시도가 **낡은 `version` 으로 `PATCH` 를 다시 보내 409** 가 된다.
+- **다이얼로그를 닫을 때 `PATCH` 만 성공한 상태였다면 백로그를 invalidate 한다.**
+  안 하면 다시 열었을 때 기준값이 낡은 `version` 으로 리셋되고, 다음 `PATCH` 가 409 다.
 - 재시도 버튼은 `backlogLabels.retry`(`다시 시도`)를 **재사용**한다. 조회 실패 화면의 같은 이름 버튼과 공존할 수 없다 —
   조회 실패 시 `BacklogBoard.tsx:125-143` 이 조기 반환해 다이얼로그가 통째로 언마운트되기 때문이다. 이 근거를 코드 주석으로 남긴다.
 
@@ -811,3 +823,183 @@ preview 프록시에서 **라이트·다크 양쪽** 확인하고 관찰 요지�
 - **결정 대상.** 충돌이 실재하면 「프로젝트의 워크플로우 스킴을 따라간다」(`GET /api/v1/projects/{key}/workflow-scheme` 경유, 요청 2회 추가)로 승격할지 여부.
   실재하지 않으면 현행 사상을 그대로 둔다.
 - 이 확인은 구현 착수 시 **가장 먼저** 한다. 결과에 따라 FR-7 의 구현 난이도가 달라진다.
+
+---
+
+## 리뷰 반영 (2026-08-05) — 신규 요구와 정정
+
+독립 리뷰 2종(구현 관점 · 설계 완결성)이 **BLOCKER 9 · MAJOR 20** 을 냈고, 그중 겹친 지적
+5건과 내가 실측 재확인한 4건을 여기 반영한다. 위 본문과 충돌하는 부분은 **이 절이 이긴다**.
+
+### Maxi 재결재 2건
+
+**R1. `truncated` 완료 차단 — 유지한다. 단 근거를 정정한다.**
+U1 결재 당시 근거였던 *"F16 이 오면 풀린다"* 는 **거짓이었다**. 실측 —
+`BacklogController.kt:56-59` `getBacklog(@PathVariable projectKey)` 는 **쿼리 파라미터가 0개**이고,
+`BacklogApplicationService` 는 `BoardIssueLookupPort.kt:94` 의 `BoardCardFilter` 오버로드를
+**쓰지 않는다**. 정본 §4.11 도 F16 을 "프론트 전용 예상"이라 못박는다. 즉 F16 의 `FilterBar` 는
+**이미 잘려서 도착한 응답을 클라이언트에서 다시 거를 뿐** `truncated` 플래그를 바꿀 수 없다.
+
+정확한 비용은 「F16 전까지」가 아니라 **「백엔드가 범위 축소 수단을 갖기 전까지 영구히」**다.
+Maxi 는 정정된 근거 위에서 **차단 유지**를 재확정했고, 대신 **백엔드 후속 항목을 정본에
+등록**하기로 했다 (아래 R3).
+
+**R2. 키보드 드래그 — 좌표 계산기를 직접 만든다.** 아래 FR-15.
+
+**R3. 후속 항목 등록.** `docs/plan/product/personalization.md` §4.11 에
+**「B3 — 백로그 조회 범위 축소(백엔드)」** 를 이 PR 에서 신설한다. `truncated` 를 실제로
+내릴 수 있는 유일한 경로이고, 그때까지 cap 초과 프로젝트는 스프린트를 완료할 수 없다.
+
+### FR-15. 키보드 좌표 계산기 (신규 · R2)
+
+**문제.** `@dnd-kit/core@6.3.1` 의 `defaultKeyboardCoordinateGetter` 는 방향키 1회에
+**25px** 만 움직인다 (`core.esm.js:1111` `x + 25` · `:1121` `y + 25`).
+`grep -rn "coordinateGetter\|sortableKeyboardCoordinates" apps/web/src` → **0건**이고,
+백로그 카드는 `useSortable` 이 아니라 `useDraggable`+`useDroppable`(`BacklogCard.tsx:152,157`)이라
+`sortableKeyboardCoordinates` 도 쓸 수 없다.
+
+**세로 스택 전환이 이 거리를 늘린다.** 섹션이 전폭·전고가 되므로 이슈 12건 섹션 하나가
+800px 을 넘고, 옆 섹션까지 30~40회 방향키가 필요하다. 즉 S8·S19 는 **물리적으로 성립하지 않는다**.
+
+**요구.** 새 순수 모듈 `apps/web/src/lib/backlog-keyboard-coordinates.ts` 를 만든다.
+
+- 시그니처. `backlogCoordinateGetter: KeyboardCoordinateGetter` (dnd-kit 타입)
+- `↑`/`↓` — **다음/이전 카드의 rect 중심**으로 점프한다. 섹션의 마지막 카드에서 `↓` 를
+  누르면 **다음 섹션의 첫 카드**로 넘어간다. 섹션 경계 이동이 1회로 끝나야 한다
+- `←`/`→` — 세로 스택에는 가로 이웃이 없으므로 **아무것도 하지 않는다**(현재 좌표 반환)
+- 카드가 하나도 없는 섹션은 **섹션 droppable rect 중심**을 후보로 넣는다. 빈 스프린트로
+  옮길 수 없으면 기능이 반쪽이다
+- 후보 순서는 **화면에 그려진 순서**(스프린트들 → 백로그)와 같아야 한다. `BacklogView` 의
+  배열 순서를 그대로 쓴다 — 백엔드가 이미 정렬해 내려주므로 클라이언트 정렬을 넣지 않는다
+- **접힌 섹션은 후보에서 제외한다.** 카드 목록이 렌더되지 않으므로 rect 가 없다
+
+**FR-8 의 카드 우선 분기와의 상호작용.** 좌표가 카드 중심으로 점프하므로 카드 droppable 이
+정확히 하나 잡힌다. 리뷰가 지적한 *"25px 이동 중 항상 이웃 카드와 겹쳐 같은 섹션
+rerank 로만 판정된다"* 는 문제가 이 설계에서는 발생하지 않는다.
+
+**★ 집자마자 놓으면 맨 뒤로 가는 문제 (리뷰 M2).** `BacklogCard.tsx:162` 가
+`useDroppable({ disabled: isDragging })` 이라 **자기 자신은 충돌 후보에서 빠지고**,
+카드 사이는 `gap-2`(8px) 라 translate 0 에서는 어느 카드와도 겹치지 않는다. 그러면 칸
+droppable 로 폴백하고 `extractColumnDropZone` 이 `dropIndex = orderedKeys.length` 를 줘서
+(`lib/backlog-drag.ts:51`) **Space→Space 만 눌러도 카드가 맨 뒤로 이동한다**.
+마우스는 5px 임계 때문에 이 경로가 없다.
+
+- **요구.** 드래그 시작 좌표를 **집은 카드 자신의 rect 중심**으로 초기화하고, 이동이 0인
+  상태의 드롭은 `resolveBacklogDropAction` 이 **noop** 으로 판정하도록 만든다.
+- **T-KB-3(신규).** 집고 바로 놓으면 mutation 호출 수가 **0** 이다.
+
+### FR-16. 키보드 활성화가 카드 안 링크를 삼키지 않는다 (신규)
+
+**문제.** `KeyboardSensor.activators` 는 `active.activatorNode.current` 가 있고 이벤트 타깃이
+그것과 다를 때만 조기 반환한다 (`core.esm.js:1343-1370`). 그런데 `BacklogCard.tsx:152` 는
+`setActivatorNodeRef` 를 **구조 분해하지 않아** `activatorNode.current === null` 이고,
+그 결과 **가드가 통과**한다. `{...listeners}` 는 카드 `div` 에 전개돼 있고(`:180-181`)
+그 안에 이슈 상세로 가는 `<Link>`(`:193`)가 있어 keydown 이 버블한다.
+
+**결과.** 이슈 링크에 포커스한 채 **Enter 를 누르면 `preventDefault()` 가 걸려 이슈로 가지
+않고 드래그가 시작된다.** 키보드 사용자가 백로그에서 이슈를 여는 유일한 경로가 막힌다.
+
+**선재성.** `BoardCard.tsx` + `KanbanBoard.tsx:526` 이 같은 구조라 **보드 화면에는 이미 있는
+결함**이다. 그러나 백로그에서는 이 PR 이 여는 **새 충돌면**이고, 이 캠페인은
+「선재 결함을 베끼지 않는다」를 원칙으로 삼아 왔다(F5 에서 확립).
+
+**요구.** `keyboardCodes` 의 `start` 에서 **`Enter` 를 뺀다** — `Space` 만 드래그를 시작한다.
+`KeyboardSensor` 옵션으로 `{ keyboardCodes: { start: [Space], cancel: [Esc], end: [Space, Esc] } }`
+를 준다. **`end` 에서도 `Tab` 을 뺀다** — 기본값은 `end` 에 `Tab` 이 들어 있어
+(`core.esm.js:1101`) 드래그 중 Tab 이 「드롭」으로 해석되는데, 이는 사용자가 기대하는
+「포커스 이동」과 정반대다.
+
+**T-KB-4(신규).** 카드 안 링크에 포커스한 채 Enter → 드래그가 시작되지 않는다.
+**보드 화면은 이 PR 에서 건드리지 않는다** — 선재 결함은 별도 후속으로 남긴다.
+
+### FR-17. 공지가 권한을 반영한다 (신규 · 리뷰 겹침 지적)
+
+`use-backlog-drag.ts:71` 의 `if (!canReorderIssue) return` 이 키보드 경로도 막는 것은 사실이다
+(FR-12 실측 정확). 그러나 FR-9 의 `buildBacklogAnnouncements(view)` 는 **권한을 모른다**.
+
+**결과.** UPDATE 권한이 없는 사용자가 Space→방향키→Space 를 하면 화면은 그대로인데
+스크린리더가 「스프린트 1 스프린트로 옮겼습니다.」를 읽는다. **mutation 은 0건이다.**
+지금까지는 영어 기본 공지가 같은 거짓말을 했지만, 이 PR 이 「사용자 언어로 정확히 말한다」를
+목표로 내걸었으므로 여기서 닫는다.
+
+**요구.** 시그니처를 `buildBacklogAnnouncements(view: BacklogView, canReorderIssue: boolean)`
+로 바꾸고, 권한이 없으면 `onDragEnd` 가 **「권한이 없어 이동할 수 없습니다.」**를 반환한다.
+**T-KB-5(신규).** `canReorderIssue=false` 면 「옮겼습니다」류 문구가 **나오지 않는다**.
+
+### FR-18. 픽스처 보강 — 가짜 그린 차단 (신규 · 리뷰 겹침 지적)
+
+**실측.** `mocks/backlog-fixtures.ts` 에 `COMPLETED` 문자열이 **0건**이고
+(`grep -c COMPLETED` → 0), 스프린트는 `PLANNED` 1개뿐이며(`:240`·`:324`),
+`truncated` 는 `:255`·`:353` 에서 **`false` 하드코딩**이다.
+
+따라서 아래 두 테스트는 **아무것도 재지 않고 통과한다**.
+
+| 테스트 | 왜 공허한가 |
+|---|---|
+| T-CP-1 「COMPLETED 가 Select 옵션에 없다」 | COMPLETED 픽스처가 0개라 **자동으로 참** |
+| E2E S16 (같은 단언) | 동일 |
+| 눈확인 8번 · E15 「truncated 면 완료 차단」 | `truncated=true` 를 만들 수단이 **없다** |
+
+`unreachable-state-fixture-is-fake-green` 양식이고, **PR #342 에서 2회 적발된 유형**이다.
+
+**요구.**
+- `DEFAULT_BACKLOG` 에 **COMPLETED 스프린트 1개 + ACTIVE 1개**를 추가한다. PLANNED 는 유지.
+  이관 대상 Select 에 「백로그」 말고 실제 선택지가 있어야 S17(다른 스프린트로 이관)이 성립한다
+- **`truncated` 시나리오 토글**을 `backlog-handlers.ts` 에 추가한다. 선례를 그대로 따른다 —
+  `mocks/timeline-handlers.ts:49,102,133` 이 이미 `'truncated'` 토글을 갖고 있다
+- **T-CP-1 을 짝 단언으로 강화한다.** 「COMPLETED 가 없다」 + **「PLANNED·ACTIVE 가 실제로
+  들어 있다」** + 옵션 개수. 부정 단언 하나만으로는 공허를 못 막는다
+
+### FR-19. 신규 파일을 판별식에 등록한다 (신규)
+
+**실측.** `components/__tests__/button-primitive-usage.test.ts:80`
+`SCANNED_FILES = [...BATCH1_FILES, ...BATCH2_FILES]` 는 `:16-38`·`:46-77` 의 **하드코딩 51파일**이고,
+backlog 항목은 `:47-48` 의 `CreateSprintForm.tsx`·`SprintColumn.tsx` 둘뿐이다.
+
+신규 다이얼로그 2종은 목록에 없으므로 **원시 `<button>` 을 100개 넣어도 초록**이다.
+§측정 가능한 완료 기준의 「신규 컴포넌트에 원시 `<button>` 0」이 **아무것도 재지 않는다** —
+정확히 `two-lists-never-check-each-other` 양식이다.
+
+**요구.** `BATCH2_FILES` 에 `components/backlog/StartSprintDialog.tsx` ·
+`components/backlog/CompleteSprintDialog.tsx` 를 **같은 PR 에서 추가한다.**
+FR-11 은 「삭제·개명 금지」만 요구했지 **추가를 요구하지 않았다** — 그 누락이 이 결함의 원인이다.
+
+### 정정 목록
+
+| # | 원문 | 정정 |
+|---|---|---|
+| C-1 | §엣지 「15건」으로 인용된 곳 | **19건**이다 (E1~E19). plan 의 「엣지 15」도 함께 고친다 |
+| C-2 | NFR-8 측정 `grep -n "[가-힣]" apps/web/src/components/backlog/*.tsx` | **lib 을 안 본다.** FR-9 는 "컴포넌트·**lib** 안 하드코딩 금지"라 쓴다. 글롭을 `apps/web/src/{components/backlog,lib,hooks}/*backlog*.{ts,tsx}` 로 넓히고 신규 4파일(`backlog-announcements.ts`·`backlog-completion.ts`·`backlog-keyboard-coordinates.ts`·`use-backlog-collapsed.ts`)을 포함시킨다 |
+| C-3 | §접근성 「접기 토글에 `aria-controls`(카드 목록 div 의 id)」 + FR-2 「접히면 렌더하지 않는다」 | **서로 부순다** — 접힌 상태에서 dangling IDREF 가 된다. **`aria-expanded` 만 준다.** `aria-controls` 는 넣지 않는다 |
+| C-4 | FR-9 `onDragEnd` 문구 **4종** | `resolveBacklogDropAction` 반환 kind 는 **5종**이다 — `noop-move`(`lib/backlog-drag.ts:203`)가 빠졌다. 「이동할 수 없는 위치입니다.」를 쓴다. T-KB-1 이 **5종 전수**를 단언한다 |
+| C-5 | FR-9 「`resolveBacklogDropAction` 을 그대로 재사용해 공지와 mutation 이 어긋나지 않는다」 | **판정 함수는 같아도 입력이 다르면 어긋난다.** 실제 mutation 은 `use-backlog-drag.ts:79-93` 의 `extractColumnDropZone`/`extractCardDropZone` + `orderedKeys` 콜백으로 입력을 만든다. **그 입력 구성을 `lib/backlog-drag.ts` 로 올려 공용화**하고 두 경로가 같은 함수를 쓰게 한다 |
+| C-6 | E2E S2·S3 처방 「드래그 전 `scrollIntoViewIfNeeded()`」 | **부족하다.** `dragCardToColumn`(`backlog.spec.ts:204-231`)은 출발·도착 boundingBox 를 **먼저 둘 다** 계산한 뒤 마우스를 움직인다. 대상만 스크롤하면 이번엔 출발 카드가 뷰포트를 벗어난다. **① 대상 섹션을 접어 높이를 줄이거나 ② 스크롤 후 좌표를 재계산하고 ③ 출발·도착 동시 가시성을 단언**한다 |
+| C-7 | FR-6 이 다이얼로그 스냅샷으로 이관 후 곧바로 `complete` | **비가역 연산 직전 재검증이 0이다.** 그 사이 남이 이슈를 추가하면 목록에 없어 **영구 동결**되고, 남이 원본을 완료하면 `DELETE` 가 조용히 204 를 줘서 프론트가 전 행을 「이관됨」으로 **오판**한다(C1 스스로 경고한 함정). **요구 — `complete` 직전에 백로그를 재조회해 미완료가 0인지 확인하고, 아니면 완료를 중단하고 목록을 갱신한다** |
+| C-8 | E11(미완료 0건 → 즉시 완료) vs E15(truncated → 제출 차단) | 우선순위 미정이었다. **E15 가 이긴다** — 목록이 불완전하면 「0건」이라는 관측 자체를 믿을 수 없다 |
+| C-9 | FR-10 「접기 토글 이름 **1종** 등록」 | 섹션 A 는 접힘·B 는 펼침이 **동시에** 가능하므로 「같은 버튼의 다른 상태」 면제에 해당하지 않는다. **이름을 상태와 무관하게 고정**하고(`aria-expanded` 가 상태를 말한다) 1종을 등록한다 |
+| C-10 | NFR-6(터치 44×44) vs 접기 토글 `size="icon-xs"`(24px) | 어긋난다. 토글은 **`size="icon"`(36px) + 모바일에서 `min-h-11 min-w-11`** 로 준다 |
+| C-11 | §실측 방법 기록의 `grep -n "^  it("` → 41 | 그 명령의 실제 값은 **16**이다. 41 은 `grep -cE "^\s+it\("` 의 값이다. 명령을 고친다 |
+| C-12 | §갱신이 필요한 기존 유닛 4건 | 실제로는 **깨지는 것 2건**(`:386`·`:398`)이고 `:410`·`:442` 는 `not.toHaveBeenCalled()` 라 그대로 통과한다(갱신이 아니라 **강화**). 그리고 **누락된 치명 항목 1건** — `BacklogBoard.test.tsx:98-201` 의 `vi.mock('@/hooks/use-backlog')` **팩토리에 신규 훅을 추가하지 않으면 41건이 통째로 red** 다 |
+| C-13 | §갱신 표에 `BacklogColumn.test.tsx`·`SprintColumn.test.tsx` 없음 | plan 에는 T6 의 `files` 로 들어 있다. **스펙 표에도 추가**해 두 문서를 맞춘다 |
+| C-14 | E5(COMPLETED 섹션) | 이관 대상 Select 에서 제외하는 것과 별개로, **완료 다이얼로그를 여는 트리거 자체가 없다**(시작/완료 버튼 미표시). 모순 없음 — 확인만 기록 |
+| C-15 | FR-12 권한 게이팅 | 완료 다이얼로그의 **이관은 UPDATE 권한**을 쓴다(`POST /{id}/issues`·`DELETE` 둘 다 UPDATE, `complete` 만 CREATE). CREATE 만 있고 UPDATE 없는 사용자는 전건 403 을 받는데 FR-6 실패 처리에 403 이 없다. **완료 다이얼로그의 이관 UI 를 `canReorderIssue` 로도 게이팅**하고, 403 을 이관 실패 문구에 포함한다 |
+
+### 미배정이었던 엣지 케이스 → 소유 task 지정
+
+| 엣지 | 소유 |
+|---|---|
+| E7(없어진 sprint id) | T5 RED 에 추가 |
+| E8(종료일 < 시작일) | T7 RED 에 추가 — 눈확인만으로는 부족하다 |
+| E10(`start` 409) | T7 RED·GREEN (FR-4 네 번째 갈래) |
+| E12(대상이 COMPLETED 로 전이) | T8 RED |
+| E19(이관 중 닫기 차단) | T8 GREEN |
+| E1·E3·E4(스프린트 0 · 전부 접힘 · 접힌 섹션 드롭) | T6 RED |
+
+### 남은 미확인 2건
+
+- **U2** — 같은 `stateKey` 가 워크플로우마다 다른 category 를 갖는 실데이터. 개발 DB 접근이
+  이 세션에 없어 재지 못했다. **T2 착수 최우선**으로 남는다.
+- **이슈 단위 가시성 제한이 이 배포에서 활성인지.** `BacklogApplicationService` 가
+  `keys.mapNotNull { issueByKey[it] }` 로 **비가시 이슈를 조용히 떨어뜨리는데 `truncated` 는
+  서지 않는다.** 활성이라면 C1 의 영구 동결이 `truncated` 가드를 우회하는 두 번째 경로가 된다.
+  **T8 착수 시 확인하고, 활성이면 완료 다이얼로그에 같은 차단을 건다.**

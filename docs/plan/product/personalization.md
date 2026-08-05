@@ -428,11 +428,15 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **우선순위**. 필수 | **선행**. 없음 (로드맵상 F5 의존 0) | **Plan slug**. `fr-ux-13-backlog-usability`
 
-승계 PR 3건 (로드맵 §PR 체인 Tier 1 F5 + Tier 2 F15·F16).
+승계 PR 3건 (로드맵 §PR 체인 Tier 1 F5 + Tier 2 F15·F16) + **후속 B3 1건** (아래).
 
 - **F5 — 실동작 결함 2건 봉합.** ✅ **완료 (PR #342)**. 백로그/스프린트 카드의 담당자가 **전원 `?`(이름 미확인)로 렌더**됐다 — 빈 `Map` 을 만들어 그대로 넘기고 채우는 코드가 없었다(`BacklogBoard.tsx:102`). 조회 실패 시엔 **빈 `<div/>`** 를 반환해 에러 안내도 재시도도 없었다(`:99`). **★ 이 항목의 원래 서술 3건이 착수 시 실측으로 뒤집혔다** — 줄번호 `:217`·`:214` 는 실제 `:102`·`:99` 였고(파일 전체가 174줄), 처방으로 적혀 있던 *"`board.tsx:333` 의 `useUsersByIds` 조립 패턴을 복제한다"* 는 **두 겹으로 틀렸다**. 보드 라우트(`projects.$projectKey.board.tsx:335`)는 `useUsersByIds` 가 아니라 `useQuery(['users'], fetchUsers)` **전체 목록**을 쓰고, 그 방식은 `UsersController.kt:53` 의 `MAX_RESULTS = 50` 때문에 **1,000명 조직에서 임의의 50명만** 돌려준다. 즉 **보드 화면이 같은 잠재 결함을 이미 갖고 있고**(개발 시드 5명이라 안 드러남), 복제했으면 결함을 옮기는 것이었다. 실제 처방은 **담당자 id 만 모아 50개씩 나눠 전량 조회**(`useUsersByIdsChunked`)다. **보드의 동일 결함은 별도 후속 항목** (Maxi 확정 2026-08-05 M2 — 한 PR = 한 관심사).
 - **F15 — 백로그 세로 스택 + 스프린트 다이얼로그 + 키보드 DnD.** 지금 백로그는 지라와 달리 **가로 칸반**이다. `BacklogBoard.tsx:246,248` · `SprintColumn.tsx`→`SprintSection.tsx` · 신규 `StartSprintDialog.tsx`·`CompleteSprintDialog.tsx` · `CreateSprintForm.tsx`.
 - **F16 — 백로그 필터바 + 에픽 패널.** `components/filters/FilterBar.tsx` 의 슬롯 4종(`leadingSection`/`leadingChips`/`extraActiveCount`/`onReset`)이 이미 확장용 설계라 그대로 쓴다.
+- **B3 — 백로그 조회 범위 축소 (백엔드). 🆕 후속 항목** (Maxi 확정 2026-08-05 · F15 착수 중 신설). **F15/F16 범위 밖이고 이 FR 의 D 단계에도 넣지 않는다** — 별도 항목으로 착수한다. **사유.** F15 가 「`truncated=true` 면 스프린트 완료를 차단」을 도입하는데(영구 동결 방지 — 아래 인용 블록), 그 상태를 빠져나갈 수단이 **현재도 F16 후에도 없다**. 착수 중 실측 — `BacklogController.kt:56-59` `getBacklog(@PathVariable projectKey)` 는 **쿼리 파라미터 0** 이고 `BacklogApplicationService` 는 `BoardIssueLookupPort.kt:94` 의 `BoardCardFilter` 오버로드를 **쓰지 않는다**. F16 은 정본상 「프론트 전용」이라 **이미 잘려서 도착한 응답을 클라이언트에서 다시 거를 뿐** `truncated`(`IssueRepository.kt:1204` `BOARD_CARD_FETCH_LIMIT = 1000`)를 내릴 수 없다. **즉 B3 가 오기 전까지 이슈 1,000건을 넘긴 프로젝트는 스프린트를 완료할 수 없다.** 범위 — 백로그 조회에 필터/페이지 파라미터를 추가해 `truncated` 를 실제로 내릴 수 있게 한다.
+
+> **★ 왜 완료를 차단하는가 (F15 착수 중 실측 · ADR `2026-08-05-fr-ux-13-f15-backlog-vertical-stack.md`).**
+> `SprintRepository.unassignIssue` 는 `WHERE … AND EXISTS (SELECT 1 FROM sprints WHERE id = ? AND status <> 'COMPLETED')` **조건부 DELETE** 라 COMPLETED 스프린트에서는 **아무 행도 지우지 않고 204** 를 준다(실패가 아니라 침묵). 그리고 `V503__sprints.sql` 의 `CONSTRAINT sprint_issues_issue_key_unique UNIQUE (issue_key)` 때문에 한 이슈는 전역에서 한 스프린트에만 속하고, 스키마 주석이 "다른 스프린트로 재할당하려면 먼저 제거해야 한다"고 못박는데 **그 제거가 위에서 막힌다**. 결과 — **완료된 스프린트에 남은 이슈는 꺼낼 수도 옮길 수도 없다.** 「이관 먼저」·「부분 실패 시 완료 중단」·「truncated 면 완료 차단」이 전부 이 한 줄에서 파생된다.
 
 **아키텍처**. 프론트 전용 예상. 로드맵 **임계경로의 종점**이다(`B2 → F14 → F15 → F16`). 착수 전 `backlog.spec.ts`(536행)·`BacklogBoard.test.tsx`(759행) 재작성 범위를 먼저 산정한다. 키보드 DnD 공지는 `KanbanBoard.tsx:540` `buildDragAnnouncements`(한국어 4종, 조사 처리까지 완성)를 재사용한다. 스프린트 완료 시 미완료 이슈 이관 선택은 `SprintController.kt:221` `complete(id)` 에 이관 파라미터가 없어 **범위 밖** — v1 은 프론트가 완료 전 `DELETE /sprints/{id}/issues/{key}` 를 반복한다.
 
