@@ -1036,6 +1036,18 @@ describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
 /** 조회는 성공했지만 cap 초과로 잘린 뷰 — 경고 배너 1개만 뜨는지 보는 데 쓴다 */
 const TRUNCATED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: true }
 
+/**
+ * 한 번 성공해 캐시에 남은 뷰.
+ *
+ * ★T4-2b 가 이걸 쓰는 이유. `isError && isFetching` 은 **`data` 가 있을 때만 도달 가능**하다 —
+ * TanStack Query 는 `data === undefined` 인 쿼리를 재조회하면 `status` 를 `'pending'` 으로
+ * 되돌리며 에러를 지운다(`fetchState` 의 `data === undefined` 분기). 실브라우저로 확인한
+ * 결과도 같다. 최초 로드 실패 후의 재시도는 **로딩 화면**으로 가고, `다시 시도 중…` 라벨은
+ * 「캐시에 data 가 남은 채 재조회가 실패한」 경로에서만 실제로 보인다.
+ * 픽스처를 `data: undefined` 로 두면 만들어질 수 없는 상태를 지키는 가짜 그린이 된다.
+ */
+const CACHED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: false }
+
 describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -1068,8 +1080,9 @@ describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () 
   })
 
   it('T4-2b: 재조회 중에는 버튼이 비활성화되고 라벨이 바뀐다 (design review D3)', () => {
+    // `data` 가 있는 상태여야 실제로 도달 가능한 조합이다 — 근거는 CACHED_VIEW 주석
     mockBacklogQueryOverride = {
-      data: undefined,
+      data: CACHED_VIEW,
       isLoading: false,
       isError: true,
       isFetching: true,
