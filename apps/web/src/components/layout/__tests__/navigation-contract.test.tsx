@@ -108,11 +108,15 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     expect(projectNav).toBeInTheDocument()
   })
 
-  it('검색 — aria-label="검색" 버튼은 정확히 1개다 (strict 단일, 사이드바 내 검색 항목 추가 금지)', async () => {
+  // F13 — 상단바는 이제 버튼이 아니라 입력창이다(`role="searchbox"` + `aria-label="전역 검색"`).
+  // role 과 name 이 둘 다 바뀌었으므로 잔존 참조는 조용히 통과할 수 없다. 아래 부정 단언이
+  // 이름 분리(계약 §2 — 상단바=`전역 검색`, `검색`=AQL 검색 페이지 제출 버튼 전용)의 증인이다.
+  it('전역 검색 — searchbox 는 정확히 1개다 (strict 단일, 사이드바 내 검색 항목 추가 금지)', async () => {
     renderAuthenticatedShell(false)
 
-    await screen.findByRole('navigation', { name: '메인 메뉴' })
-    expect(screen.getAllByRole('button', { name: '검색' })).toHaveLength(1)
+    await screen.findByRole('navigation', { name: navLabels.mainNav })
+    expect(screen.getAllByRole('searchbox', { name: navLabels.globalSearch })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: navLabels.search })).toBeNull()
   })
 
   it('메인/관리 nav 영역에 <h1>이 없다 (e2e 34건 h1 level 1 의존 회귀 방지 — 현재 trivially true)', async () => {
@@ -146,7 +150,7 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     expect(links[0]).toHaveAttribute('href', '/projects')
   })
 
-  it('"모든 프로젝트" 추가 후에도 기존 aria-label 4종(메인 메뉴·관리 메뉴·프로젝트·검색)이 무위반이다', async () => {
+  it('"모든 프로젝트" 추가 후에도 기존 aria-label 4종(메인 메뉴·관리 메뉴·프로젝트·전역 검색)이 무위반이다', async () => {
     renderAuthenticatedShell(true)
 
     // 메인 메뉴 — 대시보드·캘린더 링크 유지
@@ -161,7 +165,8 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })
     expect(projectNav).toBeInTheDocument()
 
-    // 검색 — 여전히 단일
-    expect(screen.getAllByRole('button', { name: '검색' })).toHaveLength(1)
+    // 전역 검색 — 여전히 단일(F13 이후 버튼이 아니라 입력창)
+    expect(screen.getAllByRole('searchbox', { name: navLabels.globalSearch })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: navLabels.search })).toBeNull()
   })
 })
