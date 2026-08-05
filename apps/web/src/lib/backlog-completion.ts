@@ -66,6 +66,21 @@ export function buildStateCategoryMap(
 /**
  * 이슈가 미완료인지 판정한다. **불확실하면 전부 미완료다.**
  *
+ * | 그 상태 키의 카테고리 집합 | 판정 |
+ * |---|---|
+ * | 정확히 `{DONE}` | 완료 |
+ * | 비었다 — 어느 워크플로우에도 없는 키 | 미완료 |
+ * | `{DONE, 다른 것}` — 워크플로우마다 분류가 갈린다 | 미완료 |
+ * | 워크플로우 조회 자체가 실패 (`unavailable`) | 미완료 |
+ *
+ * ★ 왜 한쪽으로만 기우는가 (ADR C1 — 완료는 되돌릴 수 없다).
+ * 과다 분류(완료를 미완료로 봄)는 이관 대상이 한 건 느는 것뿐이고,
+ * `DELETE /api/v1/sprints/{id}/issues/{key}` 가 멱등 204 라 손실이 없다.
+ * 반면 **과소 분류(미완료를 완료로 봄)는 이슈를 영구 동결시킨다.**
+ * 스프린트가 COMPLETED 가 된 뒤에는 제거 API 가 `STATUS <> 'COMPLETED'` 조건부 DELETE 라
+ * 조용히 204 만 주고 아무 행도 지우지 않으며, `sprint_issues` 의 `UNIQUE (issue_key)`
+ * 때문에 다른 스프린트로 옮길 수도 없다. 꺼낼 방법이 남지 않는다.
+ *
  * @param issue 판정 대상 (`currentStateKey` 만 읽는다)
  * @param map `buildStateCategoryMap` 결과
  * @returns 미완료면 `true`
