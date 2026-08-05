@@ -7,6 +7,8 @@
 //   S5. 스프린트 내 재정렬 — 스프린트 안에서 카드 위치 변경
 //   S6. 스프린트 생성   — "스프린트 생성" 폼 제출 → 새 스프린트 칸 등장
 //   S7. 스프린트 시작   — PLANNED 스프린트의 "스프린트 시작" 클릭 → ACTIVE 배지 표시
+//   S9. 담당자 아바타   — 담당자가 있는 카드가 "담당자: {이름}" 접근성 이름을 노출 (FR-UX-13 F5)
+//   S10. 조회 실패      — LS_KEY_BACKLOG_FAIL 토글 → 안내 문구 + [다시 시도] + h1 생존 (FR-UX-13 F5)
 //
 // 설계 결정.
 //   - backlog-fixtures.ts 모듈 로드 시 seedBacklog(DEFAULT_BACKLOG) 자동 호출(MODE!=='test').
@@ -78,6 +80,45 @@ const SPRINT_CARD_2 = 'ATLAS-4'
 
 /** backlogLabels.backlogTitle — 백로그 칸 헤더 텍스트 */
 const BACKLOG_COLUMN_NAME = '백로그'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수 — FR-UX-13 F5 (S9·S10)
+//
+// ★아래 문자열은 전부 src 정본의 **미러**다. E2E 는 src 를 직접 import 하지 않고
+//   값만 동기화하고 출처를 주석으로 남긴다 (import.spec.ts LS_KEY_IMPORT_FAIL 선례 동일).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `src/mocks/backlog-handlers.ts` 의 `LS_KEY_BACKLOG_FAIL` 값 미러.
+ *
+ * 'true' 로 심으면 `GET /api/v1/projects/:projectKey/backlog` 만 500 을 돌려준다
+ * (rank·스프린트 등 다른 엔드포인트는 무영향 — S4 의 409 충돌 토글과는 별개다).
+ *
+ * ★`page.route()` 가로채기는 MSW Service Worker 가 먼저 응답해 **무효**임이 실측돼 있다
+ *   (import.spec.ts S3 히스토리). 시나리오 분기는 반드시 이 localStorage 토글로 한다.
+ */
+const LS_KEY_BACKLOG_FAIL = '__bts_e2e_backlog_fail'
+
+/** `src/mocks/user-fixtures.ts` userAliceFixture.displayName 미러 — ATLAS-1·ATLAS-3 담당자 */
+const ASSIGNEE_DISPLAY_NAME = '김앨리스'
+
+/** `BacklogCard.tsx` AssigneeSlot 의 아바타 aria-label 형식 미러 — `담당자: {표시 이름}` */
+const ASSIGNEE_ARIA_LABEL = `담당자: ${ASSIGNEE_DISPLAY_NAME}`
+
+/** backlogLabels.loadFailed 미러 — 백로그 조회 실패 안내 문구 */
+const LOAD_FAILED_TEXT = '백로그를 불러올 수 없습니다.'
+
+/**
+ * backlogLabels.retry 미러 — 재조회 버튼 이름.
+ *
+ * ★조회는 반드시 `{ exact: true }` 로 한다. Playwright 의 `getByRole(name)` 은 **부분 일치가
+ *   기본**이라, 재조회 중 라벨 backlogLabels.retrying('다시 시도 중…')이 이 값을 부분
+ *   문자열로 포함해 함께 잡힌다 (playwright-getbyrole-exact-strict-mode).
+ */
+const RETRY_BUTTON_NAME = '다시 시도'
+
+/** backlogLabels.page.title 미러 — **라우트가 소유**하는 h1 텍스트 (에러 상태에서도 살아 있어야 한다) */
+const PAGE_TITLE = '백로그'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — 칸 locator
@@ -532,5 +573,69 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
 
     // Then. 스프린트 ID가 DEFAULT_SPRINT_ID와 일치 (droppable id="sprint-{sprintId}")
     await expect(page.locator(`[data-droppable="sprint-${DEFAULT_SPRINT_ID}"]`)).toBeVisible()
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // S9. 담당자 이니셜 아바타 (FR-UX-13 F5)
+  //
+  // Given  alice 로그인 + DEFAULT_BACKLOG 자동 시드
+  //        ATLAS-1.assigneeId = ALICE_USER_ID → 사용자 다건 조회로 '김앨리스' 해석
+  // When   /projects/ATLAS/backlog 진입
+  // Then   ATLAS-1 카드 안에 "담당자: 김앨리스" 접근성 이름을 가진 아바타가 보인다
+  //
+  // 셀렉터 결정. 같은 담당자의 ATLAS-3 이 스프린트 칸에도 있어 전역 조회는 strict mode 로
+  //   깨진다. 카드 locator 로 한정해 "담당자가 배정된 그 카드"임을 함께 증명한다.
+  // ─────────────────────────────────────────────────────────────────────────
+  test('S9 담당자 이니셜 아바타 — 담당자가 있는 카드가 "담당자: 김앨리스" 접근성 이름을 노출한다', async ({ page }) => {
+    // Given. alice 로그인 + 백로그 페이지 진입
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    // Given. 담당자가 배정된 카드(ATLAS-1)가 렌더됨
+    const assignedCard = getCardLocator(page, BACKLOG_CARD_1)
+    await expect(assignedCard).toBeVisible()
+
+    // Then. 그 카드 안에 담당자 아바타가 접근성 이름으로 노출된다
+    await expect(assignedCard.getByLabel(ASSIGNEE_ARIA_LABEL)).toBeVisible()
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // S10. 백로그 조회 실패 → 안내 + 재시도 (FR-UX-13 F5)
+  //
+  // Given  alice 로그인
+  //        LS_KEY_BACKLOG_FAIL='true' 를 addInitScript 로 심어 GET backlog 가 500 을 반환
+  // When   /projects/ATLAS/backlog 진입
+  // Then   role="alert" 안내 문구 + [다시 시도] 버튼이 보이고,
+  //        라우트가 소유한 h1 "백로그" 는 에러 상태에서도 살아 있다
+  //
+  // 설계 결정.
+  //   - addInitScript 는 loginAsAlice **이후**·goto **이전**에 등록해야 첫 로드부터 먹는다
+  //     (e2e-msw-scenario-toggle-localstorage-flag).
+  //   - Playwright 는 테스트마다 BrowserContext(및 localStorage)를 새로 만들므로 플래그가
+  //     다른 시나리오로 새지 않는다 — 별도 정리 코드 불필요 (import.spec.ts S3 선례).
+  //   - 재시도 버튼 조회는 exact:true — retrying('다시 시도 중…')이 부분 일치로 함께 잡힌다.
+  // ─────────────────────────────────────────────────────────────────────────
+  test('S10 조회 실패 — 안내 문구와 [다시 시도] 가 보이고 h1 "백로그" 가 살아 있다', async ({ page }) => {
+    // Given. alice 로그인
+    await loginAsAlice(page)
+
+    // Given. 백로그 조회 실패 토글 주입 (goto 이전)
+    await page.addInitScript((key: string) => {
+      window.localStorage.setItem(key, 'true')
+    }, LS_KEY_BACKLOG_FAIL)
+
+    // When. 백로그 페이지 진입
+    await page.goto(BACKLOG_URL)
+
+    // Then. 조회 실패 안내가 alert 로 노출된다
+    await expect(page.getByRole('alert')).toContainText(LOAD_FAILED_TEXT)
+
+    // Then. 탈출구가 있다 — 재조회 버튼 (exact:true 필수)
+    await expect(
+      page.getByRole('button', { name: RETRY_BUTTON_NAME, exact: true }),
+    ).toBeVisible()
+
+    // Then. h1 은 라우트 소유라 에러 상태에서도 살아 있다 (jira-parity-contract §2 즉사 계약)
+    await expect(page.getByRole('heading', { name: PAGE_TITLE, level: 1 })).toBeVisible()
   })
 })

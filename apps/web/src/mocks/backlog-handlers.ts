@@ -16,6 +16,25 @@ import {
 } from './backlog-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 백로그 조회 실패 시나리오 강제 플래그. 'true' | null.
+ *
+ * 'true'이면 `GET /api/v1/projects/:projectKey/backlog`가 500을 반환한다
+ * (FR-UX-13 F5 — "조회 실패 → 안내 + [다시 시도]" E2E 재현용).
+ * 다른 엔드포인트(rank·스프린트)는 영향을 받지 않는다.
+ *
+ * 회귀 학습 e2e-msw-scenario-toggle-localstorage-flag 근거 — Playwright의 `page.route()`
+ * 가로채기는 MSW Service Worker가 요청을 먼저 가로채 응답해버려 무효다(import.spec.ts S3
+ * 실측). 시나리오 분기는 localStorage 플래그를 addInitScript로 goto 이전에 심어 만든다.
+ * 명명·정리 관례는 import-handlers.ts LS_KEY_IMPORT_FAIL,
+ * board-fixtures.ts LS_KEY_BOARD_CONFLICT를 그대로 미러한다.
+ */
+export const LS_KEY_BACKLOG_FAIL = '__bts_e2e_backlog_fail'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectKey/backlog
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -26,11 +45,23 @@ import {
  * { data: { backlog, sprints, truncated } } 형식으로 반환한다.
  * 프로젝트가 없으면 빈 백로그·스프린트를 반환한다.
  *
+ * 조회 실패 토글 — E2E 시나리오용:
+ *   localStorage 플래그 LS_KEY_BACKLOG_FAIL='true'이면 projectKey와 무관하게 500 반환.
+ *
  * 성공 → 200 { data: BacklogView }
+ * 실패 토글 시 → 500 ProblemDetail
  */
 const getBacklogHandler = http.get(
   '/api/v1/projects/:projectKey/backlog',
   ({ params }) => {
+    // 조회 실패 토글 — E2E 시나리오 (e2e-msw-scenario-toggle-localstorage-flag)
+    if (globalThis.localStorage?.getItem(LS_KEY_BACKLOG_FAIL) === 'true') {
+      return HttpResponse.json(
+        { title: 'Internal Server Error', status: 500 },
+        { status: 500 },
+      )
+    }
+
     const projectKey = params['projectKey'] as string
     const project = backlogStore.get(projectKey)
 
