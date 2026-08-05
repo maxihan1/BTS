@@ -3,7 +3,7 @@
 /**
  * 사이드바·상단바 nav에서 사용하는 한국어 라벨.
  *
- * 🔒 e2e 계약 문자열(`mainNav`·`adminNav`·`projectViewNav`·`search`)은
+ * 🔒 e2e 계약 문자열(`mainNav`·`adminNav`·`projectViewNav`·`search`·`globalSearch`)은
  * Playwright/유닛 테스트가 `aria-label`로 직접 참조하므로 글자 변경 금지.
  *
  * S3(2026-07-20 Maxi 확정) — 백킹 라우트·기능이 없는 항목(내 작업·최근·필터)은
