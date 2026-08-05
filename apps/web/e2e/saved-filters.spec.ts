@@ -230,7 +230,11 @@ async function seedFilter(
  * ⚠️ 착지 URL 에 `?q=text ~ "<씨앗>"` 이 실린다. SearchPage 는 마운트 시 그 q 로 한 번 조회하고
  * "현재 검색 저장" 버튼도 `disabled={q.trim().length === 0}`(search.tsx L579)이라 이미 활성이다.
  * 즉 **결과 목록 가시·저장 버튼 활성만으로는 이후 검색 실행을 증명하지 못한다** — 호출부는
- * 제출/해소를 URL 로 따로 증인 세운다(SF-1 `q`, SF-1·SF-3 `projectKey`).
+ * 해소를 URL `projectKey` 로 증인 세운다(SF-1·SF-3).
+ *
+ * ★URL `q` 로는 제출을 증명할 수 없다 — `search.tsx:545 handleQueryChange` 가 **타이핑만으로도**
+ * `q` 를 갱신하므로 제출 클릭이 없어도 참이 된다(실측으로 기각). 제출 자체의 증인은
+ * `search.spec.ts` S1 이며, 그쪽은 씨앗 진입을 쓰지 않고 `page.goto` 로 직접 들어간다.
  */
 async function navigateToSearch(page: import('@playwright/test').Page): Promise<void> {
   const globalSearch = page.getByRole('searchbox', {

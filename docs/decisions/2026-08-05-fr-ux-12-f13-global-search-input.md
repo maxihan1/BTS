@@ -149,9 +149,67 @@ BLOCKER 로 걸렀다 — 축약하면 ① 좁은 뷰포트에서 `searchbox` �
    연산자(`>`/`>=`) 대비로 **유지**하되 주석만 실측 근거로 교체했다.
    메모리 `decorative-annotation-copied-from-sibling` 재발을 막은 판단.
 
+## ★ 코드리뷰가 잡은 BLOCKER 2건 (게이트 2 직전, 봉합 완료)
+
+독립 코드리뷰가 **둘 다 내 plan 이 원인**인 결함을 잡았다. #340 에서 게이트 2 독립 리뷰가
+BLOCKER 를 잡은 것과 **같은 자리에서 또 나왔다.**
+
+### B1. `search.spec.ts` S1 이 AQL 제출을 증명하지 못했다 — 「가짜 테스트」 재발
+
+씨앗 진입이 `?q=text ~ "진입용씨앗"` 을 실어 `SearchPage` 가 마운트 즉시 조회하고, MSW 핸들러
+`isSyntacticallyValidAql` 이 `text ~` 에 매치돼 기본 3건을 반환한다. 그래서 `fillAndSearch`
+**이전에** 결과 카드·리스트 가시·`alert` 부재가 전부 참이었다. **제출 클릭을 지워도 초록.**
+
+그런데 이 ADR 이 *"진짜 증인은 S1"* 이라고 적었다 — **문서가 없는 가드를 있다고 말한 것**이다.
+
+**처방.** S1 만 씨앗 진입을 그만두고 `page.goto(SEARCH_URL)` 로 직접 들어간다(같은 파일 S2·S4 선례).
+**비-공허 확인 실측** — 제출 `.click()` 무력화 시 S1 이 `getByRole('list', {name:'검색 결과'})
+.getByRole('link', {name:'ATLAS-1'})` 에서 **red**. 원복은 역방향 Edit.
+
+### B2. 상단바 우측 액션이 오른쪽 끝에 붙지 않았다
+
+plan 이 `<div className="flex-1" />` 정렬 스페이서를 **지우라고** 지시했다. 헤더는 `flex … gap-1`
+에 `justify-*` 가 없고, grow 를 가진 자식이 검색 컨테이너 하나뿐인데 `max-w-md` 에서 성장이
+멈춘다. 나머지는 전부 `shrink-0`/grow 0 이라 **남는 공간이 줄 끝에 그대로 남았다.**
+
+**왜 안 걸렸나.** 브라우저 눈확인 범위가 **1024→320** 이라 이 구간이 통째로 검증 밖이었고,
+우측 정렬을 단언하는 E2E 가 없다. **눈확인 범위를 좁게 잡은 것이 결함을 통과시켰다.**
+
+**처방.** 검색 컨테이너 **직후**에 스페이서 복원. grow 요소가 둘 필요한 이유를 주석에 남겼다.
+**실측** — 1920px 우측 여백 **1046px → 12px**(= `px-3` 헤더 패딩, 잔여 0). 1440·1280·1024·768
+전부 12px, 라이트·다크 동일.
+
+### 함께 반영한 Important 2건 · Suggestion 3건 · 예시 교체 1건
+
+- **IME 이중 방어** — `e.keyCode === 229` 추가. 저장소 선례(`issues.$key.tsx:742` ·
+  `IssueDescription.tsx:392`)보다 약했다. `isComposing` 을 안 세우고 229 만 보내는 IME 에서 첫
+  Enter 가 제출로 샌다. 유닛은 `isComposing` 을 직접 심으므로 이 경로를 **원리적으로 못 잡는다.**
+- **`keyboard-shortcuts.spec.ts` 헤더 정정** — *"page.reload() 미사용"* 이 `page.goto` 도입으로
+  거짓이 됐다. S5 부정 단언의 전제(리스너 등록 보장)도 `searchbox` 가시성 1줄로 복원.
+- **`as string` 단언 제거** — `buildTextQuery` 에 나중에 길이 상한이 붙으면 `query: null` 이
+  `string` 을 달고 흘러 빈 검색이 조용히 나간다. `null` 이면 `empty` 로 떨어뜨린다.
+- **`ISSUE_KEY_PATTERN.sticky` 단언 추가** — `y` 플래그도 `test()` 에서 `lastIndex` 를 전진시킨다.
+  테스트 이름이 선언한 의도보다 단언이 좁았다.
+- **정규식 이스케이프 대칭화** — 연산자만 이스케이프하고 필드는 안 하던 비대칭 해소.
+- **테스트 예시 교체** — `priority != HIGH` 는 백엔드에서 **HTTP 500** 이 난다
+  (`IssueRepository.kt:2991 asShort()` 의 IAE 를 `SearchExceptionHandler.kt:48` 이 안 다뤄
+  catch-all). **PRE_EXISTING 백엔드 결함**이고 이 PR 책임은 아니나, 상시 노출 상단바가 이 입력
+  표면을 넓히므로 예시로 못박지 않는다. `label != backend` · `priority = 1` 로 교체.
+  **백엔드 500 은 별도 트랙 등재 권장.**
+
+### 리뷰가 확인해 준 것 (문제 없음)
+
+- **ReDoS 없음** — `^` 앵커 + 리터럴 교대 2개 + `\s*` 1개, 중첩 수량자 0, 입력이 상수 배열.
+- **화이트리스트 면제 3쌍 비-공허** — 판별식 자체에 짝 검사(허용 쌍이 실제 substring 인지)와
+  비-공허 가드가 있고, `exact: true` 가 e2e 로케이터 **5곳 전량**에 유지됨을 전수 확인.
+- **`Input` 프리미티브 주장 사실** — 덮어쓴 클래스는 `pl-8` 하나뿐이고 프리미티브를 무력화하지 않음.
+  `min-w-32` 도 tailwind v4.3.0 이라 실재하는 클래스(v3.3 이하였다면 공허했을 것).
+- **`shortcuts.ts` · `routes/search.tsx` 무변경** 확인 — ADR 주장이 사실.
+- **절대 규칙 19개 위반 0** — `any` 0 · `!!` 0 · 빈 catch 0 · `console.log` 0 · 신규 의존성 0.
+
 ## 검증 실적
 
-- 프론트 유닛 **8,812** / 557파일 (기준선 8,795 대비 +17, 감소 0)
+- 프론트 유닛 **8,813** / 557파일 (기준선 8,795 대비 +18, 감소 0 — 리뷰 봉합의 `keyCode 229` 짝 테스트 포함)
 - `tsc -p tsconfig.app.json --noEmit` EXIT 0 · `eslint src` EXIT 0
 - E2E 6 spec **2회 연속 50/50** (`saved-filters`·`search`·`context-shortcuts`·
   `keyboard-shortcuts`·`command-palette`·`detail-action-shortcuts`)
@@ -172,6 +230,12 @@ BLOCKER 로 걸렀다 — 축약하면 ① 좁은 뷰포트에서 `searchbox` �
 - `command-palette.spec.ts:422` S12 로그인 진입 **flaky** (4회 중 1회, `page.goto('/login')` 직후
   heading 미발견). 실패 대상이 회차마다 바뀌는 flaky 서명. 별도 트랙 권장.
 - `apps/web/e2e/` 가 어느 `tsconfig` 의 `include` 에도 없어 **타입검사 미적용**. 별건.
-- `saved-filters.spec.ts` SF-1 의 「결과 목록」 단언이 공허해 제거했다 —
-  `search.tsx:545 handleQueryChange` 가 **타이핑만으로도** URL `q` 를 갱신해 제출의 증인이 되지 못한다.
-  진짜 증인은 `search.spec.ts` S1 에 있다.
+- `saved-filters.spec.ts` SF-1 의 「결과 목록」 단언은 **제거하지 않고 보존**하되, 씨앗 진입 때문에
+  제출의 증인이 아님을 주석으로 명시했다. URL `q` 로 증인을 세우려던 시도는 실측으로 **기각**됐다 —
+  `search.tsx:545 handleQueryChange` 가 **타이핑만으로도** `q` 를 갱신한다. 해소의 증인은
+  `projectKey` 다(SF-1·SF-3).
+- `search.spec.ts` **B4** 의 말미 결과 카드 단언은 씨앗 조회로 여전히 선참이다(뮤테이션에서 green
+  유지 실측). 리뷰 처방이 S1 한정이라 그대로 뒀고 사실만 헤더 주석에 실측값과 함께 기록했다.
+  B4 도 직접 진입으로 바꿀지는 후속 판단 대상.
+- `keyboard-shortcuts.spec.ts` **S3a**(`g` `i` → `/issues`) 선재 flaky — 브랜치 1/42 · main 1/42
+  동일 재현, S3a 단독은 브랜치·main 각 12/12 green. **PRE_EXISTING**, 별도 이슈 후보.
