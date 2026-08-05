@@ -1,5 +1,5 @@
 // BacklogBoard 컴포넌트 통합 테스트 — onDragEnd 시나리오·C1 부분실패·생성/시작/완료 버튼 (FR-BL-01/02 D6/D7)
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -78,6 +78,22 @@ const mockCompleteSprintMutate = vi.fn()
 // (`STUB_CREATED_KEY` 와 같은 형태).
 const ALICE_ID = '00000000-0000-4000-8000-000000000001'
 const BOB_ID = '00000000-0000-4000-8000-000000000002'
+
+// FR-UX-13 F5 — 조회 실패·재조회 상태 주입 지점.
+//
+// `useBacklog` 반환값 한 곳이 화면 전체의 분기(로딩 / 에러 / 정상)를 쥐므로 테스트마다
+// 갈아끼울 수 있어야 한다. 기본값이 종전과 같은 「정상 조회」라 기존 테스트는 이 변수를
+// 몰라도 그대로 돈다.
+const mockRefetch = vi.fn()
+
+/** `useBacklog` 반환값 중 테스트가 덮어쓰는 부분 */
+interface BacklogQueryOverride {
+  data?: BacklogView | undefined
+  isLoading?: boolean
+  isError?: boolean
+  isFetching?: boolean
+}
+let mockBacklogQueryOverride: BacklogQueryOverride = {}
 
 vi.mock('@/hooks/use-backlog', () => ({
   useBacklog: () => ({
@@ -169,6 +185,11 @@ vi.mock('@/hooks/use-backlog', () => ({
       truncated: false,
     },
     isLoading: false,
+    isError: false,
+    isFetching: false,
+    refetch: mockRefetch,
+    // ★맨 끝이어야 한다 — 위 기본값을 테스트가 덮어쓰는 자리다 (FR-UX-13 F5)
+    ...mockBacklogQueryOverride,
   }),
   useRerankIssue: () => ({ mutate: mockRerankMutate, isPending: false }),
   useAssignToSprint: () => ({ mutate: mockAssignMutate, isPending: false }),
@@ -225,6 +246,7 @@ vi.mock('@/components/issue/CreateIssueDialog', () => ({
 import { BacklogBoard } from './BacklogBoard'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { UserSummary } from '@/api/users'
+import type { BacklogView } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -1001,5 +1023,81 @@ describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
       screen.getAllByLabelText(backlogLabels.unknownAssigneeAriaLabel),
     ).toHaveLength(2)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F5 — 백로그 조회 실패 안내와 재시도 (G2)
+//
+// ★이 블록의 red 가 결함의 증인이다 — 봉합 전에는 조회가 실패하면 `<div />` 가 반환돼
+// 화면이 통째로 빈다. 사용자는 무엇이 잘못됐는지도, 어떻게 벗어나는지도 알 수 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 조회는 성공했지만 cap 초과로 잘린 뷰 — 경고 배너 1개만 뜨는지 보는 데 쓴다 */
+const TRUNCATED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: true }
+
+describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = NO_USERS
+  })
+
+  afterEach(() => {
+    // 주입 상태를 반드시 되돌린다 — 남기면 뒤에 추가되는 블록이 영문 모를 에러 화면을 본다
+    mockBacklogQueryOverride = {}
+  })
+
+  it('T4-1: 조회 실패 시 role="alert" 안내가 뜬다 (빈 화면 아님)', async () => {
+    mockBacklogQueryOverride = { data: undefined, isLoading: false, isError: true }
+    renderBoard()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(backlogLabels.loadFailed)
+  })
+
+  it('T4-2: "다시 시도" 버튼이 refetch 를 호출한다 (새로고침 금지)', async () => {
+    const user = userEvent.setup()
+    mockBacklogQueryOverride = { data: undefined, isLoading: false, isError: true }
+    renderBoard()
+
+    // 문자열 `name` 은 Testing Library 에서 **정확 일치**다. 그래서 토스트 문구
+    // `moveFailedError`('…다시 시도해 주세요.')도, 재조회 라벨 '다시 시도 중…'도 걸리지 않는다.
+    // 정확 일치라는 전제 자체는 T4-2b 의 마지막 단언이 지킨다.
+    await user.click(screen.getByRole('button', { name: backlogLabels.retry }))
+
+    expect(mockRefetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('T4-2b: 재조회 중에는 버튼이 비활성화되고 라벨이 바뀐다 (design review D3)', () => {
+    mockBacklogQueryOverride = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isFetching: true,
+    }
+    renderBoard()
+
+    expect(screen.getByRole('button', { name: backlogLabels.retrying })).toBeDisabled()
+    // ★`retry`('다시 시도') ⊂ `retrying`('다시 시도 중…') 이라 조회가 부분 일치이면
+    //   여기서 재조회 중 버튼이 잡힌다. null 이어야 T4-2 의 조회가 정확하다는 뜻이다.
+    expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
+  })
+
+  it('T4-3: 로딩 중에는 에러 블록이 뜨지 않는다 (스펙 E8 — 분기 순서 고정)', () => {
+    // 두 값이 동시에 true 인 경로는 실제 TanStack Query 에 없다. 그럼에도 이렇게 두는 이유는
+    // **분기 순서 자체를 고정**하는 것이 이 단언의 목적이기 때문이다 — `isError` 를
+    // `isLoading` 앞으로 옮기면 오직 여기서만 깨진다.
+    mockBacklogQueryOverride = { data: undefined, isLoading: true, isError: true }
+    renderBoard()
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('로딩 중')).toBeInTheDocument()
+  })
+
+  it('T4-4: 정상 조회 + truncated 일 때 경고 배너는 1개뿐이다 (스펙 E10 상호 배타)', async () => {
+    mockBacklogQueryOverride = { data: TRUNCATED_VIEW, isLoading: false, isError: false }
+    renderBoard()
+
+    expect(await screen.findAllByRole('alert')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
   })
 })

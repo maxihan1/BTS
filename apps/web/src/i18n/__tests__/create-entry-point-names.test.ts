@@ -67,6 +67,9 @@ const BACKLOG_SCREEN_BUTTON_NAMES = {
   // ★이 PR 이 추가하는 진입점 2종
   createIssueInBacklog: backlogLabels.createIssueInBacklog,
   createIssueInSprint: backlogLabels.createIssueInSprint('2026-W31'),
+  // ★FR-UX-13 F5 가 추가하는 진입점 1종 — 등록을 빠뜨리면 판별식이 조용히 공허해진다.
+  // `retrying`('다시 시도 중…')은 **넣지 않는다** — 같은 버튼의 다른 상태(§제외 3종 ②).
+  retry: backlogLabels.retry,
 } as const
 
 /** 보드 화면에서 버튼 접근 이름으로 동시에 존재할 수 있는 값. */
@@ -136,6 +139,7 @@ describe('FR-14 — 진입점 버튼 이름 substring 전수 판별식', () => {
     expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(
       backlogLabels.createIssueInSprint('2026-W31'),
     )
+    expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(backlogLabels.retry)
     expect(Object.values(BOARD_SCREEN_BUTTON_NAMES)).toContain(boardLabels.page.createIssue)
   })
 
