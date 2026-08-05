@@ -96,7 +96,7 @@ Cmd+K 팔레트 하나뿐이고, 마우스 사용자는 항상 페이지를 한 
   필드·연산자 목록을 새로 선언하지 않는다(백엔드 `AqlFields.MVP_FIELDS` 가 정본).
 - **FR7.** 자유 텍스트 → AQL 변환은 **`lib/aql-text-query.ts` 의 `buildTextQuery` 를 재사용**한다.
   이스케이프를 새로 구현하지 않는다(계약 §4).
-- **FR8.** 빈 문자열·공백만인 입력은 판별 결과가 `none` 이고 아무 이동도 하지 않는다.
+- **FR8.** 빈 문자열·공백만인 입력은 판별 결과가 **`empty`** 이고 아무 이동도 하지 않는다.
 
 **★ FR9 — 선재 결함 봉합. 이슈키 정규식 3중 복제 차단.**
 
@@ -188,15 +188,25 @@ F4 가 `/search <질의>` 선재 결함을 같은 PR 에서 봉합한 선례를 
 ★ **role 과 name 이 둘 다 바뀌는 것이 안전장치다.** `button`+`검색` → `searchbox`+`전역 검색` 이라
 잔존 참조가 조용히 통과할 수 없다. 하나라도 빠뜨리면 그 spec 이 즉시 실패한다.
 
-**유지 대상 (건드리지 말 것).** `search.spec.ts:107,109` · `saved-filters.spec.ts:206,238,240`
+**★ 이 분류는 구현 중 뒤집혔다.** `saved-filters.spec.ts:206` 은 **AQL 제출 버튼이 아니라 상단바
+진입 헬퍼**(`navigateToSearch`)였다 — JSDoc 이 *"Header \"검색\" 아이콘 클릭으로 pushState 이동한다"*
+라고 자백하고 있었는데 grep 결과를 문맥 없이 분류했다. 같은 PR 에서 봉합했다. 아래는 **정정된** 목록.
+
+**유지 대상 (건드리지 말 것).** `search.spec.ts` 의 AQL 페이지 제출 버튼 2곳 ·
+`saved-filters.spec.ts` 의 `fillAndSearch` 안 2곳 (`searchButtonContainer` 로 한정된 것들)
 (AQL 페이지 제출 버튼 `검색`) · `command-palette.spec.ts:292` (팔레트 option `검색`).
 
 ## 측정 가능한 완료 기준
 
 1. 상단바에 `role="searchbox"` + 접근성 이름 `전역 검색` 인 입력창이 **정확히 1개** 있다.
 2. 접근성 이름이 `검색` 인 **버튼**은 상단바에 **0개**, AQL 페이지에 **1개**다.
-3. 판별 함수 단위 테스트가 S1·S2·S3·S4 + E1~E12 를 전수 고정한다.
-4. `apps/web` 유닛 전량 통과 (현재 기준선 **8,795** / 555파일 — 증가만 허용, 감소 금지).
+3. 판별 함수 단위 테스트가 **S1·S2·S3·S4 + E1·E2·E3·E4·E5·E10·E11** 을 고정한다.
+   E6(IME)·E8·E9(활성 프로젝트)는 순수 함수 밖이라 `TopBar.test.tsx` 와 목적지 페이지가 맡는다.
+   **E7(미존재 이슈키)·E12(초장문)는 판별 함수 레벨에서 고정하지 않는다** — E7 은 패턴이 맞으므로
+   판별은 자명하고 404 처리는 이슈 상세의 책임이며, E12 의 실질 상한은 백엔드
+   `AqlSearchRequest.kt:39` `@Size(max = 2000)` 이다(래핑·이스케이프가 길이를 늘리므로 실효 입력
+   예산은 2000 미만이고 입력 내용에 따라 달라진다). 둘 다 **후속 관찰 대상**.
+4. `apps/web` 유닛 전량 통과 (현재 기준선 **8,795** / 557파일 — 증가만 허용, 감소 금지).
 5. 영향 E2E 5파일 + `search` + `saved-filters` 가 **2회 연속** 통과한다.
 6. `node_modules/.bin/tsc -p tsconfig.app.json --noEmit` 통과 · `eslint src` 통과.
 7. `bash scripts/verify-master-plan.sh` EXIT 0.
