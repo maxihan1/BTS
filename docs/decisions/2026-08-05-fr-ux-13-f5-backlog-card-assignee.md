@@ -72,6 +72,56 @@
 (`query-core@5.100.11` `queriesObserver.js:144-162` 실측). 직접 `useMemo` 로 흉내내지 않았다.
 회귀 가드 **T2-8**(재렌더돼도 `data` 참조 유지)이 이걸 지키고, 비-공허 확인(combine 제거 → red)을 거쳤다.
 
+## D-6. 코드리뷰가 적발한 것 — 같은 결함으로 가는 경로가 **셋** 더 있었다
+
+리뷰어 3종(절대 규칙 · 테스트 · 유지보수성)이 **독립적으로** 같은 결함군을 지목했다.
+「담당자 이름이 전원 `?` 로 깜빡인다」— 이 PR 이 고치려던 바로 그 증상이 **다른 트리거로 재현**된다.
+
+| 경로 | 트리거 | 원인 | 처방 |
+|---|---|---|---|
+| ① id **순서** 변경 | **드래그 재정렬** (이 화면의 주 조작) | `chunkUserIds` 가 `Set` 삽입 순서를 그대로 두는데 TanStack 배열 queryKey 는 **순서 민감** → 집합이 같아도 캐시 미스 | `[...new Set(ids)].sort()` + 가드 **T2-9** |
+| ② id **집합** 변경 | 이슈 생성(담당자 지정) 후 재조회 | 청크 queryKey 변경 → `data` 가 `[]` → 이미 알던 이름까지 소실 (**리뷰 C3 재도입**) | 캐시 조회 placeholder + 가드 **T2-10** |
+| ③ **부분** 실패 | 담당자 50명 초과 시 묶음 2개 중 1개 실패 | 갈래 자체가 미검증이었다 | 가드 **T3-4** |
+
+**★ ②의 처방은 controller 가 지시한 것이 틀렸고 implementer 가 실측으로 뒤집었다.**
+controller 는 형제 훅의 선례대로 `placeholderData: keepPreviousData` 를 지시했으나, 그걸 넣고도
+**T2-10 이 red** 였다. 원인은 `useQueries` 의 구조다 — `queriesObserver.js:171` 이 옵저버를
+**`queryHash` 로만** 매칭하므로 청크 키가 바뀌면 **새 옵저버**가 생기고,
+`keepPreviousData` 가 읽는 `#lastQueryWithDefinedData`(`queryObserver.js:272`)는 그 새 인스턴스에
+비어 있다. 즉 **`keepPreviousData` 는 `useQueries` 에서 키가 바뀌는 순간에 대해 구조적으로 무력**하다
+(단일 `useQuery` 인 형제 `useUsersByIds` 에서는 정상 동작 — 그래서 T-UU-6a 가 초록이다).
+대체안은 `['users','byIds', …]` 접두 캐시를 훑어 해당 id 를 건져 placeholder 로 넣는 방식이다.
+
+### 함께 봉합한 것 4건
+
+- **죽은 표면 제거.** `useUsersByIdsChunked` 의 `isError` 는 프로덕션 소비처가 **0**인데 JSDoc 과
+  T2-7 이 "소비처가 fail-soft 판정에 쓴다"고 선언하고 있었다 — **존재하지 않는 계약을 근거로
+  자기를 정당화하는 가드**. 표면과 테스트를 함께 걷어냈다(fail-soft 는 `isError` 를 **안 읽는
+  것으로** 이미 충족된다).
+- **거짓 인과 주석 교체.** 「`isError` 를 `isLoading` 앞에 두면 재조회 중 에러 화면이 깜빡인다」는
+  거짓이다 — `isLoading = isPending && isFetching` 이고 `isPending`/`isError` 는 같은 `status`
+  열거의 **배타 값**이라 동시에 참일 수 없다(`queryObserver.js:308-310`). 같은 PR 의 테스트 주석이
+  이미 반대 사실을 적어 **문서끼리 모순**하고 있었다.
+- **도달 불가 픽스처 정정 (2번째).** T4-3 이 `isLoading: true && isError: true` 를 주입하고 있었다 —
+  T4-2b 에서 한 번 잡은 **같은 양식이 다른 테스트에 남아 있었다**. 게다가 그 테스트가 **로딩
+  상태(FR-8·E8)의 유일한 커버리지**였다.
+- **mock 이 백엔드보다 관대했다.** MSW `user-handlers.ts` 가 `?ids=` 개수 상한을 강제하지 않아
+  **프론트가 51개를 보내도 어떤 테스트도 못 잡았다.** 백엔드와 같은 400 을 돌려주게 맞췄다.
+
+### 계측 공백 1건 — 안전망이 한 겹뿐이었다
+
+`BacklogBoard.test.tsx` 의 `useUsersByIdsChunked` mock 이 **인자를 무시**해서,
+「모은 담당자 id 를 훅에 실제로 넘기는가」(FR-1·FR-2)를 **어떤 유닛도 재지 않았다**.
+리뷰어가 `useUsersByIdsChunked(assigneeIds)` → `([])` 로 뮤테이션하자 **유닛 118/118 전부 초록**,
+E2E S9 만 red 였다. mock 을 `vi.fn` 으로 바꾸고 호출 인자 단언을 넣어 유닛 층에서도 잡히게 했다.
+
+### 재시도 경로 커버리지 0 → E2E 2종 신설
+
+스펙 S7(재시도 성공)과 엣지 E9(재시도도 실패)를 덮는 테스트가 없었다. E2E S10 은 버튼의 **존재만**
+보고 한 번도 클릭하지 않았고, 유닛 T4-2 는 `refetch` **호출 횟수만** 셌다 — 「클릭 후 정상 복귀」가
+**사람 눈확인에만** 남아 있었다. MSW 에 **1회성 실패 토글**(`'once'`)을 더해 S11(복귀)·S12(재실패
+유지)를 만들었다.
+
 ## ★ 이번 작업이 남기는 교훈 4건
 
 ### 1. 정본의 처방이 「어느 파일의 무슨 패턴」이라고 지목하면 그 파일을 열어 봐야 한다
@@ -121,7 +171,27 @@ Testing Library 의 ByRole `name` 은 **원래 정확 일치**이고, **Playwrig
    `ActiveProjectGate` 를 포함한 전역 관례를 함께 봐야 한다.
 3. **재시도 버튼 터치 타깃 32px** (`size="sm"` = `h-8`). 모바일 권장 44px 미만이나
    `ActiveProjectGate` 도 동일한 **전역 관례**라 단독 PR 감. design review F4.
-4. **`board-reorder.spec.ts` S6 flaky.** 2-worker 실행 1회차 red → 단독 green → 같은 명령 2·3회차
+4. **★`if (isError)` 가 캐시된 데이터를 덮는다.** `BacklogBoard.tsx:117` 은 `backlogView` 유무를
+   보지 않아, **정상 렌더 중이던 보드가 배경 재조회 실패 하나로 에러 패널로 교체**된다
+   (도달 경로. 드래그 성공 직후 invalidate 재조회 실패 · 탭 복귀 시 `refetchOnWindowFocus` 실패).
+   main 기준 동작은 "에러를 무시하고 기존 데이터를 계속 렌더" 였으므로 **이 경로는 동작이 바뀌었다**.
+   그럼에도 이번 PR 에서 고치지 않는다 — `if (isError)` 단독 조기 반환은 이 저장소의 **지배적
+   관례**(`SessionList`·`MemberList`·`ComponentList`·`VersionList`·`CycleTimeReport` 등 약 20곳)라
+   신규 일탈이 아니고, `isError && backlogView === undefined` 로 좁히면 `다시 시도 중…` 라벨의
+   유일한 도달 경로가 사라져 설계 재검토가 필요하다. **후속 트랙 대상.**
+5. **`USERS_BY_IDS_CHUNK_SIZE` ↔ 백엔드 `MAX_RESULTS` 가 서로를 검사하지 않는다.** 이번 PR 은
+   프론트 쪽만 닫았다(MSW 가 이제 상한을 강제한다). 남은 위험 2건. ① 백엔드 `MAX_RESULTS` 가
+   **과부하**돼 있다 — typeahead `findAll(limit=)`과 ids 개수 상한을 **같은 상수**가 겸해서,
+   typeahead 성능을 위해 20 으로 **낮추는** 정당한 변경이 백로그 담당자 조회를 400 으로 조용히
+   죽인다. ② 역참조가 없다. **처방은 계약 스냅샷** — 이 repo 에 이미 선례가 있다
+   (`apps/web/src/api/__tests__/*.contract.test.ts` + `docs/contracts/*.snapshot.json`).
+   백엔드 상수 분리 + 스냅샷 등재는 **백엔드 변경이라 이 PR 범위 밖**.
+6. **`apps/web/e2e/` 가 어느 `tsconfig` 의 `include` 에도 없다** — `pnpm typecheck` 가 E2E 를
+   타입체크하지 않는다(eslint 만 훑는다). **PRE_EXISTING**, 별도 chore 감.
+7. **`BacklogCard.tsx:93` 의 `담당자: ${name}` 이 i18n 정본이 아니라 하드코딩**이고 E2E 가 그 값을
+   미러 복제한다. **PRE_EXISTING** 이나 「E2E 셀렉터는 i18n 정본 참조」 과거 사고와 결이 같아
+   후속 정리 대상.
+8. **`board-reorder.spec.ts` S6 flaky.** 2-worker 실행 1회차 red → 단독 green → 같은 명령 2·3회차
    green. 이번 변경의 MSW 플래그는 BrowserContext 단위라 샐 수 없다. **PRE_EXISTING** 으로 판정
    (판정 근거를 단일 대조가 아니라 **반복 3회**로 세웠다 —
    [[flaky-determination-needs-repeat-not-single-contrast]]).
