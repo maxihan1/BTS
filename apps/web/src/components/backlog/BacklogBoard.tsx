@@ -18,6 +18,7 @@ import { cardFirstCollision } from './backlog-collision'
 import { useBacklogCreateIssue } from './use-backlog-create-issue'
 import { useBacklogDrag } from './use-backlog-drag'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
+import { Button } from '@/components/ui/button'
 import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ export interface BacklogBoardProps {
  * - onDragEnd에서 resolveBacklogDropAction으로 시나리오를 판정해 mutation을 호출한다.
  * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
  * - truncated=true이면 경고 배너를 표시한다.
+ * - 조회 실패 시 안내와 재시도 버튼을 그린다 (FR-UX-13 F5 G2).
  */
 export function BacklogBoard({
   projectKey,
@@ -79,7 +81,7 @@ export function BacklogBoard({
   const createIssue = useBacklogCreateIssue(projectKey)
 
 
-  const { data: backlogView, isLoading } = useBacklog(projectKey)
+  const { data: backlogView, isLoading, isError, isFetching, refetch } = useBacklog(projectKey)
 
   // 담당자 이름 — 화면에 등장하는 id 만 모아 50개씩 나눠 전량 조회한다 (스펙 M1).
   // ★조기 반환(`isLoading`)보다 **위**에 있어야 한다. 아래로 내리면 렌더마다 훅 개수가
@@ -106,6 +108,28 @@ export function BacklogBoard({
     return (
       <div className="flex items-center justify-center py-16" aria-label="로딩 중">
         <span className="text-sm text-muted-foreground">로딩 중...</span>
+      </div>
+    )
+  }
+
+  // 조회 실패 — 재시도 수단이 없으면 사용자는 새로고침 말고 탈출구가 없다 (ActiveProjectGate 선례).
+  // ★순서 고정. `isLoading` **다음**이다 — 앞에 두면 재조회 중에도 에러 화면이 깜빡인다.
+  if (isError) {
+    return (
+      <div role="alert" className="flex flex-col items-start gap-3 p-8 text-destructive">
+        <p>{backlogLabels.loadFailed}</p>
+        {/* 재조회 중에는 버튼이 스스로 상태를 말한다 (design review D3).
+            `isLoading` 은 최초 1회만 true 라 재조회를 못 잡는다 — `isFetching` 이어야 한다.
+            비활성화가 연타로 인한 중복 요청을 구조적으로 막는다. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isFetching}
+          onClick={() => { void refetch() }}
+        >
+          {isFetching ? backlogLabels.retrying : backlogLabels.retry}
+        </Button>
       </div>
     )
   }
