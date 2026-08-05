@@ -96,20 +96,25 @@ export function chunkUserIds(
  * 기존 {@link useUsersByIds} 를 고치지 않고 새로 두는 이유. 그 훅은 소비처가 5곳이고
  * queryKey 구조를 바꾸면 그 5곳의 캐시·테스트가 함께 흔들린다. 백로그만 청크가 필요하다.
  *
+ * 합치기를 `useQueries` 의 `combine` 으로 하는 이유. 반환값을 매 렌더 새로 만들면
+ * 소비처의 `memo(BacklogColumn)` 재렌더 스킵이 통째로 죽는다(드래그 중에는
+ * `overDroppableId` 변경으로 상시 재렌더된다). `combine` 은 결과가 안 바뀌면
+ * 같은 참조를 돌려주므로 그 최적화를 지킨다.
+ *
  * @param ids 담당자 UUID 목록 (중복 허용 — 내부에서 제거)
  * @returns `data` 합쳐진 사용자 목록 · `isError` 한 묶음이라도 실패했는지
  */
 export function useUsersByIdsChunked(ids: string[]) {
   const chunks = useMemo(() => chunkUserIds(ids), [ids])
-  const results = useQueries({
+  return useQueries({
     queries: chunks.map((chunk) => ({
       queryKey: ['users', 'byIds', chunk],
       queryFn: () => fetchUsersByIds(chunk),
       staleTime: 30_000,
     })),
+    combine: (results) => ({
+      data: results.flatMap((r) => r.data ?? []),
+      isError: results.some((r) => r.isError),
+    }),
   })
-  return {
-    data: results.flatMap((r) => r.data ?? []),
-    isError: results.some((r) => r.isError),
-  }
 }

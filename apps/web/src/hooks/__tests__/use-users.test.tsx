@@ -1,11 +1,17 @@
-// useUsers TanStack Query 훅 단위 테스트 — fetchUsers 호출 + 쿼리 변경 시 재조회
+// useUsers TanStack Query 훅 단위 테스트 — fetchUsers 호출 + 쿼리 변경 시 재조회 + 50 묶음 청크
 import { describe, it, expect } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import type { UserSummary } from '@/api/users'
-import { useUsers, useUsersByIds } from '../use-users'
+import {
+  USERS_BY_IDS_CHUNK_SIZE,
+  chunkUserIds,
+  useUsers,
+  useUsersByIds,
+  useUsersByIdsChunked,
+} from '../use-users'
 
 function createWrapper() {
   const client = new QueryClient({
@@ -233,5 +239,124 @@ describe('useUsersByIds', () => {
     // 캐시에 byIds queryKey로 저장됐는지 확인
     const cached = client.getQueryData(['users', 'byIds', ids])
     expect(cached).toBeDefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F5 — 50 묶음 청크 (백로그 담당자 이름)
+//
+// 백엔드 `UsersController.MAX_RESULTS`(50)를 넘겨 `?ids=` 를 부르면 400 이다. 백로그는
+// 담당자가 50명을 넘길 수 있어 프론트가 먼저 묶음을 잘라야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 순수 함수 검증용 더미 id 목록을 만든다 (UUID 형식일 필요 없음 — 요청 파라미터로만 쓰인다). */
+const makeIds = (n: number): string[] => Array.from({ length: n }, (_, i) => `id-${i}`)
+
+describe('chunkUserIds', () => {
+  it('T2-1: 50개는 묶음 1개다 (백엔드 상한 경계)', () => {
+    expect(chunkUserIds(makeIds(50))).toHaveLength(1)
+  })
+
+  it('T2-2: 51개는 50 + 1 두 묶음이다 (초과 시 400 회피)', () => {
+    const chunks = chunkUserIds(makeIds(51))
+    expect(chunks.map((c) => c.length)).toEqual([50, 1])
+  })
+
+  it('T2-3: 중복 id 는 한 번만 조회한다', () => {
+    expect(chunkUserIds(['a', 'a', 'b'])).toEqual([['a', 'b']])
+  })
+
+  it('T2-4: 빈 배열은 묶음 0개다', () => {
+    expect(chunkUserIds([])).toEqual([])
+  })
+})
+
+describe('useUsersByIdsChunked', () => {
+  /**
+   * `?ids=` 로 들어온 묶음을 기록하고 묶음당 사용자 1명씩 돌려주는 핸들러를 설치한다.
+   *
+   * 묶음당 1명만 주는 이유. 합쳐진 결과 길이가 곧 **호출된 묶음 수**가 되어
+   * flatMap 합치기가 실제로 동작했는지 길이 하나로 잰다.
+   *
+   * @returns 요청된 id 묶음 배열 — 핸들러가 불릴 때마다 push 된다
+   */
+  function captureIdChunks(): string[][] {
+    const requested: string[][] = []
+    server.use(
+      http.get('/api/v1/users', ({ request }) => {
+        const raw = new URL(request.url).searchParams.get('ids') ?? ''
+        requested.push(raw === '' ? [] : raw.split(','))
+        const user = usersFixture[(requested.length - 1) % usersFixture.length]
+        return HttpResponse.json(user === undefined ? [] : [user])
+      }),
+    )
+    return requested
+  }
+
+  it('T2-5: 60개 id 는 서버를 2회 부르고 결과를 합친다', async () => {
+    const requested = captureIdChunks()
+
+    const { result } = renderHook(() => useUsersByIdsChunked(makeIds(60)), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(result.current.data).toHaveLength(2)
+    })
+    expect(requested).toHaveLength(2)
+    // 두 묶음은 병렬로 나가므로 도착 순서를 단언하지 않는다 — 재는 것은 묶음 크기다
+    expect([...requested.map((c) => c.length)].sort((a, b) => b - a)).toEqual([50, 10])
+    expect(requested.every((c) => c.length <= USERS_BY_IDS_CHUNK_SIZE)).toBe(true)
+  })
+
+  it('T2-6: 담당자가 0명이면 서버를 부르지 않는다', async () => {
+    const requested = captureIdChunks()
+
+    const { result } = renderHook(() => useUsersByIdsChunked([]), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([])
+    })
+    // 대기 중인 요청이 있었다면 여기서 기록된다 — 없음 단언을 공허하지 않게 만든다
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(requested).toHaveLength(0)
+  })
+
+  it('T2-7: 한 묶음이 실패하면 isError 가 true 다 (소비처가 fail-soft 판정에 쓴다)', async () => {
+    server.use(
+      http.get('/api/v1/users', () => HttpResponse.json({ message: 'boom' }, { status: 500 })),
+    )
+
+    const { result } = renderHook(() => useUsersByIdsChunked(makeIds(3)), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+  })
+
+  it('T2-8: 재렌더돼도 data 참조가 유지된다 (소비처 memo 보호)', async () => {
+    // BacklogColumn 은 memo(BacklogColumnInner) 라 assigneeNames 참조가 매번 바뀌면
+    // 재렌더 스킵이 통째로 죽는다. 드래그 중에는 BacklogBoard 가 상시 재렌더되므로 실제로 물린다.
+    captureIdChunks()
+    // ids 참조를 고정한다 — 매번 새 배열을 넘기면 chunks useMemo 가 다시 계산돼
+    // combine 이 아니라 호출부 실수를 재게 된다
+    const ids = makeIds(1)
+
+    const { result, rerender } = renderHook(() => useUsersByIdsChunked(ids), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => {
+      expect(result.current.data).toHaveLength(1)
+    })
+
+    const before = result.current.data
+    rerender()
+
+    // combine 이 없으면 매 렌더 flatMap 이 새 배열을 만들어 이 단언이 깨진다
+    expect(result.current.data).toBe(before)
   })
 })
