@@ -73,6 +73,12 @@ const mockCreateSprintMutate = vi.fn()
 const mockStartSprintMutate = vi.fn()
 const mockCompleteSprintMutate = vi.fn()
 
+// FR-UX-13 F5 — 담당자 배선 검증용 픽스처 상수.
+// mock 팩토리 안에서 쓰이지만 **호출 시점**(렌더)에 읽히므로 TDZ 문제가 없다
+// (`STUB_CREATED_KEY` 와 같은 형태).
+const ALICE_ID = '00000000-0000-4000-8000-000000000001'
+const BOB_ID = '00000000-0000-4000-8000-000000000002'
+
 vi.mock('@/hooks/use-backlog', () => ({
   useBacklog: () => ({
     data: {
@@ -94,6 +100,18 @@ vi.mock('@/hooks/use-backlog', () => ({
           assigneeId: null,
           priority: 2,
           rank: '0|b:',
+          version: 0,
+          epicKey: null,
+        },
+        // FR-UX-13 F5 — 담당자가 배정된 백로그 카드. 나머지 이슈는 미배정으로 남겨
+        // 「이름 있음 / 미배정」 두 상태가 한 화면에 공존하게 둔다.
+        {
+          key: 'ATLAS-4',
+          summary: '담당자 있는 백로그 이슈',
+          currentStateKey: 'open',
+          assigneeId: ALICE_ID,
+          priority: 3,
+          rank: '0|c:',
           version: 0,
           epicKey: null,
         },
@@ -132,7 +150,20 @@ vi.mock('@/hooks/use-backlog', () => ({
             endDate: '2026-06-14',
             version: 0,
           },
-          issues: [],
+          // FR-UX-13 F5 — 담당자가 배정된 **스프린트** 카드.
+          // 백로그 칸만 배선하고 스프린트 칸을 빠뜨리는 반쪽 봉합을 잡는다.
+          issues: [
+            {
+              key: 'ATLAS-5',
+              summary: '담당자 있는 스프린트 이슈',
+              currentStateKey: 'open',
+              assigneeId: BOB_ID,
+              priority: 3,
+              rank: '0|a:',
+              version: 0,
+              epicKey: null,
+            },
+          ],
         },
       ],
       truncated: false,
@@ -146,6 +177,23 @@ vi.mock('@/hooks/use-backlog', () => ({
   useStartSprint: () => ({ mutate: mockStartSprintMutate, isPending: false }),
   useCompleteSprint: () => ({ mutate: mockCompleteSprintMutate, isPending: false }),
   backlogKeys: { detail: (key: string) => ['backlog', key] },
+}))
+
+// FR-UX-13 F5 — 담당자 이름 조회 훅 mock.
+//
+// ★반환값을 **모듈 스코프 변수 한 개**로 유지한다 — 실제 `useUsersByIdsChunked` 는
+// `useQueries` 의 `combine` 을 써서 결과가 안 바뀌면 같은 참조를 돌려준다.
+// 매 렌더 새 객체를 만들면 `BacklogBoard` 의 `useMemo` 가 그 전제 위에서만 성립한다는
+// 사실이 여기서 가려진다.
+interface ChunkedUsersResult {
+  data: UserSummary[]
+  isError: boolean
+}
+const NO_USERS: ChunkedUsersResult = { data: [], isError: false }
+let mockUsersResult: ChunkedUsersResult = NO_USERS
+
+vi.mock('@/hooks/use-users', () => ({
+  useUsersByIdsChunked: () => mockUsersResult,
 }))
 
 // FR-UX-09 F3 — 생성 모달을 스텁으로 둔다.
@@ -176,6 +224,7 @@ vi.mock('@/components/issue/CreateIssueDialog', () => ({
 
 import { BacklogBoard } from './BacklogBoard'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import type { UserSummary } from '@/api/users'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -903,5 +952,54 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
     })
     // 빨간 실패 토스트는 「안 만들어졌다」로 읽혀 재시도 → 중복 이슈를 부른다
     expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F5 — 백로그·스프린트 카드 담당자 이름
+//
+// ★이 블록의 red 가 결함의 증인이다 — 배선 전에는 `BacklogBoard` 가 빈 Map 을 그대로
+// 넘겨서, 담당자가 배정된 카드까지 전부 `?`(이름 미확인)로 그려진다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 조회에 성공했을 때 돌아오는 사용자 — bob 은 displayName 이 없어 username 으로 떨어진다. */
+const RESOLVED_USERS: UserSummary[] = [
+  { id: ALICE_ID, username: 'alice', displayName: '김앨리스', email: null },
+  { id: BOB_ID, username: 'bob', displayName: null, email: null },
+]
+
+describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = NO_USERS
+  })
+
+  it('T3-1: 담당자가 있는 카드는 이니셜 아바타를 표시한다', async () => {
+    mockUsersResult = { data: RESOLVED_USERS, isError: false }
+    renderBoard()
+
+    expect(await screen.findByLabelText('담당자: 김앨리스')).toBeInTheDocument()
+    // 스프린트 칸도 같은 Map 을 받아야 한다 — 한쪽만 배선하는 반쪽 봉합을 막는다
+    expect(screen.getByLabelText('담당자: bob')).toBeInTheDocument()
+  })
+
+  it('T3-2: 미배정 이슈는 "미배정" 텍스트를 유지한다', async () => {
+    mockUsersResult = { data: RESOLVED_USERS, isError: false }
+    renderBoard()
+
+    // 픽스처의 미배정 이슈는 3건(ATLAS-1·2·3)이라 단건 조회는 strict mode 로 깨진다
+    expect(await screen.findAllByText(backlogLabels.unassigned)).toHaveLength(3)
+  })
+
+  it('T3-3: 사용자 조회가 실패해도 카드는 렌더된다 (fail-soft, 스펙 S8)', async () => {
+    mockUsersResult = { data: [], isError: true }
+    renderBoard()
+
+    expect(await screen.findByText('담당자 있는 백로그 이슈')).toBeInTheDocument()
+    // 담당자만 `?` 로 떨어진다 — 카드가 사라지거나 화면이 에러로 대체되지 않는다
+    expect(
+      screen.getAllByLabelText(backlogLabels.unknownAssigneeAriaLabel),
+    ).toHaveLength(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
