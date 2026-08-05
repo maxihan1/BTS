@@ -1,5 +1,5 @@
 // BacklogBoard 컴포넌트 통합 테스트 — onDragEnd 시나리오·C1 부분실패·생성/시작/완료 버튼 (FR-BL-01/02 D6/D7)
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -73,6 +73,28 @@ const mockCreateSprintMutate = vi.fn()
 const mockStartSprintMutate = vi.fn()
 const mockCompleteSprintMutate = vi.fn()
 
+// FR-UX-13 F5 — 담당자 배선 검증용 픽스처 상수.
+// mock 팩토리 안에서 쓰이지만 **호출 시점**(렌더)에 읽히므로 TDZ 문제가 없다
+// (`STUB_CREATED_KEY` 와 같은 형태).
+const ALICE_ID = '00000000-0000-4000-8000-000000000001'
+const BOB_ID = '00000000-0000-4000-8000-000000000002'
+
+// FR-UX-13 F5 — 조회 실패·재조회 상태 주입 지점.
+//
+// `useBacklog` 반환값 한 곳이 화면 전체의 분기(로딩 / 에러 / 정상)를 쥐므로 테스트마다
+// 갈아끼울 수 있어야 한다. 기본값이 종전과 같은 「정상 조회」라 기존 테스트는 이 변수를
+// 몰라도 그대로 돈다.
+const mockRefetch = vi.fn()
+
+/** `useBacklog` 반환값 중 테스트가 덮어쓰는 부분 */
+interface BacklogQueryOverride {
+  data?: BacklogView | undefined
+  isLoading?: boolean
+  isError?: boolean
+  isFetching?: boolean
+}
+let mockBacklogQueryOverride: BacklogQueryOverride = {}
+
 vi.mock('@/hooks/use-backlog', () => ({
   useBacklog: () => ({
     data: {
@@ -94,6 +116,18 @@ vi.mock('@/hooks/use-backlog', () => ({
           assigneeId: null,
           priority: 2,
           rank: '0|b:',
+          version: 0,
+          epicKey: null,
+        },
+        // FR-UX-13 F5 — 담당자가 배정된 백로그 카드. 나머지 이슈는 미배정으로 남겨
+        // 「이름 있음 / 미배정」 두 상태가 한 화면에 공존하게 둔다.
+        {
+          key: 'ATLAS-4',
+          summary: '담당자 있는 백로그 이슈',
+          currentStateKey: 'open',
+          assigneeId: ALICE_ID,
+          priority: 3,
+          rank: '0|c:',
           version: 0,
           epicKey: null,
         },
@@ -132,12 +166,30 @@ vi.mock('@/hooks/use-backlog', () => ({
             endDate: '2026-06-14',
             version: 0,
           },
-          issues: [],
+          // FR-UX-13 F5 — 담당자가 배정된 **스프린트** 카드.
+          // 백로그 칸만 배선하고 스프린트 칸을 빠뜨리는 반쪽 봉합을 잡는다.
+          issues: [
+            {
+              key: 'ATLAS-5',
+              summary: '담당자 있는 스프린트 이슈',
+              currentStateKey: 'open',
+              assigneeId: BOB_ID,
+              priority: 3,
+              rank: '0|a:',
+              version: 0,
+              epicKey: null,
+            },
+          ],
         },
       ],
       truncated: false,
     },
     isLoading: false,
+    isError: false,
+    isFetching: false,
+    refetch: mockRefetch,
+    // ★맨 끝이어야 한다 — 위 기본값을 테스트가 덮어쓰는 자리다 (FR-UX-13 F5)
+    ...mockBacklogQueryOverride,
   }),
   useRerankIssue: () => ({ mutate: mockRerankMutate, isPending: false }),
   useAssignToSprint: () => ({ mutate: mockAssignMutate, isPending: false }),
@@ -146,6 +198,35 @@ vi.mock('@/hooks/use-backlog', () => ({
   useStartSprint: () => ({ mutate: mockStartSprintMutate, isPending: false }),
   useCompleteSprint: () => ({ mutate: mockCompleteSprintMutate, isPending: false }),
   backlogKeys: { detail: (key: string) => ['backlog', key] },
+}))
+
+// FR-UX-13 F5 — 담당자 이름 조회 훅 mock.
+//
+// ★반환값을 **모듈 스코프 변수 한 개**로 유지한다 — 실제 `useUsersByIdsChunked` 는
+// `useQueries` 의 `combine` 을 써서 결과가 안 바뀌면 같은 참조를 돌려준다.
+// 매 렌더 새 객체를 만들면 `BacklogBoard` 의 `useMemo` 가 그 전제 위에서만 성립한다는
+// 사실이 여기서 가려진다.
+//
+// ★인자를 **`vi.fn` 으로 기록**한다. 기록하지 않으면 `useUsersByIdsChunked(assigneeIds)` 를
+// `useUsersByIdsChunked([])` 로 바꿔도 이 파일이 전량 초록으로 남는다(실측: 유닛 118/118 통과,
+// E2E S9 만 red). 훅 배선(FR-2·NFR-1)을 재는 것은 T3-1 의 호출 인자 단언뿐이다.
+//
+// ★반환값은 스파이의 **구현이 아니라** `mockUsersResult` 가 쥔다 — 스파이는 기록만 한다.
+// 반환을 구현에 얹으면 mock 초기화 방식이 바뀌는 날 반환값까지 함께 사라진다.
+interface ChunkedUsersResult {
+  data: UserSummary[]
+}
+const NO_USERS: ChunkedUsersResult = { data: [] }
+let mockUsersResult: ChunkedUsersResult = NO_USERS
+
+/** `useUsersByIdsChunked` 가 실제로 받은 id 목록 — T3-1 이 단언한다 */
+const mockUseUsersByIdsChunked = vi.fn<(ids: string[]) => void>()
+
+vi.mock('@/hooks/use-users', () => ({
+  useUsersByIdsChunked: (ids: string[]) => {
+    mockUseUsersByIdsChunked(ids)
+    return mockUsersResult
+  },
 }))
 
 // FR-UX-09 F3 — 생성 모달을 스텁으로 둔다.
@@ -176,6 +257,8 @@ vi.mock('@/components/issue/CreateIssueDialog', () => ({
 
 import { BacklogBoard } from './BacklogBoard'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import type { UserSummary } from '@/api/users'
+import type { BacklogView } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -903,5 +986,202 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
     })
     // 빨간 실패 토스트는 「안 만들어졌다」로 읽혀 재시도 → 중복 이슈를 부른다
     expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F5 — 백로그·스프린트 카드 담당자 이름
+//
+// ★이 블록의 red 가 결함의 증인이다 — 배선 전에는 `BacklogBoard` 가 빈 Map 을 그대로
+// 넘겨서, 담당자가 배정된 카드까지 전부 `?`(이름 미확인)로 그려진다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 조회에 성공했을 때 돌아오는 사용자 — bob 은 displayName 이 없어 username 으로 떨어진다. */
+const ALICE_USER: UserSummary = {
+  id: ALICE_ID,
+  username: 'alice',
+  displayName: '김앨리스',
+  email: null,
+}
+const BOB_USER: UserSummary = {
+  id: BOB_ID,
+  username: 'bob',
+  displayName: null,
+  email: null,
+}
+const RESOLVED_USERS: UserSummary[] = [ALICE_USER, BOB_USER]
+
+describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = NO_USERS
+  })
+
+  it('T3-1: 담당자가 있는 카드는 이니셜 아바타를 표시하고, 수집한 id 가 조회 훅에 그대로 넘어간다', async () => {
+    mockUsersResult = { data: RESOLVED_USERS }
+    renderBoard()
+
+    expect(await screen.findByLabelText('담당자: 김앨리스')).toBeInTheDocument()
+    // 스프린트 칸도 같은 Map 을 받아야 한다 — 한쪽만 배선하는 반쪽 봉합을 막는다
+    expect(screen.getByLabelText('담당자: bob')).toBeInTheDocument()
+
+    // ★배선 단언 (FR-2·NFR-1). 화면 단언만으로는 `useUsersByIdsChunked([])` 로 바꿔도
+    //   `mockUsersResult` 가 이름을 계속 돌려줘 전부 초록이 된다 — 실제 뮤테이션으로 확인된
+    //   구멍이다. ALICE 는 백로그, BOB 은 스프린트에서 나오므로 이 한 줄이 「두 칸을 모두
+    //   훑었는가」까지 함께 잰다.
+    //   ※ 중복 제거 자체는 순수 함수 쪽 `backlog-assignee-names.test.ts` T1-1 이 봉인한다.
+    expect(mockUseUsersByIdsChunked).toHaveBeenCalledWith([ALICE_ID, BOB_ID])
+  })
+
+  it('T3-2: 미배정 이슈는 "미배정" 텍스트를 유지한다', async () => {
+    mockUsersResult = { data: RESOLVED_USERS }
+    renderBoard()
+
+    // 픽스처의 미배정 이슈는 3건(ATLAS-1·2·3)이라 단건 조회는 strict mode 로 깨진다
+    expect(await screen.findAllByText(backlogLabels.unassigned)).toHaveLength(3)
+  })
+
+  it('T3-3: 사용자 조회가 전량 실패해도 카드는 렌더된다 (fail-soft, 스펙 S8·FR-7)', async () => {
+    // 훅은 실패 표면을 내보내지 않는다 — 실패한 묶음은 결과에서 빠질 뿐이라
+    // 전량 실패는 소비처에게 **빈 `data`** 로 보인다. 그래서 픽스처도 그 모양이다.
+    mockUsersResult = { data: [] }
+    renderBoard()
+
+    expect(await screen.findByText('담당자 있는 백로그 이슈')).toBeInTheDocument()
+    // 담당자만 `?` 로 떨어진다 — 카드가 사라지거나 화면이 에러로 대체되지 않는다
+    expect(
+      screen.getAllByLabelText(backlogLabels.unknownAssigneeAriaLabel),
+    ).toHaveLength(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('T3-4: 묶음 일부만 실패하면 풀린 이름과 `?` 가 공존한다 (부분 실패)', async () => {
+    // 담당자가 50명을 넘으면 조회가 2묶음 이상으로 갈라지고 **한쪽만** 실패할 수 있다.
+    // 성공한 묶음의 `data` 는 그대로 합쳐지므로 이 상태가 실제로 도달 가능하다.
+    // 여기서 전 카드가 `?` 로 떨어지면 반쪽 봉합이다 — T3-3(전량 실패)만으로는 안 잡힌다.
+    mockUsersResult = { data: [ALICE_USER] }
+    renderBoard()
+
+    expect(await screen.findByLabelText('담당자: 김앨리스')).toBeInTheDocument()
+    expect(screen.queryByLabelText('담당자: bob')).toBeNull()
+    // 이름을 못 받은 BOB 카드 1건만 `?` 다
+    expect(
+      screen.getAllByLabelText(backlogLabels.unknownAssigneeAriaLabel),
+    ).toHaveLength(1)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F5 — 백로그 조회 실패 안내와 재시도 (G2)
+//
+// ★이 블록의 red 가 결함의 증인이다 — 봉합 전에는 조회가 실패하면 `<div />` 가 반환돼
+// 화면이 통째로 빈다. 사용자는 무엇이 잘못됐는지도, 어떻게 벗어나는지도 알 수 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 조회는 성공했지만 cap 초과로 잘린 뷰 — 경고 배너 1개만 뜨는지 보는 데 쓴다 */
+const TRUNCATED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: true }
+
+/**
+ * 한 번 성공해 캐시에 남은 뷰.
+ *
+ * ★T4-2b 가 이걸 쓰는 이유. `isError && isFetching` 은 **`data` 가 있을 때만 도달 가능**하다 —
+ * TanStack Query 는 `data === undefined` 인 쿼리를 재조회하면 `status` 를 `'pending'` 으로
+ * 되돌리며 에러를 지운다(`fetchState` 의 `data === undefined` 분기). 실브라우저로 확인한
+ * 결과도 같다. 최초 로드 실패 후의 재시도는 **로딩 화면**으로 가고, `다시 시도 중…` 라벨은
+ * 「캐시에 data 가 남은 채 재조회가 실패한」 경로에서만 실제로 보인다.
+ * 픽스처를 `data: undefined` 로 두면 만들어질 수 없는 상태를 지키는 가짜 그린이 된다.
+ */
+const CACHED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: false }
+
+/**
+ * 이슈가 하나도 없는 정상 조회 (스펙 E7).
+ *
+ * `CACHED_VIEW` 와 값은 같지만 **재는 대상이 다르다** — 이쪽은 「조회는 성공했는데 이슈가 0건」이고,
+ * 저쪽은 「이전 성공분이 캐시에 남은 채 재조회가 실패」다. 한 상수로 합치면 둘 중 하나가 바뀌는 날
+ * 다른 하나가 조용히 따라 바뀐다.
+ */
+const EMPTY_VIEW: BacklogView = { backlog: [], sprints: [], truncated: false }
+
+describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = NO_USERS
+  })
+
+  afterEach(() => {
+    // 주입 상태를 반드시 되돌린다 — 남기면 뒤에 추가되는 블록이 영문 모를 에러 화면을 본다
+    mockBacklogQueryOverride = {}
+  })
+
+  it('T4-1: 조회 실패 시 role="alert" 안내가 뜬다 (빈 화면 아님)', async () => {
+    mockBacklogQueryOverride = { data: undefined, isLoading: false, isError: true }
+    renderBoard()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(backlogLabels.loadFailed)
+  })
+
+  it('T4-2: "다시 시도" 버튼이 refetch 를 호출한다 (새로고침 금지)', async () => {
+    const user = userEvent.setup()
+    mockBacklogQueryOverride = { data: undefined, isLoading: false, isError: true }
+    renderBoard()
+
+    // 문자열 `name` 은 Testing Library 에서 **정확 일치**다. 그래서 토스트 문구
+    // `moveFailedError`('…다시 시도해 주세요.')도, 재조회 라벨 '다시 시도 중…'도 걸리지 않는다.
+    // 정확 일치라는 전제 자체는 T4-2b 의 마지막 단언이 지킨다.
+    await user.click(screen.getByRole('button', { name: backlogLabels.retry }))
+
+    expect(mockRefetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('T4-2b: 재조회 중에는 버튼이 비활성화되고 라벨이 바뀐다 (design review D3)', () => {
+    // `data` 가 있는 상태여야 실제로 도달 가능한 조합이다 — 근거는 CACHED_VIEW 주석
+    mockBacklogQueryOverride = {
+      data: CACHED_VIEW,
+      isLoading: false,
+      isError: true,
+      isFetching: true,
+    }
+    renderBoard()
+
+    expect(screen.getByRole('button', { name: backlogLabels.retrying })).toBeDisabled()
+    // ★`retry`('다시 시도') ⊂ `retrying`('다시 시도 중…') 이라 조회가 부분 일치이면
+    //   여기서 재조회 중 버튼이 잡힌다. null 이어야 T4-2 의 조회가 정확하다는 뜻이다.
+    expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
+  })
+
+  it('T4-3: 로딩 중에는 로딩 표시만 뜨고 에러 블록은 없다 (스펙 FR-8·E8)', () => {
+    // ★`isLoading: true` + `isError: true` 는 **만들어질 수 없는 조합**이라 픽스처에 쓰지 않는다 —
+    //   `isLoading = isPending && isFetching` 이고 `isPending`·`isError` 는 같은 `status` 열거의
+    //   배타 값이다 (@tanstack/query-core@5.100.11 `build/modern/queryObserver.js:308-310`).
+    //   그 조합을 지키는 단언은 도달 불가능한 상태를 지키는 가짜 그린이다 — T4-2b 가 같은 이유로
+    //   이미 한 번 교정된 자리다.
+    //   따라서 이 테스트가 재는 것은 「분기 순서」가 아니라 **도달 가능한 로딩 상태**이며,
+    //   FR-8(로딩 표시 유지)과 엣지 E8 의 유일한 커버리지다.
+    mockBacklogQueryOverride = { data: undefined, isLoading: true, isError: false }
+    renderBoard()
+
+    expect(screen.getByLabelText('로딩 중')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('T4-4: 정상 조회 + truncated 일 때 경고 배너는 1개뿐이다 (스펙 E10 상호 배타)', async () => {
+    mockBacklogQueryOverride = { data: TRUNCATED_VIEW, isLoading: false, isError: false }
+    renderBoard()
+
+    expect(await screen.findAllByRole('alert')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
+  })
+
+  it('T4-5: 이슈가 0건이어도 빈 칸을 그린다 — 에러가 아니다 (스펙 E7)', async () => {
+    // T4-4 는 `truncated: true` 라 **경고가 뜨는** 쪽을 잰다. 이슈만 없는 정상 조회는
+    // 그 반대편이고, 여기가 비면 사용자는 「고장」과 「할 일 없음」을 구별할 수 없다.
+    mockBacklogQueryOverride = { data: EMPTY_VIEW, isLoading: false, isError: false }
+    renderBoard()
+
+    expect(await screen.findByText('백로그')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByLabelText('로딩 중')).toBeNull()
+    expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
   })
 })

@@ -1,5 +1,6 @@
 // 백로그·스프린트 보드 루트 컴포넌트 — DnD 오케스트레이션 + 라이프사이클 (FR-BL-01/02 D6/D7)
 import type { JSX } from 'react'
+import { useMemo } from 'react'
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import {
@@ -8,6 +9,8 @@ import {
   useStartSprint,
   useCompleteSprint,
 } from '@/hooks/use-backlog'
+import { useUsersByIdsChunked } from '@/hooks/use-users'
+import { collectAssigneeIds, buildAssigneeNameMap } from './backlog-assignee-names'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
 import { CreateSprintForm } from './CreateSprintForm'
@@ -15,6 +18,7 @@ import { cardFirstCollision } from './backlog-collision'
 import { useBacklogCreateIssue } from './use-backlog-create-issue'
 import { useBacklogDrag } from './use-backlog-drag'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
+import { Button } from '@/components/ui/button'
 import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +63,7 @@ export interface BacklogBoardProps {
  * - onDragEnd에서 resolveBacklogDropAction으로 시나리오를 판정해 mutation을 호출한다.
  * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
  * - truncated=true이면 경고 배너를 표시한다.
+ * - 조회 실패 시 안내와 재시도 버튼을 그린다 (FR-UX-13 F5 G2).
  */
 export function BacklogBoard({
   projectKey,
@@ -76,7 +81,18 @@ export function BacklogBoard({
   const createIssue = useBacklogCreateIssue(projectKey)
 
 
-  const { data: backlogView, isLoading } = useBacklog(projectKey)
+  const { data: backlogView, isLoading, isError, isFetching, refetch } = useBacklog(projectKey)
+
+  // 담당자 이름 — 화면에 등장하는 id 만 모아 50개씩 나눠 전량 조회한다 (스펙 M1).
+  // ★조기 반환(`isLoading`)보다 **위**에 있어야 한다. 아래로 내리면 렌더마다 훅 개수가
+  //   달라져 React 가 즉사한다. 그래서 두 순수 함수가 `undefined` 를 받아낸다.
+  const assigneeIds = useMemo(() => collectAssigneeIds(backlogView), [backlogView])
+  const { data: assigneeUsers } = useUsersByIdsChunked(assigneeIds)
+  const assigneeNames = useMemo(
+    () => buildAssigneeNameMap(backlogView, assigneeUsers),
+    [backlogView, assigneeUsers],
+  )
+
   const createSprint = useCreateSprint(projectKey)
   const startSprint = useStartSprint(projectKey)
   const completeSprint = useCompleteSprint(projectKey)
@@ -96,10 +112,39 @@ export function BacklogBoard({
     )
   }
 
+  // 조회 실패 — 재시도 수단이 없으면 사용자는 새로고침 말고 탈출구가 없다 (ActiveProjectGate 선례).
+  //
+  // 순서는 `isLoading` **다음**으로 둔다. 다만 「앞에 두면 재조회 중에도 에러 화면이 깜빡인다」는
+  // 근거는 **거짓이다** — `isLoading = isPending && isFetching` 이고 `isPending`·`isError` 는
+  // 같은 `status` 열거의 배타 값이라 **동시에 참이 될 수 없다**
+  // (@tanstack/query-core@5.100.11 `build/modern/queryObserver.js:308-310`).
+  // 즉 순서를 바꿔도 현재 관측 가능한 차이가 없고, 그래서 이 순서만을 봉인하는 테스트도
+  // 존재할 수 없다(도달 불가능한 픽스처를 지어내야 하므로). 순서를 고정하는 것은
+  // 「로딩이 먼저」라는 의도를 코드에 남기기 위함이 전부다.
+  // 도달 가능한 로딩 상태 자체는 `BacklogBoard.test.tsx` 의 T4-3 이 잰다 (FR-8·E8).
+  if (isError) {
+    return (
+      <div role="alert" className="flex flex-col items-start gap-3 p-8 text-destructive">
+        <p>{backlogLabels.loadFailed}</p>
+        {/* 재조회 중에는 버튼이 스스로 상태를 말한다 (design review D3).
+            `isLoading` 은 최초 1회만 true 라 재조회를 못 잡는다 — `isFetching` 이어야 한다.
+            비활성화가 연타로 인한 중복 요청을 구조적으로 막는다. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isFetching}
+          onClick={() => { void refetch() }}
+        >
+          {isFetching ? backlogLabels.retrying : backlogLabels.retry}
+        </Button>
+      </div>
+    )
+  }
+
   if (backlogView === undefined) return <div />
 
   const { backlog, sprints, truncated } = backlogView
-  const assigneeNames = new Map<string, string>()
 
   return (
     <div className="flex flex-col gap-4">
