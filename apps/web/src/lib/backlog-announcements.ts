@@ -1,0 +1,190 @@
+// 백로그 드래그 앤 드롭을 한국어로 읽어 주는 공지 빌더 (FR-UX-13 F15 · FR-9 · FR-17)
+import type { Active, Announcements, Over, ScreenReaderInstructions } from '@dnd-kit/core'
+import type { BacklogView } from '@/api/backlog'
+import type { BacklogDragData } from '@/components/backlog/BacklogCard'
+import { backlogLabels } from '@/i18n/backlog-labels'
+import { resolveBacklogDropAction, resolveOverToDropZone } from './backlog-drag'
+import type { BacklogDropAction } from './backlog-drag'
+
+const announce = backlogLabels.announce
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 입력 읽기
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 드래그 카드 id 에서 이슈 키만 떼어낸다.
+ *
+ * `BacklogCard` 의 draggable id 는 `` `${context}:${issue.key}` `` 라, 그대로 읽으면
+ * 스크린리더가 `sprint:ATLAS-4` 같은 **내부 id** 를 소리 내 읽는다 (T-KB-1).
+ */
+function issueKeyOf(activeId: string | number): string {
+  const id = String(activeId)
+  const separator = id.indexOf(':')
+  return separator === -1 ? id : id.slice(separator + 1)
+}
+
+/**
+ * 드래그 중인 카드의 출발 정보를 읽는다. 형태가 아니면 null.
+ *
+ * `use-backlog-drag.ts` 와 **같은 출처**(`active.data`)를 쓴다 — 출발 정보를 뷰에서 다시
+ * 찾아 만들면 공지와 실제 mutation 이 어긋난다.
+ */
+function readDragOrigin(raw: unknown): BacklogDragData | null {
+  if (raw === null || typeof raw !== 'object') return null
+  const data = raw as Record<string, unknown>
+  const issueKey = data['issueKey']
+  const context = data['context']
+  if (typeof issueKey !== 'string') return null
+  if (context !== 'backlog' && context !== 'sprint') return null
+  return {
+    issueKey,
+    context,
+    sprintId: typeof data['sprintId'] === 'string' ? data['sprintId'] : null,
+  }
+}
+
+/** 판정 결과 + 출발 정보 — 같은 칸 재정렬은 「어느 칸인가」를 출발에서만 알 수 있다 */
+interface DropJudgement {
+  origin: BacklogDragData
+  action: BacklogDropAction
+}
+
+/**
+ * 드래그 상태를 실제 mutation 과 **같은 경로**로 판정한다.
+ *
+ * 입력 구성(`resolveOverToDropZone`)까지 공용 함수를 쓴다. 판정 함수만 같고 입력을
+ * 복제하면 어긋남이 입력에서 난다 (스펙 §리뷰 반영 C-5).
+ */
+function judgeDrop(view: BacklogView, active: Active, over: Over | null): DropJudgement | null {
+  const origin = readDragOrigin(active.data.current)
+  if (origin === null) return null
+
+  const zone = resolveOverToDropZone(view, over)
+  if (zone === null) return null
+
+  const action = resolveBacklogDropAction({
+    issueKey: origin.issueKey,
+    fromContext: origin.context,
+    fromSprintId: origin.sprintId,
+    toContext: zone.context,
+    toSprintId: zone.sprintId,
+    targetKeys: zone.orderedKeys,
+    dropIndex: zone.dropIndex,
+  })
+  return { origin, action }
+}
+
+/**
+ * 스프린트 이름을 뷰에서 찾는다. 못 찾으면 id 를 그대로 돌려준다.
+ *
+ * 화면의 스프린트 칸은 이 뷰로 그려지므로 못 찾는 것은 드래그 도중 뷰가 갱신된 경우뿐이다.
+ * 그때도 mutation 은 그대로 나가므로 「이동할 수 없다」로 바꾸면 화면과 어긋난다 —
+ * 이름을 잃어도 **이동 사실은 알린다** (`KanbanBoard.tsx:59` findColumnName 과 같은 관례).
+ */
+function sprintNameOf(view: BacklogView, sprintId: string): string {
+  return view.sprints.find((entry) => entry.sprint.sprintId === sprintId)?.sprint.name ?? sprintId
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 문구 만들기
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 드래그가 올라가 있는 대상을 예고형으로 읽는다 — 3갈래(대상 있음 · 대상 없음 · 판정 noop) */
+function describeOver(view: BacklogView, active: Active, over: Over | null): string {
+  const judged = judgeDrop(view, active, over)
+  if (judged === null) return announce.outOfDropZone
+
+  const { origin, action } = judged
+  switch (action.kind) {
+    case 'noop':
+    case 'noop-move':
+      return announce.cannotMoveHere
+    case 'assign':
+      return announce.overSprint(sprintNameOf(view, action.sprintId))
+    case 'unassign':
+      return announce.overBacklog
+    case 'rerank':
+      // 같은 칸 재정렬이라 대상 칸 = 출발 칸이다. 스프린트 카드만 sprintId 를 갖는다.
+      return origin.sprintId === null
+        ? announce.overBacklog
+        : announce.overSprint(sprintNameOf(view, origin.sprintId))
+    default: {
+      const exhaustiveCheck: never = action
+      return exhaustiveCheck
+    }
+  }
+}
+
+/**
+ * 드롭 결과를 완료형으로 읽는다 — `resolveBacklogDropAction` 의 kind 5종 전부.
+ *
+ * 한 갈래라도 빠뜨리면 그 순간 스크린리더가 **침묵**하는데 테스트는 초록이다 (C-4).
+ */
+function describeEnd(
+  view: BacklogView,
+  active: Active,
+  over: Over | null,
+  canReorderIssue: boolean,
+): string {
+  // FR-17. UPDATE 권한이 없으면 `use-backlog-drag.ts` 가 mutation 을 0건으로 막는다.
+  // 그 상태에서 「옮겼습니다」를 읽으면 스크린리더 사용자에게만 거짓말이 된다.
+  if (!canReorderIssue) return announce.forbidden
+
+  const judged = judgeDrop(view, active, over)
+  // 드롭존 밖에서 놓으면 아무 일도 일어나지 않는다
+  if (judged === null) return announce.noChange
+
+  const { action } = judged
+  switch (action.kind) {
+    case 'noop':
+      return announce.noChange
+    case 'noop-move':
+      return announce.cannotMoveHere
+    case 'rerank':
+      return announce.reordered
+    case 'assign':
+      return announce.movedToSprint(sprintNameOf(view, action.sprintId))
+    case 'unassign':
+      return announce.movedToBacklog
+    default: {
+      const exhaustiveCheck: never = action
+      return exhaustiveCheck
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공개 API
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `DndContext` 의 `accessibility.announcements` 에 넣을 한국어 공지를 만든다.
+ *
+ * `KanbanBoard` 의 동명 헬퍼는 재사용할 수 없다 — 시그니처가 `BoardDetail` 전용이고
+ * export 도 되어 있지 않다 (FR-9 실측).
+ *
+ * @param view 스프린트 이름·칸 순서를 조회할 현재 백로그 데이터
+ * @param canReorderIssue UPDATE 권한. false 면 이동 결과를 알리지 않는다 (FR-17)
+ */
+export function buildBacklogAnnouncements(
+  view: BacklogView,
+  canReorderIssue: boolean,
+): Announcements {
+  return {
+    onDragStart: ({ active }) => announce.dragStart(issueKeyOf(active.id)),
+    onDragOver: ({ active, over }) => describeOver(view, active, over),
+    onDragEnd: ({ active, over }) => describeEnd(view, active, over, canReorderIssue),
+    onDragCancel: () => announce.cancelled,
+  }
+}
+
+/**
+ * `DndContext` 의 `accessibility.screenReaderInstructions`.
+ *
+ * 지정하지 않으면 dnd-kit 의 **영어 기본값**이 그대로 남는다 — 공지가 꺼져 있는 것이 아니라
+ * 영어로 켜져 있는 것이다.
+ */
+export const backlogScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable: announce.instructions,
+}
