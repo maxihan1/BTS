@@ -18,6 +18,7 @@
 //   S17. 완료 요청 순서 — 이관 DELETE 가 전부 끝난 **뒤에** complete 가 나간다 (F15 FR-6)
 //   S18. 이관 부분 실패 — complete 가 **나가지 않고** 다이얼로그가 남는다 (F15 FR-6 · ADR C1)
 //   S19. 키보드 DnD     — Tab → Space → ↓ → Space 로 옆 섹션까지 옮긴다 (F15 FR-8 · FR-15)
+//   S20. 키보드 Esc 취소 — 같은 상태에서 Esc → 「취소했습니다.」 + 쓰기 요청 0건 (F15 FR-16 · E16)
 //
 // 설계 결정.
 //   - backlog-fixtures.ts 모듈 로드 시 seedBacklog(DEFAULT_BACKLOG) 자동 호출(MODE!=='test').
@@ -619,12 +620,63 @@ function getDragLiveRegion(page: Page): Locator {
  * 횟수는 셸 크롬(사이드바·상단바)에 따라 달라지므로 상한만 두고 **목표 상태로 판정**한다.
  */
 async function focusByTab(page: Page, target: Locator, maxTabs = 80): Promise<void> {
+  // 이미 포커스가 닿아 있으면 그대로 둔다. Tab 을 먼저 누르면 포커스가 떠나 버려, 한 테스트
+  // 안에서 같은 카드를 두 번 집는 경로(S20 짝 단언 — 취소 뒤 dnd-kit 이 카드로 포커스를
+  // 되돌려 놓는다)가 성립하지 않는다.
+  const already = await target.evaluate((element) => element === document.activeElement)
+  if (already) return
+
   for (let attempt = 0; attempt < maxTabs; attempt += 1) {
     await page.keyboard.press('Tab')
     const focused = await target.evaluate((element) => element === document.activeElement)
     if (focused) return
   }
   throw new Error(`focusByTab: Tab 을 ${maxTabs}회 눌렀는데 대상에 포커스가 닿지 않았습니다.`)
+}
+
+/**
+ * 카드를 키보드로 집어 PLANNED 스프린트 위까지 옮긴다. **놓지는 않는다.**
+ *
+ * S19(Space 로 놓기)와 S20(Esc 로 취소)이 공유하는 「집고 이동」 절차다. 두 시나리오의 차이는
+ * **마지막 한 키**뿐이라, 그 앞을 공유해야 「같은 상태에서 키만 다르다」가 실제로 성립한다.
+ *
+ * ★방향키 횟수를 하드코딩하지 않는다 — 근거는 S19 주석에 있다. 목표 상태(공지가 대상
+ *   스프린트를 읽는다)로 판정하고 그때까지 누른다.
+ */
+async function pickUpAndMoveOverPlannedSprint(page: Page, card: Locator): Promise<void> {
+  await focusByTab(page, card)
+
+  // Space 로 집는다 (Enter 는 활성화 키가 아니다 — 카드 안 링크를 살리기 위함, FR-16)
+  await page.keyboard.press('Space')
+  await expect(card).toHaveAttribute('aria-pressed', 'true')
+
+  const liveRegion = getDragLiveRegion(page)
+  await expect(async () => {
+    await page.keyboard.press('ArrowDown')
+    await expect(liveRegion).toHaveText(
+      backlogLabels.announce.overSprint(PLANNED_SPRINT.sprint.name),
+      { timeout: 1_000 },
+    )
+  }).toPass({ timeout: 15_000 })
+}
+
+/**
+ * 백로그 화면이 내는 **쓰기 요청**을 전부 기록한다 (S20).
+ *
+ * 드롭 한 번이 부를 수 있는 것은 셋이다 — `PATCH /issues/{key}/rank`(재정렬) ·
+ * `POST /sprints/{id}/issues`(배정) · `DELETE /sprints/{id}/issues/{key}`(해제).
+ * 그런데도 셋을 **열거하지 않는다**. 열거하면 새 엔드포인트가 생긴 날 「0건」이 조용히
+ * 참이 되기 때문이다 (`two-lists-never-check-each-other`). GET 이 아닌 `/api/v1/` 전량을 담는다.
+ */
+function recordBacklogWrites(page: Page): string[] {
+  const calls: string[] = []
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+    if (request.method() === 'GET') return
+    if (!pathname.startsWith('/api/v1/')) return
+    calls.push(`${request.method()} ${pathname}`)
+  })
+  return calls
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1396,22 +1448,9 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
     await expect(targetColumn.getByText(PLANNED_ISSUE_FIRST)).toBeVisible()
 
     // Given. 카드는 Tab 순서 안에 있다 — 키보드 사용자가 도달할 수 있다는 전제
+    // When. Space 로 집고 대상 스프린트 위에 닿을 때까지 ↓ 를 누른다 (횟수는 화면이 정한다)
     const card = getCardLocator(page, ACTIVE_ISSUE_LAST)
-    await focusByTab(page, card)
-
-    // When. Space 로 집는다 (Enter 는 활성화 키가 아니다 — 카드 안 링크를 살리기 위함, FR-16)
-    await page.keyboard.press('Space')
-    await expect(card).toHaveAttribute('aria-pressed', 'true')
-
-    // When. 대상 스프린트 위에 닿을 때까지 ↓ 를 누른다 (횟수는 화면이 정한다)
-    const liveRegion = getDragLiveRegion(page)
-    await expect(async () => {
-      await page.keyboard.press('ArrowDown')
-      await expect(liveRegion).toHaveText(
-        backlogLabels.announce.overSprint(PLANNED_SPRINT.sprint.name),
-        { timeout: 1_000 },
-      )
-    }).toPass({ timeout: 15_000 })
+    await pickUpAndMoveOverPlannedSprint(page, card)
 
     // When. Space 로 놓는다
     await page.keyboard.press('Space')
@@ -1421,5 +1460,62 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
 
     // Then. 출발 섹션에서는 사라졌다 (이동이지 복제가 아니다)
     await expect(sourceColumn.getByText(ACTIVE_ISSUE_LAST)).toHaveCount(0)
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // S20. 키보드 드래그 도중 Esc = 취소 (FR-UX-13 F15 · FR-16 · 스펙 E16)
+  //
+  // Given  S19 와 **완전히 같은 상태** — 카드를 집어 PLANNED 스프린트 위까지 옮겨 둔 상태
+  // When   마지막 한 키만 다르게 누른다 (Space 대신 Esc)
+  // Then   ① 공지가 「취소했습니다.」 ② 카드가 원래 자리 그대로 ③ 쓰기 요청 0건
+  //
+  // ★왜 이 시나리오가 필요한가.
+  //   활성화 키 표(`backlogKeyboardCodes`)에서 `end` 와 `cancel` 이 겹치면 dnd-kit 이 `end` 를
+  //   먼저 보고 즉시 return 해서 **Esc 가 드롭이 된다**(`core.cjs.development.js:1196-1203`).
+  //   두 목록을 각각 단언하는 유닛 테스트로는 이 겹침을 못 잡는다. 실동작을 재는 곳은 여기다.
+  //
+  // ★부정 단언(「요청이 0건이다」)만 두면 공허하다 — 기록기가 애초에 아무것도 못 잡는 상태여도
+  //   통과한다. 그래서 같은 테스트 안에서 **Space 로 놓으면 요청이 실제로 나간다**를 이어서 잰다.
+  // ─────────────────────────────────────────────────────────────────────────
+  test('S20 키보드 드래그 Esc — 취소 공지 + 쓰기 요청 0건 (짝: Space 는 요청을 낸다)', async ({ page }) => {
+    // Given. alice 로그인 + 백로그 페이지 진입
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    const sourceColumn = getColumnLocator(page, ACTIVE_SPRINT.sprint.name)
+    const targetColumn = getColumnLocator(page, PLANNED_SPRINT.sprint.name)
+    await expect(sourceColumn.getByText(ACTIVE_ISSUE_LAST)).toBeVisible()
+    await expect(targetColumn.getByText(PLANNED_ISSUE_FIRST)).toBeVisible()
+
+    // Given. 카드를 집어 대상 스프린트 위까지 옮겨 둔다 (S19 와 같은 지점)
+    const card = getCardLocator(page, ACTIVE_ISSUE_LAST)
+    await pickUpAndMoveOverPlannedSprint(page, card)
+
+    // 여기서부터 쓰기 요청을 기록한다 — 집고 이동하는 동안은 원래 요청이 없다
+    const writes = recordBacklogWrites(page)
+
+    // When. Esc 로 취소한다
+    await page.keyboard.press('Escape')
+
+    // Then. 스크린리더가 「취소했습니다.」를 읽는다 (안내 문구가 약속한 그대로)
+    const liveRegion = getDragLiveRegion(page)
+    await expect(liveRegion).toHaveText(backlogLabels.announce.cancelled)
+
+    // Then. 카드가 원래 자리 그대로다 — 출발 섹션에 남고 대상 섹션에는 없다
+    await expect(sourceColumn.getByText(ACTIVE_ISSUE_LAST)).toBeVisible()
+    await expect(targetColumn.getByText(ACTIVE_ISSUE_LAST)).toHaveCount(0)
+
+    // Then. 쓰기 요청 0건. **발사 기회를 실제로 준 뒤에** 센다 — 곧바로 세면
+    //       「아직 안 나갔을 뿐」과 「영영 안 나간다」가 구별되지 않는다.
+    await page.waitForTimeout(500)
+    expect(writes).toEqual([])
+
+    // ── 짝 단언 ── 같은 상태에서 마지막 키만 Space 로 바꾸면 요청이 실제로 나간다.
+    //    이게 없으면 위 「0건」은 기록기가 죽어 있어도 통과하는 공허한 단언이다.
+    await pickUpAndMoveOverPlannedSprint(page, card)
+    await page.keyboard.press('Space')
+
+    await expect(targetColumn.getByText(ACTIVE_ISSUE_LAST)).toBeVisible()
+    await expect.poll(() => writes.length).toBeGreaterThan(0)
   })
 })

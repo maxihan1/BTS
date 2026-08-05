@@ -8,7 +8,10 @@ import { http, HttpResponse } from 'msw'
 import type {
   Active,
   Announcements,
+  CollisionDetection,
+  DragCancelEvent,
   DragEndEvent,
+  DragOverEvent,
   Over,
   ScreenReaderInstructions,
   SensorDescriptor,
@@ -62,8 +65,15 @@ interface CapturedAccessibility {
 
 // ★센서·공지는 **props 로만** 관측된다 — mock 이 이 둘을 버리면 배선을 삭제해도
 //   이 파일이 전량 초록으로 남는다 (담당자 배선이 같은 함정을 겪었다. :210-212 주석).
+//
+// ★같은 이유로 `collisionDetection`·`onDragOver`·`onDragCancel` 도 반드시 캡처한다. 종전에는
+//   이 셋을 구조 분해에서 빠뜨려, 바로 위 경고를 써 둔 채로 그 함정을 그대로 밟고 있었다 —
+//   `collisionDetection={cardFirstCollision}` 을 삭제해도 이 파일이 전량 초록이었다.
 let capturedSensors: SensorDescriptor<SensorOptions>[] | undefined
 let capturedAccessibility: CapturedAccessibility | undefined
+let capturedCollisionDetection: CollisionDetection | undefined
+let capturedOnDragOver: ((event: DragOverEvent) => void) | undefined
+let capturedOnDragCancel: ((event: DragCancelEvent) => void) | undefined
 
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
@@ -72,18 +82,27 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
     DndContext: ({
       children,
       onDragEnd,
+      onDragOver,
+      onDragCancel,
       sensors,
       accessibility,
+      collisionDetection,
     }: {
       children: ReactNode
       onDragEnd?: (event: DragEndEvent) => void
+      onDragOver?: (event: DragOverEvent) => void
+      onDragCancel?: (event: DragCancelEvent) => void
       sensors?: SensorDescriptor<SensorOptions>[]
       accessibility?: CapturedAccessibility
+      collisionDetection?: CollisionDetection
     }) => {
       // onDragEnd 콜백을 캡처 — triggerDragEnd()에서 호출
       capturedOnDragEnd = onDragEnd
+      capturedOnDragOver = onDragOver
+      capturedOnDragCancel = onDragCancel
       capturedSensors = sensors
       capturedAccessibility = accessibility
+      capturedCollisionDetection = collisionDetection
       return <div data-testid="dnd-context">{children}</div>
     },
   }
@@ -323,6 +342,7 @@ vi.mock('@/components/issue/CreateIssueDialog', () => ({
 
 import { KeyboardSensor, PointerSensor } from '@dnd-kit/core'
 import { BacklogBoard } from './BacklogBoard'
+import { cardFirstCollision } from './backlog-collision'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { backlogScreenReaderInstructions } from '@/lib/backlog-announcements'
 import { backlogKeyboardSensorOptions } from '@/lib/backlog-keyboard-coordinates'
@@ -1499,12 +1519,79 @@ function sprintToBacklogEvent(): { active: Active; over: Over | null } {
   )
 }
 
+/**
+ * 백로그 칸 droppable 실물 — 하이라이트(`ring-2`)가 걸리는 지점.
+ *
+ * 클래스는 접근성 이름으로 노출되지 않아 role 조회로는 잡을 수 없다. 그래서 컴포넌트가 이미
+ * 갖고 있는 `data-droppable` 을 쓴다 — 없어지면 여기서 즉시 터진다.
+ */
+function getBacklogDropZone(container: HTMLElement): HTMLElement {
+  const zone = container.querySelector('[data-droppable="backlog"]')
+  if (!(zone instanceof HTMLElement)) {
+    throw new Error(
+      '백로그 droppable 을 찾지 못했습니다 — `data-droppable` 속성이 바뀌었는지 확인하세요.',
+    )
+  }
+  return zone
+}
+
+/** 스프린트 카드가 백로그 칸 위에 올라간 드래그 이벤트 — `onDragOver`·`onDragCancel` 공용 */
+function overBacklogEvent(): DragOverEvent {
+  return {
+    active: {
+      id: 'sprint:ATLAS-5',
+      data: { current: { issueKey: 'ATLAS-5', context: 'sprint', sprintId: ACTIVE_SPRINT_ID } },
+    },
+    over: {
+      id: 'backlog',
+      data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] } },
+    },
+    collisions: null,
+    delta: { x: 0, y: 40 },
+    activatorEvent: new KeyboardEvent('keydown', { code: 'Space' }),
+  } as unknown as DragOverEvent
+}
+
 describe('BacklogBoard — 키보드 DnD 센서와 한국어 공지 배선 (FR-UX-13 F15)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUsersResult = NO_USERS
     capturedSensors = undefined
     capturedAccessibility = undefined
+    capturedCollisionDetection = undefined
+    capturedOnDragOver = undefined
+    capturedOnDragCancel = undefined
+  })
+
+  it('★카드 우선 충돌 감지를 `DndContext` 에 그대로 넘긴다 (T13 결함 C)', () => {
+    renderBoard()
+
+    // 참조 동일성으로 잰다 — prop 을 지우거나 dnd-kit 기본 알고리즘으로 되돌리면 red 다.
+    // 이 단언이 없으면 이 PR 이 전면 재작성한 `backlog-collision.ts` 배선을 삭제해도
+    // 이 파일 전량이 초록으로 남는다.
+    expect(capturedCollisionDetection).toBe(cardFirstCollision)
+  })
+
+  it('★드래그 취소 뒤 섹션 하이라이트가 남지 않는다 (T13 결함 B)', () => {
+    const { container } = renderBoard()
+
+    // Given. 백로그 칸 위에 올라가 하이라이트가 걸렸다.
+    // ★짝 단언이다 — 걸린 적이 없으면 「지워졌다」가 아무것도 재지 않는다.
+    act(() => {
+      capturedOnDragOver?.(overBacklogEvent())
+    })
+    expect(getBacklogDropZone(container).className).toContain('ring-2')
+
+    // When. Esc 로 취소한다. dnd-kit 은 취소 시 `active` 가 이미 null 이라
+    // `onDragOver(null)` 을 부르지 않는다 (`@dnd-kit/core@6.3.1`
+    // `dist/core.cjs.development.js:3250` 의 `!active` 조기 반환).
+    // 그래서 `onDragCancel` 이 하이라이트를 지울 **유일한** 통로다.
+    act(() => {
+      capturedOnDragCancel?.(overBacklogEvent())
+    })
+
+    // Then. 하이라이트가 지워졌다
+    expect(getBacklogDropZone(container).className).not.toContain('ring-2')
   })
 
   it('FR-8·FR-15: KeyboardSensor 를 좌표 계산기·활성화 키 옵션과 함께 등록한다', () => {

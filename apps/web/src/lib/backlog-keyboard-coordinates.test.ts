@@ -279,11 +279,30 @@ describe('backlogKeyboardCodes', () => {
   it('end 에서 Tab 을 뺀다 — Tab 은 드롭이 아니라 포커스 이동이어야 한다', () => {
     expect(backlogKeyboardCodes.end).not.toContain(KeyboardCode.Tab)
     expect(backlogKeyboardCodes.end).toContain(KeyboardCode.Space)
-    expect(backlogKeyboardCodes.end).toContain(KeyboardCode.Esc)
   })
 
   it('cancel 은 Esc 뿐이다', () => {
     expect(backlogKeyboardCodes.cancel).toEqual([KeyboardCode.Esc])
+  })
+
+  it('★end 와 cancel 의 교집합은 공집합이다 — 겹치면 취소가 도달 불가능한 공허 가드가 된다', () => {
+    // dnd-kit `KeyboardSensor.handleKeyDown` 은 `end` 를 **먼저** 검사하고 즉시 `return` 한다
+    // (`@dnd-kit/core@6.3.1` `dist/core.cjs.development.js:1196-1203`). 한 키가 두 목록에 다
+    // 들어 있으면 `cancel` 분기는 절대 실행되지 않는다 — Esc 가 취소가 아니라 **드롭**이 되어
+    // mutation 이 발사되고, 「Esc 로 취소합니다」라고 읽어 주는 안내
+    // (`backlogLabels.announce.instructions`)가 스크린리더 사용자에게 거짓말이 된다.
+    //
+    // ★두 목록을 **각각** 단언하는 것으로는 이 결함을 못 잡는다 — 이 저장소의 지배 결함 양식
+    //   (`two-lists-never-check-each-other`)이다. 교집합 자체를 잰다.
+    const overlap = backlogKeyboardCodes.end.filter((code) =>
+      backlogKeyboardCodes.cancel.includes(code),
+    )
+    expect(overlap).toEqual([])
+
+    // 짝 단언 — 두 목록 모두 비어 있지 않다. 어느 한쪽이 비면 교집합은 자동으로 공집합이라
+    // 위 단언이 아무것도 재지 않는다 (`unreachable-state-fixture-is-fake-green`).
+    expect(backlogKeyboardCodes.end.length).toBeGreaterThan(0)
+    expect(backlogKeyboardCodes.cancel.length).toBeGreaterThan(0)
   })
 })
 
