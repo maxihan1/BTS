@@ -1,5 +1,5 @@
 // 상단바 컴포넌트 — 사이드바 토글·로고·검색·만들기·알림·도움말·설정·계정 드롭다운 (FR-UX-06 PR11 Task 6, 트리 미배선)
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen, Search, Plus, HelpCircle, Settings } from 'lucide-react'
 import { navLabels } from '@/i18n/nav-labels'
@@ -11,6 +11,8 @@ import { InboxBell } from '@/components/inbox/InboxBell'
 import { ProjectSwitcher } from '@/components/project/ProjectSwitcher'
 import { AccountMenu } from './AccountMenu'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { resolveGlobalSearchInput } from '@/lib/aql-natural'
 
 /** TopBar 컴포넌트 props */
 export interface TopBarProps {
@@ -23,8 +25,10 @@ export interface TopBarProps {
 
 /**
  * 상단바(48px 고정) — 좌→우: 사이드바 토글 · 로고(Atlas, →`/dashboards`) ·
- * {@link ProjectSwitcher}(FR-UX-08 F12, `role="listbox"` — **`<nav>` 아님**) · 검색
- * (`aria-label="검색"`, 상단바 단일) · 만들기(→`/issues/new`) · 알림(`InboxBell`) · 도움말 ·
+ * {@link ProjectSwitcher}(FR-UX-08 F12, `role="listbox"` — **`<nav>` 아님**) · 전역 검색 입력창
+ * (FR-UX-12 F13, `role="searchbox"` + `aria-label="전역 검색"`, 상단바 단일 — `검색` 은
+ * AQL 검색 페이지 제출 버튼 전용이라 이름을 분리한다) · 만들기(→`/issues/new`) ·
+ * 알림(`InboxBell`) · 도움말 ·
  * 설정(→`/settings` 인덱스) ·
  * 계정 드롭다운(`AccountMenu`).
  *
@@ -41,6 +45,28 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const navigate = useNavigate()
   const { collapsed, toggle } = useSidebarCollapsed()
+
+  // FR-UX-12 F13 — 상단바 전역 검색. 제출 시에만 이동하고 입력 자체는 네트워크를 부르지 않는다(NFR2).
+  const [query, setQuery] = useState('')
+
+  /**
+   * Enter 제출 — 판별 결과대로 목적지를 고른다.
+   *
+   * ★`e.nativeEvent.isComposing` 을 먼저 본다(FR10/S6). 한글 조합 중의 Enter 는 조합 확정이지
+   * 제출이 아니다. 이 가드가 없으면 「로그인」을 치는 도중 첫 Enter 에 검색이 나간다.
+   * ★`projectKey` 를 싣지 않는다(FR12) — `/search` 가 4단 해소와 미해소 안내를 이미 소유한다
+   * (`routes/search.tsx:480` `useResolvedActiveProject` · `:565` `<ActiveProjectGate>`).
+   */
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+    const intent = resolveGlobalSearchInput(query)
+    if (intent.kind === 'empty') return
+    if (intent.kind === 'issue-key') {
+      void navigate({ to: '/issues/$key', params: { key: intent.issueKey } })
+      return
+    }
+    void navigate({ to: '/search', search: { q: intent.query } })
+  }
 
   return (
     <header className="flex h-12 items-center gap-1 border-b bg-background px-3">
@@ -64,18 +90,26 @@ export function TopBar({ onHelpClick }: TopBarProps) {
 
       <ProjectSwitcher />
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="ml-2 rounded-md hover:bg-accent"
-        aria-label={navLabels.search}
-        onClick={() => { void navigate({ to: '/search' }) }}
-      >
-        <Search className="size-4" />
-      </Button>
-
-      <div className="flex-1" />
+      {/* 폭은 남는 공간을 먹되 상·하한을 둔다 (design 리뷰 G2/G4).
+          - flex-1  : 옛 `<div className="flex-1" />` 스페이서를 대체한다
+          - max-w-md: 448px 초과는 한 줄 스캔이 어렵고 우측 액션과 균형이 깨진다
+          - min-w-32: 128px. 한글 4~5자 + 돋보기가 들어가는 최소치 — 이보다 좁으면
+                      placeholder 가 잘려 무슨 칸인지 알 수 없다
+          ★컨트롤 종류는 어떤 폭에서도 바뀌지 않는다. 좁다고 아이콘 버튼으로 되돌리면
+           `searchbox` 가 0개가 돼 유닛·E2E 단언이 뷰포트에 따라 깨지고, 그 버튼의
+           접근성 이름을 무엇으로 할지 계약 §2 문제가 되살아난다. */}
+      <div className="relative ml-2 min-w-32 max-w-md flex-1">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          value={query}
+          aria-label={navLabels.globalSearch}
+          placeholder={navLabels.globalSearchPlaceholder}
+          className="pl-8"
+          onChange={(e) => { setQuery(e.target.value) }}
+          onKeyDown={handleSearchKeyDown}
+        />
+      </div>
 
       <Button
         type="button"
