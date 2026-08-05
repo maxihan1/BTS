@@ -8,8 +8,16 @@ import {
   createSprint,
   startSprint,
   completeSprint,
+  updateSprint,
 } from '@/api/backlog'
-import type { BacklogView, IssueRankResult, SprintMeta, RerankIssueBody, CreateSprintParams } from '@/api/backlog'
+import type {
+  BacklogView,
+  IssueRankResult,
+  SprintMeta,
+  RerankIssueBody,
+  CreateSprintParams,
+  UpdateSprintBody,
+} from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 팩토리 — 매직 문자열 방지
@@ -174,6 +182,44 @@ export function useCreateSprint(projectKey: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// useUpdateSprint — 스프린트 메타 수정 (이름·목표·기간)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** useUpdateSprint mutation 입력 타입 */
+export interface UpdateSprintInput {
+  /** 대상 스프린트 UUID */
+  sprintId: string
+  /** 바뀐 필드 + version (3-state partial) */
+  body: UpdateSprintBody
+}
+
+/**
+ * 스프린트의 이름·목표·기간을 수정한다.
+ *
+ * PATCH /api/v1/sprints/{id} → SprintMeta (version +1)
+ *
+ * onSuccess → invalidateQueries (invalidate-only, setQueryData 금지).
+ *
+ * ### 호출자가 알아야 할 것 — 응답을 버리지 말 것
+ * 시작 다이얼로그는 `PATCH` → `start` 2단계로 동작하고, 중간 실패가 정상 경로다
+ * (FR-UX-13 F15 FR-4). 재시도가 **낡은 `version` 으로 409** 를 받지 않으려면 호출자가
+ * 이 mutation 의 **응답 SprintMeta 로 자기 기준값과 `version` 을 갱신**해야 한다.
+ * 여기서 invalidate 를 하더라도 재조회는 비동기라 그 사이의 재시도를 막아주지 못한다.
+ *
+ * @param projectKey 백로그 queryKey 대상 프로젝트 키
+ */
+export function useUpdateSprint(projectKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<SprintMeta, unknown, UpdateSprintInput>({
+    mutationFn: ({ sprintId, body }) => updateSprint(sprintId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+    },
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // useStartSprint — 스프린트 시작 (PLANNED → ACTIVE)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -207,8 +253,16 @@ export function useStartSprint(projectKey: string) {
  * POST /api/v1/sprints/{id}/complete → SprintMeta (status: "COMPLETED")
  *
  * onSuccess → invalidateQueries (invalidate-only).
- * 완료 후 미완성 이슈는 백엔드에서 backlog로 이동시키므로
- * 단일 재조회로 백로그 뷰 전체가 갱신된다.
+ *
+ * ### ⚠️ 완료는 이슈를 옮기지 않는다 — 되돌릴 수도 없다
+ * 이 자리에 있던 「완료 후 미완성 이슈는 백엔드에서 backlog로 이동시키므로」라는 주석은
+ * **거짓이었다** (FR-UX-13 F15 착수 전 실측). `SprintApplicationService.kt:282-290` 은
+ * 스프린트 **상태만 뒤집고** 이슈는 그대로 둔다.
+ *
+ * 그리고 COMPLETED 스프린트에 남은 이슈는 **영구 동결된다** — `unassignIssue` 가
+ * `STATUS <> 'COMPLETED'` 조건부 DELETE 라 조용히 204 만 주고(실패가 아니라 침묵),
+ * `sprint_issues` 의 `UNIQUE (issue_key)` 때문에 다른 스프린트로도 못 옮긴다.
+ * 그래서 **미완료 이슈 이관은 반드시 완료보다 먼저** 끝나야 한다 (ADR C1 · 스펙 FR-6).
  *
  * @param projectKey 백로그 queryKey 대상 프로젝트 키
  */

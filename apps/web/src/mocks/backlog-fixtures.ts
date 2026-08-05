@@ -286,10 +286,24 @@ export { findIssueInProject, removeIssueFromProject }
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 기본 백로그 픽스처 — ATLAS 프로젝트, backlog 이슈 2개, 스프린트 1개(이슈 2개).
+ * 기본 백로그 픽스처 — ATLAS 프로젝트, backlog 이슈 2개, 스프린트 **3개**(ACTIVE·PLANNED·COMPLETED).
  *
  * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
  * alice(userId=00000000-0000-4000-8000-000000000001)가 ATLAS 프로젝트 BROWSE 가능 전제.
+ *
+ * ### ★ 왜 스프린트가 3개인가 (FR-UX-13 F15 FR-18)
+ * 원래 `PLANNED` 1개뿐이었고, `COMPLETED` 문자열이 이 파일에 **0건**이었다. 그 상태에서는
+ * 완료 다이얼로그의 「이관 대상에 COMPLETED 스프린트가 **없다**」는 단언이 **자동으로 참**이 돼
+ * 아무것도 재지 않는다 (`unreachable-state-fixture-is-fake-green` — PR #342 에서 2회 적발).
+ * 「없다」를 재려면 「있다」가 먼저 있어야 한다.
+ * 또 이관 대상 Select 에 「백로그」 말고 **실제 선택지**가 있어야 「다른 스프린트로 이관」 경로가
+ * 성립한다 — 그래서 완료되지 않은 스프린트가 2개(ACTIVE·PLANNED) 필요하다.
+ *
+ * ### 배열 순서 = 백엔드 정렬 순서
+ * `ACTIVE → PLANNED → COMPLETED` 로 둔다. 백엔드 `sprintComparator`
+ * (`BacklogApplicationService.kt:209-214`)가 그 순서로 내려주고, 클라이언트는 스프린트를
+ * **정렬하지 않기** 때문이다(스펙 FR-1). 목이 다른 순서를 주면 「응답 순서를 그대로 그린다」가
+ * 화면에서 검증되지 않는다.
  */
 export const DEFAULT_BACKLOG: StoredBacklogProject = {
   projectKey: 'ATLAS',
@@ -316,6 +330,43 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     },
   ],
   sprints: [
+    // ── ACTIVE — 완료 다이얼로그를 여는 유일한 트리거이자 「다른 스프린트로 이관」 대상 ──
+    // 이름이 '스프린트 1' 로 시작하면 e2e 의 `^` 앵커 칸 조회(`/^스프린트 1/`)와 겹친다.
+    // 접두 충돌이 없는 이름을 쓴다.
+    {
+      sprint: {
+        sprintId: 'a0000000-0000-4000-8000-000000000002',
+        name: '진행 중 스프린트',
+        goal: '진행 중 스프린트 목표',
+        status: 'ACTIVE',
+        startDate: '2026-06-01',
+        endDate: '2026-06-14',
+        version: 1,
+      },
+      issues: [
+        {
+          key: 'ATLAS-5',
+          summary: '다섯 번째 이슈 — 알림 설정 화면',
+          currentStateKey: 'open',
+          assigneeId: '00000000-0000-4000-8000-000000000001',
+          priority: 1,
+          rank: '0|hzzzzz:',
+          version: 0,
+          epicKey: null,
+        },
+        {
+          key: 'ATLAS-6',
+          summary: '여섯 번째 이슈 — 검색 결과 페이지',
+          currentStateKey: 'open',
+          assigneeId: null,
+          priority: 2,
+          rank: '0|i00007:',
+          version: 0,
+          epicKey: null,
+        },
+      ],
+    },
+    // ── PLANNED — 시작 다이얼로그 트리거. 기존 e2e 가 이 sprintId·이름·이슈 키에 묶여 있다 ──
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000001',
@@ -344,6 +395,32 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           assigneeId: null,
           priority: 2,
           rank: '0|i00007:',
+          version: 0,
+          epicKey: null,
+        },
+      ],
+    },
+    // ── COMPLETED — 이관 대상 목록에서 **제외돼야 하는** 스프린트 ──
+    // 넣으면 반드시 409 로 끝나는 선택지가 되고(`SprintController.kt:244`), 그 이슈는
+    // 꺼낼 수도 옮길 수도 없다(ADR C1 영구 동결). 그 「제외」를 재려면 실물이 있어야 한다.
+    {
+      sprint: {
+        sprintId: 'a0000000-0000-4000-8000-000000000003',
+        name: '완료된 스프린트',
+        goal: null,
+        status: 'COMPLETED',
+        startDate: '2026-05-01',
+        endDate: '2026-05-14',
+        version: 2,
+      },
+      issues: [
+        {
+          key: 'ATLAS-7',
+          summary: '일곱 번째 이슈 — 지난 스프린트에서 끝낸 일',
+          currentStateKey: 'done',
+          assigneeId: '00000000-0000-4000-8000-000000000001',
+          priority: 3,
+          rank: '0|hzzzzz:',
           version: 0,
           epicKey: null,
         },

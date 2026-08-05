@@ -99,8 +99,20 @@ function backlogComponentFiles(): string[] {
     .sort()
 }
 
-/** 스캔 대상 전수 = 배치1 + 배치2. 두 배치는 서로소여야 한다(아래 테스트가 검증). */
-const SCANNED_FILES = [...BATCH1_FILES, ...BATCH2_FILES] as const
+/**
+ * 스캔 대상 전수 = 배치1 + 배치2 + `components/backlog/` **도출분** (FR-UX-13 F15 FR-19).
+ *
+ * 두 배치는 서로소여야 한다(아래 테스트가 검증). backlog 만 목록이 아니라 도출로 합치는
+ * 이유는 {@link backlogComponentFiles} 참조 — 신규 다이얼로그가 생기는 즉시 자동 편입돼야
+ * "완료 기준이 아무것도 재지 않는다"가 재발하지 않는다.
+ *
+ * ★중복 제거는 선택이 아니다. `CreateSprintForm.tsx`·`SprintColumn.tsx` 는 배치2 원소이기도
+ * 해서 그냥 이으면 같은 파일의 원시 `<button>` 이 두 번 세어지고 `EXPECTED_OUT` 전수 비교가
+ * 이유 없이 깨진다.
+ */
+const SCANNED_FILES: readonly string[] = [
+  ...new Set([...BATCH1_FILES, ...BATCH2_FILES, ...backlogComponentFiles()]),
+]
 
 /**
  * 남기기로 판정한 원시 `<button>`에 붙이는 사유 주석 마커.
@@ -226,7 +238,8 @@ function rawButtons(file: string): RawButton[] {
 const ALL_RAW_BUTTONS = SCANNED_FILES.flatMap((f) => rawButtons(f))
 
 describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수하거나 사유를 남긴다 (배치1+2)', () => {
-  it('스캔 대상 51파일이 전부 실재하고 두 배치가 서로소다 (경로 오타·중복으로 인한 공허 통과 차단)', () => {
+  // 제목에 개수를 적지 않는다 — backlog 분이 도출로 합쳐지면서 총계가 파일 추가마다 바뀐다.
+  it('스캔 대상이 전부 실재하고 두 배치가 서로소다 (경로 오타·중복으로 인한 공허 통과 차단)', () => {
     const missing = SCANNED_FILES.filter((f) => !existsSync(resolve(SRC_ROOT, f)))
     expect(missing).toEqual([])
 
@@ -283,8 +296,15 @@ describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수�
     // 테스트 파일은 제외한다 — 목 스텁의 원시 <button>(BacklogBoard.test.tsx)은 프로덕션 UI 가 아니다.
     expect(files).not.toContain('components/backlog/BacklogBoard.test.tsx')
 
-    const notScanned = files.filter((f) => !(SCANNED_FILES as readonly string[]).includes(f))
+    const notScanned = files.filter((f) => !SCANNED_FILES.includes(f))
     expect(notScanned).toEqual([])
+
+    // ★위 차집합만으로는 공허하다 — SCANNED_FILES 가 같은 도출 결과를 품고 있으니 구조적으로 참이다.
+    // 도출이 **실제로 배선돼 있는지**를 따로 잰다. 누군가 SCANNED_FILES 를 하드코딩 두 배치로
+    // 되돌리면 (= FR-19 결함으로 회귀) 아래가 red 가 된다.
+    const hardcoded = [...BATCH1_FILES, ...BATCH2_FILES] as readonly string[]
+    const derivedOnly = files.filter((f) => !hardcoded.includes(f))
+    expect(derivedOnly.length).toBeGreaterThan(0)
   })
 
   it('남아 있는 모든 원시 <button>은 직전 줄에 PR22 OUT 사유 주석을 갖는다', () => {

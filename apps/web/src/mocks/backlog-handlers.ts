@@ -46,6 +46,61 @@ export const LS_KEY_BACKLOG_FAIL = '__bts_e2e_backlog_fail'
  */
 export const BACKLOG_FAIL_ONCE = 'once'
 
+/**
+ * 백로그 `truncated=true` 강제 플래그 (FR-UX-13 F15 FR-18 · E15).
+ *
+ * 'true'이면 GET backlog 가 `truncated: true` 를 반환한다. 완료 다이얼로그의 제출 차단
+ * (「일부 이슈만 표시되어 안전하게 완료할 수 없습니다.」)을 재현하기 위한 것이며,
+ * 이 토글이 없으면 픽스처의 `truncated` 가 **false 하드코딩**이라 그 경로를 만들 수단이 아예 없다.
+ *
+ * 선례. `timeline-handlers.ts` 의 `'truncated'` 시나리오 토글.
+ */
+export const LS_KEY_BACKLOG_TRUNCATED = '__bts_e2e_backlog_truncated'
+
+/**
+ * 스프린트 메타 수정(`PATCH /sprints/:id`) 실패 강제 플래그.
+ *
+ * 'true'이면 500 을 반환한다 — FR-4 의 「`PATCH` 실패(비-409)」 갈래 재현용.
+ * 409(낙관적 잠금 충돌)는 토글 없이도 만들 수 있다 — 어긋난 `version` 을 보내면 된다.
+ */
+export const LS_KEY_SPRINT_PATCH_FAIL = '__bts_e2e_sprint_patch_fail'
+
+/**
+ * 스프린트 시작(`POST /sprints/:id/start`) 실패 강제 플래그.
+ *
+ * - `'true'` → 500. S5(수정은 됐는데 시작이 실패) 재현용.
+ * - `'409'` → 409 `SPRINT_INVALID_TRANSITION`. E10(남이 이미 시작함) 재현용.
+ *
+ * 값이 없으면 정상 전이다 — 실패 토글이 스프린트를 영구히 못 쓰게 만들면 안 된다.
+ */
+export const LS_KEY_SPRINT_START_FAIL = '__bts_e2e_sprint_start_fail'
+
+/**
+ * 스프린트 해제(`DELETE /sprints/:id/issues/:issueKey`) 실패 강제 플래그.
+ *
+ * 값은 **실패시킬 이슈 키의 쉼표 구분 목록**이다. 목록에 든 키만 500 이고 나머지는 정상 204 다.
+ * S7·S18(이관 **부분** 실패 → `complete` 미발사)을 재현하려면 「일부만 실패」가 필요한데,
+ * 전건 실패 토글로는 그 상태를 만들 수 없다.
+ */
+export const LS_KEY_SPRINT_UNASSIGN_FAIL = '__bts_e2e_sprint_unassign_fail'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 토글 조회 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** localStorage 토글 값을 읽는다. 없으면 null */
+function toggle(key: string): string | null {
+  return globalThis.localStorage?.getItem(key) ?? null
+}
+
+/** 쉼표 구분 토글 값을 키 목록으로 파싱한다 */
+function toggleKeys(key: string): string[] {
+  return (toggle(key) ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectKey/backlog
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +166,9 @@ const getBacklogHandler = http.get(
       data: {
         backlog: sortedBacklog,
         sprints: sortedSprints,
-        truncated: project.truncated,
+        // truncated 토글은 픽스처 값을 **덮어쓰지 않고 올리기만** 한다 — 시나리오가 끝나도
+        // 원래 true 였던 프로젝트가 false 로 뒤집히면 안 된다.
+        truncated: project.truncated || toggle(LS_KEY_BACKLOG_TRUNCATED) === 'true',
       },
     })
   },
@@ -314,6 +371,14 @@ const unassignFromSprintHandler = http.delete(
       )
     }
 
+    // 부분 실패 토글 — 목록에 든 이슈 키만 500. 나머지는 정상 204 (S7·S18)
+    if (toggleKeys(LS_KEY_SPRINT_UNASSIGN_FAIL).includes(issueKey)) {
+      return HttpResponse.json(
+        { title: 'Internal Server Error', status: 500 },
+        { status: 500 },
+      )
+    }
+
     const { project, storedSprint } = entry
 
     // 스프린트 issues 배열에서 제거
@@ -387,6 +452,89 @@ const createSprintHandler = http.post('/api/v1/sprints', async ({ request }) => 
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/sprints/:id (스프린트 메타 수정 — 3-state partial)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** {@link patchSprintHandler} 가 3-state 로 반영하는 필드 전수 */
+const PATCHABLE_SPRINT_FIELDS = ['name', 'goal', 'startDate', 'endDate'] as const
+
+/**
+ * PATCH /api/v1/sprints/{id} — 스프린트 이름·목표·기간 수정 (FR-UX-13 F15 FR-14).
+ *
+ * 요청 body: `{ name?, goal?, startDate?, endDate?, version }` — **3-state partial**.
+ * 키가 없으면 무변경, 명시 `null` 이면 값 삭제다 (백엔드 `JsonNullable` 계약).
+ *
+ * stateful 동작.
+ *   - `version` 이 store 의 값과 어긋나면 **409** 를 반환하고 아무것도 바꾸지 않는다.
+ *   - 전송된 필드만 반영하고 `version` 을 +1 한다.
+ *   - 이후 GET backlog 재조회에 즉시 반영된다.
+ *
+ * 성공 → 200 `{ data: SprintMeta }`
+ * 스프린트 미존재 → 404 · version 누락/body 파싱 실패 → 400 · version 불일치 → 409
+ */
+const patchSprintHandler = http.patch('/api/v1/sprints/:id', async ({ params, request }) => {
+  if (toggle(LS_KEY_SPRINT_PATCH_FAIL) === 'true') {
+    return HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 })
+  }
+
+  const sprintId = params['id'] as string
+
+  const entry = findSprintInStore(sprintId)
+  if (entry === undefined) {
+    return HttpResponse.json(
+      { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
+      { status: 404 },
+    )
+  }
+
+  let body: Record<string, unknown>
+  try {
+    body = (await request.json()) as Record<string, unknown>
+  } catch {
+    return HttpResponse.json(
+      { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
+      { status: 400 },
+    )
+  }
+
+  const version = body['version']
+  if (typeof version !== 'number') {
+    return HttpResponse.json(
+      { errorCode: 'INVALID_REQUEST', message: 'version은 필수입니다' },
+      { status: 400 },
+    )
+  }
+
+  const { storedSprint } = entry
+  if (version !== storedSprint.sprint.version) {
+    return HttpResponse.json(
+      {
+        errorCode: 'SPRINT_VERSION_CONFLICT',
+        message: '다른 사용자가 먼저 수정했습니다',
+        status: 409,
+      },
+      { status: 409 },
+    )
+  }
+
+  // 3-state 반영 — 키가 있을 때만 건드린다. `undefined` 인지가 아니라 **키가 있는지**로 판단해야
+  // 「미전송(무변경)」과 「명시 null(삭제)」이 갈린다.
+  for (const field of PATCHABLE_SPRINT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) continue
+    const value = body[field]
+    if (field === 'name') {
+      // 백엔드는 name 에 null 을 허용하지 않는다 (JsonNullable<String>)
+      if (typeof value === 'string') storedSprint.sprint.name = value
+      continue
+    }
+    storedSprint.sprint[field] = typeof value === 'string' ? value : null
+  }
+  storedSprint.sprint.version = storedSprint.sprint.version + 1
+
+  return HttpResponse.json({ data: storedSprint.sprint })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/sprints/:id/start
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -402,6 +550,22 @@ const createSprintHandler = http.post('/api/v1/sprints', async ({ request }) => 
  */
 const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) => {
   const sprintId = params['id'] as string
+
+  // 실패 토글 — 'true'는 500, '409'는 상태 전이 충돌 (S5 · E10)
+  const startFail = toggle(LS_KEY_SPRINT_START_FAIL)
+  if (startFail === 'true') {
+    return HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 })
+  }
+  if (startFail === '409') {
+    return HttpResponse.json(
+      {
+        errorCode: 'SPRINT_INVALID_TRANSITION',
+        message: '이미 시작된 스프린트입니다',
+        status: 409,
+      },
+      { status: 409 },
+    )
+  }
 
   const entry = findSprintInStore(sprintId)
   if (entry === undefined) {
@@ -463,9 +627,13 @@ const completeSprintHandler = http.post('/api/v1/sprints/:id/complete', ({ param
  * POST /api/v1/sprints/:id/issues
  * DELETE /api/v1/sprints/:id/issues/:issueKey
  * POST /api/v1/sprints
+ * PATCH /api/v1/sprints/:id
  * POST /api/v1/sprints/:id/start
  * POST /api/v1/sprints/:id/complete
  * 모두 포함.
+ *
+ * ★핸들러를 만들고 **이 배열에 넣지 않으면** MSW 는 그 요청을 미처리로 흘린다. 등록 누락은
+ * 「핸들러 부재」와 완전히 같은 증상이라 파일 안에 코드가 있는 것만으로는 아무 보증이 없다.
  */
 export const backlogHandlers = [
   getBacklogHandler,
@@ -473,6 +641,7 @@ export const backlogHandlers = [
   assignToSprintHandler,
   unassignFromSprintHandler,
   createSprintHandler,
+  patchSprintHandler,
   startSprintHandler,
   completeSprintHandler,
 ]
