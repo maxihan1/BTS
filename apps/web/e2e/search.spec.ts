@@ -7,8 +7,16 @@
 //   B3. 한글 IME        — `summary ~ "로그인"` fill → overlay에 한글 정상 표시 (jsdom 못 흉내)
 //
 // 설계 결정.
-//   - 검색 진입: 상단바 전역 검색 입력창(role=searchbox, aria-label="전역 검색")에 자연어를
-//     넣고 Enter 제출 → SPA 내부 이동 → /search 진입 (FR-UX-12 F13)
+//   - 검색 진입은 시나리오마다 다르다.
+//     · S1/S2/S4 — `page.goto('/search')` 직접 진입. **q 없이** 착지해야 검색 페이지가
+//       마운트 조회를 하지 않고, 그래야 「제출 버튼을 눌러서 결과가 떴다」가 참이 된다.
+//       ★S1 이 상단바를 경유하면 착지 URL 에 `?q=text ~ "…"` 가 실려 MSW 가 마운트 시점에
+//        기본 3건을 이미 반환하므로, 제출 클릭을 지워도 초록인 가짜 테스트가 된다
+//        (F13 코드리뷰 BLOCKER-1). 상단바 제출 경로의 증인은 아래 B4/B3 와
+//        `saved-filters.spec.ts` · `TopBar.test.tsx` 다.
+//     · B4/B3 — 상단바 전역 검색 입력창(role=searchbox, aria-label="전역 검색")에 자연어를
+//       넣고 Enter 제출 → SPA 내부 이동 → /search 진입 (FR-UX-12 F13). 이 둘은 overlay
+//       하이라이트를 재는 시나리오라 마운트 조회가 단언을 가리지 않는다.
 //     (reload 금지 — MSW 핸들러가 ServiceWorker 기반이라 reload 시 시나리오 플래그 리셋)
 //   - MSW 시나리오 토글: addInitScript + localStorage.setItem 패턴 (goto 전 등록)
 //     플래그 키: E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario' (search-handlers.ts)
@@ -91,6 +99,11 @@ const DEFAULT_RESULT_KEYS = ['ATLAS-1', 'ATLAS-2', 'ATLAS-3'] as const
  * 결과 목록이 각 시나리오의 명시 검색 **이전에** 이미 떠 있다. 씨앗 토큰이 시나리오 질의와
  * 겹치지 않게 고른 이유({@link GLOBAL_SEARCH_SEED_TEXT})가 그것이다.
  *
+ * ★그래서 **「제출로 결과가 떴다」를 재는 시나리오는 이 헬퍼를 쓰면 안 된다.** 마운트 조회가
+ * 단언을 미리 참으로 만들어 제출을 지워도 초록이 된다(F13 코드리뷰 BLOCKER-1). 그런 시나리오는
+ * `page.goto(SEARCH_URL)` 로 q 없이 진입한다(S1/S2/S4). 이 헬퍼는 하이라이트 overlay 를 재는
+ * B4/B3 전용이다.
+ *
  * @param page Playwright Page 객체
  */
 async function navigateToSearch(page: import('@playwright/test').Page): Promise<void> {
@@ -158,17 +171,29 @@ test.describe('FR-SR-02 AQL 검색 페이지 (S1 정상 / S2 문법오류 / S4 0
   // ─────────────────────────────────────────────────────────────────────────
   // S1. 정상 검색 — 결과 목록 + syntax highlight 실렌더
   //
-  // Given  alice 로그인 + /search 진입 (Header 검색 아이콘 SPA 이동)
+  // Given  alice 로그인 + `/search` **직접** 진입 (q 없음 — S2/S4 와 같은 형태)
   // When   `status = open AND priority IN (1, 2)` 입력 + 검색 버튼 클릭
   // Then   결과 목록(aria-label="검색 결과") 표시 — ATLAS-1/2/3 3건
   //        overlay(pre[aria-hidden="true"]) 내 span.text-syntax-keyword 존재 (syntax highlight 실렌더)
   //        span.text-syntax-field 존재 (필드 색상)
   //
   // 검증 핵심: jsdom 단위테스트는 실 CSS 적용 불가 → E2E에서 span 클래스 존재 확인 필수
+  //
+  // ★진입을 상단바 경유로 두지 않는 이유(F13 코드리뷰 BLOCKER-1). 상단바 제출은
+  //  `?q=text ~ "…"` 로 착지시키고 검색 페이지가 마운트 즉시 그 q 를 조회하는데, MSW 기본
+  //  경로가 3건을 돌려주므로 아래 Then-2/3/4 가 `fillAndSearch` **이전에** 이미 참이 된다.
+  //  그러면 제출 클릭을 지워도 초록인 가짜 테스트다. q 없이 직접 진입해야 결과 목록의
+  //  등장이 오직 제출 때문임을 증명한다. S1 은 시나리오 플래그가 없어 addInitScript 순서
+  //  제약도 없다.
   // ─────────────────────────────────────────────────────────────────────────
   test('S1 정상 검색 — 결과 3건 표시 + syntax highlight span 클래스 실렌더', async ({ page }) => {
-    // Given. alice 로그인 + /search SPA 진입
-    await navigateToSearch(page)
+    // Given. alice 로그인 + /search 직접 진입 (q 미첨부 — 마운트 조회 없음)
+    await loginAsAlice(page)
+    await page.goto(SEARCH_URL)
+    await expect(page.getByRole('heading', { name: 'AQL 검색', level: 1 })).toBeVisible()
+
+    // Given. 제출 전에는 결과 목록이 없다 — 아래 Then-2/3 이 제출의 결과임을 못박는 전제
+    await expect(page.getByRole('list', { name: '검색 결과' })).not.toBeVisible()
 
     // Given. 입력창 렌더 대기 — AqlHighlighter textarea
     const textarea = page.locator('textarea[placeholder*="AQL 쿼리를 입력하세요"]')

@@ -91,7 +91,7 @@ export function TopBar({ onHelpClick }: TopBarProps) {
       <ProjectSwitcher />
 
       {/* 폭은 남는 공간을 먹되 상·하한을 둔다 (design 리뷰 G2/G4).
-          - flex-1  : 옛 `<div className="flex-1" />` 스페이서를 대체한다
+          - flex-1  : 좁은 뷰포트에서 남는 공간을 먹는다
           - max-w-md: 448px 초과는 한 줄 스캔이 어렵고 우측 액션과 균형이 깨진다
           - min-w-32: 128px. 한글 4~5자 + 돋보기가 들어가는 최소치 — 이보다 좁으면
                       placeholder 가 잘려 무슨 칸인지 알 수 없다
@@ -110,6 +110,14 @@ export function TopBar({ onHelpClick }: TopBarProps) {
           onKeyDown={handleSearchKeyDown}
         />
       </div>
+
+      {/* ★정렬 스페이서 — 검색창과 **둘 다** 필요하다 (F13 코드리뷰 BLOCKER-2).
+          헤더는 `justify-*` 없는 flex 라, 남는 가로 공간은 `flex-grow` 를 가진 자식만 흡수한다.
+          검색창도 grow 하지만 `max-w-md`(448px)에서 성장을 멈추므로, 그 위쪽 뷰포트
+          (1440·1920 등)에서는 잔여 공간이 **줄 끝에 그대로 남아** 우측 액션이 화면 오른쪽에
+          붙지 않는다. 이 빈 grow 요소가 그 잔여분을 흡수해 우측 액션을 끝으로 민다.
+          검색창의 flex-1 만 남기고 이 줄을 지우면 1024 이상에서 회귀한다. */}
+      <div className="flex-1" />
 
       <Button
         type="button"
