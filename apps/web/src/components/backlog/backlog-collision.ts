@@ -18,6 +18,21 @@ export const cardFirstCollision: CollisionDetection = (args) => {
     (c) => (c.data.current as Record<string, unknown> | undefined)?.['type'] === 'card',
   )
 
+  // 키보드 드래그는 포인터 좌표가 없어 pointerWithin이 무조건 빈 배열을 준다.
+  // (@dnd-kit/core@6.3.1 core.esm.js `if (!pointerCoordinates) return []`)
+  // 게이팅하지 않으면 아래 두 단계가 통째로 건너뛰어지고 rectIntersection 폴백만 남아
+  // 카드 우선 규칙이 소멸한다. 마우스는 pointerCoordinates가 항상 non-null이라
+  // 이 분기에 들어오지 않는다.
+  if (args.pointerCoordinates == null) {
+    const cardCollisions = rectIntersection({ ...args, droppableContainers: cardContainers })
+    if (cardCollisions.length > 0) return cardCollisions
+
+    const columnContainers = args.droppableContainers.filter(
+      (c) => (c.data.current as Record<string, unknown> | undefined)?.['type'] !== 'card',
+    )
+    return rectIntersection({ ...args, droppableContainers: columnContainers })
+  }
+
   // 카드 droppable 대상 pointerWithin
   if (cardContainers.length > 0) {
     const cardCollisions = pointerWithin({ ...args, droppableContainers: cardContainers })
