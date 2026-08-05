@@ -52,12 +52,18 @@ function centerOf(rect: BacklogRect): BacklogPoint {
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
 }
 
+/** 카드가 0건인 칸 droppable 인가 — 빈 스프린트로도 옮길 수 있어야 기능이 온전하다. */
+function isEmptyColumn(data: Record<string, unknown>): boolean {
+  const context = data['context']
+  if (context !== 'backlog' && context !== 'sprint') return false
+  const orderedKeys = data['orderedKeys']
+  return Array.isArray(orderedKeys) && orderedKeys.length === 0
+}
+
 /**
  * 방향키가 착지할 droppable 후보를 고른다 — 카드는 전부, 칸은 **카드가 0건일 때만**.
  *
- * 카드가 있는 칸까지 넣으면 방향키 한 번이 「칸 → 그 칸의 첫 카드」 두 번으로 늘어나고, 빈
- * 스프린트를 빼면 거기로 옮길 길이 사라진다. rect 가 없거나 넓이가 0이면 화면에 없다는
- * 뜻이라 뺀다 (접힌 섹션).
+ * 카드가 있는 칸까지 넣으면 방향키 한 번이 「칸 → 그 칸의 첫 카드」 두 번으로 늘어난다.
  *
  * @param snapshots droppable 스냅샷 (순서 무관)
  */
@@ -66,16 +72,10 @@ export function collectBacklogKeyboardCandidates(
 ): BacklogKeyboardCandidate[] {
   const candidates: BacklogKeyboardCandidate[] = []
   for (const { id, rect, data } of snapshots) {
+    // rect 가 없거나 넓이가 0이면 화면에 없다는 뜻이다 (접힌 섹션)
     if (rect === null || rect.width <= 0 || rect.height <= 0) continue
     if (data === undefined) continue
-    if (data['type'] === 'card') {
-      candidates.push({ id, center: centerOf(rect) })
-      continue
-    }
-    const context = data['context']
-    if (context !== 'backlog' && context !== 'sprint') continue
-    const orderedKeys = data['orderedKeys']
-    if (!Array.isArray(orderedKeys) || orderedKeys.length > 0) continue
+    if (data['type'] !== 'card' && !isEmptyColumn(data)) continue
     candidates.push({ id, center: centerOf(rect) })
   }
   return candidates
