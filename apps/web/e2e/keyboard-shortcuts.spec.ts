@@ -28,7 +28,12 @@
 //   - e2e-fixture-whoami-userid-alignment: loginAsAlice 공유 헬퍼 재사용(userId 정합)
 //   - ui-pr-defer-e2e-regression-latent: 이 파일만 신규 추가, 기존 E2E 수정 없음
 //   - msw-mutation-stateful-refetch / e2e-msw-scenario-toggle-localstorage-flag: 전부 네비게이션이라
-//     stateful mutation·시나리오 토글이 필요 없음, page.reload() 미사용(SPA 내부 이동만)
+//     stateful mutation·시나리오 토글이 필요 없음. `page.reload()` 는 쓰지 않는다.
+//     ★단 S5 는 `page.goto('/search')` 로 진입한다(FR-UX-12 F13 이후 상단바가 버튼이 아니라
+//      입력창이라 「클릭해서 검색으로 간다」가 없다). goto 는 문서를 새로 열지만 이 파일은
+//      시나리오 플래그·stateful mutation 을 쓰지 않으므로 ServiceWorker 리셋이 무해하다.
+//      대신 goto 가 폐기한 「상단바 렌더 완료 = keydown 리스너 등록」 전제를 S5 안에서
+//      전역 검색 입력창 가시성으로 다시 세운다(아래 S5 주석).
 
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
@@ -208,6 +213,13 @@ test.describe('FR-UX-05 전역 키보드 단축키', () => {
     //    두 가정을 지게 된다.
     await page.goto('/search')
     await page.waitForURL((url) => url.pathname === '/search')
+    // ★goto 는 문서를 새로 열어 위 loginAndWaitForRootReady 의 「상단바 렌더 완료」 전제를
+    //  폐기한다. 이 시나리오는 **부정 단언**(c 를 쳐도 이동하지 않는다)이라, 리스너가 아예
+    //  등록되지 않아도 초록이 된다 — 그래서 상단바 렌더를 여기서 다시 기다려
+    //  useKeyboardShortcuts 의 document keydown 등록을 보장한다(가짜 초록 차단).
+    await expect(
+      page.getByRole('searchbox', { name: navLabels.globalSearch, exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('heading', { name: 'AQL 검색', level: 1 })).toBeVisible()
 
     // When. AQL 입력창 포커스 후 'c' 타이핑

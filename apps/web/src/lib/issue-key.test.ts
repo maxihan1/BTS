@@ -16,6 +16,8 @@ describe('ISSUE_KEY_PATTERN', () => {
   })
 
   it('전역 플래그가 없다 — lastIndex 상태가 test() 호출 간에 남으면 안 된다', () => {
+    // g 뿐 아니라 y(sticky)도 test()에서 lastIndex 를 전진시킨다 — 둘 다 없어야 의도가 성립한다
     expect(ISSUE_KEY_PATTERN.global).toBe(false)
+    expect(ISSUE_KEY_PATTERN.sticky).toBe(false)
   })
 })

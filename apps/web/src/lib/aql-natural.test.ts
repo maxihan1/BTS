@@ -23,7 +23,12 @@ describe('resolveGlobalSearchInput', () => {
   it('S3/E10 — 알려진 필드 + 연산자면 AQL 로 보고 원문을 통과시킨다', () => {
     expect(resolveGlobalSearchInput('status = "열림"')).toEqual({ kind: 'aql', query: 'status = "열림"' })
     expect(resolveGlobalSearchInput('summary ~ 로그인')).toEqual({ kind: 'aql', query: 'summary ~ 로그인' })
-    expect(resolveGlobalSearchInput('priority != HIGH')).toEqual({ kind: 'aql', query: 'priority != HIGH' })
+    // `!=` 예시는 백엔드가 200 을 주는 조합으로 고른다. `priority != HIGH` 처럼 우선순위에
+    // 문자열 값을 주면 백엔드가 500 을 낸다(IssueRepository.kt:2991 asShort() 의
+    // IllegalArgumentException 을 SearchExceptionHandler.kt:48 이 안 다룸 — PRE_EXISTING).
+    // 이 함수는 분류만 하므로 테스트 자체는 통과하지만, 실제로 깨지는 쿼리를 예시로 못박지 않는다.
+    expect(resolveGlobalSearchInput('label != backend')).toEqual({ kind: 'aql', query: 'label != backend' })
+    expect(resolveGlobalSearchInput('priority = 1')).toEqual({ kind: 'aql', query: 'priority = 1' })
     expect(resolveGlobalSearchInput('STATUS = "열림"')).toEqual({ kind: 'aql', query: 'STATUS = "열림"' })
   })
 
