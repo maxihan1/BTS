@@ -1,5 +1,6 @@
 // 사용자 목록 TanStack Query 훅 — GET /api/v1/users?query= 검색 결과 + id 다건 조회
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useQuery, useQueries, keepPreviousData } from '@tanstack/react-query'
 import { fetchUsers, fetchUsersByIds } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 
@@ -59,4 +60,55 @@ export function useUsersByIds(ids: string[], options: UseUsersByIdsOptions = {})
     placeholderData:
       options.keepPreviousWhileIdsChange === true ? keepPreviousData : undefined,
   })
+}
+
+/**
+ * 사용자 다건 조회 1회 상한.
+ *
+ * 백엔드 `UsersController.MAX_RESULTS`(50) 와 **같은 값이어야 한다** —
+ * 초과해서 보내면 `?ids=` 가 400 을 돌려준다(`UsersController.kt:71`).
+ */
+export const USERS_BY_IDS_CHUNK_SIZE = 50
+
+/**
+ * id 목록을 중복 제거 후 상한 이하 묶음으로 자른다.
+ *
+ * @param ids 사용자 UUID 목록 (중복 허용)
+ * @param size 묶음당 최대 개수 — 기본 {@link USERS_BY_IDS_CHUNK_SIZE}
+ * @returns 각 묶음의 길이가 `size` 이하인 2차원 배열 (입력이 비면 빈 배열)
+ */
+export function chunkUserIds(
+  ids: string[],
+  size: number = USERS_BY_IDS_CHUNK_SIZE,
+): string[][] {
+  const unique = [...new Set(ids)]
+  const chunks: string[][] = []
+  for (let i = 0; i < unique.length; i += size) {
+    chunks.push(unique.slice(i, i + size))
+  }
+  return chunks
+}
+
+/**
+ * id 개수와 무관하게 **전량** 조회한다 — 50개씩 나눠 병렬로 부르고 결과를 합친다.
+ *
+ * 기존 {@link useUsersByIds} 를 고치지 않고 새로 두는 이유. 그 훅은 소비처가 5곳이고
+ * queryKey 구조를 바꾸면 그 5곳의 캐시·테스트가 함께 흔들린다. 백로그만 청크가 필요하다.
+ *
+ * @param ids 담당자 UUID 목록 (중복 허용 — 내부에서 제거)
+ * @returns `data` 합쳐진 사용자 목록 · `isError` 한 묶음이라도 실패했는지
+ */
+export function useUsersByIdsChunked(ids: string[]) {
+  const chunks = useMemo(() => chunkUserIds(ids), [ids])
+  const results = useQueries({
+    queries: chunks.map((chunk) => ({
+      queryKey: ['users', 'byIds', chunk],
+      queryFn: () => fetchUsersByIds(chunk),
+      staleTime: 30_000,
+    })),
+  })
+  return {
+    data: results.flatMap((r) => r.data ?? []),
+    isError: results.some((r) => r.isError),
+  }
 }
