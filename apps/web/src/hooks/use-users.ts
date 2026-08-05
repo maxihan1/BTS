@@ -46,8 +46,9 @@ export interface UseUsersByIdsOptions {
  * - queryKey: ['users', 'byIds', ids] — 검색결과 캐시와 분리
  * - ids가 빈 배열이면 쿼리 실행 안 함 (enabled: false)
  * - staleTime: 30s (사용자 정보는 자주 바뀌지 않음)
+ * - **id 가 50개를 넘으면 서버가 400 을 준다** — 그런 호출부는 {@link useUsersByIdsChunked} 를 쓸 것
  *
- * @param ids UUID 문자열 배열
+ * @param ids UUID 문자열 배열 (50개 이하)
  * @param options 선택 옵션 — {@link UseUsersByIdsOptions}
  * @returns UseQueryResult<UserSummary[]>
  */
