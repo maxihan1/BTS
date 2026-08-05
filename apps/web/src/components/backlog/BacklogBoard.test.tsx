@@ -1563,4 +1563,53 @@ describe('BacklogBoard — 키보드 DnD 센서와 한국어 공지 배선 (FR-U
     expect(mockRerankMutate).not.toHaveBeenCalled()
     expect(mockAssignMutate).not.toHaveBeenCalled()
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // T12 결함 A — mutation 이 0건인데 낭독은 「순서를 변경했습니다」였다
+  //
+  // 이동 0 가드가 `use-backlog-drag.ts` 안에만 있어서 공지 모듈이 그 사실을 몰랐다.
+  // 여기서 재는 것은 **판정이 공지까지 실제로 이어져 있는가** — 훅과 lib 각각의 유닛이
+  // 초록이어도 `BacklogBoard` 가 통로를 안 이어 주면 사용자에게는 아무 변화가 없다.
+  //
+  // ★호출 순서는 dnd-kit 을 그대로 흉내 낸다. `DndContext` 의 `onDragEnd` **prop 을 먼저**
+  //   부르고 그다음 접근성 모니터로 공지를 낸다 — 같은 배치 안의 동기 호출이다
+  //   (`@dnd-kit/core@6.3.1` `dist/core.esm.js:3164-3171`, 모니터 dispatch 는 `:31-35`).
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** 이동 0 드롭을 실제로 발생시킨다 — 공지를 묻기 **전**에 호출해야 한다 */
+  function dropWithoutMoving(delta: { x: number; y: number }): void {
+    triggerDragEnd(
+      {
+        id: 'sprint:ATLAS-5',
+        data: { current: { issueKey: 'ATLAS-5', context: 'sprint', sprintId: ACTIVE_SPRINT_ID } },
+      },
+      {
+        id: 'backlog',
+        data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] } },
+      },
+      { delta, activatorEvent: new KeyboardEvent('keydown', { code: 'Space' }) },
+    )
+  }
+
+  it('★T12: 이동 0 드롭 뒤 공지가 「변경 사항이 없습니다」다 (mutation 과 같은 판정)', () => {
+    renderBoard()
+
+    dropWithoutMoving({ x: 0, y: 0 })
+
+    const message = capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent())
+    expect(message).toBe(backlogLabels.announce.noChange)
+    // 실브라우저에서 실제로 들린 거짓말 두 종을 이름으로 못박는다
+    expect(message).not.toBe(backlogLabels.announce.reordered)
+    expect(message).not.toBe(backlogLabels.announce.movedToBacklog)
+  })
+
+  it('짝 단언 — 실제로 끌어 옮긴 드롭 뒤에는 이동 공지가 그대로 나온다', () => {
+    renderBoard()
+
+    dropWithoutMoving({ x: 0, y: 40 })
+
+    // 이 짝이 없으면 공지를 통째로 「변경 사항이 없습니다」로 고정해도 위가 통과한다.
+    expect(capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent()))
+      .toBe(backlogLabels.announce.movedToBacklog)
+  })
 })

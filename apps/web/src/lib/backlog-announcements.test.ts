@@ -195,8 +195,16 @@ const CASES: readonly AnnouncementCase[] = [
 /** 이동 결과를 알리는 다섯 갈래 — 권한 게이팅(T-KB-5)의 관측 대상이기도 하다 */
 const END_CASES = CASES.filter((c) => c.name.startsWith('onDragEnd'))
 
+/**
+ * 「실제로 끌어 옮겼다」를 알리는 이동 0 판정기 (T12).
+ *
+ * 아래 케이스 전수는 전부 **움직인 드롭**을 재므로 이 값을 쓴다. 이동 0 쪽은 전용 describe 가
+ * 따로 잰다 — 두 상황을 한 빌더로 섞으면 어느 쪽이 red 인지 실패 출력이 말해 주지 않는다.
+ */
+const REAL_MOVE = (): boolean => false
+
 describe('buildBacklogAnnouncements', () => {
-  const announcements = buildBacklogAnnouncements(VIEW, true)
+  const announcements = buildBacklogAnnouncements(VIEW, true, REAL_MOVE)
 
   describe('이벤트 전수 — 침묵하는 갈래가 없다', () => {
     for (const testCase of CASES) {
@@ -239,7 +247,7 @@ describe('buildBacklogAnnouncements', () => {
   })
 
   describe('T-KB-5 — 권한이 없으면 이동을 알리지 않는다 (FR-17)', () => {
-    const readOnly = buildBacklogAnnouncements(VIEW, false)
+    const readOnly = buildBacklogAnnouncements(VIEW, false, REAL_MOVE)
 
     it('onDragEnd 다섯 갈래가 전부 권한 없음 문구가 된다', () => {
       for (const testCase of END_CASES) {
@@ -269,11 +277,62 @@ describe('buildBacklogAnnouncements', () => {
       // 「이동할 수 없다」로 읽으면 화면과 어긋난다 — 이름을 못 찾아도 이동 사실은 알린다.
       // (`KanbanBoard.tsx:59` findColumnName 의 방어적 fallback 관례와 같다)
       const staleView: BacklogView = { ...VIEW, sprints: [] }
-      const stale = buildBacklogAnnouncements(staleView, true)
+      const stale = buildBacklogAnnouncements(staleView, true, REAL_MOVE)
       const message = stale.onDragEnd({ active: BACKLOG_CARD, over: SPRINT_A_COLUMN })
       expect(message).toContain('옮겼습니다')
       expect(message).not.toBe(announce.cannotMoveHere)
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 이동 0 드롭 — 공지가 mutation 과 어긋나지 않는다 (T12 결함 A · FR-9)
+//
+// ★실브라우저 실측. 키보드로 집자마자 놓으면(Space→Space) `use-backlog-drag.ts` 의 가드가
+//   mutation 을 0건으로 막는데, 낭독은 「순서를 변경했습니다.」였다. 가드가 훅 **안에만**
+//   있어서 공지가 그 사실을 몰랐다 — FR-9 가 못박은 「공지와 mutation 은 같은 판정을 본다」의
+//   유일한 예외였고, 그 예외가 곧 거짓말이었다.
+//
+// dnd-kit 의 `Announcements.onDragEnd` 는 `{active, over}` 만 받고 **delta 가 없다**
+// (`@dnd-kit/core@6.3.1` `dist/components/Accessibility/types.d.ts:10`). 그래서 이동 0 여부는
+// 빌더 밖에서 들어와야 한다 — 세 번째 인자가 그 통로다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('이동 0 드롭 (T12 · FR-9)', () => {
+  /** 이동 0이었다고 알려 주는 빌더 — 실제로는 `useBacklogDrag` 가 판정해 넘긴다 */
+  const afterZeroMove = buildBacklogAnnouncements(VIEW, true, () => true)
+  /** 짝 — 실제로 끌어 옮긴 드롭 */
+  const afterRealMove = buildBacklogAnnouncements(VIEW, true, () => false)
+
+  it('같은 칸 드롭에서 「순서를 변경했습니다」가 아니라 「변경 사항이 없습니다」를 읽는다', () => {
+    const message = afterZeroMove.onDragEnd({ active: BACKLOG_CARD, over: BACKLOG_COLUMN })
+    expect(message).toBe(announce.noChange)
+    expect(message).not.toBe(announce.reordered)
+  })
+
+  it('크로스 칸 드롭에서도 「옮겼습니다」를 읽지 않는다', () => {
+    // 칸 droppable 로 폴백해 `assign` 이 잡히던 자리다. mutation 은 0건인데 낭독만 옮겼다고 한다.
+    const message = afterZeroMove.onDragEnd({ active: BACKLOG_CARD, over: SPRINT_A_COLUMN })
+    expect(message).toBe(announce.noChange)
+    expect(message).not.toContain('옮겼습니다')
+  })
+
+  it('짝 단언 — 이동이 있으면 같은 드롭이 그대로 이동 공지를 낸다 (전부를 막지 않는다)', () => {
+    // 이 짝이 없으면 `describeEnd` 를 통째로 `noChange` 로 만들어도 위 두 건이 통과한다.
+    expect(afterRealMove.onDragEnd({ active: BACKLOG_CARD, over: BACKLOG_COLUMN }))
+      .toBe(announce.reordered)
+    expect(afterRealMove.onDragEnd({ active: BACKLOG_CARD, over: SPRINT_A_COLUMN }))
+      .toBe(announce.movedToSprint(SPRINT_A_NAME))
+  })
+
+  it('드롭이 아닌 순간(집기·이동중)은 이동 0 판정을 쓰지 않는다', () => {
+    // 집은 직후에도 이동량은 0이다. 그때 「이동할 수 없다」를 읽으면 아직 아무것도 정하지
+    // 않은 사용자에게 겁을 준다 — 이동 0은 **드롭 판정**에만 걸린다.
+    expect(afterZeroMove.onDragStart({ active: BACKLOG_CARD })).toBe(announce.dragStart('ATLAS-1'))
+    expect(afterZeroMove.onDragOver({ active: BACKLOG_CARD, over: BACKLOG_COLUMN }))
+      .toBe(announce.overBacklog)
+    expect(afterZeroMove.onDragOver({ active: BACKLOG_CARD, over: SPRINT_A_COLUMN }))
+      .toBe(announce.overSprint(SPRINT_A_NAME))
   })
 })
 

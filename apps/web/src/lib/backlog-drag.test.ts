@@ -298,10 +298,16 @@ describe('resolveOverToDropZone', () => {
     return { data: { current: data } }
   }
 
+  /** `isZeroMove` 인자 — 실제로 끌어 옮긴 드롭 */
+  const MOVED = false
+  /** `isZeroMove` 인자 — 집자마자 그대로 놓은 드롭 (T12) */
+  const NOT_MOVED = true
+
   it('칸 droppable 이면 그 data 를 그대로 DropZoneData 로 만든다', () => {
     const zone = resolveOverToDropZone(
       VIEW,
       over({ context: 'sprint', sprintId: SPRINT_A_ID, orderedKeys: ['ATLAS-4', 'ATLAS-5'] }),
+      MOVED,
     )
     expect(zone).toEqual({
       context: 'sprint',
@@ -315,6 +321,7 @@ describe('resolveOverToDropZone', () => {
     const zone = resolveOverToDropZone(
       VIEW,
       over({ type: 'card', context: 'sprint', sprintId: SPRINT_A_ID, key: 'ATLAS-5' }),
+      MOVED,
     )
     expect(zone).toEqual({
       context: 'sprint',
@@ -328,6 +335,7 @@ describe('resolveOverToDropZone', () => {
     const zone = resolveOverToDropZone(
       VIEW,
       over({ type: 'card', context: 'backlog', key: 'ATLAS-1' }),
+      MOVED,
     )
     expect(zone).toEqual({
       context: 'backlog',
@@ -338,22 +346,55 @@ describe('resolveOverToDropZone', () => {
   })
 
   it('over 가 없으면 null 을 반환한다', () => {
-    expect(resolveOverToDropZone(VIEW, null)).toBeNull()
-    expect(resolveOverToDropZone(VIEW, undefined)).toBeNull()
+    expect(resolveOverToDropZone(VIEW, null, MOVED)).toBeNull()
+    expect(resolveOverToDropZone(VIEW, undefined, MOVED)).toBeNull()
   })
 
   it('view 가 없으면 카드 droppable 은 판정하지 못하고 null 을 반환한다', () => {
     // 칸 droppable 은 data 에 orderedKeys 를 싣고 오므로 view 없이도 판정된다.
     expect(
-      resolveOverToDropZone(undefined, over({ type: 'card', context: 'backlog', key: 'ATLAS-1' })),
+      resolveOverToDropZone(
+        undefined,
+        over({ type: 'card', context: 'backlog', key: 'ATLAS-1' }),
+        MOVED,
+      ),
     ).toBeNull()
     expect(
-      resolveOverToDropZone(undefined, over({ context: 'backlog', orderedKeys: ['ATLAS-1'] })),
+      resolveOverToDropZone(undefined, over({ context: 'backlog', orderedKeys: ['ATLAS-1'] }), MOVED),
     ).not.toBeNull()
   })
 
   it('알 수 없는 data 는 null 을 반환한다', () => {
-    expect(resolveOverToDropZone(VIEW, over(undefined))).toBeNull()
-    expect(resolveOverToDropZone(VIEW, over({ context: 'unknown' }))).toBeNull()
+    expect(resolveOverToDropZone(VIEW, over(undefined), MOVED)).toBeNull()
+    expect(resolveOverToDropZone(VIEW, over({ context: 'unknown' }), MOVED)).toBeNull()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // T12 결함 A — 이동 0 판정을 **드롭 판정 단계로** 올린다
+  //
+  // 종전에는 `use-backlog-drag.ts` 의 `handleDragEnd` 안에서만 걸렀다. 그래서 같은 드롭을
+  // 낭독하는 공지 모듈은 이동이 0이었다는 사실을 알 길이 없었고, mutation 은 0건인데
+  // 「순서를 변경했습니다.」를 읽었다(실브라우저 실측). 판정을 여기로 올리면 두 소비자가
+  // **같은 함수의 같은 반환값**을 보므로 다시 갈라질 수 없다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('★이동이 0이면 어떤 over 든 드롭 존이 없다 — 칸 droppable 폴백을 끊는다', () => {
+    // 이 입력이 바로 「집자마자 놓기」가 만들던 경로다. `MOVED` 였다면 dropIndex 2 가 잡혀
+    // 카드가 맨 뒤로 날아간다 (바로 위 첫 케이스가 그 값을 단언한다).
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ context: 'sprint', sprintId: SPRINT_A_ID, orderedKeys: ['ATLAS-4', 'ATLAS-5'] }),
+      NOT_MOVED,
+    )
+    expect(zone).toBeNull()
+  })
+
+  it('★이동이 0이면 카드 droppable 위에서도 드롭 존이 없다', () => {
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ type: 'card', context: 'backlog', key: 'ATLAS-1' }),
+      NOT_MOVED,
+    )
+    expect(zone).toBeNull()
   })
 })
