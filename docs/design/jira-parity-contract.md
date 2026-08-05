@@ -33,7 +33,7 @@ E2E 스펙 전수 실측 기반. **발생 수는 이 문서에 새기지 않는�
 | `<h1>` 단 하나 + 이름 verbatim | `grep -rn "getByRole('heading'" apps/web/e2e/` | h1 글자를 절대 바꾸지 말 것. `PageHeader` 적용은 스타일만 통일 |
 | `role="dialog"` 고유 label | `grep -rn "getByRole('dialog'" apps/web/e2e/` | 신규 다이얼로그마다 고유 `aria-label` (strict mode 충돌 방지) |
 | 관리 메뉴 기본 펼침 | `grep -rln "관리 메뉴" apps/web/e2e/` | 접으면 webhook·audit-logs·notification-policies 스펙이 not-visible 실패. 모바일 드로어는 **모바일 폭에서만** |
-| `검색` 이름 분리 | `grep -rn "name: '검색'" apps/web/e2e/` | 상단바 입력창은 `전역 검색`, `검색`은 AQL 페이지 제출 버튼 전용 (Maxi 확정 2026-07-28 결정 4) |
+| `검색` 이름 분리 ✅ **구현됨 #341** | `grep -rn "name: '검색'" apps/web/e2e/` · `grep -rn "globalSearch" apps/web/e2e/` | 상단바 입력창은 `전역 검색`(`role="searchbox"`), `검색`은 AQL 페이지 제출 버튼 전용 (Maxi 확정 2026-07-28 결정 4). ★**두 셀렉터에 `exact: true` 필수** — `검색`이 `전역 검색`의 substring 이라 `i18n/__tests__/nav-labels.test.ts` 의 라벨 쌍 판별식이 이 면제를 **`exact: true` 유지 조건으로** 승인했다. 빼면 면제가 무효다 |
 | 프로젝트 스위처 nav 금지 | (`프로젝트`가 `프로젝트 뷰 전환`의 substring) | 스위처를 `<nav>`로 만들지 말 것 — popover + `role="listbox"` |
 | 팔레트 QUICK_LINKS 순서 | `grep -n "QUICK_LINKS" apps/web/e2e/command-palette.spec.ts` | 빈 입력 시 바로가기 4개와 순서 보존 |
 | 단축키 레지스트리 동결 | `grep -n "toHaveLength" apps/web/src/components/keyboard-shortcuts/shortcuts.test.ts` | 기존 `SHORTCUTS` 5종에 손대지 말 것 — 프론트 단언 2곳(`toHaveLength(5)` + `DEFAULT_KEYMAP` `toEqual`) + 백엔드 `KeymapAction` 화이트리스트 + DB CHECK(`V033__user_keymap.sql`)가 **동시에** 깨진다. 컨텍스트 단축키는 별도 레지스트리(`CONTEXT_SHORTCUTS`) 신설 |
