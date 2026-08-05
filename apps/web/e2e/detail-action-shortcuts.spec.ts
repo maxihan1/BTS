@@ -35,6 +35,7 @@ import { loginAsAlice } from './fixtures/issue-fixtures'
 import { commentStrings, issueDetailStrings } from '../src/i18n/ko'
 import { issueAtlas1Fixture } from '../src/mocks/issue-fixtures'
 import { userAliceFixture } from '../src/mocks/user-fixtures'
+import { navLabels } from '../src/i18n/nav-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -46,9 +47,6 @@ const ISSUE_URL = `/issues/${ISSUE_KEY}`
 
 /** 이슈 목록 URL — S9(와이드 split view) 전용 */
 const ISSUES_URL = '/issues'
-
-/** Header 검색 버튼 aria-label — RootLayout(단축키 리스너 등록) 마운트 완료 신호 */
-const HEADER_SEARCH_ARIA_LABEL = '검색'
 
 /** CommandPalette.tsx commandPaletteStrings.dialogLabel(비export) — command-palette.spec.ts 와 같은 하드코딩 선례 */
 const PALETTE_DIALOG_LABEL = '명령 팔레트'
@@ -70,12 +68,15 @@ const NARROW_VIEWPORT = { width: 375, height: 812 }
  * alice 로 로그인하고 RootLayout(전역 keydown 리스너) 마운트 완료까지 기다린다.
  *
  * context-shortcuts.spec.ts · command-palette.spec.ts 의 같은 이름 헬퍼 미러 —
- * Header 검색 버튼 렌더가 인증 분기 렌더 + 리스너 등록 완료 신호다.
+ * 상단바 전역 검색 **입력창**(FR-UX-12 F13) 렌더가 인증 분기 렌더 + 리스너 등록 완료 신호다.
+ *
+ * 이름은 `navLabels` 정본에서 읽는다(하드코딩 금지). `exact: true` 필수 —
+ * `검색`(AQL 페이지 제출 버튼 전용 이름)이 `전역 검색` 의 substring 이다.
  */
 async function loginAndWaitForRootReady(page: Page): Promise<void> {
   await loginAsAlice(page)
   await expect(
-    page.getByRole('button', { name: HEADER_SEARCH_ARIA_LABEL, exact: true }),
+    page.getByRole('searchbox', { name: navLabels.globalSearch, exact: true }),
   ).toBeVisible()
 }
 

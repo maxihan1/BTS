@@ -7,11 +7,14 @@
 //   B3. 한글 IME        — `summary ~ "로그인"` fill → overlay에 한글 정상 표시 (jsdom 못 흉내)
 //
 // 설계 결정.
-//   - 검색 진입: Header "검색" aria-label 버튼 클릭 → SPA 내부 이동 → /search 진입
+//   - 검색 진입: 상단바 전역 검색 입력창(role=searchbox, aria-label="전역 검색")에 자연어를
+//     넣고 Enter 제출 → SPA 내부 이동 → /search 진입 (FR-UX-12 F13)
 //     (reload 금지 — MSW 핸들러가 ServiceWorker 기반이라 reload 시 시나리오 플래그 리셋)
 //   - MSW 시나리오 토글: addInitScript + localStorage.setItem 패턴 (goto 전 등록)
 //     플래그 키: E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario' (search-handlers.ts)
-//   - 검색 버튼: aria-label="검색" — Header 버튼과 이름 동일 → 입력 영역 컨테이너로 한정
+//   - 검색 버튼: aria-label="검색" — 이 이름은 F13 이후 이 제출 버튼 **전용**이다
+//     (Jira 패리티 계약 §2 이름 분리, 상단바는 "전역 검색"). 컨테이너 한정은 그대로 둔다 —
+//     같은 화면에 동명 버튼이 다시 생겨도 이 셀렉터가 흔들리지 않게 하는 보험이다.
 //   - 결과 목록 컨테이너: role=list, aria-label="검색 결과"
 //   - syntax highlight 검증: pre[aria-hidden="true"] 내 span.text-syntax-keyword 존재
 //     (jsdom 단위테스트는 실 CSS 적용/렌더 불가 → E2E 필수)
@@ -35,6 +38,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { navLabels } from '../src/i18n/nav-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — search-handlers.ts E2E_SEARCH_SCENARIO_KEY 와 동기화
@@ -49,8 +53,15 @@ const E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario'
 /** 검색 페이지 URL */
 const SEARCH_URL = '/search'
 
-/** Header 검색 버튼 aria-label (Header.tsx L76) */
-const HEADER_SEARCH_ARIA_LABEL = '검색'
+/**
+ * 상단바 전역 검색으로 `/search` 에 진입할 때 넣는 씨앗 질의(FR-UX-12 F13).
+ *
+ * ★이 파일의 어떤 시나리오가 쓰는 질의와도 **겹치는 토큰이 없어야** 한다.
+ * 상단바 제출은 `/search?q=text ~ "…"` 로 착지시키고 검색 페이지는 마운트 시 그 q 로
+ * 한 번 조회하므로, 씨앗이 시나리오 질의와 글자를 공유하면 「fill 이 안 먹었는데도
+ * overlay 에 그 글자가 보인다」는 가짜 초록이 생긴다(B3 의 `로그인` 이 대표 위험).
+ */
+const GLOBAL_SEARCH_SEED_TEXT = '진입용씨앗'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // search-fixtures.ts DEFAULT_SEARCH_PAGE 기대 결과 (3건, 동기화 유지)
@@ -70,15 +81,27 @@ const DEFAULT_RESULT_KEYS = ['ATLAS-1', 'ATLAS-2', 'ATLAS-3'] as const
 /**
  * alice 로그인 후 SPA 내부 이동으로 /search 진입한다.
  *
- * reload 금지 — SPA 내부 이동(Header 아이콘 클릭)으로 ServiceWorker가 재시작되지 않는다.
+ * reload 금지 — SPA 내부 이동(상단바 전역 검색 Enter 제출)으로 ServiceWorker가 재시작되지 않는다.
  * [[fr-nt-03-d6-d7-done]] MSW store 리셋 방지.
+ *
+ * 셀렉터 이름은 `navLabels` 정본에서 읽는다(하드코딩 금지). `exact: true` 필수 —
+ * `검색`(이 페이지 제출 버튼 전용 이름)이 `전역 검색` 의 substring 이다.
+ *
+ * ⚠️ 착지 URL 에 `?q=text ~ "…"` 가 실린다 — 검색 페이지가 마운트 시 그 q 로 한 번 조회하므로
+ * 결과 목록이 각 시나리오의 명시 검색 **이전에** 이미 떠 있다. 씨앗 토큰이 시나리오 질의와
+ * 겹치지 않게 고른 이유({@link GLOBAL_SEARCH_SEED_TEXT})가 그것이다.
  *
  * @param page Playwright Page 객체
  */
 async function navigateToSearch(page: import('@playwright/test').Page): Promise<void> {
   await loginAsAlice(page)
-  // Header 검색 아이콘 클릭 → SPA pushState → /search
-  await page.getByRole('button', { name: HEADER_SEARCH_ARIA_LABEL, exact: true }).click()
+  // 상단바 전역 검색 입력창에 자연어 제출 → SPA pushState → /search?q=text ~ "…"
+  const globalSearch = page.getByRole('searchbox', {
+    name: navLabels.globalSearch,
+    exact: true,
+  })
+  await globalSearch.fill(GLOBAL_SEARCH_SEED_TEXT)
+  await globalSearch.press('Enter')
   await page.waitForURL('**/search**')
   // 검색 버튼(입력 영역) 렌더 대기 — AQL 검색 페이지 헤딩 확인
   await expect(page.getByRole('heading', { name: 'AQL 검색', level: 1 })).toBeVisible()

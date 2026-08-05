@@ -34,13 +34,11 @@ import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { issueCreateStrings } from '../src/i18n/ko'
 import { dashboardLabels } from '../src/i18n/dashboard-labels'
+import { navLabels } from '../src/i18n/nav-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Header 검색 버튼 aria-label(Header.tsx L77) — RootLayout(단축키 리스너 등록) 마운트 완료 신호로 사용 */
-const HEADER_SEARCH_ARIA_LABEL = '검색'
 
 /** ShortcutsHelpDialog.tsx DialogPrimitive.Title(비export) — 하드코딩 (command-palette.spec.ts PALETTE_DIALOG_LABEL 선례) */
 const HELP_DIALOG_TITLE = '키보드 단축키'
@@ -56,18 +54,21 @@ const AQL_TEXTAREA_SELECTOR = 'textarea[placeholder*="AQL 쿼리를 입력하세
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * alice로 로그인하고 RootLayout(Header + useKeyboardShortcuts 훅) 마운트 완료까지 대기한다.
+ * alice로 로그인하고 RootLayout(TopBar + useKeyboardShortcuts 훅) 마운트 완료까지 대기한다.
  *
- * Header 검색 버튼 렌더를 신호로 사용 — isAuthenticated 분기 렌더 완료 및
+ * 상단바 전역 검색 **입력창**(FR-UX-12 F13) 렌더를 신호로 사용 — isAuthenticated 분기 렌더 완료 및
  * useKeyboardShortcuts의 document keydown 리스너 등록(useEffect)이 끝났음을 보장한다.
  * (command-palette.spec.ts loginAndWaitForRootReady 미러 — 같은 RootLayout이 두 훅을 함께 마운트)
+ *
+ * 이름은 `navLabels` 정본에서 읽는다(하드코딩 금지). `exact: true` 필수 —
+ * `검색`(AQL 페이지 제출 버튼 전용 이름)이 `전역 검색` 의 substring 이다.
  *
  * @param page Playwright Page 객체
  */
 async function loginAndWaitForRootReady(page: Page): Promise<void> {
   await loginAsAlice(page)
   await expect(
-    page.getByRole('button', { name: HEADER_SEARCH_ARIA_LABEL, exact: true }),
+    page.getByRole('searchbox', { name: navLabels.globalSearch, exact: true }),
   ).toBeVisible()
 }
 
@@ -200,8 +201,12 @@ test.describe('FR-UX-05 전역 키보드 단축키', () => {
   }) => {
     await loginAndWaitForRootReady(page)
 
-    // Given. 검색 페이지 진입(Header 버튼 클릭 — SPA 내부 이동)
-    await page.getByRole('button', { name: HEADER_SEARCH_ARIA_LABEL, exact: true }).click()
+    // Given. 검색 페이지 진입 — 직접 이동한다.
+    //   ★상단바는 FR-UX-12 F13 이후 버튼이 아니라 입력창이라 「클릭해서 검색으로 간다」가 없다.
+    //    이 테스트가 재려는 것은 **입력 포커스 가드**지 검색 진입 경로가 아니고,
+    //    진입 경로는 S2(`/` → `/search`)가 이미 덮는다. 여기서 또 재면 한 시나리오가
+    //    두 가정을 지게 된다.
+    await page.goto('/search')
     await page.waitForURL((url) => url.pathname === '/search')
     await expect(page.getByRole('heading', { name: 'AQL 검색', level: 1 })).toBeVisible()
 
