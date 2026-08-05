@@ -96,13 +96,13 @@ function applyPatch(base: SprintMeta, body: Record<string, unknown>): SprintMeta
   return next
 }
 
-/** 500 ProblemDetail */
-function serverError(): HttpResponse {
+/** 500 ProblemDetail. 반환 타입은 msw 의 `StrictResponse` 라 추론에 맡긴다 */
+function serverError() {
   return HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 })
 }
 
 /** 409 — errorCode 는 목 핸들러(`backlog-handlers.ts`)와 같은 값을 쓴다 */
-function conflict(errorCode: string): HttpResponse {
+function conflict(errorCode: string) {
   return HttpResponse.json({ errorCode, message: '충돌', status: 409 }, { status: 409 })
 }
 
