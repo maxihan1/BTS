@@ -175,12 +175,9 @@ export function BacklogBoard({
         onDragEnd={drag.handleDragEnd}
         accessibility={undefined}
       >
-        {/* 세로 스택 (FR-UX-13 F15 FR-1) — 가로 스크롤을 없애고 섹션을 위에서 아래로 쌓는다.
-            ★스프린트가 먼저, 백로그가 맨 마지막이다. 「지금 무엇을 하는가(스프린트)」가
-            「나중에 무엇을 할까(백로그)」보다 위에 있어야 한다 (Jira 백로그 화면과 같은 순서).
-            ★스프린트 사이의 정렬은 **하지 않는다** — 백엔드 `sprintComparator` 가
-            ACTIVE → PLANNED → COMPLETED, 그다음 startDate 로 이미 정렬해 내려준다.
-            여기서 다시 정렬하면 정렬 규칙이 두 벌로 갈라진다. */}
+        {/* 세로 스택 (F15 FR-1) — 스프린트가 먼저, 백로그가 맨 마지막이다 (Jira 와 같은 순서).
+            ★클라이언트 정렬을 넣지 않는다 — 백엔드 `sprintComparator` 가 ACTIVE → PLANNED →
+            COMPLETED, 그다음 startDate 로 이미 정렬해 내려주므로 규칙이 두 벌로 갈라진다. */}
         <div className="flex flex-col gap-3">
           {sprints.map(({ sprint, issues }) => (
             <SprintColumn
