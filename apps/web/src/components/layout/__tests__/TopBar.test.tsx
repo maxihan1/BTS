@@ -1,5 +1,5 @@
-// TopBar 컴포넌트 단위 테스트 — 토글/로고/검색/만들기/알림/도움말/설정/계정 드롭다운 계약 (FR-UX-06 PR11 Task 6)
-import { render, screen } from '@testing-library/react'
+// TopBar 컴포넌트 단위 테스트 — 토글/로고/전역 검색/만들기/알림/도움말/설정/계정 드롭다운 계약 (FR-UX-06 PR11 Task 6, FR-UX-12 F13)
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -108,15 +108,70 @@ describe('TopBar', () => {
     expect(screen.getByRole('link', { name: /Atlas/ })).toHaveAttribute('href', '/dashboards')
   })
 
-  it('검색 버튼이 aria-label="검색"으로 정확히 1개 존재하고 클릭 시 /search로 이동한다', async () => {
+  it('F13 — 전역 검색 입력창이 정확히 1개고 검색 버튼은 없다', () => {
+    renderTopBar()
+
+    expect(screen.getAllByRole('searchbox', { name: navLabels.globalSearch })).toHaveLength(1)
+    // 계약 §2 「`검색` 이름 분리」 — 상단바는 `전역 검색`, `검색` 은 AQL 페이지 제출 버튼 전용
+    expect(screen.queryByRole('button', { name: navLabels.search })).toBeNull()
+  })
+
+  it('F13 S1 — 자유 텍스트 Enter 는 text ~ 로 감싸 /search 로 보낸다 (projectKey 미첨부)', async () => {
     const user = userEvent.setup()
     renderTopBar()
 
-    const searchButtons = screen.getAllByRole('button', { name: navLabels.search })
-    expect(searchButtons).toHaveLength(1)
+    const box = screen.getByRole('searchbox', { name: navLabels.globalSearch })
+    await user.type(box, '로그인 버그{Enter}')
 
-    await user.click(searchButtons[0] as HTMLElement)
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/search' })
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/search', search: { q: 'text ~ "로그인 버그"' } })
+  })
+
+  it('F13 S2 — 이슈키 Enter 는 이슈 상세로 보낸다 (대소문자 무관)', async () => {
+    const user = userEvent.setup()
+    renderTopBar()
+
+    await user.type(screen.getByRole('searchbox', { name: navLabels.globalSearch }), 'atlas-42{Enter}')
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-42' } })
+  })
+
+  it('F13 S3 — AQL 문법은 원문 그대로 보낸다', async () => {
+    const user = userEvent.setup()
+    renderTopBar()
+
+    await user.type(screen.getByRole('searchbox', { name: navLabels.globalSearch }), 'status = "열림"{Enter}')
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/search', search: { q: 'status = "열림"' } })
+  })
+
+  it('F13 S4 — 공백만 Enter 는 아무 데도 가지 않는다', async () => {
+    const user = userEvent.setup()
+    renderTopBar()
+
+    await user.type(screen.getByRole('searchbox', { name: navLabels.globalSearch }), '   {Enter}')
+
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('F13 S6 — IME 조합 중 Enter 는 제출하지 않는다', () => {
+    renderTopBar()
+
+    // 한글 조합 중의 Enter 는 조합 확정이지 제출이 아니다 — 「로그인」을 치는 도중 검색이 나가면 안 된다
+    const box = screen.getByRole('searchbox', { name: navLabels.globalSearch })
+    fireEvent.change(box, { target: { value: '로그인' } })
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('F13 FR11 — 제출 후 입력값을 지우지 않는다', async () => {
+    const user = userEvent.setup()
+    renderTopBar()
+
+    const box = screen.getByRole('searchbox', { name: navLabels.globalSearch })
+    await user.type(box, '로그인{Enter}')
+
+    expect(box).toHaveValue('로그인')
   })
 
   it('만들기 버튼 클릭 시 URL 을 바꾸지 않고 제자리에서 생성 모달이 열린다 (FR-12)', async () => {
