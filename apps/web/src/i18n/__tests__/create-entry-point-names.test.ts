@@ -25,7 +25,7 @@ import { issueCreateStrings } from '../ko'
 //
 // 범위. **같은 화면에서 `button` role 의 접근 가능한 이름으로 조회될 수 있는 값**.
 //
-// 제외 2종과 그 사유.
+// 제외 3종과 그 사유.
 //   1. 제목·본문 텍스트 — role 이 달라 조회 공간이 겹치지 않는다.
 //      (`dialogTitle`='새 이슈 만들기' 는 이미 `navLabels.create`('만들기')를 포함하고 있어,
 //       넣으면 판별식이 구조적으로 성립 불가가 된다.)
@@ -33,6 +33,17 @@ import { issueCreateStrings } from '../ko'
 //      `submitButtonPending`('이슈 생성 중…')은 `submitButton`('이슈 생성')을 포함하지만,
 //      한 버튼이 둘 중 하나만 보이므로 같은 순간에 두 이름이 화면에 있을 수 없다.
 //      집합의 단위는 **버튼 상태가 아니라 버튼 정체**다.
+//   3. **`navLabels.search`('검색') — 상단바에 그 이름의 `button` 이 없다** (FR-UX-12 F13).
+//      F13 이 상단바 검색을 버튼에서 `role="searchbox"` + `aria-label="전역 검색"` 입력창으로
+//      바꿨다. 같은 PR 의 `ShellLayout.test.tsx`·`navigation-contract.test.tsx` 가
+//      「상단바에 `검색` 버튼 0개」를 단언한다. 여기 §범위는 **button role** 이므로
+//      `searchbox` 는 애초에 대상이 아니다. 남겨두면 화면에 없는 이름을 지키는 stale 입력이
+//      돼, 훗날 `검색 결과` 버튼이 추가되면 존재하지 않는 상단바 버튼에 대한 유령 위반을
+//      띄운다 (2차 코드리뷰 CONCERNS-2, `two-lists-never-check-each-other` 양식).
+//      ⚠️ `'전역 검색'` 과 `'검색'` 의 substring 충돌 방어는 이 파일이 아니라
+//      `nav-labels.test.ts` 의 「FR15 라벨 쌍 substring 전수 판별식」이 맡는다
+//      (`ALLOWED_SUBSTRING_PAIRS` 의 `['search', 'globalSearch']` 면제 + 그 근거 주석).
+//      `topBarCreate`('만들기')는 여전히 button 이라 **그대로 둔다**.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -42,9 +53,8 @@ import { issueCreateStrings } from '../ko'
  * 토스트 액션(`createdToastAction`='보기')도 sonner 가 실제 `button` 으로 렌더한다.
  */
 const BACKLOG_SCREEN_BUTTON_NAMES = {
-  // 상단바 (모든 페이지)
+  // 상단바 (모든 페이지) — `navLabels.search`('검색')는 여기 없다. 제외 3종 §3 참조
   topBarCreate: navLabels.create,
-  topBarSearch: navLabels.search,
   // 생성 모달 (열린 동안 공존 — 스펙 E-10)
   dialogSubmit: issueCreateStrings.submitButton,
   dialogCancel: issueCreateStrings.cancelButton,
@@ -61,8 +71,8 @@ const BACKLOG_SCREEN_BUTTON_NAMES = {
 
 /** 보드 화면에서 버튼 접근 이름으로 동시에 존재할 수 있는 값. */
 const BOARD_SCREEN_BUTTON_NAMES = {
+  // 상단바 — 제외 3종 §3 (`navLabels.search` 는 F13 이후 상단바 button 이 아니다)
   topBarCreate: navLabels.create,
-  topBarSearch: navLabels.search,
   dialogSubmit: issueCreateStrings.submitButton,
   dialogCancel: issueCreateStrings.cancelButton,
   toastAction: issueCreateStrings.createdToastAction,

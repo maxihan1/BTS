@@ -127,8 +127,13 @@ describe('navLabels', () => {
      *    제출 버튼은 한 화면에 공존하므로 이름을 **합치면** strict mode 위반이고,
      *    분리하면 substring 관계가 남는다 — 둘 중 후자를 택한 결과다.
      *    관리 근거 2겹. ① role이 다르다(`searchbox` vs `button`/`option`)
-     *    ② `'검색'`으로 조회하는 e2e 6개 지점 전량이 이미 `exact: true`다
-     *    (`search.spec.ts`·`saved-filters.spec.ts`·`command-palette.spec.ts`, 2026-08-05 실측).
+     *    ② `'검색'`으로 조회하는 e2e **5개 지점 전량**이 이미 `exact: true`다
+     *    (2026-08-05 `grep -rn "name: '검색'" e2e/` 실측 — 재실측 없이 대조하도록 전수 열거).
+     *       · `search.spec.ts:146`        `getByRole('button', { name: '검색', exact: true })`
+     *       · `search.spec.ts:148`        동 컨테이너 한정 클릭
+     *       · `saved-filters.spec.ts:280` `getByRole('button', { name: '검색', exact: true })`
+     *       · `saved-filters.spec.ts:282` 동 컨테이너 한정 클릭
+     *       · `command-palette.spec.ts:293` `getByRole('option', { name: '검색', exact: true })`
      *    Testing Library의 `name`은 기본이 완전일치라 유닛은 선재 안전.
      *
      * 4. `search`('검색')·`issues`('이슈') ⊂ `globalSearchPlaceholder`('이슈 검색') —

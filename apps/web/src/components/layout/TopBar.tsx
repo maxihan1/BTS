@@ -94,7 +94,7 @@ export function TopBar({ onHelpClick }: TopBarProps) {
       <ProjectSwitcher />
 
       {/* 폭은 남는 공간을 먹되 상·하한을 둔다 (design 리뷰 G2/G4).
-          - flex-1  : 좁은 뷰포트에서 남는 공간을 먹는다
+          - flex-1  : 남는 공간을 먹는다. ★헤더에서 **유일한** grow 요소여야 한다 (아래 참조)
           - max-w-md: 448px 초과는 한 줄 스캔이 어렵고 우측 액션과 균형이 깨진다
           - min-w-32: 128px. 한글 4~5자 + 돋보기가 들어가는 최소치 — 이보다 좁으면
                       placeholder 가 잘려 무슨 칸인지 알 수 없다
@@ -108,25 +108,37 @@ export function TopBar({ onHelpClick }: TopBarProps) {
           value={query}
           aria-label={navLabels.globalSearch}
           placeholder={navLabels.globalSearchPlaceholder}
-          className="pl-8"
+          /* `[&::-webkit-search-cancel-button]:appearance-none` — `type="search"` 의 네이티브
+             × 버튼 제거. tailwind preflight 는 `::-webkit-search-decoration` 만 지우고 이건
+             남겨서, Chromium 에서 **값이 있을 때만** 디자인 토큰 밖의 브라우저 기본 아이콘이
+             입력칸 안에 뜬다 (F13 2차 코드리뷰 I-3). 지움 = 취소는 Esc/직접 삭제로 통일. */
+          className="pl-8 [&::-webkit-search-cancel-button]:appearance-none"
           onChange={(e) => { setQuery(e.target.value) }}
           onKeyDown={handleSearchKeyDown}
         />
       </div>
 
-      {/* ★정렬 스페이서 — 검색창과 **둘 다** 필요하다 (F13 코드리뷰 BLOCKER-2).
-          헤더는 `justify-*` 없는 flex 라, 남는 가로 공간은 `flex-grow` 를 가진 자식만 흡수한다.
-          검색창도 grow 하지만 `max-w-md`(448px)에서 성장을 멈추므로, 그 위쪽 뷰포트
-          (1440·1920 등)에서는 잔여 공간이 **줄 끝에 그대로 남아** 우측 액션이 화면 오른쪽에
-          붙지 않는다. 이 빈 grow 요소가 그 잔여분을 흡수해 우측 액션을 끝으로 민다.
-          검색창의 flex-1 만 남기고 이 줄을 지우면 1024 이상에서 회귀한다. */}
-      <div className="flex-1" />
+      {/* ★`ml-auto` 로 우측 액션을 끝에 붙인다 — **빈 `flex-1` 스페이서를 다시 넣지 말 것**
+          (F13 1차 코드리뷰 BLOCKER-2 → 2차 CONCERNS-1 의 왕복 이력).
 
+          경위. 헤더는 `justify-*` 없는 flex 라 잔여 가로 공간을 누가 흡수할지 정해야 한다.
+          1차에서 검색창 뒤에 `<div className="flex-1" />` 스페이서를 넣어 해결했는데, 그러면
+          grow 요소가 **둘**이 된다. `flex-1` = `flex: 1 1 0%` 라 basis 0·grow 1 인 형제 둘은
+          잔여 공간을 **정확히 반씩** 나눈다. 그 결과 검색창이 `max-w-md`(448px)에 도달하는
+          것은 ≳1334px 부터고, 그 아래 모든 뷰포트에서 검색칸은 **빈 스페이서와 항상 같은 폭**
+          이었다 (1024px → 검색 277px + 빈칸 277px).
+
+          `auto` 마진은 flex-grow 해소가 **끝난 뒤** 남은 free space 를 먹는다. 그래서
+          ① 검색창이 448px 에 걸려 멈춘 넓은 화면 → 잔여분 전부를 이 마진이 흡수해 우측 액션이
+            화면 오른쪽 끝에 붙는다 (BLOCKER-2 회귀 없음)
+          ② 검색창이 아직 크는 좁은 화면 → grow 가 free space 를 0 으로 만들어 마진은 0이 되고
+            검색창이 그 공간을 전부 가져간다 (CONCERNS-1 해소)
+          즉 grow 요소는 **하나**여야 `max-w-md` 가 모든 폭에서 의미를 갖는다. */}
       <Button
         type="button"
         variant="default"
         size="default"
-        className="gap-1 rounded-md px-3 hover:bg-primary/90"
+        className="ml-auto gap-1 rounded-md px-3 hover:bg-primary/90"
         onClick={() => { setCreateOpen(true) }}
       >
         <Plus className="size-4" />
