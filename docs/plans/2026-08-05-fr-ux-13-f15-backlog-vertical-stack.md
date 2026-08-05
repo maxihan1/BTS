@@ -577,10 +577,36 @@ plan 이 막겠다던 lint-staged race 가 그대로 재현된다. 공유 자원
 
 ---
 
+---
+
+### Task 12. 공지 정합 + zero-move 봉합 (구현 중 신설 — 실브라우저 발견)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/lib/backlog-drag.ts`, `apps/web/src/lib/backlog-drag.test.ts`, `apps/web/src/lib/backlog-announcements.ts`, `apps/web/src/lib/backlog-announcements.test.ts`, `apps/web/src/components/backlog/use-backlog-drag.ts`, `apps/web/src/components/backlog/use-backlog-drag.test.ts`, `apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`]
+- depends-on: [9]
+
+**왜 생겼나.** T9 배선 후 **실브라우저에서만 보이는 결함**이 드러났다 — 키보드로 카드를 집자마자
+놓으면 요청 0건에 카드도 안 움직이는데 낭독은 「순서를 변경했습니다」였다. FR-9 가 못박은
+「공지와 mutation 이 어긋나지 않는다」 원칙 위반이고, **스크린리더 사용자에게만 보이는 거짓말**이라
+이 PR 에서 닫는 것으로 판단했다. 상세는 스펙 §구현 중 실측 정정 **I-12**.
+
+**RED**. 이동-0 드롭에서 공지가 「순서를 변경했습니다」가 **아니다** · 마우스 zero-move 에서 mutation 0건.
+**GREEN**. 판정을 `resolveOverToDropZone`(required 3번째 인자)으로 올리고, `useBacklogDrag` 가
+**이미 계산된 boolean** 을 안정 참조 getter 로 내보낸다. 문구는 기존 `announce.noChange` 재사용(신규 0).
+**REFACTOR**. 동작 무변경 정리.
+
+**검증**. 유닛 `src` 전량 **9,069건 초록** · `tsc` EXIT=0 · `eslint` 0 errors ·
+E2E red 는 사전 배정 4건뿐이며 **가드를 변경 전 형태로 되돌려 재실행해 같은 4건이 같은 이유로
+실패함을 실증**했다(내 변경이 원인이 아님). 비-공허 3회 · 눈확인 라이트·다크 짝 단언.
+
+---
+
 ## Plan 메타
 
-- **task 수**. **11** (원안 10 + 리뷰가 적발한 키보드 좌표 계산기)
-- **wave 예상**. 4 — `W1{T1,T2,T3,T5,T11}` → `W2{T4,T6,T7,T8}` → `W3{T9}` → `W4{T10}`
+- **task 수**. **12** (원안 10 + 리뷰가 적발한 키보드 좌표 계산기 + 구현 중 발견된 공지 정합)
+- **wave 실제**. 5 — `W1{T1,T2,T3,T5,T11}` → `W2{T4,T6,T7,T8}` → `W3{T9}` → `W4{T12}` → `W5{T10}`
+  (T12 는 T9 배선 후에야 관측 가능한 결함이라 계획 시점에 존재할 수 없었다)
 - **파일 충돌**. 없음. 검증 방법 — 각 task `files` 의 교집합이 공집합이고, `BacklogBoard.tsx`(T6·T9)는 `depends-on` 으로 직렬화된다.
   ★원안은 **공유 파일 3개가 미배정**이었다(`backlog-labels.ts`·`use-backlog-drag.ts`·`backlog-fixtures.ts`) — 전부 **T1 이 소유**하도록 고쳤다. **T7·T8 은 `backlog-labels.ts` 를 열지 않는다.**
 - **구현 규율**. ui 시각 검증 트랙 (red-first 면제) + **T2·T3·T4·T5·T11 은 순수 로직이라 red-first 준수**

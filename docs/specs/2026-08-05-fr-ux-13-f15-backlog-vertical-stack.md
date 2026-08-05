@@ -1140,3 +1140,67 @@ viewportH 720 / 스크롤 0
 C-7 재검증에서 「목록이 달라졌다」를 알릴 문구가 `completeDialog` 문구군에 없어
 `startDialog.patchConflict`(「다른 사람이 먼저 수정했습니다…」)를 재사용했다. 뜻이 정확히
 같고 하드코딩을 만들지 않기 위한 선택이다. **후속으로 전용 키를 신설**하는 편이 낫다.
+
+### I-12. ★ 배선 후 실브라우저에서 드러난 결함 — 공지가 거짓말을 했다 (T9 발견 · T12 봉합)
+
+**유닛으로는 잡히지 않고 실브라우저에서만 보인 결함이다.**
+
+```
+키보드로 카드를 집고 바로 놓기 (Space → Space)
+  ⇒ 요청 0건 · 카드 위치 그대로       ← T-KB-3 가드 정상 작동
+  ⇒ 낭독은 "순서를 변경했습니다."      ← 거짓말
+```
+
+원인. 이동-0 가드가 `use-backlog-drag.ts` 안에만 있어 `lib/backlog-announcements.ts` 가 그 사실을
+모른다. **FR-9 가 못박은 「공지와 mutation 이 어긋나지 않는다」 원칙에서 이동-0 판정만 빠져 있었다.**
+
+**봉합의 핵심 통찰 — 제시된 두 선택지가 배타적이지 않다.**
+`Announcements.onDragEnd` 는 `{ active, over }` 만 받는데(`@dnd-kit/core@6.3.1`
+`Accessibility/types.d.ts:10`), **그 둘만으로는 원리적으로 구별할 수 없다** — 이동-0 드롭과
+「칸 아래 빈 공간에 정상 드롭」이 **같은 `over`(칸 droppable)** 를 낸다. 따라서 전송 경로는 우회가 없다.
+
+→ **판정 위치는 ①**(`resolveOverToDropZone` 이 `isZeroMove` 를 받아 `null` 반환),
+**전송은 ②의 최소형**(`useBacklogDrag` 가 안정 참조 getter 를 내보냄). 전송하는 값은 raw delta 가
+아니라 **이미 계산된 boolean** 이라 두 소비자가 다른 답을 낼 구조적 여지가 없다.
+
+**`resolveBacklogDropAction` 이 아니라 `resolveOverToDropZone` 을 고른 실측 근거.**
+`BacklogDropInput` 에 required 필드를 넣으면 `lib/backlog-keyboard-coordinates.test.ts:308` 이 깨지는데
+그 파일은 허용 범위 밖이었다. `resolveOverToDropZone` 은 호출부가 전부 범위 안이라 3번째 인자를
+**required** 로 둘 수 있고, **required 여야 tsc 가 두 소비자 모두에게 전달을 강제한다** —
+optional 로 두면 가드가 조용히 공허해지는 `two-lists-never-check-each-other` 양식이 된다.
+
+**부수 봉합.** 마우스 zero-move 가드도 함께 열었다. 마우스도 5px 임계를 넘긴 뒤 원위치로 돌아와
+놓으면 delta 0 이 되고, 그때 카드 자신의 droppable 이 `disabled: isDragging` 이라 칸으로 폴백해
+**카드가 맨 뒤로 날아간다**. T9 이 조건 제거 후 185/185 초록임을 실측했고 T12 가 반영했다.
+
+**증인 — 봉합 전 상태를 일부러 재현했다.** 배선만 끊자 원 결함이 그대로 재현됐다
+(`"순서를 변경했습니다."` + 쓰기 요청 0건). 봉합 후 라이브 리전 실측.
+
+```
+[light] 집자마자 놓기 → "변경 사항이 없습니다."   · 쓰기 요청 0건 · 순서 유지
+[light] 실제 이동    → "순서를 변경했습니다."     · PATCH /issues/ATLAS-5/rank 1건   ← 짝 단언
+[dark]  집자마자 놓기 → "변경 사항이 없습니다."
+```
+
+### I-13. 인계 과장 1건과 「영구 공허」 단언 발견 (T9 실측)
+
+- **「`vi.mock` 팩토리에 `useUpdateSprint` 를 안 넣으면 41건 통째 red」는 과장이었다.**
+  실측은 **2건**이다 — 그 export 는 시작 다이얼로그가 **마운트될 때만** 닿는다.
+  나머지 지적(어느 2건이 깨지고 어느 2건이 안 깨지는가)은 정확했다
+- **배선 교체가 기존 단언 2건을 「영구 공허」로 만들었다.** 권한 테스트의
+  `expect(mockStartSprintMutate).not.toHaveBeenCalled()` 는 이제 **그 `.mutate` 를 부르는 코드가
+  존재하지 않아** 무엇을 해도 통과한다. 실질 단언(「다이얼로그가 열리지 않는다」 + `mutateAsync` 스파이)으로 교체했다.
+  **봉합이 가드를 눈멀게 하는 양식**(`seal-blinds-existing-guard`)의 재현이다
+
+### I-14. 남은 관찰 3건 (결함 아님 · 판단 필요)
+
+1. **`lib/backlog-announcements.ts` 219줄** — NFR-9 의 「새 lib 200줄 이내」 초과. **선재**다
+   (T12 직전 커밋 `aa8a46755` 실측 201줄). REFACTOR 로 223→219 까지 줄였으나 분할은 범위 밖이었다.
+   **NFR 측정 시 판단 필요**
+2. **dnd-kit 호출 순서 의존** — 「`DndContext` 의 `onDragEnd` prop 이 접근성 모니터보다 먼저」는
+   고정 버전 소스(`core.esm.js:3164-3171`)와 브라우저로 확인했지만 `BacklogBoard.test.tsx` 가
+   `DndContext` 를 mock 하므로 **유닛으로는 증명되지 않는다.** 가정을 주석으로 명시했다.
+   깨져도 mutation 은 정확하고 공지만 한 박자 밀린다(= 봉합 전과 동급, 더 나빠지지 않음)
+3. **섹션 경계를 넘는 데 방향키가 실제로는 2회** 필요하다 — 1회째를 컨테이너 자동 스크롤이
+   흡수한다. T11 의 순수 함수 단언(「1회로 경계를 넘는다」)은 함수 수준에서 참이지만 화면에서는 다르다.
+   기능은 정상이라 결함으로 올리지 않는다
