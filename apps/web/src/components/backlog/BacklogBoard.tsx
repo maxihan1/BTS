@@ -113,7 +113,15 @@ export function BacklogBoard({
   }
 
   // 조회 실패 — 재시도 수단이 없으면 사용자는 새로고침 말고 탈출구가 없다 (ActiveProjectGate 선례).
-  // ★순서 고정. `isLoading` **다음**이다 — 앞에 두면 재조회 중에도 에러 화면이 깜빡인다.
+  //
+  // 순서는 `isLoading` **다음**으로 둔다. 다만 「앞에 두면 재조회 중에도 에러 화면이 깜빡인다」는
+  // 근거는 **거짓이다** — `isLoading = isPending && isFetching` 이고 `isPending`·`isError` 는
+  // 같은 `status` 열거의 배타 값이라 **동시에 참이 될 수 없다**
+  // (@tanstack/query-core@5.100.11 `build/modern/queryObserver.js:308-310`).
+  // 즉 순서를 바꿔도 현재 관측 가능한 차이가 없고, 그래서 이 순서만을 봉인하는 테스트도
+  // 존재할 수 없다(도달 불가능한 픽스처를 지어내야 하므로). 순서를 고정하는 것은
+  // 「로딩이 먼저」라는 의도를 코드에 남기기 위함이 전부다.
+  // 도달 가능한 로딩 상태 자체는 `BacklogBoard.test.tsx` 의 T4-3 이 잰다 (FR-8·E8).
   if (isError) {
     return (
       <div role="alert" className="flex flex-col items-start gap-3 p-8 text-destructive">

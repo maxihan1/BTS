@@ -206,15 +206,27 @@ vi.mock('@/hooks/use-backlog', () => ({
 // `useQueries` 의 `combine` 을 써서 결과가 안 바뀌면 같은 참조를 돌려준다.
 // 매 렌더 새 객체를 만들면 `BacklogBoard` 의 `useMemo` 가 그 전제 위에서만 성립한다는
 // 사실이 여기서 가려진다.
+//
+// ★인자를 **`vi.fn` 으로 기록**한다. 기록하지 않으면 `useUsersByIdsChunked(assigneeIds)` 를
+// `useUsersByIdsChunked([])` 로 바꿔도 이 파일이 전량 초록으로 남는다(실측: 유닛 118/118 통과,
+// E2E S9 만 red). 훅 배선(FR-2·NFR-1)을 재는 것은 T3-1 의 호출 인자 단언뿐이다.
+//
+// ★반환값은 스파이의 **구현이 아니라** `mockUsersResult` 가 쥔다 — 스파이는 기록만 한다.
+// 반환을 구현에 얹으면 mock 초기화 방식이 바뀌는 날 반환값까지 함께 사라진다.
 interface ChunkedUsersResult {
   data: UserSummary[]
-  isError: boolean
 }
-const NO_USERS: ChunkedUsersResult = { data: [], isError: false }
+const NO_USERS: ChunkedUsersResult = { data: [] }
 let mockUsersResult: ChunkedUsersResult = NO_USERS
 
+/** `useUsersByIdsChunked` 가 실제로 받은 id 목록 — T3-1 이 단언한다 */
+const mockUseUsersByIdsChunked = vi.fn<(ids: string[]) => void>()
+
 vi.mock('@/hooks/use-users', () => ({
-  useUsersByIdsChunked: () => mockUsersResult,
+  useUsersByIdsChunked: (ids: string[]) => {
+    mockUseUsersByIdsChunked(ids)
+    return mockUsersResult
+  },
 }))
 
 // FR-UX-09 F3 — 생성 모달을 스텁으로 둔다.
@@ -985,10 +997,19 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 조회에 성공했을 때 돌아오는 사용자 — bob 은 displayName 이 없어 username 으로 떨어진다. */
-const RESOLVED_USERS: UserSummary[] = [
-  { id: ALICE_ID, username: 'alice', displayName: '김앨리스', email: null },
-  { id: BOB_ID, username: 'bob', displayName: null, email: null },
-]
+const ALICE_USER: UserSummary = {
+  id: ALICE_ID,
+  username: 'alice',
+  displayName: '김앨리스',
+  email: null,
+}
+const BOB_USER: UserSummary = {
+  id: BOB_ID,
+  username: 'bob',
+  displayName: null,
+  email: null,
+}
+const RESOLVED_USERS: UserSummary[] = [ALICE_USER, BOB_USER]
 
 describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
   beforeEach(() => {
@@ -996,25 +1017,34 @@ describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
     mockUsersResult = NO_USERS
   })
 
-  it('T3-1: 담당자가 있는 카드는 이니셜 아바타를 표시한다', async () => {
-    mockUsersResult = { data: RESOLVED_USERS, isError: false }
+  it('T3-1: 담당자가 있는 카드는 이니셜 아바타를 표시하고, 수집한 id 가 조회 훅에 그대로 넘어간다', async () => {
+    mockUsersResult = { data: RESOLVED_USERS }
     renderBoard()
 
     expect(await screen.findByLabelText('담당자: 김앨리스')).toBeInTheDocument()
     // 스프린트 칸도 같은 Map 을 받아야 한다 — 한쪽만 배선하는 반쪽 봉합을 막는다
     expect(screen.getByLabelText('담당자: bob')).toBeInTheDocument()
+
+    // ★배선 단언 (FR-2·NFR-1). 화면 단언만으로는 `useUsersByIdsChunked([])` 로 바꿔도
+    //   `mockUsersResult` 가 이름을 계속 돌려줘 전부 초록이 된다 — 실제 뮤테이션으로 확인된
+    //   구멍이다. ALICE 는 백로그, BOB 은 스프린트에서 나오므로 이 한 줄이 「두 칸을 모두
+    //   훑었는가」까지 함께 잰다.
+    //   ※ 중복 제거 자체는 순수 함수 쪽 `backlog-assignee-names.test.ts` T1-1 이 봉인한다.
+    expect(mockUseUsersByIdsChunked).toHaveBeenCalledWith([ALICE_ID, BOB_ID])
   })
 
   it('T3-2: 미배정 이슈는 "미배정" 텍스트를 유지한다', async () => {
-    mockUsersResult = { data: RESOLVED_USERS, isError: false }
+    mockUsersResult = { data: RESOLVED_USERS }
     renderBoard()
 
     // 픽스처의 미배정 이슈는 3건(ATLAS-1·2·3)이라 단건 조회는 strict mode 로 깨진다
     expect(await screen.findAllByText(backlogLabels.unassigned)).toHaveLength(3)
   })
 
-  it('T3-3: 사용자 조회가 실패해도 카드는 렌더된다 (fail-soft, 스펙 S8)', async () => {
-    mockUsersResult = { data: [], isError: true }
+  it('T3-3: 사용자 조회가 전량 실패해도 카드는 렌더된다 (fail-soft, 스펙 S8·FR-7)', async () => {
+    // 훅은 실패 표면을 내보내지 않는다 — 실패한 묶음은 결과에서 빠질 뿐이라
+    // 전량 실패는 소비처에게 **빈 `data`** 로 보인다. 그래서 픽스처도 그 모양이다.
+    mockUsersResult = { data: [] }
     renderBoard()
 
     expect(await screen.findByText('담당자 있는 백로그 이슈')).toBeInTheDocument()
@@ -1022,6 +1052,22 @@ describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
     expect(
       screen.getAllByLabelText(backlogLabels.unknownAssigneeAriaLabel),
     ).toHaveLength(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('T3-4: 묶음 일부만 실패하면 풀린 이름과 `?` 가 공존한다 (부분 실패)', async () => {
+    // 담당자가 50명을 넘으면 조회가 2묶음 이상으로 갈라지고 **한쪽만** 실패할 수 있다.
+    // 성공한 묶음의 `data` 는 그대로 합쳐지므로 이 상태가 실제로 도달 가능하다.
+    // 여기서 전 카드가 `?` 로 떨어지면 반쪽 봉합이다 — T3-3(전량 실패)만으로는 안 잡힌다.
+    mockUsersResult = { data: [ALICE_USER] }
+    renderBoard()
+
+    expect(await screen.findByLabelText('담당자: 김앨리스')).toBeInTheDocument()
+    expect(screen.queryByLabelText('담당자: bob')).toBeNull()
+    // 이름을 못 받은 BOB 카드 1건만 `?` 다
+    expect(
+      screen.getAllByLabelText(backlogLabels.unknownAssigneeAriaLabel),
+    ).toHaveLength(1)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
@@ -1047,6 +1093,15 @@ const TRUNCATED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: true 
  * 픽스처를 `data: undefined` 로 두면 만들어질 수 없는 상태를 지키는 가짜 그린이 된다.
  */
 const CACHED_VIEW: BacklogView = { backlog: [], sprints: [], truncated: false }
+
+/**
+ * 이슈가 하나도 없는 정상 조회 (스펙 E7).
+ *
+ * `CACHED_VIEW` 와 값은 같지만 **재는 대상이 다르다** — 이쪽은 「조회는 성공했는데 이슈가 0건」이고,
+ * 저쪽은 「이전 성공분이 캐시에 남은 채 재조회가 실패」다. 한 상수로 합치면 둘 중 하나가 바뀌는 날
+ * 다른 하나가 조용히 따라 바뀐다.
+ */
+const EMPTY_VIEW: BacklogView = { backlog: [], sprints: [], truncated: false }
 
 describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () => {
   beforeEach(() => {
@@ -1095,15 +1150,19 @@ describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () 
     expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
   })
 
-  it('T4-3: 로딩 중에는 에러 블록이 뜨지 않는다 (스펙 E8 — 분기 순서 고정)', () => {
-    // 두 값이 동시에 true 인 경로는 실제 TanStack Query 에 없다. 그럼에도 이렇게 두는 이유는
-    // **분기 순서 자체를 고정**하는 것이 이 단언의 목적이기 때문이다 — `isError` 를
-    // `isLoading` 앞으로 옮기면 오직 여기서만 깨진다.
-    mockBacklogQueryOverride = { data: undefined, isLoading: true, isError: true }
+  it('T4-3: 로딩 중에는 로딩 표시만 뜨고 에러 블록은 없다 (스펙 FR-8·E8)', () => {
+    // ★`isLoading: true` + `isError: true` 는 **만들어질 수 없는 조합**이라 픽스처에 쓰지 않는다 —
+    //   `isLoading = isPending && isFetching` 이고 `isPending`·`isError` 는 같은 `status` 열거의
+    //   배타 값이다 (@tanstack/query-core@5.100.11 `build/modern/queryObserver.js:308-310`).
+    //   그 조합을 지키는 단언은 도달 불가능한 상태를 지키는 가짜 그린이다 — T4-2b 가 같은 이유로
+    //   이미 한 번 교정된 자리다.
+    //   따라서 이 테스트가 재는 것은 「분기 순서」가 아니라 **도달 가능한 로딩 상태**이며,
+    //   FR-8(로딩 표시 유지)과 엣지 E8 의 유일한 커버리지다.
+    mockBacklogQueryOverride = { data: undefined, isLoading: true, isError: false }
     renderBoard()
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByLabelText('로딩 중')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('T4-4: 정상 조회 + truncated 일 때 경고 배너는 1개뿐이다 (스펙 E10 상호 배타)', async () => {
@@ -1111,6 +1170,18 @@ describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () 
     renderBoard()
 
     expect(await screen.findAllByRole('alert')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
+  })
+
+  it('T4-5: 이슈가 0건이어도 빈 칸을 그린다 — 에러가 아니다 (스펙 E7)', async () => {
+    // T4-4 는 `truncated: true` 라 **경고가 뜨는** 쪽을 잰다. 이슈만 없는 정상 조회는
+    // 그 반대편이고, 여기가 비면 사용자는 「고장」과 「할 일 없음」을 구별할 수 없다.
+    mockBacklogQueryOverride = { data: EMPTY_VIEW, isLoading: false, isError: false }
+    renderBoard()
+
+    expect(await screen.findByText('백로그')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByLabelText('로딩 중')).toBeNull()
     expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
   })
 })
