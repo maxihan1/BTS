@@ -15,8 +15,11 @@
 //        (F13 코드리뷰 BLOCKER-1). 상단바 제출 경로의 증인은 아래 B4/B3 와
 //        `saved-filters.spec.ts` · `TopBar.test.tsx` 다.
 //     · B4/B3 — 상단바 전역 검색 입력창(role=searchbox, aria-label="전역 검색")에 자연어를
-//       넣고 Enter 제출 → SPA 내부 이동 → /search 진입 (FR-UX-12 F13). 이 둘은 overlay
-//       하이라이트를 재는 시나리오라 마운트 조회가 단언을 가리지 않는다.
+//       넣고 Enter 제출 → SPA 내부 이동 → /search 진입 (FR-UX-12 F13). 이 둘의 **고유
+//       산출물은 overlay 하이라이트 span** 이고 그건 `textarea.fill` 만으로 성립하므로
+//       마운트 조회의 영향을 받지 않는다. 다만 B4 말미의 결과 카드 단언은 씨앗 조회로 이미
+//       참이라 제출을 증명하지 못한다 — 그 몫은 S1 이 진다(실측 2026-08-05: `fillAndSearch`
+//       의 제출 클릭을 무력화하면 S1/S2/S4 는 red, B4/B3 는 green).
 //     (reload 금지 — MSW 핸들러가 ServiceWorker 기반이라 reload 시 시나리오 플래그 리셋)
 //   - MSW 시나리오 토글: addInitScript + localStorage.setItem 패턴 (goto 전 등록)
 //     플래그 키: E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario' (search-handlers.ts)
