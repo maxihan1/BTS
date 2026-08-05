@@ -14,6 +14,7 @@ import {
   createSprint,
   startSprint,
   completeSprint,
+  updateSprint,
 } from './backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -469,5 +470,69 @@ describe('completeSprint — POST /api/v1/sprints/{id}/complete', () => {
     const result = await completeSprint(SPRINT_ID)
     expect(result.sprintId).toBe(SPRINT_ID)
     expect(result.status).toBe('COMPLETED')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BL-12. updateSprint — PATCH /api/v1/sprints/{id} (FR-UX-13 F15 FR-4)
+//
+// 3-state partial 이 이 함수의 존재 이유다. 「미전송 = 무변경」과 「명시 null = 값 삭제」가
+// 서로 다른 뜻이므로, 바뀌지 않은 필드를 습관적으로 실어 보내면 남의 수정을 덮어쓴다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('updateSprint — PATCH /api/v1/sprints/{id}', () => {
+  it('T-BL-12a: 바뀐 필드 + version 만 body 에 담아 PATCH 로 보낸다', async () => {
+    let capturedBody: unknown = null
+    let capturedMethod = ''
+
+    server.use(
+      http.patch('/api/v1/sprints/:sprintId', async ({ request, params }) => {
+        expect(params['sprintId']).toBe(SPRINT_ID)
+        capturedMethod = request.method
+        capturedBody = await request.json()
+        return HttpResponse.json({ data: { ...sprintMetaFixture, endDate: '2026-07-20', version: 2 } })
+      }),
+    )
+
+    const result = await updateSprint(SPRINT_ID, { endDate: '2026-07-20', version: 1 })
+
+    expect(capturedMethod).toBe('PATCH')
+    const body = capturedBody as Record<string, unknown>
+    expect(body['endDate']).toBe('2026-07-20')
+    expect(body['version']).toBe(1)
+    // 바뀌지 않은 필드는 키 자체가 없어야 한다 — 실어 보내면 남의 수정을 덮어쓴다.
+    expect(Object.prototype.hasOwnProperty.call(body, 'name')).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(body, 'goal')).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(body, 'startDate')).toBe(false)
+    expect(result.version).toBe(2)
+    expect(result.endDate).toBe('2026-07-20')
+  })
+
+  it('T-BL-12b: 명시 null 은 body 에 그대로 실린다 (값 삭제 — 미전송과 다른 뜻)', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.patch('/api/v1/sprints/:sprintId', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ data: { ...sprintMetaFixture, goal: null, version: 2 } })
+      }),
+    )
+
+    await updateSprint(SPRINT_ID, { goal: null, version: 1 })
+
+    const body = capturedBody as Record<string, unknown>
+    expect(Object.prototype.hasOwnProperty.call(body, 'goal')).toBe(true)
+    expect(body['goal']).toBeNull()
+  })
+
+  it('T-BL-12c: 비-2xx 응답은 status 를 담은 ApiError 로 throw 된다 (409 분기 판별용)', async () => {
+    server.use(
+      http.patch('/api/v1/sprints/:sprintId', () =>
+        HttpResponse.json({ errorCode: 'SPRINT_VERSION_CONFLICT' }, { status: 409 }),
+      ),
+    )
+
+    await expect(updateSprint(SPRINT_ID, { goal: '새 목표', version: 1 })).rejects.toMatchObject({
+      status: 409,
+    })
   })
 })

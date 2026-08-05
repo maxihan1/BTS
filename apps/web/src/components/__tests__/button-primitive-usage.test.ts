@@ -1,5 +1,5 @@
 // 원시 <button> 잔존을 사유 주석 기준으로 전수 통제하는 회귀 가드 (FR-UX-06 PR22 T6 배치1 + T7 배치2)
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
@@ -75,6 +75,29 @@ const BATCH2_FILES = [
   'routes/inbox.tsx',
   'routes/projects.$projectKey.sprints.$sprintId.burndown.tsx',
 ] as const
+
+/** `components/backlog/` 디렉토리 경로 (SRC_ROOT 상대) */
+const BACKLOG_DIR = 'components/backlog'
+
+/**
+ * `components/backlog/` 의 프로덕션 컴포넌트 전수를 **디렉토리에서 도출**한다 (FR-UX-13 F15 FR-19).
+ *
+ * ★왜 목록을 적지 않나.
+ * FR-19 의 원래 요구는 "신규 다이얼로그 2종의 경로를 `BATCH2_FILES` 에 추가하라"였다. 그런데
+ * 경로를 손으로 적는 방식은 **실제 파일명이 한 글자만 달라도 조용히 공허해진다** —
+ * 「두 목록이 서로를 검사하지 않는다」(`two-lists-never-check-each-other`)는 이 저장소의
+ * 지배적 결함 양식이고, 정확히 그 함정 때문에 FR-19 가 생겼다. 같은 함정을 되풀이하지 않으려고
+ * 이름을 적는 대신 도출한다. 이러면 파일명이 무엇이든 생기는 즉시 스캔 대상이 된다.
+ *
+ * 테스트 파일은 제외한다 — 목 스텁의 원시 `<button>`(`BacklogBoard.test.tsx`)은 프로덕션 UI 가
+ * 아니라 이 가드의 대상이 아니다.
+ */
+function backlogComponentFiles(): string[] {
+  return readdirSync(resolve(SRC_ROOT, BACKLOG_DIR))
+    .filter((f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx'))
+    .map((f) => `${BACKLOG_DIR}/${f}`)
+    .sort()
+}
 
 /** 스캔 대상 전수 = 배치1 + 배치2. 두 배치는 서로소여야 한다(아래 테스트가 검증). */
 const SCANNED_FILES = [...BATCH1_FILES, ...BATCH2_FILES] as const
@@ -248,6 +271,20 @@ describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수�
 
     // 이 파일의 트리거는 IN으로 교체됐으므로 코드상 원시 button은 0이어야 한다.
     expect(rawButtons(file)).toEqual([])
+  })
+
+  it('components/backlog 프로덕션 컴포넌트가 전부 스캔 대상이다 (신규 다이얼로그 자동 편입 — FR-UX-13 F15 FR-19)', () => {
+    const files = backlogComponentFiles()
+
+    // 비-공허. 디렉토리 읽기가 고장 나면 빈 배열이 되어 아래 차집합 단언이 조용히 통과한다.
+    expect(files).toContain('components/backlog/SprintColumn.tsx')
+    expect(files.length).toBeGreaterThan(1)
+
+    // 테스트 파일은 제외한다 — 목 스텁의 원시 <button>(BacklogBoard.test.tsx)은 프로덕션 UI 가 아니다.
+    expect(files).not.toContain('components/backlog/BacklogBoard.test.tsx')
+
+    const notScanned = files.filter((f) => !(SCANNED_FILES as readonly string[]).includes(f))
+    expect(notScanned).toEqual([])
   })
 
   it('남아 있는 모든 원시 <button>은 직전 줄에 PR22 OUT 사유 주석을 갖는다', () => {

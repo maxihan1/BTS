@@ -3,8 +3,10 @@ import { describe, it, expect } from 'vitest'
 import {
   resolveBacklogDropAction,
   computeNeighbors,
+  resolveOverToDropZone,
 } from './backlog-drag'
 import type { NeighborResult } from './backlog-drag'
+import type { BacklogView } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -252,5 +254,106 @@ describe('resolveBacklogDropAction', () => {
       })
       expect(action.kind).toBe('noop')
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveOverToDropZone — over 대상 → DropZoneData 공용 입력 구성 (FR-UX-13 F15 C-5)
+//
+// ★왜 공용화하나.
+// 드롭 판정 함수(`resolveBacklogDropAction`)를 같이 쓰는 것만으로는 부족하다. 실제 mutation 은
+// `use-backlog-drag.ts` 안에서 「칸 droppable 먼저, 없으면 카드 droppable + 대상 칸의 orderedKeys
+// 콜백」으로 **입력을 구성**해 왔는데, 공지 모듈(T4)이 그 구성을 복제하면 판정이 같아도 결과가
+// 어긋난다. 어긋남은 판정이 아니라 입력에서 난다 — 그래서 입력 구성 자체를 여기로 올린다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveOverToDropZone', () => {
+  const VIEW: BacklogView = {
+    backlog: [
+      { key: 'ATLAS-1', summary: '1', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'a', version: 0, epicKey: null },
+      { key: 'ATLAS-2', summary: '2', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'b', version: 0, epicKey: null },
+    ],
+    sprints: [
+      {
+        sprint: {
+          sprintId: SPRINT_A_ID,
+          name: '스프린트 A',
+          goal: null,
+          status: 'PLANNED',
+          startDate: null,
+          endDate: null,
+          version: 0,
+        },
+        issues: [
+          { key: 'ATLAS-4', summary: '4', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'a', version: 0, epicKey: null },
+          { key: 'ATLAS-5', summary: '5', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'b', version: 0, epicKey: null },
+        ],
+      },
+    ],
+    truncated: false,
+  }
+
+  /** dnd-kit `Over` 중 판정이 읽는 부분만 흉내 낸다 */
+  function over(data: Record<string, unknown> | undefined) {
+    return { data: { current: data } }
+  }
+
+  it('칸 droppable 이면 그 data 를 그대로 DropZoneData 로 만든다', () => {
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ context: 'sprint', sprintId: SPRINT_A_ID, orderedKeys: ['ATLAS-4', 'ATLAS-5'] }),
+    )
+    expect(zone).toEqual({
+      context: 'sprint',
+      sprintId: SPRINT_A_ID,
+      orderedKeys: ['ATLAS-4', 'ATLAS-5'],
+      dropIndex: 2,
+    })
+  })
+
+  it('카드 droppable 이면 view 에서 대상 칸의 orderedKeys 를 조회해 채운다', () => {
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ type: 'card', context: 'sprint', sprintId: SPRINT_A_ID, key: 'ATLAS-5' }),
+    )
+    expect(zone).toEqual({
+      context: 'sprint',
+      sprintId: SPRINT_A_ID,
+      orderedKeys: ['ATLAS-4', 'ATLAS-5'],
+      dropIndex: 1,
+    })
+  })
+
+  it('백로그 카드 droppable 이면 backlog 목록을 조회한다', () => {
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ type: 'card', context: 'backlog', key: 'ATLAS-1' }),
+    )
+    expect(zone).toEqual({
+      context: 'backlog',
+      sprintId: null,
+      orderedKeys: ['ATLAS-1', 'ATLAS-2'],
+      dropIndex: 0,
+    })
+  })
+
+  it('over 가 없으면 null 을 반환한다', () => {
+    expect(resolveOverToDropZone(VIEW, null)).toBeNull()
+    expect(resolveOverToDropZone(VIEW, undefined)).toBeNull()
+  })
+
+  it('view 가 없으면 카드 droppable 은 판정하지 못하고 null 을 반환한다', () => {
+    // 칸 droppable 은 data 에 orderedKeys 를 싣고 오므로 view 없이도 판정된다.
+    expect(
+      resolveOverToDropZone(undefined, over({ type: 'card', context: 'backlog', key: 'ATLAS-1' })),
+    ).toBeNull()
+    expect(
+      resolveOverToDropZone(undefined, over({ context: 'backlog', orderedKeys: ['ATLAS-1'] })),
+    ).not.toBeNull()
+  })
+
+  it('알 수 없는 data 는 null 을 반환한다', () => {
+    expect(resolveOverToDropZone(VIEW, over(undefined))).toBeNull()
+    expect(resolveOverToDropZone(VIEW, over({ context: 'unknown' }))).toBeNull()
   })
 })
