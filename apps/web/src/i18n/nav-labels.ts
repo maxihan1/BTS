@@ -38,8 +38,25 @@ export const navLabels = {
   /** board/backlog 뷰 전환 nav aria-label (🔒 e2e 계약, PR11 미접촉) */
   projectViewNav: '프로젝트 뷰 전환',
 
-  /** 상단바 검색 버튼 aria-label (🔒 e2e 계약, 상단바 단일) */
+  /** 상단바 검색 버튼 aria-label (🔒 e2e 계약) — F13 이후 AQL 검색 페이지 제출 버튼 전용 */
   search: '검색',
+
+  /**
+   * 상단바 전역 검색 **입력창** aria-label (🔒 e2e 계약, FR-UX-12 F13).
+   *
+   * ★`search`(`'검색'`)와 반드시 분리한다 — Jira 패리티 계약 §2 「`검색` 이름 분리」
+   * (Maxi 확정 2026-07-28 결정 4). 상단바=`전역 검색`, `검색`=AQL 페이지 제출 버튼 전용.
+   * 둘을 합치면 `getByRole` strict mode 에서 상단바와 검색 페이지가 동시에 잡힌다.
+   */
+  globalSearch: '전역 검색',
+
+  /**
+   * 상단바 전역 검색 입력창 placeholder (FR-UX-12 F13).
+   *
+   * ★`aria-label` 이 있으므로 접근성 이름은 `globalSearch` 가 이긴다 — placeholder 는
+   * 시각 힌트 전용이다. 여기에 `검색` 을 넣지 말 것(계약 §2 이름 분리를 흐린다).
+   */
+  globalSearchPlaceholder: '이슈 검색',
 
   /**
    * 사이드바 "내 작업" 링크 라벨 (FR-UX-08 PR-B, FR12/FR14).
