@@ -58,7 +58,7 @@ export interface BacklogBoardProps {
 /**
  * 백로그·스프린트 보드 루트.
  *
- * - useBacklog로 데이터를 로드하고 BacklogColumn + SprintColumn들을 배치한다.
+ * - useBacklog로 데이터를 로드하고 SprintColumn들 + BacklogColumn을 **세로로** 쌓는다 (F15 FR-1).
  * - DndContext + PointerSensor(distance:5)로 드래그를 관리한다.
  * - onDragEnd에서 resolveBacklogDropAction으로 시나리오를 판정해 mutation을 호출한다.
  * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
@@ -175,14 +175,13 @@ export function BacklogBoard({
         onDragEnd={drag.handleDragEnd}
         accessibility={undefined}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          <BacklogColumn
-            issues={backlog}
-            assigneeNames={assigneeNames}
-            isOver={drag.overDroppableId === 'backlog'}
-            canCreateIssue={canCreateIssue}
-            onCreateIssue={createIssue.openForBacklog}
-          />
+        {/* 세로 스택 (FR-UX-13 F15 FR-1) — 가로 스크롤을 없애고 섹션을 위에서 아래로 쌓는다.
+            ★스프린트가 먼저, 백로그가 맨 마지막이다. 「지금 무엇을 하는가(스프린트)」가
+            「나중에 무엇을 할까(백로그)」보다 위에 있어야 한다 (Jira 백로그 화면과 같은 순서).
+            ★스프린트 사이의 정렬은 **하지 않는다** — 백엔드 `sprintComparator` 가
+            ACTIVE → PLANNED → COMPLETED, 그다음 startDate 로 이미 정렬해 내려준다.
+            여기서 다시 정렬하면 정렬 규칙이 두 벌로 갈라진다. */}
+        <div className="flex flex-col gap-3">
           {sprints.map(({ sprint, issues }) => (
             <SprintColumn
               key={sprint.sprintId}
@@ -201,6 +200,14 @@ export function BacklogBoard({
               onCreateIssue={createIssue.openForSprint(sprint.sprintId)}
             />
           ))}
+          <BacklogColumn
+            projectKey={projectKey}
+            issues={backlog}
+            assigneeNames={assigneeNames}
+            isOver={drag.overDroppableId === 'backlog'}
+            canCreateIssue={canCreateIssue}
+            onCreateIssue={createIssue.openForBacklog}
+          />
         </div>
       </DndContext>
 
