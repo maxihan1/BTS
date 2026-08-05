@@ -91,6 +91,22 @@ function writeStoredCollapsed(projectKey: string, sectionIds: readonly string[])
   }
 }
 
+/**
+ * 접힘 목록의 기준값을 결정한다 — 스토어에 있으면 그 값, 없으면 저장값.
+ *
+ * 읽기(훅)와 쓰기(`toggle`)가 **같은 기준값**을 봐야 한다. 쓰기만 스토어를 보면
+ * 새로고침 직후 첫 토글이 저장돼 있던 다른 섹션의 접힘을 통째로 지운다.
+ *
+ * @param stored 스토어가 이미 들고 있는 목록. 아직 없으면 `undefined`
+ * @param projectKey 프로젝트 키
+ */
+function resolveCollapsed(
+  stored: readonly string[] | undefined,
+  projectKey: string,
+): readonly string[] {
+  return stored ?? readStoredCollapsed(projectKey)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,8 +150,7 @@ export interface BacklogCollapsedResult {
 export const useBacklogCollapsedStore = create<BacklogCollapsedStore>((set, get) => ({
   byProject: {},
   toggle: (projectKey: string, sectionId: string): void => {
-    // 아직 스토어에 없는 프로젝트는 저장값을 기준으로 반전해야 다른 섹션의 접힘이 지워지지 않는다
-    const current = get().byProject[projectKey] ?? readStoredCollapsed(projectKey)
+    const current = resolveCollapsed(get().byProject[projectKey], projectKey)
     const next = current.includes(sectionId)
       ? current.filter((id) => id !== sectionId)
       : [...current, sectionId]
@@ -160,10 +175,7 @@ export function useBacklogCollapsed(projectKey: string): BacklogCollapsedResult 
 
   // 스토어에 없는 프로젝트만 저장값을 읽는다. 첫 렌더에서 동기적으로 읽어야
   // 새로고침 직후 「펼침 → 접힘」으로 깜빡이지 않는다.
-  const collapsedIds = useMemo(
-    () => stored ?? readStoredCollapsed(projectKey),
-    [stored, projectKey],
-  )
+  const collapsedIds = useMemo(() => resolveCollapsed(stored, projectKey), [stored, projectKey])
 
   const isCollapsed = useCallback(
     (sectionId: string) => collapsedIds.includes(sectionId),
