@@ -21,6 +21,12 @@ describe('navLabels', () => {
       expect(navLabels.search).toBe('검색')
     })
 
+    it('F13 — globalSearch 는 상단바 입력창 전용 이름이고 search 와 다르다', () => {
+      expect(navLabels.globalSearch).toBe('전역 검색')
+      expect(navLabels.search).toBe('검색')
+      expect(navLabels.globalSearch).not.toBe(navLabels.search)
+    })
+
     // 아래 2건은 FR15-b 통합 과정에서 발견한 갭이다 — JSDoc이 🔒 e2e 계약으로 표시한
     // 6종 중 projectNav·breadcrumb만 값 고정 단언이 없었다(옛 `i18n/nav-labels.test.ts`는
     // breadcrumb 값만 보고 projectNav는 안 봤다).
