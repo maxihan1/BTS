@@ -20,10 +20,11 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 백로그 조회 실패 시나리오 강제 플래그. 'true' | null.
+ * 백로그 조회 실패 시나리오 강제 플래그. 'true' | {@link BACKLOG_FAIL_ONCE} | null.
  *
- * 'true'이면 `GET /api/v1/projects/:projectKey/backlog`가 500을 반환한다
+ * 'true'이면 `GET /api/v1/projects/:projectKey/backlog`가 **매번** 500을 반환한다
  * (FR-UX-13 F5 — "조회 실패 → 안내 + [다시 시도]" E2E 재현용).
+ * {@link BACKLOG_FAIL_ONCE}이면 **첫 요청만** 500이고 그 뒤로는 정상 응답이다.
  * 다른 엔드포인트(rank·스프린트)는 영향을 받지 않는다.
  *
  * 회귀 학습 e2e-msw-scenario-toggle-localstorage-flag 근거 — Playwright의 `page.route()`
@@ -33,6 +34,17 @@ import {
  * board-fixtures.ts LS_KEY_BOARD_CONFLICT를 그대로 미러한다.
  */
 export const LS_KEY_BACKLOG_FAIL = '__bts_e2e_backlog_fail'
+
+/**
+ * {@link LS_KEY_BACKLOG_FAIL}의 **1회성 실패** 값.
+ *
+ * 이 값이면 첫 `GET backlog`만 500을 주고 **플래그를 스스로 지운다** — 다음 요청부터 정상이다.
+ *
+ * 왜 필요한가. 'true'(계속 실패)로는 "[다시 시도] 클릭 → 정상 복귀"(FR-UX-13 F5 스펙 S7)를
+ * **구조적으로 잴 수 없다**. 재시도가 성공하는 경로가 자동 커버리지 없이 사람 눈확인에만
+ * 남아 있던 것을 이 값으로 닫는다. 'true'는 "재시도도 실패"(엣지 E9)용으로 그대로 유지된다.
+ */
+export const BACKLOG_FAIL_ONCE = 'once'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectKey/backlog
@@ -46,7 +58,8 @@ export const LS_KEY_BACKLOG_FAIL = '__bts_e2e_backlog_fail'
  * 프로젝트가 없으면 빈 백로그·스프린트를 반환한다.
  *
  * 조회 실패 토글 — E2E 시나리오용:
- *   localStorage 플래그 LS_KEY_BACKLOG_FAIL='true'이면 projectKey와 무관하게 500 반환.
+ *   localStorage 플래그 LS_KEY_BACKLOG_FAIL='true'이면 projectKey와 무관하게 매번 500 반환.
+ *   플래그가 BACKLOG_FAIL_ONCE이면 이번 요청만 500이고 플래그를 지운다(다음 요청은 정상).
  *
  * 성공 → 200 { data: BacklogView }
  * 실패 토글 시 → 500 ProblemDetail
@@ -55,7 +68,13 @@ const getBacklogHandler = http.get(
   '/api/v1/projects/:projectKey/backlog',
   ({ params }) => {
     // 조회 실패 토글 — E2E 시나리오 (e2e-msw-scenario-toggle-localstorage-flag)
-    if (globalThis.localStorage?.getItem(LS_KEY_BACKLOG_FAIL) === 'true') {
+    const failFlag = globalThis.localStorage?.getItem(LS_KEY_BACKLOG_FAIL)
+    if (failFlag === 'true' || failFlag === BACKLOG_FAIL_ONCE) {
+      // 1회성 토글은 응답 전에 스스로 해제한다 — 뒤이은 재조회가 성공해야
+      // "[다시 시도] → 정상 복귀"를 잴 수 있다. 'true'는 지우지 않으므로 계속 실패한다.
+      if (failFlag === BACKLOG_FAIL_ONCE) {
+        globalThis.localStorage?.removeItem(LS_KEY_BACKLOG_FAIL)
+      }
       return HttpResponse.json(
         { title: 'Internal Server Error', status: 500 },
         { status: 500 },
