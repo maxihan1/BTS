@@ -184,6 +184,14 @@ let freshBacklog: BacklogView = emptyFreshBacklog()
 /** DELETE 를 붙잡아 두는 게이트. null 이면 즉시 응답한다 (E19 용) */
 let deleteGate: Promise<void> | null = null
 
+/**
+ * `GET /api/v1/workflows` 를 붙잡아 두는 게이트. null 이면 즉시 응답한다.
+ *
+ * 백로그 화면은 워크플로우를 미리 부르지 않으므로 창을 여는 순간이 **매번 콜드 페치**다.
+ * 그 사이 상태 분류가 없다는 사실을 재려면 응답을 실제로 붙잡아 둬야 한다.
+ */
+let workflowGate: Promise<void> | null = null
+
 const del = (issueKey: string): string => `DELETE ${SOURCE_ID}/${issueKey}`
 const post = (targetId: string, issueKey: string): string => `POST ${targetId}/${issueKey}`
 const GET_BACKLOG = 'GET backlog'
@@ -204,7 +212,10 @@ const assignBodySchema = z.object({ issueKey: z.string() })
 function installHandlers(): void {
   server.use(
     // `test/handlers.ts` 는 refresh 하나뿐이다 — 이 파일이 쓰는 엔드포인트는 전부 여기서 깐다.
-    http.get('/api/v1/workflows', () => HttpResponse.json({ data: allWorkflowFixtures })),
+    http.get('/api/v1/workflows', async () => {
+      if (workflowGate !== null) await workflowGate
+      return HttpResponse.json({ data: allWorkflowFixtures })
+    }),
     http.delete('/api/v1/sprints/:sprintId/issues/:issueKey', async ({ params }) => {
       const issueKey = String(params['issueKey'])
       calls.push(`DELETE ${String(params['sprintId'])}/${issueKey}`)
@@ -239,6 +250,7 @@ beforeEach(() => {
   completeStatus = 200
   freshBacklog = emptyFreshBacklog()
   deleteGate = null
+  workflowGate = null
   installHandlers()
 })
 
@@ -606,13 +618,55 @@ describe('CompleteSprintDialog — E15 truncated 차단 정책', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CompleteSprintDialog — E14 워크플로우 조회 실패', () => {
-  it('전부 미완료로 보고 안내를 띄우되 다이얼로그를 막지 않는다', async () => {
+  /** 조회를 500 으로 끊는다 — `useWorkflows().data` 가 undefined 로 남는다 */
+  function breakWorkflows(): void {
     server.use(http.get('/api/v1/workflows', () => new HttpResponse(null, { status: 500 })))
+  }
+
+  it('전부 미완료로 보고 안내를 띄우되 제출은 잠근다', async () => {
+    breakWorkflows()
     renderDialog()
 
     expect(await screen.findByText(L.workflowLoadFailed)).toBeInTheDocument()
     expect(screen.getByText(L.summary(0, 4))).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(4)
+    // ★ 분류를 모르는 채 완료하면 `isIssueIncomplete` 가 전건을 미완료로 봐서
+    //   **완료된 이슈까지 전량 반출**된다. COMPLETED 스프린트에는 되돌려 넣을 수 없다(409).
+    expect(submitButton()).toBeDisabled()
+  })
+
+  it('그 상태에서 제출을 눌러도 이관·완료 요청이 한 건도 나가지 않는다', async () => {
+    breakWorkflows()
+    const { user, onOpenChange } = renderDialog()
+    await screen.findByText(L.workflowLoadFailed)
+
+    await user.click(submitButton())
+
+    // 잠갔다는 표시(`disabled`)만으로는 부족하다 — 실제로 무엇이 나갔는지를 잰다
+    expect(calls).toHaveLength(0)
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 워크플로우 로딩 중 — 콜드 페치가 끝나기 전에는 분류를 모른다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CompleteSprintDialog — 워크플로우 로딩 중 제출 차단', () => {
+  it('로딩 중에는 제출이 잠기고 눌러도 요청이 0건이며, 도착하면 같은 버튼이 열린다', async () => {
+    let release: () => void = () => undefined
+    workflowGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { user } = renderDialog()
+
+    expect(submitButton()).toBeDisabled()
+    await user.click(submitButton())
+    expect(calls).toHaveLength(0)
+
+    // 짝 — 분류가 도착하면 같은 버튼이 실제로 열린다. 위 단언이 「항상 잠김」이 아님을 증명한다
+    release()
+    await screen.findByText(L.summary(1, 3))
     expect(submitButton()).not.toBeDisabled()
   })
 })

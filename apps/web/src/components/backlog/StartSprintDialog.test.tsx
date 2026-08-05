@@ -10,7 +10,8 @@ import { toast } from 'sonner'
 import { server } from '@/test/server'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { issueCreateStrings } from '@/i18n/ko'
-import type { SprintMeta } from '@/api/backlog'
+import { backlogKeys } from '@/hooks/use-backlog'
+import type { BacklogView, SprintMeta } from '@/api/backlog'
 import { StartSprintDialog } from './StartSprintDialog'
 
 // sonner toast mock — E10 은 다이얼로그를 닫으므로 문구가 토스트로만 남는다 (BacklogBoard.test.tsx 선례)
@@ -67,8 +68,8 @@ type Outcome = 'ok' | 'conflict' | 'error'
 
 /** {@link installScenario} 옵션 */
 interface ScenarioOptions {
-  /** `PATCH` 결과. 기본 `'ok'` */
-  readonly patch?: Outcome
+  /** `PATCH` 결과를 **호출 순서대로** 지정한다. 모자라면 마지막 값을 반복한다. 기본 `['ok']` */
+  readonly patch?: readonly Outcome[]
   /** `start` 결과를 **호출 순서대로** 지정한다. 모자라면 마지막 값을 반복한다 */
   readonly start?: readonly Outcome[]
 }
@@ -108,14 +109,17 @@ function conflict(errorCode: string) {
 
 /** 시나리오 핸들러를 덮어쓴다. 전역 MSW 가 이미 떠 있으므로 `server.use` 로 얹는다 */
 function installScenario(options: ScenarioOptions = {}): void {
+  const patchPlan: readonly Outcome[] = options.patch ?? ['ok']
   const startPlan: readonly Outcome[] = options.start ?? ['ok']
 
   server.use(
     http.patch('/api/v1/sprints/:id', async ({ request }) => {
+      const attempt = calls.filter((call) => call === 'PATCH').length
       calls.push('PATCH')
       patchBodies.push((await request.json()) as Record<string, unknown>)
-      if (options.patch === 'error') return serverError()
-      if (options.patch === 'conflict') return conflict('SPRINT_VERSION_CONFLICT')
+      const outcome = patchPlan[Math.min(attempt, patchPlan.length - 1)] ?? 'ok'
+      if (outcome === 'error') return serverError()
+      if (outcome === 'conflict') return conflict('SPRINT_VERSION_CONFLICT')
       storedSprint = applyPatch(storedSprint, patchBodies[patchBodies.length - 1] ?? {})
       return HttpResponse.json({ data: storedSprint })
     }),
@@ -143,11 +147,29 @@ interface RenderResult {
   readonly invalidateSpy: ReturnType<typeof vi.spyOn>
 }
 
-function renderDialog(sprint: SprintMeta = EMPTY_SPRINT): RenderResult {
+/**
+ * 백로그 캐시에 심을 뷰.
+ *
+ * ★ `replaceBaselineFromCache` 는 `getQueryData` 가 값을 돌려줘야 비로소 기준값 교체까지
+ *   실행된다. 심지 않으면 조기 반환이라 **프로덕션에서만 도달하는 분기**가 되어,
+ *   테스트가 아무리 초록이어도 그 경로를 한 번도 지나지 않는다.
+ */
+function backlogViewOf(sprint: SprintMeta): BacklogView {
+  return { backlog: [], sprints: [{ sprint, issues: [] }], truncated: false }
+}
+
+/**
+ * @param sprint 다이얼로그에 넘길 대상 스프린트 (초기값의 출처)
+ * @param cachedSprint 백로그 캐시가 들고 있는 **서버 최신** 스프린트. 주면 캐시에 심는다
+ */
+function renderDialog(sprint: SprintMeta = EMPTY_SPRINT, cachedSprint?: SprintMeta): RenderResult {
   const onOpenChange = vi.fn()
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  if (cachedSprint !== undefined) {
+    queryClient.setQueryData(backlogKeys.detail(PROJECT_KEY), backlogViewOf(cachedSprint))
+  }
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
   function Harness(): JSX.Element {
@@ -325,7 +347,7 @@ describe('StartSprintDialog — T-DL-4 재시도', () => {
 describe('StartSprintDialog — PATCH 실패 갈래', () => {
   it('PATCH 가 500 이면 start 를 보내지 않고 「저장하지 못했습니다」 를 띄운다', async () => {
     const user = userEvent.setup()
-    installScenario({ patch: 'error' })
+    installScenario({ patch: ['error'] })
     renderDialog()
 
     setField(L.goalLabel, '목표 A')
@@ -339,7 +361,7 @@ describe('StartSprintDialog — PATCH 실패 갈래', () => {
 
   it('E9. PATCH 가 409 면 충돌 문구를 띄우고 start 를 보내지 않는다', async () => {
     const user = userEvent.setup()
-    installScenario({ patch: 'conflict' })
+    installScenario({ patch: ['conflict'] })
     const { invalidateSpy } = renderDialog()
 
     setField(L.goalLabel, '목표 A')
@@ -350,6 +372,37 @@ describe('StartSprintDialog — PATCH 실패 갈래', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     // 최신 값을 받아오지 않으면 사용자가 「재확인」할 대상이 없다
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['backlog', PROJECT_KEY] })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E9 — 409 뒤에도 **내가 친 값**이 남는다 (입력 파기 금지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StartSprintDialog — E9 충돌 이후 입력 보존', () => {
+  /** 남이 먼저 고쳐 서버가 들고 있는 값. `version` 이 올랐고 목표도 다르다 */
+  const SERVER_SIDE: SprintMeta = { ...EMPTY_SPRINT, version: 9, goal: '남의 목표' }
+
+  it('기준값만 최신으로 갈아끼우고 폼 값은 그대로 둔다 — 재시도가 내 값을 다시 보낸다', async () => {
+    const user = userEvent.setup()
+    installScenario({ patch: ['conflict', 'ok'] })
+    storedSprint = { ...SERVER_SIDE }
+    renderDialog(EMPTY_SPRINT, SERVER_SIDE)
+
+    setField(L.goalLabel, '내 목표')
+    await user.click(submitButton())
+
+    expect(await screen.findByText(L.patchConflict)).toBeInTheDocument()
+    // ★ 폼을 서버 값으로 덮으면 재시도의 변경분이 0이 되어(`buildPatchBody` → null)
+    //   PATCH 를 건너뛰고 **남의 값으로** 스프린트가 시작된다 — 입력의 조용한 파기다
+    expect(screen.getByLabelText(L.goalLabel)).toHaveValue('내 목표')
+
+    await user.click(screen.getByRole('button', { name: backlogLabels.retry }))
+
+    await waitFor(() => expect(calls).toEqual(['PATCH', 'PATCH', 'START']))
+    // 짝 단언 — `version` 이 9(서버 최신)면 기준값 교체는 실제로 일어났고,
+    // `goal` 이 '내 목표'면 그러면서도 입력은 살아남았다. 둘 중 하나만으로는 증명이 안 된다
+    expect(patchBodies[1]).toEqual({ version: 9, goal: '내 목표' })
   })
 })
 
