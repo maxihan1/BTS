@@ -275,14 +275,19 @@ export function StartSprintDialog({
     await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
   }
 
-  /** 409(E9) 이후 최신 값으로 기준값을 교체한다. 캐시에 없으면 그대로 둔다 */
+  /**
+   * 409(E9) 이후 **기준값(`version` 포함)만** 최신으로 교체한다. 캐시에 없으면 그대로 둔다.
+   *
+   * ★ 폼 값은 절대 덮지 않는다. 서버 값으로 덮으면 `buildPatchBody` 의 변경분이 0이 되어
+   *   `null` 을 반환하고, 「다시 시도」가 `PATCH` 를 건너뛴 채 곧장 `start` 로 간다 —
+   *   사용자가 친 기간·목표는 사라지고 **남의 값으로 스프린트가 시작된다**. 되돌릴 수 없다.
+   *   기준값만 갈아끼우면 재시도가 사용자의 값을 최신 `version` 으로 다시 보낸다.
+   */
   async function replaceBaselineFromCache(): Promise<void> {
     await invalidateBacklog()
     const view = queryClient.getQueryData<BacklogView>(backlogKeys.detail(projectKey))
     const fresh = view?.sprints.find((entry) => entry.sprint.sprintId === sprint.sprintId)?.sprint
-    if (fresh === undefined) return
-    setBaseline(fresh)
-    setValues(toFormValues(fresh))
+    if (fresh !== undefined) setBaseline(fresh)
   }
 
   /** 1단계. 성공하면 기준값을 응답으로 갈아끼우고 `true` 를 반환한다 */

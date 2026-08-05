@@ -427,7 +427,16 @@ export function CompleteSprintDialog({
   const moveTargets = buildMoveTargets(allSprints, sprint.sprint.sprintId)
   const blockedByTruncation = isSubmitBlockedByTruncation(truncated)
   const blockedByPermission = !canReorderIssue && flow.view.rows.length > 0
-  const showWorkflowWarning = categoryMap.unavailable && !workflows.isPending
+  // ★ 상태 분류를 모르면 완료를 막는다 — `truncated` 와 **같은 처방**이다 (Maxi 확정 2026-08-05).
+  //   `isIssueIncomplete` 는 분류가 없으면 안전측으로 전건을 미완료로 본다(FR-7). 그 상태로
+  //   제출하면 **완료된 이슈까지 전량** 백로그로 반출되고, 되돌릴 방법이 없다 —
+  //   `assignIssue` 가 `STATUS <> 'COMPLETED'` 조건부라 완료된 스프린트에는 다시 넣지 못하고(409),
+  //   벨로시티가 `sprint_issues` 멤버십으로 계산되므로 그 스프린트의 성과 기록이 영구히 0이 된다.
+  //   백로그 화면은 `/workflows` 를 미리 부르지 않아 창을 여는 순간이 매번 콜드 페치다.
+  //   `unavailable` 은 `workflows.data === undefined` 와 동치라 **로딩 중과 조회 실패를 함께** 덮는다
+  //   (`isPending` 을 따로 OR 하면 도달 불가 분기가 생긴다).
+  const blockedByUnknownWorkflow = categoryMap.unavailable
+  const showWorkflowWarning = blockedByUnknownWorkflow && !workflows.isPending
   const showRetry = flow.failure?.kind === 'partial' || flow.failure?.kind === 'forbidden'
 
   /** E19 — 이관 진행 중에는 Esc·오버레이·닫기 버튼 어느 것으로도 닫히지 않는다 */
@@ -524,7 +533,12 @@ export function CompleteSprintDialog({
           )}
           <Button
             className="bg-success text-success-foreground hover:bg-success/90"
-            disabled={flow.running || blockedByTruncation || blockedByPermission}
+            disabled={
+              flow.running ||
+              blockedByTruncation ||
+              blockedByPermission ||
+              blockedByUnknownWorkflow
+            }
             onClick={() => handleSubmit(false)}
           >
             {flow.running ? L.pending : backlogLabels.completeSprint}
