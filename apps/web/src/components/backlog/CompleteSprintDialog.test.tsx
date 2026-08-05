@@ -635,6 +635,18 @@ describe('CompleteSprintDialog — E14 워크플로우 조회 실패', () => {
     expect(submitButton()).toBeDisabled()
   })
 
+  it('T15 — 안내가 「막았다」는 사실과 처방을 함께 말한다', async () => {
+    breakWorkflows()
+    renderDialog()
+
+    // 버튼만 잠그고 문구는 「모든 이슈를 미완료로 봅니다」까지만 말하면, 사용자는 왜
+    // 눌리지 않는지 알 수 없다 — 이 PR 이 BLOCKER 로 다뤄 온 「안내가 사실과 다름」이다.
+    const alert = await screen.findByText(L.workflowLoadFailed)
+    expect(alert).toHaveTextContent('완료할 수 없습니다')
+    expect(alert).toHaveTextContent('다시 시도')
+    expect(submitButton()).toBeDisabled()
+  })
+
   it('그 상태에서 제출을 눌러도 이관·완료 요청이 한 건도 나가지 않는다', async () => {
     breakWorkflows()
     const { user, onOpenChange } = renderDialog()
@@ -694,7 +706,12 @@ describe('CompleteSprintDialog — C-7 완료 직전 재검증', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
     // 목록이 최신 미완료로 갱신된다
     expect(await screen.findByText('ATLAS-77')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    // T15 — 전용 문구를 쓴다. 시작 다이얼로그의 409 문구를 빌려 쓰면 「입력하신 값은
+    // 그대로 두었으니」가 **입력 폼이 없는** 이 다이얼로그에서 거짓이 된다.
+    expect(screen.getByRole('alert')).toHaveTextContent(L.staleBlocked)
+    expect(
+      screen.queryByText(backlogLabels.startDialog.patchConflict),
+    ).not.toBeInTheDocument()
   })
 
   it('재검증 응답이 truncated 면 완료를 보내지 않는다', async () => {

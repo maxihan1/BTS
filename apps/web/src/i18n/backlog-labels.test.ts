@@ -175,3 +175,44 @@ describe('backlogLabels — FR-UX-13 F15 신규 문구군 (T4·T6·T7·T8 이 �
     expect(a.forbidden).not.toBe(a.movedToBacklog)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 T15 — 안내 문구가 실제 동작과 어긋나지 않는다
+//
+// 앞선 두 수정이 **동작을 바꾸면서** 기존 문구를 거짓으로 만들었다.
+//   ① 워크플로우 조회 실패·로딩 중은 이제 제출을 **막는다**(`blockedByUnknownWorkflow`).
+//      문구는 「모든 이슈를 미완료로 봅니다」까지만 말해 차단 사실을 숨겼다.
+//   ② `PATCH` 409 이후 폼은 사용자가 친 값을 **그대로 유지한다**(T14 가 `setValues` 제거).
+//      문구는 「최신 값을 불러왔으니」라고 말해 화면과 어긋났다.
+// 값 수준에서 고정하는 이유. 화면 단언만 두면 문구가 다시 바뀔 때 어느 쪽이 정본인지
+// 알 수 없다 — 이 PR 은 「안내가 사실과 다른 것」을 BLOCKER 로 다뤄 왔다(Esc 취소 안내).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('backlogLabels — T15 안내 문구 정합', () => {
+  it('E14: 워크플로우 조회 실패 안내가 차단 사실과 처방을 함께 말한다', () => {
+    const d = backlogLabels.completeDialog
+    expect(d.workflowLoadFailed).toContain('안전하게 완료할 수 없습니다')
+    expect(d.workflowLoadFailed).toContain('다시 시도')
+    // `truncatedBlocked` 의 **결**은 따르되 값을 재사용하지 않는다 —
+    // 「일부 이슈만 표시되어」는 이 상황에서 거짓이다(목록은 전건 다 있다).
+    expect(d.workflowLoadFailed).not.toBe(d.truncatedBlocked)
+    expect(d.workflowLoadFailed).not.toContain('일부 이슈만')
+  })
+
+  it('E9: 409 안내가 입력 보존을 말하고 「최신 값을 불러왔다」고 하지 않는다', () => {
+    const d = backlogLabels.startDialog
+    // 남이 먼저 바꿨다는 사실과 내 값이 살아 있다는 사실을 **둘 다** 말해야 한다
+    expect(d.patchConflict).toContain('다른 사람이 먼저 수정했습니다')
+    expect(d.patchConflict).toContain('그대로')
+    expect(d.patchConflict).not.toMatch(/최신 값을 불러왔/)
+  })
+
+  it('완료 다이얼로그의 재검증 실패 문구는 시작 다이얼로그 409 문구를 재사용하지 않는다', () => {
+    // 재사용하던 자리다. 409 문구가 「입력하신 값」을 말하게 되면서 **입력 폼이 없는**
+    // 완료 다이얼로그에서는 거짓이 된다 — 그래서 전용 문구로 분리한다.
+    const c = backlogLabels.completeDialog
+    expect(c.staleBlocked).not.toBe(backlogLabels.startDialog.patchConflict)
+    expect(c.staleBlocked).not.toContain('입력')
+    expect(c.staleBlocked).not.toBe('')
+  })
+})

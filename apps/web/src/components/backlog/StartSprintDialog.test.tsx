@@ -404,6 +404,23 @@ describe('StartSprintDialog — E9 충돌 이후 입력 보존', () => {
     // `goal` 이 '내 목표'면 그러면서도 입력은 살아남았다. 둘 중 하나만으로는 증명이 안 된다
     expect(patchBodies[1]).toEqual({ version: 9, goal: '내 목표' })
   })
+
+  it('T15 — 안내가 입력 보존을 말한다. 「최신 값을 불러왔으니」는 화면에 없다', async () => {
+    const user = userEvent.setup()
+    installScenario({ patch: ['conflict'] })
+    storedSprint = { ...SERVER_SIDE }
+    renderDialog(EMPTY_SPRINT, SERVER_SIDE)
+
+    setField(L.goalLabel, '내 목표')
+    await user.click(submitButton())
+
+    const alert = await screen.findByRole('alert')
+    // 값이 화면에 남아 있는데 문구가 「불러왔다」고 하면 안내가 거짓이다 —
+    // 두 단언은 짝이다. 부재 단언만 두면 alert 가 아예 안 떠도 통과한다.
+    expect(alert).toHaveTextContent('그대로')
+    expect(screen.getByLabelText(L.goalLabel)).toHaveValue('내 목표')
+    expect(screen.queryByText(/최신 값을 불러왔/)).not.toBeInTheDocument()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
