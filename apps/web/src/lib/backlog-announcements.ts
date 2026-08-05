@@ -65,10 +65,8 @@ interface DropJudgement {
  * 드래그 상태를 실제 mutation 과 **같은 경로**로 판정한다.
  *
  * 입력 구성(`resolveOverToDropZone`)까지 공용 함수를 쓴다. 판정 함수만 같고 입력을
- * 복제하면 어긋남이 입력에서 난다 (스펙 §리뷰 반영 C-5).
- *
- * @param isZeroMove 이동량 0 여부. dnd-kit 의 `Announcements` 는 `{active, over}` 만 주고
- *   **delta 가 없어서**(`dist/components/Accessibility/types.d.ts:10`) 밖에서 받아야 한다
+ * 복제하면 어긋남이 입력에서 난다 (스펙 §리뷰 반영 C-5). 이동 0 여부도 같은 이유로
+ * 그 함수에 넘긴다 — 여기서 다시 판정하지 않는다 (T12).
  */
 function judgeDrop(
   view: BacklogView,
@@ -189,14 +187,12 @@ function describeEnd(
  * ### 왜 이동 0 여부를 인자로 받나 (T12)
  * dnd-kit 의 `Announcements.onDragEnd` 는 `{active, over}` 만 받고 **delta 가 없다**
  * (`@dnd-kit/core@6.3.1` `dist/components/Accessibility/types.d.ts:10`). 그래서 「집자마자 그대로
- * 놓았다」를 이 모듈 혼자서는 알 수 없고, 실제로 mutation 은 0건인데 「순서를 변경했습니다.」를
- * 읽는 거짓말이 났다. 판정은 `useBacklogDrag` 가 드롭 때 한 번만 하고 그 결과를 여기로 넘긴다 —
- * 판정을 두 번 하지 않으므로 두 경로가 다른 답을 낼 수 없다.
+ * 놓았다」를 이 모듈 혼자서는 알 수 없었고, mutation 은 0건인데 「순서를 변경했습니다.」를 읽는
+ * 거짓말이 났다. 판정은 `useBacklogDrag` 가 드롭 때 **한 번만** 하고 결과를 여기로 넘긴다.
  *
  * @param view 스프린트 이름·칸 순서를 조회할 현재 백로그 데이터
  * @param canReorderIssue UPDATE 권한. false 면 이동 결과를 알리지 않는다 (FR-17)
- * @param wasLastDropZeroMove 방금 끝난 드롭의 이동량이 0이었는지 —
- *   `useBacklogDrag().wasLastDropZeroMove` 를 그대로 넘긴다
+ * @param wasLastDropZeroMove `useBacklogDrag().wasLastDropZeroMove` 를 그대로 넘긴다
  */
 export function buildBacklogAnnouncements(
   view: BacklogView,

@@ -55,6 +55,8 @@ export function useBacklogDrag(
   // 마지막 드롭의 이동 0 판정. state 가 아니라 ref 인 이유는 이 값이 **화면을 바꾸지 않고**,
   // 공지는 드롭과 같은 배치 안에서 곧바로 읽히기 때문이다 — 리렌더를 기다릴 수 없다.
   const lastDropZeroMoveRef = useRef(false)
+  // 참조를 고정한다 — 공지 빌더의 `useMemo` 의존성이라 매 렌더 바뀌면 공지가 매번 새로 만들어진다.
+  const wasLastDropZeroMove = useCallback(() => lastDropZeroMoveRef.current, [])
 
   const rerankIssue = useRerankIssue(projectKey)
   const assignToSprint = useAssignToSprint(projectKey)
@@ -148,9 +150,6 @@ export function useBacklogDrag(
       issueKey,
     )
   }
-
-  // 참조를 고정한다 — 공지 빌더의 `useMemo` 의존성이라 매 렌더 바뀌면 공지가 매번 새로 만들어진다.
-  const wasLastDropZeroMove = useCallback(() => lastDropZeroMoveRef.current, [])
 
   return { overDroppableId, handleDragOver, handleDragEnd, wasLastDropZeroMove }
 }

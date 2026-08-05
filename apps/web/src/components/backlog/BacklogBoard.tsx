@@ -125,9 +125,8 @@ export function BacklogBoard({
 
   // 한국어 드래그 공지 (FR-9). ★`canReorderIssue` 를 반드시 넘긴다 — 안 넘기면 권한이
   // 없어 mutation 이 0건인 사용자에게 「옮겼습니다」를 읽어 주는 거짓말이 된다 (FR-17).
-  // ★`drag.wasLastDropZeroMove` 도 같은 이유다 — 집자마자 놓아 mutation 이 0건인데 공지만
-  //   「순서를 변경했습니다」를 읽던 거짓말을 여기서 잇는다 (T12). 훅과 lib 이 각각 맞아도
-  //   이 통로가 끊기면 사용자에게는 아무 변화가 없다.
+  // ★`drag.wasLastDropZeroMove` 도 같은 이유다 — 훅과 lib 이 각각 맞아도 이 통로가 끊기면
+  //   집자마자 놓아 mutation 이 0건인데 「순서를 변경했습니다」를 읽는다 (T12).
   const announcements = useMemo(
     () =>
       buildBacklogAnnouncements(
