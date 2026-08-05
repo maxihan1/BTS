@@ -22,7 +22,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 //
 // 교훈 반영.
-//   - worktree-stale-base-rebase-and-e2e-msw-traps: SPA 내부 이동(Header 아이콘 클릭),
+//   - worktree-stale-base-rebase-and-e2e-msw-traps: SPA 내부 이동(상단바 전역 검색 Enter 제출),
 //     page.goto/reload 금지 (SW 재기동 → savedFilterStore 리셋).
 //   - msw-mutation-stateful-refetch: MSW savedFilterHandlers가 savedFilterStore를 영속해
 //     DELETE 후 invalidateAll() → refetch가 빈 배열 반환 → 빈 상태 표시.
@@ -55,6 +55,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginStrings } from '../src/i18n/ko'
+import { navLabels } from '../src/i18n/nav-labels'
 import { savedFilterLabels } from '../src/i18n/saved-filter-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +91,23 @@ const TEST_AQL = 'status = open'
 
 /** 테스트 프로젝트 키 */
 const TEST_PROJECT_KEY = 'ATLAS'
+
+/**
+ * 상단바 전역 검색으로 `/search` 에 진입할 때 넣는 씨앗 질의 (FR-UX-12 F13).
+ *
+ * ★이 파일의 어떤 질의·단언 문자열과도 글자가 겹치지 않아야 한다. 씨앗은 `text ~ "<씨앗>"` 로
+ * 감싸져 URL q → AQL textarea → syntax overlay 까지 그대로 흐르므로, 겹치면 「fill 이 안 먹었는데도
+ * 그 글자가 보인다」는 가짜 초록이 생긴다.
+ *
+ * 실측 대조군(이 파일 전량). 질의는 {@link TEST_AQL}(`status = open`) 하나뿐이고, 단언 문자열은
+ * `E2E 테스트 필터` · `새 필터 이름` · `수정된 이름` · `내 필터` · `공유받은 필터` ·
+ * `저장된 필터 없음` · `필터` · `AQL 검색` · `검색 결과` 다. `진입용씨앗`(진·입·용·씨·앗)은
+ * 이 중 어느 것과도 글자를 공유하지 않는다 — `공유받은 필터` 의 `유` 와 씨앗의 `용` 은 다른 글자다.
+ *
+ * 이슈키·AQL 로 오판되지 않는 것도 조건이다 — 한글이라 `ISSUE_KEY_PATTERN` 과
+ * `AQL_PREFIX_PATTERN`(알려진 필드명으로 시작) 어느 쪽에도 걸리지 않아 `text` 갈래로 확정된다.
+ */
+const GLOBAL_SEARCH_SEED_TEXT = '진입용씨앗'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 시드 헬퍼 타입
@@ -199,11 +217,28 @@ async function seedFilter(
 
 /**
  * /search 페이지로 SPA 내부 이동한다.
- * reload 금지 — ServiceWorker 재기동 → savedFilterStore 리셋.
- * Header "검색" 아이콘 클릭으로 pushState 이동한다.
+ *
+ * reload/`page.goto` 금지 — ServiceWorker 재기동 → savedFilterStore 리셋(파일 상단 설계 결정).
+ * 상단바 전역 검색 입력창에 씨앗 질의를 넣고 Enter 로 제출해 pushState 이동한다.
+ *
+ * F13(FR-UX-12) 이전에는 상단바가 `aria-label="검색"` **버튼**이었고 이 헬퍼가 그것을 클릭했다.
+ * F13 이 그 자리를 `role="searchbox"` + `aria-label="전역 검색"` 입력창으로 바꿔 클릭 대상이 사라졌다.
+ *
+ * 셀렉터 이름은 `navLabels` 정본에서 읽는다(하드코딩 금지). `exact: true` 필수 —
+ * `검색`(F13 이후 AQL 검색 페이지 제출 버튼 전용 이름)이 `전역 검색` 의 substring 이다.
+ *
+ * ⚠️ 착지 URL 에 `?q=text ~ "<씨앗>"` 이 실린다. SearchPage 는 마운트 시 그 q 로 한 번 조회하고
+ * "현재 검색 저장" 버튼도 `disabled={q.trim().length === 0}`(search.tsx L579)이라 이미 활성이다.
+ * 즉 **결과 목록 가시·저장 버튼 활성만으로는 이후 검색 실행을 증명하지 못한다** — 호출부는
+ * 제출/해소를 URL 로 따로 증인 세운다(SF-1 `q`, SF-1·SF-3 `projectKey`).
  */
 async function navigateToSearch(page: import('@playwright/test').Page): Promise<void> {
-  await page.getByRole('button', { name: '검색', exact: true }).click()
+  const globalSearch = page.getByRole('searchbox', {
+    name: navLabels.globalSearch,
+    exact: true,
+  })
+  await globalSearch.fill(GLOBAL_SEARCH_SEED_TEXT)
+  await globalSearch.press('Enter')
   await page.waitForURL('**/search**')
   await expect(page.getByRole('heading', { name: 'AQL 검색', level: 1 })).toBeVisible()
 }
@@ -225,8 +260,11 @@ async function openSavedFilterMenu(
 
 /**
  * AQL 입력창에 쿼리를 채우고 검색 버튼을 클릭한다.
- * 검색 버튼은 Header "검색" 버튼과 동명이므로 입력 영역 컨테이너로 한정한다.
- * [[playwright-getbyrole-exact-strict-mode]] 준수.
+ *
+ * `검색` 이라는 이름은 F13(FR-UX-12) 이후 이 제출 버튼 **전용**이다 — 상단바는 `전역 검색` 으로
+ * 분리됐다(Jira 패리티 계약 §2 이름 분리). 즉 옛 「Header 버튼과 동명」 충돌은 더 이상 없다.
+ * 그래도 입력 영역 컨테이너 한정은 그대로 둔다 — 같은 화면에 동명 버튼이 다시 생겨도 이 셀렉터가
+ * 흔들리지 않게 하는 보험이다. [[playwright-getbyrole-exact-strict-mode]] 준수.
  */
 async function fillAndSearch(
   page: import('@playwright/test').Page,
@@ -284,6 +322,12 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
     // Given. /search SPA 이동 + AQL 입력 + 검색 실행
     await navigateToSearch(page)
     await fillAndSearch(page, TEST_AQL)
+    // ⚠️ 이 줄은 「검색이 실행됐다」의 증인이 **아니다** — 씨앗 진입(navigateToSearch)이 URL q 를
+    // 싣고 오므로 결과 목록은 fillAndSearch 이전에 이미 떠 있다. 여기서는 저장 다이얼로그를 열기
+    // 위한 사전 상태 확인일 뿐이고, AQL 제출 자체의 회귀는 search.spec.ts S1 이 잡는다.
+    // ★URL q 로 제출을 증인 세우려는 시도는 실측으로 기각됐다(Task 6b) — search.tsx L545
+    //   handleQueryChange 가 **타이핑만으로도** URL q 를 갱신해, 검색 버튼 클릭을 지워도
+    //   `q=status = open` 이 그대로 실린다(변이 테스트 6/6 통과 = 공허 확인).
     await expect(page.getByRole('list', { name: '검색 결과' })).toBeVisible()
 
     // Also: "저장" 버튼 → dialog → 이름 → 저장 → dialog 닫힘 (create UI 검증)
@@ -318,8 +362,12 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
     await page.keyboard.press('Escape')
 
     // Then. filterId 딥링크 해소 (C1) — SearchRouteAdapter가 fetchFilter 후 navigate(replace)
-    // filterId가 q+projectKey로 교체될 때까지 대기 (navigate 완료 기다림)
-    await page.waitForURL(/\/search\?q=/, { timeout: 10_000 })
+    // ★`q=` 로는 관측할 수 없다 — 클릭 직전 URL 이 이미 `?q=status = open` 이라 즉시 만족되는
+    // 공허 단언이 된다. filterId 해소만이 심는 `projectKey=`(search.tsx L511)로 교체를 관측한다.
+    await page.waitForURL(
+      (url) => (url.searchParams.get('projectKey') ?? '').includes(TEST_PROJECT_KEY),
+      { timeout: 10_000 },
+    )
     // SearchPage가 fresh mount → AQL 검색 heading 가시 = filterIdLoading 해소 확인
     await expect(page.getByRole('heading', { name: 'AQL 검색', level: 1 })).toBeVisible()
   })
@@ -445,8 +493,13 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
     const filterMenuItem = favMenuContent.getByRole('menuitem', { name: TEST_FILTER_NAME, exact: true })
     await expect(filterMenuItem).toBeVisible()
     await filterMenuItem.click()
-    // 중간 `?filterId=`(즉시 `?q=`로 replace되는 transient 상태)는 관측 레이스라 최종 `?q=`로 검증한다.
-    await page.waitForURL(/\/search\?q=/, { timeout: 10_000 })
+    // 중간 `?filterId=`(즉시 replace되는 transient 상태)는 관측 레이스라 최종 URL로 검증한다.
+    // ★`q=` 는 쓸 수 없다 — 씨앗 진입(navigateToSearch)이 이미 `?q=text ~ "…"` 를 심어 둬
+    // 클릭 전에 만족돼 버린다. filterId 해소만이 심는 `projectKey=`(search.tsx L511)로 관측한다.
+    await page.waitForURL(
+      (url) => (url.searchParams.get('projectKey') ?? '').includes(TEST_PROJECT_KEY),
+      { timeout: 10_000 },
+    )
   })
 
   // ──────────────────────────────────────────────────────────────────────────
