@@ -66,12 +66,20 @@ interface DropJudgement {
  *
  * 입력 구성(`resolveOverToDropZone`)까지 공용 함수를 쓴다. 판정 함수만 같고 입력을
  * 복제하면 어긋남이 입력에서 난다 (스펙 §리뷰 반영 C-5).
+ *
+ * @param isZeroMove 이동량 0 여부. dnd-kit 의 `Announcements` 는 `{active, over}` 만 주고
+ *   **delta 가 없어서**(`dist/components/Accessibility/types.d.ts:10`) 밖에서 받아야 한다
  */
-function judgeDrop(view: BacklogView, active: Active, over: Over | null): DropJudgement | null {
+function judgeDrop(
+  view: BacklogView,
+  active: Active,
+  over: Over | null,
+  isZeroMove: boolean,
+): DropJudgement | null {
   const origin = readDragOrigin(active.data.current)
   if (origin === null) return null
 
-  const zone = resolveOverToDropZone(view, over)
+  const zone = resolveOverToDropZone(view, over, isZeroMove)
   if (zone === null) return null
 
   const action = resolveBacklogDropAction({
@@ -103,7 +111,9 @@ function sprintNameOf(view: BacklogView, sprintId: string): string {
 
 /** 드래그가 올라가 있는 대상을 예고형으로 읽는다 — 3갈래(대상 있음 · 대상 없음 · 판정 noop) */
 function describeOver(view: BacklogView, active: Active, over: Over | null): string {
-  const judged = judgeDrop(view, active, over)
+  // 이동 0 판정은 **드롭에만** 건다. 집은 직후에도 이동량은 0인데, 그때 「이동할 수 없다」를
+  // 읽으면 아직 아무것도 정하지 않은 사용자에게 갈 곳이 없다고 겁을 주게 된다.
+  const judged = judgeDrop(view, active, over, false)
   if (judged === null) return announce.outOfDropZone
 
   const { origin, action } = judged
@@ -137,13 +147,14 @@ function describeEnd(
   active: Active,
   over: Over | null,
   canReorderIssue: boolean,
+  isZeroMove: boolean,
 ): string {
   // FR-17. UPDATE 권한이 없으면 `use-backlog-drag.ts` 가 mutation 을 0건으로 막는다.
   // 그 상태에서 「옮겼습니다」를 읽으면 스크린리더 사용자에게만 거짓말이 된다.
   if (!canReorderIssue) return announce.forbidden
 
-  const judged = judgeDrop(view, active, over)
-  // 드롭존 밖에서 놓으면 아무 일도 일어나지 않는다
+  const judged = judgeDrop(view, active, over, isZeroMove)
+  // 드롭존 밖에서 놓았거나 이동이 0이면 아무 일도 일어나지 않는다 (T12)
   if (judged === null) return announce.noChange
 
   const { action } = judged
@@ -175,17 +186,28 @@ function describeEnd(
  * `KanbanBoard` 의 동명 헬퍼는 재사용할 수 없다 — 시그니처가 `BoardDetail` 전용이고
  * export 도 되어 있지 않다 (FR-9 실측).
  *
+ * ### 왜 이동 0 여부를 인자로 받나 (T12)
+ * dnd-kit 의 `Announcements.onDragEnd` 는 `{active, over}` 만 받고 **delta 가 없다**
+ * (`@dnd-kit/core@6.3.1` `dist/components/Accessibility/types.d.ts:10`). 그래서 「집자마자 그대로
+ * 놓았다」를 이 모듈 혼자서는 알 수 없고, 실제로 mutation 은 0건인데 「순서를 변경했습니다.」를
+ * 읽는 거짓말이 났다. 판정은 `useBacklogDrag` 가 드롭 때 한 번만 하고 그 결과를 여기로 넘긴다 —
+ * 판정을 두 번 하지 않으므로 두 경로가 다른 답을 낼 수 없다.
+ *
  * @param view 스프린트 이름·칸 순서를 조회할 현재 백로그 데이터
  * @param canReorderIssue UPDATE 권한. false 면 이동 결과를 알리지 않는다 (FR-17)
+ * @param wasLastDropZeroMove 방금 끝난 드롭의 이동량이 0이었는지 —
+ *   `useBacklogDrag().wasLastDropZeroMove` 를 그대로 넘긴다
  */
 export function buildBacklogAnnouncements(
   view: BacklogView,
   canReorderIssue: boolean,
+  wasLastDropZeroMove: () => boolean,
 ): Announcements {
   return {
     onDragStart: ({ active }) => announce.dragStart(issueKeyOf(active.id)),
     onDragOver: ({ active, over }) => describeOver(view, active, over),
-    onDragEnd: ({ active, over }) => describeEnd(view, active, over, canReorderIssue),
+    onDragEnd: ({ active, over }) =>
+      describeEnd(view, active, over, canReorderIssue, wasLastDropZeroMove()),
     onDragCancel: () => announce.cancelled,
   }
 }

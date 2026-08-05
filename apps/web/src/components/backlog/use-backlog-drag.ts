@@ -1,5 +1,5 @@
 // 백로그 보드 드래그 처리 — 드롭 판정 · 이동/재정렬 mutation · C1 부분 실패 (FR-BL-01/02 D6/D7)
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import {
@@ -17,33 +17,22 @@ import type { BacklogView } from '@/api/backlog'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogDragData } from './BacklogCard'
 
-/**
- * 이 드래그가 **키보드로** 시작됐는지 판정한다.
- *
- * dnd-kit 은 활성화 핸들러의 `nativeEvent` 를 그대로 `activatorEvent` 에 싣는다
- * (`core.esm.js:3015,3105`). `KeyboardSensor` 의 활성화 핸들러는 `onKeyDown` 이라 여기엔
- * `KeyboardEvent` 가 들어온다. `instanceof` 대신 `'key' in` 으로 보는 이유는 realm 이 다르면
- * (jsdom·iframe) `instanceof` 가 조용히 false 가 되기 때문이다 — 가드가 소리 없이 죽는다.
- *
- * ### 왜 「이동 0」 가드에 이 조건을 함께 거나
- * 스펙 I-2 의 처방은 조건 없는 `isZeroMoveDrop(event.delta)` 였다. 그런데 그대로 넣으면
- * `BacklogBoard.test.tsx` 의 합성 드래그 8건이 red 가 된다 — 그 하네스가 `delta: {x:0,y:0}` 을
- * **자리표시자로 하드코딩**해 두고 S1~S5 를 재현하기 때문이다(그 파일은 Task 6 소유라 이 task
- * 가 고칠 수 없다). 실제 결함 경로는 스펙 자신이 "마우스는 5px 활성화 임계 때문에 이 경로가
- * 없다"고 적은 대로 키보드에만 있으므로, 활성화 이벤트로 한정하는 편이 결함에 더 정확히
- * 대응한다. 하네스가 실제 delta 를 싣도록 고쳐지면 이 조건은 그대로 넓힐 수 있다 —
- * **넓히는 쪽을 막는 단언은 두지 않았다.**
- */
-function isKeyboardActivated(activatorEvent: Event | null): boolean {
-  return activatorEvent !== null && 'key' in activatorEvent
-}
-
 /** `useBacklogDrag` 반환값 */
 export interface BacklogDrag {
   /** 현재 드래그가 올라가 있는 droppable id — 하이라이트에 쓴다 */
   overDroppableId: string | null
   handleDragOver: (event: DragOverEvent) => void
   handleDragEnd: (event: DragEndEvent) => void
+  /**
+   * 방금 끝난 드롭의 이동량이 0이었는가 — 드래그 공지에 넘길 **전달 통로**다 (T12).
+   *
+   * dnd-kit 의 `Announcements.onDragEnd` 는 `{active, over}` 만 받고 delta 가 없다
+   * (`@dnd-kit/core@6.3.1` `dist/components/Accessibility/types.d.ts:10`). 그래서 여기서 한 번만
+   * 판정하고 그 **결과 자체**를 넘긴다 — 공지가 delta 로 다시 판정하면 두 답이 갈라질 수 있다.
+   *
+   * 참조는 렌더 사이에 바뀌지 않는다. 공지 빌더의 `useMemo` 를 매 렌더 무효화하지 않기 위함이다.
+   */
+  wasLastDropZeroMove: () => boolean
 }
 
 /**
@@ -62,6 +51,10 @@ export function useBacklogDrag(
   canReorderIssue: boolean,
 ): BacklogDrag {
   const [overDroppableId, setOverDroppableId] = useState<string | null>(null)
+
+  // 마지막 드롭의 이동 0 판정. state 가 아니라 ref 인 이유는 이 값이 **화면을 바꾸지 않고**,
+  // 공지는 드롭과 같은 배치 안에서 곧바로 읽히기 때문이다 — 리렌더를 기다릴 수 없다.
+  const lastDropZeroMoveRef = useRef(false)
 
   const rerankIssue = useRerankIssue(projectKey)
   const assignToSprint = useAssignToSprint(projectKey)
@@ -121,12 +114,11 @@ export function useBacklogDrag(
   function handleDragEnd(event: DragEndEvent): void {
     setOverDroppableId(null)
 
-    // 키보드로 집자마자 그대로 놓은 드롭(이동 0)은 아무 일도 하지 않는다 (T-KB-3).
-    // Space 두 번이면 translate 가 `{0,0}` 인데, 이때 카드 자신의 droppable 은
-    // `disabled: isDragging` 으로 충돌 후보에서 빠져 있어 칸 droppable 로 폴백하고
-    // `dropIndex = orderedKeys.length` 가 잡혀 **카드가 맨 뒤로 날아간다**.
-    // 키보드로 한정하는 근거는 `isKeyboardActivated` KDoc.
-    if (isKeyboardActivated(event.activatorEvent) && isZeroMoveDrop(event.delta)) return
+    // 집자마자 그대로 놓은 드롭(이동 0)의 판정. **여기서 한 번만** 하고 결과를 남긴다 —
+    // 공지가 같은 값을 읽어야 「mutation 은 0건인데 순서를 변경했다고 낭독」이 재발하지 않는다.
+    // 키보드(Space→Space)뿐 아니라 마우스(5px 임계를 넘겼다가 원위치로 돌아와 놓기)도 같다.
+    const isZeroMove = isZeroMoveDrop(event.delta)
+    lastDropZeroMoveRef.current = isZeroMove
 
     // UPDATE 권한 없으면 드래그 결과를 무시한다
     if (!canReorderIssue) return
@@ -137,9 +129,9 @@ export function useBacklogDrag(
 
     const { issueKey, context: fromContext, sprintId: fromSprintId } = activeData
 
-    // 칸/카드 droppable 양쪽의 입력 구성은 `lib/backlog-drag` 로 공용화돼 있다 —
-    // 드래그 공지 모듈이 같은 함수를 써야 공지와 mutation 이 어긋나지 않는다 (C-5).
-    const dropZone = resolveOverToDropZone(backlogView, event.over)
+    // 칸/카드 droppable 양쪽의 입력 구성과 이동 0 판정은 `lib/backlog-drag` 로 공용화돼 있다 —
+    // 드래그 공지 모듈이 같은 함수를 써야 공지와 mutation 이 어긋나지 않는다 (C-5 · T12).
+    const dropZone = resolveOverToDropZone(backlogView, event.over, isZeroMove)
 
     if (dropZone === null) return
 
@@ -157,5 +149,8 @@ export function useBacklogDrag(
     )
   }
 
-  return { overDroppableId, handleDragOver, handleDragEnd }
+  // 참조를 고정한다 — 공지 빌더의 `useMemo` 의존성이라 매 렌더 바뀌면 공지가 매번 새로 만들어진다.
+  const wasLastDropZeroMove = useCallback(() => lastDropZeroMoveRef.current, [])
+
+  return { overDroppableId, handleDragOver, handleDragEnd, wasLastDropZeroMove }
 }

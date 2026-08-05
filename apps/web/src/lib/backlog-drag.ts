@@ -119,14 +119,27 @@ function orderedKeysOf(
  * 공지와 실제 mutation 이 어긋난다 — 어긋남은 판정이 아니라 입력에서 난다
  * (FR-UX-13 F15 스펙 §리뷰 반영 C-5). 그래서 구성 자체를 공용화했다.
  *
+ * ### 왜 이동 0 판정이 여기 있나 (T12)
+ * 종전에는 `use-backlog-drag.ts` 의 `handleDragEnd` 안에서만 걸렀다. 그러자 mutation 은 0건인데
+ * 공지는 「순서를 변경했습니다.」를 읽는 **거짓말**이 났다 — 공지 모듈이 그 사실을 알 길이
+ * 없었기 때문이다(실브라우저 실측). 판정을 드롭 판정 단계로 올려 두 소비자가 같은 함수의
+ * 같은 반환값을 보게 하면 다시 갈라질 수 없다. C-5 와 정확히 같은 논지의 확장이다.
+ *
  * @param view 카드 droppable 경로에서 대상 칸의 순서를 조회할 현재 백로그 데이터
  * @param over dnd-kit 의 `over`. 없으면 null
+ * @param isZeroMove 드래그 이동량이 0인가 (`isZeroMoveDrop(event.delta)`).
+ *   true 면 사용자가 카드를 어디로도 옮기지 않았다는 뜻이라 적용할 드롭 존이 없다
  * @returns 드롭 존 정보. 판정 불가면 null
  */
 export function resolveOverToDropZone(
   view: BacklogView | undefined,
   over: BacklogDropTarget | null | undefined,
+  isZeroMove: boolean,
 ): DropZoneData | null {
+  // 이동이 0이면 카드 자신의 droppable 이 `disabled: isDragging` 으로 빠져 있어 칸 droppable 로
+  // 폴백하고 `dropIndex = orderedKeys.length` 가 잡힌다 — 그대로 두면 **카드가 맨 뒤로 날아간다**.
+  if (isZeroMove) return null
+
   if (over === null || over === undefined) return null
 
   const overData = over.data.current
