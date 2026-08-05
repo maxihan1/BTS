@@ -49,16 +49,14 @@ import { loginAsAlice } from './fixtures/issue-fixtures'
 import { issueCreateStrings } from '../src/i18n/ko'
 import { issueAtlas1Fixture } from '../src/mocks/issue-fixtures'
 import { E2E_SEARCH_SCENARIO_KEY } from '../src/mocks/search-handlers'
+import { navLabels } from '../src/i18n/nav-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** CommandPalette.tsx L23 commandPaletteStrings.dialogLabel(비export) — 하드코딩 (search.spec.ts HEADER_SEARCH_ARIA_LABEL 선례) */
+/** CommandPalette.tsx L23 commandPaletteStrings.dialogLabel(비export) — 하드코딩 (keyboard-shortcuts.spec.ts HELP_DIALOG_TITLE 선례) */
 const PALETTE_DIALOG_LABEL = '명령 팔레트'
-
-/** Header 검색 버튼 aria-label(Header.tsx) — RootLayout(Header+CommandPalette 훅) 마운트 완료 신호로 사용 */
-const HEADER_SEARCH_ARIA_LABEL = '검색'
 
 /** search-fixtures.ts DEFAULT_SEARCH_PAGE 기대 결과(형태가 유효한 AQL 이면 고정 3건) */
 const DEFAULT_SEARCH_RESULT_KEYS = ['ATLAS-1', 'ATLAS-2', 'ATLAS-3'] as const
@@ -68,15 +66,18 @@ const DEFAULT_SEARCH_RESULT_KEYS = ['ATLAS-1', 'ATLAS-2', 'ATLAS-3'] as const
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * alice로 로그인하고 RootLayout(Header + useCommandPalette 훅) 마운트 완료까지 대기한다.
+ * alice로 로그인하고 RootLayout(TopBar + useCommandPalette 훅) 마운트 완료까지 대기한다.
  *
- * Header 검색 버튼 렌더를 신호로 사용 — isAuthenticated 분기 렌더 완료 및
+ * 상단바 전역 검색 **입력창**(FR-UX-12 F13) 렌더를 신호로 사용 — isAuthenticated 분기 렌더 완료 및
  * useCommandPalette의 document keydown 리스너 등록(useEffect)이 끝났음을 보장한다.
+ *
+ * 이름은 `navLabels` 정본에서 읽는다(하드코딩 금지). `exact: true` 필수 —
+ * `검색`(팔레트 바로가기 option · AQL 페이지 제출 버튼)이 `전역 검색` 의 substring 이다.
  */
 async function loginAndWaitForRootReady(page: Page): Promise<void> {
   await loginAsAlice(page)
   await expect(
-    page.getByRole('button', { name: HEADER_SEARCH_ARIA_LABEL, exact: true }),
+    page.getByRole('searchbox', { name: navLabels.globalSearch, exact: true }),
   ).toBeVisible()
 }
 

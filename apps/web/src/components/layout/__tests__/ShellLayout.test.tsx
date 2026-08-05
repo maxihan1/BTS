@@ -142,11 +142,14 @@ describe('ShellLayout', () => {
     expect(screen.getByTestId('outlet-content')).toBeInTheDocument()
   })
 
-  it('검색 버튼(aria-label="검색")이 정확히 1개다 — TopBar 단일 소유(Header 삭제로 중복 해소)', () => {
+  it('전역 검색 입력창(aria-label="전역 검색")이 정확히 1개다 — TopBar 단일 소유', () => {
     useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
     renderShell()
 
-    expect(screen.getAllByRole('button', { name: navLabels.search })).toHaveLength(1)
+    // F13 — 상단바 컨트롤이 버튼→입력창(`role="searchbox"`)으로 바뀌었다.
+    // `검색`(navLabels.search)은 AQL 검색 페이지 제출 버튼 전용이라 셸에는 없어야 한다(계약 §2 이름 분리).
+    expect(screen.getAllByRole('searchbox', { name: navLabels.globalSearch })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: navLabels.search })).toBeNull()
   })
 
   it('도움말 버튼을 렌더하지 않는다 — ShortcutsHelpDialog는 RootLayout 소유라 onHelpClick 미배선(PR11서 버튼 이연, "?" 단축키는 RootLayout이 계속 처리)', () => {

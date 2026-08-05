@@ -412,7 +412,7 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 승계 PR 2건 (로드맵 §PR 체인 Tier 1 F4 + Tier 2 F13).
 
 - **F4 — Cmd+K 실체 검색.** 지금은 슬래시 없이 텍스트를 치면 **화면이 비고 Enter 도 무반응**이다(`CommandPalette.tsx:131,165,180`). 이슈키 즉시매칭 + 프로젝트 로컬필터 + `text ~ "…"` AQL 디바운스를 얹는다. `components/ui/command.tsx`(소비처 0→1) · `api/search.ts`.
-- **F13 — 상단바 전역 검색 입력창 + 자연어 폴백.** 지금 전역 검색은 입력창이 아니라 아이콘 버튼이다. `TopBar.tsx:57-66` · `routes/search.tsx` · 신규 `lib/aql-natural.ts`.
+- **F13 — 상단바 전역 검색 입력창 + 자연어 폴백.** ✅ **#341 완료.** 아이콘 버튼을 `role="searchbox"` + 접근성 이름 `전역 검색` 입력창으로 교체했다. 자연어 폴백은 **3갈래 판별**(이슈키 → 그 이슈로 · AQL 문법 → 원문 통과 · 그 외 → `text ~ "…"` 래핑)로 확정 — 키워드 매핑은 목록에 없는 말이 나오는 순간 신뢰가 깎여 **의도적으로 채택하지 않았다**(Maxi 확정 M2). `TopBar.tsx` · 신규 `lib/aql-natural.ts` · 신규 `lib/issue-key.ts`. **`routes/search.tsx` 는 무변경** — 상단바가 `projectKey` 를 싣지 않고 목적지가 4단 해소와 `ActiveProjectGate` 를 이미 소유함이 실측으로 확인돼 게이트 복제를 피했다.
 
 **아키텍처**. **이름표 분리 (Maxi 결정 2026-07-28 #4)** — 상단바 입력창은 `전역 검색`, 기존 `검색` 은 AQL 페이지 제출 버튼 전용이다. `검색` 정확일치가 e2e 3파일 6발생이라 이름표를 겹치면 strict mode 로 즉사한다. 팔레트 회귀 가드는 **"빈 입력 시 `QUICK_LINKS` 바로가기 4개와 순서 보존"**(`command-palette.spec.ts:252-259`). 진짜 전역 검색(프로젝트 무관 + 이슈/프로젝트/사용자 혼합)은 `AqlSearchRequest.kt:36-37` `projectKey @NotBlank` · `SearchController.kt:169` blank 거부 · `AqlFields.kt:72` 의 `project`·`assignee` 가 `PLANNED` 라는 **3층 차단**에 막혀 있어, v1 은 §4.5 의 활성 프로젝트 스코프로 낸다.
 
@@ -421,8 +421,8 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 - [x] D3. 데이터 모델 — **없음 확정** (기존 AQL 검색 API 소비. 마이그레이션 0 · 영속 상태 0) (책임. -)
 - [x] D4. 백엔드 — **없음 확정** (v1 은 프로젝트 스코프 유지. cross-project 는 `AqlSearchRequest.kt:36` `projectKey @NotBlank` · `SearchController.kt:167` blank 거부 · `AqlFields.kt:73` `PLANNED_FIELDS` 의 **3층 차단**으로 범위 밖 — 실측 확인) (책임. -)
 - [x] D5. 백엔드 테스트 — **해당 없음 확정** (백엔드 변경 0줄) (책임. -)
-- [ ] D6. 프론트 UI — F4 팔레트 실체 검색 · F13 상단바 `전역 검색` 입력창 + 자연어 폴백 (책임. designer → frontend-engineer) — **F4 완료(#340)**, **F13 미착수라 `[ ]` 유지**. FR-UX-10 #336 · FR-UX-11 #337 과 동형
-- [ ] D7. E2E — 비-슬래시 입력이 AQL 검색을 호출 · 빈 입력은 바로가기 4개와 순서 보존 · `검색` 정확일치 무회귀 (책임. qa-engineer) — **본문 3항목은 F4 가 전량 충족(#340, S9~S14 신규 6 + S4 갱신)**. 그러나 D6 이 열려 있는 동안 닫지 않는다 — E2E 만 `[x]` 이고 UI 가 `[ ]` 인 상태는 D 마커를 거짓으로 읽히게 한다
+- [x] D6. 프론트 UI — F4 팔레트 실체 검색 · F13 상단바 `전역 검색` 입력창 + 자연어 폴백 (책임. designer → frontend-engineer) — **F4 #340 + F13 #341 로 완주.** F13 이 아이콘 버튼을 `role="searchbox"` + `전역 검색` 입력창으로 교체하고, 입력을 이슈키 / AQL / 자유 텍스트 **3갈래**로 가르는 순수 함수 `lib/aql-natural.ts` 를 신설했다. **`components/ui/input.tsx` 프리미티브 재사용**(계약 §4) — raw `<input>` 인라인 클래스는 plan 리뷰에서 BLOCKER 로 걸러졌다
+- [x] D7. E2E — 비-슬래시 입력이 AQL 검색을 호출 · 빈 입력은 바로가기 4개와 순서 보존 · `검색` 정확일치 무회귀 (책임. qa-engineer) — **본문 3항목은 F4 가 전량 충족(#340, S9~S14 신규 6 + S4 갱신)**. F13 #341 이 E2E **6파일**의 sentinel 을 `searchbox`+`navLabels.globalSearch` 로 교체하며 `HEADER_SEARCH_ARIA_LABEL` 하드코딩을 전량 제거해 i18n 정본 참조로 전환했다(2026-05-26 교훈 해소). ★`saved-filters.spec.ts:206` 은 **plan 이 「AQL 제출 버튼」으로 오분류**했던 상단바 진입 헬퍼로, 같은 PR 에서 봉합했다
 
 ### §4.11 FR-UX-13 — 백로그 사용성
 

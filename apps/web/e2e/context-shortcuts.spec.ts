@@ -20,13 +20,11 @@ import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { PALETTE_HELP_ITEM, SHORTCUTS } from '../src/components/keyboard-shortcuts/shortcuts'
 import { CONTEXT_SHORTCUTS } from '../src/components/keyboard-shortcuts/context-shortcuts'
+import { navLabels } from '../src/i18n/nav-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Header 검색 버튼 aria-label — RootLayout(단축키 리스너 등록) 마운트 완료 신호 */
-const HEADER_SEARCH_ARIA_LABEL = '검색'
 
 /** ShortcutsHelpDialog DialogTitle(비export) — keyboard-shortcuts.spec.ts 와 같은 하드코딩 선례 */
 const HELP_DIALOG_TITLE = '키보드 단축키'
@@ -66,11 +64,15 @@ const EXPECTED_HELP_DESCRIPTIONS: string[] = [
 /**
  * alice 로 로그인하고 RootLayout(단축키 리스너) 마운트 완료까지 대기한다.
  * keyboard-shortcuts.spec.ts `loginAndWaitForRootReady` 미러.
+ *
+ * 상단바 전역 검색 **입력창**(FR-UX-12 F13) 렌더가 신호다 — 이름은 `navLabels` 정본에서
+ * 읽는다(하드코딩 금지). `exact: true` 필수 — `검색`(AQL 페이지 제출 버튼 전용 이름)이
+ * `전역 검색` 의 substring 이라 느슨한 매칭은 두 컨트롤을 함께 잡는다.
  */
 async function loginAndWaitForRootReady(page: Page): Promise<void> {
   await loginAsAlice(page)
   await expect(
-    page.getByRole('button', { name: HEADER_SEARCH_ARIA_LABEL, exact: true }),
+    page.getByRole('searchbox', { name: navLabels.globalSearch, exact: true }),
   ).toBeVisible()
 }
 

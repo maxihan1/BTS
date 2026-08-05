@@ -37,7 +37,7 @@ F번호는 아래 §PR 체인의 것. **이 표가 PR→FR 매핑의 정본**이
 | FR-UX-09 | 이슈 생성 흐름 (모달 · 진입점) | F2 · F3 · B1 | ✅ **완주** — B1 #328 · F2 #331 · F3 #333 |
 | **FR-UX-10** | 컨텍스트 의존 단축키 | F10 · F11 | ✅ **완주** — F10 #336 + F11 #339 (D1~D7 `[x]`). 컨텍스트 키 **13종**(목록 5 + 상세 8) (D 마커 정본: personalization.md §4.8) |
 | FR-UX-11 | 인라인 편집 | F8 · F9 | ✅ **완주** — F8 #337 · F9 #338 (D 마커 정본: personalization.md §4.9) |
-| **FR-UX-12** | 검색 진입 (커맨드 팔레트 · 전역 검색) | F4 · F13 | 🟡 **진행 중** — F4 **#340** 완료(D1~D5 `[x]`). **F13 잔여**라 D6/D7 은 `[ ]` |
+| **FR-UX-12** | 검색 진입 (커맨드 팔레트 · 전역 검색) | F4 · F13 | ✅ **완주** — F4 **#340**(D1~D5) + F13 **#341**(D6/D7) |
 | **FR-UX-13** | 백로그 사용성 | F5 · F15 · F16 | ⬜ 미착수 (F5 는 완료 여부 실측 후 착수) |
 | **FR-UX-14** | 이슈 카드 밀도 | F14 · B2 | ⬜ 미착수 |
 | *(FR 아님 — chore)* | 기존 FR 결손 봉합 — F6 도움말 배선(UX-05 결손) · F7 댓글 기본탭(CO 결손) · F18~F25 Tier 3 마감(UX-06 결손) | F6 · F7 · F18~F25 | 개별 실측 후 착수 |
@@ -61,7 +61,7 @@ node scripts/build-dashboard.mjs && open docs/progress.html                     
 | **F9** ✅ **#338** | 이슈 목록 셀 인라인 편집 (담당자·우선순위·상태) | `IssueTable.tsx` · `issue-columns.ts` · **신규** `cells/{Editable,Assignee,Priority,Status}Cell.tsx`·`use-issue-list-cell-field.ts`·`lib/transition-availability.ts` · `popover.tsx`(소비처 1→2) | F8 |
 | **F10** ⭐ ✅ **#336** | 컨텍스트 단축키 아키텍처 + 목록 항법 `j`/`k`/`o`/`t`/`[` | **신규** `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` | 없음 |
 | **F11** ⭐ ✅ **#339** | 상세 액션 단축키 `a`/`i`/`m`/`e`/`l`/`s`/`w`/`.` (8종 — `s`=즐겨찾기, FR-UX-05 이연분 복원. `.`=팔레트 여는 두 번째 열쇠) | `issues.$key.tsx` · `IssueActivityTabs.tsx` · `IssueMetaPanel.tsx` + 메타 3종 · `WatchersSection.tsx` · `CommentSection.tsx` · `FavoriteButton.tsx` · `useCommandPalette.ts` · `ShellLayout.tsx` · `ShortcutsHelpDialog.tsx` | F10, F8 |
-| **F13** | 상단바 전역 검색 입력창 + 자연어 폴백 | `TopBar.tsx` · `routes/search.tsx` · **신규** `lib/aql-natural.ts` | (F1 ✅) |
+| **F13** ✅ **#341** | 상단바 전역 검색 입력창 + 자연어 폴백 | `TopBar.tsx` · **신규** `lib/aql-natural.ts` · **신규** `lib/issue-key.ts` (`routes/search.tsx` 는 **무변경** — 4단 해소·`ActiveProjectGate` 를 이미 소유) | (F1 ✅) |
 | **F14** | 보드/백로그 카드 밀도 (유형 아이콘·라벨 칩·추정) | `BoardCard.tsx` · `BacklogCard.tsx` · `api/boards.ts` · `IssueTypeIcon.tsx` 재사용 | **B2** |
 | **F15** | 백로그 세로 스택 + 스프린트 다이얼로그 + 키보드 DnD | `BacklogBoard.tsx` · **신규** `StartSprintDialog.tsx`·`CompleteSprintDialog.tsx` | F5 |
 | **F16** | 백로그 필터바 + 에픽 패널 | `FilterBar.tsx` 슬롯 재사용 · `routes/projects.$projectKey.backlog.tsx` | F15 |

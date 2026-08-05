@@ -21,6 +21,12 @@ describe('navLabels', () => {
       expect(navLabels.search).toBe('검색')
     })
 
+    it('F13 — globalSearch 는 상단바 입력창 전용 이름이고 search 와 다르다', () => {
+      expect(navLabels.globalSearch).toBe('전역 검색')
+      expect(navLabels.search).toBe('검색')
+      expect(navLabels.globalSearch).not.toBe(navLabels.search)
+    })
+
     // 아래 2건은 FR15-b 통합 과정에서 발견한 갭이다 — JSDoc이 🔒 e2e 계약으로 표시한
     // 6종 중 projectNav·breadcrumb만 값 고정 단언이 없었다(옛 `i18n/nav-labels.test.ts`는
     // breadcrumb 값만 보고 projectNav는 안 봤다).
@@ -114,11 +120,36 @@ describe('navLabels', () => {
      *    e2e에서 `'관리'`로 조회하는 지점도 0건이다.
      *    ⚠️ **`admin`을 `aria-label`로 쓰기 시작하면 이 면제를 제거하고 라벨을 바꿔야 한다.**
      *    (2026-07-31 Maxi 확정 — 옵션 B「라벨 변경」은 사용자 문구 변경이라 이 PR 범위 밖)
+     *
+     * 3. `search`('검색') ⊂ `globalSearch`('전역 검색') — **둘 다 `aria-label`이라 실제
+     *    위험이 있다.** FR-UX-12 F13이 **의도적으로** 만든 쌍이다(Jira 패리티 계약 §2
+     *    「`검색` 이름 분리」, Maxi 확정 2026-07-28 결정 4). 상단바 입력창과 AQL 검색 페이지
+     *    제출 버튼은 한 화면에 공존하므로 이름을 **합치면** strict mode 위반이고,
+     *    분리하면 substring 관계가 남는다 — 둘 중 후자를 택한 결과다.
+     *    관리 근거 2겹. ① role이 다르다(`searchbox` vs `button`/`option`)
+     *    ② `'검색'`으로 조회하는 e2e **5개 지점 전량**이 이미 `exact: true`다
+     *    (2026-08-05 `grep -rn "name: '검색'" e2e/` 실측 — 재실측 없이 대조하도록 전수 열거).
+     *       · `search.spec.ts:146`        `getByRole('button', { name: '검색', exact: true })`
+     *       · `search.spec.ts:148`        동 컨테이너 한정 클릭
+     *       · `saved-filters.spec.ts:280` `getByRole('button', { name: '검색', exact: true })`
+     *       · `saved-filters.spec.ts:282` 동 컨테이너 한정 클릭
+     *       · `command-palette.spec.ts:293` `getByRole('option', { name: '검색', exact: true })`
+     *    Testing Library의 `name`은 기본이 완전일치라 유닛은 선재 안전.
+     *
+     * 4. `search`('검색')·`issues`('이슈') ⊂ `globalSearchPlaceholder`('이슈 검색') —
+     *    **placeholder는 접근성 이름이 아니다.** 입력창에 `aria-label`(`globalSearch`)이
+     *    있으므로 accname 계산에서 placeholder는 이름이 될 수 없고 `getByRole` 계열은 이
+     *    값을 보지 못한다. 남는 표면은 `getByPlaceholder` 부분일치 하나뿐인데
+     *    `'검색'`·`'이슈'`로 placeholder를 조회하는 지점은 0건이다(2026-08-05 전수 실측).
+     *    ⚠️ **placeholder를 `aria-label`로 승격하면 이 면제 2건을 제거해야 한다.**
      */
     const ALLOWED_SUBSTRING_PAIRS: ReadonlyArray<readonly [keyof typeof navLabels, keyof typeof navLabels]> =
       [
         ['projectNav', 'projectViewNav'],
         ['admin', 'adminNav'],
+        ['search', 'globalSearch'],
+        ['search', 'globalSearchPlaceholder'],
+        ['issues', 'globalSearchPlaceholder'],
       ]
 
     /** 런타임으로 훑은 모든 (a, b) 순서쌍 — 손으로 나열하지 않는다 */

@@ -4,9 +4,7 @@
 // 조회는 use-palette-search 가 맡는다.
 // ★commands.ts 를 import 하지 않는다(ADR D-1 경계). 슬래시 판별은 parseCommand 가
 // 이미 끝냈고, 이 함수는 그 결과가 'not-command' 일 때만 불린다.
-
-/** 이슈 키 형식 — commands.ts 의 ISSUE_KEY_PATTERN 과 같은 규칙 (대문자 정규화 후 검사) */
-const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]*-\d+$/
+import { ISSUE_KEY_PATTERN } from '@/lib/issue-key'
 
 /**
  * 비-슬래시 팔레트 입력의 판별 결과 — 판별 유니온.

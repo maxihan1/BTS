@@ -1,9 +1,8 @@
 // 명령 팔레트 슬래시 명령 파서 + 레지스트리 — FR-UX-04 Task-1
+import { ISSUE_KEY_PATTERN } from '@/lib/issue-key'
+
 /** 슬래시 명령 접두사 문자 */
 const SLASH_PREFIX = '/'
-
-/** 이슈 키 형식 — 대문자로 시작, 대문자/숫자 뒤 하이픈 + 숫자 (예: PROJ-12) */
-const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]*-\d+$/
 
 /** 명령 팔레트가 지원하는 명령 이름 */
 type CommandName = 'goto' | 'search' | 'issue'
