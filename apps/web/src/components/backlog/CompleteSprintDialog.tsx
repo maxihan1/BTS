@@ -124,9 +124,9 @@ export interface CompleteSprintDialogProps {
 /**
  * 실패 상태를 사용자 문구로 옮긴다.
  *
- * `stale` 은 「완료 직전 재검증에서 목록이 달라졌다」인데, 사용자가 해야 할 일이
- * 낙관적 잠금 충돌과 **같다**(최신 값을 확인하고 다시 시도). 전용 문구가 아직 없어
- * 같은 뜻의 기존 값을 재사용한다 — 하드코딩을 만들지 않기 위함이다.
+ * `stale` 은 전에 `startDialog.patchConflict` 를 빌려 썼다. 그 문구가 「입력하신 값은
+ * 그대로 두었으니」로 바뀌면서 **입력 폼이 없는** 이 다이얼로그에서 거짓이 되어
+ * 전용 `staleBlocked` 로 갈랐다.
  */
 function failureMessage(failure: FailureState): string {
   switch (failure.kind) {
@@ -137,7 +137,7 @@ function failureMessage(failure: FailureState): string {
     case 'truncated':
       return L.truncatedBlocked
     case 'stale':
-      return backlogLabels.startDialog.patchConflict
+      return L.staleBlocked
   }
 }
 
