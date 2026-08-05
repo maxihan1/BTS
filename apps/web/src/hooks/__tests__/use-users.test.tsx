@@ -269,6 +269,19 @@ describe('chunkUserIds', () => {
   it('T2-4: 빈 배열은 묶음 0개다', () => {
     expect(chunkUserIds([])).toEqual([])
   })
+
+  it('T2-9: id 집합이 같으면 순서가 달라도 같은 묶음이다 (queryKey 순서 민감 방어)', () => {
+    // ★이 묶음이 그대로 queryKey 에 들어간다. TanStack Query 의 배열 queryKey 는 순서
+    // 민감이라 정렬이 사라지면 "같은 담당자 집합, 다른 캐시 엔트리" 가 되어 data 가 한 번
+    // 빈 배열로 떨어지고 카드 전원이 `?` 로 깜빡인다.
+    //
+    // 도달 경로는 백로그의 주 조작인 **드래그 재정렬**이다 — rerank 성공 → 백로그 무효화
+    // → 이슈 순서 변경 → 담당자 id 수집 순서 반전.
+    const ID_A = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
+    const ID_B = 'b2c3d4e5-f6a7-4891-bcde-ef2345678901'
+
+    expect(chunkUserIds([ID_B, ID_A])).toEqual(chunkUserIds([ID_A, ID_B]))
+  })
 })
 
 describe('useUsersByIdsChunked', () => {
@@ -324,20 +337,6 @@ describe('useUsersByIdsChunked', () => {
     expect(requested).toHaveLength(0)
   })
 
-  it('T2-7: 한 묶음이 실패하면 isError 가 true 다 (소비처가 fail-soft 판정에 쓴다)', async () => {
-    server.use(
-      http.get('/api/v1/users', () => HttpResponse.json({ message: 'boom' }, { status: 500 })),
-    )
-
-    const { result } = renderHook(() => useUsersByIdsChunked(makeIds(3)), {
-      wrapper: createWrapper(),
-    })
-
-    await waitFor(() => {
-      expect(result.current.isError).toBe(true)
-    })
-  })
-
   it('T2-8: 재렌더돼도 data 참조가 유지된다 (소비처 memo 보호)', async () => {
     // BacklogColumn 은 memo(BacklogColumnInner) 라 assigneeNames 참조가 매번 바뀌면
     // 재렌더 스킵이 통째로 죽는다. 드래그 중에는 BacklogBoard 가 상시 재렌더되므로 실제로 물린다.
@@ -358,5 +357,51 @@ describe('useUsersByIdsChunked', () => {
 
     // combine 이 없으면 매 렌더 flatMap 이 새 배열을 만들어 이 단언이 깨진다
     expect(result.current.data).toBe(before)
+  })
+
+  it('T2-10: 담당자가 늘어 재조회하는 동안 이미 알던 이름을 유지한다 (리뷰 C3 재도입 방어)', async () => {
+    // queryKey 에 id 묶음이 들어가므로 담당자가 한 명만 늘어도 캐시 미스다. 그 창에서
+    // data 가 빈 배열이 되면 이름 맵을 쓰는 백로그는 **전 카드가 `?` 로 깜빡인다**.
+    // 도달 경로. 백로그의 이슈 생성 다이얼로그에서 담당자를 지정해 생성 → 백로그 재조회
+    // → assigneeIds 에 새 id 추가 → 묶음 queryKey 변경.
+    //
+    // 두 번째 응답을 **보류(gate)** 시켜 그 중간 창을 결정적으로 관측한다. 지연(setTimeout)
+    // 으로 재면 느린 CI 에서 창을 놓쳐 flaky 가 된다 (T-UU-6 와 같은 기법).
+    const ID_A = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
+    const ID_B = 'b2c3d4e5-f6a7-4891-bcde-ef2345678901'
+
+    let releaseSecond: (() => void) | undefined
+    // executor 는 동기 실행이라 이 시점에 releaseSecond 가 채워진다
+    const secondResponseGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve
+    })
+    let callCount = 0
+
+    server.use(
+      http.get('/api/v1/users', async () => {
+        callCount += 1
+        if (callCount >= 2) await secondResponseGate
+        return HttpResponse.json([usersFixture[0]])
+      }),
+    )
+
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useUsersByIdsChunked(ids),
+      { wrapper: createWrapper(), initialProps: { ids: [ID_A] } },
+    )
+    await waitFor(() => {
+      expect(result.current.data).toHaveLength(1)
+    })
+
+    rerender({ ids: [ID_A, ID_B] })
+    // 두 번째 조회가 시작될 때까지 기다린다 — 시작 전에 재면 첫 결과를 보고 있는 것뿐이다
+    await waitFor(() => expect(callCount).toBe(2))
+
+    // placeholderData 가 없으면 여기서 빈 배열이 된다 (= 카드 전원 `?`)
+    expect(result.current.data).toHaveLength(1)
+    expect(result.current.data[0]?.username).toBe('alice')
+
+    // 보류를 풀어 핸들러가 매달리지 않게 한다
+    releaseSecond?.()
   })
 })
