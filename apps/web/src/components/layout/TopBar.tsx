@@ -54,11 +54,14 @@ export function TopBar({ onHelpClick }: TopBarProps) {
    *
    * ★`e.nativeEvent.isComposing` 을 먼저 본다(FR10/S6). 한글 조합 중의 Enter 는 조합 확정이지
    * 제출이 아니다. 이 가드가 없으면 「로그인」을 치는 도중 첫 Enter 에 검색이 나간다.
+   * ★`keyCode === 229` 는 **이중 방어**다 — `isComposing` 을 세팅하지 않고 조합 중 keydown 을
+   * 229 로만 보내는 브라우저/IME 조합이 있다. 저장소 선례와 같은 형태다
+   * (`routes/issues.$key.tsx:741` · `components/issue/IssueDescription.tsx:392`).
    * ★`projectKey` 를 싣지 않는다(FR12) — `/search` 가 4단 해소와 미해소 안내를 이미 소유한다
    * (`routes/search.tsx:480` `useResolvedActiveProject` · `:565` `<ActiveProjectGate>`).
    */
   function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
     const intent = resolveGlobalSearchInput(query)
     if (intent.kind === 'empty') return
     if (intent.kind === 'issue-key') {

@@ -164,6 +164,19 @@ describe('TopBar', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
+  it('F13 S6 — isComposing 없이 keyCode 229 만 오는 IME 도 제출하지 않는다', () => {
+    renderTopBar()
+
+    // 일부 브라우저/IME 조합은 조합 중 keydown 에 isComposing 을 세팅하지 않고 keyCode 229 만 보낸다.
+    // 위 S6 은 isComposing 을 직접 심으므로 이 경로를 원리적으로 못 잡는다 — 이중 방어의 짝 테스트다
+    // (선례: routes/issues.$key.tsx:742 · components/issue/IssueDescription.tsx:392).
+    const box = screen.getByRole('searchbox', { name: navLabels.globalSearch })
+    fireEvent.change(box, { target: { value: '로그인' } })
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
   it('F13 FR11 — 제출 후 입력값을 지우지 않는다', async () => {
     const user = userEvent.setup()
     renderTopBar()

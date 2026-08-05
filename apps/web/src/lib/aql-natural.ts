@@ -34,13 +34,26 @@ export type GlobalSearchIntent =
  * 먹힐 수 없다. 정렬이 실제로 갈리는 시점은 `>` 와 `>=` 처럼 **접두사를 공유하는** 연산자가
  * 백엔드에 추가되고, 이 파일이 매치 문자열까지 읽을 때다. 그때를 위해 미리 세워 둔다.
  */
+
+/**
+ * 정규식 메타문자를 이스케이프한다.
+ *
+ * ★필드와 연산자 **양쪽**에 쓴다. 한쪽만 이스케이프하면 비대칭이 남는데, 두 목록 다
+ * 백엔드 정본의 미러(`AqlFields.MVP_FIELDS` · `AqlTokenType`)라 어느 쪽에 메타문자가
+ * 먼저 들어올지 여기서 알 수 없다. 지금은 필드가 전부 `[a-z]+` 라 무해하지만, 그 무해함은
+ * 백엔드가 지키는 성질이지 이 파일이 지키는 성질이 아니다.
+ */
+const escapeRegExp = (raw: string) => raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 const AQL_OPERATOR_ALTERNATION = [...AQL_OPERATORS]
   .sort((a, b) => b.length - a.length)
-  .map((op) => op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .map(escapeRegExp)
   .join('|')
 
+const AQL_FIELD_ALTERNATION = AQL_FIELDS.map(escapeRegExp).join('|')
+
 const AQL_PREFIX_PATTERN = new RegExp(
-  `^(?:${AQL_FIELDS.join('|')})\\s*(?:${AQL_OPERATOR_ALTERNATION})`,
+  `^(?:${AQL_FIELD_ALTERNATION})\\s*(?:${AQL_OPERATOR_ALTERNATION})`,
   'i',
 )
 
@@ -67,9 +80,13 @@ export function resolveGlobalSearchInput(input: string): GlobalSearchIntent {
     return { kind: 'aql', query: trimmed }
   }
 
-  // ★`as string` 근거. buildTextQuery 는 「공백만 또는 빈 문자열」일 때만 null 을 주는데
-  // (aql-text-query.ts line 31~32), 이 함수 첫머리에서 `trimmed === ''` 를 이미 empty 로
-  // 걸러 반환했으므로 여기 도달한 trimmed 는 비어 있을 수 없다. 즉 null 이 불가능한 지점이라
-  // 좁히는 단언이지, null 을 덮는 `!` 단언이 아니다(DEVELOPMENT.md §1.3-12).
-  return { kind: 'text', query: buildTextQuery(trimmed) as string }
+  // ★null 이면 empty 로 떨어뜨린다. 지금 buildTextQuery 는 「공백만 또는 빈 문자열」일 때만
+  // null 을 주고(aql-text-query.ts line 31~32) 이 함수 첫머리가 그 경우를 이미 걸렀으므로
+  // 이 가지는 실제로 도달하지 않는다. 그래도 단언(`as string`)으로 좁히지 않는 이유는,
+  // 나중에 buildTextQuery 에 길이 상한 같은 새 null 반환 조건이 붙으면 단언이 `null` 을
+  // `string` 으로 위장시켜 **빈 검색이 조용히 나가기** 때문이다 — 컴파일러가 못 잡는다.
+  // 분기로 두면 그때 자동으로 「아무 데도 가지 않는다」로 안전하게 접힌다.
+  const query = buildTextQuery(trimmed)
+  if (query === null) return { kind: 'empty' }
+  return { kind: 'text', query }
 }
