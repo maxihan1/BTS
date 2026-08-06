@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { BacklogCard } from './BacklogCard'
+import { CreateSprintForm } from './CreateSprintForm'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -55,6 +56,25 @@ export interface BacklogColumnProps {
    * 부모가 `permissions.CREATE === true` 로만 `true` 를 만든다.
    */
   canCreateIssue?: boolean
+  /**
+   * 스프린트 생성 제출 콜백 — 폼이 입력받은 이름을 그대로 넘긴다 (FR-UX-13 F16 F16-11).
+   *
+   * **미전달이면 폼을 렌더하지 않는다** — `onCreateIssue` 와 같은 결이고, 기존 소비처의
+   * 동작이 바뀌지 않는다.
+   *
+   * ★**`ReactNode` 슬롯이 아니라 원시 콜백인 이유.** 이 컴포넌트는 `memo` 인데 JSX 노드
+   * prop 은 매 렌더 새 참조라 memo 를 통째로 무력화한다. 백로그는 최대 1,000건이고
+   * 필터 입력은 250ms 디바운스로 부모를 반복 재렌더한다. 부모는 이 콜백을
+   * **`useCallback` 으로 감싼 안정 참조**로 넘겨야 memo 가 산다.
+   */
+  onCreateSprint?: (name: string) => void
+  /**
+   * 스프린트 생성 폼 비활성화 여부 (권한 없음 또는 생성 진행 중).
+   *
+   * 권한 플래그(`canManageSprint`)를 받지 않고 **계산된 결과**를 받는다 — 「권한 없음 OR
+   * 진행 중」 판정을 부모와 이 컴포넌트 두 곳에 두면 규칙이 두 벌로 갈라진다.
+   */
+  createSprintDisabled?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,6 +88,8 @@ function BacklogColumnInner({
   isOver = false,
   onCreateIssue,
   canCreateIssue = false,
+  onCreateSprint,
+  createSprintDisabled = false,
 }: BacklogColumnProps) {
   const orderedKeys = issues.map((i) => i.key)
 
@@ -130,6 +152,20 @@ function BacklogColumnInner({
             onClick={onCreateIssue}
           />
         )}
+        {/* 스프린트 생성 폼 — Jira 와 같이 백로그 섹션 헤더에 붙는다 (F16 F16-11).
+            ★**제목 span 뒤(오른쪽)가 계약이다.** 앞에 두면 섹션 textContent 선두가
+            「스프린트 생성…」이 되어 `backlog.spec.ts:253` 의 `hasText: /^백로그/` 칸
+            locator 가 통째로 즉사한다. 접기 토글의 sr-only 금지(위 주석)와 같은 함정이다.
+            드롭 영역(아래 div) 밖이라 드래그 앤 드롭에 영향이 없다.
+            헤더는 접혀도 남으므로 접힌 상태에서도 스프린트를 만들 수 있다 — 접기는
+            카드 목록을 접는 것이지 생성 진입을 없애는 것이 아니다. */}
+        {onCreateSprint !== undefined && (
+          <CreateSprintForm
+            projectKey={projectKey}
+            onSubmit={onCreateSprint}
+            disabled={createSprintDisabled}
+          />
+        )}
       </div>
 
       {/* 드롭 영역 + 카드 목록 — 접히면 **렌더하지 않는다** (FR-2). 헤더는 남는다. */}
@@ -173,7 +209,8 @@ function BacklogColumnInner({
 /**
  * 백로그(스프린트 미할당) 이슈 칸.
  *
- * - 헤더에 접기 토글 · "백로그" 제목 · 이슈 수 · 생성 진입점을 한 줄로 표시한다.
+ * - 헤더에 접기 토글 · "백로그" 제목 · 이슈 수 · 이슈 생성 진입점 · 스프린트 생성 폼을
+ *   한 줄로 표시한다. 헤더 자식의 **순서가 계약**이다 (제목이 맨 앞 — F16 §헤더 순서).
  * - 세로 스택의 한 칸이므로 폭은 `w-full` 이다 (F15 FR-1).
  * - `useDroppable`로 droppable id="backlog" 영역을 제공한다. 빈 목록에도 드롭 가능.
  * - 접히면 카드 목록을 렌더하지 않고 droppable 도 `disabled` 가 된다 (F15 FR-2 · E4).

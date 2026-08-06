@@ -1,6 +1,6 @@
 // 백로그·스프린트 보드 루트 컴포넌트 — DnD 오케스트레이션 + 라이프사이클 (FR-BL-01/02 D6/D7)
 import type { JSX } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import { useBacklog, useCreateSprint } from '@/hooks/use-backlog'
@@ -8,7 +8,6 @@ import { useUsersByIdsChunked } from '@/hooks/use-users'
 import { collectAssigneeIds, buildAssigneeNameMap } from './backlog-assignee-names'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
-import { CreateSprintForm } from './CreateSprintForm'
 import { StartSprintDialog } from './StartSprintDialog'
 import { CompleteSprintDialog } from './CompleteSprintDialog'
 import { cardFirstCollision } from './backlog-collision'
@@ -79,6 +78,8 @@ const EMPTY_BACKLOG_VIEW: BacklogView = { backlog: [], sprints: [], truncated: f
  * 백로그·스프린트 보드 루트.
  *
  * - useBacklog로 데이터를 로드하고 SprintColumn들 + BacklogColumn을 **세로로** 쌓는다 (F15 FR-1).
+ * - 스프린트 생성 폼은 스택 바깥이 아니라 **BacklogColumn 헤더 안**에 있다 (F16 F16-11).
+ *   이 컴포넌트는 제출 콜백만 `useCallback` 안정 참조로 넘긴다.
  * - DndContext + PointerSensor(distance:5)로 드래그를 관리한다.
  * - onDragEnd에서 resolveBacklogDropAction으로 시나리오를 판정해 mutation을 호출한다.
  * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
@@ -119,6 +120,24 @@ export function BacklogBoard({
   )
 
   const createSprint = useCreateSprint(projectKey)
+
+  // 스프린트 생성 제출 — `BacklogColumn` 헤더의 폼이 부른다 (F16 F16-11).
+  //
+  // ★`useCallback` 이 **성능 최적화가 아니라 배선 조건**이다. `BacklogColumn` 은 `memo` 라
+  //   매 렌더 새 함수를 넘기면 memo 가 통째로 죽어 카드 전량이 재렌더된다(최대 1,000건).
+  //   의존은 `createSprint` 객체가 아니라 **`createSprint.mutate`** 다 — `useMutation` 은
+  //   렌더마다 새 결과 객체를 만들지만 `mutate` 는 observer 에 묶인 안정 참조다.
+  //   조기 반환(`isLoading`)보다 **위**에 있어야 렌더마다 훅 개수가 같다.
+  const createSprintMutate = createSprint.mutate
+  const handleCreateSprint = useCallback(
+    (name: string) => {
+      createSprintMutate(
+        { projectKey, name },
+        { onError: () => toast.error(backlogLabels.moveFailedError) },
+      )
+    },
+    [createSprintMutate, projectKey],
+  )
 
   /** 드래그 처리 — 드롭 판정과 이동/재정렬 mutation 을 함께 쥔다. */
   const drag = useBacklogDrag(projectKey, backlogView, canReorderIssue)
@@ -204,17 +223,6 @@ export function BacklogBoard({
         </div>
       )}
 
-      <CreateSprintForm
-        projectKey={projectKey}
-        onSubmit={(name) => {
-          createSprint.mutate(
-            { projectKey, name },
-            { onError: () => toast.error(backlogLabels.moveFailedError) },
-          )
-        }}
-        disabled={!canManageSprint || createSprint.isPending}
-      />
-
       <DndContext
         sensors={sensors}
         collisionDetection={cardFirstCollision}
@@ -257,6 +265,10 @@ export function BacklogBoard({
             isOver={drag.overDroppableId === 'backlog'}
             canCreateIssue={canCreateIssue}
             onCreateIssue={createIssue.openForBacklog}
+            // 스프린트 생성 폼은 이제 이 칸의 헤더가 소유한다 (F16 F16-11).
+            // 「권한 없음 OR 생성 진행 중」 판정은 **여기 한 곳**에서만 한다.
+            onCreateSprint={handleCreateSprint}
+            createSprintDisabled={!canManageSprint || createSprint.isPending}
           />
         </div>
       </DndContext>

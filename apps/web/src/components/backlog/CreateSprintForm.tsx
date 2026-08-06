@@ -29,6 +29,10 @@ export interface CreateSprintFormProps {
  * - 이름 입력(필수) + 생성 버튼으로 구성된 단순 인라인 폼.
  * - 이름이 비어 있으면 제출을 막는다.
  * - 제출 성공 후 입력 필드를 초기화한다.
+ * - 소유자는 `BacklogColumn` 헤더다 (F16 F16-11). 종전에는 `BacklogBoard` 가 세로 스택
+ *   **바깥**에서 직접 렌더했다.
+ * - ★`aria-label`(= `스프린트 생성 폼`)은 **글자 단위로 보존**한다. `backlog.spec.ts` 의
+ *   `getByRole('form', { name: '스프린트 생성 폼' })` 2건이 이 이름에 걸려 있다.
  */
 export function CreateSprintForm({ onSubmit, disabled = false }: CreateSprintFormProps): JSX.Element {
   const [name, setName] = useState('')
@@ -53,8 +57,11 @@ export function CreateSprintForm({ onSubmit, disabled = false }: CreateSprintFor
         onChange={(e) => setName(e.target.value)}
         placeholder={backlogLabels.sprintNamePlaceholder}
         disabled={disabled}
+        // 폭은 **고정**이다 (F16 F16-11). 종전 `flex-1` 은 폼이 페이지 전폭을 차지하던
+        // 시절의 값이라, 백로그 섹션 헤더(`flex flex-wrap`) 안에서는 폼이 shrink-to-fit
+        // 이라 입력창이 0에 가깝게 접힌다. 모바일은 좁게, sm 부터 넓힌다.
         className={cn(
-          'flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm',
+          'w-36 rounded-md border border-border bg-background px-3 py-1.5 text-sm sm:w-52',
           'placeholder:text-muted-foreground',
           'focus:outline-none focus:ring-2 focus:ring-primary',
           disabled && 'cursor-not-allowed opacity-50',
