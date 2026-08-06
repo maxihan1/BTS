@@ -440,16 +440,20 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
   **★ 코드 리뷰 BLOCKER 2건 — 둘 다 「두 경로 중 하나만 봉합」 이라는 같은 양식이었다.** F15 BLOCKER ④(「그 봉합이 문제를 옮겼다」)와 같은 결이 **PR 3개 연속** 재현됐다. ① **DnD 칸 경로** — 「표시 집합 ≠ 동작 집합」 방어가 `resolveOverToDropZone` 의 **카드 경로에만** 걸렸다. 카드 경로는 `orderedKeysOf(view, …)` 로 원본에서 이웃 키를 다시 뽑지만, **칸 경로는 `over.data.current.orderedKeys` 를 그대로 쓰고** 그 값은 칸 컴포넌트가 **필터된 `issues` prop** 으로 만든 것이다 — 필터가 걸린 채 칸 빈 자리에 놓으면 rank 이웃이 보이는 것만으로 계산된다. ② **필터바 초기화 되돌림** — 초기화 진입이 **두 곳**(필터바 자체의 「초기화」 · 0건 빈 상태의 「초기화」)인데 한쪽만 로컬 검색 입력까지 비웠고, 다른 쪽은 250ms 디바운스가 **지운 검색어를 도로 밀어 올려** 초기화가 튕겼다. **두 건 다 머지 전 봉합 완료** — ① `867536477`(칸 경로도 `orderedKeysOf(view,…)` 를 쓰게 통일. 단 `data.orderedKeys` 자체는 **지우지 않았다** — `backlog-keyboard-coordinates.ts:56` `isEmptyColumn` 이 그 값으로 키보드 착지 후보를 판정하는데 **그쪽은 「보이는 것」이 맞다**. 같은 데이터의 소비자 둘이 서로 다른 의미를 요구한다는 비대칭을 두 KDoc 에 못박았다. 지웠으면 필터 활성 중 키보드 DnD 가 죽었을 것 — **봉합이 문제를 옮기는 것을 한 겹 더 막은 사례**) · ② `7a1ed7a12`(effect 가드를 「디바운스가 **현재 입력에 정착했을 때만** 올린다」로 강화. 리뷰가 제시한 후보 가드는 `exhaustive-deps` 때문에 매 키 입력마다 effect 가 재실행돼 **낡은 중간값이 새는 창을 새로 여는** 또 하나의 반쪽 봉합이 될 뻔했다).
   **★ 두 결함이 살아남은 이유도 같다 — 테스트 하네스가 실물을 안 본다.** DnD 는 `DndContext` 를 mock 해 `over.data` 를 테스트가 손으로 지어내므로 **컴포넌트가 실제로 싣는 값**을 아무도 관측하지 않았고, 초기화는 `BacklogFilterBar.test.tsx` 가 **비제어 하네스**라 되돌림이 원리적으로 관측 불가였다. 두 봉합 모두 **하네스부터 고쳤다** — 전자는 렌더된 `data-ordered-keys` 를 되읽는 `liveColumnDropTarget`, 후자는 `onChange→value` 되먹임 고리를 가진 `renderControlled`.
   **★ 브랜드 타입 방어의 정확한 한계 — 전개 연산자에서 한 홉 만에 벗겨진다.** plan 리뷰 BLOCKER-1 의 처방으로 `FilteredBacklogView`(`readonly` 배열 기반, 런타임 마커·캐스팅 없음)를 도입해 완료·DnD 핸들러가 필터 결과를 받으면 컴파일이 깨지게 했다. **그런데 그 방어는 `buildDisplay` 를 넘지 못한다** — 거기서 `sections = filtered.sprints.map(g => ({ meta: g.sprint, issues: [...g.issues] }))` 로 전개하는 순간 `readonly` 가 사라진다. 실제로 뮤테이션 검증에서 `{ sprint: s.meta, issues: s.issues }` 로 되돌리는 변형이 **`tsc` 를 통과했고**, 그것을 잡은 것은 타입이 아니라 **테스트**였다. 필드 이름을 `sprint` 가 아니라 `meta` 로 둔 것(TypeScript 는 프로퍼티의 `readonly` 를 대입 가능성 판정에서 무시한다)이 실질 방어의 절반이다. **즉 「타입으로 닫았다」는 경계 한 겹에서만 참이고, 그 너머는 여전히 테스트가 증인이다.**
-  검증 — 유닛 **9,214건 / 570파일**(F15 기준선 9,083/566 → +131건 / +4파일) · E2E `backlog.spec.ts` **82/82** + 백로그 참조 **10파일 동반 47/47** · 브라우저 눈확인 라이트/다크 · **백엔드 0파일**(`git diff --name-only main...HEAD | grep -c '^backend/'` → 0). 측정 함정 1건도 함께 적발했다 — **Playwright 1.60 은 파일명 조각 인자를 필터로 쓰지 않고 조용히 전량을 돈다.** 경로를 다 적지 않으면 「11파일만 돌렸다」고 믿은 채 전량 결과를 보게 되고, 초록이면 아무도 눈치채지 못한다.
+  검증 — 유닛 **9,231건 / 570파일**(F15 기준선 9,083/566 → +148건 / +4파일) · E2E `backlog.spec.ts` **35 tests** + 백로그 참조 **10파일 동반 75 tests**(전체 스위트 **696 tests / 144파일**) · 브라우저 눈확인 라이트/다크 · **백엔드 0파일**(`git diff --name-only main...HEAD | grep -c '^backend/'` → 0). 측정 함정 1건도 함께 적발했다 — **Playwright 1.60 은 파일명 조각 인자를 필터로 쓰지 않고 조용히 전량을 돈다.** 경로를 다 적지 않으면 「11파일만 돌렸다」고 믿은 채 전량 결과를 보게 되고, 초록이면 아무도 눈치채지 못한다.
+  **★ 여기 적혀 있던 4개 수치가 후속 ⑦ 착수 시 실측으로 뒤집혔다 (2026-08-06 정정).** 원문은 「유닛 **9,214**건 / 570파일 · E2E `backlog.spec.ts` **82/82** + 10파일 동반 **47/47**」이었으나, `vitest run` 실측이 **9,231**(파일 570 은 일치), `playwright test --list` 실측이 **35** 와 **75** 였다. 파일 수만 맞고 **테스트 건수는 유닛·E2E 양쪽 다 틀렸다** — 바로 위에 적힌 「Playwright 가 조용히 전량을 돈다」는 측정 함정이 남긴 잔재로 보인다(82·47 은 어느 실행 단위에도 대응하지 않는다). **후속 ⑦(PR #345) 반영 후 유닛은 571파일 / 9,237건**(판별식 파일 1 + 테스트 6).
 - **B3 — 백로그 조회 범위 축소 (백엔드). 🆕 후속 항목** (Maxi 확정 2026-08-05 · F15 착수 중 신설). **F15/F16 범위 밖이고 이 FR 의 D 단계에도 넣지 않는다** — 별도 항목으로 착수한다. **사유.** F15 가 「`truncated=true` 면 스프린트 완료를 차단」을 도입하는데(영구 동결 방지 — 아래 인용 블록), 그 상태를 빠져나갈 수단이 **현재도 F16 후에도 없다**. 착수 중 실측 — `BacklogController.kt:56-59` `getBacklog(@PathVariable projectKey)` 는 **쿼리 파라미터 0** 이고 `BacklogApplicationService` 는 `BoardIssueLookupPort.kt:94` 의 `BoardCardFilter` 오버로드를 **쓰지 않는다**. F16 은 정본상 「프론트 전용」이라 **이미 잘려서 도착한 응답을 클라이언트에서 다시 거를 뿐** `truncated`(`IssueRepository.kt:1204` `BOARD_CARD_FETCH_LIMIT = 1000`)를 내릴 수 없다. **즉 B3 가 오기 전까지 이슈 1,000건을 넘긴 프로젝트는 스프린트를 완료할 수 없다.** 범위 — 백로그 조회에 필터/페이지 파라미터를 추가해 `truncated` 를 실제로 내릴 수 있게 한다.
   **★ 구현 중 발견으로 범위 1건 추가 (2026-08-05).** 응답에 **`hiddenIssueCount`**(또는 `sprint_issues` 키 수 대비 반환 수)도 함께 실어야 한다 — `BacklogApplicationService.kt:144-150` 의 `keys.mapNotNull { issueByKey[it] }` 가 **가시성 제한 이슈**(`IdentityAccessIssueSecurityDirectory.kt:77-79`, 프로젝트에 이슈 보안 스킴이 배정된 경우)와 **soft delete 이슈**(`IssueRepository.kt:955` `DELETED_AT.isNull`)를 조용히 떨어뜨리는데 **`truncated` 가 서지 않아** 프론트가 같은 완료 차단을 걸 수 없다. 관측 신호가 0이라 프론트 단독으로는 가드가 불가능하다(가드를 달면 그 자체가 가짜 그린). 시더·마이그레이션에 스킴 배정이 0건이라 **신규 배포는 휴면**이고, 운영 인스턴스의 활성 여부는 **미확인**이다.
 - **COMPLETED 스프린트 카드 위 드롭 (선재 결함 · F15 E2E 단계에서 발견, 범위 밖).** 칸 droppable 은 `SprintColumn.tsx` 가 `disabled: isCompleted || collapsed` 로 막지만, **그 안의 카드 droppable 은 `BacklogCard.tsx` 가 `disabled: isDragging` 뿐**이라 완료 여부를 모르고, `resolveOverToDropZone` 에도 스프린트 상태 검사가 없다. 즉 **COMPLETED 스프린트 안의 카드 위에 놓으면 `assign` 이 나간다**. **데이터 손상은 없다** — `SprintController.kt:242` 가 `409 — COMPLETED 스프린트 할당 불가` 로 막는다. 다만 드롭 가능해 보이는데 반드시 실패하는 UX 결함이다. **선재 확정** — `BacklogCard.tsx` 는 F15 에서 무변경이고 `origin/main` 도 동일하다. 단 **세로 스택 전환으로 COMPLETED 섹션이 항상 보이게 되어 도달 가능성이 올라갔다**. 처방 후보는 ① 카드 droppable 에 완료 여부를 넘기거나 ② `resolveOverToDropZone` 에 상태 검사를 넣는 것.
 - **모바일 셸 반응형 (선재 결함 · F15 구현 중 발견, 범위 밖).** 375px 에서 본문 폭이 **111px** 로 짜부라진다 — 셸 사이드바(264px)가 md 미만에서 접히지 않는다. **F15 가 건드리지 않은 보드·이슈 목록 화면도 동일**해 선재 결함이 확정이며, 수정 대상이 `apps/web/src/components/layout/` 이라 F15·F16 범위 밖이다. 세로 스택 전환으로 증상 모양만 바뀐다(전 288px 고정폭 가로 스크롤 → 현 섹션 111px 짜부라짐).
 
-#### 🆕 F16 이 남긴 후속 8건 (2026-08-06 · PR #344 머지 시 등재 · 전부 **차단 아님**)
+#### 🆕 F16 이 남긴 후속 — 등재 10건 / **완료 1 · 잔여 9** (전부 **차단 아님**)
 
-머지 전 눈확인(라이트/다크 6항목)과 코드리뷰 2종이 적발했고, **차단 사유 0건**으로 판정해 이월했다.
-착수 시 **줄번호를 재측정할 것** — 이 FR 은 정본 수치가 실측에 뒤집힌 사례가 3건 있다.
+2026-08-06 PR #344 머지 시 ①~⑧ **8건 등재** → 후속 ⑦ 처리(PR #345) 중 **⑨·⑩ 2건 추가** ·
+**⑦ 완료**. 머지 전 눈확인(라이트/다크 6항목)과 코드리뷰 2종이 ①~⑧ 을 적발했고,
+**차단 사유 0건**으로 판정해 이월했다.
+착수 시 **줄번호를 재측정할 것** — 이 FR 은 정본 수치가 실측에 뒤집힌 사례가 **4건** 있다
+(F5 줄번호 · F15 `:246,248` · F16 「슬롯 그대로 쓴다」 · ⑦ 「복사본 2벌」).
 
 **시각 (눈확인 적발 · 실측 수치 동반)**
 - **① 320px 폼 오버플로.** 백로그 칸 헤더의 스프린트 생성 폼 우측이 헤더 우측을 **54px 초과**한다
@@ -480,15 +484,79 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
   `useComponents(projectKey)`·`useUsers` 는 무조건 실행된다. 백로그를 열면 **영원히 안 쓰이는**
   컴포넌트 목록 조회가 1건 나간다. 같은 PR 의 `SprintDialogHost` 는 "요청 1건 증가"를 이유로
   조건부 마운트를 택했는데 **같은 기준을 필터바에는 적용하지 않았다.**
-- **⑦ C4 짝 테스트에 대조 장치가 없다.** `BacklogFilterBar.test.tsx`(부재 0) ↔
-  `BacklogEpicPanel.test.tsx`(존재 4) 의 셀렉터 헬퍼가 **글자 단위로 같지만 복사본 2벌**이고
-  동기화 강제는 주석 한 줄뿐이다. 패널이 Radix 메뉴로 바뀌어 role 이 `menuitemcheckbox` 가 되면
-  → 패널 테스트만 red → 패널만 고침 → **필터바 쪽은 존재하지 않는 role 을 0개 세며 영구 초록**.
-  같은 PR 의 `create-entry-point-names.test.ts` 가 **정본 직접 import** 로 이 문제를 정확히
-  피했으므로 기법은 이미 손에 있다. 관련 [[two-lists-never-check-each-other]].
+- **⑦ C4 짝 테스트에 대조 장치가 없다.** ✅ **완료 (PR #345 · 2026-08-06)**.
+  `BacklogFilterBar.test.tsx`(부재 0) ↔ `BacklogEpicPanel.test.tsx`(존재 4) 의 셀렉터 헬퍼가
+  **글자 단위로 같지만 복사본 2벌**이고 동기화 강제는 주석 한 줄뿐이었다. 한쪽만 고치면
+  → 나머지 테스트만 red → 그쪽만 고침 → **필터바 쪽은 존재하지 않는 role 을 0개 세며 영구 초록**.
+  관련 [[two-lists-never-check-each-other]].
+  **★ 이 항목의 원래 서술이 두 군데 틀렸다 — 이 FR 에서 4번째다** (F5 줄번호 · F15 `:246,248` ·
+  F16 「슬롯 그대로 쓴다」에 이어).
+  **(가) 「복사본 2벌」이 아니라 8개였다.** 헬퍼가 참조하는 이름 상수 6개도 두 파일에 각각
+  따로 정의돼 있었다. role·헬퍼 2개만 옮겼으면 나머지 6개가 어긋난 채 남아 이 FR 이 3연속으로
+  맞은 **「봉합이 절반」**의 네 번째 판이 됐을 것이다.
+
+  | 심볼 | 구 `BacklogEpicPanel.test.tsx` | 구 `BacklogFilterBar.test.tsx` | 값 |
+  |---|---|---|---|
+  | `EPIC_CONTROL_ROLE` | `:83` | `:116` | `'checkbox'` |
+  | `queryEpicControls()` | `:86-96` | `:119-129` | 본문 동일 |
+  | `EPIC_ALPHA` | `:40` | `:60` | `'ATLAS-100'` |
+  | `EPIC_BETA` | `:41` | `:61` | `'ATLAS-200'` |
+  | `EPIC_UNRESOLVED` | `:43` | `:63` | `'ATLAS-900'` |
+  | `EPIC_ALPHA_NAME` | `:45` | `:65` | `'결제 개편'` |
+  | `EPIC_BETA_NAME` | `:46` | `:66` | `'알림 리팩터'` |
+  | `NO_EPIC_LABEL` | `:26` | `:58` | `backlogLabels.filter.noEpic` (값은 i18n 정본 파생이라 안전 · 바인딩만 중복) |
+
+  **(나) 「패널이 Radix 메뉴로 바뀌면」이라는 가정법이 이미 사실이었다.** 같은 저장소의
+  `ColumnSelector` 가 Radix 메뉴라 `menuitemcheckbox` 를 쓴다
+  (`ColumnSelector.test.tsx:49,56,64,68,81,89` · `issues.index.test.tsx:1243,1264`).
+  `BacklogEpicPanel` 은 shadcn `Checkbox`(`BacklogEpicPanel.tsx:221`)라 `checkbox` 다. 즉
+  **「목록에서 여러 개 고르기」라는 같은 성격 UI 두 개가 서로 다른 a11y role 로 이미 공존한다** —
+  ⑦ 의 위험 서술은 과대가 아니라 **과소평가**였다. 다만 role 은
+  `docs/design/jira-parity-contract.md` 에 **명시 0건**(「에픽」 언급 자체가 0건)이라 제품 계약이
+  아니라 **선택한 프리미티브의 부산물**이고, 그래서 공유 정본을 프로덕션이 아니라 **테스트 공간**에
+  뒀다.
+
+  **처방 (프로덕션 0줄).** 셀렉터 자산 8종을 테스트 전용 공유 모듈
+  **`apps/web/src/test/backlog-epic-control-contract.ts`** 로 승격해 두 파일이 `import` 만 하게
+  했고, 로컬 복사본 부활은 판별식
+  **`apps/web/src/components/backlog/epic-control-contract.test.ts`**(6건 — 지역정의 봉인 2 ·
+  공유모듈 참조 2 · **양방향 차집합 1** · 비-공허 자체검증 1)이 영구 차단한다. 커밋
+  `b176fb21f`(RED) → `1ca433394`(GREEN). 유닛 **571파일 / 9,237건 전량 통과**
+  (기준선 570/9,231 + 판별식 파일 1 + 테스트 6).
+  **드리프트는 이론이 아니라 이미 진행 중이었다** — 두 복사본의 KDoc 이 갈라져 있었다
+  (`EPIC_UNRESOLVED` 설명이 패널은 「조회 상한을 넘은」, 필터바는 「아직 로딩 중인」).
+  **값보다 설명이 먼저 갈렸다.**
+
+  **★ 뮤테이션 D — 판별식은 `tsc` 의 중복 안전망이 아니다.** 뮤테이션 4종(A 런타임 공유 ·
+  B 판별식 비-공허 · C 양방향 차집합 · D 중복성 반증) 전부 성공했는데, **D 가 이 판별식의
+  존재 이유다.** 타입 충돌이 **없는** 깔끔한 로컬 복사본을 되살리자 `tsc --noEmit` 이 `EXIT=0`
+  이고 기존 25건도 전부 green 인데 **판별식만 red** 였다. 즉 **이 시나리오에서 감지기는
+  판별식 하나뿐**이다 — 나중에 「타입 검사가 잡아 주니 지워도 된다」는 이유로 이 파일을
+  삭제하려는 시도가 있으면 이 문단이 반증이다.
 - **⑧ 픽스처 뷰 간 불일치.** 백로그는 `ATLAS-1 ∈ ATLAS-EPIC-A` 라고 말하는데 같은 이슈의 상세
   픽스처 `mocks/issue-fixtures.ts` 에는 `epic` 필드가 없다(`IssueResponse` 는 그 필드를 정의한다).
   **두 화면이 서로 다른 말을 하는데 대조 장치가 없다.** 현재 소비처 0이라 무해.
+
+**신규 (후속 ⑦ 처리 중 발견 · PR #345 · 2026-08-06)**
+- **⑨ 에픽 패널(`checkbox`) ↔ 컬럼 셀렉터(`menuitemcheckbox`) a11y role 불일치.**
+  「목록에서 여러 개 고르기」라는 **같은 성격의 UI 두 개**가 서로 다른 role 로 렌더된다 —
+  `BacklogEpicPanel` 은 shadcn `Checkbox`(`BacklogEpicPanel.tsx:221`), `ColumnSelector` 는
+  Radix 메뉴(`ColumnSelector.test.tsx:49` 외 5곳 · `issues.index.test.tsx:1243,1264`).
+  **접근성·Jira 패리티 관점의 디자인 일관성 문제**이지 테스트 배선 문제가 아니라 **PR #345
+  범위 밖**이다(#345 는 현재 role 을 바꾸지 않고 **사실로 고정**만 했다). 착수하려면 어느 쪽이
+  정본인지부터 정해야 하고, `docs/design/jira-parity-contract.md` 에 에픽 컨트롤 role 명시가
+  **0건**이라 그 결정이 곧 계약 신설이다.
+- **⑩ 필터바 부재 단언의 개별 공허성 — 감지기가 단 1개다.** ⑦ 이 **파일 수준 영구초록**은
+  해소했으나(공유 role 을 바꾸면 필터바 파일이 red 로 떨어진다), **단언 수준에서는 여전히
+  감지기가 하나뿐**이다. 뮤테이션 A(공유 role → `menuitemcheckbox`)에서
+  `BacklogFilterBar.test.tsx` **25건 중 red 가 된 것은 `:245` 한 줄**
+  (`getByRole(EPIC_CONTROL_ROLE, { name: 미배정 })` — S3a 의 비-공허 짝)뿐이었다.
+  나머지 부재 단언(`queryEpicControls()).toHaveLength(0)` — `:247`·`:254`)은 **존재하지 않는
+  role 을 0개 세므로 뮤테이션 하에서도 green** 이다. 즉 **그 한 줄이 지워지거나 「미배정」이
+  체크박스가 아니게 되는 순간 필터바는 role 드리프트에 다시 무감각해진다.** 처방 후보 —
+  각 부재 단언마다 같은 트리에서 살아 있는 대조 단언을 짝지어 두거나, 「이 트리에 해당 role 이
+  최소 1개 존재한다」를 `beforeEach` 급으로 올리는 것. 관련
+  [[unreachable-state-fixture-is-fake-green]].
 
 **부수 — 에픽 이름 폴백 3상태 미구분** (수용 가능으로 판정, 기록만).
 `use-backlog-epics` 는 ① 조회 중 ② 조회 실패 ③ **상한 50 초과** 를 전부 **키 표시**로 합친다.

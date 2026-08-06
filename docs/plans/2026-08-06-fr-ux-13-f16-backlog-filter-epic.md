@@ -560,7 +560,13 @@ Jira 갭 목록(스펙 §1 G1~G5)에 **URL 공유는 없다**. F16-9 는 "보드
 
 - **짝 테스트 셀렉터** — `queryAllByRole('checkbox', { name })`, 이름 후보 6종 전수.
   `BacklogFilterBar.test.tsx` 가 `toHaveLength(0)`, `BacklogEpicPanel.test.tsx` 가 `toHaveLength(4)`.
-  두 파일이 **글자 단위로 같은 헬퍼**를 쓴다. 접근명은 `<label htmlFor>` 하나로만 준다.
+  ~~두 파일이 **글자 단위로 같은 헬퍼**를 쓴다.~~ → **2026-08-06 후속 ⑦(PR #345) 이후 거짓.**
+  「글자 단위로 같은 복사본」이 곧 후속 ⑦ 로 등재된 결함 자체였고(같음을 강제하는 것이 주석
+  한 줄뿐이라 한쪽만 바뀌면 다른 쪽이 **존재하지 않는 role 을 0개 세며 영구 초록**), 실측 결과
+  복사본은 헬퍼 1개가 아니라 **role·헬퍼·키 3·이름 2·라벨 1 = 8종**이었다. 지금은 두 파일이
+  `@/test/backlog-epic-control-contract` **하나를 `import` 만** 하고, 로컬 복사본 부활은
+  `components/backlog/epic-control-contract.test.ts` 판별식이 막는다.
+  접근명은 `<label htmlFor>` 하나로만 준다.
 - **활성 개수 계산식** — `extraActiveCount = epicKeys.length + (query.trim() ? 1 : 0)`.
   `trim()` 판정 기준이 `isEmptyFilter` 와 같다.
 - **검색 입력 접근명** — `백로그 검색`(`BACKLOG_SEARCH_LABEL`). `type="text"` **유지 필수** —
