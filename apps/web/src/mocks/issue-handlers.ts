@@ -9,7 +9,8 @@ import { getStoredProjectLead } from './project-lead-handlers'
 import { getFieldPermissionsForProject } from './field-permission-handlers'
 import { AUTH_USERS } from './auth-fixtures'
 import { appendToInbox } from './inbox-handlers'
-import { appendCreatedIssueToBacklog } from './backlog-fixtures'
+import { appendCreatedIssueToBacklog, BACKLOG_EPIC_FIXTURES } from './backlog-fixtures'
+import type { BacklogEpicFixture } from './backlog-fixtures'
 import type { InboxItem } from '@/api/inbox'
 import {
   issuePageFixture,
@@ -85,6 +86,60 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   // FR-MN-01 D7 E2E용 멘션 강조 검증 fixture
   'ATLAS-MENTION': issueAtlasMentionFixture,
 }
+
+/**
+ * 백로그 에픽 픽스처 하나를 이슈 상세 응답으로 만든다 (FR-UX-13 F16).
+ *
+ * `useBacklogEpics` 는 에픽 이름을 **이슈 상세 조회 하나로만** 얻는다(에픽 목록 API 가 없다).
+ * 그래서 백로그 카드에 `epicKey` 를 심어도 이 응답이 없으면 패널이 키를 그대로 보여 준다 —
+ * 화면은 안 깨지는데 「사람이 읽는 이름」만 조용히 사라지는 형태다.
+ *
+ * @param epic 이름의 출처인 백로그 에픽 픽스처
+ * @param index 픽스처 배열에서의 순번 — UUID 꼬리에 실어 키마다 다른 id 를 만든다
+ */
+function buildBacklogEpicIssue(epic: BacklogEpicFixture, index: number): IssueResponse {
+  return {
+    key: epic.key,
+    id: `e0000002-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    projectKey: 'ATLAS',
+    summary: epic.summary,
+    currentStateKey: 'open',
+    reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+    assigneeId: null,
+    componentIds: [],
+    affectsVersionIds: [],
+    fixVersionIds: [],
+    version: 0,
+    createdAt: '2026-01-10T09:00:00Z',
+    updatedAt: null,
+    typeId: 4,
+    typeKey: 'epic',
+    typeName: '에픽',
+    description: null,
+    descriptionHtml: null,
+    priority: 3,
+    priorityName: 'Medium',
+    labels: [],
+    environment: null,
+    impact: null,
+    impactName: null,
+    customFields: {},
+    restrictedFields: [],
+    noneditableFields: [],
+  }
+}
+
+/**
+ * 백로그 에픽의 이슈 상세 — 키 → 응답.
+ *
+ * ★`issueFixtureMap` 에 **넣지 않는다.** 그 맵은 이슈 목록(`GET /api/v1/issues`)의 모수이자
+ *   클론 키 채번(`maxNum`)의 모수라, 거기에 2건을 더하면 목록 건수를 세는 기존 테스트가
+ *   함께 흔들린다. 에픽은 백로그 카드가 아니라 **이름 해석 대상**이므로 단건 조회 전용으로
+ *   분리하고, {@link resolveIssue} 체인의 맨 끝에만 붙인다.
+ */
+const backlogEpicIssueMap: Record<string, IssueResponse> = Object.fromEntries(
+  BACKLOG_EPIC_FIXTURES.map((epic, index) => [epic.key, buildBacklogEpicIssue(epic, index)]),
+)
 
 /** E2E 시나리오용 localStorage 키 — S4 재오픈 검증 시 done+resolution 이슈로 응답 분기 */
 const LS_KEY_RESOLUTION_ISSUE = '__bts_e2e_resolution_issue'
@@ -343,8 +398,9 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       { status: 404 },
     )
   }
-  // 상태 오버라이드 → 생성된 이슈 → 정적 fixture 순으로 조회
-  let found = issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  // 조회 체인은 resolveIssue 하나만 쓴다 — 같은 순서를 여기 한 벌 더 적으면 출처가 늘 때
+  // 둘이 갈라진다 (백로그 에픽 상세가 정확히 그 사례였다).
+  let found = resolveIssue(key)
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -516,6 +572,8 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     assigneeId: created.assigneeId,
     priority: created.priority,
     version: created.version,
+    // 생성 폼에 에픽 축이 없다 — 새 이슈는 항상 에픽 미지정이다. 픽스처에 에픽이 2종
+    // 생긴 뒤에도 이 값은 null 이 맞다(누락이 아니다). 새로 만든 카드는 「에픽 없음」쪽에 선다.
     epicKey: null,
   })
 
@@ -975,12 +1033,22 @@ const deleteIssueHandler = http.delete('/api/v1/issues/:key', ({ params }) => {
 })
 
 /**
- * 이슈 키로 현재 상태 조회 helper — issueOverrides → createdIssues → issueFixtureMap 순서.
+ * 이슈 키로 현재 상태 조회 helper —
+ * issueOverrides → createdIssues → issueFixtureMap → {@link backlogEpicIssueMap} 순서.
  * 소프트 삭제된 키는 undefined 반환.
+ *
+ * ★조회 체인은 **이 함수 하나뿐**이다. 단건 GET 이 같은 체인을 손으로 한 벌 더 적고 있으면
+ *   출처가 늘 때마다 둘 중 하나만 고쳐져 서로를 검사하지 못한다
+ *   (`two-lists-never-check-each-other`).
  */
 function resolveIssue(key: string): IssueResponse | undefined {
   if (deletedKeys.has(key)) return undefined
-  return issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  return (
+    issueOverrides.get(key) ??
+    createdIssues.get(key) ??
+    issueFixtureMap[key] ??
+    backlogEpicIssueMap[key]
+  )
 }
 
 /** getIssueFieldOverride가 반환하는 필드 오버라이드 값 (FR-UX-06 PR21b Task 6). */

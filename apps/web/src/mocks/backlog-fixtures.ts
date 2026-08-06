@@ -282,6 +282,53 @@ export function findSprintInStore(sprintId: string): {
 export { findIssueInProject, removeIssueFromProject }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 에픽 픽스처 — 카드의 `epicKey` 와 「에픽 이름」의 **단일 출처**
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 백로그 카드가 가리키는 에픽 한 건.
+ *
+ * `key` 는 카드의 `epicKey` 로 들어가고, `summary` 는 `GET /api/v1/issues/{key}` 가 돌려줄
+ * 이름이다 — `issue-handlers.ts` 가 이 목록을 읽어 상세 응답을 만든다. 두 곳이 같은 출처를
+ * 보게 해서 「키는 심었는데 이름이 안 붙는」 갈림을 구조적으로 없앤다
+ * (`msw-derived-behavior-shared-store-e2e` — 파생 응답은 공유 store 에서 읽는다).
+ */
+export interface BacklogEpicFixture {
+  /** 에픽 이슈 키. 카드의 `epicKey` 이자 이름 조회 URL 의 경로 토큰 */
+  readonly key: string
+  /** 에픽 이슈의 제목 = 화면에 보일 **사람이 읽는 이름**. 반드시 {@link key} 와 달라야 한다 */
+  readonly summary: string
+}
+
+/**
+ * 에픽 A — 백로그 칸의 이슈가 소속된다.
+ *
+ * 이름을 키와 **다르게** 둔 것이 계약이다. 같으면 「패널이 키가 아니라 이름을 보여 준다」는
+ * 단언이 이름 해석에 실패해도 통과하는 공허한 단언이 된다 (`e2e/backlog.spec.ts` 의
+ * 「F16 에픽 픽스처」 tripwire 가 이 조건을 지킨다).
+ */
+export const BACKLOG_EPIC_A: BacklogEpicFixture = {
+  key: 'ATLAS-EPIC-A',
+  summary: '사용자 인증 개편',
+}
+
+/**
+ * 에픽 B — **스프린트 칸**의 이슈가 소속된다.
+ *
+ * ### 왜 두 종이 필요한가
+ * 한 종뿐이면 「A 를 고르면 B 는 사라진다」에 사라질 대조군이 없어, 에픽 축이 아무것도
+ * 거르지 않는 오구현도 통과한다. 또 A 를 백로그 칸에, B 를 스프린트 칸에 나눠 둬야
+ * 「필터가 **모든 섹션**에 동시에 걸린다」(F16-7)가 화면에서 갈린다.
+ */
+export const BACKLOG_EPIC_B: BacklogEpicFixture = {
+  key: 'ATLAS-EPIC-B',
+  summary: '검색 품질 개선',
+}
+
+/** 이름 해석 대상 에픽 전량 — `issue-handlers.ts` 가 이 배열만 보고 상세 응답을 만든다 */
+export const BACKLOG_EPIC_FIXTURES: readonly BacklogEpicFixture[] = [BACKLOG_EPIC_A, BACKLOG_EPIC_B]
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 기본 시드 픽스처 — alice(userId=00000000-0000-4000-8000-000000000001) 로그인 기준
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -298,6 +345,14 @@ export { findIssueInProject, removeIssueFromProject }
  * 「없다」를 재려면 「있다」가 먼저 있어야 한다.
  * 또 이관 대상 Select 에 「백로그」 말고 **실제 선택지**가 있어야 「다른 스프린트로 이관」 경로가
  * 성립한다 — 그래서 완료되지 않은 스프린트가 2개(ACTIVE·PLANNED) 필요하다.
+ *
+ * ### ★ 에픽은 2종이고 **서로 다른 섹션**에 흩어져 있다 (FR-UX-13 F16)
+ * `ATLAS-1`(백로그 칸) → {@link BACKLOG_EPIC_A}, `ATLAS-4`(PLANNED 스프린트 칸) →
+ * {@link BACKLOG_EPIC_B}. 나머지 5건은 에픽 미지정이다.
+ * 이 배치를 바꾸면 e2e 가 재던 것이 조용히 줄어든다 — 한 종으로 줄이면 「A 를 고르면 B 가
+ * 사라진다」가, 한 섹션에 몰면 「모든 섹션에 동시 적용」이, 미지정을 0건으로 만들면
+ * 「에픽 없음」축이 각각 재지 못하는 상태가 된다. `e2e/backlog.spec.ts` 의
+ * 「F16 에픽 픽스처」 tripwire 가 세 조건을 전부 지킨다.
  *
  * ### 배열 순서 = 백엔드 정렬 순서
  * `ACTIVE → PLANNED → COMPLETED` 로 둔다. 백엔드 `sprintComparator`
@@ -316,7 +371,9 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
       priority: 1,
       rank: '0|hzzzzz:',
       version: 0,
-      epicKey: null,
+      // ★백로그 칸의 유일한 에픽 소속 이슈 (F16). 스프린트 쪽 ATLAS-4 와 **다른 에픽**이라
+      //   「A 를 고르면 B 는 사라진다」와 「모든 섹션에 동시 적용」을 함께 잴 수 있다.
+      epicKey: BACKLOG_EPIC_A.key,
     },
     {
       key: 'ATLAS-2',
@@ -396,7 +453,9 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           priority: 2,
           rank: '0|i00007:',
           version: 0,
-          epicKey: null,
+          // ★스프린트 칸의 유일한 에픽 소속 이슈 (F16). 백로그 쪽 ATLAS-1 과 짝이다 —
+          //   둘이 다른 섹션에 있어야 「에픽 필터가 스프린트 섹션도 좁힌다」가 성립한다.
+          epicKey: BACKLOG_EPIC_B.key,
         },
       ],
     },

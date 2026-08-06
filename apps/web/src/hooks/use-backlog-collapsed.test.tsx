@@ -5,6 +5,7 @@ import {
   useBacklogCollapsed,
   useBacklogCollapsedStore,
   backlogCollapsedStorageKey,
+  EPIC_PANEL_SECTION_ID,
 } from './use-backlog-collapsed'
 
 const PROJECT = 'PROJ'
@@ -164,5 +165,43 @@ describe('useBacklogCollapsed', () => {
     expect(result.current.isCollapsed('sprint-1')).toBe(true)
     // 사라진 스프린트 id는 그대로 남는다 — 정리는 하지 않는다(E7)
     expect(readStoredIds(PROJECT)).toEqual(['sprint-999', 'backlog', 'sprint-1'])
+  })
+
+  // ── FR-UX-13 F16 Task 4 — 에픽 패널 접기 키 추가 ──────────────────────────
+  //
+  // 패널은 droppable 이 아니지만 접힘 영속 요구가 백로그·스프린트 섹션과 완전히 같다.
+  // 새 훅·새 localStorage 키를 만들면 프로젝트별 분리와 fail-safe 폴백(E6)이 두 벌로
+  // 갈리므로 **같은 스토어의 섹션 id 를 하나 추가**하는 것으로 끝낸다.
+
+  it('F16-4a: 에픽 패널 키는 섹션 id 공간에서 백로그·스프린트와 충돌하지 않는다', () => {
+    expect(EPIC_PANEL_SECTION_ID).not.toBe('backlog')
+    expect(EPIC_PANEL_SECTION_ID.startsWith('sprint-')).toBe(false)
+    // 비-공허 짝 — 키가 빈 문자열이면 위 두 단언이 조용히 통과한다
+    expect(EPIC_PANEL_SECTION_ID.length).toBeGreaterThan(0)
+  })
+
+  it('F16-4b: 에픽 패널 접힘도 같은 프로젝트별 키에 저장되고 프로젝트마다 독립이다', () => {
+    const proj = renderHook(() => useBacklogCollapsed(PROJECT))
+    const other = renderHook(() => useBacklogCollapsed(OTHER_PROJECT))
+
+    act(() => {
+      proj.result.current.toggle(EPIC_PANEL_SECTION_ID)
+    })
+
+    expect(proj.result.current.isCollapsed(EPIC_PANEL_SECTION_ID)).toBe(true)
+    expect(other.result.current.isCollapsed(EPIC_PANEL_SECTION_ID)).toBe(false)
+    expect(readStoredIds(PROJECT)).toEqual([EPIC_PANEL_SECTION_ID])
+    expect(readStoredIds(OTHER_PROJECT)).toBeNull()
+  })
+
+  it('F16-4c: 에픽 패널을 접어도 백로그·스프린트 섹션 접힘은 그대로다', () => {
+    const { result } = renderHook(() => useBacklogCollapsed(PROJECT))
+
+    act(() => {
+      result.current.toggle(EPIC_PANEL_SECTION_ID)
+    })
+
+    expect(result.current.isCollapsed('backlog')).toBe(false)
+    expect(result.current.isCollapsed('sprint-1')).toBe(false)
   })
 })

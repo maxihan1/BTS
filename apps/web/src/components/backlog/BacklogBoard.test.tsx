@@ -1,5 +1,6 @@
 // BacklogBoard 컴포넌트 통합 테스트 — onDragEnd 시나리오·C1 부분실패·생성/시작/완료 버튼 (FR-BL-01/02 D6/D7)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor, act, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -307,11 +308,33 @@ let mockUsersResult: ChunkedUsersResult = NO_USERS
 /** `useUsersByIdsChunked` 가 실제로 받은 id 목록 — T3-1 이 단언한다 */
 const mockUseUsersByIdsChunked = vi.fn<(ids: string[]) => void>()
 
+/**
+ * FR-UX-13 F16 — `FilterBar` 담당자 typeahead 가 읽는 사용자 목록.
+ *
+ * ★`useUsers`·`useUsersByIds` 를 함께 돌려주지 않으면 필터바를 배선하는 순간
+ * 「No "useUsers" export is defined」로 이 파일 **전량**이 터진다 — 팩토리가 반환하지
+ * 않는 export 는 존재하지 않는다(`useUpdateSprint` 가 같은 함정을 이미 겪었다, :282).
+ *
+ * 검색어를 무시하고 항상 같은 목록을 돌려준다. 이 파일이 재는 것은 **필터가 화면에
+ * 걸리는가**이지 typeahead 의 검색 정확도가 아니다(그건 `FilterBar.test.tsx` 몫).
+ */
+let mockFilterBarUsers: UserSummary[] = []
+const FILTER_BAR_USERS_RESULT = { isLoading: false }
+
 vi.mock('@/hooks/use-users', () => ({
   useUsersByIdsChunked: (ids: string[]) => {
     mockUseUsersByIdsChunked(ids)
     return mockUsersResult
   },
+  useUsers: () => ({ data: mockFilterBarUsers, ...FILTER_BAR_USERS_RESULT }),
+  useUsersByIds: () => ({ data: mockFilterBarUsers, ...FILTER_BAR_USERS_RESULT }),
+}))
+
+// FR-UX-13 F16 — `FilterBar` 는 `hiddenSections` 와 **무관하게** `useComponents(projectKey)` 를
+// 항상 부른다(`FilterBar.tsx:95`). 목이 없으면 백로그 테스트마다 MSW 요청이 1건씩 늘어
+// 「요청 수 무증가」(N1)를 재는 시야가 흐려진다. 값은 쓰이지 않으므로 빈 목록이다.
+vi.mock('@/hooks/use-components', () => ({
+  useComponents: () => ({ data: [], isLoading: false }),
 }))
 
 // FR-UX-09 F3 — 생성 모달을 스텁으로 둔다.
@@ -341,15 +364,28 @@ vi.mock('@/components/issue/CreateIssueDialog', () => ({
 }))
 
 import { KeyboardSensor, PointerSensor } from '@dnd-kit/core'
-import { BacklogBoard } from './BacklogBoard'
+import {
+  BACKLOG_FILTERED_EMPTY_TITLE,
+  BACKLOG_FILTER_RESET_LABEL,
+  BacklogBoard,
+} from './BacklogBoard'
 import { cardFirstCollision } from './backlog-collision'
+import { SEARCH_DEBOUNCE_MS } from './BacklogFilterBar'
+import { EPIC_LIST_ARIA_LABEL } from './BacklogEpicPanel'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { filterBarLabels } from '@/i18n/filter-bar-labels'
 import { backlogScreenReaderInstructions } from '@/lib/backlog-announcements'
 import { backlogKeyboardSensorOptions } from '@/lib/backlog-keyboard-coordinates'
+import { NO_EPIC, emptyBacklogFilter, filterToSearch, searchToFilter } from '@/lib/backlog-filter'
+import type { BacklogFilter, BacklogFilterSearch } from '@/lib/backlog-filter'
+import { useBacklogCollapsedStore } from '@/hooks/use-backlog-collapsed'
 import { server } from '@/test/server'
 import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
 import type { UserSummary } from '@/api/users'
 import type { BacklogIssue, BacklogView } from '@/api/backlog'
+
+/** 제목 검색 입력의 접근명 — 정본(`i18n/backlog-labels.ts`)에서 읽는다. 리터럴 재타이핑 금지 */
+const BACKLOG_SEARCH_LABEL = backlogLabels.filter.searchLabel
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -359,22 +395,127 @@ function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
 }
 
-function renderBoard(
-  projectKey = 'ATLAS',
-  opts: { canManageSprint?: boolean; canReorderIssue?: boolean; canCreateIssue?: boolean } = {},
-) {
-  const { canManageSprint = true, canReorderIssue = true, canCreateIssue = false } = opts
+/** {@link renderBoard} 옵션 — 권한 3종 + URL 흉내 */
+interface RenderBoardOptions {
+  canManageSprint?: boolean
+  canReorderIssue?: boolean
+  canCreateIssue?: boolean
+  /** 화면을 열 때의 URL search 파라미터. 링크 공유·새로고침 재현에 쓴다 (F16-9) */
+  initialSearch?: BacklogFilterSearch
+  /** 보드가 올린 필터 변경을 엿본다 — 「URL 로 무엇이 나가는가」의 관측 지점 */
+  onFilterChange?: (next: BacklogFilter) => void
+}
+
+/**
+ * 라우트를 대신해 **URL 을 소유하는** 하네스.
+ *
+ * `BacklogBoard` 는 제어형이라 필터 state 를 갖지 않는다. 그래서 테스트도 `BacklogFilter`
+ * 를 그냥 들고 있지 않고 **`BacklogFilterSearch`(=URL) 를 들고 왕복시킨다** — 실제 배선과
+ * 같은 경로(`searchToFilter` → 화면 → `filterToSearch`)를 지나야 왕복에서만 드러나는
+ * 결함(빈 값 생략·센티널 변환)이 유닛에서도 잡힌다.
+ *
+ * ★같은 URL 이면 **같은 참조를 유지**한다. 실제 라우터도 URL 이 안 바뀌면 새 search 객체를
+ * 만들지 않으며, 여기서 매번 새 객체를 만들면 필터바의 디바운스 동기화가 자기 자신을 다시
+ * 깨워 무한 렌더가 된다(공백만 입력한 검색어가 그 경로다 — `BacklogPage` 의 같은 가드).
+ * 키 순서는 `filterToSearch` 가 항상 q → assignee → epic 로 고정하므로 직렬화 비교가 성립한다.
+ *
+ * ★★그리고 URL 반영은 **한 박자 뒤**다. `navigate` 는 Promise 를 돌려주고 location 갱신이
+ * 별도 커밋에서 일어난다 — 즉 「변경을 올린 렌더」와 「값이 돌아온 렌더」가 다르다.
+ * 여기서 동기 `setState` 를 쓰면 그 두 렌더가 하나로 붙어, **실브라우저에서만 나는 버그**를
+ * 유닛이 통째로 못 본다. 실제로 Task 8 의 첫 구현이 그 함정에 빠졌다 — 빈 상태의
+ * 「필터 초기화」가 브라우저에서 아무 일도 하지 않았는데 유닛은 전량 초록이었다.
+ */
+function UrlOwningBacklogBoard({
+  projectKey,
+  initialSearch,
+  onFilterChange,
+  canManageSprint,
+  canReorderIssue,
+  canCreateIssue,
+}: {
+  projectKey: string
+  initialSearch: BacklogFilterSearch
+  onFilterChange?: (next: BacklogFilter) => void
+  canManageSprint: boolean
+  canReorderIssue: boolean
+  canCreateIssue: boolean
+}) {
+  const [search, setSearch] = useState<BacklogFilterSearch>(initialSearch)
+  const filter = useMemo(() => searchToFilter(search), [search])
+
+  return (
+    <BacklogBoard
+      projectKey={projectKey}
+      filter={filter}
+      onFilterChange={(next) => {
+        onFilterChange?.(next)
+        // ★한 박자 뒤에 반영한다 — 라우터의 비동기 커밋 재현 (위 KDoc)
+        queueMicrotask(() => {
+          setSearch((prev) => {
+            const nextSearch = filterToSearch(next)
+            return JSON.stringify(prev) === JSON.stringify(nextSearch) ? prev : nextSearch
+          })
+        })
+      }}
+      canManageSprint={canManageSprint}
+      canReorderIssue={canReorderIssue}
+      canCreateIssue={canCreateIssue}
+    />
+  )
+}
+
+function renderBoard(projectKey = 'ATLAS', opts: RenderBoardOptions = {}) {
+  const {
+    canManageSprint = true,
+    canReorderIssue = true,
+    canCreateIssue = false,
+    initialSearch = {},
+    onFilterChange,
+  } = opts
   const qc = makeQueryClient()
   return render(
     <QueryClientProvider client={qc}>
-      <BacklogBoard
+      <UrlOwningBacklogBoard
         projectKey={projectKey}
+        initialSearch={initialSearch}
+        onFilterChange={onFilterChange}
         canManageSprint={canManageSprint}
         canReorderIssue={canReorderIssue}
         canCreateIssue={canCreateIssue}
       />
     </QueryClientProvider>,
   )
+}
+
+/**
+ * 필터를 **고정한 채** 보드를 그린다 — 부모가 갱신하지 않는 상황을 만든다.
+ *
+ * 제어형 계약을 재는 유일한 방법이다. `renderBoard` 처럼 부모가 곧바로 값을 갱신하면,
+ * 보드가 몰래 자기 state 를 들고 있어도(=소유자 두 벌) 화면이 같아 구별되지 않는다.
+ */
+function renderBoardWithFixedFilter(filter: BacklogFilter, onFilterChange: (next: BacklogFilter) => void) {
+  return render(
+    <QueryClientProvider client={makeQueryClient()}>
+      <BacklogBoard projectKey="ATLAS" filter={filter} onFilterChange={onFilterChange} />
+    </QueryClientProvider>,
+  )
+}
+
+/**
+ * 세로 스택의 **칸** region 만 고른다 (FR-UX-13 F16).
+ *
+ * ★F16 이 에픽 패널을 스택 위에 얹으면서 화면의 `role="region"` 이 2종이 됐다 —
+ * 칸(`{이름} 칸, N개 이슈`)과 에픽 패널(`에픽`). 무명 `getAllByRole('region')` 은
+ * 이제 패널까지 세므로, 「칸이 몇 개인가」를 재는 곳은 전부 이 헬퍼를 지난다.
+ * 이름 규칙은 `backlogLabels.columnAriaLabel` 이 소유한다.
+ */
+function getColumnRegions(): HTMLElement[] {
+  return screen.getAllByRole('region', { name: /칸, \d+개 이슈$/ })
+}
+
+/** 이름으로 칸 region 하나를 집는다 — 카드 수가 필터에 따라 변하므로 이름을 통째로 만든다 */
+function getColumn(name: string, count: number): HTMLElement {
+  return screen.getByRole('region', { name: backlogLabels.columnAriaLabel(name, count) })
 }
 
 /** {@link triggerDragEnd} 의 선택 인자 — 「어떻게 끌었나」를 실제 값으로 싣는다 */
@@ -423,6 +564,55 @@ function triggerDragEnd(
       activatorEvent,
     } as unknown as DragEndEvent)
   })
+}
+
+/** {@link liveColumnDropTarget} 반환값 — `triggerDragEnd` 의 `over` 인자와 같은 모양 */
+interface ColumnDropTarget {
+  readonly id: string
+  readonly data: { readonly current: Record<string, unknown> }
+  /** 컴포넌트가 실제로 싣고 있던 순서 — Given 짝 단언에 그대로 쓴다 */
+  readonly orderedKeys: string[]
+}
+
+/**
+ * 화면이 **실제로 싣고 있는** 칸 droppable 을 그대로 드롭 대상으로 만든다.
+ *
+ * ★이 하네스의 구조적 사각지대를 닫는 헬퍼다. `DndContext` 를 mock 으로 갈아끼운 탓에
+ * `over.data` 를 지금까지 **테스트 작성자가 손으로 지어냈고**, 컴포넌트가 진짜로 무엇을
+ * 싣는지는 아무도 관측하지 않았다. 그래서 F16 이 칸에 넘기는 목록을 「필터 후」로 바꿨을 때
+ * 그 값이 rank 계산에까지 새어 들어간 것을 어떤 테스트도 잡지 못했다.
+ *
+ * `data-ordered-keys` 는 `useDroppable({ data })` 와 **같은 `orderedKeys` 변수**로 만들어지므로
+ * (`BacklogColumn.tsx:94,105,176` · `SprintColumn.tsx:74,84,113`) droppable data 의 관측 창이다.
+ *
+ * @param container `render` 가 돌려준 컨테이너
+ * @param droppableId `data-droppable` 값 (`backlog` 또는 `sprint-{uuid}`)
+ * @param sprintId 백로그 칸이면 null
+ */
+function liveColumnDropTarget(
+  container: HTMLElement,
+  droppableId: string,
+  sprintId: string | null,
+): ColumnDropTarget {
+  const zone = container.querySelector(`[data-droppable="${droppableId}"]`)
+  if (!(zone instanceof HTMLElement)) {
+    throw new Error(
+      `칸 droppable(${droppableId})을 찾지 못했습니다 — data-droppable 속성이 바뀌었는지 확인하세요.`,
+    )
+  }
+  const raw = zone.getAttribute('data-ordered-keys') ?? ''
+  const orderedKeys = raw === '' ? [] : raw.split(',')
+  return {
+    id: droppableId,
+    data: {
+      current: {
+        context: sprintId === null ? 'backlog' : 'sprint',
+        sprintId,
+        orderedKeys,
+      },
+    },
+    orderedKeys,
+  }
 }
 
 /**
@@ -483,6 +673,55 @@ const FRESH_AFTER_TRANSFER: BacklogView = {
   truncated: false,
 }
 
+/**
+ * PLANNED 스프린트에 카드가 **2장** 있는 뷰 — S5(같은 스프린트 내 재정렬)의 무대.
+ *
+ * ★기본 픽스처의 스프린트는 카드가 1장뿐이라 같은 칸 재정렬이 원리적으로 성립하지 않는다.
+ * 종전 S5 는 그 사실을 `over.data` 에 실재하지 않는 `'ATLAS-X'` 를 적어 넣어 우회했는데,
+ * 그것이 바로 이 PR 이 봉합하는 결함(「테스트 작성자가 지어낸 over.data」)의 한 사례다 —
+ * 판정이 뷰를 진실 출처로 삼는 순간 그 시나리오는 재현 불가능한 픽스처가 된다
+ * (`unreachable-state-fixture-is-fake-green`). **뷰에 진짜로 2장을 둔다.**
+ */
+const TWO_ISSUE_SPRINT_VIEW: BacklogView = {
+  backlog: [],
+  sprints: [
+    {
+      sprint: {
+        sprintId: PLANNED_SPRINT_ID,
+        name: '스프린트 1',
+        goal: null,
+        status: 'PLANNED',
+        startDate: null,
+        endDate: null,
+        version: 0,
+      },
+      issues: [
+        {
+          key: 'ATLAS-3',
+          summary: '스프린트1 이슈',
+          currentStateKey: 'open',
+          assigneeId: null,
+          priority: 1,
+          rank: '0|a:',
+          version: 0,
+          epicKey: null,
+        },
+        {
+          key: 'ATLAS-9',
+          summary: '스프린트1 이슈 2',
+          currentStateKey: 'open',
+          assigneeId: null,
+          priority: 1,
+          rank: '0|b:',
+          version: 0,
+          epicKey: null,
+        },
+      ],
+    },
+  ],
+  truncated: false,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -490,6 +729,11 @@ const FRESH_AFTER_TRANSFER: BacklogView = {
 describe('BacklogBoard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  // 뷰를 갈아끼운 테스트가 다음 테스트로 새지 않게 한다 — 이 블록의 기본은 목 기본 픽스처다
+  afterEach(() => {
+    mockBacklogQueryOverride = {}
   })
 
   // ── 기본 렌더링 ─────────────────────────────────────────────────────────────
@@ -514,17 +758,28 @@ describe('BacklogBoard', () => {
     })
   })
 
-  // ── 스프린트 생성 폼 ─────────────────────────────────────────────────────────
+  // ── 스프린트 생성 폼 (F16 F16-11 이후 = 백로그 섹션 헤더 안) ──────────────────
+  //
+  // ★조회를 백로그 region 으로 **좁힌다**. 전역 조회로 두면 폼이 스택 밖으로 되돌아가도
+  //   이 블록이 전량 초록으로 남아, 위치 계약을 E1 하나에만 의존하게 된다.
 
   describe('스프린트 생성 폼', () => {
+    /** 백로그 섹션 안으로 조회를 좁힌다 — 폼의 새 소유자다 */
+    function getBacklogSection(): HTMLElement {
+      return screen.getByRole('region', {
+        name: backlogLabels.columnAriaLabel(backlogLabels.backlogTitle, 3),
+      })
+    }
+
     it('스프린트 이름 입력 후 생성 버튼 클릭 시 useCreateSprint.mutate를 호출한다', async () => {
       const user = userEvent.setup()
       renderBoard()
 
-      const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
+      const section = getBacklogSection()
+      const nameInput = within(section).getByPlaceholderText(/스프린트 이름/i)
       await user.type(nameInput, '신규 스프린트')
 
-      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      const createBtn = within(section).getByRole('button', { name: /스프린트 생성/i })
       await user.click(createBtn)
 
       expect(mockCreateSprintMutate).toHaveBeenCalledWith(
@@ -537,7 +792,7 @@ describe('BacklogBoard', () => {
       const user = userEvent.setup()
       renderBoard()
 
-      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      const createBtn = within(getBacklogSection()).getByRole('button', { name: /스프린트 생성/i })
       await user.click(createBtn)
 
       expect(mockCreateSprintMutate).not.toHaveBeenCalled()
@@ -890,10 +1145,15 @@ describe('BacklogBoard', () => {
     })
 
     it('S5: 같은 스프린트 내 재정렬 시 rerankMutate만 호출한다', async () => {
+      // 스프린트1에 카드가 **진짜로** 2장 있는 뷰를 쓴다 (`TWO_ISSUE_SPRINT_VIEW` KDoc).
+      mockBacklogQueryOverride = {
+        data: TWO_ISSUE_SPRINT_VIEW,
+        isLoading: false,
+        isError: false,
+      }
       renderBoard()
 
-      // 스프린트1에 ATLAS-3, ATLAS-X 두 이슈가 있다고 가정하고
-      // ATLAS-3를 뒤로 이동(dropIndex=2, 맨 뒤) — 제자리(dropIndex=0)가 아닌 이동
+      // ATLAS-3를 칸 빈 영역에 놓아 맨 뒤로 보낸다 — 제자리(index 0)가 아닌 이동
       triggerDragEnd(
         {
           id: 'sprint:ATLAS-3',
@@ -907,8 +1167,7 @@ describe('BacklogBoard', () => {
             current: {
               context: 'sprint',
               sprintId: PLANNED_SPRINT_ID,
-              orderedKeys: ['ATLAS-3', 'ATLAS-X'],
-              dropIndex: 2, // 맨 뒤로 이동
+              orderedKeys: ['ATLAS-3', 'ATLAS-9'],
             },
           },
         },
@@ -916,7 +1175,7 @@ describe('BacklogBoard', () => {
 
       await waitFor(() => {
         expect(mockRerankMutate).toHaveBeenCalledWith(
-          expect.objectContaining({ issueKey: 'ATLAS-3' }),
+          { issueKey: 'ATLAS-3', body: { previousIssueKey: 'ATLAS-9', nextIssueKey: undefined } },
           expect.anything(),
         )
       })
@@ -1268,8 +1527,15 @@ describe('BacklogBoard — 담당자 이름 표시 (FR-UX-13 F5)', () => {
     mockUsersResult = { data: RESOLVED_USERS }
     renderBoard()
 
-    // 픽스처의 미배정 이슈는 3건(ATLAS-1·2·3)이라 단건 조회는 strict mode 로 깨진다
-    expect(await screen.findAllByText(backlogLabels.unassigned)).toHaveLength(3)
+    // ★조회를 **칸 안으로 좁힌다** (F16). 필터바의 미배정 체크박스 라벨이
+    //   `filterBarLabels.filter.unassigned` = '미배정' 으로 같은 글자라, 전역 조회로 두면
+    //   기대값이 카드 수가 아니라 「카드 수 + 필터바 1」이 되어 무엇을 세는지가 흐려진다.
+    await screen.findAllByText(backlogLabels.unassigned)
+    const inColumns = getColumnRegions().flatMap((region) =>
+      within(region).queryAllByText(backlogLabels.unassigned),
+    )
+    // 픽스처의 미배정 이슈는 3건(ATLAS-1·2·3)이다
+    expect(inColumns).toHaveLength(3)
   })
 
   it('T3-3: 사용자 조회가 전량 실패해도 카드는 렌더된다 (fail-soft, 스펙 S8·FR-7)', async () => {
@@ -1461,7 +1727,8 @@ describe('BacklogBoard — 스프린트가 0개인 백로그 (FR-UX-13 F15 E1)',
   it('E1: 세로 스택에 백로그 칸 하나만 남고 시작/완료 버튼이 없다', async () => {
     renderBoard()
 
-    const regions = await screen.findAllByRole('region')
+    await screen.findByText(backlogLabels.backlogTitle)
+    const regions = getColumnRegions()
     expect(regions).toHaveLength(1)
     expect(regions[0]).toHaveAccessibleName(
       backlogLabels.columnAriaLabel(backlogLabels.backlogTitle, 1),
@@ -1471,20 +1738,33 @@ describe('BacklogBoard — 스프린트가 0개인 백로그 (FR-UX-13 F15 E1)',
     expect(screen.queryByRole('button', { name: backlogLabels.completeSprint })).toBeNull()
   })
 
-  it('E1: 스프린트 생성 폼은 세로 스택 **바깥** 현행 위치 그대로다', async () => {
+  // ★F15 가 「이번엔 안 옮긴다」를 못박아 둔 자리다. F16 F16-11 이 그 약속을 이행하므로
+  //   **삭제가 아니라 뒤집는다** — 지우면 「테스트가 깨졌다」가 아니라 「테스트가 없다」가 된다.
+  it('E1: 스프린트 생성 폼은 세로 스택 **안** 백로그 섹션 헤더에 있다 (F16 F16-11)', async () => {
     renderBoard()
 
     // 스택 = 칸들의 공통 부모. 스프린트가 0개여도 이 컨테이너는 그대로 있어야 한다.
-    const backlogColumn = await screen.findByRole('region')
+    await screen.findByText(backlogLabels.backlogTitle)
+    const backlogColumn = getColumn(backlogLabels.backlogTitle, 1)
     const stack = backlogColumn.parentElement
     expect(stack).not.toBeNull()
 
-    const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
-    // 스택이 폼을 삼키지 않았다 — 삼키면 카드 드롭 영역 안에 입력창이 들어간다
-    expect(stack).not.toContainElement(nameInput)
-    // 그리고 폼이 스택보다 **앞**이다 (현행 위치 = truncated 배너 다음, 스택 이전)
-    expect(nameInput.compareDocumentPosition(stack as Node) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy()
+    const form = screen.getByRole('form', { name: backlogLabels.createSprintFormLabel })
+
+    // ① 스택이 폼을 품는다 — F15 의 `not.toContainElement` 를 정확히 뒤집은 지점이다
+    expect(stack).toContainElement(form)
+    // ② 백로그 섹션(region) 안이다 — 스택의 떠 있는 형제가 아니다
+    expect(backlogColumn).toContainElement(form)
+    // ③ ★판별식 — 「region 안 아무데나」와 「헤더 줄 안」을 가른다. 헤더 div 에는
+    //    role 도 testid 도 없으므로 **이미 존재하는** 접기 토글을 앵커로 쓴다.
+    //    폼이 헤더 밖(드롭 영역 옆)으로 내려가면 여기서 즉시 red 다.
+    const toggle = screen.getByRole('button', {
+      name: backlogLabels.collapseSection(backlogLabels.backlogTitle),
+    })
+    expect(toggle.parentElement).toContainElement(form)
+    // ④ 접근명 보존 — e2e `backlog.spec.ts:876,986` 의 유닛측 대리 가드다.
+    //    이름이 바뀌면 e2e 2건이 즉사하는데 그건 느리고 늦게 돈다.
+    expect(form).toHaveAccessibleName(backlogLabels.createSprintFormLabel)
   })
 })
 
@@ -1698,5 +1978,704 @@ describe('BacklogBoard — 키보드 DnD 센서와 한국어 공지 배선 (FR-U
     // 이 짝이 없으면 공지를 통째로 「변경 사항이 없습니다」로 고정해도 위가 통과한다.
     expect(capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent()))
       .toBe(backlogLabels.announce.movedToBacklog)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F16 Task 6 — 필터·에픽 패널 배선
+//
+// ★이 블록의 red 가 결함의 증인이다 — 배선 전에는 필터바도 에픽 패널도 화면에 없고,
+//   있어도 표시가 좁혀지지 않는다.
+//
+// ★★그리고 이 블록의 R6 가 **가장 위험한 것**을 지킨다. 완료된 스프린트에 남은 이슈는
+//   `SprintRepository.unassignIssue` 가 `status <> COMPLETED` 조건부 DELETE 라 조용히 204 를
+//   주고(실패가 아니라 침묵), `UNIQUE(issue_key)` 때문에 다른 스프린트로도 못 옮겨
+//   **영구 동결**된다. 필터로 안 보이는 이슈가 이관 대상에서 빠지면 그 이슈들이 그대로 갇힌다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 픽스처가 쓰는 에픽 키 — 이름 해석은 일부러 실패시킨다(F16-6 = 키 표시) */
+const EPIC_ALPHA = 'ATLAS-100'
+
+const PLANNED_SPRINT_NAME = '스프린트 1'
+const ACTIVE_SPRINT_NAME = '스프린트 2 (ACTIVE)'
+
+const ALICE_NAME = '김앨리스'
+
+/** 픽스처 카드 한 장을 만든다 — 필터 축과 무관한 필드는 이 헬퍼가 고정한다 */
+function issue(
+  key: string,
+  summary: string,
+  assigneeId: string | null,
+  epicKey: string | null = null,
+): BacklogIssue {
+  return {
+    key,
+    summary,
+    currentStateKey: 'open',
+    assigneeId,
+    priority: 1,
+    rank: `0|${key}:`,
+    version: 0,
+    epicKey,
+  }
+}
+
+/**
+ * 필터 배선 검증용 뷰.
+ *
+ * 설계 의도 4가지.
+ * ① **모든 이슈에 담당자가 있다** — 「미배정」 한 번으로 전 섹션이 0건이 되어
+ *    `FilteredEmptyState` 경로를 typeahead 없이 결정적으로 만든다.
+ * ② 앨리스 카드가 **백로그·PLANNED·ACTIVE 세 칸 모두**에 있다 — 한 칸만 배선하는
+ *    반쪽 봉합(F5 가 겪은 형태)을 잡는다.
+ * ③ ACTIVE 스프린트에 **3건**을 두고 그중 1건만 필터를 통과시킨다 — R6 이관 집합의 무대다.
+ * ④ 백로그의 숨은 카드(ATLAS-2)가 보이는 두 카드 **사이**에 있다 — EC7 이 rank 기준이
+ *    필터 전 목록인지를 이 배치로만 구별할 수 있다.
+ */
+const FILTER_VIEW: BacklogView = {
+  backlog: [
+    issue('ATLAS-1', '앨리스 백로그 1', ALICE_ID, EPIC_ALPHA),
+    issue('ATLAS-2', '밥 백로그', BOB_ID),
+    issue('ATLAS-8', '앨리스 백로그 2', ALICE_ID),
+  ],
+  sprints: [
+    {
+      sprint: {
+        sprintId: PLANNED_SPRINT_ID,
+        name: PLANNED_SPRINT_NAME,
+        goal: null,
+        status: 'PLANNED',
+        startDate: null,
+        endDate: null,
+        version: 0,
+      },
+      issues: [
+        issue('ATLAS-3', '앨리스 계획', ALICE_ID, EPIC_ALPHA),
+        issue('ATLAS-4', '밥 계획', BOB_ID),
+      ],
+    },
+    {
+      sprint: {
+        sprintId: ACTIVE_SPRINT_ID,
+        name: ACTIVE_SPRINT_NAME,
+        goal: null,
+        status: 'ACTIVE',
+        startDate: '2026-06-01',
+        endDate: '2026-06-14',
+        version: 0,
+      },
+      issues: [
+        issue('ATLAS-5', '앨리스 진행', ALICE_ID),
+        issue('ATLAS-6', '밥 진행 1', BOB_ID),
+        issue('ATLAS-7', '밥 진행 2', BOB_ID),
+      ],
+    },
+  ],
+  truncated: false,
+}
+
+/** `FILTER_VIEW` 와 같은 목록인데 응답이 잘렸다 — C5·EC8 이 쓴다 */
+const TRUNCATED_FILTER_VIEW: BacklogView = { ...FILTER_VIEW, truncated: true }
+
+/** 미배정 체크박스 — 타이핑 없이 전 섹션을 0건으로 만드는 결정적 경로 */
+function unassignedCheckbox(): HTMLElement {
+  return screen.getByRole('checkbox', { name: filterBarLabels.filter.unassigned })
+}
+
+/**
+ * 담당자 typeahead 로 한 사람을 고른다.
+ *
+ * 값을 직접 주입하지 않고 **실제 컨트롤을 조작**한다 — 주입은 「필터 모델이 도는가」만 재고
+ * 「필터바가 보드에 배선돼 있는가」는 재지 못한다.
+ */
+async function selectAssignee(
+  user: ReturnType<typeof userEvent.setup>,
+  displayName: string,
+): Promise<void> {
+  await user.type(
+    screen.getByRole('textbox', { name: filterBarLabels.filter.assigneeLabel }),
+    '김',
+  )
+  await user.click(await screen.findByRole('button', { name: displayName }))
+}
+
+describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = { data: RESOLVED_USERS }
+    mockFilterBarUsers = RESOLVED_USERS
+    mockBacklogQueryOverride = { data: FILTER_VIEW, isLoading: false, isError: false }
+
+    // 접힘은 zustand 모듈 전역 + localStorage 라 테스트끼리 샌다 (훅 KDoc 의 명시 요구)
+    useBacklogCollapsedStore.setState({ byProject: {} })
+    window.localStorage.clear()
+
+    // 에픽 이름 해석을 **결정적으로 실패**시킨다 — F16-6 계약대로 키가 그대로 보인다.
+    // 전역 핸들러에 맡기면 픽스처 키가 우연히 존재하는 날 이름이 바뀌어 조회가 흔들린다.
+    server.use(http.get('/api/v1/issues/:key', () => new HttpResponse(null, { status: 404 })))
+  })
+
+  afterEach(() => {
+    mockBacklogQueryOverride = {}
+    mockFilterBarUsers = []
+  })
+
+  // ── F16-7 · F16-8 ──────────────────────────────────────────────────────────
+
+  it('F16-7: 담당자 필터가 백로그 칸과 **모든** 스프린트 칸에 동시에 걸린다', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    // Given 짝 단언 — 필터 전에는 밥의 카드가 세 칸 모두에 있다.
+    // 없으면 「사라졌다」가 아무것도 재지 않는다.
+    expect(screen.getByText('밥 백로그')).toBeInTheDocument()
+    expect(screen.getByText('밥 계획')).toBeInTheDocument()
+    expect(screen.getByText('밥 진행 1')).toBeInTheDocument()
+
+    await selectAssignee(user, ALICE_NAME)
+
+    await waitFor(() => {
+      expect(screen.queryByText('밥 백로그')).toBeNull()
+    })
+    // ★스프린트 칸도 함께 좁혀져야 한다 — 백로그만 배선하는 반쪽 봉합을 여기서 잡는다
+    expect(screen.queryByText('밥 계획')).toBeNull()
+    expect(screen.queryByText('밥 진행 1')).toBeNull()
+    expect(screen.queryByText('밥 진행 2')).toBeNull()
+
+    // 그리고 앨리스 카드는 세 칸에 그대로 남는다
+    expect(screen.getByText('앨리스 백로그 1')).toBeInTheDocument()
+    expect(screen.getByText('앨리스 계획')).toBeInTheDocument()
+    expect(screen.getByText('앨리스 진행')).toBeInTheDocument()
+  })
+
+  it('F16-8: 섹션 헤더 카드 수가 **필터 후** 집합 기준이다', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    // Given 짝 단언 — 필터 전 3 / 2 / 3
+    expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    expect(getColumn(PLANNED_SPRINT_NAME, 2)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+
+    await selectAssignee(user, ALICE_NAME)
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 2)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 1)).toBeInTheDocument()
+
+    // ★필터 전 수가 남아 있으면 red — 카드만 감추고 배지를 그대로 두는 반쪽 봉합을 막는다
+    expect(
+      screen.queryByRole('region', {
+        name: backlogLabels.columnAriaLabel(backlogLabels.backlogTitle, 3),
+      }),
+    ).toBeNull()
+  })
+
+  it('EC4: 접힌 섹션도 카드 수는 필터 후 값이다', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: backlogLabels.collapseSection(backlogLabels.backlogTitle),
+      }),
+    )
+    // 접혀도 헤더(=카드 수)는 남는다
+    expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+
+    await selectAssignee(user, ALICE_NAME)
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 2)).toBeInTheDocument()
+    })
+    // 접힘은 표시 상태, 필터는 집합 — 서로 독립이다. 필터가 섹션을 다시 펼치면 red.
+    expect(
+      screen.getByRole('button', {
+        name: backlogLabels.collapseSection(backlogLabels.backlogTitle),
+      }),
+    ).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  // ── F16-10 · EC1 ───────────────────────────────────────────────────────────
+
+  it('F16-10: 결과 0건이면 FilteredEmptyState 와 초기화가 뜨고, 누르면 전량 복귀한다', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.click(unassignedCheckbox())
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    // 「0개 이슈」 칸 3개를 남기는 것과 다르다 — 빈 상태가 스택을 **대체**한다
+    expect(screen.queryAllByRole('region', { name: /칸, \d+개 이슈$/ })).toHaveLength(0)
+
+    await user.click(screen.getByRole('button', { name: BACKLOG_FILTER_RESET_LABEL }))
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+    // 값만 비우고 컨트롤을 남기면 화면이 서로 다른 말을 한다
+    expect(unassignedCheckbox()).not.toBeChecked()
+  })
+
+  it('★F16-10: 제목 검색으로 0건이 된 뒤 초기화하면 입력까지 비워지고 되돌아오지 않는다', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.type(
+      screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL }),
+      '없는제목',
+    )
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: BACKLOG_FILTER_RESET_LABEL }))
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    })
+    // ★검색어는 필터바가 **로컬 state 로** 쥔다(디바운스 때문). 부모가 값만 비우고
+    //   입력을 그대로 두면 디바운스가 지운 검색어를 곧바로 되돌려 놓아 초기화가 튕긴다.
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 100))
+    })
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+    expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+  })
+
+  it('EC1: 필터가 **없을 때**의 0건은 기존 빈 상태다 (FilteredEmptyState 아님)', async () => {
+    // ★F16-10 만 있으면 항상 `FilteredEmptyState` 를 띄워도 초록이다. 이 짝이 그것을 막는다.
+    mockBacklogQueryOverride = { data: EMPTY_VIEW, isLoading: false, isError: false }
+    renderBoard()
+
+    expect(await screen.findByLabelText('이슈 없음')).toBeInTheDocument()
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+    expect(screen.queryByRole('button', { name: BACKLOG_FILTER_RESET_LABEL })).toBeNull()
+    // 칸 자체는 그대로 있다 — 「고장」과 「할 일 없음」을 구별할 수 있어야 한다 (E7)
+    expect(getColumn(backlogLabels.backlogTitle, 0)).toBeInTheDocument()
+  })
+
+  // ── C5 잘림 경고 병기 ──────────────────────────────────────────────────────
+
+  it('★★C5: 잘린 응답에서 결과가 0건이면 「없음」과 잘림 경고가 **함께** 보인다', async () => {
+    // 「조건에 맞는 이슈가 없습니다」 단독은 거짓말이다 — 안 온 이슈가 조건에 맞을 수 있다.
+    // ★T4-4 와 다른 것을 잰다. 저쪽은 필터도 빈 상태도 없는 화면이고, 여기는 **빈 상태가
+    //   스택을 대체하는 분기**에서 경고가 함께 살아남는가다. 조기 반환으로 배너를 통째로
+    //   날리는 것이 이 분기의 실제 회귀 경로다.
+    mockBacklogQueryOverride = { data: TRUNCATED_FILTER_VIEW, isLoading: false, isError: false }
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.click(unassignedCheckbox())
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toHaveTextContent(backlogLabels.truncatedWarning)
+  })
+
+  it('★C5 짝: 잘리지 않은 응답에서 0건이면 잘림 경고가 **없다**', async () => {
+    // 이 짝이 없으면 경고를 항상 띄워도 위가 통과한다.
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.click(unassignedCheckbox())
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // ── R6 이관 집합 불변 ★★★ ─────────────────────────────────────────────────
+
+  it('★★★R6: 필터가 걸려도 스프린트 완료의 이관 대상은 **필터 전 전량**이다', async () => {
+    installSprintDialogHandlers()
+    const user = userEvent.setup()
+    renderBoard()
+
+    await selectAssignee(user, ALICE_NAME)
+
+    // Given 짝 단언 — ACTIVE 스프린트 3건 중 화면에는 1건만 보인다
+    await waitFor(() => {
+      expect(getColumn(ACTIVE_SPRINT_NAME, 1)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('밥 진행 1')).toBeNull()
+    expect(screen.queryByText('밥 진행 2')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: backlogLabels.completeSprint }))
+    const dialog = await screen.findByRole('dialog', { name: backlogLabels.completeSprint })
+
+    // 다이얼로그 목록에는 **안 보이던 2건까지** 올라온다
+    await within(dialog).findByText('ATLAS-6')
+    expect(within(dialog).getByText('ATLAS-5')).toBeInTheDocument()
+    expect(within(dialog).getByText('ATLAS-7')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: backlogLabels.completeSprint }))
+
+    await waitFor(() => {
+      expect(mockCompleteSprintMutateAsync).toHaveBeenCalledWith(ACTIVE_SPRINT_ID)
+    })
+
+    // ★★이 단언이 R6 의 증인이다 — 이관 DELETE 가 **3건 전부**에 나갔는가.
+    //   1건(필터 후 집합)만 나가면 남은 2건이 COMPLETED 스프린트에 갇혀 영구 동결된다.
+    expect(sprintDialogCalls.filter((call) => call.startsWith('UNASSIGN'))).toEqual([
+      `UNASSIGN ${ACTIVE_SPRINT_ID}/ATLAS-5`,
+      `UNASSIGN ${ACTIVE_SPRINT_ID}/ATLAS-6`,
+      `UNASSIGN ${ACTIVE_SPRINT_ID}/ATLAS-7`,
+    ])
+  })
+
+  it('EC8: 필터가 걸려도 truncated 완료 차단 규칙은 그대로다 (F15 불변)', async () => {
+    installSprintDialogHandlers()
+    mockBacklogQueryOverride = { data: TRUNCATED_FILTER_VIEW, isLoading: false, isError: false }
+    const user = userEvent.setup()
+    renderBoard()
+
+    await selectAssignee(user, ALICE_NAME)
+    await waitFor(() => {
+      expect(screen.queryByText('밥 진행 1')).toBeNull()
+    })
+
+    await user.click(screen.getByRole('button', { name: backlogLabels.completeSprint }))
+    const dialog = await screen.findByRole('dialog', { name: backlogLabels.completeSprint })
+
+    // 필터가 「보이는 것만 0건이니 완료해도 된다」로 규칙을 풀지 않는다
+    expect(
+      within(dialog).getByText(backlogLabels.completeDialog.truncatedBlocked),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('button', { name: backlogLabels.completeSprint }),
+    ).toBeDisabled()
+  })
+
+  // ── EC7 DnD ────────────────────────────────────────────────────────────────
+  //
+  // ★★드롭 경로는 **둘**이다 — 카드 위에 놓기와 칸 빈 영역에 놓기. 판정 함수
+  //   (`resolveOverToDropZone`)가 두 경로를 서로 다른 코드로 처리하므로 한쪽만 재면
+  //   나머지 한쪽이 필터 후 목록으로 rank 를 계산해도 전량 초록이다(실제로 그랬다).
+  //   아래 두 테스트는 **짝**이다. 하나를 지우면 그 경로가 무검증으로 돌아간다.
+
+  it('EC7 ①카드 위 드롭: rank 기준이 필터 전 목록이다', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    await selectAssignee(user, ALICE_NAME)
+    await waitFor(() => {
+      expect(screen.queryByText('밥 백로그')).toBeNull()
+    })
+
+    // 보이는 ATLAS-1 을 보이는 ATLAS-8 위로 옮긴다. 숨은 ATLAS-2 는 **그 둘 사이**에 있다.
+    triggerDragEnd(
+      {
+        id: 'backlog:ATLAS-1',
+        data: { current: { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null } },
+      },
+      {
+        id: 'card:backlog:ATLAS-8',
+        data: { current: { type: 'card', key: 'ATLAS-8', context: 'backlog', sprintId: null } },
+      },
+    )
+
+    await waitFor(() => {
+      expect(mockRerankMutate).toHaveBeenCalledTimes(1)
+    })
+
+    // ★rank 기준이 **필터 전 목록**임을 이 이웃 쌍이 증명한다 — 단, **카드 위 드롭 경로만**이다.
+    //   (`extractCardDropZone` 이 `view` 를 조회하는 경로. 칸 빈 영역 드롭은 아래 ②가 잰다.)
+    //   필터 후 목록(['ATLAS-1','ATLAS-8'])으로 계산하면 `previousIssueKey` 가 undefined 가 되어
+    //   ATLAS-1 이 숨은 ATLAS-2 **위로** 튀어오른다 — 보이지도 않는 카드와의 순서가 바뀐다.
+    expect(mockRerankMutate).toHaveBeenCalledWith(
+      {
+        issueKey: 'ATLAS-1',
+        body: { previousIssueKey: 'ATLAS-2', nextIssueKey: 'ATLAS-8' },
+      },
+      expect.anything(),
+    )
+    // 숨은 카드는 어떤 mutation 의 대상도 아니다
+    expect(mockAssignMutate).not.toHaveBeenCalled()
+    expect(mockUnassignMutate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 에픽 α 만 남긴다 — 백로그는 ATLAS-1 하나만 보이고 ATLAS-2·ATLAS-8 이 숨는다.
+   *
+   * ★값을 주입하지 않고 실제 체크박스를 누른다. 주입은 「필터 모델이 도는가」만 재고
+   * 「칸이 좁혀진 목록을 droppable 에 싣는가」는 재지 못한다 — 그 배선이 이 결함의 발원지다.
+   */
+  async function applyEpicAlphaFilter(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(await screen.findByRole('checkbox', { name: EPIC_ALPHA }))
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+  }
+
+  it('★★EC7 ②칸 빈 영역 드롭: 「맨 뒤」는 보이는 것의 뒤가 아니라 원본의 뒤다', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBoard()
+
+    await applyEpicAlphaFilter(user)
+
+    // unassign 성공 콜백이 rerank 를 잇는다 — 목이 아무 일도 안 하면 그 통로가 끊긴다.
+    // `Once` 인 이유는 `vi.clearAllMocks()` 가 구현까지 지우지는 않아 다음 테스트로 새기 때문이다.
+    mockUnassignMutate.mockImplementationOnce(
+      (_vars: unknown, options?: { onSuccess?: () => void }) => {
+        options?.onSuccess?.()
+      },
+    )
+
+    // ★Given 짝 단언 — 컴포넌트가 droppable 에 싣는 것은 **필터 후 1건**이다.
+    //   이 값이 곧 결함의 입력이었다. 관측하지 않으면 아래 기대값이 무엇을 이긴 것인지 알 수 없다.
+    const backlogColumn = liveColumnDropTarget(container, 'backlog', null)
+    expect(backlogColumn.orderedKeys).toEqual(['ATLAS-1'])
+
+    // PLANNED 스프린트의 ATLAS-3(에픽 α — 보인다)을 백로그 칸 **빈 영역**에 놓는다
+    triggerDragEnd(
+      {
+        id: 'sprint:ATLAS-3',
+        data: { current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: PLANNED_SPRINT_ID } },
+      },
+      backlogColumn,
+    )
+
+    await waitFor(() => {
+      expect(mockUnassignMutate).toHaveBeenCalledTimes(1)
+    })
+
+    // ★진짜 맨 뒤는 숨은 ATLAS-8 뒤다. 필터 후 목록으로 계산하면 previousIssueKey 가
+    //   'ATLAS-1' 이 되어 ATLAS-3 이 숨은 ATLAS-2 **앞**(=2번째)에 꽂힌다.
+    expect(mockRerankMutate).toHaveBeenCalledWith(
+      { issueKey: 'ATLAS-3', body: { previousIssueKey: 'ATLAS-8', nextIssueKey: undefined } },
+      expect.anything(),
+    )
+  })
+
+  it('★★EC7 변종: 필터가 같은 칸의 다른 카드를 전부 가려도 재정렬은 나간다', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBoard()
+
+    await applyEpicAlphaFilter(user)
+
+    const backlogColumn = liveColumnDropTarget(container, 'backlog', null)
+    expect(backlogColumn.orderedKeys).toEqual(['ATLAS-1'])
+
+    // 보이는 카드가 자기 하나뿐인 칸에 자기를 다시 놓는다.
+    triggerDragEnd(
+      {
+        id: 'backlog:ATLAS-1',
+        data: { current: { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null } },
+      },
+      backlogColumn,
+    )
+
+    // ★필터 후 목록으로 판정하면 `others.length === 0` → `noop-move` 로 **아무 일도 일어나지
+    //   않는다**. 숨은 ATLAS-2·ATLAS-8 이 실재하므로 맨 뒤로 보내는 재정렬이 나가야 한다.
+    await waitFor(() => {
+      expect(mockRerankMutate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockRerankMutate).toHaveBeenCalledWith(
+      { issueKey: 'ATLAS-1', body: { previousIssueKey: 'ATLAS-8', nextIssueKey: undefined } },
+      expect.anything(),
+    )
+  })
+
+  it('★★EC7 변종: 드래그 공지도 같은 판정을 읽는다 (같은 `resolveOverToDropZone`)', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBoard()
+
+    await applyEpicAlphaFilter(user)
+
+    const backlogColumn = liveColumnDropTarget(container, 'backlog', null)
+    const message = capturedAccessibility?.announcements?.onDragEnd?.(
+      announceEvent(
+        'backlog:ATLAS-1',
+        { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null },
+        { id: backlogColumn.id, data: backlogColumn.data.current },
+      ),
+    )
+
+    // 공지는 mutation 과 **같은 입력 구성 함수**를 쓴다. 그 함수가 필터 후 목록을 보면
+    // 낭독도 함께 틀려 「이동할 수 없습니다」로 침묵한다 — 화면에서는 카드가 움직이는데도.
+    expect(message).toBe(backlogLabels.announce.reordered)
+    expect(message).not.toBe(backlogLabels.announce.cannotMoveHere)
+  })
+
+  // ── 에픽 패널 배선 ─────────────────────────────────────────────────────────
+
+  it('에픽 패널에서 고른 에픽이 필터에 걸리고 필터바 칩으로도 나타난다 (F16-3 · F16-5)', async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    // 이름 해석이 실패했으므로 **키가 그대로** 보인다 (F16-6 — 빈 값 금지)
+    await user.click(await screen.findByRole('checkbox', { name: EPIC_ALPHA }))
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 0)).toBeInTheDocument()
+
+    // 패널과 필터바가 **같은 상태**를 본다 — 이름 맵도 한 객체를 공유해야 글자가 갈리지 않는다
+    expect(
+      within(screen.getByRole('list', { name: '적용된 필터' })).getByText(EPIC_ALPHA),
+    ).toBeInTheDocument()
+  })
+
+  // ── URL search 배선 (F16-9) ────────────────────────────────────────────────
+
+  it('★제어형: 필터 state 를 스스로 갖지 않는다 — 부모가 갱신하기 전에는 화면이 그대로다', async () => {
+    const user = userEvent.setup()
+    const onFilterChange = vi.fn()
+    // 부모가 값을 **고정**한다. 보드가 몰래 자기 state 를 들고 있으면(소유자 두 벌) 여기서 화면이 바뀐다.
+    renderBoardWithFixedFilter(emptyBacklogFilter(), onFilterChange)
+
+    await user.click(await screen.findByRole('checkbox', { name: EPIC_ALPHA }))
+
+    expect(onFilterChange).toHaveBeenCalledWith({
+      query: '',
+      assigneeIds: [],
+      includeUnassigned: false,
+      epicKeys: [EPIC_ALPHA],
+    })
+    // ★화면은 그대로다 — 소유자는 URL 한 곳이고 보드는 받은 값만 그린다
+    expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    expect(getColumn(PLANNED_SPRINT_NAME, 2)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+  })
+
+  it('F16-9: URL 의 q 가 초기 검색어로 화면과 입력 양쪽에 반영된다', async () => {
+    renderBoard('ATLAS', { initialSearch: { q: '앨리스' } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 2)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 1)).toBeInTheDocument()
+    // 값만 걸고 입력을 비워 두면 사용자는 왜 걸러졌는지 알 길이 없다
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('앨리스')
+  })
+
+  it('F16-9: URL 의 assignee=unassigned 센티널이 초기 필터로 살아난다', async () => {
+    // 픽스처의 모든 이슈에 담당자가 있으므로 미배정만 남기면 결정적으로 0건이다
+    renderBoard('ATLAS', { initialSearch: { assignee: ['unassigned'] } })
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    expect(unassignedCheckbox()).toBeChecked()
+  })
+
+  // ── EC9. 미지의 에픽 키 ★ ──────────────────────────────────────────────────
+
+  it('★EC9: URL 의 알 수 없는 에픽 키는 throw 없이 그 축만 비운다', async () => {
+    renderBoard('ATLAS', { initialSearch: { epic: ['GHOST-999'] } })
+
+    // 백로그에 없는 에픽으로 전량을 감추면 「고장」으로 읽힌다 — 조건을 버리고 전량을 보인다
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 2)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+    // 걸리지도 않은 조건을 칩으로 보이면 화면이 거짓말을 한다
+    expect(screen.queryByText('GHOST-999')).toBeNull()
+  })
+
+  it('★EC9 짝: 아는 에픽 키는 URL 에서 와도 그대로 걸린다', async () => {
+    // 이 짝이 없으면 「에픽 축을 항상 비운다」로 구현해도 위 EC9 가 초록이다
+    renderBoard('ATLAS', { initialSearch: { epic: [EPIC_ALPHA] } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 0)).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('list', { name: '적용된 필터' })).getByText(EPIC_ALPHA),
+    ).toBeInTheDocument()
+  })
+
+  it('★EC9 혼합: 아는 키와 모르는 키가 섞여 오면 아는 키만 남는다', async () => {
+    renderBoard('ATLAS', { initialSearch: { epic: [EPIC_ALPHA, 'GHOST-999'] } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+    expect(getColumn(ACTIVE_SPRINT_NAME, 0)).toBeInTheDocument()
+    const chips = screen.getByRole('list', { name: '적용된 필터' })
+    expect(within(chips).getByText(EPIC_ALPHA)).toBeInTheDocument()
+    expect(within(chips).queryByText('GHOST-999')).toBeNull()
+  })
+
+  it('★EC9: 「에픽 없음」 센티널은 백로그 파생 목록에 없어도 살아남는다', async () => {
+    // `NO_EPIC` 은 실제 이슈 키가 아니라 예약값이라 `useBacklogEpics` 의 목록에 절대 없다.
+    // 「목록에 없으면 버린다」로만 구현하면 이 축이 통째로 죽는다.
+    renderBoard('ATLAS', { initialSearch: { epic: [NO_EPIC] } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 2)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+  })
+
+  // ── 재마운트 기전 보존 ★ ───────────────────────────────────────────────────
+
+  it('★F16-9: URL 로 받은 검색어도 초기화하면 입력까지 비워지고 되돌아오지 않는다', async () => {
+    const user = userEvent.setup()
+    const onFilterChange = vi.fn()
+    // 링크를 받아 연 화면이다 — 타이핑을 거치지 않고도 필터바 로컬 입력이 채워져 있다
+    renderBoard('ATLAS', { initialSearch: { q: '없는제목' }, onFilterChange })
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('없는제목')
+
+    await user.click(screen.getByRole('button', { name: BACKLOG_FILTER_RESET_LABEL }))
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    })
+    // ★값만 비우고 입력을 그대로 두면 디바운스가 지운 검색어를 되돌려 놓아 초기화가 튕긴다
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 100))
+    })
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+
+    // 그리고 URL 로 나가는 값에도 빈 키가 남지 않는다
+    const lastFilter = onFilterChange.mock.calls.at(-1)?.[0] as BacklogFilter
+    expect(Object.keys(filterToSearch(lastFilter))).toHaveLength(0)
+  })
+
+  // ── 렌더 순서 계약 ★ ───────────────────────────────────────────────────────
+
+  it('★렌더 순서: 필터바·에픽 패널은 칸 region **바깥**, 세로 스택 **위**에 있다', () => {
+    renderBoard()
+
+    // ① e2e `backlog.spec.ts:253` 의 칸 locator 가 region textContent 선두를 앵커링한다.
+    //    섹션 안에 제목보다 앞서는 글자가 끼면 그 즉시 e2e 가 죽는다.
+    const backlogColumn = getColumn(backlogLabels.backlogTitle, 3)
+    expect(backlogColumn.textContent?.startsWith(backlogLabels.backlogTitle)).toBe(true)
+    expect(
+      getColumn(ACTIVE_SPRINT_NAME, 3).textContent?.startsWith(ACTIVE_SPRINT_NAME),
+    ).toBe(true)
+
+    // ② 어느 칸도 필터바·에픽 목록을 품지 않는다
+    const search = screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })
+    const epicList = screen.getByRole('list', { name: EPIC_LIST_ARIA_LABEL })
+    for (const column of getColumnRegions()) {
+      expect(column).not.toContainElement(search)
+      expect(column).not.toContainElement(epicList)
+    }
+
+    // ③ 그리고 스택보다 **앞선다** — 아래로 내려가면 화면에서 필터를 못 찾는다
+    const stack = backlogColumn.parentElement
+    expect(stack).not.toBeNull()
+    expect(
+      search.compareDocumentPosition(stack as HTMLElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      epicList.compareDocumentPosition(stack as HTMLElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 })

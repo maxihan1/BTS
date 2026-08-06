@@ -5,7 +5,15 @@ import { navLabels } from '../nav-labels'
 import { backlogLabels } from '../backlog-labels'
 import { boardLabels } from '../board-labels'
 import { burndownLabels } from '../burndown-labels'
+import { filterBarLabels } from '../filter-bar-labels'
 import { issueCreateStrings } from '../ko'
+// ★i18n 밖의 정본을 끌어오는 유일한 import. `필터 초기화` 는 `i18n/` 이 아니라
+//   `BacklogBoard.tsx` 가 문자열 상수로 소유한다(F16 이 세운 관례 — 컴포넌트 모듈은
+//   `react-refresh/only-export-components` 때문에 라벨 **객체**를 못 내보낸다).
+//   여기서 리터럴을 다시 적으면 두 목록이 서로를 검사하지 않는 상태가 되고, 이름이
+//   바뀌는 날 판별식만 조용히 낡는다 (`two-lists-never-check-each-other`).
+import { BACKLOG_FILTER_RESET_LABEL } from '@/components/backlog/BacklogBoard'
+import { EPIC_PANEL_TITLE } from '@/components/backlog/BacklogEpicPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 왜 이 판별식이 있나
@@ -75,6 +83,18 @@ const BACKLOG_SCREEN_BUTTON_NAMES = {
   // §제외 3종 ②「같은 버튼의 다른 상태」가 성립하지 않기 때문이다 (스펙 §리뷰 반영 C-9).
   // `스프린트 시작 중…`·`스프린트 완료 중…`은 반대로 진짜 「같은 버튼의 다른 상태」라 **넣지 않는다**.
   collapseSection: backlogLabels.collapseSection('2026-W31'),
+  // ★FR-UX-13 F16 이 추가하는 3종.
+  //
+  // ① 에픽 패널 접기 토글 — `collapseSection` 생성기를 재사용하지만 **다른 버튼**이다.
+  //    섹션 토글과 **동시에** 화면에 있으므로 §제외 3종 ②가 성립하지 않는다.
+  // ② 필터바 초기화(`초기화`) · ③ 필터 0건 빈 상태의 초기화(`필터 초기화`).
+  //    이 둘은 **실제로 공존한다** — 필터 결과가 0건이면 필터바(위)와 빈 상태(아래)가
+  //    같은 화면에 함께 뜬다. 2026-08-06 실측(브라우저): `getByRole('button', {name:'초기화'})`
+  //    가 **2개**를 잡고, `exact: true` 를 붙이면 1개다. 그래서 substring 관계를 **면제**로
+  //    명시하고(§ALLOWED_SUBSTRING_PAIRS) e2e 는 `exact: true` 로 조회한다.
+  epicPanelCollapse: backlogLabels.collapseSection(EPIC_PANEL_TITLE),
+  filterReset: filterBarLabels.filter.reset,
+  filteredEmptyReset: BACKLOG_FILTER_RESET_LABEL,
 } as const
 
 /** 보드 화면에서 버튼 접근 이름으로 동시에 존재할 수 있는 값. */
@@ -94,6 +114,38 @@ const SCREENS = {
   보드: BOARD_SCREEN_BUTTON_NAMES,
 } as const
 
+// ─────────────────────────────────────────────────────────────────────────────
+// substring 면제 — 「고칠 수 없어서」가 아니라 「고치지 않기로 결정해서」 여는 구멍
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * substring 관계를 **의도적으로 허용**하는 `[안쪽, 바깥쪽]` 키 쌍 — 화면별.
+ *
+ * 면제는 「이 이름 쌍은 공존해도 된다」가 아니라 **「공존하므로 조회는 반드시
+ * `exact: true`(또는 컨테이너 한정)로 한다」는 계약**이다. 아래 두 짝 테스트가 그 면제를
+ * 지킨다 — 실제로 substring 관계여야 하고(짝이 틀리면 엉뚱한 쌍이 면제된다), 키가 실재해야
+ * 한다(오타 난 키는 아무것도 면제하지 않으면서 목록만 늘린다).
+ *
+ * `nav-labels.test.ts` 의 `ALLOWED_SUBSTRING_PAIRS` 와 같은 형태다.
+ */
+const ALLOWED_SUBSTRING_PAIRS: {
+  readonly [S in keyof typeof SCREENS]: ReadonlyArray<
+    readonly [keyof (typeof SCREENS)[S], keyof (typeof SCREENS)[S]]
+  >
+} = {
+  /**
+   * `초기화` ⊂ `필터 초기화` (FR-UX-13 F16).
+   *
+   * 필터 결과가 0건이면 필터바의 `초기화` 와 빈 상태의 `필터 초기화` 가 **같은 화면에
+   * 함께** 있다(2026-08-06 브라우저 실측 — 비-exact 조회가 2개를 잡는다).
+   * 이름을 가르는 쪽은 이미 `routes/issues.index.tsx` 가 같은 두 문구로 운영 중이고,
+   * `IssueFilterBar` 와 공존해 온 선례다. 그래서 이름을 또 바꾸지 않고 면제로 명시한다.
+   * 대신 `e2e/backlog.spec.ts` 는 두 버튼을 **`exact: true`** 로만 조회한다.
+   */
+  백로그: [['filterReset', 'filteredEmptyReset']],
+  보드: [],
+}
+
 /** 한 집합의 모든 (a, b) 순서쌍 — 손으로 나열하지 않는다 */
 function orderedPairs(names: Readonly<Record<string, string>>) {
   return Object.entries(names).flatMap(([keyA, valueA]) =>
@@ -103,7 +155,30 @@ function orderedPairs(names: Readonly<Record<string, string>>) {
   )
 }
 
+/**
+ * 화면 하나의 면제 목록을 꺼낸다.
+ *
+ * 타입이 모든 화면 키를 강제하므로 `undefined` 는 도달 불가지만, `Object.entries` 를
+ * 지나면 타입이 사라진다. **조용한 빈 배열 폴백을 두지 않는 것**이 요점이다 — 화면이
+ * 늘었는데 면제 목록에 키를 안 넣으면 여기서 터져야 한다(아래 「키 집합 일치」 테스트가
+ * 그 짝이다).
+ */
+function allowedPairsOf(screen: string): ReadonlyArray<readonly [string, string]> {
+  const found = (ALLOWED_SUBSTRING_PAIRS as Record<string, ReadonlyArray<readonly [string, string]>>)[
+    screen
+  ]
+  if (found === undefined) {
+    throw new Error(`ALLOWED_SUBSTRING_PAIRS 에 '${screen}' 화면이 없습니다.`)
+  }
+  return found
+}
+
 describe('FR-14 — 진입점 버튼 이름 substring 전수 판별식', () => {
+  it('면제 목록의 화면 키가 SCREENS 와 정확히 같다', () => {
+    // 두 목록이 서로를 검사하지 않으면 새 화면이 면제 없이(또는 유령 면제로) 지나간다.
+    expect(Object.keys(ALLOWED_SUBSTRING_PAIRS).sort()).toEqual(Object.keys(SCREENS).sort())
+  })
+
   for (const [screen, names] of Object.entries(SCREENS)) {
     describe(`${screen} 화면`, () => {
       it('비-공허: 검사 대상 쌍이 N*(N-1) 건이다', () => {
@@ -113,9 +188,28 @@ describe('FR-14 — 진입점 버튼 이름 substring 전수 판별식', () => {
         expect(orderedPairs(names)).toHaveLength(keyCount * (keyCount - 1))
       })
 
-      it('어떤 쌍도 substring 관계가 아니다', () => {
+      it('면제 짝 검사: 허용 쌍은 실재하는 키이며 실제로 substring 관계다', () => {
+        // 짝을 잘못 적으면 파생이 틀린 쌍을 면제하며 통과한다(#323 M9 동형 결함).
+        const table = names as Readonly<Record<string, string>>
+        for (const [inner, outer] of allowedPairsOf(screen)) {
+          expect(inner, `면제 안쪽 키 '${inner}' 가 ${screen} 집합에 없다`).toBeOneOf(
+            Object.keys(table),
+          )
+          expect(outer, `면제 바깥쪽 키 '${outer}' 가 ${screen} 집합에 없다`).toBeOneOf(
+            Object.keys(table),
+          )
+          expect(inner).not.toBe(outer)
+          expect(String(table[outer]).includes(String(table[inner]))).toBe(true)
+        }
+      })
+
+      it('면제되지 않은 어떤 쌍도 substring 관계가 아니다', () => {
+        const allowed = allowedPairsOf(screen)
+        const isAllowed = (keyA: string, keyB: string): boolean =>
+          allowed.some(([inner, outer]) => inner === keyA && outer === keyB)
+
         const violations = orderedPairs(names)
-          .filter(({ valueA, valueB }) => valueB.includes(valueA))
+          .filter(({ keyA, valueA, keyB, valueB }) => valueB.includes(valueA) && !isAllowed(keyA, keyB))
           .map(({ keyA, valueA, keyB, valueB }) => `${keyA}('${valueA}') ⊂ ${keyB}('${valueB}')`)
 
         expect(violations).toEqual([])
@@ -150,7 +244,42 @@ describe('FR-14 — 진입점 버튼 이름 substring 전수 판별식', () => {
     expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(
       backlogLabels.collapseSection('2026-W31'),
     )
+    // ★FR-UX-13 F16 이 백로그 화면에 들여온 버튼 3종.
+    //   `초기화`·`필터 초기화` 를 빼먹으면 「같은 화면에 substring 쌍 없음」이 거짓인 채로
+    //   판별식이 초록이 되고, e2e 가 머지 시점에 strict mode 로 터진다(T6 이 실측 적발).
+    expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(
+      backlogLabels.collapseSection(EPIC_PANEL_TITLE),
+    )
+    expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(filterBarLabels.filter.reset)
+    expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(BACKLOG_FILTER_RESET_LABEL)
     expect(Object.values(BOARD_SCREEN_BUTTON_NAMES)).toContain(boardLabels.page.createIssue)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 면제가 「없어도 되는 것」이 아님을 그 자리에서 증명한다 (FR-UX-13 F16)
+  // ───────────────────────────────────────────────────────────────────────────
+  it('비-공허: 면제를 빼면 백로그 화면이 실제로 위반을 낸다', () => {
+    // 면제 목록을 **비운 채** 같은 판정을 돌려 위반이 나오는지 본다. 위반이 0건이면
+    // 면제는 아무것도 면제하지 않는 장식이고, 그 장식은 훗날 진짜 충돌을 가려 준다.
+    const violationsWithoutExemption = orderedPairs(BACKLOG_SCREEN_BUTTON_NAMES)
+      .filter(({ valueA, valueB }) => valueB.includes(valueA))
+      .map(({ keyA, keyB }) => `${keyA} ⊂ ${keyB}`)
+
+    expect(violationsWithoutExemption).toEqual(['filterReset ⊂ filteredEmptyReset'])
+  })
+
+  it('면제된 두 이름은 Playwright 기본 조회(부분 일치)로는 갈리지 않는다', () => {
+    // 「그래서 왜 exact 가 필요한가」를 코드로 남긴다 — 주석은 실행되지 않는다.
+    const partialMatches = Object.values(BACKLOG_SCREEN_BUTTON_NAMES).filter((name) =>
+      name.includes(filterBarLabels.filter.reset),
+    )
+    expect(partialMatches).toHaveLength(2)
+
+    // exact 로는 정확히 하나다.
+    const exactMatches = Object.values(BACKLOG_SCREEN_BUTTON_NAMES).filter(
+      (name) => name === filterBarLabels.filter.reset,
+    )
+    expect(exactMatches).toHaveLength(1)
   })
 
   it('섹션 접기 토글 이름은 섹션마다 달라진다 (FR-2 — 같은 화면 N개 공존)', () => {

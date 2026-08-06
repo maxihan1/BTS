@@ -37,6 +37,9 @@ export interface DropZoneData {
  * `type: 'card'` 인 카드 droppable은 처리하지 않는다 (null 반환).
  * 유효하지 않으면 null을 반환한다.
  *
+ * ★반환하는 `orderedKeys` 는 칸이 **화면에 그리고 있는** 목록이다(F16 이후 필터 후).
+ * rank 계산에 그대로 넘기지 말 것 — {@link resolveOverToDropZone} 이 원본 `view` 로 덮는다.
+ *
  * @param data over.data.current
  */
 export function extractColumnDropZone(data: Record<string, unknown> | undefined): DropZoneData | null {
@@ -110,8 +113,18 @@ function orderedKeysOf(
 /**
  * 드래그가 올라가 있는 대상(`over`)을 드롭 존 정보로 환산한다.
  *
- * 칸 droppable 이면 그 `data` 가 이미 `orderedKeys` 를 싣고 오므로 그대로 쓰고,
- * 카드 droppable 이면 대상 칸의 순서를 `view` 에서 조회해 채운다.
+ * 칸 droppable 이든 카드 droppable 이든 **대상 칸의 순서는 `view` 에서 조회한다**.
+ *
+ * ### 왜 칸 droppable 의 `data.orderedKeys` 를 안 쓰나 (F16 R6)
+ * 그 값은 칸 컴포넌트가 **받은 목록**, 즉 F16 이후로는 **필터를 통과한 것만**이다
+ * (`BacklogColumn.tsx:94` · `SprintColumn.tsx:74` ← `BacklogBoard` 의 `display`).
+ * 그대로 rank 계산에 쓰면 두 가지가 깨진다.
+ * ① 「맨 뒤」가 **보이는 것의 뒤**가 되어 숨은 카드를 건너뛴 자리에 꽂힌다.
+ * ② 그 칸의 다른 카드가 전부 숨으면 `others.length === 0` 이라 `noop-move` 로 빠져
+ *    **아무 일도 일어나지 않는다** — 숨은 카드가 실재하는데도.
+ * 필터는 **표시**만 좁히고 **동작 대상**은 원본 전량이다. `data.orderedKeys` 는 지우지
+ * 않는다 — 키보드 방향키의 「빈 칸인가」 판정이 그 값을 읽고
+ * (`backlog-keyboard-coordinates.ts:56` `isEmptyColumn`), 그쪽은 **보이는 것**이 맞다.
  *
  * ### 왜 훅이 아니라 여기 있나
  * 이 **입력 구성**은 원래 `use-backlog-drag.ts` 안에 갇혀 있었다. 그 결과 같은 판정을 해야 하는
@@ -145,7 +158,13 @@ export function resolveOverToDropZone(
   const overData = over.data.current
 
   const columnZone = extractColumnDropZone(overData)
-  if (columnZone !== null) return columnZone
+  if (columnZone !== null) {
+    // 뷰가 아직 없으면 조회할 원본이 없다 — data 가 실어 온 것이 가진 전부다.
+    if (view === undefined) return columnZone
+    // 칸 빈 영역 드롭 = 「그 칸의 맨 뒤」. 그 '맨 뒤'는 **원본** 기준이어야 한다 (위 KDoc).
+    const orderedKeys = orderedKeysOf(view, columnZone.context, columnZone.sprintId)
+    return { ...columnZone, orderedKeys, dropIndex: orderedKeys.length }
+  }
 
   // 카드 droppable 경로는 대상 칸의 순서를 알아야 하므로 뷰 데이터가 필요하다.
   if (view === undefined) return null

@@ -15,6 +15,19 @@ import { create } from 'zustand'
 const NONE_COLLAPSED: readonly string[] = Object.freeze([])
 
 /**
+ * 에픽 필터 패널의 접힘을 저장하는 섹션 id (FR-UX-13 F16).
+ *
+ * **왜 새 훅이 아니라 같은 스토어의 섹션 id 인가.** 패널은 droppable 이 아니지만 요구가
+ * 백로그·스프린트 섹션과 완전히 같다 — 프로젝트별 분리 · 기본 펼침 · 스토리지 실패 시
+ * fail-safe 폴백(E6). 훅이나 저장 키를 새로 만들면 그 세 규칙이 두 벌로 갈려 한쪽만
+ * 고쳐지는 drift 가 생긴다.
+ *
+ * 섹션 id 공간은 droppable id 와 같은 문자열 공간이다. `backlog` 와 다르고 `sprint-`
+ * 접두사도 아니라 실재하는 어떤 섹션과도 충돌하지 않는다.
+ */
+export const EPIC_PANEL_SECTION_ID = 'epic-panel'
+
+/**
  * 프로젝트별 접힘 목록을 저장하는 localStorage 키를 만든다.
  *
  * **키를 프로젝트마다 분리하는 이유.** 섹션 id 가 `sprint-{sprintId}` 라 프로젝트가

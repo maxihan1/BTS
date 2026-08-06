@@ -132,6 +132,7 @@ interface RenderBarExtra {
   readonly leadingSection?: ReactNode
   readonly leadingChips?: readonly FilterChipData[]
   readonly extraActiveCount?: number
+  readonly hiddenSections?: { readonly labels?: boolean; readonly components?: boolean }
 }
 
 function renderBar(
@@ -148,6 +149,7 @@ function renderBar(
       leadingSection={extra.leadingSection}
       leadingChips={extra.leadingChips}
       extraActiveCount={extra.extraActiveCount}
+      hiddenSections={extra.hiddenSections}
     />,
     { wrapper: makeWrapper() },
   )
@@ -589,6 +591,55 @@ describe('FilterBar — S7 활성 필터 카운트', () => {
 
   it('S7e: extraActiveCount만 있어도(다른 필드 0) 카운트가 표시된다', () => {
     renderBar(emptyFilter, vi.fn(), { extraActiveCount: 1 })
+    expect(screen.getByText(/1개 적용 중/)).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S8. hiddenSections — 섹션 가시성 (FR-UX-13 F16 T2)
+//
+// 백로그 응답에는 labels·componentIds 필드가 아예 없어(backlogIssueSchema) 클라이언트가
+// 거를 근거가 없다. 두 섹션을 그대로 렌더하면 **눌러도 아무 일이 없는 장식 필터**가 된다.
+//
+// ★ 양방향 짝 테스트 필수. 한쪽만 두면 "항상 숨김" 또는 "항상 표시" 어느 쪽으로 구현해도
+//   초록이 되는 공허 테스트가 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FilterBar — S8 hiddenSections 섹션 가시성', () => {
+  it('S8a: prop 미전달이 기본값 — 라벨·컴포넌트 섹션이 둘 다 렌더된다', () => {
+    renderBar()
+    expect(screen.getByText(filterBarLabels.filter.labelLabel)).toBeInTheDocument()
+    expect(screen.getByText(filterBarLabels.filter.componentLabel)).toBeInTheDocument()
+  })
+
+  it('S8b: hiddenSections로 감추면 라벨·컴포넌트 섹션이 DOM에서 사라진다', () => {
+    renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true, components: true } })
+    expect(screen.queryByText(filterBarLabels.filter.labelLabel)).not.toBeInTheDocument()
+    expect(screen.queryByText(filterBarLabels.filter.componentLabel)).not.toBeInTheDocument()
+  })
+
+  it('S8c: 라벨만 감출 수 있다 — 컴포넌트는 남는다', () => {
+    renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true } })
+    expect(screen.queryByText(filterBarLabels.filter.labelLabel)).not.toBeInTheDocument()
+    expect(screen.getByText(filterBarLabels.filter.componentLabel)).toBeInTheDocument()
+  })
+
+  it('S8d: 컴포넌트만 감출 수 있다 — 라벨은 남는다', () => {
+    renderBar(emptyFilter, vi.fn(), { hiddenSections: { components: true } })
+    expect(screen.getByText(filterBarLabels.filter.labelLabel)).toBeInTheDocument()
+    expect(screen.queryByText(filterBarLabels.filter.componentLabel)).not.toBeInTheDocument()
+  })
+
+  it('S8e: 감춰도 담당자 섹션과 초기화는 그대로 동작한다', () => {
+    renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true, components: true } })
+    expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: filterBarLabels.filter.reset })).toBeInTheDocument()
+  })
+
+  it('S8f: 감춰도 activeCount 계산식은 바뀌지 않는다 — 가시성은 표시 문제이지 집계 문제가 아니다', () => {
+    // 값에 labels가 들어 있는 상태로 섹션만 감춘다. 카운트가 줄어들면 감추기가
+    // 조용히 집계까지 바꾼 것이고, 보드·이슈 소비처의 카운트 계약을 흔든다.
+    renderBar({ ...emptyFilter, labels: ['bug'] }, vi.fn(), { hiddenSections: { labels: true } })
     expect(screen.getByText(/1개 적용 중/)).toBeInTheDocument()
   })
 })

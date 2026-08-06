@@ -303,7 +303,7 @@ describe('resolveOverToDropZone', () => {
   /** `isZeroMove` 인자 — 집자마자 그대로 놓은 드롭 (T12) */
   const NOT_MOVED = true
 
-  it('칸 droppable 이면 그 data 를 그대로 DropZoneData 로 만든다', () => {
+  it('칸 droppable 이면 view 에서 그 칸의 순서를 채우고 맨 뒤를 가리킨다', () => {
     const zone = resolveOverToDropZone(
       VIEW,
       over({ context: 'sprint', sprintId: SPRINT_A_ID, orderedKeys: ['ATLAS-4', 'ATLAS-5'] }),
@@ -396,5 +396,50 @@ describe('resolveOverToDropZone', () => {
       NOT_MOVED,
     )
     expect(zone).toBeNull()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16 결함 — 필터가 rank 계산에 새어 들어갔다
+  //
+  // 칸 droppable 의 `data.orderedKeys` 는 칸 컴포넌트가 **받은 목록**, 즉 F16 이후로는
+  // **필터를 통과한 것만**이다(`BacklogColumn.tsx:94` · `SprintColumn.tsx:74` ←
+  // `BacklogBoard.tsx` 의 `display`). 그대로 rank 계산에 쓰면 숨은 카드를 건너뛴 자리에
+  // 꽂히고, 그 칸의 다른 카드가 전부 숨으면 `noop-move` 로 아무 일도 일어나지 않는다.
+  //
+  // 카드 droppable 경로는 처음부터 `view` 를 조회하고 있었다(바로 위 두 케이스). 두 경로 중
+  // 하나만 봉합돼 있던 것이 이 결함이다 — **rank 의 진실 출처는 언제나 원본 `view`** 다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('★★칸 droppable 의 orderedKeys 가 필터 후 목록이어도 rank 기준은 원본 전량이다', () => {
+    // 화면에는 ATLAS-1 만 보이는 상태에서 백로그 칸 빈 영역에 놓았다.
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] }),
+      MOVED,
+    )
+    // 「맨 뒤」는 보이는 것의 뒤가 아니라 **원본의 뒤**여야 한다. 필터 후 목록을 쓰면
+    // dropIndex 1 · orderedKeys ['ATLAS-1'] 이 잡혀 ATLAS-2 앞에 꽂힌다.
+    expect(zone).toEqual({
+      context: 'backlog',
+      sprintId: null,
+      orderedKeys: ['ATLAS-1', 'ATLAS-2'],
+      dropIndex: 2,
+    })
+  })
+
+  it('★★스프린트 칸도 같다 — 필터가 그 칸의 카드를 전부 가려도 원본을 본다', () => {
+    // 필터가 스프린트 A 의 카드를 전부 가린 상태(`orderedKeys: []`). 그대로 쓰면 같은 칸
+    // 재정렬이 `others.length === 0` 으로 `noop-move` 가 되어 **아무 일도 안 일어난다**.
+    const zone = resolveOverToDropZone(
+      VIEW,
+      over({ context: 'sprint', sprintId: SPRINT_A_ID, orderedKeys: [] }),
+      MOVED,
+    )
+    expect(zone).toEqual({
+      context: 'sprint',
+      sprintId: SPRINT_A_ID,
+      orderedKeys: ['ATLAS-4', 'ATLAS-5'],
+      dropIndex: 2,
+    })
   })
 })
