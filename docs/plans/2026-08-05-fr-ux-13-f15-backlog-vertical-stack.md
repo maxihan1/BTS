@@ -672,3 +672,77 @@ G7 정정(「공지가 꺼진 게 아니라 영어 기본값」)이 사실 · `s
 2. **비가시 이슈 경로** — `truncated` 가드를 우회하는 두 번째 영구 동결 경로일 수 있다 (T8)
 
 **BLOCKER 잔여. 없음** (9건 전량 스펙·plan 에 반영 완료).
+
+---
+
+## 코드 리뷰 결과 (게이트 2 · 2026-08-05)
+
+리뷰 2종을 병렬로 돌렸다. gstack `/review` 의 무거운 초기화(telemetry·설정 프롬프트)는 생략하고
+**실질 가치인 독립 리뷰**를 두 관점으로 수행했다 — `plan-design-review` 때와 같은 판단이다.
+
+| 리뷰 | 결과 |
+|---|---|
+| `superpowers:code-reviewer` (절대 규칙 19개) | **CONCERNS** — 권장 4 · BLOCKER 0 |
+| 독립 리뷰 (구조·안전성) | **BLOCKER 3 · CONCERNS 3 · MINOR 3** |
+
+### ★ 절대 규칙 19개 전수 통과 + 200줄 규칙 해석 확정
+
+`any` 0 · `!!` 프로덕션 0 · `console.` 0 · 신규 의존성 0(`package.json`·lock 무변경) ·
+`localStorage` 값은 토큰이 아니라 섹션 id 목록(원소 전수 검증 후 하나라도 아니면 전체 거부).
+
+**§2.2 「컴포넌트 200줄」은 파일이 아니라 컴포넌트 함수 기준**임이 근거 2겹으로 확정됐다.
+① `DEVELOPMENT.md:55`(Kotlin)은 "**파일** 300줄", `:72`(TS)는 "**컴포넌트** 200줄" — 같은 자리에서
+명사를 바꿔 썼으므로 의도적 구분이다 ② 저장소 기존 주석들도 그렇게 해석한다.
+실측(중괄호 깊이) — `StartSprintDialog` 190 · `BacklogBoard` 194 · `CompleteSprintDialog` 124 ·
+나머지 전부 100 이하. **전원 통과.** 단 앞의 둘은 천장까지 각각 10줄·6줄이다.
+
+### 🔴 BLOCKER 3건 — 전부 수정 (Maxi 확정 2026-08-05)
+
+**BLOCKER-1. Esc 가 취소가 아니라 드롭이었다 — dispatch 지시서의 처방 오류.**
+`end: [Space, Esc]` 로 처방한 것이 원인이다. dnd-kit 의 `handleKeyDown` 은 **`end` 를 먼저 검사하고
+즉시 `return`** 하므로(`core.cjs.development.js` 실측) **`cancel: [Esc]` 가 도달 불가한 공허 가드**가 됐고,
+Esc 를 누르면 `handleEnd` → mutation 이 발사됐다. dnd-kit 기본값은 `end: [Space, Enter, Tab]` 로
+Esc 가 없어 정상 동작한다 — Tab 을 빼려던 의도는 옳았고 Esc 를 넣은 것이 오류다.
+**스크린리더가 읽는 유일한 안내(`backlog-labels.ts:277` 「Esc 로 취소합니다」)가 거짓이었다.**
+테스트가 못 잡은 이유도 같은 양식이다 — `end` 에 Esc 가 있음과 `cancel` 이 `[Esc]` 임을 **각각**
+단언할 뿐 **교집합이 비었는지**를 재지 않았다(`two-lists-never-check-each-other` 가 테스트 안에서 재현).
+
+**BLOCKER-2. 분류 정보가 없을 때 완료하면 완료된 이슈까지 전량 반출.**
+제출 버튼 `disabled` 에 워크플로우 로딩/실패 상태가 없어, 창을 여는 순간(매번 콜드 페치)
+곧바로 누르면 `unavailable → 전건 미완료 → 전량 DELETE` 로 이어진다. 완료된 스프린트에는
+되돌려 넣을 수 없고(`assignIssue` 조건부 INSERT → 409) 벨로시티가 멤버십 기반이라
+**그 스프린트 성과 기록이 영구히 0** 이 된다.
+**스펙 FR-7 의 근거가 틀렸다** — *"과다 포함은 사용자가 목록에서 확인하고 대상을 바꿀 수 있으므로
+손실이 없다"* 고 썼는데 **확인 없이 누르면 손실이 난다.** `truncated`(목록 불완전)는 차단하면서
+`unavailable`(분류 불가)은 안 하는 **비대칭**이었다.
+★ **테스트가 오히려 이 위험한 동작을 못박고 있었다** — `test:616` 이 `not.toBeDisabled()` 를 단언하고,
+제출 시 무슨 요청이 나가는지는 아무도 재지 않았다.
+**Maxi 확정 — `truncated` 와 동일하게 막는다.**
+
+**BLOCKER-3. 시작 창 409 경로가 사용자 입력을 조용히 파기.**
+`setValues(toFormValues(fresh))` 가 사용자가 친 기간·목표를 서버 값으로 덮어쓰고, 그 뒤 「다시 시도」는
+변경분 0이라 `PATCH` 를 건너뛴다 → **남의 값으로 스프린트가 시작된다.** 화면 문구에 입력이
+날아갔다는 말이 없다. **이 분기는 테스트 환경에서 실행 자체가 불가능**했다(빈 `QueryClient` 라
+`getQueryData` 가 항상 `undefined` → 조기 반환) — **프로덕션에서만 도달하는 분기**다.
+
+### 함께 수정 — 가짜 합격 1건
+
+**C-1. 테스트 mock 이 `collisionDetection` 을 삼킨다.** 같은 mock 팩토리 `:63-64` 에 이 PR 이
+*"mock 이 이 둘을 버리면 배선을 삭제해도 이 파일이 전량 초록으로 남는다"* 고 **직접 써 두고**,
+세 번째 배선 prop 은 목록에 넣지 않았다. `backlog-collision.ts` 를 전면 재작성했는데
+**배선 한 줄을 지워도 1,615줄 파일이 전량 초록**이다. 처방 3줄.
+
+### 후속 등록 (이번 PR 범위 밖)
+
+| # | 내용 |
+|---|---|
+| CONCERNS-4 | 이관 중 배경 재조회가 실패하면 `BacklogBoard` 조기 반환으로 **부분 실패 보고가 통째로 소멸**한다. `refetchOnWindowFocus` 기본 true 라 탭 전환만으로도 트리거된다 |
+| CONCERNS-5 | `DELETE` 성공 + `POST` 실패면 이슈는 **이미 백로그**인데 화면은 「이관 실패」라고만 말한다. 어디 있는지 알 수 없다 |
+| CONCERNS-6 | **재검증이 새로 발견한** `truncated` 는 버튼을 잠그지 않는다(차단이 prop 경로로만 계산). 안전 쪽으로 무너지진 않으나 눌러도 진전 없는 버튼을 반복하게 된다 |
+| MINOR-7 | 403 한 건이 500 여러 건을 「권한 없음」으로 덮어써 개수를 잃는다 |
+| MINOR-9 / C-2 | `UpdateSprintBody` 인터페이스 ↔ `UPDATE_SPRINT_PATCHABLE_FIELDS` 배열이 서로를 검사하지 않는다. 필드 추가 시 **타입 에러 없이 조용한 전송 누락**(3-state 계약상 「미전송 = 무변경」) — **두 리뷰가 겹쳐 지적** |
+| C-3 | 섹션 droppable id 문자열이 4곳에 흩어졌는데 이번에 **localStorage 접힘 키 역할까지 얹혔다**. 카드 id 는 `cardDroppableId()` 단일 정의가 있는데 섹션엔 짝이 없다 |
+| C-4 | 빈 catch 1건(`use-backlog-collapsed.ts:89-91`). 저장소 전역 **35건 동일 관례**이고 ESLint `no-empty` 가 주석 블록을 무시한다 — 규칙 문언 개정 / 전수 정리 / 이 건만 로그 중 **Maxi 판단** |
+| S-1 | `useSprintCompletion` 157줄(§2.2 함수 30줄의 5배). 내부 헬퍼 4개가 전부 30줄 아래라 분리선은 이미 그어져 있다 |
+| S-3 | **선재 가짜 테스트** — `BacklogBoard.test.tsx:1051` 의 이름은 `truncated=true이면 경고 배너를 표시한다` 인데 `vi.doMock` 이 hoisted `vi.mock` 뒤라 효과 0이고, 실제로는 **정반대**(`queryByRole('alert')).toBeNull()`)를 잰다. 이 PR diff 밖 |
+| S-2 | 스펙 FR-15 는 "후보 순서 = `BacklogView` 배열 순서"인데 구현은 **화면 Y 최근접**이다. 세로 스택에선 관측 결과가 같고 클라이언트 정렬도 없어 의도는 충족하나, 정정 기록이 누락됐다 |
