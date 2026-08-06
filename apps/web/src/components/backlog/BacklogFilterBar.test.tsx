@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState } from 'react'
+import type { JSX, ReactNode } from 'react'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
 import { backlogLabels } from '@/i18n/backlog-labels'
@@ -334,6 +335,10 @@ describe('BacklogFilterBar — S5 라벨·컴포넌트 섹션 제외', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S6. 초기화 — 4축 전부 (onReset 위임)
+//
+// ★이 두 개는 **비제어** 하네스라 「초기화가 지운 값이 되살아나는가」를 **원리적으로 못 잰다**
+//   (`onChange` 가 나가도 `value` 가 안 돌아와 되돌림이 화면 상태로 이어지지 않는다).
+//   그 축은 제어형 하네스를 쓰는 **S8** 이 소유한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BacklogFilterBar — S6 초기화', () => {
@@ -408,5 +413,117 @@ describe('BacklogFilterBar — S7 FilterBar 경계 왕복', () => {
       includeUnassigned: false,
       epicKeys: [EPIC_ALPHA],
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★★ S8. 초기화 되돌림 방지 — **제어형** 하네스
+//
+// 필터바 자체의 `초기화` 는 부모 재마운트(`BacklogBoard` 의 `filterBarKey`)를 타지 않는다.
+// 빈 상태 CTA `필터 초기화` 만 재마운트로 로컬 입력+디바운스를 통째로 버린다 — 같은 병을
+// 한 경로에서만 고친 **반쪽 봉합**이었다. 이 블록이 나머지 절반을 잰다.
+//
+// **왜 제어형이어야 하나.** 비제어 하네스(`renderBar`)는 `onChange` 가 나가도 `value` 가
+// 안 돌아와, 컴포넌트가 낡은 검색어를 다시 밀어 올려도 그게 상태로 이어지지 않는다.
+// 실제 부모(`BacklogBoard` → URL)와 같은 **되먹임 고리**가 있어야 되돌림이 관측된다.
+//
+// **왜 최종값이 아니라 호출 순서인가.** 되돌림은 250ms 짜리 **중간 상태**다. 최종값은
+// 결함이 있어도 `''` 라, 최종값만 재는 단언은 가짜 그린이 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 제어형 하네스 결과 — `queries` 는 렌더 중 계속 자라는 **같은 배열**이다 */
+interface ControlledHarness {
+  /** `onChange` 로 나간 `query` 를 **호출 순서 그대로** 기록 */
+  readonly queries: readonly string[]
+}
+
+/** `onChange` 를 그대로 `value` 로 되먹이는 하네스 — 실제 부모와 같은 모양 */
+function renderControlled(initial: BacklogFilter = emptyBacklogFilter()): ControlledHarness {
+  const queries: string[] = []
+
+  function Harness(): JSX.Element {
+    const [value, setValue] = useState(initial)
+    return (
+      <BacklogFilterBar
+        projectKey="ATLAS"
+        value={value}
+        onChange={(next) => {
+          queries.push(next.query)
+          setValue(next)
+        }}
+        epicNames={epicNames}
+      />
+    )
+  }
+
+  render(<Harness />, { wrapper: makeWrapper() })
+  return { queries }
+}
+
+/** fake timer 를 명시적으로 넘긴다 — 실시간 대기는 느린 CI 에서 flaky 가 된다 */
+function advance(ms: number): void {
+  act(() => {
+    vi.advanceTimersByTime(ms)
+  })
+}
+
+/** fake timer 와 병용 불가한 `userEvent` 대신 동기 `fireEvent` 를 쓴다 (S1 주석과 같은 이유) */
+function clickReset(): void {
+  fireEvent.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
+}
+
+describe('BacklogFilterBar — S8 초기화 되돌림 방지 (제어형)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('S8a: ★초기화가 지운 검색어를 250ms 뒤 되살리지 않는다', () => {
+    const bar = renderControlled()
+
+    fireEvent.change(searchInput(), { target: { value: '없는제목' } })
+    advance(SEARCH_DEBOUNCE_MS)
+    // 비-공허 짝 — 디바운스는 실제로 한 번 나갔다. 「아무것도 안 나감」으로 통과한 게 아니다.
+    expect(bar.queries).toEqual(['없는제목'])
+
+    clickReset()
+    advance(SEARCH_DEBOUNCE_MS * 2)
+
+    // 결함 시 ['없는제목', '', '없는제목', ''] — 세 번째가 되돌림이고,
+    // 그 0.25초 동안 검색창은 비었는데 「조건에 맞는 이슈가 없습니다」가 다시 뜬다.
+    expect(bar.queries).toEqual(['없는제목', ''])
+    expect(searchInput()).toHaveValue('')
+  })
+
+  it('S8b: 짝 — 정상 타이핑은 디바운스가 살아 있다 (249ms 침묵 → 250ms 에 1회)', () => {
+    // 이 짝이 없으면 「디바운스를 통째로 죽여서」 S8a 를 초록으로 만드는 우회가 통과한다.
+    const bar = renderControlled()
+
+    fireEvent.change(searchInput(), { target: { value: '결제' } })
+    advance(SEARCH_DEBOUNCE_MS - 1)
+    expect(bar.queries).toEqual([])
+
+    advance(1)
+    expect(bar.queries).toEqual(['결제'])
+
+    // 부모가 값을 받은 **뒤에도** 이어지는 타이핑이 반영된다 (동기화 고리 생존)
+    fireEvent.change(searchInput(), { target: { value: '결제내역' } })
+    advance(SEARCH_DEBOUNCE_MS)
+    expect(bar.queries).toEqual(['결제', '결제내역'])
+  })
+
+  it('S8c: URL 로 복원된 검색어도 초기화 후 되살아나지 않는다 (사용자 타이핑 0회 경로)', () => {
+    // S8a 와 진입 기전이 다르다 — 여기서는 낡은 디바운스 값의 출처가 `useState` 초기값이다.
+    const bar = renderControlled({ ...emptyBacklogFilter(), query: '결제' })
+    expect(searchInput()).toHaveValue('결제') // 비-공허 짝 — 복원 자체는 됐다
+
+    clickReset()
+    advance(SEARCH_DEBOUNCE_MS * 2)
+
+    // 결함 시 ['', '결제', ''] — 지운 검색어가 되살아났다가 다시 지워진다
+    expect(bar.queries).toEqual([''])
+    expect(searchInput()).toHaveValue('')
   })
 })
