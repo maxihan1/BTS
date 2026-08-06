@@ -446,6 +446,64 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 - **COMPLETED 스프린트 카드 위 드롭 (선재 결함 · F15 E2E 단계에서 발견, 범위 밖).** 칸 droppable 은 `SprintColumn.tsx` 가 `disabled: isCompleted || collapsed` 로 막지만, **그 안의 카드 droppable 은 `BacklogCard.tsx` 가 `disabled: isDragging` 뿐**이라 완료 여부를 모르고, `resolveOverToDropZone` 에도 스프린트 상태 검사가 없다. 즉 **COMPLETED 스프린트 안의 카드 위에 놓으면 `assign` 이 나간다**. **데이터 손상은 없다** — `SprintController.kt:242` 가 `409 — COMPLETED 스프린트 할당 불가` 로 막는다. 다만 드롭 가능해 보이는데 반드시 실패하는 UX 결함이다. **선재 확정** — `BacklogCard.tsx` 는 F15 에서 무변경이고 `origin/main` 도 동일하다. 단 **세로 스택 전환으로 COMPLETED 섹션이 항상 보이게 되어 도달 가능성이 올라갔다**. 처방 후보는 ① 카드 droppable 에 완료 여부를 넘기거나 ② `resolveOverToDropZone` 에 상태 검사를 넣는 것.
 - **모바일 셸 반응형 (선재 결함 · F15 구현 중 발견, 범위 밖).** 375px 에서 본문 폭이 **111px** 로 짜부라진다 — 셸 사이드바(264px)가 md 미만에서 접히지 않는다. **F15 가 건드리지 않은 보드·이슈 목록 화면도 동일**해 선재 결함이 확정이며, 수정 대상이 `apps/web/src/components/layout/` 이라 F15·F16 범위 밖이다. 세로 스택 전환으로 증상 모양만 바뀐다(전 288px 고정폭 가로 스크롤 → 현 섹션 111px 짜부라짐).
 
+#### 🆕 F16 이 남긴 후속 8건 (2026-08-06 · PR #344 머지 시 등재 · 전부 **차단 아님**)
+
+머지 전 눈확인(라이트/다크 6항목)과 코드리뷰 2종이 적발했고, **차단 사유 0건**으로 판정해 이월했다.
+착수 시 **줄번호를 재측정할 것** — 이 FR 은 정본 수치가 실측에 뒤집힌 사례가 3건 있다.
+
+**시각 (눈확인 적발 · 실측 수치 동반)**
+- **① 320px 폼 오버플로.** 백로그 칸 헤더의 스프린트 생성 폼 우측이 헤더 우측을 **54px 초과**한다
+  (`main.scrollWidth 286 > clientWidth 256`). **375px 은 0.7px 여유로 통과.** 같은 폭에서
+  `SprintColumnHeader` 도 3행으로 터지므로 위 「모바일 셸 반응형」과 **한 건으로 묶어** 처리하는
+  편이 낫다.
+- **② 다크 체크박스 대비 2.64:1.** `Checkbox` 체크 상태 `--brand-hover`(`#0055CC`) vs 패널 배경
+  (`#161A1D`). WCAG 1.4.11 이 UI 컴포넌트에 요구하는 **3:1 미달**(라이트는 6.62:1). `Checkbox`
+  프리미티브가 24종 중 **F16 이 첫 소비처**라 드러났다 — F16 코드가 아니라 `DESIGN.md` 색 토큰 소관.
+- **③ 네이티브 vs shadcn 체크박스 다크 불일치.** `FilterBar.tsx` 의 `미배정` 은 원시
+  `<input type="checkbox">`, 에픽 패널은 shadcn `Checkbox` 인데 **프로젝트 어디에도
+  `color-scheme: dark` 선언이 없어** 다크에서 미배정만 새하얀 네모로 뜬다. **선재**지만 F16 이
+  둘을 한 화면에 나란히 놓아 처음 눈에 띄었다.
+- **④ 필터바 baseline 48px 단차.** `FilterBar.tsx` 의 `items-end` + 담당자 블록이 `미배정`
+  체크박스까지 품어 더 높은 탓에, `백로그 검색` 입력의 **위 끝(205)이 담당자 입력의 아래 끝(201)보다
+  낮다** — 세로 겹침 0이라 「살짝 어긋남」이 아니라 **다른 줄에 있는 것처럼** 보인다. 이 화면에서
+  가장 눈에 띄는 미관 결함. **단 `FilterBar` 는 보드·이슈 목록도 쓰는 공유 컴포넌트**라
+  `items-end` 를 건드리면 회귀 위험이 있다 — `leadingSection` 슬롯만 자기 정렬을 갖게 하는 국소
+  처방이 가능한지 검토.
+
+**구조 (코드리뷰 적발)**
+- **⑤ 라벨 5종이 컴포넌트 모듈 잔류.** `EPIC_PANEL_TITLE`·`EPIC_LIST_ARIA_LABEL`·
+  `EPIC_SCOPE_NOTICE`·`BACKLOG_FILTERED_EMPTY_TITLE`·`BACKLOG_FILTER_RESET_LABEL`. 3종은
+  `fcf93d9c6` 로 `i18n/backlog-labels.ts` 에 옮겼으나 나머지는 남았다. 실제 비용 —
+  `i18n/__tests__/create-entry-point-names.test.ts` 가 **순수 i18n 판별식인데**
+  `@/components/backlog/BacklogBoard` 를 import 하느라 React·dnd-kit 트리를 통째로 끌어온다.
+- **⑥ 숨긴 섹션의 훅이 계속 돈다.** `FilterBar` 의 `hiddenSections` 는 **렌더만** 끄고
+  `useComponents(projectKey)`·`useUsers` 는 무조건 실행된다. 백로그를 열면 **영원히 안 쓰이는**
+  컴포넌트 목록 조회가 1건 나간다. 같은 PR 의 `SprintDialogHost` 는 "요청 1건 증가"를 이유로
+  조건부 마운트를 택했는데 **같은 기준을 필터바에는 적용하지 않았다.**
+- **⑦ C4 짝 테스트에 대조 장치가 없다.** `BacklogFilterBar.test.tsx`(부재 0) ↔
+  `BacklogEpicPanel.test.tsx`(존재 4) 의 셀렉터 헬퍼가 **글자 단위로 같지만 복사본 2벌**이고
+  동기화 강제는 주석 한 줄뿐이다. 패널이 Radix 메뉴로 바뀌어 role 이 `menuitemcheckbox` 가 되면
+  → 패널 테스트만 red → 패널만 고침 → **필터바 쪽은 존재하지 않는 role 을 0개 세며 영구 초록**.
+  같은 PR 의 `create-entry-point-names.test.ts` 가 **정본 직접 import** 로 이 문제를 정확히
+  피했으므로 기법은 이미 손에 있다. 관련 [[two-lists-never-check-each-other]].
+- **⑧ 픽스처 뷰 간 불일치.** 백로그는 `ATLAS-1 ∈ ATLAS-EPIC-A` 라고 말하는데 같은 이슈의 상세
+  픽스처 `mocks/issue-fixtures.ts` 에는 `epic` 필드가 없다(`IssueResponse` 는 그 필드를 정의한다).
+  **두 화면이 서로 다른 말을 하는데 대조 장치가 없다.** 현재 소비처 0이라 무해.
+
+**부수 — 에픽 이름 폴백 3상태 미구분** (수용 가능으로 판정, 기록만).
+`use-backlog-epics` 는 ① 조회 중 ② 조회 실패 ③ **상한 50 초과** 를 전부 **키 표시**로 합친다.
+사용자는 「곧 로딩되겠지」와 「영원히 안 나온다」를 구분할 수 없다. 에픽 목록 API 부재라는 제약상
+최선이나, 「이름을 못 불러왔습니다」 같은 구분 표시는 후속 후보.
+
+> **⚠️ 후속으로 열지 **않은** 것 1건 (오검 정정).** 코드리뷰가 *"pre-commit 훅과 `pnpm lint` 가
+> 서로 다른 eslint 결과를 낸다"* 를 선재 구조 결함으로 올렸으나 **실측으로 반증됐다.**
+> 리뷰어는 **루트 설정의 명령줄을 손으로 흉내 내** 재서 error 1건을 봤는데, 설정이 **2벌**이라
+> `apps/web` 파일은 `apps/web/.lintstagedrc.json` 이 잡고 **cwd 가 `apps/web`** 이 된다(위
+> §4.9 「★봉합이 만든 신규 충돌면」에서 이미 처방된 상태). **결정적 증거** — F16 T2 가 PR22 예외
+> 목록에 실재하는 `components/filters/FilterBar.tsx` 를 **`--no-verify` 없이** 커밋했고 훅이
+> 정상 통과했다(`100557bc7`). **지적은 채택하되 처방은 검증한다**([[seal-blinds-existing-guard]])의
+> 반대 방향 사례 — 지적 자체가 거짓일 수도 있다.
+
 > **★ 왜 완료를 차단하는가 (F15 착수 중 실측 · ADR `2026-08-05-fr-ux-13-f15-backlog-vertical-stack.md`).**
 > `SprintRepository.unassignIssue` 는 `WHERE … AND EXISTS (SELECT 1 FROM sprints WHERE id = ? AND status <> 'COMPLETED')` **조건부 DELETE** 라 COMPLETED 스프린트에서는 **아무 행도 지우지 않고 204** 를 준다(실패가 아니라 침묵). 그리고 `V503__sprints.sql` 의 `CONSTRAINT sprint_issues_issue_key_unique UNIQUE (issue_key)` 때문에 한 이슈는 전역에서 한 스프린트에만 속하고, 스키마 주석이 "다른 스프린트로 재할당하려면 먼저 제거해야 한다"고 못박는데 **그 제거가 위에서 막힌다**. 결과 — **완료된 스프린트에 남은 이슈는 꺼낼 수도 옮길 수도 없다.** 「이관 먼저」·「부분 실패 시 완료 중단」·「truncated 면 완료 차단」이 전부 이 한 줄에서 파생된다.
 
