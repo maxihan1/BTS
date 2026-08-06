@@ -1,6 +1,10 @@
-// 백로그·스프린트 보드 E2E — 세로 스택·드래그·스프린트 다이얼로그·키보드 DnD (FR-BL-01/02 D6/D7 · FR-UX-13 F5/F15)
+// 백로그·스프린트 보드 E2E — 세로 스택·드래그·스프린트 다이얼로그·키보드 DnD·필터바·에픽 패널 (FR-BL-01/02 D6/D7 · FR-UX-13 F5/F15/F16)
 //
-// 시나리오 개요.
+// suite 는 둘이다.
+//   ① `FR-BL-01/02 백로그·스프린트 보드` — S1~S20 (아래 개요)
+//   ② `FR-UX-13 F16 백로그 필터바 · 에픽 패널` — F16-S1~S8 · F16-URL (파일 하단, 그 앞 주석에 개요)
+//
+// 시나리오 개요 (suite ①).
 //   S1. 백로그 재정렬   — 백로그 카드를 같은 칸 다른 위치로 드래그 → 순서 변경(낙관적 반영 확인)
 //   S2. 백로그→스프린트 — 백로그 카드를 스프린트 칸으로 드래그 → 스프린트에 이슈 표시
 //   S3. 스프린트→백로그 — 스프린트 카드를 백로그 칸으로 드래그 → 백로그에 이슈 복귀
@@ -54,7 +58,9 @@ import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { backlogLabels } from '../src/i18n/backlog-labels'
+import { filterBarLabels } from '../src/i18n/filter-bar-labels'
 import { DEFAULT_BACKLOG } from '../src/mocks/backlog-fixtures'
+import { userAliceFixture } from '../src/mocks/user-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts와 동기화 (import.meta.env 참조 회피)
@@ -658,6 +664,235 @@ async function pickUpAndMoveOverPlannedSprint(page: Page, card: Locator): Promis
       { timeout: 1_000 },
     )
   }).toPass({ timeout: 15_000 })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수 — FR-UX-13 F16 (필터바 · 에픽 패널)
+//
+// ★아래 6종은 **컴포넌트 모듈이 소유한 문자열 상수의 미러**다. `i18n/` 이 아니라
+//   `BacklogFilterBar.tsx`·`BacklogEpicPanel.tsx`·`BacklogBoard.tsx` 가 직접 들고 있는데
+//   (`react-refresh/only-export-components` 가 컴포넌트 모듈의 라벨 **객체** export 를
+//   막아 F16 이 세운 관례다), 그 파일들은 `.tsx` 라 Playwright 의 Node 로더가 끌어오면
+//   React·dnd-kit·lucide 까지 통째로 평가된다. `LS_KEY_SPRINT_UNASSIGN_FAIL` 과 같은
+//   관례(값 미러 + 출처 주석)를 쓴다.
+//   `초기화`(필터바)만은 순수 상수 모듈(`i18n/filter-bar-labels`)에 있어 **직접 import** 한다.
+//   `초기화` ⊂ `필터 초기화` 의 substring 면제는
+//   `src/i18n/__tests__/create-entry-point-names.test.ts` 가 정본을 직접 import 해 지킨다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `BacklogFilterBar.tsx` `BACKLOG_SEARCH_LABEL` 미러 — 제목 검색 입력의 접근명 */
+const BACKLOG_SEARCH_LABEL = '백로그 검색'
+
+/** `BacklogEpicPanel.tsx` `EPIC_PANEL_TITLE` 미러 — 패널 제목이자 접기 토글 이름의 재료 */
+const EPIC_PANEL_TITLE = '에픽'
+
+/** `BacklogEpicPanel.tsx` `EPIC_LIST_ARIA_LABEL` 미러 — **`적용된 필터` 와 반드시 다르다** */
+const EPIC_LIST_ARIA_LABEL = '에픽 목록'
+
+/** `BacklogFilterBar.tsx` `NO_EPIC_LABEL` 미러 — 「에픽 없음」 항목/칩의 표시명 */
+const NO_EPIC_LABEL = '에픽 없음'
+
+/** `BacklogBoard.tsx` `BACKLOG_FILTERED_EMPTY_TITLE` 미러 — 필터 0건 안내 1행 */
+const FILTERED_EMPTY_TITLE = '조건에 맞는 이슈가 없습니다.'
+
+/**
+ * `BacklogBoard.tsx` `BACKLOG_FILTER_RESET_LABEL` 미러 — 빈 상태의 초기화 CTA.
+ *
+ * ★`filterBarLabels.filter.reset`('초기화')를 **부분 문자열로 포함**한다. 필터 0건 화면에는
+ *   둘이 **함께** 있으므로(2026-08-06 실측 — 비-exact 조회가 2개를 잡는다) 두 버튼 조회는
+ *   전부 `exact: true` 다. F16-S5 가 그 공존 자체를 단언해 계약을 못박는다.
+ */
+const FILTERED_EMPTY_RESET_LABEL = '필터 초기화'
+
+/** `FilterBar.tsx:324` 의 활성 칩 목록 `aria-label` 미러 (i18n 밖 리터럴이다) */
+const ACTIVE_CHIP_LIST_LABEL = '적용된 필터'
+
+/** `lib/backlog-filter.ts` `NO_EPIC` 미러 — URL `epic` 축의 「에픽 없음」 센티널 */
+const NO_EPIC_SENTINEL = '__none__'
+
+/** `lib/backlog-filter.ts` 의 미배정 센티널 미러 — URL `assignee` 축에 실린다 */
+const UNASSIGNED_SENTINEL = 'unassigned'
+
+/** 두 번째 프로젝트 — 에픽 패널 접힘이 **프로젝트별**임을 재는 대조군 (`project-handlers.ts` 시드) */
+const OTHER_PROJECT_BACKLOG_URL = '/projects/MIDDLE/backlog'
+
+/**
+ * `src/mocks/backlog-handlers.ts` 의 `LS_KEY_BACKLOG_TRUNCATED` 값 미러.
+ *
+ * 'true' 로 심으면 `GET backlog` 가 `truncated: true` 를 얹어 준다. 픽스처의 `truncated` 는
+ * false 하드코딩이라 이 토글 말고는 그 경로를 만들 수단이 없다.
+ * `LS_KEY_BACKLOG_FAIL` 과 같은 이유로 미러다 — `backlog-handlers.ts` 는 `msw` 를 런타임
+ * import 하므로 spec 에서 끌어오면 Playwright 의 Node 로더가 MSW 를 통째로 평가한다.
+ */
+const LS_KEY_BACKLOG_TRUNCATED = '__bts_e2e_backlog_truncated'
+
+/**
+ * 담당자 후보/칩의 접근명으로 쓸 alice 표시 이름.
+ *
+ * `UserSummary.displayName` 은 `string | null` 이다. null 이면 화면이 `username` 으로
+ * 폴백하는데, 그러면 이 파일의 담당자 조회가 전부 조용히 빗나간다 — 그 자리에서 실패시킨다
+ * (`requiredIssueKey` 와 같은 픽스처 퇴화 방지 장치).
+ */
+function requiredDisplayName(user: { displayName: string | null; username: string }): string {
+  if (user.displayName === null) {
+    throw new Error(
+      `user-fixtures.ts 의 ${user.username} 에 displayName 이 없습니다. ` +
+        'F16 담당자 시나리오가 이름으로 후보·칩을 조회할 수 없습니다.',
+    )
+  }
+  return user.displayName
+}
+
+/** alice 표시 이름 — 담당자 typeahead 후보 버튼과 활성 칩의 접근명 */
+const ALICE_DISPLAY_NAME = requiredDisplayName(userAliceFixture)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 픽스처 파생 — 기대값을 손으로 세지 않는다
+//
+// 숫자를 리터럴로 적으면 픽스처가 바뀌는 날 테스트가 「틀린 것을 정확히」 지킨다.
+// 전부 `DEFAULT_BACKLOG` 에서 계산한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 백로그 + 전 스프린트의 이슈 전량 */
+const ALL_FIXTURE_ISSUES = [
+  ...DEFAULT_BACKLOG.backlog,
+  ...DEFAULT_BACKLOG.sprints.flatMap((entry) => entry.issues),
+]
+
+/** 화면에 그려지는 카드 총수 (필터 없음) */
+const TOTAL_ISSUE_COUNT = ALL_FIXTURE_ISSUES.length
+
+/** alice 담당 이슈 키 — F16-S1 의 기대 집합 */
+const ALICE_ISSUE_KEYS = ALL_FIXTURE_ISSUES.filter(
+  (issue) => issue.assigneeId === userAliceFixture.id,
+).map((issue) => issue.key)
+
+/** 에픽 **미지정** 이슈 키 — F16-S3 의 기대 집합 */
+const NO_EPIC_ISSUE_KEYS = ALL_FIXTURE_ISSUES.filter((issue) => issue.epicKey === null).map(
+  (issue) => issue.key,
+)
+
+/**
+ * 에픽이 **지정된** 이슈 키.
+ *
+ * ★현재 `DEFAULT_BACKLOG` 에는 0건이다. 그래서 F16-S2·S3 은 「에픽 없음」축까지만 재고
+ * 「이름 있는 에픽을 고르면 **다른 에픽 이슈가 사라진다**」는 절반을 **재지 못한다**.
+ * 그 경계를 F16-S3 의 짝 테스트가 tripwire 로 지킨다 — 픽스처에 에픽이 생기는 순간 red 다.
+ */
+const EPIC_ASSIGNED_ISSUE_KEYS = ALL_FIXTURE_ISSUES.filter((issue) => issue.epicKey !== null).map(
+  (issue) => issue.key,
+)
+
+/** 한 섹션에서 alice 담당 이슈가 몇 건인지 — 헤더 배지가 말해야 하는 값 */
+function aliceCountIn(issues: readonly { assigneeId: string | null }[]): number {
+  return issues.filter((issue) => issue.assigneeId === userAliceFixture.id).length
+}
+
+/**
+ * 픽스처에 없는 제목 조각 — 필터 결과를 **0건**으로 만드는 데 쓴다.
+ *
+ * 픽스처 제목 어디에도 없음을 모듈 로드 시점에 확인한다. 훗날 제목이 이 문자열을 포함하게
+ * 되면 「0건」시나리오가 0건을 만들지 못한 채 조용히 다른 것을 재게 된다.
+ */
+const NO_MATCH_QUERY = 'zzz-존재하지-않는-제목'
+if (ALL_FIXTURE_ISSUES.some((issue) => issue.summary.includes(NO_MATCH_QUERY))) {
+  throw new Error(
+    `NO_MATCH_QUERY('${NO_MATCH_QUERY}')가 DEFAULT_BACKLOG 제목에 실재합니다. ` +
+      'F16-S5·S8 의 「결과 0건」이 만들어지지 않습니다.',
+  )
+}
+
+/**
+ * 대소문자 무시 검색의 대상 — 제목에 **ASCII 대문자**가 든 이슈.
+ *
+ * 한글 제목만 있으면 「대소문자 무시」를 애초에 잴 수 없다. 대상이 사라지면 여기서 터진다.
+ * 함수로 감싸는 것은 `requiredIssueKey` 와 같은 이유다 — 모듈 스코프 `if` 로 좁힌 타입은
+ * 테스트 콜백 **안**까지 따라오지 않아 `undefined` 가 남는다.
+ */
+function requireUppercaseTitleIssue(): (typeof ALL_FIXTURE_ISSUES)[number] {
+  const found = ALL_FIXTURE_ISSUES.find((issue) => issue.summary.includes('UI'))
+  if (found === undefined) {
+    throw new Error(
+      'DEFAULT_BACKLOG 제목에 대문자 "UI" 를 가진 이슈가 없습니다. ' +
+        'F16-S4(대소문자 무시)가 아무것도 재지 못합니다.',
+    )
+  }
+  return found
+}
+
+/** 제목에 대문자 `UI` 가 든 이슈 — F16-S4 가 소문자 `ui` 로 이것을 찾는다 */
+const UPPERCASE_TITLE_ISSUE = requireUppercaseTitleIssue()
+
+/** 소문자로 쳐도 위 이슈가 잡혀야 한다 — 그 이슈 **하나만** 잡히는지도 함께 센다 */
+const CASE_INSENSITIVE_QUERY = 'ui'
+const CASE_INSENSITIVE_EXPECTED_KEYS = ALL_FIXTURE_ISSUES.filter((issue) =>
+  issue.summary.toLowerCase().includes(CASE_INSENSITIVE_QUERY),
+).map((issue) => issue.key)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — 필터 컨트롤 locator (FR-UX-13 F16)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 화면에 렌더된 드래그 카드 전량 — 필터가 남긴 카드 수를 세는 데 쓴다 */
+function getAllCards(page: Page): Locator {
+  return page.locator('[aria-roledescription="draggable card"]')
+}
+
+/**
+ * 제목 검색 입력.
+ *
+ * `exact: true` — 접근명은 `백로그 검색` 이고 상단바 전역 검색(`전역 검색`)·AQL 제출 버튼
+ * (`검색`)과 이름이 갈라져 있다. 셋 중 어느 것도 서로를 부분 문자열로 포함하지 않지만,
+ * 이름이 늘어나는 날 조용히 두 개를 잡지 않도록 처음부터 exact 로 고정한다.
+ */
+function getSearchInput(page: Page): Locator {
+  return page.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL, exact: true })
+}
+
+/** 담당자 typeahead 입력 */
+function getAssigneeInput(page: Page): Locator {
+  return page.getByRole('textbox', { name: filterBarLabels.filter.assigneeLabel, exact: true })
+}
+
+/** 에픽 패널의 항목 목록 — 접근명이 `적용된 필터` 와 **다르다**는 것이 계약이다 */
+function getEpicList(page: Page): Locator {
+  return page.getByRole('list', { name: EPIC_LIST_ARIA_LABEL, exact: true })
+}
+
+/** 에픽 패널의 항목 하나 (체크박스) */
+function getEpicOption(page: Page, name: string): Locator {
+  return page.getByRole('checkbox', { name, exact: true })
+}
+
+/** 에픽 패널 접기 토글 — 섹션 토글과 같은 생성기를 쓰지만 다른 버튼이다 */
+function getEpicPanelToggle(page: Page): Locator {
+  return getCollapseToggle(page, EPIC_PANEL_TITLE)
+}
+
+/** 필터바의 활성 필터 칩 목록. 칩이 하나도 없으면 **DOM 에서 사라진다**(count 0) */
+function getActiveChipList(page: Page): Locator {
+  return page.getByRole('list', { name: ACTIVE_CHIP_LIST_LABEL, exact: true })
+}
+
+/** 필터바 초기화 버튼 — **`exact: true` 필수** (`초기화` ⊂ `필터 초기화`) */
+function getFilterBarReset(page: Page): Locator {
+  return page.getByRole('button', { name: filterBarLabels.filter.reset, exact: true })
+}
+
+/** 필터 0건 빈 상태의 초기화 CTA — **`exact: true` 필수** */
+function getFilteredEmptyReset(page: Page): Locator {
+  return page.getByRole('button', { name: FILTERED_EMPTY_RESET_LABEL, exact: true })
+}
+
+/**
+ * 섹션 헤더가 말하는 카드 수를 단언한다 (F16-8).
+ *
+ * 카드를 세지 않고 **`aria-label` 을 읽는다** — 「보이는 카드」와 「헤더가 말하는 수」가
+ * 갈리는 것이 정확히 F16-8 이 막으려는 결함이라, 둘 중 하나만 재면 그 갈림이 통과한다.
+ * 카드 쪽은 각 시나리오가 따로 센다.
+ */
+async function expectSectionCount(column: Locator, name: string, count: number): Promise<void> {
+  await expect(column).toHaveAttribute('aria-label', backlogLabels.columnAriaLabel(name, count))
 }
 
 /**
@@ -1517,5 +1752,574 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
 
     await expect(targetColumn.getByText(ACTIVE_ISSUE_LAST)).toBeVisible()
     await expect.poll(() => writes.length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F16 — 백로그 필터바 · 에픽 패널
+//
+// 시나리오 개요 (스펙 §2 S1~S8 + URL 왕복).
+//   F16-S1.  담당자 필터   — 백로그·스프린트 **모든 섹션**이 동시에 좁혀지고 헤더 수도 따라간다
+//   F16-S2.  에픽 패널     — 패널에서 고르면 필터바 **활성 칩**으로 나타나고 칩 ✕ 로도 풀린다
+//   F16-S3.  「에픽 없음」  — 에픽 미지정 이슈만 남는다 (+ 커버리지 경계 tripwire 짝)
+//   F16-S4.  제목 검색     — 대소문자를 무시한다 / (S4b) 디바운스로 URL 갱신이 키 수보다 적다
+//   F16-S5.  결과 0건      — 안내 + 「필터 초기화」 → 전량 복귀 (+ 두 초기화 버튼 공존 계약)
+//   F16-S6.  패널 접기     — 새로고침 후에도 접힌 채다 / (S6b) 다른 프로젝트는 펼쳐져 있다
+//   F16-S7.  스프린트 생성 — 폼이 **백로그 칸 헤더 안**에 있고 거기서 만들어진다
+//   F16-S8.  잘림 + 0건    — 「조건에 맞는 이슈 없음」과 **잘림 경고가 함께** 뜬다 (+ S8b 짝)
+//   F16-URL. URL 왕복      — 새로고침 보존 / 손으로 쓴 반복형 파싱 / 미지의 에픽 키는 그 축만 비움
+//
+// 설계 결정.
+//   - **배치 계약.** 필터바·에픽 패널은 칸 `region` **바깥**, 세로 스택 **위**다. 그래서
+//     `getColumnLocator`(region textContent 선두 `^` 앵커)가 그대로 산다. 에픽 패널이
+//     `role="region"` 2종째로 들어왔지만 그 선두 텍스트가 `에픽` 이라 `^백로그`·`^스프린트 1`
+//     어느 쪽과도 겹치지 않는다 — 2026-08-06 브라우저 실측으로 확인했다
+//     (백로그 칸 선두 `"백로그2스프린트 생성첫 번째 이슈 — …"`, 칸 조회 결과 1건).
+//   - **`exact: true` 강제 2종.** `초기화`(필터바) ⊂ `필터 초기화`(빈 상태)라 비-exact 조회는
+//     필터 0건 화면에서 strict mode 로 깨진다. F16-S5 가 그 공존을 직접 단언한다.
+//   - **기대값을 손으로 세지 않는다.** 카드 수·키 목록은 전부 `DEFAULT_BACKLOG` 파생이다.
+//   - **`page.reload()` 는 두 곳에서만** 쓴다 (F16-S6 · F16-URL). 거기서 재는 것이 MSW store
+//     가 아니라 **localStorage 접힘 상태**와 **주소창**이라 새로고침이 유일하게 정직한
+//     수단이다 (S14 와 같은 사유).
+//
+// ★커버리지 경계 (숨기지 않는다).
+//   `DEFAULT_BACKLOG` 의 모든 이슈가 `epicKey: null` 이고, 백로그 응답에 에픽을 심을 수단이
+//   `src/mocks/` 밖에 없다 (`appendCreatedIssueToBacklog` 도 `epicKey: null` 고정).
+//   그래서 F16-S2·S3 은 **「에픽 없음」축까지만** 재고, 「이름 있는 에픽을 고르면 다른 에픽의
+//   이슈가 사라진다」는 절반은 e2e 증인이 없다(유닛 `lib/backlog-filter.test.ts` 가 잰다).
+//   그 경계는 F16-S3 의 tripwire 테스트가 지킨다 — 픽스처에 에픽이 생기는 순간 red 다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S1. 담당자로 백로그를 좁힌다 (스펙 S1 · F16-7 · F16-8)
+  //
+  // Given  alice 로그인 + DEFAULT_BACKLOG — 각 섹션이 자기 카드 수를 헤더로 말한다
+  // When   담당자 typeahead 에 「김앨」을 치고 후보에서 김앨리스를 고른다
+  // Then   백로그·스프린트 **모든 섹션**의 헤더 카드 수가 alice 담당 수로 갱신되고,
+  //        화면의 카드 총수가 alice 담당 이슈 수와 같아지며,
+  //        활성 칩 「김앨리스」와 「1개 적용 중」이 보인다
+  //
+  // ★필터 **전** 카드 수를 먼저 단언한다. 「1개」만 재면 처음부터 1개였어도 통과한다 —
+  //   「좁혀졌다」는 전후 차이지 최종 값이 아니다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S1 담당자 필터 — 백로그·스프린트 모든 섹션이 동시에 좁혀지고 헤더 수가 따라간다', async ({
+    page,
+  }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    // Given. 필터 전 — 각 섹션 헤더가 픽스처 그대로의 수를 말한다
+    await expectSectionCount(
+      getBacklogColumn(page),
+      BACKLOG_COLUMN_NAME,
+      DEFAULT_BACKLOG.backlog.length,
+    )
+    for (const entry of DEFAULT_BACKLOG.sprints) {
+      await expectSectionCount(
+        getColumnLocator(page, entry.sprint.name),
+        entry.sprint.name,
+        entry.issues.length,
+      )
+    }
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+    await expect(getActiveChipList(page)).toHaveCount(0)
+
+    // When. 담당자 후보를 검색해 고른다
+    await getAssigneeInput(page).fill('김앨')
+    await page.getByRole('button', { name: ALICE_DISPLAY_NAME, exact: true }).click()
+
+    // Then. 모든 섹션 헤더가 **동시에** alice 담당 수로 갱신된다 (F16-7 · F16-8)
+    await expectSectionCount(
+      getBacklogColumn(page),
+      BACKLOG_COLUMN_NAME,
+      aliceCountIn(DEFAULT_BACKLOG.backlog),
+    )
+    for (const entry of DEFAULT_BACKLOG.sprints) {
+      await expectSectionCount(
+        getColumnLocator(page, entry.sprint.name),
+        entry.sprint.name,
+        aliceCountIn(entry.issues),
+      )
+    }
+
+    // Then. 화면에 남은 카드가 정확히 alice 담당 이슈다 (헤더 수와 실제 카드가 갈리지 않는다)
+    await expect(getAllCards(page)).toHaveCount(ALICE_ISSUE_KEYS.length)
+    for (const key of ALICE_ISSUE_KEYS) {
+      await expect(getCardLocator(page, key)).toBeVisible()
+    }
+
+    // Then. 활성 칩 + 「1개 적용 중」
+    await expect(getActiveChipList(page)).toContainText(ALICE_DISPLAY_NAME)
+    await expect(page.getByText(filterBarLabels.count.applied(1), { exact: true })).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S2. 에픽 패널로 고르면 필터바 칩에 나타난다 (스펙 S2 · F16-3 · C4)
+  //
+  // Given  에픽 선택 **컨트롤은 패널 하나뿐**이고(C4 단일 소유권) 활성 칩은 없다
+  // When   패널에서 항목을 고른다
+  // Then   필터바 활성 칩에 같은 이름이 나타난다
+  // When   그 칩의 ✕ 를 누른다
+  // Then   칩이 사라지고 **패널 체크도 함께 풀린다** (패널 체크 해제와 동일 결과)
+  //
+  // ★C4 짝. 「필터바에 선택 컨트롤이 없다」만 단언하면 패널에도 없을 때 통과하는 공허한
+  //   단언이다. 같은 셀렉터로 ①화면 전체에 그 체크박스가 1개 ②그 1개가 **패널 목록 안**임을
+  //   함께 잰다 — 그래야 「어디에도 없음」과 「패널에만 있음」이 구별된다.
+  //
+  // ★고르는 항목이 「에픽 없음」인 이유는 픽스처에 이름 있는 에픽이 0종이기 때문이다
+  //   (§커버리지 경계). 칩 왕복 계약 자체는 축이 무엇이든 같다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S2 에픽 패널 — 선택이 필터바 활성 칩으로 나타나고 칩 ✕ 로도 해제된다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getBacklogColumn(page)).toBeVisible()
+
+    // Given. 에픽 선택 컨트롤은 화면에 **하나뿐**이고 그것은 패널 목록 안에 있다 (C4 짝)
+    const option = getEpicOption(page, NO_EPIC_LABEL)
+    await expect(option).toHaveCount(1)
+    await expect(
+      getEpicList(page).getByRole('checkbox', { name: NO_EPIC_LABEL, exact: true }),
+    ).toHaveCount(1)
+    await expect(option).not.toBeChecked()
+    await expect(getActiveChipList(page)).toHaveCount(0)
+
+    // When. 패널에서 고른다
+    await option.check()
+
+    // Then. 필터바 활성 칩에 같은 이름이 나타난다 (F16-3)
+    await expect(getActiveChipList(page)).toContainText(NO_EPIC_LABEL)
+    await expect(option).toBeChecked()
+
+    // When. 칩의 ✕ 로 해제한다
+    await page
+      .getByRole('button', {
+        name: filterBarLabels.chip.removeAriaLabel(NO_EPIC_LABEL),
+        exact: true,
+      })
+      .click()
+
+    // Then. 칩이 사라지고 패널 체크도 함께 풀린다 — 두 UI 가 같은 상태를 말한다
+    await expect(getActiveChipList(page)).toHaveCount(0)
+    await expect(option).not.toBeChecked()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S3. 에픽 없는 이슈만 본다 (스펙 S3 · EC2)
+  //
+  // Given  에픽 미지정 이슈가 실재한다
+  // When   에픽 패널의 「에픽 없음」을 선택한다
+  // Then   `epicKey === null` 인 이슈만 남는다
+  //
+  // ★이 단언이 무엇을 가르나. `NO_EPIC` 은 실제 이슈 키가 아니라 예약 센티널이라,
+  //   `epicKeys.includes(issue.epicKey)` 처럼 순진하게 비교하면 **화면이 통째로 0건**이 된다.
+  //   즉 「미지정 이슈가 전부 남는다」는 그 오구현과 정확히 갈린다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S3 「에픽 없음」 — 에픽 미지정 이슈만 남는다', async ({ page }) => {
+    // Given. 재는 대상이 실재한다 (0건이면 아래 단언이 자동 참이 된다)
+    expect(NO_EPIC_ISSUE_KEYS.length).toBeGreaterThan(0)
+
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+
+    // When. 「에픽 없음」 선택
+    await getEpicOption(page, NO_EPIC_LABEL).check()
+
+    // Then. **필터가 실제로 걸렸다.** 이 단언이 없으면 「클릭이 아무 일도 안 했다」와
+    //       아래의 「전부 남는다」가 구별되지 않는다 — 현재 픽스처는 미지정 이슈가
+    //       전량이라 기대 카드 수가 필터 전과 같기 때문이다 (§커버리지 경계).
+    await expect(page.getByText(filterBarLabels.count.applied(1), { exact: true })).toBeVisible()
+    await expect
+      .poll(() => decodeURIComponent(new URL(page.url()).search))
+      .toContain(NO_EPIC_SENTINEL)
+
+    // Then. 에픽 미지정 이슈가 전부 남는다 (센티널 오구현이면 0건이 된다)
+    await expect(getAllCards(page)).toHaveCount(NO_EPIC_ISSUE_KEYS.length)
+    for (const key of NO_EPIC_ISSUE_KEYS) {
+      await expect(getCardLocator(page, key)).toBeVisible()
+    }
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S3 짝 — 커버리지 경계 tripwire
+  //
+  // 위 F16-S3 은 「에픽 지정 이슈가 **걸러진다**」는 나머지 절반을 재지 못한다. 픽스처에
+  // 에픽이 0종이라 걸러질 대상이 없기 때문이다(§커버리지 경계). 그 사실이 **조용히**
+  // 바뀌면 F16-S3 은 아무 경고 없이 반쪽만 지키는 테스트가 된다.
+  // 픽스처에 에픽이 생기는 순간 여기서 터지게 해 둔다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S3 짝 — 픽스처에 에픽 지정 이슈가 생기면 「걸러진다」 절반을 추가해야 한다', () => {
+    expect(
+      EPIC_ASSIGNED_ISSUE_KEYS,
+      'DEFAULT_BACKLOG 에 epicKey 가 있는 이슈가 생겼습니다. F16-S2 에 「이름 있는 에픽을 고르면 ' +
+        '그 에픽 이슈만 남는다」를, F16-S3 에 「에픽 지정 이슈는 「에픽 없음」에서 사라진다」를 ' +
+        '추가하세요 — 지금은 그 절반에 e2e 증인이 없습니다.',
+    ).toEqual([])
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S4. 제목으로 찾는다 — 대소문자 무시 (스펙 S4)
+  //
+  // Given  제목에 대문자 `UI` 가 든 이슈가 있다
+  // When   **소문자** `ui` 를 친다
+  // Then   그 이슈만 남는다
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S4 제목 검색 — 소문자로 쳐도 대문자 제목이 잡힌다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+
+    // When. 소문자로 친다
+    await getSearchInput(page).fill(CASE_INSENSITIVE_QUERY)
+
+    // Then. 대문자 제목 이슈가 남고, 나머지는 사라진다
+    await expect(getAllCards(page)).toHaveCount(CASE_INSENSITIVE_EXPECTED_KEYS.length)
+    await expect(getCardLocator(page, UPPERCASE_TITLE_ISSUE.key)).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S4b. 제목 검색은 디바운스된다 (NFR N3 — 250ms)
+  //
+  // Given  백로그 화면
+  // When   지연 없이 여러 글자를 연속으로 친다
+  // Then   URL 갱신(= 필터 반영)이 **키 입력 수보다 적다**
+  //
+  // ★왜 「1회」가 아니라 「키 수보다 적다」인가. 정확히 몇 번인지는 러너 속도에 따라 흔들리지만
+  //   「디바운스가 없다」는 반드시 **키마다 1회**다. 두 상태는 이 부등식으로 확실히 갈리고,
+  //   느린 러너에서 거짓 실패가 나지 않는다.
+  // ★비-공허. 「적다」만 재면 갱신이 0회여도(= 필터가 아예 안 걸려도) 통과한다.
+  //   그래서 「결국 1회 이상 갱신된다」를 먼저 단언한다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S4b 제목 검색 디바운스 — 연속 입력이 URL 갱신을 키 수만큼 내지 않는다', async ({
+    page,
+  }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getBacklogColumn(page)).toBeVisible()
+
+    // 10글자를 쓴다 — 부등식의 여유를 넓혀 느린 러너에서 거짓 실패가 나지 않게 한다.
+    // 디바운스가 없으면 10회, 있으면 (실측) 1회다.
+    const typed = '로그인페이지구현하기'
+    const urlUpdates: string[] = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame() && frame.url().includes('q=')) urlUpdates.push(frame.url())
+    })
+
+    // When. 지연 없이 연속 입력
+    await getSearchInput(page).pressSequentially(typed, { delay: 0 })
+
+    // Then. 필터는 결국 반영된다 (비-공허 짝)
+    await expect.poll(() => urlUpdates.length).toBeGreaterThan(0)
+
+    // Then. 그런데 갱신 수는 키 입력 수보다 적다
+    await page.waitForTimeout(700)
+    expect(urlUpdates.length).toBeLessThan(typed.length)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S5. 조건에 맞는 이슈가 없다 (스펙 S5 · F16-10)
+  //
+  // Given  필터 없음 — 카드 전량이 보인다
+  // When   어떤 제목에도 없는 문자열로 검색한다
+  // Then   `FilteredEmptyState` 안내와 「필터 초기화」가 보이고 칸이 사라진다
+  // When   「필터 초기화」를 누른다
+  // Then   카드가 전량 복귀하고 URL 의 필터 파라미터도 사라지며 **검색 입력도 비워진다**
+  //
+  // ★검색 입력이 비워지는지까지 재는 이유. 필터바는 검색어를 로컬 state 로 쥐고 디바운스한다.
+  //   부모가 값만 비우면 로컬 입력이 남아 **지운 검색어를 즉시 되돌려 놓는다** — 「눌러도
+  //   아무 일이 없는 버튼」이 된다. URL 만 보면 그 결함이 안 보인다(Task 8 눈확인 실측).
+  //
+  // ★두 초기화 버튼 **공존**도 여기서 못박는다. 비-exact 조회가 2개를 잡는다는 것을 직접
+  //   단언해, `create-entry-point-names.test.ts` 의 substring 면제가 장식이 아님을 화면에서
+  //   증명한다 (판별식과 실화면이 서로를 검사한다).
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S5 결과 0건 — 안내와 「필터 초기화」가 뜨고 누르면 전량 복귀한다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+
+    // When. 결과가 0건이 되는 검색어
+    await getSearchInput(page).fill(NO_MATCH_QUERY)
+
+    // Then. 빈 상태 안내 + 칸 소멸
+    await expect(page.getByText(FILTERED_EMPTY_TITLE, { exact: true })).toBeVisible()
+    await expect(getAllCards(page)).toHaveCount(0)
+    await expect(getBacklogColumn(page)).toHaveCount(0)
+
+    // Then. 초기화 버튼 **2종이 공존**한다 — 그래서 조회는 반드시 exact 다
+    await expect(page.getByRole('button', { name: filterBarLabels.filter.reset })).toHaveCount(2)
+    await expect(getFilterBarReset(page)).toHaveCount(1)
+    await expect(getFilteredEmptyReset(page)).toHaveCount(1)
+
+    // When. 빈 상태의 「필터 초기화」
+    await getFilteredEmptyReset(page).click()
+
+    // Then. 전량 복귀 + 검색 입력까지 비워짐 + URL 정리
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+    await expect(getSearchInput(page)).toHaveValue('')
+    await expect.poll(() => new URL(page.url()).search).toBe('')
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S6. 에픽 패널을 접는다 (스펙 S6 · F16-4)
+  //
+  // Given  에픽 패널이 펼쳐져 있고 목록이 보인다
+  // When   접기 토글을 누르고 **실제로 새로고침**한다
+  // Then   접힌 채로 복원된다
+  //
+  // ★`page.reload()` 예외. 여기서 재는 것은 서버 데이터가 아니라 localStorage 접힘 상태라
+  //   새로고침이 유일하게 정직한 수단이다 (S14 와 같은 사유).
+  // ★비-공허 짝. 「목록이 안 보인다」만 보면 백로그 조회가 통째로 실패해도 통과한다.
+  //   그래서 새로고침 뒤 **백로그 칸의 카드가 보인다**를 함께 단언한다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S6 에픽 패널 접기 — 새로고침 후에도 접힌 채로 복원된다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    // Given. 펼쳐진 채로 목록을 보여 준다
+    const toggle = getEpicPanelToggle(page)
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(getEpicList(page)).toBeVisible()
+
+    // When. 접기
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(getEpicList(page)).toHaveCount(0)
+
+    // When. 실제 브라우저 새로고침
+    await page.reload()
+
+    // Then. 보드는 정상 렌더됐다 (비-공허 짝)
+    await expect(getBacklogColumn(page).getByText(BACKLOG_CARD_1)).toBeVisible()
+
+    // Then. 패널은 접힌 채로 복원된다
+    await expect(getEpicPanelToggle(page)).toHaveAttribute('aria-expanded', 'false')
+    await expect(getEpicList(page)).toHaveCount(0)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S6b. 접힘은 **프로젝트별**이다 (스펙 S6 · F16-4)
+  //
+  // Given  ATLAS 에서 에픽 패널을 접었다
+  // When   다른 프로젝트의 백로그로 간다
+  // Then   그 프로젝트의 패널은 **펼쳐져 있다** — 한 프로젝트의 기억이 다른 곳을 접지 않는다
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S6b 에픽 패널 접힘은 프로젝트별로 분리된다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    // Given. ATLAS 에서 접는다
+    const toggle = getEpicPanelToggle(page)
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    // When. 다른 프로젝트의 백로그로 이동
+    await page.goto(OTHER_PROJECT_BACKLOG_URL)
+
+    // Then. 그 프로젝트의 패널은 펼쳐진 채다
+    await expect(getEpicPanelToggle(page)).toHaveAttribute('aria-expanded', 'true')
+    await expect(getEpicList(page)).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S7. 스프린트를 백로그 섹션 헤더에서 만든다 (스펙 S7 · F16-11)
+  //
+  // Given  스프린트 생성 폼이 화면에 **1개**이고 그것은 **백로그 칸 안**이다
+  //        (스프린트 칸에는 0개 — 「어디에도 없음」과 「백로그 칸에만 있음」을 가르는 짝)
+  // When   그 폼 안에서 이름을 넣고 제출한다
+  // Then   새 스프린트 칸이 등장한다
+  //
+  // ★기존 S6(스프린트 생성)은 폼을 **화면 전역**에서 조회해 위치를 재지 않는다. 이동 전에도
+  //   통과했으므로 「헤더 안으로 옮겼다」의 증인이 아니다 — 그 증인이 여기다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S7 스프린트 생성 폼 — 백로그 칸 헤더 안에 있고 거기서 스프린트가 만들어진다', async ({
+    page,
+  }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    const formName = backlogLabels.createSprintFormLabel
+
+    // Given. 폼은 화면에 1개이고 그 1개가 백로그 칸 안이다
+    await expect(page.getByRole('form', { name: formName, exact: true })).toHaveCount(1)
+    const formInBacklog = getBacklogColumn(page).getByRole('form', { name: formName, exact: true })
+    await expect(formInBacklog).toHaveCount(1)
+    await expect(
+      getSprintColumn(page).getByRole('form', { name: formName, exact: true }),
+    ).toHaveCount(0)
+
+    // When. **그 폼 안에서** 이름을 넣고 제출한다 (전역 조회가 아니라 컨테이너 한정)
+    const newSprintName = 'F16 헤더 폼 스프린트'
+    await formInBacklog.getByLabel(backlogLabels.sprintNamePlaceholder).fill(newSprintName)
+    await formInBacklog
+      .getByRole('button', { name: backlogLabels.createSprint, exact: true })
+      .click()
+
+    // Then. 새 스프린트 칸이 등장한다
+    const newColumn = getColumnLocator(page, newSprintName)
+    await expect(newColumn).toBeVisible()
+    await expect(newColumn.getByLabel(sprintStatusLabel('PLANNED'))).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S8 ★. 잘린 응답에서 필터를 건다 (스펙 S8 · §8 C5 · EC6)
+  //
+  // Given  `truncated === true` — 잘림 경고가 떠 있다
+  // When   필터를 걸어 결과가 0건이 된다
+  // Then   「조건에 맞는 이슈가 없습니다.」와 **잘림 경고가 함께** 보인다
+  //
+  // ★왜 「함께」가 계약인가. 안 온 이슈가 조건에 맞을 수 있다. 「없습니다」만 띄우면 **거짓말**이다.
+  // ★비-공허 짝은 바로 아래 F16-S8b 다 — 잘리지 않은 응답의 같은 0건 화면에는 경고가 없다.
+  //   그 짝이 없으면 「경고를 늘 그리는」 구현으로도 이 테스트가 통과한다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S8 잘림 + 필터 0건 — 「조건에 맞는 이슈 없음」과 잘림 경고가 함께 뜬다', async ({
+    page,
+  }) => {
+    await loginAsAlice(page)
+
+    // Given. 잘림 토글 주입 (goto 이전 — e2e-msw-scenario-toggle-localstorage-flag)
+    await page.addInitScript((key: string) => {
+      window.localStorage.setItem(key, 'true')
+    }, LS_KEY_BACKLOG_TRUNCATED)
+    await page.goto(BACKLOG_URL)
+
+    // Given. 잘림 경고가 떠 있다
+    const truncatedAlert = page
+      .getByRole('alert')
+      .filter({ hasText: backlogLabels.truncatedWarning })
+    await expect(truncatedAlert).toBeVisible()
+
+    // When. 결과가 0건이 되는 필터
+    await getSearchInput(page).fill(NO_MATCH_QUERY)
+
+    // Then. 두 안내가 **함께** 보인다
+    await expect(page.getByText(FILTERED_EMPTY_TITLE, { exact: true })).toBeVisible()
+    await expect(truncatedAlert).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S8b. F16-S8 의 짝 — 잘리지 않았으면 같은 0건 화면에 경고가 **없다**
+  //
+  // 토글만 빼고 F16-S8 과 완전히 같은 조작을 한다. 두 테스트가 한 벌이어야
+  // 「경고를 조건과 무관하게 항상 그리는」 구현이 걸린다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S8b 짝 — 잘리지 않은 응답의 필터 0건 화면에는 잘림 경고가 없다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+
+    // When. F16-S8 과 같은 필터
+    await getSearchInput(page).fill(NO_MATCH_QUERY)
+
+    // Then. 「없습니다」는 같지만 경고는 없다
+    await expect(page.getByText(FILTERED_EMPTY_TITLE, { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('alert').filter({ hasText: backlogLabels.truncatedWarning }),
+    ).toHaveCount(0)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-URL. 필터가 URL 에 실리고 새로고침에 보존된다 (스펙 F16-9)
+  //
+  // Given  백로그 화면
+  // When   3축(제목·담당자·에픽)을 모두 건 뒤 **새로고침**한다
+  // Then   URL 이 3축을 담고 있고, 새로고침 후에도 화면 상태가 그대로다
+  //
+  // ★`page.reload()` 예외. 여기서 재는 것은 MSW store 가 아니라 **주소창**이다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-URL 필터 3축이 URL 에 실리고 새로고침에 보존된다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getBacklogColumn(page)).toBeVisible()
+
+    // When. 3축을 건다
+    await getSearchInput(page).fill('페이지')
+    await getAssigneeInput(page).fill('김앨')
+    await page.getByRole('button', { name: ALICE_DISPLAY_NAME, exact: true }).click()
+    await getEpicOption(page, NO_EPIC_LABEL).check()
+
+    // Then. URL 이 3축을 모두 담는다
+    await expect.poll(() => decodeURIComponent(new URL(page.url()).search)).toContain('q=페이지')
+    const search = decodeURIComponent(new URL(page.url()).search)
+    expect(search).toContain(userAliceFixture.id)
+    expect(search).toContain(NO_EPIC_SENTINEL)
+
+    const beforeReload = page.url()
+    const cardCount = await getAllCards(page).count()
+
+    // When. 새로고침
+    await page.reload()
+
+    // Then. 주소도 화면도 그대로다
+    expect(page.url()).toBe(beforeReload)
+    await expect(getSearchInput(page)).toHaveValue('페이지')
+    await expect(getEpicOption(page, NO_EPIC_LABEL)).toBeChecked()
+    await expect(getActiveChipList(page)).toContainText(ALICE_DISPLAY_NAME)
+    await expect(getAllCards(page)).toHaveCount(cardCount)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-URL 붙여넣기. 손으로 쓴 반복형 파라미터도 파싱된다 (F16-9)
+  //
+  // Given  남이 준 URL — 배열 축을 `?assignee=A&assignee=B` **반복형**으로 적었다
+  //        (앱이 스스로 만드는 형태는 TanStack Router 기본 `?assignee=["A"]` JSON 이다)
+  // When   그 주소로 바로 들어간다
+  // Then   두 값이 모두 적용된다 — 담당자 칩 + 미배정 체크 + 「2개 적용 중」
+  //
+  // ★카드 수로는 갈리지 않는다(두 축의 합집합이 전량이다). 그래서 **UI 상태**로 잰다 —
+  //   반복형이 파싱되지 않으면 셋 중 하나 이상이 어긋난다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-URL 붙여넣기 — 손으로 쓴 반복형 assignee 파라미터도 두 값 모두 적용된다', async ({
+    page,
+  }) => {
+    await loginAsAlice(page)
+
+    // When. 반복형 URL 로 바로 진입
+    await page.goto(`${BACKLOG_URL}?assignee=${userAliceFixture.id}&assignee=${UNASSIGNED_SENTINEL}`)
+    await expect(getBacklogColumn(page)).toBeVisible()
+
+    // Then. 담당자 축과 미배정 축이 **둘 다** 적용됐다
+    await expect(getActiveChipList(page)).toContainText(ALICE_DISPLAY_NAME)
+    await expect(
+      page.getByRole('checkbox', { name: filterBarLabels.filter.unassigned, exact: true }),
+    ).toBeChecked()
+    await expect(page.getByText(filterBarLabels.count.applied(2), { exact: true })).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-URL EC9. 알 수 없는 에픽 키는 throw 없이 **그 축만** 비운다 (EC9)
+  //
+  // Given  링크는 오래 산다 — 지워진 에픽 키나 다른 프로젝트의 URL 이 들어올 수 있다
+  // When   실재하지 않는 에픽 키 + 멀쩡한 제목 검색어를 함께 담은 URL 로 들어간다
+  // Then   화면이 터지지 않고, 에픽 축만 비워지며, **제목 축은 살아남는다**
+  //
+  // ★「그 축만」이 계약이다. 전량 표시만 재면 필터 **전체**를 버리는 구현으로도 통과한다 —
+  //   그래서 제목 축이 실제로 걸려 있는지(카드 수 · 입력값 · 활성 개수)를 함께 잰다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-URL EC9 — 미지의 에픽 키는 에픽 축만 비우고 제목 축은 살아남는다', async ({ page }) => {
+    const query = '페이지'
+    const expectedKeys = ALL_FIXTURE_ISSUES.filter((issue) =>
+      issue.summary.toLowerCase().includes(query.toLowerCase()),
+    ).map((issue) => issue.key)
+    // 비-공허. 「제목 축 생존」을 재려면 그 축이 실제로 무언가를 걸러야 한다
+    expect(expectedKeys.length).toBeGreaterThan(0)
+    expect(expectedKeys.length).toBeLessThan(TOTAL_ISSUE_COUNT)
+
+    await loginAsAlice(page)
+
+    // When. 미지의 에픽 키 + 멀쩡한 제목 검색어
+    const unknownEpic = encodeURIComponent(JSON.stringify(['ATLAS-존재하지않는에픽']))
+    await page.goto(`${BACKLOG_URL}?q=${encodeURIComponent(query)}&epic=${unknownEpic}`)
+
+    // Then. 화면이 정상 렌더된다 (throw 없음)
+    await expect(getBacklogColumn(page)).toBeVisible()
+
+    // Then. 에픽 축만 비워진다 — 칩이 없고 활성 개수가 제목 1축뿐이다
+    await expect(getActiveChipList(page)).toHaveCount(0)
+    await expect(page.getByText(filterBarLabels.count.applied(1), { exact: true })).toBeVisible()
+
+    // Then. 제목 축은 살아남는다
+    await expect(getSearchInput(page)).toHaveValue(query)
+    await expect(getAllCards(page)).toHaveCount(expectedKeys.length)
   })
 })
