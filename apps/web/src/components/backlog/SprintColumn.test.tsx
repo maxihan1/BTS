@@ -270,6 +270,13 @@ const issue2Sprint: BacklogIssue = {
   epicKey: null,
 }
 
+/** 화면에 실제로 그려진 카드의 이슈 키 — `data-card-droppable` 은 `card:{context}:{key}` 다 */
+function renderedCardKeys(): string[] {
+  return Array.from(document.querySelectorAll('[data-card-droppable]')).map(
+    (element) => String(element.getAttribute('data-card-droppable')).split(':')[2] ?? '',
+  )
+}
+
 describe('SprintColumn — S5 concern-1 orderedKeys droppable data 결선', () => {
   it('S5a red: 이슈 목록의 key 배열이 droppable data에 orderedKeys로 포함된다', () => {
     renderSprintColumn(plannedSprint, [issue1, issue2Sprint])
@@ -277,6 +284,21 @@ describe('SprintColumn — S5 concern-1 orderedKeys droppable data 결선', () =
     expect(dropZone).toBeInTheDocument()
     // orderedKeys가 DOM data 속성으로 노출되어야 한다 (구현 후 통과)
     expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-5,ATLAS-6')
+  })
+
+  it('★S5b: 부모가 필터해 좁힌 목록이면 이 값도 그만큼만 싣는다 — 「보이는 것」이다 (F16)', () => {
+    // `BacklogColumn.test.tsx` 의 같은 이름 테스트와 **짝**이다. F16 필터는 백로그 칸과
+    // 스프린트 칸에 동시에 걸리므로 한 칸만 재면 반쪽 봉합(F5 가 겪은 형태)이 다시 열린다.
+    //
+    // 이 값이 좁혀지는 것은 계약이다 — 키보드 방향키의 「빈 칸인가」 판정이 이 값을 읽는다
+    // (`lib/backlog-keyboard-coordinates.ts:56` isEmptyColumn).
+    // ★rank 계산은 이 값을 쓰지 않는다. 원본 `view` 를 보는 짝은
+    // `BacklogBoard.test.tsx` 의 「EC7 ②칸 빈 영역 드롭」이다.
+    renderSprintColumn(plannedSprint, [issue2Sprint])
+
+    const dropZone = document.querySelector(`[data-droppable="sprint-${plannedSprint.sprintId}"]`)
+    expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-6')
+    expect(renderedCardKeys()).toEqual(['ATLAS-6'])
   })
 })
 

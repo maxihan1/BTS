@@ -566,6 +566,55 @@ function triggerDragEnd(
   })
 }
 
+/** {@link liveColumnDropTarget} 반환값 — `triggerDragEnd` 의 `over` 인자와 같은 모양 */
+interface ColumnDropTarget {
+  readonly id: string
+  readonly data: { readonly current: Record<string, unknown> }
+  /** 컴포넌트가 실제로 싣고 있던 순서 — Given 짝 단언에 그대로 쓴다 */
+  readonly orderedKeys: string[]
+}
+
+/**
+ * 화면이 **실제로 싣고 있는** 칸 droppable 을 그대로 드롭 대상으로 만든다.
+ *
+ * ★이 하네스의 구조적 사각지대를 닫는 헬퍼다. `DndContext` 를 mock 으로 갈아끼운 탓에
+ * `over.data` 를 지금까지 **테스트 작성자가 손으로 지어냈고**, 컴포넌트가 진짜로 무엇을
+ * 싣는지는 아무도 관측하지 않았다. 그래서 F16 이 칸에 넘기는 목록을 「필터 후」로 바꿨을 때
+ * 그 값이 rank 계산에까지 새어 들어간 것을 어떤 테스트도 잡지 못했다.
+ *
+ * `data-ordered-keys` 는 `useDroppable({ data })` 와 **같은 `orderedKeys` 변수**로 만들어지므로
+ * (`BacklogColumn.tsx:94,105,176` · `SprintColumn.tsx:74,84,113`) droppable data 의 관측 창이다.
+ *
+ * @param container `render` 가 돌려준 컨테이너
+ * @param droppableId `data-droppable` 값 (`backlog` 또는 `sprint-{uuid}`)
+ * @param sprintId 백로그 칸이면 null
+ */
+function liveColumnDropTarget(
+  container: HTMLElement,
+  droppableId: string,
+  sprintId: string | null,
+): ColumnDropTarget {
+  const zone = container.querySelector(`[data-droppable="${droppableId}"]`)
+  if (!(zone instanceof HTMLElement)) {
+    throw new Error(
+      `칸 droppable(${droppableId})을 찾지 못했습니다 — data-droppable 속성이 바뀌었는지 확인하세요.`,
+    )
+  }
+  const raw = zone.getAttribute('data-ordered-keys') ?? ''
+  const orderedKeys = raw === '' ? [] : raw.split(',')
+  return {
+    id: droppableId,
+    data: {
+      current: {
+        context: sprintId === null ? 'backlog' : 'sprint',
+        sprintId,
+        orderedKeys,
+      },
+    },
+    orderedKeys,
+  }
+}
+
 /**
  * 완료 다이얼로그가 **직접 내는** 요청의 목 (F15 T9).
  *
@@ -624,6 +673,55 @@ const FRESH_AFTER_TRANSFER: BacklogView = {
   truncated: false,
 }
 
+/**
+ * PLANNED 스프린트에 카드가 **2장** 있는 뷰 — S5(같은 스프린트 내 재정렬)의 무대.
+ *
+ * ★기본 픽스처의 스프린트는 카드가 1장뿐이라 같은 칸 재정렬이 원리적으로 성립하지 않는다.
+ * 종전 S5 는 그 사실을 `over.data` 에 실재하지 않는 `'ATLAS-X'` 를 적어 넣어 우회했는데,
+ * 그것이 바로 이 PR 이 봉합하는 결함(「테스트 작성자가 지어낸 over.data」)의 한 사례다 —
+ * 판정이 뷰를 진실 출처로 삼는 순간 그 시나리오는 재현 불가능한 픽스처가 된다
+ * (`unreachable-state-fixture-is-fake-green`). **뷰에 진짜로 2장을 둔다.**
+ */
+const TWO_ISSUE_SPRINT_VIEW: BacklogView = {
+  backlog: [],
+  sprints: [
+    {
+      sprint: {
+        sprintId: PLANNED_SPRINT_ID,
+        name: '스프린트 1',
+        goal: null,
+        status: 'PLANNED',
+        startDate: null,
+        endDate: null,
+        version: 0,
+      },
+      issues: [
+        {
+          key: 'ATLAS-3',
+          summary: '스프린트1 이슈',
+          currentStateKey: 'open',
+          assigneeId: null,
+          priority: 1,
+          rank: '0|a:',
+          version: 0,
+          epicKey: null,
+        },
+        {
+          key: 'ATLAS-9',
+          summary: '스프린트1 이슈 2',
+          currentStateKey: 'open',
+          assigneeId: null,
+          priority: 1,
+          rank: '0|b:',
+          version: 0,
+          epicKey: null,
+        },
+      ],
+    },
+  ],
+  truncated: false,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -631,6 +729,11 @@ const FRESH_AFTER_TRANSFER: BacklogView = {
 describe('BacklogBoard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  // 뷰를 갈아끼운 테스트가 다음 테스트로 새지 않게 한다 — 이 블록의 기본은 목 기본 픽스처다
+  afterEach(() => {
+    mockBacklogQueryOverride = {}
   })
 
   // ── 기본 렌더링 ─────────────────────────────────────────────────────────────
@@ -1042,10 +1145,15 @@ describe('BacklogBoard', () => {
     })
 
     it('S5: 같은 스프린트 내 재정렬 시 rerankMutate만 호출한다', async () => {
+      // 스프린트1에 카드가 **진짜로** 2장 있는 뷰를 쓴다 (`TWO_ISSUE_SPRINT_VIEW` KDoc).
+      mockBacklogQueryOverride = {
+        data: TWO_ISSUE_SPRINT_VIEW,
+        isLoading: false,
+        isError: false,
+      }
       renderBoard()
 
-      // 스프린트1에 ATLAS-3, ATLAS-X 두 이슈가 있다고 가정하고
-      // ATLAS-3를 뒤로 이동(dropIndex=2, 맨 뒤) — 제자리(dropIndex=0)가 아닌 이동
+      // ATLAS-3를 칸 빈 영역에 놓아 맨 뒤로 보낸다 — 제자리(index 0)가 아닌 이동
       triggerDragEnd(
         {
           id: 'sprint:ATLAS-3',
@@ -1059,8 +1167,7 @@ describe('BacklogBoard', () => {
             current: {
               context: 'sprint',
               sprintId: PLANNED_SPRINT_ID,
-              orderedKeys: ['ATLAS-3', 'ATLAS-X'],
-              dropIndex: 2, // 맨 뒤로 이동
+              orderedKeys: ['ATLAS-3', 'ATLAS-9'],
             },
           },
         },
@@ -1068,7 +1175,7 @@ describe('BacklogBoard', () => {
 
       await waitFor(() => {
         expect(mockRerankMutate).toHaveBeenCalledWith(
-          expect.objectContaining({ issueKey: 'ATLAS-3' }),
+          { issueKey: 'ATLAS-3', body: { previousIssueKey: 'ATLAS-9', nextIssueKey: undefined } },
           expect.anything(),
         )
       })
@@ -2243,8 +2350,13 @@ describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
   })
 
   // ── EC7 DnD ────────────────────────────────────────────────────────────────
+  //
+  // ★★드롭 경로는 **둘**이다 — 카드 위에 놓기와 칸 빈 영역에 놓기. 판정 함수
+  //   (`resolveOverToDropZone`)가 두 경로를 서로 다른 코드로 처리하므로 한쪽만 재면
+  //   나머지 한쪽이 필터 후 목록으로 rank 를 계산해도 전량 초록이다(실제로 그랬다).
+  //   아래 두 테스트는 **짝**이다. 하나를 지우면 그 경로가 무검증으로 돌아간다.
 
-  it('EC7: 필터 활성 중 DnD 는 보이는 카드 1건만 재정렬하고 숨은 카드는 건드리지 않는다', async () => {
+  it('EC7 ①카드 위 드롭: rank 기준이 필터 전 목록이다', async () => {
     const user = userEvent.setup()
     renderBoard()
 
@@ -2269,7 +2381,8 @@ describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
       expect(mockRerankMutate).toHaveBeenCalledTimes(1)
     })
 
-    // ★rank 기준이 **필터 전 목록**임을 이 이웃 쌍이 증명한다.
+    // ★rank 기준이 **필터 전 목록**임을 이 이웃 쌍이 증명한다 — 단, **카드 위 드롭 경로만**이다.
+    //   (`extractCardDropZone` 이 `view` 를 조회하는 경로. 칸 빈 영역 드롭은 아래 ②가 잰다.)
     //   필터 후 목록(['ATLAS-1','ATLAS-8'])으로 계산하면 `previousIssueKey` 가 undefined 가 되어
     //   ATLAS-1 이 숨은 ATLAS-2 **위로** 튀어오른다 — 보이지도 않는 카드와의 순서가 바뀐다.
     expect(mockRerankMutate).toHaveBeenCalledWith(
@@ -2282,6 +2395,109 @@ describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
     // 숨은 카드는 어떤 mutation 의 대상도 아니다
     expect(mockAssignMutate).not.toHaveBeenCalled()
     expect(mockUnassignMutate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 에픽 α 만 남긴다 — 백로그는 ATLAS-1 하나만 보이고 ATLAS-2·ATLAS-8 이 숨는다.
+   *
+   * ★값을 주입하지 않고 실제 체크박스를 누른다. 주입은 「필터 모델이 도는가」만 재고
+   * 「칸이 좁혀진 목록을 droppable 에 싣는가」는 재지 못한다 — 그 배선이 이 결함의 발원지다.
+   */
+  async function applyEpicAlphaFilter(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(await screen.findByRole('checkbox', { name: EPIC_ALPHA }))
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+  }
+
+  it('★★EC7 ②칸 빈 영역 드롭: 「맨 뒤」는 보이는 것의 뒤가 아니라 원본의 뒤다', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBoard()
+
+    await applyEpicAlphaFilter(user)
+
+    // unassign 성공 콜백이 rerank 를 잇는다 — 목이 아무 일도 안 하면 그 통로가 끊긴다.
+    // `Once` 인 이유는 `vi.clearAllMocks()` 가 구현까지 지우지는 않아 다음 테스트로 새기 때문이다.
+    mockUnassignMutate.mockImplementationOnce(
+      (_vars: unknown, options?: { onSuccess?: () => void }) => {
+        options?.onSuccess?.()
+      },
+    )
+
+    // ★Given 짝 단언 — 컴포넌트가 droppable 에 싣는 것은 **필터 후 1건**이다.
+    //   이 값이 곧 결함의 입력이었다. 관측하지 않으면 아래 기대값이 무엇을 이긴 것인지 알 수 없다.
+    const backlogColumn = liveColumnDropTarget(container, 'backlog', null)
+    expect(backlogColumn.orderedKeys).toEqual(['ATLAS-1'])
+
+    // PLANNED 스프린트의 ATLAS-3(에픽 α — 보인다)을 백로그 칸 **빈 영역**에 놓는다
+    triggerDragEnd(
+      {
+        id: 'sprint:ATLAS-3',
+        data: { current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: PLANNED_SPRINT_ID } },
+      },
+      backlogColumn,
+    )
+
+    await waitFor(() => {
+      expect(mockUnassignMutate).toHaveBeenCalledTimes(1)
+    })
+
+    // ★진짜 맨 뒤는 숨은 ATLAS-8 뒤다. 필터 후 목록으로 계산하면 previousIssueKey 가
+    //   'ATLAS-1' 이 되어 ATLAS-3 이 숨은 ATLAS-2 **앞**(=2번째)에 꽂힌다.
+    expect(mockRerankMutate).toHaveBeenCalledWith(
+      { issueKey: 'ATLAS-3', body: { previousIssueKey: 'ATLAS-8', nextIssueKey: undefined } },
+      expect.anything(),
+    )
+  })
+
+  it('★★EC7 변종: 필터가 같은 칸의 다른 카드를 전부 가려도 재정렬은 나간다', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBoard()
+
+    await applyEpicAlphaFilter(user)
+
+    const backlogColumn = liveColumnDropTarget(container, 'backlog', null)
+    expect(backlogColumn.orderedKeys).toEqual(['ATLAS-1'])
+
+    // 보이는 카드가 자기 하나뿐인 칸에 자기를 다시 놓는다.
+    triggerDragEnd(
+      {
+        id: 'backlog:ATLAS-1',
+        data: { current: { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null } },
+      },
+      backlogColumn,
+    )
+
+    // ★필터 후 목록으로 판정하면 `others.length === 0` → `noop-move` 로 **아무 일도 일어나지
+    //   않는다**. 숨은 ATLAS-2·ATLAS-8 이 실재하므로 맨 뒤로 보내는 재정렬이 나가야 한다.
+    await waitFor(() => {
+      expect(mockRerankMutate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockRerankMutate).toHaveBeenCalledWith(
+      { issueKey: 'ATLAS-1', body: { previousIssueKey: 'ATLAS-8', nextIssueKey: undefined } },
+      expect.anything(),
+    )
+  })
+
+  it('★★EC7 변종: 드래그 공지도 같은 판정을 읽는다 (같은 `resolveOverToDropZone`)', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBoard()
+
+    await applyEpicAlphaFilter(user)
+
+    const backlogColumn = liveColumnDropTarget(container, 'backlog', null)
+    const message = capturedAccessibility?.announcements?.onDragEnd?.(
+      announceEvent(
+        'backlog:ATLAS-1',
+        { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null },
+        { id: backlogColumn.id, data: backlogColumn.data.current },
+      ),
+    )
+
+    // 공지는 mutation 과 **같은 입력 구성 함수**를 쓴다. 그 함수가 필터 후 목록을 보면
+    // 낭독도 함께 틀려 「이동할 수 없습니다」로 침묵한다 — 화면에서는 카드가 움직이는데도.
+    expect(message).toBe(backlogLabels.announce.reordered)
+    expect(message).not.toBe(backlogLabels.announce.cannotMoveHere)
   })
 
   // ── 에픽 패널 배선 ─────────────────────────────────────────────────────────

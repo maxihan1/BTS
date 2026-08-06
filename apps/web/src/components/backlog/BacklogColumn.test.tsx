@@ -193,6 +193,13 @@ describe('BacklogColumn — S4 빈 목록 placeholder', () => {
 // 현재는 { context: 'backlog' }만 등록하므로 이 테스트는 실패한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 화면에 실제로 그려진 카드의 이슈 키 — `data-card-droppable` 은 `card:{context}:{key}` 다 */
+function renderedCardKeys(): string[] {
+  return Array.from(document.querySelectorAll('[data-card-droppable]')).map(
+    (element) => String(element.getAttribute('data-card-droppable')).split(':')[2] ?? '',
+  )
+}
+
 describe('BacklogColumn — S5 concern-1 orderedKeys droppable data 결선', () => {
   it('S5a red: 이슈 목록의 key 배열이 droppable data에 orderedKeys로 포함된다', () => {
     // @dnd-kit/core의 useDroppable이 등록한 data를 직접 읽을 방법이 없으므로
@@ -203,6 +210,23 @@ describe('BacklogColumn — S5 concern-1 orderedKeys droppable data 결선', () 
     expect(dropZone).toBeInTheDocument()
     // orderedKeys가 DOM data 속성으로 노출되어야 한다 (구현 후 통과)
     expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-1,ATLAS-2')
+  })
+
+  it('★S5b: 부모가 필터해 좁힌 목록이면 이 값도 그만큼만 싣는다 — 「보이는 것」이다 (F16)', () => {
+    // F16 이후 부모(`BacklogBoard`)가 넘기는 `issues` 는 **필터를 통과한 것만**이다.
+    // 이 값이 좁혀지는 것은 결함이 아니라 계약이다 — 키보드 방향키가 「빈 칸인가」를
+    // 이 값으로 판정하므로(`lib/backlog-keyboard-coordinates.ts:56` isEmptyColumn)
+    // 여기에 숨은 카드를 되돌려 넣으면 이번엔 키보드 이동이 망가진다.
+    //
+    // ★그래서 **rank 계산은 이 값을 쓰면 안 된다.** 드롭 위치의 이웃은
+    // `resolveOverToDropZone` 이 원본 `view` 에서 다시 잡는다. 그 관계를 고정하는 짝은
+    // `BacklogBoard.test.tsx` 의 「EC7 ②칸 빈 영역 드롭」이다 — 여기는 절반(표시 목록)만 잰다.
+    renderColumn([issue2])
+
+    const dropZone = document.querySelector('[data-droppable="backlog"]')
+    expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-2')
+    // 속성과 **그려진 카드**가 정확히 같은 집합이다 — 한쪽만 원본으로 되돌리면 여기서 red 다
+    expect(renderedCardKeys()).toEqual(['ATLAS-2'])
   })
 })
 
