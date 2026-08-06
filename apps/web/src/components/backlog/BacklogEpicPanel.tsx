@@ -211,18 +211,32 @@ interface EpicOptionRowProps {
  * 접근명은 **`<label htmlFor>` 하나로만** 준다(`aria-label` 중복 금지). 짝 테스트가
  * `getByRole('checkbox', { name: 에픽 이름 })` 으로 이 계약을 양쪽에서 잰다 —
  * 필터바는 0개, 패널은 있음.
+ *
+ * 긴 이름은 **말줄임표로** 잘리고 `title` 로 전문을 되찾는다(S10). 둘 다 접근명 계산에는
+ * 끼지 않는다 — 이름은 label 안의 텍스트가 먼저 만든다.
  */
 function EpicOptionRow({ controlId, label, checked, onToggle }: EpicOptionRowProps): JSX.Element {
   return (
     <li className="flex items-center gap-2">
       <Checkbox id={controlId} checked={checked} onCheckedChange={onToggle} />
       {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
-          데스크톱은 목록 밀도를 위해 낮춘다 — `BacklogColumn` 토글과 같은 결. */}
+          데스크톱은 목록 밀도를 위해 낮춘다 — `BacklogColumn` 토글과 같은 결.
+          `min-w-0` 이 label 몫인 이유. `truncate`(=`overflow:hidden`)가 아래 `<span>` 으로
+          내려가면서 label 의 overflow 가 visible 로 돌아온다. 그것이 없으면 `flex-1` 의
+          자동 최소 크기가 내용 폭이 되어 긴 이름이 행을 가로로 밀어낸다. */}
       <label
         htmlFor={controlId}
-        className="flex min-h-11 flex-1 cursor-pointer items-center truncate text-sm text-foreground md:min-h-8"
+        className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center text-sm text-foreground md:min-h-8"
       >
-        {label}
+        {/* ★말줄임은 이 `<span>` 이 진다. `truncate` 를 위 `<label>` 에 두면 텍스트가
+            **익명 flex 아이템**이 되는데 `text-overflow` 는 거기 적용되지 않아, 긴 이름이
+            말줄임표 없이 글자 중간에서 하드 클립된다(실브라우저 눈확인 적발).
+            span 은 flex 아이템이라 블록화되므로 ellipsis 가 정상 동작한다.
+            `title` 은 잘린 전문을 hover 로 되찾는 유일한 경로다 — 길이로 조건 분기하지
+            않는다(글자 수는 실제 넘침 폭을 말해 주지 않는다). */}
+        <span className="truncate" title={label}>
+          {label}
+        </span>
       </label>
     </li>
   )
