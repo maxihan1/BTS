@@ -333,8 +333,8 @@ describe('에픽 컨트롤 테스트 계약 — 단일 정본 봉인', () => {
   - `… 공유 계약 모듈에서 읽는다` → 모듈이 아직 없으므로 문자열 미포함 (두 파일 각각)
   - 세 번째 `it`(비-공허)는 **처음부터 green** — 판별식 자체의 정확성만 재므로 정상이다.
 
-- [ ] **Step 1.** 위 파일을 그대로 생성한다.
-- [ ] **Step 2.** red 를 눈으로 확인한다.
+- [x] **Step 1.** 위 파일을 그대로 생성한다.
+- [x] **Step 2.** red 를 눈으로 확인한다.
 
 ```bash
 cd apps/web
@@ -343,7 +343,7 @@ cat /tmp/t1.txt
 ```
   기대. `EXIT=1` · 실패 4건 · 통과 1건(비-공허).
 
-- [ ] **Step 3.** 커밋한다.
+- [x] **Step 3.** 커밋한다.
 
 ```bash
 git add apps/web/src/components/backlog/epic-control-contract.test.ts
@@ -448,10 +448,10 @@ import {
   - `:58` · `:60-66` · `:116` · `:119-129` 를 같은 방식으로 삭제하고 같은 import 를 추가한다.
   - `:57` `BACKLOG_SEARCH_LABEL` 은 **이 짝의 자산이 아니므로 그대로 둔다.**
 
-- [ ] **Step 1.** 공유 모듈을 생성한다.
-- [ ] **Step 2.** `BacklogEpicPanel.test.tsx` 에서 8종을 지우고 import 로 바꾼다.
-- [ ] **Step 3.** `BacklogFilterBar.test.tsx` 에서 같은 작업을 한다.
-- [ ] **Step 4.** 판별식 + 짝 테스트 2파일이 전부 green 인지 본다.
+- [x] **Step 1.** 공유 모듈을 생성한다.
+- [x] **Step 2.** `BacklogEpicPanel.test.tsx` 에서 8종을 지우고 import 로 바꾼다.
+- [x] **Step 3.** `BacklogFilterBar.test.tsx` 에서 같은 작업을 한다.
+- [x] **Step 4.** 판별식 + 짝 테스트 2파일이 전부 green 인지 본다.
 
 ```bash
 cd apps/web
@@ -463,7 +463,7 @@ cat /tmp/t2.txt
 ```
   기대. `EXIT=0` · 3파일 전량 통과 · 판별식 5건 green.
 
-- [ ] **Step 5.** 타입·린트를 본다 (파이프 금지).
+- [x] **Step 5.** 타입·린트를 본다 (파이프 금지).
 
 ```bash
 cd apps/web
@@ -472,7 +472,7 @@ node_modules/.bin/eslint src > /tmp/lint.txt 2>&1; echo "LINT EXIT=$?"
 ```
   기대. 둘 다 `EXIT=0`.
 
-- [ ] **Step 6.** 전체 유닛으로 기준선 불변을 확인한다.
+- [x] **Step 6.** 전체 유닛으로 기준선 불변을 확인한다.
 
 ```bash
 cd apps/web
@@ -482,7 +482,7 @@ tail -8 /tmp/full.txt
   기대. `EXIT=0` · **571 files**(판별식 1파일 신설) · **9,236 tests**(판별식 5건 추가).
   기존 9,231 건은 **한 건도 줄지 않아야 한다** — 줄면 셀렉터가 물리던 단언이 사라진 것이다.
 
-- [ ] **Step 7.** 커밋한다 (뮤테이션 검증 전에 **반드시** 커밋 — Task 3 전제).
+- [x] **Step 7.** 커밋한다 (뮤테이션 검증 전에 **반드시** 커밋 — Task 3 전제).
 
 ```bash
 git add apps/web/src/test/backlog-epic-control-contract.ts \
@@ -507,7 +507,7 @@ git commit -m "test: 에픽 컨트롤 셀렉터 자산 8종을 공유 계약 모
 **원복은 `git checkout --` 가 아니라 역방향 Edit** 을 쓴다 — 병렬 작업의 미커밋 산출물을
 휩쓸지 않기 위함이다(`parallel-wave-mutation-revert-destroys-peers`).
 
-- [ ] **Step 1. 뮤테이션 A — 런타임 공유 증명.**
+- [x] **Step 1. 뮤테이션 A — 런타임 공유 증명.**
   `src/test/backlog-epic-control-contract.ts` 의
   `export const EPIC_CONTROL_ROLE = 'checkbox' as const` 를
   `export const EPIC_CONTROL_ROLE = 'menuitemcheckbox' as const` 로 바꾼다.
@@ -525,9 +525,9 @@ grep -E '❯|×|✓|Test Files' /tmp/mutA.txt
   - **둘 다 green** → 더 나쁘다. 셀렉터가 어느 단언에도 물리지 않는다는 뜻이므로
     **짝 테스트 자체가 공허**하다. 이 경우 Maxi 에게 보고하고 멈춘다 (범위 재검토).
 
-- [ ] **Step 2. 역방향 Edit 으로 원복** 후 두 파일 green 재확인.
+- [x] **Step 2. 역방향 Edit 으로 원복** 후 두 파일 green 재확인.
 
-- [ ] **Step 3. 뮤테이션 B — 판별식 비-공허 증명.**
+- [x] **Step 3. 뮤테이션 B — 판별식 비-공허 증명.**
   `BacklogFilterBar.test.tsx` 에 로컬 복사본을 **한 줄 되살린다**.
   `const EPIC_CONTROL_ROLE = 'checkbox' as const`
 
@@ -539,9 +539,9 @@ grep -E '×|✓' /tmp/mutB.txt
   **판정.** 판별식이 **red** 여야 한다(`redefined` 가 `['EPIC_CONTROL_ROLE']`).
   green 이면 판별식이 공허하므로 Task 1 로 돌아간다.
 
-- [ ] **Step 4. 역방향 Edit 으로 원복** 후 판별식 green 재확인.
+- [x] **Step 4. 역방향 Edit 으로 원복** 후 판별식 green 재확인.
 
-- [ ] **Step 5.** 트리가 깨끗한지 확인한다 (뮤테이션 잔재 0).
+- [x] **Step 5.** 트리가 깨끗한지 확인한다 (뮤테이션 잔재 0).
 
 ```bash
 git status --porcelain
@@ -563,7 +563,7 @@ git diff --stat
 
 **근거.** CLAUDE.md §명세/범위 변경 시 전수 동기화 — 정본 서술이 실측과 다르면 같은 PR 에서 고친다.
 
-- [ ] **Step 1.** `docs/plan/product/personalization.md` §4.11 후속 ⑦ 을 정정한다.
+- [x] **Step 1.** `docs/plan/product/personalization.md` §4.11 후속 ⑦ 을 정정한다.
   - 「복사본 2벌」 → **8개**(role · 헬퍼 · 키 3 · 이름 2 · 라벨 1). 표로 명시.
   - 「동기화 강제는 주석 한 줄뿐」 → **해소**. 공유 모듈 `src/test/backlog-epic-control-contract.ts`
     + 판별식 `components/backlog/epic-control-contract.test.ts`.
@@ -571,22 +571,22 @@ git diff --stat
     이미 `menuitemcheckbox` 를 쓴다(`ColumnSelector.test.tsx:49` 외 4곳).
   - ⑦ 을 **완료 표시**하고 후속 잔여 건수를 갱신한다.
 
-- [ ] **Step 2.** 같은 파일 `:443` 의 F16 검증 수치를 실측으로 정정한다.
+- [x] **Step 2.** 같은 파일 `:443` 의 F16 검증 수치를 실측으로 정정한다.
   - 「E2E `backlog.spec.ts` 82/82 + 10파일 동반 47/47」 → **35 + 75** (전체 696/144파일).
   - 「유닛 9,214건 / 570파일」 → **9,231 / 570** (이 PR 후 **9,236 / 571**).
 
-- [ ] **Step 3.** `docs/decisions/2026-08-06-…-f16-backlog-filter-epic.md:84-86` 에 이행 1줄을 보강한다.
+- [x] **Step 3.** `docs/decisions/2026-08-06-…-f16-backlog-filter-epic.md:84-86` 에 이행 1줄을 보강한다.
   - 「**같은 셀렉터**로 「없다」와 「있다」를 둘 다 잰다」가 당시엔 **복사본 2벌이라 절반만 참**이었고,
     F16 후속 ⑦ 에서 공유 모듈 승격으로 **문자 그대로 참이 됐다**는 사실.
 
-- [ ] **Step 4.** `docs/plans/2026-08-06-…-f16-backlog-filter-epic.md:561` 의
+- [x] **Step 4.** `docs/plans/2026-08-06-…-f16-backlog-filter-epic.md:561` 의
   「두 파일이 글자 단위로 같은 헬퍼를 쓴다」 서술을 갱신한다 — 처방 후 거짓이 된다.
 
-- [ ] **Step 5.** 신규 후속 후보 1건을 §4.11 에 등재한다.
+- [x] **Step 5.** 신규 후속 후보 1건을 §4.11 에 등재한다.
   - 「에픽 패널(`checkbox`) ↔ 컬럼 셀렉터(`menuitemcheckbox`) a11y role 불일치」 —
     같은 성격 UI 인데 role 이 갈린다. 접근성·Jira 패리티 관점. **이 PR 범위 밖**.
 
-- [ ] **Step 6.** 동기화 게이트를 통과시킨다.
+- [x] **Step 6.** 동기화 게이트를 통과시킨다.
 
 ```bash
 bash scripts/verify-master-plan.sh > /tmp/vmp.txt 2>&1; echo "EXIT=$?"
@@ -596,7 +596,7 @@ node scripts/build-doc-index.mjs --check > /tmp/di.txt 2>&1; echo "EXIT=$?"
   기대. 둘 다 `EXIT=0`. `verify-master-plan.sh` 는 **종료 4 로 자동 차단**하므로 반드시 통과해야 한다.
   FR 개수는 **139 불변**(후속 항목 증감은 FR 수를 바꾸지 않는다).
 
-- [ ] **Step 7.** 커밋한다.
+- [x] **Step 7.** 커밋한다.
 
 ```bash
 git add docs/
@@ -631,3 +631,94 @@ git commit -m "docs: FR-UX-13 §4.11 ⑦ 완료 — 복사본 2→8 정정 + F16
    그대로 뒀으면 정상 통과가 실패로 오독됐다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
+
+fast-track(`type == chore`)으로 **정식 생략**. 위 §Self-Review 가 대체한다.
+
+---
+
+## 실측 결과 (2026-08-06 · Task 1~4 완료)
+
+### 커밋
+
+| 커밋 | 내용 |
+|---|---|
+| `b176fb21f` | 판별식 신설 — **RED** |
+| `1ca433394` | 셀렉터 자산 8종 공유 모듈 승격 + 두 파일 전환 — **GREEN** |
+
+TDD 순서 확인 — `test:`(RED) 커밋이 `test:`(GREEN) 커밋보다 앞선다. `feat:` 커밋 **0건**
+(프로덕션 0줄이므로 정상).
+
+### 최종 수치
+
+| 항목 | 기준선 | 이 PR 후 | 증분 |
+|---|---|---|---|
+| 유닛 파일 | 570 | **571** | +1 (판별식) |
+| 유닛 테스트 | 9,231 | **9,237** | +6 (판별식) |
+| 실패 | 0 | **0** | — |
+
+**기존 9,231 건은 한 건도 줄지 않았다** — 줄었다면 셀렉터가 물던 단언이 사라진 것이다.
+
+**★ plan 이 예측한 「9,236 / 판별식 5건」은 실제로 9,237 / 6건이 됐다.** 구현 중 판별식에
+**양방향 차집합 검사 1건**(`Object.keys(contract).sort()` ⟺ `SHARED_SYMBOLS`)을 추가했기
+때문이다. 사유 — 「공유 모듈에서 읽는다」 판별식은 import **줄의 텍스트만** 보므로
+**모듈이 비어 있어도 통과**한다. 두 리스트가 서로를 검사하지 않으면 봉인에 구멍이 남는다
+([[two-lists-never-check-each-other]]).
+
+판별식 6건 구성 — 지역정의 봉인 2(파일당 1) · 공유모듈 참조 2(파일당 1) ·
+**양방향 차집합 1** · 비-공허 자체검증 1.
+
+### 산출물 위치
+
+- 공유 모듈. `apps/web/src/test/backlog-epic-control-contract.ts`
+- 판별식. `apps/web/src/components/backlog/epic-control-contract.test.ts`
+- 프로덕션 변경. **0파일** (모든 변경이 `*.test.*` · `src/test/` · `docs/`)
+
+### 뮤테이션 검증 4종 — **전부 성공**
+
+plan 은 2종(A·B)을 요구했으나 실행 중 2종을 더했다.
+
+| 뮤테이션 | 변경 | 결과 | 무엇을 증명하나 |
+|---|---|---|---|
+| **A** 런타임 공유 | 공유 모듈 `EPIC_CONTROL_ROLE` → `'menuitemcheckbox'` | 2파일 **동시 red** (Panel 19/33 · Filter 1/25) | 두 소비처가 **하나의 정본**에서 셀렉터를 얻는다 |
+| **B** 판별식 비-공허 | `BacklogFilterBar.test.tsx` 에 로컬 복사본 1줄 부활 | 판별식 **red** (`redefined = ['EPIC_CONTROL_ROLE']`) | 판별식이 자기 목적을 실제로 문다 |
+| **C** 양방향 차집합 | 공유 모듈에 미사용 `export` 추가 | 판별식 **red** (`Object.keys` 9개 ≠ 선언 8개) | 선언 목록과 실 export 표면이 **서로를** 검사한다 |
+| **D** 중복성 반증 | 타입 충돌이 **없는** 깔끔한 복사본 부활 | `tsc EXIT=0` · 기존 25건 **green** · **판별식만 red** | 판별식은 `tsc` 의 중복이 **아니다** |
+
+**★ D 가 이 파일의 존재 이유다.** A·B·C 는 판별식이 무는 것을 보이지만, 「그런데 타입 검사가
+이미 잡아 주지 않나」라는 반문에는 답하지 못한다. D 는 **타입 검사도 기존 테스트도 전부 통과하는
+복사본**을 만들어 그 반문을 직접 반증했다 — 이 시나리오에서 **감지기는 판별식 하나뿐**이다.
+나중에 「중복이니 지워도 된다」며 삭제를 시도할 때의 근거로 정본
+(`docs/plan/product/personalization.md` §4.11 ⑦)에도 남겼다.
+
+원복은 전부 **역방향 Edit**(`git checkout --` 아님)으로 했고, 최종 `git status --porcelain`
+**빈 출력**을 확인했다.
+
+### A 가 드러낸 새 사실 — 부재 단언의 **개별** 공허성 (후속 ⑩ 로 등재)
+
+뮤테이션 A 에서 `BacklogFilterBar.test.tsx` 는 **25건 중 1건만** red 였다 —
+`:245` 의 `getByRole(EPIC_CONTROL_ROLE, { name: 미배정 })`(S3a 비-공허 짝). 나머지 부재 단언
+`queryEpicControls()).toHaveLength(0)`(`:247`·`:254`)은 **존재하지 않는 role 을 0개 세므로
+뮤테이션 하에서도 green** 이다.
+
+즉 이 PR 은 **파일 수준 영구초록**을 해소했지만 **단언 수준에서는 감지기가 여전히 1개**다.
+그 한 줄이 사라지면 필터바는 role 드리프트에 다시 무감각해진다. **범위 밖**이라 §4.11 ⑩ 으로
+등재만 했다.
+
+### Task 4 에서 정정한 정본 수치
+
+| 파일 | before | after (실측) |
+|---|---|---|
+| `personalization.md` §4.11 F16 | 유닛 **9,214** / 570파일 | **9,231** / 570 (⑦ 후 **9,237 / 571**) |
+| 〃 | E2E `backlog.spec.ts` **82/82** | **35 tests** |
+| 〃 | 10파일 동반 **47/47** | **75 tests** (전체 696 / 144파일) |
+| 〃 ⑦ | 복사본 **2벌** | **8종** |
+| 〃 ⑦ | 「Radix 메뉴로 바뀌**면**」(가정법) | `ColumnSelector` 가 **이미** `menuitemcheckbox` |
+
+파일 수(570)만 맞고 **테스트 건수는 유닛·E2E 양쪽 다 틀렸다.** 이 FR 에서 정본 수치가 실측에
+뒤집힌 것은 이로써 **4번째**다(F5 줄번호 · F15 `:246,248` · F16 「슬롯 그대로 쓴다」 · ⑦).
+
+### 범위 변동 1건
+
+plan Task 4 Step 5 는 신규 후속 후보를 **1건**(a11y role 불일치)으로 잡았으나 **2건**을 등재했다 —
+뮤테이션 A 실행이 ⑩(부재 단언 개별 공허성)을 추가로 드러냈기 때문이다. §4.11 후속 등재는
+**8건 → 10건**, 완료 1(⑦) · **잔여 9**. **FR 개수 139 는 불변**이다(후속 항목은 FR 이 아니다).
