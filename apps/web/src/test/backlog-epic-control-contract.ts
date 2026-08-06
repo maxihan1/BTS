@@ -23,6 +23,12 @@ import { backlogLabels } from '@/i18n/backlog-labels'
  *   자연스러운 대응(그 줄만 `'checkbox'` 리터럴로 되돌리기)이 곧 **영구초록의 부활**이다.
  *   그때는 리터럴 복원이 아니라 「미배정」 role 을 별도 상수로 분리해라 —
  *   `docs/plan/product/personalization.md` §4.11 후속 ⑩.
+ *
+ * ⛔ **단, 그 분리는 지금 그대로는 막혀 있다 — 착수 전에 §4.11 후속 ⑫ 를 먼저 읽어라.**
+ *   필터바 쪽 사용처가 `BacklogFilterBar.test.tsx:245` **단 한 줄**이라 분리하는 순간 사용처가
+ *   0이 되고, `tsconfig.app.json` 의 `noUnusedLocals` 와 `epic-control-contract.test.ts` 의
+ *   **8종 정확 대조**가 동시에 문다. 탈출 경로 4개가 전부 red 로 실측됐다 — 판별식의 기대 목록을
+ *   파일별로 쪼개거나 부분집합 대조로 완화하지 않으면 열리지 않는다.
  */
 export const EPIC_CONTROL_ROLE = 'checkbox' as const
 
