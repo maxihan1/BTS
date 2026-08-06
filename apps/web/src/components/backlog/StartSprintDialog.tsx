@@ -25,7 +25,13 @@ import { issueCreateStrings } from '@/i18n/ko'
 // 폼 값 · 변경분 계산 (순수)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 다이얼로그가 편집하는 값 3종. 컨트롤이 전부 문자열이므로 `null` 은 여기서 쓰지 않는다 */
+/**
+ * 다이얼로그가 편집하는 값 3종. 컨트롤이 전부 문자열이므로 `null` 은 여기서 쓰지 않는다.
+ *
+ * **편집한 필드만 의미가 있다.** 미편집 필드의 표시는 기준값에서 파생시킨다
+ * ({@link resolveDisplayValues}) — 서버 상태를 폼에 복사해 두면 그 사본을 계속 맞춰 줘야 하고,
+ * 한 번이라도 어긋나면 그 차이가 그대로 `PATCH` 에 실려 남의 값을 지운다.
+ */
 interface SprintFormValues {
   /** 시작일 (ISO 8601 date). 미지정은 빈 문자열 */
   startDate: string
@@ -97,20 +103,27 @@ function buildPatchBody(
 }
 
 /**
- * 409(E9) 뒤 **미편집 필드의 표시만** 서버 최신 값으로 맞춘다.
+ * 화면에 그릴 값을 정한다 — **편집한 필드는 사용자가 친 값, 나머지는 기준값**.
  *
- * 사용자가 「남이 뭘 바꿨는지」 보고 재확인할 수 있어야 하고, E8 기간 검증도 서버의 실제
- * 종료일을 봐야 맞는 판정을 낸다. 편집한 필드는 사용자가 친 값을 그대로 둔다.
+ * ### 왜 파생인가 (사본이 아니라)
+ * 미편집 필드를 폼 state 에 복사해 두면 409(E9) 로 기준값이 바뀔 때마다 그 사본을 따라
+ * 갱신해 줘야 하고, 갱신을 한 번 빠뜨리면 그 차이가 `PATCH` 변경분으로 오인돼 남의 값을
+ * 지운다. 파생시키면 맞출 사본이 없어 어긋날 수가 없다.
  *
- * ★ 여기서 갱신한 값은 **편집이 아니다**. 편집 집합을 건드리지 않으므로 다음 `PATCH` 에도
+ * ### 왜 기준값을 보여주나 (사용자가 처음 연 값이 아니라)
+ * 409 뒤 기준값은 **남이 방금 저장한 값**이다. 그대로 보여줘야 ① 사용자가 무엇이 바뀌었는지
+ * 보고 재확인할 수 있고 ② E8 기간 검증이 서버의 실제 종료일로 판정한다 — 낡은 빈 값을
+ * 들고 있으면 「종료일이 시작일보다 빠른」 스프린트를 아무 경고 없이 만들 수 있다.
+ *
+ * ★ 이렇게 바뀐 표시는 **편집이 아니다**. 편집 집합에 들어가지 않으므로 `PATCH` 에도
  *   실리지 않는다 — 표시 갱신을 편집으로 세는 순간 이 함수가 곧 데이터 손실이 된다.
  */
-function mergeUnedited(
+function resolveDisplayValues(
   values: SprintFormValues,
-  fresh: SprintMeta,
+  baseline: SprintMeta,
   edited: ReadonlySet<SprintField>,
 ): SprintFormValues {
-  const server = toFormValues(fresh)
+  const server = toFormValues(baseline)
   return {
     startDate: edited.has('startDate') ? values.startDate : server.startDate,
     endDate: edited.has('endDate') ? values.endDate : server.endDate,
@@ -199,7 +212,7 @@ function DateField({ id, label, value, disabled, error, onChange }: DateFieldPro
 
 /** {@link SprintFields} props */
 interface SprintFieldsProps {
-  /** 현재 폼 값 */
+  /** 화면에 그릴 값 ({@link resolveDisplayValues} 결과) */
   readonly values: SprintFormValues
   /** 요청 진행 중 잠금 */
   readonly disabled: boolean
@@ -208,8 +221,8 @@ interface SprintFieldsProps {
   /**
    * 필드 편집 콜백.
    *
-   * ★ **사용자 조작만** 이 경로를 지난다. 409 뒤 표시 갱신(`mergeUnedited`)은 여기를 지나지
-   *   않으므로 편집으로 세지 않는다 — 그 구분이 남의 저장분을 지키는 유일한 근거다.
+   * ★ **사용자 조작만** 이 경로를 지난다. 409 뒤 기준값이 바뀌어 표시가 달라지는 것은
+   *   여기를 지나지 않으므로 편집으로 세지 않는다 — 그 구분이 남의 저장분을 지키는 근거다.
    */
   readonly onEdit: (field: SprintField, next: string) => void
 }
@@ -357,7 +370,7 @@ export function StartSprintDialog({
   const updateSprint = useUpdateSprint(projectKey)
   const startSprint = useStartSprint(projectKey)
 
-  /** 변경분 계산의 기준. `PATCH` 가 성공할 때마다 응답으로 갈아끼운다 */
+  /** 서버가 들고 있다고 아는 값. `PATCH` 성공·409 때마다 최신으로 갈아끼운다 */
   const [baseline, setBaseline] = useState<SprintMeta>(sprint)
   const [values, setValues] = useState<SprintFormValues>(() => toFormValues(sprint))
   const [failure, setFailure] = useState<FailureKind | null>(null)
@@ -369,20 +382,20 @@ export function StartSprintDialog({
   const patchAppliedRef = useRef(false)
 
   /**
-   * 사용자가 손댄 필드. **전송 대상의 유일한 출처**다 (`buildPatchBody` 참조).
+   * 사용자가 손댄 필드. **전송 대상의 유일한 출처**이자 표시 갈림길이다.
    *
-   * 렌더에 쓰이지 않아 state 가 아니라 ref 다 — 여기에 state 를 두면 타이핑 한 번마다
-   * 의미 없는 리렌더가 하나씩 더 붙는다.
+   * 화면 출력이 여기서 갈리므로(`resolveDisplayValues`) ref 가 아니라 state 다.
    */
-  const editedRef = useRef<Set<SprintField>>(new Set())
+  const [edited, setEdited] = useState<ReadonlySet<SprintField>>(() => new Set())
 
-  const rangeInvalid = isEndBeforeStart(values)
+  const display = resolveDisplayValues(values, baseline, edited)
+  const rangeInvalid = isEndBeforeStart(display)
   const pending = updateSprint.isPending || startSprint.isPending
 
   /** 사용자 조작으로 필드가 바뀌었다 — 값과 「편집했다」는 사실을 함께 기록한다 */
   function editField(field: SprintField, next: string): void {
-    editedRef.current.add(field)
     setValues((prev) => ({ ...prev, [field]: next }))
+    setEdited((prev) => (prev.has(field) ? prev : new Set(prev).add(field)))
   }
 
   /** 백로그를 새로 받는다. 두 mutation 훅도 성공 시 같은 일을 하지만 실패 경로에는 없다 */
@@ -391,31 +404,28 @@ export function StartSprintDialog({
   }
 
   /**
-   * 409(E9) 이후 기준값(`version` 포함)을 최신으로 교체하고 **미편집 필드의 표시**만 맞춘다.
-   * 캐시에 없으면 그대로 둔다.
+   * 409(E9) 이후 기준값(`version` 포함)을 최신으로 교체한다. 캐시에 없으면 그대로 둔다.
    *
-   * ★ 사용자가 편집한 필드는 절대 덮지 않는다. 서버 값으로 덮으면 재시도가 그 필드를 안 보내고
-   *   **남의 값으로 스프린트가 시작된다** — 되돌릴 수 없다.
-   * ★ 미편집 필드는 표시만 갱신할 뿐 `editedRef` 에 넣지 않는다 (`mergeUnedited` 참조).
+   * ★ 폼 값도, 편집 집합도 건드리지 않는다. 사용자가 친 값은 그대로 남고(덮으면 재시도가
+   *   그 필드를 안 보내 **남의 값으로 스프린트가 시작된다**), 미편집 필드의 표시는
+   *   기준값에서 파생되므로 이 한 줄만으로 자동으로 최신이 된다
+   *   ({@link resolveDisplayValues}) — 맞춰 줄 사본이 없다.
    */
   async function replaceBaselineFromCache(): Promise<void> {
     await invalidateBacklog()
     const view = queryClient.getQueryData<BacklogView>(backlogKeys.detail(projectKey))
     const fresh = view?.sprints.find((entry) => entry.sprint.sprintId === sprint.sprintId)?.sprint
-    if (fresh === undefined) return
-    setBaseline(fresh)
-    setValues((prev) => mergeUnedited(prev, fresh, editedRef.current))
+    if (fresh !== undefined) setBaseline(fresh)
   }
 
   /** 1단계. 성공하면 기준값을 응답으로 갈아끼우고 `true` 를 반환한다 */
   async function runPatch(body: UpdateSprintBody): Promise<boolean> {
     try {
       const updated = await updateSprint.mutateAsync({ sprintId: sprint.sprintId, body })
-      // 저장이 끝났으니 기준값·폼·편집 이력을 셋 다 응답에 맞춘다. 셋은 한 불변식의 세 면이다 —
-      // 「지금 화면은 서버가 들고 있는 값이고, 아직 보낼 편집은 없다」
+      // 편집분이 서버에 반영됐으니 편집 집합을 비운다 — 재시도의 변경분이 0이 되고,
+      // 세 칸 모두 응답값 표시로 돌아간다(파생이라 따로 폼을 맞출 필요가 없다)
       setBaseline(updated)
-      setValues(toFormValues(updated))
-      editedRef.current.clear()
+      setEdited(new Set())
       patchAppliedRef.current = true
       return true
     } catch (error) {
@@ -454,7 +464,7 @@ export function StartSprintDialog({
     if (rangeInvalid) return
 
     setFailure(null)
-    const body = buildPatchBody(baseline, values, editedRef.current)
+    const body = buildPatchBody(baseline, values, edited)
     if (body !== null && !(await runPatch(body))) return
     await runStart()
   }
@@ -493,7 +503,7 @@ export function StartSprintDialog({
           }}
         >
           <SprintFields
-            values={values}
+            values={display}
             disabled={pending}
             rangeInvalid={rangeInvalid}
             onEdit={editField}
