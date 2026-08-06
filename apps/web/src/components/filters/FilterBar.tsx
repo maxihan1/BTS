@@ -49,6 +49,18 @@ export interface FilterBarProps<T extends BoardCardFilterParams> {
    * 로컬 검색 입력(담당자/라벨) clear는 onReset 전달 여부와 무관하게 항상 수행된다.
    */
   onReset?: () => void
+  /**
+   * 렌더하지 않을 섹션. 미전달이면 **전부 표시**(기존 소비처 동작 불변).
+   *
+   * 백로그(FR-UX-13 F16)는 서버 필터가 없어 클라이언트가 직접 걸러야 하는데
+   * `backlogIssueSchema` 에 `labels`·`componentIds` 필드가 **아예 없다**. 두 섹션을 그대로
+   * 렌더하면 눌러도 아무 일이 일어나지 않는 **장식 필터**가 된다. 그래서 값 계산이 아니라
+   * **표시만** 끈다 — `activeCount` 계산식과 `handleReset` 동작은 건드리지 않는다.
+   */
+  hiddenSections?: {
+    readonly labels?: boolean
+    readonly components?: boolean
+  }
 }
 
 /**
@@ -74,6 +86,7 @@ export function FilterBar<T extends BoardCardFilterParams>({
   leadingChips = [],
   extraActiveCount = 0,
   onReset,
+  hiddenSections,
 }: FilterBarProps<T>): JSX.Element {
   const [assigneeQuery, setAssigneeQuery] = useState('')
   const [labelInput, setLabelInput] = useState('')
@@ -145,31 +158,35 @@ export function FilterBar<T extends BoardCardFilterParams>({
         onUnassignedToggle={(e) => onChange({ ...value, includeUnassigned: e.target.checked })}
       />
 
-      {/* 라벨 자동완성 */}
-      <div className="flex min-w-[180px] flex-col gap-1">
-        <label className="text-xs font-medium text-muted-foreground" htmlFor={`${idPrefix}-label-input`}>
-          {filterBarLabels.filter.labelLabel}
-        </label>
-        <LabelAutocompleteInput
-          value={labelInput}
-          onChange={setLabelInput}
-          onCommit={handleLabelCommit}
-          existingLabels={value.labels}
-          placeholder={filterBarLabels.filter.labelPlaceholder}
-        />
-      </div>
+      {/* 라벨 자동완성 — 소비처가 감출 수 있다(백로그는 응답에 labels가 없다) */}
+      {hiddenSections?.labels !== true && (
+        <div className="flex min-w-[180px] flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor={`${idPrefix}-label-input`}>
+            {filterBarLabels.filter.labelLabel}
+          </label>
+          <LabelAutocompleteInput
+            value={labelInput}
+            onChange={setLabelInput}
+            onCommit={handleLabelCommit}
+            existingLabels={value.labels}
+            placeholder={filterBarLabels.filter.labelPlaceholder}
+          />
+        </div>
+      )}
 
-      {/* 컴포넌트 멀티셀렉트 */}
-      <div className="flex min-w-[180px] flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">
-          {filterBarLabels.filter.componentLabel}
-        </span>
-        <ComponentMultiSelect
-          value={value.componentIds}
-          options={components}
-          onChange={(ids) => onChange({ ...value, componentIds: ids })}
-        />
-      </div>
+      {/* 컴포넌트 멀티셀렉트 — 소비처가 감출 수 있다(백로그는 응답에 componentIds가 없다) */}
+      {hiddenSections?.components !== true && (
+        <div className="flex min-w-[180px] flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            {filterBarLabels.filter.componentLabel}
+          </span>
+          <ComponentMultiSelect
+            value={value.componentIds}
+            options={components}
+            onChange={(ids) => onChange({ ...value, componentIds: ids })}
+          />
+        </div>
+      )}
 
       {/* 활성 필터 칩 + 초기화 버튼 */}
       <div className="flex w-full flex-wrap items-center gap-2">
