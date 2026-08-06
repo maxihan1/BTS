@@ -35,7 +35,7 @@ function readPaired(fileName: string): string {
 }
 
 /**
- * `const X =` / `function X(` 형태의 **지역 정의**를 찾는다.
+ * `const`/`let`/`var X =` / `function X(` 형태의 **지역 정의**를 찾는다.
  *
  * `import { X } from …` 은 정의가 아니므로 잡히면 안 된다 — 그 구분이 이 판별식의 전부다.
  * 접미사 오탐 없음. `EPIC_ALPHA` 로 `const EPIC_ALPHA_NAME =` 를 찾으면
@@ -43,9 +43,27 @@ function readPaired(fileName: string): string {
  */
 function hasLocalDefinition(source: string, symbol: string): boolean {
   return [
-    new RegExp(`^\\s*(?:export\\s+)?const\\s+${symbol}\\s*[:=]`, 'm'),
+    new RegExp(`^\\s*(?:export\\s+)?(?:const|let|var)\\s+${symbol}\\s*[:=]`, 'm'),
     new RegExp(`^\\s*(?:export\\s+)?function\\s+${symbol}\\s*\\(`, 'm'),
   ].some((re) => re.test(source))
+}
+
+/**
+ * 짝 테스트가 공유 계약 모듈에서 **named import 한 지정자**만 뽑는다.
+ *
+ * 부분 문자열 일치를 쓰면 **주석에 적힌 모듈 경로**가 단언을 영구 만족시킨다
+ * (실제로 그 결함으로 import 를 통째로 지워도 green 이었다). `import { … } from '<모듈>'`
+ * 형태만 매치해 그 구멍을 닫는다.
+ *
+ * `import { X as Y }` 는 지정자가 `'X as Y'` 로 나와 선언 목록과 불일치 → **red** 다.
+ * 별칭은 로컬 이름을 갈라 놓는 행위라 이 봉인이 막으려는 대상과 같다 — 통과시키지 않는다.
+ */
+function importedContractSymbols(source: string): string[] {
+  const block = new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*'${CONTRACT_MODULE}'`).exec(source)
+  return (block?.[1] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 describe('에픽 컨트롤 테스트 계약 — 단일 정본 봉인', () => {
@@ -55,15 +73,13 @@ describe('에픽 컨트롤 테스트 계약 — 단일 정본 봉인', () => {
     expect(redefined).toEqual([])
   })
 
-  // `toContain` 은 실패 시 대상 파일 **원문 전체**(1,100줄 이상)를 actual 로 덤프하는데,
-  // 그 actual 은 저장소에 그대로 있는 파일이라 진단 가치가 0 이다. 그렇다고
-  // `expect(source.includes(X)).toBe(true)` 로 바꾸면 「어느 파일의 어느 지정자가 빠졌나」가
-  // 사라진다 — 결함을 다른 결함으로 옮기는 것이다. 2번째 인자로 진단성만 남긴다.
-  it.each(PAIRED_TEST_FILES)('%s 는 공유 계약 모듈에서 읽는다', (fileName) => {
-    expect(
-      readPaired(fileName).includes(CONTRACT_MODULE),
-      `${fileName} 이 '${CONTRACT_MODULE}' 를 import 하지 않는다 — 셀렉터 자산을 지역 정의로 되살렸을 가능성이 높다`,
-    ).toBe(true)
+  // ★ 여기는 원래 `readPaired(fileName).includes(CONTRACT_MODULE)` 였고 **영구초록**이었다 —
+  //   이 파일들의 주석(`// 셀렉터 자산은 '<모듈>' 가 단독 소유한다.`)이 경로를 담고 있어
+  //   import 를 통째로 지워도 통과했다. 지정자 목록을 8종과 정확히 대조해 그 구멍을 닫는다.
+  //   `toEqual` 의 배열 diff 가 「어느 지정자가 빠졌나」를 그대로 보여 준다.
+  it.each(PAIRED_TEST_FILES)('%s 는 공유 심볼 8종을 모두 named import 한다', (fileName) => {
+    const specifiers = importedContractSymbols(readPaired(fileName))
+    expect(specifiers.sort()).toEqual([...SHARED_SYMBOLS].sort())
   })
 
   // ★ 두 리스트가 서로를 검사하게 만든다 — 위 판별식은 import 줄의 **텍스트**만 보므로
@@ -89,5 +105,15 @@ describe('에픽 컨트롤 테스트 계약 — 단일 정본 봉인', () => {
       ),
     ).toBe(false)
     expect(hasLocalDefinition(`const EPIC_ALPHA_NAME = '결제 개편'`, 'EPIC_ALPHA')).toBe(false)
+    // `const`/`function` 만 보면 `let`·`var` 복사본이 통째로 우회한다
+    expect(hasLocalDefinition(`let EPIC_CONTROL_ROLE = 'checkbox'`, 'EPIC_CONTROL_ROLE')).toBe(true)
+    expect(hasLocalDefinition(`var EPIC_CONTROL_ROLE = 'checkbox'`, 'EPIC_CONTROL_ROLE')).toBe(true)
+    // 주석에 모듈 경로가 있어도 import 로 세지 않는다 — 이것이 영구초록의 직접 처방이다
+    expect(importedContractSymbols(`// 셀렉터 자산은 '${CONTRACT_MODULE}' 가 단독 소유한다.`)).toEqual(
+      [],
+    )
+    expect(
+      importedContractSymbols(`import { EPIC_ALPHA, EPIC_BETA } from '${CONTRACT_MODULE}'`),
+    ).toEqual(['EPIC_ALPHA', 'EPIC_BETA'])
   })
 })

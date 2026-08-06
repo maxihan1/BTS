@@ -13,6 +13,16 @@ import { backlogLabels } from '@/i18n/backlog-labels'
  * ★ 이 값이 바뀌면 **두 소비처가 동시에** red 여야 한다.
  *   한쪽만 red 면 어딘가에 복사본이 남은 것이고, 둘 다 green 이면 셀렉터가 어느 단언에도
  *   물리지 않은 것이라 더 나쁘다.
+ *
+ * ⚠️ **그 보증은 조건부다 — 필터바 쪽 감지기는 단 한 줄이다.**
+ *   실제로 red 가 되는 유일한 단언은 `BacklogFilterBar.test.tsx` 의
+ *   `getByRole(EPIC_CONTROL_ROLE, { name: 미배정 })` 이고, 그 「미배정」 체크박스는
+ *   `FilterBar` 소유라 **에픽 컨트롤이 아니다**(선재, PR #344). 나머지 부재 단언
+ *   (`queryEpicControls()` → 0건)은 존재하지 않는 role 을 0개 세므로 값이 바뀌어도 green 이다.
+ *   따라서 패널이 **정당하게** `menuitemcheckbox` 로 가는 날 그 한 줄은 **거짓 red** 가 되고,
+ *   자연스러운 대응(그 줄만 `'checkbox'` 리터럴로 되돌리기)이 곧 **영구초록의 부활**이다.
+ *   그때는 리터럴 복원이 아니라 「미배정」 role 을 별도 상수로 분리해라 —
+ *   `docs/plan/product/personalization.md` §4.11 후속 ⑩.
  */
 export const EPIC_CONTROL_ROLE = 'checkbox' as const
 
