@@ -7,7 +7,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { NO_EPIC } from '@/lib/backlog-filter'
 import { EPIC_PANEL_SECTION_ID, useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
-import { NO_EPIC_LABEL } from './BacklogFilterBar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 라벨 상수
@@ -16,7 +15,7 @@ import { NO_EPIC_LABEL } from './BacklogFilterBar'
 // `collapseSection` 을 **재사용**해 새 버튼 이름을 0개로 유지한다
 // (`i18n/__tests__/create-entry-point-names.test.ts` 의 substring 전수 판별식 대상).
 // 값은 객체가 아니라 문자열 상수다 — `react-refresh/only-export-components` 의
-// `allowConstantExport` 는 원시값만 허용한다(`BacklogFilterBar.tsx` 선례).
+// `allowConstantExport` 는 원시값만 허용한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -74,7 +73,7 @@ function buildOptions(
 ): EpicOption[] {
   return [
     ...epicKeys.map((key) => ({ key, label: epicNames.get(key) ?? key })),
-    { key: NO_EPIC, label: NO_EPIC_LABEL },
+    { key: NO_EPIC, label: backlogLabels.filter.noEpic },
   ]
 }
 

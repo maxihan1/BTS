@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
+import { backlogLabels } from '@/i18n/backlog-labels'
 import { filterBarLabels } from '@/i18n/filter-bar-labels'
 import { NO_EPIC, emptyBacklogFilter } from '@/lib/backlog-filter'
 import type { BacklogFilter } from '@/lib/backlog-filter'
@@ -45,16 +46,15 @@ vi.mock('@/hooks/use-components', () => ({
 // import — RED 단계: 아직 존재하지 않음
 // ─────────────────────────────────────────────────────────────────────────────
 
-import {
-  BacklogFilterBar,
-  BACKLOG_SEARCH_LABEL,
-  NO_EPIC_LABEL,
-  SEARCH_DEBOUNCE_MS,
-} from './BacklogFilterBar'
+import { BacklogFilterBar, SEARCH_DEBOUNCE_MS } from './BacklogFilterBar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 / 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** 화면 문자열은 정본(`i18n/backlog-labels.ts`)에서 읽는다. 리터럴 재타이핑 금지 */
+const BACKLOG_SEARCH_LABEL = backlogLabels.filter.searchLabel
+const NO_EPIC_LABEL = backlogLabels.filter.noEpic
 
 const EPIC_ALPHA = 'ATLAS-100'
 const EPIC_BETA = 'ATLAS-200'

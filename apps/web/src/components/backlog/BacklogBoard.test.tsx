@@ -370,7 +370,7 @@ import {
   BacklogBoard,
 } from './BacklogBoard'
 import { cardFirstCollision } from './backlog-collision'
-import { BACKLOG_SEARCH_LABEL, SEARCH_DEBOUNCE_MS } from './BacklogFilterBar'
+import { SEARCH_DEBOUNCE_MS } from './BacklogFilterBar'
 import { EPIC_LIST_ARIA_LABEL } from './BacklogEpicPanel'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { filterBarLabels } from '@/i18n/filter-bar-labels'
@@ -383,6 +383,9 @@ import { server } from '@/test/server'
 import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
 import type { UserSummary } from '@/api/users'
 import type { BacklogIssue, BacklogView } from '@/api/backlog'
+
+/** 제목 검색 입력의 접근명 — 정본(`i18n/backlog-labels.ts`)에서 읽는다. 리터럴 재타이핑 금지 */
+const BACKLOG_SEARCH_LABEL = backlogLabels.filter.searchLabel
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

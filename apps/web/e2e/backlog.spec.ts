@@ -680,7 +680,7 @@ async function pickUpAndMoveOverPlannedSprint(page: Page, card: Locator): Promis
 //   `src/i18n/__tests__/create-entry-point-names.test.ts` 가 정본을 직접 import 해 지킨다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** `BacklogFilterBar.tsx` `BACKLOG_SEARCH_LABEL` 미러 — 제목 검색 입력의 접근명 */
+/** `i18n/backlog-labels.ts` `filter.searchLabel` 미러 — 제목 검색 입력의 접근명 */
 const BACKLOG_SEARCH_LABEL = '백로그 검색'
 
 /** `BacklogEpicPanel.tsx` `EPIC_PANEL_TITLE` 미러 — 패널 제목이자 접기 토글 이름의 재료 */
@@ -689,7 +689,7 @@ const EPIC_PANEL_TITLE = '에픽'
 /** `BacklogEpicPanel.tsx` `EPIC_LIST_ARIA_LABEL` 미러 — **`적용된 필터` 와 반드시 다르다** */
 const EPIC_LIST_ARIA_LABEL = '에픽 목록'
 
-/** `BacklogFilterBar.tsx` `NO_EPIC_LABEL` 미러 — 「에픽 없음」 항목/칩의 표시명 */
+/** `i18n/backlog-labels.ts` `filter.noEpic` 미러 — 「에픽 없음」 항목/칩의 표시명 */
 const NO_EPIC_LABEL = '에픽 없음'
 
 /** `BacklogBoard.tsx` `BACKLOG_FILTERED_EMPTY_TITLE` 미러 — 필터 0건 안내 1행 */

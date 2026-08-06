@@ -8,7 +8,6 @@ import {
   backlogCollapsedStorageKey,
   EPIC_PANEL_SECTION_ID,
 } from '@/hooks/use-backlog-collapsed'
-import { NO_EPIC_LABEL } from './BacklogFilterBar'
 import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,6 +21,9 @@ import {
   EPIC_SCOPE_NOTICE,
 } from './BacklogEpicPanel'
 import type { BacklogEpicPanelProps } from './BacklogEpicPanel'
+
+/** 「에픽 없음」 표시명 — 정본(`i18n/backlog-labels.ts`)에서 읽는다. 리터럴 재타이핑 금지 */
+const NO_EPIC_LABEL = backlogLabels.filter.noEpic
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처

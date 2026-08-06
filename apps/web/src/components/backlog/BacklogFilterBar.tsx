@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { FilterBar } from '@/components/filters/FilterBar'
 import type { FilterChipData } from '@/components/filters/FilterBar'
 import { useDebounce } from '@/hooks/use-debounce'
+import { backlogLabels } from '@/i18n/backlog-labels'
 import { NO_EPIC, emptyBacklogFilter, toFilterBarValue } from '@/lib/backlog-filter'
 import type { BacklogFilter } from '@/lib/backlog-filter'
 
@@ -16,27 +17,6 @@ export const SEARCH_DEBOUNCE_MS = 250
 
 /** element id 접두사 — `FilterBar` 가 `${idPrefix}-assignee-input` 등에 쓴다 */
 const ID_PREFIX = 'backlog-filter'
-
-/**
- * 제목 검색 입력의 라벨 겸 접근명.
- *
- * **`검색` 으로 짓지 않는다** — 상단바 전역 검색이 `전역 검색`(`role="searchbox"`), AQL 페이지
- * 제출 버튼이 `검색` 이고 e2e 가 `exact: true` 로 그 둘을 가르고 있다. 같은 화면에 세 번째
- * `검색` 이 생기면 이름 분리 계약이 즉사한다 (`jira-parity-contract.md` §2).
- */
-export const BACKLOG_SEARCH_LABEL = '백로그 검색'
-
-/** 제목 검색 입력 placeholder — `담당자 검색...` 과 같은 결 */
-export const BACKLOG_SEARCH_PLACEHOLDER = '제목 검색...'
-
-/**
- * `NO_EPIC` 센티널의 표시명.
- *
- * 에픽 패널의 「에픽 없음」 항목과 **같은 문자열**이어야 칩과 목록이 서로 다른 말을 하지 않는다.
- * 패널은 이 상수를 import 해서 쓴다 (라벨 객체가 아니라 문자열 상수인 이유는
- * `react-refresh/only-export-components` 가 컴포넌트 모듈에서 객체 export 를 허용하지 않기 때문).
- */
-export const NO_EPIC_LABEL = '에픽 없음'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BacklogFilterBar (공개 컴포넌트)
@@ -137,7 +117,7 @@ export function BacklogFilterBar({
  * 해석 실패/로딩 중에는 키를 보인다 (F16-6 — 빈 값 금지).
  */
 function epicChipLabel(key: string, epicNames: ReadonlyMap<string, string>): string {
-  if (key === NO_EPIC) return NO_EPIC_LABEL
+  if (key === NO_EPIC) return backlogLabels.filter.noEpic
   return epicNames.get(key) ?? key
 }
 
@@ -163,13 +143,13 @@ function BacklogSearchInput({ value, onChange }: BacklogSearchInputProps): JSX.E
   return (
     <div className="flex min-w-[200px] flex-col gap-1">
       <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground">
-        {BACKLOG_SEARCH_LABEL}
+        {backlogLabels.filter.searchLabel}
       </label>
       <input
         id={inputId}
         type="text"
         className="min-h-[44px] rounded-md border bg-background px-3 py-2 text-sm"
-        placeholder={BACKLOG_SEARCH_PLACEHOLDER}
+        placeholder={backlogLabels.filter.searchPlaceholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
