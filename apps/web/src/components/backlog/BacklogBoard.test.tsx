@@ -415,6 +415,12 @@ interface RenderBoardOptions {
  * 만들지 않으며, 여기서 매번 새 객체를 만들면 필터바의 디바운스 동기화가 자기 자신을 다시
  * 깨워 무한 렌더가 된다(공백만 입력한 검색어가 그 경로다 — `BacklogPage` 의 같은 가드).
  * 키 순서는 `filterToSearch` 가 항상 q → assignee → epic 로 고정하므로 직렬화 비교가 성립한다.
+ *
+ * ★★그리고 URL 반영은 **한 박자 뒤**다. `navigate` 는 Promise 를 돌려주고 location 갱신이
+ * 별도 커밋에서 일어난다 — 즉 「변경을 올린 렌더」와 「값이 돌아온 렌더」가 다르다.
+ * 여기서 동기 `setState` 를 쓰면 그 두 렌더가 하나로 붙어, **실브라우저에서만 나는 버그**를
+ * 유닛이 통째로 못 본다. 실제로 Task 8 의 첫 구현이 그 함정에 빠졌다 — 빈 상태의
+ * 「필터 초기화」가 브라우저에서 아무 일도 하지 않았는데 유닛은 전량 초록이었다.
  */
 function UrlOwningBacklogBoard({
   projectKey,
@@ -440,9 +446,12 @@ function UrlOwningBacklogBoard({
       filter={filter}
       onFilterChange={(next) => {
         onFilterChange?.(next)
-        setSearch((prev) => {
-          const nextSearch = filterToSearch(next)
-          return JSON.stringify(prev) === JSON.stringify(nextSearch) ? prev : nextSearch
+        // ★한 박자 뒤에 반영한다 — 라우터의 비동기 커밋 재현 (위 KDoc)
+        queueMicrotask(() => {
+          setSearch((prev) => {
+            const nextSearch = filterToSearch(next)
+            return JSON.stringify(prev) === JSON.stringify(nextSearch) ? prev : nextSearch
+          })
         })
       }}
       canManageSprint={canManageSprint}
