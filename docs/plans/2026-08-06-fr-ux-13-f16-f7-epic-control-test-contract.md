@@ -722,3 +722,101 @@ plan 은 2종(A·B)을 요구했으나 실행 중 2종을 더했다.
 plan Task 4 Step 5 는 신규 후속 후보를 **1건**(a11y role 불일치)으로 잡았으나 **2건**을 등재했다 —
 뮤테이션 A 실행이 ⑩(부재 단언 개별 공허성)을 추가로 드러냈기 때문이다. §4.11 후속 등재는
 **8건 → 10건**, 완료 1(⑦) · **잔여 9**. **FR 개수 139 는 불변**이다(후속 항목은 FR 이 아니다).
+
+---
+
+## ★ 코드리뷰 CONCERNS 봉합 (2026-08-07 · 커밋 `9cb6c3b0f`)
+
+### 무엇이 잘못됐나 — **봉인 자체가 영구초록이었다**
+
+두 독립 리뷰가 같은 것을 각각 잡았다. 위 「최종 수치」·「뮤테이션 4종 전부 성공」이 모두 참인데도
+**판별식 6건 중 「공유 계약 모듈에서 읽는다」 2건이 죽어 있었다.**
+
+원인은 부분 문자열 일치다. `expect(readPaired(fileName).includes(CONTRACT_MODULE)).toBe(true)` 인데
+**이 PR 이 직접 넣은 주석**이 그 경로를 담고 있었다 —
+`BacklogFilterBar.test.tsx:14`·`:238` · `BacklogEpicPanel.test.tsx:12`
+(`// 셀렉터 자산은 '@/test/backlog-epic-control-contract' 가 단독 소유한다.`).
+즉 **자기가 심은 주석이 자기 단언을 영구 만족**시켰다.
+
+봉합 전 실측 — **import 문을 통째로 지워도 6/6 green.** 8종을 이름만 바꿔
+(`EPIC_CONTROL_ROLE`→`EPIC_CTRL_ROLE`) 로컬 복사본으로 되살려도
+**판별식 6/6 · `tsc` EXIT=0 · 짝 테스트 58/58 전부 green** — 감지기가 **0개**였다.
+부수로 `hasLocalDefinition` 이 `const`/`function` 두 형태만 봐 `let`·`var`·구조분해·별칭이 우회했다.
+
+### ★ 왜 「뮤테이션 4종 전부 성공」이 이것을 못 잡았나
+
+**뮤테이션 검증의 대상은 「판별식이 무는가」만이 아니라 「판별식이 *무엇으로* 무는가」다.**
+뮤테이션 B(로컬 복사본 1줄 부활)는 red 였지만 문 것은 **지역정의 봉인**(`redefined = [...]`)이었고,
+그 성공이 **바로 옆 단언 2건이 죽어 있다는 사실을 가렸다.** 파일 단위 red/green 만 보면
+판별식이 여러 개일 때 **살아 있는 하나가 죽은 나머지를 덮는다.**
+→ 처방. 판별식이 복수면 뮤테이션마다 **어느 `it` 이 red 인지**까지 기록한다.
+이 FR 이 3연속으로 맞은 **「봉합이 절반」**과 같은 양식이 **판별식 안에서** 재현된 판이다.
+
+### 봉합 내용 5건
+
+| # | 대상 | before → after |
+|---|---|---|
+| 1 | `epic-control-contract.test.ts` | `includes(CONTRACT_MODULE)` 부분일치 → `importedContractSymbols()` 로 `import { … } from '<모듈>'` 지정자만 뽑아 **선언 8종과 정확 대조**. 테스트명도 「공유 계약 모듈에서 읽는다」 → 「공유 심볼 8종을 모두 named import 한다」 |
+| 2 | 〃 | `hasLocalDefinition` 정규식 `const` → `(?:const\|let\|var)` |
+| 3 | 〃 | 비-공허 짝 **4단언 추가** — `let`/`var` 포착 2 · 주석 경로를 import 로 세지 않음 1 · 정상 import 지정자 추출 1 |
+| 4 | `backlog-epic-control-contract.ts` | `EPIC_CONTROL_ROLE` KDoc 에 「두 소비처 동시 red」 보증이 **조건부**임을 명시 (아래) |
+| 5 | `personalization.md` §4.11 | ⑩ 에 처방 후보 ③ 추가 · **⑪ 신규 등재**(`PAIRED_TEST_FILES` 하드코딩) · ⑦ 서술에 「차단한다」가 처음엔 거짓이었음을 추기 |
+
+**수정 4 의 근거.** 필터바에서 실제로 red 가 되는 유일한 단언 `BacklogFilterBar.test.tsx:245` 는
+`EPIC_CONTROL_ROLE` 을 **「미배정」 필터 컨트롤**(`FilterBar` 소유, 선재 PR #344)에 걸고 있다 —
+**에픽 컨트롤이 아니다.** 소유자가 다른 두 값이 한 상수를 공유하므로, ⑨ 를 처리해 패널이
+정당하게 `menuitemcheckbox` 로 가는 날 그 줄은 **거짓 red** 가 되고, 자연스러운 대응
+(그 줄만 리터럴 복원)이 곧 **영구초록의 부활**이다. 보증을 지우지 않고 **조건을 명시**했다.
+
+### 뮤테이션 3종 — 전부 **red** 실측
+
+원복은 전부 **역방향 Edit**(`git checkout --`·`git restore`·`git stash` 금지). 각 원복 직후
+`git status --porcelain` 이 판별식 1줄만 보이는 것을 확인했다.
+
+| 뮤테이션 | 변경 | 봉합 전 | 봉합 후 (실측) |
+|---|---|---|---|
+| **M1** import 삭제 | `BacklogFilterBar.test.tsx` 의 공유 모듈 import 블록 전체 삭제 (주석 존치) | **green** (결함) | **red** — `1 failed \| 5 passed`, actual `[]` |
+| **M2** 이름 바꾼 복사본 | import 에서 `EPIC_CONTROL_ROLE` 제거 + `const EPIC_CTRL_ROLE = 'checkbox' as const` + 사용처 교체 | **green** (결함) | **red** — `1 failed \| 5 passed`, 지정자 7개 ≠ 8종 |
+| **M3** `let` 지역정의 | `let EPIC_CONTROL_ROLE = 'checkbox'` 삽입 | 지역정의 봉인 **green**(`const` 만 봄) | **red 2건 동시** — 지역정의 봉인 + import 목록 |
+
+**M2 가 가장 중요하다.** 지역정의 봉인은 `EPIC_CTRL_ROLE` 이 `SHARED_SYMBOLS` 에 없어서
+**끝까지 green** 이다. 이름만 바꾼 복사본을 무는 것은 **오직 import 목록 대조**뿐이다.
+
+### 정규식이 여러 줄 import 를 매치하는가 — 실행으로 확인
+
+실파일의 import 는 `{`·`}` 사이에 개행이 있는 **10줄짜리**다. `[^}]*` 는 `.` 이 아니라
+문자 클래스 부정이라 개행을 포함하므로 매치된다 — **가정이 아니라 실행으로 쟀다.**
+독립 스크립트 출력.
+
+```
+BacklogEpicPanel.test.tsx  -> 8 ["EPIC_CONTROL_ROLE","EPIC_ALPHA","EPIC_BETA","EPIC_UNRESOLVED",
+                                 "EPIC_ALPHA_NAME","EPIC_BETA_NAME","NO_EPIC_LABEL","queryEpicControls"]
+BacklogFilterBar.test.tsx  -> 8 [ … 동일 … ]
+```
+
+판별식이 green 이라는 사실 자체도 증거다 — 개행을 못 넘었다면 지정자가 `[]` 가 되어 8종 대조가
+**red** 로 떨어진다. `as` 별칭은 **현재 실파일에 0건**이고, 쓰이면 지정자가 `'X as Y'` 로 나와
+선언 목록과 불일치 → **red** 다. 별칭은 로컬 이름을 갈라 놓는 행위라 이 봉인이 막으려는 대상과
+같으므로 **통과시키지 않는 것이 맞다**고 판단하고 그 사실을 헬퍼 JSDoc 에 적었다.
+
+### 범위 밖으로 남긴 것 — C3 (등재만)
+
+`PAIRED_TEST_FILES` 하드코딩 2개는 **고치지 않고** §4.11 ⑪ 로 등재만 했다. 현재 제3 소비처
+**0건**이고, 파일명이 바뀌면 `readFileSync` 가 `ENOENT` 로 던져 **안전하게 red** 라 조용한 실패가
+없다. 자동 탐색(`readdirSync`)은 무관한 파일을 긁는 **새 실패 모드**를 만든다.
+
+### 검증 수치
+
+| 항목 | 값 |
+|---|---|
+| 판별식 단독 | `EXIT=0` · **6 passed (6)** |
+| 유닛 전량 | `EXIT=0` · **571파일 / 9,237건** (직전과 동일) |
+| `tsc -p tsconfig.app.json --noEmit` | `EXIT=0` |
+| `eslint src` | `EXIT=0` (선재 warning 8건, error 0) |
+| 프로덕션 변경 | **0파일** |
+
+**★ 예상과 달랐던 것 1건.** dispatch 는 「판별식 건수는 늘어난다(비-공허 단언 추가)」고 봤으나
+**6건 그대로**다. 추가한 4단언이 **기존 비-공허 `it` 블록 안에** 들어갔고 `it` 개수는 변하지
+않았기 때문이다(vitest 는 `it` 을 센다). 수치를 맞추려고 블록을 쪼개지 않고 **실측대로 남긴다** —
+비-공허 단언은 한 시나리오(「판별식이 자기 목적을 무는가」)의 일부이고, 건수를 위해 쪼개면
+「1 시나리오 = 1 가정」을 깬다.
