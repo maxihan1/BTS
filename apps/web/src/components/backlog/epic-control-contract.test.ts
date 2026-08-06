@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
+import * as contract from '@/test/backlog-epic-control-contract'
 
 /** 이 파일이 사는 디렉토리 = 짝 테스트 2파일이 사는 곳 */
 const BACKLOG_DIR = resolve(import.meta.dirname)
@@ -54,17 +55,39 @@ describe('에픽 컨트롤 테스트 계약 — 단일 정본 봉인', () => {
     expect(redefined).toEqual([])
   })
 
+  // `toContain` 은 실패 시 대상 파일 **원문 전체**(1,100줄 이상)를 actual 로 덤프하는데,
+  // 그 actual 은 저장소에 그대로 있는 파일이라 진단 가치가 0 이다. 그렇다고
+  // `expect(source.includes(X)).toBe(true)` 로 바꾸면 「어느 파일의 어느 지정자가 빠졌나」가
+  // 사라진다 — 결함을 다른 결함으로 옮기는 것이다. 2번째 인자로 진단성만 남긴다.
   it.each(PAIRED_TEST_FILES)('%s 는 공유 계약 모듈에서 읽는다', (fileName) => {
-    expect(readPaired(fileName)).toContain(CONTRACT_MODULE)
+    expect(
+      readPaired(fileName).includes(CONTRACT_MODULE),
+      `${fileName} 이 '${CONTRACT_MODULE}' 를 import 하지 않는다 — 셀렉터 자산을 지역 정의로 되살렸을 가능성이 높다`,
+    ).toBe(true)
+  })
+
+  // ★ 두 리스트가 서로를 검사하게 만든다 — 위 판별식은 import 줄의 **텍스트**만 보므로
+  //   모듈이 비어 있어도 통과한다. 선언 목록과 실 export 표면의 **양방향 차집합**을 0 으로 못박는다.
+  it('공유 모듈의 export 표면이 선언 목록과 정확히 일치한다', () => {
+    expect(Object.keys(contract).sort()).toEqual([...SHARED_SYMBOLS].sort())
   })
 
   // ★ 비-공허 짝 — 판별식이 자기 목적을 실제로 잡는지 증명한다.
   //   `active-project-contract.test.ts` 가 남긴 교훈(초안 판별식이 없애려던 대상을
   //   매치하지 못해 봉인이 무의미했다)의 직접 처방이다.
   it('판별식 비-공허 — 지역 정의는 잡고 import 는 안 잡는다', () => {
-    expect(hasLocalDefinition(`const EPIC_CONTROL_ROLE = 'checkbox' as const`, 'EPIC_CONTROL_ROLE')).toBe(true)
-    expect(hasLocalDefinition(`function queryEpicControls(): HTMLElement[] {`, 'queryEpicControls')).toBe(true)
-    expect(hasLocalDefinition(`import { EPIC_CONTROL_ROLE } from '${CONTRACT_MODULE}'`, 'EPIC_CONTROL_ROLE')).toBe(false)
+    expect(
+      hasLocalDefinition(`const EPIC_CONTROL_ROLE = 'checkbox' as const`, 'EPIC_CONTROL_ROLE'),
+    ).toBe(true)
+    expect(
+      hasLocalDefinition(`function queryEpicControls(): HTMLElement[] {`, 'queryEpicControls'),
+    ).toBe(true)
+    expect(
+      hasLocalDefinition(
+        `import { EPIC_CONTROL_ROLE } from '${CONTRACT_MODULE}'`,
+        'EPIC_CONTROL_ROLE',
+      ),
+    ).toBe(false)
     expect(hasLocalDefinition(`const EPIC_ALPHA_NAME = '결제 개편'`, 'EPIC_ALPHA')).toBe(false)
   })
 })
