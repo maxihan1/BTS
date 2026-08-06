@@ -35,6 +35,12 @@ interface SprintFormValues {
   goal: string
 }
 
+/** 편집 대상 필드 이름. `SprintFormValues` 에서 파생시켜 둘이 어긋날 수 없게 한다 */
+type SprintField = keyof SprintFormValues
+
+/** 편집 대상 필드 전수. 순회 순서가 곧 `PATCH` body 의 키 순서다 */
+const EDITABLE_FIELDS = ['startDate', 'endDate', 'goal'] as const satisfies readonly SprintField[]
+
 /** SprintMeta 를 폼 값으로 옮긴다 (`null` → 빈 문자열) */
 function toFormValues(sprint: SprintMeta): SprintFormValues {
   return {
@@ -51,36 +57,65 @@ function emptyToNull(value: string): string | null {
 }
 
 /**
- * 기준값과 폼 값을 필드별로 비교해 `PATCH` body 를 만든다.
+ * **사용자가 실제로 편집한 필드**만 골라 `PATCH` body 를 만든다.
  *
- * 바뀐 필드만 담고 `version` 은 항상 담는다. **변경분이 0이면 `null` 을 반환한다** —
+ * `version` 은 항상 담는다. **담을 필드가 0이면 `null` 을 반환한다** —
  * 불필요한 버전 증가가 낙관적 잠금 충돌면을 넓히기 때문이다 (FR-4).
+ *
+ * ### 왜 「기준값과 다른 필드」로 계산하면 안 되나
+ * 409(E9) 뒤 {@link StartSprintDialog} 는 기준값만 서버 최신으로 갈아끼운다. 그 순간
+ * **「내가 고친 필드」와 「기준값과 다른 필드」가 서로 다른 집합**이 된다 — 남이 방금 저장한
+ * 필드는 내가 손대지 않았는데도 내 폼 값(빈 값)과 달라지기 때문이다. 그 차이를 변경분으로
+ * 세면 재시도가 `endDate: null`·`goal: null` 을 실어 보내 **남의 저장분을 조용히 지운다**.
+ * 편집 집합으로 좁히면 미편집 필드는 키 자체가 빠져 무변경으로 보존된다
+ * (`api/backlog.ts` `UpdateSprintBody` 3-state — 미전송 = 무변경, 명시 `null` = 삭제).
+ *
+ * 편집했더라도 값이 기준값과 같으면 담지 않는다 — 서버가 이미 그 값이라 보낼 이유가 없다.
  *
  * @param baseline 다이얼로그가 들고 있는 기준 SprintMeta
  * @param values 현재 폼 값
- * @returns 보낼 body. 변경분이 없으면 `null`
+ * @param edited 사용자가 편집한 필드 집합
+ * @returns 보낼 body. 담을 필드가 없으면 `null`
  */
-function buildPatchBody(baseline: SprintMeta, values: SprintFormValues): UpdateSprintBody | null {
+function buildPatchBody(
+  baseline: SprintMeta,
+  values: SprintFormValues,
+  edited: ReadonlySet<SprintField>,
+): UpdateSprintBody | null {
   const body: UpdateSprintBody = { version: baseline.version }
   let changed = false
 
-  const startDate = emptyToNull(values.startDate)
-  if (startDate !== baseline.startDate) {
-    body.startDate = startDate
-    changed = true
-  }
-  const endDate = emptyToNull(values.endDate)
-  if (endDate !== baseline.endDate) {
-    body.endDate = endDate
-    changed = true
-  }
-  const goal = emptyToNull(values.goal)
-  if (goal !== baseline.goal) {
-    body.goal = goal
+  for (const field of EDITABLE_FIELDS) {
+    if (!edited.has(field)) continue
+    const next = emptyToNull(values[field])
+    if (next === baseline[field]) continue
+    body[field] = next
     changed = true
   }
 
   return changed ? body : null
+}
+
+/**
+ * 409(E9) 뒤 **미편집 필드의 표시만** 서버 최신 값으로 맞춘다.
+ *
+ * 사용자가 「남이 뭘 바꿨는지」 보고 재확인할 수 있어야 하고, E8 기간 검증도 서버의 실제
+ * 종료일을 봐야 맞는 판정을 낸다. 편집한 필드는 사용자가 친 값을 그대로 둔다.
+ *
+ * ★ 여기서 갱신한 값은 **편집이 아니다**. 편집 집합을 건드리지 않으므로 다음 `PATCH` 에도
+ *   실리지 않는다 — 표시 갱신을 편집으로 세는 순간 이 함수가 곧 데이터 손실이 된다.
+ */
+function mergeUnedited(
+  values: SprintFormValues,
+  fresh: SprintMeta,
+  edited: ReadonlySet<SprintField>,
+): SprintFormValues {
+  const server = toFormValues(fresh)
+  return {
+    startDate: edited.has('startDate') ? values.startDate : server.startDate,
+    endDate: edited.has('endDate') ? values.endDate : server.endDate,
+    goal: edited.has('goal') ? values.goal : server.goal,
+  }
 }
 
 /**
@@ -159,6 +194,78 @@ function DateField({ id, label, value, disabled, error, onChange }: DateFieldPro
         </p>
       )}
     </div>
+  )
+}
+
+/** {@link SprintFields} props */
+interface SprintFieldsProps {
+  /** 현재 폼 값 */
+  readonly values: SprintFormValues
+  /** 요청 진행 중 잠금 */
+  readonly disabled: boolean
+  /** E8 — 종료일이 시작일보다 빠른가. 종료일 칸에 필드 에러로 붙는다 */
+  readonly rangeInvalid: boolean
+  /**
+   * 필드 편집 콜백.
+   *
+   * ★ **사용자 조작만** 이 경로를 지난다. 409 뒤 표시 갱신(`mergeUnedited`)은 여기를 지나지
+   *   않으므로 편집으로 세지 않는다 — 그 구분이 남의 저장분을 지키는 유일한 근거다.
+   */
+  readonly onEdit: (field: SprintField, next: string) => void
+}
+
+/**
+ * 기간·목표 3칸.
+ *
+ * 별도 컴포넌트인 이유는 두 가지다 — ① 편집 경로가 `onEdit` 하나로 좁혀져 「무엇이 편집인가」가
+ * 한눈에 보이고 ② `StartSprintDialog` 본체가 200줄 천장을 넘지 않는다 (§2.2).
+ */
+function SprintFields({ values, disabled, rangeInvalid, onEdit }: SprintFieldsProps): JSX.Element {
+  const prefix = useId()
+  const goalId = `${prefix}-goal`
+  const rangeErrorId = `${prefix}-range-error`
+
+  return (
+    <>
+      <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+        <DateField
+          id={`${prefix}-start-date`}
+          label={backlogLabels.startDialog.startDateLabel}
+          value={values.startDate}
+          disabled={disabled}
+          onChange={(next) => {
+            onEdit('startDate', next)
+          }}
+        />
+        <DateField
+          id={`${prefix}-end-date`}
+          label={backlogLabels.startDialog.endDateLabel}
+          value={values.endDate}
+          disabled={disabled}
+          error={
+            rangeInvalid
+              ? { id: rangeErrorId, message: backlogLabels.startDialog.endBeforeStart }
+              : undefined
+          }
+          onChange={(next) => {
+            onEdit('endDate', next)
+          }}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={goalId}>{backlogLabels.startDialog.goalLabel}</Label>
+        <Textarea
+          id={goalId}
+          rows={3}
+          value={values.goal}
+          disabled={disabled}
+          onChange={(event) => {
+            onEdit('goal', event.target.value)
+          }}
+        />
+      </div>
+    </>
   )
 }
 
@@ -261,14 +368,22 @@ export function StartSprintDialog({
    */
   const patchAppliedRef = useRef(false)
 
-  const fieldIdPrefix = useId()
-  const startDateId = `${fieldIdPrefix}-start-date`
-  const endDateId = `${fieldIdPrefix}-end-date`
-  const goalId = `${fieldIdPrefix}-goal`
-  const rangeErrorId = `${fieldIdPrefix}-range-error`
+  /**
+   * 사용자가 손댄 필드. **전송 대상의 유일한 출처**다 (`buildPatchBody` 참조).
+   *
+   * 렌더에 쓰이지 않아 state 가 아니라 ref 다 — 여기에 state 를 두면 타이핑 한 번마다
+   * 의미 없는 리렌더가 하나씩 더 붙는다.
+   */
+  const editedRef = useRef<Set<SprintField>>(new Set())
 
   const rangeInvalid = isEndBeforeStart(values)
   const pending = updateSprint.isPending || startSprint.isPending
+
+  /** 사용자 조작으로 필드가 바뀌었다 — 값과 「편집했다」는 사실을 함께 기록한다 */
+  function editField(field: SprintField, next: string): void {
+    editedRef.current.add(field)
+    setValues((prev) => ({ ...prev, [field]: next }))
+  }
 
   /** 백로그를 새로 받는다. 두 mutation 훅도 성공 시 같은 일을 하지만 실패 경로에는 없다 */
   async function invalidateBacklog(): Promise<void> {
@@ -276,27 +391,31 @@ export function StartSprintDialog({
   }
 
   /**
-   * 409(E9) 이후 **기준값(`version` 포함)만** 최신으로 교체한다. 캐시에 없으면 그대로 둔다.
+   * 409(E9) 이후 기준값(`version` 포함)을 최신으로 교체하고 **미편집 필드의 표시**만 맞춘다.
+   * 캐시에 없으면 그대로 둔다.
    *
-   * ★ 폼 값은 절대 덮지 않는다. 서버 값으로 덮으면 `buildPatchBody` 의 변경분이 0이 되어
-   *   `null` 을 반환하고, 「다시 시도」가 `PATCH` 를 건너뛴 채 곧장 `start` 로 간다 —
-   *   사용자가 친 기간·목표는 사라지고 **남의 값으로 스프린트가 시작된다**. 되돌릴 수 없다.
-   *   기준값만 갈아끼우면 재시도가 사용자의 값을 최신 `version` 으로 다시 보낸다.
+   * ★ 사용자가 편집한 필드는 절대 덮지 않는다. 서버 값으로 덮으면 재시도가 그 필드를 안 보내고
+   *   **남의 값으로 스프린트가 시작된다** — 되돌릴 수 없다.
+   * ★ 미편집 필드는 표시만 갱신할 뿐 `editedRef` 에 넣지 않는다 (`mergeUnedited` 참조).
    */
   async function replaceBaselineFromCache(): Promise<void> {
     await invalidateBacklog()
     const view = queryClient.getQueryData<BacklogView>(backlogKeys.detail(projectKey))
     const fresh = view?.sprints.find((entry) => entry.sprint.sprintId === sprint.sprintId)?.sprint
-    if (fresh !== undefined) setBaseline(fresh)
+    if (fresh === undefined) return
+    setBaseline(fresh)
+    setValues((prev) => mergeUnedited(prev, fresh, editedRef.current))
   }
 
   /** 1단계. 성공하면 기준값을 응답으로 갈아끼우고 `true` 를 반환한다 */
   async function runPatch(body: UpdateSprintBody): Promise<boolean> {
     try {
       const updated = await updateSprint.mutateAsync({ sprintId: sprint.sprintId, body })
-      // 응답으로 기준값·폼을 함께 맞춘다 — 이래야 재시도의 변경분이 확실히 0이 된다
+      // 저장이 끝났으니 기준값·폼·편집 이력을 셋 다 응답에 맞춘다. 셋은 한 불변식의 세 면이다 —
+      // 「지금 화면은 서버가 들고 있는 값이고, 아직 보낼 편집은 없다」
       setBaseline(updated)
       setValues(toFormValues(updated))
+      editedRef.current.clear()
       patchAppliedRef.current = true
       return true
     } catch (error) {
@@ -335,7 +454,7 @@ export function StartSprintDialog({
     if (rangeInvalid) return
 
     setFailure(null)
-    const body = buildPatchBody(baseline, values)
+    const body = buildPatchBody(baseline, values, editedRef.current)
     if (body !== null && !(await runPatch(body))) return
     await runStart()
   }
@@ -373,44 +492,12 @@ export function StartSprintDialog({
             void handleSubmit(event)
           }}
         >
-          <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
-            <DateField
-              id={startDateId}
-              label={backlogLabels.startDialog.startDateLabel}
-              value={values.startDate}
-              disabled={pending}
-              onChange={(next) => {
-                setValues((prev) => ({ ...prev, startDate: next }))
-              }}
-            />
-            <DateField
-              id={endDateId}
-              label={backlogLabels.startDialog.endDateLabel}
-              value={values.endDate}
-              disabled={pending}
-              error={
-                rangeInvalid
-                  ? { id: rangeErrorId, message: backlogLabels.startDialog.endBeforeStart }
-                  : undefined
-              }
-              onChange={(next) => {
-                setValues((prev) => ({ ...prev, endDate: next }))
-              }}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={goalId}>{backlogLabels.startDialog.goalLabel}</Label>
-            <Textarea
-              id={goalId}
-              rows={3}
-              value={values.goal}
-              disabled={pending}
-              onChange={(event) => {
-                setValues((prev) => ({ ...prev, goal: event.target.value }))
-              }}
-            />
-          </div>
+          <SprintFields
+            values={values}
+            disabled={pending}
+            rangeInvalid={rangeInvalid}
+            onEdit={editField}
+          />
 
           {failure !== null && <FailureAlert kind={failure} disabled={pending} />}
 
