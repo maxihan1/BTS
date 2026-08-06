@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (448건, 최신순)
+# 시간 축 인덱스 (449건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-08-06 | fr-ux-13-f16-backlog-filter-epic | — | ✔ | — | — | FR-UX-13 |
 | 2026-08-05 | fr-ux-12-f13-global-search-input | ✔ | ✔ | ✔ | — | FR-SR-01 FR-UX-04 FR-UX-07 FR-UX-12 |
 | 2026-08-05 | fr-ux-13-f15-backlog-vertical-stack | ✔ | ✔ | ✔ | — | FR-UX-13 |
 | 2026-08-05 | fr-ux-13-f5-backlog-card-assignee | ✔ | ✔ | ✔ | — | FR-UX-13 FR-UX-14 |
