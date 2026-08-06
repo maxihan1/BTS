@@ -1,5 +1,6 @@
 // BacklogBoard 컴포넌트 통합 테스트 — onDragEnd 시나리오·C1 부분실패·생성/시작/완료 버튼 (FR-BL-01/02 D6/D7)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor, act, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -375,6 +376,8 @@ import { backlogLabels } from '@/i18n/backlog-labels'
 import { filterBarLabels } from '@/i18n/filter-bar-labels'
 import { backlogScreenReaderInstructions } from '@/lib/backlog-announcements'
 import { backlogKeyboardSensorOptions } from '@/lib/backlog-keyboard-coordinates'
+import { NO_EPIC, emptyBacklogFilter, filterToSearch, searchToFilter } from '@/lib/backlog-filter'
+import type { BacklogFilter, BacklogFilterSearch } from '@/lib/backlog-filter'
 import { useBacklogCollapsedStore } from '@/hooks/use-backlog-collapsed'
 import { server } from '@/test/server'
 import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
@@ -389,20 +392,99 @@ function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
 }
 
-function renderBoard(
-  projectKey = 'ATLAS',
-  opts: { canManageSprint?: boolean; canReorderIssue?: boolean; canCreateIssue?: boolean } = {},
-) {
-  const { canManageSprint = true, canReorderIssue = true, canCreateIssue = false } = opts
+/** {@link renderBoard} 옵션 — 권한 3종 + URL 흉내 */
+interface RenderBoardOptions {
+  canManageSprint?: boolean
+  canReorderIssue?: boolean
+  canCreateIssue?: boolean
+  /** 화면을 열 때의 URL search 파라미터. 링크 공유·새로고침 재현에 쓴다 (F16-9) */
+  initialSearch?: BacklogFilterSearch
+  /** 보드가 올린 필터 변경을 엿본다 — 「URL 로 무엇이 나가는가」의 관측 지점 */
+  onFilterChange?: (next: BacklogFilter) => void
+}
+
+/**
+ * 라우트를 대신해 **URL 을 소유하는** 하네스.
+ *
+ * `BacklogBoard` 는 제어형이라 필터 state 를 갖지 않는다. 그래서 테스트도 `BacklogFilter`
+ * 를 그냥 들고 있지 않고 **`BacklogFilterSearch`(=URL) 를 들고 왕복시킨다** — 실제 배선과
+ * 같은 경로(`searchToFilter` → 화면 → `filterToSearch`)를 지나야 왕복에서만 드러나는
+ * 결함(빈 값 생략·센티널 변환)이 유닛에서도 잡힌다.
+ *
+ * ★같은 URL 이면 **같은 참조를 유지**한다. 실제 라우터도 URL 이 안 바뀌면 새 search 객체를
+ * 만들지 않으며, 여기서 매번 새 객체를 만들면 필터바의 디바운스 동기화가 자기 자신을 다시
+ * 깨워 무한 렌더가 된다(공백만 입력한 검색어가 그 경로다 — `BacklogPage` 의 같은 가드).
+ * 키 순서는 `filterToSearch` 가 항상 q → assignee → epic 로 고정하므로 직렬화 비교가 성립한다.
+ */
+function UrlOwningBacklogBoard({
+  projectKey,
+  initialSearch,
+  onFilterChange,
+  canManageSprint,
+  canReorderIssue,
+  canCreateIssue,
+}: {
+  projectKey: string
+  initialSearch: BacklogFilterSearch
+  onFilterChange?: (next: BacklogFilter) => void
+  canManageSprint: boolean
+  canReorderIssue: boolean
+  canCreateIssue: boolean
+}) {
+  const [search, setSearch] = useState<BacklogFilterSearch>(initialSearch)
+  const filter = useMemo(() => searchToFilter(search), [search])
+
+  return (
+    <BacklogBoard
+      projectKey={projectKey}
+      filter={filter}
+      onFilterChange={(next) => {
+        onFilterChange?.(next)
+        setSearch((prev) => {
+          const nextSearch = filterToSearch(next)
+          return JSON.stringify(prev) === JSON.stringify(nextSearch) ? prev : nextSearch
+        })
+      }}
+      canManageSprint={canManageSprint}
+      canReorderIssue={canReorderIssue}
+      canCreateIssue={canCreateIssue}
+    />
+  )
+}
+
+function renderBoard(projectKey = 'ATLAS', opts: RenderBoardOptions = {}) {
+  const {
+    canManageSprint = true,
+    canReorderIssue = true,
+    canCreateIssue = false,
+    initialSearch = {},
+    onFilterChange,
+  } = opts
   const qc = makeQueryClient()
   return render(
     <QueryClientProvider client={qc}>
-      <BacklogBoard
+      <UrlOwningBacklogBoard
         projectKey={projectKey}
+        initialSearch={initialSearch}
+        onFilterChange={onFilterChange}
         canManageSprint={canManageSprint}
         canReorderIssue={canReorderIssue}
         canCreateIssue={canCreateIssue}
       />
+    </QueryClientProvider>,
+  )
+}
+
+/**
+ * 필터를 **고정한 채** 보드를 그린다 — 부모가 갱신하지 않는 상황을 만든다.
+ *
+ * 제어형 계약을 재는 유일한 방법이다. `renderBoard` 처럼 부모가 곧바로 값을 갱신하면,
+ * 보드가 몰래 자기 state 를 들고 있어도(=소유자 두 벌) 화면이 같아 구별되지 않는다.
+ */
+function renderBoardWithFixedFilter(filter: BacklogFilter, onFilterChange: (next: BacklogFilter) => void) {
+  return render(
+    <QueryClientProvider client={makeQueryClient()}>
+      <BacklogBoard projectKey="ATLAS" filter={filter} onFilterChange={onFilterChange} />
     </QueryClientProvider>,
   )
 }
@@ -2209,6 +2291,130 @@ describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
     expect(
       within(screen.getByRole('list', { name: '적용된 필터' })).getByText(EPIC_ALPHA),
     ).toBeInTheDocument()
+  })
+
+  // ── URL search 배선 (F16-9) ────────────────────────────────────────────────
+
+  it('★제어형: 필터 state 를 스스로 갖지 않는다 — 부모가 갱신하기 전에는 화면이 그대로다', async () => {
+    const user = userEvent.setup()
+    const onFilterChange = vi.fn()
+    // 부모가 값을 **고정**한다. 보드가 몰래 자기 state 를 들고 있으면(소유자 두 벌) 여기서 화면이 바뀐다.
+    renderBoardWithFixedFilter(emptyBacklogFilter(), onFilterChange)
+
+    await user.click(await screen.findByRole('checkbox', { name: EPIC_ALPHA }))
+
+    expect(onFilterChange).toHaveBeenCalledWith({
+      query: '',
+      assigneeIds: [],
+      includeUnassigned: false,
+      epicKeys: [EPIC_ALPHA],
+    })
+    // ★화면은 그대로다 — 소유자는 URL 한 곳이고 보드는 받은 값만 그린다
+    expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    expect(getColumn(PLANNED_SPRINT_NAME, 2)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+  })
+
+  it('F16-9: URL 의 q 가 초기 검색어로 화면과 입력 양쪽에 반영된다', async () => {
+    renderBoard('ATLAS', { initialSearch: { q: '앨리스' } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 2)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 1)).toBeInTheDocument()
+    // 값만 걸고 입력을 비워 두면 사용자는 왜 걸러졌는지 알 길이 없다
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('앨리스')
+  })
+
+  it('F16-9: URL 의 assignee=unassigned 센티널이 초기 필터로 살아난다', async () => {
+    // 픽스처의 모든 이슈에 담당자가 있으므로 미배정만 남기면 결정적으로 0건이다
+    renderBoard('ATLAS', { initialSearch: { assignee: ['unassigned'] } })
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    expect(unassignedCheckbox()).toBeChecked()
+  })
+
+  // ── EC9. 미지의 에픽 키 ★ ──────────────────────────────────────────────────
+
+  it('★EC9: URL 의 알 수 없는 에픽 키는 throw 없이 그 축만 비운다', async () => {
+    renderBoard('ATLAS', { initialSearch: { epic: ['GHOST-999'] } })
+
+    // 백로그에 없는 에픽으로 전량을 감추면 「고장」으로 읽힌다 — 조건을 버리고 전량을 보인다
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 2)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+    // 걸리지도 않은 조건을 칩으로 보이면 화면이 거짓말을 한다
+    expect(screen.queryByText('GHOST-999')).toBeNull()
+  })
+
+  it('★EC9 짝: 아는 에픽 키는 URL 에서 와도 그대로 걸린다', async () => {
+    // 이 짝이 없으면 「에픽 축을 항상 비운다」로 구현해도 위 EC9 가 초록이다
+    renderBoard('ATLAS', { initialSearch: { epic: [EPIC_ALPHA] } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 0)).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('list', { name: '적용된 필터' })).getByText(EPIC_ALPHA),
+    ).toBeInTheDocument()
+  })
+
+  it('★EC9 혼합: 아는 키와 모르는 키가 섞여 오면 아는 키만 남는다', async () => {
+    renderBoard('ATLAS', { initialSearch: { epic: [EPIC_ALPHA, 'GHOST-999'] } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 1)).toBeInTheDocument()
+    })
+    expect(getColumn(ACTIVE_SPRINT_NAME, 0)).toBeInTheDocument()
+    const chips = screen.getByRole('list', { name: '적용된 필터' })
+    expect(within(chips).getByText(EPIC_ALPHA)).toBeInTheDocument()
+    expect(within(chips).queryByText('GHOST-999')).toBeNull()
+  })
+
+  it('★EC9: 「에픽 없음」 센티널은 백로그 파생 목록에 없어도 살아남는다', async () => {
+    // `NO_EPIC` 은 실제 이슈 키가 아니라 예약값이라 `useBacklogEpics` 의 목록에 절대 없다.
+    // 「목록에 없으면 버린다」로만 구현하면 이 축이 통째로 죽는다.
+    renderBoard('ATLAS', { initialSearch: { epic: [NO_EPIC] } })
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 2)).toBeInTheDocument()
+    })
+    expect(getColumn(PLANNED_SPRINT_NAME, 1)).toBeInTheDocument()
+    expect(getColumn(ACTIVE_SPRINT_NAME, 3)).toBeInTheDocument()
+  })
+
+  // ── 재마운트 기전 보존 ★ ───────────────────────────────────────────────────
+
+  it('★F16-9: URL 로 받은 검색어도 초기화하면 입력까지 비워지고 되돌아오지 않는다', async () => {
+    const user = userEvent.setup()
+    const onFilterChange = vi.fn()
+    // 링크를 받아 연 화면이다 — 타이핑을 거치지 않고도 필터바 로컬 입력이 채워져 있다
+    renderBoard('ATLAS', { initialSearch: { q: '없는제목' }, onFilterChange })
+
+    expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('없는제목')
+
+    await user.click(screen.getByRole('button', { name: BACKLOG_FILTER_RESET_LABEL }))
+
+    await waitFor(() => {
+      expect(getColumn(backlogLabels.backlogTitle, 3)).toBeInTheDocument()
+    })
+    // ★값만 비우고 입력을 그대로 두면 디바운스가 지운 검색어를 되돌려 놓아 초기화가 튕긴다
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toHaveValue('')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 100))
+    })
+    expect(screen.queryByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeNull()
+
+    // 그리고 URL 로 나가는 값에도 빈 키가 남지 않는다
+    const lastFilter = onFilterChange.mock.calls.at(-1)?.[0] as BacklogFilter
+    expect(Object.keys(filterToSearch(lastFilter))).toHaveLength(0)
   })
 
   // ── 렌더 순서 계약 ★ ───────────────────────────────────────────────────────
