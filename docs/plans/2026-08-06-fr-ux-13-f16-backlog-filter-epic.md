@@ -156,6 +156,24 @@ F16 이 끝나면 FR-UX-13 의 D1~D7 체크박스를 닫는다.
 **재사용 선례 확정** — `lib/board-filter.ts`(`searchToFilter`/`filterToSearch`/`isEmptyFilter`)와
 `IssueFilterBar.tsx`(슬롯 4종 사용 템플릿)가 그대로 대응한다. 새로 발명하지 않는다.
 
+### ★★ 착수 중 발견한 e2e 지뢰 — 섹션 안 렌더 **순서가 계약이다** (T6·T7·T9 공통)
+
+`e2e/backlog.spec.ts:253` 의 칸 locator 가 이렇게 생겼다.
+
+```
+getByRole('region').filter({ hasText: new RegExp('^' + columnName) })
+```
+
+**region 의 `textContent` 선두를 앵커링**한다. 즉 백로그/스프린트 섹션 안에 **제목보다 앞서는
+텍스트를 넣으면 그 즉시 e2e 가 죽는다**. `BacklogColumn.tsx:97-101` 주석이 이미 이 함정을
+경고하고 있었다.
+
+- **T7** — `CreateSprintForm` 은 반드시 제목 span **뒤(오른쪽)**. 앞에 두면 textContent 가
+  `스프린트 생성백로그2…` 가 되어 `^백로그` 가 즉사한다
+- **T6** — 필터바·에픽 패널을 섹션 **안**에 넣지 마라. 섹션 **바깥 상단**이 맞다
+- **처방.** 순서 계약을 **유닛 테스트로** 못박는다 — 「region textContent 가 `백로그` 로
+  시작한다」. e2e 는 느리고 늦게 도는데, 유닛에서 먼저 잡히면 원인 분리가 쉽다
+
 ---
 
 ### Task 1. 백로그 필터 모델 + 순수 필터 함수
@@ -349,9 +367,25 @@ F16 이 끝나면 FR-UX-13 의 D1~D7 체크박스를 닫는다.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`, `apps/web/src/components/backlog/CreateSprintForm.tsx`]
+- files: [`apps/web/src/components/backlog/BacklogColumn.tsx`, `apps/web/src/components/backlog/BacklogColumn.test.tsx`, `apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`, `apps/web/src/components/backlog/CreateSprintForm.tsx`]
 - depends-on: []   # ★ MINOR-1 처방으로 T6 앞으로 이동. 필터와 무관한 독립 작업이라 선행 0.
                    #   `BacklogBoard.tsx` 교집합으로 T6 와는 자동 직렬화된다(같은 wave 불가)
+
+> **★ 착수 중 plan 결함 1건 교정 (2026-08-06).** 원안의 `files` 3개에 **`BacklogColumn.tsx` 가
+> 빠져 있었다.** 「백로그 섹션 헤더」의 실체는 `BacklogColumn.tsx` 의 sticky 헤더 `div`(접기
+> 토글 · `백로그` 제목 · 카드 수 배지 · `CreateIssueEntryButton` 이 이미 여기 산다)이고
+> `BacklogBoard.tsx` 는 `<BacklogColumn>` 을 소비만 한다. **스펙·plan 어디에도
+> `BacklogColumn` 이 등장하지 않았다**(`grep -n BacklogColumn docs/{specs,plans}` → 0건).
+> 원안 3파일로는 F16-11·S7·G3 이 요구하는 「헤더 **안**」 배치가 **구조적으로 불가능**했고,
+> 밀어붙였으면 요구사항 미충족인 채 초록만 뜨는 절반짜리 봉합이 됐다.
+> implementer 가 추측 구현 대신 `NEEDS_CONTEXT` 로 멈춰 적발했다. → `files` 5개로 확대.
+>
+> **배선 방식 확정.** `headerSlot?: ReactNode` 가 아니라 **`useCallback` 으로 감싼 원시 콜백
+> prop**(`onCreateSprint`·`canManageSprint`)을 넘기고 `BacklogColumn` 이 `CreateSprintForm` 을
+> 직접 렌더한다. `BacklogColumn` 이 `memo` 래핑이라 `ReactNode` prop 은 매 렌더 새 참조가 되어
+> memo 를 무력화하는데, T6 이 **250ms 디바운스 제목 검색**을 넣으므로 입력마다 전 카드가
+> 재렌더된다(최대 1,000건). `BacklogColumn` 이 이미 `CreateIssueEntryButton` 을 직접 렌더하므로
+> 구조적으로도 일관된다.
 
 **RED** (ui 시각 트랙 — **기존 단언 뒤집기**).
 - **★ C3 필수 절차.** `BacklogBoard.test.tsx:1474` 의
@@ -485,10 +519,108 @@ F16 이 끝나면 FR-UX-13 의 D1~D7 체크박스를 닫는다.
 - **EC5 문구 1줄로 충분**. 백엔드 없이 더 나은 수단이 없고(에픽 목록 API 부재·AQL `type` 미지원
   실측), 문구를 목록 **하단**에 두어 훑은 뒤 읽히게 하면 수용 가능
 
-### ❓ Maxi 결정 대기 1건 — 게이트 1에서 질문
+### ✅ Maxi 결정 1건 — **T8 포함 확정** (2026-08-06)
 
-**T8(URL search 배선)을 이 PR 에 둘 것인가.**
+**T8(URL search 배선)을 이 PR 에 둘 것인가 → 포함.**
+근거 — 보드가 이미 URL 에 필터를 싣고 있어(`router.ts:245` `validateSearch`) 백로그만
+빠지면 **두 화면의 조작감이 갈라진다**. `lib/board-filter.ts` 왕복 매핑 선례가 그대로
+대응해 발명 요소가 없다. 비용(공유 파일 `router.ts` + 라우트-`navigate` 타입 결합)은
+**T8 을 단독 wave 에 두고 `pnpm typecheck` 를 완료 기준에 명시**하는 것으로 관리한다.
+
+<details><summary>결정 당시 제시한 trade-off (기록 보존)</summary>
 Jira 갭 목록(스펙 §1 G1~G5)에 **URL 공유는 없다**. F16-9 는 "보드와의 일관성"이라는
 **내 자체 판단**이고 정본에도 없다. 이득(새로고침/공유 보존, 보드 일관)과 비용
 (`router.ts` 886행 공유 파일 + 라우트-`navigate` 타입 결합 리스크 — learnings 2026-05-27 #4)이
 맞서므로 범위 결정은 Maxi 몫이다.
+
+</details>
+
+### 게이트 1 — ✅ 승인 (Maxi, 2026-08-06)
+
+9 task / 5 wave 로 구현 진입.
+
+---
+
+## 구현 진행 기록
+
+### 완료 task 와 커밋
+
+| Task | test (red) | feat (green) | 뮤테이션 검증 |
+|---|---|---|---|
+| T1 백로그 필터 순수 함수 | `cadcb933a` | `9353745e2` | ✅ 브랜드 타입 가드 2종 **동시** red |
+| T2 FilterBar `hiddenSections` | `6355305dc` | `100557bc7` | ✅ 양방향 (표시/숨김 각각) |
+| T3 에픽 이름 해석 훅 | `03f80a80c` | `0fe487a1f` | ✅ 4종 |
+| T5 BacklogFilterBar 래퍼 | `77d6305a5` | `3de3d3e84` | ✅ 6종 |
+| T7 CreateSprintForm 헤더 이동 | `37b68cf95` | `7449f8b5a` | ✅ **판별식 유일성 증명** |
+| T4 BacklogEpicPanel | `f6489e1b2` | `c272a0c57` | ✅ 2종 |
+
+**TDD 순서 전수 확인** — 모든 task 에서 `test:` 커밋이 `feat:` 커밋보다 앞선다.
+
+### ★ 착수 중 확정된 계약 (후속 task 와 코드리뷰가 참조)
+
+- **짝 테스트 셀렉터** — `queryAllByRole('checkbox', { name })`, 이름 후보 6종 전수.
+  `BacklogFilterBar.test.tsx` 가 `toHaveLength(0)`, `BacklogEpicPanel.test.tsx` 가 `toHaveLength(4)`.
+  두 파일이 **글자 단위로 같은 헬퍼**를 쓴다. 접근명은 `<label htmlFor>` 하나로만 준다.
+- **활성 개수 계산식** — `extraActiveCount = epicKeys.length + (query.trim() ? 1 : 0)`.
+  `trim()` 판정 기준이 `isEmptyFilter` 와 같다.
+- **검색 입력 접근명** — `백로그 검색`(`BACKLOG_SEARCH_LABEL`). `type="text"` **유지 필수** —
+  `type="search"` 로 바꾸면 상단바 전역 검색과 같은 `role="searchbox"` 로 묶여 e2e 가 죽는다.
+- **에픽 패널 접근명** — `role="region"`, 목록은 `role="list"` + `에픽 목록`(≠ `적용된 필터`).
+  region textContent 선두가 `에픽` 이라 `backlog.spec.ts:253` 앵커와 무충돌.
+- **`createSprintDisabled`** — `BacklogColumn` 에 `canManageSprint` 가 아니라 **계산된 결과**를
+  넘긴다. `canManageSprint` 만 넘기면 `isPending` 중복 제출 가드가 소실되고, 둘 다 넘기면
+  「권한 없음 OR 진행 중」 판정이 부모·자식 **두 벌**로 갈라진다. 판정 소유자를 한 곳에 고정.
+- **`useCallback` 의존은 `createSprint.mutate`** — `useMutation` 결과 객체는 렌더마다 새로
+  만들어지지만 `mutate` 는 observer 에 묶인 안정 참조다. 객체를 넣으면 memo 가 매 렌더 죽는다.
+
+### 📌 정리 대상 (머지 전 처리)
+
+1. **라벨 3종이 i18n 정본 밖에 있다.** `BACKLOG_SEARCH_LABEL`·`BACKLOG_SEARCH_PLACEHOLDER`·
+   `NO_EPIC_LABEL` 이 `BacklogFilterBar.tsx` 에 문자열 상수로 export 돼 있다. T5 의 허용 파일이
+   2개뿐이라 `i18n/backlog-labels.ts` 를 열 수 없었고, ESLint `react-refresh/only-export-components`
+   가 컴포넌트 모듈의 객체 export 를 경고로 막아 관례인 `xxxLabels` 객체를 못 썼다.
+   **관례 이탈이므로 `i18n/backlog-labels.ts` 로 옮긴다.**
+2. **`--no-verify` 사용 이력.** T5 가 두 커밋에서 pre-commit 훅을 우회했다. 사유는 타당하다 —
+   `--only` 부분 커밋 + `lint-staged` 조합이 **동료의 미커밋 파일을 stash 로 삼키는** 사고 양식
+   ([[worktree-lint-staged-steals-peer-untracked]])이고 당시 실제로 동료 3파일이 미커밋이었다.
+   훅이 돌릴 eslint 를 같은 명령으로 직접 실행해 exit 0 을 확인했고 문서 무변경이라 인덱스
+   검사도 무관하다. **최종 검증에서 전량 재확인한다.**
+3. **미추적 스크래치 파일** `apps/web/src/lib/backlog-filter.ts.bak` — 오케스트레이터가 `rm`
+   권한이 없어 Maxi 에게 삭제를 요청해 둔 상태.
+
+### ★★ 측정 함정 1건 — Playwright 파일명 조각 필터가 무효다 (오케스트레이터 지시 오류)
+
+```bash
+# 내가 지시한 형태 — 조용히 전량(695건)이 돈다
+./node_modules/.bin/playwright test backlog board-reorder quick-filter …
+
+# 올바른 형태 — 경로를 다 적어야 걸린다
+./node_modules/.bin/playwright test e2e/backlog.spec.ts e2e/quick-filter.spec.ts …
+```
+
+Playwright 1.60 에서 파일명 조각 인자가 필터로 동작하지 않는다. **실패하지 않고 전량을 돌기 때문에
+「11파일만 돌렸다」고 믿은 채 전량 결과를 보게 된다** — 결과가 초록이면 아무도 눈치채지 못한다.
+`두 목록이 서로를 검사하지 않는다`([[two-lists-never-check-each-other]])의 변종이고,
+「러너가 무엇을 실제로 돌았는가를 먼저 확인」([[github-actions-billing-block-steps-zero]])과 같은 결이다.
+
+**처방.** e2e 를 골라 돌릴 때는 **경로 전체**를 쓰고, 통과 건수가 예상 범위인지 대조한다.
+(픽스처 보강 작업이 실측으로 적발했다.)
+
+### ★ 커버리지 구멍 1건 — 적발 후 봉합 완료
+
+T9 가 보고 — `DEFAULT_BACKLOG` 이슈 7건이 **전부 `epicKey: null`** 이라 이 PR 의 간판 기능인
+「이름 있는 에픽으로 좁히기」(스펙 S2 · S3 후반)에 **e2e 증인이 없었다.**
+스펙 §2 와 §10 이 그 증인을 요구하므로 범위 확대가 아니라 **약속 이행**으로 판단해 봉합했다(`40f2b62d7`).
+
+- `ATLAS-1`(백로그 칸) → 에픽 A · `ATLAS-4`(스프린트 칸) → 에픽 B. **이슈 총수 7 불변**
+- 기대값이 전부 픽스처 파생(`NO_EPIC_ISSUE_KEYS.length` 등)이라 **기존 테스트 파손 0건**.
+  「기대값 갱신」도 「단언 약화」도 0
+- **tripwire 를 삭제가 아니라 방향을 뒤집었다** — 옛 판은 「에픽이 생기면 알려라」, 새 판은
+  「에픽 2종·섹션 분산·이름≠키·미지정 대조군이 무너지면 알려라」. 셋 중 하나만 무너져도
+  S2·S3 은 **여전히 초록인 채로** 재던 것만 조용히 줄어든다. 특히 **이름=키가 되면 정상 해석과
+  폴백이 화면에서 구별되지 않는다**
+
+### 🔧 plan 자체의 오기 1건 (실측 교정)
+
+Task 4 의 `files` 에 적은 `apps/web/src/hooks/__tests__/use-backlog-collapsed.test.ts` 는 오기다.
+실제 경로는 **`apps/web/src/hooks/use-backlog-collapsed.test.tsx`**(`__tests__/` 아님, `.tsx`).
