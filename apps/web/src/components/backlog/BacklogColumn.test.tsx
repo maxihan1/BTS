@@ -79,6 +79,7 @@ function renderColumn(
   isOver = false,
   entry?: { canCreateIssue?: boolean; onCreateIssue?: () => void },
   projectKey: string = PROJECT_KEY,
+  sprint?: { onCreateSprint?: (name: string) => void; createSprintDisabled?: boolean },
 ) {
   return render(
     <DndContext>
@@ -89,6 +90,8 @@ function renderColumn(
         isOver={isOver}
         canCreateIssue={entry?.canCreateIssue}
         onCreateIssue={entry?.onCreateIssue}
+        onCreateSprint={sprint?.onCreateSprint}
+        createSprintDisabled={sprint?.createSprintDisabled}
       />
     </DndContext>,
   )
@@ -277,6 +280,94 @@ describe('BacklogColumn — 세로 스택 레이아웃 (F15 FR-1)', () => {
     // 토글은 접근 이름을 갖되 보이는 텍스트는 없다 — 두 조건을 함께 재야 공허하지 않다.
     const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
     expect(toggle.textContent).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F16 — 스프린트 생성 폼이 백로그 섹션 헤더로 들어온다 (F16-11)
+//
+// 종전에는 `BacklogBoard` 가 세로 스택 **바깥**에서 폼을 직접 렌더했다. Jira 는 스프린트
+// 생성 진입이 백로그 섹션 헤더에 붙어 있고, 스펙 S7 이 그 배치를 요구한다.
+//
+// ★배선은 `ReactNode` 슬롯이 아니라 **원시 콜백 prop** 이다 — 이 컴포넌트는 `memo` 인데
+//   JSX 노드 prop 은 매 렌더 새 참조라 memo 를 통째로 무력화한다. 백로그는 최대 1,000건이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogColumn — 스프린트 생성 폼 (F16 F16-11)', () => {
+  it('onCreateSprint 를 주면 헤더 줄에 폼이 있고 제출이 콜백을 발화한다', async () => {
+    const user = userEvent.setup()
+    const onCreateSprint = vi.fn()
+    renderColumn(undefined, undefined, false, undefined, PROJECT_KEY, { onCreateSprint })
+
+    const form = screen.getByRole('form', { name: backlogLabels.createSprintFormLabel })
+    // ★판별식 — 헤더 div 에는 role 이 없으므로 접기 토글을 앵커로 「같은 줄」을 잰다.
+    //   region 안이기만 하면 통과하는 느슨한 단언으로 두면 폼이 드롭 영역 옆으로
+    //   내려가도 초록이 된다.
+    const toggle = screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME })
+    expect(toggle.parentElement).toContainElement(form)
+
+    await user.type(screen.getByPlaceholderText(backlogLabels.sprintNamePlaceholder), '스프린트 3')
+    await user.click(screen.getByRole('button', { name: backlogLabels.createSprint }))
+
+    expect(onCreateSprint).toHaveBeenCalledWith('스프린트 3')
+  })
+
+  it('onCreateSprint 를 안 주면 폼을 렌더하지 않는다 (기존 소비처 무회귀)', () => {
+    renderColumn()
+
+    expect(
+      screen.queryByRole('form', { name: backlogLabels.createSprintFormLabel }),
+    ).toBeNull()
+  })
+
+  it('createSprintDisabled=true 면 입력과 버튼이 함께 비활성이다', () => {
+    renderColumn(undefined, undefined, false, undefined, PROJECT_KEY, {
+      onCreateSprint: vi.fn(),
+      createSprintDisabled: true,
+    })
+
+    expect(screen.getByPlaceholderText(backlogLabels.sprintNamePlaceholder)).toBeDisabled()
+    expect(screen.getByRole('button', { name: backlogLabels.createSprint })).toBeDisabled()
+  })
+
+  it('★폼은 드롭 영역 밖(헤더)에 있다 — 드래그 앤 드롭 무회귀 (NFR-5 승계)', () => {
+    const { container } = renderColumn(undefined, undefined, false, undefined, PROJECT_KEY, {
+      onCreateSprint: vi.fn(),
+    })
+
+    const dropArea = container.querySelector('[data-droppable="backlog"]')
+    const form = screen.getByRole('form', { name: backlogLabels.createSprintFormLabel })
+    expect(dropArea).not.toBeNull()
+    expect(dropArea?.contains(form)).toBe(false)
+  })
+
+  it('★E3 승계: 섹션을 접어도 폼은 남는다 — 접기는 카드 목록을 접는 것이다', async () => {
+    const user = userEvent.setup()
+    renderColumn(undefined, undefined, false, undefined, PROJECT_KEY, {
+      onCreateSprint: vi.fn(),
+    })
+
+    await user.click(screen.getByRole('button', { name: COLLAPSE_TOGGLE_NAME }))
+
+    expect(screen.queryByText('ATLAS-1')).toBeNull()
+    expect(
+      screen.getByRole('form', { name: backlogLabels.createSprintFormLabel }),
+    ).toBeInTheDocument()
+  })
+
+  it('★★헤더 순서 계약: 폼이 있어도 region textContent 가 "백로그" 로 시작한다', () => {
+    // `backlog.spec.ts:253` 의 getColumnLocator 가 `hasText: /^백로그/` 로 칸을 찾는다.
+    // 폼을 제목 span **앞**에 두면 textContent 선두가 "스프린트 생성…" 이 되어 e2e 가
+    // 통째로 즉사한다. e2e 는 느리고 늦게 도니 유닛에서 먼저 잡는다.
+    renderColumn(undefined, undefined, false, undefined, PROJECT_KEY, {
+      onCreateSprint: vi.fn(),
+    })
+    const region = screen.getByRole('region')
+
+    // 짝 단언 — 폼이 실제로 텍스트를 기여하고 있어야 위 계약이 공허하지 않다.
+    // (폼을 아예 안 그리면 startsWith 는 당연히 통과한다)
+    expect(region.textContent).toContain(backlogLabels.createSprint)
+    expect(region.textContent?.startsWith(backlogLabels.backlogTitle)).toBe(true)
   })
 })
 

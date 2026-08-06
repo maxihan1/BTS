@@ -514,17 +514,28 @@ describe('BacklogBoard', () => {
     })
   })
 
-  // ── 스프린트 생성 폼 ─────────────────────────────────────────────────────────
+  // ── 스프린트 생성 폼 (F16 F16-11 이후 = 백로그 섹션 헤더 안) ──────────────────
+  //
+  // ★조회를 백로그 region 으로 **좁힌다**. 전역 조회로 두면 폼이 스택 밖으로 되돌아가도
+  //   이 블록이 전량 초록으로 남아, 위치 계약을 E1 하나에만 의존하게 된다.
 
   describe('스프린트 생성 폼', () => {
+    /** 백로그 섹션 안으로 조회를 좁힌다 — 폼의 새 소유자다 */
+    function getBacklogSection(): HTMLElement {
+      return screen.getByRole('region', {
+        name: backlogLabels.columnAriaLabel(backlogLabels.backlogTitle, 3),
+      })
+    }
+
     it('스프린트 이름 입력 후 생성 버튼 클릭 시 useCreateSprint.mutate를 호출한다', async () => {
       const user = userEvent.setup()
       renderBoard()
 
-      const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
+      const section = getBacklogSection()
+      const nameInput = within(section).getByPlaceholderText(/스프린트 이름/i)
       await user.type(nameInput, '신규 스프린트')
 
-      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      const createBtn = within(section).getByRole('button', { name: /스프린트 생성/i })
       await user.click(createBtn)
 
       expect(mockCreateSprintMutate).toHaveBeenCalledWith(
@@ -537,7 +548,7 @@ describe('BacklogBoard', () => {
       const user = userEvent.setup()
       renderBoard()
 
-      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      const createBtn = within(getBacklogSection()).getByRole('button', { name: /스프린트 생성/i })
       await user.click(createBtn)
 
       expect(mockCreateSprintMutate).not.toHaveBeenCalled()
@@ -1471,7 +1482,9 @@ describe('BacklogBoard — 스프린트가 0개인 백로그 (FR-UX-13 F15 E1)',
     expect(screen.queryByRole('button', { name: backlogLabels.completeSprint })).toBeNull()
   })
 
-  it('E1: 스프린트 생성 폼은 세로 스택 **바깥** 현행 위치 그대로다', async () => {
+  // ★F15 가 「이번엔 안 옮긴다」를 못박아 둔 자리다. F16 F16-11 이 그 약속을 이행하므로
+  //   **삭제가 아니라 뒤집는다** — 지우면 「테스트가 깨졌다」가 아니라 「테스트가 없다」가 된다.
+  it('E1: 스프린트 생성 폼은 세로 스택 **안** 백로그 섹션 헤더에 있다 (F16 F16-11)', async () => {
     renderBoard()
 
     // 스택 = 칸들의 공통 부모. 스프린트가 0개여도 이 컨테이너는 그대로 있어야 한다.
@@ -1479,12 +1492,22 @@ describe('BacklogBoard — 스프린트가 0개인 백로그 (FR-UX-13 F15 E1)',
     const stack = backlogColumn.parentElement
     expect(stack).not.toBeNull()
 
-    const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
-    // 스택이 폼을 삼키지 않았다 — 삼키면 카드 드롭 영역 안에 입력창이 들어간다
-    expect(stack).not.toContainElement(nameInput)
-    // 그리고 폼이 스택보다 **앞**이다 (현행 위치 = truncated 배너 다음, 스택 이전)
-    expect(nameInput.compareDocumentPosition(stack as Node) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy()
+    const form = screen.getByRole('form', { name: backlogLabels.createSprintFormLabel })
+
+    // ① 스택이 폼을 품는다 — F15 의 `not.toContainElement` 를 정확히 뒤집은 지점이다
+    expect(stack).toContainElement(form)
+    // ② 백로그 섹션(region) 안이다 — 스택의 떠 있는 형제가 아니다
+    expect(backlogColumn).toContainElement(form)
+    // ③ ★판별식 — 「region 안 아무데나」와 「헤더 줄 안」을 가른다. 헤더 div 에는
+    //    role 도 testid 도 없으므로 **이미 존재하는** 접기 토글을 앵커로 쓴다.
+    //    폼이 헤더 밖(드롭 영역 옆)으로 내려가면 여기서 즉시 red 다.
+    const toggle = screen.getByRole('button', {
+      name: backlogLabels.collapseSection(backlogLabels.backlogTitle),
+    })
+    expect(toggle.parentElement).toContainElement(form)
+    // ④ 접근명 보존 — e2e `backlog.spec.ts:876,986` 의 유닛측 대리 가드다.
+    //    이름이 바뀌면 e2e 2건이 즉사하는데 그건 느리고 늦게 돈다.
+    expect(form).toHaveAccessibleName(backlogLabels.createSprintFormLabel)
   })
 })
 
