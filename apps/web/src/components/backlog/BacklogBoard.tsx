@@ -195,6 +195,14 @@ interface BacklogFilterWiring {
   readonly filterBarKey: number
 }
 
+/** {@link useBacklogFilterWiring} 이 쥔 필터바 표시 상태 */
+interface FilterBarRemountState {
+  /** 재마운트 열쇠 */
+  readonly key: number
+  /** 초기화를 올려 두고 **URL 이 비워지기를 기다리는 중**인가 */
+  readonly awaitingReset: boolean
+}
+
 /**
  * URL 이 들고 온 에픽 키 중 **이 백로그에 실재하는 것만** 남긴다 (EC9).
  *
@@ -238,7 +246,22 @@ function useBacklogFilterWiring(
     () => withKnownEpicsOnly(filter, knownEpicKeys),
     [filter, knownEpicKeys],
   )
-  const [filterBarKey, setFilterBarKey] = useState(0)
+  const [barState, setBarState] = useState<FilterBarRemountState>({ key: 0, awaitingReset: false })
+
+  // ★★재마운트는 **URL 이 실제로 비워진 렌더**에서 일어나야 한다.
+  //
+  //   초기화 시점에 곧바로 열쇠를 올리면, 그 렌더의 `filter` 는 아직 옛 값이라 새로 마운트된
+  //   필터바가 **지운 검색어를 그대로 다시 집어 든다**. 그다음 URL 이 비워지면 디바운스가
+  //   그 값을 도로 밀어 올려 초기화가 통째로 무효가 된다 — 유닛은 초록인데 브라우저에서만
+  //   「눌러도 아무 일이 없는」 버튼이 된다(Task 8 눈확인 실측).
+  //
+  //   effect 로 미루는 것도 답이 아니다. 자식 effect 가 부모보다 **먼저** 돌아, 비워진 URL 을
+  //   본 필터바가 열쇠가 오르기 전에 낡은 값을 밀어 올린다. 그래서 렌더 중 조정
+  //   (React 공식 「prop 이 바뀔 때 state 조정」 패턴)이다 — 이 갱신은 자식이 커밋되기 전에
+  //   흡수되므로 낡은 필터바 인스턴스가 애초에 그 렌더를 보지 못한다.
+  if (barState.awaitingReset && isEmptyFilter(effectiveFilter)) {
+    setBarState({ key: barState.key + 1, awaitingReset: false })
+  }
 
   const setEpicKeys = useCallback(
     (next: string[]) => {
@@ -248,11 +271,17 @@ function useBacklogFilterWiring(
   )
 
   const reset = useCallback(() => {
+    setBarState((prev) => ({ ...prev, awaitingReset: true }))
     onFilterChange(emptyBacklogFilter())
-    setFilterBarKey((key) => key + 1)
   }, [onFilterChange])
 
-  return { filter: effectiveFilter, setFilter: onFilterChange, setEpicKeys, reset, filterBarKey }
+  return {
+    filter: effectiveFilter,
+    setFilter: onFilterChange,
+    setEpicKeys,
+    reset,
+    filterBarKey: barState.key,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
