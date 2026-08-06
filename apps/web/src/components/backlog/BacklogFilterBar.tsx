@@ -64,12 +64,22 @@ export function BacklogFilterBar({
   const [queryInput, setQueryInput] = useState(value.query)
   const debouncedQuery = useDebounce(queryInput, SEARCH_DEBOUNCE_MS)
 
-  // deps 에 value·onChange 가 있어 부모 리렌더마다 재실행되지만, 첫 줄 가드가 즉시 되돌린다.
-  // 가드 기준이 `debouncedQuery` 라 타이핑 중(디바운스 미완)에는 값이 새어 나가지 않는다.
+  // ★부모로 올리는 값은 **디바운스가 현재 입력을 따라잡은 값**뿐이다 (첫 줄).
+  //
+  //   `onReset` 은 `queryInput` 만 비우고 `useDebounce` 안의 낡은 값은 250ms 더 살아 있다.
+  //   「부모 값과 다른가」만 보면 그 낡은 검색어가 방금 지운 값을 **부모로 도로 밀어 올려**,
+  //   검색창은 비었는데 「조건에 맞는 이슈가 없습니다」가 0.25초 동안 다시 뜬다.
+  //   빈 상태 CTA 경로는 부모 재마운트(`BacklogBoard` 의 `filterBarKey`)가 막지만, 필터바
+  //   자체의 `초기화` 는 재마운트를 타지 않는다 — 두 경로는 서로를 대신하지 못한다.
+  //   (재마운트 쪽은 로컬 입력이 **안 비워지는** 경우를 막으므로 이 가드로 대체되지도 않는다.)
+  //
+  //   둘째 줄은 부모가 이미 같은 값을 쥔 경우다. 없으면 `onChange` 가 새 객체를 만들어
+  //   deps 를 다시 흔드는 무한 루프가 된다.
   useEffect(() => {
+    if (debouncedQuery !== queryInput) return
     if (debouncedQuery === value.query) return
     onChange({ ...value, query: debouncedQuery })
-  }, [debouncedQuery, value, onChange])
+  }, [queryInput, debouncedQuery, value, onChange])
 
   const epicChips: FilterChipData[] = value.epicKeys.map((key) => ({
     id: `epic-${key}`,
