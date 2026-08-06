@@ -383,6 +383,20 @@ describe('StartSprintDialog — E9 충돌 이후 입력 보존', () => {
   /** 남이 먼저 고쳐 서버가 들고 있는 값. `version` 이 올랐고 목표도 다르다 */
   const SERVER_SIDE: SprintMeta = { ...EMPTY_SPRINT, version: 9, goal: '남의 목표' }
 
+  /**
+   * 남이 바꾼 필드(`goal`·`endDate`)와 **내가 친 필드(`startDate`)가 서로 다른** 상태.
+   *
+   * ★ {@link SERVER_SIDE} 는 둘이 `goal` 하나로 겹쳐 있어서 「남이 바꿨는데 나는 안 건드린
+   *   필드」라는 조합이 **원리적으로 존재하지 않는다** — 그 픽스처 위에서는 무슨 단언을 써도
+   *   재시도가 남의 저장분을 지우는 결함을 잡을 수 없다. 그래서 픽스처를 따로 둔다.
+   */
+  const OTHERS_SAVED: SprintMeta = {
+    ...EMPTY_SPRINT,
+    version: 4,
+    goal: 'Q3 목표',
+    endDate: '2026-09-30',
+  }
+
   it('기준값만 최신으로 갈아끼우고 폼 값은 그대로 둔다 — 재시도가 내 값을 다시 보낸다', async () => {
     const user = userEvent.setup()
     installScenario({ patch: ['conflict', 'ok'] })
@@ -420,6 +434,48 @@ describe('StartSprintDialog — E9 충돌 이후 입력 보존', () => {
     expect(alert).toHaveTextContent('그대로')
     expect(screen.getByLabelText(L.goalLabel)).toHaveValue('내 목표')
     expect(screen.queryByText(/최신 값을 불러왔/)).not.toBeInTheDocument()
+  })
+
+  it('T16 — 내가 편집하지 않은 필드는 재시도 body 에서 키 자체가 빠진다 (남의 저장분 보존)', async () => {
+    const user = userEvent.setup()
+    installScenario({ patch: ['conflict', 'ok'] })
+    storedSprint = { ...OTHERS_SAVED }
+    renderDialog(EMPTY_SPRINT, OTHERS_SAVED)
+
+    // 나는 **시작일만** 친다. 종료일·목표는 손대지 않았다
+    setField(L.startDateLabel, '2026-09-01')
+    await user.click(submitButton())
+
+    expect(await screen.findByText(L.patchConflict)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: backlogLabels.retry }))
+
+    await waitFor(() => expect(calls).toEqual(['PATCH', 'PATCH', 'START']))
+    const retry = patchBodies[1]
+    // 3-state partial — **미전송이라야 무변경**이다. `null` 로 실리면 남의 값이 삭제된다
+    expect(retry).not.toHaveProperty('endDate')
+    expect(retry).not.toHaveProperty('goal')
+    // 짝 단언 — 「아무것도 안 보낸다」가 아니다. 내가 친 필드는 최신 version 으로 나간다
+    expect(retry).toEqual({ version: 4, startDate: '2026-09-01' })
+    // 목이 3-state 를 그대로 반영하므로 이 둘이 곧 「남의 저장분이 살아남았다」다
+    expect(storedSprint.goal).toBe('Q3 목표')
+    expect(storedSprint.endDate).toBe('2026-09-30')
+  })
+
+  it('T16 — 409 뒤 미편집 필드는 서버 최신 값으로 갱신돼 남이 뭘 바꿨는지 보인다', async () => {
+    const user = userEvent.setup()
+    installScenario({ patch: ['conflict'] })
+    storedSprint = { ...OTHERS_SAVED }
+    renderDialog(EMPTY_SPRINT, OTHERS_SAVED)
+
+    setField(L.startDateLabel, '2026-09-01')
+    await user.click(submitButton())
+
+    expect(await screen.findByText(L.patchConflict)).toBeInTheDocument()
+    // 내가 친 필드는 내 값 그대로, 안 건드린 둘은 남이 저장한 값을 보여준다.
+    // 「표시 갱신이 편집으로 세지 않는다」는 위 T16 단언(키 부재)이 짝으로 증명한다
+    expect(screen.getByLabelText(L.startDateLabel)).toHaveValue('2026-09-01')
+    expect(screen.getByLabelText(L.endDateLabel)).toHaveValue('2026-09-30')
+    expect(screen.getByLabelText(L.goalLabel)).toHaveValue('Q3 목표')
   })
 })
 
