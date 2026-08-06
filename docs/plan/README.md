@@ -110,7 +110,7 @@ identity-access  ─┐
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☑ D단계 |
-| personalization | [product/personalization.md](product/personalization.md) | 21 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07,08~14 12) | (없음) | ☐ D단계 (FR-UX-09 완주 · FR-UX-11 완주 · FR-UX-10 완주 · **FR-UX-12 완주(F4 #340 + F13 #341)** · UX-13~14 잔여) |
+| personalization | [product/personalization.md](product/personalization.md) | 21 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06,07,08~14 12) | (없음) | ☐ D단계 (FR-UX-09 완주 · FR-UX-11 완주 · FR-UX-10 완주 · FR-UX-12 완주(F4 #340 + F13 #341) · **FR-UX-13 완주(F5 #342 + F15 #343 + F16 #344)** · UX-14 잔여) |
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☑ D단계 |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
@@ -121,9 +121,13 @@ identity-access  ─┐
 > **Maxi 1인 선언**까지 끝나야 성립한다 (`product/<bc>.md §BC 완료 게이트`).
 > `☐ D단계` = 미완 D 단계가 1건 이상 남았다. 괄호는 그 원인 FR 이다.
 >
-> 2026-08-04 재실측 — `grep -rhoE '^- \[x\] D[0-9]+\.' product/*.md | wc -l` → **949**,
-> `[ ]` **14** · `[~]` **0** · `[!]` **0**. 즉 139 FR 중 D 단계 미완은 **14 건**이며
-> 전량 FR-UX-13~14(`product/personalization.md §4.11~§4.12`)의 D 단계다.
+> 2026-08-06 재실측 — `grep -rhoE '^- \[x\] D[0-9]+\.' product/*.md | wc -l` → **958**,
+> `[ ]` **7** · `[~]` **0** · `[!]` **0**. 즉 139 FR 중 D 단계 미완은 **7 건**이며
+> 전량 FR-UX-14(`product/personalization.md §4.12`)의 D 단계다 — **FR-UX-13 이 완주하며
+> 미완 FR 이 2건에서 1건으로 줄었다.**
+> **FR-UX-13(백로그 사용성)은 F5(PR #342) + F15(PR #343) + F16(PR #344)로 완주했다** —
+> F16 이 필터바·에픽 패널을 얹으며 D1~D7 을 함께 닫았고, 3PR 전량 `backend/` 변경 **0파일**이라
+> D3·D4·D5 는 「없음 확정」으로 닫혔다.
 > **FR-UX-12 는 F4(PR #340) + F13(PR #341)로 완주했다** — F13 이 상단바를 `전역 검색`
 > 입력창으로 바꾸며 D6/D7 을 함께 닫았다(FR-UX-10 #336 · FR-UX-11 #338 과 동형).
 > FR-UX-09 는 2026-08-03 PR #333 으로 완주했고,

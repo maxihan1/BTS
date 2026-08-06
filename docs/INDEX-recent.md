@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-08-06 | fr-ux-13-f16-backlog-filter-epic | ✔ | ✔ | — | — | FR-UX-13 FR-UX-14 |
+| 2026-08-06 | fr-ux-13-f16-backlog-filter-epic | ✔ | ✔ | ✔ | — | FR-UX-13 FR-UX-14 |
 | 2026-08-05 | fr-ux-12-f13-global-search-input | ✔ | ✔ | ✔ | — | FR-SR-01 FR-UX-04 FR-UX-07 FR-UX-12 |
 | 2026-08-05 | fr-ux-13-f15-backlog-vertical-stack | ✔ | ✔ | ✔ | — | FR-UX-13 |
 | 2026-08-05 | fr-ux-13-f5-backlog-card-assignee | ✔ | ✔ | ✔ | — | FR-UX-13 FR-UX-14 |
