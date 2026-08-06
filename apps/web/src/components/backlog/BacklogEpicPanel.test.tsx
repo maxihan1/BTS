@@ -54,6 +54,22 @@ const EPIC_NAMES: ReadonlyMap<string, string> = new Map([
 ])
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ★ 긴 이름 픽스처 — 실브라우저 눈확인이 적발한 하드 클립 결함의 증인
+//
+// 위 픽스처 이름은 8자 안팎이라 어떤 너비에서도 넘치지 않는다. 그래서 **말줄임이 실제로
+// 도는지를 한 번도 재지 못했고**, `display:flex` 인 `<label>` 에 `truncate` 를 얹은
+// 오구현이 유닛 전량 초록을 통과했다 — `text-overflow` 는 익명 flex 아이템(= flex 컨테이너
+// 직속 텍스트)에 적용되지 않아, 긴 이름이 말줄임표 없이 글자 중간에서 잘렸다.
+// 이 픽스처가 봉합의 핵심이라 **길이 하한도 S10a 가 함께 못박는다**(다시 짧아지면 실명한다).
+// 기본 픽스처(`EPIC_KEYS`)에는 넣지 않는다 — S1a 의 4개와 짝 셀렉터 목록을 건드리지 않기 위해.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EPIC_LONG = 'ATLAS-300'
+const EPIC_LONG_NAME = '2026 상반기 로그인 인증 체계 전면 개편 및 보안 감사 대응 로드맵 수립'
+/** 이 하한 밑으로 내려가면 패널 폭 안에 다 들어가 결함이 다시 안 잡힌다 */
+const EPIC_LONG_NAME_MIN_LENGTH = 40
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ★★ C4 짝 테스트의 공유 셀렉터
 //
 // 에픽 선택 컨트롤의 계약은 **`role="checkbox"` + 접근명 = 에픽 표시 이름**이다.
@@ -110,6 +126,37 @@ function collapseToggle(): HTMLElement {
 /** 에픽 목록 — 접근명은 `적용된 필터`(FilterBar)와 **달라야** 한다 */
 function epicList(): HTMLElement {
   return screen.getByRole('list', { name: EPIC_LIST_ARIA_LABEL })
+}
+
+/** 긴 이름 에픽 **한 종만** 그린다 — 기본 픽스처의 개수/순서 단언과 섞이지 않게 */
+function renderLongNamePanel() {
+  return renderPanel({ epicKeys: [EPIC_LONG], epicNames: new Map([[EPIC_LONG, EPIC_LONG_NAME]]) })
+}
+
+/**
+ * class 속성을 **토큰 배열**로 준다.
+ *
+ * 부분 문자열 검사(`className.includes('flex')`)는 `flex-1`·`inline-flex` 에도 걸려
+ * 판정이 무뎌진다. 「이 요소가 flex 컨테이너인가」는 토큰 일치로만 갈린다.
+ */
+function classTokens(element: Element): string[] {
+  return (element.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+}
+
+/**
+ * 에픽 이름 텍스트를 **직접 가진 요소**와 그 조상 `<label>`.
+ *
+ * `getByText` 는 자식 텍스트 노드만 보므로 이름을 감싼 요소가 정확히 잡힌다.
+ * 조상 `<label>` 이 없으면 던진다 — 접근명이 `<label htmlFor>` 에서 온다는 계약(S9a)이
+ * 여기서 함께 재진다.
+ */
+function epicNameNodes(name: string): { text: HTMLElement; label: HTMLLabelElement } {
+  const text = screen.getByText(name)
+  const label = text.closest('label')
+  if (label === null) {
+    throw new Error(`에픽 이름 「${name}」이 <label> 안에 없다 — 접근명 계약 파손`)
+  }
+  return { text, label }
 }
 
 beforeEach(() => {
@@ -440,10 +487,13 @@ describe('BacklogEpicPanel — S9 접근성', () => {
     renderPanel()
 
     const control = screen.getByRole(EPIC_CONTROL_ROLE, { name: EPIC_ALPHA_NAME })
-    const label = screen.getByText(EPIC_ALPHA_NAME)
+    // 이름 텍스트는 말줄임 때문에 별도 요소가 감싼다(S10a). 연결을 지는 것은 그 조상
+    // `<label>` 이고, 그것이 없으면 `epicNameNodes` 가 던진다 — 「label 요소다」는 거기서 재진다.
+    const { label } = epicNameNodes(EPIC_ALPHA_NAME)
 
-    expect(label.tagName).toBe('LABEL')
-    expect(label).toHaveAttribute('for', control.getAttribute('id'))
+    expect(label.htmlFor).toBe(control.getAttribute('id'))
+    // 비-공허 짝 — id 가 빈 문자열이면 위 단언이 공허하게 통과한다
+    expect(control.getAttribute('id')).toBeTruthy()
   })
 
   it('S9b: 같은 화면에 두 패널이 있어도 id 가 충돌하지 않는다 (useId)', () => {
@@ -472,5 +522,62 @@ describe('BacklogEpicPanel — S9 접근성', () => {
 
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S10. 긴 에픽 이름 — 말줄임 + 전문 확인 경로 (실브라우저 눈확인 적발)
+//
+// 결함. `truncate` 가 `display:flex` 인 `<label>` 에 붙어 있어 `text-overflow` 가 죽고,
+// 긴 이름이 말줄임표 없이 글자 중간에서 하드 클립됐다. `title` 도 없어 hover 로도
+// 전문을 볼 수 없었다. 라이트/다크 양쪽 동일 재현.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogEpicPanel — S10 긴 이름 말줄임', () => {
+  it('S10a: ★ 말줄임은 텍스트를 직접 가진 요소가 지고, 그 요소는 flex 컨테이너가 아니다', () => {
+    // 픽스처가 짧아지면 이 describe 전체가 실명한다 — 하한을 테스트로 못박는다
+    expect(EPIC_LONG_NAME.length).toBeGreaterThanOrEqual(EPIC_LONG_NAME_MIN_LENGTH)
+
+    renderLongNamePanel()
+
+    const { text, label } = epicNameNodes(EPIC_LONG_NAME)
+
+    // 텍스트가 label 직속이면 익명 flex 아이템이라 ellipsis 가 적용되지 않는다
+    expect(text).not.toBe(label)
+    expect(classTokens(text)).toContain('truncate')
+    expect(classTokens(text)).not.toContain('flex')
+    // 짝 — 「옮겼다」를 잰다. 양쪽에 두면 같은 결함이 label 쪽에 반쪽 남는다
+    expect(classTokens(label)).not.toContain('truncate')
+  })
+
+  it('S10b: 긴 이름은 title 로 전문을 되찾을 수 있다 — 잘린 뒤에도 확인 경로가 남는다', () => {
+    renderLongNamePanel()
+
+    expect(epicNameNodes(EPIC_LONG_NAME).text).toHaveAttribute('title', EPIC_LONG_NAME)
+  })
+
+  it('S10c: ★★ 접근명 불변 짝 — title 을 붙여도 체크박스 이름은 에픽 이름 정확히 1개다', () => {
+    renderLongNamePanel()
+
+    // 짝 셀렉터(role=checkbox + name=에픽 이름)가 그대로 물린다. 이름이 오염되면
+    // `BacklogFilterBar.test.tsx` 의 **부재 단언**이 조용히 공허해진다(없는 이름을 0개 셈).
+    expect(screen.getAllByRole(EPIC_CONTROL_ROLE, { name: EPIC_LONG_NAME })).toHaveLength(1)
+
+    // 이름 소스는 `<label htmlFor>` 하나뿐 — title 도 aria-label 도 이름을 대신하지 않는다
+    const control = screen.getByRole(EPIC_CONTROL_ROLE, { name: EPIC_LONG_NAME })
+    expect(control).not.toHaveAttribute('aria-label')
+    expect(control).not.toHaveAttribute('title')
+  })
+
+  it('S10d: 짧은 이름도 같은 구조다 — 짝 셀렉터 4개 그대로 (회귀 없음)', () => {
+    renderPanel()
+
+    // 구조를 바꾼 뒤에도 S1a 의 짝 단언이 성립한다
+    expect(queryEpicControls()).toHaveLength(4)
+
+    expect(classTokens(epicNameNodes(EPIC_ALPHA_NAME).text)).toContain('truncate')
+    expect(epicNameNodes(EPIC_ALPHA_NAME).text).toHaveAttribute('title', EPIC_ALPHA_NAME)
+    // 항목마다 규칙이 갈리지 않는다 — 「에픽 없음」 센티널 라벨도 같은 취급이다
+    expect(epicNameNodes(NO_EPIC_LABEL).text).toHaveAttribute('title', NO_EPIC_LABEL)
   })
 })
