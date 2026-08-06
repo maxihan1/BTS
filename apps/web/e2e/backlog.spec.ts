@@ -59,7 +59,7 @@ import type { Locator, Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { backlogLabels } from '../src/i18n/backlog-labels'
 import { filterBarLabels } from '../src/i18n/filter-bar-labels'
-import { DEFAULT_BACKLOG } from '../src/mocks/backlog-fixtures'
+import { BACKLOG_EPIC_A, BACKLOG_EPIC_B, DEFAULT_BACKLOG } from '../src/mocks/backlog-fixtures'
 import { userAliceFixture } from '../src/mocks/user-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -773,19 +773,44 @@ const NO_EPIC_ISSUE_KEYS = ALL_FIXTURE_ISSUES.filter((issue) => issue.epicKey ==
 )
 
 /**
- * 에픽이 **지정된** 이슈 키.
+ * 에픽이 **지정된** 이슈 키 전량 — F16-S3 후반(「에픽 없음」에서 **사라지는** 쪽)의 기대 집합.
  *
- * ★현재 `DEFAULT_BACKLOG` 에는 0건이다. 그래서 F16-S2·S3 은 「에픽 없음」축까지만 재고
- * 「이름 있는 에픽을 고르면 **다른 에픽 이슈가 사라진다**」는 절반을 **재지 못한다**.
- * 그 경계를 F16-S3 의 짝 테스트가 tripwire 로 지킨다 — 픽스처에 에픽이 생기는 순간 red 다.
+ * 픽스처가 이 집합을 비우면 S3 후반이 아무것도 재지 않는 자동 통과로 바뀐다.
+ * 「F16 에픽 픽스처」 tripwire 가 그 퇴화를 막는다.
  */
 const EPIC_ASSIGNED_ISSUE_KEYS = ALL_FIXTURE_ISSUES.filter((issue) => issue.epicKey !== null).map(
   (issue) => issue.key,
 )
 
+/** 한 에픽에 소속된 이슈 키 — 「그 에픽만 남는다」의 기대 집합 */
+function issueKeysOfEpic(epicKey: string): string[] {
+  return ALL_FIXTURE_ISSUES.filter((issue) => issue.epicKey === epicKey).map((issue) => issue.key)
+}
+
+/** 에픽 A 소속 이슈 키 — 픽스처상 **백로그 칸**에 있다 */
+const EPIC_A_ISSUE_KEYS = issueKeysOfEpic(BACKLOG_EPIC_A.key)
+
+/** 에픽 B 소속 이슈 키 — 픽스처상 **스프린트 칸**에 있다 */
+const EPIC_B_ISSUE_KEYS = issueKeysOfEpic(BACKLOG_EPIC_B.key)
+
+/**
+ * 픽스처에 등장하는 서로 다른 에픽 키 (등장 순).
+ *
+ * 에픽 패널이 그려야 하는 항목의 모수이자, tripwire 가 「2종 이상」을 재는 기준이다.
+ * `flatMap` 으로 걸러 `(string | null)[]` 가 아니라 `string[]` 로 좁힌다.
+ */
+const DISTINCT_EPIC_KEYS = [
+  ...new Set(ALL_FIXTURE_ISSUES.flatMap((issue) => (issue.epicKey === null ? [] : [issue.epicKey]))),
+]
+
 /** 한 섹션에서 alice 담당 이슈가 몇 건인지 — 헤더 배지가 말해야 하는 값 */
 function aliceCountIn(issues: readonly { assigneeId: string | null }[]): number {
   return issues.filter((issue) => issue.assigneeId === userAliceFixture.id).length
+}
+
+/** 한 섹션에서 **에픽이 지정된** 이슈가 몇 건인지 — 두 에픽을 함께 고른 뒤 헤더가 말해야 하는 값 */
+function epicAssignedCountIn(issues: readonly { epicKey: string | null }[]): number {
+  return issues.filter((issue) => issue.epicKey !== null).length
 }
 
 /**
@@ -1760,8 +1785,9 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
 //
 // 시나리오 개요 (스펙 §2 S1~S8 + URL 왕복).
 //   F16-S1.  담당자 필터   — 백로그·스프린트 **모든 섹션**이 동시에 좁혀지고 헤더 수도 따라간다
-//   F16-S2.  에픽 패널     — 패널에서 고르면 필터바 **활성 칩**으로 나타나고 칩 ✕ 로도 풀린다
-//   F16-S3.  「에픽 없음」  — 에픽 미지정 이슈만 남는다 (+ 커버리지 경계 tripwire 짝)
+//   F16-S2.  에픽 패널     — 이름 있는 에픽을 고르면 그 에픽만 남고 필터바 **활성 칩**·✕ 로도 푼다
+//   F16-S2 짝. 두 에픽     — 둘 다 고르면 **합집합**이 남고 섹션마다 헤더 수가 따로 따라간다
+//   F16-S3.  「에픽 없음」  — 에픽 미지정만 남고 **에픽 지정 이슈는 사라진다** (+ 픽스처 tripwire)
 //   F16-S4.  제목 검색     — 대소문자를 무시한다 / (S4b) 디바운스로 URL 갱신이 키 수보다 적다
 //   F16-S5.  결과 0건      — 안내 + 「필터 초기화」 → 전량 복귀 (+ 두 초기화 버튼 공존 계약)
 //   F16-S6.  패널 접기     — 새로고침 후에도 접힌 채다 / (S6b) 다른 프로젝트는 펼쳐져 있다
@@ -1782,12 +1808,14 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
 //     가 아니라 **localStorage 접힘 상태**와 **주소창**이라 새로고침이 유일하게 정직한
 //     수단이다 (S14 와 같은 사유).
 //
-// ★커버리지 경계 (숨기지 않는다).
-//   `DEFAULT_BACKLOG` 의 모든 이슈가 `epicKey: null` 이고, 백로그 응답에 에픽을 심을 수단이
-//   `src/mocks/` 밖에 없다 (`appendCreatedIssueToBacklog` 도 `epicKey: null` 고정).
-//   그래서 F16-S2·S3 은 **「에픽 없음」축까지만** 재고, 「이름 있는 에픽을 고르면 다른 에픽의
-//   이슈가 사라진다」는 절반은 e2e 증인이 없다(유닛 `lib/backlog-filter.test.ts` 가 잰다).
-//   그 경계는 F16-S3 의 tripwire 테스트가 지킨다 — 픽스처에 에픽이 생기는 순간 red 다.
+// ★에픽 축의 증인 (옛 커버리지 경계를 닫은 자리).
+//   한때 `DEFAULT_BACKLOG` 의 모든 이슈가 `epicKey: null` 이라 「이름 있는 에픽을 고르면 다른
+//   에픽 이슈가 사라진다」에 e2e 증인이 없었고, 그 사실을 tripwire 로만 표시해 뒀다.
+//   지금은 픽스처가 에픽 2종을 **다른 섹션에 나눠** 들고 있어 그 절반이 실제로 측정된다
+//   (`ATLAS-1` → 에픽 A / 백로그 칸, `ATLAS-4` → 에픽 B / 스프린트 칸, 나머지 5건 미지정).
+//   tripwire 는 지우지 않고 **지키는 대상을 바꿨다** — 이제 「에픽이 생기면 알려라」가 아니라
+//   「이 세 조건(2종 · 섹션 분산 · 이름≠키)이 무너지면 알려라」다. 조건이 무너지면 S2·S3 은
+//   여전히 초록인 채로 재던 것만 줄어들기 때문이다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
@@ -1855,69 +1883,164 @@ test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // F16-S2. 에픽 패널로 고르면 필터바 칩에 나타난다 (스펙 S2 · F16-3 · C4)
+  // F16-S2. 이름 있는 에픽으로 백로그를 좁힌다 (스펙 S2 · F16-3 · F16-6 · C4)
   //
-  // Given  에픽 선택 **컨트롤은 패널 하나뿐**이고(C4 단일 소유권) 활성 칩은 없다
-  // When   패널에서 항목을 고른다
-  // Then   필터바 활성 칩에 같은 이름이 나타난다
-  // When   그 칩의 ✕ 를 누른다
-  // Then   칩이 사라지고 **패널 체크도 함께 풀린다** (패널 체크 해제와 동일 결과)
+  // Given  패널이 에픽을 **키가 아니라 사람이 읽는 이름**으로 보여 주고, 활성 칩은 없다
+  //        에픽 선택 **컨트롤은 패널 하나뿐**이다 (C4 단일 소유권)
+  // When   에픽 A 를 체크한다
+  // Then   ① A 소속 이슈만 남고 ② B 소속과 에픽 미지정은 사라지고
+  //        ③ 필터바 활성 칩이 **에픽 A 의 이름**을 말한다
+  // When   ④ 그 칩의 ✕ 를 누른다
+  // Then   칩이 사라지고 **패널 체크도 함께 풀리며** 카드가 전량 복귀한다
+  //
+  // ★이 시나리오가 이 PR 의 간판이다. 「에픽 없음」축만 재던 옛 판(§에픽 축의 증인)은
+  //   에픽 축이 아무것도 거르지 않는 오구현으로도 통과했다 — 걸러질 대상이 없었기 때문이다.
+  //
+  // ★「이름으로 보인다」의 비-공허. 이름을 못 얻으면 패널은 **키를 그대로** 보여 준다(F16-6).
+  //   그래서 이름으로 조회하는 것만으로는 부족하고, **키로는 조회되지 않는다**를 함께 잰다.
+  //   픽스처가 이름≠키를 보장하는 것은 「F16 에픽 픽스처」 tripwire 의 몫이다.
   //
   // ★C4 짝. 「필터바에 선택 컨트롤이 없다」만 단언하면 패널에도 없을 때 통과하는 공허한
   //   단언이다. 같은 셀렉터로 ①화면 전체에 그 체크박스가 1개 ②그 1개가 **패널 목록 안**임을
   //   함께 잰다 — 그래야 「어디에도 없음」과 「패널에만 있음」이 구별된다.
-  //
-  // ★고르는 항목이 「에픽 없음」인 이유는 픽스처에 이름 있는 에픽이 0종이기 때문이다
-  //   (§커버리지 경계). 칩 왕복 계약 자체는 축이 무엇이든 같다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('F16-S2 에픽 패널 — 선택이 필터바 활성 칩으로 나타나고 칩 ✕ 로도 해제된다', async ({ page }) => {
+  test('F16-S2 에픽 패널 — 이름 있는 에픽을 고르면 그 에픽 이슈만 남고 칩 ✕ 로 되돌아온다', async ({
+    page,
+  }) => {
+    // Given. 재는 대상과 사라질 대조군이 모두 실재한다 (둘 중 하나라도 0건이면 자동 통과다)
+    expect(EPIC_A_ISSUE_KEYS.length).toBeGreaterThan(0)
+    expect([...EPIC_B_ISSUE_KEYS, ...NO_EPIC_ISSUE_KEYS].length).toBeGreaterThan(0)
+
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
-    await expect(getBacklogColumn(page)).toBeVisible()
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
 
-    // Given. 에픽 선택 컨트롤은 화면에 **하나뿐**이고 그것은 패널 목록 안에 있다 (C4 짝)
-    const option = getEpicOption(page, NO_EPIC_LABEL)
-    await expect(option).toHaveCount(1)
+    // Given. 패널이 에픽을 **이름**으로 보여 준다 — 키가 아니다 (F16-6 폴백과 갈린다)
+    const epicA = getEpicOption(page, BACKLOG_EPIC_A.summary)
+    await expect(epicA).toHaveCount(1)
+    await expect(getEpicOption(page, BACKLOG_EPIC_A.key)).toHaveCount(0)
+
+    // Given. 그 컨트롤은 화면에 **하나뿐**이고 패널 목록 안에 있다 (C4 짝)
     await expect(
-      getEpicList(page).getByRole('checkbox', { name: NO_EPIC_LABEL, exact: true }),
+      getEpicList(page).getByRole('checkbox', { name: BACKLOG_EPIC_A.summary, exact: true }),
     ).toHaveCount(1)
-    await expect(option).not.toBeChecked()
+    await expect(epicA).not.toBeChecked()
     await expect(getActiveChipList(page)).toHaveCount(0)
 
-    // When. 패널에서 고른다
-    await option.check()
+    // When. 에픽 A 를 고른다
+    await epicA.check()
 
-    // Then. 필터바 활성 칩에 같은 이름이 나타난다 (F16-3)
-    await expect(getActiveChipList(page)).toContainText(NO_EPIC_LABEL)
-    await expect(option).toBeChecked()
+    // Then. ① A 소속만 남는다
+    await expect(getAllCards(page)).toHaveCount(EPIC_A_ISSUE_KEYS.length)
+    for (const key of EPIC_A_ISSUE_KEYS) {
+      await expect(getCardLocator(page, key)).toBeVisible()
+    }
 
-    // When. 칩의 ✕ 로 해제한다
+    // Then. ② B 소속과 에픽 미지정은 사라진다
+    for (const key of [...EPIC_B_ISSUE_KEYS, ...NO_EPIC_ISSUE_KEYS]) {
+      await expect(getCardLocator(page, key)).toHaveCount(0)
+    }
+
+    // Then. ③ 활성 칩이 **에픽 이름**을 말한다 (F16-3 — 칩도 키를 새어 보내지 않는다)
+    await expect(getActiveChipList(page)).toContainText(BACKLOG_EPIC_A.summary)
+    await expect(getActiveChipList(page)).not.toContainText(BACKLOG_EPIC_A.key)
+    await expect(epicA).toBeChecked()
+
+    // When. ④ 칩의 ✕ 로 해제한다
     await page
       .getByRole('button', {
-        name: filterBarLabels.chip.removeAriaLabel(NO_EPIC_LABEL),
+        name: filterBarLabels.chip.removeAriaLabel(BACKLOG_EPIC_A.summary),
         exact: true,
       })
       .click()
 
     // Then. 칩이 사라지고 패널 체크도 함께 풀린다 — 두 UI 가 같은 상태를 말한다
     await expect(getActiveChipList(page)).toHaveCount(0)
-    await expect(option).not.toBeChecked()
+    await expect(getEpicOption(page, BACKLOG_EPIC_A.summary)).not.toBeChecked()
+
+    // Then. 카드가 전량 복귀한다 — 「칩만 지우고 필터는 남는」 반쪽 해제와 갈린다
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // F16-S2 짝. 두 에픽을 함께 고르면 **합집합**이다 (스펙 S2 · F16-7 · F16-8)
+  //
+  // Given  에픽 A 는 백로그 칸에, 에픽 B 는 스프린트 칸에 있다 (픽스처 배치)
+  // When   둘 **다** 체크한다
+  // Then   두 에픽 소속이 합집합으로 남고(축 안에서 OR), 섹션마다 헤더 수가 따로 따라가며,
+  //        「2개 적용 중」이 보인다
+  //
+  // ★왜 짝이 필요한가. F16-S2 하나만으로는 에픽 축이 **AND** 로 잘못 구현돼도(둘을 고르면
+  //   0건) 알 수 없다 — S2 는 한 개만 고르기 때문이다. 합집합은 그 오구현과 정확히 갈린다.
+  // ★왜 섹션 헤더까지 재나. 두 에픽이 **서로 다른 섹션**에 있으므로, 헤더 수가 섹션별로
+  //   갈라지는 것 자체가 「필터가 모든 섹션에 동시에 걸린다」(F16-7)의 증인이다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('F16-S2 짝 — 에픽 A·B 를 함께 고르면 두 에픽의 합집합이 남는다 (축 안에서 OR)', async ({
+    page,
+  }) => {
+    // Given. 두 에픽이 각각 실재하고 **서로 다른 이슈**를 가리킨다 (겹치면 합집합이 안 갈린다)
+    expect(EPIC_A_ISSUE_KEYS.length).toBeGreaterThan(0)
+    expect(EPIC_B_ISSUE_KEYS.length).toBeGreaterThan(0)
+    const unionKeys = [...EPIC_A_ISSUE_KEYS, ...EPIC_B_ISSUE_KEYS]
+    expect(new Set(unionKeys).size).toBe(unionKeys.length)
+    expect(unionKeys.length).toBeLessThan(TOTAL_ISSUE_COUNT)
+
+    await loginAsAlice(page)
+    await page.goto(BACKLOG_URL)
+    await expect(getAllCards(page)).toHaveCount(TOTAL_ISSUE_COUNT)
+
+    // When. 둘 다 고른다
+    await getEpicOption(page, BACKLOG_EPIC_A.summary).check()
+    await getEpicOption(page, BACKLOG_EPIC_B.summary).check()
+
+    // Then. 두 항목이 **동시에** 체크돼 있다 — 뒤엣것이 앞엣것을 덮는 단일 선택 오구현과 갈린다
+    await expect(getEpicOption(page, BACKLOG_EPIC_A.summary)).toBeChecked()
+    await expect(getEpicOption(page, BACKLOG_EPIC_B.summary)).toBeChecked()
+
+    // Then. 합집합이 남는다 — 교집합(0건)도, 전량도 아니다
+    await expect(getAllCards(page)).toHaveCount(unionKeys.length)
+    for (const key of unionKeys) {
+      await expect(getCardLocator(page, key)).toBeVisible()
+    }
+    for (const key of NO_EPIC_ISSUE_KEYS) {
+      await expect(getCardLocator(page, key)).toHaveCount(0)
+    }
+
+    // Then. 섹션마다 헤더 수가 따로 따라간다 (F16-7 · F16-8)
+    await expectSectionCount(
+      getBacklogColumn(page),
+      BACKLOG_COLUMN_NAME,
+      epicAssignedCountIn(DEFAULT_BACKLOG.backlog),
+    )
+    for (const entry of DEFAULT_BACKLOG.sprints) {
+      await expectSectionCount(
+        getColumnLocator(page, entry.sprint.name),
+        entry.sprint.name,
+        epicAssignedCountIn(entry.issues),
+      )
+    }
+
+    // Then. 한 축에 값 2개 = 「2개 적용 중」
+    await expect(page.getByText(filterBarLabels.count.applied(2), { exact: true })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
   // F16-S3. 에픽 없는 이슈만 본다 (스펙 S3 · EC2)
   //
-  // Given  에픽 미지정 이슈가 실재한다
+  // Given  에픽 미지정 이슈와 **에픽 지정 이슈가 둘 다** 실재한다
   // When   에픽 패널의 「에픽 없음」을 선택한다
-  // Then   `epicKey === null` 인 이슈만 남는다
+  // Then   `epicKey === null` 인 이슈만 남고, **에픽이 지정된 이슈는 사라진다**
   //
   // ★이 단언이 무엇을 가르나. `NO_EPIC` 은 실제 이슈 키가 아니라 예약 센티널이라,
   //   `epicKeys.includes(issue.epicKey)` 처럼 순진하게 비교하면 **화면이 통째로 0건**이 된다.
   //   즉 「미지정 이슈가 전부 남는다」는 그 오구현과 정확히 갈린다.
+  // ★후반(「에픽 지정 이슈가 사라진다」)은 한때 재지 못하던 절반이다(§에픽 축의 증인).
+  //   그쪽이 없으면 「에픽 없음」이 **아무도 거르지 않는** 구현으로도 통과한다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('F16-S3 「에픽 없음」 — 에픽 미지정 이슈만 남는다', async ({ page }) => {
-    // Given. 재는 대상이 실재한다 (0건이면 아래 단언이 자동 참이 된다)
+  test('F16-S3 「에픽 없음」 — 에픽 미지정만 남고 에픽 지정 이슈는 사라진다', async ({ page }) => {
+    // Given. 남을 쪽과 사라질 쪽이 **둘 다** 실재한다 (한쪽이 0건이면 그 단언이 자동 참이 된다)
     expect(NO_EPIC_ISSUE_KEYS.length).toBeGreaterThan(0)
+    expect(EPIC_ASSIGNED_ISSUE_KEYS.length).toBeGreaterThan(0)
 
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
@@ -1927,8 +2050,8 @@ test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
     await getEpicOption(page, NO_EPIC_LABEL).check()
 
     // Then. **필터가 실제로 걸렸다.** 이 단언이 없으면 「클릭이 아무 일도 안 했다」와
-    //       아래의 「전부 남는다」가 구별되지 않는다 — 현재 픽스처는 미지정 이슈가
-    //       전량이라 기대 카드 수가 필터 전과 같기 때문이다 (§커버리지 경계).
+    //       아래의 「미지정이 전부 남는다」가 헷갈릴 여지가 남는다 — 축 자체가 걸렸음을
+    //       카드와 무관한 두 창구(활성 개수 · 주소창)로 못박는다.
     await expect(page.getByText(filterBarLabels.count.applied(1), { exact: true })).toBeVisible()
     await expect
       .poll(() => decodeURIComponent(new URL(page.url()).search))
@@ -1939,23 +2062,65 @@ test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
     for (const key of NO_EPIC_ISSUE_KEYS) {
       await expect(getCardLocator(page, key)).toBeVisible()
     }
+
+    // Then. 후반 — 에픽이 지정된 이슈는 사라진다
+    for (const key of EPIC_ASSIGNED_ISSUE_KEYS) {
+      await expect(getCardLocator(page, key)).toHaveCount(0)
+    }
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // F16-S3 짝 — 커버리지 경계 tripwire
+  // F16 에픽 픽스처 tripwire — S2·S2 짝·S3 이 **재는 것을 잃지 않게** 한다
   //
-  // 위 F16-S3 은 「에픽 지정 이슈가 **걸러진다**」는 나머지 절반을 재지 못한다. 픽스처에
-  // 에픽이 0종이라 걸러질 대상이 없기 때문이다(§커버리지 경계). 그 사실이 **조용히**
-  // 바뀌면 F16-S3 은 아무 경고 없이 반쪽만 지키는 테스트가 된다.
-  // 픽스처에 에픽이 생기는 순간 여기서 터지게 해 둔다.
+  // 옛 판은 「픽스처에 에픽이 생기면 알려라」였다(그때는 0종이라 절반을 못 쟀다).
+  // 지금은 에픽이 실재하므로 지키는 대상을 **반대 방향**으로 바꾼다 — 아래 세 조건 중
+  // 하나라도 무너지면 위 세 시나리오는 **여전히 초록인 채로** 재던 것만 조용히 줄어든다.
+  //
+  //   ① 에픽이 2종 이상이고 서로 다르다        → 없으면 「A 를 고르면 B 가 사라진다」가 죽는다
+  //   ② 백로그 칸과 스프린트 칸에 나뉘어 있다  → 없으면 「모든 섹션에 동시 적용」이 죽는다
+  //   ③ 각 에픽의 이름이 **키와 다르다**       → 같으면 「이름으로 보인다」가 공허해진다
+  //
+  // ③ 이 특히 조용하다. 이름 해석이 실패하면 패널은 키를 보여 주는데(F16-6 폴백),
+  // 이름과 키가 같으면 그 폴백과 정상 해석이 화면에서 구별되지 않는다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('F16-S3 짝 — 픽스처에 에픽 지정 이슈가 생기면 「걸러진다」 절반을 추가해야 한다', () => {
+  test('F16 에픽 픽스처 — 2종 · 섹션 분산 · 이름≠키 가 유지된다 (무너지면 S2·S3 이 반쪽이 된다)', () => {
+    // ① 2종 이상 · A 와 B 가 **둘 다** 실재한다 (순서는 재지 않는다 — 재는 것은 존재다)
+    const twoKindsMessage =
+      'DEFAULT_BACKLOG 의 서로 다른 에픽이 2종 미만이거나 A·B 가 사라졌습니다. ' +
+      'F16-S2 의 「에픽 A 를 고르면 에픽 B 이슈가 사라진다」에 대조군이 없어집니다.'
+    expect(DISTINCT_EPIC_KEYS.length, twoKindsMessage).toBeGreaterThanOrEqual(2)
+    expect(DISTINCT_EPIC_KEYS, twoKindsMessage).toContain(BACKLOG_EPIC_A.key)
+    expect(DISTINCT_EPIC_KEYS, twoKindsMessage).toContain(BACKLOG_EPIC_B.key)
+
+    // ② 백로그 칸과 스프린트 칸에 **각각** 있다
     expect(
-      EPIC_ASSIGNED_ISSUE_KEYS,
-      'DEFAULT_BACKLOG 에 epicKey 가 있는 이슈가 생겼습니다. F16-S2 에 「이름 있는 에픽을 고르면 ' +
-        '그 에픽 이슈만 남는다」를, F16-S3 에 「에픽 지정 이슈는 「에픽 없음」에서 사라진다」를 ' +
-        '추가하세요 — 지금은 그 절반에 e2e 증인이 없습니다.',
-    ).toEqual([])
+      epicAssignedCountIn(DEFAULT_BACKLOG.backlog),
+      'DEFAULT_BACKLOG 의 백로그 칸에 에픽 지정 이슈가 없습니다. ' +
+        'F16-S2 짝의 「필터가 모든 섹션에 동시에 걸린다」가 백로그 쪽을 재지 못합니다.',
+    ).toBeGreaterThan(0)
+    expect(
+      DEFAULT_BACKLOG.sprints.reduce(
+        (sum, entry) => sum + epicAssignedCountIn(entry.issues),
+        0,
+      ),
+      'DEFAULT_BACKLOG 의 스프린트 칸에 에픽 지정 이슈가 없습니다. ' +
+        'F16-S2 짝의 「필터가 모든 섹션에 동시에 걸린다」가 스프린트 쪽을 재지 못합니다.',
+    ).toBeGreaterThan(0)
+
+    // ③ 이름이 키와 다르다 — 같으면 「키가 아니라 이름을 보여 준다」가 공허해진다
+    for (const epic of [BACKLOG_EPIC_A, BACKLOG_EPIC_B]) {
+      expect(
+        epic.summary,
+        `에픽 ${epic.key} 의 이름이 키와 같습니다. 이름 해석 실패 시의 키 폴백(F16-6)과 ` +
+          '정상 해석이 화면에서 구별되지 않아 F16-S2 의 이름 단언이 공허해집니다.',
+      ).not.toBe(epic.key)
+    }
+
+    // ④ 대조군 — 에픽 미지정 이슈가 남아 있어야 F16-S3 이 성립한다
+    expect(
+      NO_EPIC_ISSUE_KEYS.length,
+      'DEFAULT_BACKLOG 에 에픽 미지정 이슈가 없습니다. F16-S3 의 「에픽 없음」축이 죽습니다.',
+    ).toBeGreaterThan(0)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
