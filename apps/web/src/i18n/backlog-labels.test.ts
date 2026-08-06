@@ -59,3 +59,160 @@ describe('backlogLabels — cardAriaLabel 함수', () => {
     expect(backlogLabels.cardAriaLabel('ATLAS-1', '이슈')).not.toMatch(/:$/)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 — 신규 문구군 전수 계약
+//
+// ★왜 이 describe 가 있나.
+// `backlog-labels.ts` 는 F15 의 **유일한 공유 자원**이다. 세로 스택(T6) · 시작 다이얼로그(T7) ·
+// 완료 다이얼로그(T8) · 드래그 공지(T4) 가 전부 여기서 문구를 읽는다. 문구 하나가 비면 그 task 가
+// 이 파일을 다시 열어야 하고, 같은 wave 의 두 task 가 같은 파일을 열면 add/add 충돌이 난다
+// (plan §분해 원칙 1). 그래서 「나중에 필요한 문구」를 **먼저** 계약으로 고정한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('backlogLabels — FR-UX-13 F15 신규 문구군 (T4·T6·T7·T8 이 소비)', () => {
+  it('FR-2: 접기 토글 이름은 섹션 이름을 포함하고 접힘/펼침 상태에 따라 달라지지 않는다', () => {
+    // C-9 — 섹션 A 는 접힘, B 는 펼침이 **동시에** 가능하므로 「같은 버튼의 다른 상태」 면제가
+    // 성립하지 않는다. 이름은 고정하고 상태는 aria-expanded 가 말한다.
+    expect(backlogLabels.collapseSection('스프린트 1')).toContain('스프린트 1')
+    expect(backlogLabels.collapseSection('백로그')).not.toBe(
+      backlogLabels.collapseSection('스프린트 1'),
+    )
+    expect(backlogLabels.collapseSection('백로그')).not.toMatch(/:$/)
+  })
+
+  it('FR-3: 시작 다이얼로그의 설명·필드 라벨 3종이 전부 있다', () => {
+    const d = backlogLabels.startDialog
+    expect(d.description).not.toBe('')
+    expect(d.startDateLabel).toBe('시작일')
+    expect(d.endDateLabel).toBe('종료일')
+    expect(d.goalLabel).toBe('목표')
+  })
+
+  it('FR-4: 시작 실패가 네 갈래로 분리돼 서로 다른 문구를 갖는다', () => {
+    // 원안 표는 「세 갈래」였고 start 409 를 나머지와 뭉뚱그렸다 — 처방이 정반대(다이얼로그를
+    // 닫고 재시도를 주지 않는다)라 뭉치면 거짓말이 된다 (스펙 §리뷰 반영 FR-4).
+    const d = backlogLabels.startDialog
+    const branches = [d.patchFailed, d.patchConflict, d.startFailed, d.startConflict]
+    expect(new Set(branches).size).toBe(4)
+    for (const message of branches) expect(message).not.toBe('')
+    expect(d.startConflict).toBe('이미 시작된 스프린트입니다.')
+  })
+
+  it('FR-3·FR-6: 진행 중 라벨이 트리거 이름을 부분 문자열로 포함한다 (같은 버튼의 다른 상태)', () => {
+    expect(backlogLabels.startDialog.pending).toContain(backlogLabels.startSprint)
+    expect(backlogLabels.completeDialog.pending).toContain(backlogLabels.completeSprint)
+  })
+
+  it('FR-5: 완료 다이얼로그의 요약·빈 상태·이관 대상 문구가 있다', () => {
+    const d = backlogLabels.completeDialog
+    expect(d.summary(3, 2)).toBe('완료 3건 · 미완료 2건')
+    expect(d.noIssuesToMove).toBe('옮길 이슈가 없습니다.')
+    expect(d.moveTargetLabel).not.toBe('')
+    // 이관 대상 「백로그」 옵션은 섹션 이름과 **같은 문자열**이어야 한다 — 두 벌로 갈리면
+    // 한쪽만 고쳐져 화면에서 서로 다른 말이 된다.
+    expect(d.backlogOption).toBe(backlogLabels.backlogTitle)
+  })
+
+  it('FR-6: 행 상태·요약 alert·403 문구가 있다', () => {
+    const d = backlogLabels.completeDialog
+    expect(d.rowMoved).toBe('이관됨')
+    expect(d.rowFailed).toBe('이관 실패')
+    expect(d.moveFailedAlert(3, 1)).toContain('3')
+    expect(d.moveFailedAlert(3, 1)).toContain('1')
+    // C-15 — 이관은 UPDATE 권한이라 CREATE 만 있는 사용자는 전건 403 을 받는다.
+    expect(d.moveForbidden).not.toBe('')
+    expect(d.moveProgress(1, 3)).toContain('1')
+  })
+
+  it('FR-7·E15: 워크플로우 조회 실패 안내와 truncated 차단 문구가 있다', () => {
+    expect(backlogLabels.completeDialog.workflowLoadFailed).not.toBe('')
+    expect(backlogLabels.completeDialog.truncatedBlocked).not.toBe('')
+  })
+
+  it('FR-9: 드래그 공지가 전수 있고 내부 droppable id 접두를 노출하지 않는다', () => {
+    const a = backlogLabels.announce
+    const messages = [
+      a.dragStart('ATLAS-2'),
+      a.overSprint('스프린트 1'),
+      a.overBacklog,
+      a.outOfDropZone,
+      a.cannotMoveHere,
+      a.movedToSprint('스프린트 1'),
+      a.movedToBacklog,
+      a.reordered,
+      a.noChange,
+      a.cancelled,
+      a.forbidden,
+      a.instructions,
+    ]
+    for (const message of messages) {
+      expect(message).not.toBe('')
+      // 공지는 사용자 언어다 — `backlog:ATLAS-2` 같은 내부 id 가 새어 나가면 안 된다.
+      expect(message).not.toMatch(/backlog:|sprint:|card:/)
+      expect(message.trimEnd()).not.toMatch(/:$/)
+    }
+    expect(a.dragStart('ATLAS-2')).toContain('ATLAS-2')
+  })
+
+  it('FR-9 C-4: onDragEnd 는 다섯 갈래이며 noop-move 가 침묵하지 않는다', () => {
+    // `resolveBacklogDropAction` 의 반환 kind 는 5종(noop · noop-move · rerank · assign · unassign)이다.
+    // 원안이 4종만 적어 noop-move 를 빠뜨렸고, 빠뜨리면 스크린리더가 **침묵**하는데 테스트는 초록이다.
+    const a = backlogLabels.announce
+    const endBranches = [
+      a.movedToSprint('스프린트 1'),
+      a.movedToBacklog,
+      a.reordered,
+      a.noChange,
+      a.cannotMoveHere,
+    ]
+    expect(new Set(endBranches).size).toBe(5)
+  })
+
+  it('FR-17: 권한 없음 공지가 「옮겼습니다」류와 구분된다', () => {
+    const a = backlogLabels.announce
+    expect(a.forbidden).not.toContain('옮겼습니다')
+    expect(a.forbidden).not.toBe(a.movedToBacklog)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 T15 — 안내 문구가 실제 동작과 어긋나지 않는다
+//
+// 앞선 두 수정이 **동작을 바꾸면서** 기존 문구를 거짓으로 만들었다.
+//   ① 워크플로우 조회 실패·로딩 중은 이제 제출을 **막는다**(`blockedByUnknownWorkflow`).
+//      문구는 「모든 이슈를 미완료로 봅니다」까지만 말해 차단 사실을 숨겼다.
+//   ② `PATCH` 409 이후 폼은 사용자가 친 값을 **그대로 유지한다**(T14 가 `setValues` 제거).
+//      문구는 「최신 값을 불러왔으니」라고 말해 화면과 어긋났다.
+// 값 수준에서 고정하는 이유. 화면 단언만 두면 문구가 다시 바뀔 때 어느 쪽이 정본인지
+// 알 수 없다 — 이 PR 은 「안내가 사실과 다른 것」을 BLOCKER 로 다뤄 왔다(Esc 취소 안내).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('backlogLabels — T15 안내 문구 정합', () => {
+  it('E14: 워크플로우 조회 실패 안내가 차단 사실과 처방을 함께 말한다', () => {
+    const d = backlogLabels.completeDialog
+    expect(d.workflowLoadFailed).toContain('안전하게 완료할 수 없습니다')
+    expect(d.workflowLoadFailed).toContain('다시 시도')
+    // `truncatedBlocked` 의 **결**은 따르되 값을 재사용하지 않는다 —
+    // 「일부 이슈만 표시되어」는 이 상황에서 거짓이다(목록은 전건 다 있다).
+    expect(d.workflowLoadFailed).not.toBe(d.truncatedBlocked)
+    expect(d.workflowLoadFailed).not.toContain('일부 이슈만')
+  })
+
+  it('E9: 409 안내가 입력 보존을 말하고 「최신 값을 불러왔다」고 하지 않는다', () => {
+    const d = backlogLabels.startDialog
+    // 남이 먼저 바꿨다는 사실과 내 값이 살아 있다는 사실을 **둘 다** 말해야 한다
+    expect(d.patchConflict).toContain('다른 사람이 먼저 수정했습니다')
+    expect(d.patchConflict).toContain('그대로')
+    expect(d.patchConflict).not.toMatch(/최신 값을 불러왔/)
+  })
+
+  it('완료 다이얼로그의 재검증 실패 문구는 시작 다이얼로그 409 문구를 재사용하지 않는다', () => {
+    // 재사용하던 자리다. 409 문구가 「입력하신 값」을 말하게 되면서 **입력 폼이 없는**
+    // 완료 다이얼로그에서는 거짓이 된다 — 그래서 전용 문구로 분리한다.
+    const c = backlogLabels.completeDialog
+    expect(c.staleBlocked).not.toBe(backlogLabels.startDialog.patchConflict)
+    expect(c.staleBlocked).not.toContain('입력')
+    expect(c.staleBlocked).not.toBe('')
+  })
+})

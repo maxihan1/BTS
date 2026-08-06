@@ -1,4 +1,5 @@
 // 백로그·스프린트 드래그 앤 드롭 액션 판정 순수 함수 라이브러리 (FR-BL-01/02 D6/D7)
+import type { BacklogView } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 카드 droppable id 헬퍼
@@ -79,6 +80,76 @@ export function extractCardDropZone(
   const dropIndex = overIdx === -1 ? orderedKeys.length : overIdx
 
   return { context, sprintId, orderedKeys, dropIndex }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveOverToDropZone — over 대상 → DropZoneData 공용 입력 구성
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * dnd-kit `Over` 중 드롭 판정이 실제로 읽는 부분만 추린 구조 타입.
+ *
+ * dnd-kit 타입을 그대로 받으면 이 순수 모듈이 라이브러리에 묶이고 테스트에서
+ * `Over` 전체를 만들어야 한다. 읽는 것은 `data.current` 하나뿐이라 그것만 요구한다.
+ */
+export interface BacklogDropTarget {
+  data: { current?: Record<string, unknown> | undefined }
+}
+
+/** 뷰에서 대상 칸의 rank 순 이슈 키 목록을 조회한다 */
+function orderedKeysOf(
+  view: BacklogView,
+  context: 'backlog' | 'sprint',
+  sprintId: string | null,
+): readonly string[] {
+  if (context === 'backlog') return view.backlog.map((i) => i.key)
+  const entry = view.sprints.find((s) => s.sprint.sprintId === sprintId)
+  return entry !== undefined ? entry.issues.map((i) => i.key) : []
+}
+
+/**
+ * 드래그가 올라가 있는 대상(`over`)을 드롭 존 정보로 환산한다.
+ *
+ * 칸 droppable 이면 그 `data` 가 이미 `orderedKeys` 를 싣고 오므로 그대로 쓰고,
+ * 카드 droppable 이면 대상 칸의 순서를 `view` 에서 조회해 채운다.
+ *
+ * ### 왜 훅이 아니라 여기 있나
+ * 이 **입력 구성**은 원래 `use-backlog-drag.ts` 안에 갇혀 있었다. 그 결과 같은 판정을 해야 하는
+ * 드래그 공지 모듈이 구성을 **복제**할 수밖에 없었는데, 판정 함수가 같아도 입력이 다르면
+ * 공지와 실제 mutation 이 어긋난다 — 어긋남은 판정이 아니라 입력에서 난다
+ * (FR-UX-13 F15 스펙 §리뷰 반영 C-5). 그래서 구성 자체를 공용화했다.
+ *
+ * ### 왜 이동 0 판정이 여기 있나 (T12)
+ * 종전에는 `use-backlog-drag.ts` 의 `handleDragEnd` 안에서만 걸렀다. 그러자 mutation 은 0건인데
+ * 공지는 「순서를 변경했습니다.」를 읽는 **거짓말**이 났다 — 공지 모듈이 그 사실을 알 길이
+ * 없었기 때문이다(실브라우저 실측). 판정을 드롭 판정 단계로 올려 두 소비자가 같은 함수의
+ * 같은 반환값을 보게 하면 다시 갈라질 수 없다. C-5 와 정확히 같은 논지의 확장이다.
+ *
+ * @param view 카드 droppable 경로에서 대상 칸의 순서를 조회할 현재 백로그 데이터
+ * @param over dnd-kit 의 `over`. 없으면 null
+ * @param isZeroMove 드래그 이동량이 0인가 (`isZeroMoveDrop(event.delta)`).
+ *   true 면 사용자가 카드를 어디로도 옮기지 않았다는 뜻이라 적용할 드롭 존이 없다
+ * @returns 드롭 존 정보. 판정 불가면 null
+ */
+export function resolveOverToDropZone(
+  view: BacklogView | undefined,
+  over: BacklogDropTarget | null | undefined,
+  isZeroMove: boolean,
+): DropZoneData | null {
+  // 이동이 0이면 카드 자신의 droppable 이 `disabled: isDragging` 으로 빠져 있어 칸 droppable 로
+  // 폴백하고 `dropIndex = orderedKeys.length` 가 잡힌다 — 그대로 두면 **카드가 맨 뒤로 날아간다**.
+  if (isZeroMove) return null
+
+  if (over === null || over === undefined) return null
+
+  const overData = over.data.current
+
+  const columnZone = extractColumnDropZone(overData)
+  if (columnZone !== null) return columnZone
+
+  // 카드 droppable 경로는 대상 칸의 순서를 알아야 하므로 뷰 데이터가 필요하다.
+  if (view === undefined) return null
+  return extractCardDropZone(overData, (ctx, sid) => orderedKeysOf(view, ctx, sid))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

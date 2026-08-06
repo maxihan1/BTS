@@ -1,10 +1,22 @@
 // BacklogBoard 컴포넌트 통합 테스트 — onDragEnd 시나리오·C1 부분실패·생성/시작/완료 버튼 (FR-BL-01/02 D6/D7)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { DragEndEvent } from '@dnd-kit/core'
+import { http, HttpResponse } from 'msw'
+import type {
+  Active,
+  Announcements,
+  CollisionDetection,
+  DragCancelEvent,
+  DragEndEvent,
+  DragOverEvent,
+  Over,
+  ScreenReaderInstructions,
+  SensorDescriptor,
+  SensorOptions,
+} from '@dnd-kit/core'
 
 // TanStack Router Link mock
 vi.mock('@tanstack/react-router', () => ({
@@ -45,6 +57,24 @@ vi.mock('sonner', () => ({
 // PointerSensor 실제 입력 이벤트 없이 onDragEnd를 시뮬레이션한다.
 let capturedOnDragEnd: ((event: DragEndEvent) => void) | undefined
 
+/** `DndContext` 의 `accessibility` prop — 공지 배선(FR-9·FR-17)을 재는 유일한 관측 지점 */
+interface CapturedAccessibility {
+  announcements?: Announcements
+  screenReaderInstructions?: ScreenReaderInstructions
+}
+
+// ★센서·공지는 **props 로만** 관측된다 — mock 이 이 둘을 버리면 배선을 삭제해도
+//   이 파일이 전량 초록으로 남는다 (담당자 배선이 같은 함정을 겪었다. :210-212 주석).
+//
+// ★같은 이유로 `collisionDetection`·`onDragOver`·`onDragCancel` 도 반드시 캡처한다. 종전에는
+//   이 셋을 구조 분해에서 빠뜨려, 바로 위 경고를 써 둔 채로 그 함정을 그대로 밟고 있었다 —
+//   `collisionDetection={cardFirstCollision}` 을 삭제해도 이 파일이 전량 초록이었다.
+let capturedSensors: SensorDescriptor<SensorOptions>[] | undefined
+let capturedAccessibility: CapturedAccessibility | undefined
+let capturedCollisionDetection: CollisionDetection | undefined
+let capturedOnDragOver: ((event: DragOverEvent) => void) | undefined
+let capturedOnDragCancel: ((event: DragCancelEvent) => void) | undefined
+
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
   return {
@@ -52,12 +82,27 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
     DndContext: ({
       children,
       onDragEnd,
+      onDragOver,
+      onDragCancel,
+      sensors,
+      accessibility,
+      collisionDetection,
     }: {
       children: ReactNode
       onDragEnd?: (event: DragEndEvent) => void
+      onDragOver?: (event: DragOverEvent) => void
+      onDragCancel?: (event: DragCancelEvent) => void
+      sensors?: SensorDescriptor<SensorOptions>[]
+      accessibility?: CapturedAccessibility
+      collisionDetection?: CollisionDetection
     }) => {
       // onDragEnd 콜백을 캡처 — triggerDragEnd()에서 호출
       capturedOnDragEnd = onDragEnd
+      capturedOnDragOver = onDragOver
+      capturedOnDragCancel = onDragCancel
+      capturedSensors = sensors
+      capturedAccessibility = accessibility
+      capturedCollisionDetection = collisionDetection
       return <div data-testid="dnd-context">{children}</div>
     },
   }
@@ -73,11 +118,40 @@ const mockCreateSprintMutate = vi.fn()
 const mockStartSprintMutate = vi.fn()
 const mockCompleteSprintMutate = vi.fn()
 
+// FR-UX-13 F15 — 다이얼로그는 `mutate` 가 아니라 **`mutateAsync`** 를 쓴다
+// (`StartSprintDialog.tsx:291,311` · `CompleteSprintDialog.tsx:296`).
+// mock 이 `mutateAsync` 를 안 주면 제출이 `undefined is not a function` 으로 터진다.
+//
+// ★위 `mutate` 스파이들의 `not.toHaveBeenCalled()` 단언은 배선 교체로 **영구히 공허**해졌다
+//   — 이제 아무도 `.mutate` 를 부르지 않는다. 그래서 권한 테스트의 실질 단언은
+//   「다이얼로그가 열리지 않는다」와 아래 `mutateAsync` 스파이가 진다.
+const mockStartSprintMutateAsync = vi.fn<(sprintId: string) => Promise<void>>(() =>
+  Promise.resolve(),
+)
+const mockCompleteSprintMutateAsync = vi.fn<(sprintId: string) => Promise<void>>(() =>
+  Promise.resolve(),
+)
+const mockUpdateSprintMutateAsync = vi.fn<(input: unknown) => Promise<unknown>>(() =>
+  Promise.resolve(undefined),
+)
+
 // FR-UX-13 F5 — 담당자 배선 검증용 픽스처 상수.
 // mock 팩토리 안에서 쓰이지만 **호출 시점**(렌더)에 읽히므로 TDZ 문제가 없다
 // (`STUB_CREATED_KEY` 와 같은 형태).
 const ALICE_ID = '00000000-0000-4000-8000-000000000001'
 const BOB_ID = '00000000-0000-4000-8000-000000000002'
+
+/**
+ * 픽스처 스프린트 UUID 2종 (F15 T9).
+ *
+ * ★**실제 UUID 형식이어야 한다.** 종전 값(`'sprint-uuid-0001'`)은 `useBacklog` 를 mock 해
+ * Zod 를 지나지 않았기에 통과했다. 완료 다이얼로그는 완료 직전 재검증에서 **진짜**
+ * `fetchBacklog` 를 부르고 `sprintMetaSchema.sprintId` 가 `z.string().uuid()` 라
+ * (`api/backlog.ts:47`), 형식이 아니면 파싱이 터져 그 예외가 `revalidate` 의 catch 에
+ * 삼켜지고 화면에는 「다른 사람이 먼저 수정했습니다」가 뜬다 — 원인과 증상이 전혀 다르다.
+ */
+const PLANNED_SPRINT_ID = '00000000-0000-4000-8000-0000000000a1'
+const ACTIVE_SPRINT_ID = '00000000-0000-4000-8000-0000000000a2'
 
 // FR-UX-13 F5 — 조회 실패·재조회 상태 주입 지점.
 //
@@ -135,7 +209,7 @@ vi.mock('@/hooks/use-backlog', () => ({
       sprints: [
         {
           sprint: {
-            sprintId: 'sprint-uuid-0001',
+            sprintId: PLANNED_SPRINT_ID,
             name: '스프린트 1',
             goal: null,
             status: 'PLANNED',
@@ -158,7 +232,7 @@ vi.mock('@/hooks/use-backlog', () => ({
         },
         {
           sprint: {
-            sprintId: 'sprint-uuid-0002',
+            sprintId: ACTIVE_SPRINT_ID,
             name: '스프린트 2 (ACTIVE)',
             goal: null,
             status: 'ACTIVE',
@@ -195,8 +269,19 @@ vi.mock('@/hooks/use-backlog', () => ({
   useAssignToSprint: () => ({ mutate: mockAssignMutate, isPending: false }),
   useUnassignFromSprint: () => ({ mutate: mockUnassignMutate, isPending: false }),
   useCreateSprint: () => ({ mutate: mockCreateSprintMutate, isPending: false }),
-  useStartSprint: () => ({ mutate: mockStartSprintMutate, isPending: false }),
-  useCompleteSprint: () => ({ mutate: mockCompleteSprintMutate, isPending: false }),
+  useStartSprint: () => ({
+    mutate: mockStartSprintMutate,
+    mutateAsync: mockStartSprintMutateAsync,
+    isPending: false,
+  }),
+  useCompleteSprint: () => ({
+    mutate: mockCompleteSprintMutate,
+    mutateAsync: mockCompleteSprintMutateAsync,
+    isPending: false,
+  }),
+  // ★빠뜨리면 시작 다이얼로그가 마운트되는 순간 「No "useUpdateSprint" export is defined」로
+  //   그 테스트들이 통째로 터진다 — 팩토리가 반환하지 않는 export 는 존재하지 않는다.
+  useUpdateSprint: () => ({ mutateAsync: mockUpdateSprintMutateAsync, isPending: false }),
   backlogKeys: { detail: (key: string) => ['backlog', key] },
 }))
 
@@ -255,10 +340,16 @@ vi.mock('@/components/issue/CreateIssueDialog', () => ({
     ) : null,
 }))
 
+import { KeyboardSensor, PointerSensor } from '@dnd-kit/core'
 import { BacklogBoard } from './BacklogBoard'
+import { cardFirstCollision } from './backlog-collision'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { backlogScreenReaderInstructions } from '@/lib/backlog-announcements'
+import { backlogKeyboardSensorOptions } from '@/lib/backlog-keyboard-coordinates'
+import { server } from '@/test/server'
+import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
 import type { UserSummary } from '@/api/users'
-import type { BacklogView } from '@/api/backlog'
+import type { BacklogIssue, BacklogView } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -286,16 +377,41 @@ function renderBoard(
   )
 }
 
+/** {@link triggerDragEnd} 의 선택 인자 — 「어떻게 끌었나」를 실제 값으로 싣는다 */
+interface DragEndOptions {
+  /**
+   * 드래그 이동량. **기본값이 0이 아닌** 것이 핵심이다 (F15 T9).
+   *
+   * 종전에는 `{x:0, y:0}` 을 자리표시자로 하드코딩해 두었는데, 그러면 「집자마자 그대로
+   * 놓았다」와 「40px 끌어다 놓았다」가 하네스 위에서 **구별되지 않는다**. 그 결과
+   * `use-backlog-drag.ts` 의 이동-0 가드(T-KB-3)가 조건 없이 들어오면 S1~S5 재현 8건이
+   * 통째로 red 가 되어, 가드 범위가 하네스 사정에 끌려가는 일이 벌어졌다.
+   * 실제 값을 싣는 쪽이 옳다 — 시나리오가 뜻하는 바가 그것이기 때문이다.
+   */
+  readonly delta?: { readonly x: number; readonly y: number }
+  /**
+   * 활성화 이벤트. 마우스는 `PointerEvent`, 키보드는 `KeyboardEvent` 다.
+   * dnd-kit 이 활성화 핸들러의 `nativeEvent` 를 그대로 싣는 것을 흉내 낸다.
+   */
+  readonly activatorEvent?: Event
+}
+
+/** 마우스로 40px 끌었다 — 시나리오가 「이동」을 뜻할 때의 기본값 */
+const DEFAULT_DRAG_DELTA = { x: 0, y: 40 } as const
+
 /**
  * DndContext mock을 통해 onDragEnd를 트리거한다.
  *
  * @param active 드래그 중이던 아이템 (id + data)
  * @param over 드롭 대상 (null이면 제자리 취소)
+ * @param options 이동량·활성화 이벤트. 기본은 「마우스로 40px 끌었다」
  */
 function triggerDragEnd(
   active: { id: string; data: { current: Record<string, unknown> } },
   over: { id: string; data: { current: Record<string, unknown> } } | null,
+  options: DragEndOptions = {},
 ) {
+  const { delta = DEFAULT_DRAG_DELTA, activatorEvent = new PointerEvent('pointerdown') } = options
   act(() => {
     capturedOnDragEnd?.({
       active: { id: active.id, data: active.data, rect: { current: { initial: null, translated: null } } },
@@ -303,10 +419,68 @@ function triggerDragEnd(
         ? { id: over.id, data: over.data, rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 }, disabled: false }
         : null,
       collisions: null,
-      delta: { x: 0, y: 0 },
-      activatorEvent: new PointerEvent('pointerdown'),
+      delta,
+      activatorEvent,
     } as unknown as DragEndEvent)
   })
+}
+
+/**
+ * 완료 다이얼로그가 **직접 내는** 요청의 목 (F15 T9).
+ *
+ * `useCompleteSprint` 는 이 파일이 mock 하지만, 다이얼로그는 그 밖에 세 가지를 스스로 낸다.
+ * ① `GET /api/v1/workflows` — 미완료 판정(FR-7)의 카테고리 사상
+ * ② `DELETE /api/v1/sprints/{id}/issues/{key}` — 이관 (FR-6)
+ * ③ `GET /api/v1/projects/{key}/backlog` — 완료 직전 재검증 (C-7)
+ * 전역 MSW 는 `onUnhandledRequest: 'error'` 라 하나라도 빠지면 그 자리에서 터진다.
+ * **다이얼로그를 실제로 여는 테스트에서만** 깐다 — 안 여는 테스트에 요청이 늘면
+ * 「마운트하지 않는다」(NFR-1)가 조용히 깨져도 알 수 없기 때문이다.
+ */
+function installSprintDialogHandlers(): void {
+  sprintDialogCalls = []
+  server.use(
+    http.get('/api/v1/workflows', () => {
+      sprintDialogCalls.push('WORKFLOWS')
+      return HttpResponse.json({ data: allWorkflowFixtures })
+    }),
+    http.delete('/api/v1/sprints/:sprintId/issues/:issueKey', ({ params }) => {
+      sprintDialogCalls.push(`UNASSIGN ${String(params['sprintId'])}/${String(params['issueKey'])}`)
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.get('/api/v1/projects/:projectKey/backlog', () => {
+      sprintDialogCalls.push('REVALIDATE')
+      return HttpResponse.json({ data: FRESH_AFTER_TRANSFER })
+    }),
+  )
+}
+
+/** 완료 다이얼로그가 낸 요청의 관측 순서 — 「이관이 먼저」(FR-6)를 재는 데 쓴다 */
+let sprintDialogCalls: string[] = []
+
+/**
+ * 이관이 끝난 뒤의 백로그 — 완료 대상 스프린트에 미완료가 **0건**이어야 재검증을 통과한다.
+ *
+ * 여기에 미완료를 남기면 `finish()` 가 `{kind:'stale'}` 로 멈춰 완료가 나가지 않는다.
+ */
+const FRESH_AFTER_TRANSFER: BacklogView = {
+  backlog: [],
+  sprints: [
+    {
+      sprint: {
+        sprintId: ACTIVE_SPRINT_ID,
+        name: '스프린트 2 (ACTIVE)',
+        goal: null,
+        status: 'ACTIVE',
+        startDate: '2026-06-01',
+        endDate: '2026-06-14',
+        version: 0,
+      },
+      // 이관이 끝났으니 비어 있다. 여기에 미완료를 남기면 `finish()` 가
+      // `{kind:'stale'}` 로 멈춰 완료가 나가지 않는다 (C-7 재검증).
+      issues: [],
+    },
+  ],
+  truncated: false,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -383,44 +557,95 @@ describe('BacklogBoard', () => {
       expect(screen.getByRole('button', { name: /스프린트 완료/i })).toBeInTheDocument()
     })
 
-    it('시작 버튼 클릭 시 useStartSprint.mutate를 호출한다', async () => {
+    // ★ F15 T9 — 트리거는 이제 mutation 이 아니라 **다이얼로그**를 연다.
+    //   종전처럼 클릭 한 번에 시작/완료가 나가면 「되돌릴 수 없는 연산이 확인 없이
+    //   실행된다」(스펙 C1). 그래서 두 테스트는 **제출까지** 거치도록 갱신했다.
+    it('시작 버튼은 다이얼로그를 열고, 다이얼로그 제출이 useStartSprint 를 호출한다', async () => {
       const user = userEvent.setup()
       renderBoard()
 
-      await user.click(screen.getByRole('button', { name: /스프린트 시작/i }))
+      await user.click(screen.getByRole('button', { name: backlogLabels.startSprint }))
 
-      expect(mockStartSprintMutate).toHaveBeenCalledWith(
-        'sprint-uuid-0001',
-        expect.anything(),
-      )
+      const dialog = await screen.findByRole('dialog', { name: backlogLabels.startSprint })
+      // 트리거 클릭만으로는 아무것도 나가지 않는다 — 이 단언이 「확인 절차」의 증인이다
+      expect(mockStartSprintMutateAsync).not.toHaveBeenCalled()
+
+      await user.click(within(dialog).getByRole('button', { name: backlogLabels.startSprint }))
+
+      await waitFor(() => {
+        expect(mockStartSprintMutateAsync).toHaveBeenCalledWith(PLANNED_SPRINT_ID)
+      })
+      // 값을 안 바꿨으면 PATCH 를 보내지 않는다 (FR-4 · S4)
+      expect(mockUpdateSprintMutateAsync).not.toHaveBeenCalled()
     })
 
-    it('완료 버튼 클릭 시 useCompleteSprint.mutate를 호출한다', async () => {
+    it('T-DL-1: 시작 다이얼로그가 열린 동안 「보이는」 스프린트 시작 버튼은 정확히 1개다', async () => {
       const user = userEvent.setup()
       renderBoard()
 
-      await user.click(screen.getByRole('button', { name: /스프린트 완료/i }))
+      expect(screen.getAllByRole('button', { name: backlogLabels.startSprint })).toHaveLength(1)
 
-      expect(mockCompleteSprintMutate).toHaveBeenCalledWith(
-        'sprint-uuid-0002',
-        expect.anything(),
-      )
+      await user.click(screen.getByRole('button', { name: backlogLabels.startSprint }))
+      const dialog = await screen.findByRole('dialog', { name: backlogLabels.startSprint })
+
+      // FR-10 의 「Radix modal 이 바깥 트리거를 접근성 트리에서 감춘다」는 **가정을
+      // 측정으로 바꾼다**. 감춰지지 않으면 같은 이름의 버튼이 2개가 되어 조회가 즉사한다.
+      const visible = screen.getAllByRole('button', { name: backlogLabels.startSprint })
+      expect(visible).toHaveLength(1)
+      expect(dialog).toContainElement(visible[0] ?? null)
+
+      // ★짝 단언 — 「1개」가 「트리거가 통째로 사라졌다」가 아님을 확인한다.
+      //   감춰진 것까지 세면 트리거 + 제출 버튼으로 2개여야 한다.
+      expect(
+        screen.getAllByRole('button', { name: backlogLabels.startSprint, hidden: true }),
+      ).toHaveLength(2)
     })
 
-    it('canManageSprint=false이면 시작/완료 버튼 클릭이 mutate를 호출하지 않는다', async () => {
+    it('완료 버튼은 다이얼로그를 열고, 다이얼로그 제출이 useCompleteSprint 를 호출한다', async () => {
+      installSprintDialogHandlers()
+      const user = userEvent.setup()
+      renderBoard()
+
+      await user.click(screen.getByRole('button', { name: backlogLabels.completeSprint }))
+
+      const dialog = await screen.findByRole('dialog', { name: backlogLabels.completeSprint })
+      expect(mockCompleteSprintMutateAsync).not.toHaveBeenCalled()
+
+      // 워크플로우가 도착해 미완료 판정이 끝나야 제출이 의미를 갖는다 (ATLAS-5 는 `open`=TODO)
+      await within(dialog).findByText('ATLAS-5')
+      await user.click(within(dialog).getByRole('button', { name: backlogLabels.completeSprint }))
+
+      await waitFor(() => {
+        expect(mockCompleteSprintMutateAsync).toHaveBeenCalledWith(ACTIVE_SPRINT_ID)
+      })
+      // 이관(DELETE) → 재검증(GET) 순서를 그대로 지났다 (FR-6 · C-7). 완료가 먼저 나가면
+      // 남은 이슈가 영구 동결된다 — 순서가 곧 안전 요구다.
+      expect(sprintDialogCalls).toEqual([
+        'WORKFLOWS',
+        `UNASSIGN ${ACTIVE_SPRINT_ID}/ATLAS-5`,
+        'REVALIDATE',
+      ])
+    })
+
+    it('canManageSprint=false이면 시작/완료 버튼을 눌러도 다이얼로그가 열리지 않는다', async () => {
       const user = userEvent.setup()
       renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
 
       // canManageSprint=false이면 onStart/onComplete가 undefined로 전달되므로
-      // 버튼 클릭이 mutate를 호출하지 않는다.
-      const startBtn = screen.queryByRole('button', { name: /스프린트 시작/i })
-      const completeBtn = screen.queryByRole('button', { name: /스프린트 완료/i })
+      // 버튼 클릭이 다이얼로그를 열지 못한다.
+      const startBtn = screen.queryByRole('button', { name: backlogLabels.startSprint })
+      const completeBtn = screen.queryByRole('button', { name: backlogLabels.completeSprint })
 
       if (startBtn !== null) await user.click(startBtn)
       if (completeBtn !== null) await user.click(completeBtn)
 
-      expect(mockStartSprintMutate).not.toHaveBeenCalled()
-      expect(mockCompleteSprintMutate).not.toHaveBeenCalled()
+      // ★실질 단언은 이 두 줄이다. 아래 mutation 단언은 배선 교체로 **공허**해졌다 —
+      //   이제 다이얼로그를 거치지 않으면 mutation 에 닿는 경로 자체가 없기 때문이다.
+      expect(screen.queryByRole('dialog', { name: backlogLabels.startSprint })).toBeNull()
+      expect(screen.queryByRole('dialog', { name: backlogLabels.completeSprint })).toBeNull()
+
+      expect(mockStartSprintMutateAsync).not.toHaveBeenCalled()
+      expect(mockCompleteSprintMutateAsync).not.toHaveBeenCalled()
     })
   })
 
@@ -443,14 +668,20 @@ describe('BacklogBoard', () => {
       const user = userEvent.setup()
       renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
 
-      const startBtn = screen.queryByRole('button', { name: /스프린트 시작/i })
-      const completeBtn = screen.queryByRole('button', { name: /스프린트 완료/i })
+      const startBtn = screen.queryByRole('button', { name: backlogLabels.startSprint })
+      const completeBtn = screen.queryByRole('button', { name: backlogLabels.completeSprint })
 
       if (startBtn !== null) await user.click(startBtn)
       if (completeBtn !== null) await user.click(completeBtn)
 
-      expect(mockStartSprintMutate).not.toHaveBeenCalled()
-      expect(mockCompleteSprintMutate).not.toHaveBeenCalled()
+      // 버튼은 **렌더되지만** 눌러도 다이얼로그가 열리지 않는다 (핸들러가 undefined).
+      expect(startBtn).not.toBeNull()
+      expect(completeBtn).not.toBeNull()
+      expect(screen.queryByRole('dialog', { name: backlogLabels.startSprint })).toBeNull()
+      expect(screen.queryByRole('dialog', { name: backlogLabels.completeSprint })).toBeNull()
+
+      expect(mockStartSprintMutateAsync).not.toHaveBeenCalled()
+      expect(mockCompleteSprintMutateAsync).not.toHaveBeenCalled()
     })
 
     it('UPDATE만 있고 CREATE 없어도 드래그 시 rerankMutate를 호출한다', async () => {
@@ -572,11 +803,11 @@ describe('BacklogBoard', () => {
           data: { current: { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null } },
         },
         {
-          id: 'sprint-sprint-uuid-0001',
+          id: `sprint-${PLANNED_SPRINT_ID}`,
           data: {
             current: {
               context: 'sprint',
-              sprintId: 'sprint-uuid-0001',
+              sprintId: PLANNED_SPRINT_ID,
               orderedKeys: ['ATLAS-3'],
               dropIndex: 1,
             },
@@ -587,7 +818,7 @@ describe('BacklogBoard', () => {
       await waitFor(() => {
         expect(mockAssignMutate).toHaveBeenCalledWith(
           expect.objectContaining({
-            sprintId: 'sprint-uuid-0001',
+            sprintId: PLANNED_SPRINT_ID,
             issueKey: 'ATLAS-1',
           }),
           expect.anything(),
@@ -603,7 +834,7 @@ describe('BacklogBoard', () => {
         {
           id: 'sprint:ATLAS-3',
           data: {
-            current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: 'sprint-uuid-0001' },
+            current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: PLANNED_SPRINT_ID },
           },
         },
         {
@@ -615,7 +846,7 @@ describe('BacklogBoard', () => {
       await waitFor(() => {
         expect(mockUnassignMutate).toHaveBeenCalledWith(
           expect.objectContaining({
-            sprintId: 'sprint-uuid-0001',
+            sprintId: PLANNED_SPRINT_ID,
             issueKey: 'ATLAS-3',
           }),
           expect.anything(),
@@ -631,15 +862,15 @@ describe('BacklogBoard', () => {
         {
           id: 'sprint:ATLAS-3',
           data: {
-            current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: 'sprint-uuid-0001' },
+            current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: PLANNED_SPRINT_ID },
           },
         },
         {
-          id: 'sprint-sprint-uuid-0002',
+          id: `sprint-${ACTIVE_SPRINT_ID}`,
           data: {
             current: {
               context: 'sprint',
-              sprintId: 'sprint-uuid-0002',
+              sprintId: ACTIVE_SPRINT_ID,
               orderedKeys: [],
               dropIndex: 0,
             },
@@ -650,7 +881,7 @@ describe('BacklogBoard', () => {
       await waitFor(() => {
         expect(mockAssignMutate).toHaveBeenCalledWith(
           expect.objectContaining({
-            sprintId: 'sprint-uuid-0002',
+            sprintId: ACTIVE_SPRINT_ID,
             issueKey: 'ATLAS-3',
           }),
           expect.anything(),
@@ -667,15 +898,15 @@ describe('BacklogBoard', () => {
         {
           id: 'sprint:ATLAS-3',
           data: {
-            current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: 'sprint-uuid-0001' },
+            current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: PLANNED_SPRINT_ID },
           },
         },
         {
-          id: 'sprint-sprint-uuid-0001',
+          id: `sprint-${PLANNED_SPRINT_ID}`,
           data: {
             current: {
               context: 'sprint',
-              sprintId: 'sprint-uuid-0001',
+              sprintId: PLANNED_SPRINT_ID,
               orderedKeys: ['ATLAS-3', 'ATLAS-X'],
               dropIndex: 2, // 맨 뒤로 이동
             },
@@ -719,11 +950,11 @@ describe('BacklogBoard', () => {
           data: { current: { issueKey: 'ATLAS-1', context: 'backlog', sprintId: null } },
         },
         {
-          id: 'sprint-sprint-uuid-0001',
+          id: `sprint-${PLANNED_SPRINT_ID}`,
           data: {
             current: {
               context: 'sprint',
-              sprintId: 'sprint-uuid-0001',
+              sprintId: PLANNED_SPRINT_ID,
               orderedKeys: ['ATLAS-3'],
               dropIndex: 1,
             },
@@ -791,7 +1022,7 @@ describe('BacklogBoard', () => {
     })
 
     it('S5 red: 스프린트 카드-over로 재정렬 시 rerankMutate가 실제 이웃 키로 호출된다', async () => {
-      // sprint-uuid-0001 issues=['ATLAS-3']
+      // PLANNED_SPRINT_ID issues=['ATLAS-3']
       // ATLAS-3을 같은 스프린트 내에서 card:sprint:ATLAS-3 over로 드래그 (제자리 = noop)
       // 다른 카드가 없으므로 noop-move이어야 함 → rerankMutate 미호출
       // 여기서는 ATLAS-3을 over=카드droppable(ATLAS-3 자신) → 제자리 noop → mutate 미호출이 기대
@@ -812,7 +1043,7 @@ describe('BacklogBoard', () => {
       triggerDragEnd(
         {
           id: 'sprint:ATLAS-3',
-          data: { current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: 'sprint-uuid-0001' } },
+          data: { current: { issueKey: 'ATLAS-3', context: 'sprint', sprintId: PLANNED_SPRINT_ID } },
         },
         {
           id: 'card:sprint:ATLAS-3',
@@ -821,7 +1052,7 @@ describe('BacklogBoard', () => {
               type: 'card',
               key: 'ATLAS-3',
               context: 'sprint',
-              sprintId: 'sprint-uuid-0001',
+              sprintId: PLANNED_SPRINT_ID,
             },
           },
         },
@@ -943,7 +1174,7 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
 
     await waitFor(() => {
       expect(mockAssignMutate).toHaveBeenCalledWith(
-        expect.objectContaining({ sprintId: 'sprint-uuid-0001' }),
+        expect.objectContaining({ sprintId: PLANNED_SPRINT_ID }),
         expect.anything(),
       )
     })
@@ -1183,5 +1414,289 @@ describe('BacklogBoard — 조회 실패 안내와 재시도 (FR-UX-13 F5)', () 
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByLabelText('로딩 중')).toBeNull()
     expect(screen.queryByRole('button', { name: backlogLabels.retry })).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 T9 — 스프린트가 0개인 백로그 (E1)
+//
+// ★T6 이 세로 스택을 만들 때 이 파일을 소유하지 않아 단언이 비어 있던 자리다.
+//   「스프린트가 0개면 화면이 어떻게 되나」는 신규 프로젝트의 **첫 화면**이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 스프린트가 0개인 정상 조회 (E1).
+ *
+ * `EMPTY_VIEW` 와 달리 백로그에 이슈가 **있다** — 「칸이 하나뿐」이라는 관측이
+ * 「아무것도 안 그려졌다」와 구별되어야 스택 구조 단언이 공허해지지 않는다.
+ */
+const NO_SPRINT_VIEW: BacklogView = {
+  backlog: [
+    {
+      key: 'ATLAS-1',
+      summary: '백로그 이슈 1',
+      currentStateKey: 'open',
+      assigneeId: null,
+      priority: 1,
+      rank: '0|a:',
+      version: 0,
+      epicKey: null,
+    } satisfies BacklogIssue,
+  ],
+  sprints: [],
+  truncated: false,
+}
+
+describe('BacklogBoard — 스프린트가 0개인 백로그 (FR-UX-13 F15 E1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = NO_USERS
+    mockBacklogQueryOverride = { data: NO_SPRINT_VIEW, isLoading: false, isError: false }
+  })
+
+  afterEach(() => {
+    mockBacklogQueryOverride = {}
+  })
+
+  it('E1: 세로 스택에 백로그 칸 하나만 남고 시작/완료 버튼이 없다', async () => {
+    renderBoard()
+
+    const regions = await screen.findAllByRole('region')
+    expect(regions).toHaveLength(1)
+    expect(regions[0]).toHaveAccessibleName(
+      backlogLabels.columnAriaLabel(backlogLabels.backlogTitle, 1),
+    )
+
+    expect(screen.queryByRole('button', { name: backlogLabels.startSprint })).toBeNull()
+    expect(screen.queryByRole('button', { name: backlogLabels.completeSprint })).toBeNull()
+  })
+
+  it('E1: 스프린트 생성 폼은 세로 스택 **바깥** 현행 위치 그대로다', async () => {
+    renderBoard()
+
+    // 스택 = 칸들의 공통 부모. 스프린트가 0개여도 이 컨테이너는 그대로 있어야 한다.
+    const backlogColumn = await screen.findByRole('region')
+    const stack = backlogColumn.parentElement
+    expect(stack).not.toBeNull()
+
+    const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
+    // 스택이 폼을 삼키지 않았다 — 삼키면 카드 드롭 영역 안에 입력창이 들어간다
+    expect(stack).not.toContainElement(nameInput)
+    // 그리고 폼이 스택보다 **앞**이다 (현행 위치 = truncated 배너 다음, 스택 이전)
+    expect(nameInput.compareDocumentPosition(stack as Node) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 T9 — 키보드 DnD 센서 · 한국어 공지 배선 (FR-8 · FR-9 · FR-15 · FR-17)
+//
+// ★센서와 공지는 화면에 글자로 나오지 않는다. `DndContext` props 를 직접 재지 않으면
+//   배선을 통째로 지워도 이 파일이 전량 초록으로 남는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 공지 빌더가 읽는 것은 `{active, over}` 뿐이다 — 최소 이벤트만 만든다 */
+function announceEvent(
+  activeId: string,
+  activeData: Record<string, unknown>,
+  over: { id: string; data: Record<string, unknown> } | null,
+): { active: Active; over: Over | null } {
+  return {
+    active: { id: activeId, data: { current: activeData } } as unknown as Active,
+    over:
+      over === null
+        ? null
+        : ({ id: over.id, data: { current: over.data } } as unknown as Over),
+  }
+}
+
+/** 스프린트2의 카드를 백로그 칸으로 옮기는 드롭 — 판정은 `unassign` 이다 */
+function sprintToBacklogEvent(): { active: Active; over: Over | null } {
+  return announceEvent(
+    'sprint:ATLAS-5',
+    { issueKey: 'ATLAS-5', context: 'sprint', sprintId: ACTIVE_SPRINT_ID },
+    { id: 'backlog', data: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] } },
+  )
+}
+
+/**
+ * 백로그 칸 droppable 실물 — 하이라이트(`ring-2`)가 걸리는 지점.
+ *
+ * 클래스는 접근성 이름으로 노출되지 않아 role 조회로는 잡을 수 없다. 그래서 컴포넌트가 이미
+ * 갖고 있는 `data-droppable` 을 쓴다 — 없어지면 여기서 즉시 터진다.
+ */
+function getBacklogDropZone(container: HTMLElement): HTMLElement {
+  const zone = container.querySelector('[data-droppable="backlog"]')
+  if (!(zone instanceof HTMLElement)) {
+    throw new Error(
+      '백로그 droppable 을 찾지 못했습니다 — `data-droppable` 속성이 바뀌었는지 확인하세요.',
+    )
+  }
+  return zone
+}
+
+/** 스프린트 카드가 백로그 칸 위에 올라간 드래그 이벤트 — `onDragOver`·`onDragCancel` 공용 */
+function overBacklogEvent(): DragOverEvent {
+  return {
+    active: {
+      id: 'sprint:ATLAS-5',
+      data: { current: { issueKey: 'ATLAS-5', context: 'sprint', sprintId: ACTIVE_SPRINT_ID } },
+    },
+    over: {
+      id: 'backlog',
+      data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] } },
+    },
+    collisions: null,
+    delta: { x: 0, y: 40 },
+    activatorEvent: new KeyboardEvent('keydown', { code: 'Space' }),
+  } as unknown as DragOverEvent
+}
+
+describe('BacklogBoard — 키보드 DnD 센서와 한국어 공지 배선 (FR-UX-13 F15)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUsersResult = NO_USERS
+    capturedSensors = undefined
+    capturedAccessibility = undefined
+    capturedCollisionDetection = undefined
+    capturedOnDragOver = undefined
+    capturedOnDragCancel = undefined
+  })
+
+  it('★카드 우선 충돌 감지를 `DndContext` 에 그대로 넘긴다 (T13 결함 C)', () => {
+    renderBoard()
+
+    // 참조 동일성으로 잰다 — prop 을 지우거나 dnd-kit 기본 알고리즘으로 되돌리면 red 다.
+    // 이 단언이 없으면 이 PR 이 전면 재작성한 `backlog-collision.ts` 배선을 삭제해도
+    // 이 파일 전량이 초록으로 남는다.
+    expect(capturedCollisionDetection).toBe(cardFirstCollision)
+  })
+
+  it('★드래그 취소 뒤 섹션 하이라이트가 남지 않는다 (T13 결함 B)', () => {
+    const { container } = renderBoard()
+
+    // Given. 백로그 칸 위에 올라가 하이라이트가 걸렸다.
+    // ★짝 단언이다 — 걸린 적이 없으면 「지워졌다」가 아무것도 재지 않는다.
+    act(() => {
+      capturedOnDragOver?.(overBacklogEvent())
+    })
+    expect(getBacklogDropZone(container).className).toContain('ring-2')
+
+    // When. Esc 로 취소한다. dnd-kit 은 취소 시 `active` 가 이미 null 이라
+    // `onDragOver(null)` 을 부르지 않는다 (`@dnd-kit/core@6.3.1`
+    // `dist/core.cjs.development.js:3250` 의 `!active` 조기 반환).
+    // 그래서 `onDragCancel` 이 하이라이트를 지울 **유일한** 통로다.
+    act(() => {
+      capturedOnDragCancel?.(overBacklogEvent())
+    })
+
+    // Then. 하이라이트가 지워졌다
+    expect(getBacklogDropZone(container).className).not.toContain('ring-2')
+  })
+
+  it('FR-8·FR-15: KeyboardSensor 를 좌표 계산기·활성화 키 옵션과 함께 등록한다', () => {
+    renderBoard()
+
+    const descriptors = capturedSensors ?? []
+    const keyboard = descriptors.find((descriptor) => descriptor.sensor === KeyboardSensor)
+    expect(keyboard).toBeDefined()
+    // 옵션을 **같은 참조**로 잰다 — 기본 좌표 계산기(방향키 1회 25px)로 되돌리면 red 다
+    expect(keyboard?.options).toBe(backlogKeyboardSensorOptions)
+
+    // ★짝 단언 — PointerSensor 의 5px 임계는 그대로여야 한다.
+    //   낮추면 카드 안 이슈 링크 클릭이 드래그로 먹힌다 (FR-8 이 명시한 보존 조건).
+    const pointer = descriptors.find((descriptor) => descriptor.sensor === PointerSensor)
+    expect(pointer?.options).toEqual({ activationConstraint: { distance: 5 } })
+  })
+
+  it('FR-9: 영어 기본 안내 대신 한국어 공지·안내를 넘긴다', () => {
+    renderBoard()
+
+    // `accessibility={undefined}` 로 두면 dnd-kit 의 영어 기본값이 그대로 남는다
+    expect(capturedAccessibility?.screenReaderInstructions).toBe(backlogScreenReaderInstructions)
+
+    const message = capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent())
+    expect(message).toBe(backlogLabels.announce.movedToBacklog)
+  })
+
+  it('★FR-17: UPDATE 권한이 없으면 「옮겼습니다」 대신 권한 안내를 읽는다', () => {
+    renderBoard('ATLAS', { canReorderIssue: false })
+
+    // 권한이 없으면 `use-backlog-drag.ts` 가 mutation 을 0건으로 막는다. 그 상태에서
+    // 「옮겼습니다」를 읽으면 스크린리더 사용자에게**만** 거짓말이 된다.
+    const message = capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent())
+    expect(message).toBe(backlogLabels.announce.forbidden)
+  })
+
+  it('T-KB-3: 키보드로 집자마자 놓으면(이동 0) mutation 이 0건이다', async () => {
+    renderBoard()
+
+    triggerDragEnd(
+      {
+        id: 'sprint:ATLAS-5',
+        data: { current: { issueKey: 'ATLAS-5', context: 'sprint', sprintId: ACTIVE_SPRINT_ID } },
+      },
+      {
+        id: 'backlog',
+        data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] } },
+      },
+      // Space 두 번 — 방향키를 한 번도 안 눌렀으니 이동이 0이다
+      { delta: { x: 0, y: 0 }, activatorEvent: new KeyboardEvent('keydown', { code: 'Space' }) },
+    )
+
+    await waitFor(() => {
+      expect(mockUnassignMutate).not.toHaveBeenCalled()
+    })
+    expect(mockRerankMutate).not.toHaveBeenCalled()
+    expect(mockAssignMutate).not.toHaveBeenCalled()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // T12 결함 A — mutation 이 0건인데 낭독은 「순서를 변경했습니다」였다
+  //
+  // 이동 0 가드가 `use-backlog-drag.ts` 안에만 있어서 공지 모듈이 그 사실을 몰랐다.
+  // 여기서 재는 것은 **판정이 공지까지 실제로 이어져 있는가** — 훅과 lib 각각의 유닛이
+  // 초록이어도 `BacklogBoard` 가 통로를 안 이어 주면 사용자에게는 아무 변화가 없다.
+  //
+  // ★호출 순서는 dnd-kit 을 그대로 흉내 낸다. `DndContext` 의 `onDragEnd` **prop 을 먼저**
+  //   부르고 그다음 접근성 모니터로 공지를 낸다 — 같은 배치 안의 동기 호출이다
+  //   (`@dnd-kit/core@6.3.1` `dist/core.esm.js:3164-3171`, 모니터 dispatch 는 `:31-35`).
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** 이동 0 드롭을 실제로 발생시킨다 — 공지를 묻기 **전**에 호출해야 한다 */
+  function dropWithoutMoving(delta: { x: number; y: number }): void {
+    triggerDragEnd(
+      {
+        id: 'sprint:ATLAS-5',
+        data: { current: { issueKey: 'ATLAS-5', context: 'sprint', sprintId: ACTIVE_SPRINT_ID } },
+      },
+      {
+        id: 'backlog',
+        data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1'] } },
+      },
+      { delta, activatorEvent: new KeyboardEvent('keydown', { code: 'Space' }) },
+    )
+  }
+
+  it('★T12: 이동 0 드롭 뒤 공지가 「변경 사항이 없습니다」다 (mutation 과 같은 판정)', () => {
+    renderBoard()
+
+    dropWithoutMoving({ x: 0, y: 0 })
+
+    const message = capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent())
+    expect(message).toBe(backlogLabels.announce.noChange)
+    // 실브라우저에서 실제로 들린 거짓말 두 종을 이름으로 못박는다
+    expect(message).not.toBe(backlogLabels.announce.reordered)
+    expect(message).not.toBe(backlogLabels.announce.movedToBacklog)
+  })
+
+  it('짝 단언 — 실제로 끌어 옮긴 드롭 뒤에는 이동 공지가 그대로 나온다', () => {
+    renderBoard()
+
+    dropWithoutMoving({ x: 0, y: 40 })
+
+    // 이 짝이 없으면 공지를 통째로 「변경 사항이 없습니다」로 고정해도 위가 통과한다.
+    expect(capturedAccessibility?.announcements?.onDragEnd?.(sprintToBacklogEvent()))
+      .toBe(backlogLabels.announce.movedToBacklog)
   })
 })

@@ -130,6 +130,32 @@ export interface RerankIssueBody {
   nextIssueKey?: string
 }
 
+/**
+ * 스프린트 메타 수정 요청 body 타입 (3-state partial).
+ *
+ * 백엔드 `UpdateSprintRequest`(`SprintController.kt:149`)는 `name`·`goal`·`startDate`·`endDate`
+ * 를 `JsonNullable` 로 받는다 — **필드 미전송 = 무변경**, **명시 `null` = 값 삭제**로 뜻이 다르다.
+ * 그래서 `undefined` 를 「값 없음」이 아니라 「키 없음」으로 다뤄야 하고,
+ * {@link updateSprint} 가 `hasOwnProperty` 로 그 구분을 지킨다.
+ *
+ * `version` 은 낙관적 잠금(Optimistic Lock)용으로 **항상 필수**다.
+ */
+export interface UpdateSprintBody {
+  /** 스프린트 이름. 미전송이면 무변경 (백엔드가 null 을 허용하지 않는다) */
+  name?: string
+  /** 스프린트 목표. null 이면 값 삭제 */
+  goal?: string | null
+  /** 시작일 (ISO 8601 date string). null 이면 값 삭제 */
+  startDate?: string | null
+  /** 종료일 (ISO 8601 date string). null 이면 값 삭제 */
+  endDate?: string | null
+  /** 낙관적 잠금 버전. 어긋나면 409 */
+  version: number
+}
+
+/** {@link UpdateSprintBody} 에서 3-state 로 전송되는 필드 이름 전수 */
+const UPDATE_SPRINT_PATCHABLE_FIELDS = ['name', 'goal', 'startDate', 'endDate'] as const
+
 /** 스프린트 생성 요청 파라미터 타입 */
 export interface CreateSprintParams {
   /** 스프린트를 생성할 프로젝트 키 */
@@ -275,6 +301,42 @@ export async function createSprint(params: CreateSprintParams): Promise<SprintMe
     requestBody,
     dataResponseSchema(sprintMetaSchema),
   )
+  return wrapped.data
+}
+
+/**
+ * 스프린트의 이름·목표·기간을 수정한다 (partial update).
+ *
+ * PATCH /api/v1/sprints/{id} → `{ data: SprintMeta }` 언랩.
+ * 같은 파일의 {@link rerankIssue} 와 같은 관례를 따른다 — PATCH 는 `apiFetch` + 수동 `ApiError`.
+ *
+ * **`body` 에 실제로 존재하는 키만 전송한다.** 3-state 계약상 미전송과 명시 `null` 의 뜻이
+ * 다르므로(`UpdateSprintBody` 참조) 값이 `undefined` 인지가 아니라 **키가 있는지**로 판단한다.
+ *
+ * @param sprintId 스프린트 UUID
+ * @param body 바뀐 필드 + `version`(필수)
+ * @returns SprintMeta — 갱신된 스프린트 정보 (`version` 이 +1 된 값)
+ * @throws ApiError 비-2xx 응답 시 (409 = 낙관적 잠금 충돌, 404 = 스프린트 미존재)
+ * @throws ZodError 응답 스키마 불일치 시
+ */
+export async function updateSprint(sprintId: string, body: UpdateSprintBody): Promise<SprintMeta> {
+  const requestBody: Record<string, unknown> = { version: body.version }
+  for (const field of UPDATE_SPRINT_PATCHABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      requestBody[field] = body[field]
+    }
+  }
+
+  const res = await apiFetch(`${SPRINTS_BASE}/${encodeURIComponent(sprintId)}`, {
+    method: 'PATCH',
+    body: requestBody,
+  })
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  const wrapped = dataResponseSchema(sprintMetaSchema).parse(data)
   return wrapped.data
 }
 

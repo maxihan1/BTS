@@ -5,7 +5,12 @@
 //   - msw-derived-behavior-shared-store-e2e: 정적 픽스처 반환은 가짜그린 — store에서 읽어야 함
 //
 import { setupServer } from 'msw/node'
-import { backlogHandlers } from './backlog-handlers'
+import {
+  backlogHandlers,
+  LS_KEY_BACKLOG_TRUNCATED,
+  LS_KEY_SPRINT_START_FAIL,
+  LS_KEY_SPRINT_UNASSIGN_FAIL,
+} from './backlog-handlers'
 import {
   resetBacklogStore,
   seedBacklog,
@@ -313,5 +318,183 @@ describe('POST /api/v1/sprints/:id/complete (stateful)', () => {
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
     )
     expect(res.status).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-13 F15 — 픽스처 보강 (FR-18)
+//
+// ★왜 여기서 픽스처를 단언하나.
+// 완료 다이얼로그의 「COMPLETED 스프린트가 이관 대상에 없다」는 픽스처에 COMPLETED 가
+// 0개면 **자동으로 참**이 된다. 부정 단언만 두면 아무것도 재지 않는 가짜 그린이고,
+// PR #342 에서 같은 양식이 2회 적발됐다. 그래서 「없다」의 짝인 「있다」를 목에서 먼저 고정한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DEFAULT_BACKLOG 픽스처 — 스프린트 상태 3종 (FR-18)', () => {
+  it('ACTIVE·PLANNED·COMPLETED 가 각각 실재한다 (짝 단언의 전제)', async () => {
+    const { data } = await getBacklog('ATLAS')
+    const statuses = data.sprints.map((s) => s.sprint.status)
+
+    expect(statuses).toContain('ACTIVE')
+    expect(statuses).toContain('PLANNED')
+    expect(statuses).toContain('COMPLETED')
+  })
+
+  it('백엔드 sprintComparator 와 같은 순서로 내려온다 (ACTIVE → PLANNED → COMPLETED)', async () => {
+    // 클라이언트는 스프린트를 정렬하지 않는다(스펙 FR-1). 목이 백엔드와 다른 순서를 주면
+    // 「응답 순서를 그대로 그린다」가 화면에서 검증되지 않는다.
+    const { data } = await getBacklog('ATLAS')
+    const rank: Record<string, number> = { ACTIVE: 0, PLANNED: 1, COMPLETED: 2 }
+    const ranks = data.sprints.map((s) => rank[s.sprint.status] ?? 99)
+
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b))
+  })
+
+  it('첫 스프린트에 이슈가 있다 (드래그·해제 시나리오가 성립하려면 필요)', async () => {
+    const { data } = await getBacklog('ATLAS')
+    expect(data.sprints[0]?.issues.length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/sprints/:id (FR-14)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /api/v1/sprints/:id (stateful · 3-state partial)', () => {
+  /** PLANNED 스프린트의 메타를 가져온다 */
+  async function plannedSprint(): Promise<{
+    sprintId: string
+    name: string
+    status: string
+    version: number
+  }> {
+    const { data } = await getBacklog('ATLAS')
+    const planned = data.sprints.find((s) => s.sprint.status === 'PLANNED')
+    expect(planned).toBeDefined()
+    return planned!.sprint
+  }
+
+  async function patchSprint(sprintId: string, body: unknown): Promise<Response> {
+    return fetch(`/api/v1/sprints/${sprintId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  it('전송한 필드만 반영하고 version 을 +1 한다', async () => {
+    const before = await plannedSprint()
+
+    const res = await patchSprint(before.sprintId, {
+      endDate: '2026-07-20',
+      version: before.version,
+    })
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as {
+      data: { name: string; endDate: string | null; startDate: string | null; version: number }
+    }
+    expect(body.data.endDate).toBe('2026-07-20')
+    expect(body.data.version).toBe(before.version + 1)
+    // 미전송 필드는 무변경
+    expect(body.data.name).toBe(before.name)
+
+    // GET 재조회 — store 변이가 반영돼야 한다
+    const { data: after } = await getBacklog('ATLAS')
+    const updated = after.sprints.find((s) => s.sprint.sprintId === before.sprintId)
+    expect(updated?.sprint.version).toBe(before.version + 1)
+  })
+
+  it('명시 null 은 값을 지운다 (미전송과 다른 뜻)', async () => {
+    const before = await plannedSprint()
+
+    const res = await patchSprint(before.sprintId, { goal: null, version: before.version })
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { data: { goal: string | null } }
+    expect(body.data.goal).toBeNull()
+  })
+
+  it('version 이 어긋나면 409 를 반환하고 store 를 바꾸지 않는다', async () => {
+    const before = await plannedSprint()
+
+    const res = await patchSprint(before.sprintId, {
+      goal: '덮어쓰기 시도',
+      version: before.version + 5,
+    })
+    expect(res.status).toBe(409)
+
+    const { data: after } = await getBacklog('ATLAS')
+    const untouched = after.sprints.find((s) => s.sprint.sprintId === before.sprintId)
+    expect(untouched?.sprint.version).toBe(before.version)
+  })
+
+  it('version 이 없으면 400 을 반환한다 (백엔드 필수 파라미터)', async () => {
+    const before = await plannedSprint()
+    const res = await patchSprint(before.sprintId, { goal: '목표만' })
+    expect(res.status).toBe(400)
+  })
+
+  it('존재하지 않는 스프린트는 404 를 반환한다', async () => {
+    const res = await patchSprint('00000000-0000-4000-8000-000000000000', { version: 0 })
+    expect(res.status).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글 (FR-14 · FR-18)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('E2E 시나리오 토글', () => {
+  afterEach(() => {
+    globalThis.localStorage?.clear()
+  })
+
+  it('truncated 토글이 켜지면 GET backlog 가 truncated=true 를 반환한다 (E15 완료 차단 재현)', async () => {
+    const { data: before } = await getBacklog('ATLAS')
+    expect(before.truncated).toBe(false)
+
+    globalThis.localStorage?.setItem(LS_KEY_BACKLOG_TRUNCATED, 'true')
+
+    const { data: after } = await getBacklog('ATLAS')
+    expect(after.truncated).toBe(true)
+  })
+
+  it('시작 실패 토글 — "true" 는 500, "409" 는 409 를 반환한다 (S5 · E10 재현)', async () => {
+    const { data } = await getBacklog('ATLAS')
+    const planned = data.sprints.find((s) => s.sprint.status === 'PLANNED')
+    const sprintId = planned!.sprint.sprintId
+
+    globalThis.localStorage?.setItem(LS_KEY_SPRINT_START_FAIL, 'true')
+    const failed = await fetch(`/api/v1/sprints/${sprintId}/start`, { method: 'POST' })
+    expect(failed.status).toBe(500)
+
+    globalThis.localStorage?.setItem(LS_KEY_SPRINT_START_FAIL, '409')
+    const conflict = await fetch(`/api/v1/sprints/${sprintId}/start`, { method: 'POST' })
+    expect(conflict.status).toBe(409)
+
+    // 토글이 꺼지면 정상 전이 — 실패 토글이 스프린트를 영구히 못 쓰게 만들면 안 된다
+    globalThis.localStorage?.removeItem(LS_KEY_SPRINT_START_FAIL)
+    const ok = await fetch(`/api/v1/sprints/${sprintId}/start`, { method: 'POST' })
+    expect(ok.status).toBe(200)
+  })
+
+  it('이관 실패 토글은 지정한 이슈 키의 DELETE 만 500 으로 만든다 (S7 부분 실패 재현)', async () => {
+    const { data } = await getBacklog('ATLAS')
+    const sprint = data.sprints[0]!
+    const [first, second] = sprint.issues
+    expect(second).toBeDefined()
+
+    globalThis.localStorage?.setItem(LS_KEY_SPRINT_UNASSIGN_FAIL, second!.key)
+
+    const okRes = await fetch(`/api/v1/sprints/${sprint.sprint.sprintId}/issues/${first!.key}`, {
+      method: 'DELETE',
+    })
+    expect(okRes.status).toBe(204)
+
+    const failRes = await fetch(`/api/v1/sprints/${sprint.sprint.sprintId}/issues/${second!.key}`, {
+      method: 'DELETE',
+    })
+    expect(failRes.status).toBe(500)
   })
 })

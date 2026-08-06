@@ -16,6 +16,7 @@ import {
   createSprint,
   startSprint,
   completeSprint,
+  updateSprint,
 } from '@/api/backlog'
 import type { BacklogView, IssueRankResult, SprintMeta } from '@/api/backlog'
 import {
@@ -26,6 +27,7 @@ import {
   useCreateSprint,
   useStartSprint,
   useCompleteSprint,
+  useUpdateSprint,
   backlogKeys,
 } from './use-backlog'
 
@@ -414,5 +416,70 @@ describe('useCompleteSprint', () => {
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useUpdateSprint (FR-UX-13 F15 FR-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useUpdateSprint', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    vi.mocked(updateSprint).mockResolvedValue({
+      ...MOCK_SPRINT_META,
+      endDate: '2026-07-20',
+      version: 1,
+    })
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-BL-UPDATE-SPRINT-1: 변경분과 version 을 그대로 넘기고 backlog queryKey 를 invalidate 한다', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useUpdateSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        sprintId: SPRINT_ID,
+        body: { endDate: '2026-07-20', version: 0 },
+      })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(updateSprint).toHaveBeenCalledWith(SPRINT_ID, { endDate: '2026-07-20', version: 0 })
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+    )
+  })
+
+  it('T-BL-UPDATE-SPRINT-2: 성공 응답의 SprintMeta 를 그대로 돌려준다 (기준값·version 갱신 재료)', async () => {
+    // FR-4 — 다이얼로그는 이 응답으로 내부 기준값과 version 을 갱신한다. 그래야 재시도가
+    // 낡은 version 으로 409 를 받지 않는다.
+    const { result } = renderHook(() => useUpdateSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    let returned: SprintMeta | undefined
+    await act(async () => {
+      returned = await result.current.mutateAsync({
+        sprintId: SPRINT_ID,
+        body: { endDate: '2026-07-20', version: 0 },
+      })
+    })
+
+    expect(returned?.version).toBe(1)
+    expect(returned?.endDate).toBe('2026-07-20')
   })
 })

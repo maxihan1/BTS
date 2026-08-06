@@ -70,6 +70,11 @@ const BACKLOG_SCREEN_BUTTON_NAMES = {
   // ★FR-UX-13 F5 가 추가하는 진입점 1종 — 등록을 빠뜨리면 판별식이 조용히 공허해진다.
   // `retrying`('다시 시도 중…')은 **넣지 않는다** — 같은 버튼의 다른 상태(§제외 3종 ②).
   retry: backlogLabels.retry,
+  // ★FR-UX-13 F15 가 추가하는 섹션 접기 토글 1종.
+  // 상태(접힘/펼침)로 이름이 갈리지 않는다 — 섹션 A 는 접힘, B 는 펼침이 **동시에** 가능해
+  // §제외 3종 ②「같은 버튼의 다른 상태」가 성립하지 않기 때문이다 (스펙 §리뷰 반영 C-9).
+  // `스프린트 시작 중…`·`스프린트 완료 중…`은 반대로 진짜 「같은 버튼의 다른 상태」라 **넣지 않는다**.
+  collapseSection: backlogLabels.collapseSection('2026-W31'),
 } as const
 
 /** 보드 화면에서 버튼 접근 이름으로 동시에 존재할 수 있는 값. */
@@ -142,7 +147,16 @@ describe('FR-14 — 진입점 버튼 이름 substring 전수 판별식', () => {
       backlogLabels.createIssueInSprint('2026-W31'),
     )
     expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(backlogLabels.retry)
+    expect(Object.values(BACKLOG_SCREEN_BUTTON_NAMES)).toContain(
+      backlogLabels.collapseSection('2026-W31'),
+    )
     expect(Object.values(BOARD_SCREEN_BUTTON_NAMES)).toContain(boardLabels.page.createIssue)
+  })
+
+  it('섹션 접기 토글 이름은 섹션마다 달라진다 (FR-2 — 같은 화면 N개 공존)', () => {
+    expect(backlogLabels.collapseSection('백로그')).not.toBe(
+      backlogLabels.collapseSection('스프린트 1'),
+    )
   })
 
   it('스프린트 진입점 이름은 스프린트마다 달라진다 (FR-10 — 같은 화면 N개 공존)', () => {

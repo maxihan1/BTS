@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
+import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { SprintColumnHeader } from './SprintColumnHeader'
 import { BacklogCard } from './BacklogCard'
 
@@ -67,12 +68,19 @@ function SprintColumnInner({
   canCreateIssue = false,
 }: SprintColumnProps) {
   const isCompleted = sprint.status === 'COMPLETED'
+  // droppable id 를 접힘 저장의 섹션 id 로도 그대로 쓴다 (F15 FR-2) — 두 벌로 갈리면
+  // 「접힌 섹션」과 「드롭이 막힌 섹션」이 어긋난다.
   const droppableId = `sprint-${sprint.sprintId}`
   const orderedKeys = issues.map((i) => i.key)
 
+  // 접힘은 **권한·상태와 무관**하다 (FR-12) — COMPLETED 스프린트도 접을 수 있어야 한다.
+  const { isCollapsed, toggle } = useBacklogCollapsed(projectKey)
+  const collapsed = isCollapsed(droppableId)
+
+  // ★훅을 조건부로 부르지 않는다 (E4). 접힘은 `disabled` + 카드 목록 미렌더로 표현한다.
   const { setNodeRef } = useDroppable({
     id: droppableId,
-    disabled: isCompleted,
+    disabled: isCompleted || collapsed,
     data: { context: 'sprint', sprintId: sprint.sprintId, orderedKeys },
   })
 
@@ -80,7 +88,7 @@ function SprintColumnInner({
 
   return (
     <div
-      className="flex min-w-72 w-72 flex-col gap-2"
+      className="flex w-full flex-col gap-2"
       role="region"
       aria-label={backlogLabels.columnAriaLabel(sprint.name, issueCount)}
     >
@@ -88,43 +96,47 @@ function SprintColumnInner({
         projectKey={projectKey}
         sprint={sprint}
         issueCount={issueCount}
+        collapsed={collapsed}
+        onToggleCollapsed={() => { toggle(droppableId) }}
         onStart={onStart}
         onComplete={onComplete}
         onCreateIssue={onCreateIssue}
         canCreateIssue={canCreateIssue}
       />
 
-      {/* 드롭 영역 + 카드 목록 */}
-      <div
-        ref={setNodeRef}
-        data-droppable={isCompleted ? undefined : droppableId}
-        data-droppable-disabled={isCompleted ? 'true' : undefined}
-        data-ordered-keys={isCompleted ? undefined : orderedKeys.join(',')}
-        className={cn(
-          'flex flex-1 flex-col gap-2 rounded-b-lg border border-border p-2 transition-colors',
-          isOver && !isCompleted && 'bg-accent ring-2 ring-primary',
-          isCompleted && 'bg-muted/50 opacity-75',
-        )}
-      >
-        {issueCount === 0 ? (
-          <div
-            className="flex flex-1 items-center justify-center rounded-md py-8 text-xs text-muted-foreground"
-            aria-label="이슈 없음"
-          >
-            {backlogLabels.emptyIssues}
-          </div>
-        ) : (
-          issues.map((issue) => (
-            <BacklogCard
-              key={issue.key}
-              issue={issue}
-              context="sprint"
-              sprintId={sprint.sprintId}
-              assigneeName={assigneeNames.get(issue.key)}
-            />
-          ))
-        )}
-      </div>
+      {/* 드롭 영역 + 카드 목록 — 접히면 **렌더하지 않는다** (FR-2). 헤더는 남는다. */}
+      {!collapsed && (
+        <div
+          ref={setNodeRef}
+          data-droppable={isCompleted ? undefined : droppableId}
+          data-droppable-disabled={isCompleted ? 'true' : undefined}
+          data-ordered-keys={isCompleted ? undefined : orderedKeys.join(',')}
+          className={cn(
+            'flex flex-col gap-2 rounded-b-lg border border-border p-2 transition-colors',
+            isOver && !isCompleted && 'bg-accent ring-2 ring-primary',
+            isCompleted && 'bg-muted/50 opacity-75',
+          )}
+        >
+          {issueCount === 0 ? (
+            <div
+              className="flex items-center justify-center rounded-md py-8 text-xs text-muted-foreground"
+              aria-label="이슈 없음"
+            >
+              {backlogLabels.emptyIssues}
+            </div>
+          ) : (
+            issues.map((issue) => (
+              <BacklogCard
+                key={issue.key}
+                issue={issue}
+                context="sprint"
+                sprintId={sprint.sprintId}
+                assigneeName={assigneeNames.get(issue.key)}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -136,11 +148,14 @@ function SprintColumnInner({
 /**
  * 스프린트 이슈 칸.
  *
- * - 헤더(이름·상태 배지·이슈 수·생성 진입점·시작/완료·번다운)는 [SprintColumnHeader] 가 그린다.
+ * - 헤더(접기 토글·이름·상태 배지·이슈 수·생성 진입점·시작/완료·번다운)는 [SprintColumnHeader] 가 그린다.
  *   200줄 규칙(`DEVELOPMENT.md §2.2`)에 맞춰 **화면의 경계(sticky 헤더)** 를 파일 경계로 삼았다.
+ * - 세로 스택의 한 칸이므로 폭은 `w-full` 이다 (F15 FR-1).
  * - `useDroppable`로 droppable id=`sprint-{sprintId}` 영역을 제공한다.
  * - COMPLETED 상태이면 `useDroppable`의 disabled=true로 드롭을 거부하고 시각적으로 비활성 처리한다.
+ * - 접히면 카드 목록을 렌더하지 않고 droppable 도 `disabled` 가 된다 (F15 FR-2 · E4).
  * - `isOver=true`이면 ring-2 하이라이트를 적용한다 (COMPLETED이면 무시).
  * - `memo`로 래핑되어 props가 변하지 않으면 재렌더하지 않는다.
+ *   접힘 상태는 props 가 아니라 zustand 구독이라 memo 가 막지 않는다.
  */
 export const SprintColumn = memo(SprintColumnInner)
