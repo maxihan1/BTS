@@ -26,7 +26,7 @@ import {
   buildBacklogAnnouncements,
 } from '@/lib/backlog-announcements'
 import { backlogKeyboardSensorOptions } from '@/lib/backlog-keyboard-coordinates'
-import { emptyBacklogFilter, filterBacklogView, isEmptyFilter } from '@/lib/backlog-filter'
+import { NO_EPIC, emptyBacklogFilter, filterBacklogView, isEmptyFilter } from '@/lib/backlog-filter'
 import type { BacklogFilter } from '@/lib/backlog-filter'
 import type { BacklogIssue, BacklogView, SprintMeta, SprintWithIssues } from '@/api/backlog'
 
@@ -62,6 +62,16 @@ export const BACKLOG_FILTER_RESET_LABEL = '필터 초기화'
 export interface BacklogBoardProps {
   /** 프로젝트 키 — 백로그 데이터 조회 + 스프린트 생성에 사용 */
   projectKey: string
+  /**
+   * 현재 필터 (F16-9). **이 컴포넌트는 제어형**이라 필터 state 를 갖지 않는다.
+   *
+   * 진실 출처는 URL 이고 소유자는 라우트다. 여기에 기본값이나 내부 폴백 state 를 두면
+   * 「URL 이 비어 있을 때만 도는 두 번째 상태」가 생겨, 그때부터 화면과 주소창이 서로
+   * 다른 말을 한다.
+   */
+  filter: BacklogFilter
+  /** 필터 변경 요청 — 소유자(라우트)가 URL 에 싣는다 */
+  onFilterChange: (next: BacklogFilter) => void
   /**
    * 스프린트 관리 권한(CREATE).
    * false이면 스프린트 생성·시작·완료 버튼이 비활성화된다.
@@ -158,14 +168,14 @@ function buildDisplay(view: BacklogView | undefined, filter: BacklogFilter): Bac
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 필터 상태 소유 (FR-UX-13 F16)
+// 필터 배선 (FR-UX-13 F16) — 상태 소유자는 **URL** 이다
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** {@link useBacklogFilterState} 반환값 */
-interface BacklogFilterState {
-  /** 현재 필터 */
+/** {@link useBacklogFilterWiring} 반환값 — 화면 곳곳이 소비하는 필터 한 벌 */
+interface BacklogFilterWiring {
+  /** 화면에 실제로 적용되는 필터 (EC9 정합을 마친 값) */
   readonly filter: BacklogFilter
-  /** 필터바가 부르는 전체 교체 (참조 안정) */
+  /** 필터바가 부르는 전체 교체 */
   readonly setFilter: (next: BacklogFilter) => void
   /** 에픽 패널이 부르는 축 하나 교체 (참조 안정) */
   readonly setEpicKeys: (next: string[]) => void
@@ -178,30 +188,71 @@ interface BacklogFilterState {
    * 마다 부모가 재렌더되지 않는다). 부모가 밖에서 `query` 만 비우면 로컬 입력이 그대로 남아
    * 디바운스가 **지운 검색어를 즉시 되돌려 놓는다** — 초기화가 튕긴다. 값이 바뀌면 필터바가
    * 재마운트되어 로컬 입력까지 함께 비워진다 (`BacklogFilterBar` KDoc 이 명시한 부모 책임).
+   *
+   * ★이것은 필터 값이 아니라 **표시 토큰**이다. 필터의 두 번째 사본이 아니므로 URL 소유권과
+   * 충돌하지 않는다.
    */
   readonly filterBarKey: number
 }
 
 /**
- * 백로그 필터 상태를 **한 곳에서** 소유한다.
+ * URL 이 들고 온 에픽 키 중 **이 백로그에 실재하는 것만** 남긴다 (EC9).
  *
- * 초기값과 갱신 지점이 여기 모여 있어야, URL search 연동(F16-9)이 붙는 날 이 훅 하나만
- * 갈아끼우면 된다 — 화면 곳곳에 흩어진 `setState` 를 찾아다니지 않는다.
+ * 링크는 오래 산다 — 에픽이 지워지거나 다른 프로젝트의 URL 을 붙여 넣으면 아무것도 안 맞는
+ * 키가 들어온다. 그대로 걸면 화면이 통째로 0건이 되어 「고장」으로 읽히므로, **조건을 버리고
+ * 전량을 보인다**. 아는 키는 그대로 남긴다 — 하나가 낡았다고 나머지 선택까지 버리지 않는다.
+ *
+ * {@link NO_EPIC} 은 실제 이슈 키가 아니라 예약 센티널이라 `useBacklogEpics` 목록에 절대
+ * 담기지 않는다. 목록만 기준으로 삼으면 「에픽 없음」 축이 통째로 죽으므로 항상 통과시킨다.
+ *
+ * @param filter URL 에서 복원한 필터
+ * @param knownEpicKeys 백로그 응답에서 파생한 에픽 키 전량
+ * @returns 정합을 마친 필터. 버릴 키가 없으면 **입력 참조를 그대로** 돌려준다
  */
-function useBacklogFilterState(): BacklogFilterState {
-  const [filter, setFilterState] = useState<BacklogFilter>(emptyBacklogFilter)
+function withKnownEpicsOnly(
+  filter: BacklogFilter,
+  knownEpicKeys: readonly string[],
+): BacklogFilter {
+  const known = new Set<string>(knownEpicKeys)
+  const epicKeys = filter.epicKeys.filter((key) => key === NO_EPIC || known.has(key))
+  return epicKeys.length === filter.epicKeys.length ? filter : { ...filter, epicKeys }
+}
+
+/**
+ * 제어형 필터를 화면이 쓰기 좋은 한 벌로 묶는다.
+ *
+ * **필터 state 를 만들지 않는다.** 소유자는 URL(라우트)이고 이 훅은 ① EC9 정합 ② 필터바
+ * 재마운트 토큰 두 가지만 더한다. 폴백 state 를 두면 소유자가 두 벌이 되어 새로고침·링크
+ * 공유가 화면과 어긋나기 시작한다.
+ *
+ * @param filter 라우트가 URL 에서 복원해 넘긴 필터
+ * @param onFilterChange 변경 요청 — 라우트가 URL 에 싣는다
+ * @param knownEpicKeys 백로그 응답에서 파생한 에픽 키 전량 (EC9 정합 기준)
+ */
+function useBacklogFilterWiring(
+  filter: BacklogFilter,
+  onFilterChange: (next: BacklogFilter) => void,
+  knownEpicKeys: readonly string[],
+): BacklogFilterWiring {
+  const effectiveFilter = useMemo(
+    () => withKnownEpicsOnly(filter, knownEpicKeys),
+    [filter, knownEpicKeys],
+  )
   const [filterBarKey, setFilterBarKey] = useState(0)
 
-  const setEpicKeys = useCallback((next: string[]) => {
-    setFilterState((prev) => ({ ...prev, epicKeys: next }))
-  }, [])
+  const setEpicKeys = useCallback(
+    (next: string[]) => {
+      onFilterChange({ ...effectiveFilter, epicKeys: next })
+    },
+    [effectiveFilter, onFilterChange],
+  )
 
   const reset = useCallback(() => {
-    setFilterState(emptyBacklogFilter())
+    onFilterChange(emptyBacklogFilter())
     setFilterBarKey((key) => key + 1)
-  }, [])
+  }, [onFilterChange])
 
-  return { filter, setFilter: setFilterState, setEpicKeys, reset, filterBarKey }
+  return { filter: effectiveFilter, setFilter: onFilterChange, setEpicKeys, reset, filterBarKey }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,6 +267,8 @@ function useBacklogFilterState(): BacklogFilterState {
  *   이 컴포넌트는 제출 콜백만 `useCallback` 안정 참조로 넘긴다.
  * - 필터바·에픽 패널은 칸 `region` **바깥**, 세로 스택 **위**다 (F16). 섹션 안에 넣으면
  *   `backlog.spec.ts:253` 의 칸 locator(region textContent 선두 앵커)가 즉사한다.
+ * - ★필터는 **제어형**이다 (F16-9). 값의 소유자는 URL(라우트)이고 여기엔 필터 state 가 없다 —
+ *   폴백을 두면 소유자가 두 벌이 되어 새로고침·링크 공유가 화면과 어긋난다.
  * - ★필터는 **표시만** 좁힌다. 스프린트 완료·DnD·드래그 공지는 전부 **원본 `backlogView`** 를
  *   본다 (F16 R6). 두 집합을 한 변수로 합치지 않는다.
  * - DndContext + PointerSensor(distance:5)로 드래그를 관리한다.
@@ -226,6 +279,8 @@ function useBacklogFilterState(): BacklogFilterState {
  */
 export function BacklogBoard({
   projectKey,
+  filter,
+  onFilterChange,
   canManageSprint = true,
   canReorderIssue = true,
   canCreateIssue = false,
@@ -257,10 +312,10 @@ export function BacklogBoard({
     [backlogView, assigneeUsers],
   )
 
-  // 필터 (F16). 상태 소유·초기값·갱신 지점이 훅 하나에 모여 있다 — F16-9(URL search 연동)가
-  // 붙는 날 갈아끼울 자리다.
-  const filterState = useBacklogFilterState()
+  // 필터 (F16). ★상태 소유자는 **URL** 이다 (F16-9) — 이 컴포넌트는 받은 값을 그릴 뿐이고,
+  // 훅은 EC9 정합과 필터바 재마운트 토큰만 얹는다.
   const { epicKeys, epicNames } = useBacklogEpics(backlogView)
+  const filterState = useBacklogFilterWiring(filter, onFilterChange, epicKeys)
 
   // ★표시용 파생. `useMemo` 는 성능 최적화가 아니라 **배선 조건**이다 — 칸들이 `memo` 라
   //   매 렌더 새 배열을 넘기면 재렌더 스킵이 통째로 죽는다(최대 1,000건).
@@ -452,8 +507,8 @@ interface BacklogBoardHeaderProps {
   readonly projectKey: string
   /** 백로그 응답의 `truncated` — **원본 값**이다. 필터가 잘림을 풀지 못한다 */
   readonly truncated: boolean
-  /** 필터 상태 소유자 */
-  readonly filterState: BacklogFilterState
+  /** 필터 배선 한 벌 — 값의 소유자는 URL 이다 (F16-9) */
+  readonly filterState: BacklogFilterWiring
   /** 백로그에 등장하는 에픽 키 전량 */
   readonly epicKeys: string[]
   /** 에픽 키 → 표시 이름 */

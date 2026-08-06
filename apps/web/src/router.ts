@@ -213,13 +213,50 @@ const adminWorkflowSchemesDetailRoute = createRoute({
   beforeLoad: requireSystemAdminFull,
 })
 
-/** 프로젝트 백로그·스프린트 라우트 — /projects/$projectKey/backlog, requireAuth (FR-BL-01/02) */
+/**
+ * URL search 값 하나를 `string | string[] | undefined` 로 좁힌다 (FR-UX-13 F16-9).
+ *
+ * 기본 parseSearch가 JSON.parse 기반이라 `?epic=123`은 number, `?epic=true`는 boolean으로
+ * 들어오고 배열 원소도 마찬가지다. 문자열이 아닌 값은 **조용히 버린다** — 잘못된 URL 하나로
+ * 화면이 죽지 않는 것이 EC9의 요구다.
+ *
+ * @param value parseSearch가 돌려준 원시 값
+ * @returns 문자열 · 문자열만 남은 배열 · 남는 것이 없으면 undefined
+ */
+function toStringOrStringArray(value: unknown): string | string[] | undefined {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    const items: unknown[] = value
+    const strings = items.filter((item): item is string => typeof item === 'string')
+    return strings.length > 0 ? strings : undefined
+  }
+  return undefined
+}
+
+/**
+ * 프로젝트 백로그·스프린트 라우트 — /projects/$projectKey/backlog, requireAuth (FR-BL-01/02).
+ * validateSearch로 q(제목 검색)·assignee·epic 필터 파라미터를 선언한다 (FR-UX-13 F16-9).
+ * 아래 board 라우트와 같은 형태 — 단일 문자열·배열 양쪽 허용, 런타임 정규화는 searchToFilter가 담당.
+ *
+ * 배열 원소는 `as string[]` 캐스팅이 아니라 **타입 가드로 걸러낸다**. 기본 parseSearch가
+ * JSON.parse 기반이라 `?epic=123`은 number로 들어오는데, 캐스팅하면 그 거짓말이 필터 축까지
+ * 흘러간다 (EC9 — 미지의 값은 throw 없이 버린다).
+ */
 const projectBacklogRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/backlog',
   component: BacklogRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): {
+    q?: string
+    assignee?: string | string[]
+    epic?: string | string[]
+  } => ({
+    q: typeof search['q'] === 'string' ? search['q'] : undefined,
+    assignee: toStringOrStringArray(search['assignee']),
+    epic: toStringOrStringArray(search['epic']),
+  }),
 })
 
 /** 프로젝트 타임라인(Gantt) 라우트 — /projects/$projectKey/timeline, requireAuth (FR-TL-01) */
