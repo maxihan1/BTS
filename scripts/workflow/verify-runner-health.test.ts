@@ -17,7 +17,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,20 +31,37 @@ const JAVA_REL =
   '_work/_tool/Java_Temurin-Hotspot_jdk/21.0.11-10.0.LTS/arm64/Contents/Home/bin/java';
 const TOOLCACHE_NODE_REL = '_work/_tool/node/22.23.2/arm64/bin/node';
 
-/** exit code 와 출력을 함께 돌려준다. 실패해도 진단을 읽어야 하므로 throw 를 삼킨다. */
-function run(root: string): { code: number; out: string } {
-  try {
-    const out = execFileSync('bash', [SCRIPT], {
-      env: { ...process.env, BTS_RUNNER_ROOT: root },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return { code: 0, out };
-  } catch (e) {
-    const err = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: err.status ?? -1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
-  }
+/**
+ * exit code 와 출력을 함께 돌려준다. 실패해도 진단을 읽어야 하므로 throw 를 삼킨다.
+ *
+ * `extraEnv` 는 자원 판정의 측정값 주입용이다 — `BTS_RUNNER_ROOT` 와 같은 성격의 이음매다.
+ * 자원 상태는 실제 머신에 종속이라 주입 없이 단언하면 그날 부하에 따라 결과가 뒤집힌다(flaky).
+ */
+function run(root: string, extraEnv: Record<string, string> = {}): { code: number; out: string } {
+  // ★spawnSync 를 쓰는 이유. execFileSync 는 **성공 시 stdout 만** 돌려준다 —
+  //   그러면 stderr 로 나가는 진단(예: `awk: division by zero`)이 exit 0 뒤에 숨어
+  //   「에러가 없다」는 단언이 조용히 공허해진다. 실제로 이 파일이 그 함정에 한 번 빠졌다.
+  const r = spawnSync('bash', [SCRIPT], {
+    env: { ...process.env, BTS_RUNNER_ROOT: root, ...extraEnv },
+    encoding: 'utf8',
+  });
+  return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
+
+/** 2026-08-07 실측 그대로. 고갈 = load 34.43/8코어 = 4.30배 · swap 15,014M/16GB = 91.6% */
+const EXHAUSTED = {
+  BTS_RUNNER_FAKE_LOAD: '34.43',
+  BTS_RUNNER_FAKE_SWAP_MB: '15014',
+  BTS_RUNNER_FAKE_NCPU: '8',
+  BTS_RUNNER_FAKE_MEM_MB: '16384',
+};
+/** 같은 머신의 정리 후 상태. load 7.72/8 = 0.97배 · swap 3,556M/16GB = 21.7% */
+const HEALTHY_RESOURCE = {
+  BTS_RUNNER_FAKE_LOAD: '7.72',
+  BTS_RUNNER_FAKE_SWAP_MB: '3556',
+  BTS_RUNNER_FAKE_NCPU: '8',
+  BTS_RUNNER_FAKE_MEM_MB: '16384',
+};
 
 /** 툴캐시 완료 표식. 이 파일의 존재가 setup-* 의 「캐시 히트」 판정 근거다. */
 const NODE_MARKER_REL = '_work/_tool/node/22.23.2/arm64.complete';
@@ -126,5 +143,149 @@ describe('러너 엔진 헬스체크 스크립트', () => {
     assert.equal(code, 0, `표식이 없으면 자가 재설치되므로 통과해야 한다\n${out}`);
     assert.match(out, /⚠️/, '경고조차 안 나오면 조용히 묻힌다');
     assert.match(out, /자가 재설치/, '왜 통과시키는지가 로그에 없다');
+  });
+});
+
+// ── 자원 고갈 판정 ────────────────────────────────────────────────────────────
+//
+// 왜 필요한가. 2026-08-07 조사에서 **엔진이 전부 정상인데도 CI 가 2.4배 느려지는** 실패 양식을
+// A/B 로 확증했다. 동일 커밋 run 31139616352 를 `gh run rerun --job` 으로 재실행한 결과다.
+//
+//   issue-tracking    1,380s (swap 15,014M · load 34.43) → 554s (swap 3,556M · load 7.72)
+//   identity-access     739s                             → 384s
+//   테스트 케이스 수는 3,247 → 3,247 로 증감 0
+//
+// 위 엔진 점검은 이 상태를 **전부 통과시킨다** — 바이너리가 멀쩡히 실행되기 때문이다.
+// 그래서 감속이 초록불인 채 일어나고 아무도 못 본다. 그 사각을 이 판정이 덮는다.
+//
+// ## ★ 왜 경고이지 실패가 아닌가
+//
+// 자원 고갈은 **사람이 자원을 회복시켜야** 풀린다. 여기서 실패시키면 회복 전까지 모든 작업이
+// 멈춘다 — 위 「표식이 이미 없으면 경고」와 정확히 같은 구조의 교착이고, 그 실측이
+// run 31139123013 이다. 판정은 **`exit` 코드를 건드리지 않는다.**
+describe('러너 자원 고갈 판정', () => {
+  test('자원이 넉넉하면 경고하지 않는다 (음성 대조군)', () => {
+    const { code, out } = run(healthyRoot(), HEALTHY_RESOURCE);
+
+    assert.equal(code, 0, `엔진·자원 모두 정상인데 실패했다\n${out}`);
+    assert.doesNotMatch(
+      out,
+      /러너 자원 고갈/,
+      `정상 상태에 경고가 뜨면 경고가 상시화되어 진짜 고갈이 묻힌다\n${out}`,
+    );
+  });
+
+  test('★고갈이면 경고하되 exit 0 을 유지한다 (차단하면 자원 회복을 자기가 막는다)', () => {
+    const { code, out } = run(healthyRoot(), EXHAUSTED);
+
+    assert.equal(
+      code,
+      0,
+      `자원 고갈로 차단하면 회복 작업까지 막힌다 — run 31139123013 교착과 동형이다\n${out}`,
+    );
+    assert.match(out, /러너 자원 고갈/, '경고가 없으면 이 판정이 통째로 공허하다');
+    assert.match(
+      out,
+      /시간을 믿지 마라/,
+      '왜 문제인지가 없으면 「그냥 느린 날」로 오독된다 — 그것이 이 판정을 만든 이유다',
+    );
+  });
+
+  test('load 와 swap 이 각각 독립으로 판정을 켠다', () => {
+    // 한쪽만 고갈인 두 경우. AND 로 잘못 짜면 둘 다 통과해버린다.
+    const loadOnly = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_LOAD: '34.43',
+    });
+    const swapOnly = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_SWAP_MB: '15014',
+    });
+
+    assert.match(loadOnly.out, /러너 자원 고갈/, `load 단독 고갈을 놓쳤다\n${loadOnly.out}`);
+    assert.match(swapOnly.out, /러너 자원 고갈/, `swap 단독 고갈을 놓쳤다\n${swapOnly.out}`);
+  });
+
+  test('판정은 코어 수 대비 비율이다 — 코어가 늘면 같은 load 가 정상이 된다', () => {
+    // 절대 load 로 짜면 러너를 더 큰 머신으로 바꾸는 순간 조용히 의미가 바뀐다.
+    // load 34.43 은 8코어에서 4.30배(고갈)지만 64코어에서는 0.54배(정상)다.
+    const bigMachine = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_LOAD: '34.43',
+      BTS_RUNNER_FAKE_NCPU: '64',
+    });
+
+    assert.doesNotMatch(
+      bigMachine.out,
+      /러너 자원 고갈/,
+      `절대 load 로 판정하고 있다 — 러너 교체 시 판정이 조용히 어긋난다\n${bigMachine.out}`,
+    );
+  });
+
+  test('★스왑도 물리 메모리 대비 비율이다 — 큰 머신에서 같은 MB 가 정상이 된다', () => {
+    // load 를 비율로 짜 놓고 swap 만 절대 MB 로 두면 같은 논리를 절반만 적용한 것이 된다.
+    // 8,000MB 는 16GB 머신에서 48.8%(정상 경계)지만 8GB 머신에서는 97.7%(고갈)다.
+    // 실물 검증에서 드러난 결함이다 — 이 러너의 4,348MB 가 16GB 대비 26.5% 인데도 경고가 떴다.
+    const bigMachine = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_SWAP_MB: '8000',
+      BTS_RUNNER_FAKE_MEM_MB: '65536', // 64GB
+    });
+    const smallMachine = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_SWAP_MB: '8000',
+      BTS_RUNNER_FAKE_MEM_MB: '8192', // 8GB — 같은 8,000MB 가 97.7%
+    });
+
+    assert.doesNotMatch(
+      bigMachine.out,
+      /러너 자원 고갈/,
+      `절대 MB 로 판정하고 있다 — 큰 머신으로 옮기면 경고가 상시화되어 무시된다\n${bigMachine.out}`,
+    );
+    assert.match(
+      smallMachine.out,
+      /러너 자원 고갈/,
+      `같은 8,000MB 라도 8GB 머신에서는 고갈이다 — 비율 판정이 안 되고 있다\n${smallMachine.out}`,
+    );
+  });
+
+  test('★★측정값이 숫자가 아니어도 죽지 않는다 — awk 의 문자열 비교 함정', () => {
+    // awk 에 `-v n="xyz"` 로 넘긴 값은 **문자열**이다. `n > 0` 은 숫자 비교가 아니라
+    // 문자열 비교("xyz" > "0" → 참)가 되어, 0 나눗셈을 막으려던 삼항 가드를 **통과**한다.
+    // 결과는 `awk: division by zero` 이고 exit 2 다.
+    //
+    // ★이것이 왜 치명적인가. 로컬 스크립트는 errexit 가 없어 조용히 넘어가지만,
+    //   CI 워크플로우는 GitHub Actions 기본이 `bash -e` 라 **스텝이 죽는다.**
+    //   runner-health 는 모든 워크플로우의 `needs:` 선행 잡이므로 CI 전체가 멈춘다 —
+    //   자원 부족을 알리려던 장치가 CI 를 세우는, 이 PR 이 막으려던 것의 더 나쁜 판본이다.
+    const garbage = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_LOAD: 'abc',
+      BTS_RUNNER_FAKE_NCPU: 'xyz',
+      BTS_RUNNER_FAKE_SWAP_MB: 'zzz',
+      BTS_RUNNER_FAKE_MEM_MB: 'qqq',
+    });
+
+    assert.equal(
+      garbage.code,
+      0,
+      `측정값이 숫자가 아닐 때 죽었다 — CI 층에서는 이것이 러너 전체 정지다\n${garbage.out}`,
+    );
+    assert.doesNotMatch(
+      garbage.out,
+      /division by zero|awk:/,
+      `awk 가 에러를 뱉었다 — 숫자 강제 변환(+0)이 빠졌다\n${garbage.out}`,
+    );
+  });
+
+  test('★엔진 결함이 있으면 자원 경고가 그 exit 1 을 덮지 않는다', () => {
+    // 자원 판정을 나중에 끼워 넣으면서 FAILED 를 리셋하는 실수가 가장 흔하다.
+    const root = healthyRoot();
+    fs.rmSync(path.join(root, 'externals/node24/bin/node'));
+
+    const { code, out } = run(root, EXHAUSTED);
+
+    assert.notEqual(code, 0, `엔진 결함이 자원 경고에 묻혔다 — 진짜 차단 사유를 잃었다\n${out}`);
+    assert.match(out, /러너 환경 결함 — 코드 문제 아님/);
   });
 });

@@ -22,7 +22,9 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,6 +57,52 @@ function callerFiles(): string[] {
 
 function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, WORKFLOW_DIR, name), 'utf8');
+}
+
+/** 자원 점검 스텝의 이름. 추출 앵커이므로 워크플로우와 한 글자도 달라선 안 된다. */
+const RESOURCE_STEP_NAME = '- name: 러너 자원 점검';
+/** `run: |` 블록의 들여쓰기(스텝 6칸 + run 8칸 → 본문 10칸). */
+const RUN_BLOCK_INDENT = 10;
+/** 추출이 이보다 짧으면 앵커가 어긋난 것이다 — 0줄을 돌려주면 아래 단언이 전부 공허해진다. */
+const MIN_STEP_LINES = 20;
+
+/**
+ * CI 인라인 자원 판정 블록을 **실행 가능한 셸 스크립트로** 뽑아낸다.
+ *
+ * 왜 필요한가. `runner-health.yml` 의 판정은 인라인 shell 이라 보통은 실행해볼 수단이 없고,
+ * 그래서 「문자열이 있는지」만 검사하게 된다. 그 검사는 **셸 옵션 차이로 생기는 거동 차이를
+ * 원리적으로 못 본다** — 실제로 awk 문자열 비교 함정이 그 사각으로 빠져나갔다.
+ */
+function resourceStepScript(): string {
+  const body = readWorkflow(HEALTH_WORKFLOW);
+
+  const stepIdx = body.indexOf(RESOURCE_STEP_NAME);
+  assert.ok(stepIdx >= 0, `자원 점검 스텝(${RESOURCE_STEP_NAME})을 못 찾았다 — 추출이 고장났다.`);
+
+  const runIdx = body.indexOf('run: |', stepIdx);
+  assert.ok(runIdx > stepIdx, '자원 점검 스텝에 run 블록이 없다.');
+
+  const lines: string[] = [];
+  for (const line of body.slice(runIdx).split('\n').slice(1)) {
+    if (line.trim() === '') {
+      lines.push('');
+      continue;
+    }
+    // 블록 들여쓰기보다 얕아지면 다음 스텝/키다. 거기서 끊는다.
+    if (!line.startsWith(' '.repeat(RUN_BLOCK_INDENT))) break;
+    lines.push(line.slice(RUN_BLOCK_INDENT));
+  }
+
+  const script = lines.join('\n');
+  // ★비-공허 확인. 앵커가 어긋나 빈 스크립트가 나오면 `bash -e ""` 는 그냥 성공하고
+  //   아래 5개 케이스가 **전부 초록으로 통과**한다 — 가드가 있는 척하는 최악의 상태다.
+  assert.ok(
+    lines.filter((l) => l.trim() !== '').length >= MIN_STEP_LINES,
+    `추출된 스텝이 ${lines.length}줄뿐이다 — 빈 스크립트를 돌리면 모든 단언이 공허하게 통과한다.`,
+  );
+  assert.match(script, /OVER/, '추출본에 판정 로직이 없다 — 엉뚱한 블록을 잘라냈다.');
+
+  return script;
 }
 
 describe('러너 헬스체크 배선', () => {
@@ -130,6 +178,17 @@ describe('러너 헬스체크 배선', () => {
       '"${dir%/}.complete"',
       // 진단 문구 — 이게 없으면 「테스트가 깨졌다」로 오독된다
       '러너 환경 결함 — 코드 문제 아님',
+
+      // ── 자원 고갈 판정 (2026-08-07 추가) ───────────────────────────────
+      // 엔진이 전부 정상인데도 CI 가 2.4배 느려지는 상태. 위 점검은 전부 통과시킨다.
+      // 한쪽 층에만 있으면 「로컬은 경고하는데 CI 는 조용하다」(또는 그 반대)가 된다.
+      'hw.ncpu', // load 를 코어 수 대비 비율로 — 절대값이면 러너 교체 시 의미가 바뀐다
+      'hw.memsize', // swap 을 물리 메모리 대비 비율로 — 같은 이유
+      'vm.swapusage',
+      'BTS_RUNNER_FAKE_LOAD', // 측정값 주입 이음매. 없으면 그 층은 검증 불가능해진다
+      'BTS_RUNNER_FAKE_SWAP_MB',
+      '러너 자원 고갈', // 경고 문구 자체
+      '시간을 믿지 마라', // ★왜 문제인지. 없으면 「그냥 느린 날」로 오독된다
     ];
 
     const missing = INVARIANTS.flatMap((needle) => [
@@ -142,6 +201,87 @@ describe('러너 헬스체크 배선', () => {
       [],
       `두 층의 판정 규칙이 갈라졌다 —\n${missing.join('\n')}\n` +
         `한쪽만 고치면 로컬은 잡고 CI 는 놓치는(또는 그 반대) 상태가 된다.`,
+    );
+  });
+
+  test('★자원 경고는 run 요약과 어노테이션으로 표출된다 — 스텝 로그 안이면 아무도 안 본다', () => {
+    // 2026-08-07 사고의 본질은 「판정이 없었다」가 아니라 **「초록불이라 아무도 안 봤다」**이다.
+    // 판정이 맞아도 표출이 스텝 로그뿐이면 잡을 펼쳐야 보이고, 그러면 아무도 안 본다 —
+    // 표출 실패는 판정 부재와 같은 결과를 낳는다.
+    const workflow = readWorkflow(HEALTH_WORKFLOW);
+
+    assert.match(
+      workflow,
+      /\$GITHUB_STEP_SUMMARY/,
+      `자원 판정 결과가 run 요약에 안 남는다 — 잡을 펼쳐야만 보이면 사실상 없는 것이다.`,
+    );
+    assert.match(
+      workflow,
+      /::warning/,
+      `경고 어노테이션이 없다 — PR 화면 상단에 뜨지 않으면 다음 사람도 오늘의 나처럼 3시간을 쓴다.`,
+    );
+
+    // ★어노테이션은 **경고일 때만** 나와야 한다. 매 run 마다 뜨면 노이즈가 되어 무시된다 —
+    //   음성 대조군 테스트(verify-runner-health.test.ts)가 지키려는 성질과 같다.
+    const overIdx = workflow.indexOf('"$OVER" -eq 1');
+    const warnIdx = workflow.indexOf('::warning');
+    assert.ok(
+      overIdx > 0 && warnIdx > overIdx,
+      `::warning 이 고갈 분기(${overIdx}) 밖(${warnIdx})에 있다 — 정상 run 에도 경고가 떠 상시화된다.`,
+    );
+  });
+
+  test('★★CI 인라인 자원 판정은 errexit 하에서도 절대 죽지 않는다', () => {
+    // ## 왜 문자열 매칭으로는 부족한가
+    //
+    // 위 INVARIANTS 는 두 층에 **같은 술어가 있는지**만 본다. 그런데 두 층은 셸 옵션이 다르다 —
+    //   로컬 scripts/verify-runner-health.sh : `set -uo pipefail`  (errexit **없음**)
+    //   CI   runner-health.yml `run:`         : GitHub Actions 기본 `bash -e` (errexit **있음**)
+    // 같은 코드가 로컬에서는 조용히 넘어가고 CI 에서는 스텝을 죽인다. 실제로 awk 문자열 비교
+    // 함정(`-v n="xyz"` 에서 `n > 0` 이 문자열 비교가 되어 0 나눗셈 가드를 통과)이
+    // **CI 에서만** exit 2 를 냈고, INVARIANTS 는 그것을 통과시켰다.
+    //
+    // ★runner-health 는 모든 워크플로우의 `needs:` 선행 잡이다. 이 스텝이 죽으면
+    //   backend·frontend·infra·workflow-scripts 의 모든 잡이 안 돈다 — 자원 부족을 알리려던
+    //   장치가 CI 전체를 세운다. 그래서 「어떤 입력에도 exit 0」이 이 스텝의 핵심 계약이다.
+    const step = resourceStepScript();
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bts-step-')), 'step.sh');
+    fs.writeFileSync(file, step);
+
+    /** 실제 CI 와 동일하게 `bash -e` 로 돌린다. 여기가 로컬 스크립트와 갈리는 지점이다. */
+    const runStep = (env: Record<string, string>) =>
+      spawnSync('bash', ['-e', file], {
+        env: { ...process.env, ...env },
+        encoding: 'utf8',
+      });
+
+    const CASES: Array<[string, Record<string, string>]> = [
+      ['정상', { LOAD: '7.72', NCPU: '8', SWAP_MB: '3556', MEM_MB: '16384' }],
+      ['고갈', { LOAD: '34.43', NCPU: '8', SWAP_MB: '15014', MEM_MB: '16384' }],
+      // ★숫자가 아닌 값. awk 문자열 비교 함정이 여기서 드러난다.
+      ['비숫자', { LOAD: 'abc', NCPU: 'xyz', SWAP_MB: 'zzz', MEM_MB: 'qqq' }],
+      // 0 나눗셈 경로.
+      ['0코어', { LOAD: '34.43', NCPU: '0', SWAP_MB: '3556', MEM_MB: '0' }],
+      // 음수 — sysctl 이 이상해지는 이론적 경로.
+      ['음수', { LOAD: '-1', NCPU: '-8', SWAP_MB: '-1', MEM_MB: '-1' }],
+    ];
+
+    const failures = CASES.flatMap(([label, vals]) => {
+      const env = Object.fromEntries(
+        Object.entries(vals).map(([k, v]) => [`BTS_RUNNER_FAKE_${k}`, v]),
+      );
+      const r = runStep(env);
+      const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+      if (r.status !== 0) return [`${label} → exit ${r.status}\n${out}`];
+      if (/division by zero|awk:|syntax error/.test(out)) return [`${label} → 셸/awk 에러\n${out}`];
+      return [];
+    });
+
+    assert.deepEqual(
+      failures,
+      [],
+      `CI 인라인 자원 판정이 죽었다 — runner-health 가 죽으면 모든 워크플로우가 멈춘다.\n` +
+        failures.join('\n---\n'),
     );
   });
 
