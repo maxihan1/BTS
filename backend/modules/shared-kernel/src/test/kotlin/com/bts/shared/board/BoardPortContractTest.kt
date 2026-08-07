@@ -110,6 +110,46 @@ class BoardPortContractTest {
     // ── BoardIssueView 필드 계약 ─────────────────────────────────────────────
 
     @Test
+    fun `BoardIssueView 는 typeKey 를 필수로 받고 labels 와 originalEstimateSeconds 는 default 로 생성된다`() {
+        // typeKey 에는 기본값이 없다 — 호출자가 반드시 명시해야 컴파일된다 (FR-UX-14 B2, FR2).
+        val view =
+            BoardIssueView(
+                key = "PROJ-1",
+                summary = "제목",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                typeKey = "bug",
+            )
+
+        assertThat(view.typeKey).isEqualTo("bug")
+        // 미지정 라벨은 null 이 아니라 빈 리스트다 — 응답이 [] 로 직렬화되는 근거 (FR8).
+        assertThat(view.labels).isEmpty()
+        assertThat(view.originalEstimateSeconds).isNull()
+    }
+
+    @Test
+    fun `BoardIssueView 는 labels 와 originalEstimateSeconds 를 명시하면 그 값으로 생성된다`() {
+        val view =
+            BoardIssueView(
+                key = "PROJ-2",
+                summary = "제목",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                typeKey = "story",
+                labels = listOf("urgent", "api"),
+                originalEstimateSeconds = 3600,
+            )
+
+        assertThat(view.typeKey).isEqualTo("story")
+        assertThat(view.labels).containsExactly("urgent", "api")
+        assertThat(view.originalEstimateSeconds).isEqualTo(3600)
+    }
+
+    @Test
     fun `BoardIssueView 는 모든 필드를 보존한다`() {
         val assigneeId = UUID.randomUUID()
         val view =
