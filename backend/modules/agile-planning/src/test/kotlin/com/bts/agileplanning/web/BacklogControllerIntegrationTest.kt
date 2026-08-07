@@ -127,6 +127,7 @@ class BacklogControllerIntegrationTest {
             rank = rank,
             version = 0L,
             epicKey = null,
+            typeKey = "task",
         )
 
     // ── BC-1: GET 정상 → 200 + 봉투 구조 ─────────────────────────────────────
