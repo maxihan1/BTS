@@ -127,7 +127,10 @@ class BacklogControllerIntegrationTest {
             rank = rank,
             version = 0L,
             epicKey = null,
-            typeKey = "task",
+            // FR-UX-14 B2 — 카드 밀도 3필드가 JSON 까지 나가는지 확인하기 위한 값.
+            typeKey = "bug",
+            labels = listOf("urgent"),
+            originalEstimateSeconds = 3600,
         )
 
     // ── BC-1: GET 정상 → 200 + 봉투 구조 ─────────────────────────────────────
@@ -147,6 +150,11 @@ class BacklogControllerIntegrationTest {
             .andExpect(jsonPath("$.data.backlog").isArray)
             .andExpect(jsonPath("$.data.sprints").isArray)
             .andExpect(jsonPath("$.data.truncated").isBoolean)
+            // FR-UX-14 B2 — 카드 밀도 3필드가 백로그 JSON 에도 나간다. 신원을 먼저 고정한다.
+            .andExpect(jsonPath("$.data.backlog[0].key").value("BTS-1"))
+            .andExpect(jsonPath("$.data.backlog[0].typeKey").value("bug"))
+            .andExpect(jsonPath("$.data.backlog[0].labels[0]").value("urgent"))
+            .andExpect(jsonPath("$.data.backlog[0].originalEstimateSeconds").value(3600))
     }
 
     // ── BC-2(양성): 그룹핑 정확성 단언 ──────────────────────────────────────
