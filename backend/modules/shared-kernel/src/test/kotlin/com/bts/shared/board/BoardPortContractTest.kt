@@ -92,6 +92,7 @@ class BoardPortContractTest {
                 assigneeId = null,
                 priority = 1,
                 version = 1L,
+                typeKey = "task",
             )
         val page = BoardIssuePage(issues = listOf(issue), truncated = true)
 
@@ -160,9 +161,11 @@ class BoardPortContractTest {
                 assigneeId = assigneeId,
                 priority = 3,
                 version = 1L,
+                typeKey = "bug",
             )
 
         assertThat(view.key).isEqualTo("PROJ-1")
+        assertThat(view.typeKey).isEqualTo("bug")
         assertThat(view.summary).isEqualTo("로그인 버그")
         assertThat(view.currentStateKey).isEqualTo("open")
         assertThat(view.assigneeId).isEqualTo(assigneeId)
@@ -180,6 +183,7 @@ class BoardPortContractTest {
                 assigneeId = null,
                 priority = 1,
                 version = 0L,
+                typeKey = "task",
             )
 
         assertThat(view.assigneeId).isNull()
@@ -297,6 +301,7 @@ class BoardPortContractTest {
                 assigneeId = null,
                 priority = 1,
                 version = 1L,
+                typeKey = "task",
             )
         val twoArgOnlyPort =
             object : BoardIssueLookupPort {

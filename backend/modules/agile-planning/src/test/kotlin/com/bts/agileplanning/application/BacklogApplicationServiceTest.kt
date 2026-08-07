@@ -49,6 +49,7 @@ class BacklogApplicationServiceTest {
             assigneeId = null,
             priority = priority,
             version = 0L,
+            typeKey = "task",
             rank = rank,
         )
 

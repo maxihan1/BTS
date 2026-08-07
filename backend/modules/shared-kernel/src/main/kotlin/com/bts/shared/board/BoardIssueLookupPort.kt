@@ -153,6 +153,13 @@ data class BoardIssuePage(
  *   에픽 없는 이슈 또는 에픽 자신은 null.
  *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null 처리(P1-A 누출 방지).
  * @property rank LexoRank 정렬 키. null=미부여(정렬 시 NULLS LAST). 정렬은 소비측(agile-planning) 책임.
+ * @property typeKey 이슈 타입 키(`issue_types.key`). 소문자. 예: `"bug"`, `"story"` (FR-UX-14 B2).
+ *   **기본값을 두지 않는다** — 모든 이슈는 정확히 하나의 타입을 가지므로 빈 값이 의미를 갖지 않고,
+ *   기본값을 주면 매핑을 빠뜨린 호출자가 조용히 통과한다.
+ *   타입 **이름·아이콘은 담지 않는다** — 클라이언트가 타입 목록 API 에서 얻는다(ADR §D-1).
+ * @property labels 이슈 라벨 목록. 라벨이 없으면 **빈 리스트**(null 아님) — `issues.labels` 가
+ *   `NOT NULL DEFAULT '{}'` 이라 도메인에서 이미 빈 리스트다 (FR-UX-14 B2).
+ * @property originalEstimateSeconds 최초 추정 작업 시간(초). 미추정이면 null (FR-UX-14 B2).
  */
 data class BoardIssueView(
     val key: String,
@@ -161,6 +168,9 @@ data class BoardIssueView(
     val assigneeId: UUID?,
     val priority: Int,
     val version: Long,
+    val typeKey: String,
     val epicKey: String? = null,
     val rank: String? = null,
+    val labels: List<String> = emptyList(),
+    val originalEstimateSeconds: Int? = null,
 )

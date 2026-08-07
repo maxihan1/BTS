@@ -150,6 +150,7 @@ class BoardApplicationServiceTest {
                     assigneeId = null,
                     priority = 2,
                     version = 1L,
+                    typeKey = "task",
                 ),
                 BoardIssueView(
                     key = "PROJ-2",
@@ -158,6 +159,7 @@ class BoardApplicationServiceTest {
                     assigneeId = null,
                     priority = 1,
                     version = 1L,
+                    typeKey = "task",
                 ),
             )
 
@@ -213,8 +215,8 @@ class BoardApplicationServiceTest {
         // 미매핑 상태 이슈 포함
         val issues =
             listOf(
-                BoardIssueView("UNPL-1", "미매핑 이슈", "ghost-state", null, 1, 1L),
-                BoardIssueView("UNPL-2", "정상 이슈", "open", null, 2, 1L),
+                BoardIssueView("UNPL-1", "미매핑 이슈", "ghost-state", null, 1, 1L, "task"),
+                BoardIssueView("UNPL-2", "정상 이슈", "open", null, 2, 1L, "task"),
             )
         val lookup =
             object : BoardIssueLookupPort {
@@ -584,6 +586,7 @@ class BoardApplicationServiceTest {
                 assigneeId = null,
                 priority = 1,
                 version = 0L,
+                typeKey = "task",
                 rank = "0|hzzzzz:",
             )
 
@@ -602,6 +605,7 @@ class BoardApplicationServiceTest {
                 assigneeId = null,
                 priority = 1,
                 version = 0L,
+                typeKey = "task",
             )
 
         val response = BoardCardResponse.from(view)

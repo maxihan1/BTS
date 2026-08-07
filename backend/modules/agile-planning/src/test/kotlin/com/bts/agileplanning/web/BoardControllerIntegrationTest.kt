@@ -311,6 +311,7 @@ class BoardControllerIntegrationTest {
                                         assigneeId = null,
                                         priority = 1,
                                         version = 1L,
+                                        typeKey = "task",
                                     ),
                                 ),
                         ),
@@ -793,6 +794,7 @@ class BoardControllerIntegrationTest {
                     assigneeId = null,
                     priority = i,
                     version = 1L,
+                    typeKey = "task",
                 )
             }
 

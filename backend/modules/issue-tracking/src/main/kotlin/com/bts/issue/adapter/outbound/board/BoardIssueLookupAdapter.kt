@@ -126,6 +126,9 @@ private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =
         assigneeId = issue.assigneeId?.value,
         priority = issue.priority,
         version = issue.version,
+        typeKey = typeKey,
         epicKey = epicKey,
         rank = issue.rank,
+        labels = issue.labels,
+        originalEstimateSeconds = issue.originalEstimateSeconds,
     )

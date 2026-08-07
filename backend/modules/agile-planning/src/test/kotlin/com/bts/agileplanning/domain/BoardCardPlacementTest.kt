@@ -35,6 +35,7 @@ class BoardCardPlacementTest {
         priority: Int = 3,
         summary: String = "summary-$key",
         rank: String? = null,
+        typeKey: String = "task",
     ) = BoardIssueView(
         key = key,
         summary = summary,
@@ -42,6 +43,7 @@ class BoardCardPlacementTest {
         assigneeId = null,
         priority = priority,
         version = 1L,
+        typeKey = typeKey,
         rank = rank,
     )
 

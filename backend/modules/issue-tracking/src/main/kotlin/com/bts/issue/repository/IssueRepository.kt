@@ -790,9 +790,16 @@ class IssueRepository(
 
         // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
         val fetched =
-            dsl.select(ISSUES.fields().toList() + listOf(epicAlias.KEY.`as`(EPIC_KEY_ALIAS)))
+            dsl.select(
+                ISSUES.fields().toList() +
+                    listOf(
+                        epicAlias.KEY.`as`(EPIC_KEY_ALIAS),
+                        ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+                    ),
+            )
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
                 .leftJoin(epicAlias).on(
                     ISSUES.EPIC_ID.eq(epicAlias.ID)
                         .and(epicAlias.DELETED_AT.isNull)
@@ -804,7 +811,10 @@ class IssueRepository(
                 .fetch { record ->
                     val issue = record.into(ISSUES).toIssue()
                     val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
-                    BoardIssueEntry(issue = issue, epicKey = epicKey)
+                    val typeKey =
+                        record.get(TYPE_KEY_ALIAS, String::class.java)
+                            ?: error("issue_types.key must not be null in board join result")
+                    BoardIssueEntry(issue = issue, epicKey = epicKey, typeKey = typeKey)
                 }
 
         val truncated = fetched.size > BOARD_CARD_FETCH_LIMIT
@@ -813,16 +823,19 @@ class IssueRepository(
     }
 
     /**
-     * [listVisibleForBoard] 단건 결과 쌍 — 이슈 + epic key.
+     * [listVisibleForBoard] 단건 결과 — 이슈 + epic key + type key.
      *
-     * [Issue] 도메인에는 epicKey 필드가 없으므로, record 추출 결과를 쌍으로 전달한다 (CONCERN C1).
+     * [Issue] 도메인에는 epicKey 도 타입 키도 없으므로(타입은 `typeId` 만 보유),
+     * record 추출 결과를 함께 전달한다 (CONCERN C1 · FR-UX-14 B2).
      *
-     * @property issue 조회된 이슈 도메인 객체.
+     * @property issue 조회된 이슈 도메인 객체. 라벨·추정은 이 안에 이미 채워져 있다.
      * @property epicKey 에픽 이슈 키. 에픽 없는 이슈는 null. 동일 프로젝트 필터 적용됨.
+     * @property typeKey 이슈 타입 키(`issue_types.key`). `issues.type_id` 가 NOT NULL + FK 라 항상 존재한다.
      */
     data class BoardIssueEntry(
         val issue: Issue,
         val epicKey: String?,
+        val typeKey: String,
     )
 
     /**

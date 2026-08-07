@@ -44,6 +44,7 @@ class BoardResponsesTest {
     private fun card(
         key: String = "PROJ-1",
         epicKey: String? = null,
+        typeKey: String = "task",
     ) = BoardIssueView(
         key = key,
         summary = "테스트 이슈",
@@ -51,6 +52,7 @@ class BoardResponsesTest {
         assigneeId = null,
         priority = 1,
         version = 0L,
+        typeKey = typeKey,
         epicKey = epicKey,
     )
 
@@ -193,6 +195,7 @@ class BoardResponsesTest {
                     assigneeId = null,
                     priority = 0,
                     version = 0L,
+                    typeKey = "task",
                 )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(0)
@@ -208,6 +211,7 @@ class BoardResponsesTest {
                     assigneeId = null,
                     priority = 99,
                     version = 0L,
+                    typeKey = "task",
                 )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(99)
