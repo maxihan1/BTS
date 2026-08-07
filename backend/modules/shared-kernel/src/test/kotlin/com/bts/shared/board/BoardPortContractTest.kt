@@ -16,7 +16,10 @@ import java.util.UUID
  * - [WorkflowStateView] 에 category/displayOrder 가 추가되고 기존 2-arg 호출이 default 로 컴파일·생성됨.
  * - [BoardIssueLookupPort.listVisibleIssuesByProject] default 구현이 빈 목록을 반환함(fail-safe).
  * - [IssueTransitionPort] 는 default 구현이 없음 — 추상 구현 필수(fail-closed).
- * - [BoardIssueView] 필드 계약(key/summary/currentStateKey/assigneeId/priority/version).
+ * - [BoardIssueView] 필드 계약(key/summary/currentStateKey/assigneeId/priority/version/
+ *   **typeKey/labels/originalEstimateSeconds**).
+ * - [BoardIssueView] 기본값 규약 — typeKey 는 기본값 없음(필수), labels 는 빈 리스트,
+ *   originalEstimateSeconds 는 null (FR-UX-14 B2).
  * - [BoardTransitionCommand] 필드 계약(actorUserId/issueKey/toStateKey/expectedVersion/resolutionId).
  * - [BoardTransitionResult] 필드 계약(issueKey/currentStateKey/version).
  */

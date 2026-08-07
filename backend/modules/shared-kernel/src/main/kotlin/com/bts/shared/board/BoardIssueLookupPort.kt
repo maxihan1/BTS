@@ -141,7 +141,12 @@ data class BoardIssuePage(
  * 보드 카드 단위 이슈 뷰 VO.
  *
  * [BoardIssueLookupPort.listVisibleIssuesByProject] 가 반환하는 읽기 전용 값 객체.
- * 보드 컬럼 배치([currentStateKey])와 카드 정렬([priority])에 필요한 최소 필드만 포함한다.
+ *
+ * 보드 컬럼 배치([currentStateKey])·카드 정렬([priority])에 더해 **카드 표시에 필요한 필드**를
+ * 포함한다 (FR-UX-14 B2 로 [typeKey]·[labels]·[originalEstimateSeconds] 추가).
+ * 여기서 "필요한"은 **카드가 그려지는 데 필요한 최소**를 뜻하며 표시 필드를 배제한다는 뜻이 아니다 —
+ * 자매 VO [com.bts.shared.timeline.TimelineItemView] 도 같은 원칙으로 `issueType` 을 담고 있다.
+ * 본문(`description`) 처럼 카드에 안 그려지는 필드는 여전히 제외한다.
  *
  * @property key 이슈 키. 예: `"PROJ-1"`.
  * @property summary 이슈 제목. 카드 UI 에 표시.
