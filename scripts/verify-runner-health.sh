@@ -114,8 +114,13 @@ if [ -z "$NCPU" ] || [ -z "$LOAD" ] || [ -z "$SWAP_MB" ] || [ -z "$MEM_MB" ]; th
   # 조용히 통과하지 않고 「판정을 못 했다」를 남긴다.
   echo "⚠️  자원 판정 건너뜀 — 측정 실패 (sysctl/uptime 은 macOS 기준이다)"
 else
-  LOAD_RATIO=$(awk -v l="$LOAD" -v n="$NCPU" 'BEGIN { printf "%.2f", (n > 0 ? l / n : 0) }')
-  SWAP_RATIO=$(awk -v s="$SWAP_MB" -v m="$MEM_MB" 'BEGIN { printf "%.3f", (m > 0 ? s / m : 0) }')
+  # ★`l += 0` 은 장식이 아니다. awk 의 `-v` 할당은 strnum 규칙을 따라 **숫자처럼 보이는
+  #   값만** 숫자로 취급한다. `xyz` 같은 값이 들어오면 `n > 0` 이 문자열 비교("xyz" > "0")가
+  #   되어 **참**이 되고, 0 나눗셈을 막으려던 삼항 가드를 그대로 통과해 awk 가 죽는다.
+  #   CI 층은 `bash -e` 라 그 순간 스텝이 사망하고, runner-health 는 모든 워크플로우의
+  #   needs 선행이므로 **CI 전체가 멈춘다.** `+= 0` 이 비숫자를 0 으로 고정해 그 경로를 없앤다.
+  LOAD_RATIO=$(awk -v l="$LOAD" -v n="$NCPU" 'BEGIN { l += 0; n += 0; printf "%.2f", (n > 0 ? l / n : 0) }')
+  SWAP_RATIO=$(awk -v s="$SWAP_MB" -v m="$MEM_MB" 'BEGIN { s += 0; m += 0; printf "%.3f", (m > 0 ? s / m : 0) }')
   OVER=$(awk -v r="$LOAD_RATIO" -v w="$LOAD_RATIO_WARN" -v sr="$SWAP_RATIO" -v sw="$SWAP_RATIO_WARN" \
     'BEGIN { print (r >= w || sr >= sw) ? 1 : 0 }')
 
