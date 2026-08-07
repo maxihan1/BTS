@@ -173,9 +173,71 @@ async function getCardOrder(container: Locator): Promise<string[]> {
   return keys
 }
 
+/** bringPairIntoView가 출발·도착 합집합 둘레에 남기는 여백(px) — backlog.spec.ts와 동일 값 */
+const PAIR_VIEW_MARGIN_PX = 24
+
+/**
+ * 출발·도착 카드가 **동시에** 뷰포트 안(스크롤 없이 보이는 영역)에 들어오도록 스크롤을 맞춘다.
+ * backlog.spec.ts의 동명 헬퍼(FR-UX-13 F15 Task 10 C-6)와 동일한 패턴 — ShellLayout의
+ * `<main className="… overflow-y-auto">`가 이 화면의 유일한 스크롤 컨테이너다.
+ *
+ * ### 왜 필요한가 (FR-UX-14 F14 실측)
+ * 라벨 칩 행이 생겨 원본 카드(예: ATLAS-1)가 높아지자 TODO 컬럼 전체 높이도 늘었고, 대상
+ * 카드(우선순위4/에픽없음 줄의 ATLAS-4)가 뷰포트 바닥 경계 가까이(또는 밖으로) 밀렸다. 그 상태로
+ * 포인터를 대상까지 이동시키면 @dnd-kit의 자동 스크롤(auto-scroll)이 이동 도중에 계속 발동해
+ * 콘텐츠가 스크롤되며, **한 번 잰 좌표는 그사이 계속 낡아진다** — source 재측정이든 target
+ * 재측정이든 "한 번"으로는 이 연속적 드리프트를 못 잡는다(실측: 중간 스텝에서는 올바른
+ * over(필드변경 미리보기)가 잡히다가도 최종 좌표에서 다시 놓친다). 애초에 자동 스크롤이
+ * 발동하지 않도록 드래그 시작 **전에** 출발·도착을 함께 화면 가운데로 당겨 두면, 전체 포인터
+ * 경로가 뷰포트 안쪽(가장자리 트리거 존 밖)에 머물러 드리프트 자체가 생기지 않는다.
+ *
+ * @param from 드래그 출발 카드 locator
+ * @param to 드롭 대상 카드 locator
+ */
+async function bringPairIntoView(page: Page, from: Locator, to: Locator): Promise<void> {
+  const scroller = page.getByRole('main')
+  const scrollerBox = await scroller.boundingBox()
+  const fromBox = await from.boundingBox()
+  const toBox = await to.boundingBox()
+
+  if (scrollerBox === null || fromBox === null || toBox === null) {
+    throw new Error('dragCardOntoCard: bringPairIntoView bounding box를 가져올 수 없습니다.')
+  }
+
+  const top = Math.min(fromBox.y, toBox.y)
+  const bottom = Math.max(fromBox.y + fromBox.height, toBox.y + toBox.height)
+  const span = bottom - top
+
+  if (span + PAIR_VIEW_MARGIN_PX * 2 > scrollerBox.height) {
+    throw new Error(
+      'dragCardOntoCard: bringPairIntoView 출발·도착이 동시에 화면에 들어가지 않습니다 ' +
+        `(필요 ${Math.round(span)}px + 여백 ${PAIR_VIEW_MARGIN_PX * 2}px, ` +
+        `스크롤 영역 ${Math.round(scrollerBox.height)}px).`,
+    )
+  }
+
+  // 합집합을 스크롤 영역 한가운데로 — 스크롤 한계에 걸려 덜 움직여도 아래 단언이 진실을 말한다.
+  const desiredTop = scrollerBox.y + (scrollerBox.height - span) / 2
+  await scroller.evaluate((element, deltaY) => {
+    element.scrollTop += deltaY
+  }, top - desiredTop)
+
+  // 동시 가시성 단언 — 하나라도 잘려 있으면 여기서 끝낸다.
+  await expect(from).toBeInViewport({ ratio: 1 })
+  await expect(to).toBeInViewport({ ratio: 1 })
+}
+
 /**
  * sourceIssueKey 카드를 targetIssueKey 카드 위로 PointerSensor 드래그한다.
- * board-reorder.spec.ts dragCardOntoCard와 동일 시퀀스 — 새로 발명하지 않고 그대로 재사용한다.
+ * board-reorder.spec.ts dragCardOntoCard와 동일 시퀀스를 기반으로 하되 두 가지를 보강했다.
+ *
+ * 1. **드래그 시작 전** bringPairIntoView로 출발·도착을 동시에 뷰포트 안으로 스크롤한다 —
+ *    FR-UX-14 F14에서 라벨 칩 행이 생겨 원본 카드가 높아지자 대상 카드가 뷰포트 경계 가까이
+ *    밀렸고, 그 상태로 드래그하면 @dnd-kit 자동 스크롤이 이동 도중 계속 발동해 좌표가 드리프트하는
+ *    회귀가 있었다(S3/S6, main 대조로 확정 — 이 PR이 만든 좌표-정밀 드래그 헬퍼의 취약성).
+ *    자세한 진단은 위 bringPairIntoView 문서 참고.
+ * 2. **목표 좌표는 원본을 들어올린(lift) 뒤에 다시 잰다** — bringPairIntoView로 자동 스크롤
+ *    자체를 제거한 뒤에도, 정밀도를 위해 activation 이동 후 최신 레이아웃 기준으로 재측정한다.
  *
  * @dnd-kit PointerSensor activationConstraint: { distance: 5 } —
  * pointerdown 후 5px 초과 이동 시 드래그가 시작된다.
@@ -184,24 +246,29 @@ async function dragCardOntoCard(page: Page, sourceIssueKey: string, targetIssueK
   const source = getCardLocator(page, sourceIssueKey)
   const target = getCardLocator(page, targetIssueKey)
 
-  const sourceBox = await source.boundingBox()
-  const targetBox = await target.boundingBox()
+  await bringPairIntoView(page, source, target)
 
-  if (sourceBox === null || targetBox === null) {
-    throw new Error(
-      `dragCardOntoCard: bounding box를 가져올 수 없습니다. source=${sourceIssueKey}, target=${targetIssueKey}`,
-    )
+  const sourceBox = await source.boundingBox()
+  if (sourceBox === null) {
+    throw new Error(`dragCardOntoCard: source bounding box를 가져올 수 없습니다. source=${sourceIssueKey}`)
   }
 
   const sourceCX = sourceBox.x + sourceBox.width / 2
   const sourceCY = sourceBox.y + sourceBox.height / 2
-  const targetCX = targetBox.x + targetBox.width / 2
-  const targetCY = targetBox.y + targetBox.height / 2
 
   await page.mouse.move(sourceCX, sourceCY)
   await page.mouse.down()
-  // activation constraint 초과: 6px 이동
+  // activation constraint 초과: 6px 이동 — 원본 카드 lift(드래그 시작)
   await page.mouse.move(sourceCX + 6, sourceCY)
+
+  // ★목표 좌표는 lift 이후 재측정한다 — 캡처 시점 좌표가 아니라 현재 레이아웃 기준.
+  const targetBox = await target.boundingBox()
+  if (targetBox === null) {
+    throw new Error(`dragCardOntoCard: target bounding box를 가져올 수 없습니다. target=${targetIssueKey}`)
+  }
+  const targetCX = targetBox.x + targetBox.width / 2
+  const targetCY = targetBox.y + targetBox.height / 2
+
   // 대상 카드 중심으로 점진적 이동 (steps로 pointermove 이벤트 여러 번 발화)
   await page.mouse.move(targetCX, targetCY, { steps: 20 })
   await page.mouse.up()
