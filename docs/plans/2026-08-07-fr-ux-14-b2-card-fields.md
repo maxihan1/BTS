@@ -61,7 +61,40 @@
 6. **`learnings.md:776` 동시 PR 선점 확인.** 착수 시점 `git worktree list` 0건 ·
    `gh pr list --draft` 0건 실측 완료.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**. agile-planning (응답 DTO 소유) — 포트는 `shared-kernel`, 어댑터는 `issue-tracking`.
+  방향은 `shared-kernel` 정의 → `issue-tracking` 구현 → `agile-planning` 소비 **단방향**이라
+  선례 커밋 `dcbf130e6`(FR-BD-02) 와 동형이다. BC 격리 예외 아님 — 세 모듈이 한 포트 계약의
+  정의·구현·소비로 묶인 **하나의 논리 변경**이다.
+- **영향 VO/DTO**. `BoardIssueView`(shared-kernel) · `BoardCardResponse` · `BacklogIssueResponse`(agile-planning)
+- **신규 용어**. **0건.** glossary 의 「이슈 타입」·라벨·추정이 전부 기존 개념 → `glossary.md` 갱신 불필요
+- **신규 엔티티/관계**. **0건** → `domain/agile-planning.md` 갱신 불필요
+- **마이그레이션**. **0건** — 필요한 컬럼이 이미 전부 존재 (정본 D3 「없음 예상」 적중)
+- **기존 결정 충돌**. **1건 — 의도적으로 뒤집는다.** `IssueRepository.kt:745` 의
+  *"type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략"*. 근거는 같은 파일
+  `listVisibleForTimeline:886` 이 그 조인을 이미 하고 있다는 것 (ADR §D-3). 주석은 이 PR 에서 정정한다.
+- **관련 ADR**. [decisions/2026-08-07-fr-ux-14-b2-card-fields.md](../decisions/2026-08-07-fr-ux-14-b2-card-fields.md) (생성됨)
+
+### 확정된 노출 필드 3개 (Maxi 확정 2026-08-07)
+
+| 필드 | 출처 | 보드 조회에 이미 포함? | 필요 작업 |
+|---|---|---|---|
+| `typeKey` | `issue_types.key` | ❌ JOIN 의도적 생략 | **ISSUE_TYPES INNER JOIN 신규** |
+| `labels` | `issues.labels TEXT[]` (V006) | ✅ `ISSUES.fields()` | 매핑만 (VO + 응답 2곳) |
+| `originalEstimateSeconds` | `issues.original_estimate_seconds` (V027) | ✅ 동일 | 매핑만 |
+
+`typeIconName`·`typeName` 은 **싣지 않는다** — 프론트가 기존 타입 목록 API(`api/issue-types.ts`)에서
+얻는다. 이슈 상세 화면이 이미 그 방식이고, 자매 포트 `TimelineItemView` 도 식별자만 담는다 (ADR §D-1).
+
+### 정본 전복 3건 (착수 전 실측)
+
+1. 「타입은 `listWithType` 이 이미 조인 중」 → **경로 혼동**. 목록 경로와 보드 경로는 다르고,
+   보드는 조인을 명문으로 생략해 뒀다.
+2. 「보드 카드 SELECT 확장」 → **라벨·추정은 SELECT 무변경**. 이미 조회되는데 매핑에서만 버려진다.
+   실제 쿼리 변경은 type JOIN 하나뿐.
+3. 지정 필드 `typeKey`·`typeIconName` → **소비자 계약 불일치**. `IssueTypeIcon` 은 `typeKey` 를
+   안 쓰고, 정본 조합엔 접근성 레이블이 없어 WCAG 임계를 스스로 깬다.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 

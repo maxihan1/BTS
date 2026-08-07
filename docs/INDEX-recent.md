@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-08-07 | fr-ux-14-b2-card-fields | — | ✔ | — | — | FR-BD-02 FR-UX-09 FR-UX-13 FR-UX-14 |
+| 2026-08-07 | fr-ux-14-b2-card-fields | — | ✔ | ✔ | — | FR-BD-01 FR-BD-02 FR-UX-09 FR-UX-13 FR-UX-14 |
 | 2026-08-06 | fr-ux-13-f16-backlog-filter-epic | ✔ | ✔ | ✔ | — | FR-UX-13 FR-UX-14 |
 | 2026-08-06 | fr-ux-13-f16-f7-epic-control-test-contract | — | ✔ | — | — | FR-UX-13 |
 | 2026-08-05 | fr-ux-12-f13-global-search-input | ✔ | ✔ | ✔ | — | FR-SR-01 FR-UX-04 FR-UX-07 FR-UX-12 |
