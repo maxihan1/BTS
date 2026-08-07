@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePlanFile, parseFrIndex, parseGlossary, parseYongeo } from './build-dashboard.mjs';
+import { parsePlanFile, parseFrIndex, parseGlossary, parseYongeo, parseTodos } from './build-dashboard.mjs';
 
 test('parsePlanFile — 4단계 마커 4종(완료/진행중/차단/미진행) 정확히 인식', () => {
   const md = `# issue-tracking BC
@@ -136,4 +136,43 @@ test('parseYongeo — "PR (Pull Request)" 형식에서 약어와 풀이를 함�
   const names = terms.map(t => t.term);
   assert.ok(names.includes('PR'));
   assert.ok(names.includes('Pull Request'));
+});
+
+test('parseTodos — ✅/⬜ 마커로 해소/미착수를 가르고 본문을 섹션에 귀속시킨다', () => {
+  const md = `<!-- 주석 -->
+
+# TODOS
+
+## ✅ 인프라 — 이미 고친 것 (2026-07-27 해소)
+
+**해소.** 원인은 메시지 도둑질이었다.
+
+## ⬜ apps/web — 아직 안 한 것 (미착수)
+
+**무엇.** 접힘 레일 진입점 검토.
+`;
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 2);
+  assert.equal(todos[0].status, '해소');
+  assert.equal(todos[0].title, '인프라 — 이미 고친 것 (2026-07-27 해소)');
+  assert.ok(todos[0].body.includes('메시지 도둑질'));
+  assert.equal(todos[1].status, '미착수');
+  assert.ok(todos[1].body.includes('접힘 레일'));
+  // 다른 섹션 본문이 섞이지 않는다
+  assert.ok(!todos[0].body.includes('접힘 레일'));
+});
+
+test('parseTodos — 실제 TODOS.md 를 파싱하면 마커 수와 섹션 수가 일치한다', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const url = await import('node:url');
+  const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+  const content = fs.readFileSync(path.join(repoRoot, 'TODOS.md'), 'utf-8');
+  const headings = content.split('\n').filter(l => /^##\s+(✅|⬜)\s+/.test(l));
+  const todos = parseTodos(content);
+  assert.equal(todos.length, headings.length);
+  assert.ok(todos.length > 0, 'TODOS.md 에서 섹션을 하나도 못 읽었다');
+  assert.ok(todos.every(t => t.title.length > 0));
+  // 본문이 전부 비면 파서가 헤딩만 긁은 것이다 (공허 통과 차단)
+  assert.ok(todos.filter(t => t.body.length > 0).length === todos.length);
 });

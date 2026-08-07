@@ -12,6 +12,7 @@ const HOME = process.env.HOME || process.env.USERPROFILE || '';
 
 const PLAN_DIR = path.join(REPO_ROOT, 'docs/plan/product');
 const FR_INDEX_PATH = path.join(REPO_ROOT, 'docs/plan/fr-index.md');
+const TODOS_PATH = path.join(REPO_ROOT, 'TODOS.md');
 const GLOSSARY_PATH = path.join(HOME, 'Maxi_wiki/BTS/glossary.md');
 const YONGEO_PATH = path.join(HOME, 'Maxi_wiki/BTS/용어 정리.md');
 const OUTPUT_PATH = path.join(REPO_ROOT, 'docs/progress.html');
@@ -206,6 +207,24 @@ export function parseYongeo(content) {
     }
   }
   return terms;
+}
+
+export function parseTodos(content) {
+  // TODOS.md 는 `## <✅|⬜> <제목>` 단위 섹션의 나열이다. 마커가 상태, 그 뒤 전부가 본문.
+  const items = [];
+  let current = null;
+  for (const line of content.split('\n')) {
+    const m = line.match(/^##\s+(✅|⬜)\s+(.+?)\s*$/);
+    if (m) {
+      if (current) items.push(current);
+      current = { status: m[1] === '✅' ? '해소' : '미착수', title: m[2].trim(), body: [] };
+      continue;
+    }
+    if (line.startsWith('# ')) { if (current) items.push(current); current = null; continue; }
+    if (current) current.body.push(line);
+  }
+  if (current) items.push(current);
+  return items.map(t => ({ ...t, body: t.body.join('\n').trim() }));
 }
 
 function escapeHtml(s) {
@@ -408,6 +427,132 @@ function renderGlossary(terms) {
     <input type="search" id="term-search" placeholder="용어 검색 (한글/영문)..." />
     <div class="tab-bar">${tabs}</div>
     <div class="term-list">${items}</div>
+  </section>`;
+}
+
+function inlineMd(s) {
+  let h = escapeHtml(s);
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  h = h.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+  h = h.replace(/\[\[([^\]]+)\]\]/g, '<span class="md-wikilink">$1</span>');
+  h = h.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+  return h;
+}
+
+function mdToHtml(md) {
+  // TODOS.md 본문에 실제로 쓰이는 요소만 다룬다. 문단·목록·표·코드블록·인용·소제목·구분선.
+  const lines = md.split('\n');
+  const out = [];
+  let para = [];
+  const flushPara = () => {
+    if (para.length) { out.push(`<p>${inlineMd(para.join(' '))}</p>`); para = []; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith('```')) {
+      flushPara();
+      const code = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) { code.push(lines[i]); i++; }
+      out.push(`<pre class="md-code">${escapeHtml(code.join('\n'))}</pre>`);
+      continue;
+    }
+
+    if (line.startsWith('|')) {
+      flushPara();
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith('|')) {
+        const cells = lines[i].split('|').slice(1, -1).map(c => c.trim());
+        if (!cells.every(c => /^:?-{2,}:?$/.test(c))) rows.push(cells);
+        i++;
+      }
+      i--;
+      if (rows.length) {
+        const head = rows[0].map(c => `<th>${inlineMd(c)}</th>`).join('');
+        const body = rows.slice(1)
+          .map(r => `<tr>${r.map(c => `<td>${inlineMd(c)}</td>`).join('')}</tr>`).join('');
+        out.push(`<table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);
+      }
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
+    if (listMatch) {
+      flushPara();
+      const items = [];
+      while (i < lines.length) {
+        const m = lines[i].match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
+        if (m) { items.push(m[1]); i++; continue; }
+        // 마커 없이 들여쓴 줄은 직전 항목의 이어짐. 합치지 않으면 줄을 걸친 **볼드**가 쪼개진다.
+        if (items.length && /^\s+\S/.test(lines[i])) {
+          items[items.length - 1] += ' ' + lines[i].trim();
+          i++;
+          continue;
+        }
+        break;
+      }
+      i--;
+      out.push(`<ul class="md-list">${items.map(t => `<li>${inlineMd(t)}</li>`).join('')}</ul>`);
+      continue;
+    }
+
+    if (line.startsWith('>')) {
+      flushPara();
+      const quoted = [];
+      while (i < lines.length && lines[i].startsWith('>')) {
+        quoted.push(lines[i].replace(/^>\s?/, '').trim());
+        i++;
+      }
+      i--;
+      out.push(`<blockquote class="md-quote">${inlineMd(quoted.join(' '))}</blockquote>`);
+      continue;
+    }
+
+    const headMatch = line.match(/^(#{3,6})\s+(.*)$/);
+    if (headMatch) {
+      flushPara();
+      out.push(`<div class="md-head">${inlineMd(headMatch[2])}</div>`);
+      continue;
+    }
+
+    if (/^---+$/.test(line.trim())) { flushPara(); continue; }
+
+    if (line.trim() === '') { flushPara(); continue; }
+    para.push(line.trim());
+  }
+  flushPara();
+  return out.join('');
+}
+
+function renderTodos(todos) {
+  const open = todos.filter(t => t.status === '미착수');
+  const done = todos.filter(t => t.status === '해소');
+
+  const renderGroup = (items, icon) => items.map(t =>
+    `<details class="todo-item">
+      <summary><span class="todo-icon">${icon}</span><span class="todo-title">${inlineMd(t.title)}</span></summary>
+      <div class="todo-body">${mdToHtml(t.body)}</div>
+    </details>`
+  ).join('');
+
+  return `<section id="todos" class="page">
+    <h1>📝 기술 부채 (TODOS)</h1>
+    <p class="bc-desc">
+      지금 당장 고치지는 않기로 하고 <b>일부러 미뤄 둔 일감</b> 목록이다.
+      「나중에 하자」를 머릿속이 아니라 문서에 남겨 두는 곳이라, 잊히거나 조용히 되돌려지는 걸 막는다.
+      제목을 누르면 무엇을·왜·언제 할지가 펼쳐진다. 원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
+    </p>
+    <div class="bc-detail-stats">
+      <span class="big-pct" style="color:#9ca3af;">${open.length}</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 해소 ${done.length}건 · 전체 ${todos.length}건</span>
+    </div>
+    <h2>⬜ 아직 안 한 것 — ${open.length}건</h2>
+    <div class="todo-list">${renderGroup(open, '⬜')}</div>
+    <h2>✅ 해소된 것 — ${done.length}건</h2>
+    <div class="todo-list">${renderGroup(done, '✅')}</div>
   </section>`;
 }
 
@@ -654,6 +799,7 @@ function renderSidebar() {
       <div class="nav-group">📋 Project progress</div>
       <ul class="nav-bc">${items}</ul>
       <ul class="nav-top">
+        <li><a data-nav="todos">📝 기술 부채</a></li>
         <li><a data-nav="glossary">📖 glossary</a></li>
       </ul>
     </nav>
@@ -801,6 +947,25 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 .rule-card-desc { font-size: 13px; color: #4b5563; line-height: 1.65; }
 .rule-why { font-size: 12px; color: #6b7280; margin-top: 8px; }
 .rule-why b { color: #4b5563; }
+.todo-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.todo-item { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.todo-item summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+.todo-item summary::-webkit-details-marker { display: none; }
+.todo-icon { font-size: 15px; }
+.todo-title { flex: 1; font-size: 14px; }
+.todo-body { margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid #f3f4f6; font-size: 13px; color: #374151; }
+.todo-body p { margin-bottom: 10px; }
+.todo-body code { background: #f3f4f6; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+.todo-body a { color: #1d4ed8; }
+.md-head { font-weight: 600; font-size: 14px; margin: 16px 0 8px; color: #374151; }
+.md-list { margin: 0 0 10px 20px; }
+.md-list li { margin-bottom: 4px; }
+.md-code { background: #1f2937; color: #e5e7eb; padding: 12px 14px; border-radius: 8px; font-size: 12px; overflow-x: auto; margin-bottom: 10px; white-space: pre; }
+.md-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12px; }
+.md-table th, .md-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+.md-table th { background: #f9fafb; color: #6b7280; font-weight: 600; }
+.md-quote { border-left: 3px solid #fbbf24; background: #fffbeb; padding: 10px 14px; margin-bottom: 10px; border-radius: 0 6px 6px 0; }
+.md-wikilink { color: #6366f1; font-family: monospace; font-size: 12px; }
 `;
 
 const JS_RUNTIME = `
@@ -834,7 +999,7 @@ if (tabBar) tabBar.addEventListener('click', (e) => {
 });
 `;
 
-function renderHtml({ overall, bcSummaries, bcDetails, terms }) {
+function renderHtml({ overall, bcSummaries, bcDetails, terms, todos }) {
   const sortedTerms = buildTermLookup(terms);
   const detailSections = Object.entries(BC_MAPPING).map(([slug, meta]) => {
     const frs = bcDetails[slug] || [];
@@ -856,6 +1021,7 @@ ${renderSidebar()}
 ${renderOverview({ overall, bcSummaries })}
 ${renderHarness()}
 ${detailSections}
+${renderTodos(todos)}
 ${renderGlossary(terms)}
 </main>
 </div>
@@ -904,7 +1070,9 @@ function main() {
   const yongeoContent = fs.existsSync(YONGEO_PATH) ? readFileSafe(YONGEO_PATH) : '';
   const terms = [...parseGlossary(glossaryContent), ...parseYongeo(yongeoContent)];
 
-  const html = renderHtml({ overall, bcSummaries, bcDetails, terms });
+  const todos = parseTodos(readFileSafe(TODOS_PATH));
+
+  const html = renderHtml({ overall, bcSummaries, bcDetails, terms, todos });
 
   fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
   fs.writeFileSync(OUTPUT_PATH, html, 'utf-8');
@@ -912,6 +1080,7 @@ function main() {
   console.log(`✅ ${path.relative(REPO_ROOT, OUTPUT_PATH)} 생성 완료`);
   console.log(`   전체. ${overall['완료']} / ${overall.total} 완료 (${overall.pct}%)`);
   console.log(`   용어. ${terms.length}개`);
+  console.log(`   기술 부채. ${todos.filter(t => t.status === '미착수').length} 미착수 / ${todos.length}건`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
