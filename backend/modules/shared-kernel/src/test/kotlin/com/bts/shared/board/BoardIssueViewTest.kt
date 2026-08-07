@@ -29,6 +29,7 @@ class BoardIssueViewTest {
                 assigneeId = null,
                 priority = 0,
                 version = 1L,
+                typeKey = "task",
             )
 
         assertThat(view.rank).isNull()
@@ -46,6 +47,7 @@ class BoardIssueViewTest {
                 assigneeId = dummyId,
                 priority = 1,
                 version = 2L,
+                typeKey = "task",
                 rank = expectedRank,
             )
 
@@ -62,6 +64,7 @@ class BoardIssueViewTest {
                 assigneeId = null,
                 priority = 2,
                 version = 3L,
+                typeKey = "task",
             )
 
         assertThat(view.epicKey).isNull()

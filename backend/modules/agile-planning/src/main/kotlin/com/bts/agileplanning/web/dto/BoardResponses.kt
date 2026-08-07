@@ -147,6 +147,11 @@ data class BoardSummaryResponse(
  * @property version 낙관적 락(OCC) 버전. 카드 이동 시 expectedVersion 으로 사용.
  * @property epicKey 이슈가 속한 에픽의 이슈 키. 에픽 없는 이슈는 null.
  *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null (P1-A 누출 방지).
+ * @property typeKey 이슈 유형 키(`issue_types.key`). 소문자. 예: `"bug"` (FR-UX-14 B2).
+ *   유형 **이름·아이콘은 담지 않는다** — 클라이언트가 기존 타입 목록 API 에서 얻는다.
+ *   카드 1,000건에 같은 문자열을 반복해 싣지 않고 유형 메타의 출처를 한 곳으로 유지하기 위함이다(ADR §D-1).
+ * @property labels 이슈 라벨 목록. 라벨이 없으면 **빈 배열**로 직렬화된다(null 아님) (FR-UX-14 B2).
+ * @property originalEstimateSeconds 최초 추정 작업 시간(초). 미추정이면 null (FR-UX-14 B2).
  * @property rank LexoRank 정렬 키. **소유는 issue-tracking BC** — agile-planning 은 이 값을
  *   그대로 미러 노출할 뿐 생성·갱신하지 않는다(백로그 `BacklogResponses` 의 rank 노출 선례와
  *   동일한 방식). null 이면 미부여(정렬 시 NULLS LAST). 이 필드는 노출 전용이며 카드 정렬 순서는
@@ -158,8 +163,11 @@ data class BoardCardResponse(
     val assigneeId: UUID?,
     val priority: Int,
     val version: Long,
+    val typeKey: String,
     val epicKey: String? = null,
     val rank: String? = null,
+    val labels: List<String> = emptyList(),
+    val originalEstimateSeconds: Int? = null,
 ) {
     companion object {
         /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
@@ -170,8 +178,11 @@ data class BoardCardResponse(
                 assigneeId = card.assigneeId,
                 priority = card.priority,
                 version = card.version,
+                typeKey = card.typeKey,
                 epicKey = card.epicKey,
                 rank = card.rank,
+                labels = card.labels,
+                originalEstimateSeconds = card.originalEstimateSeconds,
             )
     }
 }

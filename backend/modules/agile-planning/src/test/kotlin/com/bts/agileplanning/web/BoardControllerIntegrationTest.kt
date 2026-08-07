@@ -311,6 +311,10 @@ class BoardControllerIntegrationTest {
                                         assigneeId = null,
                                         priority = 1,
                                         version = 1L,
+                                        // FR-UX-14 B2 — 카드 밀도 3필드가 JSON 까지 나가는지 확인하기 위한 값.
+                                        typeKey = "bug",
+                                        labels = listOf("urgent", "api"),
+                                        originalEstimateSeconds = 3600,
                                     ),
                                 ),
                         ),
@@ -330,6 +334,12 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.columns[0].cards[0].issueKey").value("BTS-1"))
             // priority 는 PRIORITY 스윔레인(FR-BD-03 D6) 그룹화 근거로 재노출 — Maxi 확정 (시드 priority=1)
             .andExpect(jsonPath("$.data.columns[0].cards[0].priority").value(1))
+            // FR-UX-14 B2 — 카드 밀도 3필드. 위에서 issueKey 로 신원을 고정한 뒤 값을 본다
+            // (인덱스만으로 지목하면 순서가 바뀔 때 엉뚱한 카드를 검증하고도 통과할 수 있다).
+            .andExpect(jsonPath("$.data.columns[0].cards[0].typeKey").value("bug"))
+            .andExpect(jsonPath("$.data.columns[0].cards[0].labels[0]").value("urgent"))
+            .andExpect(jsonPath("$.data.columns[0].cards[0].labels[1]").value("api"))
+            .andExpect(jsonPath("$.data.columns[0].cards[0].originalEstimateSeconds").value(3600))
             // truncated/unplacedCount 신호 필드 단언 (P2)
             .andExpect(jsonPath("$.data.truncated").value(false))
             .andExpect(jsonPath("$.data.unplacedCount").value(0))
@@ -793,6 +803,7 @@ class BoardControllerIntegrationTest {
                     assigneeId = null,
                     priority = i,
                     version = 1L,
+                    typeKey = "task",
                 )
             }
 
@@ -813,6 +824,11 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.columns[1].wipLimit").value(3))
             .andExpect(jsonPath("$.data.columns[1].wipExceeded").value(true))
+            // FR-UX-14 B2 — 라벨 없는 카드는 null 이 아니라 **빈 배열**로 직렬화된다(FR8).
+            // 프론트가 곧바로 순회하므로 null 이면 화면이 터진다. 신원을 먼저 고정하고 본다.
+            .andExpect(jsonPath("$.data.columns[1].cards[0].issueKey").value("BTS-1"))
+            .andExpect(jsonPath("$.data.columns[1].cards[0].labels").isArray)
+            .andExpect(jsonPath("$.data.columns[1].cards[0].labels.length()").value(0))
     }
 
     // ── WIP-S3. {wipLimit:null} → 200 + 해제 ─────────────────────────────────

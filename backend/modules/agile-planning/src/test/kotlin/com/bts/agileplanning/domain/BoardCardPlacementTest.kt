@@ -42,6 +42,9 @@ class BoardCardPlacementTest {
         assigneeId = null,
         priority = priority,
         version = 1L,
+        // 배치·정렬 테스트라 유형은 무관하다 — 파라미터로 열지 않고 고정한다.
+        // 이 헬퍼를 쓰는 테스트는 FR-UX-14 3필드의 증인이 아니다(스펙 §9.3 GAP-2).
+        typeKey = "task",
         rank = rank,
     )
 

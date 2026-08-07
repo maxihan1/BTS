@@ -741,8 +741,12 @@ class IssueRepository(
      * WHERE 술어를 재사용**해 viewer 가 볼 수 없는 보안 등급 행을 SQL 수준에서 제외한다.
      * 새 보안 판정 경로를 만들지 않음으로써 멤버 타입 누락에 의한 제목 누출을 차단한다 (FR-NT-03 교훈).
      *
-     * 단일 쿼리(ISSUES × PROJECTS + EPIC self LEFT JOIN) — N+1 없음.
-     * type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략.
+     * 단일 쿼리(ISSUES × PROJECTS × ISSUE_TYPES + EPIC self LEFT JOIN) — N+1 없음.
+     * **ISSUE_TYPES INNER JOIN 은 카드 유형 표시용이다** (FR-UX-14 B2). FR-BD-01 당시에는 카드가
+     * 유형을 안 그려 생략했으나, 카드 밀도 요구가 생기며 [listVisibleForTimeline] 과 같은 형태로
+     * 되살렸다. `issues.type_id` 가 NOT NULL + FK(V005) 라 INNER 로도 행이 사라지지 않고,
+     * N:1 조인이라 행 수도 늘지 않는다(LIMIT+1 truncated 판정 불변).
+     * 라벨·추정은 `ISSUES.fields()` 에 이미 포함돼 별도 조인이 없다.
      * 카드 수 폭주를 막기 위해 [BOARD_CARD_FETCH_LIMIT] 로 상한을 둔다.
      * 정렬(컬럼 내 priority 등)은 도메인 배치 로직(agile-planning) 책임이므로 여기서는 created_at DESC 안정 정렬만 한다.
      *
@@ -790,9 +794,16 @@ class IssueRepository(
 
         // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
         val fetched =
-            dsl.select(ISSUES.fields().toList() + listOf(epicAlias.KEY.`as`(EPIC_KEY_ALIAS)))
+            dsl.select(
+                ISSUES.fields().toList() +
+                    listOf(
+                        epicAlias.KEY.`as`(EPIC_KEY_ALIAS),
+                        ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+                    ),
+            )
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
                 .leftJoin(epicAlias).on(
                     ISSUES.EPIC_ID.eq(epicAlias.ID)
                         .and(epicAlias.DELETED_AT.isNull)
@@ -804,7 +815,10 @@ class IssueRepository(
                 .fetch { record ->
                     val issue = record.into(ISSUES).toIssue()
                     val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
-                    BoardIssueEntry(issue = issue, epicKey = epicKey)
+                    val typeKey =
+                        record.get(TYPE_KEY_ALIAS, String::class.java)
+                            ?: error("issue_types.key must not be null in board join result")
+                    BoardIssueEntry(issue = issue, epicKey = epicKey, typeKey = typeKey)
                 }
 
         val truncated = fetched.size > BOARD_CARD_FETCH_LIMIT
@@ -813,16 +827,19 @@ class IssueRepository(
     }
 
     /**
-     * [listVisibleForBoard] 단건 결과 쌍 — 이슈 + epic key.
+     * [listVisibleForBoard] 단건 결과 — 이슈 + epic key + type key.
      *
-     * [Issue] 도메인에는 epicKey 필드가 없으므로, record 추출 결과를 쌍으로 전달한다 (CONCERN C1).
+     * [Issue] 도메인에는 epicKey 도 타입 키도 없으므로(타입은 `typeId` 만 보유),
+     * record 추출 결과를 함께 전달한다 (CONCERN C1 · FR-UX-14 B2).
      *
-     * @property issue 조회된 이슈 도메인 객체.
+     * @property issue 조회된 이슈 도메인 객체. 라벨·추정은 이 안에 이미 채워져 있다.
      * @property epicKey 에픽 이슈 키. 에픽 없는 이슈는 null. 동일 프로젝트 필터 적용됨.
+     * @property typeKey 이슈 타입 키(`issue_types.key`). `issues.type_id` 가 NOT NULL + FK 라 항상 존재한다.
      */
     data class BoardIssueEntry(
         val issue: Issue,
         val epicKey: String?,
+        val typeKey: String,
     )
 
     /**

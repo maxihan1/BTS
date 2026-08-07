@@ -44,6 +44,7 @@ class BoardResponsesTest {
     private fun card(
         key: String = "PROJ-1",
         epicKey: String? = null,
+        typeKey: String = "task",
     ) = BoardIssueView(
         key = key,
         summary = "테스트 이슈",
@@ -51,6 +52,7 @@ class BoardResponsesTest {
         assigneeId = null,
         priority = 1,
         version = 0L,
+        typeKey = typeKey,
         epicKey = epicKey,
     )
 
@@ -193,6 +195,7 @@ class BoardResponsesTest {
                     assigneeId = null,
                     priority = 0,
                     version = 0L,
+                    typeKey = "task",
                 )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(0)
@@ -208,6 +211,7 @@ class BoardResponsesTest {
                     assigneeId = null,
                     priority = 99,
                     version = 0L,
+                    typeKey = "task",
                 )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(99)
@@ -234,6 +238,77 @@ class BoardResponsesTest {
     }
 
     // --- (e) 기존 필드 보존 ---
+
+    @Nested
+    inner class BoardCardResponseDensityFields {
+        // FR-UX-14 B2. 헬퍼 card() 를 쓰지 않고 BoardIssueView 를 직접 만든다 —
+        // 헬퍼는 typeKey 기본값을 채우므로 3필드의 증인이 될 수 없다(스펙 §9.3 GAP-2).
+
+        @Test
+        fun `from 은 BoardIssueView 의 유형 라벨 추정을 그대로 나른다`() {
+            val view =
+                BoardIssueView(
+                    key = "PROJ-1",
+                    summary = "제목",
+                    currentStateKey = "open",
+                    assigneeId = null,
+                    priority = 1,
+                    version = 0L,
+                    typeKey = "bug",
+                    labels = listOf("urgent", "api"),
+                    originalEstimateSeconds = 3600,
+                )
+
+            val response = BoardCardResponse.from(view)
+
+            assertThat(response.typeKey).isEqualTo("bug")
+            assertThat(response.labels).containsExactly("urgent", "api")
+            assertThat(response.originalEstimateSeconds).isEqualTo(3600)
+        }
+
+        @Test
+        fun `from 은 라벨 없는 뷰를 빈 배열로 추정 없는 뷰를 null 로 나른다`() {
+            val view =
+                BoardIssueView(
+                    key = "PROJ-2",
+                    summary = "제목",
+                    currentStateKey = "open",
+                    assigneeId = null,
+                    priority = 1,
+                    version = 0L,
+                    typeKey = "task",
+                )
+
+            val response = BoardCardResponse.from(view)
+
+            assertThat(response.typeKey).isEqualTo("task")
+            assertThat(response.labels).isEmpty()
+            assertThat(response.originalEstimateSeconds).isNull()
+        }
+
+        @Test
+        fun `서로 다른 유형의 뷰는 각자 자기 유형을 갖는다`() {
+            // 대조군 — 단일 유형만 검사하면 from 이 상수를 반환해도 통과한다(스펙 §9.3 GAP-1).
+            val bug = BoardCardResponse.from(cardWithType("PROJ-3", "bug"))
+            val story = BoardCardResponse.from(cardWithType("PROJ-4", "story"))
+
+            assertThat(bug.typeKey).isEqualTo("bug")
+            assertThat(story.typeKey).isEqualTo("story")
+        }
+
+        private fun cardWithType(
+            key: String,
+            typeKey: String,
+        ) = BoardIssueView(
+            key = key,
+            summary = "제목 $key",
+            currentStateKey = "open",
+            assigneeId = null,
+            priority = 1,
+            version = 0L,
+            typeKey = typeKey,
+        )
+    }
 
     @Nested
     inner class ExistingFieldsPreserved {

@@ -16,7 +16,10 @@ import java.util.UUID
  * - [WorkflowStateView] 에 category/displayOrder 가 추가되고 기존 2-arg 호출이 default 로 컴파일·생성됨.
  * - [BoardIssueLookupPort.listVisibleIssuesByProject] default 구현이 빈 목록을 반환함(fail-safe).
  * - [IssueTransitionPort] 는 default 구현이 없음 — 추상 구현 필수(fail-closed).
- * - [BoardIssueView] 필드 계약(key/summary/currentStateKey/assigneeId/priority/version).
+ * - [BoardIssueView] 필드 계약(key/summary/currentStateKey/assigneeId/priority/version/
+ *   **typeKey/labels/originalEstimateSeconds**).
+ * - [BoardIssueView] 기본값 규약 — typeKey 는 기본값 없음(필수), labels 는 빈 리스트,
+ *   originalEstimateSeconds 는 null (FR-UX-14 B2).
  * - [BoardTransitionCommand] 필드 계약(actorUserId/issueKey/toStateKey/expectedVersion/resolutionId).
  * - [BoardTransitionResult] 필드 계약(issueKey/currentStateKey/version).
  */
@@ -92,6 +95,7 @@ class BoardPortContractTest {
                 assigneeId = null,
                 priority = 1,
                 version = 1L,
+                typeKey = "task",
             )
         val page = BoardIssuePage(issues = listOf(issue), truncated = true)
 
@@ -110,6 +114,46 @@ class BoardPortContractTest {
     // ── BoardIssueView 필드 계약 ─────────────────────────────────────────────
 
     @Test
+    fun `BoardIssueView 는 typeKey 를 필수로 받고 labels 와 originalEstimateSeconds 는 default 로 생성된다`() {
+        // typeKey 에는 기본값이 없다 — 호출자가 반드시 명시해야 컴파일된다 (FR-UX-14 B2, FR2).
+        val view =
+            BoardIssueView(
+                key = "PROJ-1",
+                summary = "제목",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                typeKey = "bug",
+            )
+
+        assertThat(view.typeKey).isEqualTo("bug")
+        // 미지정 라벨은 null 이 아니라 빈 리스트다 — 응답이 [] 로 직렬화되는 근거 (FR8).
+        assertThat(view.labels).isEmpty()
+        assertThat(view.originalEstimateSeconds).isNull()
+    }
+
+    @Test
+    fun `BoardIssueView 는 labels 와 originalEstimateSeconds 를 명시하면 그 값으로 생성된다`() {
+        val view =
+            BoardIssueView(
+                key = "PROJ-2",
+                summary = "제목",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                typeKey = "story",
+                labels = listOf("urgent", "api"),
+                originalEstimateSeconds = 3600,
+            )
+
+        assertThat(view.typeKey).isEqualTo("story")
+        assertThat(view.labels).containsExactly("urgent", "api")
+        assertThat(view.originalEstimateSeconds).isEqualTo(3600)
+    }
+
+    @Test
     fun `BoardIssueView 는 모든 필드를 보존한다`() {
         val assigneeId = UUID.randomUUID()
         val view =
@@ -120,9 +164,11 @@ class BoardPortContractTest {
                 assigneeId = assigneeId,
                 priority = 3,
                 version = 1L,
+                typeKey = "bug",
             )
 
         assertThat(view.key).isEqualTo("PROJ-1")
+        assertThat(view.typeKey).isEqualTo("bug")
         assertThat(view.summary).isEqualTo("로그인 버그")
         assertThat(view.currentStateKey).isEqualTo("open")
         assertThat(view.assigneeId).isEqualTo(assigneeId)
@@ -140,6 +186,7 @@ class BoardPortContractTest {
                 assigneeId = null,
                 priority = 1,
                 version = 0L,
+                typeKey = "task",
             )
 
         assertThat(view.assigneeId).isNull()
@@ -257,6 +304,7 @@ class BoardPortContractTest {
                 assigneeId = null,
                 priority = 1,
                 version = 1L,
+                typeKey = "task",
             )
         val twoArgOnlyPort =
             object : BoardIssueLookupPort {

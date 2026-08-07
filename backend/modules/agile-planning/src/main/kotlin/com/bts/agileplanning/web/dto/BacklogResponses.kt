@@ -19,6 +19,10 @@ import java.util.UUID
  * @property rank LexoRank 정렬 키. null 이면 미부여.
  * @property version 낙관적 락(OCC) 버전.
  * @property epicKey 소속 에픽 키. null 이면 에픽 없음.
+ * @property typeKey 이슈 유형 키(`issue_types.key`). 소문자. 예: `"bug"` (FR-UX-14 B2).
+ *   유형 이름·아이콘은 담지 않는다 — 클라이언트가 기존 타입 목록 API 에서 얻는다(ADR §D-1).
+ * @property labels 이슈 라벨 목록. 라벨이 없으면 **빈 배열**로 직렬화된다(null 아님) (FR-UX-14 B2).
+ * @property originalEstimateSeconds 최초 추정 작업 시간(초). 미추정이면 null (FR-UX-14 B2).
  */
 data class BacklogIssueResponse(
     val key: String,
@@ -29,6 +33,9 @@ data class BacklogIssueResponse(
     val rank: String?,
     val version: Long,
     val epicKey: String?,
+    val typeKey: String,
+    val labels: List<String> = emptyList(),
+    val originalEstimateSeconds: Int? = null,
 ) {
     companion object {
         /**
@@ -47,6 +54,9 @@ data class BacklogIssueResponse(
                 rank = view.rank,
                 version = view.version,
                 epicKey = view.epicKey,
+                typeKey = view.typeKey,
+                labels = view.labels,
+                originalEstimateSeconds = view.originalEstimateSeconds,
             )
     }
 }
