@@ -37,7 +37,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다.
+  runner-health:
+    uses: ./.github/workflows/runner-health.yml
+
   lint:
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
@@ -58,6 +63,7 @@ jobs:
         run: pnpm --filter @bts/web lint
 
   typecheck:
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
@@ -78,6 +84,7 @@ jobs:
         run: pnpm --filter @bts/web typecheck
 
   test:
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     # 관측치. 전체 스위트가 CI에서 ~12m47s (2026-07-07 #242). 성장 여유를 위해 20분.
     # 스위트가 계속 커지면 vitest --shard 매트릭스로 벽시계 단축(후속).

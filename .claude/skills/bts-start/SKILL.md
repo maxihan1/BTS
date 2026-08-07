@@ -13,6 +13,23 @@ description: Use when /bts has accepted a new coding request and the working env
 
 ## 절차
 
+### Step 0. 러너 엔진 헬스체크 (필수)
+
+작업을 시작하기 전에 self-hosted 러너의 실행 엔진(node · java)이 살아 있는지 본다.
+**여기서 red 면 이 작업의 CI 는 전부 무의미하다** — 러너를 먼저 고친다.
+
+```bash
+bash scripts/verify-runner-health.sh
+```
+
+exit 1 이면 출력의 복구 절차를 그대로 따르고, **초록이 될 때까지 Step 1 로 넘어가지 않는다.**
+
+왜 여기인가. 2026-08-04 홈 폴더 용량 정리로 러너 엔진 4개가 지워져 **사흘간 CI 가 0회 실행**됐고
+그 사이 #342·#343·#344 가 검증 없이 머지됐다. 러너는 `online` 이었고 빨간불도 떴지만
+「테스트 실패」와 구분되지 않았다. CI 안의 헬스체크(`runner-health.yml`)도 있지만 그 전제가
+미검증이므로 **이 로컬 점검이 전제 무관 백스톱**이다.
+배경. `docs/runbooks/self-hosted-runner.md` §4
+
 ### Step 1. 작업 분류 (캐시 적용)
 
 ```bash

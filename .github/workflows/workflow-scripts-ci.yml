@@ -84,8 +84,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다.
+  runner-health:
+    uses: ./.github/workflows/runner-health.yml
+
   discriminants:
     name: 워크플로우 스크립트 판별식
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
