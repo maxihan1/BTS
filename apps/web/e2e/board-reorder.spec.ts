@@ -62,6 +62,15 @@ const REORDER_PROJECT_KEY = 'REORDERTEST'
 const REORDER_BOARD_URL = `/projects/${REORDER_PROJECT_KEY}/board?board=${REORDER_BOARD_ID}`
 
 /** board-labels.ts boardLabels.swimlane.selectorLabel 과 동기화 */
+/**
+ * 셀 내 순서변경이 진행 중임을 알리는 드래그 공지 문구.
+ *
+ * `KanbanBoard.tsx` 의 `toPresentAnnouncement` 가 `reorder` 액션에 대해 만드는 문자열과
+ * 동기화한다 — `` `${컬럼명} 안에서 순서를 조정하고 있습니다.` ``.
+ * S6 이 **방향키 횟수 대신 이 목표 상태로 판정**하기 위해 쓴다.
+ */
+const REORDER_IN_PROGRESS_ANNOUNCEMENT = 'TODO 안에서 순서를 조정하고 있습니다.'
+
 const SWIMLANE_SELECTOR_LABEL = '스윔레인'
 
 /** board-labels.ts boardLabels.swimlane.options.ASSIGNEE 와 동기화 */
@@ -365,14 +374,33 @@ test.describe('FR-UX-06 PR21 칸반 보드 셀 내 카드 순서변경', () => {
     await expect.poll(() => getCardOrder(todoColumn)).toEqual(['ATLAS-1', 'ATLAS-4'])
 
     const card = getCardLocator(page, 'ATLAS-1')
+
+    // ★이 테스트가 main 에서도 빨갛던 **진짜 원인은 거리가 아니라 대기 부재**였다.
+    //
+    // 예전 코드는 Space 로 집은 **직후** 곧바로 ArrowDown 을 연타했다. dnd-kit 은 집기
+    // 시점에 드래그 상태를 세우는데, 그 전에 도착한 화살표 입력은 **그냥 삼켜진다**.
+    // 실측(2026-08-08) — 대기 없이 6·8회를 눌러도 순서 불변, 대기를 주면 **4회로도** 바뀐다.
+    // 「150px 가 모자라서」라는 기존 주석의 진단은 틀렸다.
+    //
+    // 고정 타임아웃 대신 **집기가 끝났다는 신호**(`aria-pressed="true"`, dnd-kit 이 부여)를
+    // 기다린다 — 머신이 느려도 빨라도 흔들리지 않는다.
+    //
+    // ★**방향키 횟수를 하드코딩하지 않는다.** 목표 상태(공지가 「순서를 조정하고 있습니다」를
+    // 읽는다)로 판정하고 그때까지 한 번씩 누른다 — `backlog.spec.ts` 의
+    // `pickUpAndMoveOverPlannedSprint` 가 같은 문제를 이미 이렇게 풀었다.
+    // 화살표 1회당 이동량(dnd-kit 기본 25px)도, 카드 높이도 이 방식에는 무관하다.
     await card.focus()
 
-    // 집기
+    // 집기 — Space
     await page.keyboard.press('Space')
-    // 다음 카드 위치까지 이동 — 25px * 6 = 150px (카드 높이+gap을 충분히 초과)
-    for (let i = 0; i < 6; i += 1) {
+    await expect(card).toHaveAttribute('aria-pressed', 'true')
+
+    const liveRegion = page.locator('[id^="DndLiveRegion"]')
+    await expect(async () => {
       await page.keyboard.press('ArrowDown')
-    }
+      await expect(liveRegion).toHaveText(REORDER_IN_PROGRESS_ANNOUNCEMENT, { timeout: 1_000 })
+    }).toPass({ timeout: 15_000 })
+
     // 드롭
     await page.keyboard.press('Space')
 
