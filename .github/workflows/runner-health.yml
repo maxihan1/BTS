@@ -141,7 +141,32 @@ jobs:
           OVER=$(awk -v r="$LOAD_RATIO" -v w="$LOAD_RATIO_WARN" -v sr="$SWAP_RATIO" -v sw="$SWAP_RATIO_WARN" \
             'BEGIN { print (r >= w || sr >= sw) ? 1 : 0 }')
 
+          # 로컬에서 이 블록을 그대로 돌려볼 수 있게 기본값을 준다. CI 에서는 항상 정의돼 있다.
+          : "${GITHUB_STEP_SUMMARY:=/dev/null}"
+
+          # ★요약은 **정상일 때도** 남긴다. 「이 run 이 어떤 자원 상태에서 돌았나」가
+          #   사후 판단의 근거이기 때문이다 — 경고일 때만 남기면 정상 run 의 시간도 못 믿는다.
+          {
+            echo "### 러너 자원"
+            echo ""
+            echo "| 지표 | 값 | 경고 임계 |"
+            echo "|---|---|---|"
+            echo "| load / 코어 | **${LOAD_RATIO}** (${LOAD} / ${NCPU}코어) | ${LOAD_RATIO_WARN} |"
+            echo "| swap / 메모리 | **${SWAP_RATIO}** (${SWAP_MB} / ${MEM_MB}MB) | ${SWAP_RATIO_WARN} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           if [ "$OVER" -eq 1 ]; then
+            # ★어노테이션은 **고갈일 때만** 낸다. 매 run 마다 뜨면 노이즈가 되어 무시되고,
+            #   그러면 진짜 고갈도 같이 묻힌다 — 판정 자체가 무력화된다.
+            echo "::warning title=러너 자원 고갈::load ${LOAD_RATIO}배 · swap ${SWAP_RATIO} — 이 run 의 소요 시간을 믿지 마라. 2026-08-07 실측 A/B 에서 동일 커밋이 554s ↔ 1380s 였다."
+            {
+              echo ""
+              echo "> ⚠️ **자원 고갈 상태에서 실행됐다. 이 run 의 소요 시간을 믿지 마라.**"
+              echo ">"
+              echo "> 실측 근거 — 2026-08-07 동일 커밋 A/B 에서 issue-tracking 1,380s ↔ 554s (테스트 수 증감 0)."
+              echo "> 진단은 \`top -l 1 -o mem -n 10\` 부터. \`docker system df\` 가 아니다."
+            } >> "$GITHUB_STEP_SUMMARY"
+
             echo "⚠️  러너 자원 고갈 — load ${LOAD}/${NCPU}코어 = ${LOAD_RATIO}배 · swap ${SWAP_MB}/${MEM_MB}MB = ${SWAP_RATIO}"
             echo "   이 run 의 테스트는 2배 이상 느려진다. 이 run 의 소요 시간을 믿지 마라."
             echo "   실측. 2026-08-07 동일 커밋 A/B — issue-tracking 1380s ↔ 554s (테스트 수 증감 0)"
