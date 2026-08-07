@@ -22,7 +22,9 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,6 +57,52 @@ function callerFiles(): string[] {
 
 function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, WORKFLOW_DIR, name), 'utf8');
+}
+
+/** 자원 점검 스텝의 이름. 추출 앵커이므로 워크플로우와 한 글자도 달라선 안 된다. */
+const RESOURCE_STEP_NAME = '- name: 러너 자원 점검';
+/** `run: |` 블록의 들여쓰기(스텝 6칸 + run 8칸 → 본문 10칸). */
+const RUN_BLOCK_INDENT = 10;
+/** 추출이 이보다 짧으면 앵커가 어긋난 것이다 — 0줄을 돌려주면 아래 단언이 전부 공허해진다. */
+const MIN_STEP_LINES = 20;
+
+/**
+ * CI 인라인 자원 판정 블록을 **실행 가능한 셸 스크립트로** 뽑아낸다.
+ *
+ * 왜 필요한가. `runner-health.yml` 의 판정은 인라인 shell 이라 보통은 실행해볼 수단이 없고,
+ * 그래서 「문자열이 있는지」만 검사하게 된다. 그 검사는 **셸 옵션 차이로 생기는 거동 차이를
+ * 원리적으로 못 본다** — 실제로 awk 문자열 비교 함정이 그 사각으로 빠져나갔다.
+ */
+function resourceStepScript(): string {
+  const body = readWorkflow(HEALTH_WORKFLOW);
+
+  const stepIdx = body.indexOf(RESOURCE_STEP_NAME);
+  assert.ok(stepIdx >= 0, `자원 점검 스텝(${RESOURCE_STEP_NAME})을 못 찾았다 — 추출이 고장났다.`);
+
+  const runIdx = body.indexOf('run: |', stepIdx);
+  assert.ok(runIdx > stepIdx, '자원 점검 스텝에 run 블록이 없다.');
+
+  const lines: string[] = [];
+  for (const line of body.slice(runIdx).split('\n').slice(1)) {
+    if (line.trim() === '') {
+      lines.push('');
+      continue;
+    }
+    // 블록 들여쓰기보다 얕아지면 다음 스텝/키다. 거기서 끊는다.
+    if (!line.startsWith(' '.repeat(RUN_BLOCK_INDENT))) break;
+    lines.push(line.slice(RUN_BLOCK_INDENT));
+  }
+
+  const script = lines.join('\n');
+  // ★비-공허 확인. 앵커가 어긋나 빈 스크립트가 나오면 `bash -e ""` 는 그냥 성공하고
+  //   아래 5개 케이스가 **전부 초록으로 통과**한다 — 가드가 있는 척하는 최악의 상태다.
+  assert.ok(
+    lines.filter((l) => l.trim() !== '').length >= MIN_STEP_LINES,
+    `추출된 스텝이 ${lines.length}줄뿐이다 — 빈 스크립트를 돌리면 모든 단언이 공허하게 통과한다.`,
+  );
+  assert.match(script, /OVER/, '추출본에 판정 로직이 없다 — 엉뚱한 블록을 잘라냈다.');
+
+  return script;
 }
 
 describe('러너 헬스체크 배선', () => {
@@ -180,6 +228,60 @@ describe('러너 헬스체크 배선', () => {
     assert.ok(
       overIdx > 0 && warnIdx > overIdx,
       `::warning 이 고갈 분기(${overIdx}) 밖(${warnIdx})에 있다 — 정상 run 에도 경고가 떠 상시화된다.`,
+    );
+  });
+
+  test('★★CI 인라인 자원 판정은 errexit 하에서도 절대 죽지 않는다', () => {
+    // ## 왜 문자열 매칭으로는 부족한가
+    //
+    // 위 INVARIANTS 는 두 층에 **같은 술어가 있는지**만 본다. 그런데 두 층은 셸 옵션이 다르다 —
+    //   로컬 scripts/verify-runner-health.sh : `set -uo pipefail`  (errexit **없음**)
+    //   CI   runner-health.yml `run:`         : GitHub Actions 기본 `bash -e` (errexit **있음**)
+    // 같은 코드가 로컬에서는 조용히 넘어가고 CI 에서는 스텝을 죽인다. 실제로 awk 문자열 비교
+    // 함정(`-v n="xyz"` 에서 `n > 0` 이 문자열 비교가 되어 0 나눗셈 가드를 통과)이
+    // **CI 에서만** exit 2 를 냈고, INVARIANTS 는 그것을 통과시켰다.
+    //
+    // ★runner-health 는 모든 워크플로우의 `needs:` 선행 잡이다. 이 스텝이 죽으면
+    //   backend·frontend·infra·workflow-scripts 의 모든 잡이 안 돈다 — 자원 부족을 알리려던
+    //   장치가 CI 전체를 세운다. 그래서 「어떤 입력에도 exit 0」이 이 스텝의 핵심 계약이다.
+    const step = resourceStepScript();
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bts-step-')), 'step.sh');
+    fs.writeFileSync(file, step);
+
+    /** 실제 CI 와 동일하게 `bash -e` 로 돌린다. 여기가 로컬 스크립트와 갈리는 지점이다. */
+    const runStep = (env: Record<string, string>) =>
+      spawnSync('bash', ['-e', file], {
+        env: { ...process.env, ...env },
+        encoding: 'utf8',
+      });
+
+    const CASES: Array<[string, Record<string, string>]> = [
+      ['정상', { LOAD: '7.72', NCPU: '8', SWAP_MB: '3556', MEM_MB: '16384' }],
+      ['고갈', { LOAD: '34.43', NCPU: '8', SWAP_MB: '15014', MEM_MB: '16384' }],
+      // ★숫자가 아닌 값. awk 문자열 비교 함정이 여기서 드러난다.
+      ['비숫자', { LOAD: 'abc', NCPU: 'xyz', SWAP_MB: 'zzz', MEM_MB: 'qqq' }],
+      // 0 나눗셈 경로.
+      ['0코어', { LOAD: '34.43', NCPU: '0', SWAP_MB: '3556', MEM_MB: '0' }],
+      // 음수 — sysctl 이 이상해지는 이론적 경로.
+      ['음수', { LOAD: '-1', NCPU: '-8', SWAP_MB: '-1', MEM_MB: '-1' }],
+    ];
+
+    const failures = CASES.flatMap(([label, vals]) => {
+      const env = Object.fromEntries(
+        Object.entries(vals).map(([k, v]) => [`BTS_RUNNER_FAKE_${k}`, v]),
+      );
+      const r = runStep(env);
+      const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+      if (r.status !== 0) return [`${label} → exit ${r.status}\n${out}`];
+      if (/division by zero|awk:|syntax error/.test(out)) return [`${label} → 셸/awk 에러\n${out}`];
+      return [];
+    });
+
+    assert.deepEqual(
+      failures,
+      [],
+      `CI 인라인 자원 판정이 죽었다 — runner-health 가 죽으면 모든 워크플로우가 멈춘다.\n` +
+        failures.join('\n---\n'),
     );
   });
 

@@ -17,7 +17,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,17 +38,14 @@ const TOOLCACHE_NODE_REL = '_work/_tool/node/22.23.2/arm64/bin/node';
  * 자원 상태는 실제 머신에 종속이라 주입 없이 단언하면 그날 부하에 따라 결과가 뒤집힌다(flaky).
  */
 function run(root: string, extraEnv: Record<string, string> = {}): { code: number; out: string } {
-  try {
-    const out = execFileSync('bash', [SCRIPT], {
-      env: { ...process.env, BTS_RUNNER_ROOT: root, ...extraEnv },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return { code: 0, out };
-  } catch (e) {
-    const err = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: err.status ?? -1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
-  }
+  // ★spawnSync 를 쓰는 이유. execFileSync 는 **성공 시 stdout 만** 돌려준다 —
+  //   그러면 stderr 로 나가는 진단(예: `awk: division by zero`)이 exit 0 뒤에 숨어
+  //   「에러가 없다」는 단언이 조용히 공허해진다. 실제로 이 파일이 그 함정에 한 번 빠졌다.
+  const r = spawnSync('bash', [SCRIPT], {
+    env: { ...process.env, BTS_RUNNER_ROOT: root, ...extraEnv },
+    encoding: 'utf8',
+  });
+  return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
 /** 2026-08-07 실측 그대로. 고갈 = load 34.43/8코어 = 4.30배 · swap 15,014M/16GB = 91.6% */
@@ -249,6 +246,35 @@ describe('러너 자원 고갈 판정', () => {
       smallMachine.out,
       /러너 자원 고갈/,
       `같은 8,000MB 라도 8GB 머신에서는 고갈이다 — 비율 판정이 안 되고 있다\n${smallMachine.out}`,
+    );
+  });
+
+  test('★★측정값이 숫자가 아니어도 죽지 않는다 — awk 의 문자열 비교 함정', () => {
+    // awk 에 `-v n="xyz"` 로 넘긴 값은 **문자열**이다. `n > 0` 은 숫자 비교가 아니라
+    // 문자열 비교("xyz" > "0" → 참)가 되어, 0 나눗셈을 막으려던 삼항 가드를 **통과**한다.
+    // 결과는 `awk: division by zero` 이고 exit 2 다.
+    //
+    // ★이것이 왜 치명적인가. 로컬 스크립트는 errexit 가 없어 조용히 넘어가지만,
+    //   CI 워크플로우는 GitHub Actions 기본이 `bash -e` 라 **스텝이 죽는다.**
+    //   runner-health 는 모든 워크플로우의 `needs:` 선행 잡이므로 CI 전체가 멈춘다 —
+    //   자원 부족을 알리려던 장치가 CI 를 세우는, 이 PR 이 막으려던 것의 더 나쁜 판본이다.
+    const garbage = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_LOAD: 'abc',
+      BTS_RUNNER_FAKE_NCPU: 'xyz',
+      BTS_RUNNER_FAKE_SWAP_MB: 'zzz',
+      BTS_RUNNER_FAKE_MEM_MB: 'qqq',
+    });
+
+    assert.equal(
+      garbage.code,
+      0,
+      `측정값이 숫자가 아닐 때 죽었다 — CI 층에서는 이것이 러너 전체 정지다\n${garbage.out}`,
+    );
+    assert.doesNotMatch(
+      garbage.out,
+      /division by zero|awk:/,
+      `awk 가 에러를 뱉었다 — 숫자 강제 변환(+0)이 빠졌다\n${garbage.out}`,
     );
   });
 
