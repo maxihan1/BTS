@@ -50,9 +50,9 @@ const INITIAL_BOARD: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: '0|100000:' },
-        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: '0|200000:' },
-        { issueKey: 'ATLAS-3', summary: '카드 3', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: '0|300000:' },
+        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: '0|100000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: '0|200000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-3', summary: '카드 3', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: '0|300000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
     {

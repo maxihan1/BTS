@@ -339,13 +339,33 @@ function collectIssueKeys(board: BoardDetail): string[] {
   return board.columns.flatMap((col) => col.cards.map((c) => c.issueKey))
 }
 
-/** 응답 카드에 labels/componentIds 필드가 없음을 검증한다 (DTO 오염 방지) */
-function hasNoFilterMeta(board: BoardDetail): boolean {
+/**
+ * 응답 카드에 **저장소 전용** 메타가 새지 않음을 검증한다 (DTO 오염 방지).
+ *
+ * ★ 2026-08-07 FR-UX-14 F14 로 범위가 좁아졌다. 원래는 `labels` 도 함께 막았지만
+ * `labels` 는 **B2(#346)로 `BoardCardResponse` 의 정식 필드가 됐다** — 더는 오염이 아니다.
+ * 여전히 저장소 전용인 것은 `componentIds` 하나뿐이라 그것만 막는다.
+ * (가드를 지우지 않고 좁힌 이유. `componentIds` 누출은 아직 실재하는 위험이다.)
+ */
+function hasNoStoreOnlyMeta(board: BoardDetail): boolean {
+  return board.columns.every((col) =>
+    col.cards.every((card) => !Object.prototype.hasOwnProperty.call(card, 'componentIds')),
+  )
+}
+
+/**
+ * 카드가 B2(#346) 계약 3필드를 **실제로 싣고 있음**을 검증한다.
+ *
+ * 위 가드에서 `labels` 를 빼는 대신 이 짝을 둔다 — 단순히 단언을 지우면 「응답에서 필드가
+ * 통째로 사라져도 통과하는」 공허한 상태가 된다.
+ */
+function hasCardDensityFields(board: BoardDetail): boolean {
   return board.columns.every((col) =>
     col.cards.every(
       (card) =>
-        !Object.prototype.hasOwnProperty.call(card, 'labels') &&
-        !Object.prototype.hasOwnProperty.call(card, 'componentIds'),
+        Object.prototype.hasOwnProperty.call(card, 'typeKey') &&
+        Object.prototype.hasOwnProperty.call(card, 'labels') &&
+        Object.prototype.hasOwnProperty.call(card, 'originalEstimateSeconds'),
     ),
   )
 }
@@ -435,12 +455,22 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     expect(keys).not.toContain('FILTER-4')
   })
 
-  it('응답 카드에 labels/componentIds 없음 (DTO 오염 방지)', async () => {
+  it('응답 카드에 componentIds 없음 (저장소 전용 메타 오염 방지)', async () => {
     seedBoard(FILTER_BOARD)
     const res = await getBoardWithFilter(FILTER_BOARD.boardId, '')
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
-    expect(hasNoFilterMeta(body.data)).toBe(true)
+    expect(hasNoStoreOnlyMeta(body.data)).toBe(true)
+  })
+
+  it('응답 카드에 typeKey·labels·originalEstimateSeconds 가 실린다 (FR-UX-14 B2 계약)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, '')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    // 비-공허 짝. 카드가 0개면 아래 every() 가 검사할 것 없이 통과한다.
+    expect(collectIssueKeys(body.data).length).toBeGreaterThan(0)
+    expect(hasCardDensityFields(body.data)).toBe(true)
   })
 })
 

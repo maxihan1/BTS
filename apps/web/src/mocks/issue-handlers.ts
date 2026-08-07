@@ -545,6 +545,14 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     ? body.customFields
     : createdIssueFixture.customFields
 
+  // FR-UX-14 F14 — typeKey 를 typeId 에서 파생시킨다.
+  // 이전에는 typeId 만 요청값을 반영하고 typeKey 는 fixture 고정값('task')으로 남아 둘이
+  // 어긋나 있었다. 보드/백로그 카드가 typeKey 로 유형 아이콘을 그리기 시작하면서 그 잠복
+  // 불일치가 화면에 드러나므로 여기서 한 값에서 파생시킨다.
+  const resolvedCreateTypeId = body.typeId ?? createdIssueFixture.typeId
+  const resolvedCreateTypeKey =
+    lookupIssueType(resolvedCreateTypeId)?.key ?? createdIssueFixture.typeKey
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
@@ -554,7 +562,8 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     securityLevelId: resolvedSecurityLevelId,
     customFields: resolvedCustomFields,
     // FR-UX-09 F2 — 요청 값을 반영한다. fixture 고정값을 돌려주면 상위 테스트가 공허해진다.
-    typeId: body.typeId ?? createdIssueFixture.typeId,
+    typeId: resolvedCreateTypeId,
+    typeKey: resolvedCreateTypeKey,
     description: body.description ?? createdIssueFixture.description,
     priority: body.priority ?? DEFAULT_ISSUE_PRIORITY,
     labels: body.labels ?? [],
@@ -575,6 +584,11 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     // 생성 폼에 에픽 축이 없다 — 새 이슈는 항상 에픽 미지정이다. 픽스처에 에픽이 2종
     // 생긴 뒤에도 이 값은 null 이 맞다(누락이 아니다). 새로 만든 카드는 「에픽 없음」쪽에 선다.
     epicKey: null,
+    // FR-UX-14 F14 — 카드 밀도 3필드. 생성 응답과 같은 출처를 쓴다.
+    typeKey: created.typeKey,
+    labels: created.labels,
+    // 생성 폼에 추정 축이 없다 — 새 이슈는 항상 미추정이다 (누락이 아니라 값이 없는 것).
+    originalEstimateSeconds: null,
   })
 
   return HttpResponse.json({ data: created }, { status: 201 })
