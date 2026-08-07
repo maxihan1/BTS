@@ -96,9 +96,50 @@
 3. 지정 필드 `typeKey`·`typeIconName` → **소비자 계약 불일치**. `IssueTypeIcon` 은 `typeKey` 를
    안 쓰고, 정본 조합엔 접근성 레이블이 없어 WCAG 임계를 스스로 깬다.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-08-07-fr-ux-14-b2-card-fields.md](../specs/2026-08-07-fr-ux-14-b2-card-fields.md)
+— 시나리오 S1~S7 · 기능 요구사항 FR1~FR10 · 비기능 NFR1~NFR5 · 엣지 케이스 E1~E10 ·
+제약 C1~C5 · 완료 기준 §9.1~§9.5.
+
+핵심 3줄 요약.
+- `BoardIssueView`(shared-kernel) 한 곳에 3필드를 더하면 보드·백로그 두 응답이 함께 따라온다.
+- 라벨·추정은 **이미 조회되고 있어 매핑만** 추가하면 되고, 유형만 `ISSUE_TYPES` INNER JOIN 이 새로 필요하다.
+- 성공 판정식은 **N+1 회귀 가드**이고, 그 가드가 공허하지 않음을 **일부러 N+1 을 만들어** 증명한다.
+
+**`## Jira 대조` 는 비-UI 타입이라 생략**했다 (이 PR 은 화면 0파일).
+
+### office-hours 를 그대로 돌리지 않은 이유 (절차 이탈 기록)
+
+`/bts-spec` Phase A-3 은 `office-hours` 호출을 지시하지만, 그 스킬은 **제품 아이디어 검증**
+도구다(수요 근거 · 고객 이름 · 최소 웨지 등 6문항, 원격 서브에이전트 · 웹검색 · `CLAUDE.md`
+수정 제안 포함). 이 작업은 Maxi 가 이미 결정하고 **ADR 까지 채택한 백엔드 필드 추가**라
+그 문답이 성립하지 않는다.
+
+스킬 자체 규정 *"완성된 계획이 있으면 Phase 2 문답은 건너뛰되 Phase 3(전제 도전)·
+Phase 4(대안 생성)는 수행한다"* 에 따라 **그 두 단계만** 실제로 수행했다 —
+전제 도전의 산출물이 §도메인 정리의 **정본 전복 3건**이고, 대안 생성의 산출물이
+**기본값 3안 비교**(Maxi 확정)다. 산출물은 스킬 기본 경로가 아니라 `docs/specs/` 에 썼다.
+
+> **후속 과제.** `/bts-spec` 이 백엔드 타입에도 `office-hours` 를 무조건 지시하는 것은
+> 워크플로우 결함이다. `TODOS.md` 등재 후보.
+
+## Brainstorming Check
+
+**✅ 통과 (1회 iteration)** — gap 3건 발견 후 스펙 §9.3(픽스처 요건) 신설로 봉합.
+
+| ID | gap | 한 줄 |
+|---|---|---|
+| GAP-1 | 픽스처 대조군 부재 | 값이 같으면 매핑이 뒤바뀌어도 초록. FR-UX-13 F16 동형 |
+| GAP-2 | 컴파일러 강제가 **팩토리 헬퍼 한 겹에서 흡수** | 「브랜드 타입은 한 홉만 막는다」 동형. 증인은 실 DB 값이어야 함 |
+| GAP-3 | `BoardPortContractTest` 가 필드 계약 정본인데 갱신 요건 누락 | KDoc 열거 + 기본값 규약을 계약 테스트로 못박기 |
+
+구조적 위험(「봉합이 절반」)은 **실측으로 없음을 확인**했다 — 백로그 두 배열이 같은 `from` 을
+거치고, 포트 제3소비자(`SprintApplicationService`)는 단건 가시성만 쓰며,
+`BoardCardPlacement` 는 VO 를 읽기만 한다. 프론트도 Zod 가 `.strict()` 가 아니라 안 깨진다.
+
+`superpowers:brainstorming` 역시 대화형 설계 도구라 「gap 만 보고」 용도와 어긋나므로,
+그 스킬이 요구하는 설계 문답 대신 **위 4개 축을 코드로 실측**하는 방식으로 sanity check 를 수행했다.
 
 ## Plan (← /bts-plan 채움)
 
