@@ -85,6 +85,13 @@ hiddenSections?: { labels?: boolean; components?: boolean }   // 기본값 = 표
 숨김 단언만 있으면 컴포넌트가 아무것도 안 그려도 통과하기 때문이다(같은 셀렉터로 「없다」와
 「있다」를 둘 다 잰다).
 
+> **📌 「같은 셀렉터」는 이 ADR 시점에 절반만 참이었다 — 후속 ⑦(PR #345, 2026-08-06)이 이행했다.**
+> 당시 두 테스트 파일은 셀렉터를 **글자 단위로 같은 복사본 2벌**(실제로는 role·헬퍼 포함 **8종**)로
+> 각자 소유했고, 「같다」를 강제하는 것은 주석 한 줄뿐이라 **같음이 아무것도 보장하지 않았다**.
+> ⑦ 이 8종을 `apps/web/src/test/backlog-epic-control-contract.ts` 하나로 승격하고 판별식
+> `components/backlog/epic-control-contract.test.ts` 로 복사본 부활을 봉인해, 이 문장이 **문자
+> 그대로 참**이 됐다. **결정을 뒤집는 것이 아니라 이행이다** — 판정도 처방도 그대로다.
+
 ### 파생 결정 — `BacklogFilter` 는 두 필드를 **모델에 갖지 않는다**
 
 `FilterBar<T extends BoardCardFilterParams>` 제약 탓에 백로그 필터가 **항상 빈** `labels`·

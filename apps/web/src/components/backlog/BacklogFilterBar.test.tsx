@@ -11,6 +11,17 @@ import { backlogLabels } from '@/i18n/backlog-labels'
 import { filterBarLabels } from '@/i18n/filter-bar-labels'
 import { NO_EPIC, emptyBacklogFilter } from '@/lib/backlog-filter'
 import type { BacklogFilter } from '@/lib/backlog-filter'
+// 셀렉터 자산은 '@/test/backlog-epic-control-contract' 가 단독 소유한다.
+import {
+  EPIC_CONTROL_ROLE,
+  EPIC_ALPHA,
+  EPIC_BETA,
+  EPIC_UNRESOLVED,
+  EPIC_ALPHA_NAME,
+  EPIC_BETA_NAME,
+  NO_EPIC_LABEL,
+  queryEpicControls,
+} from '@/test/backlog-epic-control-contract'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 훅 mock — 데이터 페칭 없이 순수 UI 단위 테스트 (FilterBar.test.tsx 관례 동일)
@@ -55,15 +66,6 @@ import { BacklogFilterBar, SEARCH_DEBOUNCE_MS } from './BacklogFilterBar'
 
 /** 화면 문자열은 정본(`i18n/backlog-labels.ts`)에서 읽는다. 리터럴 재타이핑 금지 */
 const BACKLOG_SEARCH_LABEL = backlogLabels.filter.searchLabel
-const NO_EPIC_LABEL = backlogLabels.filter.noEpic
-
-const EPIC_ALPHA = 'ATLAS-100'
-const EPIC_BETA = 'ATLAS-200'
-/** 이름 해석에 실패했거나 아직 로딩 중인 에픽 — F16-6 은 이때 **키를 그대로** 보이라고 한다 */
-const EPIC_UNRESOLVED = 'ATLAS-900'
-
-const EPIC_ALPHA_NAME = '결제 개편'
-const EPIC_BETA_NAME = '알림 리팩터'
 
 const epicNames: ReadonlyMap<string, string> = new Map([
   [EPIC_ALPHA, EPIC_ALPHA_NAME],
@@ -100,32 +102,6 @@ function searchInput(): HTMLElement {
 /** 활성 필터 칩 목록 — `FilterBar` 가 소유한 단일 list(`적용된 필터`) */
 function chipList(): HTMLElement {
   return screen.getByRole('list', { name: '적용된 필터' })
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ★★ C4 짝 테스트의 공유 셀렉터
-//
-// 에픽 선택 컨트롤의 계약은 **`role="checkbox"` + 접근명 = 에픽 이름**이다.
-// 이 파일은 짝의 절반(③-a — 필터바에 **0개**)만 소유한다.
-// **짝의 나머지 절반(③-b — 패널에는 **있다**)은 `BacklogEpicPanel.test.tsx` 가 소유한다.**
-// 부재 단언 단독은 컴포넌트가 아무것도 렌더하지 않아도 통과하는 **공허 테스트**라,
-// 두 파일이 **같은 셀렉터**를 써야 「어디에도 없음」과 「패널에만 있음」이 구분된다.
-// 셀렉터를 여기서 바꾸면 `BacklogEpicPanel.test.tsx` 도 같은 PR 에서 함께 고쳐야 한다.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const EPIC_CONTROL_ROLE = 'checkbox' as const
-
-/** 에픽 선택 컨트롤 후보를 이름별로 전부 긁는다. 해석 이름·미해석 키·센티널 라벨 전부. */
-function queryEpicControls(): HTMLElement[] {
-  const names = [
-    EPIC_ALPHA_NAME,
-    EPIC_BETA_NAME,
-    EPIC_ALPHA,
-    EPIC_BETA,
-    EPIC_UNRESOLVED,
-    NO_EPIC_LABEL,
-  ]
-  return names.flatMap((name) => screen.queryAllByRole(EPIC_CONTROL_ROLE, { name }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,7 +234,8 @@ describe('BacklogFilterBar — S2 에픽 활성 칩', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // S3. ★★ C4 에픽 상태 단일 소유권 — 필터바는 **입력 컨트롤을 갖지 않는다**
 //
-// 짝의 나머지 절반(패널에는 있다)은 `BacklogEpicPanel.test.tsx` 가 소유한다 (위 셀렉터 주석).
+// 짝의 나머지 절반(패널에는 있다)은 `BacklogEpicPanel.test.tsx` 가 소유하고,
+// 두 파일이 쓰는 셀렉터는 `@/test/backlog-epic-control-contract` 가 단독 소유한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BacklogFilterBar — S3 에픽 단일 소유권 (C4)', () => {
