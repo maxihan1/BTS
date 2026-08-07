@@ -456,7 +456,8 @@ fun `type JOIN 이 붙어도 LIMIT 경계의 truncated 판정이 행 수 기준 
 
     assertThat(page.truncated).isFalse()
     // 조인이 행을 불렸다면 이슈 수보다 카드 수가 많아진다 — 그것을 직접 잡는다.
-    assertThat(page.issues).hasSize(SEEDED_VISIBLE_ISSUE_COUNT)
+    // 기대값은 상수로 두지 말고 **이 테스트가 시드한 건수**를 그대로 쓴다.
+    assertThat(page.issues).hasSize(seededVisibleIssueKeys.size)
     assertThat(page.issues.map { it.key }).doesNotHaveDuplicates()
 }
 ```
@@ -517,8 +518,31 @@ fun `보드 카드 조회 쿼리 수는 카드 건수와 무관하게 일정하�
 }
 ```
 
-`countQueriesFor` 는 지정 건수만큼 이슈를 시드한 뒤 리스너를 붙인 `DSLContext` 로
-`listVisibleForBoard` 를 1회 실행하고 리스너 카운트를 돌려준다.
+`countQueriesFor` 의 구현. `IssueTestcontainersBase:112` 가 `dsl = DSL.using(dataSource, SQLDialect.POSTGRES)`
+로 만들고 `:113` 이 `repository = IssueRepository(dsl)` 로 **생성자 주입**하므로,
+리스너를 붙인 별도 `Configuration` 으로 **계측 전용 저장소**를 하나 더 만들면 된다.
+
+```kotlin
+private fun countQueriesFor(cardCount: Int): Int {
+    seedVisibleIssues(cardCount)
+
+    val listener = QueryCountListener()
+    val countingDsl =
+        DSL.using(
+            DefaultConfiguration()
+                .set(dataSource)
+                .set(SQLDialect.POSTGRES)
+                .set(DefaultExecuteListenerProvider(listener)),
+        )
+    val countingRepository = IssueRepository(countingDsl)
+
+    countingRepository.listVisibleForBoard(PROJECT_KEY, viewerId, unrestrictedAccess)
+
+    return listener.count.get()
+}
+```
+
+`dataSource` 는 베이스 클래스가 이미 들고 있는 것을 재사용한다 — 컨테이너를 새로 띄우지 않는다.
 
 - [ ] **Step 2. ★ 비-공허 확인 — 가드가 진짜인지 증명한다**
 
@@ -760,11 +784,19 @@ DTO 단위 테스트는 객체까지만 본다. **직렬화된 JSON 까지** 확
 
 - [ ] **Step 1 (RED). 보드 단건 조회 JSON**
 
+> **★ 카드를 인덱스로 지목하지 않는다.** 카드 순서는 `rank` → `priority` → `key` 로 결정되므로
+> `cards[0]` 이 어느 이슈인지는 픽스처에 달려 있다. 인덱스로 바로 필드를 단언하면 **엉뚱한 카드를
+> 검증하고도 값이 우연히 같으면 초록**이 된다 — 스펙 §9.3 GAP-1 의 「키 단위 대조」 위반이다.
+> 기존 관례(`BoardControllerIntegrationTest:329-330`)가 이미 **개수 고정 → 신원 확인 → 필드 검증**
+> 순서를 쓰고 있으므로 그대로 승계한다.
+
 ```kotlin
 @Test
 fun `보드 단건 조회 응답 카드에 유형 라벨 추정이 담긴다`() {
     mockMvc.perform(get("/api/v1/projects/{key}/boards/{id}", PROJECT_KEY, boardId).with(authenticated()))
         .andExpect(status().isOk)
+        // 신원을 먼저 고정한다 — 순서가 바뀌면 여기서 깨지고, 엉뚱한 카드를 검증할 수 없다.
+        .andExpect(jsonPath("$.data.columns[0].cards[0].issueKey").value("BTS-1"))
         .andExpect(jsonPath("$.data.columns[0].cards[0].typeKey").value("bug"))
         .andExpect(jsonPath("$.data.columns[0].cards[0].labels[0]").value("urgent"))
         .andExpect(jsonPath("$.data.columns[0].cards[0].originalEstimateSeconds").value(3600))
@@ -774,11 +806,17 @@ fun `보드 단건 조회 응답 카드에 유형 라벨 추정이 담긴다`() 
 fun `라벨 없는 카드의 labels 는 null 이 아니라 빈 배열로 직렬화된다`() {
     mockMvc.perform(get("/api/v1/projects/{key}/boards/{id}", PROJECT_KEY, boardId).with(authenticated()))
         .andExpect(status().isOk)
+        .andExpect(jsonPath("$.data.columns[0].cards[1].issueKey").value("BTS-2"))
         // isEmpty() 가 아니라 배열 존재 + 길이 0 을 본다 — null 이면 이 단언이 깨진다.
         .andExpect(jsonPath("$.data.columns[0].cards[1].labels").isArray)
         .andExpect(jsonPath("$.data.columns[0].cards[1].labels.length()").value(0))
+        .andExpect(jsonPath("$.data.columns[0].cards[1].originalEstimateSeconds").doesNotExist())
 }
 ```
+
+> `originalEstimateSeconds` 가 `null` 일 때 `doesNotExist()` 인지 `value(null)` 인지는
+> 직렬화 설정(`@JsonInclude`)에 달렸다. **RED 단계에서 실제 응답 본문을 출력해 확인한 뒤**
+> 맞는 단언으로 고정한다 — 추측으로 쓰면 둘 중 하나는 반드시 틀린다.
 
 - [ ] **Step 2. RED 확인 → GREEN 확인**
 
@@ -856,8 +894,14 @@ git commit -m "docs: FR-UX-14 B2 — 정본 D1~D5 마킹 + D4 문구 정정"
 - 구현 규율: **TDD red→green→refactor** (`test:` 커밋이 `feat:` 커밋보다 먼저)
 - 병렬 dispatch: `bts-impl` 이 위 `depends-on` + `files` 로 wave 계산
 - 추가 검증: `ktlintCheck` · `detekt` · `verify-master-plan.sh` · `build-doc-index.mjs`
-- **타협 불가 2건** — Task 3 Step 2 의 **비-공허 확인**(FAIL 출력을 PR 본문에 인용),
-  Task 2 의 **대조군 픽스처**(축마다 다른 값 2건 + 빈 값 1건, 키 단위 대조)
+- **타협 불가 3건**
+  1. Task 3 Step 2 의 **비-공허 확인** — 일부러 N+1 을 만들어 가드가 빨간불이 되는 것을 보고
+     FAIL 출력을 PR 본문에 인용한다. 인용이 없으면 안 한 것으로 간주한다.
+  2. Task 2 의 **대조군 픽스처** — 축마다 서로 다른 값 2건 + 빈 값 1건, 판정은 **키 단위 대조**.
+  3. **Task 2 와 Task 6 은 둘 다 있어야 한다** (plan-eng-review ③ 판정).
+     헬퍼에 기본값을 주는 절충은 *"진짜 증인이 따로 있다"* 는 조건 위에서만 성립한다.
+     둘 중 하나라도 빠지면 컴파일러 강제는 헬퍼에서 흡수된 채 남고,
+     **3필드가 전부 기본값으로 나가도 아무도 모르게 된다.** 축소 대상이 아니다.
 
 ### 병렬 dispatch 시 주의 (같은 worktree 공유)
 
@@ -867,4 +911,75 @@ git commit -m "docs: FR-UX-14 B2 — 정본 D1~D5 마킹 + D4 문구 정정"
 - 원복이 필요하면 **역방향 Edit** 만 쓴다. `git checkout --` / `stash` / `reset` **전면 금지**.
 - 임시 파일은 `/tmp/t<task번호>-*.log` 처럼 task 접두사를 붙인다.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-08-07)
+
+**BLOCKER: 없음.** 지적 3건은 전부 이 단계에서 plan 에 반영 완료.
+
+리뷰 프레임(아키텍처 → 코드 품질 → 테스트 → 성능)만 취하고, 스킬이 요구하는
+원격 동기화·`CLAUDE.md` 자동 수정·재확인 왕복은 실행하지 않았다(이번 세션 지침).
+
+#### 중점 검토 3건에 대한 판정
+
+**① Task 1 의 크기(파일 10개) — 현행 유지가 옳다.**
+
+일반 기준으로는 8파일 초과가 냄새지만, 여기서는 **언어가 강제한 원자성**이다.
+쪼개는 유일한 방법은 `typeKey` 에 임시 기본값을 줬다가 마지막 커밋에서 빼는 3단 분할인데,
+**마지막 커밋을 빠뜨리면 Maxi 의 「필수 인자」 결정이 조용히 무효화**되고 그것을 잡을 가드가 없다.
+얻는 것은 diff 가독성뿐이고 잃는 것은 결정의 보장이다. 분할하지 않는다.
+
+다만 Task 1 Step 8 의 `compileTestKotlin` 성공은 **"컴파일된다"** 는 증거지
+**"올바른 값을 넣었다"** 는 증거가 아니다. 그 공백은 Task 2(실 DB 대조군)와
+Task 6(응답 JSON)이 메운다 — 두 task 가 없으면 Task 1 은 혼자서 아무것도 증명하지 못한다.
+
+**② `typeKey` 를 7번째에 두는 결정 — 옳다.**
+
+`BoardApplicationServiceTest:216-217` 이 **위치 인자 6개**로 호출한다
+(`BoardIssueView("UNPL-1", "미매핑 이슈", "ghost-state", null, 1, 1L)`).
+`typeKey` 를 맨 뒤에 두면 이 호출이 **그대로 컴파일된다** — 기본값이 없어도 위치 인자 6개는
+앞의 6개 파라미터에 정확히 대응하기 때문이다. 그러면 컴파일러 강제가 이 두 줄을 놓친다.
+`version` 뒤에 넣으면 7번째 자리가 비어 컴파일 에러가 난다. 근거가 성립한다.
+
+**③ 팩토리 헬퍼 흡수(GAP-2) — 절충이 충분하다. 단 조건부다.**
+
+헬퍼에 기본값을 주는 것 자체는 옳다. `BoardCardPlacementTest` 는 **정렬 로직** 테스트고
+`BoardResponsesTest.card` 는 **배치 응답** 테스트라 유형·라벨·추정과 무관하다.
+이들에게 3필드를 강제하면 무관한 소음만 늘고 정작 매핑은 검증되지 않는다.
+
+절충이 성립하는 **조건**은 "진짜 증인이 따로 있을 것" 하나다. Task 2(실 DB 키 단위 대조) +
+Task 6(응답 JSON)이 그 증인이다. **둘 중 하나라도 빠지면 이 절충은 즉시 무효**가 되고,
+컴파일러 강제도 헬퍼에서 흡수된 채로 남아 3필드가 전부 기본값으로 나가도 아무도 모르게 된다.
+이 조건을 Task 2·Task 6 의 `depends-on` 이 아니라 **plan 메타의 「타협 불가」에 못박아 둔다.**
+
+#### 발견 3건 → 전부 수정 완료
+
+| # | 축 | 지적 | 조치 |
+|---|---|---|---|
+| R1 | **테스트** | **Task 6 이 스펙 §9.3 GAP-1 을 자기 위반**했다. `cards[0].typeKey` 를 신원 확인 없이 단언해, 카드 순서(`rank`→`priority`→`key`)가 바뀌면 **엉뚱한 카드를 검증하고도 값이 우연히 같으면 초록**이 된다 | `cards[0].issueKey` 신원 확인을 앞에 넣었다. 기존 관례(`BoardControllerIntegrationTest:329-330`)가 이미 **개수 고정 → 신원 확인 → 필드 검증** 순서를 쓰고 있어 그대로 승계 |
+| R2 | **코드 품질** | Task 3 의 `countQueriesFor` 가 *"리스너를 붙인 DSLContext 로"* 라는 서술뿐이었다. 구현 방법이 없으면 착수 시점에 막힌다(placeholder) | `IssueTestcontainersBase:112-113` 이 `DSL.using(dataSource)` + `IssueRepository(dsl)` **생성자 주입**임을 확인하고, `DefaultConfiguration` + `DefaultExecuteListenerProvider` 로 **계측 전용 저장소**를 만드는 실제 코드를 넣었다. 컨테이너는 재사용 |
+| R3 | **코드 품질** | Task 2 가 정의되지 않은 상수 `SEEDED_VISIBLE_ISSUE_COUNT` 를 썼다 | 상수 대신 **그 테스트가 시드한 키 집합의 크기**(`seededVisibleIssueKeys.size`)로 교체. 시드와 기대값이 갈라질 여지를 없앴다 |
+
+추가로 Task 6 에 **`null` 직렬화 형태를 추측하지 말 것**을 명시했다 —
+`@JsonInclude` 설정에 따라 `doesNotExist()` 와 `value(null)` 중 하나만 맞고,
+RED 단계에서 실제 응답 본문을 보고 고정해야 한다.
+
+#### 축별 소견 (BLOCKER 아님)
+
+- **아키텍처.** 단방향 `shared-kernel → issue-tracking → agile-planning` 이 유지되고
+  신규 추상화 0개다. 조인은 같은 파일의 `listVisibleForTimeline` 을 베끼므로
+  **혁신 토큰을 쓰지 않는다**(boring by default). 되돌리기도 쉽다 — 필드 추가는 가역적이다.
+- **코드 품질.** 주석 정정 3곳(FR9)을 REFACTOR 에 넣은 것이 옳다.
+  코드와 반대되는 주석은 stale 다이어그램과 같은 범주로, 남기면 다음 독자를 적극적으로 오도한다.
+- **성능.** N:1 단일 조인이고 `issue_types` 는 프로젝트당 수 개 행이라 카드 수에 비례하지 않는다.
+  기존에 이미 조인 2개(`PROJECTS` INNER + EPIC self LEFT)를 하고 있어 3번째가 임계를 바꿀 이유가 없다.
+  NFR2(보드 200건 p95 1.5s)의 **실측은 BC 완료 게이트로 미뤘고 그 사실이 스펙에 명시**돼 있다 — 허용.
+- **범위.** 선재 결함 1건(보드 조회 `orderBy` 보조키 부재로 1,000건 경계 truncation 비결정적)을
+  **고치지 않고 기록만** 한 판단이 옳다. 정렬을 건드리면 카드 배치 회귀 위험이 이 PR 의 검증 범위를 넘는다.
+
+#### 남은 위험 1건 (수용)
+
+Task 1 이 기존 21곳에 `typeKey = "task"` 를 일괄로 넣는다. 배치·정렬 테스트에는 무해하지만,
+`BoardControllerIntegrationTest:307·789` 는 **API 응답을 검증하는 테스트**라 그 값이 실제 응답에 실린다.
+이 기존 테스트들은 3필드를 단언하지 않으므로 문제되지 않지만, **Task 6 이 새로 추가하는 단언과
+픽스처가 어긋나면 혼란**이 생긴다. Task 6 착수 시 해당 두 테스트의 시드값을 먼저 읽고 맞춘다.
