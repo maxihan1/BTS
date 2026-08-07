@@ -238,8 +238,13 @@ function BacklogCardInner({
         </div>
         <div className="flex items-center gap-1">
           <span
+            // FR19 를 이 칩에도 적용한다 — 맨 span 은 role=generic 이라 aria-label 이 무효고,
+            // 스크린리더가 "우선순위 3" 이 아니라 "P3" 만 읽는다. 선재 결함이지만 FR17 이
+            // 이미 이 줄의 라운드를 정렬하며 사정거리로 끌어왔고, 바로 옆 형제(추정 배지)만
+            // 고치면 같은 행에 같은 결함이 남는다.
+            role="img"
             aria-label={`우선순위 ${issue.priority}`}
-            className="rounded-sm px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
+            className="shrink-0 rounded-sm px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
           >
             P{issue.priority}
           </span>

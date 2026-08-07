@@ -344,9 +344,12 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   // 이슈 타입 목록 — 라우트에서 1회만 조회(NFR2). typeKey → IssueTypeResponse 맵으로
   // 변환해 KanbanBoard(→ BoardColumn → BoardCard)에 주입한다. 조회 실패·로딩 중이면
   // 빈 맵을 넘겨 전 카드가 typeKey 원문 fallback 경로로 렌더된다(FR6, E7·E8).
-  const { data: issueTypes = [] } = useIssueTypes()
+  // ★구조분해 기본값(`= []`)을 쓰지 않는다 — 사유는 BacklogBoard.tsx 의 같은 블록 주석 참조.
+  // 요약. `undefined` 일 때 `= []` 가 매 렌더 새 배열이 돼 useMemo 가 무력화되고
+  // BoardColumn 의 memo 가 깨진다.
+  const { data: issueTypes } = useIssueTypes()
   const issueTypesByKey = useMemo(
-    () => new Map(issueTypes.map((t) => [t.key, t])),
+    () => new Map((issueTypes ?? []).map((t) => [t.key, t])),
     [issueTypes],
   )
 

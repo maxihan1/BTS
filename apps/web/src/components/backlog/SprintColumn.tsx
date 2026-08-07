@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 import type { IssueTypeResponse } from '@/api/issue-types'
+import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { SprintColumnHeader } from './SprintColumnHeader'
 import { BacklogCard } from './BacklogCard'
@@ -134,7 +135,7 @@ function SprintColumnInner({
             </div>
           ) : (
             issues.map((issue) => {
-              const type = issueTypesByKey.get(issue.typeKey)
+              const cardType = resolveCardType(issueTypesByKey, issue.typeKey)
               return (
                 <BacklogCard
                   key={issue.key}
@@ -142,8 +143,8 @@ function SprintColumnInner({
                   context="sprint"
                   sprintId={sprint.sprintId}
                   assigneeName={assigneeNames.get(issue.key)}
-                  typeIconName={type?.iconName ?? null}
-                  typeName={type?.name ?? issue.typeKey}
+                  typeIconName={cardType.iconName}
+                  typeName={cardType.typeName}
                 />
               )
             })

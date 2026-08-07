@@ -148,7 +148,8 @@ function BoardCardInner({ card, columnId, assignee, typeIconName, typeName }: Bo
 
       {/* 하단 행: [유형 아이콘][issueKey] … [추정][담당자] (FR7) */}
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        {/* min-w-0 — 이슈 키가 길어도 우측(추정·담당자)을 밀어내지 않게 한다. 백로그 카드와 동형. */}
+        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
           <IssueTypeIcon iconName={typeIconName} typeName={typeName} />
           {card.issueKey}
         </span>

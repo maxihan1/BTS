@@ -347,9 +347,14 @@ export function BacklogBoard({
   // 이 컴포넌트에서 **1회만** 조회해 스프린트 칸 전체 + 백로그 칸에 공유한다.
   // ★조기 반환(`isLoading`)보다 **위**에 있어야 한다 — 위 담당자 이름 블록과 같은 이유다.
   // 조회 실패·로딩 중이면 빈 배열 → 빈 맵 → 전 카드가 FR6 fallback(typeKey 원문) 경로를 탄다.
-  const { data: issueTypes = [] } = useIssueTypes()
+  // ★구조분해 기본값(`= []`)을 쓰지 않는다. 조회 실패·로딩 중이면 `data` 가 `undefined` 라
+  // `= []` 가 **매 렌더 새 배열 리터럴**로 평가되고, 그 값이 아래 useMemo 의존성이라
+  // 맵 참조가 매 렌더 바뀐다 → 칸(Column)의 memo 얕은 비교가 깨져 **드래그 중 포인터가
+  // 움직일 때마다 전 칸의 카드 전량이 재렌더**된다. `undefined` 는 렌더마다 같은 값이라
+  // 의존성이 안정된다. (NFR1/NFR2 의 실질 조건은 카드 prop 이 아니라 이 칸 경계다.)
+  const { data: issueTypes } = useIssueTypes()
   const issueTypesByKey = useMemo(
-    () => new Map(issueTypes.map((t) => [t.key, t])),
+    () => new Map((issueTypes ?? []).map((t) => [t.key, t])),
     [issueTypes],
   )
 

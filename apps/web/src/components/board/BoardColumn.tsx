@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { boardLabels } from '@/i18n/board-labels'
+import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { groupCardsBySwimlane } from '@/lib/swimlane-group'
 import type { SwimlaneGroup } from '@/lib/swimlane-group'
 import { BoardCard } from './BoardCard'
@@ -45,26 +46,6 @@ export interface BoardColumnProps {
    * 조회 실패·로딩 중이면 빈 맵 — 전 카드가 typeKey 원문 fallback으로 렌더된다(FR6).
    */
   issueTypesByKey: Map<string, IssueTypeResponse>
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 카드 유형 해석 헬퍼
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * card.typeKey를 issueTypesByKey에서 해석해 BoardCard에 넘길 원시 2필드로 변환한다.
- * 매핑에 없으면(로딩 중·미등록 타입) iconName은 null(IssueTypeIcon이 Circle로 fallback),
- * typeName은 typeKey 원문을 그대로 사용한다(FR6).
- */
-function resolveCardType(
-  issueTypesByKey: Map<string, IssueTypeResponse>,
-  typeKey: string,
-): { iconName: string | null; typeName: string } {
-  const type = issueTypesByKey.get(typeKey)
-  return {
-    iconName: type?.iconName ?? null,
-    typeName: type?.name ?? typeKey,
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

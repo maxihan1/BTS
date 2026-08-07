@@ -8,6 +8,7 @@ import type { BacklogIssue } from '@/api/backlog'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { Button } from '@/components/ui/button'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
+import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { BacklogCard } from './BacklogCard'
 import { CreateSprintForm } from './CreateSprintForm'
@@ -196,15 +197,15 @@ function BacklogColumnInner({
             </div>
           ) : (
             issues.map((issue) => {
-              const type = issueTypesByKey.get(issue.typeKey)
+              const cardType = resolveCardType(issueTypesByKey, issue.typeKey)
               return (
                 <BacklogCard
                   key={issue.key}
                   issue={issue}
                   context="backlog"
                   assigneeName={assigneeNames.get(issue.key)}
-                  typeIconName={type?.iconName ?? null}
-                  typeName={type?.name ?? issue.typeKey}
+                  typeIconName={cardType.iconName}
+                  typeName={cardType.typeName}
                 />
               )
             })
