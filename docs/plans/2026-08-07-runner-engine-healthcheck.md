@@ -738,4 +738,51 @@ new mode 100644`** 였다. Edit 이 파일을 다시 쓰면서 exec 비트가 �
 100755 로 정상이었으므로 `git checkout -- <파일>` 로 모드까지 복구했다(내용 diff 가 0 이라
 소실 위험 없음). **셸 스크립트를 Edit 으로 고친 뒤에는 `git diff` 의 mode 줄을 확인해야 한다.**
 
+### Task 3~6 (2026-08-07)
+
+**배선.** `runner-health.yml`(재사용 워크플로우, 인라인 셸 **저장소 전체 1벌**) 신설 +
+4개 워크플로우가 `uses:` 로 호출하고 **`runs-on` 을 가진 잡 9개 전부**에 `needs: runner-health`.
+
+| 워크플로우 | 실행 잡 | 배선 |
+|---|---|---|
+| `backend-ci.yml` | modules · assembly · lint | 3/3 |
+| `frontend-ci.yml` | lint · typecheck · test | 3/3 |
+| `infra-ci.yml` | nginx-log-masking · springdoc-not-exposed | 2/2 |
+| `workflow-scripts-ci.yml` | discriminants | 1/1 |
+
+**RED→GREEN.** 배선 판별식 4단언 중 A 3건이 RED(`runner-health.yml` 부재) → 배선 후 4/4 pass.
+
+### 뮤테이션 4종 — 전부 red 실측
+
+| # | 뮤테이션 | 기대 red | 결과 |
+|---|---|---|---|
+| M-B | `/bts-start` 의 `bash scripts/verify-runner-health.sh` 를 `echo` 로 교체 | B 백스톱 단언 | ✅ red |
+| M4 | `infra-ci.yml` 의 `uses: ./.github/workflows/runner-health.yml` 제거 | 「모든 워크플로우가 호출」 | ✅ red |
+| M5 | `frontend-ci.yml` `typecheck` 의 `needs: runner-health` 한 줄 제거 | 「needs 로 매단다」 (`runs-on 3 ≠ needs 2`) | ✅ red |
+| M6 | 훑기 대상을 없는 디렉터리로 (`workflows` → `workflows-gone`) | **양성 대조군** | ✅ red |
+
+**★★ M6 가 양성 대조군의 존재 이유를 그대로 증명했다.** 훑기가 0건이 되자
+**단언 2·3 이 「ok」로 공허하게 통과**했고 오직 대조군만 잡았다. 대조군이 없었다면
+「모든 워크플로우가 헬스체크를 부른다」가 **워크플로우를 하나도 안 읽은 채 초록**이 된다.
+
+원복은 전부 역방향 Edit. 원복 후 `git diff` **비어 있음** 확인.
+
+### 트리거 정합 (Task 6.3)
+
+`runner-healthcheck-wiring` 판별식의 입력 4종 중 `.github/workflows/**` ·
+`scripts/workflow/**` · `.claude/skills/**` 은 이미 덮였으나
+**`scripts/verify-runner-health.sh` 는 어디에도 안 덮였다**(기존은 `scripts/workflow/**` 와
+`scripts/doc-index/**` 뿐). `pull_request` · `push` **양쪽**에 추가했다 — 한쪽만 넣으면
+봉인이 절반만 닫힌다.
+
+### 최종 검증
+
+| 항목 | 값 |
+|---|---|
+| `node --test scripts/workflow/*.test.ts` | **EXIT 0 · 104/104 pass** (기준선 96 + 신규 8) |
+| `bash scripts/verify-runner-health.sh` (실제 러너) | Java 재설치 전에는 EXIT 1 로 **실결함 적발**, node 3종 ✅ |
+| `node scripts/build-doc-index.mjs` | EXIT 0 · 고아 0 · 깨진 링크 0 |
+| `bash scripts/verify-master-plan.sh` | **EXIT 0** · FR 139/139 |
+| 커밋 메시지 `[skip ci]` | **0건** (squash 본문 승격 함정 회피) |
+
 ## 리뷰 결과 (← /bts-review-plan 채움)

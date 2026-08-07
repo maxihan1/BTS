@@ -42,6 +42,9 @@ on:
   pull_request:
     paths:
       - 'scripts/workflow/**'
+      # runner-healthcheck-wiring 판별식이 읽는 입력. `scripts/workflow/**` 에 안 덮인다 —
+      # 이 줄이 없으면 헬스체크 스크립트만 고치는 PR 에서 배선 판별식이 0회 실행된다.
+      - 'scripts/verify-runner-health.sh'
       - '.github/workflows/**'
       - '.claude/skills/**'
       - '.husky/**'
@@ -63,6 +66,9 @@ on:
     #  PR 에서는 돌고 main 직접 push 에서는 안 도는 상태가 된다.
     paths:
       - 'scripts/workflow/**'
+      # runner-healthcheck-wiring 판별식이 읽는 입력. `scripts/workflow/**` 에 안 덮인다 —
+      # 이 줄이 없으면 헬스체크 스크립트만 고치는 PR 에서 배선 판별식이 0회 실행된다.
+      - 'scripts/verify-runner-health.sh'
       - '.github/workflows/**'
       - '.claude/skills/**'
       - '.husky/**'

@@ -62,6 +62,8 @@ gh api /repos/maxihan1/BTS/actions/runners \
 | 잡 `queued`, 러너 목록 비어 있거나 `offline` | 러너 정지 → §3 복구 |
 | 잡 `queued`, 러너 `online busy=true` | 정상. 앞 잡이 끝나기를 기다리는 중 (러너 1대라 직렬) |
 | 잡 `failure`, `steps=0`, 러너 이름 없음 | `ubuntu-latest` 로 되돌아간 잡. §5 판별식이 막지만 뚫렸다면 여기 |
+| **잡 `failure`, 실패 스텝이 `Checkout`** | **러너 엔진(node·java) 부재** → §4 「러너는 켜져 있는데 엔진만 없을 수 있다」. 테스트는 한 줄도 안 돌았다 |
+| run 자체가 **0건** (빨간불조차 없음) | squash 커밋 본문에 실린 `[skip ci]`. 머지 후 `gh api repos/maxihan1/BTS/commits/<sha>/check-runs --jq .total_count` 로 확인 |
 
 복구.
 
@@ -98,6 +100,36 @@ gh api /repos/maxihan1/BTS/actions/runners \
   없던 책임이다.
 - **판별식 워크플로우는 `workflow-scripts-ci.yml` 이다.** backend-ci 가 아니다.
   `paths` 가 워크플로우 레벨이라 backend-ci 에 두면 워크플로우 파일 한 줄 수정이 12잡을 끌고 온다.
+- **★러너는 켜져 있는데 엔진만 없을 수 있다 (2026-08-04 실측).** 홈 폴더 용량 정리로
+  `~/actions-runner-bts` 아래 **큰 파일**이 지워지면 러너는 `online` 인데 모든 잡이
+  `Checkout` 에서 죽는다. 실제로 `externals/node20`(86M) · `externals/node24`(115M) ·
+  툴캐시 `node`(112M) · 툴캐시 JDK 의 `lib/modules`(~130M) 4개가 사라져 **8/4~8/7 사흘간
+  CI 가 0회 실행**됐고, 그 사이 #342 · #343 · #344 가 검증 없이 머지됐다.
+  기준은 「이름」이 아니라 **「홈 폴더 스코프 + 큰 파일」**이다 — 홈 밖의 `/usr/local/bin/node`
+  는 **210M 인데도 살아남았고** 홈 안의 10M `ct.sym` 도 살아남았다.
+  - **판별.** `gh run view <id> --log-failed | grep '##\[error\]'` 로 **어느 스텝에서
+    죽었는지부터** 본다. `Checkout` 이면 코드가 아니라 러너다. §3 표의 마지막 행.
+  - **점검.** `bash scripts/verify-runner-health.sh` (exit 0 이어야 정상).
+    `/bts-start` **Step 0** 이 매 작업 시작 시 자동으로 돌리고, CI 는 모든 워크플로우가
+    `runner-health.yml` 을 `needs:` 로 매달아 돌린다. 배선은
+    `scripts/workflow/runner-healthcheck-wiring.test.ts` 가 강제한다.
+  - **★파일 존재 확인으로는 못 잡는다.** `externals` 는 `corepack`·`npm`·`npx` 심볼릭이
+    남고 `node` 만 없었고, 툴캐시는 `arm64.complete` 표식만 남아 `setup-*` 가 **캐시 히트로
+    오판**해 시스템 node(v22.14.0)로 조용히 흘러내렸으며(그 결과 `.ts` 타입 스트리핑이
+    없어 판별식 9파일이 `ERR_UNKNOWN_FILE_EXTENSION` 으로 죽었다), JDK 는 `bin` 의
+    실행파일 30개가 전부 있는데 `lib/modules` 만 없어 `java -version` 만 실패했다.
+    **세 경우 모두 `test -f` 는 통과한다.** 점검은 반드시 **실행(exit 0)** 을 본다.
+  - **복구.** 툴캐시는 해당 버전 디렉터리의 `arm64.complete` **표식만 지우면** `setup-*` 가
+    캐시 미스로 판정해 자가 재설치한다(바이너리를 손으로 갖다 놓지 말 것 — 버전이 어긋난다).
+    `externals` 는 러너 버전에 맞는 node 를 nodejs.org 에서 받아 `SHASUMS256.txt` 로
+    sha256 대조 후 `bin/node` 만 복원하고 `chmod 755` + `xattr -d com.apple.quarantine`.
+  - **⚠️ 예방은 습관뿐이다.** 홈 폴더를 용량 정리할 때 **`~/actions-runner-bts` 를 제외**한다.
+    이 폴더는 다 합쳐 350MB 남짓이라 지워도 공간 이득이 거의 없는데 **CI 전체가 멈춘다.**
+  - **⚠️ CI 층(`runner-health.yml`)의 전제는 미검증이다** — ①순수 shell `run:` 스텝이 node
+    부재 시에도 실행되는가 ②`workflow_call` 해석이 node 를 안 쓰는가. 완전 실측은 러너를
+    일부러 고장내야 해서 하지 않았다. 그래서 `scripts/verify-runner-health.sh` +
+    `/bts-start` Step 0 이 **전제 무관 백스톱**으로 함께 있다. 실제 사고가 다시 나면 그때
+    CI 층이 물었는지를 확인하고 이 문단을 갱신한다.
 
 ## 5. (참고) GitHub 호스팅 러너로 되돌리는 절차
 
