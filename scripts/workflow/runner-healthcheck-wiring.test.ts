@@ -156,6 +156,33 @@ describe('러너 헬스체크 배선', () => {
     );
   });
 
+  test('★자원 경고는 run 요약과 어노테이션으로 표출된다 — 스텝 로그 안이면 아무도 안 본다', () => {
+    // 2026-08-07 사고의 본질은 「판정이 없었다」가 아니라 **「초록불이라 아무도 안 봤다」**이다.
+    // 판정이 맞아도 표출이 스텝 로그뿐이면 잡을 펼쳐야 보이고, 그러면 아무도 안 본다 —
+    // 표출 실패는 판정 부재와 같은 결과를 낳는다.
+    const workflow = readWorkflow(HEALTH_WORKFLOW);
+
+    assert.match(
+      workflow,
+      /\$GITHUB_STEP_SUMMARY/,
+      `자원 판정 결과가 run 요약에 안 남는다 — 잡을 펼쳐야만 보이면 사실상 없는 것이다.`,
+    );
+    assert.match(
+      workflow,
+      /::warning/,
+      `경고 어노테이션이 없다 — PR 화면 상단에 뜨지 않으면 다음 사람도 오늘의 나처럼 3시간을 쓴다.`,
+    );
+
+    // ★어노테이션은 **경고일 때만** 나와야 한다. 매 run 마다 뜨면 노이즈가 되어 무시된다 —
+    //   음성 대조군 테스트(verify-runner-health.test.ts)가 지키려는 성질과 같다.
+    const overIdx = workflow.indexOf('"$OVER" -eq 1');
+    const warnIdx = workflow.indexOf('::warning');
+    assert.ok(
+      overIdx > 0 && warnIdx > overIdx,
+      `::warning 이 고갈 분기(${overIdx}) 밖(${warnIdx})에 있다 — 정상 run 에도 경고가 떠 상시화된다.`,
+    );
+  });
+
   test('B. bts-start 가 로컬 헬스체크를 호출한다 (전제 무관 백스톱)', () => {
     const skill = fs.readFileSync(path.join(REPO_ROOT, BTS_START_SKILL), 'utf8');
 
