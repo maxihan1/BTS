@@ -24,6 +24,10 @@ export function CardEstimateBadge({ seconds }: CardEstimateBadgeProps): JSX.Elem
 
   return (
     <span
+      // ★ role="img" 가 없으면 aria-label 이 무효다 — 맨 span 은 role=generic 이고
+      // ARIA 에서 generic 은 **name-prohibited** 라 스크린리더가 "2h 30m" 만 읽고
+      // "추정" 이라는 맥락이 사라진다. IssueTypeIcon.tsx:50 과 같은 처방이다.
+      role="img"
       aria-label={cardLabels.estimateAriaLabel(formatted)}
       className="shrink-0 rounded-sm px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
     >

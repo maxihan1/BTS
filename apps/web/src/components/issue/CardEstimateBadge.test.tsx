@@ -27,4 +27,16 @@ describe('CardEstimateBadge — formatSeconds 위임', () => {
     render(<CardEstimateBadge seconds={9000} />)
     expect(screen.getByLabelText('추정 2h 30m')).toBeInTheDocument()
   })
+
+  /**
+   * ★ `role="img"` 가 있어야 그 aria-label 이 실제로 노출된다.
+   *
+   * 맨 `<span>` 은 role=generic 이고 ARIA 에서 generic 은 **name-prohibited** 라
+   * `aria-label` 이 무시된다 — 위 `getByLabelText` 는 속성만 보므로 결함을 못 잡는다.
+   * 역할까지 함께 단언해야 「접근성 이름을 준다」는 약속이 지켜진다.
+   */
+  it('role="img" 라 접근성 이름이 실제로 노출된다', () => {
+    render(<CardEstimateBadge seconds={9000} />)
+    expect(screen.getByRole('img', { name: '추정 2h 30m' })).toBeInTheDocument()
+  })
 })

@@ -549,9 +549,12 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
   // 이전에는 typeId 만 요청값을 반영하고 typeKey 는 fixture 고정값('task')으로 남아 둘이
   // 어긋나 있었다. 보드/백로그 카드가 typeKey 로 유형 아이콘을 그리기 시작하면서 그 잠복
   // 불일치가 화면에 드러나므로 여기서 한 값에서 파생시킨다.
+  // typeKey 만 파생시키고 typeName 을 두면 반쪽 봉합이다 — typeId=1(버그) 요청이
+  // `typeKey: 'bug'` + `typeName: '작업'` 이라는 자기모순 응답을 낸다. 한 조회에서 둘 다 뽑는다.
   const resolvedCreateTypeId = body.typeId ?? createdIssueFixture.typeId
-  const resolvedCreateTypeKey =
-    lookupIssueType(resolvedCreateTypeId)?.key ?? createdIssueFixture.typeKey
+  const resolvedCreateType = lookupIssueType(resolvedCreateTypeId)
+  const resolvedCreateTypeKey = resolvedCreateType?.key ?? createdIssueFixture.typeKey
+  const resolvedCreateTypeName = resolvedCreateType?.name ?? createdIssueFixture.typeName
 
   const created: IssueResponse = {
     ...createdIssueFixture,
@@ -564,6 +567,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     // FR-UX-09 F2 — 요청 값을 반영한다. fixture 고정값을 돌려주면 상위 테스트가 공허해진다.
     typeId: resolvedCreateTypeId,
     typeKey: resolvedCreateTypeKey,
+    typeName: resolvedCreateTypeName,
     description: body.description ?? createdIssueFixture.description,
     priority: body.priority ?? DEFAULT_ISSUE_PRIORITY,
     labels: body.labels ?? [],

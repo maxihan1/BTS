@@ -205,7 +205,20 @@ describe('BacklogCard — S5 유형·라벨·추정 (F14 Task 4)', () => {
   it('S5c: 라벨이 없으면 라벨 칩 행 DOM이 없다', () => {
     renderCard({ ...baseIssue, labels: [] })
     // CardLabelChips는 labels=[]면 null을 반환한다 — 행 자체가 DOM에 없어야 한다.
-    expect(document.querySelector('.flex-wrap')).toBeNull()
+    expect(document.querySelectorAll('[data-slot="badge"]')).toHaveLength(0)
+  })
+
+  /**
+   * ★ S5c 의 **양성 짝**. 음성 케이스만 두면 「백로그 카드에서 라벨이 영구히 안 나오게」
+   * 만들어도 CI(lint·typecheck·test) 3잡이 전부 초록이다 — 실제로 `BacklogCard.tsx` 의
+   * `labels` 를 `[]` 로 고정하는 뮤테이션이 308/308 통과했다(코드리뷰 실증).
+   * 이 짝이 없으면 가드가 공허하다.
+   */
+  it('S5c-짝: 라벨이 있으면 칩이 보인다 (음성 케이스의 비-공허 증인)', () => {
+    renderCard({ ...baseIssue, labels: ['백엔드', '결제'] })
+    expect(screen.getByText('백엔드')).toBeInTheDocument()
+    expect(screen.getByText('결제')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-slot="badge"]')).toHaveLength(2)
   })
 
   it('S5d: 추정이 null이면 추정 배지 DOM이 없다', () => {

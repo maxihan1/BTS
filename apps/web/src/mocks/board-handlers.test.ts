@@ -460,6 +460,8 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     const res = await getBoardWithFilter(FILTER_BOARD.boardId, '')
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
+    // 비-공허 짝. 카드가 0개면 every() 가 검사할 것 없이 통과한다.
+    expect(collectIssueKeys(body.data).length).toBeGreaterThan(0)
     expect(hasNoStoreOnlyMeta(body.data)).toBe(true)
   })
 
