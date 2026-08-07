@@ -35,6 +35,9 @@ const cardWithAssignee = {
   assigneeId: ASSIGNEE_UUID,
   version: 1,
   priority: 1,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const cardNoAssignee = {
@@ -43,6 +46,9 @@ const cardNoAssignee = {
   assigneeId: null,
   version: 2,
   priority: 3,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const columnTodo = {
@@ -423,6 +429,38 @@ describe('boardCardSchema — rank 필드 파싱 (FR-UX-06 PR21 Task 3)', () => 
     expect(result.success).toBe(true)
     if (!result.success) return
     expect(result.data.rank).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-15. boardCardSchema — typeKey/labels/originalEstimateSeconds 필수 계약 (FR-UX-14 F14 Task 1)
+//
+// B2(#346)부터 백엔드가 이 3필드를 항상 전송한다. `.default()`/`.optional()`/`.nullish()` 로
+// 조용히 때우면 백엔드가 필드를 빠뜨리는 결함이 파싱 단계에서 잡히지 않는다 — Maxi 확정(2026-08-07).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardCardSchema — typeKey/labels/originalEstimateSeconds 필수 계약 (FR-UX-14 F14)', () => {
+  const validCard = cardWithAssignee
+
+  it('typeKey 가 없으면 파싱이 실패한다', () => {
+    const withoutType: Record<string, unknown> = { ...validCard }
+    delete withoutType['typeKey']
+    expect(() => boardCardSchema.parse(withoutType)).toThrow()
+  })
+
+  it('labels 가 없으면 파싱이 실패한다 (기본값으로 때우지 않는다)', () => {
+    const withoutLabels: Record<string, unknown> = { ...validCard }
+    delete withoutLabels['labels']
+    expect(() => boardCardSchema.parse(withoutLabels)).toThrow()
+  })
+
+  it('originalEstimateSeconds 는 null 을 허용하되 키 자체는 필수다', () => {
+    expect(
+      boardCardSchema.parse({ ...validCard, originalEstimateSeconds: null }).originalEstimateSeconds,
+    ).toBeNull()
+    const withoutEstimate: Record<string, unknown> = { ...validCard }
+    delete withoutEstimate['originalEstimateSeconds']
+    expect(() => boardCardSchema.parse(withoutEstimate)).toThrow()
   })
 })
 

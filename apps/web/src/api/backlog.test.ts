@@ -36,6 +36,9 @@ const backlogIssueFixture = {
   rank: 'abc|00000z',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const backlogIssueNoAssignee = {
@@ -47,6 +50,9 @@ const backlogIssueNoAssignee = {
   rank: null,
   version: 2,
   epicKey: 'ATLAS-10',
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const sprintMetaFixture = {
@@ -128,6 +134,38 @@ describe('backlogIssueSchema — 유효 픽스처 파싱', () => {
     expect(result.success).toBe(true)
     if (!result.success) return
     expect(result.data.assigneeId).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BL-1f. backlogIssueSchema — typeKey/labels/originalEstimateSeconds 필수 계약 (FR-UX-14 F14 Task 1)
+//
+// B2(#346)부터 백엔드가 이 3필드를 항상 전송한다. `.default()`/`.optional()`/`.nullish()` 로
+// 조용히 때우면 백엔드가 필드를 빠뜨리는 결함이 파싱 단계에서 잡히지 않는다 — Maxi 확정(2026-08-07).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('backlogIssueSchema — typeKey/labels/originalEstimateSeconds 필수 계약 (FR-UX-14 F14)', () => {
+  const validCard = backlogIssueFixture
+
+  it('typeKey 가 없으면 파싱이 실패한다', () => {
+    const withoutType: Record<string, unknown> = { ...validCard }
+    delete withoutType['typeKey']
+    expect(() => backlogIssueSchema.parse(withoutType)).toThrow()
+  })
+
+  it('labels 가 없으면 파싱이 실패한다 (기본값으로 때우지 않는다)', () => {
+    const withoutLabels: Record<string, unknown> = { ...validCard }
+    delete withoutLabels['labels']
+    expect(() => backlogIssueSchema.parse(withoutLabels)).toThrow()
+  })
+
+  it('originalEstimateSeconds 는 null 을 허용하되 키 자체는 필수다', () => {
+    expect(
+      backlogIssueSchema.parse({ ...validCard, originalEstimateSeconds: null }).originalEstimateSeconds,
+    ).toBeNull()
+    const withoutEstimate: Record<string, unknown> = { ...validCard }
+    delete withoutEstimate['originalEstimateSeconds']
+    expect(() => backlogIssueSchema.parse(withoutEstimate)).toThrow()
   })
 })
 
