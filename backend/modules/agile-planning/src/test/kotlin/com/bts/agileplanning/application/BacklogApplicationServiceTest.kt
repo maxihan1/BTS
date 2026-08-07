@@ -254,4 +254,59 @@ class BacklogApplicationServiceTest {
         // 스프린트에는 가시 이슈가 없음(비가시 PROJ-SECRET 누출 0 단언)
         assertThat(result.sprints[0].issues).isEmpty()
     }
+
+    // ── FR-UX-14 B2: 카드 밀도 3필드 ────────────────────────────────────────
+
+    @Test
+    fun `백로그 응답은 backlog 배열과 sprints 배열 양쪽에 유형 라벨 추정을 담는다`() {
+        // 두 배열은 같은 from 을 거치므로 로직이 갈라질 수 없지만, 회귀 감시는 두 곳을 다 봐야
+        // 한쪽이 조용히 빠지는 것을 잡는다. 헬퍼 issue() 는 typeKey 를 하드코딩하므로 쓰지 않는다.
+        val sprintId = UUID.randomUUID()
+        val s = sprint(id = sprintId, status = SprintStatus.ACTIVE)
+        val backlogIssue =
+            BoardIssueView(
+                key = "PROJ-1",
+                summary = "백로그 이슈",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                typeKey = "bug",
+                labels = listOf("urgent"),
+                originalEstimateSeconds = 3600,
+            )
+        val sprintIssue =
+            BoardIssueView(
+                key = "PROJ-2",
+                summary = "스프린트 이슈",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                typeKey = "story",
+            )
+
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns listOf(s)
+                every { it.findIssueKeysByProject(projectKey) } returns mapOf(sprintId to listOf("PROJ-2"))
+            }
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = listOf(backlogIssue, sprintIssue), truncated = false)
+            }
+
+        val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
+
+        val fromBacklog = result.backlog.single { it.key == "PROJ-1" }
+        assertThat(fromBacklog.typeKey).isEqualTo("bug")
+        assertThat(fromBacklog.labels).containsExactly("urgent")
+        assertThat(fromBacklog.originalEstimateSeconds).isEqualTo(3600)
+
+        val fromSprint = result.sprints.single().issues.single { it.key == "PROJ-2" }
+        assertThat(fromSprint.typeKey).isEqualTo("story")
+        assertThat(fromSprint.labels).isEmpty()
+        assertThat(fromSprint.originalEstimateSeconds).isNull()
+    }
 }
