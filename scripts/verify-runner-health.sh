@@ -28,16 +28,27 @@ report() {
   FAILED=1
 }
 
-# check_exec <라벨> <바이너리 경로> <버전 플래그> <복구 안내>
+# check_exec <라벨> <바이너리 경로> <버전 플래그> <복구 안내> [완료 표식 경로]
+#
+# ★ 다섯째 인자가 주어지면 「표식 게이팅」이 걸린다 — 툴 캐시 전용이다.
+#   표식이 **있는데** 실행이 안 되는 상태만 실패다. setup-* 가 그 표식을 보고 캐시 히트로
+#   오판해 시스템 엔진으로 조용히 흘러내리는, 정확히 그 위험한 상태이기 때문이다.
+#   표식이 **없으면** 어차피 캐시 미스로 자가 재설치되므로 경고만 남긴다 —
+#   여기서 실패시키면 **재설치를 수행할 바로 그 잡을 막아** 영원히 초록이 될 수 없다
+#   (실측. PR #347 infra-ci run 31139123013 에서 실제로 교착이 났다).
 check_exec() {
-  local label="$1" bin="$2" flag="$3" fix="$4"
+  local label="$1" bin="$2" flag="$3" fix="$4" marker="${5:-}"
 
-  if [ ! -e "$bin" ]; then
-    report "$label — 바이너리 부재 ($bin)" "$fix"
-    return
-  fi
-  if ! "$bin" "$flag" >/dev/null 2>&1; then
-    report "$label — 파일은 있으나 실행 실패 ($bin)" "$fix"
+  if [ ! -e "$bin" ] || ! "$bin" "$flag" >/dev/null 2>&1; then
+    local why="바이너리 부재"
+    [ -e "$bin" ] && why="파일은 있으나 실행 실패"
+
+    if [ -n "$marker" ] && [ ! -e "$marker" ]; then
+      echo "⚠️  $label — $why ($bin)"
+      echo "   완료 표식이 이미 없다 → setup-* 가 캐시 미스로 자가 재설치한다. 차단하지 않는다."
+      return
+    fi
+    report "$label — $why ($bin)" "$fix"
     return
   fi
   echo "✅ $label"
@@ -56,15 +67,17 @@ done
 #    표식만 남으면 캐시 히트로 오판해 시스템 엔진으로 조용히 흘러내린다.
 TOOLCACHE_SEEN=0
 
+# 완료 표식은 `<버전>/<arch>.complete` 다 — 즉 arch 디렉터리 경로에서 끝의 `/` 를 뗀 것.
 for dir in "$ROOT"/_work/_tool/node/*/*/; do
   TOOLCACHE_SEEN=1
-  check_exec "toolcache node ($(basename "$(dirname "$dir")"))" "${dir}bin/node" -v "$FIX_TOOLCACHE"
+  check_exec "toolcache node ($(basename "$(dirname "$dir")"))" \
+    "${dir}bin/node" -v "$FIX_TOOLCACHE" "${dir%/}.complete"
 done
 
 for dir in "$ROOT"/_work/_tool/Java_*/*/*/; do
   TOOLCACHE_SEEN=1
   check_exec "toolcache java ($(basename "$(dirname "$dir")"))" \
-    "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE"
+    "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
 done
 
 # 툴캐시가 통째로 비어 있는 것은 「갓 설치한 러너」의 정상 상태이기도 하다(setup-* 가 캐시

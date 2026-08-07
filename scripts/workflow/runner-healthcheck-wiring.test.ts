@@ -109,6 +109,42 @@ describe('러너 헬스체크 배선', () => {
     );
   });
 
+  test('★두 복사본의 판정 규칙이 갈라지지 않는다', () => {
+    // 왜 복사본이 둘인가. CI 층은 checkout **앞**에서 돌아야 해서 저장소의 스크립트를 부를 수
+    // 없다(그 시점엔 저장소가 없다). 그래서 판정 규칙이 셸 스크립트와 워크플로우 인라인,
+    // 두 곳에 존재한다 — 이 저장소가 반복해서 당한 「서로를 안 보는 두 목록」 양식이다.
+    // 완전한 dedup 은 구조적으로 불가능하므로, **하중을 받는 술어**만이라도 양쪽에 있는지 본다.
+    const script = fs.readFileSync(path.join(REPO_ROOT, HEALTH_SCRIPT), 'utf8');
+    const workflow = readWorkflow(HEALTH_WORKFLOW);
+
+    /** 하나라도 한쪽에서 사라지면 두 층의 판정이 달라진다. */
+    const INVARIANTS = [
+      // 실행으로 판정한다 (존재 확인이 아니다)
+      '! "$bin" "$flag" >/dev/null 2>&1',
+      // 표식 게이팅 — 표식이 없으면 자가 재설치되므로 차단하지 않는다
+      'marker="${5:-}"',
+      '[ -n "$marker" ] && [ ! -e "$marker" ]',
+      // 글로브는 버전 디렉터리에 건다 (바이너리에 걸면 지워지는 순간 0건이 된다)
+      '/_work/_tool/node/*/*/',
+      '/_work/_tool/Java_*/*/*/',
+      '"${dir%/}.complete"',
+      // 진단 문구 — 이게 없으면 「테스트가 깨졌다」로 오독된다
+      '러너 환경 결함 — 코드 문제 아님',
+    ];
+
+    const missing = INVARIANTS.flatMap((needle) => [
+      ...(script.includes(needle) ? [] : [`script 에 없음. ${needle}`]),
+      ...(workflow.includes(needle) ? [] : [`${HEALTH_WORKFLOW} 에 없음. ${needle}`]),
+    ]);
+
+    assert.deepEqual(
+      missing,
+      [],
+      `두 층의 판정 규칙이 갈라졌다 —\n${missing.join('\n')}\n` +
+        `한쪽만 고치면 로컬은 잡고 CI 는 놓치는(또는 그 반대) 상태가 된다.`,
+    );
+  });
+
   test('B. bts-start 가 로컬 헬스체크를 호출한다 (전제 무관 백스톱)', () => {
     const skill = fs.readFileSync(path.join(REPO_ROOT, BTS_START_SKILL), 'utf8');
 

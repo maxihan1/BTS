@@ -50,13 +50,22 @@ jobs:
 
           report() { echo "❌ $1"; echo "   복구. $2"; FAILED=1; }
 
+          # 다섯째 인자(완료 표식)가 주어지면 「표식 게이팅」. 표식이 **있는데** 실행이 안 되는
+          # 상태만 실패다 — setup-* 가 그 표식을 캐시 히트로 오판해 조용히 흘러내리는 상태.
+          # 표식이 **없으면** 어차피 캐시 미스로 자가 재설치되므로 경고만 남긴다.
+          # 여기서 실패시키면 재설치를 수행할 바로 그 잡을 막아 영원히 초록이 될 수 없다
+          # (실측. run 31139123013 에서 실제로 교착이 났고 이 규칙이 그 봉합이다).
           check_exec() {
-            local label="$1" bin="$2" flag="$3" fix="$4"
-            if [ ! -e "$bin" ]; then
-              report "$label — 바이너리 부재 ($bin)" "$fix"; return
-            fi
-            if ! "$bin" "$flag" >/dev/null 2>&1; then
-              report "$label — 파일은 있으나 실행 실패 ($bin)" "$fix"; return
+            local label="$1" bin="$2" flag="$3" fix="$4" marker="${5:-}"
+            if [ ! -e "$bin" ] || ! "$bin" "$flag" >/dev/null 2>&1; then
+              local why="바이너리 부재"
+              [ -e "$bin" ] && why="파일은 있으나 실행 실패"
+              if [ -n "$marker" ] && [ ! -e "$marker" ]; then
+                echo "⚠️  $label — $why ($bin)"
+                echo "   완료 표식이 이미 없다 → setup-* 가 자가 재설치한다. 차단하지 않는다."
+                return
+              fi
+              report "$label — $why ($bin)" "$fix"; return
             fi
             echo "✅ $label"
           }
@@ -70,14 +79,15 @@ jobs:
 
           # ★ 글로브를 바이너리 경로(`*/*/bin/node`)에 걸면 바이너리가 지워지는 바로 그 순간
           #   0건이 되어 루프가 안 돌고 조용히 통과한다. 버전 디렉터리를 훑는다.
+          # 완료 표식은 `<버전>/<arch>.complete` — arch 디렉터리 경로에서 끝의 `/` 를 뗀 것.
           for dir in "$ROOT"/_work/_tool/node/*/*/; do
             check_exec "toolcache node ($(basename "$(dirname "$dir")"))" \
-              "${dir}bin/node" -v "$FIX_TOOLCACHE"
+              "${dir}bin/node" -v "$FIX_TOOLCACHE" "${dir%/}.complete"
           done
 
           for dir in "$ROOT"/_work/_tool/Java_*/*/*/; do
             check_exec "toolcache java ($(basename "$(dirname "$dir")"))" \
-              "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE"
+              "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
           done
 
           if [ "$FAILED" -ne 0 ]; then

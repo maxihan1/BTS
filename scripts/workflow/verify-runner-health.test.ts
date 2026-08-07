@@ -46,7 +46,17 @@ function run(root: string): { code: number; out: string } {
   }
 }
 
-/** 실행 가능한 가짜 엔진 4종을 갖춘 러너 트리. 이 상태가 초록의 기준선이다. */
+/** 툴캐시 완료 표식. 이 파일의 존재가 setup-* 의 「캐시 히트」 판정 근거다. */
+const NODE_MARKER_REL = '_work/_tool/node/22.23.2/arm64.complete';
+const JAVA_MARKER_REL = '_work/_tool/Java_Temurin-Hotspot_jdk/21.0.11-10.0.LTS/arm64.complete';
+
+/**
+ * 실행 가능한 가짜 엔진 4종 + 툴캐시 완료 표식을 갖춘 러너 트리. 이 상태가 초록의 기준선이다.
+ *
+ * 표식까지 만드는 이유. 툴캐시 판정이 **표식 유무에 따라 갈리기** 때문이다 —
+ * 표식이 있는데 실행이 안 되면 setup-* 가 캐시 히트로 오판하고 조용히 흘러내리므로 **실패**,
+ * 표식이 없으면 어차피 캐시 미스로 자가 재설치되므로 **경고**다.
+ */
 function healthyRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-runner-'));
   const stub = (rel: string, body: string) => {
@@ -59,6 +69,8 @@ function healthyRoot(): string {
   stub(TOOLCACHE_NODE_REL, 'echo v22.23.2');
   // java 는 -version 을 stderr 로 쓴다. 실제 거동을 흉내 내야 리다이렉션 실수를 잡는다.
   stub(JAVA_REL, 'echo "openjdk version \\"21.0.11\\"" 1>&2');
+  fs.writeFileSync(path.join(root, NODE_MARKER_REL), '');
+  fs.writeFileSync(path.join(root, JAVA_MARKER_REL), '');
   return root;
 }
 
@@ -95,10 +107,24 @@ describe('러너 엔진 헬스체크 스크립트', () => {
   test('툴캐시 표식만 남고 알맹이가 없으면 red — setup-* 가 캐시 히트로 오판하는 상태', () => {
     const root = healthyRoot();
     fs.rmSync(path.join(root, TOOLCACHE_NODE_REL));
-    fs.writeFileSync(path.join(root, '_work/_tool/node/22.23.2/arm64.complete'), '');
 
     const { code, out } = run(root);
+    assert.ok(fs.existsSync(path.join(root, NODE_MARKER_REL)), '전제 확인 — 표식은 남아 있다');
     assert.notEqual(code, 0, `툴캐시 알맹이 부재를 놓쳤다\n${out}`);
     assert.match(out, /arm64\.complete/, '표식 삭제 복구 절차가 안내되지 않았다');
+  });
+
+  test('★★표식이 이미 없으면 실패가 아니라 경고다 — 안 그러면 자가 치유를 자기가 막는다', () => {
+    const root = healthyRoot();
+    // 실제 2026-08-07 상황. JDK 는 깨졌지만 표식을 이미 지웠으므로 setup-java 가 캐시 미스로
+    // 판정해 다음 실행에서 새로 받는다. 여기서 실패시키면 **재설치를 수행할 바로 그 잡**을
+    // 막아 영원히 초록이 될 수 없다(실측 — PR #347 infra-ci run 31139123013 에서 교착 발생).
+    fs.writeFileSync(path.join(root, JAVA_REL), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    fs.rmSync(path.join(root, JAVA_MARKER_REL));
+
+    const { code, out } = run(root);
+    assert.equal(code, 0, `표식이 없으면 자가 재설치되므로 통과해야 한다\n${out}`);
+    assert.match(out, /⚠️/, '경고조차 안 나오면 조용히 묻힌다');
+    assert.match(out, /자가 재설치/, '왜 통과시키는지가 로그에 없다');
   });
 });
