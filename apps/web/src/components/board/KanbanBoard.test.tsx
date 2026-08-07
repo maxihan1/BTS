@@ -1,13 +1,14 @@
 // KanbanBoard 단위 테스트 — resolveDropAction 순수 헬퍼 + 컬럼 displayOrder 렌더 + onDragEnd 통합(Task 7)
 // + 필드변경 훅 배선 + 드래그 시각 힌트 통합(FR-UX-06 PR21b Task 5)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DndContext } from '@dnd-kit/core'
 import type { Active, Announcements, DragEndEvent, DragOverEvent, DragStartEvent, Over } from '@dnd-kit/core'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import type { BoardDetail } from '@/api/boards'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import type { CardAssigneeDisplay } from './BoardCard'
 
 // useMoveCard mock — mutate spy(shared) 노출 + boardId/filter 인자 캡처 (Task6 통합 검증)
@@ -93,6 +94,12 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
       capturedAnnouncements = accessibility?.announcements
       return createElement('div', { 'data-testid': 'dnd-context' }, children)
     },
+    // 실제 DragOverlay는 dnd-kit 내부 InternalContext(active)에 의존하는데, DndContext를
+    // 위처럼 대체하면 그 context가 없어 항상 null을 렌더한다(진짜 드래그 없이는 검증 불가).
+    // BoardColumn.test.tsx의 SortableContext 대체와 동일한 패턴 — children을 그대로 통과시켜
+    // 고스트 카드(BoardCard) DOM 검증을 가능하게 한다(E9).
+    DragOverlay: ({ children }: { children: ReactNode }) =>
+      createElement('div', { 'data-testid': 'drag-overlay' }, children),
   }
 })
 
@@ -173,14 +180,17 @@ function renderBoard(
   board: BoardDetail = boardFixture,
   assigneeNames?: Map<string, CardAssigneeDisplay>,
   filter?: BoardCardFilterParams,
+  issueTypesByKey?: Map<string, IssueTypeResponse>,
 ) {
   const names = assigneeNames ?? new Map<string, CardAssigneeDisplay>()
+  const types = issueTypesByKey ?? new Map<string, IssueTypeResponse>()
   const wrapper = createWrapper()
   return render(
     createElement(DndContext, {}, createElement(KanbanBoard, {
       boardId: boardFixture.boardId,
       board,
       assigneeNames: names,
+      issueTypesByKey: types,
       ...(filter !== undefined ? { filter } : {}),
     })),
     { wrapper },
@@ -890,5 +900,37 @@ describe('KanbanBoard — S8 드래그 시각 힌트 (FR-8, Task 5)', () => {
 
     const inProgressColumnEl = container.querySelector(`[data-col-id="${COL_INPROGRESS}"]`)
     expect(inProgressColumnEl?.className).toContain('ring-2')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S9. 드래그 고스트 카드(DragOverlay) issueTypesByKey 배선 (E9, FR-UX-14 F14 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('KanbanBoard — S9 드래그 고스트 카드 issueTypesByKey (E9)', () => {
+  beforeEach(() => {
+    capturedOnDragStart = undefined
+    capturedOnDragOver = undefined
+    capturedOnDragEnd = undefined
+    capturedAnnouncements = undefined
+  })
+
+  it('S9a: 드래그 시작 시 고스트 카드가 issueTypesByKey로 해석된 유형 아이콘을 갖는다', () => {
+    const taskType: IssueTypeResponse = { id: 1, key: 'task', name: '작업', description: '', iconName: 'task' }
+    renderBoard(boardFixture, undefined, undefined, new Map([[taskType.key, taskType]]))
+
+    triggerDragStart({ id: 'ATLAS-1', fromColumnId: COL_TODO })
+
+    const overlay = screen.getByTestId('drag-overlay')
+    expect(within(overlay).getByRole('img', { name: '작업' })).toBeInTheDocument()
+  })
+
+  it('S9b: issueTypesByKey에 없는 typeKey는 원문이 고스트 카드 접근성 이름이 된다(FR6)', () => {
+    renderBoard(boardFixture, undefined, undefined, new Map())
+
+    triggerDragStart({ id: 'ATLAS-1', fromColumnId: COL_TODO })
+
+    const overlay = screen.getByTestId('drag-overlay')
+    expect(within(overlay).getByRole('img', { name: 'task' })).toBeInTheDocument()
   })
 })
