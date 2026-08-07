@@ -7,8 +7,8 @@
 
 **BTS (Project Atlas)** — 사내 1,000명 규모 협업 워크스페이스. Atlas Issues (이슈 트래커) + Atlas Wiki (v0.5 예정). Kotlin/Spring + React 19, Naver Cloud Docker Compose 단일 호스트. Maxi 1인 + Claude Code 개발 모델.
 
-**현재 단계**. **Phase 1 — 139 FR**. **FR-UX-14 1건만 미완**이고(FR-UX-09~13 은 전량 완주) 나머지 전량은 D1~D7 을 마쳤다 (2026-08-07 실측 `- [x] D«n».` **962건 / 미완 3건**). **FR-UX-14 는 B2(PR #346)가 백엔드 쪽 D1·D3·D4·D5 를 닫았고, 남은 3건(D2 디자인 스펙 · D6 프론트 UI · D7 E2E)은 F14 잔여다.**
-남은 것은 각 BC 의 **완료 게이트** — §NFR 측정표 · `CHANGELOG.md` 정리 · **Maxi 1인 선언**.
+**현재 단계**. **Phase 1 — 139 FR 의 D 단계가 전량 닫혔다** (2026-08-07 실측 `- [x] D«n».` **965건 / 미완 0건**). 마지막은 **FR-UX-14** 였고 B2(PR #346)가 백엔드 D1·D3·D4·D5 를, **F14(PR #349)가 D2 디자인 스펙 · D6 프론트 UI · D7 E2E** 를 닫았다.
+**남은 것은 D 단계가 아니라 각 BC 의 완료 게이트** — §NFR 측정표 · `CHANGELOG.md` 정리 · **Maxi 1인 선언**. **D 단계 0 이 곧 BC 완료 선언은 아니다.**
 진척 정본은 `docs/plan/README.md` · `docs/progress.html`(`node scripts/build-dashboard.mjs` 재생성).
 
 backend 10개 Gradle 모듈 = 9 BC(identity-access · issue-tracking · project-workflow · shared-kernel ·
