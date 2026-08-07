@@ -34,8 +34,13 @@ on:
       - '.github/workflows/infra-ci.yml'
 
 jobs:
+  # 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다.
+  runner-health:
+    uses: ./.github/workflows/runner-health.yml
+
   nginx-log-masking:
     name: nginx 접속로그 마스킹 봉인
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
@@ -48,6 +53,7 @@ jobs:
 
   springdoc-not-exposed:
     name: springdoc 외부 미노출 봉인
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 5
     steps:

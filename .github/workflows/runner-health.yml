@@ -1,0 +1,102 @@
+# 러너 실행 엔진(node · java) 생존을 checkout 앞에서 확인하는 재사용 워크플로우
+#
+# 왜 이 워크플로우가 있나. 2026-08-04 18:18 홈 폴더 대용량 파일 정리로 self-hosted 러너의
+# 실행 엔진 4개(externals/node20 · externals/node24 · 툴캐시 node · 툴캐시 JDK 의 lib/modules)가
+# 지워져 **8/4~8/7 사흘간 CI 가 0회 실행**됐다. 러너는 `online` 이었고 빨간불도 떴지만
+# 실패가 `Checkout` 스텝에서 났기 때문에 「테스트가 깨졌다」와 구분되지 않았고,
+# 그 사이 #342 · #343 · #344 가 검증 없이 머지됐다.
+#
+# ## ★ 왜 재사용 워크플로우인가 — 인라인 복사본을 피하려고
+#
+# 헬스체크는 `actions/checkout` **앞**에 있어야 한다. JavaScript 액션은 node 로 돌아가므로
+# node 가 없으면 checkout **자체가** 죽고, checkout 이후 스텝은 이 결함을 절대 못 본다.
+# 그런데 그 시점엔 저장소가 아직 없어 `scripts/verify-runner-health.sh` 를 부를 수 없다.
+# 각 잡에 인라인으로 넣으면 **11개 복사본**이 되고 동기화 강제가 주석 한 줄로 전락한다
+# (PR #345 에서 없앤 바로 그 양식). 호출로 만들어 인라인 셸을 **저장소 전체에 1벌**만 둔다.
+#
+# ## ⚠️ 이 워크플로우의 전제 2건은 미검증이다
+#
+# 1. 순수 shell `run:` 스텝은 node 부재 시에도 실행된다
+# 2. `workflow_call` 해석은 node 를 쓰지 않는다
+#
+# 완전 실측은 러너를 일부러 고장내야 하므로 하지 않았다(운영 중 CI 를 끊는다). 근거는 정황이다 —
+# 사고 기간 실패 run 에서 `Set up job` 은 전부 완료됐고 에러가 `Checkout` 스텝에 귀속됐으며,
+# `_diag` Worker 로그에 `NodeScriptActionHandler` 가 Checkout 앞뒤 2회만 등장한다(스텝 단위 해석).
+# 그래서 `scripts/verify-runner-health.sh` + `/bts-start` Step 0 배선이 **전제 무관 백스톱**으로
+# 함께 있다. 배선은 `scripts/workflow/runner-healthcheck-wiring.test.ts` 가 강제한다.
+#
+# 정본 문서. docs/runbooks/self-hosted-runner.md §4
+name: runner-health
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    name: 러너 엔진 점검
+    runs-on: [self-hosted, bts-local]
+    timeout-minutes: 3
+    steps:
+      # ★ 반드시 순수 shell 이다. `uses:` 를 쓰면 그 액션을 돌리는 데 node 가 필요해
+      #   정확히 이 결함 상황에서 이 잡이 먼저 죽고 진단이 사라진다.
+      #   내용은 scripts/verify-runner-health.sh 와 같은 판정을 하되, 저장소가 없는 시점이라
+      #   파일을 부를 수 없어 인라인이다. 두 곳이 갈라지지 않도록 판정 규칙을 여기 못박는다 —
+      #   「파일 존재가 아니라 실행 성공(exit 0)」 · 「글로브는 바이너리가 아니라 버전 디렉터리」.
+      - name: 러너 엔진 점검 (node · java)
+        run: |
+          ROOT="$HOME/actions-runner-bts"
+          FAILED=0
+          shopt -s nullglob
+
+          report() { echo "❌ $1"; echo "   복구. $2"; FAILED=1; }
+
+          # 다섯째 인자(완료 표식)가 주어지면 「표식 게이팅」. 표식이 **있는데** 실행이 안 되는
+          # 상태만 실패다 — setup-* 가 그 표식을 캐시 히트로 오판해 조용히 흘러내리는 상태.
+          # 표식이 **없으면** 어차피 캐시 미스로 자가 재설치되므로 경고만 남긴다.
+          # 여기서 실패시키면 재설치를 수행할 바로 그 잡을 막아 영원히 초록이 될 수 없다
+          # (실측. run 31139123013 에서 실제로 교착이 났고 이 규칙이 그 봉합이다).
+          check_exec() {
+            local label="$1" bin="$2" flag="$3" fix="$4" marker="${5:-}"
+            if [ ! -e "$bin" ] || ! "$bin" "$flag" >/dev/null 2>&1; then
+              local why="바이너리 부재"
+              [ -e "$bin" ] && why="파일은 있으나 실행 실패"
+              if [ -n "$marker" ] && [ ! -e "$marker" ]; then
+                echo "⚠️  $label — $why ($bin)"
+                echo "   완료 표식이 이미 없다 → setup-* 가 자가 재설치한다. 차단하지 않는다."
+                return
+              fi
+              report "$label — $why ($bin)" "$fix"; return
+            fi
+            echo "✅ $label"
+          }
+
+          FIX_EXTERNALS="nodejs.org 공식 배포본을 SHASUMS256.txt 로 sha256 대조 후 bin/node 만 복원"
+          FIX_TOOLCACHE="그 버전 디렉터리의 arm64.complete 표식 삭제 → setup-* 가 자가 재설치"
+
+          for v in node20 node24; do
+            check_exec "externals/$v" "$ROOT/externals/$v/bin/node" -v "$FIX_EXTERNALS"
+          done
+
+          # ★ 글로브를 바이너리 경로(`*/*/bin/node`)에 걸면 바이너리가 지워지는 바로 그 순간
+          #   0건이 되어 루프가 안 돌고 조용히 통과한다. 버전 디렉터리를 훑는다.
+          # 완료 표식은 `<버전>/<arch>.complete` — arch 디렉터리 경로에서 끝의 `/` 를 뗀 것.
+          for dir in "$ROOT"/_work/_tool/node/*/*/; do
+            check_exec "toolcache node ($(basename "$(dirname "$dir")"))" \
+              "${dir}bin/node" -v "$FIX_TOOLCACHE" "${dir%/}.complete"
+          done
+
+          for dir in "$ROOT"/_work/_tool/Java_*/*/*/; do
+            check_exec "toolcache java ($(basename "$(dirname "$dir")"))" \
+              "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "─────────────────────────────────────────"
+            echo "러너 환경 결함 — 코드 문제 아님"
+            echo "이 run 의 테스트는 한 줄도 실행되지 않는다."
+            echo "docs/runbooks/self-hosted-runner.md §4"
+            echo "─────────────────────────────────────────"
+            exit 1
+          fi
+          echo "러너 엔진 정상."
