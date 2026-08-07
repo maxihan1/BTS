@@ -141,6 +141,730 @@ Phase 4(대안 생성)는 수행한다"* 에 따라 **그 두 단계만** 실제
 `superpowers:brainstorming` 역시 대화형 설계 도구라 「gap 만 보고」 용도와 어긋나므로,
 그 스킬이 요구하는 설계 문답 대신 **위 4개 축을 코드로 실측**하는 방식으로 sanity check 를 수행했다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**목표.** 보드/백로그 카드 응답에 `typeKey` · `labels` · `originalEstimateSeconds` 를 실어
+F14(카드 화면 밀도)의 차단을 푼다.
+
+**아키텍처.** `BoardIssueView`(shared-kernel) 한 곳을 늘리면 보드·백로그 두 응답이 함께 따라온다.
+라벨·추정은 이미 조회되고 있어 매핑만 추가하고, 유형만 `ISSUE_TYPES` INNER JOIN 이 새로 필요하다.
+조인은 같은 파일의 `listVisibleForTimeline` 을 그대로 베낀다.
+
+### ★ 이 plan 의 지배 제약 — 컴파일 원자성
+
+`typeKey` 를 **기본값 없는 필수 인자**로 두기로 확정(Maxi 2026-08-07)했기 때문에,
+`BoardIssueView` 시그니처가 바뀌는 순간 **기존 생성 지점 21곳이 동시에 컴파일 에러**가 된다.
+Kotlin 은 "한쪽만 고친 중간 상태"를 허용하지 않으므로 **VO · 저장소 entry · 어댑터 매핑 ·
+기존 21곳 수선은 쪼갤 수 없는 하나의 커밋**이다. 이것이 Task 1 이 큰 이유다 —
+잘게 나누면 나눈 조각이 컴파일되지 않는다. 대신 **Task 1 내부의 step 을 잘게** 쪼갠다.
+
+`typeKey` 는 파라미터 목록에서 **`version` 뒤 · `epicKey` 앞**(7번째)에 넣는다.
+그래야 기존 위치 인자 6개 호출(`BoardApplicationServiceTest:216-217`)과 명명 인자 호출이
+**둘 다** 컴파일 에러가 나 컴파일러의 강제가 실제로 작동한다. 맨 뒤에 두면 위치 인자 호출이
+조용히 통과할 여지가 생긴다.
+
+### Task 1. 코어 — VO 3필드 + type JOIN + 어댑터 매핑 + 기존 21곳 수선
+
+**메타**.
+- agent: `backend-engineer`
+- files: [
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt`,
+  `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardPortContractTest.kt`,
+  `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardIssueViewTest.kt`,
+  `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`,
+  `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapter.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/dto/BoardResponsesTest.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BacklogApplicationServiceTest.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/domain/BoardCardPlacementTest.kt`
+  ]
+- depends-on: []
+
+- [ ] **Step 1 (RED). `BoardPortContractTest` 에 필드 계약 + 기본값 규약 테스트를 먼저 쓴다**
+
+이 파일이 **필드 계약의 정본**이다(KDoc 이 필드를 열거한다 — 스펙 GAP-3).
+같은 파일에 이미 있는 `WorkflowStateView 기존 2-arg 호출이 default 로 생성된다` 테스트가 선례다.
+
+```kotlin
+@Test
+fun `BoardIssueView 는 typeKey 를 필수로 받고 labels 와 originalEstimateSeconds 는 default 로 생성된다`() {
+    // typeKey 는 기본값이 없다 — 호출자가 반드시 명시해야 한다.
+    val view =
+        BoardIssueView(
+            key = "PROJ-1",
+            summary = "제목",
+            currentStateKey = "open",
+            assigneeId = null,
+            priority = 1,
+            version = 0L,
+            typeKey = "bug",
+        )
+
+    assertThat(view.typeKey).isEqualTo("bug")
+    // 미지정 시 라벨은 null 이 아니라 빈 리스트다 (FR8 — 직렬화가 [] 가 되는 근거).
+    assertThat(view.labels).isEmpty()
+    assertThat(view.originalEstimateSeconds).isNull()
+}
+
+@Test
+fun `BoardIssueView 는 labels 와 originalEstimateSeconds 를 명시하면 그 값으로 생성된다`() {
+    val view =
+        BoardIssueView(
+            key = "PROJ-2",
+            summary = "제목",
+            currentStateKey = "open",
+            assigneeId = null,
+            priority = 1,
+            version = 0L,
+            typeKey = "story",
+            labels = listOf("urgent", "api"),
+            originalEstimateSeconds = 3600,
+        )
+
+    assertThat(view.labels).containsExactly("urgent", "api")
+    assertThat(view.originalEstimateSeconds).isEqualTo(3600)
+}
+```
+
+- [ ] **Step 2. RED 확인 — 컴파일 실패를 눈으로 본다**
+
+Run: `./gradlew :modules:shared-kernel:test --tests '*BoardPortContractTest'`
+Expected: **컴파일 실패** — `No value passed for parameter 'typeKey'` / `Cannot find a parameter with this name: labels`
+
+> 이 프로젝트의 규율은 **복사 전에 red 를 본다**([[decorative-annotation-copied-from-sibling]]).
+> 컴파일 에러 메시지를 실제로 확인하고 넘어간다.
+
+- [ ] **Step 3 (GREEN). `BoardIssueView` 에 3필드 추가**
+
+`BoardIssueLookupPort.kt:157`.
+
+```kotlin
+data class BoardIssueView(
+    val key: String,
+    val summary: String,
+    val currentStateKey: String,
+    val assigneeId: UUID?,
+    val priority: Int,
+    val version: Long,
+    val typeKey: String,
+    val epicKey: String? = null,
+    val rank: String? = null,
+    val labels: List<String> = emptyList(),
+    val originalEstimateSeconds: Int? = null,
+)
+```
+
+- [ ] **Step 4 (GREEN). `BoardIssueEntry` 에 `typeKey` 추가 + type JOIN**
+
+`IssueRepository.kt:823` 의 entry.
+
+```kotlin
+data class BoardIssueEntry(
+    val issue: Issue,
+    val epicKey: String?,
+    val typeKey: String,
+)
+```
+
+`listVisibleForBoard:792-808` 의 쿼리. `TYPE_KEY_ALIAS` 는 이미 있는 상수를 **재사용**한다
+(`listWithType` · `listVisibleForTimeline` 과 같은 alias 를 공유해야 한 벌로 유지된다).
+
+```kotlin
+val fetched =
+    dsl.select(
+        ISSUES.fields().toList() +
+            listOf(
+                epicAlias.KEY.`as`(EPIC_KEY_ALIAS),
+                ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+            ),
+    )
+        .from(ISSUES)
+        .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+        .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+        .leftJoin(epicAlias).on(
+            ISSUES.EPIC_ID.eq(epicAlias.ID)
+                .and(epicAlias.DELETED_AT.isNull)
+                .and(epicAlias.PROJECT_ID.eq(ISSUES.PROJECT_ID)),
+        )
+        .where(where)
+        .orderBy(ISSUES.CREATED_AT.desc())
+        .limit(BOARD_CARD_FETCH_LIMIT + 1)
+        .fetch { record ->
+            val issue = record.into(ISSUES).toIssue()
+            val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
+            val typeKey =
+                record.get(TYPE_KEY_ALIAS, String::class.java)
+                    ?: error("issue_types.key must not be null in board join result")
+            BoardIssueEntry(issue = issue, epicKey = epicKey, typeKey = typeKey)
+        }
+```
+
+**주의 3가지.**
+1. `.join(...)` 은 **INNER** 다. `issues.type_id` 가 V005 에서 `SET NOT NULL` + FK 라 행이 사라지지 않는다.
+2. `orderBy` 를 **건드리지 않는다**(제약 C4 — 보조 정렬 추가는 선재 결함이고 범위 밖이다).
+3. `where` 도 건드리지 않는다(제약 C3 — 보안 술어 불변).
+
+- [ ] **Step 5 (GREEN). 어댑터 매핑 3필드**
+
+`BoardIssueLookupAdapter.kt:121`.
+
+```kotlin
+private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =
+    BoardIssueView(
+        key = issue.key.value,
+        summary = issue.summary,
+        currentStateKey = issue.currentStateKey,
+        assigneeId = issue.assigneeId?.value,
+        priority = issue.priority,
+        version = issue.version,
+        typeKey = typeKey,
+        epicKey = epicKey,
+        rank = issue.rank,
+        labels = issue.labels,
+        originalEstimateSeconds = issue.originalEstimateSeconds,
+    )
+```
+
+`issue.labels` · `issue.originalEstimateSeconds` 는 **이미 채워져 있다** —
+`record.into(ISSUES).toIssue()` 가 ISSUES 전 컬럼으로 도메인을 만든다. 새로 조회하지 않는다.
+
+- [ ] **Step 6 (GREEN). 기존 생성 지점 21곳 수선 — 전수 열거로 확인**
+
+컴파일러가 전부 잡아주지만, **개수를 세지 말고 전수 열거로** 확인한다
+([[orchestrator-instruction-counts-are-blindfolds]] — 지시에 쓴 개수는 10번 틀렸다).
+
+```bash
+grep -rn "BoardIssueView(" backend/ | grep -v "build/" | grep -v "data class BoardIssueView"
+```
+
+수선 대상(착수 시점 실측 — 7파일).
+
+| 파일 | 줄 |
+|---|---|
+| `shared-kernel .../BoardIssueViewTest.kt` | 25 · 42 · 58 |
+| `shared-kernel .../BoardPortContractTest.kt` | 88 · 116 · 136 · 253 |
+| `agile-planning .../BoardResponsesTest.kt` | 47(**헬퍼 `card`**) · 189 · 204 |
+| `agile-planning .../BoardControllerIntegrationTest.kt` | 307 · 789 |
+| `agile-planning .../BoardApplicationServiceTest.kt` | 146 · 154 · 216 · 217 · 580 · 598 |
+| `agile-planning .../BacklogApplicationServiceTest.kt` | 45 |
+| `agile-planning .../BoardCardPlacementTest.kt` | 38(**헬퍼 `issueView`**) |
+
+각 호출에 `typeKey = "task"` 를 더한다(배치·정렬 테스트는 유형과 무관하므로 임의 표준 타입).
+
+> **★ 헬퍼 2곳은 컴파일러 강제를 흡수한다** (스펙 GAP-2). `BoardResponsesTest.card:47` 과
+> `BoardCardPlacementTest.issueView:38` 에 `typeKey: String = "task"` 기본값을 주는 것은
+> **허용**한다 — 그 테스트들은 3필드와 무관하다. 다만 **이 헬퍼를 쓰는 테스트를 3필드의
+> 증인으로 세지 않는다.** 진짜 증인은 Task 2 의 실 DB 검증이다.
+
+- [ ] **Step 7 (REFACTOR). 새 사실과 어긋나는 주석 3곳 정정** (FR9)
+
+셋 다 **코드와 반대되는 서술**이 된다. 남기면 다음 독자가 속는다.
+
+1. `BoardIssueLookupPort.kt:144` — *"보드 컬럼 배치와 카드 정렬에 필요한 최소 필드만 포함한다"*
+   → 카드 **표시**에 필요한 필드를 포함한다는 사실을 반영하고, 새 3필드의 `@property` 를 추가한다.
+   자매 VO `TimelineItemView` 도 같은 문구를 쓰면서 `issueType` 을 담고 있다는 점을 근거로 적는다.
+2. `IssueRepository.kt:745` — *"type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략"*
+   → 조인을 하게 된 사실과 근거(FR-UX-14, 타임라인과 동형)로 교체.
+3. `BoardIssueLookupAdapter.kt:119` — *"최소 필드만 추출한다 (type/description 등은 제외)"*
+   → `description` 은 여전히 제외이고 `type` 은 포함으로 갈라졌음을 명시.
+
+- [ ] **Step 8. GREEN 확인**
+
+Run: `./gradlew :modules:shared-kernel:test --tests '*BoardPortContractTest' --tests '*BoardIssueViewTest'`
+Expected: PASS
+
+Run: `./gradlew :modules:issue-tracking:compileKotlin :modules:agile-planning:compileTestKotlin`
+Expected: BUILD SUCCESSFUL — 21곳 수선이 빠짐없이 됐다는 증거
+
+- [ ] **Step 9. 커밋**
+
+```bash
+git add backend/modules/shared-kernel backend/modules/issue-tracking backend/modules/agile-planning
+git diff --cached --name-only   # 내 파일만 담겼는지 확인 (병렬 dispatch 시 피어 파일 혼입 방지)
+git commit -m "feat: FR-UX-14 B2 — BoardIssueView 3필드 + 보드 type JOIN"
+```
+
+**검증**. `./gradlew :modules:shared-kernel:test --tests '*BoardPortContractTest'` ·
+`./gradlew :modules:agile-planning:compileTestKotlin`
+
+---
+
+### Task 2. 실 DB 매핑 검증 — 대조군 픽스처 + truncated 경계
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapterTest.kt`]
+- depends-on: [1]
+
+Task 1 의 매핑이 **실제로 DB 값을 카드까지 나른다**는 증인을 세운다.
+스펙 §9.3 GAP-1/GAP-2 의 처방이 여기에 있다.
+
+- [ ] **Step 1 (RED). 대조군 픽스처 + 키 단위 대조 테스트**
+
+이 파일은 이미 Testcontainers 기반(`IssueTestcontainersBase`)이다. 기존 시드 방식을 따른다.
+
+**픽스처 요건 — 축마다 서로 다른 값 2건 + 빈 값 대조군 1건.**
+
+| 이슈 | typeKey | labels | originalEstimateSeconds |
+|---|---|---|---|
+| `PROJ-1` | `bug` | `["urgent","api"]` | 3600 |
+| `PROJ-2` | `story` | `["docs"]` | 7200 |
+| `PROJ-3` | `task` | `[]` (빈 배열) | `null` |
+
+```kotlin
+@Test
+fun `보드 카드는 이슈별 유형 키를 각자 정확히 갖는다`() {
+    val page = adapter.listVisibleIssuesByProject(PROJECT_KEY, viewerId)
+    val byKey = page.issues.associateBy { it.key }
+
+    // 키 단위 대조 — "어떤 카드엔가 bug 가 있다" 로는 조인이 틀린 행을 물어와도 통과한다.
+    assertThat(byKey.getValue("PROJ-1").typeKey).isEqualTo("bug")
+    assertThat(byKey.getValue("PROJ-2").typeKey).isEqualTo("story")
+    assertThat(byKey.getValue("PROJ-3").typeKey).isEqualTo("task")
+}
+
+@Test
+fun `보드 카드는 이슈별 라벨을 각자 정확히 갖고 라벨 없는 이슈는 빈 배열이다`() {
+    val byKey = adapter.listVisibleIssuesByProject(PROJECT_KEY, viewerId).issues.associateBy { it.key }
+
+    assertThat(byKey.getValue("PROJ-1").labels).containsExactly("urgent", "api")
+    assertThat(byKey.getValue("PROJ-2").labels).containsExactly("docs")
+    assertThat(byKey.getValue("PROJ-3").labels).isEmpty()
+}
+
+@Test
+fun `보드 카드는 이슈별 추정을 각자 정확히 갖고 미추정 이슈는 null 이다`() {
+    val byKey = adapter.listVisibleIssuesByProject(PROJECT_KEY, viewerId).issues.associateBy { it.key }
+
+    assertThat(byKey.getValue("PROJ-1").originalEstimateSeconds).isEqualTo(3600)
+    assertThat(byKey.getValue("PROJ-2").originalEstimateSeconds).isEqualTo(7200)
+    assertThat(byKey.getValue("PROJ-3").originalEstimateSeconds).isNull()
+}
+```
+
+- [ ] **Step 2 (RED). truncated 경계가 JOIN 으로 안 깨지는지** (T-TRUNC · NFR3)
+
+INNER JOIN 은 N:1 이라 행이 늘지 않지만, **그것을 못박아야** 다음 사람이 LEFT JOIN 이나
+1:N 조인을 넣었을 때 걸린다.
+
+```kotlin
+@Test
+fun `type JOIN 이 붙어도 LIMIT 경계의 truncated 판정이 행 수 기준 그대로다`() {
+    // BOARD_CARD_FETCH_LIMIT 을 넘기지 않는 규모에서는 truncated=false 여야 한다.
+    val page = adapter.listVisibleIssuesByProject(PROJECT_KEY, viewerId)
+
+    assertThat(page.truncated).isFalse()
+    // 조인이 행을 불렸다면 이슈 수보다 카드 수가 많아진다 — 그것을 직접 잡는다.
+    assertThat(page.issues).hasSize(SEEDED_VISIBLE_ISSUE_COUNT)
+    assertThat(page.issues.map { it.key }).doesNotHaveDuplicates()
+}
+```
+
+- [ ] **Step 3. RED 확인**
+
+Run: `./gradlew :modules:issue-tracking:test --tests '*BoardIssueLookupAdapterTest'`
+Expected: 신규 테스트 4건 FAIL (Task 1 이 이미 머지됐다면 픽스처 부재로 실패)
+
+- [ ] **Step 4 (GREEN). 픽스처 시드 추가**
+
+기존 시드 헬퍼에 위 표의 3건을 넣는다. `issue_types` 표준 5종은 V003 시드에 이미 있으므로
+타입 행을 새로 만들지 않고 `key` 로 조회해 `type_id` 를 연결한다.
+
+- [ ] **Step 5. GREEN 확인 + 커밋**
+
+Run: `./gradlew :modules:issue-tracking:test --tests '*BoardIssueLookupAdapterTest'`
+Expected: PASS (기존 테스트 포함 전량)
+
+```bash
+git add backend/modules/issue-tracking/src/test
+git commit -m "test: FR-UX-14 B2 — 카드 3필드 실 DB 대조군 검증 + truncated 경계"
+```
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*BoardIssueLookupAdapterTest'`
+
+---
+
+### Task 3. N+1 회귀 가드 — 정본 지정 성공 판정식
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/BoardCardQueryCountTest.kt`]
+- depends-on: [1]
+
+**신규 파일**로 만든다 — Task 2 와 같은 파일을 쓰면 병렬이 막히고, 이 가드는 성격이 달라
+독립 파일이 읽기도 낫다.
+
+- [ ] **Step 1 (RED). 쿼리 수 계측 리스너 + 카드 수 무관 판정**
+
+```kotlin
+/** 실행된 SQL 문 수를 세는 jOOQ 리스너 — N+1 회귀 가드 전용. */
+private class QueryCountListener : DefaultExecuteListener() {
+    val count = AtomicInteger(0)
+
+    override fun executeStart(ctx: ExecuteContext) {
+        count.incrementAndGet()
+    }
+}
+
+@Test
+fun `보드 카드 조회 쿼리 수는 카드 건수와 무관하게 일정하다`() {
+    val small = countQueriesFor(cardCount = 3)
+    val large = countQueriesFor(cardCount = 30)
+
+    // 카드가 10배로 늘어도 쿼리 수가 같아야 한다. 다르면 카드당 추가 조회(N+1)가 있다는 뜻이다.
+    assertThat(large).isEqualTo(small)
+}
+```
+
+`countQueriesFor` 는 지정 건수만큼 이슈를 시드한 뒤 리스너를 붙인 `DSLContext` 로
+`listVisibleForBoard` 를 1회 실행하고 리스너 카운트를 돌려준다.
+
+- [ ] **Step 2. ★ 비-공허 확인 — 가드가 진짜인지 증명한다**
+
+**이 step 을 건너뛰면 가드는 초록인 채 아무것도 재지 않는다.** 이 프로젝트가 반복해서 겪은
+사고 유형이다([[unreachable-state-fixture-is-fake-green]] — PR #342 에서 같은 양식 2회 적발).
+
+절차.
+1. 어댑터에 **일부러 카드당 1회 조회를 넣는다**(임시. 예: `entries.map { issueRepository.… }`).
+2. 위 테스트를 돌려 **FAIL 하는 것을 눈으로 확인**하고 출력을 기록한다.
+3. 임시 코드를 **역방향 Edit 으로 되돌린다** — `git checkout --` / `stash` / `reset` 금지
+   ([[parallel-wave-mutation-revert-destroys-peers]]. 같은 트리의 남의 미커밋 작업이 날아간다).
+4. 다시 돌려 PASS 를 확인한다.
+5. **FAIL 출력을 PR 본문에 인용한다.** 인용이 없으면 이 step 을 안 한 것으로 간주한다.
+
+- [ ] **Step 3 (GREEN). 통과 확인 + 커밋**
+
+Run: `./gradlew :modules:issue-tracking:test --tests '*BoardCardQueryCountTest'`
+Expected: PASS
+
+```bash
+git add backend/modules/issue-tracking/src/test
+git commit -m "test: FR-UX-14 B2 — 보드 카드 N+1 회귀 가드 (비-공허 확인 동반)"
+```
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*BoardCardQueryCountTest'`
+
+---
+
+### Task 4. `BoardCardResponse` 3필드
+
+**메타**.
+- agent: `backend-engineer`
+- files: [
+  `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/dto/BoardResponsesTest.kt`
+  ]
+- depends-on: [1]
+
+- [ ] **Step 1 (RED). `from` 이 3필드를 나르는지**
+
+```kotlin
+@Test
+fun `BoardCardResponse from 은 BoardIssueView 의 유형 라벨 추정을 그대로 나른다`() {
+    val view =
+        BoardIssueView(
+            key = "PROJ-1",
+            summary = "제목",
+            currentStateKey = "open",
+            assigneeId = null,
+            priority = 1,
+            version = 0L,
+            typeKey = "bug",
+            labels = listOf("urgent", "api"),
+            originalEstimateSeconds = 3600,
+        )
+
+    val response = BoardCardResponse.from(view)
+
+    assertThat(response.typeKey).isEqualTo("bug")
+    assertThat(response.labels).containsExactly("urgent", "api")
+    assertThat(response.originalEstimateSeconds).isEqualTo(3600)
+}
+
+@Test
+fun `BoardCardResponse from 은 라벨 없는 뷰를 빈 배열로 추정 없는 뷰를 null 로 나른다`() {
+    val view =
+        BoardIssueView(
+            key = "PROJ-2",
+            summary = "제목",
+            currentStateKey = "open",
+            assigneeId = null,
+            priority = 1,
+            version = 0L,
+            typeKey = "task",
+        )
+
+    val response = BoardCardResponse.from(view)
+
+    assertThat(response.labels).isEmpty()
+    assertThat(response.originalEstimateSeconds).isNull()
+}
+```
+
+- [ ] **Step 2. RED 확인**
+
+Run: `./gradlew :modules:agile-planning:test --tests '*BoardResponsesTest'`
+Expected: 컴파일 실패 — `Unresolved reference: typeKey`
+
+- [ ] **Step 3 (GREEN). DTO 확장 + `from` 매핑**
+
+```kotlin
+data class BoardCardResponse(
+    val issueKey: String,
+    val summary: String,
+    val assigneeId: UUID?,
+    val priority: Int,
+    val version: Long,
+    val typeKey: String,
+    val epicKey: String? = null,
+    val rank: String? = null,
+    val labels: List<String> = emptyList(),
+    val originalEstimateSeconds: Int? = null,
+) {
+    companion object {
+        /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
+        fun from(card: BoardIssueView): BoardCardResponse =
+            BoardCardResponse(
+                issueKey = card.key,
+                summary = card.summary,
+                assigneeId = card.assigneeId,
+                priority = card.priority,
+                version = card.version,
+                typeKey = card.typeKey,
+                epicKey = card.epicKey,
+                rank = card.rank,
+                labels = card.labels,
+                originalEstimateSeconds = card.originalEstimateSeconds,
+            )
+    }
+}
+```
+
+- [ ] **Step 4 (REFACTOR). KDoc `@property` 3줄 추가**
+
+`typeKey` 는 *"이슈 유형 키(`issue_types.key`). 소문자. 예: `bug`. 유형 이름·아이콘은 담지 않는다 —
+클라이언트가 타입 목록 API 에서 얻는다(ADR §D-1)."* 로 적어 **왜 이름이 없는지**를 남긴다.
+
+- [ ] **Step 5. GREEN 확인 + 커밋**
+
+Run: `./gradlew :modules:agile-planning:test --tests '*BoardResponsesTest'`
+Expected: PASS
+
+```bash
+git add backend/modules/agile-planning
+git commit -m "feat: FR-UX-14 B2 — BoardCardResponse 3필드"
+```
+
+**검증**. `./gradlew :modules:agile-planning:test --tests '*BoardResponsesTest'`
+
+---
+
+### Task 5. `BacklogIssueResponse` 3필드 — backlog · sprints 두 배열
+
+**메타**.
+- agent: `backend-engineer`
+- files: [
+  `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BacklogResponses.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BacklogApplicationServiceTest.kt`
+  ]
+- depends-on: [1]
+
+- [ ] **Step 1 (RED). `from` 3필드 + 두 배열 동시 검증**
+
+`BacklogApplicationService:137`(backlog 배열)과 `:150`(sprints[].issues 배열)이 **같은 `from`**
+을 거치므로 로직은 갈라질 수 없지만, **회귀 감시는 두 곳을 다 봐야** 한쪽이 조용히 빠지는 것을 잡는다.
+
+```kotlin
+@Test
+fun `백로그 응답은 backlog 배열과 sprints 배열 양쪽에 유형 라벨 추정을 담는다`() {
+    // given: 백로그 1건 + 스프린트 소속 1건, 서로 다른 유형/라벨/추정
+    val response = service.getBacklog(PROJECT_KEY, actorId)
+
+    val backlogIssue = response.backlog.single { it.key == "PROJ-1" }
+    assertThat(backlogIssue.typeKey).isEqualTo("bug")
+    assertThat(backlogIssue.labels).containsExactly("urgent")
+    assertThat(backlogIssue.originalEstimateSeconds).isEqualTo(3600)
+
+    val sprintIssue = response.sprints.single().issues.single { it.key == "PROJ-2" }
+    assertThat(sprintIssue.typeKey).isEqualTo("story")
+    assertThat(sprintIssue.labels).isEmpty()
+    assertThat(sprintIssue.originalEstimateSeconds).isNull()
+}
+```
+
+- [ ] **Step 2. RED 확인**
+
+Run: `./gradlew :modules:agile-planning:test --tests '*BacklogApplicationServiceTest'`
+Expected: 컴파일 실패 — `Unresolved reference: typeKey`
+
+- [ ] **Step 3 (GREEN). DTO 확장 + `from` 매핑**
+
+기존 8필드가 전부 기본값이 없으므로 `typeKey` 는 그 뒤에 두고, 기본값 있는 2필드를 마지막에 둔다.
+
+```kotlin
+data class BacklogIssueResponse(
+    val key: String,
+    val summary: String,
+    val currentStateKey: String,
+    val assigneeId: UUID?,
+    val priority: Int,
+    val rank: String?,
+    val version: Long,
+    val epicKey: String?,
+    val typeKey: String,
+    val labels: List<String> = emptyList(),
+    val originalEstimateSeconds: Int? = null,
+) {
+    companion object {
+        fun from(view: BoardIssueView): BacklogIssueResponse =
+            BacklogIssueResponse(
+                key = view.key,
+                summary = view.summary,
+                currentStateKey = view.currentStateKey,
+                assigneeId = view.assigneeId,
+                priority = view.priority,
+                rank = view.rank,
+                version = view.version,
+                epicKey = view.epicKey,
+                typeKey = view.typeKey,
+                labels = view.labels,
+                originalEstimateSeconds = view.originalEstimateSeconds,
+            )
+    }
+}
+```
+
+- [ ] **Step 4. GREEN 확인 + 커밋**
+
+Run: `./gradlew :modules:agile-planning:test --tests '*BacklogApplicationServiceTest'`
+Expected: PASS
+
+```bash
+git add backend/modules/agile-planning
+git commit -m "feat: FR-UX-14 B2 — BacklogIssueResponse 3필드 (backlog·sprints 양쪽)"
+```
+
+**검증**. `./gradlew :modules:agile-planning:test --tests '*BacklogApplicationServiceTest'`
+
+---
+
+### Task 6. 컨트롤러 통합 — 응답 JSON 에 3필드가 실제로 나가는지
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- depends-on: [4, 5]
+
+DTO 단위 테스트는 객체까지만 본다. **직렬화된 JSON 까지** 확인해야 FR8(빈 배열 직렬화)이 증명된다.
+
+- [ ] **Step 1 (RED). 보드 단건 조회 JSON**
+
+```kotlin
+@Test
+fun `보드 단건 조회 응답 카드에 유형 라벨 추정이 담긴다`() {
+    mockMvc.perform(get("/api/v1/projects/{key}/boards/{id}", PROJECT_KEY, boardId).with(authenticated()))
+        .andExpect(status().isOk)
+        .andExpect(jsonPath("$.data.columns[0].cards[0].typeKey").value("bug"))
+        .andExpect(jsonPath("$.data.columns[0].cards[0].labels[0]").value("urgent"))
+        .andExpect(jsonPath("$.data.columns[0].cards[0].originalEstimateSeconds").value(3600))
+}
+
+@Test
+fun `라벨 없는 카드의 labels 는 null 이 아니라 빈 배열로 직렬화된다`() {
+    mockMvc.perform(get("/api/v1/projects/{key}/boards/{id}", PROJECT_KEY, boardId).with(authenticated()))
+        .andExpect(status().isOk)
+        // isEmpty() 가 아니라 배열 존재 + 길이 0 을 본다 — null 이면 이 단언이 깨진다.
+        .andExpect(jsonPath("$.data.columns[0].cards[1].labels").isArray)
+        .andExpect(jsonPath("$.data.columns[0].cards[1].labels.length()").value(0))
+}
+```
+
+- [ ] **Step 2. RED 확인 → GREEN 확인**
+
+Run: `./gradlew :modules:agile-planning:test --tests '*BoardControllerIntegrationTest'`
+Expected: 먼저 FAIL(경로 없음) → Task 4·5 반영 후 PASS
+
+- [ ] **Step 3. 커밋**
+
+```bash
+git add backend/modules/agile-planning/src/test
+git commit -m "test: FR-UX-14 B2 — 카드 응답 JSON 3필드 통합 검증"
+```
+
+**검증**. `./gradlew :modules:agile-planning:test --tests '*BoardControllerIntegrationTest'`
+
+---
+
+### Task 7. 문서 동기화 + 전량 회귀
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plan/product/personalization.md`, `docs/plan/README.md`]
+- depends-on: [1, 2, 3, 4, 5, 6]
+
+- [ ] **Step 1. 정본 §4.12 의 D 마커 갱신 + D4 문구 정정**
+
+`docs/plan/product/personalization.md §4.12`.
+
+- `D1`·`D2`·`D3`·`D4`·`D5` 를 `- [x]` 로 바꾸고 근거를 한 줄씩 단다.
+- **D4 문구를 정정한다** — 원문의 `typeIconName` 을 빼고, SELECT 확장 범위를
+  "라벨·추정은 이미 조회 중이라 매핑만, 유형만 JOIN 신규"로 고친다. ADR §D-1/§전복 2 근거.
+- `D6`(프론트)·`D7`(E2E)은 **F14 잔여이므로 `- [ ]` 유지**한다.
+
+- [ ] **Step 2. 진척 카운트 재실측** — 계획 시점 숫자는 유통기한이 있다
+
+```bash
+grep -rhoE '^- \[x\] D[0-9]+\.' docs/plan/product/*.md | wc -l   # 완료
+grep -rhoE '^- \[ \] D[0-9]+\.' docs/plan/product/*.md | wc -l   # 미완
+```
+
+`docs/plan/README.md` §1 의 진척 문단을 **실측값으로** 갱신한다. FR 총수 **139 불변**.
+
+- [ ] **Step 3. verify + 대시보드**
+
+Run: `bash scripts/verify-master-plan.sh`
+Expected: 종료 0 (종료 4 면 문서 간 drift 가 남은 것)
+
+Run: `node scripts/build-doc-index.mjs`
+Expected: `PASS. 고아 0 · 깨진 링크 0`
+
+- [ ] **Step 4. 전량 회귀 + 범위 증명**
+
+```bash
+./gradlew :modules:shared-kernel:test :modules:issue-tracking:test :modules:agile-planning:test
+./gradlew :modules:shared-kernel:ktlintCheck :modules:issue-tracking:ktlintCheck :modules:agile-planning:ktlintCheck
+git diff --name-only main...HEAD | grep -c '^apps/'              # → 0
+git diff --name-only main...HEAD | grep -c 'db/migration'        # → 0
+```
+
+- [ ] **Step 5. 커밋**
+
+```bash
+git add docs/
+git commit -m "docs: FR-UX-14 B2 — 정본 D1~D5 마킹 + D4 문구 정정"
+```
+
+**검증**. `bash scripts/verify-master-plan.sh` 종료 0
+
+## Plan 메타
+
+- task 수: **7**
+- 예상 wave: **4** — W1[T1] → W2[T2·T3·T4·T5 병렬] → W3[T6] → W4[T7]
+  - T1 은 컴파일 원자 단위라 단독 wave 다(§지배 제약).
+  - T2·T3·T4·T5 는 파일 교집합이 없어 동시 실행 가능하다.
+- 구현 규율: **TDD red→green→refactor** (`test:` 커밋이 `feat:` 커밋보다 먼저)
+- 병렬 dispatch: `bts-impl` 이 위 `depends-on` + `files` 로 wave 계산
+- 추가 검증: `ktlintCheck` · `detekt` · `verify-master-plan.sh` · `build-doc-index.mjs`
+- **타협 불가 2건** — Task 3 Step 2 의 **비-공허 확인**(FAIL 출력을 PR 본문에 인용),
+  Task 2 의 **대조군 픽스처**(축마다 다른 값 2건 + 빈 값 1건, 키 단위 대조)
+
+### 병렬 dispatch 시 주의 (같은 worktree 공유)
+
+- 커밋 직전 **`git diff --cached --name-only` 로 내 파일만 담겼는지 확인**한다 —
+  `lint-staged` 의 stash/restore 가 피어의 미추적 파일을 인덱스에 올린 전례가 있다
+  ([[worktree-lint-staged-steals-peer-untracked]], PR #343 에서 2회 관측).
+- 원복이 필요하면 **역방향 Edit** 만 쓴다. `git checkout --` / `stash` / `reset` **전면 금지**.
+- 임시 파일은 `/tmp/t<task번호>-*.log` 처럼 task 접두사를 붙인다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
