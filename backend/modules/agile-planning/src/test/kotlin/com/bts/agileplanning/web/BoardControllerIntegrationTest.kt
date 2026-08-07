@@ -85,6 +85,8 @@ import java.util.UUID
  * - WIP-E5. 미존재 boardId로 두 PATCH → 404.
  * - WIP-E6. CREATE 권한 미충족 → 403 (실제 403 단언, vacuous 금지).
  * - WIP-E7. 미인증 → 401.
+ * - NULL-1. 카드 nullable 필드(originalEstimateSeconds/epicKey/rank)가 null 이어도
+ *   응답 키 자체는 존재한다(프론트 Zod `.nullable()` 계약 가드, FR-UX-14 F14 후속).
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BoardControllerIntegrationTest.TestMvcConfig::class])
@@ -1092,5 +1094,67 @@ class BoardControllerIntegrationTest {
         )
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value("AGILE_UNAUTHENTICATED"))
+    }
+
+    // ── NULL-1. 카드 nullable 필드가 null 이어도 키는 존재한다 (계약 가드) ────────
+
+    /**
+     * 프론트 Zod 스키마(`apps/web/src/api/boards.ts`)가 `originalEstimateSeconds` 를
+     * `z.number().int().nullable()` 로 선언한다 — `.nullish()` 가 아니라 **키가 반드시
+     * 존재**해야 하고 값만 null 일 수 있다는 계약이다. `agile-planning` 모듈에는
+     * `@JsonInclude` 관용구가 0건이라 Jackson 기본값(null 도 키와 함께 직렬화)에
+     * 기대고 있는데, 누군가 이 DTO 에 `@JsonInclude(NON_NULL)` 을 붙이면(다른 3개
+     * 모듈이 이미 이 관용구를 쓴다) 키 자체가 사라져 프론트가 파싱 단계에서 깨진다.
+     * 이 회귀를 값이 아니라 **키의 존재**로 단언해 막는다.
+     *
+     * `jsonPath(...).value(null)` 은 키가 아예 없어도 통과할 수 있어 가드가 공허해진다
+     * (JsonPath 읽기가 실패해도 Spring 매처가 null 을 돌려주기 때문). 대신
+     * `hasJsonPath()` 를 쓴다 — Spring `JsonPathExpectationsHelper.hasJsonPath()` 는
+     * 내부적으로 JsonPath 읽기가 `PathNotFoundException` 을 던지는지로만 판정하므로,
+     * 값이 null 이어도 키가 존재하면 통과하고 키 자체가 없으면 실패한다
+     * (바이트코드 실측 + `@JsonInclude(NON_NULL)` 임시 부여 실험으로 확인 — FR-UX-14 F14 후속).
+     * `epicKey`·`rank` 는 프론트가 이미 `.nullish()` 로 방어하지만 같은 DTO 의 nullable
+     * 필드라 정보성으로 함께 못박는다.
+     */
+    @Test
+    fun `GET boards id 카드 nullable 필드가 null 이어도 originalEstimateSeconds epicKey rank 키는 존재한다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns =
+                    listOf(
+                        PlacedColumn(
+                            column = board.columns[0],
+                            cards =
+                                listOf(
+                                    BoardIssueView(
+                                        key = "BTS-1",
+                                        summary = "널 필드 이슈",
+                                        currentStateKey = "open",
+                                        assigneeId = null,
+                                        priority = 1,
+                                        version = 1L,
+                                        typeKey = "task",
+                                        epicKey = null,
+                                        rank = null,
+                                        originalEstimateSeconds = null,
+                                    ),
+                                ),
+                        ),
+                        PlacedColumn(column = board.columns[1], cards = emptyList()),
+                        PlacedColumn(column = board.columns[2], cards = emptyList()),
+                    ),
+                truncated = false,
+                unplacedCount = 0,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            // 신원을 먼저 고정한 뒤 nullable 필드 키 존재를 본다
+            .andExpect(jsonPath("$.data.columns[0].cards[0].issueKey").value("BTS-1"))
+            .andExpect(jsonPath("$.data.columns[0].cards[0].originalEstimateSeconds").hasJsonPath())
+            .andExpect(jsonPath("$.data.columns[0].cards[0].epicKey").hasJsonPath())
+            .andExpect(jsonPath("$.data.columns[0].cards[0].rank").hasJsonPath())
     }
 }
