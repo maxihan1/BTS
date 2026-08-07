@@ -46,6 +46,9 @@ const baseIssue: BacklogIssue = {
   rank: 'aaa',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 function renderCard(

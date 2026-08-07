@@ -82,6 +82,9 @@ const issue1: BacklogIssue = {
   rank: 'aaa',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 function renderSprintColumn(
@@ -268,6 +271,9 @@ const issue2Sprint: BacklogIssue = {
   rank: 'bbb',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 /** 화면에 실제로 그려진 카드의 이슈 키 — `data-card-droppable` 은 `card:{context}:{key}` 다 */

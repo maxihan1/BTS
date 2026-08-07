@@ -126,7 +126,7 @@ const boardFixture: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
     {
@@ -138,7 +138,7 @@ const boardFixture: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-3', summary: '완료된 이슈', assigneeId: null, version: 5, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-3', summary: '완료된 이슈', assigneeId: null, version: 5, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
     {
@@ -150,7 +150,7 @@ const boardFixture: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
   ],
@@ -415,7 +415,7 @@ const boardWithTwoCardsInTodo: BoardDetail = {
           ...col,
           cards: [
             ...col.cards,
-            { issueKey: 'ATLAS-4', summary: '네 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-4', summary: '네 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
           ],
         }
       : col,
@@ -565,10 +565,10 @@ const assigneeSwimlaneBoard: BoardDetail = {
       ? {
           ...col,
           cards: [
-            { issueKey: 'ATLAS-1', summary: '담당자 변경 대상', assigneeId: ASSIGNEE_ID_ALICE, version: 1, priority: 1, epicKey: null, rank: null },
-            { issueKey: 'ATLAS-4', summary: '담당자 박밥', assigneeId: ASSIGNEE_ID_BOB, version: 2, priority: 1, epicKey: null, rank: null },
-            { issueKey: 'ATLAS-5', summary: '담당자 이름 조회 실패', assigneeId: ASSIGNEE_ID_UNRESOLVED, version: 3, priority: 1, epicKey: null, rank: null },
-            { issueKey: 'ATLAS-6', summary: '미배정', assigneeId: null, version: 4, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-1', summary: '담당자 변경 대상', assigneeId: ASSIGNEE_ID_ALICE, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+            { issueKey: 'ATLAS-4', summary: '담당자 박밥', assigneeId: ASSIGNEE_ID_BOB, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+            { issueKey: 'ATLAS-5', summary: '담당자 이름 조회 실패', assigneeId: ASSIGNEE_ID_UNRESOLVED, version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+            { issueKey: 'ATLAS-6', summary: '미배정', assigneeId: null, version: 4, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
           ],
         }
       : col,
@@ -590,8 +590,8 @@ const prioritySwimlaneBoard: BoardDetail = {
       ? {
           ...col,
           cards: [
-            { issueKey: 'ATLAS-1', summary: '우선순위 3', assigneeId: null, version: 1, priority: 3, epicKey: null, rank: null },
-            { issueKey: 'ATLAS-4', summary: '우선순위 1', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-1', summary: '우선순위 3', assigneeId: null, version: 1, priority: 3, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+            { issueKey: 'ATLAS-4', summary: '우선순위 1', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
           ],
         }
       : col,
@@ -607,9 +607,9 @@ const epicSwimlaneBoard: BoardDetail = {
       ? {
           ...col,
           cards: [
-            { issueKey: 'ATLAS-1', summary: '에픽 ATLAS-10', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-10', rank: null },
-            { issueKey: 'ATLAS-4', summary: '에픽 ATLAS-20', assigneeId: null, version: 2, priority: 1, epicKey: 'ATLAS-20', rank: null },
-            { issueKey: 'ATLAS-5', summary: '에픽 없음', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-1', summary: '에픽 ATLAS-10', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-10', rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+            { issueKey: 'ATLAS-4', summary: '에픽 ATLAS-20', assigneeId: null, version: 2, priority: 1, epicKey: 'ATLAS-20', rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+            { issueKey: 'ATLAS-5', summary: '에픽 없음', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
           ],
         }
       : col,

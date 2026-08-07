@@ -52,6 +52,9 @@ const issue1: BacklogIssue = {
   rank: 'aaa',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const issue2: BacklogIssue = {
@@ -63,6 +66,9 @@ const issue2: BacklogIssue = {
   rank: 'bbb',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const assigneeNames = new Map<string, string>([['ATLAS-1', '박지현']])

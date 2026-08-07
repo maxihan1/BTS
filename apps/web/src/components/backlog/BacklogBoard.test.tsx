@@ -705,6 +705,9 @@ const TWO_ISSUE_SPRINT_VIEW: BacklogView = {
           rank: '0|a:',
           version: 0,
           epicKey: null,
+          typeKey: 'task',
+          labels: [],
+          originalEstimateSeconds: null,
         },
         {
           key: 'ATLAS-9',
@@ -715,6 +718,9 @@ const TWO_ISSUE_SPRINT_VIEW: BacklogView = {
           rank: '0|b:',
           version: 0,
           epicKey: null,
+          typeKey: 'task',
+          labels: [],
+          originalEstimateSeconds: null,
         },
       ],
     },
@@ -1707,6 +1713,9 @@ const NO_SPRINT_VIEW: BacklogView = {
       rank: '0|a:',
       version: 0,
       epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
     } satisfies BacklogIssue,
   ],
   sprints: [],
@@ -2017,6 +2026,9 @@ function issue(
     rank: `0|${key}:`,
     version: 0,
     epicKey,
+    typeKey: 'task',
+    labels: [],
+    originalEstimateSeconds: null,
   }
 }
 

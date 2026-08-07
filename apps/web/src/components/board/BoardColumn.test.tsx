@@ -63,9 +63,9 @@ const columnWithCards: BoardColumnType = {
   wipLimit: null,
   wipExceeded: false,
   cards: [
-    { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null },
-    { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
-    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3, priority: 1, epicKey: null, rank: null },
+    { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+    { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
   ],
 }
 
@@ -159,7 +159,7 @@ describe('BoardColumn — S2 카드 목록 렌더', () => {
   it('S2f: assigneeNames에 없는 카드는 fallback unassigned로 표시한다', () => {
     const col: BoardColumnType = {
       ...columnWithCards,
-      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null }],
+      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null }],
     }
     renderColumn(col, new Map())
     // Map에 없으므로 unassigned fallback
@@ -228,8 +228,8 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
       wipLimit: 5,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-10', summary: '이슈 10', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-        { issueKey: 'ATLAS-11', summary: '이슈 11', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-10', summary: '이슈 10', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-11', summary: '이슈 11', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     }
     renderColumn(col, new Map())
@@ -249,9 +249,9 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
       wipLimit: 2,
       wipExceeded: true,
       cards: [
-        { issueKey: 'ATLAS-20', summary: '이슈 20', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-        { issueKey: 'ATLAS-21', summary: '이슈 21', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
-        { issueKey: 'ATLAS-22', summary: '이슈 22', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-20', summary: '이슈 20', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-21', summary: '이슈 21', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-22', summary: '이슈 22', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     }
     renderColumn(col, new Map())
@@ -284,8 +284,8 @@ describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
     wipLimit: null,
     wipExceeded: false,
     cards: [
-      { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null },
-      { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -347,8 +347,8 @@ describe('BoardColumn — S9 스윔레인 EPIC 그룹', () => {
     wipLimit: null,
     wipExceeded: false,
     cards: [
-      { issueKey: 'ATLAS-1', summary: 'E1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-EP-1', rank: null },
-      { issueKey: 'ATLAS-2', summary: '에픽 없음 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-1', summary: 'E1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-EP-1', rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-2', summary: '에픽 없음 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -389,8 +389,8 @@ describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
     wipLimit: 2,
     wipExceeded: true,
     cards: [
-      { issueKey: 'ATLAS-30', summary: '이슈 30', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-      { issueKey: 'ATLAS-31', summary: '이슈 31', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-30', summary: '이슈 30', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-31', summary: '이슈 31', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -450,8 +450,8 @@ describe('BoardColumn — S7 스윔레인 PRIORITY 그룹', () => {
     wipLimit: null,
     wipExceeded: false,
     cards: [
-      { issueKey: 'ATLAS-10', summary: 'P1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-      { issueKey: 'ATLAS-11', summary: 'P2 이슈', assigneeId: null, version: 2, priority: 2, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-10', summary: 'P1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-11', summary: 'P2 이슈', assigneeId: null, version: 2, priority: 2, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 

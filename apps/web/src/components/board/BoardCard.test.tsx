@@ -53,6 +53,9 @@ const baseCard: BoardCardType = {
   priority: 1,
   epicKey: null,
   rank: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const COLUMN_ID = 'col-uuid-0001'

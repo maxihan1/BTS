@@ -136,6 +136,9 @@ function issue(key: string, currentStateKey = 'open'): BacklogIssue {
     rank: null,
     version: 1,
     epicKey: null,
+    typeKey: 'task',
+    labels: [],
+    originalEstimateSeconds: null,
   }
 }
 

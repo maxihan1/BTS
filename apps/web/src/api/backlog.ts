@@ -39,6 +39,21 @@ export const backlogIssueSchema = z.object({
   version: z.number().int(),
   /** 속한 에픽 이슈 키. 에픽 없으면 null. nullish 방어 */
   epicKey: z.string().nullish().transform((v) => v ?? null),
+  /**
+   * 이슈 유형 키. 예: "task", "bug", "story".
+   * 백엔드 BacklogIssueResponse.typeKey — 항상 전송(필수·non-null). FR-UX-14 B2 #346.
+   */
+  typeKey: z.string().min(1),
+  /**
+   * 라벨 이름 목록. 값이 없어도 빈 배열로 온다(null 아님). FR-UX-14 B2 #346.
+   */
+  labels: z.array(z.string()),
+  /**
+   * 최초 추정 시간(초). 미추정이면 null.
+   * agile-planning 모듈은 @JsonInclude(NON_NULL)이 적용되지 않아 키가 항상 살아 온다.
+   * FR-UX-14 B2 #346.
+   */
+  originalEstimateSeconds: z.number().int().nullable(),
 })
 
 /**
