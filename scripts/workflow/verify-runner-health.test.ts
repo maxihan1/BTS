@@ -51,17 +51,19 @@ function run(root: string, extraEnv: Record<string, string> = {}): { code: numbe
   }
 }
 
-/** 2026-08-07 실측 그대로. 고갈 = load 34.43 / 8코어 = 4.30배 · swap 15,014MB */
+/** 2026-08-07 실측 그대로. 고갈 = load 34.43/8코어 = 4.30배 · swap 15,014M/16GB = 91.6% */
 const EXHAUSTED = {
   BTS_RUNNER_FAKE_LOAD: '34.43',
   BTS_RUNNER_FAKE_SWAP_MB: '15014',
   BTS_RUNNER_FAKE_NCPU: '8',
+  BTS_RUNNER_FAKE_MEM_MB: '16384',
 };
-/** 같은 머신의 정리 후 상태. load 7.72 / 8 = 0.97배 · swap 3,556MB */
+/** 같은 머신의 정리 후 상태. load 7.72/8 = 0.97배 · swap 3,556M/16GB = 21.7% */
 const HEALTHY_RESOURCE = {
   BTS_RUNNER_FAKE_LOAD: '7.72',
   BTS_RUNNER_FAKE_SWAP_MB: '3556',
   BTS_RUNNER_FAKE_NCPU: '8',
+  BTS_RUNNER_FAKE_MEM_MB: '16384',
 };
 
 /** 툴캐시 완료 표식. 이 파일의 존재가 setup-* 의 「캐시 히트」 판정 근거다. */
@@ -220,6 +222,33 @@ describe('러너 자원 고갈 판정', () => {
       bigMachine.out,
       /러너 자원 고갈/,
       `절대 load 로 판정하고 있다 — 러너 교체 시 판정이 조용히 어긋난다\n${bigMachine.out}`,
+    );
+  });
+
+  test('★스왑도 물리 메모리 대비 비율이다 — 큰 머신에서 같은 MB 가 정상이 된다', () => {
+    // load 를 비율로 짜 놓고 swap 만 절대 MB 로 두면 같은 논리를 절반만 적용한 것이 된다.
+    // 8,000MB 는 16GB 머신에서 48.8%(정상 경계)지만 8GB 머신에서는 97.7%(고갈)다.
+    // 실물 검증에서 드러난 결함이다 — 이 러너의 4,348MB 가 16GB 대비 26.5% 인데도 경고가 떴다.
+    const bigMachine = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_SWAP_MB: '8000',
+      BTS_RUNNER_FAKE_MEM_MB: '65536', // 64GB
+    });
+    const smallMachine = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_RUNNER_FAKE_SWAP_MB: '8000',
+      BTS_RUNNER_FAKE_MEM_MB: '8192', // 8GB — 같은 8,000MB 가 97.7%
+    });
+
+    assert.doesNotMatch(
+      bigMachine.out,
+      /러너 자원 고갈/,
+      `절대 MB 로 판정하고 있다 — 큰 머신으로 옮기면 경고가 상시화되어 무시된다\n${bigMachine.out}`,
+    );
+    assert.match(
+      smallMachine.out,
+      /러너 자원 고갈/,
+      `같은 8,000MB 라도 8GB 머신에서는 고갈이다 — 비율 판정이 안 되고 있다\n${smallMachine.out}`,
     );
   });
 
