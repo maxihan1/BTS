@@ -5,6 +5,9 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@/lib/utils'
 import type { BoardCard as BoardCardType } from '@/api/boards'
+import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
+import { CardLabelChips } from '@/components/issue/CardLabelChips'
+import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 담당자 표시 3-상태 discriminated union
@@ -38,6 +41,18 @@ export interface BoardCardProps {
    * 페이지가 userId → displayName 해석 후 주입한다.
    */
   assignee: CardAssigneeDisplay
+  /**
+   * 이슈 타입 아이콘 식별자 (IssueTypeIcon 원시 prop).
+   * BoardColumn이 issueTypesByKey로 card.typeKey를 해석해 주입한다.
+   * 해석 실패(매핑 없음)면 null — IssueTypeIcon이 Circle로 fallback한다.
+   * 객체가 아닌 원시 값으로 받는 이유는 FR3 — memo 얕은 비교가 매 렌더 새 객체로 무력화되지 않도록 한다.
+   */
+  typeIconName: string | null
+  /**
+   * 이슈 타입 표시 이름. IssueTypeIcon의 aria-label로 그대로 쓰인다.
+   * 해석 실패 시 card.typeKey 원문을 그대로 전달한다(FR6) — 빈 문자열이나 "알 수 없음"으로 뭉개지 않는다.
+   */
+  typeName: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,7 +104,7 @@ function AssigneeSlot({ assignee }: { assignee: CardAssigneeDisplay }): React.Re
 // 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BoardCardInner({ card, columnId, assignee }: BoardCardProps) {
+function BoardCardInner({ card, columnId, assignee, typeIconName, typeName }: BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.issueKey,
     data: { fromColumnId: columnId },
@@ -128,10 +143,19 @@ function BoardCardInner({ card, columnId, assignee }: BoardCardProps) {
         {card.summary}
       </Link>
 
-      {/* 하단 행: issueKey(보조) + 담당자 아바타 */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">{card.issueKey}</span>
-        <AssigneeSlot assignee={assignee} />
+      {/* 라벨 칩 행 — labels가 있을 때만 생성(FR9), 빈 배열이면 DOM 미생성 */}
+      <CardLabelChips labels={card.labels} />
+
+      {/* 하단 행: [유형 아이콘][issueKey] … [추정][담당자] (FR7) */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <IssueTypeIcon iconName={typeIconName} typeName={typeName} />
+          {card.issueKey}
+        </span>
+        <div className="flex items-center gap-1">
+          <CardEstimateBadge seconds={card.originalEstimateSeconds} />
+          <AssigneeSlot assignee={assignee} />
+        </div>
       </div>
     </div>
   )
@@ -151,6 +175,12 @@ function BoardCardInner({ card, columnId, assignee }: BoardCardProps) {
  *   같은 셀 내 포인터/키보드 순서변경에 참여한다.
  * - 카드 클릭 시 이슈 상세(`/issues/:key`)로 이동하며, 드래그 중엔 네비게이션이 막힌다.
  * - 드래그 중(`isDragging`)에는 원위치 카드에 `opacity-50`을 적용해 placeholder처럼 흐리게 표시한다.
- * - `memo`로 래핑되어 props가 변하지 않으면 재렌더하지 않는다.
+ * - FR-UX-14 F14 3요소 — `CardLabelChips`(FR9, 라벨 없으면 DOM 미생성) · 하단 행의
+ *   `IssueTypeIcon`(FR6, 해석 실패 시 typeKey 원문 + Circle fallback) · `CardEstimateBadge`
+ *   (FR10, null이면 DOM 미생성)를 렌더한다. 카드 루트의 `aria-label`/`aria-roledescription`은
+ *   Jira 패리티 계약 §2에 따라 변경하지 않는다(FR13).
+ * - `memo`로 래핑되어 props가 변하지 않으면 재렌더하지 않는다. `typeIconName`/`typeName`을
+ *   객체가 아닌 원시 값 2개로 받는 이유도 이 얕은 비교(shallow compare)가 매 렌더 새 객체로
+ *   무력화되지 않게 하기 위함이다(FR3).
  */
 export const BoardCard = memo(BoardCardInner)
