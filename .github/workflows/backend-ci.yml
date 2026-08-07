@@ -63,9 +63,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다 ──
+  runner-health:
+    uses: ./.github/workflows/runner-health.yml
+
   # ── BC 모듈 — Testcontainers 자체 기동, 서비스 컨테이너 불요 ──────────────────
   modules:
     name: ${{ matrix.module }}
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     # 관측치(2026-07-27 로컬). issue-tracking 7~10분 · identity-access 10~16분 · 나머지 5분 이하.
     # CI 러너는 로컬보다 느리므로 여유를 크게 잡는다. 매트릭스라 총 과금 시간은 늘지만 벽시계는 줄어든다.
@@ -124,6 +129,7 @@ jobs:
   # 되돌려서 `services:` 를 다시 쓰면 ci-runner-label-alignment.test.ts 가 차단한다.
   assembly:
     name: app (조립 부팅)
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 30
     env:
@@ -215,6 +221,7 @@ jobs:
   # ── 정적 분석 — 테스트와 독립 예산. --rerun-tasks 로 캐시 거짓 초록을 막는다 ──
   lint:
     name: ktlint + detekt
+    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 20
     steps:
