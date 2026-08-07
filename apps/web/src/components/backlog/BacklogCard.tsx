@@ -6,6 +6,9 @@ import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { cardDroppableId } from '@/lib/backlog-drag'
+import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
+import { CardLabelChips } from '@/components/issue/CardLabelChips'
+import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 import type { BacklogIssue } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +76,20 @@ export interface BacklogCardProps {
    * - string → 이니셜 아바타
    */
   assigneeName?: string
+  /**
+   * 이슈 타입 아이콘 식별자 — `IssueTypeIcon`에 그대로 전달한다 (FR-UX-14 F14 Task 4).
+   * 부모(`BacklogColumn`/`SprintColumn`)가 `issueTypesByKey` 맵으로 미리 해석해 넘긴다.
+   * 미해석(맵에 없음)이면 `null` — fallback 아이콘(`Circle`)으로 렌더된다 (FR6).
+   *
+   * 원시 문자열인 이유. 객체(`IssueTypeResponse`) 통째로 받으면 부모가 매 렌더 새
+   * 참조를 만들어 `memo` 비교가 깨진다 — `typeName`도 같은 이유로 원시 문자열이다.
+   */
+  typeIconName: string | null
+  /**
+   * 이슈 타입 표시 이름 — `IssueTypeIcon`의 접근성 이름(`aria-label`)이 된다.
+   * 부모가 맵에서 못 찾으면 `issue.typeKey` 원문을 그대로 넘긴다 (FR6 fallback).
+   */
+  typeName: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,7 +148,14 @@ function AssigneeSlot({
 // 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BacklogCardInner({ issue, context, sprintId, assigneeName }: BacklogCardProps) {
+function BacklogCardInner({
+  issue,
+  context,
+  sprintId,
+  assigneeName,
+  typeIconName,
+  typeName,
+}: BacklogCardProps) {
   const resolvedSprintId = sprintId ?? null
 
   const dragData: BacklogDragData = {
@@ -203,16 +227,24 @@ function BacklogCardInner({ issue, context, sprintId, assigneeName }: BacklogCar
         {issue.summary}
       </Link>
 
-      {/* 하단 행: issueKey + 우선순위 + 담당자 */}
+      {/* 라벨 칩 행 — 라벨이 없으면 DOM 자체가 없다 (`CardLabelChips` FR9) */}
+      <CardLabelChips labels={issue.labels} />
+
+      {/* 하단 행: [유형 아이콘][issueKey] — [P{priority}][추정][담당자] (FR7) */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{issue.key}</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <IssueTypeIcon iconName={typeIconName} typeName={typeName} />
+          <span className="text-xs text-muted-foreground">{issue.key}</span>
+        </div>
         <div className="flex items-center gap-1">
           <span
             aria-label={`우선순위 ${issue.priority}`}
-            className="rounded px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
+            className="rounded-sm px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
           >
             P{issue.priority}
           </span>
+          {/* 추정 배지 — 미추정(null)이면 DOM 자체가 없다 (`CardEstimateBadge` FR10) */}
+          <CardEstimateBadge seconds={issue.originalEstimateSeconds} />
           <AssigneeSlot assigneeId={issue.assigneeId} assigneeName={assigneeName} />
         </div>
       </div>
@@ -227,7 +259,15 @@ function BacklogCardInner({ issue, context, sprintId, assigneeName }: BacklogCar
 /**
  * 백로그·스프린트 칸의 개별 이슈 카드.
  *
- * - summary를 주 정보로(2줄 truncate), issueKey와 우선순위를 보조로 표시한다.
+ * - summary를 주 정보로(2줄 truncate), 라벨 칩 행 + 하단 행(유형 아이콘·issueKey·우선순위·
+ *   추정·담당자)을 보조로 표시한다 (FR-UX-14 F14 Task 4).
+ * - 보드 카드(`BoardCard`)와 대부분 동형이지만 **`P{priority}` 칩을 그대로 유지**한다 —
+ *   보드는 컬럼 자체가 우선순위 정보를 대신하지 않지만, 백로그는 스프린트 계획 단계에서
+ *   우선순위를 한눈에 봐야 하므로 칩을 없애지 않는다.
+ * - 라벨·추정 배지는 각각 `CardLabelChips`/`CardEstimateBadge`(보드와 공유) 에 위임한다 —
+ *   값이 없으면 두 컴포넌트 모두 DOM 자체를 만들지 않는다.
+ * - `typeIconName`/`typeName`은 부모가 `issueTypesByKey` 맵으로 미리 해석해 원시 문자열로
+ *   넘긴다 — 이 컴포넌트는 맵을 모른다.
  * - assigneeName 유무·assigneeId 유무에 따라 이니셜/미확인(?)/미배정 세 상태를 표시한다.
  * - `useDraggable`로 드래그 핸들을 제공한다. data에 context·sprintId를 담아 부모가 이동 방향을 계산한다.
  * - 카드 클릭 시 이슈 상세(`/issues/:key`)로 이동하며, 드래그 중엔 네비게이션이 막힌다.

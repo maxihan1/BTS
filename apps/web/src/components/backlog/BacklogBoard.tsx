@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { useBacklog, useCreateSprint } from '@/hooks/use-backlog'
 import { useUsersByIdsChunked } from '@/hooks/use-users'
 import { useBacklogEpics } from '@/hooks/use-backlog-epics'
+import { useIssueTypes } from '@/hooks/use-issue-types'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { collectAssigneeIds, buildAssigneeNameMap } from './backlog-assignee-names'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
@@ -341,6 +343,16 @@ export function BacklogBoard({
     [backlogView, assigneeUsers],
   )
 
+  // 이슈 타입 — 카드의 유형 아이콘·이름 해석용 맵 (FR-UX-14 F14 Task 4). 칸마다 부르지 않고
+  // 이 컴포넌트에서 **1회만** 조회해 스프린트 칸 전체 + 백로그 칸에 공유한다.
+  // ★조기 반환(`isLoading`)보다 **위**에 있어야 한다 — 위 담당자 이름 블록과 같은 이유다.
+  // 조회 실패·로딩 중이면 빈 배열 → 빈 맵 → 전 카드가 FR6 fallback(typeKey 원문) 경로를 탄다.
+  const { data: issueTypes = [] } = useIssueTypes()
+  const issueTypesByKey = useMemo(
+    () => new Map(issueTypes.map((t) => [t.key, t])),
+    [issueTypes],
+  )
+
   // 필터 (F16). ★상태 소유자는 **URL** 이다 (F16-9) — 이 컴포넌트는 받은 값을 그릴 뿐이고,
   // 훅은 EC9 정합과 필터바 재마운트 토큰만 얹는다.
   const { epicKeys, epicNames } = useBacklogEpics(backlogView)
@@ -451,6 +463,7 @@ export function BacklogBoard({
           projectKey={projectKey}
           display={display}
           assigneeNames={assigneeNames}
+          issueTypesByKey={issueTypesByKey}
           overDroppableId={drag.overDroppableId}
           // 「필터가 걸려 있는데 보이는 것이 0건」일 때만 빈 상태다 (EC1).
           // 필터가 없는 0건은 칸의 기존 「이슈 없음」이 말한다 — 「고장」과 「할 일 없음」의 구별.
@@ -609,6 +622,8 @@ interface BacklogStackProps {
   readonly display: BacklogDisplay
   /** 이슈 키 → 담당자 표시 이름 */
   readonly assigneeNames: Map<string, string>
+  /** 이슈 타입 키 → 응답 맵 — 칸에 그대로 흘려보내 카드 유형 아이콘을 해석한다 (F14 Task 4) */
+  readonly issueTypesByKey: Map<string, IssueTypeResponse>
   /** 드래그가 올라가 있는 droppable id */
   readonly overDroppableId: string | null
   /** 필터가 하나라도 걸려 있는가 — 0건 빈 상태의 종류를 가른다 (EC1) */
@@ -645,6 +660,7 @@ function BacklogStack({
   projectKey,
   display,
   assigneeNames,
+  issueTypesByKey,
   overDroppableId,
   filterActive,
   onResetFilter,
@@ -679,6 +695,7 @@ function BacklogStack({
           sprint={meta}
           issues={issues}
           assigneeNames={assigneeNames}
+          issueTypesByKey={issueTypesByKey}
           isOver={overDroppableId === `sprint-${meta.sprintId}`}
           // 버튼은 곧장 mutation 을 쏘지 않고 다이얼로그를 연다 (F15 FR-3 · FR-5).
           // 버튼 **이름**(`스프린트 시작`·`스프린트 완료`)은 그대로다 (FR-10 즉사 계약).
@@ -696,6 +713,7 @@ function BacklogStack({
         projectKey={projectKey}
         issues={display.backlogIssues}
         assigneeNames={assigneeNames}
+        issueTypesByKey={issueTypesByKey}
         isOver={overDroppableId === 'backlog'}
         canCreateIssue={canCreateIssue}
         onCreateIssue={createIssue.openForBacklog}
