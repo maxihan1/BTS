@@ -5,7 +5,9 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue } from '@/api/backlog'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { taskIssueTypeFixture } from '@/mocks/issue-type-fixtures'
 import {
   backlogCollapsedStorageKey,
   useBacklogCollapsedStore,
@@ -86,6 +88,7 @@ function renderColumn(
   entry?: { canCreateIssue?: boolean; onCreateIssue?: () => void },
   projectKey: string = PROJECT_KEY,
   sprint?: { onCreateSprint?: (name: string) => void; createSprintDisabled?: boolean },
+  issueTypesByKey: Map<string, IssueTypeResponse> = new Map(),
 ) {
   return render(
     <DndContext>
@@ -93,6 +96,7 @@ function renderColumn(
         projectKey={projectKey}
         issues={issues}
         assigneeNames={names}
+        issueTypesByKey={issueTypesByKey}
         isOver={isOver}
         canCreateIssue={entry?.canCreateIssue}
         onCreateIssue={entry?.onCreateIssue}
@@ -151,6 +155,32 @@ describe('BacklogColumn — S2 카드 목록 렌더', () => {
   it('S2d: assigneeId=null 카드는 "미배정"을 표시한다', () => {
     renderColumn()
     expect(screen.getByText('미배정')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S2b. 이슈 타입 배선 (FR-UX-14 F14 Task 4)
+// ★두 칸(BacklogColumn·SprintColumn) 모두 issueTypesByKey 를 카드에 넘기는지 각자 잰다.
+//   한쪽만 배선하면 스프린트 칸(또는 백로그 칸) 카드만 아이콘이 없는 절반 봉합이 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogColumn — 이슈 타입 배선 (F14 Task 4)', () => {
+  it('issueTypesByKey 에 있으면 카드가 해석된 유형 이름으로 아이콘을 그린다', () => {
+    renderColumn(
+      [issue1],
+      assigneeNames,
+      false,
+      undefined,
+      PROJECT_KEY,
+      undefined,
+      new Map([[taskIssueTypeFixture.key, taskIssueTypeFixture]]),
+    )
+    expect(screen.getByRole('img', { name: taskIssueTypeFixture.name })).toBeInTheDocument()
+  })
+
+  it('맵에 없으면 typeKey 원문이 접근성 이름이 된다 (FR6 fallback)', () => {
+    renderColumn([issue1], assigneeNames, false, undefined, PROJECT_KEY, undefined, new Map())
+    expect(screen.getByRole('img', { name: issue1.typeKey })).toBeInTheDocument()
   })
 })
 
