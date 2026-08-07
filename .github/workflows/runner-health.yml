@@ -100,3 +100,56 @@ jobs:
             exit 1
           fi
           echo "러너 엔진 정상."
+
+      # ── 자원 고갈 점검 — 엔진이 정상인데도 CI 가 2배 이상 느려지는 상태 ──────────
+      #
+      # ★위 엔진 점검은 이 상태를 **전부 통과시킨다.** 바이너리가 멀쩡히 실행되기 때문이다.
+      # 2026-08-07 A/B 확증 — 동일 커밋 run 31139616352 를 `gh run rerun --job` 으로 재실행.
+      #   issue-tracking   1,380s (swap 15,014M · load 34.43) → 554s (swap 3,556M · load 7.72)
+      #   identity-access    739s                             → 384s
+      #   테스트 케이스 수는 3,247 → 3,247 로 증감 0. 코드가 아니라 머신이었다.
+      # 이 감속은 **초록불인 채** 일어나므로 사람이 「오늘 좀 느리네」로 넘긴다.
+      #
+      # ★★경고만 한다. 이 스텝은 절대 실패하지 않는다.
+      # 자원 회복은 사람이 해야 하는데 차단하면 회복 작업까지 멈춘다 — 위 엔진 점검의
+      # 「표식이 이미 없으면 경고」와 같은 구조의 교착이고, 그 실측이 run 31139123013 이다.
+      #
+      # ★판정 규칙은 scripts/verify-runner-health.sh 와 **동형**이어야 한다.
+      # 구조상 dedup 이 불가능한 두 복사본이고(이 잡은 checkout 앞이라 저장소 파일을 못 부른다),
+      # runner-healthcheck-wiring.test.ts 의 INVARIANTS 가 갈라짐을 차단한다.
+      - name: 러너 자원 점검 (경고 전용)
+        run: |
+          LOAD_RATIO_WARN=2.0   # 실측 — 고갈 4.30 (34.43/8코어) · 정상 0.97 (7.72/8코어)
+          SWAP_RATIO_WARN=0.5   # 실측 — 고갈 0.916 (15,014M/16GB) · 정상 0.217 (3,556M/16GB)
+
+          # ★둘 다 「비율」이다. 절대값을 쓰면 러너를 다른 머신으로 바꾸는 순간 같은 값이
+          #   다른 의미가 되는데 아무도 눈치채지 못한다.
+          NCPU="${BTS_RUNNER_FAKE_NCPU:-$(sysctl -n hw.ncpu 2>/dev/null || true)}"
+          LOAD="${BTS_RUNNER_FAKE_LOAD:-$(uptime 2>/dev/null | sed 's/.*averages*: *//' | awk '{print $1}')}"
+          SWAP_MB="${BTS_RUNNER_FAKE_SWAP_MB:-$(sysctl -n vm.swapusage 2>/dev/null | sed 's/.*used = //; s/M.*//')}"
+          MEM_MB="${BTS_RUNNER_FAKE_MEM_MB:-$(sysctl -n hw.memsize 2>/dev/null | awk '{ printf "%.0f", $1 / 1048576 }')}"
+
+          if [ -z "$NCPU" ] || [ -z "$LOAD" ] || [ -z "$SWAP_MB" ] || [ -z "$MEM_MB" ]; then
+            # macOS 전용 명령이다. 다른 OS 로 러너를 옮기면 여기로 떨어진다 —
+            # 조용히 통과하지 않고 「판정을 못 했다」를 남긴다.
+            echo "⚠️  자원 판정 건너뜀 — 측정 실패 (sysctl/uptime 은 macOS 기준이다)"
+            exit 0
+          fi
+
+          LOAD_RATIO=$(awk -v l="$LOAD" -v n="$NCPU" 'BEGIN { printf "%.2f", (n > 0 ? l / n : 0) }')
+          SWAP_RATIO=$(awk -v s="$SWAP_MB" -v m="$MEM_MB" 'BEGIN { printf "%.3f", (m > 0 ? s / m : 0) }')
+          OVER=$(awk -v r="$LOAD_RATIO" -v w="$LOAD_RATIO_WARN" -v sr="$SWAP_RATIO" -v sw="$SWAP_RATIO_WARN" \
+            'BEGIN { print (r >= w || sr >= sw) ? 1 : 0 }')
+
+          if [ "$OVER" -eq 1 ]; then
+            echo "⚠️  러너 자원 고갈 — load ${LOAD}/${NCPU}코어 = ${LOAD_RATIO}배 · swap ${SWAP_MB}/${MEM_MB}MB = ${SWAP_RATIO}"
+            echo "   이 run 의 테스트는 2배 이상 느려진다. 이 run 의 소요 시간을 믿지 마라."
+            echo "   실측. 2026-08-07 동일 커밋 A/B — issue-tracking 1380s ↔ 554s (테스트 수 증감 0)"
+            echo "   차단하지 않는다 — 회복은 사람이 하고, 막으면 회복 작업까지 멈춘다."
+            echo "   진단. top -l 1 -o mem -n 10   (docker system df 가 아니라 이쪽을 먼저 본다)"
+          else
+            echo "✅ 러너 자원 (load ${LOAD_RATIO}배 · swap ${SWAP_RATIO})"
+          fi
+
+          # ★이 스텝은 어떤 경우에도 성공으로 끝난다. 위 ★★ 주석 참조.
+          exit 0
