@@ -63,6 +63,21 @@ export const boardCardSchema = z.object({
    * 보드 카드 드래그 앤 드롭도 이 API를 호출해 rank를 갱신해야 한다(직접 소유·변이 금지).
    */
   rank: z.string().nullish().transform((v) => v ?? null),
+  /**
+   * 이슈 유형 키. 예: "task", "bug", "story".
+   * 백엔드 BoardCardResponse.typeKey — 항상 전송(필수·non-null). FR-UX-14 B2 #346.
+   */
+  typeKey: z.string().min(1),
+  /**
+   * 라벨 이름 목록. 값이 없어도 빈 배열로 온다(null 아님). FR-UX-14 B2 #346.
+   */
+  labels: z.array(z.string()),
+  /**
+   * 최초 추정 시간(초). 미추정이면 null.
+   * agile-planning 모듈은 @JsonInclude(NON_NULL)이 적용되지 않아 키가 항상 살아 온다.
+   * FR-UX-14 B2 #346.
+   */
+  originalEstimateSeconds: z.number().int().nullable(),
 })
 
 /**

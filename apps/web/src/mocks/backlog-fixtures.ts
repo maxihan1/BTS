@@ -374,6 +374,11 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
       // ★백로그 칸의 유일한 에픽 소속 이슈 (F16). 스프린트 쪽 ATLAS-4 와 **다른 에픽**이라
       //   「A 를 고르면 B 는 사라진다」와 「모든 섹션에 동시 적용」을 함께 잴 수 있다.
       epicKey: BACKLOG_EPIC_A.key,
+      typeKey: 'story',
+      // 라벨 2개 — FR-UX-14 D7 E2E 라벨 칩 렌더링 검증용 (라벨 수 0/2/4 최소 1건씩)
+      labels: ['frontend', 'documentation'],
+      // 추정 있음 — FR-UX-14 D7 E2E 추정 배지 렌더링 검증용 (null/9000 최소 1건씩)
+      originalEstimateSeconds: 9000,
     },
     {
       key: 'ATLAS-2',
@@ -384,6 +389,11 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
       rank: '0|i00007:',
       version: 0,
       epicKey: null,
+      typeKey: 'task',
+      // 라벨 없음 — 라벨 칩 미노출 경로 검증용
+      labels: [],
+      // 미추정 — 추정 배지 미노출 경로 검증용
+      originalEstimateSeconds: null,
     },
   ],
   sprints: [
@@ -410,6 +420,9 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           rank: '0|hzzzzz:',
           version: 0,
           epicKey: null,
+          typeKey: 'bug',
+          labels: ['security'],
+          originalEstimateSeconds: 1800,
         },
         {
           key: 'ATLAS-6',
@@ -420,6 +433,9 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           rank: '0|i00007:',
           version: 0,
           epicKey: null,
+          typeKey: 'task',
+          labels: [],
+          originalEstimateSeconds: null,
         },
       ],
     },
@@ -444,6 +460,10 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           rank: '0|hzzzzz:',
           version: 0,
           epicKey: null,
+          typeKey: 'task',
+          // 라벨 4개 — 라벨 수 0/2/4 최소 1건씩 요건의 4건 케이스
+          labels: ['frontend', 'backend', 'testing', 'refactor'],
+          originalEstimateSeconds: null,
         },
         {
           key: 'ATLAS-4',
@@ -456,6 +476,9 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           // ★스프린트 칸의 유일한 에픽 소속 이슈 (F16). 백로그 쪽 ATLAS-1 과 짝이다 —
           //   둘이 다른 섹션에 있어야 「에픽 필터가 스프린트 섹션도 좁힌다」가 성립한다.
           epicKey: BACKLOG_EPIC_B.key,
+          typeKey: 'story',
+          labels: ['bug'],
+          originalEstimateSeconds: 9000,
         },
       ],
     },
@@ -482,6 +505,9 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
           rank: '0|hzzzzz:',
           version: 0,
           epicKey: null,
+          typeKey: 'task',
+          labels: [],
+          originalEstimateSeconds: 3600,
         },
       ],
     },

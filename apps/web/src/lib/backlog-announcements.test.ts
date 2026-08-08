@@ -40,6 +40,9 @@ function issue(key: string): BacklogIssue {
     rank: key,
     version: 0,
     epicKey: null,
+    typeKey: 'task',
+    labels: [],
+    originalEstimateSeconds: null,
   }
 }
 

@@ -48,6 +48,9 @@ function card(issueKey: string, version = 1, overrides: CardOverrides = {}): Boa
     priority: overrides.priority ?? 1,
     epicKey: overrides.epicKey ?? null,
     rank: null,
+    typeKey: 'task',
+    labels: [],
+    originalEstimateSeconds: null,
   }
 }
 

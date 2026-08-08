@@ -146,12 +146,14 @@ function byRankNullsLast(a: { rank: string | null }, b: { rank: string | null })
 /**
  * StoredBoardDetail을 BoardDetail 응답 형식으로 변환한다.
  *
- * labels/componentIds는 store 내부 필터용 메타이며 응답 DTO(BoardCard)에 포함하지 않는다.
+ * componentIds는 store 내부 필터용 메타이며 응답 DTO(BoardCard)에 포함하지 않는다.
+ * labels는 FR-UX-14 B2(#346)부터 BoardCard 정식 필드라 필터 술어 평가와 응답 양쪽에 쓰인다.
  * params가 주어지면 matchesFilter를 적용해 카드를 걸러낸다.
  * quickFilters는 store에 없으면(WIP_BOARD 등 퀵필터를 다루지 않는 기존 fixture) 빈 배열로 방어한다.
  * 컬럼 카드는 rank(backlogStore 오버레이 적용) 오름차순으로 정렬해 반환한다(FR-UX-06 PR21 Task 8).
  * assigneeId/priority/epicKey는 issueOverrides 오버레이(resolveLiveField)를 적용한다
- * (FR-UX-06 PR21b Task 6).
+ * (FR-UX-06 PR21b Task 6). typeKey/labels/originalEstimateSeconds는 store 시드값을 그대로 반환한다
+ * (FR-UX-14 F14 — 필드변경 오버레이 대상이 아니다).
  *
  * @param stored store 내부 보드 데이터
  * @param params 필터 파라미터 (없으면 전체 카드 반환)
@@ -162,22 +164,38 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
     columns: stored.columns.map((col) => {
       const cards = col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(({ issueKey, summary, assigneeId, version, priority, epicKey, rank }): BoardCard => {
-          const liveField = resolveLiveField(issueKey, {
-            assigneeId,
-            priority,
-            epicKey: epicKey ?? null,
-          })
-          return {
+        .map(
+          ({
             issueKey,
             summary,
-            assigneeId: liveField.assigneeId,
+            assigneeId,
             version,
-            priority: liveField.priority,
-            epicKey: liveField.epicKey,
-            rank: resolveLiveRank(stored.projectKey, issueKey, rank ?? null),
-          }
-        })
+            priority,
+            epicKey,
+            rank,
+            typeKey,
+            labels,
+            originalEstimateSeconds,
+          }): BoardCard => {
+            const liveField = resolveLiveField(issueKey, {
+              assigneeId,
+              priority,
+              epicKey: epicKey ?? null,
+            })
+            return {
+              issueKey,
+              summary,
+              assigneeId: liveField.assigneeId,
+              version,
+              priority: liveField.priority,
+              epicKey: liveField.epicKey,
+              rank: resolveLiveRank(stored.projectKey, issueKey, rank ?? null),
+              typeKey,
+              labels,
+              originalEstimateSeconds,
+            }
+          },
+        )
       return { ...col, cards: [...cards].sort(byRankNullsLast) }
     }),
     quickFilters: stored.quickFilters ?? [],
@@ -792,7 +810,9 @@ const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
           priority: 1,
           epicKey: null,
           rank: null,
+          typeKey: 'bug',
           labels: ['bug'],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -803,7 +823,9 @@ const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
           priority: 2,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: ['feature'],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],

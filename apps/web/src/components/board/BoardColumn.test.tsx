@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
 import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
+import type { IssueTypeResponse } from '@/api/issue-types'
 
 // @dnd-kit/sortable — SortableContext는 items 검증용 DOM 마커로 대체한다.
 vi.mock('@dnd-kit/sortable', async (importOriginal) => {
@@ -63,9 +64,9 @@ const columnWithCards: BoardColumnType = {
   wipLimit: null,
   wipExceeded: false,
   cards: [
-    { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null },
-    { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
-    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3, priority: 1, epicKey: null, rank: null },
+    { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+    { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
   ],
 }
 
@@ -91,10 +92,17 @@ function renderColumn(
   names: Map<string, CardAssigneeDisplay> = assigneeNames,
   isOver = false,
   swimlaneField: SwimlaneField = 'NONE',
+  issueTypesByKey: Map<string, IssueTypeResponse> = new Map(),
 ) {
   return render(
     <DndContext>
-      <BoardColumn column={column} assigneeNames={names} isOver={isOver} swimlaneField={swimlaneField} />
+      <BoardColumn
+        column={column}
+        assigneeNames={names}
+        isOver={isOver}
+        swimlaneField={swimlaneField}
+        issueTypesByKey={issueTypesByKey}
+      />
     </DndContext>,
   )
 }
@@ -159,7 +167,7 @@ describe('BoardColumn — S2 카드 목록 렌더', () => {
   it('S2f: assigneeNames에 없는 카드는 fallback unassigned로 표시한다', () => {
     const col: BoardColumnType = {
       ...columnWithCards,
-      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null }],
+      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null }],
     }
     renderColumn(col, new Map())
     // Map에 없으므로 unassigned fallback
@@ -228,8 +236,8 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
       wipLimit: 5,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-10', summary: '이슈 10', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-        { issueKey: 'ATLAS-11', summary: '이슈 11', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-10', summary: '이슈 10', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-11', summary: '이슈 11', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     }
     renderColumn(col, new Map())
@@ -249,9 +257,9 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
       wipLimit: 2,
       wipExceeded: true,
       cards: [
-        { issueKey: 'ATLAS-20', summary: '이슈 20', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-        { issueKey: 'ATLAS-21', summary: '이슈 21', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
-        { issueKey: 'ATLAS-22', summary: '이슈 22', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-20', summary: '이슈 20', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-21', summary: '이슈 21', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-22', summary: '이슈 22', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     }
     renderColumn(col, new Map())
@@ -284,8 +292,8 @@ describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
     wipLimit: null,
     wipExceeded: false,
     cards: [
-      { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null },
-      { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -347,8 +355,8 @@ describe('BoardColumn — S9 스윔레인 EPIC 그룹', () => {
     wipLimit: null,
     wipExceeded: false,
     cards: [
-      { issueKey: 'ATLAS-1', summary: 'E1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-EP-1', rank: null },
-      { issueKey: 'ATLAS-2', summary: '에픽 없음 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-1', summary: 'E1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-EP-1', rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-2', summary: '에픽 없음 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -389,8 +397,8 @@ describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
     wipLimit: 2,
     wipExceeded: true,
     cards: [
-      { issueKey: 'ATLAS-30', summary: '이슈 30', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-      { issueKey: 'ATLAS-31', summary: '이슈 31', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-30', summary: '이슈 30', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-31', summary: '이슈 31', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -402,6 +410,7 @@ describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
           assigneeNames={new Map()}
           isFilterActive={true}
           swimlaneField="NONE"
+          issueTypesByKey={new Map()}
         />
       </DndContext>,
     )
@@ -416,6 +425,7 @@ describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
           assigneeNames={new Map()}
           isFilterActive={true}
           swimlaneField="NONE"
+          issueTypesByKey={new Map()}
         />
       </DndContext>,
     )
@@ -429,6 +439,7 @@ describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
           column={wipExceededCol}
           assigneeNames={new Map()}
           swimlaneField="NONE"
+          issueTypesByKey={new Map()}
         />
       </DndContext>,
     )
@@ -450,8 +461,8 @@ describe('BoardColumn — S7 스윔레인 PRIORITY 그룹', () => {
     wipLimit: null,
     wipExceeded: false,
     cards: [
-      { issueKey: 'ATLAS-10', summary: 'P1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
-      { issueKey: 'ATLAS-11', summary: 'P2 이슈', assigneeId: null, version: 2, priority: 2, epicKey: null, rank: null },
+      { issueKey: 'ATLAS-10', summary: 'P1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { issueKey: 'ATLAS-11', summary: 'P2 이슈', assigneeId: null, version: 2, priority: 2, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
   }
 
@@ -501,5 +512,30 @@ describe('BoardColumn — S10 셀 단위 SortableContext', () => {
   it('S10e: 빈 컬럼은 SortableContext를 렌더하지 않는다 — 회귀 방지', () => {
     renderColumn(emptyColumn, new Map())
     expect(screen.queryByTestId('sortable-context')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S11. issueTypesByKey 해석 전달 (FR-UX-14 F14 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S11 issueTypesByKey 해석 전달', () => {
+  const taskType: IssueTypeResponse = { id: 1, key: 'task', name: '작업', description: '', iconName: 'task' }
+  const issueTypesByKey = new Map([[taskType.key, taskType]])
+
+  it('S11a: issueTypesByKey로 카드 유형을 해석해 아이콘 접근성 이름으로 전달한다', () => {
+    renderColumn(columnWithCards, assigneeNames, false, 'NONE', issueTypesByKey)
+    // columnWithCards 카드 3장 모두 typeKey='task' → '작업'
+    expect(screen.getAllByRole('img', { name: '작업' })).toHaveLength(3)
+  })
+
+  it('S11b: issueTypesByKey에 없는 typeKey는 원문이 접근성 이름이 된다(FR6)', () => {
+    renderColumn(columnWithCards, assigneeNames, false, 'NONE', new Map())
+    expect(screen.getAllByRole('img', { name: 'task' })).toHaveLength(3)
+  })
+
+  it('S11c: 스윔레인 그룹 렌더(SwimlaneSection)에서도 issueTypesByKey가 전달된다', () => {
+    renderColumn(columnWithCards, assigneeNames, false, 'ASSIGNEE', issueTypesByKey)
+    expect(screen.getAllByRole('img', { name: '작업' })).toHaveLength(3)
   })
 })

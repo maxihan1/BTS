@@ -270,8 +270,8 @@ describe('resolveBacklogDropAction', () => {
 describe('resolveOverToDropZone', () => {
   const VIEW: BacklogView = {
     backlog: [
-      { key: 'ATLAS-1', summary: '1', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'a', version: 0, epicKey: null },
-      { key: 'ATLAS-2', summary: '2', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'b', version: 0, epicKey: null },
+      { key: 'ATLAS-1', summary: '1', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'a', version: 0, epicKey: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+      { key: 'ATLAS-2', summary: '2', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'b', version: 0, epicKey: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
     ],
     sprints: [
       {
@@ -285,8 +285,8 @@ describe('resolveOverToDropZone', () => {
           version: 0,
         },
         issues: [
-          { key: 'ATLAS-4', summary: '4', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'a', version: 0, epicKey: null },
-          { key: 'ATLAS-5', summary: '5', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'b', version: 0, epicKey: null },
+          { key: 'ATLAS-4', summary: '4', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'a', version: 0, epicKey: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
+          { key: 'ATLAS-5', summary: '5', currentStateKey: 'open', assigneeId: null, priority: 1, rank: 'b', version: 0, epicKey: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
         ],
       },
     ],

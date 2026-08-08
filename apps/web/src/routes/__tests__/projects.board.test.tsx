@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boards'
 import type { UserSummary } from '@/api/users'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { ApiError } from '@/api/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,8 +46,14 @@ vi.mock('sonner', () => ({
 }))
 
 // KanbanBoard는 DndContext 등 복잡한 의존성이 있으므로 단순 mock
-// assigneeNames, filter, isFilterActive prop을 캡처해 단언에 활용
-const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown; filter: unknown; isFilterActive: unknown }> = []
+// assigneeNames, filter, isFilterActive, issueTypesByKey prop을 캡처해 단언에 활용
+const mockKanbanBoardProps: Array<{
+  boardId: string
+  assigneeNames: unknown
+  filter: unknown
+  isFilterActive: unknown
+  issueTypesByKey: unknown
+}> = []
 
 vi.mock('@/components/board/KanbanBoard', () => ({
   KanbanBoard: ({
@@ -54,13 +61,15 @@ vi.mock('@/components/board/KanbanBoard', () => ({
     assigneeNames,
     filter,
     isFilterActive,
+    issueTypesByKey,
   }: {
     boardId: string
     assigneeNames: Map<string, unknown>
     filter?: BoardCardFilterParams
     isFilterActive?: boolean
+    issueTypesByKey: Map<string, IssueTypeResponse>
   }) => {
-    mockKanbanBoardProps.push({ boardId, assigneeNames, filter, isFilterActive })
+    mockKanbanBoardProps.push({ boardId, assigneeNames, filter, isFilterActive, issueTypesByKey })
     return <div data-testid={`kanban-board-${boardId}`}>KanbanBoard</div>
   },
 }))
@@ -129,6 +138,12 @@ vi.mock('@/hooks/use-update-swimlane', () => ({
 const mockUseProjectPermissions = vi.fn()
 vi.mock('@/hooks/use-project-permissions', () => ({
   useProjectPermissions: (projectKey: string) => mockUseProjectPermissions(projectKey),
+}))
+
+// use-issue-types mock (FR-UX-14 F14 Task 3 — 라우트가 issueTypesByKey 맵 구성용으로 호출)
+const mockUseIssueTypes = vi.fn()
+vi.mock('@/hooks/use-issue-types', () => ({
+  useIssueTypes: () => mockUseIssueTypes(),
 }))
 
 // FavoriteButton mock — targetType·targetId props를 캡처해 단언에 활용
@@ -234,11 +249,11 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
       wipExceeded: false,
       cards: [
         // case 1: assigneeId=null → unassigned
-        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
         // case 2: assigneeId=ALICE_ID, userMap에 있음 → named
-        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
         // case 3: assigneeId=UNKNOWN_USER_ID, userMap에 없음 → unknown
-        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3, priority: 1, epicKey: null, rank: null },
+        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3, priority: 1, epicKey: null, rank: null, typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
   ],
@@ -290,6 +305,7 @@ describe('BoardPage', () => {
       data: { projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false, MANAGE_FIELD_PERMISSIONS: false, MANAGE_TEMPLATES: false } },
       isLoading: false,
     })
+    mockUseIssueTypes.mockReturnValue({ data: [], isLoading: false })
   })
 
   afterEach(() => {
@@ -808,6 +824,49 @@ describe('BoardPage', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Task 3 — issueTypesByKey 배선 (FR-UX-14 F14, NFR2)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-BD-TYPE-1. useIssueTypes 결과를 typeKey → IssueTypeResponse 맵으로 변환해 KanbanBoard에 전달한다.
+   */
+  it('T-BD-TYPE-1: 이슈 타입 목록을 typeKey 맵으로 변환해 KanbanBoard에 전달한다', async () => {
+    const taskType: IssueTypeResponse = { id: 1, key: 'task', name: '작업', description: '', iconName: 'task' }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseIssueTypes.mockReturnValue({ data: [taskType], isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    const map = lastCall?.issueTypesByKey as Map<string, IssueTypeResponse>
+    expect(map.get('task')).toEqual(taskType)
+  })
+
+  /**
+   * T-BD-TYPE-2. useIssueTypes 조회 실패·로딩 중(data undefined)이면 빈 맵을 전달한다(FR6, E7·E8).
+   */
+  it('T-BD-TYPE-2: useIssueTypes 데이터가 없으면 빈 맵을 KanbanBoard에 전달한다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseIssueTypes.mockReturnValue({ data: undefined, isLoading: true })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    const map = lastCall?.issueTypesByKey as Map<string, IssueTypeResponse>
+    expect(map.size).toBe(0)
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // hotfix-p2 — 필터 활성 시 isFilterActive prop 전달 (FR-BD-03)
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -923,6 +982,7 @@ describe('BoardRouteAdapter', () => {
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
     mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
     mockUseProjectPermissions.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseIssueTypes.mockReturnValue({ data: [], isLoading: false })
   })
 
   /**
@@ -966,6 +1026,7 @@ describe('FavoriteButton 렌더', () => {
       data: { projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false, MANAGE_FIELD_PERMISSIONS: false, MANAGE_TEMPLATES: false } },
       isLoading: false,
     })
+    mockUseIssueTypes.mockReturnValue({ data: [], isLoading: false })
   })
 
   afterEach(() => {

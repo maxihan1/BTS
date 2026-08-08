@@ -28,9 +28,9 @@
 //     있다"에서 실측 확인). 따라서 이 스펙은 DEFAULT_BOARD(ATLAS-1/ATLAS-4, TODO 컬럼)만 사용한다.
 //     같은 그룹 내 순서변경 회귀(S8)만 REORDER_SWIMLANE_BOARD(PR21과 동일 보드)를 재사용한다
 //     — reorder는 이슈 store를 거치지 않는 PATCH /issues/:key/rank 경로라 이 제약이 없다.
-//   - "이름 있는 담당자" 줄 재현(S1) — DEFAULT_BOARD 기본 시드는 ATLAS-1(whoami alice 식별자,
-//     user-fixtures 목록엔 없어 'unknown' 상태) / ATLAS-4(미배정)뿐이라 기본값만으로는 실존 이름
-//     담당자 줄을 만들 수 없다. 테스트 Given 단계에서 page.evaluate(fetch)로
+//   - "이름 있는 담당자" 줄 재현(S1) — DEFAULT_BOARD 기본 시드는 ATLAS-1(alice, user-fixtures
+//     목록에 있어 이미 "김앨리스" named 상태) / ATLAS-4(미배정)뿐이라 alice와 구분되는 두 번째
+//     named 담당자 줄을 기본값만으로는 만들 수 없다. 테스트 Given 단계에서 page.evaluate(fetch)로
 //     PATCH /api/v1/issues/ATLAS-4/assignee { assigneeId: bob }를 직접 호출해 "bob" 줄을
 //     사전 준비한다(issue-versions-link.spec.ts createVersionInStore와 동일한 API 사전시드
 //     패턴 — UI 밖에서 이 호출 자체는 검증 대상이 아니다). expectedVersion은 생략해 OCC 체크를
@@ -92,9 +92,6 @@ const SWIMLANE_OPTION_ASSIGNEE = '담당자'
 const SWIMLANE_OPTION_PRIORITY = '우선순위'
 const SWIMLANE_OPTION_EPIC = '에픽'
 
-/** swimlane-group.ts LABEL_UNKNOWN 상수와 동기화 — 이름 미확인(unknown) 담당자 그룹 */
-const LABEL_UNKNOWN_ASSIGNEE = '이름 미확인'
-
 /** swimlane-group.ts LABEL_UNASSIGNED 상수와 동기화 — 미배정 그룹 */
 const LABEL_UNASSIGNED = '미배정'
 
@@ -104,7 +101,7 @@ const LABEL_NO_EPIC = '에픽 없음'
 /** user-fixtures.ts userBobFixture.id 와 동기화 — displayName null → username 'bob' 폴백 */
 const BOB_USER_ID = '00000000-0000-4000-8000-000000000002'
 
-/** user-fixtures.ts userAliceFixture.displayName 과 동기화 (S8 회귀용) */
+/** user-fixtures.ts userAliceFixture.displayName 과 동기화 — DEFAULT_BOARD ATLAS-1의 실제 담당자(alice) 줄 라벨 */
 const ALICE_GROUP_LABEL = '김앨리스'
 
 /** issue-fixtures.ts issueAtlasEpic1Fixture.key(typeKey='epic') 와 동기화 — "에픽A" 역할 */
@@ -150,7 +147,7 @@ function getCardLocator(page: Page, issueKey: string): Locator {
  * scope는 반드시 컬럼 단위(todoColumn 등)로 한정한다 — swimlaneField는 보드 전체(모든 컬럼)에
  * 적용되므로, DEFAULT_BOARD처럼 IN PROGRESS/DONE 컬럼에도 카드가 있으면 그 컬럼들도 각자
  * 스윔레인 서브그룹을 렌더한다. ATLAS-2(IN PROGRESS, assigneeId가 TODO의 ATLAS-1과 동일해
- * "이름 미확인" 그룹 생성)·ATLAS-3(DONE, 미배정이라 "미배정"·"에픽 없음" 그룹 생성)이 TODO와
+ * "김앨리스" 그룹 생성)·ATLAS-3(DONE, 미배정이라 "미배정"·"에픽 없음" 그룹 생성)이 TODO와
  * 같은 그룹 라벨을 공유해, page 전체로 조회하면 toHaveCount(0) 등 개수 단언이 다른 컬럼의
  * 무관한 그룹까지 세어 거짓 실패한다(실측 확인 — TODO로 스코프하지 않은 최초 버전에서 재현).
  */
@@ -173,9 +170,71 @@ async function getCardOrder(container: Locator): Promise<string[]> {
   return keys
 }
 
+/** bringPairIntoView가 출발·도착 합집합 둘레에 남기는 여백(px) — backlog.spec.ts와 동일 값 */
+const PAIR_VIEW_MARGIN_PX = 24
+
+/**
+ * 출발·도착 카드가 **동시에** 뷰포트 안(스크롤 없이 보이는 영역)에 들어오도록 스크롤을 맞춘다.
+ * backlog.spec.ts의 동명 헬퍼(FR-UX-13 F15 Task 10 C-6)와 동일한 패턴 — ShellLayout의
+ * `<main className="… overflow-y-auto">`가 이 화면의 유일한 스크롤 컨테이너다.
+ *
+ * ### 왜 필요한가 (FR-UX-14 F14 실측)
+ * 라벨 칩 행이 생겨 원본 카드(예: ATLAS-1)가 높아지자 TODO 컬럼 전체 높이도 늘었고, 대상
+ * 카드(우선순위4/에픽없음 줄의 ATLAS-4)가 뷰포트 바닥 경계 가까이(또는 밖으로) 밀렸다. 그 상태로
+ * 포인터를 대상까지 이동시키면 @dnd-kit의 자동 스크롤(auto-scroll)이 이동 도중에 계속 발동해
+ * 콘텐츠가 스크롤되며, **한 번 잰 좌표는 그사이 계속 낡아진다** — source 재측정이든 target
+ * 재측정이든 "한 번"으로는 이 연속적 드리프트를 못 잡는다(실측: 중간 스텝에서는 올바른
+ * over(필드변경 미리보기)가 잡히다가도 최종 좌표에서 다시 놓친다). 애초에 자동 스크롤이
+ * 발동하지 않도록 드래그 시작 **전에** 출발·도착을 함께 화면 가운데로 당겨 두면, 전체 포인터
+ * 경로가 뷰포트 안쪽(가장자리 트리거 존 밖)에 머물러 드리프트 자체가 생기지 않는다.
+ *
+ * @param from 드래그 출발 카드 locator
+ * @param to 드롭 대상 카드 locator
+ */
+async function bringPairIntoView(page: Page, from: Locator, to: Locator): Promise<void> {
+  const scroller = page.getByRole('main')
+  const scrollerBox = await scroller.boundingBox()
+  const fromBox = await from.boundingBox()
+  const toBox = await to.boundingBox()
+
+  if (scrollerBox === null || fromBox === null || toBox === null) {
+    throw new Error('dragCardOntoCard: bringPairIntoView bounding box를 가져올 수 없습니다.')
+  }
+
+  const top = Math.min(fromBox.y, toBox.y)
+  const bottom = Math.max(fromBox.y + fromBox.height, toBox.y + toBox.height)
+  const span = bottom - top
+
+  if (span + PAIR_VIEW_MARGIN_PX * 2 > scrollerBox.height) {
+    throw new Error(
+      'dragCardOntoCard: bringPairIntoView 출발·도착이 동시에 화면에 들어가지 않습니다 ' +
+        `(필요 ${Math.round(span)}px + 여백 ${PAIR_VIEW_MARGIN_PX * 2}px, ` +
+        `스크롤 영역 ${Math.round(scrollerBox.height)}px).`,
+    )
+  }
+
+  // 합집합을 스크롤 영역 한가운데로 — 스크롤 한계에 걸려 덜 움직여도 아래 단언이 진실을 말한다.
+  const desiredTop = scrollerBox.y + (scrollerBox.height - span) / 2
+  await scroller.evaluate((element, deltaY) => {
+    element.scrollTop += deltaY
+  }, top - desiredTop)
+
+  // 동시 가시성 단언 — 하나라도 잘려 있으면 여기서 끝낸다.
+  await expect(from).toBeInViewport({ ratio: 1 })
+  await expect(to).toBeInViewport({ ratio: 1 })
+}
+
 /**
  * sourceIssueKey 카드를 targetIssueKey 카드 위로 PointerSensor 드래그한다.
- * board-reorder.spec.ts dragCardOntoCard와 동일 시퀀스 — 새로 발명하지 않고 그대로 재사용한다.
+ * board-reorder.spec.ts dragCardOntoCard와 동일 시퀀스를 기반으로 하되 두 가지를 보강했다.
+ *
+ * 1. **드래그 시작 전** bringPairIntoView로 출발·도착을 동시에 뷰포트 안으로 스크롤한다 —
+ *    FR-UX-14 F14에서 라벨 칩 행이 생겨 원본 카드가 높아지자 대상 카드가 뷰포트 경계 가까이
+ *    밀렸고, 그 상태로 드래그하면 @dnd-kit 자동 스크롤이 이동 도중 계속 발동해 좌표가 드리프트하는
+ *    회귀가 있었다(S3/S6, main 대조로 확정 — 이 PR이 만든 좌표-정밀 드래그 헬퍼의 취약성).
+ *    자세한 진단은 위 bringPairIntoView 문서 참고.
+ * 2. **목표 좌표는 원본을 들어올린(lift) 뒤에 다시 잰다** — bringPairIntoView로 자동 스크롤
+ *    자체를 제거한 뒤에도, 정밀도를 위해 activation 이동 후 최신 레이아웃 기준으로 재측정한다.
  *
  * @dnd-kit PointerSensor activationConstraint: { distance: 5 } —
  * pointerdown 후 5px 초과 이동 시 드래그가 시작된다.
@@ -184,24 +243,29 @@ async function dragCardOntoCard(page: Page, sourceIssueKey: string, targetIssueK
   const source = getCardLocator(page, sourceIssueKey)
   const target = getCardLocator(page, targetIssueKey)
 
-  const sourceBox = await source.boundingBox()
-  const targetBox = await target.boundingBox()
+  await bringPairIntoView(page, source, target)
 
-  if (sourceBox === null || targetBox === null) {
-    throw new Error(
-      `dragCardOntoCard: bounding box를 가져올 수 없습니다. source=${sourceIssueKey}, target=${targetIssueKey}`,
-    )
+  const sourceBox = await source.boundingBox()
+  if (sourceBox === null) {
+    throw new Error(`dragCardOntoCard: source bounding box를 가져올 수 없습니다. source=${sourceIssueKey}`)
   }
 
   const sourceCX = sourceBox.x + sourceBox.width / 2
   const sourceCY = sourceBox.y + sourceBox.height / 2
-  const targetCX = targetBox.x + targetBox.width / 2
-  const targetCY = targetBox.y + targetBox.height / 2
 
   await page.mouse.move(sourceCX, sourceCY)
   await page.mouse.down()
-  // activation constraint 초과: 6px 이동
+  // activation constraint 초과: 6px 이동 — 원본 카드 lift(드래그 시작)
   await page.mouse.move(sourceCX + 6, sourceCY)
+
+  // ★목표 좌표는 lift 이후 재측정한다 — 캡처 시점 좌표가 아니라 현재 레이아웃 기준.
+  const targetBox = await target.boundingBox()
+  if (targetBox === null) {
+    throw new Error(`dragCardOntoCard: target bounding box를 가져올 수 없습니다. target=${targetIssueKey}`)
+  }
+  const targetCX = targetBox.x + targetBox.width / 2
+  const targetCY = targetBox.y + targetBox.height / 2
+
   // 대상 카드 중심으로 점진적 이동 (steps로 pointermove 이벤트 여러 번 발화)
   await page.mouse.move(targetCX, targetCY, { steps: 20 })
   await page.mouse.up()
@@ -275,9 +339,9 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
   // ───────────────────────────────────────────────────────────────────────
   // S1. 담당자 재할당 — 다른 담당자(named) 줄로 드롭 → 담당자 변경 + 대상 줄로 이동
   //
-  // Given  alice 로그인 + DEFAULT_BOARD 진입, TODO: ATLAS-1(이름 미확인) / ATLAS-4(미배정)
-  //        ATLAS-4를 bob에게 사전 배정(API 직접 호출) → ASSIGNEE 스윔레인 시 "bob" 줄 확보
-  // When   ATLAS-1(이름 미확인 줄)을 ATLAS-4(bob 줄)로 드래그
+  // Given  alice 로그인 + DEFAULT_BOARD 진입, TODO: ATLAS-1(김앨리스) / ATLAS-4(미배정)
+  //        ATLAS-4를 bob에게 사전 배정(API 직접 호출) → ASSIGNEE 스윔레인 시 "bob" 줄 확보(named→named 재현)
+  // When   ATLAS-1(김앨리스 줄)을 ATLAS-4(bob 줄)로 드래그
   // Then   ATLAS-1의 담당자가 bob으로 바뀌고 "bob" 줄로 이동 — invalidateQueries 재조회 후에도 유지
   // ───────────────────────────────────────────────────────────────────────
   test('S1 담당자 재할당 — 다른 담당자 줄로 드롭하면 담당자가 바뀌고 대상 줄로 이동한다(재조회 후 유지)', async ({ page }) => {
@@ -289,14 +353,14 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
     await expect(todoColumn.getByText('ATLAS-1')).toBeVisible()
     await expect(todoColumn.getByText('ATLAS-4')).toBeVisible()
 
-    // Given. ATLAS-4를 bob에게 사전 배정 — "이름 있는 담당자" 줄 확보
+    // Given. ATLAS-4를 bob에게 사전 배정 — alice와 구분되는 두 번째 "이름 있는 담당자" 줄 확보
     await seedAssignee(page, 'ATLAS-4', BOB_USER_ID)
 
-    // Given. ASSIGNEE 스윔레인 전환 → "이름 미확인"[ATLAS-1] / "bob"[ATLAS-4]
+    // Given. ASSIGNEE 스윔레인 전환 → "김앨리스"[ATLAS-1] / "bob"[ATLAS-4]
     await selectSwimlane(page, SWIMLANE_OPTION_ASSIGNEE)
-    const unknownGroup = getGroupLocator(todoColumn, LABEL_UNKNOWN_ASSIGNEE)
+    const aliceGroup = getGroupLocator(todoColumn, ALICE_GROUP_LABEL)
     const bobGroup = getGroupLocator(todoColumn, 'bob')
-    await expect(unknownGroup.getByText('ATLAS-1')).toBeVisible()
+    await expect(aliceGroup.getByText('ATLAS-1')).toBeVisible()
     await expect(bobGroup.getByText('ATLAS-4')).toBeVisible()
 
     // When. ATLAS-1을 ATLAS-4(bob 줄)로 드래그 — PATCH /issues/ATLAS-1/assignee 응답 대기
@@ -309,17 +373,17 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
     expect(assigneeRes.status()).toBe(200)
     await waitForBoardRefetch(page)
 
-    // Then. ATLAS-1이 "bob" 줄로 이동 + "이름 미확인" 줄은 사라짐(빈 그룹 생략) — 재조회 후에도 유지
+    // Then. ATLAS-1이 "bob" 줄로 이동 + "김앨리스" 줄은 사라짐(빈 그룹 생략) — 재조회 후에도 유지
     await expect(bobGroup.getByText('ATLAS-1')).toBeVisible()
     await expect(bobGroup.getByText('ATLAS-4')).toBeVisible()
-    await expect(getGroupLocator(todoColumn, LABEL_UNKNOWN_ASSIGNEE)).toHaveCount(0)
+    await expect(getGroupLocator(todoColumn, ALICE_GROUP_LABEL)).toHaveCount(0)
   })
 
   // ───────────────────────────────────────────────────────────────────────
   // S2. 담당자 해제 — 미배정 줄로 드롭 → 담당자 해제(null)
   //
-  // Given  DEFAULT_BOARD, ASSIGNEE 스윔레인. TODO: ATLAS-1(이름 미확인) / ATLAS-4(미배정)
-  // When   ATLAS-1(이름 미확인 줄)을 ATLAS-4(미배정 줄)로 드래그
+  // Given  DEFAULT_BOARD, ASSIGNEE 스윔레인. TODO: ATLAS-1(김앨리스) / ATLAS-4(미배정)
+  // When   ATLAS-1(김앨리스 줄)을 ATLAS-4(미배정 줄)로 드래그
   // Then   ATLAS-1의 담당자가 해제(null)되어 "미배정" 줄로 이동
   // ───────────────────────────────────────────────────────────────────────
   test('S2 담당자 해제 — 미배정 줄로 드롭하면 담당자가 해제된다', async ({ page }) => {
@@ -331,9 +395,9 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
     await expect(todoColumn.getByText('ATLAS-4')).toBeVisible()
 
     await selectSwimlane(page, SWIMLANE_OPTION_ASSIGNEE)
-    const unknownGroup = getGroupLocator(todoColumn, LABEL_UNKNOWN_ASSIGNEE)
+    const aliceGroup = getGroupLocator(todoColumn, ALICE_GROUP_LABEL)
     const unassignedGroup = getGroupLocator(todoColumn, LABEL_UNASSIGNED)
-    await expect(unknownGroup.getByText('ATLAS-1')).toBeVisible()
+    await expect(aliceGroup.getByText('ATLAS-1')).toBeVisible()
     await expect(unassignedGroup.getByText('ATLAS-4')).toBeVisible()
 
     // When. ATLAS-1을 ATLAS-4(미배정 줄)로 드래그
@@ -346,10 +410,10 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
     expect(assigneeRes.status()).toBe(200)
     await waitForBoardRefetch(page)
 
-    // Then. ATLAS-1이 "미배정" 줄로 이동 + "이름 미확인" 줄은 사라짐 — 재조회 후에도 유지
+    // Then. ATLAS-1이 "미배정" 줄로 이동 + "김앨리스" 줄은 사라짐 — 재조회 후에도 유지
     await expect(unassignedGroup.getByText('ATLAS-1')).toBeVisible()
     await expect(unassignedGroup.getByText('ATLAS-4')).toBeVisible()
-    await expect(getGroupLocator(todoColumn, LABEL_UNKNOWN_ASSIGNEE)).toHaveCount(0)
+    await expect(getGroupLocator(todoColumn, ALICE_GROUP_LABEL)).toHaveCount(0)
   })
 
   // ───────────────────────────────────────────────────────────────────────
@@ -484,8 +548,8 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
   // ───────────────────────────────────────────────────────────────────────
   // S7. 낙관적 반영·롤백 — 서버 실패(OCC 409) 시 원위치 복귀 + 오류 toast
   //
-  // Given  DEFAULT_BOARD, ASSIGNEE 스윔레인. TODO: ATLAS-1(이름 미확인) / ATLAS-4(미배정)
-  // When   ATLAS-4(미배정 줄)를 ATLAS-1(이름 미확인 줄)로 드래그
+  // Given  DEFAULT_BOARD, ASSIGNEE 스윔레인. TODO: ATLAS-1(김앨리스) / ATLAS-4(미배정)
+  // When   ATLAS-4(미배정 줄)를 ATLAS-1(김앨리스 줄)로 드래그
   //        → PATCH expectedVersion=0(board 카드 시드값) 전송하지만 issue store 실측 version=3
   //          (issue-fixtures.ts issueAtlas4Fixture.version=3 — board-fixtures.ts DEFAULT_BOARD
   //          ATLAS-4 카드 version=0과의 기존(PRE_EXISTING) 실측 불일치를 그대로 활용해 자연
@@ -503,12 +567,12 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
     await expect(todoColumn.getByText('ATLAS-4')).toBeVisible()
 
     await selectSwimlane(page, SWIMLANE_OPTION_ASSIGNEE)
-    const unknownGroup = getGroupLocator(todoColumn, LABEL_UNKNOWN_ASSIGNEE)
+    const aliceGroup = getGroupLocator(todoColumn, ALICE_GROUP_LABEL)
     const unassignedGroup = getGroupLocator(todoColumn, LABEL_UNASSIGNED)
-    await expect(unknownGroup.getByText('ATLAS-1')).toBeVisible()
+    await expect(aliceGroup.getByText('ATLAS-1')).toBeVisible()
     await expect(unassignedGroup.getByText('ATLAS-4')).toBeVisible()
 
-    // When. ATLAS-4(미배정 줄)를 ATLAS-1(이름 미확인 줄)로 드래그 — 자연 발생 OCC 409 기대
+    // When. ATLAS-4(미배정 줄)를 ATLAS-1(김앨리스 줄)로 드래그 — 자연 발생 OCC 409 기대
     const [assigneeRes] = await Promise.all([
       page.waitForResponse(
         (res) => res.request().method() === 'PATCH' && res.url().endsWith('/api/v1/issues/ATLAS-4/assignee'),
@@ -526,7 +590,7 @@ test.describe('FR-UX-06 PR21b 칸반 보드 스윔레인 간 드래그 필드변
 
     // Then. ATLAS-4는 원래 줄(미배정)에 그대로 — 낙관적 갱신이 롤백됨(서버 진실과 재동기화 후에도 유지)
     await expect(unassignedGroup.getByText('ATLAS-4')).toBeVisible()
-    await expect(unknownGroup.getByText('ATLAS-1')).toBeVisible()
+    await expect(aliceGroup.getByText('ATLAS-1')).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────

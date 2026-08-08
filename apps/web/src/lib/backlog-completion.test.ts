@@ -166,6 +166,9 @@ describe('isIssueIncomplete', () => {
       rank: null,
       version: 0,
       epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
     }
 
     expect(isIssueIncomplete(issue, seedMap)).toBe(true)

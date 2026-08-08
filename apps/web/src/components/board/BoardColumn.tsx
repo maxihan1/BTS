@@ -4,7 +4,9 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { cn } from '@/lib/utils'
 import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { boardLabels } from '@/i18n/board-labels'
+import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { groupCardsBySwimlane } from '@/lib/swimlane-group'
 import type { SwimlaneGroup } from '@/lib/swimlane-group'
 import { BoardCard } from './BoardCard'
@@ -38,6 +40,12 @@ export interface BoardColumnProps {
    * WipCountBadge로 전달되며 이동/판정 로직에는 영향 없음.
    */
   isFilterActive?: boolean
+  /**
+   * 이슈 타입 key → IssueTypeResponse 맵 (FR-UX-14 F14).
+   * 라우트가 `useIssueTypes()` 조회 결과로 1회만 구성해 주입한다(NFR2).
+   * 조회 실패·로딩 중이면 빈 맵 — 전 카드가 typeKey 원문 fallback으로 렌더된다(FR6).
+   */
+  issueTypesByKey: Map<string, IssueTypeResponse>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,10 +57,12 @@ function SwimlaneSection({
   group,
   assigneeNames,
   columnId,
+  issueTypesByKey,
 }: {
   group: SwimlaneGroup
   assigneeNames: Map<string, CardAssigneeDisplay>
   columnId: string
+  issueTypesByKey: Map<string, IssueTypeResponse>
 }): React.ReactElement {
   const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
   // 셀(컬럼 × 이 그룹) 안에서의 정렬 순서 — rank 순서(원본 배열 순서) 그대로
@@ -74,14 +84,19 @@ function SwimlaneSection({
       {/* 카드 목록 — 셀(컬럼 × 그룹) 단위 SortableContext */}
       <div className="flex flex-col gap-2">
         <SortableContext items={cellItems} strategy={verticalListSortingStrategy}>
-          {group.cards.map((card) => (
-            <BoardCard
-              key={card.issueKey}
-              card={card}
-              columnId={columnId}
-              assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
-            />
-          ))}
+          {group.cards.map((card) => {
+            const { iconName, typeName } = resolveCardType(issueTypesByKey, card.typeKey)
+            return (
+              <BoardCard
+                key={card.issueKey}
+                card={card}
+                columnId={columnId}
+                assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
+                typeIconName={iconName}
+                typeName={typeName}
+              />
+            )
+          })}
         </SortableContext>
       </div>
     </div>
@@ -94,7 +109,7 @@ function SwimlaneSection({
 
 const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 
-function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false }: BoardColumnProps) {
+function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false, issueTypesByKey }: BoardColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.columnId,
     data: { category: column.category },
@@ -154,6 +169,7 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
               group={group}
               assigneeNames={assigneeNames}
               columnId={column.columnId}
+              issueTypesByKey={issueTypesByKey}
             />
           ))
         ) : (
@@ -162,14 +178,19 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
             items={column.cards.map((card) => card.issueKey)}
             strategy={verticalListSortingStrategy}
           >
-            {column.cards.map((card) => (
-              <BoardCard
-                key={card.issueKey}
-                card={card}
-                columnId={column.columnId}
-                assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
-              />
-            ))}
+            {column.cards.map((card) => {
+              const { iconName, typeName } = resolveCardType(issueTypesByKey, card.typeKey)
+              return (
+                <BoardCard
+                  key={card.issueKey}
+                  card={card}
+                  columnId={column.columnId}
+                  assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
+                  typeIconName={iconName}
+                  typeName={typeName}
+                />
+              )
+            })}
           </SortableContext>
         )}
       </div>

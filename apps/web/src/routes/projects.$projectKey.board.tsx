@@ -13,6 +13,7 @@ import type { QuickFilter } from '@/api/board-quick-filters'
 import { useBoards, useBoard, boardKeys } from '@/hooks/use-boards'
 import { useUpdateSwimlane } from '@/hooks/use-update-swimlane'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
+import { useIssueTypes } from '@/hooks/use-issue-types'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
@@ -340,6 +341,18 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     [boardDetail, userMap],
   )
 
+  // 이슈 타입 목록 — 라우트에서 1회만 조회(NFR2). typeKey → IssueTypeResponse 맵으로
+  // 변환해 KanbanBoard(→ BoardColumn → BoardCard)에 주입한다. 조회 실패·로딩 중이면
+  // 빈 맵을 넘겨 전 카드가 typeKey 원문 fallback 경로로 렌더된다(FR6, E7·E8).
+  // ★구조분해 기본값(`= []`)을 쓰지 않는다 — 사유는 BacklogBoard.tsx 의 같은 블록 주석 참조.
+  // 요약. `undefined` 일 때 `= []` 가 매 렌더 새 배열이 돼 useMemo 가 무력화되고
+  // BoardColumn 의 memo 가 깨진다.
+  const { data: issueTypes } = useIssueTypes()
+  const issueTypesByKey = useMemo(
+    () => new Map((issueTypes ?? []).map((t) => [t.key, t])),
+    [issueTypes],
+  )
+
   // 필터 결과 0건 여부 — 컬럼이 있고 모든 컬럼의 카드가 0이며, 필터가 비어 있지 않은 경우 (D2)
   // columns가 빈 배열이면 every는 vacuous true → false로 처리 (필터 결과가 아닌 빈 보드)
   const isFilteredEmpty: boolean = useMemo(() => {
@@ -594,6 +607,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           assigneeNames={assigneeNames}
           filter={stableFilter}
           isFilterActive={!isEmptyFilter(stableFilter)}
+          issueTypesByKey={issueTypesByKey}
         />
       )}
     </div>

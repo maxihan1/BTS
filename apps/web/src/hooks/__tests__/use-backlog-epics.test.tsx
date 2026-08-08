@@ -104,6 +104,9 @@ function card(key: string, epicKey: string | null): BacklogIssue {
     rank: null,
     version: 0,
     epicKey,
+    typeKey: 'task',
+    labels: [],
+    originalEstimateSeconds: null,
   }
 }
 

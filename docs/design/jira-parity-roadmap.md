@@ -38,8 +38,8 @@ F번호는 아래 §PR 체인의 것. **이 표가 PR→FR 매핑의 정본**이
 | **FR-UX-10** | 컨텍스트 의존 단축키 | F10 · F11 | ✅ **완주** — F10 #336 + F11 #339 (D1~D7 `[x]`). 컨텍스트 키 **13종**(목록 5 + 상세 8) (D 마커 정본: personalization.md §4.8) |
 | FR-UX-11 | 인라인 편집 | F8 · F9 | ✅ **완주** — F8 #337 · F9 #338 (D 마커 정본: personalization.md §4.9) |
 | **FR-UX-12** | 검색 진입 (커맨드 팔레트 · 전역 검색) | F4 · F13 | ✅ **완주** — F4 **#340**(D1~D5) + F13 **#341**(D6/D7) |
-| **FR-UX-13** | 백로그 사용성 | F5 · F15 · F16 | ⬜ 미착수 (F5 는 완료 여부 실측 후 착수) |
-| **FR-UX-14** | 이슈 카드 밀도 | F14 · B2 | ⬜ 미착수 |
+| **FR-UX-13** | 백로그 사용성 | F5 · F15 · F16 | ✅ **완주** — F5 **#342** + F15 **#343** + F16 **#344** (D 마커 정본: personalization.md §4.11) |
+| **FR-UX-14** | 이슈 카드 밀도 | F14 · B2 | ✅ **완주** — B2 **#346**(D1·D3·D4·D5) + F14 **#349**(D2·D6·D7) |
 | *(FR 아님 — chore)* | 기존 FR 결손 봉합 — F6 도움말 배선(UX-05 결손) · F7 댓글 기본탭(CO 결손) · F18~F25 Tier 3 마감(UX-06 결손) | F6 · F7 · F18~F25 | 개별 실측 후 착수 |
 
 **잔여 실측 명령** (완료 추정 금지 — 착수 전 확인).
@@ -62,7 +62,7 @@ node scripts/build-dashboard.mjs && open docs/progress.html                     
 | **F10** ⭐ ✅ **#336** | 컨텍스트 단축키 아키텍처 + 목록 항법 `j`/`k`/`o`/`t`/`[` | **신규** `context-shortcuts.ts`·`useContextShortcuts.ts` · `ShortcutsHelpDialog.tsx` | 없음 |
 | **F11** ⭐ ✅ **#339** | 상세 액션 단축키 `a`/`i`/`m`/`e`/`l`/`s`/`w`/`.` (8종 — `s`=즐겨찾기, FR-UX-05 이연분 복원. `.`=팔레트 여는 두 번째 열쇠) | `issues.$key.tsx` · `IssueActivityTabs.tsx` · `IssueMetaPanel.tsx` + 메타 3종 · `WatchersSection.tsx` · `CommentSection.tsx` · `FavoriteButton.tsx` · `useCommandPalette.ts` · `ShellLayout.tsx` · `ShortcutsHelpDialog.tsx` | F10, F8 |
 | **F13** ✅ **#341** | 상단바 전역 검색 입력창 + 자연어 폴백 | `TopBar.tsx` · **신규** `lib/aql-natural.ts` · **신규** `lib/issue-key.ts` (`routes/search.tsx` 는 **무변경** — 4단 해소·`ActiveProjectGate` 를 이미 소유) | (F1 ✅) |
-| **F14** | 보드/백로그 카드 밀도 (유형 아이콘·라벨 칩·추정) | `BoardCard.tsx` · `BacklogCard.tsx` · `api/boards.ts` · `IssueTypeIcon.tsx` 재사용 | **B2** |
+| **F14** ✅ **#349** | 보드/백로그 카드 밀도 (유형 아이콘·라벨 칩·추정) | `BoardCard.tsx` · `BacklogCard.tsx` · `api/boards.ts` · `api/backlog.ts` · **신규** `CardLabelChips.tsx`·`CardEstimateBadge.tsx`·`i18n/card-labels.ts` · `IssueTypeIcon.tsx` 재사용 | **B2** ✅ |
 | **F15** | 백로그 세로 스택 + 스프린트 다이얼로그 + 키보드 DnD | `BacklogBoard.tsx` · **신규** `StartSprintDialog.tsx`·`CompleteSprintDialog.tsx` | F5 |
 | **F16** | 백로그 필터바 + 에픽 패널 | `FilterBar.tsx` 슬롯 재사용 · `routes/projects.$projectKey.backlog.tsx` | F15 |
 | **B2** | `shared-kernel`+`issue-tracking`+`agile-planning` 보드/백로그 카드 필드 — `BoardIssueView`에 `typeKey`·`typeIconName`·`labels`·`originalEstimateSeconds` | 선례 템플릿 = 커밋 `dcbf130e6`. **N+1 회귀 가드 필수** | 없음 |
@@ -85,14 +85,16 @@ Tier 1 잔여 — **F5**(백로그 담당자 `?` 봉합 + 에러/로딩 3종) ·
 ### 의존 그래프 (잔여)
 
 ```
-B2 ──▶ F14 ─┐
-            ├──▶ (F15 병합점)
-F5 ────▶ F15 ──▶ F16
-F10 ──▶ F11      F8 ──▶ F9
-F4 / F13 / F6 / F18~F25 (독립)
+B2 ✅ ──▶ F14 ✅ ─┐
+                  ├──▶ (F15 병합점) ✅
+F5 ✅ ──▶ F15 ✅ ──▶ F16 ✅
+F10 ✅ ──▶ F11 ✅      F8 ✅ ──▶ F9 ✅
+F4 ✅ / F13 ✅ / F6 / F18~F25 (독립)
 ```
 
-**임계경로 = `B2 → F14 → F15 → F16`** (백엔드 3모듈 + e2e 대형 스펙 재작성).
+**임계경로 `B2 → F14 → F15 → F16` 은 2026-08-07 로 전량 소진됐다** — 실제 순서는 역방향으로
+풀렸다(F5·F15·F16 이 먼저, B2·F14 가 마지막). **잔여는 FR 이 아닌 chore 갈래뿐** — F6 도움말
+배선 · F7 댓글 기본탭 · F18~F25 Tier 3 마감.
 
 ## 계약 · 재사용 자산 · 검증 규범
 

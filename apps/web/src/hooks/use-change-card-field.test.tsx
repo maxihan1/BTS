@@ -54,8 +54,8 @@ const INITIAL_BOARD: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: USER_1, version: 1, priority: 3, epicKey: null, rank: '0|100000:' },
-        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 2, epicKey: null, rank: '0|200000:' },
+        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: USER_1, version: 1, priority: 3, epicKey: null, rank: '0|100000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 2, epicKey: null, rank: '0|200000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
   ],
@@ -130,8 +130,8 @@ const EPIC_BOARD: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: USER_1, version: 1, priority: 3, epicKey: EPIC_A, rank: '0|100000:' },
-        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 2, epicKey: null, rank: '0|200000:' },
+        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: USER_1, version: 1, priority: 3, epicKey: EPIC_A, rank: '0|100000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
+        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 2, epicKey: null, rank: '0|200000:', typeKey: 'task', labels: [], originalEstimateSeconds: null },
       ],
     },
   ],

@@ -53,6 +53,9 @@ const baseCard: BoardCardType = {
   priority: 1,
   epicKey: null,
   rank: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 const COLUMN_ID = 'col-uuid-0001'
@@ -60,10 +63,18 @@ const COLUMN_ID = 'col-uuid-0001'
 function renderCard(
   card: BoardCardType = baseCard,
   assignee: CardAssigneeDisplay = { state: 'named', name: '김철수' },
+  typeIconName: string | null = 'task',
+  typeName = '작업',
 ) {
   return render(
     <DndContext>
-      <BoardCard card={card} columnId={COLUMN_ID} assignee={assignee} />
+      <BoardCard
+        card={card}
+        columnId={COLUMN_ID}
+        assignee={assignee}
+        typeIconName={typeIconName}
+        typeName={typeName}
+      />
     </DndContext>,
   )
 }
@@ -178,5 +189,48 @@ describe('BoardCard — S4 useSortable 배선', () => {
     const card = document.querySelector('[aria-roledescription="draggable card"]')
     // 렌더 직후(isDragging=false)에는 opacity-50이 없어야 함 — 회귀 방지용 음성 가드
     expect(card?.className).not.toMatch(/opacity-50/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S5. 유형 아이콘 · 라벨 칩 · 추정 배지 (FR-UX-14 F14 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardCard — S5 유형 아이콘·라벨 칩·추정 배지 (FR-UX-14 F14 Task 3)', () => {
+  it('S5a: 유형 아이콘이 이슈 키 왼쪽에 유형 이름으로 읽힌다', () => {
+    renderCard(baseCard, undefined, 'bug', '버그') // S1 · NFR4
+    expect(screen.getByRole('img', { name: '버그' })).toBeInTheDocument()
+  })
+
+  it('S5b: 유형을 해석 못하면 typeKey 원문이 접근성 이름이 된다', () => {
+    renderCard(baseCard, undefined, null, 'custom-type') // FR6 · E6
+    expect(screen.getByRole('img', { name: 'custom-type' })).toBeInTheDocument()
+  })
+
+  it('S5c: 라벨이 없으면 칩 행이 DOM 에 없다', () => {
+    renderCard({ ...baseCard, labels: [] }) // S3 · E1
+    expect(document.querySelector('[data-slot="badge"]')).not.toBeInTheDocument()
+  })
+
+  it('S5d: 라벨이 있으면 칩 행이 라벨 텍스트로 표시된다', () => {
+    renderCard({ ...baseCard, labels: ['백엔드'] })
+    expect(screen.getByText('백엔드')).toBeInTheDocument()
+  })
+
+  it('S5e: 추정이 null 이면 배지가 DOM 에 없다', () => {
+    renderCard({ ...baseCard, originalEstimateSeconds: null }) // S6 · E2
+    expect(screen.queryByLabelText(/^추정 /)).not.toBeInTheDocument()
+  })
+
+  it('S5f: 추정이 있으면 배지가 "시간h 분m" 형식으로 표시된다', () => {
+    renderCard({ ...baseCard, originalEstimateSeconds: 9000 })
+    expect(screen.getByLabelText('추정 2h 30m')).toBeInTheDocument()
+  })
+
+  it('S5g: 카드 루트의 aria-label 과 aria-roledescription 이 변하지 않는다', () => {
+    // FR13 · jira-parity-contract.md §2 — 새 요소는 카드 내부에만, 루트 속성은 문자열 그대로 보존
+    renderCard()
+    const cardEl = document.querySelector('[aria-roledescription="draggable card"]')
+    expect(cardEl).toHaveAttribute('aria-label', `${baseCard.issueKey} — ${baseCard.summary}`)
   })
 })

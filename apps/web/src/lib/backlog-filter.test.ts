@@ -28,6 +28,9 @@ function issue(overrides: Partial<BacklogIssue> & { key: string }): BacklogIssue
     rank: '0|hzzzzz:',
     version: 1,
     epicKey: null,
+    typeKey: 'task',
+    labels: [],
+    originalEstimateSeconds: null,
     ...overrides,
   }
 }

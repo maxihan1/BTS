@@ -12,6 +12,7 @@ import {
 import type { Announcements, DragEndEvent, DragStartEvent, DragOverEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import type { BoardDetail, BoardCardFilterParams } from '@/api/boards'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
 import { useReorderCard } from '@/hooks/use-reorder-card'
@@ -333,6 +334,12 @@ export interface KanbanBoardProps {
    * 이동/판정 로직에는 영향 없음 — 표시만 변경.
    */
   isFilterActive?: boolean
+  /**
+   * 이슈 타입 key → IssueTypeResponse 맵 (FR-UX-14 F14, E9).
+   * 라우트가 `useIssueTypes()` 조회 결과로 1회만 구성해 주입한다(NFR2) — 각 BoardColumn과
+   * 드래그 고스트 카드(DragOverlay) 양쪽에 그대로 전달한다.
+   */
+  issueTypesByKey: Map<string, IssueTypeResponse>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -508,7 +515,7 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  * - accessibility.announcements로 드래그 상호작용을 한국어로 스크린리더에 공지한다(DR2).
  * - 센서: PointerSensor(distance:5) + KeyboardSensor — 클릭과 드래그 구분(D-2).
  */
-export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false }: KanbanBoardProps): JSX.Element {
+export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false, issueTypesByKey }: KanbanBoardProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
@@ -632,6 +639,7 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
               isOver={overColumnId === column.columnId}
               swimlaneField={board.swimlaneField}
               isFilterActive={isFilterActive}
+              issueTypesByKey={issueTypesByKey}
             />
           ))}
         </div>
@@ -643,6 +651,8 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
               card={activeCard}
               columnId={activeFromColumnId}
               assignee={assigneeNames.get(activeCard.issueKey) ?? UNASSIGNED}
+              typeIconName={issueTypesByKey.get(activeCard.typeKey)?.iconName ?? null}
+              typeName={issueTypesByKey.get(activeCard.typeKey)?.name ?? activeCard.typeKey}
             />
           ) : null}
         </DragOverlay>

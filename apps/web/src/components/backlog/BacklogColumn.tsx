@@ -5,8 +5,10 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue } from '@/api/backlog'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { Button } from '@/components/ui/button'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
+import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { BacklogCard } from './BacklogCard'
 import { CreateSprintForm } from './CreateSprintForm'
@@ -42,6 +44,12 @@ export interface BacklogColumnProps {
    * 맵에 없는 키는 assigneeId 유무에 따라 미확인/미배정으로 fallback한다.
    */
   assigneeNames: Map<string, string>
+  /**
+   * 이슈 타입 키 → 응답 맵 — 카드의 유형 아이콘·이름을 해석한다 (FR-UX-14 F14 Task 4).
+   * 조회 실패·로딩 중이면 부모가 빈 맵을 넘긴다 — 이 경우 전 카드가 `issue.typeKey`
+   * 원문 fallback 경로를 탄다 (FR6).
+   */
+  issueTypesByKey: Map<string, IssueTypeResponse>
   /** 드래그 카드가 이 칸 위에 있는지 여부. 하이라이트에 사용 */
   isOver?: boolean
   /**
@@ -85,6 +93,7 @@ function BacklogColumnInner({
   projectKey,
   issues,
   assigneeNames,
+  issueTypesByKey,
   isOver = false,
   onCreateIssue,
   canCreateIssue = false,
@@ -187,14 +196,19 @@ function BacklogColumnInner({
               {backlogLabels.emptyIssues}
             </div>
           ) : (
-            issues.map((issue) => (
-              <BacklogCard
-                key={issue.key}
-                issue={issue}
-                context="backlog"
-                assigneeName={assigneeNames.get(issue.key)}
-              />
-            ))
+            issues.map((issue) => {
+              const cardType = resolveCardType(issueTypesByKey, issue.typeKey)
+              return (
+                <BacklogCard
+                  key={issue.key}
+                  issue={issue}
+                  context="backlog"
+                  assigneeName={assigneeNames.get(issue.key)}
+                  typeIconName={cardType.iconName}
+                  typeName={cardType.typeName}
+                />
+              )
+            })
           )}
         </div>
       )}

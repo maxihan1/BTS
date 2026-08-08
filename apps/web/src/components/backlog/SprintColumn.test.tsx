@@ -5,6 +5,8 @@ import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
+import type { IssueTypeResponse } from '@/api/issue-types'
+import { taskIssueTypeFixture } from '@/mocks/issue-type-fixtures'
 
 // TanStack Router Link mock — params 객체의 모든 키($projectKey, $sprintId 등)를 치환한다
 vi.mock('@tanstack/react-router', () => ({
@@ -82,6 +84,9 @@ const issue1: BacklogIssue = {
   rank: 'aaa',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 function renderSprintColumn(
@@ -93,6 +98,7 @@ function renderSprintColumn(
   onComplete?: () => void,
   projectKey = 'ATLAS',
   entry?: { canCreateIssue?: boolean; onCreateIssue?: () => void },
+  issueTypesByKey: Map<string, IssueTypeResponse> = new Map(),
 ) {
   return render(
     <DndContext>
@@ -101,6 +107,7 @@ function renderSprintColumn(
         sprint={sprint}
         issues={issues}
         assigneeNames={names}
+        issueTypesByKey={issueTypesByKey}
         isOver={isOver}
         onStart={onStart}
         onComplete={onComplete}
@@ -254,6 +261,34 @@ describe('SprintColumn — S4 카드 목록 렌더', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S4b. 이슈 타입 배선 (FR-UX-14 F14 Task 4)
+// ★두 칸(BacklogColumn·SprintColumn) 모두 issueTypesByKey 를 카드에 넘기는지 각자 잰다.
+//   한쪽만 배선하면 스프린트 칸(또는 백로그 칸) 카드만 아이콘이 없는 절반 봉합이 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SprintColumn — 이슈 타입 배선 (F14 Task 4)', () => {
+  it('issueTypesByKey 에 있으면 카드가 해석된 유형 이름으로 아이콘을 그린다', () => {
+    renderSprintColumn(
+      plannedSprint,
+      [issue1],
+      new Map(),
+      false,
+      undefined,
+      undefined,
+      'ATLAS',
+      undefined,
+      new Map([[taskIssueTypeFixture.key, taskIssueTypeFixture]]),
+    )
+    expect(screen.getByRole('img', { name: taskIssueTypeFixture.name })).toBeInTheDocument()
+  })
+
+  it('맵에 없으면 typeKey 원문이 접근성 이름이 된다 (FR6 fallback)', () => {
+    renderSprintColumn(plannedSprint, [issue1])
+    expect(screen.getByRole('img', { name: issue1.typeKey })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // S5. concern-1 RED — orderedKeys droppable data 결선
 // SprintColumn의 useDroppable data에 orderedKeys가 포함되어야 한다.
 // 현재는 { context: 'sprint', sprintId } 만 등록하므로 이 테스트는 실패한다.
@@ -268,6 +303,9 @@ const issue2Sprint: BacklogIssue = {
   rank: 'bbb',
   version: 1,
   epicKey: null,
+  typeKey: 'task',
+  labels: [],
+  originalEstimateSeconds: null,
 }
 
 /** 화면에 실제로 그려진 카드의 이슈 키 — `data-card-droppable` 은 `card:{context}:{key}` 다 */

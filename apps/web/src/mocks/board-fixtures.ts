@@ -26,12 +26,11 @@ import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
 
 /**
  * MSW store 내부에서만 사용하는 카드 확장 타입.
- * labels·componentIds는 필터 술어 평가에만 쓰이며 응답 JSON에 포함되지 않는다.
+ * labels는 BoardCard(FR-UX-14 B2 #346)의 정식 필드이자 필터 술어 평가에도 쓰인다.
+ * componentIds는 store 전용 필터 메타이며 응답 JSON(BoardCard)에 포함되지 않는다.
  */
 export interface StoredCard extends BoardCard {
-  /** 카드에 달린 라벨 목록. GET 응답 BoardCard에는 노출 안 함. */
-  labels: string[]
-  /** 카드가 속한 컴포넌트 ID 목록. GET 응답 BoardCard에는 노출 안 함. */
+  /** 카드가 속한 컴포넌트 ID 목록. GET 응답 BoardCard에는 노출 안 함(store 전용 필터 메타). */
   componentIds: string[]
 }
 
@@ -132,17 +131,21 @@ export function resetBoardStore(): void {
 }
 
 /**
- * 카드 객체에 필터 메타(labels, componentIds)가 이미 있는지 확인한다.
+ * 카드 객체에 store 전용 필터 메타(componentIds)가 이미 있는지 확인한다.
+ *
+ * labels는 FR-UX-14 B2(#346)부터 BoardCard 정식 필드라 항상 존재한다 — componentIds만이
+ * StoredCard 여부를 가르는 신호다(labels로 판별하면 API 응답 그대로인 BoardCard도 항상
+ * true가 되어 componentIds 보완이 누락된다).
  *
  * @param card BoardCard 또는 StoredCard
  */
 function isStoredCard(card: BoardCard): card is StoredCard {
-  return Array.isArray((card as Partial<StoredCard>).labels)
+  return Array.isArray((card as Partial<StoredCard>).componentIds)
 }
 
 /**
  * BoardDetail 또는 StoredBoardDetail을 store에 시드한다.
- * 카드에 labels/componentIds가 없는 경우 빈 배열로 보완해 StoredBoardDetail로 변환한다.
+ * 카드에 componentIds가 없는 경우 빈 배열로 보완해 StoredBoardDetail로 변환한다.
  * 동일 boardId가 이미 있으면 덮어쓴다.
  *
  * @param board 시드할 보드 상세 데이터 (필터 메타 유무 불문)
@@ -156,7 +159,7 @@ export function seedBoard(board: BoardDetail | StoredBoardDetail): void {
         if (isStoredCard(card)) {
           return card
         }
-        return { ...card, labels: [], componentIds: [] }
+        return { ...card, componentIds: [] }
       }),
     })),
   }
@@ -282,6 +285,11 @@ export const DEFAULT_BOARD: BoardDetail = {
           epicKey: null,
           // 유효 LexoRank 문자열 — dnd-kit/sortable 드래그 순서 검증용 (FR-UX-06 PR21)
           rank: '0|hzzzzz:',
+          typeKey: 'story',
+          // 라벨 2개 — FR-UX-14 D7 E2E 라벨 칩 렌더링 검증용 (라벨 수 0/2/4 최소 1건씩)
+          labels: ['frontend', 'backend'],
+          // 추정 있음 — FR-UX-14 D7 E2E 추정 배지 렌더링 검증용 (null/9000 최소 1건씩)
+          originalEstimateSeconds: 9000,
         },
         {
           issueKey: 'ATLAS-4',
@@ -292,6 +300,11 @@ export const DEFAULT_BOARD: BoardDetail = {
           epicKey: null,
           // ATLAS-1보다 뒤 순서 (LexoRank 오름차순)
           rank: '0|i00007:',
+          typeKey: 'task',
+          // 라벨 없음 — 라벨 칩 미노출 경로 검증용
+          labels: [],
+          // 미추정 — 추정 배지 미노출 경로 검증용
+          originalEstimateSeconds: null,
         },
       ],
     },
@@ -313,6 +326,9 @@ export const DEFAULT_BOARD: BoardDetail = {
           epicKey: null,
           // rank 미부여 — null 방어 경로 검증용
           rank: null,
+          typeKey: 'bug',
+          labels: ['frontend'],
+          originalEstimateSeconds: 3600,
         },
       ],
     },
@@ -334,6 +350,10 @@ export const DEFAULT_BOARD: BoardDetail = {
           epicKey: null,
           // rank 미부여 — null 방어 경로 검증용
           rank: null,
+          typeKey: 'task',
+          // 라벨 4개 — 라벨 수 0/2/4 최소 1건씩 요건의 4건 케이스
+          labels: ['frontend', 'backend', 'testing', 'documentation'],
+          originalEstimateSeconds: null,
         },
       ],
     },
@@ -395,7 +415,9 @@ export const FILTER_BOARD: StoredBoardDetail = {
           priority: 1,
           epicKey: null,
           rank: null,
+          typeKey: 'bug',
           labels: ['bug'],
+          originalEstimateSeconds: null,
           componentIds: [COMPONENT_C1_ID],
         },
         {
@@ -406,7 +428,9 @@ export const FILTER_BOARD: StoredBoardDetail = {
           priority: 2,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: ['feature'],
+          originalEstimateSeconds: 1800,
           componentIds: [COMPONENT_C1_ID, COMPONENT_C2_ID],
         },
         {
@@ -417,7 +441,9 @@ export const FILTER_BOARD: StoredBoardDetail = {
           priority: 3,
           epicKey: null,
           rank: null,
+          typeKey: 'story',
           labels: ['bug', 'documentation'],
+          originalEstimateSeconds: null,
           componentIds: [COMPONENT_C2_ID],
         },
         {
@@ -428,7 +454,9 @@ export const FILTER_BOARD: StoredBoardDetail = {
           priority: 4,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],
@@ -470,7 +498,9 @@ export const WIP_BOARD: StoredBoardDetail = {
           priority: 1,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],
@@ -492,7 +522,9 @@ export const WIP_BOARD: StoredBoardDetail = {
           priority: 2,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -503,7 +535,9 @@ export const WIP_BOARD: StoredBoardDetail = {
           priority: 3,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -514,7 +548,9 @@ export const WIP_BOARD: StoredBoardDetail = {
           priority: 1,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],
@@ -567,7 +603,9 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 1,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -578,7 +616,9 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 2,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],
@@ -639,7 +679,9 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 1,
           epicKey: 'EPICTEST-EP-1',
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -650,7 +692,9 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 2,
           epicKey: 'EPICTEST-EP-2',
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -661,7 +705,9 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 3,
           epicKey: null,
           rank: null,
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],
@@ -734,7 +780,9 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 1,
           epicKey: null,
           rank: '0|hzzzzz:',
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -745,7 +793,9 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 2,
           epicKey: null,
           rank: '0|i00007:',
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
         {
@@ -756,7 +806,9 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
           priority: 3,
           epicKey: null,
           rank: '0|i00010:',
+          typeKey: 'task',
           labels: [],
+          originalEstimateSeconds: null,
           componentIds: [],
         },
       ],
@@ -808,6 +860,9 @@ const REORDER_BACKLOG: StoredBacklogProject = {
       rank: '0|hzzzzz:',
       version: 0,
       epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
     },
     {
       key: 'RT-2',
@@ -818,6 +873,9 @@ const REORDER_BACKLOG: StoredBacklogProject = {
       rank: '0|i00007:',
       version: 0,
       epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
     },
     {
       key: 'RT-3',
@@ -828,6 +886,9 @@ const REORDER_BACKLOG: StoredBacklogProject = {
       rank: '0|i00010:',
       version: 0,
       epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
     },
   ],
   sprints: [],

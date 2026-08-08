@@ -48,6 +48,8 @@ import java.util.UUID
  * - BC-4(음성). BROWSE 권한 거부 시 403 + AGILE_ACCESS_DENIED 를 반환한다.
  * - BC-5(음성). 비인증 시 401 + 서비스 미호출(존재 probe 차단).
  * - BC-6(음성). 보안등급 이슈는 backlog/sprints 어디에도 누출되지 않는다(viewer 기준 가시성 필터 단언).
+ * - BC-7(계약). nullable 필드(originalEstimateSeconds/epicKey/rank)가 null 이어도
+ *   응답 키 자체는 존재한다(프론트 Zod `.nullable()` 계약 가드, FR-UX-14 F14 후속).
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BacklogControllerIntegrationTest.TestMvcConfig::class])
@@ -117,6 +119,7 @@ class BacklogControllerIntegrationTest {
     private fun sampleIssue(
         key: String,
         rank: String? = null,
+        originalEstimateSeconds: Int? = 3600,
     ): BacklogIssueResponse =
         BacklogIssueResponse(
             key = key,
@@ -130,7 +133,7 @@ class BacklogControllerIntegrationTest {
             // FR-UX-14 B2 — 카드 밀도 3필드가 JSON 까지 나가는지 확인하기 위한 값.
             typeKey = "bug",
             labels = listOf("urgent"),
-            originalEstimateSeconds = 3600,
+            originalEstimateSeconds = originalEstimateSeconds,
         )
 
     // ── BC-1: GET 정상 → 200 + 봉투 구조 ─────────────────────────────────────
@@ -255,5 +258,43 @@ class BacklogControllerIntegrationTest {
         assert(!body.contains("BTS-SECRET")) {
             "비가시 이슈가 응답에 누출됐습니다: $body"
         }
+    }
+
+    // ── BC-7(계약): nullable 필드가 null 이어도 키는 존재한다 ────────────────
+
+    /**
+     * 프론트 Zod 스키마(`apps/web/src/api/backlog.ts`)가 `originalEstimateSeconds` 를
+     * `z.number().int().nullable()` 로 선언한다 — `.nullish()` 가 아니라 **키가 반드시
+     * 존재**해야 하고 값만 null 일 수 있다는 계약이다. `agile-planning` 모듈에는
+     * `@JsonInclude` 관용구가 0건이라 Jackson 기본값(null 도 키와 함께 직렬화)에
+     * 기대고 있는데, 누군가 이 DTO 에 `@JsonInclude(NON_NULL)` 을 붙이면(다른 3개
+     * 모듈이 이미 이 관용구를 쓴다) 키 자체가 사라져 프론트가 파싱 단계에서 깨진다.
+     * 이 회귀를 값이 아니라 **키의 존재**로 단언해 막는다.
+     *
+     * `jsonPath(...).value(null)` 은 키가 아예 없어도 통과할 수 있어 가드가 공허해진다.
+     * 대신 `hasJsonPath()` 를 쓴다 — Spring `JsonPathExpectationsHelper.hasJsonPath()` 는
+     * 내부적으로 JsonPath 읽기가 `PathNotFoundException` 을 던지는지로만 판정하므로,
+     * 값이 null 이어도 키가 존재하면 통과하고 키 자체가 없으면 실패한다
+     * (바이트코드 실측 + `@JsonInclude(NON_NULL)` 임시 부여 실험으로 확인 — FR-UX-14 F14 후속).
+     * `epicKey`·`rank` 는 프론트가 이미 `.nullish()` 로 방어하지만 같은 DTO 의 nullable
+     * 필드라 정보성으로 함께 못박는다.
+     */
+    @Test
+    fun `nullable 필드가 null 이어도 originalEstimateSeconds epicKey rank 키는 응답에 존재한다`() {
+        val result =
+            BacklogResult(
+                backlog = listOf(sampleIssue("BTS-1", rank = null, originalEstimateSeconds = null)),
+                sprints = emptyList(),
+                truncated = false,
+            )
+        every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
+
+        mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
+            .andExpect(status().isOk)
+            // 신원을 먼저 고정한 뒤 nullable 필드 키 존재를 본다
+            .andExpect(jsonPath("$.data.backlog[0].key").value("BTS-1"))
+            .andExpect(jsonPath("$.data.backlog[0].originalEstimateSeconds").hasJsonPath())
+            .andExpect(jsonPath("$.data.backlog[0].epicKey").hasJsonPath())
+            .andExpect(jsonPath("$.data.backlog[0].rank").hasJsonPath())
     }
 }
