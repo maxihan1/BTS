@@ -113,6 +113,13 @@ function resolveCreateErrorMessage(err: unknown): string {
       if (errorCode === 'ASSIGNEE_NOT_FOUND') {
         return issueCreateStrings.errorAssigneeNotFound
       }
+      // 커스텀 필드 값 검증 실패 (422). 매핑이 없으면 errorDefault 로 떨어져
+      // 「잠시 후 다시 시도해 주세요」가 뜨는데, **재시도해도 안 되는** 입력 오류다.
+      // 클라이언트가 못 잡는 형식 오류(URL 타입에 `abc` 등)가 이 경로로 온다 —
+      // 폼이 noValidate 라 브라우저 검증이 꺼져 있고 위젯에 형식 검사가 없다.
+      if (errorCode === 'CUSTOM_FIELD_VALIDATION_FAILED') {
+        return issueCreateStrings.errorCustomFieldInvalid
+      }
     }
   }
   return issueCreateStrings.errorDefault
@@ -244,6 +251,13 @@ export function IssueCreateForm({
       setSelectedComponentIds([])
       setCustomFieldValues({})
       setSelectedSecurityLevelId(null)
+      // ★프로젝트에 종속된 **에러 표시**도 함께 버린다 (게이트2 리뷰 적발).
+      // 「이 프로젝트에 이슈를 만들 권한이 없습니다」는 프로젝트 A 에 대한 주장이라
+      // B 로 바꾸면 즉시 거짓이 된다. 안 비우면 권한이 **있는** 프로젝트를 고른 뒤에도
+      // 빨간 alert 이 그대로 남아 다음 제출까지 거짓말을 계속한다.
+      // 필수 커스텀 필드 경고도 같은 이유다 — 정의 자체가 프로젝트마다 다르다.
+      setServerError(null)
+      setCustomFieldRequiredError(false)
     }
   }, [projectKey])
 

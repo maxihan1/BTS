@@ -760,6 +760,13 @@ export const issueCreateStrings = {
    * 문구가 나갔다. 권한 문제는 시간이 해결해 주지 않으므로 원인을 그대로 말한다.
    */
   errorCreateForbidden: '이 프로젝트에 이슈를 만들 권한이 없습니다.',
+  /**
+   * 커스텀 필드 값 검증 실패 (백엔드 422 `CUSTOM_FIELD_VALIDATION_FAILED`).
+   *
+   * 이전에는 `errorDefault`(「잠시 후 다시 시도해 주세요」)로 떨어졌다 — 입력을 고치지
+   * 않으면 몇 번을 재시도해도 같은 결과라 사용자를 무한 재시도에 가둔다.
+   */
+  errorCustomFieldInvalid: '커스텀 필드 값이 올바르지 않습니다. 입력값을 확인해 주세요.',
 
   // ── FR-UX-09 F2 — 생성 모달 신규 필드 ────────────────────────────────
   /** 프로젝트 셀렉터 미선택 placeholder */

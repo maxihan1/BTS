@@ -922,3 +922,101 @@ describe('IssueCreateForm — required 빈값 판정의 유형별 분기 (선판
     await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★게이트2 간극 리뷰가 적발한 신규 결함 2건 (2026-08-10)
+//
+// (1) CREATE 게이트가 세운 `serverError` 가 **프로젝트를 바꿔도 안 지워진다.**
+//     「이 프로젝트에 이슈를 만들 권한이 없습니다」는 프로젝트 A 에 대한 주장이라
+//     B 로 바꾸는 순간 거짓이 되는데, 빨간 alert 이 그대로 남아 계속 거짓말한다.
+//     이 PR 이 만든 결함이다 — 그 전에는 그 문구 자체가 없었다.
+//
+// (2) TODOS 가 「같은 PR 에서 함께 볼 것」으로 못박은 커스텀 필드 422 매핑이 빠져 있었다.
+//     클라이언트가 못 잡는 형식 오류(URL 타입에 `abc` 등)가 `errorDefault` 로 떨어져
+//     **재시도해도 안 되는데 재시도를 권하는** 문구가 나간다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 프로젝트를 바꾸면 이전 프로젝트의 에러 주장을 버린다', () => {
+  function permissionsByProject(map: Record<string, boolean>): void {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        return HttpResponse.json({
+          projectKey: key,
+          permissions: {
+            CREATE: map[key] ?? true,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
+        })
+      }),
+    )
+  }
+
+  it('★거부 프로젝트에서 뜬 권한 alert 이 허용 프로젝트로 바꾸면 사라진다', async () => {
+    const user = userEvent.setup()
+    permissionsByProject({ ATLAS: false, MIDDLE: true })
+    // ★폼 밖 제출 버튼으로 렌더한다. 폼 안 버튼은 거부 시 disabled 라 jsdom 이 제출을
+    //   하지 않아 `handleSubmit` 이 실행되지 않고, 그러면 serverError 자체가 안 세워진다.
+    //   (게이트2 리뷰가 적발한 것과 같은 함정 — 이 테스트도 그대로 공허해질 뻔했다.)
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateForm formId="switch-project-form" />
+        <button type="submit" form="switch-project-form">
+          폼 밖 제출
+        </button>
+      </QueryClientProvider>,
+    )
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await screen.findByTestId('create-permission-denied')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: '폼 밖 제출' }))
+
+    // 거부 문구가 실제로 떴는지 먼저 확인한다 — 안 떴으면 아래 단언이 공허하다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+
+    await user.selectOptions(select, 'MIDDLE')
+
+    // 프로젝트 B 는 CREATE 가 있다. A 에 대한 주장이 남아 있으면 안 된다.
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-permission-denied')).toBeNull()
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+})
+
+describe('IssueCreateForm — 커스텀 필드 422 는 전용 문구로 안내한다', () => {
+  it('★CUSTOM_FIELD_VALIDATION_FAILED 는 「잠시 후 다시 시도」가 아니다', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json(
+          { errorCode: 'CUSTOM_FIELD_VALIDATION_FAILED', detail: 'invalid url' },
+          { status: 422 },
+        ),
+      ),
+    )
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(issueCreateStrings.errorCustomFieldInvalid)
+    // 되던 문구가 아니어야 한다 — 이 짝이 없으면 「alert 이 떴다」만 보는 공허 단언이 된다.
+    expect(alert).not.toHaveTextContent(issueCreateStrings.errorDefault)
+  })
+})
