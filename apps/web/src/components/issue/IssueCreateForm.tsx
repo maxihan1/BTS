@@ -40,15 +40,33 @@ import type { CustomField } from '@/api/custom-fields.types'
 /**
  * required 커스텀 필드의 현재 값이 비어 있는지 판정한다 (스펙 E-3 기준).
  *
- * - SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined | null → 빈값
- * - NUMBER: undefined | null | NaN → 빈값. 0은 유효값.
- * - MULTI_SELECT: 빈 배열 → 빈값.
- * - CHECKBOX: 항상 값 보유 → 빈값 아님.
+ * ★판정을 **열거가 아니라 선판정**으로 짠다. 「값이 아예 없다」(`undefined`/`null`)는
+ * 필드 유형과 무관하게 빈값이므로 switch 앞에서 한 번에 거른다. 분기마다 `undefined` 를
+ * 다시 적는 방식은 한 분기만 빠뜨려도 조용히 뚫리고, 새 `fieldType` 이 생길 때
+ * 같은 구멍이 재발한다 — 실제로 MULTI_SELECT 와 CHECKBOX 두 분기가 그렇게 뚫려 있었다
+ * (TODOS 「required MULTI_SELECT 가 클라이언트 검증을 그냥 통과한다」, 2026-08-09 봉합).
+ *
+ * 선판정 이후 각 분기는 **그 유형 고유의 빈값**만 본다.
+ * - 텍스트류(SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO): `''`
+ * - NUMBER: `NaN`. **0 은 유효값**이므로 falsy 검사를 쓰면 안 된다.
+ * - MULTI_SELECT: 빈 배열
+ * - CHECKBOX: 체크되지 않음(`raw !== true`)
+ *
+ * ★CHECKBOX 가 **백엔드보다 엄격**한 것은 의도된 것이다(2026-08-09 Maxi 확정).
+ * 백엔드 `CustomFieldValueValidator` 는 `value == null` 만 거부해 `false` 를 충족으로 본다.
+ * 프론트는 「필수 체크박스는 체크해야 제출 가능」으로 둔다 — 필수 체크박스의 실제 용도가
+ * 약관 동의류라 「해제된 채 통과」가 의미를 잃기 때문이다.
+ * 판정을 `undefined → 빈값 / false → 유효` 로 두는 절충안은 **택하지 않았다**. 그러면
+ * 화면상 똑같이 해제된 두 상태(첫 방문 / 토글 왕복 후)가 서로 다르게 판정돼
+ * 사용자가 원인을 알 수 없는 데드락이 된다.
  */
 function isRequiredFieldEmpty(
   fieldType: CustomField['fieldType'],
   raw: unknown,
 ): boolean {
+  // ★선판정 — 값이 아예 없으면 유형과 무관하게 빈값이다.
+  if (raw === undefined || raw === null) return true
+
   switch (fieldType) {
     case 'SHORT_TEXT':
     case 'LONG_TEXT':
@@ -57,13 +75,13 @@ function isRequiredFieldEmpty(
     case 'DATETIME':
     case 'SINGLE_SELECT':
     case 'RADIO':
-      return raw === '' || raw === undefined || raw === null
+      return raw === ''
     case 'NUMBER':
-      return raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
+      return typeof raw === 'number' && isNaN(raw)
     case 'MULTI_SELECT':
       return Array.isArray(raw) && raw.length === 0
     case 'CHECKBOX':
-      return false
+      return raw !== true
   }
 }
 
