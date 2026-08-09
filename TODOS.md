@@ -1531,7 +1531,10 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 > - **정정 2.** 대가는 「최근 본 이슈에 접근 불가」가 아니라 **「MRU 목록에 접근 불가」**다. ⌘K 자유 텍스트 검색으로 이슈 자체에는 도달한다.
 > - **정정 3.** Cons 의 「테스트가 두 배」는 과장. 렌더 경로는 **이미** 갈려 있다(`RecentIssuesMenu.tsx:71·82`). 진짜 비용은 신규 테스트가 아니라 **기존 봉인 2개(유닛 T-RM-7 · e2e S9-b)의 단언을 정반대로 다시 쓰는 것**이다.
 > - **★정정 4 (착수 차단).** 선행 조건 「실사용 신호」는 **원리적으로 충족 불가**다 — 저장소에 분석/텔레메트리 코드가 **0건**이라 「접은 채 쓰는 비율」을 잴 방법이 없다. 조건을 그대로 두면 이 항목은 영구 보류다.
-> - **되돌림 금지.** `RecentIssuesMenu.tsx:82` 의 `if (collapsed) return null` 과 `:71` 의 `keysToResolve` 가드를 **버그로 오인해 지우지 말 것.** 지우면 T-RM-7·S9-b 가 동시에 red 가 되고, 「테스트가 틀렸다」로 판단하면 봉인 2개가 통째로 증발한다. 인용 좌표 `ProjectTree.tsx:217-223` 은 밀리지 않았다(실측 일치).
+> - **되돌림 금지 — 단, 두 가드의 보호 수준이 다르다 (게이트2 리뷰 정정).**
+>   · `:82` 의 `if (collapsed) return null` 은 T-RM-7(유닛)·S9-b(e2e)가 지킨다. 지우면 둘 다 red 다.
+>   · **`:71` 의 `keysToResolve` 가드는 무검증이다.** 지워도 두 테스트가 **초록으로 통과**한다 — `:82` 가 남아 DOM 단언이 그대로 만족되기 때문이다. 그 순간 접은 사용자가 MRU 키 개수만큼 `GET /api/v1/issues/{key}` 를 계속 쏘는 회귀가 되는데, 「테스트가 잡아준다」고 믿어 아무도 확인하지 않는다.
+>   ⇒ 착수 시 T-RM-7 에 **접힘 상태 요청 0건** 단언(핸들러 호출 카운터)을 추가할 것. 인용 좌표 `ProjectTree.tsx:217-223` 은 밀리지 않았다(실측 일치).
 > - **착수하게 될 경우 권장안은 원안(A)이 아니라 B.** 레일에 아이콘을 더하는 대신 `CommandPalette.tsx:473` 의 `showQuickLinks` 빈 입력 분기에 「최근 본 이슈」 그룹을 넣는다 — 64px 레일 시각 예산 0, §8-A D-B 를 뒤집지 않는다.
 
 ---
@@ -1569,7 +1572,8 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 > - **정정 1.** 도메인 함수 범위는 `Issue.kt:370-379` 가 아니라 **370-385**. 370-379 는 개수 상한 `require`(381-383)를 빠뜨린다.
 > - **정정 2.** `EpicChildExceptionHandler` 는 「자기 **패키지** 스코프」가 아니라 `@RestControllerAdvice(assignableTypes = [IssueEpicController::class])` — **컨트롤러 타입** 한정이다. `basePackages` 인 것은 `BulkOperationExceptionHandler` 뿐. 결론(IssueController 를 안 덮는다)은 양쪽 다 유효.
 > - **정정 3.** ADR `2026-07-31-…-b1-create-issue-fields.md:150` 이 두 DTO 를 함께 지목한 서술은 **봉합 이전 상태의 화석**이다. 현재 `CreateIssueRequest.kt:64` 는 `List<String>? = null` 로 원소 제약이 없다.
-> - **★선택지 ② 는 기각.** 도메인 전용 예외 → 422 는 `Issue.create` 도 같은 예외를 던지므로 **생성 경로의 400 계약**(`IssueControllerCreateTest:312·319·326`)과 프론트 에러 처리를 함께 깨뜨린다.
+> - **★선택지 ② 는 기각 — 단 사유를 정정한다 (게이트2 리뷰).** 처음에 적은 「생성 경로의 400 계약을 깨뜨린다」는 **성립하지 않는다.** 인용한 생성 테스트의 400 은 전부 DTO Bean Validation 에서 나오고 도메인은 도달조차 하지 않으므로, 도메인 예외 타입을 바꿔도 그 테스트들은 그대로 초록이다.
+>   진짜 기각 사유는 ADR D-6 의 원래 논거다 — **전역 `IllegalArgumentException` 매핑은 진짜 버그를 사용자 오류로 위장해 살아 있어야 할 500 을 숨긴다.**
 > - **2026-08-09 Maxi 확정 — ①(400, 생성/수정 대칭)으로 좁게 봉합.** 상수 `LABEL_MAX_LENGTH` 사본 수렴은 이 PR 범위 밖(신규 항목 등재).
 > - **★처방의 구멍(반증이 적발).** `@get:JsonIgnore` 를 빠뜨리면 springdoc 이 `labelsValid` 를 스키마에 흘리는데 **현재 `OpenApiContractTest` 는 create 쪽만 봉인(:204)해서 아무도 못 잡는다.** update 쪽 대칭 단언을 같은 PR 에 넣지 않으면 이 처방 자체가 새 결함을 심는다. 또한 `@AssertTrue` 는 getter 이름 규약(`isLabelsValid` → property `labelsValid`)에 묶여 있어 이름을 바꾸면 **지금 고치는 장식 애노테이션과 같은 양식으로 조용히 무력화**된다 — 뮤테이션 검증 필수.
 
@@ -1601,7 +1605,7 @@ clone 은 별건으로 남긴다 — 회귀 표면과 PR 범위를 동시에 넓
 
 ---
 
-## ⬜ search-export-import — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
+## ⬜ issue-tracking — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
 
 **무엇.** `IssueImportAdapter` 는 `createIssue` 에 담당자를 넘기지 않는다(`:537-544`).
 그러면 `resolveDefaultAssignee` 가 컴포넌트/프로젝트 리드를 담당자로 넣는다.
@@ -1760,7 +1764,8 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 > - **정정 3.** `case 'CHECKBOX': return false` 도 동형 결함이다. `CheckboxWidget` 이 마운트 시 `onChange` 를 안 쏘므로 required CHECKBOX 를 안 건드리면 `undefined` 로 제출된다.
 > - **2026-08-09 Maxi 확정 — MULTI_SELECT + CHECKBOX 둘 다 막는다. 편집 화면 사본 통합은 범위 밖(신규 등재).**
 > - **★★구현 시 절대 주의 (반증이 적발한 치명 구멍).** 「선판정 뒤집기(`undefined|null` → 빈값)」를 CHECKBOX 에 **그대로 적용하면 사용자를 데드락에 가둔다.** `undefined → 빈값(true)` · `false → 유효` 가 되어, required 체크박스를 해제 상태로 두려는 사용자는 **체크했다 해제하는 2회 조작 없이는 제출할 수 없다.** 화면상 두 상태는 픽셀 단위로 동일한데 한쪽만 경고가 뜬다. 게다가 백엔드(`CustomFieldValueValidator.kt:88`)는 `value == null` 만 거부하므로 **프론트가 백엔드보다 엄격해진다.**
->   ⇒ **올바른 처방.** 선판정은 넣되 **CHECKBOX 분기는 `return false` 를 유지**하고, `undefined` 자체를 없앤다 — `CheckboxWidget` 이 마운트 시 `value === undefined` 면 `onChange(false)` 를 1회 발화(effect 로 감쌀 것). 그러면 백엔드 의미(false=충족)와 정렬되고 편집 경로도 같은 위젯이라 동시에 닫힌다.
+>   ⇒ **채택한 처방 (2026-08-09 구현).** `CHECKBOX: raw !== true` — 「필수 체크박스는 체크해야 제출 가능」. 화면상 해제된 두 상태(첫 방문 / 토글 왕복)가 **같게** 판정되므로 데드락이 없다. 백엔드(`value == null` 만 거부)보다 엄격한 것은 의도다 — 필수 체크박스의 실제 용도가 약관 동의류다.
+>   ⇒ **기각한 대안 — 「마운트 시 `onChange(false)` 1회 발화」.** 언뜻 백엔드 의미와 정렬돼 보이지만 **편집 경로에 새 결함을 연다** (게이트2 리뷰 적발). 사용자가 만지지도 않은 **optional** CHECKBOX 가 `draft` 에 키를 만들어 `buildNormalizedPatch` 의 `if (!(key in draft)) continue` 를 통과하고, 텍스트 필드 하나만 고쳐도 `null → false` 로 함께 덮어쓴다. 굳이 쓰려면 `field.required === true` 로 한정해야 한다.
 > - **잔여 422 경로(범위 밖·신규 등재).** `IssueCustomFieldsEdit.tsx:101` 은 `visibleFieldDefs`(FR-PM-07 숨김 제외) 기준으로 검증하는데 백엔드 `mergeCustomFieldsAndValidate`(`IssueApplicationService.kt:1508-1511`)는 **활성 정의 전량** 기준이다. 사용자에게 restricted 인 required 필드가 비어 있으면 **화면에 없는 필드 때문에 영원히 저장 실패**한다.
 > - **고아 헤더.** `apps/web/e2e/custom-fields.spec.ts:365` 에 「S6 — required 필드 미입력 시 422」 **헤더만 있고 테스트가 없다.** 다음 세션이 「이미 커버됨」으로 오독하므로 헤더를 지우거나 채울 것.
 
@@ -1831,7 +1836,8 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **정정 5.** 「신규 API 가 필요할 수 있으므로」 → 「어느 프로젝트든 CREATE 하나라도」 안을 고르면 **필요하다로 확정**(현재 API 는 projectKey 필수, 없으면 400).
 > - **2026-08-09 Maxi 확정 — 폼(선택된 프로젝트) 기준 게이트.** 모든 진입 경로가 `IssueCreateForm` 하나를 지나므로(`CreateIssueDialog.tsx:99` 가 유일 사용처, 소비처 4곳 = TopBar:150 · issues.new:56 · BacklogBoard:489 · board:435) 여기 한 곳이 무게이트 경로 4개 + 프로젝트 갈아타기를 동시에 닫는다. 신규 백엔드 작업 0.
 > - **★★구현 시 절대 주의 (반증이 적발한 치명 구멍 2건).**
->   ① **판정식을 그대로 복사하면 「거짓말하는 가드」가 된다.** `issues.index.tsx:526` 의 `!isPermLoading && permData?.permissions.CREATE === true` 는 **버튼을 회색으로 만들 뿐** 아무 주장도 안 한다. 같은 식을 `setServerError('권한이 없습니다')` 에 물리면 **사실 주장**이 되어, 권한 조회 중(`isPermLoading=true`)에 Enter 를 치면 **거짓 문구**를 본다. 프로젝트를 바꿀 때마다 queryKey 가 바뀌어 **오탐이 반복 재발**한다.
+>   ① **판정식을 그대로 복사하면 「거짓말하는 가드」가 된다.** `issues.index.tsx:526` 의 `!isPermLoading && permData?.permissions.CREATE === true` 는 시각적으로는 버튼을 회색으로 만들 뿐이다.
+>   **★단 「아무 주장도 안 한다」는 거짓이다 (게이트2 리뷰).** 같은 컴포넌트 `:447` 이 `aria-label="새 이슈 (권한 없음)"` 로 **이미 사실 주장을 하고 있어**, 권한 조회 중이거나 조회 실패 구간에서 보조기술 사용자에게 **거짓 안내**가 나간다. 목록 화면도 같은 `=== false` 처방의 적용 대상이다. 같은 식을 `setServerError('권한이 없습니다')` 에 물리면 **사실 주장**이 되어, 권한 조회 중(`isPermLoading=true`)에 Enter 를 치면 **거짓 문구**를 본다. 프로젝트를 바꿀 때마다 queryKey 가 바뀌어 **오탐이 반복 재발**한다.
 >   ② **쿼리 실패 시 영구 오탐 거부.** `use-project-permissions.ts:31-38` 에 `retry:false` 도 에러 폴백도 없다. 500/네트워크 단절이면 `permData=undefined` 로 안착해 **CREATE 를 실제로 가진 사용자를 영구 차단**한다.
 >   ⇒ **최소 수정.** `!isPermLoading && … === true`(미지=거부) 대신 **`permData?.permissions.CREATE === false`(명시 거부만 차단)**. 토큰 하나 차이인데 실패 모드가 정반대이고 ①②가 동시에 닫힌다.
 > - **★더 싼 기준선을 먼저 깔 것.** 실제 피해(「다 채우고 제출에서야 거부」)가 아픈 이유는 `IssueCreateForm.tsx:80-95` 의 `resolveCreateErrorMessage` 가 **403 을 매핑하지 않아** `ko.ts:755` 의 「잠시 후 다시 시도해 주세요」로 떨어져 **사용자가 권한 문제를 일시 장애로 오인해 재시도**하기 때문이다. 403/ACCESS_DENIED 분기 **3줄**이 ①신규 네트워크 호출 0 ②오탐 거부 0 ③모든 진입 경로 자동 커버 를 달성한다. 사전 게이트는 그 위의 선택적 개선이다.
@@ -1870,7 +1876,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > `uniqueIds=1` 이 결정적이다 — **요청이 두 번 나간 게 아니라 같은 요청이 두 번 디스패치**된다.
 > - **★정정 1.** 「jsdom 환경에서 fetch 한 번에 MSW 핸들러가 두 번 돈다」는 **과일반화**다. jsdom 은 필요조건일 뿐이고 진짜 트리거는 **`setupServer` 인스턴스 2개 동시 listen** 이다.
 > - **★정정 2 (처방이 낡았다).** 「근본 원인을 먼저 규명한다 — 인터셉터 이중 등록인지, jsdom fetch 폴리필이 http 계층과 겹치는지」는 이미 해소돼 있었다. `import-handlers.test.ts` 주석(2026-07-03) · `profile-handlers.test.ts` 주석(2026-07-06) · 메모리 `[[msw-dual-setupserver-double-dispatch]]` 에 **처방까지 적혀 있다.** 2026-08-03 계측은 재발견이다.
-> - **★정정 3 (범위).** 로컬 `setupServer(` 를 만드는 테스트 파일이 **59~60개**, 「하지 마라」 주석을 단 파일은 **7개**, 이를 **강제하는 린트 룰·판별식은 0개**. `[[two-lists-never-check-each-other]]` 양식 그대로다.
+> - **★정정 3 (범위).** 로컬 `setupServer(` 를 만드는 테스트 파일이 **60개** (2026-08-09 실측 · `src/test/server.ts` 제외), 「하지 마라」 주석을 단 파일은 **7개**, 이를 **강제하는 린트 룰·판별식은 0개**. `[[two-lists-never-check-each-other]]` 양식 그대로다.
 > - **정정 4.** 「지금까지 확인된 것」에 F3 의 백로그 경로 1건만 적혀 있으나 실제 보상 가드는 **2곳**이다 — `automation-execution-handlers.ts` 의 `replayExecutionHandler` requestId 단발 캐시가 두 번째.
 > - **★정정 5.** `automation-execution-handlers.ts:15-17` 이 기록한 「본문을 읽는 핸들러는 두 번째 호출이 `Body already read` 로 자동 실패해 무해하다」는 **신뢰할 수 없다.** `issue-handlers.ts:484` 는 `request.clone().json()` 으로 읽는데도 append 가 2회 났다. **「본문을 읽으니 안전」을 전수 조사의 제외 기준으로 쓰지 말 것.**
 > - **정정 6.** 배증 폭은 핸들러마다 다르다(합성 GET 은 2배, 실 `bulkOperationHandlers` GET 은 단일 dispatch 서명). **「모든 요청이 정확히 2배」로 가정하면 틀린다.**
@@ -1879,7 +1885,8 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **이주 시 함정 2.** 전역 `setup.ts:21` 의 `afterEach(server.resetHandlers())` 때문에 핸들러 등록은 **반드시 `beforeEach`** 여야 한다. `beforeAll` 에 두면 첫 테스트 뒤 조용히 사라진다. 선례 3건 — `import-handlers.test.ts:13-22` · `profile-handlers.test.ts:8-18` · `status-handlers.test.ts:8-16`.
 > - **이주 시 함정 3.** 지금은 두 서버 중 한쪽이 매치하면 넘어가던 요청이 단일 서버가 되면 `onUnhandledRequest: 'error'` 에 그대로 걸린다 — **이주 중 대량 RED 를 전제**할 것.
 > - **걷어낼 것 / 남길 것.** 이주 완료 후 `automation-execution-handlers.ts:117-119, 228-229, 260-261` 의 단발 캐시는 제거 후보. 단 `backlog-fixtures.ts:165` 의 키 중복 금지 가드는 **남긴다** — 그건 우회가 아니라 실제 백로그의 도메인 불변식이고, 제거하면 판별자만 사라진다(`[[seal-blinds-existing-guard]]`).
-> - **정리 대상.** 이 검증 중 `apps/web/src/test/` 에 미추적 진단 파일 2개(`__tmp-probe-dual-server.test.ts` · `__tmp-probe-global-only.test.ts`)를 만들어 위 A/B 수치를 얻었다. 정식 판별식으로 승격되면 삭제할 것 — `rm apps/web/src/test/__tmp-probe-*.test.ts`.
+> - **★증거의 소재 (게이트2 리뷰 지적).** 위 A/B 수치는 **일회성 진단 파일**(`apps/web/src/test/__tmp-probe-*.test.ts`)로 얻었고 그 파일은 **저장소에 커밋되지 않았다.** 재검증하려면 동일 조건(로컬 `setupServer` + 전역 공존)을 다시 만들어야 한다.
+>   정식 테스트로 승격하지 않은 이유 — 승격하려면 테스트가 스스로 이중 등록 상태를 만들어야 하는데 그것이 곧 판별식이 금지하는 상태라 자기모순이 된다. 대신 판별식(`msw-single-setupserver.test.ts`) 주석에 수치를 표로 남겼다.
 
 ## ⬜ 인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · 후속 3건 · 착수)
 
@@ -1940,7 +1947,9 @@ DB·Docker 무관한 `IssueBcArchTest` 조차 9s→27s 였다. 주범은 Chrome 
 > - **① 좀비 run 차단 — 미구현 확인.** `concurrency` grep 실측: backend-ci 1 · frontend-ci 1 · workflow-scripts-ci 1 · **infra-ci 0 · runner-health 0**.
 > - **2026-08-09 Maxi 확정 — 3건을 고정 순서대로, 「PR 검증 범위 축소」는 보류.** 즉 ①좀비 run 차단 → ②Gradle 설정까지 진행하고 **③변경 모듈만 테스트는 착수하지 않는다.** 회귀가 머지 후 main 에서 처음 빨개지는 것을 받아들이지 않겠다는 결정이다.
 > - **★★①(b) 처방은 실측이 반증한다 (반증이 적발).** 「`runner-health` 는 모든 워크플로우의 `needs:` 선행이라 여기서 취소하면 뒤따르는 20잡이 아예 안 뜬다」는 논거가 성립하지 않는다 — runner-health 는 run 의 **맨 앞**이라 run 생성 직후에 돌고, 나머지 잡은 그 뒤 **몇 시간에 걸쳐** 배수된다(run 31139616352: created 01:56:08 → runner-health 01:57:09~). 즉 **좀비가 되는 시점에는 runner-health 가 이미 끝나 있다.** 취소 스텝을 그 잡에 넣으면 「PR 이 아직 열려 있던 시점」의 판정만 하게 된다.
-> - **①(a) 는 유효.** `infra-ci.yml` 에 다른 3개와 동일한 `concurrency: {group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true}` 추가는 「낡은 main 커밋」 경로를 실제로 닫는다. **fail-open 계약**(API 실패·빈 응답·비 pull_request 이벤트에서는 아무것도 안 하고 `exit 0`)은 자원 점검 스텝(`:120-188`)의 선례를 그대로 따를 것.
+> - **✅ ①(a) 완료 (2026-08-10 · `fix/infra-ci-concurrency`).** `infra-ci.yml` 에 다른 3개와 동일한 `concurrency: {group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true}` 를 넣고, 되돌림을 막는 판별식 `scripts/workflow/ci-concurrency-coverage.test.ts` 를 신설했다.
+>   **★닫히는 범위를 정확히 적을 것 (게이트2 리뷰 정정).** 이 선언이 닫는 것은 **같은 PR/브랜치에 새 push 가 겹치는** 경로다. 「이미 머지되고 브랜치가 삭제된 PR 의 큐 잔존분」은 **원리적으로 못 닫는다** — 그 ref 에는 후속 run 이 영영 생기지 않아 취소가 발화할 계기가 없다. 2026-08-07 큐의 PR #346 3건이 정확히 그 경우였고, 그건 별도 처방(`pull_request: types: [closed]` 에서 `gh run cancel`, 또는 머지 스킬 확장)이 필요하다 — 아래 신규 항목.
+> - **★①(b)·② 착수 시 기준선 주의.** ①(a) 이후 `cancelled` 건수는 **설계된 동작**이라 회복 지표로 쓸 수 없다. ②(Gradle 설정)·③(모듈 선택)의 개선폭은 **대기 시간(벽시계 − 실행 합계)** 으로 재야 한다. **fail-open 계약**(API 실패·빈 응답·비 pull_request 이벤트에서는 아무것도 안 하고 `exit 0`)은 자원 점검 스텝(`:120-188`)의 선례를 그대로 따를 것.
 
 ---
 
@@ -2100,7 +2109,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ## ⬜ apps/web(테스트 인프라) — 로컬 `setupServer` 59개 전면 이주 (미착수)
 
-**무엇.** 이중 디스패치의 근본 원인인 로컬 `setupServer` 인스턴스가 테스트 파일 **59~60개**에 남아 있다.
+**무엇.** 이중 디스패치의 근본 원인인 로컬 `setupServer` 인스턴스가 테스트 파일 **60개** (2026-08-09 실측 · `src/test/server.ts` 제외)에 남아 있다.
 판별식(동결)만 세워 신규 유입은 막았으나 기존 59개는 그대로다.
 
 **왜 한 PR 로 안 하나.** ①이주 중 대량 RED 가 예상되고 ②프론트 전 스위트 반복 실행이
@@ -2135,7 +2144,9 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **무엇.** `BulkTransitionDialog.tsx:158` 과 `BulkEditDialog.tsx:101` 이 `mutateAsync` 를 catch 없이 호출하고
 `void handleApply()` 로 띄운다.
 
-**결과.** 실패하면 **프로덕션에서도 unhandled rejection** 이고 사용자에게는 아무 피드백이 없다.
+**결과.** 실패하면 **프로덕션에서도 unhandled rejection** 이 된다.
+**★단 「사용자에게 피드백이 없다」는 거짓이다 (게이트2 리뷰).** `use-bulk-operation.ts:58` 의 `onError` 가 이미 `toast.error` 를 띄운다.
+남는 것은 **re-throw 된 rejection 이 전역으로 새는 것**뿐이므로, 봉합할 때 `CloneIssueDialog` 처럼 **빈 catch 만** 넣고 토스트를 새로 추가하지 말 것 — 추가하면 같은 실패 1회에 토스트가 2건 뜬다.
 테스트 인프라 문제가 아니라 **실사용 결함**이다.
 
 **정본 패턴.** `CloneIssueDialog.tsx:76-81` 의 try/catch 가 이미 같은 이유를 주석으로 적어 두었다 — 그 형태를 따를 것.
@@ -2160,3 +2171,43 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **처방.** 파서 정규식에 `📌` 를 추가하고 `parseTodos` 가 `보류` 상태를 돌려주게 한다.
 **짝 판별식 필수** — 판별식의 허용 마커 집합과 파서의 인식 마커 집합이 **같음**을 단언하는 테스트를 세운다.
 한쪽만 고치면 다음 마커에서 같은 일이 반복된다.
+
+
+## ⬜ apps/web — 이슈 목록 「새 이슈」 버튼이 로딩·조회실패 구간에 「권한 없음」이라고 거짓말한다 (선재 · 미착수)
+
+**무엇.** `routes/issues.index.tsx:526` 의 `const canCreate = !isPermLoading && permData?.permissions.CREATE === true`
+(미지 = 거부)가 `:447` 의 `aria-label="새 이슈 (권한 없음)"` 와 묶여 있다.
+
+**결과.** CREATE 권한을 **실제로 가진** 사용자가 `/issues` 를 열면 권한 응답이 오기 전까지
+`aria-label="새 이슈 (권한 없음)"` 인 disabled 버튼이 렌더된다. 스크린리더 사용자는 **매 진입마다
+「권한 없음」이라는 거짓 안내**를 듣는다. `use-project-permissions.ts` 에 `retry:false` 도 에러 폴백도
+없으므로 500·네트워크 단절이면 그 상태로 **영구히 안착**한다.
+
+**어떻게 발견.** 2026-08-09 이슈 생성 CREATE 게이트 작업의 게이트2 리뷰. 그 작업은 판정식을
+`permissions.CREATE === false`(**명시 거부만** 차단)로 뒤집어 이 함정을 피했는데, 목록 화면은 범위 밖이었다.
+
+**처방.** 같은 `=== false` 형태로 뒤집는다. 시각적 disabled 는 남기더라도 **접근성 이름이 사실을
+주장하지 않게** 하는 것이 핵심이다 — 미지 상태에서는 「권한 없음」이라고 말하지 않는다.
+
+**착수 시 읽을 것.** `components/issue/IssueCreateForm.tsx` 의 `isCreateExplicitlyDenied` KDoc(정본 논거) ·
+`hooks/use-project-permissions.ts:31-38`(retry·폴백 부재).
+
+---
+
+## ⬜ 인프라 — 머지·닫힌 PR 의 큐 잔존 run 차단 (concurrency 로는 못 닫는다 · 미착수)
+
+**무엇.** `concurrency` 는 **같은 그룹에 새 run 이 생길 때만** 이전 run 을 취소한다. 이미 머지되고
+브랜치까지 삭제된 PR 의 큐 잔존분은 그 ref 에 후속 run 이 영영 생기지 않아 **취소가 발화할 계기 자체가 없다.**
+2026-08-07 큐 8건 중 3건이 정확히 그 경우(PR #346)였다.
+
+**★원안은 실측이 반증했다.** 「`runner-health` 잡에 취소 스텝을 넣는다」는 성립하지 않는다 —
+`runner-health` 는 run 의 **맨 앞**이라 run 생성 직후에 돌고, 나머지 잡은 그 뒤 몇 시간에 걸쳐 배수된다
+(run 31139616352: created 01:56:08 → runner-health 01:57:09~). 좀비가 되는 시점에는 이미 끝나 있어
+「PR 이 아직 열려 있던 시점」만 판정하게 된다.
+
+**처방 후보.** ① `pull_request: types: [closed]` 트리거를 가진 얇은 워크플로우가 그 PR 의 진행 중 run 을
+`gh run cancel` 한다(자기 자신은 즉시 끝나므로 큐 점유가 거의 없다) ② `/bts-merge` 스킬이 머지 직후
+같은 정리를 한다(러너를 아예 안 쓴다). **fail-open 계약 필수** — API 실패·비대상 이벤트에서는 아무것도 하지 않는다.
+
+**착수 시 주의.** 이 항목의 개선폭은 `cancelled` 건수로 재면 안 된다 — concurrency 취소도 같은 상태를 만든다.
+**대기 시간(벽시계 − 실행 합계)** 으로 잴 것.
