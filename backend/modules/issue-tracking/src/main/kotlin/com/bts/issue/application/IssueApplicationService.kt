@@ -389,6 +389,17 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        // 클론본에 담당자가 확정됐으면 배정 알림을 발행한다 (TODOS 「cloneIssue 는 담당자를
+        // 정해도 IssueAssigned 를 발행하지 않는다」 봉합). 판정식은 createIssue 와 같은
+        // 단일 술어 — 「최종 assigneeId 가 non-null AND notifyAssignment」.
+        //
+        // ★issueKey 는 반드시 `saved.key`(클론본)다. 같은 스코프에 `sourceKey` 가 있어
+        //   그걸 쓰면 **원본 담당자에게 잘못 알림이 가는 더 나쁜 결함**이 된다.
+        if (request.notifyAssignment && saved.assigneeId != null) {
+            eventPublisher.publish(
+                IssueAssigned(issueKey = saved.key, actorId = actor, occurredAt = Instant.now(clock)),
+            )
+        }
         log.info("issue_cloned source={} clone={} actor={}", sourceKey.value, saved.key.value, actor.value)
         return saved
     }

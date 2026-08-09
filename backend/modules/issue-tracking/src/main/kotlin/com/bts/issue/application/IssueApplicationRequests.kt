@@ -265,8 +265,14 @@ data class AppChangeVersionsRequest(
  *
  * @param includeAssignee true(기본) 면 원본 담당자를 클론본에 복사. false 면 미할당으로 클론.
  * @param summaryOverride 클론본 제목 덮어쓰기. null 또는 공백만이면 원본 summary 를 그대로 사용한다.
+ * @param notifyAssignment 담당자가 복사됐을 때 `IssueAssigned` 발행 여부 (ADR D-5 형태).
+ *   **기본 false 는 의도된 fail-safe 다.** [CreateIssueRequest.notifyAssignment] 와 같은 원칙 —
+ *   앞으로 생길 새 생산자(대량 복제 등)가 알림을 **꺼진 채로 태어나게** 한다.
+ *   현재 클론 진입점은 단건 REST 하나뿐이라(`IssueController.clone`) 「현존 대량 경로 방어」가
+ *   아니라 **defense-in-depth** 로 정당화된다. **기본값을 뒤집지 말 것.**
  */
 data class CloneIssueRequest(
     val includeAssignee: Boolean = true,
     val summaryOverride: String? = null,
+    val notifyAssignment: Boolean = false,
 )
