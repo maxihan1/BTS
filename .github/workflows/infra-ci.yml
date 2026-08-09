@@ -35,10 +35,18 @@ on:
 
 # 낡은 run 취소 — 다른 3개 워크플로우와 동일한 형태. infra-ci 만 빠져 있었다.
 #
-# 왜 필요한가. 러너가 1대(`maxi-mac-bts`)라 잡이 전부 한 줄로 선다. 낡은 run 이 큐에 남으면
-# 그 run 이 러너를 점유하는 동안 **현재 커밋의 검증이 시작조차 못 한다**. 2026-08-07 실측에서
-# 큐 8건 중 3건이 이미 머지되고 브랜치까지 삭제된 PR 의 검증이었고, 현재 main 을 검증하는
-# run 은 0건이었다. 되돌리면 scripts/workflow/ci-concurrency-coverage.test.ts 가 차단한다.
+# 왜 필요한가. 러너가 1대(`maxi-mac-bts`)라 잡이 전부 한 줄로 선다. **같은 PR 에 새 커밋이
+# 올라오면 낡은 run 이 러너를 계속 점유해** 현재 커밋의 검증이 시작조차 못 한다.
+#
+# ★이 선언이 닫는 것과 못 닫는 것을 구분할 것 (게이트2 리뷰 지적).
+# `group: <workflow>-<ref>` + `cancel-in-progress` 는 **같은 그룹에 새 run 이 생길 때만**
+# 이전 run 을 취소한다. 그래서
+#   · 닫는다   — 같은 PR/브랜치에 새 push 가 겹치는 경로.
+#   · 못 닫는다 — **이미 머지되고 브랜치가 삭제된 PR** 의 큐 잔존분. 그 ref 에는 후속 run 이
+#                영영 생기지 않아 취소가 발화할 계기 자체가 없다. 2026-08-07 큐의 PR #346
+#                3건이 그 경우였다. 이건 별개 처방이 필요하다(TODOS 「CI 벽시계」 후속 참조).
+#
+# 되돌리면 scripts/workflow/ci-concurrency-coverage.test.ts 가 차단한다.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

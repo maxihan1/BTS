@@ -35,8 +35,18 @@ import { fileURLToPath } from 'node:url'
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const WORKFLOW_DIR = path.join(REPO_ROOT, '.github/workflows')
 
-/** 자기 run 을 만드는 트리거. 이 중 하나라도 있으면 concurrency 대상이다. */
-const RUN_CREATING_TRIGGERS = ['pull_request', 'push', 'schedule', 'workflow_dispatch'] as const
+/**
+ * **자기 run 을 만들지 않는** 유일한 트리거.
+ *
+ * ★허용목록이 아니라 **차단목록**이다. 게이트2 리뷰가 실측으로 적발한 결함 —
+ * 「자기 run 을 만드는 트리거」를 4종(`pull_request`·`push`·`schedule`·`workflow_dispatch`)
+ * 으로 열거했더니 `release` · `workflow_run` · `pull_request_target` · `merge_group` 로 도는
+ * 새 워크플로우가 concurrency 없이 **판별식 초록인 채** 통과했다(샌드박스 실측 3종 확인).
+ * 이 저장소가 이름 붙인 `two-lists-never-check-each-other` 양식이다.
+ *
+ * 목록을 `workflow_call` 하나로 줄이면 GitHub 이 새 이벤트를 추가해도 갈라지지 않는다.
+ */
+const NON_RUN_CREATING_TRIGGERS = new Set(['workflow_call'])
 
 interface Workflow {
   name: string
@@ -52,18 +62,84 @@ function readWorkflows(): Workflow[] {
 }
 
 /**
- * `on:` 블록 안에 자기 run 을 만드는 트리거가 선언돼 있는가.
+ * 워크플로우의 `on:` 선언에서 트리거 이름을 전부 뽑는다.
  *
- * `on:` 부터 다음 최상위 키(`jobs:`/`concurrency:`/`env:` 등)까지를 잘라 그 안만 본다.
- * 파일 상단 주석에 'push' 같은 단어가 있어도 오탐하지 않게 하기 위해서다.
+ * ★서식에 견고해야 한다. 게이트2 리뷰가 실측으로 적발한 결함 — `on:` 을 `/^on:\s*$/m`
+ * 으로만 찾았더니 GitHub 이 똑같이 허용하는 아래 표기가 전부 「트리거 없음」으로 분류돼
+ * **조용히 검사에서 빠졌다.** `infra-ci.yml` 의 `on:` 줄에 행끝 주석 하나만 달면서
+ * concurrency 를 통째로 지우는 변경이 4/4 초록으로 통과했다.
+ *
+ * 지원해야 하는 표기.
+ * - `on:` + 들여쓴 매핑 (임의 들여쓰기)
+ * - `on: [push, pull_request]` (flow sequence)
+ * - `on: push` (scalar)
+ * - `"on":` · `'on':` (따옴표 키 — YAML 1.1 이 `on` 을 boolean 으로 읽는 것을 피하려는 관례)
+ * - 행끝 주석 (`on:  # 트리거`)
+ *
+ * @returns 소문자 트리거 이름 집합. `on:` 자체가 없으면 빈 집합.
  */
-function createsOwnRun(source: string): boolean {
-  const onIndex = source.search(/^on:\s*$/m)
-  if (onIndex === -1) return false
-  const rest = source.slice(onIndex)
-  const nextTopLevel = rest.slice(3).search(/^[a-zA-Z_]+:/m)
-  const onBlock = nextTopLevel === -1 ? rest : rest.slice(0, nextTopLevel + 3)
-  return RUN_CREATING_TRIGGERS.some((t) => new RegExp(`^\\s{2}${t}:`, 'm').test(onBlock))
+function parseTriggers(source: string): Set<string> {
+  const lines = source.split('\n')
+  const onLineIndex = lines.findIndex((l) => /^\s*(on|"on"|'on')\s*:/.test(l))
+  if (onLineIndex === -1) return new Set()
+
+  const onLine = lines[onLineIndex] ?? ''
+  const onIndent = indentOf(onLine)
+
+  // ① 인라인 형태 — `on: push` · `on: [push, pull_request]`. 행끝 주석은 떼고 본다.
+  const inline = stripComment(onLine.slice(onLine.indexOf(':') + 1)).trim()
+  if (inline.length > 0) {
+    return new Set(
+      inline
+        .replace(/[[\]]/g, ' ')
+        .split(/[\s,]+/)
+        .filter((t) => /^[a-z_]+$/.test(t)),
+    )
+  }
+
+  // ② 블록 매핑/시퀀스 — `on:` 보다 깊은 줄들이 자식이다. 들여쓰기 폭은 가정하지 않고
+  //    **첫 자식 줄의 깊이**를 기준으로 삼아 그 깊이의 키만 트리거로 본다.
+  //    (그보다 깊은 `types:`/`branches:` 는 트리거가 아니다.)
+  const triggers = new Set<string>()
+  let childIndent: number | null = null
+  for (const line of lines.slice(onLineIndex + 1)) {
+    if (line.trim() === '' || line.trim().startsWith('#')) continue
+    const indent = indentOf(line)
+    if (indent <= onIndent) break // `on:` 블록 끝 — 다음 최상위 키
+    if (childIndent === null) childIndent = indent
+    if (indent !== childIndent) continue
+
+    // `  push:` (매핑) 또는 `  - push` (시퀀스) 둘 다 받는다.
+    const body = line.trim().replace(/^-\s*/, '')
+    const key = body.match(/^([a-z_]+)\s*:?\s*$/)?.[1] ?? body.match(/^([a-z_]+)\s*:/)?.[1]
+    if (key !== undefined) triggers.add(key)
+  }
+  return triggers
+}
+
+/** 줄 앞 공백 수. */
+function indentOf(line: string): number {
+  return (line.match(/^\s*/)?.[0] ?? '').length
+}
+
+/** 행끝 `#` 주석을 떼어낸다. */
+function stripComment(text: string): string {
+  const at = text.indexOf('#')
+  return at === -1 ? text : text.slice(0, at)
+}
+
+/**
+ * 이 워크플로우가 **자기 run 을 만드는가**.
+ *
+ * ★미분류를 통과로 두지 않는다(fail-closed). `on:` 을 못 읽었거나 트리거가 하나도
+ * 안 잡히면 「대상 아님」이 아니라 **판정 실패**로 보고한다 — 아래 「모든 워크플로우가
+ * 둘 중 하나로 분류된다」 단언이 그것을 red 로 만든다.
+ */
+function classify(source: string): 'creates-own-run' | 'reusable-only' | 'unclassified' {
+  const triggers = parseTriggers(source)
+  if (triggers.size === 0) return 'unclassified'
+  const runCreating = [...triggers].filter((t) => !NON_RUN_CREATING_TRIGGERS.has(t))
+  return runCreating.length > 0 ? 'creates-own-run' : 'reusable-only'
 }
 
 /** 최상위 `concurrency:` 블록에 `cancel-in-progress: true` 가 있는가. */
@@ -79,23 +155,47 @@ function cancelsSupersededRuns(source: string): boolean {
 describe('CI — 트리거를 가진 워크플로우는 낡은 run 을 취소한다', () => {
   const workflows = readWorkflows()
 
-  test('워크플로우를 실제로 수집한다 (비-공허 짝)', () => {
+  /**
+   * 자기 run 을 만드는 워크플로우의 **실측 하한**.
+   *
+   * ★`> 0` 으로 두면 파싱이 「절반만」 죽어도(4 → 1) 첫 단언이 통과하고 나머지 3개에 대한
+   * 검사가 공허해진다. 게이트2 리뷰가 실측으로 지적한 결함이다 — 실제로 인식이 4→3 으로
+   * 줄었는데 두 단언 모두 초록이었다. 현재 값은 backend-ci · frontend-ci · infra-ci ·
+   * workflow-scripts-ci 4건. 워크플로우를 늘리면 이 값도 함께 올린다.
+   */
+  const MIN_RUN_CREATING_WORKFLOWS = 4
+
+  test('워크플로우를 실제로 수집하고 트리거를 파싱한다 (비-공허 짝)', () => {
     assert.ok(
       workflows.length > 0,
       `${WORKFLOW_DIR} 에서 워크플로우를 하나도 못 읽었다 — 경로가 바뀌었거나 훑기가 죽었다.`,
     )
-    // 훑기가 살아 있어도 파싱이 죽으면 아래 단언이 전부 공허해진다.
-    // 「트리거를 가진 파일이 최소 하나는 있다」를 함께 못박는다.
-    const withTriggers = workflows.filter((w) => createsOwnRun(w.source))
+    const runCreating = workflows.filter((w) => classify(w.source) === 'creates-own-run')
     assert.ok(
-      withTriggers.length > 0,
-      `트리거를 가진 워크플로우가 0건이다 — on: 블록 파싱이 죽어 있다. 수집: ${workflows.map((w) => w.name).join(', ')}`,
+      runCreating.length >= MIN_RUN_CREATING_WORKFLOWS,
+      `자기 run 을 만드는 워크플로우가 ${runCreating.length}건뿐이다 (하한 ${MIN_RUN_CREATING_WORKFLOWS}). ` +
+        `on: 파싱이 일부 서식을 놓치고 있다. 인식: ${runCreating.map((w) => w.name).join(', ')}`,
+    )
+  })
+
+  test('★모든 워크플로우가 둘 중 하나로 분류된다 (미분류 = 실패)', () => {
+    const unclassified = workflows
+      .filter((w) => classify(w.source) === 'unclassified')
+      .map((w) => `  .github/workflows/${w.name}`)
+
+    assert.deepEqual(
+      unclassified,
+      [],
+      '아래 파일의 `on:` 선언에서 트리거를 하나도 못 뽑았다.\n' +
+        '「대상 아님」으로 조용히 통과시키지 않는다 — 그게 이 판별식이 뚫렸던 방식이다.\n' +
+        '파서를 고치거나 파일의 on: 표기를 바로잡아라.\n\n' +
+        unclassified.join('\n'),
     )
   })
 
   test('★자기 run 을 만드는 워크플로우는 전부 concurrency 취소를 선언한다', () => {
     const violations = workflows
-      .filter((w) => createsOwnRun(w.source))
+      .filter((w) => classify(w.source) === 'creates-own-run')
       .filter((w) => !cancelsSupersededRuns(w.source))
       .map((w) => `  .github/workflows/${w.name}`)
 
@@ -112,15 +212,44 @@ describe('CI — 트리거를 가진 워크플로우는 낡은 run 을 취소한
   })
 
   test('재사용 전용 워크플로우는 대상에서 빠진다 (오탐 방지 대조군)', () => {
-    // `on: workflow_call` 만 가진 파일은 호출자의 run 안에서 돈다.
-    // 여기에 concurrency 를 걸면 호출자를 취소하게 되므로 대상이 아니어야 한다.
     const reusableOnly = ['on:', '  workflow_call:', '', 'jobs:', '  check:'].join('\n')
-    assert.equal(createsOwnRun(reusableOnly), false, 'workflow_call 전용을 대상으로 잘못 판정했다.')
+    assert.equal(classify(reusableOnly), 'reusable-only', 'workflow_call 전용을 대상으로 잘못 판정했다.')
+  })
+
+  test('★서식 6종을 전부 인식한다 (게이트2 리뷰가 뚫었던 우회로)', () => {
+    // 리뷰가 실제로 통과시켰던 형태들. 하나라도 unclassified 면 그 표기로 쓴 새 워크플로우가
+    // concurrency 없이 조용히 살아남는다.
+    const variants: Array<[string, string]> = [
+      ['블록 매핑', 'on:\n  push:\n    branches: [main]\n'],
+      ['행끝 주석', 'on:  # 트리거 — 인프라 경로만\n  push:\n    branches: [main]\n'],
+      ['인라인 시퀀스', 'on: [push, pull_request]\n'],
+      ['스칼라', 'on: push\n'],
+      ['따옴표 키', '"on":\n  push:\n    branches: [main]\n'],
+      ['4칸 들여쓰기', 'on:\n    release:\n        types: [published]\n'],
+    ]
+    for (const [label, source] of variants) {
+      assert.equal(
+        classify(source),
+        'creates-own-run',
+        `${label} 표기를 자기 run 생성으로 인식하지 못했다 — 이 표기로 쓴 워크플로우가 검사에서 빠진다.`,
+      )
+    }
+  })
+
+  test('열거하지 않은 트리거도 대상이다 (허용목록이 아니라 차단목록)', () => {
+    // GitHub 이 이벤트를 추가해도 갈라지지 않아야 한다.
+    for (const trigger of ['release', 'workflow_run', 'pull_request_target', 'merge_group', 'issue_comment']) {
+      assert.equal(
+        classify(`on:\n  ${trigger}:\n    types: [x]\n`),
+        'creates-own-run',
+        `${trigger} 를 대상에서 빠뜨렸다 — 허용목록 방식으로 되돌아갔는지 확인하라.`,
+      )
+    }
   })
 
   test('판별식이 합성 위반을 실제로 잡아낸다 (양성 대조군)', () => {
     const missing = ['on:', '  push:', '    branches: [main]', '', 'jobs:', '  a:'].join('\n')
-    assert.equal(createsOwnRun(missing), true, '합성 입력의 트리거를 못 봤다.')
+    assert.equal(classify(missing), 'creates-own-run')
     assert.equal(cancelsSupersededRuns(missing), false, '없는 concurrency 를 있다고 판정했다.')
 
     const present = [
