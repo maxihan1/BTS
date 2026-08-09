@@ -1539,7 +1539,9 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 ---
 
-## ⬜ issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (FR-UX-09 B1 의 **의도된 이연** · 미착수)
+## ✅ issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (해소 2026-08-09)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — `UpdateIssueRequest` 의 죽은 원소 제약을 제거하고 생성 경로와 **문자 단위로 같은 술어**의 `@get:AssertTrue` 를 넣었다. `OpenApiContractTest.C1c` 가 `labelsValid` 파생 속성 누출을 함께 봉인한다. **선택지 ②(422)는 채택하지 않았다** — 사유는 위 정정 블록 참조.
 
 > **⚠️ 결함이지만 이 PR 이 만든 게 아니다.** FR-UX-09 B1 이 **생성 경로만** 봉합했다.
 
@@ -1579,7 +1581,9 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 
 ---
 
-## ⬜ issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (미착수)
+## ✅ issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (해소 2026-08-09)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — 애플리케이션 계층 `CloneIssueRequest.notifyAssignment`(기본 false, fail-safe) 추가 후 컨트롤러가 명시적으로 `true` 를 넘긴다. OpenAPI 계약·프론트 변경 0. 서비스 2×2 행렬 + **컨트롤러 짝 테스트 2건**(기본값 인자라 컴파일러가 안 잡는다).
 
 **무엇.** `cloneIssue` 는 `assigneeId = if (request.includeAssignee) source.assigneeId else null`
 로 담당자를 설정하면서 `IssueCreated` 만 발행한다(`IssueApplicationService.kt` clone 블록).
@@ -1605,7 +1609,9 @@ clone 은 별건으로 남긴다 — 회귀 표면과 PR 범위를 동시에 넓
 
 ---
 
-## ⬜ issue-tracking — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
+## ✅ issue-tracking — Import 가 **원본에 없던 담당자**를 만든다 (해소 2026-08-09)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — `IssueImportAdapter` 가 `assignee = AssigneeIntent.None` 을 넘긴다(①균일 처리). S8b 는 기대값이 성립하지 않게 되어 **양방향으로 재작성**했다(담당자 없음 → 0건 / 매칭 → 정확히 1건).
 
 **무엇.** `IssueImportAdapter` 는 `createIssue` 에 담당자를 넘기지 않는다(`:537-544`).
 그러면 `resolveDefaultAssignee` 가 컴포넌트/프로젝트 리드를 담당자로 넣는다.
@@ -1631,7 +1637,9 @@ Import 가 넘기면 자동 배정이 꺼진다. 코드 1줄 수준이나 **FR-I
 
 ---
 
-## ⬜ issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (선재 · 미착수)
+## ✅ issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (해소 2026-08-09 · **좁게**)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — `componentIds` 1건만 `@field:Schema(requiredMode = NOT_REQUIRED)` 로 봉합하고 `C1c` 계약 테스트로 못박았다. ★**잔여 26 프로퍼티와 차집합 판별식은 별도 항목**이다(아래 신규 등재) — 손 열거는 반드시 샌다.
 
 **무엇.** `CreateIssueRequest.componentIds: List<UUID> = emptyList()` 는 기본값이 있는데도
 springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생성된 클라이언트가
@@ -1657,7 +1665,9 @@ springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생�
 
 ---
 
-## ⬜ apps/web — 이슈 상세 담당자 셀렉터가 **검색 전에 사용자 전량**을 노출한다 (선재 · 미착수)
+## ✅ apps/web — 이슈 상세 담당자 셀렉터가 **검색 전에 사용자 전량**을 노출한다 (해소 2026-08-09 · **상세만**)
+
+> **해소.** `fix/web-tech-debt-4` — 라우트 층에서 걸렀다(컴포넌트 내부 아님 — 실제 세 번째 소비처는 다른 컴포넌트를 쓴다). 결함에 의존하던 기존 T4-A3·T4-A5 를 같은 커밋에서 갱신. ★**목록 셀·컴포넌트 리드·프로젝트 리드 3곳은 별도 항목**이다.
 
 **무엇.** `useUsers(query)` 는 `enabled` 가드가 없어(`hooks/use-users.ts:16-22`) 빈 검색어에도
 조회가 나가고 **전체 사용자 목록**을 돌려준다. 이슈 상세는 그 결과를 그대로 후보로 넘긴다
@@ -1732,7 +1742,9 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 
 ---
 
-## ⬜ apps/web — **required MULTI_SELECT** 커스텀 필드가 클라이언트 검증을 그냥 통과한다 (선재 · 미착수)
+## ✅ apps/web — **required MULTI_SELECT** 커스텀 필드가 클라이언트 검증을 그냥 통과한다 (해소 2026-08-09 · **생성 폼만**)
+
+> **해소.** `fix/web-tech-debt-4` — 판정을 열거에서 **선판정**으로 뒤집고 CHECKBOX 를 `raw !== true` 로 맞췄다. 커스텀 필드 422 에러 매핑도 함께 넣었다. ★**편집 화면 사본은 그대로다** — 그 결과 두 화면의 required CHECKBOX 규칙이 갈렸다(별도 항목, 심각도 재검토 필요).
 
 **무엇.** `isRequiredFieldEmpty` 의 MULTI_SELECT 분기가
 `return Array.isArray(raw) && raw.length === 0` 다(`components/issue/IssueCreateForm.tsx:63-64`).
@@ -1771,7 +1783,9 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 
 ---
 
-## ⬜ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (선재 · 미착수)
+## ✅ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (해소 2026-08-09 · **이 1줄만**)
+
+> **해소.** `fix/web-tech-debt-4` — `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 회귀 가드는 렌더 단언이 아니라 **소스 단언**이다(렌더로는 하드코딩 복귀를 못 잡는다 — 뮤테이션으로 확증). ★**나머지 28곳과 ESLint 래칫은 별도 항목**이다.
 
 **무엇.** `placeholder="이슈 제목을 입력하세요"` 가 리터럴이다
 (`components/issue/create/IssueCreateBasicFields.tsx:110`).
@@ -1803,7 +1817,9 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 
 ---
 
-## ⬜ apps/web — 이슈 생성 **무게이트 경로 4개** (상단바·딥링크·`c` 키·명령 팔레트 · 선재 · 미착수)
+## ✅ apps/web — 이슈 생성 **무게이트 경로 4개** (상단바·딥링크·`c` 키·명령 팔레트 · 해소 2026-08-09)
+
+> **해소.** `fix/web-tech-debt-4` — 게이트를 **버튼이 아니라 폼의 선택된 프로젝트**에 뒀다(진입 경로 4개가 전부 `IssueCreateForm` 하나를 지난다). 판정식은 `CREATE === false`(**명시 거부만**) — 미지를 거부로 읽으면 로딩·조회실패 구간에서 정상 사용자를 막는다. 403 에러 매핑이 기준선이고 사전 게이트는 그 위의 개선이다. ★`TopBar` 버튼 자체는 **여전히 무게이트이며 의도된 것**이다 — 모달은 열리되 제출이 막힌다.
 
 **무엇.** 이슈 생성 진입점 5곳 중 상단바 하나만 권한을 안 본다.
 
@@ -2065,6 +2081,15 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **왜 지금 안 합쳤나.** 2026-08-09 Maxi 확정 「좁게」 — 이번엔 생성 폼만 고쳤다.
 ⇒ **편집 화면에는 같은 결함(required MULTI_SELECT 미입력이 통과)이 그대로 남아 있다.**
 
+**★심각도 격상 — 이번 봉합이 두 화면의 규칙을 갈라놓았다 (게이트2 리뷰).**
+단순한 사본 중복이 아니다. 생성 폼은 이제 「required CHECKBOX 는 체크해야 제출 가능」인데
+편집 화면은 옛 `return false` 라 **체크 없이도 통과**한다. 같은 이슈의 같은 필드가
+**만들 때와 고칠 때 규칙이 다르다.** 사용자는 이유를 알 수 없다.
+또 편집 화면은 required MULTI_SELECT 미입력을 통과시켜 백엔드 422 로 튕기는데,
+그 경로에는 `CUSTOM_FIELD_VALIDATION_FAILED` 매핑도 없어 일반 에러가 뜬다.
+⇒ **Maxi 재검토 대상.** 좁게 두기로 한 결정이 「사본 하나 남김」이 아니라
+「두 화면이 서로 다른 계약을 갖는다」로 귀결됐다.
+
 **처방.** `apps/web/src/components/custom-fields/required-empty.ts` 로 단일 출처를 만들고 두 사본을 import 로 대체.
 `IssueCustomFieldsEdit` 의 `eslint-disable react-refresh/only-export-components` 주석도 함께 제거된다.
 이 named export 를 파일 밖에서 import 하는 곳은 전수 grep **0건**이라 re-export 없이 안전.
@@ -2211,3 +2236,25 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 **착수 시 주의.** 이 항목의 개선폭은 `cancelled` 건수로 재면 안 된다 — concurrency 취소도 같은 상태를 만든다.
 **대기 시간(벽시계 − 실행 합계)** 으로 잴 것.
+
+
+## ⬜ apps/web — `IssueCreateForm` 컴포넌트가 줄수 상한을 넘는다 (227 / 상한 200 · 미착수)
+
+**무엇.** `DEVELOPMENT.md §2.2` 는 「컴포넌트 200줄 이내 · 파일 300줄 이내」다.
+2026-08-09 CREATE 게이트 작업 후 실측 — **컴포넌트 227줄 · 파일 321줄**.
+
+| 대상 | main | 게이트 작업 직후 | 헬퍼 분리 후 | 상한 |
+|---|---|---|---|---|
+| 컴포넌트 | 197 | 243 | **227** | 200 |
+| 파일 | 349 | 426 | **321** | 300 |
+
+**★파일은 main 보다 작아졌다**(349 → 321). 남은 것은 컴포넌트 27줄 초과다.
+
+**왜 더 안 줄였나.** main 이 이미 197 로 상한 3줄 앞이었다 — 이 파일은 **어떤 추가도
+상한을 넘기는 상태**였다. 게이트·에러 초기화·안내 배너를 전부 빼도 ~206 이다.
+여기서 더 줄이려면 「폼의 상태와 제출」이라는 **응집된 관심사를 줄수 때문에 쪼개야** 해서
+멈췄다. 이미 분리한 것 2건 — `create/use-issue-create-permission-gate.ts` ·
+`create/issue-create-validation.ts`.
+
+**착수 시 방향.** 줄수를 맞추려고 임의로 자르지 말 것. 폼 상태를 의미 단위로
+(기본 필드 / 배정 / 추가 필드 / 제출) 나누는 정식 리팩터링과 함께 닫는다.
