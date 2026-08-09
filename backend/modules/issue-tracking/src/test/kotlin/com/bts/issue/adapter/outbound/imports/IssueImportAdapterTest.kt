@@ -1181,51 +1181,90 @@ class IssueImportAdapterTest {
     // ── S8b(FR-UX-09 B1 / ADR D-5). Import 는 IssueAssigned 를 발행하지 않는다 ──
 
     /**
-     * FR-UX-09 B1 이 `createIssue` 에 `IssueAssigned` 발행을 추가했지만, ADR D-5 에 따라
-     * **REST 생성 경로만** 발행한다(`notifyAssignment` 기본값 false).
+     * 반입 1건당 배정 알림은 **거짓 0회, 중복 0회**여야 한다.
      *
-     * Import 는 `createIssue` 직후 `changeAssignee` 로 원본 담당자를 다시 지정하므로,
-     * 게이트가 없으면 이슈 1건당 `IssueAssigned` 가 2회 나가고
-     * 첫 번째는 곧 덮어쓰일 자동 배정 담당자에 대한 **거짓 알림**이 된다.
+     * ### 왜 이 테스트가 다시 쓰였나 (2026-08-09)
+     * 원래 이 테스트는 「자동 배정이 발동해도 `IssueAssigned` 가 0건」을 봤고, 그 비-공허성을
+     * **자동 배정이 실제로 담당자를 붙였는지**(`readAssigneeIdOf != null`)로 확보했다.
+     * 「Import 가 원본에 없던 담당자를 만든다」 봉합으로 Import 경로가 `AssigneeIntent.None`
+     * 을 넘기게 되면서 **그 양성 대조군이 성립하지 않는다** — 자동 배정 자체가 안 돈다.
+     * 기대값을 그대로 두면 이 테스트는 「도달 불가 상태를 지키는 가짜 그린」이 된다.
      *
-     * ★비-공허성 확보 — 프로젝트 리드를 시드해 **자동 배정이 실제로 발동**하게 만든다.
-     *   리드가 없으면 `resolveDefaultAssignee` 가 null 을 반환해 게이트 유무와 무관하게
-     *   0건이 되고, 그러면 이 테스트는 아무것도 검증하지 못한다.
+     * ### 지금 무엇을 지키나 — 두 방향
+     * - 담당자 없는 반입 → `IssueAssigned` **0건**. 자동 배정도 안 붙고 `changeAssignee` 도
+     *   안 타므로 **곧 덮어쓰일 임시 담당자에 대한 거짓 알림**이 원천 차단된다.
+     * - 담당자 매칭 반입 → `IssueAssigned` **정확히 1건**. `applyAssigneeIfPresent` 가
+     *   `changeAssignee` 를 경유하므로 알림은 거기서 **한 번만** 나간다. 두 번 나가면
+     *   ADR D-5 가 막으려던 「반입 1건당 알림 2회」가 되살아난 것이다.
      *
-     * Given 프로젝트 리드가 지정돼 자동 배정이 발동하는 상태
-     * When  담당자 없는 이슈를 반입
-     * Then  이슈는 담당자를 갖지만(자동 배정 동작 확인 = 양성 대조군)
-     * And   q_issue_events 에 `IssueAssigned` 가 **0건**이다
+     * ### ★도달 불가가 된 게이트
+     * `createIssue` 의 `request.notifyAssignment && resolvedAssignee != null` 게이트는
+     * 이제 Import 경로에서 **구조적으로 도달 불가**다(resolvedAssignee 가 항상 null).
+     * 그 게이트를 Import 로 검증하려는 어떤 테스트도 공허해진다 —
+     * **유일한 비-공허 증인은 `IssueApplicationServiceCreateTest` 의 2×2 행렬**이다.
+     * 게이트 자체는 fail-safe 기본값이므로 남긴다.
      */
     @Test
-    fun `S8b Import 경로는 자동 배정이 발동해도 IssueAssigned 를 발행하지 않는다`() {
+    fun `S8b 담당자 없는 반입은 IssueAssigned 를 0건 발행한다 (거짓 알림 차단)`() {
         setProjectLead(NORMAL_REQUESTER_ID)
         try {
-            val cmd =
-                IssueImportCommand(
-                    projectKey = PROJECT_KEY,
-                    requesterUserId = NORMAL_REQUESTER_ID,
-                    summary = "S8b Import 알림 회귀 가드",
+            val result =
+                issueImportAdapter.importIssue(
+                    IssueImportCommand(
+                        projectKey = PROJECT_KEY,
+                        requesterUserId = NORMAL_REQUESTER_ID,
+                        summary = "S8b 담당자 없는 반입",
+                    ),
                 )
-
-            val result = issueImportAdapter.importIssue(cmd)
             check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
 
-            // 양성 대조군 — 자동 배정이 실제로 담당자를 붙였는지 먼저 확인한다.
-            assert(readAssigneeIdOf(result.issueKey) != null) {
-                "자동 배정이 발동하지 않아 이 테스트가 공허합니다. 프로젝트 리드 시드를 확인하세요."
+            // 반입 충실도 — 원본에 없던 담당자가 붙지 않았다.
+            assert(readAssigneeIdOf(result.issueKey) == null) {
+                "원본에 담당자가 없으므로 미할당이어야 합니다."
             }
 
-            val messages = readIssueEventsQueue()
-            val assignedCount = messages.count { it.contains("IssueAssigned") || it.contains("issue.assigned") }
+            val assignedCount = countAssignedEvents()
             assert(assignedCount == 0) {
-                "Import 경로는 IssueAssigned 를 발행하지 않아야 하지만 ${assignedCount}건 발행됐습니다. " +
-                    "messages=$messages"
+                "담당자 없는 반입은 IssueAssigned 0건이어야 하지만 ${assignedCount}건 발행됐습니다."
             }
         } finally {
             setProjectLead(null)
         }
     }
+
+    /** 비-공허 짝 — 「항상 0건」이 아님을 증명한다. 매칭된 담당자는 알림을 정확히 1회 받는다. */
+    @Test
+    fun `S8b 담당자 매칭 반입은 IssueAssigned 를 정확히 1건 발행한다 (중복 차단)`() {
+        setProjectLead(NORMAL_REQUESTER_ID)
+        try {
+            val result =
+                issueImportAdapter.importIssue(
+                    IssueImportCommand(
+                        projectKey = PROJECT_KEY,
+                        requesterUserId = NORMAL_REQUESTER_ID,
+                        summary = "S8b 담당자 매칭 반입",
+                        assigneeEmail = BOB_EMAIL,
+                    ),
+                )
+            check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+
+            assert(readAssigneeIdOf(result.issueKey) == BOB_ID) {
+                "매칭된 담당자가 붙어야 하지만 ${readAssigneeIdOf(result.issueKey)} 입니다."
+            }
+
+            val assignedCount = countAssignedEvents()
+            assert(assignedCount == 1) {
+                "매칭 담당자 반입은 IssueAssigned 가 정확히 1건이어야 하지만 ${assignedCount}건입니다. " +
+                    "2건이면 ADR D-5 가 막으려던 「반입 1건당 알림 2회」가 되살아난 것입니다."
+            }
+        } finally {
+            setProjectLead(null)
+        }
+    }
+
+    /** q_issue_events 에서 배정 이벤트 건수를 센다. */
+    private fun countAssignedEvents(): Int =
+        readIssueEventsQueue().count { it.contains("IssueAssigned") || it.contains("issue.assigned") }
 
     // ── S9(C1). dryRun — update-유발 행은 UPDATE 권한도 미러 예측 ────────────────
 
