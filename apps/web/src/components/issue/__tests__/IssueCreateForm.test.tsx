@@ -771,3 +771,154 @@ describe('IssueCreateForm — 선택된 프로젝트의 CREATE 게이트', () =>
     )
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★게이트 2 리뷰가 적발한 공허 가드 보강 (2026-08-10)
+//
+// (1) CREATE 게이트의 **핵심인 handleSubmit 이른 반환이 무검증**이었다.
+//     기존 테스트는 `{Enter}` 로만 제출을 시도하는데, 같은 변경이 건 disabled 버튼
+//     때문에 jsdom 이 폼 제출을 아예 하지 않아 이른 반환이 실행되지 않는다.
+//     ★실사용에서 이 3줄이 유일한 방어인 경로가 있다 — 모달(CreateIssueDialog)은
+//     `formId` 를 넘겨 제출 버튼을 **폼 밖 푸터**에 두고 그 버튼에는 권한 게이트가 없다.
+//     상단바·`c` 단축키·명령 팔레트가 전부 그 경로다.
+//
+// (2) 선판정(`undefined|null → 빈값`)이 switch 뒤 분기를 가려 MULTI_SELECT `[]` ·
+//     텍스트류 `''` · NUMBER `NaN` 세 분기가 무검증이 됐다. CHECKBOX 에만 짝을 붙였었다.
+//     특히 MULTI_SELECT `[]` 는 **원 결함과 같은 필드**의 다른 입력 경로다 —
+//     옵션을 체크했다 해제하면 `undefined` 가 아니라 `[]` 가 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 폼 밖 제출(모달 경로)에서도 CREATE 게이트가 막는다', () => {
+  const EXTERNAL_FORM_ID = 'test-external-create-form'
+
+  function renderWithExternalSubmit() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <IssueCreateForm formId={EXTERNAL_FORM_ID} />
+        {/* CreateIssueDialog 푸터와 같은 구조 — 폼 밖 버튼이 form 속성으로 제출한다.
+            그 버튼에는 권한 게이트가 없으므로 handleSubmit 이른 반환이 유일한 방어다. */}
+        <button type="submit" form={EXTERNAL_FORM_ID}>
+          폼 밖 제출
+        </button>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('★CREATE=false 면 폼 밖 버튼으로 제출해도 서버로 안 나간다 (이른 반환 실행 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        return HttpResponse.json({
+          projectKey: key,
+          permissions: {
+            CREATE: false,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
+        })
+      }),
+    )
+    renderWithExternalSubmit()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await screen.findByTestId('create-permission-denied')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+
+    // 폼 밖 버튼은 비활성이 아니다 — 눌린다. 막는 것은 handleSubmit 이른 반환뿐이다.
+    const external = screen.getByRole('button', { name: '폼 밖 제출' })
+    expect(external).not.toBeDisabled()
+    await user.click(external)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+    expect(body.get()).toEqual({})
+  })
+})
+
+describe('IssueCreateForm — required 빈값 판정의 유형별 분기 (선판정에 가려지지 않는다)', () => {
+  function mockField(fieldType: CustomField['fieldType'], key: string): void {
+    const field = {
+      id: 1,
+      key,
+      name: `필수 ${key}`,
+      fieldType,
+      required: true,
+      options:
+        fieldType === 'MULTI_SELECT'
+          ? [
+              { value: 'A', label: 'A' },
+              { value: 'B', label: 'B' },
+            ]
+          : [],
+      displayOrder: 0,
+      projectKey: 'ATLAS',
+    } as unknown as CustomField
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [field],
+    } as never)
+  }
+
+  it('★MULTI_SELECT 를 골랐다 해제하면(빈 배열) 막힌다 — undefined 가 아닌 경로', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockField('MULTI_SELECT', 'ms')
+    renderForm()
+
+    await waitForProjectSelect()
+    const optionA = await screen.findByRole('checkbox', { name: 'A' })
+    // 켰다 끈다 — 값이 undefined 가 아니라 [] 가 된다 (CustomFieldInput 의 filter 결과).
+    await user.click(optionA)
+    await user.click(optionA)
+    expect(optionA).not.toBeChecked()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+
+  it('★SHORT_TEXT 에 입력했다 지우면(빈 문자열) 막힌다 — undefined 가 아닌 경로', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockField('SHORT_TEXT', 'st')
+    renderForm()
+
+    await waitForProjectSelect()
+    const input = await screen.findByTestId('custom-field-st')
+    await user.type(input, 'x')
+    await user.clear(input)
+    expect(input).toHaveValue('')
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+
+  it('SHORT_TEXT 에 값이 있으면 통과한다 (비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockField('SHORT_TEXT', 'st')
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.type(await screen.findByTestId('custom-field-st'), 'x')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+  })
+})
