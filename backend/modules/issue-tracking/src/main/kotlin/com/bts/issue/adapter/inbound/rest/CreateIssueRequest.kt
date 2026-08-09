@@ -48,6 +48,12 @@ data class CreateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String,
     val description: String? = null,
+    // ★기본값이 있는 non-null Kotlin 프로퍼티는 springdoc 이 required 로 판정한다(실측).
+    //   아래 assigneeId 와 같은 함정이며 봉인 방법도 같다. 실측 required 는
+    //   [componentIds, projectKey, summary] 였다 — 기본값이 emptyList 인데도 필수로 문서화됐다.
+    //   같은 함정이 이 BC 의 REST DTO 11클래스·27프로퍼티에 선재한다(2026-08-09 전수 측정).
+    //   잔여 26건과 차집합 판별식은 별도 TODOS 항목이다.
+    @field:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
