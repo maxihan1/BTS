@@ -1889,8 +1889,10 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 걸렸고, **키 중복 금지 불변식**으로 그 경로만 닫았다(`mocks/backlog-fixtures.ts`).
 불변식 자체는 우회가 아니라 올바른 의미다 — 실제 백로그도 같은 키를 두 번 담지 않는다.
 
-**처방.** (1) 근본 원인을 먼저 규명한다 — 인터셉터 이중 등록인지, jsdom `fetch` 폴리필이
-`http` 계층과 겹치는지. (2) 그 전까지는 **append 형 핸들러 전수**를 찾아 각자 불변식을 갖게 한다.
+**처방.** ~~(1) 근본 원인을 먼저 규명한다 — 인터셉터 이중 등록인지, jsdom `fetch` 폴리필이
+`http` 계층과 겹치는지. (2) 그 전까지는 **append 형 핸들러 전수**를 찾아 각자 불변식을 갖게 한다.~~
+**→ 낡음. 아래 「2026-08-09 근본 원인 확정」 블록을 볼 것.** (1)은 A/B 실측으로 해소됐고,
+(2)는 증상 처방이라 채택하지 않았다 — 불변식을 60개 파일에 흩뿌리면 판별자가 사라진다.
 🛑 「호출됐다」만 보는 상위 테스트는 이 결함을 못 본다 — **상태 변화로 단언**해야 드러난다.
 
 **착수 시 읽을 것.** `mocks/backlog-fixtures.ts` 의 `appendCreatedIssueToBacklog` 주석 ·
@@ -1910,6 +1912,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **정정 4.** 「지금까지 확인된 것」에 F3 의 백로그 경로 1건만 적혀 있으나 실제 보상 가드는 **2곳**이다 — `automation-execution-handlers.ts` 의 `replayExecutionHandler` requestId 단발 캐시가 두 번째.
 > - **★정정 5.** `automation-execution-handlers.ts:15-17` 이 기록한 「본문을 읽는 핸들러는 두 번째 호출이 `Body already read` 로 자동 실패해 무해하다」는 **신뢰할 수 없다.** `issue-handlers.ts:484` 는 `request.clone().json()` 으로 읽는데도 append 가 2회 났다. **「본문을 읽으니 안전」을 전수 조사의 제외 기준으로 쓰지 말 것.**
 > - **정정 6.** 배증 폭은 핸들러마다 다르다(합성 GET 은 2배, 실 `bulkOperationHandlers` GET 은 단일 dispatch 서명). **「모든 요청이 정확히 2배」로 가정하면 틀린다.**
+> - **✅ B(동결) 완료 (2026-08-10 · `fix/web-test-infra-2`).** 아래 방식대로 판별식을 세웠다. **이 항목은 이주가 남아 ⬜ 로 유지한다** — 전면 이주는 별도 신규 항목이다.
 > - **2026-08-09 Maxi 확정 원칙 적용 — B(동결)로 시작.** ①`apps/web/src/test/msw-single-setupserver.test.ts` 차집합 판별식 신설(허용목록 `src/test/server.ts` + 현재 59개 baseline) → **신규 로컬 `setupServer` 만 차단**. 비-공허 짝 필수(훑은 파일 수 400+ 이고 스캐너가 `src/test/server.ts` 를 실제로 찾았음을 같은 테스트에서 단언 — 글롭이 깨지면 0건 훑고 공허 통과). ②전면 이주(A)는 신규 항목으로 분할 등재.
 > - **★★이주 시 최대 함정 (반증이 적발).** 로컬 서버가 뜨면 **전역 핸들러가 통째로 죽는다**(실측: 전역 `server.use()` 도 `/auth/refresh` 도 `fetch failed`). 이주하면 그 59개 파일에서 **`/auth/refresh` 가 처음으로 살아나** `apiFetch` 의 401 자동 재시도가 지금은 실패하던 자리에서 성공한다 — **401/403 을 단언하는 테스트의 결과가 뒤집힌다.** 「기계적 치환」이 아니다.
 > - **이주 시 함정 2.** 전역 `setup.ts:21` 의 `afterEach(server.resetHandlers())` 때문에 핸들러 등록은 **반드시 `beforeEach`** 여야 한다. `beforeAll` 에 두면 첫 테스트 뒤 조용히 사라진다. 선례 3건 — `import-handlers.test.ts:13-22` · `profile-handlers.test.ts:8-18` · `status-handlers.test.ts:8-16`.
