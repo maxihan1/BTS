@@ -499,3 +499,105 @@ describe('IssueCreateForm — 제목 placeholder i18n 배선', () => {
     expect(source).not.toMatch(koreanLiteralPlaceholder)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODOS 「required MULTI_SELECT 커스텀 필드가 클라이언트 검증을 그냥 통과한다」 봉합 (2026-08-09)
+//
+// 옛 판정은 분기마다 빈값 조건을 다시 적었고 MULTI_SELECT 분기가
+// `Array.isArray(raw) && raw.length === 0` 이라 **한 번도 안 건드린 필드(undefined)**를
+// 「빈값 아님」으로 통과시켰다. CHECKBOX(`return false`)도 같은 구멍이었다.
+//
+// 데이터는 백엔드가 지켰지만(CustomFieldValueValidator) 사용자에게는 폼 안 경고 대신
+// 서버 왕복 후 「잠시 후 다시 시도해 주세요」가 떴다 — 재시도해도 안 되는데 재시도를 권하는 문구.
+//
+// 2026-08-09 Maxi 확정 — MULTI_SELECT + CHECKBOX 둘 다 차단.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — required 커스텀 필드 빈값 판정 (스펙 E-3)', () => {
+  function mockRequiredField(fieldType: CustomField['fieldType'], key: string): void {
+    const field = {
+      id: 1,
+      key,
+      name: `필수 ${key}`,
+      fieldType,
+      required: true,
+      // MULTI_SELECT 위젯은 CustomFieldOption{value,label} 을 읽는다 — 문자열 배열이 아니다
+      options:
+        fieldType === 'MULTI_SELECT'
+          ? [
+              { value: 'A', label: 'A' },
+              { value: 'B', label: 'B' },
+            ]
+          : [],
+      displayOrder: 0,
+      projectKey: 'ATLAS',
+    } as unknown as CustomField
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [field],
+    } as never)
+  }
+
+  /** 제목만 채우고 제출한다 — 커스텀 필드는 일부러 건드리지 않는다. */
+  async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+  }
+
+  it('★한 번도 건드리지 않은 required MULTI_SELECT 는 폼 안에서 막힌다 (undefined 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('MULTI_SELECT', 'ms')
+    renderForm()
+
+    await fillAndSubmit(user)
+
+    // 폼 안 경고가 떠야 한다 — 서버 왕복 후 일반 에러가 아니라.
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    // 그리고 요청이 아예 나가지 않아야 한다. 「경고가 떴다」만 보면
+    // 경고와 제출이 동시에 일어나도 초록이라 두 단언을 짝으로 둔다.
+    expect(body.get()).toEqual({})
+  })
+
+  it('★한 번도 건드리지 않은 required CHECKBOX 도 폼 안에서 막힌다 (undefined 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('CHECKBOX', 'cb')
+    renderForm()
+
+    await fillAndSubmit(user)
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+
+  it('required CHECKBOX 를 체크하면 통과한다 (비-공허 짝 — 항상 막히는 게 아님을 증명)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('CHECKBOX', 'cb')
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.click(screen.getByTestId('custom-field-cb'))
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+    expect(screen.queryByTestId('custom-fields-required-error')).toBeNull()
+  })
+
+  it('required MULTI_SELECT 를 고르면 통과한다 (비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('MULTI_SELECT', 'ms')
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.click(await screen.findByRole('checkbox', { name: 'A' }))
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+    expect(screen.queryByTestId('custom-fields-required-error')).toBeNull()
+  })
+})
