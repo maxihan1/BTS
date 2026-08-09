@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.project.repository.ProjectLeadRepository
@@ -205,6 +206,68 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                         },
                     )
                 }
+            }
+
+            // ──────────────────────────────────────────────────────────
+            // TODOS 「cloneIssue 는 담당자를 정해도 IssueAssigned 를 발행하지 않는다」 봉합
+            //
+            // clone 은 createIssue 를 경유하지 않는 별도 함수라 FR-UX-09 B1 의
+            // 「담당자가 확정되면 IssueAssigned」가 자동으로 포함되지 않았다.
+            // 결과 — 복제로 배정받은 사용자는 알림을 못 받는다. 같은 「배정」인데
+            // 경로에 따라 알림이 갈렸다.
+            //
+            // ★2×2 전수 단언. (notify=true, 담당자 non-null) 하나만 보면 게이트가
+            //   실제로 「막는지」는 검증되지 않는다 — createIssue 의 행렬을 그대로 이식한다.
+            // ★issueKey 는 반드시 **클론 키**여야 한다. 이 스코프에 sourceKey 가 함께
+            //   있어 오타가 나면 **원본 담당자에게 잘못 알림이 가는 더 나쁜 결함**이 된다.
+            // ──────────────────────────────────────────────────────────
+
+            it("notify=true + 담당자 복사면 IssueAssigned 를 클론 키로 1회 발행한다") {
+                sut.cloneIssue(
+                    actor,
+                    sourceKey,
+                    CloneIssueRequest(includeAssignee = true, notifyAssignment = true),
+                )
+
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { it is IssueAssigned && it.issueKey == IssueKey.of(projectKey, 2L) },
+                    )
+                }
+            }
+
+            it("notify=true 인데 담당자를 복사하지 않으면 IssueAssigned 를 발행하지 않는다") {
+                sut.cloneIssue(
+                    actor,
+                    sourceKey,
+                    CloneIssueRequest(includeAssignee = false, notifyAssignment = true),
+                )
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            // ★fail-safe 기본값 회귀 가드 — 새 생산자가 알림을 조용히 켜지 못하게 한다.
+            it("notify 기본값(false)이면 담당자를 복사해도 IssueAssigned 를 발행하지 않는다") {
+                sut.cloneIssue(actor, sourceKey, CloneIssueRequest(includeAssignee = true))
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            it("notify=false + 담당자 미복사면 IssueAssigned 를 발행하지 않는다") {
+                sut.cloneIssue(
+                    actor,
+                    sourceKey,
+                    CloneIssueRequest(includeAssignee = false, notifyAssignment = false),
+                )
+
+                verify(exactly = 0) { eventPublisher.publish(match { it is IssueAssigned }) }
+            }
+
+            // ★무회귀 — IssueCreated 는 notify 값과 무관하게 항상 1회.
+            it("IssueCreated 는 notify 값과 무관하게 항상 1회 발행된다") {
+                sut.cloneIssue(actor, sourceKey, CloneIssueRequest(notifyAssignment = true))
+
+                verify(exactly = 1) { eventPublisher.publish(match { it is IssueCreated }) }
             }
 
             it("원본 typeId를 활성 재검증 없이 그대로 복사한다 (EC-8)") {
