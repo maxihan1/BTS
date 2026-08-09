@@ -33,6 +33,16 @@ on:
       - 'scripts/verify/springdoc-not-exposed.sh'
       - '.github/workflows/infra-ci.yml'
 
+# 낡은 run 취소 — 다른 3개 워크플로우와 동일한 형태. infra-ci 만 빠져 있었다.
+#
+# 왜 필요한가. 러너가 1대(`maxi-mac-bts`)라 잡이 전부 한 줄로 선다. 낡은 run 이 큐에 남으면
+# 그 run 이 러너를 점유하는 동안 **현재 커밋의 검증이 시작조차 못 한다**. 2026-08-07 실측에서
+# 큐 8건 중 3건이 이미 머지되고 브랜치까지 삭제된 PR 의 검증이었고, 현재 main 을 검증하는
+# run 은 0건이었다. 되돌리면 scripts/workflow/ci-concurrency-coverage.test.ts 가 차단한다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다.
   runner-health:
