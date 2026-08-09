@@ -663,14 +663,33 @@ describe('IssueCreateForm — required CHECKBOX 는 「체크됨」만 충족이
 //   `CREATE === false`(명시 거부만 차단)로 둔다.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('IssueCreateForm — 선택된 프로젝트의 CREATE 게이트', () => {
-  /** 지정한 projectKey 에만 CREATE=false 를 주는 권한 핸들러. */
+  /**
+   * 지정한 projectKey 에만 CREATE 를 바꿔 주는 권한 핸들러.
+   *
+   * ★permissions 맵은 **전 키를 다 채워야 한다** — `projectPermissionsSchema` 가
+   * 7개 키를 전부 요구하므로 부분 응답은 Zod 에서 거부되고, 그러면 쿼리가 에러로
+   * 떨어져 「데이터 없음」이 된다. 그 상태로는 이 테스트가 게이트를 재는 게 아니라
+   * **조회 실패 경로**를 재게 되어 「엉뚱한 걸 쟀다」가 된다.
+   */
   function setupPermissions(createByProject: Record<string, boolean>): void {
     server.use(
       http.get('/api/v1/users/me/project-permissions', ({ request }) => {
         const key = new URL(request.url).searchParams.get('projectKey') ?? ''
         const canCreate = createByProject[key] ?? true
+        // ★`{data:…}` 봉투를 씌우지 않는다 — parseResponse 가 응답 본문을 그대로
+        //   Zod 에 넘긴다(BC 별로 봉투 관례가 다르다). 봉투를 씌우면 파싱이 실패해
+        //   쿼리가 에러로 떨어지고, 이 테스트는 게이트가 아니라 조회 실패 경로를 잰다.
         return HttpResponse.json({
-          data: { projectKey: key, permissions: { CREATE: canCreate } },
+          projectKey: key,
+          permissions: {
+            CREATE: canCreate,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
         })
       }),
     )
@@ -684,14 +703,15 @@ describe('IssueCreateForm — 선택된 프로젝트의 CREATE 게이트', () =>
 
     const select = await waitForProjectSelect()
     await user.selectOptions(select, 'ATLAS')
-    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
-    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+    // 권한 조회가 도착할 때까지 기다린다 — 이걸 안 하면 「게이트가 막았다」가 아니라
+    // 「아직 몰라서 통과했다」를 재게 되어 판정이 타이밍에 좌우된다.
+    await screen.findByTestId('create-permission-denied')
 
-    // 「버튼이 비활성이다」로 단언하지 않는다 — 제출 버튼이 폼 밖에 있을 수 있고
-    // Enter 제출 경로도 있다. 네트워크가 나갔는지로 단언한다.
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      issueCreateStrings.errorCreateForbidden,
-    )
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    // 제출을 실제로 시도한다. 버튼이 비활성이어도 Enter 제출 경로가 남아 있으므로
+    // 「버튼이 회색이다」가 아니라 **네트워크가 나갔는지**로 단언한다.
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '{Enter}')
+
     expect(body.get()).toEqual({})
   })
 

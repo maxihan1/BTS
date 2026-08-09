@@ -28,6 +28,7 @@ import type { IssueCreateFormValues } from '@/components/issue/create/issue-crea
 import { useComponents } from '@/hooks/use-components'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { useProjects } from '@/hooks/use-projects'
+import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { useAuthUser } from '@/auth/authStore'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomFieldValues } from '@/api/issues'
@@ -97,6 +98,11 @@ function isRequiredFieldEmpty(
  */
 function resolveCreateErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
+    // 403 — 권한 부족. 상태 코드를 먼저 본다. errorCode 가 무엇이든 「잠시 후 다시
+    // 시도해 주세요」는 거짓말이다 (재시도해도 안 되는데 재시도를 권한다).
+    if (err.status === 403) {
+      return issueCreateStrings.errorCreateForbidden
+    }
     const body = err.body
     if (typeof body === 'object' && body !== null && 'errorCode' in body) {
       const { errorCode } = body as { errorCode: unknown }
@@ -197,6 +203,25 @@ export function IssueCreateForm({
   const projectKey = form.watch('projectKey')
   const isProjectKeyFilled = projectKey.trim() !== ''
 
+  /**
+   * 선택된 프로젝트에 이슈 생성 권한이 **명시적으로 없는가**.
+   *
+   * ★판정을 `!isLoading && CREATE === true`(미지 = 거부)로 쓰면 안 된다.
+   * 그 형태는 `issues.index.tsx:526` 처럼 **버튼을 회색으로 만드는** 용도라 아무 사실도
+   * 주장하지 않지만, 여기서는 제출 차단 + 「권한이 없습니다」 문구 노출이라 **사실 주장**이다.
+   * 미지를 거부로 읽으면 두 가지가 깨진다.
+   * - 권한 조회가 아직 안 끝난 구간(프로젝트를 바꿀 때마다 queryKey 가 바뀌어 재발한다)에
+   *   Enter 를 치면 거짓 문구를 본다.
+   * - `use-project-permissions.ts` 에 `retry:false` 도 에러 폴백도 없어, 500/네트워크 단절이면
+   *   `data === undefined` 로 안착해 **CREATE 를 실제로 가진 사용자를 영구 차단**한다.
+   *
+   * 그래서 **명시적 거부만** 막고 나머지는 서버가 최종 판정하게 둔다(403 은 아래
+   * `resolveCreateErrorMessage` 가 권한 문구로 받는다). `use-projects.ts` KDoc 이 적어 둔
+   * 「API 에러는 조용한 fail-safe」 관례와도 같은 방향이다.
+   */
+  const { data: projectPermissions } = useProjectPermissions(projectKey)
+  const isCreateExplicitlyDenied = projectPermissions?.permissions.CREATE === false
+
   // ── FR-3 프로젝트 셀렉터 / FR-4 이슈 유형 — 기본값은 훅이 채운다 ──────────
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects()
   const authUser = useAuthUser()
@@ -254,6 +279,14 @@ export function IssueCreateForm({
   function handleSubmit(values: IssueCreateFormValues): void {
     // E7 — 제출 중 재클릭 차단. 푸터 버튼이 폼 밖에 있어 버튼 disabled 만으로는 부족하다.
     if (mutation.isPending) return
+    // 선택된 프로젝트의 CREATE 게이트 (2026-08-09 Maxi 확정).
+    // 이슈 생성 진입 경로 4개(상단바 · /issues/new 딥링크 · `c` 단축키 · 명령 팔레트)가
+    // 전부 이 폼 하나를 지나므로 여기 한 곳이 무게이트 경로를 동시에 닫고,
+    // 「게이트된 버튼으로 열어도 폼 안에서 무권한 프로젝트로 갈아타기」까지 덮는다.
+    if (isCreateExplicitlyDenied) {
+      setServerError(issueCreateStrings.errorCreateForbidden)
+      return
+    }
     // 스펙 E-3: required 커스텀 필드 빈값 1차 검사 — mutation 전 차단
     const hasRequiredEmpty = customFieldDefs.some(
       (field) =>
@@ -353,8 +386,20 @@ export function IssueCreateForm({
         )}
 
         {/* 제출 버튼 — formId 를 받은 경우(모달)는 호출자가 푸터에 그린다 (NFR-2) */}
+        {/* 권한이 **명시적으로** 없을 때만 미리 알린다 — 폼을 다 채우고 제출에서야
+            거부당하는 헛수고를 없앤다. 미지(로딩·조회 실패)에서는 아무 말도 하지 않는다. */}
+        {isCreateExplicitlyDenied && (
+          <p role="status" data-testid="create-permission-denied" className="text-sm text-destructive">
+            {issueCreateStrings.errorCreateForbidden}
+          </p>
+        )}
+
         {formId === undefined && (
-          <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
+          <Button
+            type="submit"
+            disabled={mutation.isPending || isCreateExplicitlyDenied}
+            className="w-full sm:w-auto"
+          >
             {mutation.isPending
               ? issueCreateStrings.submitButtonPending
               : issueCreateStrings.submitButton}
