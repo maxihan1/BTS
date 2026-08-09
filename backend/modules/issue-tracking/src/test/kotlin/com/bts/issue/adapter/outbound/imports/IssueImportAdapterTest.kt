@@ -1263,8 +1263,10 @@ class IssueImportAdapterTest {
     }
 
     /** q_issue_events 에서 배정 이벤트 건수를 센다. */
-    private fun countAssignedEvents(): Int =
-        readIssueEventsQueue().count { it.contains("IssueAssigned") || it.contains("issue.assigned") }
+    private fun countAssignedEvents(): Int {
+        val messages = readIssueEventsQueue()
+        return messages.count { it.contains("IssueAssigned") || it.contains("issue.assigned") }
+    }
 
     // ── S9(C1). dryRun — update-유발 행은 UPDATE 권한도 미러 예측 ────────────────
 
