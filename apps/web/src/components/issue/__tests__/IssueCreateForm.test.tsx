@@ -601,3 +601,48 @@ describe('IssueCreateForm — required 커스텀 필드 빈값 판정 (스펙 E-
     expect(screen.queryByTestId('custom-fields-required-error')).toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★뮤테이션이 적발한 공허 가드 보강 (2026-08-09)
+//
+// 위 「한 번도 건드리지 않은 required CHECKBOX」 테스트는 선판정
+// (`raw === undefined → 빈값`)만으로 통과한다. 그래서 CHECKBOX 분기를 옛
+// `return false` 로 되돌려도 red 가 되지 않았다 — `raw !== true` 가 **무검증**이었다.
+//
+// 두 판정이 갈리는 유일한 입력은 `raw === false`(체크했다 해제한 상태)다.
+// 그 케이스를 직접 친다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — required CHECKBOX 는 「체크됨」만 충족이다', () => {
+  it('★체크했다 해제하면(false) 여전히 막힌다 — undefined 와 같은 판정', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    const field = {
+      id: 1,
+      key: 'cb',
+      name: '필수 cb',
+      fieldType: 'CHECKBOX',
+      required: true,
+      options: [],
+      displayOrder: 0,
+      projectKey: 'ATLAS',
+    } as unknown as CustomField
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [field],
+    } as never)
+    renderForm()
+
+    await waitForProjectSelect()
+    const checkbox = screen.getByTestId('custom-field-cb')
+    // 켰다가 끈다 — 값이 undefined 가 아니라 명시적 false 가 된다.
+    await user.click(checkbox)
+    await user.click(checkbox)
+    expect(checkbox).not.toBeChecked()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+})
