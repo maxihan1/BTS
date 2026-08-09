@@ -174,11 +174,35 @@ describe('MSW — 로컬 setupServer 는 전역 서버 하나뿐이어야 한다
   })
 
   it('판별식이 합성 위반을 실제로 잡아낸다 (양성 대조군)', () => {
+    // ★이 테스트가 한 번 **항진명제**였다 (게이트2 리뷰 적발).
+    //   `violatingLine` 을 NEEDLE 로 조립한 뒤 `violatingLine.includes(NEEDLE)` 을 단언하면
+    //   NEEDLE 이 무엇이든 참이라 아무것도 검증하지 않는다. 이제 **실제 판정 경로**
+    //   (파일 내용 → 위반 목록 → 허용목록 차집합)를 그대로 태운다.
     const known = new Set<string>([...ALLOWED, ...MIGRATION_BASELINE])
-    expect(known.has('src/some/brand-new.test.ts')).toBe(false)
-    // 탐지식 자체 — 실제 소스에 쓰는 형태를 잡고, 전역 import 는 안 잡는지.
-    const violatingLine = `const server = ${NEEDLE}...handlers)`
-    expect(violatingLine.includes(NEEDLE)).toBe(true)
-    expect("import { server } from '@/test/server'".includes(NEEDLE)).toBe(false)
+
+    /** 실제 판정과 같은 절차 — 내용으로 위반을 뽑고 허용목록을 뺀다. */
+    function freshOffenders(files: Array<{ path: string; content: string }>): string[] {
+      return files.filter((f) => f.content.includes(NEEDLE)).map((f) => f.path).filter((p) => !known.has(p))
+    }
+
+    // ① 새 파일이 로컬 서버를 만들면 잡힌다.
+    expect(
+      freshOffenders([
+        { path: 'src/some/brand-new.test.ts', content: `const server = ${NEEDLE}...handlers)` },
+      ]),
+    ).toEqual(['src/some/brand-new.test.ts'])
+
+    // ② 전역 서버를 import 만 하는 파일은 안 잡힌다 (오탐 대조군).
+    expect(
+      freshOffenders([
+        { path: 'src/some/good.test.ts', content: "import { server } from '@/test/server'" },
+      ]),
+    ).toEqual([])
+
+    // ③ baseline 에 있는 기존 위반은 「신규」로 세지 않는다 (동결이 실제로 동작하는가).
+    const knownOffender = MIGRATION_BASELINE[0] as string
+    expect(
+      freshOffenders([{ path: knownOffender, content: `const server = ${NEEDLE})` }]),
+    ).toEqual([])
   })
 })
