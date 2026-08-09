@@ -59,10 +59,19 @@ function buildProps(overrides: Partial<AutomationYamlImportDialogProps> = {}): A
   }
 }
 
+/**
+ * 직전 [renderDialog] 가 만든 QueryClient — 아래 pending mutation 불변식 afterEach 가 읽는다.
+ *
+ * 테스트마다 새 클라이언트를 만들므로 전역 하나로는 안 되고, 각 테스트가 반환값을 받아
+ * 넘기게 하면 기존 테스트 전부를 고쳐야 한다. 렌더 시점에 기록하는 편이 침습이 적다.
+ */
+let lastQueryClient: QueryClient | null = null
+
 function renderDialog(overrides: Partial<AutomationYamlImportDialogProps> = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  lastQueryClient = queryClient
   const initialProps = buildProps(overrides)
 
   const utils = render(
@@ -81,8 +90,27 @@ function renderDialog(overrides: Partial<AutomationYamlImportDialogProps> = {}) 
     return nextProps
   }
 
-  return { ...utils, rerenderWith, onOpenChange: initialProps.onOpenChange }
+  return { ...utils, rerenderWith, queryClient, onOpenChange: initialProps.onOpenChange }
 }
+
+/**
+ * ★pending mutation 누수 불변식 (TODOS 「전체 스위트 실행에서 pnpm test 가 간헐적으로 exit≠0」).
+ *
+ * 테스트가 지연 응답 핸들러를 건 채 mutation 정착을 기다리지 않고 끝나면, 그 rejection/콜백이
+ * **다음 파일이 도는 동안** 도착한다. 그때 `onSuccess`/`onError` 콜백이 던지면 전역 unhandled
+ * rejection 이 되고, vitest 는 「Tests N passed」인데 **종료 코드만 1** 인 상태를 만든다.
+ * 「통과 건수 ≠ 종료 코드」 양식이라 초록으로 오독되기 쉽다.
+ *
+ * 이 단언이 그 누수를 **파일 안에서 즉시** 드러낸다 — 옆 파일로 번지기 전에.
+ */
+afterEach(() => {
+  const pending = lastQueryClient?.getMutationCache().getAll().filter((m) => m.state.status === 'pending') ?? []
+  lastQueryClient = null
+  expect(
+    pending.map((m) => m.options.mutationKey ?? '(key 없음)'),
+    '테스트가 끝났는데 mutation 이 아직 날고 있다 — 정착을 기다리지 않고 끝난 테스트가 있다.',
+  ).toEqual([])
+})
 
 /** 파일 업로드 → 적용 클릭 → 확정 클릭(2단계 확인)까지 공통 플로우 */
 async function applyFile(user: ReturnType<typeof userEvent.setup>, content: string): Promise<void> {
@@ -151,6 +179,12 @@ describe('AutomationYamlImportDialog', () => {
       expect(screen.getByTestId('automation-yaml-import-confirm-button')).toBeDisabled()
     })
     expect(screen.getByTestId('automation-yaml-import-confirm-button')).toHaveTextContent('적용 중...')
+
+    // ★단언 **뒤에** 정착을 기다린다. 앞에 끼우면 in-flight 창이 닫힌 뒤를 재게 되어
+    //   이 테스트의 원래 의도(「적용 중」 상태 관찰)가 죽는다 — 「엉뚱한 걸 쟀다」 재발.
+    //   지연 핸들러(50ms)를 건 채 끝내면 mutation 이 다음 파일이 도는 동안 정착해
+    //   unhandled rejection 경로를 연다.
+    await screen.findByTestId('automation-yaml-import-summary')
   })
 
   it('failedIndex 를 +1 해 "3번째 룰" 로 표시하고 전량취소를 병기한다 (S6/FR10)', async () => {
@@ -386,6 +420,12 @@ describe('AutomationYamlImportDialog', () => {
     await user.keyboard('{Escape}')
     expect(await screen.findByText('토큰은 다시 볼 수 없습니다. 닫을까요?')).toBeInTheDocument()
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
+
+    // ★단언 뒤 정착 대기 (EC5 와 같은 이유). 300ms 지연 핸들러라 기다리지 않고 끝내면
+    //   mutation 이 다음 파일 실행 중에 정착한다.
+    await waitFor(() => {
+      expect(screen.getByTestId('automation-yaml-import-close-button')).not.toBeDisabled()
+    })
   })
 
   it('토큰 표시 중에는 파일 input 이 disabled 다 (review-fix CRITICAL-2)', async () => {
