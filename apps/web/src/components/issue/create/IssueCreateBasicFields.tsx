@@ -107,7 +107,7 @@ export function IssueCreateBasicFields({
             <FormLabel>{issueCreateStrings.summaryLabel}</FormLabel>
             <FormControl>
               <Input
-                placeholder="이슈 제목을 입력하세요"
+                placeholder={issueCreateStrings.summaryPlaceholder}
                 aria-label={issueCreateStrings.summaryLabel}
                 {...field}
               />

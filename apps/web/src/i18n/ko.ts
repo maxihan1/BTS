@@ -757,6 +757,13 @@ export const issueCreateStrings = {
   // ── FR-UX-09 F2 — 생성 모달 신규 필드 ────────────────────────────────
   /** 프로젝트 셀렉터 미선택 placeholder */
   projectPlaceholder: '프로젝트 선택',
+  /**
+   * 제목 입력 placeholder.
+   *
+   * 값은 봉합 전 컴포넌트 리터럴과 **바이트 단위로 동일**하다 — 이 항목은 i18n 배선 결함이지
+   * 문구 결함이 아니다. 문구를 「개선」하면 화면 변경이 섞여 회귀 표면이 넓어진다.
+   */
+  summaryPlaceholder: '이슈 제목을 입력하세요',
   /** 본문 필드 레이블 */
   descriptionLabel: '설명',
   /** 본문 입력 placeholder */
