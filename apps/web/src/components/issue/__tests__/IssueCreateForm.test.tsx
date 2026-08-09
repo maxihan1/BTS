@@ -646,3 +646,108 @@ describe('IssueCreateForm — required CHECKBOX 는 「체크됨」만 충족이
     expect(body.get()).toEqual({})
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODOS 「상단바 「만들기」 버튼만 CREATE 권한 게이트가 없다」 봉합 (2026-08-09)
+//
+// 실측하니 무게이트 경로는 상단바 하나가 아니라 4개였고(상단바 · /issues/new 딥링크 ·
+// `c` 단축키 · 명령 팔레트), 게이트된 버튼으로 열어도 폼 안에서 무권한 프로젝트로
+// 갈아탈 수 있어 버튼 게이트만으로는 닫히지 않는다.
+//
+// 2026-08-09 Maxi 확정 — 게이트를 버튼이 아니라 **폼의 선택된 프로젝트**에 둔다.
+// 모든 진입 경로가 예외 없이 IssueCreateForm 하나를 지난다.
+//
+// ★판정식이 `!isLoading && CREATE === true`(미지=거부)면 안 된다. 그건 버튼을
+//   회색으로 만드는 용도라 아무 주장도 하지 않지만, 제출 차단 + 문구 노출은
+//   **사실 주장**이라 로딩 중·조회 실패 구간에서 거짓말이 된다.
+//   `CREATE === false`(명시 거부만 차단)로 둔다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 선택된 프로젝트의 CREATE 게이트', () => {
+  /** 지정한 projectKey 에만 CREATE=false 를 주는 권한 핸들러. */
+  function setupPermissions(createByProject: Record<string, boolean>): void {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        const canCreate = createByProject[key] ?? true
+        return HttpResponse.json({
+          data: { projectKey: key, permissions: { CREATE: canCreate } },
+        })
+      }),
+    )
+  }
+
+  it('★CREATE 가 명시적으로 false 인 프로젝트로는 제출이 서버로 나가지 않는다', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    setupPermissions({ ATLAS: false })
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    // 「버튼이 비활성이다」로 단언하지 않는다 — 제출 버튼이 폼 밖에 있을 수 있고
+    // Enter 제출 경로도 있다. 네트워크가 나갔는지로 단언한다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+    expect(body.get()).toEqual({})
+  })
+
+  it('CREATE 가 true 면 그대로 제출된다 (비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    setupPermissions({ ATLAS: true })
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+  })
+
+  it('★권한 조회가 실패해도 제출을 막지 않는다 (미지 ≠ 거부 — 오탐 거부 방지)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ message: 'boom' }, { status: 500 }),
+      ),
+    )
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    // 조회 실패로 CREATE 를 모르는 상태다. 여기서 막으면 권한이 있는 사용자를
+    // 「권한 없음」이라는 틀린 이유로 영구 차단한다 — 서버가 최종 판정하게 둔다.
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+  })
+
+  it('★서버가 403 을 주면 「잠시 후 다시 시도」가 아니라 권한 문구가 뜬다', async () => {
+    const user = userEvent.setup()
+    setupPermissions({ ATLAS: true })
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    // 기존에는 errorDefault(「잠시 후 다시 시도해 주세요」)가 떴다 —
+    // 재시도해도 안 되는데 재시도를 권하는 문구다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+  })
+})
