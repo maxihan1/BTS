@@ -1380,6 +1380,11 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    // 후보는 검색해야 나온다 (2026-08-09 봉합). 예전에는 이 입력 없이도 목록이 떠 있었다.
+    await user.type(
+      within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      '앨리스',
+    )
     await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
     await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
     await waitFor(() => {
@@ -1468,6 +1473,11 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    // 후보는 검색해야 나온다 (2026-08-09 봉합). 예전에는 이 입력 없이도 목록이 떠 있었다.
+    await user.type(
+      within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      '앨리스',
+    )
     await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
     await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled())
