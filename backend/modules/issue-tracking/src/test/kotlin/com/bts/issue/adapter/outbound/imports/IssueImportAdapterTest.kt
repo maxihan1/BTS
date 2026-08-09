@@ -731,6 +731,14 @@ class IssueImportAdapterTest {
     @Autowired
     lateinit var issueRepository: IssueRepository
 
+    /**
+     * S3c 의 비-공허 짝 전용 — 같은 프로젝트 리드 상태에서 **REST 경로는 여전히 자동 배정이
+     * 발동한다**를 대조군으로 확인한다. 이게 없으면 「자동 배정 기능 자체가 죽어서 통과」와
+     * 「Import 만 껐다」를 구분할 수 없다.
+     */
+    @Autowired
+    lateinit var issueApplicationService: IssueApplicationService
+
     /** S46(C2 hot-fix) — [NoOpAttachmentStoragePort.lastPutReceivedByteCount] 검증용 구체 타입 autowire. */
     @Autowired
     lateinit var attachmentStoragePort: NoOpAttachmentStoragePort
@@ -965,6 +973,83 @@ class IssueImportAdapterTest {
         checkNotNull(saved)
         assert(saved.assigneeId == null) {
             "assigneeEmail 미매칭이므로 assigneeId 가 null 이어야 하지만 ${saved.assigneeId?.value} 입니다."
+        }
+    }
+
+    // ── S3c. 반입 충실도 — 원본에 없던 담당자를 만들지 않는다 ──────────────────
+
+    /**
+     * TODOS 「Import 가 원본에 없던 담당자를 만든다」 봉합.
+     *
+     * `IssueImportAdapter` 가 `createIssue` 에 담당자 의도를 넘기지 않아
+     * `resolveDefaultAssignee` 가 컴포넌트/프로젝트 리드를 담당자로 넣는다. 이후
+     * `applyAssigneeIfPresent` 는 `resolution.assigneeId ?: return currentVersion` 이라
+     * **원본에 담당자가 없으면 그냥 반환**한다 → 자동 배정 담당자가 그대로 남는다.
+     * ⇒ 반입된 이슈가 **원본에 없던 담당자**를 갖는다. 반입 충실도(fidelity) 위반이다.
+     *
+     * 스펙 `docs/specs/2026-07-02-fr-im-01-csv-json-import.md:13`(시나리오 4)·`:26`(FR7)이
+     * 「미매칭 assignee → null」을 이미 명시한다.
+     *
+     * ★비-공허성이 이 테스트의 핵심이다. **프로젝트 리드를 시드해 자동 배정이 실제로
+     *   발동하는 상태**를 만들지 않으면, 리드가 없어 어차피 null 이 나오므로 봉합 전에도
+     *   통과한다(기존 `S3 assigneeEmail 미매칭` 이 정확히 그 상태로 공허하게 통과 중이었다).
+     *
+     * 2026-08-09 Maxi 확정 — **①균일 처리**. 「담당자 컬럼 자체가 없는 행」과
+     * 「컬럼은 있으나 매칭 실패」를 구분하지 않는다. 매핑 마법사 UI 가 「빈 칸」과
+     * 「칸 없음」을 구별할 수 없어 구분하면 예측 불가능한 결과가 된다.
+     */
+    @Test
+    fun `S3c 자동 배정이 켜져 있어도 원본에 담당자가 없으면 미할당으로 반입된다`() {
+        setProjectLead(NORMAL_REQUESTER_ID)
+        try {
+            // (a) 담당자 필드 자체가 없는 행
+            val noAssigneeField =
+                issueImportAdapter.importIssue(
+                    IssueImportCommand(
+                        projectKey = PROJECT_KEY,
+                        requesterUserId = NORMAL_REQUESTER_ID,
+                        summary = "S3c 담당자 칸 없음",
+                    ),
+                )
+            check(noAssigneeField is IssueImportResult.Success) { "Success 여야 하지만 $noAssigneeField 입니다." }
+            assert(readAssigneeIdOf(noAssigneeField.issueKey) == null) {
+                "원본에 담당자가 없으므로 미할당이어야 하지만 " +
+                    "${readAssigneeIdOf(noAssigneeField.issueKey)} 가 자동 배정됐습니다."
+            }
+
+            // (b) 담당자 컬럼은 있으나 매칭 실패한 행 — 스펙이 명시한 케이스
+            val unmatched =
+                issueImportAdapter.importIssue(
+                    IssueImportCommand(
+                        projectKey = PROJECT_KEY,
+                        requesterUserId = NORMAL_REQUESTER_ID,
+                        summary = "S3c 담당자 미매칭",
+                        assigneeEmail = "unknown@example.com",
+                    ),
+                )
+            check(unmatched is IssueImportResult.Success) { "Success 여야 하지만 $unmatched 입니다." }
+            assert(readAssigneeIdOf(unmatched.issueKey) == null) {
+                "미매칭 담당자는 미할당이어야 하지만 " +
+                    "${readAssigneeIdOf(unmatched.issueKey)} 가 자동 배정됐습니다."
+            }
+
+            // ★비-공허 짝 — 같은 상태에서 REST 경로(자동 배정 On)는 여전히 담당자가 붙는다.
+            //   이게 없으면 「자동 배정 기능 자체가 죽어서 통과」와 구분되지 않는다.
+            val viaRest =
+                issueApplicationService.createIssue(
+                    actor = ActorId(NORMAL_REQUESTER_ID),
+                    request =
+                        com.bts.issue.application.CreateIssueRequest(
+                            projectKey = PROJECT_KEY,
+                            summary = "S3c 자동 배정 대조군",
+                            reporterId = ActorId(NORMAL_REQUESTER_ID),
+                        ),
+                )
+            assert(readAssigneeIdOf(viaRest.key.value) != null) {
+                "자동 배정이 발동하지 않아 이 테스트가 공허합니다. 프로젝트 리드 시드를 확인하세요."
+            }
+        } finally {
+            setProjectLead(null)
         }
     }
 
