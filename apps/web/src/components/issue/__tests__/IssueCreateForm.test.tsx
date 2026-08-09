@@ -457,3 +457,45 @@ describe('IssueCreateForm — 고른 담당자 표시 유지 (게이트 2 B-2)',
     expect(body.get()['assigneeId']).toBe(ALICE_USER_ID)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODOS 「이슈 제목 placeholder 만 i18n 키 없이 하드코딩돼 있다」 봉합 (2026-08-09)
+//
+// 같은 폼 안에서 본문·프로젝트 셀렉터는 i18n 정본을 쓰는데 제목만 리터럴이었다.
+// ★렌더 단언만으로는 하드코딩 복귀를 못 잡는다 — i18n 값과 리터럴이 바이트 동일하면
+//   DOM 의 placeholder 속성 문자열이 두 경우 완전히 같다(속성값은 출처를 싣지 않는다).
+//   그래서 소스 단언을 짝으로 둔다. 앱 전역 28곳에 대한 ESLint 래칫은 별도 TODOS 항목.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 제목 placeholder i18n 배선', () => {
+  it('제목 입력의 placeholder 가 i18n 정본에서 온다', async () => {
+    renderForm()
+
+    // ★red-first 의 핵심. 키가 없으면 undefined 라 여기서 터진다.
+    // 이 단언이 없으면 아래 toHaveAttribute 가 undefined 를 「속성 존재만 확인」으로
+    // 해석해 가짜 그린이 된다 (jest-dom 의 알려진 동작).
+    expect(typeof issueCreateStrings.summaryPlaceholder).toBe('string')
+    expect(issueCreateStrings.summaryPlaceholder.length).toBeGreaterThan(0)
+
+    const summary = await screen.findByLabelText(issueCreateStrings.summaryLabel)
+    expect(summary).toHaveAttribute('placeholder', issueCreateStrings.summaryPlaceholder)
+  })
+
+  it('★컴포넌트 소스에 한글 리터럴 placeholder 가 남아 있지 않다 (하드코딩 복귀 차단)', async () => {
+    // jsdom 환경에서는 import.meta.url 이 file: 스킴이 아니라 http: 라 URL 기반 해석이 안 된다.
+    // vitest 는 apps/web 을 cwd 로 돌므로 거기서 해석한다 — 경로가 틀리면 아래 length 단언이 잡는다.
+    const { readFile } = await import('node:fs/promises')
+    const { resolve } = await import('node:path')
+    const source = await readFile(
+      resolve(process.cwd(), 'src/components/issue/create/IssueCreateBasicFields.tsx'),
+      'utf-8',
+    )
+
+    // 비-공허 짝 — 파일을 실제로 읽었고 기대한 배선이 그 안에 있는지 먼저 못박는다.
+    // 이게 없으면 경로가 틀려 빈 문자열을 읽어도 아래 not.toMatch 가 조용히 통과한다.
+    expect(source.length).toBeGreaterThan(500)
+    expect(source).toMatch(/placeholder=\{issueCreateStrings\.summaryPlaceholder\}/)
+
+    const koreanLiteralPlaceholder = /placeholder\s*=\s*"[^"]*[가-힣][^"]*"/
+    expect(source).not.toMatch(koreanLiteralPlaceholder)
+  })
+})
