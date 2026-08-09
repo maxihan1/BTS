@@ -1733,8 +1733,22 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 > - **좌표 정정.** `AutomationYamlImportDialog.tsx:340·345` → 현재 `onSuccess` **337**, `onError` **343**. 파일은 #292 이후 무변경이므로 원 서술이 애초에 부정확했다.
 > - **★인과가 성립하지 않는다 (가장 중요).** 「mutation 의 rejection 이 테스트 종료 후 도착」만으로는 unhandled rejection 이 **되지 않는다** — `useMutation.js:33` 이 `observer.mutate(...).catch(noop)` 을 붙인다. 전역으로 새는 경로는 `mutation.js:156/166/178/189` · `mutationObserver.js:94/105/116/127` 의 `void Promise.reject(e)`, 즉 **`onSuccess`/`onError`/`onSettled` 콜백이 던질 때**와 **`.catch` 없이 호출된 `mutateAsync`** 뿐이다. ⇒ 「pending mutation 이 남는 경로」는 필요조건일 뿐 충분조건이 아니다.
 > - **정정.** 「CI 가 `Errors` 줄을 낚아채게 하는 쪽이 싸다」는 **불필요**하다. vitest 가 `cli-api…:13897-13899` 에서 이미 `process.exitCode=1` 을 세우고 `frontend-ci.yml:106-107` 이 그 종료 코드를 그대로 잡 성패로 쓴다. **실제 구멍은 CI 배선이 아니라 「Tests N passed 만 읽고 초록으로 보고하는」 사람/에이전트 쪽**이다.
-> - **2026-08-09 Maxi 확정 원칙 적용 — (b) 관측 유지.** 이번 라운드의 산출물은 「고침」이 아니라 **「다음 발생 때 테스트 이름 + 전체 스택이 로그에 남는다」**로 정의한다.
->   ① `src/test/setup.ts` 에 `unhandledRejection` 로깅 리스너 추가(try/catch 로 감싸 리스너 자신이 새 실패면이 되지 않게).
+> - **2026-08-09 Maxi 확정 원칙 적용 — (b) 관측 유지.** 이번 라운드의 산출물은 「고침」이 아니라 **확정 누수 2건 봉합 + 재발 불변식**이다.
+>   (원래 「진단 배선」으로 정의했으나, 그 배선이 오히려 관측을 껐다 — 아래 ① 참조. 진단 표면은 vitest 가 이미 충분히 준다.)
+>   ① ~~`src/test/setup.ts` 에 `unhandledRejection` 로깅 리스너 추가~~ — **이 처방은 위험하다. 채택하지 않는다** (2026-08-10 게이트2 리뷰 · A/B 실측).
+>      vitest 는 `unhandledRejection` 리스너가 **이미 등록돼 있으면 「사용자 코드가 처리했다」고 보고 물러난다.**
+>      리스너를 하나 더 붙이는 순간 vitest 자신의 보고가 통째로 꺼지고 **종료 코드가 1 → 0 으로 뒤집힌다** —
+>      바로 이 항목이 추적하는 증상을 **원인은 그대로 둔 채 관측 불가능하게** 만든다.
+>      아래 ④ 가 금지한 `dangerouslyIgnoreUnhandledErrors: true` 와 **같은 효과**다.
+>
+>      | 조건 | 종료 코드 | 리포트 |
+>      |---|---|---|
+>      | 리스너 추가 | **0** | 없음 |
+>      | 리스너 없음 | **1** | `Errors 1 error` + 전체 스택 + 원인 테스트 이름 |
+>
+>      **★그리고 애초에 필요 없다.** 이 처방의 근거였던 「진단 표면이 파일 이름까지고 어느 테스트인지는 모른다」가 **거짓**이다.
+>      vitest 4 는 전체 스택 · 원인 파일 · `The latest test that might've caused the error is "«이름»"` 을 이미 출력한다.
+>      귀속을 더 강화하려면 **process 리스너를 늘리지 않는 경로**(커스텀 리포터 `onUnhandledError`)를 써야 한다.
 >   ② 확정 누수 2건 봉합 — `AutomationYamlImportDialog.test.tsx:136-154`(EC5)·`:367-389`(CRITICAL-1)이 50ms·300ms 지연 핸들러를 건 채 정착을 기다리지 않고 끝난다. **기존 단언은 그대로 두고 테스트 끝에만 정착 대기를 덧붙인다** — 대기를 앞에 끼우면 「in-flight 창」을 보는 원 의도가 죽어 「엉뚱한 걸 쟀다」가 재발한다.
 >   ③ 같은 파일에 pending mutation 0 불변식 `afterEach` 추가.
 >   ④ **절대 금지 — `dangerouslyIgnoreUnhandledErrors: true`.** 종료 코드는 초록이 되지만 유일한 진단 표면이 사라진다(「봉인이 자기 결함을 재생산」 양식).
