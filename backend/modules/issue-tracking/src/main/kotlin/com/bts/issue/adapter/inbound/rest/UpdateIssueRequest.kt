@@ -38,7 +38,11 @@ import java.util.UUID
  *   최대 65535자 (@Size 제한).
  * @property priority 우선순위 1..5. null=무변경. 범위 밖이면 400.
  * @property labels 라벨 목록. null=무변경, []=전체 제거, 값=교체.
- *   라벨 하나 최대 50자, 목록 최대 20개 (@Size 제한).
+ *   목록 최대 20개는 `@field:Size` 가, **라벨 하나 최대 50자 + 공백-only 거부는
+ *   [isLabelsValid](`@get:AssertTrue`)** 가 막는다.
+ *   ★`List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약을 **되살리지 말 것** —
+ *   Kotlin 이 타입-use 애노테이션을 런타임 보존하지 않아 동작하지 않고, 이 파일이 정확히
+ *   그 형태로 500 을 내보내고 있었다(2026-08-09 봉합).
  * @property environment 재현 환경 설명. null=무변경, ""=DB NULL 클리어, 값=설정.
  *   @Pattern 적용 없음 — 빈문자열은 클리어 sentinel 로 유효하다.
  *   최대 1000자 (@Size 제한).
@@ -133,7 +137,13 @@ data class UpdateIssueRequest(
          *
          * 도메인 `Issue.kt` · [CreateIssueRequest] 의 동명 상수와 **값이 같아야 한다**.
          * 사본이 3개가 된 것은 의도된 이연이다(2026-08-09 Maxi 확정 「좁게」) — 공용 상수
-         * 수렴은 별도 TODOS 항목이다. 값 일치는 경계 테스트(50자 200 / 51자 400)가 지킨다.
+         * 수렴은 별도 TODOS 항목이다.
+         *
+         * ★**세 사본의 값 일치를 지키는 테스트는 없다** (2026-08-10 게이트2 리뷰 정정).
+         * 이 파일의 경계 테스트(50자 200 / 51자 400)는 `IssueApplicationService` 를 MockK 로
+         * 대체한 MVC 슬라이스라 **도메인 상수에 닿지 않는다** — 여기 값만 바꾸면 그 테스트는
+         * 그대로 초록이고 도메인과 조용히 어긋난다. 「테스트가 지킨다」고 적어 두면 다음
+         * 세션이 확인 없이 값을 고친다. 공용 상수 수렴 전까지는 **사람이 세 곳을 함께 본다.**
          */
         const val LABEL_MAX_LENGTH = 50
     }

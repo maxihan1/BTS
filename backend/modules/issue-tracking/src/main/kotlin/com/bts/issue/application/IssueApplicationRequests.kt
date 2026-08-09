@@ -27,9 +27,12 @@ import java.util.UUID
  * @param notifyAssignment 담당자 확정 시 `IssueAssigned` 발행 여부 (FR-UX-09 B1, ADR D-5).
  *   **기본 false 는 의도된 fail-safe 다.** 이 함수의 생산자는 REST 컨트롤러 하나가 아니라
  *   Import 어댑터(`IssueImportAdapter`)도 있고, Import 는 생성 직후 `changeAssignee` 로 담당자를
- *   다시 지정해 그쪽에서 이미 `IssueAssigned` 를 발행한다. 기본값을 true 로 두면 반입 1건당
- *   알림이 2회 나가고 첫 번째는 곧 덮어쓰일 임시 담당자에 대한 거짓 알림이 된다.
- *   **기본값을 뒤집지 말 것** — 앞으로 생길 새 생산자도 알림이 꺼진 채로 태어나야 한다.
+ *   다시 지정해 그쪽에서 이미 `IssueAssigned` 를 발행한다.
+ *   ★**「기본값이 true 면 반입 1건당 2회 발행」이라는 옛 근거는 이제 도달 불가다**
+ *   (2026-08-09 — Import 가 `AssigneeIntent.None` 을 넘기면서 `resolvedAssignee` 가 항상 null 이 됐다).
+ *   그래도 **기본값을 뒤집지 말 것** — 근거가 「현존 경로 방어」에서 **defense-in-depth** 로
+ *   바뀌었을 뿐이다. 앞으로 생길 새 생산자가 알림이 꺼진 채 태어나야 한다.
+ *   이 게이트의 유일한 비-공허 증인은 `IssueApplicationServiceCreateTest` 의 2×2 행렬이다.
  */
 data class CreateIssueRequest(
     val projectKey: String,
