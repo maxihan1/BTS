@@ -98,14 +98,22 @@ export function BulkEditDialog({
   }
 
   async function handleApply(): Promise<void> {
-    const result = await submitBulkOperation.mutateAsync({
-      operationType: 'BULK_EDIT',
-      issueKeys,
-      editPayload: { priority, impact },
-      transitionPayload: null,
-    })
-    onSubmitted(result.bulkOperationId)
-    onOpenChange(false)
+    try {
+      const result = await submitBulkOperation.mutateAsync({
+        operationType: 'BULK_EDIT',
+        issueKeys,
+        editPayload: { priority, impact },
+        transitionPayload: null,
+      })
+      onSubmitted(result.bulkOperationId)
+      onOpenChange(false)
+    } catch {
+      // 에러 안내는 useSubmitBulkOperation.onError 의 toast 가 담당한다.
+      // mutateAsync 는 onError 호출 후에도 reject 를 re-throw 하므로, 여기서 잡지 않으면
+      // 호출부의 `void handleApply()` 를 통해 **프로덕션에서도 unhandled rejection** 이 된다.
+      // ★토스트를 여기에 추가하지 말 것 — 같은 실패 1회에 토스트가 2건 뜬다.
+      // 정본 패턴. CloneIssueDialog.tsx 의 handleSubmit.
+    }
   }
 
   return (

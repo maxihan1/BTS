@@ -2104,3 +2104,64 @@ describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
     await waitFor(() => expect(listHandlers()).toBeUndefined())
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 「새 이슈」 버튼의 접근성 이름 — 모르는 것을 안다고 말하지 않는다
+//
+// `aria-label="새 이슈 (권한 없음)"` 은 **사실 주장**이다. 그런데 그 문구가 붙는 조건이
+// 「CREATE 가 false」가 아니라 「CREATE 가 true 가 아니다」였다 — 즉 **권한 응답이 오기 전**과
+// **조회 실패**에서도 붙었다.
+//
+// 결과. CREATE 를 **실제로 가진** 사용자가 `/issues` 를 열 때마다 스크린리더가
+// 「권한 없음」이라는 **거짓 안내**를 읽는다. `use-project-permissions.ts` 에 `retry:false` 도
+// 에러 폴백도 없으므로 500·네트워크 단절이면 그 상태로 **영구히 안착**한다.
+//
+// ★시각적 disabled 는 유지한다(fail-closed, T5-C·T5-D 가 그 결정을 이미 못박았다).
+//   바꾸는 것은 **접근성 이름이 이유를 주장하지 않게** 하는 것뿐이다.
+//   생성 폼의 판정식(`permissions.CREATE === false`, 명시 거부만)과 같은 정신이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueListPage — 「새 이슈」 접근성 이름', () => {
+  const NO_PERMISSION = /권한 없음/
+
+  it('T5-E: CREATE:false(명시 거부)면 접근성 이름이 권한 없음을 말한다 (대조군)', async () => {
+    server.use(createFalsePermissionHandler, ...issueHandlers)
+    renderPage()
+
+    const button = await screen.findByTestId('new-issue-button')
+    expect(button).toBeDisabled()
+    // 이 단언이 없으면 「문구를 통째로 지우는」 변경으로도 아래 두 테스트가 통과한다.
+    expect(button.getAttribute('aria-label') ?? '').toMatch(NO_PERMISSION)
+  })
+
+  it('T5-F: 권한 로딩 중이면 접근성 이름이 권한 없음을 주장하지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', async () => {
+        await new Promise<never>(() => undefined)
+        return undefined as never
+      }),
+      ...issueHandlers,
+    )
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('new-issue-button')).toBeInTheDocument())
+    const button = screen.getByTestId('new-issue-button')
+    expect(button).toBeDisabled() // 시각적 fail-closed 는 유지
+    expect(button.getAttribute('aria-label') ?? '').not.toMatch(NO_PERMISSION)
+  })
+
+  it('T5-G: 권한 조회가 실패해도 접근성 이름이 권한 없음을 주장하지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+      ...issueHandlers,
+    )
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('new-issue-button')).toBeInTheDocument())
+    const button = screen.getByTestId('new-issue-button')
+    expect(button).toBeDisabled()
+    expect(button.getAttribute('aria-label') ?? '').not.toMatch(NO_PERMISSION)
+  })
+})

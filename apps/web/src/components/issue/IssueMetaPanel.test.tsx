@@ -1,7 +1,7 @@
 // IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 + 즐겨찾기 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6, FR-UX-02 D6 Task-6
 import type { ReactElement } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
@@ -13,6 +13,7 @@ import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 import { useAuthStore } from '@/auth/authStore'
 import { aliceUser } from '@/mocks/auth-fixtures'
+import { nonMemberProjectPermissions } from '@/mocks/project-permission-fixtures'
 
 // useIssuePermissions를 mock — 기존 테스트는 권한 관련 동작을 검증하지 않으므로 UPDATE/SOFT_DELETE=true로 고정
 vi.mock('@/hooks/use-issue-permissions', () => ({
@@ -1551,5 +1552,58 @@ describe('IssueMetaPanel — 날짜 표시 프리셋 반영 (FR-PF-01 Task 8)', 
     renderPanel(issueUs)
     const aside = screen.getByRole('complementary')
     expect(within(aside).getByText(/07\/08\/2026/)).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 클론 버튼 CREATE 게이트
+//
+// 이 버튼은 「권한 게이트 부재는 의도적」이라는 주석과 함께 무게이트로 살아 있었다.
+// 그 주석의 근거는 **「프론트 권한 API 가 CREATE 를 안 준다」였고, 지금은 거짓이다** —
+// `project-permissions.ts:24-34` 가 `CREATE: z.boolean()` 을 내준다.
+//
+// 결과. 「UI 가 서버가 403 할 생성 액션을 내놓는다」가 남는다. 이슈 생성 폼에 게이트를 넣어도
+// 클론은 그 통로를 지나지 않는다(클론·이동·임포트 셋 다 CREATE 를 요구하는데
+// `IssueCreateForm` 을 안 지난다).
+//
+// ★판정식은 `permissions.CREATE === false`(명시 거부만)다. 생성 폼과 같은 형태 —
+//   `!isLoading && === true`(미지=거부)는 로딩·조회실패 구간에서 정상 사용자를 막는다.
+//   미지에서는 지금처럼 버튼을 열어 두고 서버 403 + 토스트가 최종 판정한다(fail-safe 유지).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 클론 버튼 CREATE 게이트', () => {
+  it('CREATE:false(명시 거부)면 클론 버튼이 disabled 이고 사유를 말한다', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'ATLAS', permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    renderPanel()
+
+    const clone = await screen.findByTestId('issue-clone')
+    await waitFor(() => expect(clone).toBeDisabled())
+    expect(clone.getAttribute('aria-label')).toBe(issueDetailStrings.cloneButtonNoPermission)
+  })
+
+  it('CREATE:true 면 클론 버튼이 활성이다 (대조군)', async () => {
+    renderPanel()
+
+    const clone = await screen.findByTestId('issue-clone')
+    await waitFor(() => expect(clone).not.toBeDisabled())
+    expect(clone.getAttribute('aria-label')).toBe(issueDetailStrings.cloneButton)
+  })
+
+  it('권한 조회가 실패해도 클론 버튼을 막지 않는다 (미지 ≠ 거부)', async () => {
+    // 미지에서 막으면 CREATE 를 실제로 가진 사용자가 영구 차단된다 —
+    // `use-project-permissions.ts` 에 retry 도 에러 폴백도 없다.
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+    )
+    renderPanel()
+
+    const clone = await screen.findByTestId('issue-clone')
+    expect(clone).not.toBeDisabled()
   })
 })

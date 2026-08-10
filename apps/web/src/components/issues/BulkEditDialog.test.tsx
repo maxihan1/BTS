@@ -136,3 +136,39 @@ describe('BulkEditDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 실패 경로 — mutateAsync 거부가 전역으로 새지 않는다
+//
+// `handleApply` 는 `onClick={() => { void handleApply() }}` 로 띄운다. `mutateAsync` 는
+// `onError` 를 부른 뒤에도 **reject 를 re-throw** 하므로, catch 가 없으면 그 rejection 이
+// 전역으로 새어 **프로덕션에서도 unhandled rejection** 이 된다.
+//
+// ★「사용자에게 피드백이 없다」는 거짓이다 — `use-bulk-operation.ts:58` 의 `onError` 가
+//   이미 `toast.error` 를 띄운다. 그래서 봉합은 **빈 catch 만** 넣는다.
+//   토스트를 새로 추가하면 같은 실패 1회에 토스트가 2건 뜬다.
+//
+// ★이 테스트가 잡는 방식. 아래 단언들은 봉합 전후 모두 통과할 수 있다(양쪽 다 성공 경로를
+//   안 탄다). 결정적인 것은 **실제 거부를 흘려보낸다**는 것이다 — catch 가 없으면 vitest 가
+//   `Errors 1 error` 를 보고하고 **스위트 종료 코드가 1** 이 된다. `src/test/setup.ts` 가
+//   `unhandledRejection` 리스너 추가를 금지하는 이유가 바로 이 신호를 살려 두기 위함이다.
+//   `CloneIssueDialog.test.tsx` 의 「에러 발생 시 toast.error가 호출된다」와 같은 형태다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BulkEditDialog — 실패 경로', () => {
+  it('mutateAsync 가 거부돼도 콜백을 부르지 않고 다이얼로그를 닫지 않는다 (rejection 을 삼킨다)', async () => {
+    mockMutateAsync.mockRejectedValueOnce(new Error('403 ACCESS_DENIED'))
+
+    const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1'] })
+    const user = userEvent.setup()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: /priority/i }), '1')
+    await user.click(screen.getByRole('button', { name: /적용/i }))
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalled()
+    })
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+})
