@@ -16,7 +16,7 @@ import { PROJECT_KEYS } from '@/hooks/use-project'
 import type { Project } from '@/api/projects'
 import type { ProjectPermissions as ProjectPermissionsResponse } from '@/api/project-permissions'
 import { importLabels } from '@/i18n/import-labels'
-import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
+import { projectNotFoundLabels } from '@/i18n/project-not-found-labels'
 import {
   ProjectImportSettingsRouteAdapter,
   ProjectImportSettingsPage,
@@ -433,7 +433,7 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
     renderPage('BOGUS') // 시드 밖 키 → projectHandlers 가 404
 
     expect(
-      await screen.findByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+      await screen.findByText(projectNotFoundLabels.title),
     ).toBeInTheDocument()
     expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
     expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
@@ -458,7 +458,7 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
 
     expect(await screen.findByTestId('import-form')).toBeInTheDocument()
     expect(
-      screen.queryByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+      screen.queryByText(projectNotFoundLabels.title),
     ).not.toBeInTheDocument()
   })
 
@@ -472,7 +472,7 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
 
     expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
     expect(
-      screen.queryByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+      screen.queryByText(projectNotFoundLabels.title),
     ).not.toBeInTheDocument()
   })
 })
@@ -530,7 +530,7 @@ describe('ProjectImportSettingsPage — 로딩 프레임', () => {
     // 게이트를 열면 404 가 도착하고 최종 화면은 「프로젝트 없음」이다
     projectGate.release()
     expect(
-      await screen.findByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+      await screen.findByText(projectNotFoundLabels.title),
     ).toBeInTheDocument()
     expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
   })

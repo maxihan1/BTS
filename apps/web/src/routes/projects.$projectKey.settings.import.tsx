@@ -23,13 +23,13 @@ type ImportPageMode = 'simple' | 'mapping'
 /** 토글 렌더 순서 — Record 키 순회 시 필요한 `as` 캐스트를 피하기 위한 명시적 배열 */
 const IMPORT_MODE_ORDER: readonly ImportPageMode[] = ['simple', 'mapping']
 
-const IMPORT_MODE_LABELS: Record<ImportPageMode, string> = {
-  simple: '바로 가져오기',
-  mapping: '매핑하며 가져오기',
-}
-
-const IMPORT_MODE_HELP_TEXT =
-  '바로 가져오기 = canonical 컬럼·JSON 첨부 zip / 매핑하며 가져오기 = 임의 CSV 컬럼·작성자·값 매핑'
+/**
+ * 모드별 버튼 텍스트. 값은 `i18n/import-labels.ts` 소유다.
+ *
+ * `Record<ImportPageMode, string>` 대입이 두 목록(모드 유니언 ↔ 라벨 키)의 차집합을
+ * 컴파일 타임에 잡는다 — 모드를 늘리고 라벨을 안 늘리면 여기서 타입 에러가 난다.
+ */
+const IMPORT_MODE_LABELS: Record<ImportPageMode, string> = importLabels.modeLabels
 
 interface ImportModeToggleProps {
   readonly mode: ImportPageMode
@@ -44,7 +44,7 @@ interface ImportModeToggleProps {
 function ImportModeToggle({ mode, onModeChange }: ImportModeToggleProps): JSX.Element {
   return (
     <div className="space-y-1.5">
-      <div role="group" aria-label="Import 방식" className="flex gap-2">
+      <div role="group" aria-label={importLabels.modeToggleAriaLabel} className="flex gap-2">
         {IMPORT_MODE_ORDER.map((candidate) => (
           <Button
             key={candidate}
@@ -60,7 +60,7 @@ function ImportModeToggle({ mode, onModeChange }: ImportModeToggleProps): JSX.El
           </Button>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">{IMPORT_MODE_HELP_TEXT}</p>
+      <p className="text-xs text-muted-foreground">{importLabels.modeHelpText}</p>
     </div>
   )
 }
@@ -211,7 +211,7 @@ export function ProjectImportSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">가져오기(Import)</h1>
+        <h1 className="text-2xl font-semibold">{importLabels.pageHeading}</h1>
       </header>
       {isResolving ? (
         // 형제 페이지는 로딩 프레임에서 헤더까지 감추지만, 여기서는 h1 을 남긴다 —

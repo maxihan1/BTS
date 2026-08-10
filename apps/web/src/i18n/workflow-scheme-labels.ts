@@ -1,4 +1,5 @@
 // 워크플로우 스킴 admin UI 의 E2E 셀렉터 정본 — 라벨 변경 시 단일 진입점
+import { projectNotFoundLabels } from './project-not-found-labels'
 
 /**
  * workflow-scheme UI 가 E2E 셀렉터로 노출하는 한국어 라벨/텍스트.
@@ -154,10 +155,14 @@ export const workflowSchemeLabels = {
      * 배정 조회 404 카드 CardTitle.
      * 이 엔드포인트의 404 는 「프로젝트 없음」 하나뿐이다 — 옛 `unassignedTitle`('스킴 미할당')은
      * 404 오독의 산물이라 제거했다 (백엔드가 미배정 프로젝트에 자동 배정하므로 그 상태는 없다).
+     *
+     * ★값의 소유처는 `project-not-found-labels.ts` 다 — 이 카드(`ProjectNotFoundCard`)를
+     *   가져오기 화면도 재사용하므로 어느 한 화면의 네임스페이스가 소유하면 안 된다.
+     *   이 키는 기존 E2E·단위 셀렉터를 위해 남긴 **참조**이지 사본이 아니다.
      */
-    projectNotFoundTitle: '프로젝트를 찾을 수 없습니다',
-    /** 배정 조회 404 안내 문구 */
-    projectNotFoundMessage: '이 프로젝트가 존재하지 않거나 삭제됐습니다. 주소를 확인해 주세요.',
+    projectNotFoundTitle: projectNotFoundLabels.title,
+    /** 배정 조회 404 안내 문구 — 값의 소유처는 `project-not-found-labels.ts` (위 참조) */
+    projectNotFoundMessage: projectNotFoundLabels.message,
     /** 스킴 변경 섹션 CardTitle */
     changeTitle: '스킴 변경',
     /** 스킴 select aria-label */
