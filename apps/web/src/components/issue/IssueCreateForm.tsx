@@ -13,10 +13,8 @@ import { IssueCreateBasicFields } from '@/components/issue/create/IssueCreateBas
 import { IssueCreateAssignmentFields } from '@/components/issue/create/IssueCreateAssignmentFields'
 import { IssueCreateExtraFields } from '@/components/issue/create/IssueCreateExtraFields'
 import { useAssigneePicker } from '@/components/issue/create/use-assignee-picker'
-import {
-  isRequiredFieldEmpty,
-  resolveCreateErrorMessage,
-} from '@/components/issue/create/issue-create-validation'
+import { resolveCreateErrorMessage } from '@/components/issue/create/issue-create-validation'
+import { isRequiredFieldEmpty } from '@/components/custom-fields/required-empty'
 import { useIssueCreatePermissionGate } from '@/components/issue/create/use-issue-create-permission-gate'
 import {
   useDefaultProjectSelection,
