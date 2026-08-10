@@ -1,6 +1,6 @@
 // 이슈 목록 담당자 셀 — 클릭해 그 자리에서 바꾼다 (FR-UX-11 F9)
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
 import type { IssueResponse } from '@/api/issues'
 import type { UserSummary } from '@/api/users'
@@ -253,11 +253,29 @@ function AssigneeCellPopoverBody({
   const { data: users = [], isLoading } = useUsers(debouncedQuery)
   const permissions = useIssuePermissions(issue.key)
 
+  /**
+   * 담당자 후보는 **검색해야 나온다**.
+   *
+   * `useUsers` 는 빈 검색어에 전체 사용자 목록을 돌려준다(훅 KDoc 참조 — 필터 계열 소비처가
+   * 그 동작에 의존하므로 훅에 전역 `enabled` 를 달 수 없다). 그대로 넘기면 담당자 셀을 여는
+   * 순간 사내 1,000명이 펼쳐진다.
+   *
+   * 판정 표현을 정본과 **문자 그대로 동일**하게 둔다 —
+   * `routes/issues.$key.tsx` 의 `assigneeCandidates` · `components/issue/create/use-assignee-picker.ts`.
+   * 세 곳이 같은 규칙임을 grep 으로 확인할 수 있어야 한다.
+   *
+   * `currentAssigneeName` 은 이 배열과 독립이라 현재 담당자 표시는 영향받지 않는다.
+   */
+  const assigneeCandidates = useMemo(
+    () => (debouncedQuery.trim() === '' ? [] : users),
+    [debouncedQuery, users],
+  )
+
   return (
     <AssigneeCellEditor
       value={issue.assigneeId}
       currentAssigneeName={assigneeName ?? null}
-      users={users}
+      users={assigneeCandidates}
       isLoading={isLoading}
       // fail-closed — 권한이 확정되기 전에는 false (D-6).
       // ★이슈 단위 UPDATE **와** 필드 단위 편집가부를 둘 다 본다 (리뷰 C2). 상세 화면
