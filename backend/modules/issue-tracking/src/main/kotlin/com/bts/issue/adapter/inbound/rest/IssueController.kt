@@ -682,6 +682,10 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
             AppChangeComponentsRequest(
                 componentIds = request.componentIds,
                 expectedVersion = expectedVersion,
+                // 컴포넌트 교체로 담당자가 자동 배정되면 알림을 보낸다 — 사람의 편집 행위다.
+                // 애플리케이션 계층 기본값이 false(fail-safe)이므로 여기서 명시적으로 켠다.
+                // 클론(`IssueController.clone`)·생성(`create`)과 같은 형태다.
+                notifyAssignment = true,
             )
         val response = service.changeComponents(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))

@@ -241,6 +241,23 @@ data class AppChangeAssigneeRequest(
 data class AppChangeComponentsRequest(
     val componentIds: List<UUID>,
     val expectedVersion: Long,
+    /**
+     * 컴포넌트 교체로 담당자가 **자동 배정됐을 때** `IssueAssigned` 발행 여부.
+     *
+     * **기본 false 는 의도된 fail-safe 다** — [CreateIssueRequest.notifyAssignment] ·
+     * [CloneIssueRequest.notifyAssignment] 와 같은 원칙.
+     *
+     * ★[com.bts.issue.application.IssueApplicationService.changeAssignee] 처럼 무조건 발행하지
+     * 않는 이유. 그쪽은 **배정 자체가 목적**인 함수라 모든 생산자가 알림을 의도한다.
+     * 여기서 일어나는 배정은 컴포넌트 교체의 **부수효과**이므로, 앞으로 생길 생산자
+     * (대량 컴포넌트 편집 · 자동화 규칙 · 반입 후처리)가 알림을 **켠 채로 태어나면 안 된다.**
+     *
+     * 현재 생산자는 REST `PATCH /issues/{key}/components` 하나뿐이라 「현존 다중 경로 방어」가
+     * 아니라 **defense-in-depth** 로 정당화된다. **기본값을 뒤집지 말 것.**
+     * 이 게이트의 비-공허 증인은 `IssueComponentsControllerTest` CC-6 (REST 가 true 를 넘기는지)
+     * 과 `IssueChangeComponentsServiceTest` 의 2×2 행렬이다.
+     */
+    val notifyAssignment: Boolean = false,
 )
 
 /**
