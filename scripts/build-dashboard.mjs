@@ -209,15 +209,45 @@ export function parseYongeo(content) {
   return terms;
 }
 
+/**
+ * TODOS.md 섹션 헤딩의 상태 마커 — **단일 출처**.
+ *
+ * 파서(`parseTodos`) · 렌더(`renderTodos`) · 순수성 판별식
+ * (`scripts/workflow/todos-resolved-section-purity.test.ts`)이 전부 여기서 파생한다.
+ *
+ * ★왜 상수 하나로 모았나. 2026-08-10 이전에는 판별식이 ✅·📌·⬜ **셋**을 허용하는데
+ * 파서 정규식은 ✅·⬜ **둘**만 인식했다. `📌 보류` 섹션을 하나라도 만들면 그 헤딩과
+ * 본문이 **앞 섹션의 본문으로 흡수**돼 집계에서 통째로 사라진다. 게다가 앞 섹션이 ✅ 인데
+ * 흡수된 본문에 ⬜ 가 있으면 순수성 판별식이 **엉뚱한 섹션을 지목**한다.
+ * 📌 섹션이 0건이라 잠복해 있었을 뿐이다 — 이 저장소의 `two-lists-never-check-each-other` 양식.
+ *
+ * 배열 **순서가 곧 화면 표시 순서**다. 안 한 것을 먼저, 끝난 것을 나중에 둔다.
+ */
+export const TODO_STATUSES = Object.freeze([
+  { marker: '⬜', status: '미착수', heading: '아직 안 한 것' },
+  { marker: '📌', status: '보류', heading: '보류 — 지금은 안 하기로 한 것' },
+  { marker: '✅', status: '해소', heading: '해소된 것' },
+]);
+
+/** 마커 → 상태 이름. [TODO_STATUSES] 에서 파생한다 — 손으로 유지하는 두 번째 목록을 만들지 않는다. */
+export const TODO_STATUS_BY_MARKER = Object.freeze(
+  Object.fromEntries(TODO_STATUSES.map(s => [s.marker, s.status])),
+);
+
+/** 헤딩 마커 인식 정규식. 마커 목록을 문자열로 다시 적지 않고 상수에서 만든다. */
+const TODO_HEADING_RE = new RegExp(
+  `^##\\s+(${Object.keys(TODO_STATUS_BY_MARKER).join('|')})\\s+(.+?)\\s*$`,
+);
+
 export function parseTodos(content) {
-  // TODOS.md 는 `## <✅|⬜> <제목>` 단위 섹션의 나열이다. 마커가 상태, 그 뒤 전부가 본문.
+  // TODOS.md 는 `## <마커> <제목>` 단위 섹션의 나열이다. 마커가 상태, 그 뒤 전부가 본문.
   const items = [];
   let current = null;
   for (const line of content.split('\n')) {
-    const m = line.match(/^##\s+(✅|⬜)\s+(.+?)\s*$/);
+    const m = line.match(TODO_HEADING_RE);
     if (m) {
       if (current) items.push(current);
-      current = { status: m[1] === '✅' ? '해소' : '미착수', title: m[2].trim(), body: [] };
+      current = { status: TODO_STATUS_BY_MARKER[m[1]], title: m[2].trim(), body: [] };
       continue;
     }
     if (line.startsWith('# ')) { if (current) items.push(current); current = null; continue; }
@@ -527,9 +557,16 @@ function mdToHtml(md) {
   return out.join('');
 }
 
-function renderTodos(todos) {
-  const open = todos.filter(t => t.status === '미착수');
-  const done = todos.filter(t => t.status === '해소');
+/**
+ * 기술 부채 페이지를 그린다.
+ *
+ * ★그룹을 손으로 열거하지 않고 [TODO_STATUSES] 에서 만든다. 파서가 새 상태를 인식하는데
+ * 렌더가 그 그룹을 안 그리면 결과는 「파싱은 됐지만 화면에서 사라짐」으로 **동일**하다 —
+ * 파서만 고치는 것은 봉합의 절반이다.
+ */
+export function renderTodos(todos) {
+  const groups = TODO_STATUSES.map(s => ({ ...s, items: todos.filter(t => t.status === s.status) }));
+  const countOf = (status) => groups.find(g => g.status === status)?.items.length ?? 0;
 
   const renderGroup = (items, icon) => items.map(t =>
     `<details class="todo-item">
@@ -546,13 +583,16 @@ function renderTodos(todos) {
       제목을 누르면 무엇을·왜·언제 할지가 펼쳐진다. 원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">${open.length}</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 해소 ${done.length}건 · 전체 ${todos.length}건</span>
+      <span class="big-pct" style="color:#9ca3af;">${countOf('미착수')}</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 ${countOf('보류')}건 · 해소 ${countOf('해소')}건 · 전체 ${todos.length}건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — ${open.length}건</h2>
-    <div class="todo-list">${renderGroup(open, '⬜')}</div>
-    <h2>✅ 해소된 것 — ${done.length}건</h2>
-    <div class="todo-list">${renderGroup(done, '✅')}</div>
+    ${groups
+      // 빈 그룹은 절(節)을 만들지 않는다 — 「📌 … 0건」 빈 제목만 남는 것을 피한다.
+      // 건수는 위 요약 줄이 계속 알려 주므로 분류가 존재한다는 사실은 사라지지 않는다.
+      .filter(g => g.items.length > 0)
+      .map(g => `<h2>${g.marker} ${g.heading} — ${g.items.length}건</h2>
+    <div class="todo-list">${renderGroup(g.items, g.marker)}</div>`)
+      .join('\n    ')}
   </section>`;
 }
 
