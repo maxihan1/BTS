@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ApiError } from '@/api/client'
 import { previewMove, useMoveIssue, extractMoveErrorCode, MOVE_ERROR_CODES } from '@/api/issue-move'
 import type { MovePreview, SubtaskPreviewNode } from '@/api/issue-move'
 import { issueMoveStrings as s } from '@/i18n/ko'
@@ -111,8 +112,15 @@ export function MoveIssueDialog({
       setSubtaskMappings(childMappings)
 
       setStep(2)
-    } catch {
-      setPreviewError(s.errorPreview)
+    } catch (err) {
+      // 403 하나에 세 원인(대상 키 오타/미존재 · 원본 UPDATE 없음 · 대상 CREATE 없음)이
+      // 합쳐진다 — `MovePreviewService.kt:185-186` 이 권한을 존재 확인(`:188` 이슈 ·
+      // `:190-192` 대상 프로젝트)보다 먼저 하고, 운영 리졸버가 미존재 프로젝트를 거부로
+      // 판정하기 때문이다.
+      // 그래서 전용 문구를 쓰고, 403 이외(404·409·500·네트워크 단절)는 기존 문구를 유지한다.
+      // 근거 전문(게이트를 안 붙이는 이유 포함). TODOS.md 「이동·임포트 진입점」 ②.
+      const isForbidden = err instanceof ApiError && err.status === 403
+      setPreviewError(isForbidden ? s.errorPreviewForbidden : s.errorPreview)
     } finally {
       setIsPreviewLoading(false)
     }
@@ -216,13 +224,12 @@ export function MoveIssueDialog({
             toast.error(s.errorInvalidTargetState)
           } else if (code === MOVE_ERROR_CODES.SUBTASK_HAS_OWN_SUBTASKS) {
             toast.error(s.errorSubtaskHasOwnSubtasks)
+          } else if (err instanceof ApiError && err.status === 403) {
+            // preview 와 같은 두 assert(`IssueMoveService.kt:189-190`)가 낸 같은 403 이다.
+            // 원인 설명도 같은 어휘를 쓴다 — 옛 문구는 원인을 원본 이슈 쪽으로 단정했다.
+            toast.error(s.errorForbidden)
           } else {
-            const status = err instanceof Error ? (err as { status?: number }).status : undefined
-            if (status === 403) {
-              toast.error(s.errorForbidden)
-            } else {
-              toast.error(s.errorDefault)
-            }
+            toast.error(s.errorDefault)
           }
         },
       },
@@ -255,7 +262,12 @@ export function MoveIssueDialog({
                 id="move-target-project-key"
                 aria-label={s.targetProjectKeyLabel}
                 value={targetProjectKey}
-                onChange={(e) => setTargetProjectKey(e.target.value)}
+                onChange={(e) => {
+                  setTargetProjectKey(e.target.value)
+                  // 「키를 확인해 주세요」를 따르는 내내 그 경고가 남아 있으면
+                  // 고쳤는지 아닌지를 알 수 없다. 다시 치기 시작하면 걷는다.
+                  setPreviewError(null)
+                }}
                 placeholder={s.targetProjectKeyPlaceholder}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && targetProjectKey.trim() !== '') {

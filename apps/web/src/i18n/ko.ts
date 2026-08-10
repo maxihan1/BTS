@@ -892,8 +892,15 @@ export const issueMoveStrings = {
   moveSuccessToast: '이슈가 이동되었습니다.',
   /** 서브태스크 포함 이동 성공 토스트 */
   moveSuccessWithSubtasksToast: (count: number) => `${count}개 이슈가 이동되었습니다.`,
-  /** 403 권한 없음 에러 */
-  errorForbidden: '이슈를 이동할 권한이 없습니다.',
+  /**
+   * 이동 **실행** 403 토스트.
+   *
+   * 서버는 실행에서도 preview 와 같은 두 assert 를 한다(`IssueMoveService.kt:189-190`).
+   * 그래서 원인 설명도 [errorPreviewForbidden] 과 **같은 어휘**(「이 이슈나 대상 프로젝트」)를 쓴다.
+   * 다만 실행은 preview 를 통과한 뒤라 대상 키는 이미 서버가 받아들인 값이므로,
+   * preview 문구의 「키부터 확인」 도입부는 뺀다.
+   */
+  errorForbidden: '이 이슈나 대상 프로젝트 권한이 없어 이동하지 못했습니다.',
   /** 404 대상 프로젝트 없음 에러 */
   errorProjectNotFound: '대상 프로젝트를 찾을 수 없습니다.',
   /** 409 OCC 충돌 에러 */
@@ -908,6 +915,18 @@ export const issueMoveStrings = {
   errorDefault: '이슈 이동 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
   /** preview 실패 에러 */
   errorPreview: '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.',
+  /**
+   * preview 403 전용 문구 — **세 원인**이 한 응답에 합쳐진다.
+   *
+   * ① 대상 키 오타/미존재 ② 원본 UPDATE 없음 ③ 대상 CREATE 없음.
+   * 운영 리졸버가 미존재 프로젝트를 거부로 판정하고 권한 assert 가 존재 확인보다 앞서므로
+   * **오타도 403 으로 온다.** 그래서 사용자가 먼저 할 수 있는 일(키 확인)을 앞에 두고,
+   * 권한은 뒤에 조건부로 말한다. 「관리자에게 문의」로 단정하지 않는다 — 막다른 길이 된다.
+   *
+   * 근거 전문. `TODOS.md` 「이동·임포트 진입점」 ②.
+   */
+  errorPreviewForbidden:
+    '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.',
 } as const
 
 /** 워크로그 및 시간 추정 패널 문자열 — FR-TT-01 D6 */
