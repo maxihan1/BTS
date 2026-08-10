@@ -407,3 +407,48 @@ describe('AssigneeCell — 낙관 갱신 중간 표기 (리뷰 C3)', () => {
     ).toHaveTextContent('맵이 해석한 이름')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 담당자 후보는 검색해야 나온다
+//
+// `useUsers` 는 **빈 검색어에 전체 사용자 목록**을 돌려준다(훅 KDoc — 필터 계열 소비처가 그
+// 동작에 의존하므로 훅에 전역 `enabled` 를 달 수 없다). 그대로 넘기면 목록에서 담당자 셀을
+// 여는 순간 사내 1,000명이 펼쳐진다.
+//
+// 상세 화면은 2026-08-09(PR #352)에 같은 처방으로 닫혔다(`routes/issues.$key.tsx` 의
+// `assigneeCandidates`). 이 셀은 FR-UX-11 F9(PR #338)로 **새로 생긴 표면**이라 그때 범위 밖이었다.
+// ★같은 컨트롤이 화면마다 다르게 동작하면 사용자는 이유를 알 수 없다 — 판정 표현을 정본과
+// **문자 그대로 동일**하게 둬서 두 곳이 같은 규칙임을 grep 으로 확인할 수 있게 한다.
+//
+// ★게이트는 **컨테이너**(`AssigneeCellPopoverBody`)에 둔다. `AssigneeCellEditor` 는 `users` 를
+// props 로 받는 표시 전용이라 위 편집기 테스트들은 이 변경에 영향받지 않는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AssigneeCell — 후보는 검색 뒤에만 나온다', () => {
+  it('검색어가 비어 있으면 후보를 하나도 보이지 않는다', async () => {
+    await renderOpenedAssigneeCell({ noneditableFields: [] })
+
+    // `useUsers` 목은 검색어와 무관하게 후보 1건을 돌려준다 — 실제 훅과 같은 동작이다.
+    // 그 후보가 화면에 나오면 게이트가 없는 것이다.
+    expect(screen.queryByRole('button', { name: '맥시' })).not.toBeInTheDocument()
+    expect(screen.getByText('검색 결과가 없습니다.')).toBeInTheDocument()
+  })
+
+  it('검색어를 넣으면 후보가 나온다 (비-공허 짝 — 게이트가 항상 닫혀 있지 않다)', async () => {
+    await renderOpenedAssigneeCell({ noneditableFields: [] })
+
+    await userEvent.type(screen.getByRole('textbox', { name: '담당자 검색' }), '맥')
+
+    // 디바운스 250ms 를 넘겨 판정이 뒤집히기를 기다린다.
+    await screen.findByRole('button', { name: '맥시' }, { timeout: 2000 })
+  })
+
+  it('공백만 입력하면 후보를 보이지 않는다 (trim 판정)', async () => {
+    await renderOpenedAssigneeCell({ noneditableFields: [] })
+
+    await userEvent.type(screen.getByRole('textbox', { name: '담당자 검색' }), '   ')
+
+    await new Promise((r) => setTimeout(r, 400))
+    expect(screen.queryByRole('button', { name: '맥시' })).not.toBeInTheDocument()
+  })
+})
