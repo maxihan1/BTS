@@ -410,20 +410,46 @@ interface IssueListPageProps {
 const NEW_ISSUE_CLASS =
   'inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors'
 
+/**
+ * CREATE 권한의 **세 상태**.
+ *
+ * `boolean` 으로는 「권한이 없다」와 「아직 모른다」가 구분되지 않는다. 그 둘을 합치면
+ * 접근성 이름이 모르는 것을 안다고 말하게 된다 — 아래 [NewIssueButton] KDoc 참조.
+ */
+type CreateAccess = 'allowed' | 'denied' | 'unknown'
+
 interface NewIssueButtonProps {
-  /** CREATE 권한 보유 여부. false(로딩/에러/권한없음) → disabled 버튼. */
-  canCreate: boolean
+  /** CREATE 권한 상태. `denied` 만 사유를 말한다. */
+  access: CreateAccess
 }
 
 /**
  * "새 이슈" 진입점 컴포넌트.
  *
- * - canCreate=true  → `<a href="/issues/new">` (role=link, 기존 스타일 동일).
- * - canCreate=false → `<button type="button" disabled>` (동일 시각 스타일, fail-closed).
- * - 양쪽 모두 `data-testid="new-issue-button"` 부여.
+ * | 상태 | 렌더 | 접근성 이름 |
+ * |---|---|---|
+ * | `allowed` | `<a href="/issues/new">` (role=link) | 「새 이슈」 |
+ * | `denied` (CREATE === false) | `<button type="button" disabled>` | 「새 이슈 (권한 없음)」 |
+ * | `unknown` (로딩 · 조회 실패) | 같은 disabled 버튼 (fail-closed 유지) | **「새 이슈」 — 사유를 말하지 않는다** |
+ *
+ * 양쪽 모두 `data-testid="new-issue-button"` 을 부여한다.
+ *
+ * ## ★왜 `unknown` 에서 사유를 말하면 안 되나
+ *
+ * `aria-label="새 이슈 (권한 없음)"` 은 **사실 주장**이다. 예전에는 그 문구가 붙는 조건이
+ * 「CREATE 가 false」가 아니라 「CREATE 가 true 가 아니다」였다 — 그래서 권한 응답이 오기
+ * **전**과 **조회 실패**에서도 붙었다.
+ *
+ * CREATE 를 **실제로 가진** 사용자가 `/issues` 를 열 때마다 스크린리더가 「권한 없음」이라는
+ * 거짓 안내를 읽는다. `use-project-permissions.ts` 에 `retry:false` 도 에러 폴백도 없으므로
+ * 500·네트워크 단절이면 그 상태로 **영구히 안착**한다.
+ *
+ * **시각적 disabled 는 유지한다**(fail-closed). 바꾼 것은 이름이 이유를 주장하지 않게 한 것뿐이다.
+ * 생성 폼의 판정식(`permissions.CREATE === false`, 명시 거부만 차단)과 같은 정신이다 —
+ * `components/issue/create/use-issue-create-permission-gate.ts` KDoc 이 정본 논거다.
  */
-function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
-  if (canCreate) {
+function NewIssueButton({ access }: NewIssueButtonProps): JSX.Element {
+  if (access === 'allowed') {
     return (
       <a
         href="/issues/new"
@@ -444,7 +470,9 @@ function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
       disabled
       data-testid="new-issue-button"
       className={`${NEW_ISSUE_CLASS} disabled:cursor-not-allowed`}
-      aria-label="새 이슈 (권한 없음)"
+      // ★`unknown` 에서는 사유를 말하지 않는다. disabled 자체가 「지금은 못 쓴다」를 이미
+      //   전달하므로, 확인되지 않은 이유까지 덧붙이면 거짓 안내가 된다.
+      aria-label={access === 'denied' ? '새 이슈 (권한 없음)' : '새 이슈'}
     >
       새 이슈
     </Button>
@@ -522,8 +550,14 @@ export function IssueListPage({
   // ── CREATE 권한 게이트 (PR #57) ────────────────────────────────────────────
   const { data: permData, isLoading: isPermLoading } = useProjectPermissions(projectKey)
 
-  // fail-closed: 권한 로딩 중이거나 응답이 없으면 false
-  const canCreate = !isPermLoading && permData?.permissions.CREATE === true
+  // 세 상태로 나눈다 — 「거부」와 「모름」을 합치면 접근성 이름이 거짓을 말하게 된다.
+  // 시각적으로는 둘 다 fail-closed(disabled)로 남는다. [NewIssueButton] KDoc 참조.
+  const createAccess: CreateAccess =
+    !isPermLoading && permData?.permissions.CREATE === true
+      ? 'allowed'
+      : permData?.permissions.CREATE === false
+        ? 'denied'
+        : 'unknown'
 
   // ── 선택 상태 ──────────────────────────────────────────────────────────────
   const { selectedKeys, count, isSelected, toggle, selectAllOnPage, clearPageSelection, clearAll } =
@@ -699,7 +733,7 @@ export function IssueListPage({
       {/* 페이지 헤더 — 타이틀 + 새 이슈 진입점 (CREATE 권한 게이트) */}
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">이슈 목록</h1>
-        <NewIssueButton canCreate={canCreate} />
+        <NewIssueButton access={createAccess} />
       </header>
 
       {/*
