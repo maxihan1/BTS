@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.domain.IssueLabelConstraints
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Max
@@ -83,7 +84,8 @@ data class UpdateIssueRequest(
     val priority: Int? = null,
     // 개수 상한은 `@field:Size` 라 실제로 동작한다. 원소 길이 제약은 아래 [isLabelsValid] 가 본다 —
     // `List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약은 **동작하지 않으므로** 쓰지 않는다.
-    @field:Size(max = 20, message = "라벨은 최대 20개까지 허용합니다.")
+    // 상한 값은 [IssueLabelConstraints] 가 단일 출처다 — 도메인·생성 경로와 같은 값을 본다.
+    @field:Size(max = IssueLabelConstraints.MAX_COUNT, message = "라벨은 최대 20개까지 허용합니다.")
     val labels: List<String>? = null,
     @field:Size(max = 1000, message = "environment는 1000자 이하여야 합니다.")
     val environment: String? = null,
@@ -128,23 +130,7 @@ data class UpdateIssueRequest(
         get() =
             labels?.all { label ->
                 // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다 (생성 경로와 대칭).
-                label.isEmpty() || (label.isNotBlank() && label.length <= LABEL_MAX_LENGTH)
+                label.isEmpty() ||
+                    (label.isNotBlank() && label.length <= IssueLabelConstraints.MAX_LENGTH)
             } != false
-
-    private companion object {
-        /**
-         * 라벨 한 개의 최대 글자 수.
-         *
-         * 도메인 `Issue.kt` · [CreateIssueRequest] 의 동명 상수와 **값이 같아야 한다**.
-         * 사본이 3개가 된 것은 의도된 이연이다(2026-08-09 Maxi 확정 「좁게」) — 공용 상수
-         * 수렴은 별도 TODOS 항목이다.
-         *
-         * ★**세 사본의 값 일치를 지키는 테스트는 없다** (2026-08-10 게이트2 리뷰 정정).
-         * 이 파일의 경계 테스트(50자 200 / 51자 400)는 `IssueApplicationService` 를 MockK 로
-         * 대체한 MVC 슬라이스라 **도메인 상수에 닿지 않는다** — 여기 값만 바꾸면 그 테스트는
-         * 그대로 초록이고 도메인과 조용히 어긋난다. 「테스트가 지킨다」고 적어 두면 다음
-         * 세션이 확인 없이 값을 고친다. 공용 상수 수렴 전까지는 **사람이 세 곳을 함께 본다.**
-         */
-        const val LABEL_MAX_LENGTH = 50
-    }
 }

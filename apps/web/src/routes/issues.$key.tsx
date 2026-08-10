@@ -47,6 +47,7 @@ import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
 import { issueDetailStrings, worklogStrings } from '@/i18n/ko'
+import { classifyMetaMutationError } from '@/components/issue/meta/meta-mutation-error'
 // 전이 불가 사유 판정(스펙 E5) — 목록 상태 셀과 공용이라 lib 로 승격했다 (FR-UX-11 F9).
 // 복제하면 상세와 목록이 같은 응답을 서로 다르게 설명하게 된다.
 import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
@@ -172,6 +173,7 @@ interface IssueDetailPageProps {
   /** pane 전용 — 삭제 성공 시 fullscreen navigate('/issues') 대신 호출 */
   onIssueClosed?: () => void
 }
+
 
 /**
  * 이슈 상세 페이지 컴포넌트 (시안 2 — 사이드 메타패널).
@@ -421,12 +423,27 @@ export function IssueDetailPage({
    * - 그 외 → 호출자가 전달한 fallbackMsg toast
    */
   function handleMetaMutationError(err: unknown, fallbackMsg: string) {
-    if (err instanceof ApiError && err.status === 409) {
+    const kind = classifyMetaMutationError(err)
+    if (kind === 'version-conflict') {
       toast.error(issueDetailStrings.versionConflictError)
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
-    } else {
-      toast.error(fallbackMsg)
+      return
     }
+    // 커스텀 필드 검증 실패는 **재시도해도 안 되는** 입력 문제라 폴백 문구
+    // (「잠시 후 다시 시도해 주세요」)가 거짓말이 된다.
+    //
+    // ★특히 진단 불가한 경로가 있다. 백엔드는 **활성 정의 전량**을 기준으로 병합·검증하는데
+    //   (`IssueApplicationService.mergeCustomFieldsAndValidate`) 클라이언트는 열람 권한이 없는
+    //   필드를 **렌더도 검증도 하지 않는다** — 그 값은 응답에서 아예 마스킹돼 온다
+    //   (`IssueResponse.maskInvisible`). 그래서 그 필드가 required 이고 비어 있으면
+    //   사용자는 **화면에 없는 필드 때문에** 저장에 영원히 실패하면서 이유를 알 수 없다.
+    //   클라이언트가 그 상태를 **판정할 수는 없다**(값이 마스킹돼 있어 「비어 있음」과
+    //   「채워져 있음」이 구분되지 않는다). 할 수 있는 것은 원인을 짐작할 단서를 주는 것뿐이다.
+    if (kind === 'custom-field-invalid') {
+      toast.error(issueDetailStrings.customFieldValidationError)
+      return
+    }
+    toast.error(fallbackMsg)
   }
 
   const typeChangeMutation = useMutation({

@@ -4,52 +4,13 @@ import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
 import type { CustomField } from '@/api/custom-fields.types'
+import { isRequiredFieldEmpty } from '@/components/custom-fields/required-empty'
 import type { CustomFieldValues } from '@/api/issues'
 import { issueDetailStrings } from '@/i18n/ko'
 // FR-PM-07 필드 권한 헬퍼 — IssueMetaPanel.tsx에 정본으로 남아있는 순수 함수를 재사용한다.
 // IssueMetaPanel.tsx도 이 파일의 IssueCustomFieldsEdit를 import하지만, 두 모듈 모두
 // 이 값들을 렌더 시점(함수 호출) 에만 참조하므로 모듈 평가 시점 순환 문제는 없다.
 import { isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// isRequiredFieldEmpty — required 필드 빈값 판정 헬퍼 (FR-IS-10 E-3, E-6 공통)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * required 커스텀 필드의 현재 값이 비어 있는지 판정한다 (스펙 E-3 / E-6 공통 기준).
- *
- * - SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined | null → 빈값
- * - NUMBER: undefined | null | NaN → 빈값. 0은 유효값.
- * - MULTI_SELECT: 빈 배열 → 빈값.
- * - CHECKBOX: 항상 값 보유 → 빈값 아님.
- *
- * @param fieldType 커스텀 필드 타입
- * @param raw 현재 draft 값
- * @returns 빈값이면 true
- */
-// eslint-disable-next-line react-refresh/only-export-components -- 단위 테스트용 named export (ShareFilterDialog.tsx mergeShares 선례 동형)
-export function isRequiredFieldEmpty(
-  fieldType: CustomField['fieldType'],
-  raw: unknown,
-): boolean {
-  switch (fieldType) {
-    case 'SHORT_TEXT':
-    case 'LONG_TEXT':
-    case 'URL':
-    case 'DATE':
-    case 'DATETIME':
-    case 'SINGLE_SELECT':
-    case 'RADIO':
-      return raw === '' || raw === undefined || raw === null
-    case 'NUMBER':
-      return raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
-    case 'MULTI_SELECT':
-      return Array.isArray(raw) && raw.length === 0
-    case 'CHECKBOX':
-      // boolean false 포함 항상 유효값 — 빈값 아님
-      return false
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props

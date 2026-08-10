@@ -13,6 +13,7 @@ import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelS
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { useDateFormat } from '@/hooks/use-date-format'
 import { issueDetailStrings } from '@/i18n/ko'
+import { useIssueCreatePermissionGate } from '@/components/issue/create/use-issue-create-permission-gate'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { WatchersSection } from '@/components/issue/WatchersSection'
@@ -205,6 +206,14 @@ export function IssueMetaPanel({
 }: IssueMetaPanelProps): JSX.Element {
   // 프로젝트 커스텀 필드 정의 조회 (FR-IS-10)
   const { data: customFieldDefs = [] } = useCustomFields(issue.projectKey)
+
+  /**
+   * 이 프로젝트에 이슈를 만들 권한이 **명시적으로** 없는가.
+   *
+   * 클론이 요구하는 권한은 UPDATE 가 아니라 **대상 프로젝트의 CREATE** 다.
+   * 미지(로딩·조회 실패)는 거부로 읽지 않는다 — 아래 클론 버튼 주석에 근거가 있다.
+   */
+  const isCloneExplicitlyDenied = useIssueCreatePermissionGate(issue.projectKey)
 
   // 로그인 사용자의 date_format 환경설정을 반영한 날짜 포맷터 (FR-PF-01 Task 8)
   const { formatDateTime } = useDateFormat()
@@ -436,15 +445,29 @@ export function IssueMetaPanel({
       </div>
 
       {/* 클론 버튼 — 삭제 버튼 바로 위 배치.
-          권한 게이트 부재는 의도적: 프론트 권한 API(issue-permissions)가 UPDATE/SOFT_DELETE/TRANSITION만
-          노출하고 CREATE를 안 줘서 클라이언트 게이트가 불가능하다. 클론은 대상 프로젝트 CREATE 권한이
-          필요하므로, 서버가 403(ACCESS_DENIED)으로 최종 enforcement하고 useCloneIssue.onError가 토스트로
-          안내한다(fail-safe). CREATE 권한 노출은 FR-PM 후속에서 추가되면 삭제 버튼처럼 disabled 게이트 가능. */}
+
+          클론은 **대상 프로젝트의 CREATE 권한**을 요구한다(`IssueApplicationService.cloneIssue`).
+          예전 주석은 「프론트 권한 API 가 CREATE 를 안 줘서 게이트가 불가능하다」였는데
+          그 근거는 **거짓이 됐다** — `project-permissions.ts` 가 `CREATE` 를 내준다.
+
+          ★판정식은 `CREATE === false`(**명시 거부만**)다. `!isLoading && === true`(미지=거부)를
+          쓰면 권한 조회가 아직 안 끝났거나 실패한 구간에서 **CREATE 를 실제로 가진 사용자를
+          영구 차단**한다 — `use-project-permissions.ts` 에 retry 도 에러 폴백도 없다.
+          정본 논거는 `components/issue/create/use-issue-create-permission-gate.ts` KDoc.
+
+          미지에서는 버튼을 열어 두고 서버 403 + `useCloneIssue.onError` 토스트가 최종 판정한다
+          (기존 fail-safe 유지). 여기서 막는 것은 「서버가 확실히 거절할 액션」뿐이다. */}
       <Button
         variant="secondary"
         className="w-full min-h-[44px]"
         onClick={onCloneClick}
-        aria-label={issueDetailStrings.cloneButton}
+        disabled={isCloneExplicitlyDenied}
+        aria-label={
+          isCloneExplicitlyDenied
+            ? issueDetailStrings.cloneButtonNoPermission
+            : issueDetailStrings.cloneButton
+        }
+        title={isCloneExplicitlyDenied ? issueDetailStrings.cloneButtonNoPermission : undefined}
         data-testid="issue-clone"
       >
         {issueDetailStrings.cloneButton}

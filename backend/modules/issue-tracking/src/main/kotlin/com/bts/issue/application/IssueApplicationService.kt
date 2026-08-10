@@ -913,6 +913,18 @@ class IssueApplicationService(
                 repo.setAssignee(existing.id.value, withAssignee.assigneeId?.value)
                 autoWatch(existing.id.value, listOf(resolved.value))
                 afterComponents = normalized.copy(assigneeId = resolved)
+                // 자동 배정이 성사됐으면 배정 알림을 발행한다 (TODOS 「changeComponents 자동배정도
+                // IssueAssigned 를 발행하지 않는다」 봉합). createIssue·cloneIssue 와 같은 단일 술어 —
+                // 「배정이 실제로 일어났다 AND notifyAssignment」.
+                //
+                // ★이 블록 안이어야 한다. 밖으로 빼면 「기존 담당자 유지」까지 배정으로 세어
+                //   컴포넌트만 바꿔도 매번 알림이 나간다. `existing.assigneeId == null` 가드가
+                //   곧 「배정이 일어났다」의 정의다.
+                if (request.notifyAssignment) {
+                    eventPublisher.publish(
+                        IssueAssigned(issueKey = key, actorId = actor, occurredAt = Instant.now(clock)),
+                    )
+                }
                 log.info(
                     "issue_components_auto_assigned key={} assigneeId={} actor={}",
                     key.value,

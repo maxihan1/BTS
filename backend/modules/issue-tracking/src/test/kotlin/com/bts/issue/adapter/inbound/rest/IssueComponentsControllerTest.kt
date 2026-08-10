@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKey
@@ -9,9 +10,11 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.CapturingSlot
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -137,6 +140,43 @@ class IssueComponentsControllerTest {
             .andExpect(jsonPath("$.data.key").value("ATLAS-1"))
             .andExpect(jsonPath("$.data.componentIds[0]").value(componentId1.toString()))
             .andExpect(jsonPath("$.data.componentIds[1]").value(componentId2.toString()))
+    }
+
+    // ── CC-6: REST 경로가 배정 알림을 켠다 (fail-safe 게이트의 필수 짝) ──────────────
+
+    /**
+     * 애플리케이션 계층 `AppChangeComponentsRequest.notifyAssignment` 는 **기본 false**(fail-safe)다.
+     * 새 생산자가 알림을 조용히 켜지 못하게 하는 것이 목적이라 그 기본값은 옳지만,
+     * **컨트롤러가 true 를 넘기는지 검증하는 짝이 없으면 게이트가 통째로 공허해진다** —
+     * 서비스 테스트는 전부 `notifyAssignment` 를 직접 넣어 호출하므로 「실제 프로덕션 경로가
+     * 그 값을 넘기는가」는 아무도 안 본다. 클론 경로에서 같은 이유로 짝을 세운 선례가 있다
+     * (`IssueControllerCloneTest` CL-8).
+     *
+     * 기본값 인자로 추가된 필드라 **기존 호출부가 조용히 컴파일된다** — 컴파일러가 잡아 주지 않는다.
+     * 이 단언이 그 자리를 메운다.
+     */
+    @Test
+    fun `PATCH components — REST 경로는 notifyAssignment=true 를 서비스에 전달한다`() {
+        val reqSlot: CapturingSlot<AppChangeComponentsRequest> = slot()
+        every {
+            issueApplicationService.changeComponents(any(), issueKey, capture(reqSlot))
+        } returns successResponse
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1/components")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "componentIds" to listOf(componentId1.toString()),
+                            "expectedVersion" to 1L,
+                        ),
+                    ),
+                ),
+        )
+            .andExpect(status().isOk)
+
+        org.junit.jupiter.api.Assertions.assertEquals(true, reqSlot.captured.notifyAssignment)
     }
 
     // ── CC-2: IssueComponentNotFoundException → 422 + COMPONENT_NOT_FOUND ─────────

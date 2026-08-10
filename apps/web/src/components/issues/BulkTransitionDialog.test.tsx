@@ -537,3 +537,32 @@ describe('BulkTransitionDialog', () => {
     expect(screen.queryByRole('combobox', { name: /결의안/i })).not.toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 실패 경로 — mutateAsync 거부가 전역으로 새지 않는다
+// 근거·기전은 BulkEditDialog.test.tsx 의 같은 절 참조 (동일 결함의 형제 지점).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BulkTransitionDialog — 실패 경로', () => {
+  it('mutateAsync 가 거부돼도 콜백을 부르지 않고 다이얼로그를 닫지 않는다 (rejection 을 삼킨다)', async () => {
+    mockMutateAsync.mockRejectedValueOnce(new Error('403 ACCESS_DENIED'))
+    mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
+      transitions: [{ key: 't1', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE' }],
+      unresolvedIssueKeys: [],
+    })
+
+    const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1'] })
+    const user = userEvent.setup()
+
+    const select = await screen.findByRole('combobox', { name: /전이 상태/i })
+    await user.click(select)
+    await user.click(await screen.findByRole('option', { name: /완료/i }))
+    await user.click(screen.getByRole('button', { name: /적용/i }))
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalled()
+    })
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+})

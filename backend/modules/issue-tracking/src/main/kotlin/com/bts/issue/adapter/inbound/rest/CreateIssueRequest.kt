@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.domain.IssueLabelConstraints
 import com.fasterxml.jackson.annotation.JsonIgnore
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.AssertTrue
@@ -66,7 +67,9 @@ data class CreateIssueRequest(
     @field:Min(value = 1, message = "priority는 1 이상이어야 합니다.")
     @field:Max(value = 5, message = "priority는 5 이하여야 합니다.")
     val priority: Int? = null,
-    @field:Size(max = 20, message = "라벨은 최대 20개까지 허용합니다.")
+    // 상한은 [IssueLabelConstraints] 가 단일 출처다 — 도메인·수정 경로와 같은 값을 본다.
+    // 숫자를 여기 직접 적지 말 것. IssueLabelConstraintsAlignmentTest 가 차단한다.
+    @field:Size(max = IssueLabelConstraints.MAX_COUNT, message = "라벨은 최대 20개까지 허용합니다.")
     val labels: List<String>? = null,
 ) {
     /**
@@ -98,11 +101,7 @@ data class CreateIssueRequest(
         get() =
             labels?.all { label ->
                 // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다(Issue.kt:371 과 대칭).
-                label.isEmpty() || (label.isNotBlank() && label.length <= LABEL_MAX_LENGTH)
+                label.isEmpty() ||
+                    (label.isNotBlank() && label.length <= IssueLabelConstraints.MAX_LENGTH)
             } != false
-
-    private companion object {
-        /** 라벨 한 개의 최대 글자 수. 도메인 `Issue.kt` 의 동명 상수(파일 private)와 값이 같아야 한다. */
-        const val LABEL_MAX_LENGTH = 50
-    }
 }
