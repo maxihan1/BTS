@@ -1992,7 +1992,7 @@ DB·Docker 무관한 `IssueBcArchTest` 조차 9s→27s 였다. 주범은 Chrome 
 > 2026-08-09 Maxi 확정 — 「원 항목은 좁게 고치고, 새로 드러난 표면은 전부 신규 등재」.
 > 그러지 않으면 원 항목이 ✅ 로 닫히면서 나머지가 **기록조차 없는 상태**가 된다.
 
-## ⬜ issue-tracking — `changeComponents` 자동배정도 `IssueAssigned` 를 발행하지 않는다 (선재 · 미착수)
+## ✅ issue-tracking — `changeComponents` 자동배정도 `IssueAssigned` 를 발행하지 않는다 (해소 2026-08-10 · PR #355)
 
 **무엇.** `IssueApplicationService.kt:880-913` 의 `changeComponents` 는 `:901` 에서 `repo.setAssignee` 로
 컴포넌트 리드를 담당자로 넣으면서 `IssueAssigned` 를 발행하지 않는다.
@@ -2005,6 +2005,18 @@ clone 만 고치면 이 경로가 그대로 남아 **반쪽 봉합**이 된다.
 
 **착수 시 주의.** clone 과 같은 fail-safe 게이트(기본 false)를 쓸 것. 배정 통로가 셋(create·clone·changeComponents)이
 되므로 ADR D-5 의 「REST 생성 경로 한정」 문구를 함께 개정해야 한다.
+
+> **✅ 2026-08-10 해소 (PR #355).** 예상대로 fail-safe 게이트를 썼고 ADR D-5 를 전면 개정했다
+> (제목의 「REST 생성 경로만」이 더 이상 사실이 아니다 — 표가 5경로를 담는다).
+>
+> ★**발행을 `existing.assigneeId == null` 블록 안에 뒀다.** 밖으로 빼면 「기존 담당자 유지」까지
+> 배정으로 세어 컴포넌트만 바꿔도 매번 알림이 나간다. 그 가드가 곧 「배정이 일어났다」의 정의다.
+>
+> ★**`changeAssignee` 만 게이트가 없는 것은 의도된 것**임을 ADR 에 명시했다 — 그 함수는 배정
+> 자체가 목적이라 모든 생산자가 알림을 의도한다. 「전부 무조건 발행」으로 통일하지 말 것.
+>
+> ★ADR 의 「남는 비대칭 (기록)」 문장이 clone 을 **9일간 그대로 살려 뒀다**는 점도 함께 적었다.
+> **적어 두는 것만으로는 닫히지 않는다.**
 
 ---
 
@@ -2034,7 +2046,7 @@ required 에서 제외」를 전 모듈에 거는 전역 처방도 있다. 폭�
 
 ---
 
-## ⬜ issue-tracking — 라벨 상한 상수 `LABEL_MAX_LENGTH` 사본이 3개가 된다 (미착수)
+## ✅ issue-tracking — 라벨 상한 상수 사본이 3개가 된다 (해소 2026-08-10 · PR #355)
 
 **무엇.** `LABEL_MAX_LENGTH = 50` 이 도메인 `Issue.kt`(파일 private) 1곳 + `CreateIssueRequest.kt` 1곳에 있고,
 PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 된다.
@@ -2046,6 +2058,14 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 **처방.** `IssueLabelConstraints.kt` 같은 공용 지점 신설 후 3곳이 참조. 값 일치를 단언하는 짝 테스트 필수
 (도메인 상수는 파일 private 이라 리플렉션이 아니라 **경계 동작**(50자 200 / 51자 400)으로 대조해야 한다).
+
+> **✅ 2026-08-10 해소 (PR #355).** `IssueLabelConstraints` 단일 출처로 수렴.
+> ★**이 항목은 길이 상한만 적었으나 실측하니 개수 상한(20)도 같은 3중 사본**이었다. 함께 닫았다.
+>
+> 판별식을 두 종류로 나눴다 — **구조 단언**(사본이 사라졌는가. red 동인)과 **경계 회귀핀**
+> (세 층이 같은 지점에서 갈리는가). 후자는 **값이 우연히 같아 봉합 전에도 초록**이었다.
+> 그래서 결함이 잠복했다. 숫자를 테스트에 다시 적지 않는다 — 적으면 **네 번째 사본**이 된다.
+> 사용자에게 보이는 오류 문구가 상한과 어긋나지 않는지도 리플렉션으로 대조한다.
 
 ---
 
@@ -2090,7 +2110,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web — `isRequiredFieldEmpty` 사본 2곳이 갈라진다 (미착수)
+## ✅ apps/web — `isRequiredFieldEmpty` 사본 2곳이 갈라진다 (해소 2026-08-10 · PR #358)
 
 **무엇.** 동일 함수가 `components/issue/IssueCreateForm.tsx:48-68`(생성)과
 `components/issue/meta/IssueCustomFieldsEdit.tsx:31-52`(편집)에 **글자 단위로 같은 사본**으로 존재한다.
@@ -2114,9 +2134,17 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **짝 테스트.** FieldType 10종 × 입력 9종(`undefined`·`null`·`''`·`[]`·`['a']`·`0`·`NaN`·`false`·`true`) 표 테스트를
 `toBe(true)`/`toBe(false)` **양쪽 다** 명시. `expect(ALL).toHaveLength(10)` 로 신규 FieldType 유입도 막을 것.
 
+> **✅ 2026-08-10 해소 (PR #358).** 처방대로 `components/custom-fields/required-empty.ts` 단일
+> 출처로 수렴하고 사본 2개를 삭제했다. 편집 화면의 `eslint-disable react-refresh/…` 도 사라졌다.
+> 파일 밖 import 는 전수 grep 0건이라 re-export 없이 안전했다(사전 조사대로).
+>
+> 표는 유형 목록을 손으로 적지 않고 `fieldTypeEnum` 에서 **파생**시킨다 — 적으면 네 번째
+> 사본이 된다. 「유형 전수를 덮는가」를 별도 단언으로 강제하고, 텍스트류 7종의 규칙이 서로
+> 완전히 같은지도 고정했다(한 유형만 슬쩍 바꾸는 변경 차단).
+
 ---
 
-## ⬜ apps/web — 권한상 **숨겨진** required 커스텀 필드가 영구 저장 실패를 만든다 (선재 · 미착수)
+## ✅ apps/web — 권한상 **숨겨진** required 커스텀 필드가 영구 저장 실패를 만든다 (클라이언트 몫 해소 2026-08-10 · PR #358)
 
 **무엇.** `IssueCustomFieldsEdit.tsx:101` 은 `visibleFieldDefs`(FR-PM-07 숨김 제외) 기준으로 검증하고
 `handleSave`(`:166-176`)도 그 기준이다. 반면 백엔드 `mergeCustomFieldsAndValidate`
@@ -2128,11 +2156,25 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 **처방 후보.** ① 검증 기준을 `visibleFieldDefs` 가 아니라 `fieldDefs` 로 올리고
 「권한 없는 필수 필드가 비어 있어 저장할 수 없습니다」를 띄운다 ② 편집 경로에도
-`CUSTOM_FIELD_VALIDATION_FAILED` 에러 매핑을 넣는다. ①이 근본적이다.
+`CUSTOM_FIELD_VALIDATION_FAILED` 에러 매핑을 넣는다. ~~①이 근본적이다.~~
+
+> **★2026-08-10 실측 — 처방 ①은 성립하지 않는다. 지금 버그보다 나쁘다 (PR #358).**
+> `IssueResponse.maskInvisible` 이 열람 권한 없는 커스텀 필드의 **값을 응답에서 필터링**한다
+> (`customFields = filteredCustom`). 그래서 클라이언트는 그 필드가 「비어 있음」인지
+> 「채워져 있음」인지 **구분할 수 없다.** 전량 검증으로 올리면 **값이 이미 채워진 사용자까지
+> 거짓 차단**한다 — 저장 실패를 더 넓은 저장 실패로 바꾸는 셈이다.
+>
+> ⇒ **처방 ②만 채택**했다. 폴백(「잠시 후 다시 시도해 주세요」)이 **재시도해도 안 되는데
+> 재시도를 권하던** 것을 고치고, 문구에 「화면에 보이지 않는 필수 필드가 원인일 수
+> 있습니다」를 넣어 원인을 짐작할 단서를 준다. 판정은 순수 함수 `classifyMetaMutationError`
+> 로 분리했고, **409 가 CUSTOM_FIELD 코드를 달고 와도 version-conflict 가 이기는 순서**를
+> 단언으로 고정했다(409 의 재조회 부수효과를 놓치면 낡은 버전으로 계속 저장을 시도한다).
+>
+> **근본 해결은 백엔드 몫으로 남는다** — 아래 신규 항목 참조.
 
 ---
 
-## ⬜ apps/web — 클론 액션이 CREATE 권한을 안 보고 노출되고, 그 정당화 주석이 거짓이다 (선재 · 미착수)
+## ✅ apps/web — 클론 액션이 CREATE 권한을 안 보고 노출된다 (해소 2026-08-10 · PR #357)
 
 **무엇.** `IssueMetaPanel.tsx:437-441` 이 클론 액션을 **서버 403 + 토스트 fail-safe** 로 두면서
 「프론트 권한 API 가 CREATE 를 안 줘서 사전 게이트가 불가능하다」를 근거로 적어 두었다.
@@ -2146,6 +2188,16 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **처방.** 낡은 주석을 먼저 지우고, 클론 버튼에 선택 프로젝트 기준 CREATE 판정을 붙인다.
 판정식은 **`permissions.CREATE === false`(명시 거부만 차단)** 형태여야 한다 — `!isLoading && === true` 는
 로딩/조회실패 구간에서 정상 사용자를 막는다.
+
+> **✅ 2026-08-10 해소 (PR #357).** `useIssueCreatePermissionGate` 를 **그대로 재사용**했다 —
+> 사본을 만들지 않는다. 생성 폼과 같은 판정식·같은 논거를 써야 두 화면이 갈라지지 않는다
+> (이 문서가 required 판정에서 이미 그 양식을 한 번 겪었다).
+>
+> 미지에서는 버튼을 **열어 둔다.** 막으면 CREATE 를 실제로 가진 사용자가 영구 차단된다.
+> 서버 403 + 토스트가 최종 판정한다 — 여기서 막는 것은 **서버가 확실히 거절할 액션**뿐이다.
+>
+> **★같은 부류의 서버 경로 3종(클론·이동·임포트)은 여전히 `IssueCreateForm` 을 지나지 않는다.**
+> 이번에 닫은 것은 클론 **UI** 하나다. 이동·임포트 진입점의 게이트는 미착수 상태로 남는다.
 
 ---
 
@@ -2181,7 +2233,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web — `mutateAsync` 를 catch 없이 호출하는 곳 2군데 (프로덕션 경로 · 선재 · 미착수)
+## ✅ apps/web — `mutateAsync` 를 catch 없이 호출하는 곳 2군데 (해소 2026-08-10 · PR #357)
 
 **무엇.** `BulkTransitionDialog.tsx:158` 과 `BulkEditDialog.tsx:101` 이 `mutateAsync` 를 catch 없이 호출하고
 `void handleApply()` 로 띄운다.
@@ -2192,6 +2244,16 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 테스트 인프라 문제가 아니라 **실사용 결함**이다.
 
 **정본 패턴.** `CloneIssueDialog.tsx:76-81` 의 try/catch 가 이미 같은 이유를 주석으로 적어 두었다 — 그 형태를 따를 것.
+
+> **✅ 2026-08-10 해소 (PR #357).** 정본 패턴대로 빈 catch 만 넣었다(토스트 추가 안 함).
+>
+> ★**red 서명이 이 항목이 기술한 형태 그대로였다** — `Tests 19 passed` 인데 `Errors 2 errors`.
+> 통과 건수만 읽으면 초록으로 보고하게 되는 바로 그 상태를 실측했다.
+>
+> 테스트가 잡는 기전을 적어 둔다. 단언 자체(콜백 미호출·다이얼로그 유지)는 봉합 전후 모두
+> 통과할 수 있다. 결정적인 것은 **실제 거부를 흘려보낸다**는 점이다 — catch 가 없으면 vitest 가
+> 오류를 보고하고 스위트 종료 코드가 1 이 된다. `src/test/setup.ts` 가 `unhandledRejection`
+> 리스너 추가를 금지하는 이유가 이 신호를 살려 두기 위함이다.
 
 ---
 
@@ -2232,7 +2294,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 > `script-test-coverage.test.ts` 가 「디스크의 테스트 파일 ∖ 러너가 훑는 glob」을 0 으로 강제한다.
 
 
-## ⬜ apps/web — 이슈 목록 「새 이슈」 버튼이 로딩·조회실패 구간에 「권한 없음」이라고 거짓말한다 (선재 · 미착수)
+## ✅ apps/web — 이슈 목록 「새 이슈」 버튼이 로딩·조회실패 구간에 거짓 안내를 한다 (해소 2026-08-10 · PR #357)
 
 **무엇.** `routes/issues.index.tsx:526` 의 `const canCreate = !isPermLoading && permData?.permissions.CREATE === true`
 (미지 = 거부)가 `:447` 의 `aria-label="새 이슈 (권한 없음)"` 와 묶여 있다.
@@ -2250,6 +2312,15 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 **착수 시 읽을 것.** `components/issue/IssueCreateForm.tsx` 의 `isCreateExplicitlyDenied` KDoc(정본 논거) ·
 `hooks/use-project-permissions.ts:31-38`(retry·폴백 부재).
+
+> **✅ 2026-08-10 해소 (PR #357) — 처방을 좁혔다.**
+> 「같은 `=== false` 형태로 뒤집는다」를 **판정식 전체가 아니라 접근성 이름에만** 적용했다.
+> `boolean` 을 `'allowed' | 'denied' | 'unknown'` 세 상태로 나누고, **시각적 disabled 는 유지**한다
+> (기존 T5-C·T5-D 가 fail-closed 결정을 이미 못박았다). 바꾼 것은 **이름이 이유를 주장하지
+> 않게** 한 것뿐이다 — 기존 결정을 뒤집지 않고 거짓말만 없앤다.
+>
+> 대조군(명시 거부에서는 사유를 말한다)을 함께 넣었다 — 없으면 「문구를 통째로 지우는」
+> 변경으로도 나머지 단언이 통과한다.
 
 ---
 
@@ -2309,3 +2380,76 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 **착수 시 방향.** 줄수를 맞추려고 임의로 자르지 말 것. 폼 상태를 의미 단위로
 (기본 필드 / 배정 / 추가 필드 / 제출) 나누는 정식 리팩터링과 함께 닫는다.
+
+---
+
+## ⬜ issue-tracking — 마스킹된 required 커스텀 필드의 충족 여부를 응답이 알려 주지 않는다 (신규 · 미착수)
+
+**무엇.** `IssueResponse.maskInvisible` 이 열람 권한 없는 커스텀 필드의 **값을 응답에서 제거**한다
+(`customFields = filteredCustom`). 그래서 클라이언트는 그 필드가 required 이고 비어 있는지를
+**원리적으로 알 수 없다.**
+
+**결과.** 그 필드가 required 이고 비어 있으면 사용자는 **화면에 없는 필드 때문에 저장에 영원히 실패**한다.
+2026-08-10(PR #358)에 에러 문구로 **단서만** 주는 완화를 넣었다 — 원인을 짐작할 수는 있으나
+**해결할 수는 없다.** 그 필드는 애초에 그 사용자가 편집할 수 없기 때문이다.
+
+**★위 항목의 원 처방(클라이언트가 전량 검증)이 왜 안 되는지 먼저 읽을 것.** 값이 마스킹돼 있어
+「비어 있음」과 「채워져 있음」이 구분되지 않으므로, 전량 검증은 **값이 이미 채워진 사용자까지
+거짓 차단**한다.
+
+**처방 방향 (택일 필요).**
+① 응답에 `unsatisfiedRestrictedRequiredFields: boolean` 같은 **충족 여부 플래그**를 싣는다.
+   값을 노출하지 않으면서 클라이언트가 「지금 저장하면 실패한다」를 미리 알 수 있다.
+② 백엔드가 마스킹된 required 필드는 **검증 대상에서 제외**한다. 「볼 수도 고칠 수도 없는 필드로
+   저장을 막지 않는다」는 정책 결정이며, 데이터 무결성 쪽 대가가 있다.
+③ 그 상태의 이슈를 애초에 만들 수 없게 한다(required 플립·사후 추가 시점에 백필 강제).
+
+**★①이 값 노출인지 먼저 판정할 것.** 「비어 있다」는 사실 자체가 정보다 — FR-PM-07 의 위협
+모델에서 그 1비트가 허용되는지 확인 없이 구현하지 말 것.
+
+---
+
+## ⬜ 인프라 — 낡은 `main` run 이 러너를 계속 점유한다 (paths 필터 사각 · 신규 · 미착수)
+
+**무엇.** `scripts/cancel-merged-pr-runs.sh`(PR #354)는 **PR 브랜치의 run 만** 치운다.
+보호 브랜치는 계약상 건드리지 않는다 — 머지 직후 시작되는 main 검증을 죽이면 이 도구가
+고치려던 문제(「현재 main 을 검증하는 run 이 0건」)를 스스로 만들기 때문이다.
+
+그런데 `concurrency` 도 여기서는 발화하지 않는다. **`paths` 필터 때문에 새 run 이 안 생기면**
+취소할 계기가 없다. 예를 들어 `backend-ci` 는 `backend/**` 에만 트리거되므로, 그 뒤 머지들이
+전부 프론트·스크립트만 건드리면 **낡은 main backend-ci 가 계속 러너를 점유**한다.
+
+**실측 (2026-08-10).** `backend-ci | main`(커밋 `236ff3532`)이 **1시간 43분** 점유했다. 그 사이
+main 에 4번 더 머지됐지만 전부 `backend/**` 미변경이라 새 run 이 0건이었고, PR 4개가 그 뒤에 섰다.
+러너가 1대라 그 점유가 그대로 전체 벽시계가 된다.
+
+**★자원 경쟁이 배수를 키운다 (같은 실측에서 확인).** 그 run 이 평소 36분짜리인데 1h43m 이 된 데는
+같은 머신에서 로컬 검증(vitest 전체 스위트·gradle)을 병행한 것이 겹쳤다. load average 20~40 이
+몇 시간 유지됐다 — 「CI 벽시계」 항목의 축 B 와 같은 조건이다.
+**개별 로컬 실행은 각각 「CI 슬롯을 아낀다」는 합리적 판단이었는데 합계를 아무도 안 봤다**
+(`[[split-questions-hide-their-combination]]` 양식).
+
+**처방 후보.**
+① 머지 스킬이 **main 의 낡은 run 중 「현재 main HEAD 가 아닌 커밋」을 대상**으로만 취소한다.
+   보호 브랜치 무접촉 계약을 「현재 HEAD 검증은 절대 안 건드린다」로 좁히는 것이다.
+② 로컬 무거운 검증 전에 `gh run list --status in_progress` 로 러너 점유를 확인하고,
+   점유 중이면 **대상 파일만** 돌린다. 사람/에이전트 규율이라 판별식으로 강제할 수 없다.
+
+**★개선폭을 `cancelled` 건수로 재지 말 것** — concurrency 취소도 같은 상태를 만든다.
+**대기 시간(벽시계 − 실행 합계)** 으로 잴 것.
+
+---
+
+## ⬜ apps/web — 이동·임포트 진입점에 CREATE 게이트가 없다 (클론만 닫힘 · 신규 · 미착수)
+
+**무엇.** 대상 프로젝트의 CREATE 권한을 요구하는 서버 경로가 셋이다 —
+클론(`IssueApplicationService.cloneIssue`) · 이동(`IssueMoveService`) · 임포트(`IssueImportAdapter`).
+셋 다 `IssueCreateForm` 을 지나지 않으므로 그 폼의 게이트가 덮지 못한다.
+
+2026-08-10(PR #357)에 **클론 UI 하나만** 닫았다. 이동·임포트 진입점은 그대로다.
+
+**처방.** `useIssueCreatePermissionGate` 를 그대로 재사용한다 — **사본을 만들지 말 것.**
+판정식은 `permissions.CREATE === false`(명시 거부만). 미지에서는 열어 두고 서버 403 이 최종 판정한다.
+
+**착수 시 주의.** 이동은 **대상 프로젝트가 폼 안에서 바뀐다** — 클론(고정 프로젝트)과 달리
+선택된 대상 프로젝트를 따라가야 한다. 생성 폼이 같은 문제를 이미 풀었으니 그 형태를 볼 것.
