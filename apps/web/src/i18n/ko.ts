@@ -202,6 +202,13 @@ export const issueDetailStrings = {
   // ── 이슈 클론 — FR-IS-06 ────────────────────────────────────────────
   /** 클론 버튼 텍스트 */
   cloneButton: '이슈 클론',
+  /**
+   * 클론 권한(대상 프로젝트 CREATE)이 **명시적으로** 없을 때 사유 (aria-label / title).
+   *
+   * ★미지(로딩·조회 실패)에서는 이 문구를 쓰지 않는다 — 모르는 것을 안다고 말하게 된다.
+   * 판정식과 근거는 `IssueMetaPanel` 의 클론 버튼 주석 참조.
+   */
+  cloneButtonNoPermission: '이슈를 클론할 권한이 없습니다',
   /** 클론 Dialog 제목 */
   cloneDialogTitle: '이슈 클론',
   /** 클론 Dialog — 담당자 포함 체크박스 레이블 */
