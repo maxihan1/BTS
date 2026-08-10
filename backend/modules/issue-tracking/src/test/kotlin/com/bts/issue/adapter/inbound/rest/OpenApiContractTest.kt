@@ -214,6 +214,79 @@ class OpenApiContractTest {
         }
     }
 
+    // ── C1c. 수정 요청 스키마 대칭 + componentIds required 오표기 ─────────
+
+    /**
+     * C1c. `UpdateIssueRequest` 의 검증 전용 파생 속성이 스키마에 새지 않고,
+     * 기본값이 있는 `componentIds` 가 required 로 오표기되지 않는다.
+     *
+     * ★두 축을 한 테스트에 둔 이유 — 둘 다 **「스키마가 실제 계약보다 더 많이 요구한다」**는
+     * 같은 결함 양식이다.
+     *
+     * ### 축 1 — `labelsValid` 누출 (봉합의 짝)
+     * TODOS 「도메인 require 실패가 500 으로 나간다」 봉합이 `UpdateIssueRequest` 에
+     * `@get:AssertTrue` 파생 속성을 넣었다. `@get:JsonIgnore` 를 빠뜨리면 springdoc 이
+     * `labelsValid: boolean` 을 요청 스키마에 추가한다. **C1b 는 create 쪽만 봉인해서
+     * 아무도 못 잡는다** — 이 단언이 없으면 그 봉합 자체가 새 결함을 심는다.
+     *
+     * ### 축 2 — `componentIds` required 오표기
+     * `List<UUID> = emptyList()` 는 기본값이 있는데도 springdoc 이 **Kotlin non-null 타입**이라
+     * required 로 판정한다. `assigneeId`(`JsonNullable<UUID>`)에서 같은 함정이 재현돼
+     * C1b 가 잡았고, 그때 `componentIds` 는 범위 밖으로 남겼다(TODOS 등재).
+     *
+     * ★같은 함정이 issue-tracking REST DTO **11 클래스 · 27 프로퍼티**에 걸려 있다(2026-08-09 전수 측정).
+     * 여기서는 TODOS 가 지목한 `componentIds` 1건만 좁게 닫는다(2026-08-09 Maxi 확정).
+     * **손 열거는 반드시 샌다** — 1차 측정이 10건, 전수 재측정이 27건이었다. 잔여 26건과
+     * 차집합 판별식은 별도 TODOS 항목이며, 그 판별식은 FQCN 으로 고정해야 한다
+     * (`com.bts.issue.application.{Create,Update,Clone}IssueRequest` 가 REST DTO 와 **동명**이라
+     * simple-name 매칭으로 짜면 엉뚱한 DTO 를 검사하고 초록인 채 아무것도 안 지킨다).
+     */
+    @Test
+    fun `C1c 수정 요청 스키마에 파생 속성이 안 새고 componentIds 가 optional 이다`() {
+        val specResult =
+            mockMvc
+                .perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk)
+                .andReturn()
+        val specTree = objectMapper.readTree(specResult.response.contentAsString)
+        val schemas = specTree.path("components").path("schemas")
+
+        // 비-공허 짝 — 스키마를 실제로 읽었는지 먼저 못박는다.
+        // 이름이 틀리면 빈 노드가 돌아와 아래 단언이 전부 조용히 통과한다.
+        val updateReq = schemas.path("UpdateIssueRequest")
+        val updateProps = updateReq.path("properties")
+        assertThat(updateProps.has("labels"))
+            .withFailMessage("UpdateIssueRequest 스키마를 못 읽었다 — 스키마 이름이 바뀌었는지 확인하라.")
+            .isTrue()
+
+        // 축 1 — 검증 전용 파생 속성이 요청 스키마에 노출되면 안 된다.
+        assertThat(updateProps.has("labelsValid"))
+            .withFailMessage(
+                "검증 전용 파생 속성 'labelsValid' 가 UpdateIssueRequest 스키마에 노출됐습니다. " +
+                    "@get:JsonIgnore 가 빠졌는지 확인하라.",
+            )
+            .isFalse()
+
+        // 축 2 — 기본값이 있는 componentIds 는 optional 이어야 한다.
+        val createReq = schemas.path("CreateIssueRequest")
+        val createRequired = createReq.path("required").map { it.asText() }
+        assertThat(createReq.path("properties").has("componentIds"))
+            .withFailMessage("CreateIssueRequest 스키마를 못 읽었다 (비-공허 짝).")
+            .isTrue()
+        assertThat(createRequired)
+            .withFailMessage(
+                "'componentIds' 는 기본값(emptyList)이 있어 optional 이어야 하지만 " +
+                    "required=$createRequired 에 포함됐습니다.",
+            )
+            .doesNotContain("componentIds")
+
+        // ★대조군 — 진짜 필수인 필드는 계속 required 여야 한다.
+        // 이게 없으면 「required 배열을 통째로 비우는」 변경으로도 위 단언이 통과한다.
+        assertThat(createRequired)
+            .withFailMessage("projectKey/summary 는 실제로 필수다. required=$createRequired")
+            .contains("projectKey", "summary")
+    }
+
     // ── C2. 이슈 단건 응답 data 래퍼 검증 ───────────────────────────────────
 
     /**

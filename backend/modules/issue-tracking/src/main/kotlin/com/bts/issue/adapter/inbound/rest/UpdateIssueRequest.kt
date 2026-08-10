@@ -2,6 +2,8 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.fasterxml.jackson.annotation.JsonIgnore
+import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
@@ -36,7 +38,11 @@ import java.util.UUID
  *   최대 65535자 (@Size 제한).
  * @property priority 우선순위 1..5. null=무변경. 범위 밖이면 400.
  * @property labels 라벨 목록. null=무변경, []=전체 제거, 값=교체.
- *   라벨 하나 최대 50자, 목록 최대 20개 (@Size 제한).
+ *   목록 최대 20개는 `@field:Size` 가, **라벨 하나 최대 50자 + 공백-only 거부는
+ *   [isLabelsValid](`@get:AssertTrue`)** 가 막는다.
+ *   ★`List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약을 **되살리지 말 것** —
+ *   Kotlin 이 타입-use 애노테이션을 런타임 보존하지 않아 동작하지 않고, 이 파일이 정확히
+ *   그 형태로 500 을 내보내고 있었다(2026-08-09 봉합).
  * @property environment 재현 환경 설명. null=무변경, ""=DB NULL 클리어, 값=설정.
  *   @Pattern 적용 없음 — 빈문자열은 클리어 sentinel 로 유효하다.
  *   최대 1000자 (@Size 제한).
@@ -75,11 +81,10 @@ data class UpdateIssueRequest(
     @field:Min(value = 1, message = "priority는 1 이상이어야 합니다.")
     @field:Max(value = 5, message = "priority는 5 이하여야 합니다.")
     val priority: Int? = null,
+    // 개수 상한은 `@field:Size` 라 실제로 동작한다. 원소 길이 제약은 아래 [isLabelsValid] 가 본다 —
+    // `List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약은 **동작하지 않으므로** 쓰지 않는다.
     @field:Size(max = 20, message = "라벨은 최대 20개까지 허용합니다.")
-    val labels: List<
-        @Size(max = 50, message = "라벨 하나는 50자 이하여야 합니다.")
-        String,
-        >? = null,
+    val labels: List<String>? = null,
     @field:Size(max = 1000, message = "environment는 1000자 이하여야 합니다.")
     val environment: String? = null,
     @field:Min(value = 1, message = "impact는 1 이상이어야 합니다.")
@@ -92,4 +97,54 @@ data class UpdateIssueRequest(
     val targetDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
     val originalEstimateSeconds: JsonNullable<Int> = JsonNullable.undefined(),
     val remainingEstimateSeconds: JsonNullable<Int> = JsonNullable.undefined(),
-)
+) {
+    /**
+     * 라벨 **개별 길이 + 공백-only** 검증 (TODOS 「도메인 require 실패가 500 으로 나간다」 봉합).
+     *
+     * 생성 경로 [CreateIssueRequest.isLabelsValid] 와 **문자 단위로 같은 술어**다.
+     * 두 경로의 판정이 갈리면 「생성은 400, 수정은 500」이라는 비대칭이 되살아난다.
+     *
+     * ★`List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약을 쓰지 않는 이유 —
+     * 이 파일이 정확히 그 형태였는데 **실제로 동작하지 않았다**. Kotlin 이 타입-use
+     * 애노테이션을 런타임 보존 형태로 심지 않아 Bean Validation 이 못 본다. 그래서 51자
+     * 라벨이 400 이 아니라 그대로 통과해 도메인 `Issue.validateAndNormalizeLabels` 의
+     * `require` 까지 내려가고, `IssueExceptionHandler` 에 `IllegalArgumentException`
+     * 핸들러가 없어 **500** 이 됐다 — 사용자 입력 오류가 서버 장애로 기록된다.
+     *
+     * 전역 `IllegalArgumentException → 400` 핸들러는 채택하지 않는다(2026-07-31 Maxi 확정 D-6).
+     * 진짜 버그까지 400 으로 위장해 **살아 있어야 할 500 을 숨긴다.**
+     *
+     * ★`@get:` 타깃이 필수다. `@field:` 로 붙이면 Bean Validation 이 파생 getter 를 못 본다.
+     * ★`@get:JsonIgnore` 도 필수다. 빠뜨리면 springdoc 이 `labelsValid` 를 요청 스키마에
+     * 흘려 외부 소비자·문서가 없는 필드를 요구하게 된다.
+     *
+     * ★함수명을 바꾸지 말 것. Kotlin `val isLabelsValid` → getter `isLabelsValid()` →
+     * Bean property `labelsValid` 라는 규약에 묶여 있다. 이름을 `labelsAreValid` 등으로
+     * 바꾸면 **조용히 무력화**돼 지금 고치는 장식 애노테이션과 같은 양식이 재발한다.
+     */
+    @get:AssertTrue(message = "라벨 하나는 50자 이하이고 공백만으로 이루어질 수 없습니다.")
+    @get:JsonIgnore
+    val isLabelsValid: Boolean
+        get() =
+            labels?.all { label ->
+                // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다 (생성 경로와 대칭).
+                label.isEmpty() || (label.isNotBlank() && label.length <= LABEL_MAX_LENGTH)
+            } != false
+
+    private companion object {
+        /**
+         * 라벨 한 개의 최대 글자 수.
+         *
+         * 도메인 `Issue.kt` · [CreateIssueRequest] 의 동명 상수와 **값이 같아야 한다**.
+         * 사본이 3개가 된 것은 의도된 이연이다(2026-08-09 Maxi 확정 「좁게」) — 공용 상수
+         * 수렴은 별도 TODOS 항목이다.
+         *
+         * ★**세 사본의 값 일치를 지키는 테스트는 없다** (2026-08-10 게이트2 리뷰 정정).
+         * 이 파일의 경계 테스트(50자 200 / 51자 400)는 `IssueApplicationService` 를 MockK 로
+         * 대체한 MVC 슬라이스라 **도메인 상수에 닿지 않는다** — 여기 값만 바꾸면 그 테스트는
+         * 그대로 초록이고 도메인과 조용히 어긋난다. 「테스트가 지킨다」고 적어 두면 다음
+         * 세션이 확인 없이 값을 고친다. 공용 상수 수렴 전까지는 **사람이 세 곳을 함께 본다.**
+         */
+        const val LABEL_MAX_LENGTH = 50
+    }
+}

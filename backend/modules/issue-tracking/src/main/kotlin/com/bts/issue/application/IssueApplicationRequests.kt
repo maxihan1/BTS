@@ -27,9 +27,12 @@ import java.util.UUID
  * @param notifyAssignment 담당자 확정 시 `IssueAssigned` 발행 여부 (FR-UX-09 B1, ADR D-5).
  *   **기본 false 는 의도된 fail-safe 다.** 이 함수의 생산자는 REST 컨트롤러 하나가 아니라
  *   Import 어댑터(`IssueImportAdapter`)도 있고, Import 는 생성 직후 `changeAssignee` 로 담당자를
- *   다시 지정해 그쪽에서 이미 `IssueAssigned` 를 발행한다. 기본값을 true 로 두면 반입 1건당
- *   알림이 2회 나가고 첫 번째는 곧 덮어쓰일 임시 담당자에 대한 거짓 알림이 된다.
- *   **기본값을 뒤집지 말 것** — 앞으로 생길 새 생산자도 알림이 꺼진 채로 태어나야 한다.
+ *   다시 지정해 그쪽에서 이미 `IssueAssigned` 를 발행한다.
+ *   ★**「기본값이 true 면 반입 1건당 2회 발행」이라는 옛 근거는 이제 도달 불가다**
+ *   (2026-08-09 — Import 가 `AssigneeIntent.None` 을 넘기면서 `resolvedAssignee` 가 항상 null 이 됐다).
+ *   그래도 **기본값을 뒤집지 말 것** — 근거가 「현존 경로 방어」에서 **defense-in-depth** 로
+ *   바뀌었을 뿐이다. 앞으로 생길 새 생산자가 알림이 꺼진 채 태어나야 한다.
+ *   이 게이트의 유일한 비-공허 증인은 `IssueApplicationServiceCreateTest` 의 2×2 행렬이다.
  */
 data class CreateIssueRequest(
     val projectKey: String,
@@ -265,8 +268,14 @@ data class AppChangeVersionsRequest(
  *
  * @param includeAssignee true(기본) 면 원본 담당자를 클론본에 복사. false 면 미할당으로 클론.
  * @param summaryOverride 클론본 제목 덮어쓰기. null 또는 공백만이면 원본 summary 를 그대로 사용한다.
+ * @param notifyAssignment 담당자가 복사됐을 때 `IssueAssigned` 발행 여부 (ADR D-5 형태).
+ *   **기본 false 는 의도된 fail-safe 다.** [CreateIssueRequest.notifyAssignment] 와 같은 원칙 —
+ *   앞으로 생길 새 생산자(대량 복제 등)가 알림을 **꺼진 채로 태어나게** 한다.
+ *   현재 클론 진입점은 단건 REST 하나뿐이라(`IssueController.clone`) 「현존 대량 경로 방어」가
+ *   아니라 **defense-in-depth** 로 정당화된다. **기본값을 뒤집지 말 것.**
  */
 data class CloneIssueRequest(
     val includeAssignee: Boolean = true,
     val summaryOverride: String? = null,
+    val notifyAssignment: Boolean = false,
 )
