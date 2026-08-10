@@ -443,3 +443,93 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 로딩 프레임 — 두 쿼리가 정착하기 전에는 어떤 판정도 화면에 쓰지 않는다
+//
+// 이 페이지는 서로 다른 BC 의 두 엔드포인트를 **동시에** 부른다 —
+// 존재(`GET /api/v1/projects/{key}`, issue-tracking) · 권한
+// (`GET /api/v1/users/me/project-permissions`, identity-access). **도착 순서 보장이 없다.**
+//
+// ★그래서 최종 상태만 보는 단언은 이 결함을 못 잡는다. 권한이 먼저 `CREATE:false` 로 정착하면
+//   「생성 권한이 없습니다」가 먼저 뜨고, 뒤늦게 404 가 와서 「프로젝트를 찾을 수 없습니다」로
+//   바뀐다 — 사용자는 **틀린 사유를 먼저 읽는다.** `findByText(최종문구)` 는 그 사이 프레임을
+//   관측 대상으로 삼지 않으므로 통과해 버린다.
+//
+// ★그래서 여기서는 **중간 프레임을 직접 붙잡는다.** 지연은 벽시계(setTimeout)가 아니라
+//   테스트가 여는 게이트(deferred promise)다 — `CompleteSprintDialog.test.tsx:531` 선례.
+//   벽시계로 재면 「먼저 정착」이 러너 부하에 따라 뒤집혀 간헐 실패가 된다.
+//   두 테스트 모두 게이트를 열고 최종 화면까지 기다린 뒤 끝난다(지연 쿼리 누수 방지).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 응답을 테스트가 원하는 순간까지 붙잡아 두는 게이트 (deferred) */
+function createResponseGate(): { readonly wait: Promise<void>; readonly release: () => void } {
+  let release: () => void = () => undefined
+  const wait = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { wait, release: () => { release() } }
+}
+
+describe('ProjectImportSettingsPage — 로딩 프레임', () => {
+  it('권한이 먼저 CREATE:false 로 정착해도 존재가 미정이면 거부 카드를 띄우지 않는다', async () => {
+    const projectGate = createResponseGate()
+    server.use(
+      // 권한은 즉시 — 미존재 키에도 200 + CREATE:false 를 주는 실제 서버 동작 그대로다
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'BOGUS', permissions: nonMemberProjectPermissions }),
+      ),
+      // 존재 확인 404 는 게이트를 열 때까지 붙잡는다
+      http.get('/api/v1/projects/:idOrKey', async () => {
+        await projectGate.wait
+        return HttpResponse.json({ errorCode: 'ISSUE_PROJECT_NOT_FOUND' }, { status: 404 })
+      }),
+    )
+    const { client } = renderPage('BOGUS')
+
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('BOGUS'))?.status).toBe('success')
+    })
+    // 이 프레임이 관측 대상이다 — 권한은 정착, 존재는 미정
+    expect(client.getQueryState(PROJECT_KEYS.detail('BOGUS'))?.status).toBe('pending')
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+
+    // 게이트를 열면 404 가 도착하고 최종 화면은 「프로젝트 없음」이다
+    projectGate.release()
+    expect(
+      await screen.findByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+
+  it('존재가 미정인 동안에는 폼도 열지 않고 로딩만 보인다 (비-공허 짝)', async () => {
+    const projectGate = createResponseGate()
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'ATLAS', permissions: adminProjectPermissions }),
+      ),
+      http.get('/api/v1/projects/:idOrKey', async () => {
+        await projectGate.wait
+        return HttpResponse.json({
+          data: { id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890', key: 'ATLAS', name: 'Atlas 프로젝트' },
+        })
+      }),
+    )
+    const { client } = renderPage('ATLAS')
+
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))?.status).toBe('success')
+    })
+    expect(client.getQueryState(PROJECT_KEYS.detail('ATLAS'))?.status).toBe('pending')
+    // 빈 화면 금지 — 로딩임을 말한다. h1 은 어느 상태에서도 남는다.
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+    ).toBeInTheDocument()
+
+    projectGate.release()
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})
