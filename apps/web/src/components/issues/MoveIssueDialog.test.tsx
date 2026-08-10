@@ -531,3 +531,82 @@ describe('T4-5: targetStateIsDone = 선택한 targetState의 isDone', () => {
     expect(body['targetStateIsDone']).toBe(true)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-6. preview 실패 문구 — 403 은 권한 문제이지 키 오타가 아니다
+//
+// ★이 화면에 CREATE 게이트를 붙이지 않는 이유(TODOS 처방 정정).
+// ① 대상 프로젝트가 **자유 텍스트 Input** 이다(`MoveIssueDialog.tsx:254-265`). 그런데 백엔드는
+//    미존재 projectKey 에 404 가 아니라 **200 + CREATE:false** 를 준다
+//    (`MyProjectPermissionController.kt:39,49` 주석 명문화). "INFRA" 를 타이핑하는 도중
+//    I·IN·INF 가 전부 **명시 거부**로 안착해 정상 사용자가 매 글자마다 차단 문구를 본다.
+//    생성 폼은 `<select>` 라 이 경로가 원천 봉쇄돼 있어 「생성 폼이 이미 풀었다」가 성립하지 않는다.
+// ② 이동엔 **서버 선판정이 이미 있다** — `MovePreviewService.kt:185-190` 이 preview 에서
+//    원본 UPDATE + 대상 CREATE 를 assert 한다. 「다음」이 곧 확정 판정이다.
+//
+// 그래서 결함은 게이트 부재가 아니라 **그 403 을 키 오타 문구로 뭉갠 것**이다.
+//
+// ★403 은 「원본 UPDATE 없음」과 「대상 CREATE 없음」 **둘 다**에서 나오고 응답은 그 둘을
+//   구분하지 않는다(errorCode 는 ACCESS_DENIED 하나, detail 도 공통 문장).
+//   따라서 문구도 어느 쪽인지 단정하지 않고 두 가능성을 함께 말한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
+  /** 기존 preview 실패 문구 — `issueMoveStrings.errorPreview` 정본 */
+  const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.'
+  /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
+  const PREVIEW_FORBIDDEN_TEXT =
+    '이 이슈를 이동하거나 대상 프로젝트에 이슈를 만들 권한이 없습니다. 다른 대상 프로젝트를 시도하거나 프로젝트 관리자에게 문의하세요.'
+
+  async function submitTarget(targetKey = 'INFRA'): Promise<void> {
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), targetKey)
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+  }
+
+  it('preview 403 이면 권한 문구를 보여 준다 (키 오타로 오인시키지 않는다)', async () => {
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json(
+          { errorCode: 'ACCESS_DENIED', detail: '이 작업을 수행할 권한이 없습니다.' },
+          { status: 403 },
+        ),
+      ),
+    )
+    await submitTarget()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_ERROR_TEXT)
+    // Step 1 에 머문다 — 매핑 화면으로 넘어가지 않는다.
+    expect(screen.queryByText(/이동 매핑 확인/i)).not.toBeInTheDocument()
+  })
+
+  it('preview 500 이면 기존 문구가 그대로 나온다 (비-공허 짝)', async () => {
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ errorCode: 'INTERNAL_ERROR' }, { status: 500 }),
+      ),
+    )
+    await submitTarget()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+  })
+
+  it('preview 404(대상 프로젝트 없음)이면 기존 문구가 그대로 나온다 (비-공허 짝)', async () => {
+    // 이 404 야말로 「대상 프로젝트 키를 확인해 주세요」가 정확한 안내인 경우다.
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await submitTarget('NOPE')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+  })
+})

@@ -1,9 +1,16 @@
 // 프로젝트 Import 설정 라우트 페이지 단위 테스트 — RouteAdapter useParams 추출 + Page 헤더/모드 토글/ImportForm·ImportMappingWizard 렌더 (FR-IM-01 D6/D7 Task-4, FR-IM-02 D6/D7 Task-7)
 import { useMemo } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/server'
+import {
+  adminProjectPermissions,
+  nonMemberProjectPermissions,
+} from '@/mocks/project-permission-fixtures'
+import { PROJECT_PERMISSION_KEYS } from '@/hooks/use-project-permissions'
 import {
   ProjectImportSettingsRouteAdapter,
   ProjectImportSettingsPage,
@@ -61,12 +68,21 @@ function makeClient(): QueryClient {
   })
 }
 
+/**
+ * Page 렌더 헬퍼.
+ *
+ * QueryClient를 함께 돌려준다 — CREATE 게이트 테스트가 권한 쿼리의 **정착 여부**를
+ * `getQueryState`로 직접 확인하기 위해서다. 정착을 기다리지 않고 단언하면
+ * "아직 로딩이라 폼이 보인다"와 "권한이 있어서 폼이 보인다"가 구분되지 않아 공허해진다.
+ */
 function renderPage(projectKey = 'ATLAS') {
-  return render(
-    <QueryClientProvider client={makeClient()}>
+  const client = makeClient()
+  render(
+    <QueryClientProvider client={client}>
       <ProjectImportSettingsPage projectKey={projectKey} />
     </QueryClientProvider>,
   )
+  return { client }
 }
 
 function renderAdapter() {
@@ -253,5 +269,81 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
     const instanceIdBeta = wizardBeta.getAttribute('data-instance-id')
 
     expect(instanceIdBeta).not.toBe(instanceIdAlpha)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE 게이트 — 임포트는 「대상 프로젝트에 이슈를 만드는」 액션이다
+//
+// 서버는 이미 `ImportJobService.kt:36-38,381-392` 에서 CREATE 를 fail-fast 로 검사해 403 을
+// 준다. 그런데 UI 는 그 사실을 **파일을 고르고 업로드를 누른 뒤에야** 알려준다.
+// 게이트는 그 403 의 **사전 신호**이지 유일 방어가 아니다.
+//
+// ★게이트 지점은 **페이지 1곳**이다. 두 모드(ImportForm · ImportMappingWizard)가 같은
+//   페이지에서 분기하므로 여기서 막으면 둘을 한 번에 덮는다. 폼 컴포넌트 안에 각각 넣으면
+//   같은 판정이 2벌이 되고, 이 문서(TODOS)가 이미 required 판정에서 겪은 사본 drift 양식이다.
+//
+// ★판정식은 `permissions.CREATE === false`(명시 거부만) — 클론(PR #357)·생성 폼과 같다.
+//   `!isLoading && === true`(미지=거부)는 로딩·조회실패 구간에서 CREATE 를 실제로 가진
+//   사용자를 영구 차단한다(`use-project-permissions.ts` 에 retry 도 에러 폴백도 없다).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectImportSettingsPage — CREATE 게이트', () => {
+  it('CREATE:false(명시 거부)면 두 모드 진입 자체가 막히고 사유를 말한다', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'ATLAS', permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    renderPage('ATLAS')
+
+    expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
+    // 문구는 서버 403 이 줄 메시지와 같은 문장이다 (api/imports.ts IMPORT_ACCESS_DENIED).
+    expect(screen.getByText('이 프로젝트에 이슈를 생성할 권한이 없습니다.')).toBeInTheDocument()
+
+    // 두 모드 모두 진입 불가 — 폼도, 모드 토글도 없다.
+    expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('import-mapping-wizard')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '바로 가져오기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '매핑하며 가져오기' })).not.toBeInTheDocument()
+
+    // 페이지 정체성(h1)은 남긴다 — 「왜 빈 화면이지」가 되면 안 된다.
+    expect(
+      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('CREATE:true 면 권한 조회가 끝난 뒤에도 폼이 그대로 열린다 (비-공허 짝)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'ATLAS', permissions: adminProjectPermissions }),
+      ),
+    )
+    const { client } = renderPage('ATLAS')
+
+    // 쿼리가 success 로 정착한 뒤에 단언한다 — 로딩 중 통과를 「권한 있음」으로 오독하지 않는다.
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))?.status).toBe('success')
+    })
+
+    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+
+  it('권한 조회가 실패하면 막지 않는다 (미지 ≠ 거부 — 비-공허 짝)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+    )
+    const { client } = renderPage('ATLAS')
+
+    // 쿼리가 error 로 정착한 뒤에 단언해야 `!isLoading && CREATE === true` 판정식을 잡는다.
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))?.status).toBe('error')
+    })
+
+    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
   })
 })
