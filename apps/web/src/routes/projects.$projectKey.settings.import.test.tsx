@@ -11,6 +11,9 @@ import {
   nonMemberProjectPermissions,
 } from '@/mocks/project-permission-fixtures'
 import { PROJECT_PERMISSION_KEYS } from '@/hooks/use-project-permissions'
+import { PROJECT_KEYS } from '@/hooks/use-project'
+import { importLabels } from '@/i18n/import-labels'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 import {
   ProjectImportSettingsRouteAdapter,
   ProjectImportSettingsPage,
@@ -74,6 +77,10 @@ function makeClient(): QueryClient {
  * QueryClient를 함께 돌려준다 — CREATE 게이트 테스트가 권한 쿼리의 **정착 여부**를
  * `getQueryState`로 직접 확인하기 위해서다. 정착을 기다리지 않고 단언하면
  * "아직 로딩이라 폼이 보인다"와 "권한이 있어서 폼이 보인다"가 구분되지 않아 공허해진다.
+ *
+ * ★projectKey 는 반드시 **MSW 시드에 있는 키**를 쓸 것(`project-handlers.ts` SEED_PROJECTS —
+ * ATLAS·MIDDLE·ZETA·NOVA). 페이지가 `useProject` 로 프로젝트 존재를 확인하므로, 시드에 없는
+ * 임의 키는 404 → 「프로젝트를 찾을 수 없습니다」 카드가 되어 폼이 아예 렌더되지 않는다.
  */
 function renderPage(projectKey = 'ATLAS') {
   const client = makeClient()
@@ -121,11 +128,11 @@ describe('ProjectImportSettingsPage', () => {
    * T-IM-3. Page가 ImportForm을 렌더하고 projectKey props를 올바르게 전달한다.
    */
   it('T-IM-3: Page가 ImportForm에 projectKey를 전달한다', () => {
-    renderPage('MYPROJECT')
+    renderPage('MIDDLE')
 
     const form = screen.getByTestId('import-form')
     expect(form).toBeInTheDocument()
-    expect(form).toHaveAttribute('data-project-key', 'MYPROJECT')
+    expect(form).toHaveAttribute('data-project-key', 'MIDDLE')
   })
 
   /**
@@ -141,22 +148,22 @@ describe('ProjectImportSettingsPage', () => {
     const client = makeClient()
     const { rerender } = render(
       <QueryClientProvider client={client}>
-        <ProjectImportSettingsPage projectKey="ALPHA" />
+        <ProjectImportSettingsPage projectKey="ATLAS" />
       </QueryClientProvider>,
     )
 
     const formAlpha = screen.getByTestId('import-form')
-    expect(formAlpha).toHaveAttribute('data-project-key', 'ALPHA')
+    expect(formAlpha).toHaveAttribute('data-project-key', 'ATLAS')
     const instanceIdAlpha = formAlpha.getAttribute('data-instance-id')
 
     rerender(
       <QueryClientProvider client={client}>
-        <ProjectImportSettingsPage projectKey="BETA" />
+        <ProjectImportSettingsPage projectKey="MIDDLE" />
       </QueryClientProvider>,
     )
 
     const formBeta = screen.getByTestId('import-form')
-    expect(formBeta).toHaveAttribute('data-project-key', 'BETA')
+    expect(formBeta).toHaveAttribute('data-project-key', 'MIDDLE')
     const instanceIdBeta = formBeta.getAttribute('data-instance-id')
 
     expect(instanceIdBeta).not.toBe(instanceIdAlpha)
@@ -248,24 +255,24 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
     const client = makeClient()
     const { rerender } = render(
       <QueryClientProvider client={client}>
-        <ProjectImportSettingsPage projectKey="ALPHA" />
+        <ProjectImportSettingsPage projectKey="ATLAS" />
       </QueryClientProvider>,
     )
 
     await user.click(screen.getByRole('button', { name: '매핑하며 가져오기' }))
 
     const wizardAlpha = screen.getByTestId('import-mapping-wizard')
-    expect(wizardAlpha).toHaveAttribute('data-project-key', 'ALPHA')
+    expect(wizardAlpha).toHaveAttribute('data-project-key', 'ATLAS')
     const instanceIdAlpha = wizardAlpha.getAttribute('data-instance-id')
 
     rerender(
       <QueryClientProvider client={client}>
-        <ProjectImportSettingsPage projectKey="BETA" />
+        <ProjectImportSettingsPage projectKey="MIDDLE" />
       </QueryClientProvider>,
     )
 
     const wizardBeta = screen.getByTestId('import-mapping-wizard')
-    expect(wizardBeta).toHaveAttribute('data-project-key', 'BETA')
+    expect(wizardBeta).toHaveAttribute('data-project-key', 'MIDDLE')
     const instanceIdBeta = wizardBeta.getAttribute('data-instance-id')
 
     expect(instanceIdBeta).not.toBe(instanceIdAlpha)
@@ -298,7 +305,9 @@ describe('ProjectImportSettingsPage — CREATE 게이트', () => {
     renderPage('ATLAS')
 
     expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
-    // 문구는 서버 403 이 줄 메시지와 같은 문장이다 (api/imports.ts IMPORT_ACCESS_DENIED).
+    // 제목은 i18n(`importLabels.createDeniedTitle`), 본문은 서버 403 이 줄 메시지와 같은 문장이다
+    // (`api/imports.ts` IMPORT_ACCESS_DENIED). 둘 다 라우트 파일에 리터럴로 두지 않는다.
+    expect(screen.getByText(importLabels.createDeniedTitle)).toBeInTheDocument()
     expect(screen.getByText('이 프로젝트에 이슈를 생성할 권한이 없습니다.')).toBeInTheDocument()
 
     // 두 모드 모두 진입 불가 — 폼도, 모드 토글도 없다.
@@ -345,5 +354,76 @@ describe('ProjectImportSettingsPage — CREATE 게이트', () => {
 
     expect(screen.getByTestId('import-form')).toBeInTheDocument()
     expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 프로젝트 존재 — 「없는 프로젝트」를 「권한 없음」이라 말하지 않는다
+//
+// 권한 API 는 미존재 projectKey 에도 **200 + CREATE:false** 를 준다
+// (`MyProjectPermissionController.kt` — resolver 가 미존재를 거부로 판정).
+// 그래서 CREATE 게이트만 있으면 `/projects/BOGUS/settings/import` 로 들어온 사용자가
+// 「이 프로젝트에 이슈를 생성할 권한이 없습니다」를 본다 — 프로젝트가 아예 없는데.
+//
+// 형제 페이지가 이미 같은 결함을 고쳤다(`projects.$projectKey.settings.workflow-scheme.tsx`
+// KDoc — 예전엔 404 를 「미할당」으로 읽어 틀린 안내 카드가 떴다). 여기도 같은 분리를 한다.
+//
+// ★존재 신호로 `GET /api/v1/projects/{key}` 의 404 를 쓰는 근거.
+//   `ProjectQueryService.getOne` 은 **존재 → 권한** 순서라(미존재 404, BROWSE 없음 403)
+//   404 가 「프로젝트 없음」 하나를 뜻한다. 이동 preview 의 404 와 달리 prod 도달 가능하다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
+  it('프로젝트가 없으면(404) 권한 카드가 아니라 「프로젝트 없음」 카드를 보여 준다', async () => {
+    // 권한 API 는 미존재 키에도 200 + CREATE:false 를 준다 — 이 상황을 그대로 재현한다.
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'BOGUS', permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    renderPage('BOGUS') // 시드에 없는 키 → 전역 핸들러가 404
+
+    expect(
+      await screen.findByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
+
+    // 페이지 정체성(h1)은 여기서도 남긴다.
+    expect(
+      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('프로젝트 조회가 404 아닌 사유로 실패하면 막지 않는다 (미지 ≠ 부재 — 비-공허 짝)', async () => {
+    server.use(
+      http.get('/api/v1/projects/:idOrKey', () =>
+        HttpResponse.json({ errorCode: 'INTERNAL_ERROR' }, { status: 500 }),
+      ),
+    )
+    const { client } = renderPage('ATLAS')
+
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_KEYS.detail('ATLAS'))?.status).toBe('error')
+    })
+
+    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+    ).not.toBeInTheDocument()
+  })
+
+  it('프로젝트가 있고 CREATE 도 거부면 권한 카드가 이긴다 (404 분기가 권한 카드를 삼키지 않는다)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'ATLAS', permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    renderPage('ATLAS') // 시드에 있는 키 → 200
+
+    expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
+    expect(
+      screen.queryByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
+    ).not.toBeInTheDocument()
   })
 })

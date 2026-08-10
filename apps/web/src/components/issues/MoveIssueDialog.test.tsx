@@ -533,22 +533,20 @@ describe('T4-5: targetStateIsDone = 선택한 targetState의 isDone', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T4-6. preview 실패 문구 — 403 은 권한 문제이지 키 오타가 아니다
+// T4-6. preview 실패 문구 — 403(권한 계열) vs 그 외
 //
-// ★이 화면에 CREATE 게이트를 붙이지 않는 이유(TODOS 처방 정정).
-// ① 대상 프로젝트가 **자유 텍스트 Input** 이다(`MoveIssueDialog.tsx:254-265`). 그런데 백엔드는
-//    미존재 projectKey 에 404 가 아니라 **200 + CREATE:false** 를 준다
-//    (`MyProjectPermissionController.kt:39,49` 주석 명문화). "INFRA" 를 타이핑하는 도중
-//    I·IN·INF 가 전부 **명시 거부**로 안착해 정상 사용자가 매 글자마다 차단 문구를 본다.
-//    생성 폼은 `<select>` 라 이 경로가 원천 봉쇄돼 있어 「생성 폼이 이미 풀었다」가 성립하지 않는다.
-// ② 이동엔 **서버 선판정이 이미 있다** — `MovePreviewService.kt:185-190` 이 preview 에서
-//    원본 UPDATE + 대상 CREATE 를 assert 한다. 「다음」이 곧 확정 판정이다.
+// 근거 전문(게이트를 안 붙이는 이유 · 문구 선택)은 **TODOS.md 「이동·임포트 진입점」 ②** 하나다.
+// 여기에 사본을 두지 않는다 — 같은 논거가 4벌로 복제됐던 것을 2026-08-10 게이트2 리뷰가 잡았다.
 //
-// 그래서 결함은 게이트 부재가 아니라 **그 403 을 키 오타 문구로 뭉갠 것**이다.
+// ★이 파일이 알아야 할 요지 하나. 서버 403 은 **세 원인**이 한 응답으로 합쳐진다 —
+//   ① 대상 키 오타/미존재 ② 원본 UPDATE 없음 ③ 대상 CREATE 없음.
+//   `MovePreviewService.kt:185-186` 이 두 권한을 **존재 확인(:190-192)보다 먼저** assert 하고,
+//   운영 리졸버(`IdentityAccessIssuePermissionResolver.kt:77`)는 미존재 프로젝트를 거부로
+//   판정하기 때문이다. 그래서 문구는 어느 하나로 단정하지 않고 **키 확인 → 권한** 순으로 말한다.
 //
-// ★403 은 「원본 UPDATE 없음」과 「대상 CREATE 없음」 **둘 다**에서 나오고 응답은 그 둘을
-//   구분하지 않는다(errorCode 는 ACCESS_DENIED 하나, detail 도 공통 문장).
-//   따라서 문구도 어느 쪽인지 단정하지 않고 두 가능성을 함께 말한다.
+// ★404(PROJECT_NOT_FOUND) 케이스를 두지 않는 이유. 위 순서 때문에 prod 는 그 입력에 403 을 낸다.
+//   404 는 `DevAllowIssuePermissionResolver`(`@Profile("!prod")`)가 권한을 항상 통과시키는
+//   비-prod 에서만 나오고, 클라이언트 동작은 아래 500 케이스와 동일하다 — 순 중복이다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
@@ -556,7 +554,7 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
   const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.'
   /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
   const PREVIEW_FORBIDDEN_TEXT =
-    '이 이슈를 이동하거나 대상 프로젝트에 이슈를 만들 권한이 없습니다. 다른 대상 프로젝트를 시도하거나 프로젝트 관리자에게 문의하세요.'
+    '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
 
   async function submitTarget(targetKey = 'INFRA'): Promise<void> {
     renderDialog()
@@ -565,7 +563,7 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     await user.click(screen.getByRole('button', { name: /다음/i }))
   }
 
-  it('preview 403 이면 권한 문구를 보여 준다 (키 오타로 오인시키지 않는다)', async () => {
+  it('preview 403 이면 키 확인 → 권한 순의 전용 문구를 보여 준다', async () => {
     server.use(
       http.post('/api/v1/issues/:key/move/preview', () =>
         HttpResponse.json(
@@ -583,6 +581,24 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     expect(screen.queryByText(/이동 매핑 확인/i)).not.toBeInTheDocument()
   })
 
+  it('403 문구가 「권한 없음」으로 단정하지 않고 대상 키 확인을 먼저 말한다', async () => {
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    await submitTarget('INRA') // 오타 — prod 리졸버는 미존재 프로젝트도 403 으로 돌려준다
+
+    const alert = await screen.findByRole('alert')
+    const text = alert.textContent ?? ''
+    // ① 키 오타 가능성이 **먼저** 읽혀야 한다 (자유 텍스트 입력에서 가장 흔한 경로).
+    expect(text.indexOf('대상 프로젝트 키')).toBeGreaterThanOrEqual(0)
+    expect(text.indexOf('대상 프로젝트 키')).toBeLessThan(text.indexOf('권한'))
+    // ②③ 권한 가능성도 남긴다. 다만 「관리자에게 문의」로 막다른 길을 만들지 않는다.
+    expect(text).toContain('권한')
+    expect(text).not.toContain('문의')
+  })
+
   it('preview 500 이면 기존 문구가 그대로 나온다 (비-공허 짝)', async () => {
     server.use(
       http.post('/api/v1/issues/:key/move/preview', () =>
@@ -596,17 +612,69 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     expect(alert).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
   })
 
-  it('preview 404(대상 프로젝트 없음)이면 기존 문구가 그대로 나온다 (비-공허 짝)', async () => {
-    // 이 404 야말로 「대상 프로젝트 키를 확인해 주세요」가 정확한 안내인 경우다.
+  it('키를 다시 치기 시작하면 남아 있던 경고가 사라진다', async () => {
     server.use(
       http.post('/api/v1/issues/:key/move/preview', () =>
-        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+        HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 }),
       ),
     )
-    await submitTarget('NOPE')
+    await submitTarget('INRA')
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
-    expect(alert).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+    // 오타를 고치는 첫 글자에서 경고가 걷힌다 — 안 그러면 「키를 확인하라」는 안내를
+    // 따르는 내내 그 안내가 화면에 남아 고쳤는지 아닌지를 알 수 없다.
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'F')
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-7. 이동 **실행** 단계 403 토스트
+//
+// 서버는 `IssueMoveService.kt:189-190` 에서 preview 와 **같은 두 assert** 를 하고 같은
+// `ACCESS_DENIED` 를 낸다. 그러니 원인 설명도 preview 와 같은 어휘여야 한다 —
+// 옛 문구(「이슈를 이동할 권한이 없습니다.」)는 원인을 **원본 이슈 쪽으로 단정**해,
+// 대상 프로젝트만 막힌 사용자에게 「이 이슈는 영영 못 옮긴다」로 읽혔다.
+//
+// 다만 실행 단계는 preview 를 통과한 뒤라 **대상 키는 이미 서버가 받아들인 값**이다.
+// 그래서 preview 문구의 「키부터 확인」 도입부는 빼고 권한 두 갈래만 말한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-7: 이동 실행 403 — preview 와 같은 원인 설명', () => {
+  /** 실행 단계 403 문구 — `issueMoveStrings.errorForbidden` 정본 */
+  const MOVE_FORBIDDEN_TEXT = '이 이슈나 대상 프로젝트 권한이 없어 이동하지 못했습니다.'
+
+  beforeEach(() => {
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ data: compatiblePreviewFixture }),
+      ),
+      http.post('/api/v1/issues/:key/move', () =>
+        HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+  })
+
+  it('move 403 이면 원인을 이슈 쪽으로 단정하지 않는 토스트를 낸다', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'INFRA')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/이동 매핑 확인/i)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /이동/i }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(MOVE_FORBIDDEN_TEXT)
+    })
+    // 옛 문구는 더 이상 나오지 않는다 — 같은 다이얼로그가 단계마다 다른 설명을 내면 안 된다.
+    expect(toast.error).not.toHaveBeenCalledWith('이슈를 이동할 권한이 없습니다.')
   })
 })
