@@ -1526,9 +1526,22 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 **선행 조건.** 「사이드바를 접은 채 쓰는 사용자 비율」에 대한 실사용 신호. 그 전에는 추측 구현이다.
 **착수 시 읽을 것.** 스펙 `docs/specs/2026-07-30-fr-ux-08-project-switcher.md` §8-A D-B · D-C.
 
+> **★2026-08-09 전수 실측 검증 — 판정 `결함 아님 · 유지`.**
+> - **정정 1.** `popover.tsx` 유입 PR 은 PR-A 가 아니라 **FR-UX-06 Phase 0 PR2(#286)**. FR-UX-08 PR-A(#326)는 그걸 **소비**했을 뿐이다. 결론(신규 의존성 0)은 그대로.
+> - **정정 2.** 대가는 「최근 본 이슈에 접근 불가」가 아니라 **「MRU 목록에 접근 불가」**다. ⌘K 자유 텍스트 검색으로 이슈 자체에는 도달한다.
+> - **정정 3.** Cons 의 「테스트가 두 배」는 과장. 렌더 경로는 **이미** 갈려 있다(`RecentIssuesMenu.tsx:71·82`). 진짜 비용은 신규 테스트가 아니라 **기존 봉인 2개(유닛 T-RM-7 · e2e S9-b)의 단언을 정반대로 다시 쓰는 것**이다.
+> - **★정정 4 (착수 차단).** 선행 조건 「실사용 신호」는 **원리적으로 충족 불가**다 — 저장소에 분석/텔레메트리 코드가 **0건**이라 「접은 채 쓰는 비율」을 잴 방법이 없다. 조건을 그대로 두면 이 항목은 영구 보류다.
+> - **되돌림 금지 — 단, 두 가드의 보호 수준이 다르다 (게이트2 리뷰 정정).**
+>   · `:82` 의 `if (collapsed) return null` 은 T-RM-7(유닛)·S9-b(e2e)가 지킨다. 지우면 둘 다 red 다.
+>   · **`:71` 의 `keysToResolve` 가드는 무검증이다.** 지워도 두 테스트가 **초록으로 통과**한다 — `:82` 가 남아 DOM 단언이 그대로 만족되기 때문이다. 그 순간 접은 사용자가 MRU 키 개수만큼 `GET /api/v1/issues/{key}` 를 계속 쏘는 회귀가 되는데, 「테스트가 잡아준다」고 믿어 아무도 확인하지 않는다.
+>   ⇒ 착수 시 T-RM-7 에 **접힘 상태 요청 0건** 단언(핸들러 호출 카운터)을 추가할 것. 인용 좌표 `ProjectTree.tsx:217-223` 은 밀리지 않았다(실측 일치).
+> - **착수하게 될 경우 권장안은 원안(A)이 아니라 B.** 레일에 아이콘을 더하는 대신 `CommandPalette.tsx:473` 의 `showQuickLinks` 빈 입력 분기에 「최근 본 이슈」 그룹을 넣는다 — 64px 레일 시각 예산 0, §8-A D-B 를 뒤집지 않는다.
+
 ---
 
-## ⬜ issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (FR-UX-09 B1 의 **의도된 이연** · 미착수)
+## ✅ issue-tracking — 도메인 `require` 실패가 500 으로 나간다 (해소 2026-08-09)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — `UpdateIssueRequest` 의 죽은 원소 제약을 제거하고 생성 경로와 **문자 단위로 같은 술어**의 `@get:AssertTrue` 를 넣었다. `OpenApiContractTest.C1c` 가 `labelsValid` 파생 속성 누출을 함께 봉인한다. **선택지 ②(422)는 채택하지 않았다** — 사유는 위 정정 블록 참조.
 
 > **⚠️ 결함이지만 이 PR 이 만든 게 아니다.** FR-UX-09 B1 이 **생성 경로만** 봉합했다.
 
@@ -1556,9 +1569,21 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
 ② 도메인에 전용 예외 타입 신설 후 422 매핑 (근본적, 폭발 반경 큼)
 **착수 시 읽을 것.** ADR `docs/decisions/2026-07-31-fr-ux-09-b1-create-issue-fields.md` §D-6 배경.
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (반증 실패 · 어떤 층도 안 닫고 있음).**
+> - **원인 확정.** 「원소 제약이 장식」이 지금까지 **행동 관찰**로만 기록돼 있었는데, 이번에 **바이트코드로 확정**했다 — Kotlin 이 `List<@Size String>` 의 타입-use 애노테이션을 런타임 보존 형태로 심지 않는다.
+> - **정정 1.** 도메인 함수 범위는 `Issue.kt:370-379` 가 아니라 **370-385**. 370-379 는 개수 상한 `require`(381-383)를 빠뜨린다.
+> - **정정 2.** `EpicChildExceptionHandler` 는 「자기 **패키지** 스코프」가 아니라 `@RestControllerAdvice(assignableTypes = [IssueEpicController::class])` — **컨트롤러 타입** 한정이다. `basePackages` 인 것은 `BulkOperationExceptionHandler` 뿐. 결론(IssueController 를 안 덮는다)은 양쪽 다 유효.
+> - **정정 3.** ADR `2026-07-31-…-b1-create-issue-fields.md:150` 이 두 DTO 를 함께 지목한 서술은 **봉합 이전 상태의 화석**이다. 현재 `CreateIssueRequest.kt:64` 는 `List<String>? = null` 로 원소 제약이 없다.
+> - **★선택지 ② 는 기각 — 단 사유를 정정한다 (게이트2 리뷰).** 처음에 적은 「생성 경로의 400 계약을 깨뜨린다」는 **성립하지 않는다.** 인용한 생성 테스트의 400 은 전부 DTO Bean Validation 에서 나오고 도메인은 도달조차 하지 않으므로, 도메인 예외 타입을 바꿔도 그 테스트들은 그대로 초록이다.
+>   진짜 기각 사유는 ADR D-6 의 원래 논거다 — **전역 `IllegalArgumentException` 매핑은 진짜 버그를 사용자 오류로 위장해 살아 있어야 할 500 을 숨긴다.**
+> - **2026-08-09 Maxi 확정 — ①(400, 생성/수정 대칭)으로 좁게 봉합.** 상수 `LABEL_MAX_LENGTH` 사본 수렴은 이 PR 범위 밖(신규 항목 등재).
+> - **★처방의 구멍(반증이 적발).** `@get:JsonIgnore` 를 빠뜨리면 springdoc 이 `labelsValid` 를 스키마에 흘리는데 **현재 `OpenApiContractTest` 는 create 쪽만 봉인(:204)해서 아무도 못 잡는다.** update 쪽 대칭 단언을 같은 PR 에 넣지 않으면 이 처방 자체가 새 결함을 심는다. 또한 `@AssertTrue` 는 getter 이름 규약(`isLabelsValid` → property `labelsValid`)에 묶여 있어 이름을 바꾸면 **지금 고치는 장식 애노테이션과 같은 양식으로 조용히 무력화**된다 — 뮤테이션 검증 필수.
+
 ---
 
-## ⬜ issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (미착수)
+## ✅ issue-tracking — `cloneIssue` 는 담당자를 정해도 `IssueAssigned` 를 발행하지 않는다 (해소 2026-08-09)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — 애플리케이션 계층 `CloneIssueRequest.notifyAssignment`(기본 false, fail-safe) 추가 후 컨트롤러가 명시적으로 `true` 를 넘긴다. OpenAPI 계약·프론트 변경 0. 서비스 2×2 행렬 + **컨트롤러 짝 테스트 2건**(기본값 인자라 컴파일러가 안 잡는다).
 
 **무엇.** `cloneIssue` 는 `assigneeId = if (request.includeAssignee) source.assigneeId else null`
 로 담당자를 설정하면서 `IssueCreated` 만 발행한다(`IssueApplicationService.kt` clone 블록).
@@ -1573,9 +1598,20 @@ clone 은 별건으로 남긴다 — 회귀 표면과 PR 범위를 동시에 넓
 **착수 시 주의.** clone 은 대량 복제 시나리오가 있으므로 `notifyAssignment` 같은
 **명시적 게이트 없이 무조건 발행하면 안 된다**. D-5 와 같은 fail-safe 기본값을 쓸 것.
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (반증 실패 · 인용 15건 전부 실측 일치).**
+> - **정정 1 (좌표).** `cloneIssue` 는 현재 `IssueApplicationService.kt:348-394`. 담당자 설정 `:379`, `IssueCreated` 발행 `:382-391`. ADR 이 가리킨 `:365` 는 밀렸다.
+> - **★정정 2.** 「clone 은 대량 복제 시나리오가 있으므로」는 **지금 코드 기준 거짓**이다. `BulkOperationType` 은 BULK_EDIT/BULK_TRANSITION 둘뿐이고(`BulkOperationType.kt:11-14`) 클론 진입점은 단건 REST **하나**(`IssueController.kt:872`)뿐이다. fail-safe 게이트는 「현존 대량 경로 방어」가 아니라 **「미래 생산자 대비 defense-in-depth」**로 정당화해야 한다.
+> - **정정 3 (수정 지점).** `notifyAssignment` 는 REST DTO 필드가 아니라 **애플리케이션 계층** DTO 필드다(`IssueApplicationRequests.kt:46`). 따라서 고칠 곳은 `adapter/inbound/rest/CloneIssueRequest.kt` 가 아니라 `IssueApplicationRequests.kt:269` 이며, 그러면 **OpenAPI 계약·프론트 변경이 0**이다.
+> - **★정정 4 (피해가 서술보다 크다).** 알림뿐 아니라 `cloneIssue` 는 `autoWatch` 도 호출하지 않는다(`:295` 와 대비). `issue.created` 의 수신자 역할에 ASSIGNEE 가 없으므로(`V401:10-12`) **클론 배정자는 인앱 알림을 단 1건도 받지 못한다.**
+> - **2026-08-09 Maxi 확정 — A안(알림만)으로 좁게.** `IssueAssigned` 만 추가하고 자동 워처 승격은 별건. 클론 담당자는 issue.transitioned·commented·due_soon 은 ASSIGNEE 역할로 이미 받는다(V401 시드).
+> - **★함정.** `cloneIssue` 스코프에 `sourceKey` 와 `saved.key` 가 공존한다. `sourceKey` 를 쓰면 **원본 담당자에게 잘못 알림이 가는 더 나쁜 결함**이 된다. 테스트에서 issueKey 값을 반드시 클론 키로 단언할 것.
+> - **미등재 형제 결함 발견.** `changeComponents` 자동배정(`IssueApplicationService.kt:880-913`, `:901` `repo.setAssignee`)이 **정확히 같은 양식**이다 — 아래 신규 항목으로 등재했다.
+
 ---
 
-## ⬜ search-export-import — Import 가 **원본에 없던 담당자**를 만든다 (선재 · 미착수)
+## ✅ issue-tracking — Import 가 **원본에 없던 담당자**를 만든다 (해소 2026-08-09)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — `IssueImportAdapter` 가 `assignee = AssigneeIntent.None` 을 넘긴다(①균일 처리). S8b 는 기대값이 성립하지 않게 되어 **양방향으로 재작성**했다(담당자 없음 → 0건 / 매칭 → 정확히 1건).
 
 **무엇.** `IssueImportAdapter` 는 `createIssue` 에 담당자를 넘기지 않는다(`:537-544`).
 그러면 `resolveDefaultAssignee` 가 컴포넌트/프로젝트 리드를 담당자로 넣는다.
@@ -1590,9 +1626,20 @@ Import 가 넘기면 자동 배정이 꺼진다. 코드 1줄 수준이나 **FR-I
 
 **착수 시 읽을 것.** `IssueImportAdapterTest` 의 `S8b` 테스트가 자동 배정 발동 픽스처를 이미 갖고 있다.
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (반증 실패 · 코드 봉합은 반쪽 아님을 확인).**
+> - **★정정 1 (BC 가 틀렸다).** 결함 코드와 수정 대상은 전부 **issue-tracking** 모듈의 `IssueImportAdapter.kt` 다. search-export-import 모듈 소스에는 반입 후 담당자를 다루는 코드가 **0건**(command 조립까지만). 「한 PR = 한 BC」 규칙상 이 작업은 **issue-tracking BC** 다.
+> - **정정 2 (선행 조사 완료).** 「FR-IM 스펙 확인이 선행」은 해소. `docs/specs/2026-07-02-fr-im-01-csv-json-import.md:13`(시나리오 4)·`:26`(FR7)이 **「미매칭 assignee → null」을 이미 명시**한다. 최소한 「컬럼은 있으나 매칭 실패」는 스펙 위반 확정이다. 「담당자 컬럼 자체가 없는 행」에 대해서만 스펙이 침묵한다.
+> - **정정 3.** 「코드 1줄 수준」은 **프로덕션 코드에 한해서만** 참이다. `AssigneeIntent.None` 을 넘기면 기존 `S8b` 의 양성 대조군(`readAssigneeIdOf != null`, `:1130`)이 **반드시 실패**한다 — 테스트 개편이 동반된다.
+> - **정정 4.** 「S8b 픽스처를 이미 갖고 있다」는 사실이나(`:1117 setProjectLead`) 그건 **재사용 대상이 아니라 수정 대상**이다. S8b 는 현재 동작(자동 배정이 붙는다)을 기대값으로 못박고 있다.
+> - **TODOS 가 빠뜨린 사실.** 이미 존재하는 `S3 assigneeEmail 미매칭 - assigneeId가 null로 유지된다`(`:951-968`)가 정확히 옳은 단언을 하고 있으나 **픽스처에 리드가 없어 공허하게 통과 중**이다.
+> - **2026-08-09 Maxi 확정 — ①균일 처리.** 컬럼 유무와 무관하게 항상 `AssigneeIntent.None`. 「반입본은 원본과 같아야 한다」를 단일 원칙으로 둔다. ②조건 분기는 매핑 마법사 UI 에서 「빈 칸」과 「칸 없음」을 구별할 수 없어 예측 불가능한 결과를 만든다.
+> - **★부작용(반드시 기록).** 수정 후 import 경로는 `resolvedAssignee` 가 항상 null 이라 **D-5 `notifyAssignment` 게이트가 도달 불가**가 된다. 게이트 자체는 fail-safe 로 남기되, 유일한 비-공허 증인이 `IssueApplicationServiceCreateTest:481-507` 임을 코드 주석으로 못박을 것 — 아니면 「도달 불가 상태를 지키는 가짜 그린」이 된다.
+
 ---
 
-## ⬜ issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (선재 · 미착수)
+## ✅ issue-tracking — `componentIds` 가 OpenAPI 에서 required 로 표기된다 (해소 2026-08-09 · **좁게**)
+
+> **해소.** `fix/issue-tracking-tech-debt-4` — `componentIds` 1건만 `@field:Schema(requiredMode = NOT_REQUIRED)` 로 봉합하고 `C1c` 계약 테스트로 못박았다. ★**잔여 26 프로퍼티와 차집합 판별식은 별도 항목**이다(아래 신규 등재) — 손 열거는 반드시 샌다.
 
 **무엇.** `CreateIssueRequest.componentIds: List<UUID> = emptyList()` 는 기본값이 있는데도
 springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생성된 클라이언트가
@@ -1606,9 +1653,21 @@ springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생�
 **주의.** 기본값이 있는 non-null Kotlin 프로퍼티는 **전부 같은 함정**이다.
 다른 DTO 에도 있는지 전수 조사가 필요하다(이번엔 `CreateIssueRequest` 만 봤다).
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` · 범위가 크게 과소 서술됐다.**
+> - **현상 확정.** `CreateIssueRequest.required = [componentIds, projectKey, summary]` — componentIds 가 진짜 required 다.
+> - **★전수 조사 실행 결과.** 「이번엔 CreateIssueRequest 만 봤다」로 남긴 조사를 실제로 돌렸다. 1차 측정 **5 DTO · 10 프로퍼티**, 반증 단계의 `@RequestBody` DTO **32종 전수** 재측정에서 **11 클래스 · 27 프로퍼티**. 즉 **1차 처방조차 17개를 빠뜨렸다** — 「손으로 열거하면 반드시 샌다」의 증거.
+>   대표. `CreateIssueRequest.componentIds` · `ChangeComponentsRequest.componentIds` · `ChangeVersionsRequest.versionIds` · `CloneIssueRequest.includeAssignee` · `UpdateIssueRequest` 의 JsonNullable 6필드 · `CreateCustomFieldRequest` 의 `required`/`displayOrder`/`options` 등.
+> - **★심각도가 뒤집힌다.** 제목이 지목한 `componentIds` 는 이 중 **가장 가벼운 축**이다. 진짜 문제는 `UpdateIssueRequest` 의 JsonNullable 6필드 — `JsonNullable` 은 「필드 부재 = 변경 없음」을 표현하려고 도입한 타입인데(ADR D-2) 스펙이 그 6개를 전부 필수로 문서화한다. **PATCH 계약 자체가 문서상 파손 상태다.**
+> - **정정.** 「생성된 클라이언트가 componentIds 를 강제한다」는 **이 저장소 안에서는 성립하지 않는다** — OpenAPI 코드 생성기가 리포에 없고(grep 0건) `apps/web` 은 수작업 클라이언트다. 피해는 「외부 소비자/문서가 거짓말한다」로 정정.
+> - **절대 건드리지 말 것.** `expectedVersion`(`ChangeComponentsRequest.kt:21` · `ChangeVersionsRequest.kt:22` · `UpdateIssueRequest`)은 `@field:NotNull` 이라 런타임에 진짜 필수다. 여기에 `NOT_REQUIRED` 를 붙이면 「스펙은 optional, 서버는 400」이라는 **반대 방향 거짓말**이 된다.
+> - **★판별식 함정.** `com.bts.issue.application.{CreateIssue,UpdateIssue,CloneIssue}Request` 가 REST DTO 와 **동명**이다(`IssueApplicationRequests.kt:34,176,269`). 판별식을 simple-name 매칭으로 짜면 엉뚱한 application DTO 를 검사하고 **초록인 채 아무것도 안 지킨다.**
+> - **2026-08-09 Maxi 확정 — 좁게(componentIds 1건)만 봉합하고 나머지는 신규 등재.** 아래 신규 항목 참조.
+
 ---
 
-## ⬜ apps/web — 이슈 상세 담당자 셀렉터가 **검색 전에 사용자 전량**을 노출한다 (선재 · 미착수)
+## ✅ apps/web — 이슈 상세 담당자 셀렉터가 **검색 전에 사용자 전량**을 노출한다 (해소 2026-08-09 · **상세만**)
+
+> **해소.** `fix/web-tech-debt-4` — 라우트 층에서 걸렀다(컴포넌트 내부 아님 — 실제 세 번째 소비처는 다른 컴포넌트를 쓴다). 결함에 의존하던 기존 T4-A3·T4-A5 를 같은 커밋에서 갱신. ★**목록 셀·컴포넌트 리드·프로젝트 리드 3곳은 별도 항목**이다.
 
 **무엇.** `useUsers(query)` 는 `enabled` 가드가 없어(`hooks/use-users.ts:16-22`) 빈 검색어에도
 조회가 나가고 **전체 사용자 목록**을 돌려준다. 이슈 상세는 그 결과를 그대로 후보로 넘긴다
@@ -1631,6 +1690,17 @@ springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생�
 
 **착수 시 읽을 것.** `use-assignee-picker.ts` 의 동일 처방과 그 주석 ·
 `IssueCreateForm.test.tsx` 의 「담당자 후보는 검색해야 나온다」 2건(그대로 상세용으로 복제 가능).
+
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (실브라우저 아닌 코드 대조로 재현 확인).**
+> - **정정 1 (좌표 4건 전부 밀림).** `hooks/use-users.ts:16-22` → **`:23-29`** · `routes/issues.$key.tsx:246` → **`:304`** · `:810` → **`:1120`** · `IssueAssigneeSelect:110` → **`:125`**. 결함 서술 자체는 네 곳 모두 지금도 맞다.
+> - **정정 2 (홉 하나 누락).** 상세 라우트는 `IssueAssigneeSelect` 로 직결되지 않고 **`IssueMetaPanel.tsx:329`** 를 경유한다.
+> - **★정정 3.** 「미래의 세 번째 소비처」는 **미래가 아니다.** `components/issues/cells/AssigneeCell.tsx:250-253`(FR-UX-11 F9 · PR #338)이 이미 같은 결함으로 존재한다. TODOS 작성 이후 표면이 하나 늘었다. 추가로 `ComponentLeadSelect.tsx:102` · `ProjectLeadSelect.tsx:116` 도 동형.
+> - **★정정 4 (처방이 틀렸다).** 「`IssueAssigneeSelect` 안으로 내리면 미래의 세 번째 소비처도 자동으로 닫힌다」는 **거짓**이다. 실제 세 번째 소비처 `AssigneeCell` 은 `IssueAssigneeSelect` 를 쓰지 않고 자체 `AssigneeCellEditor` 를 갖는다 — 컴포넌트 내부 가드로는 안 닫힌다. ⇒ **수정 지점은 라우트 층**(`issues.$key.tsx`).
+> - **정정 5.** 「`canEdit=false` 경로와 `useUsersByIds` 표시 경로가 얽혀 있다」는 과장. `currentAssignee` 는 `issues.$key.tsx:312-315` 에서 독립적으로 오고 `canEdit` 은 `useIssuePermissions` 에서 온다. `users` 배열만 걸러도 둘 다 안 건드린다.
+> - **★기존 초록이 결함을 지키고 있다.** `issues.$key.test.tsx` **T4-A3(:1383)·T4-A5(:1421)** 는 타이핑 없이 '김앨리스' 버튼을 기다린다(5/5 초록 실행 확인). 수정과 테스트 갱신을 같은 커밋에 묶지 않으면 「봉합이 스위트를 깼다」로 오진된다.
+> - **★파일 경로 함정 (반증이 적발).** `routes/issues.$key.test.tsx` 와 `routes/__tests__/issues.$key.test.tsx` 가 **둘 다 실재**한다. T4-A1~A5 는 **전자**(`:1355~:1424`)에 있고 후자(645줄)에는 `T4-A`·`김앨리스` grep **0건**이다. 경로를 헷갈리면 엉뚱한 파일을 고친다.
+> - **가드 공허 위험.** 후보가 애초에 비면 「검색 전 안 나온다」 단언은 조회 실패로도 통과한다 — **「검색하면 나온다」 짝 테스트 필수.**
+> - **2026-08-09 Maxi 확정 — 이슈 상세만 좁게. 나머지 3곳은 신규 등재.**
 
 ---
 
@@ -1657,9 +1727,38 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 `[[github-actions-billing-block-steps-zero]]` — 둘 다 **「통과 건수 ≠ 종료 코드」** 같은 양식이다.
 판별식으로 굳힐 거면 CI 가 `Errors` 줄을 별도로 낚아채게 하는 쪽이 싸다.
 
+> **★2026-08-09 전수 실측 — 판정 `VALID` 이나 「고쳤다」로 닫을 근거가 없다. 항목을 ⬜ 로 유지한다.**
+> - **★재현율 무효.** 「2026-08-02 2회 중 1회」는 오늘 기준 틀렸다 — **2026-08-09 전체 스위트 5회 실행에서 0회 재현**(그중 4회는 파이프 없이 종료 코드를 직접 확인해 EXIT=0). 미재현은 부재 증명이 아니다(p=0.5 라면 4연속 초록 확률 6.25%).
+> - **기준선 이동.** 「8378/8378」 → 오늘 **574 파일 / 9286 테스트**. 스위트가 900건 이상 커져 워커 경합 조건 자체가 달라졌다. 과거 재현율을 현재 재현율로 인용하지 말 것.
+> - **좌표 정정.** `AutomationYamlImportDialog.tsx:340·345` → 현재 `onSuccess` **337**, `onError` **343**. 파일은 #292 이후 무변경이므로 원 서술이 애초에 부정확했다.
+> - **★인과가 성립하지 않는다 (가장 중요).** 「mutation 의 rejection 이 테스트 종료 후 도착」만으로는 unhandled rejection 이 **되지 않는다** — `useMutation.js:33` 이 `observer.mutate(...).catch(noop)` 을 붙인다. 전역으로 새는 경로는 `mutation.js:156/166/178/189` · `mutationObserver.js:94/105/116/127` 의 `void Promise.reject(e)`, 즉 **`onSuccess`/`onError`/`onSettled` 콜백이 던질 때**와 **`.catch` 없이 호출된 `mutateAsync`** 뿐이다. ⇒ 「pending mutation 이 남는 경로」는 필요조건일 뿐 충분조건이 아니다.
+> - **정정.** 「CI 가 `Errors` 줄을 낚아채게 하는 쪽이 싸다」는 **불필요**하다. vitest 가 `cli-api…:13897-13899` 에서 이미 `process.exitCode=1` 을 세우고 `frontend-ci.yml:106-107` 이 그 종료 코드를 그대로 잡 성패로 쓴다. **실제 구멍은 CI 배선이 아니라 「Tests N passed 만 읽고 초록으로 보고하는」 사람/에이전트 쪽**이다.
+> - **2026-08-09 Maxi 확정 원칙 적용 — (b) 관측 유지.** 이번 라운드의 산출물은 「고침」이 아니라 **확정 누수 2건 봉합 + 재발 불변식**이다.
+>   (원래 「진단 배선」으로 정의했으나, 그 배선이 오히려 관측을 껐다 — 아래 ① 참조. 진단 표면은 vitest 가 이미 충분히 준다.)
+>   ① ~~`src/test/setup.ts` 에 `unhandledRejection` 로깅 리스너 추가~~ — **이 처방은 위험하다. 채택하지 않는다** (2026-08-10 게이트2 리뷰 · A/B 실측).
+>      vitest 는 `unhandledRejection` 리스너가 **이미 등록돼 있으면 「사용자 코드가 처리했다」고 보고 물러난다.**
+>      리스너를 하나 더 붙이는 순간 vitest 자신의 보고가 통째로 꺼지고 **종료 코드가 1 → 0 으로 뒤집힌다** —
+>      바로 이 항목이 추적하는 증상을 **원인은 그대로 둔 채 관측 불가능하게** 만든다.
+>      아래 ④ 가 금지한 `dangerouslyIgnoreUnhandledErrors: true` 와 **같은 효과**다.
+>
+>      | 조건 | 종료 코드 | 리포트 |
+>      |---|---|---|
+>      | 리스너 추가 | **0** | 없음 |
+>      | 리스너 없음 | **1** | `Errors 1 error` + 전체 스택 + 원인 테스트 이름 |
+>
+>      **★그리고 애초에 필요 없다.** 이 처방의 근거였던 「진단 표면이 파일 이름까지고 어느 테스트인지는 모른다」가 **거짓**이다.
+>      vitest 4 는 전체 스택 · 원인 파일 · `The latest test that might've caused the error is "«이름»"` 을 이미 출력한다.
+>      귀속을 더 강화하려면 **process 리스너를 늘리지 않는 경로**(커스텀 리포터 `onUnhandledError`)를 써야 한다.
+>   ② 확정 누수 2건 봉합 — `AutomationYamlImportDialog.test.tsx:136-154`(EC5)·`:367-389`(CRITICAL-1)이 50ms·300ms 지연 핸들러를 건 채 정착을 기다리지 않고 끝난다. **기존 단언은 그대로 두고 테스트 끝에만 정착 대기를 덧붙인다** — 대기를 앞에 끼우면 「in-flight 창」을 보는 원 의도가 죽어 「엉뚱한 걸 쟀다」가 재발한다.
+>   ③ 같은 파일에 pending mutation 0 불변식 `afterEach` 추가.
+>   ④ **절대 금지 — `dangerouslyIgnoreUnhandledErrors: true`.** 종료 코드는 초록이 되지만 유일한 진단 표면이 사라진다(「봉인이 자기 결함을 재생산」 양식).
+> - **미승계.** 지연 MSW 핸들러를 쓰는 테스트 파일이 **34개**이고 그중 몇 개가 같은 누수를 갖는지는 미측정이다. 전면 승계는 별건.
+
 ---
 
-## ⬜ apps/web — **required MULTI_SELECT** 커스텀 필드가 클라이언트 검증을 그냥 통과한다 (선재 · 미착수)
+## ✅ apps/web — **required MULTI_SELECT** 커스텀 필드가 클라이언트 검증을 그냥 통과한다 (해소 2026-08-09 · **생성 폼만**)
+
+> **해소.** `fix/web-tech-debt-4` — 판정을 열거에서 **선판정**으로 뒤집고 CHECKBOX 를 `raw !== true` 로 맞췄다. 커스텀 필드 422 에러 매핑도 함께 넣었다. ★**편집 화면 사본은 그대로다** — 그 결과 두 화면의 required CHECKBOX 규칙이 갈렸다(별도 항목, 심각도 재검토 필요).
 
 **무엇.** `isRequiredFieldEmpty` 의 MULTI_SELECT 분기가
 `return Array.isArray(raw) && raw.length === 0` 다(`components/issue/IssueCreateForm.tsx:63-64`).
@@ -1685,9 +1784,22 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 **착수 시 읽을 것.** 스펙 E-3(required 빈값 1차 클라 검사) ·
 `IssueCreateForm.test.tsx` 의 커스텀 필드 required 테스트(현재 MULTI_SELECT 케이스 부재).
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (인용 20건 좌표 밀림 0).**
+> - **★정정 1 (착수 안내가 틀렸다).** 「`IssueCreateForm.test.tsx` 의 커스텀 필드 required 테스트(MULTI_SELECT 케이스 부재)」는 거짓 — 그 파일에 커스텀 필드 테스트가 **한 건도 없다**(459줄 전수 grep 0건). required 테스트가 실제로 있는 곳은 `routes/issues.new.test.tsx:369`(T9-C4-1)·`:418`(T9-C4-2)이고 둘 다 SHORT_TEXT 픽스처만 쓴다. **「테스트가 깨졌다」가 아니라 「테스트가 없다」 양식.**
+> - **★정정 2 (사본 2곳).** 동일 함수의 두 번째 사본이 `components/issue/meta/IssueCustomFieldsEdit.tsx:31-52` 에 있고 MULTI_SELECT 분기가 글자 단위로 같다. TODOS 처방(한 줄 교체)을 그대로 적용하면 **편집 화면은 그대로 남는 반쪽 봉합**이 된다.
+> - **정정 3.** `case 'CHECKBOX': return false` 도 동형 결함이다. `CheckboxWidget` 이 마운트 시 `onChange` 를 안 쏘므로 required CHECKBOX 를 안 건드리면 `undefined` 로 제출된다.
+> - **2026-08-09 Maxi 확정 — MULTI_SELECT + CHECKBOX 둘 다 막는다. 편집 화면 사본 통합은 범위 밖(신규 등재).**
+> - **★★구현 시 절대 주의 (반증이 적발한 치명 구멍).** 「선판정 뒤집기(`undefined|null` → 빈값)」를 CHECKBOX 에 **그대로 적용하면 사용자를 데드락에 가둔다.** `undefined → 빈값(true)` · `false → 유효` 가 되어, required 체크박스를 해제 상태로 두려는 사용자는 **체크했다 해제하는 2회 조작 없이는 제출할 수 없다.** 화면상 두 상태는 픽셀 단위로 동일한데 한쪽만 경고가 뜬다. 게다가 백엔드(`CustomFieldValueValidator.kt:88`)는 `value == null` 만 거부하므로 **프론트가 백엔드보다 엄격해진다.**
+>   ⇒ **채택한 처방 (2026-08-09 구현).** `CHECKBOX: raw !== true` — 「필수 체크박스는 체크해야 제출 가능」. 화면상 해제된 두 상태(첫 방문 / 토글 왕복)가 **같게** 판정되므로 데드락이 없다. 백엔드(`value == null` 만 거부)보다 엄격한 것은 의도다 — 필수 체크박스의 실제 용도가 약관 동의류다.
+>   ⇒ **기각한 대안 — 「마운트 시 `onChange(false)` 1회 발화」.** 언뜻 백엔드 의미와 정렬돼 보이지만 **편집 경로에 새 결함을 연다** (게이트2 리뷰 적발). 사용자가 만지지도 않은 **optional** CHECKBOX 가 `draft` 에 키를 만들어 `buildNormalizedPatch` 의 `if (!(key in draft)) continue` 를 통과하고, 텍스트 필드 하나만 고쳐도 `null → false` 로 함께 덮어쓴다. 굳이 쓰려면 `field.required === true` 로 한정해야 한다.
+> - **잔여 422 경로(범위 밖·신규 등재).** `IssueCustomFieldsEdit.tsx:101` 은 `visibleFieldDefs`(FR-PM-07 숨김 제외) 기준으로 검증하는데 백엔드 `mergeCustomFieldsAndValidate`(`IssueApplicationService.kt:1508-1511`)는 **활성 정의 전량** 기준이다. 사용자에게 restricted 인 required 필드가 비어 있으면 **화면에 없는 필드 때문에 영원히 저장 실패**한다.
+> - **고아 헤더.** `apps/web/e2e/custom-fields.spec.ts:365` 에 「S6 — required 필드 미입력 시 422」 **헤더만 있고 테스트가 없다.** 다음 세션이 「이미 커버됨」으로 오독하므로 헤더를 지우거나 채울 것.
+
 ---
 
-## ⬜ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (선재 · 미착수)
+## ✅ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (해소 2026-08-09 · **이 1줄만**)
+
+> **해소.** `fix/web-tech-debt-4` — `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 회귀 가드는 렌더 단언이 아니라 **소스 단언**이다(렌더로는 하드코딩 복귀를 못 잡는다 — 뮤테이션으로 확증). ★**나머지 28곳과 ESLint 래칫은 별도 항목**이다.
 
 **무엇.** `placeholder="이슈 제목을 입력하세요"` 가 리터럴이다
 (`components/issue/create/IssueCreateBasicFields.tsx:110`).
@@ -1708,9 +1820,20 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 **착수 시 확인.** 이 리터럴을 참조하는 테스트/E2E 셀렉터가 있는지
 (`grep -rn "이슈 제목을 입력하세요" apps/web/`) — 현재는 이 1건뿐이다.
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (좌표 밀림 0 · `:110` 지금도 정확).**
+> - **★정정 1.** 「다국어를 열 때 **이 한 줄만** 조용히 번역에서 빠진다」는 **거짓**이다. `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 placeholder 가 **28곳** 있다(`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` · `CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 더하면 29곳. 원 서술은 **「그 특정 문자열의 grep 히트 수」로는 맞지만** 「i18n 에서 빠지는 줄이 이것뿐」이라는 뜻으로 읽히면 틀린다.
+> - **정정 2.** 「같은 폼의 **본문** placeholder 는 i18n 을 쓴다」는 과소 서술. 본문뿐 아니라 **프로젝트 셀렉터**도 `issueCreateStrings.projectPlaceholder`(`:62`)를 쓴다 — 이 파일의 placeholder 3개 중 **2개가 i18n, 1개만 리터럴**이다.
+> - **2026-08-09 Maxi 확정 — 이 1줄만 좁게. 나머지 28곳은 신규 등재.**
+> - **★★회귀 가드 설계 주의 (반증이 적발).** 「`issueCreateStrings.summaryPlaceholder` 자체와 대조하는 렌더 테스트」는 **공허하다.** i18n 값이 현재 리터럴과 바이트 동일해야 하므로 DOM 의 `placeholder` 속성 문자열이 두 경우(i18n 참조 / 하드코딩 복귀)에 완전히 같다 — **속성값은 출처를 싣지 않는다.** 그 가드가 실제로 잡는 것은 (a)속성 삭제 (b)다른 키 교체 둘뿐이고, **막겠다고 선언한 「하드코딩 복귀」는 못 잡는다.**
+>   ⇒ **올바른 가드.** `apps/web/eslint.config.js:69·116` 에 이미 있는 `no-restricted-syntax` AST 선택자 배열에 한 항목을 더한다 — `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]`. 현재 히트를 예외 파일 목록으로 등재한 뒤 이번 PR 에서 `IssueCreateBasicFields.tsx` 만 목록에서 뺀다(**래칫**). 문법을 보므로 출처 판별이 성립하고, 29번째 신규 하드코딩도 자동 차단된다.
+>   미확정 2건 — ① `ComponentMultiSelect.tsx:78` 은 템플릿 리터럴이라 `Literal` 선택자에 안 걸린다(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부 판단 필요). ② 내가 센 28 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다** — 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재할 것. 로컬 lint 목록과 CI lint 목록이 어긋난 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
+> - **중복 추적 주의.** 같은 부류가 이미 `docs/plan/product/personalization.md:479-483` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로 **따로 추적 중**이다. 신규 TODOS 항목을 또 만들면 같은 부류가 3곳에 흩어져 `[[two-lists-never-check-each-other]]` 를 새로 만든다 — 아래 신규 항목에서 그 문서를 상호 링크했다.
+
 ---
 
-## ⬜ apps/web — 상단바 「만들기」 버튼만 **CREATE 권한 게이트가 없다** (선재 · 미착수)
+## ✅ apps/web — 이슈 생성 **무게이트 경로 4개** (상단바·딥링크·`c` 키·명령 팔레트 · 해소 2026-08-09)
+
+> **해소.** `fix/web-tech-debt-4` — 게이트를 **버튼이 아니라 폼의 선택된 프로젝트**에 뒀다(진입 경로 4개가 전부 `IssueCreateForm` 하나를 지난다). 판정식은 `CREATE === false`(**명시 거부만**) — 미지를 거부로 읽으면 로딩·조회실패 구간에서 정상 사용자를 막는다. 403 에러 매핑이 기준선이고 사전 게이트는 그 위의 개선이다. ★`TopBar` 버튼 자체는 **여전히 무게이트이며 의도된 것**이다 — 모달은 열리되 제출이 막힌다.
 
 **무엇.** 이슈 생성 진입점 5곳 중 상단바 하나만 권한을 안 본다.
 
@@ -1735,6 +1858,21 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 **착수 시 읽을 것.** `components/issue/CreateIssueEntryButton.tsx`(fail-closed 판정 단일 시험대) ·
 `routes/issues.index.tsx:379-410`(선례) · `hooks/use-active-project.ts`.
 
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` 이나 표제가 결함을 과소 서술한다.**
+> - **정정 1 (좌표 3건).** `TopBar.tsx:80-89` → **`:137-146`** · `routes/issues.index.tsx:390-410` → **`:425-452`**(판정식은 `:526`) · 「착수 시 읽을 것」의 `:379-410` → **`:406-452`**.
+> - **★정정 2 (핵심 서술이 거짓).** 「진입점 5곳 중 상단바 **하나만** 권한을 안 본다」는 **거짓**이다. `/issues/new` 라우트 자체가 무게이트(`routes/issues.new.tsx:32-64`)이고, 게이트된 버튼을 전혀 거치지 않는 도달 경로가 3개 더 있다 — **`c` 단축키**(`shortcuts.ts:88`) · **명령 팔레트 `/issue`**(`CommandPalette.tsx:200`) · **북마크/직접 URL**. 상단바만 막으면 무게이트 경로가 3개 남는다.
+> - **정정 3.** 「다른 4곳은 버튼이 비활성이라 애초에 못 연다」는 **버튼에 한해서만** 참이다. 같은 화면에서 `c` 를 누르면 비활성 버튼과 무관하게 모달이 열린다.
+> - **★정정 4 (구조 문제).** 모달의 프로젝트 셀렉터가 접근 가능한 프로젝트 **전부**를 필터 없이 나열하고(`IssueCreateBasicFields.tsx:56-68`) 폼에는 선택된 프로젝트의 CREATE 검사가 없다. ⇒ **어느 버튼 게이트를 골라도** 「게이트 통과 후 폼 안에서 무권한 프로젝트로 갈아타기」가 남는다. 게이트를 버튼에 둔 **구조 자체의 문제**다.
+> - **정정 5.** 「신규 API 가 필요할 수 있으므로」 → 「어느 프로젝트든 CREATE 하나라도」 안을 고르면 **필요하다로 확정**(현재 API 는 projectKey 필수, 없으면 400).
+> - **2026-08-09 Maxi 확정 — 폼(선택된 프로젝트) 기준 게이트.** 모든 진입 경로가 `IssueCreateForm` 하나를 지나므로(`CreateIssueDialog.tsx:99` 가 유일 사용처, 소비처 4곳 = TopBar:150 · issues.new:56 · BacklogBoard:489 · board:435) 여기 한 곳이 무게이트 경로 4개 + 프로젝트 갈아타기를 동시에 닫는다. 신규 백엔드 작업 0.
+> - **★★구현 시 절대 주의 (반증이 적발한 치명 구멍 2건).**
+>   ① **판정식을 그대로 복사하면 「거짓말하는 가드」가 된다.** `issues.index.tsx:526` 의 `!isPermLoading && permData?.permissions.CREATE === true` 는 시각적으로는 버튼을 회색으로 만들 뿐이다.
+>   **★단 「아무 주장도 안 한다」는 거짓이다 (게이트2 리뷰).** 같은 컴포넌트 `:447` 이 `aria-label="새 이슈 (권한 없음)"` 로 **이미 사실 주장을 하고 있어**, 권한 조회 중이거나 조회 실패 구간에서 보조기술 사용자에게 **거짓 안내**가 나간다. 목록 화면도 같은 `=== false` 처방의 적용 대상이다. 같은 식을 `setServerError('권한이 없습니다')` 에 물리면 **사실 주장**이 되어, 권한 조회 중(`isPermLoading=true`)에 Enter 를 치면 **거짓 문구**를 본다. 프로젝트를 바꿀 때마다 queryKey 가 바뀌어 **오탐이 반복 재발**한다.
+>   ② **쿼리 실패 시 영구 오탐 거부.** `use-project-permissions.ts:31-38` 에 `retry:false` 도 에러 폴백도 없다. 500/네트워크 단절이면 `permData=undefined` 로 안착해 **CREATE 를 실제로 가진 사용자를 영구 차단**한다.
+>   ⇒ **최소 수정.** `!isPermLoading && … === true`(미지=거부) 대신 **`permData?.permissions.CREATE === false`(명시 거부만 차단)**. 토큰 하나 차이인데 실패 모드가 정반대이고 ①②가 동시에 닫힌다.
+> - **★더 싼 기준선을 먼저 깔 것.** 실제 피해(「다 채우고 제출에서야 거부」)가 아픈 이유는 `IssueCreateForm.tsx:80-95` 의 `resolveCreateErrorMessage` 가 **403 을 매핑하지 않아** `ko.ts:755` 의 「잠시 후 다시 시도해 주세요」로 떨어져 **사용자가 권한 문제를 일시 장애로 오인해 재시도**하기 때문이다. 403/ACCESS_DENIED 분기 **3줄**이 ①신규 네트워크 호출 0 ②오탐 거부 0 ③모든 진입 경로 자동 커버 를 달성한다. 사전 게이트는 그 위의 선택적 개선이다.
+> - **범위 밖 명시.** 이슈를 만드는 서버 경로가 셋 더 있고 어느 것도 `IssueCreateForm` 을 지나지 않는다 — 클론(`IssueApplicationService.kt:355`) · 이동(`IssueMoveService.kt:190`) · 임포트(`IssueImportAdapter.kt:288`). 특히 **클론은 결함이 동일한데 코드에 「의도적」이라고 박혀 있고**(`IssueMetaPanel.tsx:437-441`) 그 정당화 주석(「프론트 권한 API 가 CREATE 를 안 줘서 불가능」)은 `project-permissions.ts:24-34` 가 `CREATE: z.boolean()` 을 내주는 지금 **거짓**이다 — 신규 등재.
+
 ---
 
 ## ⬜ apps/web(테스트 인프라) — MSW 리졸버가 **요청 1회에 2번 실행**된다 (선재 · 미착수)
@@ -1751,14 +1889,39 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 걸렸고, **키 중복 금지 불변식**으로 그 경로만 닫았다(`mocks/backlog-fixtures.ts`).
 불변식 자체는 우회가 아니라 올바른 의미다 — 실제 백로그도 같은 키를 두 번 담지 않는다.
 
-**처방.** (1) 근본 원인을 먼저 규명한다 — 인터셉터 이중 등록인지, jsdom `fetch` 폴리필이
-`http` 계층과 겹치는지. (2) 그 전까지는 **append 형 핸들러 전수**를 찾아 각자 불변식을 갖게 한다.
+**처방.** ~~(1) 근본 원인을 먼저 규명한다 — 인터셉터 이중 등록인지, jsdom `fetch` 폴리필이
+`http` 계층과 겹치는지. (2) 그 전까지는 **append 형 핸들러 전수**를 찾아 각자 불변식을 갖게 한다.~~
+**→ 낡음. 아래 「2026-08-09 근본 원인 확정」 블록을 볼 것.** (1)은 A/B 실측으로 해소됐고,
+(2)는 증상 처방이라 채택하지 않았다 — 불변식을 60개 파일에 흩뿌리면 판별자가 사라진다.
 🛑 「호출됐다」만 보는 상위 테스트는 이 결함을 못 본다 — **상태 변화로 단언**해야 드러난다.
 
 **착수 시 읽을 것.** `mocks/backlog-fixtures.ts` 의 `appendCreatedIssueToBacklog` 주석 ·
 `mocks/create-issue-backlog-sync.test.ts`(목 계약 테스트 + 「201 만 보면 가짜 그린」 경고 테스트).
 
-## ⬜ 인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · 후속 3건 · 착수)
+> **★2026-08-09 근본 원인 확정 — A/B 실측으로 두 가설을 갈랐다. 판정 `VALID`.**
+>
+> | 조건 | resolver 호출 | `request:start` | 고유 requestId |
+> |---|---|---|---|
+> | 전역 `server` 단독 | **1** | 1 | 1 |
+> | 로컬 `setupServer` + 전역 공존 | **2** | 2 | **1** |
+>
+> `uniqueIds=1` 이 결정적이다 — **요청이 두 번 나간 게 아니라 같은 요청이 두 번 디스패치**된다.
+> - **★정정 1.** 「jsdom 환경에서 fetch 한 번에 MSW 핸들러가 두 번 돈다」는 **과일반화**다. jsdom 은 필요조건일 뿐이고 진짜 트리거는 **`setupServer` 인스턴스 2개 동시 listen** 이다.
+> - **★정정 2 (처방이 낡았다).** 「근본 원인을 먼저 규명한다 — 인터셉터 이중 등록인지, jsdom fetch 폴리필이 http 계층과 겹치는지」는 이미 해소돼 있었다. `import-handlers.test.ts` 주석(2026-07-03) · `profile-handlers.test.ts` 주석(2026-07-06) · 메모리 `[[msw-dual-setupserver-double-dispatch]]` 에 **처방까지 적혀 있다.** 2026-08-03 계측은 재발견이다.
+> - **★정정 3 (범위).** 로컬 `setupServer(` 를 만드는 테스트 파일이 **60개** (2026-08-09 실측 · `src/test/server.ts` 제외), 「하지 마라」 주석을 단 파일은 **7개**, 이를 **강제하는 린트 룰·판별식은 0개**. `[[two-lists-never-check-each-other]]` 양식 그대로다.
+> - **정정 4.** 「지금까지 확인된 것」에 F3 의 백로그 경로 1건만 적혀 있으나 실제 보상 가드는 **2곳**이다 — `automation-execution-handlers.ts` 의 `replayExecutionHandler` requestId 단발 캐시가 두 번째.
+> - **★정정 5.** `automation-execution-handlers.ts:15-17` 이 기록한 「본문을 읽는 핸들러는 두 번째 호출이 `Body already read` 로 자동 실패해 무해하다」는 **신뢰할 수 없다.** `issue-handlers.ts:484` 는 `request.clone().json()` 으로 읽는데도 append 가 2회 났다. **「본문을 읽으니 안전」을 전수 조사의 제외 기준으로 쓰지 말 것.**
+> - **정정 6.** 배증 폭은 핸들러마다 다르다(합성 GET 은 2배, 실 `bulkOperationHandlers` GET 은 단일 dispatch 서명). **「모든 요청이 정확히 2배」로 가정하면 틀린다.**
+> - **✅ B(동결) 완료 (2026-08-10 · `fix/web-test-infra-2`).** 아래 방식대로 판별식을 세웠다. **이 항목은 이주가 남아 ⬜ 로 유지한다** — 전면 이주는 별도 신규 항목이다.
+> - **2026-08-09 Maxi 확정 원칙 적용 — B(동결)로 시작.** ①`apps/web/src/test/msw-single-setupserver.test.ts` 차집합 판별식 신설(허용목록 `src/test/server.ts` + 현재 59개 baseline) → **신규 로컬 `setupServer` 만 차단**. 비-공허 짝 필수(훑은 파일 수 400+ 이고 스캐너가 `src/test/server.ts` 를 실제로 찾았음을 같은 테스트에서 단언 — 글롭이 깨지면 0건 훑고 공허 통과). ②전면 이주(A)는 신규 항목으로 분할 등재.
+> - **★★이주 시 최대 함정 (반증이 적발).** 로컬 서버가 뜨면 **전역 핸들러가 통째로 죽는다**(실측: 전역 `server.use()` 도 `/auth/refresh` 도 `fetch failed`). 이주하면 그 59개 파일에서 **`/auth/refresh` 가 처음으로 살아나** `apiFetch` 의 401 자동 재시도가 지금은 실패하던 자리에서 성공한다 — **401/403 을 단언하는 테스트의 결과가 뒤집힌다.** 「기계적 치환」이 아니다.
+> - **이주 시 함정 2.** 전역 `setup.ts:21` 의 `afterEach(server.resetHandlers())` 때문에 핸들러 등록은 **반드시 `beforeEach`** 여야 한다. `beforeAll` 에 두면 첫 테스트 뒤 조용히 사라진다. 선례 3건 — `import-handlers.test.ts:13-22` · `profile-handlers.test.ts:8-18` · `status-handlers.test.ts:8-16`.
+> - **이주 시 함정 3.** 지금은 두 서버 중 한쪽이 매치하면 넘어가던 요청이 단일 서버가 되면 `onUnhandledRequest: 'error'` 에 그대로 걸린다 — **이주 중 대량 RED 를 전제**할 것.
+> - **걷어낼 것 / 남길 것.** 이주 완료 후 `automation-execution-handlers.ts:117-119, 228-229, 260-261` 의 단발 캐시는 제거 후보. 단 `backlog-fixtures.ts:165` 의 키 중복 금지 가드는 **남긴다** — 그건 우회가 아니라 실제 백로그의 도메인 불변식이고, 제거하면 판별자만 사라진다(`[[seal-blinds-existing-guard]]`).
+> - **★증거의 소재 (게이트2 리뷰 지적).** 위 A/B 수치는 **일회성 진단 파일**(`apps/web/src/test/__tmp-probe-*.test.ts`)로 얻었고 그 파일은 **저장소에 커밋되지 않았다.** 재검증하려면 동일 조건(로컬 `setupServer` + 전역 공존)을 다시 만들어야 한다.
+>   정식 테스트로 승격하지 않은 이유 — 승격하려면 테스트가 스스로 이중 등록 상태를 만들어야 하는데 그것이 곧 판별식이 금지하는 상태라 자기모순이 된다. 대신 판별식(`msw-single-setupserver.test.ts`) 주석에 수치를 표로 남겼다.
+
+## ⬜ 인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · **후속 2건** · 착수)
 
 **증상.** PR 하나의 검증이 1~2시간이다. 그래서 결과가 나오기 전에 다음 커밋이 올라가고,
 최근 `backend-ci` 30건 중 **9건이 cancelled** 다 — 검증이 실질적으로 무의미해지는 구간이다.
@@ -1808,3 +1971,485 @@ DB·Docker 무관한 `IssueBcArchTest` 조차 9s→27s 였다. 주범은 Chrome 
 서로를 검사하는 판별식을 짝으로 넣고, 무엇을 건너뛰었는지 run 요약에 남길 것.
 
 **소관.** 인프라 / Maxi 결정(러너 증설 여부 · 검증 범위 축소 허용선).
+
+> **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` · 후속 3건 전부 미구현 확인.**
+> - **수치 정정.** 「최근 `backend-ci` 30건 중 **9건** cancelled」 → 2026-08-09 실측 **11건/30**. 방향(취소 상시화)은 유지되나 수치는 이미 밀렸다. **착수 PR 에서 재측정할 것.**
+> - **★정정 1 (항목 2 의 전제가 틀렸다).** 「`backend/gradle.properties` 가 셋 다 off」가 부정확하다. 명시적으로 `false` 인 셋은 **daemon · parallel · configureondemand** 이고, **`org.gradle.caching` 은 파일에도 저장소 어디에도 선언이 없다**(전수 grep 0건 — Gradle 기본값 off). 「세 줄을 true 로 뒤집으면 된다」로 착수하면 **빌드캐시는 못 켜고 configureondemand 만 잘못 건드린다.**
+> - **정정 2 (근거 교체).** 「‘wave 3 병렬 dispatch 안정성’ 주석대로 로컬 서브에이전트 충돌 방지용」 — 파일 주석 원문은 `# Gradle JVM 메모리 설정 — wave 3 병렬 dispatch 안정성 + main 디버깅 옵션 통합` 이고 「로컬 서브에이전트 충돌 방지용」이라는 문구는 **없다**. 다만 결론은 `docs/runbooks/self-hosted-runner.md:84`(러너가 `~/.gradle` 을 로컬 개발과 공유)로 **별도 근거로 성립**한다 — 근거를 그쪽으로 갈아끼울 것.
+> - **정정 3 (실측표 재검증 불가).** backend-ci 행(85m57s / 59m1s / 27m)은 지금 재검증할 수 없다. run 31139616352 이 축 B 확증을 위해 `gh run rerun --job` 으로 재실행돼 잡 attempt 가 덮였다.
+> - **① 좀비 run 차단 — 미구현 확인.** `concurrency` grep 실측: backend-ci 1 · frontend-ci 1 · workflow-scripts-ci 1 · **infra-ci 0 · runner-health 0**.
+> - **2026-08-09 Maxi 확정 — 3건을 고정 순서대로, 「PR 검증 범위 축소」는 보류.** 즉 ①좀비 run 차단 → ②Gradle 설정까지 진행하고 **③변경 모듈만 테스트는 착수하지 않는다.** 회귀가 머지 후 main 에서 처음 빨개지는 것을 받아들이지 않겠다는 결정이다.
+> - **★★①(b) 처방은 실측이 반증한다 (반증이 적발).** 「`runner-health` 는 모든 워크플로우의 `needs:` 선행이라 여기서 취소하면 뒤따르는 20잡이 아예 안 뜬다」는 논거가 성립하지 않는다 — runner-health 는 run 의 **맨 앞**이라 run 생성 직후에 돌고, 나머지 잡은 그 뒤 **몇 시간에 걸쳐** 배수된다(run 31139616352: created 01:56:08 → runner-health 01:57:09~). 즉 **좀비가 되는 시점에는 runner-health 가 이미 끝나 있다.** 취소 스텝을 그 잡에 넣으면 「PR 이 아직 열려 있던 시점」의 판정만 하게 된다.
+> - **✅ ①(a) 완료 (2026-08-10 · `fix/infra-ci-concurrency`).** `infra-ci.yml` 에 다른 3개와 동일한 `concurrency: {group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true}` 를 넣고, 되돌림을 막는 판별식 `scripts/workflow/ci-concurrency-coverage.test.ts` 를 신설했다.
+>   **★닫히는 범위를 정확히 적을 것 (게이트2 리뷰 정정).** 이 선언이 닫는 것은 **같은 PR/브랜치에 새 push 가 겹치는** 경로다. 「이미 머지되고 브랜치가 삭제된 PR 의 큐 잔존분」은 **원리적으로 못 닫는다** — 그 ref 에는 후속 run 이 영영 생기지 않아 취소가 발화할 계기가 없다. 2026-08-07 큐의 PR #346 3건이 정확히 그 경우였고, 그건 별도 처방(`pull_request: types: [closed]` 에서 `gh run cancel`, 또는 머지 스킬 확장)이 필요하다 — 아래 신규 항목.
+> - **★①(b)·② 착수 시 기준선 주의.** ①(a) 이후 `cancelled` 건수는 **설계된 동작**이라 회복 지표로 쓸 수 없다. ②(Gradle 설정)·③(모듈 선택)의 개선폭은 **대기 시간(벽시계 − 실행 합계)** 으로 재야 한다. **fail-open 계약**(API 실패·빈 응답·비 pull_request 이벤트에서는 아무것도 안 하고 `exit 0`)은 자원 점검 스텝(`:120-188`)의 선례를 그대로 따를 것.
+
+---
+
+# 2026-08-09 전수 실측에서 새로 드러난 항목
+
+> 위 12건을 전수 검증(실측 12 + 적대적 반증 11, **기각 0건**)하면서 발견한 **같은 결함의 다른 표면**들이다.
+> 2026-08-09 Maxi 확정 — 「원 항목은 좁게 고치고, 새로 드러난 표면은 전부 신규 등재」.
+> 그러지 않으면 원 항목이 ✅ 로 닫히면서 나머지가 **기록조차 없는 상태**가 된다.
+
+## ✅ issue-tracking — `changeComponents` 자동배정도 `IssueAssigned` 를 발행하지 않는다 (해소 2026-08-10 · PR #355)
+
+**무엇.** `IssueApplicationService.kt:880-913` 의 `changeComponents` 는 `:901` 에서 `repo.setAssignee` 로
+컴포넌트 리드를 담당자로 넣으면서 `IssueAssigned` 를 발행하지 않는다.
+**「cloneIssue 가 알림을 안 보낸다」와 정확히 같은 양식**이다.
+
+**결과.** 컴포넌트를 바꿔 자동 배정된 담당자는 알림을 못 받는다. 같은 「배정」인데 경로에 따라 알림이 갈린다.
+
+**어떻게 발견.** 2026-08-09 clone 항목의 **적대적 반증**이 형제 진입점을 전수로 훑다가 잡았다.
+clone 만 고치면 이 경로가 그대로 남아 **반쪽 봉합**이 된다.
+
+**착수 시 주의.** clone 과 같은 fail-safe 게이트(기본 false)를 쓸 것. 배정 통로가 셋(create·clone·changeComponents)이
+되므로 ADR D-5 의 「REST 생성 경로 한정」 문구를 함께 개정해야 한다.
+
+> **✅ 2026-08-10 해소 (PR #355).** 예상대로 fail-safe 게이트를 썼고 ADR D-5 를 전면 개정했다
+> (제목의 「REST 생성 경로만」이 더 이상 사실이 아니다 — 표가 5경로를 담는다).
+>
+> ★**발행을 `existing.assigneeId == null` 블록 안에 뒀다.** 밖으로 빼면 「기존 담당자 유지」까지
+> 배정으로 세어 컴포넌트만 바꿔도 매번 알림이 나간다. 그 가드가 곧 「배정이 일어났다」의 정의다.
+>
+> ★**`changeAssignee` 만 게이트가 없는 것은 의도된 것**임을 ADR 에 명시했다 — 그 함수는 배정
+> 자체가 목적이라 모든 생산자가 알림을 의도한다. 「전부 무조건 발행」으로 통일하지 말 것.
+>
+> ★ADR 의 「남는 비대칭 (기록)」 문장이 clone 을 **9일간 그대로 살려 뒀다**는 점도 함께 적었다.
+> **적어 두는 것만으로는 닫히지 않는다.**
+
+---
+
+## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수)
+
+**무엇.** 기본값이 있는 non-null Kotlin 프로퍼티가 springdoc 에서 `required` 로 오표기되는 함정이
+`@RequestBody` DTO **11 클래스 · 27 프로퍼티**에 걸려 있다(2026-08-09 전수 측정).
+그중 `CreateIssueRequest.componentIds` 1건만 좁게 봉합했고 **26건이 남는다**.
+
+**가장 심각한 것.** `UpdateIssueRequest` 의 `JsonNullable` 6필드
+(`securityLevelId`·`startDate`·`dueDate`·`targetDate`·`originalEstimateSeconds`·`remainingEstimateSeconds`).
+`JsonNullable` 은 「필드 부재 = 변경 없음」을 표현하려고 도입한 타입인데(ADR D-2)
+스펙이 그 6개를 전부 필수로 문서화한다 — **PATCH 계약 자체가 문서상 파손 상태**다.
+
+**★손 열거는 반드시 샌다.** 1차 측정이 「5 DTO · 10 프로퍼티」였는데 전수 재측정은 **11 클래스 · 27 프로퍼티**였다.
+17개를 빠뜨렸다. ⇒ **차집합 판별식이 진짜 산출물**이고 봉합은 그 부산물이다.
+
+**절대 건드리지 말 것.** `expectedVersion` 3곳은 `@field:NotNull` 이라 런타임에 진짜 필수다.
+`NOT_REQUIRED` 를 붙이면 「스펙은 optional, 서버는 400」이라는 **반대 방향 거짓말**이 된다.
+
+**★판별식 함정.** `com.bts.issue.application.{CreateIssue,UpdateIssue,CloneIssue}Request` 가 REST DTO 와 **동명**이다
+(`IssueApplicationRequests.kt:34,176,269`). simple-name 매칭으로 짜면 엉뚱한 DTO 를 검사하고
+**초록인 채 아무것도 안 지킨다** — FQCN 으로 고정할 것.
+
+**대안 검토.** springdoc `PropertyCustomizer` 로 「기본값 있고 `NotNull`/`NotBlank` 없는 Kotlin 프로퍼티는
+required 에서 제외」를 전 모듈에 거는 전역 처방도 있다. 폭발 반경이 9 BC 전체라 별도 스펙 필요.
+
+---
+
+## ✅ issue-tracking — 라벨 상한 상수 사본이 3개가 된다 (해소 2026-08-10 · PR #355)
+
+**무엇.** `LABEL_MAX_LENGTH = 50` 이 도메인 `Issue.kt`(파일 private) 1곳 + `CreateIssueRequest.kt` 1곳에 있고,
+PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 된다.
+
+**왜 지금 안 합쳤나.** 2026-08-09 Maxi 확정 「좁게」. 공용 상수로 수렴하려면 **이연 항목 봉합 PR 이
+생성 경로 파일까지 만지게** 되므로 범위를 넘긴다.
+
+**결과.** `[[two-lists-never-check-each-other]]` 양식. 한 곳만 바꾸면 나머지 둘이 조용히 어긋난다.
+
+**처방.** `IssueLabelConstraints.kt` 같은 공용 지점 신설 후 3곳이 참조. 값 일치를 단언하는 짝 테스트 필수
+(도메인 상수는 파일 private 이라 리플렉션이 아니라 **경계 동작**(50자 200 / 51자 400)으로 대조해야 한다).
+
+> **✅ 2026-08-10 해소 (PR #355).** `IssueLabelConstraints` 단일 출처로 수렴.
+> ★**이 항목은 길이 상한만 적었으나 실측하니 개수 상한(20)도 같은 3중 사본**이었다. 함께 닫았다.
+>
+> 판별식을 두 종류로 나눴다 — **구조 단언**(사본이 사라졌는가. red 동인)과 **경계 회귀핀**
+> (세 층이 같은 지점에서 갈리는가). 후자는 **값이 우연히 같아 봉합 전에도 초록**이었다.
+> 그래서 결함이 잠복했다. 숫자를 테스트에 다시 적지 않는다 — 적으면 **네 번째 사본**이 된다.
+> 사용자에게 보이는 오류 문구가 상한과 어긋나지 않는지도 리플렉션으로 대조한다.
+
+---
+
+## ⬜ apps/web — 담당자/리드 후보가 검색 전에 전량 노출되는 곳이 **3군데 더** 있다 (선재 · 미착수)
+
+**무엇.** 「검색해야 후보가 나온다」 규칙이 적용되지 않은 표면이 이슈 상세 말고도 3곳이다.
+
+| 표면 | 좌표 | 비고 |
+|---|---|---|
+| 이슈 목록 담당자 셀 | `components/issues/cells/AssigneeCell.tsx:250-253` | FR-UX-11 F9 · PR #338 로 **새로 생긴** 표면 |
+| 컴포넌트 리드 셀렉터 | `ComponentLeadSelect.tsx:102` | |
+| 프로젝트 리드 셀렉터 | `ProjectLeadSelect.tsx:116` | |
+
+**★컴포넌트 내부 가드로는 안 닫힌다.** `AssigneeCell` 은 `IssueAssigneeSelect` 를 쓰지 않고
+자체 `AssigneeCellEditor` 를 갖는다. 각 소비처에서 걸러야 한다.
+
+**착수 시 주의.** `AssigneeCell` 은 `useUsers` 를 `vi.mock` 으로 고정하고 있어 **red 를 만들려면 mock 부터 뜯어야** 한다.
+리드 셀렉터 2곳은 후보 모수가 작아 「누가 있는지 훑어본다」가 정상 사용일 수 있으므로 **결함 여부부터 판정**할 것.
+
+**하지 말 것.** `useUsers` 에 전역 `enabled` 를 다는 「더 깔끔한」 처방 — 소비처 8곳 중 필터 계열이 빈 검색어 전체 목록에 의존한다.
+
+---
+
+## ⬜ apps/web — 한글 리터럴 placeholder 28곳이 i18n 밖에 있다 (선재 · 미착수)
+
+**무엇.** `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 `placeholder` 가 **28곳**
+(`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` ·
+`CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 29곳.
+
+**처방 — 손 열거가 아니라 ESLint 래칫.** `apps/web/eslint.config.js:69·116` 에 이미 있는
+`no-restricted-syntax` AST 선택자 배열에 `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]` 를 더하고,
+현재 히트를 예외 파일 목록으로 등재한 뒤 고칠 때마다 목록에서 뺀다.
+**렌더 테스트로는 못 잡는다** — i18n 값과 하드코딩 값이 바이트 동일하면 DOM 속성 문자열이 같아
+「속성값은 출처를 싣지 않는다」.
+
+**착수 전 확정할 것 2건.** ① `ComponentMultiSelect.tsx:78` 은 템플릿 리터럴이라 `Literal` 선택자에 안 걸린다
+(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부). ② 위 28 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다**
+— 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재. 로컬 lint 목록 ≠ CI lint 목록 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
+
+**★중복 추적 주의.** 같은 부류가 `docs/plan/product/personalization.md:479-483` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로
+따로 추적 중이다. 착수 시 **그쪽을 이 항목으로 흡수**할 것 — 두 곳에 나뉘어 있으면 서로를 검사하지 않는다.
+
+---
+
+## ✅ apps/web — `isRequiredFieldEmpty` 사본 2곳이 갈라진다 (해소 2026-08-10 · PR #358)
+
+**무엇.** 동일 함수가 `components/issue/IssueCreateForm.tsx:48-68`(생성)과
+`components/issue/meta/IssueCustomFieldsEdit.tsx:31-52`(편집)에 **글자 단위로 같은 사본**으로 존재한다.
+
+**왜 지금 안 합쳤나.** 2026-08-09 Maxi 확정 「좁게」 — 이번엔 생성 폼만 고쳤다.
+⇒ **편집 화면에는 같은 결함(required MULTI_SELECT 미입력이 통과)이 그대로 남아 있다.**
+
+**★심각도 격상 — 이번 봉합이 두 화면의 규칙을 갈라놓았다 (게이트2 리뷰).**
+단순한 사본 중복이 아니다. 생성 폼은 이제 「required CHECKBOX 는 체크해야 제출 가능」인데
+편집 화면은 옛 `return false` 라 **체크 없이도 통과**한다. 같은 이슈의 같은 필드가
+**만들 때와 고칠 때 규칙이 다르다.** 사용자는 이유를 알 수 없다.
+또 편집 화면은 required MULTI_SELECT 미입력을 통과시켜 백엔드 422 로 튕기는데,
+그 경로에는 `CUSTOM_FIELD_VALIDATION_FAILED` 매핑도 없어 일반 에러가 뜬다.
+⇒ **Maxi 재검토 대상.** 좁게 두기로 한 결정이 「사본 하나 남김」이 아니라
+「두 화면이 서로 다른 계약을 갖는다」로 귀결됐다.
+
+**처방.** `apps/web/src/components/custom-fields/required-empty.ts` 로 단일 출처를 만들고 두 사본을 import 로 대체.
+`IssueCustomFieldsEdit` 의 `eslint-disable react-refresh/only-export-components` 주석도 함께 제거된다.
+이 named export 를 파일 밖에서 import 하는 곳은 전수 grep **0건**이라 re-export 없이 안전.
+
+**짝 테스트.** FieldType 10종 × 입력 9종(`undefined`·`null`·`''`·`[]`·`['a']`·`0`·`NaN`·`false`·`true`) 표 테스트를
+`toBe(true)`/`toBe(false)` **양쪽 다** 명시. `expect(ALL).toHaveLength(10)` 로 신규 FieldType 유입도 막을 것.
+
+> **✅ 2026-08-10 해소 (PR #358).** 처방대로 `components/custom-fields/required-empty.ts` 단일
+> 출처로 수렴하고 사본 2개를 삭제했다. 편집 화면의 `eslint-disable react-refresh/…` 도 사라졌다.
+> 파일 밖 import 는 전수 grep 0건이라 re-export 없이 안전했다(사전 조사대로).
+>
+> 표는 유형 목록을 손으로 적지 않고 `fieldTypeEnum` 에서 **파생**시킨다 — 적으면 네 번째
+> 사본이 된다. 「유형 전수를 덮는가」를 별도 단언으로 강제하고, 텍스트류 7종의 규칙이 서로
+> 완전히 같은지도 고정했다(한 유형만 슬쩍 바꾸는 변경 차단).
+
+---
+
+## ✅ apps/web — 권한상 **숨겨진** required 커스텀 필드가 영구 저장 실패를 만든다 (클라이언트 몫 해소 2026-08-10 · PR #358)
+
+**무엇.** `IssueCustomFieldsEdit.tsx:101` 은 `visibleFieldDefs`(FR-PM-07 숨김 제외) 기준으로 검증하고
+`handleSave`(`:166-176`)도 그 기준이다. 반면 백엔드 `mergeCustomFieldsAndValidate`
+(`IssueApplicationService.kt:1508-1511`)는 **활성 정의 전량** 기준으로 병합 후 검증한다.
+
+**결과.** required 필드가 특정 사용자에게 restricted 이고 그 이슈에 아직 값이 없으면
+(사후 추가 또는 required 플립), 클라는 그 필드를 **렌더도 검증도 하지 않고** 저장을 통과시키는데 백엔드가 422 를 낸다.
+⇒ **사용자는 화면에 없는 필드 때문에 영원히 저장에 실패한다.** 원인을 알 방법이 없다.
+
+**처방 후보.** ① 검증 기준을 `visibleFieldDefs` 가 아니라 `fieldDefs` 로 올리고
+「권한 없는 필수 필드가 비어 있어 저장할 수 없습니다」를 띄운다 ② 편집 경로에도
+`CUSTOM_FIELD_VALIDATION_FAILED` 에러 매핑을 넣는다. ~~①이 근본적이다.~~
+
+> **★2026-08-10 실측 — 처방 ①은 성립하지 않는다. 지금 버그보다 나쁘다 (PR #358).**
+> `IssueResponse.maskInvisible` 이 열람 권한 없는 커스텀 필드의 **값을 응답에서 필터링**한다
+> (`customFields = filteredCustom`). 그래서 클라이언트는 그 필드가 「비어 있음」인지
+> 「채워져 있음」인지 **구분할 수 없다.** 전량 검증으로 올리면 **값이 이미 채워진 사용자까지
+> 거짓 차단**한다 — 저장 실패를 더 넓은 저장 실패로 바꾸는 셈이다.
+>
+> ⇒ **처방 ②만 채택**했다. 폴백(「잠시 후 다시 시도해 주세요」)이 **재시도해도 안 되는데
+> 재시도를 권하던** 것을 고치고, 문구에 「화면에 보이지 않는 필수 필드가 원인일 수
+> 있습니다」를 넣어 원인을 짐작할 단서를 준다. 판정은 순수 함수 `classifyMetaMutationError`
+> 로 분리했고, **409 가 CUSTOM_FIELD 코드를 달고 와도 version-conflict 가 이기는 순서**를
+> 단언으로 고정했다(409 의 재조회 부수효과를 놓치면 낡은 버전으로 계속 저장을 시도한다).
+>
+> **근본 해결은 백엔드 몫으로 남는다** — 아래 신규 항목 참조.
+
+---
+
+## ✅ apps/web — 클론 액션이 CREATE 권한을 안 보고 노출된다 (해소 2026-08-10 · PR #357)
+
+**무엇.** `IssueMetaPanel.tsx:437-441` 이 클론 액션을 **서버 403 + 토스트 fail-safe** 로 두면서
+「프론트 권한 API 가 CREATE 를 안 줘서 사전 게이트가 불가능하다」를 근거로 적어 두었다.
+그 근거는 **지금 거짓**이다 — `project-permissions.ts:24-34` 가 `CREATE: z.boolean()` 을 내준다.
+
+**결과.** 「UI 가 서버가 403 할 생성 액션을 내놓는다」가 남는다. 이슈 생성 폼 게이트를 넣어도 클론은 그 통로를 안 지난다.
+
+**같은 부류의 서버 경로.** 클론(`IssueApplicationService.kt:355`) · 이동(`IssueMoveService.kt:190`) ·
+임포트(`IssueImportAdapter.kt:288`) 셋 다 CREATE 를 요구하는데 `IssueCreateForm` 을 지나지 않는다.
+
+**처방.** 낡은 주석을 먼저 지우고, 클론 버튼에 선택 프로젝트 기준 CREATE 판정을 붙인다.
+판정식은 **`permissions.CREATE === false`(명시 거부만 차단)** 형태여야 한다 — `!isLoading && === true` 는
+로딩/조회실패 구간에서 정상 사용자를 막는다.
+
+> **✅ 2026-08-10 해소 (PR #357).** `useIssueCreatePermissionGate` 를 **그대로 재사용**했다 —
+> 사본을 만들지 않는다. 생성 폼과 같은 판정식·같은 논거를 써야 두 화면이 갈라지지 않는다
+> (이 문서가 required 판정에서 이미 그 양식을 한 번 겪었다).
+>
+> 미지에서는 버튼을 **열어 둔다.** 막으면 CREATE 를 실제로 가진 사용자가 영구 차단된다.
+> 서버 403 + 토스트가 최종 판정한다 — 여기서 막는 것은 **서버가 확실히 거절할 액션**뿐이다.
+>
+> **★같은 부류의 서버 경로 3종(클론·이동·임포트)은 여전히 `IssueCreateForm` 을 지나지 않는다.**
+> 이번에 닫은 것은 클론 **UI** 하나다. 이동·임포트 진입점의 게이트는 미착수 상태로 남는다.
+
+---
+
+## ⬜ apps/web(테스트 인프라) — 로컬 `setupServer` 59개 전면 이주 (미착수)
+
+**무엇.** 이중 디스패치의 근본 원인인 로컬 `setupServer` 인스턴스가 테스트 파일 **60개** (2026-08-09 실측 · `src/test/server.ts` 제외)에 남아 있다.
+판별식(동결)만 세워 신규 유입은 막았으나 기존 59개는 그대로다.
+
+**왜 한 PR 로 안 하나.** ①이주 중 대량 RED 가 예상되고 ②프론트 전 스위트 반복 실행이
+러너 1대 직렬 문제와 정면 충돌해 검증이 취소될 공산이 크다. **BC/디렉토리 단위로 쪼갤 것.**
+판별식의 허용목록을 점차 줄이는 방식으로 진척을 강제한다.
+
+**★기계적 치환이 아니다.** 로컬 서버가 뜨면 **전역 핸들러가 통째로 죽는다**(실측).
+이주하면 그 파일들에서 **`/auth/refresh` 가 처음으로 살아나** `apiFetch` 의 401 자동 재시도가
+지금은 실패하던 자리에서 성공한다 — **401/403 을 단언하는 테스트의 결과가 뒤집힌다.**
+
+**필수 규율.** 핸들러 등록은 반드시 `beforeEach`(전역 `setup.ts:21` 의 `afterEach(server.resetHandlers())` 때문).
+선례 3건 — `import-handlers.test.ts:13-22` · `profile-handlers.test.ts:8-18` · `status-handlers.test.ts:8-16`.
+
+---
+
+## ⬜ apps/web(테스트 인프라) — 지연 MSW 핸들러 34개 파일의 pending mutation 누수 미측정 (미착수)
+
+**무엇.** 「테스트가 끝났는데 mutation 이 아직 날고 있다」 누수를 `AutomationYamlImportDialog.test.tsx` 한 파일에서만 닫았다.
+**지연 MSW 핸들러를 쓰는 테스트 파일이 34개**이고 그중 몇 개가 같은 누수를 갖는지는 **미측정**이다.
+
+**왜 승계를 미뤘나.** 34개 파일에 `afterEach` 불변식을 한 번에 넣으면 **한 PR 에서 대량 red** 가 터지고
+「한 PR = 한 BC」 규칙과도 부딪힌다.
+
+**처방.** 공용 `createTestQueryClient` 헬퍼 + 전역 `afterEach` 로
+`queryClient.getMutationCache().getAll().filter(m => m.state.status === 'pending')` 가 빈 배열임을 단언.
+디렉토리 단위로 나눠 넣을 것.
+
+---
+
+## ✅ apps/web — `mutateAsync` 를 catch 없이 호출하는 곳 2군데 (해소 2026-08-10 · PR #357)
+
+**무엇.** `BulkTransitionDialog.tsx:158` 과 `BulkEditDialog.tsx:101` 이 `mutateAsync` 를 catch 없이 호출하고
+`void handleApply()` 로 띄운다.
+
+**결과.** 실패하면 **프로덕션에서도 unhandled rejection** 이 된다.
+**★단 「사용자에게 피드백이 없다」는 거짓이다 (게이트2 리뷰).** `use-bulk-operation.ts:58` 의 `onError` 가 이미 `toast.error` 를 띄운다.
+남는 것은 **re-throw 된 rejection 이 전역으로 새는 것**뿐이므로, 봉합할 때 `CloneIssueDialog` 처럼 **빈 catch 만** 넣고 토스트를 새로 추가하지 말 것 — 추가하면 같은 실패 1회에 토스트가 2건 뜬다.
+테스트 인프라 문제가 아니라 **실사용 결함**이다.
+
+**정본 패턴.** `CloneIssueDialog.tsx:76-81` 의 try/catch 가 이미 같은 이유를 주석으로 적어 두었다 — 그 형태를 따를 것.
+
+> **✅ 2026-08-10 해소 (PR #357).** 정본 패턴대로 빈 catch 만 넣었다(토스트 추가 안 함).
+>
+> ★**red 서명이 이 항목이 기술한 형태 그대로였다** — `Tests 19 passed` 인데 `Errors 2 errors`.
+> 통과 건수만 읽으면 초록으로 보고하게 되는 바로 그 상태를 실측했다.
+>
+> 테스트가 잡는 기전을 적어 둔다. 단언 자체(콜백 미호출·다이얼로그 유지)는 봉합 전후 모두
+> 통과할 수 있다. 결정적인 것은 **실제 거부를 흘려보낸다**는 점이다 — catch 가 없으면 vitest 가
+> 오류를 보고하고 스위트 종료 코드가 1 이 된다. `src/test/setup.ts` 가 `unhandledRejection`
+> 리스너 추가를 금지하는 이유가 이 신호를 살려 두기 위함이다.
+
+---
+
+## ✅ 인프라 — 대시보드 TODOS 파서가 `📌` 마커를 모른다 (해소 2026-08-10 · PR #353)
+
+**무엇.** `scripts/workflow/todos-resolved-section-purity.test.ts:129` 는 섹션 헤딩 마커로
+**해소 · 보류 · 미해결 셋을** 허용한다. 그런데 `scripts/build-dashboard.mjs:217` 의 정규식은
+**해소와 미해결 둘만** 인식한다(보류 마커가 빠져 있다).
+
+> 이 절에서 마커를 **문자 대신 이름으로** 적는다. 이 섹션이 해소로 닫히면서, 본문에 미해결
+> 마커 문자가 남아 있으면 순수성 판별식이 **숨은 미해결로 오인**하기 때문이다.
+> 실제로 이 문서를 닫을 때 그 판별식이 울었고, 그게 규칙이 살아 있다는 증거다.
+
+**결과.** 보류 섹션을 하나라도 만들면 그 헤딩과 본문이 **앞 섹션의 본문으로 흡수**되고
+대시보드 집계에서 **통째로 사라진다.** 게다가 앞 섹션이 해소인데 흡수된 본문에 미해결 마커가
+있으면 순수성 판별식이 엉뚱한 섹션을 지목한다.
+
+**왜 아직 안 터졌나.** 현재 `📌` 섹션이 **0건**이라 잠복 중이다. 「보류」로 분류하고 싶은 항목이 생기는 순간 터진다.
+
+**어떻게 발견.** 2026-08-09 기술 부채 12건 전수 검증 중, 「결함 아님·유지」 항목(접힘 레일)을
+`📌` 로 옮길지 검토하다 두 목록이 어긋난 것을 확인했다. `[[two-lists-never-check-each-other]]` 양식.
+
+**처방.** 파서 정규식에 `📌` 를 추가하고 `parseTodos` 가 `보류` 상태를 돌려주게 한다.
+**짝 판별식 필수** — 판별식의 허용 마커 집합과 파서의 인식 마커 집합이 **같음**을 단언하는 테스트를 세운다.
+한쪽만 고치면 다음 마커에서 같은 일이 반복된다.
+
+> **✅ 2026-08-10 해소 (PR #353).** 마커 목록을 손으로 적은 곳이 **셋**이었다 —
+> 파서 정규식 · 순수성 판별식 · `build-dashboard.test.mjs:171`. `TODO_STATUSES` 상수 하나로
+> 모으고 셋 다 거기서 파생시켰다. 「같음을 단언하는 짝 테스트」가 아니라 **목록을 하나로**
+> 만든 것이 처방의 최종 형태다 — 두 목록이 있는 한 단언은 그 둘이 갈라진 뒤에야 운다.
+>
+> **★파서만 고치는 것은 절반이었다.** `renderTodos` 도 그룹을 손으로 열거하고 있어서,
+> `📌` 를 파싱해 놓고 렌더에서 안 그리면 결과는 「화면에서 사라짐」으로 **동일**하다.
+> 렌더 그룹도 같은 상수에서 만들고 「상태별 건수 합 = 전체」를 단언으로 고정했다.
+>
+> **★같은 PR 이 더 큰 것을 먼저 잡았다.** `scripts/` 의 테스트 **5파일 57건**이 CI·husky·
+> lint-staged 어디에도 실행 경로가 없었다. 판별식 실행 건수 **122 → 190**. 신설
+> `script-test-coverage.test.ts` 가 「디스크의 테스트 파일 ∖ 러너가 훑는 glob」을 0 으로 강제한다.
+
+
+## ✅ apps/web — 이슈 목록 「새 이슈」 버튼이 로딩·조회실패 구간에 거짓 안내를 한다 (해소 2026-08-10 · PR #357)
+
+**무엇.** `routes/issues.index.tsx:526` 의 `const canCreate = !isPermLoading && permData?.permissions.CREATE === true`
+(미지 = 거부)가 `:447` 의 `aria-label="새 이슈 (권한 없음)"` 와 묶여 있다.
+
+**결과.** CREATE 권한을 **실제로 가진** 사용자가 `/issues` 를 열면 권한 응답이 오기 전까지
+`aria-label="새 이슈 (권한 없음)"` 인 disabled 버튼이 렌더된다. 스크린리더 사용자는 **매 진입마다
+「권한 없음」이라는 거짓 안내**를 듣는다. `use-project-permissions.ts` 에 `retry:false` 도 에러 폴백도
+없으므로 500·네트워크 단절이면 그 상태로 **영구히 안착**한다.
+
+**어떻게 발견.** 2026-08-09 이슈 생성 CREATE 게이트 작업의 게이트2 리뷰. 그 작업은 판정식을
+`permissions.CREATE === false`(**명시 거부만** 차단)로 뒤집어 이 함정을 피했는데, 목록 화면은 범위 밖이었다.
+
+**처방.** 같은 `=== false` 형태로 뒤집는다. 시각적 disabled 는 남기더라도 **접근성 이름이 사실을
+주장하지 않게** 하는 것이 핵심이다 — 미지 상태에서는 「권한 없음」이라고 말하지 않는다.
+
+**착수 시 읽을 것.** `components/issue/IssueCreateForm.tsx` 의 `isCreateExplicitlyDenied` KDoc(정본 논거) ·
+`hooks/use-project-permissions.ts:31-38`(retry·폴백 부재).
+
+> **✅ 2026-08-10 해소 (PR #357) — 처방을 좁혔다.**
+> 「같은 `=== false` 형태로 뒤집는다」를 **판정식 전체가 아니라 접근성 이름에만** 적용했다.
+> `boolean` 을 `'allowed' | 'denied' | 'unknown'` 세 상태로 나누고, **시각적 disabled 는 유지**한다
+> (기존 T5-C·T5-D 가 fail-closed 결정을 이미 못박았다). 바꾼 것은 **이름이 이유를 주장하지
+> 않게** 한 것뿐이다 — 기존 결정을 뒤집지 않고 거짓말만 없앤다.
+>
+> 대조군(명시 거부에서는 사유를 말한다)을 함께 넣었다 — 없으면 「문구를 통째로 지우는」
+> 변경으로도 나머지 단언이 통과한다.
+
+---
+
+## ✅ 인프라 — 머지·닫힌 PR 의 큐 잔존 run 차단 (해소 2026-08-10 · PR #354)
+
+**무엇.** `concurrency` 는 **같은 그룹에 새 run 이 생길 때만** 이전 run 을 취소한다. 이미 머지되고
+브랜치까지 삭제된 PR 의 큐 잔존분은 그 ref 에 후속 run 이 영영 생기지 않아 **취소가 발화할 계기 자체가 없다.**
+2026-08-07 큐 8건 중 3건이 정확히 그 경우(PR #346)였다.
+
+**★원안은 실측이 반증했다.** 「`runner-health` 잡에 취소 스텝을 넣는다」는 성립하지 않는다 —
+`runner-health` 는 run 의 **맨 앞**이라 run 생성 직후에 돌고, 나머지 잡은 그 뒤 몇 시간에 걸쳐 배수된다
+(run 31139616352: created 01:56:08 → runner-health 01:57:09~). 좀비가 되는 시점에는 이미 끝나 있어
+「PR 이 아직 열려 있던 시점」만 판정하게 된다.
+
+**처방 후보.** ① `pull_request: types: [closed]` 트리거를 가진 얇은 워크플로우가 그 PR 의 진행 중 run 을
+`gh run cancel` 한다(자기 자신은 즉시 끝나므로 큐 점유가 거의 없다) ② `/bts-merge` 스킬이 머지 직후
+같은 정리를 한다(러너를 아예 안 쓴다). **fail-open 계약 필수** — API 실패·비대상 이벤트에서는 아무것도 하지 않는다.
+
+**착수 시 주의.** 이 항목의 개선폭은 `cancelled` 건수로 재면 안 된다 — concurrency 취소도 같은 상태를 만든다.
+**대기 시간(벽시계 − 실행 합계)** 으로 잴 것.
+
+> **✅ 2026-08-10 해소 (PR #354) — ★처방 ①도 반증됐다.**
+> 「`pull_request: types: [closed]` 얇은 워크플로우」는 **러너 1대 환경에서 성립하지 않는다.**
+> 그 취소 잡 **자신이 큐 맨 뒤에 서서** 풀어 주려던 정체가 끝나기를 기다린다 — 좀비를 치우는
+> 도구가 좀비 뒤에 줄을 선다. 「자기 자신은 즉시 끝난다」는 **실행이 시작된 뒤**의 이야기고
+> 병목은 시작 전이다. `ubuntu-latest` 우회도 불가(결제 차단으로 배정 자체가 안 된다).
+>
+> ⇒ **처방 ②를 채택했다.** `scripts/cancel-merged-pr-runs.sh` 를 `/bts-merge` Step 5 **맨 앞**에서
+> 부른다. **러너 소모 0.** 계약 2종 — fail-open(어떤 실패에도 exit 0) · 보호 브랜치 무접촉
+> (`main`/`master`/`HEAD`/빈 인자에서 gh 를 **한 번도 호출하지 않는다**).
+> `queued` 와 `in_progress` 를 **둘 다** 본다 — queued 만 보면 이미 러너를 잡은 좀비를 놓친다.
+>
+> **★남은 사각 (신규 등재 대상).** 이 처방은 **PR 브랜치의 run 만** 치운다. `main` 의 낡은 run 은
+> 보호 브랜치 계약상 건드리지 않으므로, main 이 여러 번 머지돼도 `paths` 필터 때문에 새 run 이
+> 안 생기는 워크플로우(예: `backend/**` 를 안 건드린 머지들)에서는 **낡은 main run 이 계속
+> 러너를 점유**한다. 2026-08-10 실측 — `backend-ci | main` 이 1h43m 점유, 그 뒤 4개 머지가
+> 전부 `backend/**` 미변경이라 취소가 발화하지 않았다. 아래 「CI 벽시계」 항목의 후속으로 잇는다.
+
+
+## ⬜ apps/web — `IssueCreateForm` 컴포넌트가 줄수 상한을 넘는다 (227 / 상한 200 · 미착수)
+
+**무엇.** `DEVELOPMENT.md §2.2` 는 「컴포넌트 200줄 이내 · 파일 300줄 이내」다.
+2026-08-09 CREATE 게이트 작업 후 실측 — **컴포넌트 227줄 · 파일 321줄**.
+
+| 대상 | main | 게이트 작업 직후 | 헬퍼 분리 후 | 상한 |
+|---|---|---|---|---|
+| 컴포넌트 | 197 | 243 | **227** | 200 |
+| 파일 | 349 | 426 | **321** | 300 |
+
+**★파일은 main 보다 작아졌다**(349 → 321). 남은 것은 컴포넌트 27줄 초과다.
+
+**왜 더 안 줄였나.** main 이 이미 197 로 상한 3줄 앞이었다 — 이 파일은 **어떤 추가도
+상한을 넘기는 상태**였다. 게이트·에러 초기화·안내 배너를 전부 빼도 ~206 이다.
+여기서 더 줄이려면 「폼의 상태와 제출」이라는 **응집된 관심사를 줄수 때문에 쪼개야** 해서
+멈췄다. 이미 분리한 것 2건 — `create/use-issue-create-permission-gate.ts` ·
+`create/issue-create-validation.ts`.
+
+**착수 시 방향.** 줄수를 맞추려고 임의로 자르지 말 것. 폼 상태를 의미 단위로
+(기본 필드 / 배정 / 추가 필드 / 제출) 나누는 정식 리팩터링과 함께 닫는다.
+
+---
+
+## ⬜ issue-tracking — 마스킹된 required 커스텀 필드의 충족 여부를 응답이 알려 주지 않는다 (신규 · 미착수)
+
+**무엇.** `IssueResponse.maskInvisible` 이 열람 권한 없는 커스텀 필드의 **값을 응답에서 제거**한다
+(`customFields = filteredCustom`). 그래서 클라이언트는 그 필드가 required 이고 비어 있는지를
+**원리적으로 알 수 없다.**
+
+**결과.** 그 필드가 required 이고 비어 있으면 사용자는 **화면에 없는 필드 때문에 저장에 영원히 실패**한다.
+2026-08-10(PR #358)에 에러 문구로 **단서만** 주는 완화를 넣었다 — 원인을 짐작할 수는 있으나
+**해결할 수는 없다.** 그 필드는 애초에 그 사용자가 편집할 수 없기 때문이다.
+
+**★위 항목의 원 처방(클라이언트가 전량 검증)이 왜 안 되는지 먼저 읽을 것.** 값이 마스킹돼 있어
+「비어 있음」과 「채워져 있음」이 구분되지 않으므로, 전량 검증은 **값이 이미 채워진 사용자까지
+거짓 차단**한다.
+
+**처방 방향 (택일 필요).**
+① 응답에 `unsatisfiedRestrictedRequiredFields: boolean` 같은 **충족 여부 플래그**를 싣는다.
+   값을 노출하지 않으면서 클라이언트가 「지금 저장하면 실패한다」를 미리 알 수 있다.
+② 백엔드가 마스킹된 required 필드는 **검증 대상에서 제외**한다. 「볼 수도 고칠 수도 없는 필드로
+   저장을 막지 않는다」는 정책 결정이며, 데이터 무결성 쪽 대가가 있다.
+③ 그 상태의 이슈를 애초에 만들 수 없게 한다(required 플립·사후 추가 시점에 백필 강제).
+
+**★①이 값 노출인지 먼저 판정할 것.** 「비어 있다」는 사실 자체가 정보다 — FR-PM-07 의 위협
+모델에서 그 1비트가 허용되는지 확인 없이 구현하지 말 것.
+
+---
+
+## ⬜ 인프라 — 낡은 `main` run 이 러너를 계속 점유한다 (paths 필터 사각 · 신규 · 미착수)
+
+**무엇.** `scripts/cancel-merged-pr-runs.sh`(PR #354)는 **PR 브랜치의 run 만** 치운다.
+보호 브랜치는 계약상 건드리지 않는다 — 머지 직후 시작되는 main 검증을 죽이면 이 도구가
+고치려던 문제(「현재 main 을 검증하는 run 이 0건」)를 스스로 만들기 때문이다.
+
+그런데 `concurrency` 도 여기서는 발화하지 않는다. **`paths` 필터 때문에 새 run 이 안 생기면**
+취소할 계기가 없다. 예를 들어 `backend-ci` 는 `backend/**` 에만 트리거되므로, 그 뒤 머지들이
+전부 프론트·스크립트만 건드리면 **낡은 main backend-ci 가 계속 러너를 점유**한다.
+
+**실측 (2026-08-10).** `backend-ci | main`(커밋 `236ff3532`)이 **1시간 43분** 점유했다. 그 사이
+main 에 4번 더 머지됐지만 전부 `backend/**` 미변경이라 새 run 이 0건이었고, PR 4개가 그 뒤에 섰다.
+러너가 1대라 그 점유가 그대로 전체 벽시계가 된다.
+
+**★자원 경쟁이 배수를 키운다 (같은 실측에서 확인).** 그 run 이 평소 36분짜리인데 1h43m 이 된 데는
+같은 머신에서 로컬 검증(vitest 전체 스위트·gradle)을 병행한 것이 겹쳤다. load average 20~40 이
+몇 시간 유지됐다 — 「CI 벽시계」 항목의 축 B 와 같은 조건이다.
+**개별 로컬 실행은 각각 「CI 슬롯을 아낀다」는 합리적 판단이었는데 합계를 아무도 안 봤다**
+(`[[split-questions-hide-their-combination]]` 양식).
+
+**처방 후보.**
+① 머지 스킬이 **main 의 낡은 run 중 「현재 main HEAD 가 아닌 커밋」을 대상**으로만 취소한다.
+   보호 브랜치 무접촉 계약을 「현재 HEAD 검증은 절대 안 건드린다」로 좁히는 것이다.
+② 로컬 무거운 검증 전에 `gh run list --status in_progress` 로 러너 점유를 확인하고,
+   점유 중이면 **대상 파일만** 돌린다. 사람/에이전트 규율이라 판별식으로 강제할 수 없다.
+
+**★개선폭을 `cancelled` 건수로 재지 말 것** — concurrency 취소도 같은 상태를 만든다.
+**대기 시간(벽시계 − 실행 합계)** 으로 잴 것.
+
+---
+
+## ⬜ apps/web — 이동·임포트 진입점에 CREATE 게이트가 없다 (클론만 닫힘 · 신규 · 미착수)
+
+**무엇.** 대상 프로젝트의 CREATE 권한을 요구하는 서버 경로가 셋이다 —
+클론(`IssueApplicationService.cloneIssue`) · 이동(`IssueMoveService`) · 임포트(`IssueImportAdapter`).
+셋 다 `IssueCreateForm` 을 지나지 않으므로 그 폼의 게이트가 덮지 못한다.
+
+2026-08-10(PR #357)에 **클론 UI 하나만** 닫았다. 이동·임포트 진입점은 그대로다.
+
+**처방.** `useIssueCreatePermissionGate` 를 그대로 재사용한다 — **사본을 만들지 말 것.**
+판정식은 `permissions.CREATE === false`(명시 거부만). 미지에서는 열어 두고 서버 403 이 최종 판정한다.
+
+**착수 시 주의.** 이동은 **대상 프로젝트가 폼 안에서 바뀐다** — 클론(고정 프로젝트)과 달리
+선택된 대상 프로젝트를 따라가야 한다. 생성 폼이 같은 문제를 이미 풀었으니 그 형태를 볼 것.
