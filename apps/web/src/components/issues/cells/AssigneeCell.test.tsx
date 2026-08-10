@@ -381,7 +381,10 @@ describe('AssigneeCell — 낙관 갱신 중간 표기 (리뷰 C3)', () => {
     await userEvent.click(
       screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) }),
     )
-    await userEvent.click(await screen.findByRole('button', { name: '맥시' }))
+    // 후보는 검색 뒤에만 나온다(위 「후보는 검색 뒤에만 나온다」 절 참조).
+    // 이 단계가 없으면 고를 후보가 없어 아래 클릭이 실패한다 — 계약이 바뀐 결과다.
+    await userEvent.type(screen.getByRole('textbox', { name: '담당자 검색' }), '맥')
+    await userEvent.click(await screen.findByRole('button', { name: '맥시' }, { timeout: 2000 }))
 
     const trigger = screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 담당자 변경`) })
     expect(trigger).toHaveTextContent('맥시')
