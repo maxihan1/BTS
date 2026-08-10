@@ -236,6 +236,45 @@ class IssueControllerCloneTest {
             .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"))
     }
 
+    // ── CL-8: REST 단건 클론은 알림을 켠다 (ADR D-5 게이트의 필수 짝) ────────────
+
+    /**
+     * 애플리케이션 계층 `CloneIssueRequest.notifyAssignment` 는 **기본 false**(fail-safe)다.
+     * 새 생산자가 알림을 조용히 켜지 못하게 하는 것이 목적이라 그 기본값은 옳지만,
+     * **컨트롤러가 true 를 넘기는지 검증하는 짝이 없으면 게이트가 통째로 공허해진다** —
+     * 서비스 테스트는 전부 `notifyAssignment = true` 를 직접 넣어 호출하므로
+     * 「실제 프로덕션 경로가 그 값을 넘기는가」는 아무도 안 본다.
+     *
+     * 기본값 인자로 추가된 필드라 기존 호출부가 조용히 컴파일된다는 점도 같은 이유로 위험하다
+     * (컴파일러가 잡아 주지 않는다). 이 단언이 그 자리를 메운다.
+     */
+    @Test
+    fun `POST clone — REST 경로는 notifyAssignment=true 를 서비스에 전달한다`() {
+        val reqSlot: CapturingSlot<AppCloneIssueRequest> = slot()
+        every { issueApplicationService.cloneIssue(any(), sourceKey, capture(reqSlot)) } returns clonedIssue
+
+        mockMvc.perform(
+            post("/api/v1/issues/BTS-1/clone")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("includeAssignee" to true))),
+        )
+            .andExpect(status().isCreated)
+
+        org.junit.jupiter.api.Assertions.assertEquals(true, reqSlot.captured.notifyAssignment)
+    }
+
+    /** 본문 없는 클론(기본값 경로)도 알림을 켠다 — 진입 형태에 따라 알림이 갈리면 안 된다. */
+    @Test
+    fun `POST clone — 본문이 없어도 notifyAssignment=true 를 전달한다`() {
+        val reqSlot: CapturingSlot<AppCloneIssueRequest> = slot()
+        every { issueApplicationService.cloneIssue(any(), sourceKey, capture(reqSlot)) } returns clonedIssue
+
+        mockMvc.perform(post("/api/v1/issues/BTS-1/clone"))
+            .andExpect(status().isCreated)
+
+        org.junit.jupiter.api.Assertions.assertEquals(true, reqSlot.captured.notifyAssignment)
+    }
+
     // ── CL-7: summaryOverride 255자 초과 → 400 ───────────────────────────────────
 
     @Test

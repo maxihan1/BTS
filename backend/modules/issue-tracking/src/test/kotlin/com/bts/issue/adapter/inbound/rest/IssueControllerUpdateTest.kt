@@ -491,4 +491,71 @@ class IssueControllerUpdateTest {
             .andExpect(jsonPath("$.status").value(404))
             .andExpect(jsonPath("$.errorCode").value("ISSUE_TYPE_NOT_FOUND"))
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 라벨 검증 — 생성 경로와 대칭 (TODOS 「도메인 require 실패가 500 으로 나간다」 봉합)
+    //
+    // `UpdateIssueRequest` 의 `List<@Size(max = 50) String>` 은 **장식이다.** Kotlin 이
+    // 타입-use 애노테이션을 런타임 보존 형태로 심지 않아 Bean Validation 이 못 본다.
+    // 그래서 51자 라벨이 400 으로 안 걸리고 도메인 `Issue.validateAndNormalizeLabels` 의
+    // `require` 까지 내려가는데, `IssueExceptionHandler` 에 `IllegalArgumentException`
+    // 핸들러가 없어 **500** 이 된다 — 사용자 입력 오류가 서버 장애로 기록된다.
+    //
+    // 생성 경로는 FR-UX-09 B1 이 `@AssertTrue` 로 이미 닫았다(IssueControllerCreateTest 참조).
+    // 수정 경로를 같은 술어로 맞춘다. ADR D-6 이 열어 둔 ②(전용 예외 → 422)는 채택하지
+    // 않는다 — `Issue.create` 도 같은 예외를 던지므로 **생성 경로의 400 계약이 422 로
+    // 뒤집혀** 기존 계약 테스트 3건과 프론트 에러 처리를 함께 깨뜨린다.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** 라벨만 담은 PATCH 를 보낸다. `expectedVersion` 은 필수라 함께 싣는다. */
+    private fun patchLabels(labels: List<String>) =
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("labels" to labels, "expectedVersion" to 1))),
+        )
+
+    /** 서비스가 호출될 경우를 대비한 stub — 400 이 나면 서비스는 아예 안 불린다. */
+    private fun stubSuccessfulUpdate() {
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), any())
+        } returns sampleResponse
+    }
+
+    @Test
+    fun `PATCH 이슈 수정 — label 하나가 51자이면 400`() {
+        stubSuccessfulUpdate()
+        patchLabels(listOf("A".repeat(51))).andExpect(status().isBadRequest)
+    }
+
+    // ★E6 대칭 — 공백만 있는 라벨은 길이 상한은 통과하지만 도메인 require(isNotBlank) 에 걸린다.
+    @Test
+    fun `PATCH 이슈 수정 — 공백만 있는 label 이면 400`() {
+        stubSuccessfulUpdate()
+        patchLabels(listOf("   ")).andExpect(status().isBadRequest)
+    }
+
+    // ── 양성 대조군 — 「항상 400」이 아님을 증명한다 ────────────────────────
+    //
+    // 이 짝이 없으면 위 두 단언은 DTO 를 통째로 거부하는 어떤 변경으로도 통과한다.
+
+    @Test
+    fun `PATCH 이슈 수정 — label 하나가 50자면 400 이 아니다`() {
+        stubSuccessfulUpdate()
+        patchLabels(listOf("A".repeat(50))).andExpect(status().isOk)
+    }
+
+    // 빈 문자열은 도메인이 필터링 대상으로 삼으므로(Issue.kt) 400 이 아니다 — 생성 경로와 같은 대비 축.
+    @Test
+    fun `PATCH 이슈 수정 — 빈 문자열 label 은 400 이 아니다`() {
+        stubSuccessfulUpdate()
+        patchLabels(listOf("")).andExpect(status().isOk)
+    }
+
+    // 개수 상한은 `@field:Size` 라 원래 동작한다 — 이 축은 회귀 방지용이다.
+    @Test
+    fun `PATCH 이슈 수정 — labels 가 21개이면 400`() {
+        stubSuccessfulUpdate()
+        patchLabels((1..21).map { "label$it" }).andExpect(status().isBadRequest)
+    }
 }

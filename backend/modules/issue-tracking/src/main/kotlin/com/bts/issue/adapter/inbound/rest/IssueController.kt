@@ -882,6 +882,10 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
             AppCloneIssueRequest(
                 includeAssignee = webRequest.includeAssignee,
                 summaryOverride = webRequest.summaryOverride,
+                // REST 단건 클론은 **사람의 배정 행위**다 — 담당자가 복사되면 알림을 보낸다.
+                // 애플리케이션 계층 기본값이 false(fail-safe)이므로 여기서 명시적으로 켠다.
+                // ADR D-5 와 같은 형태 — 알림을 켜는 책임은 생산자에게 있다.
+                notifyAssignment = true,
             )
         val cloned = service.cloneIssue(actor, IssueKey(key), appRequest)
         // 단건 조회와 동일하게 type 요약 + descriptionHtml 포함 응답을 위해 재조회한다.
