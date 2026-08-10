@@ -41,9 +41,16 @@ name: workflow-scripts-ci
 on:
   pull_request:
     paths:
+      # `scripts/` 전체. 이 잡이 도는 `pnpm test:workflow` 는 이제 scripts 아래 **모든**
+      # 테스트 파일을 훑으므로(2026-08-10) 트리거도 같은 범위여야 한다. 좁혀 두면
+      # `scripts/build-dashboard.mjs` 만 고치는 PR 에서 그 파일의 테스트가 0회 실행된다.
+      # scripts/workflow/script-test-coverage.test.ts 가 이 정합을 기계로 강제한다.
+      - 'scripts/**'
+      # ↓ 아래 두 줄은 `scripts/**` 에 이미 덮이지만 **지우지 말 것.**
+      #   `scripts/doc-index/**` 는 doc-index-coverage 룰 L-2 가 리터럴 존재를 단언한다.
+      #   지우면 기계로 검사되던 보장이 암묵 보장으로 내려간다.
       - 'scripts/workflow/**'
-      # runner-healthcheck-wiring 판별식이 읽는 입력. `scripts/workflow/**` 에 안 덮인다 —
-      # 이 줄이 없으면 헬스체크 스크립트만 고치는 PR 에서 배선 판별식이 0회 실행된다.
+      # runner-healthcheck-wiring 판별식이 읽는 입력.
       - 'scripts/verify-runner-health.sh'
       - '.github/workflows/**'
       - '.claude/skills/**'
@@ -65,9 +72,11 @@ on:
     # ★양쪽 블록에 같은 목록. 한쪽만 걸면 봉인이 절반만 닫힌다 —
     #  PR 에서는 돌고 main 직접 push 에서는 안 도는 상태가 된다.
     paths:
+      # `scripts/` 전체 — pull_request 블록과 **같은 목록**이어야 한다.
+      - 'scripts/**'
+      # ↓ `scripts/**` 에 덮이지만 지우지 말 것 (룰 L-2 가 리터럴을 단언한다).
       - 'scripts/workflow/**'
-      # runner-healthcheck-wiring 판별식이 읽는 입력. `scripts/workflow/**` 에 안 덮인다 —
-      # 이 줄이 없으면 헬스체크 스크립트만 고치는 PR 에서 배선 판별식이 0회 실행된다.
+      # runner-healthcheck-wiring 판별식이 읽는 입력.
       - 'scripts/verify-runner-health.sh'
       - '.github/workflows/**'
       - '.claude/skills/**'

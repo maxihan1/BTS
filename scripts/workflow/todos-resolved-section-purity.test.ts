@@ -6,11 +6,37 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { TODO_STATUSES, parseTodos } from '../build-dashboard.mjs'
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const TODOS = resolve(REPO_ROOT, 'TODOS.md')
 
-/** 미해결을 뜻하는 마커. 해소(✅)·보류결정(📌)과 구분된다. */
-const OPEN_MARKER = '⬜'
+/**
+ * 상태 마커 목록 — **파서와 같은 상수에서 파생**한다.
+ *
+ * ★여기 마커를 손으로 적지 않는다. 2026-08-10 이전에는 이 파일이 ✅·📌·⬜ 셋을 허용하는데
+ * `build-dashboard.mjs` 의 파서는 둘만 인식했다. 두 목록이 서로를 안 봐서, 📌 섹션을
+ * 만드는 순간 대시보드에서 통째로 사라지는 상태가 **잠복**해 있었다
+ * (`two-lists-never-check-each-other`). 이제 목록은 하나다.
+ */
+const ALL_MARKERS: string[] = TODO_STATUSES.map((s: { marker: string }) => s.marker)
+
+/**
+ * 미해결을 뜻하는 마커. 해소(✅)·보류(📌)와 구분된다.
+ *
+ * ★기본값으로 물러나지 않는다. `?? '⬜'` 같은 폴백을 두면 상수에서 「미착수」가 사라져도
+ * 이 파일만 조용히 옛 마커로 계속 돌아 **두 목록이 다시 갈라진다** — 방금 없앤 결함의 재발이다.
+ */
+const OPEN_MARKER: string = (() => {
+  const found = TODO_STATUSES.find((s: { status: string }) => s.status === '미착수')
+  if (found === undefined) {
+    throw new Error(
+      'build-dashboard.mjs 의 TODO_STATUSES 에 「미착수」 상태가 없다 — ' +
+        '이 판별식이 무엇을 미해결로 볼지 정할 수 없다. 상수를 먼저 확인하라.',
+    )
+  }
+  return found.marker
+})()
 
 interface Section {
   /** `## ` 다음의 제목 (마커 포함). */
@@ -126,14 +152,40 @@ describe('TODOS.md — ✅ 섹션의 순수성', () => {
    */
   it('모든 섹션 헤딩이 상태 마커를 갖는다', () => {
     const unmarked = sections
-      .filter((s) => !['✅', '📌', OPEN_MARKER].some((m) => s.heading.startsWith(m)))
+      .filter((s) => !ALL_MARKERS.some((m) => s.heading.startsWith(m)))
       .map((s) => `  TODOS.md:${s.startLine}  ${s.heading.slice(0, 80)}`)
 
     assert.deepEqual(
       unmarked,
       [],
-      `상태 마커(✅ 해소 / 📌 보류 / ${OPEN_MARKER} 미해결)가 없는 섹션이 있다 — 집계에서 조용히 누락된다.\n\n` +
+      `상태 마커(${TODO_STATUSES.map((s: { marker: string; status: string }) => `${s.marker} ${s.status}`).join(' / ')})가 ` +
+        '없는 섹션이 있다 — 집계에서 조용히 누락된다.\n\n' +
         unmarked.join('\n'),
     )
+  })
+
+  /**
+   * ★파서와 판별식이 **같은 마커 집합**을 쓰는지.
+   *
+   * 이 파일이 허용하는 마커를 파서가 모르면, 그 마커로 만든 섹션은 판별식은 통과하는데
+   * 대시보드에서는 앞 섹션에 흡수돼 사라진다. 2026-08-10 이전의 📌 가 정확히 그 상태였다.
+   * 지금은 목록이 하나라 원리적으로 갈라질 수 없지만, 누군가 여기에 마커를 **다시 손으로**
+   * 적어 넣는 순간 갈라진다. 그 재발을 이 단언이 막는다.
+   */
+  it('판별식이 허용하는 마커를 파서도 전부 인식한다 (단일 출처 확인)', () => {
+    const unknown = ALL_MARKERS.filter((marker) => {
+      const parsed = parseTodos(`# TODOS\n\n## ${marker} 제목\n\n본문.\n`)
+      return parsed.length !== 1
+    })
+
+    assert.deepEqual(
+      unknown,
+      [],
+      `아래 마커를 build-dashboard.mjs 의 parseTodos 가 섹션으로 인식하지 못한다 — ` +
+        '그 마커로 만든 섹션은 대시보드에서 앞 섹션에 흡수돼 사라진다.\n\n  ' +
+        unknown.join(' '),
+    )
+    // 비-공허 짝 — 훑을 마커가 0건이면 위 단언이 아무것도 안 지킨다.
+    assert.ok(ALL_MARKERS.length >= 3, `상태 마커가 ${ALL_MARKERS.length}종뿐이다 — 상수를 확인하라.`)
   })
 })

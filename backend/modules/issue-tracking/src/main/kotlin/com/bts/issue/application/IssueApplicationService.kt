@@ -306,8 +306,9 @@ class IssueApplicationService(
         )
         // FR-UX-09 B1 (ADR D-4 + D-5) — 담당자가 확정됐고 REST 생성 경로일 때만 발행한다.
         // 판정식은 「최종 assigneeId non-null AND notifyAssignment」 단일 술어다.
-        // notifyAssignment 를 빼면 Import 반입에서 이슈당 2회 발행된다
-        // (createIssue 자동배정 1회 + 직후 changeAssignee 1회, 첫 번째는 곧 덮어쓰일 거짓 알림).
+        // ★fail-safe 게이트. Import 는 이제 AssigneeIntent.None 을 넘겨 이 조건에 **도달하지 않는다**
+        //   (2026-08-09). 기본 false 를 유지하는 근거는 「현존 2회 발행 방어」가 아니라 defense-in-depth 다 —
+        //   앞으로 생길 새 생산자가 알림이 꺼진 채 태어나게 한다. 비-공허 증인은 CreateTest 의 2×2 행렬.
         if (request.notifyAssignment && resolvedAssignee != null) {
             eventPublisher.publish(
                 IssueAssigned(issueKey = saved.key, actorId = actor, occurredAt = Instant.now(clock)),
@@ -389,6 +390,17 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        // 클론본에 담당자가 확정됐으면 배정 알림을 발행한다 (TODOS 「cloneIssue 는 담당자를
+        // 정해도 IssueAssigned 를 발행하지 않는다」 봉합). 판정식은 createIssue 와 같은
+        // 단일 술어 — 「최종 assigneeId 가 non-null AND notifyAssignment」.
+        //
+        // ★issueKey 는 반드시 `saved.key`(클론본)다. 같은 스코프에 `sourceKey` 가 있어
+        //   그걸 쓰면 **원본 담당자에게 잘못 알림이 가는 더 나쁜 결함**이 된다.
+        if (request.notifyAssignment && saved.assigneeId != null) {
+            eventPublisher.publish(
+                IssueAssigned(issueKey = saved.key, actorId = actor, occurredAt = Instant.now(clock)),
+            )
+        }
         log.info("issue_cloned source={} clone={} actor={}", sourceKey.value, saved.key.value, actor.value)
         return saved
     }

@@ -48,13 +48,19 @@ data class CreateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String,
     val description: String? = null,
+    // ★기본값이 있는 non-null Kotlin 프로퍼티는 springdoc 이 required 로 판정한다(실측).
+    //   아래 assigneeId 와 같은 함정이며 봉인 방법도 같다. 실측 required 는
+    //   [componentIds, projectKey, summary] 였다 — 기본값이 emptyList 인데도 필수로 문서화됐다.
+    //   같은 함정이 이 BC 의 REST DTO 11클래스·27프로퍼티에 선재한다(2026-08-09 전수 측정).
+    //   잔여 26건과 차집합 판별식은 별도 TODOS 항목이다.
+    @field:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
     // ★requiredMode 명시가 필요한 이유 — JsonNullable<UUID> 는 Kotlin non-null 타입이라
     //   기본값이 있어도 springdoc 이 required 로 판정한다(실측 확인). 그대로 두면 생성된
-    //   클라이언트가 assigneeId 를 강제해 기존 소비자가 깨진다. 같은 함정이 componentIds 에
-    //   선재하지만(List<UUID> = emptyList()) 그건 이 PR 범위 밖이다.
+    //   클라이언트가 assigneeId 를 강제해 기존 소비자가 깨진다. 같은 함정에 걸려 있던
+    //   componentIds 도 2026-08-09 에 같은 방식으로 봉합했다(바로 위 참조).
     @field:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val assigneeId: JsonNullable<UUID> = JsonNullable.undefined(),
     @field:Min(value = 1, message = "priority는 1 이상이어야 합니다.")
@@ -71,15 +77,18 @@ data class CreateIssueRequest(
      * 길이만 막으면 공백-only 가 도메인까지 내려가 500 이 되므로 두 조건을 함께 본다.
      *
      * ★`List<@Size(max = 50) String>` 형태의 컨테이너 원소 제약을 쓰지 않는 이유 —
-     * `UpdateIssueRequest:80` 이 정확히 그 형태로 적혀 있지만 **실제로 동작하지 않는다**(실측 확인).
-     * 51자 라벨이 400 이 아니라 그대로 통과해 도메인 `require` 까지 내려가고,
-     * `IssueExceptionHandler` 에 `IllegalArgumentException` 핸들러가 없어 **500** 이 된다.
-     * 그 형태를 그대로 복사하면 새 경로도 같은 500 을 갖게 되므로(완제품 기준 위반),
-     * 생성 경로는 실제로 동작하는 `@AssertTrue` 로 400 을 보장한다.
+     * Kotlin 이 그 타입-use 애노테이션을 런타임 보존 형태로 심지 않아 Bean Validation 이
+     * **못 본다**(바이트코드로 확인). 51자 라벨이 400 이 아니라 그대로 통과해 도메인
+     * `require` 까지 내려가고, `IssueExceptionHandler` 에 `IllegalArgumentException`
+     * 핸들러가 없어 **500** 이 된다.
+     * `UpdateIssueRequest` 가 정확히 그 형태였고 실제로 그 500 을 내보내고 있었다 —
+     * 2026-08-09 에 제거하고 이 파일과 **같은 술어**의 `@get:AssertTrue` 로 맞췄다.
      *
-     * 수정 경로(`PATCH /issues/{key}`)의 동일한 선재 결함은 이 PR 범위 밖 — TODOS 등재
-     * (2026-07-31 Maxi 확정 D-6. 전역 `IllegalArgumentException` 핸들러는 진짜 버그를 400 으로
-     * 위장할 위험이 있어 채택하지 않았다).
+     * 수정 경로(`PATCH /issues/{key}`)도 2026-08-09 에 같은 형태로 봉합했다
+     * ([UpdateIssueRequest.isLabelsValid]). **두 술어를 갈라놓지 말 것** — 갈리는 순간
+     * 「생성은 400, 수정은 500」 비대칭이 되살아난다.
+     * 전역 `IllegalArgumentException` 핸들러는 여전히 채택하지 않는다(2026-07-31 Maxi 확정 D-6) —
+     * 진짜 버그를 400 으로 위장해 살아 있어야 할 500 을 숨긴다.
      *
      * `@JsonIgnore` — 검증 전용 파생 속성이라 요청 스키마에 노출하지 않는다.
      */

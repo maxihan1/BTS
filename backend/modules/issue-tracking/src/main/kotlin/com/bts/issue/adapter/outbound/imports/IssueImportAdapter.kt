@@ -4,6 +4,7 @@ package com.bts.issue.adapter.outbound.imports
 
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeVersionsRequest
+import com.bts.issue.application.AssigneeIntent
 import com.bts.issue.application.CreateIssueRequest
 import com.bts.issue.application.ImportStatusOutcome
 import com.bts.issue.application.IssueApplicationService
@@ -541,6 +542,15 @@ class IssueImportAdapter(
                         typeId = resolution.typeId,
                         description = cmd.description,
                         componentIds = resolution.componentIds,
+                        // ★반입 충실도 — 자동 배정을 끈다 (TODOS 「Import 가 원본에 없던 담당자를
+                        //   만든다」 봉합). 두 경우 모두 Auto 가 옳지 않다.
+                        //   · 원본에 담당자가 있으면 → 아래 applyAssigneeIfPresent 가 changeAssignee 로
+                        //     덮어쓰므로 여기서의 자동 배정은 낭비다.
+                        //   · 원본에 담당자가 없으면 → applyAssigneeIfPresent 가 조기 반환하므로
+                        //     자동 배정 담당자가 그대로 남아 **원본에 없던 담당자**가 생긴다.
+                        //   매칭된 담당자는 계속 changeAssignee 를 경유해야 이력·watcher·IssueAssigned
+                        //   경로가 유지되므로 applyAssigneeIfPresent 는 손대지 않는다.
+                        assignee = AssigneeIntent.None,
                     ),
             )
 
