@@ -111,7 +111,16 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
         )
 
     beforeEach {
-        clearMocks(repo, permissionResolver, componentRepository, projectLeadRepository, answers = false)
+        // ★eventPublisher 를 빼면 발행 횟수가 테스트 간에 **누적**돼 `verify(exactly = 0)` 이
+        //   이전 테스트의 발행 때문에 실패한다. 배정 알림 단언이 들어오면서 필요해졌다.
+        clearMocks(
+            repo,
+            permissionResolver,
+            componentRepository,
+            projectLeadRepository,
+            eventPublisher,
+            answers = false,
+        )
         every { projectLeadRepository.findLeadUserId(any()) } returns null
         every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
         every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
