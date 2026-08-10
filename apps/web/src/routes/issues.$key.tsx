@@ -2,7 +2,7 @@
 // KeyboardEvent 는 별칭으로 받는다 — 그냥 이름으로 들이면 usePaneEscapeClose(:79)가 쓰는
 // 전역 DOM KeyboardEvent 를 모듈 스코프에서 가려 document 리스너 타입이 조용히 바뀐다.
 import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -302,6 +302,25 @@ export function IssueDetailPage({
   /** S2: debounce 적용 — 1000명 규모 매 키스트로크 요청 방지 (250ms) */
   const debouncedAssigneeSearchQuery = useDebounce(assigneeSearchQuery, 250)
   const { data: users = [] } = useUsers(debouncedAssigneeSearchQuery)
+
+  /**
+   * 담당자 후보는 **검색해야 나온다**.
+   *
+   * `useUsers` 는 빈 검색어에 전체 사용자 목록을 돌려준다(훅 KDoc 참조 — 필터 계열
+   * 소비처가 그 동작에 의존하므로 훅에 전역 `enabled` 를 달 수 없다). 그대로 넘기면
+   * 담당자 칸을 여는 순간 사내 1,000명이 펼쳐진다.
+   *
+   * 판정 표현을 생성 폼의 정본 처방과 **문자 그대로 동일**하게 둔다 —
+   * `components/issue/create/use-assignee-picker.ts:58-61`. 두 화면이 같은 규칙임을
+   * grep 으로 확인할 수 있어야 한다.
+   *
+   * `currentAssignee`(useUsersByIds 경로)와 `canEdit` 은 이 배열과 독립적이라
+   * 여기서 걸러도 현재 담당자 표시·읽기 전용 경로는 영향받지 않는다.
+   */
+  const assigneeCandidates = useMemo(
+    () => (debouncedAssigneeSearchQuery.trim() === '' ? [] : users),
+    [debouncedAssigneeSearchQuery, users],
+  )
 
   /**
    * C1 버그 수정: 현재 담당자를 id 조회로 별도 확보.
@@ -1117,7 +1136,7 @@ export function IssueDetailPage({
               onImpactChange={handleImpactChange}
               onEnvironmentSave={handleEnvironmentSave}
               onLabelsSave={handleLabelsSave}
-              users={users}
+              users={assigneeCandidates}
               onAssigneeSearch={setAssigneeSearchQuery}
               onAssigneeChange={handleAssigneeChange}
               currentAssignee={currentAssignee}

@@ -457,3 +457,566 @@ describe('IssueCreateForm — 고른 담당자 표시 유지 (게이트 2 B-2)',
     expect(body.get()['assigneeId']).toBe(ALICE_USER_ID)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODOS 「이슈 제목 placeholder 만 i18n 키 없이 하드코딩돼 있다」 봉합 (2026-08-09)
+//
+// 같은 폼 안에서 본문·프로젝트 셀렉터는 i18n 정본을 쓰는데 제목만 리터럴이었다.
+// ★렌더 단언만으로는 하드코딩 복귀를 못 잡는다 — i18n 값과 리터럴이 바이트 동일하면
+//   DOM 의 placeholder 속성 문자열이 두 경우 완전히 같다(속성값은 출처를 싣지 않는다).
+//   그래서 소스 단언을 짝으로 둔다. 앱 전역 28곳에 대한 ESLint 래칫은 별도 TODOS 항목.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 제목 placeholder i18n 배선', () => {
+  it('제목 입력의 placeholder 가 i18n 정본에서 온다', async () => {
+    renderForm()
+
+    // ★red-first 의 핵심. 키가 없으면 undefined 라 여기서 터진다.
+    // 이 단언이 없으면 아래 toHaveAttribute 가 undefined 를 「속성 존재만 확인」으로
+    // 해석해 가짜 그린이 된다 (jest-dom 의 알려진 동작).
+    expect(typeof issueCreateStrings.summaryPlaceholder).toBe('string')
+    expect(issueCreateStrings.summaryPlaceholder.length).toBeGreaterThan(0)
+
+    const summary = await screen.findByLabelText(issueCreateStrings.summaryLabel)
+    expect(summary).toHaveAttribute('placeholder', issueCreateStrings.summaryPlaceholder)
+  })
+
+  it('★컴포넌트 소스에 한글 리터럴 placeholder 가 남아 있지 않다 (하드코딩 복귀 차단)', async () => {
+    // jsdom 환경에서는 import.meta.url 이 file: 스킴이 아니라 http: 라 URL 기반 해석이 안 된다.
+    // vitest 는 apps/web 을 cwd 로 돌므로 거기서 해석한다 — 경로가 틀리면 아래 length 단언이 잡는다.
+    const { readFile } = await import('node:fs/promises')
+    const { resolve } = await import('node:path')
+    const source = await readFile(
+      resolve(process.cwd(), 'src/components/issue/create/IssueCreateBasicFields.tsx'),
+      'utf-8',
+    )
+
+    // 비-공허 짝 — 파일을 실제로 읽었고 기대한 배선이 그 안에 있는지 먼저 못박는다.
+    // 이게 없으면 경로가 틀려 빈 문자열을 읽어도 아래 not.toMatch 가 조용히 통과한다.
+    expect(source.length).toBeGreaterThan(500)
+    expect(source).toMatch(/placeholder=\{issueCreateStrings\.summaryPlaceholder\}/)
+
+    const koreanLiteralPlaceholder = /placeholder\s*=\s*"[^"]*[가-힣][^"]*"/
+    expect(source).not.toMatch(koreanLiteralPlaceholder)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODOS 「required MULTI_SELECT 커스텀 필드가 클라이언트 검증을 그냥 통과한다」 봉합 (2026-08-09)
+//
+// 옛 판정은 분기마다 빈값 조건을 다시 적었고 MULTI_SELECT 분기가
+// `Array.isArray(raw) && raw.length === 0` 이라 **한 번도 안 건드린 필드(undefined)**를
+// 「빈값 아님」으로 통과시켰다. CHECKBOX(`return false`)도 같은 구멍이었다.
+//
+// 데이터는 백엔드가 지켰지만(CustomFieldValueValidator) 사용자에게는 폼 안 경고 대신
+// 서버 왕복 후 「잠시 후 다시 시도해 주세요」가 떴다 — 재시도해도 안 되는데 재시도를 권하는 문구.
+//
+// 2026-08-09 Maxi 확정 — MULTI_SELECT + CHECKBOX 둘 다 차단.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — required 커스텀 필드 빈값 판정 (스펙 E-3)', () => {
+  function mockRequiredField(fieldType: CustomField['fieldType'], key: string): void {
+    const field = {
+      id: 1,
+      key,
+      name: `필수 ${key}`,
+      fieldType,
+      required: true,
+      // MULTI_SELECT 위젯은 CustomFieldOption{value,label} 을 읽는다 — 문자열 배열이 아니다
+      options:
+        fieldType === 'MULTI_SELECT'
+          ? [
+              { value: 'A', label: 'A' },
+              { value: 'B', label: 'B' },
+            ]
+          : [],
+      displayOrder: 0,
+      projectKey: 'ATLAS',
+    } as unknown as CustomField
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [field],
+    } as never)
+  }
+
+  /** 제목만 채우고 제출한다 — 커스텀 필드는 일부러 건드리지 않는다. */
+  async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+  }
+
+  it('★한 번도 건드리지 않은 required MULTI_SELECT 는 폼 안에서 막힌다 (undefined 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('MULTI_SELECT', 'ms')
+    renderForm()
+
+    await fillAndSubmit(user)
+
+    // 폼 안 경고가 떠야 한다 — 서버 왕복 후 일반 에러가 아니라.
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    // 그리고 요청이 아예 나가지 않아야 한다. 「경고가 떴다」만 보면
+    // 경고와 제출이 동시에 일어나도 초록이라 두 단언을 짝으로 둔다.
+    expect(body.get()).toEqual({})
+  })
+
+  it('★한 번도 건드리지 않은 required CHECKBOX 도 폼 안에서 막힌다 (undefined 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('CHECKBOX', 'cb')
+    renderForm()
+
+    await fillAndSubmit(user)
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+
+  it('required CHECKBOX 를 체크하면 통과한다 (비-공허 짝 — 항상 막히는 게 아님을 증명)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('CHECKBOX', 'cb')
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.click(screen.getByTestId('custom-field-cb'))
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+    expect(screen.queryByTestId('custom-fields-required-error')).toBeNull()
+  })
+
+  it('required MULTI_SELECT 를 고르면 통과한다 (비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockRequiredField('MULTI_SELECT', 'ms')
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.click(await screen.findByRole('checkbox', { name: 'A' }))
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+    expect(screen.queryByTestId('custom-fields-required-error')).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★뮤테이션이 적발한 공허 가드 보강 (2026-08-09)
+//
+// 위 「한 번도 건드리지 않은 required CHECKBOX」 테스트는 선판정
+// (`raw === undefined → 빈값`)만으로 통과한다. 그래서 CHECKBOX 분기를 옛
+// `return false` 로 되돌려도 red 가 되지 않았다 — `raw !== true` 가 **무검증**이었다.
+//
+// 두 판정이 갈리는 유일한 입력은 `raw === false`(체크했다 해제한 상태)다.
+// 그 케이스를 직접 친다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — required CHECKBOX 는 「체크됨」만 충족이다', () => {
+  it('★체크했다 해제하면(false) 여전히 막힌다 — undefined 와 같은 판정', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    const field = {
+      id: 1,
+      key: 'cb',
+      name: '필수 cb',
+      fieldType: 'CHECKBOX',
+      required: true,
+      options: [],
+      displayOrder: 0,
+      projectKey: 'ATLAS',
+    } as unknown as CustomField
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [field],
+    } as never)
+    renderForm()
+
+    await waitForProjectSelect()
+    const checkbox = screen.getByTestId('custom-field-cb')
+    // 켰다가 끈다 — 값이 undefined 가 아니라 명시적 false 가 된다.
+    await user.click(checkbox)
+    await user.click(checkbox)
+    expect(checkbox).not.toBeChecked()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODOS 「상단바 「만들기」 버튼만 CREATE 권한 게이트가 없다」 봉합 (2026-08-09)
+//
+// 실측하니 무게이트 경로는 상단바 하나가 아니라 4개였고(상단바 · /issues/new 딥링크 ·
+// `c` 단축키 · 명령 팔레트), 게이트된 버튼으로 열어도 폼 안에서 무권한 프로젝트로
+// 갈아탈 수 있어 버튼 게이트만으로는 닫히지 않는다.
+//
+// 2026-08-09 Maxi 확정 — 게이트를 버튼이 아니라 **폼의 선택된 프로젝트**에 둔다.
+// 모든 진입 경로가 예외 없이 IssueCreateForm 하나를 지난다.
+//
+// ★판정식이 `!isLoading && CREATE === true`(미지=거부)면 안 된다. 그건 버튼을
+//   회색으로 만드는 용도라 아무 주장도 하지 않지만, 제출 차단 + 문구 노출은
+//   **사실 주장**이라 로딩 중·조회 실패 구간에서 거짓말이 된다.
+//   `CREATE === false`(명시 거부만 차단)로 둔다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 선택된 프로젝트의 CREATE 게이트', () => {
+  /**
+   * 지정한 projectKey 에만 CREATE 를 바꿔 주는 권한 핸들러.
+   *
+   * ★permissions 맵은 **전 키를 다 채워야 한다** — `projectPermissionsSchema` 가
+   * 7개 키를 전부 요구하므로 부분 응답은 Zod 에서 거부되고, 그러면 쿼리가 에러로
+   * 떨어져 「데이터 없음」이 된다. 그 상태로는 이 테스트가 게이트를 재는 게 아니라
+   * **조회 실패 경로**를 재게 되어 「엉뚱한 걸 쟀다」가 된다.
+   */
+  function setupPermissions(createByProject: Record<string, boolean>): void {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        const canCreate = createByProject[key] ?? true
+        // ★`{data:…}` 봉투를 씌우지 않는다 — parseResponse 가 응답 본문을 그대로
+        //   Zod 에 넘긴다(BC 별로 봉투 관례가 다르다). 봉투를 씌우면 파싱이 실패해
+        //   쿼리가 에러로 떨어지고, 이 테스트는 게이트가 아니라 조회 실패 경로를 잰다.
+        return HttpResponse.json({
+          projectKey: key,
+          permissions: {
+            CREATE: canCreate,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
+        })
+      }),
+    )
+  }
+
+  it('★CREATE 가 명시적으로 false 인 프로젝트로는 제출이 서버로 나가지 않는다', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    setupPermissions({ ATLAS: false })
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    // 권한 조회가 도착할 때까지 기다린다 — 이걸 안 하면 「게이트가 막았다」가 아니라
+    // 「아직 몰라서 통과했다」를 재게 되어 판정이 타이밍에 좌우된다.
+    await screen.findByTestId('create-permission-denied')
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    // 제출을 실제로 시도한다. 버튼이 비활성이어도 Enter 제출 경로가 남아 있으므로
+    // 「버튼이 회색이다」가 아니라 **네트워크가 나갔는지**로 단언한다.
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '{Enter}')
+
+    expect(body.get()).toEqual({})
+  })
+
+  it('CREATE 가 true 면 그대로 제출된다 (비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    setupPermissions({ ATLAS: true })
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+  })
+
+  it('★권한 조회가 실패해도 제출을 막지 않는다 (미지 ≠ 거부 — 오탐 거부 방지)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ message: 'boom' }, { status: 500 }),
+      ),
+    )
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    // 조회 실패로 CREATE 를 모르는 상태다. 여기서 막으면 권한이 있는 사용자를
+    // 「권한 없음」이라는 틀린 이유로 영구 차단한다 — 서버가 최종 판정하게 둔다.
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+  })
+
+  it('★서버가 403 을 주면 「잠시 후 다시 시도」가 아니라 권한 문구가 뜬다', async () => {
+    const user = userEvent.setup()
+    setupPermissions({ ATLAS: true })
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    // 기존에는 errorDefault(「잠시 후 다시 시도해 주세요」)가 떴다 —
+    // 재시도해도 안 되는데 재시도를 권하는 문구다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★게이트 2 리뷰가 적발한 공허 가드 보강 (2026-08-10)
+//
+// (1) CREATE 게이트의 **핵심인 handleSubmit 이른 반환이 무검증**이었다.
+//     기존 테스트는 `{Enter}` 로만 제출을 시도하는데, 같은 변경이 건 disabled 버튼
+//     때문에 jsdom 이 폼 제출을 아예 하지 않아 이른 반환이 실행되지 않는다.
+//     ★실사용에서 이 3줄이 유일한 방어인 경로가 있다 — 모달(CreateIssueDialog)은
+//     `formId` 를 넘겨 제출 버튼을 **폼 밖 푸터**에 두고 그 버튼에는 권한 게이트가 없다.
+//     상단바·`c` 단축키·명령 팔레트가 전부 그 경로다.
+//
+// (2) 선판정(`undefined|null → 빈값`)이 switch 뒤 분기를 가려 MULTI_SELECT `[]` ·
+//     텍스트류 `''` · NUMBER `NaN` 세 분기가 무검증이 됐다. CHECKBOX 에만 짝을 붙였었다.
+//     특히 MULTI_SELECT `[]` 는 **원 결함과 같은 필드**의 다른 입력 경로다 —
+//     옵션을 체크했다 해제하면 `undefined` 가 아니라 `[]` 가 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 폼 밖 제출(모달 경로)에서도 CREATE 게이트가 막는다', () => {
+  const EXTERNAL_FORM_ID = 'test-external-create-form'
+
+  function renderWithExternalSubmit() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <IssueCreateForm formId={EXTERNAL_FORM_ID} />
+        {/* CreateIssueDialog 푸터와 같은 구조 — 폼 밖 버튼이 form 속성으로 제출한다.
+            그 버튼에는 권한 게이트가 없으므로 handleSubmit 이른 반환이 유일한 방어다. */}
+        <button type="submit" form={EXTERNAL_FORM_ID}>
+          폼 밖 제출
+        </button>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('★CREATE=false 면 폼 밖 버튼으로 제출해도 서버로 안 나간다 (이른 반환 실행 경로)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        return HttpResponse.json({
+          projectKey: key,
+          permissions: {
+            CREATE: false,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
+        })
+      }),
+    )
+    renderWithExternalSubmit()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await screen.findByTestId('create-permission-denied')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+
+    // 폼 밖 버튼은 비활성이 아니다 — 눌린다. 막는 것은 handleSubmit 이른 반환뿐이다.
+    const external = screen.getByRole('button', { name: '폼 밖 제출' })
+    expect(external).not.toBeDisabled()
+    await user.click(external)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+    expect(body.get()).toEqual({})
+  })
+})
+
+describe('IssueCreateForm — required 빈값 판정의 유형별 분기 (선판정에 가려지지 않는다)', () => {
+  function mockField(fieldType: CustomField['fieldType'], key: string): void {
+    const field = {
+      id: 1,
+      key,
+      name: `필수 ${key}`,
+      fieldType,
+      required: true,
+      options:
+        fieldType === 'MULTI_SELECT'
+          ? [
+              { value: 'A', label: 'A' },
+              { value: 'B', label: 'B' },
+            ]
+          : [],
+      displayOrder: 0,
+      projectKey: 'ATLAS',
+    } as unknown as CustomField
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [field],
+    } as never)
+  }
+
+  it('★MULTI_SELECT 를 골랐다 해제하면(빈 배열) 막힌다 — undefined 가 아닌 경로', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockField('MULTI_SELECT', 'ms')
+    renderForm()
+
+    await waitForProjectSelect()
+    const optionA = await screen.findByRole('checkbox', { name: 'A' })
+    // 켰다 끈다 — 값이 undefined 가 아니라 [] 가 된다 (CustomFieldInput 의 filter 결과).
+    await user.click(optionA)
+    await user.click(optionA)
+    expect(optionA).not.toBeChecked()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+
+  it('★SHORT_TEXT 에 입력했다 지우면(빈 문자열) 막힌다 — undefined 가 아닌 경로', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockField('SHORT_TEXT', 'st')
+    renderForm()
+
+    await waitForProjectSelect()
+    const input = await screen.findByTestId('custom-field-st')
+    await user.type(input, 'x')
+    await user.clear(input)
+    expect(input).toHaveValue('')
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByTestId('custom-fields-required-error')).toBeInTheDocument()
+    expect(body.get()).toEqual({})
+  })
+
+  it('SHORT_TEXT 에 값이 있으면 통과한다 (비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    mockField('SHORT_TEXT', 'st')
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.type(await screen.findByTestId('custom-field-st'), 'x')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★게이트2 간극 리뷰가 적발한 신규 결함 2건 (2026-08-10)
+//
+// (1) CREATE 게이트가 세운 `serverError` 가 **프로젝트를 바꿔도 안 지워진다.**
+//     「이 프로젝트에 이슈를 만들 권한이 없습니다」는 프로젝트 A 에 대한 주장이라
+//     B 로 바꾸는 순간 거짓이 되는데, 빨간 alert 이 그대로 남아 계속 거짓말한다.
+//     이 PR 이 만든 결함이다 — 그 전에는 그 문구 자체가 없었다.
+//
+// (2) TODOS 가 「같은 PR 에서 함께 볼 것」으로 못박은 커스텀 필드 422 매핑이 빠져 있었다.
+//     클라이언트가 못 잡는 형식 오류(URL 타입에 `abc` 등)가 `errorDefault` 로 떨어져
+//     **재시도해도 안 되는데 재시도를 권하는** 문구가 나간다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueCreateForm — 프로젝트를 바꾸면 이전 프로젝트의 에러 주장을 버린다', () => {
+  function permissionsByProject(map: Record<string, boolean>): void {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', ({ request }) => {
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        return HttpResponse.json({
+          projectKey: key,
+          permissions: {
+            CREATE: map[key] ?? true,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
+        })
+      }),
+    )
+  }
+
+  it('★거부 프로젝트에서 뜬 권한 alert 이 허용 프로젝트로 바꾸면 사라진다', async () => {
+    const user = userEvent.setup()
+    permissionsByProject({ ATLAS: false, MIDDLE: true })
+    // ★폼 밖 제출 버튼으로 렌더한다. 폼 안 버튼은 거부 시 disabled 라 jsdom 이 제출을
+    //   하지 않아 `handleSubmit` 이 실행되지 않고, 그러면 serverError 자체가 안 세워진다.
+    //   (게이트2 리뷰가 적발한 것과 같은 함정 — 이 테스트도 그대로 공허해질 뻔했다.)
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateForm formId="switch-project-form" />
+        <button type="submit" form="switch-project-form">
+          폼 밖 제출
+        </button>
+      </QueryClientProvider>,
+    )
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    await screen.findByTestId('create-permission-denied')
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: '폼 밖 제출' }))
+
+    // 거부 문구가 실제로 떴는지 먼저 확인한다 — 안 떴으면 아래 단언이 공허하다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueCreateStrings.errorCreateForbidden,
+    )
+
+    await user.selectOptions(select, 'MIDDLE')
+
+    // 프로젝트 B 는 CREATE 가 있다. A 에 대한 주장이 남아 있으면 안 된다.
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-permission-denied')).toBeNull()
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+})
+
+describe('IssueCreateForm — 커스텀 필드 422 는 전용 문구로 안내한다', () => {
+  it('★CUSTOM_FIELD_VALIDATION_FAILED 는 「잠시 후 다시 시도」가 아니다', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/v1/issues', () =>
+        HttpResponse.json(
+          { errorCode: 'CUSTOM_FIELD_VALIDATION_FAILED', detail: 'invalid url' },
+          { status: 422 },
+        ),
+      ),
+    )
+    renderForm()
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(issueCreateStrings.errorCustomFieldInvalid)
+    // 되던 문구가 아니어야 한다 — 이 짝이 없으면 「alert 이 떴다」만 보는 공허 단언이 된다.
+    expect(alert).not.toHaveTextContent(issueCreateStrings.errorDefault)
+  })
+})

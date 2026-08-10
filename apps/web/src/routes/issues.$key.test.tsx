@@ -1380,6 +1380,11 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    // 후보는 검색해야 나온다 (2026-08-09 봉합). 예전에는 이 입력 없이도 목록이 떠 있었다.
+    await user.type(
+      within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      '앨리스',
+    )
     await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
     await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
     await waitFor(() => {
@@ -1405,6 +1410,55 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     })
   })
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // TODOS 「이슈 상세 담당자 셀렉터가 검색 전에 사용자 전량을 노출한다」 봉합 (2026-08-09)
+  //
+  // 사내 1,000명 규모에서 담당자 칸을 열자마자 목록이 통째로 펼쳐졌다.
+  // 생성 폼은 FR-UX-09 F2 에서 이미 닫혔고(use-assignee-picker.ts:58-61) 상세만 남아 있었다.
+  //
+  // ★가드가 공허해질 수 있다 — 후보가 애초에 비면 「검색 전 안 나온다」는 조회 실패로도
+  //   통과한다(도달 불가 상태를 지키는 가짜 그린). 반드시 「검색하면 나온다」를 짝으로 둔다.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('T4-A6: ★검색어가 비면 담당자 후보가 렌더되지 않는다', async () => {
+    const fixture = { ...issueAtlas1Fixture, assigneeId: null }
+    setupAssigneeStatefulHandlers(fixture)
+    const { container } = renderPage('ATLAS-1')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    const aside = container.querySelector('aside')
+    if (aside === null) throw new Error('aside not found')
+    const assigneeSection = within(aside).getByTestId('assignee-section')
+
+    // 검색 입력은 있어야 한다 — 「후보가 없다」가 「셀렉터 자체가 없다」와 구분돼야 한다.
+    await waitFor(() =>
+      expect(
+        within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      ).toBeInTheDocument(),
+    )
+    // 아무것도 입력하지 않았으므로 후보 버튼이 하나도 없어야 한다.
+    expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeNull()
+    expect(within(assigneeSection).queryByRole('button', { name: 'bob' })).toBeNull()
+  })
+
+  it('T4-A7: 검색하면 후보가 나온다 (비-공허 짝 — 항상 비는 게 아님을 증명)', async () => {
+    const fixture = { ...issueAtlas1Fixture, assigneeId: null }
+    setupAssigneeStatefulHandlers(fixture)
+    const user = userEvent.setup()
+    const { container } = renderPage('ATLAS-1')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    const aside = container.querySelector('aside')
+    if (aside === null) throw new Error('aside not found')
+    const assigneeSection = within(aside).getByTestId('assignee-section')
+
+    const search = within(assigneeSection).getByLabelText(
+      issueDetailStrings.assigneeSearchPlaceholder,
+    )
+    await user.type(search, '앨리스')
+
+    await waitFor(() =>
+      expect(within(assigneeSection).getByRole('button', { name: '김앨리스' })).toBeInTheDocument(),
+    )
+  })
+
   it('T4-A5: 담당자 변경 409 충돌 시 toast.error가 호출된다', async () => {
     const fixture = { ...issueAtlas1Fixture, assigneeId: null }
     setupAssigneeStatefulHandlers(fixture)
@@ -1419,6 +1473,11 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    // 후보는 검색해야 나온다 (2026-08-09 봉합). 예전에는 이 입력 없이도 목록이 떠 있었다.
+    await user.type(
+      within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
+      '앨리스',
+    )
     await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
     await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled())

@@ -5,7 +5,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { createIssue } from '@/api/issues'
-import { ApiError } from '@/api/client'
 import { Form } from '@/components/ui/form'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -14,6 +13,11 @@ import { IssueCreateBasicFields } from '@/components/issue/create/IssueCreateBas
 import { IssueCreateAssignmentFields } from '@/components/issue/create/IssueCreateAssignmentFields'
 import { IssueCreateExtraFields } from '@/components/issue/create/IssueCreateExtraFields'
 import { useAssigneePicker } from '@/components/issue/create/use-assignee-picker'
+import {
+  isRequiredFieldEmpty,
+  resolveCreateErrorMessage,
+} from '@/components/issue/create/issue-create-validation'
+import { useIssueCreatePermissionGate } from '@/components/issue/create/use-issue-create-permission-gate'
 import {
   useDefaultProjectSelection,
   useIssueTypeSelection,
@@ -31,68 +35,6 @@ import { useProjects } from '@/hooks/use-projects'
 import { useAuthUser } from '@/auth/authStore'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomFieldValues } from '@/api/issues'
-import type { CustomField } from '@/api/custom-fields.types'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// isRequiredFieldEmpty — required 필드 빈값 판정 헬퍼 (스펙 E-3)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * required 커스텀 필드의 현재 값이 비어 있는지 판정한다 (스펙 E-3 기준).
- *
- * - SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined | null → 빈값
- * - NUMBER: undefined | null | NaN → 빈값. 0은 유효값.
- * - MULTI_SELECT: 빈 배열 → 빈값.
- * - CHECKBOX: 항상 값 보유 → 빈값 아님.
- */
-function isRequiredFieldEmpty(
-  fieldType: CustomField['fieldType'],
-  raw: unknown,
-): boolean {
-  switch (fieldType) {
-    case 'SHORT_TEXT':
-    case 'LONG_TEXT':
-    case 'URL':
-    case 'DATE':
-    case 'DATETIME':
-    case 'SINGLE_SELECT':
-    case 'RADIO':
-      return raw === '' || raw === undefined || raw === null
-    case 'NUMBER':
-      return raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
-    case 'MULTI_SELECT':
-      return Array.isArray(raw) && raw.length === 0
-    case 'CHECKBOX':
-      return false
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 에러 코드 → 사용자 메시지 매핑
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * ApiError body에서 errorCode 를 추출해 사용자 노출 메시지로 변환한다.
- *
- * @param err 임의 에러 — ApiError 가 아니면 기본 메시지 반환
- * @returns 사용자 노출 한국어 에러 메시지
- */
-function resolveCreateErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body
-    if (typeof body === 'object' && body !== null && 'errorCode' in body) {
-      const { errorCode } = body as { errorCode: unknown }
-      if (errorCode === 'PROJECT_NOT_FOUND') {
-        return issueCreateStrings.errorProjectNotFound
-      }
-      // FR-UX-09 F2 — 지정한 담당자가 존재하지 않을 때 백엔드가 내는 422.
-      if (errorCode === 'ASSIGNEE_NOT_FOUND') {
-        return issueCreateStrings.errorAssigneeNotFound
-      }
-    }
-  }
-  return issueCreateStrings.errorDefault
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
@@ -179,6 +121,9 @@ export function IssueCreateForm({
   const projectKey = form.watch('projectKey')
   const isProjectKeyFilled = projectKey.trim() !== ''
 
+  // 선택된 프로젝트의 CREATE 게이트. 판정식의 근거(미지 ≠ 거부)는 훅 KDoc 에 있다.
+  const isCreateExplicitlyDenied = useIssueCreatePermissionGate(projectKey)
+
   // ── FR-3 프로젝트 셀렉터 / FR-4 이슈 유형 — 기본값은 훅이 채운다 ──────────
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects()
   const authUser = useAuthUser()
@@ -201,6 +146,13 @@ export function IssueCreateForm({
       setSelectedComponentIds([])
       setCustomFieldValues({})
       setSelectedSecurityLevelId(null)
+      // ★프로젝트에 종속된 **에러 표시**도 함께 버린다 (게이트2 리뷰 적발).
+      // 「이 프로젝트에 이슈를 만들 권한이 없습니다」는 프로젝트 A 에 대한 주장이라
+      // B 로 바꾸면 즉시 거짓이 된다. 안 비우면 권한이 **있는** 프로젝트를 고른 뒤에도
+      // 빨간 alert 이 그대로 남아 다음 제출까지 거짓말을 계속한다.
+      // 필수 커스텀 필드 경고도 같은 이유다 — 정의 자체가 프로젝트마다 다르다.
+      setServerError(null)
+      setCustomFieldRequiredError(false)
     }
   }, [projectKey])
 
@@ -236,6 +188,14 @@ export function IssueCreateForm({
   function handleSubmit(values: IssueCreateFormValues): void {
     // E7 — 제출 중 재클릭 차단. 푸터 버튼이 폼 밖에 있어 버튼 disabled 만으로는 부족하다.
     if (mutation.isPending) return
+    // 선택된 프로젝트의 CREATE 게이트 (2026-08-09 Maxi 확정).
+    // 이슈 생성 진입 경로 4개(상단바 · /issues/new 딥링크 · `c` 단축키 · 명령 팔레트)가
+    // 전부 이 폼 하나를 지나므로 여기 한 곳이 무게이트 경로를 동시에 닫고,
+    // 「게이트된 버튼으로 열어도 폼 안에서 무권한 프로젝트로 갈아타기」까지 덮는다.
+    if (isCreateExplicitlyDenied) {
+      setServerError(issueCreateStrings.errorCreateForbidden)
+      return
+    }
     // 스펙 E-3: required 커스텀 필드 빈값 1차 검사 — mutation 전 차단
     const hasRequiredEmpty = customFieldDefs.some(
       (field) =>
@@ -335,8 +295,20 @@ export function IssueCreateForm({
         )}
 
         {/* 제출 버튼 — formId 를 받은 경우(모달)는 호출자가 푸터에 그린다 (NFR-2) */}
+        {/* 권한이 **명시적으로** 없을 때만 미리 알린다 — 폼을 다 채우고 제출에서야
+            거부당하는 헛수고를 없앤다. 미지(로딩·조회 실패)에서는 아무 말도 하지 않는다. */}
+        {isCreateExplicitlyDenied && (
+          <p role="status" data-testid="create-permission-denied" className="text-sm text-destructive">
+            {issueCreateStrings.errorCreateForbidden}
+          </p>
+        )}
+
         {formId === undefined && (
-          <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
+          <Button
+            type="submit"
+            disabled={mutation.isPending || isCreateExplicitlyDenied}
+            className="w-full sm:w-auto"
+          >
             {mutation.isPending
               ? issueCreateStrings.submitButtonPending
               : issueCreateStrings.submitButton}
