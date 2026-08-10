@@ -114,8 +114,9 @@ export function MoveIssueDialog({
       setStep(2)
     } catch (err) {
       // 403 하나에 세 원인(대상 키 오타/미존재 · 원본 UPDATE 없음 · 대상 CREATE 없음)이
-      // 합쳐진다 — `MovePreviewService.kt:185-186` 이 권한을 존재 확인(`:190-192`)보다 먼저
-      // 하고, 운영 리졸버가 미존재 프로젝트를 거부로 판정하기 때문이다.
+      // 합쳐진다 — `MovePreviewService.kt:185-186` 이 권한을 존재 확인(`:188` 이슈 ·
+      // `:190-192` 대상 프로젝트)보다 먼저 하고, 운영 리졸버가 미존재 프로젝트를 거부로
+      // 판정하기 때문이다.
       // 그래서 전용 문구를 쓰고, 403 이외(404·409·500·네트워크 단절)는 기존 문구를 유지한다.
       // 근거 전문(게이트를 안 붙이는 이유 포함). TODOS.md 「이동·임포트 진입점」 ②.
       const isForbidden = err instanceof ApiError && err.status === 403
