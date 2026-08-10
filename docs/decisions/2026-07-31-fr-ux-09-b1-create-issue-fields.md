@@ -91,15 +91,38 @@
 - **⚠️ 범위는 D-5 가 한정한다.** 아래 D-5 를 반드시 함께 읽을 것. "경로와 무관하게"는
   `createIssue` 를 타는 **모든** 경로를 뜻하지 않는다.
 
-### D-5. D-4 의 적용 범위 — **REST 생성 경로만**. Import 제외, Clone 별건
+### D-5. D-4 의 적용 범위 — ~~**REST 생성 경로만**~~ → **사람의 편집 행위 전부**. Import 제외
 
-`IssueAssigned` 는 `POST /api/v1/issues`(사람의 생성 행위)에서만 발행한다.
+> **★2026-08-10 개정.** 원문 제목의 「REST 생성 경로만」은 **더 이상 사실이 아니다.**
+> 그때는 `createIssue` 한 함수만 보고 내린 결정이었는데, 그 뒤 실측으로 **같은 양식의 배정
+> 통로가 둘 더** 드러났다(Clone · changeComponents 자동배정). 셋 다 「사람의 편집 행위로
+> 담당자가 확정된다」는 성질이 같은데 알림만 갈렸다 — **경로에 따라 통보 여부가 달라지는**
+> 것은 사용자가 이유를 알 수 없는 비대칭이다.
+>
+> **바뀐 것은 적용 범위이고, 설계(fail-safe 기본 false)는 그대로다.** 아래 「설계」 절의
+> 근거는 여전히 유효하다 — 오히려 통로가 셋으로 늘면서 「새 생산자가 알림을 켠 채로
+> 태어나면 안 된다」가 더 중요해졌다.
 
-| 경로 | 진입점 | D-4 적용 |
-|---|---|---|
-| REST 생성 | `IssueController.create:192` | ✅ **발행** |
-| Import 반입 | `IssueImportAdapter.kt:534` | ❌ **미발행** |
-| Clone 복제 | `cloneIssue`(별도 함수, `createIssue` 미경유) | ❌ 현행 유지 (별건) |
+`IssueAssigned` 는 **사람의 편집 행위로 담당자가 확정되는 모든 경로**에서 발행한다.
+각 경로는 `notifyAssignment` 게이트를 갖고, **기본값은 전부 false** 이며 진입 컨트롤러만 `true` 를 넘긴다.
+
+| 경로 | 진입점 | 발행 | 게이트 | 봉합 시점 |
+|---|---|---|---|---|
+| REST 생성 | `IssueController.create` | ✅ | `AppCreateIssueRequest.notifyAssignment` | 2026-07-31 (원안) |
+| Clone 복제 | `IssueController.clone` → `cloneIssue` | ✅ | `CloneIssueRequest.notifyAssignment` | 2026-08-09 |
+| 컴포넌트 교체 자동배정 | `IssueController.changeComponents` | ✅ | `AppChangeComponentsRequest.notifyAssignment` | 2026-08-10 |
+| 담당자 직접 변경 | `changeAssignee` | ✅ | **게이트 없음 (무조건)** | 원래부터 |
+| Import 반입 | `IssueImportAdapter` | ❌ | `AssigneeIntent.None` 으로 자동배정 자체를 끔 | 2026-08-09 |
+
+**★`changeAssignee` 만 게이트가 없는 것은 의도된 것이다.** 그 함수는 **배정 자체가 목적**이라
+모든 생산자가 알림을 의도한다. 나머지 셋은 배정이 **부수효과**로 일어나므로 게이트를 둔다.
+이 구분을 지우고 「전부 무조건 발행」으로 통일하지 말 것 — 대량 경로가 생기는 순간 알림함이 마비된다.
+
+**★Import 의 처방이 바뀌었다 (2026-08-09).** 원래는 `notifyAssignment` 기본값 false 에
+기대어 「발행 안 함」이었는데, 그것만으로는 **원본에 없던 담당자가 생기는** 별개 결함
+(자동 배정이 그대로 남음)이 닫히지 않았다. 이제 `AssigneeIntent.None` 으로 **자동 배정 자체를
+끈다.** 그 결과 아래 「근거」의 「이슈 1건당 2회」 시나리오는 **도달 불가**가 됐다 —
+기본값 false 를 유지하는 근거는 이제 **defense-in-depth** 다.
 
 **근거 — 스펙 단계 실측(G1).** Import 는 `createIssue` 로 이슈를 만든 **직후**
 `applyAssigneeIfPresent`(`:593-607`)가 `changeAssignee` 를 호출해 원본 담당자를 다시 지정한다.
@@ -126,9 +149,18 @@ REST 컨트롤러만 `true` 를 넘긴다. Import 는 기본값을 그대로 받
 **기각안.** `IssueImportAdapter` 에서 이벤트를 사후 필터링 — 발행은 이미 일어난 뒤라
 구독자 쪽에 억제 로직이 필요해지고 BC 경계를 넘는다.
 
-**남는 비대칭 (기록).** `cloneIssue` 는 `includeAssignee=true` 로 담당자를 설정하면서도
+~~**남는 비대칭 (기록).** `cloneIssue` 는 `includeAssignee=true` 로 담당자를 설정하면서도
 `IssueCreated` 만 발행한다(`:365`). "담당자가 정해지면 알린다"가 clone 에는 적용되지 않는다.
-**별건 후속**으로 남긴다.
+**별건 후속**으로 남긴다.~~
+
+> **✅ 2026-08-09 해소 (clone) · 2026-08-10 해소 (changeComponents).** 위 「남는 비대칭」은
+> 둘 다 닫혔다. 위 표를 정본으로 볼 것.
+>
+> **★이 항목이 남긴 교훈.** 「별건 후속으로 남긴다」로 적힌 비대칭은 **적어 두는 것만으로는
+> 닫히지 않는다.** 실제로 clone 은 이 문장이 쓰인 뒤 9일을 그대로 살아 있었고,
+> 그 사이 `changeComponents` 라는 **같은 양식의 세 번째 통로**가 아무도 모르게 존재했다.
+> 후자는 clone 항목의 적대적 반증이 **형제 진입점을 전수로 훑다가** 잡았다 —
+> 한 지점을 고칠 때 「같은 성질의 지점이 더 있는가」를 전수로 묻지 않으면 반쪽 봉합이 된다.
 
 ## 영향
 

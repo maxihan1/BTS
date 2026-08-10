@@ -7,11 +7,11 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
-/** 라벨 한 개의 최대 글자 수. */
-private const val LABEL_MAX_LENGTH = 50
+// 라벨 상한은 [IssueLabelConstraints] 가 단일 출처다 — REST 검증 두 곳도 같은 상수를 본다.
+// 여기 파일 private 사본을 되살리지 말 것. IssueLabelConstraintsAlignmentTest 가 차단한다.
+private const val LABEL_MAX_LENGTH = IssueLabelConstraints.MAX_LENGTH
 
-/** 이슈당 허용되는 라벨 최대 개수. */
-private const val LABEL_MAX_COUNT = 20
+private const val LABEL_MAX_COUNT = IssueLabelConstraints.MAX_COUNT
 
 /** priority 최솟값. */
 private const val PRIORITY_MIN = 1
