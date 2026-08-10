@@ -66,6 +66,14 @@ gh pr merge --squash --delete-branch
 ```bash
 cd /Users/maxi.moff/Projects/BTS
 
+# ★가장 먼저 — 방금 머지한 브랜치의 큐 잔존 run 을 취소한다.
+#   머지 순간 그 run 들은 좀비가 된다(그 ref 에 후속 run 이 안 생겨 concurrency 가 발화 못 함).
+#   러너가 1대라 좀비 하나가 러너를 점유하는 동안 **방금 머지된 main 의 검증이 시작조차 못 한다.**
+#   여기서 먼저 치워야 main push CI 가 러너를 그만큼 빨리 잡는다.
+#   fail-open — gh 부재·인증 만료·API 오류 어디서든 exit 0 이라 머지 절차를 막지 않는다.
+#   보호 브랜치(main/master/HEAD)를 넘기면 gh 를 한 번도 호출하지 않는다.
+bash scripts/cancel-merged-pr-runs.sh <branch>
+
 # worktree 제거 (Step 1에서 미커밋 0 확인했으므로 안전)
 git worktree remove --force .worktrees/<slug> 2>/dev/null \
   || echo "worktree 이미 제거됨 또는 부재"
