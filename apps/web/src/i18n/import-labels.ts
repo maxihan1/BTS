@@ -14,4 +14,11 @@
 export const importLabels = {
   /** CREATE 권한이 명시적으로 거부됐을 때 폼을 대체하는 안내 카드의 제목 */
   createDeniedTitle: '가져오기를 사용할 수 없습니다',
+  /**
+   * 존재·권한 두 쿼리가 정착하기 전에 보여 주는 로딩 문구.
+   *
+   * 빈 화면 금지 규칙(`DESIGN.md` §상태 3종)의 로딩 자리다. 형제 페이지
+   * (`settings.workflow-scheme.tsx:92-98`)와 같은 문구를 쓴다.
+   */
+  gateLoading: '로딩 중...',
 } as const

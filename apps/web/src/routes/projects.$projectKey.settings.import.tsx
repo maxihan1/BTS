@@ -10,6 +10,7 @@ import { useIssueCreatePermissionGate } from '@/components/issue/create/use-issu
 import { importFailureMessage } from '@/api/imports'
 import { importLabels } from '@/i18n/import-labels'
 import { useProject } from '@/hooks/use-project'
+import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { ApiError } from '@/api/client'
 import { ProjectNotFoundCard } from '@/routes/projects.$projectKey.settings.workflow-scheme'
 
@@ -132,6 +133,11 @@ interface ProjectImportSettingsPageProps {
  * - 라우터 의존 없이 props로 projectKey를 받아 단위 테스트가 가능하다.
  * - `projects.$projectKey.reports.cfd.tsx` (CfdReportPage) 어댑터/페이지 분리 패턴 미러 (FR-IM-01 D6/D7 Task-4).
  *
+ * ## 본문은 네 상태 중 하나다 — 로딩 → 부재 → 거부 → 폼
+ * 판정 입력이 두 쿼리(존재·권한)이고 도착 순서 보장이 없으므로 **로딩을 먼저 게이트한다**
+ * (근거는 아래 `isResolving` 주석). 그 뒤 부재가 거부보다 앞선다 — 없는 프로젝트의 권한을
+ * 논하는 것은 뜻이 없다. h1 은 네 상태 모두에서 남는다(빈 화면 금지).
+ *
  * @param projectKey 프로젝트 키
  */
 export function ProjectImportSettingsPage({
@@ -174,15 +180,46 @@ export function ProjectImportSettingsPage({
    * ★404 **만** 본다. 500·네트워크 단절은 「없다」가 아니라 「모른다」이므로 막지 않는다 —
    *   CREATE 게이트가 미지를 거부로 읽지 않는 것과 같은 규칙이다.
    */
-  const { error: projectError } = useProject(projectKey)
+  const { error: projectError, isLoading: isProjectLoading } = useProject(projectKey)
   const isProjectMissing = projectError instanceof ApiError && projectError.status === 404
+
+  /**
+   * 두 판정(존재·권한) 중 하나라도 **아직 모르는가**.
+   *
+   * ★왜 필요한가. 위 두 훅은 서로 다른 BC 의 엔드포인트를 **동시에** 부르고 도착 순서 보장이
+   *   없다. 권한이 먼저 `CREATE:false` 로 정착하면 「생성 권한이 없습니다」가 먼저 뜨고 뒤늦게
+   *   404 가 와서 「프로젝트를 찾을 수 없습니다」로 교체된다 — 사용자가 **틀린 사유를 먼저**
+   *   읽는다. 형제 페이지(`settings.workflow-scheme.tsx:92-98`)는 로딩을 **먼저** 게이트해
+   *   이 프레임이 아예 없다. 같은 방식을 따른다.
+   *
+   * ★이것은 「미지 = 거부」가 아니다. 게이트가 참이 되는 구간은 **아직 조회 중**일 때뿐이고,
+   *   조회가 실패로 정착하면(`isLoading === false`) 아래 두 판정이 모두 거짓이라 폼이 열린다.
+   *   `use-issue-create-permission-gate.ts` KDoc 이 못박은 「미지를 거부로 읽으면 CREATE 를
+   *   실제로 가진 사용자를 영구 차단한다」와 충돌하지 않는다.
+   *
+   * ★`useProjectPermissions` 를 한 번 더 부르는 이유. 판정식(`CREATE === false`)의 정본은
+   *   위 게이트 훅 하나로 두고, 여기서는 **정착 여부만** 읽는다. 두 호출은 같은 queryKey 라
+   *   TanStack Query 가 요청을 합쳐 주므로 네트워크는 1회다. 판정식을 여기 다시 쓰면 사본이
+   *   2벌이 된다.
+   *
+   * `projectKey` 가 빈 문자열이면 두 쿼리 모두 `enabled:false` 라 `isLoading` 은 거짓이다
+   * (TanStack Query v5 — `isLoading = isPending && isFetching`). 로딩 화면에 갇히지 않는다.
+   */
+  const { isLoading: isPermissionsLoading } = useProjectPermissions(projectKey)
+  const isResolving = isProjectLoading || isPermissionsLoading
 
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">가져오기(Import)</h1>
       </header>
-      {isProjectMissing ? (
+      {isResolving ? (
+        // 형제 페이지는 로딩 프레임에서 헤더까지 감추지만, 여기서는 h1 을 남긴다 —
+        // 나머지 세 분기가 전부 h1 을 남기므로 로딩만 감추면 제목이 깜빡인다.
+        <div role="status" className="flex items-center justify-center p-8 text-muted-foreground">
+          {importLabels.gateLoading}
+        </div>
+      ) : isProjectMissing ? (
         // 부재가 권한보다 앞선다 — 없는 프로젝트의 권한을 논하는 것은 뜻이 없다.
         <ProjectNotFoundCard />
       ) : isCreateExplicitlyDenied ? (

@@ -13,6 +13,8 @@ import {
 import { projectHandlers } from '@/mocks/project-handlers'
 import { PROJECT_PERMISSION_KEYS } from '@/hooks/use-project-permissions'
 import { PROJECT_KEYS } from '@/hooks/use-project'
+import type { Project } from '@/api/projects'
+import type { ProjectPermissions as ProjectPermissionsResponse } from '@/api/project-permissions'
 import { importLabels } from '@/i18n/import-labels'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 import {
@@ -116,16 +118,40 @@ function renderAdapter() {
   )
 }
 
+/**
+ * 판정 쿼리 2종(존재·권한)을 캐시에 미리 채워 **로딩 프레임을 없앤다.**
+ *
+ * ★`key={projectKey}` 재마운트 가드(T-IM-4·T-IM-9)에 필수다. 페이지가 두 쿼리 정착 전까지
+ *   로딩을 렌더하므로, projectKey 가 바뀌는 순간 새 queryKey 가 pending 이 되어 폼이
+ *   **통째로 언마운트**된다 — 그러면 `key` 를 지워도 instance-id 가 달라져 **가드가 공허해진다.**
+ *   미리 채우면 두 프레임 모두 로딩 없이 그려져 remount 원인이 `key` 하나로 좁혀진다.
+ *   `staleTime` 30초 안이라 seed 뒤 재조회도 일어나지 않는다(요청 0회).
+ */
+function seedGateQueries(client: QueryClient, projectKeys: readonly string[]): void {
+  for (const projectKey of projectKeys) {
+    // 페이지는 존재 여부(404 인지)만 읽고 Project 의 개별 필드는 쓰지 않는다 — 최소 형태면 충분하다.
+    client.setQueryData<Project>(PROJECT_KEYS.detail(projectKey), {
+      id: '00000000-0000-4000-8000-000000000000',
+      key: projectKey,
+      name: `${projectKey} 프로젝트`,
+    })
+    client.setQueryData<ProjectPermissionsResponse>(PROJECT_PERMISSION_KEYS.detail(projectKey), {
+      projectKey,
+      permissions: adminProjectPermissions,
+    })
+  }
+}
+
 describe('ProjectImportSettingsPage', () => {
   /**
    * T-IM-1. RouteAdapter가 useParams에서 $projectKey를 추출해 Page에 전달한다.
    * useParams mock이 ATLAS를 반환하므로 ImportForm에 projectKey="ATLAS"가 전달된다.
    */
-  it('T-IM-1: RouteAdapter가 useParams $projectKey를 Page에 전달한다', () => {
+  it('T-IM-1: RouteAdapter가 useParams $projectKey를 Page에 전달한다', async () => {
     renderAdapter()
 
-    const form = screen.getByTestId('import-form')
-    expect(form).toBeInTheDocument()
+    // 존재·권한 두 쿼리가 정착해야 폼이 열린다(로딩 게이트) — 동기 단언은 로딩 프레임을 본다
+    const form = await screen.findByTestId('import-form')
     expect(form).toHaveAttribute('data-project-key', 'ATLAS')
   })
 
@@ -143,11 +169,10 @@ describe('ProjectImportSettingsPage', () => {
   /**
    * T-IM-3. Page가 ImportForm을 렌더하고 projectKey props를 올바르게 전달한다.
    */
-  it('T-IM-3: Page가 ImportForm에 projectKey를 전달한다', () => {
+  it('T-IM-3: Page가 ImportForm에 projectKey를 전달한다', async () => {
     renderPage('MIDDLE')
 
-    const form = screen.getByTestId('import-form')
-    expect(form).toBeInTheDocument()
+    const form = await screen.findByTestId('import-form')
     expect(form).toHaveAttribute('data-project-key', 'MIDDLE')
   })
 
@@ -162,6 +187,8 @@ describe('ProjectImportSettingsPage', () => {
    */
   it('T-IM-4: projectKey 변경 시 ImportForm이 remount된다 (프로젝트 간 상태 leak 차단)', () => {
     const client = makeClient()
+    // 두 프로젝트 모두 캐시를 미리 채운다 — 로딩 프레임이 끼면 언마운트 원인이 둘이 되어 공허해진다
+    seedGateQueries(client, ['ATLAS', 'MIDDLE'])
     const { rerender } = render(
       <QueryClientProvider client={client}>
         <ProjectImportSettingsPage projectKey="ATLAS" />
@@ -195,10 +222,10 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
    * T-IM-5. 기본 렌더 시 "바로 가져오기" 모드가 선택되어 ImportForm이 렌더되고,
    * ImportMappingWizard는 렌더되지 않는다. 토글 버튼의 aria-pressed로 활성 모드를 노출한다.
    */
-  it('T-IM-5: 기본 모드는 "바로 가져오기"이며 ImportForm만 렌더된다 (무회귀)', () => {
+  it('T-IM-5: 기본 모드는 "바로 가져오기"이며 ImportForm만 렌더된다 (무회귀)', async () => {
     renderPage('ATLAS')
 
-    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
     expect(screen.queryByTestId('import-mapping-wizard')).not.toBeInTheDocument()
 
     expect(screen.getByRole('button', { name: '바로 가져오기' })).toHaveAttribute(
@@ -218,6 +245,7 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
   it('T-IM-6: "매핑하며 가져오기" 클릭 시 ImportMappingWizard로 전환된다', async () => {
     const user = userEvent.setup()
     renderPage('ATLAS')
+    await screen.findByTestId('import-form')
 
     await user.click(screen.getByRole('button', { name: '매핑하며 가져오기' }))
 
@@ -239,6 +267,7 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
   it('T-IM-7: 마법사 모드에서 "바로 가져오기" 재클릭 시 ImportForm으로 되돌아간다', async () => {
     const user = userEvent.setup()
     renderPage('ATLAS')
+    await screen.findByTestId('import-form')
 
     await user.click(screen.getByRole('button', { name: '매핑하며 가져오기' }))
     expect(screen.getByTestId('import-mapping-wizard')).toBeInTheDocument()
@@ -252,8 +281,9 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
   /**
    * T-IM-8. 토글 하단에 각 모드가 언제 적합한지 안내하는 도움말 한 줄이 노출된다 (DR-3).
    */
-  it('T-IM-8: 토글 하단에 모드 안내 도움말이 렌더된다 (DR-3)', () => {
+  it('T-IM-8: 토글 하단에 모드 안내 도움말이 렌더된다 (DR-3)', async () => {
     renderPage('ATLAS')
+    await screen.findByTestId('import-form')
 
     expect(
       screen.getByText(
@@ -269,6 +299,8 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
   it('T-IM-9: 매핑 모드에서 projectKey 변경 시 ImportMappingWizard가 remount된다', async () => {
     const user = userEvent.setup()
     const client = makeClient()
+    // T-IM-4 와 같은 이유 — 로딩 프레임이 끼면 `key` 없이도 마법사가 언마운트된다
+    seedGateQueries(client, ['ATLAS', 'MIDDLE'])
     const { rerender } = render(
       <QueryClientProvider client={client}>
         <ProjectImportSettingsPage projectKey="ATLAS" />
@@ -351,7 +383,8 @@ describe('ProjectImportSettingsPage — CREATE 게이트', () => {
       expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))?.status).toBe('success')
     })
 
-    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    // 존재 쿼리는 아직 진행 중일 수 있다(로딩 게이트) — 둘 다 정착할 때까지 기다린 뒤 단언한다
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
     expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
   })
 
@@ -368,7 +401,7 @@ describe('ProjectImportSettingsPage — CREATE 게이트', () => {
       expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))?.status).toBe('error')
     })
 
-    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
     expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
   })
 })
@@ -423,7 +456,7 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
       expect(client.getQueryState(PROJECT_KEYS.detail('ATLAS'))?.status).toBe('error')
     })
 
-    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
     expect(
       screen.queryByText(workflowSchemeLabels.assignment.projectNotFoundTitle),
     ).not.toBeInTheDocument()
