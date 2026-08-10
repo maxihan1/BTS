@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ApiError } from '@/api/client'
 import { previewMove, useMoveIssue, extractMoveErrorCode, MOVE_ERROR_CODES } from '@/api/issue-move'
 import type { MovePreview, SubtaskPreviewNode } from '@/api/issue-move'
 import { issueMoveStrings as s } from '@/i18n/ko'
@@ -111,8 +112,25 @@ export function MoveIssueDialog({
       setSubtaskMappings(childMappings)
 
       setStep(2)
-    } catch {
-      setPreviewError(s.errorPreview)
+    } catch (err) {
+      /*
+        403 은 **권한** 문제이지 키 오타가 아니다.
+
+        `MovePreviewService.kt:185-190` 이 preview 단계에서 원본 UPDATE + 대상 CREATE 를
+        연달아 assert 하므로, 「다음」을 누른 시점에 서버가 이미 확정 판정을 내린다.
+        그 403 을 `errorPreview`(「대상 프로젝트 키를 확인해 주세요」)로 뭉개면 사용자는
+        맞는 키를 계속 다시 친다.
+
+        ★이 화면에 CREATE 게이트를 붙이지 않는 이유. 대상 프로젝트가 자유 텍스트 Input 인데
+        백엔드는 미존재 projectKey 에 200 + `CREATE:false` 를 준다
+        (`MyProjectPermissionController.kt:39,49`). 게이트를 달면 "INFRA" 를 타이핑하는 도중
+        I·IN·INF 가 전부 명시 거부로 안착해 정상 사용자가 매 글자마다 차단된다.
+        생성 폼(`<select>`)·클론(고정 projectKey)과 달리 여기는 그 전제가 성립하지 않는다.
+
+        403 이외(404·409·500·네트워크 단절 등)는 기존 문구를 그대로 유지한다.
+      */
+      const isForbidden = err instanceof ApiError && err.status === 403
+      setPreviewError(isForbidden ? s.errorPreviewForbidden : s.errorPreview)
     } finally {
       setIsPreviewLoading(false)
     }
