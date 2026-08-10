@@ -1,6 +1,6 @@
 // 프로젝트 Import 설정 라우트 페이지 단위 테스트 — RouteAdapter useParams 추출 + Page 헤더/모드 토글/ImportForm·ImportMappingWizard 렌더 (FR-IM-01 D6/D7 Task-4, FR-IM-02 D6/D7 Task-7)
 import { useMemo } from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import {
   adminProjectPermissions,
   nonMemberProjectPermissions,
 } from '@/mocks/project-permission-fixtures'
+import { projectHandlers } from '@/mocks/project-handlers'
 import { PROJECT_PERMISSION_KEYS } from '@/hooks/use-project-permissions'
 import { PROJECT_KEYS } from '@/hooks/use-project'
 import { importLabels } from '@/i18n/import-labels'
@@ -61,6 +62,21 @@ vi.mock('@/components/import/mapping/ImportMappingWizard', () => ({
     )
   },
 }))
+
+/**
+ * 프로젝트 단건 조회 핸들러를 파일 전체에 등록한다.
+ *
+ * 페이지가 `useProject` 로 프로젝트 존재를 확인하는데, 이 저장소의 전역 MSW 서버는
+ * `src/test/handlers.ts` 의 `/auth/refresh` **하나**만 들고 있다(`src/mocks/handlers.ts` 가 아니다).
+ * 등록하지 않으면 그 요청이 `onUnhandledRequest: 'error'` 에 걸려 조용히 에러로 안착하고,
+ * 「404 라서 카드가 안 뜬다」와 「요청이 아예 안 잡혀서 안 뜬다」가 구분되지 않는다.
+ *
+ * `beforeEach` 여야 한다 — 전역 `setup.ts` 의 `afterEach(server.resetHandlers())` 가
+ * 매 테스트 뒤 등록을 지운다.
+ */
+beforeEach(() => {
+  server.use(...projectHandlers)
+})
 
 function makeClient(): QueryClient {
   return new QueryClient({
@@ -138,7 +154,7 @@ describe('ProjectImportSettingsPage', () => {
   /**
    * T-IM-4. projectKey가 바뀌면 ImportForm이 remount되어야 한다 (state leak 차단).
    *
-   * 같은 QueryClient/컨테이너를 유지한 채 rerender로 projectKey만 ALPHA → BETA로 바꾼다.
+   * 같은 QueryClient/컨테이너를 유지한 채 rerender로 projectKey만 ATLAS → MIDDLE로 바꾼다.
    * ImportForm에 `key={projectKey}`가 없으면 React는 같은 컴포넌트 인스턴스를 재사용하므로
    * (project-workflow 등 stale useState 회귀와 동일 패턴 — react-usestate-stale-key-prop),
    * mock의 data-instance-id(마운트 시 1회만 계산)가 그대로 유지된다.
@@ -381,7 +397,7 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
         HttpResponse.json({ projectKey: 'BOGUS', permissions: nonMemberProjectPermissions }),
       ),
     )
-    renderPage('BOGUS') // 시드에 없는 키 → 전역 핸들러가 404
+    renderPage('BOGUS') // 시드 밖 키 → projectHandlers 가 404
 
     expect(
       await screen.findByText(workflowSchemeLabels.assignment.projectNotFoundTitle),

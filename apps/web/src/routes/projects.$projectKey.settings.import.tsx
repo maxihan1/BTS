@@ -8,6 +8,10 @@ import { ImportForm } from '@/components/import/ImportForm'
 import { ImportMappingWizard } from '@/components/import/mapping/ImportMappingWizard'
 import { useIssueCreatePermissionGate } from '@/components/issue/create/use-issue-create-permission-gate'
 import { importFailureMessage } from '@/api/imports'
+import { importLabels } from '@/i18n/import-labels'
+import { useProject } from '@/hooks/use-project'
+import { ApiError } from '@/api/client'
+import { ProjectNotFoundCard } from '@/routes/projects.$projectKey.settings.workflow-scheme'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 모드 토글 — "바로 가져오기"(ImportForm) / "매핑하며 가져오기"(ImportMappingWizard)
@@ -64,9 +68,6 @@ function ImportModeToggle({ mode, onModeChange }: ImportModeToggleProps): JSX.El
 // CREATE 권한 거부 안내
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 거부 안내 카드 제목 */
-const IMPORT_DENIED_TITLE = '가져오기를 사용할 수 없습니다'
-
 /**
  * 거부 안내 카드 본문.
  *
@@ -80,7 +81,9 @@ const IMPORT_DENIED_MESSAGE = importFailureMessage('IMPORT_ACCESS_DENIED')
  * 대상 프로젝트에 이슈 생성(CREATE) 권한이 명시적으로 없을 때 폼 대신 표시하는 안내 카드.
  *
  * 같은 라우트 계열(`projects.$projectKey.settings.workflow-scheme.tsx` 의 `ForbiddenSchemeCard`)의
- * destructive Card 형태를 그대로 따른다.
+ * destructive Card 형태를 그대로 따른다. 제목 계층도 그 선례와 같이 `CardTitle`(`<div>`) 이다 —
+ * 여기만 `<h2>` 로 올리면 같은 페이지에 함께 쓰는 `ProjectNotFoundCard` 와 계층이 갈린다.
+ * 승격은 `CardTitle` 자체를 바꾸는 별건이다.
  */
 function ImportCreateDeniedCard(): JSX.Element {
   return (
@@ -89,7 +92,7 @@ function ImportCreateDeniedCard(): JSX.Element {
       data-testid="import-create-denied"
     >
       <CardHeader>
-        <CardTitle className="text-destructive">{IMPORT_DENIED_TITLE}</CardTitle>
+        <CardTitle className="text-destructive">{importLabels.createDeniedTitle}</CardTitle>
       </CardHeader>
       <CardContent className="text-sm text-muted-foreground">
         <p>{IMPORT_DENIED_MESSAGE}</p>
@@ -156,12 +159,33 @@ export function ProjectImportSettingsPage({
    */
   const isCreateExplicitlyDenied = useIssueCreatePermissionGate(projectKey)
 
+  /**
+   * 이 프로젝트가 **아예 없는가**.
+   *
+   * 권한 API 는 미존재 projectKey 에도 200 + `CREATE:false` 를 준다. 그래서 CREATE 게이트만
+   * 두면 `/projects/BOGUS/settings/import` 로 들어온 사용자가 「생성 권한이 없습니다」를 본다 —
+   * 프로젝트가 없는데 권한 탓을 하는 **틀린 안내**다. 형제 페이지가 같은 결함을 이미 고쳤다
+   * (`projects.$projectKey.settings.workflow-scheme.tsx` KDoc 「배정 조회 404 는 …프로젝트 없음」).
+   *
+   * ★존재 신호로 `GET /api/v1/projects/{key}` 의 404 를 쓰는 근거. `ProjectQueryService.getOne`
+   *   은 **존재 → 권한** 순서라 미존재는 404, BROWSE 없음은 403 이다. 즉 404 가 「없음」 하나를
+   *   뜻한다. (이동 preview 의 404 와 대비 — 그쪽은 권한이 먼저라 404 가 prod 에 안 나온다.)
+   *
+   * ★404 **만** 본다. 500·네트워크 단절은 「없다」가 아니라 「모른다」이므로 막지 않는다 —
+   *   CREATE 게이트가 미지를 거부로 읽지 않는 것과 같은 규칙이다.
+   */
+  const { error: projectError } = useProject(projectKey)
+  const isProjectMissing = projectError instanceof ApiError && projectError.status === 404
+
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">가져오기(Import)</h1>
       </header>
-      {isCreateExplicitlyDenied ? (
+      {isProjectMissing ? (
+        // 부재가 권한보다 앞선다 — 없는 프로젝트의 권한을 논하는 것은 뜻이 없다.
+        <ProjectNotFoundCard />
+      ) : isCreateExplicitlyDenied ? (
         <ImportCreateDeniedCard />
       ) : (
         <>
