@@ -153,5 +153,10 @@ class IssueLabelConstraintsAlignmentTest : DescribeSpec({
 private fun createWith(labels: List<String>) =
     CreateIssueRequest(projectKey = "BTS", summary = "테스트", labels = labels)
 
-/** 라벨만 바꾼 최소 수정 요청. `expectedVersion` 은 낙관락용 필수 인자라 임의값을 넣는다. */
-private fun updateWith(labels: List<String>) = UpdateIssueRequest(expectedVersion = 1L, labels = labels)
+/**
+ * 라벨만 바꾼 최소 수정 요청.
+ *
+ * `summary`(무변경을 뜻하는 null)와 `expectedVersion`(낙관락)은 기본값이 없는 필수 인자다.
+ */
+private fun updateWith(labels: List<String>) =
+    UpdateIssueRequest(summary = null, expectedVersion = 1L, labels = labels)
