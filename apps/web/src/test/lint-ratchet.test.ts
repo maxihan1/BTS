@@ -207,7 +207,11 @@ const RATCHET_IGNORES = ['**/*.test.ts', '**/*.test.tsx', 'src/test/**', 'src/mo
 /**
  * R4 전용 인스턴스. `eslint.config.js` 를 **로드하지 않는다** —
  * 줄수 규칙은 이 테스트가 들고 있고 저장소 설정은 건드리지 않는다.
- * `noInlineConfig` 로 소스의 `eslint-disable` 주석 우회를 무력화한다(현재 57건 존재).
+ * `noInlineConfig` 로 소스의 `eslint-disable` 주석 우회를 무력화한다.
+ *
+ * ★여기에 「현재 N건 존재」 같은 숫자를 적지 마라. 이 주석 자신이 `eslint-disable` 이라는
+ *   문자열을 포함하므로 그 숫자를 세는 grep 이 **자기 자신을 함께 센다** — 적는 순간 틀린다
+ *   (`count-assertion-counts-its-own-insertion`). 개수가 필요하면 그때 재라.
  */
 const ratchetEslint = new ESLint({
   cwd: WEB_ROOT,
