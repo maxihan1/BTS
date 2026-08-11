@@ -307,10 +307,18 @@ const WEB_ROOT = resolve(__dirname, '../..')
  */
 const realEslint = new ESLint({ cwd: WEB_ROOT })
 
+/**
+ * placeholder 락 위반인지 판정하는 **단일 술어**.
+ * ★리뷰 ③A — 헬퍼마다 기준이 다르면(하나는 규칙 전체를 세고 하나는 메시지로 거른다)
+ *   같은 것을 두 방식으로 세게 되고, 한쪽만 고쳐지는 순간 두 수치가 조용히 갈라진다.
+ */
+const isPlaceholderLockViolation = (m: { ruleId: string | null; message: string }): boolean =>
+  m.ruleId === 'no-restricted-syntax' && m.message.includes(PLACEHOLDER_LOCK_TAG)
+
 /** 가상 경로로 소스를 던져 위반 수만 센다. 파일을 만들지 않으므로 자기탐지가 없다. */
 async function violations(code: string, filePath: string): Promise<number> {
   const [result] = await realEslint.lintText(code, { filePath, warnIgnored: false })
-  return (result?.messages ?? []).filter((m) => m.ruleId === 'no-restricted-syntax').length
+  return (result?.messages ?? []).filter(isPlaceholderLockViolation).length
 }
 
 const KO_LITERAL = '<input placeholder="검색어" />'
@@ -325,7 +333,13 @@ describe('R3. 한글 placeholder 래칫', () => {
   it('양성 ② button 예외 블록 안의 파일에서도 막는다', async () => {
     // 이 블록은 배열이라 앞 블록을 **대체**한다. 안 고치면 DashboardForm 3건·
     // GlobalPermissionFormDialog 1건 = 28건 중 4건이 영구 면제된다.
-    expect(await violations(KO_LITERAL, 'src/components/dashboard/DashboardForm.tsx')).toBe(1)
+    //
+    // ★리뷰 ②A — 경로를 손으로 적으면, 그 파일이 나중에 예외 목록에서 빠지는 순간
+    //   이 대조군은 「button 예외 블록」을 전혀 검사하지 않는데도 계속 green 이 된다.
+    //   목록을 적지 않고 **설정에서 도출**한다 (button-primitive-usage.test.ts 선례).
+    const [exemptFile] = BUTTON_PRIMITIVE_EXEMPT_FILES
+    expect(exemptFile).toBeDefined() // 비-공허 짝. 도출이 빈 배열이면 대조군이 사라진다
+    expect(await violations(KO_LITERAL, exemptFile)).toBe(1)
   })
 
   it('양성 ③ 프리미티브 레이어에서도 막는다', async () => {
@@ -354,8 +368,26 @@ describe('R3. 한글 placeholder 래칫', () => {
 
 **GREEN**.
 - 파일. `apps/web/eslint.config.js`
+- ⓪ **named export 2개를 추가한다** (ESLint 는 default export 만 읽으므로 무해하다).
+  테스트가 목록·태그를 **손으로 베끼지 않고 도출**하게 하는 것이 목적이다 (리뷰 ②A·③A).
+
+```js
+/** 위반 메시지에 심는 식별 태그. 테스트가 이 태그로 placeholder 락 위반만 골라낸다. */
+export const PLACEHOLDER_LOCK_TAG = 'R3 래칫'
+
+/**
+ * 원시 `<button>` 을 남기기로 판정한 파일 전수 (FR-UX-06 PR22).
+ * ★아래 예외 블록과 계약 테스트가 **같은 배열을 참조**한다 — 손으로 두 벌 적으면
+ *   한쪽만 바뀌어도 아무도 모른다(`[[two-lists-never-check-each-other]]`).
+ */
+export const BUTTON_PRIMITIVE_EXEMPT_FILES = [
+  /* 기존 :85-109 목록을 그대로 옮긴다 (내용 변경 0) */
+]
+```
+
 - ① 공용 상수를 파일 상단(`import` 아래)에 둔다. 세 블록이 **같은 배열 리터럴을 복붙**하면
   한 곳만 고쳐지는 사고가 난다 (`[[two-lists-never-check-each-other]]`).
+  메시지 끝에 `PLACEHOLDER_LOCK_TAG` 를 포함시킨다.
 
 ```js
 // 한글 placeholder 하드코딩 락 (R3). 세 적용면이 공유한다 — 복붙하면 한 곳만 고쳐지는 사고가 난다.
@@ -417,17 +449,22 @@ node_modules/.bin/eslint --print-config src/components/ui/badge.test.tsx \
 - 파일. `apps/web/src/test/lint-ratchet.test.ts` (Task 1 파일에 describe 추가)
 
 ```ts
-/** 비-테스트 소스 전량을 실제 config 로 훑어 placeholder 위반을 센다. */
-async function productionPlaceholderHits(): Promise<string[]> {
+/**
+ * 소스 전량을 **실제 config** 로 훑어 placeholder 락 위반 좌표를 모은다.
+ * ★리뷰 ③A — 메모화. 이 린트는 1288파일이라 가장 비싸다. 두 번 돌 이유가 없다.
+ */
+let placeholderCache: Promise<string[]> | undefined
+const productionPlaceholderHits = () => (placeholderCache ??= computePlaceholderHits())
+
+async function computePlaceholderHits(): Promise<string[]> {
   const results = await realEslint.lintFiles(['src'])
-  const fatal = results.flatMap((r) => r.messages).filter((m) => m.fatal)
   // ★집계 전에 파싱 실패 0 을 먼저 단언한다. 2026-08-11 이 세션의 1차 측정이
   //   파서 미부착으로 1222건 파싱 실패했고 히트 0 을 「깨끗함」으로 오독했다.
-  expect(fatal.map((m) => m.message)).toEqual([])
+  expect(results.flatMap((r) => r.messages).filter((m) => m.fatal).map((m) => m.message)).toEqual([])
   expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 1288
   return results.flatMap((r) =>
     r.messages
-      .filter((m) => m.ruleId === 'no-restricted-syntax' && /placeholder/.test(m.message))
+      .filter(isPlaceholderLockViolation) // ★리뷰 ③A — 대조군과 **같은 술어**를 쓴다
       .map((m) => `${r.filePath.replace(`${WEB_ROOT}/`, '')}:${m.line}`),
   )
 }
@@ -559,7 +596,18 @@ const ratchetEslint = new ESLint({
 
 const LINES_RE = /^(.*?) has too many lines \((\d+)\)/
 
-async function oversizedFunctions(): Promise<{ entries: Map<string, number>; dupes: string[] }> {
+/**
+ * ★리뷰 ③A — 판정 3개가 각자 부르면 600파일 린트가 3번 돈다.
+ * 모듈 레벨에서 **한 번만** 계산해 돌려쓴다. `beforeAll` 이 아니라 메모화된 Promise 인 이유는
+ * R3 쪽 헬퍼와 호출 시점이 달라도 같은 결과를 공유해야 하기 때문이다.
+ */
+let oversizedCache: Promise<{ entries: Map<string, number>; dupes: string[] }> | undefined
+const oversizedFunctions = () => (oversizedCache ??= computeOversizedFunctions())
+
+async function computeOversizedFunctions(): Promise<{
+  entries: Map<string, number>
+  dupes: string[]
+}> {
   const results = await ratchetEslint.lintFiles(['src'])
   expect(results.flatMap((r) => r.messages).filter((m) => m.fatal).map((m) => m.message)).toEqual([])
   expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 600
@@ -646,6 +694,12 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
 | M1 신규 | `src/components/board/CreateBoardForm.tsx` 의 컴포넌트에 빈 줄 250개 추가 | 「신규 위반」 red |
 | M2 증가 | 베이스라인의 `IssueCreateForm` 값을 `227` → `210` 으로 낮춤 | 「늘어난 함수」 red |
 | M3 감소 | 베이스라인의 `IssueCreateForm` 값을 `227` → `900` 으로 올림 | **green** (단조 — 감소는 통과) |
+| **M4 파서** | `ratchetEslint` 의 `languageOptions.parser` 줄을 지움 | **PARSE_ERROR 단언이 red** |
+
+★**M4 가 리뷰 ④A 의 산물이다.** 이 세션의 1차 측정이 정확히 그 함정에 빠졌다 — 파서를 안 붙여
+1288 중 1222 파일이 조용히 파싱 실패했고 히트 0 이 「깨끗함」으로 읽혔다.
+그래서 `PARSE_ERROR === 0` 단언을 넣었는데, **그 단언 자체가 공허하지 않은지는 따로 재야 한다.**
+M4 가 green 이면 진단 장치가 고장 나 있는 것이고, 그건 이번 세션이 실제로 겪은 상태다.
 
 ★M2·M3 은 소스가 아니라 **베이스라인을 흔들어** 판정 방향을 확인한다. 원복은
 `git checkout -- src/test/lint-ratchet-baseline.ts` 이며 **GREEN 이 먼저 커밋돼 있어야 한다**
@@ -694,4 +748,101 @@ node scripts/build-doc-index.mjs                     # 인덱스 재생성 (훅�
 - **미정리 잔여물**. `apps/web/eslint.measure.mjs` · `eslint.measure30.mjs` 가 untracked 로 남아 있다
   (이 세션의 `rm`/`mv` 가 권한 정책으로 차단됨). **커밋 금지 — 모든 `git add` 는 명시 pathspec.**
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-08-11)
+
+`TYPE == chore` 는 `bts-review-plan` 표상 skip 이지만 **Maxi 가 fast-track 을 명시적으로 껐다.**
+분류기 원출력 `ui` 의 `plan-design-review`(디자이너 눈)는 시각 변경 0 이라 공회전이므로 eng-review 로 갔다.
+Codex 외부 목소리는 Maxi 선택으로 미실행 (표준 5단계).
+
+**Step 0 · 범위 도전.** 복잡도 트리거 **발동**(35파일 > 8). 재론하지 않고 진행했다 —
+35 중 28 은 **한 줄짜리 기계적 치환**이고 새 기전은 2개뿐이라 트리거의 취지(움직이는 부품 수)에 해당하지 않는다.
+D1 선택 시 「프로덕션 diff 17파일 27줄」이 옵션 preview 에 명시돼 있었다.
+
+**발견 4건 — 전부 Maxi 승인 후 반영 완료.**
+
+| # | 심각도 | 신뢰도 | 발견 | 처방 | 반영 |
+|---|---|---|---|---|---|
+| **①A** | P2 | 9/10 | **ESLint 9.39 에 네이티브 래칫(`--suppress-all`)이 실재한다.** 손수 만든 베이스라인이 재발명일 수 있다 | **커스텀 유지.** 실측으로 억제 파일이 `{"count":1}` 형태 = **위반 개수만** 기록임을 확인 → 1041→1500 줄수 증가를 **못 잡는다**. 그게 D2 에서 ESLint 단독을 기각한 바로 그 이유다 | 유지 (근거 기록) |
+| **②A** | P2 | 8/10 | 대조군 ②가 `DashboardForm.tsx` **경로를 손으로 적어** button 예외 블록을 검사한다. 그 파일이 목록에서 빠지면 **아무것도 검사하지 않는데 계속 green** | `eslint.config.js` 가 `BUTTON_PRIMITIVE_EXEMPT_FILES` 를 **named export** 하고 테스트가 그걸 도출해 쓴다 + `toBeDefined()` 비-공허 짝 | T1 RED·GREEN |
+| **③A** | P2 | 9/10 | 같은 린트를 **4회** 실행(600×3 + 1288×1). 게다가 두 헬퍼의 **판정 기준이 불일치**(규칙 전체 카운트 vs 메시지 필터) | 메모화된 Promise 로 인스턴스당 1회 + `isPlaceholderLockViolation` **단일 술어**로 통일. `PLACEHOLDER_LOCK_TAG` 도 config 에서 도출 | T1·T2·T3 |
+| **④A** | P2 | 8/10 | 「PARSE_ERROR 0」 단언 **자체의 비-공허를 안 쟀다.** 이 세션 1차 측정이 정확히 그 함정에 빠졌었다 | 뮤테이션 **M4**(파서 제거 → red 여야 함) 추가 | T3 검증 |
+
+**섹션별.** ①아키텍처 2건(①A·②A) · ②코드 품질 1건(③A) · ③테스트 1 gap(④A) · ④성능 0건(③A 에 흡수).
+**BLOCKER: 없음.**
+
+### 필수 산출물
+
+**NOT in scope (고려했으나 명시적으로 제외).**
+
+| 항목 | 사유 |
+|---|---|
+| 「함수 30줄」 강제 | 비-테스트 445건/269파일. 예외목록으로 얼릴 규모가 아님 |
+| 변수 경유 placeholder 10곳/9파일 · 함수 기본 파라미터 1곳 | 어떤 JSX 선택자로도 안 잡히는 제3 유형. 차단 범위 밖(C-2) |
+| 200줄 초과 18건 **리팩터링** | 이 PR 은 **동결**이지 상환이 아니다. `TODOS.md:2471` 은 열어 둔다 |
+| 파일 300줄 상한 정본 충돌(`TODOS.md:2904` ㉮) | Maxi 판단 대기 항목. 이 PR 은 함수/컴포넌트 줄수만 |
+| ESLint 네이티브 억제 도입 | ①A 에서 검토·기각 (줄수 증가 미포착) |
+| 테스트 파일의 한글 placeholder 3건 | 프리미티브 단언용으로 정당 (C-4) |
+| `pnpm lint` 시점에 R4 노출 | D2 에서 계약 테스트 단독을 선택. lint 는 R3 만 |
+
+**What already exists (재사용 vs 재구축).**
+
+| 기존 자산 | 이 plan 의 처리 |
+|---|---|
+| `eslint.config.js` 의 `no-restricted-syntax` 락 2종 | **재사용** — 같은 규칙에 셀렉터만 추가. 신규 플러그인 0 |
+| `button-primitive-usage.test.ts` (도출·비-공허 짝·전수 비교) | **패턴 재사용.** ②A 처방이 그 선례의 「목록을 적지 말고 도출」을 그대로 적용 |
+| `msw-single-setupserver.test.ts:125` (NEEDLE 런타임 조립) | **패턴 재사용** — 자기탐지 회피 |
+| `pending-mutation-guard.test.ts` (R2, 배선·비-공허·양성·음성 4종) | **패턴 재사용** — 대조군 6종의 원형 |
+| `src/i18n/` 39개 feature 모듈 | **재사용** — 28건 중 24건이 기존 모듈행. 신규 3개만 생성 |
+| `frontend-ci.yml:63 pnpm --filter @bts/web lint` | **재사용** — CI 배선 변경 0 |
+| ESLint 네이티브 억제 | **의도적 미사용** (①A) |
+
+**Failure modes (신규 코드경로별 현실적 실패 1개씩).**
+
+| 코드경로 | 실패 시나리오 | 테스트 | 에러 처리 | 사용자에게 보이나 |
+|---|---|---|---|---|
+| `realEslint.lintText` 대조군 | 도출된 예외 목록이 비어 대조군이 사라짐 | ✅ ②A 비-공허 짝 | — | ✅ red |
+| `ratchetEslint.lintFiles` | 파서 누락으로 전량 파싱 실패 → 위반 0 을 「깨끗함」으로 오독 | ✅ ④A M4 | ✅ PARSE_ERROR 단언 | ✅ red |
+| 〃 | 글롭 오타로 스캔 0파일 | ✅ 파일 수 하한 + `entries.size > 0` | ✅ | ✅ red |
+| `LINES_RE` 메시지 파싱 | ESLint 가 메시지 문구를 바꿈 | ⚠️ 테스트 없음 | ✅ `throw new Error('메시지 형식이 바뀌었다')` | ✅ red (명시 메시지) |
+| 베이스라인 키 | 파일 rename → 신규+소멸 동시 발생 | ⚠️ 테스트 없음 | ✅ 실패 메시지에 안내 | ✅ red |
+| i18n 이전 28건 | 값 오타 (25/28 은 렌더 테스트 없음) | ⚠️ 테스트 없음 | — | ⚠️ **D-4 grep 절차로만 잡힘** |
+
+**critical gap (테스트 없음 + 에러 처리 없음 + 무음) — 0건.**
+마지막 행이 유일한 회색지대이나 **무음이 아니다** — D-4 의 기계적 `grep -rF` 절차가 0회/2회를 잡는다.
+
+**병렬화 전략.** **순차 구현, 병렬 기회 없음.**
+T2·T3 이 `lint-ratchet.test.ts` 를 공유하고 T2·T3 모두 T1 에 의존하며 T4 는 `depends-on [2,3]` 이다.
+
+**TODOS 제안 — 0건.** 이 리뷰의 발견 4건은 전부 이 PR 안에서 닫는다.
+이연 항목(NOT in scope 7종)은 이미 `TODOS.md` 또는 스펙 C-1~C-6 에 등재돼 있어 신규 등재가 없다.
+
+### 구현 tasks (리뷰 발견 → 작업)
+
+- [ ] **T1 (P2, human: ~30min / CC: ~5min)** — `eslint.config.js` — named export 2종 추가 후 테스트가 도출해 쓰게 한다
+  - Surfaced by. 아키텍처 ②A — 경로 하드코딩이 대조군을 공허하게 만든다
+  - Files. `apps/web/eslint.config.js` · `apps/web/src/test/lint-ratchet.test.ts`
+  - Verify. `node_modules/.bin/vitest run src/test/lint-ratchet.test.ts` 6/6
+- [ ] **T2 (P2, human: ~20min / CC: ~3min)** — 계약 테스트 — 린트 결과 메모화 + placeholder 판정 술어 통일
+  - Surfaced by. 코드 품질 ③A — 린트 4회 실행 · 두 헬퍼 기준 불일치
+  - Files. `apps/web/src/test/lint-ratchet.test.ts`
+  - Verify. 실행 시간 기록 (린트 4회 → 2회)
+- [ ] **T3 (P2, human: ~10min / CC: ~2min)** — 검증 — 뮤테이션 M4(파서 제거) 추가
+  - Surfaced by. 테스트 ④A — PARSE_ERROR 단언의 비-공허 미검증
+  - Files. (검증 절차, 커밋 산출물 없음)
+  - Verify. 파서 줄 제거 시 red, 원복 시 green
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 4 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | n/a | 시각 변경 0 — 대상 아님 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** ENG CLEARED — 발견 4건 전부 Maxi 승인 후 plan 에 반영됨. BLOCKER 0 · critical gap 0.
+
+NO UNRESOLVED DECISIONS

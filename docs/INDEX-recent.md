@@ -7,7 +7,7 @@
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-08-11 | todos-remeasure-3-debt-items | — | ✔ | — | — | — |
-| 2026-08-11 | web-ratchet-placeholder-and-component-lines | ✔ | ✔ | — | — | — |
+| 2026-08-11 | web-ratchet-placeholder-and-component-lines | ✔ | ✔ | — | — | FR-UX-06 |
 | 2026-08-07 | ci-runner-resource-guard | — | ✔ | — | — | — |
 | 2026-08-07 | fr-ux-14-b2-card-fields | ✔ | ✔ | ✔ | — | FR-BD-01 FR-BD-02 FR-UX-09 FR-UX-13 FR-UX-14 |
 | 2026-08-07 | fr-ux-14-f14 | ✔ | ✔ | — | — | FR-UX-06 FR-UX-09 FR-UX-13 FR-UX-14 |
