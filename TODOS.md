@@ -1752,7 +1752,7 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 >   ② 확정 누수 2건 봉합 — `AutomationYamlImportDialog.test.tsx:136-154`(EC5)·`:367-389`(CRITICAL-1)이 50ms·300ms 지연 핸들러를 건 채 정착을 기다리지 않고 끝난다. **기존 단언은 그대로 두고 테스트 끝에만 정착 대기를 덧붙인다** — 대기를 앞에 끼우면 「in-flight 창」을 보는 원 의도가 죽어 「엉뚱한 걸 쟀다」가 재발한다.
 >   ③ 같은 파일에 pending mutation 0 불변식 `afterEach` 추가.
 >   ④ **절대 금지 — `dangerouslyIgnoreUnhandledErrors: true`.** 종료 코드는 초록이 되지만 유일한 진단 표면이 사라진다(「봉인이 자기 결함을 재생산」 양식).
-> - **미승계.** 지연 MSW 핸들러를 쓰는 테스트 파일이 **34개**이고 그중 몇 개가 같은 누수를 갖는지는 미측정이다. 전면 승계는 별건.
+> - **미승계.** 지연 MSW 핸들러를 쓰는 테스트 파일이 **34개**이고 그중 몇 개가 같은 누수를 갖는지는 미측정이다. 전면 승계는 별건. **세는 정의와 34-set 이 놓친 관용구는 「지연 MSW 핸들러 34개 파일의 pending mutation 누수 미측정」 항목 참조** — 정의 없이 이 수치만 옮기지 말 것.
 
 ---
 
@@ -1799,7 +1799,7 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 
 ## ✅ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (해소 2026-08-09 · **이 1줄만**)
 
-> **해소.** `fix/web-tech-debt-4` — `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 회귀 가드는 렌더 단언이 아니라 **소스 단언**이다(렌더로는 하드코딩 복귀를 못 잡는다 — 뮤테이션으로 확증). ★**나머지 28곳과 ESLint 래칫은 별도 항목**이다.
+> **해소.** `fix/web-tech-debt-4` — `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 회귀 가드는 렌더 단언이 아니라 **소스 단언**이다(렌더로는 하드코딩 복귀를 못 잡는다 — 뮤테이션으로 확증). ★**나머지 27곳과 ESLint 래칫은 별도 항목**이다.
 
 **무엇.** `placeholder="이슈 제목을 입력하세요"` 가 리터럴이다
 (`components/issue/create/IssueCreateBasicFields.tsx:110`).
@@ -1821,13 +1821,13 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 (`grep -rn "이슈 제목을 입력하세요" apps/web/`) — 현재는 이 1건뿐이다.
 
 > **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (좌표 밀림 0 · `:110` 지금도 정확).**
-> - **★정정 1.** 「다국어를 열 때 **이 한 줄만** 조용히 번역에서 빠진다」는 **거짓**이다. `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 placeholder 가 **28곳** 있다(`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` · `CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 더하면 29곳. 원 서술은 **「그 특정 문자열의 grep 히트 수」로는 맞지만** 「i18n 에서 빠지는 줄이 이것뿐」이라는 뜻으로 읽히면 틀린다.
+> - **★정정 1.** 「다국어를 열 때 **이 한 줄만** 조용히 번역에서 빠진다」는 **거짓**이다. `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 placeholder 가 **27곳** 있다(`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` · `CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 더하면 28곳. 원 서술은 **「그 특정 문자열의 grep 히트 수」로는 맞지만** 「i18n 에서 빠지는 줄이 이것뿐」이라는 뜻으로 읽히면 틀린다.
 > - **정정 2.** 「같은 폼의 **본문** placeholder 는 i18n 을 쓴다」는 과소 서술. 본문뿐 아니라 **프로젝트 셀렉터**도 `issueCreateStrings.projectPlaceholder`(`:62`)를 쓴다 — 이 파일의 placeholder 3개 중 **2개가 i18n, 1개만 리터럴**이다.
-> - **2026-08-09 Maxi 확정 — 이 1줄만 좁게. 나머지 28곳은 신규 등재.**
+> - **2026-08-09 Maxi 확정 — 이 1줄만 좁게. 나머지 27곳은 신규 등재.**
 > - **★★회귀 가드 설계 주의 (반증이 적발).** 「`issueCreateStrings.summaryPlaceholder` 자체와 대조하는 렌더 테스트」는 **공허하다.** i18n 값이 현재 리터럴과 바이트 동일해야 하므로 DOM 의 `placeholder` 속성 문자열이 두 경우(i18n 참조 / 하드코딩 복귀)에 완전히 같다 — **속성값은 출처를 싣지 않는다.** 그 가드가 실제로 잡는 것은 (a)속성 삭제 (b)다른 키 교체 둘뿐이고, **막겠다고 선언한 「하드코딩 복귀」는 못 잡는다.**
->   ⇒ **올바른 가드.** `apps/web/eslint.config.js:69·116` 에 이미 있는 `no-restricted-syntax` AST 선택자 배열에 한 항목을 더한다 — `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]`. 현재 히트를 예외 파일 목록으로 등재한 뒤 이번 PR 에서 `IssueCreateBasicFields.tsx` 만 목록에서 뺀다(**래칫**). 문법을 보므로 출처 판별이 성립하고, 29번째 신규 하드코딩도 자동 차단된다.
+>   ⇒ **올바른 가드.** `apps/web/eslint.config.js:69·116` 에 이미 있는 `no-restricted-syntax` AST 선택자 배열에 한 항목을 더한다 — `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]`. 현재 히트를 예외 파일 목록으로 등재한 뒤 이번 PR 에서 `IssueCreateBasicFields.tsx` 만 목록에서 뺀다(**래칫**). 문법을 보므로 출처 판별이 성립하고, 28번째 신규 하드코딩도 자동 차단된다.
 >   미확정 2건 — ① `ComponentMultiSelect.tsx:78` 은 템플릿 리터럴이라 `Literal` 선택자에 안 걸린다(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부 판단 필요). ② 내가 센 28 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다** — 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재할 것. 로컬 lint 목록과 CI lint 목록이 어긋난 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
-> - **중복 추적 주의.** 같은 부류가 이미 `docs/plan/product/personalization.md:479-483` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로 **따로 추적 중**이다. 신규 TODOS 항목을 또 만들면 같은 부류가 3곳에 흩어져 `[[two-lists-never-check-each-other]]` 를 새로 만든다 — 아래 신규 항목에서 그 문서를 상호 링크했다.
+> - **중복 추적 주의.** 같은 부류가 이미 `docs/plan/product/personalization.md:479-486` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로 **따로 추적 중**이다. 신규 TODOS 항목을 또 만들면 같은 부류가 3곳에 흩어져 `[[two-lists-never-check-each-other]]` 를 새로 만든다 — 아래 신규 항목에서 그 문서를 상호 링크했다.
 
 ---
 
@@ -2089,23 +2089,41 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web — 한글 리터럴 placeholder 28곳이 i18n 밖에 있다 (선재 · 미착수)
+## ⬜ apps/web — 한글 리터럴 placeholder 27곳이 i18n 밖에 있다 (선재 · 미착수)
 
-**무엇.** `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 `placeholder` 가 **28곳**
+**무엇.** `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 `placeholder` 가 **27곳**
 (`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` ·
-`CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 29곳.
+`CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 28곳.
+
+**★2026-08-11 재실측 — 27곳이다.** PR #352(`d3cd9df20`)가 `IssueCreateBasicFields.tsx:110` 1건을
+해소해 리터럴 28 → **27** · 템플릿 포함 총합 29 → **28** 로 실제 감소했다.
+
+**★변수형 사각지대는 10곳 / 9파일이다(2026-08-11 실측).** `LabelAutocompleteInput.tsx:79` 는
+함수 기본 파라미터라 리터럴·템플릿과 다른 **제3 유형**이고, 어떤 JSX 선택자로도 잡히지 않는다.
+**세는 정의** = `placeholder={식별자}` 중 그 식별자가 **같은 파일 안에서** 한글 리터럴로 묶이는 것
+(객체 리터럴 속성 경유 포함). 정의를 바꾸면 값이 크게 흔들린다 — `placeholder={…}` 비-템플릿 전부면
+**56곳/43파일**, 같은 파일 직접 대입만이면 **2곳/2파일**이다. **정의 없이 이 수치만 옮기지 말 것**
+(바로 아래 지연 MSW 항목이 같은 함정으로 한 번 뒤집혔다).
 
 **처방 — 손 열거가 아니라 ESLint 래칫.** `apps/web/eslint.config.js:69·116` 에 이미 있는
 `no-restricted-syntax` AST 선택자 배열에 `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]` 를 더하고,
 현재 히트를 예외 파일 목록으로 등재한 뒤 고칠 때마다 목록에서 뺀다.
+
+**★★「두 배열」은 절반이다 (2026-08-11 코드리뷰 적발).** `no-restricted-syntax` 는 실제로 **4곳**이다 —
+배열 2개(`:59` 기본 · `:113` button 예외)와 **`'off'` 블록 2개**(`:126` = `**/*.test.{ts,tsx}`·`src/test/**`·
+`src/mocks/**` · `:137` = `src/components/ui/**`). 이 규칙은 **병합이 아니라 대체**되므로
+두 배열만 고치면 `src/components/ui/**`(프로덕션 38파일)가 래칫에서 **영구 면제**된다.
+지금은 그 밑에 비-테스트 한글 placeholder 가 0건이라 즉시 피해가 없지만, 래칫의 목적이
+「다음 신규 하드코딩 자동 차단」인 이상 **뚫린 채로 시작한다.**
+(`:69`·`:116` 은 배열 **선언 줄이 아니라** 그 안의 `animate-pulse` 셀렉터 줄이다. 선언은 `:59`·`:113`.)
 **렌더 테스트로는 못 잡는다** — i18n 값과 하드코딩 값이 바이트 동일하면 DOM 속성 문자열이 같아
 「속성값은 출처를 싣지 않는다」.
 
 **착수 전 확정할 것 2건.** ① `ComponentMultiSelect.tsx:78` 은 템플릿 리터럴이라 `Literal` 선택자에 안 걸린다
-(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부). ② 위 28 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다**
+(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부). ② 위 27 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다**
 — 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재. 로컬 lint 목록 ≠ CI lint 목록 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
 
-**★중복 추적 주의.** 같은 부류가 `docs/plan/product/personalization.md:479-483` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로
+**★중복 추적 주의.** 같은 부류가 `docs/plan/product/personalization.md:479-486` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로
 따로 추적 중이다. 착수 시 **그쪽을 이 항목으로 흡수**할 것 — 두 곳에 나뉘어 있으면 서로를 검사하지 않는다.
 
 ---
@@ -2229,12 +2247,46 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **무엇.** 「테스트가 끝났는데 mutation 이 아직 날고 있다」 누수를 `AutomationYamlImportDialog.test.tsx` 한 파일에서만 닫았다.
 **지연 MSW 핸들러를 쓰는 테스트 파일이 34개**이고 그중 몇 개가 같은 누수를 갖는지는 **미측정**이다.
 
+**★「34개」는 틀린 수가 아니다 — 세는 정의가 안 적혀 있었을 뿐이다(2026-08-11 실측).**
+정의 = `(setTimeout ∨ msw delay()) ∧ (server.use( ∨ setupServer()`. 이 정의에서 HEAD 기준 **정확히 34** 다.
+`setTimeout` 만으로 세면 33(차이 1건 = `hooks/__tests__/use-backlog-epics.test.tsx`),
+주석 1건(`routes/projects.$projectKey.settings.import.test.tsx:492`)을 빼면 32 다.
+**정의를 안 적으면 다음 사람이 세는 법을 바꿔 「숫자가 틀렸다」고 결론낸다** — 실제로 그렇게 됐다.
+
+**★★그런데 이 34-set 자체가 대상을 놓치고 있다.** 최고위험 관용구인 **미해결 Promise**
+(`new Promise(() => {})` 계열 — 지연이 **무한**이라 `setTimeout(N)` 보다 누수 위험이 크다)가
+정의에서 통째로 빠졌다. **여기도 정의를 먼저 적는다** — executor 인자가 **0개**라 resolve 를
+넘겨받지 못해 영원히 정착 불가인 Promise (`grep -rlE 'new Promise(<[^>]*>)?\(\(\) *=>'`).
+이 정의에서 HEAD 기준 **22개 파일 중 20개가 34-set 밖**이다.
+`() => {}` 형태만 세고 `() => undefined` 변종을 빠뜨리면 16개 중 15개로 줄어든다 —
+**이 항목이 경고하는 바로 그 「정의 미기재」 함정이 관용구 쪽에서도 그대로 재현된다.**
+교과서적 실례 — `FavoriteButton.test.tsx:262` 가
+`http.post('/api/v1/favorites', () => new Promise<never>(() => {}))` 로 뮤테이션을 영원히 pending 시키고
+`:275` 에서 클릭한 뒤 정착을 기다리지 않고 끝난다(`:122` `afterEach` 는 `vi.clearAllMocks()` 뿐).
+이 파일은 **34-set·33-set·32-set 어디에도 없다** — `server.use(` 를 7건 쓰지만
+`setTimeout`·`delay()` 가 **0건**이라 정의에 안 걸린다.
+
 **왜 승계를 미뤘나.** 34개 파일에 `afterEach` 불변식을 한 번에 넣으면 **한 PR 에서 대량 red** 가 터지고
 「한 PR = 한 BC」 규칙과도 부딪힌다.
 
-**처방.** 공용 `createTestQueryClient` 헬퍼 + 전역 `afterEach` 로
-`queryClient.getMutationCache().getAll().filter(m => m.state.status === 'pending')` 가 빈 배열임을 단언.
-디렉토리 단위로 나눠 넣을 것.
+**처방 — ★정적 목록보다 「1회 실측」이 먼저다 (2026-08-11 교체).**
+원 처방(공용 `createTestQueryClient` 헬퍼 + 전역 `afterEach` 로
+`queryClient.getMutationCache().getAll().filter(m => m.state.status === 'pending')` 가 빈 배열임을 단언,
+디렉토리 단위 분할)은 **구조는 유효하나 대상 집합을 grep 으로 만든다는 전제가 틀렸다.**
+관용구를 손으로 열거하는 한 누락이 재발한다 — 이번에 실제로 재발했다(위 미해결 Promise 20파일).
+
+**바뀐 순서.**
+1. **측정 PR 먼저.** 판정용 `afterEach` 를 `src/test/setup.ts` 에 **임시로** 전역 주입하고
+   유닛 전량을 **1회** 돌려 「실제로 pending 을 남기는 파일」의 실측 목록을 얻는다.
+   이 한 번의 실행이 관용구 열거 누락을 **구조적으로 불가능**하게 만든다. 기존 테스트 수정 0줄.
+2. 그 실측 목록을 기준으로 디렉토리 단위 이주 PR 을 나눈다.
+
+**★착수 전 확인 2건.**
+① `src/test/setup.ts:19-45` 가 `process.on('unhandledRejection')` 추가를 **절대 금지**로 못박았다
+   (리스너가 1개를 넘으면 vitest 가 물러나 종료 코드가 1 → 0 으로 뒤집힌다). 그 경로는 배제한다.
+② 선례 `AutomationYamlImportDialog.test.tsx:107` 의 `?? []` 를 그대로 전역화하면
+   **미이주 파일 전량에서 항진명제**가 된다(레지스트리가 비면 무조건 통과).
+   합성 위반 양성 대조군이 없으면 가드 자체가 장식이다.
 
 ---
 
@@ -2367,15 +2419,28 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ## ⬜ apps/web — `IssueCreateForm` 컴포넌트가 줄수 상한을 넘는다 (227 / 상한 200 · 미착수)
 
-**무엇.** `DEVELOPMENT.md §2.2` 는 「컴포넌트 200줄 이내 · 파일 300줄 이내」다.
-2026-08-09 CREATE 게이트 작업 후 실측 — **컴포넌트 227줄 · 파일 321줄**.
+**무엇.** `DEVELOPMENT.md §2.2`(`:72`)는 「함수 30줄 이내 · **컴포넌트 200줄 이내**」다 —
+**파일 상한 조항은 없다.** 「파일 300줄」은 `DEVELOPMENT.md:55` §2.1 **Kotlin** 규칙이다.
+다만 `docs/sdd/22-claude-code-env.md:209` 는 **언어 태그 없이** 「함수 30줄 이내, 파일 300줄 이내」를
+규정해 두 정본이 갈린다 → 아래 신규 항목 「파일 300줄 상한 정본 충돌」로 넘긴다.
+2026-08-09 CREATE 게이트 작업 후 실측 — **컴포넌트 227줄 · 파일 320줄**.
 
 | 대상 | main | 게이트 작업 직후 | 헬퍼 분리 후 | 상한 |
 |---|---|---|---|---|
 | 컴포넌트 | 197 | 243 | **227** | 200 |
-| 파일 | 349 | 426 | **321** | 300 |
+| 파일 | 348 | 426† | **320** | 300 |
 
-**★파일은 main 보다 작아졌다**(349 → 321). 남은 것은 컴포넌트 27줄 초과다.
+† `426` 은 게이트 작업 직후 값으로 **재측정하지 못했다**(그 시점 커밋이 남아 있지 않다).
+`348`·`320` 은 2026-08-11 실측 — `git show 5b55318a6:apps/web/src/components/issue/IssueCreateForm.tsx | wc -l`
+→ 348, `git show d3cd9df20:...` → 320. **현재 HEAD 는 318** 이다(이 항목이 열린 뒤 더 줄었다).
+
+**계수 기준 = raw(빈 줄·주석 포함). Maxi 확정 2026-08-11.** 근거 —
+`docs/plans/2026-08-05-fr-ux-13-f15-backlog-vertical-stack.md:703-708` 선례가 시작행~종료행 span 으로
+재서 사실상 raw 관행이고, 빈 줄·주석을 빼는 계수를 쓰면 **컴포넌트 227 → 185 · `handleSubmit` 34 → 28**
+(2026-08-11 실측)이 돼 상한 **200·30 을 둘 다 밑돈다** — **코드를 한 줄도 안 고쳤는데 이 항목이 상환 없이 사라진다.**
+계수 기준이 정해지지 않으면 부채의 생사가 자로 결정된다.
+
+**★파일은 main 보다 작아졌다**(348 → 320). 남은 것은 컴포넌트 27줄 초과다.
 
 **왜 더 안 줄였나.** main 이 이미 197 로 상한 3줄 앞이었다 — 이 파일은 **어떤 추가도
 상한을 넘기는 상태**였다. 게이트·에러 초기화·안내 배너를 전부 빼도 ~206 이다.
@@ -2782,3 +2847,150 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 **착수 시 주의.** 되살린다면 「관리자에게 문의」는 **되살리지 말 것** — 그것이 재리뷰가 지적한
 막다른 길이다. 그리고 문구 길이를 늘리기 전에 실제 렌더 폭(`MoveIssueDialog` step1 인라인
 에러 영역)에서 줄바꿈을 눈으로 확인할 것.
+
+---
+
+## ⬜ 문서 — `DEVELOPMENT.md §2.2` 와 SDD §22.7.1 이 파일 300줄 상한을 놓고 갈린다 (신규 · **Maxi 판단 대기**)
+
+**무엇.** TypeScript 에 파일 300줄 상한이 있는가에 대해 두 정본이 다르게 말한다.
+
+| 문서 | 좌표 | 서술 | 언어 태그 |
+|---|---|---|---|
+| `DEVELOPMENT.md` §2.1 | `:55` | 함수 30줄 이내, **파일 300줄 이내** | **Kotlin(백엔드)** |
+| `DEVELOPMENT.md` §2.2 | `:72` | 함수 30줄 이내, 컴포넌트 200줄 이내 | TypeScript(프론트) — **파일 상한 없음** |
+| `docs/sdd/22-claude-code-env.md` | `:209` | 함수 30줄 이내, **파일 300줄 이내** | **없음** |
+
+**왜 문제인가.** SDD 그 표의 **이웃 행은 언어 특정일 때 「Kotlin: …」·「TypeScript strict…」처럼
+명시적으로 태그를 붙인다.** 따라서 태그 없는 행을 Kotlin 전용으로 읽을 근거가 없다.
+어느 쪽으로 정리하든 **반대편에 drift 를 만든다** — `CLAUDE.md §명세/범위 변경 시 전수 동기화` 대상이다.
+
+**착수 전 Maxi 확정 필요.** ① TypeScript 에 파일 300줄 상한이 유효한가
+② 유효하면 `DEVELOPMENT.md §2.2` 에 명문화할 것인가, 무효면 SDD `:209` 에 언어 태그를 붙일 것인가.
+**추측 구현 금지.** 확정 전에는 어느 문서도 고치지 않는다.
+
+**발견 경위.** 2026-08-11 재측정. `TODOS.md` 의 `IssueCreateForm` 줄수 항목이
+「`§2.2` 는 컴포넌트 200줄 · 파일 300줄」이라 적고 있었는데 §2.2 에 파일 상한 조항이 없어 정정하다가 드러났다.
+
+---
+
+## ⬜ apps/web — 200줄 초과 컴포넌트가 18건인데 장부엔 1건 · 줄수 규칙에 강제 수단이 0 이다 (신규 · 미착수)
+
+**무엇.** `DEVELOPMENT.md:72` 의 「컴포넌트 200줄 이내」에 **강제 수단이 하나도 없다.**
+
+| 강제 수단 | 현황 |
+|---|---|
+| ESLint `max-lines` / `max-lines-per-function` / `complexity` | `apps/web/eslint.config.js` 에 **0건** |
+| `scripts/` 판별식 | **0건** (`verify-master-plan.sh` 의 `wc -l` 3곳은 FR/SDD 개수 대조라 소스 줄수와 무관) |
+| CI 검사 | **0건** |
+
+**★장부는 실제 부채의 표본이다.** 2026-08-11 ESLint 실측 — 비-테스트 200줄 초과 **18건 / 18파일**.
+그중 `TODOS.md` 에 등재된 것은 **1건**(`IssueCreateForm` 227줄)이고 그마저 **컴포넌트 중 14위**다.
+1위는 `routes/issues.$key.tsx` 의 `IssueDetailPage` **1,041줄**로 4.6배다.
+그 1건이 잡힌 것도 「가장 나빠서」가 아니라 PR #352 중 **우연히 눈에 띄어서**다.
+⇒ **강제 수단을 넣지 않는 한 장부 숫자는 들여다볼 때마다 계속 오른다.**
+
+**계수 기준 = raw(빈 줄·주석 포함). Maxi 확정 2026-08-11.**
+
+**★「14위」와 「15위」가 둘 다 맞다 — 세는 대상이 다르다.** 비-테스트 18건 중 **17건이 컴포넌트,
+1건이 훅**(`use-mention-autocomplete.ts:116` `useMentionAutocomplete` 272줄, 전체 10위)이다.
+`IssueCreateForm` 은 **전체 15위 · 컴포넌트 중 14위**다. 다음 세션이 ESLint 를 그대로 돌려
+「15위인데 장부는 14위라 했다」로 오판하지 않도록 남긴다. 이 차이 자체가 아래 설계 제약
+(컴포넌트와 일반 함수를 규칙 하나로 구분할 수 없다)의 실물 증거다.
+
+**★★설계 제약 — ESLint 단독으로는 못 한다.**
+`max-lines-per-function` 은 **규칙 하나에 임계값 하나**뿐이고, 겹치는 config 블록에서
+뒤 블록이 앞 블록을 **병합이 아니라 대체**한다(같은 파일의 `no-restricted-syntax` 로 `--print-config` 실증됨).
+그런데 「컴포넌트 200줄」과 「함수 30줄」은 **같은 규칙 id 를 공유**하고 **컴포넌트도 함수**다 —
+`200` 을 걸면 199줄짜리 일반 함수가 통과하고, `30` 을 걸면 모든 컴포넌트가 걸린다. **동시 강제 불가.**
+파일 단위 `override` 로 예외를 주면 그 파일에서 **두 트랙이 함께 죽는다.**
+
+⇒ 컴포넌트(대문자 시작 + JSX 반환)와 일반 함수를 구분하려면 **소스 훑기 계약 테스트**가 필요하다.
+선례 = `apps/web/src/components/__tests__/button-primitive-usage.test.ts`(327줄) —
+①목록을 손으로 적지 않고 디렉토리에서 **도출**(`:96 readdirSync`) ②도출이 실제로 배선됐는지를
+**비-공허 짝**으로 확인(`:305-307`) ③개수가 아니라 **목록 전수 비교**로 단언(`:325 toEqual`).
+
+**★착수 전 알아야 할 수치.** raw 로 `max-lines-per-function: 200` 을 켜면 **CI 스코프에서 87건 / 78파일**이 red 다
+(비-테스트 18건/18파일 + **테스트 69건/60파일**). `apps/web/package.json` 의 `lint` 가 `eslint src` 이고
+`eslint.config.js` 의 `ignores` 가 `['dist']` 뿐이라 **테스트 파일도 린트 대상**이기 때문이다.
+「비-테스트 18건」만 보고 예외 목록을 짜면 CI 에서 87건으로 터진다.
+
+**★가드가 공허해질 수 있는 경로 3종.**
+① `apps/web/src` 에 `eslint-disable` 주석이 57건 있고 `linterOptions.reportUnusedDisableDirectives` 설정이 없다
+   — 계약 테스트가 「마커 전수」와 「히트 전수」를 **양방향** 비교하지 않으면 주석 한 줄로 목록에도 없고 히트도 아닌 파일이 생긴다.
+② 실행처가 CI 하나뿐이다. **worktree 에서 husky 훅은 구조적으로 부재**하므로
+   (`[[worktree-silently-disables-husky-hooks]]`) 훅을 실행처로 계산에 넣으면 안 된다.
+③ 소스를 훑는 계약 테스트는 **자기 파일을 스캔에서 빼거나** NEEDLE 을 런타임 조립해야 자기탐지에 안 걸린다
+   (`msw-single-setupserver.test.ts:125` 선례).
+
+**Maxi 확정 방향 (2026-08-11).** 개별 상환보다 **강제 수단(래칫)이 먼저**다.
+
+---
+
+## ⬜ 인프라 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수)
+
+**무엇.** `Maxi_wiki/BTS/_index.md:59` 는 「**Repo → Obsidian** (단방향, 자동) — 머지 시 post-merge hook 이
+`scripts/workflow/sync-obsidian.ts` 실행」이라 적는다. **그 파일은 저장소에 없다**
+(`ls scripts/workflow/sync-obsidian.ts` 부재). 실제 `.husky/post-merge` 가 하는 일은
+`node scripts/build-dashboard.mjs` 재생성·푸시 **하나뿐**이다.
+훅 배선 자체는 정상이다(`core.hooksPath=.husky/_` · shim `-rwxr-xr-x`).
+
+**★같은 phantom 을 말하는 문서가 2곳이다.** `scripts/` 전수 grep 은 0건이 아니라 **1건**인데,
+그 1건도 구현이 아니라 `scripts/workflow/README.md:92` 의 **똑같은 거짓 서술**이다
+(「`sync-obsidian.ts` (Phase 1) — post-merge hook에서 호출, Repo → Obsidian 단방향 동기화」).
+정정하든 구현하든 **`_index.md:59` 와 `scripts/workflow/README.md:92` 를 같은 PR 에서 함께** 손대야 한다.
+
+**실제 피해.** `/bts-merge` Step 7 은 4항목(①`history.md` 등재 ②`docs/decisions/` 복사
+③`docs/plans/` 복사 ④`learning:` 라벨 시 `learnings.md`)을 **수동**이라 명시하는데,
+`_index.md` 는 자동이라 말한다. 두 문서가 갈린 결과 **PR #350~#359 10건이 `history.md` 에 통째로 누락**됐고
+`docs/decisions/` 미러 1건이 stale 로 남았다(2026-08-11 세션이 수동 백필로 해소).
+
+**★★이건 신규 발견이 아니다 — 25일 전에 정확히 진단됐고 그대로 재발했다.**
+2026-08-11 재측정 중 드러난 연쇄다.
+
+| 날짜 | 무슨 일이 있었나 | 좌표 |
+|---|---|---|
+| **2026-07-17** | 「`_index.md` 가 **틀렸다**. 그 스크립트는 **존재하지 않고** post-merge 훅은 대시보드 재생성 전용이다. 정본은 `bts-merge/SKILL.md` Step 7(수동)」 — **완전히 정확한 진단** | `docs/plans/2026-07-17-fr-ux-06-jira-redesign/context-notes.md:129` |
+| **2026-07-27** | 다른 세션이 「`bts-merge` 의 **`sync-obsidian.ts` 가 자동 처리**하나 …」라 적으며 **그 거짓 주장을 다시 믿었다.** 같은 표에서 Step 7 은 **❌ 누락** | `docs/plans/2026-07-27-fr-co-01.md:484` |
+| **2026-08-04 ~ 08-10** | PR #350~#359 **10건 전량** `history.md` 미등재 | — |
+
+**⇒ 교훈은 「문서가 틀렸다」가 아니라 「맞는 진단을 적었는데도 안 퍼졌다」다.**
+2026-07-17 의 진단은 **그 PR 의 `context-notes.md` 안에만** 있었다. 장부(`TODOS.md`)에 등재되지도,
+원본(`_index.md`·`README.md`)이 고쳐지지도 않았다. **한 작업의 컨텍스트 노트는 지속 채널이 아니다** —
+다음 세션은 그 파일을 열 이유가 없고, 대신 `_index.md` 를 읽고 「자동이구나」라고 믿는다.
+그래서 정확한 진단이 있었음에도 **10일 뒤 같은 오해가, 3주 뒤 10건 누락이** 그대로 났다.
+이 항목을 닫을 때는 **진단을 어디에 적을 것인가**까지 같이 정해야 한다.
+
+**★이 항목이 위 「강제 수단 0」과 같은 양식이다.** 규칙(Step 7)은 있는데 강제가 없고,
+문서가 「자동」이라 말하니 사람도 에이전트도 손으로 하지 않는다. `CLAUDE.md:63` 은
+「Phase 0 은 수동, **Phase 1 에 자동화**」인데 **지금이 Phase 1** 이다 — 예정된 자동화가 안 만들어진 채
+`_index.md` 만 완료형으로 서술됐다.
+
+**미러 전체 drift (2026-08-11 실측 · 계수 기준 = 각 원본 디렉토리의 최상위 `*.md`).**
+
+| 원본 | 미러 | 총 | 부재 | 다름 | drift |
+|---|---|---|---|---|---|
+| `docs/decisions` | `decisions/` | 134 | 3 | 2 | 5 |
+| `docs/adr` | **`decisions/`(같은 폴더)** | 34 | 3 | 3 | **6** |
+| `docs/plans` | `plans/` | 320 | 16 | 9 | 25 |
+| | | | | | **합 36** |
+
+**★★원본이 둘인데 미러 폴더가 하나다.** `scripts/doc-index/config.mjs:20·21` 이 `docs/decisions` 와
+`docs/adr` 를 **둘 다** 인덱스 원본으로 등재하고, 미러 `decisions/` 는 163건으로 양쪽을 합쳐 받는다(134+29).
+**한쪽만 세면 나머지는 영원히 안 보인다** — 이 항목이 경고하는 `[[two-lists-never-check-each-other]]` 그 자체다.
+1차 집계가 `docs/adr` 를 빼고 「합 29」라 적었던 것을 코드리뷰가 잡았다.
+
+**★「다름」은 공백 차이가 아니다.** `docs/adr/2026-05-22-issue-key-prefix-policy.md` 는 저장소 쪽에만
+「**2026-07-29 무효** — `data-dev.sql` 은 삭제됐다」 주석이 붙어 있다. **미러는 폐기된 결정을 아직
+유효한 것처럼 보여준다.** 이게 이 부채의 실제 위험면이다(수치가 아니라 거짓 유효성).
+
+**★계수 정의 주의.** `docs/plans` 는 최상위 기준 320 이고 **재귀로 세면 327**(하위 디렉토리 2개에 7파일 추가,
+부재 23 · 다름 9 → drift 32)이다. 정의를 안 적으면 다음 재측정이 「숫자가 틀렸다」로 뒤집는다.
+
+(`docs/plans` 부재 16 중 1건은 **이 PR 자신의 plan 파일**이고, 「다름」 9 중 1건은 이 PR 이 좌표를
+정정한 `2026-08-07-fr-ux-14-f14.md` 다. 머지 Step 7 을 손으로 하지 않으면 **이 항목이 자기 자신을
+두 건 더 늘린다** — 그게 이 부채의 성질이다.)
+
+**착수 전 Maxi 확정 필요.** ① `sync-obsidian.ts` 를 실제로 만들 것인가, 아니면
+`_index.md:59` 를 「수동」으로 정정하고 Step 7 체크리스트를 강제할 것인가
+② 미러 drift 29건을 일괄 동기화할 것인가. **`Maxi_wiki/` 는 저장소 밖이라 CI 가 볼 수 없다** —
+어떤 강제 수단이든 커밋 시점(`build-doc-index.mjs --check` 와 같은 자리) 또는 `/bts-merge` 스킬 안에 두어야 한다.
