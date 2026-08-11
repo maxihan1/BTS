@@ -157,6 +157,13 @@ describe('R3. 한글 placeholder 래칫', () => {
 })
 
 /**
+ * R3 전량 스캔(테스트 포함)의 비-공허 하한. 실측 1288 이라 1000 이면 글로브가 깨져
+ * 4분의 1만 날아가도 잡힌다. R4 의 {@link MIN_SCANNED_FILES}(비-테스트 전용, 실측 603)와
+ * **다른 스코프를 재므로 상수를 공유하지 않는다** — 같은 500 을 쓰면 R3 쪽이 절반까지 헐거워진다.
+ */
+const MIN_SCANNED_FILES_ALL = 1000
+
+/**
  * 소스 전량을 **실제 config** 로 훑어 placeholder 락 위반 좌표를 모은다.
  * ★리뷰 ③A — 메모화. 이 린트는 1288파일이라 가장 비싸다. 두 번 돌 이유가 없다.
  */
@@ -171,7 +178,9 @@ async function computePlaceholderHits(): Promise<string[]> {
       .filter((m) => m.fatal)
       .map((m) => m.message),
   ).toEqual([])
-  expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 1288
+  // 비-공허 하한. ★R4 쪽 하한(500)을 그대로 쓰면 안 된다 — R3 는 테스트까지 포함해 실측 1288 이라
+  //   500 은 절반이 날아가도 통과하는 값이다(코드리뷰 INFORMATIONAL-5).
+  expect(results.length).toBeGreaterThan(MIN_SCANNED_FILES_ALL)
   return results.flatMap((r) =>
     r.messages
       // ★리뷰 ③A — 대조군과 **같은 술어**를 쓴다.
