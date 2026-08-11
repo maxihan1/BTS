@@ -75,7 +75,9 @@ export function ComponentMultiSelect({
       <input
         type="text"
         className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
-        placeholder={`${issueDetailStrings.componentsLabel} 검색`}
+        placeholder={issueDetailStrings.componentsSearchPlaceholder(
+          issueDetailStrings.componentsLabel,
+        )}
         aria-label={`${issueDetailStrings.componentsLabel} 검색`}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}

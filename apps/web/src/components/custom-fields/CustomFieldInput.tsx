@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { CustomField, CustomFieldOption } from '@/api/custom-fields.types'
+import { customFieldLabels } from '@/i18n/custom-field-labels'
 import { toLocalInput, toIsoOffset } from './datetime-utils'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ function SingleSelectWidget({
         aria-label={field.name}
         className="w-full"
       >
-        <SelectValue placeholder="선택하세요" />
+        <SelectValue placeholder={customFieldLabels.inputSelectPlaceholder} />
       </SelectTrigger>
       <SelectContent>
         {field.options.map((opt: CustomFieldOption) => (

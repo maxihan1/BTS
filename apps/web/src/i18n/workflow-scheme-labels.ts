@@ -5,12 +5,23 @@ import { projectNotFoundLabels } from './project-not-found-labels'
  * workflow-scheme UI 가 E2E 셀렉터로 노출하는 한국어 라벨/텍스트.
  *
  * - PR #22 §F4 학습 — E2E 가 i18n 정본 참조해 hardcoded string drift 차단
- * - 영역 한정 (전면 i18n migration 아님). 라벨/aria-label/button/heading 만
- * - placeholder, Zod error message, FormDescription 등 보조 텍스트는 미포함 (T3 가 별도 결정 가능)
+ * - 영역 한정 (전면 i18n migration 아님). 라벨/aria-label/button/heading + placeholder
+ * - **placeholder 는 이제 포함한다** (2026-08-11 R3 래칫). 옛 주석의 「미포함 · T3 가 별도
+ *   결정 가능」이 그 별도 결정이고, ESLint 락이 하드코딩을 막으므로 정본이 여기여야 한다.
+ * - Zod error message, FormDescription 등 나머지 보조 텍스트는 여전히 미포함
  *
- * 그룹 — sidebar / emptyState / create / detail / mapping / standardProtect / inUseModal / assignment
+ * 그룹 — placeholder(최상위) / sidebar / emptyState / create / detail / mapping / standardProtect / inUseModal / assignment
  */
 export const workflowSchemeLabels = {
+  /** 스킴 키 input placeholder (admin.workflow-schemes.new.tsx) */
+  keyPlaceholder: '예: my-scheme-01',
+  /** 이름 input placeholder */
+  namePlaceholder: '스킴 이름을 입력하세요',
+  /** 설명 input placeholder */
+  descriptionPlaceholder: '스킴 설명을 입력하세요',
+  /** 프로젝트 스킴 할당 Select 미선택 placeholder (말줄임표 포함) */
+  schemeSelectPlaceholder: '스킴 선택...',
+
   /** 좌 사이드바 (WorkflowSchemeSidebar.tsx) */
   sidebar: {
     /** nav 요소 aria-label */

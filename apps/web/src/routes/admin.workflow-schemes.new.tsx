@@ -98,7 +98,7 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
               <FormLabel>{workflowSchemeLabels.create.keyLabel}</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="예: my-scheme-01"
+                  placeholder={workflowSchemeLabels.keyPlaceholder}
                   aria-label={workflowSchemeLabels.create.keyLabel}
                   {...field}
                 />
@@ -120,7 +120,7 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
               <FormLabel>{workflowSchemeLabels.create.nameLabel}</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="스킴 이름을 입력하세요"
+                  placeholder={workflowSchemeLabels.namePlaceholder}
                   aria-label={workflowSchemeLabels.create.nameLabel}
                   {...field}
                 />
@@ -139,7 +139,7 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
               <FormLabel>{workflowSchemeLabels.create.descriptionLabel}</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="스킴 설명을 입력하세요"
+                  placeholder={workflowSchemeLabels.descriptionPlaceholder}
                   aria-label={workflowSchemeLabels.create.descriptionLabel}
                   {...field}
                 />

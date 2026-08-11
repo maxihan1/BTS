@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useResolutions } from '@/hooks/use-resolutions'
+import { resolutionLabels } from '@/i18n/resolution-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -93,7 +94,7 @@ export function ResolutionPickerModal({
                   className="w-full"
                   aria-label="결의안"
                 >
-                  <SelectValue placeholder="결의안을 선택하세요" />
+                  <SelectValue placeholder={resolutionLabels.selectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {resolutions.map((resolution) => (

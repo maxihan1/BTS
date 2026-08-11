@@ -215,7 +215,7 @@ function BoardSelectorDropdown({ boards, currentBoardId, onSelect }: BoardSelect
       <span className="text-sm font-medium">보드</span>
       <Select value={currentBoardId ?? ''} onValueChange={onSelect}>
         <SelectTrigger className="w-64">
-          <SelectValue placeholder="보드 선택" />
+          <SelectValue placeholder={boardLabels.boardSelectPlaceholder} />
         </SelectTrigger>
         <SelectContent>
           {boards.map((b: BoardSummary) => (

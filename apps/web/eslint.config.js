@@ -4,6 +4,74 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
+/**
+ * 위반 메시지에 심는 식별 태그. 계약 테스트가 이 태그로 placeholder 락 위반만 골라낸다.
+ *
+ * ESLint 는 default export 만 읽으므로 named export 는 린트 동작에 영향이 없다.
+ * 태그를 문자열로 두 번 적지 않고 아래 메시지에 **보간**한다 — 두 벌로 적으면
+ * 한쪽만 고쳐져도 아무도 모른다(`two-lists-never-check-each-other`).
+ */
+export const PLACEHOLDER_LOCK_TAG = 'R3 래칫'
+
+/**
+ * 원시 `<button>` 을 남기기로 판정한 파일 전수 (FR-UX-06 PR22).
+ *
+ * **아래 목록이 정본이고 개수는 세지 않는다.** 개수 리터럴은 목록이 늘어나는 순간
+ * 거짓이 되는데 아무도 안 고쳐 조용히 오정보로 남는다(교훈
+ * `orchestrator-instruction-counts-are-blindfolds` — 실제로 `19파일 / 20발생` 이
+ * 낡은 채 방치돼 있었다). button-primitive-usage.test.ts:118 도 같은 이유로
+ * "여기 적힌 숫자를 신뢰 근거로 쓰지 않는다" 고 선언한다.
+ * 목록은 아래 판정식으로 기계 도출했고, 각 발생 위의 `// PR22 OUT — P4|P5|P6` 주석과
+ * 1:1 대응하며 button-primitive-usage.test.ts 가 그 대응을 **전수 비교**로 강제한다.
+ *
+ * ★아래 예외 블록과 계약 테스트(`src/test/lint-ratchet.test.ts`)가 **같은 배열을 참조**한다.
+ *   테스트가 경로를 손으로 적으면, 그 파일이 목록에서 빠지는 순간 대조군은
+ *   「button 예외 블록」을 전혀 검사하지 않는데도 계속 green 이 된다.
+ */
+export const BUTTON_PRIMITIVE_EXEMPT_FILES = [
+  // ── P4 role="tab" (탭 시맨틱 직접 지정) ──
+  'src/components/issue/IssueDescription.tsx',
+  'src/routes/inbox.tsx',
+  'src/routes/projects.$projectKey.sprints.$sprintId.burndown.tsx',
+  // ── P5 옵션/후보 행 (w-full text-left 콤보박스·카탈로그) ──
+  'src/components/admin/AddMemberDialog.tsx',
+  'src/components/admin/AuditLogFilters.tsx',
+  'src/components/admin/WorkflowSchemeSidebar.tsx',
+  'src/components/component/ComponentLeadSelect.tsx',
+  'src/components/dashboard/DashboardForm.tsx',
+  'src/components/dashboard/GadgetCatalogModal.tsx',
+  'src/components/filters/FilterBar.tsx',
+  'src/components/global-permissions/GlobalPermissionFormDialog.tsx',
+  'src/components/issue/meta/AssigneeUserList.tsx',
+  'src/components/ooo/OooModal.tsx',
+  'src/components/project/ProjectLeadSelect.tsx',
+  // ── P6 전체 클릭 영역 (행/카드 전체가 버튼) ──
+  'src/components/automation/RuleExecutionTraceRow.tsx',
+  'src/components/dashboard/DashboardTile.tsx',
+  'src/components/issue/IssueChangelog.tsx',
+  'src/components/layout/ProjectTree.tsx',
+  'src/features/calendar/MonthGrid.tsx',
+  'src/routes/issues.$key.tsx',
+]
+
+// ─────────────────────────────────────────────────────────────────────────
+// 한글 placeholder 하드코딩 락 (R3). **세 적용면이 이 배열 하나를 공유한다** —
+// 블록마다 복붙하면 한 곳만 고쳐지는 사고가 난다(`two-lists-never-check-each-other`).
+//
+// 왜 AST 셀렉터인가. 렌더 단언은 i18n 값과 하드코딩 값이 바이트 동일하면 DOM 속성
+// 문자열이 같아 「속성값은 출처를 싣지 않는다」 — 못 잡는다. AST 는 출처를 본다.
+// ─────────────────────────────────────────────────────────────────────────
+const PLACEHOLDER_I18N_LOCK = [
+  {
+    selector: "JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]",
+    message: `한글 placeholder 를 하드코딩하지 마세요. src/i18n/<feature>-labels.ts 에 키를 만들고 참조하세요 (${PLACEHOLDER_LOCK_TAG}).`,
+  },
+  {
+    selector: "JSXAttribute[name.name='placeholder'] TemplateElement[value.raw=/[가-힣]/]",
+    message: `한글 placeholder 를 템플릿 리터럴로도 하드코딩하지 마세요. src/i18n/<feature>-labels.ts 를 쓰세요 (${PLACEHOLDER_LOCK_TAG}).`,
+  },
+]
+
 export default tseslint.config(
   { ignores: ['dist'] },
   {
@@ -70,46 +138,18 @@ export default tseslint.config(
           message:
             '인라인 스켈레톤 대신 @/components/ui/skeleton 의 <Skeleton>을 쓰세요 (디자인 스펙 §7 — 인라인 재정의 금지).',
         },
+        ...PLACEHOLDER_I18N_LOCK,
       ],
     },
   },
   {
-    // FR-UX-06 PR22 — 원시 <button> 을 남기기로 판정한 파일 전수.
-    // **아래 목록이 정본이고 개수는 세지 않는다.** 개수 리터럴은 목록이 늘어나는 순간
-    // 거짓이 되는데 아무도 안 고쳐 조용히 오정보로 남는다(교훈
-    // `orchestrator-instruction-counts-are-blindfolds` — 실제로 `19파일 / 20발생` 이
-    // 낡은 채 방치돼 있었다). button-primitive-usage.test.ts:118 도 같은 이유로
-    // "여기 적힌 숫자를 신뢰 근거로 쓰지 않는다" 고 선언한다.
-    // 목록은 위 판정식으로 기계 도출했고, 각 발생 위의 `// PR22 OUT — P4|P5|P6` 주석과
-    // 1:1 대응하며 button-primitive-usage.test.ts 가 그 대응을 **전수 비교**로 강제한다.
-    files: [
-      // ── P4 role="tab" (탭 시맨틱 직접 지정) ──
-      'src/components/issue/IssueDescription.tsx',
-      'src/routes/inbox.tsx',
-      'src/routes/projects.$projectKey.sprints.$sprintId.burndown.tsx',
-      // ── P5 옵션/후보 행 (w-full text-left 콤보박스·카탈로그) ──
-      'src/components/admin/AddMemberDialog.tsx',
-      'src/components/admin/AuditLogFilters.tsx',
-      'src/components/admin/WorkflowSchemeSidebar.tsx',
-      'src/components/component/ComponentLeadSelect.tsx',
-      'src/components/dashboard/DashboardForm.tsx',
-      'src/components/dashboard/GadgetCatalogModal.tsx',
-      'src/components/filters/FilterBar.tsx',
-      'src/components/global-permissions/GlobalPermissionFormDialog.tsx',
-      'src/components/issue/meta/AssigneeUserList.tsx',
-      'src/components/ooo/OooModal.tsx',
-      'src/components/project/ProjectLeadSelect.tsx',
-      // ── P6 전체 클릭 영역 (행/카드 전체가 버튼) ──
-      'src/components/automation/RuleExecutionTraceRow.tsx',
-      'src/components/dashboard/DashboardTile.tsx',
-      'src/components/issue/IssueChangelog.tsx',
-      'src/components/layout/ProjectTree.tsx',
-      'src/features/calendar/MonthGrid.tsx',
-      'src/routes/issues.$key.tsx',
-    ],
+    // FR-UX-06 PR22 — 원시 <button> 을 남기기로 판정한 파일 전수 (목록은 파일 상단 상수).
+    files: BUTTON_PRIMITIVE_EXEMPT_FILES,
     rules: {
       // 같은 파일의 animate-pulse 락은 살려 둔다 — button 예외가 스켈레톤 예외를 겸하면
       // 예외 범위가 조용히 넓어진다. button 셀렉터만 빼고 두 번째 셀렉터는 유지한다.
+      // placeholder 락도 유지한다 — 안 넣으면 이 배열이 앞 블록을 **대체**하면서
+      // 이 목록의 파일들이 R3 에서 영구 면제된다(DashboardForm 3건 등).
       'no-restricted-syntax': [
         'error',
         {
@@ -117,13 +157,9 @@ export default tseslint.config(
           message:
             '인라인 스켈레톤 대신 @/components/ui/skeleton 의 <Skeleton>을 쓰세요 (디자인 스펙 §7 — 인라인 재정의 금지).',
         },
+        ...PLACEHOLDER_I18N_LOCK,
       ],
     },
-  },
-  {
-    // 테스트 픽스처는 원시 <button>·animate-pulse 로 프리미티브를 흉내 내 검증한다.
-    files: ['**/*.test.{ts,tsx}', 'src/test/**/*.{ts,tsx}', 'src/mocks/**/*.{ts,tsx}'],
-    rules: { 'no-restricted-syntax': 'off' },
   },
   {
     // shadcn/ui 컴포넌트는 variants/hooks를 같은 파일에서 export하는 공식 패턴 — fast-refresh 경고 비활성화.
@@ -132,9 +168,28 @@ export default tseslint.config(
     rules: {
       'react-refresh/only-export-components': 'off',
       'no-restricted-imports': 'off',
-      // 프리미티브 레이어 자체가 원시 <button>/animate-pulse 의 **유일한 정의처**다
-      // (button.tsx 의 Comp = asChild ? Slot.Root : 'button', skeleton.tsx 의 animate-pulse).
-      'no-restricted-syntax': 'off',
+      // 프리미티브 레이어 자체가 원시 <button>/animate-pulse 의 **유일한 정의처**라
+      // 그 두 셀렉터는 뺀다. placeholder 락은 남긴다 — 프리미티브라고 한글을 박아도
+      // 되는 것은 아니다(이 레이어의 비-테스트 한글 placeholder 는 현재 0건이라 즉시 피해도 없다).
+      'no-restricted-syntax': ['error', ...PLACEHOLDER_I18N_LOCK],
     },
+  },
+  {
+    // 테스트 픽스처는 원시 <button>·animate-pulse·한글 placeholder 로 프리미티브를 흉내 내 검증한다.
+    //
+    // ★`'off'` 와 배열은 뒤 블록이 앞 블록을 덮는 방식이 다르다 (2026-08-11 `--print-config` 실측).
+    //   - **배열**(`['error', …]`)은 앞 블록의 옵션을 **완전 대체**한다. 그래서 위 세 블록은
+    //     빠뜨리면 안 되는 셀렉터를 각자 다시 나열한다(공유 배열을 spread 하는 이유).
+    //   - **`'off'`** 는 앞 블록 **옵션을 그대로 둔 채 심각도만 0** 으로 바꾼다. 실제로
+    //     `--print-config src/components/ui/badge.test.tsx` 는 `severity 0` 이면서
+    //     ui 블록의 placeholder 셀렉터 2개를 그대로 달고 나온다.
+    //   이 차이를 「둘 다 대체」로 오해하면 처방이 틀어진다 — 초안이 그 오해로 lint 를 깨뜨렸다.
+    //
+    // ★이 블록은 **반드시 config 의 맨 끝**이어야 한다. 위 ui 블록이 배열로 규칙을 다시 켜므로,
+    //   이 블록이 그 앞에 있으면 src/components/ui/**\/*.test.tsx 가 다시 켜진다
+    //   (badge.test.tsx 2건·command.test.tsx 1건이 red 가 된다).
+    //   lint-ratchet.test.ts 의 음성 대조군 ⑥ 이 이 순서를 지킨다.
+    files: ['**/*.test.{ts,tsx}', 'src/test/**/*.{ts,tsx}', 'src/mocks/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-syntax': 'off' },
   },
 )

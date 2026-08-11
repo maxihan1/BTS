@@ -170,7 +170,7 @@ export function ProjectWorkflowSchemeSettingsPage({
               onValueChange={setSelectedSchemeKey}
             >
               <SelectTrigger className="w-64" aria-label={workflowSchemeLabels.assignment.schemeSelectAriaLabel}>
-                <SelectValue placeholder="스킴 선택..." />
+                <SelectValue placeholder={workflowSchemeLabels.schemeSelectPlaceholder} />
               </SelectTrigger>
               <SelectContent>
                 {schemeOptions.map((scheme) => (

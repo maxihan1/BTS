@@ -158,7 +158,7 @@ function SharedUserPicker({ selectedIds, onChange }: SharedUserPickerProps): JSX
         aria-label={dashboardLabels.form.share}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="사용자 이름 검색"
+        placeholder={dashboardLabels.ownerSearchPlaceholder}
         autoComplete="off"
       />
 
@@ -291,7 +291,7 @@ export function DashboardForm({
             setName(e.target.value)
             if (nameError !== undefined) setNameError(undefined)
           }}
-          placeholder="대시보드 이름"
+          placeholder={dashboardLabels.namePlaceholder}
           disabled={isPending}
           aria-describedby={nameError !== undefined ? 'dashboard-name-error' : undefined}
           aria-invalid={nameError !== undefined}
@@ -314,7 +314,7 @@ export function DashboardForm({
           id="dashboard-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="대시보드 설명 (선택)"
+          placeholder={dashboardLabels.descriptionPlaceholder}
           disabled={isPending}
         />
       </div>

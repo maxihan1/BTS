@@ -3,12 +3,24 @@
 /**
  * 대시보드 화면 전반에서 사용하는 한국어 라벨/텍스트.
  *
- * 그룹 — list / card / detail / form / placeholder
+ * 그룹 — 입력 placeholder(최상위) / list / card / detail / form / placeholder
+ *
+ * 주의: 최상위 `*Placeholder` 키와 `placeholder` 그룹은 다른 것이다 —
+ * 앞은 input/textarea 의 `placeholder` 속성, 뒤는 「위젯 자리」 타일 문구다.
  *
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  * 주의: 내부 FR 식별자(FR-DB-01 등)를 사용자에게 노출하지 않는다 (DESIGN.md §10).
  */
 export const dashboardLabels = {
+  /** 공유 대상 사용자 검색 input placeholder (`DashboardForm.tsx` 공유 섹션) */
+  ownerSearchPlaceholder: '사용자 이름 검색',
+  /** 대시보드 이름 input placeholder */
+  namePlaceholder: '대시보드 이름',
+  /** 대시보드 설명 input placeholder — 선택 항목임을 알린다 */
+  descriptionPlaceholder: '대시보드 설명 (선택)',
+  /** 마크다운 가젯 설정 textarea placeholder (`GadgetConfigForm.tsx`) */
+  markdownGadgetPlaceholder: '마크다운 텍스트를 입력하세요...',
+
   /** 대시보드 목록 화면 라벨 */
   list: {
     /** 목록 페이지 제목 */

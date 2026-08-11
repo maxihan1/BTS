@@ -3,11 +3,17 @@
 /**
  * 칸반 보드 컬럼 헤더가 노출하는 한국어 라벨/텍스트.
  *
- * 그룹 — wip / column
+ * 그룹 — placeholder(최상위) / page / wip / column / swimlane
  *
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  */
 export const boardLabels = {
+  /** 보드 생성 폼(`board/CreateBoardForm.tsx`) 이름 input 의 예시 placeholder */
+  createFormNamePlaceholder: '스프린트 보드',
+
+  /** 보드 페이지 상단 보드 전환 Select 의 미선택 placeholder */
+  boardSelectPlaceholder: '보드 선택',
+
   /** 보드 페이지 — 헤더 및 뷰 전환 링크 */
   page: {
     /** 백로그 뷰 전환 링크 텍스트 */
