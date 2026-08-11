@@ -462,7 +462,8 @@ grep -c '87건 / 78파일' TODOS.md                # 기대: 1
 - files: [`docs/plan/product/personalization.md`]
 - depends-on: []   # 다른 파일 — Task 1~4 와 병렬 가능
 
-**대상**. `docs/plan/product/personalization.md:479-483` (`**구조 (코드리뷰 적발)**` 아래 ⑤ 항목)
+**대상**. `docs/plan/product/personalization.md:479-486` (`**구조 (코드리뷰 적발)**` 아래 ⑤ 항목)
+(편집 **후** 범위다. 편집 전은 `:479-483` 이었고 이 task 가 3줄을 더했다.)
 
 **변경**. 2026-08-11 실측 — **5종 중 0종이 이관됐다.** `fcf93d9c6` 이 옮긴 것은
 `BacklogFilterBar.tsx` 의 **다른 3종**(`BACKLOG_SEARCH_LABEL`·`BACKLOG_SEARCH_PLACEHOLDER`·`NO_EPIC_LABEL`)이다.
