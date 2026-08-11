@@ -255,6 +255,26 @@ let oversizedCache: Promise<OversizedScan> | undefined
 const oversizedFunctions = (): Promise<OversizedScan> =>
   (oversizedCache ??= computeOversizedFunctions())
 
+const BASELINE_PATH = 'apps/web/src/test/lint-ratchet-baseline.ts'
+
+/**
+ * 신규 위반 실패 시 띄우는 안내.
+ * ★파일·함수 이름을 바꾸면 키가 통째로 달라져 「신규 위반」으로 보인다. 그때 값을 새로 얹으면
+ *   옛 키가 베이스라인에 남아 **같은 함수가 두 칸을 차지**하고, 실제로 줄인 만큼의 여지가 사라진다.
+ */
+const NEW_VIOLATION_HINT =
+  `${MAX_COMPONENT_LINES}줄을 넘는 함수가 새로 생겼다. 함수를 쪼개는 것이 기본 처방이다.\n` +
+  `파일을 옮겼거나 이름을 바꿨을 뿐이라면 신규가 아니라 **키가 바뀐 것**이다 — ` +
+  `${BASELINE_PATH} 에서 옛 키를 지우고 아래 줄을 붙여 넣어라 (한 함수가 두 칸을 차지하면 안 된다).\n` +
+  `그래도 남겨야 한다면 아래 줄을 그대로 ${BASELINE_PATH} 에 추가한다 — ` +
+  `그것은 「${MAX_COMPONENT_LINES}줄 넘는 컴포넌트를 하나 더 승인한다」는 뜻이다.`
+
+/** 증가 실패 시 띄우는 안내. */
+const GROWN_HINT =
+  `동결된 함수가 더 길어졌다. 늘린 만큼 되돌리거나 함수를 쪼개라.\n` +
+  `줄이는 쪽으로 바꿨다면 ${BASELINE_PATH} 의 숫자도 **함께 낮춰라** — ` +
+  `안 낮추면 그만큼 다시 늘릴 여지가 남는다.`
+
 describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
   it('베이스라인에 없는 신규 위반이 없다', async () => {
     const { entries } = await oversizedFunctions()
@@ -266,7 +286,7 @@ describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
       .map(([k, lines]) => `${JSON.stringify(k)}: ${lines},`)
       .sort()
     // 목록 전수 비교 — 개수 상한은 하나 고치고 하나 늘리면 통과한다.
-    expect(unknown).toEqual([])
+    expect(unknown, NEW_VIOLATION_HINT).toEqual([])
   }, 60_000)
 
   it('베이스라인 대비 늘어난 함수가 없다', async () => {
@@ -277,7 +297,7 @@ describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
       if (frozen === undefined) continue // 신규 항목은 앞 판정의 몫이다
       if (lines > frozen) grown.push(`${key}: ${frozen} → ${lines}`)
     }
-    expect(grown.sort()).toEqual([])
+    expect(grown.sort(), GROWN_HINT).toEqual([])
   }, 60_000)
 
   it('같은 키가 두 번 나오지 않는다 (키 충돌 감지)', async () => {
