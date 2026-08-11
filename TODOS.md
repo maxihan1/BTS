@@ -2835,3 +2835,114 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 **착수 시 주의.** 되살린다면 「관리자에게 문의」는 **되살리지 말 것** — 그것이 재리뷰가 지적한
 막다른 길이다. 그리고 문구 길이를 늘리기 전에 실제 렌더 폭(`MoveIssueDialog` step1 인라인
 에러 영역)에서 줄바꿈을 눈으로 확인할 것.
+
+---
+
+## ⬜ 문서 — `DEVELOPMENT.md §2.2` 와 SDD §22.7.1 이 파일 300줄 상한을 놓고 갈린다 (신규 · **Maxi 판단 대기**)
+
+**무엇.** TypeScript 에 파일 300줄 상한이 있는가에 대해 두 정본이 다르게 말한다.
+
+| 문서 | 좌표 | 서술 | 언어 태그 |
+|---|---|---|---|
+| `DEVELOPMENT.md` §2.1 | `:55` | 함수 30줄 이내, **파일 300줄 이내** | **Kotlin(백엔드)** |
+| `DEVELOPMENT.md` §2.2 | `:72` | 함수 30줄 이내, 컴포넌트 200줄 이내 | TypeScript(프론트) — **파일 상한 없음** |
+| `docs/sdd/22-claude-code-env.md` | `:209` | 함수 30줄 이내, **파일 300줄 이내** | **없음** |
+
+**왜 문제인가.** SDD 그 표의 **이웃 행은 언어 특정일 때 「Kotlin: …」·「TypeScript strict…」처럼
+명시적으로 태그를 붙인다.** 따라서 태그 없는 행을 Kotlin 전용으로 읽을 근거가 없다.
+어느 쪽으로 정리하든 **반대편에 drift 를 만든다** — `CLAUDE.md §명세/범위 변경 시 전수 동기화` 대상이다.
+
+**착수 전 Maxi 확정 필요.** ① TypeScript 에 파일 300줄 상한이 유효한가
+② 유효하면 `DEVELOPMENT.md §2.2` 에 명문화할 것인가, 무효면 SDD `:209` 에 언어 태그를 붙일 것인가.
+**추측 구현 금지.** 확정 전에는 어느 문서도 고치지 않는다.
+
+**발견 경위.** 2026-08-11 재측정. `TODOS.md` 의 `IssueCreateForm` 줄수 항목이
+「`§2.2` 는 컴포넌트 200줄 · 파일 300줄」이라 적고 있었는데 §2.2 에 파일 상한 조항이 없어 정정하다가 드러났다.
+
+---
+
+## ⬜ apps/web — 200줄 초과 컴포넌트가 18건인데 장부엔 1건 · 줄수 규칙에 강제 수단이 0 이다 (신규 · 미착수)
+
+**무엇.** `DEVELOPMENT.md:72` 의 「컴포넌트 200줄 이내」에 **강제 수단이 하나도 없다.**
+
+| 강제 수단 | 현황 |
+|---|---|
+| ESLint `max-lines` / `max-lines-per-function` / `complexity` | `apps/web/eslint.config.js` 에 **0건** |
+| `scripts/` 판별식 | **0건** (`verify-master-plan.sh` 의 `wc -l` 3곳은 FR/SDD 개수 대조라 소스 줄수와 무관) |
+| CI 검사 | **0건** |
+
+**★장부는 실제 부채의 표본이다.** 2026-08-11 ESLint 실측 — 비-테스트 200줄 초과 **18건 / 18파일**.
+그중 `TODOS.md` 에 등재된 것은 **1건**(`IssueCreateForm` 227줄)이고 그마저 **컴포넌트 중 14위**다.
+1위는 `routes/issues.$key.tsx` 의 `IssueDetailPage` **1,041줄**로 4.6배다.
+그 1건이 잡힌 것도 「가장 나빠서」가 아니라 PR #352 중 **우연히 눈에 띄어서**다.
+⇒ **강제 수단을 넣지 않는 한 장부 숫자는 들여다볼 때마다 계속 오른다.**
+
+**계수 기준 = raw(빈 줄·주석 포함). Maxi 확정 2026-08-11.**
+
+**★「14위」와 「15위」가 둘 다 맞다 — 세는 대상이 다르다.** 비-테스트 18건 중 **17건이 컴포넌트,
+1건이 훅**(`use-mention-autocomplete.ts:116` `useMentionAutocomplete` 272줄, 전체 10위)이다.
+`IssueCreateForm` 은 **전체 15위 · 컴포넌트 중 14위**다. 다음 세션이 ESLint 를 그대로 돌려
+「15위인데 장부는 14위라 했다」로 오판하지 않도록 남긴다. 이 차이 자체가 아래 설계 제약
+(컴포넌트와 일반 함수를 규칙 하나로 구분할 수 없다)의 실물 증거다.
+
+**★★설계 제약 — ESLint 단독으로는 못 한다.**
+`max-lines-per-function` 은 **규칙 하나에 임계값 하나**뿐이고, 겹치는 config 블록에서
+뒤 블록이 앞 블록을 **병합이 아니라 대체**한다(같은 파일의 `no-restricted-syntax` 로 `--print-config` 실증됨).
+그런데 「컴포넌트 200줄」과 「함수 30줄」은 **같은 규칙 id 를 공유**하고 **컴포넌트도 함수**다 —
+`200` 을 걸면 199줄짜리 일반 함수가 통과하고, `30` 을 걸면 모든 컴포넌트가 걸린다. **동시 강제 불가.**
+파일 단위 `override` 로 예외를 주면 그 파일에서 **두 트랙이 함께 죽는다.**
+
+⇒ 컴포넌트(대문자 시작 + JSX 반환)와 일반 함수를 구분하려면 **소스 훑기 계약 테스트**가 필요하다.
+선례 = `apps/web/src/components/__tests__/button-primitive-usage.test.ts`(327줄) —
+①목록을 손으로 적지 않고 디렉토리에서 **도출**(`:96 readdirSync`) ②도출이 실제로 배선됐는지를
+**비-공허 짝**으로 확인(`:305-307`) ③개수가 아니라 **목록 전수 비교**로 단언(`:325 toEqual`).
+
+**★착수 전 알아야 할 수치.** raw 로 `max-lines-per-function: 200` 을 켜면 **CI 스코프에서 87건 / 78파일**이 red 다
+(비-테스트 18건/18파일 + **테스트 69건/60파일**). `apps/web/package.json` 의 `lint` 가 `eslint src` 이고
+`eslint.config.js` 의 `ignores` 가 `['dist']` 뿐이라 **테스트 파일도 린트 대상**이기 때문이다.
+「비-테스트 18건」만 보고 예외 목록을 짜면 CI 에서 87건으로 터진다.
+
+**★가드가 공허해질 수 있는 경로 3종.**
+① `apps/web/src` 에 `eslint-disable` 주석이 57건 있고 `linterOptions.reportUnusedDisableDirectives` 설정이 없다
+   — 계약 테스트가 「마커 전수」와 「히트 전수」를 **양방향** 비교하지 않으면 주석 한 줄로 목록에도 없고 히트도 아닌 파일이 생긴다.
+② 실행처가 CI 하나뿐이다. **worktree 에서 husky 훅은 구조적으로 부재**하므로
+   (`[[worktree-silently-disables-husky-hooks]]`) 훅을 실행처로 계산에 넣으면 안 된다.
+③ 소스를 훑는 계약 테스트는 **자기 파일을 스캔에서 빼거나** NEEDLE 을 런타임 조립해야 자기탐지에 안 걸린다
+   (`msw-single-setupserver.test.ts:125` 선례).
+
+**Maxi 확정 방향 (2026-08-11).** 개별 상환보다 **강제 수단(래칫)이 먼저**다.
+
+---
+
+## ⬜ 인프라 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수)
+
+**무엇.** `Maxi_wiki/BTS/_index.md:59` 는 「**Repo → Obsidian** (단방향, 자동) — 머지 시 post-merge hook 이
+`scripts/workflow/sync-obsidian.ts` 실행」이라 적는다. **그 파일은 저장소에 없다**
+(`ls scripts/workflow/sync-obsidian.ts` 부재). 실제 `.husky/post-merge` 가 하는 일은
+`node scripts/build-dashboard.mjs` 재생성·푸시 **하나뿐**이다.
+훅 배선 자체는 정상이다(`core.hooksPath=.husky/_` · shim `-rwxr-xr-x`).
+
+**★같은 phantom 을 말하는 문서가 2곳이다.** `scripts/` 전수 grep 은 0건이 아니라 **1건**인데,
+그 1건도 구현이 아니라 `scripts/workflow/README.md:92` 의 **똑같은 거짓 서술**이다
+(「`sync-obsidian.ts` (Phase 1) — post-merge hook에서 호출, Repo → Obsidian 단방향 동기화」).
+정정하든 구현하든 **`_index.md:59` 와 `scripts/workflow/README.md:92` 를 같은 PR 에서 함께** 손대야 한다.
+
+**실제 피해.** `/bts-merge` Step 7 은 4항목(①`history.md` 등재 ②`docs/decisions/` 복사
+③`docs/plans/` 복사 ④`learning:` 라벨 시 `learnings.md`)을 **수동**이라 명시하는데,
+`_index.md` 는 자동이라 말한다. 두 문서가 갈린 결과 **PR #350~#359 10건이 `history.md` 에 통째로 누락**됐고
+`docs/decisions/` 미러 1건이 stale 로 남았다(2026-08-11 세션이 수동 백필로 해소).
+
+**★이 항목이 위 「강제 수단 0」과 같은 양식이다.** 규칙(Step 7)은 있는데 강제가 없고,
+문서가 「자동」이라 말하니 사람도 에이전트도 손으로 하지 않는다. `CLAUDE.md:63` 은
+「Phase 0 은 수동, **Phase 1 에 자동화**」인데 **지금이 Phase 1** 이다 — 예정된 자동화가 안 만들어진 채
+`_index.md` 만 완료형으로 서술됐다.
+
+**미러 전체 drift (2026-08-11 실측).** `docs/decisions` 총 134 — 미러 부재 3 · 내용 다름 2.
+`docs/plans` 총 320 — 미러 부재 16 · 내용 다름 8. **합 29건.**
+(`docs/plans` 부재 16 중 1건은 **이 PR 자신의 plan 파일**이다. 머지 Step 7 을 손으로 하지 않으면
+이 항목이 자기 자신을 한 건 더 늘린다 — 그게 이 부채의 성질이다.)
+
+**착수 전 Maxi 확정 필요.** ① `sync-obsidian.ts` 를 실제로 만들 것인가, 아니면
+`_index.md:59` 를 「수동」으로 정정하고 Step 7 체크리스트를 강제할 것인가
+② 미러 drift 29건을 일괄 동기화할 것인가. **`Maxi_wiki/` 는 저장소 밖이라 CI 가 볼 수 없다** —
+어떤 강제 수단이든 커밋 시점(`build-doc-index.mjs --check` 와 같은 자리) 또는 `/bts-merge` 스킬 안에 두어야 한다.
