@@ -121,3 +121,38 @@ describe('R3. 한글 placeholder 래칫', () => {
     expect(await violations(KO_LITERAL, 'src/components/ui/__probe__.test.tsx')).toBe(0)
   })
 })
+
+/**
+ * 소스 전량을 **실제 config** 로 훑어 placeholder 락 위반 좌표를 모은다.
+ * ★리뷰 ③A — 메모화. 이 린트는 1288파일이라 가장 비싸다. 두 번 돌 이유가 없다.
+ */
+async function computePlaceholderHits(): Promise<string[]> {
+  const { PLACEHOLDER_LOCK_TAG } = await eslintConfigContract()
+  const results = await realEslint.lintFiles(['src'])
+  // ★집계 전에 파싱 실패 0 을 먼저 단언한다. 2026-08-11 이 세션의 1차 측정이
+  //   파서 미부착으로 1222건 파싱 실패했고 히트 0 을 「깨끗함」으로 오독했다.
+  expect(
+    results
+      .flatMap((r) => r.messages)
+      .filter((m) => m.fatal)
+      .map((m) => m.message),
+  ).toEqual([])
+  expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 1288
+  return results.flatMap((r) =>
+    r.messages
+      // ★리뷰 ③A — 대조군과 **같은 술어**를 쓴다.
+      .filter((m) => isPlaceholderLockViolation(m, PLACEHOLDER_LOCK_TAG))
+      .map((m) => `${r.filePath.replace(`${WEB_ROOT}/`, '')}:${m.line}`),
+  )
+}
+
+let placeholderCache: Promise<string[]> | undefined
+const productionPlaceholderHits = (): Promise<string[]> =>
+  (placeholderCache ??= computePlaceholderHits())
+
+describe('R3. 소스 전량 placeholder 잔량', () => {
+  it('비-테스트 소스에 한글 placeholder 하드코딩이 0건이다', async () => {
+    // 개수가 아니라 목록 전수 비교 — 개수 가드는 하나 고치고 하나 늘리면 통과한다.
+    expect(await productionPlaceholderHits()).toEqual([])
+  }, 60_000)
+})
