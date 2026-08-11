@@ -1,7 +1,9 @@
 // apps/web 강제 수단 래칫 2종의 계약 테스트 — R3 placeholder 규칙 발화 확인 + R4 줄수 베이스라인 판정
 import { describe, expect, it } from 'vitest'
 import { ESLint } from 'eslint'
+import tseslint from 'typescript-eslint'
 import { resolve } from 'node:path'
+import { OVERSIZED_FUNCTION_BASELINE } from './lint-ratchet-baseline'
 
 /** `apps/web` 루트. 이 파일은 `src/test/` 에 있다. */
 const WEB_ROOT = resolve(__dirname, '../..')
@@ -154,5 +156,127 @@ describe('R3. 소스 전량 placeholder 잔량', () => {
   it('비-테스트 소스에 한글 placeholder 하드코딩이 0건이다', async () => {
     // 개수가 아니라 목록 전수 비교 — 개수 가드는 하나 고치고 하나 늘리면 통과한다.
     expect(await productionPlaceholderHits()).toEqual([])
+  }, 60_000)
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// R4. 컴포넌트 200줄 래칫 — 「지금보다 나빠지지 않는다」만 강제하는 단조 가드.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 한 함수가 넘어서는 안 되는 raw 줄수. 넘는 것들은 베이스라인에 동결돼 있다. */
+const MAX_COMPONENT_LINES = 200
+
+/** 훑은 파일 수 하한 (비-공허 단언). 실측 600 — 스캔이 비면 아래 단언이 전부 참이 된다. */
+const MIN_SCANNED_FILES = 500
+
+/** 계약 테스트·모의 서버는 대상 밖이다. 베이스라인 파일도 `src/test/**` 라 자기탐지가 없다. */
+const RATCHET_IGNORES = ['**/*.test.ts', '**/*.test.tsx', 'src/test/**', 'src/mocks/**', 'dist/**']
+
+/**
+ * R4 전용 인스턴스. `eslint.config.js` 를 **로드하지 않는다** —
+ * 줄수 규칙은 이 테스트가 들고 있고 저장소 설정은 건드리지 않는다.
+ * `noInlineConfig` 로 소스의 `eslint-disable` 주석 우회를 무력화한다(현재 57건 존재).
+ */
+const ratchetEslint = new ESLint({
+  cwd: WEB_ROOT,
+  overrideConfigFile: true,
+  overrideConfig: [
+    { ignores: RATCHET_IGNORES },
+    {
+      files: ['**/*.{ts,tsx}'],
+      languageOptions: {
+        // ★파서를 빠뜨리면 .tsx 가 통째로 파싱 실패하고 히트 0 이 「깨끗함」으로 읽힌다.
+        //   2026-08-11 이 세션의 1차 측정이 정확히 그 상태였다(1288 중 1222 파일 파싱 실패).
+        parser: tseslint.parser,
+        parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
+      },
+      linterOptions: { noInlineConfig: true },
+      rules: { 'max-lines-per-function': ['error', { max: MAX_COMPONENT_LINES }] },
+    },
+  ],
+})
+
+/** `max-lines-per-function` 메시지 형식. 예) `Function 'IssueDetailPage' has too many lines (1041).` */
+const LINES_RE = /^(.*?) has too many lines \((\d+)\)/
+
+/** 한 파일에서 200줄을 넘긴 함수들. `entries` 는 키→줄수, `dupes` 는 키가 겹친 목록. */
+interface OversizedScan {
+  readonly entries: Map<string, number>
+  readonly dupes: readonly string[]
+}
+
+/**
+ * 위반 메시지에서 「서술자」와 「줄수」를 뜯어낸다.
+ * 형식이 바뀌면 조용히 0건으로 넘어가지 않도록 **던진다** — 침묵이 가짜 그린을 만든다.
+ */
+const parseOversizedMessage = (message: string): { descriptor: string; lines: number } => {
+  const matched = LINES_RE.exec(message)
+  const descriptor = matched?.[1]
+  const rawLines = matched?.[2]
+  if (descriptor === undefined || rawLines === undefined) {
+    throw new Error(`max-lines-per-function 메시지 형식이 바뀌었다. 파서를 갱신하라: ${message}`)
+  }
+  return { descriptor, lines: Number(rawLines) }
+}
+
+async function computeOversizedFunctions(): Promise<OversizedScan> {
+  const results = await ratchetEslint.lintFiles(['src'])
+  // ★집계 전에 파싱 실패 0 을 먼저 단언한다. 파서가 빠지면 히트 0 이 「깨끗함」으로 읽힌다.
+  expect(
+    results
+      .flatMap((r) => r.messages)
+      .filter((m) => m.fatal)
+      .map((m) => m.message),
+  ).toEqual([])
+  expect(results.length).toBeGreaterThan(MIN_SCANNED_FILES)
+
+  const entries = new Map<string, number>()
+  const dupes: string[] = []
+  for (const result of results) {
+    // ★상대 경로 — worktree·CI 의 절대경로가 달라 베이스라인 키가 통째로 어긋난다.
+    const rel = result.filePath.replace(`${WEB_ROOT}/`, '')
+    for (const m of result.messages) {
+      if (m.ruleId !== 'max-lines-per-function') continue
+      const { descriptor, lines } = parseOversizedMessage(m.message)
+      const key = `${rel}::${descriptor}`
+      if (entries.has(key)) dupes.push(key)
+      entries.set(key, lines)
+    }
+  }
+  return { entries, dupes }
+}
+
+/**
+ * ★판정 3개가 각자 부르면 600파일 린트가 3번 돈다.
+ * 모듈 레벨에서 **한 번만** 계산해 돌려쓴다. `beforeAll` 이 아니라 메모화된 Promise 인 이유는
+ * R3 쪽 헬퍼와 호출 시점이 달라도 같은 결과를 공유해야 하기 때문이다.
+ */
+let oversizedCache: Promise<OversizedScan> | undefined
+const oversizedFunctions = (): Promise<OversizedScan> =>
+  (oversizedCache ??= computeOversizedFunctions())
+
+describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
+  it('베이스라인에 없는 신규 위반이 없다', async () => {
+    const { entries } = await oversizedFunctions()
+    expect(entries.size).toBeGreaterThan(0) // 비-공허. 스캔이 비면 모든 단언이 참이 된다
+    const unknown = [...entries.keys()].filter((k) => !(k in OVERSIZED_FUNCTION_BASELINE)).sort()
+    // 목록 전수 비교 — 개수 상한은 하나 고치고 하나 늘리면 통과한다.
+    expect(unknown).toEqual([])
+  }, 60_000)
+
+  it('베이스라인 대비 늘어난 함수가 없다', async () => {
+    const { entries } = await oversizedFunctions()
+    const grown: string[] = []
+    for (const [key, lines] of entries) {
+      const frozen = OVERSIZED_FUNCTION_BASELINE[key]
+      if (frozen === undefined) continue // 신규 항목은 앞 판정의 몫이다
+      if (lines > frozen) grown.push(`${key}: ${frozen} → ${lines}`)
+    }
+    expect(grown.sort()).toEqual([])
+  }, 60_000)
+
+  it('같은 키가 두 번 나오지 않는다 (키 충돌 감지)', async () => {
+    // 익명 화살표가 한 파일에 둘 이상 200줄을 넘기면 키가 겹쳐 하나가 조용히 사라진다.
+    expect((await oversizedFunctions()).dupes).toEqual([])
   }, 60_000)
 })
