@@ -74,7 +74,7 @@
   일반 함수를 구분하려면 **소스 훑기 계약 테스트**가 필요하다.
 - **㉰ Obsidian 동기화 자동화 부재.** `Maxi_wiki/BTS/_index.md:59` 가
   「머지 시 post-merge hook 이 `scripts/workflow/sync-obsidian.ts` 실행」이라 적었으나 **그 파일이 저장소에 없다**
-  (`scripts/` 전수 grep 0건). 실제 `.husky/post-merge` 는 `build-dashboard.mjs` 재생성·푸시만 한다.
+  (`ls` 부재. 단 `scripts/` grep 은 0건이 아니라 1건 — `scripts/workflow/README.md:92` 의 **똑같은 거짓 서술**이다). 실제 `.husky/post-merge` 는 `build-dashboard.mjs` 재생성·푸시만 한다.
   `CLAUDE.md:63` 은 「Phase 0 은 수동, **Phase 1 에 자동화**」인데 지금이 Phase 1 이다.
   **PR #350~#359 10건 미등재의 근본 원인**(2026-08-11 세션이 수동 백필로 해소).
 
@@ -413,7 +413,7 @@ grep -c '정적 목록보다 「1회 실측」이 먼저다' TODOS.md           
 ## ⬜ 인프라 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수)
 
 **무엇.** `Maxi_wiki/BTS/_index.md:59` 는 「**Repo → Obsidian** (단방향, 자동) — 머지 시 post-merge hook 이
-`scripts/workflow/sync-obsidian.ts` 실행」이라 적는다. **그 파일은 저장소에 없다**(`scripts/` 전수 grep 0건).
+`scripts/workflow/sync-obsidian.ts` 실행」이라 적는다. **그 파일은 저장소에 없다**(`ls` 부재. 단 `scripts/` grep 은 0건이 아니라 1건 — `scripts/workflow/README.md:92` 의 **똑같은 거짓 서술**이다).
 실제 `.husky/post-merge` 가 하는 일은 `node scripts/build-dashboard.mjs` 재생성·푸시 **하나뿐**이다.
 훅 배선 자체는 정상이다(`core.hooksPath=.husky/_` · shim `-rwxr-xr-x`).
 
@@ -428,7 +428,7 @@ grep -c '정적 목록보다 「1회 실측」이 먼저다' TODOS.md           
 `_index.md` 만 완료형으로 서술됐다.
 
 **미러 전체 drift (2026-08-11 실측).** `docs/decisions` 총 134 — 미러 부재 3 · 내용 다름 2.
-`docs/plans` 총 319 — 미러 부재 15 · 내용 다름 8. **합 28건.**
+`docs/plans` 총 320 — 미러 부재 16 · 내용 다름 8. **합 29건.**
 
 **착수 전 Maxi 확정 필요.** ① `sync-obsidian.ts` 를 실제로 만들 것인가, 아니면
 `_index.md:59` 를 「수동」으로 정정하고 Step 7 체크리스트를 강제할 것인가
