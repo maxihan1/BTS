@@ -251,6 +251,447 @@ cd apps/web && node_modules/.bin/eslint src --config eslint.measure.mjs --format
 
 나머지 gap 9건(G2~G9·G11)과 의도적 미해결 3건은 스펙 §Brainstorming Check 참조.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**Goal.** apps/web 에 강제 수단 2종을 설치한다 — 한글 placeholder 하드코딩은 `pnpm lint` 가,
+200줄 초과 컴포넌트의 신규·증가는 `pnpm test` 가 막는다. 사용자가 보는 화면은 바이트 단위로 불변.
+
+**Architecture.** R3 은 ESLint `no-restricted-syntax` AST 선택자(규칙이 사는 곳 = `eslint.config.js`),
+R4 는 계약 테스트가 ESLint 를 **프로그래매틱 실행**해 동결 베이스라인과 비교(규칙이 사는 곳 = 테스트).
+두 래칫의 검증은 **계약 테스트 파일 하나**를 공유하되 ESLint 인스턴스는 2개다 (실제 config 로드 / 자체 config).
+
+**Tech Stack.** ESLint 9 flat config · `ESLint` Node API (`lintText`·`lintFiles`) · `typescript-eslint` 파서 · vitest.
+
+### 파일 구조
+
+| 파일 | 책임 | 상태 |
+|---|---|---|
+| `apps/web/eslint.config.js` | R3 선택자 2종 · 블록 순서 | 수정 |
+| `apps/web/src/test/lint-ratchet.test.ts` | R3 대조군 6종 + R4 판정 3종 + 비-공허 단언 | **신규** |
+| `apps/web/src/test/lint-ratchet-baseline.ts` | R4 동결 베이스라인 18건 (데이터만) | **신규** |
+| `apps/web/src/i18n/resolution-labels.ts` | 「결의안…」 3파일 공용 | **신규** |
+| `apps/web/src/i18n/global-permission-labels.ts` | 전역 권한 다이얼로그 | **신규** |
+| `apps/web/src/i18n/search-labels.ts` | AQL 검색 | **신규** |
+| `apps/web/src/i18n/{board,custom-field,dashboard,import,issue-template,bulk-operation,workflow-scheme,ko}-labels?.ts` | 기존 모듈에 키 추가 | 수정 |
+| 컴포넌트 18파일 | 리터럴 → 상수 참조 | 수정 |
+| `TODOS.md` · `docs/plan/product/personalization.md` | 항목 해소 · 중복 흡수 | 수정 |
+
+베이스라인을 **별도 파일**로 두는 이유. 래칫이 조여지는 순간이 diff 에서 한눈에 보여야 하고,
+테스트 로직 변경과 데이터 변경이 섞이면 리뷰가 어느 쪽인지 구분하지 못한다.
+
+---
+
+### Task 1. R3 — ESLint 래칫 설치 + 대조군 6종
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/test/lint-ratchet.test.ts`, `apps/web/eslint.config.js`]
+- depends-on: []
+
+**RED**.
+- 파일. `apps/web/src/test/lint-ratchet.test.ts` (신규)
+- 첫 줄에 한국어 헤더 주석 필수 (`CLAUDE.md §6`).
+
+```ts
+// apps/web 강제 수단 래칫 2종의 계약 테스트 — R3 placeholder 규칙 발화 확인 + R4 줄수 베이스라인 판정
+import { describe, expect, it } from 'vitest'
+import { ESLint } from 'eslint'
+import { resolve } from 'node:path'
+
+/** `apps/web` 루트. 이 파일은 `src/test/` 에 있다. */
+const WEB_ROOT = resolve(__dirname, '../..')
+
+/**
+ * 실제 `eslint.config.js` 를 로드하는 인스턴스.
+ * ★자체 config 로 대체하면 「저장소의 진짜 설정이 막는가」를 못 본다 — 그게 이 테스트의 존재 이유다.
+ */
+const realEslint = new ESLint({ cwd: WEB_ROOT })
+
+/** 가상 경로로 소스를 던져 위반 수만 센다. 파일을 만들지 않으므로 자기탐지가 없다. */
+async function violations(code: string, filePath: string): Promise<number> {
+  const [result] = await realEslint.lintText(code, { filePath, warnIgnored: false })
+  return (result?.messages ?? []).filter((m) => m.ruleId === 'no-restricted-syntax').length
+}
+
+const KO_LITERAL = '<input placeholder="검색어" />'
+const KO_TEMPLATE = '<input placeholder={`${x} 검색`} />'
+const EN_LITERAL = '<input placeholder="Search" />'
+
+describe('R3. 한글 placeholder 래칫', () => {
+  it('양성 ① 기본 적용면에서 한글 리터럴을 막는다', async () => {
+    expect(await violations(KO_LITERAL, 'src/components/__probe__/Probe.tsx')).toBe(1)
+  })
+
+  it('양성 ② button 예외 블록 안의 파일에서도 막는다', async () => {
+    // 이 블록은 배열이라 앞 블록을 **대체**한다. 안 고치면 DashboardForm 3건·
+    // GlobalPermissionFormDialog 1건 = 28건 중 4건이 영구 면제된다.
+    expect(await violations(KO_LITERAL, 'src/components/dashboard/DashboardForm.tsx')).toBe(1)
+  })
+
+  it('양성 ③ 프리미티브 레이어에서도 막는다', async () => {
+    expect(await violations(KO_LITERAL, 'src/components/ui/__probe__.tsx')).toBe(1)
+  })
+
+  it('양성 ④ 템플릿 리터럴 우회를 막는다', async () => {
+    expect(await violations(KO_TEMPLATE, 'src/components/__probe__/Probe.tsx')).toBe(1)
+  })
+
+  it('음성 ⑤ 영문 placeholder 는 막지 않는다', async () => {
+    // 이게 없으면 「무조건 위반」 규칙도 위 4종을 통과한다.
+    expect(await violations(EN_LITERAL, 'src/components/__probe__/Probe.tsx')).toBe(0)
+  })
+
+  it('음성 ⑥ 테스트 파일은 대상이 아니다 (블록 순서 회귀 가드)', async () => {
+    // src/components/ui/** 블록을 배열로 바꾸면서 그 블록이 마지막에 남으면
+    // ui 아래 테스트까지 켜져 badge.test.tsx 2건·command.test.tsx 1건이 red 가 된다.
+    expect(await violations(KO_LITERAL, 'src/components/ui/__probe__.test.tsx')).toBe(0)
+  })
+})
+```
+
+- 실행. `cd apps/web && node_modules/.bin/vitest run src/test/lint-ratchet.test.ts`
+- 기대. **양성 ①②③④ 4건 FAIL** (`expected 0 to be 1` — 규칙 미존재) · 음성 ⑤⑥ PASS
+
+**GREEN**.
+- 파일. `apps/web/eslint.config.js`
+- ① 공용 상수를 파일 상단(`import` 아래)에 둔다. 세 블록이 **같은 배열 리터럴을 복붙**하면
+  한 곳만 고쳐지는 사고가 난다 (`[[two-lists-never-check-each-other]]`).
+
+```js
+// 한글 placeholder 하드코딩 락 (R3). 세 적용면이 공유한다 — 복붙하면 한 곳만 고쳐지는 사고가 난다.
+// AST 를 보므로 출처 판별이 성립한다. 렌더 단언은 i18n 값과 하드코딩 값이 바이트 동일하면
+// DOM 속성 문자열이 같아 「속성값은 출처를 싣지 않는다」 — 못 잡는다.
+const PLACEHOLDER_I18N_LOCK = [
+  {
+    selector: "JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]",
+    message:
+      '한글 placeholder 를 하드코딩하지 마세요. src/i18n/<feature>-labels.ts 에 키를 만들고 참조하세요 (R3 래칫).',
+  },
+  {
+    selector: "JSXAttribute[name.name='placeholder'] TemplateElement[value.raw=/[가-힣]/]",
+    message:
+      '한글 placeholder 를 템플릿 리터럴로도 하드코딩하지 마세요. src/i18n/<feature>-labels.ts 를 쓰세요 (R3 래칫).',
+  },
+]
+```
+
+- ② 기본 배열(`:59`)에 전개한다. `'no-restricted-syntax': ['error', {button…}, {animate-pulse…}, ...PLACEHOLDER_I18N_LOCK]`
+- ③ button 예외 배열(`:113`)에 전개한다. `['error', {animate-pulse…}, ...PLACEHOLDER_I18N_LOCK]`
+- ④ `src/components/ui/**` 블록(`:128-139`)의 `'no-restricted-syntax': 'off'` 를
+  `'no-restricted-syntax': ['error', ...PLACEHOLDER_I18N_LOCK]` 로 바꾼다.
+  원시 `<button>`·`animate-pulse` 는 이 레이어가 **정의처**라 빠진 채로 둔다(= 계속 허용).
+- ⑤ **테스트 `'off'` 블록(현재 `:123-127`)을 config 배열의 맨 끝으로 옮긴다.**
+  ★이동은 동작 보존이다 — 지금도 `src/components/ui/**/*.test.tsx` 는 두 블록 모두 `'off'` 라
+  `--print-config` 결과가 같다. 옮겨 두면 뒤 블록이 테스트를 다시 켜는 순서 함정이 영구히 닫힌다.
+
+- 실행. 같은 vitest 명령
+- 기대. **6/6 PASS**
+
+**REFACTOR**.
+- `'off'` 와 배열의 동작 차이를 블록 위 주석으로 남긴다 — 「`'off'` 는 앞 블록 **옵션을 유지**하고
+  심각도만 0 으로 바꾼다. 배열은 **완전 대체**다. 이 차이를 모르면 잘못된 처방으로 간다」
+  (2026-08-11 `--print-config` 실측).
+
+**검증**.
+```bash
+cd apps/web
+node_modules/.bin/vitest run src/test/lint-ratchet.test.ts   # 6/6 PASS
+node_modules/.bin/eslint --print-config src/components/ui/badge.test.tsx \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s).rules["no-restricted-syntax"];console.log("severity",r[0])})'
+# 기대. severity 0  (테스트는 여전히 off)
+```
+⚠️ **이 task 종료 시점에 `node_modules/.bin/eslint src` 는 28건 red 다.** 의도된 중간 상태이고 Task 2 가 해소한다.
+
+**커밋**. `test:` 커밋(RED) → `feat:` 커밋(GREEN) 순서 필수.
+
+---
+
+### Task 2. R3 — 한글 placeholder 28곳 i18n 이전
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/test/lint-ratchet.test.ts`, `apps/web/src/i18n/resolution-labels.ts`, `apps/web/src/i18n/global-permission-labels.ts`, `apps/web/src/i18n/search-labels.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/i18n/custom-field-labels.ts`, `apps/web/src/i18n/dashboard-labels.ts`, `apps/web/src/i18n/import-labels.ts`, `apps/web/src/i18n/issue-template-labels.ts`, `apps/web/src/i18n/bulk-operation-labels.ts`, `apps/web/src/i18n/workflow-scheme-labels.ts`, `apps/web/src/i18n/ko.ts`, `apps/web/src/components/board/CreateBoardForm.tsx`, `apps/web/src/components/board/ResolutionPickerModal.tsx`, `apps/web/src/components/custom-fields/CustomFieldFormDialog.tsx`, `apps/web/src/components/custom-fields/CustomFieldInput.tsx`, `apps/web/src/components/dashboard/DashboardForm.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/global-permissions/GlobalPermissionFormDialog.tsx`, `apps/web/src/components/import/mapping/UserMappingStep.tsx`, `apps/web/src/components/issue-templates/IssueTemplateFormDialog.tsx`, `apps/web/src/components/issue-templates/TemplateContentField.tsx`, `apps/web/src/components/issue/ResolutionModal.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.tsx`, `apps/web/src/components/issues/BulkTransitionDialog.tsx`, `apps/web/src/components/issues/cells/AssigneeCell.tsx`, `apps/web/src/routes/admin.workflow-schemes.new.tsx`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.settings.workflow-scheme.tsx`, `apps/web/src/routes/search.tsx`]
+- depends-on: [1]
+
+**RED**.
+- 파일. `apps/web/src/test/lint-ratchet.test.ts` (Task 1 파일에 describe 추가)
+
+```ts
+/** 비-테스트 소스 전량을 실제 config 로 훑어 placeholder 위반을 센다. */
+async function productionPlaceholderHits(): Promise<string[]> {
+  const results = await realEslint.lintFiles(['src'])
+  const fatal = results.flatMap((r) => r.messages).filter((m) => m.fatal)
+  // ★집계 전에 파싱 실패 0 을 먼저 단언한다. 2026-08-11 이 세션의 1차 측정이
+  //   파서 미부착으로 1222건 파싱 실패했고 히트 0 을 「깨끗함」으로 오독했다.
+  expect(fatal.map((m) => m.message)).toEqual([])
+  expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 1288
+  return results.flatMap((r) =>
+    r.messages
+      .filter((m) => m.ruleId === 'no-restricted-syntax' && /placeholder/.test(m.message))
+      .map((m) => `${r.filePath.replace(`${WEB_ROOT}/`, '')}:${m.line}`),
+  )
+}
+
+it('비-테스트 소스에 한글 placeholder 하드코딩이 0건이다', async () => {
+  // 개수가 아니라 목록 전수 비교 — 개수 가드는 하나 고치고 하나 늘리면 통과한다.
+  expect(await productionPlaceholderHits()).toEqual([])
+}, 60_000)
+```
+
+- 실행. `cd apps/web && node_modules/.bin/vitest run src/test/lint-ratchet.test.ts`
+- 기대. **FAIL** — 28개 좌표가 배열로 출력된다
+
+**GREEN**. 아래 표대로 28건을 옮긴다. **값은 바이트 단위로 보존한다** (한 글자도 바꾸지 않는다).
+
+| # | 문자열 | 대상 모듈 | 키 | 참조 위치 |
+|---|---|---|---|---|
+| 1 | `스프린트 보드` | `board-labels` | `createFormNamePlaceholder` | `components/board/CreateBoardForm.tsx:109` |
+| 2 | `결의안을 선택하세요` | **`resolution-labels`**(신규) | `selectPlaceholder` | `components/board/ResolutionPickerModal.tsx:96` |
+| 3 | `값` | `custom-field-labels` | `optionValuePlaceholder` | `components/custom-fields/CustomFieldFormDialog.tsx:93` |
+| 4 | `라벨` | `custom-field-labels` | `optionLabelPlaceholder` | `…CustomFieldFormDialog.tsx:107` |
+| 5 | `예: priority` | `custom-field-labels` | `keyPlaceholder` | `…CustomFieldFormDialog.tsx:222` |
+| 6 | `예: 우선순위` | `custom-field-labels` | `namePlaceholder` | `…CustomFieldFormDialog.tsx:244` |
+| 7 | `선택 입력` | `custom-field-labels` | `descriptionPlaceholder` | `…CustomFieldFormDialog.tsx:265` |
+| 8 | `선택하세요` | `custom-field-labels` | `inputSelectPlaceholder` | `components/custom-fields/CustomFieldInput.tsx:174` |
+| 9 | `사용자 이름 검색` | `dashboard-labels` | `ownerSearchPlaceholder` | `components/dashboard/DashboardForm.tsx:161` |
+| 10 | `대시보드 이름` | `dashboard-labels` | `namePlaceholder` | `…DashboardForm.tsx:294` |
+| 11 | `대시보드 설명 (선택)` | `dashboard-labels` | `descriptionPlaceholder` | `…DashboardForm.tsx:317` |
+| 12 | `마크다운 텍스트를 입력하세요...` | `dashboard-labels` | `markdownGadgetPlaceholder` | `components/dashboard/GadgetConfigForm.tsx:172` |
+| 13 | `이름 또는 아이디로 검색 (2자 이상)` | **`global-permission-labels`**(신규) | `subjectSearchPlaceholder` | `components/global-permissions/GlobalPermissionFormDialog.tsx:79` |
+| 14 | `다른 사용자 검색` | `import-labels` | `userMappingSearchPlaceholder` | `components/import/mapping/UserMappingStep.tsx:171` |
+| 15 | `예: 버그 리포트 기본 템플릿` | `issue-template-labels` | `namePlaceholder` | `components/issue-templates/IssueTemplateFormDialog.tsx:228` |
+| 16 | `예: 버그 리포트 기본 템플릿` | `issue-template-labels` | `namePlaceholder` (**#15 와 동일 키 재사용**) | `…IssueTemplateFormDialog.tsx:315` |
+| 17 | `Markdown 형식으로 본문을 입력하세요.` | `issue-template-labels` | `contentPlaceholder` | `components/issue-templates/TemplateContentField.tsx:191` |
+| 18 | `결의안을 선택하세요` | **`resolution-labels`** | `selectPlaceholder` (**#2 재사용**) | `components/issue/ResolutionModal.tsx:136` |
+| 19 | `상태를 선택하세요` | `bulk-operation-labels` | `statusSelectPlaceholder` | `components/issues/BulkTransitionDialog.tsx:214` |
+| 20 | `결의안을 선택하세요` | **`resolution-labels`** | `selectPlaceholder` (**#2 재사용**) | `…BulkTransitionDialog.tsx:238` |
+| 21 | `이름으로 검색` | `ko.ts` → `issueDetailStrings` | `assigneeCellSearchPlaceholder` | `components/issues/cells/AssigneeCell.tsx:130` |
+| 22 | `예: my-scheme-01` | `workflow-scheme-labels` | `keyPlaceholder` | `routes/admin.workflow-schemes.new.tsx:101` |
+| 23 | `스킴 이름을 입력하세요` | `workflow-scheme-labels` | `namePlaceholder` | `…admin.workflow-schemes.new.tsx:123` |
+| 24 | `스킴 설명을 입력하세요` | `workflow-scheme-labels` | `descriptionPlaceholder` | `…admin.workflow-schemes.new.tsx:142` |
+| 25 | `보드 선택` | `board-labels` | `boardSelectPlaceholder` | `routes/projects.$projectKey.board.tsx:218` |
+| 26 | `스킴 선택...` | `workflow-scheme-labels` | `schemeSelectPlaceholder` | `routes/projects.$projectKey.settings.workflow-scheme.tsx:173` |
+| 27 | `AQL 쿼리를 입력하세요. 예: status = open AND priority IN (1, 2), text ~ "로그인"` | **`search-labels`**(신규) | `aqlPlaceholder` | `routes/search.tsx:353` |
+| 28 | ``${issueDetailStrings.componentsLabel} 검색`` (템플릿) | `ko.ts` → `issueDetailStrings` | `componentsSearchPlaceholder(label: string)` **함수형** | `components/issue/ComponentMultiSelect.tsx:78` |
+
+- **#28 주의.** 보간이 있으므로 문자열이 아니라 **함수**로 만든다.
+  `componentsSearchPlaceholder: (label: string) => \`${label} 검색\`` 로 두고
+  호출부는 `placeholder={issueDetailStrings.componentsSearchPlaceholder(issueDetailStrings.componentsLabel)}`.
+  ★템플릿을 그대로 두면 `TemplateElement` 선택자에 계속 걸린다.
+- **신규 모듈 3개**는 기존 모듈 형식을 따른다 — 첫 줄 한국어 헤더 주석 + `export const <feature>Labels = { … } as const`.
+
+- 실행. 같은 vitest 명령 → **PASS**
+
+**REFACTOR**.
+- `CustomFieldFormDialog.test.tsx:136·147·159` 의 `getAllByPlaceholderText('값')` 를
+  `getAllByPlaceholderText(customFieldLabels.optionValuePlaceholder)` 로 바꾼다.
+  ★값을 보존하므로 **바꾸지 않아도 통과한다.** 그래도 바꾸는 이유는 다음에 문구를 고칠 때
+  이 3줄이 조용히 깨지기 때문이다.
+
+**검증**.
+```bash
+cd apps/web
+node_modules/.bin/eslint src > /tmp/lint.txt 2>&1; echo "EXIT=$?"   # 기대 0
+node_modules/.bin/vitest run                                        # 전량 green
+node_modules/.bin/tsc -p tsconfig.app.json --noEmit; echo "EXIT=$?" # 기대 0
+```
+**값 보존 확인 (D-4 · 기계적 절차).** 위 표 28개 문자열 각각에 대해.
+```bash
+# 각 문자열이 저장소에서 정확히 1회, 그 1회가 i18n 모듈 안에서 발견돼야 한다.
+grep -rF '<문자열>' apps/web/src --include='*.ts' --include='*.tsx' | grep -v '\.test\.'
+# 0회 → 이전 중 오타 · 2회 이상 → 미이전 잔류
+```
+(#15·#16 은 같은 문자열을 키 하나로 합치므로 **1회**가 맞다. #2·#18·#20 도 동일.)
+
+**커밋**. `test:`(RED) → `feat:`(GREEN) → `refactor:` 순.
+
+---
+
+### Task 3. R4 — 줄수 베이스라인 + 단조 판정
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/test/lint-ratchet-baseline.ts`, `apps/web/src/test/lint-ratchet.test.ts`]
+- depends-on: [1]
+
+**RED**.
+- 파일 ①. `apps/web/src/test/lint-ratchet-baseline.ts` (신규) — **빈 상태로 먼저 만든다**
+
+```ts
+// R4 줄수 래칫의 동결 베이스라인 — 200줄을 넘는 비-테스트 함수의 현재 상태를 얼린다.
+//
+// 키 = `<apps/web 기준 상대경로>::<ESLint 서술자>`. 값 = raw 줄수(빈 줄·주석 포함).
+// ★줄인 뒤에는 이 숫자를 **함께 낮춰라.** 낮추지 않으면 그만큼 다시 늘릴 여지가 남는다.
+// ★새 항목을 여기 추가하는 것은 「200줄 넘는 컴포넌트를 하나 더 승인한다」는 뜻이다. 리뷰에서 그렇게 읽어라.
+export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {}
+```
+
+- 파일 ②. `lint-ratchet.test.ts` 에 R4 describe 추가
+
+```ts
+import tseslint from 'typescript-eslint'
+import { OVERSIZED_FUNCTION_BASELINE } from './lint-ratchet-baseline'
+
+const MAX_COMPONENT_LINES = 200
+
+/**
+ * R4 전용 인스턴스. `eslint.config.js` 를 **로드하지 않는다**(R4-FR5) —
+ * 줄수 규칙은 이 테스트가 들고 있고 저장소 설정은 건드리지 않는다.
+ * `noInlineConfig` 로 소스의 `eslint-disable` 주석 우회를 무력화한다(현재 57건 존재).
+ */
+const ratchetEslint = new ESLint({
+  cwd: WEB_ROOT,
+  overrideConfigFile: true,
+  overrideConfig: [
+    { ignores: ['**/*.test.ts', '**/*.test.tsx', 'src/test/**', 'src/mocks/**', 'dist/**'] },
+    {
+      files: ['**/*.{ts,tsx}'],
+      languageOptions: {
+        // ★파서를 빠뜨리면 .tsx 가 통째로 파싱 실패하고 히트 0 이 「깨끗함」으로 읽힌다.
+        parser: tseslint.parser,
+        parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
+      },
+      linterOptions: { noInlineConfig: true },
+      rules: { 'max-lines-per-function': ['error', { max: MAX_COMPONENT_LINES }] },
+    },
+  ],
+})
+
+const LINES_RE = /^(.*?) has too many lines \((\d+)\)/
+
+async function oversizedFunctions(): Promise<{ entries: Map<string, number>; dupes: string[] }> {
+  const results = await ratchetEslint.lintFiles(['src'])
+  expect(results.flatMap((r) => r.messages).filter((m) => m.fatal).map((m) => m.message)).toEqual([])
+  expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 600
+
+  const entries = new Map<string, number>()
+  const dupes: string[] = []
+  for (const r of results) {
+    const rel = r.filePath.replace(`${WEB_ROOT}/`, '') // ★상대 경로 — worktree·CI 절대경로가 다르다
+    for (const m of r.messages) {
+      if (m.ruleId !== 'max-lines-per-function') continue
+      const parsed = LINES_RE.exec(m.message)
+      if (!parsed) throw new Error(`메시지 형식이 바뀌었다. 파서를 갱신하라: ${m.message}`)
+      const key = `${rel}::${parsed[1]}`
+      if (entries.has(key)) dupes.push(key)
+      entries.set(key, Number(parsed[2]))
+    }
+  }
+  return { entries, dupes }
+}
+
+describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
+  it('베이스라인에 없는 신규 위반이 없다', async () => {
+    const { entries } = await oversizedFunctions()
+    expect(entries.size).toBeGreaterThan(0) // 비-공허. 스캔이 비면 모든 단언이 참이 된다
+    const unknown = [...entries.keys()].filter((k) => !(k in OVERSIZED_FUNCTION_BASELINE)).sort()
+    // 목록 전수 비교 — 개수 상한은 하나 고치고 하나 늘리면 통과한다.
+    expect(unknown).toEqual([])
+  }, 60_000)
+
+  it('베이스라인 대비 늘어난 함수가 없다', async () => {
+    const { entries } = await oversizedFunctions()
+    const grown = [...entries]
+      .filter(([k, n]) => k in OVERSIZED_FUNCTION_BASELINE && n > OVERSIZED_FUNCTION_BASELINE[k])
+      .map(([k, n]) => `${k}: ${OVERSIZED_FUNCTION_BASELINE[k]} → ${n}`)
+      .sort()
+    expect(grown).toEqual([])
+  }, 60_000)
+
+  it('같은 키가 두 번 나오지 않는다 (키 충돌 감지)', async () => {
+    // 익명 화살표가 한 파일에 둘 이상 200줄을 넘기면 키가 겹쳐 하나가 조용히 사라진다.
+    expect((await oversizedFunctions()).dupes).toEqual([])
+  }, 60_000)
+})
+```
+
+- 실행. `cd apps/web && node_modules/.bin/vitest run src/test/lint-ratchet.test.ts`
+- 기대. **첫 테스트 FAIL** — `unknown` 에 18개 키가 나열된다
+
+**GREEN**. 실패 출력의 18개 키를 그대로 베이스라인에 옮긴다.
+
+```ts
+export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1041,
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 367,
+  "src/components/issue/IssueDescription.tsx::Function 'EditMode'": 337,
+  "src/components/search/ExportDialog.tsx::Function 'ExportForm'": 334,
+  "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 332,
+  "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
+  "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 326,
+  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 317,
+  'src/components/import/mapping/ImportMappingWizard.tsx::Arrow function': 288,
+  "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
+  "src/components/issue-templates/IssueTemplateFormDialog.tsx::Function 'FormBody'": 259,
+  "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
+  "src/components/issues/NodeMappingSection.tsx::Function 'NodeMappingSection'": 232,
+  "src/components/automation/AutomationRuleFormDialog.tsx::Function 'FormBody'": 230,
+  "src/components/issue/IssueCreateForm.tsx::Function 'IssueCreateForm'": 227,
+  "src/components/custom-fields/CustomFieldFormDialog.tsx::Function 'FormBody'": 225,
+  "src/components/auth/MfaSettings.tsx::Function 'MfaSettings'": 218,
+  "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
+}
+```
+
+⚠️ **Task 2 가 `IssueTemplateFormDialog`·`CustomFieldFormDialog` 등에 import 줄을 더하므로 줄수가 바뀔 수 있다.**
+숫자는 **손으로 적지 말고 RED 실행 출력에서 복사**한다.
+
+- 실행. 같은 명령 → **3/3 PASS**
+
+**REFACTOR**. 실패 메시지에 rename 안내를 넣는다 — 「파일을 옮겼다면 베이스라인 키도 함께 고쳐라」.
+
+**검증 (뮤테이션 3종 — 가드가 진짜 잡는지)**. 각 실행 후 **반드시 원복**한다.
+| # | 주입 | 기대 |
+|---|---|---|
+| M1 신규 | `src/components/board/CreateBoardForm.tsx` 의 컴포넌트에 빈 줄 250개 추가 | 「신규 위반」 red |
+| M2 증가 | 베이스라인의 `IssueCreateForm` 값을 `227` → `210` 으로 낮춤 | 「늘어난 함수」 red |
+| M3 감소 | 베이스라인의 `IssueCreateForm` 값을 `227` → `900` 으로 올림 | **green** (단조 — 감소는 통과) |
+
+★M2·M3 은 소스가 아니라 **베이스라인을 흔들어** 판정 방향을 확인한다. 원복은
+`git checkout -- src/test/lint-ratchet-baseline.ts` 이며 **GREEN 이 먼저 커밋돼 있어야 한다**
+(`[[mutation-test-requires-committed-baseline]]`).
+
+**커밋**. `test:`(RED) → `feat:`(GREEN) 순.
+
+---
+
+### Task 4. 정본 문서 동기화
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`TODOS.md`, `docs/plan/product/personalization.md`, `docs/plans/2026-08-11-web-ratchet-placeholder-and-component-lines.md`]
+- depends-on: [2, 3]
+
+TDD 대상 아님 (문서). **전수 동기화 원칙** (`CLAUDE.md §명세/범위 변경 시 전수 동기화`) 적용.
+
+- ① `TODOS.md:2092` 「한글 리터럴 placeholder 27곳」 → `⬜` 를 `✅` 로, 해소 요약 추가.
+  **남는 것을 명시한다** — 함수 기본 파라미터 1건(`LabelAutocompleteInput.tsx:79`) ·
+  변수 경유 10곳/9파일은 **차단 범위 밖**이며 별도 부채다.
+- ② `TODOS.md:2927` 「200줄 초과 컴포넌트 18건 · 강제 수단 0」 → `✅`.
+  **강제 수단이 생겼을 뿐 18건은 그대로 남아 있음**을 명시. `TODOS.md:2471`
+  (`IssueCreateForm` 227줄 개별 부채)은 **닫지 않는다** — 상환이 아니라 동결이다.
+- ③ `docs/plan/product/personalization.md:479-486` ⑤ 「라벨 5종이 컴포넌트 모듈 잔류」를
+  이 항목으로 흡수하고 상호 링크를 남긴다 (`[[two-lists-never-check-each-other]]` 신규 생성 방지).
+- ④ PR #364 본문의 「프로덕션 코드 0줄」을 정정한다 (D1 채택으로 17파일 27줄).
+
+**검증**.
+```bash
+bash scripts/verify-master-plan.sh; echo "EXIT=$?"   # 기대 0
+node scripts/build-doc-index.mjs                     # 인덱스 재생성 (훅이 강제)
+```
+
+---
+
+## Plan 메타
+
+- **task 수: 4**
+- 예상 시간. 직렬 기준 약 40분 (T2 의 28곳 이전이 가장 큼). **wave 는 1개 — 전 task 직렬**
+  (T2·T3 이 `lint-ratchet.test.ts` 를 공유해 파일 겹침으로 자동 직렬화, T4 는 `depends-on: [2,3]`)
+- 구현 규율. **TDD red→green→refactor** (type=chore override — `ui` 시각 검증 트랙 **아님**. 화면 변경 0)
+- 추가 검증. `tsc --noEmit` · `eslint src` · `vitest run` 전량 · 뮤테이션 3종 · `verify-master-plan.sh`
+- **worktree 실행 규율**. `pnpm` 래퍼 금지, `node_modules/.bin/*` 직접 호출
+  (`[[worktree-pnpm-verify-deps-symlink]]` — pnpm 이 main 의 `.modules.yaml` 을 오염시킨다)
+- **미정리 잔여물**. `apps/web/eslint.measure.mjs` · `eslint.measure30.mjs` 가 untracked 로 남아 있다
+  (이 세션의 `rm`/`mv` 가 권한 정책으로 차단됨). **커밋 금지 — 모든 `git add` 는 명시 pathspec.**
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
