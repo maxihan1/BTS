@@ -741,6 +741,30 @@ bash scripts/verify-master-plan.sh; echo "EXIT=$?"   # 기대 0
 node scripts/build-doc-index.mjs                     # 인덱스 재생성 (훅이 강제)
 ```
 
+**완료 기록 (2026-08-11).**
+
+- [x] ① `TODOS.md` 「한글 리터럴 placeholder 27곳」 → ✅ (`PR #364` · **JSX `placeholder` 속성만**).
+      해소 블록에 ⓐ락 구조(셀렉터 2종 × 적용면 3곳, 예외목록 0) ⓑ**정본 정정** — 「병합이 아니라 대체」는
+      **배열에만** 참이고 `'off'` 는 앞 블록 옵션을 유지한다(`--print-config` 실측: `DashboardForm.tsx`
+      `severity 2 · 셀렉터 1개` vs `badge.tsx` `[0, button, animate-pulse]`) ⇒ 실제 조치는
+      **배열 3곳 수정 + `'off'` 블록 1개 이동** ⓒ**정본 경고 해제** — `src/components/ui/**` 38파일 밑
+      비-테스트 한글 placeholder 0건이라 예외 없이 편입 ⓓ**★남은 것 표 3행**(함수 기본 파라미터 1건 ·
+      변수 경유 10곳/9파일 · placeholder 아닌 라벨 5종)을 적었다.
+- [x] ② `TODOS.md` 「200줄 초과 18건 · 강제 수단 0」 → ✅. 제목·요약 모두
+      **「강제 수단만 — 18건은 동결이지 상환이 아니다」**를 명시. 베이스라인 좌표
+      (`apps/web/src/test/lint-ratchet-baseline.ts`)와 **단조 판정 3행 표**(신규 red · 증가 red ·
+      감소 green + 「줄이면 숫자도 함께 낮춰라」), `eslint.config.js` R4 무변경 사유(CI 스코프 87건/78파일),
+      뮤테이션 4종, **「함수 30줄」 대상 밖 근거(비-테스트 445건/269파일)** 를 적었다.
+- [x] ③ `TODOS.md` `IssueCreateForm` 227줄 항목 — **닫지 않고** 동결 문구 한 단락만 추가.
+- [x] ④ `docs/plan/product/personalization.md:479` ⑤ — `TODOS.md` ① 로 **흡수**.
+      정본 명시 + 상호 링크, 상태는 **미해결 그대로**(래칫 차단 범위 밖). 양쪽 모두 삭제하지 않았다.
+- [x] 신규 부채 1건 등재 — 「apps/web — 같은 문구를 `placeholder` 와 `aria-label` 이 각자 만든다」
+      (`ComponentMultiSelect.tsx:81` · `UserMappingStep.tsx:173`). Jira 패리티 계약 §2 확인을 착수 전
+      필독으로 못박았고, 위 ★남은 것 3종의 **열린 좌표**도 이 항목이 함께 가리킨다.
+
+★위 ✅ 두 항목의 본문에는 미착수 마커를 넣지 않았다 —
+`scripts/workflow/todos-resolved-section-purity.test.ts` 가 ✅ 섹션 본문의 미착수 마커를 차단한다.
+
 ---
 
 ## Plan 메타
@@ -827,15 +851,15 @@ T2·T3 이 `lint-ratchet.test.ts` 를 공유하고 T2·T3 모두 T1 에 의존�
 
 ### 구현 tasks (리뷰 발견 → 작업)
 
-- [ ] **T1 (P2, human: ~30min / CC: ~5min)** — `eslint.config.js` — named export 2종 추가 후 테스트가 도출해 쓰게 한다
+- [x] **T1 (P2, human: ~30min / CC: ~5min)** — `eslint.config.js` — named export 2종 추가 후 테스트가 도출해 쓰게 한다
   - Surfaced by. 아키텍처 ②A — 경로 하드코딩이 대조군을 공허하게 만든다
   - Files. `apps/web/eslint.config.js` · `apps/web/src/test/lint-ratchet.test.ts`
   - Verify. `node_modules/.bin/vitest run src/test/lint-ratchet.test.ts` 6/6
-- [ ] **T2 (P2, human: ~20min / CC: ~3min)** — 계약 테스트 — 린트 결과 메모화 + placeholder 판정 술어 통일
+- [x] **T2 (P2, human: ~20min / CC: ~3min)** — 계약 테스트 — 린트 결과 메모화 + placeholder 판정 술어 통일
   - Surfaced by. 코드 품질 ③A — 린트 4회 실행 · 두 헬퍼 기준 불일치
   - Files. `apps/web/src/test/lint-ratchet.test.ts`
   - Verify. 실행 시간 기록 (린트 4회 → 2회)
-- [ ] **T3 (P2, human: ~10min / CC: ~2min)** — 검증 — 뮤테이션 M4(파서 제거) 추가
+- [x] **T3 (P2, human: ~10min / CC: ~2min)** — 검증 — 뮤테이션 M4(파서 제거) 추가
   - Surfaced by. 테스트 ④A — PARSE_ERROR 단언의 비-공허 미검증
   - Files. (검증 절차, 커밋 산출물 없음)
   - Verify. 파서 줄 제거 시 red, 원복 시 green

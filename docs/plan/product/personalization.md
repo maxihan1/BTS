@@ -484,6 +484,14 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
   실제 비용 —
   `i18n/__tests__/create-entry-point-names.test.ts` 가 **순수 i18n 판별식인데**
   `@/components/backlog/BacklogBoard` 를 import 하느라 React·dnd-kit 트리를 통째로 끌어온다.
+  **★2026-08-11 PR #364 — 추적을 `TODOS.md` 로 흡수했다. 정본은 그쪽이고 이 줄은 미러다.**
+  좌표는 `TODOS.md` 의 `## ✅ apps/web — 한글 리터럴 placeholder 27곳이 i18n 밖에 있다`
+  항목 안 「★남은 것」 표의 **(다) placeholder 가 아닌 라벨** 행이다.
+  같은 부류(한글 리터럴이 i18n 밖에 있다)를 두 목록이 따로 세면 서로를 검사하지 않으므로
+  (`[[two-lists-never-check-each-other]]`) **이 줄은 지우지 않되 여기서 상태를 갱신하지 않는다** —
+  수치·좌표가 바뀌면 `TODOS.md` 쪽만 고친다.
+  **상태는 그대로 미해결이다.** PR #364 가 옮긴 것은 JSX `placeholder` 속성뿐이고
+  위 5종은 제목·`aria-label`·안내문이라 그 래칫의 차단 범위 밖이다.
 - **⑥ 숨긴 섹션의 훅이 계속 돈다.** `FilterBar` 의 `hiddenSections` 는 **렌더만** 끄고
   `useComponents(projectKey)`·`useUsers` 는 무조건 실행된다. 백로그를 열면 **영원히 안 쓰이는**
   컴포넌트 목록 조회가 1건 나간다. 같은 PR 의 `SprintDialogHost` 는 "요청 1건 증가"를 이유로
