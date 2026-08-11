@@ -477,8 +477,11 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 
 **구조 (코드리뷰 적발)**
 - **⑤ 라벨 5종이 컴포넌트 모듈 잔류.** `EPIC_PANEL_TITLE`·`EPIC_LIST_ARIA_LABEL`·
-  `EPIC_SCOPE_NOTICE`·`BACKLOG_FILTERED_EMPTY_TITLE`·`BACKLOG_FILTER_RESET_LABEL`. 3종은
-  `fcf93d9c6` 로 `i18n/backlog-labels.ts` 에 옮겼으나 나머지는 남았다. 실제 비용 —
+  `EPIC_SCOPE_NOTICE`·`BACKLOG_FILTERED_EMPTY_TITLE`·`BACKLOG_FILTER_RESET_LABEL`.
+  **★2026-08-11 실측 정정 — 5종 중 이관된 것은 0종이다.** `fcf93d9c6` 이 옮긴 것은
+  `BacklogFilterBar.tsx` 의 **다른 3종**(`BACKLOG_SEARCH_LABEL`·`BACKLOG_SEARCH_PLACEHOLDER`·`NO_EPIC_LABEL`)이고,
+  위 5종은 지금도 `BacklogEpicPanel.tsx:27·35·44` · `BacklogBoard.tsx:48·57` 에 원시 한글 리터럴로 있다.
+  실제 비용 —
   `i18n/__tests__/create-entry-point-names.test.ts` 가 **순수 i18n 판별식인데**
   `@/components/backlog/BacklogBoard` 를 import 하느라 React·dnd-kit 트리를 통째로 끌어온다.
 - **⑥ 숨긴 섹션의 훅이 계속 돈다.** `FilterBar` 의 `hiddenSections` 는 **렌더만** 끄고
