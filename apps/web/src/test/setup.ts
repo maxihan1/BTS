@@ -1,7 +1,6 @@
 // Vitest 전역 셋업 — jest-dom matcher 확장 + MSW 서버 라이프사이클 + 모듈 상태 격리
 /// <reference types="vitest/globals" />
 import '@testing-library/jest-dom'
-import { cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, expect } from 'vitest'
 import {
   collectPendingMutations,
@@ -55,21 +54,7 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
-  /**
-   * ★DOM 정리를 **직접** 먼저 부른다.
-   *
-   * RTL 의 자동 cleanup 은 이 파일의 `afterEach` 와 **같은 root 레벨**에 등록돼 순서가 보장되지
-   * 않는다. 아래 pending 단언이 throw 하면 뒤따르는 훅이 실행되지 않아 DOM 이 남고, 다음 테스트가
-   * 「Found multiple elements」 로 **연쇄 실패**한다 (실측 — FavoriteButton 에서 진짜 위반 3건이
-   * 5건으로 부풀었다). 가드가 자기가 잡으려던 것 대신 엉뚱한 실패를 만드는 형태다.
-   *
-   * cleanup 은 멱등이라 RTL 이 나중에 또 불러도 무해하다. 그리고 unmount 뒤에 재는 편이
-   * 판정이 더 엄밀하다 — 컴포넌트가 사라졌는데도 남아 있는 mutation 만 누수로 잡힌다.
-   */
-  cleanup()
-
-  // pending mutation 누수 가드. 수집 → 레지스트리 정리 → 단언 순서다.
-  // 단언을 마지막에 두어야 throw 해도 아래 격리가 전부 끝난다.
+  // pending mutation 누수 가드. 수집 → 레지스트리 정리 순서다.
   const pendingMutations = collectPendingMutations()
   resetTrackedCaches()
 
@@ -79,7 +64,20 @@ afterEach(() => {
   // favorite-handlers 모듈-스코프 store (userId → Favorite[] Map) 격리 — 테스트 간 leak 방지
   resetFavoriteStore()
 
-  expect(
+  /**
+   * ★반드시 `expect.soft` 여야 한다.
+   *
+   * 보통 단언은 실패하면 throw 하고, 그러면 **같은 root 레벨에 등록된 RTL 자동 cleanup 이
+   * 실행되지 않는다.** DOM 이 남아 다음 테스트가 「Found multiple elements」로 연쇄 실패한다 —
+   * 실측에서 `FavoriteButton` 의 진짜 위반 3건이 **5건으로 부풀었다**(추가 2건은 pending 과
+   * 무관한 DOM 오염이었고 소요 시간이 20ms 대 1000ms 로 갈린 것이 서명이었다).
+   * `expect.soft` 는 테스트를 실패로 표시하되 훅 체인을 끊지 않아 이 함정을 통째로 없앤다.
+   *
+   * `cleanup()` 을 여기서 직접 부르는 대안도 되지만 택하지 않았다 — 그러려면 이 파일이
+   * `@testing-library/react` 를 static import 해야 하고, 그 로드 비용을 **RTL 을 쓰지 않는
+   * 순수 유닛 테스트 전량**이 물게 된다(실측 `src/mocks` 49파일에서 setup +76%).
+   */
+  expect.soft(
     pendingMutations,
     '테스트가 끝났는데 mutation 이 아직 날고 있다 — 정착을 기다리지 않고 끝난 테스트가 있다.\n' +
       '진행 중 UI 를 검증하려고 응답을 붙잡았다면, 테스트 마지막에 붙잡은 것을 풀고 ' +

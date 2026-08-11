@@ -27,7 +27,6 @@
 // 리스너가 1개를 넘으면 vitest 가 물러나 종료 코드가 1 → 0 으로 뒤집힌다.
 
 import { MutationCache } from '@tanstack/react-query'
-import { waitFor } from '@testing-library/react'
 
 /** mutation 을 실제로 만든 MutationCache 만 들어온다. */
 const trackedCaches = new Set<MutationCache>()
@@ -103,6 +102,11 @@ export function resetTrackedCaches(): void {
  * 밖에서 resolve 를 잡아 두는 수동 게이트로 바꾼 뒤 호출해야 한다.
  */
 export async function settlePendingMutations(): Promise<void> {
+  // ★RTL 을 **동적으로** 가져온다. static import 하면 `setup.ts` 가 이 모듈을 로드하는 순간
+  // RTL 을 쓰지 않는 순수 유닛 테스트 전량이 그 로드 비용을 물게 된다
+  // (실측 — `src/mocks` 49파일에서 setup 24.4s → 43.0s, +76%).
+  // 이 함수를 부르는 쪽은 어차피 RTL 로 렌더한 테스트라 여기서 로드해도 새 비용이 아니다.
+  const { waitFor } = await import('@testing-library/react')
   await waitFor(() => {
     const pending = collectPendingMutations()
     if (pending.length > 0) {
