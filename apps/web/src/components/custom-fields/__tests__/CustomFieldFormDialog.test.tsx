@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CreateCustomFieldInput, UpdateCustomFieldInput, CustomField } from '@/api/custom-fields.types'
 import { CustomFieldFormDialog } from '../CustomFieldFormDialog'
+import { customFieldLabels } from '@/i18n/custom-field-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -133,7 +134,7 @@ describe('CustomFieldFormDialog — S3 선택형 옵션 편집기', () => {
 
   it('edit 모드에서 initial 옵션 2건이 렌더된다', () => {
     renderEditDialog()
-    const valueInputs = screen.getAllByPlaceholderText('값')
+    const valueInputs = screen.getAllByPlaceholderText(customFieldLabels.optionValuePlaceholder)
     expect(valueInputs).toHaveLength(2)
   })
 
@@ -144,7 +145,7 @@ describe('CustomFieldFormDialog — S3 선택형 옵션 편집기', () => {
     const addBtn = screen.getByRole('button', { name: '선택지 추가' })
     await user.click(addBtn)
 
-    const valueInputs = screen.getAllByPlaceholderText('값')
+    const valueInputs = screen.getAllByPlaceholderText(customFieldLabels.optionValuePlaceholder)
     expect(valueInputs).toHaveLength(3)
   })
 
@@ -156,7 +157,7 @@ describe('CustomFieldFormDialog — S3 선택형 옵션 편집기', () => {
     const deleteButtons = screen.getAllByRole('button', { name: '옵션 삭제' })
     await user.click(deleteButtons[0]!)
 
-    const valueInputs = screen.getAllByPlaceholderText('값')
+    const valueInputs = screen.getAllByPlaceholderText(customFieldLabels.optionValuePlaceholder)
     expect(valueInputs).toHaveLength(1)
   })
 
