@@ -86,6 +86,12 @@ const KO_LITERAL = '<input placeholder="검색어" />'
 const KO_TEMPLATE = '<input placeholder={`${x} 검색`} />'
 const EN_LITERAL = '<input placeholder="Search" />'
 
+/**
+ * disable 주석 한 줄로 락을 끄려는 우회 시도. C-FR4 가 무력화해야 하는 경로다.
+ * ★`KO_LITERAL` 에서 **파생**한다 — 소스를 두 벌로 적으면 한쪽만 고쳐져도 아무도 모른다.
+ */
+const KO_LITERAL_WITH_DISABLE = `// eslint-disable-next-line no-restricted-syntax\n${KO_LITERAL}`
+
 describe('R3. 한글 placeholder 래칫', () => {
   it('양성 ① 기본 적용면에서 한글 리터럴을 막는다', async () => {
     expect(await violations(KO_LITERAL, 'src/components/__probe__/Probe.tsx')).toBe(1)
@@ -110,6 +116,16 @@ describe('R3. 한글 placeholder 래칫', () => {
 
   it('양성 ④ 템플릿 리터럴 우회를 막는다', async () => {
     expect(await violations(KO_TEMPLATE, 'src/components/__probe__/Probe.tsx')).toBe(1)
+  })
+
+  it('양성 ⑦ eslint-disable 주석으로 락을 끌 수 없다 (C-FR4)', async () => {
+    // 양성 ①과 소스·경로가 같고 **차이는 주석 한 줄뿐**이다. 우회가 통하면 여기만 red 가 된다.
+    // 왜 막아야 하나. 주석 한 줄이면 CI lint 도 이 계약 테스트도 green 인 채로
+    // 한글 placeholder 가 하드코딩으로 남는다 — 래칫이 이름만 남고 실효가 사라진다.
+    //
+    // ★이 대조군은 아래 「소스 전량 잔량」과 **같은 인스턴스**(realEslint)를 잰다.
+    //   전량 스캔 전용 인스턴스를 따로 두면 여기서 막아도 전량 스캔은 그대로 뚫린다.
+    expect(await violations(KO_LITERAL_WITH_DISABLE, 'src/components/__probe__/Probe.tsx')).toBe(1)
   })
 
   it('음성 ⑤ 영문 placeholder 는 막지 않는다', async () => {
