@@ -177,6 +177,14 @@ export default tseslint.config(
   {
     // 테스트 픽스처는 원시 <button>·animate-pulse·한글 placeholder 로 프리미티브를 흉내 내 검증한다.
     //
+    // ★`'off'` 와 배열은 뒤 블록이 앞 블록을 덮는 방식이 다르다 (2026-08-11 `--print-config` 실측).
+    //   - **배열**(`['error', …]`)은 앞 블록의 옵션을 **완전 대체**한다. 그래서 위 세 블록은
+    //     빠뜨리면 안 되는 셀렉터를 각자 다시 나열한다(공유 배열을 spread 하는 이유).
+    //   - **`'off'`** 는 앞 블록 **옵션을 그대로 둔 채 심각도만 0** 으로 바꾼다. 실제로
+    //     `--print-config src/components/ui/badge.test.tsx` 는 `severity 0` 이면서
+    //     ui 블록의 placeholder 셀렉터 2개를 그대로 달고 나온다.
+    //   이 차이를 「둘 다 대체」로 오해하면 처방이 틀어진다 — 초안이 그 오해로 lint 를 깨뜨렸다.
+    //
     // ★이 블록은 **반드시 config 의 맨 끝**이어야 한다. 위 ui 블록이 배열로 규칙을 다시 켜므로,
     //   이 블록이 그 앞에 있으면 src/components/ui/**\/*.test.tsx 가 다시 켜진다
     //   (badge.test.tsx 2건·command.test.tsx 1건이 red 가 된다).
