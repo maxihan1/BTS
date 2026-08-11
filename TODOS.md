@@ -2235,12 +2235,46 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 **무엇.** 「테스트가 끝났는데 mutation 이 아직 날고 있다」 누수를 `AutomationYamlImportDialog.test.tsx` 한 파일에서만 닫았다.
 **지연 MSW 핸들러를 쓰는 테스트 파일이 34개**이고 그중 몇 개가 같은 누수를 갖는지는 **미측정**이다.
 
+**★「34개」는 틀린 수가 아니다 — 세는 정의가 안 적혀 있었을 뿐이다(2026-08-11 실측).**
+정의 = `(setTimeout ∨ msw delay()) ∧ (server.use( ∨ setupServer()`. 이 정의에서 HEAD 기준 **정확히 34** 다.
+`setTimeout` 만으로 세면 33(차이 1건 = `hooks/__tests__/use-backlog-epics.test.tsx`),
+주석 1건(`routes/projects.$projectKey.settings.import.test.tsx:492`)을 빼면 32 다.
+**정의를 안 적으면 다음 사람이 세는 법을 바꿔 「숫자가 틀렸다」고 결론낸다** — 실제로 그렇게 됐다.
+
+**★★그런데 이 34-set 자체가 대상을 놓치고 있다.** 최고위험 관용구인 **미해결 Promise**
+(`new Promise(() => {})` 계열 — 지연이 **무한**이라 `setTimeout(N)` 보다 누수 위험이 크다)가
+정의에서 통째로 빠졌다. **여기도 정의를 먼저 적는다** — executor 인자가 **0개**라 resolve 를
+넘겨받지 못해 영원히 정착 불가인 Promise (`grep -rlE 'new Promise(<[^>]*>)?\(\(\) *=>'`).
+이 정의에서 HEAD 기준 **22개 파일 중 20개가 34-set 밖**이다.
+`() => {}` 형태만 세고 `() => undefined` 변종을 빠뜨리면 16개 중 15개로 줄어든다 —
+**이 항목이 경고하는 바로 그 「정의 미기재」 함정이 관용구 쪽에서도 그대로 재현된다.**
+교과서적 실례 — `FavoriteButton.test.tsx:262` 가
+`http.post('/api/v1/favorites', () => new Promise<never>(() => {}))` 로 뮤테이션을 영원히 pending 시키고
+`:275` 에서 클릭한 뒤 정착을 기다리지 않고 끝난다(`:122` `afterEach` 는 `vi.clearAllMocks()` 뿐).
+이 파일은 **34-set·33-set·32-set 어디에도 없다** — `server.use(` 를 7건 쓰지만
+`setTimeout`·`delay()` 가 **0건**이라 정의에 안 걸린다.
+
 **왜 승계를 미뤘나.** 34개 파일에 `afterEach` 불변식을 한 번에 넣으면 **한 PR 에서 대량 red** 가 터지고
 「한 PR = 한 BC」 규칙과도 부딪힌다.
 
-**처방.** 공용 `createTestQueryClient` 헬퍼 + 전역 `afterEach` 로
-`queryClient.getMutationCache().getAll().filter(m => m.state.status === 'pending')` 가 빈 배열임을 단언.
-디렉토리 단위로 나눠 넣을 것.
+**처방 — ★정적 목록보다 「1회 실측」이 먼저다 (2026-08-11 교체).**
+원 처방(공용 `createTestQueryClient` 헬퍼 + 전역 `afterEach` 로
+`queryClient.getMutationCache().getAll().filter(m => m.state.status === 'pending')` 가 빈 배열임을 단언,
+디렉토리 단위 분할)은 **구조는 유효하나 대상 집합을 grep 으로 만든다는 전제가 틀렸다.**
+관용구를 손으로 열거하는 한 누락이 재발한다 — 이번에 실제로 재발했다(위 미해결 Promise 20파일).
+
+**바뀐 순서.**
+1. **측정 PR 먼저.** 판정용 `afterEach` 를 `src/test/setup.ts` 에 **임시로** 전역 주입하고
+   유닛 전량을 **1회** 돌려 「실제로 pending 을 남기는 파일」의 실측 목록을 얻는다.
+   이 한 번의 실행이 관용구 열거 누락을 **구조적으로 불가능**하게 만든다. 기존 테스트 수정 0줄.
+2. 그 실측 목록을 기준으로 디렉토리 단위 이주 PR 을 나눈다.
+
+**★착수 전 확인 2건.**
+① `src/test/setup.ts:19-45` 가 `process.on('unhandledRejection')` 추가를 **절대 금지**로 못박았다
+   (리스너가 1개를 넘으면 vitest 가 물러나 종료 코드가 1 → 0 으로 뒤집힌다). 그 경로는 배제한다.
+② 선례 `AutomationYamlImportDialog.test.tsx:107` 의 `?? []` 를 그대로 전역화하면
+   **미이주 파일 전량에서 항진명제**가 된다(레지스트리가 비면 무조건 통과).
+   합성 위반 양성 대조군이 없으면 가드 자체가 장식이다.
 
 ---
 
