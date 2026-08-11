@@ -9,10 +9,26 @@ import { OVERSIZED_FUNCTION_BASELINE } from './lint-ratchet-baseline'
 const WEB_ROOT = resolve(__dirname, '../..')
 
 /**
- * 실제 `eslint.config.js` 를 로드하는 인스턴스.
+ * 실제 `eslint.config.js` 를 로드하는 인스턴스. R3 의 대조군 7종과 전량 스캔이 **둘 다** 이걸 쓴다.
  * ★자체 config 로 대체하면 「저장소의 진짜 설정이 막는가」를 못 본다 — 그게 이 테스트의 존재 이유다.
+ *
+ * **왜 `noInlineConfig` 인가 (C-FR4).** 소스에 `// eslint-disable-next-line no-restricted-syntax`
+ * 한 줄만 넣으면 CI lint 도 전량 스캔도 green 인 채 한글 placeholder 가 하드코딩으로 남는다.
+ * 계약 테스트는 그 주석에 설득당하지 않는 두 번째 방어선이어야 한다 (대조군 ⑦ 이 이걸 잰다).
+ *
+ * **왜 전량 스캔 전용 인스턴스를 따로 두지 않았나.**
+ * ① C-FR5 가 인스턴스 **2개**를 요구한다 — 3개가 되면 스펙 위반이고 「어느 것이 무엇을 재는가」가 흐려진다.
+ * ② 나누면 대조군 ⑦ 이 전량 스캔은 쓰지도 않는 인스턴스를 재게 되어 **공허**해진다.
+ * ③ 대조군 6종의 픽스처에는 주석이 한 줄도 없어 이 설정의 영향이 0 이다 (실측 6종 전부 불변).
+ *
+ * ★대신 대조군은 CI lint 와 **동일 조건이 아니라 더 엄격한 조건**을 잰다 — 의도한 것이다.
+ *   CI lint 는 disable 주석을 존중하고 이 테스트는 존중하지 않으므로, 주석으로 덮은 위반은
+ *   lint 가 green 이어도 여기서 red 가 된다. 그게 래칫의 역할이다.
  */
-const realEslint = new ESLint({ cwd: WEB_ROOT })
+const realEslint = new ESLint({
+  cwd: WEB_ROOT,
+  overrideConfig: [{ linterOptions: { noInlineConfig: true } }],
+})
 
 /**
  * `eslint.config.js` 가 계약으로 내보내는 두 상수.
