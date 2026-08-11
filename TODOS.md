@@ -1799,7 +1799,7 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 
 ## ✅ apps/web — 이슈 **제목** placeholder 만 i18n 키 없이 하드코딩돼 있다 (해소 2026-08-09 · **이 1줄만**)
 
-> **해소.** `fix/web-tech-debt-4` — `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 회귀 가드는 렌더 단언이 아니라 **소스 단언**이다(렌더로는 하드코딩 복귀를 못 잡는다 — 뮤테이션으로 확증). ★**나머지 28곳과 ESLint 래칫은 별도 항목**이다.
+> **해소.** `fix/web-tech-debt-4` — `issueCreateStrings.summaryPlaceholder` 신설 후 참조. 회귀 가드는 렌더 단언이 아니라 **소스 단언**이다(렌더로는 하드코딩 복귀를 못 잡는다 — 뮤테이션으로 확증). ★**나머지 27곳과 ESLint 래칫은 별도 항목**이다.
 
 **무엇.** `placeholder="이슈 제목을 입력하세요"` 가 리터럴이다
 (`components/issue/create/IssueCreateBasicFields.tsx:110`).
@@ -1821,9 +1821,9 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 (`grep -rn "이슈 제목을 입력하세요" apps/web/`) — 현재는 이 1건뿐이다.
 
 > **★2026-08-09 전수 실측 + 적대적 반증 — 판정 `VALID` (좌표 밀림 0 · `:110` 지금도 정확).**
-> - **★정정 1.** 「다국어를 열 때 **이 한 줄만** 조용히 번역에서 빠진다」는 **거짓**이다. `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 placeholder 가 **28곳** 있다(`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` · `CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 더하면 29곳. 원 서술은 **「그 특정 문자열의 grep 히트 수」로는 맞지만** 「i18n 에서 빠지는 줄이 이것뿐」이라는 뜻으로 읽히면 틀린다.
+> - **★정정 1.** 「다국어를 열 때 **이 한 줄만** 조용히 번역에서 빠진다」는 **거짓**이다. `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 placeholder 가 **27곳** 있다(`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` · `CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 더하면 28곳. 원 서술은 **「그 특정 문자열의 grep 히트 수」로는 맞지만** 「i18n 에서 빠지는 줄이 이것뿐」이라는 뜻으로 읽히면 틀린다.
 > - **정정 2.** 「같은 폼의 **본문** placeholder 는 i18n 을 쓴다」는 과소 서술. 본문뿐 아니라 **프로젝트 셀렉터**도 `issueCreateStrings.projectPlaceholder`(`:62`)를 쓴다 — 이 파일의 placeholder 3개 중 **2개가 i18n, 1개만 리터럴**이다.
-> - **2026-08-09 Maxi 확정 — 이 1줄만 좁게. 나머지 28곳은 신규 등재.**
+> - **2026-08-09 Maxi 확정 — 이 1줄만 좁게. 나머지 27곳은 신규 등재.**
 > - **★★회귀 가드 설계 주의 (반증이 적발).** 「`issueCreateStrings.summaryPlaceholder` 자체와 대조하는 렌더 테스트」는 **공허하다.** i18n 값이 현재 리터럴과 바이트 동일해야 하므로 DOM 의 `placeholder` 속성 문자열이 두 경우(i18n 참조 / 하드코딩 복귀)에 완전히 같다 — **속성값은 출처를 싣지 않는다.** 그 가드가 실제로 잡는 것은 (a)속성 삭제 (b)다른 키 교체 둘뿐이고, **막겠다고 선언한 「하드코딩 복귀」는 못 잡는다.**
 >   ⇒ **올바른 가드.** `apps/web/eslint.config.js:69·116` 에 이미 있는 `no-restricted-syntax` AST 선택자 배열에 한 항목을 더한다 — `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]`. 현재 히트를 예외 파일 목록으로 등재한 뒤 이번 PR 에서 `IssueCreateBasicFields.tsx` 만 목록에서 뺀다(**래칫**). 문법을 보므로 출처 판별이 성립하고, 29번째 신규 하드코딩도 자동 차단된다.
 >   미확정 2건 — ① `ComponentMultiSelect.tsx:78` 은 템플릿 리터럴이라 `Literal` 선택자에 안 걸린다(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부 판단 필요). ② 내가 센 28 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다** — 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재할 것. 로컬 lint 목록과 CI lint 목록이 어긋난 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
@@ -2089,11 +2089,17 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web — 한글 리터럴 placeholder 28곳이 i18n 밖에 있다 (선재 · 미착수)
+## ⬜ apps/web — 한글 리터럴 placeholder 27곳이 i18n 밖에 있다 (선재 · 미착수)
 
-**무엇.** `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 `placeholder` 가 **28곳**
+**무엇.** `apps/web/src` 의 비-테스트 `.tsx` 에 한글 리터럴 `placeholder` 가 **27곳**
 (`CreateBoardForm.tsx:109` · `DashboardForm.tsx:294` · `admin.workflow-schemes.new.tsx:123` ·
-`CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 29곳.
+`CustomFieldFormDialog.tsx:222` · `search.tsx:353` 등). `ComponentMultiSelect.tsx:78` 의 반쪽 i18n 까지 28곳.
+
+**★2026-08-11 재실측 — 27곳이다.** PR #352(`d3cd9df20`)가 `IssueCreateBasicFields.tsx:110` 1건을
+해소해 리터럴 28 → **27** · 템플릿 포함 총합 29 → **28** 로 실제 감소했다.
+
+**★변수형은 사각지대가 2곳이 아니라 10곳 / 9파일이다.** `LabelAutocompleteInput.tsx:79` 는
+함수 기본 파라미터라 리터럴·템플릿과 다른 **제3 유형**이고, 어떤 JSX 선택자로도 잡히지 않는다.
 
 **처방 — 손 열거가 아니라 ESLint 래칫.** `apps/web/eslint.config.js:69·116` 에 이미 있는
 `no-restricted-syntax` AST 선택자 배열에 `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]` 를 더하고,
