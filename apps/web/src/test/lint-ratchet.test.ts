@@ -259,7 +259,12 @@ describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
   it('베이스라인에 없는 신규 위반이 없다', async () => {
     const { entries } = await oversizedFunctions()
     expect(entries.size).toBeGreaterThan(0) // 비-공허. 스캔이 비면 모든 단언이 참이 된다
-    const unknown = [...entries.keys()].filter((k) => !(k in OVERSIZED_FUNCTION_BASELINE)).sort()
+    // ★실패 출력을 베이스라인에 **그대로 붙여 넣을 수 있는 형태**로 만든다.
+    //   손으로 옮겨 적으면 숫자가 틀리고, 틀린 숫자는 그만큼의 증가 여지로 남는다.
+    const unknown = [...entries]
+      .filter(([k]) => !(k in OVERSIZED_FUNCTION_BASELINE))
+      .map(([k, lines]) => `${JSON.stringify(k)}: ${lines},`)
+      .sort()
     // 목록 전수 비교 — 개수 상한은 하나 고치고 하나 늘리면 통과한다.
     expect(unknown).toEqual([])
   }, 60_000)
