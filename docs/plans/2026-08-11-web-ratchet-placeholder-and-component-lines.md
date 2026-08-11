@@ -442,8 +442,12 @@ node_modules/.bin/eslint --print-config src/components/ui/badge.test.tsx \
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/test/lint-ratchet.test.ts`, `apps/web/src/i18n/resolution-labels.ts`, `apps/web/src/i18n/global-permission-labels.ts`, `apps/web/src/i18n/search-labels.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/i18n/custom-field-labels.ts`, `apps/web/src/i18n/dashboard-labels.ts`, `apps/web/src/i18n/import-labels.ts`, `apps/web/src/i18n/issue-template-labels.ts`, `apps/web/src/i18n/bulk-operation-labels.ts`, `apps/web/src/i18n/workflow-scheme-labels.ts`, `apps/web/src/i18n/ko.ts`, `apps/web/src/components/board/CreateBoardForm.tsx`, `apps/web/src/components/board/ResolutionPickerModal.tsx`, `apps/web/src/components/custom-fields/CustomFieldFormDialog.tsx`, `apps/web/src/components/custom-fields/CustomFieldInput.tsx`, `apps/web/src/components/dashboard/DashboardForm.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/global-permissions/GlobalPermissionFormDialog.tsx`, `apps/web/src/components/import/mapping/UserMappingStep.tsx`, `apps/web/src/components/issue-templates/IssueTemplateFormDialog.tsx`, `apps/web/src/components/issue-templates/TemplateContentField.tsx`, `apps/web/src/components/issue/ResolutionModal.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.tsx`, `apps/web/src/components/issues/BulkTransitionDialog.tsx`, `apps/web/src/components/issues/cells/AssigneeCell.tsx`, `apps/web/src/routes/admin.workflow-schemes.new.tsx`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.settings.workflow-scheme.tsx`, `apps/web/src/routes/search.tsx`]
+- files: [`apps/web/src/test/lint-ratchet.test.ts`, `apps/web/src/i18n/resolution-labels.ts`, `apps/web/src/i18n/global-permission-labels.ts`, `apps/web/src/i18n/search-labels.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/i18n/custom-field-labels.ts`, `apps/web/src/i18n/dashboard-labels.ts`, `apps/web/src/i18n/import-labels.ts`, `apps/web/src/i18n/issue-template-labels.ts`, `apps/web/src/i18n/bulk-operation-labels.ts`, `apps/web/src/i18n/workflow-scheme-labels.ts`, `apps/web/src/i18n/ko.ts`, `apps/web/src/components/board/CreateBoardForm.tsx`, `apps/web/src/components/board/ResolutionPickerModal.tsx`, `apps/web/src/components/custom-fields/CustomFieldFormDialog.tsx`, `apps/web/src/components/custom-fields/CustomFieldInput.tsx`, `apps/web/src/components/dashboard/DashboardForm.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/global-permissions/GlobalPermissionFormDialog.tsx`, `apps/web/src/components/import/mapping/UserMappingStep.tsx`, `apps/web/src/components/issue-templates/IssueTemplateFormDialog.tsx`, `apps/web/src/components/issue-templates/TemplateContentField.tsx`, `apps/web/src/components/issue/ResolutionModal.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.tsx`, `apps/web/src/components/issues/BulkTransitionDialog.tsx`, `apps/web/src/components/issues/cells/AssigneeCell.tsx`, `apps/web/src/routes/admin.workflow-schemes.new.tsx`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.settings.workflow-scheme.tsx`, `apps/web/src/routes/search.tsx`, `apps/web/src/components/custom-fields/__tests__/CustomFieldFormDialog.test.tsx`]
 - depends-on: [1]
+
+> **★Task 1 후 메타 정정.** REFACTOR 가 `CustomFieldFormDialog.test.tsx` 의
+> `getAllByPlaceholderText('값')` 3줄을 고치라고 하는데 그 파일이 `files` 에 없었다.
+> 병렬 wave 규약 1조상 implementer 가 BLOCKED 해야 하는 상태였으므로 목록에 추가한다.
 
 **RED**.
 - 파일. `apps/web/src/test/lint-ratchet.test.ts` (Task 1 파일에 describe 추가)
@@ -464,7 +468,10 @@ async function computePlaceholderHits(): Promise<string[]> {
   expect(results.length).toBeGreaterThan(500) // 비-공허. 실측 1288
   return results.flatMap((r) =>
     r.messages
-      .filter(isPlaceholderLockViolation) // ★리뷰 ③A — 대조군과 **같은 술어**를 쓴다
+      // ★리뷰 ③A — 대조군과 **같은 술어**를 쓴다.
+      // ★Task 1 구현 후 정정 — 실제 술어는 `(m, tag)` 2-인자다. 1-인자로 넘기면
+      //   Array.filter 의 `index: number` 가 `tag: string` 자리에 들어가 타입 에러가 난다.
+      .filter((m) => isPlaceholderLockViolation(m, PLACEHOLDER_LOCK_TAG))
       .map((m) => `${r.filePath.replace(`${WEB_ROOT}/`, '')}:${m.line}`),
   )
 }
