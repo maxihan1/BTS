@@ -230,7 +230,12 @@ sed -n "${S},$((S+40))p" TODOS.md | grep -c 'raw(빈 줄·주석 포함). Maxi �
 grep -c '29곳' TODOS.md    # 기대: 0   (정정 전 2)
 
 # b) 자릿수 이동이 정확히 일어났다 — 비-공허 짝. a) 만으로는 「줄을 통째로 지워도」 통과한다
-grep -c '27곳' TODOS.md    # 기대: 5   (정정 전 0 — 옛 「28곳」 5건이 전부 내려왔다)
+grep -c '27곳' TODOS.md    # 기대: 6   = 치환 5 + 삽입문 1
+# ★삽입문 「★2026-08-11 재실측 — 27곳이다」가 자기 검색어를 포함해 1 을 더한다.
+#   개수만 보면 후속 커밋이 상호참조를 더할 때마다 또 어긋난다 — 분포로 확인한다.
+git show origin/main:TODOS.md | grep -o '2[789]곳' | sort | uniq -c   # 기대: 28곳 5 · 29곳 2 (합 7)
+grep -o '2[789]곳' TODOS.md | sort | uniq -c                          # 기대: 27곳 6 · 28곳 2 (합 8)
+#   합이 7 → 8 로 +1 인 것이 삽입문 몫이다. 그 외 증감이 있으면 정정이 아니라 개작이다.
 grep -c '28곳' TODOS.md    # 기대: 2   (정정 전 5 — 옛 「29곳」 2건만 남는다)
 
 # c) 남은 「28곳」 2건이 전부 '템플릿 포함 총합' 문맥인지 눈으로 확인 (:1824 · :2096 이어야 한다)
@@ -287,7 +292,7 @@ grep -c '변수형은 사각지대가 2곳이 아니라 10곳 / 9파일' TODOS.m
 > 원 처방(공용 `createTestQueryClient` 헬퍼 + 전역 `afterEach` 로
 > `queryClient.getMutationCache().getAll().filter(m => m.state.status === 'pending')` 가 빈 배열임을 단언,
 > 디렉토리 단위 분할)은 **구조는 유효하나 대상 집합을 grep 으로 만든다는 전제가 틀렸다.**
-> 관용구를 손으로 열거하는 한 누락이 재발한다 — 이번에 실제로 재발했다(위 미해결 Promise 13파일).
+> 관용구를 손으로 열거하는 한 누락이 재발한다 — 이번에 실제로 재발했다(위 미해결 Promise 20파일).
 >
 > **바뀐 순서.**
 > 1. **측정 PR 먼저.** 판정용 `afterEach` 를 `src/test/setup.ts` 에 **임시로** 전역 주입하고
@@ -307,10 +312,13 @@ grep -c '변수형은 사각지대가 2곳이 아니라 10곳 / 9파일' TODOS.m
 
 ```bash
 # a) ★숫자 34 를 바꾸지 않았다 — 정정 전 실측 5건(:1755 · :2227 · :2230 · :2232 · :2695)이 그대로여야 한다
-grep -c '34개' TODOS.md    # 기대: 5   (정정 전 5 — 이 task 는 34 를 손대지 않는다)
-grep -n '34개' TODOS.md | cut -d: -f1 | tr '\n' ' '   # 5개 줄번호가 나오는지 눈으로 확인
-# 34 를 다른 수로 바꾼 diff 가 없다
-git diff TODOS.md | grep -E '^-.*34개' | wc -l    # 기대: 0
+# ★기대값은 「선재 5 + 이 task 가 넣는 삽입문」이다. 삽입문이 자기 검색어를 포함하므로
+#   후속 커밋이 상호참조를 더하면 또 오른다 — 개수가 아니라 **집합**을 비교해야 한다.
+git show origin/main:TODOS.md | grep -o '3[0-9]개' | sort | uniq -c   # 기대: 34개 5
+grep -o '3[0-9]개' TODOS.md | sort | uniq -c                          # 기대: 34개 7 (선재 5 + 삽입 2)
+#   ★판정은 개수가 아니라 **치환 0** 이다. 아래가 0 이어야 한다 —
+diff <(git show origin/main:TODOS.md | grep -o '3[0-9]개' | sort) <(grep -o '3[0-9]개' TODOS.md | sort) | grep -c '^<'
+grep -n '34개' TODOS.md | cut -d: -f1 | tr '\n' ' '   # 선재 5개 줄이 전부 살아 있는지 눈으로 확인
 
 # b) 세는 정의가 실제로 적혔다
 grep -c '(setTimeout ∨ msw delay()) ∧ (server.use( ∨ setupServer()' TODOS.md   # 기대: 1
