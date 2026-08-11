@@ -1827,7 +1827,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **★★회귀 가드 설계 주의 (반증이 적발).** 「`issueCreateStrings.summaryPlaceholder` 자체와 대조하는 렌더 테스트」는 **공허하다.** i18n 값이 현재 리터럴과 바이트 동일해야 하므로 DOM 의 `placeholder` 속성 문자열이 두 경우(i18n 참조 / 하드코딩 복귀)에 완전히 같다 — **속성값은 출처를 싣지 않는다.** 그 가드가 실제로 잡는 것은 (a)속성 삭제 (b)다른 키 교체 둘뿐이고, **막겠다고 선언한 「하드코딩 복귀」는 못 잡는다.**
 >   ⇒ **올바른 가드.** `apps/web/eslint.config.js:69·116` 에 이미 있는 `no-restricted-syntax` AST 선택자 배열에 한 항목을 더한다 — `JSXAttribute[name.name='placeholder'] Literal[value=/[가-힣]/]`. 현재 히트를 예외 파일 목록으로 등재한 뒤 이번 PR 에서 `IssueCreateBasicFields.tsx` 만 목록에서 뺀다(**래칫**). 문법을 보므로 출처 판별이 성립하고, 28번째 신규 하드코딩도 자동 차단된다.
 >   미확정 2건 — ① `ComponentMultiSelect.tsx:78` 은 템플릿 리터럴이라 `Literal` 선택자에 안 걸린다(`TemplateElement[value.raw=/[가-힣]/]` 병용 여부 판단 필요). ② 내가 센 28 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다** — 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재할 것. 로컬 lint 목록과 CI lint 목록이 어긋난 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
-> - **중복 추적 주의.** 같은 부류가 이미 `docs/plan/product/personalization.md:479-483` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로 **따로 추적 중**이다. 신규 TODOS 항목을 또 만들면 같은 부류가 3곳에 흩어져 `[[two-lists-never-check-each-other]]` 를 새로 만든다 — 아래 신규 항목에서 그 문서를 상호 링크했다.
+> - **중복 추적 주의.** 같은 부류가 이미 `docs/plan/product/personalization.md:479-486` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로 **따로 추적 중**이다. 신규 TODOS 항목을 또 만들면 같은 부류가 3곳에 흩어져 `[[two-lists-never-check-each-other]]` 를 새로 만든다 — 아래 신규 항목에서 그 문서를 상호 링크했다.
 
 ---
 
@@ -2111,7 +2111,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 (`TemplateElement[value.raw=/[가-힣]/]` 병용 여부). ② 위 27 은 grep 기준이라 **ESLint 히트와 일치한다는 보장이 없다**
 — 규칙을 한 번 돌려 실제 목록을 확정한 뒤 등재. 로컬 lint 목록 ≠ CI lint 목록 선례 있음(`[[fr-ux-14-b2-card-fields-done]]`).
 
-**★중복 추적 주의.** 같은 부류가 `docs/plan/product/personalization.md:479-483` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로
+**★중복 추적 주의.** 같은 부류가 `docs/plan/product/personalization.md:479-486` ⑤(「라벨 5종이 컴포넌트 모듈 잔류」)로
 따로 추적 중이다. 착수 시 **그쪽을 이 항목으로 흡수**할 것 — 두 곳에 나뉘어 있으면 서로를 검사하지 않는다.
 
 ---
