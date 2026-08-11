@@ -356,7 +356,6 @@ describe('ProfileForm — F8 저장 isPending', () => {
     expect(submitButton).toBeDisabled()
     expect(submitButton).toHaveTextContent(profileLabels.form.savingButton)
 
-    // 지연 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
     await settlePendingMutations()
   })
 })
@@ -462,7 +461,6 @@ describe('ProfileForm — 아바타 업로드/삭제', () => {
     expect(fileInput).toBeDisabled()
     expect(screen.getByRole('button', { name: profileLabels.avatar.deleteButton })).toBeDisabled()
 
-    // 지연 업로드 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
     await settlePendingMutations()
   })
 

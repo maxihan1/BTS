@@ -174,7 +174,6 @@ describe('CreateIssueDialog — 제출 중 피드백 (게이트 2 C-2)', () => {
     expect(pending).toBeDisabled()
 
     release()
-    // 게이트를 풀기만 하면 응답이 다음 파일이 도는 중에 도착한다. 정착까지 기다린다.
     await settlePendingMutations()
   })
 })

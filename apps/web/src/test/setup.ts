@@ -72,10 +72,13 @@ afterEach(() => {
    * 실측에서 `FavoriteButton` 의 진짜 위반 3건이 **5건으로 부풀었다**(추가 2건은 pending 과
    * 무관한 DOM 오염이었고 소요 시간이 20ms 대 1000ms 로 갈린 것이 서명이었다).
    * `expect.soft` 는 테스트를 실패로 표시하되 훅 체인을 끊지 않아 이 함정을 통째로 없앤다.
+   * **이것이 `expect.soft` 를 쓰는 이유다** — 전역 훅에서 throw 하는 단언은 뒤에 등록된 정리
+   * 훅을 전부 인질로 잡는다.
    *
-   * `cleanup()` 을 여기서 직접 부르는 대안도 되지만 택하지 않았다 — 그러려면 이 파일이
-   * `@testing-library/react` 를 static import 해야 하고, 그 로드 비용을 **RTL 을 쓰지 않는
-   * 순수 유닛 테스트 전량**이 물게 된다(실측 `src/mocks` 49파일에서 setup +76%).
+   * `cleanup()` 을 여기서 직접 부르는 대안은 그 인질 문제를 못 푼다(정리 순서를 하나 앞당길 뿐
+   * 뒤따르는 다른 훅은 여전히 막힌다). 부수적으로 이 파일이 `@testing-library/react` 를
+   * static import 하게 되는 비용도 있지만, 그건 `settlePendingMutations` 처럼 동적 import 로
+   * 피할 수 있으므로 **결정 근거가 아니다.**
    */
   expect.soft(
     pendingMutations,

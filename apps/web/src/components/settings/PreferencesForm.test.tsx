@@ -160,7 +160,6 @@ describe('PreferencesForm — 날짜 표시 형식 라이브 프리뷰', () => {
     // waitFor 없이 동기 단언 — PATCH가 아직 응답하지 않은 시점에도 프리뷰가 갱신돼야 한다
     expect(screen.getByText('미리보기: 07/07/2026')).toBeInTheDocument()
 
-    // 지연 PATCH 가 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
     await settlePendingMutations()
   })
 })

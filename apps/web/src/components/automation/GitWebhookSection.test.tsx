@@ -346,7 +346,6 @@ describe('GitWebhookSection — 삭제 3분기', () => {
     })
     expect(screen.getByTestId('git-webhook-delete-cancel')).toBeDisabled()
 
-    // 지연 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
     await settlePendingMutations()
   })
 })
