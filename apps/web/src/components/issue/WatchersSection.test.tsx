@@ -6,6 +6,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { aliceUser } from '@/mocks/auth-fixtures'
@@ -558,6 +559,7 @@ describe('WatchersSection — S9 뮤테이션 중/후 포커스 보존 (Task-5b)
     } finally {
       release()
       stopEmulation()
+      await settlePendingMutations()
     }
   })
 
@@ -643,6 +645,7 @@ describe('WatchersSection — S9 뮤테이션 중/후 포커스 보존 (Task-5b)
       expect(postCount).toBe(1)
     } finally {
       release()
+      await settlePendingMutations()
     }
   })
 })

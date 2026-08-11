@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { profileHandlers, resetProfileStore } from '@/mocks/profile-handlers'
 import { authHandlers } from '@/mocks/auth-handlers'
@@ -354,6 +355,9 @@ describe('ProfileForm — F8 저장 isPending', () => {
     const submitButton = document.querySelector('button[type="submit"]')
     expect(submitButton).toBeDisabled()
     expect(submitButton).toHaveTextContent(profileLabels.form.savingButton)
+
+    // 지연 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
+    await settlePendingMutations()
   })
 })
 
@@ -457,6 +461,9 @@ describe('ProfileForm — 아바타 업로드/삭제', () => {
 
     expect(fileInput).toBeDisabled()
     expect(screen.getByRole('button', { name: profileLabels.avatar.deleteButton })).toBeDisabled()
+
+    // 지연 업로드 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
+    await settlePendingMutations()
   })
 
   it('S7 — 아바타 업로드가 400 AVATAR_VALIDATION_FAILED를 반환하면 role=alert 한글 메시지를 표시한다', async () => {

@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { passwordHandlers } from '@/mocks/password-handlers'
 import { ChangePasswordForm } from './ChangePasswordForm'
@@ -256,6 +257,9 @@ describe('ChangePasswordForm — EC-7 isPending 중 버튼 비활성', () => {
     // isPending 시 버튼 텍스트가 "변경 중..."으로 바뀌므로 type=submit 으로 조회
     const submitButton = document.querySelector('button[type="submit"]')
     expect(submitButton).toBeDisabled()
+
+    // 지연 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
+    await settlePendingMutations()
   })
 })
 

@@ -7,6 +7,7 @@ import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { GitWebhookSection } from './GitWebhookSection'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { gitWebhookHandlers } from '@/mocks/git-webhook-handlers'
 import {
   DEFAULT_GIT_WEBHOOK_PROJECT_KEY,
@@ -344,6 +345,9 @@ describe('GitWebhookSection — 삭제 3분기', () => {
       expect(confirmButton).toBeDisabled()
     })
     expect(screen.getByTestId('git-webhook-delete-cancel')).toBeDisabled()
+
+    // 지연 응답이 도착할 때까지 기다린다 — 안 기다리면 다음 파일이 도는 중에 콜백이 실행된다.
+    await settlePendingMutations()
   })
 })
 
