@@ -49,22 +49,24 @@ TODOS 「apps/web(테스트 인프라) — 지연 MSW 핸들러 34개 파일의 
 - [x] 제3 관용구(수동 게이트) 기록 — 정적 grep 의 원리적 한계 실증
 - [x] 미러 drift 36 → 34 정정 + 줄어든 진짜 이유 명시
 
-## 5. 성능 회귀 봉합 (완료 · 커밋 대기)
+## 5. 성능 — ★회귀는 없었다 (내 대조군이 틀렸다)
 
-첫 전량 GREEN 이 **226초 → 360초**였다. 초록이라 놓치기 쉬운 형태다.
-
-- [x] 대조 실험 — `src/mocks` 49파일에서 `setup.ts` 만 원복 (setup 24.4s → 43.0s, **+76%**)
-- [x] 원인 확정 — `setup.ts` 의 `@testing-library/react` static import 를 **전 파일**이 문다
+- [x] `src/mocks` 49파일 통제 실험 — `setup.ts` 만 원복 (setup 24.4s → 43.0s, **+76%**)
 - [x] 처방 ① `cleanup()` 제거 → **`expect.soft`** (실측으로 훅 체인 유지 확인)
 - [x] 처방 ② `settlePendingMutations` 안의 RTL 을 **동적 import** 로 내림
-- [ ] 전량 재측정 — GREEN 유지 + 소요 시간 확인
+- [x] **main baseline 실측 — 340.03s (577/577 · 워커 실패 0)**
+- [x] **가드 적용 — 332.32s (578/578).** 차이 없음. 「226초 → 360초」는 **main 이 아니라
+      프로브 켜진 상태**와 비교한 것이었고, 두 값은 세션 초·후반의 머신 상태 차이였다
+- [x] 처방 2가지는 유지 — 통제 실험에서 비용이 실재했고, `expect.soft` 는 성능과 무관하게도
+      D7 함정을 더 싸게 푼다
 
 ## 6. 최종 검증
 
 - [x] `node_modules/.bin/tsc -p tsconfig.app.json --noEmit` (exit 0)
 - [x] `node_modules/.bin/eslint src` (exit 0 · warning 8건은 선재)
-- [ ] `node_modules/.bin/vitest run` 전량 green
-- [ ] `bash scripts/verify-master-plan.sh` (exit 0 · FR 139/139)
-- [ ] `node scripts/build-doc-index.mjs --check`
-- [ ] **가드 뮤테이션 검증** — 봉합 1건을 되돌리면 red 가 나는가 (`git checkout --` 로 원복)
+- [x] `node_modules/.bin/vitest run` 전량 green (578/578 · 9443 테스트)
+- [x] `bash scripts/verify-master-plan.sh` (exit 0 · FR 139/139)
+- [x] `node scripts/build-doc-index.mjs --check` (exit 0 · drift 0)
+- [x] **가드 뮤테이션 검증** — 봉합 2건(지연 · 수동 게이트)을 되돌려 각각 red 확인,
+      나머지 33건은 통과 (무차별 red 가 아니다)
 - [ ] PR 생성
