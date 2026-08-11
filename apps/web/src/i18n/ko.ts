@@ -191,6 +191,16 @@ export const issueDetailStrings = {
   assigneeUnassigned: '미지정',
   /** 담당자 검색 input 자리표시자 */
   assigneeSearchPlaceholder: '사용자 검색',
+  /**
+   * 목록 담당자 셀(`issues/cells/AssigneeCell.tsx`) 검색 input 자리표시자.
+   *
+   * ★상세 화면의 `assigneeSearchPlaceholder` 와 **글자가 다르다.** 목록 셀은 예전부터
+   * 이 문구였고, 여기서 상세 쪽 값으로 갈아타면 목록 표기가 조용히 바뀐다 —
+   * `AssigneeCell.tsx` 의 `ASSIGNEE_UNASSIGNED` 주석이 설명하는 것과 같은 사정이다.
+   * (값을 주석에 한 번 더 적지 않는다 — 그러면 「정확히 1회」 검증이 자기 사본을 세게 된다.)
+   * 두 화면의 문구 통일은 별도 결정 사항이라 verbatim 유지한다.
+   */
+  assigneeCellSearchPlaceholder: '이름으로 검색',
   /** 담당자 해제 버튼 텍스트 */
   assigneeUnassignButton: '담당자 해제',
   /** 422 ASSIGNEE_NOT_FOUND 에러 메시지 */
@@ -246,6 +256,17 @@ export const issueDetailStrings = {
   // ── 컴포넌트(components) — FR-CM-02 ─────────────────────────────────
   /** 메타패널 — 컴포넌트 레이블 */
   componentsLabel: '컴포넌트',
+  /**
+   * 컴포넌트 검색 input 자리표시자 생성 함수 (`issue/ComponentMultiSelect.tsx`).
+   *
+   * ★문자열이 아니라 함수인 이유. 원래 호출부가 `` `${componentsLabel} 검색` `` 템플릿이었는데,
+   * 템플릿을 그대로 두면 R3 래칫의 `TemplateElement` 선택자에 계속 걸린다. 보간을 이 파일로
+   * 들여와야 한글 조각이 컴포넌트에서 사라진다.
+   *
+   * @param label 앞에 붙일 필드 이름 (호출부는 `componentsLabel` 을 넘긴다)
+   * @returns "{label} 검색"
+   */
+  componentsSearchPlaceholder: (label: string): string => `${label} 검색`,
   /** 422 COMPONENT_NOT_FOUND 에러 메시지 */
   componentNotFoundError: '선택한 컴포넌트를 찾을 수 없습니다. 다시 선택해 주세요.',
   /** 컴포넌트 변경 실패 에러 메시지 */

@@ -7,9 +7,22 @@
  * - errorCode → 사용자 메시지 매핑은 customFieldErrorMessage 함수로 분리
  * - 백엔드 ProblemDetail detail 필드를 직접 노출하지 않음 (단일 출처)
  *
- * 그룹 — page / actions / form / fieldTypes
+ * 그룹 — placeholder(최상위) / page / actions / form / fieldTypes
  */
 export const customFieldLabels = {
+  /** 선택지 행 — 값 input placeholder (`CustomFieldFormDialog.tsx` OptionRow) */
+  optionValuePlaceholder: '값',
+  /** 선택지 행 — 라벨 input placeholder */
+  optionLabelPlaceholder: '라벨',
+  /** 필드 키 input placeholder */
+  keyPlaceholder: '예: priority',
+  /** 이름 input placeholder */
+  namePlaceholder: '예: 우선순위',
+  /** 설명 input placeholder — 선택 항목임을 알린다 */
+  descriptionPlaceholder: '선택 입력',
+  /** 값 입력 위젯(`CustomFieldInput.tsx`) 선택형 Select 의 미선택 placeholder */
+  inputSelectPlaceholder: '선택하세요',
+
   /** 페이지/목록 영역 */
   page: {
     /** 페이지 h1 heading */

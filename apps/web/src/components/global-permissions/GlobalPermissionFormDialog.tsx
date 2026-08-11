@@ -14,6 +14,7 @@ import {
 import type { GranteeType } from '@/api/global-permissions.types'
 import type { UserSummary } from '@/api/users'
 import type { GroupResponse } from '@/api/groups'
+import { globalPermissionLabels } from '@/i18n/global-permission-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 대상 종류 토글
@@ -76,7 +77,7 @@ function UserGranteeSelector({ selectedUserId, onSelect }: UserGranteeSelectorPr
         type="text"
         value={query}
         onChange={(e) => { setQuery(e.target.value) }}
-        placeholder="이름 또는 아이디로 검색 (2자 이상)"
+        placeholder={globalPermissionLabels.subjectSearchPlaceholder}
         aria-label="대상 검색"
         autoComplete="off"
         className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"

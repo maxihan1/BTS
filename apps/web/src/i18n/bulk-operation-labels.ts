@@ -33,6 +33,18 @@ export const statusLabels: Record<BulkOperationResponse['status'], string> = {
 } as const
 
 /**
+ * 일괄 작업 다이얼로그가 노출하는 그 밖의 한국어 문구.
+ *
+ * 위 두 맵은 backend enum 과 1:1 대응하는 **번역표**라 화면 문구를 섞지 않는다.
+ * 결의안 Select 의 placeholder 는 여기 두지 않는다 — 세 화면 공용이라
+ * `resolution-labels.ts` 가 소유한다.
+ */
+export const bulkOperationLabels = {
+  /** 전이 상태 Select 미선택 placeholder (`issues/BulkTransitionDialog.tsx`) */
+  statusSelectPlaceholder: '상태를 선택하세요',
+} as const
+
+/**
  * 실패사유 코드를 한국어 라벨로 변환한다.
  * 알 수 없는 코드(미래 enum 확장 등)에 대해 fallback 문자열을 반환한다.
  *

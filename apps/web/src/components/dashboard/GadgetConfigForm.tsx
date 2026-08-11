@@ -4,6 +4,7 @@ import { useState, useId } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { validateGadgetConfig, type GadgetCatalogEntry, type ConfigField } from '@/api/gadget-catalog'
+import { dashboardLabels } from '@/i18n/dashboard-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -169,7 +170,7 @@ function FieldRow({
           value={strValue}
           onChange={onChange}
           rows={5}
-          placeholder="마크다운 텍스트를 입력하세요..."
+          placeholder={dashboardLabels.markdownGadgetPlaceholder}
           className={cn(INPUT_CLASS, 'resize-y')}
         />
       </div>

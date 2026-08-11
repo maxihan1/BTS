@@ -46,4 +46,11 @@ export const importLabels = {
    * (`settings.workflow-scheme.tsx:92-98`)와 같은 문구를 쓴다.
    */
   gateLoading: '로딩 중...',
+  /**
+   * 사용자 매핑 단계(`import/mapping/UserMappingStep.tsx`)의 후보 재검색 input placeholder.
+   *
+   * 이 파일이 원래 소유한다고 선언한 범위(가져오기 라우트가 직접 그리는 문자열)보다 한 겹
+   * 안쪽이지만, 같은 가져오기 화면의 문자열이라 별도 네임스페이스를 새로 만들지 않는다.
+   */
+  userMappingSearchPlaceholder: '다른 사용자 검색',
 } as const

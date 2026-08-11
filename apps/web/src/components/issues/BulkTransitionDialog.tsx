@@ -21,6 +21,8 @@ import { fetchBulkAvailableTransitions } from '@/api/issues'
 import type { IssueTransition } from '@/api/issues'
 import { useSubmitBulkOperation } from '@/hooks/use-bulk-operation'
 import { useResolutions } from '@/hooks/use-resolutions'
+import { bulkOperationLabels } from '@/i18n/bulk-operation-labels'
+import { resolutionLabels } from '@/i18n/resolution-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -211,7 +213,7 @@ export function BulkTransitionDialog({
                         className="w-full"
                         aria-label="전이 상태"
                       >
-                        <SelectValue placeholder="상태를 선택하세요" />
+                        <SelectValue placeholder={bulkOperationLabels.statusSelectPlaceholder} />
                       </SelectTrigger>
                       <SelectContent>
                         {transitions.map((transition) => (
@@ -235,7 +237,7 @@ export function BulkTransitionDialog({
                           className="w-full"
                           aria-label="결의안"
                         >
-                          <SelectValue placeholder="결의안을 선택하세요" />
+                          <SelectValue placeholder={resolutionLabels.selectPlaceholder} />
                         </SelectTrigger>
                         <SelectContent>
                           {resolutions.map((resolution) => (

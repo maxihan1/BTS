@@ -8,6 +8,7 @@ import { fetchUsers } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 import { useDebounce } from '@/hooks/use-debounce'
 import type { UserCollectionResponse } from '@/api/import-mappings'
+import { importLabels } from '@/i18n/import-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -168,7 +169,7 @@ function UserMappingRow({ entry, effectiveValue, onSelect }: UserMappingRowProps
         <Input
           value={query}
           onChange={handleQueryChange}
-          placeholder="다른 사용자 검색"
+          placeholder={importLabels.userMappingSearchPlaceholder}
           aria-label={`${entry.sourceIdentifier} 다른 사용자 검색`}
         />
         {isFetching && <p className="mt-1 text-xs text-muted-foreground">검색 중...</p>}

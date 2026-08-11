@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
+import { boardLabels } from '@/i18n/board-labels'
 import { useCreateBoard } from '@/hooks/use-boards'
 import type { BoardCreated } from '@/api/boards'
 import { Button } from '@/components/ui/button'
@@ -106,7 +107,7 @@ export function CreateBoardForm({ projectKey }: CreateBoardFormProps): JSX.Eleme
               setName(e.target.value)
               setUnprocessableError(false)
             }}
-            placeholder="스프린트 보드"
+            placeholder={boardLabels.createFormNamePlaceholder}
             disabled={isPending}
             aria-describedby={unprocessableError ? 'board-create-error' : undefined}
           />

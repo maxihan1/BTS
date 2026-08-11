@@ -7,9 +7,17 @@
  * - errorCode → 사용자 메시지 매핑은 issueTemplateErrorMessage 함수로 분리
  * - 백엔드 ProblemDetail detail 필드를 직접 노출하지 않음 (단일 출처)
  *
- * 그룹 — page / actions / form
+ * 그룹 — placeholder(최상위) / page / actions / form
  */
 export const issueTemplateLabels = {
+  /**
+   * 템플릿 이름 input placeholder.
+   * 생성 폼과 수정 폼이 **같은 키 하나를 공유한다** — 사본을 두면 두 폼의 문구가 갈라진다.
+   */
+  namePlaceholder: '예: 버그 리포트 기본 템플릿',
+  /** 템플릿 본문 textarea placeholder (`TemplateContentField.tsx`) */
+  contentPlaceholder: 'Markdown 형식으로 본문을 입력하세요.',
+
   /** 페이지/목록 영역 */
   page: {
     /** 페이지 h1 heading */

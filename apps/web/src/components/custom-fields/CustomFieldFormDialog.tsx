@@ -90,7 +90,7 @@ function OptionRow({ index, onRemove, register, errors }: OptionRowProps): JSX.E
       <div className="flex-1">
         <input
           type="text"
-          placeholder="값"
+          placeholder={customFieldLabels.optionValuePlaceholder}
           aria-label={`옵션 ${index + 1} 값`}
           className="w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
           {...register(`options.${index}.value`)}
@@ -104,7 +104,7 @@ function OptionRow({ index, onRemove, register, errors }: OptionRowProps): JSX.E
       <div className="flex-1">
         <input
           type="text"
-          placeholder="라벨"
+          placeholder={customFieldLabels.optionLabelPlaceholder}
           aria-label={`옵션 ${index + 1} 라벨`}
           className="w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
           {...register(`options.${index}.label`)}
@@ -219,7 +219,7 @@ function FormBody({
           id="cf-key"
           type="text"
           aria-label={labels.keyLabel}
-          placeholder="예: priority"
+          placeholder={customFieldLabels.keyPlaceholder}
           disabled={mode === 'edit'}
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
           autoComplete="off"
@@ -241,7 +241,7 @@ function FormBody({
           id="cf-name"
           type="text"
           aria-label={labels.nameLabel}
-          placeholder="예: 우선순위"
+          placeholder={customFieldLabels.namePlaceholder}
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
           autoComplete="off"
           {...register('name')}
@@ -262,7 +262,7 @@ function FormBody({
           id="cf-description"
           type="text"
           aria-label={labels.descriptionLabel}
-          placeholder="선택 입력"
+          placeholder={customFieldLabels.descriptionPlaceholder}
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
           autoComplete="off"
           {...register('description')}

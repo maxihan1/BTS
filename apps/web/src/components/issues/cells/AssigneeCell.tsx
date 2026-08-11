@@ -127,7 +127,7 @@ export function AssigneeCellEditor({
       <input
         type="text"
         aria-label="담당자 검색"
-        placeholder="이름으로 검색"
+        placeholder={issueDetailStrings.assigneeCellSearchPlaceholder}
         disabled={!canEdit || isSaving}
         onChange={(e) => onSearch(e.target.value)}
         // ★Enter 를 막는다 — 이 칸은 값을 넣는 곳이 아니라 검색창이다. 폼 안에 들어가면

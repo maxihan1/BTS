@@ -225,7 +225,7 @@ function FormBody({
             id="it-name"
             type="text"
             aria-label={labels.nameLabel}
-            placeholder="예: 버그 리포트 기본 템플릿"
+            placeholder={issueTemplateLabels.namePlaceholder}
             className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
             autoComplete="off"
             {...register('name')}
@@ -312,7 +312,7 @@ function FormBody({
           id="it-name-edit"
           type="text"
           aria-label={labels.nameLabel}
-          placeholder="예: 버그 리포트 기본 템플릿"
+          placeholder={issueTemplateLabels.namePlaceholder}
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
           autoComplete="off"
           {...register('name')}

@@ -15,6 +15,7 @@ import { SaveFilterDialog } from '@/components/search/SaveFilterDialog'
 import { ExportDialog } from '@/components/search/ExportDialog'
 import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
 import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
+import { searchLabels } from '@/i18n/search-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -350,7 +351,7 @@ export function SearchPage({
           value={inputValue}
           onChange={handleQueryChange}
           onSubmit={handleSearch}
-          placeholder="AQL 쿼리를 입력하세요. 예: status = open AND priority IN (1, 2), text ~ &quot;로그인&quot;"
+          placeholder={searchLabels.aqlPlaceholder}
         />
 
         {/* 입력창 하단 에러 (문법오류/미지원필드) */}
