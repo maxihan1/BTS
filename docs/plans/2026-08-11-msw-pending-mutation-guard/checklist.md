@@ -69,4 +69,26 @@ TODOS 「apps/web(테스트 인프라) — 지연 MSW 핸들러 34개 파일의 
 - [x] `node scripts/build-doc-index.mjs --check` (exit 0 · drift 0)
 - [x] **가드 뮤테이션 검증** — 봉합 2건(지연 · 수동 게이트)을 되돌려 각각 red 확인,
       나머지 33건은 통과 (무차별 red 가 아니다)
-- [ ] PR 생성
+- [x] PR 생성 (#363) · CI 6잡 전항 pass
+
+## 7. 게이트 2 리뷰 반영 (Maxi 확정 — 핵심 3건 + 정정)
+
+리뷰 5종 BLOCKER 0 · 지적 15건. 구조 변경 3건(createGate 공용화 · 파일 로컬 clear() 봉인 ·
+query-core 직접 import)은 **별건**으로 남긴다 — 앞 둘은 이 PR 이 안 건드리던 기존 파일을
+추가 수정해야 하고, 마지막은 신규 의존성이라 절대 규칙 17(Maxi 확인)에 걸린다.
+
+- [x] **핵심 ① 전역 배선 봉인** — 소스 훑기 계약 ⑦⑧⑨ 신설
+  - [x] ⑦ 수집 + `expect.soft` 단언이 `setup.ts` 에 존재 (+ 비-공허 확인)
+  - [x] ⑧ 수집이 레지스트리 정리보다 앞
+  - [x] ⑨ `setup.ts`·가드 모듈이 RTL 을 static import 하지 않음
+  - [x] **봉인 계약 자신을 뮤테이션 검증** — 4종 전부 대응 계약만 red
+- [x] **핵심 ② waitFor 상한** — `{ timeout: 10_000, interval: 25 }` 명시
+- [x] **핵심 ③ 비밀 노출 차단** — `variables` 값 → 키 이름만. 계약 ⑥이 봉인
+- [x] 정정 — 「+76%」 오귀속 · 계약 ②의 항진명제 재배치(⑤) · 모듈 헤더 「10개」 교정 ·
+      `setup.ts` cleanup 기각 근거 · `resetTrackedCaches` JSDoc · `vi.resetModules` 경고 ·
+      호출부 중복 주석 8줄 제거 · 금지 단어 1건
+- [x] 타입 exit 0 · 린트 exit 0 · 계약 테스트 **9/9**
+- [x] 전량 재검증 — **578/578 파일 · 9448 테스트 green** · FAIL 0 · 워커 실패 0
+      (소요 377.75s. main baseline 340.03s 와 비교하고 싶어지지만 **같은 시간대 측정이 아니므로
+      진단 근거로 쓰지 않는다** — D10 에서 정확히 그 실수를 했다)
+- [x] PR 본문에 리뷰 결과 반영 + push
