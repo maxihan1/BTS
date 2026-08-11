@@ -6,6 +6,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { FavoriteButton } from './FavoriteButton'
 
@@ -253,33 +254,39 @@ describe('FavoriteButton — S4 제거 클릭 (DELETE)', () => {
 describe('FavoriteButton — S5 isPending 비활성 가드', () => {
   it('S5a: mutation in-flight 동안 버튼이 aria-disabled 로 비활성을 알린다 (네이티브 disabled 금지)', async () => {
     const user = userEvent.setup()
+    const { gate, release } = createGate()
 
-    // POST가 절대 응답하지 않아 isPending 상태를 유지한다
+    // POST 를 게이트로 붙잡아 isPending 상태를 고정한다.
+    // 무한 Promise 로 붙잡으면 풀 방법이 없어, 테스트가 끝난 뒤에도 mutation 이 pending 으로 남는다.
     server.use(
       http.get('/api/v1/favorites', () =>
         HttpResponse.json({ data: { items: [] } }),
       ),
-      http.post('/api/v1/favorites', () =>
-        new Promise<never>(() => {
-          // 영원히 pending — isPending=true 상태 고정
-        }),
-      ),
+      http.post('/api/v1/favorites', async () => {
+        await gate
+        return HttpResponse.json({ data: ISSUE_FAVORITE }, { status: 201 })
+      }),
     )
 
-    const Wrapper = createWrapper()
-    render(<FavoriteButton targetType="ISSUE" targetId="PROJ-1" />, { wrapper: Wrapper })
+    try {
+      const Wrapper = createWrapper()
+      render(<FavoriteButton targetType="ISSUE" targetId="PROJ-1" />, { wrapper: Wrapper })
 
-    const btn = await screen.findByRole('button', { name: '즐겨찾기에 추가' })
-    expect(btn).toHaveAttribute('aria-disabled', 'false')
+      const btn = await screen.findByRole('button', { name: '즐겨찾기에 추가' })
+      expect(btn).toHaveAttribute('aria-disabled', 'false')
 
-    await user.click(btn)
+      await user.click(btn)
 
-    await waitFor(() => {
-      expect(screen.getByRole('button')).toHaveAttribute('aria-disabled', 'true')
-    })
-    // 네이티브 disabled 를 쓰면 브라우저가 포커스를 <body> 로 떨어뜨려
-    // aria-pressed 변화를 스크린리더가 읽지 못한다 (FR-UX-10 F11 Task-5b).
-    expect(screen.getByRole('button')).not.toBeDisabled()
+      await waitFor(() => {
+        expect(screen.getByRole('button')).toHaveAttribute('aria-disabled', 'true')
+      })
+      // 네이티브 disabled 를 쓰면 브라우저가 포커스를 <body> 로 떨어뜨려
+      // aria-pressed 변화를 스크린리더가 읽지 못한다 (FR-UX-10 F11 Task-5b).
+      expect(screen.getByRole('button')).not.toBeDisabled()
+    } finally {
+      release()
+      await settlePendingMutations()
+    }
   })
 })
 
@@ -382,6 +389,7 @@ describe('FavoriteButton — S7 뮤테이션 중/후 포커스 보존 (Task-5b)'
     } finally {
       release()
       stopEmulation()
+      await settlePendingMutations()
     }
   })
 
@@ -464,6 +472,7 @@ describe('FavoriteButton — S7 뮤테이션 중/후 포커스 보존 (Task-5b)'
       expect(postCount).toBe(1)
     } finally {
       release()
+      await settlePendingMutations()
     }
   })
 })

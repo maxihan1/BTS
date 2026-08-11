@@ -4,6 +4,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { ApiError } from '@/api/client'
 import type { IssueResponse } from '@/api/issues'
@@ -106,6 +107,9 @@ describe('useUpdateIssueSummary — onMutate 낙관적 업데이트', () => {
       const cached = queryClient.getQueryData<IssueResponse>(['issue', 'ATLAS-1'])
       expect(cached?.summary).toBe('낙관적 요약')
     })
+
+    // 낙관적 반영만 보고 끝내면 mutation 이 pending 인 채 다음 파일로 번진다.
+    await settlePendingMutations()
   })
 })
 

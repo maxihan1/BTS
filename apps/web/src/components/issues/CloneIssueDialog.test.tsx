@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { CloneIssueDialog } from './CloneIssueDialog'
 import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
@@ -252,6 +253,8 @@ describe('CloneIssueDialog', () => {
 
     // 버튼이 비활성화되어야 함 (pending 중)
     expect(submitButton).toBeDisabled()
+
+    await settlePendingMutations()
   })
 
   it('에러 발생 시 toast.error가 호출된다', async () => {

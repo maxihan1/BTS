@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { issueAtlas1Fixture, issueAtlasNoWorkflowFixture } from '@/mocks/issue-fixtures'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
@@ -2395,11 +2396,16 @@ describe('IssueDetailPage — 제목 편집 Enter/Esc (FR-UX-11 F8 Task 2)', () 
    */
   it('F8-T2-5: 저장 진행 중에는 Enter 가 중복 제출하지 않는다', async () => {
     let patchCount = 0
+    // 고정 지연(10초)으로 붙잡으면 정착을 기다릴 때 그 시간을 그대로 물어야 한다.
+    // 수동 게이트로 붙잡고 검증이 끝나면 즉시 푼다.
+    let releasePatch: () => void = () => {}
+    const patchGate = new Promise<void>((resolve) => {
+      releasePatch = resolve
+    })
     server.use(
       http.patch('/api/v1/issues/:key', async () => {
         patchCount += 1
-        // 응답을 지연시켜 isPending 상태를 유지한다
-        await new Promise((resolve) => setTimeout(resolve, 10_000))
+        await patchGate
         return HttpResponse.json({ data: issueAtlas1Fixture })
       }),
     )
@@ -2422,6 +2428,9 @@ describe('IssueDetailPage — 제목 편집 Enter/Esc (FR-UX-11 F8 Task 2)', () 
       await new Promise((resolve) => setTimeout(resolve, 50))
     })
     expect(patchCount).toBe(1)
+
+    releasePatch()
+    await settlePendingMutations()
   })
 })
 

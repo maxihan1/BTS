@@ -1,10 +1,18 @@
 // Vitest 전역 셋업 — jest-dom matcher 확장 + MSW 서버 라이프사이클 + 모듈 상태 격리
 /// <reference types="vitest/globals" />
 import '@testing-library/jest-dom'
-import { afterAll, afterEach, beforeAll } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect } from 'vitest'
+import {
+  collectPendingMutations,
+  installPendingMutationTracker,
+  resetTrackedCaches,
+} from './pending-mutation-guard'
 import { server } from './server'
 import { resetIssueStateWithEpic } from '@/mocks/issue-handlers'
 import { resetFavoriteStore } from '@/mocks/favorite-handlers'
+
+// mutation 추적을 켠다. 모듈 로드 시점이라 어떤 테스트보다 먼저 설치된다.
+installPendingMutationTracker()
 
 // jsdom은 ResizeObserver를 구현하지 않는다.
 // Radix UI RadioGroup.Item 등이 내부적으로 ResizeObserver를 사용하므로 no-op mock으로 polyfill한다.
@@ -46,10 +54,37 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
+  // pending mutation 누수 가드. 수집 → 레지스트리 정리 순서다.
+  const pendingMutations = collectPendingMutations()
+  resetTrackedCaches()
+
   server.resetHandlers()
   // issue-handlers 모듈-스코프 state (deletedKeys / createdIssues / epicChildrenStore) 격리 — 테스트 간 leak 방지
   resetIssueStateWithEpic()
   // favorite-handlers 모듈-스코프 store (userId → Favorite[] Map) 격리 — 테스트 간 leak 방지
   resetFavoriteStore()
+
+  /**
+   * ★반드시 `expect.soft` 여야 한다.
+   *
+   * 보통 단언은 실패하면 throw 하고, 그러면 **같은 root 레벨에 등록된 RTL 자동 cleanup 이
+   * 실행되지 않는다.** DOM 이 남아 다음 테스트가 「Found multiple elements」로 연쇄 실패한다 —
+   * 실측에서 `FavoriteButton` 의 진짜 위반 3건이 **5건으로 부풀었다**(추가 2건은 pending 과
+   * 무관한 DOM 오염이었고 소요 시간이 20ms 대 1000ms 로 갈린 것이 서명이었다).
+   * `expect.soft` 는 테스트를 실패로 표시하되 훅 체인을 끊지 않아 이 함정을 통째로 없앤다.
+   * **이것이 `expect.soft` 를 쓰는 이유다** — 전역 훅에서 throw 하는 단언은 뒤에 등록된 정리
+   * 훅을 전부 인질로 잡는다.
+   *
+   * `cleanup()` 을 여기서 직접 부르는 대안은 그 인질 문제를 못 푼다(정리 순서를 하나 앞당길 뿐
+   * 뒤따르는 다른 훅은 여전히 막힌다). 부수적으로 이 파일이 `@testing-library/react` 를
+   * static import 하게 되는 비용도 있지만, 그건 `settlePendingMutations` 처럼 동적 import 로
+   * 피할 수 있으므로 **결정 근거가 아니다.**
+   */
+  expect.soft(
+    pendingMutations,
+    '테스트가 끝났는데 mutation 이 아직 날고 있다 — 정착을 기다리지 않고 끝난 테스트가 있다.\n' +
+      '진행 중 UI 를 검증하려고 응답을 붙잡았다면, 테스트 마지막에 붙잡은 것을 풀고 ' +
+      '`await settlePendingMutations()` (src/test/pending-mutation-guard.ts) 를 호출하라.',
+  ).toEqual([])
 })
 afterAll(() => server.close())

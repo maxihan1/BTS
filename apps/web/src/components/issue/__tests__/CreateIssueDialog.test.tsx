@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { issueHandlers } from '@/mocks/issue-handlers'
 import { projectHandlers } from '@/mocks/project-handlers'
@@ -173,6 +174,7 @@ describe('CreateIssueDialog — 제출 중 피드백 (게이트 2 C-2)', () => {
     expect(pending).toBeDisabled()
 
     release()
+    await settlePendingMutations()
   })
 })
 

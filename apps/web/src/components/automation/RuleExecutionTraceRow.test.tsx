@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { server } from '@/test/server'
 import { RuleExecutionTraceRow } from './RuleExecutionTraceRow'
 import type { RuleExecutionSummary, RuleExecutionDetail } from '@/api/automation-executions.types'
@@ -356,6 +357,7 @@ describe('RuleExecutionTraceRow', () => {
       expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
 
       resolveReplay?.()
+      await settlePendingMutations()
     })
 
     it('실패하면 onReplayError가 호출된다', async () => {
