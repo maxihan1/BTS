@@ -55,7 +55,7 @@
 - **「34개」는 틀린 수가 아니다.** `(setTimeout ∨ msw delay()) ∧ (server.use( ∨ setupServer()` 정의에서
   HEAD 기준 정확히 34다. 숫자를 바꾸지 말고 **세는 정의를 본문에 명시**한다.
 - ★신규 사실 등재 — 최고위험 관용구 **`new Promise(() => {})`(지연이 무한)** 가 34-set 에서 통째로 빠졌다.
-  그 관용구를 쓰는 테스트 파일 **15개 중 13개가 34-set 밖**이고, 교과서적 실례
+  그 관용구를 쓰는 테스트 파일 **22개 중 20개가 34-set 밖**이고(정의 = executor 인자 0개 `new Promise(() => …)`), 교과서적 실례
   `FavoriteButton.test.tsx:262`(`http.post('/api/v1/favorites', () => new Promise<never>(() => {}))` 뒤
   `:275` 클릭 · 정착 대기 없음 · `:122` afterEach 는 `vi.clearAllMocks()` 뿐)는 **어느 목록에도 없다.**
 - 그래서 처방을 「정적 목록 먼저」 → **「판정용 `afterEach` 를 임시로 전역 주입해 유닛 전량 1회 실행 →
@@ -268,7 +268,8 @@ grep -c '변수형은 사각지대가 2곳이 아니라 10곳 / 9파일' TODOS.m
 >
 > **★★그런데 이 34-set 자체가 대상을 놓치고 있다.** 최고위험 관용구인 **미해결 Promise**
 > (`new Promise(() => {})` 계열 — 지연이 **무한**이라 `setTimeout(N)` 보다 누수 위험이 크다)가
-> 정의에서 통째로 빠졌다. 그 관용구를 쓰는 테스트 파일 **15개 중 13개가 34-set 밖**이다.
+> 정의에서 통째로 빠졌다. 그 관용구를 쓰는 테스트 파일 **22개 중 20개가 34-set 밖**이다
+> (정의 = executor 인자 0개 — `new Promise(() => …)`. `() => {` 만 세면 16/15 로 줄어든다).
 > 교과서적 실례 — `FavoriteButton.test.tsx:262` 가
 > `http.post('/api/v1/favorites', () => new Promise<never>(() => {}))` 로 뮤테이션을 영원히 pending 시키고
 > `:275` 에서 클릭한 뒤 정착을 기다리지 않고 끝난다(`:122` `afterEach` 는 `vi.clearAllMocks()` 뿐).
@@ -316,7 +317,7 @@ grep -c '(setTimeout ∨ msw delay()) ∧ (server.use( ∨ setupServer()' TODOS.
 
 # c) 누락 관용구와 실례가 등재됐다
 grep -c 'FavoriteButton.test.tsx:262' TODOS.md      # 기대: 1
-grep -c '15개 중 13개가 34-set 밖' TODOS.md          # 기대: 1
+grep -c '22개 파일 중 20개가 34-set 밖' TODOS.md     # 기대: 1
 
 # d) 옛 처방 문단이 그대로 남아 있지 않다 (교체 확인 — 인용 안에는 남는다)
 grep -c '^\*\*처방\.\*\* 공용 `createTestQueryClient`' TODOS.md   # 기대: 0
