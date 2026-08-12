@@ -436,6 +436,10 @@ test.describe('FR-MV-01 이동 403 문구 — 실제 렌더 폭 (forbidden 시�
       contentType: 'image/png',
     })
     await page.evaluate(() => document.documentElement.classList.add('dark'))
+    // ★색 전환이 끝나기를 기다린다. 안 기다리면 **전환 중간 프레임**이 찍혀 다크가 아니라
+    //   그냥 흐려진 화면이 남는다 — 실제로 그렇게 한 번 찍혔고, 그 첨부만 보면 「다크가
+    //   깨졌다」로 오독하게 된다. 단언이 아니라 첨부용이라 고정 대기로 충분하다.
+    await page.waitForTimeout(800)
     await testInfo.attach('403-문구-다크.png', {
       body: await page.getByRole('dialog').screenshot(),
       contentType: 'image/png',

@@ -3860,3 +3860,42 @@ CI 빨강」인데 여기는 **「로컬 빨강 → CI 초록」**이라 더 나
 **발견 경위.** PR #367(2파) Task 6 최종 검증에서 `test:workflow` 가 EXIT=1 이었고,
 **main 트리 대조군에서도 동일하게 62/15** 여서 선재로 판정했다
 (`[[fr-ux-14-f14-card-density-done]]` — 선재 판정 대조군은 반드시 main).
+
+---
+
+## ⬜ apps/web(E2E) — `workflow-scheme-assignment` E2E-5 가 **전량 실행에서만** strict mode 위반으로 죽는다 (선재 · 미착수)
+
+**무엇.** `apps/web/e2e/workflow-scheme-assignment.spec.ts:45` 의
+`expect(page.getByText('소프트웨어 개발 기본 스킴')).toBeVisible()` 이 **2개 요소에 매칭**된다.
+
+```
+strict mode violation: getByText('소프트웨어 개발 기본 스킴') resolved to 2 elements:
+  1) <span class="font-medium">…</span>                       ← 현재 적용 카드
+  2) <span data-slot="select-value">…</span>                  ← 스킴 선택 combobox 값
+```
+
+**실측 (2026-08-12 · PR #367 최종 검증).**
+
+| 실행 | 결과 |
+|---|---|
+| 전량 (`playwright test`) — PR #367 브랜치 | 697 passed / **1 failed** (`#660`) |
+| 전량 — **main 대조군** | 696 passed / **1 failed** (`#659`) — **같은 테스트 · 같은 오류** |
+| 그 spec 만 격리 실행 × 3회 | **3/3 통과** |
+
+⇒ **선재다.** PR #367 의 변경과 import 접점 0(그 spec 은 `issueMoveStrings` 도
+`MoveIssueDialog` 도 참조하지 않는다).
+
+**왜 전량에서만 나나 (미규명).** 격리에서는 통과하고 전량에서만 재현되므로 **워커 병렬/공유 상태**
+쪽이 유력하다. 다만 **추정이고 재보지 않았다** — 착수 시 `--workers=1` 대조부터 잴 것.
+
+**왜 지금까지 아무도 몰랐나.** **E2E 가 CI 에 배선된 적이 없다**(매핑 `26`). 로컬에서 전량을
+돌리는 사람만 보게 되고, 그 사람도 「원래 하나 빨간가 보다」로 넘기게 된다 —
+매핑 `27`(`test:workflow` 로컬 빨강)과 **같은 양식**이다.
+
+**처방 후보 2 (착수 시 확정).**
+① 셀렉터를 좁힌다 — 현재 적용 카드 컨테이너로 한정(`getByTestId` 또는 카드 영역 `within`).
+   learnings 2026-05-31 「텍스트 중복은 처음부터 컨테이너 한정으로 작성」의 전형.
+② 전량에서만 나는 원인을 먼저 규명한다 — 셀렉터만 좁히면 **증상은 사라지고 원인은 남는다**.
+   같은 양식이 다른 spec 에서 재발한다.
+
+**★①만 하고 닫지 말 것.** 이 항목의 값어치는 「전량에서만 실패한다」는 사실 자체에 있다.
