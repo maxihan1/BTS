@@ -549,9 +549,12 @@ describe('T4-5: targetStateIsDone = 선택한 targetState의 isDone', () => {
 //   비-prod 에서만 나오고, 클라이언트 동작은 아래 500 케이스와 동일하다 — 순 중복이다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
-  /** 기존 preview 실패 문구 — `issueMoveStrings.errorPreview` 정본 */
-  const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.'
+describe('T4-6: preview 실패 문구 — 403 · 일시적 · 그 외 4xx', () => {
+  /** 그 외 4xx 문구 — `issueMoveStrings.errorPreview` 정본 */
+  const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.'
+  /** 5xx·네트워크 단절 문구 — `issueMoveStrings.errorPreviewTemporary` 정본 */
+  const PREVIEW_TEMPORARY_TEXT =
+    '이슈 이동 정보를 불러오지 못했습니다. 일시적인 문제일 수 있으니 잠시 후 다시 시도해 주세요.'
   /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
   const PREVIEW_FORBIDDEN_TEXT =
     '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
@@ -599,7 +602,10 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     expect(text).not.toContain('문의')
   })
 
-  it('preview 500 이면 기존 문구가 그대로 나온다 (비-공허 짝)', async () => {
+  // ★이 테스트는 「500 이면 기존 문구(대상 프로젝트 키를 확인해 주세요)가 그대로 나온다」였다.
+  //   그 초록은 **틀린 안내가 유지되는 것**을 지키고 있었다 — 서버가 죽은 것과 키 오타는
+  //   사용자가 할 다음 행동이 정반대다. 판정을 뒤집는다(삭제가 아니다).
+  it('preview 500 이면 일시적 문제 문구가 나온다 — 키를 의심하게 만들지 않는다', async () => {
     server.use(
       http.post('/api/v1/issues/:key/move/preview', () =>
         HttpResponse.json({ errorCode: 'INTERNAL_ERROR' }, { status: 500 }),
@@ -608,8 +614,28 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     await submitTarget()
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
+    expect(alert).toHaveTextContent(PREVIEW_TEMPORARY_TEXT)
     expect(alert).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_ERROR_TEXT)
+    // 이 부채의 본질 — 서버 오류에 「키」를 꺼내지 않는다.
+    expect(alert.textContent ?? '').not.toContain('키')
+  })
+
+  it('preview 404(이슈 미존재) 면 그 외 4xx 문구가 나온다 — 이 404 는 운영에서도 난다', async () => {
+    // 도달 경로. 다이얼로그를 연 뒤 그 이슈가 삭제되면 `MovePreviewService:188` 이
+    // IssueNotFoundException 을 낸다. **대상 프로젝트** 미존재 404 와 혼동하지 말 것 —
+    // 그쪽만 비-prod 전용이다.
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ errorCode: 'ISSUE_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await submitTarget()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_TEMPORARY_TEXT)
+    expect(alert.textContent ?? '').not.toContain('키')
   })
 
   it('키를 다시 치기 시작하면 남아 있던 경고가 사라진다', async () => {
