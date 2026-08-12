@@ -938,7 +938,18 @@ export const issueMoveStrings = {
    * preview 문구의 「키부터 확인」 도입부는 뺀다.
    */
   errorForbidden: '이 이슈나 대상 프로젝트 권한이 없어 이동하지 못했습니다.',
-  /** 404 대상 프로젝트 없음 에러 */
+  /**
+   * 404 대상 프로젝트 없음 에러 — **비-prod 에서만 보인다.**
+   *
+   * 운영에서는 `IssueMoveService:189-190` 의 권한 assert 가 `:210` 의 존재 확인보다
+   * 앞서고, 운영 리졸버가 미존재 프로젝트를 권한 거부로 판정하므로
+   * (`IdentityAccessIssuePermissionResolver:77`) **403 이 먼저 걸린다.**
+   * 그 403 을 받는 문구는 [errorForbidden] 이다.
+   *
+   * **지우지 않는 이유.** `DevAllowIssuePermissionResolver` 를 쓰는 개발 환경에서는 실제로
+   * 도달하고, 지우면 개발 중에 원인이 [errorDefault]「알 수 없는 오류」로 뭉개진다.
+   * 분기의 존속은 `MoveIssueDialog.test.tsx` T4-9 가 지킨다(분기 제거 시 red 실증).
+   */
   errorProjectNotFound: '대상 프로젝트를 찾을 수 없습니다.',
   /** 409 OCC 충돌 에러 */
   errorVersionConflict: '다른 변경이 발생했습니다. 새로고침 후 다시 시도해 주세요.',

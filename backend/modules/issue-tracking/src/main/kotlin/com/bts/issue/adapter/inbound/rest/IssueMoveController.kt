@@ -59,7 +59,13 @@ class IssueMoveController(
      * @return 200 OK + [MovePreviewResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      * @throws com.bts.issue.domain.IssueAccessDeniedException 원본 UPDATE 또는 대상 CREATE 권한 없을 때 → 403
-     * @throws com.bts.issue.domain.IssueProjectNotFoundException 대상 프로젝트 미존재 → 404
+     * @throws com.bts.issue.domain.IssueProjectNotFoundException 대상 프로젝트 미존재 → 404.
+     *   **운영에서는 나오지 않는다** — `MovePreviewService:185-186` 의 권한 assert 가
+     *   `:191-192` 의 존재 확인보다 앞서고, 운영 리졸버는 미존재 프로젝트를 권한 거부로
+     *   판정하므로(`IdentityAccessIssuePermissionResolver:77`) **403 이 먼저 걸린다.**
+     *   이 404 는 `DevAllowIssuePermissionResolver` 를 쓰는 비-prod 에서만 도달한다.
+     *   ★위 [IssueNotFoundException] 404(**이슈** 미존재)와 혼동하지 말 것 — 그쪽은
+     *   권한이 프로젝트 스코프라 운영에서도 실제로 난다.
      */
     @PostMapping("/{key}/move/preview")
     fun preview(

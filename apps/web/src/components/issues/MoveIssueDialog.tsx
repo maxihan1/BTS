@@ -240,6 +240,10 @@ export function MoveIssueDialog({
           if (code === MOVE_ERROR_CODES.MOVE_SAME_PROJECT) {
             toast.error(s.errorSameProject)
           } else if (code === MOVE_ERROR_CODES.PROJECT_NOT_FOUND) {
+            // 비-prod 전용 분기. 운영에서는 `IssueMoveService:189-190` 의 권한 assert 가
+            // `:210` 의 존재 확인보다 앞서고, 운영 리졸버가 미존재 프로젝트를 권한 거부로
+            // 판정하므로(`IdentityAccessIssuePermissionResolver:77`) 403 이 먼저 걸린다.
+            // 지우지 않는 이유와 존속 근거는 `errorProjectNotFound` KDoc.
             toast.error(s.errorProjectNotFound)
           } else if (code === MOVE_ERROR_CODES.VERSION_CONFLICT) {
             toast.error(s.errorVersionConflict)
