@@ -581,6 +581,49 @@ bash 의 `scanned="$message"` 한 줄이 정한다. 하네스도 실물과 같�
 **M2·M3·M6·M7 은 각각 서로 다른 단일 케이스만 깬다** — 네 케이스가 각자 고유한 판별력을
 가진다는 뜻이고, 한 케이스가 전부를 잡아 나머지가 공허해지는 겹침이 없다.
 
+## 부수 발견 A·B·C 동반 처리 (Maxi 확정 — 이 PR 에 포함)
+
+작업 중 워크플로우 도구 자체의 결함 3건이 드러났다. 셋 다 **문서와 실제 동작이 어긋난** 형태이고,
+셋 다 이 세션에서 실제로 밟았다. 게이트 2 에서 Maxi 가 「이 PR 에 함께 넣기」를 택했다.
+
+| # | 무엇이 틀렸나 | 처방 | 판별식 |
+|---|---|---|---|
+| A | `bts-merge` Step 3 의 수동 폴백이 `docs/plan/` 아래를 `git add` 한다 — 실물은 `build-dashboard.mjs` 의 `OUTPUT_PATH`. **실행하면 pathspec 오류.** 2026-07-17 적발 후 26일 방치 | 경로 정정 | 생성기에서 `OUTPUT_PATH` 를 읽어 스킬이 적은 모든 `progress.html` 경로와 대조 |
+| B | `bts-impl` 최종 점검이 `pnpm test:workflow` 를 지시하는데 **worktree 에서 실행 불가** — pnpm 이 심볼릭 `node_modules` 를 보고 install 트리거 → `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` | 같은 파일 목록을 도는 `node` 직접 호출을 짝으로 명시 | 글로브를 `package.json` 의 `test:workflow` 에서 직접 읽어 대조 |
+| C | `bts-start` 가 `.husky/_` 하나만 걸어 첫 커밋이 `node_modules/.bin/lint-staged: No such file` 로 죽는다 | `node_modules` · `apps/web/node_modules` 심볼릭 추가 | `.gitignore` 가 선언한 `SYMLINKED_IGNORE_PATHS` 3종을 `bts-start` 의 `ln -s` 줄과 대조 |
+
+### ★셋 다 「두 목록이 서로를 확인하지 않는다」의 사례다
+
+- **A.** 스킬의 경로 ↔ 생성기의 `OUTPUT_PATH`
+- **B.** 스킬의 명령 ↔ `package.json` 의 `test:workflow` 글로브
+- **C.** `.gitignore` 의 심볼릭 **선언** ↔ `bts-start` 의 심볼릭 **생성**
+
+그래서 셋 다 「문구를 고친다」로 끝내지 않고 **양쪽을 실제로 읽어 대조하는 판별식**을 붙였다.
+사람이 두 목록을 계속 맞추지 못한다는 것은 A 가 26일간 증명했다.
+
+### ★B 는 저장소가 이미 같은 결론에 도달해 있었다
+
+`.husky/pre-commit` 은 주석에 「`pnpm exec` 를 쓰지 않는다」고 적고 바이너리를 직접 부르며,
+`worktree-hook-wiring.test.ts` 의 `PNPM_WRAPPER` 단언이 그것을 강제한다.
+**훅만 고쳐졌고 스킬 문서는 그 가드의 사정거리 밖**이라, 최종 점검 절차가 여전히 돌지 않는
+명령을 지시하고 있었다. 봉합이 절반이었던 것이다.
+
+### 뮤테이션 (A·B·C 비-공허 확인)
+
+| 뮤테이션 | 결과 | 잡은 케이스 |
+|---|---|---|
+| A. 폴백 경로를 옛 (틀린) 경로로 되돌림 | **RED** (fail 1) | 대시보드 폴백 경로 짝맞춤 |
+| B. 대체 명령에서 글로브 한 벌 제거 | **RED** (fail 1) | worktree 대체 명령 글로브 짝맞춤 |
+| C. `apps/web/node_modules` 심볼릭 제거 | **RED** (fail 1) | 필요한 심볼릭 전부 짝맞춤 |
+
+각각 **자기 케이스만** 깬다 — 세 가드가 서로를 대신하지 않는다.
+
+### ⚠️ 가드가 내 설명 주석까지 잡았다 (그리고 그 판단이 옳았다)
+
+A 를 고치면서 「`docs/plan/progress.html` 은 존재하지 않는다」고 **경고하려고 틀린 경로를 그대로
+적었다.** 판별식이 그것을 red 로 잡았다. 가드를 느슨하게 하는 대신 주석을 고쳤다 — 스킬 문서에
+틀린 경로가 적혀 있으면 **다음 사람이 그것을 복사한다**는 것이 A 결함의 발생 경로 자체이기 때문이다.
+
 ## 계획 대비 실제 (deviation)
 
 | 계획 | 실제 | 사유 |
