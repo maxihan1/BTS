@@ -71,8 +71,17 @@ cd /Users/maxi.moff/Projects/BTS
 #   러너가 1대라 좀비 하나가 러너를 점유하는 동안 **방금 머지된 main 의 검증이 시작조차 못 한다.**
 #   여기서 먼저 치워야 main push CI 가 러너를 그만큼 빨리 잡는다.
 #   fail-open — gh 부재·인증 만료·API 오류 어디서든 exit 0 이라 머지 절차를 막지 않는다.
-#   보호 브랜치(main/master/HEAD)를 넘기면 gh 를 한 번도 호출하지 않는다.
+#   `master`·`HEAD` 를 넘기면 gh 를 한 번도 호출하지 않는다.
 bash scripts/cancel-merged-pr-runs.sh <branch>
+
+# ★두 번째 — 낡은 main run 도 함께 치운다 (2026-08-12, PR #366).
+#   `paths` 필터 때문에 새 run 이 아예 안 생기면 concurrency 가 발화할 계기가 없다.
+#   예. `backend-ci` 는 `backend/**` 에만 트리거되므로 뒤 머지가 전부 프론트·문서면
+#   낡은 main backend-ci 가 계속 러너를 점유한다 — 2026-08-10 실측 1시간 43분.
+#   ★`main` 인자는 「통째 무접촉」이 아니라 「현재 HEAD 무접촉」이다. 방금 시작된
+#   새 HEAD 의 push CI 는 건드리지 않고, 그보다 낡은 커밋의 run 만 취소한다.
+#   현재 HEAD 를 원격에 못 물으면 아무것도 하지 않는다(fail-open).
+bash scripts/cancel-merged-pr-runs.sh main
 
 # worktree 제거 (Step 1에서 미커밋 0 확인했으므로 안전)
 git worktree remove --force .worktrees/<slug> 2>/dev/null \
