@@ -291,6 +291,56 @@ describe('러너 헬스체크 배선', () => {
     );
   });
 
+  test('★★인용한 런북 섹션이 실재한다 (죽은 참조 차단)', () => {
+    // 두 층은 실패할 때 「docs/runbooks/self-hosted-runner.md §N」을 안내한다. 그 섹션이 없거나
+    // 다른 내용이면 **막힌 사람이 엉뚱한 절을 읽는다** — 진단을 주는 척하고 안 주는 상태다.
+    //
+    // ★같은 양식을 2026-08-12 에 이미 밟았다. `/bts-merge` 가 26일간 실재하지 않는 경로를
+    //   `git add` 하라고 지시하고 있었다(PR #377). 사람은 두 목록을 못 맞춘다 — 기계가 맞춘다.
+    const runbookPath = path.join(REPO_ROOT, 'docs/runbooks/self-hosted-runner.md');
+    assert.ok(fs.existsSync(runbookPath), `${runbookPath} 가 없다 — 아래 단언이 공허해진다.`);
+    const runbook = fs.readFileSync(runbookPath, 'utf8');
+
+    // 런북이 실제로 가진 섹션 번호. `## 4. …` 형태에서 뽑는다.
+    const present = new Set(
+      [...runbook.matchAll(/^##\s+(\d+)\./gm)].map((m) => m[1]),
+    );
+    assert.ok(present.size >= 3, `런북 섹션을 ${present.size}개만 찾았다 — 파서가 고장났다.`);
+
+    // 두 층이 인용하는 섹션 번호 전수.
+    const citing = [readWorkflow(HEALTH_WORKFLOW), fs.readFileSync(path.join(REPO_ROOT, HEALTH_SCRIPT), 'utf8')];
+    const cited = [...new Set(citing.flatMap((body) => [...body.matchAll(/self-hosted-runner\.md\s+§(\d+)/g)].map((m) => m[1])))];
+    assert.ok(cited.length > 0, '두 층이 런북을 한 번도 인용하지 않는다 — 진단 경로가 없다.');
+
+    const dangling = cited.filter((n) => !present.has(n));
+    assert.deepEqual(
+      dangling,
+      [],
+      `실재하지 않는 런북 섹션을 인용한다: ${dangling.map((n) => `§${n}`).join(', ')}\n` +
+        `런북이 가진 섹션. ${[...present].map((n) => `§${n}`).join(' · ')}\n` +
+        `막힌 사람이 엉뚱한 절을 읽게 된다 — 진단을 주는 척하고 안 주는 상태다.`,
+    );
+
+    // ★번호가 실재하는지만 보면 **부족하다.** 번호는 있는데 **다른 내용**인 경우를 못 잡는다.
+    //   실제로 이 PR 초안이 §5 를 인용했는데 그 절은 「GitHub 호스팅 러너로 되돌리는 절차」였다.
+    //   그래서 번호를 손으로 적지 않고 **런북에서 Docker 절을 찾아** 그 번호를 요구한다.
+    const dockerSection = [...runbook.matchAll(/^##\s+(\d+)\.\s*(.+)$/gm)].find((m) =>
+      /docker/i.test(m[2]),
+    );
+    assert.ok(
+      dockerSection !== undefined,
+      '런북에 Docker 절이 없다 — 데몬 부재로 막힌 사람이 읽을 곳이 없다.\n' +
+        `런북 섹션. ${[...runbook.matchAll(/^##\s+(\d+\..+)$/gm)].map((m) => m[1]).join(' / ')}`,
+    );
+    const dockerN = dockerSection[1];
+    assert.ok(
+      cited.includes(dockerN),
+      `두 층이 Docker 절(§${dockerN} ${dockerSection[2]})을 인용하지 않는다 — 인용한 것. ` +
+        `${cited.map((n) => `§${n}`).join(' · ')}\n` +
+        `번호만 맞는 엉뚱한 절을 가리키면 막힌 사람이 그 절을 읽고 더 헤맨다.`,
+    );
+  });
+
   test('★자원 경고는 run 요약과 어노테이션으로 표출된다 — 스텝 로그 안이면 아무도 안 본다', () => {
     // 2026-08-07 사고의 본질은 「판정이 없었다」가 아니라 **「초록불이라 아무도 안 봤다」**이다.
     // 판정이 맞아도 표출이 스텝 로그뿐이면 잡을 펼쳐야 보이고, 그러면 아무도 안 본다 —
