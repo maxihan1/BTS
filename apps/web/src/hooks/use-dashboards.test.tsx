@@ -1,8 +1,8 @@
 // 대시보드 TanStack Query 훅 통합 테스트 — MSW stateful store 기반 (FR-DB-01 Task 4)
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { dashboardHandlers } from '@/mocks/dashboard-handlers'
@@ -31,10 +31,9 @@ import {
 // MSW 서버 — dashboardHandlers 전용 (stateful store 포함)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...dashboardHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...dashboardHandlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼
@@ -68,10 +67,6 @@ beforeEach(() => {
   seedDashboard(DEFAULT_DASHBOARD)
   seedDashboard(OTHER_DASHBOARD)
   resetShareTokenStore()
-})
-
-afterEach(() => {
-  server.resetHandlers()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

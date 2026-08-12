@@ -1,11 +1,11 @@
 // 대시보드 공유 모달 단위 테스트 — 링크 생성/복사·PRIVATE 경고·임베드·목록 인라인 취소·빈 상태 (FR-DB-03 D6/D7 Task 5)
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
-import { setupServer } from 'msw/node'
 import { dashboardHandlers } from '@/mocks/dashboard-handlers'
 import {
   DEFAULT_DASHBOARD,
@@ -21,10 +21,9 @@ import { ShareDashboardModal } from './ShareDashboardModal'
 // use-dashboards.test.tsx와 동일 패턴 — 파일 전체에서 서버 1개를 재사용한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...dashboardHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...dashboardHandlers)
+})
 
 beforeEach(() => {
   resetDashboardStore()
@@ -33,7 +32,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  server.resetHandlers()
   vi.unstubAllGlobals()
 })
 

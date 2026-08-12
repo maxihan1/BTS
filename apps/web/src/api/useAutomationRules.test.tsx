@@ -1,8 +1,8 @@
 // 자동화 룰 React Query 훅 테스트 — queryKey 검증 + mutation invalidate-only(setQueryData 금지) 검증
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -25,18 +25,16 @@ import {
 // (전역 handlers.ts에 automationRuleHandlers 미등록, 로컬 서버로 격리)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...automationRuleHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 afterEach(() => {
-  server.resetHandlers()
   resetAutomationRuleStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_AUTOMATION_PROJECT_KEY
 
