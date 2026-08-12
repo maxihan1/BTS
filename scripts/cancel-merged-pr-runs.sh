@@ -91,10 +91,14 @@ if [ "$BRANCH" = "$HEAD_GUARDED_BRANCH" ]; then
   fi
 fi
 
+# ★건수는 **run 개수**로 센다 — 호출 횟수가 아니다.
+# 상태 2종을 각각 조회하므로 같은 run 이 두 번 나온다. 그대로 세면 run 1개가 「2건」이 되고,
+# 로그를 읽는 사람은 「생각보다 많이 죽었나」로 오독한다. id 를 모아 마지막에 중복을 없앤다.
+CANCELLED_IDS=""
+PROTECTED_IDS=""
+
 # queued 와 in_progress 를 **둘 다** 본다. queued 만 보면 이미 러너를 잡은 좀비를 놓치는데,
 # 러너가 1대라 정확히 그것이 가장 아픈 경우다.
-CANCELLED=0
-PROTECTED_RUNS=0
 for status in queued in_progress; do
   # 실패해도 계속 간다 — 한 상태 조회가 죽어도 다른 상태는 정리한다.
   # ★headSha 를 함께 받아 **이 스크립트 안에서** 비교한다. jq 쪽에서 걸러 버리면 판정
@@ -108,16 +112,29 @@ for status in queued in_progress; do
     esac
     # ★현재 HEAD 를 검증 중인 run 은 건너뛴다. 이 한 줄이 자기 발등 찍기를 막는다.
     if [ -n "$HEAD_SHA" ] && [ "$sha" = "$HEAD_SHA" ]; then
-      PROTECTED_RUNS=$((PROTECTED_RUNS + 1))
+      PROTECTED_IDS="$PROTECTED_IDS $id"
       continue
     fi
     if "$GH" run cancel "$id" > /dev/null 2>&1; then
-      CANCELLED=$((CANCELLED + 1))
+      CANCELLED_IDS="$CANCELLED_IDS $id"
     fi
   done << EOF
 $runs
 EOF
 done
+
+# 공백으로 구분된 id 목록에서 **고유** 개수를 센다. 빈 목록이면 0.
+count_unique_runs() {
+  if [ -z "$1" ]; then
+    echo 0
+    return
+  fi
+  # shellcheck disable=SC2086 — 단어 분할이 목적이다. 각 id 를 한 줄로 펼쳐 중복을 없앤다.
+  printf '%s\n' $1 | sort -u | grep -c .
+}
+
+CANCELLED=$(count_unique_runs "$CANCELLED_IDS")
+PROTECTED_RUNS=$(count_unique_runs "$PROTECTED_IDS")
 
 if [ "$CANCELLED" -gt 0 ]; then
   echo "run-cleanup. '$BRANCH' 의 잔존 run ${CANCELLED}건을 취소했다 — 러너가 그만큼 빨리 풀린다."
@@ -127,8 +144,9 @@ fi
 
 # ★건드리지 않은 것도 숫자로 남긴다. 「0건 취소」가 「대상이 없었다」인지 「전부 보호됐다」인지
 #   구분되지 않으면, 계약이 과하게 넓어져도 로그만 봐서는 알 수 없다.
+#   ★취소분과 보호분은 **서로소인 집합**이다. 「그중」으로 이으면 자기모순이 된다.
 if [ "$PROTECTED_RUNS" -gt 0 ]; then
-  echo "run-cleanup. 그중 ${PROTECTED_RUNS}건은 현재 HEAD(${HEAD_SHA}) 검증이라 건드리지 않았다."
+  echo "run-cleanup. 현재 HEAD(${HEAD_SHA}) 를 검증 중인 run ${PROTECTED_RUNS}건은 건드리지 않았다."
 fi
 
 exit 0

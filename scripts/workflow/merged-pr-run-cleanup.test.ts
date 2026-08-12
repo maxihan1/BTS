@@ -226,15 +226,24 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
       ],
     })
     // 취소된 run 은 902 하나, 보호된 run 은 901 하나다.
+    //
+    // ★단언을 문장 어순에 묶지 않는다. 재는 것은 **건수**이지 표현이 아니다 —
+    // 어순에 결합하면 메시지를 다듬는 것만으로 red 가 되어, 무엇이 깨졌는지가 흐려진다.
+    const lines = r.output.split('\n')
+    const cancelLine = lines.find((l) => l.includes('취소했다'))
+    const protectedLine = lines.find((l) => l.includes('건드리지 않았다'))
+
+    assert.ok(cancelLine !== undefined, `취소 결과 줄이 없다.\n${r.output}`)
     assert.match(
-      r.output,
-      /잔존 run 1건을 취소했다/,
-      `취소 건수가 run 개수가 아니다 (호출 횟수를 세고 있다).\n${r.output}`,
+      cancelLine,
+      /run 1건/,
+      `취소 건수가 run 개수가 아니다 (호출 횟수를 세고 있다).\n${cancelLine}`,
     )
+    assert.ok(protectedLine !== undefined, `보호 결과 줄이 없다.\n${r.output}`)
     assert.match(
-      r.output,
-      /1건은 현재 HEAD/,
-      `보호 건수가 run 개수가 아니다.\n${r.output}`,
+      protectedLine,
+      /run 1건/,
+      `보호 건수가 run 개수가 아니다.\n${protectedLine}`,
     )
   })
 
