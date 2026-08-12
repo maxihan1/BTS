@@ -1,15 +1,13 @@
 // FR-PM-01 프로젝트 멤버 MSW 핸들러 stateful 동작 검증 — TDD RED 단계
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { projectMemberHandlers } from '../project-member-handlers'
 import { userHandlers } from '../user-handlers'
 
-const server = setupServer(...projectMemberHandlers, ...userHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...projectMemberHandlers, ...userHandlers)
+})
 
 /**
  * 테스트마다 멤버 상태를 초기 fixture 상태로 되돌린다.

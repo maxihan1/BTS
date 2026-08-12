@@ -1,7 +1,7 @@
 // FR-PM-02 프로젝트 권한 MSW 핸들러 Authorization 토큰 기반 동작 검증
+import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   projectPermissionHandlers,
@@ -13,11 +13,9 @@ import {
 } from '../project-permission-fixtures'
 import { mockAccessToken } from '../auth-fixtures'
 
-const server = setupServer(...projectPermissionHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...projectPermissionHandlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

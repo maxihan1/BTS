@@ -1,16 +1,14 @@
 // FR-PM-02 이슈 권한 MSW 핸들러 Authorization 토큰 기반 동작 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 
 import { issuePermissionHandlers } from '../issue-permission-handlers'
 import { adminPermissionsFixture, memberPermissionsFixture } from '../issue-permission-fixtures'
 import { mockAccessToken } from '../auth-fixtures'
 
-const server = setupServer(...issuePermissionHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...issuePermissionHandlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

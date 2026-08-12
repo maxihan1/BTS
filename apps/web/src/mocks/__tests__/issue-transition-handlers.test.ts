@@ -1,17 +1,15 @@
 // GET /api/v1/issues/:key/transitions + POST /api/v1/issues/:key/transition MSW 핸들러 단위 테스트
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { issueHandlers, resetIssueState, MOCK_NO_WORKFLOW_TRIGGER } from '../issue-handlers'
 import { issueAtlasNoWorkflowFixture } from '../issue-fixtures'
 
-const server = setupServer(...issueHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...issueHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetIssueState()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
