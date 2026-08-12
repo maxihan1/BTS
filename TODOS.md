@@ -1936,7 +1936,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 
 ---
 
-## ⬜ apps/web(테스트 인프라) — MSW 리졸버가 **요청 1회에 2번 실행**된다 (선재 · 미착수)
+## ✅ apps/web(테스트 인프라) — MSW 리졸버가 **요청 1회에 2번 실행**된다 (해소 2026-08-12 · PR #375 · 이주로 원인 제거)
 
 **무엇.** jsdom 환경에서 `fetch` 한 번에 MSW 핸들러가 **두 번** 돈다.
 2026-08-03 계측 — `server.events.on('request:start')` 가 POST 1건에 **2회** 발화하고,
@@ -1973,7 +1973,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **정정 4.** 「지금까지 확인된 것」에 F3 의 백로그 경로 1건만 적혀 있으나 실제 보상 가드는 **2곳**이다 — `automation-execution-handlers.ts` 의 `replayExecutionHandler` requestId 단발 캐시가 두 번째.
 > - **★정정 5.** `automation-execution-handlers.ts:15-17` 이 기록한 「본문을 읽는 핸들러는 두 번째 호출이 `Body already read` 로 자동 실패해 무해하다」는 **신뢰할 수 없다.** `issue-handlers.ts:484` 는 `request.clone().json()` 으로 읽는데도 append 가 2회 났다. **「본문을 읽으니 안전」을 전수 조사의 제외 기준으로 쓰지 말 것.**
 > - **정정 6.** 배증 폭은 핸들러마다 다르다(합성 GET 은 2배, 실 `bulkOperationHandlers` GET 은 단일 dispatch 서명). **「모든 요청이 정확히 2배」로 가정하면 틀린다.**
-> - **✅ B(동결) 완료 (2026-08-10 · `fix/web-test-infra-2`).** 아래 방식대로 판별식을 세웠다. **이 항목은 이주가 남아 ⬜ 로 유지한다** — 전면 이주는 별도 신규 항목이다.
+> - **✅ B(동결) 완료 (2026-08-10 · `fix/web-test-infra-2`).** 아래 방식대로 판별식을 세웠다. ~~이 항목은 이주가 남아 미해결로 유지한다~~ → **A(전면 이주)도 2026-08-12 PR #375 가 닫았다** (`MIGRATION_BASELINE` 을 비워 봉인).
 > - **2026-08-09 Maxi 확정 원칙 적용 — B(동결)로 시작.** ①`apps/web/src/test/msw-single-setupserver.test.ts` 차집합 판별식 신설(허용목록 `src/test/server.ts` + 현재 59개 baseline) → **신규 로컬 `setupServer` 만 차단**. 비-공허 짝 필수(훑은 파일 수 400+ 이고 스캐너가 `src/test/server.ts` 를 실제로 찾았음을 같은 테스트에서 단언 — 글롭이 깨지면 0건 훑고 공허 통과). ②전면 이주(A)는 신규 항목으로 분할 등재.
 > - **★★이주 시 최대 함정 (반증이 적발).** 로컬 서버가 뜨면 **전역 핸들러가 통째로 죽는다**(실측: 전역 `server.use()` 도 `/auth/refresh` 도 `fetch failed`). 이주하면 그 59개 파일에서 **`/auth/refresh` 가 처음으로 살아나** `apiFetch` 의 401 자동 재시도가 지금은 실패하던 자리에서 성공한다 — **401/403 을 단언하는 테스트의 결과가 뒤집힌다.** 「기계적 치환」이 아니다.
 > - **이주 시 함정 2.** 전역 `setup.ts:21` 의 `afterEach(server.resetHandlers())` 때문에 핸들러 등록은 **반드시 `beforeEach`** 여야 한다. `beforeAll` 에 두면 첫 테스트 뒤 조용히 사라진다. 선례 3건 — `import-handlers.test.ts:13-22` · `profile-handlers.test.ts:8-18` · `status-handlers.test.ts:8-16`.
@@ -2418,7 +2418,31 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web(테스트 인프라) — 로컬 `setupServer` 59개 전면 이주 (미착수)
+## ✅ apps/web(테스트 인프라) — 로컬 `setupServer` 59개 전면 이주 (해소 2026-08-12 · PR #375 · 실제 58개 · 판별식 봉인)
+
+> **해소.** 실제 호출 **0건**. `MIGRATION_BASELINE` 을 비워 **신규든 잔존이든 전부 red** 로 봉인했다.
+> 전 스위트 **579 파일 / 9,469 테스트 · EXIT=0** — 기준선과 증감 0.
+> 상세는 [`2026-08-12-debt24-msw-migration.md`](docs/plans/2026-08-12-debt24-msw-migration.md).
+>
+> **★대상 수가 두 번 틀렸다.** 제목의 「59개」와 본문의 「60개」가 어긋나 있었고, 실제 이주
+> 대상은 **58개**였다 — 판별식 baseline 의 60건 중 `useAutomationExecutions.test.tsx` 는
+> **주석에만** `setupServer` 가 등장하고 이미 전역을 쓰고 있었다(스캐너가 주석까지 셌다).
+>
+> **★★「기계적 치환이 아니다」의 근거가 이 저장소에서는 성립하지 않았다.** 아래 원 서술은
+> 401 자동 재시도로 결과가 뒤집힌다고 경고했으나 **해당 파일이 0개**다 —
+> ①59개 중 43개가 `fetch` 를 직접 부르고(`apiFetch` 미경유) ②나머지 16개 중 401·403 단언은
+> 6개인데 ③**전부 `403`** 이며 ④`client.ts:114` 가 `if (res.status !== 401) return res` 다.
+> **단 「무효」로 넘겨 읽지 말 것** — 무효인 것은 현재 코드에서의 401 경로다.
+>
+> **실제로 걸린 함정은 다른 것들이었다.** ①여러 줄 `import` 중간에 새 import 를 삽입해 3파일
+> 파싱 붕괴 ②`beforeAll(() => { server.listen(...) })` **블록 형태**를 놓쳐
+> `already enabled network` ③`\bafterEach\b` 가 테스트 이름 문자열·주석까지 「사용 중」으로
+> 오판해 미사용 import 미제거 ④**baseline 을 비우자 그것을 참조하던 단언이 깨졌다**
+> (`MIGRATION_BASELINE[0]` → `undefined`).
+>
+> **보상 가드 1건 제거.** `automation-execution-handlers.ts` 의 `requestId` 단발 캐시를
+> 걷어내고 관련 18파일 292 테스트 통과를 확인했다 — **원인이 사라졌다는 실증**이다.
+> `backlog-fixtures.ts` 의 키 중복 금지는 **남겼다**(도메인 불변식이지 우회가 아니다).
 
 **무엇.** 이중 디스패치의 근본 원인인 로컬 `setupServer` 인스턴스가 테스트 파일 **60개** (2026-08-09 실측 · `src/test/server.ts` 제외)에 남아 있다.
 판별식(동결)만 세워 신규 유입은 막았으나 기존 59개는 그대로다.

@@ -10,14 +10,19 @@
 //     `RuleExecutionDetailResponse`(actionCount/successCount 없음·outcomes만)와 정합한다. 단건/replay 응답은
 //     store 레코드를 `toWireDetail`로 방어적 필드 프로젝션해 반환한다(summary 집계는 `toSummary`가 계산).
 //
-// ⚠️ msw@2.14.6 Node 인터셉터(vitest 유닛 테스트 전용, `setupServer`) 이중 dispatch 관찰 — 동일
-// `requestId`로 resolver 가 2회 호출되는 현상을 재현·확인했다(body를 `await request.json()`으로 읽는
-// 핸들러(automation-rule-handlers.ts `createRuleHandler` 등)는 두 번째 호출이 "Body already read" 로
-// 자동 실패해 무해하지만, 이 replay 엔드포인트는 실제 backend 계약대로 요청 바디가 없어 자연 방어가
-// 없다). `replayExecutionHandler`는 그래서 `requestId` 기반 단발 캐시(`lastReplayRequestId`/
-// `lastReplayResponseBody`)로 두 번째(phantom) 호출이 store 를 중복 mutate 하지 않도록 방어한다.
-// 브라우저 Service Worker 인터셉터(`msw`의 `setupWorker`, dev/E2E 경로)는 이 Node 전용 코드 경로를
-// 쓰지 않아 영향받지 않는다 — 이 가드는 vitest(Node) 유닛 테스트 환경 한정 방어.
+// ✅ 이중 dispatch 방어(단발 캐시)를 **제거했다** (2026-08-12 · PR #375).
+//
+// 원인이 사라졌기 때문이다. 그 현상은 msw 버그가 아니라 **로컬 `setupServer` 인스턴스가 전역과
+// 동시에 listen** 해서 같은 요청이 두 번 배달되던 것이었고(고유 requestId 는 1개), 이 PR 이
+// 로컬 인스턴스를 전량 걷어냈다. `src/test/msw-single-setupserver.test.ts` 가 재발을 막는다.
+//
+// 제거 전 이 파일은 `requestId` 기반 단발 캐시(`lastReplayRequestId`/`lastReplayResponseBody`)로
+// 두 번째(phantom) 호출이 store 를 중복 mutate 하지 않도록 방어했다. replay 엔드포인트는 실제
+// backend 계약대로 요청 바디가 없어, 바디를 읽는 핸들러들이 얻던 「Body already read」 자연
+// 방어를 못 받는 자리였다.
+//
+// **제거가 안전함을 실측했다** — 관련 18파일 292 테스트가 그대로 통과한다. 원인이 남아 있었다면
+// replay 가 store 를 두 번 mutate 해 즉시 red 가 됐을 자리다.
 //
 import { http, HttpResponse } from 'msw'
 import type { RuleExecutionDetail, RuleExecutionSummary } from '@/api/automation-executions.types'
@@ -108,15 +113,6 @@ function toWireDetail(detail: RuleExecutionDetail): RuleExecutionDetail {
     finishedAt: detail.finishedAt,
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// msw Node 인터셉터 이중 dispatch 방어 (파일 상단 KDoc "⚠️ msw@2.14.6 Node 인터셉터" 참고)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 가장 최근 처리한 replay 요청의 `requestId` — 동일 id 로 재호출되면 store를 다시 mutate하지 않는다. */
-let lastReplayRequestId: string | null = null
-/** `lastReplayRequestId` 요청의 응답 본문 캐시 — 중복 dispatch 시 그대로 재반환한다. */
-let lastReplayResponseBody: RuleExecutionDetail | null = null
 
 /**
  * 상세 레코드에서 목록 요약 필드만 추출한다(outcomes/triggerEvent/projectKey 제외,
@@ -219,16 +215,10 @@ const getExecutionHandler = http.get('/api/v1/automation/executions/:id', ({ par
  * 성공 → 200 RuleExecutionDetail (신규 자원 생성이어도 backend 컨트롤러가 `ResponseEntity.ok` 를
  * 쓰므로 201 이 아니라 200).
  *
- * `requestId`가 직전 처리한 요청과 같으면 store를 다시 mutate하지 않고 캐시된 응답을 그대로 반환한다
- * (파일 상단 KDoc "⚠️ msw@2.14.6 Node 인터셉터" 참고 — vitest 유닛 테스트 환경 한정 방어).
  */
 const replayExecutionHandler = http.post(
   '/api/v1/automation/executions/:id/replay',
-  ({ params, requestId }) => {
-    if (requestId === lastReplayRequestId && lastReplayResponseBody !== null) {
-      return HttpResponse.json(lastReplayResponseBody)
-    }
-
+  ({ params }) => {
     const id = params['id'] as string
     const original = executionStore.get(id)
     if (original === undefined) {
@@ -257,8 +247,6 @@ const replayExecutionHandler = http.post(
     executionStore.set(replayed.id, replayed)
 
     const wireBody = toWireDetail(replayed)
-    lastReplayRequestId = requestId
-    lastReplayResponseBody = wireBody
 
     return HttpResponse.json(wireBody)
   },
