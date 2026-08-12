@@ -861,6 +861,18 @@ export const issueCreateStrings = {
 } as const
 
 /** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
+/**
+ * 프로젝트 키 형식 규칙을 사용자에게 설명하는 **단일 문장**.
+ *
+ * 같은 규칙(`lib/project-key.ts` 의 `isValidProjectKey`)을 두 화면이 쓴다 —
+ * 프로젝트 **생성**(`routes/projects.new.tsx` 의 `keyInvalid`)과 이슈 **이동**
+ * (`issueMoveStrings.errorKeyFormat`). 문장이 갈리면 같은 규칙이 화면마다 다르게
+ * 설명되므로, **판정만 한 곳으로 모으고 문구를 두 벌 두면 절반만 봉합한 것**이다.
+ * 그래서 문장도 여기 하나만 둔다.
+ */
+export const projectKeyFormatMessage =
+  '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.'
+
 export const issueMoveStrings = {
   // ── Dialog 공통 ──────────────────────────────────────────────────────
   /** Dialog 제목 */
@@ -891,14 +903,11 @@ export const issueMoveStrings = {
    * 권한 거부로 판정하기 때문). 사용자가 고칠 수 있는 것은 대소문자인데 화면은
    * 권한 이야기를 하게 된다.
    *
-   * **문장이 생성 화면과 같다** — `routes/projects.new.tsx` 의
-   * `projectCreateLabels.keyInvalid` 와 한 글자도 다르지 않다. 같은 규칙을 두 화면이
-   * 다르게 설명하면 그 자체가 새 불일치다. 두 리터럴을 하나로 합치지 못한 이유는
-   * 상대편이 **i18n 밖 라우트 지역 상수**여서 여기서 import 할 수 없기 때문이고,
-   * 그 상수를 i18n 으로 옮기는 것은 이 PR 범위 밖이다.
-   * **판정 자체는 이미 한 곳뿐이다** (`lib/project-key.ts` 의 `isValidProjectKey`).
+   * **문장도 판정도 생성 화면과 한 곳을 공유한다** — 문장은 [projectKeyFormatMessage],
+   * 판정은 `lib/project-key.ts` 의 `isValidProjectKey`. 둘 중 하나만 모으면
+   * 「같은 규칙을 화면마다 다르게 설명」이 남아 절반만 봉합한 것이 된다.
    */
-  errorKeyFormat: '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.',
+  errorKeyFormat: projectKeyFormatMessage,
 
   // ── Step 2 — 매핑 확인 ───────────────────────────────────────────────
   /** Step 2 섹션 제목 */

@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useCreateProject } from '@/hooks/use-project-mutations'
 import { isValidProjectKey } from '@/lib/project-key'
+import { projectKeyFormatMessage } from '@/i18n/ko'
 import { extractProjectErrorCode, ProjectErrorCodes } from '@/api/projects'
 import { useAuthUser } from '@/auth/authStore'
 
@@ -32,7 +33,8 @@ const projectCreateLabels = {
   keyLabel: '프로젝트 키',
   keyPlaceholder: '예: ATLAS',
   keyRequired: '프로젝트 키를 입력하세요.',
-  keyInvalid: '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.',
+  // 이슈 이동 화면과 **같은 문장**을 쓴다 — 같은 규칙을 화면마다 다르게 설명하지 않기 위해.
+  keyInvalid: projectKeyFormatMessage,
   nameLabel: '프로젝트 이름',
   nameRequired: '프로젝트 이름을 입력하세요.',
   submitButton: '프로젝트 생성',
