@@ -1,6 +1,6 @@
 // FR-SL-06 D6 Slack 채널 매핑 MSW stateful 핸들러 테스트 — CRUD 반영 + 중복/미존재 에러 + 전역 등록 회귀가드
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ChannelMappingSchema } from '@/api/slack'
 // handlers는 전역 등록 배열(msw-global-handler-registration-gap 회귀 방지) — 이 배열로만 서버를 띄워
 // 개별 핸들러 export뿐 아니라 handlers.ts 등록 누락까지 함께 검증한다.
@@ -15,15 +15,13 @@ import {
 // MSW 서버 설정 — 전역 handlers 배열 그대로 사용(등록 회귀가드)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...handlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...handlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetSlackChannelMappingStore()
   localStorage.removeItem(SLACK_CHANNEL_MAPPING_WORKSPACE_NOT_INSTALLED_KEY)
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — fetch 래퍼 (drift 차단, automation-rule-handlers.test.ts 선례)

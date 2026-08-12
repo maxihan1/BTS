@@ -1,7 +1,7 @@
 // Git 웹훅 등록/목록/삭제 API 함수 단위 테스트 — MSW(gitWebhookHandlers) 통해 실 fetch로 secret 원문 보존·XSRF·403 검증
-import { setupServer } from 'msw/node'
+import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createGitWebhook, deleteGitWebhook, listGitWebhooks } from './automation-git-webhooks'
 import { extractAutomationRuleErrorCode } from './automation-rules'
 import { ApiError } from './client'
@@ -18,21 +18,19 @@ import {
 // MSW 서버 설정 — automation-rules.test.ts와 동형(전역 handlers.ts 미등록, 로컬 서버)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...gitWebhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...gitWebhookHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 afterEach(() => {
-  server.resetHandlers()
   resetGitWebhookStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
   for (const key of Object.values(SCENARIO_KEY)) {
     localStorage.removeItem(key)
   }
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_GIT_WEBHOOK_PROJECT_KEY
 /** 백엔드 MIN_SECRET_LENGTH(16)를 만족하는 유효 secret — mock 로직과 맞춘다. */
