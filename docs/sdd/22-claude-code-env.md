@@ -206,7 +206,9 @@ Atlas 도메인에 특화된 Skills 6종. Claude Code가 관련 작업 시 자�
 | 모든 public 함수에 KDoc/JSDoc | Claude가 사용 의도 파악 |
 | TypeScript strict + noUncheckedIndexedAccess | 런타임 오류 컴파일 시점 차단 |
 | Kotlin: non-null 기본, nullable은 명시적 | NPE 방지 |
-| 함수 30줄 이내, 파일 300줄 이내 | Claude 컨텍스트 효율 |
+| 함수 30줄 이내 (Kotlin · TypeScript 공통) | Claude 컨텍스트 효율 |
+| Kotlin: 파일 300줄 이내 | Claude 컨텍스트 효율 |
+| TypeScript: 컴포넌트 200줄 이내 | Claude 컨텍스트 효율 |
 | 명확한 변수명 (`u` 대신 `user`) | Claude도 사람도 읽기 좋음 |
 | 매직 넘버 금지, 상수로 추출 | 의도 명확화 |
 | Early return 권장 | 가독성 |
