@@ -1,21 +1,19 @@
 // 일괄 작업 MSW 핸들러 단위 테스트 — POST 접수 + GET 폴링 stateful 진행 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { bulkOperationHandlers, resetBulkOperationState } from '../bulk-operation-handlers'
 import {
   bulkAcceptedSchema,
   bulkOperationResponseSchema,
 } from '@/api/bulk-operations'
 
-const server = setupServer(...bulkOperationHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...bulkOperationHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetBulkOperationState()
   globalThis.localStorage?.clear?.()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

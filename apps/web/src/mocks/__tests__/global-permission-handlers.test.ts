@@ -1,15 +1,13 @@
 // FR-PM-10 D6 전역 권한 부여/회수 MSW 핸들러 stateful 동작 검증 — TDD RED 단계
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { globalPermissionHandlers, resetGlobalPermissionStore } from '../global-permission-handlers'
 
-const server = setupServer(...globalPermissionHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...globalPermissionHandlers)
+})
 beforeEach(() => resetGlobalPermissionStore())
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
 
 const BASE_URL = '/api/v1/admin/global-permissions'
 

@@ -4,21 +4,19 @@
 // 돌려주면, "5필드가 반영됐다" 를 단언하는 상위 테스트가 **프론트가 아무것도 안 보내도 통과**한다
 // (learnings 2026-06-25 `<input type="date">` MSW lexical 비교 가짜그린과 동형).
 // 여기서 핸들러 자체를 계약으로 고정한다.
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { issueHandlers, resetIssueState, MOCK_ASSIGNEE_NOT_FOUND } from '../issue-handlers'
 import { resetProjectLeadStore, seedProjectLead } from '../project-lead-handlers'
 
-const server = setupServer(...issueHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }))
+beforeEach(() => {
+  server.use(...issueHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetIssueState()
   resetProjectLeadStore()
   localStorage.clear()
 })
-afterAll(() => server.close())
 
 const CREATE_URL = '/api/v1/issues'
 const LEAD_USER_ID = '99999999-9999-4999-8999-999999999999'

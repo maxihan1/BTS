@@ -1,6 +1,6 @@
 // 커스텀 필드 MSW 핸들러 단위 테스트 — stateful CRUD + RFC 7807 에러 + 이슈 customFields 병합 (FR-IS-10)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { customFieldHandlers, resetCustomFieldStore } from '../custom-field-handlers'
 import { issueHandlers, resetIssueState } from '../issue-handlers'
 
@@ -8,16 +8,14 @@ import { issueHandlers, resetIssueState } from '../issue-handlers'
 // 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...customFieldHandlers, ...issueHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...customFieldHandlers, ...issueHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetCustomFieldStore()
   resetIssueState()
   localStorage.clear()
 })
-afterAll(() => server.close())
 
 const BASE_URL = '/api/v1/projects/ATLAS/custom-fields'
 
