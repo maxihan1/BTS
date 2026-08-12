@@ -44,14 +44,20 @@
 #
 # ## ★★검증 대상 커밋은 HEAD 가 아니다 — `[skip ci]` 를 되감는다 (2026-08-12 넓힘)
 #
-# 위 좁히기의 초판은 기준을 **HEAD 하나**로 잡았다. 그런데 post-merge 훅이 머지 직후
-# `[chore] dashboard regen [skip ci]` 를 push 해 **HEAD 를 한 칸 앞으로 민다.** 그 커밋은
-# `[skip ci]` 라 자기 run 이 0건이고, 머지 내용을 실제로 검증 중인 run 은 **부모**에 붙어
-# 있다. 그래서 HEAD 만 보호하면 그 run 이 정확히 취소 대상이 되어, 이 스크립트가 막으려던
+# 위 좁히기의 초판은 기준을 **HEAD 하나**로 잡았다. 그런데 `.husky/post-merge` 가
+# `[chore] dashboard regen [skip ci]` 를 만들어 **push** 하면 원격 HEAD 가 한 칸 앞으로 밀린다.
+# 그 커밋은 `[skip ci]` 라 자기 run 이 0건이고, 머지 내용을 실제로 검증 중인 run 은 **부모**에
+# 붙어 있다. 그래서 HEAD 만 보호하면 그 run 이 정확히 취소 대상이 되어, 이 스크립트가 막으려던
 # 「현재 main 을 검증하는 run 이 0건」을 **스스로 만든다.**
 #
+# ★언제 그 훅이 도는가 — 정확히 말해 둔다. `post-merge` 는 **로컬** merge/pull 에서만 발화하고
+#   `gh pr merge` 자체(원격 동작)로는 돌지 않는다. 실제 트리거는 `gh pr merge --delete-branch`
+#   가 머지된 브랜치를 정리하며 **main 을 체크아웃하고 pull** 하는 경로다(2026-08-12 PR #376
+#   에서 관측). 즉 **항상은 아니고, 그 pull 이 가드보다 먼저 일어난 경우**에 밀린다.
+#   가드는 원격에 HEAD 를 물으므로, 훅이 **push 까지 마친 뒤**라면 어느 경로로 밀렸든 보인다.
+#
 # 2026-08-12 PR #376 머지 직후 실측. HEAD `af3978648`(run 0건) / in_progress 는 부모
-# `ade4dd826`. 훅은 사실상 모든 머지에서 저 커밋을 만들므로 **예외가 아니라 기본 경로**다.
+# `ade4dd826`.
 #
 # 그래서 기준을 **HEAD 부터 거슬러 첫 non-`[skip ci]` 커밋**으로 잡고, 훑은 구간 전체를
 # 보호한다. 못 찾으면(조회 실패 · 빈 응답 · 구간이 전부 `[skip ci]`) 아무것도 하지 않는다.
@@ -76,7 +82,7 @@ BRANCH="${1:-}"
 GH="${BTS_GH_BIN:-gh}"
 
 # 보호 브랜치. 여기 있는 이름은 이 스크립트가 절대 취소 대상으로 삼지 않는다.
-# `main` 은 여기 없다 — 아래 「현재 HEAD 무접촉」 경로가 대신 지킨다.
+# `main` 은 여기 없다 — 아래 「현재 main 내용 무접촉」 경로가 대신 지킨다.
 PROTECTED=("master" "HEAD")
 # 이 브랜치만 HEAD 비교 경로를 탄다. 나머지는 종전대로 전건 취소다.
 HEAD_GUARDED_BRANCH="main"
@@ -91,14 +97,52 @@ HEAD_SCAN_DEPTH=10
 #   어긋나 이 결함이 그대로 재발한다.
 SKIP_CI_TOKENS=("[skip ci]" "[ci skip]" "[no ci]" "[skip actions]" "[actions skip]")
 
+# ★★되감기 대상은 「CI 를 건너뛴 커밋」 **전부가 아니다** — 우리가 스스로 만드는 생성 커밋뿐이다.
+#
+#   왜 좁히나. 토큰만으로 판정하면 **내용이 있는 머지 커밋**도 되감기 대상이 된다. squash 본문은
+#   브랜치 커밋 메시지를 그대로 싣기 때문에(2026-08-07 PR #345 가 정확히 그 사고였다) 머지
+#   커밋이 `[skip ci]` 를 물고 오는 일이 실제로 있다. 그러면 스캔이 그 머지를 지나쳐 **훨씬
+#   낡은 커밋**을 검증 대상으로 잡고, 거기 붙은 낡은 run 을 보호한다 — PR #366 이 닫은
+#   「낡은 main run 이 러너를 몇 시간 점유」(2026-08-10 실측 1시간 43분) 부채가 되살아난다.
+#
+#   반대로 내용 있는 머지가 `[skip ci]` 를 물고 오면 GitHub 도 그 커밋의 CI 를 돌리지 않으므로
+#   run 이 0건이다. 되감지 않고 그것을 기준으로 삼아도 **보호할 run 이 없어** 손해가 없고,
+#   그보다 낡은 run 은 예정대로 취소된다. 좁히는 쪽이 두 방향 모두에서 안전하다.
+#
+#   ⚠️ 이 목록은 `.husky/post-merge` 가 쓰는 커밋 메시지와 **짝을 이뤄야 한다.** 한쪽만 바뀌면
+#      가드가 조용히 되감기를 멈춘다 — `merged-pr-run-cleanup.test.ts` 의
+#      「post-merge 훅이 만드는 커밋이 되감기 대상으로 분류된다」 판별식이 그 어긋남을 막는다.
+REWIND_MESSAGE_PATTERNS=("dashboard regen")
+
+# 패턴 목록 중 하나라도 메시지에 있으면 0, 없으면 1.
+#
+# ★대소문자를 가리지 않는다. GitHub 의 건너뛰기 키워드 판정이 그렇기 때문이다 — 가드가
+#   소문자만 보면 `[SKIP CI]` 커밋을 놓치고, GitHub 은 CI 를 건너뛰었는데 가드는 그것을
+#   검증 대상으로 잡아 **이 스크립트가 고치려는 결함이 그대로 재현된다.**
+message_matches_any() {
+  local message="$1"
+  shift
+  local pattern
+  local matched=1
+  shopt -s nocasematch
+  for pattern in "$@"; do
+    if [[ "$message" == *"$pattern"* ]]; then
+      matched=0
+      break
+    fi
+  done
+  shopt -u nocasematch
+  return "$matched"
+}
+
 # 메시지에 CI 건너뛰기 토큰이 있으면 0, 없으면 1.
 has_skip_ci_token() {
-  for token in "${SKIP_CI_TOKENS[@]}"; do
-    case "$1" in
-      *"$token"*) return 0 ;;
-    esac
-  done
-  return 1
+  message_matches_any "$1" "${SKIP_CI_TOKENS[@]}"
+}
+
+# 우리가 만드는 생성 커밋(대시보드 재생성 등)이면 0, 아니면 1.
+is_generated_commit() {
+  message_matches_any "$1" "${REWIND_MESSAGE_PATTERNS[@]}"
 }
 
 # sha 가 보호 집합에 있으면 0, 없으면 1. 집합은 공백으로 구분된 문자열이다.
@@ -156,13 +200,16 @@ if [ "$BRANCH" = "$HEAD_GUARDED_BRANCH" ]; then
     #   (2026-08-07 PR #345), 여기서 제목만 남기면 본문에 `[skip ci]` 가 있는 커밋을
     #   놓쳐 이 스크립트가 고치려던 결함이 그대로 재발한다. 이 한 줄이 그 결정이다.
     scanned="$message"
-    # 훑은 커밋은 전부 보호한다. `[skip ci]` 커밋에도 (수동 dispatch 등으로) run 이 붙을 수
+    # 훑은 커밋은 전부 보호한다. 생성 커밋에도 (수동 dispatch 등으로) run 이 붙을 수
     # 있고, 그것 역시 지금 main 에 있는 내용을 검증 중이다.
     PROTECTED_SHAS="$PROTECTED_SHAS $sha"
-    if ! has_skip_ci_token "$scanned"; then
-      EFFECTIVE_HEAD="$sha"
-      break
+    # ★되감기 조건은 **둘 다** 참일 때다 — CI 를 건너뛴 커밋이면서, 우리가 만든 생성 커밋일 때.
+    #   토큰만으로 판정하면 내용 있는 머지 커밋까지 지나쳐 낡은 run 을 보호한다(위 §REWIND 주석).
+    if has_skip_ci_token "$scanned" && is_generated_commit "$scanned"; then
+      continue
     fi
+    EFFECTIVE_HEAD="$sha"
+    break
   done << EOF
 $commits
 EOF

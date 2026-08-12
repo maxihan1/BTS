@@ -57,7 +57,10 @@ interface FakeGhBehavior {
    *
    * ★`message` 는 **본문까지 포함한 전체**다. GitHub 의 CI 건너뛰기 판정이 제목이 아니라
    * 메시지 전체를 보기 때문이다(2026-08-07 PR #345 실측 — squash 본문 3행의 `[skip ci]` 가
-   * main push CI 를 0회로 만들었다). 스크립트는 개행을 공백으로 눕힌 한 줄을 받는다.
+   * main push CI 를 0회로 만들었다).
+   *
+   * ★스크립트가 받는 형태는 실물 `--jq '... | @json'` 과 같다 — 개행이 `\n` 으로 이스케이프된
+   * 한 줄짜리 JSON 문자열이다. **공백으로 눕히지 않는다**(아래 `apiLines` 주석 참조).
    */
   commits?: { sha: string; message: string }[]
   /**
@@ -283,8 +286,8 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
     // 자기 발등 찍기다 — 모르면 손대지 않는다. 기존 HEAD 미확인 케이스와 같은 방향.
     const r = runScript('main', {
       commits: [
-        { sha: 'a'.repeat(40), message: 'chore: regen [skip ci]' },
-        { sha: 'b'.repeat(40), message: 'chore: doc index regen — 메모리 1건 등재 [skip ci]' },
+        { sha: 'a'.repeat(40), message: '[chore] dashboard regen [skip ci]' },
+        { sha: 'b'.repeat(40), message: '[chore] dashboard regen [skip ci]' },
       ],
       runs: [{ id: '901', sha: 'c'.repeat(40) }],
     })
@@ -315,6 +318,97 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
       cancels,
       [],
       `HEAD 자신의 run 을 취소했다 — 그것도 현재 main 내용을 검증 중이다.\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★★내용 있는 머지 커밋이 [skip ci] 를 물고 와도 되감지 않는다 (낡은 run 은 예정대로 취소)', () => {
+    // 반대 방향 회귀. squash 본문은 브랜치 커밋 메시지를 그대로 싣기 때문에 **내용 있는 머지**가
+    // `[skip ci]` 를 물고 오는 일이 실제로 있다(2026-08-07 PR #345 가 그 사고였다).
+    // 토큰만으로 되감으면 그 머지를 지나쳐 훨씬 낡은 커밋을 기준으로 잡고, 거기 붙은 낡은 run 을
+    // 보호한다 — PR #366 이 닫은 「낡은 main run 이 러너 1시간 43분 점유」 부채가 되살아난다.
+    //
+    // 그 머지 커밋은 GitHub 도 CI 를 건너뛰어 run 이 0건이므로, 되감지 않고 기준으로 삼아도
+    // 보호할 것이 없다. 손해 없이 낡은 run 만 정확히 치운다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE_WITH_TOKEN = 'b'.repeat(40)
+    const OLD = 'c'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: '[chore] dashboard regen [skip ci]' },
+        {
+          sha: MERGE_WITH_TOKEN,
+          message: 'feat: 뭔가 (#380)\n\n* chore: doc index regen — 메모리 1건 등재 [skip ci]',
+        },
+        { sha: OLD, message: 'feat: 훨씬 낡은 것 (#370)' },
+      ],
+      runs: [{ id: '902', sha: OLD }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels.sort(),
+      ['run cancel 902', 'run cancel 902'],
+      '내용 있는 머지 커밋을 지나쳐 낡은 run 을 보호했다 — PR #366 이 닫은 부채가 되살아난다.\n' +
+        r.calls.join('\n'),
+    )
+  })
+
+  test('★[SKIP CI] 처럼 대문자로 써도 건너뛰기로 인식한다', () => {
+    // GitHub 의 건너뛰기 키워드 판정은 대소문자를 가리지 않는다. 가드가 소문자만 보면
+    // GitHub 은 CI 를 건너뛰었는데(그 커밋 run 0건) 가드는 그것을 검증 대상으로 잡아
+    // 부모의 진짜 검증 run 을 취소한다 — 이 PR 이 고치려는 결함의 정확한 재현이다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: '[chore] Dashboard Regen [SKIP CI]' },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+      ],
+      runs: [{ id: '901', sha: MERGE }],
+    })
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      '대문자 토큰을 못 알아봐서 부모의 검증 run 을 취소했다.\n' + r.calls.join('\n'),
+    )
+  })
+
+  test('★★post-merge 훅이 실제로 만드는 커밋이 되감기 대상으로 분류된다 (두 목록 짝맞춤)', () => {
+    // ★이 저장소의 지배적 결함 양식 차단 — 「두 목록이 서로를 확인하지 않는다」.
+    //   되감기 패턴(`REWIND_MESSAGE_PATTERNS`)과 훅이 쓰는 커밋 메시지는 **짝**이다.
+    //   한쪽만 바뀌면 가드가 조용히 되감기를 멈추고, 이 PR 이 고친 결함이 소리 없이 되돌아온다.
+    //   그래서 문자열을 여기 베끼지 않고 **훅 파일에서 실제로 읽어** 먹인다.
+    const hook = fs.readFileSync(path.join(REPO_ROOT, '.husky/post-merge'), 'utf-8')
+    const m = hook.match(/git commit -m "([^"]+)"/)
+    assert.ok(
+      m !== null,
+      '.husky/post-merge 에서 커밋 메시지를 못 찾았다 — 훅이 바뀌었으면 이 짝을 다시 맞춰야 한다.\n' +
+        hook,
+    )
+    const hookMessage = m[1]
+    assert.match(
+      hookMessage,
+      /\[skip ci\]/i,
+      `훅 커밋 메시지에 건너뛰기 토큰이 없다 (${hookMessage}) — 되감기 전제가 무너진다.`,
+    )
+
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: hookMessage },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+      ],
+      runs: [{ id: '901', sha: MERGE }],
+    })
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `훅이 만드는 커밋(${hookMessage})을 되감지 않아 부모의 검증 run 을 취소했다 — ` +
+        'REWIND_MESSAGE_PATTERNS 와 .husky/post-merge 가 어긋났다.\n' +
+        r.calls.join('\n'),
     )
   })
 
