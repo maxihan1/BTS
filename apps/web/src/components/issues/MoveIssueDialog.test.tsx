@@ -678,3 +678,82 @@ describe('T4-7: 이동 실행 403 — preview 와 같은 원인 설명', () => {
     expect(toast.error).not.toHaveBeenCalledWith('이슈를 이동할 권한이 없습니다.')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-8. 요청 전 키 형식 차단 (기술부채 매핑 `11`)
+//
+// 백엔드는 프로젝트 키를 **정확 일치**로 조회하고(`ProjectDirectory` 의 raw SQL
+// `WHERE key = :key`), 운영 리졸버는 미존재 프로젝트를 **권한 거부**로 판정한다
+// (`IdentityAccessIssuePermissionResolver:77` — `resolveProjectId(scope) ?: return false`).
+// 그래서 소문자 `infra` 는 서버까지 가서 **403 「권한 없음」** 으로 되돌아온다.
+// 사용자가 고칠 수 있는 것은 대소문자인데 화면은 권한 이야기를 한다.
+//
+// 처방은 생성 화면과 **같은 판정**(`isValidProjectKey`)을 요청 전에 거는 것이다.
+// 그러므로 이 블록이 재는 것은 「문구가 떴다」가 아니라 **「요청이 나가지 않았다」** 이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-8: 요청 전 키 형식 차단', () => {
+  /** 형식 오류 문구 — `issueMoveStrings.errorKeyFormat` 정본 */
+  const KEY_FORMAT_TEXT = '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.'
+  /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
+  const PREVIEW_FORBIDDEN_TEXT =
+    '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
+
+  /** preview 가 실제로 몇 번 나갔는지. 이 숫자가 이 블록의 단언 대상이다. */
+  let previewRequestCount = 0
+
+  beforeEach(() => {
+    previewRequestCount = 0
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () => {
+        previewRequestCount += 1
+        return HttpResponse.json({ data: compatiblePreviewFixture })
+      }),
+    )
+  })
+
+  it('소문자 키로 「다음」을 누르면 preview 요청이 나가지 않는다', async () => {
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'infra')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(KEY_FORMAT_TEXT)
+    expect(previewRequestCount).toBe(0)
+    // Step 1 에 머문다 — 매핑 화면으로 넘어가지 않는다.
+    expect(screen.queryByText(/이동 매핑 확인/i)).not.toBeInTheDocument()
+  })
+
+  it('★비-공허 짝. 형식이 맞는 키는 preview 요청이 그대로 나간다', async () => {
+    // 이 짝이 없으면 위 단언은 「게이트가 전부를 막아 버린 것」과 구분되지 않는다.
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'INFRA')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/이동 매핑 확인/i)).toBeInTheDocument()
+    })
+    expect(previewRequestCount).toBe(1)
+  })
+
+  it('Enter 로 제출해도 같은 게이트가 걸린다', async () => {
+    // 제출 경로가 버튼과 Enter 둘이면 게이트도 둘 다 타야 한다 — 한쪽만 막으면 봉합이 절반이다.
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'infra{Enter}')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(KEY_FORMAT_TEXT)
+    expect(previewRequestCount).toBe(0)
+  })
+
+  it('형식 오류 문구는 403 문구와 다른 문장이다', async () => {
+    // 같으면 「고칠 수 있는 오타」와 「고칠 수 없는 권한」이 사용자 눈에 한 덩어리가 된다.
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'infra')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    expect(await screen.findByRole('alert')).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+  })
+})
