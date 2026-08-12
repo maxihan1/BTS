@@ -83,6 +83,13 @@ const INPUTS = {
   start: { file: '.claude/skills/bts-start/SKILL.md', coveredBy: '.claude/skills/**' },
   /** 층 2 — PR push 전 최종 점검이 판별식을 돌리는 곳. */
   impl: { file: '.claude/skills/bts-impl/SKILL.md', coveredBy: '.claude/skills/**' },
+  /**
+   * 판별식 명령의 **정본**. 스킬이 적는 worktree 대체 명령은 이 스크립트와 짝이어야 한다.
+   *
+   * 여기 글로브가 바뀌었는데 스킬이 안 따라오면 로컬이 CI 보다 **적게** 돌면서 초록이 된다 —
+   * 이 저장소의 지배 결함 양식(두 목록이 서로를 확인하지 않는다)이다.
+   */
+  pkg: { file: 'package.json', coveredBy: 'package.json' },
   /** 판별식 자신. 이 파일을 고치는 PR 에서도 CI 가 돌아야 한다. */
   self: {
     file: 'scripts/workflow/worktree-hook-wiring.test.ts',
@@ -444,6 +451,37 @@ describe('worktree 훅 배선 정합', () => {
   });
 
   /**
+   * ★★ 층 1 확장. 훅을 연결해도 **실행선이 없으면** 첫 커밋에서 죽는다 (2026-08-12 실측).
+   *
+   * `.gitignore` 는 worktree 가 `node_modules` · `apps/web/node_modules` · `.husky/_` **세 개**를
+   * 심볼릭으로 갖는다고 이미 선언한다(`SYMLINKED_IGNORE_PATHS`). 그런데 `/bts-start` 는
+   * `.husky/_` **하나만** 걸었다. 그 상태에서 첫 커밋을 하면 훅 본체
+   * `node_modules/.bin/lint-staged` 가 **없어서** `No such file or directory` 로 죽는다 —
+   * 훅은 연결됐는데 훅이 부르는 것이 없는, 층 1 과 층 2 사이의 구멍이다.
+   *
+   * 두 목록을 한 상수로 묶어 검사한다. 선언(.gitignore)과 생성(bts-start)이 어긋나면 red.
+   */
+  test('★bts-start 가 worktree 에 필요한 심볼릭을 전부 건다 (선언과 생성의 짝맞춤)', () => {
+    const start = read(INPUTS.start);
+    const linkLines = start
+      .split('\n')
+      .filter((l) => l.includes('ln -s'))
+      .join('\n');
+
+    const missing = SYMLINKED_IGNORE_PATHS.filter((target) => !linkLines.includes(target));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `${INPUTS.start.file} 가 worktree 에 걸지 않는 심볼릭이 있다: ${missing.join(', ')}\n\n` +
+        `.gitignore 는 이 경로들이 worktree 에서 심볼릭이라고 선언한다(SYMLINKED_IGNORE_PATHS).\n` +
+        `선언만 있고 생성이 없으면 그 worktree 의 첫 커밋이 훅 본체를 못 찾아 죽는다 —\n` +
+        `'node_modules/.bin/lint-staged: No such file or directory' (2026-08-12 실측).\n` +
+        `훅 연결(층 1)이 통과해도 이 구멍은 별도로 열려 있으므로 따로 못박는다.`,
+    );
+  });
+
+  /**
    * ★ 층 2. 로컬이 돌리는 검사와 CI 가 돌리는 검사를 같게 만든다.
    *
    * 로컬 목록에 판별식이 없으면 "로컬 초록 → push → CI 빨강" 이 구조적으로 반복된다.
@@ -456,6 +494,55 @@ describe('worktree 훅 배선 정합', () => {
       `${INPUTS.impl.file} 의 코드블록에 '${IMPL_REQUIRED_COMMAND}' 가 없다.\n\n` +
         `CI(workflow-scripts-ci)는 이 명령으로 판별식 전량을 돌린다. 로컬 최종 점검이 같은 명령을\n` +
         `돌리지 않으면 두 목록이 서로를 안 보게 되고, 로컬 초록이 CI 빨강을 예측하지 못한다.`,
+    );
+  });
+
+  /**
+   * ★★ 층 2 확장. 그 명령이 **worktree 에서 실제로 돌아가야** 층 2 가 성립한다 (2026-08-12).
+   *
+   * 위 단언은 `pnpm test:workflow` 가 문서에 있는지만 본다. 그런데 BTS 의 모든 실작업은
+   * worktree 안에서 이뤄지고, 거기서는 그 명령이 **실행 자체가 안 된다** — pnpm 이 심볼릭
+   * `node_modules` 를 보고 의존성 검사를 돌려 `pnpm install` 을 트리거하고
+   * `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다.
+   *
+   * ★이 저장소는 이미 같은 결론에 두 번 도달해 있다 — `.husky/pre-commit` 은 주석에
+   *   「`pnpm exec` 를 쓰지 않는다」고 적고 실제로 바이너리를 직접 부르며, 위
+   *   `PNPM_WRAPPER` 단언이 그것을 강제한다. **훅만 고쳐졌고 스킬 문서는 그 사정거리 밖**이라
+   *   최종 점검 절차가 여전히 돌지 않는 명령을 지시하고 있었다.
+   *
+   * 그래서 대체 명령을 함께 적게 하되, 그 명령이 **정본과 같은 파일 목록**을 돌아야 한다.
+   * 글로브를 `package.json` 에서 직접 읽어 대조하므로 한쪽만 바뀌면 red 다.
+   */
+  test('★★bts-impl 이 worktree 에서 실제로 돌아가는 대체 명령을 함께 적는다 (글로브 짝맞춤)', () => {
+    const pkg = JSON.parse(read(INPUTS.pkg)) as { scripts?: Record<string, string> };
+    const script = pkg.scripts?.['test:workflow'];
+
+    assert.ok(
+      typeof script === 'string' && script.length > 0,
+      `${INPUTS.pkg.file} 에 'test:workflow' 스크립트가 없다 — 아래 대조가 공허해진다.`,
+    );
+
+    // 정본 스크립트가 도는 파일 목록(따옴표로 감싼 글로브). 없으면 대조가 성립하지 않는다.
+    const globs = [...script.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(
+      globs.length > 0,
+      `'test:workflow' 에서 글로브를 뽑지 못했다 (${script}) — 파서가 고장나면 아래가 공허하다.`,
+    );
+
+    const impl = read(INPUTS.impl);
+    const missing = globs.filter((g) => !impl.includes(g));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `${INPUTS.impl.file} 의 대체 명령이 정본과 같은 파일 목록을 돌지 않는다.\n` +
+        `누락된 글로브: ${missing.join(' · ')}\n` +
+        `정본(package.json test:workflow): ${script}\n\n` +
+        `worktree 에서는 'pnpm test:workflow' 가 실행되지 않는다 — pnpm 이 심볼릭 node_modules 를\n` +
+        `보고 install 을 트리거해 ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 로 죽는다.\n` +
+        `그래서 node 를 직접 부르는 대체 명령을 함께 적어야 하고, 그 명령은 정본과 **같은 목록**을\n` +
+        `돌아야 한다. 한쪽만 바뀌면 로컬이 CI 보다 적게 돌면서 초록이 된다.\n` +
+        PNPM_WRAPPER_REMEDY,
     );
   });
 

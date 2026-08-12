@@ -52,7 +52,23 @@ interface FakeGhBehavior {
    * 스크립트 안에 있어야 한다.
    */
   runs?: { id: string; sha: string }[]
-  /** `gh api` 가 돌려줄 현재 main HEAD sha. */
+  /**
+   * `gh api` 가 돌려줄 커밋 목록 — HEAD 가 맨 앞이다.
+   *
+   * ★`message` 는 **본문까지 포함한 전체**다. GitHub 의 CI 건너뛰기 판정이 제목이 아니라
+   * 메시지 전체를 보기 때문이다(2026-08-07 PR #345 실측 — squash 본문 3행의 `[skip ci]` 가
+   * main push CI 를 0회로 만들었다).
+   *
+   * ★스크립트가 받는 형태는 실물 `--jq '... | @json'` 과 같다 — 개행이 `\n` 으로 이스케이프된
+   * 한 줄짜리 JSON 문자열이다. **공백으로 눕히지 않는다**(아래 `apiLines` 주석 참조).
+   */
+  commits?: { sha: string; message: string }[]
+  /**
+   * `gh api` 가 돌려줄 현재 main HEAD sha.
+   *
+   * `commits` 를 주지 않은 케이스의 후방호환 통로다 — 한 줄만 뱉으므로 스크립트는
+   * 「sha 1개 + 빈 메시지」로 읽고, 빈 메시지는 skip-ci 가 아니므로 곧 검증 대상 커밋이 된다.
+   */
   headSha?: string
   /** `gh api` 자체가 실패하는 경우 (인증 만료 · 네트워크 · 저장소 판별 실패). */
   headShaFail?: boolean
@@ -78,6 +94,20 @@ function runScript(branch: string, behavior: FakeGhBehavior = {}): RunResult {
     ...(behavior.ids ?? []),
     ...(behavior.runs ?? []).map((r) => `${r.id} ${r.sha}`),
   ]
+  // `gh api` 가 뱉을 커밋 줄들. 실물 스크립트의 `--jq '... | @json'` 과 **같은 모양**이어야
+  // 한다 — 메시지는 개행이 `\n` 으로 이스케이프된 한 줄짜리 JSON 문자열이다.
+  //
+  // ★공백으로 눕히지 않는다. 그렇게 하면 「메시지 전체를 보는가 제목만 보는가」의 판정이
+  //   가짜 gh 쪽으로 넘어가고, 스크립트를 「제목만」으로 훼손해도 red 가 나지 않는다
+  //   (2026-08-12 실측 — 그 형태에서 뮤테이션 M3 가 살아남았다).
+  //
+  // 가짜 gh 는 bash 스크립트라 `echo "..."` 안에 그대로 박힌다. JSON 문자열에는 따옴표와
+  // 역슬래시가 들어 있으므로 큰따옴표 문맥용으로 이스케이프해야 한다 — 안 하면 생성된
+  // 스크립트의 인용이 깨져 **가짜 gh 가 조용히 엉뚱한 것을 뱉는다.**
+  const shellDq = (s: string): string => s.replace(/(["\\$`])/g, '\\$1')
+  const apiLines = (behavior.commits ?? []).map(
+    (c) => shellDq(`${c.sha} ${JSON.stringify(c.message)}`),
+  )
   const failMode = behavior.failMode ?? 'none'
   const headSha = behavior.headSha ?? ''
   const apiFail = behavior.headShaFail === true ? '1' : '0'
@@ -92,7 +122,10 @@ function runScript(branch: string, behavior: FakeGhBehavior = {}): RunResult {
       `HEAD_SHA="${headSha}"`,
       'if [ "$1" = "api" ]; then',
       '  if [ "$API_FAIL" = "1" ]; then exit 1; fi',
-      '  echo "$HEAD_SHA"',
+      // `commits` 를 준 케이스는 그 목록을, 안 준 케이스는 종전대로 sha 한 줄을 뱉는다.
+      ...(apiLines.length > 0
+        ? apiLines.map((line) => `  echo "${line}"`)
+        : ['  echo "$HEAD_SHA"']),
       '  exit 0',
       'fi',
       'if [ "$1" = "run" ] && [ "$2" = "list" ]; then',
@@ -192,6 +225,190 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
       cancels.sort(),
       ['run cancel 902', 'run cancel 902'],
       `낡은 run 만 정확히 취소해야 한다 (HEAD=901 보호, 낡음=902 취소).\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★★HEAD 가 [skip ci] 면 그 부모(= 실제 검증 중인 커밋)의 run 을 취소하지 않는다', () => {
+    // 이 PR 의 존재 이유. post-merge 훅이 머지 직후 `[chore] dashboard regen [skip ci]` 를
+    // push 해 HEAD 를 한 칸 민다. 그 커밋은 run 이 0건이고, 머지 내용을 검증 중인 run 은
+    // **부모**에 붙어 있다. HEAD 만 보호하면 그 run 이 정확히 취소 대상이 된다.
+    // 실측 2026-08-12 PR #376 — HEAD af3978648(run 0건) / in_progress ade4dd826.
+    //
+    // ★`[skip ci]` 를 **본문**에 둔다. 제목만 보는 구현은 여기서 red 가 나야 한다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: 'chore: dashboard regen\n\n[skip ci]' },
+        { sha: MERGE, message: 'docs: 부채 등재 (#376)' },
+      ],
+      runs: [{ id: '901', sha: MERGE }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      '머지 내용을 검증 중인 run 을 취소했다 — 가드가 스스로 「현재 main 검증 0건」을 만든다.\n' +
+        r.calls.join('\n'),
+    )
+  })
+
+  test('★★[skip ci] 구간보다 낡은 커밋의 run 은 여전히 취소한다 (가드가 과하게 넓지 않다)', () => {
+    // 반대 방향 사고. 보호를 넓히다가 「전부 보호」가 되면 낡은 run 이 러너를 계속 점유해
+    // PR #366 이 닫은 부채가 되살아난다. 2026-08-10 실측 — 낡은 backend-ci 가 1시간 43분 점유.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const OLD = 'c'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: 'chore: dashboard regen [skip ci]' },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+        { sha: OLD, message: 'feat: 더 낡은 것 (#375)' },
+      ],
+      runs: [
+        { id: '901', sha: MERGE },
+        { id: '902', sha: OLD },
+      ],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    // 상태 2종 × 낡은 run 1건 = 2회. 검증 중인 901 은 한 번도 없어야 한다.
+    assert.deepEqual(
+      cancels.sort(),
+      ['run cancel 902', 'run cancel 902'],
+      `낡은 run 만 정확히 취소해야 한다 (보호=901, 취소=902).\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★훑은 구간이 전부 [skip ci] 면 아무것도 취소하지 않는다 (fail-open)', () => {
+    // 검증 대상 커밋을 특정하지 못한 상태다. 여기서 「전부 취소」로 새면 그것이 곧
+    // 자기 발등 찍기다 — 모르면 손대지 않는다. 기존 HEAD 미확인 케이스와 같은 방향.
+    const r = runScript('main', {
+      commits: [
+        { sha: 'a'.repeat(40), message: '[chore] dashboard regen [skip ci]' },
+        { sha: 'b'.repeat(40), message: '[chore] dashboard regen [skip ci]' },
+      ],
+      runs: [{ id: '901', sha: 'c'.repeat(40) }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `검증 대상 커밋을 모르는 상태에서 취소했다.\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★[skip ci] 커밋 자신에 run 이 붙어 있으면 그것도 보호한다', () => {
+    // `[skip ci]` 는 push·PR 트리거만 막는다. 수동 dispatch 등으로 그 sha 에 run 이 생길 수
+    // 있고, 그 run 도 **지금 main 에 있는 내용**을 검증 중이다. 보호 집합을 검증 대상 커밋
+    // 하나로 좁히면 여기서 red 가 나야 한다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: 'chore: dashboard regen [skip ci]' },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+      ],
+      runs: [{ id: '901', sha: REGEN }],
+    })
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `HEAD 자신의 run 을 취소했다 — 그것도 현재 main 내용을 검증 중이다.\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★★내용 있는 머지 커밋이 [skip ci] 를 물고 와도 되감지 않는다 (낡은 run 은 예정대로 취소)', () => {
+    // 반대 방향 회귀. squash 본문은 브랜치 커밋 메시지를 그대로 싣기 때문에 **내용 있는 머지**가
+    // `[skip ci]` 를 물고 오는 일이 실제로 있다(2026-08-07 PR #345 가 그 사고였다).
+    // 토큰만으로 되감으면 그 머지를 지나쳐 훨씬 낡은 커밋을 기준으로 잡고, 거기 붙은 낡은 run 을
+    // 보호한다 — PR #366 이 닫은 「낡은 main run 이 러너 1시간 43분 점유」 부채가 되살아난다.
+    //
+    // 그 머지 커밋은 GitHub 도 CI 를 건너뛰어 run 이 0건이므로, 되감지 않고 기준으로 삼아도
+    // 보호할 것이 없다. 손해 없이 낡은 run 만 정확히 치운다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE_WITH_TOKEN = 'b'.repeat(40)
+    const OLD = 'c'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: '[chore] dashboard regen [skip ci]' },
+        {
+          sha: MERGE_WITH_TOKEN,
+          message: 'feat: 뭔가 (#380)\n\n* chore: doc index regen — 메모리 1건 등재 [skip ci]',
+        },
+        { sha: OLD, message: 'feat: 훨씬 낡은 것 (#370)' },
+      ],
+      runs: [{ id: '902', sha: OLD }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels.sort(),
+      ['run cancel 902', 'run cancel 902'],
+      '내용 있는 머지 커밋을 지나쳐 낡은 run 을 보호했다 — PR #366 이 닫은 부채가 되살아난다.\n' +
+        r.calls.join('\n'),
+    )
+  })
+
+  test('★[SKIP CI] 처럼 대문자로 써도 건너뛰기로 인식한다', () => {
+    // GitHub 의 건너뛰기 키워드 판정은 대소문자를 가리지 않는다. 가드가 소문자만 보면
+    // GitHub 은 CI 를 건너뛰었는데(그 커밋 run 0건) 가드는 그것을 검증 대상으로 잡아
+    // 부모의 진짜 검증 run 을 취소한다 — 이 PR 이 고치려는 결함의 정확한 재현이다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: '[chore] Dashboard Regen [SKIP CI]' },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+      ],
+      runs: [{ id: '901', sha: MERGE }],
+    })
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      '대문자 토큰을 못 알아봐서 부모의 검증 run 을 취소했다.\n' + r.calls.join('\n'),
+    )
+  })
+
+  test('★★post-merge 훅이 실제로 만드는 커밋이 되감기 대상으로 분류된다 (두 목록 짝맞춤)', () => {
+    // ★이 저장소의 지배적 결함 양식 차단 — 「두 목록이 서로를 확인하지 않는다」.
+    //   되감기 패턴(`REWIND_MESSAGE_PATTERNS`)과 훅이 쓰는 커밋 메시지는 **짝**이다.
+    //   한쪽만 바뀌면 가드가 조용히 되감기를 멈추고, 이 PR 이 고친 결함이 소리 없이 되돌아온다.
+    //   그래서 문자열을 여기 베끼지 않고 **훅 파일에서 실제로 읽어** 먹인다.
+    const hook = fs.readFileSync(path.join(REPO_ROOT, '.husky/post-merge'), 'utf-8')
+    const m = hook.match(/git commit -m "([^"]+)"/)
+    assert.ok(
+      m !== null,
+      '.husky/post-merge 에서 커밋 메시지를 못 찾았다 — 훅이 바뀌었으면 이 짝을 다시 맞춰야 한다.\n' +
+        hook,
+    )
+    const hookMessage = m[1]
+    assert.match(
+      hookMessage,
+      /\[skip ci\]/i,
+      `훅 커밋 메시지에 건너뛰기 토큰이 없다 (${hookMessage}) — 되감기 전제가 무너진다.`,
+    )
+
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: hookMessage },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+      ],
+      runs: [{ id: '901', sha: MERGE }],
+    })
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `훅이 만드는 커밋(${hookMessage})을 되감지 않아 부모의 검증 run 을 취소했다 — ` +
+        'REWIND_MESSAGE_PATTERNS 와 .husky/post-merge 가 어긋났다.\n' +
+        r.calls.join('\n'),
     )
   })
 
@@ -382,6 +599,57 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
       !/보호 브랜치\(main\/master\/HEAD\)/.test(skill),
       '.claude/skills/bts-merge/SKILL.md 주석이 아직 main 을 통째 무접촉으로 설명한다 — ' +
         '계약이 좁아졌으므로 같은 커밋에서 정정해야 한다.',
+    )
+  })
+
+  test('★★대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다 (두 목록 짝맞춤)', () => {
+    // `/bts-merge` Step 3 은 훅이 안 돌았을 때의 수동 폴백으로 `git add <progress.html>` 을
+    // 지시한다. 그 경로가 생성기의 실제 출력과 다르면 **실행하는 순간 pathspec 오류**로 죽는다.
+    // 2026-07-17 에 이미 적발됐는데(메모리 `dashboard-regen-after-fr-marking`) 문서만 남아
+    // 26일간 그대로였다 — 사람 기억은 짝을 유지하지 못한다는 증거라 판별식으로 못박는다.
+    const generator = fs.readFileSync(path.join(REPO_ROOT, 'scripts/build-dashboard.mjs'), 'utf-8')
+    const m = generator.match(/OUTPUT_PATH\s*=\s*path\.join\([^,]+,\s*'([^']+)'\)/)
+    assert.ok(
+      m !== null,
+      'build-dashboard.mjs 에서 OUTPUT_PATH 를 못 읽었다 — 아래 대조가 공허해진다.',
+    )
+    const actual = m[1]
+
+    const skill = fs.readFileSync(MERGE_SKILL, 'utf-8')
+    // 스킬이 적은 progress.html 경로를 전부 모은다. 경로 없이 파일명만 쓴 산문은 제외한다.
+    const mentioned = [...new Set([...skill.matchAll(/[\w./-]*progress\.html/g)].map((x) => x[0]))]
+    const wrong = mentioned.filter((p) => p.includes('/') && p !== actual)
+
+    assert.deepEqual(
+      wrong,
+      [],
+      `.claude/skills/bts-merge/SKILL.md 가 실재하지 않는 경로를 지시한다: ${wrong.join(' · ')}\n` +
+        `생성기(build-dashboard.mjs)의 실제 출력은 '${actual}' 이다.\n` +
+        `그대로 실행하면 git 이 pathspec 오류로 죽어 폴백 절차 자체가 성립하지 않는다.`,
+    )
+    assert.ok(
+      skill.includes(actual),
+      `.claude/skills/bts-merge/SKILL.md 가 실제 출력 경로 '${actual}' 를 한 번도 적지 않는다 — ` +
+        '폴백 절차가 무엇을 커밋해야 하는지 알 수 없다.',
+    )
+  })
+
+  test('★★호출부 주석이 「현재 HEAD 무접촉」이라고 말하지 않는다 (문서 drift)', () => {
+    // 계약이 「현재 HEAD」에서 「현재 main 내용(= [skip ci] 를 되감은 구간)」으로 넓어졌다.
+    // 옛 문구가 남으면 다음 사람이 이 PR 을 되돌린다 — 이 저장소가 여러 번 겪은 양식.
+    const skill = fs.readFileSync(MERGE_SKILL, 'utf-8')
+    assert.ok(
+      !/현재 HEAD 무접촉/.test(skill),
+      '.claude/skills/bts-merge/SKILL.md 가 아직 계약을 「현재 HEAD 무접촉」으로 설명한다 — ' +
+        '넓어진 계약을 같은 커밋에서 반영해야 한다.',
+    )
+    // ★「skip ci」로 재지 않는다. 그 문자열은 Step 3 의 수동 폴백 커맨드에 **이미** 있어서
+    //   무엇을 고치든 통과하는 공허한 단언이 된다. 되감기를 실제로 설명했는지를 재려면
+    //   이 PR 이 새로 들여오는 낱말로 재야 한다.
+    assert.ok(
+      /되감/.test(skill),
+      '.claude/skills/bts-merge/SKILL.md 가 `[skip ci]` 되감기를 설명하지 않는다 — ' +
+        '호출자가 이 가드의 실제 판정 기준을 알 수 없다.',
     )
   })
 })
