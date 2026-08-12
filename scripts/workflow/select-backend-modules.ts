@@ -40,6 +40,19 @@ import { fileURLToPath } from 'node:url'
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const MODULES_DIR = 'backend/modules'
 
+/**
+ * 모듈 트리의 루트. 기본은 저장소지만 `BTS_BACKEND_MODULES_ROOT` 로 갈아끼울 수 있다.
+ *
+ * ★왜 이음매가 필요한가. 「Gradle 참조를 못 읽으면 넓힌다」는 방어는 **현재 저장소에 비표준
+ * 참조가 하나도 없어** 뮤테이션으로 잴 수가 없다 — 그 분기를 통째로 지워도 아무 테스트가 안
+ * 깨진다(2026-08-12 실측). 실제 파일을 비표준 형태로 바꿔 놓고 검증할 수는 없으므로,
+ * 가짜 모듈 트리를 가리키게 하는 통로를 둔다. `BTS_RUNNER_ROOT`·`BTS_GH_BIN` 과 같은 관례다.
+ */
+function modulesRoot(): string {
+  const injected = process.env.BTS_BACKEND_MODULES_ROOT
+  return injected !== undefined && injected !== '' ? injected : path.join(REPO_ROOT, MODULES_DIR)
+}
+
 /** 매트릭스 대상이 아닌 모듈. `app` 은 별도 「조립 부팅」 잡이 통째로 맡는다. */
 const NOT_IN_MATRIX = new Set(['app'])
 
@@ -66,7 +79,7 @@ export interface Selection {
 
 /** 매트릭스 대상 모듈 전수. 디스크의 디렉터리가 정본이다. */
 export function allModules(): string[] {
-  const dir = path.join(REPO_ROOT, MODULES_DIR)
+  const dir = modulesRoot()
   if (!fs.existsSync(dir)) return []
   return fs
     .readdirSync(dir, { withFileTypes: true })
@@ -77,7 +90,7 @@ export function allModules(): string[] {
 
 /** 디스크의 모듈 디렉터리 전수 — 매트릭스 밖(`app`)도 포함한다. 그래프의 정의역이다. */
 function moduleDirs(): string[] {
-  const dir = path.join(REPO_ROOT, MODULES_DIR)
+  const dir = modulesRoot()
   if (!fs.existsSync(dir)) return []
   return fs
     .readdirSync(dir, { withFileTypes: true })
@@ -98,7 +111,7 @@ function moduleDirs(): string[] {
 export function moduleGraph(): Record<string, string[]> {
   const graph: Record<string, string[]> = {}
   for (const m of moduleDirs()) {
-    const buildFile = path.join(REPO_ROOT, MODULES_DIR, m, 'build.gradle.kts')
+    const buildFile = path.join(modulesRoot(), m, 'build.gradle.kts')
     if (!fs.existsSync(buildFile)) {
       graph[m] = []
       continue
@@ -127,7 +140,7 @@ export function moduleGraph(): Record<string, string[]> {
 export function modulesWithUnparsedRefs(): string[] {
   const stale: string[] = []
   for (const m of moduleDirs()) {
-    const buildFile = path.join(REPO_ROOT, MODULES_DIR, m, 'build.gradle.kts')
+    const buildFile = path.join(modulesRoot(), m, 'build.gradle.kts')
     if (!fs.existsSync(buildFile)) continue
     const body = fs.readFileSync(buildFile, 'utf8')
     const total = [...body.matchAll(/:modules:/g)].length

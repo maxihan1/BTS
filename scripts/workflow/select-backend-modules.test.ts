@@ -29,6 +29,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -267,8 +268,16 @@ describe('backend-ci 모듈 선별', () => {
     )
 
     // 그리고 그 변경은 전 모듈이어야 한다 — 일부로 검증하면 좁히는 실수를 그 PR 에서 못 잡는다.
-    const picked = selectModules([SELF])
-    assert.deepEqual(picked.modules.sort(), allModules().sort())
+    //
+    // ★**섞인 입력**으로 잰다. 선별기 파일만 넣으면 씨앗이 비어 바깥 fallback 이 대신 넓혀
+    //   주므로, WIDEN_PREFIXES 에서 이 파일을 빼도 통과한다(2026-08-12 뮤테이션 M8 생존).
+    const picked = selectModules([SELF, 'backend/modules/notification/src/main/kotlin/X.kt'])
+    assert.deepEqual(
+      picked.modules.sort(),
+      allModules().sort(),
+      `선별기가 함께 바뀌었는데 한 모듈로 좁혔다 — 좁히는 실수를 그 PR 에서 못 잡는다.\n` +
+        JSON.stringify(picked),
+    )
     assert.equal(picked.all, true)
   })
 
@@ -284,6 +293,44 @@ describe('backend-ci 모듈 선별', () => {
       `읽지 못한 :modules: 참조가 있다 — 간선이 사라져 좁아진다.\n` +
         `정규식을 늘리기 전에 「못 읽으면 넓힌다」가 실제로 도는지 먼저 확인할 것.`,
     )
+  })
+
+  test('★★비표준 Gradle 참조가 있으면 감지하고 전 모듈로 넓힌다 (이음매로 주입)', () => {
+    // ★위 단언만으로는 부족하다. 현재 저장소에 비표준 참조가 **하나도 없어서**, 감지·확장
+    //   분기를 통째로 지워도 아무것도 안 깨진다(2026-08-12 뮤테이션 M7 생존).
+    //   그래서 가짜 모듈 트리를 주입해 그 분기를 **실제로 밟는다.**
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-modules-'))
+    const mk = (name: string, body: string) => {
+      fs.mkdirSync(path.join(root, name), { recursive: true })
+      fs.writeFileSync(path.join(root, name, 'build.gradle.kts'), body)
+    }
+    mk('shared-kernel', 'dependencies {\n}\n')
+    mk('alpha', 'dependencies {\n  implementation(project(":modules:shared-kernel"))\n}\n')
+    // ★이 형태를 `MODULE_REF` 는 못 읽는다 — 간선이 조용히 사라지는 경로다.
+    mk('beta', 'dependencies {\n  implementation(project(path = ":modules:alpha"))\n}\n')
+
+    const prev = process.env.BTS_BACKEND_MODULES_ROOT
+    process.env.BTS_BACKEND_MODULES_ROOT = root
+    try {
+      assert.deepEqual(
+        modulesWithUnparsedRefs(),
+        ['beta'],
+        '비표준 참조를 감지하지 못했다 — 간선이 사라져도 좁힌다.',
+      )
+      // alpha 변경 → beta 가 alpha 를 의존하지만 그 간선을 못 읽었다. 좁히면 beta 테스트가
+      // 안 돈다. 감지가 살아 있으면 전 모듈로 넓혀야 한다.
+      const picked = selectModules(['backend/modules/alpha/X.kt'])
+      assert.deepEqual(
+        picked.modules.sort(),
+        ['alpha', 'beta', 'shared-kernel'],
+        `읽지 못한 간선이 있는데 좁혔다 — beta 가 검증 없이 통과한다.\n${JSON.stringify(picked)}`,
+      )
+      assert.equal(picked.all, true)
+      assert.match(picked.reason, /다 읽지 못했다/, '넓힌 사유가 파싱 실패를 말하지 않는다.')
+    } finally {
+      if (prev === undefined) delete process.env.BTS_BACKEND_MODULES_ROOT
+      else process.env.BTS_BACKEND_MODULES_ROOT = prev
+    }
   })
 
   test('★넓은 판정과 좁은 판정을 구분해 보고한다', () => {
