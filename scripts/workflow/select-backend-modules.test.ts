@@ -39,6 +39,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 /** 실측 기준선. 줄어들면 도출이 고장난 것이다. */
 const MIN_MODULES = 9
 
+const WORKFLOW = '.github/workflows/backend-ci.yml'
+
 describe('backend-ci 모듈 선별', () => {
   test('모듈과 그래프를 실제로 도출한다 (양성 대조군)', () => {
     const modules = allModules()
@@ -51,14 +53,36 @@ describe('backend-ci 모듈 선별', () => {
     assert.ok(edges > 0, '의존 간선이 0건이다 — 파싱이 고장났다. 폐포가 아무 일도 안 한다.')
   })
 
-  test('도출한 모듈 집합이 디스크의 모듈 디렉터리와 같다', () => {
+  test('★★디스크의 모든 모듈이 매트릭스이거나 전용 잡을 갖는다 (조용한 누락 차단)', () => {
     // 새 BC 를 추가하면 자동으로 들어와야 한다. 손으로 적는 목록이 없다는 것의 실질이다.
+    //
+    // ★매트릭스에서 빼는 것 자체는 정당할 수 있다 — `app` 은 「조립 부팅」 전용 잡이 통째로
+    //   맡는다. 위험한 것은 **빠졌는데 아무도 안 도는** 상태다. 그래서 제외 모듈은
+    //   backend-ci 안에 자기 잡이 있는지까지 확인한다.
     const onDisk = fs
       .readdirSync(path.join(REPO_ROOT, 'backend/modules'), { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
       .sort()
-    assert.deepEqual(allModules().sort(), onDisk)
+
+    const inMatrix = new Set(allModules())
+    const excluded = onDisk.filter((m) => !inMatrix.has(m))
+
+    // 합집합이 디스크와 같아야 한다 — 어느 쪽에도 없는 모듈이 있으면 그것이 조용한 누락이다.
+    assert.deepEqual(
+      [...inMatrix, ...excluded].sort(),
+      onDisk,
+      '디스크 모듈이 매트릭스에도 제외 목록에도 없다 — 아무도 안 도는 모듈이 생겼다.',
+    )
+
+    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+    const orphan = excluded.filter((m) => !new RegExp(`:modules:${m}\\b`).test(workflow))
+    assert.deepEqual(
+      orphan,
+      [],
+      `매트릭스에서 빠졌는데 전용 잡도 없는 모듈이 있다: ${orphan.join(', ')}\n` +
+        `그 모듈은 backend-ci 에서 **한 번도 검증되지 않는다.**`,
+    )
   })
 
   test('★★한 모듈만 바뀌면 그 모듈과 그것을 의존하는 것만 고른다', () => {
