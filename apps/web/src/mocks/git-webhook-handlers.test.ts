@@ -1,7 +1,7 @@
 // FR-AT-07 PR-D Git 웹훅 등록 REST 3매핑 MSW stateful 핸들러 단위 테스트
 // — POST→GET 반영 + DELETE→GET 반영 + secret 400 + 권한 403 계약 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   createGitWebhookResponseSchema,
   gitWebhookSummarySchema,
@@ -14,17 +14,15 @@ import { DEFAULT_GIT_WEBHOOK_PROJECT_KEY, resetGitWebhookStore, SCENARIO_KEY } f
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...gitWebhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...gitWebhookHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetGitWebhookStore()
   for (const key of Object.values(SCENARIO_KEY)) {
     localStorage.removeItem(key)
   }
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — fetch 래퍼 (drift 차단을 위해 리터럴 요청 바디 산재 대신 helper로 생성)

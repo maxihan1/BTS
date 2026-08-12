@@ -1,6 +1,6 @@
 // WebAuthn MSW 핸들러 단위 테스트 — stateful store + CSRF + verify 분기 검증 (FR-MF-03)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { webauthnHandlers, resetWebauthnStore } from './webauthn-handlers'
 import { mfaHandlers } from './mfa-handlers'
 
@@ -8,14 +8,12 @@ import { mfaHandlers } from './mfa-handlers'
 // 서버 — WebAuthn 핸들러 + MFA verify 핸들러 (webauthn 분기 테스트용)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...webauthnHandlers, ...mfaHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...webauthnHandlers, ...mfaHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetWebauthnStore()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 응답 타입 (테스트 내부 편의용)

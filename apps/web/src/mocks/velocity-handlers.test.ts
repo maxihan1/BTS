@@ -1,7 +1,7 @@
 // 스프린트 벨로시티 MSW 핸들러 단위 테스트 — 계약 drift 가드 (FR-RP-02 D6/D7 Task 6)
 
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { velocityResponseSchema } from '@/api/velocity'
 import {
   DEFAULT_VELOCITY,
@@ -16,17 +16,15 @@ import {
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...velocityHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...velocityHandlers)
+})
 
 beforeEach(() => {
   resetVelocityStore()
   seedVelocity(DEFAULT_VELOCITY)
 })
 
-afterEach(() => server.resetHandlers())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 계약 drift 가드 — 기본 픽스처가 실제 Zod 응답 스키마를 통과하는지 검증

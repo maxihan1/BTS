@@ -1,16 +1,14 @@
 // 버전 MSW 핸들러 단위 테스트 — stateful CRUD + RFC 7807 에러 구조 검증 (FR-VR-01)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { resetVersionStore, seedReleaseNotes, versionHandlers } from './version-handlers'
 
-const server = setupServer(...versionHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...versionHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetVersionStore()
 })
-afterAll(() => server.close())
 
 const BASE_URL = '/api/v1/projects/ATLAS/versions'
 

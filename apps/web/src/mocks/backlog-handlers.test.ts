@@ -4,7 +4,7 @@
 //   - msw-mutation-stateful-refetch: mutation 후 GET 재조회 시 변경이 반영되는지 검증
 //   - msw-derived-behavior-shared-store-e2e: 정적 픽스처 반환은 가짜그린 — store에서 읽어야 함
 //
-import { setupServer } from 'msw/node'
+import { server } from '@/test/server'
 import {
   backlogHandlers,
   LS_KEY_BACKLOG_TRUNCATED,
@@ -21,18 +21,13 @@ import {
 // 테스트용 MSW 서버 — backlogHandlers만 등록
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...backlogHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...backlogHandlers)
+})
 
 beforeEach(() => {
   resetBacklogStore()
   seedBacklog(DEFAULT_BACKLOG)
-})
-
-afterEach(() => {
-  server.resetHandlers()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
