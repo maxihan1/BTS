@@ -19,12 +19,22 @@
 #
 # 종료 코드. 0 = 통과 / 1 = 축 A 위반 / 2 = 축 B 위반 / 3 = 축 C 위반
 #            4 = 파생 실패(하한 미달·미분류) / 5 = 문법 검증 실패 / 6 = 실효 검증 실패
-#            7 = 전제조건 부재(docker 등)
+#            7 = 전제조건 부재(docker CLI) / 8 = Docker 데몬 부재
+#
+# ★7 과 8 을 가르는 이유. 둘 다 「전제조건 부재」지만 **사람이 할 일이 다르다** — 설치냐 기동이냐.
+#   더 중요한 건 8 이 없으면 데몬 부재가 **5(문법 오류)로 떨어진다**는 것이다. 2026-08-12
+#   PR #367 에서 실제로 그랬고, infra-ci 가 「이 설정으로 배포하면 프론트 전체가 뜨지 않는다」고
+#   말했다. 설정은 멀쩡했다. 오진은 빨간불보다 나쁘다 — 엉뚱한 곳을 파게 만든다.
+#   판별식. scripts/workflow/nginx-docker-precondition.test.ts
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NGINX_CONF="$REPO_ROOT/infra/prod/nginx.conf"
 NGINX_IMAGE="nginx:1.27-alpine"
+
+# 실제 Docker 를 끄지 않고 전제조건 분기를 검증하는 유일한 통로.
+# scripts/workflow/nginx-docker-precondition.test.ts 가 이 이음매로 데몬 부재를 주입한다.
+DOCKER="${BTS_DOCKER_BIN:-docker}"
 
 # 발급기 파생 하한. 현재 실측 9개(base64url 3 · hex 6). 파생기가 고장나 0건이 되면
 # 모든 단언이 vacuous 하게 통과하므로 하한을 둔다. 발급기를 늘리는 건 통과, 줄면 실패.
@@ -146,9 +156,16 @@ ok "축 C(설정 실효) — log_format·access_log·마스킹 변수·금지 �
 # 3. RQ-6 문법 검증 + RQ-7 실효 검증 (실제 nginx)
 # ─────────────────────────────────────────────────────────────────────────────
 # docker 부재를 SKIP 으로 넘기지 않는다 — 조용한 스킵은 vacuous 통과 경로다.
-command -v docker >/dev/null 2>&1 || fail "docker 가 필요하다(문법·실효 검증). 조용히 건너뛰지 않는다" 7
+command -v "$DOCKER" >/dev/null 2>&1 || fail "docker 가 필요하다(문법·실효 검증). 조용히 건너뛰지 않는다" 7
 
-docker run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" nginx -t >/dev/null 2>&1 \
+# ★CLI 존재와 데몬 가동은 다른 것이다. 이 한 줄이 없어서 2026-08-12 PR #367 에서
+#   「이 설정으로 배포하면 프론트 전체가 뜨지 않는다」는 오진이 났다 — 설정은 멀쩡했고
+#   변수는 데몬 하나뿐이었다(Docker 를 켜고 코드 무변경 재실행 → EXIT=5 → 0).
+#   여전히 빨간불이다(조용한 스킵은 금지). 다만 **어디를 봐야 하는지**를 바르게 말한다.
+"$DOCKER" info >/dev/null 2>&1 \
+    || fail "Docker 데몬이 꺼져 있다 — 설정 문제가 아니다. 데몬을 켜고 재실행할 것" 8
+
+"$DOCKER" run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" nginx -t >/dev/null 2>&1 \
     || fail "nginx 문법 검증 실패 — 이 설정으로 배포하면 프론트 전체가 뜨지 않는다 (RQ-6)" 5
 ok "RQ-6 문법 검증 (nginx -t)"
 
@@ -162,7 +179,7 @@ T_UUID="3f2504e0-4f89-11d3-9a0c-0305e82c3301"
 #    실패한다. 요청마다 wget 타임아웃(-T 2)을 걸지 않으면 proxy_read_timeout 120s 까지
 #    매달려 검증이 사실상 멈춘다. 응답이 502/504/499 중 무엇이든 **접속 로그 줄은 기록**되고,
 #    우리가 보는 판별자는 그 줄에 원문 토큰이 있느냐뿐이므로 검증 목적에는 충분하다.
-LOGS="$(docker run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" sh -c "
+LOGS="$("$DOCKER" run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" sh -c "
 rm -f /etc/nginx/conf.d/default.conf
 nginx 2>/dev/null
 i=0; while [ \$i -lt 50 ]; do wget -q -T 1 -O /dev/null http://127.0.0.1/ 2>/dev/null && break; i=\$((i+1)); done
