@@ -602,6 +602,38 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
     )
   })
 
+  test('★★대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다 (두 목록 짝맞춤)', () => {
+    // `/bts-merge` Step 3 은 훅이 안 돌았을 때의 수동 폴백으로 `git add <progress.html>` 을
+    // 지시한다. 그 경로가 생성기의 실제 출력과 다르면 **실행하는 순간 pathspec 오류**로 죽는다.
+    // 2026-07-17 에 이미 적발됐는데(메모리 `dashboard-regen-after-fr-marking`) 문서만 남아
+    // 26일간 그대로였다 — 사람 기억은 짝을 유지하지 못한다는 증거라 판별식으로 못박는다.
+    const generator = fs.readFileSync(path.join(REPO_ROOT, 'scripts/build-dashboard.mjs'), 'utf-8')
+    const m = generator.match(/OUTPUT_PATH\s*=\s*path\.join\([^,]+,\s*'([^']+)'\)/)
+    assert.ok(
+      m !== null,
+      'build-dashboard.mjs 에서 OUTPUT_PATH 를 못 읽었다 — 아래 대조가 공허해진다.',
+    )
+    const actual = m[1]
+
+    const skill = fs.readFileSync(MERGE_SKILL, 'utf-8')
+    // 스킬이 적은 progress.html 경로를 전부 모은다. 경로 없이 파일명만 쓴 산문은 제외한다.
+    const mentioned = [...new Set([...skill.matchAll(/[\w./-]*progress\.html/g)].map((x) => x[0]))]
+    const wrong = mentioned.filter((p) => p.includes('/') && p !== actual)
+
+    assert.deepEqual(
+      wrong,
+      [],
+      `.claude/skills/bts-merge/SKILL.md 가 실재하지 않는 경로를 지시한다: ${wrong.join(' · ')}\n` +
+        `생성기(build-dashboard.mjs)의 실제 출력은 '${actual}' 이다.\n` +
+        `그대로 실행하면 git 이 pathspec 오류로 죽어 폴백 절차 자체가 성립하지 않는다.`,
+    )
+    assert.ok(
+      skill.includes(actual),
+      `.claude/skills/bts-merge/SKILL.md 가 실제 출력 경로 '${actual}' 를 한 번도 적지 않는다 — ` +
+        '폴백 절차가 무엇을 커밋해야 하는지 알 수 없다.',
+    )
+  })
+
   test('★★호출부 주석이 「현재 HEAD 무접촉」이라고 말하지 않는다 (문서 drift)', () => {
     // 계약이 「현재 HEAD」에서 「현재 main 내용(= [skip ci] 를 되감은 구간)」으로 넓어졌다.
     // 옛 문구가 남으면 다음 사람이 이 PR 을 되돌린다 — 이 저장소가 여러 번 겪은 양식.
