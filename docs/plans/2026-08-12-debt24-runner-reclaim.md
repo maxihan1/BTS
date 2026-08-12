@@ -152,6 +152,17 @@ OVER = (load_ratio >= 2.0 || swap_ratio >= 0.5)
 | `main` 의 run 중 **HEAD 가 아닌 낡은 커밋** 것 | **취소** |
 | `main` 인자인데 HEAD 조회 실패 | **아무것도 안 함** (fail-open — 기존 계약) |
 | `master`/`HEAD` 인자 | 기존대로 무접촉 |
+| **★`/bts-merge` 가 `main` 도 인자로 넘긴다** | **배선** — 아래 참조 |
+
+**★계획 정정 (2026-08-12, 착수 중 발견) — 배선이 빠져 있었다.**
+
+스크립트가 `main` 을 똑똑하게 다뤄도 **아무도 `main` 을 인자로 넘기지 않으면 부채는 그대로다.**
+`.claude/skills/bts-merge/SKILL.md:75` 는 지금 머지된 PR 브랜치 하나만 넘긴다.
+「가드는 CI 배선까지」(`[[nonprod-bean-collision-nine-not-five]]`) 양식이라 Task 3 의 files 에
+`SKILL.md` 를 추가하고, 이 하네스에 **배선 케이스**를 짝으로 넣는다.
+
+같은 파일의 주석이 「보호 브랜치(main/master/HEAD)를 넘기면 gh 를 한 번도 호출하지 않는다」고
+단언한다 — 계약이 좁아지면 그 문장이 거짓이 되므로 **같은 커밋에서 정정**한다.
 
 **실패 메시지 (예상)**. 현재 `PROTECTED=("main" "master" "HEAD")` 가 `main` 을 통째로 거르므로
 「낡은 커밋 run 취소」 케이스가 **0건 취소**로 red.
@@ -162,13 +173,20 @@ OVER = (load_ratio >= 2.0 || swap_ratio >= 0.5)
 
 ### Task 3. GREEN — `cancel-merged-pr-runs.sh` 에 main 전용 경로
 
-**메타**. agent: `backend-engineer` · files: [`scripts/cancel-merged-pr-runs.sh`] · depends-on: [2]
+**메타**. agent: `backend-engineer` · files: [`scripts/cancel-merged-pr-runs.sh`, `.claude/skills/bts-merge/SKILL.md`] · depends-on: [2]
 
 **GREEN**. `TODOS.md:2652` 처방 ① — 보호 계약을 **「main 무접촉」에서 「현재 HEAD 검증 무접촉」으로** 좁힌다.
 
 - `master`·`HEAD` 는 **기존대로 통째 무접촉** (좁히는 것은 `main` 하나뿐)
-- `main` 은 `git rev-parse origin/main` 으로 현재 HEAD 를 구하고 **`headSha` 가 다른 run 만** 취소
+- `main` 은 **현재 HEAD 를 원격에 묻고**(`gh api repos/{owner}/{repo}/commits/main --jq .sha)`
+  **`headSha` 가 다른 run 만** 취소
 - HEAD 조회 실패·`gh` 부재·API 오류 → **아무것도 안 하고 exit 0** (기존 fail-open 계약 유지)
+- **배선**. `SKILL.md` Step 5 가 PR 브랜치에 이어 `main` 도 넘기고, 낡아진 주석을 정정
+
+**★HEAD 를 로컬 `git rev-parse origin/main` 으로 구하지 않는 이유.** 로컬 원격추적 ref 는
+fetch 시점에 멈춰 있다. 그것이 뒤처져 있으면 **새 HEAD 의 run 을 「낡은 것」으로 오판해 죽인다** —
+바로 이 task 가 막으려는 자기 발등 찍기다. 원격에 직접 묻고, 못 물으면 아무것도 하지 않는다.
+이음매도 `BTS_GH_BIN` 하나로 유지된다 (새 이음매 불필요).
 
 **★이 변경이 자기 발등을 찍는 경로.** 머지 직후 main push CI 는 **새 HEAD** 로 돈다.
 그 run 을 죽이면 이 도구가 고치려던 문제(현재 main 검증 0건)를 스스로 만든다 — Task 2 의 1번 케이스가 그것을 잡는다.
@@ -187,6 +205,7 @@ OVER = (load_ratio >= 2.0 || swap_ratio >= 0.5)
 | M2. `main` 을 다시 `PROTECTED` 로 되돌림 | **red** — 낡은 커밋 취소 케이스가 잡는다 |
 | M3. `master` 를 `PROTECTED` 에서 제거 | **red** — 좁힌 범위가 `main` 뿐임을 고정 |
 | M4. HEAD 조회 실패 경로를 「전부 취소」로 | **red** — fail-open 케이스 |
+| **M5. `SKILL.md` 에서 `main` 호출 줄을 제거** | **red** — 배선 케이스 (계획 정정분) |
 
 **0파 교훈 적용.** 「없으면 검사 안 함」 경로를 함께 본다 — `gh` 부재 시 조용히 통과하는지.
 
