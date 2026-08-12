@@ -407,6 +407,43 @@ describe('backend-ci 모듈 선별', () => {
       `매트릭스로 넘길 모듈 JSON 이 안 나왔다 — 셸은 살았는데 아무것도 안 넘긴다.\n` +
         `GITHUB_OUTPUT: ${JSON.stringify(emitted)}\n${r.stdout ?? ''}${r.stderr ?? ''}`,
     )
+
+    // ★★diff 가 실패하는 경우(얕은 클론 · base 부재)도 **같은 셸로** 확인한다.
+    //   여기가 이 스텝의 fail-safe 다. 2026-08-12 CI 실측에서 정확히 이 경로가 무너졌다 —
+    //   입력이 비면 `xargs` 가 명령을 **아예 실행하지 않아** 빈 문자열이 나왔고, 그것을
+    //   그대로 넘기면 `fromJSON('')` 이 매트릭스를 깨뜨린다. 유닛 테스트로는 못 보는 층이다.
+    const outFile2 = path.join(dir, 'github_output_2')
+    fs.writeFileSync(outFile2, '')
+    const r2 = spawnSync('bash', ['-e', file], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        // 존재하지 않는 ref — diff 가 실패해 목록이 비는 경로를 강제한다.
+        BASE_SHA: '0000000000000000000000000000000000000000',
+        GITHUB_OUTPUT: outFile2,
+        GITHUB_STEP_SUMMARY: path.join(dir, 'summary2.md'),
+      },
+    })
+    assert.equal(
+      r2.status,
+      0,
+      `diff 실패 경로에서 스텝이 죽는다 (exit ${r2.status}) — fail-safe 가 성립하지 않는다.\n` +
+        `${r2.stdout ?? ''}${r2.stderr ?? ''}`,
+    )
+    const emitted2 = fs.readFileSync(outFile2, 'utf8')
+    assert.match(
+      emitted2,
+      /^modules=\[".+"\]$/m,
+      `diff 실패 시 모듈 JSON 이 비었다 — 매트릭스가 조용히 스킵된다.\n` +
+        `GITHUB_OUTPUT: ${JSON.stringify(emitted2)}\n${r2.stdout ?? ''}${r2.stderr ?? ''}`,
+    )
+    const picked2 = JSON.parse(emitted2.match(/^modules=(.+)$/m)?.[1] ?? '[]') as string[]
+    assert.deepEqual(
+      picked2.sort(),
+      allModules().sort(),
+      `diff 실패인데 전 모듈이 아니다 — 모르는 상태에서 좁혔다.\n${emitted2}`,
+    )
   })
 
   test('★넓은 판정과 좁은 판정을 구분해 보고한다', () => {
