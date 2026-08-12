@@ -18,11 +18,23 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useCreateProject } from '@/hooks/use-project-mutations'
+import { isValidProjectKey } from '@/lib/project-key'
+import { projectKeyFormatMessage } from '@/i18n/ko'
 import { extractProjectErrorCode, ProjectErrorCodes } from '@/api/projects'
 import { useAuthUser } from '@/auth/authStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 라벨 — 로컬 상수 (공유 i18n 미접촉, 스펙 §라벨 지시)
+// 라벨 — 로컬 상수. 단 `keyInvalid` 만 공유 i18n 참조 (2026-08-12 · PR #367)
+//
+// ★이전 주석은 「공유 i18n 미접촉, 스펙 §라벨 지시」였는데 **그 인용이 부정확했다.**
+//   실측 — 그런 §라벨 절은 스펙(`2026-07-20-fr-pj-pr-5-project-crud-ui.md`)에 없다.
+//   근거는 **plan** `2026-07-20-fr-pj-pr-5-project-crud-ui.md` W2 이고, 내용은
+//   「T4/5/6 **병렬 구현 시** 공용 라벨 파일 동시편집 충돌 가능」이라는 **그 PR 한정
+//   작업 스케줄 완화책**이다. 게다가 대안으로 **「T3/T7 중앙화」를 명시적으로 허용**한다.
+//
+//   그래서 `keyInvalid` 는 중앙화했다 — 같은 형식 규칙을 이슈 이동 화면도 설명하는데
+//   문장을 두 벌 두면 한쪽만 고쳐졌을 때 화면마다 다른 설명이 나온다.
+//   나머지 라벨은 공유 대상이 없어 로컬로 남긴다(범위를 넓히지 않는다).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const projectCreateLabels = {
@@ -31,7 +43,8 @@ const projectCreateLabels = {
   keyLabel: '프로젝트 키',
   keyPlaceholder: '예: ATLAS',
   keyRequired: '프로젝트 키를 입력하세요.',
-  keyInvalid: '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.',
+  // 이슈 이동 화면과 **같은 문장**을 쓴다 — 같은 규칙을 화면마다 다르게 설명하지 않기 위해.
+  keyInvalid: projectKeyFormatMessage,
   nameLabel: '프로젝트 이름',
   nameRequired: '프로젝트 이름을 입력하세요.',
   submitButton: '프로젝트 생성',
@@ -47,12 +60,6 @@ const projectCreateLabels = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 프로젝트 key 형식 정규식 — backend `PROJECT_KEY_REGEX`(대문자로 시작, 대문자+숫자 2~10자)와
- * 동일. DB CHECK(`projects_key_check`)와도 정합한다(dual 검증, 프론트는 UX 편의).
- */
-const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/
-
-/**
  * 프로젝트 생성 폼 입력 Zod 스키마.
  *
  * key는 `.refine`으로 "빈 값이면 형식 검증을 건너뛴다"를 명시해 빈 문자열 제출 시
@@ -62,7 +69,7 @@ const projectCreateSchema = z.object({
   key: z
     .string()
     .min(1, projectCreateLabels.keyRequired)
-    .refine((val) => val.length === 0 || PROJECT_KEY_PATTERN.test(val), {
+    .refine((val) => val.length === 0 || isValidProjectKey(val), {
       message: projectCreateLabels.keyInvalid,
     }),
   name: z.string().min(1, projectCreateLabels.nameRequired),

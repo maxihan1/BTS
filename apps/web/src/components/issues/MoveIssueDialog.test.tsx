@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { MoveIssueDialog } from './MoveIssueDialog'
+import { isMoveEnabled } from '@/lib/move-mapping'
+import { buildInitialNodeState } from './NodeMappingSection'
 
 // sonner toast mock
 vi.mock('sonner', () => ({
@@ -206,6 +208,29 @@ const moveResponseWithSubtasksFixture = {
     { previousKey: 'ATLAS-2', issueKey: 'INFRA-6' },
   ],
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 사용자 문구 정본 — **일부러 하드코딩한다**
+//
+// `issueMoveStrings` 를 import 해서 비교하면 ko.ts 를 고치는 순간 테스트도 같이 따라가
+// 「문구가 이래야 한다」는 계약이 사라진다. 여기 적힌 문자열이 곧 계약이고,
+// ko.ts 를 고치면 여기도 같이 고쳐야 한다.
+//
+// ★역할 분담 (`lib/move-error-message.test.ts` 와 다른 이유). 그 파일은 **라우팅**
+//   (어느 상태 → 어느 문구)을 재므로 동일성 비교가 맞고, 리터럴은 **여기 한 곳**에만 둔다.
+//   두 곳에 다 적으면 같은 문장이 세 벌이 되어 그 자체가 새 「두 목록」이 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 형식 오류 문구 — `issueMoveStrings.errorKeyFormat` 정본 */
+const KEY_FORMAT_TEXT = '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.'
+/** 그 외 4xx 문구 — `issueMoveStrings.errorPreview` 정본 */
+const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.'
+/** 5xx·네트워크 단절 문구 — `issueMoveStrings.errorPreviewTemporary` 정본 */
+const PREVIEW_TEMPORARY_TEXT =
+  '이슈 이동 정보를 불러오지 못했습니다. 일시적인 문제일 수 있으니 잠시 후 다시 시도해 주세요.'
+/** preview 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
+const PREVIEW_FORBIDDEN_TEXT =
+  '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 권한이 없는 것이니 다른 프로젝트로 시도해 보세요.'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -549,13 +574,7 @@ describe('T4-5: targetStateIsDone = 선택한 targetState의 isDone', () => {
 //   비-prod 에서만 나오고, 클라이언트 동작은 아래 500 케이스와 동일하다 — 순 중복이다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
-  /** 기존 preview 실패 문구 — `issueMoveStrings.errorPreview` 정본 */
-  const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.'
-  /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
-  const PREVIEW_FORBIDDEN_TEXT =
-    '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
-
+describe('T4-6: preview 실패 문구 — 403 · 일시적 · 그 외 4xx', () => {
   async function submitTarget(targetKey = 'INFRA'): Promise<void> {
     renderDialog()
     const user = userEvent.setup()
@@ -599,7 +618,10 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     expect(text).not.toContain('문의')
   })
 
-  it('preview 500 이면 기존 문구가 그대로 나온다 (비-공허 짝)', async () => {
+  // ★이 테스트는 「500 이면 기존 문구(대상 프로젝트 키를 확인해 주세요)가 그대로 나온다」였다.
+  //   그 초록은 **틀린 안내가 유지되는 것**을 지키고 있었다 — 서버가 죽은 것과 키 오타는
+  //   사용자가 할 다음 행동이 정반대다. 판정을 뒤집는다(삭제가 아니다).
+  it('preview 500 이면 일시적 문제 문구가 나온다 — 키를 의심하게 만들지 않는다', async () => {
     server.use(
       http.post('/api/v1/issues/:key/move/preview', () =>
         HttpResponse.json({ errorCode: 'INTERNAL_ERROR' }, { status: 500 }),
@@ -608,8 +630,28 @@ describe('T4-6: preview 실패 문구 — 403 권한 vs 그 외', () => {
     await submitTarget()
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
+    expect(alert).toHaveTextContent(PREVIEW_TEMPORARY_TEXT)
     expect(alert).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_ERROR_TEXT)
+    // 이 부채의 본질 — 서버 오류에 「키」를 꺼내지 않는다.
+    expect(alert.textContent ?? '').not.toContain('키')
+  })
+
+  it('preview 404(이슈 미존재) 면 그 외 4xx 문구가 나온다 — 이 404 는 운영에서도 난다', async () => {
+    // 도달 경로. 다이얼로그를 연 뒤 그 이슈가 삭제되면 `MovePreviewService:188` 이
+    // IssueNotFoundException 을 낸다. **대상 프로젝트** 미존재 404 와 혼동하지 말 것 —
+    // 그쪽만 비-prod 전용이다.
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ errorCode: 'ISSUE_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await submitTarget()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(PREVIEW_ERROR_TEXT)
+    expect(alert).not.toHaveTextContent(PREVIEW_TEMPORARY_TEXT)
+    expect(alert.textContent ?? '').not.toContain('키')
   })
 
   it('키를 다시 치기 시작하면 남아 있던 경고가 사라진다', async () => {
@@ -676,5 +718,204 @@ describe('T4-7: 이동 실행 403 — preview 와 같은 원인 설명', () => {
     })
     // 옛 문구는 더 이상 나오지 않는다 — 같은 다이얼로그가 단계마다 다른 설명을 내면 안 된다.
     expect(toast.error).not.toHaveBeenCalledWith('이슈를 이동할 권한이 없습니다.')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-10. isMoveEnabled 직접 판정 — DOM 없이
+//
+// 이 함수는 상태를 읽기만 하므로 컴포넌트 밖으로 뺐고, KDoc 에 「DOM 없이 직접 테스트할 수
+// 있다」고 적었다. **적었으면 테스트가 있어야 한다** — 없으면 그 문장이 거짓이고,
+// 커버리지는 여전히 「버튼이 disabled 인가」라는 렌더 경유 간접 관측뿐이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-10: isMoveEnabled 직접 판정 (DOM 없이)', () => {
+  // 픽스처마다 리터럴 타입이 달라 특정 픽스처 타입으로 못 묶는다 — 함수의 실제 입력 타입을 쓴다.
+  const rootOf = (fixture: Parameters<typeof buildInitialNodeState>[0]) =>
+    buildInitialNodeState(fixture)
+
+  it('preview 가 없으면 false', () => {
+    expect(isMoveEnabled(null, rootOf(compatiblePreviewFixture), {})).toBe(false)
+  })
+
+  it('루트 매핑이 없으면 false', () => {
+    expect(isMoveEnabled(compatiblePreviewFixture, null, {})).toBe(false)
+  })
+
+  it('완전 호환 + 초기 매핑이면 true', () => {
+    expect(isMoveEnabled(compatiblePreviewFixture, rootOf(compatiblePreviewFixture), {})).toBe(true)
+  })
+
+  it('비호환 상태를 아직 안 골랐으면 false', () => {
+    expect(
+      isMoveEnabled(incompatiblePreviewFixture, rootOf(incompatiblePreviewFixture), {}),
+    ).toBe(false)
+  })
+
+  it('자식이 있는데 그 자식의 매핑이 없으면 false — 루트만 보고 통과시키지 않는다', () => {
+    expect(isMoveEnabled(subtaskPreviewFixture, rootOf(subtaskPreviewFixture), {})).toBe(false)
+  })
+
+  it('자식 매핑까지 채우면 true', () => {
+    const childMappings: Record<string, ReturnType<typeof buildInitialNodeState>> = {}
+    for (const child of subtaskPreviewFixture.subtasks) {
+      childMappings[child.issueKey] = buildInitialNodeState(child)
+    }
+    expect(isMoveEnabled(subtaskPreviewFixture, rootOf(subtaskPreviewFixture), childMappings)).toBe(
+      true,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-9. 이동 실행 404 PROJECT_NOT_FOUND — **비-prod 전용 분기**의 특성화 (매핑 `12`)
+//
+// 이 분기는 **운영에서 실행되지 않는다.** `IssueMoveService.kt:189-190` 의 권한 assert 가
+// `:210` 의 존재 확인보다 앞서고, 운영 리졸버가 미존재 프로젝트를 권한 거부로 판정하기
+// 때문이다(`IdentityAccessIssuePermissionResolver:77`). 그래도 개발 리졸버
+// (`DevAllowIssuePermissionResolver`)에서는 실제로 도달한다 — 지우면 개발 중에 원인이
+// 「알 수 없는 오류」로 뭉개진다.
+//
+// ★이 테스트는 red-first 가 아니다. 분기는 이미 있고 올바르게 동작한다. 결함은
+//   「언제 도는가」를 주석 4곳이 틀리게 적어 둔 것이었다. 다만 이 분기를 재는 테스트가
+//   **한 건도 없었다** — 커버리지 0 인 채로 「비-prod 전용」이라 적으면 다음 사람이
+//   지워도 아무것도 안 깨진다. 그 구멍을 메우는 특성화 테스트다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-9: 이동 실행 404 PROJECT_NOT_FOUND — 비-prod 전용 분기', () => {
+  /** 대상 프로젝트 미존재 문구 — `issueMoveStrings.errorProjectNotFound` 정본 */
+  const PROJECT_NOT_FOUND_TEXT = '대상 프로젝트를 찾을 수 없습니다.'
+  /** 기본 문구 — `issueMoveStrings.errorDefault` 정본 */
+  const MOVE_DEFAULT_ERROR_TEXT = '이슈 이동 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+
+  beforeEach(() => {
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ data: compatiblePreviewFixture }),
+      ),
+      http.post('/api/v1/issues/:key/move', () =>
+        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+  })
+
+  it('404 PROJECT_NOT_FOUND 면 대상 프로젝트 미존재 토스트를 낸다', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'INFRA')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/이동 매핑 확인/i)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /이동/i }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PROJECT_NOT_FOUND_TEXT)
+    })
+    // 기본 문구로 떨어지지 않는다 — 떨어지면 개발 중 원인 파악이 한 단계 느려진다.
+    expect(toast.error).not.toHaveBeenCalledWith(MOVE_DEFAULT_ERROR_TEXT)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-8. 요청 전 키 형식 차단 (기술부채 매핑 `11`)
+//
+// 백엔드는 프로젝트 키를 **정확 일치**로 조회하고(`ProjectDirectory` 의 raw SQL
+// `WHERE key = :key`), 운영 리졸버는 미존재 프로젝트를 **권한 거부**로 판정한다
+// (`IdentityAccessIssuePermissionResolver:77` — `resolveProjectId(scope) ?: return false`).
+// 그래서 소문자 `infra` 는 서버까지 가서 **403 「권한 없음」** 으로 되돌아온다.
+// 사용자가 고칠 수 있는 것은 대소문자인데 화면은 권한 이야기를 한다.
+//
+// 처방은 생성 화면과 **같은 판정**(`isValidProjectKey`)을 요청 전에 거는 것이다.
+// 그러므로 이 블록이 재는 것은 「문구가 떴다」가 아니라 **「요청이 나가지 않았다」** 이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-8: 요청 전 키 형식 차단', () => {
+  /** preview 가 실제로 몇 번 나갔는지. 이 숫자가 이 블록의 단언 대상이다. */
+  let previewRequestCount = 0
+
+  beforeEach(() => {
+    previewRequestCount = 0
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () => {
+        previewRequestCount += 1
+        return HttpResponse.json({ data: compatiblePreviewFixture })
+      }),
+    )
+  })
+
+  it('소문자 키로 「다음」을 누르면 preview 요청이 나가지 않는다', async () => {
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'infra')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(KEY_FORMAT_TEXT)
+    expect(previewRequestCount).toBe(0)
+    // Step 1 에 머문다 — 매핑 화면으로 넘어가지 않는다.
+    expect(screen.queryByText(/이동 매핑 확인/i)).not.toBeInTheDocument()
+  })
+
+  it('★비-공허 짝. 형식이 맞는 키는 preview 요청이 그대로 나간다', async () => {
+    // 이 짝이 없으면 위 단언은 「게이트가 전부를 막아 버린 것」과 구분되지 않는다.
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'INFRA')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/이동 매핑 확인/i)).toBeInTheDocument()
+    })
+    expect(previewRequestCount).toBe(1)
+  })
+
+  it('★게이트는 존재를 모른다 — 형식이 맞고 없는 키는 그대로 서버까지 가서 403 이 된다', async () => {
+    // 매핑 `18` 의 판정 전제를 재는 테스트다.
+    // TODOS 와 PR 본문은 「게이트를 넣으면 403 원인이 3개 → 2개로 준다」를 근거로
+    // 「키 확인 문구를 뺄 글자 예산이 생긴다」고 적었다. **틀렸다.**
+    // 게이트가 거르는 것은 **형식 위반**뿐이고, `NOPE` 처럼 형식이 맞고 존재하지 않는 키는
+    // 그대로 403 이 된다. 즉 403 도달 원인은 여전히 셋이다
+    // (① 형식 맞는 오타/미존재 · ② 이슈 UPDATE 없음 · ③ 대상 CREATE 없음).
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () => {
+        previewRequestCount += 1
+        return HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 })
+      }),
+    )
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'NOPE')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    // 게이트를 통과했다 — 요청이 나갔다.
+    await waitFor(() => {
+      expect(previewRequestCount).toBe(1)
+    })
+    // 그리고 403 문구를 받는다. 「키를 확인해 주세요」가 여전히 필요한 이유가 이것이다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+  })
+
+  it('Enter 로 제출해도 같은 게이트가 걸린다', async () => {
+    // 제출 경로가 버튼과 Enter 둘이면 게이트도 둘 다 타야 한다 — 한쪽만 막으면 봉합이 절반이다.
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'infra{Enter}')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(KEY_FORMAT_TEXT)
+    expect(previewRequestCount).toBe(0)
+  })
+
+  it('형식 오류 문구는 403 문구와 다른 문장이다', async () => {
+    // 같으면 「고칠 수 있는 오타」와 「고칠 수 없는 권한」이 사용자 눈에 한 덩어리가 된다.
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'infra')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    expect(await screen.findByRole('alert')).not.toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
   })
 })

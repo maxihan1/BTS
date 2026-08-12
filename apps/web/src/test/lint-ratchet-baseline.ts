@@ -17,7 +17,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 317,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
-  "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 326,
+  "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,
   "src/components/issues/NodeMappingSection.tsx::Function 'NodeMappingSection'": 232,
   "src/components/search/ExportDialog.tsx::Function 'ExportForm'": 334,
   "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 332,

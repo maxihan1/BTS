@@ -344,3 +344,125 @@ test.describe('FR-MV-01 D7 이슈 이동 — 서브태스크 동반 (subtask 시
     await page.waitForURL(`**/${NEW_KEY}`)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E-6 403 문구 렌더 폭 재판정 (기술부채 매핑 `18`)
+//
+// 왜 E2E 인가. **문구가 좁은 폭에서 몇 줄이 되는지는 유닛이 구조적으로 못 잰다** —
+// jsdom 은 레이아웃을 계산하지 않아 `getBoundingClientRect()` 가 전부 0 이다.
+// 그래서 실제 브라우저에서 재고 스크린샷을 남긴다
+// ([[mock-swallowed-prop-is-invisible-to-unit-tests]] 와 같은 축 — 유닛의 사각지대).
+//
+// 무엇을 지키나. 재판정 결과 문구에 **다음 행동 안내가 되살아났다**(55자). 그 결정의
+// 조건이 「모든 폭에서 2줄을 넘지 않는다」였다 — 원안 74자는 390px 이하에서 3줄이 됐다.
+// 그러므로 이 테스트는 그 조건이 깨지는 순간 red 가 되는 **회귀 가드**다.
+// 문구를 늘리는 다음 사람이 좁은 폭을 안 보고 늘리는 것을 여기서 막는다.
+//
+// 전제였던 「형식 게이트 도입 후 403 원인이 3 → 2 로 준다」는 거짓이다
+// (`MoveIssueDialog.test.tsx` T4-8 「게이트는 존재를 모른다」가 실측).
+//
+// ★addInitScript 는 goto 이전에 등록해야 하므로 자체 beforeEach 를 가진 독립 describe.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-MV-01 이동 403 문구 — 실제 렌더 폭 (forbidden 시나리오)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Given. 403 시나리오 플래그 — loginAsAlice(goto) 이전에 등록
+    await page.addInitScript((key: string) => {
+      window.localStorage.setItem(key, 'forbidden')
+    }, LS_KEY_MOVE_SCENARIO)
+    await loginAsAlice(page)
+  })
+
+  test('E2E-6 403 인라인 에러가 Step1 폭에서 몇 줄로 렌더되는지 측정 + 눈확인 스크린샷', async ({
+    page,
+  }, testInfo) => {
+    await navigateToIssueDetail(page, ISSUE_WITH_SUBTASKS_URL)
+    await page.getByRole('button', { name: '이슈 이동', exact: true }).click()
+
+    // When. 형식은 맞는 키를 넣어 클라이언트 게이트를 통과시킨다.
+    //   ⚠️ **이 E2E 는 게이트를 검증하지 않는다.** forbidden 시나리오 핸들러는 키 값을 읽지
+    //   않고 무조건 403 을 돌려주므로, 게이트를 지워도 이 테스트는 초록이다.
+    //   게이트를 실제로 재는 것은 유닛 T4-8(요청 횟수 0/1)이고, 여기서 재는 것은
+    //   **그 403 문구가 실제 폭에서 몇 줄이 되는가** 하나뿐이다.
+    await page.getByLabel(issueMoveStrings.targetProjectKeyLabel, { exact: true }).fill('NOPE')
+    await page.getByRole('button', { name: issueMoveStrings.nextButton, exact: true }).click()
+
+    // Then. 403 전용 문구가 인라인 에러 영역에 뜬다 — i18n 정본 참조(하드코딩 금지).
+    const alert = page.getByRole('alert')
+    await expect(alert).toHaveText(issueMoveStrings.errorPreviewForbidden)
+
+    // Then. 재판정이 건 조건 — **어느 폭에서도 2줄을 넘지 않는다.**
+    //   줄수 = 높이 / 줄간격. 계산이 아니라 실제 렌더가 증인이다
+    //   (`[[button-user-select-auto-is-none]]` — 계산값은 거짓말한다).
+    //   ★데스크톱 한 폭만 재면 안 된다. Dialog 는 `max-w-lg` 라 뷰포트가 좁으면 같이 좁아지고,
+    //     원안 74자가 3줄이 된 것도 390px 이하에서였다. 한 폭만 쟀으면 반대로 결론 냈다.
+    //   ★단언은 **전 폭을 다 재고 증거를 남긴 뒤에** 한다. 루프 안에서 곧바로 throw 하면
+    //     실패한 실행에는 측정값도 스크린샷도 남지 않는다 — 실패 메시지가 「좁은 폭을 다시
+    //     재라」고 지시하는데 정작 그 수치가 리포트에 없는 모순이 된다.
+    const MAX_LINES = 2
+    const measured: Record<string, { boxWidth: number; lines: number; fontSize: string }> = {}
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      measured[`w${width}`] = await alert.evaluate((el) => {
+        const style = window.getComputedStyle(el)
+        // `line-height: normal` 이면 parseFloat 가 NaN 이 된다. 그때는 폰트 크기 기반으로
+        // 대체하지 않고 **잴 수 없음(-1)** 을 돌려준다 — NaN 비교는 「문구가 길어졌다」와
+        // 구분되지 않는 엉뚱한 실패 메시지를 낸다.
+        const lineHeight = Number.parseFloat(style.lineHeight)
+        const rect = el.getBoundingClientRect()
+        return {
+          boxWidth: Math.round(rect.width),
+          // ★round 가 아니라 ceil. 2.4줄을 2줄로 내림하면 넘친 것을 통과시킨다.
+          lines: Number.isFinite(lineHeight) ? Math.ceil(rect.height / lineHeight - 0.05) : -1,
+          fontSize: style.fontSize,
+        }
+      })
+    }
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    // 측정값을 실행 로그로 남긴다 — 첨부는 통과한 테스트에 보존되지 않아 CI 에서 안 보인다.
+    // eslint-disable-next-line no-console
+    console.log(
+      '[E2E-6] 403 문구 렌더 치수',
+      JSON.stringify({ chars: issueMoveStrings.errorPreviewForbidden.length, ...measured }),
+    )
+
+    // 리포터가 붙어 있는 실행에서는 첨부로도 남긴다 — 이 숫자가 매핑 `18` 재판정의 근거다.
+    await testInfo.attach('403-문구-렌더-치수.json', {
+      body: JSON.stringify({ text: issueMoveStrings.errorPreviewForbidden, ...measured }, null, 2),
+      contentType: 'application/json',
+    })
+
+    // 눈확인 — 라이트/다크 양쪽 스크린샷.
+    await testInfo.attach('403-문구-라이트.png', {
+      body: await page.getByRole('dialog').screenshot(),
+      contentType: 'image/png',
+    })
+    await page.evaluate(() => document.documentElement.classList.add('dark'))
+    // ★색 전환이 끝나기를 기다린다. 안 기다리면 **전환 중간 프레임**이 찍혀 다크가 아니라
+    //   그냥 흐려진 화면이 남는다 — 실제로 그렇게 한 번 찍혔고, 그 첨부만 보면 「다크가
+    //   깨졌다」로 오독하게 된다. 단언이 아니라 첨부용이라 고정 대기로 충분하다.
+    await page.waitForTimeout(800)
+    await testInfo.attach('403-문구-다크.png', {
+      body: await page.getByRole('dialog').screenshot(),
+      contentType: 'image/png',
+    })
+    await page.evaluate(() => document.documentElement.classList.remove('dark'))
+
+    // ── 증거를 다 남긴 뒤에 판정한다 ────────────────────────────────────────
+    for (const [key, m] of Object.entries(measured)) {
+      expect(
+        m.lines,
+        `${key}(박스 ${m.boxWidth}px)에서 403 문구가 ${m.lines}줄이다` +
+          `${m.lines === -1 ? ' (line-height 를 못 읽었다 — 문구 길이 문제가 아니다)' : ''}. ` +
+          `재판정(2026-08-12)이 건 조건은 모든 폭 ${MAX_LINES}줄 이하다 — 문구를 늘렸다면 ` +
+          `첨부된 「403-문구-렌더-치수.json」 을 보고 좁은 폭 기준으로 다시 판정할 것.`,
+      ).toBeLessThanOrEqual(MAX_LINES)
+      // -1(측정 불가)이 위 단언을 조용히 통과하는 것을 막는다.
+      expect(m.lines, `${key} 에서 줄수를 측정하지 못했다`).toBeGreaterThan(0)
+    }
+
+    // Then. 계약 — 「관리자에게 문의」라는 막다른 길을 되살리지 않는다.
+    await expect(alert).not.toContainText('문의')
+  })
+})

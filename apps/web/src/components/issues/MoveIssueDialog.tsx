@@ -17,10 +17,12 @@ import { ApiError } from '@/api/client'
 import { previewMove, useMoveIssue, extractMoveErrorCode, MOVE_ERROR_CODES } from '@/api/issue-move'
 import type { MovePreview, SubtaskPreviewNode } from '@/api/issue-move'
 import { issueMoveStrings as s } from '@/i18n/ko'
+import { isValidProjectKey } from '@/lib/project-key'
+import { resolvePreviewErrorMessage } from '@/lib/move-error-message'
+import { isMoveEnabled } from '@/lib/move-mapping'
 import {
   NodeMappingSection,
   buildInitialNodeState,
-  isNodeMappingValid,
   type NodeMappingState,
 } from './NodeMappingSection'
 
@@ -47,6 +49,12 @@ interface MoveIssueDialogProps {
  * 이슈 이동 마법사 Dialog.
  *
  * Step 1: 대상 프로젝트 키 직접 입력 (목록 API 부재, FR-LK-01 선례).
+ *
+ * **§Step 1 게이트.** 형식이 어긋난 키는 요청을 보내지 않는다. 보내면 서버가 403
+ * 「권한 없음」으로 답하는데(백엔드가 키를 정확 일치로 조회하고, 운영 리졸버는 미존재
+ * 프로젝트를 권한 거부로 판정한다) 정작 사용자가 고칠 것은 대소문자다. 판정은 생성 화면과
+ * **같은** `isValidProjectKey` 를 쓴다 — 화면마다 다른 답을 내지 않게.
+ * ★존재 여부는 여전히 서버만 안다. `NOPE` 처럼 **형식이 맞고 없는** 키는 그대로 403 이다.
  * Step 2: preview 응답 기반 노드별(루트+subtasks) 매핑 섹션 표시.
  *   - 비호환 상태 select (compatible=false 시)
  *   - 컴포넌트/버전 autoMapping 기본값 + select 또는 제거
@@ -94,11 +102,19 @@ export function MoveIssueDialog({
 
   // ── Step 1 → Step 2: preview 호출 ────────────────────────────────────
   async function handleNext() {
-    if (targetProjectKey.trim() === '') return
+    const trimmedKey = targetProjectKey.trim()
+    if (trimmedKey === '') return
+
+    // 형식이 어긋난 키는 요청을 보내지 않는다 — 근거는 컴포넌트 KDoc §Step 1 게이트.
+    if (!isValidProjectKey(trimmedKey)) {
+      setPreviewError(s.errorKeyFormat)
+      return
+    }
+
     setIsPreviewLoading(true)
     setPreviewError(null)
     try {
-      const result = await previewMove(issueKey, targetProjectKey.trim())
+      const result = await previewMove(issueKey, trimmedKey)
       setPreview(result)
 
       // 루트 초기 매핑 상태
@@ -113,42 +129,11 @@ export function MoveIssueDialog({
 
       setStep(2)
     } catch (err) {
-      // 403 하나에 세 원인(대상 키 오타/미존재 · 원본 UPDATE 없음 · 대상 CREATE 없음)이
-      // 합쳐진다 — `MovePreviewService.kt:185-186` 이 권한을 존재 확인(`:188` 이슈 ·
-      // `:190-192` 대상 프로젝트)보다 먼저 하고, 운영 리졸버가 미존재 프로젝트를 거부로
-      // 판정하기 때문이다.
-      // 그래서 전용 문구를 쓰고, 403 이외(404·409·500·네트워크 단절)는 기존 문구를 유지한다.
-      // 근거 전문(게이트를 안 붙이는 이유 포함). TODOS.md 「이동·임포트 진입점」 ②.
-      const isForbidden = err instanceof ApiError && err.status === 403
-      setPreviewError(isForbidden ? s.errorPreviewForbidden : s.errorPreview)
+      // 세 갈래 판정과 그 근거는 `resolvePreviewErrorMessage` KDoc.
+      setPreviewError(resolvePreviewErrorMessage(err))
     } finally {
       setIsPreviewLoading(false)
     }
-  }
-
-  // ── Step 2: 이동 유효성 검사 ─────────────────────────────────────────
-  function isMoveEnabled(): boolean {
-    if (preview === null || rootMapping === null) return false
-
-    // 루트 유효성
-    if (!isNodeMappingValid(
-      rootMapping,
-      preview.workflow.compatible,
-      preview.customFields.requiredMissing,
-    )) return false
-
-    // 자식 유효성
-    for (const child of preview.subtasks) {
-      const childMapping = subtaskMappings[child.issueKey]
-      if (childMapping === undefined) return false
-      if (!isNodeMappingValid(
-        childMapping,
-        child.workflow.compatible,
-        child.customFields.requiredMissing,
-      )) return false
-    }
-
-    return true
   }
 
   // ── Step 2: move 실행 ────────────────────────────────────────────────
@@ -217,6 +202,10 @@ export function MoveIssueDialog({
           if (code === MOVE_ERROR_CODES.MOVE_SAME_PROJECT) {
             toast.error(s.errorSameProject)
           } else if (code === MOVE_ERROR_CODES.PROJECT_NOT_FOUND) {
+            // 비-prod 전용 분기. 운영에서는 `IssueMoveService:189-190` 의 권한 assert 가
+            // `:210` 의 존재 확인보다 앞서고, 운영 리졸버가 미존재 프로젝트를 권한 거부로
+            // 판정하므로(`IdentityAccessIssuePermissionResolver:77`) 403 이 먼저 걸린다.
+            // 지우지 않는 이유와 존속 근거는 `errorProjectNotFound` KDoc.
             toast.error(s.errorProjectNotFound)
           } else if (code === MOVE_ERROR_CODES.VERSION_CONFLICT) {
             toast.error(s.errorVersionConflict)
@@ -226,7 +215,9 @@ export function MoveIssueDialog({
             toast.error(s.errorSubtaskHasOwnSubtasks)
           } else if (err instanceof ApiError && err.status === 403) {
             // preview 와 같은 두 assert(`IssueMoveService.kt:189-190`)가 낸 같은 403 이다.
-            // 원인 설명도 같은 어휘를 쓴다 — 옛 문구는 원인을 원본 이슈 쪽으로 단정했다.
+            // 다만 문구는 preview 와 **일부러 다르다** — 여기까지 온 사용자는 대상 키가
+            // 이미 통과했음을 안다. 갈린 이유 전문은 `errorForbidden` KDoc.
+            // 어느 쪽도 원인을 원본 이슈 쪽으로 단정하지 않는다.
             toast.error(s.errorForbidden)
           } else {
             toast.error(s.errorDefault)
@@ -369,7 +360,9 @@ export function MoveIssueDialog({
               </Button>
               <Button
                 size="sm"
-                disabled={!isMoveEnabled() || moveMutation.isPending}
+                disabled={
+                  !isMoveEnabled(preview, rootMapping, subtaskMappings) || moveMutation.isPending
+                }
                 onClick={handleMove}
               >
                 {s.moveButton}

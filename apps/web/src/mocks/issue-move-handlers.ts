@@ -218,6 +218,7 @@ export const subtaskPreviewFixture = {
 /**
  * E2E 테스트 전용 localStorage 플래그 키.
  * 'subtask'이면 subtaskPreviewFixture를 반환 (S2 서브태스크 시나리오).
+ * 'forbidden'이면 403 ACCESS_DENIED를 반환 (403 문구 렌더 폭 확인 시나리오).
  * 미설정(기본)이면 compatiblePreviewFixture를 반환 (S1 단건 시나리오).
  *
  * Playwright addInitScript로 goto 전에 플래그를 설정하면
@@ -234,10 +235,21 @@ export const LS_KEY_MOVE_SCENARIO = '__bts_e2e_move_scenario'
  *
  * localStorage 플래그에 따라 시나리오를 분기한다.
  * - '__bts_e2e_move_scenario' = 'subtask' → subtaskPreviewFixture
+ * - '__bts_e2e_move_scenario' = 'forbidden' → 403 ACCESS_DENIED
  * - 미설정/기타 → compatiblePreviewFixture
+ *
+ * 403 은 운영에서 **세 원인**(형식은 맞는 오타/미존재 키 · 이슈 UPDATE 없음 ·
+ * 대상 CREATE 없음)이 한 응답에 합쳐진 결과다. 클라이언트 형식 게이트는 그중
+ * 형식 위반만 거르므로 이 시나리오는 게이트 도입 후에도 실재한다.
  */
 const movePreviewHandler = http.post('/api/v1/issues/:key/move/preview', () => {
   const scenario = globalThis.localStorage?.getItem(LS_KEY_MOVE_SCENARIO) ?? ''
+  if (scenario === 'forbidden') {
+    return HttpResponse.json(
+      { errorCode: 'ACCESS_DENIED', detail: '이 작업을 수행할 권한이 없습니다.' },
+      { status: 403 },
+    )
+  }
   const fixture = scenario === 'subtask' ? subtaskPreviewFixture : compatiblePreviewFixture
   return HttpResponse.json({ data: fixture })
 })
