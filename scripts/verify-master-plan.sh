@@ -22,9 +22,13 @@ SDD_FILE="${REPO_ROOT}/docs/sdd/02-requirements.md"
 PLAN_DIR="${REPO_ROOT}/docs/plan"
 PRODUCT_DIR="${PLAN_DIR}/product"
 FR_INDEX="${PLAN_DIR}/fr-index.md"
+# 룰 I 대상. 부재를 조용히 통과시키지 않으려고 여기서 필수 파일로 잡는다 —
+# 룰 I 안에서 `[[ -f ]]` 로만 감싸면 파일을 지우는 것만으로 가드가 죽는다(자기가 인용한 양식의 재생산).
+SDD_ENV="${REPO_ROOT}/docs/sdd/22-claude-code-env.md"
+DEV_MD="${REPO_ROOT}/DEVELOPMENT.md"
 
 # --- 사전 점검 ---
-for f in "$SDD_FILE" "$FR_INDEX"; do
+for f in "$SDD_FILE" "$FR_INDEX" "$SDD_ENV" "$DEV_MD"; do
   if [[ ! -f "$f" ]]; then
     echo "ERROR. 필수 파일 부재. $f" >&2
     exit 3
@@ -235,30 +239,58 @@ fi
 #    장부에 등재되지 않아 그대로 재발했다 — 「맞는 진단을 적었는데도 안 퍼졌다」.
 #    그래서 사람의 재측정이 아니라 여기서 잡는다.
 #
-#    ★행 부재도 FAIL 이다. 「없으면 검사 안 함」으로 짜면 행을 지우는 것만으로 가드가 죽는다
-#    (`[[seal-blinds-existing-guard]]` 양식). 그래서 전체 건수와 태그된 건수를 함께 잰다.
-SDD_ENV="${REPO_ROOT}/docs/sdd/22-claude-code-env.md"
-DEV_MD="${REPO_ROOT}/DEVELOPMENT.md"
-if [[ -f "$SDD_ENV" && -f "$DEV_MD" ]]; then
-  # I-1) '파일 300줄' 은 Kotlin 전용이다 (DEVELOPMENT.md §2.1). SDD 표에도 태그가 있어야 한다.
-  #      §2.2 TypeScript 에는 파일 상한 조항이 없으므로, 태그 없는 행은 TS 에도 적용되는 것으로 오독된다.
-  SDD_300_ANY="$(grep -cE '파일 300줄' "$SDD_ENV" || true)"
-  SDD_300_TAG="$(grep -cE '^\| *Kotlin: *함수 30줄 이내, 파일 300줄 이내|^\| *Kotlin: *파일 300줄 이내' "$SDD_ENV" || true)"
-  if [[ "$SDD_300_ANY" -ne 1 || "$SDD_300_TAG" -ne 1 ]]; then
-    sync_fail "SDD 22.7.1 '파일 300줄' — 전체 ${SDD_300_ANY}행 / 'Kotlin:' 태그 ${SDD_300_TAG}행 (각 1 기대). DEVELOPMENT.md:55 는 §2.1 Kotlin 전용 조항이다"
+#    ★「없으면 검사 안 함」을 세 층에서 모두 막았다 (`[[seal-blinds-existing-guard]]` 양식).
+#      ①파일 부재 → 위 사전 점검에서 exit 3   ②행 부재 → I-1 이 각 행 1개를 요구
+#      ③조항 이동 → I-4 가 절 구간을 잘라서 센다 (총계만 세면 §2.1→§2.2 이동을 못 본다)
+#    1차 초안은 ①③을 다 열어 뒀고 게다가 I-1 의 정규식 대안이 **거부된 통째 태그 형태를
+#    화이트리스트에 올려** 가장 흔한 회귀를 통과시켰다. 코드리뷰 뮤테이션 11종이 그것을 적발했다.
+#
+#    ★보지 않는 범위 (의도적 — 조용한 축소가 아니다).
+#      이 룰의 계약은 **두 정본 사이의 정합**이다. 제3의 문서가 「TypeScript 도 파일 300줄」이라
+#      적는 경우는 검사하지 않는다 — 전 문서 스캔은 오탐(인용·회고·`TODOS.md` 자신)이 많아
+#      가드를 무력화하는 쪽이 더 크다. 그 층이 필요해지면 `TODOS.md` 에 별도 부채로 등재할 것.
+#
+# I-1) SDD 22.7.1 표의 줄수 3행을 **전수 열거로 정확 매치**한다. 각 정확히 1행.
+#      부분 매치가 아니라 행 전체 형태를 고정하는 이유 — 「간결하게 정리」가 통째 태그
+#      (`Kotlin: 함수 30줄 이내, 파일 300줄 이내`)로 되돌리는 것이 가장 흔한 회귀인데,
+#      그 형태를 정규식 대안으로 허용하면 **가드가 거부된 설계를 화이트리스트에 올린다.**
+#      한 행 안에 규칙을 덧붙이는 변형도 행 전체 매치가 깨져 여기서 걸린다.
+SDD_ROW_COMMON='^\| 함수 30줄 이내 \(Kotlin · TypeScript 공통\) \|'
+SDD_ROW_KT='^\| Kotlin: 파일 300줄 이내 \|'
+SDD_ROW_TS='^\| TypeScript: 컴포넌트 200줄 이내 \|'
+N_COMMON="$(grep -cE "$SDD_ROW_COMMON" "$SDD_ENV" || true)"
+N_KT="$(grep -cE "$SDD_ROW_KT" "$SDD_ENV" || true)"
+N_TS="$(grep -cE "$SDD_ROW_TS" "$SDD_ENV" || true)"
+if [[ "$N_COMMON" -ne 1 || "$N_KT" -ne 1 || "$N_TS" -ne 1 ]]; then
+  sync_fail "SDD 22.7.1 줄수 3행 — 공통 ${N_COMMON} · Kotlin ${N_KT} · TypeScript ${N_TS} (각 1 기대). 3행 분리 형태를 유지할 것 (통째 태그로 되돌리면 TS 의 '함수 30줄' 이 Kotlin 전용이 된다)"
+fi
+
+# I-2) SDD 표에서 '파일 300줄' 을 말하는 행은 위 Kotlin 행 **하나뿐**이어야 한다.
+#      표 행(`^|`)으로 범위를 좁힌다 — 산문이 그 규칙을 설명하는 것까지 막으면 오탐이다.
+SDD_300_ROWS="$(grep -cE '^\|.*파일 300줄' "$SDD_ENV" || true)"
+if [[ "$SDD_300_ROWS" -ne 1 ]]; then
+  sync_fail "SDD 22.7.1 표에서 '파일 300줄' 을 말하는 행 ${SDD_300_ROWS}개 (1 기대) — 'Kotlin: 파일 300줄 이내' 한 행만 허용"
+fi
+
+# I-3) 무효화된 주장의 직접 봉쇄 — TypeScript 와 파일 300줄이 같은 줄에 오면 안 된다.
+#      2026-08-12 Maxi 확정으로 TS 파일 상한은 무효다. 산문까지 포함해 검사한다.
+for f in "$SDD_ENV" "$DEV_MD"; do
+  N_TS300="$(grep -cE 'TypeScript.*파일 300줄|파일 300줄.*TypeScript' "$f" || true)"
+  if [[ "$N_TS300" -ne 0 ]]; then
+    sync_fail "$(basename "$f") 에 TypeScript 와 '파일 300줄' 이 같은 줄에 ${N_TS300}건 — TS 파일 상한은 2026-08-12 확정으로 무효다"
   fi
-  # I-2) 반대 방향 — TypeScript 컴포넌트 200줄이 SDD 에도 있어야 한다.
-  #      DEVELOPMENT.md:72 에만 있고 SDD 에 없으면 SDD 만 읽는 에이전트가 그 규칙을 모른다.
-  SDD_200_TAG="$(grep -cE '^\| *TypeScript: *컴포넌트 200줄 이내' "$SDD_ENV" || true)"
-  if [[ "$SDD_200_TAG" -ne 1 ]]; then
-    sync_fail "SDD 22.7.1 'TypeScript: 컴포넌트 200줄 이내' ${SDD_200_TAG}행 (1 기대) — DEVELOPMENT.md:72 와 어긋난다"
-  fi
-  # I-3) DEVELOPMENT.md 쪽 사본은 각 1건이어야 한다. 사본이 늘면 어느 쪽이 정본인지 모호해진다.
-  DEV_300="$(grep -cE '파일 300줄 이내' "$DEV_MD" || true)"
-  DEV_200="$(grep -cE '컴포넌트 200줄 이내' "$DEV_MD" || true)"
-  if [[ "$DEV_300" -ne 1 || "$DEV_200" -ne 1 ]]; then
-    sync_fail "DEVELOPMENT.md 줄수 규칙 사본 — '파일 300줄' ${DEV_300}행 · '컴포넌트 200줄' ${DEV_200}행 (각 1 기대)"
-  fi
+done
+
+# I-4) DEVELOPMENT.md 는 **절 구간을 잘라서** 센다. 출현 횟수만 세면 조항을 §2.1 에서 §2.2 로
+#      옮겨도(= 이 PR 이 무효라 선언한 상태로 되돌려도) 총계가 같아 통과한다.
+#      절 헤딩이 바뀌면 구간이 비어 카운트 0 이 되고 여기서 걸린다 — 그것도 알아야 할 변경이다.
+DEV_S21="$(awk '/^### §2\.1 /{f=1;next} /^### §2\.[2-9] /{f=0} f' "$DEV_MD")"
+DEV_S22="$(awk '/^### §2\.2 /{f=1;next} /^### §2\.[3-9] /{f=0} f' "$DEV_MD")"
+S21_300="$(printf '%s\n' "$DEV_S21" | grep -cE '파일 300줄 이내' || true)"
+S22_300="$(printf '%s\n' "$DEV_S22" | grep -cE '파일 300줄' || true)"
+S22_200="$(printf '%s\n' "$DEV_S22" | grep -cE '컴포넌트 200줄 이내' || true)"
+if [[ "$S21_300" -ne 1 || "$S22_300" -ne 0 || "$S22_200" -ne 1 ]]; then
+  sync_fail "DEVELOPMENT.md 절 귀속 — §2.1 '파일 300줄' ${S21_300}행(1 기대) · §2.2 '파일 300줄' ${S22_300}행(0 기대) · §2.2 '컴포넌트 200줄' ${S22_200}행(1 기대)"
 fi
 
 # --- 4) 최종 결과 ---
