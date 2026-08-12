@@ -141,8 +141,12 @@ jobs:
             echo "⚠️  변경 파일을 구하지 못했다 (base=$BASE_SHA) — 전 모듈을 돈다."
           fi
 
-          MODULES="$(xargs -0 -a /tmp/bts-changed.z \
-            node --experimental-strip-types scripts/workflow/select-backend-modules.ts)"
+          # ★`xargs -a` 를 쓰지 않는다 — **GNU 전용**이고 이 러너는 macOS(BSD xargs)라
+          #   `invalid option -- a` 로 죽는다(2026-08-12 실측, 이 잡이 실제로 그렇게 실패했다).
+          #   리다이렉션은 양쪽에서 동작한다. 입력이 비면 xargs 는 인자 없이 한 번 실행하고,
+          #   선별기는 그것을 「판정 불가」로 읽어 전 모듈을 돌려준다 — 의도한 fail-safe 다.
+          MODULES="$(xargs -0 node --experimental-strip-types \
+            scripts/workflow/select-backend-modules.ts < /tmp/bts-changed.z)"
 
           echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
 

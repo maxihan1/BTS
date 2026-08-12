@@ -31,6 +31,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -331,6 +332,81 @@ describe('backend-ci 모듈 선별', () => {
       if (prev === undefined) delete process.env.BTS_BACKEND_MODULES_ROOT
       else process.env.BTS_BACKEND_MODULES_ROOT = prev
     }
+  })
+
+  test('★★select 스텝의 셸이 이 머신에서 실제로 돈다 (문자열 매칭이 못 보는 층)', () => {
+    // ## 왜 실행해 보는가
+    //
+    // 위 단언들은 선별기의 **판정**을 잰다. 그런데 그 판정을 부르는 것은 워크플로우 안의
+    // **인라인 셸**이고, 거기서 죽으면 매트릭스가 통째로 스킵된다 — 판정이 아무리 옳아도 소용없다.
+    //
+    // 실제로 그렇게 죽었다. 초안이 `xargs -a` 를 썼는데 그것은 **GNU 전용**이고 러너는
+    // macOS(BSD xargs)라 `invalid option -- a` 로 사망했다(2026-08-12 실측). 유닛 테스트는
+    // 전부 초록이었다 — 그 층을 아무도 안 재고 있었다.
+    //
+    // 이 저장소는 같은 교훈을 이미 적어 두었다(`runner-health.yml` 의 자원 판정 블록을 뽑아
+    // `bash -e` 로 돌리는 판별식). 「두 층의 차이는 문자열 매칭이 못 본다.」
+    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+
+    const stepIdx = workflow.indexOf('- name: 변경 파일 → 대상 모듈')
+    assert.ok(stepIdx >= 0, 'select 스텝을 못 찾았다 — 추출이 고장났다.')
+    const runIdx = workflow.indexOf('run: |', stepIdx)
+    assert.ok(runIdx > stepIdx, 'select 스텝에 run 블록이 없다.')
+
+    const INDENT = 10
+    const lines: string[] = []
+    for (const line of workflow.slice(runIdx).split('\n').slice(1)) {
+      if (line.trim() === '') {
+        lines.push('')
+        continue
+      }
+      if (!line.startsWith(' '.repeat(INDENT))) break
+      lines.push(line.slice(INDENT))
+    }
+    // ★비-공허 확인. 앵커가 어긋나 빈 스크립트가 나오면 `bash -e ""` 는 그냥 성공하고
+    //   아래 단언이 **공허하게 통과**한다 — 가드가 있는 척하는 최악의 상태다.
+    assert.ok(
+      lines.filter((l) => l.trim() !== '').length >= 8,
+      `추출된 스텝이 ${lines.length}줄뿐이다 — 빈 스크립트를 돌리면 단언이 공허하다.`,
+    )
+
+    // `${{ ... }}` 는 Actions 가 치환한다. 여기서는 실제 커밋으로 갈아끼워 돌린다.
+    const script = lines.join('\n').replace(/\$\{\{\s*github\.sha\s*\}\}/g, 'HEAD')
+    assert.match(script, /xargs/, '추출본에 실행부가 없다 — 엉뚱한 블록을 잘라냈다.')
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-select-step-'))
+    const file = path.join(dir, 'step.sh')
+    fs.writeFileSync(file, script)
+    // ★결과는 stdout 이 아니라 `$GITHUB_OUTPUT` 으로 나간다 — 스텝이 매트릭스에 넘기는 통로가
+    //   그것이기 때문이다. stdout 을 재면 「셸은 살았는데 아무것도 안 넘긴다」를 못 본다.
+    const outFile = path.join(dir, 'github_output')
+    fs.writeFileSync(outFile, '')
+
+    const r = spawnSync('bash', ['-e', file], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        BASE_SHA: 'HEAD~1',
+        GITHUB_OUTPUT: outFile,
+        GITHUB_STEP_SUMMARY: path.join(dir, 'summary.md'),
+      },
+    })
+    assert.equal(
+      r.status,
+      0,
+      `select 스텝의 셸이 이 머신에서 죽는다 (exit ${r.status}).\n` +
+        `${r.stdout ?? ''}${r.stderr ?? ''}\n` +
+        `러너는 macOS 다 — GNU 전용 옵션(xargs -a 등)을 쓰면 여기서 잡힌다.`,
+    )
+
+    const emitted = fs.readFileSync(outFile, 'utf8')
+    assert.match(
+      emitted,
+      /^modules=\[".+"\]$/m,
+      `매트릭스로 넘길 모듈 JSON 이 안 나왔다 — 셸은 살았는데 아무것도 안 넘긴다.\n` +
+        `GITHUB_OUTPUT: ${JSON.stringify(emitted)}\n${r.stdout ?? ''}${r.stderr ?? ''}`,
+    )
   })
 
   test('★넓은 판정과 좁은 판정을 구분해 보고한다', () => {
