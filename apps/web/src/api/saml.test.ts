@@ -1,14 +1,8 @@
 // SAML IdP 목록 조회 API 단위 테스트 — fetchSamlIdps Zod 파싱 + 에러 분기 검증
 import { http, HttpResponse } from 'msw'
-import { setupServer } from 'msw/node'
 import { fetchSamlIdps } from './saml'
 import { ApiError } from './client'
-
-const server = setupServer()
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+import { server } from '@/test/server'
 
 describe('fetchSamlIdps', () => {
   it('IdP 목록을 정상 반환한다', async () => {
