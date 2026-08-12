@@ -132,6 +132,40 @@ describe('backend-ci 모듈 선별', () => {
     }
   })
 
+  test('★★모듈 변경과 빌드 설정 변경이 **섞여 있으면** 전 모듈이다', () => {
+    // ★단일 파일 입력만 재면 이 분기를 못 잡는다. 빌드 설정만 바뀐 경우는 씨앗이 비어
+    //   「백엔드 변경을 못 찾았다」 fallback 이 대신 넓혀 주기 때문이다 — 넓히는 분기를
+    //   통째로 지워도 그 테스트는 통과한다(2026-08-12 뮤테이션 M2 가 실제로 살아남았다).
+    //   씨앗이 **비지 않은** 상태에서 넓혀야 하는지를 재는 것이 이 케이스다.
+    const picked = selectModules([
+      'backend/modules/notification/src/main/kotlin/X.kt',
+      'backend/build.gradle.kts',
+    ])
+    assert.deepEqual(
+      picked.modules.sort(),
+      allModules().sort(),
+      `빌드 설정이 함께 바뀌었는데 한 모듈로 좁혔다 — 나머지가 검증 없이 통과한다.\n` +
+        JSON.stringify(picked),
+    )
+    assert.equal(picked.all, true)
+  })
+
+  test('★★알 수 없는 모듈 경로가 **섞여 있으면** 전 모듈이다', () => {
+    // 모듈이 새로 생겼거나 개명·삭제된 상태다. 그래프가 낡았을 수 있으므로 좁히지 않는다.
+    // 이것도 섞인 입력으로 재야 한다 — 단독으로는 fallback 이 가려 준다(뮤테이션 M6 생존).
+    const picked = selectModules([
+      'backend/modules/notification/src/main/kotlin/X.kt',
+      'backend/modules/no-such-module/Y.kt',
+    ])
+    assert.deepEqual(
+      picked.modules.sort(),
+      allModules().sort(),
+      `알 수 없는 모듈이 섞였는데 좁혔다 — 그래프가 낡았을 가능성을 무시했다.\n` +
+        JSON.stringify(picked),
+    )
+    assert.equal(picked.all, true)
+  })
+
   test('★워크플로우 자신이 바뀌면 전 모듈이다', () => {
     // 선별 로직·잡 정의가 바뀐 PR 에서 일부만 돌면 그 변경 자체를 검증하지 못한다.
     const picked = selectModules(['.github/workflows/backend-ci.yml'])
