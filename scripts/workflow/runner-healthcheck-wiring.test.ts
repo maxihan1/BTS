@@ -87,7 +87,10 @@ function usesDocker(name: string): boolean {
   const body = withoutComments(readWorkflow(name));
   if (/\bdocker\b/.test(body)) return true;
 
-  for (const m of body.matchAll(/(?:bash|sh|node|\.\/)\s+(scripts\/[\w./-]+\.(?:sh|mjs|ts))/g)) {
+  // ★`\.\/` 뒤에 `\s+` 를 요구하면 **죽은 분기**가 된다 — `./scripts/x.sh` 에는 공백이 없다.
+  //   초안이 그랬고 독립 리뷰가 적발했다. 인터프리터 뒤에는 공백이, `./` 뒤에는 곧바로
+  //   경로가 온다. 두 형태를 갈라서 적는다.
+  for (const m of body.matchAll(/(?:(?:bash|sh|node)\s+|\.\/)(scripts\/[\w./-]+\.(?:sh|mjs|ts))/g)) {
     const p = path.join(REPO_ROOT, m[1]);
     if (fs.existsSync(p) && /\bdocker\b/.test(withoutComments(fs.readFileSync(p, 'utf8')))) {
       return true;
@@ -238,7 +241,13 @@ describe('러너 헬스체크 배선', () => {
       '"$DOCKER" info',
       'BTS_DOCKER_BIN', // 데몬 부재 주입 이음매. 없으면 그 층은 검증 불가능해진다
       'Docker 데몬이 꺼져 있다', // 진단 문구 — 없으면 「테스트가 깨졌다」로 오독된다
-      '코드 문제 아님', // 오진 차단. 이 문구가 이 판정의 존재 이유다
+      // ★`'코드 문제 아님'` 은 넣지 않는다 — 두 층의 **기존 엔진 배너**가 이미 그 문구를
+      //   갖고 있어, Docker 블록을 통째로 지워도 통과한다(독립 리뷰 적발). 위 `'docker info'`
+      //   와 같은 공허 양식이다. Docker 블록에**만** 나타나는 문구를 골라야 한다.
+      '컨테이너 검증은 전부 실패한다',
+      // 데몬 기동 중(소켓은 있고 응답만 없음)에 붙잡히면 잡 타임아웃으로 번져
+      // 데몬을 쓰지 않는 워크플로우까지 막는다. 그 방어가 양쪽에 다 있어야 한다.
+      'DOCKER_PROBE_TIMEOUT',
     ];
 
     const missing = INVARIANTS.flatMap((needle) => [
@@ -267,7 +276,7 @@ describe('러너 헬스체크 배선', () => {
         `훑기가 고장나면 아래 단언이 공허하게 통과한다.`,
     );
 
-    const missing = needing.filter((name) => !/require_docker:\s*true/.test(readWorkflow(name)));
+    const missing = needing.filter((name) => !/require_docker:\s*true/.test(withoutComments(readWorkflow(name))));
 
     assert.deepEqual(
       missing,
@@ -285,7 +294,7 @@ describe('러너 헬스체크 배선', () => {
     // 프리플라이트가 고치려던 것보다 큰 차단면을 새로 만드는 경로다.
     const overreach = callerFiles()
       .filter((name) => !usesDocker(name))
-      .filter((name) => /require_docker:\s*true/.test(readWorkflow(name)));
+      .filter((name) => /require_docker:\s*true/.test(withoutComments(readWorkflow(name))));
 
     assert.deepEqual(
       overreach,
@@ -364,23 +373,27 @@ describe('러너 헬스체크 배선', () => {
     // 2026-08-07 사고의 본질은 「판정이 없었다」가 아니라 **「초록불이라 아무도 안 봤다」**이다.
     // 판정이 맞아도 표출이 스텝 로그뿐이면 잡을 펼쳐야 보이고, 그러면 아무도 안 본다 —
     // 표출 실패는 판정 부재와 같은 결과를 낳는다.
-    const workflow = readWorkflow(HEALTH_WORKFLOW);
+    // ★워크플로우 **전체**가 아니라 자원 점검 스텝만 본다. 전체로 재면 다른 스텝의
+    //   어노테이션이 이 단언을 대신 만족시키고, 특히 아래 「고갈 분기 안에 있는가」는
+    //   파일 첫 `::warning` 을 집어 **엉뚱한 스텝을 재게 된다.** 2026-08-12 에 Docker 데몬
+    //   경고가 추가되면서 실제로 그렇게 깨졌다 — 판정 범위가 원래 스텝 단위여야 했다.
+    const step = resourceStepScript();
 
     assert.match(
-      workflow,
+      step,
       /\$GITHUB_STEP_SUMMARY/,
       `자원 판정 결과가 run 요약에 안 남는다 — 잡을 펼쳐야만 보이면 사실상 없는 것이다.`,
     );
     assert.match(
-      workflow,
+      step,
       /::warning/,
       `경고 어노테이션이 없다 — PR 화면 상단에 뜨지 않으면 다음 사람도 오늘의 나처럼 3시간을 쓴다.`,
     );
 
     // ★어노테이션은 **경고일 때만** 나와야 한다. 매 run 마다 뜨면 노이즈가 되어 무시된다 —
     //   음성 대조군 테스트(verify-runner-health.test.ts)가 지키려는 성질과 같다.
-    const overIdx = workflow.indexOf('"$OVER" -eq 1');
-    const warnIdx = workflow.indexOf('::warning');
+    const overIdx = step.indexOf('"$OVER" -eq 1');
+    const warnIdx = step.indexOf('::warning');
     assert.ok(
       overIdx > 0 && warnIdx > overIdx,
       `::warning 이 고갈 분기(${overIdx}) 밖(${warnIdx})에 있다 — 정상 run 에도 경고가 떠 상시화된다.`,

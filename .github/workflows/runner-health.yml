@@ -128,9 +128,33 @@ jobs:
         env:
           REQUIRE_DOCKER: ${{ inputs.require_docker }}
         run: |
+          # ★★타임아웃이 **필수**다. 이 결함의 실제 시나리오가 「데몬 기동 중」인데(2026-08-12
+          #   07:49:32 준비 완료), 그 상태에서는 소켓이 이미 있어 연결은 되고 응답만 안 온다 —
+          #   `docker info` 가 붙잡힌다. 그러면 잡 타임아웃(3분)에 걸려 **데몬을 쓰지 않는**
+          #   워크플로우까지 `needs: runner-health` 로 스킵된다. 「경고만 하고 절대 막지
+          #   않는다」는 설계가 정확히 뒤집히는 경로다. `timeout(1)` 은 macOS 기본 설치가
+          #   아니라 직접 잰다.
           DOCKER="${BTS_DOCKER_BIN:-docker}"
+          DOCKER_PROBE_TIMEOUT="${BTS_DOCKER_PROBE_TIMEOUT:-15}"
 
-          if "$DOCKER" info > /dev/null 2>&1; then
+          docker_daemon_up() {
+            local probe_pid waited=0
+            "$DOCKER" info > /dev/null 2>&1 &
+            probe_pid=$!
+            while kill -0 "$probe_pid" 2> /dev/null; do
+              if [ "$waited" -ge "$DOCKER_PROBE_TIMEOUT" ]; then
+                kill -TERM "$probe_pid" 2> /dev/null
+                wait "$probe_pid" 2> /dev/null
+                echo "   (데몬 응답이 ${DOCKER_PROBE_TIMEOUT}초 안에 없다 — 기동 중이거나 멈춰 있다)"
+                return 1
+              fi
+              sleep 1
+              waited=$((waited + 1))
+            done
+            wait "$probe_pid"
+          }
+
+          if docker_daemon_up; then
             echo "✅ Docker 데몬 가동중"
             exit 0
           fi
@@ -146,6 +170,21 @@ jobs:
             echo "   ⇒ 이 워크플로우는 데몬을 쓰므로 여기서 멈춘다 (뒤 잡이 오진 실패하는 것을 막는다)."
             exit 1
           fi
+
+          # ★차단하지 않는 경로도 **표출**한다. 스텝 로그 안에만 있으면 잡을 펼쳐야 보이고,
+          #   그러면 아무도 안 본다 — 자원 점검 스텝이 이미 같은 이유로 어노테이션과 요약을
+          #   쓰고, `runner-healthcheck-wiring.test.ts` 에 전용 단언까지 있다. 표출 실패는
+          #   판정 부재와 같은 결과를 낳는다.
+          : "${GITHUB_STEP_SUMMARY:=/dev/null}"
+          echo "::warning title=Docker 데몬 꺼짐::이 워크플로우는 데몬을 쓰지 않아 계속 진행한다. 다만 backend-ci·infra-ci 는 지금 전부 막힌다 — docs/runbooks/self-hosted-runner.md §7"
+          {
+            echo ""
+            echo "> ⚠️ **Docker 데몬이 꺼져 있다.** 이 워크플로우는 데몬을 쓰지 않아 계속 진행했다."
+            echo ">"
+            echo "> 다만 \`backend-ci\` · \`infra-ci\` 는 지금 전부 막힌다. 러너에서 Docker 를 기동할 것."
+            echo "> \`docs/runbooks/self-hosted-runner.md §7\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           echo "   ⇒ 이 워크플로우는 데몬을 쓰지 않으므로 차단하지 않는다 (경고만)."
           exit 0
 

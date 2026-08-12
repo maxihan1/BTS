@@ -289,3 +289,82 @@ describe('러너 자원 고갈 판정', () => {
     assert.match(out, /러너 환경 결함 — 코드 문제 아님/);
   });
 });
+
+describe('Docker 데몬 판정 (로컬 층)', () => {
+  /**
+   * 데몬 부재를 흉내내는 가짜 docker — `info` 만 실패한다.
+   *
+   * ★실제 데몬을 끄는 검증은 하지 않는다(개발 머신의 다른 작업을 끊는다).
+   * `BTS_DOCKER_BIN` 이 그것을 대신하는 유일한 통로이고, 이 이음매가 없으면 아래 세 케이스가
+   * **원리적으로 검증 불가능**해진다 — 문자열 존재 단언만 남는데, 이 파일 스스로가
+   * 「그 방식은 거동 차이를 못 본다」고 적고 있다.
+   */
+  function fakeDockerDaemonDown(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-docker-'));
+    const bin = path.join(dir, 'docker');
+    fs.writeFileSync(bin, '#!/bin/sh\nif [ "$1" = "info" ]; then exit 1; fi\nexit 0\n', {
+      mode: 0o755,
+    });
+    return bin;
+  }
+
+  test('★데몬이 꺼져도 기본값은 경고다 — 차단하지 않는다', () => {
+    // 프론트·판별식 작업은 데몬이 필요 없다. 여기서 막으면 프리플라이트가 고치려던 것보다
+    // 큰 차단면을 새로 만든다.
+    const { code, out } = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_DOCKER_BIN: fakeDockerDaemonDown(),
+    });
+    assert.equal(code, 0, `데몬 부재가 기본값에서 차단됐다 — 경고여야 한다\n${out}`);
+    assert.match(out, /Docker 데몬이 꺼져 있다/, `데몬 부재를 말하지 않는다\n${out}`);
+    assert.match(out, /차단하지 않는다/, `차단하지 않는다는 사실을 말하지 않는다\n${out}`);
+  });
+
+  test('★★BTS_REQUIRE_DOCKER=true 면 차단한다', () => {
+    const { code, out } = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_DOCKER_BIN: fakeDockerDaemonDown(),
+      BTS_REQUIRE_DOCKER: 'true',
+    });
+    assert.notEqual(code, 0, `데몬을 요구했는데 통과했다 — 차단 분기가 죽어 있다\n${out}`);
+    assert.match(out, /러너 환경 결함 — 코드 문제 아님/, `배너가 없다\n${out}`);
+  });
+
+  test('★★차단 배너가 Docker 절(§7)을 가리킨다 — 엔진 절(§4)이 아니다', () => {
+    // 데몬만 꺼졌는데 배너가 §4(엔진)를 안내하면 사람이 node·java 를 판다.
+    // 이 파일이 없애려는 오진을 가드 자신이 재생산하는 경로다(독립 리뷰 적발).
+    const { out } = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_DOCKER_BIN: fakeDockerDaemonDown(),
+      BTS_REQUIRE_DOCKER: 'true',
+    });
+    const banner = out.split('\n').find((l) => l.includes('self-hosted-runner.md')) ?? '';
+    assert.match(banner, /§7/, `배너가 Docker 절을 가리키지 않는다: ${banner}\n${out}`);
+    assert.ok(
+      !/§4/.test(banner),
+      `데몬만 꺼졌는데 배너가 엔진 절(§4)을 가리킨다 — 엉뚱한 곳을 파게 된다: ${banner}`,
+    );
+  });
+
+  test('★데몬이 응답하지 않으면 타임아웃으로 끊는다 (잡 전체를 물고 늘어지지 않는다)', () => {
+    // 「데몬 기동 중」이면 소켓은 있고 응답만 없어 `docker info` 가 붙잡힌다. 그 상태를
+    // 그대로 두면 잡 타임아웃에 걸려 **데몬을 쓰지 않는** 워크플로우까지 스킵된다.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-docker-hang-'));
+    const bin = path.join(dir, 'docker');
+    fs.writeFileSync(bin, '#!/bin/sh\nif [ "$1" = "info" ]; then sleep 60; fi\nexit 0\n', {
+      mode: 0o755,
+    });
+
+    const started = process.hrtime.bigint();
+    const { code, out } = run(healthyRoot(), {
+      ...HEALTHY_RESOURCE,
+      BTS_DOCKER_BIN: bin,
+      BTS_DOCKER_PROBE_TIMEOUT: '2',
+    });
+    const elapsedSec = Number(process.hrtime.bigint() - started) / 1e9;
+
+    assert.ok(elapsedSec < 30, `타임아웃이 안 먹었다 — ${elapsedSec.toFixed(1)}초 걸렸다\n${out}`);
+    assert.equal(code, 0, `응답 없음이 기본값에서 차단됐다 — 경고여야 한다\n${out}`);
+    assert.match(out, /초 안에 없다/, `타임아웃 사실을 말하지 않는다\n${out}`);
+  });
+});
