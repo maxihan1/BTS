@@ -107,7 +107,7 @@ else
   echo "   실측. 2026-08-12 PR #367 — 데몬 준비 이전 시작 잡 5건 전부 실패,"
   echo "         이후 시작한 잡 전부 통과. 코드 무변경 재실행으로 EXIT=5 → 0."
   echo "   복구. Docker Desktop 기동 후 'docker info' 가 0 을 낼 때까지 기다린다."
-  echo "   docs/runbooks/self-hosted-runner.md §5"
+  echo "   docs/runbooks/self-hosted-runner.md §7"
   if [ "$REQUIRE_DOCKER" = "true" ]; then
     echo "   ⇒ 데몬을 요구하는 호출이므로 여기서 멈춘다."
     FAILED=1
