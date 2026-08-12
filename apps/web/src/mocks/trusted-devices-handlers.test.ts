@@ -1,6 +1,6 @@
 // FR-MF-05 신뢰 디바이스 MSW 핸들러 단위 테스트 — fixture drift 원천 차단 + cross-handler 연동 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { trustedDevicesHandlers, resetTrustedDevicesStore } from './trusted-devices-handlers'
 import { mfaHandlers } from './mfa-handlers'
 import { authHandlers } from './auth-handlers'
@@ -13,16 +13,14 @@ import { MFA_E2E_ENABLED_KEY, resetMfaStore } from './auth-fixtures'
 // cross-handler 연동 테스트에 세 핸들러 집합 모두 필요
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...trustedDevicesHandlers, ...mfaHandlers, ...authHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...trustedDevicesHandlers, ...mfaHandlers, ...authHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetTrustedDevicesStore()
   resetMfaStore()
   localStorage.removeItem(MFA_E2E_ENABLED_KEY)
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 응답 타입 (테스트 전용)

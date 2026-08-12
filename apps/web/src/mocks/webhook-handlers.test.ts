@@ -1,6 +1,6 @@
 // 아웃바운드 webhook MSW 핸들러 stateful 동작 검증 테스트 (FR-API-03 PR4 Task 3)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { webhookHandlers } from './webhook-handlers'
 import {
   resetWebhookStore,
@@ -14,14 +14,12 @@ import {
 } from './webhook-fixtures'
 import type { WebhookResponse, WebhookDeliveryResponse } from '@/api/webhooks'
 
-const server = setupServer(...webhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...webhookHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetWebhookStore()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 fetch 헬퍼

@@ -1,6 +1,6 @@
 // FR-AT-01 D6 자동화 룰 MSW stateful 핸들러 단위 테스트 — CRUD 반영 + OCC 409 + WEBHOOK 토큰 계약 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   automationImportResponseSchema,
   automationRuleResponseSchema,
@@ -23,17 +23,15 @@ import {
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...automationRuleHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetAutomationRuleStore()
   for (const key of Object.values(SCENARIO_KEY)) {
     localStorage.removeItem(key)
   }
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — fetch 래퍼 (drift 차단을 위해 리터럴 요청 바디 산재 대신 helper로 생성)

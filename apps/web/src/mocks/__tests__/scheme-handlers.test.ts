@@ -1,14 +1,12 @@
 // 워크플로우 스킴 + 이슈 타입 MSW 핸들러 단위 테스트 — happy + error 시나리오 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import { schemeHandlers } from '../scheme-handlers'
 import { issueTypeHandlers } from '../issue-type-handlers'
 
-const server = setupServer(...schemeHandlers, ...issueTypeHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...schemeHandlers, ...issueTypeHandlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/workflow-schemes — 목록 조회

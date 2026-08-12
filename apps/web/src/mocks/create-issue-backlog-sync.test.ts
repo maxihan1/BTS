@@ -13,23 +13,18 @@
 // 그래서 상위 UI 테스트를 쓰기 **전에** 목의 계약을 여기서 먼저 고정한다.
 // (교훈 동형 — FR-UX-09 F2 의 「MSW 가 신규 필드를 전부 무시해 가짜 그린」)
 
-import { setupServer } from 'msw/node'
+import { server } from '@/test/server'
 import { issueHandlers } from './issue-handlers'
 import { backlogHandlers } from './backlog-handlers'
 import { resetBacklogStore, seedBacklog, DEFAULT_BACKLOG } from './backlog-fixtures'
 
-const server = setupServer(...issueHandlers, ...backlogHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...issueHandlers, ...backlogHandlers)
+})
 
 beforeEach(() => {
   resetBacklogStore()
   seedBacklog(DEFAULT_BACKLOG)
-})
-
-afterEach(() => {
-  server.resetHandlers()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

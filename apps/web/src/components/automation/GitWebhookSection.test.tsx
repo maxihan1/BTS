@@ -1,9 +1,9 @@
 // GitWebhookSection 통합 테스트 — 4상태·등록→URL모달 순차(FR2)·FR7 reset 닫기·삭제 3분기·재발급 도움말 상시 렌더 (FR-AT-07 PR-D Task 6)
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { GitWebhookSection } from './GitWebhookSection'
@@ -31,19 +31,17 @@ vi.mock('sonner', () => ({
 // (전역 handlers.ts 미등록, 로컬 서버로 격리)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...gitWebhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...gitWebhookHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 afterEach(() => {
-  server.resetHandlers()
   resetGitWebhookStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
   vi.clearAllMocks()
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_GIT_WEBHOOK_PROJECT_KEY
 /** 백엔드 MIN_SECRET_LENGTH(16)를 만족하는 유효 secret — useGitWebhooks.test.tsx VALID_SECRET 동형 */

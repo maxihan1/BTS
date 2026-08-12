@@ -1,22 +1,16 @@
 // 프로젝트 리드 MSW 핸들러 단위 테스트 — stateful GET/PATCH + 에러 분기 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { projectLeadHandlers, resetProjectLeadStore, seedProjectLead } from './project-lead-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 셋업 — 핸들러만 격리 등록
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...projectLeadHandlers)
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
-})
-afterAll(() => {
-  server.close()
+beforeEach(() => {
+  server.use(...projectLeadHandlers)
 })
 afterEach(() => {
-  server.resetHandlers()
   resetProjectLeadStore()
 })
 

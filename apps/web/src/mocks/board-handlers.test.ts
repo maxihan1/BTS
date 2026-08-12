@@ -1,6 +1,6 @@
 // 칸반 보드 MSW 핸들러 stateful 동작 검증 테스트 (FR-BD-01 D6, FR-BD-02 D6)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { boardHandlers } from './board-handlers'
 import {
   resetBoardStore,
@@ -18,15 +18,13 @@ import {
 // 중복 없음). resetIssueState는 issueOverrides 등 모듈-스코프 state를 테스트 간 격리한다.
 import { issueHandlers, resetIssueState } from './issue-handlers'
 
-const server = setupServer(...boardHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...boardHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetBoardStore()
   localStorage.removeItem(LS_KEY_BOARD_CONFLICT)
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 응답 타입 — 테스트 내부 편의용 (Zod 스키마 z.infer와 동형)

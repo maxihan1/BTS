@@ -1,6 +1,6 @@
 // FR-AT-05 D6/D7 자동화 룰 실행 이력 MSW stateful 핸들러 단위 테스트 — 목록 필터/정렬 + 단건 404 + replay 복제·409 계약 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   actionOutcomeSchema,
   ruleExecutionDetailSchema,
@@ -21,17 +21,15 @@ import { DEFAULT_AUTOMATION_PROJECT_KEY } from './automation-rule-fixtures'
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationExecutionHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...automationExecutionHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetAutomationExecutionStore()
   for (const key of Object.values(SCENARIO_KEY)) {
     localStorage.removeItem(key)
   }
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — fetch 래퍼 (drift 차단을 위해 리터럴 URL 산재 대신 helper로 생성)

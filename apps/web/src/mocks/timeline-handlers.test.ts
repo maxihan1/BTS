@@ -1,6 +1,6 @@
 // 타임라인 MSW 핸들러 동작 검증 테스트 (FR-TL-01 D6 Task-4 + FR-TL-02 D6 Task-3)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import {
   timelineHandlers,
   timelineForbiddenHandler,
@@ -11,11 +11,9 @@ import {
 } from './timeline-handlers'
 import { BTS_TIMELINE_ITEMS, TRUNCATED_TIMELINE_ITEMS, BTS_TIMELINE_DEPS } from './timeline-fixtures'
 
-const server = setupServer(...timelineHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...timelineHandlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 응답 타입 — 테스트 내부 편의용 (Zod 스키마 z.infer와 동형)

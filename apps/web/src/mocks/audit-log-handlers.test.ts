@@ -1,15 +1,13 @@
 // 감사 로그 MSW 핸들러 단위 테스트 — 필터·페이지네이션·정렬 검증
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { setupServer } from 'msw/node'
+import { server } from '@/test/server'
+import { describe, it, expect } from 'vitest'
 import { auditLogHandlers } from './audit-log-handlers'
 import { ALICE_USER_ID, BOB_USER_ID } from './audit-log-fixtures'
 import { fetchAuditLogs } from '@/api/audit-logs'
 
-const server = setupServer(...auditLogHandlers)
-
-beforeAll(() => { server.listen({ onUnhandledRequest: 'error' }) })
-afterEach(() => { server.resetHandlers() })
-afterAll(() => { server.close() })
+beforeEach(() => {
+  server.use(...auditLogHandlers)
+})
 
 describe('auditLogHandlers — GET /api/v1/admin/auth-audit-logs', () => {
   it('무필터 조회 시 전체 22건을 반환한다', async () => {

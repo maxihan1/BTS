@@ -1,14 +1,12 @@
 // 라벨 자동완성 API + MSW 핸들러 + useLabels 훅 단위 테스트 (FR-IS-09)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import { fetchLabels } from '@/api/labels'
 import { labelHandlers } from '@/mocks/label-handlers'
 
-const server = setupServer(...labelHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...labelHandlers)
+})
 
 const BASE_URL = '/api/v1/labels'
 

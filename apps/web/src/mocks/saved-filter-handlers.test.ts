@@ -1,6 +1,5 @@
 // 저장 필터 MSW 핸들러 동작 검증 테스트 (FR-SR-03 Task-7)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   savedFilterHandlers,
   resetSavedFilterStore,
@@ -10,19 +9,27 @@ import {
 } from './saved-filter-handlers'
 import { aliceUser, bobUser } from './auth-fixtures'
 import { SAVED_FILTER_ERROR_CODES } from '@/api/saved-filters'
+import { server } from '@/test/server'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 설정
+//
+// 전역 서버를 쓴다 — 로컬 `setupServer` 를 함께 띄우면 인스턴스 2개가 동시에 listen 해
+// **같은 요청이 두 번 디스패치**된다(실측. resolver 2회 · `request:start` 2회 · 고유
+// requestId 는 1). 상태를 누적하는 핸들러가 조용히 중복되는 것이 그 증상이다.
+// 생명주기(listen · resetHandlers · close)는 `src/test/setup.ts` 가 전담한다.
+//
+// ★등록은 반드시 `beforeEach` 다. 전역 `setup.ts` 가 매 테스트 뒤 `server.resetHandlers()`
+// 를 부르므로 `beforeAll` 에 두면 **첫 테스트 뒤 조용히 사라진다.**
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...savedFilterHandlers)
+beforeEach(() => {
+  server.use(...savedFilterHandlers)
+})
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
-  server.resetHandlers()
   resetSavedFilterStore()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처 상수

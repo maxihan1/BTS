@@ -1,17 +1,15 @@
 // PATCH /api/v1/issues/:key — typeId 처리 + expectedVersion 필드 정합 + description/priority/labels/environment/impact merge-patch 단위 테스트
 // Task 6 (FR-SR-01 D6): GET /api/v1/issues query param 필터링 단위 테스트
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { issueHandlers, resetIssueState } from '../issue-handlers'
 
-const server = setupServer(...issueHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...issueHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetIssueState()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

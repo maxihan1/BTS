@@ -1,23 +1,17 @@
 // 워크로그 MSW 핸들러 단위 테스트 — 백엔드와 판정 순서(이슈 UPDATE 게이트 우선) 정합 검증
-import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from 'vitest'
-import { setupServer } from 'msw/node'
+import { server } from '@/test/server'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { worklogHandlers, resetWorklogStore } from './worklog-handlers'
 import { mockAccessToken } from './auth-fixtures'
 
-const server = setupServer(...worklogHandlers)
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+beforeEach(() => {
+  server.use(...worklogHandlers)
 })
 beforeEach(() => {
   resetWorklogStore()
 })
 afterEach(() => {
-  server.resetHandlers()
   resetWorklogStore()
-})
-afterAll(() => {
-  server.close()
 })
 
 /** 지정 사용자로 요청한다 — 핸들러는 Bearer 토큰에서 username 을 해석한다. */

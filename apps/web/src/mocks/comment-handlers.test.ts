@@ -1,21 +1,12 @@
 // 댓글 MSW 핸들러 단위 테스트 — 백엔드와 판정 순서(이슈 UPDATE 게이트 우선) 정합 검증
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { setupServer } from 'msw/node'
+import { server } from '@/test/server'
+import { describe, it, expect } from 'vitest'
 import { commentHandlers } from './comment-handlers'
 import { mockAccessToken } from './auth-fixtures'
 
-const server = setupServer(...commentHandlers)
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+beforeEach(() => {
+  server.use(...commentHandlers)
 })
-afterEach(() => {
-  server.resetHandlers()
-})
-afterAll(() => {
-  server.close()
-})
-
 /** 지정 사용자로 요청한다 — 핸들러는 Bearer 토큰에서 username 을 해석한다. */
 function as(username: string): HeadersInit {
   return { Authorization: `Bearer ${mockAccessToken(username)}` }

@@ -1,7 +1,7 @@
 // 대시보드 MSW 핸들러 단위 테스트 — stateful CRUD + 권한·OCC 검증 (FR-DB-01 D6)
 
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { dashboardHandlers } from './dashboard-handlers'
 import {
   ALICE_OWNER_ID,
@@ -20,10 +20,9 @@ import {
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...dashboardHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...dashboardHandlers)
+})
 
 /**
  * 각 테스트 전에 store를 리셋하고 기본 픽스처 2개를 시드한다.
@@ -36,7 +35,6 @@ beforeEach(() => {
   seedDashboard(OTHER_DASHBOARD)
 })
 
-afterEach(() => server.resetHandlers())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

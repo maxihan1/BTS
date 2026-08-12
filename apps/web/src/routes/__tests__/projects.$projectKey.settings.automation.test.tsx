@@ -1,9 +1,9 @@
 // 자동화 설정 페이지 라우트 단위 테스트 — RouteAdapter projectKey 전달·조립(List+FormDialog+WebhookTokenModal+RuleConflictWarningModal+RuleExecutionHistoryDialog)·웹훅 토큰 1회 노출 (FR-AT-01 D6 Task 8, 실행 이력 조립은 FR-AT-05 D6/D7 Task 8)
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { triggerBlobDownload } from '@/lib/download'
@@ -60,20 +60,18 @@ vi.mock('@/lib/download', () => ({
 // 등록하는 편이 안전하다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers, ...automationExecutionHandlers, ...gitWebhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...automationRuleHandlers, ...automationExecutionHandlers, ...gitWebhookHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
   mockUseParams.mockReturnValue({ projectKey: DEFAULT_AUTOMATION_PROJECT_KEY })
 })
 afterEach(() => {
-  server.resetHandlers()
   resetAutomationRuleStore()
   resetAutomationExecutionStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_AUTOMATION_PROJECT_KEY
 

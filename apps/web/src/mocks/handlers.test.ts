@@ -1,14 +1,11 @@
 // 통합 handlers 배열 검증 — issueHandlers 포함 여부 + PATCH/DELETE 처리 가능 확인
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { handlers } from './handlers'
+import { server } from '@/test/server'
 
-const server = setupServer(...handlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
-
+beforeEach(() => {
+  server.use(...handlers)
+})
 describe('handlers 통합 배열 — issue-tracking BC 엔드포인트 처리 여부', () => {
   it('GET /api/v1/issues — 이슈 목록 응답(content 배열 포함)', async () => {
     const res = await fetch('/api/v1/issues')

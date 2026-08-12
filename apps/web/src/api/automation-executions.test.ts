@@ -1,7 +1,7 @@
 // 자동화 실행 이력 API 클라이언트 단위 테스트 — MSW 인라인 핸들러로 실 fetch 통해 조회/재실행/쿼리조립/에러코드 검증 (FR-AT-05 D6/D7)
-import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
 import {
   fetchRuleExecutions,
   fetchRuleExecution,
@@ -58,7 +58,13 @@ const detailFixture: RuleExecutionDetail = {
 let capturedListUrl: string | null = null
 let capturedReplayXsrf: string | null = null
 
-const server = setupServer(
+/**
+ * 이 파일이 쓰는 인라인 핸들러 — 매 테스트 앞에서 전역 서버에 등록한다.
+ *
+ * 로컬 `setupServer` 를 함께 띄우면 인스턴스 2개가 동시에 listen 해 **같은 요청이 두 번
+ * 디스패치**된다. 이 파일은 요청 횟수·URL 을 캡처하므로 그 중복이 곧바로 오측정이 된다.
+ */
+const inlineHandlers = [
   http.get('/api/v1/projects/:projectKey/automation/rules/:ruleId/executions', ({ request, params }) => {
     capturedListUrl = request.url
     if (params['ruleId'] === NONEXISTENT_ID) {
@@ -79,19 +85,19 @@ const server = setupServer(
     }
     return HttpResponse.json({ ...detailFixture, replayedFrom: EXECUTION_ID })
   }),
-)
+]
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+// ★등록은 `beforeEach` 다 — 전역 `setup.ts` 가 매 테스트 뒤 `resetHandlers()` 를 부르므로
+// `beforeAll` 에 두면 첫 테스트 뒤 조용히 사라진다.
 beforeEach(() => {
+  server.use(...inlineHandlers)
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
   capturedListUrl = null
   capturedReplayXsrf = null
 })
 afterEach(() => {
-  server.resetHandlers()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // fetchRuleExecutions

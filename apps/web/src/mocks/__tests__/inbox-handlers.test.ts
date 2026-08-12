@@ -1,6 +1,6 @@
 // 개인 알림 보관함(Inbox) MSW 핸들러 stateful 동작 단위 테스트 (FR-UX-03 D6)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { inboxHandlers, resetInboxStore, seedInbox } from '../inbox-handlers'
 import { mockAccessToken } from '../auth-fixtures'
 import type { InboxItem } from '@/api/inbox'
@@ -9,14 +9,12 @@ import type { InboxItem } from '@/api/inbox'
 // 테스트 전용 MSW 서버 (handlers.ts 공유 서버와 독립)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...inboxHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...inboxHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetInboxStore()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 — 시나리오별 항목

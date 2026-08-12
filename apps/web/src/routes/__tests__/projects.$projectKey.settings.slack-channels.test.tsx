@@ -1,9 +1,9 @@
 // Slack 채널 매핑 설정 페이지 라우트 단위 테스트 — RouteAdapter projectKey 전달·조립(List+FormDialog) (FR-SL-06 D6 Task 5)
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import {
   slackChannelMappingHandlers,
   resetSlackChannelMappingStore,
@@ -34,19 +34,17 @@ vi.mock('@tanstack/react-router', () => ({
 // (automation.test.tsx 동형).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...slackChannelMappingHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...slackChannelMappingHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
   mockUseParams.mockReturnValue({ projectKey: PROJECT_KEY })
 })
 afterEach(() => {
-  server.resetHandlers()
   resetSlackChannelMappingStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 const MAPPING: ChannelMapping = {
   id: '11111111-1111-4111-8111-111111111111',

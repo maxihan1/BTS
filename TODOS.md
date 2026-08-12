@@ -1704,7 +1704,7 @@ springdoc 이 **Kotlin non-null 타입**이라 `required` 로 판정한다. 생�
 
 ---
 
-## ⬜ 인프라 — 전체 스위트 실행에서 `pnpm test` 가 **간헐적으로 exit≠0** 이 된다 (미착수)
+## ✅ 인프라 — 전체 스위트 실행에서 `pnpm test` 가 **간헐적으로 exit≠0** 이 된다 (해소 2026-08-12 · PR #375 · **누출 경로 0건 확인 + 읽는 쪽 봉합**)
 
 **무엇.** 유닛 테스트가 **전건 통과(8378/8378)인데 종료 코드가 0이 아닌** 실행이 섞인다.
 vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고, 발생 지점은
@@ -1727,7 +1727,7 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 `[[github-actions-billing-block-steps-zero]]` — 둘 다 **「통과 건수 ≠ 종료 코드」** 같은 양식이다.
 판별식으로 굳힐 거면 CI 가 `Errors` 줄을 별도로 낚아채게 하는 쪽이 싸다.
 
-> **★2026-08-09 전수 실측 — 판정 `VALID` 이나 「고쳤다」로 닫을 근거가 없다. 항목을 ⬜ 로 유지한다.**
+> **★2026-08-09 전수 실측 — 판정 `VALID` 이나 「고쳤다」로 닫을 근거가 없다. 항목을 미해결로 유지한다.**
 > - **★재현율 무효.** 「2026-08-02 2회 중 1회」는 오늘 기준 틀렸다 — **2026-08-09 전체 스위트 5회 실행에서 0회 재현**(그중 4회는 파이프 없이 종료 코드를 직접 확인해 EXIT=0). 미재현은 부재 증명이 아니다(p=0.5 라면 4연속 초록 확률 6.25%).
 > - **기준선 이동.** 「8378/8378」 → 오늘 **574 파일 / 9286 테스트**. 스위트가 900건 이상 커져 워커 경합 조건 자체가 달라졌다. 과거 재현율을 현재 재현율로 인용하지 말 것.
 > - **좌표 정정.** `AutomationYamlImportDialog.tsx:340·345` → 현재 `onSuccess` **337**, `onError` **343**. 파일은 #292 이후 무변경이므로 원 서술이 애초에 부정확했다.
@@ -1753,6 +1753,67 @@ vitest 가 `Errors 1` 로 보고하는 **unhandled rejection** 이 원인이고,
 >   ③ 같은 파일에 pending mutation 0 불변식 `afterEach` 추가.
 >   ④ **절대 금지 — `dangerouslyIgnoreUnhandledErrors: true`.** 종료 코드는 초록이 되지만 유일한 진단 표면이 사라진다(「봉인이 자기 결함을 재생산」 양식).
 > - **미승계.** 지연 MSW 핸들러를 쓰는 테스트 파일이 **34개**이고 그중 몇 개가 같은 누수를 갖는지는 미측정이다. 전면 승계는 별건. **세는 정의와 34-set 이 놓친 관용구는 「지연 MSW 핸들러 34개 파일의 pending mutation 누수 미측정」 항목 참조** — 정의 없이 이 수치만 옮기지 말 것.
+
+### 해소 (2026-08-12 · PR #375) — 「고쳤다」가 아니라 **「샐 곳이 없음을 확인하고 읽는 쪽을 봉합했다」**
+
+**★판정 질문을 바꿨다.** 「재현되나?」는 **원리적으로 부재 증명이 안 된다** — 이 항목 자신이
+2026-08-09 에 5회 미재현에도 미해결로 유지한 이유가 그것이다. 대신 위 실측이 특정한
+**누출 경로가 존재하는가**를 물었고, 그건 전수 조사로 답이 나온다.
+
+#### ① 누출 경로 전수 조사 — 위반 0건
+
+| 경로 | 조사 범위 | 결과 |
+|---|---|---|
+| `.catch` 없이 호출된 `mutateAsync` | 호출 **18건** 전수 (`apps/web/src`, 테스트 제외) | **전부 `try` 블록 안** — 15건 직접, 3건은 화살표로 래핑되고 호출부(`VersionFormDialog.tsx:166·192·202`)가 `try` |
+| mutation 콜백(`onSuccess`/`onError`/`onSettled`)의 `throw` | 전수 grep | **0건.** 히트 1건(`SaveQuickFilterDialog.tsx:142`)은 **오탐** — 콜백이 아니라 `onValid` 함수 본문이다 |
+
+이 두 가지가 **유일한 누출 경로**라는 것은 위 2026-08-09 실측이 확정했다
+(`useMutation.js:33` 이 `observer.mutate(...).catch(noop)` 을 붙이므로 그 외에는 새지 않는다).
+
+#### ② 재현 측정 — 자원이 깨끗한 상태에서 3회 0건
+
+PR #366 이 축 B(자원 경쟁)를 회수한 직후, main `69b2ec978` 에서 **파이프 없이 종료 코드를
+직접** 받아 3회 실행했다.
+
+| 회차 | EXIT | 소요 | 결과 | 워커 실패 |
+|---|---|---|---|---|
+| 1 | **0** | 215s | 579 파일 / 9,469 테스트 · `Errors` 없음 | 0 |
+| 2 | **0** | 213s | 〃 | 0 |
+| 3 | **0** | 216s | 〃 | 0 |
+
+**★소요가 340s → 214s (−37%) 다.** 코드는 안 바뀌었고 재부팅만 했다 — 축 B 의 직접 증거다.
+**단 이 측정만으로 닫은 것이 아니다.** 미재현은 부재 증명이 아니고, ①이 근거다.
+
+#### ③ 실제 구멍은 읽는 쪽이었다 — 그것을 봉합했다
+
+위 2026-08-09 실측이 이미 특정해 뒀다.
+
+> **실제 구멍은 CI 배선이 아니라 「Tests N passed 만 읽고 초록으로 보고하는」 사람/에이전트 쪽**이다.
+
+`/bts-impl` 최종 점검에 **§판정은 종료 코드로 한다** 를 넣었다.
+
+```bash
+✅ pnpm test; echo "EXIT=$?"
+✅ pnpm test > /tmp/test.log 2>&1; echo "EXIT=$?"; tail -30 /tmp/test.log
+❌ pnpm test 2>&1 | tail -20      ← 종료 코드가 tail 의 것이 된다
+```
+
+**★파이프가 종료 코드를 삼킨다.** `set -o pipefail` 이 없는 셸에서는 파이프 마지막 명령의
+종료 코드만 남는다. **에이전트가 출력을 줄여 읽으려 할 때 정확히 이 형태를 쓰므로** 위험이 크다.
+
+배선은 `scripts/workflow/worktree-hook-wiring.test.ts` 층 2 가 강제한다 — 낱말 3개
+(`종료 코드` · `파이프` · `passed`)를 함께 요구한다. 문구 통째 요구는 표현만 바꿔도 깨지고,
+한 낱말은 무관한 산문에 스쳐도 통과하기 때문이다(`HOOK_LINK_TOKENS` 관례).
+**뮤테이션 3종 각각 red** — 세 낱말이 독립적으로 지켜진다.
+
+#### ★남는 것 (닫지 않은 부분)
+
+- **신규 `mutateAsync` 가 안전한지는 기계가 안 본다.** 정석 도구인
+  `@typescript-eslint/no-floating-promises` 는 **타입 인지 린트**를 요구하는데 이 저장소는
+  그것을 켜지 않았고, 켜면 린트 시간이 크게 늘어 「CI 벽시계」 항목과 정면 충돌한다.
+  현재는 **위 ①의 전수 조사가 시점 스냅샷**일 뿐이다.
+- 그래서 이 해소는 「경로가 원천 봉인됨」이 아니라 **「현재 0건 + 읽는 쪽 봉합」**이다.
+  범위를 넘겨 읽지 말 것.
 
 ---
 
@@ -1875,7 +1936,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 
 ---
 
-## ⬜ apps/web(테스트 인프라) — MSW 리졸버가 **요청 1회에 2번 실행**된다 (선재 · 미착수)
+## ✅ apps/web(테스트 인프라) — MSW 리졸버가 **요청 1회에 2번 실행**된다 (해소 2026-08-12 · PR #375 · 이주로 원인 제거)
 
 **무엇.** jsdom 환경에서 `fetch` 한 번에 MSW 핸들러가 **두 번** 돈다.
 2026-08-03 계측 — `server.events.on('request:start')` 가 POST 1건에 **2회** 발화하고,
@@ -1912,7 +1973,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **정정 4.** 「지금까지 확인된 것」에 F3 의 백로그 경로 1건만 적혀 있으나 실제 보상 가드는 **2곳**이다 — `automation-execution-handlers.ts` 의 `replayExecutionHandler` requestId 단발 캐시가 두 번째.
 > - **★정정 5.** `automation-execution-handlers.ts:15-17` 이 기록한 「본문을 읽는 핸들러는 두 번째 호출이 `Body already read` 로 자동 실패해 무해하다」는 **신뢰할 수 없다.** `issue-handlers.ts:484` 는 `request.clone().json()` 으로 읽는데도 append 가 2회 났다. **「본문을 읽으니 안전」을 전수 조사의 제외 기준으로 쓰지 말 것.**
 > - **정정 6.** 배증 폭은 핸들러마다 다르다(합성 GET 은 2배, 실 `bulkOperationHandlers` GET 은 단일 dispatch 서명). **「모든 요청이 정확히 2배」로 가정하면 틀린다.**
-> - **✅ B(동결) 완료 (2026-08-10 · `fix/web-test-infra-2`).** 아래 방식대로 판별식을 세웠다. **이 항목은 이주가 남아 ⬜ 로 유지한다** — 전면 이주는 별도 신규 항목이다.
+> - **✅ B(동결) 완료 (2026-08-10 · `fix/web-test-infra-2`).** 아래 방식대로 판별식을 세웠다. ~~이 항목은 이주가 남아 미해결로 유지한다~~ → **A(전면 이주)도 2026-08-12 PR #375 가 닫았다** (`MIGRATION_BASELINE` 을 비워 봉인).
 > - **2026-08-09 Maxi 확정 원칙 적용 — B(동결)로 시작.** ①`apps/web/src/test/msw-single-setupserver.test.ts` 차집합 판별식 신설(허용목록 `src/test/server.ts` + 현재 59개 baseline) → **신규 로컬 `setupServer` 만 차단**. 비-공허 짝 필수(훑은 파일 수 400+ 이고 스캐너가 `src/test/server.ts` 를 실제로 찾았음을 같은 테스트에서 단언 — 글롭이 깨지면 0건 훑고 공허 통과). ②전면 이주(A)는 신규 항목으로 분할 등재.
 > - **★★이주 시 최대 함정 (반증이 적발).** 로컬 서버가 뜨면 **전역 핸들러가 통째로 죽는다**(실측: 전역 `server.use()` 도 `/auth/refresh` 도 `fetch failed`). 이주하면 그 59개 파일에서 **`/auth/refresh` 가 처음으로 살아나** `apiFetch` 의 401 자동 재시도가 지금은 실패하던 자리에서 성공한다 — **401/403 을 단언하는 테스트의 결과가 뒤집힌다.** 「기계적 치환」이 아니다.
 > - **이주 시 함정 2.** 전역 `setup.ts:21` 의 `afterEach(server.resetHandlers())` 때문에 핸들러 등록은 **반드시 `beforeEach`** 여야 한다. `beforeAll` 에 두면 첫 테스트 뒤 조용히 사라진다. 선례 3건 — `import-handlers.test.ts:13-22` · `profile-handlers.test.ts:8-18` · `status-handlers.test.ts:8-16`.
@@ -2357,7 +2418,31 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web(테스트 인프라) — 로컬 `setupServer` 59개 전면 이주 (미착수)
+## ✅ apps/web(테스트 인프라) — 로컬 `setupServer` 59개 전면 이주 (해소 2026-08-12 · PR #375 · 실제 58개 · 판별식 봉인)
+
+> **해소.** 실제 호출 **0건**. `MIGRATION_BASELINE` 을 비워 **신규든 잔존이든 전부 red** 로 봉인했다.
+> 전 스위트 **579 파일 / 9,469 테스트 · EXIT=0** — 기준선과 증감 0.
+> 상세는 [`2026-08-12-debt24-msw-migration.md`](docs/plans/2026-08-12-debt24-msw-migration.md).
+>
+> **★대상 수가 두 번 틀렸다.** 제목의 「59개」와 본문의 「60개」가 어긋나 있었고, 실제 이주
+> 대상은 **58개**였다 — 판별식 baseline 의 60건 중 `useAutomationExecutions.test.tsx` 는
+> **주석에만** `setupServer` 가 등장하고 이미 전역을 쓰고 있었다(스캐너가 주석까지 셌다).
+>
+> **★★「기계적 치환이 아니다」의 근거가 이 저장소에서는 성립하지 않았다.** 아래 원 서술은
+> 401 자동 재시도로 결과가 뒤집힌다고 경고했으나 **해당 파일이 0개**다 —
+> ①59개 중 43개가 `fetch` 를 직접 부르고(`apiFetch` 미경유) ②나머지 16개 중 401·403 단언은
+> 6개인데 ③**전부 `403`** 이며 ④`client.ts:114` 가 `if (res.status !== 401) return res` 다.
+> **단 「무효」로 넘겨 읽지 말 것** — 무효인 것은 현재 코드에서의 401 경로다.
+>
+> **실제로 걸린 함정은 다른 것들이었다.** ①여러 줄 `import` 중간에 새 import 를 삽입해 3파일
+> 파싱 붕괴 ②`beforeAll(() => { server.listen(...) })` **블록 형태**를 놓쳐
+> `already enabled network` ③`\bafterEach\b` 가 테스트 이름 문자열·주석까지 「사용 중」으로
+> 오판해 미사용 import 미제거 ④**baseline 을 비우자 그것을 참조하던 단언이 깨졌다**
+> (`MIGRATION_BASELINE[0]` → `undefined`).
+>
+> **보상 가드 1건 제거.** `automation-execution-handlers.ts` 의 `requestId` 단발 캐시를
+> 걷어내고 관련 18파일 292 테스트 통과를 확인했다 — **원인이 사라졌다는 실증**이다.
+> `backlog-fixtures.ts` 의 키 중복 금지는 **남겼다**(도메인 불변식이지 우회가 아니다).
 
 **무엇.** 이중 디스패치의 근본 원인인 로컬 `setupServer` 인스턴스가 테스트 파일 **60개** (2026-08-09 실측 · `src/test/server.ts` 제외)에 남아 있다.
 판별식(동결)만 세워 신규 유입은 막았으나 기존 59개는 그대로다.
@@ -3565,3 +3650,54 @@ out.push(`<blockquote class="md-quote">${inlineMd(quoted.join(' '))}</blockquote
 **같은 JSX 요소가 `placeholder`(i18n 경유)와 `aria-label`(한글 하드코딩)을 동시에 갖는 것**.
 정의를 「한글이 든 `aria-label` 전부」로 넓히면 수치가 크게 달라진다 — 넓힌 수치를 이 항목에
 그대로 옮겨 적지 말고, 옮긴다면 정의를 함께 적을 것.
+
+---
+
+## ⬜ 인프라 — worktree 에 `node_modules` 링크를 만드는 절차가 없다 (신규 · 미착수)
+
+**무엇.** `scripts/workflow/worktree-hook-wiring.test.ts` 는 worktree 가 `node_modules` ·
+`apps/web/node_modules` 를 **심볼릭 링크로 갖는다고 전제**한다(`SYMLINKED_IGNORE_PATHS`).
+`.gitignore` 도 그 링크를 무시하도록 맞춰져 있다. **그런데 그 링크를 만드는 곳이 어디에도 없다** —
+`/bts-start` Step 3 은 `.husky/_` 하나만 링크한다(전수 grep 0건).
+
+**결과.** worktree 에서 프론트 검증을 **아예 못 돌린다.**
+
+| 증상 | 원인 |
+|---|---|
+| `node_modules/.bin/vitest: No such file` (exit 127) | 링크 부재 |
+| `.husky/pre-commit` 이 첫 줄에서 죽어 **문서 인덱스 검사까지 도달 못 함** | 같은 원인 (별도 항목) |
+
+2026-08-12(PR #375)은 링크를 **손으로 만들어** 진행했다. 다음 사람이 같은 자리에서 다시 막힌다.
+
+```bash
+ln -s /Users/maxi.moff/Projects/BTS/node_modules            .worktrees/<slug>/node_modules
+ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/<slug>/apps/web/node_modules
+```
+
+**처방 후보.** ① `/bts-start` Step 3 에 위 두 줄을 넣고 `worktree-hook-wiring.test.ts` 가
+그 배선을 강제한다(훅 링크와 같은 방식). ② 링크 후에도 **`pnpm` 래퍼는 못 쓴다** —
+의존성 검사가 경로 불일치를 감지해 무-TTY 로 죽는다(`[[worktree-pnpm-verify-deps-symlink]]`).
+바이너리를 직접 부르는 규율(`node_modules/.bin/<도구>`)을 함께 문서화할 것.
+
+**★판별식이 전제만 하고 생성은 아무도 안 한다** — 이 저장소가 반복해온
+「가드는 있는데 배선이 없다」 양식이다(`[[nonprod-bean-collision-nine-not-five]]`).
+
+---
+
+## ⬜ 인프라 — E2E(Playwright)가 CI 에 한 번도 배선된 적이 없다 (신규 · 미착수)
+
+**무엇.** `apps/web/e2e/*.spec.ts` 가 실재하고 `pnpm test:e2e` 스크립트도 있는데,
+**어느 워크플로우도 그것을 돌리지 않는다** — `grep -rn 'e2e' .github/workflows/*.yml` **0건**.
+
+**결과.** E2E 가 잡는 층(실 브라우저 · Service Worker MSW 경로 · 라우팅)은 **머지 전 검증에서
+통째로 빠져 있다.** 유닛이 초록이면 그대로 머지된다.
+
+**실제 사례 (2026-08-12 · PR #375).** `automation-execution-handlers.ts` 의 이중 dispatch
+보상 가드를 제거했는데, 그 파일은 `setupWorker`(브라우저) 경로에서도 쓰인다.
+유닛 292 통과만으로는 브라우저 영향을 못 봤고 **게이트 2 리뷰에서 E2E 를 손으로 돌려**
+5/5 통과를 확인했다. 그 절차가 없었다면 미검증인 채 머지됐을 것이다.
+
+**착수 시 주의.** 러너가 1대라 E2E 를 무조건 붙이면 「CI 벽시계」 항목과 충돌한다.
+**어떤 트리거에서 돌릴지**(예. `apps/web/**` 변경 시에만)를 먼저 정해야 한다.
+`playwright.config.ts` 의 webServer 가 dev 서버를 띄우므로 5173 orphan 정리도 함께 배선할 것
+(`[[e2e-orphan-vite-after-worktree-remove]]`).

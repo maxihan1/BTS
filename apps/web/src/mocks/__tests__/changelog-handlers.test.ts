@@ -1,17 +1,15 @@
 // changelog MSW 핸들러 단위 테스트 — GET /api/v1/issues/:key/changelog 페이징 + 404 (FR-HS-02)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import { changelogHandlers } from '../changelog-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...changelogHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...changelogHandlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼 타입 (Zod 없이 구조만 검증)

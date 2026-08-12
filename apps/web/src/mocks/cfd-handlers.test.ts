@@ -1,7 +1,7 @@
 // CFD(누적 흐름도) MSW 핸들러 단위 테스트 — 계약 drift 가드 (FR-RP-03 D6/D7 Task 6)
 
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { cfdResponseSchema } from '@/api/cfd'
 import {
   cfdHandlers,
@@ -16,17 +16,15 @@ import {
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...cfdHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...cfdHandlers)
+})
 
 beforeEach(() => {
   resetCfdStore()
   seedCfd(DEFAULT_CFD)
 })
 
-afterEach(() => server.resetHandlers())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 계약 drift 가드 — 기본 픽스처가 실제 Zod 응답 스키마를 통과하는지 검증

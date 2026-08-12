@@ -273,6 +273,38 @@ pnpm test:e2e                       # (qa-engineer 추가 시)
 pnpm test:workflow                  # ★ 워크플로우 판별식 — CI 와 같은 목록
 ```
 
+### ★★판정은 **종료 코드**로 한다 — 통과 건수로 하지 않는다
+
+**「Tests N passed」와 「EXIT=1」은 같은 실행에서 동시에 참일 수 있다.** vitest 가
+unhandled rejection 을 `Errors 1` 로 보고하면서 `process.exitCode=1` 을 세우는 경우이고,
+`TODOS.md` 의 「전체 스위트 실행에서 `pnpm test` 가 간헐적으로 exit≠0」 항목이 그것이다.
+실제로 FR-UX-09 F2 세션 체크포인트가 **통과 건수만 읽고 초록으로 보고**했다가 게이트 2
+재검증에서 교정됐다.
+
+```bash
+# ✅ 종료 코드를 직접 본다
+pnpm test
+echo "EXIT=$?"
+
+# ✅ 출력이 길면 파일로 받는다 — 종료 코드는 그대로 남는다
+pnpm test > /tmp/test.log 2>&1
+echo "EXIT=$?"
+tail -30 /tmp/test.log
+```
+
+**★파이프에 태우지 말 것.**
+
+```bash
+# ❌ 셸이 보고하는 종료 코드가 tail 의 것이 된다 — 재려던 값이 사라진다
+pnpm test 2>&1 | tail -20
+```
+
+에이전트가 출력을 줄여 읽으려 할 때 정확히 이 형태를 쓰기 때문에 위험이 크다.
+`set -o pipefail` 이 없는 셸에서는 **파이프 마지막 명령의 종료 코드**만 남는다.
+
+보고에는 **통과 건수와 종료 코드를 함께** 적는다 — 하나만 적으면 다음 사람이 나머지를
+확인했는지 알 수 없다. 배선은 `scripts/workflow/worktree-hook-wiring.test.ts` 가 강제한다.
+
 **★ `pnpm test:workflow` 를 빼지 말 것.** CI(workflow-scripts-ci)가 돌리는 것이 정확히 이
 명령이다. 로컬 목록에서 빠지면 로컬과 CI 가 서로를 안 보는 두 목록이 되고, "로컬 초록 → push →
 CI 빨강" 이 구조적으로 반복된다([[two-lists-never-check-each-other]]).

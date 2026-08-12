@@ -1,14 +1,11 @@
 // OIDC provider 목록 조회 API 단위 테스트 — fetchOidcProviders Zod 파싱 + 에러 분기 검증
 import { http, HttpResponse } from 'msw'
-import { setupServer } from 'msw/node'
 import { fetchOidcProviders } from './oidc'
 import { ApiError } from './client'
-
-const server = setupServer()
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+// 전역 서버를 쓴다 — 로컬 `setupServer` 를 함께 띄우면 인스턴스 2개가 동시에 listen 해
+// **같은 요청이 두 번 디스패치**된다(`msw-single-setupserver.test.ts` 참조).
+// 생명주기(listen · resetHandlers · close)는 `src/test/setup.ts` 가 전담한다.
+import { server } from '@/test/server'
 
 describe('fetchOidcProviders', () => {
   it('provider 목록을 정상 반환한다', async () => {

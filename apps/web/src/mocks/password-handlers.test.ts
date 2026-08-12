@@ -1,13 +1,11 @@
 // 비밀번호 변경 MSW 핸들러 단위 테스트 — EC-7 분기순서 및 에러코드 대문자 스네이크 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import { passwordHandlers } from './password-handlers'
 
-const server = setupServer(...passwordHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...passwordHandlers)
+})
 
 /** 정상 변경 응답 shape — 200 { changed: true } */
 interface PasswordChangeSuccess {

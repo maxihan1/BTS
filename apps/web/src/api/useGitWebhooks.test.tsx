@@ -1,8 +1,8 @@
 // Git 웹훅 목록 조회 + 등록/삭제 TanStack Query 훅 테스트 — queryKey 검증 + mutation invalidate-only(setQueryData 금지) 검증
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { GIT_WEBHOOKS_QUERY_KEY, useGitWebhooks, useCreateGitWebhook, useDeleteGitWebhook } from './useGitWebhooks'
@@ -19,18 +19,16 @@ import {
 // (전역 handlers.ts에 gitWebhookHandlers 미등록, 로컬 서버로 격리)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...gitWebhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...gitWebhookHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 afterEach(() => {
-  server.resetHandlers()
   resetGitWebhookStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_GIT_WEBHOOK_PROJECT_KEY
 /** 백엔드 MIN_SECRET_LENGTH(16)를 만족하는 유효 secret — mock 로직과 맞춘다. */

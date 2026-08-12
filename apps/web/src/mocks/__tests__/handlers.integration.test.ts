@@ -1,13 +1,11 @@
 // handlers 통합 배열 회귀 + schemeHandlers/issueTypeHandlers spread 포함 여부 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import { handlers } from '../handlers'
 
-const server = setupServer(...handlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...handlers)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 기존 핸들러 회귀 검증

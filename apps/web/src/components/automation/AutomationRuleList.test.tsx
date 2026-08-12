@@ -1,10 +1,10 @@
 // AutomationRuleList 단위 테스트 — 목록·트리거/enabled 배지·토글·삭제확인·빈상태·편집위임 (FR-AT-01 D6 Task 5)
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
+import { server } from '@/test/server'
 import { toast } from 'sonner'
 import { AutomationRuleList } from './AutomationRuleList'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
@@ -25,21 +25,28 @@ vi.mock('sonner', () => ({
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MSW 서버 설정 — useAutomationRules.test.tsx와 동형(전역 handlers.ts 미등록, 로컬 서버로 격리)
+// MSW 서버 설정 — 전역 서버에 등록한다.
+//
+// 로컬 `setupServer` 를 함께 띄우면 인스턴스 2개가 동시에 listen 해 **같은 요청이 두 번
+// 디스패치**된다(실측. resolver 2회 · `request:start` 2회 · 고유 requestId 는 1).
+// 생명주기(listen · resetHandlers · close)는 `src/test/setup.ts` 가 전담한다.
+//
+// ★등록은 반드시 `beforeEach` 다 — 전역 `setup.ts` 가 매 테스트 뒤 `resetHandlers()` 를
+// 부르므로 `beforeAll` 에 두면 **첫 테스트 뒤 조용히 사라진다.**
+//
+// ★옛 주석의 「전역 handlers.ts 미등록」은 사실이 아니었다(2026-08-12 실측).
+// `handlers.ts:71·153` 이 `automationRuleHandlers` 를 이미 import·spread 한다 —
+// 그럼에도 로컬 서버를 띄웠으므로 이 파일은 **이중 디스패치의 실제 사례**였다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
+  server.use(...automationRuleHandlers)
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 afterEach(() => {
-  server.resetHandlers()
   resetAutomationRuleStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_AUTOMATION_PROJECT_KEY
 

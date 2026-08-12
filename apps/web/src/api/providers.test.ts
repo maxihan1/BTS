@@ -1,14 +1,8 @@
 // 로그인 화면용 인증 공급자 목록 조회 API 단위 테스트 — fetchProviders Zod 파싱 + 에러 분기 검증
 import { http, HttpResponse } from 'msw'
-import { setupServer } from 'msw/node'
 import { fetchProviders } from './providers'
 import { ApiError } from './client'
-
-const server = setupServer()
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+import { server } from '@/test/server'
 
 describe('fetchProviders', () => {
   it('{providers:[...]} 래퍼를 언래핑해 배열을 반환한다', async () => {

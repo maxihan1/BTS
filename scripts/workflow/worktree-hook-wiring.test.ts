@@ -135,6 +135,35 @@ const HOOK_LINK_TOKENS = ['ln -s', '.husky/_', '.worktrees/'] as const;
 /** `/bts-impl` 의 PR push 전 점검이 반드시 돌려야 하는 명령 — CI 와 같은 판별식이다. */
 const IMPL_REQUIRED_COMMAND = 'pnpm test:workflow';
 
+/**
+ * 최종 점검이 반드시 담아야 하는 **종료 코드 규율**의 요소 (2026-08-12 · TODOS `1707`).
+ *
+ * ## 왜 이것이 층 2 에 속하나
+ *
+ * `1707`(전 스위트에서 `pnpm test` 가 간헐적으로 exit≠0)의 실제 구멍은 **코드가 아니라
+ * 읽는 쪽**이다. 장부가 그렇게 특정했다.
+ *
+ * > vitest 는 `cli-api…:13897-13899` 에서 이미 `process.exitCode=1` 을 세우고
+ * > `frontend-ci.yml:106-107` 이 그 종료 코드를 그대로 잡 성패로 쓴다.
+ * > **실제 구멍은 CI 배선이 아니라 「Tests N passed 만 읽고 초록으로 보고하는」 사람/에이전트 쪽**이다.
+ *
+ * 실제 사고가 기록돼 있다 — FR-UX-09 F2 세션 체크포인트가 그렇게 잘못 적혔다가 게이트 2
+ * 재검증에서 교정됐다. 「Tests 8378 passed」와 「EXIT=1」이 **같은 실행에서 동시에 참**이라
+ * 통과 건수만 보면 초록으로 읽힌다.
+ *
+ * ## ★파이프가 종료 코드를 삼킨다
+ *
+ * `pnpm test 2>&1 | tail -20` 처럼 파이프에 태우면 셸이 보고하는 종료 코드는 **파이프
+ * 마지막 명령(tail)의 것**이다. 원래 재려던 값이 사라진다. 에이전트가 출력을 줄여 읽으려
+ * 할 때 정확히 이 형태를 쓰기 때문에 위험이 크다.
+ *
+ * ## 왜 낱말 3개를 함께 요구하나
+ *
+ * 문구 하나를 통째로 요구하면 표현만 바꿔도 깨지고, 한 낱말만 요구하면 무관한 산문에
+ * 스쳐도 통과한다. `HOOK_LINK_TOKENS` 와 같은 처방이다.
+ */
+const EXIT_CODE_DISCIPLINE_TOKENS = ['종료 코드', '파이프', 'passed'] as const;
+
 /** 훅 본체가 반드시 수행해야 하는 검사. */
 const HOOK_REQUIRED_CHECK = 'build-doc-index.mjs --check';
 
@@ -427,6 +456,27 @@ describe('worktree 훅 배선 정합', () => {
       `${INPUTS.impl.file} 의 코드블록에 '${IMPL_REQUIRED_COMMAND}' 가 없다.\n\n` +
         `CI(workflow-scripts-ci)는 이 명령으로 판별식 전량을 돌린다. 로컬 최종 점검이 같은 명령을\n` +
         `돌리지 않으면 두 목록이 서로를 안 보게 되고, 로컬 초록이 CI 빨강을 예측하지 못한다.`,
+    );
+  });
+
+  /**
+   * ★ 층 2 확장. 「통과 건수 ≠ 종료 코드」를 읽는 쪽에서 막는다 (TODOS `1707`).
+   *
+   * 이 항목의 누출 경로는 코드에 없다 — 2026-08-12 전수 조사에서 `.catch` 없는
+   * `mutateAsync` **0건**, mutation 콜백의 `throw` **0건**이었다. 남은 구멍은 사람/에이전트가
+   * 「Tests N passed」만 읽고 초록으로 보고하는 쪽이고, 그건 스킬 문서가 지켜야 한다.
+   */
+  test('★bts-impl 이 종료 코드 규율을 명시한다 (통과 건수로 판정 금지)', () => {
+    const impl = read(INPUTS.impl);
+    const missing = EXIT_CODE_DISCIPLINE_TOKENS.filter((t) => !impl.includes(t));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `${INPUTS.impl.file} 에 종료 코드 규율이 없다. 빠진 요소. ${missing.join(' · ')}\n\n` +
+        `「Tests N passed」와 「EXIT=1」은 **같은 실행에서 동시에 참**일 수 있다(TODOS 1707).\n` +
+        `그리고 'pnpm test | tail' 처럼 파이프에 태우면 셸이 보는 종료 코드는 파이프 마지막\n` +
+        `명령의 것이라 원래 재려던 값이 사라진다. 최종 점검 절차가 그 둘을 명시해야 한다.`,
     );
   });
 
