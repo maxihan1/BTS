@@ -208,6 +208,25 @@ const moveResponseWithSubtasksFixture = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 사용자 문구 정본 — **일부러 하드코딩한다**
+//
+// `issueMoveStrings` 를 import 해서 비교하면 ko.ts 를 고치는 순간 테스트도 같이 따라가
+// 「문구가 이래야 한다」는 계약이 사라진다. 여기 적힌 문자열이 곧 계약이고,
+// ko.ts 를 고치면 여기도 같이 고쳐야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 형식 오류 문구 — `issueMoveStrings.errorKeyFormat` 정본 */
+const KEY_FORMAT_TEXT = '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.'
+/** 그 외 4xx 문구 — `issueMoveStrings.errorPreview` 정본 */
+const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.'
+/** 5xx·네트워크 단절 문구 — `issueMoveStrings.errorPreviewTemporary` 정본 */
+const PREVIEW_TEMPORARY_TEXT =
+  '이슈 이동 정보를 불러오지 못했습니다. 일시적인 문제일 수 있으니 잠시 후 다시 시도해 주세요.'
+/** preview 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
+const PREVIEW_FORBIDDEN_TEXT =
+  '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -550,15 +569,6 @@ describe('T4-5: targetStateIsDone = 선택한 targetState의 isDone', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('T4-6: preview 실패 문구 — 403 · 일시적 · 그 외 4xx', () => {
-  /** 그 외 4xx 문구 — `issueMoveStrings.errorPreview` 정본 */
-  const PREVIEW_ERROR_TEXT = '이슈 이동 정보를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.'
-  /** 5xx·네트워크 단절 문구 — `issueMoveStrings.errorPreviewTemporary` 정본 */
-  const PREVIEW_TEMPORARY_TEXT =
-    '이슈 이동 정보를 불러오지 못했습니다. 일시적인 문제일 수 있으니 잠시 후 다시 시도해 주세요.'
-  /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
-  const PREVIEW_FORBIDDEN_TEXT =
-    '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
-
   async function submitTarget(targetKey = 'INFRA'): Promise<void> {
     renderDialog()
     const user = userEvent.setup()
@@ -719,12 +729,6 @@ describe('T4-7: 이동 실행 403 — preview 와 같은 원인 설명', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('T4-8: 요청 전 키 형식 차단', () => {
-  /** 형식 오류 문구 — `issueMoveStrings.errorKeyFormat` 정본 */
-  const KEY_FORMAT_TEXT = '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.'
-  /** 403 전용 문구 — `issueMoveStrings.errorPreviewForbidden` 정본 */
-  const PREVIEW_FORBIDDEN_TEXT =
-    '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다.'
-
   /** preview 가 실제로 몇 번 나갔는지. 이 숫자가 이 블록의 단언 대상이다. */
   let previewRequestCount = 0
 
