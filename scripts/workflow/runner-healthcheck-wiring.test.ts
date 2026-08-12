@@ -231,7 +231,11 @@ describe('러너 헬스체크 배선', () => {
       // 엔진도 자원도 정상인데 **데몬만 꺼진** 상태. 위 점검들은 전부 통과시킨다.
       // 2026-08-12 PR #367 실측 상관 100% — 데몬 준비 이전 시작 잡 5건 전부 실패,
       // 이후 시작한 잡 전부 통과. 코드 무변경 재실행으로 EXIT=5 → 0.
-      'docker info', // ★CLI 존재가 아니라 **데몬 가동**으로 판정한다. 그 구분이 결함의 핵심이다
+      // ★`'docker info'` 로 적으면 안 된다 — 두 층의 **복구 안내 문구**
+      //   (「'docker info' 가 0 을 낼 때까지 기다린다」)가 그것을 만족시켜, 판정식을 통째로
+      //   지워도 통과한다. 2026-08-12 뮤테이션에서 실제로 살아남았다. 도움말이 아니라
+      //   **판정식 자체**를 못박는다. CLI 존재가 아니라 데몬 가동으로 가르는 것이 결함의 핵심이다.
+      '"$DOCKER" info',
       'BTS_DOCKER_BIN', // 데몬 부재 주입 이음매. 없으면 그 층은 검증 불가능해진다
       'Docker 데몬이 꺼져 있다', // 진단 문구 — 없으면 「테스트가 깨졌다」로 오독된다
       '코드 문제 아님', // 오진 차단. 이 문구가 이 판정의 존재 이유다
@@ -307,9 +311,19 @@ describe('러너 헬스체크 배선', () => {
     );
     assert.ok(present.size >= 3, `런북 섹션을 ${present.size}개만 찾았다 — 파서가 고장났다.`);
 
-    // 두 층이 인용하는 섹션 번호 전수.
-    const citing = [readWorkflow(HEALTH_WORKFLOW), fs.readFileSync(path.join(REPO_ROOT, HEALTH_SCRIPT), 'utf8')];
-    const cited = [...new Set(citing.flatMap((body) => [...body.matchAll(/self-hosted-runner\.md\s+§(\d+)/g)].map((m) => m[1])))];
+    // 두 층이 인용하는 섹션 번호. ★층별로 따로 본다 — 합쳐서 보면 **한 층만** 옳아도 통과한다.
+    //   2026-08-12 뮤테이션에서 실제로 그랬다(로컬 층만 §5 로 되돌렸는데 CI 층의 §7 이 가려 줬다).
+    const layers: Record<string, string> = {
+      [HEALTH_WORKFLOW]: readWorkflow(HEALTH_WORKFLOW),
+      [HEALTH_SCRIPT]: fs.readFileSync(path.join(REPO_ROOT, HEALTH_SCRIPT), 'utf8'),
+    };
+    const citedBy = Object.fromEntries(
+      Object.entries(layers).map(([name, body]) => [
+        name,
+        [...new Set([...body.matchAll(/self-hosted-runner\.md\s+§(\d+)/g)].map((m) => m[1]))],
+      ]),
+    );
+    const cited = [...new Set(Object.values(citedBy).flat())];
     assert.ok(cited.length > 0, '두 층이 런북을 한 번도 인용하지 않는다 — 진단 경로가 없다.');
 
     const dangling = cited.filter((n) => !present.has(n));
@@ -333,11 +347,16 @@ describe('러너 헬스체크 배선', () => {
         `런북 섹션. ${[...runbook.matchAll(/^##\s+(\d+\..+)$/gm)].map((m) => m[1]).join(' / ')}`,
     );
     const dockerN = dockerSection[1];
-    assert.ok(
-      cited.includes(dockerN),
-      `두 층이 Docker 절(§${dockerN} ${dockerSection[2]})을 인용하지 않는다 — 인용한 것. ` +
-        `${cited.map((n) => `§${n}`).join(' · ')}\n` +
-        `번호만 맞는 엉뚱한 절을 가리키면 막힌 사람이 그 절을 읽고 더 헤맨다.`,
+    const notCiting = Object.entries(citedBy)
+      .filter(([, ns]) => !ns.includes(dockerN))
+      .map(([name, ns]) => `${name} (인용한 것. ${ns.map((n) => `§${n}`).join(' · ') || '없음'})`);
+    assert.deepEqual(
+      notCiting,
+      [],
+      `Docker 절(§${dockerN} ${dockerSection[2]})을 인용하지 않는 층이 있다.\n` +
+        `${notCiting.join('\n')}\n` +
+        `번호만 맞는 엉뚱한 절을 가리키면 막힌 사람이 그 절을 읽고 더 헤맨다.\n` +
+        `★층별로 보는 이유. 합쳐서 보면 한 층만 옳아도 통과한다 — 2026-08-12 뮤테이션 실측.`,
     );
   });
 
