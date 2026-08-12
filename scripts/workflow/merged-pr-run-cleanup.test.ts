@@ -52,7 +52,20 @@ interface FakeGhBehavior {
    * 스크립트 안에 있어야 한다.
    */
   runs?: { id: string; sha: string }[]
-  /** `gh api` 가 돌려줄 현재 main HEAD sha. */
+  /**
+   * `gh api` 가 돌려줄 커밋 목록 — HEAD 가 맨 앞이다.
+   *
+   * ★`message` 는 **본문까지 포함한 전체**다. GitHub 의 CI 건너뛰기 판정이 제목이 아니라
+   * 메시지 전체를 보기 때문이다(2026-08-07 PR #345 실측 — squash 본문 3행의 `[skip ci]` 가
+   * main push CI 를 0회로 만들었다). 스크립트는 개행을 공백으로 눕힌 한 줄을 받는다.
+   */
+  commits?: { sha: string; message: string }[]
+  /**
+   * `gh api` 가 돌려줄 현재 main HEAD sha.
+   *
+   * `commits` 를 주지 않은 케이스의 후방호환 통로다 — 한 줄만 뱉으므로 스크립트는
+   * 「sha 1개 + 빈 메시지」로 읽고, 빈 메시지는 skip-ci 가 아니므로 곧 검증 대상 커밋이 된다.
+   */
   headSha?: string
   /** `gh api` 자체가 실패하는 경우 (인증 만료 · 네트워크 · 저장소 판별 실패). */
   headShaFail?: boolean
@@ -78,6 +91,11 @@ function runScript(branch: string, behavior: FakeGhBehavior = {}): RunResult {
     ...(behavior.ids ?? []),
     ...(behavior.runs ?? []).map((r) => `${r.id} ${r.sha}`),
   ]
+  // `gh api` 가 뱉을 커밋 줄들. 메시지의 개행은 공백으로 눕힌다 — 실물 스크립트가 `--jq` 로
+  // 정형해 받는 형태와 같게 맞추는 것이 목적이다. 한 커밋이 한 줄이어야 파싱이 성립한다.
+  const apiLines = (behavior.commits ?? []).map(
+    (c) => `${c.sha} ${c.message.split('\n').join(' ')}`,
+  )
   const failMode = behavior.failMode ?? 'none'
   const headSha = behavior.headSha ?? ''
   const apiFail = behavior.headShaFail === true ? '1' : '0'
@@ -92,7 +110,10 @@ function runScript(branch: string, behavior: FakeGhBehavior = {}): RunResult {
       `HEAD_SHA="${headSha}"`,
       'if [ "$1" = "api" ]; then',
       '  if [ "$API_FAIL" = "1" ]; then exit 1; fi',
-      '  echo "$HEAD_SHA"',
+      // `commits` 를 준 케이스는 그 목록을, 안 준 케이스는 종전대로 sha 한 줄을 뱉는다.
+      ...(apiLines.length > 0
+        ? apiLines.map((line) => `  echo "${line}"`)
+        : ['  echo "$HEAD_SHA"']),
       '  exit 0',
       'fi',
       'if [ "$1" = "run" ] && [ "$2" = "list" ]; then',
@@ -192,6 +213,32 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
       cancels.sort(),
       ['run cancel 902', 'run cancel 902'],
       `낡은 run 만 정확히 취소해야 한다 (HEAD=901 보호, 낡음=902 취소).\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★★HEAD 가 [skip ci] 면 그 부모(= 실제 검증 중인 커밋)의 run 을 취소하지 않는다', () => {
+    // 이 PR 의 존재 이유. post-merge 훅이 머지 직후 `[chore] dashboard regen [skip ci]` 를
+    // push 해 HEAD 를 한 칸 민다. 그 커밋은 run 이 0건이고, 머지 내용을 검증 중인 run 은
+    // **부모**에 붙어 있다. HEAD 만 보호하면 그 run 이 정확히 취소 대상이 된다.
+    // 실측 2026-08-12 PR #376 — HEAD af3978648(run 0건) / in_progress ade4dd826.
+    //
+    // ★`[skip ci]` 를 **본문**에 둔다. 제목만 보는 구현은 여기서 red 가 나야 한다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: 'chore: dashboard regen\n\n[skip ci]' },
+        { sha: MERGE, message: 'docs: 부채 등재 (#376)' },
+      ],
+      runs: [{ id: '901', sha: MERGE }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      '머지 내용을 검증 중인 run 을 취소했다 — 가드가 스스로 「현재 main 검증 0건」을 만든다.\n' +
+        r.calls.join('\n'),
     )
   })
 
