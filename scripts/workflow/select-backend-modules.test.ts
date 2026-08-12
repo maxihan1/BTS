@@ -173,6 +173,45 @@ describe('backend-ci 모듈 선별', () => {
     }
   })
 
+  test('★★backend-ci 가 선별기를 실제로 부르고 매트릭스에 먹인다 (배선)', () => {
+    // 선별기만 있고 아무도 안 부르면 12개 잡은 그대로 돈다 — 이 저장소가 여러 번 겪은
+    // 「가드는 있는데 배선이 없다」 양식이다. 여기서는 반대로 **줄이는 도구**가 안 불리는 것이라
+    // 조용히 아무 일도 안 일어난다(빨간불조차 없다).
+    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+
+    assert.match(
+      workflow,
+      /select-backend-modules\.ts/,
+      `${WORKFLOW} 가 선별기를 부르지 않는다 — 스크립트가 있어도 실행되지 않는다.`,
+    )
+    assert.match(
+      workflow,
+      /matrix:\s*\n\s*module:\s*\$\{\{\s*fromJSON\(needs\.select\.outputs\.modules\)\s*\}\}/,
+      `${WORKFLOW} 의 매트릭스가 선별 결과를 받지 않는다 — 골라 놓고 안 쓰는 상태다.`,
+    )
+  })
+
+  test('★★매트릭스가 고정 목록으로 되돌아가지 않았다 (두 목록 차단)', () => {
+    // 목록을 워크플로우에 다시 적으면 그 목록과 `backend/modules/` 실물이 서로를 안 보는
+    // 두 목록이 된다 — 새 BC 를 추가하고 목록에 안 적으면 그 모듈은 **한 번도 안 돈다.**
+    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+    const matrixBlock = workflow.slice(
+      workflow.indexOf('matrix:'),
+      workflow.indexOf('steps:', workflow.indexOf('matrix:')),
+    )
+    assert.ok(matrixBlock.length > 0, '매트릭스 블록을 못 찾았다 — 아래 단언이 공허해진다.')
+
+    const hardcoded = allModules().filter((m) =>
+      new RegExp(`^\\s*-\\s*${m}\\s*$`, 'm').test(matrixBlock),
+    )
+    assert.deepEqual(
+      hardcoded,
+      [],
+      `매트릭스에 모듈이 하드코딩돼 있다: ${hardcoded.join(', ')}\n` +
+        `선별 결과와 이 목록 중 무엇이 실제로 도는지가 갈리고, 새 BC 는 조용히 빠진다.`,
+    )
+  })
+
   test('★넓은 판정과 좁은 판정을 구분해 보고한다', () => {
     // 로그를 읽는 사람이 「전부 돈다」가 **의도**인지 **판정 실패**인지 알아야 한다.
     const narrow = selectModules(['backend/modules/automation/X.kt'])

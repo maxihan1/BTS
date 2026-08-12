@@ -74,10 +74,65 @@ jobs:
     with:
       require_docker: true
 
+  # ── 어떤 모듈을 돌릴지 고른다 (2026-08-12 · 부채 매핑 31) ─────────────────────
+  #
+  # 왜. 종전에는 `matrix.module` 이 9개 고정 목록이라 백엔드 파일이 하나만 바뀌어도 전부 돌았다.
+  # 2026-08-12 PR #367 실측 — KDoc 한 덩어리(실행 코드 0줄)가 잡 12개를 깨웠고 러너가 1대라
+  # 직렬로 **약 37분**. 「매트릭스로 병렬화하면 최장 모듈로 수렴」이라는 설계 전제는 러너가
+  # 여러 대일 때만 성립한다.
+  #
+  # ★두 방향의 비용이 대칭이 아니다. 넓게 고르면 시간만 들지만 **좁게 고르면 검증 안 된 코드가
+  #   초록으로 머지된다.** 그래서 판정을 못 하는 모든 경우(변경 목록 획득 실패 · 모듈 밖 백엔드
+  #   변경 · 이 워크플로우 자신의 변경)의 기본값은 **전 모듈**이다.
+  #
+  # ★의존 그래프는 손으로 안 적는다 — `build.gradle.kts` 의 `project(":modules:X")` 에서
+  #   런타임에 도출한다. 판별식. scripts/workflow/select-backend-modules.test.ts
+  select:
+    name: 대상 모듈 선별
+    needs: runner-health
+    runs-on: [self-hosted, bts-local]
+    timeout-minutes: 5
+    outputs:
+      modules: ${{ steps.pick.outputs.modules }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 변경 파일을 구하려면 비교 대상 커밋이 로컬에 있어야 한다. 얕은 클론이면
+          # diff 가 실패하고, 그러면 아래가 fail-safe 로 **전 모듈**을 고른다(안전하지만 느리다).
+          fetch-depth: 0
+
+      - name: 변경 파일 → 대상 모듈
+        id: pick
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # ★diff 가 실패하면 목록을 **비운다.** 선별기는 빈 목록을 「판정 불가」로 읽고
+          #   전 모듈을 돌려준다 — 모르는 상태에서 좁히지 않는다는 계약이 여기서 성립한다.
+          CHANGED="$(git diff --name-only "$BASE_SHA" "${{ github.sha }}" 2> /dev/null || true)"
+          if [ -z "$CHANGED" ]; then
+            echo "⚠️  변경 파일을 구하지 못했다 (base=$BASE_SHA) — 전 모듈을 돈다."
+          fi
+
+          # shellcheck disable=SC2086 — 단어 분할이 목적이다(파일 하나가 인자 하나).
+          MODULES="$(node --experimental-strip-types \
+            scripts/workflow/select-backend-modules.ts $CHANGED)"
+
+          echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
+
+          # ★선별 결과를 run 요약에 남긴다. 「왜 이 모듈만 돌았나」가 사후 판단의 근거이고,
+          #   스텝 로그 안에만 있으면 잡을 펼쳐야 보여서 아무도 안 본다.
+          : "${GITHUB_STEP_SUMMARY:=/dev/null}"
+          {
+            echo "### backend-ci 대상 모듈"
+            echo ""
+            echo "\`$MODULES\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── BC 모듈 — Testcontainers 자체 기동, 서비스 컨테이너 불요 ──────────────────
   modules:
     name: ${{ matrix.module }}
-    needs: runner-health
+    needs: [runner-health, select]
     runs-on: [self-hosted, bts-local]
     # 관측치(2026-07-27 로컬). issue-tracking 7~10분 · identity-access 10~16분 · 나머지 5분 이하.
     # CI 러너는 로컬보다 느리므로 여유를 크게 잡는다. 매트릭스라 총 과금 시간은 늘지만 벽시계는 줄어든다.
@@ -85,17 +140,13 @@ jobs:
     strategy:
       # 한 모듈이 깨져도 나머지 결과를 봐야 원인 범위를 좁힐 수 있다.
       fail-fast: false
+      # ★목록을 여기 적지 않는다. `select` 잡이 변경 파일에서 계산한 것을 그대로 받는다 —
+      #   적어 두면 그 목록과 `backend/modules/` 실물이 서로를 안 보는 두 목록이 된다.
+      #   선별기는 **어떤 입력에도 빈 배열을 돌려주지 않는다.** 빈 매트릭스는 GitHub 이
+      #   거부하고 거부된 잡은 스킵되는데, 그것은 빨간불이 아니라 **부재**라 아무도 눈치채지
+      #   못한 채 초록으로 머지된다(장부 매핑 31 이 착수 조건으로 못박은 위험).
       matrix:
-        module:
-          - shared-kernel
-          - identity-access
-          - project-workflow
-          - issue-tracking
-          - agile-planning
-          - notification
-          - search-export-import
-          - slack-integration
-          - automation
+        module: ${{ fromJSON(needs.select.outputs.modules) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
