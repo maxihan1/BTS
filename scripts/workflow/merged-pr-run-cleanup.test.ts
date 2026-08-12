@@ -242,6 +242,73 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
     )
   })
 
+  test('★★[skip ci] 구간보다 낡은 커밋의 run 은 여전히 취소한다 (가드가 과하게 넓지 않다)', () => {
+    // 반대 방향 사고. 보호를 넓히다가 「전부 보호」가 되면 낡은 run 이 러너를 계속 점유해
+    // PR #366 이 닫은 부채가 되살아난다. 2026-08-10 실측 — 낡은 backend-ci 가 1시간 43분 점유.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const OLD = 'c'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: 'chore: dashboard regen [skip ci]' },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+        { sha: OLD, message: 'feat: 더 낡은 것 (#375)' },
+      ],
+      runs: [
+        { id: '901', sha: MERGE },
+        { id: '902', sha: OLD },
+      ],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    // 상태 2종 × 낡은 run 1건 = 2회. 검증 중인 901 은 한 번도 없어야 한다.
+    assert.deepEqual(
+      cancels.sort(),
+      ['run cancel 902', 'run cancel 902'],
+      `낡은 run 만 정확히 취소해야 한다 (보호=901, 취소=902).\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★훑은 구간이 전부 [skip ci] 면 아무것도 취소하지 않는다 (fail-open)', () => {
+    // 검증 대상 커밋을 특정하지 못한 상태다. 여기서 「전부 취소」로 새면 그것이 곧
+    // 자기 발등 찍기다 — 모르면 손대지 않는다. 기존 HEAD 미확인 케이스와 같은 방향.
+    const r = runScript('main', {
+      commits: [
+        { sha: 'a'.repeat(40), message: 'chore: regen [skip ci]' },
+        { sha: 'b'.repeat(40), message: 'chore: doc index regen — 메모리 1건 등재 [skip ci]' },
+      ],
+      runs: [{ id: '901', sha: 'c'.repeat(40) }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `검증 대상 커밋을 모르는 상태에서 취소했다.\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★[skip ci] 커밋 자신에 run 이 붙어 있으면 그것도 보호한다', () => {
+    // `[skip ci]` 는 push·PR 트리거만 막는다. 수동 dispatch 등으로 그 sha 에 run 이 생길 수
+    // 있고, 그 run 도 **지금 main 에 있는 내용**을 검증 중이다. 보호 집합을 검증 대상 커밋
+    // 하나로 좁히면 여기서 red 가 나야 한다.
+    const REGEN = 'a'.repeat(40)
+    const MERGE = 'b'.repeat(40)
+    const r = runScript('main', {
+      commits: [
+        { sha: REGEN, message: 'chore: dashboard regen [skip ci]' },
+        { sha: MERGE, message: 'feat: 뭔가 (#377)' },
+      ],
+      runs: [{ id: '901', sha: REGEN }],
+    })
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `HEAD 자신의 run 을 취소했다 — 그것도 현재 main 내용을 검증 중이다.\n${r.calls.join('\n')}`,
+    )
+  })
+
   test('★main 인데 현재 HEAD 를 확인하지 못하면 아무것도 취소하지 않는다 (fail-open)', () => {
     // 조회 실패에서 「전부 취소」로 새면 그것이 곧 자기 발등 찍기다. 모르면 손대지 않는다.
     for (const behavior of [{ headShaFail: true }, { headSha: '' }]) {
