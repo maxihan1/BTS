@@ -30,6 +30,16 @@ name: runner-health
 
 on:
   workflow_call:
+    inputs:
+      require_docker:
+        description: >-
+          Docker 데몬 가동을 **요구**할지. 데몬을 쓰는 워크플로우만 true 다.
+          false 여도 점검은 하고 경고만 남긴다 — 조용한 스킵은 만들지 않는다.
+          어느 워크플로우가 true 여야 하는지는 손으로 적지 않는다. 실제 docker 사용을
+          훑어 판정하는 runner-healthcheck-wiring.test.ts 가 양방향으로 강제한다.
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check:
@@ -100,6 +110,44 @@ jobs:
             exit 1
           fi
           echo "러너 엔진 정상."
+
+      # ── Docker 데몬 점검 — 엔진이 살아 있어도 데몬이 꺼지면 잡이 줄줄이 오진 실패한다 ──
+      #
+      # ★`command -v docker` 로는 못 잡는다. CLI 는 설치돼 있고 **데몬만** 꺼진 상태이기
+      #   때문이다. 2026-08-12 PR #367 실측 — 그 구분이 없어 nginx 봉인이 「이 설정으로
+      #   배포하면 프론트 전체가 뜨지 않는다」고 말했다. 설정은 멀쩡했다.
+      #
+      # ★엔진 점검 **뒤**, 자원 점검 **앞**이다. 프리플라이트는 무거운 잡보다 먼저여야
+      #   의미가 있고(뒤 잡 12개가 줄줄이 실패하는 비용을 없애는 것이 목적), 엔진이 죽었으면
+      #   그쪽이 먼저 보고돼야 진단이 흐려지지 않는다.
+      #
+      # ★판정 규칙은 scripts/verify-runner-health.sh 와 **동형**이어야 한다. 구조상 dedup 이
+      #   불가능한 두 복사본이고(이 잡은 checkout 앞이라 저장소 파일을 못 부른다),
+      #   runner-healthcheck-wiring.test.ts 의 INVARIANTS 가 갈라짐을 차단한다.
+      - name: Docker 데몬 점검
+        env:
+          REQUIRE_DOCKER: ${{ inputs.require_docker }}
+        run: |
+          DOCKER="${BTS_DOCKER_BIN:-docker}"
+
+          if "$DOCKER" info > /dev/null 2>&1; then
+            echo "✅ Docker 데몬 가동중"
+            exit 0
+          fi
+
+          echo "❌ Docker 데몬이 꺼져 있다 — 코드 문제 아님"
+          echo "   CLI 존재만으로는 못 잡는 상태다. 이 러너의 컨테이너 검증은 전부 실패한다."
+          echo "   실측. 2026-08-12 PR #367 — 데몬 준비 이전 시작 잡 5건 전부 실패,"
+          echo "         이후 시작한 잡 전부 통과. 코드 무변경 재실행으로 EXIT=5 → 0."
+          echo "   복구. Docker Desktop 기동 후 'docker info' 가 0 을 낼 때까지 기다린다."
+          echo "   docs/runbooks/self-hosted-runner.md §5"
+
+          if [ "$REQUIRE_DOCKER" = "true" ]; then
+            echo "   ⇒ 이 워크플로우는 데몬을 쓰므로 여기서 멈춘다 (뒤 잡이 오진 실패하는 것을 막는다)."
+            exit 1
+          fi
+          echo "   ⇒ 이 워크플로우는 데몬을 쓰지 않으므로 차단하지 않는다 (경고만)."
+          exit 0
 
       # ── 자원 고갈 점검 — 엔진이 정상인데도 CI 가 2배 이상 느려지는 상태 ──────────
       #

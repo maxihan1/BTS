@@ -87,7 +87,36 @@ if [ "$TOOLCACHE_SEEN" -eq 0 ]; then
   echo "⚠️  툴 캐시가 비어 있다 ($ROOT/_work/_tool) — 갓 설치한 러너면 정상이다."
 fi
 
-# 3) 자원 고갈 — 엔진이 전부 정상인데도 CI 가 2배 이상 느려지는 상태.
+# 3) Docker 데몬 — 엔진도 자원도 정상인데 **데몬만** 꺼진 상태.
+#
+#    ★`command -v docker` 로는 못 잡는다. CLI 는 설치돼 있고 데몬만 꺼져 있기 때문이다.
+#    2026-08-12 PR #367 실측 — 그 구분이 없어 nginx 봉인이 「이 설정으로 배포하면 프론트
+#    전체가 뜨지 않는다」고 말했다. 설정은 멀쩡했고 변수는 데몬 하나뿐이었다(EXIT=5 → 0).
+#
+#    ★요구 여부만 밖에서 주입한다. 로컬 기본은 경고다 — 프론트 작업까지 막으면 안 된다.
+#    판정 코드 자체는 runner-health.yml 과 동형이어야 하고,
+#    runner-healthcheck-wiring.test.ts 의 INVARIANTS 가 그것을 강제한다.
+DOCKER="${BTS_DOCKER_BIN:-docker}"
+REQUIRE_DOCKER="${BTS_REQUIRE_DOCKER:-false}"
+
+if "$DOCKER" info > /dev/null 2>&1; then
+  echo "✅ Docker 데몬 가동중"
+else
+  echo "❌ Docker 데몬이 꺼져 있다 — 코드 문제 아님"
+  echo "   CLI 존재만으로는 못 잡는 상태다. 이 러너의 컨테이너 검증은 전부 실패한다."
+  echo "   실측. 2026-08-12 PR #367 — 데몬 준비 이전 시작 잡 5건 전부 실패,"
+  echo "         이후 시작한 잡 전부 통과. 코드 무변경 재실행으로 EXIT=5 → 0."
+  echo "   복구. Docker Desktop 기동 후 'docker info' 가 0 을 낼 때까지 기다린다."
+  echo "   docs/runbooks/self-hosted-runner.md §5"
+  if [ "$REQUIRE_DOCKER" = "true" ]; then
+    echo "   ⇒ 데몬을 요구하는 호출이므로 여기서 멈춘다."
+    FAILED=1
+  else
+    echo "   ⇒ 데몬을 쓰지 않는 작업이면 무시해도 된다 (차단하지 않는다)."
+  fi
+fi
+
+# 4) 자원 고갈 — 엔진이 전부 정상인데도 CI 가 2배 이상 느려지는 상태.
 #
 #    ★위의 어떤 점검도 이것을 못 잡는다. 바이너리는 멀쩡히 실행되기 때문이다.
 #    2026-08-07 A/B 확증 — 동일 커밋 run 31139616352 재실행에서
