@@ -40,22 +40,47 @@ interface RunResult {
   calls: string[]
 }
 
+/** 가짜 `gh` 에게 시킬 동작. */
+interface FakeGhBehavior {
+  /** `run list` 가 뱉을 id 들 — sha 없는 출력 (일반 브랜치 경로). */
+  ids?: string[]
+  /**
+   * `run list` 가 뱉을 「id sha」 쌍들.
+   *
+   * ★필터링을 가짜 gh 의 `--jq` 에 맡기지 않는 이유. 가짜는 jq 를 실제로 돌리지 않으므로
+   * 거기서 걸러 버리면 **스크립트가 거르는지 아닌지를 영영 못 잰다.** 판정 대상 로직은
+   * 스크립트 안에 있어야 한다.
+   */
+  runs?: { id: string; sha: string }[]
+  /** `gh api` 가 돌려줄 현재 main HEAD sha. */
+  headSha?: string
+  /** `gh api` 자체가 실패하는 경우 (인증 만료 · 네트워크 · 저장소 판별 실패). */
+  headShaFail?: boolean
+  /** `run list` / `run cancel` 실패 흉내. */
+  failMode?: 'list' | 'cancel' | 'all'
+  /** `gh` 실행 파일 자체가 없는 경우. */
+  missing?: boolean
+}
+
 /**
  * 가짜 `gh` 를 만들어 스크립트를 돌린다.
  *
  * @param branch 스크립트에 넘길 브랜치 이름
- * @param behavior 가짜 gh 의 동작 — `ids` 는 `run list` 가 뱉을 id 들, `failMode` 는 실패 흉내
+ * @param behavior 가짜 gh 의 동작
  */
-function runScript(
-  branch: string,
-  behavior: { ids?: string[]; failMode?: 'list' | 'cancel' | 'all'; missing?: boolean } = {},
-): RunResult {
+function runScript(branch: string, behavior: FakeGhBehavior = {}): RunResult {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-run-cleanup-'))
   const log = path.join(dir, 'calls.log')
   const ghPath = path.join(dir, 'fake-gh')
 
-  const ids = behavior.ids ?? []
+  // `ids` 는 sha 없는 줄, `runs` 는 「id sha」 줄. 둘을 합친 것이 run list 의 출력이다.
+  const listLines = [
+    ...(behavior.ids ?? []),
+    ...(behavior.runs ?? []).map((r) => `${r.id} ${r.sha}`),
+  ]
   const failMode = behavior.failMode ?? 'none'
+  const headSha = behavior.headSha ?? ''
+  const apiFail = behavior.headShaFail === true ? '1' : '0'
   // 가짜 gh — 인자를 그대로 기록하고, 요청받은 동작을 흉내 낸다.
   fs.writeFileSync(
     ghPath,
@@ -63,9 +88,16 @@ function runScript(
       '#!/usr/bin/env bash',
       `echo "$*" >> "${log}"`,
       `FAIL="${failMode}"`,
+      `API_FAIL="${apiFail}"`,
+      `HEAD_SHA="${headSha}"`,
+      'if [ "$1" = "api" ]; then',
+      '  if [ "$API_FAIL" = "1" ]; then exit 1; fi',
+      '  echo "$HEAD_SHA"',
+      '  exit 0',
+      'fi',
       'if [ "$1" = "run" ] && [ "$2" = "list" ]; then',
       '  if [ "$FAIL" = "list" ] || [ "$FAIL" = "all" ]; then exit 1; fi',
-      ...ids.map((id) => `  echo "${id}"`),
+      ...listLines.map((line) => `  echo "${line}"`),
       '  exit 0',
       'fi',
       'if [ "$1" = "run" ] && [ "$2" = "cancel" ]; then',
@@ -108,9 +140,9 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
   })
 
   test('★보호 브랜치는 gh 를 한 번도 호출하지 않는다', () => {
-    // 머지 직후에는 main 의 push CI 가 막 시작된다. 그걸 취소하면 이 도구가 고치려던 문제를
-    // 스스로 만든다 — 「현재 main 을 검증하는 run 이 0건」.
-    for (const protectedBranch of ['main', 'master', 'HEAD']) {
+    // 좁힌 것은 `main` 하나뿐이다. `master`·`HEAD` 는 통째 무접촉 계약을 그대로 유지한다 —
+    // 「좁히기」가 의도한 범위를 넘어 번지지 않았음을 이 단언이 고정한다.
+    for (const protectedBranch of ['master', 'HEAD']) {
       const r = runScript(protectedBranch, { ids: ['111', '222'] })
       assert.equal(r.code, 0, `${protectedBranch}: 종료 코드가 0 이 아니다.\n${r.output}`)
       assert.deepEqual(
@@ -120,6 +152,81 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
           r.calls.join('\n'),
       )
     }
+  })
+
+  test('★★main 의 run 중 현재 HEAD 것은 절대 취소하지 않는다', () => {
+    // 이 도구가 자기 발등을 찍는 경로다. 머지 직후 main push CI 는 **새 HEAD** 로 돈다.
+    // 그것을 죽이면 고치려던 문제(「현재 main 을 검증하는 run 이 0건」)를 스스로 만든다.
+    const r = runScript('main', {
+      headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      runs: [{ id: '901', sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    assert.deepEqual(
+      cancels,
+      [],
+      `현재 HEAD 를 검증 중인 run 을 취소했다 — 이 도구가 고치려던 문제를 스스로 만든다.\n` +
+        r.calls.join('\n'),
+    )
+  })
+
+  test('★★main 의 낡은 커밋 run 은 취소한다 (HEAD 것과 섞여 있어도)', () => {
+    // paths 필터 사각. 뒤 머지들이 전부 backend/** 를 안 건드리면 낡은 backend-ci 는
+    // 새 run 이 안 생겨 concurrency 가 발화하지 못하고 러너를 계속 점유한다.
+    // 2026-08-10 실측 — 커밋 236ff3532 의 backend-ci 가 1시간 43분 점유했다.
+    const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const OLD = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const r = runScript('main', {
+      headSha: HEAD,
+      runs: [
+        { id: '901', sha: HEAD },
+        { id: '902', sha: OLD },
+      ],
+    })
+    assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+
+    const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+    // 상태 2종(queued · in_progress) × 낡은 run 1건 = 2회. HEAD 것(901)은 한 번도 없어야 한다.
+    assert.deepEqual(
+      cancels.sort(),
+      ['run cancel 902', 'run cancel 902'],
+      `낡은 run 만 정확히 취소해야 한다 (HEAD=901 보호, 낡음=902 취소).\n${r.calls.join('\n')}`,
+    )
+  })
+
+  test('★main 인데 현재 HEAD 를 확인하지 못하면 아무것도 취소하지 않는다 (fail-open)', () => {
+    // 조회 실패에서 「전부 취소」로 새면 그것이 곧 자기 발등 찍기다. 모르면 손대지 않는다.
+    for (const behavior of [{ headShaFail: true }, { headSha: '' }]) {
+      const r = runScript('main', {
+        ...behavior,
+        runs: [{ id: '901', sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }],
+      })
+      assert.equal(r.code, 0, `종료 코드가 0 이 아니다.\n${r.output}`)
+      const cancels = r.calls.filter((c) => c.startsWith('run cancel'))
+      assert.deepEqual(
+        cancels,
+        [],
+        `HEAD 미확인 상태에서 취소했다 — 현재 main 검증을 죽일 수 있다.\n${r.calls.join('\n')}`,
+      )
+    }
+  })
+
+  test('★main 조회는 headSha 를 함께 요청한다 (비-공허 짝)', () => {
+    // 위 두 단언은 「스크립트가 sha 를 실제로 받아 비교한다」를 전제한다. 요청 자체가
+    // 빠지면 가짜 gh 가 무엇을 뱉든 비교가 성립하지 않아 그 단언들이 공허해진다.
+    const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const r = runScript('main', { headSha: HEAD, runs: [{ id: '902', sha: 'cccc' }] })
+    const lists = r.calls.filter((c) => c.startsWith('run list'))
+    assert.ok(lists.length > 0, `main 에 대해 run list 를 아예 호출하지 않았다.\n${r.calls.join('\n')}`)
+    assert.ok(
+      lists.every((c) => c.includes('headSha')),
+      `run list 가 headSha 를 요청하지 않았다 — sha 비교가 성립할 수 없다.\n${lists.join('\n')}`,
+    )
+    assert.ok(
+      r.calls.some((c) => c.startsWith('api ')),
+      `현재 HEAD 를 원격에 묻지 않았다.\n${r.calls.join('\n')}`,
+    )
   })
 
   test('빈 브랜치 이름이면 아무것도 하지 않는다', () => {
@@ -201,6 +308,28 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
       skill.includes('cancel-merged-pr-runs.sh'),
       '.claude/skills/bts-merge/SKILL.md 가 cancel-merged-pr-runs.sh 를 부르지 않는다 — ' +
         '스크립트가 있어도 실행되지 않는다.',
+    )
+  })
+
+  test('★★/bts-merge 가 main 도 인자로 넘긴다 (배선 — 낡은 main run 정리)', () => {
+    // 스크립트가 main 의 낡은 run 을 가려낼 수 있어도 **아무도 main 을 넘기지 않으면**
+    // paths 필터 사각은 그대로다. 위 케이스들이 전부 초록인 채 부채가 안 닫히는 경로다.
+    const skill = fs.readFileSync(MERGE_SKILL, 'utf-8')
+    assert.ok(
+      /cancel-merged-pr-runs\.sh\s+main\b/.test(skill),
+      '.claude/skills/bts-merge/SKILL.md 가 `cancel-merged-pr-runs.sh main` 을 부르지 않는다 — ' +
+        'PR 브랜치만 치우면 낡은 main run 이 러너를 계속 점유한다.',
+    )
+  })
+
+  test('★계약이 좁아진 사실이 호출부 주석에 반영돼 있다 (문서 drift)', () => {
+    // 「보호 브랜치(main/master/HEAD)를 넘기면 gh 를 한 번도 호출하지 않는다」는 이제 거짓이다.
+    // 거짓 주석은 다음 사람이 계약을 되돌리게 만든다.
+    const skill = fs.readFileSync(MERGE_SKILL, 'utf-8')
+    assert.ok(
+      !/보호 브랜치\(main\/master\/HEAD\)/.test(skill),
+      '.claude/skills/bts-merge/SKILL.md 주석이 아직 main 을 통째 무접촉으로 설명한다 — ' +
+        '계약이 좁아졌으므로 같은 커밋에서 정정해야 한다.',
     )
   })
 })
