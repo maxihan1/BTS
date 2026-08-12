@@ -344,3 +344,132 @@ test.describe('FR-MV-01 D7 이슈 이동 — 서브태스크 동반 (subtask 시
     await page.waitForURL(`**/${NEW_KEY}`)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E-6 403 문구 렌더 폭 재판정 (기술부채 매핑 `18`)
+//
+// 왜 E2E 인가. **문구가 좁은 폭에서 몇 줄이 되는지는 유닛이 구조적으로 못 잰다** —
+// jsdom 은 레이아웃을 계산하지 않아 `getBoundingClientRect()` 가 전부 0 이다.
+// 그래서 실제 브라우저에서 재고 스크린샷을 남긴다
+// ([[mock-swallowed-prop-is-invisible-to-unit-tests]] 와 같은 축 — 유닛의 사각지대).
+//
+// 무엇을 판정하나. 「다른 대상 프로젝트를 시도」를 되살릴 **글자 예산이 있는가**.
+// 전제였던 「형식 게이트 도입 후 403 원인이 3 → 2 로 준다」는 거짓이다
+// (`MoveIssueDialog.test.tsx` T4-8 「게이트는 존재를 모른다」가 실측). 남는 물음은
+// 현행 53자가 실제 렌더 폭에서 몇 줄인지, 늘릴 여유가 있는지다.
+//
+// ★addInitScript 는 goto 이전에 등록해야 하므로 자체 beforeEach 를 가진 독립 describe.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-MV-01 이동 403 문구 — 실제 렌더 폭 (forbidden 시나리오)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Given. 403 시나리오 플래그 — loginAsAlice(goto) 이전에 등록
+    await page.addInitScript((key: string) => {
+      window.localStorage.setItem(key, 'forbidden')
+    }, LS_KEY_MOVE_SCENARIO)
+    await loginAsAlice(page)
+  })
+
+  test('E2E-6 403 인라인 에러가 Step1 폭에서 몇 줄로 렌더되는지 측정 + 눈확인 스크린샷', async ({
+    page,
+  }, testInfo) => {
+    await navigateToIssueDetail(page, ISSUE_WITH_SUBTASKS_URL)
+    await page.getByRole('button', { name: '이슈 이동', exact: true }).click()
+
+    // When. **형식은 맞고 존재하지 않는** 키 — 클라이언트 게이트를 통과한다.
+    //   게이트가 거르는 것은 형식 위반뿐이므로 이 입력은 그대로 서버까지 간다.
+    await page.getByLabel(issueMoveStrings.targetProjectKeyLabel, { exact: true }).fill('NOPE')
+    await page.getByRole('button', { name: issueMoveStrings.nextButton, exact: true }).click()
+
+    // Then. 403 전용 문구가 인라인 에러 영역에 뜬다 — i18n 정본 참조(하드코딩 금지).
+    const alert = page.getByRole('alert')
+    await expect(alert).toHaveText(issueMoveStrings.errorPreviewForbidden)
+
+    // Then. 실제 렌더 치수를 잰다 — 줄수 = 높이 / 줄간격.
+    //
+    // ★현행 문구만 재면 「행동 안내를 붙이면 몇 줄이 되나」는 여전히 **예측**으로 남는다.
+    //   그래서 같은 컨테이너·같은 폰트에 후보 문구를 넣은 복제 노드를 잠깐 끼워 함께 잰다.
+    //   (`[[button-user-select-auto-is-none]]` — 계산값이 아니라 실제 렌더가 증인이다.)
+    const CANDIDATE_WITH_ACTION =
+      '대상 프로젝트 키를 확인해 주세요. 키가 맞다면 이 이슈나 대상 프로젝트 권한이 없는 것입니다. 다른 대상 프로젝트를 시도해 보세요.'
+    const metrics = await alert.evaluate((el, candidateText: string) => {
+      const style = window.getComputedStyle(el)
+      const lineHeight = Number.parseFloat(style.lineHeight)
+      const rect = el.getBoundingClientRect()
+
+      // 후보 문구 실측 — 복제본에 텍스트만 갈아 끼우고 재고 곧바로 제거한다.
+      const probe = el.cloneNode(true) as HTMLElement
+      probe.textContent = candidateText
+      el.parentElement?.insertBefore(probe, el.nextSibling)
+      const probeRect = probe.getBoundingClientRect()
+      const candidate = {
+        chars: candidateText.length,
+        height: Math.round(probeRect.height),
+        lines: Math.round(probeRect.height / lineHeight),
+      }
+      probe.remove()
+
+      return {
+        chars: (el.textContent ?? '').length,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        lineHeight,
+        lines: Math.round(rect.height / lineHeight),
+        fontSize: style.fontSize,
+        candidate,
+      }
+    }, CANDIDATE_WITH_ACTION)
+    // 측정값을 실행 로그로 남긴다 — 첨부는 통과한 테스트에 보존되지 않아 CI 에서 안 보인다.
+    // eslint-disable-next-line no-console
+    console.log('[E2E-6] 403 문구 렌더 치수 (데스크톱)', JSON.stringify(metrics))
+
+    // ★좁은 폭에서도 잰다. Dialog 는 `max-w-lg` 라 뷰포트가 좁으면 같이 좁아진다 —
+    //   데스크톱 한 폭만 재고 「대가가 없다」고 결론 내면 그게 또 「엉뚱한 걸 쟀다」가 된다.
+    const narrowMetrics: Record<string, unknown> = {}
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      narrowMetrics[`w${width}`] = await alert.evaluate((el, candidateText: string) => {
+        const lineHeight = Number.parseFloat(window.getComputedStyle(el).lineHeight)
+        const probe = el.cloneNode(true) as HTMLElement
+        probe.textContent = candidateText
+        el.parentElement?.insertBefore(probe, el.nextSibling)
+        const probeLines = Math.round(probe.getBoundingClientRect().height / lineHeight)
+        probe.remove()
+        return {
+          boxWidth: Math.round(el.getBoundingClientRect().width),
+          currentLines: Math.round(el.getBoundingClientRect().height / lineHeight),
+          candidateLines: probeLines,
+        }
+      }, CANDIDATE_WITH_ACTION)
+    }
+    // eslint-disable-next-line no-console
+    console.log('[E2E-6] 403 문구 렌더 치수 (좁은 폭)', JSON.stringify(narrowMetrics))
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    // 리포터가 붙어 있는 실행에서는 첨부로도 남긴다 — 이 숫자가 매핑 `18` 재판정의 근거다.
+    await testInfo.attach('403-문구-렌더-치수.json', {
+      body: JSON.stringify({ text: issueMoveStrings.errorPreviewForbidden, ...metrics }, null, 2),
+      contentType: 'application/json',
+    })
+
+    // 눈확인 — 라이트/다크 양쪽 스크린샷.
+    await testInfo.attach('403-문구-라이트.png', {
+      body: await page.getByRole('dialog').screenshot(),
+      contentType: 'image/png',
+    })
+    await page.evaluate(() => document.documentElement.classList.add('dark'))
+    await testInfo.attach('403-문구-다크.png', {
+      body: await page.getByRole('dialog').screenshot(),
+      contentType: 'image/png',
+    })
+    await page.evaluate(() => document.documentElement.classList.remove('dark'))
+
+    // Then. 계약 — 인라인 에러가 다이얼로그를 넘치지 않는다.
+    const dialogBox = await page.getByRole('dialog').boundingBox()
+    expect(dialogBox).not.toBeNull()
+    expect(metrics.width).toBeLessThanOrEqual(Math.round(dialogBox?.width ?? 0))
+
+    // Then. 계약 — 「관리자에게 문의」라는 막다른 길을 되살리지 않는다.
+    await expect(alert).not.toContainText('문의')
+  })
+})

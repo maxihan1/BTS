@@ -821,6 +821,32 @@ describe('T4-8: 요청 전 키 형식 차단', () => {
     expect(previewRequestCount).toBe(1)
   })
 
+  it('★게이트는 존재를 모른다 — 형식이 맞고 없는 키는 그대로 서버까지 가서 403 이 된다', async () => {
+    // 매핑 `18` 의 판정 전제를 재는 테스트다.
+    // TODOS 와 PR 본문은 「게이트를 넣으면 403 원인이 3개 → 2개로 준다」를 근거로
+    // 「키 확인 문구를 뺄 글자 예산이 생긴다」고 적었다. **틀렸다.**
+    // 게이트가 거르는 것은 **형식 위반**뿐이고, `NOPE` 처럼 형식이 맞고 존재하지 않는 키는
+    // 그대로 403 이 된다. 즉 403 도달 원인은 여전히 셋이다
+    // (① 형식 맞는 오타/미존재 · ② 이슈 UPDATE 없음 · ③ 대상 CREATE 없음).
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () => {
+        previewRequestCount += 1
+        return HttpResponse.json({ errorCode: 'ACCESS_DENIED' }, { status: 403 })
+      }),
+    )
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'NOPE')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+
+    // 게이트를 통과했다 — 요청이 나갔다.
+    await waitFor(() => {
+      expect(previewRequestCount).toBe(1)
+    })
+    // 그리고 403 문구를 받는다. 「키를 확인해 주세요」가 여전히 필요한 이유가 이것이다.
+    expect(await screen.findByRole('alert')).toHaveTextContent(PREVIEW_FORBIDDEN_TEXT)
+  })
+
   it('Enter 로 제출해도 같은 게이트가 걸린다', async () => {
     // 제출 경로가 버튼과 Enter 둘이면 게이트도 둘 다 타야 한다 — 한쪽만 막으면 봉합이 절반이다.
     renderDialog()
