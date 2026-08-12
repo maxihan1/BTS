@@ -31,7 +31,9 @@
 name: backend-ci
 
 # ## 트리거는 이 워크플로우가 **실제로 실행하는 것**만 건다
-# 이 파일의 잡은 전부 `./gradlew` 다 — pnpm/node 를 쓰지 않는다.
+# 테스트 잡은 전부 `./gradlew` 다. 예외가 **하나** 있다 — `select` 잡이 node 로
+# `scripts/workflow/select-backend-modules.ts` 를 돌려 어떤 모듈을 테스트할지 고른다
+# (2026-08-12 · 부채 매핑 31). 그래서 그 **파일 하나만** 아래 `paths` 에 함께 걸려 있다.
 #
 # 2026-08-01 이전에는 `scripts/workflow/**` · `apps/web/vite.config.ts` ·
 # `apps/web/playwright.config.ts` · `package.json` 이 함께 걸려 있었다. 판별식이 backend-ci 에서
@@ -51,12 +53,22 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      # ★이 잡이 **실행하는** 선별기다. 빠지면 「선별기를 너무 좁게 고치는 PR」에서
+      #   backend-ci 가 0회 돌아, 무엇을 돌릴지 정하는 코드가 백엔드 잡으로 한 번도
+      #   검증되지 않는다. 글로브가 아니라 이 파일 하나만 건다 —
+      #   `scripts/workflow/**` 를 통째로 넣으면 판별식 파일 추가만으로 12잡을 끌고 온다.
+      - 'scripts/workflow/select-backend-modules.ts'
   push:
     branches: [main]
     # ★양쪽 블록에 같은 목록. 한쪽만 걸면 봉인이 절반만 닫힌다.
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      # ★이 잡이 **실행하는** 선별기다. 빠지면 「선별기를 너무 좁게 고치는 PR」에서
+      #   backend-ci 가 0회 돌아, 무엇을 돌릴지 정하는 코드가 백엔드 잡으로 한 번도
+      #   검증되지 않는다. 글로브가 아니라 이 파일 하나만 건다 —
+      #   `scripts/workflow/**` 를 통째로 넣으면 판별식 파일 추가만으로 12잡을 끌고 온다.
+      - 'scripts/workflow/select-backend-modules.ts'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -102,6 +114,15 @@ jobs:
           # diff 가 실패하고, 그러면 아래가 fail-safe 로 **전 모듈**을 고른다(안전하지만 느리다).
           fetch-depth: 0
 
+      # ★다른 워크플로우와 같은 node 를 쓴다. 러너 PATH 의 시스템 node 에 기대면, 그 버전이
+      #   22.6 미만이 되거나(--experimental-strip-types 부재) 바이너리가 쓸려 나갔을 때
+      #   `runner-health` 는 초록인 채 이 잡만 죽는다 — 그 점검은 externals·툴캐시만 보고
+      #   시스템 node 는 보지 않는다(2026-08-04 엔진 소실 사고의 사각).
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: 변경 파일 → 대상 모듈
         id: pick
         env:
@@ -109,14 +130,19 @@ jobs:
         run: |
           # ★diff 가 실패하면 목록을 **비운다.** 선별기는 빈 목록을 「판정 불가」로 읽고
           #   전 모듈을 돌려준다 — 모르는 상태에서 좁히지 않는다는 계약이 여기서 성립한다.
-          CHANGED="$(git diff --name-only "$BASE_SHA" "${{ github.sha }}" 2> /dev/null || true)"
-          if [ -z "$CHANGED" ]; then
+          #
+          # ★`core.quotePath=false` 와 `-z` 가 **필수**다. git 기본값은 비-ASCII 경로를
+          #   `"backend/…\355\225…"` 처럼 따옴표로 감싼 이스케이프 문자열로 낸다. 그 토큰은
+          #   `backend/` 로 시작하지 않아 선별기의 귀속·확장 판정을 **둘 다 빠져나가 조용히
+          #   무시**된다 — 좁아지는 방향이라 치명적이다. 이 저장소는 한글 명명을 자주 쓴다.
+          if ! git -c core.quotePath=false diff --name-only -z \
+                 "$BASE_SHA" "${{ github.sha }}" > /tmp/bts-changed.z 2> /dev/null; then
+            : > /tmp/bts-changed.z
             echo "⚠️  변경 파일을 구하지 못했다 (base=$BASE_SHA) — 전 모듈을 돈다."
           fi
 
-          # shellcheck disable=SC2086 — 단어 분할이 목적이다(파일 하나가 인자 하나).
-          MODULES="$(node --experimental-strip-types \
-            scripts/workflow/select-backend-modules.ts $CHANGED)"
+          MODULES="$(xargs -0 -a /tmp/bts-changed.z \
+            node --experimental-strip-types scripts/workflow/select-backend-modules.ts)"
 
           echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
 

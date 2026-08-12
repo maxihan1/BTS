@@ -32,7 +32,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { moduleGraph, allModules, selectModules } from './select-backend-modules.ts'
+import {
+  moduleGraph,
+  allModules,
+  selectModules,
+  modulesWithUnparsedRefs,
+} from './select-backend-modules.ts'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -243,6 +248,41 @@ describe('backend-ci 모듈 선별', () => {
       [],
       `매트릭스에 모듈이 하드코딩돼 있다: ${hardcoded.join(', ')}\n` +
         `선별 결과와 이 목록 중 무엇이 실제로 도는지가 갈리고, 새 BC 는 조용히 빠진다.`,
+    )
+  })
+
+  test('★★선별기 자신의 변경은 backend-ci 를 트리거하고 전 모듈을 고른다', () => {
+    // 없으면 「선별기를 너무 좁게 고치는 PR」이 `scripts/**` 만 건드리므로 backend-ci 가
+    // PR 에서도 머지 후에도 **0회** 돈다 — 무엇을 돌릴지 정하는 코드가 정작 백엔드 잡으로는
+    // 한 번도 검증되지 않는다(독립 리뷰 적발).
+    const SELF = 'scripts/workflow/select-backend-modules.ts'
+    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+
+    // 트리거 2벌(pull_request · push). 한쪽만 걸면 봉인이 절반이다.
+    const occurrences = [...workflow.matchAll(new RegExp(`^\\s*-\\s*'${SELF}'$`, 'gm'))].length
+    assert.equal(
+      occurrences,
+      2,
+      `${WORKFLOW} 의 paths 에 선별기가 ${occurrences}곳 걸려 있다 (pull_request·push 2곳이어야 한다).`,
+    )
+
+    // 그리고 그 변경은 전 모듈이어야 한다 — 일부로 검증하면 좁히는 실수를 그 PR 에서 못 잡는다.
+    const picked = selectModules([SELF])
+    assert.deepEqual(picked.modules.sort(), allModules().sort())
+    assert.equal(picked.all, true)
+  })
+
+  test('★★Gradle 의존 참조를 다 읽지 못하면 좁히지 않는다', () => {
+    // `MODULE_REF` 는 `project(":modules:X")` 형태만 잡는다. Gradle 은
+    // `project(path = ":modules:X")` 같은 변형도 허용하고, 그런 간선은 **조용히 사라진다** —
+    // 그러면 의존 모듈의 테스트가 안 돌고 깨진 채 초록으로 머지된다(좁아지는 방향).
+    //
+    // 지금은 전부 표준형이라 목록이 비어 있어야 한다. 그 사실 자체가 이 단언의 전제다.
+    assert.deepEqual(
+      modulesWithUnparsedRefs(),
+      [],
+      `읽지 못한 :modules: 참조가 있다 — 간선이 사라져 좁아진다.\n` +
+        `정규식을 늘리기 전에 「못 읽으면 넓힌다」가 실제로 도는지 먼저 확인할 것.`,
     )
   })
 

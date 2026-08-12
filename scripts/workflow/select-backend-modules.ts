@@ -44,7 +44,16 @@ const MODULES_DIR = 'backend/modules'
 const NOT_IN_MATRIX = new Set(['app'])
 
 /** 이 경로가 바뀌면 영향 범위를 알 수 없다 — 전 모듈로 간다. */
-const WIDEN_PREFIXES = ['backend/', '.github/workflows/backend-ci.yml']
+const WIDEN_PREFIXES = [
+  'backend/',
+  '.github/workflows/backend-ci.yml',
+  // ★선별기 자신이 바뀌면 전 모듈이다. 이 파일이 「무엇을 돌릴지」를 정하므로, 그 변경을
+  //   일부 모듈로만 검증하면 **좁히는 실수를 그 PR 안에서 못 잡는다.**
+  'scripts/workflow/select-backend-modules.ts',
+]
+
+/** Gradle 의 모듈 참조. 이 형태만 잡고, 못 잡은 것은 `modulesWithUnparsedRefs()` 가 센다. */
+const MODULE_REF = /project\("\:modules\:([\w-]+)"\)/g
 
 export interface Selection {
   /** 돌릴 모듈. **절대 비지 않는다.** */
@@ -66,15 +75,29 @@ export function allModules(): string[] {
     .sort()
 }
 
+/** 디스크의 모듈 디렉터리 전수 — 매트릭스 밖(`app`)도 포함한다. 그래프의 정의역이다. */
+function moduleDirs(): string[] {
+  const dir = path.join(REPO_ROOT, MODULES_DIR)
+  if (!fs.existsSync(dir)) return []
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+}
+
 /**
  * `모듈 → 그 모듈이 의존하는 모듈들`.
  *
- * 매트릭스 밖 모듈(`app`)은 키에서 빼되, **간선은 남긴다** — `app` 을 경유한 역의존은
- * 매트릭스에 영향이 없으므로 실질적으로 무해하고, 넣어 두면 폐포가 넓어질 뿐이다.
+ * ★매트릭스 밖 모듈(`app`)도 **정의역에 넣는다.** 「매트릭스 모듈 A → 비매트릭스 N →
+ * 매트릭스 B」 형태가 생기면, N 을 빼면 B 변경 시 역폐포가 N 을 통과하지 못해 A 가 누락된다 —
+ * **좁아지는 방향**이라 치명적이다. 지금은 그런 경로가 없지만 구조로 막아 둔다.
+ * (초안은 주석에 「간선은 남긴다」고 적어 놓고 실제로는 `app/build.gradle.kts` 를 한 번도 읽지
+ * 않았다 — 독립 리뷰 적발. 주석이 막는다고 선언한 위험을 코드가 안 막고 있었다.)
  */
 export function moduleGraph(): Record<string, string[]> {
   const graph: Record<string, string[]> = {}
-  for (const m of allModules()) {
+  for (const m of moduleDirs()) {
     const buildFile = path.join(REPO_ROOT, MODULES_DIR, m, 'build.gradle.kts')
     if (!fs.existsSync(buildFile)) {
       graph[m] = []
@@ -82,12 +105,36 @@ export function moduleGraph(): Record<string, string[]> {
     }
     const body = fs.readFileSync(buildFile, 'utf8')
     const deps = new Set<string>()
-    for (const match of body.matchAll(/project\("\:modules\:([\w-]+)"\)/g)) {
+    for (const match of body.matchAll(MODULE_REF)) {
       if (match[1] !== m) deps.add(match[1])
     }
     graph[m] = [...deps].sort()
   }
   return graph
+}
+
+/**
+ * 파서가 **못 읽은** `:modules:` 참조를 가진 모듈들.
+ *
+ * ★왜 필요한가. `MODULE_REF` 는 `project(":modules:X")` 형태만 잡는다. Gradle 은
+ * `project(path = ":modules:X")` · `project(":modules:X", configuration = "…")` · 줄바꿈 형태도
+ * 허용하는데, 그런 간선은 **조용히 사라진다** — 그러면 그 모듈이 바뀌어도 의존 모듈의 테스트가
+ * 안 돌고 **깨진 채 초록으로 머지된다.** 좁아지는 방향이라 치명적이다.
+ *
+ * 정규식을 늘려 쫓아가는 대신 **못 읽었다는 사실 자체를 감지**한다 — 문법 변형은 앞으로도
+ * 새로 생기고, 열거는 언제나 뒤처진다. 못 읽으면 전 모듈로 넓힌다.
+ */
+export function modulesWithUnparsedRefs(): string[] {
+  const stale: string[] = []
+  for (const m of moduleDirs()) {
+    const buildFile = path.join(REPO_ROOT, MODULES_DIR, m, 'build.gradle.kts')
+    if (!fs.existsSync(buildFile)) continue
+    const body = fs.readFileSync(buildFile, 'utf8')
+    const total = [...body.matchAll(/:modules:/g)].length
+    const parsed = [...body.matchAll(MODULE_REF)].length
+    if (total !== parsed) stale.push(m)
+  }
+  return stale
 }
 
 /** `모듈 → 그 모듈을 의존하는 모듈들` (그래프를 뒤집은 것). */
@@ -128,6 +175,15 @@ export function selectModules(changedFiles: string[]): Selection {
     return wide('변경 파일 목록이 비었다 — 판정 불가라 전 모듈을 돈다')
   }
 
+  // ★그래프를 다 못 읽었으면 좁히지 않는다. 사라진 간선은 「의존이 없다」와 구분되지 않고,
+  //   그 오해는 **의존 모듈의 테스트를 안 돌리는** 쪽으로 작동한다.
+  const stale = modulesWithUnparsedRefs()
+  if (stale.length > 0) {
+    return wide(
+      `Gradle 의존 참조를 다 읽지 못했다 (${stale.join(' · ')}) — 간선 누락 가능이라 전 모듈을 돈다`,
+    )
+  }
+
   const graph = moduleGraph()
   const known = new Set(universe)
   const seeds = new Set<string>()
@@ -139,7 +195,14 @@ export function selectModules(changedFiles: string[]): Selection {
         seeds.add(m)
         continue
       }
-      if (NOT_IN_MATRIX.has(m)) continue // `app` 변경은 조립 부팅 잡이 맡는다
+      // `app` 변경 자체는 「조립 부팅」 잡이 맡으므로 씨앗에 넣지 않는다.
+      //
+      // ⚠️ 다만 **app 만 바뀐 경우**는 씨앗이 비어 아래 fallback 이 전 모듈로 넓힌다.
+      //    의도한 최적점은 아니지만(그 경우 매트릭스 0개가 이상적이다) **빈 매트릭스는 만들 수
+      //    없다** — GitHub 이 거부하고 거부된 잡은 스킵되는데 그것은 빨간불이 아니라 부재다
+      //    (장부 매핑 31 이 착수 조건으로 못박은 위험). 좁히다 사고 내는 것보다 넓게 도는 편이
+      //    낫다는 이 파일의 원칙을 그대로 따른다. app 단독 변경은 흔하므로 이 비용은 실재한다.
+      if (NOT_IN_MATRIX.has(m)) continue
       // 실재하지 않는 모듈 이름 — 모듈이 새로 생겼거나 지워졌다. 좁히지 않는다.
       return wide(`알 수 없는 모듈 경로가 있다 (${file}) — 판정 불가라 전 모듈을 돈다`)
     }
@@ -151,8 +214,10 @@ export function selectModules(changedFiles: string[]): Selection {
   }
 
   if (seeds.size === 0) {
-    // backend-ci 는 `backend/**` 에만 트리거되므로 여기 오는 것은 예상 밖이다.
-    return wide('백엔드 변경을 하나도 못 찾았다 — 판정 불가라 전 모듈을 돈다')
+    // 도달 경로 2종. ①이 워크플로우 파일만 바뀐 경우(위에서 이미 넓혔으므로 실제로는 안 온다)
+    // ②`app` 만 바뀐 경우 — **흔하다**(cross-BC 배선 · application.yml · prod 조립 설정).
+    // ②에서 전 모듈을 도는 것은 최적이 아니지만 빈 매트릭스를 만들 수 없어 택한 값이다.
+    return wide('매트릭스 대상 모듈을 하나도 못 찾았다 (app 단독 변경 등) — 전 모듈을 돈다')
   }
 
   // 역의존 폐포. 방문 집합으로 순환에 안전하다 —
