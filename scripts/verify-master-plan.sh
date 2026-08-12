@@ -12,7 +12,8 @@
 # 카운트 정합(종료 4) — CLAUDE.md §명세/범위 변경 시 전수 동기화 강제.
 #   FR ID 실집합(PLAN_COUNT)을 정본으로, fr-index 합계 / README 합계·BC테이블 /
 #   product·fr-index 의 (FR-XX, N개) 헤더 / CLAUDE.md·README·CHANGELOG 의 'N FR' 표기(룰 E)가
-#   모두 일치해야 함. 더해 README §1 진척 열 ⟺ product 미완 D 마커의 양방향 정합(룰 H).
+#   모두 일치해야 함. 더해 README §1 진척 열 ⟺ product 미완 D 마커의 양방향 정합(룰 H)과
+#   DEVELOPMENT.md ⟺ docs/sdd/22 의 줄수 규칙 서술 정합(룰 I, 2026-08-12 PR #365 신설).
 
 set -euo pipefail
 
@@ -226,6 +227,38 @@ if [[ -f "$README" ]]; then
       sync_fail "README §1 $(basename "$hpf") 진척 '☑ D단계' — 실제 미완 D 단계 ${hpending}건"
     fi
   done < <(grep -E '\]\(product/' "$README" || true)
+fi
+
+# I) 줄수 규칙 정본 대조 — DEVELOPMENT.md ⟺ docs/sdd/22-claude-code-env.md (2026-08-12 신설, PR #365)
+#    두 정본이 같은 규칙을 다르게 적으면 어느 쪽을 고쳐도 반대편에 drift 가 남는다.
+#    2026-08-11 재측정이 그 충돌을 발견했지만, 25일 전 같은 양식(Obsidian 동기화 서술)이
+#    장부에 등재되지 않아 그대로 재발했다 — 「맞는 진단을 적었는데도 안 퍼졌다」.
+#    그래서 사람의 재측정이 아니라 여기서 잡는다.
+#
+#    ★행 부재도 FAIL 이다. 「없으면 검사 안 함」으로 짜면 행을 지우는 것만으로 가드가 죽는다
+#    (`[[seal-blinds-existing-guard]]` 양식). 그래서 전체 건수와 태그된 건수를 함께 잰다.
+SDD_ENV="${REPO_ROOT}/docs/sdd/22-claude-code-env.md"
+DEV_MD="${REPO_ROOT}/DEVELOPMENT.md"
+if [[ -f "$SDD_ENV" && -f "$DEV_MD" ]]; then
+  # I-1) '파일 300줄' 은 Kotlin 전용이다 (DEVELOPMENT.md §2.1). SDD 표에도 태그가 있어야 한다.
+  #      §2.2 TypeScript 에는 파일 상한 조항이 없으므로, 태그 없는 행은 TS 에도 적용되는 것으로 오독된다.
+  SDD_300_ANY="$(grep -cE '파일 300줄' "$SDD_ENV" || true)"
+  SDD_300_TAG="$(grep -cE '^\| *Kotlin: *함수 30줄 이내, 파일 300줄 이내|^\| *Kotlin: *파일 300줄 이내' "$SDD_ENV" || true)"
+  if [[ "$SDD_300_ANY" -ne 1 || "$SDD_300_TAG" -ne 1 ]]; then
+    sync_fail "SDD 22.7.1 '파일 300줄' — 전체 ${SDD_300_ANY}행 / 'Kotlin:' 태그 ${SDD_300_TAG}행 (각 1 기대). DEVELOPMENT.md:55 는 §2.1 Kotlin 전용 조항이다"
+  fi
+  # I-2) 반대 방향 — TypeScript 컴포넌트 200줄이 SDD 에도 있어야 한다.
+  #      DEVELOPMENT.md:72 에만 있고 SDD 에 없으면 SDD 만 읽는 에이전트가 그 규칙을 모른다.
+  SDD_200_TAG="$(grep -cE '^\| *TypeScript: *컴포넌트 200줄 이내' "$SDD_ENV" || true)"
+  if [[ "$SDD_200_TAG" -ne 1 ]]; then
+    sync_fail "SDD 22.7.1 'TypeScript: 컴포넌트 200줄 이내' ${SDD_200_TAG}행 (1 기대) — DEVELOPMENT.md:72 와 어긋난다"
+  fi
+  # I-3) DEVELOPMENT.md 쪽 사본은 각 1건이어야 한다. 사본이 늘면 어느 쪽이 정본인지 모호해진다.
+  DEV_300="$(grep -cE '파일 300줄 이내' "$DEV_MD" || true)"
+  DEV_200="$(grep -cE '컴포넌트 200줄 이내' "$DEV_MD" || true)"
+  if [[ "$DEV_300" -ne 1 || "$DEV_200" -ne 1 ]]; then
+    sync_fail "DEVELOPMENT.md 줄수 규칙 사본 — '파일 300줄' ${DEV_300}행 · '컴포넌트 200줄' ${DEV_200}행 (각 1 기대)"
+  fi
 fi
 
 # --- 4) 최종 결과 ---
