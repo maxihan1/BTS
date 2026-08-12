@@ -78,9 +78,15 @@ bash scripts/cancel-merged-pr-runs.sh <branch>
 #   `paths` 필터 때문에 새 run 이 아예 안 생기면 concurrency 가 발화할 계기가 없다.
 #   예. `backend-ci` 는 `backend/**` 에만 트리거되므로 뒤 머지가 전부 프론트·문서면
 #   낡은 main backend-ci 가 계속 러너를 점유한다 — 2026-08-10 실측 1시간 43분.
-#   ★`main` 인자는 「통째 무접촉」이 아니라 「현재 HEAD 무접촉」이다. 방금 시작된
-#   새 HEAD 의 push CI 는 건드리지 않고, 그보다 낡은 커밋의 run 만 취소한다.
-#   현재 HEAD 를 원격에 못 물으면 아무것도 하지 않는다(fail-open).
+#   ★`main` 인자는 「통째 무접촉」이 아니라 「현재 main 내용 무접촉」이다. 방금 시작된
+#   push CI 는 건드리지 않고, 그보다 낡은 커밋의 run 만 취소한다.
+#   ★★기준은 HEAD 가 아니다 — **HEAD 부터 거슬러 첫 non-`[skip ci]` 커밋**까지 되감아
+#   그 구간을 보호한다. 바로 위 Step 3 의 post-merge 훅이 `[chore] dashboard regen
+#   [skip ci]` 를 push 해 HEAD 를 한 칸 밀기 때문이다. 그 커밋은 자기 run 이 0건이고
+#   머지 내용을 검증 중인 run 은 **부모**에 붙어 있어서, HEAD 만 보호하면 정작 그 run 이
+#   취소된다 — 2026-08-12 PR #376 머지에서 실측(HEAD af3978648 run 0건 / in_progress
+#   는 부모 ade4dd826). 훅은 사실상 모든 머지에서 저 커밋을 만든다.
+#   검증 대상 커밋을 원격에 못 물으면 아무것도 하지 않는다(fail-open).
 bash scripts/cancel-merged-pr-runs.sh main
 
 # worktree 제거 (Step 1에서 미커밋 0 확인했으므로 안전)
