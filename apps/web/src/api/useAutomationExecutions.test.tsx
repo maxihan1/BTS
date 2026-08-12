@@ -111,10 +111,13 @@ const REPLAYED_DETAIL_2: RuleExecutionDetail = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 핸들러 — useCalendarFeed.test.ts 선례(전역 `@/test/server` + `server.use()`)를 미러한다.
-// automation-executions.test.ts처럼 이 파일 로컬 `setupServer()`를 새로 띄우면 src/test/setup.ts가
-// 이미 listen 중인 전역 서버와 두 개의 MSW 인스턴스가 동시에 활성화되어, 요청 1건이 두 인스턴스 모두에
-// 전달돼 핸들러가 중복 호출된다(요청 횟수를 세는 이 테스트에서 실측 확인됨) — 이 task의 허용 파일이
-// 2개(.ts/.test.tsx)뿐이라 별도 mocks 핸들러 파일 신설 대신 전역 서버에 `server.use()`로 인라인 등록한다.
+// 이 파일에서 로컬 MSW 인스턴스를 새로 띄우면 src/test/setup.ts 가 이미 listen 중인 전역 서버와
+// 두 인스턴스가 동시에 활성화되어, 요청 1건이 두 인스턴스 모두에 전달돼 핸들러가 중복 호출된다
+// (요청 횟수를 세는 이 테스트에서 실측 확인됨). 별도 mocks 핸들러 파일 신설 대신 전역 서버에
+// `server.use()` 로 인라인 등록한다.
+//
+// ★2026-08-12(PR #375) — 저장소 전체가 이 방식으로 수렴했다. 로컬 인스턴스 생성은
+// `src/test/msw-single-setupserver.test.ts` 가 이제 **전면 금지**한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 let detailRequestCount = 0

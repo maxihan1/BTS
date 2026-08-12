@@ -53,66 +53,13 @@ const ALLOWED = ['src/test/server.ts'] as const
  * 목록에 있는데 실제로는 더 이상 위반이 아닌 항목은 아래 「썩은 항목」 단언이 잡는다.
  */
 const MIGRATION_BASELINE: readonly string[] = [
-  'src/api/automation-executions.test.ts',
-  'src/api/automation-git-webhooks.test.ts',
-  'src/api/automation-rules.test.ts',
-  'src/api/oidc.test.ts',
-  'src/api/providers.test.ts',
-  'src/api/saml.test.ts',
-  'src/api/useAutomationExecutions.test.tsx',
-  'src/api/useAutomationRules.test.tsx',
-  'src/api/useGitWebhooks.test.tsx',
-  'src/components/automation/AutomationRuleFormDialog.test.tsx',
-  'src/components/automation/AutomationRuleList.test.tsx',
-  'src/components/automation/GitWebhookSection.test.tsx',
-  'src/components/dashboard/ShareDashboardModal.test.tsx',
-  'src/hooks/use-dashboards.test.tsx',
-  'src/mocks/__tests__/bulk-available-transitions-handler.test.ts',
-  'src/mocks/__tests__/bulk-operation-handlers.test.ts',
-  'src/mocks/__tests__/changelog-handlers.test.ts',
-  'src/mocks/__tests__/create-issue-handler.test.ts',
-  'src/mocks/__tests__/custom-field-handlers.test.ts',
-  'src/mocks/__tests__/favorite-handlers.test.ts',
-  'src/mocks/__tests__/global-permission-handlers.test.ts',
-  'src/mocks/__tests__/handlers.integration.test.ts',
-  'src/mocks/__tests__/inbox-handlers.test.ts',
-  'src/mocks/__tests__/issue-handlers.test.ts',
-  'src/mocks/__tests__/issue-permission-handlers.test.ts',
-  'src/mocks/__tests__/issue-transition-handlers.test.ts',
-  'src/mocks/__tests__/project-member-handlers.test.ts',
-  'src/mocks/__tests__/project-permission-handlers.test.ts',
-  'src/mocks/__tests__/scheme-handlers.test.ts',
-  'src/mocks/account-link-handlers.test.ts',
-  'src/mocks/audit-log-handlers.test.ts',
-  'src/mocks/auth-handlers.test.ts',
-  'src/mocks/automation-execution-handlers.test.ts',
-  'src/mocks/automation-rule-handlers.test.ts',
-  'src/mocks/backlog-handlers.test.ts',
-  'src/mocks/board-handlers.test.ts',
-  'src/mocks/cfd-handlers.test.ts',
-  'src/mocks/comment-handlers.test.ts',
-  'src/mocks/component-handlers.test.ts',
-  'src/mocks/create-issue-backlog-sync.test.ts',
-  'src/mocks/cycle-time-handlers.test.ts',
-  'src/mocks/dashboard-handlers.test.ts',
-  'src/mocks/git-webhook-handlers.test.ts',
-  'src/mocks/handlers.test.ts',
-  'src/mocks/mfa-handlers.test.ts',
-  'src/mocks/notification-policy-handlers.test.ts',
-  'src/mocks/password-handlers.test.ts',
-  'src/mocks/project-lead-handlers.test.ts',
-  'src/mocks/saved-filter-handlers.test.ts',
-  'src/mocks/slack-channel-mapping-handlers.test.ts',
-  'src/mocks/timeline-handlers.test.ts',
-  'src/mocks/trusted-devices-handlers.test.ts',
-  'src/mocks/velocity-handlers.test.ts',
-  'src/mocks/version-handlers.test.ts',
-  'src/mocks/webauthn-handlers.test.ts',
-  'src/mocks/webhook-handlers.test.ts',
-  'src/mocks/worklog-handlers.test.ts',
-  'src/routes/__tests__/projects.$projectKey.settings.automation.test.tsx',
-  'src/routes/__tests__/projects.$projectKey.settings.slack-channels.test.tsx',
-  'src/test/labels.test.ts',
+  // ★2026-08-12 (PR #375) — **전량 이주 완료로 비웠다.**
+  //
+  // 봉인 시점(2026-08-09)에 59개였다. 이 목록이 빈 순간부터 로컬 `setupServer` 는
+  // **신규든 잔존이든 전부 red** 다 — 래칫이 끝까지 감겼다.
+  //
+  // 다시 채우지 말 것. 새 테스트는 전역 `@/test/server` 에 `beforeEach(() => server.use(...))`
+  // 로 등록한다(등록이 `beforeAll` 이면 전역 `resetHandlers()` 때문에 첫 테스트 뒤 사라진다).
 ]
 
 /**
@@ -180,9 +127,17 @@ describe('MSW — 로컬 setupServer 는 전역 서버 하나뿐이어야 한다
     //   (파일 내용 → 위반 목록 → 허용목록 차집합)를 그대로 태운다.
     const known = new Set<string>([...ALLOWED, ...MIGRATION_BASELINE])
 
-    /** 실제 판정과 같은 절차 — 내용으로 위반을 뽑고 허용목록을 뺀다. */
-    function freshOffenders(files: Array<{ path: string; content: string }>): string[] {
-      return files.filter((f) => f.content.includes(NEEDLE)).map((f) => f.path).filter((p) => !known.has(p))
+    /**
+     * 실제 판정과 같은 절차 — 내용으로 위반을 뽑고 허용목록을 뺀다.
+     *
+     * @param files 판정할 파일들
+     * @param allowlist 허용목록. 생략하면 실제 목록(`ALLOWED` + baseline)을 쓴다
+     */
+    function freshOffenders(
+      files: Array<{ path: string; content: string }>,
+      allowlist: Set<string> = known,
+    ): string[] {
+      return files.filter((f) => f.content.includes(NEEDLE)).map((f) => f.path).filter((p) => !allowlist.has(p))
     }
 
     // ① 새 파일이 로컬 서버를 만들면 잡힌다.
@@ -199,10 +154,28 @@ describe('MSW — 로컬 setupServer 는 전역 서버 하나뿐이어야 한다
       ]),
     ).toEqual([])
 
-    // ③ baseline 에 있는 기존 위반은 「신규」로 세지 않는다 (동결이 실제로 동작하는가).
-    const knownOffender = MIGRATION_BASELINE[0] as string
+    // ③ 허용목록에 있는 위반은 「신규」로 세지 않는다 (동결 로직이 실제로 동작하는가).
+    //
+    // ★2026-08-12 — baseline 이 **비었으므로**(전량 이주) 실제 목록에서 표본을 뽑을 수 없다.
+    //   예전 코드는 `MIGRATION_BASELINE[0]` 을 썼고, 목록이 비는 순간 `undefined` 가 되어
+    //   이 단언이 **깨졌다**(`expected [ undefined ] to deeply equal []`).
+    //   동결 **로직**은 여전히 코드에 살아 있고 누군가 목록을 다시 채울 수 있으므로,
+    //   합성 허용목록으로 그 로직만 따로 검증한다 — 실제 빈 목록을 쓰면
+    //   「비어서 통과」가 되어 아무것도 재지 않는다.
+    const SYNTHETIC_FROZEN = 'src/legacy/frozen-by-baseline.test.ts'
     expect(
-      freshOffenders([{ path: knownOffender, content: `const server = ${NEEDLE})` }]),
+      freshOffenders(
+        [{ path: SYNTHETIC_FROZEN, content: `const server = ${NEEDLE})` }],
+        new Set<string>([...ALLOWED, SYNTHETIC_FROZEN]),
+      ),
     ).toEqual([])
+
+    // ③-b 같은 파일이 허용목록에 **없으면** 잡힌다 (③ 이 항진명제가 아님을 고정).
+    expect(
+      freshOffenders(
+        [{ path: SYNTHETIC_FROZEN, content: `const server = ${NEEDLE})` }],
+        new Set<string>([...ALLOWED]),
+      ),
+    ).toEqual([SYNTHETIC_FROZEN])
   })
 })
