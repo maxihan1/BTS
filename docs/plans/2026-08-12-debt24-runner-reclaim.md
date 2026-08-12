@@ -12,13 +12,17 @@
 기술부채 24건 전수 처리의 **1파**. 검증 장비(self-hosted 러너 = 이 맥 1대)의 **대기 시간과
 실행 시간을 둘 다** 회수한다.
 
-**Maxi 확정 (2026-08-12) — 범위는 ①+②, ③은 후속 PR.**
+**Maxi 확정 (2026-08-12) — 범위는 ①뿐. ②는 착수 중 실측이 전제를 뒤집어 제외됐다.**
 
 | | 항목 | 축 | 이번 PR |
 |---|---|---|---|
 | ① | 낡은 `main` run 이 러너를 계속 점유 (`TODOS.md:2631`) | 대기 | **포함** |
-| ② | Gradle 설정 — 데몬·병렬·빌드캐시 (`TODOS.md:1924` 후속 2) | 실행 | **포함** |
+| ② | Gradle 설정 — 데몬·병렬·빌드캐시 (`TODOS.md:1924` 후속 2) | 실행 | **❌ 제외 — 전제 무효** (Task 5·6·7 절) |
 | ③ | PR 은 변경된 모듈만 테스트 (`TODOS.md:1924` 후속 3) | 실행 | **제외 — 후속** |
+
+**★②의 제외는 「범위 축소」가 아니라 「측정에 의한 반증」이다.** 원안 처방
+(`--parallel --build-cache`)이 겨냥한 비용이 스텝 단위 실측에서 거의 0 이었다.
+근거 4가지와 진짜 병목은 아래 Task 5·6·7 절에 있다.
 
 **③을 뺀 이유는 장부가 명시한 함정이다.** `TODOS.md:1969`.
 
@@ -219,81 +223,99 @@ M1 과 M4 가 각각 그 둘을 red 로 만들었으므로 이제는 실제로 �
 
 ---
 
-### Task 5. RED — Gradle CI 설정 판별식
+### Task 5·6·7. ❌ 제외 — 측정이 전제를 뒤집었다 (2026-08-12 Maxi 확정)
 
-**메타**. agent: `backend-engineer` · files: [`scripts/workflow/*.test.ts` 또는 `verify-master-plan.sh`] · depends-on: []
+**메타**. 착수 안 함. 후속 PR 로 이월.
 
-**RED**. 두 목록을 **서로 검사**한다 (`[[two-lists-never-check-each-other]]`).
+원안은 「`gradle.properties` 는 `false` 로 두고 `backend-ci.yml` 의 gradle 호출에
+`--parallel --build-cache` 를 붙인다」였다. **착수 직전 스텝 단위로 재 보니 그 처방이
+겨냥한 비용이 거의 존재하지 않았다.**
 
-| 단언 | 이유 |
+#### 실측 — run `31353747254` (2026-08-10 · main · 12잡)
+
+| 구간 | 값 |
 |---|---|
-| `backend/gradle.properties` 의 `daemon`·`parallel` 은 **`false` 유지** | 로컬 wave 병렬 dispatch 안정성 (주석의 원래 사유) |
-| `backend-ci.yml` 의 gradle 호출은 **`--parallel --build-cache` 를 명시적으로 전달** | CI 는 잡이 러너를 독점하므로 전제가 없다 |
-| 두 목록이 **어긋나면 FAIL** | 한쪽만 고치면 「로컬에서 켜져 사고」 또는 「CI 에서 안 켜져 무효」 |
+| 테스트 스텝 합계 | **34.7분** |
+| 잡 오버헤드 (Set up · Checkout · JDK · 정리) | 5.7분 (**14%**) |
+| **`Setup Gradle (with cache)` 스텝** | **0~1초** |
+| 잡 실행 합계 | 40.4분 |
+| 벽시계 | 55.6분 |
+| **잡 사이 공백** (다른 워크플로우가 끼어든 시간) | **약 15분** |
 
-**현재 값 실측.**
-```
-backend/gradle.properties
-  org.gradle.daemon=false   org.gradle.parallel=false   org.gradle.configureondemand=false
-  org.gradle.caching        ← 항목 자체가 없음 (기본 false)
-```
-
-**검증**. 판별식 추가 직후 **red** (아직 워크플로우가 플래그를 안 넘김).
-
----
-
-### Task 6. GREEN — CI 에서만 Gradle 최적화 켜기
-
-**메타**. agent: `backend-engineer` · files: [`.github/workflows/backend-ci.yml`] · depends-on: [5]
-
-**GREEN**. `gradle.properties` 는 **손대지 않는다.** 워크플로우의 gradle 호출에 플래그만 붙인다.
-
-**★`--build-cache` 는 「안 돌리고 UP-TO-DATE 통과」를 만든다.** 그것이 장부가 경고한 함정이라
-Task 7 의 짝 판별식 없이 이 task 를 닫지 않는다.
-
-**검증**. Task 5 판별식 green.
-
----
-
-### Task 7. ★짝 판별식 — 「미검증인데 초록」 차단
-
-**메타**. agent: `backend-engineer` · files: [`.github/workflows/backend-ci.yml`] · depends-on: [6]
-
-빌드캐시가 켜지면 **테스트를 안 돌리고 통과**할 수 있다. 그것을 run 요약에서 보이게 한다.
-
-| 단언 | 근거 |
+| 모듈 | 테스트 스텝 |
 |---|---|
-| 테스트 XML 산출물이 **이번 run 에서 생성**됐는가 (신선도) | `[[lint-fails-first-leaves-stale-test-xml]]` — 미실행인데 직전 결과가 남는다 |
-| 테스트 케이스 수가 기준선(**3,247**) 대비 **감소 0** | `[[measured-the-wrong-thing-twice]]` — 개수가 아니라 분포까지 |
-| 캐시 히트로 **건너뛴 태스크를 run 요약에 남긴다** | 「무엇을 안 쟀나」가 보이지 않으면 초록이 거짓말한다 |
+| **issue-tracking** | **604초** |
+| **identity-access** | **523초** |
+| 나머지 9잡 합계 | 954초 |
 
-**★조용한 축소 금지.** 건너뛴 것이 있으면 **숫자로** 남긴다.
+두 모듈이 테스트 시간의 **54%** 다.
+
+#### 원안이 성립하지 않는 이유 4가지
+
+| # | 근거 |
+|---|---|
+| 1 | **`--parallel` 은 붙일 대상이 없다.** 각 잡이 gradle 태스크를 **1개**만 돌린다. app 잡만 2개인데 그 둘은 `@ActiveProfiles` 컨텍스트 캐시 키 때문에 **일부러 별도 JVM 으로 분리**한 것이다 — 병렬화하면 9-BC 컨텍스트가 두 벌 뜨고 `@Scheduled` 워커가 같은 pgmq 큐를 동시 폴링한다 (`backend-ci.yml` 주석) |
+| 2 | **`--build-cache` 의 이득이 곧 ③이다.** 「안 바뀐 모듈 테스트 스킵」은 이 계획서가 `TODOS.md:1969` 를 근거로 **뺀** ③(변경 모듈만 테스트)과 같은 효과다. 스스로 경고한 「두 겹으로 미검증인데 초록」을 캐시로 우회 달성하는 꼴 |
+| 3 | **같은 저장소가 이미 캐시를 일부러 우회하고 있다.** `ktlint + detekt` 잡은 `--rerun-tasks` 다 — 주석. *"빌드 캐시가 있으면 위반이 있어도 UP-TO-DATE 로 통과해 '린트 초록' 이 거짓이 된다(로컬에서 실제로 겪은 실패 양식)"* |
+| 4 | **캐시 복원 오버헤드 자체가 없다.** `Setup Gradle` 스텝이 **0~1초**다. self-hosted 러너라 `~/.gradle` 이 로컬에 영속한다 — 복원할 것이 없다 |
+
+#### 진짜 병목은 다른 곳이다
+
+두 병목 모듈이 `maxParallelForks = 1` 이다 — **8코어 중 1코어만 쓴다.**
+
+```
+backend/modules/issue-tracking/build.gradle.kts:369
+  // Testcontainers + jOOQ 동시 실행 시 메모리 확보. 포크 1개씩 순차 실행으로 OOM 방지
+  maxHeapSize = "1024m"
+  maxParallelForks = 1
+```
+
+**★그런데 이것도 지금 올리면 안 된다.** 포크마다 Testcontainers 컨테이너가 뜬다. 물리 16GB 에서
+그것이 곧 이 PR 이 고치려는 **자원 고갈을 스스로 만드는 경로**다. 재부팅 직후 안정 상태를
+기준선으로 **실측한 뒤** 별도 PR 에서 다룬다.
+
+#### 이월되는 후속 (별도 PR)
+
+| 항목 | 비고 |
+|---|---|
+| `maxParallelForks` 상향 — 두 병목 모듈 한정 | 안정 기준선 실측 선행 필수. OOM 위험 실재 |
+| 잡 사이 공백 15분 | 러너 1대에 여러 워크플로우가 물리는 구조. 대기 축의 잔여분 |
+| ③ 변경된 모듈만 테스트 | 원래부터 후속 (`TODOS.md:1969` 함정) |
+
+**★이 절을 「Gradle 최적화가 무효」로 넘겨 읽지 말 것.** 무효인 것은 **이 조건에서의 저 두
+플래그**다. 러너가 늘거나 잡 구조가 바뀌면 전제가 다시 선다.
 
 ---
 
 ### Task 8. 개선폭 측정 + 장부 갱신
 
-**메타**. agent: `backend-engineer` · files: [`TODOS.md`, `docs/progress.html`] · depends-on: [1, 4, 7]
+**메타**. agent: `backend-engineer` · files: [`TODOS.md`, `docs/progress.html`] · depends-on: [1, 4]
 
 **측정은 `cancelled` 건수가 아니라 대기 시간과 실행 합계로 한다** (`TODOS.md:2657`).
 
 | 지표 | before (2026-08-12 실측) | after |
 |---|---|---|
 | `backend-ci` 대기 시간 | 28 · 90 · 56 · 19 · 4 · 13분 | ? |
-| `backend-ci` 실행 합계 | 40 · 42 · 50 · 44 · 32 · 34분 | ? |
+| `backend-ci` 실행 합계 | 40 · 42 · 50 · 44 · 32 · 34분 | **건드리지 않음 (축 ② 제외)** |
 | 자원 9항목 | 위 기준선 표 | Task 1 |
+
+**★after 를 이 PR 안에서 못 재는 항목이 있다.** 대기 시간의 개선은 **다음 머지가 일어나야**
+관측된다 — 이 PR 자신의 머지가 첫 관측 기회다. 그래서 「측정 완료」가 아니라 **관측 절차와
+기대치를 장부에 등재**하는 것이 이 task 의 산출물이다. 숫자를 지어내지 않는다.
 
 **장부 갱신.**
 - `TODOS.md:2631` (낡은 main run) → **✅ 해소** (①)
-- `TODOS.md:1924` → **⬜ 유지**, 후속 표를 **1건(③ 모듈 선택)** 으로 정정 + ②의 해소 블록 등재
+- `TODOS.md:1924` → **⬜ 유지**. 후속 표에 **①의 실측 반증**(플래그 2종이 이 조건에선 무효)과
+  **새 후속 `maxParallelForks`** 를 등재. ②는 해소가 아니라 **전제 무효로 이월**이다
 - ⬜ 카운트 **23 → 22**, `docs/progress.html` 재생성
 
-**★해소 범위를 넘겨 읽지 말 것.** ②를 닫아도 `backend-ci` 는 여전히 전 모듈을 돈다.
+**★해소 범위를 넘겨 읽지 말 것.** ①을 닫아도 `backend-ci` 실행 합계 ~40분은 그대로다.
+이번 PR 이 줄이는 것은 **대기**뿐이다.
 
 ## Plan 메타
 
-- task 수: 8
-- 구현 규율: TDD (T2 RED → T3 GREEN → T4 뮤테이션 / T5 RED → T6 GREEN → T7 짝)
+- task 수: 8 → **실행 5** (T5·T6·T7 제외)
+- 구현 규율: TDD (T2 RED → T3 GREEN → T4 뮤테이션)
 - 병렬 dispatch: **미사용**
 - 직렬 제약: T2→T3→T4 (좀비 run), T5→T6→T7 (Gradle), 둘 다 T8 선행
 - **선행 수동 작업**: Maxi 재부팅 (Task 1 의 전제)
