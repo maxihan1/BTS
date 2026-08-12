@@ -253,7 +253,9 @@ export function MoveIssueDialog({
             toast.error(s.errorSubtaskHasOwnSubtasks)
           } else if (err instanceof ApiError && err.status === 403) {
             // preview 와 같은 두 assert(`IssueMoveService.kt:189-190`)가 낸 같은 403 이다.
-            // 원인 설명도 같은 어휘를 쓴다 — 옛 문구는 원인을 원본 이슈 쪽으로 단정했다.
+            // 다만 문구는 preview 와 **일부러 다르다** — 여기까지 온 사용자는 대상 키가
+            // 이미 통과했음을 안다. 갈린 이유 전문은 `errorForbidden` KDoc.
+            // 어느 쪽도 원인을 원본 이슈 쪽으로 단정하지 않는다.
             toast.error(s.errorForbidden)
           } else {
             toast.error(s.errorDefault)
