@@ -3650,3 +3650,54 @@ out.push(`<blockquote class="md-quote">${inlineMd(quoted.join(' '))}</blockquote
 **같은 JSX 요소가 `placeholder`(i18n 경유)와 `aria-label`(한글 하드코딩)을 동시에 갖는 것**.
 정의를 「한글이 든 `aria-label` 전부」로 넓히면 수치가 크게 달라진다 — 넓힌 수치를 이 항목에
 그대로 옮겨 적지 말고, 옮긴다면 정의를 함께 적을 것.
+
+---
+
+## ⬜ 인프라 — worktree 에 `node_modules` 링크를 만드는 절차가 없다 (신규 · 미착수)
+
+**무엇.** `scripts/workflow/worktree-hook-wiring.test.ts` 는 worktree 가 `node_modules` ·
+`apps/web/node_modules` 를 **심볼릭 링크로 갖는다고 전제**한다(`SYMLINKED_IGNORE_PATHS`).
+`.gitignore` 도 그 링크를 무시하도록 맞춰져 있다. **그런데 그 링크를 만드는 곳이 어디에도 없다** —
+`/bts-start` Step 3 은 `.husky/_` 하나만 링크한다(전수 grep 0건).
+
+**결과.** worktree 에서 프론트 검증을 **아예 못 돌린다.**
+
+| 증상 | 원인 |
+|---|---|
+| `node_modules/.bin/vitest: No such file` (exit 127) | 링크 부재 |
+| `.husky/pre-commit` 이 첫 줄에서 죽어 **문서 인덱스 검사까지 도달 못 함** | 같은 원인 (별도 항목) |
+
+2026-08-12(PR #375)은 링크를 **손으로 만들어** 진행했다. 다음 사람이 같은 자리에서 다시 막힌다.
+
+```bash
+ln -s /Users/maxi.moff/Projects/BTS/node_modules            .worktrees/<slug>/node_modules
+ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/<slug>/apps/web/node_modules
+```
+
+**처방 후보.** ① `/bts-start` Step 3 에 위 두 줄을 넣고 `worktree-hook-wiring.test.ts` 가
+그 배선을 강제한다(훅 링크와 같은 방식). ② 링크 후에도 **`pnpm` 래퍼는 못 쓴다** —
+의존성 검사가 경로 불일치를 감지해 무-TTY 로 죽는다(`[[worktree-pnpm-verify-deps-symlink]]`).
+바이너리를 직접 부르는 규율(`node_modules/.bin/<도구>`)을 함께 문서화할 것.
+
+**★판별식이 전제만 하고 생성은 아무도 안 한다** — 이 저장소가 반복해온
+「가드는 있는데 배선이 없다」 양식이다(`[[nonprod-bean-collision-nine-not-five]]`).
+
+---
+
+## ⬜ 인프라 — E2E(Playwright)가 CI 에 한 번도 배선된 적이 없다 (신규 · 미착수)
+
+**무엇.** `apps/web/e2e/*.spec.ts` 가 실재하고 `pnpm test:e2e` 스크립트도 있는데,
+**어느 워크플로우도 그것을 돌리지 않는다** — `grep -rn 'e2e' .github/workflows/*.yml` **0건**.
+
+**결과.** E2E 가 잡는 층(실 브라우저 · Service Worker MSW 경로 · 라우팅)은 **머지 전 검증에서
+통째로 빠져 있다.** 유닛이 초록이면 그대로 머지된다.
+
+**실제 사례 (2026-08-12 · PR #375).** `automation-execution-handlers.ts` 의 이중 dispatch
+보상 가드를 제거했는데, 그 파일은 `setupWorker`(브라우저) 경로에서도 쓰인다.
+유닛 292 통과만으로는 브라우저 영향을 못 봤고 **게이트 2 리뷰에서 E2E 를 손으로 돌려**
+5/5 통과를 확인했다. 그 절차가 없었다면 미검증인 채 머지됐을 것이다.
+
+**착수 시 주의.** 러너가 1대라 E2E 를 무조건 붙이면 「CI 벽시계」 항목과 충돌한다.
+**어떤 트리거에서 돌릴지**(예. `apps/web/**` 변경 시에만)를 먼저 정해야 한다.
+`playwright.config.ts` 의 webServer 가 dev 서버를 띄우므로 5173 orphan 정리도 함께 배선할 것
+(`[[e2e-orphan-vite-after-worktree-remove]]`).

@@ -21,8 +21,14 @@
 // backend 계약대로 요청 바디가 없어, 바디를 읽는 핸들러들이 얻던 「Body already read」 자연
 // 방어를 못 받는 자리였다.
 //
-// **제거가 안전함을 실측했다** — 관련 18파일 292 테스트가 그대로 통과한다. 원인이 남아 있었다면
-// replay 가 store 를 두 번 mutate 해 즉시 red 가 됐을 자리다.
+// **제거가 안전함을 두 층에서 실측했다.**
+//   - 유닛. 관련 18파일 292 테스트 통과 — 원인이 남아 있었다면 replay 가 store 를 두 번
+//     mutate 해 즉시 red 가 됐을 자리다.
+//   - **E2E**. `e2e/automation-execution-history.spec.ts` **5/5 통과**. 이 파일은
+//     `setupWorker`(브라우저) 경로에서도 쓰이므로 유닛만으로는 부족했다 — 브라우저는
+//     인터셉터가 하나뿐이라 `requestId` 중복이 성립하지 않아 캐시가 **항상 miss** 였고,
+//     그래서 제거해도 동작이 같다는 것이 논리와 실측 양쪽에서 확인됐다.
+//     ★E2E 는 CI 에 배선돼 있지 않다(`grep -rn e2e .github/workflows` 0건) — 이 검증은 로컬 실행이다.
 //
 import { http, HttpResponse } from 'msw'
 import type { RuleExecutionDetail, RuleExecutionSummary } from '@/api/automation-executions.types'
