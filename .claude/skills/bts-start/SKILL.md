@@ -70,6 +70,12 @@ git worktree add ".worktrees/${slug}" -b "${branch_prefix}/${slug}"
 # ★ pre-commit 훅 연결 — 빠뜨리면 이 worktree 의 모든 커밋이 무방비다.
 ln -s "$(pwd)/.husky/_" ".worktrees/${slug}/.husky/_"
 
+# ★★ 훅의 **실행선** 연결 — 빠뜨리면 훅이 연결돼 있어도 첫 커밋에서 죽는다.
+#    훅 본체가 `node_modules/.bin/lint-staged` 를 직접 부르는데 worktree 에는 그 디렉토리가
+#    없다(`.gitignore` 대상). 2026-08-12 실측 — 'No such file or directory' 로 pre-commit 사망.
+ln -s "$(pwd)/node_modules" ".worktrees/${slug}/node_modules"
+ln -s "$(pwd)/apps/web/node_modules" ".worktrees/${slug}/apps/web/node_modules"
+
 echo "✅ Worktree: $(pwd)/.worktrees/${slug}"
 echo "👉 이후 모든 작업은 worktree 내부에서 진행"
 ```
@@ -82,6 +88,13 @@ echo "👉 이후 모든 작업은 worktree 내부에서 진행"
   침묵으로 건너뛴다** — 아무도 눈치채지 못한다. 연결이 없으면 인덱스 drift·lint 위반이
   전부 통과해 CI 에서야 빨간불이 된다(PR #331·#333 실측, 5커밋 구간 red).
   배선은 `scripts/workflow/worktree-hook-wiring.test.ts` 가 강제한다.
+- **★`node_modules` 심볼릭도 필수** (2026-08-12 신설). 훅을 연결해도 훅이 **부르는 것**이 없으면
+  첫 커밋이 `node_modules/.bin/lint-staged: No such file or directory` 로 죽는다. `.gitignore` 는
+  worktree 가 `node_modules` · `apps/web/node_modules` · `.husky/_` **셋**을 심볼릭으로 갖는다고
+  이미 선언하는데, 종전 절차는 마지막 하나만 걸었다 — **선언과 생성이 어긋난 상태**였다.
+  `worktree-hook-wiring.test.ts` 의 「필요한 심볼릭을 전부 건다」가 두 목록을 짝지어 막는다.
+  ⚠️ **`pnpm install` 로 대신하지 말 것.** worktree 에서 install 을 돌리면 main 의
+  `node_modules/.modules.yaml` 을 덮어써 main 을 망가뜨린 전례가 있다(2026-07-17, 3일간 8회 머지).
 
 ### Step 4. plan 스텁 생성
 

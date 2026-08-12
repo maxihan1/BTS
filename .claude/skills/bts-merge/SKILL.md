@@ -47,7 +47,13 @@ bash scripts/verify-master-plan.sh    # exit 0 확인
 
 ```bash
 node scripts/build-dashboard.mjs      # 훅 미작동 시에만
-git add docs/plan/progress.html && git commit -m "[chore] dashboard regen [skip ci]" && git push
+# ★경로 주의. 생성기의 실제 출력은 `docs/progress.html` 이다(`build-dashboard.mjs` OUTPUT_PATH).
+#   `docs/plan/` 아래가 아니다 — 종전 문구가 그쪽을 가리켜 이 폴백은 실행하면 pathspec 오류로
+#   죽는 상태였다(2026-07-17 적발, 문서만 26일간 그대로).
+#   `merged-pr-run-cleanup.test.ts` 의 「대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다」가
+#   이제 두 목록을 짝지어 막는다. 그 판별식은 **틀린 경로를 적는 것 자체**를 금지하므로
+#   설명하려고 옮겨 적지도 말 것 — 다음 사람이 그것을 복사한다.
+git add docs/progress.html && git commit -m "[chore] dashboard regen [skip ci]" && git push
 ```
 
 ### Step 4. 머지

@@ -273,6 +273,33 @@ pnpm test:e2e                       # (qa-engineer 추가 시)
 pnpm test:workflow                  # ★ 워크플로우 판별식 — CI 와 같은 목록
 ```
 
+### ★★worktree 에서는 `pnpm` 래퍼가 실행되지 않는다 — 대체 명령을 쓴다
+
+BTS 의 모든 실작업은 worktree 안에서 이뤄지는데, 거기서 `pnpm <script>` 를 부르면 pnpm 이
+**심볼릭 `node_modules`** 를 보고 의존성 검사를 돌려 `pnpm install` 을 트리거하고
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다(2026-08-12 실측).
+`.husky/pre-commit` 은 이미 같은 이유로 `pnpm exec` 를 쓰지 않고 바이너리를 직접 부르며,
+`worktree-hook-wiring.test.ts` 의 `PNPM_WRAPPER` 단언이 그것을 강제한다 — **훅만 고쳐졌고
+이 문서는 그 사정거리 밖이라 돌지 않는 명령을 지시하고 있었다.**
+
+```bash
+# 워크플로우 판별식 — 위 `pnpm test:workflow` 와 **같은 파일 목록**을 돈다
+node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
+echo "EXIT=$?"
+
+# 그 밖의 도구도 바이너리를 직접 부른다
+node_modules/.bin/lint-staged
+apps/web/node_modules/.bin/vitest run    # 루트에 없는 도구는 후자에만 있다
+```
+
+**★두 명령의 파일 목록이 같아야 한다.** `package.json` 의 `test:workflow` 가 바뀌었는데 위
+대체 명령이 안 따라오면 **로컬이 CI 보다 적게 돌면서 초록**이 된다. `worktree-hook-wiring.test.ts`
+의 「worktree 에서 실제로 돌아가는 대체 명령을 함께 적는다」가 글로브를 `package.json` 에서
+직접 읽어 대조한다.
+
+⚠️ **`pnpm install` 로 우회하지 말 것.** worktree 에서 install 을 돌리면 main 의
+`node_modules/.modules.yaml` 을 덮어써 main 을 망가뜨린 전례가 있다(2026-07-17, 3일간 8회 머지).
+
 ### ★★판정은 **종료 코드**로 한다 — 통과 건수로 하지 않는다
 
 **「Tests N passed」와 「EXIT=1」은 같은 실행에서 동시에 참일 수 있다.** vitest 가
