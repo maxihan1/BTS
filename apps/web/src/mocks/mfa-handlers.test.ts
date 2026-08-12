@@ -1,6 +1,6 @@
 // TOTP MFA MSW 핸들러 단위 테스트 — stateful store + CSRF 검사 + E2E 토글 분기 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { mfaHandlers } from './mfa-handlers'
 import {
   resetMfaStore,
@@ -14,16 +14,14 @@ import { authHandlers } from './auth-handlers'
 // 서버 — MFA 핸들러 + login 핸들러 (mfa_required 분기 테스트용)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...mfaHandlers, ...authHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...mfaHandlers, ...authHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetMfaStore()
   // E2E 토글 플래그 초기화 — jsdom 환경에서 localStorage 사용 가능
   localStorage.removeItem(MFA_E2E_ENABLED_KEY)
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 응답 타입 (테스트 내부 편의용)

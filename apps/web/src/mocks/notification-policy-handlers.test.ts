@@ -1,20 +1,18 @@
 // FR-NT-01 MSW 알림 정책 stateful 핸들러 단위 테스트
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { notificationPolicyHandlers, resetNotificationPolicyStore } from './notification-policy-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 설정
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...notificationPolicyHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...notificationPolicyHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   resetNotificationPolicyStore()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

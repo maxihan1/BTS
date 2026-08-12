@@ -1,13 +1,11 @@
 // identity-access BC auth MSW 핸들러 단위 테스트 — 응답 schema 및 에러 분기 검증
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { describe, expect, it } from 'vitest'
 import { authHandlers } from './auth-handlers'
 
-const server = setupServer(...authHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
+beforeEach(() => {
+  server.use(...authHandlers)
+})
 
 describe('authHandlers — POST /api/v1/auth/login', () => {
   it('alice/password → 200 + access_token + token_type Bearer', async () => {

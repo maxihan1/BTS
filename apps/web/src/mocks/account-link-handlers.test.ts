@@ -1,6 +1,6 @@
 // 계정 연결 MSW 핸들러 단위 테스트 — stateful store + 시나리오 플래그 분기 검증 (FR-AU-08/08b)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { afterEach, describe, expect, it } from 'vitest'
 import { accountLinkHandlers } from './account-link-handlers'
 import {
   resetStore,
@@ -10,18 +10,16 @@ import {
   DEFAULT_LINKABLE_PROVIDERS,
 } from './account-link-fixtures'
 
-const server = setupServer(...accountLinkHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...accountLinkHandlers)
+})
 afterEach(() => {
-  server.resetHandlers()
   // localStorage 플래그 초기화 + 인메모리 store 초기화
   for (const key of Object.values(SCENARIO_KEY)) {
     localStorage.removeItem(key)
   }
   resetStore()
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — 응답 타입 (Zod 스키마와 동형, 테스트 내부 편의용)
