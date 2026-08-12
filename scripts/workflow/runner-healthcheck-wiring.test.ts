@@ -59,6 +59,43 @@ function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, WORKFLOW_DIR, name), 'utf8');
 }
 
+/** 주석 줄을 걷어낸다 — 「docker 를 쓴다」와 「docker 를 언급한다」는 다르다. */
+function withoutComments(body: string): string {
+  return body
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n');
+}
+
+/**
+ * 워크플로우가 **실제로** Docker 를 쓰는가 — 자신의 명령 + 자신이 부르는 스크립트까지 본다.
+ *
+ * ★목록을 손으로 적지 않는 이유는 `callerFiles()` 와 같다. 「docker 를 쓰는 워크플로우」를
+ * 상수로 적으면 그 목록과 실제 워크플로우가 **서로를 안 보는 두 목록**이 되고, 새 워크플로우가
+ * docker 를 쓰면서 플래그를 빠뜨려도 아무도 안 잡는다.
+ *
+ * ★스크립트를 따라가지 않으면 `infra-ci` 를 놓친다. 그 파일의 docker 언급은 **주석 한 줄뿐**이고
+ * 실제 사용은 `scripts/verify/nginx-log-masking.sh` 안에 있다.
+ *
+ * ★★단 「실행하는」 스크립트만 따라간다 — 인터프리터가 앞에 붙은 것. 경로가 적혔다는 이유만으로
+ * 따라가면 `paths:` **필터 목록**까지 호출로 오인한다. 실제로 `workflow-scripts-ci` 는 판별식
+ * 입력으로 `scripts/verify-runner-health.sh` 를 `paths` 에 적어 두는데, 그 스크립트가 docker 를
+ * 쓰게 되자 이 워크플로우까지 「docker 를 쓴다」로 잡혔다(2026-08-12 실측). 그러면 docker 가
+ * 필요 없는 판별식 PR 이 데몬 부재로 막힌다 — 프리플라이트가 새 차단면을 만드는 것이다.
+ */
+function usesDocker(name: string): boolean {
+  const body = withoutComments(readWorkflow(name));
+  if (/\bdocker\b/.test(body)) return true;
+
+  for (const m of body.matchAll(/(?:bash|sh|node|\.\/)\s+(scripts\/[\w./-]+\.(?:sh|mjs|ts))/g)) {
+    const p = path.join(REPO_ROOT, m[1]);
+    if (fs.existsSync(p) && /\bdocker\b/.test(withoutComments(fs.readFileSync(p, 'utf8')))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** 자원 점검 스텝의 이름. 추출 앵커이므로 워크플로우와 한 글자도 달라선 안 된다. */
 const RESOURCE_STEP_NAME = '- name: 러너 자원 점검';
 /** `run: |` 블록의 들여쓰기(스텝 6칸 + run 8칸 → 본문 10칸). */
@@ -210,6 +247,47 @@ describe('러너 헬스체크 배선', () => {
       [],
       `두 층의 판정 규칙이 갈라졌다 —\n${missing.join('\n')}\n` +
         `한쪽만 고치면 로컬은 잡고 CI 는 놓치는(또는 그 반대) 상태가 된다.`,
+    );
+  });
+
+  test('★★Docker 를 쓰는 워크플로우는 require_docker 를 넘긴다 (목록을 손으로 적지 않는다)', () => {
+    // 데몬이 꺼지면 이 워크플로우들의 잡이 **코드와 무관하게** 줄줄이 오진 실패한다.
+    // 프리플라이트가 있어도 호출부가 안 넘기면 아무것도 안 막는다 —
+    // 이 저장소가 여러 번 겪은 「가드는 있는데 배선이 없다」 양식이다.
+    const needing = callerFiles().filter(usesDocker);
+
+    // ★비-공허 짝. 훑기가 고장나 0건이 되면 아래 단언이 조용히 통과한다.
+    assert.ok(
+      needing.length >= 2,
+      `docker 를 쓰는 워크플로우를 ${needing.length}개만 찾았다 (실측 기준선 2 — backend·infra).\n` +
+        `훑기가 고장나면 아래 단언이 공허하게 통과한다.`,
+    );
+
+    const missing = needing.filter((name) => !/require_docker:\s*true/.test(readWorkflow(name)));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `Docker 를 쓰면서 require_docker 를 안 넘기는 워크플로우가 있다: ${missing.join(', ')}\n\n` +
+        `데몬이 꺼지면 이 워크플로우의 잡이 코드와 무관하게 전부 빨간불이 되고, 로그는\n` +
+        `「테스트가 깨졌다」로 읽힌다. 2026-08-12 PR #367 에서 실제로 그 비용을 치렀다 —\n` +
+        `12개 잡이 줄줄이 실패하고 사람이 하나씩 로그를 팠다.`,
+    );
+  });
+
+  test('★Docker 를 안 쓰는 워크플로우는 require_docker 를 넘기지 않는다 (음성 대조군)', () => {
+    // 반대 방향. 전부 true 로 두면 데몬이 꺼진 동안 프론트·판별식 PR 까지 부당하게 막힌다.
+    // 위 단언만 있으면 「전부 true」가 통과하므로, 이 짝이 없으면 계약이 절반이다 —
+    // 프리플라이트가 고치려던 것보다 큰 차단면을 새로 만드는 경로다.
+    const overreach = callerFiles()
+      .filter((name) => !usesDocker(name))
+      .filter((name) => /require_docker:\s*true/.test(readWorkflow(name)));
+
+    assert.deepEqual(
+      overreach,
+      [],
+      `Docker 를 안 쓰는데 요구하는 워크플로우가 있다: ${overreach.join(', ')}\n` +
+        `데몬이 꺼진 동안 이 PR 들까지 막힌다 — 프리플라이트가 새 차단면을 만든다.`,
     );
   });
 
