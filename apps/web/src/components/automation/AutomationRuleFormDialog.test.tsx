@@ -1,9 +1,9 @@
 // AutomationRuleFormDialog 단위 테스트 — 트리거 조건부 필드·cron 사전검증·직렬화 전달·수정모드 로드·웹훅 토큰 콜백·key 재마운트·액션/실행주체 배선 (FR-AT-01 D6 Task 6, FR-AT-02 D6 Task 6)
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { server } from '@/test/server'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { JSX, ReactNode } from 'react'
@@ -45,20 +45,18 @@ vi.mock('sonner', () => ({
 //
 // gitWebhookHandlers도 함께 합류한다(FR-AT-07 PR-D Task 9) — 폼이 열리면 useGitWebhooks(FR15
 // 무음 실패 경고 판정용)가 항상 마운트되므로 이 파일의 모든 테스트가 대상이다.
-const server = setupServer(...automationRuleHandlers, ...projectMemberHandlers, ...gitWebhookHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  server.use(...automationRuleHandlers, ...projectMemberHandlers, ...gitWebhookHandlers)
+})
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 afterEach(() => {
-  server.resetHandlers()
   resetAutomationRuleStore()
   resetGitWebhookStore()
   vi.clearAllMocks()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
-afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_AUTOMATION_PROJECT_KEY
 /** ATLAS 프로젝트 멤버 fixture(project-member-fixtures.ts atlasInitialMembers)의 앨리스 userId */
