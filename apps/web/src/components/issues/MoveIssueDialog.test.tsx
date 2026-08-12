@@ -716,6 +716,60 @@ describe('T4-7: 이동 실행 403 — preview 와 같은 원인 설명', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T4-9. 이동 실행 404 PROJECT_NOT_FOUND — **비-prod 전용 분기**의 특성화 (매핑 `12`)
+//
+// 이 분기는 **운영에서 실행되지 않는다.** `IssueMoveService.kt:189-190` 의 권한 assert 가
+// `:210` 의 존재 확인보다 앞서고, 운영 리졸버가 미존재 프로젝트를 권한 거부로 판정하기
+// 때문이다(`IdentityAccessIssuePermissionResolver:77`). 그래도 개발 리졸버
+// (`DevAllowIssuePermissionResolver`)에서는 실제로 도달한다 — 지우면 개발 중에 원인이
+// 「알 수 없는 오류」로 뭉개진다.
+//
+// ★이 테스트는 red-first 가 아니다. 분기는 이미 있고 올바르게 동작한다. 결함은
+//   「언제 도는가」를 주석 4곳이 틀리게 적어 둔 것이었다. 다만 이 분기를 재는 테스트가
+//   **한 건도 없었다** — 커버리지 0 인 채로 「비-prod 전용」이라 적으면 다음 사람이
+//   지워도 아무것도 안 깨진다. 그 구멍을 메우는 특성화 테스트다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-9: 이동 실행 404 PROJECT_NOT_FOUND — 비-prod 전용 분기', () => {
+  /** 대상 프로젝트 미존재 문구 — `issueMoveStrings.errorProjectNotFound` 정본 */
+  const PROJECT_NOT_FOUND_TEXT = '대상 프로젝트를 찾을 수 없습니다.'
+  /** 기본 문구 — `issueMoveStrings.errorDefault` 정본 */
+  const MOVE_DEFAULT_ERROR_TEXT = '이슈 이동 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+
+  beforeEach(() => {
+    server.use(
+      http.post('/api/v1/issues/:key/move/preview', () =>
+        HttpResponse.json({ data: compatiblePreviewFixture }),
+      ),
+      http.post('/api/v1/issues/:key/move', () =>
+        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+  })
+
+  it('404 PROJECT_NOT_FOUND 면 대상 프로젝트 미존재 토스트를 낸다', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
+    renderDialog()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/대상 프로젝트 키/i), 'INFRA')
+    await user.click(screen.getByRole('button', { name: /다음/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/이동 매핑 확인/i)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /이동/i }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PROJECT_NOT_FOUND_TEXT)
+    })
+    // 기본 문구로 떨어지지 않는다 — 떨어지면 개발 중 원인 파악이 한 단계 느려진다.
+    expect(toast.error).not.toHaveBeenCalledWith(MOVE_DEFAULT_ERROR_TEXT)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T4-8. 요청 전 키 형식 차단 (기술부채 매핑 `11`)
 //
 // 백엔드는 프로젝트 키를 **정확 일치**로 조회하고(`ProjectDirectory` 의 raw SQL
