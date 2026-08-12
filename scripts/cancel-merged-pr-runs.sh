@@ -63,6 +63,34 @@ PROTECTED=("master" "HEAD")
 # 이 브랜치만 HEAD 비교 경로를 탄다. 나머지는 종전대로 전건 취소다.
 HEAD_GUARDED_BRANCH="main"
 
+# HEAD 에서 거슬러 올라가며 훑을 커밋 수. 실전에서 `[skip ci]` 재생성 커밋은 1개지만,
+# 문서만 고치는 머지가 연달아 나면 여러 개가 겹칠 수 있어 여유를 둔다.
+HEAD_SCAN_DEPTH=10
+
+# ★GitHub 이 CI 를 건너뛰는 커밋 메시지 토큰 5종.
+#   **제목이 아니라 메시지 전체**를 본다 — 2026-08-07 PR #345 실측에서 squash 본문 3행의
+#   `[skip ci]` 가 main push CI 를 0회로 만들었다. 가드가 제목만 보면 GitHub 과 모델이
+#   어긋나 이 결함이 그대로 재발한다.
+SKIP_CI_TOKENS=("[skip ci]" "[ci skip]" "[no ci]" "[skip actions]" "[actions skip]")
+
+# 메시지에 CI 건너뛰기 토큰이 있으면 0, 없으면 1.
+has_skip_ci_token() {
+  for token in "${SKIP_CI_TOKENS[@]}"; do
+    case "$1" in
+      *"$token"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# sha 가 보호 집합에 있으면 0, 없으면 1. 집합은 공백으로 구분된 문자열이다.
+is_protected_sha() {
+  case " $PROTECTED_SHAS " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
 if [ -z "$BRANCH" ]; then
   echo "run-cleanup. 대상 브랜치가 비었다 — 아무것도 하지 않는다."
   exit 0
@@ -81,12 +109,40 @@ if ! command -v "$GH" > /dev/null 2>&1; then
 fi
 
 # 빈 값이면 sha 비교를 하지 않는다 — 즉 조회된 run 을 전부 취소한다(PR 브랜치의 종전 동작).
-HEAD_SHA=""
+#
+# ★「현재 HEAD」가 아니라 「현재 main 내용을 검증 중인 커밋 구간」을 보호한다.
+#   post-merge 훅이 머지 직후 `[chore] dashboard regen [skip ci]` 를 push 해 HEAD 를 한 칸
+#   민다. 그 커밋은 `[skip ci]` 라 자기 run 이 0건이고, 머지 내용을 검증 중인 run 은
+#   **부모**에 붙어 있다. HEAD 하나만 보호하면 그 run 이 취소 대상이 되어, PR #366 이
+#   막으려던 「현재 main 을 검증하는 run 이 0건」을 이 가드가 스스로 만든다.
+#   2026-08-12 PR #376 머지에서 실측됐고, 훅은 사실상 모든 머지에서 저 커밋을 만든다.
+PROTECTED_SHAS=""
+EFFECTIVE_HEAD=""
 if [ "$BRANCH" = "$HEAD_GUARDED_BRANCH" ]; then
-  HEAD_SHA=$("$GH" api "repos/{owner}/{repo}/commits/${HEAD_GUARDED_BRANCH}" \
-    --jq '.sha' 2> /dev/null) || HEAD_SHA=""
-  if [ -z "$HEAD_SHA" ]; then
-    echo "run-cleanup. '$BRANCH' 의 현재 HEAD 를 확인하지 못했다 — 아무것도 하지 않는다."
+  # ★판정을 `--jq` 에 넣지 않는다. 가짜 gh 는 jq 를 실제로 돌리지 않으므로 거기서 걸러
+  #   버리면 **스크립트가 거르는지 아닌지를 영영 못 잰다.** jq 는 정형까지만 —
+  #   메시지의 개행을 공백으로 눕혀 한 커밋이 한 줄이 되게 한다.
+  commits=$("$GH" api \
+    "repos/{owner}/{repo}/commits?sha=${HEAD_GUARDED_BRANCH}&per_page=${HEAD_SCAN_DEPTH}" \
+    --jq '.[] | "\(.sha) \(.commit.message | split("\n") | join(" "))"' 2> /dev/null) || commits=""
+
+  while read -r sha message; do
+    case "$sha" in '') continue ;; esac
+    # 훑은 커밋은 전부 보호한다. `[skip ci]` 커밋에도 (수동 dispatch 등으로) run 이 붙을 수
+    # 있고, 그것 역시 지금 main 에 있는 내용을 검증 중이다.
+    PROTECTED_SHAS="$PROTECTED_SHAS $sha"
+    if ! has_skip_ci_token "$message"; then
+      EFFECTIVE_HEAD="$sha"
+      break
+    fi
+  done << EOF
+$commits
+EOF
+
+  # 못 찾으면 아무것도 하지 않는다 — 모르는 상태에서 취소로 새는 것이 곧 자기 발등 찍기다.
+  # 조회 실패 · 빈 응답 · 훑은 구간이 전부 `[skip ci]` 인 경우가 모두 여기로 온다.
+  if [ -z "$EFFECTIVE_HEAD" ]; then
+    echo "run-cleanup. '$BRANCH' 의 검증 대상 커밋을 확인하지 못했다 — 아무것도 하지 않는다."
     exit 0
   fi
 fi
@@ -110,8 +166,8 @@ for status in queued in_progress; do
     case "$id" in
       '' | *[!0-9]*) continue ;;
     esac
-    # ★현재 HEAD 를 검증 중인 run 은 건너뛴다. 이 한 줄이 자기 발등 찍기를 막는다.
-    if [ -n "$HEAD_SHA" ] && [ "$sha" = "$HEAD_SHA" ]; then
+    # ★현재 main 내용을 검증 중인 run 은 건너뛴다. 이 한 줄이 자기 발등 찍기를 막는다.
+    if [ -n "$PROTECTED_SHAS" ] && is_protected_sha "$sha"; then
       PROTECTED_IDS="$PROTECTED_IDS $id"
       continue
     fi
@@ -146,7 +202,7 @@ fi
 #   구분되지 않으면, 계약이 과하게 넓어져도 로그만 봐서는 알 수 없다.
 #   ★취소분과 보호분은 **서로소인 집합**이다. 「그중」으로 이으면 자기모순이 된다.
 if [ "$PROTECTED_RUNS" -gt 0 ]; then
-  echo "run-cleanup. 현재 HEAD(${HEAD_SHA}) 를 검증 중인 run ${PROTECTED_RUNS}건은 건드리지 않았다."
+  echo "run-cleanup. 현재 main 내용을 검증 중인 run ${PROTECTED_RUNS}건은 건드리지 않았다 (기준 커밋 ${EFFECTIVE_HEAD})."
 fi
 
 exit 0
