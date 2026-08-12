@@ -498,4 +498,23 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
         '계약이 좁아졌으므로 같은 커밋에서 정정해야 한다.',
     )
   })
+
+  test('★★호출부 주석이 「현재 HEAD 무접촉」이라고 말하지 않는다 (문서 drift)', () => {
+    // 계약이 「현재 HEAD」에서 「현재 main 내용(= [skip ci] 를 되감은 구간)」으로 넓어졌다.
+    // 옛 문구가 남으면 다음 사람이 이 PR 을 되돌린다 — 이 저장소가 여러 번 겪은 양식.
+    const skill = fs.readFileSync(MERGE_SKILL, 'utf-8')
+    assert.ok(
+      !/현재 HEAD 무접촉/.test(skill),
+      '.claude/skills/bts-merge/SKILL.md 가 아직 계약을 「현재 HEAD 무접촉」으로 설명한다 — ' +
+        '넓어진 계약을 같은 커밋에서 반영해야 한다.',
+    )
+    // ★「skip ci」로 재지 않는다. 그 문자열은 Step 3 의 수동 폴백 커맨드에 **이미** 있어서
+    //   무엇을 고치든 통과하는 공허한 단언이 된다. 되감기를 실제로 설명했는지를 재려면
+    //   이 PR 이 새로 들여오는 낱말로 재야 한다.
+    assert.ok(
+      /되감/.test(skill),
+      '.claude/skills/bts-merge/SKILL.md 가 `[skip ci]` 되감기를 설명하지 않는다 — ' +
+        '호출자가 이 가드의 실제 판정 기준을 알 수 없다.',
+    )
+  })
 })
