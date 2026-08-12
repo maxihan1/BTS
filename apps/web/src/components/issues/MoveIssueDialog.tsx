@@ -41,6 +41,44 @@ interface MoveIssueDialogProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 순수 판정 — 컴포넌트 밖
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 「이동」 버튼을 누를 수 있는 상태인지 판정한다 — 루트와 모든 자식의 매핑이 유효해야 한다.
+ *
+ * 상태를 읽기만 하고 쓰지 않으므로 컴포넌트 밖에 둔다. 렌더마다 재생성되지 않고,
+ * DOM 없이 직접 테스트할 수 있다.
+ */
+function isMoveEnabled(
+  preview: MovePreview | null,
+  rootMapping: NodeMappingState | null,
+  subtaskMappings: Record<string, NodeMappingState>,
+): boolean {
+  if (preview === null || rootMapping === null) return false
+
+  // 루트 유효성
+  if (!isNodeMappingValid(
+    rootMapping,
+    preview.workflow.compatible,
+    preview.customFields.requiredMissing,
+  )) return false
+
+  // 자식 유효성
+  for (const child of preview.subtasks) {
+    const childMapping = subtaskMappings[child.issueKey]
+    if (childMapping === undefined) return false
+    if (!isNodeMappingValid(
+      childMapping,
+      child.workflow.compatible,
+      child.customFields.requiredMissing,
+    )) return false
+  }
+
+  return true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트 — MoveIssueDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -48,6 +86,12 @@ interface MoveIssueDialogProps {
  * 이슈 이동 마법사 Dialog.
  *
  * Step 1: 대상 프로젝트 키 직접 입력 (목록 API 부재, FR-LK-01 선례).
+ *
+ * **§Step 1 게이트.** 형식이 어긋난 키는 요청을 보내지 않는다. 보내면 서버가 403
+ * 「권한 없음」으로 답하는데(백엔드가 키를 정확 일치로 조회하고, 운영 리졸버는 미존재
+ * 프로젝트를 권한 거부로 판정한다) 정작 사용자가 고칠 것은 대소문자다. 판정은 생성 화면과
+ * **같은** `isValidProjectKey` 를 쓴다 — 화면마다 다른 답을 내지 않게.
+ * ★존재 여부는 여전히 서버만 안다. `NOPE` 처럼 **형식이 맞고 없는** 키는 그대로 403 이다.
  * Step 2: preview 응답 기반 노드별(루트+subtasks) 매핑 섹션 표시.
  *   - 비호환 상태 select (compatible=false 시)
  *   - 컴포넌트/버전 autoMapping 기본값 + select 또는 제거
@@ -98,10 +142,7 @@ export function MoveIssueDialog({
     const trimmedKey = targetProjectKey.trim()
     if (trimmedKey === '') return
 
-    // 형식이 어긋난 키는 **요청을 보내지 않는다**. 보내면 서버가 403 「권한 없음」으로
-    // 답하는데(미존재 프로젝트 = 권한 거부), 정작 고칠 것은 대소문자다.
-    // 판정은 생성 화면과 같은 `isValidProjectKey` 를 쓴다 — 두 화면이 갈리지 않게.
-    // ★존재 여부는 여전히 서버만 안다. `NOPE` 처럼 형식이 맞고 없는 키는 그대로 403 이다.
+    // 형식이 어긋난 키는 요청을 보내지 않는다 — 근거는 컴포넌트 KDoc §Step 1 게이트.
     if (!isValidProjectKey(trimmedKey)) {
       setPreviewError(s.errorKeyFormat)
       return
@@ -136,31 +177,6 @@ export function MoveIssueDialog({
     } finally {
       setIsPreviewLoading(false)
     }
-  }
-
-  // ── Step 2: 이동 유효성 검사 ─────────────────────────────────────────
-  function isMoveEnabled(): boolean {
-    if (preview === null || rootMapping === null) return false
-
-    // 루트 유효성
-    if (!isNodeMappingValid(
-      rootMapping,
-      preview.workflow.compatible,
-      preview.customFields.requiredMissing,
-    )) return false
-
-    // 자식 유효성
-    for (const child of preview.subtasks) {
-      const childMapping = subtaskMappings[child.issueKey]
-      if (childMapping === undefined) return false
-      if (!isNodeMappingValid(
-        childMapping,
-        child.workflow.compatible,
-        child.customFields.requiredMissing,
-      )) return false
-    }
-
-    return true
   }
 
   // ── Step 2: move 실행 ────────────────────────────────────────────────
@@ -381,7 +397,9 @@ export function MoveIssueDialog({
               </Button>
               <Button
                 size="sm"
-                disabled={!isMoveEnabled() || moveMutation.isPending}
+                disabled={
+                  !isMoveEnabled(preview, rootMapping, subtaskMappings) || moveMutation.isPending
+                }
                 onClick={handleMove}
               >
                 {s.moveButton}
