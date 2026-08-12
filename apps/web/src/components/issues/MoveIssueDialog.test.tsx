@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { MoveIssueDialog } from './MoveIssueDialog'
+import { isMoveEnabled } from '@/lib/move-mapping'
+import { buildInitialNodeState } from './NodeMappingSection'
 
 // sonner toast mock
 vi.mock('sonner', () => ({
@@ -213,6 +215,10 @@ const moveResponseWithSubtasksFixture = {
 // `issueMoveStrings` 를 import 해서 비교하면 ko.ts 를 고치는 순간 테스트도 같이 따라가
 // 「문구가 이래야 한다」는 계약이 사라진다. 여기 적힌 문자열이 곧 계약이고,
 // ko.ts 를 고치면 여기도 같이 고쳐야 한다.
+//
+// ★역할 분담 (`lib/move-error-message.test.ts` 와 다른 이유). 그 파일은 **라우팅**
+//   (어느 상태 → 어느 문구)을 재므로 동일성 비교가 맞고, 리터럴은 **여기 한 곳**에만 둔다.
+//   두 곳에 다 적으면 같은 문장이 세 벌이 되어 그 자체가 새 「두 목록」이 된다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 형식 오류 문구 — `issueMoveStrings.errorKeyFormat` 정본 */
@@ -712,6 +718,52 @@ describe('T4-7: 이동 실행 403 — preview 와 같은 원인 설명', () => {
     })
     // 옛 문구는 더 이상 나오지 않는다 — 같은 다이얼로그가 단계마다 다른 설명을 내면 안 된다.
     expect(toast.error).not.toHaveBeenCalledWith('이슈를 이동할 권한이 없습니다.')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-10. isMoveEnabled 직접 판정 — DOM 없이
+//
+// 이 함수는 상태를 읽기만 하므로 컴포넌트 밖으로 뺐고, KDoc 에 「DOM 없이 직접 테스트할 수
+// 있다」고 적었다. **적었으면 테스트가 있어야 한다** — 없으면 그 문장이 거짓이고,
+// 커버리지는 여전히 「버튼이 disabled 인가」라는 렌더 경유 간접 관측뿐이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-10: isMoveEnabled 직접 판정 (DOM 없이)', () => {
+  // 픽스처마다 리터럴 타입이 달라 특정 픽스처 타입으로 못 묶는다 — 함수의 실제 입력 타입을 쓴다.
+  const rootOf = (fixture: Parameters<typeof buildInitialNodeState>[0]) =>
+    buildInitialNodeState(fixture)
+
+  it('preview 가 없으면 false', () => {
+    expect(isMoveEnabled(null, rootOf(compatiblePreviewFixture), {})).toBe(false)
+  })
+
+  it('루트 매핑이 없으면 false', () => {
+    expect(isMoveEnabled(compatiblePreviewFixture, null, {})).toBe(false)
+  })
+
+  it('완전 호환 + 초기 매핑이면 true', () => {
+    expect(isMoveEnabled(compatiblePreviewFixture, rootOf(compatiblePreviewFixture), {})).toBe(true)
+  })
+
+  it('비호환 상태를 아직 안 골랐으면 false', () => {
+    expect(
+      isMoveEnabled(incompatiblePreviewFixture, rootOf(incompatiblePreviewFixture), {}),
+    ).toBe(false)
+  })
+
+  it('자식이 있는데 그 자식의 매핑이 없으면 false — 루트만 보고 통과시키지 않는다', () => {
+    expect(isMoveEnabled(subtaskPreviewFixture, rootOf(subtaskPreviewFixture), {})).toBe(false)
+  })
+
+  it('자식 매핑까지 채우면 true', () => {
+    const childMappings: Record<string, ReturnType<typeof buildInitialNodeState>> = {}
+    for (const child of subtaskPreviewFixture.subtasks) {
+      childMappings[child.issueKey] = buildInitialNodeState(child)
+    }
+    expect(isMoveEnabled(subtaskPreviewFixture, rootOf(subtaskPreviewFixture), childMappings)).toBe(
+      true,
+    )
   })
 })
 

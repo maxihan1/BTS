@@ -5,6 +5,12 @@ import { ApiError } from '@/api/client'
 import { issueMoveStrings as s } from '@/i18n/ko'
 import { resolvePreviewErrorMessage } from './move-error-message'
 
+// ★문자열을 하드코딩하지 않고 `issueMoveStrings` 와 **동일성**으로 비교하는 것은 의도다.
+//   이 파일이 재는 것은 **어느 상태가 어느 문구로 가는가(라우팅)** 이지 문구의 내용이 아니다.
+//   내용 계약은 `MoveIssueDialog.test.tsx` 가 리터럴을 하드코딩해 지킨다(같은 PR, 그 파일의
+//   「사용자 문구 정본」 블록). 여기서 리터럴을 또 적으면 같은 문장이 **세 벌**이 된다.
+//   ⚠️ 그래서 이 파일만으로는 「문구가 바뀌었다」를 못 잡는다 — 아래 비-공허 짝 2종이
+//   그 사각지대를 좁힌다(세 문구가 서로 다름 · 403 아닌 둘에 「키」 없음).
 describe('resolvePreviewErrorMessage', () => {
   it('403 이면 권한 전용 문구를 낸다', () => {
     expect(resolvePreviewErrorMessage(new ApiError(403, {}))).toBe(s.errorPreviewForbidden)
@@ -21,8 +27,25 @@ describe('resolvePreviewErrorMessage', () => {
     )
   })
 
-  it.each([400, 401, 404, 409, 422])('%i 면 그 외 4xx 문구를 낸다', (status) => {
+  it.each([400, 401, 404, 409])('%i 면 그 외 4xx 문구를 낸다', (status) => {
     expect(resolvePreviewErrorMessage(new ApiError(status, {}))).toBe(s.errorPreview)
+  })
+
+  it('404 PROJECT_NOT_FOUND 면 대상 프로젝트 미존재 문구를 낸다 — 새로고침하라고 하지 않는다', () => {
+    // 상태 코드만 보면 이 404 도 「그 외 4xx」로 떨어져 「페이지를 새로고침한 뒤 다시
+    // 시도해 주세요」가 된다. **새로고침해도 아무 일도 안 일어난다 — 틀린 것은 키다.**
+    // 실행 단계(`MoveIssueDialog` onError)는 이미 errorCode 로 이 경우를 갈라내고 있어,
+    // preview 만 다르게 답하면 같은 다이얼로그가 단계마다 다른 설명을 하게 된다.
+    // ★운영에서는 403 이 먼저 걸려 도달하지 않는다. 비-prod 개발 편의 경로다.
+    const err = new ApiError(404, { errorCode: 'PROJECT_NOT_FOUND' })
+    expect(resolvePreviewErrorMessage(err)).toBe(s.errorProjectNotFound)
+  })
+
+  it('★비-공허 짝. errorCode 가 없는 404 는 그대로 그 외 4xx 문구다', () => {
+    // 위 단언이 「404 면 무조건 미존재 문구」로 퇴화하지 않았음을 배제한다.
+    expect(resolvePreviewErrorMessage(new ApiError(404, { errorCode: 'ISSUE_NOT_FOUND' }))).toBe(
+      s.errorPreview,
+    )
   })
 
   // ─── 비-공허 짝 ───────────────────────────────────────────────────────────

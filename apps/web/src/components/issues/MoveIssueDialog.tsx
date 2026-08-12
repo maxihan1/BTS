@@ -19,10 +19,10 @@ import type { MovePreview, SubtaskPreviewNode } from '@/api/issue-move'
 import { issueMoveStrings as s } from '@/i18n/ko'
 import { isValidProjectKey } from '@/lib/project-key'
 import { resolvePreviewErrorMessage } from '@/lib/move-error-message'
+import { isMoveEnabled } from '@/lib/move-mapping'
 import {
   NodeMappingSection,
   buildInitialNodeState,
-  isNodeMappingValid,
   type NodeMappingState,
 } from './NodeMappingSection'
 
@@ -39,44 +39,6 @@ interface MoveIssueDialogProps {
   readonly open: boolean
   /** Dialog 열림 상태 변경 핸들러 */
   readonly onOpenChange: (open: boolean) => void
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 순수 판정 — 컴포넌트 밖
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 「이동」 버튼을 누를 수 있는 상태인지 판정한다 — 루트와 모든 자식의 매핑이 유효해야 한다.
- *
- * 상태를 읽기만 하고 쓰지 않으므로 컴포넌트 밖에 둔다. 렌더마다 재생성되지 않고,
- * DOM 없이 직접 테스트할 수 있다.
- */
-function isMoveEnabled(
-  preview: MovePreview | null,
-  rootMapping: NodeMappingState | null,
-  subtaskMappings: Record<string, NodeMappingState>,
-): boolean {
-  if (preview === null || rootMapping === null) return false
-
-  // 루트 유효성
-  if (!isNodeMappingValid(
-    rootMapping,
-    preview.workflow.compatible,
-    preview.customFields.requiredMissing,
-  )) return false
-
-  // 자식 유효성
-  for (const child of preview.subtasks) {
-    const childMapping = subtaskMappings[child.issueKey]
-    if (childMapping === undefined) return false
-    if (!isNodeMappingValid(
-      childMapping,
-      child.workflow.compatible,
-      child.customFields.requiredMissing,
-    )) return false
-  }
-
-  return true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -860,7 +860,6 @@ export const issueCreateStrings = {
     `${key} 이슈는 만들었지만 스프린트에 넣지 못했습니다. 백로그에서 확인해 주세요.`,
 } as const
 
-/** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
 /**
  * 프로젝트 키 형식 규칙을 사용자에게 설명하는 **단일 문장**.
  *
@@ -873,6 +872,7 @@ export const issueCreateStrings = {
 export const projectKeyFormatMessage =
   '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.'
 
+/** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
 export const issueMoveStrings = {
   // ── Dialog 공통 ──────────────────────────────────────────────────────
   /** Dialog 제목 */
@@ -988,9 +988,12 @@ export const issueMoveStrings = {
    *
    * `MovePreviewService` 가 내는 예외는 셋뿐이다 — `IssueAccessDenied`(403) ·
    * `IssueNotFound`(404) · `IssueProjectNotFound`(404, 비-prod 전용). 여기에
-   * `@Valid` 400 과 인증 401 이 더해진다. 즉 이 문구를 보는 실질 경로는
-   * **다이얼로그를 연 뒤 그 이슈가 사라졌거나 세션이 끊긴 경우**이고, 그래서 다음 행동은
-   * 「새로고침」이다.
+   * `@Valid` 400 과 인증 401 이 더해진다.
+   *
+   * **대상 프로젝트 미존재 404 는 여기로 오지 않는다** — `resolvePreviewErrorMessage` 가
+   * errorCode 로 갈라내 [errorProjectNotFound] 를 쓴다(그 경우 「새로고침」은 틀린 안내다).
+   * 즉 이 문구를 보는 실질 경로는 **다이얼로그를 연 뒤 그 이슈가 사라졌거나 세션이 끊긴
+   * 경우**이고, 그래서 다음 행동은 「새로고침」이다.
    *
    * **「키」를 말하지 않는다.** 옛 문구는 「대상 프로젝트 키를 확인해 주세요」였는데,
    * 그건 [errorPreviewForbidden] 의 첫 문장과 겹쳐 **권한과 키라는 두 축을 사용자 눈에

@@ -3899,3 +3899,44 @@ strict mode violation: getByText('소프트웨어 개발 기본 스킴') resolve
    같은 양식이 다른 spec 에서 재발한다.
 
 **★①만 하고 닫지 말 것.** 이 항목의 값어치는 「전량에서만 실패한다」는 사실 자체에 있다.
+
+---
+
+## ⬜ apps/web — 이동 다이얼로그가 **진행 중인 preview 요청과 경합**한다 (2종 · 선재 · 미착수)
+
+**무엇.** `MoveIssueDialog` 의 preview 요청은 시작한 뒤 상태를 되돌아보지 않는다. 두 갈래로 샌다.
+
+### (가) Enter 로는 중복 제출된다 — 버튼은 막는데 Enter 는 안 막는다
+
+「다음」 버튼은 `disabled={targetProjectKey.trim() === '' || isPreviewLoading}` 로 진행 중 클릭을
+막지만, `onKeyDown` 의 Enter 경로는 `trim() !== ''` 만 보고 `handleNext()` 를 부른다.
+`handleNext` 자체에도 `isPreviewLoading` 검사가 없다.
+
+⇒ Enter 를 연타하면 `POST …/move/preview` 가 **여러 번 나간다.** 늦게 도착한 응답이 이기고,
+먼저 끝난 요청의 `finally { setIsPreviewLoading(false) }` 가 **아직 날아가는 요청이 있는데도**
+로딩 표시를 끈다.
+
+### (나) 진행 중에 닫으면 상태가 되살아난다
+
+`handleOpenChange(false)` 가 `step=1 · targetProjectKey='' · preview=null` 로 초기화해도,
+대기 중이던 `await previewMove` 의 이어지는 코드가 그대로 `setPreview / setRootMapping /
+setStep(2)` 를 실행한다.
+
+⇒ 다시 열면 **취소한 요청의 결과로 Step 2 가 떠 있고 대상 키는 빈 문자열**이다.
+그 상태로 「이동」을 누르면 `targetProjectKey: ''` 가 나가 백엔드 `@NotBlank` 400 →
+`errorDefault` 「이슈 이동 중 오류가 발생했습니다」로 뭉개진다.
+
+**선재다 (PR #367 대조 실측).** `origin/main` 의 같은 파일이 동일한 구조다 — `onKeyDown` 에
+로딩 검사 없음, `handleOpenChange` 와 async 이어짐 사이에 취소 신호 없음. PR #367 은
+`handleNext` **최상단에 형식 게이트를 더했을 뿐** 이 두 경로를 건드리지 않았다. 그래서
+체크리스트 Pass 0 규율(「PRE_EXISTING 은 표기만, hot-fix 혼입 금지」)에 따라 등재만 한다.
+
+**발견 경위.** PR #367 게이트 2 직전 독립 코드 리뷰. 리뷰는 (가)를 「T4-8 의 Enter 테스트가
+닫았다고 주장하는 바로 그 결함」이라고 적었으나 **그 부분은 과장이다** — T4-8 이 닫은 것은
+Enter 경로의 **형식 게이트**이고 통과했다. 중복 제출은 별개 축이다.
+
+**처방 후보 2 (착수 시 확정).**
+① `handleNext` 최상단에 `if (isPreviewLoading) return` 을 더한다 — (가)만 닫힌다. 한 줄.
+② `AbortController` 로 in-flight 요청을 다이얼로그 닫힘·재제출에서 취소하고, 이어지는 코드가
+   **취소된 요청인지 확인한 뒤** setState 한다 — (가)(나) 둘 다 닫힌다.
+**①만 하고 닫지 말 것** — (나)는 남고, 그게 사용자에게 보이는 쪽(빈 키로 400)이다.

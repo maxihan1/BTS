@@ -379,8 +379,11 @@ test.describe('FR-MV-01 이동 403 문구 — 실제 렌더 폭 (forbidden 시�
     await navigateToIssueDetail(page, ISSUE_WITH_SUBTASKS_URL)
     await page.getByRole('button', { name: '이슈 이동', exact: true }).click()
 
-    // When. **형식은 맞고 존재하지 않는** 키 — 클라이언트 게이트를 통과한다.
-    //   게이트가 거르는 것은 형식 위반뿐이므로 이 입력은 그대로 서버까지 간다.
+    // When. 형식은 맞는 키를 넣어 클라이언트 게이트를 통과시킨다.
+    //   ⚠️ **이 E2E 는 게이트를 검증하지 않는다.** forbidden 시나리오 핸들러는 키 값을 읽지
+    //   않고 무조건 403 을 돌려주므로, 게이트를 지워도 이 테스트는 초록이다.
+    //   게이트를 실제로 재는 것은 유닛 T4-8(요청 횟수 0/1)이고, 여기서 재는 것은
+    //   **그 403 문구가 실제 폭에서 몇 줄이 되는가** 하나뿐이다.
     await page.getByLabel(issueMoveStrings.targetProjectKeyLabel, { exact: true }).fill('NOPE')
     await page.getByRole('button', { name: issueMoveStrings.nextButton, exact: true }).click()
 
@@ -393,27 +396,27 @@ test.describe('FR-MV-01 이동 403 문구 — 실제 렌더 폭 (forbidden 시�
     //   (`[[button-user-select-auto-is-none]]` — 계산값은 거짓말한다).
     //   ★데스크톱 한 폭만 재면 안 된다. Dialog 는 `max-w-lg` 라 뷰포트가 좁으면 같이 좁아지고,
     //     원안 74자가 3줄이 된 것도 390px 이하에서였다. 한 폭만 쟀으면 반대로 결론 냈다.
+    //   ★단언은 **전 폭을 다 재고 증거를 남긴 뒤에** 한다. 루프 안에서 곧바로 throw 하면
+    //     실패한 실행에는 측정값도 스크린샷도 남지 않는다 — 실패 메시지가 「좁은 폭을 다시
+    //     재라」고 지시하는데 정작 그 수치가 리포트에 없는 모순이 된다.
     const MAX_LINES = 2
-    const measured: Record<string, unknown> = {}
+    const measured: Record<string, { boxWidth: number; lines: number; fontSize: string }> = {}
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: 900 })
-      const m = await alert.evaluate((el) => {
+      measured[`w${width}`] = await alert.evaluate((el) => {
         const style = window.getComputedStyle(el)
+        // `line-height: normal` 이면 parseFloat 가 NaN 이 된다. 그때는 폰트 크기 기반으로
+        // 대체하지 않고 **잴 수 없음(-1)** 을 돌려준다 — NaN 비교는 「문구가 길어졌다」와
+        // 구분되지 않는 엉뚱한 실패 메시지를 낸다.
         const lineHeight = Number.parseFloat(style.lineHeight)
         const rect = el.getBoundingClientRect()
         return {
           boxWidth: Math.round(rect.width),
-          lines: Math.round(rect.height / lineHeight),
+          // ★round 가 아니라 ceil. 2.4줄을 2줄로 내림하면 넘친 것을 통과시킨다.
+          lines: Number.isFinite(lineHeight) ? Math.ceil(rect.height / lineHeight - 0.05) : -1,
           fontSize: style.fontSize,
         }
       })
-      measured[`w${width}`] = m
-      expect(
-        m.lines,
-        `뷰포트 ${width}px(박스 ${m.boxWidth}px)에서 403 문구가 ${m.lines}줄이다. ` +
-          `재판정(2026-08-12)이 건 조건은 모든 폭 ${MAX_LINES}줄 이하다 — 문구를 늘렸다면 ` +
-          `좁은 폭을 다시 재고 그 결과로 재판정할 것.`,
-      ).toBeLessThanOrEqual(MAX_LINES)
     }
     await page.setViewportSize({ width: 1280, height: 900 })
 
@@ -446,12 +449,18 @@ test.describe('FR-MV-01 이동 403 문구 — 실제 렌더 폭 (forbidden 시�
     })
     await page.evaluate(() => document.documentElement.classList.remove('dark'))
 
-    // Then. 계약 — 인라인 에러가 다이얼로그를 넘치지 않는다.
-    const dialogBox = await page.getByRole('dialog').boundingBox()
-    const alertBox = await alert.boundingBox()
-    expect(dialogBox).not.toBeNull()
-    expect(alertBox).not.toBeNull()
-    expect(Math.round(alertBox?.width ?? 0)).toBeLessThanOrEqual(Math.round(dialogBox?.width ?? 0))
+    // ── 증거를 다 남긴 뒤에 판정한다 ────────────────────────────────────────
+    for (const [key, m] of Object.entries(measured)) {
+      expect(
+        m.lines,
+        `${key}(박스 ${m.boxWidth}px)에서 403 문구가 ${m.lines}줄이다` +
+          `${m.lines === -1 ? ' (line-height 를 못 읽었다 — 문구 길이 문제가 아니다)' : ''}. ` +
+          `재판정(2026-08-12)이 건 조건은 모든 폭 ${MAX_LINES}줄 이하다 — 문구를 늘렸다면 ` +
+          `첨부된 「403-문구-렌더-치수.json」 을 보고 좁은 폭 기준으로 다시 판정할 것.`,
+      ).toBeLessThanOrEqual(MAX_LINES)
+      // -1(측정 불가)이 위 단언을 조용히 통과하는 것을 막는다.
+      expect(m.lines, `${key} 에서 줄수를 측정하지 못했다`).toBeGreaterThan(0)
+    }
 
     // Then. 계약 — 「관리자에게 문의」라는 막다른 길을 되살리지 않는다.
     await expect(alert).not.toContainText('문의')

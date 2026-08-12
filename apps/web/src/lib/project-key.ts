@@ -19,7 +19,13 @@ const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/
  * 403 으로 답한다(`IdentityAccessIssuePermissionResolver` 가 미존재 프로젝트를 권한
  * 거부로 판정하기 때문). 이 함수로 서버 응답을 예측하지 말 것.
  *
- * @param value 앞뒤 공백이 **이미 제거된** 키 문자열. 공백이 남아 있으면 거절된다.
+ * @param value 검사할 키 문자열. **공백을 봐주지 않는다** — `' INFRA'` 는 거절된다.
+ *
+ * ⚠️ **두 소비처가 여기서 갈린다 (2026-08-12 실측).** 이동 다이얼로그는 `trim()` 한 값을
+ * 넘기고, 생성 폼(`routes/projects.new.tsx` 의 Zod `refine`)은 **원문 그대로** 넘긴다.
+ * 그래서 생성 폼에 `' INFRA'`(붙여넣기로 흔하다)를 넣으면 통과가 아니라 형식 오류가 된다.
+ * **이 함수를 「trim 된 값만 온다」고 가정하지 말 것.** 이 갈림은 PR #367 이전부터 있던
+ * 생성 폼의 동작이라 여기서 바꾸지 않았다 — 바꾸려면 생성 폼 동작 변경으로 따로 다룬다.
  */
 export function isValidProjectKey(value: string): boolean {
   return PROJECT_KEY_PATTERN.test(value)

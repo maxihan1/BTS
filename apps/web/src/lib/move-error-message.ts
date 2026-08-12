@@ -1,6 +1,7 @@
 // 이슈 이동 preview 실패를 상태별 사용자 문구로 가르는 순수 함수 — 500·단절이 「키 확인」으로 새지 않게 한다
 
 import { ApiError } from '@/api/client'
+import { extractMoveErrorCode, MOVE_ERROR_CODES } from '@/api/issue-move'
 import { issueMoveStrings as s } from '@/i18n/ko'
 
 /**
@@ -28,5 +29,13 @@ export function resolvePreviewErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) return s.errorPreviewTemporary
   if (err.status === 403) return s.errorPreviewForbidden
   if (err.status >= 500) return s.errorPreviewTemporary
+  // 대상 프로젝트 미존재만 상태 코드가 아니라 errorCode 로 갈라낸다 — 「그 외 4xx」의
+  // 「새로고침」은 이 경우 틀린 안내다(새로고침해도 키는 그대로다).
+  // 실행 단계(`MoveIssueDialog` onError)가 이미 같은 코드로 갈라내므로, 여기서 안 갈라내면
+  // 같은 다이얼로그가 단계마다 다른 설명을 한다.
+  // ★운영에서는 403 이 먼저 걸려 도달하지 않는다 — `errorProjectNotFound` KDoc 참조.
+  if (extractMoveErrorCode(err) === MOVE_ERROR_CODES.PROJECT_NOT_FOUND) {
+    return s.errorProjectNotFound
+  }
   return s.errorPreview
 }

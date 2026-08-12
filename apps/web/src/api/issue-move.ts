@@ -269,10 +269,15 @@ export interface MoveIssueInput {
  *
  * @param key 이동할 이슈 키
  * @param targetProjectKey 이동 대상 프로젝트 키
- * @throws ApiError — 403(권한 없음 · **키 오타/미존재도 여기로 온다**), 404, 422(동일 프로젝트 등).
- *   404 는 **이슈 미존재만** 운영에서 난다(권한이 프로젝트 스코프라 원본 프로젝트 권한이
- *   있으면 없는 이슈 키에서 404 가 뜬다). **대상 프로젝트 미존재 404 는 비-prod 전용**이다 —
- *   운영 리졸버가 미존재 프로젝트를 권한 거부로 판정해 403 이 먼저 걸린다.
+ * @throws ApiError — **403 · 404 · 400 뿐이다.** `MovePreviewService.preview` 가 던지는 예외는
+ *   `IssueAccessDenied`(403) · `IssueNotFound`(404) · `IssueProjectNotFound`(404) **셋뿐**이고,
+ *   여기에 `@Valid`(`MovePreviewRequest` 는 `@NotBlank` 만) 400 이 더해진다.
+ *   - 403 — 권한 없음. **키 오타/미존재도 여기로 온다**(권한 assert 가 존재 확인보다 앞선다).
+ *   - 404 — **이슈 미존재만** 운영에서 난다(권한이 프로젝트 스코프라 원본 프로젝트 권한이
+ *     있으면 없는 이슈 키에서 404 가 뜬다). **대상 프로젝트 미존재 404 는 비-prod 전용**이다.
+ *
+ *   ★**422 는 preview 에서 나오지 않는다.** 이전 서술의 「422(동일 프로젝트 등)」은 거짓이었다 —
+ *   preview 에는 동일 프로젝트 검사가 없다(그 검사는 실행 경로인 [moveIssue] 에만 있다).
  */
 export async function previewMove(key: string, targetProjectKey: string): Promise<MovePreview> {
   const res = await apiFetch(`/api/v1/issues/${key}/move/preview`, {
