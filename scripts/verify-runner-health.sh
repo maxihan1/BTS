@@ -21,11 +21,14 @@ shopt -s nullglob
 
 ROOT="${BTS_RUNNER_ROOT:-$HOME/actions-runner-bts}"
 FAILED=0
+# 실패한 층이 가리키는 런북 절. 배너가 **무엇이 고장났는지에 맞는 절**을 안내하게 한다.
+FAIL_DOCS=""
 
 report() {
   echo "❌ $1"
   echo "   복구. $2"
   FAILED=1
+  FAIL_DOCS="$FAIL_DOCS §4"
 }
 
 # check_exec <라벨> <바이너리 경로> <버전 플래그> <복구 안내> [완료 표식 경로]
@@ -87,7 +90,63 @@ if [ "$TOOLCACHE_SEEN" -eq 0 ]; then
   echo "⚠️  툴 캐시가 비어 있다 ($ROOT/_work/_tool) — 갓 설치한 러너면 정상이다."
 fi
 
-# 3) 자원 고갈 — 엔진이 전부 정상인데도 CI 가 2배 이상 느려지는 상태.
+# 3) Docker 데몬 — 엔진도 자원도 정상인데 **데몬만** 꺼진 상태.
+#
+#    ★`command -v docker` 로는 못 잡는다. CLI 는 설치돼 있고 데몬만 꺼져 있기 때문이다.
+#    2026-08-12 PR #367 실측 — 그 구분이 없어 nginx 봉인이 「이 설정으로 배포하면 프론트
+#    전체가 뜨지 않는다」고 말했다. 설정은 멀쩡했고 변수는 데몬 하나뿐이었다(EXIT=5 → 0).
+#
+#    ★요구 여부만 밖에서 주입한다. 로컬 기본은 경고다 — 프론트 작업까지 막으면 안 된다.
+#    판정 코드 자체는 runner-health.yml 과 동형이어야 하고,
+#    runner-healthcheck-wiring.test.ts 의 INVARIANTS 가 그것을 강제한다.
+#    ★★타임아웃이 **필수**다. 이 결함의 실제 시나리오가 「데몬 기동 중」인데(2026-08-12
+#    07:49:32 준비 완료), 그 상태에서는 소켓이 이미 있어 연결은 되고 응답만 안 온다 —
+#    `docker info` 가 붙잡힌다. 그러면 잡 타임아웃(3분)에 걸려 **데몬을 쓰지 않는**
+#    워크플로우까지 `needs: runner-health` 로 스킵된다. 「경고만 하고 절대 막지 않는다」는
+#    설계가 정확히 뒤집히는 경로다. `timeout(1)` 은 macOS 기본 설치가 아니라 직접 잰다.
+DOCKER="${BTS_DOCKER_BIN:-docker}"
+REQUIRE_DOCKER="${BTS_REQUIRE_DOCKER:-false}"
+DOCKER_PROBE_TIMEOUT="${BTS_DOCKER_PROBE_TIMEOUT:-15}"
+
+docker_daemon_up() {
+  local probe_pid waited=0
+  "$DOCKER" info > /dev/null 2>&1 &
+  probe_pid=$!
+  while kill -0 "$probe_pid" 2> /dev/null; do
+    if [ "$waited" -ge "$DOCKER_PROBE_TIMEOUT" ]; then
+      kill -TERM "$probe_pid" 2> /dev/null
+      wait "$probe_pid" 2> /dev/null
+      echo "   (데몬 응답이 ${DOCKER_PROBE_TIMEOUT}초 안에 없다 — 기동 중이거나 멈춰 있다)"
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$probe_pid"
+}
+
+if docker_daemon_up; then
+  echo "✅ Docker 데몬 가동중"
+else
+  echo "❌ Docker 데몬이 꺼져 있다 — 코드 문제 아님"
+  echo "   CLI 존재만으로는 못 잡는 상태다. 이 러너의 컨테이너 검증은 전부 실패한다."
+  echo "   실측. 2026-08-12 PR #367 — 데몬 준비 이전 시작 잡 5건 전부 실패,"
+  echo "         이후 시작한 잡 전부 통과. 코드 무변경 재실행으로 EXIT=5 → 0."
+  echo "   복구. Docker Desktop 기동 후 'docker info' 가 0 을 낼 때까지 기다린다."
+  echo "   docs/runbooks/self-hosted-runner.md §7"
+  if [ "$REQUIRE_DOCKER" = "true" ]; then
+    echo "   ⇒ 데몬을 요구하는 호출이므로 여기서 멈춘다."
+    FAILED=1
+    # ★어느 절을 읽어야 하는지를 기록한다. 이것이 없으면 마지막 배너가 **엔진 절(§4)** 만
+    #   가리켜, 데몬만 꺼진 사람이 node·java 를 파게 된다 — 이 PR 이 없애려는 오진 양식을
+    #   가드 자신이 재생산하는 경로다(독립 리뷰 적발).
+    FAIL_DOCS="$FAIL_DOCS §7"
+  else
+    echo "   ⇒ 데몬을 쓰지 않는 작업이면 무시해도 된다 (차단하지 않는다)."
+  fi
+fi
+
+# 4) 자원 고갈 — 엔진이 전부 정상인데도 CI 가 2배 이상 느려지는 상태.
 #
 #    ★위의 어떤 점검도 이것을 못 잡는다. 바이너리는 멀쩡히 실행되기 때문이다.
 #    2026-08-07 A/B 확증 — 동일 커밋 run 31139616352 재실행에서
@@ -136,14 +195,15 @@ else
 fi
 
 if [ "$FAILED" -ne 0 ]; then
-  cat <<'MSG'
-
-──────────────────────────────────────────────
-러너 환경 결함 — 코드 문제 아님
-이 러너에서 도는 CI 는 테스트를 한 줄도 실행하지 못한다.
-자세한 내용. docs/runbooks/self-hosted-runner.md §4
-──────────────────────────────────────────────
-MSG
+  # ★안내 절을 **실제로 실패한 층**에서 뽑는다. 고정 §4 로 두면 데몬만 꺼진 사람이
+  #   엔진 절을 읽고 node·java 를 판다 — 이 파일이 없애려는 오진 그 자체다.
+  DOCS="$(printf '%s\n' $FAIL_DOCS | sort -u | tr '\n' ' ' | sed 's/ *$//')"
+  echo ""
+  echo "──────────────────────────────────────────────"
+  echo "러너 환경 결함 — 코드 문제 아님"
+  echo "이 러너에서 도는 CI 는 테스트를 한 줄도 실행하지 못한다."
+  echo "자세한 내용. docs/runbooks/self-hosted-runner.md ${DOCS:-§4}"
+  echo "──────────────────────────────────────────────"
   exit 1
 fi
 

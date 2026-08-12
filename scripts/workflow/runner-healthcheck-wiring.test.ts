@@ -59,6 +59,46 @@ function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(REPO_ROOT, WORKFLOW_DIR, name), 'utf8');
 }
 
+/** 주석 줄을 걷어낸다 — 「docker 를 쓴다」와 「docker 를 언급한다」는 다르다. */
+function withoutComments(body: string): string {
+  return body
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n');
+}
+
+/**
+ * 워크플로우가 **실제로** Docker 를 쓰는가 — 자신의 명령 + 자신이 부르는 스크립트까지 본다.
+ *
+ * ★목록을 손으로 적지 않는 이유는 `callerFiles()` 와 같다. 「docker 를 쓰는 워크플로우」를
+ * 상수로 적으면 그 목록과 실제 워크플로우가 **서로를 안 보는 두 목록**이 되고, 새 워크플로우가
+ * docker 를 쓰면서 플래그를 빠뜨려도 아무도 안 잡는다.
+ *
+ * ★스크립트를 따라가지 않으면 `infra-ci` 를 놓친다. 그 파일의 docker 언급은 **주석 한 줄뿐**이고
+ * 실제 사용은 `scripts/verify/nginx-log-masking.sh` 안에 있다.
+ *
+ * ★★단 「실행하는」 스크립트만 따라간다 — 인터프리터가 앞에 붙은 것. 경로가 적혔다는 이유만으로
+ * 따라가면 `paths:` **필터 목록**까지 호출로 오인한다. 실제로 `workflow-scripts-ci` 는 판별식
+ * 입력으로 `scripts/verify-runner-health.sh` 를 `paths` 에 적어 두는데, 그 스크립트가 docker 를
+ * 쓰게 되자 이 워크플로우까지 「docker 를 쓴다」로 잡혔다(2026-08-12 실측). 그러면 docker 가
+ * 필요 없는 판별식 PR 이 데몬 부재로 막힌다 — 프리플라이트가 새 차단면을 만드는 것이다.
+ */
+function usesDocker(name: string): boolean {
+  const body = withoutComments(readWorkflow(name));
+  if (/\bdocker\b/.test(body)) return true;
+
+  // ★`\.\/` 뒤에 `\s+` 를 요구하면 **죽은 분기**가 된다 — `./scripts/x.sh` 에는 공백이 없다.
+  //   초안이 그랬고 독립 리뷰가 적발했다. 인터프리터 뒤에는 공백이, `./` 뒤에는 곧바로
+  //   경로가 온다. 두 형태를 갈라서 적는다.
+  for (const m of body.matchAll(/(?:(?:bash|sh|node)\s+|\.\/)(scripts\/[\w./-]+\.(?:sh|mjs|ts))/g)) {
+    const p = path.join(REPO_ROOT, m[1]);
+    if (fs.existsSync(p) && /\bdocker\b/.test(withoutComments(fs.readFileSync(p, 'utf8')))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** 자원 점검 스텝의 이름. 추출 앵커이므로 워크플로우와 한 글자도 달라선 안 된다. */
 const RESOURCE_STEP_NAME = '- name: 러너 자원 점검';
 /** `run: |` 블록의 들여쓰기(스텝 6칸 + run 8칸 → 본문 10칸). */
@@ -189,6 +229,25 @@ describe('러너 헬스체크 배선', () => {
       'BTS_RUNNER_FAKE_SWAP_MB',
       '러너 자원 고갈', // 경고 문구 자체
       '시간을 믿지 마라', // ★왜 문제인지. 없으면 「그냥 느린 날」로 오독된다
+
+      // ── Docker 데몬 판정 (2026-08-12 추가 · 부채 매핑 30) ───────────────
+      // 엔진도 자원도 정상인데 **데몬만 꺼진** 상태. 위 점검들은 전부 통과시킨다.
+      // 2026-08-12 PR #367 실측 상관 100% — 데몬 준비 이전 시작 잡 5건 전부 실패,
+      // 이후 시작한 잡 전부 통과. 코드 무변경 재실행으로 EXIT=5 → 0.
+      // ★`'docker info'` 로 적으면 안 된다 — 두 층의 **복구 안내 문구**
+      //   (「'docker info' 가 0 을 낼 때까지 기다린다」)가 그것을 만족시켜, 판정식을 통째로
+      //   지워도 통과한다. 2026-08-12 뮤테이션에서 실제로 살아남았다. 도움말이 아니라
+      //   **판정식 자체**를 못박는다. CLI 존재가 아니라 데몬 가동으로 가르는 것이 결함의 핵심이다.
+      '"$DOCKER" info',
+      'BTS_DOCKER_BIN', // 데몬 부재 주입 이음매. 없으면 그 층은 검증 불가능해진다
+      'Docker 데몬이 꺼져 있다', // 진단 문구 — 없으면 「테스트가 깨졌다」로 오독된다
+      // ★`'코드 문제 아님'` 은 넣지 않는다 — 두 층의 **기존 엔진 배너**가 이미 그 문구를
+      //   갖고 있어, Docker 블록을 통째로 지워도 통과한다(독립 리뷰 적발). 위 `'docker info'`
+      //   와 같은 공허 양식이다. Docker 블록에**만** 나타나는 문구를 골라야 한다.
+      '컨테이너 검증은 전부 실패한다',
+      // 데몬 기동 중(소켓은 있고 응답만 없음)에 붙잡히면 잡 타임아웃으로 번져
+      // 데몬을 쓰지 않는 워크플로우까지 막는다. 그 방어가 양쪽에 다 있어야 한다.
+      'DOCKER_PROBE_TIMEOUT',
     ];
 
     const missing = INVARIANTS.flatMap((needle) => [
@@ -204,27 +263,137 @@ describe('러너 헬스체크 배선', () => {
     );
   });
 
+  test('★★Docker 를 쓰는 워크플로우는 require_docker 를 넘긴다 (목록을 손으로 적지 않는다)', () => {
+    // 데몬이 꺼지면 이 워크플로우들의 잡이 **코드와 무관하게** 줄줄이 오진 실패한다.
+    // 프리플라이트가 있어도 호출부가 안 넘기면 아무것도 안 막는다 —
+    // 이 저장소가 여러 번 겪은 「가드는 있는데 배선이 없다」 양식이다.
+    const needing = callerFiles().filter(usesDocker);
+
+    // ★비-공허 짝. 훑기가 고장나 0건이 되면 아래 단언이 조용히 통과한다.
+    assert.ok(
+      needing.length >= 2,
+      `docker 를 쓰는 워크플로우를 ${needing.length}개만 찾았다 (실측 기준선 2 — backend·infra).\n` +
+        `훑기가 고장나면 아래 단언이 공허하게 통과한다.`,
+    );
+
+    const missing = needing.filter((name) => !/require_docker:\s*true/.test(withoutComments(readWorkflow(name))));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `Docker 를 쓰면서 require_docker 를 안 넘기는 워크플로우가 있다: ${missing.join(', ')}\n\n` +
+        `데몬이 꺼지면 이 워크플로우의 잡이 코드와 무관하게 전부 빨간불이 되고, 로그는\n` +
+        `「테스트가 깨졌다」로 읽힌다. 2026-08-12 PR #367 에서 실제로 그 비용을 치렀다 —\n` +
+        `12개 잡이 줄줄이 실패하고 사람이 하나씩 로그를 팠다.`,
+    );
+  });
+
+  test('★Docker 를 안 쓰는 워크플로우는 require_docker 를 넘기지 않는다 (음성 대조군)', () => {
+    // 반대 방향. 전부 true 로 두면 데몬이 꺼진 동안 프론트·판별식 PR 까지 부당하게 막힌다.
+    // 위 단언만 있으면 「전부 true」가 통과하므로, 이 짝이 없으면 계약이 절반이다 —
+    // 프리플라이트가 고치려던 것보다 큰 차단면을 새로 만드는 경로다.
+    const overreach = callerFiles()
+      .filter((name) => !usesDocker(name))
+      .filter((name) => /require_docker:\s*true/.test(withoutComments(readWorkflow(name))));
+
+    assert.deepEqual(
+      overreach,
+      [],
+      `Docker 를 안 쓰는데 요구하는 워크플로우가 있다: ${overreach.join(', ')}\n` +
+        `데몬이 꺼진 동안 이 PR 들까지 막힌다 — 프리플라이트가 새 차단면을 만든다.`,
+    );
+  });
+
+  test('★★인용한 런북 섹션이 실재한다 (죽은 참조 차단)', () => {
+    // 두 층은 실패할 때 「docs/runbooks/self-hosted-runner.md §N」을 안내한다. 그 섹션이 없거나
+    // 다른 내용이면 **막힌 사람이 엉뚱한 절을 읽는다** — 진단을 주는 척하고 안 주는 상태다.
+    //
+    // ★같은 양식을 2026-08-12 에 이미 밟았다. `/bts-merge` 가 26일간 실재하지 않는 경로를
+    //   `git add` 하라고 지시하고 있었다(PR #377). 사람은 두 목록을 못 맞춘다 — 기계가 맞춘다.
+    const runbookPath = path.join(REPO_ROOT, 'docs/runbooks/self-hosted-runner.md');
+    assert.ok(fs.existsSync(runbookPath), `${runbookPath} 가 없다 — 아래 단언이 공허해진다.`);
+    const runbook = fs.readFileSync(runbookPath, 'utf8');
+
+    // 런북이 실제로 가진 섹션 번호. `## 4. …` 형태에서 뽑는다.
+    const present = new Set(
+      [...runbook.matchAll(/^##\s+(\d+)\./gm)].map((m) => m[1]),
+    );
+    assert.ok(present.size >= 3, `런북 섹션을 ${present.size}개만 찾았다 — 파서가 고장났다.`);
+
+    // 두 층이 인용하는 섹션 번호. ★층별로 따로 본다 — 합쳐서 보면 **한 층만** 옳아도 통과한다.
+    //   2026-08-12 뮤테이션에서 실제로 그랬다(로컬 층만 §5 로 되돌렸는데 CI 층의 §7 이 가려 줬다).
+    const layers: Record<string, string> = {
+      [HEALTH_WORKFLOW]: readWorkflow(HEALTH_WORKFLOW),
+      [HEALTH_SCRIPT]: fs.readFileSync(path.join(REPO_ROOT, HEALTH_SCRIPT), 'utf8'),
+    };
+    const citedBy = Object.fromEntries(
+      Object.entries(layers).map(([name, body]) => [
+        name,
+        [...new Set([...body.matchAll(/self-hosted-runner\.md\s+§(\d+)/g)].map((m) => m[1]))],
+      ]),
+    );
+    const cited = [...new Set(Object.values(citedBy).flat())];
+    assert.ok(cited.length > 0, '두 층이 런북을 한 번도 인용하지 않는다 — 진단 경로가 없다.');
+
+    const dangling = cited.filter((n) => !present.has(n));
+    assert.deepEqual(
+      dangling,
+      [],
+      `실재하지 않는 런북 섹션을 인용한다: ${dangling.map((n) => `§${n}`).join(', ')}\n` +
+        `런북이 가진 섹션. ${[...present].map((n) => `§${n}`).join(' · ')}\n` +
+        `막힌 사람이 엉뚱한 절을 읽게 된다 — 진단을 주는 척하고 안 주는 상태다.`,
+    );
+
+    // ★번호가 실재하는지만 보면 **부족하다.** 번호는 있는데 **다른 내용**인 경우를 못 잡는다.
+    //   실제로 이 PR 초안이 §5 를 인용했는데 그 절은 「GitHub 호스팅 러너로 되돌리는 절차」였다.
+    //   그래서 번호를 손으로 적지 않고 **런북에서 Docker 절을 찾아** 그 번호를 요구한다.
+    const dockerSection = [...runbook.matchAll(/^##\s+(\d+)\.\s*(.+)$/gm)].find((m) =>
+      /docker/i.test(m[2]),
+    );
+    assert.ok(
+      dockerSection !== undefined,
+      '런북에 Docker 절이 없다 — 데몬 부재로 막힌 사람이 읽을 곳이 없다.\n' +
+        `런북 섹션. ${[...runbook.matchAll(/^##\s+(\d+\..+)$/gm)].map((m) => m[1]).join(' / ')}`,
+    );
+    const dockerN = dockerSection[1];
+    const notCiting = Object.entries(citedBy)
+      .filter(([, ns]) => !ns.includes(dockerN))
+      .map(([name, ns]) => `${name} (인용한 것. ${ns.map((n) => `§${n}`).join(' · ') || '없음'})`);
+    assert.deepEqual(
+      notCiting,
+      [],
+      `Docker 절(§${dockerN} ${dockerSection[2]})을 인용하지 않는 층이 있다.\n` +
+        `${notCiting.join('\n')}\n` +
+        `번호만 맞는 엉뚱한 절을 가리키면 막힌 사람이 그 절을 읽고 더 헤맨다.\n` +
+        `★층별로 보는 이유. 합쳐서 보면 한 층만 옳아도 통과한다 — 2026-08-12 뮤테이션 실측.`,
+    );
+  });
+
   test('★자원 경고는 run 요약과 어노테이션으로 표출된다 — 스텝 로그 안이면 아무도 안 본다', () => {
     // 2026-08-07 사고의 본질은 「판정이 없었다」가 아니라 **「초록불이라 아무도 안 봤다」**이다.
     // 판정이 맞아도 표출이 스텝 로그뿐이면 잡을 펼쳐야 보이고, 그러면 아무도 안 본다 —
     // 표출 실패는 판정 부재와 같은 결과를 낳는다.
-    const workflow = readWorkflow(HEALTH_WORKFLOW);
+    // ★워크플로우 **전체**가 아니라 자원 점검 스텝만 본다. 전체로 재면 다른 스텝의
+    //   어노테이션이 이 단언을 대신 만족시키고, 특히 아래 「고갈 분기 안에 있는가」는
+    //   파일 첫 `::warning` 을 집어 **엉뚱한 스텝을 재게 된다.** 2026-08-12 에 Docker 데몬
+    //   경고가 추가되면서 실제로 그렇게 깨졌다 — 판정 범위가 원래 스텝 단위여야 했다.
+    const step = resourceStepScript();
 
     assert.match(
-      workflow,
+      step,
       /\$GITHUB_STEP_SUMMARY/,
       `자원 판정 결과가 run 요약에 안 남는다 — 잡을 펼쳐야만 보이면 사실상 없는 것이다.`,
     );
     assert.match(
-      workflow,
+      step,
       /::warning/,
       `경고 어노테이션이 없다 — PR 화면 상단에 뜨지 않으면 다음 사람도 오늘의 나처럼 3시간을 쓴다.`,
     );
 
     // ★어노테이션은 **경고일 때만** 나와야 한다. 매 run 마다 뜨면 노이즈가 되어 무시된다 —
     //   음성 대조군 테스트(verify-runner-health.test.ts)가 지키려는 성질과 같다.
-    const overIdx = workflow.indexOf('"$OVER" -eq 1');
-    const warnIdx = workflow.indexOf('::warning');
+    const overIdx = step.indexOf('"$OVER" -eq 1');
+    const warnIdx = step.indexOf('::warning');
     assert.ok(
       overIdx > 0 && warnIdx > overIdx,
       `::warning 이 고갈 분기(${overIdx}) 밖(${warnIdx})에 있다 — 정상 run 에도 경고가 떠 상시화된다.`,
