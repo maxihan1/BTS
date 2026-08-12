@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useCreateProject } from '@/hooks/use-project-mutations'
+import { isValidProjectKey } from '@/lib/project-key'
 import { extractProjectErrorCode, ProjectErrorCodes } from '@/api/projects'
 import { useAuthUser } from '@/auth/authStore'
 
@@ -47,12 +48,6 @@ const projectCreateLabels = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 프로젝트 key 형식 정규식 — backend `PROJECT_KEY_REGEX`(대문자로 시작, 대문자+숫자 2~10자)와
- * 동일. DB CHECK(`projects_key_check`)와도 정합한다(dual 검증, 프론트는 UX 편의).
- */
-const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/
-
-/**
  * 프로젝트 생성 폼 입력 Zod 스키마.
  *
  * key는 `.refine`으로 "빈 값이면 형식 검증을 건너뛴다"를 명시해 빈 문자열 제출 시
@@ -62,7 +57,7 @@ const projectCreateSchema = z.object({
   key: z
     .string()
     .min(1, projectCreateLabels.keyRequired)
-    .refine((val) => val.length === 0 || PROJECT_KEY_PATTERN.test(val), {
+    .refine((val) => val.length === 0 || isValidProjectKey(val), {
       message: projectCreateLabels.keyInvalid,
     }),
   name: z.string().min(1, projectCreateLabels.nameRequired),
