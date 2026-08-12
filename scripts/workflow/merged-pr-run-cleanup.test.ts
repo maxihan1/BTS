@@ -91,10 +91,19 @@ function runScript(branch: string, behavior: FakeGhBehavior = {}): RunResult {
     ...(behavior.ids ?? []),
     ...(behavior.runs ?? []).map((r) => `${r.id} ${r.sha}`),
   ]
-  // `gh api` 가 뱉을 커밋 줄들. 메시지의 개행은 공백으로 눕힌다 — 실물 스크립트가 `--jq` 로
-  // 정형해 받는 형태와 같게 맞추는 것이 목적이다. 한 커밋이 한 줄이어야 파싱이 성립한다.
+  // `gh api` 가 뱉을 커밋 줄들. 실물 스크립트의 `--jq '... | @json'` 과 **같은 모양**이어야
+  // 한다 — 메시지는 개행이 `\n` 으로 이스케이프된 한 줄짜리 JSON 문자열이다.
+  //
+  // ★공백으로 눕히지 않는다. 그렇게 하면 「메시지 전체를 보는가 제목만 보는가」의 판정이
+  //   가짜 gh 쪽으로 넘어가고, 스크립트를 「제목만」으로 훼손해도 red 가 나지 않는다
+  //   (2026-08-12 실측 — 그 형태에서 뮤테이션 M3 가 살아남았다).
+  //
+  // 가짜 gh 는 bash 스크립트라 `echo "..."` 안에 그대로 박힌다. JSON 문자열에는 따옴표와
+  // 역슬래시가 들어 있으므로 큰따옴표 문맥용으로 이스케이프해야 한다 — 안 하면 생성된
+  // 스크립트의 인용이 깨져 **가짜 gh 가 조용히 엉뚱한 것을 뱉는다.**
+  const shellDq = (s: string): string => s.replace(/(["\\$`])/g, '\\$1')
   const apiLines = (behavior.commits ?? []).map(
-    (c) => `${c.sha} ${c.message.split('\n').join(' ')}`,
+    (c) => shellDq(`${c.sha} ${JSON.stringify(c.message)}`),
   )
   const failMode = behavior.failMode ?? 'none'
   const headSha = behavior.headSha ?? ''

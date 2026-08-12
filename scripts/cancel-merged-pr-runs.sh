@@ -137,19 +137,29 @@ fi
 PROTECTED_SHAS=""
 EFFECTIVE_HEAD=""
 if [ "$BRANCH" = "$HEAD_GUARDED_BRANCH" ]; then
-  # ★판정을 `--jq` 에 넣지 않는다. 가짜 gh 는 jq 를 실제로 돌리지 않으므로 거기서 걸러
-  #   버리면 **스크립트가 거르는지 아닌지를 영영 못 잰다.** jq 는 정형까지만 —
-  #   메시지의 개행을 공백으로 눕혀 한 커밋이 한 줄이 되게 한다.
+  # ★판정을 `--jq` 에 넣지 않는다. 가짜 gh 는 jq 를 실제로 돌리지 않으므로 거기서 판정하면
+  #   **스크립트가 그렇게 하는지 아닌지를 영영 못 잰다.** jq 는 **정형까지만** 한다 —
+  #   `@json` 으로 메시지를 개행이 `\n` 으로 이스케이프된 한 줄짜리 문자열로 만든다.
+  #
+  #   ★한 번 틀렸던 자리다. 초안은 `split("\n") | join(" ")` 로 **jq 안에서** 개행을 눕혔다.
+  #   그런데 「메시지 전체를 보는가, 제목만 보는가」는 정형이 아니라 **판정**이다. jq 에
+  #   두었더니 「제목만 검사」 뮤테이션이 살아남았다 — 가짜 gh 가 이미 눕혀진 줄을 뱉으므로
+  #   그 줄을 어떻게 훼손해도 계약 테스트의 사정거리 밖이었다. 지금은 이스케이프만 jq 가
+  #   하고, 「어디까지가 검사 대상인가」는 아래 bash 가 정한다.
   commits=$("$GH" api \
     "repos/{owner}/{repo}/commits?sha=${HEAD_GUARDED_BRANCH}&per_page=${HEAD_SCAN_DEPTH}" \
-    --jq '.[] | "\(.sha) \(.commit.message | split("\n") | join(" "))"' 2> /dev/null) || commits=""
+    --jq '.[] | "\(.sha) \(.commit.message | @json)"' 2> /dev/null) || commits=""
 
   while read -r sha message; do
     case "$sha" in '') continue ;; esac
+    # ★검사 대상은 **메시지 전체**다 — 제목이 아니다. GitHub 이 그렇게 판정하기 때문이고
+    #   (2026-08-07 PR #345), 여기서 제목만 남기면 본문에 `[skip ci]` 가 있는 커밋을
+    #   놓쳐 이 스크립트가 고치려던 결함이 그대로 재발한다. 이 한 줄이 그 결정이다.
+    scanned="$message"
     # 훑은 커밋은 전부 보호한다. `[skip ci]` 커밋에도 (수동 dispatch 등으로) run 이 붙을 수
     # 있고, 그것 역시 지금 main 에 있는 내용을 검증 중이다.
     PROTECTED_SHAS="$PROTECTED_SHAS $sha"
-    if ! has_skip_ci_token "$message"; then
+    if ! has_skip_ci_token "$scanned"; then
       EFFECTIVE_HEAD="$sha"
       break
     fi
