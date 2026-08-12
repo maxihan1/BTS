@@ -212,6 +212,49 @@ describe('머지된 PR 의 큐 잔존 run 정리', () => {
     }
   })
 
+  test('★★사람이 읽는 건수는 run 개수다 — 호출 횟수가 아니다', () => {
+    // 이 스크립트는 상태 2종(queued · in_progress)을 각각 조회하므로 **같은 run 이 두 번**
+    // 나온다. 그것을 그대로 세면 run 1개가 「2건」이 된다. 로그는 사람이 읽고 판단하는
+    // 유일한 창인데, 그 숫자가 2배로 부풀면 「생각보다 많이 죽었나」로 오독한다.
+    const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const OLD = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const r = runScript('main', {
+      headSha: HEAD,
+      runs: [
+        { id: '901', sha: HEAD },
+        { id: '902', sha: OLD },
+      ],
+    })
+    // 취소된 run 은 902 하나, 보호된 run 은 901 하나다.
+    assert.match(
+      r.output,
+      /잔존 run 1건을 취소했다/,
+      `취소 건수가 run 개수가 아니다 (호출 횟수를 세고 있다).\n${r.output}`,
+    )
+    assert.match(
+      r.output,
+      /1건은 현재 HEAD/,
+      `보호 건수가 run 개수가 아니다.\n${r.output}`,
+    )
+  })
+
+  test('★★「취소했다」와 「건드리지 않았다」를 같은 집합처럼 쓰지 않는다', () => {
+    // 「잔존 run 2건을 취소했다 / **그중** 2건은 건드리지 않았다」는 자기모순이다.
+    // 두 수는 서로소인 집합의 크기다 — 한쪽이 다른 쪽의 부분집합인 것처럼 쓰면 로그가
+    // 거짓말한다. 계산값은 맞는데 문장이 틀린 경우라 숫자 단언만으로는 안 잡힌다.
+    const r = runScript('main', {
+      headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      runs: [
+        { id: '901', sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+        { id: '902', sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+      ],
+    })
+    assert.ok(
+      !/그중/.test(r.output),
+      `취소분과 보호분을 「그중」으로 이었다 — 서로소인 두 집합이다.\n${r.output}`,
+    )
+  })
+
   test('★main 조회는 headSha 를 함께 요청한다 (비-공허 짝)', () => {
     // 위 두 단언은 「스크립트가 sha 를 실제로 받아 비교한다」를 전제한다. 요청 자체가
     // 빠지면 가짜 gh 가 무엇을 뱉든 비교가 성립하지 않아 그 단언들이 공허해진다.
