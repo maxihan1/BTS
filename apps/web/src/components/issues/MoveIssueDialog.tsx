@@ -17,6 +17,7 @@ import { ApiError } from '@/api/client'
 import { previewMove, useMoveIssue, extractMoveErrorCode, MOVE_ERROR_CODES } from '@/api/issue-move'
 import type { MovePreview, SubtaskPreviewNode } from '@/api/issue-move'
 import { issueMoveStrings as s } from '@/i18n/ko'
+import { isValidProjectKey } from '@/lib/project-key'
 import {
   NodeMappingSection,
   buildInitialNodeState,
@@ -94,11 +95,22 @@ export function MoveIssueDialog({
 
   // ── Step 1 → Step 2: preview 호출 ────────────────────────────────────
   async function handleNext() {
-    if (targetProjectKey.trim() === '') return
+    const trimmedKey = targetProjectKey.trim()
+    if (trimmedKey === '') return
+
+    // 형식이 어긋난 키는 **요청을 보내지 않는다**. 보내면 서버가 403 「권한 없음」으로
+    // 답하는데(미존재 프로젝트 = 권한 거부), 정작 고칠 것은 대소문자다.
+    // 판정은 생성 화면과 같은 `isValidProjectKey` 를 쓴다 — 두 화면이 갈리지 않게.
+    // ★존재 여부는 여전히 서버만 안다. `NOPE` 처럼 형식이 맞고 없는 키는 그대로 403 이다.
+    if (!isValidProjectKey(trimmedKey)) {
+      setPreviewError(s.errorKeyFormat)
+      return
+    }
+
     setIsPreviewLoading(true)
     setPreviewError(null)
     try {
-      const result = await previewMove(issueKey, targetProjectKey.trim())
+      const result = await previewMove(issueKey, trimmedKey)
       setPreview(result)
 
       // 루트 초기 매핑 상태

@@ -883,6 +883,22 @@ export const issueMoveStrings = {
   targetProjectKeyLabel: '대상 프로젝트 키',
   /** 대상 프로젝트 키 입력 placeholder */
   targetProjectKeyPlaceholder: '예: INFRA',
+  /**
+   * 대상 프로젝트 키 **형식** 오류 — 요청을 보내기 전에 클라이언트가 낸다.
+   *
+   * 이게 없으면 `infra` 같은 소문자 키가 서버까지 가서 **403 「권한 없음」** 으로
+   * 돌아온다(백엔드가 키를 정확 일치로 조회하고, 운영 리졸버는 미존재 프로젝트를
+   * 권한 거부로 판정하기 때문). 사용자가 고칠 수 있는 것은 대소문자인데 화면은
+   * 권한 이야기를 하게 된다.
+   *
+   * **문장이 생성 화면과 같다** — `routes/projects.new.tsx` 의
+   * `projectCreateLabels.keyInvalid` 와 한 글자도 다르지 않다. 같은 규칙을 두 화면이
+   * 다르게 설명하면 그 자체가 새 불일치다. 두 리터럴을 하나로 합치지 못한 이유는
+   * 상대편이 **i18n 밖 라우트 지역 상수**여서 여기서 import 할 수 없기 때문이고,
+   * 그 상수를 i18n 으로 옮기는 것은 이 PR 범위 밖이다.
+   * **판정 자체는 이미 한 곳뿐이다** (`lib/project-key.ts` 의 `isValidProjectKey`).
+   */
+  errorKeyFormat: '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.',
 
   // ── Step 2 — 매핑 확인 ───────────────────────────────────────────────
   /** Step 2 섹션 제목 */
