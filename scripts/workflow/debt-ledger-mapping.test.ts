@@ -96,34 +96,48 @@ function masterMappingRows(): { status: string; item: string; pr: string }[] {
   return rows
 }
 
+/** TODOS.md 에서 주어진 마커의 항목 제목 키 목록. **중복을 접지 않는다** — 아래 중복 판정이 쓴다. */
+function ledgerKeys(marker: string): string[] {
+  const prefix = `## ${marker} `
+  return fs
+    .readFileSync(LEDGER, 'utf-8')
+    .split('\n')
+    .filter((l) => l.startsWith(prefix))
+    .map((l) => normalizeKey(l.slice(prefix.length)))
+}
+
 /** TODOS.md 의 미해소 항목 제목 키 목록. */
 function ledgerOpenKeys(): string[] {
-  const lines = fs.readFileSync(LEDGER, 'utf-8').split('\n')
-  return lines
-    .filter((l) => l.startsWith(`## ${OPEN_MARKER} `))
-    .map((l) => normalizeKey(l.slice(`## ${OPEN_MARKER} `.length)))
+  return ledgerKeys(OPEN_MARKER)
+}
+
+/** TODOS.md 의 해소 항목 제목 키 목록. */
+function ledgerDoneKeys(): string[] {
+  return ledgerKeys(DONE_MARKER)
 }
 
 /**
- * 마스터 계획 「전수 매핑」 표에서 미해소 행의 항목 키를 뽑는다.
+ * 마스터 계획 「전수 매핑」 표에서 주어진 상태의 항목 키를 뽑는다.
  *
- * 표 형식. `| # | 상태 | 항목 | PR | 영역 |`
- * 상태 열이 `⬜` 인 행만 장부의 `## ⬜` 와 대응한다.
+ * ★파서를 하나로 유지한다. 종전에는 이 함수와 `masterMappingRows()` 가 같은 표를 각자 읽었고
+ * `cells[2]` 정규화가 달랐다(한쪽만 `stripBold`). 상태 마커가 `**⬜**` 로 볼드되는 순간 두 파서가
+ * **서로 다른 행 집합**을 보게 된다 — 한 표에 리더가 둘인 것 자체가 이 저장소의 지배 결함 양식이다.
  */
+function masterKeys(status: string): string[] {
+  return masterMappingRows()
+    .filter((r) => r.status === status)
+    .map((r) => normalizeKey(r.item))
+    .filter((k) => k.length > 0)
+}
+
+/** 마스터 계획의 미해소 행 항목 키. */
 function masterOpenKeys(): string[] {
-  const lines = fs.readFileSync(MASTER, 'utf-8').split('\n')
-  const keys: string[] = []
-  for (const line of lines) {
-    if (!line.startsWith('|')) continue
-    const cells = line.split('|').map((c) => c.trim())
-    // ['', '#', '상태', '항목', 'PR', '영역', '']
-    if (cells.length < 6) continue
-    if (cells[2] !== OPEN_MARKER) continue
-    const item = cells[3]
-    if (item === undefined || item.length === 0) continue
-    keys.push(normalizeKey(item))
-  }
-  return keys
+  return masterKeys(OPEN_MARKER)
+}
+
+/** 마스터 계획의 해소 행 항목 키. */
+function masterDoneKeys(): string[] {
+  return masterKeys(DONE_MARKER)
 }
 
 describe('기술부채 장부 ↔ 마스터 계획 매핑', () => {
@@ -176,6 +190,32 @@ describe('기술부채 장부 ↔ 마스터 계획 매핑', () => {
     const dups = keys.filter((k, i) => keys.indexOf(k) !== i)
     assert.deepEqual(dups, [], `마스터 계획에 중복된 항목이 있다.\n${dups.join('\n')}`)
   })
+
+  test('★장부의 미해소 항목 제목에 중복이 없다', () => {
+    // ★위 두 차집합만으로는 **건수 일치가 강제되지 않는다.** 차집합은 집합 연산인데 장부 쪽
+    // 파서는 리스트를 돌려주므로, 장부에 같은 제목이 두 번 있으면 집합으로는 같고 건수만 갈린다.
+    // 실측 — `## ⬜` 헤딩 하나를 복제해 장부 21 · 마스터 21 로 만들었더니 **전 판정 GREEN** 이었다.
+    // `master.md` §전수 매핑이 「건수는 여기 적지 않는다 — 집합 일치가 건수 일치를 포함한다」고
+    // 선언한 근거가 이 한 줄이다. 이게 없으면 그 선언이 거짓이 된다.
+    const keys = ledgerOpenKeys()
+    const dups = keys.filter((k, i) => keys.indexOf(k) !== i)
+    assert.deepEqual(dups, [], `장부에 같은 제목의 미해소 항목이 둘 이상 있다.\n${dups.join('\n')}`)
+  })
+
+  test('★★마스터 계획이 ✅ 라 적은 항목은 장부에서도 ✅ 다', () => {
+    // ⬜ 는 양방향으로 재지만 ✅ 는 **한 방향만** 잰다. 장부의 `## ✅` 는 저장소 전체 이력이라
+    // 이 마스터 계획(부채 26건)의 범위를 크게 넘는다 — 역방향을 걸면 항상 red 다.
+    // 이 방향이 새면 **닫히지 않은 것을 닫혔다고 적은 상태**가 되어, ⬜ 차집합이 그 항목을
+    // 아예 안 보게 된다(양쪽 다 ⬜ 목록에서 빠지므로 조용히 통과한다).
+    const ledger = new Set(ledgerDoneKeys())
+    const lying = masterDoneKeys().filter((k) => !ledger.has(k))
+    assert.deepEqual(
+      lying,
+      [],
+      `마스터 계획이 ✅ 라 적었으나 장부에 해소로 없다 — 안 닫힌 것을 닫혔다고 적었거나 제목이 갈렸다.\n` +
+        lying.map((s) => `  - ${s}`).join('\n'),
+    )
+  })
 })
 
 // ## 왜 PR 열에도 판별식이 필요한가 (2026-08-14)
@@ -203,22 +243,37 @@ describe('기술부채 장부 ↔ 마스터 계획 매핑', () => {
 // - `✅`(해소) → `#NNN`. 머지된 PR 번호는 불변 이력이라 썩지 않는다.
 //
 // **대가.** 「지금 누가 이 항목을 하고 있나」가 장부에서 사라진다. 그 정보는 전이(轉移)
-// 상태이므로 `.claude/STATE.md` 와 PR 자신이 갖는다 — 장부는 **불변 사실만** 담는다.
-// 이 대가를 치르는 이유는 2026-08-14 에 예약 draft PR 7건(#368~#374)을 폐기하면서
-// 「예약 PR 로 담당을 표시하는 방식」 자체를 그만뒀기 때문이다.
+// 상태이므로 PR 자신과 `.claude/STATE.md`(머신 로컬 · `.gitignore` 대상)가 갖는다 — 장부는
+// **불변 사실만** 담는다. 이 대가를 치르는 이유는 2026-08-14 에 예약 draft PR 7건(#368~#374)을
+// 폐기하면서 「예약 PR 로 담당을 표시하는 방식」 자체를 그만뒀기 때문이다.
+//
+// ## ★이 판별식이 재지 **않는** 것 (설계상 한계 — 알고 남긴다)
+//
+// 1. **PR 번호의 실재를 안 잰다.** `/^#\d+$/` 는 `#999999` 도 통과시킨다. 「이 항목을 실제로 닫은
+//    PR 인가」는 네트워크 없이 못 재고 CI 에는 네트워크가 없다. 원 결함(매핑 `4` 가 머지된 `#366` 을
+//    들고 썩음)은 위 ⬜ 규칙이 **구조적으로** 막으므로 잔여 위험은 낮다.
+// 2. **머지 방향을 강제하지 않는다.** PR 이 부채를 닫고 머지됐는데 아무도 장부를 `✅ #NNN` 으로
+//    안 옮기면, 장부·마스터가 **둘 다 ⬜ 로 일치**해 조용히 통과한다. 이 방향의 강제 지점은
+//    `/bts-merge` 스킬 안이다 — 장부 항목 `20` 이 「강제 지점은 훅도 CI 도 아니다」로 이미 같은
+//    결론에 도달해 있다. **이 판별식은 결함을 없앤 것이 아니라 「거짓 주장」에서 「침묵」으로 좁혔다.**
+// 3. **선행 `|` 없는 GFM 표 행을 못 본다.** `line.startsWith('|')` 때문이다. 다만 ⬜ 행이 사라지면
+//    장부↔마스터 차집합이, ✅ 행이 사라지면 위 「마스터 ✅ ⊆ 장부 ✅」가 각각 잡는다.
 describe('기술부채 마스터 계획 — PR 열 형식', () => {
   test('★파서가 실제로 PR 열을 훑는다 (비-공허 짝)', () => {
     // 표 형식이 바뀌거나 `cells[2]` 필터가 어긋나면 0행을 훑고도 아래 판정이 전부
     // 「빈 배열 == 빈 배열」로 공허 통과한다.
+    //
+    // ★하한을 **방향별로** 둔다. 전체 하한만 두면 파서가 퇴화해 ✅ 를 1행만 잡아도
+    // 「양쪽 다 잡힌다」가 통과하고 **✅ 판정이 사실상 공허해진다.**
     const rows = masterMappingRows()
+    const open = rows.filter((r) => r.status === OPEN_MARKER).length
+    const done = rows.filter((r) => r.status === DONE_MARKER).length
     assert.ok(
       rows.length >= 20,
       `전수 매핑 표에서 ${rows.length}행밖에 못 찾았다 — 표 형식이 바뀌었거나 필터가 어긋났다.`,
     )
-    assert.ok(
-      rows.some((r) => r.status === OPEN_MARKER) && rows.some((r) => r.status === DONE_MARKER),
-      '⬜ 행과 ✅ 행이 둘 다 잡혀야 한다 — 한쪽만 잡히면 그쪽 판정만 유효하다.',
-    )
+    assert.ok(open >= 10, `⬜ 행을 ${open}행밖에 못 찾았다 — 파서가 퇴화했다.`)
+    assert.ok(done >= 5, `✅ 행을 ${done}행밖에 못 찾았다 — 파서가 퇴화해 ✅ 판정이 공허해진다.`)
   })
 
   test('★★미해소(⬜) 행의 PR 열에 PR 번호가 없다', () => {
