@@ -574,6 +574,92 @@ describe('backend-ci 모듈 선별', () => {
     )
   })
 
+  // ── rename 붕괴 (2026-08-14 독립 리뷰 · 보안 렌즈 적발) ──────────────────────
+  //
+  // ★`git diff --name-only` 은 rename 을 감지하면 **목적지 경로 하나만** 낸다.
+  //   모듈 A → B 로 파일을 옮기면 A 가 씨앗에 안 들어가 **A 의 테스트 전량이 조용히 건너뛰어진다.**
+  //   `WIDEN_PREFIXES` 도 발화하지 않는다 — 출발 경로가 애초에 선별기에 **도달하지 않기** 때문이다.
+  //   선별기 쪽에서는 원리적으로 못 막는다. 입력을 만드는 git 명령이 고쳐져야 한다.
+  //
+  //   잔여 안전망을 정확히 적어 둔다 — `assembly` 잡의 `:modules:app:test` 가 app 의
+  //   `implementation(project(":modules:A"))` 를 통해 **main 소스셋 컴파일 깨짐은 잡는다.**
+  //   못 잡는 것은 **A 의 테스트 소스셋 컴파일과 A 자체 테스트 실행 전량**이다.
+  //   즉 「컴파일은 되지만 동작이 깨진 이동」이 초록으로 통과한다.
+
+  test('★★git 이 rename 을 접는다 — `--no-renames` 가 실제로 필요하다 (비-공허 짝)', () => {
+    // ★배선 문자열만 재면 「그 플래그가 왜 필요한지」가 사라지고, git 기본값이 바뀌면 판정이
+    //   조용히 무의미해진다. 그래서 **git 의 실제 동작**을 임시 저장소로 잰다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-rename-'))
+    try {
+      const git = (...args: string[]) =>
+        spawnSync('git', args, { cwd: tmp, encoding: 'utf8', env: { ...process.env, HOME: tmp } })
+      git('init', '-q')
+      git('config', 'user.email', 'x@example.com')
+      git('config', 'user.name', 'x')
+      fs.mkdirSync(path.join(tmp, 'a'), { recursive: true })
+      // rename 유사도 판정을 확실히 넘기려면 내용이 충분히 있어야 한다.
+      fs.writeFileSync(path.join(tmp, 'a/F.kt'), Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'))
+      git('add', '-A')
+      git('commit', '-qm', 'base')
+      fs.mkdirSync(path.join(tmp, 'b'), { recursive: true })
+      fs.renameSync(path.join(tmp, 'a/F.kt'), path.join(tmp, 'b/F.kt'))
+      git('add', '-A')
+      git('commit', '-qm', 'move')
+
+      const paths = (extra: string[]) =>
+        git('-c', 'core.quotePath=false', 'diff', ...extra, '--name-only', '-z', 'HEAD~1', 'HEAD')
+          .stdout.split('\0')
+          .filter((p) => p !== '')
+
+      const collapsed = paths([])
+      const full = paths(['--no-renames'])
+
+      // 이 판정이 공허해지는 유일한 길은 git 이 rename 을 접지 않게 되는 것이다. 그때는
+      // 아래 단언이 RED 가 되고, 사람이 「플래그가 이제 불필요한가」를 판단하게 된다.
+      assert.equal(
+        collapsed.length,
+        1,
+        `git 이 rename 을 접지 않았다 — 이 짝의 전제가 바뀌었다. 실제 출력. ${JSON.stringify(collapsed)}`,
+      )
+      assert.deepEqual(
+        full.sort(),
+        ['a/F.kt', 'b/F.kt'],
+        `--no-renames 가 출발지를 살리지 못했다. 실제 출력. ${JSON.stringify(full)}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★backend-ci 의 diff 명령에 `--no-renames` 가 있다 (배선)', () => {
+    // 위 짝이 「플래그가 필요하다」를 증명하고, 이 판정이 「실제로 붙어 있다」를 증명한다.
+    // 앵커 정규식이다 — 주석 줄이나 다른 위치의 같은 문자열로는 통과하지 않는다.
+    const yml = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+    assert.match(
+      yml,
+      /^\s+if ! git -c core\.quotePath=false diff --no-renames --name-only -z \\$/m,
+      `${WORKFLOW} 의 변경 파일 수집 명령에 \`--no-renames\` 가 없다.\n` +
+        `모듈 간 파일 이동에서 **출발 모듈의 테스트가 통째로 건너뛰어진다** — 좁아지는 방향이다.\n` +
+        `러너의 전역 \`diff.renames\` 설정에 무관하게 고정되므로 \`-M0\` 보다 이 플래그를 쓴다.`,
+    )
+  })
+
+  test('★모듈 간 이동에서 두 경로가 다 오면 두 모듈이 다 선별된다 (처방 확인)', () => {
+    // `--no-renames` 가 준 입력을 선별기가 제대로 소화하는지. 위 두 판정의 짝이다.
+    const picked = selectModules([
+      'backend/modules/identity-access/src/main/kotlin/F.kt',
+      'backend/modules/notification/src/main/kotlin/F.kt',
+    ])
+    assert.ok(
+      picked.modules.includes('identity-access'),
+      `출발 모듈이 빠졌다 — ${JSON.stringify(picked)}`,
+    )
+    assert.ok(
+      picked.modules.includes('notification'),
+      `목적 모듈이 빠졌다 — ${JSON.stringify(picked)}`,
+    )
+  })
+
   test('★넓은 판정과 좁은 판정을 구분해 보고한다', () => {
     // 로그를 읽는 사람이 「전부 돈다」가 **의도**인지 **판정 실패**인지 알아야 한다.
     const narrow = selectModules(['backend/modules/automation/X.kt'])
