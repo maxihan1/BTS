@@ -123,39 +123,20 @@ jobs:
   #
   # ★baseline 갱신은 `apps/web/src/**` 변경을 동반할 때만 허용한다. PNG 만 바꾸는 커밋은
   #   「원인 미상인데 초록으로 만들기」다 — 판별식 snapshot-baseline-guard 가 차단한다.
-  visual:
-    needs: [runner-health, test]
-    runs-on: [self-hosted, bts-local]
-    # 4화면 × 라이트/다크 = 8샷 + vite dev 기동. Playwright 를 CI 에서 돌린 전례가 없어
-    # 이 값은 **잠정**이다 — 파일럿 20회 측정에서 실측으로 갱신한다.
-    timeout-minutes: 15
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-      - name: Setup Node 22 (with pnpm cache)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install dependencies (frozen lockfile)
-        run: pnpm install --frozen-lockfile
-      # 멱등이다 — 이미 받아 둔 브라우저가 있으면 즉시 끝난다. 조건부로 감싸면
-      # 캐시가 비었을 때만 나는 실패가 되어 원인이 안 보인다.
-      - name: Install Playwright chromium
-        run: pnpm --filter @bts/web exec playwright install chromium
-      - name: Visual regression (1280×800 · light/dark)
-        run: pnpm --filter @bts/web exec playwright test --project=visual
-      # 실패했을 때만 올린다. 항상 올리면 러너 디스크와 아티팩트 보관만 먹고,
-      # 정작 볼 사람은 초록인 run 의 스냅샷을 열지 않는다.
-      - name: 시각 diff 업로드 (실패 시에만)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-diff-${{ github.run_id }}
-          path: apps/web/test-results/
-          retention-days: 3
+  # ── 시각 회귀(visual) 잡은 아직 여기 없다 ────────────────────────────────────
+  #
+  # 2026-08-13 PR #380 에서 한 번 신설해 실행했고, **백엔드 부재로 죽었다**
+  # (`[vite] ws proxy error: AggregateError [ECONNREFUSED]`). 원인은 스냅샷이 아니라
+  # 전제다 — 이 저장소의 CI 는 **Playwright 를 한 번도 돌린 적이 없고**(main 기준
+  # `playwright|e2e` 언급 0건), 그래서 dev 서버가 프록시할 백엔드를 띄우는 배선도 없다.
+  #
+  # `continue-on-error: true` 라 차단은 안 했지만, 고칠 수 없는 빨간불을 매 PR 에 남기는 것은
+  # 이 저장소가 반복해서 당한 「공허한 가드」의 다른 얼굴이다. 그래서 잡을 들이지 않는다.
+  #
+  # 파일럿은 **로컬에서 시작한다** — `apps/web/e2e/visual/visual-regression.spec.ts` 는
+  # 그대로 있고 `--project=visual` 로 돈다. 기준 이미지 무단 갱신은 CI 에서
+  # `scripts/workflow/snapshot-baseline-guard.test.ts` 가 계속 막는다(백엔드 무관).
+  #
+  # CI 편입의 선행 조건 — ① 백엔드 기동(docker-compose + app) 또는 MSW 로 API 전량 목킹
+  # ② 그 위에서 기준 이미지 생성 ③ 20회 무변경 실행으로 flaky 율 측정. 셋이 끝나기 전에
+  # 잡을 되살리면 같은 빨간불이 반복된다. 상세는 `.claude/MIGRATION.md`.

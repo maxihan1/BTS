@@ -65,7 +65,11 @@ export const changedPaths = (): ChangedPaths => {
     };
   }
 
-  const base = process.env.BASE_SHA;
+  // `github.event.before` 는 브랜치 첫 push 에서 all-zero 를 준다. 그건 「값이 틀렸다」가
+  // 아니라 「비교 대상이 아직 없다」이므로 3순위(병합기점)로 넘긴다. 여기서 throw 하면
+  // 첫 push 마다 배선 결함처럼 보이는 red 가 난다.
+  const rawBase = process.env.BASE_SHA;
+  const base = rawBase && /^0{7,40}$/.test(rawBase) ? undefined : rawBase;
   const head = process.env.GITHUB_SHA;
   if (base && head) {
     const diff = git(['diff', '--name-only', '-z', base, head]);
