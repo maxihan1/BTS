@@ -100,8 +100,9 @@ describe('classify — agent 매핑', () => {
     assert.equal(classify({ title: '이슈 상세 페이지 개선' }).agent, 'frontend-engineer');
   });
 
-  test('design → designer', () => {
-    assert.equal(classify({ title: '대시보드 디자인 시안' }).agent, 'designer');
+  test('design → frontend-engineer (designer 흡수)', () => {
+    // 디자인 스펙만 쓰고 끊는 전용 에이전트를 없앴다. 스펙→구현이 한 에이전트 안에서 이어진다.
+    assert.equal(classify({ title: '대시보드 디자인 시안' }).agent, 'frontend-engineer');
   });
 
   test('qa → qa-engineer', () => {
@@ -165,6 +166,14 @@ describe('classify — 메타 필드', () => {
   test('cached_at ISO timestamp', () => {
     const r = classify({ title: 'foo' });
     assert.ok(r.cached_at.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/));
+  });
+
+  test('tier 기본값 T1 · 지정하면 지정값 (판정 규칙 ②)', () => {
+    // 착수 시점엔 diff 가 없어 경로로 잴 수 없다. 제목만 보고 티어를 추측하지 않는다 —
+    // TaskType 축과 Tier 축은 직교라 'migration' 이라는 제목이 곧 T3 선언은 아니다.
+    assert.equal(classify({ title: 'Flyway 마이그레이션 V21' }).tier, 'T1');
+    assert.equal(classify({ title: 'IssueRepository 정리' }).tier, 'T1');
+    assert.equal(classify({ title: 'Flyway 마이그레이션 V21', tier: 'T3' }).tier, 'T3');
   });
 });
 
