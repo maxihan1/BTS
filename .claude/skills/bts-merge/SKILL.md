@@ -1,11 +1,11 @@
 ---
 name: bts-merge
-description: Use when 게이트 2 (codereview) has been approved and the PR must be merged, the worktree cleaned up, dashboards regenerated, and Obsidian synced — the final step of the /bts workflow. Encodes the hard-won 5-step merge pattern that prevents the recurring worktree/stash/orphan-port accidents.
+description: Called by /bts step 7 — merges the approved PR and cleans up. Never invoke directly.
 ---
 
 # /bts-merge
 
-`/bts` 워크플로우 [8] 마지막 단계. 게이트 2 승인 후 머지 + 정리. **이 절차는 반복 사고 5종을 구조적으로 차단하려고 고정됐다** — 순서를 건너뛰지 말 것.
+`/bts` 워크플로우 [7] 마지막 단계. 게이트 2 승인 후 머지 + 정리. **이 절차는 반복 사고 5종을 구조적으로 차단하려고 고정됐다** — 순서를 건너뛰지 말 것.
 
 > 이 단계가 막는 과거 사고. [[merge-delete-branch-worktree-fail]], [[worktree-lint-staged-shared-git-stash-collision]], [[e2e-orphan-vite-after-worktree-remove]], [[bts-spec-file-uncommitted-loss]], [[bts-ktlintformat-docs-commit-traps]].
 
@@ -24,7 +24,10 @@ worktree에 커밋 안 된 산출물(특히 spec/docs 파일)이 남아 있으�
 cd .worktrees/<slug>
 git status --porcelain          # 비어 있어야 함. 남아 있으면 커밋+푸시 먼저
 git log origin/<branch>..HEAD --oneline   # 미푸시 커밋 0 확인
+gh pr checks --watch            # ★머지 전 CI 초록 확인. 빨간불이면 머지하지 않는다
 ```
+
+`gh pr checks --watch` 는 **사람이 지키는 규율**이다. 무료 플랜에서 브랜치 보호 설정이 403 이라 빨간불 머지를 기계가 막지 못한다 — 이 줄을 건너뛰면 검증 없는 머지가 된다.
 
 미커밋 파일이 있으면 → 해당 task의 산출물인지 확인 후 커밋·푸시. spec/plan 문서는 누락되기 쉬우니 특히 점검.
 
@@ -149,8 +152,8 @@ git -C /Users/maxi.moff/Projects/BTS status
 ✅ 한 줄  <비전문가 한 문장 — 무엇이 반영됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
 💡 의미  <Maxi가 어디서 결과를 확인할 수 있는지>
 🔧 기술 상세 (안 봐도 됨)
-🔄 [8/8] /bts-merge
-   ├─ 머지 전 확인: git status clean ✅
+🔄 [7/7] /bts-merge
+   ├─ 머지 전 확인: git status clean ✅ · CI 초록 ✅
    ├─ verify-master-plan: exit 0 ✅ (또는 skip)
    ├─ dashboard regen: 포함 ✅ (또는 skip)
    ├─ merge --squash: #<N> merged

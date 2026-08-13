@@ -5,158 +5,90 @@ description: Use when user gives a natural-language coding request for BTS — f
 
 # /bts
 
-BTS 모든 코드 작업의 **단일 진입점**. 8단계 스킬을 자연어 1줄로 압축.
+BTS 모든 코드 작업의 **단일 진입점**. 티어를 판정하고 7단계 체인을 컨트롤한다.
+**하위 7종은 이 컨트롤러만 호출한다.** 각 단계 응답을 받은 뒤 명시적으로 다음 `Skill()` 을 부른다 — 「자동으로 호출된 셈」 가정 금지.
 
-## 언제 호출되나
-
-- 사용자가 `/bts <자연어>` 명시 호출
-- 사용자가 자연어로 코드 변경 요청 (예. "이슈에 멘션 알림 추가") → 메인 에이전트가 자동 진입
-
-**호출하지 않는 경우**.
-- 단순 질문 (예. "이 함수 뭐 해?") — 그냥 답변
-- 코드 탐색 / 설명 — 그냥 진행
-- 기존 작업 이어가기 — 사용자가 명시적으로 다른 스킬 호출
-
-## 사용자 승인 게이트 (2 곳)
+## 체인 7단계
 
 ```
-/bts <자연어>
-   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근 50줄) + learnings 헤딩 라우팅
-[1] /bts-start         → classify + worktree + Draft PR
-[2] /bts-domain        → grill-with-docs
-[3] /bts-spec          → office-hours (A) → brainstorming (B)
-[4] /bts-plan          → writing-plans (TDD task 분해)
-[5] /bts-review-plan   → 타입별 리뷰 체인
-🛑 게이트 1 — Maxi 검토 (도메인/스펙/계획 일괄)
-[6] /bts-impl          → subagent-driven + TDD 강제
-[7] /bts-codereview    → code-reviewer + /review (gstack)
-🛑 게이트 2 — Maxi 검토 (BLOCKER)
-[8] /bts-merge       → verify → merge → worktree 정리 → dashboard → Obsidian sync
+[1] bts-start        헬스체크 · classify · worktree+훅 · plan 스텁(T2+) · Draft PR
+[2] bts-spec         BC 식별 + 스펙 9섹션 + sanity check          (T2+)
+[3] bts-plan         TDD task 분해 + 메타 계약                     (T2+)
+[4] bts-review-plan  리뷰 렌즈 라우팅 (한 응답 병렬 발행)          (T2+)
+🛑 게이트 1 — Maxi 검토 (T2/T3 만)
+[5] bts-impl         wave dispatch + TDD 강제
+[6] bts-codereview   독립 리뷰 (T0/T1 1종 · T2/T3 2종)
+🛑 게이트 2 — Maxi 검토 (**전 티어 필수 · 어떤 티어도 생략하지 않는다**)
+[7] bts-merge        verify → merge → worktree 정리 → dashboard → Obsidian
 ```
 
-`auth`/`migration`/큰 변경도 두 번 멈춤. **자동이라도 사용자 동의 없이 머지 안 감**.
-fast-track(`bugfix`/`chore`)은 게이트 1을 생략하고 **게이트 2 한 곳만** 멈춘다 (Phase C 게이트 정책).
+## A-0. 활성 작업 감지 (모든 입력 형태에 선행, 필수)
 
-## 절차
-
-### Phase A. 입력 분석 + 세션 복원
-
-#### A-0. 활성 작업 감지 (모든 입력 형태에 선행, 필수)
-
-이전 세션이 중단된 채 남긴 worktree / draft PR을 감지. 발견되면 사용자 확인 없이 진행 금지.
+이전 세션이 중단된 채 남긴 worktree / draft PR 을 감지. 발견되면 사용자 확인 없이 진행 금지.
 
 ```bash
 ACTIVE_WORKTREES=$(ls -d .worktrees/*/ 2>/dev/null)
 ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefName 2>/dev/null)
 ```
 
-둘 중 하나라도 비어있지 않으면 `AskUserQuestion`.
+둘 중 하나라도 비어있지 않으면 `AskUserQuestion` — ① 이어가기 ② 새 작업 추가 ③ 이전 폐기(worktree 삭제 + draft PR close).
+**「이어가기」의 재개 지점은 추정하지 않는다.** `.claude/STATE.md` 의 마지막 기록을 읽어 그 단계로 복귀한다. STATE 가 없거나 `⚠ STALE` 배너가 있으면 Maxi 에게 재개 지점을 묻는다.
+활성 작업이 없고 입력이 모호하면(30자 미만 + 동사만) `AskUserQuestion` 으로 3 옵션, 빈 입력이면 `gh pr list --state open` 후 "어떤 PR 이어서 작업?".
 
-```
-"진행 중인 작업이 감지되었습니다 (worktree: N개, draft PR: M개). 어떻게 할까요?"
-- 옵션 1. 이전 작업 이어가기 → 해당 worktree로 진입 + plan 파일 상태 기반 다음 단계 추정
-- 옵션 2. 새 작업 시작 → 이전은 그대로 유지, 새 worktree 추가 생성
-- 옵션 3. 이전 작업 폐기 → worktree 삭제 + draft PR close
-```
+## 티어 판정 5문 (착수 시점 — 선언)
 
-**"이어가기" 선택 시** — `docs/plans/<date>-<slug>.md`의 채워진 섹션을 읽어 다음 단계 추정 (`bts-start`는 스킵, worktree 재생성 안 함).
+티어 **정의**(표면 4행표)는 `CLAUDE.md` 가 정본이다. 사본을 여기 두지 않는다.
 
-| plan 섹션 상태 | 재진입 단계 |
-|---|---|
-| `## 도메인 정리` 비어있음 | `bts-domain` |
-| `## 스펙` 비어있음 | `bts-spec` |
-| `## Plan` 비어있음 | `bts-plan` |
-| `## 리뷰 결과` 비어있음 | `bts-review-plan` |
-| 모두 채워졌고 PR `Draft` | 게이트 1 재진입 (또는 commit 1개 이상이면 `bts-impl` 진행 중으로 간주, 사용자에 확인) |
-| PR `Ready for review` | 게이트 2 재진입 |
+① 혼합이면 **최고 티어**(max)를 쓴다 — 티어는 절차 강도이므로 가장 위험한 표면이 지배한다.
+② 기본값은 **T1**. Maxi 가 티어를 지정하면 그것이 항상 우선한다.
+③ 어느 표면에도 안 걸리는 경로는 T1 로 두되 `UNMAPPED: <경로>` 를 **게이트 2 요약에 그대로 싣는다** — 미분류를 조용히 통과시키지 않는다.
+④ **테스트만 바뀌면 티어를 올리지 않는다.** 소스가 함께 바뀌면 소스 표면이 기준.
+⑤ **임의 승격 금지.** 머지 전 실측 티어가 선언보다 높으면 자동 승격하지 않고 **게이트 2 에서 정지해 사람이 결정**한다. 선언 티어와 실측 티어를 게이트 2 요약에 나란히 적는다.
 
-**"새 작업 시작" / 활성 작업 없음** → A-1로 진행.
+## 티어별 절차 (이 표가 정본)
 
-#### A-1. 신규 입력 분석
+| | **T0 즉시** | **T1 경량** | **T2 표준** | **T3 중량** |
+|---|---|---|---|---|
+| 대표 표면 | `DOC` `STYLE_COPY` | `FE_SRC` `HARNESS` `TEST` `SHELL` | `SEC_*` `API` `BE_MAIN` `DEPS` `GUARD_CI` | `MIGRATION` `SHARED_KERNEL` `TOPOLOGY` |
+| 사전 계획 · `docs/plans` | 없음 · **0파일** | 없음(1줄 요약은 게이트 2 요약에) · **0파일** | 변경 계획→승인 · **1파일**(spec 흡수) | 설계 문서(ADR)→승인 · spec+plan(+ADR) |
+| 영향 범위 제시 | — | — | 필수 | 필수 |
+| 테스트 | lint+타입체크 · 시각 변경이면 눈확인 1회(덮는 E2E 로 대체 가능 · 4화면은 `visual` 잡이 면제) | 재현 테스트 1개 먼저 | 정식 TDD red-first + 이벤트 계약 | 정식 TDD + 마이그레이션 검증(`DATA.md` 정본) |
+| 독립 리뷰 종수 | **1종**(하한) | 1종 | 2종 | 2종 + ceo |
+| 보안 렌즈 | — | — | 보안 표면 포함 시 생략 불가 | 생략 불가 |
+| 도는 단계 | [1] 축약 · **[5] 인라인** · [6] · [7] | 〃 | [1]~[7] 전량 | [1]~[7] 전량 + ADR |
+| 게이트 · 목표 호출/정지 | 2만 · 3/1 | 2만 · 3/1 | 1+2 · 7/2 | 1+2 · 7/2 |
 
-| 입력 형태 | 처리 |
-|---|---|
-| **빈 입력** | `gh pr list --state open` 후 "어떤 PR 이어서 작업?" |
-| **모호한 입력** (30자 미만 + 동사만) | AskUserQuestion으로 3 옵션 제시 |
-| **구체적 입력** | 그대로 진행 |
+- **T0/T1 의 「[5] 인라인」** — `bts-impl` 을 호출하지 않고 이 컨트롤러가 직접 편집한다. 규율은 위 표의 「테스트」 행 그대로. 호출 3회(=[1]·[6]·[7])가 이 티어의 목표치다.
+- **독립 리뷰는 인라인하지 않는다.** `bts-codereview` 는 전 티어 호출이다 — 자기 구현을 자기가 리뷰하면 「독립」이 아니고, T0 의 1종은 하한이라 0종으로 내려갈 자리가 없다.
+- **`bts-start` 와 `bts-merge` 도 전 티어 호출**한다. 두 스킬 본문에 사고 방어 절차와 내용 계약이 걸려 있어 축약·복사가 곧 회귀다.
+- CI 범위는 변경 경로가 정한다 — `.github/workflows/` 의 `paths` 가 정본이고 이 표는 그것을 재기술하지 않는다.
 
-### Phase B. 선행 읽기 (필수)
+## 게이트
 
-다음 2개 Obsidian 노트를 Read tool로 로드.
+| 게이트 | 대상 | 응답 분기 |
+|---|---|---|
+| 🛑 1 (plan 산출물 요약) | T2/T3 | `승인`→[5] 호출 / `수정 요청`→어느 섹션인지 물어 [2] [3] 중 재호출 후 재진입 / `중단`→worktree·draft PR 유지 |
+| 🛑 2 (PR diff + 리뷰 결과) | **전 티어** | `승인`→[7] 호출 / `수정 후 재리뷰`→concerns 첨부해 [5] 재호출→[6] 재호출 / `보류`→A-0 복원 경로로 재진입 |
 
-- `/Users/maxi.moff/Maxi_wiki/BTS/_index.md`
-- `/Users/maxi.moff/Maxi_wiki/BTS/history.md` (마지막 50줄)
+게이트 2 요약에는 **선언 티어 · 실측 티어 · `UNMAPPED` 줄 · 건너뛴 단계**를 반드시 싣는다. 우회 사실을 Maxi 가 보고 승인하게 하는 것이 이 요약의 목적이다.
 
-**`learnings.md` 전량 Read 금지** (98KB — 전량 로드가 워크플로우당 수만 토큰을 태우는
-단일 최대 낭비였다). 대신 2단 라우팅.
+## 선행 읽기
 
-```bash
-grep -n '^### ' /Users/maxi.moff/Maxi_wiki/BTS/learnings.md   # 헤딩 인덱스만 (수십 줄)
-```
+- `/Users/maxi.moff/Maxi_wiki/BTS/_index.md` · 같은 폴더 `history.md` 마지막 50줄을 Read.
+- **`learnings.md` 전량 Read 금지.** `grep -n '^### '` 로 헤딩 인덱스만 뽑아 이번 작업 키워드·BC·타입 관련 항목 + 최근 5건만 부분 Read 한다. 여기서 고른 발췌가 체인 전체(및 `bts-codereview` 주입)의 learnings 컨텍스트다.
 
-1. 헤딩 인덱스에서 **이번 작업의 키워드·BC·타입과 관련된 항목 + 최근 5건**을 고른다
-2. 고른 항목만 Read(offset/limit)로 부분 로드한다 — 이것이 체인 전체의 learnings 컨텍스트
-   기준이고, `/bts-codereview`의 발췌 주입도 여기서 고른 항목을 재사용한다
+## 진행 출력
 
-### Phase C. 단계 체이닝 (호출 책임 = bts 컨트롤러)
-
-**bts 컨트롤러는 각 단계 응답을 받은 후 명시적으로 다음 `Skill()`을 호출.** "다음 단계가 자동으로 호출된 셈" 가정 금지 — 명시적 호출 없으면 진행 안 함.
-
-1. `Skill({skill: "bts-start"})` → classify 결과를 `.bts-cache/classify.json` 저장
-2. `Skill({skill: "bts-domain"})` (fast-track 시 스킵)
-3. `Skill({skill: "bts-spec"})` (fast-track 시 스킵)
-4. `Skill({skill: "bts-plan"})`
-5. `Skill({skill: "bts-review-plan"})` (fast-track 시 스킵)
-
-**Fast-track 게이트 정책 (`type ∈ {bugfix, chore}`)** — [5]가 스킵되면 **게이트 1도 함께 생략**한다.
-곧장 `bts-impl` → `bts-codereview` → 게이트 2로 진행한다. 대신 게이트 2 요약에
-"스킵된 단계([2]/[3]/[5] + 게이트 1)" 목록을 명시해 Maxi가 우회 사실을 보고 승인하게 한다.
-
-**ui 소규모 게이트 정책 (Maxi 확정 2026-08-03)** — `type == ui` 이고 **plan task ≤3 + 신규
-도메인 개념 없음**이면 [5] plan-design-review 는 실행하되(자동 리뷰 유지, BLOCKER 는 여전히
-정지) **게이트 1 의 사용자 정지만 생략**하고 곧장 `bts-impl` 로 진행한다. 그 외 ui(신규 화면 /
-task 4+)는 2게이트 유지.
-
-**머지 전 정지(게이트 2)는 어떤 타입도 생략하지 않는다.**
-
-#### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`, fast-track은 생략)
-
-응답 분기 — bts 컨트롤러가 직접 처리.
-
-| 응답 | bts 컨트롤러 동작 |
-|---|---|
-| `승인` | 즉시 `Skill({skill: "bts-impl"})` 호출 → 응답 후 `Skill({skill: "bts-codereview"})` 호출 |
-| `수정 요청` | "어느 섹션?" `AskUserQuestion` → 해당 단계 (`bts-plan` / `bts-spec` / `bts-domain`) 재호출 → 게이트 1 재진입 |
-| `중단` | 워크플로우 종료. worktree + draft PR 유지 (재진입 가능) |
-
-#### 🛑 게이트 2 (PR diff + 리뷰 결과 요약 → `AskUserQuestion`)
-
-| 응답 | bts 컨트롤러 동작 |
-|---|---|
-| `승인` | `Skill({skill: "bts-merge"})` 호출 (verify → merge → worktree 정리 → dashboard → Obsidian sync) |
-| `수정 후 재리뷰` | concerns 첨부해 `Skill({skill: "bts-impl"})` 재호출 → `bts-codereview` 재호출 → 게이트 2 재진입 |
-| `보류` | 워크플로우 일시 중단. draft PR + worktree 유지 (다음 `/bts` 호출 시 Phase A-0 복원 경로로 재진입) |
-
-### Phase D. 진행 상황 출력
-
-각 자동 단계마다 1줄 출력 (사용자가 black box 느낌 방지).
-
-```
-🔄 [1/8] 분류 중... → type=feature, agent=backend-engineer, tasks=4 (cached)
-🔄 [2/8] 도메인 정리 중... → glossary 신규 용어 0건, ADR 0건
-🔄 [3/8] 스펙 작성 중 (Phase A office-hours)...
-🔄 [3/8] 스펙 검증 중 (Phase B brainstorming)...
-...
-```
+각 단계마다 1줄 출력해 black box 를 피한다(`🔄 [1/7] 분류 중… → type=feature, tier=T2, tasks=4`).
+**보고는 글로벌 §Explanation Style 계층형 3블록**(`✅ 한 줄` → `💡 의미` → `🔧 기술 상세`)으로 낸다. T0/T1 은 축약형 — `✅` 1줄 + `💡` 1줄 + `🔧` 에 바꾼 파일·확인 방법 각 1줄. T2/T3 은 `🔧` 하위 4구성 필수.
 
 ## 실패 / 엣지 케이스
 
-- **worktree 충돌**. 동일 slug가 이미 있으면 `-2` 접미사 자동
-- **plan-* 리뷰 BLOCKER**. 중단 후 사용자에게 수정안 제시. 승인 후 리뷰 재실행
-- **TDD 강제 위반**. spec-compliance-verifier가 BLOCKER 반환 → implementer 재dispatch
-- **머지 충돌**. 머지 전 `git pull --rebase origin main` 자동, 충돌 시 사용자 개입
+- **worktree 충돌**. 동일 slug 가 이미 있으면 `-2` 접미사 자동
+- **plan 리뷰 BLOCKER**. 중단 후 수정안 제시, 승인 후 리뷰 재실행
+- **verifier BLOCKER**. implementer 재dispatch. **3회 실패하면 중단**하고 Maxi 에게 보고 — T0/T1 에서 3회에 도달하면 보고에 「티어 재판정 제안」을 포함한다
+- **머지 충돌**. `git pull --rebase origin main` 자동, 충돌 시 Maxi 개입
 
 ## 관련 스킬
 
-- 전체 참조 맵. [docs/rules/workflow-map.md](../../../docs/rules/workflow-map.md)
-- 각 단계. [bts-start](../bts-start/SKILL.md), [bts-domain](../bts-domain/SKILL.md), [bts-spec](../bts-spec/SKILL.md), [bts-plan](../bts-plan/SKILL.md), [bts-review-plan](../bts-review-plan/SKILL.md), [bts-impl](../bts-impl/SKILL.md), [bts-codereview](../bts-codereview/SKILL.md), [bts-merge](../bts-merge/SKILL.md)
+[bts-start](../bts-start/SKILL.md) · [bts-spec](../bts-spec/SKILL.md) · [bts-plan](../bts-plan/SKILL.md) · [bts-review-plan](../bts-review-plan/SKILL.md) · [bts-impl](../bts-impl/SKILL.md) · [bts-codereview](../bts-codereview/SKILL.md) · [bts-merge](../bts-merge/SKILL.md)
