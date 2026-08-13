@@ -133,20 +133,22 @@ Claude Code가 **매 세션 시작 시 자동 로드**하는 파일. 프로젝�
 
 ## 22.4 Skills 카탈로그
 
-Atlas 도메인에 특화된 Skills 6종. Claude Code가 관련 작업 시 자동 로드.
+프로젝트 Skills 는 `.claude/skills/` 에 있고 각 디렉터리의 `SKILL.md` 가 정본이다.
+Claude Code 가 frontmatter `description` 의 조건에 맞을 때 자동 로드한다.
 
 ### 22.4.1 Skills 목록
 
-| Skill 이름 | 트리거 조건 | 주요 내용 |
-|---|---|---|
-| `atlas-backend-feature` | 백엔드 기능 추가/수정 | 모듈 구조, 패키지 규칙, 표준 패턴 |
-| `atlas-frontend-component` | UI 컴포넌트 작성 | shadcn/ui 규칙, 컴포넌트 패턴, 스타일링 |
-| `atlas-workflow-engine` | 워크플로우 엔진 작업 | FSM 구현, 전이 검증, YAML 정의 |
-| `atlas-aql-parser` | AQL 검색 작업 | ANTLR 4 사용, PostgreSQL 변환, 테스트 케이스 |
-| `atlas-testing` | 테스트 작성 | 단위/통합/E2E 패턴, Testcontainers, Playwright |
-| `atlas-migration` | DB 마이그레이션 / 데이터 이전 | Flyway 규칙, Jira Import 패턴 |
+**정본은 파일 트리다.** 이 챕터에 이름 사본 표를 두지 않는다 — 두 목록은 서로를 검사하지 않고,
+도메인별 스킬(`atlas-*` 6종)은 실제로 만들어진 적이 없다. 실현된 형태는 **워크플로우 체인**이다.
 
-각 Skill의 전체 내용은 `.claude/skills/{name}/SKILL.md` 참조.
+| 구분 | 위치 | 성격 |
+|---|---|---|
+| 진입점 | `.claude/skills/bts/SKILL.md` | 자연어 요청 → 티어 판정 → 단계 라우팅 |
+| 단계 스킬 | `.claude/skills/bts-*/SKILL.md` | start · spec · plan · review-plan · impl · codereview · merge |
+| 리뷰 계약 | `.claude/skills/review/` | 전역 `review` 스킬이 되읽는 프로젝트 체크리스트 (`SKILL.md` 없음) |
+| sub-agent | `.claude/agents/*.md` | 도메인 실행자 + 리뷰 전용 `code-reviewer` |
+
+어느 단계가 어느 티어에서 도는지는 `CLAUDE.md §작업 티어` · 강제 여부는 `docs/rules/behavior-rules.md`.
 
 ### 22.4.2 Skill 작성 원칙
 
@@ -160,16 +162,11 @@ Atlas 도메인에 특화된 Skills 6종. Claude Code가 관련 작업 시 자�
 
 ## 22.5 Slash 명령어 카탈로그
 
-반복 작업을 압축하기 위한 Slash 명령어. `.claude/commands/{name}.md`에 정의.
+**`.claude/commands/` 는 존재하지 않는다.** 위 4종(`/new-feature` 등)은 도입되지 않았고,
+그 역할은 Skills 가 흡수했다 — 사용자가 직접 치는 것은 **`/bts <자연어>` 하나**이고
+나머지 `bts-*` 는 체인이 호출한다(직접 호출 금지).
 
-| 명령어 | 용도 |
-|---|---|
-| `/new-feature <이름>` | 신규 기능 모듈 스캐폴딩 (백엔드 + 프론트엔드 + 테스트) |
-| `/review-changes` | 현재 PR/staged 변경사항을 Atlas 규칙 기준으로 검토 |
-| `/debug-issue <설명>` | 로그/에러를 받아 원인 분석 + 수정 제안 |
-| `/update-changelog` | 최근 커밋을 분석하여 CHANGELOG.md 업데이트 |
-
-각 명령어의 전체 정의는 `.claude/commands/{name}.md` 참조.
+전역 `~/.claude/skills/` 의 도구 스킬은 저장소 밖 자산이라 이 챕터의 범위가 아니다.
 
 ## 22.6 Phase 0 PoC를 Claude Code 환경에 맞춤 재정의
 

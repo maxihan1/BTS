@@ -25,7 +25,6 @@ Pre-Landing Review: N issues (X critical, Y informational)
 1. **PRE_EXISTING 판별** — 위반을 지적하기 전에 `git show origin/main:<file>`로 main에 이미 있던 코드인지 대조. PRE_EXISTING이면 출력에 표기만 하고 이 PR을 차단하지 않는다 (hot-fix 혼입 금지). 단, **diff가 해당 라인을 직접 변경했다면 PRE_EXISTING이 아니다** — 정상 지적 대상.
 2. **정적 분석 실검증** (Kotlin diff가 있을 때만) — detekt는 빌드 캐시가 위반을 가리므로 `./gradlew detekt --rerun-tasks`로만 신뢰. 모듈 전체 `ktlintFormat` 실행 절대 금지 (의도 안 한 부수 변경 + 캐시 오염) — `ktlintCheck` 계열만.
 3. **잔여물 전수 확인** — `git status --porcelain`으로 미커밋 산출물·스크래치 파일 잔여 확인 (worktree 산출물 소실 사고 이력).
-4. **FR/plan 정합** — diff에 FR 카운트·plan 파일 변경이 포함되면 `bash scripts/verify-master-plan.sh` 결과(exit 0) 확인.
 
 ## Pass 1 — CRITICAL
 

@@ -105,3 +105,38 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test (vitest unit + msw)
         run: pnpm --filter @bts/web test
+
+  # ── 시각 회귀 스냅샷 (파일럿) ────────────────────────────────────────────────
+  #
+  # 무엇. 4화면(이슈 목록·이슈 상세·백로그·이슈 생성 다이얼로그)을 라이트/다크로 찍어
+  # 커밋된 baseline PNG 와 대조한다. 유닛 테스트가 못 보는 층 — 여백·색·정렬이 조용히
+  # 어긋나는 회귀를 사람의 눈확인 대신 기계가 본다.
+  #
+  # ★`continue-on-error: true` 는 **파일럿 기간 한정**이다. 무변경 상태에서 연속 20회 돌려
+  #   diff 0회면 이 줄을 지우고 차단으로 승격한다(1회면 보류·재측정, 2회 이상이면 미채택).
+  #   지금 차단으로 켜면 flaky 한 번에 전 PR 이 막히고, 그러면 임계를 원인 규명 없이 풀게 된다 —
+  #   그것이 이 저장소의 가짜초록 양식이다. **승격 판정 없이 이 줄만 지우지 말 것.**
+  #
+  # ★`needs: [runner-health, test]` — test 잡 뒤에 세운다. 러너가 1대라 브라우저를 띄우는
+  #   이 잡과 vitest 전체 스위트가 겹치면 둘 다 메모리 경합으로 느려진다(전 스위트 균등
+  #   2배 사고와 같은 축). 병렬 이득은 어차피 러너 1대에서 0 이다.
+  #
+  # ★baseline 갱신은 `apps/web/src/**` 변경을 동반할 때만 허용한다. PNG 만 바꾸는 커밋은
+  #   「원인 미상인데 초록으로 만들기」다 — 판별식 snapshot-baseline-guard 가 차단한다.
+  # ── 시각 회귀(visual) 잡은 아직 여기 없다 ────────────────────────────────────
+  #
+  # 2026-08-13 PR #380 에서 한 번 신설해 실행했고, **백엔드 부재로 죽었다**
+  # (`[vite] ws proxy error: AggregateError [ECONNREFUSED]`). 원인은 스냅샷이 아니라
+  # 전제다 — 이 저장소의 CI 는 **Playwright 를 한 번도 돌린 적이 없고**(main 기준
+  # `playwright|e2e` 언급 0건), 그래서 dev 서버가 프록시할 백엔드를 띄우는 배선도 없다.
+  #
+  # `continue-on-error: true` 라 차단은 안 했지만, 고칠 수 없는 빨간불을 매 PR 에 남기는 것은
+  # 이 저장소가 반복해서 당한 「공허한 가드」의 다른 얼굴이다. 그래서 잡을 들이지 않는다.
+  #
+  # 파일럿은 **로컬에서 시작한다** — `apps/web/e2e/visual/visual-regression.spec.ts` 는
+  # 그대로 있고 `--project=visual` 로 돈다. 기준 이미지 무단 갱신은 CI 에서
+  # `scripts/workflow/snapshot-baseline-guard.test.ts` 가 계속 막는다(백엔드 무관).
+  #
+  # CI 편입의 선행 조건 — ① 백엔드 기동(docker-compose + app) 또는 MSW 로 API 전량 목킹
+  # ② 그 위에서 기준 이미지 생성 ③ 20회 무변경 실행으로 flaky 율 측정. 셋이 끝나기 전에
+  # 잡을 되살리면 같은 빨간불이 반복된다. 상세는 `.claude/MIGRATION.md`.

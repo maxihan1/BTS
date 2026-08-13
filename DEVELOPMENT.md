@@ -25,7 +25,7 @@
 
 7. **`DELETE`는 항상 `WHERE` + 소프트 삭제 우선.** 하드 삭제는 ADR 필수.
 8. **PostgreSQL 마이그레이션은 Flyway만.** 수동 ALTER TABLE 금지.
-9. **트랜잭션 경계 명시.** `@Transactional` 누락 시 코드리뷰 BLOCKER.
+9. **트랜잭션 경계 명시.** `@Transactional` 누락 시 코드리뷰 BLOCKER. **기계 검출은 없다** — Detekt 커스텀 룰은 미구현이므로 사람이 본다.
 10. **이슈 키(`PROJ-123`)는 영구 보존.** 이동/삭제 시 `IssueKeyRedirect`로 옛 키 유지.
 
 자세히. `DATA.md`.
@@ -35,9 +35,10 @@
 11. **`any` 타입 금지** (TypeScript). 모르면 `unknown`.
 12. **`!!` null assertion 금지** (Kotlin/TS). 명시적 null 체크.
 13. **빈 catch 블록 금지.** 최소한 로그.
-14. **테스트 없는 새 기능 커밋 금지.** TDD red→green→refactor 강제 (`/bts-impl`).
+14. **테스트 없는 새 기능 커밋 금지 — 강도는 티어별.** T2·T3 는 정식 TDD red→green→refactor (`test:` 커밋이 `feat:` 보다 먼저 · CI 판별식이 대조) · T1 은 재현 테스트 1개 먼저 · T0 는 lint+타입체크(시각 변경이면 눈확인 1회). **ui 시각 변경은 red-first 면제** — 시각 검증 트랙(덮는 E2E 동반 실행 + 브라우저 눈확인)으로 대신한다. 티어 정의. `CLAUDE.md §작업 티어`.
+    - 머지된 초록 테스트를 사후에 끄는 것(`skip` · `only` · `@Disabled`)은 금지. 파일럿에서 채택되지 않은 spec 을 **애초에 작성하지 않는 것**은 여기 해당하지 않는다. 배치·강제 여부. `docs/rules/behavior-rules.md`
 15. **`console.log` / `println` 디버깅 코드 커밋 금지.** Pino/Logback 사용.
-16. **PoC / 프로토타입 / 임시 코드 금지.** 모든 작업은 완제품(production) 기준으로 작성한다. Phase 0 / Phase 1 단계 표기는 도입 시점 표시일 뿐, 작업 품질 수준이 아니다. "일단 동작만" / "나중에 리팩토링" 금지. Maxi가 "PoC 수준으로"라고 명시한 경우에만 예외. 자세히. `CLAUDE.md §작업 기준 — 완제품`.
+16. **PoC / 프로토타입 / 임시 코드 금지.** 모든 작업은 완제품(production) 기준으로 작성한다. Phase 0 / Phase 1 단계 표기는 도입 시점 표시일 뿐, 작업 품질 수준이 아니다. "일단 동작만" / "나중에 리팩토링" 금지. Maxi가 "PoC 수준으로"라고 명시한 경우에만 예외. 새 코드·문서·스킬에 PoC·prototype 같은 단어를 쓰지 않는다 (에이전트가 품질 기준으로 오인한다).
 
 ### §1.4 외부 의존성 (3개)
 
@@ -146,7 +147,7 @@ refactor: <slug> — <정리 요약>
 |---|---|---|
 | Kotlin 빌드 | Gradle (`./gradlew`) | Kotlin DSL |
 | 백엔드 린트 | ktlint | 빌드 통합 |
-| 백엔드 정적 분석 | Detekt | 커스텀 룰 (트랜잭션 누락 검출) |
+| 백엔드 정적 분석 | Detekt | 기본 룰셋 (트랜잭션 누락 검출 커스텀 룰은 **미구현**) |
 | 프론트 패키지 | pnpm (모노레포) | npm/yarn 금지 |
 | 프론트 빌드 | Vite | |
 | 프론트 린트 | ESLint + Prettier | |

@@ -45,7 +45,10 @@ const INPUTS = {
   webPackageJson: { file: 'apps/web/package.json', coveredBy: 'apps/web/package.json' },
   appYml: {
     file: 'backend/modules/app/src/main/resources/application.yml',
-    coveredBy: 'backend/**',
+    // 2026-08-13. 트리거가 `backend/**` 에서 이 파일 1개로 좁혀졌다 — 이 판별식이 backend 아래에서
+    // 읽는 것은 이 파일뿐인데, 러너 1대에 backend PR 마다 판별식 잡이 함께 서서 대기를 늘렸다.
+    // 짝 선언을 여기서 같이 좁히지 않으면 「엉뚱한 경로를 요구하며 통과」가 된다.
+    coveredBy: 'backend/modules/app/src/main/resources/application.yml',
   },
   // 판별식 자신. 런타임에 읽지는 않지만, 이 파일을 고치는 PR 에서도 CI 가 돌아야 한다.
   self: {

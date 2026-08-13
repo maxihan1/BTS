@@ -24,4 +24,4 @@
 |---|---|
 | 구현 (backend·frontend·security·db) | STATUS + **RED/GREEN 각 commit hash 인용**, REFACTOR는 있으면 함께 (controller가 git log와 대조). 단, plan 이 ui 시각 검증 트랙을 지정한 task 는 bts-impl §타입별 규율의 ui 행 보고 형식을 따른다 |
 | qa | STATUS(ADDED/SKIPPED 포함) + 추가/수정한 spec 파일 경로와 `test:` commit hash 인용 (구현 커밋이 없으므로 RED/GREEN/REFACTOR 3종 hash 는 비대상) |
-| designer | STATUS + 산출물 경로 나열 (`docs/design/` · `apps/web/public/mockups/` · `DESIGN.md` 패치). 산출물 외 파일은 만들지 않는다 |
+| frontend (새 UI 스펙 모드) | 위 구현 형식에 더해 산출물 경로 나열 (`docs/design/` · `apps/web/public/mockups/` · `DESIGN.md` 패치). 규율은 `.claude/agents/frontend-engineer.md` §새 UI 스펙 모드 |

@@ -2,12 +2,14 @@
 // /bts-start가 호출, 결과를 .bts-cache/classify.json에 저장해 후속 스킬이 재사용.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { DEFAULT_TIER, TIER_ORDER } from './detect-tier.ts';
 import type {
   TaskType,
   AgentName,
   BoundedContext,
   ClassifyResult,
   ClassifyInput,
+  Tier,
 } from './types.ts';
 
 // ─────────────────────────────────────────────────────────
@@ -322,9 +324,10 @@ const detectAgent = (type: TaskType): AgentName => {
     case 'migration':
       return 'db-engineer';
     case 'ui':
-      return 'frontend-engineer';
+    // design 은 별도 에이전트가 아니다 — 새 UI 는 디자인 스펙 작성부터 TSX 구현까지
+    // frontend-engineer 가 이어서 한다. 스펙만 쓰고 끊으면 넘기는 왕복이 그대로 비용이 됐다.
     case 'design':
-      return 'designer';
+      return 'frontend-engineer';
     case 'qa':
       return 'qa-engineer';
     case 'backend':
@@ -376,12 +379,16 @@ export const classify = (input: ClassifyInput): ClassifyResult => {
   const agent = detectAgent(type);
   const primary_bc = detectBoundedContext(title, type);
   const slug = toSlug(title);
+  // 착수 시점엔 diff 가 없어 표면으로 티어를 잴 수 없다. 기본 T1 이고 사용자 지정이 우선한다
+  // (판정 규칙 ②). 실측 티어는 머지 전에 detect-tier.ts 가 변경 경로에서 따로 낸다.
+  const tier = input.tier ?? DEFAULT_TIER;
 
   return {
     title,
     slug,
     type,
     agent,
+    tier,
     primary_bc,
     task_count: 0,
     cached_at: new Date().toISOString(),
@@ -417,37 +424,48 @@ const writeCache = (result: ClassifyResult): void => {
 // CLI 진입점
 // ─────────────────────────────────────────────────────────
 
-const parseArgs = (argv: string[]): { title: string; useCache: boolean } => {
+const parseArgs = (argv: string[]): { title: string; useCache: boolean; tier: Tier | undefined } => {
   let title = '';
   let useCache = false;
+  let tier: Tier | undefined;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--title' && i + 1 < argv.length) {
       title = argv[i + 1]!;
       i++;
     } else if (argv[i] === '--cache') {
       useCache = true;
+    } else if (argv[i] === '--tier' && i + 1 < argv.length) {
+      const value = argv[i + 1]!;
+      if (!(TIER_ORDER as readonly string[]).includes(value)) {
+        console.error(`--tier 값이 티어가 아니다: ${value} (T0|T1|T2|T3)`);
+        process.exit(2);
+      }
+      tier = value as Tier;
+      i++;
     }
   }
-  return { title, useCache };
+  return { title, useCache, tier };
 };
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
-  const { title, useCache } = parseArgs(process.argv.slice(2));
+  const { title, useCache, tier } = parseArgs(process.argv.slice(2));
   if (!title) {
-    console.error('Usage: classify-task.ts --title "<자연어 입력>" [--cache]');
+    console.error('Usage: classify-task.ts --title "<자연어 입력>" [--cache] [--tier T0|T1|T2|T3]');
     process.exit(2);
   }
 
   if (useCache) {
     const cached = readCache();
-    if (cached && cached.title === title) {
+    // 티어를 새로 지정했으면 캐시를 재사용하지 않는다 — 지정값이 조용히 무시되면
+    // 사용자 지정 우선(판정 규칙 ②)이 깨진다.
+    if (cached && cached.title === title && (tier === undefined || cached.tier === tier)) {
       console.log(JSON.stringify(cached, null, 2));
       process.exit(0);
     }
   }
 
-  const result = classify({ title });
+  const result = classify({ title, tier });
   if (useCache) writeCache(result);
   console.log(JSON.stringify(result, null, 2));
 }

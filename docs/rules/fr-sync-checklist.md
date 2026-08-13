@@ -17,7 +17,10 @@
    파일 L1 주석 · `소속 FR. N개` · BC 완료 게이트 `(FR-XX N개)`
 4. `docs/plan/README.md` — §1 BC 테이블 행(FR 수 **및 진척 열**) · 합계 ·
    **본문 산문의 `N FR` 표기 전수**(`grep -nE '[0-9]{2,} FR' docs/plan/README.md`)
-5. `CLAUDE.md` — FR 총수 등 카운트/상태 표기
+5. `CLAUDE.md` — §제품·도메인 의 FR 총수 표기. **정확히 1회**여야 한다 — 지우면 룰 E 가
+   실패가 아니라 조용히 통과하고(비-공허 하한이 그것을 잡는다), 2자리+ `N FR` 형태를
+   하나 더 쓰면 그 값도 대조 대상이 되어 오탐 EXIT 4 가 난다.
+   `CLAUDE.md` 의 **절 구성을 바꾸는 변경은 이 체크리스트와 같은 PR** 에서 처리한다.
 6. ADR(`docs/decisions/` 또는 `docs/adr/`) · plan(`docs/plans/`) ·
    `docs/progress.html`(`node scripts/build-dashboard.mjs` 재생성)
 7. Obsidian `Maxi_wiki/BTS/` — history · glossary · domain/<bc> · decisions·plans 미러
@@ -41,4 +44,5 @@
 ## 관련
 
 - 문서 인덱스 재생성·판별식. [`docs/rules/doc-index.md`](doc-index.md)
-- 명령어·디렉토리 구조. [`docs/rules/commands.md`](commands.md)
+- 표면 표 · 행동 규칙 배치표. [`docs/rules/behavior-rules.md`](behavior-rules.md)
+- 명령어·코드 지도. `CLAUDE.md` 본문
