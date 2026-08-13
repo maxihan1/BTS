@@ -130,6 +130,11 @@ jobs:
         id: pick
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # ★ADR D2 — 위험이 큰 작업은 **파일 경로에 신호가 없는 유일한 조건**이라 사람이
+          #   라벨(`ci:full`)로 말한다. `toJSON` 이 JSON 배열 문자열을 만들고 선별기가 그것을 읽는다.
+          #   push 이벤트에는 `pull_request` 컨텍스트가 없으므로 빈 배열이 된다 — 라벨 부재는
+          #   **정상 상태**이고 선별기는 그때 넓히지 않는다(모든 PR 이 전 모듈을 돌면 무의미해진다).
+          BTS_CI_PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           # ★diff 가 실패하면 목록을 **비운다.** 선별기는 빈 목록을 「판정 불가」로 읽고
           #   전 모듈을 돌려준다 — 모르는 상태에서 좁히지 않는다는 계약이 여기서 성립한다.

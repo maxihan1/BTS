@@ -65,6 +65,24 @@ const WIDEN_PREFIXES = [
   'scripts/workflow/select-backend-modules.ts',
 ]
 
+/**
+ * 마이그레이션 파일. **모듈 역산보다 앞서** 판정해 전 모듈로 넓힌다.
+ *
+ * ★왜 모듈 안에 있는데도 넓히나. 마이그레이션 번호 대역이 여러 컨텍스트에 걸쳐 있어
+ * **모듈 의존 그래프로는 영향 범위를 원리적으로 계산할 수 없다**(ADR D2). 그래프가 답을 못 주는
+ * 축이므로 넓히는 것이 유일한 정답이다.
+ *
+ * ★그래서 `WIDEN_PREFIXES` 가 아니라 별도 판정이다. 실제 경로는
+ * `backend/modules/<bc>/src/main/resources/db/migration/<bc>/V500__x.sql` 로 **모듈 안**이고,
+ * `moduleOf()` 가 먼저 돌면 그 모듈로 귀속돼 좁혀진다. 순서가 이 규칙의 전부다.
+ *
+ * ★디렉터리 이름으로 잡고 모듈 경로를 다시 적지 않는다 — 모듈이 개명돼도 살아남는다.
+ */
+const MIGRATION_MARKER = '/db/migration/'
+
+/** 이 라벨이 PR 에 붙으면 무조건 전 모듈. 위험이 큰 작업은 **경로에 신호가 없는 유일한 조건**이다(ADR D2). */
+const FULL_CI_LABEL = 'ci:full'
+
 /** Gradle 의 모듈 참조. 이 형태만 잡고, 못 잡은 것은 `modulesWithUnparsedRefs()` 가 센다. */
 const MODULE_REF = /project\("\:modules\:([\w-]+)"\)/g
 
@@ -179,13 +197,27 @@ function moduleOf(file: string): string | null {
  * 빨간불이 아니라 부재라 아무도 눈치채지 못한 채 초록으로 머지된다. 장부(매핑 31)가 착수
  * 조건으로 못박은 위험이 정확히 그것이다.
  */
-export function selectModules(changedFiles: string[]): Selection {
+export function selectModules(changedFiles: string[], labels: string[] = []): Selection {
   const universe = allModules()
   const wide = (reason: string): Selection => ({ modules: universe, all: true, reason })
+
+  // ★라벨을 **가장 먼저** 본다. 사람이 「전부 돌려라」라고 말한 것이므로 어떤 자동 판정보다 세다.
+  //   정확 일치만 넓힌다 — 부분 일치로 짜면 `ci:fullish` 같은 것이 조용히 전 모듈을 끌고 온다.
+  if (labels.some((l) => l.trim() === FULL_CI_LABEL)) {
+    return wide(`PR 라벨 \`${FULL_CI_LABEL}\` — 사람이 전 모듈을 지시했다`)
+  }
 
   const files = changedFiles.filter((f) => f.trim() !== '')
   if (files.length === 0) {
     return wide('변경 파일 목록이 비었다 — 판정 불가라 전 모듈을 돈다')
+  }
+
+  // ★★마이그레이션은 **모듈 역산보다 앞서** 판정한다(ADR D2). 실제 경로가 모듈 안이라
+  //   `moduleOf()` 가 먼저 돌면 그 모듈로 귀속돼 **좁혀진다** — 스키마 영향은 그래프로 계산할 수
+  //   없는 축이므로 그 좁힘은 「검증 안 된 코드가 초록으로 머지된다」 방향이다.
+  const migration = files.find((f) => f.includes(MIGRATION_MARKER))
+  if (migration !== undefined) {
+    return wide(`마이그레이션 변경이 있다 (${migration}) — 스키마 영향은 모듈 그래프로 계산할 수 없다`)
   }
 
   // ★그래프를 다 못 읽었으면 좁히지 않는다. 사라진 간선은 「의존이 없다」와 구분되지 않고,
@@ -259,9 +291,29 @@ export function selectModules(changedFiles: string[]): Selection {
   }
 }
 
+/**
+ * 환경변수에서 PR 라벨을 읽는다. `BTS_CI_PR_LABELS` 는 GitHub 이 준 **JSON 배열 문자열**이다.
+ *
+ * ★못 읽어도 넓히지 않는다. 라벨 부재는 **정상 상태**이고(대부분의 PR 에 `ci:full` 이 없다),
+ * 여기서 넓히면 모든 PR 이 전 모듈을 돌아 이 선별기 자체가 무의미해진다. 변경 파일 획득 실패와
+ * 성격이 다르다 — 그쪽은 「알아야 할 것을 못 얻은 것」이고 이쪽은 「없는 것이 기본」이다.
+ */
+function labelsFromEnv(): string[] {
+  const raw = process.env.BTS_CI_PR_LABELS
+  if (raw === undefined || raw.trim() === '') return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((l): l is string => typeof l === 'string') : []
+  } catch {
+    // 형태가 깨졌으면 라벨이 없는 것으로 본다(위 주석). 다만 조용히 넘기지는 않는다.
+    process.stderr.write(`선별. ⚠️ BTS_CI_PR_LABELS 를 JSON 배열로 읽지 못했다 — 라벨 없음으로 진행한다.\n`)
+    return []
+  }
+}
+
 // CLI — 인자로 받은 변경 파일에서 매트릭스용 JSON 배열을 낸다.
 if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
-  const picked = selectModules(process.argv.slice(2))
+  const picked = selectModules(process.argv.slice(2), labelsFromEnv())
   process.stderr.write(`선별. ${picked.modules.length}/${allModules().length} 모듈 — ${picked.reason}\n`)
   process.stdout.write(JSON.stringify(picked.modules))
 }
