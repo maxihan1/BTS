@@ -446,6 +446,111 @@ describe('backend-ci 모듈 선별', () => {
     )
   })
 
+  // ── ADR `2026-08-13-ci-domain-scoped-jobs.md` D2 — 전체를 돌려야 하는 경우 ──
+  //
+  // ★위 「모듈 밖 백엔드 변경은 전 모듈이다 (빌드 설정 · 마이그레이션)」이 **마이그레이션을
+  //   덮지 못하고 있었다.** 그 케이스가 쓴 `backend/db/migration/V999__x.sql` 은 **이 저장소에
+  //   존재하지 않는 형태**다 — 실제 마이그레이션은 전부 `backend/modules/<bc>/src/main/
+  //   resources/db/migration/<bc>/` 아래, 즉 **모듈 안**에 있다. 모듈 안 경로는 `moduleOf()` 가
+  //   그 모듈로 귀속시켜 **좁힌다.** 도달 불가 픽스처를 지키는 초록이었다
+  //   (`[[unreachable-state-fixture-is-fake-green]]`).
+
+  test('★★실재하는 마이그레이션 경로 형태가 이 저장소에 있다 (비-공허 짝)', () => {
+    // 아래 두 판정이 쓰는 경로가 가공이면 또 도달 불가를 지키게 된다. 실물로 고정한다.
+    const real = spawnSync(
+      'git',
+      ['ls-files', 'backend/modules/*/src/main/resources/db/migration/**'],
+      { cwd: REPO_ROOT, encoding: 'utf8' },
+    )
+    const files = real.stdout.split('\n').filter((f) => f.trim() !== '')
+    assert.ok(
+      files.length >= 50,
+      `모듈 **안** 마이그레이션을 ${files.length}개밖에 못 찾았다 — 경로 형태가 바뀌었다면 아래 판정도 함께 고쳐야 한다.`,
+    )
+    // 그리고 그것이 실제로 모듈에 귀속되는 경로인지(=좁힐 위험이 있는지) 확인한다.
+    assert.ok(
+      files[0].startsWith('backend/modules/'),
+      `마이그레이션이 모듈 밖에 있다면 이 판정 자체가 불필요하다 — ${files[0]}`,
+    )
+  })
+
+  test('★★모듈 **안** 마이그레이션이 바뀌면 전 모듈이다 (모듈 역산보다 앞서 판정)', () => {
+    // ADR D2. 마이그레이션 번호 대역은 여러 컨텍스트에 걸쳐 있어 **모듈 의존 그래프로는 영향
+    // 범위를 원리적으로 계산할 수 없다.** 그래프가 답을 못 주는 축이라 넓히는 것이 유일한 정답이다.
+    const picked = selectModules([
+      'backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V599__x.sql',
+    ])
+    assert.deepEqual(
+      picked.modules.sort(),
+      allModules().sort(),
+      `마이그레이션 변경이 한 모듈로 좁혀졌다 — 다른 컨텍스트의 스키마 영향이 검증 없이 통과한다.\n` +
+        JSON.stringify(picked),
+    )
+    assert.equal(picked.all, true)
+  })
+
+  test('★★마이그레이션이 다른 모듈 변경과 **섞여 있어도** 전 모듈이다', () => {
+    // ★단일 입력만 재면 이 분기를 못 잡는다 — 이 저장소가 뮤테이션 M2·M6·M8 로 세 번 겪은 양식.
+    //   씨앗이 **비지 않은** 상태에서 넓혀야 하는지를 재는 것이 이 케이스다.
+    const picked = selectModules([
+      'backend/modules/notification/src/main/kotlin/X.kt',
+      'backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V299__y.sql',
+    ])
+    assert.deepEqual(
+      picked.modules.sort(),
+      allModules().sort(),
+      `마이그레이션이 섞였는데 좁혔다 — 스키마 변경이 일부 모듈에서만 검증된다.\n` + JSON.stringify(picked),
+    )
+    assert.equal(picked.all, true)
+  })
+
+  test('★★PR 라벨 `ci:full` 이 붙으면 전 모듈이다', () => {
+    // ADR D2. 위험이 큰 작업은 **파일 경로에 신호가 없는 유일한 조건**이다 — 사람이 라벨로 말한다.
+    const picked = selectModules(['backend/modules/notification/src/main/kotlin/X.kt'], ['ci:full'])
+    assert.deepEqual(
+      picked.modules.sort(),
+      allModules().sort(),
+      `ci:full 라벨을 무시하고 좁혔다 — 사람이 「전부 돌려라」라고 말한 유일한 통로가 막힌다.\n` +
+        JSON.stringify(picked),
+    )
+    assert.equal(picked.all, true)
+  })
+
+  test('★★라벨이 없거나 다른 라벨이면 좁힘이 유지된다 (라벨 규칙이 전면 확대가 아님)', () => {
+    // 반대 방향. 이 판정이 없으면 「라벨 분기를 항상 참으로」 만드는 뮤테이션이 살아남는다 —
+    // 그러면 이 PR 이 줄이려던 것을 통째로 되돌리면서 위 판정은 초록이다.
+    const narrow = selectModules(['backend/modules/notification/src/main/kotlin/X.kt'])
+    assert.notDeepEqual(
+      narrow.modules.sort(),
+      allModules().sort(),
+      '라벨 없이도 전 모듈이 나왔다 — 좁히기가 작동하지 않는다.',
+    )
+    for (const labels of [[], ['bc:notification'], ['type:fix'], ['ci:fulll'], ['CI:FULL']]) {
+      const picked = selectModules(['backend/modules/notification/src/main/kotlin/X.kt'], labels)
+      assert.deepEqual(
+        picked.modules.sort(),
+        narrow.modules.sort(),
+        `라벨 ${JSON.stringify(labels)} 가 전 모듈로 넓혔다 — ci:full 정확 일치만 넓혀야 한다.`,
+      )
+    }
+  })
+
+  test('★★backend-ci 가 라벨을 선별기에 실제로 넘긴다 (배선)', () => {
+    // 라벨 분기가 코드에만 있고 워크플로우가 안 넘기면 **영원히 발화하지 않는다** —
+    // 단위 테스트는 초록이고 실전에서는 죽은 코드다. 두 목록이 서로를 안 보는 자리라 배선을 잰다.
+    const yml = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+    assert.match(
+      yml,
+      /BTS_CI_PR_LABELS/,
+      `${WORKFLOW} 의 select 잡이 라벨을 넘기지 않는다 — ci:full 이 실전에서 발화하지 않는다.`,
+    )
+    assert.match(
+      yml,
+      /pull_request\.labels/,
+      `${WORKFLOW} 가 PR 라벨을 읽지 않는다 — 넘길 값 자체가 없다.`,
+    )
+  })
+
   test('★넓은 판정과 좁은 판정을 구분해 보고한다', () => {
     // 로그를 읽는 사람이 「전부 돈다」가 **의도**인지 **판정 실패**인지 알아야 한다.
     const narrow = selectModules(['backend/modules/automation/X.kt'])
