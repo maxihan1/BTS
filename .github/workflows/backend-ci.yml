@@ -142,7 +142,20 @@ jobs:
           #   게이트를 통과한 뒤라 실질 위험은 낮다고 판단해 남긴다 — **넣지 않기로 한 것과
           #   잊어버린 것은 다르므로**(ADR D4 와 같은 원칙) 여기 적는다.
           BTS_CI_PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          # ★`${{ }}` 를 `run:` 본문에 직접 보간하지 않고 전부 `env:` 를 거친다.
+          #   `github.sha` 자체는 GitHub 이 만든 40자 16진수라 지금은 위험이 없지만, 직접 보간
+          #   **패턴이 남으면** 훗날 그 자리에 `github.head_ref`(브랜치명 — 셸 메타문자 삽입이
+          #   가능한 대표 인젝션 벡터)나 PR 제목을 끼우는 편집이 그 형태를 그대로 물려받는다.
+          HEAD_SHA: ${{ github.sha }}
         run: |
+          # ★고정 경로 `/tmp/…` 를 쓰지 않는다. 이 파일은 assembly 잡에 「러너 증설 시 고정 자원을
+          #   실행별로 유일하게 만들어라」를 이미 적어 뒀는데, 이 잡이 같은 조건(러너 1대)에 기대는
+          #   고정 자원을 하나 더 만들고 있었다. 게다가 파손 양식이 더 나쁘다 — assembly 의 포트
+          #   충돌은 빨간불이지만, 두 select 잡이 write/read 사이 창에서 교차하면 **A 잡이 B 잡의
+          #   변경 목록으로 모듈을 골라 초록**이 된다(조용한 오선별).
+          #   `RUNNER_TEMP` 는 러너 설치별(`_work/_temp`)로 갈리고 잡마다 정리되므로 증설 레이스 ·
+          #   심볼릭 링크 추종 · 이전 실행 잔여물이 한 번에 사라진다.
+          CHANGED_FILE="${RUNNER_TEMP:-/tmp}/bts-changed.z"
           # ★diff 가 실패하면 목록을 **비운다.** 선별기는 빈 목록을 「판정 불가」로 읽고
           #   전 모듈을 돌려준다 — 모르는 상태에서 좁히지 않는다는 계약이 여기서 성립한다.
           #
@@ -150,9 +163,19 @@ jobs:
           #   `"backend/…\355\225…"` 처럼 따옴표로 감싼 이스케이프 문자열로 낸다. 그 토큰은
           #   `backend/` 로 시작하지 않아 선별기의 귀속·확장 판정을 **둘 다 빠져나가 조용히
           #   무시**된다 — 좁아지는 방향이라 치명적이다. 이 저장소는 한글 명명을 자주 쓴다.
-          if ! git -c core.quotePath=false diff --name-only -z \
-                 "$BASE_SHA" "${{ github.sha }}" > /tmp/bts-changed.z 2> /dev/null; then
-            : > /tmp/bts-changed.z
+          #
+          # ★★`--no-renames` 도 **필수**다(2026-08-14 독립 리뷰 적발). git 은 rename 을 감지하면
+          #   **목적지 경로 하나만** 낸다. 모듈 A → B 로 파일을 옮기면 A 가 씨앗에 안 들어가
+          #   **A 의 테스트 전량이 조용히 건너뛰어진다.** `WIDEN_PREFIXES` 도 발화하지 않는다 —
+          #   출발 경로가 애초에 선별기에 **도달하지 않기** 때문이다. 선별기 쪽에서는 원리적으로
+          #   못 막고 여기서만 고칠 수 있다.
+          #   잔여 안전망은 `assembly` 잡의 `:modules:app:test` 가 잡는 **main 소스셋 컴파일 깨짐**
+          #   하나뿐 — A 의 테스트 소스셋 컴파일과 A 자체 테스트 실행은 통째로 빠진다.
+          #   러너의 전역 `diff.renames` 설정에 무관하게 고정되므로 `-M0` 이 아니라 이 플래그를 쓴다.
+          #   판별식이 git 의 실제 동작을 임시 저장소로 재고 이 배선을 앵커로 강제한다.
+          if ! git -c core.quotePath=false diff --no-renames --name-only -z \
+                 "$BASE_SHA" "$HEAD_SHA" > "$CHANGED_FILE" 2> /dev/null; then
+            : > "$CHANGED_FILE"
             echo "⚠️  변경 파일을 구하지 못했다 (base=$BASE_SHA) — 전 모듈을 돈다."
           fi
 
@@ -164,9 +187,15 @@ jobs:
           #   diff 실패의 fail-safe 가 정확히 그 자리에서 무너진다(2026-08-12 CI 실측).
           #   그래서 「인자 0개로 직접 부르기」를 분리해 둔다. 선별기는 인자 0개를 「판정 불가」로
           #   읽고 전 모듈을 돌려준다.
-          if [ -s /tmp/bts-changed.z ]; then
+          #
+          # ★BSD xargs 의 상한은 ARG_MAX 가 아니라 **인자 개수 기본 5000개**다(2026-08-14 실측 —
+          #   경로 20000개 입력이 5000씩 4번으로 쪼개졌다. 크기로는 ARG_MAX 의 절반도 안 됐다).
+          #   쪼개지면 node 가 여러 번 불려 `$MODULES` 가 `["a"]["b"]…` 로 이어붙는다.
+          #   아래 `case` 가 그 형태를 잡는다 — `[` 로 시작해 `]` 로 끝나므로 **모양 검사만으로는
+          #   통과**하기 때문에 `][` 부분열을 따로 본다.
+          if [ -s "$CHANGED_FILE" ]; then
             MODULES="$(xargs -0 node --experimental-strip-types \
-              scripts/workflow/select-backend-modules.ts < /tmp/bts-changed.z)"
+              scripts/workflow/select-backend-modules.ts < "$CHANGED_FILE")"
           else
             MODULES="$(node --experimental-strip-types \
               scripts/workflow/select-backend-modules.ts)"
@@ -177,6 +206,14 @@ jobs:
           #   **부재**다 — 장부 매핑 31 이 착수 조건으로 못박은 「조용한 0개」가 바로 그것이다.
           #   조용히 아무 잡도 안 도는 것보다 여기서 실패하는 편이 언제나 낫다.
           case "$MODULES" in
+            *']['*)
+              # xargs 가 입력을 쪼개 node 를 여러 번 부른 경우다(위 5000개 상한 주석 참조).
+              # `[`…`]` 모양은 유지되므로 아래 배열 판정만으로는 **통과한다** — 여기서 잡는다.
+              echo "❌ 선별 결과에 배열이 여러 개 이어붙었다: '$MODULES'"
+              echo "   xargs 가 입력을 쪼개 선별기를 여러 번 불렀다 — 변경 파일이 너무 많다."
+              echo "   그대로 넘기면 fromJSON 이 매트릭스를 깨뜨린다 — 여기서 멈춘다."
+              exit 1
+              ;;
             '['*']') ;;
             *)
               echo "❌ 선별 결과가 JSON 배열이 아니다: '$MODULES'"

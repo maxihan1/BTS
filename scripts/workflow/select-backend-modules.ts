@@ -207,7 +207,18 @@ function moduleOf(file: string): string | null {
  */
 export function selectModules(changedFiles: string[], labels: string[] = []): Selection {
   const universe = allModules()
-  const wide = (reason: string): Selection => ({ modules: universe, all: true, reason })
+  const wide = (reason: string): Selection => {
+    // ★「절대 비지 않는다」를 **코드로** 성립시킨다. `allModules()` 는 모듈 디렉터리가 없으면
+    //   `[]` 를 돌려주므로, 그것을 그대로 넘기면 위 계약이 디스크 상태에 기대게 된다.
+    //   지금 실제 방어는 워크플로우 셸의 `[ "$MODULES" = "[]" ]` 하나뿐인데, 그 방어는
+    //   **이 스크립트를 재사용하는 다음 호출자가 상속하지 못한다**(2026-08-14 독립 리뷰 지적).
+    if (universe.length === 0) {
+      throw new Error(
+        `모듈을 하나도 못 찾았다 (root=${modulesRoot()}) — 빈 매트릭스는 조용히 스킵되므로 여기서 멈춘다.`,
+      )
+    }
+    return { modules: universe, all: true, reason }
+  }
 
   // ★라벨을 **가장 먼저** 본다. 사람이 「전부 돌려라」라고 말한 것이므로 어떤 자동 판정보다 세다.
   //   정확 일치만 넓힌다 — 부분 일치로 짜면 `ci:fullish` 같은 것이 조용히 전 모듈을 끌고 온다.

@@ -82,14 +82,38 @@ describe('backend-ci 모듈 선별', () => {
       '디스크 모듈이 매트릭스에도 제외 목록에도 없다 — 아무도 안 도는 모듈이 생겼다.',
     )
 
+    // ★★초판은 `new RegExp(':modules:' + m)` 을 **파일 전체**에 걸었다. 그런데 이 워크플로우의
+    //   머리말 주석이 `:modules:app` 을 담고 있어(「외부 postgres (10 파일, `:modules:app` 조립
+    //   부팅)」) **assembly 잡을 통째로 지워도 초록**이었다(2026-08-14 독립 리뷰 실측).
+    //   가드가 지키겠다고 선언한 것을 주석 한 줄이 대신 만족시키고 있었다 —
+    //   `[[invariant-satisfied-by-helptext-not-logic]]`.
+    //
+    //   그래서 **실행 줄에 앵커**한다. `run:` 안의 `./gradlew … :modules:<m>:<task>` 형태만 센다.
     const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
-    const orphan = excluded.filter((m) => !new RegExp(`:modules:${m}\\b`).test(workflow))
+    const runsModule = (m: string): boolean =>
+      new RegExp(`^\\s+run: [^#\\n]*\\./gradlew[^#\\n]*:modules:${m}:`, 'm').test(workflow)
+    const orphan = excluded.filter((m) => !runsModule(m))
     assert.deepEqual(
       orphan,
       [],
-      `매트릭스에서 빠졌는데 전용 잡도 없는 모듈이 있다: ${orphan.join(', ')}\n` +
-        `그 모듈은 backend-ci 에서 **한 번도 검증되지 않는다.**`,
+      `매트릭스에서 빠졌는데 **실제로 돌리는 잡**이 없는 모듈이 있다: ${orphan.join(', ')}\n` +
+        `그 모듈은 backend-ci 에서 **한 번도 검증되지 않는다.**\n` +
+        `(주석에 이름만 있는 것으로는 통과하지 않는다 — 실행 줄에 앵커한다.)`,
     )
+
+    // ★그리고 그 잡이 **조건부로 스킵되지 않는지**까지 본다. `if:` 가 붙으면 「잡은 있는데 안
+    //   돈다」가 되어 위 단언이 참인 채로 커버리지가 0 이 된다. 잡 블록만 잘라 검사한다.
+    for (const m of excluded) {
+      const jobStart = workflow.search(new RegExp(`^  [\\w-]+:\\s*$[\\s\\S]*?:modules:${m}:`, 'm'))
+      assert.ok(jobStart >= 0, `${m} 을 돌리는 잡을 못 찾았다 — 위 단언과 어긋난다.`)
+      const jobBlock = workflow.slice(jobStart).split(/^  [\w-]+:\s*$/m)[0]
+      assert.doesNotMatch(
+        jobBlock,
+        /^\s{4}if:/m,
+        `${m} 전용 잡에 \`if:\` 조건이 붙어 있다 — 조건이 거짓이면 그 모듈은 검증 0 이 된다.\n` +
+          `의도한 것이면 이 판정을 함께 고치고 왜 안전한지 적어라.`,
+      )
+    }
   })
 
   test('★★한 모듈만 바뀌면 그 모듈과 그것을 의존하는 것만 고른다', () => {
@@ -124,6 +148,14 @@ describe('backend-ci 모듈 선별', () => {
 
   test('★★모듈 밖 백엔드 변경은 전 모듈이다 (빌드 설정 · 마이그레이션)', () => {
     // 어느 모듈에도 귀속되지 않는 변경은 영향 범위를 알 수 없다. 모르면 넓게 간다.
+    //
+    // ★아래 4개 중 `backend/db/migration/…` 과 `backend/gradle/libs.versions.toml` 은 **이 저장소에
+    //   실재하지 않는 가공 경로**다(2026-08-14 전수 확인 — 모듈 밖 백엔드 파일은
+    //   `build.gradle.kts` · `gradle.properties` · `gradle/wrapper/*` · `gradlew(.bat)` ·
+    //   `settings.gradle.kts` 뿐). 여기서 재는 것은 파일의 실재가 아니라 **`backend/` 접두 판정**
+    //   이므로 공허하지 않고, 실재하는 앞 두 경로가 같은 루프에 있어 짝이 성립한다.
+    //   ★단 「마이그레이션이 넓어진다」를 이 케이스로 착각하지 말 것 — 실제 마이그레이션은
+    //   모듈 **안**이라 여기 안 걸린다. 그 축은 아래 `MIGRATION_MARKER` 판정 3건이 맡는다.
     for (const f of [
       'backend/build.gradle.kts',
       'backend/settings.gradle.kts',
@@ -280,6 +312,24 @@ describe('backend-ci 모듈 선별', () => {
         JSON.stringify(picked),
     )
     assert.equal(picked.all, true)
+  })
+
+  test('★★type-safe project accessor 가 켜져 있지 않다 (미검출 감지의 사각 봉인)', () => {
+    // `modulesWithUnparsedRefs()` 는 「`:modules:` 리터럴은 있는데 파서가 못 읽은 것」을 센다.
+    // 그런데 Gradle 의 type-safe accessor(`implementation(projects.modules.sharedKernel)`)는
+    // **`:modules:` 문자열을 아예 포함하지 않아** total 도 parsed 도 0 이 된다 — 간선이 조용히
+    // 사라지고 그것은 **좁아지는 방향**이다(2026-08-14 독립 리뷰 지적).
+    //
+    // 지금은 도달 불가다(`TYPESAFE_PROJECT_ACCESSORS` 미활성). 도달 가능해지는 순간을 여기서
+    // 잡는다 — 켜는 PR 이 이 판정을 밟고 「감지 신호를 함께 고쳐라」를 읽게 된다.
+    const settings = fs.readFileSync(path.join(REPO_ROOT, 'backend/settings.gradle.kts'), 'utf8')
+    assert.doesNotMatch(
+      settings,
+      /TYPESAFE_PROJECT_ACCESSORS/,
+      `type-safe project accessor 가 켜졌다. \`modulesWithUnparsedRefs()\` 의 감지 신호가\n` +
+        `\`:modules:\` 리터럴이라 \`projects.modules.x\` 형태를 **미검출로도 못 센다** —\n` +
+        `간선이 조용히 사라져 의존 모듈의 테스트가 안 돈다. 감지 신호를 먼저 바꿔라.`,
+    )
   })
 
   test('★★Gradle 의존 참조를 다 읽지 못하면 좁히지 않는다', () => {
