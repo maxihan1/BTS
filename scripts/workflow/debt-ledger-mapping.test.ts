@@ -51,6 +51,12 @@ const MASTER = path.join(REPO_ROOT, 'docs/plans/2026-08-12-debt24-master.md')
 /** 장부에서 미해소를 뜻하는 마커. */
 const OPEN_MARKER = '⬜'
 
+/** 장부에서 해소를 뜻하는 마커. */
+const DONE_MARKER = '✅'
+
+/** 미해소 행의 PR 열에 허용되는 값. `#NNN` 은 여기 없다 — 아래 판별식 주석 참조. */
+const OPEN_PR_ALLOWED = ['미배정', '보류']
+
 /**
  * 제목 끝의 상태 괄호 하나를 떼어 키로 만든다.
  *
@@ -59,6 +65,35 @@ const OPEN_MARKER = '⬜'
  */
 function normalizeKey(heading: string): string {
   return heading.replace(/\s*\([^()]*\)\s*$/, '').trim()
+}
+
+/** 볼드 마크업(`**x**`)을 떼어 셀 값을 비교 가능한 형태로 만든다. */
+function stripBold(cell: string): string {
+  return cell.replace(/\*\*/g, '').trim()
+}
+
+/**
+ * 전수 매핑 표의 행을 `{ status, item, pr }` 로 뽑는다.
+ *
+ * 표 형식. `| # | 상태 | 항목 | PR | 영역 |`
+ *
+ * ★2번째 열이 상태 마커(`⬜`/`✅`)인 행만 고른다. 이 문서의 다른 표 3종은 2번째 열이
+ * 각각 항목명(확정된 결정) · 묶음명(PR 별 집계) · 상태문자열(순서 제약)이라 자동 배제된다 —
+ * 「PR 열」이라는 이름만 같고 의미가 다른 표에 이 규칙을 잘못 적용하지 않기 위한 것이다.
+ */
+function masterMappingRows(): { status: string; item: string; pr: string }[] {
+  const lines = fs.readFileSync(MASTER, 'utf-8').split('\n')
+  const rows: { status: string; item: string; pr: string }[] = []
+  for (const line of lines) {
+    if (!line.startsWith('|')) continue
+    const cells = line.split('|').map((c) => c.trim())
+    // ['', '#', '상태', '항목', 'PR', '영역', '']
+    if (cells.length < 6) continue
+    const status = stripBold(cells[2] ?? '')
+    if (status !== OPEN_MARKER && status !== DONE_MARKER) continue
+    rows.push({ status, item: cells[3] ?? '', pr: stripBold(cells[4] ?? '') })
+  }
+  return rows
 }
 
 /** TODOS.md 의 미해소 항목 제목 키 목록. */
@@ -140,5 +175,77 @@ describe('기술부채 장부 ↔ 마스터 계획 매핑', () => {
     const keys = masterOpenKeys()
     const dups = keys.filter((k, i) => keys.indexOf(k) !== i)
     assert.deepEqual(dups, [], `마스터 계획에 중복된 항목이 있다.\n${dups.join('\n')}`)
+  })
+})
+
+// ## 왜 PR 열에도 판별식이 필요한가 (2026-08-14)
+//
+// 위 4 판정은 **항목 제목 열만** 읽는다(`cells[3]`). **PR 열(`cells[4]`)은 아무도 읽지 않았다.**
+// 그래서 다음이 조용히 성립했다 — **PR 을 닫아도 CI 는 초록이다.**
+//
+// 실측으로 이미 새고 있었다.
+//
+// | 자리 | 장부가 적은 것 | 실제 |
+// |---|---|---|
+// | 매핑 `4` (CI 벽시계) | `#366` | **#366 은 2026-08-12 머지됐고 이 항목은 안 닫혔다** |
+// | 매핑 `31` (backend-ci 모듈 미선별) | `미배정` | **열린 PR #379 가 그 일을 하고 있다** |
+//
+// 같은 파일 안에서 **두 방향으로 동시에** 틀려 있었는데 어느 판정도 red 가 아니었다.
+// `two-lists-never-check-each-other` 가 PR 열에 그대로 열려 있었던 것이다.
+//
+// ## ★왜 「⬜ 행에는 PR 번호를 못 쓴다」인가
+//
+// PR 번호는 **머지된 뒤에야 불변**이다. 열린 PR 은 닫히거나 브랜치가 사라질 수 있고,
+// 그 순간 장부의 주장이 거짓이 되는데 **거짓이 된 시점을 아무도 모른다**(네트워크 없이는
+// CI 가 PR 상태를 볼 수 없다). 그래서 형식 규칙으로 바꾼다 —
+//
+// - `⬜`(미해소) → `미배정` 또는 `보류`. **PR 번호 금지.**
+// - `✅`(해소) → `#NNN`. 머지된 PR 번호는 불변 이력이라 썩지 않는다.
+//
+// **대가.** 「지금 누가 이 항목을 하고 있나」가 장부에서 사라진다. 그 정보는 전이(轉移)
+// 상태이므로 `.claude/STATE.md` 와 PR 자신이 갖는다 — 장부는 **불변 사실만** 담는다.
+// 이 대가를 치르는 이유는 2026-08-14 에 예약 draft PR 7건(#368~#374)을 폐기하면서
+// 「예약 PR 로 담당을 표시하는 방식」 자체를 그만뒀기 때문이다.
+describe('기술부채 마스터 계획 — PR 열 형식', () => {
+  test('★파서가 실제로 PR 열을 훑는다 (비-공허 짝)', () => {
+    // 표 형식이 바뀌거나 `cells[2]` 필터가 어긋나면 0행을 훑고도 아래 판정이 전부
+    // 「빈 배열 == 빈 배열」로 공허 통과한다.
+    const rows = masterMappingRows()
+    assert.ok(
+      rows.length >= 20,
+      `전수 매핑 표에서 ${rows.length}행밖에 못 찾았다 — 표 형식이 바뀌었거나 필터가 어긋났다.`,
+    )
+    assert.ok(
+      rows.some((r) => r.status === OPEN_MARKER) && rows.some((r) => r.status === DONE_MARKER),
+      '⬜ 행과 ✅ 행이 둘 다 잡혀야 한다 — 한쪽만 잡히면 그쪽 판정만 유효하다.',
+    )
+  })
+
+  test('★★미해소(⬜) 행의 PR 열에 PR 번호가 없다', () => {
+    // 새면 「닫힌 PR 이 담당자로 남은 장부」가 된다. 닫는 쪽은 CI 가 못 보므로 형식으로 막는다.
+    const violations = masterMappingRows()
+      .filter((r) => r.status === OPEN_MARKER)
+      .filter((r) => !OPEN_PR_ALLOWED.includes(r.pr))
+    assert.deepEqual(
+      violations.map((v) => `${v.item} → ${v.pr}`),
+      [],
+      `미해소 항목의 PR 열은 ${OPEN_PR_ALLOWED.join(' 또는 ')} 여야 한다.\n` +
+        `PR 번호는 머지 전까지 썩는다 — 담당은 PR 자신과 .claude/STATE.md 가 갖는다.\n` +
+        violations.map((v) => `  - ${v.item} → ${v.pr}`).join('\n'),
+    )
+  })
+
+  test('★★해소(✅) 행의 PR 열이 PR 번호다', () => {
+    // 반대 방향. ✅ 인데 `미배정` 이면 **무엇이 닫았는지 추적 불가**가 되어 회귀 시 되돌아갈
+    // 지점을 잃는다.
+    const violations = masterMappingRows()
+      .filter((r) => r.status === DONE_MARKER)
+      .filter((r) => !/^#\d+$/.test(r.pr))
+    assert.deepEqual(
+      violations.map((v) => `${v.item} → ${v.pr}`),
+      [],
+      `해소된 항목의 PR 열은 \`#NNN\` 이어야 한다 — 무엇이 닫았는지가 유일한 되돌림 지점이다.\n` +
+        violations.map((v) => `  - ${v.item} → ${v.pr}`).join('\n'),
+    )
   })
 })
