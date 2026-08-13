@@ -1,10 +1,54 @@
 # backend-ci 가 바뀐 모듈만 돌게 한다 — 의존 그래프는 Gradle 에서 도출
 
 > slug: backend-ci-module-selection
-> type: chore (fast-track — 게이트 1 생략, 게이트 2 만 정지)
+> type: chore
+> **티어: T2** (선언 = 실측 · 표면 `GUARD_CI` + `TEST` + `DOC`)
 > agent: backend-engineer
-> 생성: 2026-08-12
+> 생성: 2026-08-12 · **티어 재선언 2026-08-14**
 > 부채. TODOS.md §인프라 — `backend-ci` 가 **바뀐 모듈을 고르지 않는다** (매핑 31)
+> 설계 정본. `docs/adr/2026-08-13-ci-domain-scoped-jobs.md` (D1·D2)
+
+---
+
+## ⚠️ 2026-08-14 티어 재선언 — `fast-track` 은 더 이상 없는 개념이다
+
+이 문서는 「type: chore (fast-track — 게이트 1 생략)」으로 시작했다. **그 표기는 폐기됐다.**
+
+2026-08-13 하네스 재설계(PR #380)가 티어 기준을 「변경 파일 수」에서 **표면 glob** 으로 바꿨고,
+`fast-track` 이라는 개념 자체가 현행 하네스에 없다(아카이브된 `bts-domain/SKILL.md` 에만 잔존).
+정본 `scripts/workflow/surfaces.ts` 기준으로 이 작업의 표면은 `GUARD_CI`(`.github/workflows/**` ·
+`scripts/workflow/*.{ts,mjs}`) 를 포함하므로 **T2** 이고, T2 는 **게이트 1 + 게이트 2 둘 다** 정지한다.
+`detect-tier.ts` 실측도 `TIER: T2 · SURFACES: TEST, GUARD_CI, DOC` 다.
+
+⇒ 아래 「_fast-track (chore) — 생략._」 두 곳은 **그 시점의 기록**이며 지금 절차가 아니다.
+
+---
+
+## 2026-08-14 추가분 — ADR D2 미구현 2건
+
+이 작업이 열려 있는 동안 `docs/adr/2026-08-13-ci-domain-scoped-jobs.md` 가 채택됐고,
+그 ADR 은 맥락 ④ 에서 **이 PR 과 합류한다**고 명시했다(`.claude/MIGRATION.md` K4 행도 같다).
+ADR D2 가 「전체를 돌려야 하는 경우 네 가지」를 못박았는데 그중 둘이 이 브랜치에 없었다.
+
+| D2 조건 | 수단 | 2026-08-14 이전 |
+|---|---|---|
+| 공용 커널 변경 | 역의존으로 자동 | ✅ 이미 있음 |
+| **마이그레이션 파일 변경** | **전 모듈로 넓힌다** | ❌ **없었다** — 아래 참조 |
+| 루트 빌드 설정·버전 카탈로그 | 넓은 쪽 폴백 | ✅ 이미 있음 |
+| **위험이 큰 작업(T3)** | **PR 라벨 `ci:full`** | ❌ **없었다** |
+
+**★마이그레이션은 「없었다」보다 나쁜 상태였다.** 판별식 「모듈 밖 백엔드 변경은 전 모듈이다
+(빌드 설정 · **마이그레이션**)」이 이미 있었는데, 그 케이스가 쓴 `backend/db/migration/V999__x.sql`
+은 **이 저장소에 존재하지 않는 형태**다. 실제 마이그레이션 119개는 전부
+`backend/modules/<bc>/src/main/resources/db/migration/` 아래, 즉 **모듈 안**이라
+`WIDEN_PREFIXES`(모듈 밖 파일에만 걸린다)에 영원히 안 닿았다.
+**도달 불가 픽스처를 지키는 초록**이었다(`[[unreachable-state-fixture-is-fake-green]]`).
+
+**뮤테이션이 서술 하나를 반증했다.** 처음엔 「순서가 이 규칙의 전부」라 적고 마이그레이션 판정을
+씨앗 루프 뒤로 옮기는 뮤테이션을 걸었는데 **GREEN 이었다** — 씨앗 루프는 좁히지 않고 모으기만
+하므로 등가 뮤턴트다. 정확한 요건은 「루프보다 앞」이 아니라 **「모듈에 귀속된 파일에도 검사가
+닿을 것」**이고, 실제로 깨지는 배치(`moduleOf() === null` 가지 안)로 다시 겨누니 RED 2건이 됐다.
+소스 주석을 그 실측대로 고쳤다.
 
 ## Brief
 
