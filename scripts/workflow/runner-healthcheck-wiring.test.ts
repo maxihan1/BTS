@@ -68,6 +68,26 @@ function withoutComments(body: string): string {
 }
 
 /**
+ * **파일 경로 리터럴**을 걷어낸다 — 슬래시가 들어 있고 확장자로 끝나는 토큰.
+ *
+ * 「docker 를 쓴다」와 「이름에 docker 가 든 파일을 가리킨다」는 다르다. 2026-08-13 에
+ * `verify-master-plan.sh` 가 이 워크플로우의 잡으로 승격되자, 그 스크립트가 필수 파일 목록에
+ * 적어 둔 `infra/docker-compose.prod.yml` **문자열 하나** 때문에 `workflow-scripts-ci` 가
+ * 「docker 를 쓴다」로 잡혔다. 그대로 두면 데몬이 꺼진 동안 **판별식 PR 까지** 막힌다 —
+ * 프리플라이트가 고치려던 것보다 넓은 차단면을 새로 만드는, 이 파일이 이미 한 번 겪은 형태다.
+ *
+ * 액션 참조(`docker/setup-buildx-action@v3`)는 확장자가 없어 남는다 — 그건 진짜 사용이다.
+ */
+function withoutPathLiterals(body: string): string {
+  return body.replace(/[\w.-]+(?:\/[\w.-]+)+\.(?:ya?ml|sh|mjs|ts|json|conf|env)\b/g, ' ');
+}
+
+/** 명령으로서의 docker 가 등장하는가 (경로 리터럴은 제외) */
+function mentionsDockerCommand(body: string): boolean {
+  return /\bdocker\b/.test(withoutPathLiterals(body));
+}
+
+/**
  * 워크플로우가 **실제로** Docker 를 쓰는가 — 자신의 명령 + 자신이 부르는 스크립트까지 본다.
  *
  * ★목록을 손으로 적지 않는 이유는 `callerFiles()` 와 같다. 「docker 를 쓰는 워크플로우」를
@@ -85,14 +105,14 @@ function withoutComments(body: string): string {
  */
 function usesDocker(name: string): boolean {
   const body = withoutComments(readWorkflow(name));
-  if (/\bdocker\b/.test(body)) return true;
+  if (mentionsDockerCommand(body)) return true;
 
   // ★`\.\/` 뒤에 `\s+` 를 요구하면 **죽은 분기**가 된다 — `./scripts/x.sh` 에는 공백이 없다.
   //   초안이 그랬고 독립 리뷰가 적발했다. 인터프리터 뒤에는 공백이, `./` 뒤에는 곧바로
   //   경로가 온다. 두 형태를 갈라서 적는다.
   for (const m of body.matchAll(/(?:(?:bash|sh|node)\s+|\.\/)(scripts\/[\w./-]+\.(?:sh|mjs|ts))/g)) {
     const p = path.join(REPO_ROOT, m[1]);
-    if (fs.existsSync(p) && /\bdocker\b/.test(withoutComments(fs.readFileSync(p, 'utf8')))) {
+    if (fs.existsSync(p) && mentionsDockerCommand(withoutComments(fs.readFileSync(p, 'utf8')))) {
       return true;
     }
   }
@@ -261,6 +281,17 @@ describe('러너 헬스체크 배선', () => {
       `두 층의 판정 규칙이 갈라졌다 —\n${missing.join('\n')}\n` +
         `한쪽만 고치면 로컬은 잡고 CI 는 놓치는(또는 그 반대) 상태가 된다.`,
     );
+  });
+
+  test('★docker 판정이 파일 경로 리터럴에 속지 않는다 (오탐 대조)', () => {
+    // 「이름에 docker 가 든 파일을 가리킨다」를 「docker 를 쓴다」로 읽으면, docker 가 필요 없는
+    // 워크플로우까지 데몬 부재로 막힌다. 반대로 이 판정이 느슨해지면 진짜 사용을 놓친다 —
+    // 두 방향을 함께 못박는다.
+    assert.equal(mentionsDockerCommand('run: bash scripts/verify-master-plan.sh'), false);
+    assert.equal(mentionsDockerCommand('"${REPO_ROOT}/infra/docker-compose.prod.yml"'), false);
+    assert.equal(mentionsDockerCommand('docker run -d --name "$CI_PG_CONTAINER" postgres:16'), true);
+    assert.equal(mentionsDockerCommand('DOCKER="${BTS_DOCKER_BIN:-docker}"'), true);
+    assert.equal(mentionsDockerCommand('uses: docker/setup-buildx-action@v3'), true);
   });
 
   test('★★Docker 를 쓰는 워크플로우는 require_docker 를 넘긴다 (목록을 손으로 적지 않는다)', () => {

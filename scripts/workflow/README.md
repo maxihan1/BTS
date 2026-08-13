@@ -56,8 +56,7 @@ npm run classify -- --title "<...>" --cache
 |---|---|
 | `auth` | `security-engineer` |
 | `migration` | `db-engineer` |
-| `ui` | `frontend-engineer` |
-| `design` | `designer` |
+| `ui` / `design` | `frontend-engineer` |
 | `qa` | `qa-engineer` |
 | `backend` / `api` / `feature` / `bugfix` / `chore` | `backend-engineer` |
 
@@ -70,6 +69,24 @@ npm run classify -- --title "<...>" --cache
 - `migration` / `qa` / `design` / `chore` → `null` (BC 무관 타입)
 
 각 BC는 자기 이름 자체(`identity-access`, `issue-tracking` 등)를 키워드로 가진다. 입력에 BC 이름이 직접 명시되면(`identity-access §1 AuthN PoC`) 즉시 해당 BC로 매핑.
+
+## surfaces.ts · detect-tier.ts
+
+`surfaces.ts` 는 **글로브 정본**이다. 변경 경로를 표면 15종으로 가르고 각 표면이 요구하는 티어를 들고 있다.
+다른 파일은(스킬 본문·문서 표 포함) 글로브를 다시 적지 않는다 — 두 목록이 갈리면 둘 다 초록인 채로 어긋난다.
+
+`detect-tier.ts` 는 그것을 읽어 **변경 경로 목록 → 최고 티어 + 미분류 목록**을 낸다.
+
+```bash
+# 이 브랜치가 바꾼 파일로 실측 티어를 본다
+git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts
+
+# 선언 티어와 나란히 (게이트 2 요약용). 어긋나도 종료 코드는 0 이다 — 승격은 사람이 정한다
+git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts --declared T1
+```
+
+출력은 `TIER:` · `SURFACES:` · 미분류가 있으면 `UNMAPPED: <경로>` 한 줄씩이다. `--json` 으로 기계용 출력.
+하한(보안 표면 T2 · Flyway T3)은 `tier-floor.test.ts` 가 CI 에서 차단한다.
 
 ## 테스트
 

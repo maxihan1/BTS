@@ -5,7 +5,7 @@
 > 소진되는 작업 목록은 [`jira-parity-roadmap.md`](jira-parity-roadmap.md), 토큰·프리미티브 카탈로그는
 > 루트 [`DESIGN.md`](../../DESIGN.md) — 이 문서는 그 둘이 다루지 않는 **사고 절차와 깨면 안 되는 계약**을 담는다.
 >
-> **누가 언제 읽나**. `designer` · `frontend-engineer` · `qa-engineer` 에이전트 정의가 참조하고,
+> **누가 언제 읽나**. `frontend-engineer` · `qa-engineer` 에이전트 정의가 참조하고,
 > `/bts-spec`이 ui/design 타입 작업의 선행 읽기로 로드한다.
 
 ## §1. 사고 절차 — 새 UI 는 Jira Cloud 대조가 먼저다

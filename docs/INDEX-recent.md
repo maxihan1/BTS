@@ -1,11 +1,14 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (464건, 최신순)
+# 시간 축 인덱스 (467건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-08-13 | ci-domain-scoped-jobs | — | — | — | ✔ | — |
+| 2026-08-13 | harness-plugin-off-and-code-reviewer-in-repo | — | — | — | ✔ | — |
+| 2026-08-13 | harness-task-tier-by-change-surface | — | — | — | ✔ | — |
 | 2026-08-12 | backend-ci-module-selection | — | ✔ | — | — | — |
 | 2026-08-12 | debt24-decisions | — | ✔ | — | — | — |
 | 2026-08-12 | debt24-master | — | ✔ | — | — | FR-UX-08 |

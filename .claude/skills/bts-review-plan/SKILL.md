@@ -1,131 +1,69 @@
 ---
 name: bts-review-plan
-description: Use when a plan file is ready and needs type-specific multi-perspective review (eng / ceo / design / devex / autoplan) before the user approval gate. Skipped for chore/bugfix.
+description: Called by /bts step 4 — routes the finished plan to review lenses. T2/T3 only. Never invoke directly.
 ---
 
 # /bts-review-plan
 
-작성된 plan을 타입별 리뷰 체인으로 검증. 마지막 사용자 게이트 직전 단계.
+체인 [4]. 작성된 plan 을 **타입별 리뷰 렌즈**로 검증하고 게이트 1 로 넘긴다.
+**T2/T3 만 진입한다** — T0/T1 은 이 단계도 게이트 1 도 없다.
 
 ## 선행 읽기
 
-- `docs/plans/<date>-<slug>.md` — 작성된 plan 전체
+- `docs/plans/<date>-<slug>.md` — 작성된 plan 전체 (`## 도메인 정리` 의 ADR 링크로 충분 · ADR 재검색 금지)
 
-**`Maxi_wiki/BTS/decisions/`는 `/bts-domain` Step 1에서 이미 grep 완료, plan의 `## 도메인 정리` 섹션에 관련 ADR 링크 반영됨. 재검색 금지** (이미 잡힌 ADR로 충분).
-
-## 절차
-
-### Step 1. classify + task_count 로드
+## Step 1. classify 로드
 
 ```bash
 TYPE=$(jq -r '.type' .bts-cache/classify.json)
-TASK_COUNT=$(jq -r '.task_count' .bts-cache/classify.json)
+TIER=$(jq -r '.tier' .bts-cache/classify.json)
 ```
 
-### Step 2. 타입별 리뷰 체인 분기
+## Step 2. 타입별 리뷰 렌즈 분기
 
-| 조건 | 리뷰 체인 |
-|---|---|
-| `TYPE == "auth"` 또는 `TYPE == "migration"` | `/plan-eng-review` → `/plan-ceo-review` |
-| `TYPE == "ui"` | `/plan-design-review` |
-| `TYPE == "api"` | `/plan-eng-review` → `/plan-devex-review` |
-| `TYPE == "feature"` AND `TASK_COUNT >= 3` | `/autoplan` |
-| `TYPE == "feature"` AND `TASK_COUNT < 3` | `/plan-eng-review` |
-| `TYPE == "design"` | `/plan-design-review` |
-| `TYPE == "backend"` | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
-| `TYPE ∈ {bugfix, chore, qa}` | **skip** (fast-track) |
-| **그 외 (표에 없는 타입)** | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
+**이 표는 「어느 렌즈를 쓰는가」만 정한다.** 리뷰 **종수**의 정본은 `/bts` 티어별 절차 표(T2 = 2종 · T3 = 2종 + ceo)다.
 
-> 행 구성 근거(backend 행 누락 사고)와 정합 강제는 `scripts/workflow/skill-type-coverage.test.ts` 헤더 주석 참조 — 이 표 ↔ TaskType 유니온의 차집합 0 을 CI 가 강제한다.
+| 조건 | 이 행이 도는 티어 | 리뷰 렌즈 |
+|---|---|---|
+| `TYPE == "auth"` 또는 `TYPE == "migration"` | T2 / T3 | `/plan-eng-review` + `/plan-ceo-review` (**한 응답에 병렬 발행**) |
+| `TYPE == "ui"` | —(이 표 미진입) | `/plan-design-review` |
+| `TYPE == "api"` | T2 / T3 | `/plan-eng-review` |
+| `TYPE == "design"` | T2 / T3 | `/plan-design-review` |
+| `TYPE == "backend"` | T2 / T3 | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
+| `TYPE == "feature"` | T2 / T3 | `/plan-eng-review` |
+| `TYPE ∈ {bugfix, chore, qa}` | —(이 표 미진입) | **skip** |
+| **그 외 (표에 없는 타입)** | — | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
 
-### Step 3. 리뷰 호출 (순차)
+> **행을 지우지 말 것.** `scripts/workflow/skill-type-coverage.test.ts` 가 이 표의 타입 토큰과 `types.ts` 의 `TaskType` 유니온의 **차집합 0** 을 CI 에서 강제한다. 「이 표 미진입」 행은 도달 불가를 숨기지 않고 드러내려고 값째로 남긴 것이며, 지우면 토큰이 소실돼 빨간불이 된다. 행 구성 근거(backend 행 누락 사고)는 그 판별식 헤더 주석 참조.
 
-각 리뷰 스킬은 plan 파일을 읽고 결과를 동일 파일의 `## 리뷰 결과` 섹션에 append.
+## Step 3. 리뷰 호출 (병렬)
+
+**두 렌즈가 걸리면 한 응답에 함께 발행한다.** 순차로 나누면 왕복이 2배가 되고 얻는 것이 없다.
 
 ```
 Skill({ skill: "plan-eng-review", args: "docs/plans/<date>-<slug>.md" })
-# 결과 확인 → BLOCKER 있으면 중단
 Skill({ skill: "plan-ceo-review", args: "docs/plans/<date>-<slug>.md" })
 ```
 
-### Step 4. BLOCKER 처리
+각 리뷰는 plan 파일의 `## 리뷰 결과` 에 append 한다. BLOCKER 는 **합산한 뒤 한 번에** 판정한다.
 
-각 리뷰가 BLOCKER를 표시하면 **중단**. 사용자 개입 필수.
+## Step 4. BLOCKER 처리
 
-```
-🛑 plan-eng-review BLOCKER:
-- 트랜잭션 경계 누락 (DEVELOPMENT.md §1.4 위반)
+BLOCKER 가 하나라도 있으면 **중단**하고 Maxi 개입을 요청한다 — ① plan 수정 후 `/bts-plan` 재호출 ② 위험 인정하고 진행 ③ 작업 중단.
+**`auth`/`migration` 의 BLOCKER 는 무시 옵션이 없다**(절대 규칙).
 
-다음 옵션:
-1. plan을 수정해서 트랜잭션 명시 → /bts-plan 재호출
-2. BLOCKER를 무시하고 진행 (위험, Maxi 확인 필수)
-3. 작업 중단
-```
+## Step 5. plan 갱신 + 게이트 1 진입
 
-`auth`/`migration` 작업의 BLOCKER는 **무시 옵션 없음** (절대 규칙).
-
-### Step 5. /autoplan 사용 시 특별 처리
-
-`/autoplan`은 4종 리뷰를 자동 실행 + 6개 결정 원칙으로 자동 판정. 결과가 "taste decision"이면 Maxi에게 위임.
+`## 리뷰 결과` 에 렌즈별 결과(통과 / 주의 / BLOCKER)를 기록하고, `/bts` 컨트롤러에 게이트 1 요약을 반환한다.
 
 ```
-Skill({ skill: "autoplan", args: "docs/plans/<date>-<slug>.md" })
-# 결과:
-# - 자동 결정: N건
-# - taste decision (Maxi 결정 필요): M건
-```
-
-taste decision은 사용자 게이트 1 직전에 AskUserQuestion으로 표시.
-
-### Step 6. plan 파일 갱신
-
-```markdown
-## 리뷰 결과
-
-### plan-eng-review (2026-05-19)
-- ✅ 통과: 트랜잭션 경계 명시됨
-- ⚠️ 주의: pgmq 큐 발사 부분의 멱등성 검증 추가 권장
-- BLOCKER: 없음
-
-### plan-ceo-review (해당 시)
-- (생략)
-```
-
-### Step 7. 사용자 게이트 1 진입
-
-게이트 1을 위한 요약 출력.
-
-```
-🛑 게이트 1 — Maxi 검토 부탁드립니다.
-
-산출물:
-- 도메인 정리: docs/plans/.../#도메인-정리
-- 스펙: docs/specs/2026-05-19-issue-mention-notify.md
-- Plan: docs/plans/2026-05-19-issue-mention-notify.md (4 tasks)
-- 리뷰 결과:
-  - plan-eng-review ✅ (주의 1건)
-  - plan-ceo-review ✅
-  - autoplan: 자동 결정 8건, taste decision 0건
-
-다음 옵션:
-1. 승인 → /bts-impl 진입
-2. plan 수정 요청 → 어느 섹션?
-3. 작업 중단
-```
-
-AskUserQuestion으로 응답 수집.
-
-## 출력 형식
-
-```
-🔄 [5/8] /bts-review-plan
-   ├─ 타입: feature (task=4) → /autoplan
-   ├─ /autoplan: 자동 결정 8건, taste 0건
-   └─ 다음. 게이트 1 (Maxi 검토)
+🔄 [4/7] /bts-review-plan
+   ├─ 타입: feature (T2) → /plan-eng-review 1종
+   ├─ 결과: ✅ 통과 (주의 1건 — pgmq 멱등성 검증 권장) · BLOCKER 0
+   └─ 다음. 🛑 게이트 1 (Maxi 검토)
 ```
 
 ## 실패 / 엣지 케이스
 
-- **여러 리뷰가 모두 BLOCKER**. 작업 자체를 재검토. office-hours 재호출 또는 작업 분할 제안
-- **autoplan이 작업을 "분할 권장"으로 판정**. AskUserQuestion. yes → `/bts-plan` 재호출 (분할 prompt), no → 그대로 진행 (위험 인정)
-- **`/plan-devex-review`가 API 호환성 깨짐 발견**. v1/v2 분리 패턴 권장 → plan에 반영
+- **여러 렌즈가 모두 BLOCKER**. 작업 자체를 재검토 — `/bts-spec` loop back 또는 분할 제안
+- **리뷰 스킬 호출 실패**. 렌즈 부재를 게이트 1 요약에 명시하고 진행 여부를 Maxi 에게 묻는다 (조용히 0종으로 통과시키지 않는다)

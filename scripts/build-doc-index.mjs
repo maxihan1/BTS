@@ -194,6 +194,31 @@ function main() {
   const critRendered = critExpected.filter((s) => routerBody.includes(`[[${s}]]`));
   const critMissing = critExpected.filter((s) => !routerBody.includes(`[[${s}]]`));
 
+  // ★ 정원 — ★(critical) 건수의 하한·상한. 위 차집합 가드의 **비-공허 짝**이다.
+  //
+  //   왜 하한이 본체인가. 위 `critMissing` 은 "critical 로 선언된 것이 라우터에 렌더됐나"를
+  //   본다. critical 이 **0건**이면 기대 집합이 비어 차집합도 항상 공집합이라 영구 통과한다 —
+  //   ★ 를 전부 강등하는 것이 이 가드를 무력화하는 가장 쉬운 길이고, 그때 라우터는
+  //   "항상 지킬 것" 구획이 비어 있는데도 초록이다. 그래서 하한 1 을 둔다.
+  //
+  //   상한은 예산이다. 라우터는 **매 세션 상시 로드**되므로 ★ 가 늘면 그만큼 고정 컨텍스트가
+  //   불어난다. 전환기 목표 12건(정상화 후 3건).
+  const STAR_QUOTA = { min: 1, max: 12 };
+
+  //   ★상한은 2026-08-13(MIGRATION 부록 B S3)에 **기본 활성**으로 바뀌었다.
+  //   그전까지 비활성이었던 이유는 실측 ★ 74건이라 켜는 순간 pre-commit `--check` 가
+  //   **모든 커밋**을 막았기 때문이다. 활성 조건이 「★ 63건을 `priority: normal` 로 강등하는
+  //   바로 그 단계」였고, 그 강등과 이 활성이 같은 묶음에서 이뤄졌다 —
+  //   둘이 갈라지면 어느 쪽도 상대를 지켜 주지 못한다.
+  //
+  //   환경변수는 **끄는 쪽**으로만 남긴다. `BTS_STAR_QUOTA_MAX=0` 이면 FAIL 이 WARN 으로 내려간다.
+  //   왜 남기나. 강등 대상이 git 밖(`~/.claude/…/memory/`)이라 `git checkout --` 로 원복이 안 된다.
+  //   상한을 넘긴 채 사고가 나면 **커밋 자체가 막혀 복구 커밋도 못 만든다** — 그때 빠져나갈
+  //   1회성 통로가 필요하다. 기본값을 바꾸는 게 아니라 그 세션에서만 완화하는 경로다.
+  //   `=1` 은 옛 강제 표기라 그대로 활성으로 읽힌다(뮤테이션 프로브가 쓴다).
+  //   완전 되돌림은 이 줄을 `=== '1'` 로 되돌리는 한 줄이다.
+  const STAR_QUOTA_ENFORCE_MAX = process.env.BTS_STAR_QUOTA_MAX !== '0';
+
   let bad = false;
   if (docOrphans.length) {
     console.error(
@@ -208,6 +233,29 @@ function main() {
       critMissing.slice(0, 10),
     );
     bad = true;
+  }
+  if (critExpected.length < STAR_QUOTA.min) {
+    console.error(
+      `FAIL. ★(critical) ${critExpected.length}건 — 하한 ${STAR_QUOTA.min} 미달.`,
+      '\n  → ★ 가 0 이면 위 "라우터 렌더" 차집합 가드가 빈 집합을 비교하며 영구 통과한다.',
+      '\n  → 라우터의 "항상 지킬 것" 구획이 통째로 비었다. 강등이 의도였다면 그 가드부터 다시 설계할 것.',
+    );
+    bad = true;
+  }
+  if (critExpected.length > STAR_QUOTA.max) {
+    if (STAR_QUOTA_ENFORCE_MAX) {
+      console.error(
+        `FAIL. ★(critical) ${critExpected.length}건 — 상한 ${STAR_QUOTA.max} 초과.`,
+        '\n  → 라우터는 매 세션 상시 로드된다. 초과분은 개별 메모리로 강등할 것',
+        '(frontmatter 의 priority 를 normal 로 — 키를 지워도 기본값이 normal 이다).',
+      );
+      bad = true;
+    } else {
+      console.warn(
+        `WARN. ★(critical) ${critExpected.length}건 — 목표 상한 ${STAR_QUOTA.max} 초과` +
+          ' (BTS_STAR_QUOTA_MAX=0 으로 이번 실행만 완화됨 — 기본값은 강제다).',
+      );
+    }
   }
   if (orphans.length) {
     console.error(`FAIL. 고아 ${orphans.length}건.`, orphans.slice(0, 10));

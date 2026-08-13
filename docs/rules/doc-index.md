@@ -120,4 +120,4 @@ bash scripts/doc-index/mutation-probe.sh   # 클린 상태에서
 ## 관련
 
 - FR 변경 시 전수 동기화. [`fr-sync-checklist.md`](fr-sync-checklist.md)
-- 명령어. [`commands.md`](commands.md)
+- 명령어·코드 지도. `CLAUDE.md` 본문
