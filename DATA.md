@@ -17,7 +17,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 1. **이슈 키(`PROJ-123`)는 영구 보존** — 재발급 금지. 이동/삭제 시 `IssueKeyRedirect`로 옛 키 보존.
 2. **`DELETE`는 항상 `WHERE` + 소프트 삭제 우선** — 하드 삭제는 ADR + Maxi 확인 필수.
 3. **마이그레이션은 Flyway만** — 수동 ALTER TABLE / 임시 SQL 금지.
-4. **트랜잭션 경계 명시** — `@Transactional` 누락 = BLOCKER. Detekt 룰로 빌드 차단.
+4. **트랜잭션 경계 명시** — `@Transactional` 누락 = BLOCKER. 코드리뷰가 잡는다 (Detekt 커스텀 룰은 **미구현** — §6 은 계획이다).
 5. **인증/CSRF 우회 불가** — Spring Security 필터 체인 변경은 plan-eng-review + plan-ceo-review 필수.
 
 ## §2. 이슈 키 영속성 (§1.1 상세)
