@@ -1,10 +1,17 @@
-// Playwright E2E 테스트 설정 — chromium 단일 프로젝트 (Phase 0)
+// Playwright E2E 테스트 설정 — chromium(기능) + visual(시각 회귀 스냅샷) 2 프로젝트
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
   forbidOnly: !!process.env['CI'],
   retries: 0,
+  // ★기본 템플릿
+  // (`{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-projectName}{-snapshotSuffix}{ext}`)
+  // 을 쓰지 않는다. `{-snapshotSuffix}` 가 OS 이름(`-darwin`)으로 채워지므로, 러너를 바꾸면
+  // 기존 baseline 과 비교하지 못하고 **조용히 새 파일을 만들며 초록**이 된다 — 회귀를 못 보는
+  // 가짜초록이다. 접미를 없애면 환경이 달라진 순간 diff 로 드러난다(baseline 은 러너와 동일
+  // 환경에서만 생성한다는 계약과 짝을 이룬다 — e2e/visual/visual-regression.spec.ts 상단 주석).
+  snapshotPathTemplate: 'e2e/visual/__screenshots__/{arg}{ext}',
   use: {
     baseURL: 'http://localhost:5173',
   },
@@ -12,6 +19,22 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      // ★`e2e/visual` 은 아래 `visual` 프로젝트 전용이다. 제외하지 않으면 루트 testDir
+      // 때문에 같은 spec 이 두 프로젝트에서 각각 돌고, 두 실행이 **같은 baseline 파일 1개**를
+      // 놓고 비교한다(위 경로 템플릿에서 `{-projectName}` 을 뺐다). 뷰포트가 서로 달라
+      // 한쪽은 반드시 빨간불이 되고, `--update-snapshots` 는 같은 파일을 두 번 덮어쓴다.
+      testIgnore: '**/e2e/visual/**',
+    },
+    {
+      // 시각 회귀 스냅샷 전용 (파일럿 — 이슈 목록·이슈 상세 2화면).
+      name: 'visual',
+      testDir: './e2e/visual',
+      // 뷰포트를 여기서 고정한다. Desktop Chrome 기본값(1280×720)과 다르므로 spec 쪽에서
+      // 다시 선언하지 않는다 — 두 곳에 적으면 갈라진다.
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+      // ★재시도 0 을 프로젝트에서도 못박는다. 재시도로 덮으면 파일럿이 재려는 값
+      // (무변경 상태 20회 중 diff 회수)이 사라져 채택 판정 자체가 불가능해진다.
+      retries: 0,
     },
   ],
   webServer: {
