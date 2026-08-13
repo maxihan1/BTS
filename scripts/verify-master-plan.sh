@@ -161,6 +161,14 @@ done < <(grep -rnE '\(FR-[A-Z]+,? *[0-9]+개\)|\([0-9]+ FR\)' "$PRODUCT_DIR" "$F
 #
 #    fr-index.md 는 **의도적 미포함**. `:265` 의 'issue-tracking 29 FR' 처럼 BC 단위 값이 있어
 #    총계와 대조하면 오탐 EXIT 4 가 난다 (그 값 자체의 드리프트는 별건이다).
+#
+#    ★비-공허 하한 (2026-08-13 신설). 이 룰은 **매치가 있어야** 무언가를 검사한다.
+#      CLAUDE.md 를 줄이면서 'N FR' 표기를 지우면 매치가 0 이 되고, 룰 E 는 실패가 아니라
+#      **아무 말 없이 통과**한다 — 가드가 죽은 것을 초록이 감춘다. 파일을 지우거나 개명해도
+#      아래 `[[ -f ]] || continue` 로 같은 결과가 된다.
+#      그래서 CLAUDE.md 의 매치 수를 세어 0 이면 실패시킨다. 이 하한이 요구하는 것은
+#      「CLAUDE.md 살아있는 구역에 2자리+ 'N FR' 표기가 최소 1회 존재」다.
+E_CLAUDE_HITS=0
 for ef in "$CLAUDE_MD" "$README" "$CHANGELOG_MD"; do
   [[ -f "$ef" ]] || continue
   case "$(basename "$ef")" in
@@ -168,10 +176,21 @@ for ef in "$CLAUDE_MD" "$README" "$CHANGELOG_MD"; do
     CHANGELOG.md) elive="$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[/{f=0} f' "$ef")" ;;
     *)            elive="$(cat "$ef")" ;;
   esac
+  ehits=0
   while IFS= read -r cnum; do
-    [[ -n "$cnum" && "$cnum" != "$PLAN_COUNT" ]] && count_fail "$(basename "$ef") '${cnum} FR'"
+    [[ -z "$cnum" ]] && continue
+    ehits=$((ehits + 1))
+    if [[ "$cnum" != "$PLAN_COUNT" ]]; then
+      count_fail "$(basename "$ef") '${cnum} FR'"
+    fi
   done < <(printf '%s\n' "$elive" | grep -oE '[0-9]{2,} FR' | grep -oE '^[0-9]+' || true)
+  if [[ "$(basename "$ef")" == "CLAUDE.md" ]]; then
+    E_CLAUDE_HITS="$ehits"
+  fi
 done
+if [[ "$E_CLAUDE_HITS" -eq 0 ]]; then
+  sync_fail "룰 E 가 공허하다 — CLAUDE.md 의 살아있는 구역에서 '[0-9]{2,} FR' 표기를 0건 찾았다 (최소 1건 필요). 파일이 없거나, 개명됐거나, 축약하면서 FR 카운트 표기가 사라졌다. 정본 FR=${PLAN_COUNT} 를 본문에 1회 표기할 것"
+fi
 
 # F) fr-index §A.2 BC 행 합 == 정본, product '소속 FR. N개' == §A.2 행 (per-BC drift)
 A2_SUM="$(grep -E '^\| [a-z][a-z-]+ \| [0-9]+ \|' "$FR_INDEX" | awk -F'|' '{gsub(/[^0-9]/,"",$3); s+=$3} END{print s+0}')"
@@ -291,6 +310,55 @@ S22_300="$(printf '%s\n' "$DEV_S22" | grep -cE '파일 300줄' || true)"
 S22_200="$(printf '%s\n' "$DEV_S22" | grep -cE '컴포넌트 200줄 이내' || true)"
 if [[ "$S21_300" -ne 1 || "$S22_300" -ne 0 || "$S22_200" -ne 1 ]]; then
   sync_fail "DEVELOPMENT.md 절 귀속 — §2.1 '파일 300줄' ${S21_300}행(1 기대) · §2.2 '파일 300줄' ${S22_300}행(0 기대) · §2.2 '컴포넌트 200줄' ${S22_200}행(1 기대)"
+fi
+
+# J) 표면 정본 대조 — scripts/workflow/surfaces.ts ⟺ docs/rules/behavior-rules.md (2026-08-13 신설)
+#    작업 티어 판정의 글로브 정본은 `surfaces.ts` 의 `SURFACES` 하나다. 사람이 읽는 표면 표는
+#    `docs/rules/behavior-rules.md` 에 있고, 둘은 **서로를 안 보는 두 목록**이 되기 쉽다 —
+#    이 저장소의 지배 결함 양식이다. 표면 하나를 코드에서 개명하고 문서를 안 고치면
+#    문서가 조용히 썩고, 사람은 없는 표면을 근거로 티어를 선언한다.
+#
+#    ★비교 대상은 **표면 이름**이지 글로브가 아니다. 글로브를 문서에 다시 적으면 그것이
+#      세 번째 목록이 된다. 문서는 이름 + 설명만 갖고, 글로브는 코드에만 있다.
+#
+#    ★부재를 조용히 넘기지 않는다. 두 파일 중 하나만 없어도 차집합은 「양쪽 다 0」으로
+#      공집합이 되어 통과한다 — 룰 E 가 뚫렸던 방식 그대로다. 그래서 부재를 먼저 실패시킨다.
+SURFACES_TS="${REPO_ROOT}/scripts/workflow/surfaces.ts"
+BEHAVIOR_RULES="${REPO_ROOT}/docs/rules/behavior-rules.md"
+#
+#    파싱 계약 (양쪽이 이 서식을 지켜야 한다 — 어기면 여기서 걸린다).
+#      surfaces.ts        . `export const SURFACES` 블록 안, 들여쓴 `KEY:` 형태의 대문자 키
+#      behavior-rules.md  . 표면 표의 각 행이 `| `KEY` | …` 로 시작 (첫 칸이 백틱 감싼 대문자 키)
+if [[ ! -f "$SURFACES_TS" || ! -f "$BEHAVIOR_RULES" ]]; then
+  sync_fail "표면 정본 파일 부재 — surfaces.ts $( [[ -f "$SURFACES_TS" ]] && echo 있음 || echo 없음 ) · behavior-rules.md $( [[ -f "$BEHAVIOR_RULES" ]] && echo 있음 || echo 없음 ). 한쪽만 있으면 차집합이 공허하게 통과한다"
+else
+  # `|| true` 는 「매치 0건」을 파이프 실패로 죽이지 않으려는 것이다 (`set -o pipefail`).
+  # 0건 자체는 아래 하한 단언이 명시적으로 잡는다 — 조용히 넘어가는 경로가 아니다.
+  { awk '/^export const SURFACES/{f=1;next} f&&/^}/{exit} f' "$SURFACES_TS" \
+    | grep -oE '^[[:space:]]+[A-Z][A-Z0-9_]*:' | tr -d ' :' | sort -u > "$TMP/surf-code.txt"; } || true
+  { grep -oE '^\|[[:space:]]*`[A-Z][A-Z0-9_]*`' "$BEHAVIOR_RULES" \
+    | grep -oE '[A-Z][A-Z0-9_]*' | sort -u > "$TMP/surf-doc.txt"; } || true
+  touch "$TMP/surf-code.txt" "$TMP/surf-doc.txt"
+
+  SURF_CODE_COUNT="$(wc -l < "$TMP/surf-code.txt" | tr -d ' ')"
+  SURF_DOC_COUNT="$(wc -l < "$TMP/surf-doc.txt" | tr -d ' ')"
+
+  # 비-공허 하한. 티어 4종 중 어느 하나라도 표면이 전멸하면 판정이 성립하지 않는다.
+  # 현재 15키에서 3키 여유 — 여유가 아니라 **파서 고장 검출 마진**이다. 파서가 절반만
+  # 죽어도(15→7) 차집합은 여전히 0 일 수 있으므로 개수 하한이 따로 필요하다.
+  SURF_MIN=12
+  if [[ "$SURF_CODE_COUNT" -lt "$SURF_MIN" || "$SURF_DOC_COUNT" -lt "$SURF_MIN" ]]; then
+    sync_fail "표면 이름을 surfaces.ts ${SURF_CODE_COUNT}개 · behavior-rules.md ${SURF_DOC_COUNT}개만 찾았다 (각 ${SURF_MIN} 이상 기대) — 파서가 고장났거나 표면이 실제로 줄었다. 0 이면 아래 차집합이 공허하게 통과한다"
+  fi
+
+  SURF_MISSING_DOC="$(comm -23 "$TMP/surf-code.txt" "$TMP/surf-doc.txt")"
+  SURF_MISSING_CODE="$(comm -13 "$TMP/surf-code.txt" "$TMP/surf-doc.txt")"
+  if [[ -n "$SURF_MISSING_DOC" ]]; then
+    sync_fail "behavior-rules.md 표면 표에 없는 표면 — $(printf '%s' "$SURF_MISSING_DOC" | tr '\n' ' ')(surfaces.ts 에는 있음)"
+  fi
+  if [[ -n "$SURF_MISSING_CODE" ]]; then
+    sync_fail "surfaces.ts 에 없는 표면 — $(printf '%s' "$SURF_MISSING_CODE" | tr '\n' ' ')(behavior-rules.md 표면 표에는 있음. 개명했거나 오타다)"
+  fi
 fi
 
 # --- 4) 최종 결과 ---

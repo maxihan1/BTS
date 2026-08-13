@@ -105,3 +105,57 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test (vitest unit + msw)
         run: pnpm --filter @bts/web test
+
+  # ── 시각 회귀 스냅샷 (파일럿) ────────────────────────────────────────────────
+  #
+  # 무엇. 4화면(이슈 목록·이슈 상세·백로그·이슈 생성 다이얼로그)을 라이트/다크로 찍어
+  # 커밋된 baseline PNG 와 대조한다. 유닛 테스트가 못 보는 층 — 여백·색·정렬이 조용히
+  # 어긋나는 회귀를 사람의 눈확인 대신 기계가 본다.
+  #
+  # ★`continue-on-error: true` 는 **파일럿 기간 한정**이다. 무변경 상태에서 연속 20회 돌려
+  #   diff 0회면 이 줄을 지우고 차단으로 승격한다(1회면 보류·재측정, 2회 이상이면 미채택).
+  #   지금 차단으로 켜면 flaky 한 번에 전 PR 이 막히고, 그러면 임계를 원인 규명 없이 풀게 된다 —
+  #   그것이 이 저장소의 가짜초록 양식이다. **승격 판정 없이 이 줄만 지우지 말 것.**
+  #
+  # ★`needs: [runner-health, test]` — test 잡 뒤에 세운다. 러너가 1대라 브라우저를 띄우는
+  #   이 잡과 vitest 전체 스위트가 겹치면 둘 다 메모리 경합으로 느려진다(전 스위트 균등
+  #   2배 사고와 같은 축). 병렬 이득은 어차피 러너 1대에서 0 이다.
+  #
+  # ★baseline 갱신은 `apps/web/src/**` 변경을 동반할 때만 허용한다. PNG 만 바꾸는 커밋은
+  #   「원인 미상인데 초록으로 만들기」다 — 판별식 snapshot-baseline-guard 가 차단한다.
+  visual:
+    needs: [runner-health, test]
+    runs-on: [self-hosted, bts-local]
+    # 4화면 × 라이트/다크 = 8샷 + vite dev 기동. Playwright 를 CI 에서 돌린 전례가 없어
+    # 이 값은 **잠정**이다 — 파일럿 20회 측정에서 실측으로 갱신한다.
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Setup Node 22 (with pnpm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      # 멱등이다 — 이미 받아 둔 브라우저가 있으면 즉시 끝난다. 조건부로 감싸면
+      # 캐시가 비었을 때만 나는 실패가 되어 원인이 안 보인다.
+      - name: Install Playwright chromium
+        run: pnpm --filter @bts/web exec playwright install chromium
+      - name: Visual regression (1280×800 · light/dark)
+        run: pnpm --filter @bts/web exec playwright test --project=visual
+      # 실패했을 때만 올린다. 항상 올리면 러너 디스크와 아티팩트 보관만 먹고,
+      # 정작 볼 사람은 초록인 run 의 스냅샷을 열지 않는다.
+      - name: 시각 diff 업로드 (실패 시에만)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff-${{ github.run_id }}
+          path: apps/web/test-results/
+          retention-days: 3
