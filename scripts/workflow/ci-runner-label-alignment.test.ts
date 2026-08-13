@@ -80,6 +80,17 @@ const REQUIRED_RUNNER_LABEL = 'bts-local';
  * 러너 1대 직렬이라 33분 스위트가 50~60분이 된다.
  *
  * 되돌리려면 이 상수를 함께 지워야 한다 — 그때 위 근거를 다시 검토하라.
+ *
+ * ## ★예외 1건 — 「`./gradlew` 만 실행한다」는 전제가 깨졌다 (2026-08-12 · 부채 매핑 31)
+ *
+ * backend-ci 가 이제 `scripts/workflow/select-backend-modules.ts` 를 **실행한다** — 어떤 모듈을
+ * 돌릴지 고르는 코드다. 그래서 그 **한 파일만은** backend-ci 의 `paths` 에 있어야 한다.
+ * 없으면 「선별기를 너무 좁게 고치는 PR」이 `scripts/**` 만 건드리므로 backend-ci 가 PR 에서도
+ * 머지 후에도 **0회** 돌고, 어떤 백엔드 테스트를 돌릴지 정하는 코드가 정작 백엔드 잡으로는
+ * 한 번도 검증되지 않는다(독립 리뷰 적발).
+ *
+ * ★글로브가 아니라 **그 파일 하나**다. `scripts/workflow/**` 를 통째로 넣으면 판별식 파일을
+ *   추가하는 것만으로 backend 12잡을 끌고 오는 PR #329 의 비용이 그대로 돌아온다.
  */
 const DISCRIMINANT_ONLY_PATHS = [
   'scripts/workflow/**',

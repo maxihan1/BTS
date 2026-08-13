@@ -34,7 +34,9 @@
 name: backend-ci
 
 # ## 트리거는 이 워크플로우가 **실제로 실행하는 것**만 건다
-# 이 파일의 잡은 전부 `./gradlew` 다 — pnpm/node 를 쓰지 않는다.
+# 테스트 잡은 전부 `./gradlew` 다. 예외가 **하나** 있다 — `select` 잡이 node 로
+# `scripts/workflow/select-backend-modules.ts` 를 돌려 어떤 모듈을 테스트할지 고른다
+# (2026-08-12 · 부채 매핑 31). 그래서 그 **파일 하나만** 아래 `paths` 에 함께 걸려 있다.
 #
 # 2026-08-01 이전에는 `scripts/workflow/**` · `apps/web/vite.config.ts` ·
 # `apps/web/playwright.config.ts` · `package.json` 이 함께 걸려 있었다. 판별식이 backend-ci 에서
@@ -54,12 +56,22 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      # ★이 잡이 **실행하는** 선별기다. 빠지면 「선별기를 너무 좁게 고치는 PR」에서
+      #   backend-ci 가 0회 돌아, 무엇을 돌릴지 정하는 코드가 백엔드 잡으로 한 번도
+      #   검증되지 않는다. 글로브가 아니라 이 파일 하나만 건다 —
+      #   `scripts/workflow/**` 를 통째로 넣으면 판별식 파일 추가만으로 12잡을 끌고 온다.
+      - 'scripts/workflow/select-backend-modules.ts'
   push:
     branches: [main]
     # ★양쪽 블록에 같은 목록. 한쪽만 걸면 봉인이 절반만 닫힌다.
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      # ★이 잡이 **실행하는** 선별기다. 빠지면 「선별기를 너무 좁게 고치는 PR」에서
+      #   backend-ci 가 0회 돌아, 무엇을 돌릴지 정하는 코드가 백엔드 잡으로 한 번도
+      #   검증되지 않는다. 글로브가 아니라 이 파일 하나만 건다 —
+      #   `scripts/workflow/**` 를 통째로 넣으면 판별식 파일 추가만으로 12잡을 끌고 온다.
+      - 'scripts/workflow/select-backend-modules.ts'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -77,10 +89,158 @@ jobs:
     with:
       require_docker: true
 
+  # ── 어떤 모듈을 돌릴지 고른다 (2026-08-12 · 부채 매핑 31) ─────────────────────
+  #
+  # 왜. 종전에는 `matrix.module` 이 9개 고정 목록이라 백엔드 파일이 하나만 바뀌어도 전부 돌았다.
+  # 2026-08-12 PR #367 실측 — KDoc 한 덩어리(실행 코드 0줄)가 잡 12개를 깨웠고 러너가 1대라
+  # 직렬로 **약 37분**. 「매트릭스로 병렬화하면 최장 모듈로 수렴」이라는 설계 전제는 러너가
+  # 여러 대일 때만 성립한다.
+  #
+  # ★두 방향의 비용이 대칭이 아니다. 넓게 고르면 시간만 들지만 **좁게 고르면 검증 안 된 코드가
+  #   초록으로 머지된다.** 그래서 판정을 못 하는 모든 경우(변경 목록 획득 실패 · 모듈 밖 백엔드
+  #   변경 · 이 워크플로우 자신의 변경)의 기본값은 **전 모듈**이다.
+  #
+  # ★의존 그래프는 손으로 안 적는다 — `build.gradle.kts` 의 `project(":modules:X")` 에서
+  #   런타임에 도출한다. 판별식. scripts/workflow/select-backend-modules.test.ts
+  select:
+    name: 대상 모듈 선별
+    needs: runner-health
+    runs-on: [self-hosted, bts-local]
+    timeout-minutes: 5
+    outputs:
+      modules: ${{ steps.pick.outputs.modules }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 변경 파일을 구하려면 비교 대상 커밋이 로컬에 있어야 한다. 얕은 클론이면
+          # diff 가 실패하고, 그러면 아래가 fail-safe 로 **전 모듈**을 고른다(안전하지만 느리다).
+          fetch-depth: 0
+
+      # ★다른 워크플로우와 같은 node 를 쓴다. 러너 PATH 의 시스템 node 에 기대면, 그 버전이
+      #   22.6 미만이 되거나(--experimental-strip-types 부재) 바이너리가 쓸려 나갔을 때
+      #   `runner-health` 는 초록인 채 이 잡만 죽는다 — 그 점검은 externals·툴캐시만 보고
+      #   시스템 node 는 보지 않는다(2026-08-04 엔진 소실 사고의 사각).
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 변경 파일 → 대상 모듈
+        id: pick
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # ★ADR D2 — 위험이 큰 작업은 **파일 경로에 신호가 없는 유일한 조건**이라 사람이
+          #   라벨(`ci:full`)로 말한다. `toJSON` 이 JSON 배열 문자열을 만들고 선별기가 그것을 읽는다.
+          #   push 이벤트에는 `pull_request` 컨텍스트가 없으므로 빈 배열(또는 `null`)이 된다 —
+          #   라벨 부재는 **정상 상태**이고 선별기는 그때 넓히지 않는다(모든 PR 이 전 모듈을 돌면
+          #   무의미해진다). 선별기는 `[]`·`null`·미설정·깨진 JSON 을 전부 「라벨 없음」으로 읽는다.
+          #
+          # ★한계 — **main push 실행에서는 `ci:full` 이 원리적으로 발화할 수 없다.**
+          #   그 컨텍스트에 PR 이 없기 때문이다. 「경로에 신호가 없는 위험」이라는 이 라벨의 존재
+          #   이유가 정작 main 을 지키는 실행에서는 사라진다. 같은 커밋이 PR 실행에서 이미 전 모듈로
+          #   게이트를 통과한 뒤라 실질 위험은 낮다고 판단해 남긴다 — **넣지 않기로 한 것과
+          #   잊어버린 것은 다르므로**(ADR D4 와 같은 원칙) 여기 적는다.
+          BTS_CI_PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          # ★`${{ }}` 를 `run:` 본문에 직접 보간하지 않고 전부 `env:` 를 거친다.
+          #   `github.sha` 자체는 GitHub 이 만든 40자 16진수라 지금은 위험이 없지만, 직접 보간
+          #   **패턴이 남으면** 훗날 그 자리에 `github.head_ref`(브랜치명 — 셸 메타문자 삽입이
+          #   가능한 대표 인젝션 벡터)나 PR 제목을 끼우는 편집이 그 형태를 그대로 물려받는다.
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          # ★고정 경로 `/tmp/…` 를 쓰지 않는다. 이 파일은 assembly 잡에 「러너 증설 시 고정 자원을
+          #   실행별로 유일하게 만들어라」를 이미 적어 뒀는데, 이 잡이 같은 조건(러너 1대)에 기대는
+          #   고정 자원을 하나 더 만들고 있었다. 게다가 파손 양식이 더 나쁘다 — assembly 의 포트
+          #   충돌은 빨간불이지만, 두 select 잡이 write/read 사이 창에서 교차하면 **A 잡이 B 잡의
+          #   변경 목록으로 모듈을 골라 초록**이 된다(조용한 오선별).
+          #   `RUNNER_TEMP` 는 러너 설치별(`_work/_temp`)로 갈리고 잡마다 정리되므로 증설 레이스 ·
+          #   심볼릭 링크 추종 · 이전 실행 잔여물이 한 번에 사라진다.
+          CHANGED_FILE="${RUNNER_TEMP:-/tmp}/bts-changed.z"
+          # ★diff 가 실패하면 목록을 **비운다.** 선별기는 빈 목록을 「판정 불가」로 읽고
+          #   전 모듈을 돌려준다 — 모르는 상태에서 좁히지 않는다는 계약이 여기서 성립한다.
+          #
+          # ★`core.quotePath=false` 와 `-z` 가 **필수**다. git 기본값은 비-ASCII 경로를
+          #   `"backend/…\355\225…"` 처럼 따옴표로 감싼 이스케이프 문자열로 낸다. 그 토큰은
+          #   `backend/` 로 시작하지 않아 선별기의 귀속·확장 판정을 **둘 다 빠져나가 조용히
+          #   무시**된다 — 좁아지는 방향이라 치명적이다. 이 저장소는 한글 명명을 자주 쓴다.
+          #
+          # ★★`--no-renames` 도 **필수**다(2026-08-14 독립 리뷰 적발). git 은 rename 을 감지하면
+          #   **목적지 경로 하나만** 낸다. 모듈 A → B 로 파일을 옮기면 A 가 씨앗에 안 들어가
+          #   **A 의 테스트 전량이 조용히 건너뛰어진다.** `WIDEN_PREFIXES` 도 발화하지 않는다 —
+          #   출발 경로가 애초에 선별기에 **도달하지 않기** 때문이다. 선별기 쪽에서는 원리적으로
+          #   못 막고 여기서만 고칠 수 있다.
+          #   잔여 안전망은 `assembly` 잡의 `:modules:app:test` 가 잡는 **main 소스셋 컴파일 깨짐**
+          #   하나뿐 — A 의 테스트 소스셋 컴파일과 A 자체 테스트 실행은 통째로 빠진다.
+          #   러너의 전역 `diff.renames` 설정에 무관하게 고정되므로 `-M0` 이 아니라 이 플래그를 쓴다.
+          #   판별식이 git 의 실제 동작을 임시 저장소로 재고 이 배선을 앵커로 강제한다.
+          if ! git -c core.quotePath=false diff --no-renames --name-only -z \
+                 "$BASE_SHA" "$HEAD_SHA" > "$CHANGED_FILE" 2> /dev/null; then
+            : > "$CHANGED_FILE"
+            echo "⚠️  변경 파일을 구하지 못했다 (base=$BASE_SHA) — 전 모듈을 돈다."
+          fi
+
+          # ★`xargs -a` 를 쓰지 않는다 — **GNU 전용**이고 이 러너는 macOS(BSD xargs)라
+          #   `invalid option -- a` 로 죽는다(2026-08-12 실측, 이 잡이 실제로 그렇게 실패했다).
+          #
+          # ★★빈 입력을 xargs 에 맡기지 않는다. 입력이 비면 xargs 가 명령을 **아예 실행하지
+          #   않아** `$MODULES` 가 빈 문자열이 되고, `fromJSON('')` 이 매트릭스를 깨뜨린다 —
+          #   diff 실패의 fail-safe 가 정확히 그 자리에서 무너진다(2026-08-12 CI 실측).
+          #   그래서 「인자 0개로 직접 부르기」를 분리해 둔다. 선별기는 인자 0개를 「판정 불가」로
+          #   읽고 전 모듈을 돌려준다.
+          #
+          # ★BSD xargs 의 상한은 ARG_MAX 가 아니라 **인자 개수 기본 5000개**다(2026-08-14 실측 —
+          #   경로 20000개 입력이 5000씩 4번으로 쪼개졌다. 크기로는 ARG_MAX 의 절반도 안 됐다).
+          #   쪼개지면 node 가 여러 번 불려 `$MODULES` 가 `["a"]["b"]…` 로 이어붙는다.
+          #   아래 `case` 가 그 형태를 잡는다 — `[` 로 시작해 `]` 로 끝나므로 **모양 검사만으로는
+          #   통과**하기 때문에 `][` 부분열을 따로 본다.
+          if [ -s "$CHANGED_FILE" ]; then
+            MODULES="$(xargs -0 node --experimental-strip-types \
+              scripts/workflow/select-backend-modules.ts < "$CHANGED_FILE")"
+          else
+            MODULES="$(node --experimental-strip-types \
+              scripts/workflow/select-backend-modules.ts)"
+          fi
+
+          # ★결과 형태를 **여기서** 확인하고, 아니면 큰 소리로 죽는다.
+          #   빈 값·비-배열을 그대로 넘기면 매트릭스가 스킵되는데 그것은 빨간불이 아니라
+          #   **부재**다 — 장부 매핑 31 이 착수 조건으로 못박은 「조용한 0개」가 바로 그것이다.
+          #   조용히 아무 잡도 안 도는 것보다 여기서 실패하는 편이 언제나 낫다.
+          case "$MODULES" in
+            *']['*)
+              # xargs 가 입력을 쪼개 node 를 여러 번 부른 경우다(위 5000개 상한 주석 참조).
+              # `[`…`]` 모양은 유지되므로 아래 배열 판정만으로는 **통과한다** — 여기서 잡는다.
+              echo "❌ 선별 결과에 배열이 여러 개 이어붙었다: '$MODULES'"
+              echo "   xargs 가 입력을 쪼개 선별기를 여러 번 불렀다 — 변경 파일이 너무 많다."
+              echo "   그대로 넘기면 fromJSON 이 매트릭스를 깨뜨린다 — 여기서 멈춘다."
+              exit 1
+              ;;
+            '['*']') ;;
+            *)
+              echo "❌ 선별 결과가 JSON 배열이 아니다: '$MODULES'"
+              echo "   그대로 넘기면 매트릭스가 조용히 스킵된다 — 여기서 멈춘다."
+              exit 1
+              ;;
+          esac
+          if [ "$MODULES" = "[]" ]; then
+            echo "❌ 선별 결과가 빈 배열이다 — 선별기의 계약(어떤 입력에도 0개 금지)이 깨졌다."
+            exit 1
+          fi
+
+          echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
+
+          # ★선별 결과를 run 요약에 남긴다. 「왜 이 모듈만 돌았나」가 사후 판단의 근거이고,
+          #   스텝 로그 안에만 있으면 잡을 펼쳐야 보여서 아무도 안 본다.
+          : "${GITHUB_STEP_SUMMARY:=/dev/null}"
+          {
+            echo "### backend-ci 대상 모듈"
+            echo ""
+            echo "\`$MODULES\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── BC 모듈 — Testcontainers 자체 기동, 서비스 컨테이너 불요 ──────────────────
   modules:
     name: ${{ matrix.module }}
-    needs: runner-health
+    needs: [runner-health, select]
     runs-on: [self-hosted, bts-local]
     # 관측치(2026-07-27 로컬). issue-tracking 7~10분 · identity-access 10~16분 · 나머지 5분 이하.
     # CI 러너는 로컬보다 느리므로 여유를 크게 잡는다.
@@ -92,17 +252,13 @@ jobs:
     strategy:
       # 한 모듈이 깨져도 나머지 결과를 봐야 원인 범위를 좁힐 수 있다.
       fail-fast: false
+      # ★목록을 여기 적지 않는다. `select` 잡이 변경 파일에서 계산한 것을 그대로 받는다 —
+      #   적어 두면 그 목록과 `backend/modules/` 실물이 서로를 안 보는 두 목록이 된다.
+      #   선별기는 **어떤 입력에도 빈 배열을 돌려주지 않는다.** 빈 매트릭스는 GitHub 이
+      #   거부하고 거부된 잡은 스킵되는데, 그것은 빨간불이 아니라 **부재**라 아무도 눈치채지
+      #   못한 채 초록으로 머지된다(장부 매핑 31 이 착수 조건으로 못박은 위험).
       matrix:
-        module:
-          - shared-kernel
-          - identity-access
-          - project-workflow
-          - issue-tracking
-          - agile-planning
-          - notification
-          - search-export-import
-          - slack-integration
-          - automation
+        module: ${{ fromJSON(needs.select.outputs.modules) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
