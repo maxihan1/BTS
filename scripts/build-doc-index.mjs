@@ -205,13 +205,19 @@ function main() {
   //   불어난다. 전환기 목표 12건(정상화 후 3건).
   const STAR_QUOTA = { min: 1, max: 12 };
 
-  //   ★상한은 지금 **비활성**이다. 2026-08-13 실측 ★ 74건 — 여기서 상한을 켜면 그 순간부터
-  //   pre-commit `--check` 가 **모든 커밋**을 막는다(원복이 `git checkout --` 로 안 되는
-  //   git 밖 경로라 사고가 비싸다).
-  //   활성 조건. ★ 63건을 `priority: normal` 로 강등하는 **바로 그 단계에서** 켠다 —
-  //   강등 커밋과 상한 활성이 갈라지면 둘 중 어느 쪽도 상대를 지켜 주지 못한다.
-  //   켜는 법. 이 상수를 `true` 로 바꾼다(환경변수 `BTS_STAR_QUOTA_MAX=1` 은 1회성 확인용).
-  const STAR_QUOTA_ENFORCE_MAX = process.env.BTS_STAR_QUOTA_MAX === '1';
+  //   ★상한은 2026-08-13(MIGRATION 부록 B S3)에 **기본 활성**으로 바뀌었다.
+  //   그전까지 비활성이었던 이유는 실측 ★ 74건이라 켜는 순간 pre-commit `--check` 가
+  //   **모든 커밋**을 막았기 때문이다. 활성 조건이 「★ 63건을 `priority: normal` 로 강등하는
+  //   바로 그 단계」였고, 그 강등과 이 활성이 같은 묶음에서 이뤄졌다 —
+  //   둘이 갈라지면 어느 쪽도 상대를 지켜 주지 못한다.
+  //
+  //   환경변수는 **끄는 쪽**으로만 남긴다. `BTS_STAR_QUOTA_MAX=0` 이면 FAIL 이 WARN 으로 내려간다.
+  //   왜 남기나. 강등 대상이 git 밖(`~/.claude/…/memory/`)이라 `git checkout --` 로 원복이 안 된다.
+  //   상한을 넘긴 채 사고가 나면 **커밋 자체가 막혀 복구 커밋도 못 만든다** — 그때 빠져나갈
+  //   1회성 통로가 필요하다. 기본값을 바꾸는 게 아니라 그 세션에서만 완화하는 경로다.
+  //   `=1` 은 옛 강제 표기라 그대로 활성으로 읽힌다(뮤테이션 프로브가 쓴다).
+  //   완전 되돌림은 이 줄을 `=== '1'` 로 되돌리는 한 줄이다.
+  const STAR_QUOTA_ENFORCE_MAX = process.env.BTS_STAR_QUOTA_MAX !== '0';
 
   let bad = false;
   if (docOrphans.length) {
@@ -246,7 +252,8 @@ function main() {
       bad = true;
     } else {
       console.warn(
-        `WARN. ★(critical) ${critExpected.length}건 — 목표 상한 ${STAR_QUOTA.max} 초과 (상한 강제는 아직 비활성).`,
+        `WARN. ★(critical) ${critExpected.length}건 — 목표 상한 ${STAR_QUOTA.max} 초과` +
+          ' (BTS_STAR_QUOTA_MAX=0 으로 이번 실행만 완화됨 — 기본값은 강제다).',
       );
     }
   }
