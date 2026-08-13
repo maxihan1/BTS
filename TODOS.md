@@ -2,6 +2,12 @@
 
 # TODOS
 
+**티어 표기.** 미해소(`## ⬜`) 항목의 제목 **말미 괄호 «안»** 마지막 자리에 `· T0`~`· T3` 를 적는다.
+착수할 때 필요한 절차 강도(계획·테스트·리뷰 종수·게이트)를 뜻하고, 판정은 **바뀌는 파일의 표면**이 정한다
+(정본 = `scripts/workflow/surfaces.ts` 의 `SURFACES`). ★**괄호를 새로 하나 더 붙이지 말 것** —
+`(선재 · 미착수) (T2)` 로 적으면 `debt-ledger-mapping.test.ts` 의 `normalizeKey` 가 `(T2)` 만 떼어
+키가 바뀌고 마스터 계획과의 차집합이 **즉시 red** 다(실측 확인 2026-08-13).
+
 ## ✅ 인프라 — 전체 스위트 동시 실행 시 flaky (2026-07-27 해소)
 
 **해소.** 근본 원인은 **느림이 아니라 메시지 도둑질**이었다. 타임아웃을 늘려도 절대 안 고쳐지는 종류다.
@@ -1504,7 +1510,7 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
   e2e `E2E-5 S10` 을 **함께** 제거해야 죽은 코드가 안 남는다. 처방 B(GET 의 자동 배정 = 부수효과 있는 GET 재고)는
   계약 스냅샷 8 endpoint 전부에 영향 → 별도 스펙 작업.
 
-## ⬜ personalization — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 **의도된 대가** · 미착수)
+## ⬜ personalization — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 **의도된 대가** · 미착수 · T1)
 
 > **⚠️ 이건 결함이 아니라 결정이다.** 「고쳐야 할 버그」로 오인해 조용히 되돌리지 말 것.
 
@@ -1982,7 +1988,7 @@ i18n 키 누락」). `origin/main` 의 `routes/issues.new.tsx:243` 에 같은 �
 > - **★증거의 소재 (게이트2 리뷰 지적).** 위 A/B 수치는 **일회성 진단 파일**(`apps/web/src/test/__tmp-probe-*.test.ts`)로 얻었고 그 파일은 **저장소에 커밋되지 않았다.** 재검증하려면 동일 조건(로컬 `setupServer` + 전역 공존)을 다시 만들어야 한다.
 >   정식 테스트로 승격하지 않은 이유 — 승격하려면 테스트가 스스로 이중 등록 상태를 만들어야 하는데 그것이 곧 판별식이 금지하는 상태라 자기모순이 된다. 대신 판별식(`msw-single-setupserver.test.ts`) 주석에 수치를 표로 남겼다.
 
-## ⬜ 인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · **후속 3건** · 착수)
+## ⬜ 인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · **후속 3건** · 착수 · T2)
 
 **증상.** PR 하나의 검증이 1~2시간이다. 그래서 결과가 나오기 전에 다음 커밋이 올라가고,
 최근 `backend-ci` 30건 중 **9건이 cancelled** 다 — 검증이 실질적으로 무의미해지는 구간이다.
@@ -2156,7 +2162,7 @@ clone 만 고치면 이 경로가 그대로 남아 **반쪽 봉합**이 된다.
 
 ---
 
-## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수)
+## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수 · T2)
 
 **무엇.** 기본값이 있는 non-null Kotlin 프로퍼티가 springdoc 에서 `required` 로 오표기되는 함정이
 `@RequestBody` DTO **11 클래스 · 27 프로퍼티**에 걸려 있다(2026-08-09 전수 측정).
@@ -2205,7 +2211,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ apps/web — 담당자/리드 후보가 검색 전에 전량 노출되는 곳이 **3군데 더** 있다 (선재 · 미착수)
+## ⬜ apps/web — 담당자/리드 후보가 검색 전에 전량 노출되는 곳이 **3군데 더** 있다 (선재 · 미착수 · T1)
 
 **무엇.** 「검색해야 후보가 나온다」 규칙이 적용되지 않은 표면이 이슈 상세 말고도 3곳이다.
 
@@ -2686,7 +2692,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 > 전부 `backend/**` 미변경이라 취소가 발화하지 않았다. 아래 「CI 벽시계」 항목의 후속으로 잇는다.
 
 
-## ⬜ apps/web — `IssueCreateForm` 컴포넌트가 줄수 상한을 넘는다 (227 / 상한 200 · 미착수)
+## ⬜ apps/web — `IssueCreateForm` 컴포넌트가 줄수 상한을 넘는다 (227 / 상한 200 · 미착수 · T1)
 
 **무엇.** `DEVELOPMENT.md §2.2`(`:72`)는 「함수 30줄 이내 · **컴포넌트 200줄 이내**」다 —
 **파일 상한 조항은 없다.** 「파일 300줄」은 `DEVELOPMENT.md:55` §2.1 **Kotlin** 규칙이다.
@@ -2737,7 +2743,7 @@ PATCH 봉합에서 `UpdateIssueRequest` 에 그대로 복사되면 **3개**가 �
 
 ---
 
-## ⬜ issue-tracking — 마스킹된 required 커스텀 필드의 충족 여부를 응답이 알려 주지 않는다 (신규 · 미착수)
+## ⬜ issue-tracking — 마스킹된 required 커스텀 필드의 충족 여부를 응답이 알려 주지 않는다 (신규 · 미착수 · T2)
 
 **무엇.** `IssueResponse.maskInvisible` 이 열람 권한 없는 커스텀 필드의 **값을 응답에서 제거**한다
 (`customFields = filteredCustom`). 그래서 클라이언트는 그 필드가 required 이고 비어 있는지를
@@ -3156,7 +3162,7 @@ prod 에서도 난다.** 도달 불가한 것은 **대상 프로젝트 미존재
 
 ---
 
-## ⬜ issue-tracking — `MovePreviewServiceTest` 가 **prod 동시 성립 불가 조합**을 스텁한다 (선재 · 미착수)
+## ⬜ issue-tracking — `MovePreviewServiceTest` 가 **prod 동시 성립 불가 조합**을 스텁한다 (선재 · 미착수 · T2)
 
 **무엇.** `MovePreviewServiceTest.kt:227-230` 이 `findProjectIdByKey(target) = null` 만 덮어써
 404 분기를 초록으로 만든다. 그런데 같은 파일 `:152-159` 의 `beforeEach` 가
@@ -3176,7 +3182,7 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 
 ---
 
-## ⬜ apps/web(E2E) — 임포트 CREATE 게이트 E2E 시나리오 부재 (신규 · 미착수)
+## ⬜ apps/web(E2E) — 임포트 CREATE 게이트 E2E 시나리오 부재 (신규 · 미착수 · T1)
 
 **무엇.** PR #361 이 붙인 임포트 거부 카드는 **유닛 테스트만** 있다. `e2e/import.spec.ts` ·
 `e2e/import-mapping.spec.ts` 는 권한 있는 경로만 탄다.
@@ -3192,7 +3198,7 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 
 ---
 
-## ⬜ 로딩 프레임 계약 — 임포트 페이지는 고정됨(2026-08-10), **게이트 훅 다른 소비처 2곳은 공백**
+## ⬜ 로딩 프레임 계약 — 임포트 페이지는 고정됨(2026-08-10), **게이트 훅 다른 소비처 2곳은 공백** (T1)
 
 > **2026-08-10 PR #361 최종 라운드에서 임포트 페이지 몫은 닫혔다.** 아래 「닫힌 것」과
 > 「남은 것」을 구분해서 읽을 것. 헤딩만 보고 통째로 미착수라 읽지 말 것.
@@ -3241,7 +3247,7 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 
 ---
 
-## ⬜ apps/web — 권한 재조회로 **임포트 화면이 통째로 사라질 수 있다** (신규 · 미착수)
+## ⬜ apps/web — 권한 재조회로 **임포트 화면이 통째로 사라질 수 있다** (신규 · 미착수 · T2)
 
 **무엇.** `use-project-permissions.ts:36` 의 `staleTime: 30_000` + TanStack Query 기본
 `refetchOnWindowFocus: true` 조합이다. 임포트 job 폴링 중에 30초 넘게 창을 벗어났다 돌아오면
@@ -3578,7 +3584,7 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 
 ---
 
-## ⬜ 인프라 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수)
+## ⬜ 인프라 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수 · T2)
 
 **무엇.** `Maxi_wiki/BTS/_index.md:59` 는 「**Repo → Obsidian** (단방향, 자동) — 머지 시 post-merge hook 이
 `scripts/workflow/sync-obsidian.ts` 실행」이라 적는다. **그 파일은 저장소에 없다**
@@ -3684,7 +3690,7 @@ Maxi 관점에서는 손댈 일이 없으니 「자동」이 맞고, 위험한 �
 
 ---
 
-## ⬜ apps/web — 한글 문자열이 i18n 밖에 있는 **잔여 3종** (PR #364 가 닫지 않은 부분 · 미착수)
+## ⬜ apps/web — 한글 문자열이 i18n 밖에 있는 **잔여 3종** (PR #364 가 닫지 않은 부분 · 미착수 · T1)
 
 **무엇.** PR #364 의 R3 래칫은 **JSX `placeholder` 속성의 직접 리터럴·템플릿**만 막는다.
 같은 부류인데 그 선택자에 안 걸리는 것이 3종 남아 있다.
@@ -3710,7 +3716,7 @@ PR #364 자체가 「강제 수단이 없으면 장부가 거짓말한다」를 
 
 ---
 
-## ⬜ apps/web — 줄수 래칫이 **장부를 낮추는 쪽은 강제하지 않는다** (PR #364 의 의도적 수용 · 미착수)
+## ⬜ apps/web — 줄수 래칫이 **장부를 낮추는 쪽은 강제하지 않는다** (PR #364 의 의도적 수용 · 미착수 · T1)
 
 **무엇.** `apps/web/src/test/lint-ratchet.test.ts` 의 단조 판정은 **한 방향만** 본다.
 
@@ -3750,7 +3756,7 @@ expect(drift.sort(), DRIFT_HINT).toEqual([])
 
 ---
 
-## ⬜ 도구 — 대시보드 렌더러가 인용블록 안의 표를 평문으로 뭉갠다 (선재 · 미착수)
+## ⬜ 도구 — 대시보드 렌더러가 인용블록 안의 표를 평문으로 뭉갠다 (선재 · 미착수 · T2)
 
 **무엇.** `scripts/build-dashboard.mjs:540` 의 인용블록 핸들러가 `>` 로 시작하는 줄을 전부
 **공백 하나로 이어 붙인 뒤** `inlineMd()` 에 넘긴다.
@@ -3773,7 +3779,7 @@ out.push(`<blockquote class="md-quote">${inlineMd(quoted.join(' '))}</blockquote
 
 ---
 
-## ⬜ apps/web — 같은 문구를 `placeholder` 와 `aria-label` 이 각자 만든다 (신규 · 미착수)
+## ⬜ apps/web — 같은 문구를 `placeholder` 와 `aria-label` 이 각자 만든다 (신규 · 미착수 · T1)
 
 **무엇.** 한 입력창에서 **바로 옆에 붙어 있는 두 속성**이 같은 단어를 서로 다른 출처에서 만든다.
 `placeholder` 는 2026-08-11 PR #364 로 i18n 모듈로 옮겼는데, **`aria-label` 은 그 자리에 한글이
@@ -3813,7 +3819,7 @@ out.push(`<blockquote class="md-quote">${inlineMd(quoted.join(' '))}</blockquote
 
 ---
 
-## ⬜ 인프라 — worktree 에 `node_modules` 링크를 만드는 절차가 없다 (신규 · 미착수)
+## ⬜ 인프라 — worktree 에 `node_modules` 링크를 만드는 절차가 없다 (신규 · 미착수 · T1)
 
 **무엇.** `scripts/workflow/worktree-hook-wiring.test.ts` 는 worktree 가 `node_modules` ·
 `apps/web/node_modules` 를 **심볼릭 링크로 갖는다고 전제**한다(`SYMLINKED_IGNORE_PATHS`).
@@ -3844,7 +3850,7 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/<slug>/ap
 
 ---
 
-## ⬜ 인프라 — E2E(Playwright)가 CI 에 한 번도 배선된 적이 없다 (신규 · 미착수)
+## ⬜ 인프라 — E2E(Playwright)가 CI 에 한 번도 배선된 적이 없다 (신규 · 미착수 · T2)
 
 **무엇.** `apps/web/e2e/*.spec.ts` 가 실재하고 `pnpm test:e2e` 스크립트도 있는데,
 **어느 워크플로우도 그것을 돌리지 않는다** — `grep -rn 'e2e' .github/workflows/*.yml` **0건**.
@@ -3864,7 +3870,7 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/<slug>/ap
 
 ---
 
-## ⬜ 인프라 — `pnpm test:workflow` 가 **로컬에서만 15건 죽는다** (CI 는 초록 · 신규 · 미착수)
+## ⬜ 인프라 — `pnpm test:workflow` 가 **로컬에서만 15건 죽는다** (CI 는 초록 · 신규 · 미착수 · T2)
 
 **무엇.** `package.json:10` 의 `test:workflow` 는 `node --test 'scripts/**/*.test.ts' …` 다.
 **플래그가 없다.** 그래서 `.ts` 테스트가 실행 환경의 Node 마이너 버전에 따라 갈린다.
@@ -3904,7 +3910,7 @@ CI 빨강」인데 여기는 **「로컬 빨강 → CI 초록」**이라 더 나
 
 ---
 
-## ⬜ apps/web(E2E) — `workflow-scheme-assignment` E2E-5 가 **전량 실행에서만** strict mode 위반으로 죽는다 (선재 · 미착수)
+## ⬜ apps/web(E2E) — `workflow-scheme-assignment` E2E-5 가 **전량 실행에서만** strict mode 위반으로 죽는다 (선재 · 미착수 · T1)
 
 **무엇.** `apps/web/e2e/workflow-scheme-assignment.spec.ts:45` 의
 `expect(page.getByText('소프트웨어 개발 기본 스킴')).toBeVisible()` 이 **2개 요소에 매칭**된다.
@@ -3943,7 +3949,7 @@ strict mode violation: getByText('소프트웨어 개발 기본 스킴') resolve
 
 ---
 
-## ⬜ apps/web — 이동 다이얼로그가 **진행 중인 preview 요청과 경합**한다 (2종 · 선재 · 미착수)
+## ⬜ apps/web — 이동 다이얼로그가 **진행 중인 preview 요청과 경합**한다 (2종 · 선재 · 미착수 · T1)
 
 **무엇.** `MoveIssueDialog` 의 preview 요청은 시작한 뒤 상태를 되돌아보지 않는다. 두 갈래로 샌다.
 
@@ -4065,7 +4071,7 @@ PR 까지 부당하게 막힌다. 프리플라이트가 고치려던 것보다 �
 
 ---
 
-## ⬜ 인프라 — `backend-ci` 가 **바뀐 모듈을 고르지 않는다** (주석 1줄에 10모듈 37분 · 신규 · 미착수)
+## ⬜ 인프라 — `backend-ci` 가 **바뀐 모듈을 고르지 않는다** (주석 1줄에 10모듈 37분 · 신규 · 미착수 · T2)
 
 **무엇.** `.github/workflows/backend-ci.yml` 은 트리거가 `backend/**` 이고 `matrix.module` 이
 **9개 BC 고정 목록**이다. 여기에 `app(조립 부팅)` · `ktlint+detekt` · `runner-health` 가 더해져

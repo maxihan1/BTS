@@ -58,6 +58,7 @@ e2e-results/
 .bts-cache/
 .atlas-cache/
 .claude/settings.local.json
+.claude/STATE.md
 
 # husky v9 shim 디렉토리 (sample/transition hooks)
 # 끝 슬래시를 붙이지 않는다 — worktree 는 이 디렉토리를 main 트리로 향하는 **심볼릭 링크**로
