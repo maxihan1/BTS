@@ -311,7 +311,13 @@ function labelsFromEnv(): string[] {
   if (raw === undefined || raw.trim() === '') return []
   try {
     const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((l): l is string => typeof l === 'string') : []
+    if (Array.isArray(parsed)) return parsed.filter((l): l is string => typeof l === 'string')
+    // ★배열이 아닌 유효 JSON 도 경고한다. `"null"` 은 `JSON.parse` 가 **성공**하므로 이 경고가
+    //   없으면 배선이 진짜로 깨진 경우가 아래 catch 를 안 타고 **조용히** 지나간다
+    //   (2026-08-14 독립 리뷰 지적 — 두 실패 경로의 시끄러움이 비대칭이었다).
+    //   단 push 이벤트의 정상값도 여기 올 수 있으므로 넓히지는 않는다.
+    process.stderr.write(`선별. ⚠️ BTS_CI_PR_LABELS 가 배열이 아니다 (${raw.slice(0, 40)}) — 라벨 없음으로 진행한다.\n`)
+    return []
   } catch {
     // 형태가 깨졌으면 라벨이 없는 것으로 본다(위 주석). 다만 조용히 넘기지는 않는다.
     process.stderr.write(`선별. ⚠️ BTS_CI_PR_LABELS 를 JSON 배열로 읽지 못했다 — 라벨 없음으로 진행한다.\n`)

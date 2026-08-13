@@ -472,6 +472,28 @@ describe('backend-ci 모듈 선별', () => {
       files[0].startsWith('backend/modules/'),
       `마이그레이션이 모듈 밖에 있다면 이 판정 자체가 불필요하다 — ${files[0]}`,
     )
+
+    // ★★하한만으로는 **부분 이동**을 못 잡는다 (2026-08-14 독립 리뷰 지적).
+    //   마이그레이션이 마커 밖 새 위치로 조금씩 옮겨가고 구 위치에 하한 이상만 남으면 이 짝은
+    //   계속 초록인데, 새 위치의 것은 `MIGRATION_MARKER` 를 안 타 **조용히 좁혀진다** —
+    //   이 PR 이 방금 걷어낸 양식이 다른 자리에서 그대로 재발한다.
+    //   그래서 「존재」가 아니라 **차집합**을 잰다. 이 저장소의 표준 처방이다
+    //   (`[[two-lists-never-check-each-other]]`).
+    const allSql = spawnSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8' })
+      .stdout.split('\n')
+      .filter((f) => /\/V\d+__.*\.sql$/.test(f))
+    assert.ok(
+      allSql.length >= 50,
+      `추적되는 \`V<숫자>__*.sql\` 을 ${allSql.length}개밖에 못 찾았다 — 이 차집합이 공허해진다.`,
+    )
+    const outside = allSql.filter((f) => !f.includes('/db/migration/'))
+    assert.deepEqual(
+      outside,
+      [],
+      `마이그레이션 파일이 \`/db/migration/\` 밖에 있다 — 선별기의 마커가 안 닿아 **조용히 좁혀진다**.\n` +
+        `마커를 넓히거나 파일을 옮겨야 한다.\n` +
+        outside.map((f) => `  - ${f}`).join('\n'),
+    )
   })
 
   test('★★모듈 **안** 마이그레이션이 바뀌면 전 모듈이다 (모듈 역산보다 앞서 판정)', () => {
@@ -538,16 +560,17 @@ describe('backend-ci 모듈 선별', () => {
   test('★★backend-ci 가 라벨을 선별기에 실제로 넘긴다 (배선)', () => {
     // 라벨 분기가 코드에만 있고 워크플로우가 안 넘기면 **영원히 발화하지 않는다** —
     // 단위 테스트는 초록이고 실전에서는 죽은 코드다. 두 목록이 서로를 안 보는 자리라 배선을 잰다.
+    //
+    // ★★초판은 `assert.match(yml, /BTS_CI_PR_LABELS/)` 였는데 **그 줄을 주석 처리해도 초록**이었다
+    //   (2026-08-14 독립 리뷰 실측). 주석 줄이 그 문자열을 그대로 담기 때문이다 — 이 판정이
+    //   막겠다고 선언한 상태를 정확히 못 잡았다. **파일 전체 부분 문자열 매칭은 배선을 못 잰다.**
+    //   같은 파일 위쪽의 `fromJSON(needs.select.outputs.modules)` 단언과 같은 강도로 맞춘다.
     const yml = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
     assert.match(
       yml,
-      /BTS_CI_PR_LABELS/,
-      `${WORKFLOW} 의 select 잡이 라벨을 넘기지 않는다 — ci:full 이 실전에서 발화하지 않는다.`,
-    )
-    assert.match(
-      yml,
-      /pull_request\.labels/,
-      `${WORKFLOW} 가 PR 라벨을 읽지 않는다 — 넘길 값 자체가 없다.`,
+      /^\s+BTS_CI_PR_LABELS:\s*\$\{\{\s*toJSON\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}\s*$/m,
+      `${WORKFLOW} 의 select 잡이 라벨을 **실제 env 로** 넘기지 않는다 — ci:full 이 실전에서 발화하지 않는다.\n` +
+        `(주석 처리·이름만 남기기·값 변경 전부 여기서 걸린다. 부분 문자열 매칭으로 되돌리지 말 것.)`,
     )
   })
 
