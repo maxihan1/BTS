@@ -70,12 +70,18 @@ function createWrapper() {
   }
 }
 
-function renderForm() {
+function renderForm(onBusyChange: (busy: boolean) => void = () => {}) {
   const user = userEvent.setup()
-  const utils = render(createElement(ImportForm, { projectKey: 'ATLAS' }), {
+  const utils = render(createElement(ImportForm, { projectKey: 'ATLAS', onBusyChange }), {
     wrapper: createWrapper(),
   })
   return { user, ...utils }
+}
+
+/** `onBusyChange` 가 마지막으로 보고한 값 — 호출 횟수가 아니라 **최종 상태**를 잰다. */
+function lastBusy(spy: ReturnType<typeof vi.fn>): boolean | undefined {
+  const calls = spy.mock.calls
+  return calls.length === 0 ? undefined : (calls[calls.length - 1]?.[0] as boolean)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +378,63 @@ describe('ImportForm', () => {
         expect(bar).toHaveAttribute('aria-valuemin', '0')
         expect(bar).toHaveAttribute('aria-valuemax', '100')
       })
+    })
+  })
+
+  // (f) 진행 중 신호 — 부채 매핑 16
+  //
+  // ★부모(임포트 라우트)는 이 신호를 받아 **권한 재조회가 화면을 언마운트하지 못하게** 막는다.
+  //   신호가 없으면 창을 30초 넘게 벗어났다 돌아왔을 때 고른 파일·jobId·진행률이 통째로 날아간다.
+  //
+  // ★「진행 중」은 폴링만이 아니다. 장부가 「파일 선택·jobId·진행률이 날아간다」라 적었으므로
+  //   **파일만 고른 사용자**도 잃을 것이 있다 — `file !== null || phase !== 'form'`.
+  describe('진행 중 신호 (onBusyChange)', () => {
+    it('마운트 직후에는 진행 중이 아니다', () => {
+      const onBusyChange = vi.fn()
+      renderForm(onBusyChange)
+
+      expect(lastBusy(onBusyChange)).toBe(false)
+    })
+
+    it('★파일을 고르기만 해도 진행 중이다 (아직 제출 전이어도 잃을 것이 있다)', async () => {
+      const onBusyChange = vi.fn()
+      const { user } = renderForm(onBusyChange)
+
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+
+      expect(lastBusy(onBusyChange)).toBe(true)
+    })
+
+    it('제출해 tracking 으로 넘어가면 진행 중이다', async () => {
+      vi.mocked(submitImportJob).mockResolvedValue(makeStatus({ dryRun: false }))
+      vi.mocked(fetchImportJobStatus).mockResolvedValue(
+        makeStatus({ status: 'RUNNING', progress: 10, dryRun: false }),
+      )
+      const onBusyChange = vi.fn()
+      const { user } = renderForm(onBusyChange)
+
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+      await user.click(screen.getByRole('button', { name: 'Import 시작' }))
+
+      await waitFor(() => expect(screen.getByRole('progressbar')).toBeInTheDocument())
+      expect(lastBusy(onBusyChange)).toBe(true)
+    })
+
+    it('★완료 후 [처음으로]로 폼을 비우면 진행 중이 아니다 (비-공허 짝 — 신호가 켜진 채 굳지 않는다)', async () => {
+      vi.mocked(submitImportJob).mockResolvedValue(makeStatus({ dryRun: false }))
+      vi.mocked(fetchImportJobStatus).mockResolvedValue(
+        makeStatus({ status: 'COMPLETED', progress: 100, succeededRows: 3, dryRun: false }),
+      )
+      const onBusyChange = vi.fn()
+      const { user } = renderForm(onBusyChange)
+
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+      await user.click(screen.getByRole('button', { name: 'Import 시작' }))
+
+      const backButton = await screen.findByRole('button', { name: '처음으로' })
+      await user.click(backButton)
+
+      await waitFor(() => expect(lastBusy(onBusyChange)).toBe(false))
     })
   })
 })

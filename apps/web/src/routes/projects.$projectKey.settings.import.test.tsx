@@ -1,5 +1,5 @@
 // 프로젝트 Import 설정 라우트 페이지 단위 테스트 — RouteAdapter useParams 추출 + Page 헤더/모드 토글/ImportForm·ImportMappingWizard 렌더 (FR-IM-01 D6/D7 Task-4, FR-IM-02 D6/D7 Task-7)
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -34,9 +34,24 @@ const importMappingWizardMountCounter = vi.hoisted(() => ({ count: 0 }))
 // ImportForm은 별도 단위 테스트(ImportForm.test.tsx)에서 검증하므로 vi.mock으로 격리
 // data-instance-id: 마운트마다 useMemo로 1회 계산되는 고유값 — remount 여부를 간접 검증하는 용도
 // (key는 React 특수 prop이라 컴포넌트에 일반 prop로 전달되지 않으므로 data-key로 직접 읽을 수 없음)
+// ★★목이 `onBusyChange` 를 삼키면 부모 배선이 끊겨도 유닛이 전량 초록이 된다
+//   ([[mock-swallowed-prop-is-invisible-to-unit-tests]] — 「유닛 전부 초록인데 e2e 쓰자마자 red」).
+//   그래서 이 목은 신호를 **실제로 발화**한다.
+//   ① 마운트 시 `false` — 실물 자식이 `file=null · phase='form'` 으로 하는 것과 같다.
+//      projectKey 변경으로 재마운트되면 이 경로가 EC3(영구 동결 방지)를 그대로 재현한다.
+//   ② 버튼으로 `true` — 테스트가 「진행 중」을 만든다.
 vi.mock('@/components/import/ImportForm', () => ({
-  ImportForm: ({ projectKey }: { projectKey: string }) => {
+  ImportForm: ({
+    projectKey,
+    onBusyChange,
+  }: {
+    projectKey: string
+    onBusyChange: (busy: boolean) => void
+  }) => {
     const instanceId = useMemo(() => ++importFormMountCounter.count, [])
+    useEffect(() => {
+      onBusyChange(false)
+    }, [onBusyChange])
     return (
       <div
         data-testid="import-form"
@@ -44,6 +59,9 @@ vi.mock('@/components/import/ImportForm', () => ({
         data-instance-id={instanceId}
       >
         import-form-mock
+        <button type="button" onClick={() => onBusyChange(true)}>
+          mock-busy-on
+        </button>
       </div>
     )
   },
@@ -51,8 +69,17 @@ vi.mock('@/components/import/ImportForm', () => ({
 
 // ImportMappingWizard는 별도 단위 테스트(ImportMappingWizard.test.tsx)에서 검증하므로 vi.mock으로 격리(무겁고 이 테스트의 관심사는 모드 토글/렌더 여부다)
 vi.mock('@/components/import/mapping/ImportMappingWizard', () => ({
-  ImportMappingWizard: ({ projectKey }: { projectKey: string }) => {
+  ImportMappingWizard: ({
+    projectKey,
+    onBusyChange,
+  }: {
+    projectKey: string
+    onBusyChange: (busy: boolean) => void
+  }) => {
     const instanceId = useMemo(() => ++importMappingWizardMountCounter.count, [])
+    useEffect(() => {
+      onBusyChange(false)
+    }, [onBusyChange])
     return (
       <div
         data-testid="import-mapping-wizard"
@@ -60,6 +87,9 @@ vi.mock('@/components/import/mapping/ImportMappingWizard', () => ({
         data-instance-id={instanceId}
       >
         import-mapping-wizard-mock
+        <button type="button" onClick={() => onBusyChange(true)}>
+          mock-wizard-busy-on
+        </button>
       </div>
     )
   },
@@ -563,6 +593,161 @@ describe('ProjectImportSettingsPage — 로딩 프레임', () => {
 
     projectGate.release()
     expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 재조회 중 화면 유지 — 부채 매핑 16
+//
+// `use-project-permissions.ts:36` 의 `staleTime: 30_000` + TanStack Query 기본
+// `refetchOnWindowFocus: true` 조합이다. 임포트 job 폴링 중에 30초 넘게 창을 벗어났다
+// 돌아오면 권한이 재조회되고, 그 사이 권한이 회수돼 `CREATE:false` 로 뒤집히면 화면이
+// **언마운트**된다 — 진행 중이던 파일 선택·jobId·진행률 state 가 그대로 날아간다.
+//
+// ★동결은 **권한과 부재 두 판정 모두**에 건다(리뷰 A2). `useProject` 도 같은 focus 재조회를
+//   타므로 권한만 막으면 같은 상태 소실이 404 문으로 그대로 남는다.
+//
+// ★동결이 유출을 만들지 않는다. 게이트는 **사전 신호**일 뿐이고 최종 판정은 서버 403 이다
+//   (`ImportJobService.kt:36-38` fail-fast · `ImportJobServiceTest.kt:108` 이 그 게이트를 덮는다).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectImportSettingsPage — 재조회 중 화면 유지', () => {
+  /** 권한 응답을 CREATE:false 로 갈아끼우고 재조회한다 — 창 복귀 refetch 의 테스트 등가물. */
+  async function flipPermissionToDenied(client: QueryClient, projectKey = 'ATLAS'): Promise<void> {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey, permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    await client.refetchQueries({ queryKey: PROJECT_PERMISSION_KEYS.detail(projectKey) })
+  }
+
+  /** 프로젝트 조회를 404 로 갈아끼우고 재조회한다 — 임포트 중 프로젝트가 삭제된 상황. */
+  async function flipProjectToMissing(client: QueryClient, projectKey = 'ATLAS'): Promise<void> {
+    server.use(
+      http.get('/api/v1/projects/:idOrKey', () =>
+        HttpResponse.json({ errorCode: 'PROJECT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await client.refetchQueries({ queryKey: PROJECT_KEYS.detail(projectKey) })
+  }
+
+  /** 폼이 뜰 때까지 기다린 뒤 목의 버튼으로 「진행 중」을 만든다. */
+  async function startImportInProgress(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'mock-busy-on' }))
+  }
+
+  it('★진행 중이면 권한이 뒤집혀도 화면이 유지된다 (R6)', async () => {
+    const user = userEvent.setup()
+    const { client } = renderPage('ATLAS')
+    await startImportInProgress(user)
+
+    await flipPermissionToDenied(client)
+
+    // 권한 쿼리는 실제로 CREATE:false 로 정착했는데도 화면이 남아 있어야 한다 —
+    // 「아직 안 뒤집혀서 통과」를 「동결이 막아서 통과」로 오독하지 않는다.
+    await waitFor(() => {
+      const state = client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))
+      expect(state?.status).toBe('success')
+    })
+    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+
+  it('진행 중이 아니면 권한이 뒤집힐 때 거부 카드로 교체된다 (R7 비-공허 짝)', async () => {
+    const { client } = renderPage('ATLAS')
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+
+    await flipPermissionToDenied(client)
+
+    expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
+  })
+
+  it('★진행 중이면 프로젝트가 404 로 뒤집혀도 화면이 유지된다 (EC8 — 같은 결함의 두 번째 문)', async () => {
+    const user = userEvent.setup()
+    const { client } = renderPage('ATLAS')
+    await startImportInProgress(user)
+
+    await flipProjectToMissing(client)
+
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_KEYS.detail('ATLAS'))?.status).toBe('error')
+    })
+    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByText(projectNotFoundLabels.title)).not.toBeInTheDocument()
+  })
+
+  it('진행 중이 아니면 프로젝트 404 는 부재 카드로 교체된다 (EC8 비-공허 짝)', async () => {
+    const { client } = renderPage('ATLAS')
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+
+    await flipProjectToMissing(client)
+
+    expect(await screen.findByText(projectNotFoundLabels.title)).toBeInTheDocument()
+    expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
+  })
+
+  it('★projectKey 가 바뀌면 진행 중 신호가 초기화돼 게이트가 다시 산다 (EC3 — 영구 동결 방지)', async () => {
+    const user = userEvent.setup()
+    const client = makeClient()
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ProjectImportSettingsPage projectKey="ATLAS" />
+      </QueryClientProvider>,
+    )
+    await startImportInProgress(user)
+
+    // MIDDLE 은 권한이 없다. 재마운트로 신호가 false 가 되므로 거부 카드가 떠야 한다 —
+    // 신호를 초기화하지 않으면 **영구 동결**이 되어 이 결함의 거울상이 된다.
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: 'MIDDLE', permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    rerender(
+      <QueryClientProvider client={client}>
+        <ProjectImportSettingsPage projectKey="MIDDLE" />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
+  })
+
+  it('재조회가 500 으로 실패하면 게이트가 흔들리지 않는다 (EC5 무회귀)', async () => {
+    const { client } = renderPage('ATLAS')
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+    )
+    await client.refetchQueries({ queryKey: PROJECT_PERMISSION_KEYS.detail('ATLAS') })
+
+    // TanStack Query 는 실패 시 이전 data 를 유지한다 — 게이트가 갑자기 참이 되지 않는다.
+    expect(screen.getByTestId('import-form')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+
+  it('★동결이 판정을 가린 구간에는 안내가 뜬다 (R9)', async () => {
+    const user = userEvent.setup()
+    const { client } = renderPage('ATLAS')
+    await startImportInProgress(user)
+
+    await flipPermissionToDenied(client)
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent(importLabels.gateChangedWhileBusy)
+  })
+
+  it('진행 중이어도 판정이 멀쩡하면 안내가 없다 (R9 비-공허 짝 — 경고 피로 방지)', async () => {
+    const user = userEvent.setup()
+    renderPage('ATLAS')
+    await startImportInProgress(user)
+
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

@@ -197,12 +197,19 @@ function createWrapper() {
   }
 }
 
-function renderWizard() {
+function renderWizard(onBusyChange: (busy: boolean) => void = () => {}) {
   const user = userEvent.setup()
-  const utils = render(createElement(ImportMappingWizard, { projectKey: 'ATLAS' }), {
-    wrapper: createWrapper(),
-  })
+  const utils = render(
+    createElement(ImportMappingWizard, { projectKey: 'ATLAS', onBusyChange }),
+    { wrapper: createWrapper() },
+  )
   return { user, ...utils }
+}
+
+/** `onBusyChange` 가 마지막으로 보고한 값 — 호출 횟수가 아니라 **최종 상태**를 잰다. */
+function lastBusy(spy: ReturnType<typeof vi.fn>): boolean | undefined {
+  const calls = spy.mock.calls
+  return calls.length === 0 ? undefined : (calls[calls.length - 1]?.[0] as boolean)
 }
 
 async function uploadAndAnalyze(user: ReturnType<typeof userEvent.setup>, format: 'CSV' | 'JSON') {
@@ -320,7 +327,7 @@ describe('ImportMappingWizard', () => {
       data: makeJobStatus({ status: 'COMPLETED', progress: 100, succeededRows: 3, failedRows: 0, dryRun: false }),
       isError: false,
     } as ReturnType<typeof useImportJobPolling>)
-    rerender(createElement(ImportMappingWizard, { projectKey: 'ATLAS' }))
+    rerender(createElement(ImportMappingWizard, { projectKey: 'ATLAS', onBusyChange: () => {} }))
 
     await waitFor(() => {
       expect(screen.getByText('Import 완료')).toBeInTheDocument()
@@ -558,5 +565,38 @@ describe('ImportMappingWizard', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
     })
     expect(screen.getByRole('button', { name: '분석' })).toBeInTheDocument()
+  })
+
+  // 진행 중 신호 — 부채 매핑 16 · EC6
+  //
+  // ★`ImportForm` 과 **같은 prop 이름·같은 의미**다. 게이트가 페이지 1곳에 있으므로 두 모드가
+  //   같은 보호를 받아야 하고, 이름이 갈리면 부모가 한쪽만 배선해도 타입이 안 잡는다.
+  describe('진행 중 신호 (onBusyChange)', () => {
+    it('마운트 직후 upload 단계·파일 없음이면 진행 중이 아니다', () => {
+      const onBusyChange = vi.fn()
+      renderWizard(onBusyChange)
+
+      expect(lastBusy(onBusyChange)).toBe(false)
+    })
+
+    it('★파일을 고르기만 해도 진행 중이다 (분석 전이어도 잃을 것이 있다)', async () => {
+      const onBusyChange = vi.fn()
+      const { user } = renderWizard(onBusyChange)
+
+      await user.upload(screen.getByLabelText('분석할 파일'), makeFile('issues.csv', 'text/csv'))
+
+      expect(lastBusy(onBusyChange)).toBe(true)
+    })
+
+    it('분석해 다음 단계로 넘어가면 진행 중이다', async () => {
+      vi.mocked(analyzeImport).mockResolvedValue(makeJsonAnalysis())
+      vi.mocked(collectUsers).mockResolvedValue({ users: USERS_FIXTURE })
+      const onBusyChange = vi.fn()
+      const { user } = renderWizard(onBusyChange)
+
+      await uploadAndAnalyze(user, 'JSON')
+
+      await waitFor(() => expect(lastBusy(onBusyChange)).toBe(true))
+    })
   })
 })
