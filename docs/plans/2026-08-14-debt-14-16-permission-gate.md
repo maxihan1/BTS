@@ -94,8 +94,56 @@ Then 폼과 클론 액션이 **열려 있다**(현행 동작 — 이 PR 은 그�
 | R3 | 게이트 훅 소비처는 **전부** 자기 로딩 프레임 계약을 선언한다 | 15 |
 | R4 | 선언과 실제 소비처 집합의 **차집합이 양방향으로 공집합**임을 판별식이 강제한다 | 15 |
 | R5 | `open-while-loading` 2곳에 pending 프레임 단언이 있다 (S5) | 15 |
-| R6 | 임포트 진행 중에는 권한 재조회가 화면을 언마운트하지 못한다 (S3) | 16 |
-| R7 | 진행 중이 아니면 게이트가 그대로 작동한다 (S4) | 16 |
+| R6 | 임포트 진행 중에는 **어느 판정도** 화면을 언마운트하지 못한다 (S3) | 16 |
+| R7 | 진행 중이 아니면 두 판정이 그대로 작동한다 (S4) | 16 |
+| R8 | 동결 중 제출이 403 을 받으면 **권한 문구**가 뜬다 (EC4) | 16 |
+| R9 | 동결 중에는 **비-파괴적 안내**가 상태 변화를 알린다 (디자인 D5) | 16 |
+
+**★R9 은 디자인 렌즈가 넣었다 (Maxi 확정 A · 2026-08-14).** 동결하면 화면이 동결 전과 완전히
+같아서 사용자는 권한이 바뀐 것을 **제출할 때까지 모른다**. 큰 파일을 올리는 중이면 그만큼을 버린다.
+
+- **문구 톤은 「거부됐다」가 아니라 「바뀐 것 같다」.** 게이트는 사전 신호일 뿐이라 아직 성공할
+  수도 있다 — 단정하면 사용자가 성급히 포기한다.
+- **`role="status"`(polite)**. `alert`(assertive)는 작업을 끊는다. 이 신호는 에러가 아니다.
+- **i18n 밖에 쓰지 않는다** — `i18n/import-labels.ts` 에 키를 신설한다(장부 항목 `21` 이 다루는
+  결함을 이 PR 이 새로 만들지 않는다). 색은 DESIGN.md §C 시맨틱 상태색을 쓰고 하드코딩 금지.
+
+### 상호작용 상태표
+
+| 상태 | 사용자가 보는 것 | 스크린리더 |
+|---|---|---|
+| 로딩(존재·권한 미정착) | `h1` + 「로딩 중...」 — 폼도 카드도 없다 | `role="status"` (선재) |
+| 부재(404) | 「프로젝트를 찾을 수 없습니다」 카드 | 정적 |
+| 거부(CREATE:false) | 「생성 권한이 없습니다」 카드 (`destructive` 톤) | 정적 |
+| 정상 | 모드 토글 + 폼/위저드 | — |
+| **동결(신규)** | **현재 화면 그대로 + 비-파괴적 안내 1줄** | **`role="status"`** |
+| 제출 실패 403 | `ErrorAlert` 에 서버 `detail` 문구 (선재) | `role="alert"` (선재) |
+
+**★R6 은 리뷰 A2 로 넓어졌다 (Maxi 확정 2026-08-14).** 등재 본문은 권한 재조회만 적었지만
+바로 위 `isProjectMissing` 분기도 `useProject` 의 focus 재조회를 타므로 **임포트 중 프로젝트가
+삭제되면 똑같이 화면이 사라진다.** 같은 결함의 두 번째 문이라 함께 닫는다. 동결 규칙은
+「**진행 중이면 판정을 그리지 않는다**」 하나로 단순해진다.
+
+```
+                   ┌──────────── 임포트 화면 렌더 판정 ────────────┐
+  useProject ──────▶ isProjectLoading ┐
+  useProjectPermissions ─▶ isPermsLoading ┘─▶ isResolving ──▶ [로딩 표시 · h1 유지]
+                                                   │ 아니오
+                                                   ▼
+                              isChildBusy(진행 중) ──예──▶ [현재 화면 유지 · 판정 안 그림]
+                                                   │ 아니오          ↑
+                                                   ▼                 │ onBusyChange
+                                    isProjectMissing ──예──▶ [부재 카드]
+                                                   │ 아니오          │
+                                                   ▼                 │
+                                  isCreateDenied ──예──▶ [거부 카드]  │
+                                                   │ 아니오          │
+                                                   ▼                 │
+                                        [ImportForm | ImportMappingWizard] ─┘
+                                                   │ 제출
+                                                   ▼
+                                     서버 403 → detail「이 작업을 수행할 권한이…」
+```
 
 **R3·R4 의 판별식이 재는 것.** 「세 화면이 같은 계약을 따르는가」가 **아니다.**
 「게이트 훅을 쓰는 소비처가 전부 **어느 쪽 계약을 따르는지 선언돼 있는가**」다.
@@ -131,6 +179,8 @@ Then 폼과 클론 액션이 **열려 있다**(현행 동작 — 이 PR 은 그�
 | EC5 | 재조회가 500·단절로 실패 | TanStack Query 가 이전 `data` 를 유지 → 게이트 불변(현행). 회귀 금지 |
 | EC6 | 매핑 모드(`ImportMappingWizard`) | `ImportForm` 과 **같은 보호**를 받아야 한다. 게이트가 페이지 1곳에 있으므로 함께 덮인다 |
 | EC7 | 판별식이 자기 자신·테스트 파일을 소비처로 오인 | 스캔 대상에서 테스트 파일 제외. **오탐 대조군을 함께 둔다** |
+| EC8 | 임포트 중 프로젝트가 삭제됨(404) | 진행 중이면 부재 카드로도 교체하지 않는다 (리뷰 A2) |
+| EC9 | `onBusyChange` 미배선인 3번째 임포트 모드 추가 | **required prop** 이라 타입이 막는다. 두 자식의 사용처는 라우트 1곳뿐(실측) |
 
 ### 제약 조건
 
@@ -153,7 +203,11 @@ Then 폼과 클론 액션이 **열려 있다**(현행 동작 — 이 PR 은 그�
 - [ ] 게이트 훅 소비처 3곳이 전부 계약 선언을 갖는다 (R3)
 - [ ] 차집합 판별식이 **양방향** — 선언에서 1건을 지우면 red · 소비처를 1곳 늘리면 red (R4 · 비-공허 짝)
 - [ ] `IssueCreateForm` · `IssueMetaPanel` 에 pending 프레임 단언 신설, 각각 뮤테이션으로 red 확인 (R5)
-- [ ] 진행 중 재조회 뒤집힘 테스트가 red→green (R6) · 진행 중이 아닐 때 카드 교체 테스트가 유지 (R7)
+- [ ] 진행 중 재조회 뒤집힘 테스트가 red→green (R6 — 권한·부재 **두 분기**) · 진행 중이 아닐 때
+      두 카드 교체 테스트가 유지 (R7 비-공허 짝 2종)
+- [ ] 동결 중 제출 403 이 권한 문구를 낸다 (R8) · `detail` 제거 뮤테이션으로 red 확인
+- [ ] 동결이 판정을 가린 구간에만 `role="status"` 안내가 뜬다 (R9 · 비-공허 짝 포함) ·
+      신규 문구가 `i18n/import-labels.ts` 안에 있다(하드코딩 0)
 - [ ] `lint-ratchet-baseline.ts` **무변경** (제약 1)
 - [ ] `pnpm verify` · `pnpm test:workflow` EXIT=0 · frontend-ci 전잡 green
 - [ ] 눈확인 1회 — **느린 네트워크에서 로딩 → 판정 전이** (항목 15 가 지정한 유일한 눈확인 문장)
@@ -212,6 +266,12 @@ red 는 아래 뮤테이션으로 만든다 — 초록만 보고 넘어가면 �
 - S5. 플래그 없이 `/projects/BOGUS/settings/import` → 「프로젝트를 찾을 수 없습니다」 카드
 
 **GREEN**: 소스 변경 0. 스펙 파일만 추가한다.
+
+**★이 E2E 는 MSW 위에서 돈다 — 서버 강제의 증거가 아니다 (리뷰 C2).** 「화면이 막혔다」로
+백엔드 게이트의 안전을 주장하면 안 된다(`[[already-works-is-not-proof-unless-real-server]]`).
+서버 몫은 이미 덮여 있다 — `ImportJobServiceTest.kt:108`
+`accept throws ImportAccessDeniedException when actor lacks CREATE permission`.
+이 문장을 스펙 파일 머리 주석에 남겨 다음 사람이 오독하지 않게 한다.
 
 **REFACTOR**: 플래그 상수 미러 주석을 `field-permissions.spec.ts:31-32` 형식에 맞춘다
 (src 상수를 직접 import 하지 않고 값만 동기화 + 출처 명시 — 기존 관례).
@@ -319,10 +379,15 @@ JSDoc 에 「이 판별식이 재는 것은 세 화면이 **같은** 계약을 �
 를 단언 → prop 이 없어 컴파일·실행 실패.
 - 실패 메시지 (예상): `onBusyChange is not a function` / 타입 에러
 
-**GREEN**: `onBusyChange?: (busy: boolean) => void` 를 받고
-`useEffect(() => onBusyChange?.(file !== null || phase !== 'form'), [file, phase])`.
+**GREEN**: `onBusyChange: (busy: boolean) => void` — **required prop** (리뷰 A1 · EC9).
+optional 로 두면 3번째 모드가 조용히 미배선된다. 사용처가 라우트 1곳뿐이라 required 비용은 0.
+`useEffect(() => onBusyChange(isBusy(file, phase)), [file, phase, onBusyChange])`.
 
-**REFACTOR**: 「진행 중」 판정식을 파일 상단 상수 함수로 빼고 근거 주석(스펙 R6)을 단다.
+**★deps 에 `onBusyChange` 를 반드시 넣는다 (리뷰 B1).** 빼면 `react-hooks/exhaustive-deps` 가
+운다. **disable 주석으로 덮으면 안 된다** — `lint-ratchet.test.ts` 가 `noInlineConfig` 로 그
+주석을 무시하고 다시 잡는다. 부모가 `useState` setter(안정 참조)를 그대로 넘기므로 재실행 폭주는 없다.
+
+**REFACTOR**: 「진행 중」 판정식을 컴포넌트 밖 `isBusy(file, phase)` 로 빼고 근거 주석(스펙 R6)을 단다.
 **줄수 확인** — `ImportForm` 함수는 동결 대상이 아니지만 200줄 상한 자체는 살아 있다.
 
 **검증**: `pnpm --filter web test ImportForm`
@@ -337,7 +402,9 @@ JSDoc 에 「이 판별식이 재는 것은 세 화면이 **같은** 계약을 �
 **RED**: 같은 계약으로 ① 초기 `upload` 단계·파일 없음 → `false` ② 파일 선택 또는 다음 단계 진입
 → `true` 를 단언 → prop 부재로 실패.
 
-**GREEN**: `ImportForm` 과 **같은 prop 이름·같은 의미**로 구현한다.
+**GREEN**: `ImportForm` 과 **같은 prop 이름·같은 의미·같은 required 여부**로 구현한다.
+상태는 최상위 컴포넌트가 갖고 있다(실측 `:783-785` `step`·`format`·`file`) — 자식으로 내려갈 필요 없다.
+deps 규율은 Task 6 과 동일(리뷰 B1).
 
 **REFACTOR**: 동결값(`Arrow function` 288)을 넘기지 않게 판정식을 컴포넌트 밖으로 뺀다.
 **`lint-ratchet-baseline.ts` 는 건드리지 않는다**(제약 1).
@@ -348,26 +415,42 @@ JSDoc 에 「이 판별식이 재는 것은 세 화면이 **같은** 계약을 �
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/projects.$projectKey.settings.import.tsx`, `apps/web/src/routes/projects.$projectKey.settings.import.test.tsx`]
+- files: [`apps/web/src/routes/projects.$projectKey.settings.import.tsx`, `apps/web/src/routes/projects.$projectKey.settings.import.test.tsx`, `apps/web/src/i18n/import-labels.ts`]
 - depends-on: [6, 7]
 
-**RED**: 새 `describe('권한 재조회')` 4종.
+**RED**: 새 `describe('재조회 중 화면 유지')` 8종.
 - ① **R6** 진행 중(목이 `onBusyChange(true)` 발화) → 권한 캐시를 `CREATE:false` 로 뒤집고
   refetch → **폼이 그대로 있고** 거부 카드가 없다
 - ② **R7 비-공허 짝** 진행 중이 아님 → 같은 뒤집기 → **거부 카드로 교체된다**
-- ③ **EC3** 진행 중 상태에서 `projectKey` 변경 → 재마운트로 신호가 `false` 로 초기화되어
+- ③ **EC8** 진행 중 → 프로젝트 조회를 404 로 뒤집기 → **부재 카드로도 교체되지 않는다** (리뷰 A2)
+- ④ **EC8 비-공허 짝** 진행 중이 아님 → 같은 404 → **부재 카드로 교체된다**
+- ⑤ **EC3** 진행 중 상태에서 `projectKey` 변경 → 재마운트로 신호가 `false` 로 초기화되어
   게이트가 다시 산다 (영구 동결 방지 — 이 결함의 거울상)
-- ④ **EC5 무회귀** 재조회가 500 이면 이전 `data` 가 유지돼 게이트가 흔들리지 않는다
+- ⑥ **EC5 무회귀** 재조회가 500 이면 이전 `data` 가 유지돼 게이트가 흔들리지 않는다
+- ⑦ **R9** 동결 중이면 안내가 보이고 `role="status"` 다 · **비-공허 짝** 동결이 아니면 안 보인다
+- ⑧ **R8 · EC4** 동결 중 제출 → MSW 가 403 + `detail:"이 작업을 수행할 권한이 없습니다."` →
+  **그 문구가 뜬다**(「잠시 후 다시 시도하세요」가 아니다). 리뷰 C1 — 이 계약은 지금 맞게
+  동작하지만(백엔드 `ImportExceptionHandler.kt:70-76` ↔ 프론트 `ImportForm.tsx:44-53`)
+  **아무것도 검사하지 않는다.** `detail` 이 사라지면 폴백이 「잠시 후 다시 시도」라 권한이
+  회수된 사용자에게 영원히 틀린 안내가 된다 — 매핑 `17` 이 닫은 것과 같은 결함 양식이다.
 
 **★목 교체.** `vi.mock` 의 `ImportForm`/`ImportMappingWizard` 를 **`onBusyChange` 를 실제로
 발화하는 목**으로 바꾼다(테스트가 누르는 버튼 1개). 지금 목은 `projectKey` 만 읽어 prop 을
 통째로 삼킨다 — 그대로 두면 ①②③이 전부 가짜 그린이다.
 
-**GREEN**: 페이지에 `const [isChildBusy, setIsChildBusy] = useState(false)` 를 두고
-`isCreateExplicitlyDenied && !isChildBusy` 로 분기. 두 자식에 `onBusyChange={setIsChildBusy}` 전달.
+**GREEN**: 페이지에 `const [isImportInProgress, setIsImportInProgress] = useState(false)` 를 두고
+(명명은 리뷰 B2) **부재·거부 두 분기 앞에** 동결을 건다 — 로딩 → **진행 중이면 현재 화면 유지** →
+부재 → 거부 → 폼. 두 자식에 `onBusyChange={setIsImportInProgress}` 전달(setter 는 안정 참조라
+Task 6·7 의 deps 규율과 맞는다).
 
-**REFACTOR**: 동결의 근거·범위를 KDoc 으로 남긴다 — 「게이트는 사전 신호이고 최종 판정은
-서버 403 이다」(훅 KDoc·`ImportJobService.kt:36-38` 와 같은 말), 그리고 **동결이 유출이 아닌 이유**.
+**R9 안내** — 동결이 실제로 판정을 가린 구간(`isImportInProgress && (isProjectMissing || isCreateDenied)`)
+에서만 `role="status"` 한 줄을 폼 **위에** 렌더한다. 문구는 `import-labels.ts` 신규 키,
+색은 DESIGN.md §C 시맨틱 상태색. **진행 중이지만 판정이 멀쩡하면 안 띄운다** — 그게 비-공허 짝이다.
+
+**REFACTOR**: §스펙의 판정 흐름 ASCII 다이어그램을 이 파일 KDoc 에 옮겨 넣는다(리뷰 A3 —
+`ImportForm.tsx:355-368` 의 phase 다이어그램이 이미 같은 관례다). 함께 적을 것 —
+「게이트는 사전 신호이고 최종 판정은 서버 403 이다」(훅 KDoc·`ImportJobService.kt:36-38` 와 같은 말),
+**동결이 유출이 아닌 이유**, 그리고 **왜 두 분기 다 동결하는가**(같은 결함의 두 문 · 리뷰 A2).
 
 **검증**:
 - `pnpm --filter web test settings.import`
@@ -390,11 +473,15 @@ JSDoc 에 「이 판별식이 재는 것은 세 화면이 **같은** 계약을 �
 - M1 게이트 훅을 `!isLoading && CREATE !== true` → Task 2·3 red
 - M2 페이지 `isCreateExplicitlyDenied` 분기 제거 → Task 1 S4 red
 - M3 페이지 `isProjectMissing` 분기 제거 → Task 1 S5 red
-- M4 `!isChildBusy` 제거 → Task 8 ① red
+- M4 동결 조건을 거부 분기에서만 제거 → Task 8 ① red
 - M5 `onBusyChange` 호출 제거(`ImportForm`) → Task 6 red **+ Task 8 ①이 함께 red 인지 확인**
   (목이 prop 을 삼키는지 여부가 여기서 드러난다)
 - M6 레지스트리에서 1건 삭제 → Task 4 red
 - M7 레지스트리에 가짜 경로 1건 추가 → Task 5 ① red
+- M8 동결을 부재(404) 분기에서만 제거 → Task 8 ③ red (리뷰 A2 가 넓힌 몫이 실제로 지켜지는가)
+- M9 MSW 403 응답에서 `detail` 제거 → Task 8 ⑧ red (리뷰 C1 의 계약 의존이 실제로 검사되는가)
+- M10 안내 조건을 `isImportInProgress` 단독으로 넓힘 → Task 8 ⑦ 비-공허 짝 red
+  (판정이 멀쩡할 때도 안내가 뜨면 그건 경고 피로다)
 
 **검증**: `pnpm verify` · `pnpm test:workflow` · `node scripts/build-doc-index.mjs --check` ·
 `bash scripts/verify-master-plan.sh` 전부 EXIT=0 · `lint-ratchet-baseline.ts` diff 0줄
@@ -409,4 +496,109 @@ JSDoc 에 「이 판별식이 재는 것은 세 화면이 **같은** 계약을 �
   `pnpm test:workflow` · 줄수 래칫 · 문서 인덱스 · master-plan 정합
 - **백엔드 검증 없음** — ktlint·detekt·gradle 대상 파일 0.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 렌즈 라우팅 — 표에 정의되지 않은 조합에 들어왔다
+
+`bts-review-plan` 분기 표에서 `type=ui` 행은 **「이 표 미진입」**이다(ui 는 보통 T1 이라 이 단계에
+오지 않는다). 항목 `16` 때문에 T2 로 선언되어 도달했고, 그 행이 주는 렌즈는 `plan-design-review`
+**1종**뿐인데 T2 는 **2종**을 요구한다. 표 자신의 탈출구(「분기 미정의 상태로 조용히 지나가지
+않는다」)를 따라 **`plan-eng-review` + `plan-design-review` 2종**을 돌렸다. → 등재 후보 2.
+
+### plan-eng-review — 지적 7건 · BLOCKER 0 · 전량 반영
+
+| # | 등급 | 확신 | 지적 | 처리 |
+|---|---|---|---|---|
+| A1 | P2 | 9/10 | `onBusyChange` 가 optional 이면 3번째 모드가 조용히 미배선 (`import.tsx:234,236` 이 유일 사용처) | **required prop** — Task 6·7 · EC9 |
+| A2 | P2 | 9/10 | `isProjectMissing` 분기도 focus 재조회를 타는데 동결 대상에서 빠졌다 | **Maxi 확정 A** — 두 분기 동결 · R6 확장 · EC8 |
+| A3 | P3 | 9/10 | 판정 상태기계 다이어그램 부재 | §스펙에 신설 + Task 8 REFACTOR 가 KDoc 으로 이관 |
+| B1 | P1 | 8/10 | `exhaustive-deps` 를 disable 주석으로 덮으면 `noInlineConfig` 래칫이 다시 잡는다 | Task 6 deps 규율 명문화 |
+| B2 | P3 | 7/10 | `isChildBusy` 명명 | `isImportInProgress` — Task 8 |
+| C1 | P1 | 9/10 | **EC4 에 대응하는 task 가 없었다.** 403 `detail` ↔ 프론트 폴백 문구 의존을 아무것도 검사 안 함 | Task 8 ⑦ + 뮤테이션 M9 |
+| C2 | P2 | 8/10 | 항목 14 E2E 는 MSW 위 — 서버 강제의 증거가 아니다 | Task 1 에 명시 + `ImportJobServiceTest.kt:108` 인용 |
+
+**성능 0건.** `useEffect` 1개 · 렌더 분기 1개 · 네트워크 증가 0(같은 queryKey 합류).
+
+**Prior learning applied**. `already-works-is-not-proof-unless-real-server` (9/10, 2026-07-27) → C2.
+
+### plan-design-review — 종합 5/10 → 9/10 · 결정 1건 · BLOCKER 0
+
+분류 **APP UI** · 하드 리젝션 **0/7** · 리트머스 6 YES · 1 N/A(모션 없음, 필요도 없음).
+**목업 생성 안 함** — 이 PR 이 그리는 화면 4종은 전부 이미 배포됐고 픽셀이 안 바뀐다.
+없는 화면을 지어내면 실물과 어긋난 참조를 남긴다.
+
+| 패스 | 전 | 후 | 처리 |
+|---|---|---|---|
+| 1 정보 위계 | 8 | 9 | 판정 흐름 다이어그램(리뷰 A3)이 이미 메웠다 |
+| 2 상태 커버리지 | **6** | **9** | 「동결」 상태의 사용자 체감이 없었다 → §상호작용 상태표 신설 + R9 |
+| 3 사용자 여정 | **5** | **9** | 권한 회수 경로의 감정 곡선 부재 → R9 가 「마지막에 놀람」을 제거 |
+| 4 AI 슬롭 | 9 | 9 | 새로 그리는 것 0. 기존 카드는 시맨틱 토큰 사용 |
+| 5 디자인 시스템 | 7 | 9 | 신규 컴포넌트 0. R9 문구는 i18n + §C 상태색으로 못박음 |
+| 6 반응형·접근성 | **5** | **9** | 동결 전이가 스크린리더에 무음이었다 → `role="status"` |
+| 7 미해결 | — | 0 | D5 로 해소 |
+
+**★D5 (Maxi 확정 A).** 동결하면 화면이 동결 전과 **완전히 같아** 사용자는 제출할 때까지 모른다.
+상태를 지키는 것과 사실을 말하는 것은 배타적이 아니다 → 비-파괴적 안내(R9).
+
+**선재 관측 2건 (이 PR 이 만든 것 아님 · 고치지 않는다).**
+① 로딩 프레임이 DESIGN.md 등재 `Skeleton` 프리미티브 대신 「로딩 중...」 평문을 쓴다.
+② **DESIGN.md 에 `aria-live` 정책이 아예 없다**(전수 grep 0건). → 등재 후보 4.
+
+### 무엇이 이미 있는가 (재사용)
+
+| 필요한 것 | 이미 있는 것 | 이 계획의 처리 |
+|---|---|---|
+| 로딩 프레임 계약 구현 | `settings.workflow-scheme.tsx:92-98` · 임포트 라우트(#361) | 복제하지 않고 **선언만** 한다 |
+| E2E 권한 강제 도구 | `E2E_FORCE_CREATE_FALSE_KEY` + `field-permissions.spec.ts:358-364` | 그대로 쓴다 |
+| 소스 스캔 가드 선례 | `msw-single-setupserver` · `command-palette/boundary` · `skeleton-usage` | 같은 형식으로 신설 |
+| 서버측 CREATE 게이트 | `ImportJobService` fail-fast + `ImportJobServiceTest.kt:108` | 인용만 — 백엔드 변경 0 |
+| 403 문구 | `ImportExceptionHandler.kt:70-76` → `ImportForm.tsx:44-53` | 동작을 **테스트로 고정**(C1) |
+
+### 범위 밖 (NOT in scope)
+
+- **백엔드 403 문구 계약의 판별식** — cross-BC 라 「한 PR 한 BC」에 걸린다. 프론트 반쪽만 이 PR 이 잠근다. → 등재 후보 3
+- **항목 8·22(IssueCreateForm 줄수)** — 정본 §순서 제약이 이 묶음 **다음**으로 고정. 동결값 무변경이 그 전제다
+- **게이트 훅 이외의 `useProjectPermissions` 소비처 ~20곳** — 이 항목의 계약은 **게이트 훅** 소비처에 한정
+- **분할 옵션(미채택)** — 테스트 전용 PR(14+15) / 동작 변경 PR(16) 로 가르면 파일 교집합 0 이라 가능하다. 장부가 이 묶음을 확정해 뒀고 CI 왕복이 2배라 한 PR 로 간다
+
+### 장부 등재 후보 3건 (게이트 1 에서 판정)
+
+1. **`classify-task` 가 E2E 를 포함한 혼합 PR 을 `qa-engineer` 로 오배정한다.** 판정 순서상
+   `qa`(5번)가 `ui`(7번)보다 앞서 제목에 「E2E」가 있으면 **위치 무관하게** qa 로 떨어지고
+   (제목 순서를 바꿔 2회 실측), qa-engineer 는 구현 코드 수정이 금지된 에이전트다.
+2. **`bts-review-plan` 분기 표에 `ui`@T2 가 미정의다.** ui 행은 「미진입」인데 실제로 도달했고
+   렌즈 1종만 줘 T2 의 2종을 못 채운다.
+3. **임포트 403 의 `detail` ↔ 프론트 폴백 문구가 서로를 검사하지 않는다.** 이 PR 이 프론트 반쪽만
+   고정한다. 백엔드에서 `detail` 이 사라지면 권한 회수 사용자가 「잠시 후 다시 시도」를 영원히 읽는다.
+4. **DESIGN.md 에 `aria-live` 정책이 없다.** 전수 grep 0건. 화면이 조용히 바뀌는 자리마다
+   `role="status"`/`alert` 선택이 개발자 재량으로 남고, 이 PR 이 그 판단을 한 번 더 즉흥으로 한다.
+
+### 병렬화
+
+| 레인 | task | 건드리는 모듈 |
+|---|---|---|
+| A | 1 | `apps/web/e2e/` |
+| B | 2 → 3 | `apps/web/src/components/issue/` (교집합 있음 — 직렬) |
+| C | 4 → 5 | `apps/web/src/components/issue/create/__tests__/` |
+| D | 6 → 7 → 8 | `apps/web/src/components/import/` · `apps/web/src/routes/` (8 이 6·7 의뢰) |
+
+A·B·C·D 동시 착수 → 전부 머지 후 Task 9(뮤테이션)는 **GREEN 선커밋 뒤 단독**.
+⚠️ 레인 B 와 C 는 `components/issue/` 아래를 함께 건드리나 파일 교집합은 0 이다.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 7 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | clean | score: 5/10 → 9/10, 1 decision |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**CROSS-MODEL:** 두 렌즈가 **같은 곳을 독립적으로 가리켰다** — eng 는 「동결이 만드는 새 상태에
+대응 task 가 없다」(C1), design 은 「동결 상태의 사용자 체감이 없다」(패스 2·3·6). 한쪽은 계약
+검사(R8), 한쪽은 사용자 신호(R9)로 갈라져 둘 다 남았다.
+
+**VERDICT:** ENG + DESIGN CLEARED — 지적 8건 전량 계획에 반영, BLOCKER 0. 🛑 게이트 1 대기.
+
+NO UNRESOLVED DECISIONS
