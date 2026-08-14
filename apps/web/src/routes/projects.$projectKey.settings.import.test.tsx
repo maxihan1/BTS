@@ -783,6 +783,21 @@ describe('ProjectImportSettingsPage — 재조회 중 화면 유지', () => {
     expect(notice).toHaveTextContent(importLabels.gateChangedWhileBusy)
   })
 
+  // ★리뷰 D — 유보 조건은 권한·부재 **둘 다**인데 초판 문구는 권한만 말했다.
+  //   404 경로 안내는 R9 테스트 2건이 `flipPermissionToDenied` 만 써서 무검증이었다.
+  it('★프로젝트가 404 로 뒤집혀 유보된 구간에도 같은 사유 중립 안내가 뜬다 (리뷰 D)', async () => {
+    const user = userEvent.setup()
+    const { client } = renderPage('ATLAS')
+    await startImportInProgress(user)
+
+    await flipProjectToMissing(client)
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent(importLabels.gateChangedWhileBusy)
+    // 사유를 권한으로 단정하지 않는다 — 여기서 사라진 것은 프로젝트다.
+    expect(notice).not.toHaveTextContent('권한')
+  })
+
   it('진행 중이어도 판정이 멀쩡하면 안내가 없다 (R9 비-공허 짝 — 경고 피로 방지)', async () => {
     const user = userEvent.setup()
     renderPage('ATLAS')
