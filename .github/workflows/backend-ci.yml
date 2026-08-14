@@ -121,10 +121,16 @@ jobs:
       #   22.6 미만이 되거나(--experimental-strip-types 부재) 바이너리가 쓸려 나갔을 때
       #   `runner-health` 는 초록인 채 이 잡만 죽는다 — 그 점검은 externals·툴캐시만 보고
       #   시스템 node 는 보지 않는다(2026-08-04 엔진 소실 사고의 사각).
-      - name: Setup Node 22
+      #
+      # ★★버전을 여기 적지 않는다. 정본은 `.nvmrc` 하나이고 로컬(nvm/mise)도 같은 파일을
+      #   읽는다. 종전의 `node-version: '22'` 는 최신 22.x 로 **부유**해서, 로컬 22.14 와
+      #   CI 22.23 사이에 타입 스트리핑 기본 활성 여부가 갈렸다 — `pnpm test:workflow` 가
+      #   CI 초록·로컬 62/20 이던 원인이다(부채 매핑 27 · 2026-08-14 봉합).
+      #   `node-ts-invocation.test.ts` 축 B 가 모든 setup-node 스텝에 대해 이것을 강제한다.
+      - name: Setup Node (.nvmrc)
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
 
       - name: 변경 파일 → 대상 모듈
         id: pick

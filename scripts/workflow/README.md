@@ -2,7 +2,14 @@
 
 BTS 워크플로우 보조 스크립트.
 
-> Node 24+ (native TS 지원, Node 22+ `--experimental-strip-types` 호환).
+> **node 버전 정본은 `.nvmrc` 하나다** — 로컬(nvm/mise)과 CI(`setup-node` 의
+> `node-version-file`)가 같은 파일을 읽는다. 워크플로우에 버전을 직접 적으면
+> `node-ts-invocation.test.ts` 축 B 가 red 를 낸다.
+>
+> 아래 명령이 전부 `--experimental-strip-types` 를 다는 이유. `.nvmrc` 는 **선언이지 강제가
+> 아니라서**, 셸이 그 파일을 안 읽는 환경에서는 여전히 22.18 미만이 쓰일 수 있다. 그때도
+> 명령이 그대로 돌게 하는 이식성 장치다(22.18+ 에서는 무동작). 축 A 가 이것을 강제한다.
+>
 > 외부 의존성 0. `node_modules` 불필요.
 
 ## classify-task.ts
@@ -13,10 +20,10 @@ BTS 워크플로우 보조 스크립트.
 
 ```bash
 # 일회성
-node scripts/workflow/classify-task.ts --title "코멘트 멘션 알림 추가해줘"
+node --experimental-strip-types scripts/workflow/classify-task.ts --title "코멘트 멘션 알림 추가해줘"
 
 # 캐시 모드 (.bts-cache/classify.json에 저장, 같은 title이면 재사용)
-node scripts/workflow/classify-task.ts --title "<...>" --cache
+node --experimental-strip-types scripts/workflow/classify-task.ts --title "<...>" --cache
 
 # package.json script
 npm run classify -- --title "<...>" --cache
@@ -79,10 +86,10 @@ npm run classify -- --title "<...>" --cache
 
 ```bash
 # 이 브랜치가 바꾼 파일로 실측 티어를 본다
-git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts
+git diff --name-only origin/main...HEAD | node --experimental-strip-types scripts/workflow/detect-tier.ts
 
 # 선언 티어와 나란히 (게이트 2 요약용). 어긋나도 종료 코드는 0 이다 — 승격은 사람이 정한다
-git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts --declared T1
+git diff --name-only origin/main...HEAD | node --experimental-strip-types scripts/workflow/detect-tier.ts --declared T1
 ```
 
 출력은 `TIER:` · `SURFACES:` · 미분류가 있으면 `UNMAPPED: <경로>` 한 줄씩이다. `--json` 으로 기계용 출력.
@@ -91,7 +98,7 @@ git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts -
 ## 테스트
 
 ```bash
-node --test scripts/workflow/*.test.ts
+node --experimental-strip-types --test scripts/workflow/*.test.ts
 # 또는
 npm run test:workflow
 ```

@@ -1,5 +1,5 @@
 // 문서 인덱스 판별식 — 재생성 diff(I) · 고아(J) · 깨진 링크(K) · SOURCES⟺CI paths(L)
-// 실행. node --test scripts/workflow/doc-index-coverage.test.ts
+// 실행. node --experimental-strip-types --test scripts/workflow/doc-index-coverage.test.ts
 //
 // 왜 판별식인가. 이 저장소의 지배 결함은 "두 하드코딩 목록이 서로를 안 봐서 조용히 갈라지는" 것이다.
 // 인덱스와 실제 파일이 정확히 그 두 목록이다. 차집합을 기계가 보게 만든다.

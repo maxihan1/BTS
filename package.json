@@ -6,8 +6,8 @@
   "description": "BTS (Project Atlas) — 사내 1,000명 규모 협업 워크스페이스.",
   "packageManager": "pnpm@11.1.3",
   "scripts": {
-    "classify": "node scripts/workflow/classify-task.ts",
-    "test:workflow": "node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
+    "classify": "node --experimental-strip-types scripts/workflow/classify-task.ts",
+    "test:workflow": "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
     "dev": "pnpm -r run dev",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
@@ -21,6 +21,6 @@
     "lint-staged": "^17.0.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.6"
   }
 }
