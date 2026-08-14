@@ -342,6 +342,30 @@ function DonePhase({
 export interface ImportFormProps {
   /** Import 대상 프로젝트 키 */
   readonly projectKey: string
+  /**
+   * 「잃을 것이 있는 상태」인지를 부모에게 보고한다 (부채 매핑 16).
+   *
+   * 부모(임포트 라우트)는 이 신호가 참인 동안 **권한·존재 판정이 화면을 교체하지 못하게** 막는다.
+   * 신호가 없으면 창을 30초 넘게 벗어났다 돌아왔을 때 `staleTime` 만료 재조회가 게이트를
+   * 뒤집어 이 컴포넌트가 통째로 언마운트되고, 고른 파일·jobId·진행률이 그대로 날아간다.
+   *
+   * ★**optional 이 아니다.** 3번째 임포트 모드가 생겼을 때 배선을 빠뜨리면 타입이 막아야 한다 —
+   *   optional 로 두면 그 모드만 조용히 보호 밖으로 나간다. 사용처는 라우트 1곳뿐이라 비용 0.
+   */
+  readonly onBusyChange: (busy: boolean) => void
+}
+
+/**
+ * 지금 잃을 것이 있는가.
+ *
+ * 폴링 중만 보면 **파일만 고른 사용자**를 못 지킨다 — 장부가 「파일 선택·jobId·진행률이
+ * 날아간다」라 적은 그대로다. 컴포넌트 밖에 두어 줄수 상한(200)에서 자유롭고 단독으로 읽힌다.
+ *
+ * @param file 선택된 가져올 파일. 없으면 `null`
+ * @param phase 상태머신 단계
+ */
+function isBusy(file: File | null, phase: ImportPhase): boolean {
+  return file !== null || phase !== 'form'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -370,7 +394,7 @@ export interface ImportFormProps {
  *
  * FR-EX-02(Export) `ExportDialog.tsx`의 `ExportForm` 역방향 미러 — 상태머신/폴링 hook/Tailwind 토큰 동일.
  */
-export const ImportForm = ({ projectKey }: ImportFormProps): JSX.Element => {
+export const ImportForm = ({ projectKey, onBusyChange }: ImportFormProps): JSX.Element => {
   const [format, setFormat] = useState<ImportFormat>('CSV')
   const [file, setFile] = useState<File | null>(null)
   const [attachmentsZip, setAttachmentsZip] = useState<File | null>(null)
@@ -378,6 +402,14 @@ export const ImportForm = ({ projectKey }: ImportFormProps): JSX.Element => {
   const [phase, setPhase] = useState<ImportPhase>('form')
   const [jobId, setJobId] = useState<string | null>(null)
   const [lastDryRun, setLastDryRun] = useState<boolean>(false)
+
+  // 진행 중 신호 (부채 매핑 16).
+  // ★deps 에 `onBusyChange` 를 반드시 넣는다. 빼면 `react-hooks/exhaustive-deps` 가 울고,
+  //   그걸 disable 주석으로 덮으면 `src/test/lint-ratchet.test.ts` 가 `noInlineConfig` 로
+  //   주석을 무시하고 다시 잡는다. 부모가 `useState` setter(안정 참조)를 넘기므로 폭주는 없다.
+  useEffect(() => {
+    onBusyChange(isBusy(file, phase))
+  }, [file, phase, onBusyChange])
 
   const submitMutation = useMutation<ImportJobStatus, unknown, SubmitVariables>({
     mutationFn: ({ dryRun }) => {

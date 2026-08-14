@@ -763,6 +763,26 @@ function WizardStepContent({
 export interface ImportMappingWizardProps {
   /** Import 대상 프로젝트 키 */
   readonly projectKey: string
+  /**
+   * 「잃을 것이 있는 상태」인지를 부모에게 보고한다 (부채 매핑 16 · EC6).
+   *
+   * 근거·계약은 `ImportForm` 의 같은 prop KDoc 이 정본이다. **이름·의미·required 여부가 같아야**
+   * 부모가 한쪽만 배선하는 것을 타입이 잡는다 — 게이트가 페이지 1곳이라 두 모드가 같은 보호를 받는다.
+   */
+  readonly onBusyChange: (busy: boolean) => void
+}
+
+/**
+ * 지금 잃을 것이 있는가.
+ *
+ * 업로드 단계에서 파일을 고르기만 해도 참이다 — 분석 전이어도 되돌리면 다시 골라야 한다.
+ * 컴포넌트 밖에 두어 동결된 줄수 베이스라인(`Arrow function` 288)을 건드리지 않는다.
+ *
+ * @param file 선택된 분석 대상 파일. 없으면 `null`
+ * @param step 마법사 단계
+ */
+function isWizardBusy(file: File | null, step: WizardStep): boolean {
+  return file !== null || step !== 'upload'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -779,7 +799,10 @@ export interface ImportMappingWizardProps {
  *   새 jobId로 즉시 confirm(dryRun=false)한다 — 마법사를 처음부터 재순회하지 않는다(G1/DR-5).
  * - DR-6: analyze 결과 sourceFields가 빈 배열이면 에러를 표시하고 업로드 단계에 머무른다.
  */
-export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): JSX.Element => {
+export const ImportMappingWizard = ({
+  projectKey,
+  onBusyChange,
+}: ImportMappingWizardProps): JSX.Element => {
   const [step, setStep] = useState<WizardStep>('upload')
   const [format, setFormat] = useState<ImportFormat>('CSV')
   const [file, setFile] = useState<File | null>(null)
@@ -796,6 +819,11 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
   const [confirmErrors, setConfirmErrors] = useState<MappingIssue[]>([])
   const [recollectNotice, setRecollectNotice] = useState(false)
   const hasVisitedUsersRef = useRef(false)
+
+  // 진행 중 신호 (부채 매핑 16 · EC6). deps 규율은 `ImportForm` 의 같은 훅 주석이 정본이다.
+  useEffect(() => {
+    onBusyChange(isWizardBusy(file, step))
+  }, [file, step, onBusyChange])
 
   const analyzeMutation = useMutation<ImportAnalysisResponse, unknown, File>({
     mutationFn: (selectedFile) => analyzeImport({ projectKey, format, file: selectedFile }),
