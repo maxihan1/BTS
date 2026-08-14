@@ -204,6 +204,37 @@ describe('ImportForm', () => {
         )
       })
     })
+
+    // ★진행 중 동결(부채 매핑 16)이 기대는 계약이다. 동결은 권한이 회수된 사용자를 화면에
+    //   남겨 두고 **최종 판정을 서버 403 에 맡긴다** — 그 403 이 「권한」을 말해야 동결이 성립한다.
+    //
+    // ★지금은 맞게 동작하지만 **아무것도 검사하지 않았다.**
+    //   백엔드 `ImportExceptionHandler.kt:70-76` 이 `detail:"이 작업을 수행할 권한이 없습니다."` 를
+    //   보내고 프론트 `resolveImportError`(:44-53)가 그 `detail` 을 꺼내 쓴다. 그 연결이 끊기면
+    //   폴백 「Import 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.」가 뜬다 —
+    //   권한이 회수된 사용자에게 **영원히 틀린 안내**다(매핑 `17` 이 이동 다이얼로그에서 닫은 결함과 같은 양식).
+    //
+    // ⚠️ cross-BC 라 이 PR 은 **프론트 반쪽만** 고정한다. 백엔드에서 `detail` 이 사라지는 것은
+    //    여기서 못 잡는다 — 등재 후보 3으로 장부에 올린다.
+    it('★403 은 권한 문구를 그대로 보여 준다 — 「잠시 후 다시 시도」로 뭉개지 않는다 (부채 매핑 16 · EC4)', async () => {
+      // 서버가 실제로 보내는 ProblemDetail 그대로다 (`ImportExceptionHandler.kt:70-76`).
+      vi.mocked(submitImportJob).mockRejectedValue(
+        new ApiError(403, {
+          type: 'import-access-denied',
+          title: 'Access Denied',
+          detail: '이 작업을 수행할 권한이 없습니다.',
+        }),
+      )
+
+      const { user } = renderForm()
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+      await user.click(screen.getByRole('button', { name: '검증만 실행' }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('이 작업을 수행할 권한이 없습니다.')
+      // 비-공허 짝 — 폴백 문구가 새어 나오면 사용자는 「기다리면 되겠지」로 읽고 영원히 재시도한다.
+      expect(alert).not.toHaveTextContent('잠시 후 다시 시도')
+    })
   })
 
   // (c) 완료 — dry-run
