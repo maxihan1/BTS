@@ -95,6 +95,9 @@ export const SURFACES = {
       'backend/gradle/wrapper/**',
       'package.json',
       'apps/web/package.json',
+      // node 버전 정본. 이 한 줄이 CI 5잡 전부의 node 를 바꾼다 — 성격이 매니페스트다.
+      // 없으면 `.nvmrc` 만 바꾸는 PR 이 표면 0 → 기본 T1 로 떨어져 계획 0·리뷰 1 로 통과한다.
+      '.nvmrc',
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
     ],

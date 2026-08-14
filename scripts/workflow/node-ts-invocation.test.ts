@@ -104,7 +104,7 @@ const FLAG = '--experimental-strip-types'
  *
  * ## ★따옴표와 백틱을 빼면 안 된다
  *
- * 1차 프로토타입은 선행 클래스를 `[\s;|&(]` 로 적었고 **`package.json` 의 두 호출문을
+ * 1차 초안은 선행 클래스를 `[\s;|&(]` 로 적었고 **`package.json` 의 두 호출문을
  * 통째로 놓쳤다.** JSON 은 명령을 `"…"` 안에 담고 마크다운은 `` `…` `` 안에 담는다.
  * 하필 가장 중요한 호출문(`test:workflow`)이 정확히 그 구멍에 있었다 — 판별식은 초록인데
  * 결함은 살아 있는, 이 저장소가 반복해온 형태다.
@@ -187,13 +187,13 @@ const ALLOWED_MENTIONS = [
     file: 'scripts/workflow/script-test-coverage.test.ts',
     tail: "--test 'scripts/**\\/*.test.ts' 'scripts/**\\/*.test.mjs'",
     reason:
-      'runnerPatterns() 가 받는 **입력 형태의 예시**. 실행문이 아니라 파서 설명이라 플래그가 붙으면 설명이 입력과 어긋난다.',
+      'runnerPatterns() 의 **입력 형태를 예시하는 JSDoc**. 실행문이 아니다. (2026-08-14 리뷰 C4 정정 — 종전 사유는 「플래그가 붙으면 설명이 어긋난다」였으나, 이 PR 이 package.json 을 바꾼 지금 실제 입력에는 플래그가 있으므로 오히려 예시 쪽이 낡았다. 예시 갱신은 그 파일 소관이라 별건.)',
   },
   {
     file: 'scripts/workflow/script-test-coverage.test.ts',
     tail: "--test scripts/workflow/*.test.ts'",
     reason:
-      '양성 대조군 **픽스처**. 좁은 훑기를 일부러 넣어 매처가 누락을 잡는지 본다 — 고치면 그 테스트가 깨진다.',
+      '양성 대조군 **픽스처** — 봉합 전 test:workflow 의 정확한 형태를 재현해 매처가 누락을 잡는지 본다. (2026-08-14 리뷰 C4 정정 — 종전 사유 「고치면 그 테스트가 깨진다」는 **거짓**이었다. runnerPatterns() 가 `-` 로 시작하는 토큰을 버려 플래그를 붙여도 결과가 같음이 실측됐다. 손대지 않는 진짜 이유는 이것이 **당시 형태의 재현**이고, 고치면 그 대조군이 무엇을 재현하는지가 사라지기 때문이다.)',
   },
 ] as const
 
@@ -335,6 +335,35 @@ function nodeSegments(text: string): string[] {
   return found
 }
 
+/**
+ * ★플래그가 **스크립트 경로 앞**에 있는지 본다 — 뒤에 있으면 봉인이 아니다.
+ *
+ * node 는 실행 파일 경로 **이전**의 인자만 자기 옵션으로 읽고, 그 뒤는 스크립트의 argv 로
+ * 넘긴다. 따라서 플래그가 경로 뒤에 오면 22.18 미만에서 **그대로 죽는다.**
+ *
+ *   ‹실행› ‹경로›.ts ‹플래그› --title "x"
+ *          └ 여기서 이미 .ts 로드 시도 → ERR_UNKNOWN_FILE_EXTENSION
+ *
+ * 세그먼트 전체에 `includes(FLAG)` 를 걸면 이 명령이 **통과한다** — 이 판별식이 막겠다고
+ * 선언한 바로 그 죽음이다(2026-08-14 독립 리뷰 C1 실측). 덤으로 두 갈래가 함께 닫힌다.
+ *
+ *   ‹실행› ‹경로›.ts   # ‹플래그› 미부착      ← 줄끝 주석의 언급
+ *   run: ‹실행› ‹경로›.ts  # TODO ‹플래그›    ← 할 일 메모
+ *
+ * 셋 다 플래그가 `.ts` **뒤**에 있으므로 판정 구간에 들지 않는다. 주석 제거 휴리스틱을
+ * 따로 두지 않고 **CLI 의 실제 의미와 같은 규칙 하나**로 한 번에 막는다.
+ *
+ * ★위 예시에 실제 명령 문자열을 쓰지 않고 `‹›` 로 가린 것은 의도다 — 위반 형태를 문서에
+ *   그대로 적으면 이 판별식이 자기 설명문을 위반으로 읽는다. 실물 형태는 아래 양성
+ *   대조군(`flagAfterPath`)이 조립해서 갖고 있고, **거기가 판정되는 자리**다.
+ */
+function isSealed(command: string): boolean {
+  const pathAt = command.search(TS_REFERENCE)
+  // 호출자가 TS_REFERENCE 매칭을 이미 확인하므로 -1 이 올 수 없다. 방어적으로 미봉인 처리.
+  if (pathAt < 0) return false
+  return command.slice(0, pathAt).includes(FLAG)
+}
+
 /** 저장소 전체에서 `node … <파일>.ts` 형태의 호출문을 전부 모은다. */
 function collectInvocations(): Invocation[] {
   const rows: Invocation[] = []
@@ -343,7 +372,7 @@ function collectInvocations(): Invocation[] {
     for (const { text, line } of logicalLines(source)) {
       for (const command of nodeSegments(text)) {
         if (!TS_REFERENCE.test(command)) continue
-        rows.push({ file, line, command, flagged: command.includes(FLAG) })
+        rows.push({ file, line, command, flagged: isSealed(command) })
       }
     }
   }
@@ -400,14 +429,81 @@ function setupNodeSteps(file: string): SetupNodeStep[] {
   return steps
 }
 
-/** 저장소의 모든 워크플로우에서 `setup-node` 스텝을 모은다. */
-function allSetupNodeSteps(): SetupNodeStep[] {
+/** 워크플로우 파일 경로 전부. */
+function workflowFiles(): string[] {
   const dir = path.join(REPO_ROOT, '.github/workflows')
   if (!fs.existsSync(dir)) return []
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
-    .flatMap((f) => setupNodeSteps(path.join('.github/workflows', f)))
+    .map((f) => path.join('.github/workflows', f))
+}
+
+/** 저장소의 모든 워크플로우에서 `setup-node` 스텝을 모은다. */
+function allSetupNodeSteps(): SetupNodeStep[] {
+  return workflowFiles().flatMap((f) => setupNodeSteps(f))
+}
+
+/**
+ * ★YAML 주석을 걷어낸 본문 — **키가 실제로 배선됐는지**만 남긴다.
+ *
+ * 걷지 않으면 스텝 본문 안 주석 한 줄이 요구를 대신 만족시킨다. 실측(2026-08-14 독립 리뷰 C2).
+ *
+ *   with:
+ *     # TODO: node-version-file 로 바꿔야 한다     ← 이 줄이 요구를 만족시켰다
+ *     node-version: 22                             ← 부유가 그대로 살아 있는데 초록
+ *
+ * 이 파일은 `setupNodeSteps()` 주석에서 「부분 문자열 매칭은 배선을 못 잰다」를 ★로 적고
+ * **파일 전체** 검색을 스텝 본문 앵커로 좁혀 해결했다고 서술했다. 그 앵커는 파일 전체
+ * 갈래만 닫았고 **본문 안** 갈래는 열려 있었다 — `invariant-satisfied-by-helptext-not-logic`
+ * 과 같은 양식이며, 「해결했다」고 적힌 채 남는 것이 가장 나쁘다(learnings 2026-07-15).
+ */
+function executableBody(step: SetupNodeStep): string {
+  return step.body
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .join('\n')
+}
+
+/**
+ * `setup-node` 를 **가져야 하는** 워크플로우와, 갖지 **않아야 하는** 워크플로우.
+ *
+ * ## 왜 추론이 아니라 명시 집합인가
+ *
+ * 종전 비-공허 짝은 `steps.length > 0` 뿐이라 **스텝을 통째로 지워도** 통과했다(C3 실측).
+ * 그 잡은 러너의 시스템 node 로 떨어지고 그 버전은 아무도 재지 않는다.
+ *
+ * 「`run:` 에서 node 를 부르는 잡은 setup-node 를 갖는다」는 추론 규칙을 먼저 시도했고
+ * **오탐이 났다** — `- name: 러너 엔진 점검 (node · java)` 같은 **산문**이 실행으로 읽혔다.
+ * 한국어 산문 오탐(`TS_REFERENCE` 주석 참조)과 같은 자리다. 실행 여부를 문자열로 추론하는
+ * 것은 이 저장소에서 반복해 실패했다.
+ *
+ * 더 나쁜 것은 그 규칙이 `runner-health.yml` 에 setup-node 를 **요구**했다는 점이다.
+ * 그 워크플로우는 의도적으로 순수 shell 이다 — JavaScript 액션은 node 로 돌아가므로,
+ * node 가 죽었을 때 setup-node 를 쓰면 **점검 자신이 먼저 죽어** 결함을 못 본다.
+ * 2026-08-04 사흘간 CI 0회 실행 사고가 정확히 그 사각에서 났다. 가드가 다른 가드의
+ * 존재 이유를 거스르게 만들 뻔했다.
+ *
+ * 그래서 **집합을 선언하고 실측과 대조**한다(이 저장소의 `INPUTS`/`coveredBy` 양식).
+ * 스텝을 지우면 집합이 어긋나 red · 새 워크플로우가 node 를 쓰면 여기 등재해야 red 가 풀린다.
+ * 하드코딩 **숫자**는 두지 않는다 — 숫자는 세 번째 목록이 되어 또 갈린다.
+ */
+const NODE_WORKFLOWS: Record<string, string> = {
+  'workflow-scripts-ci.yml': '판별식 전량을 node 로 돌린다',
+  'frontend-ci.yml': 'lint · typecheck · test 3잡이 각각 node 를 쓴다',
+  'backend-ci.yml': '변경 파일 → 대상 모듈 선별을 node 로 한다',
+}
+
+/**
+ * setup-node 를 **갖지 않아야** 하는 워크플로우와 그 이유.
+ *
+ * 빈 값이 아니라 사유를 요구한다 — 「왜 없는가」가 사라지면 다음 사람이 「빠뜨렸다」로 읽고
+ * 넣게 되고, `runner-health` 의 경우 그 순간 점검이 무력화된다.
+ */
+const NODE_FREE_WORKFLOWS: Record<string, string> = {
+  'runner-health.yml':
+    '★반드시 순수 shell. JavaScript 액션은 node 로 돌아가므로 setup-node 를 쓰면 node 사망 시 점검 자신이 먼저 죽는다(2026-08-04 사고의 사각).',
+  'infra-ci.yml': 'node 를 쓰지 않는다.',
 }
 
 /** `coveredBy` 글롭이 실제로 그 입력 경로를 덮는지. 짝을 잘못 적은 선언을 잡는다. */
@@ -520,7 +616,7 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
 
     const mustCatch: [string, string][] = [
       ['줄머리', `${N} scripts/x.ts`],
-      // ★1차 프로토타입이 정확히 이걸 놓쳤다. package.json 의 두 호출문이 여기 있었다.
+      // ★1차 초안이 정확히 이걸 놓쳤다. package.json 의 두 호출문이 여기 있었다.
       ['JSON 값(따옴표)', `    "classify": "${N} scripts/workflow/classify-task.ts",`],
       ['마크다운 인라인(백틱)', `실행은 \`${N} scripts/x.ts\` 로 한다`],
       ['따옴표 글롭', `"test:workflow": "${N} --test 'scripts/**/*.test.ts'"`],
@@ -532,10 +628,34 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
     for (const [label, line] of mustCatch) {
       const segments = nodeSegments(logicalLines(line)[0].text)
       assert.ok(
-        segments.some((s) => TS_REFERENCE.test(s) && !s.includes(FLAG)),
+        segments.some((s) => TS_REFERENCE.test(s) && !isSealed(s)),
         `위반을 놓쳤다 (${label}): ${line}`,
       )
     }
+
+    // ★★플래그가 **경로 뒤**에 오는 형태. node 는 경로 이후를 argv 로 넘기므로 이 명령은
+    //   플래그를 달고도 22.18 미만에서 죽는다. 세그먼트 전체 includes 로 판정하면 통과한다.
+    //   2026-08-14 독립 리뷰 C1 — 이 판별식이 막겠다고 선언한 죽음을 스스로 통과시켰다.
+    const flagAfterPath: [string, string][] = [
+      ['플래그가 경로 뒤', `${N} scripts/workflow/classify-task.ts ${FLAG} --title "x"`],
+      ['줄끝 주석의 언급', `${N} scripts/x.ts   # ${FLAG} 미부착`],
+      ['할 일 메모', `run: ${N} scripts/workflow/detect-tier.ts  # TODO ${FLAG} 붙일 것`],
+    ]
+    for (const [label, line] of flagAfterPath) {
+      const segments = nodeSegments(logicalLines(line)[0].text)
+      assert.ok(
+        segments.some((s) => TS_REFERENCE.test(s) && !isSealed(s)),
+        `플래그가 경로 뒤인데 봉인으로 읽었다 (${label}): ${line}\n` +
+          `node 옵션은 스크립트 경로 **앞**에서만 유효하다. 뒤는 argv 로 넘어가 무효다.`,
+      )
+    }
+
+    // 반대 방향 — 경로 앞이면 봉인이 맞다.
+    assert.equal(
+      isSealed(`${N} ${FLAG} scripts/x.ts --title "x"`),
+      true,
+      '경로 앞의 플래그를 봉인으로 못 읽었다 — 정상 호출문이 전부 red 가 된다.',
+    )
 
     // ★★줄바꿈으로 이어진 호출문. 물리 줄 단위면 1행엔 .ts 가 없고 2행엔 node 가 없어
     //   **양쪽 다 빠져나간다.** logicalLines() 가 이 구멍을 막는다.
@@ -588,6 +708,75 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
     // 본문을 못 자르면(빈 문자열) 키 검사가 통째로 무의미해진다.
     const empty = steps.filter((s) => s.body.trim().length === 0).map((s) => `${s.file}:${s.line}`)
     assert.deepEqual(empty, [], `본문을 못 자른 스텝이 있다: ${empty.join(', ')}`)
+
+    // ★파서가 **일부만** 잡는 것을 막는다. `> 0` 만 보면 5곳 중 1곳만 잡혀도 통과하고,
+    //   나머지 4곳이 정본을 안 읽어도 초록이 된다. 원시 문자열 수를 **다른 로직으로** 세어
+    //   대조한다 — 한쪽이 깨지면 어긋난다.
+    const rawCount = workflowFiles().reduce((n, f) => {
+      const hits = fs
+        .readFileSync(path.join(REPO_ROOT, f), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .filter((l) => new RegExp(`uses:\\s*${SETUP_NODE_ACTION}`).test(l))
+      return n + hits.length
+    }, 0)
+
+    assert.equal(
+      steps.length,
+      rawCount,
+      `스텝 파서가 ${steps.length}건을 뽑았는데 원시 매칭은 ${rawCount}건이다.\n\n` +
+        `두 수가 어긋나면 파서가 일부를 놓쳤거나(→ 놓친 스텝은 검사되지 않는다) ` +
+        `주석을 스텝으로 오인한 것이다. 둘 다 봉인이 조용히 좁아지는 경로다.`,
+    )
+  })
+
+  /**
+   * ★★C3 — 스텝을 통째로 지우면 위 단언들은 검사할 것이 없어 전부 통과한다.
+   *
+   * 그 잡은 러너 PATH 의 시스템 node 로 떨어지고, 그 버전은 아무도 재지 않는다 —
+   * 이 판별식이 닫으려던 결함 그 자체다. 개수 하한(`>= 5`)으로도 막히지만 그 숫자가
+   * **세 번째 목록**이 되어 또 갈린다. 「node 를 쓰면 setup-node 를 갖는다」로 숫자를 없앤다.
+   */
+  test('★★setup-node 보유 집합이 선언과 일치한다 (스텝 삭제 봉인)', () => {
+    const declared = Object.keys(NODE_WORKFLOWS).sort()
+    const declaredFree = Object.keys(NODE_FREE_WORKFLOWS).sort()
+
+    // ① 저장소의 워크플로우가 두 선언 중 정확히 한쪽에 있다 — 미분류를 만들지 않는다.
+    const actual = workflowFiles().map((f) => path.basename(f)).sort()
+    const unclassified = actual.filter(
+      (f) => !(f in NODE_WORKFLOWS) && !(f in NODE_FREE_WORKFLOWS),
+    )
+    assert.deepEqual(
+      unclassified,
+      [],
+      `어느 집합에도 없는 워크플로우가 있다: ${unclassified.join(', ')}\n\n` +
+        `node 를 쓰면 NODE_WORKFLOWS 에, 안 쓰면 사유와 함께 NODE_FREE_WORKFLOWS 에 등재하라.\n` +
+        `미분류를 허용하면 새 워크플로우가 버전 정본을 무시해도 아무도 안 본다.`,
+    )
+
+    const stale = [...declared, ...declaredFree].filter((f) => !actual.includes(f))
+    assert.deepEqual(stale, [], `선언에만 있고 실재하지 않는 워크플로우: ${stale.join(', ')}`)
+
+    // ② 가져야 하는 곳이 실제로 갖고 있다 — 스텝을 통째로 지우면 여기서 잡힌다.
+    const withStep = new Set(allSetupNodeSteps().map((s) => path.basename(s.file)))
+    const missing = declared.filter((f) => !withStep.has(f))
+    assert.deepEqual(
+      missing,
+      [],
+      `setup-node 를 가져야 하는데 없는 워크플로우: ${missing.join(', ')}\n` +
+        missing.map((f) => `  ${f} — ${NODE_WORKFLOWS[f]}`).join('\n') +
+        `\n\n스텝이 사라지면 그 잡은 러너 PATH 의 시스템 node 로 떨어진다. 그 버전은\n` +
+        `'${VERSION_FILE}' 와 무관하게 움직이고 아무도 재지 않는다 — 이 판별식이 닫으려던 결함이다.`,
+    )
+
+    // ③ 갖지 않아야 하는 곳에 들어오지 않았다. runner-health 는 들어오는 순간 무력화된다.
+    const intruded = declaredFree.filter((f) => withStep.has(f))
+    assert.deepEqual(
+      intruded,
+      [],
+      `setup-node 가 없어야 하는 워크플로우에 들어왔다: ${intruded.join(', ')}\n` +
+        intruded.map((f) => `  ${f} — ${NODE_FREE_WORKFLOWS[f]}`).join('\n'),
+    )
   })
 
   /**
@@ -600,10 +789,17 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
    */
   test('★★모든 setup-node 스텝이 버전 정본 파일을 읽는다', () => {
     const offending = allSetupNodeSteps()
-      .filter((s) => !new RegExp(`${VERSION_FILE_KEY}\\s*:`).test(s.body))
+      .filter((s) => {
+        const body = executableBody(s)
+        // 주석을 걷은 본문에서만 본다. 그리고 하드코딩 키가 **함께 있으면** 그것도 위반이다 —
+        // setup-node 는 두 키가 공존하면 `node-version` 을 우선해 정본을 무시한다.
+        const readsFile = new RegExp(`${VERSION_FILE_KEY}\\s*:`).test(body)
+        const pinsInline = /^\s*node-version\s*:/m.test(body)
+        return !readsFile || pinsInline
+      })
       .map((s) => {
-        const pinned = s.body.match(/node-version\s*:\s*\S+/)
-        return `${s.file}:${s.line}${pinned ? `  (지금. ${pinned[0]})` : '  (버전 키 자체가 없다)'}`
+        const pinned = executableBody(s).match(/^\s*node-version\s*:\s*\S+/m)
+        return `${s.file}:${s.line}${pinned ? `  (지금. ${pinned[0].trim()})` : '  (버전 키 자체가 없다)'}`
       })
 
     assert.deepEqual(
