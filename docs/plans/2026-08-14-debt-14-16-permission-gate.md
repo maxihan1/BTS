@@ -208,7 +208,7 @@ Then 폼과 클론 액션이 **열려 있다**(현행 동작 — 이 PR 은 그�
 - [ ] 동결 중 제출 403 이 권한 문구를 낸다 (R8) · `detail` 제거 뮤테이션으로 red 확인
 - [ ] 동결이 판정을 가린 구간에만 `role="status"` 안내가 뜬다 (R9 · 비-공허 짝 포함) ·
       신규 문구가 `i18n/import-labels.ts` 안에 있다(하드코딩 0)
-- [x] ⚠️ `lint-ratchet-baseline.ts` **무변경** (제약 1) — **미달성.** `ImportMappingWizard::Arrow function`
+- [!] `lint-ratchet-baseline.ts` **무변경** (제약 1) — **미달성.** `ImportMappingWizard::Arrow function`
       288 → **289**(+1). 296 → 289 까지 내린 뒤의 구조적 최소치이고, 이탈이 겨눈 두 함수
       (`IssueCreateForm`·`IssueMetaPanel`)는 소스 0줄 변경이다. 사유는 §구현 결과 · 베이스라인 주석
 - [ ] `pnpm verify` · `pnpm test:workflow` EXIT=0 · frontend-ci 전잡 green

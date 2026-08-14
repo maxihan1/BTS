@@ -4324,7 +4324,7 @@ Gradle `include`」로 옮겼다 — 두 목록이 여전히 서로 독립(디�
 
 ## ⬜ 워크플로우 — `classify-task` 가 E2E 를 포함한 혼합 PR 을 `qa-engineer` 로 오배정한다 (신규 · 미착수 · T1)
 
-**무엇.** `scripts/workflow/classify-task.ts:298` 의 qa 판정이 `:305` 의 ui 판정보다 **앞선다**.
+**무엇.** `scripts/workflow/classify-task.ts:298` 의 qa 판정이 `:304` 의 ui 판정보다 **앞선다**.
 그래서 제목에 「E2E」가 있으면 **위치와 무관하게** `type=qa` 로 떨어지고, `:331` 매핑이
 `qa-engineer` 를 고른다. 그런데 `.claude/agents/qa-engineer.md` 는 **구현 코드 수정을 금지**한다
 (「구현 코드 (src/, apps/web/src/) 수정 금지」).
@@ -4365,10 +4365,18 @@ T2 로 선언되면 실제로 도달하고, 그 행이 주는 렌즈는 `plan-de
 (이 BC 전수 grep — resolver 는 `ImportJobService.kt` 3줄이 전부). confirm 의 유일한 관문
 `requireOwnedAwaitingMapping`(`:439-450`)은 **잡 소유권 + 상태(AWAITING_MAPPING)** 만 본다.
 그 직후 `:265-273` 이 PENDING 전이 · 매핑 3종 `saveAll` · `enqueuePublisher.enqueue` 를 실행하고
-HTTP 200 을 돌려준다. 상태 폴링·에러로그 다운로드·매핑 후보 조회 3종도 소유권만 본다.
+HTTP 200 을 돌려준다. `requireOwnedAwaitingMapping` 호출부는 `:176`(validate) `:257`(confirm) `:331` `:403` **4곳**이고,
+읽기 계열(상태 폴링·에러로그)도 `findByIdForRequester` 소유권만 본다.
 
-**유출은 아니다.** 실제 이슈 생성은 `IssueImportAdapter.kt:288-294` 가 `hasPermission(CREATE)` 로
-막아 `FORBIDDEN` 을 돌려준다. 그래서 **데이터는 안 만들어진다.**
+**이슈는 안 만들어진다. 그러나 no-op 도 아니다.** 실제 이슈 생성은
+`IssueApplicationService.kt:225` 의 `assertPermission(CREATE)`(`createIssue` `:221`)가 막는다.
+그런데 confirm 자체는 **PENDING 전이 + 매핑 3종 `saveAll` + pgmq enqueue 를 수행하고 200 을 돌려준다**
+— 사용자는 성공 화면을 받고 뒤늦게 실패한다.
+
+⚠️ **초판 서술 정정 2건 (게이트 2 재리뷰).** ① 완화 인용을 `IssueImportAdapter.kt:288-294` 라 적었으나
+그 블록은 `validateDryRun`(`:283`) 안이고 `:239 if (cmd.dryRun)` 로만 도달하는 **dry-run 미리보기**
+경로다 — 원래 아무것도 안 만드는 곳이라 근거가 못 된다. ② 소유권만 보는 지점을 「3종」이라 적고
+처방 줄엔 「4종」이라 적어 **자기와 어긋났다.**
 
 **그런데 왜 등재하나.** 접수(`POST /imports`)는 `ImportJobService.kt:380-395` 에서 mutation **이전에**
 fail-fast 하는데 confirm 은 안 한다 — **같은 BC 안에서 두 진입점의 강제 시점이 다르다.**
@@ -4385,9 +4393,13 @@ fail-fast 하는데 confirm 은 안 한다 — **같은 BC 안에서 두 진입�
 
 ## ⬜ 디자인 — `DESIGN.md` 에 `aria-live` 정책이 없다 (신규 · 미착수 · T0)
 
-**무엇.** `DESIGN.md` 전수 grep 에 `aria-live` · `role="status"` · `role="alert"` **0건**이다.
-화면이 조용히 바뀌는 자리마다 「정중한 알림(`status`)인가 끼어드는 알림(`alert`)인가」가
-개발자 재량으로 남는다. `Skeleton`·`EmptyState` 프리미티브는 등재돼 있는데 **들리는 상태**만 공백이다.
+**무엇.** `DESIGN.md` 는 `role="alert"` 만 다룬다(`:497` 코드 예시 · `:505` 「에러 메시지가
+동적으로 나타날 때 즉시 알림」). **`role="status"` 와 `aria-live` 는 전수 grep 0건**이고,
+그래서 「정중한 알림(`status`)인가 끼어드는 알림(`alert`)인가」의 **선택 기준**이 없다.
+에러가 아닌 상태 변화를 알릴 때마다 개발자 재량으로 남는다.
+
+⚠️ **초판 서술 정정 (게이트 2 재리뷰).** 이 항목은 처음에 「`role="alert"` 포함 0건」이라 적었는데
+거짓이었다. 틀린 사유는 다음 사람이 **틀린 근거로 사각을 재확인**하게 한다(#383 C4 의 교훈).
 
 **실측 근거.** #384 가 그 판단을 한 번 더 즉흥으로 했다 — 동결 안내를 `status`(polite)로 골랐고
 사유(작업을 끊지 않는다)는 코드 주석에만 있다. 같은 화면의 선재 사례도 갈려 있다 —
@@ -4462,3 +4474,26 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 
 **②는 대가가 있다.** #384 에서 두 렌즈가 **실행으로만 찾은** 지적 2건(마법사 배선 무검증 · alias 우회)이
 있었다. 읽기 전용으로 묶으면 그 종류를 못 잡는다. ①이 그 대가 없이 격리한다.
+
+---
+
+## ⬜ apps/web — 로딩 프레임 계약 판별식이 **배럴 재export 에 샌다** (신규 · 미착수 · T1)
+
+**무엇.** `permission-gate-loading-contract.test.ts` 의 `IMPORT_NEEDLE` 은
+`from '…use-issue-create-permission-gate'` 형태의 import 문을 본다. 그래서
+`components/issue/create/index.ts` 같은 **배럴**이 생겨 훅을 re-export 하면
+① 배럴 자신이 소비처로 잡혀 로딩 프레임이 없는 파일에 계약 선언을 강요하고
+② 그 배럴에서 `from '@/components/issue/create'` 로 들여오는 **화면은 안 잡힌다.**
+확장자를 명시한 import(`….js`)와 `import()`/`require()` 도 같은 이유로 빠진다.
+
+**지금은 잠재다** — 그 배럴이 없다(실측). 초판의 호출부 매칭(`name(`)은 ②를 잡았지만
+alias·간접 호출·옵셔널 호출을 놓쳤고, 그쪽 구멍이 더 컸다(매핑 `15` 게이트 2 리뷰에서 실측).
+**둘 다 잡는 형태가 아니라 한쪽을 고른 것**이고, 그 사실을 판별식 JSDoc 에 적어 뒀다.
+
+**처방 후보 2 (착수 시 확정).**
+① 두 needle 을 합집합으로 쓴다(import 문 **또는** 호출부) — 오탐이 늘지만 사각이 줄고,
+   오탐은 「선언 한 줄 추가」라 비용이 작다.
+② TypeScript AST 로 실제 심볼 참조를 푼다 — 정확하지만 판별식이 무거워지고
+   이 저장소 다른 가드(전부 문자열 스캔)와 형태가 갈린다.
+
+**발견 경위.** #384 게이트 2 **재리뷰**. 초판 수정(alias 봉쇄)이 연 새 사각을 그 자리에서 잡았다.

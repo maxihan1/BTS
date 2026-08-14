@@ -58,10 +58,15 @@ const LOADING_FRAME_CONTRACTS: Readonly<Record<string, LoadingFrameContract>> = 
  *   `routes/issues.index.tsx` 가 이 훅 파일을 「정본 논거」로 인용한다(실측). `from '…'` 형태로
  *   좁히면 실물 import 만 남는다.
  *
- * ★런타임 조립은 유지한다. 근거는 자기 탐지 회피가 **아니다** — 이 파일은 `.test.ts` 라
- *   `collectSourceFiles` 가 이미 제외하므로 애초에 자기 탐지가 불가능하다(초판 주석이 그 사실을
- *   틀리게 적었고 리뷰가 지적했다). 조립을 남기는 진짜 이유는 **다음 사람이 이 판별식을 복사할 때**
- *   호출부 매칭 형태로 되돌리는 것을 막기 위해서다 — 리터럴 한 줄이면 되돌리기가 너무 쉽다.
+ * ★**이 판정식이 놓치는 것 (부채 매핑 `40` 으로 등재).** 배럴 재export 가 생기면 샌다 —
+ *   `create/index.ts` 가 이 훅을 re-export 하고 화면이 `from '@/components/issue/create'` 로
+ *   들여오면 **그 화면은 안 잡힌다**(배럴 자신만 잡힌다). 확장자 명시(`….js`)와
+ *   `import()`/`require()` 도 빠진다. 지금 배럴은 없으므로 잠재다.
+ *
+ * ★런타임 조립은 **자기 탐지 회피가 아니다.** 이 파일은 `.test.ts` 라 `collectSourceFiles` 가
+ *   이미 제외하므로 자기 탐지는 애초에 불가능하다 — 초판 주석이 그것을 근거로 적었고 틀렸다.
+ *   조립을 남기는 이유는 **다음 사람이 복사할 때** 호출부 매칭으로 되돌리는 것을 한 번 더
+ *   생각하게 하려는 것뿐이다. 그 이상을 막지는 않는다.
  */
 const IMPORT_NEEDLE = new RegExp(
   `from\\s+['"][^'"]*` + 'use-issue-create-permission-gate' + `['"]`,
@@ -70,10 +75,10 @@ const IMPORT_NEEDLE = new RegExp(
 /**
  * 훅 **정의** 파일 — 소비처가 아니다.
  *
- * 지금 판정식(import 문 매칭)에서는 정의 파일이 자기를 import 하지 않으므로 **걸리지 않는다.**
- * 그래도 남겨 두는 이유는 배럴 재export 등으로 정의 파일이 자기 모듈을 들여오게 되는 날
- * 조용히 소비처로 세어지는 것을 막기 위해서다. 목록은 늘리지 않는다 —
- * 늘리는 순간 「선언 없이 쓰는 화면」을 허용하는 문이 된다.
+ * ★**지금은 도달 불가다.** import 문을 보는 판정식에서 정의 파일은 자기를 import 하지 않으므로
+ * 애초에 안 걸린다. 이 줄은 죽은 필터이고, 그 사실을 숨기지 않고 적어 둔다 —
+ * 「보호가 있다」고 읽히면 다음 사람이 틀린 근거로 안심한다(#383 C4 · 게이트 2 재리뷰 지적).
+ * 지우지 않는 이유는 위 배럴 구멍(매핑 `40`)을 닫을 때 정의 파일이 매칭 대상이 되기 때문이다.
  */
 const DEFINITION_FILE = 'src/components/issue/create/use-issue-create-permission-gate.ts'
 
