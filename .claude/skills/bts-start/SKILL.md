@@ -31,7 +31,7 @@ exit 1 이면 출력의 복구 절차를 그대로 따르고, **초록이 될 �
 ## Step 1. 작업 분류 (캐시 적용)
 
 ```bash
-classify=$(node scripts/workflow/classify-task.ts \
+classify=$(node --experimental-strip-types scripts/workflow/classify-task.ts \
   --title "<사용자 입력>" --cache)
 # 출력: { title, slug, type, agent, primary_bc, tier, task_count, cached_at }
 # 캐시: .bts-cache/classify.json (1시간 TTL)

@@ -4008,8 +4008,12 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/<slug>/ap
 
 ## ⬜ 인프라 — `pnpm test:workflow` 가 **로컬에서만 15건 죽는다** (CI 는 초록 · 신규 · 미착수 · T2)
 
-**무엇.** `package.json:10` 의 `test:workflow` 는 `node --test 'scripts/**/*.test.ts' …` 다.
-**플래그가 없다.** 그래서 `.ts` 테스트가 실행 환경의 Node 마이너 버전에 따라 갈린다.
+**무엇.** `package.json:10` 의 `test:workflow` 가 `--test 'scripts/**/*.test.ts' …` 를
+**플래그 없이** 돌린다. 그래서 `.ts` 테스트가 실행 환경의 Node 마이너 버전에 따라 갈린다.
+
+> 인용에서 선행 `node ` 를 뺀 것은 의도다 — `node-ts-invocation.test.ts` 가 이 줄을 실제
+> 호출문으로 읽어 red 를 낸다. 증거로 인용한 깨진 값에 플래그를 붙이면 바로 다음 문장
+> (「플래그 없이」)과 자기모순이 되므로, 형태를 피하는 쪽을 택했다.
 
 | 환경 | Node | `pnpm test:workflow` |
 |---|---|---|

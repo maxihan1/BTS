@@ -13,10 +13,10 @@ BTS 워크플로우 보조 스크립트.
 
 ```bash
 # 일회성
-node scripts/workflow/classify-task.ts --title "코멘트 멘션 알림 추가해줘"
+node --experimental-strip-types scripts/workflow/classify-task.ts --title "코멘트 멘션 알림 추가해줘"
 
 # 캐시 모드 (.bts-cache/classify.json에 저장, 같은 title이면 재사용)
-node scripts/workflow/classify-task.ts --title "<...>" --cache
+node --experimental-strip-types scripts/workflow/classify-task.ts --title "<...>" --cache
 
 # package.json script
 npm run classify -- --title "<...>" --cache
@@ -79,10 +79,10 @@ npm run classify -- --title "<...>" --cache
 
 ```bash
 # 이 브랜치가 바꾼 파일로 실측 티어를 본다
-git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts
+git diff --name-only origin/main...HEAD | node --experimental-strip-types scripts/workflow/detect-tier.ts
 
 # 선언 티어와 나란히 (게이트 2 요약용). 어긋나도 종료 코드는 0 이다 — 승격은 사람이 정한다
-git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts --declared T1
+git diff --name-only origin/main...HEAD | node --experimental-strip-types scripts/workflow/detect-tier.ts --declared T1
 ```
 
 출력은 `TIER:` · `SURFACES:` · 미분류가 있으면 `UNMAPPED: <경로>` 한 줄씩이다. `--json` 으로 기계용 출력.
@@ -91,7 +91,7 @@ git diff --name-only origin/main...HEAD | node scripts/workflow/detect-tier.ts -
 ## 테스트
 
 ```bash
-node --test scripts/workflow/*.test.ts
+node --experimental-strip-types --test scripts/workflow/*.test.ts
 # 또는
 npm run test:workflow
 ```
