@@ -2,7 +2,14 @@
 
 BTS 워크플로우 보조 스크립트.
 
-> Node 24+ (native TS 지원, Node 22+ `--experimental-strip-types` 호환).
+> **node 버전 정본은 `.nvmrc` 하나다** — 로컬(nvm/mise)과 CI(`setup-node` 의
+> `node-version-file`)가 같은 파일을 읽는다. 워크플로우에 버전을 직접 적으면
+> `node-ts-invocation.test.ts` 축 B 가 red 를 낸다.
+>
+> 아래 명령이 전부 `--experimental-strip-types` 를 다는 이유. `.nvmrc` 는 **선언이지 강제가
+> 아니라서**, 셸이 그 파일을 안 읽는 환경에서는 여전히 22.18 미만이 쓰일 수 있다. 그때도
+> 명령이 그대로 돌게 하는 이식성 장치다(22.18+ 에서는 무동작). 축 A 가 이것을 강제한다.
+>
 > 외부 의존성 0. `node_modules` 불필요.
 
 ## classify-task.ts

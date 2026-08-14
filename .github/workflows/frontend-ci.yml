@@ -55,7 +55,7 @@ jobs:
       - name: Setup Node 22 (with pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -76,7 +76,7 @@ jobs:
       - name: Setup Node 22 (with pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -99,7 +99,7 @@ jobs:
       - name: Setup Node 22 (with pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile

@@ -110,6 +110,8 @@ on:
       - 'DEVELOPMENT.md'
       - 'CHANGELOG.md'
       - 'package.json'
+      # node 버전 정본. 이 파일이 바뀌면 두 환경의 node 가 함께 바뀐다.
+      - '.nvmrc'
       - 'pnpm-lock.yaml'
   push:
     branches: [main]
@@ -145,6 +147,8 @@ on:
       - 'DEVELOPMENT.md'
       - 'CHANGELOG.md'
       - 'package.json'
+      # node 버전 정본. 이 파일이 바뀌면 두 환경의 node 가 함께 바뀐다.
+      - '.nvmrc'
       - 'pnpm-lock.yaml'
 
 concurrency:
@@ -177,7 +181,7 @@ jobs:
       - name: Setup Node 22 (with pnpm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
