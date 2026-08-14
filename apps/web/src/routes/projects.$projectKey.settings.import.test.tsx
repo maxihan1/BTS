@@ -639,6 +639,14 @@ describe('ProjectImportSettingsPage — 재조회 중 화면 유지', () => {
     await user.click(screen.getByRole('button', { name: 'mock-busy-on' }))
   }
 
+  /** 매핑 모드로 전환한 뒤 위저드 쪽 목 버튼으로 「진행 중」을 만든다. */
+  async function startWizardInProgress(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '매핑하며 가져오기' }))
+    expect(screen.getByTestId('import-mapping-wizard')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'mock-wizard-busy-on' }))
+  }
+
   it('★진행 중이면 권한이 뒤집혀도 화면이 유지된다 (R6)', async () => {
     const user = userEvent.setup()
     const { client } = renderPage('ATLAS')
@@ -654,6 +662,38 @@ describe('ProjectImportSettingsPage — 재조회 중 화면 유지', () => {
     })
     expect(screen.getByTestId('import-form')).toBeInTheDocument()
     expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+
+  // ★★리뷰가 실행으로 잡은 구멍이다 (2026-08-14 · 게이트 2).
+  //   위저드의 `onBusyChange` 를 `() => {}` 로 바꿔도 **타입체크 통과 + 테스트 40/40 초록**이었다.
+  //   목에 `mock-wizard-busy-on` 버튼을 만들어 두고 **클릭하는 곳이 0곳**이라, 계획 EC6
+  //   (「위저드도 `ImportForm` 과 같은 보호를 받아야 한다」)이 문장으로만 남아 있었다.
+  //   required prop 은 *무언가 전달되는 것*만 강제하고 *올바른 대상이 전달되는 것*은 강제하지 않는다.
+  it('★매핑 모드에서도 진행 중이면 권한이 뒤집혀도 화면이 유지된다 (EC6)', async () => {
+    const user = userEvent.setup()
+    const { client } = renderPage('ATLAS')
+    await startWizardInProgress(user)
+
+    await flipPermissionToDenied(client)
+
+    await waitFor(() => {
+      expect(client.getQueryState(PROJECT_PERMISSION_KEYS.detail('ATLAS'))?.status).toBe('success')
+    })
+    expect(screen.getByTestId('import-mapping-wizard')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-create-denied')).not.toBeInTheDocument()
+  })
+
+  it('매핑 모드에서 진행 중이 아니면 거부 카드로 교체된다 (EC6 비-공허 짝)', async () => {
+    const user = userEvent.setup()
+    const { client } = renderPage('ATLAS')
+    expect(await screen.findByTestId('import-form')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '매핑하며 가져오기' }))
+    expect(screen.getByTestId('import-mapping-wizard')).toBeInTheDocument()
+
+    await flipPermissionToDenied(client)
+
+    expect(await screen.findByTestId('import-create-denied')).toBeInTheDocument()
+    expect(screen.queryByTestId('import-mapping-wizard')).not.toBeInTheDocument()
   })
 
   it('진행 중이 아니면 권한이 뒤집힐 때 거부 카드로 교체된다 (R7 비-공허 짝)', async () => {

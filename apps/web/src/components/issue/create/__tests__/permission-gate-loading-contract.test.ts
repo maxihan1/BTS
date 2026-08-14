@@ -46,21 +46,36 @@ const LOADING_FRAME_CONTRACTS: Readonly<Record<string, LoadingFrameContract>> = 
 }
 
 /**
+ * 소비처 탐지 — **import 문**을 본다. 호출부가 아니다.
+ *
+ * ★초판은 `'useIssueCreatePermissionGate' + '('` 로 **호출부**를 봤고, 게이트 2 리뷰가
+ *   실행으로 그 구멍을 열었다 — `import { useIssueCreatePermissionGate as useGate }` 뒤
+ *   `useGate(k)` 로 쓰면 이름 뒤에 `(` 가 없어 **판별식이 6/6 초록**이었다.
+ *   같은 구멍이 간접 호출(`const fn = useIssue…; fn(k)`)·옵셔널 호출(`useIssue…?.(k)`)에도 열린다.
+ *   import 문을 보면 이름을 어떻게 부르든 모듈을 들여오는 사실 자체가 남으므로 셋이 함께 닫힌다.
+ *
+ * ★`from` 을 요구하는 이유. 모듈 경로만 grep 하면 **KDoc 안의 경로 언급이 오탐**된다 —
+ *   `routes/issues.index.tsx` 가 이 훅 파일을 「정본 논거」로 인용한다(실측). `from '…'` 형태로
+ *   좁히면 실물 import 만 남는다.
+ *
+ * ★런타임 조립은 유지한다. 근거는 자기 탐지 회피가 **아니다** — 이 파일은 `.test.ts` 라
+ *   `collectSourceFiles` 가 이미 제외하므로 애초에 자기 탐지가 불가능하다(초판 주석이 그 사실을
+ *   틀리게 적었고 리뷰가 지적했다). 조립을 남기는 진짜 이유는 **다음 사람이 이 판별식을 복사할 때**
+ *   호출부 매칭 형태로 되돌리는 것을 막기 위해서다 — 리터럴 한 줄이면 되돌리기가 너무 쉽다.
+ */
+const IMPORT_NEEDLE = new RegExp(
+  `from\\s+['"][^'"]*` + 'use-issue-create-permission-gate' + `['"]`,
+)
+
+/**
  * 훅 **정의** 파일 — 소비처가 아니다.
  *
- * 정의부에도 이름이 나오므로 스캐너에 걸린다. 여기 한 줄로 빼되, 목록을 늘리지 않는다 —
+ * 지금 판정식(import 문 매칭)에서는 정의 파일이 자기를 import 하지 않으므로 **걸리지 않는다.**
+ * 그래도 남겨 두는 이유는 배럴 재export 등으로 정의 파일이 자기 모듈을 들여오게 되는 날
+ * 조용히 소비처로 세어지는 것을 막기 위해서다. 목록은 늘리지 않는다 —
  * 늘리는 순간 「선언 없이 쓰는 화면」을 허용하는 문이 된다.
  */
 const DEFINITION_FILE = 'src/components/issue/create/use-issue-create-permission-gate.ts'
-
-/**
- * 탐지 문자열을 **런타임에 조립**한다.
- *
- * 리터럴로 적으면 이 판별식 파일 자신이 소비처로 잡힌다. 자기 자신을 허용목록에 넣는 것은
- * 「판별식은 검사에서 빠진다」는 구멍을 여는 것이라 택하지 않는다(#383 에서 판별식이 자기
- * 처방문을 3종 오탐한 전례). 문자열을 쪼개면 구멍 없이 자기 탐지만 피한다.
- */
-const NEEDLE = 'useIssueCreatePermissionGate' + '('
 
 const WEB_ROOT = resolve(__dirname, '../../../../..')
 const SRC = join(WEB_ROOT, 'src')
@@ -109,11 +124,13 @@ function diffConsumers(
 
 const sourceFiles = collectSourceFiles(SRC)
 const consumers = sourceFiles
-  .filter((f) => readFileSync(f, 'utf-8').includes(NEEDLE))
+  .filter((f) => IMPORT_NEEDLE.test(readFileSync(f, 'utf-8')))
   .map(toRelative)
   .filter((p) => p !== DEFINITION_FILE)
   .sort()
 
+// ★이 판별식은 선언의 **존재**만 잰다. 선언한 계약 값이 화면 동작과 맞는지(**정확성**)는
+//   재지 않는다 — 그건 각 화면의 pending 프레임 단언이 따로 잡는다.
 describe('로딩 프레임 계약 — 소비처 선언 강제', () => {
   it('소스를 실제로 훑었다 (비-공허 짝)', () => {
     // 경로가 깨지면 0건을 훑고 아래 단언이 전부 공허하게 통과한다.
