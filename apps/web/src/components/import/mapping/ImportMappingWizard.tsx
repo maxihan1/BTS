@@ -785,6 +785,26 @@ function isWizardBusy(file: File | null, step: WizardStep): boolean {
   return file !== null || step !== 'upload'
 }
 
+/**
+ * 진행 중 신호를 부모에게 보고한다.
+ *
+ * ★훅으로 뺀 이유는 취향이 아니라 **줄수 래칫**이다. 이 컴포넌트의 arrow function 은
+ * `lint-ratchet-baseline.ts` 에 288 로 동결돼 있어 본문에 효과를 인라인하면 베이스라인을 넘긴다
+ * (실측 288 → 296). 본문에 남는 것은 호출 1줄뿐이다.
+ *
+ * ★deps 에 `onBusyChange` 를 반드시 넣는다. 빼면 `react-hooks/exhaustive-deps` 가 울고,
+ * disable 주석으로 덮으면 `src/test/lint-ratchet.test.ts` 가 `noInlineConfig` 로 그 주석을
+ * 무시하고 다시 잡는다. 부모가 `useState` setter(안정 참조)를 넘기므로 재실행 폭주는 없다.
+ *
+ * @param busy 지금 잃을 것이 있는가
+ * @param onBusyChange 부모에게 보고하는 콜백
+ */
+function useBusySignal(busy: boolean, onBusyChange: (busy: boolean) => void): void {
+  useEffect(() => {
+    onBusyChange(busy)
+  }, [busy, onBusyChange])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ImportMappingWizard (공개 컴포넌트)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -799,10 +819,7 @@ function isWizardBusy(file: File | null, step: WizardStep): boolean {
  *   새 jobId로 즉시 confirm(dryRun=false)한다 — 마법사를 처음부터 재순회하지 않는다(G1/DR-5).
  * - DR-6: analyze 결과 sourceFields가 빈 배열이면 에러를 표시하고 업로드 단계에 머무른다.
  */
-export const ImportMappingWizard = ({
-  projectKey,
-  onBusyChange,
-}: ImportMappingWizardProps): JSX.Element => {
+export const ImportMappingWizard = ({ projectKey, onBusyChange }: ImportMappingWizardProps): JSX.Element => {
   const [step, setStep] = useState<WizardStep>('upload')
   const [format, setFormat] = useState<ImportFormat>('CSV')
   const [file, setFile] = useState<File | null>(null)
@@ -819,11 +836,7 @@ export const ImportMappingWizard = ({
   const [confirmErrors, setConfirmErrors] = useState<MappingIssue[]>([])
   const [recollectNotice, setRecollectNotice] = useState(false)
   const hasVisitedUsersRef = useRef(false)
-
-  // 진행 중 신호 (부채 매핑 16 · EC6). deps 규율은 `ImportForm` 의 같은 훅 주석이 정본이다.
-  useEffect(() => {
-    onBusyChange(isWizardBusy(file, step))
-  }, [file, step, onBusyChange])
+  useBusySignal(isWizardBusy(file, step), onBusyChange) // 부채 매핑 16 · EC6
 
   const analyzeMutation = useMutation<ImportAnalysisResponse, unknown, File>({
     mutationFn: (selectedFile) => analyzeImport({ projectKey, format, file: selectedFile }),

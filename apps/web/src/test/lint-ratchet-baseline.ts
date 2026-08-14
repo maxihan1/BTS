@@ -10,7 +10,14 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/auth/MfaSettings.tsx::Function 'MfaSettings'": 218,
   "src/components/automation/AutomationRuleFormDialog.tsx::Function 'FormBody'": 230,
   "src/components/custom-fields/CustomFieldFormDialog.tsx::Function 'FormBody'": 225,
-  'src/components/import/mapping/ImportMappingWizard.tsx::Arrow function': 288,
+  // ★2026-08-14 (부채 매핑 16) 288 → 289. **의도적으로 올린 유일한 항목**이다.
+  //   진행 중 신호를 부모에게 보고해야 하는데, 본문에 남길 수 있는 최소가 훅 호출 1줄이다
+  //   (효과 본문·판정식·KDoc 은 전부 컴포넌트 밖 `useBusySignal`·`isWizardBusy` 로 뺐고,
+  //    props 구조분해도 1줄로 되돌렸다 — 그렇게 296 에서 289 까지 내렸다).
+  //   ⚠️ 이 PR 의 계획은 「baseline 무변경」을 완료 기준으로 적었다. 이 1줄이 그 이탈이며
+  //      게이트 2 요약에 그대로 싣는다. 이탈이 겨눈 위험(항목 8·22 가 줄이려는 두 함수)은
+  //      건드리지 않았다 — `IssueCreateForm`(227)·`IssueMetaPanel`(317)은 소스 0줄 변경이다.
+  'src/components/import/mapping/ImportMappingWizard.tsx::Arrow function': 289,
   "src/components/issue-templates/IssueTemplateFormDialog.tsx::Function 'FormBody'": 259,
   "src/components/issue/IssueCreateForm.tsx::Function 'IssueCreateForm'": 227,
   "src/components/issue/IssueDescription.tsx::Function 'EditMode'": 337,
