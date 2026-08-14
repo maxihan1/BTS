@@ -62,6 +62,18 @@ const MINIMAL_CSV_BUFFER = Buffer.from('summary,issueType\nE2E 테스트 이슈,
 /** import-handlers.ts LS_KEY_IMPORT_FAIL 값과 동기화 (board-kanban.spec.ts LS_KEY_BOARD_CONFLICT 선례) */
 const LS_KEY_IMPORT_FAIL = '__bts_e2e_import_fail'
 
+/**
+ * project-permission-handlers.ts `E2E_FORCE_CREATE_FALSE_KEY` 값과 동기화.
+ *
+ * src 상수를 직접 import 하지 않고 값만 미러한다(`field-permissions.spec.ts:31-32` 동형 선례).
+ * ★이 플래그는 **프로젝트별이 아니라 전역**이다 — 한 테스트 안에서 권한 있는 시나리오와 섞지 말 것.
+ * 테스트 **간** 격리는 Playwright 가 컨텍스트마다 새 localStorage 를 만들어 보장한다(이 파일 §설계 결정 S3).
+ */
+const LS_KEY_FORCE_CREATE_FALSE = '__bts_e2e_force_create_false'
+
+/** 시드에 없는 프로젝트 키 — 존재 확인 404 경로를 탄다 */
+const MISSING_PROJECT_IMPORT_URL = '/projects/BOGUS/settings/import'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,5 +215,55 @@ test.describe('FR-IM-01 D6/D7 CSV/JSON Import (S1 렌더 / S2 happy path / S3 FA
 
     // Then. "다시 시도" 버튼 표시 (form 단계로 복귀)
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S4/S5 — 진입 게이트 (부채 매핑 14)
+  //
+  // PR #361 이 붙인 거부 카드와 부재 카드는 **유닛 테스트만** 있었다. 위 S1~S3 은 전부
+  // 권한 있는 경로만 탄다.
+  //
+  // ★★이 두 시나리오는 **MSW 위에서 돈다 — 서버 강제의 증거가 아니다.**
+  //   「화면이 막혔다」로 백엔드 게이트의 안전을 주장하면 안 된다
+  //   ([[already-works-is-not-proof-unless-real-server]] — MSW 핸들러가 프론트 형태를
+  //   돌려주므로 Zod 스키마와 백엔드 DTO 가 완전히 어긋나도 전부 초록이 된다).
+  //   서버 몫은 이미 덮여 있다 — `ImportJobServiceTest.kt:108`
+  //   `accept throws ImportAccessDeniedException when actor lacks CREATE permission`.
+  //   이 스펙이 재는 것은 **진입 UI 가 사유를 옳게 말하는가** 하나다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  test('S4 CREATE 권한이 없으면 폼 대신 거부 카드가 뜬다', async ({ page }) => {
+    // Given. goto 전 addInitScript 등록 → 첫 권한 fetch 시점부터 CREATE:false 가 내려온다
+    await page.addInitScript((lsKey: string) => {
+      window.localStorage.setItem(lsKey, 'true')
+    }, LS_KEY_FORCE_CREATE_FALSE)
+    await loginAsAlice(page)
+
+    // When. 임포트 페이지 진입
+    await page.goto(IMPORT_URL)
+
+    // Then. 거부 카드 + 사유. 페이지 정체성(h1)은 남는다 — 「왜 빈 화면이지」가 되면 안 된다.
+    await expect(page.getByTestId('import-create-denied')).toBeVisible()
+    await expect(page.getByText('이 프로젝트에 이슈를 생성할 권한이 없습니다.')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 1 })).toBeVisible()
+
+    // Then. 두 모드 모두 진입 불가 — 폼도 모드 토글도 없다.
+    await expect(page.getByLabel('가져올 파일', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '매핑하며 가져오기', exact: true })).toHaveCount(0)
+  })
+
+  test('S5 존재하지 않는 프로젝트는 권한 탓을 하지 않고 부재 카드를 보여 준다', async ({ page }) => {
+    // Given. 플래그가 필요 없다 — 시드에 없는 키를 주소창에 넣기만 하면 된다.
+    //   권한 API 는 미존재 키에도 200 + CREATE:false 를 주므로, 부재 분기가 없으면
+    //   사용자는 「생성 권한이 없습니다」라는 **틀린 사유**를 읽게 된다.
+    await loginAsAlice(page)
+
+    // When. 없는 프로젝트의 임포트 페이지 진입
+    await page.goto(MISSING_PROJECT_IMPORT_URL)
+
+    // Then. 부재 카드가 이긴다 — 거부 카드가 아니다.
+    await expect(page.getByText('프로젝트를 찾을 수 없습니다')).toBeVisible()
+    await expect(page.getByTestId('import-create-denied')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 1 })).toBeVisible()
   })
 })
