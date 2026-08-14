@@ -214,6 +214,30 @@ const VERSION_FILE = '.nvmrc'
  */
 const STRIP_TYPES_DEFAULT_FLOOR = { major: 22, minor: 18 } as const
 
+/**
+ * `--experimental-strip-types` 플래그가 **도입된** 하한 (Node 22.6.0).
+ *
+ * `REMEDY` 는 「22.6~22.17 에서도 같은 명령이 돌게 만드는 이식성 장치」라고 약속한다.
+ * 그런데 `package.json` 의 `engines.node` 가 그보다 낮으면 그 약속이 거짓이다 —
+ * 22.0~22.5 에서는 **플래그 자체가 unknown option** 이라 붙여도 죽는다.
+ * 2026-08-14 독립 리뷰 C6 — 「정본은 `.nvmrc` 하나」를 내건 PR 안에 두 번째 버전 선언이
+ * 남아 있었고 **아무도 둘을 대조하지 않았다**. `two-lists-never-check-each-other` 가
+ * 정본 단일화 PR 안에 남은 형태다.
+ */
+const FLAG_INTRODUCED_FLOOR = { major: 22, minor: 6 } as const
+
+/** `major.minor[.patch]` 를 숫자 쌍으로. 못 읽으면 `null`. */
+function parseVersion(raw: string): { major: number; minor: number } | null {
+  const m = raw.trim().replace(/^v/, '').match(/^(\d+)\.(\d+)/)
+  if (m === null) return null
+  return { major: Number(m[1]), minor: Number(m[2]) }
+}
+
+/** a >= b 인가. */
+function atLeast(a: { major: number; minor: number }, b: { major: number; minor: number }): boolean {
+  return a.major > b.major || (a.major === b.major && a.minor >= b.minor)
+}
+
 /** CI 가 node 를 까는 액션. 이 스텝이 버전 정본을 안 읽으면 러너의 시스템 node 로 떨어진다. */
 const SETUP_NODE_ACTION = 'actions/setup-node'
 
@@ -847,6 +871,48 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
         `${STRIP_TYPES_DEFAULT_FLOOR.major}.${STRIP_TYPES_DEFAULT_FLOOR.minor} 이다.\n\n` +
         `이 아래로 내리면 위 두 단언(파일 존재 · 워크플로우가 읽음)은 초록인 채\n` +
         `'.ts' 실행이 전부 ERR_UNKNOWN_FILE_EXTENSION 으로 죽는다 — 봉인이 형식만 남는다.`,
+    )
+  })
+
+  /**
+   * ★두 버전 선언이 서로를 본다 (2026-08-14 독립 리뷰 C6).
+   *
+   * `.nvmrc` 를 정본으로 세워도 `package.json` 의 `engines.node` 가 그대로 남아 **두 번째
+   * 선언**이 된다. 둘을 대조하지 않으면 정본 단일화 PR 안에 `two-lists-never-check-each-other`
+   * 가 남는 셈이다. 구체적으로 두 가지가 어긋날 수 있다.
+   *
+   *   1. `engines` 하한이 플래그 도입(22.6)보다 낮으면, 그 범위에서는 이 판별식이 붙이라고
+   *      강제하는 플래그가 **unknown option 으로 죽는다** — REMEDY 의 약속이 거짓이 된다.
+   *   2. `.nvmrc` 가 `engines` 를 만족하지 않으면 두 선언이 정면으로 모순이다.
+   */
+  test('★engines 하한과 버전 정본이 서로 모순되지 않는다', () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, INPUTS.pkg.file), 'utf8'),
+    ) as { engines?: { node?: string } }
+    const range = pkg.engines?.node
+
+    assert.ok(
+      typeof range === 'string' && range.length > 0,
+      `${INPUTS.pkg.file} 에 engines.node 가 없다 — 아래 대조가 공허해진다.`,
+    )
+
+    const floor = parseVersion(range.replace(/^[^\d]*/, ''))
+    assert.ok(floor !== null, `engines.node 하한을 못 읽었다: '${range}'`)
+
+    assert.ok(
+      atLeast(floor, FLAG_INTRODUCED_FLOOR),
+      `engines.node 가 '${range}' 인데 '${FLAG}' 는 ` +
+        `${FLAG_INTRODUCED_FLOOR.major}.${FLAG_INTRODUCED_FLOOR.minor} 에서 도입됐다.\n\n` +
+        `그 아래 버전에서는 이 판별식이 붙이라고 강제하는 플래그 자체가 unknown option 으로\n` +
+        `죽는다 — 봉인이 약속하는 이식 범위를 engines 가 보장하지 않는 상태다.`,
+    )
+
+    const pinned = parseVersion(fs.readFileSync(path.join(REPO_ROOT, VERSION_FILE), 'utf8'))
+    assert.ok(pinned !== null, `${VERSION_FILE} 값을 못 읽었다.`)
+    assert.ok(
+      atLeast(pinned, floor),
+      `${VERSION_FILE}(${pinned.major}.${pinned.minor})가 engines.node('${range}')를 만족하지 않는다.\n` +
+        `두 버전 선언이 정면으로 모순이다 — 어느 쪽을 믿어야 하는지 알 수 없다.`,
     )
   })
 
