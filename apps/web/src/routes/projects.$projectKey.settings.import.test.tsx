@@ -781,6 +781,11 @@ describe('ProjectImportSettingsPage — 재조회 중 화면 유지', () => {
 
     const notice = await screen.findByRole('status')
     expect(notice).toHaveTextContent(importLabels.gateChangedWhileBusy)
+    // ★문구를 상수로만 비교하면 문구가 어떻게 바뀌어도 통과한다 — 지켜야 할 **내용**을 따로 고정한다.
+    //   ① 실패 가능성을 말한다(게이트 2 재리뷰 D7 — 기본 모드는 반드시 거절되므로 침묵은 거짓말이다)
+    //   ② 사유를 권한으로 단정하지 않는다(유보 조건은 권한·부재 둘 다다)
+    expect(notice).toHaveTextContent('실패할 수 있습니다')
+    expect(notice).not.toHaveTextContent('권한')
   })
 
   // ★리뷰 D — 유보 조건은 권한·부재 **둘 다**인데 초판 문구는 권한만 말했다.
