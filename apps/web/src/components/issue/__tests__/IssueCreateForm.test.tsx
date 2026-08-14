@@ -729,6 +729,56 @@ describe('IssueCreateForm — 선택된 프로젝트의 CREATE 게이트', () =>
     await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
   })
 
+  it('★권한 조회가 **아직 진행 중**인 프레임에서도 제출이 나간다 (로딩 프레임 계약 · 부채 매핑 15)', async () => {
+    // ★이 프레임이 저장소 전체에서 무검증이었다. 기존 게이트 3테스트는 성공·에러 **정착만**
+    //   덮고, pending 을 붙잡는 단언은 임포트 테스트 4곳뿐이었다(실측).
+    //   `IssueCreateForm` 의 계약은 임포트와 **다르다** — 로딩 중에도 폼은 열려 있어야 한다.
+    //   프로젝트를 바꿀 때마다 queryKey 가 바뀌어 이 프레임이 **반복 재발**하기 때문이다.
+    //
+    // ★지연은 벽시계가 아니라 **테스트가 여는 게이트**로 만든다. 벽시계 지연은 러너 부하로
+    //   「먼저 정착」이 뒤집혀 간헐 실패가 된다.
+    let releasePermissions: () => void = () => undefined
+    const permissionGate = new Promise<void>((resolve) => {
+      releasePermissions = resolve
+    })
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', async ({ request }) => {
+        await permissionGate
+        const key = new URL(request.url).searchParams.get('projectKey') ?? ''
+        return HttpResponse.json({
+          projectKey: key,
+          permissions: {
+            CREATE: false,
+            UPDATE: true,
+            MANAGE_COMPONENTS: false,
+            MANAGE_VERSIONS: false,
+            MANAGE_CUSTOM_FIELDS: false,
+            MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
+          },
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    const body = captureSubmitBody()
+    renderForm()
+
+    const select = await waitForProjectSelect()
+    await user.selectOptions(select, 'ATLAS')
+    // 아직 게이트를 열지 않았다 — 권한은 pending 이고 거부 문구도 없어야 한다.
+    expect(screen.queryByTestId('create-permission-denied')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    // 미지를 거부로 읽으면 여기서 막힌다. 최종 판정은 서버가 한다.
+    await waitFor(() => expect(body.get()['summary']).toBe('제목입니다'))
+
+    // 지연 쿼리를 남기지 않는다 — 열고 정착까지 기다린 뒤 끝낸다.
+    releasePermissions()
+    expect(await screen.findByTestId('create-permission-denied')).toBeInTheDocument()
+  })
+
   it('★권한 조회가 실패해도 제출을 막지 않는다 (미지 ≠ 거부 — 오탐 거부 방지)', async () => {
     const user = userEvent.setup()
     const body = captureSubmitBody()

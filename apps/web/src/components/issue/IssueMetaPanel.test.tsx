@@ -1593,6 +1593,35 @@ describe('IssueMetaPanel — 클론 버튼 CREATE 게이트', () => {
     expect(clone.getAttribute('aria-label')).toBe(issueDetailStrings.cloneButton)
   })
 
+  it('★권한 조회가 **아직 진행 중**인 프레임에서도 클론이 열려 있다 (로딩 프레임 계약 · 부채 매핑 15)', async () => {
+    // ★계약명 `open-while-loading` — 소비처 레지스트리
+    //   (`components/issue/create/__tests__/permission-gate-loading-contract.test.ts`)가 선언한 그 계약이다.
+    //   임포트 라우트의 `no-verdict-while-loading` 을 여기 복제하면 회귀다.
+    //   로딩 중 액션을 숨기면 권한 있는 사용자에게서 버튼이 깜빡였다 나타난다.
+    //
+    // ★지연은 벽시계가 아니라 테스트가 여는 게이트다 — 벽시계는 러너 부하로 간헐 실패가 된다.
+    let releasePermissions: () => void = () => undefined
+    const permissionGate = new Promise<void>((resolve) => {
+      releasePermissions = resolve
+    })
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', async () => {
+        await permissionGate
+        return HttpResponse.json({ projectKey: 'ATLAS', permissions: nonMemberProjectPermissions })
+      }),
+    )
+    renderPanel()
+
+    const clone = await screen.findByTestId('issue-clone')
+    // 아직 게이트를 열지 않았다 — 권한은 pending 이다. 여기서 막으면 미지를 거부로 읽은 것이다.
+    expect(clone).not.toBeDisabled()
+    expect(clone.getAttribute('aria-label')).toBe(issueDetailStrings.cloneButton)
+
+    // 지연 쿼리를 남기지 않는다 — 열고 정착까지 기다린 뒤 끝낸다.
+    releasePermissions()
+    await waitFor(() => expect(screen.getByTestId('issue-clone')).toBeDisabled())
+  })
+
   it('권한 조회가 실패해도 클론 버튼을 막지 않는다 (미지 ≠ 거부)', async () => {
     // 미지에서 막으면 CREATE 를 실제로 가진 사용자가 영구 차단된다 —
     // `use-project-permissions.ts` 에 retry 도 에러 폴백도 없다.

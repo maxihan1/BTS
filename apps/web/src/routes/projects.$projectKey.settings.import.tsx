@@ -208,6 +208,44 @@ export function ProjectImportSettingsPage({
   const { isLoading: isPermissionsLoading } = useProjectPermissions(projectKey)
   const isResolving = isProjectLoading || isPermissionsLoading
 
+  /**
+   * 아래 자식이 **잃을 것이 있는 상태**인가 (부채 매핑 16).
+   *
+   * ```
+   *   useProject ─┐
+   *               ├─▶ isResolving ──예──▶ [로딩 표시 · h1 유지]
+   *   usePerms ───┘         │ 아니오
+   *                         ▼
+   *        isImportInProgress ──예──▶ [현재 화면 유지 · 판정 안 그림] ◀── onBusyChange
+   *                         │ 아니오                    │
+   *                         ▼                          │ (판정을 가렸으면 안내 1줄)
+   *          isProjectMissing ──예──▶ [부재 카드]        │
+   *                         │ 아니오                    │
+   *                         ▼                          │
+   *        isCreateExplicitlyDenied ──예──▶ [거부 카드]  │
+   *                         │ 아니오                    │
+   *                         ▼                          │
+   *          [ImportForm | ImportMappingWizard] ────────┘
+   *                         │ 제출
+   *                         ▼
+   *          서버 403 → detail「이 작업을 수행할 권한이 없습니다.」
+   * ```
+   *
+   * ★**왜 두 판정 모두 동결하나.** `staleTime` 30초가 지난 뒤 창을 다시 잡으면 두 쿼리가 함께
+   *   재조회된다. 권한만 막으면 프로젝트가 삭제됐을 때 **같은 상태 소실이 404 문으로 남는다** —
+   *   같은 결함의 두 번째 문이다.
+   *
+   * ★**동결이 유출이 아닌 이유.** 이 게이트는 서버 403 의 **사전 신호**일 뿐 유일 방어가 아니다
+   *   (`ImportJobService.kt:36-38` fail-fast). 화면이 남아 있어도 제출은 서버가 판정한다.
+   *
+   * ★**영구 동결을 막는 것은 `key={projectKey}`** 다. 프로젝트를 바꾸면 자식이 재마운트되어
+   *   신호가 `false` 로 초기화된다 — 그게 없으면 이 처방이 자기 거울상 결함을 만든다.
+   */
+  const [isImportInProgress, setIsImportInProgress] = useState(false)
+
+  /** 동결이 **실제로 판정을 가린** 구간인가 — 진행 중이기만 해서는 안내하지 않는다(경고 피로). */
+  const isVerdictWithheld = isImportInProgress && (isProjectMissing || isCreateExplicitlyDenied)
+
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
@@ -219,21 +257,42 @@ export function ProjectImportSettingsPage({
         <div role="status" className="flex items-center justify-center p-8 text-muted-foreground">
           {importLabels.gateLoading}
         </div>
-      ) : isProjectMissing ? (
+      ) : isProjectMissing && !isImportInProgress ? (
         // 부재가 권한보다 앞선다 — 없는 프로젝트의 권한을 논하는 것은 뜻이 없다.
         <ProjectNotFoundCard />
-      ) : isCreateExplicitlyDenied ? (
+      ) : isCreateExplicitlyDenied && !isImportInProgress ? (
         <ImportCreateDeniedCard />
       ) : (
         <>
+          {/* 동결이 판정을 가린 구간에만 뜬다. `status`(polite)라 진행 중인 작업을 끊지 않는다 —
+              `alert`(assertive)는 스크린리더가 현재 읽기를 가로채므로 이 신호에는 과하다. */}
+          {isVerdictWithheld && (
+            <p
+              role="status"
+              // DESIGN.md §C tint 패턴 — `bg-{status}/10` 배너에는 `text-{status}-text` 를 쓴다.
+              // bold 토큰(`--warning`)을 tint 위 글자로 쓰면 라이트에서 AA 미달(4.1:1)이다.
+              className="rounded-md border border-warning bg-warning/10 px-3 py-2 text-sm text-warning-text"
+            >
+              {importLabels.gateChangedWhileBusy}
+            </p>
+          )}
           <ImportModeToggle mode={mode} onModeChange={setMode} />
           {/* key={projectKey}: projectKey 변경 시 remount 강제 — 아니면 이전 project의
               진행 중 phase/file/jobId/submitError state가 다음 project 화면에 leak된다
-              (react-usestate-stale-key-prop). 두 모드 모두 동일 규칙을 적용한다(EC8). */}
+              (react-usestate-stale-key-prop). 두 모드 모두 동일 규칙을 적용한다(EC8).
+              ★재마운트는 `onBusyChange(false)` 도 함께 되돌린다 — 영구 동결 방지의 실체다. */}
           {mode === 'simple' ? (
-            <ImportForm key={projectKey} projectKey={projectKey} />
+            <ImportForm
+              key={projectKey}
+              projectKey={projectKey}
+              onBusyChange={setIsImportInProgress}
+            />
           ) : (
-            <ImportMappingWizard key={projectKey} projectKey={projectKey} />
+            <ImportMappingWizard
+              key={projectKey}
+              projectKey={projectKey}
+              onBusyChange={setIsImportInProgress}
+            />
           )}
         </>
       )}

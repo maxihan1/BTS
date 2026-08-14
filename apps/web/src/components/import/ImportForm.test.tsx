@@ -70,12 +70,18 @@ function createWrapper() {
   }
 }
 
-function renderForm() {
+function renderForm(onBusyChange: (busy: boolean) => void = () => {}) {
   const user = userEvent.setup()
-  const utils = render(createElement(ImportForm, { projectKey: 'ATLAS' }), {
+  const utils = render(createElement(ImportForm, { projectKey: 'ATLAS', onBusyChange }), {
     wrapper: createWrapper(),
   })
   return { user, ...utils }
+}
+
+/** `onBusyChange` 가 마지막으로 보고한 값 — 호출 횟수가 아니라 **최종 상태**를 잰다. */
+function lastBusy(spy: ReturnType<typeof vi.fn>): boolean | undefined {
+  const calls = spy.mock.calls
+  return calls.length === 0 ? undefined : (calls[calls.length - 1]?.[0] as boolean)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +203,37 @@ describe('ImportForm', () => {
           '이 프로젝트에 이슈를 생성할 권한이 없습니다.',
         )
       })
+    })
+
+    // ★진행 중 동결(부채 매핑 16)이 기대는 계약이다. 동결은 권한이 회수된 사용자를 화면에
+    //   남겨 두고 **최종 판정을 서버 403 에 맡긴다** — 그 403 이 「권한」을 말해야 동결이 성립한다.
+    //
+    // ★지금은 맞게 동작하지만 **아무것도 검사하지 않았다.**
+    //   백엔드 `ImportExceptionHandler.kt:70-76` 이 `detail:"이 작업을 수행할 권한이 없습니다."` 를
+    //   보내고 프론트 `resolveImportError`(:44-53)가 그 `detail` 을 꺼내 쓴다. 그 연결이 끊기면
+    //   폴백 「Import 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.」가 뜬다 —
+    //   권한이 회수된 사용자에게 **영원히 틀린 안내**다(매핑 `17` 이 이동 다이얼로그에서 닫은 결함과 같은 양식).
+    //
+    // ⚠️ cross-BC 라 이 PR 은 **프론트 반쪽만** 고정한다. 백엔드에서 `detail` 이 사라지는 것은
+    //    여기서 못 잡는다 — 등재 후보 3으로 장부에 올린다.
+    it('★403 은 권한 문구를 그대로 보여 준다 — 「잠시 후 다시 시도」로 뭉개지 않는다 (부채 매핑 16 · EC4)', async () => {
+      // 서버가 실제로 보내는 ProblemDetail 그대로다 (`ImportExceptionHandler.kt:70-76`).
+      vi.mocked(submitImportJob).mockRejectedValue(
+        new ApiError(403, {
+          type: 'import-access-denied',
+          title: 'Access Denied',
+          detail: '이 작업을 수행할 권한이 없습니다.',
+        }),
+      )
+
+      const { user } = renderForm()
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+      await user.click(screen.getByRole('button', { name: '검증만 실행' }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('이 작업을 수행할 권한이 없습니다.')
+      // 비-공허 짝 — 폴백 문구가 새어 나오면 사용자는 「기다리면 되겠지」로 읽고 영원히 재시도한다.
+      expect(alert).not.toHaveTextContent('잠시 후 다시 시도')
     })
   })
 
@@ -372,6 +409,63 @@ describe('ImportForm', () => {
         expect(bar).toHaveAttribute('aria-valuemin', '0')
         expect(bar).toHaveAttribute('aria-valuemax', '100')
       })
+    })
+  })
+
+  // (f) 진행 중 신호 — 부채 매핑 16
+  //
+  // ★부모(임포트 라우트)는 이 신호를 받아 **권한 재조회가 화면을 언마운트하지 못하게** 막는다.
+  //   신호가 없으면 창을 30초 넘게 벗어났다 돌아왔을 때 고른 파일·jobId·진행률이 통째로 날아간다.
+  //
+  // ★「진행 중」은 폴링만이 아니다. 장부가 「파일 선택·jobId·진행률이 날아간다」라 적었으므로
+  //   **파일만 고른 사용자**도 잃을 것이 있다 — `file !== null || phase !== 'form'`.
+  describe('진행 중 신호 (onBusyChange)', () => {
+    it('마운트 직후에는 진행 중이 아니다', () => {
+      const onBusyChange = vi.fn()
+      renderForm(onBusyChange)
+
+      expect(lastBusy(onBusyChange)).toBe(false)
+    })
+
+    it('★파일을 고르기만 해도 진행 중이다 (아직 제출 전이어도 잃을 것이 있다)', async () => {
+      const onBusyChange = vi.fn()
+      const { user } = renderForm(onBusyChange)
+
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+
+      expect(lastBusy(onBusyChange)).toBe(true)
+    })
+
+    it('제출해 tracking 으로 넘어가면 진행 중이다', async () => {
+      vi.mocked(submitImportJob).mockResolvedValue(makeStatus({ dryRun: false }))
+      vi.mocked(fetchImportJobStatus).mockResolvedValue(
+        makeStatus({ status: 'RUNNING', progress: 10, dryRun: false }),
+      )
+      const onBusyChange = vi.fn()
+      const { user } = renderForm(onBusyChange)
+
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+      await user.click(screen.getByRole('button', { name: 'Import 시작' }))
+
+      await waitFor(() => expect(screen.getByRole('progressbar')).toBeInTheDocument())
+      expect(lastBusy(onBusyChange)).toBe(true)
+    })
+
+    it('★완료 후 [처음으로]로 폼을 비우면 진행 중이 아니다 (비-공허 짝 — 신호가 켜진 채 굳지 않는다)', async () => {
+      vi.mocked(submitImportJob).mockResolvedValue(makeStatus({ dryRun: false }))
+      vi.mocked(fetchImportJobStatus).mockResolvedValue(
+        makeStatus({ status: 'COMPLETED', progress: 100, succeededRows: 3, dryRun: false }),
+      )
+      const onBusyChange = vi.fn()
+      const { user } = renderForm(onBusyChange)
+
+      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.csv', 'text/csv'))
+      await user.click(screen.getByRole('button', { name: 'Import 시작' }))
+
+      const backButton = await screen.findByRole('button', { name: '처음으로' })
+      await user.click(backButton)
+
+      await waitFor(() => expect(lastBusy(onBusyChange)).toBe(false))
     })
   })
 })
