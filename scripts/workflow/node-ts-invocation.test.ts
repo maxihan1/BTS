@@ -202,6 +202,48 @@ function allowedCommand(entry: { tail: string }): string {
   return `node ${entry.tail}`
 }
 
+/** node 버전 정본. 로컬(nvm/mise)과 CI(`setup-node`)가 **같은 파일**을 읽게 만드는 자리. */
+const VERSION_FILE = '.nvmrc'
+
+/**
+ * 타입 스트리핑이 **기본 활성**이 되는 하한.
+ *
+ * Node 22.18 부터 `.ts` 를 플래그 없이 실행한다. `.nvmrc` 를 이 아래로 내리면 축 B 의
+ * 다른 단언(파일 존재 · 워크플로우가 그것을 읽음)이 전부 초록인 채 **전부 깨진다** —
+ * 값 자체를 재지 않으면 봉인이 형식만 남는다.
+ */
+const STRIP_TYPES_DEFAULT_FLOOR = { major: 22, minor: 18 } as const
+
+/** CI 가 node 를 까는 액션. 이 스텝이 버전 정본을 안 읽으면 러너의 시스템 node 로 떨어진다. */
+const SETUP_NODE_ACTION = 'actions/setup-node'
+
+/** `setup-node` 스텝이 반드시 갖는 키. **부재를 금지하는 게 아니라 존재를 요구한다.** */
+const VERSION_FILE_KEY = 'node-version-file'
+
+/**
+ * 이 판별식이 읽는 입력과, CI 트리거에서 그 입력을 덮는 경로 패턴.
+ *
+ * 읽기 경로와 트리거 요구를 **한 선언에서 파생**시킨다. 따로 두면 갈라지고, 빠진 쪽만
+ * 바꾸는 PR 에서 이 판별식이 0회 실행된 채 통과한다.
+ */
+const INPUTS = {
+  /** 버전 정본. **신규 입력이라 트리거에 없었다** — 이 판별식이 그것을 잡는다. */
+  version: { file: VERSION_FILE, coveredBy: '.nvmrc' },
+  /** 판별식 실행 명령의 정본. */
+  pkg: { file: 'package.json', coveredBy: 'package.json' },
+  /** 축 B 의 검사 대상. */
+  ci: { file: '.github/workflows/workflow-scripts-ci.yml', coveredBy: '.github/workflows/**' },
+  /** 축 A 가 지키는 호출문이 사는 곳. */
+  start: { file: '.claude/skills/bts-start/SKILL.md', coveredBy: '.claude/skills/**' },
+  /** 판별식 자신. 이 파일을 고치는 PR 에서도 CI 가 돌아야 한다. */
+  self: { file: 'scripts/workflow/node-ts-invocation.test.ts', coveredBy: 'scripts/workflow/**' },
+} as const
+
+/** `on:` 아래에서 입력을 걸어야 하는 트리거. 한쪽만 걸면 봉인이 절반만 닫힌다. */
+const CI_TRIGGERS = ['pull_request', 'push'] as const
+
+const DISCRIMINANT_WORKFLOW = '.github/workflows/workflow-scripts-ci.yml'
+
 /** 한 건의 호출문과 그 출처. 실패 메시지가 어느 파일 어디인지 바로 가리키게 한다. */
 interface Invocation {
   file: string
@@ -306,6 +348,84 @@ function collectInvocations(): Invocation[] {
     }
   }
   return rows
+}
+
+/** 워크플로우 안의 한 `setup-node` 스텝. */
+interface SetupNodeStep {
+  file: string
+  line: number
+  /** 이 스텝의 본문 — `uses:` 부터 다음 스텝 직전까지. */
+  body: string
+}
+
+/**
+ * `setup-node` 를 쓰는 스텝을 **실행 줄에 앵커를 걸어** 뽑는다.
+ *
+ * ## ★부분 문자열 매칭은 배선을 못 잰다
+ *
+ * 파일 전체에서 `node-version-file` 을 찾는 방식으로 적으면 **머리말 주석 한 줄이 대신
+ * 만족**시켜, `setup-node` 스텝을 통째로 지워도 초록이 된다. 이 저장소는 정확히 그 형태를
+ * 겪었다(2026-08-13 — `:modules:app` 을 파일 전체에서 찾아 조립 부팅 잡을 지워도 통과).
+ *
+ * 그래서 `uses: actions/setup-node` 가 실린 줄을 시작점으로 잡고, **그 스텝의 본문 안에서만**
+ * 키를 본다. 스텝의 끝은 같은 들여쓰기의 다음 `- ` 항목이다.
+ */
+function setupNodeSteps(file: string): SetupNodeStep[] {
+  const lines = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8').split('\n')
+  const steps: SetupNodeStep[] = []
+
+  lines.forEach((line, i) => {
+    if (!new RegExp(`uses:\\s*${SETUP_NODE_ACTION}`).test(line)) return
+
+    // 이 스텝이 시작된 `- ` 의 들여쓰기를 위로 거슬러 찾는다.
+    let start = i
+    while (start > 0 && !/^\s*-\s/.test(lines[start])) start -= 1
+    const indent = (lines[start].match(/^\s*/) ?? [''])[0].length
+
+    // 다음 스텝(같은 들여쓰기의 `- `) 직전까지가 이 스텝의 본문이다.
+    let end = start + 1
+    while (end < lines.length) {
+      const l = lines[end]
+      const isNextStep = /^\s*-\s/.test(l) && (l.match(/^\s*/) ?? [''])[0].length <= indent
+      // 들여쓰기가 스텝보다 얕은 비-공백 줄이면 잡 자체가 끝난 것이다.
+      const leftBlock =
+        l.trim().length > 0 && (l.match(/^\s*/) ?? [''])[0].length < indent
+      if (isNextStep || leftBlock) break
+      end += 1
+    }
+
+    steps.push({ file, line: start + 1, body: lines.slice(start, end).join('\n') })
+  })
+
+  return steps
+}
+
+/** 저장소의 모든 워크플로우에서 `setup-node` 스텝을 모은다. */
+function allSetupNodeSteps(): SetupNodeStep[] {
+  const dir = path.join(REPO_ROOT, '.github/workflows')
+  if (!fs.existsSync(dir)) return []
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+    .flatMap((f) => setupNodeSteps(path.join('.github/workflows', f)))
+}
+
+/** `coveredBy` 글롭이 실제로 그 입력 경로를 덮는지. 짝을 잘못 적은 선언을 잡는다. */
+function globCovers(glob: string, file: string): boolean {
+  if (glob === file) return true
+  if (!glob.endsWith('/**')) return false
+  const base = glob.slice(0, -3)
+  return file === base || file.startsWith(`${base}/`)
+}
+
+/** 워크플로우의 `on.<trigger>.paths` 블록 원문. 트리거별로 갈라야 절반 봉인을 잡는다. */
+function triggerBlock(ci: string, trigger: string): string {
+  const bounds: Record<string, [string, string]> = {
+    pull_request: ['pull_request:', 'push:'],
+    push: ['push:', 'concurrency:'],
+  }
+  const [from, to] = bounds[trigger]
+  return ci.slice(ci.indexOf(from), ci.indexOf(to))
 }
 
 /** 허용목록에 걸리는가. 파일과 **명령 문자열이 둘 다** 맞아야 한다. */
@@ -448,4 +568,124 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
       )
     }
   })
+})
+
+describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴다 (축 B)', () => {
+  /**
+   * 비-공허 짝.
+   *
+   * `setup-node` 스텝을 0건 뽑으면 아래 배선 단언이 전부 공허하게 통과한다.
+   * 파서가 YAML 구조 변화에 깨지는 경로가 실재하므로 하한을 못박는다.
+   */
+  test('setup-node 스텝을 실제로 찾았다 (비-공허 짝)', () => {
+    const steps = allSetupNodeSteps()
+    assert.ok(
+      steps.length > 0,
+      `.github/workflows 에서 '${SETUP_NODE_ACTION}' 스텝을 0건 뽑았다.\n` +
+        `파서가 고장났거나 워크플로우 형식이 바뀌었다. 0 이면 아래 단언이 검사할 것 없이 통과한다.`,
+    )
+
+    // 본문을 못 자르면(빈 문자열) 키 검사가 통째로 무의미해진다.
+    const empty = steps.filter((s) => s.body.trim().length === 0).map((s) => `${s.file}:${s.line}`)
+    assert.deepEqual(empty, [], `본문을 못 자른 스텝이 있다: ${empty.join(', ')}`)
+  })
+
+  /**
+   * ★★ 축 B 의 본체 — **존재 기준**.
+   *
+   * 「`node-version:` 하드코딩 금지」로 적으면 버전 키를 **아예 안 적은** 스텝이 통과한다.
+   * 그 스텝은 러너의 시스템 node 를 쓰고, 그 버전은 아무도 재지 않으므로
+   * **이번 결함(로컬↔CI 불일치)이 그대로 재발한다.** 없는 것을 금지하지 말고 있어야 할 것을
+   * 요구한다 — 2026-08-14 eng review 교정(R4-a).
+   */
+  test('★★모든 setup-node 스텝이 버전 정본 파일을 읽는다', () => {
+    const offending = allSetupNodeSteps()
+      .filter((s) => !new RegExp(`${VERSION_FILE_KEY}\\s*:`).test(s.body))
+      .map((s) => {
+        const pinned = s.body.match(/node-version\s*:\s*\S+/)
+        return `${s.file}:${s.line}${pinned ? `  (지금. ${pinned[0]})` : '  (버전 키 자체가 없다)'}`
+      })
+
+    assert.deepEqual(
+      offending,
+      [],
+      `버전 정본을 읽지 않는 setup-node 스텝이 있다.\n${offending.join('\n')}\n\n` +
+        `'node-version: 22' 는 최신 22.x 로 **부유**한다. 로컬이 22.14 인데 CI 가 22.23 이면\n` +
+        `타입 스트리핑 기본 활성 여부가 갈려 같은 명령이 두 환경에서 다른 것을 실행한다 —\n` +
+        `2026-08-14 실측으로 로컬 62/20 · CI 초록이 구조적으로 고정돼 있었다(부채 매핑 27).\n` +
+        `처방. 'node-version:' 을 지우고 '${VERSION_FILE_KEY}: ${VERSION_FILE}' 를 쓴다.`,
+    )
+  })
+
+  /**
+   * ★ 값 자체를 잰다.
+   *
+   * 파일이 있고 워크플로우가 그것을 읽어도, 값이 22.18 미만이면 전부 깨진다.
+   * 형식만 봉인하고 값을 안 재면 그 봉인은 장식이다.
+   */
+  test('★버전 정본이 실재하고 타입 스트리핑 하한을 넘는다', () => {
+    const full = path.join(REPO_ROOT, VERSION_FILE)
+    assert.ok(
+      fs.existsSync(full),
+      `${VERSION_FILE} 가 없다.\n\n` +
+        `이 파일이 로컬(nvm/mise)과 CI(setup-node)가 공유하는 유일한 버전 정본이다.\n` +
+        `없으면 두 환경이 각자 다른 node 를 고르고, 그 차이는 아무도 재지 않는다.`,
+    )
+
+    const raw = fs.readFileSync(full, 'utf8').trim().replace(/^v/, '')
+    const parts = raw.split('.').map((n) => Number(n))
+    assert.ok(
+      parts.length >= 2 && parts.every((n) => Number.isInteger(n) && n >= 0),
+      `${VERSION_FILE} 의 값을 못 읽었다: '${raw}'\n` +
+        `구체 버전이어야 한다(예: 22.23.2). 'lts/*' 같은 별칭은 두 환경에서 다른 값으로 풀린다.`,
+    )
+
+    const [major, minor] = parts
+    const ok =
+      major > STRIP_TYPES_DEFAULT_FLOOR.major ||
+      (major === STRIP_TYPES_DEFAULT_FLOOR.major && minor >= STRIP_TYPES_DEFAULT_FLOOR.minor)
+
+    assert.ok(
+      ok,
+      `${VERSION_FILE} 가 ${raw} 인데 타입 스트리핑 기본 활성 하한은 ` +
+        `${STRIP_TYPES_DEFAULT_FLOOR.major}.${STRIP_TYPES_DEFAULT_FLOOR.minor} 이다.\n\n` +
+        `이 아래로 내리면 위 두 단언(파일 존재 · 워크플로우가 읽음)은 초록인 채\n` +
+        `'.ts' 실행이 전부 ERR_UNKNOWN_FILE_EXTENSION 으로 죽는다 — 봉인이 형식만 남는다.`,
+    )
+  })
+
+  test('선언한 coveredBy 패턴이 실제로 그 입력을 덮는다', () => {
+    const mismatched = Object.entries(INPUTS)
+      .filter(([, input]) => !globCovers(input.coveredBy, input.file))
+      .map(([key, i]) => `${key}. '${i.coveredBy}' 가 '${i.file}' 를 덮지 않는다`)
+
+    assert.deepEqual(
+      mismatched,
+      [],
+      `INPUTS 의 짝 선언이 틀렸다.\n${mismatched.join('\n')}\n\n` +
+        `짝을 잘못 적으면 엉뚱한 경로를 요구하면서 통과한다 — 트리거는 초록인데 정작 ` +
+        `입력을 바꾸는 PR 에서 판별식이 안 돈다.`,
+    )
+  })
+
+  for (const trigger of CI_TRIGGERS) {
+    test(`workflow-scripts-ci 의 ${trigger} 트리거가 이 판별식 입력을 전부 건다`, () => {
+      const block = triggerBlock(
+        fs.readFileSync(path.join(REPO_ROOT, DISCRIMINANT_WORKFLOW), 'utf8'),
+        trigger,
+      )
+      assert.ok(block.length > 0, `${DISCRIMINANT_WORKFLOW} 에서 ${trigger} 블록을 못 잘랐다.`)
+
+      const required = [...new Set(Object.values(INPUTS).map((i) => i.coveredBy))]
+      const missing = required.filter((p) => !block.includes(`'${p}'`))
+
+      assert.deepEqual(
+        missing,
+        [],
+        `${trigger} 트리거에 다음 경로가 없다: ${missing.join(', ')}\n\n` +
+          `이 목록은 손으로 유지하지 않는다 — INPUTS 의 coveredBy 에서 파생된다.\n` +
+          `빠진 경로만 바꾸는 PR 은 이 판별식을 0회 실행하고 통과한다.`,
+      )
+    })
+  }
 })
