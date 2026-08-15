@@ -16,6 +16,16 @@ export interface IssueCreateSubmitOptions {
    *
    * ★미지(로딩·조회 실패)는 `false` 다 — 화면이 게이트 훅에서 그렇게 받아 넘긴다.
    *   미지를 거부로 읽으면 CREATE 를 실제로 가진 사용자를 영구 차단한다(훅 KDoc · 부채 매핑 15).
+   *
+   * ★★**이 값의 출처는 `useIssueCreatePermissionGate` 뿐이다. 리터럴 `false` 를 넘기지 마라.**
+   *   분할 전에는 게이트 계산과 집행이 같은 함수 안에 있어 제출 경로를 쓰려면 훅 호출을 피할 수
+   *   없었다. 지금은 집행만 여기 있고 판정은 평범한 boolean 파라미터라, 새 화면이
+   *   `useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })` 로 쓰면 **무게이트 생성
+   *   제출 경로**가 열린다. 그리고 로딩 프레임 계약 판별식은 *게이트 훅* import 만 보므로
+   *   (`create/__tests__/permission-gate-loading-contract.test.ts` 의 `IMPORT_NEEDLE`)
+   *   그 화면은 **초록을 유지한다.** 부채 매핑 `43` 으로 등재했다 — 배럴 재export(매핑 `40`)와는
+   *   다른 경로이고, 기계로 닫으려면 `IMPORT_NEEDLE` 을 배열로 넓혀 이 모듈도 소비처로 세면 된다.
+   *   #385 게이트 2 리뷰 C-1 이 코드 읽기로 도출했다(새 소비처를 만들어 실증하지는 않았다).
    */
   isCreateExplicitlyDenied: boolean
   /** 생성 성공 후 콜백 — 생성된 이슈 key 를 전달 */

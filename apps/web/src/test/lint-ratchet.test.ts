@@ -325,15 +325,87 @@ const NEW_VIOLATION_HINT =
  *      장부는 337 을 유지해 **87줄만큼 재증가 여지**가 조용히 남는다.
  *
  * ★미뤄 뒀던 이유(상시 마찰)가 실측으로 사라졌다. 최근 20 PR 중 동결 함수의 줄수가 바뀐 PR 은
- *   4건(20%)이고 래칫 도입 이후는 2건인데, **그 2건 모두 이미 베이스라인을 갱신했다**
- *   (#367 자발 326→311 · #384 강제 288→289). 즉 이 규칙이 있었어도 추가 작업은 0 이었다.
+ *   4건(20%)이고 래칫 도입 이후는 2건인데, **그 2건 모두 결국 베이스라인을 갱신했다**
+ *   (#367 326→311 · #384 288→289). 즉 이 규칙이 있었어도 추가 작업은 0 이었다.
  *   가장 두려워한 `routes/issues.$key.tsx` 는 20 PR 중 1회만 변동했고 그것도 래칫 도입 이전이다.
+ *
+ * ★**그 2건이 「알아서 낮춘」 것이 아니다** (#385 게이트 2 리뷰 정정 — 초판은 #367 을 「자발」로
+ *   적었고 거짓이었다). #384 는 단조 판정이 기계로 막아서 고쳤고, #367 은 **독립 코드리뷰가
+ *   잡았다** — 그 PR 커밋 본문이 「내가 어긴 규율 1건(래칫 장부 326 → 311 미하향으로 15줄 재성장
+ *   사전 승인)」이라고 스스로 적었다. 즉 사람이 안 봤으면 #367 은 15줄 재성장 여지를 남긴 채
+ *   지나갔다. 이 사실은 엄격 일치의 근거를 **약화하는 게 아니라 강화한다** — 기계가 없으면
+ *   구현자는 안 낮췄고, 리뷰어 눈에 의존해야 했다.
  */
 const DRIFT_HINT =
   `베이스라인 값과 실측이 다르다. **줄인 쪽도 red 다** — 숫자를 실측으로 맞춰라.\n` +
   `늘렸다면 되돌리거나 함수를 쪼개고, 줄였다면 ${BASELINE_PATH} 의 숫자를 그만큼 낮춰라.\n` +
   `「200줄 밑으로 내려감」이면 갚은 것이다 — ${BASELINE_PATH} 에서 그 줄을 **지워라**. ` +
   `남겨 두면 같은 함수를 다시 200줄 위로 되돌려도 아무 판정이 안 울린다.`
+
+/**
+ * 동결 장부와 실측의 어긋남을 **베이스라인 순회**로 뽑는다.
+ *
+ * ★**방향이 이 판정의 전부다.** 스캔(`entries`)을 순회하면 스캔에서 사라진 키(유령 키)를 애초에
+ *   만나지 못해 누수 ①이 그대로 열린다. 그래서 베이스라인을 순회하고, `entries.get` 이
+ *   `undefined` 인 것도 **불일치로 센다**.
+ *
+ * ★순수 함수로 뺀 이유 (#385 게이트 2 리뷰 C-2). 판정이 `it` 본문에 인라인이면 대조군을 달 수
+ *   없고, 그러면 이 형태를 단조 시절로 되돌리는 변형(순회 방향 뒤집기 · 「부재는 봐준다」 방어
+ *   삽입)을 **아무 검사도 red 로 잡지 못한다** — 실측으로 둘 다 green 이었다. 막는 것이 리뷰어
+ *   눈뿐이면 그것은 강제 장치가 아니다. 같은 부채 묶음의 형제 판별식
+ *   (`create/__tests__/permission-gate-loading-contract.test.ts` 의 `diffConsumers`)이 같은 이유로
+ *   이미 이 형태를 쓴다 — 「스캔이 0건을 돌려주는 사고가 나도 대조군은 red 를 유지한다」.
+ *
+ * @param entries 스캔이 찾은 실측 (키 → raw 줄수)
+ * @param baseline 동결 장부
+ * @returns 베이스라인에 그대로 옮길 수 있는 형태의 불일치 목록 (정렬됨). 일치하면 빈 배열
+ */
+export function computeDrift(
+  entries: ReadonlyMap<string, number>,
+  baseline: Readonly<Record<string, number>>,
+): string[] {
+  return Object.entries(baseline)
+    .filter(([key, frozen]) => entries.get(key) !== frozen)
+    // 실패 출력을 베이스라인에 **그대로 옮길 수 있는 형태**로 만든다 (앞 판정과 같은 규율).
+    .map(([key, frozen]) => {
+      const actual = entries.get(key)
+      return actual === undefined
+        ? `${JSON.stringify(key)}: (200줄 밑으로 내려감 — 이 줄을 지워라) // 동결 ${frozen}`
+        : `${JSON.stringify(key)}: ${actual}, // 동결 ${frozen}`
+    })
+    .sort()
+}
+
+describe('R4. drift 판정 대조군 (비-공허 짝 · 실물과 안 겹치는 픽스처)', () => {
+  // ★픽스처 키는 실물과 겹치지 않는 가짜다. 실물을 쓰면 실물이 바뀔 때 대조군이 함께 죽는다.
+  const A = 'src/fixture/a.tsx::Function ⟪A⟫'
+  const B = 'src/fixture/b.tsx::Function ⟪B⟫'
+
+  it('★장부에 있는데 스캔에 없으면 잡는다 — 유령 키 (순회 방향을 뒤집으면 이 대조군이 red 다)', () => {
+    const drift = computeDrift(new Map([[A, 210]]), { [A]: 210, [B]: 250 })
+
+    expect(drift).toHaveLength(1)
+    expect(drift[0]).toContain(B)
+    expect(drift[0]).toContain('200줄 밑으로 내려감')
+  })
+
+  it('★값이 다르면 잡는다 — 줄인 쪽도 red 다 (「부재는 봐준다」 방어가 들어와도 여기는 안 뚫린다)', () => {
+    const drift = computeDrift(new Map([[A, 205]]), { [A]: 210 })
+
+    expect(drift).toHaveLength(1)
+    expect(drift[0]).toContain('205')
+    expect(drift[0]).toContain('동결 210')
+  })
+
+  it('정확히 일치하면 위반 0 이다 (오탐 대조군 — 이게 없으면 「무조건 red」도 위 둘을 통과한다)', () => {
+    expect(computeDrift(new Map([[A, 210]]), { [A]: 210 })).toEqual([])
+  })
+
+  it('스캔에만 있고 장부에 없는 것은 이 판정의 몫이 아니다 (신규 위반 판정과 역할 분리)', () => {
+    // 겹쳐서 재면 어느 판정이 무엇을 지키는지 흐려지고, 한쪽을 지워도 다른 쪽이 가려 준다.
+    expect(computeDrift(new Map([[A, 210]]), {})).toEqual([])
+  })
+})
 
 describe('R4. 컴포넌트 200줄 래칫 (엄격 일치)', () => {
   it('베이스라인에 없는 신규 위반이 없다', async () => {
@@ -351,18 +423,7 @@ describe('R4. 컴포넌트 200줄 래칫 (엄격 일치)', () => {
 
   it('베이스라인 값이 실측과 정확히 일치한다 (유령 키·부풀려진 값 양쪽 차단)', async () => {
     const { entries } = await oversizedFunctions()
-    // ★스캔이 아니라 **베이스라인**을 순회한다. 스캔을 순회하면 스캔에서 사라진 키(유령 키)를
-    //   애초에 만나지 못해 누수 ①이 그대로 열린다 — 방향이 이 판정의 전부다.
-    const drift = Object.entries(OVERSIZED_FUNCTION_BASELINE)
-      .filter(([key, frozen]) => entries.get(key) !== frozen)
-      // 실패 출력을 베이스라인에 **그대로 옮길 수 있는 형태**로 만든다 (앞 판정과 같은 규율).
-      .map(([key, frozen]) => {
-        const actual = entries.get(key)
-        return actual === undefined
-          ? `${JSON.stringify(key)}: (200줄 밑으로 내려감 — 이 줄을 지워라) // 동결 ${frozen}`
-          : `${JSON.stringify(key)}: ${actual}, // 동결 ${frozen}`
-      })
-    expect(drift.sort(), DRIFT_HINT).toEqual([])
+    expect(computeDrift(entries, OVERSIZED_FUNCTION_BASELINE), DRIFT_HINT).toEqual([])
   }, 60_000)
 
   it('같은 키가 두 번 나오지 않는다 (키 충돌 감지)', async () => {
