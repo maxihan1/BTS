@@ -1,11 +1,14 @@
 // R4 줄수 래칫의 동결 베이스라인 — 200줄을 넘는 비-테스트 함수의 현재 상태를 얼린다.
 //
 // 키 = `<apps/web 기준 상대경로>::<ESLint 서술자>`. 값 = raw 줄수(빈 줄·주석 포함).
-// ★줄인 뒤에는 이 숫자를 **함께 낮춰라.** 낮추지 않으면 그만큼 다시 늘릴 여지가 남는다.
+// ★이 표는 실측과 **정확히 일치**해야 한다 (부채 매핑 22 · 2026-08-15 단조 → 엄격 일치).
+//   늘린 것뿐 아니라 **줄이고 여기를 안 낮춘 것도 red** 이고, 200줄 밑으로 내려가 스캔에서
+//   사라졌는데 줄을 안 지운 것(유령 키)도 red 다. 판정은 `lint-ratchet.test.ts` 의 drift 단언.
 // ★새 항목을 여기 추가하는 것은 「200줄 넘는 컴포넌트를 하나 더 승인한다」는 뜻이다. 리뷰에서 그렇게 읽어라.
 //
-// 아래 18건은 손으로 적은 것이 아니라 `lint-ratchet.test.ts` 의 실패 출력을 그대로 옮긴 것이다.
-// 갱신할 때도 같은 방법을 쓴다 — 테스트를 돌려 나온 줄을 붙여 넣는다.
+// ★건수를 여기 적지 않는다. 적는 순간 그것이 두 번째 목록이 되어 갈라진다 — 세고 싶으면
+//   판별식을 돌려라. 아래 줄들은 손으로 적은 것이 아니라 `lint-ratchet.test.ts` 의 실패 출력을
+//   그대로 옮긴 것이다. 갱신할 때도 같은 방법을 쓴다 — 테스트를 돌려 나온 줄을 붙여 넣는다.
 export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/auth/MfaSettings.tsx::Function 'MfaSettings'": 218,
   "src/components/automation/AutomationRuleFormDialog.tsx::Function 'FormBody'": 230,

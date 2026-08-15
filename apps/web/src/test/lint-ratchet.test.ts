@@ -314,13 +314,28 @@ const NEW_VIOLATION_HINT =
   `그래도 남겨야 한다면 아래 줄을 그대로 ${BASELINE_PATH} 에 추가한다 — ` +
   `그것은 「${MAX_COMPONENT_LINES}줄 넘는 컴포넌트를 하나 더 승인한다」는 뜻이다.`
 
-/** 증가 실패 시 띄우는 안내. */
-const GROWN_HINT =
-  `동결된 함수가 더 길어졌다. 늘린 만큼 되돌리거나 함수를 쪼개라.\n` +
-  `줄이는 쪽으로 바꿨다면 ${BASELINE_PATH} 의 숫자도 **함께 낮춰라** — ` +
-  `안 낮추면 그만큼 다시 늘릴 여지가 남는다.`
+/**
+ * 동결 값과 실측이 어긋났을 때 띄우는 안내.
+ *
+ * ★단조(늘어난 것만 red)에서 **엄격 일치**로 바꿨다 (부채 매핑 22 · Maxi 확정 2026-08-15).
+ *   단조는 한 방향만 봐서 두 경로로 샜다 —
+ *   ① **유령 키** 함수가 200줄 밑으로 내려가 스캔에서 사라져도 베이스라인 항목은 남는다.
+ *      그 함수를 다시 200줄 이상으로 되돌려도 「신규 위반」이 아니라 통과한다.
+ *   ② **부풀려진 값** 337 → 250 으로 줄이면(여전히 200 초과) `250 > 337` 이 거짓이라 green 인데
+ *      장부는 337 을 유지해 **87줄만큼 재증가 여지**가 조용히 남는다.
+ *
+ * ★미뤄 뒀던 이유(상시 마찰)가 실측으로 사라졌다. 최근 20 PR 중 동결 함수의 줄수가 바뀐 PR 은
+ *   4건(20%)이고 래칫 도입 이후는 2건인데, **그 2건 모두 이미 베이스라인을 갱신했다**
+ *   (#367 자발 326→311 · #384 강제 288→289). 즉 이 규칙이 있었어도 추가 작업은 0 이었다.
+ *   가장 두려워한 `routes/issues.$key.tsx` 는 20 PR 중 1회만 변동했고 그것도 래칫 도입 이전이다.
+ */
+const DRIFT_HINT =
+  `베이스라인 값과 실측이 다르다. **줄인 쪽도 red 다** — 숫자를 실측으로 맞춰라.\n` +
+  `늘렸다면 되돌리거나 함수를 쪼개고, 줄였다면 ${BASELINE_PATH} 의 숫자를 그만큼 낮춰라.\n` +
+  `「200줄 밑으로 내려감」이면 갚은 것이다 — ${BASELINE_PATH} 에서 그 줄을 **지워라**. ` +
+  `남겨 두면 같은 함수를 다시 200줄 위로 되돌려도 아무 판정이 안 울린다.`
 
-describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
+describe('R4. 컴포넌트 200줄 래칫 (엄격 일치)', () => {
   it('베이스라인에 없는 신규 위반이 없다', async () => {
     const { entries } = await oversizedFunctions()
     expect(entries.size).toBeGreaterThan(0) // 비-공허. 스캔이 비면 모든 단언이 참이 된다
@@ -334,15 +349,20 @@ describe('R4. 컴포넌트 200줄 래칫 (단조)', () => {
     expect(unknown, NEW_VIOLATION_HINT).toEqual([])
   }, 60_000)
 
-  it('베이스라인 대비 늘어난 함수가 없다', async () => {
+  it('베이스라인 값이 실측과 정확히 일치한다 (유령 키·부풀려진 값 양쪽 차단)', async () => {
     const { entries } = await oversizedFunctions()
-    const grown: string[] = []
-    for (const [key, lines] of entries) {
-      const frozen = OVERSIZED_FUNCTION_BASELINE[key]
-      if (frozen === undefined) continue // 신규 항목은 앞 판정의 몫이다
-      if (lines > frozen) grown.push(`${key}: ${frozen} → ${lines}`)
-    }
-    expect(grown.sort(), GROWN_HINT).toEqual([])
+    // ★스캔이 아니라 **베이스라인**을 순회한다. 스캔을 순회하면 스캔에서 사라진 키(유령 키)를
+    //   애초에 만나지 못해 누수 ①이 그대로 열린다 — 방향이 이 판정의 전부다.
+    const drift = Object.entries(OVERSIZED_FUNCTION_BASELINE)
+      .filter(([key, frozen]) => entries.get(key) !== frozen)
+      // 실패 출력을 베이스라인에 **그대로 옮길 수 있는 형태**로 만든다 (앞 판정과 같은 규율).
+      .map(([key, frozen]) => {
+        const actual = entries.get(key)
+        return actual === undefined
+          ? `${JSON.stringify(key)}: (200줄 밑으로 내려감 — 이 줄을 지워라) // 동결 ${frozen}`
+          : `${JSON.stringify(key)}: ${actual}, // 동결 ${frozen}`
+      })
+    expect(drift.sort(), DRIFT_HINT).toEqual([])
   }, 60_000)
 
   it('같은 키가 두 번 나오지 않는다 (키 충돌 감지)', async () => {
