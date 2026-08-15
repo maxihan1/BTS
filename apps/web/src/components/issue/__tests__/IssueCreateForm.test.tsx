@@ -1070,3 +1070,101 @@ describe('IssueCreateForm — 커스텀 필드 422 는 전용 문구로 안내�
     expect(alert).not.toHaveTextContent(issueCreateStrings.errorDefault)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 폼 밖 제출 경로의 계약 2종 (부채 매핑 8 — 상태·제출을 훅으로 가르면서 못 박았다).
+//
+// ★둘 다 **선재 동작에 대한 신규 커버리지**다. 분할 전에도 같은 두 줄이 있었고 그때도
+//   아무 테스트가 안 걸렸다(뮤테이션 실측 — 두 줄을 지워도 60/60 초록이었다).
+//   분할이 이 두 줄을 훅으로 옮겼으므로, 옮긴 자리에서 독립적으로 지워질 수 있게 됐다.
+//   지금 못 박아 두지 않으면 「분할은 동작 불변」이라는 주장의 근거가 이 두 줄에 대해서만 없다.
+//
+// ★`CreateIssueDialog` 자체에는 테스트 파일이 없다 — 푸터 버튼의 비활성·문구 전환은
+//   여전히 무검증이다. 그건 이 PR 범위 밖이라 장부에 등재했다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateForm — 폼 밖 제출 경로의 계약 (게이트 2 C-2 · E7)', () => {
+  const EXTERNAL_FORM_ID = 'test-external-contract-form'
+
+  /** 응답을 손으로 풀 수 있는 POST 핸들러. 「제출 중」 프레임을 붙잡아야 잴 수 있다. */
+  function holdCreateIssue(): { release: () => void; count: () => number } {
+    let posts = 0
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.post('/api/v1/issues', async () => {
+        posts += 1
+        await held
+        return HttpResponse.json({ data: { key: 'ATLAS-1' } }, { status: 201 })
+      }),
+    )
+    return { release: () => release(), count: () => posts }
+  }
+
+  function renderWithExternalSubmit(onPendingChange: (pending: boolean) => void) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <IssueCreateForm formId={EXTERNAL_FORM_ID} onPendingChange={onPendingChange} />
+        {/* CreateIssueDialog 푸터와 같은 구조. 이 버튼에는 아무 방어가 없다 */}
+        <button type="submit" form={EXTERNAL_FORM_ID}>
+          폼 밖 제출
+        </button>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('★제출 진행이 폼 밖으로 흘러나온다 — onPendingChange 가 true 를 거쳐 false 로 끝난다', async () => {
+    const user = userEvent.setup()
+    const onPendingChange = vi.fn()
+    const gate = holdCreateIssue()
+    renderWithExternalSubmit(onPendingChange)
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: '폼 밖 제출' }))
+
+    // 진행 중임을 알렸는가. 이 신호가 모달 푸터 버튼의 **유일한** 상태원이다 —
+    // 끊기면 버튼을 눌러도 아무 반응이 없어 사용자가 다시 누른다.
+    await waitFor(() => {
+      expect(onPendingChange).toHaveBeenCalledWith(true)
+    })
+
+    gate.release()
+
+    // 끝났음도 알려야 한다. true 만 보내면 버튼이 영구히 「생성 중…」에 갇힌다.
+    await waitFor(() => {
+      expect(onPendingChange).toHaveBeenLastCalledWith(false)
+    })
+  })
+
+  it('★제출 중 다시 눌러도 서버로 두 번 나가지 않는다 (E7 — 폼 밖 버튼은 비활성이 아니다)', async () => {
+    const user = userEvent.setup()
+    const onPendingChange = vi.fn()
+    const gate = holdCreateIssue()
+    renderWithExternalSubmit(onPendingChange)
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    const external = screen.getByRole('button', { name: '폼 밖 제출' })
+    await user.click(external)
+    await waitFor(() => {
+      expect(gate.count()).toBe(1)
+    })
+
+    // 비-공허 짝. 버튼이 비활성이면 두 번째 클릭이 애초에 없었던 것이라
+    // 「두 번 안 나갔다」가 이른 반환의 공로가 아니게 된다.
+    expect(external).not.toBeDisabled()
+    await user.click(external)
+
+    gate.release()
+    await waitFor(() => {
+      expect(onPendingChange).toHaveBeenLastCalledWith(false)
+    })
+    expect(gate.count()).toBe(1)
+  })
+})
