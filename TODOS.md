@@ -4474,7 +4474,7 @@ fail-fast 하는데 confirm 은 안 한다 — **같은 BC 안에서 두 진입�
 
 ---
 
-## ⬜ apps/web — 로딩 프레임 계약 레지스트리의 **계약 값**을 아무 판정도 안 읽는다 (신규 · 미착수 · T1)
+## ✅ apps/web — 로딩 프레임 계약 레지스트리의 **계약 값**을 아무 판정도 안 읽는다 (해소 2026-08-16 · #386)
 
 **무엇.** `permission-gate-loading-contract.test.ts` 의 `LOADING_FRAME_CONTRACTS` 는 키→계약 매핑인데
 단언 3종이 전부 `Object.keys(...)` 만 쓴다. `LoadingFrameContract` 유니언과 값 문자열 전량이
@@ -4542,7 +4542,7 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 
 ---
 
-## ⬜ apps/web — 로딩 프레임 계약 판별식이 **배럴 재export 에 샌다** (신규 · 미착수 · T1)
+## ✅ apps/web — 로딩 프레임 계약 판별식이 **배럴 재export 에 샌다** (해소 2026-08-16 · #386)
 
 **무엇.** `permission-gate-loading-contract.test.ts` 의 `IMPORT_NEEDLE` 은
 `from '…use-issue-create-permission-gate'` 형태의 import 문을 본다. 그래서
@@ -4565,7 +4565,7 @@ alias·간접 호출·옵셔널 호출을 놓쳤고, 그쪽 구멍이 더 컸다
 
 ---
 
-## ⬜ apps/web — `CreateIssueDialog` 제출 완료 프레임 재단언이 없다 (신규 · 미착수 · T1)
+## ✅ apps/web — `CreateIssueDialog` 제출 완료 프레임 재단언이 없다 (해소 2026-08-16 · #386)
 
 **무엇.** `apps/web/src/components/issue/__tests__/CreateIssueDialog.test.tsx:148` 「제출 중에는 푸터
 만들기 버튼이 비활성화되고 진행 중 문구로 바뀐다」는 **진입 프레임만** 잰다. `:176-177` 에서
@@ -4634,7 +4634,7 @@ alias·간접 호출·옵셔널 호출을 놓쳤고, 그쪽 구멍이 더 컸다
 
 ---
 
-## ⬜ apps/web — 제출 훅의 게이트 파라미터가 판별식 밖의 우회를 연다 (신규 · 미착수 · T1)
+## ✅ apps/web — 제출 훅의 게이트 파라미터가 판별식 밖의 우회를 연다 (해소 2026-08-16 · #386)
 
 **무엇.** `create/use-issue-create-submit.ts` 의 `isCreateExplicitlyDenied` 는 **평범한 boolean
 파라미터**다. 새 화면이 이렇게 쓰면 무게이트 생성 제출 경로가 생긴다.
@@ -4670,3 +4670,42 @@ const submit = useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })
 
 **발견 경위.** #385 게이트 2 리뷰 C-1. **코드 읽기로 도출했고 새 소비처를 만들어 실증하지는
 않았다**(리뷰가 읽기 전용 제약이었다). 착수 시 먼저 실증할 것.
+
+## ⬜ 워크플로우 — `classify-task` 가 경로 뒤 슬래시가 없으면 `apps/web` 작업을 backend 로 오배정한다 (신규 · 미착수 · T1)
+
+**무엇.** `scripts/workflow/classify-task.ts:67` 의 `UI_PATH_PATTERNS` 가 `/apps\/web\//` —
+**뒤 슬래시를 요구**한다. 그래서 사람이 자연어로 흔히 쓰는 `apps/web`(슬래시 없음)은 안 걸리고,
+`UI_KEYWORDS`(`화면` `컴포넌트` `ui` `버튼` …)에도 안 걸리면 `detectType` 이 10번 기본값
+**`backend`** 로 떨어진다. 그 결과 `agent` 가 `backend-engineer` 가 된다.
+
+**실측 (2026-08-16 · 매핑 37·40·41·43 착수 시).** 제목 한 줄에서 **슬래시 한 글자**만 다르다.
+
+| 입력 제목 | type | agent |
+|---|---|---|
+| `로딩 프레임 계약 판별식 봉합 (apps/web 테스트 판별식)` | `backend` | `backend-engineer` |
+| `로딩 프레임 계약 판별식 봉합 (apps/web/ 테스트 판별식)` | **`ui`** | **`frontend-engineer`** |
+| `로딩 프레임 계약 판별식 봉합 ui 테스트 판별식` | **`ui`** | **`frontend-engineer`** |
+
+**무엇이 새는가.** `/bts-impl` 이 plan task 의 메타 `agent` 지정이 없을 때 이 값으로 dispatch 한다.
+`apps/web` 전용 작업이 `backend-engineer` 에게 간다. **T0/T1 은 [5] 를 인라인으로 돌아 영향이
+없지만**(이번 PR 이 그 경우다) T2 이상 UI 작업에서는 실제로 오배정된다.
+
+**★티어는 안 뒤집힌다.** `detect-tier` 는 제목이 아니라 **변경 경로**를 보고 `surfaces.ts` 를
+읽으므로 이 결함과 독립이다. 이번에도 `detect-tier` 가 T1 을 정확히 냈다. 범위는 `type`·`agent`
+(그리고 `primary_bc`) 뿐이다 — 티어까지 틀린다고 적으면 그게 거짓 근거가 된다.
+
+**매핑 `33` 과 다른 결함이다.** 33 은 E2E 를 포함한 **혼합** PR 이 `qa-engineer` 로 가는 것이고,
+이것은 순수 `apps/web` 작업이 **기본값 `backend`** 로 떨어지는 것이다. 파일은 같으므로
+(`classify-task.ts`) **충돌면이 같아 한 PR 로 묶을 수 있다.**
+
+**처방 후보 2 (착수 시 확정).**
+① `UI_PATH_PATTERNS` 에 뒤 슬래시 없는 형태를 더한다(`/apps\/web\b/`) — 최소 변경.
+   다만 `apps/webhook` 같은 가상의 경로에 오탐이 생길 수 있으므로 `\b` 경계를 실측할 것.
+② 제목이 아니라 **변경 경로**로 `type` 을 정한다(`detect-tier` 와 같은 입력). 정확하지만
+   착수 시점에는 변경 경로가 아직 0건이라 분류기의 호출 시점 자체를 바꿔야 한다.
+
+**★기본값이 `backend` 인 것 자체는 결함이 아니다.** `/bts-start` 가 「신호 0이면 backend」를
+명시한다. 문제는 **신호가 있는데 한 글자 때문에 안 읽히는 것**이다.
+
+**발견 경위.** 매핑 37·40·41·43 착수 시 `classify-task --cache` 실행 결과가 실제 표면과
+어긋나는 것을 보고 3형태로 대조 실행해 실증했다.
