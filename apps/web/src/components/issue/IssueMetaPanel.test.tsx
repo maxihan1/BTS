@@ -1593,7 +1593,7 @@ describe('IssueMetaPanel — 클론 버튼 CREATE 게이트', () => {
     expect(clone.getAttribute('aria-label')).toBe(issueDetailStrings.cloneButton)
   })
 
-  it('★권한 조회가 **아직 진행 중**인 프레임에서도 클론이 열려 있다 (로딩 프레임 계약 · 부채 매핑 15)', async () => {
+  it('★권한 조회가 **아직 진행 중**인 프레임에서도 클론이 열려 있다 (로딩 프레임 계약 open-while-loading · 부채 매핑 15)', async () => {
     // ★계약명 `open-while-loading` — 소비처 레지스트리
     //   (`components/issue/create/__tests__/permission-gate-loading-contract.test.ts`)가 선언한 그 계약이다.
     //   임포트 라우트의 `no-verdict-while-loading` 을 여기 복제하면 회귀다.

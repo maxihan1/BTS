@@ -534,7 +534,7 @@ function createResponseGate(): { readonly wait: Promise<void>; readonly release:
   return { wait, release: () => { release() } }
 }
 
-describe('ProjectImportSettingsPage — 로딩 프레임', () => {
+describe('ProjectImportSettingsPage — 로딩 프레임 (no-verdict-while-loading)', () => {
   it('권한이 먼저 CREATE:false 로 정착해도 존재가 미정이면 거부 카드를 띄우지 않는다', async () => {
     const projectGate = createResponseGate()
     server.use(
