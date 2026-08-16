@@ -137,12 +137,25 @@ const RELATIVE_BARREL = new RegExp(String.raw`^\.{1,2}\/(?:[^/]+\/)*create` + BA
  * 그래서 정규식을 버리고 **상태를 가진 스캐너**로 바꿨다. 주석과 문자열 안은 코드가 아니므로
  * 애초에 토큰으로 안 나온다 — 모듈 지정자 쪽 같은 구멍(Nit-3)도 함께 닫힌다.
  *
- * **알려진 한계 (fail-closed 라 구멍이 아니라 거짓 red 쪽이다).**
- * · `it.each([...])('제목')` 처럼 **첫 인자가 문자열이 아닌** 호출은 제목을 못 뽑는다.
- *   `it.skip` · `describe.only` 처럼 인자가 바로 문자열인 것은 뽑는다.
- * · 정규식 리터럴 안의 `//`(예: `/https:\/\//`)를 줄 주석 시작으로 읽어 그 줄 나머지를 버린다.
- * 둘 다 「못 뽑는다」 방향이라 판정이 느슨해지지 않는다. 실물 3파일에서 제목이 실제로
- * 뽑히는지는 아래 「선언한 테스트 파일이 실재한다」 단언이 매번 확인한다.
+ * **알려진 한계 — 방향이 양쪽이다. 「fail-closed 뿐」이 아니다.**
+ *
+ * ⓐ *못 뽑는 쪽(거짓 red).* `it.each([...])('제목')` 처럼 **첫 인자가 문자열이 아닌** 호출은
+ *   제목을 못 뽑는다(`it.skip` · `describe.only` 처럼 인자가 바로 문자열인 것은 뽑는다).
+ * ⓑ *잘못 뽑는 쪽(판정이 느슨해진다).* 이 스캐너는 **정규식 리터럴을 모른다.** 그래서
+ *   정규식 안의 **홀수 개 따옴표**(`/'/` · `/…"…"…"…/`)가 문자열 상태를 열어 버리고,
+ *   그 가짜 문자열이 뒤따르는 `//` 를 삼키고 주석 중간에서 닫히면 **주석 나머지가 코드로**
+ *   스캔된다. JSX 텍스트 안의 `it('…')` 도 같은 이유로 제목으로 센다.
+ *
+ * ★★**초판 KDoc 은 여기서 「둘 다 못 뽑는 방향이라 판정이 느슨해지지 않는다」고 단정했고
+ *   그게 거짓이었다** (#386 게이트 2 재리뷰 잔여-1). 리뷰가 실물 `IssueMetaPanel.test.tsx` 에
+ *   `const re = /'/` 한 줄을 두고 그 뒤 주석에 계약명을 넣어 **EXIT=0 을 받아냈다.**
+ *   측정하지 않은 안전 속성을 단정하는 것 — 이 PR 이 네 번 연속 잡힌 바로 그 양식이다.
+ *   그래서 문장을 고치는 데 그치지 않고 **아래 「파싱 완결성」 단언**을 백스톱으로 세웠다.
+ *   ⓐ·ⓑ 어느 방향이든 레지스트리 파일에서 개수가 어긋나면 그 자리에서 red 다.
+ *
+ * 저장소 전수 실측(리뷰) — 레지스트리 3파일은 완전 파싱되지만 **다른 4파일에서 제목이
+ * 유실**된다(최대 `api/notification-policies.test.ts` 47 중 14). 레지스트리로 편입되는 순간
+ * 완결성 단언이 잡는다.
  */
 export function scanSource(source: string): { specifiers: string[]; titles: string[] } {
   const specifiers: string[] = []
@@ -249,6 +262,17 @@ export function extractTestTitles(source: string): string[] {
 }
 
 /**
+ * 줄 시작의 테스트 호출 개수를 **스캐너와 독립으로** 센다.
+ *
+ * 스캐너가 고장 나도 이 수는 안 흔들린다 — 둘을 대조하는 것이 파싱 완결성 단언의 전부다.
+ * 두 목록이 서로를 검사하게 하는 이 저장소의 표준 처방(`[[two-lists-never-check-each-other]]`)
+ * 을 스캐너 자신에게 적용한 것이다.
+ */
+export function countLineStartTestCalls(source: string): number {
+  return (source.match(/^[ \t]*(?:it|test|describe)(?:\.\w+)*\s*\(/gm) ?? []).length
+}
+
+/**
  * 선언한 계약을 그 테스트 파일이 **제목으로** 떠안고 있는가.
  *
  * 다른 계약명을 적어 둔 것으로는 만족되지 않는다 — 계약 값을 바꾸면 제목도 함께 바꿔야 하고,
@@ -289,8 +313,13 @@ const DEFINITION_FILES: readonly string[] = [
 export function isSelfOnlyDefinition(relPath: string, source: string): boolean {
   if (!DEFINITION_FILES.includes(relPath)) return false
   const ownModule = (relPath.split('/').pop() ?? '').replace(/\.tsx?$/, '')
+  // ★자기 모듈 판정은 **끝 세그먼트 정확 일치**다 (#386 재리뷰 Nit-1).
+  //   부분일치로 두면 `./use-issue-create-submit-legacy` 를 자기 자신으로 읽어 진짜 소비처를
+  //   놓친다. needle 쪽 부분일치는 의도지만(오탐 방향) 여기는 반대로 **미탐 방향**이라 다르다.
+  const isOwnModule = (specifier: string): boolean =>
+    (specifier.split('/').pop() ?? '').replace(/\.[cm]?[jt]sx?$/, '') === ownModule
   return !extractModuleSpecifiers(source)
-    .some((s) => isConsumerSpecifier(s) && !s.includes(ownModule))
+    .some((s) => isConsumerSpecifier(s) && !isOwnModule(s))
 }
 
 const WEB_ROOT = resolve(__dirname, '../../../../..')
@@ -380,6 +409,24 @@ describe('로딩 프레임 계약 — 선언한 계약 값이 테스트 제목�
     }
   })
 
+  // ★★잔여-1 백스톱 (#386 게이트 2 재리뷰). 스캐너가 정규식 리터럴을 몰라 따옴표 짝이 깨지면
+  //   주석을 코드로 읽거나 제목을 통째로 흘린다. **어느 방향이든 개수가 어긋나므로** 스캐너와
+  //   무관한 계산(줄 시작 개수)과 대조해 그 자리에서 잡는다. 위 「비-공허 짝」(> 0)이 못 보는 자리다.
+  it('★★스캐너가 레지스트리 테스트 파일을 완전히 파싱한다 (파싱 완결성 · 잔여-1 백스톱)', () => {
+    const drift = Object.entries(LOADING_FRAME_CONTRACTS)
+      .map(([screen, { testFile }]) => {
+        const src = readFileSync(join(WEB_ROOT, testFile), 'utf-8')
+        return {
+          screen,
+          scanned: extractTestTitles(src).length,
+          lineStart: countLineStartTestCalls(src),
+        }
+      })
+      .filter((r) => r.scanned !== r.lineStart)
+
+    expect(drift).toEqual([])
+  })
+
   it('★선언한 계약 값이 그 화면 테스트의 제목에 있다 (주석은 세지 않는다)', () => {
     const missing = Object.entries(LOADING_FRAME_CONTRACTS)
       .filter(([, { contract, testFile }]) =>
@@ -436,7 +483,9 @@ describe('소비처 탐지 대조군 — 2판이 놓친 경로들 (매핑 40·43
     '@/components/issue/create/index',
     '@web/components/issue/create',
     '@/components/issue/create/index.ts',
+    '@/components/issue/create/index.tsx',
     '@/components/issue/create/index.js',
+    '@/components/issue/create/index.mjs',
     '@/components/issue/create/',
     '../create',
     './create',
@@ -570,6 +619,52 @@ describe('정의 파일 필터 대조군 — 구멍을 닫으면서 새 구멍�
     const screen = 'src/components/issue/IssueCreateForm.tsx'
 
     expect(isSelfOnlyDefinition(screen, `import { x } from './create/use-issue-create-submit'`)).toBe(false)
+  })
+
+  it('★이름이 파생된 형제 모듈은 자기 자신이 아니다 (재리뷰 Nit-1 · 끝 세그먼트 정확 일치)', () => {
+    // 부분일치로 두면 형제를 자기로 읽어 **진짜 소비처를 놓친다** — needle 쪽 부분일치(오탐 방향)
+    // 와 달리 여기는 미탐 방향이라 같은 절충이 성립하지 않는다.
+    expect(isSelfOnlyDefinition(SUBMIT, `import { x } from './use-issue-create-submit-legacy'`)).toBe(false)
+    expect(isSelfOnlyDefinition(SUBMIT, `import { x } from './use-issue-create-submit-types'`)).toBe(false)
+    // 자기 자신은 확장자가 붙어도 자기 자신이다
+    expect(isSelfOnlyDefinition(SUBMIT, `import { x } from './use-issue-create-submit'`)).toBe(true)
+    expect(isSelfOnlyDefinition(SUBMIT, `import { x } from './use-issue-create-submit.js'`)).toBe(true)
+  })
+})
+
+describe('파싱 완결성 대조군 — 스캐너 고장을 개수로 잡는다 (재리뷰 잔여-1)', () => {
+  const REAL = `it('진짜 제목', () => {})`
+
+  it('정상 소스는 두 계산이 같다 (기준선)', () => {
+    const src = [`describe('묶음', () => {`, `  ${REAL}`, `})`].join('\n')
+
+    expect(extractTestTitles(src).length).toBe(countLineStartTestCalls(src))
+  })
+
+  it('★정규식 안 홑따옴표가 주석을 열어 젖히면 개수가 어긋난다', () => {
+    // 리뷰가 실물 IssueMetaPanel.test.tsx 에서 EXIT=0 을 받아낸 그 형태다.
+    const src = [`const re = /'/`, `//' it('숨은 제목', () => {})`, REAL].join('\n')
+
+    expect(extractTestTitles(src).length).not.toBe(countLineStartTestCalls(src))
+  })
+
+  it('★JSX 텍스트 안의 it() 도 개수 어긋남으로 잡힌다', () => {
+    const src = [`const a = <p>it('숨은 제목')</p>`, REAL].join('\n')
+
+    expect(extractTestTitles(src).length).not.toBe(countLineStartTestCalls(src))
+  })
+
+  it('★제목이 유실되는 방향도 잡는다 (홀수 큰따옴표 · 실물 api/notification-policies 양식)', () => {
+    const src = [String.raw`const m = /\("([^"]+)",/gm`, REAL].join('\n')
+
+    expect(extractTestTitles(src).length).not.toBe(countLineStartTestCalls(src))
+  })
+
+  it('줄 시작 계산이 스캐너와 무관하다 (독립성 확인)', () => {
+    // 스캐너가 0 을 돌려줘도 이 수는 안 흔들린다 — 그래서 대조가 의미를 갖는다.
+    const src = [`it('a', () => {})`, `  describe('b', () => {})`, `test.skip('c', () => {})`].join('\n')
+
+    expect(countLineStartTestCalls(src)).toBe(3)
   })
 })
 

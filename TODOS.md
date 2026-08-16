@@ -4736,6 +4736,7 @@ const submit = useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })
 않았다**(리뷰가 읽기 전용 제약이었다). 착수 시 먼저 실증할 것.
 
 ---
+
 ## ⬜ 워크플로우 — `classify-task` 가 경로 뒤 슬래시가 없으면 `apps/web` 작업을 backend 로 오배정한다 (신규 · 미착수 · T1)
 
 **무엇.** `scripts/workflow/classify-task.ts:67` 의 `UI_PATH_PATTERNS` 가 `/apps\/web\//` —
