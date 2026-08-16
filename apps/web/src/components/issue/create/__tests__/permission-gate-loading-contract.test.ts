@@ -104,40 +104,132 @@ const CONSUMER_MODULE_NEEDLES: readonly string[] = [
 ]
 
 /**
- * 배럴 경로. **끝이거나 `/index` 로만** 이어질 때 배럴로 센다.
+ * 배럴 지정자 판정.
  *
- * `components/issue/create` 를 부분일치로 쓰면 `create/issue-create-schema` 를 들여오는
- * 무관한 화면까지 소비처가 된다 — 계약과 상관없는 파일에 선언을 강요하는 오탐이다.
+ * ★**2판(#386 초판)은 표기 3종만 덮었고 6종이 샜다** — 게이트 2 리뷰가 실물 소비처 파일을
+ *   만들어 실증했다(`../create` · `./create` · `…/create/index.ts` · `…/index.js` ·
+ *   `../../create/index` · 끝 슬래시). 특히 상대경로는 가상의 걱정이 아니다 —
+ *   `apps/web/src` 에 `from '../…'` 형태가 117건 있고 `eslint.config.js` 는 그것을 금지하지 않는다.
+ *
+ * 두 형태만 배럴로 센다.
+ *   ① `components/issue/create` 로 끝나는 절대 경로 (별칭 접두 무관)
+ *   ② `./` `../` 로 시작하는 상대 경로가 `create` 로 끝나는 것
+ * 둘 다 `/index` 와 확장자(`.ts` `.tsx` `.js` `.mjs` `.cjs`)와 끝 슬래시를 허용한다.
+ *
+ * ★`@/utils/create` 같은 **무관한 `create`** 를 절대 경로에서 배제하려고 ①에 `components/issue/`
+ *   접두를 요구한다. 상대 경로(②)는 그 접두가 안 보이므로 오탐을 감수한다 —
+ *   장부 처방 ①이 「오탐은 선언 한 줄이라 비용이 작다」고 확정한 그 절충이다.
  */
-const BARREL_PATH = 'components/issue/create'
+const BARREL_TAIL = String.raw`(?:\/index)?(?:\.(?:[cm]?[jt]sx?))?\/?$`
+const ABSOLUTE_BARREL = new RegExp(String.raw`(?:^|\/)components\/issue\/create` + BARREL_TAIL)
+const RELATIVE_BARREL = new RegExp(String.raw`^\.{1,2}\/(?:[^/]+\/)*create` + BARREL_TAIL)
 
 /**
- * **모듈 지정자**를 전부 뽑는다 — `from '…'` · `import('…')` · `require('…')`.
+ * 소스 한 벌에서 **코드에만 있는** 사실 둘을 한 번에 뽑는다.
+ *
+ * ★정규식 한 방으로 훑던 초판이 **주석과 문자열을 코드로 읽었다**(게이트 2 BLOCKER-1).
+ *   `// it('… open-while-loading …')` 한 줄이면 실행되는 테스트가 **0개인데도** 계약 판정이
+ *   초록이었다. 절대 규칙 ⑭ 가 `skip`/`only` 를 금지하므로 테스트를 잠시 끄려는 사람이 실제로
+ *   고르는 수단이 **주석 처리**다 — 예외 경로가 아니라 기본 경로다.
+ *   `[[invariant-satisfied-by-helptext-not-logic]]` 가 적발한 바로 그 양식이고,
+ *   초판은 그 메모리를 인용하면서 같은 결함을 남겼다.
+ *
+ * 그래서 정규식을 버리고 **상태를 가진 스캐너**로 바꿨다. 주석과 문자열 안은 코드가 아니므로
+ * 애초에 토큰으로 안 나온다 — 모듈 지정자 쪽 같은 구멍(Nit-3)도 함께 닫힌다.
+ *
+ * **알려진 한계 (fail-closed 라 구멍이 아니라 거짓 red 쪽이다).**
+ * · `it.each([...])('제목')` 처럼 **첫 인자가 문자열이 아닌** 호출은 제목을 못 뽑는다.
+ *   `it.skip` · `describe.only` 처럼 인자가 바로 문자열인 것은 뽑는다.
+ * · 정규식 리터럴 안의 `//`(예: `/https:\/\//`)를 줄 주석 시작으로 읽어 그 줄 나머지를 버린다.
+ * 둘 다 「못 뽑는다」 방향이라 판정이 느슨해지지 않는다. 실물 3파일에서 제목이 실제로
+ * 뽑히는지는 아래 「선언한 테스트 파일이 실재한다」 단언이 매번 확인한다.
+ */
+export function scanSource(source: string): { specifiers: string[]; titles: string[] } {
+  const specifiers: string[] = []
+  const titles: string[] = []
+  const CALLS = new Set(['it', 'test', 'describe'])
+  const IMPORTS = new Set(['from', 'import', 'require'])
+  let expect: 'specifier' | 'title' | null = null
+  let i = 0
+
+  while (i < source.length) {
+    const c = source[i] as string
+
+    if (c === '/' && source[i + 1] === '/') {
+      while (i < source.length && source[i] !== '\n') i++
+      continue
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      i += 2
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+
+    if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1
+      let buf = ''
+      while (j < source.length && source[j] !== c) {
+        if (source[j] === '\\') { buf += source[j + 1] ?? ''; j += 2; continue }
+        buf += source[j]
+        j++
+      }
+      if (expect === 'specifier') specifiers.push(buf)
+      if (expect === 'title') titles.push(buf)
+      expect = null
+      i = j + 1
+      continue
+    }
+
+    if (/[A-Za-z_$]/.test(c)) {
+      let j = i
+      while (j < source.length && /[\w$]/.test(source[j] as string)) j++
+      const word = source.slice(i, j)
+      const isMember = i > 0 && source[i - 1] === '.'
+
+      if (!isMember && CALLS.has(word)) {
+        // `it.each` · `describe.only` 처럼 이어지는 멤버 접근을 건너뛴다
+        let k = j
+        while (source[k] === '.') { k++; while (k < source.length && /[\w$]/.test(source[k] as string)) k++ }
+        while (k < source.length && /\s/.test(source[k] as string)) k++
+        if (source[k] === '(') { expect = 'title'; i = k + 1; continue }
+      }
+      expect = !isMember && IMPORTS.has(word) ? 'specifier' : null
+      i = j
+      continue
+    }
+
+    // 공백과 `import(` · `require(` 의 여는 괄호는 기대를 유지한다
+    if (/\s/.test(c) || (c === '(' && expect === 'specifier')) { i++; continue }
+    expect = null
+    i++
+  }
+
+  return { specifiers, titles }
+}
+
+/**
+ * **모듈 지정자**를 전부 뽑는다 — `from '…'` · `import '…'` · `import('…')` · `require('…')`.
  *
  * ★`from` 만 보던 2판이 놓친 것을 여기서 닫는다(매핑 `40`). 동적 import 와 `require` 는
  *   문법이 달라 `from` 이 아예 안 나온다.
- * ★모듈 지정자 문법을 요구하는 이유. 경로만 grep 하면 **KDoc 안의 경로 언급이 오탐**된다 —
+ * ★주석·문자열 안의 경로 언급은 `scanSource` 가 애초에 안 내놓는다 —
  *   `routes/issues.index.tsx` 가 이 훅 파일을 「정본 논거」로 인용한다(실측).
  */
 export function extractModuleSpecifiers(source: string): string[] {
-  const pattern = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)(['"])([^'"]+)\1/g
-  const out: string[] = []
-  for (const m of source.matchAll(pattern)) out.push(m[2] as string)
-  return out
+  return scanSource(source).specifiers
 }
 
 /**
  * 그 모듈 지정자가 게이트 계약 대상인가.
  *
- * 확장자 명시(`….js`)는 부분일치라 자동으로 함께 잡힌다 — 2판이 `['"]` 로 끝을 못 박아
- * 놓쳤던 자리다.
+ * ★needle 은 **부분일치이고 그것이 의도다.** `use-issue-create-submit-legacy` 처럼 이름이
+ *   파생된 미래 모듈까지 소비처로 센다. 방향이 fail-closed(오탐 쪽)이고, 오탐의 대가는
+ *   「레지스트리에 선언 한 줄 추가」라 장부 처방 ①의 절충 그대로다.
  */
 export function isConsumerSpecifier(specifier: string): boolean {
   if (CONSUMER_MODULE_NEEDLES.some((needle) => specifier.includes(needle))) return true
-  return specifier === BARREL_PATH
-    || specifier.endsWith(`/${BARREL_PATH}`)
-    || specifier.endsWith(`/${BARREL_PATH}/index`)
-    || specifier.endsWith(`${BARREL_PATH}/index`)
+  return ABSOLUTE_BARREL.test(specifier) || RELATIVE_BARREL.test(specifier)
 }
 
 /** 소스 한 벌이 게이트 계약 소비처인가 — 위 둘의 합성. */
@@ -146,19 +238,14 @@ export function isConsumerSource(source: string): boolean {
 }
 
 /**
- * 테스트 **제목**만 뽑는다 (`it` · `test` · `describe` · `it.each` 류 포함).
+ * 테스트 **제목**만 뽑는다 — 주석과 문자열 안은 코드가 아니므로 안 나온다 (매핑 `37`).
  *
- * ★주석을 세지 않는 것이 이 함수의 전부다 (매핑 `37`).
- *   계약 리터럴이 「파일 어딘가에 있으면 통과」면 **주석 한 줄로 만족되는 판정**이 된다 —
- *   저장소 메모리 `[[invariant-satisfied-by-helptext-not-logic]]` 가 적발한 그 양식이고,
- *   실제로 착수 시점의 `IssueMetaPanel.test.tsx` 는 계약명을 **주석에만** 갖고 있었다.
- *   제목은 실행되는 테스트의 이름이라 지우면 테스트가 함께 사라진다.
+ * 계약 리터럴이 「파일 어딘가에 있으면 통과」면 주석 한 줄로 만족되는 판정이 된다.
+ * 제목은 **실행되는 테스트의 이름**이라 지우면 테스트가 함께 사라진다 — 그것이 이 판정의 무게다.
+ * 한계는 `scanSource` KDoc 참조.
  */
 export function extractTestTitles(source: string): string[] {
-  const pattern = /(?:^|[^.\w$])(?:it|test|describe)(?:\.\w+)*\s*\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g
-  const out: string[] = []
-  for (const m of source.matchAll(pattern)) out.push(m[2] as string)
-  return out
+  return scanSource(source).titles
 }
 
 /**
@@ -175,18 +262,36 @@ export function declaresContractInTitle(
 }
 
 /**
- * 훅 **정의** 파일들 — 소비처가 아니다.
+ * 훅 **정의** 파일들 — 자기 자신을 정의한다는 이유만으로는 소비처가 아니다.
  *
- * ★배럴 needle 이 들어오면서 3판에서도 여전히 도달 불가다. 정의 파일은 자기를 import 하지
- * 않고 배럴도 아직 없다. 그 사실을 숨기지 않고 적어 둔다 — 「보호가 있다」고 읽히면 다음
- * 사람이 틀린 근거로 안심한다(#383 C4 · 게이트 2 재리뷰 지적).
- * 지우지 않는 이유는 배럴이 실제로 생기면 그 배럴이 정의 파일을 re-export 하면서
- * **정의 파일 자신이 배럴을 import 하는 순환**이 흔히 생기기 때문이다.
+ * ★**초판은 이 목록을 통째로 빼서 새 구멍을 열었다**(게이트 2 CONCERNS-2). 매핑 43 을 닫으려고
+ *   `use-issue-create-submit.ts` 를 목록에 넣었더니, **그 파일이 게이트 훅을 들여오는 경우까지
+ *   함께 삼켜졌다** — 2판에서는 잡히던 형태다. 리뷰가 반사실 대조로 실증했다.
+ *   그리고 그 리팩터는 가상이 아니다. `use-issue-create-submit.ts` 의 KDoc 이
+ *   「이 값의 출처는 `useIssueCreatePermissionGate` 뿐이다」라고 못 박고 있어, 매핑 43 을
+ *   근본적으로 닫는 자연스러운 다음 수가 「게이트 호출을 제출 훅 안으로 옮긴다」이다.
+ *   그 순간 제출 훅이 **유일한 게이트 소비처**가 되면서 계약 선언 강제에서 사라진다.
+ *
+ * 그래서 「정의 파일이면 무조건 제외」가 아니라 **자기 모듈 말고 다른 소비처 모듈을 들여오면
+ * 진짜 소비처**로 센다. 아래 `isSelfOnlyDefinition` 이 그 판정이다.
  */
 const DEFINITION_FILES: readonly string[] = [
   'src/components/issue/create/use-issue-create-permission-gate.ts',
   'src/components/issue/create/use-issue-create-submit.ts',
 ]
+
+/**
+ * 정의 파일이 **자기 자신만** 이유로 걸렸는가.
+ *
+ * 자기 모듈 이름이 아닌 소비처 지정자를 하나라도 들여오면 `false` — 즉 진짜 소비처라
+ * 계약 선언을 강요당한다.
+ */
+export function isSelfOnlyDefinition(relPath: string, source: string): boolean {
+  if (!DEFINITION_FILES.includes(relPath)) return false
+  const ownModule = (relPath.split('/').pop() ?? '').replace(/\.tsx?$/, '')
+  return !extractModuleSpecifiers(source)
+    .some((s) => isConsumerSpecifier(s) && !s.includes(ownModule))
+}
 
 const WEB_ROOT = resolve(__dirname, '../../../../..')
 const SRC = join(WEB_ROOT, 'src')
@@ -235,9 +340,10 @@ function diffConsumers(
 
 const sourceFiles = collectSourceFiles(SRC)
 const consumers = sourceFiles
-  .filter((f) => isConsumerSource(readFileSync(f, 'utf-8')))
-  .map(toRelative)
-  .filter((p) => !DEFINITION_FILES.includes(p))
+  .map((f) => ({ path: toRelative(f), source: readFileSync(f, 'utf-8') }))
+  .filter(({ source }) => isConsumerSource(source))
+  .filter(({ path, source }) => !isSelfOnlyDefinition(path, source))
+  .map(({ path }) => path)
   .sort()
 
 describe('로딩 프레임 계약 — 소비처 선언 강제', () => {
@@ -323,9 +429,26 @@ describe('소비처 탐지 대조군 — 2판이 놓친 경로들 (매핑 40·43
     expect(isConsumerSource(`const m = require('@/components/issue/create/use-issue-create-permission-gate')`)).toBe(true)
   })
 
-  it('★배럴 재export 경유도 잡는다 (2판 구멍 · 매핑 40 — 지금은 잠재)', () => {
-    expect(isConsumerSource(`import { useIssueCreatePermissionGate } from '@/components/issue/create'`)).toBe(true)
-    expect(isConsumerSource(`import { useIssueCreatePermissionGate } from '@/components/issue/create/index'`)).toBe(true)
+  // ★초판은 아래 9종 중 3종만 덮었고 6종이 샜다 (게이트 2 CONCERNS-1 이 실물 파일로 실증).
+  //   표기 변형을 하나씩 세지 않고 전수로 돌린다 — 「3종은 되니 됐다」가 초판의 실수였다.
+  it.each([
+    '@/components/issue/create',
+    '@/components/issue/create/index',
+    '@web/components/issue/create',
+    '@/components/issue/create/index.ts',
+    '@/components/issue/create/index.js',
+    '@/components/issue/create/',
+    '../create',
+    './create',
+    '../../create/index',
+    '../create/index.js',
+  ])('★배럴 경유를 표기 변형과 무관하게 잡는다 — %s (매핑 40)', (specifier) => {
+    expect(isConsumerSpecifier(specifier)).toBe(true)
+  })
+
+  it('무관한 절대 경로의 create 는 배럴로 세지 않는다 (오탐 대조군)', () => {
+    expect(isConsumerSpecifier('@/utils/create')).toBe(false)
+    expect(isConsumerSpecifier('@/features/board/create')).toBe(false)
   })
 
   it('★제출 훅만 들여와도 잡는다 (매핑 43 — 게이트 훅을 한 번도 안 부르는 무게이트 경로)', () => {
@@ -368,6 +491,31 @@ describe('계약 제목 판정 대조군 — 주석으로는 만족되지 않는
     expect(declaresContractInTitle(src, 'open-while-loading')).toBe(false)
   })
 
+  // ★★초판이 여기서 뚫렸다 (게이트 2 BLOCKER-1). 위 대조군은 주석 안에 `it(` 이 **없는**
+  //   한 형태뿐이었고, 그 하나를 「주석 일반」으로 일반화한 것이 사각이었다.
+  //   절대 규칙 ⑭ 가 skip·only 를 금지하므로 테스트를 잠시 끄는 실제 수단이 주석 처리다 —
+  //   즉 아래 4종은 예외 경로가 아니라 **기본 경로**다. 전수로 박는다.
+  it.each([
+    [`// it('로딩 프레임 계약 open-while-loading 을 지킨다', async () => {})`, '줄 주석'],
+    [`/* it('open-while-loading 계약') */`, '블록 주석'],
+    // ★JSDoc 은 `/** */` 안에서만 존재한다. ` * it(…)` 를 단독 문자열로 주면 그건 곱셈 뒤
+    //   호출이라 **코드가 맞고**, 그 픽스처로 초록을 받으면 도달 불가 상태를 지키는 가짜 그린이다
+    //   (`[[unreachable-state-fixture-is-fake-green]]` 의 역형태). 실물 형태로 적는다.
+    [`/**\n * it('open-while-loading')\n */`, 'JSDoc 블록'],
+    [`const s = "it('open-while-loading')"`, '문자열 리터럴 안'],
+    [`// TODO 되살릴 것: it('open-while-loading 을 지킨다', () => {})`, '주석 처리된 테스트'],
+  ])('★★주석·문자열 안의 it() 은 제목으로 세지 않는다 — %s', (src) => {
+    expect(declaresContractInTitle(src, 'open-while-loading')).toBe(false)
+  })
+
+  it('★★계약을 떠안은 테스트를 주석 처리하면 red 가 된다 (BLOCKER-1 재현 대조군)', () => {
+    const live = `it('로딩 프레임 (open-while-loading)', () => {})`
+    const commented = `// ${live}`
+
+    expect(declaresContractInTitle(live, 'open-while-loading')).toBe(true)
+    expect(declaresContractInTitle(commented, 'open-while-loading')).toBe(false)
+  })
+
   it('★다른 계약명으로는 만족되지 않는다 (복제 회귀 방지)', () => {
     const src = `it('로딩 중 판정을 안 그린다 (no-verdict-while-loading)', async () => {})`
 
@@ -392,5 +540,59 @@ describe('계약 제목 판정 대조군 — 주석으로는 만족되지 않는
         expect(declaresContractInTitle(src, declared)).toBe(declared === written)
       }
     }
+  })
+})
+
+describe('정의 파일 필터 대조군 — 구멍을 닫으면서 새 구멍을 열지 않는다 (매핑 43)', () => {
+  const SUBMIT = 'src/components/issue/create/use-issue-create-submit.ts'
+  const GATE = 'src/components/issue/create/use-issue-create-permission-gate.ts'
+
+  it('제출 훅이 게이트를 안 들여오면 정의 파일로 걸러진다 (현재 상태)', () => {
+    const src = `import { useMutation } from '@tanstack/react-query'`
+
+    expect(isSelfOnlyDefinition(SUBMIT, src)).toBe(true)
+  })
+
+  it('★★제출 훅이 게이트 훅을 들여오면 진짜 소비처다 (초판이 삼켰던 형태)', () => {
+    // 이 리팩터는 가상이 아니다 — 제출 훅 KDoc 이 「이 값의 출처는 게이트 훅뿐」이라 못 박아서
+    // 매핑 43 을 근본적으로 닫는 다음 수가 바로 「게이트 호출을 제출 훅 안으로 옮긴다」이다.
+    const src = `import { useIssueCreatePermissionGate } from '@/components/issue/create/use-issue-create-permission-gate'`
+
+    expect(isSelfOnlyDefinition(SUBMIT, src)).toBe(false)
+  })
+
+  it('게이트 훅 정의 파일도 같은 규칙을 따른다 (대칭 확인)', () => {
+    expect(isSelfOnlyDefinition(GATE, `import { useQuery } from '@tanstack/react-query'`)).toBe(true)
+    expect(isSelfOnlyDefinition(GATE, `import { x } from './use-issue-create-submit'`)).toBe(false)
+  })
+
+  it('정의 파일이 아닌 화면에는 이 필터가 적용되지 않는다 (오탐 대조군)', () => {
+    const screen = 'src/components/issue/IssueCreateForm.tsx'
+
+    expect(isSelfOnlyDefinition(screen, `import { x } from './create/use-issue-create-submit'`)).toBe(false)
+  })
+})
+
+describe('모듈 지정자 추출 대조군 — 주석·문자열은 코드가 아니다 (Nit-3)', () => {
+  it('★주석 안의 import 문은 세지 않는다', () => {
+    expect(isConsumerSource(`// import { x } from './create/use-issue-create-submit'`)).toBe(false)
+    expect(isConsumerSource(`/* from 'use-issue-create-permission-gate' */`)).toBe(false)
+  })
+
+  it('★문자열 안의 import 문도 세지 않는다', () => {
+    expect(isConsumerSource(`const doc = "from '@/components/issue/create'"`)).toBe(false)
+  })
+
+  it('부수효과 import 도 잡는다 (from 이 없는 형태)', () => {
+    expect(isConsumerSource(`import '@/components/issue/create/use-issue-create-permission-gate'`)).toBe(true)
+  })
+
+  it('URL 안의 // 를 줄 주석으로 읽고 그 줄을 버리지 않는다 (문자열 보호)', () => {
+    const src = [
+      `const url = 'https://example.com/x'`,
+      `import { g } from '@/components/issue/create/use-issue-create-permission-gate'`,
+    ].join('\n')
+
+    expect(isConsumerSource(src)).toBe(true)
   })
 })
