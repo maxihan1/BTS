@@ -175,6 +175,15 @@ describe('CreateIssueDialog — 제출 중 피드백 (게이트 2 C-2)', () => {
 
     release()
     await settlePendingMutations()
+
+    // ★완료 프레임 재단언 (부채 매핑 41). 위 진입 프레임 단언만으로는 진행 신호가 `true` 만
+    //   보내고 `false` 를 **안 보내도** 초록이다 — 사용자는 생성이 끝난 뒤에도 푸터 버튼이
+    //   「생성 중…」에 비활성으로 갇힌 화면을 본다. 모달을 닫지 않고 계속 만드는 연쇄 생성
+    //   경로가 그 자리에서 막힌다. `open` 은 고정 프로프라 성공 뒤에도 모달이 남는다.
+    const settled = await screen.findByRole('button', {
+      name: issueCreateStrings.submitButton,
+    })
+    expect(settled).not.toBeDisabled()
   })
 })
 
