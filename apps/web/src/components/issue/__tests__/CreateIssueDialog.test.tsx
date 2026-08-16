@@ -175,6 +175,20 @@ describe('CreateIssueDialog — 제출 중 피드백 (게이트 2 C-2)', () => {
 
     release()
     await settlePendingMutations()
+
+    // ★완료 프레임 재단언 (부채 매핑 41). 위 진입 프레임 단언만으로는 진행 신호가 `true` 만
+    //   보내고 `false` 를 **안 보내도** 초록이다 — 사용자는 생성이 끝난 뒤에도 푸터 버튼이
+    //   「생성 중…」에 비활성으로 갇힌 화면을 본다. 모달을 닫지 않고 계속 만드는 연쇄 생성
+    //   경로가 그 자리에서 막힌다. `open` 은 고정 프로프라 성공 뒤에도 모달이 남는다.
+    //
+    // ★판별력은 아래 `findByRole({ name: submitButton })` **쿼리**에 있다. `CreateIssueDialog`
+    //   가 `disabled` 와 라벨을 같은 `submitting` 하나에서 파생시키므로, 뒤의
+    //   `not.toBeDisabled()` 만 지워도 뮤테이션은 여전히 red 다. 두 줄이 각각 무게를 갖는다고
+    //   읽으면 틀린다 — 남겨 두는 이유는 계약을 **문장으로** 못 박기 위해서다(#386 리뷰 Nit-4).
+    const settled = await screen.findByRole('button', {
+      name: issueCreateStrings.submitButton,
+    })
+    expect(settled).not.toBeDisabled()
   })
 })
 

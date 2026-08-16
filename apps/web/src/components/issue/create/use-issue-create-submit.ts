@@ -20,12 +20,16 @@ export interface IssueCreateSubmitOptions {
    * ★★**이 값의 출처는 `useIssueCreatePermissionGate` 뿐이다. 리터럴 `false` 를 넘기지 마라.**
    *   분할 전에는 게이트 계산과 집행이 같은 함수 안에 있어 제출 경로를 쓰려면 훅 호출을 피할 수
    *   없었다. 지금은 집행만 여기 있고 판정은 평범한 boolean 파라미터라, 새 화면이
-   *   `useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })` 로 쓰면 **무게이트 생성
-   *   제출 경로**가 열린다. 그리고 로딩 프레임 계약 판별식은 *게이트 훅* import 만 보므로
-   *   (`create/__tests__/permission-gate-loading-contract.test.ts` 의 `IMPORT_NEEDLE`)
-   *   그 화면은 **초록을 유지한다.** 부채 매핑 `43` 으로 등재했다 — 배럴 재export(매핑 `40`)와는
-   *   다른 경로이고, 기계로 닫으려면 `IMPORT_NEEDLE` 을 배열로 넓혀 이 모듈도 소비처로 세면 된다.
-   *   #385 게이트 2 리뷰 C-1 이 코드 읽기로 도출했다(새 소비처를 만들어 실증하지는 않았다).
+   *   `useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })` 로 쓰면 게이트 훅을
+   *   **한 번도 안 들여오고** 무게이트 생성 제출 경로가 열린다(부채 매핑 `43`).
+   *
+   * ★**기계는 세웠다 (#386 · 매핑 `43` 해소).** `permission-gate-loading-contract.test.ts` 의
+   *   `CONSUMER_MODULE_NEEDLES` 가 **이 모듈을 소비처로 센다** — 이 훅을 들여오는 화면은 게이트
+   *   훅을 안 부르더라도 로딩 프레임 계약을 선언해야 하고, 안 하면 red 다.
+   *   그러니 위 경고는 이제 「주석뿐인 규율」이 아니다. 다만 **어느 계약을 선언하든 리터럴
+   *   `false` 자체를 막지는 못한다** — 선언을 강요할 뿐이라, 이 문장은 여전히 사람이 읽어야 한다.
+   *   (초판 KDoc 은 이 자리에서 이제 없는 심볼 `IMPORT_NEEDLE` 을 인용하며 「아직 열려 있다」를
+   *   현재형으로 말했다. #386 게이트 2 리뷰 CONCERNS-3 이 잡았다.)
    */
   isCreateExplicitlyDenied: boolean
   /** 생성 성공 후 콜백 — 생성된 이슈 key 를 전달 */
