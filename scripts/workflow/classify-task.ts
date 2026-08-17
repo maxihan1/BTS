@@ -65,7 +65,12 @@ const UI_KEYWORDS = [
 ];
 
 const UI_PATH_PATTERNS = [
-  /apps\/web\//,
+  // ★뒤 슬래시를 요구하지 않는다. 사람이 자연어로 쓰는 형태는 `apps/web`(슬래시 없음)이 흔한데
+  //   종전 `/apps\/web\//` 는 그걸 놓쳐 신호 0 으로 읽고 기본값 `backend` 로 떨어뜨렸다(부채 44).
+  //   ADR 2026-07-28 §D2 가 같은 오분류를 「3회째」로 기록해 두었다 — 등재보다 7주 앞선다.
+  // ★`\b` 를 쓰지 않는 이유. `\b` 는 `b` 다음 `-` 에서 성립하므로 `apps/web-legacy` 가 걸린다(실측).
+  //   부정 전방탐색으로 단어 문자와 하이픈을 **둘 다** 막아야 `apps/webhook`·`apps/web-legacy` 가 빠진다.
+  /apps\/web(?![\w-])/,
   /\.tsx$/,
   /page\.tsx$/,
 ];
