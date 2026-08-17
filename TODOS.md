@@ -4387,7 +4387,24 @@ Gradle `include`」로 옮겼다 — 두 목록이 여전히 서로 독립(디�
 
 ---
 
-## ⬜ 워크플로우 — `classify-task` 가 E2E 를 포함한 혼합 PR 을 `qa-engineer` 로 오배정한다 (신규 · 미착수 · T1)
+## ✅ 워크플로우 — `classify-task` 가 E2E 를 포함한 혼합 PR 을 `qa-engineer` 로 오배정한다 (해소 2026-08-17 · #387)
+
+> **✅ 2026-08-17 해소 (#387).** 처방 후보 ①(「제목이 아니라 변경 경로를 보게 한다」)의 취지를 채택하되
+> **판정을 통째로 옮기지 않고 둘로 쪼갰다** — `QA_PATH_PATTERNS`(경로)는 `ui` **앞**(⑤),
+> `QA_KEYWORDS`(키워드)만 **뒤**(⑧). 후보 ②(`/bts-impl` 이 `files` 로 재판정)는 착수 시점에
+> 변경 경로가 0건이라 기각했다.
+>
+> ★**초판(qa 를 통째로 뒤로)은 게이트 1 아웃사이드 보이스가 P0 로 반증했다.** `apps/web` 은
+> `apps/web/e2e/` 의 **접두사**라, 같은 PR 의 항목 `44` 경로 확장과 겹치면
+> **Playwright 표면 전체가 `qa-engineer` 에 도달 불가**가 된다(실측 — `apps/web/e2e/…spec.ts 회귀 보강`
+> 이 `qa`→`ui`). 계획의 S3 회귀 가드는 키워드 제목만 써서 정확히 그 구멍을 비껴갔다.
+>
+> ★**부수적으로 `QA_PATH_PATTERNS` 도 같은 뒤 슬래시 결함**을 갖고 있어 함께 봉합했다 —
+> 항목 `44` 와 **동형 결함**이다.
+>
+> ★**티어 표기 정정.** 이 항목은 등재 시 `T1` 로 적혀 있었으나 **실측은 T2** 다 —
+> `scripts/workflow/*.{ts,mjs}` 는 `surfaces.ts` 의 `GUARD_CI` 표면이다.
+
 
 **무엇.** `scripts/workflow/classify-task.ts:298` 의 qa 판정이 `:304` 의 ui 판정보다 **앞선다**.
 그래서 제목에 「E2E」가 있으면 **위치와 무관하게** `type=qa` 로 떨어지고, `:331` 매핑이
@@ -4409,6 +4426,15 @@ Gradle `include`」로 옮겼다 — 두 목록이 여전히 서로 독립(디�
 ---
 
 ## ⬜ 워크플로우 — `bts-review-plan` 분기 표에 `ui`@T2 조합이 정의돼 있지 않다 (신규 · 미착수 · T1)
+
+> **★범위 확장 (2026-08-17 · #387 착수 중 실측).** 같은 공백이 **`ui` 에만 있는 게 아니다.**
+> `chore` 행도 「이 표 미진입 → skip」인데 전제가 「chore 는 T2 에 안 온다」이고, 그 전제는 거짓이다 —
+> `scripts/workflow/**` 는 `GUARD_CI` 라 `chore` 가 T2 로 도달한다. **#387 자신이 그 조합이었고**
+> 표가 리뷰 0종을 지시하는 것을 사람이 판단으로 덮었다(`plan-eng-review` 1종).
+> 처방은 「`ui` 행에 티어 조건부 렌즈」가 아니라 **「미진입」이라 적힌 모든 행에 대해 도달 가능성을
+> 판별식이 검사하게** 하는 쪽으로 넓힌다. `bugfix`·`qa` 행도 같은 검사를 받아야 한다.
+> ⚠️ **순서 제약** — 이 항목은 항목 `33` **다음**이다(마스터 §순서 제약).
+
 
 **무엇.** `.claude/skills/bts-review-plan/SKILL.md` 분기 표의 `TYPE == "ui"` 행은
 「이 표 미진입」으로 적혀 있다(ui 는 보통 T1 이라 이 단계에 안 온다는 전제). 그런데 ui 작업이
@@ -4737,7 +4763,22 @@ const submit = useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })
 
 ---
 
-## ⬜ 워크플로우 — `classify-task` 가 경로 뒤 슬래시가 없으면 `apps/web` 작업을 backend 로 오배정한다 (신규 · 미착수 · T1)
+## ✅ 워크플로우 — `classify-task` 가 경로 뒤 슬래시가 없으면 `apps/web` 작업을 backend 로 오배정한다 (해소 2026-08-17 · #387)
+
+> **✅ 2026-08-17 해소 (#387).** 처방 후보 ①을 채택하되 **패턴을 바꿨다** —
+> `\b` 가 아니라 부정 전방탐색이다.
+>
+> ★**이 항목이 「착수 시 실측하라」고 남긴 하이픈 오탐이 실재했다.** `\b` 는 `b` 다음 `-` 에서
+> 성립하므로 `apps/web-legacy` 를 `ui` 로 끌어간다. 단어 문자와 하이픈을 **둘 다** 막아야
+> `apps/webhook`·`apps/web-legacy` 가 빠진다.
+>
+> ★**등재(2026-08-16)보다 최소 7주 앞서 사람을 괴롭히고 있었다.** ADR
+> `2026-07-28-fr-ux-07-active-project-context.md` §D2 가 같은 오분류를 **「3회째」**로 기록했고,
+> `2026-07-30-fr-ux-08-project-switcher.md` §D6 이 또 기록했다. 매번 사람이 손으로 덮었고
+> **그 오버라이드를 강제하는 것이 없었다.**
+>
+> ★**티어 표기 정정.** 등재 시 `T1` 로 적혀 있었으나 **실측은 T2**(`GUARD_CI`).
+
 
 **무엇.** `scripts/workflow/classify-task.ts:67` 의 `UI_PATH_PATTERNS` 가 `/apps\/web\//` —
 **뒤 슬래시를 요구**한다. 그래서 사람이 자연어로 흔히 쓰는 `apps/web`(슬래시 없음)은 안 걸리고,
@@ -4777,3 +4818,126 @@ const submit = useIssueCreateSubmit(state, { isCreateExplicitlyDenied: false })
 
 **발견 경위.** 매핑 37·40·41·43 착수 시 `classify-task --cache` 실행 결과가 실제 표면과
 어긋나는 것을 보고 3형태로 대조 실행해 실증했다.
+
+
+## ✅ 워크플로우 — `classify-task` 의 ASCII 키워드가 다른 영단어 안의 부분문자열에 매치한다 (해소 2026-08-17 · #387)
+
+> **✅ 2026-08-17 해소 (#387).** 등재와 해소가 같은 PR 이다 — 항목 `44` 착수 중 baseline 실측에서 발견했다.
+
+**무엇.** `classify-task.ts` 의 `includesWithBoundary` 는 **한글 키워드의 앞 경계만** 봤다.
+ASCII 키워드는 맨 substring 매치라 다른 영단어 안에 묻혀도 걸린다.
+
+| 입력 | 걸린 키워드 | 종전 결과 |
+|---|---|---|
+| `dispatch 로직 정리` · `patch 파일 적용` · `path 계산 수정` | `pat` (AUTH) | **`security-engineer`** |
+| `build 스크립트 정리` · `guide 문서 갱신` · `requirement 정리` | `ui` | `frontend-engineer` |
+| `restore 절차 문서화` · `rapid 프로토타입` | `rest` · `api` | `api` |
+| `keyboard 단축키 정리` | `board` | BC `agile-planning` |
+| `transaction 격리 수준 조정` · `interaction 로그 수집` | `action` | BC `automation` |
+| `relabel 스크립트` | `label` | BC `issue-tracking` |
+
+**대조군.** `빌드 스크립트 정리` · `경로 계산 수정` 은 정상 — 원인이 ASCII 부분문자열임이 확정된다.
+
+**★이 결함은 「측정하지 않은 안전 속성을 단정한 문장」이 낳았다.** 2026-07-27 해소 기록이
+경계 규칙을 넣으면서 **「ASCII 키워드는 무영향」**이라 적었고 소스 주석도 「영문에 한글 접두사가
+붙는 형태는 이 도메인에 없다」로 같은 주장을 했다. **참이지만 무관한 문장**이다 — ASCII 키워드의
+실제 위험은 한글 접두사가 아니라 **다른 ASCII 단어**였다. 그 문장이 13개월을 살아남았다.
+
+**처방(채택).** `BOUNDARY_ONLY` 집합(`pat` `ui` `api` `rest` `board` `action` `label`)에
+**이름으로 적힌 것만** 양쪽 단어 경계를 요구한다. 경계 문자류는 `[a-z]` 만(숫자 제외)이고
+영어 어형 접미(`ing`·`ed`·`s`)와 **CamelCase 험프(소문자→대문자)**는 경계로 친다.
+
+**★길이 임계 설계는 기각했다 (게이트 1 아웃사이드 보이스 P0).** 「길이 ≤ N 이면 경계 요구」는
+N 을 4 로 두든 6 으로 올리든 **진짜 신호를 함께 죽인다** — `argon2`(6자)의 어형 `Argon2id`
+(OWASP 권장 표기)와 `ldap`(4자)의 `LDAPS` 가 `auth`/`security-engineer` → `backend` 로 유실되고,
+영어 복수형 `issues`·`users`·`labels`·`boards`·`actions`·`exports` 가 전부 BC 를 잃는다.
+**길이는 충돌 성향과 무관하다** — `csrf`(4)·`oidc`(4)·`aql`(3) 은 15개월간 한 번도 안 부딪혔다.
+
+**★그걸 왜 처음에 못 봤나 — 계측기가 눈이 멀어 있었다.** 안전 근거로 쓴
+`bc-keyword-coverage` 동결값(57)의 오라클은 **한국어 FR 제목 139건**이라 영어 어형 변화가
+원리적으로 나타날 수 없다. 그래서 임계 2·3·4·5·6 **전부**에서 57 이 유지된다.
+「동결값이 안 움직인다」를 안전으로 읽은 것이 이 세션의 실수였다.
+
+## ⬜ 워크플로우 — `bts-impl` 이 dispatch 하는 `spec-compliance-verifier` 에 정본 파일이 없다 (신규 · 미착수 · T1)
+
+**무엇.** `.claude/skills/bts-impl/SKILL.md` Step 2-C 가 `spec-compliance-verifier` 를 병렬
+dispatch 하라고 지시하고 `verifier-contract.md` 가 그 프롬프트·판정 기준·응답 형식을 정본으로
+규정한다. 그런데 `.claude/agents/` 에는 그 파일이 **없다** — 실물은 `backend-engineer` ·
+`code-reviewer` · `db-engineer` · `frontend-engineer` · `qa-engineer` · `security-engineer` 6종뿐이다.
+
+**왜 문제인가.** `CLAUDE.md` §sub-agent 가 **「역할·책임·금지의 정본은 `.claude/agents/*.md`.
+파일 없는 역할은 만들지 않는다」**고 못 박는다. 지금은 스킬이 헌법을 어기는 이름을 부르고 있고,
+dispatch 가 조용히 다른 에이전트로 떨어지든 실패하든 **둘 다 사람이 눈으로 봐야만 안다.**
+
+**실측 (2026-08-17 · #387 착수 중).** `ls .claude/agents/` 로 확인. 이 PR 은 Maxi 확정으로
+`code-reviewer` 로 대체해 검증을 돌렸다.
+
+**처방 후보 2 (착수 시 확정).**
+① `.claude/agents/spec-compliance-verifier.md` 를 신설한다 — 스킬이 이미 계약을 갖고 있으므로
+   그 계약을 에이전트 정본으로 옮긴다.
+② `bts-impl` 이 기존 `code-reviewer` 를 쓰도록 바꾼다 — 역할이 겹치는지 먼저 대조해야 한다.
+
+**★같이 볼 것.** 스킬 본문이 부르는 에이전트 이름 집합과 `.claude/agents/*.md` 파일 집합의
+**차집합 0** 을 강제하는 판별식이 없다. 지배 결함 양식 `[[two-lists-never-check-each-other]]` 그대로다.
+
+## ⬜ 도구 — 장부 판별식이 마스터 §전수 매핑의 **✅ 행 삭제**를 못 본다 (신규 · 미착수 · T1)
+
+**무엇.** `scripts/workflow/debt-ledger-mapping.test.ts` 의 양방향 차집합 2종은 **`⬜` 키만** 본다
+(`ledgerOpenKeys()` ↔ `masterOpenKeys()`). `✅` 는 `마스터 ✅ ⊆ 장부 ✅` **단방향**뿐이다.
+그래서 마스터 §전수 매핑에서 **해소된 행을 통째로 지워도** 부분집합 관계가 더 느슨해질 뿐이라
+**전 판정이 GREEN** 이다.
+
+**실측 (2026-08-17 · #387 Task 5).** 뮤테이션으로 마스터에서 `45`(✅) 행을 지웠더니 EXIT=0.
+같은 자리에서 `46`(⬜) 행을 지우니 즉시 RED(「장부에만 있고 마스터 계획에 없는 항목」).
+**⬜ 는 지켜지고 ✅ 는 안 지켜진다**는 것이 실측으로 갈렸다.
+
+**왜 문제인가.** §전수 매핑이 스스로 **「이 표가 정본이다」**라고 선언한다. 정본에서 행이
+사라져도 아무도 모르면 「이 PR 이 무엇을 닫았나」의 이력이 조용히 증발한다 —
+`✅` 행의 PR 번호가 다음 세션의 유일한 추적 단서다.
+
+**★역방향 전체를 걸 수는 없다.** 판별식 주석이 이미 근거를 적어 두었다 — 장부의 `## ✅` 는
+저장소 전체 이력이라 이 마스터(부채 26+건)의 범위를 크게 넘어 `장부 ✅ ⊆ 마스터 ✅` 는 항상 red 다.
+
+**처방 후보 2 (착수 시 확정).**
+① **✅ 행 수의 단조 하한**을 둔다 — 「마스터 ✅ 행이 N 미만이면 red」. 값은 커밋 시점 실측으로
+   동결하고 늘어나면 올린다(`bc-keyword-coverage` 의 상한·하한 짝과 같은 형태).
+② **PR 번호 축으로 건다** — 마스터 §PR 별 집계의 항목 번호 합집합과 §전수 매핑의 `#NNN` 행
+   집합이 서로를 검사하게 한다. 지금 두 표는 서로를 안 본다(#387 이 F12 로 실측).
+
+**★지배 결함 양식.** `[[two-lists-never-check-each-other]]` 의 **부분 적용** 형태다 —
+두 목록을 대조하되 **일부 상태만** 대조하면, 대조 안 하는 상태가 조용히 썩는다.
+`[[partial-column-parser-lets-unread-column-rot]]` 와 같은 결이고 축만 열→상태로 바뀌었다.
+
+## ⬜ 문서 — `DEVELOPMENT.md` 가 「CI 판별식이 커밋 순서를 대조한다」고 적으나 그런 잡이 없다 (신규 · 미착수 · T0)
+
+**무엇.** `DEVELOPMENT.md:38` 이 절대 규칙으로 「`test:` 커밋이 `feat:` 보다 먼저 · **CI 판별식이 대조**」
+라고 선언한다. 그런데 `.github/workflows/` 5개 전수에 **커밋 접두사 순서를 보는 잡이 0건**이다.
+
+**실측 (2026-08-17 · #387 게이트 2 리뷰).** `workflow-scripts-ci.yml` 포함 전수 확인.
+이 PR 의 커밋 순서는 정상이지만 그것은 **사람이 손으로 확인한 결과**다.
+
+**왜 문제인가.** 헌법이 자기 자신에게 `[[safety-claim-asserted-but-never-measured]]` 를 저지르고 있다.
+「CI 가 대조한다」를 믿고 순서를 안 보면 T2 의 red-first 강제가 통째로 명목이 된다.
+
+**처방 후보 2 (착수 시 확정).**
+① 판별식을 만든다 — PR 커밋 목록에서 같은 표면의 `test:` 가 `feat:`/`fix:` 보다 앞서는지 대조.
+   ⚠️ squash 머지면 main 에는 순서가 안 남으므로 **PR 이벤트에서** 봐야 한다.
+② 문장을 사실에 맞춘다 — 「CI 가 대조한다」를 「게이트 2 에서 사람이 대조한다」로.
+**②가 싸지만 ①이 규율을 실제로 지킨다.** 저장소 규율상 「문장을 사실에 맞추는」 쪽이 하한이다.
+
+## ⬜ 워크플로우 — `AUTH_KEYWORDS` 의 `pat`·`토큰` 줄을 통째로 지워도 판별식이 전부 초록이다 (신규 · 미착수 · T1)
+
+**무엇.** `scripts/workflow/classify-task.ts` 의 `AUTH_KEYWORDS` 에서
+`'pat', 'personal access token', '토큰',` 줄을 삭제해도 워크플로우 판별식이 **전량 pass** 한다.
+
+**실측 (2026-08-17 · #387 게이트 2 리뷰).** 뮤테이션으로 확인. **선재 공백**이며 이 PR 이 만든 것이 아니다.
+
+**왜 문제인가.** PAT(Personal Access Token) 은 보안 표면이고 그 키워드가 사라지면 PAT 작업이
+`security-engineer` 에 안 간다. 그런데 **아무 판별식도 그걸 안 본다** — 키워드 목록이
+「지워도 아무도 모르는」 상태다. `bc-keyword-coverage.test.ts` 는 BC 축만 보고 type/agent 축은 안 본다.
+
+**★같이 볼 것.** 이 공백은 `pat` 하나가 아닐 가능성이 높다. 착수 시 **`AUTH_STRONG` 전 키워드에 대해
+1개씩 지워 red 가 나는지 전수 실측**할 것 — 「N건」이라 적지 말고 전수 열거로.
+
+**처방 후보.** `classify-task.test.ts` 에 보안 키워드별 대표 제목 표를 두고 `it.each` 로 태운다.
+⚠️ 로딩 프레임 계약 판별식(#386)이 `it.each` 를 못 읽는 한계가 있으니 스캐너 대상이면 확인할 것.

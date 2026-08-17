@@ -267,3 +267,180 @@ describe('toSlug — ASCII 강제 + 50자 컷 (Task 3)', () => {
     assert.doesNotMatch(slug, /[\uD800-\uDFFF]/, `lone surrogate 포함: "${slug}"`);
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// 부채 매핑 44 — 경로 신호가 뒤 슬래시를 요구해 apps/web 을 놓친다
+// ─────────────────────────────────────────────────────────
+
+describe('classify — 경로 신호의 단어 경계 (부채 44)', () => {
+  test('apps/web 는 뒤 슬래시가 없어도 ui 로 간다 (S1)', () => {
+    const r = classify({ title: 'apps/web 판별식 정리' });
+    assert.equal(r.type, 'ui');
+    assert.equal(r.agent, 'frontend-engineer');
+  });
+
+  test('apps/web/ 는 종전대로 ui 다 (회귀 방지)', () => {
+    assert.equal(classify({ title: 'apps/web/ 판별식 정리' }).type, 'ui');
+  });
+
+  // ★오탐 방지. 장부가 남긴 후보 `/apps\/web\b/` 는 여기서 죽는다 —
+  //   `\b` 는 `b` 다음 `-` 에서 성립해 apps/web-legacy 를 ui 로 끌어간다.
+  test('apps/web 로 시작하는 더 긴 이름은 ui 가 아니다 (E1·E2)', () => {
+    for (const title of ['apps/webhook 재시도 정리', 'apps/web-legacy 정리']) {
+      assert.notEqual(classify({ title }).type, 'ui', title);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// 부채 매핑 33 — qa 판정이 ui 보다 앞서 혼합 PR 을 qa-engineer 로 보낸다
+// ─────────────────────────────────────────────────────────
+
+describe('classify — qa 는 경로가 앞, 키워드가 뒤 (부채 33)', () => {
+  test('E2E 와 UI 신호가 섞이면 구현 가능한 에이전트로 간다 (S2)', () => {
+    const r = classify({ title: '로딩 프레임 계약 E2E 신설 + apps/web/ 4파일' });
+    assert.equal(r.type, 'ui');
+    // qa-engineer 는 구현 코드 수정이 금지돼 있어 오배정되면 복구 불가다.
+    assert.notEqual(r.agent, 'qa-engineer');
+  });
+
+  test('순수 E2E 작업은 여전히 qa 다 (S3 역방향 회귀)', () => {
+    assert.equal(classify({ title: 'E2E 시나리오만 추가' }).type, 'qa');
+    assert.equal(classify({ title: 'Playwright 회귀 보강' }).type, 'qa');
+  });
+
+  // ★★Task 1 과의 상호작용. `apps/web` 은 `apps/web/e2e/` 의 **접두사**라,
+  //   경로 확장(Task 1)과 qa 를 통째로 뒤로 미는 설계가 겹치면
+  //   Playwright 표면 전체가 qa-engineer 에 도달 불가가 된다. 이 단언이 그 설계를 배제한다.
+  test('E2E 경로는 ui 경로보다 앞선다 (E14)', () => {
+    const r = classify({ title: 'apps/web/e2e/issue-detail.spec.ts 회귀 보강' });
+    assert.equal(r.type, 'qa');
+    assert.equal(r.agent, 'qa-engineer');
+  });
+
+  test('E2E 경로도 뒤 슬래시를 요구하지 않는다 (E15 · 부채 44 와 같은 결함)', () => {
+    assert.equal(classify({ title: 'apps/web/e2e 시나리오 추가' }).type, 'qa');
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// 부채 매핑 45 — ASCII 키워드가 다른 영단어 안의 부분문자열에 매치한다
+// ─────────────────────────────────────────────────────────
+
+describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
+  test('키워드를 부분문자열로 품은 평범한 영단어는 신호가 아니다 (S4)', () => {
+    // pat ⊂ dispatch·patch·path — 종전에는 security-engineer 로 갔다
+    for (const title of ['dispatch 로직 정리', 'patch 파일 적용', 'path 계산 수정']) {
+      assert.notEqual(classify({ title }).type, 'auth', title);
+      assert.notEqual(classify({ title }).agent, 'security-engineer', title);
+    }
+    // ui ⊂ build·guide·requirement
+    for (const title of ['build 스크립트 정리', 'guide 문서 갱신', 'requirement 정리']) {
+      assert.notEqual(classify({ title }).type, 'ui', title);
+    }
+    // rest ⊂ restore · api ⊂ rapid
+    for (const title of ['restore 절차 문서화', 'rapid 프로토타입']) {
+      assert.notEqual(classify({ title }).type, 'api', title);
+    }
+  });
+
+  test('충돌 키워드는 다른 단어 안에 묻히면 BC 신호도 아니다 (E16)', () => {
+    // board ⊂ keyboard · action ⊂ transaction·interaction · label ⊂ relabel
+    for (const title of [
+      'keyboard 단축키 정리',
+      'transaction 격리 수준 조정',
+      'interaction 로그 수집',
+      'relabel 스크립트',
+    ]) {
+      assert.equal(classify({ title }).primary_bc, null, title);
+    }
+  });
+
+  // ★★길이 임계 설계를 영구히 배제하는 단언.
+  //   `argon2`(6자)·`ldap`(4자)는 「짧다」는 이유만으로 경계를 요구하면 어형이 붙는 순간 죽는다.
+  //   Argon2id 는 OWASP 권장 기본값이라 실제로 사람이 쓰는 표기다.
+  test('진짜 보안 키워드는 어형이 붙어도 살아 있다 (E11·E12)', () => {
+    for (const title of ['Argon2id 파라미터 튜닝', 'LDAPS 연결 설정']) {
+      assert.equal(classify({ title }).type, 'auth', title);
+      assert.equal(classify({ title }).agent, 'security-engineer', title);
+    }
+  });
+
+  test('영어 복수형은 BC 를 잃지 않는다 (E13)', () => {
+    assert.equal(classify({ title: 'labels 상한 조정' }).primary_bc, 'issue-tracking');
+    assert.equal(classify({ title: 'boards 순서 조정' }).primary_bc, 'agile-planning');
+    assert.equal(classify({ title: 'actions 실행기 리팩터' }).primary_bc, 'automation');
+  });
+
+  test('목록 밖 키워드는 종전 부분일치를 유지한다 (E8·E9)', () => {
+    // authentication ⊂ AuthenticationProvider · watcher ⊂ Watchers
+    assert.equal(
+      classify({ title: '플러그형 AuthenticationProvider 구조' }).primary_bc,
+      'identity-access',
+    );
+    assert.equal(
+      classify({ title: '담당자 (Reporter 1 / Assignee 1 / Watchers)' }).primary_bc,
+      'issue-tracking',
+    );
+  });
+
+  test('숫자는 경계로 치지 않는다 (E5·E6·E7)', () => {
+    assert.equal(classify({ title: 'saml2 설정' }).type, 'auth');
+    assert.equal(classify({ title: 'oauth2 로그인 연동' }).type, 'auth');
+    assert.equal(classify({ title: '2FA 백업코드' }).type, 'auth');
+    assert.equal(classify({ title: 'API-03 웹훅' }).type, 'api');
+  });
+
+  test('한글 경계 규칙은 그대로다 (E10 · 리액션 회귀)', () => {
+    assert.equal(classify({ title: '빌드 스크립트 정리' }).type, 'backend');
+    assert.equal(classify({ title: '댓글 리액션 추가' }).primary_bc, 'issue-tracking');
+  });
+
+  // ★★독립 검증(#387 Task 5)이 잡은 **이 PR 이 만든 신규 오배정**.
+  //   `label` 을 경계 대상으로 만들자 `labeling`·`labeled` 같은 **진짜 라벨 작업**까지 신호를
+  //   잃었고, 빈자리를 `규칙`(automation)·`필터`(search-export-import)가 차지했다.
+  //   신호 유실이 아니라 **다른 BC 로의 신규 조용한 오라우팅**이라 부채 45 와 같은 양식이다.
+  test('영어 어형 변화는 BC 를 잃지 않는다 (E17)', () => {
+    assert.equal(classify({ title: 'labeling 규칙 정리' }).primary_bc, 'issue-tracking');
+    assert.equal(classify({ title: 'labeled 항목 필터' }).primary_bc, 'issue-tracking');
+  });
+
+  // ★★게이트 2 리뷰(구조·안전성 렌즈)가 잡은 **이 PR 이 만든 보안 라우팅 회귀**.
+  //   판정 문자열이 이미 소문자화돼 있어 **대문자 험프라는 진짜 단어 경계가 검사 전에 지워진다.**
+  //   이 저장소의 식별자는 대부분 CamelCase 라 파급이 좁지 않다.
+  test('CamelCase 합성어에서 신호가 죽지 않는다 (E18)', () => {
+    const pat = classify({ title: 'Task 7. WebhookTokenModal 흡수 (PatTokenModal 정본)' });
+    assert.equal(pat.type, 'auth');
+    assert.equal(pat.agent, 'security-engineer');
+
+    assert.equal(
+      classify({ title: 'D4. OpenAPI — springdoc 전역 통합 + Swagger UI 게시' }).type,
+      'api',
+    );
+    assert.equal(classify({ title: 'BoardCardResponse 3필드' }).primary_bc, 'agile-planning');
+    assert.equal(classify({ title: 'SetFieldPostAction 구현' }).primary_bc, 'automation');
+  });
+
+  // ★험프는 **소문자→대문자** 전이여야 한다. 연속 대문자는 경계가 아니다 —
+  //   아니면 `PATCH`·`PATH` 가 `pat` 에 걸려 부채 45 가 대문자로 되살아난다.
+  test('연속 대문자는 험프가 아니다 (E19 · 부채 45 의 대문자 역형)', () => {
+    for (const title of ['PATCH 파일 적용', 'PATH 계산 수정', 'DISPATCH 로직']) {
+      assert.notEqual(classify({ title }).type, 'auth', title);
+    }
+  });
+
+  // ★이 PR 의 §Brief 가 「결함이 4회 자기 실연했다」고 적은 것 중 마지막 하나다.
+  //   `route` 는 이 브랜치 이름·slug·plan 파일명에 들어 있는 문자열이고, 그것이 `api` 로
+  //   오배정되는 것을 §Brief 가 기록했다. 목록의 규칙이 「실제로 부딪힌 것만 적는다」이므로
+  //   부딪힌 기록이 있는데 목록에 없으면 규칙과 목록이 어긋난다.
+  test('misroute 안의 route 는 신호가 아니다 (E20 · 자기 실연 4번째)', () => {
+    assert.notEqual(classify({ title: 'classify-task misroute 3종' }).type, 'api');
+    assert.notEqual(classify({ title: 'reroute 로직 정리' }).type, 'api');
+  });
+
+  test('단독 route 는 여전히 api 다 (E20 역방향)', () => {
+    assert.equal(classify({ title: 'route 정의 추가' }).type, 'api');
+    assert.equal(classify({ title: 'routes 목록 정리' }).type, 'api');
+    assert.equal(classify({ title: 'API route 추가' }).type, 'api');
+  });
+});

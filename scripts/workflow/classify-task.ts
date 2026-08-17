@@ -65,7 +65,12 @@ const UI_KEYWORDS = [
 ];
 
 const UI_PATH_PATTERNS = [
-  /apps\/web\//,
+  // ★뒤 슬래시를 요구하지 않는다. 사람이 자연어로 쓰는 형태는 `apps/web`(슬래시 없음)이 흔한데
+  //   종전 `/apps\/web\//` 는 그걸 놓쳐 신호 0 으로 읽고 기본값 `backend` 로 떨어뜨렸다(부채 44).
+  //   ADR 2026-07-28 §D2 가 같은 오분류를 「3회째」로 기록해 두었다 — 등재보다 7주 앞선다.
+  // ★`\b` 를 쓰지 않는 이유. `\b` 는 `b` 다음 `-` 에서 성립하므로 `apps/web-legacy` 가 걸린다(실측).
+  //   부정 전방탐색으로 단어 문자와 하이픈을 **둘 다** 막아야 `apps/webhook`·`apps/web-legacy` 가 빠진다.
+  /apps\/web(?![\w-])/,
   /\.tsx$/,
   /page\.tsx$/,
 ];
@@ -90,7 +95,9 @@ const QA_KEYWORDS = [
 ];
 
 const QA_PATH_PATTERNS = [
-  /apps\/web\/e2e\//,
+  // 뒤 슬래시를 요구하지 않는다 — `UI_PATH_PATTERNS` 와 같은 결함이었다(부채 44 와 동형).
+  // 이걸 안 고치면 `apps/web/e2e`(슬래시 없음)가 ui 경로에만 걸려 qa 를 놓친다.
+  /apps\/web\/e2e(?![\w-])/,
   /tests\/integration\//,
   /\.spec\.ts$/,
 ];
@@ -236,6 +243,49 @@ export const toSlug = (title: string): string => {
 const isHangulSyllable = (ch: string | undefined): boolean =>
   ch !== undefined && ch >= '가' && ch <= '힣';
 
+/** ASCII 소문자 1자 판정 — 영단어 경계 검사에 쓴다 */
+const isAsciiLower = (ch: string | undefined): boolean =>
+  ch !== undefined && ch >= 'a' && ch <= 'z';
+
+/** ASCII 대문자 1자 판정 — CamelCase 험프 검사에 쓴다 */
+const isAsciiUpper = (ch: string | undefined): boolean =>
+  ch !== undefined && ch >= 'A' && ch <= 'Z';
+
+/**
+ * 뒤 경계로 인정하는 영어 어형 접미.
+ *
+ * ★**순서는 무관하다.** 어느 접미도 다른 것의 접두사가 아니어서 한 위치에서 둘이 동시에
+ * 매치할 수 없다(`s` ⊄ `ing`/`ed` 접두, 역도 같다). 역순으로 돌려도 판정이 같음을 실측했다.
+ * 초판 주석은 「긴 것부터 봐야 `issues` 가 정확히 끝난다」고 적었는데 **두 겹으로 거짓**이었다 —
+ * 순서 의존이 원리상 없고, 예시로 든 `issue` 는 `BOUNDARY_ONLY` 밖이라 이 분기에 오지도 않는다.
+ */
+const ASCII_INFLECTIONS = ['ing', 'ed', 's'] as const;
+
+/**
+ * **양쪽 단어 경계를 요구하는 ASCII 키워드 목록** (부채 45).
+ *
+ * ★길이로 자르지 않는다. 초판 설계는 「길이 ≤ N 인 ASCII 키워드에 경계 요구」였고 N 을
+ * 4 로 두든 6 으로 올리든 **진짜 신호를 함께 죽인다** — `argon2`(6자)에 어형이 붙은
+ * `Argon2id`(OWASP 권장 표기)와 `ldap`(4자)의 `LDAPS` 가 `auth`/`security-engineer` 에서
+ * `backend` 로 떨어졌다(실측). 영어 복수형 `issues`·`users`·`exports` 도 전부 BC 를 잃었다.
+ *
+ * ★길이는 충돌 성향과 상관이 없다. `csrf`(4)·`oidc`(4)·`aql`(3) 은 15개월간 한 번도 안
+ * 부딪혔고 `board`(5)·`action`(6) 은 부딪혔다. 그래서 **실제로 부딪힌 것만 이름으로** 적는다.
+ *
+ * ★이 형태라야 뮤테이션이 항목별로 비-공허하다 — 한 줄을 지우면 대응 단언 **하나**가 red 다.
+ * 단일 상수는 흔들면 전부가 같이 흔들려 그 성질을 가질 수 없다.
+ */
+const BOUNDARY_ONLY = new Set([
+  'pat',    // ⊂ dispatch · patch · path  → auth/security-engineer 오배정
+  'ui',     // ⊂ build · guide · requirement
+  'api',    // ⊂ rapid
+  'rest',   // ⊂ restore · restrict
+  'board',  // ⊂ keyboard  → agile-planning 오배정
+  'action', // ⊂ transaction · interaction  → automation 오배정
+  'label',  // ⊂ relabel  → issue-tracking 오배정
+  'route',  // ⊂ misroute · reroute  → api 오배정 (이 PR 자신의 slug 가 걸렸다)
+]);
+
 /**
  * 키워드 1개가 문자열에 **경계를 지켜** 나타나는지.
  *
@@ -243,28 +293,80 @@ const isHangulSyllable = (ch: string | undefined): boolean =>
  * 실측 사례로 "댓글 리액션 추가" 가 automation 으로 갔다. '리**액션**' 이 automation 키워드
  * '액션' 에 걸렸기 때문이다. BC 가 null 로 떨어지는 것(미정의)보다 나쁜 **조용한 오라우팅**이다.
  *
- * 판별식 — 한글 키워드는 **바로 앞에 한글 음절이 붙어 있으면 매치로 치지 않는다.**
- * 한국어 조사는 뒤에 붙으므로('액션을', '이슈의') 뒤는 막지 않고 앞만 막는다.
- * ASCII 키워드('api', 'saml')는 이 규칙과 무관하므로 기존 substring 그대로 둔다 —
- * 영문에 한글 접두사가 붙는 형태는 이 도메인에 없다.
+ * 판별식 두 갈래.
+ * - **한글 키워드** — 바로 앞에 한글 음절이 붙어 있으면 매치로 치지 않는다. 한국어 조사는
+ *   뒤에 붙으므로('액션을', '이슈의') 뒤는 막지 않고 앞만 막는다.
+ * - **ASCII 키워드** — `BOUNDARY_ONLY` 에 적힌 것만 **양쪽** 경계를 요구한다.
+ *
+ * ★2026-07-27 판에 적혀 있던 「ASCII 키워드는 이 규칙과 무관하므로 기존 substring 그대로
+ * 둔다 — 영문에 한글 접두사가 붙는 형태는 이 도메인에 없다」는 **참이지만 무관한 문장이었다.**
+ * ASCII 키워드의 실제 위험은 한글 접두사가 아니라 **다른 ASCII 단어**다(`pat` ⊂ `dispatch`).
+ * 측정하지 않은 안전 속성을 단정한 문장이 그대로 13개월을 살아남았다.
+ *
+ * ★**앞만** 보면 안 된다. `patch`·`path` 는 키워드가 index 0 이라 앞 경계가 통과한다.
+ * ★분기 순서 — 한글 판정이 **먼저**다. ASCII 분기를 앞에 두면 한글 키워드가 앞 경계 보호를
+ *   잃어 `리액션` 오라우팅이 되살아난다.
  */
-const includesWithBoundary = (haystack: string, keyword: string): boolean => {
+const includesWithBoundary = (
+  haystack: string,
+  keyword: string,
+  /**
+   * `haystack` 의 **대소문자 원문**. CamelCase 험프 판정에만 쓴다.
+   * ★길이가 다르면 무시한다 — `toLowerCase()` 는 일부 유니코드에서 길이를 바꾸고(`İ` → `i̇`)
+   *   그때 인덱스 정렬이 깨진다. 길이 일치를 확인하고 쓰는 것이 이 인자의 계약이다.
+   */
+  original?: string,
+): boolean => {
   const kw = keyword.toLowerCase();
   if (kw.length === 0) return false;
+  const cased = original !== undefined && original.length === haystack.length ? original : undefined;
+
+  /** `i` 위치가 소문자→대문자 험프인가. 연속 대문자(`PATCH` 의 `TC`)는 험프가 아니다. */
+  const isHump = (i: number): boolean =>
+    cased !== undefined && isAsciiUpper(cased[i]) && isAsciiLower(cased[i - 1]);
 
   let from = 0;
   for (;;) {
     const at = haystack.indexOf(kw, from);
     if (at === -1) return false;
-    // 키워드 첫 글자가 한글일 때만 앞 경계를 본다.
-    if (!isHangulSyllable(kw[0]) || !isHangulSyllable(haystack[at - 1])) return true;
+
+    if (isHangulSyllable(kw[0])) {
+      // 한글 키워드는 앞 경계만 본다.
+      if (!isHangulSyllable(haystack[at - 1])) return true;
+    } else if (!BOUNDARY_ONLY.has(kw)) {
+      // 목록 밖 ASCII 키워드는 종전 부분일치 그대로.
+      return true;
+    } else {
+      // ★경계 문자류는 `[a-z]` 만이고 **숫자는 경계로 친다** — `api2`·`board2` 처럼
+      //   목록 안 키워드에 숫자가 붙는 형태를 매치로 남기기 위해서다.
+      //   (초판 주석은 근거로 `saml2`·`oauth2` 를 들었으나 그 둘은 `BOUNDARY_ONLY` **밖**이라
+      //    이 분기에 도달조차 안 한다 — 기각된 길이 임계안의 잔존 근거였다. 뮤테이션으로 실증.)
+      let end = at + kw.length;
+      // ★영어 어형 접미는 경계로 친다. 없으면 `labels`·`boards`·`actions` 가 BC 를 잃고,
+      //   `labeling`·`labeled` 는 **다른 BC 로 조용히 오라우팅된다**(빈자리를 `규칙`·`필터` 가 차지).
+      for (const suffix of ASCII_INFLECTIONS) {
+        if (haystack.startsWith(suffix, end)) {
+          end += suffix.length;
+          break;
+        }
+      }
+      // ★**뒤 경계에만 의존하는 충돌어가 넷 있다** — 키워드가 index 0 이라 앞 경계가 통과하는
+      //   `pat`⊂`patch` · `pat`⊂`path` · `rest`⊂`restore` · `rest`⊂`restrict`.
+      //   접미 목록을 넓힐 때 이 넷을 전부 검산해야 한다(`ch`·`h`·`ore` 를 넣으면 즉시 되살아난다).
+      // ★**CamelCase 험프도 경계다.** 판정 문자열은 이미 소문자화돼 있어 `PatTokenModal` 의
+      //   `t`→`T` 같은 진짜 단어 경계가 지워진다. 그대로 두면 보안 작업이 `security-engineer` 에
+      //   안 가고(`PatTokenModal`), springdoc 작업이 `frontend-engineer` 로 간다(`OpenApiConfig`).
+      const frontOk = !isAsciiLower(haystack[at - 1]) || isHump(at);
+      const backOk = !isAsciiLower(haystack[end]) || isHump(end);
+      if (frontOk && backOk) return true;
+    }
     from = at + 1;
   }
 };
 
 // 키워드 매치 (case-insensitive + 한글 접두사 경계 검사)
-const hasAny = (lower: string, keywords: string[]): boolean =>
-  keywords.some((kw) => includesWithBoundary(lower, kw));
+const hasAny = (lower: string, keywords: string[], original?: string): boolean =>
+  keywords.some((kw) => includesWithBoundary(lower, kw, original));
 
 const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
   patterns.some((p) => p.test(raw));
@@ -273,43 +375,73 @@ const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
 // type 판정 — 우선순위 순서
 // ─────────────────────────────────────────────────────────
 
+/**
+ * 제목에서 작업 타입을 정한다. **순서가 계약이다** — 아래 도식이 그 계약이고, 번호 주석은 도식의 사본이다.
+ *
+ * ```
+ *  ① auth(strong)   보안은 fast-track 무시 — 위험 반경이 가장 크다
+ *  ② migration
+ *  ③ chore/fix 접두사
+ *  ④ design         「디자인 시안」이 ui 키워드와 겹치므로 ui 보다 앞
+ *  ⑤ qa **경로**    ─┐ 경로는 추측이 아니라 사실이다. 퍼지 신호보다 앞선다
+ *  ⑥ api             │  ★`apps/web` 은 `apps/web/e2e/` 의 접두사다. ⑤ 를 ⑦ 뒤로 내리면
+ *  ⑦ ui             ─┘   Playwright 표면 전체가 qa-engineer 에 도달 불가가 된다
+ *  ⑧ qa **키워드**   「E2E」가 제목에 섞였을 뿐일 수 있다 — 부채 33 이 이 자리다
+ *  ⑨ auth(weak)
+ *  ⑩ feature
+ *  ⑪ backend        기본값. 신호 0 이면 여기
+ * ```
+ *
+ * **★⑧ 을 ⑥⑦ 뒤로 내린 근거는 오류 비용의 비대칭이다.** `qa-engineer` 는 구현 코드 수정이
+ * 금지돼 있어(`.claude/agents/qa-engineer.md`) 잘못 가면 **복구 불가**다 — 그 에이전트는 일을
+ * 시작조차 못 한다. 반대로 `frontend-engineer` 가 E2E 를 쓰는 것은 금지돼 있지 않아 **복구 가능**하다.
+ * 그래서 신호가 애매하면 복구 가능한 쪽으로 기운다.
+ *
+ * **단 이 비대칭은 ⑧ 에만 적용한다.** ⑤ 는 경로가 실제로 `e2e` 를 가리키는 경우이고,
+ * 그건 애매한 신호가 아니라 사실이므로 양보하지 않는다.
+ */
 const detectType = (raw: string): TaskType => {
   const lower = raw.toLowerCase();
-  const stripped = stripConventionalPrefix(raw).toLowerCase();
+  // ★소문자 사본과 **대소문자 원문**을 함께 들고 다닌다 — 험프 판정에 원문이 필요하다.
+  const strippedRaw = stripConventionalPrefix(raw);
+  const stripped = strippedRaw.toLowerCase();
   const hasFixPrefix = /^(fix|refactor)(\([^)]+\))?:/i.test(raw);
   const hasChorePrefix = /^(chore|docs|style|perf|test)(\([^)]+\))?:/i.test(raw);
 
-  // 1. auth strong keywords — 보안 영역은 fast-track 무시 (위험 반경 ↑)
-  if (hasAny(stripped, AUTH_STRONG)) return 'auth';
+  // ① auth strong keywords — 보안 영역은 fast-track 무시 (위험 반경 ↑)
+  if (hasAny(stripped, AUTH_STRONG, strippedRaw)) return 'auth';
 
-  // 2. migration 키워드 / 경로
-  if (hasAny(stripped, MIGRATION_KEYWORDS) || hasPathPattern(raw, MIGRATION_PATH_PATTERNS)) {
+  // ② migration 키워드 / 경로
+  if (hasAny(stripped, MIGRATION_KEYWORDS, strippedRaw) || hasPathPattern(raw, MIGRATION_PATH_PATTERNS)) {
     return 'migration';
   }
 
-  // 3. Conventional Commit 접두사 — fast-track 분류
+  // ③ Conventional Commit 접두사 — fast-track 분류
   if (hasChorePrefix) return 'chore';
   if (hasFixPrefix) return 'bugfix';
 
-  // 4. design 키워드 (UI보다 먼저, "디자인 시안"이 UI 키워드와 겹칠 수 있음)
-  if (hasAny(stripped, DESIGN_KEYWORDS)) return 'design';
+  // ④ design 키워드 (UI보다 먼저, "디자인 시안"이 UI 키워드와 겹칠 수 있음)
+  if (hasAny(stripped, DESIGN_KEYWORDS, strippedRaw)) return 'design';
 
-  // 5. qa 키워드 / 경로
-  if (hasAny(stripped, QA_KEYWORDS) || hasPathPattern(raw, QA_PATH_PATTERNS)) return 'qa';
+  // ⑤ qa **경로** — 키워드(⑧)와 쪼갠 이유는 위 KDoc
+  if (hasPathPattern(raw, QA_PATH_PATTERNS)) return 'qa';
 
-  // 6. api 키워드 / 경로
-  if (hasAny(stripped, API_KEYWORDS) || hasPathPattern(raw, API_PATH_PATTERNS)) return 'api';
+  // ⑥ api 키워드 / 경로
+  if (hasAny(stripped, API_KEYWORDS, strippedRaw) || hasPathPattern(raw, API_PATH_PATTERNS)) return 'api';
 
-  // 7. ui 키워드 / 경로
-  if (hasAny(stripped, UI_KEYWORDS) || hasPathPattern(raw, UI_PATH_PATTERNS)) return 'ui';
+  // ⑦ ui 키워드 / 경로
+  if (hasAny(stripped, UI_KEYWORDS, strippedRaw) || hasPathPattern(raw, UI_PATH_PATTERNS)) return 'ui';
 
-  // 8. auth weak keywords (인증/권한/세션 — strong 매치 안 됐지만 BC가 identity-access)
-  if (hasAny(stripped, AUTH_KEYWORDS)) return 'auth';
+  // ⑧ qa **키워드** — 제목에 「E2E」가 섞였을 뿐인 혼합 작업을 여기서 받는다 (부채 33)
+  if (hasAny(stripped, QA_KEYWORDS, strippedRaw)) return 'qa';
 
-  // 9. feature 트리거 (만들어줘/추가/새 기능)
-  if (hasAny(stripped, FEATURE_TRIGGERS)) return 'feature';
+  // ⑨ auth weak keywords (인증/권한/세션 — strong 매치 안 됐지만 BC가 identity-access)
+  if (hasAny(stripped, AUTH_KEYWORDS, strippedRaw)) return 'auth';
 
-  // 10. 기본값. 백엔드
+  // ⑩ feature 트리거 (만들어줘/추가/새 기능)
+  if (hasAny(stripped, FEATURE_TRIGGERS, strippedRaw)) return 'feature';
+
+  // ⑪ 기본값. 백엔드
   return 'backend';
 };
 
@@ -349,12 +481,13 @@ const detectBoundedContext = (raw: string, type: TaskType): BoundedContext | nul
     return null;
   }
 
-  const lower = stripConventionalPrefix(raw).toLowerCase();
+  const casedRaw = stripConventionalPrefix(raw);
+  const lower = casedRaw.toLowerCase();
 
   // 각 BC 키워드 점수 합산
   const scores = (Object.entries(BC_KEYWORDS) as [BoundedContext, string[]][]).map(
     ([bc, kws]) => {
-      const score = kws.filter((kw) => includesWithBoundary(lower, kw)).length;
+      const score = kws.filter((kw) => includesWithBoundary(lower, kw, casedRaw)).length;
       return [bc, score] as const;
     }
   );
