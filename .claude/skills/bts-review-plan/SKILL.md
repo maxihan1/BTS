@@ -28,7 +28,7 @@ TIER=$(jq -r '.tier' .bts-cache/classify.json)
 | 조건 | 리뷰 렌즈 |
 |---|---|
 | `TYPE == "auth"` 또는 `TYPE == "migration"` | `/plan-eng-review` + `/plan-ceo-review` (**한 응답에 병렬 발행**) |
-| `TYPE == "ui"` | `/plan-design-review` + `/plan-eng-review` (**한 응답에 병렬 발행**) |
+| `TYPE == "ui"` | `/plan-design-review` (로직·계약 포함 시 `/plan-eng-review` 추가) |
 | `TYPE == "api"` | `/plan-eng-review` |
 | `TYPE == "design"` | `/plan-design-review` |
 | `TYPE == "backend"` | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
@@ -36,7 +36,9 @@ TIER=$(jq -r '.tier' .bts-cache/classify.json)
 | `TYPE ∈ {bugfix, chore, qa}` | `/plan-eng-review` |
 | **그 외 (표에 없는 타입)** | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
 
-> **행을 지우지도, 비우지도 말 것.** `scripts/workflow/skill-type-coverage.test.ts` 가 세 가지를 CI 에서 강제한다. ① 이 표의 타입 토큰과 `types.ts` 의 `TaskType` 유니온의 **차집합 0** ② 모든 타입 행이 **리뷰 렌즈를 최소 1종** 지시할 것 ③ 행이 **티어·도달 가능성 주장을 담지 않을 것**. 티어별로 렌즈를 가르고 싶으면 그 판별식을 먼저 의도적으로 고쳐라 — 표만 고치면 빨간불이 된다. 행 구성 근거(backend 행 누락 사고)는 그 판별식 헤더 주석 참조.
+> **행을 지우지도, 비우지도, 줄이지도 말 것.** `scripts/workflow/skill-type-coverage.test.ts` 가 이 표를 CI 에서 강제한다. ① 타입 토큰과 `types.ts` 의 `TaskType` 유니온의 **차집합 0** ② 행 파서가 타입 전량을 행에 물릴 것(비-공허 짝) ③ 각 행의 **렌즈 집합이 판별식의 기대 집합과 정확히 일치**할 것 — 렌즈를 줄이거나 이름을 오타 내면 여기서 걸린다 ④ 행에 `T0`~`T3`·「미진입」 **문자열**이 없을 것 ⑤ 위 「T2/T3 만 진입한다」 선언이 본문에 남아 있을 것.
+>
+> **④ 가 막는 것은 두 철자이지 「도달 불가라는 의미」가 아니다.** 「이 단계에 오지 않으므로 발행하지 않는다」 같은 우회 문구는 기계가 못 잡는다 — 그 몫은 ③ 이 진다(렌즈가 줄면 걸린다). 표를 의도적으로 바꾸려면 판별식의 `EXPECTED_LENSES` 를 **같은 커밋에서** 함께 고쳐라. 행 구성 근거(backend 행 누락 사고)는 그 판별식 헤더 주석 참조.
 
 ## Step 3. 리뷰 호출 (병렬)
 
