@@ -404,4 +404,28 @@ describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
     assert.equal(classify({ title: 'labeling 규칙 정리' }).primary_bc, 'issue-tracking');
     assert.equal(classify({ title: 'labeled 항목 필터' }).primary_bc, 'issue-tracking');
   });
+
+  // ★★게이트 2 리뷰(구조·안전성 렌즈)가 잡은 **이 PR 이 만든 보안 라우팅 회귀**.
+  //   판정 문자열이 이미 소문자화돼 있어 **대문자 험프라는 진짜 단어 경계가 검사 전에 지워진다.**
+  //   이 저장소의 식별자는 대부분 CamelCase 라 파급이 좁지 않다.
+  test('CamelCase 합성어에서 신호가 죽지 않는다 (E18)', () => {
+    const pat = classify({ title: 'Task 7. WebhookTokenModal 흡수 (PatTokenModal 정본)' });
+    assert.equal(pat.type, 'auth');
+    assert.equal(pat.agent, 'security-engineer');
+
+    assert.equal(
+      classify({ title: 'D4. OpenAPI — springdoc 전역 통합 + Swagger UI 게시' }).type,
+      'api',
+    );
+    assert.equal(classify({ title: 'BoardCardResponse 3필드' }).primary_bc, 'agile-planning');
+    assert.equal(classify({ title: 'SetFieldPostAction 구현' }).primary_bc, 'automation');
+  });
+
+  // ★험프는 **소문자→대문자** 전이여야 한다. 연속 대문자는 경계가 아니다 —
+  //   아니면 `PATCH`·`PATH` 가 `pat` 에 걸려 부채 45 가 대문자로 되살아난다.
+  test('연속 대문자는 험프가 아니다 (E19 · 부채 45 의 대문자 역형)', () => {
+    for (const title of ['PATCH 파일 적용', 'PATH 계산 수정', 'DISPATCH 로직']) {
+      assert.notEqual(classify({ title }).type, 'auth', title);
+    }
+  });
 });
