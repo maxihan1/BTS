@@ -21,20 +21,22 @@ TIER=$(jq -r '.tier' .bts-cache/classify.json)
 
 ## Step 2. 타입별 리뷰 렌즈 분기
 
-**이 표는 「어느 렌즈를 쓰는가」만 정한다.** 리뷰 **종수**의 정본은 `/bts` 티어별 절차 표(T2 = 2종 · T3 = 2종 + ceo)다.
+**이 표는 티어 무조건이다.** 진입 티어(T2/T3)는 이 스킬 머리에서 한 번 선언하고 행은 티어를 다시 적지 않는다 — `type` 은 제목에서, `tier` 는 변경 경로에서 나오는 **독립 축**이라 「이 조합은 안 온다」는 주장이 성립하지 않는다. 종전 표는 `ui` 행과 `{bugfix, chore, qa}` 행을 「이 단계에 안 온다」는 전제로 비워 뒀는데, PR #387 이 `chore`@T2 로 실제 도달해 그 전제가 거짓임이 실측됐다(장부 항목 34).
 
-| 조건 | 이 행이 도는 티어 | 리뷰 렌즈 |
-|---|---|---|
-| `TYPE == "auth"` 또는 `TYPE == "migration"` | T2 / T3 | `/plan-eng-review` + `/plan-ceo-review` (**한 응답에 병렬 발행**) |
-| `TYPE == "ui"` | —(이 표 미진입) | `/plan-design-review` |
-| `TYPE == "api"` | T2 / T3 | `/plan-eng-review` |
-| `TYPE == "design"` | T2 / T3 | `/plan-design-review` |
-| `TYPE == "backend"` | T2 / T3 | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
-| `TYPE == "feature"` | T2 / T3 | `/plan-eng-review` |
-| `TYPE ∈ {bugfix, chore, qa}` | —(이 표 미진입) | **skip** |
-| **그 외 (표에 없는 타입)** | — | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
+**리뷰 종수는 이 표의 행이 정한다.** `/bts` 티어별 절차 표의 「독립 리뷰 종수」는 체인 [6] `bts-codereview` 의 값이지 이 단계의 값이 아니다 — 이 단계를 돌지 않는 T0/T1 에도 그 행에 값이 있는 것이 근거다.
 
-> **행을 지우지 말 것.** `scripts/workflow/skill-type-coverage.test.ts` 가 이 표의 타입 토큰과 `types.ts` 의 `TaskType` 유니온의 **차집합 0** 을 CI 에서 강제한다. 「이 표 미진입」 행은 도달 불가를 숨기지 않고 드러내려고 값째로 남긴 것이며, 지우면 토큰이 소실돼 빨간불이 된다. 행 구성 근거(backend 행 누락 사고)는 그 판별식 헤더 주석 참조.
+| 조건 | 리뷰 렌즈 |
+|---|---|
+| `TYPE == "auth"` 또는 `TYPE == "migration"` | `/plan-eng-review` + `/plan-ceo-review` (**한 응답에 병렬 발행**) |
+| `TYPE == "ui"` | `/plan-design-review` + `/plan-eng-review` (**한 응답에 병렬 발행**) |
+| `TYPE == "api"` | `/plan-eng-review` |
+| `TYPE == "design"` | `/plan-design-review` |
+| `TYPE == "backend"` | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
+| `TYPE == "feature"` | `/plan-eng-review` |
+| `TYPE ∈ {bugfix, chore, qa}` | `/plan-eng-review` |
+| **그 외 (표에 없는 타입)** | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
+
+> **행을 지우지도, 비우지도 말 것.** `scripts/workflow/skill-type-coverage.test.ts` 가 세 가지를 CI 에서 강제한다. ① 이 표의 타입 토큰과 `types.ts` 의 `TaskType` 유니온의 **차집합 0** ② 모든 타입 행이 **리뷰 렌즈를 최소 1종** 지시할 것 ③ 행이 **티어·도달 가능성 주장을 담지 않을 것**. 티어별로 렌즈를 가르고 싶으면 그 판별식을 먼저 의도적으로 고쳐라 — 표만 고치면 빨간불이 된다. 행 구성 근거(backend 행 누락 사고)는 그 판별식 헤더 주석 참조.
 
 ## Step 3. 리뷰 호출 (병렬)
 
