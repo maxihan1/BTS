@@ -428,4 +428,19 @@ describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
       assert.notEqual(classify({ title }).type, 'auth', title);
     }
   });
+
+  // ★이 PR 의 §Brief 가 「결함이 4회 자기 실연했다」고 적은 것 중 마지막 하나다.
+  //   `route` 는 이 브랜치 이름·slug·plan 파일명에 들어 있는 문자열이고, 그것이 `api` 로
+  //   오배정되는 것을 §Brief 가 기록했다. 목록의 규칙이 「실제로 부딪힌 것만 적는다」이므로
+  //   부딪힌 기록이 있는데 목록에 없으면 규칙과 목록이 어긋난다.
+  test('misroute 안의 route 는 신호가 아니다 (E20 · 자기 실연 4번째)', () => {
+    assert.notEqual(classify({ title: 'classify-task misroute 3종' }).type, 'api');
+    assert.notEqual(classify({ title: 'reroute 로직 정리' }).type, 'api');
+  });
+
+  test('단독 route 는 여전히 api 다 (E20 역방향)', () => {
+    assert.equal(classify({ title: 'route 정의 추가' }).type, 'api');
+    assert.equal(classify({ title: 'routes 목록 정리' }).type, 'api');
+    assert.equal(classify({ title: 'API route 추가' }).type, 'api');
+  });
 });
