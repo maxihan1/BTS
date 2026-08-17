@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | — |
+| 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | FR-DB-01 |
 | 2026-08-17 | classify-task-misroute-3-44-33-45 | — | ✔ | — | — | — |
 | 2026-08-14 | debt-14-16-permission-gate | — | ✔ | — | — | — |
 | 2026-08-14 | node-ts-invocation-flag-guard | — | ✔ | — | — | — |
