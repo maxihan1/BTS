@@ -249,6 +249,188 @@ Then 종전과 같은 판정을 유지한다.
 - **`bc-keyword-coverage` 의 오라클 한계(불일치 57건)는 이 PR 이 줄이지 않는다.** 그 57 은 계획
   문서 편제와 코드 위치가 다른 데서 오는 구조적 불일치이고, 이 PR 은 **57 을 유지**하는 것이 목표다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. 경로 신호 `apps/web` 을 뒤 슬래시 없이 인식하되 더 긴 이름은 배제한다 (결함 `44`)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/classify-task.ts`, `scripts/workflow/classify-task.test.ts`]
+- depends-on: []
+
+**RED**:
+- 파일: `scripts/workflow/classify-task.test.ts`
+- 테스트:
+  ```ts
+  test('apps/web 는 뒤 슬래시가 없어도 ui 로 간다 (부채 44)', () => {
+    assert.equal(classify({ title: 'apps/web 판별식 정리' }).type, 'ui');
+    assert.equal(classify({ title: 'apps/web 판별식 정리' }).agent, 'frontend-engineer');
+  });
+  test('apps/web 로 시작하는 더 긴 이름은 ui 가 아니다 (E1·E2)', () => {
+    assert.notEqual(classify({ title: 'apps/webhook 재시도 정리' }).type, 'ui');
+    assert.notEqual(classify({ title: 'apps/web-legacy 정리' }).type, 'ui');
+  });
+  ```
+- 실패 메시지 (예상): 첫 테스트가 `'backend' !== 'ui'` 로 red. 둘째는 현행에서도 pass —
+  **오탐 방지 단언이라 red 가 안 나는 것이 정상**이고, 뮤테이션(Task 5 ①)이 비-공허를 증명한다.
+
+**GREEN**:
+- 파일: `scripts/workflow/classify-task.ts`
+- `UI_PATH_PATTERNS` 의 `/apps\/web\//` → `/apps\/web(?![\w-])/` 1줄 교체
+
+**REFACTOR**:
+- 그 줄에 KDoc — 「`\b` 를 쓰지 않는 이유는 `apps/web-legacy` 에서 성립하기 때문(실측)」
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts`
+
+### Task 2. `qa` 는 다른 타입 신호가 없을 때만 고른다 (결함 `33`)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/classify-task.ts`, `scripts/workflow/classify-task.test.ts`]
+- depends-on: [1]
+
+**RED**:
+- 파일: `scripts/workflow/classify-task.test.ts`
+- 테스트:
+  ```ts
+  test('E2E 와 UI 신호가 섞이면 구현 가능한 에이전트로 간다 (부채 33)', () => {
+    const r = classify({ title: '로딩 프레임 계약 E2E 신설 + apps/web/ 4파일' });
+    assert.equal(r.type, 'ui');
+    assert.notEqual(r.agent, 'qa-engineer'); // 구현 코드 수정 금지 에이전트
+  });
+  test('순수 E2E 작업은 여전히 qa 다 (S3 역방향 회귀)', () => {
+    assert.equal(classify({ title: 'E2E 시나리오만 추가' }).type, 'qa');
+    assert.equal(classify({ title: 'Playwright 회귀 보강' }).type, 'qa');
+  });
+  ```
+- 실패 메시지 (예상): 첫 테스트가 `'qa' !== 'ui'` 로 red.
+
+**GREEN**:
+- 파일: `scripts/workflow/classify-task.ts`
+- `detectType` 에서 qa 판정 블록을 api·ui **뒤로** 이동(5→7번). 번호 주석도 함께 갱신.
+
+**REFACTOR**:
+- 이동한 블록 위에 KDoc — **오류 비용의 비대칭**을 근거로 남긴다
+  (`qa-engineer` 오배정은 복구 불가 · `frontend-engineer` 오배정은 복구 가능)
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts`
+
+### Task 3. 짧은 ASCII 키워드는 단어 경계를 지킬 때만 매치한다 (신규 `45`)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/classify-task.ts`, `scripts/workflow/classify-task.test.ts`]
+- depends-on: [2]
+
+**RED**:
+- 파일: `scripts/workflow/classify-task.test.ts`
+- 테스트:
+  ```ts
+  test('키워드를 부분문자열로 품은 평범한 영단어는 신호가 아니다 (부채 45)', () => {
+    for (const t of ['dispatch 로직 정리', 'patch 파일 적용', 'path 계산 수정']) {
+      assert.notEqual(classify({ title: t }).type, 'auth', t);
+      assert.notEqual(classify({ title: t }).agent, 'security-engineer', t);
+    }
+    for (const t of ['build 스크립트 정리', 'guide 문서 갱신', 'requirement 정리']) {
+      assert.notEqual(classify({ title: t }).type, 'ui', t);
+    }
+    for (const t of ['restore 절차 문서화', 'rapid 프로토타입']) {
+      assert.notEqual(classify({ title: t }).type, 'api', t);
+    }
+  });
+  test('진짜 키워드가 단독으로 있으면 종전 판정을 유지한다 (S5·E5~E7)', () => {
+    assert.equal(classify({ title: 'SAML 연동' }).type, 'auth');
+    assert.equal(classify({ title: 'saml2 설정' }).type, 'auth');       // 숫자는 경계로 안 친다
+    assert.equal(classify({ title: 'oauth2 로그인 연동' }).type, 'auth');
+    assert.equal(classify({ title: '2FA 백업코드' }).type, 'auth');
+    assert.equal(classify({ title: 'API-03 웹훅' }).type, 'api');       // 하이픈은 경계
+  });
+  test('길이 예외가 없으면 동결값을 깬다 (E8·E9)', () => {
+    assert.equal(classify({ title: '플러그형 AuthenticationProvider 구조' }).primary_bc,
+      'identity-access');
+    assert.equal(classify({ title: '담당자 (Reporter 1 / Assignee 1 / Watchers)' }).primary_bc,
+      'issue-tracking');
+  });
+  ```
+- 실패 메시지 (예상): 첫 테스트가 `'auth' !== 'auth'` 형태로 red(9건 중 8건).
+  둘째·셋째는 현행에서도 pass — **회귀 방지 단언**이고 뮤테이션(Task 5 ③)이 비-공허를 증명한다.
+
+**GREEN**:
+- 파일: `scripts/workflow/classify-task.ts`
+- `includesWithBoundary` 에 ASCII 분기 추가 + `ASCII_BOUNDARY_MAXLEN = 4` 상수 신설.
+  경계 문자류는 `[a-z]` 만(숫자 제외).
+
+**REFACTOR**:
+- 기존 KDoc(`:239-250`)의 **거짓 문장을 정정**한다 — 「ASCII 키워드는 이 규칙과 무관」은 틀렸다.
+  실제 위험은 한글 접두사가 아니라 **다른 ASCII 단어**였음을 실측 표와 함께 남긴다.
+- 상수 `4` 옆에 임계값 스윕 결과(2/3/4/5/∞)를 요약해 「왜 4냐」에 파일이 스스로 답하게 한다.
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts scripts/workflow/bc-keyword-coverage.test.ts`
+
+### Task 4. 장부 2파일을 동시에 갱신한다 — `33`·`44` 해소 · `45` 등재 · 티어 표기 정정
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`TODOS.md`, `docs/plans/2026-08-12-debt24-master.md`]
+- depends-on: []
+
+**RED**:
+- 파일: `TODOS.md`
+- 조작: 신규 항목 `45` 를 `## ⬜ 워크플로우 — classify-task 가 …` 로 **먼저 추가한다.**
+- 실패 메시지 (예상): `debt-ledger-mapping.test.ts` 가
+  「`TODOS.md` ⬜ 집합 ⊄ 마스터 ⬜ 집합」으로 red — 기존 판별식이 그대로 RED 역할을 한다.
+
+**GREEN**:
+- 파일: `docs/plans/2026-08-12-debt24-master.md`
+- §전수 매핑에 `| 45 | ⬜ | … | 미배정 | 워크플로우 |` 행 추가
+- `33`·`44` 행을 `✅` + `#387` 로 전환하고 `TODOS.md` 의 두 제목 마커도 `## ✅ … (해소 2026-08-17)` 로.
+  본문은 저장소 선례대로 **`**해소.**` 문단 + `<details>` 원 기록 보존** 형태.
+- `TODOS.md` 의 `33`·`44` 제목 꼬리 `· T1` → `· T2` 정정(표면 정본 `GUARD_CI` 근거).
+
+**REFACTOR**:
+- 마스터 §PR 별 집계에 `#387` 행 추가(항목 `33`·`44`·`45`).
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/debt-ledger-mapping.test.ts scripts/workflow/todos-resolved-section-purity.test.ts`
+
+### Task 5. 뮤테이션 4종으로 판별식이 비어 있지 않음을 증명한다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/classify-task.ts`]
+- depends-on: [1, 2, 3, 4]
+
+**RED**:
+- 이 task 의 RED 는 **뮤테이션이 만든 red 그 자체**다. GREEN 을 **선커밋한 뒤** 하나씩 끊는다.
+
+| # | 끊는 것 | 기대 |
+|---|---|---|
+| ① | `UI_PATH_PATTERNS` 의 `(?![\w-])` 제거 | Task 1 오탐 단언 RED |
+| ② | `detectType` 의 qa 블록을 원위치(5번)로 | Task 2 혼합 단언 RED |
+| ③ | `ASCII_BOUNDARY_MAXLEN` 을 `99` 로 | Task 3 부분문자열 단언 + `bc-keyword-coverage` 상한 RED |
+| ④ | 마스터 §전수 매핑에서 `45` 행 1개 삭제 | `debt-ledger-mapping` RED |
+
+**GREEN**:
+- 각 뮤테이션을 `git checkout -- <경로>` 로 원복. **하위 디렉터리에서 부르지 말 것**
+  (learnings `bts-git-add-path-base-in-worktree` — 원복 실패가 종료 코드에 안 나타난다).
+  원복 뒤 `git status` 를 **눈으로 본다.**
+
+**REFACTOR**:
+- 4종 결과를 PR 본문 §검증에 표로 싣는다. **설계와 다른 결과가 하나라도 나오면 그것을 그대로 적는다.**
+
+**검증**: `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` → EXIT=0
+
+## Plan 메타
+
+- **task 수**: 5 · **예상 wave**: 4
+  (W1 `{1, 4}` → W2 `{2}` → W3 `{3}` → W4 `{5}`.
+  Task 1·2·3 은 `files` 교집합이 `classify-task.ts`·`classify-task.test.ts` 라 **자동 직렬화**되고,
+  Task 4 는 장부 2파일만 만져 교집합 0 이므로 Task 1 과 병렬이다.)
+- **구현 규율**: TDD red-first (T2 — `test:` → `feat:` 커밋 순서가 대조된다). ui 시각 트랙 **해당 없음**.
+- **추가 검증**: 워크플로우 판별식 전량(착수 baseline 308/308) · `node scripts/build-doc-index.mjs --check` ·
+  `bash scripts/verify-master-plan.sh` · 뮤테이션 4종.
+- **typecheck·lint**: `scripts/**` 는 `apps/web` tsconfig 밖이라 프론트 typecheck 대상이 아니다 —
+  판별식 실행 자체가 타입 스트리핑을 거치므로 문법 오류는 즉시 드러난다. `pnpm verify` 는
+  **worktree 에서 금지**(C4)이며 CI 가 담당한다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
