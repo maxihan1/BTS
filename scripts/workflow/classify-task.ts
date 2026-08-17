@@ -95,7 +95,9 @@ const QA_KEYWORDS = [
 ];
 
 const QA_PATH_PATTERNS = [
-  /apps\/web\/e2e\//,
+  // 뒤 슬래시를 요구하지 않는다 — `UI_PATH_PATTERNS` 와 같은 결함이었다(부채 44 와 동형).
+  // 이걸 안 고치면 `apps/web/e2e`(슬래시 없음)가 ui 경로에만 걸려 qa 를 놓친다.
+  /apps\/web\/e2e(?![\w-])/,
   /tests\/integration\//,
   /\.spec\.ts$/,
 ];
@@ -278,43 +280,71 @@ const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
 // type 판정 — 우선순위 순서
 // ─────────────────────────────────────────────────────────
 
+/**
+ * 제목에서 작업 타입을 정한다. **순서가 계약이다** — 아래 도식이 그 계약이고, 번호 주석은 도식의 사본이다.
+ *
+ * ```
+ *  ① auth(strong)   보안은 fast-track 무시 — 위험 반경이 가장 크다
+ *  ② migration
+ *  ③ chore/fix 접두사
+ *  ④ design         「디자인 시안」이 ui 키워드와 겹치므로 ui 보다 앞
+ *  ⑤ qa **경로**    ─┐ 경로는 추측이 아니라 사실이다. 퍼지 신호보다 앞선다
+ *  ⑥ api             │  ★`apps/web` 은 `apps/web/e2e/` 의 접두사다. ⑤ 를 ⑦ 뒤로 내리면
+ *  ⑦ ui             ─┘   Playwright 표면 전체가 qa-engineer 에 도달 불가가 된다
+ *  ⑧ qa **키워드**   「E2E」가 제목에 섞였을 뿐일 수 있다 — 부채 33 이 이 자리다
+ *  ⑨ auth(weak)
+ *  ⑩ feature
+ *  ⑪ backend        기본값. 신호 0 이면 여기
+ * ```
+ *
+ * **★⑧ 을 ⑥⑦ 뒤로 내린 근거는 오류 비용의 비대칭이다.** `qa-engineer` 는 구현 코드 수정이
+ * 금지돼 있어(`.claude/agents/qa-engineer.md`) 잘못 가면 **복구 불가**다 — 그 에이전트는 일을
+ * 시작조차 못 한다. 반대로 `frontend-engineer` 가 E2E 를 쓰는 것은 금지돼 있지 않아 **복구 가능**하다.
+ * 그래서 신호가 애매하면 복구 가능한 쪽으로 기운다.
+ *
+ * **단 이 비대칭은 ⑧ 에만 적용한다.** ⑤ 는 경로가 실제로 `e2e` 를 가리키는 경우이고,
+ * 그건 애매한 신호가 아니라 사실이므로 양보하지 않는다.
+ */
 const detectType = (raw: string): TaskType => {
   const lower = raw.toLowerCase();
   const stripped = stripConventionalPrefix(raw).toLowerCase();
   const hasFixPrefix = /^(fix|refactor)(\([^)]+\))?:/i.test(raw);
   const hasChorePrefix = /^(chore|docs|style|perf|test)(\([^)]+\))?:/i.test(raw);
 
-  // 1. auth strong keywords — 보안 영역은 fast-track 무시 (위험 반경 ↑)
+  // ① auth strong keywords — 보안 영역은 fast-track 무시 (위험 반경 ↑)
   if (hasAny(stripped, AUTH_STRONG)) return 'auth';
 
-  // 2. migration 키워드 / 경로
+  // ② migration 키워드 / 경로
   if (hasAny(stripped, MIGRATION_KEYWORDS) || hasPathPattern(raw, MIGRATION_PATH_PATTERNS)) {
     return 'migration';
   }
 
-  // 3. Conventional Commit 접두사 — fast-track 분류
+  // ③ Conventional Commit 접두사 — fast-track 분류
   if (hasChorePrefix) return 'chore';
   if (hasFixPrefix) return 'bugfix';
 
-  // 4. design 키워드 (UI보다 먼저, "디자인 시안"이 UI 키워드와 겹칠 수 있음)
+  // ④ design 키워드 (UI보다 먼저, "디자인 시안"이 UI 키워드와 겹칠 수 있음)
   if (hasAny(stripped, DESIGN_KEYWORDS)) return 'design';
 
-  // 5. qa 키워드 / 경로
-  if (hasAny(stripped, QA_KEYWORDS) || hasPathPattern(raw, QA_PATH_PATTERNS)) return 'qa';
+  // ⑤ qa **경로** — 키워드(⑧)와 쪼갠 이유는 위 KDoc
+  if (hasPathPattern(raw, QA_PATH_PATTERNS)) return 'qa';
 
-  // 6. api 키워드 / 경로
+  // ⑥ api 키워드 / 경로
   if (hasAny(stripped, API_KEYWORDS) || hasPathPattern(raw, API_PATH_PATTERNS)) return 'api';
 
-  // 7. ui 키워드 / 경로
+  // ⑦ ui 키워드 / 경로
   if (hasAny(stripped, UI_KEYWORDS) || hasPathPattern(raw, UI_PATH_PATTERNS)) return 'ui';
 
-  // 8. auth weak keywords (인증/권한/세션 — strong 매치 안 됐지만 BC가 identity-access)
+  // ⑧ qa **키워드** — 제목에 「E2E」가 섞였을 뿐인 혼합 작업을 여기서 받는다 (부채 33)
+  if (hasAny(stripped, QA_KEYWORDS)) return 'qa';
+
+  // ⑨ auth weak keywords (인증/권한/세션 — strong 매치 안 됐지만 BC가 identity-access)
   if (hasAny(stripped, AUTH_KEYWORDS)) return 'auth';
 
-  // 9. feature 트리거 (만들어줘/추가/새 기능)
+  // ⑩ feature 트리거 (만들어줘/추가/새 기능)
   if (hasAny(stripped, FEATURE_TRIGGERS)) return 'feature';
 
-  // 10. 기본값. 백엔드
+  // ⑪ 기본값. 백엔드
   return 'backend';
 };
 
