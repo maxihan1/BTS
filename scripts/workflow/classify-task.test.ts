@@ -322,3 +322,77 @@ describe('classify — qa 는 경로가 앞, 키워드가 뒤 (부채 33)', () =
     assert.equal(classify({ title: 'apps/web/e2e 시나리오 추가' }).type, 'qa');
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// 부채 매핑 45 — ASCII 키워드가 다른 영단어 안의 부분문자열에 매치한다
+// ─────────────────────────────────────────────────────────
+
+describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
+  test('키워드를 부분문자열로 품은 평범한 영단어는 신호가 아니다 (S4)', () => {
+    // pat ⊂ dispatch·patch·path — 종전에는 security-engineer 로 갔다
+    for (const title of ['dispatch 로직 정리', 'patch 파일 적용', 'path 계산 수정']) {
+      assert.notEqual(classify({ title }).type, 'auth', title);
+      assert.notEqual(classify({ title }).agent, 'security-engineer', title);
+    }
+    // ui ⊂ build·guide·requirement
+    for (const title of ['build 스크립트 정리', 'guide 문서 갱신', 'requirement 정리']) {
+      assert.notEqual(classify({ title }).type, 'ui', title);
+    }
+    // rest ⊂ restore · api ⊂ rapid
+    for (const title of ['restore 절차 문서화', 'rapid 프로토타입']) {
+      assert.notEqual(classify({ title }).type, 'api', title);
+    }
+  });
+
+  test('충돌 키워드는 다른 단어 안에 묻히면 BC 신호도 아니다 (E16)', () => {
+    // board ⊂ keyboard · action ⊂ transaction·interaction · label ⊂ relabel
+    for (const title of [
+      'keyboard 단축키 정리',
+      'transaction 격리 수준 조정',
+      'interaction 로그 수집',
+      'relabel 스크립트',
+    ]) {
+      assert.equal(classify({ title }).primary_bc, null, title);
+    }
+  });
+
+  // ★★길이 임계 설계를 영구히 배제하는 단언.
+  //   `argon2`(6자)·`ldap`(4자)는 「짧다」는 이유만으로 경계를 요구하면 어형이 붙는 순간 죽는다.
+  //   Argon2id 는 OWASP 권장 기본값이라 실제로 사람이 쓰는 표기다.
+  test('진짜 보안 키워드는 어형이 붙어도 살아 있다 (E11·E12)', () => {
+    for (const title of ['Argon2id 파라미터 튜닝', 'LDAPS 연결 설정']) {
+      assert.equal(classify({ title }).type, 'auth', title);
+      assert.equal(classify({ title }).agent, 'security-engineer', title);
+    }
+  });
+
+  test('영어 복수형은 BC 를 잃지 않는다 (E13)', () => {
+    assert.equal(classify({ title: 'labels 상한 조정' }).primary_bc, 'issue-tracking');
+    assert.equal(classify({ title: 'boards 순서 조정' }).primary_bc, 'agile-planning');
+    assert.equal(classify({ title: 'actions 실행기 리팩터' }).primary_bc, 'automation');
+  });
+
+  test('목록 밖 키워드는 종전 부분일치를 유지한다 (E8·E9)', () => {
+    // authentication ⊂ AuthenticationProvider · watcher ⊂ Watchers
+    assert.equal(
+      classify({ title: '플러그형 AuthenticationProvider 구조' }).primary_bc,
+      'identity-access',
+    );
+    assert.equal(
+      classify({ title: '담당자 (Reporter 1 / Assignee 1 / Watchers)' }).primary_bc,
+      'issue-tracking',
+    );
+  });
+
+  test('숫자는 경계로 치지 않는다 (E5·E6·E7)', () => {
+    assert.equal(classify({ title: 'saml2 설정' }).type, 'auth');
+    assert.equal(classify({ title: 'oauth2 로그인 연동' }).type, 'auth');
+    assert.equal(classify({ title: '2FA 백업코드' }).type, 'auth');
+    assert.equal(classify({ title: 'API-03 웹훅' }).type, 'api');
+  });
+
+  test('한글 경계 규칙은 그대로다 (E10 · 리액션 회귀)', () => {
+    assert.equal(classify({ title: '빌드 스크립트 정리' }).type, 'backend');
+    assert.equal(classify({ title: '댓글 리액션 추가' }).primary_bc, 'issue-tracking');
+  });
+});
