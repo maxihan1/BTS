@@ -25,10 +25,12 @@ TIER=$(jq -r '.tier' .bts-cache/classify.json)
 
 **리뷰 종수는 이 표의 행이 정한다.** `/bts` 티어별 절차 표의 「독립 리뷰 종수」는 체인 [6] `bts-codereview` 의 값이지 이 단계의 값이 아니다 — 이 단계를 돌지 않는 T0/T1 에도 그 행에 값이 있는 것이 근거다.
 
+**2종을 주는 기준.** 한 관점만으로는 판정이 안 서는 타입에 2종을 준다. `auth`·`migration` 은 공학 판단만으로 정책 약속(보안·데이터 폭발 반경)이 담보되지 않아 `ceo` 를 함께 받고, `ui` 는 **사용자가 보는 표면**이라 디자인 판단과 공학 판단이 서로를 대체하지 못한다(Maxi 판정 2026-08-17 · #388). 나머지는 1종이되 `backend` 는 UI 를 포함할 때만 조건부로 늘린다.
+
 | 조건 | 리뷰 렌즈 |
 |---|---|
 | `TYPE == "auth"` 또는 `TYPE == "migration"` | `/plan-eng-review` + `/plan-ceo-review` (**한 응답에 병렬 발행**) |
-| `TYPE == "ui"` | `/plan-design-review` (로직·계약 포함 시 `/plan-eng-review` 추가) |
+| `TYPE == "ui"` | `/plan-design-review` + `/plan-eng-review` (**한 응답에 병렬 발행**) |
 | `TYPE == "api"` | `/plan-eng-review` |
 | `TYPE == "design"` | `/plan-design-review` |
 | `TYPE == "backend"` | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
