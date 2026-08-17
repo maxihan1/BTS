@@ -283,6 +283,7 @@ const BOUNDARY_ONLY = new Set([
   'board',  // ⊂ keyboard  → agile-planning 오배정
   'action', // ⊂ transaction · interaction  → automation 오배정
   'label',  // ⊂ relabel  → issue-tracking 오배정
+  'route',  // ⊂ misroute · reroute  → api 오배정 (이 PR 자신의 slug 가 걸렸다)
 ]);
 
 /**
