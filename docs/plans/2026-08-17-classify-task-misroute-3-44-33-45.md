@@ -138,12 +138,21 @@ Then 종전과 같은 판정을 유지한다.
 |---|---|---|
 | **R1** | 경로 신호 `apps/web` 은 **뒤 슬래시 없이도** 인식한다 | `UI_PATH_PATTERNS` |
 | **R2** | 단, `apps/webhook`·`apps/web-legacy` 처럼 **더 긴 이름**은 인식하지 않는다 | 〃 |
-| **R3** | `qa` 는 **다른 타입 신호가 전혀 없을 때만** 고른다 | `detectType` 판정 순서 |
-| **R4** | 짧은 ASCII 키워드는 **단어 경계**를 지킬 때만 매치한다 | `includesWithBoundary` |
-| **R5** | 긴 ASCII 키워드(형태 변화가 잦은 것)는 종전 부분일치를 유지한다 | 〃 |
-| **R6** | 위 4종이 **회귀하면 판별식이 red** 가 된다 | `classify-task.test.ts` |
-| **R7** | 장부(`TODOS.md` · debt24-master)가 `33`·`44` 를 ✅ 로, `45` 를 ⬜ 로 **양쪽 다** 반영한다 | 장부 2파일 |
+| **R3** | `qa` **경로** 신호는 `ui` 보다 **앞**서고, `qa` **키워드**만 뒤로 간다 | `detectType` 판정 순서 |
+| **R3-b** | `apps/web/e2e` 도 뒤 슬래시 없이 인식한다 (R1 과 같은 결함) | `QA_PATH_PATTERNS` |
+| **R4** | `BOUNDARY_ONLY` 에 **이름으로 적힌** 키워드만 양쪽 단어 경계를 요구한다 | `includesWithBoundary` |
+| **R5** | 그 밖의 ASCII 키워드는 종전 부분일치를 유지한다 — **길이로 자르지 않는다** | 〃 |
+| **R5-b** | 영어 복수형 접미 `s` 1개는 경계로 친다 (`labels`·`boards`·`actions`) | 〃 |
+| **R6** | 위 전부가 **회귀하면 판별식이 red** 가 된다 | `classify-task.test.ts` |
+| **R7** | 장부 2파일이 `33`·`44`·**`45` 를 전부 ✅ `#387`** 로 반영한다 | 장부 2파일 |
 | **R8** | 장부의 티어 표기 `33`·`44` 를 `T1` → `T2` 로 정정한다 | `TODOS.md` |
+| **R9** | §PR 별 집계에서 `33` 의 **중복 소유**를 없앤다 (`33~40` 범위 조정) | debt24-master |
+| **R10** | 부채 `34`(`bts-review-plan` 분기 표)에 **`chore`@T2 미정의**를 흡수하고 순서 제약을 적는다 | `TODOS.md` · master |
+
+> **R7 초판 정정 (리뷰 F10).** 초판은 `45` 를 `⬜ 미배정` 으로 등재한다고 적었는데, **같은 PR 이
+> `45` 를 고친다.** 장부 판별식은 「장부·마스터가 둘 다 ⬜ 로 일치」하면 조용히 통과하므로
+> (`debt-ledger-mapping.test.ts:255` 가 그 한계를 자기 주석에 적어 두었다) 이 모순은 CI 가 못 잡는다.
+> `45` 는 이 PR 이 닫으므로 **✅ `#387`** 이다.
 
 ### 비기능 요구사항 (NFR)
 
@@ -167,31 +176,63 @@ Then 종전과 같은 판정을 유지한다.
 `apps/web-legacy` 에서 성립해 오탐을 만든다(실측). 부정 전방탐색으로 **단어 문자와 하이픈 둘 다**
 막으면 `apps/webhook`·`apps/web-legacy` 는 안 걸리고 `apps/web`·`apps/web/` 만 걸린다.
 
-**② `33` — 판정 순서.** `qa` 를 `api`·`ui` **뒤로** 내린다(5→7번).
-후보 ②(`/bts-impl` 이 `files` 로 재판정)는 **기각** — 착수 시점에 변경 경로가 0건이라 분류기
-호출 시점 자체를 바꿔야 하고, 그건 이 PR 의 한 문장을 벗어난다.
+**② `33` — 판정 순서를 「경로 먼저, 키워드 나중」으로 쪼갠다.** ⚠️ **초판을 폐기했다**(리뷰 F3).
 
-> **왜 「좁히기」가 아니라 「순서」인가 — 오류의 비용이 비대칭이다.**
-> `qa-engineer` 는 구현 코드 수정이 **금지**돼 있어 잘못 가면 **복구 불가**(작업을 못 한다).
-> 반대로 `frontend-engineer` 가 E2E 를 쓰는 것은 금지돼 있지 않아 **복구 가능**하다.
-> 그래서 애매하면 **복구 가능한 쪽으로 기운다.** S3 이 반대 방향 회귀를 막는다.
+초판은 qa 판정을 **통째로** `api`·`ui` 뒤로 내렸다. 그러면 `apps/web` 이 `apps/web/e2e/` 의
+**접두사**라 처방 ① 의 경로 확장과 겹쳐 **Playwright 표면 전체가 `qa-engineer` 에 도달 불가**가 된다.
 
-**③ `45` — ASCII 단어 경계.** `includesWithBoundary` 가 한글 키워드만 보던 경계 검사를
-**짧은 ASCII 키워드까지** 확장한다. 길이 `> ASCII_BOUNDARY_MAXLEN(4)` 인 키워드는 종전 부분일치 유지.
-
-**★상수 4 는 임의값이 아니라 실측으로 고른 구간의 값이다.**
-
-| 임계 | baseline 불일치 | 오배정 표본 교정 | 판정 |
+| 입력 | 현행 | 초판(qa 통째 뒤) | 확정안(경로 분리) |
 |---|---|---|---|
-| 2 | 57 → **57** | 3/9 | 부족 |
-| 3 | 57 → **57** | 7/9 | `rest`(4자)를 못 잡음 |
-| **4** | 57 → **57** | **8/9** | **채택** |
-| 5 | 57 → **57** | 8/9 | 4와 동일 결과 — 경계값이 칼날이 아님 |
-| ∞(전량 경계) | 57 → **59** ❌ | 8/9 | `authentication`⊂`AuthenticationProvider` · `watcher`⊂`Watchers` 를 잃어 **동결값 초과** |
+| `apps/web/e2e/issue-detail.spec.ts 회귀 보강` | `qa` | **`ui`** ❌ | `qa` ✅ |
+| `로딩 프레임 계약 E2E 신설 + apps/web/ 4파일` | `qa` ❌ | `ui` ✅ | `ui` ✅ |
+| `E2E 시나리오만 추가` | `qa` | `qa` ✅ | `qa` ✅ |
 
-교정 안 된 1건은 `restrict 규칙 추가` → `feature` 인데 **오배정이 아니다**(「추가」가 FEATURE 트리거).
+**확정안** — `QA_PATH_PATTERNS`(경로)는 `ui` **앞**에, `QA_KEYWORDS`(키워드)만 **뒤**로 내린다.
+이것이 장부가 원래 적어 둔 처방 ①(「제목이 아니라 **변경 경로**를 보게 한다」)의 취지다.
+경로는 정밀 신호이고 키워드는 퍼지 신호이므로 **정밀한 쪽이 이긴다.**
 
-경계 문자류는 **`[a-z]` 만**(숫자 제외)이다. `[a-z0-9]` 로 잡으면 `saml2`·`oauth2` 가 깨진다(실측).
+**②-b `QA_PATH_PATTERNS` 도 같은 뒤 슬래시 결함을 갖고 있다** — `/apps\/web\/e2e\//` 라
+`apps/web/e2e`(슬래시 없음)를 놓친다. 결함 `44` 와 **같은 결함**이므로 같은 처방을 적용한다.
+
+> **왜 애매하면 ui 쪽인가 — 오류 비용이 비대칭이다.**
+> `qa-engineer` 는 구현 코드 수정이 **금지**돼 있어 잘못 가면 **복구 불가**다.
+> `frontend-engineer` 가 E2E 를 쓰는 것은 금지돼 있지 않아 **복구 가능**하다.
+> 단 이 비대칭은 **경로 신호가 없을 때만** 적용한다 — 경로는 추측이 아니라 사실이다.
+
+**③ `45` — 큐레이션 경계 목록.** ⚠️ **초판(길이 임계)을 폐기했다**(리뷰 F1·F2).
+
+초판은 「길이 ≤ N 인 ASCII 키워드에 경계를 요구」했다. **N 을 4 로 두든 6 으로 올리든
+진짜 신호를 함께 죽인다.**
+
+| 검산 항목 | 현행 | 길이 임계 6 | **확정안(큐레이션+복수형s)** |
+|---|---|---|---|
+| `Argon2id 파라미터 튜닝` | `auth`/identity-access | **`backend`/-** ❌ | `auth`/identity-access ✅ |
+| `LDAPS 연결 설정` | `auth`/identity-access | **`backend`/-** ❌ | `auth`/identity-access ✅ |
+| 복수형 `issues`·`users`·`labels`·`boards`·`actions` | BC 유지 | **0/5** ❌ | **5/5** ✅ |
+| 오배정 교정 12건 | — | 12/12 ✅ | **12/12** ✅ |
+| FR 동결값 (≤57) | 57 | 57 | **57** ✅ |
+
+**★★「동결값 57 이 유지된다」는 안전 근거가 아니었다.** `bc-keyword-coverage` 의 오라클은
+**한국어 FR 제목 139건**이라 영어 어형 변화가 **원리적으로 나타날 수 없다.** 그래서 임계
+2·3·4·5·6 **전부**에서 57 이 유지된다 — 계획 자신이 2·3 을 「부족」이라 적은 구간에서도 그렇다.
+**계측기가 눈이 먼 것을 안전으로 읽었다.** 이 계획이 §Brief 에서 진단한
+`[[safety-claim-asserted-but-never-measured]]` 의 **7번째 인스턴스를 계획 자신이 저질렀고**,
+독립 리뷰가 머지 전에 잡았다.
+
+**확정안.**
+
+```ts
+// 실제로 부딪힌 키워드만 이름으로 적는다. 길이는 충돌 성향과 상관이 없다 —
+// csrf(4)·oidc(4)·aql(3) 은 15개월간 한 번도 안 부딪혔고, board(5)·action(6) 은 부딪혔다.
+const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'label']);
+```
+
+- 이 집합의 키워드만 **양쪽 단어 경계**를 요구한다. 나머지는 종전 부분일치 그대로다.
+- 경계 문자류는 **`[a-z]` 만**(숫자 제외) — `[a-z0-9]` 로 잡으면 `saml2`·`oauth2` 가 깨진다(실측).
+- **영어 복수형 접미 `s` 1개는 경계로 친다** — 없으면 `labels`·`boards`·`actions` 가 BC 를 잃는다.
+  `relabel`·`keyboard`·`transaction` 은 **앞** 경계에서 걸리므로 이 허용에 영향받지 않는다(실측).
+- **뮤테이션이 항목별로 비-공허하다** — 집합에서 한 줄을 지우면 대응 단언 하나가 red 다.
+  단일 상수는 이 성질을 가질 수 없다.
 
 ### 엣지 케이스
 
@@ -204,9 +245,15 @@ Then 종전과 같은 판정을 유지한다.
 | E5 | `saml2 설정` · `oauth2 로그인` | `auth` 유지 | 경계 문자류에서 숫자 제외 |
 | E6 | `2FA 백업코드` | `auth` 유지 | 키워드가 숫자로 시작 |
 | E7 | `API-03 웹훅` | `api` 유지 | 하이픈은 경계 |
-| E8 | `플러그형 AuthenticationProvider 구조` | BC `identity-access` 유지 | R5 — 길이 예외가 없으면 N1 위반 |
-| E9 | `담당자 (Reporter / Assignee / Watchers)` | BC `issue-tracking` 유지 | R5 — 복수형 `Watchers` |
+| E8 | `플러그형 AuthenticationProvider 구조` | BC `identity-access` 유지 | R5 — `authentication` 은 목록 밖 |
+| E9 | `담당자 (Reporter / Assignee / Watchers)` | BC `issue-tracking` 유지 | R5 — `watcher` 는 목록 밖 |
 | E10 | 한글 전용 제목(`빌드 스크립트 정리`) | 종전과 동일 | 한글 경계 규칙 무변경 |
+| **E11** | `Argon2id 파라미터 튜닝` | **`auth`/identity-access 유지** | ★리뷰 F1 — 길이 임계였다면 유실 |
+| **E12** | `LDAPS 연결 설정` | **`auth`/identity-access 유지** | ★리뷰 F1 — 〃 |
+| **E13** | `labels 상한 조정` · `boards 순서` · `actions 실행기` | BC 유지 | ★R5-b 복수형 |
+| **E14** | `apps/web/e2e/issue-detail.spec.ts 회귀 보강` | **`qa` 유지** | ★리뷰 F3 — 초판이 `ui` 로 유실시켰다 |
+| **E15** | `apps/web/e2e 시나리오 추가` | **`qa`** | ★R3-b — QA 경로의 뒤 슬래시 결함 |
+| **E16** | `keyboard 단축키` · `transaction 격리` · `interaction 로그` · `relabel 스크립트` | BC `null` | 신규 오배정 4건 |
 
 ### 제약 조건
 
@@ -221,14 +268,24 @@ Then 종전과 같은 판정을 유지한다.
 
 ### 측정 가능한 완료 기준
 
-1. `classify-task.test.ts` 에 S1~S5 · E1~E10 대응 단언이 있고 **각각 red 를 먼저 봤다.**
+1. `classify-task.test.ts` 에 S1~S5 · **E1~E16** 대응 단언이 있고 **각각 red 를 먼저 봤다.**
 2. 워크플로우 판별식 **308 → (신규분 포함) 전량 pass · EXIT=0**. 착수 baseline 은 308/308.
 3. `bc-keyword-coverage.test.ts` 가 **상한·하한 둘 다 통과**(불일치 57 유지 · `MAX_MISMATCHES` 무변경).
-4. **뮤테이션 4종이 설계대로 RED** — ① 경로 부정 전방탐색 제거 ② qa 순서 원복
-   ③ `ASCII_BOUNDARY_MAXLEN` 을 99 로 ④ 장부에서 `45` 행 1개 삭제.
-5. `TODOS.md` 와 debt24-master 가 `33`·`44` = ✅ `#387` · `45` = ⬜ `미배정` 로 **양쪽 일치**.
+   ⚠️ **이 항목은 안전 근거가 아니다** — 오라클이 한국어라 영어 어형 변화를 못 본다(리뷰 F2).
+   영어 쪽 안전은 E11~E13 단언이 진다. **이 문장을 지우지 말 것.**
+4. **뮤테이션 6종이 설계대로 RED**
+   ① `UI_PATH_PATTERNS` 의 `(?![\w-])` 제거 → E1·E2 RED
+   ② `QA_PATH_PATTERNS` 판정을 다시 `ui` 뒤로 → **E14 RED**
+   ③ `QA_PATH_PATTERNS` 의 경계 제거 → E15 RED
+   ④ `BOUNDARY_ONLY` 에서 `'action'` 1줄 삭제 → E16 의 `transaction` RED (**항목별 비-공허**)
+   ⑤ 복수형 `s` 허용 제거 → E13 RED
+   ⑥ 마스터 §전수 매핑에서 `45` 행 삭제 → `debt-ledger-mapping` RED
+5. `TODOS.md` 와 debt24-master 가 `33`·`44`·**`45` 전부 ✅ `#387`** 로 **양쪽 일치**하고,
+   §PR 별 집계에 `33` 이 **한 행에만** 나온다.
 6. `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh` EXIT=0.
 7. 이 PR 의 최종 제목을 분류기에 태웠을 때 **더 이상 `api` 로 떨어지지 않는다**(자기 실연의 종료).
+8. **`Argon2id`·`LDAPS` 가 `security-engineer` 로 간다** — 이 PR 이 보안 라우팅을 **악화시키지 않았다**는
+   직접 증거. 길이 임계안이 여기서 죽었다.
 
 ## Sanity Check
 
@@ -303,16 +360,37 @@ Then 종전과 같은 판정을 유지한다.
     assert.equal(classify({ title: 'E2E 시나리오만 추가' }).type, 'qa');
     assert.equal(classify({ title: 'Playwright 회귀 보강' }).type, 'qa');
   });
+  // ★리뷰 F3 — Task 1 과의 상호작용. 이 단언이 없으면 Playwright 표면이 통째로 샌다
+  test('E2E 경로는 ui 경로보다 앞선다 (E14·E15)', () => {
+    assert.equal(classify({ title: 'apps/web/e2e/issue-detail.spec.ts 회귀 보강' }).type, 'qa');
+    assert.equal(classify({ title: 'apps/web/e2e 시나리오 추가' }).type, 'qa');
+  });
   ```
-- 실패 메시지 (예상): 첫 테스트가 `'qa' !== 'ui'` 로 red.
+- 실패 메시지 (예상): 첫 테스트가 `'qa' !== 'ui'` 로 red. **E15 는 현행에서도 red**
+  (`QA_PATH_PATTERNS` 가 뒤 슬래시를 요구해 `apps/web/e2e` 를 못 잡는다 — 선재 결함).
 
 **GREEN**:
 - 파일: `scripts/workflow/classify-task.ts`
-- `detectType` 에서 qa 판정 블록을 api·ui **뒤로** 이동(5→7번). 번호 주석도 함께 갱신.
+- `detectType` 의 qa 판정을 **둘로 쪼갠다** — `hasPathPattern(raw, QA_PATH_PATTERNS)` 는
+  `api`·`ui` **앞**(5번), `hasAny(stripped, QA_KEYWORDS)` 는 **뒤**(8번). 번호 주석 갱신.
+- `QA_PATH_PATTERNS` 의 `/apps\/web\/e2e\//` → `/apps\/web\/e2e(?![\w-])/` (R3-b).
 
 **REFACTOR**:
-- 이동한 블록 위에 KDoc — **오류 비용의 비대칭**을 근거로 남긴다
-  (`qa-engineer` 오배정은 복구 불가 · `frontend-engineer` 오배정은 복구 가능)
+- **`detectType` 위에 ASCII 결정 트리 도식을 박는다** (게이트 1 결정 D5). 순서가 계약인데
+  지금은 번호 주석 10개로만 표현돼 있어, 한 줄을 옮기면 같은 사고가 다시 난다.
+  ```
+  ① auth(strong)     보안은 fast-track 무시 (위험 반경 ↑)
+  ② migration
+  ③ chore/fix 접두사
+  ④ design
+  ⑤ qa **경로**      ← 경로는 사실. 퍼지 신호보다 앞선다 (F3)
+  ⑥ api
+  ⑦ ui
+  ⑧ qa **키워드**    ← 「E2E」가 제목에 섞였을 뿐일 수 있다 (부채 33)
+  ⑨ auth(weak) → ⑩ feature → ⑪ backend(기본값)
+  ```
+- 비대칭 근거를 KDoc 으로 — `qa-engineer` 오배정은 복구 불가 · `frontend-engineer` 는 복구 가능.
+  **단 이 비대칭은 ⑧ 에만 적용된다** — ⑤ 는 추측이 아니라 사실이므로 양보하지 않는다.
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts`
 
@@ -346,25 +424,50 @@ Then 종전과 같은 판정을 유지한다.
     assert.equal(classify({ title: '2FA 백업코드' }).type, 'auth');
     assert.equal(classify({ title: 'API-03 웹훅' }).type, 'api');       // 하이픈은 경계
   });
-  test('길이 예외가 없으면 동결값을 깬다 (E8·E9)', () => {
+  test('목록 밖 키워드는 종전 부분일치를 유지한다 (E8·E9)', () => {
     assert.equal(classify({ title: '플러그형 AuthenticationProvider 구조' }).primary_bc,
       'identity-access');
     assert.equal(classify({ title: '담당자 (Reporter 1 / Assignee 1 / Watchers)' }).primary_bc,
       'issue-tracking');
   });
+  // ★★리뷰 F1 — 길이 임계안이 여기서 죽었다. 이 단언이 그 설계를 영구히 배제한다
+  test('진짜 보안 키워드는 어형이 붙어도 살아 있다 (E11·E12)', () => {
+    for (const t of ['Argon2id 파라미터 튜닝', 'LDAPS 연결 설정']) {
+      assert.equal(classify({ title: t }).type, 'auth', t);
+      assert.equal(classify({ title: t }).agent, 'security-engineer', t);
+    }
+  });
+  test('영어 복수형은 BC 를 잃지 않는다 (E13)', () => {
+    assert.equal(classify({ title: 'labels 상한 조정' }).primary_bc, 'issue-tracking');
+    assert.equal(classify({ title: 'boards 순서 조정' }).primary_bc, 'agile-planning');
+    assert.equal(classify({ title: 'actions 실행기 리팩터' }).primary_bc, 'automation');
+  });
+  test('충돌 키워드는 다른 단어 안에 묻히면 신호가 아니다 (E16)', () => {
+    for (const t of ['keyboard 단축키 정리', 'transaction 격리 수준 조정',
+                     'interaction 로그 수집', 'relabel 스크립트']) {
+      assert.equal(classify({ title: t }).primary_bc, null, t);
+    }
+  });
   ```
-- 실패 메시지 (예상): 첫 테스트가 `'auth' !== 'auth'` 형태로 red(9건 중 8건).
-  둘째·셋째는 현행에서도 pass — **회귀 방지 단언**이고 뮤테이션(Task 5 ③)이 비-공허를 증명한다.
+- 실패 메시지 (예상): S4·E16 이 red(12건). E8·E9·E11·E12·E13 은 현행에서도 pass —
+  **회귀 방지 단언**이고 뮤테이션(Task 5 ④⑤)이 항목별 비-공허를 증명한다.
 
 **GREEN**:
 - 파일: `scripts/workflow/classify-task.ts`
-- `includesWithBoundary` 에 ASCII 분기 추가 + `ASCII_BOUNDARY_MAXLEN = 4` 상수 신설.
-  경계 문자류는 `[a-z]` 만(숫자 제외).
+- `includesWithBoundary` 에 ASCII 분기 추가 + **`BOUNDARY_ONLY` 집합 신설**
+  (`pat` `ui` `api` `rest` `board` `action` `label`). 경계 문자류는 `[a-z]` 만(숫자 제외),
+  **영어 복수형 접미 `s` 1개는 경계로 친다.**
+- ⚠️ **분기 순서** — `isHangulSyllable(kw[0])` 검사가 **먼저**다. ASCII 분기를 앞에 두면
+  한글 키워드(`액션`·`이슈`)가 앞 경계 보호를 잃어 `리액션` 오라우팅이 되살아난다(리뷰 F9-a).
+- ⚠️ **양쪽 경계**여야 한다. 앞만 보면 `patch`·`path` 는 키워드가 index 0 이라 통과한다(F9-b).
 
 **REFACTOR**:
 - 기존 KDoc(`:239-250`)의 **거짓 문장을 정정**한다 — 「ASCII 키워드는 이 규칙과 무관」은 틀렸다.
   실제 위험은 한글 접두사가 아니라 **다른 ASCII 단어**였음을 실측 표와 함께 남긴다.
-- 상수 `4` 옆에 임계값 스윕 결과(2/3/4/5/∞)를 요약해 「왜 4냐」에 파일이 스스로 답하게 한다.
+- `BOUNDARY_ONLY` 의 **각 줄에 부딪힌 단어를 주석으로** 적는다 (`'pat', // dispatch · patch · path`).
+  「왜 이 키워드냐」에 줄 단위로 답하게 하는 것이 단일 상수 대비 이 설계의 핵심 이점이다.
+- **길이 임계를 기각한 이유를 KDoc 에 남긴다** — `argon2`(6자)·`ldap`(4자)가 함께 죽는다.
+  안 적으면 다음 사람이 「이거 그냥 길이로 자르면 되잖아」로 되돌린다.
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts scripts/workflow/bc-keyword-coverage.test.ts`
 
@@ -383,21 +486,29 @@ Then 종전과 같은 판정을 유지한다.
 
 **GREEN**:
 - 파일: `docs/plans/2026-08-12-debt24-master.md`
-- §전수 매핑에 `| 45 | ⬜ | … | 미배정 | 워크플로우 |` 행 추가
-- `33`·`44` 행을 `✅` + `#387` 로 전환하고 `TODOS.md` 의 두 제목 마커도 `## ✅ … (해소 2026-08-17)` 로.
+- §전수 매핑에 `| 45 | ✅ | … | #387 | 워크플로우 |` 행 추가 — **⬜ 가 아니다**(리뷰 F10).
+  이 PR 이 `45` 를 닫으므로 ⬜ 로 적으면 장부가 거짓이 되고, 판별식은 그 거짓을 못 본다.
+- `33`·`44` 행도 `✅` + `#387` 로 전환하고 `TODOS.md` 의 세 제목 마커를 `## ✅ … (해소 2026-08-17)` 로.
   본문은 저장소 선례대로 **`**해소.**` 문단 + `<details>` 원 기록 보존** 형태.
 - `TODOS.md` 의 `33`·`44` 제목 꼬리 `· T1` → `· T2` 정정(표면 정본 `GUARD_CI` 근거).
+  키 정규화(`normalizeKey`)가 **끝 괄호 그룹만** 떼므로 이 편집은 장부 대조 키를 안 흔든다(리뷰 F14).
 
 **REFACTOR**:
-- 마스터 §PR 별 집계에 `#387` 행 추가(항목 `33`·`44`·`45`).
+- 마스터 §PR 별 집계에 `#387` 행 추가(항목 `33`·`44`·`45`)하고, **기존 `33`~`40` 범위 행에서
+  `33` 을 빼고 건수를 `8`→`7` 로 내린다** (리뷰 F12 — 안 하면 `33` 이 두 행의 소유가 되는데
+  이 표는 `masterMappingRows()` 스캔 대상 밖이라 **CI 가 영원히 못 본다**).
+- **부채 `34` 서술에 `chore`@T2 를 흡수한다.** 착수 중 `bts-review-plan` 분기 표가 `chore`@T2 를
+  정의하지 않은 것을 실제로 밟았다(이 PR 이 그 조합이다). `ui`@T2 와 **같은 표·같은 결함**이라
+  새 항목을 만들지 않는다. 마스터 §순서 제약에 **`34` 는 `33` 다음**을 추가한다 —
+  `33` 이 혼합 작업을 `qa`(표 미진입)에서 `ui`(정의 안 된 조합) 쪽으로 옮겨 노출을 키우기 때문이다.
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/debt-ledger-mapping.test.ts scripts/workflow/todos-resolved-section-purity.test.ts`
 
-### Task 5. 뮤테이션 4종으로 판별식이 비어 있지 않음을 증명한다
+### Task 5. 뮤테이션 6종으로 판별식이 비어 있지 않음을 증명한다
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`scripts/workflow/classify-task.ts`]
+- files: [`scripts/workflow/classify-task.ts`, `docs/plans/2026-08-12-debt24-master.md`]
 - depends-on: [1, 2, 3, 4]
 
 **RED**:
@@ -405,10 +516,15 @@ Then 종전과 같은 판정을 유지한다.
 
 | # | 끊는 것 | 기대 |
 |---|---|---|
-| ① | `UI_PATH_PATTERNS` 의 `(?![\w-])` 제거 | Task 1 오탐 단언 RED |
-| ② | `detectType` 의 qa 블록을 원위치(5번)로 | Task 2 혼합 단언 RED |
-| ③ | `ASCII_BOUNDARY_MAXLEN` 을 `99` 로 | Task 3 부분문자열 단언 + `bc-keyword-coverage` 상한 RED |
-| ④ | 마스터 §전수 매핑에서 `45` 행 1개 삭제 | `debt-ledger-mapping` RED |
+| ① | `UI_PATH_PATTERNS` 의 `(?![\w-])` 제거 | E1·E2 RED |
+| ② | `QA_PATH_PATTERNS` 판정을 다시 `ui` 뒤로 | **E14 RED** (리뷰 F3 이 연 구멍) |
+| ③ | `QA_PATH_PATTERNS` 의 경계 제거 | E15 RED |
+| ④ | `BOUNDARY_ONLY` 에서 `'action'` **1줄만** 삭제 | E16 의 `transaction` RED — **항목별 비-공허** |
+| ⑤ | 복수형 `s` 허용 제거 | E13 RED |
+| ⑥ | 마스터 §전수 매핑에서 `45` 행 삭제 | `debt-ledger-mapping` RED |
+
+> **④ 가 이 설계의 핵심 증거다.** 단일 상수(`ASCII_BOUNDARY_MAXLEN`)였다면 「한 줄을 지우면
+> 대응 단언 하나가 red」라는 성질을 가질 수 없다 — 상수 하나를 흔들면 전부가 같이 흔들린다.
 
 **GREEN**:
 - 각 뮤테이션을 `git checkout -- <경로>` 로 원복. **하위 디렉터리에서 부르지 말 것**
@@ -428,9 +544,80 @@ Then 종전과 같은 판정을 유지한다.
   Task 4 는 장부 2파일만 만져 교집합 0 이므로 Task 1 과 병렬이다.)
 - **구현 규율**: TDD red-first (T2 — `test:` → `feat:` 커밋 순서가 대조된다). ui 시각 트랙 **해당 없음**.
 - **추가 검증**: 워크플로우 판별식 전량(착수 baseline 308/308) · `node scripts/build-doc-index.mjs --check` ·
-  `bash scripts/verify-master-plan.sh` · 뮤테이션 4종.
+  `bash scripts/verify-master-plan.sh` · **뮤테이션 6종**.
 - **typecheck·lint**: `scripts/**` 는 `apps/web` tsconfig 밖이라 프론트 typecheck 대상이 아니다 —
   판별식 실행 자체가 타입 스트리핑을 거치므로 문법 오류는 즉시 드러난다. `pnpm verify` 는
   **worktree 에서 금지**(C4)이며 CI 가 담당한다.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈. `plan-eng-review` 1종** (`chore`@T2 는 분기 표 미정의 조합 — 게이트 1 결정 D2 로 확정).
+`plan-ceo-review` 는 제외(사업·범위 관점이 하네스 도구 정비에 공전). 아웃사이드 보이스는
+`codex` 부재로 Claude 서브에이전트 대체(D3 승인 범위로 처리).
+
+### 결정 (게이트 1 이전 · Maxi 확정)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D1 | 신규 `45` 를 이 PR 에 포함 | 같은 파일·같은 뿌리 · 파급 최대 |
+| D2 | plan 리뷰 = `plan-eng-review` 1종 | 표 미정의 조합. 강제 장치 변경에 리뷰 0종은 불가 |
+| D3 | 독립 코드리뷰에 서브에이전트 사용 승인 | 자기 구현을 자기가 리뷰하면 독립이 아니다 |
+| D4 | ~~`ASCII_BOUNDARY_MAXLEN` 4 → 6~~ **폐기** | 아웃사이드 보이스 F1 이 반증. 아래 D6 이 대체 |
+| D5 | `detectType` ASCII 결정 트리 도식 | 순서가 계약인데 번호 주석으로만 표현돼 있었다 |
+| D6 | **길이 임계 전면 기각 → `BOUNDARY_ONLY` 큐레이션 + 복수형 s** | F1·F2 |
+
+### 인라인 리뷰 (4섹션)
+
+| 섹션 | 결과 |
+|---|---|
+| 1. 아키텍처 | 발견 1 — 임계 4 가 길이 5~6 을 열어둠 (→ D4, 이후 D6 이 대체) |
+| 2. 코드 품질 | 발견 1 — 결정 트리 도식 부재 (→ D5) |
+| 3. 테스트 | REGRESSION RULE 발동 → 신규 4건 자동 추가 · GAP 1(임계 경계값 단언, D6 으로 소멸) |
+| 4. 성능 | 문제 없음 — 인접 문자 2개 추가 조회, 정규식 백트래킹 무증가 |
+
+### 아웃사이드 보이스 — 인라인 리뷰를 뚫었다 (P0 2건)
+
+**★★독립 리뷰가 내 리뷰의 승인 결과(D4)를 반증했다.** 6연속에 이은 6번째가 아니라,
+**같은 세션 안에서 인라인 리뷰가 통과시킨 것을 아웃사이드가 잡은 첫 사례**다.
+
+| # | 심각도 | 내용 | 내 검산 |
+|---|---|---|---|
+| F1 | **P0** | 길이 임계는 `argon2`(6)·`ldap`(4) 등 **진짜 보안 키워드**와 영어 복수형 전량을 함께 죽인다 | **확진** — `Argon2id`·`LDAPS` 가 `auth/identity-access` → `backend/-` |
+| F2 | P1 | 「동결값 57 유지」는 안전 근거가 아니다 — 오라클이 한국어라 영어 어형을 못 본다 | **확진** — 임계 2·3·4·5·6 전부 57 |
+| F3 | **P0** | `apps/web` 이 `apps/web/e2e/` 의 접두사 → Playwright 표면이 `qa-engineer` 도달 불가 | **확진** — `…spec.ts 회귀 보강` 이 `qa`→`ui` |
+| F5 | P1 | 큐레이션 7개가 같은 결과를 50개 적은 키워드로 낸다 | **확진 + 개선** — 복수형 s 를 더해 5/5 |
+| F9 | P2 | 분기 순서(한글 먼저)와 양쪽 경계가 스펙에 안 적혀 있다 | 채택 — Task 3 GREEN 에 명시 |
+| F10 | P1 | `45` 를 고치면서 `⬜` 로 등재하는 모순. 장부 판별식이 못 잡는 형태 | 채택 — R7 정정 |
+| F12 | P2 | §PR 별 집계에서 `33` 이 두 행 소유. 그 표는 스캔 대상 밖 | 채택 — R9 |
+| F13 | P1 | `33` 을 고치면 부채 `34` 노출이 커진다. 순서 제약 부재 | 채택 — R10 |
+| F14 | P2 | 티어 표기 편집이 장부 키를 안 흔든다 | 확인 후 근거를 Task 4 에 명시 |
+| F16 | P2 | `UI_PATH_PATTERNS` 의 raw 매칭은 무관 | 일치 — 내 인라인 판단과 같음 |
+| **F11** | — | 「`#387` 은 추측된 PR 번호」 | **기각** — `#387` 은 이미 열린 실제 PR |
+| **F15** | — | 「44 만 단독 배포하라」 | **기각** — 44 만 넣으면 F3 의 절반이 열린다. Maxi 확정(D6 묶음 유지) |
+
+**미채택 사유 기록.** F7·F8 은 「현재 무해하나 문서화 안 됨」이라 **범위 밖**으로 둔다 —
+공백 ASCII 키워드는 전부 ≥10자라 큐레이션 집합에 없고, `/api/` 의 사실상 사문화는 선재 상태다.
+
+### BLOCKER 처리
+
+**P0 2건 → 중단 후 Maxi 개입 → D6 으로 처방 교체 승인.** 계획은 이 결과를 반영해 갱신됐다.
+초판 서술(길이 임계·qa 통째 이동·`45` ⬜)은 **지우지 않고 정정 표시로 남겼다** — 왜 그 설계가
+기각됐는지가 없으면 다음 사람이 되돌린다.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | SKIPPED | 하네스 도구 정비 — 사업·범위 렌즈 공전 |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | UNAVAILABLE | codex CLI 미설치 → Claude 서브에이전트 대체 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 2 issues, 0 critical gaps (인라인) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | N/A | 사용자 화면 0 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | NOT RUN | — |
+
+**CROSS-MODEL:** 아웃사이드 보이스가 인라인 리뷰와 **겹치지 않는 P0 2건**을 냈다(F1·F3).
+겹친 것은 F16 1건뿐이다. 인라인 리뷰가 승인한 D4 를 아웃사이드가 반증했고, 전량 자체 검산으로
+확인한 뒤 D6 으로 교체했다. 아웃사이드 주장 12건 중 **2건(F11·F15)은 검산에서 기각**했다.
+
+**VERDICT:** ENG CLEARED (D6 반영 후) — 게이트 1 로 넘어간다. CEO 리뷰는 이 티어·타입에서 미적용.
+
+NO UNRESOLVED DECISIONS
