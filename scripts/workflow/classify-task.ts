@@ -248,6 +248,12 @@ const isAsciiLower = (ch: string | undefined): boolean =>
   ch !== undefined && ch >= 'a' && ch <= 'z';
 
 /**
+ * 뒤 경계로 인정하는 영어 어형 접미. **긴 것부터** 본다 — `es` 를 `s` 보다 먼저 봐야
+ * `issues` 가 `issue`+`s` 로 정확히 끝난다.
+ */
+const ASCII_INFLECTIONS = ['ing', 'es', 'ed', 's'] as const;
+
+/**
  * **양쪽 단어 경계를 요구하는 ASCII 키워드 목록** (부채 45).
  *
  * ★길이로 자르지 않는다. 초판 설계는 「길이 ≤ N 인 ASCII 키워드에 경계 요구」였고 N 을
@@ -310,9 +316,18 @@ const includesWithBoundary = (haystack: string, keyword: string): boolean => {
     } else {
       // ★경계 문자류는 `[a-z]` 만이다 — 숫자를 포함시키면 `saml2`·`oauth2` 가 깨진다(실측).
       let end = at + kw.length;
-      // ★영어 복수형 접미 `s` 1개는 경계로 친다. 없으면 labels·boards·actions 가 BC 를 잃는다.
-      //   relabel·keyboard·transaction 은 **앞** 경계에서 걸리므로 이 허용에 영향받지 않는다.
-      if (haystack[end] === 's') end += 1;
+      // ★영어 어형 접미는 경계로 친다. 없으면 `labels`·`boards`·`actions` 가 BC 를 잃고,
+      //   `labeling`·`labeled` 는 **다른 BC 로 조용히 오라우팅된다**(빈자리를 `규칙`·`필터` 가 차지).
+      //   후자는 신호 유실이 아니라 신규 오배정이라 이 PR 이 없애려는 양식 그 자체다.
+      // ★이 허용은 위 결함들과 **직교한다** — `relabel`·`keyboard`·`transaction`·`dispatch` 는
+      //   전부 **앞** 경계에서 걸리므로 뒤를 아무리 넓혀도 되살아나지 않는다(실측).
+      //   유일하게 뒤 경계에 의존하는 것은 `rest` ⊂ `restore`(`ore` 는 접미 목록에 없다).
+      for (const suffix of ASCII_INFLECTIONS) {
+        if (haystack.startsWith(suffix, end)) {
+          end += suffix.length;
+          break;
+        }
+      }
       if (!isAsciiLower(haystack[at - 1]) && !isAsciiLower(haystack[end])) return true;
     }
     from = at + 1;
