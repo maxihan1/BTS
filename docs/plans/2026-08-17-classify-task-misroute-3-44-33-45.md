@@ -142,7 +142,7 @@ Then 종전과 같은 판정을 유지한다.
 | **R3-b** | `apps/web/e2e` 도 뒤 슬래시 없이 인식한다 (R1 과 같은 결함) | `QA_PATH_PATTERNS` |
 | **R4** | `BOUNDARY_ONLY` 에 **이름으로 적힌** 키워드만 양쪽 단어 경계를 요구한다 | `includesWithBoundary` |
 | **R5** | 그 밖의 ASCII 키워드는 종전 부분일치를 유지한다 — **길이로 자르지 않는다** | 〃 |
-| **R5-b** | 영어 복수형 접미 `s` 1개는 경계로 친다 (`labels`·`boards`·`actions`) | 〃 |
+| **R5-b** | 영어 어형 접미(`ing`·`ed`·`s`)는 경계로 친다 (`labels`·`labeling`·`labeled`) | 〃 |
 | **R6** | 위 전부가 **회귀하면 판별식이 red** 가 된다 | `classify-task.test.ts` |
 | **R7** | 장부 2파일이 `33`·`44`·**`45` 를 전부 ✅ `#387`** 로 반영한다 | 장부 2파일 |
 | **R8** | 장부의 티어 표기 `33`·`44` 를 `T1` → `T2` 로 정정한다 | `TODOS.md` |
@@ -229,8 +229,11 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 
 - 이 집합의 키워드만 **양쪽 단어 경계**를 요구한다. 나머지는 종전 부분일치 그대로다.
 - 경계 문자류는 **`[a-z]` 만**(숫자 제외) — `[a-z0-9]` 로 잡으면 `saml2`·`oauth2` 가 깨진다(실측).
-- **영어 복수형 접미 `s` 1개는 경계로 친다** — 없으면 `labels`·`boards`·`actions` 가 BC 를 잃는다.
-  `relabel`·`keyboard`·`transaction` 은 **앞** 경계에서 걸리므로 이 허용에 영향받지 않는다(실측).
+- **영어 어형 접미(`ing`·`ed`·`s`)는 경계로 친다** — 없으면 `labels`·`boards`·`actions` 가 BC 를 잃고
+  `labeling`·`labeled` 는 다른 BC 로 조용히 오라우팅된다. `relabel`·`keyboard`·`transaction` 은
+  **앞** 경계에서 걸리므로 이 허용에 영향받지 않는다(실측).
+- **CamelCase 험프(소문자→대문자)도 경계로 친다** — 판정 문자열이 이미 소문자화돼 있어
+  `PatTokenModal`·`OpenApiConfig` 의 진짜 단어 경계가 지워지는 것을 되살린다. 연속 대문자(`PATCH`)는 험프가 아니다.
 - **뮤테이션이 항목별로 비-공허하다** — 집합에서 한 줄을 지우면 대응 단언 하나가 red 다.
   단일 상수는 이 성질을 가질 수 없다.
 
@@ -255,6 +258,9 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 | **E15** | `apps/web/e2e 시나리오 추가` | **`qa`** | ★R3-b — QA 경로의 뒤 슬래시 결함 |
 | **E16** | `keyboard 단축키` · `transaction 격리` · `interaction 로그` · `relabel 스크립트` | BC `null` | 신규 오배정 4건 |
 | **E17** | `labeling 규칙 정리` · `labeled 항목 필터` | BC `issue-tracking` 유지 | ★독립 검증이 잡은 **이 PR 이 만든** 오배정 |
+| **E18** | `…(PatTokenModal 정본)` · `OpenAPI … Swagger UI` · `BoardCardResponse` · `SetFieldPostAction` | main 과 같은 라우팅 유지 | ★게이트 2 리뷰가 잡은 **이 PR 이 만든 보안 라우팅 회귀** |
+| **E19** | `PATCH 파일 적용` · `PATH 계산 수정` · `DISPATCH 로직` | `auth` 아님 | 험프는 소문자→대문자 전이여야 한다 |
+| **E20** | `classify-task misroute 3종` · `reroute 로직` / `route 정의 추가` | `api` 아님 / `api` 유지 | ★§Brief 의 「4회 자기 실연」 중 마지막 하나 |
 
 > **E17 은 이 PR 이 스스로 만든 결함을 닫는 단언이다 (구현 후 추가 · D9).** `label` 을 경계
 > 대상으로 만들자 `labeling`·`labeled` 같은 **진짜 라벨 작업**까지 신호를 잃었고, 빈자리를
@@ -276,12 +282,15 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 
 ### 측정 가능한 완료 기준
 
-1. `classify-task.test.ts` 에 S1~S5 · **E1~E16** 대응 단언이 있고 **각각 red 를 먼저 봤다.**
+1. `classify-task.test.ts` 에 S1~S5 · **E1~E20** 대응 단언이 있다.
+   ⚠️ **「각각 red 를 먼저」는 신규 동작 단언에만 해당한다** — 회귀 가드(E1·E2·E5~E9·E11~E15·E19)는
+   설계상 fix 이전에도 통과하고, 비-공허는 뮤테이션 10종이 진다. 이 문구를 「전부 red 를 봤다」로
+   읽으면 거짓이 된다(독립 검증 지적).
 2. 워크플로우 판별식 **308 → (신규분 포함) 전량 pass · EXIT=0**. 착수 baseline 은 308/308.
 3. `bc-keyword-coverage.test.ts` 가 **상한·하한 둘 다 통과**(불일치 57 유지 · `MAX_MISMATCHES` 무변경).
    ⚠️ **이 항목은 안전 근거가 아니다** — 오라클이 한국어라 영어 어형 변화를 못 본다(리뷰 F2).
    영어 쪽 안전은 E11~E13 단언이 진다. **이 문장을 지우지 말 것.**
-4. **뮤테이션 6종이 설계대로 RED**
+4. **뮤테이션 10종이 설계대로 RED**(⑥ 은 설계와 다른 GREEN — 그 사실도 기록)
    ① `UI_PATH_PATTERNS` 의 `(?![\w-])` 제거 → E1·E2 RED
    ② `QA_PATH_PATTERNS` 판정을 다시 `ui` 뒤로 → **E14 RED**
    ③ `QA_PATH_PATTERNS` 의 경계 제거 → E15 RED
@@ -464,7 +473,7 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 - 파일: `scripts/workflow/classify-task.ts`
 - `includesWithBoundary` 에 ASCII 분기 추가 + **`BOUNDARY_ONLY` 집합 신설**
   (`pat` `ui` `api` `rest` `board` `action` `label`). 경계 문자류는 `[a-z]` 만(숫자 제외),
-  **영어 복수형 접미 `s` 1개는 경계로 친다.**
+  **영어 어형 접미(`ing`·`ed`·`s`)와 CamelCase 험프는 경계로 친다.**
 - ⚠️ **분기 순서** — `isHangulSyllable(kw[0])` 검사가 **먼저**다. ASCII 분기를 앞에 두면
   한글 키워드(`액션`·`이슈`)가 앞 경계 보호를 잃어 `리액션` 오라우팅이 되살아난다(리뷰 F9-a).
 - ⚠️ **양쪽 경계**여야 한다. 앞만 보면 `patch`·`path` 는 키워드가 index 0 이라 통과한다(F9-b).
@@ -537,6 +546,10 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 | ⑥ | 마스터 §전수 매핑에서 `45`(✅) 행 삭제 | `debt-ledger-mapping` RED | **GREEN ❌ 설계와 다름** |
 | ⑥′ | 마스터 §전수 매핑에서 `46`(⬜) 행 삭제 | 〃 | **RED ✅** 1건 |
 | ⑦ | `BOUNDARY_ONLY` 분기를 길이 임계(`kw.length > 6`)로 되돌림 | **E11 RED** (E12 는 생존) | **RED ✅** 1건 |
+| ⑧ | CamelCase 험프 인정(`isHump`) 제거 | E18 RED | **RED ✅** 1건 |
+| ⑧′ | 험프에서 「앞 글자가 소문자」 조건 제거 | E19 RED | **RED ✅** 1건 |
+| ⑨ | `BOUNDARY_ONLY` 에서 `'route'` 삭제 | E20 RED | **오조준 ❌ → ⑨′ 로 재실행** |
+| ⑨′ | 〃 (정확히 그 줄만) | E20 RED | **RED ✅** 1건 |
 
 > **★⑦ 기대란을 정정했다 (독립 검증 지적).** 초판은 「`Argon2id`·`LDAPS` **둘 다** red」라 적었으나
 > 실측은 **`Argon2id` 하나만** 죽는다 — `LDAPS` 는 `ldap`+`s` 로 어형 접미 분기를 타고 살아남는다.
@@ -556,6 +569,11 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 > 뿐이라 통과한다. **`45` 는 ✅ 라 구조적으로 red 가 날 수 없는 행이었다** — 내 뮤테이션 설계가
 > 틀린 것이지 판별식이 퇴화한 것이 아니다. ⑥′ 로 같은 자리를 ⬜ 행에 걸어 비-공허를 확인했다.
 > 이 사각 자체는 **부채 `47` 로 등재**했다.
+>
+> **★⑨ 는 내 정규식이 엉뚱한 줄을 지웠다.** `\n  'route',[^\n]*` 가 `API_KEYWORDS` 의
+> `'route', '/api/',`(파일에서 더 앞)를 먼저 잡았다. 실패한 단언이 E20 **역방향**이었던 것이
+> 그 증거다 — 기대한 것은 정방향이었다. **뮤테이션이 의도한 자리를 끊었는지도 확인해야 한다.**
+> 덤으로 `API_KEYWORDS` 의 그 줄이 판별식에 덮여 있음이 확인됐다(부채 `49` 의 반례).
 
 **GREEN**:
 - 각 뮤테이션을 `git checkout -- <경로>` 로 원복. **하위 디렉터리에서 부르지 말 것**
