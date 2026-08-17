@@ -247,11 +247,19 @@ const isHangulSyllable = (ch: string | undefined): boolean =>
 const isAsciiLower = (ch: string | undefined): boolean =>
   ch !== undefined && ch >= 'a' && ch <= 'z';
 
+/** ASCII 대문자 1자 판정 — CamelCase 험프 검사에 쓴다 */
+const isAsciiUpper = (ch: string | undefined): boolean =>
+  ch !== undefined && ch >= 'A' && ch <= 'Z';
+
 /**
- * 뒤 경계로 인정하는 영어 어형 접미. **긴 것부터** 본다 — `es` 를 `s` 보다 먼저 봐야
- * `issues` 가 `issue`+`s` 로 정확히 끝난다.
+ * 뒤 경계로 인정하는 영어 어형 접미.
+ *
+ * ★**순서는 무관하다.** 어느 접미도 다른 것의 접두사가 아니어서 한 위치에서 둘이 동시에
+ * 매치할 수 없다(`s` ⊄ `ing`/`ed` 접두, 역도 같다). 역순으로 돌려도 판정이 같음을 실측했다.
+ * 초판 주석은 「긴 것부터 봐야 `issues` 가 정확히 끝난다」고 적었는데 **두 겹으로 거짓**이었다 —
+ * 순서 의존이 원리상 없고, 예시로 든 `issue` 는 `BOUNDARY_ONLY` 밖이라 이 분기에 오지도 않는다.
  */
-const ASCII_INFLECTIONS = ['ing', 'es', 'ed', 's'] as const;
+const ASCII_INFLECTIONS = ['ing', 'ed', 's'] as const;
 
 /**
  * **양쪽 단어 경계를 요구하는 ASCII 키워드 목록** (부채 45).
@@ -298,9 +306,23 @@ const BOUNDARY_ONLY = new Set([
  * ★분기 순서 — 한글 판정이 **먼저**다. ASCII 분기를 앞에 두면 한글 키워드가 앞 경계 보호를
  *   잃어 `리액션` 오라우팅이 되살아난다.
  */
-const includesWithBoundary = (haystack: string, keyword: string): boolean => {
+const includesWithBoundary = (
+  haystack: string,
+  keyword: string,
+  /**
+   * `haystack` 의 **대소문자 원문**. CamelCase 험프 판정에만 쓴다.
+   * ★길이가 다르면 무시한다 — `toLowerCase()` 는 일부 유니코드에서 길이를 바꾸고(`İ` → `i̇`)
+   *   그때 인덱스 정렬이 깨진다. 길이 일치를 확인하고 쓰는 것이 이 인자의 계약이다.
+   */
+  original?: string,
+): boolean => {
   const kw = keyword.toLowerCase();
   if (kw.length === 0) return false;
+  const cased = original !== undefined && original.length === haystack.length ? original : undefined;
+
+  /** `i` 위치가 소문자→대문자 험프인가. 연속 대문자(`PATCH` 의 `TC`)는 험프가 아니다. */
+  const isHump = (i: number): boolean =>
+    cased !== undefined && isAsciiUpper(cased[i]) && isAsciiLower(cased[i - 1]);
 
   let from = 0;
   for (;;) {
@@ -314,29 +336,36 @@ const includesWithBoundary = (haystack: string, keyword: string): boolean => {
       // 목록 밖 ASCII 키워드는 종전 부분일치 그대로.
       return true;
     } else {
-      // ★경계 문자류는 `[a-z]` 만이다 — 숫자를 포함시키면 `saml2`·`oauth2` 가 깨진다(실측).
+      // ★경계 문자류는 `[a-z]` 만이고 **숫자는 경계로 친다** — `api2`·`board2` 처럼
+      //   목록 안 키워드에 숫자가 붙는 형태를 매치로 남기기 위해서다.
+      //   (초판 주석은 근거로 `saml2`·`oauth2` 를 들었으나 그 둘은 `BOUNDARY_ONLY` **밖**이라
+      //    이 분기에 도달조차 안 한다 — 기각된 길이 임계안의 잔존 근거였다. 뮤테이션으로 실증.)
       let end = at + kw.length;
       // ★영어 어형 접미는 경계로 친다. 없으면 `labels`·`boards`·`actions` 가 BC 를 잃고,
       //   `labeling`·`labeled` 는 **다른 BC 로 조용히 오라우팅된다**(빈자리를 `규칙`·`필터` 가 차지).
-      //   후자는 신호 유실이 아니라 신규 오배정이라 이 PR 이 없애려는 양식 그 자체다.
-      // ★이 허용은 위 결함들과 **직교한다** — `relabel`·`keyboard`·`transaction`·`dispatch` 는
-      //   전부 **앞** 경계에서 걸리므로 뒤를 아무리 넓혀도 되살아나지 않는다(실측).
-      //   유일하게 뒤 경계에 의존하는 것은 `rest` ⊂ `restore`(`ore` 는 접미 목록에 없다).
       for (const suffix of ASCII_INFLECTIONS) {
         if (haystack.startsWith(suffix, end)) {
           end += suffix.length;
           break;
         }
       }
-      if (!isAsciiLower(haystack[at - 1]) && !isAsciiLower(haystack[end])) return true;
+      // ★**뒤 경계에만 의존하는 충돌어가 넷 있다** — 키워드가 index 0 이라 앞 경계가 통과하는
+      //   `pat`⊂`patch` · `pat`⊂`path` · `rest`⊂`restore` · `rest`⊂`restrict`.
+      //   접미 목록을 넓힐 때 이 넷을 전부 검산해야 한다(`ch`·`h`·`ore` 를 넣으면 즉시 되살아난다).
+      // ★**CamelCase 험프도 경계다.** 판정 문자열은 이미 소문자화돼 있어 `PatTokenModal` 의
+      //   `t`→`T` 같은 진짜 단어 경계가 지워진다. 그대로 두면 보안 작업이 `security-engineer` 에
+      //   안 가고(`PatTokenModal`), springdoc 작업이 `frontend-engineer` 로 간다(`OpenApiConfig`).
+      const frontOk = !isAsciiLower(haystack[at - 1]) || isHump(at);
+      const backOk = !isAsciiLower(haystack[end]) || isHump(end);
+      if (frontOk && backOk) return true;
     }
     from = at + 1;
   }
 };
 
 // 키워드 매치 (case-insensitive + 한글 접두사 경계 검사)
-const hasAny = (lower: string, keywords: string[]): boolean =>
-  keywords.some((kw) => includesWithBoundary(lower, kw));
+const hasAny = (lower: string, keywords: string[], original?: string): boolean =>
+  keywords.some((kw) => includesWithBoundary(lower, kw, original));
 
 const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
   patterns.some((p) => p.test(raw));
@@ -372,15 +401,17 @@ const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
  */
 const detectType = (raw: string): TaskType => {
   const lower = raw.toLowerCase();
-  const stripped = stripConventionalPrefix(raw).toLowerCase();
+  // ★소문자 사본과 **대소문자 원문**을 함께 들고 다닌다 — 험프 판정에 원문이 필요하다.
+  const strippedRaw = stripConventionalPrefix(raw);
+  const stripped = strippedRaw.toLowerCase();
   const hasFixPrefix = /^(fix|refactor)(\([^)]+\))?:/i.test(raw);
   const hasChorePrefix = /^(chore|docs|style|perf|test)(\([^)]+\))?:/i.test(raw);
 
   // ① auth strong keywords — 보안 영역은 fast-track 무시 (위험 반경 ↑)
-  if (hasAny(stripped, AUTH_STRONG)) return 'auth';
+  if (hasAny(stripped, AUTH_STRONG, strippedRaw)) return 'auth';
 
   // ② migration 키워드 / 경로
-  if (hasAny(stripped, MIGRATION_KEYWORDS) || hasPathPattern(raw, MIGRATION_PATH_PATTERNS)) {
+  if (hasAny(stripped, MIGRATION_KEYWORDS, strippedRaw) || hasPathPattern(raw, MIGRATION_PATH_PATTERNS)) {
     return 'migration';
   }
 
@@ -389,25 +420,25 @@ const detectType = (raw: string): TaskType => {
   if (hasFixPrefix) return 'bugfix';
 
   // ④ design 키워드 (UI보다 먼저, "디자인 시안"이 UI 키워드와 겹칠 수 있음)
-  if (hasAny(stripped, DESIGN_KEYWORDS)) return 'design';
+  if (hasAny(stripped, DESIGN_KEYWORDS, strippedRaw)) return 'design';
 
   // ⑤ qa **경로** — 키워드(⑧)와 쪼갠 이유는 위 KDoc
   if (hasPathPattern(raw, QA_PATH_PATTERNS)) return 'qa';
 
   // ⑥ api 키워드 / 경로
-  if (hasAny(stripped, API_KEYWORDS) || hasPathPattern(raw, API_PATH_PATTERNS)) return 'api';
+  if (hasAny(stripped, API_KEYWORDS, strippedRaw) || hasPathPattern(raw, API_PATH_PATTERNS)) return 'api';
 
   // ⑦ ui 키워드 / 경로
-  if (hasAny(stripped, UI_KEYWORDS) || hasPathPattern(raw, UI_PATH_PATTERNS)) return 'ui';
+  if (hasAny(stripped, UI_KEYWORDS, strippedRaw) || hasPathPattern(raw, UI_PATH_PATTERNS)) return 'ui';
 
   // ⑧ qa **키워드** — 제목에 「E2E」가 섞였을 뿐인 혼합 작업을 여기서 받는다 (부채 33)
-  if (hasAny(stripped, QA_KEYWORDS)) return 'qa';
+  if (hasAny(stripped, QA_KEYWORDS, strippedRaw)) return 'qa';
 
   // ⑨ auth weak keywords (인증/권한/세션 — strong 매치 안 됐지만 BC가 identity-access)
-  if (hasAny(stripped, AUTH_KEYWORDS)) return 'auth';
+  if (hasAny(stripped, AUTH_KEYWORDS, strippedRaw)) return 'auth';
 
   // ⑩ feature 트리거 (만들어줘/추가/새 기능)
-  if (hasAny(stripped, FEATURE_TRIGGERS)) return 'feature';
+  if (hasAny(stripped, FEATURE_TRIGGERS, strippedRaw)) return 'feature';
 
   // ⑪ 기본값. 백엔드
   return 'backend';
@@ -449,12 +480,13 @@ const detectBoundedContext = (raw: string, type: TaskType): BoundedContext | nul
     return null;
   }
 
-  const lower = stripConventionalPrefix(raw).toLowerCase();
+  const casedRaw = stripConventionalPrefix(raw);
+  const lower = casedRaw.toLowerCase();
 
   // 각 BC 키워드 점수 합산
   const scores = (Object.entries(BC_KEYWORDS) as [BoundedContext, string[]][]).map(
     ([bc, kws]) => {
-      const score = kws.filter((kw) => includesWithBoundary(lower, kw)).length;
+      const score = kws.filter((kw) => includesWithBoundary(lower, kw, casedRaw)).length;
       return [bc, score] as const;
     }
   );
