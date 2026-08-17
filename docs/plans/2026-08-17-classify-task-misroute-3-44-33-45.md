@@ -254,6 +254,14 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 | **E14** | `apps/web/e2e/issue-detail.spec.ts 회귀 보강` | **`qa` 유지** | ★리뷰 F3 — 초판이 `ui` 로 유실시켰다 |
 | **E15** | `apps/web/e2e 시나리오 추가` | **`qa`** | ★R3-b — QA 경로의 뒤 슬래시 결함 |
 | **E16** | `keyboard 단축키` · `transaction 격리` · `interaction 로그` · `relabel 스크립트` | BC `null` | 신규 오배정 4건 |
+| **E17** | `labeling 규칙 정리` · `labeled 항목 필터` | BC `issue-tracking` 유지 | ★독립 검증이 잡은 **이 PR 이 만든** 오배정 |
+
+> **E17 은 이 PR 이 스스로 만든 결함을 닫는 단언이다 (구현 후 추가 · D9).** `label` 을 경계
+> 대상으로 만들자 `labeling`·`labeled` 같은 **진짜 라벨 작업**까지 신호를 잃었고, 빈자리를
+> `규칙`(automation)·`필터`(search-export-import)가 차지했다. **신호 유실이 아니라 다른 BC 로의
+> 신규 조용한 오라우팅**이라 부채 `45` 와 같은 양식이다 — 오배정을 없애는 PR 이 새 오배정을
+> 남기면 안 된다. 처방은 뒤 경계로 인정하는 어형 접미를 `s` 에서 `ing`·`es`·`ed`·`s` 로 넓히는 것.
+> **이 확장은 고친 12건과 직교한다** — 그것들은 전부 **앞** 경계에서 걸린다(실측).
 
 ### 제약 조건
 
@@ -478,11 +486,15 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 - files: [`TODOS.md`, `docs/plans/2026-08-12-debt24-master.md`]
 - depends-on: []
 
-**RED**:
-- 파일: `TODOS.md`
-- 조작: 신규 항목 `45` 를 `## ⬜ 워크플로우 — classify-task 가 …` 로 **먼저 추가한다.**
-- 실패 메시지 (예상): `debt-ledger-mapping.test.ts` 가
-  「`TODOS.md` ⬜ 집합 ⊄ 마스터 ⬜ 집합」으로 red — 기존 판별식이 그대로 RED 역할을 한다.
+**RED**: ⚠️ **초판 지시를 폐기했다 — 관측 불가능한 RED 였다.**
+
+초판은 「`45` 를 `## ⬜` 로 먼저 넣어 red 를 본다」였는데, 리뷰 F10 정정으로 **`45` 는 `✅`** 다.
+그리고 판별식의 양방향 차집합은 **`⬜` 키만** 본다 — `✅` 행은 `마스터 ✅ ⊆ 장부 ✅` 단방향이라
+어느 쪽에 먼저 넣든 **red 가 구조적으로 안 난다.** 뮤테이션 ⑥ 이 그것을 실측으로 증명했다.
+
+**대체 RED** — 이 PR 이 **새로 넣은 ⬜ 행**(`46`)을 마스터에서만 지운다(Task 5 ⑥′).
+`「장부에만 있고 마스터 계획에 없는 항목이 0 이다」` 가 즉시 red 다.
+**기존 행이 아니라 이 PR 이 넣은 행에 거는 것이 요점**이다 — 기존 행은 증거력이 약하다.
 
 **GREEN**:
 - 파일: `docs/plans/2026-08-12-debt24-master.md`
@@ -520,10 +532,17 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 | ② | `QA_PATH_PATTERNS` 판정을 다시 `ui` 뒤로 | E14 RED (리뷰 F3 이 연 구멍) | **RED ✅** 2건 (E14·E15) |
 | ③ | `QA_PATH_PATTERNS` 의 경계 제거 | E15 RED | **RED ✅** 1건 |
 | ④ | `BOUNDARY_ONLY` 에서 `'action'` **1줄만** 삭제 | E16 RED — 항목별 비-공허 | **RED ✅** 1건 |
-| ⑤ | 복수형 `s` 허용 제거 | E13 RED | **RED ✅** 1건 |
+| ⑤ | `ASCII_INFLECTIONS` 허용 전체 제거 | E13·E17 RED | **RED ✅** 2건 |
+| ⑤′ | `ASCII_INFLECTIONS` 에서 `'ing'` **1개만** 제거 | E17 RED — 항목별 비-공허 | **RED ✅** 1건 |
 | ⑥ | 마스터 §전수 매핑에서 `45`(✅) 행 삭제 | `debt-ledger-mapping` RED | **GREEN ❌ 설계와 다름** |
 | ⑥′ | 마스터 §전수 매핑에서 `46`(⬜) 행 삭제 | 〃 | **RED ✅** 1건 |
-| ⑦ | `BOUNDARY_ONLY` 분기를 길이 임계(`kw.length > 6`)로 되돌림 | E11·E12 RED | **RED ✅** 1건 |
+| ⑦ | `BOUNDARY_ONLY` 분기를 길이 임계(`kw.length > 6`)로 되돌림 | **E11 RED** (E12 는 생존) | **RED ✅** 1건 |
+
+> **★⑦ 기대란을 정정했다 (독립 검증 지적).** 초판은 「`Argon2id`·`LDAPS` **둘 다** red」라 적었으나
+> 실측은 **`Argon2id` 하나만** 죽는다 — `LDAPS` 는 `ldap`+`s` 로 어형 접미 분기를 타고 살아남는다.
+> 단언은 한 `test` 안에 있어 red 1건으로 같아 보이지만 **기대란이 사실을 앞섰다.**
+> 위험은 실질적이다 — 나중에 누가 E11 의 `Argon2id` 케이스만 지우면 길이 임계 가드가 조용히
+> 사라지고 남은 `LDAPS` 는 아무것도 못 막는다.
 
 > **④ 가 이 설계의 핵심 증거다.** 단일 상수(`ASCII_BOUNDARY_MAXLEN`)였다면 「한 줄을 지우면
 > 대응 단언 하나가 red」라는 성질을 가질 수 없다 — 상수 하나를 흔들면 전부가 같이 흔들린다.
@@ -615,6 +634,29 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 **P0 2건 → 중단 후 Maxi 개입 → D6 으로 처방 교체 승인.** 계획은 이 결과를 반영해 갱신됐다.
 초판 서술(길이 임계·qa 통째 이동·`45` ⬜)은 **지우지 않고 정정 표시로 남겼다** — 왜 그 설계가
 기각됐는지가 없으면 다음 사람이 되돌린다.
+
+### 독립 검증 (구현 후 · `/bts-impl` Step 2-C 대체)
+
+**판정 `DRIFT`.** Task 1~3 은 PASS(세 RED 커밋을 **그 시점 트리에서 실제 실행해** 확인),
+요구사항 미구현 0건, 조작된 증거 0건. 지적 4건 중 **3건 채택 · 1건 기각.**
+
+| # | 지적 | 처리 |
+|---|---|---|
+| V1 | Task 4 의 RED 산출물이 없다 (`test:` 커밋 부재) | **채택 · waive** — 처방된 RED 가 F10 정정 이후 **관측 불가능**임이 ⑥ 으로 실증됐다. 계획 RED 절을 ⑥′ 기준으로 다시 썼다. 재dispatch 는 기존 증거보다 **적게** 증명하므로 안 한다 |
+| V2 | 뮤테이션 ⑦ 기대란 과장 (`LDAPS` 는 생존) | **채택** — 실측 재현 후 기대란을 `E11 RED (E12 는 생존)` 로 정정 |
+| V3 | `labeling`·`labeled` 가 **신규 오배정**됐다 | **채택 (D9)** — E17 단언 + 어형 접미 확장으로 봉합. 뮤테이션 ⑤·⑤′ 로 비-공허 확인 |
+| V4 | 부채 `47` 의 티어가 `T1` 이 아니라 `T2` 다 | **기각** — 실측 `TIER: T1 · SURFACES: TEST`. `47` 의 처방 2종은 `debt-ledger-mapping.test.ts` 만 만지고, `SURFACE_PRECEDENCE` 가 `TEST` 를 **맨 앞**에 둔다(판정 규칙 ④ 를 지키려는 배치). 리뷰어가 `GUARD_CI` 만 보고 우선순위를 안 봤다 |
+
+**미선언 파일 3건**(이 plan 파일 · `docs/INDEX*.md` 2종) — 전부 정당하나 task `files` 에 없었다.
+plan 파일은 Task 5 REFACTOR 가 「PR 본문에」라 적어 대상이 갈렸고, INDEX 2종은 자동 생성물이다.
+
+**계획 예측 오류 1건 (구현 무관).** Task 2 RED 절이 「E15 는 현행에서도 red」라 적었으나 실제로는
+`e2e` 가 `QA_KEYWORDS` substring 이라 통과했다. 구현에는 영향 없고 뮤테이션 ③ 이 대신 증명한다.
+
+**완료 기준 1 의 문언 결함.** 「E1~E16 **각각** red 를 먼저 봤다」는 문언상 거짓이다 —
+회귀 가드(E1·E2·E5~E9·E11~E15)는 설계상 fix 이전에도 통과한다. 그 사실은 각 RED 절에 적어 두었고,
+비-공허는 뮤테이션 8종이 진다. **다음 계획에서는 이 문장을 「신규 동작 단언은 red 를 먼저 보고,
+회귀 가드는 뮤테이션으로 비-공허를 증명한다」로 쓴다.**
 
 ## GSTACK REVIEW REPORT
 
