@@ -243,6 +243,34 @@ export const toSlug = (title: string): string => {
 const isHangulSyllable = (ch: string | undefined): boolean =>
   ch !== undefined && ch >= '가' && ch <= '힣';
 
+/** ASCII 소문자 1자 판정 — 영단어 경계 검사에 쓴다 */
+const isAsciiLower = (ch: string | undefined): boolean =>
+  ch !== undefined && ch >= 'a' && ch <= 'z';
+
+/**
+ * **양쪽 단어 경계를 요구하는 ASCII 키워드 목록** (부채 45).
+ *
+ * ★길이로 자르지 않는다. 초판 설계는 「길이 ≤ N 인 ASCII 키워드에 경계 요구」였고 N 을
+ * 4 로 두든 6 으로 올리든 **진짜 신호를 함께 죽인다** — `argon2`(6자)에 어형이 붙은
+ * `Argon2id`(OWASP 권장 표기)와 `ldap`(4자)의 `LDAPS` 가 `auth`/`security-engineer` 에서
+ * `backend` 로 떨어졌다(실측). 영어 복수형 `issues`·`users`·`exports` 도 전부 BC 를 잃었다.
+ *
+ * ★길이는 충돌 성향과 상관이 없다. `csrf`(4)·`oidc`(4)·`aql`(3) 은 15개월간 한 번도 안
+ * 부딪혔고 `board`(5)·`action`(6) 은 부딪혔다. 그래서 **실제로 부딪힌 것만 이름으로** 적는다.
+ *
+ * ★이 형태라야 뮤테이션이 항목별로 비-공허하다 — 한 줄을 지우면 대응 단언 **하나**가 red 다.
+ * 단일 상수는 흔들면 전부가 같이 흔들려 그 성질을 가질 수 없다.
+ */
+const BOUNDARY_ONLY = new Set([
+  'pat',    // ⊂ dispatch · patch · path  → auth/security-engineer 오배정
+  'ui',     // ⊂ build · guide · requirement
+  'api',    // ⊂ rapid
+  'rest',   // ⊂ restore · restrict
+  'board',  // ⊂ keyboard  → agile-planning 오배정
+  'action', // ⊂ transaction · interaction  → automation 오배정
+  'label',  // ⊂ relabel  → issue-tracking 오배정
+]);
+
 /**
  * 키워드 1개가 문자열에 **경계를 지켜** 나타나는지.
  *
@@ -250,10 +278,19 @@ const isHangulSyllable = (ch: string | undefined): boolean =>
  * 실측 사례로 "댓글 리액션 추가" 가 automation 으로 갔다. '리**액션**' 이 automation 키워드
  * '액션' 에 걸렸기 때문이다. BC 가 null 로 떨어지는 것(미정의)보다 나쁜 **조용한 오라우팅**이다.
  *
- * 판별식 — 한글 키워드는 **바로 앞에 한글 음절이 붙어 있으면 매치로 치지 않는다.**
- * 한국어 조사는 뒤에 붙으므로('액션을', '이슈의') 뒤는 막지 않고 앞만 막는다.
- * ASCII 키워드('api', 'saml')는 이 규칙과 무관하므로 기존 substring 그대로 둔다 —
- * 영문에 한글 접두사가 붙는 형태는 이 도메인에 없다.
+ * 판별식 두 갈래.
+ * - **한글 키워드** — 바로 앞에 한글 음절이 붙어 있으면 매치로 치지 않는다. 한국어 조사는
+ *   뒤에 붙으므로('액션을', '이슈의') 뒤는 막지 않고 앞만 막는다.
+ * - **ASCII 키워드** — `BOUNDARY_ONLY` 에 적힌 것만 **양쪽** 경계를 요구한다.
+ *
+ * ★2026-07-27 판에 적혀 있던 「ASCII 키워드는 이 규칙과 무관하므로 기존 substring 그대로
+ * 둔다 — 영문에 한글 접두사가 붙는 형태는 이 도메인에 없다」는 **참이지만 무관한 문장이었다.**
+ * ASCII 키워드의 실제 위험은 한글 접두사가 아니라 **다른 ASCII 단어**다(`pat` ⊂ `dispatch`).
+ * 측정하지 않은 안전 속성을 단정한 문장이 그대로 13개월을 살아남았다.
+ *
+ * ★**앞만** 보면 안 된다. `patch`·`path` 는 키워드가 index 0 이라 앞 경계가 통과한다.
+ * ★분기 순서 — 한글 판정이 **먼저**다. ASCII 분기를 앞에 두면 한글 키워드가 앞 경계 보호를
+ *   잃어 `리액션` 오라우팅이 되살아난다.
  */
 const includesWithBoundary = (haystack: string, keyword: string): boolean => {
   const kw = keyword.toLowerCase();
@@ -263,8 +300,21 @@ const includesWithBoundary = (haystack: string, keyword: string): boolean => {
   for (;;) {
     const at = haystack.indexOf(kw, from);
     if (at === -1) return false;
-    // 키워드 첫 글자가 한글일 때만 앞 경계를 본다.
-    if (!isHangulSyllable(kw[0]) || !isHangulSyllable(haystack[at - 1])) return true;
+
+    if (isHangulSyllable(kw[0])) {
+      // 한글 키워드는 앞 경계만 본다.
+      if (!isHangulSyllable(haystack[at - 1])) return true;
+    } else if (!BOUNDARY_ONLY.has(kw)) {
+      // 목록 밖 ASCII 키워드는 종전 부분일치 그대로.
+      return true;
+    } else {
+      // ★경계 문자류는 `[a-z]` 만이다 — 숫자를 포함시키면 `saml2`·`oauth2` 가 깨진다(실측).
+      let end = at + kw.length;
+      // ★영어 복수형 접미 `s` 1개는 경계로 친다. 없으면 labels·boards·actions 가 BC 를 잃는다.
+      //   relabel·keyboard·transaction 은 **앞** 경계에서 걸리므로 이 허용에 영향받지 않는다.
+      if (haystack[end] === 's') end += 1;
+      if (!isAsciiLower(haystack[at - 1]) && !isAsciiLower(haystack[end])) return true;
+    }
     from = at + 1;
   }
 };
