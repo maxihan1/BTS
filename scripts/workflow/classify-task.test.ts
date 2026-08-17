@@ -395,4 +395,13 @@ describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
     assert.equal(classify({ title: '빌드 스크립트 정리' }).type, 'backend');
     assert.equal(classify({ title: '댓글 리액션 추가' }).primary_bc, 'issue-tracking');
   });
+
+  // ★★독립 검증(#387 Task 5)이 잡은 **이 PR 이 만든 신규 오배정**.
+  //   `label` 을 경계 대상으로 만들자 `labeling`·`labeled` 같은 **진짜 라벨 작업**까지 신호를
+  //   잃었고, 빈자리를 `규칙`(automation)·`필터`(search-export-import)가 차지했다.
+  //   신호 유실이 아니라 **다른 BC 로의 신규 조용한 오라우팅**이라 부채 45 와 같은 양식이다.
+  test('영어 어형 변화는 BC 를 잃지 않는다 (E17)', () => {
+    assert.equal(classify({ title: 'labeling 규칙 정리' }).primary_bc, 'issue-tracking');
+    assert.equal(classify({ title: 'labeled 항목 필터' }).primary_bc, 'issue-tracking');
+  });
 });
