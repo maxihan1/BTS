@@ -291,3 +291,34 @@ describe('classify — 경로 신호의 단어 경계 (부채 44)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// 부채 매핑 33 — qa 판정이 ui 보다 앞서 혼합 PR 을 qa-engineer 로 보낸다
+// ─────────────────────────────────────────────────────────
+
+describe('classify — qa 는 경로가 앞, 키워드가 뒤 (부채 33)', () => {
+  test('E2E 와 UI 신호가 섞이면 구현 가능한 에이전트로 간다 (S2)', () => {
+    const r = classify({ title: '로딩 프레임 계약 E2E 신설 + apps/web/ 4파일' });
+    assert.equal(r.type, 'ui');
+    // qa-engineer 는 구현 코드 수정이 금지돼 있어 오배정되면 복구 불가다.
+    assert.notEqual(r.agent, 'qa-engineer');
+  });
+
+  test('순수 E2E 작업은 여전히 qa 다 (S3 역방향 회귀)', () => {
+    assert.equal(classify({ title: 'E2E 시나리오만 추가' }).type, 'qa');
+    assert.equal(classify({ title: 'Playwright 회귀 보강' }).type, 'qa');
+  });
+
+  // ★★Task 1 과의 상호작용. `apps/web` 은 `apps/web/e2e/` 의 **접두사**라,
+  //   경로 확장(Task 1)과 qa 를 통째로 뒤로 미는 설계가 겹치면
+  //   Playwright 표면 전체가 qa-engineer 에 도달 불가가 된다. 이 단언이 그 설계를 배제한다.
+  test('E2E 경로는 ui 경로보다 앞선다 (E14)', () => {
+    const r = classify({ title: 'apps/web/e2e/issue-detail.spec.ts 회귀 보강' });
+    assert.equal(r.type, 'qa');
+    assert.equal(r.agent, 'qa-engineer');
+  });
+
+  test('E2E 경로도 뒤 슬래시를 요구하지 않는다 (E15 · 부채 44 와 같은 결함)', () => {
+    assert.equal(classify({ title: 'apps/web/e2e 시나리오 추가' }).type, 'qa');
+  });
+});
