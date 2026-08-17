@@ -267,3 +267,27 @@ describe('toSlug — ASCII 강제 + 50자 컷 (Task 3)', () => {
     assert.doesNotMatch(slug, /[\uD800-\uDFFF]/, `lone surrogate 포함: "${slug}"`);
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// 부채 매핑 44 — 경로 신호가 뒤 슬래시를 요구해 apps/web 을 놓친다
+// ─────────────────────────────────────────────────────────
+
+describe('classify — 경로 신호의 단어 경계 (부채 44)', () => {
+  test('apps/web 는 뒤 슬래시가 없어도 ui 로 간다 (S1)', () => {
+    const r = classify({ title: 'apps/web 판별식 정리' });
+    assert.equal(r.type, 'ui');
+    assert.equal(r.agent, 'frontend-engineer');
+  });
+
+  test('apps/web/ 는 종전대로 ui 다 (회귀 방지)', () => {
+    assert.equal(classify({ title: 'apps/web/ 판별식 정리' }).type, 'ui');
+  });
+
+  // ★오탐 방지. 장부가 남긴 후보 `/apps\/web\b/` 는 여기서 죽는다 —
+  //   `\b` 는 `b` 다음 `-` 에서 성립해 apps/web-legacy 를 ui 로 끌어간다.
+  test('apps/web 로 시작하는 더 긴 이름은 ui 가 아니다 (E1·E2)', () => {
+    for (const title of ['apps/webhook 재시도 정리', 'apps/web-legacy 정리']) {
+      assert.notEqual(classify({ title }).type, 'ui', title);
+    }
+  });
+});
