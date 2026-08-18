@@ -212,7 +212,23 @@ When CI 가 돈다 Then **빨간불**이 난다.
 눈으로 판정할 수 없다. N6(이동과 편집을 다른 커밋으로)로 완화했으나 **완전히 해소되지는 않는다.**
 → 아래 Maxi 결정 ③.
 
-**Maxi 결정이 필요한 것 — 게이트 1 에 싣는다.**
+### ✅ Maxi 결정 3건 확정 (2026-08-18 · 스펙 단계에서 선결)
+
+| # | 결정 | 이 PR 에 미치는 영향 |
+|---|---|---|
+| ① | **[5] 구현은 인라인 · [6] 리뷰 2종만 서브에이전트** | `bts-impl` 을 dispatch 모드로 부르지 않는다. 절차 이탈로 게이트 2 요약에 싣는다 |
+| ② | **문체는 「~다」체** | 두 줄 전량 「~다」체. 파일 안 문체 혼재 없음 |
+| ③ | **(가)내용 + (나)코드 를 이 PR · (다)`TODOS.md` 재배열은 후속 PR** | **W7·W10 은 이 PR 범위 밖.** 후속 PR 이 쓸 안전망(본문 해시 불변 판별식)은 이 PR 이 만든다 |
+
+**이 PR 확정 범위.** W1 · W2 · W3 · W4 · W5 · W6 · W8 · W9
+**후속 PR 로 이월.** W7(재배열) · W10(접두 없는 ✅ 항목 1건)
+
+**작성 대상 수.** 현재 `⬜` 28건 · `📌` **0건**. 판별식은 보류도 대상에 넣는다(E6) — 지금 0건이라
+공허하게 통과하므로, 그 사실을 판별식 주석에 적고 미착수 쪽으로 비-공허를 증명한다.
+
+**아래는 결정 전 원문이다 (기록 보존).**
+
+**Maxi 결정이 필요했던 것.**
 
 ① **[5]·[6] 의 서브에이전트.** `bts-impl` 은 dispatch 가 기본이고 T2 는 리뷰 2종이다. 세션 지시문과
 충돌하며 앞서 「상시 규칙화는 지금 정하지 않음」으로 남았다. **이번 PR 에서 확정한다.**
@@ -232,6 +248,177 @@ When CI 가 돈다 Then **빨간불**이 난다.
 　　　직접 열 때만 보이는데, 그 용도는 대시보드가 대신하는 것이 이 작업의 목적이다.
 　　**한 PR 로 가길 원하시면 그대로 진행한다** — 다만 리뷰가 이동/편집을 구분 못 하는 위험을 안는다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+구현은 **인라인**(Maxi 결정 ①). `agent` 키는 승계용으로만 적는다.
+새 판별식은 `scripts/workflow/todos-plain-language-contract.test.ts` 한 파일에 모은다 —
+셋 다 같은 입력(`TODOS.md`)을 읽으므로 파서를 세 번 적지 않는다.
+
+### Task 1. 파서가 코드펜스 안의 `# ` 를 H1 로 오인하지 않는다 (W9)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/build-dashboard.mjs`, `scripts/build-dashboard.test.mjs`]
+- depends-on: []
+
+**RED**:
+- 파일: `scripts/build-dashboard.test.mjs`
+- 테스트 2개.
+  ```js
+  it('코드펜스 안의 # 주석이 항목을 자르지 않는다', ...)   // 합성 입력
+  it('실제 TODOS.md 에서 H1 로 절단된 항목이 0 이다', ...)  // 회귀 고정
+  ```
+- 실패 메시지(예상): 합성 입력의 본문이 `# ` 지점에서 끊겨 뒷부분 누락 ·
+  실제 파일에서 절단 **2건**(`TODOS.md:455` bash 주석 · `:753` Kotlin 주석)
+
+**GREEN**:
+- `parseTodos` 에 코드펜스 상태 추적 추가. ` ``` ` 토글 안에서는 `# ` 를 H1 로 보지 않는다.
+
+**REFACTOR**: 펜스 판정을 이름 있는 헬퍼로 빼고 「왜 필요한가」를 주석 2줄로.
+
+**근거**. `[[partial-column-parser-lets-unread-column-rot]]` — 파서가 못 읽는 부분은 조용히 썩는다.
+지금은 「본문이 잘린다」지만 카테고리 H1 도입 후에는 「분류가 틀린다」가 된다(스펙 §W9 상세).
+
+**검증**: `node --experimental-strip-types --test scripts/build-dashboard.test.mjs`
+
+---
+
+### Task 2. 영역 접두 ↔ 마스터 영역 열 차집합 0 (W5·W6)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/todos-plain-language-contract.test.ts`, `TODOS.md`, `docs/plans/2026-08-12-debt24-master.md`]
+- depends-on: [1]
+
+**RED**:
+- 새 파일. 미착수·보류 항목의 제목 접두(`<영역> — …`)를 뽑아 마스터 §전수 매핑 영역 열과 대조.
+- 실패 메시지(예상): 불일치 **4건 열거** — `1` personalization≠apps/web · `20` 인프라≠도구 ·
+  `28` apps/web(E2E)≠apps/web · `36` 디자인≠문서
+- 비-공허 짝. 「접두를 뽑은 항목 수가 미착수 항목 수와 같다」를 함께 단언한다
+  (`—` 없는 제목이 조용히 빠지는 것을 막는다 · 엣지 E7)
+
+**GREEN**:
+- `TODOS.md` 제목 4건을 마스터 값으로 교체. **마스터 §전수 매핑의 항목 열도 같은 커밋에서 동일 교체**
+  — 제목이 두 파일의 조인 키라 한쪽만 고치면 `debt-ledger-mapping.test.ts` 가 즉시 red 다.
+
+**REFACTOR**: 없음(문자열 교체).
+
+**근거**. `[[two-lists-never-check-each-other]]` — 같은 값이 두 곳에 있고 아무도 대조하지 않았다.
+실측 4건은 이 판별식이 없어서 생긴 것이다.
+
+**검증**: 새 판별식 + `debt-ledger-mapping.test.ts` 동반 실행(조인 키가 바뀌므로 반드시 함께)
+
+---
+
+### Task 3. 「쉬운 말」·「방치하면」 두 줄 계약 + 28건 작성 (W1)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/todos-plain-language-contract.test.ts`, `TODOS.md`]
+- depends-on: [2]
+
+**RED**:
+- 미착수·보류 항목 전량이 `**쉬운 말.**` · `**방치하면.**` 두 줄을 갖고, 각 줄의 내용이
+  **공백 제외 10자 이상**인지 단언. 누락은 **개수가 아니라 제목 목록**으로 낸다.
+- 실패 메시지(예상): 28건 전량 누락 열거.
+- 비-공허 짝. 「검사 대상 항목 수 ≥ 1」 — 보류가 0건이라 보류 축만으로는 공허하게 통과한다.
+  그 사실을 주석에 적고 미착수 축으로 비-공허를 증명한다.
+
+**GREEN**:
+- 28건에 두 줄 작성. **「~다」체**(Maxi 결정 ②) · 각 한 문장 · 전문용어를 쓰면 괄호 풀이.
+- 「방치하면」은 **추측이 아니라 항목 본문에 이미 적힌 증상·실측**에서 끌어온다. 근거가 없으면
+  「아직 실제로 터진 적은 없다」를 그대로 쓴다 — 없는 피해를 지어내지 않는다.
+
+**REFACTOR**: 없음.
+
+**근거**. `[[invariant-satisfied-by-helptext-not-logic]]` — 존재만 보면 빈 문자열로 통과한다.
+그래서 길이 하한을 함께 건다(엣지 E2).
+
+**검증**: 새 판별식 pass · 누락 목록 빈 배열
+
+---
+
+### Task 4. 카테고리 매핑 상수 + 양방향 차집합 (W3 전제 · W5)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/build-dashboard.mjs`, `scripts/workflow/todos-plain-language-contract.test.ts`]
+- depends-on: [2]
+
+**RED**:
+- `AREA_CATEGORIES`(영역 → {카테고리 이름, 설명}) 를 생성기에서 export 한다는 전제로,
+  **키 집합 ↔ 실제 미착수 항목의 영역 집합**의 양방향 차집합 0 을 단언.
+- 실패 메시지(예상): `AREA_CATEGORIES` 미존재(import 실패).
+
+**GREEN**:
+- 스펙 §카테고리 매핑 표를 상수로 옮긴다. 5 카테고리 · 설명 1줄씩.
+
+**REFACTOR**: 상수 위에 「새 영역이 생기면 여기와 판별식이 함께 red 가 난다」를 주석 1줄.
+
+**근거**. 매핑이 없으면 새 영역이 조용히 「기타」로 떨어진다(엣지 E3).
+
+**검증**: 새 판별식 pass
+
+---
+
+### Task 5. 생성기 렌더 — 카테고리 소분류 + 두 줄 노출 (W2·W3·W4)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/build-dashboard.mjs`, `scripts/build-dashboard.test.mjs`]
+- depends-on: [1, 3, 4]
+
+**RED**:
+- 파일: `scripts/build-dashboard.test.mjs`
+- 테스트 3개. ① 미착수 그룹 안에 카테고리 5종의 소제목이 있다 ② 카테고리마다 설명 줄이 있다
+  ③ **두 줄이 `<details>` 밖에 있다**(접지 않아도 보인다)
+- 실패 메시지(예상): 렌더 결과에 카테고리 소제목 0건
+
+**GREEN**:
+- `renderTodos` 의 미착수 그룹만 영역별로 재그룹. 카테고리 순서는 `AREA_CATEGORIES` 선언 순서.
+- 항목 렌더에 두 줄을 `<summary>` 아래 `<details>` **밖** 블록으로 추가.
+- 두 줄은 기존 `inlineMd()` 를 거친다(이스케이프 재구현 금지 · 엣지 E4).
+
+**REFACTOR**: 카테고리 그룹핑을 `renderGroup` 과 분리해 이름 붙이기.
+
+**근거**. 기존 주석이 「그룹을 손으로 열거하지 않고 `TODO_STATUSES` 에서 만든다」고 못 박았다 —
+카테고리도 같은 규율로 상수에서 만든다.
+
+**검증**: `node --experimental-strip-types --test scripts/build-dashboard.test.mjs` +
+`node scripts/build-dashboard.mjs` 후 `docs/progress.html` **눈확인 1회**
+
+---
+
+### Task 6. 등재 서식 명시 (W8)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`TODOS.md`, `.claude/skills/bts-impl/worktree-commands.md`, `scripts/workflow/todos-plain-language-contract.test.ts`]
+- depends-on: [3]
+
+**RED**:
+- `TODOS.md` 머리에 등재 서식 블록이 있는지 단언(기존 「티어 표기」 블록과 같은 자리).
+- 실패 메시지(예상): 서식 블록 부재.
+
+**GREEN**:
+- `TODOS.md` 머리에 **제목 서식**(`<영역> — <한 줄 증상> (<상태> · T?)`) + **필수 두 줄**을 적는다.
+- `TODOS.md` 를 언급하는 절차 문서에 **포인터 1줄**만 추가한다 — 서식 문자열을 두 번 적지 않는다.
+
+**REFACTOR**: 없음.
+
+**근거**. 규율을 문서에만 두면 지켜지지 않고, 판별식에만 두면 왜 red 인지 모른다. 둘 다 둔다.
+
+**검증**: 새 판별식 pass
+
+## Plan 메타
+
+- **task 수 6** · 예상 wave — 인라인이라 wave 개념 미적용(순차 1→2→{3,4}→5→6)
+- **구현 규율. TDD red-first** (T2). `test:` 커밋이 `feat:`/`docs:` 보다 먼저 오는 순서를 지킨다.
+- **추가 검증.** `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` 전량 ·
+  `bash scripts/verify-master-plan.sh` · `node scripts/build-doc-index.mjs --check` ·
+  `node scripts/build-dashboard.mjs` 재생성 후 눈확인.
+  **`pnpm verify` 는 worktree 에서 못 돈다**(심볼릭 `node_modules`) — CI 잡이 대신 본다.
+- **뮤테이션 5종** — 스펙 §완료 기준 3 그대로. GREEN 선커밋 뒤에 돌린다.
+- **범위 밖.** W7(재배열) · W10(접두 없는 ✅ 1건) — 후속 PR.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
