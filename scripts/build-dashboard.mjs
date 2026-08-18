@@ -324,11 +324,25 @@ function isFenceLine(line) {
   return line.startsWith('```');
 }
 
+/**
+ * `TODOS.md` 를 항목 목록으로 읽는다.
+ *
+ * 반환 항목의 `section` 은 **그 항목 바로 앞의 H1 제목**이다(없으면 `null`).
+ * 파일이 카테고리 절로 재배열된 뒤로 H1 은 단순한 경계가 아니라 **분류 경계**이고,
+ * 「이 항목이 어느 절에 있는가」를 알아야 파일 배치와 화면 배치의 일치를 강제할 수 있다
+ * (`scripts/workflow/todos-structure-contract.test.ts`).
+ *
+ * ★절 추적을 별도 스캐너로 만들지 않고 여기 둔 이유. `# `·`## ` 를 읽는 코드가 늘 때마다
+ * 코드펜스 판정을 잊는 것이 이 저장소의 반복 사고다 — #389 한 세션에서 다섯 번 밟았다.
+ * 판정을 한 벌로 유지하는 것이 처방이라 이 루프가 유일한 헤딩 스캐너로 남는다.
+ */
 export function parseTodos(content) {
   // TODOS.md 는 `## <마커> <제목>` 단위 섹션의 나열이다. 마커가 상태, 그 뒤 전부가 본문.
   const items = [];
   let current = null;
   let inFence = false;
+  // 현재 열려 있는 H1 절. 첫 H1 앞의 항목은 어느 절에도 안 속하므로 null 로 시작한다.
+  let section = null;
   for (const line of content.split('\n')) {
     if (isFenceLine(line)) {
       inFence = !inFence;
@@ -342,10 +356,16 @@ export function parseTodos(content) {
     const m = inFence ? null : line.match(TODO_HEADING_RE);
     if (m) {
       if (current) items.push(current);
-      current = { status: TODO_STATUS_BY_MARKER[m[1]], title: m[2].trim(), body: [] };
+      current = { status: TODO_STATUS_BY_MARKER[m[1]], title: m[2].trim(), section, body: [] };
       continue;
     }
-    if (!inFence && line.startsWith('# ')) { if (current) items.push(current); current = null; continue; }
+    // ★H1 은 항목을 닫는 **동시에** 새 절을 연다. 펜스 밖에서만 판정하는 것은 위와 같은 이유다.
+    if (!inFence && line.startsWith('# ')) {
+      if (current) items.push(current);
+      current = null;
+      section = line.slice(2).trim();
+      continue;
+    }
     if (current) current.body.push(line);
   }
   if (current) items.push(current);

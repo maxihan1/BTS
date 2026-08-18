@@ -617,3 +617,93 @@ test('renderTodos — 집계 합이 전체와 맞는다 (어느 상태도 셈에
     `상태별 합(${counts.join('+')})이 전체(${total})와 다르다 — 집계에서 빠진 상태가 있다`,
   );
 });
+
+/**
+ * `parseTodos` 의 소속 절(H1) 추적 — PR #390 신설.
+ *
+ * `TODOS.md` 를 카테고리 절로 재배열하면 H1 의 의미가 **분류 경계**로 승격된다.
+ * 그때 「이 항목이 어느 절에 있는가」를 알아야 파일 배치와 화면 배치의 일치를 강제할 수
+ * 있는데, 종전 `parseTodos` 는 H1 을 경계로만 쓰고 **이름을 버렸다**.
+ *
+ * ★새 스캐너를 만들지 않고 이 함수를 확장한 이유. `# `·`## ` 를 읽는 코드가 늘어날 때마다
+ * 코드펜스 판정을 잊는 것이 이 저장소의 반복 사고다(#389 한 세션에서 5회).
+ * 판정을 한 벌로 유지하는 것이 처방이다 — `[[every-new-heading-scanner-forgets-code-fences]]`.
+ */
+test('parseTodos — 각 항목이 소속 H1 절 이름을 갖는다', () => {
+  const md = [
+    '# 화면에서 보이는 것',
+    '',
+    '## ⬜ apps/web — 첫 번째',
+    '',
+    '**무엇.** 본문 A.',
+    '',
+    '## ⬜ apps/web — 두 번째',
+    '',
+    '**무엇.** 본문 B.',
+    '',
+    '# 개발 안전장치',
+    '',
+    '## ⬜ 도구 — 세 번째',
+    '',
+    '**무엇.** 본문 C.',
+    '',
+  ].join('\n');
+
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 3, '항목 3개를 수집해야 한다 (비-공허 짝)');
+  assert.deepEqual(
+    todos.map((t) => t.section),
+    ['화면에서 보이는 것', '화면에서 보이는 것', '개발 안전장치'],
+    '항목이 자기 앞의 H1 을 소속 절로 갖지 않는다 — 파일 배치를 검사할 수 없다',
+  );
+});
+
+test('parseTodos — 펜스 안의 `# ` 는 절 이름을 바꾸지 않는다', () => {
+  const md = [
+    '# 개발 안전장치',
+    '',
+    '## ⬜ 도구 — 펜스 안에 주석이 있는 항목',
+    '',
+    '```bash',
+    '# 이것은 bash 주석이지 절 제목이 아니다',
+    'grep -rn "foo" .',
+    '```',
+    '',
+    '## ⬜ 워크플로우 — 그 다음 항목',
+    '',
+    '**무엇.** 본문.',
+    '',
+  ].join('\n');
+
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 2, '펜스 안 주석이 항목을 쪼갰다');
+  assert.deepEqual(
+    todos.map((t) => t.section),
+    ['개발 안전장치', '개발 안전장치'],
+    '펜스 안 `# ` 를 절 경계로 읽었다 — 항목이 엉뚱한 카테고리로 넘어간다',
+  );
+});
+
+test('parseTodos — H1 앞의 항목은 section 이 null 이다 (음성 대조군)', () => {
+  const md = [
+    '## ⬜ apps/web — H1 없이 먼저 나온 항목',
+    '',
+    '**무엇.** 본문.',
+    '',
+    '# 화면에서 보이는 것',
+    '',
+    '## ⬜ apps/web — H1 뒤 항목',
+    '',
+    '**무엇.** 본문.',
+    '',
+  ].join('\n');
+
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 2, '항목 2개를 수집해야 한다');
+  assert.equal(
+    todos[0].section,
+    null,
+    'H1 앞 항목의 section 이 null 이 아니다 — 「어느 절에도 안 속함」을 판별할 수 없다',
+  );
+  assert.equal(todos[1].section, '화면에서 보이는 것');
+});
