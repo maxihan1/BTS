@@ -394,7 +394,7 @@ class IssueExceptionHandler {
     // ── 409 TRANSITION_NOT_ALLOWED ────────────────────────────────────────────
 
     /**
-     * [IssueTransitionNotAllowedException] — 워크플로우 전이가 허용되지 않음 — 409.
+     * [IssueTransitionNotAllowedException] — 워크플로우 전환이 허용되지 않음 — 409.
      *
      * issue-tracking BC 의 `transitionIssue` 가 `WorkflowTransitionPort.plan()` 호출 후
      * [IssueTransitionNotAllowedException] 으로 감싸서 throw 한다.
@@ -693,7 +693,7 @@ class IssueExceptionHandler {
     // ── 404 RESOLUTION_NOT_FOUND ──────────────────────────────────────────────
 
     /**
-     * [ResolutionNotFoundException] — 전이 요청에 포함된 resolutionId 가 존재하지 않음 — 404.
+     * [ResolutionNotFoundException] — 전환 요청에 포함된 resolutionId 가 존재하지 않음 — 404.
      *
      * [com.bts.issue.application.IssueApplicationService.transitionIssue] 에서
      * resolutionId 존재성 검증 실패 시 발생한다. 영속(applyTransition) 이전에 검증한다.

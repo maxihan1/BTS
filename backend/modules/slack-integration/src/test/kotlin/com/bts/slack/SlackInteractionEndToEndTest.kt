@@ -73,14 +73,14 @@ private const val AUDIT_SIGNING_SECRET = "slack-interaction-audit-e2e-signing-se
  *
  * ## 셋업은 T10 재사용 (실 필터 체인 + outbound stub/mock)
  * `springSecurity()` MockMvc 구성기로 실 [SlackTestSecurityConfig] 필터 체인을 얹고, cross-BC 완료
- * 옵션/전이는 [StubIssueCompletionOptionsPort]/[StubIssueTransitionPort]로, Slack SDK 호출은
+ * 옵션/전환은 [StubIssueCompletionOptionsPort]/[StubIssueTransitionPort]로, Slack SDK 호출은
  * [SlackTestcontainersConfig]의 `@Primary` mock [MethodsClient]로, 봇 토큰 해석/`response_url`은 이
  * 클래스의 [CaptureCollaboratorsConfig]로 대체한다(T10과 동형).
  *
  * ## 시나리오 (각각 유효 서명 생성 → payload POST → 결과 + V703 assert)
- * - 완료 왕복 성공 — block_actions 모달 오픈 후 view_submission 전이 성공 → V703 `SUCCESS` 1행.
- * - 무권한(전이 거부) — view_submission 전이가 권한 거부로 실패 → V703 `PERMISSION_DENIED`, 원본 메시지 미갱신.
- * - OCC 충돌 — view_submission 전이가 낙관적 잠금 충돌로 실패 → V703 `CONFLICT`.
+ * - 완료 왕복 성공 — block_actions 모달 오픈 후 view_submission 전환 성공 → V703 `SUCCESS` 1행.
+ * - 무권한(전환 거부) — view_submission 전환이 권한 거부로 실패 → V703 `PERMISSION_DENIED`, 원본 메시지 미갱신.
+ * - OCC 충돌 — view_submission 전환이 낙관적 잠금 충돌로 실패 → V703 `CONFLICT`.
  * - 미연결 — 역매핑되지 않은 Slack 사용자의 완료 버튼 클릭 → ephemeral 안내 + V703 `UNMAPPED`.
  * - 서명 실패 — 빈 401, V703 미기록.
  * - 무권한(완료옵션 없음, 선택) — block_actions 단계에서 완료옵션 미시드 → 모달 미오픈 + V703 `PERMISSION_DENIED`.
@@ -170,10 +170,10 @@ class SlackInteractionEndToEndTest {
         clearState()
     }
 
-    // ── (1) 완료 왕복 성공 — block_actions 모달 오픈 → view_submission 전이 성공 → V703 SUCCESS ──────
+    // ── (1) 완료 왕복 성공 — block_actions 모달 오픈 → view_submission 전환 성공 → V703 SUCCESS ──────
 
     @Test
-    fun `완료 왕복 성공 - block_actions 모달 오픈 후 view_submission 전이 성공이 V703 SUCCESS 로 기록된다`() {
+    fun `완료 왕복 성공 - block_actions 모달 오픈 후 view_submission 전환 성공이 V703 SUCCESS 로 기록된다`() {
         seedMapping()
         completionOptionsPort.completionOptionsByIssueKey[ISSUE_KEY] = completionOptions()
 
@@ -198,10 +198,10 @@ class SlackInteractionEndToEndTest {
         assertThat(row["issue_key"]).isEqualTo(ISSUE_KEY)
     }
 
-    // ── (2) 무권한 — 전이 권한 거부 → response_action errors + V703 PERMISSION_DENIED, 메시지 미갱신 ──
+    // ── (2) 무권한 — 전환 권한 거부 → response_action errors + V703 PERMISSION_DENIED, 메시지 미갱신 ──
 
     @Test
-    fun `무권한 - view_submission 전이 권한 거부는 V703 PERMISSION_DENIED 로 기록되고 원본 메시지는 갱신되지 않는다`() {
+    fun `무권한 - view_submission 전환 권한 거부는 V703 PERMISSION_DENIED 로 기록되고 원본 메시지는 갱신되지 않는다`() {
         seedMapping()
         transitionPort.failWith(IssueTransitionPermissionDeniedException("denied"))
 
@@ -226,7 +226,7 @@ class SlackInteractionEndToEndTest {
     // ── (3) OCC 충돌 — response_action errors + V703 CONFLICT ────────────────────────────────────
 
     @Test
-    fun `OCC 충돌 - view_submission 전이 낙관적 잠금 충돌은 V703 CONFLICT 로 기록된다`() {
+    fun `OCC 충돌 - view_submission 전환 낙관적 잠금 충돌은 V703 CONFLICT 로 기록된다`() {
         seedMapping()
         transitionPort.failWith(IssueOptimisticLockException("stale version"))
 

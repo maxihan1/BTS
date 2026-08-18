@@ -1,6 +1,6 @@
-<!-- 이슈 상태 전이 백엔드 wiring slice 상세 명세 — D1 신규 SPI WorkflowKeyResolver 채택, BC 격리 유지하며 issue-tracking → project-workflow consumer 연결 -->
+<!-- 이슈 상태 전환 백엔드 wiring slice 상세 명세 — D1 신규 SPI WorkflowKeyResolver 채택, BC 격리 유지하며 issue-tracking → project-workflow consumer 연결 -->
 
-# 이슈 상태 전이 백엔드 wiring — Spec
+# 이슈 상태 전환 백엔드 wiring — Spec
 
 > slug: wiring-workflowresolver-consumer-fr-is-01-transiti
 > 작성: 2026-05-28
@@ -10,7 +10,7 @@
 
 ## 1. 작업 요약
 
-PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`WorkflowResolver`/`Scheme`/`Mapping`)을, issue-tracking BC가 PR #25에서 분리한 shared-kernel SPI 경계를 통해 호출하도록 연결한다. 이슈 상태 전이가 런타임에 실제 동작하게 만들어 후속 FR-IS-01 D7 E2E(생성→조회→수정→전이→삭제→키 영속성)를 unblock 한다.
+PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`WorkflowResolver`/`Scheme`/`Mapping`)을, issue-tracking BC가 PR #25에서 분리한 shared-kernel SPI 경계를 통해 호출하도록 연결한다. 이슈 상태 전환이 런타임에 실제 동작하게 만들어 후속 FR-IS-01 D7 E2E(생성→조회→수정→전환→삭제→키 영속성)를 unblock 한다.
 
 ## 2. 도메인 결정 (D1~D4, 게이트1 검토)
 
@@ -23,14 +23,14 @@ PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`Wor
 
 **근거**. shared-kernel published language 정신(consumer가 알아야 할 최소만 노출). issue-tracking은 workflowKey + startStateKey 문자열만 필요. ADR `2026-05-27-shared-kernel-extraction`의 자연스러운 후속 + 첫 consumer 적용 사례.
 
-### D2. 워크플로우 결정 시점 — 추천 (a) 이슈 생성 + 전이 둘 다 (게이트1 검토)
+### D2. 워크플로우 결정 시점 — 추천 (a) 이슈 생성 + 전환 둘 다 (게이트1 검토)
 
 생성 시점에도 `WorkflowKeyResolver.resolveStart()` 호출 → workflowKey + 시작 상태 키(정본 컨벤션 소문자) → currentStateKey 결정.
 
 **근거**.
 - 생성 시점에서도 워크플로우 정본 기반으로 시작 상태 결정 → currentStateKey 케이스 자동 정렬 (소문자).
-- 생성/전이가 같은 결정 흐름을 거치므로 데이터 정합 위험 0.
-- 대안 (b) "전이 시점만"은 생성 시 여전히 `"open"` 하드코딩 필요 → 워크플로우 변경/확장 시 또 wiring 갈라짐.
+- 생성/전환이 같은 결정 흐름을 거치므로 데이터 정합 위험 0.
+- 대안 (b) "전환 시점만"은 생성 시 여전히 `"open"` 하드코딩 필요 → 워크플로우 변경/확장 시 또 wiring 갈라짐.
 
 **영향**. `IssueApplicationService.create`가 `WorkflowKeyResolver` 호출 추가.
 
@@ -58,7 +58,7 @@ PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`Wor
 - **When**. `POST /api/v1/issues { projectKey: "ATLAS", summary: "..." }`
 - **Then**. 새 이슈가 `currentStateKey="open"`(소문자 정본)으로 생성. 응답 200 + `IssueResponse` 반환. `WorkflowKeyResolver.resolveStart("ATLAS", null)` 1회 호출.
 
-### S2. 이슈 상태 전이
+### S2. 이슈 상태 전환
 
 - **Given**. ATLAS-1 이슈가 `currentStateKey="open"` 상태.
 - **When**. `POST /api/v1/issues/ATLAS-1/transition { toStateKey: "in_progress" }`
@@ -71,14 +71,14 @@ PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`Wor
 ### S3. 새 프로젝트의 자동 scheme 배정 (EC-1)
 
 - **Given**. 새 프로젝트 NEW (`project_workflow_scheme_assignments` 미존재).
-- **When**. NEW 프로젝트에서 이슈 생성/전이.
-- **Then**. `WorkflowResolverImpl`의 자동 배정 로직(D10) 동작 → software-scheme 자동 배정 → software-default 반환 → 이슈 생성/전이 정상.
+- **When**. NEW 프로젝트에서 이슈 생성/전환.
+- **Then**. `WorkflowResolverImpl`의 자동 배정 로직(D10) 동작 → software-scheme 자동 배정 → software-default 반환 → 이슈 생성/전환 정상.
 
 ### S4. 기존 데이터 마이그레이션 후 호환
 
 - **Given**. 마이그레이션 전 DB에 `currentStateKey="OPEN"` 이슈 다수 존재.
 - **When**. Flyway V00X 적용.
-- **Then**. 모든 이슈가 `currentStateKey="open"`으로 일괄 변경. 후속 전이 호출 시 워크플로우 상태 키(소문자)와 정합.
+- **Then**. 모든 이슈가 `currentStateKey="open"`으로 일괄 변경. 후속 전환 호출 시 워크플로우 상태 키(소문자)와 정합.
 
 ## 4. 기능 요구사항 (FR)
 
@@ -93,7 +93,7 @@ PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`Wor
 
 ## 5. 비기능 요구사항 (NFR)
 
-- **NFR-1. 트랜잭션 일관성**. 이슈 생성. `WorkflowKeyResolver` lookup + 이슈 INSERT + 이벤트 enqueue = 한 트랜잭션. 전이. `WorkflowKeyResolver` lookup + `WorkflowTransitionPort.applyTransition` + 이슈 UPDATE + 이벤트 enqueue = 한 트랜잭션. 부분 실패 시 모두 롤백.
+- **NFR-1. 트랜잭션 일관성**. 이슈 생성. `WorkflowKeyResolver` lookup + 이슈 INSERT + 이벤트 enqueue = 한 트랜잭션. 전환. `WorkflowKeyResolver` lookup + `WorkflowTransitionPort.applyTransition` + 이슈 UPDATE + 이벤트 enqueue = 한 트랜잭션. 부분 실패 시 모두 롤백.
 - **NFR-2. 성능**. `WorkflowKeyResolver` lookup은 추가 쿼리 1~2건 (`project_workflow_scheme_assignments` → `workflow_scheme_issue_type_mappings` → `workflows`). 이슈 생성 p95 영향 < 50ms (기존 임계 300ms 여유 충분). 캐시는 본 PR scope 외(WorkflowResolverImpl 내부 캐시 도입은 후속).
 - **NFR-3. 회귀**. 기존 `IssueRepositoryTest` / `IssueApplicationServiceTest` / `IssueControllerTest`가 새 케이스(`"open"` 소문자) + `WorkflowKeyResolver` mock 반영하여 모두 green.
 - **NFR-4. BC 격리**. issue-tracking 모듈에서 `com.bts.workflow.*` import 0건 (ArchUnit + grep 검증).
@@ -118,7 +118,7 @@ PR #18에서 project-workflow BC에 도입된 워크플로우 결정 로직(`Wor
 - **EC-1. project-workflow scheme 미배정 → 자동 배정**. `WorkflowResolverImpl`가 software-scheme 자동 배정 (PR #18 EC-1, D10 구현). 본 PR은 그 동작 위에서 wiring — 동작 변경 없음.
 - **EC-2. issueTypeKey=null + default mapping 부재**. `WorkflowSchemeNoDefaultException` 발생 → `IssueApplicationService`가 도메인 예외(`IssueWorkflowNotConfiguredException` 신규 또는 기존 변환) → `IssueExceptionHandler`가 HTTP 422 (Unprocessable Entity) 응답.
 - **EC-3. Propagation.MANDATORY 위반**. 호출자가 `@Transactional` 없이 `WorkflowKeyResolver.resolveStart()` 호출 시 Spring이 `IllegalTransactionStateException`. 단위 테스트로 강제 검증.
-- **EC-4. 전이 실패 시 트랜잭션 롤백**. `WorkflowTransitionPort.applyTransition`가 `TransitionResult.Failure` 반환 → 이슈 상태 변경 안 됨 + 이벤트 발행 안 됨. 기존 동작 보존, 회귀 테스트로 검증.
+- **EC-4. 전환 실패 시 트랜잭션 롤백**. `WorkflowTransitionPort.applyTransition`가 `TransitionResult.Failure` 반환 → 이슈 상태 변경 안 됨 + 이벤트 발행 안 됨. 기존 동작 보존, 회귀 테스트로 검증.
 - **EC-5. 케이스 불일치 데이터 (마이그레이션 적용 전)**. 마이그레이션 자체로 해소. 마이그레이션 누락 시 기존 데이터의 `"OPEN"`으로 `applyTransition(fromStateKey="OPEN", ...)` 호출 → 워크플로우의 `open`과 불일치 → `IllegalTransitionException`. 회귀 테스트로 마이그레이션 강제.
 - **EC-6. shared-kernel SPI 경계 위반**. ArchUnit 룰로 빌드 시점 차단 (FR-8).
 - **EC-7. WorkflowKey 형식 검증**. project-workflow의 `Workflow.key`는 이미 정규식 검증(PR #18). shared-kernel에서 잘못된 키 전파 시 IllegalArgumentException 또는 NoSuchElementException — `WorkflowKeyResolverImpl`이 결과만 전달하므로 새 검증 불필요.

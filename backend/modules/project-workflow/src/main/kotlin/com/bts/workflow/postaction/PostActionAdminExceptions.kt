@@ -15,12 +15,12 @@ class PostActionValidationException(
 ) : RuntimeException("post-action 검증 실패: $reason", cause)
 
 /**
- * post-action 또는 전이가 존재하지 않을 때 던지는 예외 (HTTP 404).
+ * post-action 또는 전환이 존재하지 않을 때 던지는 예외 (HTTP 404).
  *
- * transitionKey 파싱 오류, 전이 미존재, post-action id 미존재 시 발생한다.
+ * transitionKey 파싱 오류, 전환 미존재, post-action id 미존재 시 발생한다.
  *
  * @param detail 조회를 시도한 대상 상세 정보.
  */
 class PostActionNotFoundException(
     val detail: String,
-) : RuntimeException("post-action 또는 전이를 찾을 수 없습니다: $detail")
+) : RuntimeException("post-action 또는 전환을 찾을 수 없습니다: $detail")

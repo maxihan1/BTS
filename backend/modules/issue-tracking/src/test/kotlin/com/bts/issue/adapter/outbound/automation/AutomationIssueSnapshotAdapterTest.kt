@@ -85,7 +85,7 @@ class AutomationIssueSnapshotAdapterTest : IssueTestcontainersBase() {
 
     /**
      * [IssueApplicationService] 를 Testcontainers 실 DB 기반 [repository] 에 연결하고, VIEW 판정만
-     * [permissionResolver] stub 으로 제어한다. findByKey 경로가 쓰지 않는 협력자(워크플로우 전이/
+     * [permissionResolver] stub 으로 제어한다. findByKey 경로가 쓰지 않는 협력자(워크플로우 전환/
      * 사용자 조회 등)는 relaxed mock 으로 대체한다.
      */
     private fun adapterWith(resolver: IssuePermissionResolver = StubViewGate()): AutomationIssueSnapshotAdapter {

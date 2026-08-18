@@ -1,4 +1,4 @@
-// validator 가드 가용전이 필터링 통합 테스트 — GET /transitions 결과가 actor 조건에 따라 달라짐을 실증
+// validator 가드 가용전환 필터링 통합 테스트 — GET /transitions 결과가 actor 조건에 따라 달라짐을 실증
 
 package com.bts.issue.integration
 
@@ -77,17 +77,17 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * validator 가드 가용전이 필터링 통합 테스트 (FR-T-Q3).
+ * validator 가드 가용전환 필터링 통합 테스트 (FR-T-Q3).
  *
  * ## 검증 목적
- * "서버가 validator 조건을 평가해 실제 실행 가능한 전이만 반환"을 실제 Testcontainers DB 위에서 실증한다.
+ * "서버가 validator 조건을 평가해 실제 실행 가능한 전환만 반환"을 실제 Testcontainers DB 위에서 실증한다.
  * mock 없이 WorkflowEngine.availableTransitions 이 PermissionValidator 결과에 따라
  * GET /api/v1/issues/{key}/transitions 응답을 달리하는지 검증한다.
  *
  * ## 워크플로우 시드 전략 (옵션 b — 테스트 전용 시드)
  * `guard-workflow` 라는 테스트 전용 워크플로우를 JDBC 직접 삽입으로 시드한다.
- * - `open → guarded_step` : "Guarded Move" 전이 — permission-check validator 부착
- * - `open → free_step`    : "Free Move" 전이 — validator 없음 (항상 가용)
+ * - `open → guarded_step` : "Guarded Move" 전환 — permission-check validator 부착
+ * - `open → free_step`    : "Free Move" 전환 — validator 없음 (항상 가용)
  *
  * actor UUID는 두 종류를 사용한다.
  * - [PRIVILEGED_ACTOR_UUID] : permission resolver 가 true 를 반환 → Guarded Move 포함
@@ -96,8 +96,8 @@ import java.util.UUID
  * WorkflowValidatorFactory 를 actor-aware stub 으로 구성해 두 시나리오를 단일 Bean 세트로 검증한다.
  *
  * ## 테스트 시나리오
- * - S1. actor 조건 충족(PRIVILEGED) → guarded_step 전이 포함 (2건)
- * - S2. actor 조건 미충족(UNPRIVILEGED) → guarded_step 전이 제외 (1건만: free_step)
+ * - S1. actor 조건 충족(PRIVILEGED) → guarded_step 전환 포함 (2건)
+ * - S2. actor 조건 미충족(UNPRIVILEGED) → guarded_step 전환 제외 (1건만: free_step)
  * - S3. 구조적 동일성 — 같은 fromState, 같은 이슈, 다른 actor → 결과가 달라짐을 단언
  *
  * @see com.bts.workflow.engine.WorkflowEngine.availableTransitions
@@ -261,9 +261,9 @@ class IssueTransitionGuardFilterIntegrationTest {
         /**
          * guard / always-blocked 워크플로우 전용 WorkflowDefinitionRepository stub.
          *
-         * - `open → actor_gated`  전이 : "permission-check" validator 1개 부착
-         * - `open → always_allowed` 전이 : validator 없음 (항상 가용)
-         * - `open → blocked_step` 전이 : "always-fail" validator 1개 부착 (항상 차단)
+         * - `open → actor_gated`  전환 : "permission-check" validator 1개 부착
+         * - `open → always_allowed` 전환 : validator 없음 (항상 가용)
+         * - `open → blocked_step` 전환 : "always-fail" validator 1개 부착 (항상 차단)
          */
         @Bean
         open fun workflowDefinitionRepository(): WorkflowDefinitionRepository =
@@ -473,10 +473,10 @@ class IssueTransitionGuardFilterIntegrationTest {
         SecurityContextHolder.clearContext()
     }
 
-    // ── S1. PRIVILEGED actor → actor_gated 전이 포함 (2건) ──────────────────────
+    // ── S1. PRIVILEGED actor → actor_gated 전환 포함 (2건) ──────────────────────
 
     /**
-     * S1 — IssueController.SYSTEM_ACTOR_UUID 가 permission-check 를 통과해 actor_gated 전이가 포함된다.
+     * S1 — IssueController.SYSTEM_ACTOR_UUID 가 permission-check 를 통과해 actor_gated 전환이 포함된다.
      *
      * Given  GUARD 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
      *        guard-workflow : open → always_allowed (validator 없음) + open → actor_gated (permission-check)
@@ -485,7 +485,7 @@ class IssueTransitionGuardFilterIntegrationTest {
      * Then   200 OK + transitions 2건 (always_allowed + actor_gated 모두 포함)
      */
     @Test
-    fun `S1 — PRIVILEGED actor 조건 충족 시 actor_gated 전이가 결과에 포함된다`() {
+    fun `S1 — PRIVILEGED actor 조건 충족 시 actor_gated 전환이 결과에 포함된다`() {
         val issueKey = insertIssue(GuardTestConfig.GUARD_PROJECT_KEY, "가드 필터 검증용 이슈 S1", "open")
 
         mockMvc.perform(get("/api/v1/issues/$issueKey/transitions"))
@@ -499,10 +499,10 @@ class IssueTransitionGuardFilterIntegrationTest {
             )
     }
 
-    // ── S2. always_blocked 전이는 어떤 actor 도 볼 수 없음 ────────────────────────
+    // ── S2. always_blocked 전환은 어떤 actor 도 볼 수 없음 ────────────────────────
 
     /**
-     * S2 — always_blocked 전이가 부착된 워크플로우에서는 해당 전이가 결과에서 제외된다.
+     * S2 — always_blocked 전환이 부착된 워크플로우에서는 해당 전환이 결과에서 제외된다.
      *
      * Given  BLOCKED 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
      *        always-blocked-workflow 는 open → blocked_step (always-fail validator)만 존재
@@ -510,7 +510,7 @@ class IssueTransitionGuardFilterIntegrationTest {
      * Then   200 OK + transitions 0건 (validator 가 항상 Fail → 제외)
      */
     @Test
-    fun `S2 — always_blocked validator 가 부착된 전이는 결과에서 제외된다`() {
+    fun `S2 — always_blocked validator 가 부착된 전환은 결과에서 제외된다`() {
         val issueKey = insertIssue(BLOCKED_PROJECT_KEY, "항상 차단 검증용 이슈 S2", "open")
 
         mockMvc.perform(get("/api/v1/issues/$issueKey/transitions"))
@@ -521,15 +521,15 @@ class IssueTransitionGuardFilterIntegrationTest {
     // ── S3. 같은 fromState 인데 워크플로우 구성 차이로 결과가 달라짐 ──────────────
 
     /**
-     * S3 — 동일한 fromState "open" 이지만 워크플로우 validator 구성 차이로 전이 목록이 달라진다.
+     * S3 — 동일한 fromState "open" 이지만 워크플로우 validator 구성 차이로 전환 목록이 달라진다.
      *
-     * Given  GUARD 프로젝트 이슈 → guard-workflow (validator 통과 전이 2건 포함)
-     *        BLOCKED 프로젝트 이슈 → always-blocked-workflow (모든 전이 validator Fail)
+     * Given  GUARD 프로젝트 이슈 → guard-workflow (validator 통과 전환 2건 포함)
+     *        BLOCKED 프로젝트 이슈 → always-blocked-workflow (모든 전환 validator Fail)
      * When   두 이슈 모두 GET /transitions 호출 (fromState = "open")
      * Then   GUARD 이슈 : 2건, BLOCKED 이슈 : 0건 — 같은 fromState 임에도 결과가 다름
      */
     @Test
-    fun `S3 — 같은 fromState 이지만 validator 구성 차이로 가용전이 결과가 달라진다`() {
+    fun `S3 — 같은 fromState 이지만 validator 구성 차이로 가용전환 결과가 달라진다`() {
         val guardIssueKey = insertIssue(GuardTestConfig.GUARD_PROJECT_KEY, "S3 guard 이슈", "open")
         val blockedIssueKey = insertIssue(BLOCKED_PROJECT_KEY, "S3 blocked 이슈", "open")
 

@@ -28,7 +28,7 @@ enum class TotpStatus {
  * @property secretCipher TOTP secret 암호문(AES-256-GCM, MfaSecretEncryptor). 평문 금지.
  * @property status 설정 상태([PENDING]/[ACTIVE]).
  * @property lastVerifiedStep 마지막 검증 성공 time-step(RFC 6238). 코드 replay 차단용. NULL=미검증.
- * @property confirmedAt enable(ACTIVE 전이) 시각. PENDING 상태에서는 null.
+ * @property confirmedAt enable(ACTIVE 전환) 시각. PENDING 상태에서는 null.
  * @property createdAt secret 최초 생성 시각(setup 시점).
  * @property updatedAt 마지막 변경 시각(재setup/activate/step 갱신).
  */

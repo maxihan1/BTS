@@ -110,7 +110,7 @@ X-BTS-Signature: sha256=<hex>       # secret 있을 때만 (GitHub webhook 관�
 - [ ] dual-send: PUBLISHABLE 이벤트 발행 시 `q_issue_events`·`q_webhook_events` 두 큐 모두 메시지 존재(통합테스트). non-PUBLISHABLE(issue.updated 등)은 q_webhook_events 미유입.
 - [ ] fanout: event_filter+projectKey 매칭 구독만 발송, 비매칭/비활성/타프로젝트 제외(통합테스트, positive+negative control로 vacuous 방지).
 - [ ] HMAC: secret 있는 구독은 유효한 `sha256=` 서명 헤더, secret 없으면 헤더 부재(단위/통합).
-- [ ] circuit breaker: 5회 실패→OPEN, OPEN 중 스킵, 60초 후 half-open 상태 전이(단위테스트, Clock 주입).
+- [ ] circuit breaker: 5회 실패→OPEN, OPEN 중 스킵, 60초 후 half-open 상태 전환(단위테스트, Clock 주입).
 - [ ] 발송 이력: 성공/실패/차단 각각 `webhook_deliveries` 정확 기록(status/response_code).
 - [ ] 이력 조회 API: SYSTEM_ADMIN 200, 비-admin 403, 미존재 404, 페이지네이션(통합테스트).
 - [ ] SSRF 발송 시점 재검증: 차단 URL 미발송(통합테스트).

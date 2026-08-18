@@ -1,4 +1,4 @@
-// 워크플로우 엔진 — plan(req) 전이 계획 계산 + availableTransitions(req) 가용 전이 열거 (Propagation.MANDATORY)
+// 워크플로우 엔진 — plan(req) 전환 계획 계산 + availableTransitions(req) 가용 전환 열거 (Propagation.MANDATORY)
 
 package com.bts.workflow.engine
 
@@ -68,14 +68,14 @@ interface WorkflowPostActionFactory {
 }
 
 /**
- * 전이 정의에 연결된 Validator/PostAction 설정을 조회하는 outbound port.
+ * 전환 정의에 연결된 Validator/PostAction 설정을 조회하는 outbound port.
  *
  * 실제 구현은 jOOQ 로 workflow_validators / workflow_post_actions 테이블을 조회한다.
  * 본 PR 범위에서는 인터페이스만 정의하며, 구현체는 후속 task 에서 등록한다.
  */
 interface WorkflowDefinitionRepository {
     /**
-     * 주어진 전이에 설정된 Validator 설정 목록을 반환한다.
+     * 주어진 전환에 설정된 Validator 설정 목록을 반환한다.
      * 순서는 YAML 정의 순서를 따른다 (순차 평가를 위해 보존해야 한다).
      *
      * [workflowKey] 는 workflow_id 해석을 위한 1급 식별자로, 같은 (from, to) 쌍을 사용하는
@@ -83,7 +83,7 @@ interface WorkflowDefinitionRepository {
      * 이 인자 없이 transition 만으로 조회하면 오매칭(silent 결함)이 발생한다.
      *
      * @param workflowKey 워크플로우 식별자 (workflow 테이블 key 컬럼 값)
-     * @param transition 조회 대상 전이 정의
+     * @param transition 조회 대상 전환 정의
      */
     fun findValidators(
         workflowKey: String,
@@ -91,13 +91,13 @@ interface WorkflowDefinitionRepository {
     ): List<ValidatorConfig>
 
     /**
-     * 주어진 전이에 설정된 PostAction 설정 목록을 반환한다.
+     * 주어진 전환에 설정된 PostAction 설정 목록을 반환한다.
      *
      * [workflowKey] 는 workflow_id 해석을 위한 1급 식별자로, 같은 (from, to) 쌍을 사용하는
      * 여러 워크플로우가 존재할 때 올바른 post_action 행을 선택하기 위해 필수로 전달해야 한다.
      *
      * @param workflowKey 워크플로우 식별자 (workflow 테이블 key 컬럼 값)
-     * @param transition 조회 대상 전이 정의
+     * @param transition 조회 대상 전환 정의
      */
     fun findPostActions(
         workflowKey: String,
@@ -119,7 +119,7 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
 // ──────────────────────────────────────────────────────────────────────── //
 
 /**
- * 워크플로우 전이 엔진.
+ * 워크플로우 전환 엔진.
  *
  * [plan] 을 통해 다음 두 단계를 순서대로 수행한다.
  *
@@ -135,7 +135,7 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
  * @param cache 워크플로우 메모리 캐시
  * @param validatorFactory Validator 인스턴스 팩토리
  * @param postActionFactory PostAction 인스턴스 팩토리
- * @param definitionRepo 전이별 Validator/PostAction 설정 조회 repository
+ * @param definitionRepo 전환별 Validator/PostAction 설정 조회 repository
  */
 @Service
 class WorkflowEngine(
@@ -147,7 +147,7 @@ class WorkflowEngine(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 전이 요청을 검증하고 실행 계획을 반환한다.
+     * 전환 요청을 검증하고 실행 계획을 반환한다.
      *
      * 반드시 활성 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY]).
      * 트랜잭션 없이 호출하면 Spring 이 [org.springframework.transaction.IllegalTransactionStateException] 을 던진다.
@@ -155,8 +155,8 @@ class WorkflowEngine(
      * 호출자인 [com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter] 가 아래 예외를
      * [com.bts.shared.workflow.TransitionResult] 케이스로 매핑한다.
      *
-     * @throws WorkflowNotFoundException 워크플로우·전이 정의를 찾을 수 없을 때
-     * @throws WorkflowValidatorFailureException Validator 가 전이를 거부할 때
+     * @throws WorkflowNotFoundException 워크플로우·전환 정의를 찾을 수 없을 때
+     * @throws WorkflowValidatorFailureException Validator 가 전환을 거부할 때
      */
     @Transactional(propagation = Propagation.MANDATORY)
     fun plan(req: TransitionRequest): TransitionPlan {
@@ -179,12 +179,12 @@ class WorkflowEngine(
     }
 
     /**
-     * 현재 상태에서 Validator 를 통과하는 가용 전이 목록을 반환한다.
+     * 현재 상태에서 Validator 를 통과하는 가용 전환 목록을 반환한다.
      *
      * PostAction 은 절대 실행하지 않는다. GET 읽기 경로이므로 부수 효과 없음.
      * 반드시 활성 읽기 전용 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY], readOnly=true).
      *
-     * @param req 가용 전이 열거 요청 DTO
+     * @param req 가용 전환 열거 요청 DTO
      * @return [AvailableTransitionsResult.Success] 또는 [AvailableTransitionsResult.WorkflowNotFound]
      */
     @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
@@ -261,7 +261,7 @@ class WorkflowEngine(
     /**
      * Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다.
      *
-     * plan 경로(전이 실행)에서만 호출된다. AVAILABILITY / EXECUTION 구분 없이 모든 phase 의
+     * plan 경로(전환 실행)에서만 호출된다. AVAILABILITY / EXECUTION 구분 없이 모든 phase 의
      * validator 를 평가한다. EXECUTION 페이즈 게이트(RequiredField 등)도 이 경로에서 차단한다.
      * availableTransitions 경로에서는 이 함수를 호출하지 않고 passesValidators 를 사용한다.
      *
@@ -309,7 +309,7 @@ class WorkflowEngine(
     }
 
     /**
-     * 단일 전이에 대해 AVAILABILITY 페이즈 Validator 만 평가하고 통과 여부를 반환한다.
+     * 단일 전환에 대해 AVAILABILITY 페이즈 Validator 만 평가하고 통과 여부를 반환한다.
      *
      * availableTransitions 경로(읽기, 버튼 노출 결정)에서만 호출된다.
      * EXECUTION 페이즈 validator(RequiredField 등)는 건너뛴다 — 버튼 노출과 실행 차단이
@@ -348,9 +348,9 @@ class WorkflowEngine(
         val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
 
         // availableTransitions 는 AVAILABILITY 페이즈 validator 만 평가한다.
-        // EXECUTION 페이즈(RequiredField 등)는 전이 실행 시(plan 경로)에만 평가되므로 건너뛴다.
+        // EXECUTION 페이즈(RequiredField 등)는 전환 실행 시(plan 경로)에만 평가되므로 건너뛴다.
         // phase 의 진실 출처는 validator 인스턴스이므로, 인스턴스 생성 후 phase 를 확인한다.
-        // 이렇게 해야 "입력이 필요한 전이"도 목록에는 노출되고(버튼 보임), 실행 시점에만 차단된다.
+        // 이렇게 해야 "입력이 필요한 전환"도 목록에는 노출되고(버튼 보임), 실행 시점에만 차단된다.
         for (cfg in definitionRepo.findValidators(req.workflowKey, transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
             if (validator.phase == ValidatorPhase.EXECUTION) continue

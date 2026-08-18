@@ -34,7 +34,7 @@ PR #29 (BLOCKER 2 hot-fix) 머지 후 잔존 CONCERN-1 (Important). `Workflow.of
 
 `docs/adr/2026-05-28-workflow-transition-identity-policy.md` §결정.
 
-> 옵션 (b1) 채택 — `(from, to)` 2 튜플을 전이 identity로 확정.
+> 옵션 (b1) 채택 — `(from, to)` 2 튜플을 전환 identity로 확정.
 > `name` 필드는 사람 친화 표시 라벨 (UI 표시 / yaml 가독성). 엔진 매칭에 사용하지 않는다.
 > yaml seed 단계에서 같은 워크플로우 내 `(fromStateKey, toStateKey)` 중복을 fail-fast로 차단. `name` 중복은 허용.
 

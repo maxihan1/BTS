@@ -60,7 +60,7 @@ import java.util.UUID
  * 1. 영속되는 [ImportJob] 의 status 가 PENDING 이 아니라 [ImportJobStatus.AWAITING_MAPPING] 이고,
  *    [ImportJobEnqueuePublisher.enqueue] 를 호출하지 않는다 — 사용자가 소스 필드 ↔ 대상 필드 매핑을
  *    확정([ImportJobRepository.transitionToPending], 매핑 확정 API 는 이 Task 의 책임 범위 밖)해야
- *    비로소 PENDING 으로 전이하고 워커 처리가 시작된다.
+ *    비로소 PENDING 으로 전환하고 워커 처리가 시작된다.
  * 2. [ImportJob.expiresAt] 을 [ABANDON_TTL_SECONDS] 후로 설정해, 매핑을 확정하지 않고 방치된 job 을
  *    cleanup 워커([com.bts.search.imports.job.worker.ImportJobCleanupWorker])가 정리할 수 있게 한다.
  *    매핑을 확정하면 이 만료 시각은 NULL 로 해제된다([ImportJobRepository.transitionToPending] KDoc).

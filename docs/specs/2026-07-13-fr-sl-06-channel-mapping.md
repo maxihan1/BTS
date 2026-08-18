@@ -42,7 +42,7 @@ BTS §작업 기준: 이 PR의 백엔드는 완제품 품질(테스트·보안·
 ### S1. 프로젝트 관리자가 채널 매핑 생성
 - **Given** actor가 프로젝트 `PROJ`의 관리 권한을 보유
 - **When** `POST /api/v1/slack/channel-mappings {projectKey:"PROJ", channelId:"C123", eventTypes:["issue.created","issue.transitioned"]}`
-- **Then** 매핑이 저장되고 201 + 매핑 뷰 반환. 이후 `PROJ`의 생성/전이 이벤트가 채널 `C123`에 게시된다.
+- **Then** 매핑이 저장되고 201 + 매핑 뷰 반환. 이후 `PROJ`의 생성/전환 이벤트가 채널 `C123`에 게시된다.
 
 ### S2. 비관리자 거부 (fail-closed)
 - **Given** actor가 `PROJ` 관리 권한 없음 (또는 미해석 projectKey)
@@ -51,7 +51,7 @@ BTS §작업 기준: 이 PR의 백엔드는 완제품 품질(테스트·보안·
 
 ### S3. 이벤트 → 채널 게시 (happy)
 - **Given** `PROJ`↔`C123` 매핑(event_filter⊇`issue.transitioned`), 봇이 `C123`에 설치됨
-- **When** `PROJ-7` 상태 전이 이벤트가 `q_issue_events`에 발행됨
+- **When** `PROJ-7` 상태 전환 이벤트가 `q_issue_events`에 발행됨
 - **Then** notification이 `q_slack_channel_broadcasts`에 1회 브로드캐스트 → slack 워커가 `C123`에 Block Kit 카드 1회 게시. 재전달돼도 채널당 dedup으로 중복 게시 없음.
 
 ### S4. 이벤트 필터 미포함 → 게시 안 함
@@ -65,8 +65,8 @@ BTS §작업 기준: 이 PR의 백엔드는 완제품 품질(테스트·보안·
 - **Then** 브로드캐스트 발행 → 워커가 매핑 0건 확인 → 게시 0, 메시지 삭제(no-op). 오류 아님.
 
 ### S6. 다대다 — 한 이벤트 → 여러 채널
-- **Given** `PROJ`가 `C1`(전이), `C2`(전이+댓글) 두 채널에 매핑
-- **When** `PROJ` 전이 이벤트
+- **Given** `PROJ`가 `C1`(전환), `C2`(전환+댓글) 두 채널에 매핑
+- **When** `PROJ` 전환 이벤트
 - **Then** `C1`, `C2` 각각 1회 게시(채널별 독립 dedup). 한 채널 실패가 다른 채널 게시를 막지 않는다.
 
 ### S7. 봇이 채널에 없음 → 영구 실패

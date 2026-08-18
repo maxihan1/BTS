@@ -1,4 +1,4 @@
-// 일괄 상태 전이 Dialog 컴포넌트 단위 테스트 — 단일 bulk API 기반 전이 선택 + submit 검증
+// 일괄 상태 전환 Dialog 컴포넌트 단위 테스트 — 단일 bulk API 기반 전환 선택 + submit 검증
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -135,7 +135,7 @@ describe('BulkTransitionDialog', () => {
     mockMutateAsync.mockReset()
   })
 
-  // (a) 서버가 반환한 공통 전이가 드롭다운에 노출된다
+  // (a) 서버가 반환한 공통 전환이 드롭다운에 노출된다
   it('(a) fetchBulkAvailableTransitions를 단일 호출하고 반환된 transitions를 드롭다운에 노출한다', async () => {
     mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
       transitions: [
@@ -152,8 +152,8 @@ describe('BulkTransitionDialog', () => {
       expect(mockFetchBulkAvailableTransitions).toHaveBeenCalledWith(['PROJ-1', 'PROJ-2'])
     })
 
-    // 전이 드롭다운이 노출된다
-    const select = await screen.findByRole('combobox', { name: /전이 상태/i })
+    // 전환 드롭다운이 노출된다
+    const select = await screen.findByRole('combobox', { name: /전환 상태/i })
     expect(select).toBeInTheDocument()
 
     // 서버가 반환한 옵션 확인 (mock SelectContent는 항상 DOM에 노출)
@@ -191,10 +191,10 @@ describe('BulkTransitionDialog', () => {
     const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
 
     // 경고 메시지가 표시된다
-    await screen.findByText(/일부 이슈의 전이 정보를 불러오지 못했습니다/i)
+    await screen.findByText(/일부 이슈의 전환 정보를 불러오지 못했습니다/i)
 
     // 드롭다운에 transitions 옵션이 노출된다
-    const select = screen.getByRole('combobox', { name: /전이 상태/i })
+    const select = screen.getByRole('combobox', { name: /전환 상태/i })
     const user = userEvent.setup()
     await user.click(select)
 
@@ -224,8 +224,8 @@ describe('BulkTransitionDialog', () => {
     })
   })
 
-  // (d) 전이 선택 후 적용 → 올바른 payload로 mutateAsync 호출 + 콜백 실행
-  it('(d) 전이 선택 후 적용 시 올바른 payload로 mutateAsync를 호출하고 콜백을 실행한다', async () => {
+  // (d) 전환 선택 후 적용 → 올바른 payload로 mutateAsync 호출 + 콜백 실행
+  it('(d) 전환 선택 후 적용 시 올바른 payload로 mutateAsync를 호출하고 콜백을 실행한다', async () => {
     const bulkOperationId = 'aabbccdd-4000-4000-8000-000000000003'
     mockMutateAsync.mockResolvedValueOnce({ bulkOperationId, status: 'PENDING', totalCount: 3 })
 
@@ -240,7 +240,7 @@ describe('BulkTransitionDialog', () => {
     const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2', 'PROJ-3'] })
 
     // 드롭다운에서 '완료' 선택
-    const select = await screen.findByRole('combobox', { name: /전이 상태/i })
+    const select = await screen.findByRole('combobox', { name: /전환 상태/i })
     const user = userEvent.setup()
     await user.click(select)
 
@@ -280,7 +280,7 @@ describe('BulkTransitionDialog', () => {
     renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
 
     // 에러 안내 메시지가 표시되어야 한다
-    await screen.findByText(/전이 정보를 불러오지 못했습니다/i)
+    await screen.findByText(/전환 정보를 불러오지 못했습니다/i)
 
     // Select(combobox)가 DOM에 없어야 한다
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
@@ -390,10 +390,10 @@ describe('BulkTransitionDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  // ─── B14: DONE 전이 시 resolution 드롭다운 ────────────────────────────────
+  // ─── B14: DONE 전환 시 resolution 드롭다운 ────────────────────────────────
 
-  // (g) toCategory=DONE 전이 선택 시 resolution 드롭다운 표시 + 미선택 시 적용 비활성
-  it('(g) toCategory=DONE 전이를 선택하면 resolution 드롭다운이 나타나고 미선택 시 적용 버튼이 비활성이다', async () => {
+  // (g) toCategory=DONE 전환 선택 시 resolution 드롭다운 표시 + 미선택 시 적용 비활성
+  it('(g) toCategory=DONE 전환을 선택하면 resolution 드롭다운이 나타나고 미선택 시 적용 버튼이 비활성이다', async () => {
     mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
       transitions: [
         { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS', toCategory: 'IN_PROGRESS' },
@@ -404,8 +404,8 @@ describe('BulkTransitionDialog', () => {
 
     renderDialog()
 
-    // '완료' 전이 선택
-    const select = await screen.findByRole('combobox', { name: /전이 상태/i })
+    // '완료' 전환 선택
+    const select = await screen.findByRole('combobox', { name: /전환 상태/i })
     const user = userEvent.setup()
     await user.click(select)
     const doneOption = await screen.findByRole('option', { name: /완료/i })
@@ -420,8 +420,8 @@ describe('BulkTransitionDialog', () => {
     expect(applyButton).toBeDisabled()
   })
 
-  // (h) toCategory=DONE 전이 + resolution 선택 시 resolutionId가 payload에 포함된다
-  it('(h) DONE 전이에서 resolution을 선택 후 적용하면 resolutionId가 transitionPayload에 포함된다', async () => {
+  // (h) toCategory=DONE 전환 + resolution 선택 시 resolutionId가 payload에 포함된다
+  it('(h) DONE 전환에서 resolution을 선택 후 적용하면 resolutionId가 transitionPayload에 포함된다', async () => {
     const bulkOperationId = 'aabbccdd-4000-4000-8000-000000000010'
     mockMutateAsync.mockResolvedValueOnce({ bulkOperationId, status: 'PENDING', totalCount: 2 })
 
@@ -435,8 +435,8 @@ describe('BulkTransitionDialog', () => {
     const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
     const user = userEvent.setup()
 
-    // 전이 드롭다운에서 '완료' 선택
-    const transitionSelect = await screen.findByRole('combobox', { name: /전이 상태/i })
+    // 전환 드롭다운에서 '완료' 선택
+    const transitionSelect = await screen.findByRole('combobox', { name: /전환 상태/i })
     await user.click(transitionSelect)
     const doneOption = await screen.findByRole('option', { name: /완료/i })
     await user.click(doneOption)
@@ -473,8 +473,8 @@ describe('BulkTransitionDialog', () => {
     })
   })
 
-  // (i) 비DONE 전이 선택 시 resolution 드롭다운이 없고 바로 적용 가능하다
-  it('(i) 비DONE 전이를 선택하면 resolution 드롭다운이 없고 즉시 적용 가능하다', async () => {
+  // (i) 비DONE 전환 선택 시 resolution 드롭다운이 없고 바로 적용 가능하다
+  it('(i) 비DONE 전환을 선택하면 resolution 드롭다운이 없고 즉시 적용 가능하다', async () => {
     const bulkOperationId = 'aabbccdd-4000-4000-8000-000000000011'
     mockMutateAsync.mockResolvedValueOnce({ bulkOperationId, status: 'PENDING', totalCount: 1 })
 
@@ -488,8 +488,8 @@ describe('BulkTransitionDialog', () => {
     renderDialog()
     const user = userEvent.setup()
 
-    // '진행 중' 전이 선택
-    const transitionSelect = await screen.findByRole('combobox', { name: /전이 상태/i })
+    // '진행 중' 전환 선택
+    const transitionSelect = await screen.findByRole('combobox', { name: /전환 상태/i })
     await user.click(transitionSelect)
     const inProgressOption = await screen.findByRole('option', { name: /진행 중/i })
     await user.click(inProgressOption)
@@ -512,8 +512,8 @@ describe('BulkTransitionDialog', () => {
     })
   })
 
-  // (j) DONE 전이 → 다른 비DONE 전이로 변경 시 resolution 드롭다운이 사라진다
-  it('(j) DONE 전이 선택 후 비DONE 전이로 변경하면 resolution 드롭다운이 사라진다', async () => {
+  // (j) DONE 전환 → 다른 비DONE 전환으로 변경 시 resolution 드롭다운이 사라진다
+  it('(j) DONE 전환 선택 후 비DONE 전환으로 변경하면 resolution 드롭다운이 사라진다', async () => {
     mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
       transitions: [
         { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS', toCategory: 'IN_PROGRESS' },
@@ -526,13 +526,13 @@ describe('BulkTransitionDialog', () => {
     const user = userEvent.setup()
 
     // '완료' 선택 → resolution 드롭다운 나타남
-    const transitionSelect = await screen.findByRole('combobox', { name: /전이 상태/i })
+    const transitionSelect = await screen.findByRole('combobox', { name: /전환 상태/i })
     await user.click(transitionSelect)
     await user.click(await screen.findByRole('option', { name: /완료/i }))
     expect(await screen.findByRole('combobox', { name: /결의안/i })).toBeInTheDocument()
 
     // '진행 중'으로 변경 → resolution 드롭다운 사라짐
-    await user.click(screen.getByRole('combobox', { name: /전이 상태/i }))
+    await user.click(screen.getByRole('combobox', { name: /전환 상태/i }))
     await user.click(await screen.findByRole('option', { name: /진행 중/i }))
     expect(screen.queryByRole('combobox', { name: /결의안/i })).not.toBeInTheDocument()
   })
@@ -554,7 +554,7 @@ describe('BulkTransitionDialog — 실패 경로', () => {
     const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1'] })
     const user = userEvent.setup()
 
-    const select = await screen.findByRole('combobox', { name: /전이 상태/i })
+    const select = await screen.findByRole('combobox', { name: /전환 상태/i })
     await user.click(select)
     await user.click(await screen.findByRole('option', { name: /완료/i }))
     await user.click(screen.getByRole('button', { name: /적용/i }))

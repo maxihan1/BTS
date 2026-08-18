@@ -97,11 +97,11 @@ IssueApplicationService.transition() — @Transactional
 | spec §  | 영역 | 본 PR scope |
 |---|---|---|
 | §1.S1~S6 | 6 사용자 시나리오 (Given-When-Then) | ✅ — Wave 4 ApplicationService 의 단위 테스트 + Wave 6 통합 테스트 검증 |
-| §2 FR (a~i) | 9 sub-FR (생성/조회/수정/전이/삭제/목록/이벤트/권한/redirect) | ✅ — redirect 사용은 후속 FR-MV-01 |
+| §2 FR (a~i) | 9 sub-FR (생성/조회/수정/전환/삭제/목록/이벤트/권한/redirect) | ✅ — redirect 사용은 후속 FR-MV-01 |
 | §3 NFR | 9 성능/품질 임계 | 일부만 — k6 측정은 Wave 8 (후속 PR), 본 PR 은 단위/통합 테스트 임계 |
 | §4 API | 6 REST 엔드포인트 명세 | ✅ — Wave 5 Controller |
 | §5 데이터 모델 | V001/V002 스키마 | (PR #14 머지됨, 본 PR 활용) |
-| §6 7 엣지 케이스 (EC-1~EC-7) | 7 통합 시나리오 | ✅ — Wave 6 통합 테스트 (race condition / 권한 / 전이 위반 / 대용량 / 동시 편집 / 소프트 삭제 / 키 보존) |
+| §6 7 엣지 케이스 (EC-1~EC-7) | 7 통합 시나리오 | ✅ — Wave 6 통합 테스트 (race condition / 권한 / 전환 위반 / 대용량 / 동시 편집 / 소프트 삭제 / 키 보존) |
 | §6.1 RFC 7807 ProblemDetail | 9 errorCode 표 | ✅ — Wave 5 IssueExceptionHandler |
 | §7.1 IssueApplicationService 의사코드 | Kotlin 코드 가이드 | ✅ — Wave 4 6 메서드 구현 가이드 |
 | §7.2 Testcontainers singleton | 통합 테스트 인프라 | ✅ — Wave 6 IssueTestcontainersBase |
@@ -110,7 +110,7 @@ IssueApplicationService.transition() — @Transactional
 ### 본 PR 의 핵심 시나리오 (spec §1)
 
 - **S1**. 이슈 생성 — `POST /api/v1/issues { projectKey, summary }` → `key_sequence` 증가 + `ATLAS-N` 발급 + pgmq `IssueCreated` (같은 트랜잭션)
-- **S4**. 상태 전이 — `WorkflowTransitionPort.plan()` 호출 (Propagation.MANDATORY) → 반환된 TransitionPlan 을 issue-tracking 이 적용 + pgmq `IssueTransitioned`
+- **S4**. 상태 전환 — `WorkflowTransitionPort.plan()` 호출 (Propagation.MANDATORY) → 반환된 TransitionPlan 을 issue-tracking 이 적용 + pgmq `IssueTransitioned`
 - **S5**. 소프트 삭제 — `DELETE` → `deleted_at=NOW()` + 키 영구 보존 + pgmq `IssueSoftDeleted`
 
 ## Brainstorming Check
@@ -317,7 +317,7 @@ IssueApplicationService.transition() — @Transactional
 
 **메타**. agent: `backend-engineer` / files: `[backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueCrudIntegrationTest.kt]` / depends-on: `[17, 20]`
 
-**RED**. spec §6 의 EC-2~EC-7. 권한 / 전이 위반 / 대용량 (1000건 seed + 페이지 50건 p95 < 500ms) / 동시 편집 (낙관락 409) / 소프트 삭제 / 키 영속성 (5-cycle).
+**RED**. spec §6 의 EC-2~EC-7. 권한 / 전환 위반 / 대용량 (1000건 seed + 페이지 50건 p95 < 500ms) / 동시 편집 (낙관락 409) / 소프트 삭제 / 키 영속성 (5-cycle).
 
 **GREEN**. 6 메서드. workflow Bean 은 stub (workflow 도 `AlwaysAllowPermissionResolver`).
 

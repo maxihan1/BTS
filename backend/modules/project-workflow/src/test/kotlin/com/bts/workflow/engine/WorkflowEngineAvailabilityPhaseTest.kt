@@ -1,4 +1,4 @@
-// availableTransitions의 AVAILABILITY 페이즈 필터링 — EXECUTION 게이트 전이는 목록에 노출되어야 함
+// availableTransitions의 AVAILABILITY 페이즈 필터링 — EXECUTION 게이트 전환은 목록에 노출되어야 함
 
 package com.bts.workflow.engine
 
@@ -28,15 +28,15 @@ import org.junit.jupiter.api.Test
  * ValidatorPhase.EXECUTION 게이트가 availableTransitions 에서 건너뛰어지는지 검증한다.
  *
  * 핵심 불변식.
- * - EXECUTION 페이즈 validator(RequiredField 등)가 걸린 전이도 availableTransitions 결과에 포함되어야 한다
- *   (버튼 노출 — 사용자는 전이 버튼을 볼 수 있어야 함).
- * - 동일 전이에 대해 plan() 은 resolution 필드가 없을 때 WorkflowValidatorFailureException 을 던져야 한다
+ * - EXECUTION 페이즈 validator(RequiredField 등)가 걸린 전환도 availableTransitions 결과에 포함되어야 한다
+ *   (버튼 노출 — 사용자는 전환 버튼을 볼 수 있어야 함).
+ * - 동일 전환에 대해 plan() 은 resolution 필드가 없을 때 WorkflowValidatorFailureException 을 던져야 한다
  *   (EXECUTION 게이트는 plan 경로에서 여전히 유효함).
  *
  * 테스트 시나리오.
- * - S1. EXECUTION 페이즈 RequiredField validator 가 걸린 전이가 availableTransitions 결과에 포함된다.
- * - S2. 동일 전이에 대해 plan() 은 resolution 없으면 WorkflowValidatorFailureException 을 던진다.
- * - S3. AVAILABILITY 페이즈 validator 는 기존대로 availableTransitions 에서 평가되어 전이를 제거한다.
+ * - S1. EXECUTION 페이즈 RequiredField validator 가 걸린 전환이 availableTransitions 결과에 포함된다.
+ * - S2. 동일 전환에 대해 plan() 은 resolution 없으면 WorkflowValidatorFailureException 을 던진다.
+ * - S3. AVAILABILITY 페이즈 validator 는 기존대로 availableTransitions 에서 평가되어 전환을 제거한다.
  */
 class WorkflowEngineAvailabilityPhaseTest {
     private val mockCache: WorkflowCache = mockk()
@@ -51,7 +51,7 @@ class WorkflowEngineAvailabilityPhaseTest {
     private val openState = WorkflowState("open", "Open", StateCategory.TODO, 1)
     private val closedState = WorkflowState("closed", "Closed", StateCategory.DONE, 2)
 
-    /** resolution 필드를 EXECUTION 게이트로 요구하는 전이 (Jira 의 "닫기" 전이와 유사). */
+    /** resolution 필드를 EXECUTION 게이트로 요구하는 전환 (Jira 의 "닫기" 전환과 유사). */
     private val txOpenToClosed = WorkflowTransition("open", "closed", "Close")
 
     private val workflow =
@@ -66,7 +66,7 @@ class WorkflowEngineAvailabilityPhaseTest {
     private val requiredResolutionConfig =
         ValidatorConfig("RequiredField", mapOf("field" to "resolution"))
 
-    /** resolution 없는 가용 전이 조회 요청 */
+    /** resolution 없는 가용 전환 조회 요청 */
     private val availReqWithoutResolution =
         AvailableTransitionsRequest(
             workflowKey = "test-workflow",
@@ -83,10 +83,10 @@ class WorkflowEngineAvailabilityPhaseTest {
         engine = WorkflowEngine(mockCache, mockValidatorFactory, mockPostActionFactory, mockDefinitionRepo)
     }
 
-    // ── S1. EXECUTION 페이즈 validator가 걸린 전이도 availableTransitions 에 포함됨 ──
+    // ── S1. EXECUTION 페이즈 validator가 걸린 전환도 availableTransitions 에 포함됨 ──
 
     @Test
-    fun `S1 — EXECUTION 페이즈 RequiredField validator 전이는 availableTransitions 결과에 포함된다`() {
+    fun `S1 — EXECUTION 페이즈 RequiredField validator 전환은 availableTransitions 결과에 포함된다`() {
         every { mockCache.findByKey("test-workflow") } returns workflow
         every {
             mockDefinitionRepo.findValidators("test-workflow", txOpenToClosed)
@@ -140,10 +140,10 @@ class WorkflowEngineAvailabilityPhaseTest {
             .isInstanceOf(WorkflowValidatorFailureException::class.java)
     }
 
-    // ── S3. AVAILABILITY 페이즈 validator 는 기존대로 availableTransitions 에서 전이 제거 ──
+    // ── S3. AVAILABILITY 페이즈 validator 는 기존대로 availableTransitions 에서 전환 제거 ──
 
     @Test
-    fun `S3 — AVAILABILITY 페이즈 validator 가 Fail 을 반환하면 전이는 목록에서 제외된다`() {
+    fun `S3 — AVAILABILITY 페이즈 validator 가 Fail 을 반환하면 전환은 목록에서 제외된다`() {
         every { mockCache.findByKey("test-workflow") } returns workflow
         val permissionConfig = ValidatorConfig("permission-check", mapOf("role" to "ADMIN"))
         every {

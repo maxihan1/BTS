@@ -23,7 +23,7 @@ object VersionErrorCodes {
     /** 동일 프로젝트 내 이름 중복 — 409. */
     const val VERSION_NAME_DUPLICATE = "VERSION_NAME_DUPLICATE"
 
-    /** 허용되지 않는 상태 전이 또는 ARCHIVED 읽기전용 위반 — 409. */
+    /** 허용되지 않는 상태 전환 또는 ARCHIVED 읽기전용 위반 — 409. */
     const val VERSION_TRANSITION_NOT_ALLOWED = "VERSION_TRANSITION_NOT_ALLOWED"
 
     /** 권한 없음 — 403. */

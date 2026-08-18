@@ -57,11 +57,11 @@ class VersionAccessDeniedException(
     )
 
 /**
- * 현재 [VersionStatus] 에서 요청한 상태 전이가 허용되지 않을 때.
+ * 현재 [VersionStatus] 에서 요청한 상태 전환이 허용되지 않을 때.
  *
- * self-transition(같은 상태로의 전이) 또는 전이 그래프에 정의되지 않은 경로 시 발생한다.
+ * self-transition(같은 상태로의 전환) 또는 전환 그래프에 정의되지 않은 경로 시 발생한다.
  * HTTP 409 CONFLICT 으로 매핑한다.
  *
- * @param message 전이 거부 사유 메시지.
+ * @param message 전환 거부 사유 메시지.
  */
 class VersionTransitionNotAllowedException(message: String) : VersionDomainException(message)

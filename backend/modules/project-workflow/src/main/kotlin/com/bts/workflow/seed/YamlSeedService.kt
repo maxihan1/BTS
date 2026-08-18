@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional
  * @property name 워크플로우 이름
  * @property description 워크플로우 설명. null 허용 (YAML에 명시 안 된 경우 null).
  * @property states 상태 목록. 비어 있으면 Konform 검증 실패.
- * @property transitions 전이 목록.
+ * @property transitions 전환 목록.
  */
 data class WorkflowYamlDto(
     val key: String = "",
@@ -84,13 +84,13 @@ data class PostActionYamlDto(
 )
 
 /**
- * YAML 전이 항목 DTO.
+ * YAML 전환 항목 DTO.
  *
  * @property from 출발 상태 키
  * @property to 도착 상태 키
- * @property name 전이 이름
- * @property validators 전이 전 검증 게이트 목록. 미정의 시 빈 리스트.
- * @property postActions 전이 후 자동 처리 목록. YAML 키는 postActions (camelCase). 미정의 시 빈 리스트.
+ * @property name 전환 이름
+ * @property validators 전환 전 검증 게이트 목록. 미정의 시 빈 리스트.
+ * @property postActions 전환 후 자동 처리 목록. YAML 키는 postActions (camelCase). 미정의 시 빈 리스트.
  */
 data class TransitionYamlDto(
     val from: String = "",
@@ -157,7 +157,7 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 를 호출해 처리한다.
  *
  * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
- * @param dsl jOOQ DSLContext. 전이/상태/validator/postAction 직접 INSERT 에 사용한다.
+ * @param dsl jOOQ DSLContext. 전환/상태/validator/postAction 직접 INSERT 에 사용한다.
  * @param resourceLoader classpath YAML 파일 접근용 Spring ResourceLoader.
  * @param yamlMapper YAML 파일 역직렬화용 Jackson ObjectMapper (YAMLFactory 기반).
  * @param validatorFactory validator type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
@@ -303,7 +303,7 @@ class YamlSeedService(
      * - workflows.name 변경 여부
      * - states 키/이름/카테고리/displayOrder 변경 여부
      * - transitions from/to/name 변경 여부
-     * - 전이별 validators/post_actions type 목록 변경 여부
+     * - 전환별 validators/post_actions type 목록 변경 여부
      *
      * 변경 감지 시 매핑을 기록→삭제(FK RESTRICT 회피) 한 뒤 CASCADE DELETE·전체 재삽입하고,
      * 새 workflow UUID 로 기록해 둔 매핑을 재연결한다 (R6-B, ★★ 수정판 — default + admin
@@ -332,7 +332,7 @@ class YamlSeedService(
         }
     }
 
-    /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전이가 있으면 [IllegalStateException] 을 던진다. */
+    /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전환이 있으면 [IllegalStateException] 을 던진다. */
     private fun validateTransitionUniqueness(
         workflowKey: String,
         transitions: List<TransitionYamlDto>,
@@ -406,10 +406,10 @@ class YamlSeedService(
     }
 
     /**
-     * DB 에 저장된 workflow_validators 와 YAML 정의를 전이별로 비교해 변경 여부를 반환한다.
+     * DB 에 저장된 workflow_validators 와 YAML 정의를 전환별로 비교해 변경 여부를 반환한다.
      *
-     * 전이별 (fromStateKey, toStateKey) 를 키로 DB validators type 목록과 YAML validators type 목록을
-     * 비교한다. 총 count 비교만으로는 전이별 분포 변경을 감지하지 못하므로 전이별 비교를 사용한다.
+     * 전환별 (fromStateKey, toStateKey) 를 키로 DB validators type 목록과 YAML validators type 목록을
+     * 비교한다. 총 count 비교만으로는 전환별 분포 변경을 감지하지 못하므로 전환별 비교를 사용한다.
      */
     private fun differsInValidators(
         existing: Workflow,
@@ -425,7 +425,7 @@ class YamlSeedService(
     }
 
     /**
-     * 워크플로우 키에 속한 모든 전이의 validator type 목록을 (fromStateKey, toStateKey) 기준으로
+     * 워크플로우 키에 속한 모든 전환의 validator type 목록을 (fromStateKey, toStateKey) 기준으로
      * 그루핑해 반환한다. display_order ASC 정렬.
      *
      * FROM / TO state 는 fetchTransitionStateKeys 로 별도 조회해 cartesian product 를 피한다.
@@ -457,7 +457,7 @@ class YamlSeedService(
     }
 
     /**
-     * 워크플로우 키에 속한 모든 전이의 (transition_id to (fromStateKey, toStateKey)) 매핑을 반환한다.
+     * 워크플로우 키에 속한 모든 전환의 (transition_id to (fromStateKey, toStateKey)) 매핑을 반환한다.
      *
      * FROM / TO state 를 별칭 JOIN 으로 조회해 cartesian product 없이 확보한다.
      */
@@ -548,10 +548,10 @@ class YamlSeedService(
         for (transition in dto.transitions) {
             val fromStateId =
                 stateKeyToId[transition.from]
-                    ?: error("전이 from 상태 키 '${transition.from}' 가 states 에 없음: ${dto.key}")
+                    ?: error("전환 from 상태 키 '${transition.from}' 가 states 에 없음: ${dto.key}")
             val toStateId =
                 stateKeyToId[transition.to]
-                    ?: error("전이 to 상태 키 '${transition.to}' 가 states 에 없음: ${dto.key}")
+                    ?: error("전환 to 상태 키 '${transition.to}' 가 states 에 없음: ${dto.key}")
 
             val transitionId =
                 dsl.insertInto(WORKFLOW_TRANSITIONS)

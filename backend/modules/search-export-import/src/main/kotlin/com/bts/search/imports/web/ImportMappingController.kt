@@ -40,7 +40,7 @@ import java.util.UUID
  * - `POST /api/v1/imports/{jobId}/mapping/values` — 원본에 등장하는 상태/유형/우선순위 이름을 수집하고
  *   BTS 대상 값 추천을 계산한다(저장 없이 조회만, FR-IM-02 PR-C).
  * - `POST /api/v1/imports/{jobId}/mapping` — 필드 매핑 + 사용자 매핑 + 값 매핑을 확정하고 작업을
- *   PENDING으로 전이한다.
+ *   PENDING으로 전환한다.
  *
  * ### BC 격리 — [ImportController]와 동형 복제
  *
@@ -195,7 +195,7 @@ class ImportMappingController(
     }
 
     /**
-     * 필드 매핑 + 사용자 매핑 + 값 매핑을 검증한 뒤 확정하고, 작업을 PENDING으로 전이해 실행 큐에
+     * 필드 매핑 + 사용자 매핑 + 값 매핑을 검증한 뒤 확정하고, 작업을 PENDING으로 전환해 실행 큐에
      * enqueue한다.
      *
      * @param jobId 확정 대상 Import 작업 식별자(경로 변수).

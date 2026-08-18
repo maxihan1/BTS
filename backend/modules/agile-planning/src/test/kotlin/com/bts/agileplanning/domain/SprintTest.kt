@@ -1,4 +1,4 @@
-// Sprint 도메인 애그리게이트 상태 전이 + 불변식 단위테스트
+// Sprint 도메인 애그리게이트 상태 전환 + 불변식 단위테스트
 
 package com.bts.agileplanning.domain
 
@@ -15,8 +15,8 @@ import java.util.UUID
  * 외부 의존(DB, Spring, mock) 없이 순수 도메인 로직만 검증한다.
  *
  * 검증 시나리오.
- * - start(): PLANNED -> ACTIVE 정상 전이, ACTIVE/COMPLETED 에서 InvalidSprintTransitionException
- * - complete(): ACTIVE -> COMPLETED 정상 전이, PLANNED/COMPLETED 에서 InvalidSprintTransitionException
+ * - start(): PLANNED -> ACTIVE 정상 전환, ACTIVE/COMPLETED 에서 InvalidSprintTransitionException
+ * - complete(): ACTIVE -> COMPLETED 정상 전환, PLANNED/COMPLETED 에서 InvalidSprintTransitionException
  * - 기간 불변식: startDate > endDate 는 IllegalArgumentException
  * - 이름 불변식: name 공백 시 IllegalArgumentException
  */
@@ -42,7 +42,7 @@ class SprintTest {
 
     private fun activeSprint() = plannedSprint().start()
 
-    // ─── start() 전이 ───────────────────────────────────────────────────────
+    // ─── start() 전환 ───────────────────────────────────────────────────────
 
     @Nested
     inner class StartTransition {
@@ -79,7 +79,7 @@ class SprintTest {
         }
     }
 
-    // ─── complete() 전이 ────────────────────────────────────────────────────
+    // ─── complete() 전환 ────────────────────────────────────────────────────
 
     @Nested
     inner class CompleteTransition {
@@ -180,7 +180,7 @@ class SprintTest {
         }
     }
 
-    // ─── SprintStatus 전이 규칙 ──────────────────────────────────────────────
+    // ─── SprintStatus 전환 규칙 ──────────────────────────────────────────────
 
     @Nested
     inner class SprintStatusEntries {

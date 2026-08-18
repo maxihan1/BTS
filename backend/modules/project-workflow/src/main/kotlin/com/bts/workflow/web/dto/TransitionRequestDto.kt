@@ -1,4 +1,4 @@
-// 전이 요청 REST DTO — Konform 검증 + toDomain 매퍼
+// 전환 요청 REST DTO — Konform 검증 + toDomain 매퍼
 
 package com.bts.workflow.web.dto
 
@@ -21,15 +21,15 @@ private val transitionRequestDtoValidation: Validation<TransitionRequestDto> =
     }
 
 /**
- * REST 전이 요청 DTO.
+ * REST 전환 요청 DTO.
  *
- * 클라이언트가 이슈 전이를 요청할 때 HTTP 요청 바디로 전달하는 형태.
+ * 클라이언트가 이슈 전환을 요청할 때 HTTP 요청 바디로 전달하는 형태.
  * [toDomain] 을 통해 서비스 레이어에서 사용하는 도메인 DTO [TransitionRequest] 로 변환한다.
  *
- * 전이 동일성 식별 정책. [WorkflowTransition.key] (`from__to`) 합성 기반 매칭 —
+ * 전환 동일성 식별 정책. [WorkflowTransition.key] (`from__to`) 합성 기반 매칭 —
  * ADR 2026-05-28-workflow-transition-identity-policy 참조.
  *
- * @property toStateKey 전이 목표 상태 키. 예: "IN_PROGRESS", "DONE".
+ * @property toStateKey 전환 목표 상태 키. 예: "IN_PROGRESS", "DONE".
  * @property fields 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다. 기본값 빈 Map.
  * @property version 낙관적 잠금(optimistic lock) 버전. 최솟값 1. 동시 수정 충돌 감지에 사용한다.
  */
@@ -51,9 +51,9 @@ data class TransitionRequestDto(
      * 컨트롤러에서 경로 변수 / 인증 컨텍스트로부터 얻은 값을 함께 주입한다.
      *
      * @param workflowKey 적용할 워크플로우의 고유 키.
-     * @param issueKey 전이 대상 이슈의 키.
+     * @param issueKey 전환 대상 이슈의 키.
      * @param fromStateKey 이슈의 현재 상태 키.
-     * @param actorId 전이를 실행하는 사용자 ID.
+     * @param actorId 전환을 실행하는 사용자 ID.
      * @param actorRoles 실행자의 역할 집합.
      */
     fun toDomain(

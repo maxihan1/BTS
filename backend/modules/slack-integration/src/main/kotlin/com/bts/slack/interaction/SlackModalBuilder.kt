@@ -1,4 +1,4 @@
-// IssueCompletionOptions 로 Slack 완료 모달 view JSON(resolution/done 전이 select) 을 조립하는 컴포넌트 (FR-SL-05 Task 7)
+// IssueCompletionOptions 로 Slack 완료 모달 view JSON(resolution/done 전환 select) 을 조립하는 컴포넌트 (FR-SL-05 Task 7)
 
 package com.bts.slack.interaction
 
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component
  * 조립한다 (FR-SL-05 Task 7).
  *
  * ## private_metadata에는 toStateKey 를 담지 않는다
- * 완료 전이 실행에 필요한 `toStateKey`는 사용자가 [buildCompletionModal]이 만든 done 전이
+ * 완료 전환 실행에 필요한 `toStateKey`는 사용자가 [buildCompletionModal]이 만든 done 전환
  * `static_select`에서 실제로 선택한 값이다 — 모달을 여는 시점에 미리 박제하면(private_metadata)
  * 제출 시점에 사용자가 고른 값과 어긋날 수 있어, [SlackInteractionPayload.ViewSubmission.stateValues]
  * (제출 시점 상태)에서만 읽도록 강제한다. private_metadata에는 제출 처리에 필요한 나머지 컨텍스트
@@ -177,7 +177,7 @@ class SlackModalBuilder(
             element = staticSelectElement(RESOLUTION_ACTION_ID, resolutions.map { it.label to it.id.toString() }),
         )
 
-    /** done 전이 선택 `input` 블록 — 옵션 = [doneTransitions]. */
+    /** done 전환 선택 `input` 블록 — 옵션 = [doneTransitions]. */
     private fun doneTransitionInputBlock(doneTransitions: List<DoneTransition>): ObjectNode =
         inputBlock(
             blockId = DONE_TRANSITION_BLOCK_ID,

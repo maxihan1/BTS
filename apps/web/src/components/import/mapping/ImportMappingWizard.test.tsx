@@ -2,7 +2,7 @@
 //
 // 설계 결정.
 //   - '@/api/import-mappings' 전체를 mock해 analyze/collectUsers/collectValues/confirmMapping을 제어한다.
-//   - '@/hooks/use-import-job-polling'를 mock해 폴링 결과(tracking→done 전이)를 직접 제어한다.
+//   - '@/hooks/use-import-job-polling'를 mock해 폴링 결과(tracking→done 전환)를 직접 제어한다.
 //   - FieldMappingStep/UserMappingStep/ValueMappingStep은 실제 컴포넌트를 그대로 렌더한다(모킹 없음) —
 //     대부분은 Radix Select를 여는 상호작용(jsdom pointer-capture 미지원)을 피하기 위해 JSON 업로드
 //     (필드 매핑 스킵) 또는 collectUsers/collectValues 빈 결과(자동 스킵) 경로로 Select 상호작용 없이
@@ -394,8 +394,8 @@ describe('ImportMappingWizard', () => {
     })
 
     // dry-run 재적용(G1) — 폴링이 이전 jobId가 아니라 새로 발급된 jobId를 tracking 활성 상태로 추적해야
-    // 한다. mock이 COMPLETED를 상수로 반환하므로 tracking 진입 직후 즉시 done으로 전이해 최종 호출은
-    // (JOB_ID_2, false)로 안정화되지만(done 단계는 폴링 비활성이 올바른 동작), 그 전이 과정에서
+    // 한다. mock이 COMPLETED를 상수로 반환하므로 tracking 진입 직후 즉시 done으로 전환해 최종 호출은
+    // (JOB_ID_2, false)로 안정화되지만(done 단계는 폴링 비활성이 올바른 동작), 그 전환 과정에서
     // (JOB_ID_2, true) 호출이 반드시 존재해야 한다 — toHaveBeenCalledWith는 호출 이력 전체를 검사한다.
     await waitFor(() => {
       expect(vi.mocked(useImportJobPolling)).toHaveBeenCalledWith(JOB_ID_2, true)

@@ -95,12 +95,12 @@ export const issueDetailStrings = {
     '커스텀 필드 값이 올바르지 않습니다. 화면에 보이지 않는 필수 필드가 원인일 수 있습니다.',
   /** 타입 변경 실패 기본 에러 메시지 */
   typeChangeError: '이슈 유형 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
-  /** 전이 셀렉터 aria-label */
-  transitionSelectLabel: '상태 전이 선택',
-  /** 가용전이 0건일 때 안내 문구 (종료상태 S6) */
-  noTransitionsAvailable: '더 진행할 전이 없음',
+  /** 전환 셀렉터 aria-label */
+  transitionSelectLabel: '상태 전환 선택',
+  /** 가용전환 0건일 때 안내 문구 (종료상태 S6) */
+  noTransitionsAvailable: '더 진행할 전환 없음',
   /** 409 transition_not_allowed 에러 메시지 (S3) */
-  transitionNotAllowedError: '현재 상태에서 허용되지 않는 전이입니다.',
+  transitionNotAllowedError: '현재 상태에서 허용되지 않는 전환입니다.',
   /** 409 version_conflict 에러 메시지 (S4) — 최신 데이터 재조회 유도 */
   transitionVersionConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 페이지를 새로고침해 최신 상태를 확인해 주세요.',
   /** 422 workflow_not_configured 에러 메시지 (S5) */

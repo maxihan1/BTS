@@ -310,7 +310,7 @@ export interface AutomationYamlImportDialogProps {
  *   토큰 발급을 마쳤을 수 있어, `result`가 채워지길 기다리는 `hasUnackedTokens`만으로는 그 창을
  *   못 잡는다(review-fix CRITICAL-1). 토큰은 이 컴포넌트의 React state로만 보유하고 storage/URL/
  *   로그에 남기지 않는다(NFR3, §1.18).
- * - `open`이 false→true로 재전이하면 파일·결과·에러 상태를 초기화한다(EC8) — 같은 인스턴스가 열림/
+ * - `open`이 false→true로 재전환하면 파일·결과·에러 상태를 초기화한다(EC8) — 같은 인스턴스가 열림/
  *   닫힘을 반복하며 재사용되므로 `key` prop 재마운트 대신 `useEffect`로 직접 리셋한다
  *   (react-usestate-stale-key-prop 교훈이되, 이 컴포넌트는 리셋 시점이 "재오픈"이라 재마운트가
  *   아닌 effect가 더 적합하다).
@@ -361,7 +361,7 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
       setResult(null)
       setImportError(null)
     }
-    // open 재전이에서만 리셋한다 — useState setter만 참조해 안정 참조이므로 의존성 배열은 [open]만으로 충분하다.
+    // open 재전환에서만 리셋한다 — useState setter만 참조해 안정 참조이므로 의존성 배열은 [open]만으로 충분하다.
   }, [open])
 
   const hasUnackedTokens = result?.webhookTokens !== undefined && result.webhookTokens.length > 0

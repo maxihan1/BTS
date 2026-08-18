@@ -19,7 +19,7 @@ Jira 마이그레이션 에픽의 마지막 백엔드 PR. 남은 보존 대상 *
 **S2 — 이력 충실 재생 (happy path).**
 - Given. JSON에 `issues[].changelog.histories[]`(각 history=author/created/items[]).
 - When. import 실행.
-- Then. 각 history를 이슈 이력 그룹 1건(actor=원본 author, 발생시각=원본 created)으로, 각 item을 이력 항목(field=BTS 매핑, from/to=Jira 표시 문자열)으로 재생. status 변경도 텍스트 이력으로 기록(BTS 전이 실행 아님).
+- Then. 각 history를 이슈 이력 그룹 1건(actor=원본 author, 발생시각=원본 created)으로, 각 item을 이력 항목(field=BTS 매핑, from/to=Jira 표시 문자열)으로 재생. status 변경도 텍스트 이력으로 기록(BTS 전환 실행 아님).
 
 **S3 — clamd 미가용 중 첨부 import.**
 - Given. ClamAV 데몬 다운.

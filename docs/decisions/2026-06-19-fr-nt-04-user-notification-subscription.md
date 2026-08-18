@@ -37,7 +37,7 @@ FR-NT-04는 그 위에 **개인**이 자신이 받을 알림을 (이벤트×채�
 
 ### D3. 설정 가능 채널 = IN_APP + EMAIL
 
-`Channel` enum 5종 중 IN_APP·EMAIL만 사용자별 설정 대상. SLACK(slack-integration BC 미구현)·TEAMS(범위 밖)·WEBHOOK(FR-NT-05 전이 post-action, per-user 모델 아님)은 제외.
+`Channel` enum 5종 중 IN_APP·EMAIL만 사용자별 설정 대상. SLACK(slack-integration BC 미구현)·TEAMS(범위 밖)·WEBHOOK(FR-NT-05 전환 post-action, per-user 모델 아님)은 제외.
 - product 문서 §2.2 "채널 구독 on/off는 FR-NT-04" 표기와 일치. Maxi 확정.
 
 ### D4. 이벤트 타입 = NotificationEventType 10종 전부

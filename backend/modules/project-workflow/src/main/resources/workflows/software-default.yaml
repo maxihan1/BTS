@@ -1,4 +1,4 @@
-# 소프트웨어 개발 기본 워크플로우 (5 상태 + 6 전이) — FR-IS-07: DONE 카테고리 진입 전이에 resolution 필수
+# 소프트웨어 개발 기본 워크플로우 (5 상태 + 6 전환) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
 key: software-default
 name: 소프트웨어 개발 기본 워크플로우
 description: "Open → In Progress → In Review → Done → Closed 흐름의 표준 소프트웨어 개발 워크플로우"

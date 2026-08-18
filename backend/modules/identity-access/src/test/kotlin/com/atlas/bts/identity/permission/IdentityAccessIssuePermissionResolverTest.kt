@@ -98,7 +98,7 @@ class IdentityAccessIssuePermissionResolverTest {
      * **볼 수 없는 이슈를 바꿀 수는 더더욱 없어야 한다.**
      *
      * 2026-07-27 이전 등급 게이트는 `VIEW` 에만 걸렸다. 그래서 기밀 이슈를 **볼 수 없는** 멤버가
-     * 매트릭스에 `EDIT_ISSUE` 만 있으면 그 이슈를 수정·전이·삭제할 수 있었다
+     * 매트릭스에 `EDIT_ISSUE` 만 있으면 그 이슈를 수정·전환·삭제할 수 있었다
      * (댓글 수정·삭제 · 이슈 PATCH 포함). `IssuePermission` 8종을 전수 판정해 확대 범위를 정했다.
      *
      * | 권한 | 게이트 | 근거 |

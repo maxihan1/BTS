@@ -7,16 +7,16 @@ import jakarta.validation.constraints.NotNull
 import java.util.UUID
 
 /**
- * 이슈 상태 전이 REST 요청 바디.
+ * 이슈 상태 전환 REST 요청 바디.
  *
  * [toStatusKey] 는 워크플로우 정의에 선언된 목표 상태 키다.
  * [expectedVersion] 은 낙관적 잠금(optimistic locking)을 위해 필수다.
- * [resolutionId] 는 DONE 상태로 전이할 때 지정하는 해결책 식별자다.
- * 비DONE 전이에서는 무시되며, 서비스 계층에서 clear 처리된다.
+ * [resolutionId] 는 DONE 상태로 전환할 때 지정하는 해결책 식별자다.
+ * 비DONE 전환에서는 무시되며, 서비스 계층에서 clear 처리된다.
  *
- * @property toStatusKey 전이할 목표 상태 키. 예: "IN_PROGRESS". 공백 불가.
+ * @property toStatusKey 전환할 목표 상태 키. 예: "IN_PROGRESS". 공백 불가.
  * @property expectedVersion 읽어온 시점의 버전 값. DB 버전과 다르면 409 Version Conflict.
- * @property resolutionId DONE 전이 시 지정할 해결책 UUID. DONE 외 전이는 무시/clear된다.
+ * @property resolutionId DONE 전환 시 지정할 해결책 UUID. DONE 외 전환은 무시/clear된다.
  */
 data class TransitionIssueRequest(
     @field:NotBlank(message = "toStatusKey는 비어 있을 수 없습니다.")

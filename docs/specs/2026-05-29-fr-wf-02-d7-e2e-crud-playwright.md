@@ -54,7 +54,7 @@ D6 spec S1~S10 을 E2E 행위 검증 단위로 5 시나리오 (`spec` 파일 단
 - **When 1 (S9 첫 할당).** 프로젝트 (예. ATLAS — fixture 기준) 의 `/projects/ATLAS/settings/workflow-scheme` 접근. 현재 적용 스킴 표시 (또는 S10 의 미할당 안내 카드) → 변경 select → "스킴 지정" 또는 "스킴 변경" CTA 클릭.
 - **Then 1.** PUT UPSERT 응답 → 현재 적용 스킴이 새 스킴으로 갱신 표시.
 - **When 2 (S10 자동 할당 안내).** 미할당 프로젝트 (fixture 기준 또는 별도 fixture seed) 의 같은 라우트 진입.
-- **Then 2.** GET 404 → "현재 적용된 스킴 없음. 첫 이슈 전이 시 software-scheme 자동 할당" 안내 카드 표시 + 변경 select 정상 사용 가능.
+- **Then 2.** GET 404 → "현재 적용된 스킴 없음. 첫 이슈 전환 시 software-scheme 자동 할당" 안내 카드 표시 + 변경 select 정상 사용 가능.
 
 ## 기능 요구사항 (FR)
 

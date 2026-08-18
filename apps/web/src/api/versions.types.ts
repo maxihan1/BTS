@@ -66,7 +66,7 @@ export interface ChangeDatesInput {
   releaseDate: string | null
 }
 
-/** 버전 상태 전이 입력 타입 — FR-VR-02 */
+/** 버전 상태 전환 입력 타입 — FR-VR-02 */
 export interface ChangeVersionStatusInput {
   status: VersionStatus
 }

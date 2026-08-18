@@ -177,7 +177,7 @@ describe('changeVersionStatus', () => {
     expect(result.releasedAt).toBe('2026-06-10T12:00:00Z')
   })
 
-  it('UNRELEASED 상태로 전이 시 releasedAt이 없는 응답을 처리한다', async () => {
+  it('UNRELEASED 상태로 전환 시 releasedAt이 없는 응답을 처리한다', async () => {
     server.use(
       http.patch('/api/v1/projects/:projectIdOrKey/versions/:id/status', async () =>
         HttpResponse.json({ data: versionFixture }),
@@ -188,7 +188,7 @@ describe('changeVersionStatus', () => {
     expect(result.releasedAt).toBeUndefined()
   })
 
-  it('불허 전이(409) 시 ApiError를 throw한다', async () => {
+  it('불허 전환(409) 시 ApiError를 throw한다', async () => {
     server.use(
       http.patch('/api/v1/projects/:projectIdOrKey/versions/:id/status', async () =>
         HttpResponse.json(

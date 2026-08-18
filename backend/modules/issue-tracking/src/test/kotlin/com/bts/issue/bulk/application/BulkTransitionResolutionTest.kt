@@ -1,4 +1,4 @@
-// 일괄 전이 resolutionId 전달 통합 테스트 — FR-IS-07 Task B13
+// 일괄 전환 resolutionId 전달 통합 테스트 — FR-IS-07 Task B13
 
 package com.bts.issue.bulk.application
 
@@ -69,22 +69,22 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * 일괄 전이 payload 에 resolutionId 가 포함·전달됨을 검증하는 통합 테스트.
+ * 일괄 전환 payload 에 resolutionId 가 포함·전달됨을 검증하는 통합 테스트.
  *
  * Testcontainers PostgreSQL(pgmq 포함) + 전체 Spring 빈 스택 실기동.
- * B7 에서 시드된 DONE 진입 전이에 RequiredField(resolution) validator 는
+ * B7 에서 시드된 DONE 진입 전환에 RequiredField(resolution) validator 는
  * 이 테스트의 [TestConfig] 에서 `workflowDefinitionRepository` mock 이 emptyList() 를 반환하므로
  * 활성화되지 않는다. resolution 영속 동작 검증에 집중한다.
  *
  * ## 검증 시나리오
  *
- * ### S1. DONE 일괄 전이 + resolutionId 제공 → 각 이슈 resolution_id 영속 + 모든 항목 SUCCEEDED
- * Given  이슈 2건 (in_review 상태, in_review→done 전이 가능)
- * When   BulkTransitionPayload(toStateKey="done", resolutionId=FIXED_RESOLUTION_ID) 일괄 전이
+ * ### S1. DONE 일괄 전환 + resolutionId 제공 → 각 이슈 resolution_id 영속 + 모든 항목 SUCCEEDED
+ * Given  이슈 2건 (in_review 상태, in_review→done 전환 가능)
+ * When   BulkTransitionPayload(toStateKey="done", resolutionId=FIXED_RESOLUTION_ID) 일괄 전환
  * Then   두 이슈 모두 issues.resolution_id == FIXED_RESOLUTION_ID
  *        BulkOperation COMPLETED, succeededCount=2, failedCount=0
  *
- * ### S2. DONE 일괄 전이 + resolutionId 누락 → 단건 서비스가 resolution 없음을 허용하므로 SUCCEEDED
+ * ### S2. DONE 일괄 전환 + resolutionId 누락 → 단건 서비스가 resolution 없음을 허용하므로 SUCCEEDED
  * (B7 validator 는 이 TestConfig 에서 비활성화됨 — validator 를 활성화하는 E2E 는 별도)
  * Given  이슈 1건 (in_review 상태)
  * When   BulkTransitionPayload(toStateKey="done", resolutionId=null)
@@ -102,7 +102,7 @@ import java.util.UUID
  *   이는 B13 명세가 "resolutionId 전달 경로" 검증을 목적으로 하기 때문이다.
  * - validator 활성화 end-to-end 경로는 [com.bts.issue.integration.IssueTransitionValidatorEndToEndIntegrationTest]
  *   에서 실 DefaultWorkflowDefinitionRepository + DefaultWorkflowValidatorFactory + YamlSeedService 를 wire해
- *   "resolution 없는 DONE 전이 → 409 TRANSITION_NOT_ALLOWED" 전체 경로를 검증한다.
+ *   "resolution 없는 DONE 전환 → 409 TRANSITION_NOT_ALLOWED" 전체 경로를 검증한다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BulkTransitionResolutionTest.TestConfig::class])
@@ -436,19 +436,19 @@ class BulkTransitionResolutionTest {
         }
     }
 
-    // ── S1. DONE 일괄 전이 + resolutionId → 영속 + SUCCEEDED ──────────────────
+    // ── S1. DONE 일괄 전환 + resolutionId → 영속 + SUCCEEDED ──────────────────
 
     /**
-     * S1 — 일괄 전이 payload 에 resolutionId 를 제공하면 각 이슈의 resolution_id 가 영속되고
+     * S1 — 일괄 전환 payload 에 resolutionId 를 제공하면 각 이슈의 resolution_id 가 영속되고
      * 모든 항목이 SUCCEEDED 로 완료된다.
      *
-     * Given  이슈 2건 (in_review 상태 — in_review→done 전이 가능)
+     * Given  이슈 2건 (in_review 상태 — in_review→done 전환 가능)
      * When   BulkTransitionPayload(toStateKey="done", resolutionId=FIXED_RESOLUTION_ID) 접수 → 워커 실행
      * Then   두 이슈 issues.resolution_id == FIXED_RESOLUTION_ID
      *        BulkOperation COMPLETED, succeededCount=2, failedCount=0
      */
     @Test
-    fun `S1 - DONE 일괄 전이 + resolutionId 제공 시 각 이슈 resolution_id 영속 및 모든 항목 SUCCEEDED`() {
+    fun `S1 - DONE 일괄 전환 + resolutionId 제공 시 각 이슈 resolution_id 영속 및 모든 항목 SUCCEEDED`() {
         val key1 = insertIssue("DONE 이슈1", "in_review")
         val key2 = insertIssue("DONE 이슈2", "in_review")
 
@@ -482,13 +482,13 @@ class BulkTransitionResolutionTest {
         assertThat(queryResolutionId(key2)).isEqualTo(FIXED_RESOLUTION_ID)
     }
 
-    // ── S2. DONE 일괄 전이 + resolutionId=null → resolution_id IS NULL + SUCCEEDED ─
+    // ── S2. DONE 일괄 전환 + resolutionId=null → resolution_id IS NULL + SUCCEEDED ─
 
     /**
      * S2 — resolutionId=null 일 때 issues.resolution_id IS NULL 이고 항목이 SUCCEEDED 된다.
      *
      * B7 RequiredField(resolution) validator 는 이 TestConfig 에서 비활성화되어 있으므로
-     * resolutionId 없이도 DONE 전이가 통과한다.
+     * resolutionId 없이도 DONE 전환이 통과한다.
      *
      * Given  이슈 1건 (in_review 상태)
      * When   BulkTransitionPayload(toStateKey="done", resolutionId=null)

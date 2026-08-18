@@ -38,7 +38,7 @@ import java.util.UUID
  *
  * ## 엔드포인트
  * - [setup]   POST /totp/setup — secret 생성(PENDING) + Authenticator 앱용 otpauth/QR 반환.
- * - [enable]  POST /totp/enable — 첫 코드 검증 → ACTIVE 전이.
+ * - [enable]  POST /totp/enable — 첫 코드 검증 → ACTIVE 전환.
  * - [status]  GET  /totp — ACTIVE 여부.
  * - [disable] DELETE /totp — 현재 코드 검증(step-up) 후 비활성화.
  * - [generateBackupCodes] POST /backup-codes — 1회용 백업 코드 10개 발급/재발급(평문 1회 노출, FR-MF-02 Task 7).
@@ -112,7 +112,7 @@ class MfaController(
     }
 
     /**
-     * POST /api/v1/auth/mfa/totp/enable — 첫 코드 검증 후 PENDING → ACTIVE 전이.
+     * POST /api/v1/auth/mfa/totp/enable — 첫 코드 검증 후 PENDING → ACTIVE 전환.
      *
      * @param jwt 인증된 JWT principal. PAT 인증 시 null → 403.
      * @param body 사용자가 입력한 6자리 코드.

@@ -153,7 +153,7 @@ classify 원분류 qa(E2E 키워드 오판) → ui로 정정. FR-EX-01(동기 Ex
 **CONCERN (해소 완료)**.
 - A. isLimitExceeded narrowing 패턴(resolveExportError 답습, as any 금지) → Task 2 GREEN.
 - B. resultCount 정수값 정확 단언(vacuous green 차단) → Task 2 RED (b).
-- C. confirmAsync→form 취소 전이 테스트 → Task 2 RED (f).
+- C. confirmAsync→form 취소 전환 테스트 → Task 2 RED (f).
 - D. done(FAILED)→form 다시시도 + jobId null 초기화 → Task 2 RED (c).
 - E. MSW stateful 카운터 리셋(jobId-키 Map per-key) → Task 3 RED/GREEN.
 

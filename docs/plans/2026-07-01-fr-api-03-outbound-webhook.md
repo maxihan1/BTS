@@ -20,7 +20,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 
 **핵심 쟁점 — FR-NT-05 중복**. notification BC가 이미 webhook 발송 인프라 보유
 (WebhookDispatcher/WebhookUrlValidator/WebhookDispatchWorker, ADR 2026-06-14-fr-nt-05-webhook-dispatch-ssrf).
-단 FR-NT-05는 워크플로우 전이 전용(post-action). FR-API-03는 구독형 범용(이벤트필터+HMAC+이력+circuit breaker).
+단 FR-NT-05는 워크플로우 전환 전용(post-action). FR-API-03는 구독형 범용(이벤트필터+HMAC+이력+circuit breaker).
 → (1) 인프라 재사용 범위, (2) BC 경계(search-export-import FR vs notification webhook 인프라)를 bts-domain서 확정.
 
 ## 도메인 정리
@@ -28,7 +28,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 - **BC**: search-export-import (FR 소속 BC 존중 — Maxi 옵션 A 확정)
 - **신규 엔티티/도메인**: `OutboundWebhook`(구독: url + secret_encrypted + event_filter), `WebhookDelivery`(발송 이력: status + response_code), circuit breaker 상태.
 - **재사용(shared-kernel 추출)**: notification BC의 `WebhookUrlValidator`(SSRF) + HTTP 클라이언트 설정 → `com.bts.shared.http`로 추출, FR-NT-05와 공유. notification 코드 1회 리팩터링(문서화된 BC 경계 교차).
-- **FR-NT-05 관계**: 전이 webhook(post-action)은 그대로 유지, 흡수 안 함. 범용 구독 webhook과 공존.
+- **FR-NT-05 관계**: 전환 webhook(post-action)은 그대로 유지, 흡수 안 함. 범용 구독 webhook과 공존.
 - **신규 용어 후보(glossary 승인 대기)**: "아웃바운드 Webhook(구독형)", "Webhook Delivery(발송 이력)", "Circuit Breaker(연속 실패 차단)", "HMAC 서명". → Maxi 승인 후 glossary 추가.
 - **선행**: FR-API-01/02(REST API 표준 — 페이지네이션/에러봉투) 따름. identity-access §2.10(감사).
 - **기존 결정 충돌**: 없음. FR-NT-05 ADR이 예견한 "재사용 결정" 실현.
@@ -72,7 +72,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 
 **GREEN**.
 - `com.bts.shared.http.UrlCheck`(sealed: Allowed/Blocked/Malformed) + `OutboundUrlValidator`(@Component, 기존 `check(url): UrlCheck` 로직 그대로 — `isInternal`/`extractMappedIpv4` 포함) 신설. 로직 diff 0.
-- **[impl 발견] slf4j-api 필요**. validator가 SSRF 차단 시 `LoggerFactory.log.warn`로 보안 감사 로그를 남긴다. shared-kernel은 spring-context/spring-tx만 있어 slf4j-api가 컴파일 클래스패스에 없음(notification은 전이 획득). `shared-kernel/build.gradle.kts` dependencies에 `implementation("org.slf4j:slf4j-api")` 추가(Spring BOM 버전 관리, BC 결합 없는 중립 facade). 감사 로그 보존=동작불변. 게이트1 승인한 "shared-kernel 추출 인프라 의존 추가"(spring-web) 범위와 동일 성격.
+- **[impl 발견] slf4j-api 필요**. validator가 SSRF 차단 시 `LoggerFactory.log.warn`로 보안 감사 로그를 남긴다. shared-kernel은 spring-context/spring-tx만 있어 slf4j-api가 컴파일 클래스패스에 없음(notification은 전환 획득). `shared-kernel/build.gradle.kts` dependencies에 `implementation("org.slf4j:slf4j-api")` 추가(Spring BOM 버전 관리, BC 결합 없는 중립 facade). 감사 로그 보존=동작불변. 게이트1 승인한 "shared-kernel 추출 인프라 의존 추가"(spring-web) 범위와 동일 성격.
 
 **REFACTOR**.
 - notification `WebhookDispatcher`의 필드 타입 `WebhookUrlValidator`→`OutboundUrlValidator`(import 교체). `WebhookDispatcherTest`의 `mockk<WebhookUrlValidator>()`→`mockk<OutboundUrlValidator>()`, 통합테스트 import 교체.

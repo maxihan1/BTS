@@ -11,7 +11,7 @@ export interface WorkflowStateView {
   displayOrder: number;
 }
 
-/** 워크플로우 상태 전이(화살표)의 view 모델 — fromStateKey/toStateKey 는 WorkflowStateView.key 참조 */
+/** 워크플로우 상태 전환(화살표)의 view 모델 — fromStateKey/toStateKey 는 WorkflowStateView.key 참조 */
 export interface WorkflowTransitionView {
   key: string;
   name: string;

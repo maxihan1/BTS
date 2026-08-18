@@ -70,12 +70,12 @@ data class IssueUpdated(
 ) : IssueDomainEvent
 
 /**
- * 이슈 상태가 전이(FSM transition)되었을 때 발행되는 이벤트.
+ * 이슈 상태가 전환(FSM transition)되었을 때 발행되는 이벤트.
  *
- * @property issueKey 전이된 이슈의 키.
- * @property fromState 전이 전 상태 이름. 예: `"open"`
- * @property toState 전이 후 상태 이름. 예: `"in_progress"`
- * @property actorId 전이를 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
+ * @property issueKey 전환된 이슈의 키.
+ * @property fromState 전환 전 상태 이름. 예: `"open"`
+ * @property toState 전환 후 상태 이름. 예: `"in_progress"`
+ * @property actorId 전환을 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
  * @property occurredAt 이벤트 발생 시각 (UTC).
  */
 @JsonTypeName("issue.transitioned")

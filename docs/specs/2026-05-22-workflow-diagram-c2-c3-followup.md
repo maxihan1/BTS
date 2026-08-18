@@ -10,7 +10,7 @@
 
 PR #13 (FR-WF-01 frontend) `/bts-codereview` 의 CONCERN 후속.
 
-- **C-2** — MSW `workflow-fixtures.ts` 의 `transition.key` 형식 (`"open-to-in_progress"`) 이 backend computed property `WorkflowTransition.key = "${fromStateKey}__${toStateKey}"` (`"open__in_progress"`) 와 다름. 현재 frontend (WorkflowDiagram + workflows.$key route) 는 `transition.key` 를 미사용해서 즉시 버그 없으나, 후속 UI (전이 클릭 추적 / 라우팅 / 디바이스 분석) 도입 시 silent fail 위험.
+- **C-2** — MSW `workflow-fixtures.ts` 의 `transition.key` 형식 (`"open-to-in_progress"`) 이 backend computed property `WorkflowTransition.key = "${fromStateKey}__${toStateKey}"` (`"open__in_progress"`) 와 다름. 현재 frontend (WorkflowDiagram + workflows.$key route) 는 `transition.key` 를 미사용해서 즉시 버그 없으나, 후속 UI (전환 클릭 추적 / 라우팅 / 디바이스 분석) 도입 시 silent fail 위험.
 - **C-3** — mermaid `classDef` 이름 (`todo` / `in_progress` / `done`) 이 일부 state id (예. simple 의 `done`, kanban-basic 의 `todo`, software-default 의 `in_progress`) 와 동일 토큰. mermaid stateDiagram-v2 의 일부 파서 버전에서 `class todo todo` 같은 동일 토큰 라인 비일관 처리 보고 (mermaid issue #4XXX 계열). 현재 v11 에서는 정상 동작하나 회귀 방지 prefix 부여 권장.
 
 PR #13 head 머지 entry (history.md 2026-05-22 #13) 에서 "C-2/C-3/SUGGESTION 후속 PR 위임" 명시.
@@ -23,12 +23,12 @@ PR #13 head 머지 entry (history.md 2026-05-22 #13) 에서 "C-2/C-3/SUGGESTION 
 
 - **Given**. WorkflowDiagram 컴포넌트가 4 표준 워크플로우 (software-default / bug-tracking / simple / kanban-basic) 중 하나를 받는다.
 - **When**. 페이지가 마운트되어 mermaid 가 stateDiagram-v2 를 그린다.
-- **Then**. 노드 수 / 전이 수 / 카테고리별 색상이 PR #13 시점과 동일하게 렌더된다. 사용자가 시각적으로 차이 인지 불가.
+- **Then**. 노드 수 / 전환 수 / 카테고리별 색상이 PR #13 시점과 동일하게 렌더된다. 사용자가 시각적으로 차이 인지 불가.
 
 ### S2. transition.key 형식 통일
 
 - **Given**. 페이지가 `/api/v1/workflows/:key` 응답에서 `transitions[].key` 를 수신한다 (production = backend computed, dev/test = MSW fixture).
-- **When**. 같은 워크플로우의 같은 전이를 production / dev 양쪽에서 본다.
+- **When**. 같은 워크플로우의 같은 전환을 production / dev 양쪽에서 본다.
 - **Then**. `transition.key` 값이 동일 형식 (`"${fromStateKey}__${toStateKey}"`) 으로 표시된다. 형식 불일치 0.
 
 ### S3. mermaid classDef prefix 적용
@@ -43,7 +43,7 @@ PR #13 head 머지 entry (history.md 2026-05-22 #13) 에서 "C-2/C-3/SUGGESTION 
 
 **FR-1-a**. `workflow-fixtures.ts` 의 4 워크플로우 fixture (`softwareDefaultFixture` / `bugTrackingFixture` / `simpleFixture` / `kanbanBasicFixture`) 의 모든 `transition.key` 를 `"${fromStateKey}__${toStateKey}"` 형식으로 변경. backend `WorkflowTransition.key` computed property (`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt:18`) 와 정확 일치.
 
-영향 transition. 4 워크플로우 × 평균 4.25 전이 = 총 17건.
+영향 transition. 4 워크플로우 × 평균 4.25 전환 = 총 17건.
 - software-default 6건 (open-to-in_progress / in_progress-to-in_review / in_review-to-done / in_review-to-in_progress / done-to-closed / open-to-closed)
 - bug-tracking 5건 (reported-to-triaged / triaged-to-in_progress / in_progress-to-resolved / resolved-to-closed / resolved-to-in_progress)
 - simple 3건 (todo-to-doing / doing-to-done / done-to-doing)
@@ -84,7 +84,7 @@ classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 16
 
 **FR-3-a (G-4 정정)**. `WorkflowDiagram.test.tsx` 에 `categoryToClass` 명시적 단위 테스트 **3건 신규 작성** (TODO → 'category_todo', IN_PROGRESS → 'category_in_progress', DONE → 'category_done'). 현재 categoryToClass 검증은 4 워크플로우 snapshot 의 `class todo todo` 같은 라인을 통한 간접 검증만 — 명시적 assertion 0건. 회귀 가드 강화 (snapshot 변경 + 명시적 단위 테스트 둘 다 검증).
 
-**FR-3-b**. `__snapshots__/WorkflowDiagram.test.tsx.snap` 4 워크플로우 snapshot 갱신 (`vitest -u` 로 일괄). 갱신 후 diff 검토 — classDef 3 라인 + class N 라인 (workflow 별 다름) 만 변경. 노드 / 전이 라인 변경 0 검증.
+**FR-3-b**. `__snapshots__/WorkflowDiagram.test.tsx.snap` 4 워크플로우 snapshot 갱신 (`vitest -u` 로 일괄). 갱신 후 diff 검토 — classDef 3 라인 + class N 라인 (workflow 별 다름) 만 변경. 노드 / 전환 라인 변경 0 검증.
 
 **FR-3-c**. transitionKey helper 단위 테스트 2건 신규 (api/workflows.test.ts 또는 별도 파일).
 
@@ -123,7 +123,7 @@ transitionKey helper 가 backend 계약대로 단순 합성. 하이픈은 mermai
 
 ### EC-4. snapshot 갱신 후 diff 검증
 
-snapshot 갱신 시 diff 가 의도된 변경 (classDef 3 라인 + class N 라인) 만 포함하는지 git diff 로 검증. 노드 / 전이 라인 변경 0 — 변경 시 generateMermaidCode 의 의도치 않은 부수 변경 의심.
+snapshot 갱신 시 diff 가 의도된 변경 (classDef 3 라인 + class N 라인) 만 포함하는지 git diff 로 검증. 노드 / 전환 라인 변경 0 — 변경 시 generateMermaidCode 의 의도치 않은 부수 변경 의심.
 
 ### EC-5. helper export 위치 — 순환 import 회피
 

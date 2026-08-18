@@ -1,4 +1,4 @@
-// 버전 BC MSW 핸들러 — stateful CRUD + 상태 전이 + 릴리즈 노트 조회 + RFC 7807 ProblemDetail 에러 (FR-VR-01, FR-VR-02, FR-VR-04)
+// 버전 BC MSW 핸들러 — stateful CRUD + 상태 전환 + 릴리즈 노트 조회 + RFC 7807 ProblemDetail 에러 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { http, HttpResponse } from 'msw'
 import type { Version, VersionStatus } from '../api/versions.types'
 
@@ -23,10 +23,10 @@ interface StoredVersion extends Version {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 전이 그래프 — backend 전이 규칙과 1:1 미러 (FR-VR-02)
+// 전환 그래프 — backend 전환 규칙과 1:1 미러 (FR-VR-02)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 현재 상태에서 전이 가능한 상태 집합 */
+/** 현재 상태에서 전환 가능한 상태 집합 */
 const ALLOWED_TRANSITIONS: Record<VersionStatus, ReadonlySet<VersionStatus>> = {
   UNRELEASED: new Set<VersionStatus>(['RELEASED', 'ARCHIVED']),
   RELEASED: new Set<VersionStatus>(['UNRELEASED', 'ARCHIVED']),
@@ -352,13 +352,13 @@ const deleteVersionHandler = http.delete(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 버전 상태 전이.
- * 전이 그래프(ALLOWED_TRANSITIONS)와 self-transition을 검증하고,
+ * 버전 상태 전환.
+ * 전환 그래프(ALLOWED_TRANSITIONS)와 self-transition을 검증하고,
  * released_at 규칙(backend FR-3 미러)을 적용한다.
  *
  * 에러 분기 순서 (백엔드와 동일).
  * 1. 버전 미존재 또는 삭제됨 → 404 VERSION_NOT_FOUND
- * 2. self-transition 또는 그래프 외 전이 → 409 VERSION_TRANSITION_NOT_ALLOWED
+ * 2. self-transition 또는 그래프 외 전환 → 409 VERSION_TRANSITION_NOT_ALLOWED
  * 성공 → 200 { data: Version }
  */
 const changeStatusHandler = http.patch(
@@ -374,14 +374,14 @@ const changeStatusHandler = http.patch(
     const targetStatus: VersionStatus = body.status
     const currentStatus = stored.status
 
-    // self-transition 또는 그래프 외 전이 거부
+    // self-transition 또는 그래프 외 전환 거부
     if (!ALLOWED_TRANSITIONS[currentStatus].has(targetStatus)) {
       return problemDetail(
         409,
         'version-transition-not-allowed',
         'Version Transition Not Allowed',
         'VERSION_TRANSITION_NOT_ALLOWED',
-        `${currentStatus} → ${targetStatus} 전이는 허용되지 않습니다.`,
+        `${currentStatus} → ${targetStatus} 전환은 허용되지 않습니다.`,
       )
     }
 

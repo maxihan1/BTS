@@ -42,7 +42,7 @@ interface IssueRecipientLookupPort {
  * @param assigneeId 이슈 담당자 UUID. 담당자가 없거나 알 수 없는 경우 null.
  * @param watcherIds 이슈를 구독 중인 watcher UUID 목록. adapter 부재 시 빈 리스트.
  * @param componentLeadIds 이슈가 속한 컴포넌트의 리드 UUID 목록. adapter 부재 시 빈 리스트.
- * @param previousAssigneeId 직전 담당자 UUID (전이·재배정 이벤트 전용). 해당 없는 경우 null.
+ * @param previousAssigneeId 직전 담당자 UUID (전환·재배정 이벤트 전용). 해당 없는 경우 null.
  */
 data class IssueRecipients(
     val reporterId: UUID?,

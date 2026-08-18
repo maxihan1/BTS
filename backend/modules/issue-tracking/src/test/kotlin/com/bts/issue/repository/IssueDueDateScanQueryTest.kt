@@ -83,7 +83,7 @@ class IssueDueDateScanQueryTest : IssueTestcontainersBase() {
 
     /**
      * 이미 삽입된 이슈에 resolution_id 를 직접 UPDATE 한다.
-     * 도메인 전이를 거치지 않는 시드 전용 헬퍼.
+     * 도메인 전환을 거치지 않는 시드 전용 헬퍼.
      */
     private fun setResolution(
         issueKey: String,

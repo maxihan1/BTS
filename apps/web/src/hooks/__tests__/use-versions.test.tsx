@@ -301,7 +301,7 @@ describe('useChangeVersionDates', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// useChangeVersionStatus — 상태 전이 + invalidate (FR-VR-02 Task 5 RED)
+// useChangeVersionStatus — 상태 전환 + invalidate (FR-VR-02 Task 5 RED)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('useChangeVersionStatus', () => {
@@ -311,7 +311,7 @@ describe('useChangeVersionStatus', () => {
     vi.mocked(toast.error).mockClear()
   })
 
-  it('상태 전이 성공 시 목록 쿼리가 invalidate된다', async () => {
+  it('상태 전환 성공 시 목록 쿼리가 invalidate된다', async () => {
     const { client, wrapper } = createWrapper()
 
     // 사전 버전 생성
@@ -337,7 +337,7 @@ describe('useChangeVersionStatus', () => {
     expect(client.getQueryState(VERSION_KEYS.list('ATLAS'))).toBeDefined()
   })
 
-  it('불허 전이(409) 시 toast.error가 호출된다', async () => {
+  it('불허 전환(409) 시 toast.error가 호출된다', async () => {
     const { wrapper } = createWrapper()
 
     server.use(

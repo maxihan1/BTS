@@ -18,7 +18,7 @@ import java.time.temporal.ChronoUnit
  *    창 내에 존재하지 않으므로 건너뛴다.
  * 3. effectiveStart 시점의 카테고리(= `startDate ≤ effectiveStart`인 마지막 segment)를 찾아 해당
  *    카테고리 델타[effectiveStart 인덱스]에 +1 한다. effectiveStart **이전** segment들은 이 초기
- *    카테고리 계산에 이미 접혀 들어가므로 별도 처리하지 않는다(창 이전 전이 폴딩).
+ *    카테고리 계산에 이미 접혀 들어가므로 별도 처리하지 않는다(창 이전 전환 폴딩).
  * 4. effectiveStart 이후 segment(그 startDate가 `effectiveStart < startDate ≤ to`)마다 이전
  *    카테고리 델타를 -1, 새 카테고리 델타를 +1 한다.
  * 5. 모든 이슈 처리 후 각 카테고리 배열을 prefix-sum 하면 날짜별 누적 카운트가 된다.
@@ -79,7 +79,7 @@ object CfdCalculator {
     /**
      * [issue]의 [asOf] 시점 카테고리를 구한다 — `startDate ≤ asOf`인 마지막 segment의 category.
      *
-     * [asOf] 이전(또는 같은 날) segment들은 이 하나의 초기 카테고리로 접혀 들어간다(창 이전 전이 폴딩).
+     * [asOf] 이전(또는 같은 날) segment들은 이 하나의 초기 카테고리로 접혀 들어간다(창 이전 전환 폴딩).
      * [CfdIssueTimeline.segments]는 `segments[0].startDate == createdDate`를 만족하므로
      * (호출자가 보장하는 불변식), [asOf]가 `createdDate` 이상이면 이 검색은 항상 결과를 찾는다.
      */

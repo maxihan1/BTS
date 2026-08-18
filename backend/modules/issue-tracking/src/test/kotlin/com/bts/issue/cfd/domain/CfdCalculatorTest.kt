@@ -1,4 +1,4 @@
-// CfdCalculator 순수 도메인 계산 로직 단위테스트 (초기상태 접힘·전이·재오픈·창 경계 엣지)
+// CfdCalculator 순수 도메인 계산 로직 단위테스트 (초기상태 접힘·전환·재오픈·창 경계 엣지)
 
 package com.bts.issue.cfd.domain
 
@@ -14,7 +14,7 @@ import java.time.LocalDate
  *
  * 검증 시나리오.
  * - 항상 TODO인 단일 이슈, 창 전 구간 카운트 1
- * - 창 내 TODO→IN_PROGRESS→DONE 전이로 띠 이동
+ * - 창 내 TODO→IN_PROGRESS→DONE 전환으로 띠 이동
  * - 창 이전 생성된 이슈는 from 시점 상태로 역산되어 접힘
  * - 창 이후 생성된 이슈는 제외
  * - DONE→IN_PROGRESS 재오픈으로 doneCount 감소(비-단조 증가 검증)
@@ -91,11 +91,11 @@ class CfdCalculatorTest {
         val points = CfdCalculator.calculate(from, to, listOf(issue))
         val byDate = points.associateBy { it.date }
 
-        // 07-05 전이가 창(07-10) 이전이므로 from 시점 상태는 IN_PROGRESS 로 접혀 들어간다
+        // 07-05 전환이 창(07-10) 이전이므로 from 시점 상태는 IN_PROGRESS 로 접혀 들어간다
         assertThat(byDate.getValue(LocalDate.of(2026, 7, 10)).inProgressCount).isEqualTo(1)
         assertThat(byDate.getValue(LocalDate.of(2026, 7, 10)).todoCount).isEqualTo(0)
         assertThat(byDate.getValue(LocalDate.of(2026, 7, 11)).inProgressCount).isEqualTo(1)
-        // 07-12 전이는 창 내부이므로 그날부터 DONE 으로 반영된다
+        // 07-12 전환은 창 내부이므로 그날부터 DONE 으로 반영된다
         assertThat(byDate.getValue(LocalDate.of(2026, 7, 12)).doneCount).isEqualTo(1)
         assertThat(byDate.getValue(LocalDate.of(2026, 7, 12)).inProgressCount).isEqualTo(0)
         assertThat(byDate.getValue(LocalDate.of(2026, 7, 15)).doneCount).isEqualTo(1)

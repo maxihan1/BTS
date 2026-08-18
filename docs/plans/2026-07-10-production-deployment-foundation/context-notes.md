@@ -73,7 +73,7 @@
 8. 부팅 성공.
 
 **★ 유일한 미해결 배포 블로커 — FR-WF-03 (보안 크리티컬).**
-- `com.bts.workflow.port.outbound.PermissionResolver` 운영 어댑터(IdentityAccessPermissionResolver) 미구현. `AlwaysAllowPermissionResolver`(@Profile("!prod")) 스텁만 존재. prod 에서 없으면 워크플로우 전이 권한검사 결선 불가, 스텁 prod 활성화는 **auth bypass** — 금지.
+- `com.bts.workflow.port.outbound.PermissionResolver` 운영 어댑터(IdentityAccessPermissionResolver) 미구현. `AlwaysAllowPermissionResolver`(@Profile("!prod")) 스텁만 존재. prod 에서 없으면 워크플로우 전환 권한검사 결선 불가, 스텁 prod 활성화는 **auth bypass** — 금지.
 - 배포 전 필수: identity-access 가 이 포트 구현(security-engineer + TDD). 타 권한 포트는 전부 IdentityAccess* prod 구현 존재 — 이 하나만 갭.
 
 **부수(후속).** BC 프로바이더는 identity 잠복버그(등록 이관 검토) · allow-overriding 오버라이드 로그 감사 미실시 · ContextTest 로컬 postgres(5433) 의존(Testcontainers 전환 후속, 백엔드 CI 없어 무해).
@@ -88,7 +88,7 @@
 
 **포트 계약** (`com.bts.workflow.port.outbound.PermissionResolver`).
 - `hasPermission(actorId: ActorId, permission: String, scope: Scope): Boolean` — deny-by-false. raw String 권한 + Scope(Global/Project(key)/Issue(key)).
-- 호출부: `PermissionValidator`(type="permission-check"). resolver false/예외 → 전이 차단(보안우선). Scope는 ValidatorScope.ISSUE(기본, Scope.Issue) / PROJECT(Scope.Project).
+- 호출부: `PermissionValidator`(type="permission-check"). resolver false/예외 → 전환 차단(보안우선). Scope는 ValidatorScope.ISSUE(기본, Scope.Issue) / PROJECT(Scope.Project).
 - `permission-check`는 `DefaultWorkflowValidatorFactory`에 **결선돼 있음**(line 60). config["permission"] 필수, config["scope"] 선택.
 
 **★ 결정적 발견 1 — 시드 표준 워크플로우 4종은 permission-check 미사용.**
@@ -101,12 +101,12 @@
 - `IdentityAccessIssuePermissionResolver`(@Profile prod): issueKey→project 해석 방식 = `projectDirectory.resolveKeyToId(scope.key.substringBefore('-'))` (prefix 파싱). Scope.Issue 처리에 재사용.
 - 매핑표(`toCodeOrNull`): BROWSE→BROWSE_PROJECT · VIEW→VIEW_ISSUE · CREATE→CREATE_ISSUE · UPDATE→**EDIT_ISSUE** · SOFT_DELETE→DELETE_ISSUE · SET_SECURITY→SET_ISSUE_SECURITY.
 
-**★ 결정적 발견 3 — "전이(transition)" 권한은 identity 카탈로그에 코드가 없다.**
+**★ 결정적 발견 3 — "전환(transition)" 권한은 identity 카탈로그에 코드가 없다.**
 - 타입 enum `IssuePermission.TRANSITION` 조차 `toCodeOrNull → null`(HARD_DELETE와 함께 매트릭스 미위임). identity 권한코드 카탈로그 = BROWSE_PROJECT/VIEW_ISSUE/CREATE_ISSUE/EDIT_ISSUE/DELETE_ISSUE/SET_ISSUE_SECURITY/MANAGE_WORKFLOW/MANAGE_COMPONENTS/MANAGE_VERSIONS(+역할 MEMBER/PROJECT_ADMIN).
-- ∴ 포트 KDoc 예시 문자열 "TRANSITION_ISSUE"는 **권威 DB 코드가 없다**. 전이 권한의 의미론(=EDIT_ISSUE로 볼지, 별도 코드 신설할지)은 **미결 제품 결정**. 그냥 복사 불가.
+- ∴ 포트 KDoc 예시 문자열 "TRANSITION_ISSUE"는 **권威 DB 코드가 없다**. 전환 권한의 의미론(=EDIT_ISSUE로 볼지, 별도 코드 신설할지)은 **미결 제품 결정**. 그냥 복사 불가.
 
 **설계 옵션(Maxi 판단 대기).**
-- **옵션 A (완전 어댑터)**: 스킴 리졸버 복제. Global/Project/Issue 3분기 + String→코드 매핑표 + fail-closed. 단 전이 의미론 미결이라 제품결정 선행 필요. security-engineer + TDD. 범위 큼.
+- **옵션 A (완전 어댑터)**: 스킴 리졸버 복제. Global/Project/Issue 3분기 + String→코드 매핑표 + fail-closed. 단 전환 의미론 미결이라 제품결정 선행 필요. security-engineer + TDD. 범위 큼.
 - **옵션 B (fail-closed prod 빈, 권장)**: Global→isSystemAdmin(실판정) · Project/Issue→멤버게이트+매트릭스, **권한 String이 identity 카탈로그 코드면 실검사·미등록 코드면 deny+WARN**. auth-bypass 0(deny-by-default). 시드 워크플로우 무영향이라 현 기능 완전. custom 워크플로우가 카탈로그 밖 문자열 쓰면 항상 거부(fail-closed=안전, 미사용 고급기능의 경계일 뿐). "완제품" 부합(스텁 아님, deny-by-default는 정식 보안 자세).
   - 계약 정의: "permission-check의 permission 문자열은 identity 권한코드여야 한다". 유효코드=실검사, 무효=거부+경고. 완결된 계약. 워크플로우 전용 어휘(TRANSITION_ISSUE 등) 도입은 제품이 정하면 후속.
 
@@ -115,7 +115,7 @@
 Maxi "옵션 B로 진행" 확정 → security-engineer + TDD.
 - **신설** `com.bts.workflow.adapter.DelegatingPermissionResolver`(@Component @Profile("prod")) — 포트와 같은 BC라 격리 위반 0. shared-kernel `IssuePermissionResolver`+`SystemPermissionResolver`에 위임(prod는 identity가 채움). Global→isSystemAdmin, Project/Issue→String→IssuePermission 매핑 후 위임, 미등록 문자열→fail-closed deny+WARN(위임 미호출).
 - **매핑 7종**: BROWSE_PROJECT→BROWSE · VIEW_ISSUE→VIEW · CREATE_ISSUE→CREATE · EDIT_ISSUE→UPDATE · TRANSITION_ISSUE→TRANSITION · DELETE_ISSUE→SOFT_DELETE · SET_ISSUE_SECURITY→SET_SECURITY. else→deny.
-- **★ TRANSITION 현행 정책 상속**: identity가 TRANSITION(코드 null)을 "프로젝트 멤버면 통과"로 처리(매트릭스 미위임, FR-PM-04 이관 예정) → 위임이므로 현행 정책 그대로, 향후 전이 매트릭스 자동 반영.
+- **★ TRANSITION 현행 정책 상속**: identity가 TRANSITION(코드 null)을 "프로젝트 멤버면 통과"로 처리(매트릭스 미위임, FR-PM-04 이관 예정) → 위임이므로 현행 정책 그대로, 향후 전환 매트릭스 자동 반영.
 - **TDD**: test #313eebcc8(RED, mockk 8케이스, ActorId는 value class라 실인스턴스만·목킹 금지) → feat #64a7e7b62 → chore #c290102a6(조립 스텁 `AssemblyGapStubConfig` 삭제 + `BtsApplicationContextTest` @Import 제거).
 - **★ 조립 실배선 검증**: `:modules:app:test *BtsApplicationContextTest*` GREEN — @ActiveProfiles("prod")로 8개 BC가 **스텁 없이 실제 DelegatingPermissionResolver로 부팅**. NoSuchBean 갭 실해소 확인.
 - 검증: project-workflow 단위테스트·detekt(--rerun-tasks)·ArchUnit 모두 green. ktlint는 앞선 커밋 1c22551ea의 WorkflowSeedConfig import 순서 위반 1건 잔존 → **#4fc54e6cf로 정정**(databind→dataformat, 내 세션 mess).

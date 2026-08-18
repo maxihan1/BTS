@@ -63,7 +63,7 @@ class TotpSecretRepository(
     }
 
     /**
-     * PENDING secret 을 ACTIVE 로 전이하고 confirmed_at 을 채운다(enable 확인 완료).
+     * PENDING secret 을 ACTIVE 로 전환하고 confirmed_at 을 채운다(enable 확인 완료).
      *
      * @param userId 사용자 식별자.
      */
@@ -116,7 +116,7 @@ class TotpSecretRepository(
             WHERE user_id = :userId
         """
 
-        /** PENDING → ACTIVE 전이 + confirmed_at 설정. */
+        /** PENDING → ACTIVE 전환 + confirmed_at 설정. */
         const val SQL_ACTIVATE = """
             UPDATE totp_secrets
             SET status       = 'ACTIVE',

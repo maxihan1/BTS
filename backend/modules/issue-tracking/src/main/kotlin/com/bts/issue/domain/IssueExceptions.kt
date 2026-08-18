@@ -131,15 +131,15 @@ class IssueLinkedVersionNotFoundException(val versionId: java.util.UUID) :
     IssueDomainException("version not found in project: $versionId")
 
 /**
- * 워크플로우 전이가 허용되지 않을 때.
+ * 워크플로우 전환이 허용되지 않을 때.
  *
  * project-workflow BC 의 [TransitionResult] 실패 케이스를 issue-tracking BC 경계 내부에서
  * 변환하는 예외다. 외부 BC 예외/결과가 issue-tracking 어댑터 계층까지 누출되지 않도록 막는다.
  *
- * @param issueKey 전이를 시도한 이슈 키
- * @param fromStatus 전이 전 상태 키
- * @param toStatus 전이 후 상태 키
- * @param reason 전이가 거부된 사유. 사용자에게 노출 가능한 메시지. 없으면 null.
+ * @param issueKey 전환을 시도한 이슈 키
+ * @param fromStatus 전환 전 상태 키
+ * @param toStatus 전환 후 상태 키
+ * @param reason 전환이 거부된 사유. 사용자에게 노출 가능한 메시지. 없으면 null.
  */
 class IssueTransitionNotAllowedException(
     val issueKey: IssueKey,

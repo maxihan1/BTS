@@ -31,7 +31,7 @@ class WorkflowEngineConfig {
      *
      * `newCachedThreadPool` 을 사용한다. SpEL 평가 요청은 트랜잭션 안에서 짧게 실행되며
      * 50ms timeout 이후 Future.cancel 로 즉시 정리되므로 스레드 누수 위험이 낮다.
-     * 동시 전이 요청이 많을 때도 요청당 스레드를 할당해 지연 없이 처리한다.
+     * 동시 전환 요청이 많을 때도 요청당 스레드를 할당해 지연 없이 처리한다.
      *
      * @return shutdown 시 `ExecutorService.shutdown()` 이 호출되는 캐시 스레드 풀.
      */

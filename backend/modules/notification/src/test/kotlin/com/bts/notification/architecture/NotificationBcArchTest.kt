@@ -70,7 +70,7 @@ class NotificationBcArchTest {
     /**
      * 룰 2 — notification BC 는 project-workflow 내부 패키지를 직접 import하지 않는다.
      *
-     * 워크플로우 전이 이벤트 수신은 pgmq 메시지를 통해서만 가능하며,
+     * 워크플로우 전환 이벤트 수신은 pgmq 메시지를 통해서만 가능하며,
      * `com.bts.workflow.*` 패키지를 직접 import 하는 것은 BC 경계 위반이다.
      *
      * 허용 예외. `com.bts.notification.jooq..` (jOOQ 생성 코드).

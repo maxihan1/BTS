@@ -57,5 +57,5 @@ plan(issue-tracking §3.2.2 FR-VR-02 D3)이 `versions.status` 컬럼 추가를 F
 
 - FR-VR-01: 버전 도메인(Version Aggregate) + `versions` 테이블 + CRUD API + 인증/프로젝트 검증 가드 + AlwaysAllow 리졸버 + 백엔드 테스트. (백엔드 D1~D5, 프론트 D6/E2E D7은 후속 PR)
 - FR-PM-03: `VersionPermissionResolver`(+ `ComponentPermissionResolver`) prod 구현 + permission_schemes에 버전 관리 권한 추가.
-- FR-VR-02: `versions.status` 컬럼 + 상태 전이.
+- FR-VR-02: `versions.status` 컬럼 + 상태 전환.
 - 임시 보안 포스처: FR-PM-03 이전엔 인증된 사용자면 버전 CRUD 가능. Phase 1(운영 배포 전)이라 수용.

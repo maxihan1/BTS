@@ -1,4 +1,4 @@
-// 이슈 목록 상태 셀 테스트 — role="status" 보존 · 전이 선택 · 사유 2종 · 권한 · 종료 전이 (FR-UX-11 F9 FR7·FR8·FR9·FR10·FR14)
+// 이슈 목록 상태 셀 테스트 — role="status" 보존 · 전환 선택 · 사유 2종 · 권한 · 종료 전환 (FR-UX-11 F9 FR7·FR8·FR9·FR10·FR14)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -39,7 +39,7 @@ const { RESOLUTION_ID, DONE_TRANSITION, PLAIN_TRANSITION, transitionState } = vi
       toStateKey: 'IN_PROGRESS',
       toCategory: 'IN_PROGRESS',
     },
-    // 테스트마다 갈아끼우는 가용 전이 — 종료/비종료 두 경로를 같은 배선으로 재기 위함
+    // 테스트마다 갈아끼우는 가용 전환 — 종료/비종료 두 경로를 같은 배선으로 재기 위함
     transitionState: { current: [done] as { toCategory?: string | null }[] },
   }
 })
@@ -101,7 +101,7 @@ vi.mock('@/components/issue/ResolutionModal', async () => {
 })
 
 /**
- * 비종료 전이 1건.
+ * 비종료 전환 1건.
  *
  * `as IssueTransition` 캐스팅을 쓰지 않고 전 필드를 채운다 — 캐스팅은 스키마가 자라도
  * 조용히 통과해 mock drift 를 감춘다(형제 task 와 동일 판단).
@@ -125,7 +125,7 @@ describe('StatusCellDisplay', () => {
 })
 
 describe('StatusCellEditor', () => {
-  it('가용 전이만 버튼으로 노출하고 고르면 toStateKey 로 onTransition 을 부른다 (FR7)', async () => {
+  it('가용 전환만 버튼으로 노출하고 고르면 toStateKey 로 onTransition 을 부른다 (FR7)', async () => {
     const onTransition = vi.fn()
     render(
       <StatusCellEditor
@@ -182,7 +182,7 @@ describe('StatusCellEditor', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('전이 권한이 없으면 선택지가 비활성이다 (FR10 fail-closed)', () => {
+  it('전환 권한이 없으면 선택지가 비활성이다 (FR10 fail-closed)', () => {
     render(
       <StatusCellEditor
         transitions={TRANSITIONS}
@@ -214,7 +214,7 @@ describe('StatusCellEditor', () => {
     expect(screen.getByRole('button', { name: '진행 시작' })).toBeDisabled()
   })
 
-  it('조회 중이면 "결과 없음" 대신 로딩을 알린다 (전이 0건과 구분)', () => {
+  it('조회 중이면 "결과 없음" 대신 로딩을 알린다 (전환 0건과 구분)', () => {
     render(
       <StatusCellEditor
         transitions={[]}
@@ -230,7 +230,7 @@ describe('StatusCellEditor', () => {
     expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
   })
 
-  it('종료 전이(toCategory=DONE)는 즉시 전이하지 않고 결의안 요청을 올린다 (FR14)', async () => {
+  it('종료 전환(toCategory=DONE)는 즉시 전환하지 않고 결의안 요청을 올린다 (FR14)', async () => {
     const onTransition = vi.fn()
     const onDoneTransition = vi.fn()
     const doneTransition: IssueTransition = {
@@ -256,7 +256,7 @@ describe('StatusCellEditor', () => {
     await userEvent.click(screen.getByRole('button', { name: '완료' }))
 
     expect(onDoneTransition).toHaveBeenCalledWith(doneTransition)
-    // ★결의안 없이 전이하지 않는다 — 해결 결과는 종료 전이의 필수 입력이다
+    // ★결의안 없이 전환하지 않는다 — 해결 결과는 종료 전환의 필수 입력이다
     expect(onTransition).not.toHaveBeenCalled()
   })
 })
@@ -265,7 +265,7 @@ describe('StatusCellEditor', () => {
 // C6 — FR14 성공 경로 (결의안 확인 → resolutionId 가 실려 나간다)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('StatusCell — 종료 전이 성공 경로 (리뷰 C6)', () => {
+describe('StatusCell — 종료 전환 성공 경로 (리뷰 C6)', () => {
   beforeEach(() => {
     // ★mock 호출 이력을 반드시 비운다 — 안 비우면 앞 테스트의 호출이 남아
     // "요청이 나가지 않았다" 단언이 남의 호출을 보고 실패한다 (2026-08-04 실측)
@@ -274,7 +274,7 @@ describe('StatusCell — 종료 전이 성공 경로 (리뷰 C6)', () => {
     vi.mocked(transitionIssue).mockResolvedValue({ ...issueAtlas1Fixture, currentStateKey: 'DONE' })
   })
 
-  /** 상태 셀을 열고 첫 전이를 고른다 */
+  /** 상태 셀을 열고 첫 전환을 고른다 */
   async function openAndPickTransition(name: string): Promise<void> {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -290,15 +290,15 @@ describe('StatusCell — 종료 전이 성공 경로 (리뷰 C6)', () => {
     await userEvent.click(await screen.findByRole('button', { name }))
   }
 
-  /** 종료 전이를 골라 결의안 모달까지 간다 */
+  /** 종료 전환을 골라 결의안 모달까지 간다 */
   async function openAndPickDoneTransition(): Promise<void> {
     await openAndPickTransition(DONE_TRANSITION.name)
   }
 
-  it('결의안을 확인하면 그 resolutionId 를 실어 전이한다 (FR14)', async () => {
+  it('결의안을 확인하면 그 resolutionId 를 실어 전환한다 (FR14)', async () => {
     await openAndPickDoneTransition()
 
-    // 이 지점까지는 전이 요청이 나가면 안 된다 — 결의안은 종료 전이의 **필수** 입력이다
+    // 이 지점까지는 전환 요청이 나가면 안 된다 — 결의안은 종료 전환의 **필수** 입력이다
     expect(vi.mocked(transitionIssue)).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: '결의안 확인(stub)' }))
@@ -309,13 +309,13 @@ describe('StatusCell — 종료 전이 성공 경로 (리뷰 C6)', () => {
       expect.objectContaining({
         toStatusKey: DONE_TRANSITION.toStateKey,
         expectedVersion: issueAtlas1Fixture.version,
-        // ★인자를 빠뜨리면 여기서 죽는다 — 종료 전이가 결의안 없이 나가던 구멍
+        // ★인자를 빠뜨리면 여기서 죽는다 — 종료 전환이 결의안 없이 나가던 구멍
         resolutionId: RESOLUTION_ID,
       }),
     )
   })
 
-  it('결의안을 취소하면 전이 요청이 나가지 않는다 (E14 — 상태 불변)', async () => {
+  it('결의안을 취소하면 전환 요청이 나가지 않는다 (E14 — 상태 불변)', async () => {
     await openAndPickDoneTransition()
 
     await userEvent.click(screen.getByRole('button', { name: '결의안 취소(stub)' }))
@@ -324,8 +324,8 @@ describe('StatusCell — 종료 전이 성공 경로 (리뷰 C6)', () => {
     expect(screen.queryByRole('button', { name: '결의안 확인(stub)' })).not.toBeInTheDocument()
   })
 
-  it('비종료 전이는 결의안 모달 없이 즉시 전이하고 resolutionId 를 싣지 않는다', async () => {
-    // 같은 배선이 비종료 전이에까지 결의안을 실어 보내면 백엔드 계약 위반이다.
+  it('비종료 전환은 결의안 모달 없이 즉시 전환하고 resolutionId 를 싣지 않는다', async () => {
+    // 같은 배선이 비종료 전환에까지 결의안을 실어 보내면 백엔드 계약 위반이다.
     // 이 짝이 없으면 위 단언은 "항상 resolutionId 를 싣는다" 와 구분되지 않아 공허해진다.
     transitionState.current = [PLAIN_TRANSITION]
 

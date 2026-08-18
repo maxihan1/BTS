@@ -1,4 +1,4 @@
-// BulkOperationController MockMvc 슬라이스 테스트 — POST 접수 202 / GET 조회 200·403·404 / POST 가용 전이 200·400
+// BulkOperationController MockMvc 슬라이스 테스트 — POST 접수 202 / GET 조회 200·403·404 / POST 가용 전환 200·400
 
 package com.bts.issue.bulk.web
 
@@ -57,7 +57,7 @@ import java.util.UUID
  * - G-2. GET 타인 actor → 403
  * - G-3. GET 없는 id → 404
  * - AT-1. POST bulk-transitions/available 정상 → 200 + data.transitions(TransitionItem 형태) + data.unresolvedIssueKeys
- * - AT-2. POST bulk-transitions/available 교집합 전이 없음 → 200 + data.transitions 빈 배열
+ * - AT-2. POST bulk-transitions/available 교집합 전환 없음 → 200 + data.transitions 빈 배열
  * - AT-3. POST bulk-transitions/available issueKeys 빈 배열 → 400 + ISSUE_BULK_VALIDATION_FAILED
  * - AT-4. POST bulk-transitions/available issueKeys 1000 초과 → 400 + ISSUE_BULK_VALIDATION_FAILED
  */
@@ -326,7 +326,7 @@ class BulkOperationControllerTest {
     // ── AT-1: POST bulk-transitions/available 정상 → 200 + data.transitions + unresolvedIssueKeys ──
 
     @Test
-    fun `POST bulk-transitions available — 정상 요청이면 200 + 교집합 전이 목록과 unresolved 반환`() {
+    fun `POST bulk-transitions available — 정상 요청이면 200 + 교집합 전환 목록과 unresolved 반환`() {
         val transitionView =
             AvailableTransitionView(
                 fromStateKey = "open",
@@ -360,7 +360,7 @@ class BulkOperationControllerTest {
     // ── AT-2: POST bulk-transitions/available 교집합 없음 → 200 + 빈 transitions ───────────────
 
     @Test
-    fun `POST bulk-transitions available — 교집합 전이 없으면 200 + 빈 transitions`() {
+    fun `POST bulk-transitions available — 교집합 전환 없으면 200 + 빈 transitions`() {
         val result =
             BulkAvailableTransitionsResult(
                 transitions = emptyList(),

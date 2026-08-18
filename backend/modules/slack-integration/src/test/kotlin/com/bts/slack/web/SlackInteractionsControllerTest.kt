@@ -79,7 +79,7 @@ private const val INTERACTIONS_SIGNING_SECRET = "slack-interactions-e2e-signing-
  * permitAll 은 인증을 **없애는** 것이 아니라 인증 수단을 필터의 JWT 에서 컨트롤러의 서명검증으로 교체한다.
  *
  * ## outbound 협력자만 test-double (실 네트워크 회피, 결정론)
- * cross-BC 완료 옵션/전이는 seed 가능한 stub([StubIssueCompletionOptionsPort]/[StubIssueTransitionPort],
+ * cross-BC 완료 옵션/전환은 seed 가능한 stub([StubIssueCompletionOptionsPort]/[StubIssueTransitionPort],
  * [SlackTestcontainersConfig] `@Bean`)으로, Slack SDK 호출은 [SlackTestcontainersConfig] 의 `@Primary` mock
  * `MethodsClient` 로 대체된다. 여기에 더해 이 테스트는 [CaptureCollaboratorsConfig] 로 (1) 봇 토큰 해석기를
  * `@Primary` mock 으로 오버라이드해 slack_installs 시드 없이 완료 모달 경로를 태우고, (2) `response_url`
@@ -167,10 +167,10 @@ class SlackInteractionsControllerTest {
         assertThat(transitionPort.lastCommand).isNull()
     }
 
-    // ── (2) view_submission 성공 — 전이 실행 + 빈 200 (모달 닫기) + actor 정합 ─────────────────────
+    // ── (2) view_submission 성공 — 전환 실행 + 빈 200 (모달 닫기) + actor 정합 ─────────────────────
 
     @Test
-    fun `view_submission atlas_complete_modal - 전이 성공은 빈 200 이고 매핑된 사용자로 전이가 실행된다`() {
+    fun `view_submission atlas_complete_modal - 전환 성공은 빈 200 이고 매핑된 사용자로 전환이 실행된다`() {
         seedMapping()
         transitionPort.succeedWith(BoardTransitionResult(ISSUE_KEY, TO_STATE_KEY, 4))
 
@@ -191,7 +191,7 @@ class SlackInteractionsControllerTest {
     // ── (3) view_submission 권한 거부 — 200 + response_action errors 본문 (모달 유지) ──────────────
 
     @Test
-    fun `view_submission - 전이 권한 거부는 200 이고 response_action errors 본문을 반환한다`() {
+    fun `view_submission - 전환 권한 거부는 200 이고 response_action errors 본문을 반환한다`() {
         seedMapping()
         transitionPort.failWith(IssueTransitionPermissionDeniedException("denied"))
 
@@ -202,10 +202,10 @@ class SlackInteractionsControllerTest {
         assertThat(body).contains("response_action").contains("errors")
     }
 
-    // ── (4) 잘못된 서명 → 빈 401, 어떤 전이도 실행되지 않는다 (fail-closed) ─────────────────────────
+    // ── (4) 잘못된 서명 → 빈 401, 어떤 전환도 실행되지 않는다 (fail-closed) ─────────────────────────
 
     @Test
-    fun `잘못된 서명 - 빈 401 이고 전이는 실행되지 않는다`() {
+    fun `잘못된 서명 - 빈 401 이고 전환은 실행되지 않는다`() {
         seedMapping()
         transitionPort.succeedWith(BoardTransitionResult(ISSUE_KEY, TO_STATE_KEY, 4))
 
@@ -218,7 +218,7 @@ class SlackInteractionsControllerTest {
     // ── (5) 서명 헤더 누락 → 401 ─────────────────────────────────────────────────────────────────
 
     @Test
-    fun `서명 헤더 누락 - 빈 401 이고 전이는 실행되지 않는다`() {
+    fun `서명 헤더 누락 - 빈 401 이고 전환은 실행되지 않는다`() {
         seedMapping()
         transitionPort.succeedWith(BoardTransitionResult(ISSUE_KEY, TO_STATE_KEY, 4))
 
@@ -231,7 +231,7 @@ class SlackInteractionsControllerTest {
     // ── (6) 본문 크기 상한 초과 → 빈 413 (서명검증·서비스 모두 미도달) ─────────────────────────────
 
     @Test
-    fun `본문 크기 상한 초과 - 빈 413 이고 전이는 실행되지 않는다`() {
+    fun `본문 크기 상한 초과 - 빈 413 이고 전환은 실행되지 않는다`() {
         seedMapping()
         transitionPort.succeedWith(BoardTransitionResult(ISSUE_KEY, TO_STATE_KEY, 4))
         val huge = "payload=" + "a".repeat(OVERSIZE_BODY_LENGTH)

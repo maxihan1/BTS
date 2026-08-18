@@ -1,4 +1,4 @@
-# FR-WF-03 워크플로우 전이 validator/guard/PostAction 런타임 결선 — 스펙
+# FR-WF-03 워크플로우 전환 validator/guard/PostAction 런타임 결선 — 스펙
 
 > slug: fr-wf-03-validator-runtime-wiring
 > type: backend (기반 인프라) | BC: project-workflow 단일
@@ -7,7 +7,7 @@
 
 ## 개요
 
-FR-WF-01이 SPI 인터페이스 + validator 4종 + PostAction 5종 구현체만 만들고 production 결선을 후속으로 미뤘다(SPI 주석 "실제 구현은 후속 task에서 등록"). 이 FR이 그 후속 — 팩토리/리포지토리/시드 경로/부팅을 결선해 워크플로우 전이 검증·후처리 프레임워크를 실제 동작시킨다.
+FR-WF-01이 SPI 인터페이스 + validator 4종 + PostAction 5종 구현체만 만들고 production 결선을 후속으로 미뤘다(SPI 주석 "실제 구현은 후속 task에서 등록"). 이 FR이 그 후속 — 팩토리/리포지토리/시드 경로/부팅을 결선해 워크플로우 전환 검증·후처리 프레임워크를 실제 동작시킨다.
 
 **범위 결정(2026-06-03 Maxi).**
 - D8=A: validator 적용 단계(availability/execution) 구분 포함.
@@ -18,23 +18,23 @@ FR-WF-01이 SPI 인터페이스 + validator 4종 + PostAction 5종 구현체만 
 
 > "사용자"는 이 FR에선 워크플로우를 호출하는 상위 BC(issue-tracking) + 워크플로우 정의를 시드하는 시스템.
 
-### S1. validator 설정된 전이 — plan(실행) 시 평가
-- **Given** 어떤 전이에 `RequiredField(field=resolution)` validator가 설정돼(workflow_validators) 있다.
-- **When** issue-tracking이 그 전이를 `plan()`으로 실행 요청하고 issueFields에 resolution이 없다.
+### S1. validator 설정된 전환 — plan(실행) 시 평가
+- **Given** 어떤 전환에 `RequiredField(field=resolution)` validator가 설정돼(workflow_validators) 있다.
+- **When** issue-tracking이 그 전환을 `plan()`으로 실행 요청하고 issueFields에 resolution이 없다.
 - **Then** WorkflowEngine이 WorkflowDefinitionRepository로 validator 설정을 읽고, WorkflowValidatorFactory로 인스턴스를 만들어 평가, Fail → `WorkflowValidatorFailureException` → `TransitionResult.ValidatorFailure`.
 
-### S2. validator 설정된 전이 — availableTransitions(목록)에선 execution validator 건너뜀
-- **Given** 같은 전이에 EXECUTION 단계 validator(RequiredField)가 설정돼 있다.
-- **When** issue-tracking이 `availableTransitions()`로 가용 전이를 조회(resolution 미설정).
-- **Then** 그 전이가 목록에 **포함**된다(EXECUTION validator는 목록 평가에서 건너뜀). AVAILABILITY validator(Permission/NotStatusCategory)는 여전히 평가돼 실패 시 제외.
+### S2. validator 설정된 전환 — availableTransitions(목록)에선 execution validator 건너뜀
+- **Given** 같은 전환에 EXECUTION 단계 validator(RequiredField)가 설정돼 있다.
+- **When** issue-tracking이 `availableTransitions()`로 가용 전환을 조회(resolution 미설정).
+- **Then** 그 전환이 목록에 **포함**된다(EXECUTION validator는 목록 평가에서 건너뜀). AVAILABILITY validator(Permission/NotStatusCategory)는 여전히 평가돼 실패 시 제외.
 
-### S3. PostAction 설정된 전이 — 계산되어 plan에 누적
-- **Given** 어떤 전이에 `SetField`/`Notify` PostAction이 설정돼 있다.
-- **When** issue-tracking이 그 전이를 `plan()`으로 실행.
+### S3. PostAction 설정된 전환 — 계산되어 plan에 누적
+- **Given** 어떤 전환에 `SetField`/`Notify` PostAction이 설정돼 있다.
+- **When** issue-tracking이 그 전환을 `plan()`으로 실행.
 - **Then** WorkflowEngine이 PostAction을 factory로 만들어 `evaluate(ctx)` 호출, 결과 PostActionPlan(FieldChange/DomainEvent)을 TransitionPlan에 누적해 반환. (적용은 호출자 책임 — 이 FR 범위 밖.)
 
 ### S4. YAML 시드 — validators/postActions 정의가 테이블에 반영
-- **Given** 워크플로우 YAML의 전이에 `validators:`/`post_actions:` 리스트가 정의돼 있다.
+- **Given** 워크플로우 YAML의 전환에 `validators:`/`post_actions:` 리스트가 정의돼 있다.
 - **When** YamlSeedService가 부팅 시 시드한다.
 - **Then** workflow_validators / workflow_post_actions 테이블에 type/config/display_order/transition_id가 삽입되고, 런타임 조회로 평가에 사용된다.
 
@@ -49,7 +49,7 @@ FR-WF-01이 SPI 인터페이스 + validator 4종 + PostAction 5종 구현체만 
 - **FR2** `WorkflowPostActionFactory` production 구현(@Component). type(SetField/Notify/AddWatcher/RunAutomation/CallWebhook) → 기존 PostAction 인스턴스(생성자 인자 config에서 추출). (계산만, 적용 안 함.)
 - **FR3** `WorkflowDefinitionRepository` production 구현(@Repository, jOOQ). findValidators/findPostActions(transition) — workflow_validators/workflow_post_actions를 transition_id로 조회, display_order asc, ValidatorConfig/PostActionConfig 매핑.
 - **FR4** validator 적용 단계 구분. `WorkflowValidator`에 `phase: ValidatorPhase`(AVAILABILITY/EXECUTION). RequiredField=EXECUTION, Permission/NotStatusCategory/CustomExpression=AVAILABILITY(CustomExpression은 보수적으로 AVAILABILITY). `availableTransitions`는 AVAILABILITY만, `plan`은 전부 평가.
-- **FR5** YAML 스키마 확장. 워크플로우 YAML 전이 항목에 optional `validators: [{type, config, display_order?}]` / `post_actions: [{type, config, display_order?}]`. YamlSeedService가 두 테이블에 시드.
+- **FR5** YAML 스키마 확장. 워크플로우 YAML 전환 항목에 optional `validators: [{type, config, display_order?}]` / `post_actions: [{type, config, display_order?}]`. YamlSeedService가 두 테이블에 시드.
 - **FR6** config 파싱 계약. jsonb ↔ Map<String,Any?>. 직렬화/역직렬화 일관(시드 시 Map→jsonb, 조회 시 jsonb→Map).
 - **FR7** WorkflowEngine production 부팅 — @SpringBootTest 전체 컨텍스트 기동 검증.
 
@@ -64,7 +64,7 @@ FR-WF-01이 SPI 인터페이스 + validator 4종 + PostAction 5종 구현체만 
 ## 엣지 케이스
 - E1. 미지원 validator/postaction type → IllegalArgumentException(시드 시 빠른 실패 vs 런타임? 시드 시 검증 권장).
 - E2. config 누락 필드(예 RequiredField에 field 없음) → 명확한 예외. validator 생성 시 검증.
-- E3. transition에 validator 0건 → 빈 리스트, 전이 그대로 통과(현재 동작 유지).
+- E3. transition에 validator 0건 → 빈 리스트, 전환 그대로 통과(현재 동작 유지).
 - E4. CustomExpression(SpEL) — SpelEvaluator 기존 @Bean 존재. factory가 이를 주입해야. 타임아웃(WorkflowExpressionTimeoutException) 경로 유지.
 - E5. PostAction 평가 중 예외 → plan 전체 실패? 또는 격리? 기존 WorkflowEngine plan 흐름 따름(검증).
 - E6. availableTransitions의 syntheticRequest 경로(WorkflowEngine.kt:290)와 plan 경로가 phase 필터 도입 후 일관되게 동작(같은 워크플로우로 "목록 포함 + plan 거부" 동시 검증).
@@ -73,16 +73,16 @@ FR-WF-01이 SPI 인터페이스 + validator 4종 + PostAction 5종 구현체만 
 ## 제약 조건
 - BC 격리: project-workflow 단일. shared-kernel 타입(TransitionPlan)만 노출, 내부 타입 비노출.
 - GAP-2 준수: PostAction 적용 안 함(계산만).
-- 기존 전이 동작 회귀 0 — validator-free 워크플로우는 종전과 동일.
+- 기존 전환 동작 회귀 0 — validator-free 워크플로우는 종전과 동일.
 - 프로파일 한정 빈 부팅(메모리 profile-scoped-bean-boot-failure): 새 @Component/@Repository가 모든 프로파일에서 부팅되는지 모듈 전체 test로 확인.
 - ktlint KDoc 중괄호/특수문자 주의(메모리 ktlint-kdoc-brace-parse-failure).
 
 ## 측정 가능한 완료 기준
 - [ ] @SpringBootTest 전체 컨텍스트 기동(WorkflowEngine 4빈 결선) — S5.
-- [ ] RequiredField 설정 전이: plan 시 거부 + availableTransitions 시 포함(phase 구분) — S1/S2, Testcontainers 통합.
+- [ ] RequiredField 설정 전환: plan 시 거부 + availableTransitions 시 포함(phase 구분) — S1/S2, Testcontainers 통합.
 - [ ] SetField/Notify PostAction: plan 결과 TransitionPlan에 FieldChange/DomainEvent 누적 — S3.
 - [ ] YAML validators/post_actions 시드 → 테이블 반영 → 런타임 평가 — S4.
-- [ ] 기존 워크플로우 전이 E2E/통합 회귀 0(validator-free 동작 불변).
+- [ ] 기존 워크플로우 전환 E2E/통합 회귀 0(validator-free 동작 불변).
 - [ ] 4모듈 detekt + ktlint green(메모리 subagent-ktlint-false-green).
 
 ## 스펙 외 (후속)

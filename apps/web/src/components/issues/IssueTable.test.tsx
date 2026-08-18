@@ -402,7 +402,7 @@ describe('IssueTable — 셀 인라인 편집 컨텍스트', () => {
     expect(onNavigate).not.toHaveBeenCalled()
   })
 
-  it('T-29: popover가 닫혀 있는 동안 전이·권한 조회가 발생하지 않는다 (FR12·NFR1·D-3)', async () => {
+  it('T-29: popover가 닫혀 있는 동안 전환·권한 조회가 발생하지 않는다 (FR12·NFR1·D-3)', async () => {
     transitionsSpy.mockClear()
     permissionsSpy.mockClear()
 

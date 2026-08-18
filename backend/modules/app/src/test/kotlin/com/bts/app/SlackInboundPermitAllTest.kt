@@ -154,7 +154,7 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
      * ## 왜 베이스의 [rest] 를 쓰지 않는가 (★함정)
      * [org.springframework.boot.test.web.client.TestRestTemplate] 은 `HttpClientOption.ENABLE_REDIRECTS`
      * 가 없으면 리다이렉트를 끄지만, 그 설정은 **Apache HttpComponents 5 가 classpath 에 있을 때만** 적용된다.
-     * `:modules:app` 테스트에는 httpclient 4.x 만 전이돼 있어 [SimpleClientHttpRequestFactory] →
+     * `:modules:app` 테스트에는 httpclient 4.x 만 전환돼 있어 [SimpleClientHttpRequestFactory] →
      * `HttpURLConnection` 으로 떨어지고, 이 조합은 302 를 **자동 추종**한다. 그러면 콜백의 302 를 따라가
      * `/admin/slack`(= `anyRequest().authenticated()`)에서 401 을 받아, permitAll 이 정상 동작하는데도
      * **미등록일 때와 똑같은 401** 이 보인다 — 즉 이 테스트가 조용히 무의미해진다. 그래서 이 경로만

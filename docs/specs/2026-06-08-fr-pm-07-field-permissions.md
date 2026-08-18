@@ -46,7 +46,7 @@
 | 라벨 | CORE | `labels` | ✓ | ✓ | 빈 리스트 마스킹 |
 | 커스텀 필드 | CUSTOM | `<정의 key>` | ✓ | ✓ | 맵 키 제거 마스킹 |
 
-**제외 필드**(권한 대상 아님): `id`·`key`·`projectId`·`typeId`·`reporterId`·`currentStateKey`·`version`·`createdAt`·`updatedAt`·`deletedAt`(시스템/식별/불변), `resolutionId`(전이 통제), `componentIds`(MANAGE_COMPONENTS 별도), `securityLevelId`(SET_ISSUE_SECURITY 별도 — 이중 통제 회피).
+**제외 필드**(권한 대상 아님): `id`·`key`·`projectId`·`typeId`·`reporterId`·`currentStateKey`·`version`·`createdAt`·`updatedAt`·`deletedAt`(시스템/식별/불변), `resolutionId`(전환 통제), `componentIds`(MANAGE_COMPONENTS 별도), `securityLevelId`(SET_ISSUE_SECURITY 별도 — 이중 통제 회피).
 
 ## 4. API 인터페이스 (REST)
 

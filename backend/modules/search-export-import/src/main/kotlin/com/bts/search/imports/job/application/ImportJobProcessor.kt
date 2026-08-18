@@ -105,7 +105,7 @@ import java.util.UUID
  * VO) 로 변환한다 — [toImportAttachment]/[toImportChangeGroup]/[toImportChangeItem]. 댓글/worklog
  * 매핑과 동일하게 작성자 이메일은 소문자화하고 시각 문자열은 [parseInstantOrNull] 로 변환한다.
  * **[ImportChangeItem.field] 는 원본(Jira 등)의 raw 필드명을 그대로 옮긴다** — BTS 내부 필드명으로의
- * 매핑은 issue-tracking BC 가 소유하는 도메인 지식이라(예: 전이 가능 상태, 담당자 개념) 이 클래스가
+ * 매핑은 issue-tracking BC 가 소유하는 도메인 지식이라(예: 전환 가능 상태, 담당자 개념) 이 클래스가
  * 대신 수행하면 그 지식이 BC 경계를 넘어 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
  * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
  *
@@ -495,7 +495,7 @@ class ImportJobProcessor(
      *
      * [ParsedImportChangeItem.field] 는 원본(Jira 등)의 raw 필드명을 **그대로** 옮긴다 — BTS 내부
      * 필드명으로의 매핑은 이 클래스가 수행하지 않는다. BTS 필드는 issue-tracking BC 가 소유하는
-     * 도메인 지식(예: 전이 가능 상태 목록, 담당자 개념)이라 search 모듈(BC 격리)에서 매핑 테이블을
+     * 도메인 지식(예: 전환 가능 상태 목록, 담당자 개념)이라 search 모듈(BC 격리)에서 매핑 테이블을
      * 들고 있으면 그 지식이 두 곳에 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
      * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
      */

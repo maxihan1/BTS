@@ -42,7 +42,7 @@ import java.util.UUID
  * - update: name/description 변경, 미존재 케이스
  * - changeDates: 날짜 지정/해제, 미존재 케이스
  * - delete: 권한→존재→softDelete, ARCHIVED 거부(결함 A 회귀 가드)
- * - changeStatus: RELEASED/UNRELEASED/ARCHIVED 전이, 불허 전이 거부
+ * - changeStatus: RELEASED/UNRELEASED/ARCHIVED 전환, 불허 전환 거부
  * - getById: 존재검증→반환
  * - listByProject: 프로젝트 존재→목록 반환
  */
@@ -497,7 +497,7 @@ class VersionApplicationServiceTest : DescribeSpec({
             }
         }
 
-        context("오류 경로 — 불허 전이 (ARCHIVED → RELEASED)") {
+        context("오류 경로 — 불허 전환 (ARCHIVED → RELEASED)") {
             it("VersionTransitionNotAllowedException 발생, repo.update 미호출") {
                 val archivedVersion = activeVersion.copy(status = VersionStatus.ARCHIVED, releasedAt = null)
                 every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true

@@ -31,8 +31,8 @@ FR-IM-01은 CSV 헤더를 canonical 이름(`summary`/`priority`/…)으로만 �
 
 - **FR1 분석**. 업로드 파일을 MinIO에 저장하고 `ImportJob(status=AWAITING_MAPPING)` 생성. CSV 헤더(소스 필드) + 샘플 행 N=5 + 대상 필드 카탈로그 반환. 크기/형식/권한 검증은 기존 accept와 동일 재사용(413/400/403).
 - **FR2 대상 필드 카탈로그**. 매핑 가능한 11개 flat 필드 — `summary`(필수)·`description`·`type`·`priority`·`reporter`·`assignee`·`labels`(multi)·`component`(multi)·`status`·`fixVersion`(multi)·`affectsVersion`(multi) + `IGNORE`. 댓글/worklog/첨부/changelog는 카탈로그 제외(JSON 전용·복합 구조).
-- **FR3 필드 매핑 검증 API**. 제안된 필드 매핑을 저장·전이 없이 검증. errors(차단)·warnings(허용) 반환. CSV만 필드매핑 검증 대상, JSON은 canonical이라 필드매핑 검증 스킵.
-- **FR4 매핑 확정+실행**. 검증 통과 시 `import_mappings` 저장 + `AWAITING_MAPPING→PENDING` 전이 + enqueue(outbox, 영속과 동일 트랜잭션). 이후는 기존 워커 경로.
+- **FR3 필드 매핑 검증 API**. 제안된 필드 매핑을 저장·전환 없이 검증. errors(차단)·warnings(허용) 반환. CSV만 필드매핑 검증 대상, JSON은 canonical이라 필드매핑 검증 스킵.
+- **FR4 매핑 확정+실행**. 검증 통과 시 `import_mappings` 저장 + `AWAITING_MAPPING→PENDING` 전환 + enqueue(outbox, 영속과 동일 트랜잭션). 이후는 기존 워커 경로.
 - **FR5 매핑-aware CSV 파서**. CSV는 필드 매핑(source header→target field)으로 컬럼 해석. 매핑 없으면 canonical 폴백(하위호환). JSON은 canonical 유지. 매칭은 헤더 trim+lowercase(canonical 동형).
 - **FR6 CHECK 제약 확장**. `chk_import_jobs_status`에 `AWAITING_MAPPING` 추가. 워커는 `PENDING`만 클레임(AWAITING_MAPPING 실행 금지). CleanupWorker가 방치 AWAITING_MAPPING도 TTL 정리.
 
@@ -63,7 +63,7 @@ POST /api/v1/imports/{jobId}/mapping
 body { fieldMappings:[...], dryRun? }                      // PR-B/C에서 userMappings/valueMappings 추가(optional)
 → 200 { jobId, status:"PENDING", ... }                    // 이후 GET 폴링은 기존 경로
 ```
-검증 실패 → 422. `AWAITING_MAPPING` 아니면 409(`MAPPING_STATE_CONFLICT`). 저장+전이+enqueue는 outbox.
+검증 실패 → 422. `AWAITING_MAPPING` 아니면 409(`MAPPING_STATE_CONFLICT`). 저장+전환+enqueue는 outbox.
 
 ### 에러/경고 코드 (PR-A)
 - errors(차단): `SUMMARY_NOT_MAPPED` · `DUPLICATE_TARGET`(둘 이상 소스→같은 target) · `UNKNOWN_TARGET`(카탈로그 밖) · `UNKNOWN_SOURCE`(감지 헤더 밖) · `MAPPING_STATE_CONFLICT`(409).
@@ -97,7 +97,7 @@ CREATE TABLE import_mappings (
 - summary 매핑 컬럼값이 빈 행 → 기존 FR-IM-01 행별 best-effort VALIDATION 실패(불변).
 - AWAITING_MAPPING job 방치 → CleanupWorker TTL 정리(교착 방지).
 - JSON + fieldMappings 전달 → JSON은 canonical, fieldMappings 검증/적용 no-op(무시).
-- dryRun 확정 → 저장·전이·enqueue 동일, 워커가 dryRun 검증만(기존 동형).
+- dryRun 확정 → 저장·전환·enqueue 동일, 워커가 dryRun 검증만(기존 동형).
 - 확정 후 재확정(PENDING에서 confirm) → 409.
 
 ## 제약 조건

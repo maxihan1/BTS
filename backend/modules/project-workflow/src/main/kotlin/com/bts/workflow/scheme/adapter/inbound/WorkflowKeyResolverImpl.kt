@@ -49,7 +49,7 @@ class WorkflowKeyResolverImpl(
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우 시작 상태를 반환한다.
      *
-     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전이(write path)에서만 호출한다.
+     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전환(write path)에서만 호출한다.
      *
      * 내부적으로 [WorkflowResolver.resolveFor] 에 위임하고,
      * 반환된 [com.bts.workflow.domain.Workflow] 에서 최소 displayOrder 상태를 시작 상태로 추출한다.

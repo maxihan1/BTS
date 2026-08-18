@@ -654,7 +654,7 @@ export function IssueListPage({
     // - `cursorEnabled` — 어댑터가 넘기는 와이드 여부(E13). 좁은폭에는 커서 강조 자체가
     //   없어 `j` 가 URL 만 바꾸는 유령 상태가 된다.
     // - 로딩/에러 — 목록이 없는데 레이어만 활성이면 키를 삼키고 아무 일도 안 한다.
-    // - 모달 3종 — 일괄 편집·전이·결과 다이얼로그는 입력 요소가 없어 `shouldIgnoreEvent`
+    // - 모달 3종 — 일괄 편집·전환·결과 다이얼로그는 입력 요소가 없어 `shouldIgnoreEvent`
     //   를 통과한다. 막지 않으면 다이얼로그가 떠 있는데 `j` 가 배후 목록을 옮기고,
     //   **`o` 는 다이얼로그를 띄운 채 화면을 통째로 갈아치운다**(독립 리뷰 I-3).
     //
@@ -805,7 +805,7 @@ export function IssueListPage({
         onSubmitted={handleBulkSubmitted}
       />
 
-      {/* 일괄 전이 Dialog */}
+      {/* 일괄 전환 Dialog */}
       <BulkTransitionDialog
         issueKeys={selectedKeys}
         open={transitionOpen}

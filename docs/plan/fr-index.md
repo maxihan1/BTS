@@ -15,7 +15,7 @@
 | FR-IS-02 | 이슈 타입 (Epic/Story/Task/Subtask/Bug + 커스텀) | 필수 | issue-tracking | §2.1.2 |
 | FR-IS-03 | 담당자 (Reporter 1 / Assignee 1 / Watchers N) | 필수 | issue-tracking | §2.1.3 |
 | FR-IS-04 | 본문(Markdown) + 우선순위/라벨/환경/영향도 | 필수 | issue-tracking | §2.1.4 |
-| FR-IS-05 | 이슈 일괄 편집 + 일괄 상태 전이 | 높음 | issue-tracking | §2.2.1 |
+| FR-IS-05 | 이슈 일괄 편집 + 일괄 상태 전환 | 높음 | issue-tracking | §2.2.1 |
 | FR-IS-06 | 이슈 클론 (옵션) | 중간 | issue-tracking | §2.3.1 |
 | FR-IS-07 | Resolution 필드 | 필수 | issue-tracking | §2.1.5 |
 | FR-IS-08 | 이슈 인쇄 + PDF 출력 | 중간 | issue-tracking | §2.3.2 |
@@ -71,7 +71,7 @@
 | FR-NT-02 | 채널 (이메일/인앱, Slack=slack-integration BC) | 필수 | notification-dashboard | §2.2 |
 | FR-NT-03 | 수신자 정책 (R/A/W/Lead/역할) | 필수 | notification-dashboard | §2.3 |
 | FR-NT-04 | 사용자별 알림 구독 설정 | 높음 | notification-dashboard | §2.4 |
-| FR-NT-05 | Webhook 알림 채널 — 전이 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 | 중간 | notification-dashboard | §2.5 |
+| FR-NT-05 | Webhook 알림 채널 — 전환 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 | 중간 | notification-dashboard | §2.5 |
 
 ### 멘션 / 히스토리 (FR-MN, FR-HS, 4개)
 

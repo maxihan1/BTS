@@ -123,7 +123,7 @@
 - [ ] D4. 백엔드 — validator CRUD API (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전환에서 동작(엔진 통합) (책임. backend-engineer)
 - [ ] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer)
-- [ ] D7. E2E — 규칙을 걸면 전환가 막히고, 풀면 통과한다 (책임. qa-engineer)
+- [ ] D7. E2E — 규칙을 걸면 전환이 막히고, 풀면 통과한다 (책임. qa-engineer)
 
 > **D3 비해당 예정**. `workflow_validators`/`workflow_post_actions` 는 V200 기존 테이블이고 스키마 변경 없이 CRUD 만 얹는다. 착수 시 재확인한다.
 
@@ -141,7 +141,7 @@
 - [ ] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer)
 - [ ] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer)
 
-> **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환가 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
+> **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환이 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 
 ## §NFR project-workflow BC 완료 게이트
 

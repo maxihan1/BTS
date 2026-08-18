@@ -1,4 +1,4 @@
-// 워크플로우 전이 post-action CRUD REST 컨트롤러 — MANAGE_SCHEME+Global Guard
+// 워크플로우 전환 post-action CRUD REST 컨트롤러 — MANAGE_SCHEME+Global Guard
 
 package com.bts.workflow.postaction.web
 
@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * 워크플로우 전이 post-action CRUD REST 컨트롤러.
+ * 워크플로우 전환 post-action CRUD REST 컨트롤러.
  *
  * 경로: `GET/POST /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions`
  *       `PUT/DELETE .../post-actions/{id}`
@@ -60,10 +60,10 @@ class PostActionController(
     }
 
     /**
-     * 전이에 속한 post-action 목록을 반환한다.
+     * 전환에 속한 post-action 목록을 반환한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
+     * @param transitionKey `fromStateKey__toStateKey` 형식의 전환 자연키.
      * @return 200 OK + [PostActionResponse] 목록.
      */
     @GetMapping
@@ -81,7 +81,7 @@ class PostActionController(
      * post-action 을 생성한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey 전이 자연키.
+     * @param transitionKey 전환 자연키.
      * @param request 생성 요청 바디.
      * @return 201 Created + 생성된 [PostActionResponse].
      */
@@ -106,7 +106,7 @@ class PostActionController(
      * post-action 을 수정한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey 전이 자연키.
+     * @param transitionKey 전환 자연키.
      * @param id 수정할 post-action UUID.
      * @param request 수정 요청 바디.
      * @return 200 OK + 수정된 [PostActionResponse].
@@ -134,7 +134,7 @@ class PostActionController(
      * post-action 을 삭제한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey 전이 자연키.
+     * @param transitionKey 전환 자연키.
      * @param id 삭제할 post-action UUID.
      */
     @DeleteMapping("/{id}")

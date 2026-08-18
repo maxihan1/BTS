@@ -183,15 +183,15 @@ class SprintExceptionHandler {
         )
     }
 
-    // ── 409 CONFLICT (도메인 전이 위반) ──────────────────────────────────────
+    // ── 409 CONFLICT (도메인 전환 위반) ──────────────────────────────────────
 
     /**
-     * [InvalidSprintTransitionException] — 허용되지 않는 스프린트 상태 전이 — 409.
+     * [InvalidSprintTransitionException] — 허용되지 않는 스프린트 상태 전환 — 409.
      *
      * [IllegalStateException] 을 상속하므로 catch-all 에 앞서 명시 등록한다.
      * 보안 — 내부 FSM 상태 세부를 detail 에 노출하지 않는다. 로그에만 기록한다.
      *
-     * @param ex 전이 위반 예외.
+     * @param ex 전환 위반 예외.
      */
     @ExceptionHandler(InvalidSprintTransitionException::class)
     fun handleInvalidTransition(ex: InvalidSprintTransitionException): ProblemDetail {
@@ -201,7 +201,7 @@ class SprintExceptionHandler {
             type = "agile-sprint-invalid-transition",
             title = "Invalid Sprint Transition",
             errorCode = AGILE_CONFLICT,
-            detail = "현재 스프린트 상태에서는 해당 전이가 허용되지 않습니다.",
+            detail = "현재 스프린트 상태에서는 해당 전환이 허용되지 않습니다.",
         )
     }
 

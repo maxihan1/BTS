@@ -51,7 +51,7 @@ scheme:
 - `CREATE_ISSUE` - 이슈 생성
 - `EDIT_ISSUE` - 이슈 수정
 - `DELETE_ISSUE` - 이슈 삭제
-- `TRANSITION_ISSUE` - 상태 전이
+- `TRANSITION_ISSUE` - 상태 전환
 - `COMMENT_ISSUE` - 댓글
 - `ASSIGN_ISSUE` - 담당자 변경
 - `RESOLVE_ISSUE` - 해결 처리

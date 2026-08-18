@@ -2,7 +2,7 @@
 
 > FR: FR-IM-01 (에픽 PR3 / 4). **댓글 도메인은 FR-IM-01에 흡수**(Maxi 확정) — 신규 FR ID 없음, **카운트 123 불변**. 단 SDD 10.6.3 + fr-index에 "PR3이 댓글 도메인(도메인+조회)을 prerequisite로 도입" 명시해 문서 drift 방지. 풀 댓글 기능(작성/UI/멘션 알림)은 미래 별도 FR.
 > BC: issue-tracking(댓글 도메인 신설 + worklog + import 어댑터) + search-export-import(파서/커맨드).
-> 선행: PR1(#218 코어)·PR2(#221 자동생성+상태전이) 완료. 도메인 정리: `docs/plans/2026-07-03-fr-im-01-pr3-comments-worklog.md §도메인 정리`.
+> 선행: PR1(#218 코어)·PR2(#221 자동생성+상태전환) 완료. 도메인 정리: `docs/plans/2026-07-03-fr-im-01-pr3-comments-worklog.md §도메인 정리`.
 > 결정 확정(Maxi): 댓글 기능=**도메인+조회 API**(작성 REST·UI·멘션 알림 별도 FR), 댓글/worklog 둘 다 import.
 
 ## 배경

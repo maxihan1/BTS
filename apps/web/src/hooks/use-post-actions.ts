@@ -1,4 +1,4 @@
-// 워크플로우 전이 post-action CRUD TanStack Query hooks
+// 워크플로우 전환 post-action CRUD TanStack Query hooks
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listPostActions,
@@ -15,7 +15,7 @@ import type { PostActionRequest, PostActionResponse } from '@/api/post-actions'
 /** queryKey 팩토리 — 매직 문자열 방지 */
 export const POST_ACTION_KEYS = {
   /**
-   * 전이별 post-action 목록 queryKey.
+   * 전환별 post-action 목록 queryKey.
    * @param workflowKey  워크플로우 키
    * @param transitionKey  `fromStateKey__toStateKey` 합성 키
    */
@@ -28,11 +28,11 @@ export const POST_ACTION_KEYS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 전이의 post-action 목록을 조회한다.
+ * 전환의 post-action 목록을 조회한다.
  * GET /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions
  *
  * workflowKey 또는 transitionKey가 빈 문자열이면 query가 비활성화된다
- * (전이 미선택 상태에서 불필요한 API 호출 방지).
+ * (전환 미선택 상태에서 불필요한 API 호출 방지).
  *
  * @param workflowKey  워크플로우 키
  * @param transitionKey  `fromStateKey__toStateKey` 합성 키 (호출자가 조합)
@@ -51,7 +51,7 @@ export function usePostActions(workflowKey: string, transitionKey: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 전이에 post-action을 추가한다.
+ * 전환에 post-action을 추가한다.
  * POST /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions
  * 성공 시 목록 캐시를 무효화한다 (invalidate-only, 플리커 회피).
  *

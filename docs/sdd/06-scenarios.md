@@ -19,7 +19,7 @@ Worker (pgmq.read):
     → 채널별 발송 (이메일, 인앱, Slack)
 ```
 
-## 6.2 워크플로우 상태 전이
+## 6.2 워크플로우 상태 전환
 
 ```
 사용자 → API: POST /api/v1/issues/PROJ-124/transitions

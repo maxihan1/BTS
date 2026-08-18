@@ -50,7 +50,7 @@ import java.util.UUID
  * - PUT    .../post-actions/{id} → 200 + 수정된 행
  * - DELETE .../post-actions/{id} → 204
  * - 권한 없음 → 403 (Guard 가 service 호출 전에 동작)
- * - 전이 미존재 → 404
+ * - 전환 미존재 → 404
  * - 검증 실패 → 400
  */
 @ExtendWith(SpringExtension::class)
@@ -287,11 +287,11 @@ class PostActionControllerTest {
         verify(exactly = 0) { service.listForTransition(any(), any()) }
     }
 
-    // ── 404 전이 미존재 ────────────────────────────────────────────────────────
+    // ── 404 전환 미존재 ────────────────────────────────────────────────────────
 
     @Test
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
-    fun `전이 미존재 - GET 404`() {
+    fun `전환 미존재 - GET 404`() {
         justRun {
             permissionResolver.requirePermission(
                 any(),
@@ -301,7 +301,7 @@ class PostActionControllerTest {
         }
         every {
             service.listForTransition(workflowKey, transitionKey)
-        } throws PostActionNotFoundException("전이 미존재")
+        } throws PostActionNotFoundException("전환 미존재")
 
         mockMvc.perform(get(basePath))
             .andExpect(status().isNotFound)

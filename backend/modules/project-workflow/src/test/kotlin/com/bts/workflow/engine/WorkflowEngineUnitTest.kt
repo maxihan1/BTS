@@ -179,7 +179,7 @@ class WorkflowEngineUnitTest {
     }
 
     // ---------------------------------------------------------------------- //
-    // 4. (from, to) 2튜플 매칭 — transitionName 과 무관하게 전이가 매칭된다    //
+    // 4. (from, to) 2튜플 매칭 — transitionName 과 무관하게 전환이 매칭된다    //
     // ---------------------------------------------------------------------- //
 
     /**
@@ -189,10 +189,10 @@ class WorkflowEngineUnitTest {
      * TransitionRequest 가 transitionName = "anything" (yaml name 과 무관한 값) 으로 호출됐을 때
      * 정확한 transition 매칭 + TransitionPlan 정상 반환을 보장한다.
      *
-     * 전이 identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
+     * 전환 identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
      */
     @Test
-    fun `transitionName 과 무관하게 (from, to) 2튜플로 전이가 매칭된다`() {
+    fun `transitionName 과 무관하게 (from, to) 2튜플로 전환이 매칭된다`() {
         val openState = WorkflowState("open", "열림", StateCategory.TODO, 0)
         val inProgressState2 = WorkflowState("in_progress", "진행 중", StateCategory.IN_PROGRESS, 1)
         val yamlTransition =
@@ -221,7 +221,7 @@ class WorkflowEngineUnitTest {
         every { definitionRepo.findPostActions("SEED", yamlTransition) } returns listOf(postActionCfg)
         every { postActionFactory.create("SET_FIELD", postActionCfg.config) } returns postAction
 
-        // (from, to) 2튜플 매칭 — transitionName 이 없어도 open→in_progress 전이가 매칭된다
+        // (from, to) 2튜플 매칭 — transitionName 이 없어도 open→in_progress 전환이 매칭된다
         val request =
             TransitionRequest(
                 workflowKey = "SEED",

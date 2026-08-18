@@ -257,7 +257,7 @@ describe('POST /api/v1/sprints/:id/start (stateful)', () => {
     const result = (await res.json()) as { data: { status: string } }
     expect(result.data.status).toBe('ACTIVE')
 
-    // GET 재조회 — store에서 읽어야 상태 전이가 반영됨
+    // GET 재조회 — store에서 읽어야 상태 전환이 반영됨
     const { data: after } = await getBacklog('ATLAS')
     const updated = after.sprints.find((s) => s.sprint.sprintId === sprintId)
     expect(updated?.sprint.status).toBe('ACTIVE')
@@ -468,7 +468,7 @@ describe('E2E 시나리오 토글', () => {
     const conflict = await fetch(`/api/v1/sprints/${sprintId}/start`, { method: 'POST' })
     expect(conflict.status).toBe(409)
 
-    // 토글이 꺼지면 정상 전이 — 실패 토글이 스프린트를 영구히 못 쓰게 만들면 안 된다
+    // 토글이 꺼지면 정상 전환 — 실패 토글이 스프린트를 영구히 못 쓰게 만들면 안 된다
     globalThis.localStorage?.removeItem(LS_KEY_SPRINT_START_FAIL)
     const ok = await fetch(`/api/v1/sprints/${sprintId}/start`, { method: 'POST' })
     expect(ok.status).toBe(200)

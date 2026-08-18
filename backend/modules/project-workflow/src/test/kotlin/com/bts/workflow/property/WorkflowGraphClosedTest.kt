@@ -28,7 +28,7 @@ class WorkflowGraphClosedTest : FunSpec({
 
     val standardWorkflows: List<Workflow> =
         listOf(
-            // 1. software-default (5 상태 + 6 전이)
+            // 1. software-default (5 상태 + 6 전환)
             Workflow.of(
                 key = "software-default",
                 name = "소프트웨어 개발 기본 워크플로우",
@@ -50,7 +50,7 @@ class WorkflowGraphClosedTest : FunSpec({
                         WorkflowTransition("open", "closed", "Cancel"),
                     ),
             ),
-            // 2. bug-tracking (5 상태 + 5 전이)
+            // 2. bug-tracking (5 상태 + 5 전환)
             Workflow.of(
                 key = "bug-tracking",
                 name = "버그 추적 워크플로우",
@@ -71,7 +71,7 @@ class WorkflowGraphClosedTest : FunSpec({
                         WorkflowTransition("resolved", "in_progress", "Reopen"),
                     ),
             ),
-            // 3. simple (3 상태 + 3 전이)
+            // 3. simple (3 상태 + 3 전환)
             Workflow.of(
                 key = "simple",
                 name = "단순 워크플로우 (TODO/DOING/DONE)",
@@ -88,7 +88,7 @@ class WorkflowGraphClosedTest : FunSpec({
                         WorkflowTransition("done", "doing", "Reopen"),
                     ),
             ),
-            // 4. kanban-basic (4 상태 + 3 전이)
+            // 4. kanban-basic (4 상태 + 3 전환)
             Workflow.of(
                 key = "kanban-basic",
                 name = "칸반 기본 워크플로우",

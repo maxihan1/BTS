@@ -15,7 +15,7 @@ FR-IS-03(이슈 담당자 — Reporter 1 / Assignee 1 / Watchers N)의 프론트
 - `IssueMetaPanel`에 담당자 섹션 추가 (기존 셀렉터 패턴 재사용 — Maxi 확정)
 - E2E: 담당자 할당 / 검색 / 해제 시나리오
 
-**선례 패턴**: PR #46 D6(우선순위/영향도/환경/라벨)·PR #41(전이 UI)이 같은 화면(IssueMetaPanel / issues.$key) 작업.
+**선례 패턴**: PR #46 D6(우선순위/영향도/환경/라벨)·PR #41(전환 UI)이 같은 화면(IssueMetaPanel / issues.$key) 작업.
 
 ## 도메인 정리
 

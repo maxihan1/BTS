@@ -1,4 +1,4 @@
-// 전이 런타임 통합 테스트 — GET /transitions → POST /transition → 재조회의 전체 흐름을 실제 Postgres로 검증
+// 전환 런타임 통합 테스트 — GET /transitions → POST /transition → 재조회의 전체 흐름을 실제 Postgres로 검증
 
 package com.bts.issue.integration
 
@@ -35,32 +35,32 @@ import java.sql.DriverManager
 import java.util.UUID
 
 /**
- * 이슈 전이 런타임 통합 테스트.
+ * 이슈 전환 런타임 통합 테스트.
  *
- * "전이가 런타임에 실제로 동작하는가?" 라는 질문을 mock 없이 검증한다.
+ * "전환이 런타임에 실제로 동작하는가?" 라는 질문을 mock 없이 검증한다.
  * 단위 테스트는 WorkflowTransitionPort 를 mock 해서 통과했지만,
  * 실제 Postgres + 실제 워크플로우 시드를 사용하는 갭을 이 테스트가 메운다.
  * (메모: issue-transition-backend-gap)
  *
  * ## 시나리오 (GET transitions → POST transition → 재조회)
  *
- * ### S1. 가용 전이 조회 후 첫 번째 전이 실행 → 이슈 상태 갱신 확인
+ * ### S1. 가용 전환 조회 후 첫 번째 전환 실행 → 이슈 상태 갱신 확인
  * Given   RUNTIME_IT 프로젝트에 이슈 1건 삽입 (currentStateKey = software-default 시작 상태 = "open")
  * When    GET /api/v1/issues/{key}/transitions 호출
  * Then    200 OK + transitions 배열 비어있지 않음 (시드된 워크플로우 기준)
  * When    transitions[0].toStateKey 로 POST /api/v1/issues/{key}/transition 실행
  * Then    200 OK + data.currentStateKey == transitions[0].toStateKey
  * When    GET /api/v1/issues/{key}/transitions 재호출
- * Then    200 OK + 새 상태 기준 전이 목록 반환 (이전 상태 기준과 다름)
+ * Then    200 OK + 새 상태 기준 전환 목록 반환 (이전 상태 기준과 다름)
  *
- * ### S2. 전이 후 재조회 시 currentStateKey 갱신 확인 (상태 영속성)
+ * ### S2. 전환 후 재조회 시 currentStateKey 갱신 확인 (상태 영속성)
  * Given   이슈 currentStateKey = "open"
- * When    open → in_progress 전이 실행
+ * When    open → in_progress 전환 실행
  * Then    GET /api/v1/issues/{key} 재조회 시 currentStateKey == "in_progress"
  *
  * ## 설계 원칙 — workflow-robust 단언
  * 하드코딩된 상태값 의존 최소화.
- * GET transitions 응답에서 첫 번째 가용 전이를 동적으로 선택해 실행한다.
+ * GET transitions 응답에서 첫 번째 가용 전환을 동적으로 선택해 실행한다.
  * 워크플로우 시드 변경에 견고하게 대응한다.
  *
  * ## 컨텍스트 공유
@@ -139,7 +139,7 @@ class IssueTransitionRuntimeIntegrationTest {
         SecurityContextHolder.clearContext()
     }
 
-    // ── S1. 가용 전이 조회 → 첫 번째 전이 실행 → 새 상태 기준 전이 갱신 ────────
+    // ── S1. 가용 전환 조회 → 첫 번째 전환 실행 → 새 상태 기준 전환 갱신 ────────
 
     /**
      * S1 — GET transitions → POST transition → GET transitions(재조회) 전체 흐름.
@@ -150,18 +150,18 @@ class IssueTransitionRuntimeIntegrationTest {
      * When    transitions[0].toStateKey 로 POST .../transition 실행
      * Then    200 OK + data.currentStateKey == transitions[0].toStateKey
      * When    GET /api/v1/issues/{key}/transitions 재호출
-     * Then    200 OK + 새 상태 기준 전이 배열 반환
+     * Then    200 OK + 새 상태 기준 전환 배열 반환
      *
      * ## workflow-robust 설계
-     * 전이 대상 상태를 하드코딩하지 않는다.
+     * 전환 대상 상태를 하드코딩하지 않는다.
      * 첫 번째 조회 결과의 transitions[0].toStateKey 를 동적으로 사용한다.
      * 이렇게 하면 software-default.yaml 시드가 변경돼도 단언이 깨지지 않는다.
      */
     @Test
-    fun `GET transitions 후 첫 번째 전이를 실행하면 상태가 갱신되고 가용 전이도 새 상태 기준으로 갱신된다`() {
-        val issueKey = insertIssue(PROJECT_KEY, "전이 흐름 통합 검증 이슈", "open")
+    fun `GET transitions 후 첫 번째 전환을 실행하면 상태가 갱신되고 가용 전환도 새 상태 기준으로 갱신된다`() {
+        val issueKey = insertIssue(PROJECT_KEY, "전환 흐름 통합 검증 이슈", "open")
 
-        // Step 1: 가용 전이 조회
+        // Step 1: 가용 전환 조회
         val transitionsResult =
             mockMvc.perform(
                 get("/api/v1/issues/$issueKey/transitions"),
@@ -174,12 +174,12 @@ class IssueTransitionRuntimeIntegrationTest {
         val root = mapper.readTree(responseBody)
         val transitionsNode = root.path("data").path("transitions")
 
-        // 시드된 워크플로우에서 open 상태 기준 전이가 1건 이상 있어야 한다
+        // 시드된 워크플로우에서 open 상태 기준 전환이 1건 이상 있어야 한다
         assert(transitionsNode.size() > 0) {
-            "open 상태에서 이동 가능한 전이가 없습니다. 워크플로우 시드를 확인하세요. response=$responseBody"
+            "open 상태에서 이동 가능한 전환이 없습니다. 워크플로우 시드를 확인하세요. response=$responseBody"
         }
 
-        // Step 2: transitions[0].toStateKey 로 전이 실행
+        // Step 2: transitions[0].toStateKey 로 전환 실행
         val targetStateKey = transitionsNode.get(0).path("toStateKey").asText()
         assert(targetStateKey.isNotBlank()) {
             "transitions[0].toStateKey 가 비어있습니다. response=$responseBody"
@@ -195,7 +195,7 @@ class IssueTransitionRuntimeIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.currentStateKey").value(targetStateKey))
 
-        // Step 3: 전이 후 가용 전이 재조회 — 새 상태 기준 전이 배열 반환
+        // Step 3: 전환 후 가용 전환 재조회 — 새 상태 기준 전환 배열 반환
         val reQueryResult =
             mockMvc.perform(
                 get("/api/v1/issues/$issueKey/transitions"),
@@ -208,37 +208,37 @@ class IssueTransitionRuntimeIntegrationTest {
         val reQueryRoot = mapper.readTree(reQueryBody)
         val reQueryTransitions = reQueryRoot.path("data").path("transitions")
 
-        // 전이 후 조회한 전이 목록은 targetStateKey 에서 출발하는 것들이어야 한다
-        // (open 에서 in_progress 로 전이 후, in_progress 에서 출발하는 전이 목록)
+        // 전환 후 조회한 전환 목록은 targetStateKey 에서 출발하는 것들이어야 한다
+        // (open 에서 in_progress 로 전환 후, in_progress 에서 출발하는 전환 목록)
         for (i in 0 until reQueryTransitions.size()) {
             val fromStateKey = reQueryTransitions.get(i).path("fromStateKey").asText()
             assert(fromStateKey == targetStateKey) {
-                "전이 후 transitions[$i].fromStateKey 가 '$targetStateKey' 여야 하지만 '$fromStateKey' 입니다. " +
+                "전환 후 transitions[$i].fromStateKey 가 '$targetStateKey' 여야 하지만 '$fromStateKey' 입니다. " +
                     "response=$reQueryBody"
             }
         }
     }
 
-    // ── S2. 전이 후 이슈 단건 재조회 시 currentStateKey 영속성 확인 ───────────
+    // ── S2. 전환 후 이슈 단건 재조회 시 currentStateKey 영속성 확인 ───────────
 
     /**
      * S2 — POST transition 실행 후 GET issue 단건 재조회 시 currentStateKey 가 DB에 영속됨을 확인한다.
      *
      * Given   RUNTIME_IT 프로젝트에 이슈 삽입 (currentStateKey = "open")
-     * When    open → in_progress 전이 실행 (POST .../transition)
+     * When    open → in_progress 전환 실행 (POST .../transition)
      * Then    200 OK + data.currentStateKey == "in_progress"
      * When    GET /api/v1/issues/{key} 단건 재조회
      * Then    200 OK + currentStateKey == "in_progress" (DB 영속 확인)
      *
      * ## 단언 근거
-     * software-default 워크플로우에 open → in_progress ("Start Work") 전이가 정의되어 있다.
+     * software-default 워크플로우에 open → in_progress ("Start Work") 전환이 정의되어 있다.
      * IssueControllerTransitionIntegrationTest.seedWorkflowsAndSchemes() 이 시드한 동일 워크플로우를 사용한다.
      */
     @Test
-    fun `전이 실행 후 이슈 단건 재조회 시 currentStateKey 가 영속된다`() {
+    fun `전환 실행 후 이슈 단건 재조회 시 currentStateKey 가 영속된다`() {
         val issueKey = insertIssue(PROJECT_KEY, "상태 영속성 검증 이슈", "open")
 
-        // open → in_progress 전이 실행 (software-default 에 정의된 전이)
+        // open → in_progress 전환 실행 (software-default 에 정의된 전환)
         val body = mapOf("toStatusKey" to "in_progress", "expectedVersion" to 1)
 
         mockMvc.perform(

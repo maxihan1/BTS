@@ -1,4 +1,4 @@
-// 워크플로우 전이별 post-action CRUD jOOQ 리포지토리
+// 워크플로우 전환별 post-action CRUD jOOQ 리포지토리
 
 package com.bts.workflow.postaction
 
@@ -15,7 +15,7 @@ import java.util.UUID
 /**
  * workflow_post_actions 테이블 CRUD 리포지토리.
  *
- * 전이(transition_id) 기준 post-action 행을 조회·삽입·수정·삭제한다.
+ * 전환(transition_id) 기준 post-action 행을 조회·삽입·수정·삭제한다.
  * config 는 JSONB 컬럼으로, [ObjectMapper] 로 직렬화/역직렬화한다.
  *
  * @param dsl jOOQ DSLContext. SQL 안전 바인딩(?-파라미터)에 사용.
@@ -30,9 +30,9 @@ class PostActionRepository(
     private val mapTypeRef = object : TypeReference<Map<String, Any?>>() {}
 
     /**
-     * 전이 ID 에 속한 post-action 목록을 display_order ASC 순으로 반환한다.
+     * 전환 ID 에 속한 post-action 목록을 display_order ASC 순으로 반환한다.
      *
-     * @param transitionId 조회할 전이의 UUID.
+     * @param transitionId 조회할 전환의 UUID.
      * @return [PostActionRow] 목록. 없으면 빈 리스트.
      */
     @Transactional(readOnly = true)
@@ -73,7 +73,7 @@ class PostActionRepository(
     /**
      * post-action 행을 삽입하고 삽입된 행을 반환한다.
      *
-     * @param transitionId 소속 전이 UUID.
+     * @param transitionId 소속 전환 UUID.
      * @param type post-action 타입 식별자 (예: "CALL_WEBHOOK").
      * @param config 타입별 설정 Map.
      * @param displayOrder UI 표시 순서.
@@ -181,7 +181,7 @@ class PostActionRepository(
  * workflow_post_actions 행 데이터 클래스.
  *
  * @property id 행 UUID PK.
- * @property transitionId 소속 전이 UUID FK.
+ * @property transitionId 소속 전환 UUID FK.
  * @property type post-action 타입 식별자.
  * @property config 타입별 설정 Map.
  * @property displayOrder UI 표시 순서.

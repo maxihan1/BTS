@@ -47,7 +47,7 @@ import javax.sql.DataSource
  *   네트워크 없이 검증 가능하게 한다(FR-SL-03 Task 12, [slackMethodsClient] 참고).
  * - [StubIssueCompletionOptionsPort] — cross-BC 결합 fail-closed 완료 옵션 조회 stub(FR-SL-05 PR1
  *   Task 9, issueKey 별 시드 가능, [issueCompletionOptionsPort] 참고).
- * - [StubIssueTransitionPort] — cross-BC 완료 전이 실행 stub(FR-SL-05 PR1 Task 9, 성공 결과/실패 예외
+ * - [StubIssueTransitionPort] — cross-BC 완료 전환 실행 stub(FR-SL-05 PR1 Task 9, 성공 결과/실패 예외
  *   시드 가능, [issueTransitionPort] 참고).
  * - [StubIssueMutationPort] — cross-BC 이슈 변경(담당자 배정/댓글 추가/필드 변경) 실행 stub(FR-SL-05 PR2
  *   Task 3, 메서드별 성공 결과/실패 예외 시드 가능, [issueMutationPort] 참고).
@@ -176,7 +176,7 @@ class SlackTestcontainersConfig {
     fun issueCompletionOptionsPort(): StubIssueCompletionOptionsPort = StubIssueCompletionOptionsPort()
 
     /**
-     * cross-BC 완료 전이 실행 포트 — settable [StubIssueTransitionPort] (FR-SL-05 PR1 Task 9).
+     * cross-BC 완료 전환 실행 포트 — settable [StubIssueTransitionPort] (FR-SL-05 PR1 Task 9).
      *
      * [com.bts.slack.interaction.SlackInteractionService] 생성자가 non-null
      * [com.bts.shared.board.IssueTransitionPort] 를 요구하므로, test-boot 컨텍스트 로드를 위해 등록한다

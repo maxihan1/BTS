@@ -8,7 +8,7 @@
 
 ## Brief
 
-FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론트 UI.
+FR-IS-01 (이슈 CRUD + 상태 전환 검증 + 알림)의 D6 단계 — 프론트 UI.
 
 - 대상. `IssueDetail.tsx` — 이슈 상세 화면. TanStack Query 캐싱 + 낙관적 업데이트.
 - 백엔드 D1~D5 완료. `GET/POST/PATCH/DELETE /api/v1/issues` (PR #17 비즈니스 로직 + PR #23 codereview cleanup — sealed Result port + PATCH partial RFC 7396 + PR #24 Flyway namespace 격리).
@@ -52,9 +52,9 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 ### 도메인/계약 기반 위험 (→ /bts-spec 결정 대상)
 
 1. **낙관적 업데이트 ↔ 백엔드 낙관락 충돌.** PATCH/transition은 `expectedVersion` 필수. 충돌 시 409 `VERSION_CONFLICT`. TanStack Query 낙관적 업데이트는 (a) 응답의 `version`을 항상 보관 (b) 변경 요청에 그 `version`을 `expectedVersion`으로 전송 (c) 409 시 낙관적 변경 롤백 + 최신 재조회 필요.
-2. **응답 래퍼 비대칭.** 단건/생성/수정/전이 = `{ data: IssueResponse }`, 목록 = `Page<IssueResponse>` (래퍼 없음). API 클라이언트/Zod 스키마가 두 형태 모두 처리해야 함.
+2. **응답 래퍼 비대칭.** 단건/생성/수정/전환 = `{ data: IssueResponse }`, 목록 = `Page<IssueResponse>` (래퍼 없음). API 클라이언트/Zod 스키마가 두 형태 모두 처리해야 함.
 3. **인증 미연동.** 컨트롤러 ActorId가 고정 `SYSTEM_ACTOR_UUID`. D6은 별도 인증 헤더 불요하나, 기존 `apps/web/src/api/client.ts`의 세션 처리와 정합 확인 필요.
-4. **필드명 주의.** 전이 요청 = `toStatusKey`(status), 응답 = `currentStateKey`(state). REST 계약 명칭 그대로 사용 (learnings #13 plan/spec drift 회피).
+4. **필드명 주의.** 전환 요청 = `toStatusKey`(status), 응답 = `currentStateKey`(state). REST 계약 명칭 그대로 사용 (learnings #13 plan/spec drift 회피).
 
 ## 스펙
 
@@ -63,7 +63,7 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 범위 (Maxi 결정).
 - **포함.** 목록(issues.tsx) + 생성 폼 + 상세(issues.$key.tsx) + 요약 인라인 수정(완전 낙관적) + 소프트 삭제.
 - **상태.** `currentStateKey` 읽기 전용 배지.
-- **제외.** 상태 전이(transition) — 백엔드 미연동(메모리 [[issue-transition-backend-gap]]). 후속 slice.
+- **제외.** 상태 전환(transition) — 백엔드 미연동(메모리 [[issue-transition-backend-gap]]). 후속 slice.
 
 핵심.
 - 디자인 시안 2 (사이드 메타패널, Jira풍). 목업 `apps/web/public/mockups/fr-is-01-d6-issuedetail-2.html`.
@@ -72,7 +72,7 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 
 ## Brainstorming Check
 
-✅ 통과 (1 iteration). 전이 백엔드 미연동 gap 발견 → Maxi 결정으로 전이 D6 제외 + 메모리 기록. projectKey 자유입력 / 목록 진입 동선은 기본값 적용.
+✅ 통과 (1 iteration). 전환 백엔드 미연동 gap 발견 → Maxi 결정으로 전환 D6 제외 + 메모리 기록. projectKey 자유입력 / 목록 진입 동선은 기본값 적용.
 
 ## Plan
 
@@ -209,7 +209,7 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 - ✅ 접근성(WCAG AA). role=alert 에러(T7), toast role=status(T2), 키보드 탐색·44px 터치(spec NFR). 디자인 시스템 DESIGN.md §8 준수.
 - ✅ 디자인 시스템. shadcn 기존 컴포넌트 + DESIGN.md 토큰. 임의 색/폰트 0. 시안 2 레이아웃.
 - ✅ 낙관적 피드백. T3 onMutate 선반영 + 409 VERSION_CONFLICT 토스트 + 재조회.
-- ⚠️ 주의 1. 시안 2 목업의 상태 select 드롭다운은 전이 제외로 **읽기전용 배지**로 구현. plan T7 + spec에 명시 — 일관 확인.
+- ⚠️ 주의 1. 시안 2 목업의 상태 select 드롭다운은 전환 제외로 **읽기전용 배지**로 구현. plan T7 + spec에 명시 — 일관 확인.
 - ⚠️ 주의 2. 긴 summary 말줄임 + 빈 목록 빈상태는 spec 엣지케이스에 있으나 task 본문엔 암묵 — T5/T7 구현 시 명시 반영 권장.
 - 🛑 BLOCKER. 없음.
 

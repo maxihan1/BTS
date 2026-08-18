@@ -354,7 +354,7 @@ class IssueRepository(
     }
 
     /**
-     * 이슈 상태를 전이하고 resolution_id 를 함께 업데이트한다 (낙관락).
+     * 이슈 상태를 전환하고 resolution_id 를 함께 업데이트한다 (낙관락).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
      * version 불일치(stale read) 시 영향 행 0 반환.
@@ -364,15 +364,15 @@ class IssueRepository(
      * 이 메서드 파라미터로 분해해서 전달한다.
      *
      * resolution_id 영속 정책 (B-4 근거).
-     * - DONE 전이 시 non-null resolutionId 를 그대로 SET 한다.
-     * - 비DONE 전이(resolutionId=null) 시 RESOLUTION_ID 를 NULL 로 clear 한다.
+     * - DONE 전환 시 non-null resolutionId 를 그대로 SET 한다.
+     * - 비DONE 전환(resolutionId=null) 시 RESOLUTION_ID 를 NULL 로 clear 한다.
      * - 워크플로우 validator 가 DONE 진입 시 resolution 필수 불변식을 강제하므로(B7)
      *   이 메서드가 null 을 허용하는 것은 patch-merge-domain-bypass 위배 아님.
      *
      * @param key 이슈 키.
-     * @param toState 전이할 목표 워크플로우 상태 키.
+     * @param toState 전환할 목표 워크플로우 상태 키.
      * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
-     * @param resolutionId DONE 전이 시 설정할 Resolution UUID. null 이면 DB NULL 로 clear.
+     * @param resolutionId DONE 전환 시 설정할 Resolution UUID. null 이면 DB NULL 로 clear.
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
     @Transactional
@@ -1894,7 +1894,7 @@ class IssueRepository(
      * @param newKey 이동 후 이슈 키.
      * @param targetProjectId 대상 프로젝트 UUID.
      * @param targetStateKey 대상 프로젝트 워크플로우 상태 키.
-     * @param resolvedResolutionId DONE 전이 시 유지할 resolution UUID.
+     * @param resolvedResolutionId DONE 전환 시 유지할 resolution UUID.
      *   null 이면 resolution_id 를 NULL 로 clear 한다 (비DONE 이동, C4).
      * @param filteredCustomFields 대상 프로젝트 정의 키만 남긴 최종 커스텀 필드 맵.
      * @param expectedVersion 낙관락 버전. DB version 과 일치해야 UPDATE 가 실행된다.

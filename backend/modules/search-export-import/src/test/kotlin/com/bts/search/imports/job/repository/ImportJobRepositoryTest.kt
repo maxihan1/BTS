@@ -87,7 +87,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
      * AWAITING_MAPPING TTL·만료·확정 레이스 시나리오를 구성하는 데 쓴다. 실 insert 의 expires_at
      * 영속은 별도 회귀 테스트(`insert 는 expires_at 을 영속한다 …`)가 실 경로로 검증한다.
      * [dryRun] 은 [ImportJobRepository.transitionToPending] 의 dry_run 확정 검증에서
-     * 시드 값과 다른 값으로 전이해 실제로 컬럼이 갱신됨(기본값이 아님)을 확인하는 데 쓴다.
+     * 시드 값과 다른 값으로 전환해 실제로 컬럼이 갱신됨(기본값이 아님)을 확인하는 데 쓴다.
      */
     private fun seedJob(
         status: ImportJobStatus,
@@ -445,7 +445,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
 
     @Test
     fun `transitionToPending 은 dryRun=true 전달 시 dry_run 컬럼을 true 로 확정한다`() {
-        // 시드는 dry_run=false — 전이 호출이 실제로 컬럼을 갱신함(단순 유지가 아님)을 확인한다.
+        // 시드는 dry_run=false — 전환 호출이 실제로 컬럼을 갱신함(단순 유지가 아님)을 확인한다.
         val id = seedJob(ImportJobStatus.AWAITING_MAPPING, Instant.now().plusSeconds(3_600), dryRun = false)
 
         assertThat(repo.transitionToPending(id, dryRun = true)).isTrue()
@@ -458,7 +458,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
 
     @Test
     fun `transitionToPending 은 dryRun=false 전달 시 dry_run 컬럼을 false 로 확정한다`() {
-        // 시드는 dry_run=true — 전이 호출이 실제로 false 로 덮어씀을 확인한다.
+        // 시드는 dry_run=true — 전환 호출이 실제로 false 로 덮어씀을 확인한다.
         val id = seedJob(ImportJobStatus.AWAITING_MAPPING, Instant.now().plusSeconds(3_600), dryRun = true)
 
         assertThat(repo.transitionToPending(id, dryRun = false)).isTrue()

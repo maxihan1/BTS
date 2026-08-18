@@ -18,7 +18,7 @@ import com.bts.workflow.domain.WorkflowTransition
  *   도메인 [Workflow.description] 이 null 인 경우 빈 문자열로 흡수한다.
  *   프론트엔드 Zod schema (required string) 와의 타입 일치를 보장한다.
  * @property states 이 워크플로우가 포함하는 상태 목록.
- * @property transitions 이 워크플로우가 허용하는 전이 목록.
+ * @property transitions 이 워크플로우가 허용하는 전환 목록.
  */
 data class WorkflowDto(
     val key: String,
@@ -46,10 +46,10 @@ data class WorkflowStateDto(
 /**
  * [WorkflowTransition] 의 REST 응답 DTO.
  *
- * @property key 전이 고유 식별 키. fromStateKey__toStateKey 합성. 향후 라우팅/API 호출용.
- * @property fromStateKey 전이 출발 상태의 키.
- * @property toStateKey 전이 도착 상태의 키.
- * @property name 전이 이름. 예: "시작", "완료", "재열기".
+ * @property key 전환 고유 식별 키. fromStateKey__toStateKey 합성. 향후 라우팅/API 호출용.
+ * @property fromStateKey 전환 출발 상태의 키.
+ * @property toStateKey 전환 도착 상태의 키.
+ * @property name 전환 이름. 예: "시작", "완료", "재열기".
  */
 data class WorkflowTransitionDto(
     val key: String,

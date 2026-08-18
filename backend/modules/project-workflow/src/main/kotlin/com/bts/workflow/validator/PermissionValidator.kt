@@ -1,4 +1,4 @@
-// 권한 Validator — PermissionResolver 호출 결과로 전이 가능 여부 판정
+// 권한 Validator — PermissionResolver 호출 결과로 전환 가능 여부 판정
 
 package com.bts.workflow.validator
 
@@ -23,10 +23,10 @@ enum class ValidatorScope {
 }
 
 /**
- * 권한 기반 전이 허용 여부를 판정하는 [WorkflowValidator] 구현체.
+ * 권한 기반 전환 허용 여부를 판정하는 [WorkflowValidator] 구현체.
  *
  * [PermissionResolver] 를 통해 액터(요청자)가 지정된 권한을 보유하는지 확인한다.
- * resolver 가 false 를 반환하거나 예외를 던지면 전이를 차단한다 — 보안 우선 원칙.
+ * resolver 가 false 를 반환하거나 예외를 던지면 전환을 차단한다 — 보안 우선 원칙.
  *
  * ## Scope 결정 규칙
  * - [ValidatorScope.ISSUE] (기본값). `Scope.Issue(ctx.request.issueKey)` 로 호출. 이슈별 정밀 권한.
@@ -51,13 +51,13 @@ class PermissionValidator(
     override val type: String = "permission-check"
 
     /**
-     * 전이 요청자가 [permission] 을 보유하는지 [resolver] 에 위임해 판정한다.
+     * 전환 요청자가 [permission] 을 보유하는지 [resolver] 에 위임해 판정한다.
      *
      * - resolver 가 true → [ValidatorResult.Pass]
      * - resolver 가 false → [ValidatorResult.Fail] (field = null, reason = "permission denied: {permission}")
      * - resolver 가 예외 → [ValidatorResult.Fail] (field = null, reason = "permission resolver error")
      *
-     * @param ctx 전이 컨텍스트. actorId 와 scope 키를 여기서 추출한다.
+     * @param ctx 전환 컨텍스트. actorId 와 scope 키를 여기서 추출한다.
      * @return [ValidatorResult.Pass] 또는 [ValidatorResult.Fail].
      *
      * ### Exception 포착 근거
@@ -81,7 +81,7 @@ class PermissionValidator(
                 ValidatorResult.Fail(field = null, reason = "permission denied: $permission")
             }
         } catch (ex: Exception) {
-            // resolver 예외는 보안 우선 원칙에 따라 전이를 차단한다.
+            // resolver 예외는 보안 우선 원칙에 따라 전환을 차단한다.
             ValidatorResult.Fail(field = null, reason = "permission resolver error: ${ex.message}")
         }
     }

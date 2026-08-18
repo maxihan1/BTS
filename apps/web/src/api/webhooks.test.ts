@@ -442,8 +442,8 @@ describe('labelForEvent', () => {
     expect(labelForEvent('issue.created')).toBe('이슈 생성')
   })
 
-  it('T-WH-L2: issue.transitioned를 "이슈 상태 전이"로 변환한다', () => {
-    expect(labelForEvent('issue.transitioned')).toBe('이슈 상태 전이')
+  it('T-WH-L2: issue.transitioned를 "이슈 상태 전환"로 변환한다', () => {
+    expect(labelForEvent('issue.transitioned')).toBe('이슈 상태 전환')
   })
 
   it('T-WH-L3: 미지 값은 원문을 그대로 반환한다', () => {

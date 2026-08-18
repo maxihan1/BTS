@@ -140,9 +140,9 @@ class VersionExceptionHandler {
     // ── 409 VERSION_TRANSITION_NOT_ALLOWED ───────────────────────────────────
 
     /**
-     * [VersionTransitionNotAllowedException] — 불허 전이 또는 ARCHIVED 읽기전용 위반 — 409.
+     * [VersionTransitionNotAllowedException] — 불허 전환 또는 ARCHIVED 읽기전용 위반 — 409.
      *
-     * @param ex 전이 거부 사유를 포함하는 예외.
+     * @param ex 전환 거부 사유를 포함하는 예외.
      */
     @ExceptionHandler(VersionTransitionNotAllowedException::class)
     fun handleTransitionNotAllowed(ex: VersionTransitionNotAllowedException): ProblemDetail {

@@ -72,7 +72,7 @@ describe('NotificationSubscriptionMatrix — S1 매트릭스 렌더', () => {
     await waitFor(() => {
       expect(screen.getByText('이슈 생성')).toBeInTheDocument()
       expect(screen.getByText('이슈 담당자 지정')).toBeInTheDocument()
-      expect(screen.getByText('이슈 상태 전이')).toBeInTheDocument()
+      expect(screen.getByText('이슈 상태 전환')).toBeInTheDocument()
     })
   })
 

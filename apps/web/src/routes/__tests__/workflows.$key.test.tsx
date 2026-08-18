@@ -120,7 +120,7 @@ describe('WorkflowDetailPage — 기존 read-only 다이어그램 (회귀 0)', (
 describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
   /**
    * T5-4. isSystemAdmin=true이면 워크플로우 로드 후 PostActionConfigSection이 렌더된다.
-   * 섹션 내부의 전이 선택 combobox로 존재 여부를 확인한다.
+   * 섹션 내부의 전환 선택 combobox로 존재 여부를 확인한다.
    */
   it('T5-4: admin이면 데이터 로드 후 PostActionConfigSection이 렌더된다', async () => {
     useAuthStore.setState({
@@ -143,7 +143,7 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
       expect(screen.getByText('소프트웨어 개발 기본 워크플로우')).toBeInTheDocument(),
     )
 
-    // PostActionConfigSection 내부의 전이 선택 combobox가 있어야 함
+    // PostActionConfigSection 내부의 전환 선택 combobox가 있어야 함
     expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 

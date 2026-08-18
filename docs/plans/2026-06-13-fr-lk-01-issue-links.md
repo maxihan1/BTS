@@ -108,7 +108,7 @@ FR-LK-01 — 이슈 간 링크. blocks / relates / duplicates / clones / parent-
 - files: [`M/link/repository/IssueLinkRepository.kt`, `T/link/repository/IssueLinkRepositoryTest.kt`]
 - depends-on: [1, 2]
 
-**RED**. `IssueLinkRepositoryTest`(Testcontainers, 실 repo + 이슈 시드 — 메모리 issue-tracking-transition-test-mocks-workflow-repo) — `insert`, `findBySourceId`, `findByTargetId`, `existsLink(src,tgt,type)`, `deleteById`(0행 시 false), `existsBlocksPath(fromId,toId)`(재귀 CTE — 전이 순환 탐색). FK CASCADE cleanup(메모리 join-table-fk-cascade).
+**RED**. `IssueLinkRepositoryTest`(Testcontainers, 실 repo + 이슈 시드 — 메모리 issue-tracking-transition-test-mocks-workflow-repo) — `insert`, `findBySourceId`, `findByTargetId`, `existsLink(src,tgt,type)`, `deleteById`(0행 시 false), `existsBlocksPath(fromId,toId)`(재귀 CTE — 전환 순환 탐색). FK CASCADE cleanup(메모리 join-table-fk-cascade).
 
 **GREEN**. jOOQ `IssueLinkRepository` — 생성 jOOQ 클래스 사용. `existsBlocksPath`는 `WITH RECURSIVE`로 blocks 그래프 도달성.
 

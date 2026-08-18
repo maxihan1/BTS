@@ -465,10 +465,10 @@ describe('VersionRow — 상태 뱃지', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VersionRow — 전이 버튼 (FR-VR-02 Task 5 RED)
+// VersionRow — 전환 버튼 (FR-VR-02 Task 5 RED)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('VersionRow — 전이 버튼', () => {
+describe('VersionRow — 전환 버튼', () => {
   it('UNRELEASED 상태에서 릴리스/보관 버튼이 노출된다', () => {
     const Wrapper = createWrapper()
     render(

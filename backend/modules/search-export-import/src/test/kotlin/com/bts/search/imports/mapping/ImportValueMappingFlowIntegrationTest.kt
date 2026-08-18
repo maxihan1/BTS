@@ -91,7 +91,7 @@ import java.util.concurrent.ConcurrentHashMap
  *   자동추천(`"In Progress"`/`"Task"`/`"High"`)이 채워진다. [ImportMappingService.confirm] 을
  *   `valueMappings`(상태→`"진행 중"`, 유형→`"작업"`, 우선순위→`"Highest"` — 자동추천과 다른 값으로
  *   사용자가 명시 override)으로 확정하면 [ImportValueMappingRepository] 에 세 매핑이 저장되고
- *   status=PENDING 으로 전이한다. [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED
+ *   status=PENDING 으로 전환한다. [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED
  *   로 전환되고, [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `typeName`=`"작업"`,
  *   `statusName`=`"진행 중"`, `priority`=1(canonical `"Highest"` 의 숫자 값)로 세팅된다.
  * - (b) 회귀. 값매핑 미제공(`confirm` 에 `valueMappings` 인자 생략, 기본값 빈 목록)으로 확정한 job 은

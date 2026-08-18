@@ -8,7 +8,7 @@ import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.spi.WorkflowPostAction
 
 /**
- * 전이(Transition) 완료 시 알림을 예약하는 PostAction 구현체.
+ * 전환(Transition) 완료 시 알림을 예약하는 PostAction 구현체.
  *
  * [evaluate] 는 [DomainEvent]("NotificationRequested") 1건을 [PostActionPlan.emitEvents] 에 담아 반환한다.
  * 실제 알림 발송(이메일·슬랙 등)은 이 이벤트를 구독하는 notification BC 가 수행한다.
@@ -36,14 +36,14 @@ class NotifyPostAction(
     override val type: String = "NOTIFY"
 
     /**
-     * 전이 컨텍스트를 받아 NotificationRequested 이벤트 1건을 계산한다.
+     * 전환 컨텍스트를 받아 NotificationRequested 이벤트 1건을 계산한다.
      *
      * payload 구성.
-     * - `issueKey`: 전이 대상 이슈 키 (예: "BTS-42")
+     * - `issueKey`: 전환 대상 이슈 키 (예: "BTS-42")
      * - `channel`: 알림 채널 (예: "slack")
      * - `recipients`: 수신 대상 (예: "team-dev")
      *
-     * @param ctx 전이 시점의 컨텍스트.
+     * @param ctx 전환 시점의 컨텍스트.
      * @return fieldChanges 빈 리스트 + emitEvents 1건([DomainEvent]("NotificationRequested")).
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {

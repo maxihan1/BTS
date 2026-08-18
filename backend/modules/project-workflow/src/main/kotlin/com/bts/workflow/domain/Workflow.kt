@@ -1,4 +1,4 @@
-// FSM 워크플로우 Aggregate Root — invariant 검증된 상태/전이 컬렉션
+// FSM 워크플로우 Aggregate Root — invariant 검증된 상태/전환 컬렉션
 
 package com.bts.workflow.domain
 
@@ -12,7 +12,7 @@ package com.bts.workflow.domain
  * @property name 사람이 읽을 수 있는 워크플로우 이름.
  * @property description 워크플로우 설명. 관리자용. null 허용 (DB nullable 컬럼과 일치).
  * @property states 이 워크플로우가 포함하는 상태 목록. 비어 있을 수 없으며 key 중복 불가.
- * @property transitions 이 워크플로우가 허용하는 전이 목록. from/to 키는 모두 [states] 집합에 포함돼야 한다.
+ * @property transitions 이 워크플로우가 허용하는 전환 목록. from/to 키는 모두 [states] 집합에 포함돼야 한다.
  */
 data class Workflow private constructor(
     val key: String,

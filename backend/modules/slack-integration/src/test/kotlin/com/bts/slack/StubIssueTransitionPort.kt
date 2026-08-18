@@ -7,9 +7,9 @@ import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
 
 /**
- * 통합 테스트가 완료 전이 결과를 명시 시드하는 [IssueTransitionPort] stub (FR-SL-05 PR1 Task 9).
+ * 통합 테스트가 완료 전환 결과를 명시 시드하는 [IssueTransitionPort] stub (FR-SL-05 PR1 Task 9).
  *
- * cross-BC 전이 실행 쓰기 포트는 prod 에서 issue-tracking `IssueTransitionAdapter`가 제공하나 slack
+ * cross-BC 전환 실행 쓰기 포트는 prod 에서 issue-tracking `IssueTransitionAdapter`가 제공하나 slack
  * test-boot 컨텍스트에는 실 구현이 없다. [com.bts.slack.interaction.SlackInteractionService] 생성자가
  * non-null [IssueTransitionPort]를 요구하므로, 이 stub 을 [SlackTestcontainersConfig] 가 `@Bean` 으로
  * 등록해 컨텍스트 로드를 복구한다([SlackContextLoadTest] 회귀 방지).

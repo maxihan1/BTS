@@ -1,4 +1,4 @@
-// 실 RequiredField validator end-to-end 통합 테스트 — resolution 누락 DONE 전이 → 409 검증
+// 실 RequiredField validator end-to-end 통합 테스트 — resolution 누락 DONE 전환 → 409 검증
 
 package com.bts.issue.integration
 
@@ -89,27 +89,27 @@ import java.util.concurrent.Executors
  *
  * 실 [DefaultWorkflowDefinitionRepository] + [DefaultWorkflowValidatorFactory] + [WorkflowEngine] 을 wire하고,
  * [YamlSeedService.seedAll] 로 production YAML 워크플로우(RequiredField(resolution) validator 포함)를 시드해
- * DONE 진입 전이에 validator 가 실제로 평가되는지 REST → application → engine 전체 경로로 검증한다.
+ * DONE 진입 전환에 validator 가 실제로 평가되는지 REST → application → engine 전체 경로로 검증한다.
  *
  * ## 시드 전략
  * [YamlSeedService.seedAll] 이 production YAML(software-default 등)을 그대로 시드한다.
- * software-default: in_review → done 전이에 RequiredField(resolution) validator 존재.
- * 이슈를 "in_review" 상태로 직접 삽입해 해당 전이를 직접 검증한다.
+ * software-default: in_review → done 전환에 RequiredField(resolution) validator 존재.
+ * 이슈를 "in_review" 상태로 직접 삽입해 해당 전환을 직접 검증한다.
  *
  * ## 검증 시나리오
  *
- * ### S1. resolution 누락 DONE 전이 → 409 TRANSITION_NOT_ALLOWED
+ * ### S1. resolution 누락 DONE 전환 → 409 TRANSITION_NOT_ALLOWED
  * Given  이슈 currentStateKey = "in_review"
  *        software-default 워크플로우 배정 (in_review → done 에 RequiredField(resolution))
  * When   POST /api/v1/issues/{key}/transition { toStatusKey: "done", expectedVersion: 1 } (resolutionId 미제공)
  * Then   409 Conflict + errorCode == "TRANSITION_NOT_ALLOWED"
  *
- * ### S2. resolution 제공 DONE 전이 → 200 성공 + resolution_id 영속
+ * ### S2. resolution 제공 DONE 전환 → 200 성공 + resolution_id 영속
  * Given  이슈 currentStateKey = "in_review"
  * When   POST /api/v1/issues/{key}/transition { toStatusKey: "done", expectedVersion: 1, resolutionId: FIXED_UUID }
  * Then   200 OK + DB issues.resolution_id == FIXED_UUID
  *
- * ### S3. 일괄 경로 — resolution 누락 DONE 전이 → application 레이어 IssueTransitionNotAllowedException
+ * ### S3. 일괄 경로 — resolution 누락 DONE 전환 → application 레이어 IssueTransitionNotAllowedException
  * Given  이슈 currentStateKey = "in_review"
  * When   service.transitionIssue(resolution=null, toStateKey="done") 직접 호출
  * Then   IssueTransitionNotAllowedException
@@ -315,7 +315,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
 
         /**
          * [YamlSeedService] — production YAML(software-default 등) 을 시드한다.
-         * RequiredField(resolution) validator 가 포함된 전이가 시드되어야 S1/S2/S3 검증이 가능하다.
+         * RequiredField(resolution) validator 가 포함된 전환이 시드되어야 S1/S2/S3 검증이 가능하다.
          */
         @Bean
         open fun yamlSeedService(
@@ -448,13 +448,13 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
         SecurityContextHolder.clearContext()
     }
 
-    // ── S1. resolution 누락 DONE 전이 → 409 TRANSITION_NOT_ALLOWED ──────────────
+    // ── S1. resolution 누락 DONE 전환 → 409 TRANSITION_NOT_ALLOWED ──────────────
 
     /**
-     * S1 — 실 RequiredField validator 가 resolution 누락 DONE 전이를 409 로 차단한다.
+     * S1 — 실 RequiredField validator 가 resolution 누락 DONE 전환을 409 로 차단한다.
      *
      * Given  이슈 currentStateKey = "in_review"
-     *        software-default 워크플로우에 in_review → done 전이 + RequiredField(resolution) validator 시드됨
+     *        software-default 워크플로우에 in_review → done 전환 + RequiredField(resolution) validator 시드됨
      * When   POST /api/v1/issues/{key}/transition { toStatusKey: "done", expectedVersion: 1 } (resolutionId 없음)
      * Then   409 Conflict + errorCode == "TRANSITION_NOT_ALLOWED"
      *
@@ -465,7 +465,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
      *   → TransitionResult.ValidatorFailure → IssueTransitionNotAllowedException → 409
      */
     @Test
-    fun `S1 — resolution 누락 DONE 전이는 실 RequiredField validator 에 의해 409 로 차단된다`() {
+    fun `S1 — resolution 누락 DONE 전환은 실 RequiredField validator 에 의해 409 로 차단된다`() {
         val issueKey = insertIssue(PROJECT_KEY, "validator E2E 검증 이슈 S1", "in_review")
 
         val body = mapOf("toStatusKey" to "done", "expectedVersion" to 1)
@@ -477,10 +477,10 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("TRANSITION_NOT_ALLOWED"))
 
-        log.info("S1 통과 — resolution 누락 DONE 전이 → 409 TRANSITION_NOT_ALLOWED 확인")
+        log.info("S1 통과 — resolution 누락 DONE 전환 → 409 TRANSITION_NOT_ALLOWED 확인")
     }
 
-    // ── S2. resolution 제공 DONE 전이 → 200 성공 + resolution_id 영속 ──────────────
+    // ── S2. resolution 제공 DONE 전환 → 200 성공 + resolution_id 영속 ──────────────
 
     /**
      * S2 — resolution 제공 시 실 validator 가 통과하고 resolution_id 가 영속된다.
@@ -490,7 +490,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
      * Then   200 OK + DB issues.resolution_id == FIXED_UUID
      */
     @Test
-    fun `S2 — resolution 제공 DONE 전이는 실 RequiredField validator 를 통과하고 resolution_id 가 영속된다`() {
+    fun `S2 — resolution 제공 DONE 전환은 실 RequiredField validator 를 통과하고 resolution_id 가 영속된다`() {
         val issueKey = insertIssue(PROJECT_KEY, "validator E2E 검증 이슈 S2", "in_review")
 
         val body =
@@ -510,10 +510,10 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
             "resolution_id 영속 실패: expected=$FIXED_RESOLUTION_ID, actual=$resolutionId"
         }
 
-        log.info("S2 통과 — resolution 제공 DONE 전이 200 + resolution_id={} 영속 확인", resolutionId)
+        log.info("S2 통과 — resolution 제공 DONE 전환 200 + resolution_id={} 영속 확인", resolutionId)
     }
 
-    // ── S3. 일괄 경로 — resolution 누락 DONE 전이 → IssueTransitionNotAllowedException ──
+    // ── S3. 일괄 경로 — resolution 누락 DONE 전환 → IssueTransitionNotAllowedException ──
 
     /**
      * S3 — 일괄 경로(application service 직접 호출)에서도 RequiredField validator 가 동일하게 거부한다.
@@ -525,12 +525,12 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
      *
      * 이 시나리오는 BulkTransitionResolutionTest 주석(103-104행)이 참조하는 validator end-to-end 검증이다.
      * 일괄 처리기(BulkItemExecutor)는 IssueApplicationService.transitionIssue 를 호출하므로
-     * 이 경로 차단이 곧 bulk DONE 전이 validator 차단을 의미한다.
+     * 이 경로 차단이 곧 bulk DONE 전환 validator 차단을 의미한다.
      *
      * @see com.bts.issue.bulk.application.BulkTransitionResolutionTest
      */
     @Test
-    fun `S3 — 일괄 경로에서도 resolution 누락 DONE 전이는 IssueTransitionNotAllowedException 으로 차단된다`() {
+    fun `S3 — 일괄 경로에서도 resolution 누락 DONE 전환은 IssueTransitionNotAllowedException 으로 차단된다`() {
         val issueKey = insertIssue(PROJECT_KEY, "validator E2E 검증 이슈 S3", "in_review")
 
         val service = webApplicationContext.getBean(IssueApplicationService::class.java)

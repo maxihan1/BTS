@@ -77,7 +77,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - (i) 임의 헤더 CSV(`Título`/`담당`/`비고`) 를 [ImportJobService.analyze] 로 접수하면
  *   status=AWAITING_MAPPING, sourceFields 에 세 헤더가 감지된다.
  * - (ii) [ImportMappingService.confirm] 으로 `Título→summary, 담당→assignee, 비고→IGNORE` 매핑을
- *   확정하면 status=PENDING 으로 전이하고 [ImportMappingRepository] 에 매핑이 저장된다.
+ *   확정하면 status=PENDING 으로 전환하고 [ImportMappingRepository] 에 매핑이 저장된다.
  * - (iii) [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED 로 전환되고,
  *   [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `summary` 가 매핑된 소스 셀 값
  *   (`"버그입니다"`)과 일치한다 — `비고`(IGNORE) 컬럼 값은 어떤 필드에도 반영되지 않는다.

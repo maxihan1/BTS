@@ -33,12 +33,12 @@
 `docs/plan/product/issue-tracking.md §2.1.1` 기준.
 
 - D1. 도메인 — Issue Aggregate Root, IssueKey VO (backend-engineer + Maxi)
-- D2. 명세 — Given/When/Then. 7 엣지 케이스 (중복 키 / 권한 / 전이 위반 / 대용량 / 동시 편집 / 소프트 삭제 / 키 보존) (backend-engineer)
+- D2. 명세 — Given/When/Then. 7 엣지 케이스 (중복 키 / 권한 / 전환 위반 / 대용량 / 동시 편집 / 소프트 삭제 / 키 보존) (backend-engineer)
 - D3. 데이터 모델 — Flyway. `issues`, `issue_key_redirects`. DATA.md 영속성 (db-engineer)
 - D4. 백엔드 — `POST/GET/PATCH/DELETE /api/v1/issues`. `@Transactional`. pgmq 이벤트 발행 동일 트랜잭션 (backend-engineer + security-engineer 가드)
 - D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합. TDD red→green→refactor (backend-engineer)
 - D6. 프론트 UI — `IssueDetail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트 (designer → frontend-engineer)
-- D7. E2E + NFR — 생성→조회→수정→상태 전이→소프트 삭제→키 영속성 (qa-engineer)
+- D7. E2E + NFR — 생성→조회→수정→상태 전환→소프트 삭제→키 영속성 (qa-engineer)
 
 ### 진입 조건 점검 (`§0` 대조)
 
@@ -46,7 +46,7 @@
 |---|---|---|
 | identity-access §2.1 AuthenticationProvider | ✅ 완료 (PR #2~#8) | 활용 |
 | identity-access §4.2 PERMISSION 가드 | ❌ 미완료 | 임시 가드 (`@PreAuthorize` 자리만 두고 본 가드는 FR-AU-12 후속) |
-| project-workflow §1 FSM + §2.1 FR-WF-01 | ✅ 백엔드 완료 (PR #10) | 상태 전이 호출에 활용 |
+| project-workflow §1 FSM + §2.1 FR-WF-01 | ✅ 백엔드 완료 (PR #10) | 상태 전환 호출에 활용 |
 | notification §1 STOMP / pgmq 트랜잭션 PoC | ⚠️ pgmq만 (PR #10 도입) / STOMP 미완 | pgmq 이벤트 발행만 본 PR. STOMP 구독은 후속 |
 | DATA.md §이슈키 영속성 / §A.3 #5 이슈 키 prefix | ⚠️ DATA.md OK / prefix는 본 PR ADR에서 결정 | ADR 신규 — `<date>-issue-key-prefix-strategy` |
 
@@ -139,13 +139,13 @@ IssueApplicationService.transition() — @Transactional
 
 - S1. 사용자가 `POST /api/v1/issues { projectKey: "ATLAS", summary: "..." }` 호출 → `key_sequence` 증가 + `ATLAS-1` 발급 + pgmq `IssueCreated` (같은 트랜잭션)
 - S2~S3. 단건 조회 / 부분 수정 (낙관락 version 검증) — 표준 REST
-- S4. 상태 전이 — `WorkflowTransitionPort.plan()` 호출 (Propagation.MANDATORY) → 반환된 TransitionPlan 을 issue-tracking 이 적용 + pgmq `IssueTransitioned`
+- S4. 상태 전환 — `WorkflowTransitionPort.plan()` 호출 (Propagation.MANDATORY) → 반환된 TransitionPlan 을 issue-tracking 이 적용 + pgmq `IssueTransitioned`
 - S5. 소프트 삭제 — `deleted_at=NOW()` + 키 영구 보존. 새 이슈는 `ATLAS-2` 발급 (`ATLAS-1` 재발급 절대 없음)
 - S6. 목록 조회 — Page<IssueResponse> + 페이지네이션 + 프로젝트 필터 + 정렬
 
 ### 7 엣지 케이스 (FR-IS-01 D2)
 
-EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDetail) / EC-3 전이 위반 (409) / EC-4 대용량 목록 (인덱스) / EC-5 동시 편집 (낙관락 409) / EC-6 소프트 삭제 조회 (404) / EC-7 키 영속성 (재발급 차단).
+EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDetail) / EC-3 전환 위반 (409) / EC-4 대용량 목록 (인덱스) / EC-5 동시 편집 (낙관락 409) / EC-6 소프트 삭제 조회 (404) / EC-7 키 영속성 (재발급 차단).
 
 ### 추가 결정 (spec §6.1, §7.1, §7.2)
 
@@ -532,7 +532,7 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 **메타**. agent: `backend-engineer` / files: `[backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueCrudIntegrationTest.kt]` / depends-on: `[26, 29]`
 
-**RED**. spec §6 의 EC-2~EC-7 각 1 시나리오 — 권한 / 전이 위반 / 대용량 (1000건 seed + 페이지 50건 p95 < 500ms) / 동시 편집 (낙관락 409) / 소프트 삭제 / 키 영속성 (5-cycle).
+**RED**. spec §6 의 EC-2~EC-7 각 1 시나리오 — 권한 / 전환 위반 / 대용량 (1000건 seed + 페이지 50건 p95 < 500ms) / 동시 편집 (낙관락 409) / 소프트 삭제 / 키 영속성 (5-cycle).
 
 **GREEN**. 통합 테스트 6 메서드. workflow Bean 은 stub (workflow 도 `AlwaysAllowPermissionResolver` 동작).
 
@@ -594,13 +594,13 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 **메타**. agent: `qa-engineer` / files: `[apps/web/e2e/issue-crud.spec.ts]` / depends-on: `[36]`
 
-**RED**. spec §1 의 S1~S6 시나리오. Local provider 로 로그인 → 이슈 생성 → 조회 → 수정 → 전이 → 소프트 삭제 → 목록 검증. PR #11 의 E2E S1/S2/S8 패턴 일관.
+**RED**. spec §1 의 S1~S6 시나리오. Local provider 로 로그인 → 이슈 생성 → 조회 → 수정 → 전환 → 소프트 삭제 → 목록 검증. PR #11 의 E2E S1/S2/S8 패턴 일관.
 
 **GREEN**. 6 E2E 시나리오 통과.
 
 **REFACTOR**. shared fixture `loggedInPage`.
 
-#### Task 38. k6 NFR 측정 (단건/목록/POST/전이/DELETE)
+#### Task 38. k6 NFR 측정 (단건/목록/POST/전환/DELETE)
 
 **메타**. agent: `qa-engineer` / files: `[backend/perf/k6/issue-crud-nfr.js, docs/perf/2026-05-22-issue-crud-nfr-result.md]` / depends-on: `[36]`
 

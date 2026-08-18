@@ -28,7 +28,7 @@ import org.testcontainers.utility.DockerImageName
  * OpenAPI annotation 통합 검증 (FR-API-01 Task 7).
  *
  * ## 검증 시나리오
- * - A1. 이슈 CRUD/목록/전이/changelog 엔드포인트에 summary 가 설정된다
+ * - A1. 이슈 CRUD/목록/전환/changelog 엔드포인트에 summary 가 설정된다
  * - A2. list 오퍼레이션 description 에 cursor 모드 · forward-only 가 명시된다 (CONCERN-4)
  * - A3. cursor envelope 응답 스키마(PageCursor) 가 components/schemas 에 등록된다
  * - A4. 이슈 엔드포인트에 bearerAuth security requirement 가 설정된다
@@ -89,7 +89,7 @@ class OpenApiAnnotationTest {
     }
 
     /**
-     * A1. 이슈 CRUD/목록/전이/changelog 엔드포인트에 summary 가 설정되어야 한다.
+     * A1. 이슈 CRUD/목록/전환/changelog 엔드포인트에 summary 가 설정되어야 한다.
      *
      * @Operation(summary=...) 없으면 springdoc 이 summary 를 빈 문자열로 생성 → RED.
      * annotation 부여 후 GREEN.

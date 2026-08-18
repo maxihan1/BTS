@@ -157,7 +157,7 @@ CREATE INDEX idx_export_jobs_expires ON export_jobs (expires_at) WHERE expires_a
 - [ ] `POST /search/export-jobs` → 202 + jobId, ExportJob PENDING 영속 + 큐 enqueue(단일 트랜잭션)
 - [ ] AQL 문법 오류 → 400 (job 미생성)
 - [ ] worker가 10만행 CSV/XLSX를 스트리밍 직렬화해 MinIO `bts-exports`에 저장 → COMPLETED
-- [ ] 폴링 `GET .../{jobId}`가 progress 증가 + downloadReady 전이 노출
+- [ ] 폴링 `GET .../{jobId}`가 progress 증가 + downloadReady 전환 노출
 - [ ] `GET .../{jobId}/download`가 본인 job COMPLETED만 스트리밍, 미완료 409
 - [ ] 총 10만 초과 → FAILED + SEARCH_EXPORT_LIMIT_EXCEEDED
 - [ ] 비소유 jobId 조회/다운로드 → 404 (존재 은닉)

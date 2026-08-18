@@ -64,9 +64,9 @@ describe('IssueBulkActionBar — count > 0', () => {
   })
 
   /**
-   * IBAB-4: "일괄 전이" 버튼이 렌더된다.
+   * IBAB-4: "일괄 전환" 버튼이 렌더된다.
    */
-  it('IBAB-4: "일괄 전이" 버튼이 렌더된다', () => {
+  it('IBAB-4: "일괄 전환" 버튼이 렌더된다', () => {
     render(
       <IssueBulkActionBar
         count={1}
@@ -76,7 +76,7 @@ describe('IssueBulkActionBar — count > 0', () => {
       />,
     )
     const toolbar = screen.getByRole('toolbar')
-    expect(within(toolbar).getByRole('button', { name: '일괄 전이' })).toBeInTheDocument()
+    expect(within(toolbar).getByRole('button', { name: '일괄 전환' })).toBeInTheDocument()
   })
 
   /**
@@ -137,9 +137,9 @@ describe('IssueBulkActionBar — 버튼 클릭 콜백', () => {
   })
 
   /**
-   * IBAB-8: "일괄 전이" 버튼 클릭 시 onTransition 콜백이 호출된다.
+   * IBAB-8: "일괄 전환" 버튼 클릭 시 onTransition 콜백이 호출된다.
    */
-  it('IBAB-8: "일괄 전이" 버튼 클릭 시 onTransition이 호출된다', async () => {
+  it('IBAB-8: "일괄 전환" 버튼 클릭 시 onTransition이 호출된다', async () => {
     const onTransition = vi.fn()
     render(
       <IssueBulkActionBar
@@ -151,7 +151,7 @@ describe('IssueBulkActionBar — 버튼 클릭 콜백', () => {
     )
     const user = userEvent.setup()
     const toolbar = screen.getByRole('toolbar')
-    await user.click(within(toolbar).getByRole('button', { name: '일괄 전이' }))
+    await user.click(within(toolbar).getByRole('button', { name: '일괄 전환' }))
     expect(onTransition).toHaveBeenCalledOnce()
   })
 

@@ -39,7 +39,7 @@ export function categoryToClass(category: StateCategory): string {
  * WorkflowView 데이터로부터 mermaid stateDiagram-v2 코드 문자열을 생성한다.
  *
  * 노드 ID = WorkflowStateView.key (영문만 사용 — EC-5: 한글/특수문자 key는 mermaid 직렬화 불안정).
- * 표시 라벨 = WorkflowStateView.name (한글 허용 — mermaid 전이 라벨은 따옴표 없이도 처리).
+ * 표시 라벨 = WorkflowStateView.name (한글 허용 — mermaid 전환 라벨은 따옴표 없이도 처리).
  * displayOrder 최솟값 state → 시작 [*], category === 'DONE' state → 종료 [*].
  *
  * @param workflow WorkflowView — states + transitions
@@ -61,8 +61,8 @@ export function generateMermaidCode(workflow: WorkflowView): string {
     lines.push(`  [*] --> ${initialState.key}`)
   }
 
-  // 전이 라인 — "from --> to : label"
-  // mermaid stateDiagram-v2 에서 라벨이 있는 전이: "from --> to : label"
+  // 전환 라인 — "from --> to : label"
+  // mermaid stateDiagram-v2 에서 라벨이 있는 전환: "from --> to : label"
   for (const transition of transitions) {
     lines.push(`  ${transition.fromStateKey} --> ${transition.toStateKey} : ${transition.name}`)
   }

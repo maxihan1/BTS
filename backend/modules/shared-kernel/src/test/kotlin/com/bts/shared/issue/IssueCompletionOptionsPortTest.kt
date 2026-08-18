@@ -79,7 +79,7 @@ class IssueCompletionOptionsPortTest {
 
     @Test
     fun `IssueCompletionOptions 는 doneTransitions resolutions 가 빈 목록일 수 있다`() {
-        // 이미 DONE 카테고리이거나 이동 가능한 전이·resolution 이 없는 경우.
+        // 이미 DONE 카테고리이거나 이동 가능한 전환·resolution 이 없는 경우.
         val options =
             IssueCompletionOptions(
                 version = 0L,

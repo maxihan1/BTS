@@ -89,7 +89,7 @@ private data class EdgeCandidate(
  * BFS 누적 상태 홀더.
  *
  * visited / nodes / queue / 엣지 후보 / truncated 를 한 객체로 묶어 확장 헬퍼의
- * 파라미터 수를 줄이고(detekt LongParameterList 회피), 상태 전이를 한 곳에 모은다.
+ * 파라미터 수를 줄이고(detekt LongParameterList 회피), 상태 전환을 한 곳에 모은다.
  *
  * @property maxDepth 요청된 최대 홉 거리. 노드의 depth 가 이보다 작을 때만 큐에 넣는다.
  * @property nodeCap 노드 수 상한. 초과 시 [truncated]=true.

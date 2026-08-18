@@ -274,7 +274,7 @@ export async function collectValues(
 }
 
 /**
- * POST /api/v1/imports/{jobId}/mapping — 필드/사용자/값 매핑을 확정하고 작업을 PENDING으로 전이한다.
+ * POST /api/v1/imports/{jobId}/mapping — 필드/사용자/값 매핑을 확정하고 작업을 PENDING으로 전환한다.
  *
  * 응답은 기존 `api/imports.ts`의 `importJobStatusSchema`를 재사용해 파싱한다 — 이후 상태 폴링은
  * 기존 `GET /api/v1/imports/{jobId}` 경로(`fetchImportJobStatus`)를 그대로 사용한다.

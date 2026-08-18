@@ -18,12 +18,12 @@
 **스코프 요지** (SDD 9.3.5 + product §3.3).
 - 알림 메시지(Slack DM)에 액션 버튼 포함. 예. `[상세보기] [완료로 표시] [코멘트 추가]`.
 - 사용자가 Slack에서 버튼 클릭 → Slack이 Interactivity Request URL로 `block_actions` payload POST.
-- 백엔드. 서명검증 → payload 파싱 → Slack 사용자 → BTS 사용자 해석 → 권한 가드 → 액션 수행(상태 전이/담당자 변경/댓글) → Slack 메시지 갱신(response_url / chat.update).
+- 백엔드. 서명검증 → payload 파싱 → Slack 사용자 → BTS 사용자 해석 → 권한 가드 → 액션 수행(상태 전환/담당자 변경/댓글) → Slack 메시지 갱신(response_url / chat.update).
 - 선행. FR-SL-04(§3.2). 인바운드 서명검증기·ack200+@Async 패턴 재사용.
 
 **D 단계 (product §3.3)**.
 - D1 도메인 — InteractiveAction (backend-engineer)
-- D2 명세 — 상태 전이, 담당자 변경 등 (backend-engineer)
+- D2 명세 — 상태 전환, 담당자 변경 등 (backend-engineer)
 - D3 데이터 모델 — (활용) (db-engineer)
 - D4 백엔드 — block_actions handler + 권한 가드 + 응답 갱신 (backend-engineer + security-engineer)
 - D5 백엔드 테스트 (backend-engineer)
@@ -36,7 +36,7 @@
 
 - **BC**. slack-integration (`com.bts.slack`). 이슈 변경은 shared-kernel cross-BC 쓰기 포트 위임(BC 격리 유지).
 - **영향 엔티티/자산**.
-  - 신규. `SlackInteractionPayload`(block_actions / view_submission 파싱 VO), `InteractiveAction`(도메인 개념 — 완료전이/담당자변경/댓글), `SlackInteractionsController`(`POST /slack/interactions`).
+  - 신규. `SlackInteractionPayload`(block_actions / view_submission 파싱 VO), `InteractiveAction`(도메인 개념 — 완료전환/담당자변경/댓글), `SlackInteractionsController`(`POST /slack/interactions`).
   - 재사용(전수 실재 검증 — phantom 0). `SlackSignatureVerifier`(서명검증), `SlackUserMappingRepository.findUserIdBySlackUserId`(역매핑 V702), `SlackResponseUrlClient`(response_url 아웃바운드), `SlackBlockKitRenderer`(버튼 렌더 확장), `IssueMutationPort.assign/addComment`(FR-AT-02), `IssueTransitionPort.transition`(FR-BD-01 보드).
   - 결정 대기. `SlackInteractionLog`(버튼 액션 감사 — domain 노트는 신규 엔티티 명시 / product D3는 "(활용)". 스펙에서 확정).
 - **액션↔포트 매핑** (신규 cross-BC 쓰기 포트 불필요).
@@ -47,7 +47,7 @@
 - **새 용어**. 인터랙티브 액션(Interactive Action — block_actions), 모달 제출(view_submission) — 스코프 확정 후 glossary 반영 검토.
 - **기존 결정 충돌**. 없음. FR-SL-03(Events)·FR-SL-04(Slash)가 인바운드 서명검증·ack200+@Async→response_url 기반 확립 → FR-SL-05 자연 확장. FR-AT-02 IssueMutationPort 재사용(2번째 소비자).
 - **관련 ADR**. 선행 [2026-07-11-fr-sl-04-slash-command.md](../decisions/2026-07-11-fr-sl-04-slash-command.md)(인바운드 패턴) · [2026-07-11-fr-sl-03-slack-unfurl.md](../decisions/2026-07-11-fr-sl-03-slack-unfurl.md)(서명검증·역매핑) · FR-AT-02(IssueMutationPort). 신규 ADR `2026-07-12-fr-sl-05-interactive.md`는 bts-spec에서 생성.
-- **grill-with-docs 축약 사유**. 도메인 언어/BC 경계가 SL-03/04로 이미 확립, 재사용 포트 전수 실재 검증 완료, 남은 것은 스코프/설계 결정(모달·감사·완료전이 버전) → bts-spec office-hours의 구체 선택지로 위임.
+- **grill-with-docs 축약 사유**. 도메인 언어/BC 경계가 SL-03/04로 이미 확립, 재사용 포트 전수 실재 검증 완료, 남은 것은 스코프/설계 결정(모달·감사·완료전환 버전) → bts-spec office-hours의 구체 선택지로 위임.
 
 ## 스펙
 
@@ -61,7 +61,7 @@
 - 담당자 변경 → Slack `users_select`(후보 포트 우회) → 역매핑 → `IssueMutationPort.assign`.
 - 코멘트 추가 → views.open(모달) → 제출 → `IssueMutationPort.addComment`.
 
-신규. `POST /slack/interactions` 컨트롤러·payload 파서(2종)·모달 빌더(2)·`SlackMessageClient` views.open/chat.update 확장·`SlackBlockKitRenderer` actions 블록·**V703 slack_interaction_log**·**신규 읽기 포트 `IssueCompletionOptionsPort`**(version+done전이+resolution) + issue-tracking 어댑터.
+신규. `POST /slack/interactions` 컨트롤러·payload 파서(2종)·모달 빌더(2)·`SlackMessageClient` views.open/chat.update 확장·`SlackBlockKitRenderer` actions 블록·**V703 slack_interaction_log**·**신규 읽기 포트 `IssueCompletionOptionsPort`**(version+done전환+resolution) + issue-tracking 어댑터.
 
 ## Brainstorming Check
 
@@ -69,7 +69,7 @@
 - trigger_id 3초 만료 → 모달 오픈은 동기 views.open, 그 외는 ack200+@Async (SL-04와 다른 핵심 제약).
 - 모달 제출 지연 시 OCC 충돌 → private_metadata에 expectedVersion 박제 + 충돌 시 ephemeral 재시도(form-occ-409 선례).
 - 담당자 후보: `ProjectMembershipPort`는 방향 반대 → Slack 네이티브 `users_select`로 후보 포트 회피.
-- resolution 목록 포트 부재 → 신규 `IssueCompletionOptionsPort`(version+done전이+resolution 결합 읽기, fail-closed).
+- resolution 목록 포트 부재 → 신규 `IssueCompletionOptionsPort`(version+done전환+resolution 결합 읽기, fail-closed).
 - 상세보기 url 버튼 payload는 no-op 200(dispatch 경고 방지).
 
 ## Plan (v2 — 리뷰 BLOCKER 반영)
@@ -87,7 +87,7 @@
 
 **RED**. `IssueCompletionOptionsPortTest` — VO(`IssueCompletionOptions{version:Long, doneTransitions:List<DoneTransition(toStateKey,label)>, resolutions:List<ResolutionOption(id:UUID,label)>}`) 구성 + fail-closed 계약(default 없음, nullable) 문서화. `SharedKernelBoundaryArchTest`가 신규 타입 원시/shared VO만 사용하는지 검증.
 **GREEN**. `interface IssueCompletionOptionsPort { fun getCompletionOptions(issueKey: String, viewerUserId: UUID): IssueCompletionOptions? }` + VO. IssueUnfurlPort 동형 fail-closed KDoc.
-**REFACTOR**. 결합 조회 근거 KDoc(완료 모달 1회 조회로 version+전이+resolution — 나누면 소비 BC가 게이트 스킵 위험).
+**REFACTOR**. 결합 조회 근거 KDoc(완료 모달 1회 조회로 version+전환+resolution — 나누면 소비 BC가 게이트 스킵 위험).
 **검증**. `./gradlew :modules:shared-kernel:test :modules:shared-kernel:detektMain`
 
 ### Task 2. transition 실패분류 타입 예외 (shared-kernel) + IssueTransitionAdapter 번역 (리뷰 BLOCKER-1)
@@ -109,8 +109,8 @@
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issuetracking/crossbc/IssueCompletionOptionsAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issuetracking/crossbc/IssueCompletionOptionsAdapterTest.kt`]
 - depends-on: [1]
 
-**RED**. Testcontainers — 이슈 시드 후 `getCompletionOptions(key, viewer)`가 version + DONE 카테고리 전이 후보 + resolution 목록 반환. viewer 미가시 → null. BROWSE/visibility 게이트 상속([[crossbc-issue-read-needs-browse-gate]]).
-**GREEN**. 이슈 조회·워크플로우 카탈로그·resolution 조회 위임. version=OCC 버전, doneTransitions=현 상태에서 가능한 DONE 전이, resolutions=워크플로우/프로젝트 resolution.
+**RED**. Testcontainers — 이슈 시드 후 `getCompletionOptions(key, viewer)`가 version + DONE 카테고리 전환 후보 + resolution 목록 반환. viewer 미가시 → null. BROWSE/visibility 게이트 상속([[crossbc-issue-read-needs-browse-gate]]).
+**GREEN**. 이슈 조회·워크플로우 카탈로그·resolution 조회 위임. version=OCC 버전, doneTransitions=현 상태에서 가능한 DONE 전환, resolutions=워크플로우/프로젝트 resolution.
 **REFACTOR**. visibility 슬롯 capture(vacuous 회피). resolution 불요 워크플로우 → 빈 목록(E6).
 **검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueCompletionOptionsAdapterTest*'`
 
@@ -158,9 +158,9 @@
 - files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/message/SlackBlockKitRenderer.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackModalBuilder.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/worker/SlackDeliveryWorker.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/message/SlackBlockKitRendererInteractiveTest.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/interaction/SlackModalBuilderTest.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/worker/SlackDeliveryWorkerActionsTest.kt`]
 - depends-on: [1]
 
-**RED**. (a) 전용 렌더 메서드 `renderAssignmentActionsMessage(title, issueKey)` — 상세보기(url) + 완료(action_id=atlas_complete, value=issueKey) 버튼. (b) **SlackDeliveryWorker가 `eventType==ISSUE_ASSIGNED`일 때만** 전용 메서드 호출(그 외는 기존 `render()` — 멘션/댓글 DM에 버튼 오배치 차단, 리뷰 CONCERN). 기존 `render()`·`SlackBlockKitRendererTest` 회귀 0. (c) 모달 빌더가 `IssueCompletionOptions`로 resolution 모달 JSON(callback_id=atlas_complete_modal, resolution static_select, done 전이 static_select[다중 시], private_metadata=issueKey·expectedVersion·channel·ts). resolution 빈 → 섹션 생략(E6).
+**RED**. (a) 전용 렌더 메서드 `renderAssignmentActionsMessage(title, issueKey)` — 상세보기(url) + 완료(action_id=atlas_complete, value=issueKey) 버튼. (b) **SlackDeliveryWorker가 `eventType==ISSUE_ASSIGNED`일 때만** 전용 메서드 호출(그 외는 기존 `render()` — 멘션/댓글 DM에 버튼 오배치 차단, 리뷰 CONCERN). 기존 `render()`·`SlackBlockKitRendererTest` 회귀 0. (c) 모달 빌더가 `IssueCompletionOptions`로 resolution 모달 JSON(callback_id=atlas_complete_modal, resolution static_select, done 전환 static_select[다중 시], private_metadata=issueKey·expectedVersion·channel·ts). resolution 빈 → 섹션 생략(E6).
 **GREEN**. Block Kit JSON. 상세보기 url = 설정 baseUrl + issueKey.
-**REFACTOR**. action_id/callback_id 상수화. 단일 done 전이면 셀렉트 생략(toStateKey는 여전히 state_values 경로 통일).
+**REFACTOR**. action_id/callback_id 상수화. 단일 done 전환이면 셀렉트 생략(toStateKey는 여전히 state_values 경로 통일).
 **검증**. `./gradlew :modules:slack-integration:test --tests '*RendererInteractiveTest*' --tests '*SlackModalBuilderTest*' --tests '*SlackDeliveryWorkerActionsTest*'`
 
 ### Task 8. SlackInteractionService — 오케스트레이션 (완료 동기 flow·타입예외 분류·V703)
@@ -234,7 +234,7 @@
 - **[BLOCKER]** 완료(transition) 실패분류 불가 — IssueTransitionPort generic RuntimeException, slack이 issue-tracking 도메인 예외 import 불가(BC 격리), transition용 shared-kernel 타입 예외 부재 → N3 감사·S5/S6 구분 구현 불가. **→ 반영. T2 신설**(IssueTransitionPermissionDeniedException/IssueOptimisticLockException + 어댑터 번역).
 - [CONCERN] getCompletionOptions==null 경로 미테스트·미감사·NPE 위험. **→ 반영. T8 RED에 null 케이스(S5b) + V703 + null 가드.**
 - [CONCERN] `/slack/interactions` 본문 크기 상한(pre-HMAC DoS 가드) 누락 — SL-04 SlackCommandsController에서 후퇴. **→ 반영. T10 크기상한 413.**
-- [CONCERN] 다중 done 전이 시 toStateKey 박제 vs state_values 불일치. **→ 반영. F4/F5·T5/T7: private_metadata에서 toStateKey 제외, state_values로.**
+- [CONCERN] 다중 done 전환 시 toStateKey 박제 vs state_values 불일치. **→ 반영. F4/F5·T5/T7: private_metadata에서 toStateKey 제외, state_values로.**
 - [NIT] best-effort V703이 PERMISSION_DENIED 증거 못 남길 수 있음. **→ 반영. T4 REFACTOR WARN 별도 흔적.**
 - 긍정 확인. actor 위조 차단·서명검증 위치·신규 포트 fail-closed·permitAll 스코프·봇토큰/private_metadata 비밀 무 — 이상 없음.
 

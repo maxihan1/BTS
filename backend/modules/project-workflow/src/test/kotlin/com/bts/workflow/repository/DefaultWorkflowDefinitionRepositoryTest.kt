@@ -274,7 +274,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
         val result =
             repository.findValidators(
                 "alpha-workflow",
-                WorkflowTransition("open", "nonexistent", "없는 전이"),
+                WorkflowTransition("open", "nonexistent", "없는 전환"),
             )
 
         assertThat(result).isEmpty()
@@ -299,7 +299,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
     }
 
     @Test
-    fun `findPostActions - post_action 없는 workflow 전이는 빈 리스트 반환`() {
+    fun `findPostActions - post_action 없는 workflow 전환은 빈 리스트 반환`() {
         val result = repository.findPostActions("beta-workflow", betaTransition)
 
         assertThat(result).isEmpty()

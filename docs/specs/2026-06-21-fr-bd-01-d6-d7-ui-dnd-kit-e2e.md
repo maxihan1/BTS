@@ -22,14 +22,14 @@
    default 워크플로우 상태가 컬럼으로 시드된 빈 보드가 표시된다.
 3. **다중 보드 선택** — Given 프로젝트에 보드가 2개 이상일 때, When 보드 페이지로 진입하면,
    Then 보드 선택 드롭다운으로 보드를 전환할 수 있다(기본 = 첫 번째).
-4. **카드 이동(일반 전이)** — Given 카드가 TODO 컬럼에 있을 때, When 카드를 IN_PROGRESS 컬럼으로
+4. **카드 이동(일반 전환)** — Given 카드가 TODO 컬럼에 있을 때, When 카드를 IN_PROGRESS 컬럼으로
    드래그앤드롭하면, Then 낙관적으로 카드가 즉시 이동하고, `POST .../move`(toColumnId,
    expectedVersion=카드.version)가 성공하면 카드 version이 갱신된다.
 5. **카드 이동(DONE — resolution 필요)** — Given 카드를 DONE 카테고리 컬럼으로 드롭할 때,
    When 드롭하면, Then resolution(해결 방안) 선택 모달이 열리고, resolution을 선택해 확인해야
    이동이 전송된다(미선택 시 확인 버튼 비활성). 취소하면 카드는 원위치한다.
-6. **전이 불가/충돌(409)** — Given 워크플로우가 해당 전이를 허용하지 않거나 다른 사용자가 먼저
-   전이했을 때, When 이동하면, Then 409로 거부되어 카드가 원위치하고 "다른 변경과 충돌이
+6. **전환 불가/충돌(409)** — Given 워크플로우가 해당 전환을 허용하지 않거나 다른 사용자가 먼저
+   전환했을 때, When 이동하면, Then 409로 거부되어 카드가 원위치하고 "다른 변경과 충돌이
    발생했습니다" 토스트 + 보드를 새로고침(refetch)한다.
 7. **권한 없는 진입(403)** — Given BROWSE 권한이 없는 사용자가, When 보드 페이지로 진입하면,
    Then "접근 권한이 없습니다" 안내 화면을 표시한다.
@@ -118,13 +118,13 @@ POST /api/v1/boards/{id}/cards/{issueKey}/move
   body { toColumnId:UUID, expectedVersion:long(>=0), resolutionId?:UUID }
   200 { data: { issueKey:string, currentStateKey:string, version:long, columnId:UUID } }
   400 검증 · 401 · 403 · 404(보드/컬럼/이슈)
-  409 AGILE_CONFLICT      ← 전이 불가 + 버전 충돌 (★구분 불가, 둘 다 동일 코드)
+  409 AGILE_CONFLICT      ← 전환 불가 + 버전 충돌 (★구분 불가, 둘 다 동일 코드)
   422 AGILE_UNPROCESSABLE ← 워크플로우 미설정 + resolution 필요 (★구분 불가, 둘 다 동일 코드)
 ```
 
 ### ★ 에러 코드 입자도 한계 (설계 반영)
 
-백엔드 BoardExceptionHandler가 **HTTP 상태별 일반 errorCode**로 평탄화한다(전이 불가/버전 충돌이
+백엔드 BoardExceptionHandler가 **HTTP 상태별 일반 errorCode**로 평탄화한다(전환 불가/버전 충돌이
 모두 409 `AGILE_CONFLICT`, 워크플로우 미설정/resolution 필요가 모두 422 `AGILE_UNPROCESSABLE`).
 → 프론트는 **422를 사후 트리거로 쓰지 않는다.** 대신 보드 응답의 컬럼 `category === 'DONE'`을
 **사전 감지**해 resolution 모달을 먼저 띄운다(IssueMetaPanel/BulkTransitionDialog 정석과 동일).

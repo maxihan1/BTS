@@ -95,7 +95,7 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         assertThat(count).isEqualTo(1L)
     }
 
-    // ── markSent 상태 전이 테스트 ─────────────────────────────────────────────────
+    // ── markSent 상태 전환 테스트 ─────────────────────────────────────────────────
 
     @Test
     fun `markSent는 PENDING 행을 SENT로 갱신한다`() {
@@ -436,7 +436,7 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
             buildNotification(recipientUserId = alice, title = "ATLAS-12 할당됨", issueKey = "ATLAS-12"),
         )
         repo.insertIfAbsent(
-            buildNotification(recipientUserId = alice, title = "ATLAS-12 전이", issueKey = "ATLAS-99"),
+            buildNotification(recipientUserId = alice, title = "ATLAS-12 전환", issueKey = "ATLAS-99"),
         )
         repo.insertIfAbsent(
             buildNotification(recipientUserId = alice, title = "다른 제목", issueKey = "ATLAS-12"),

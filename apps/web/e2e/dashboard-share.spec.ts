@@ -160,9 +160,9 @@ test.describe('FR-DB-03 대시보드 공유 (링크 발급/복사/임베드/익�
     // ⚠️ 실측 함정 — "복사됨" 라벨은 2초 뒤 자동으로 "복사"로 원복된다(CopyButton setTimeout).
     //   expect(locator).toHaveText()의 web-first assertion 폴링이 이 페이지의 방대한 MSW 콘솔
     //   그룹 로깅으로 인한 CDP 라운드트립 지연 때문에 이 2초 창을 단 한 번도 맞추지 못하고
-    //   타임아웃되는 현상을 실측했다(MutationObserver로는 상태 전이가 클릭 후 약 20~30ms에 정상
+    //   타임아웃되는 현상을 실측했다(MutationObserver로는 상태 전환이 클릭 후 약 20~30ms에 정상
     //   발생함을 확인 — 컴포넌트 자체는 정상. page.waitForFunction 네이티브 폴링은 즉시 통과).
-    //   따라서 이 전이 확인만 waitForFunction으로 수행한다(sleep 아님 — 조건 만족까지 폴링).
+    //   따라서 이 전환 확인만 waitForFunction으로 수행한다(sleep 아님 — 조건 만족까지 폴링).
     const urlCopyButton = modal.getByRole('button', { name: dashboardLabels.share.copy, exact: true }).first()
     const urlCopyButtonHandle = await urlCopyButton.elementHandle()
     await urlCopyButton.click()

@@ -1,4 +1,4 @@
-// DONE 카테고리 진입 전이에 RequiredField(resolution) validator 시드 검증 — FR-IS-07 Task B7
+// DONE 카테고리 진입 전환에 RequiredField(resolution) validator 시드 검증 — FR-IS-07 Task B7
 
 package com.bts.workflow.seed
 
@@ -40,28 +40,28 @@ import java.sql.DriverManager
 import java.util.concurrent.Executors
 
 /**
- * DONE 카테고리 진입 전이에 RequiredField(resolution) validator 가 시드되는지 검증한다.
+ * DONE 카테고리 진입 전환에 RequiredField(resolution) validator 가 시드되는지 검증한다.
  *
  * Testcontainers PostgreSQL + Flyway + YamlSeedService (production 구현체) 전체 스택.
  * Spring ApplicationContext 없이 의존 객체를 직접 조합한다.
  *
  * ## 검증 범위 (FR-IS-07 Task B7 명세)
  *
- * ### S1. 표준 4 워크플로우 DONE 진입 전이마다 RequiredField(resolution) validator DB 존재
+ * ### S1. 표준 4 워크플로우 DONE 진입 전환마다 RequiredField(resolution) validator DB 존재
  * - software-default: in_review→done, done→closed, open→closed
  * - bug-tracking: in_progress→resolved, resolved→closed
  * - simple: doing→done
  * - kanban-basic: in_progress→done
  *
- * ### S2. plan() — resolution 없이 DONE 전이 시 WorkflowValidatorFailureException
+ * ### S2. plan() — resolution 없이 DONE 전환 시 WorkflowValidatorFailureException
  * Given  software-default 워크플로우, issueFields 에 resolution 없음
  * When   in_review→done plan() 호출
  * Then   WorkflowValidatorFailureException, field == "resolution"
  *
- * ### S3. availableTransitions — EXECUTION 페이즈 validator 가 있어도 DONE 전이가 목록에 포함된다 (A3)
+ * ### S3. availableTransitions — EXECUTION 페이즈 validator 가 있어도 DONE 전환이 목록에 포함된다 (A3)
  * Given  software-default 워크플로우, from = "in_review"
  * When   availableTransitions 호출
- * Then   결과에 toStateKey == "done" 전이 포함
+ * Then   결과에 toStateKey == "done" 전환 포함
  *
  * ## TDD 근거
  * B7 RED — production YAML 에 validators 미추가 상태에서 S1 을 실행하면 RequiredField 가 0건이어서 실패한다.
@@ -171,10 +171,10 @@ class DoneResolutionValidatorSeedTest {
         }
     }
 
-    // ── S1. DONE 진입 전이마다 RequiredField(resolution) validator 존재 ──────────────
+    // ── S1. DONE 진입 전환마다 RequiredField(resolution) validator 존재 ──────────────
 
     /**
-     * software-default: in_review→done 전이에 RequiredField(resolution) validator 가 존재한다.
+     * software-default: in_review→done 전환에 RequiredField(resolution) validator 가 존재한다.
      *
      * Given  software-default 워크플로우 시드 완료
      * When   findValidators("software-default", in_review→done) 조회
@@ -182,13 +182,13 @@ class DoneResolutionValidatorSeedTest {
      */
     @Test
     @Order(1)
-    fun `software-default in_review→done 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `software-default in_review→done 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "in_review", toStateKey = "done", name = "Approve")
         val validators = definitionRepo.findValidators("software-default", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("in_review→done 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("in_review→done 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
@@ -196,17 +196,17 @@ class DoneResolutionValidatorSeedTest {
     }
 
     /**
-     * software-default: done→closed 전이에 RequiredField(resolution) validator 가 존재한다.
+     * software-default: done→closed 전환에 RequiredField(resolution) validator 가 존재한다.
      */
     @Test
     @Order(2)
-    fun `software-default done→closed 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `software-default done→closed 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "done", toStateKey = "closed", name = "Close")
         val validators = definitionRepo.findValidators("software-default", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("done→closed 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("done→closed 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
@@ -214,17 +214,17 @@ class DoneResolutionValidatorSeedTest {
     }
 
     /**
-     * software-default: open→closed 전이에 RequiredField(resolution) validator 가 존재한다.
+     * software-default: open→closed 전환에 RequiredField(resolution) validator 가 존재한다.
      */
     @Test
     @Order(3)
-    fun `software-default open→closed 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `software-default open→closed 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "closed", name = "Cancel")
         val validators = definitionRepo.findValidators("software-default", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("open→closed 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("open→closed 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
@@ -232,17 +232,17 @@ class DoneResolutionValidatorSeedTest {
     }
 
     /**
-     * bug-tracking: in_progress→resolved 전이에 RequiredField(resolution) validator 가 존재한다.
+     * bug-tracking: in_progress→resolved 전환에 RequiredField(resolution) validator 가 존재한다.
      */
     @Test
     @Order(4)
-    fun `bug-tracking in_progress→resolved 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `bug-tracking in_progress→resolved 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "in_progress", toStateKey = "resolved", name = "Resolve")
         val validators = definitionRepo.findValidators("bug-tracking", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("bug-tracking in_progress→resolved 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("bug-tracking in_progress→resolved 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
@@ -250,17 +250,17 @@ class DoneResolutionValidatorSeedTest {
     }
 
     /**
-     * bug-tracking: resolved→closed 전이에 RequiredField(resolution) validator 가 존재한다.
+     * bug-tracking: resolved→closed 전환에 RequiredField(resolution) validator 가 존재한다.
      */
     @Test
     @Order(5)
-    fun `bug-tracking resolved→closed 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `bug-tracking resolved→closed 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "resolved", toStateKey = "closed", name = "Close")
         val validators = definitionRepo.findValidators("bug-tracking", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("bug-tracking resolved→closed 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("bug-tracking resolved→closed 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
@@ -268,17 +268,17 @@ class DoneResolutionValidatorSeedTest {
     }
 
     /**
-     * simple: doing→done 전이에 RequiredField(resolution) validator 가 존재한다.
+     * simple: doing→done 전환에 RequiredField(resolution) validator 가 존재한다.
      */
     @Test
     @Order(6)
-    fun `simple doing→done 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `simple doing→done 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "doing", toStateKey = "done", name = "Complete")
         val validators = definitionRepo.findValidators("simple", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("simple doing→done 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("simple doing→done 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
@@ -286,34 +286,34 @@ class DoneResolutionValidatorSeedTest {
     }
 
     /**
-     * kanban-basic: in_progress→done 전이에 RequiredField(resolution) validator 가 존재한다.
+     * kanban-basic: in_progress→done 전환에 RequiredField(resolution) validator 가 존재한다.
      */
     @Test
     @Order(7)
-    fun `kanban-basic in_progress→done 전이에 RequiredField resolution validator 가 존재한다`() {
+    fun `kanban-basic in_progress→done 전환에 RequiredField resolution validator 가 존재한다`() {
         val transition = WorkflowTransition(fromStateKey = "in_progress", toStateKey = "done", name = "Finish")
         val validators = definitionRepo.findValidators("kanban-basic", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
         assertThat(requiredField)
-            .`as`("kanban-basic in_progress→done 전이에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
+            .`as`("kanban-basic in_progress→done 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
             .isNotNull
         assertThat(requiredField!!.config).containsEntry("field", "resolution")
 
         log.info("S1-7 통과 — kanban-basic in_progress→done RequiredField 확인: {}", validators.map { it.type })
     }
 
-    // ── S2. plan() — resolution 없이 DONE 전이 시 WorkflowValidatorFailureException ──
+    // ── S2. plan() — resolution 없이 DONE 전환 시 WorkflowValidatorFailureException ──
 
     /**
-     * Given  software-default 워크플로우, in_review→done 전이에 RequiredField(resolution) validator 존재
+     * Given  software-default 워크플로우, in_review→done 전환에 RequiredField(resolution) validator 존재
      *         issueFields 에 resolution 없음
      * When   plan() 호출
      * Then   WorkflowValidatorFailureException, field == "resolution"
      */
     @Test
     @Order(8)
-    fun `S2 - resolution 없이 DONE 전이 plan 하면 WorkflowValidatorFailureException 이 발생한다`() {
+    fun `S2 - resolution 없이 DONE 전환 plan 하면 WorkflowValidatorFailureException 이 발생한다`() {
         val request =
             TransitionRequest(
                 workflowKey = "software-default",
@@ -337,22 +337,22 @@ class DoneResolutionValidatorSeedTest {
                 assertThat(failure.field).isEqualTo("resolution")
             })
 
-        log.info("S2 통과 — resolution 없는 DONE 전이 plan 시 WorkflowValidatorFailureException 발생 확인")
+        log.info("S2 통과 — resolution 없는 DONE 전환 plan 시 WorkflowValidatorFailureException 발생 확인")
     }
 
-    // ── S3. availableTransitions — EXECUTION 페이즈 validator 가 있어도 DONE 전이가 목록에 포함 ──
+    // ── S3. availableTransitions — EXECUTION 페이즈 validator 가 있어도 DONE 전환이 목록에 포함 ──
 
     /**
      * A3 요구사항: EXECUTION 페이즈 RequiredField validator 가 있어도
-     * availableTransitions 결과에 DONE 전이가 포함된다.
+     * availableTransitions 결과에 DONE 전환이 포함된다.
      *
      * Given  software-default 워크플로우, from = "in_review"
      * When   availableTransitions 호출
-     * Then   결과에 toStateKey == "done" 전이 포함
+     * Then   결과에 toStateKey == "done" 전환 포함
      */
     @Test
     @Order(9)
-    fun `S3 - availableTransitions 는 EXECUTION 페이즈 RequiredField 가 있어도 DONE 전이를 목록에 포함한다`() {
+    fun `S3 - availableTransitions 는 EXECUTION 페이즈 RequiredField 가 있어도 DONE 전환을 목록에 포함한다`() {
         val request =
             AvailableTransitionsRequest(
                 workflowKey = "software-default",
@@ -369,11 +369,11 @@ class DoneResolutionValidatorSeedTest {
         val success = result as AvailableTransitionsResult.Success
         val toStateKeys = success.transitions.map { it.toStateKey }
 
-        // DONE 전이(done)가 포함되어야 한다 — EXECUTION 페이즈는 목록 노출에서 skip
+        // DONE 전환(done)가 포함되어야 한다 — EXECUTION 페이즈는 목록 노출에서 skip
         assertThat(toStateKeys)
             .`as`("in_review 상태에서 done 이 availableTransitions 에 포함되어야 합니다 (A3).")
             .contains("done")
 
-        log.info("S3 통과 — availableTransitions 에 DONE 전이 포함 확인: toStateKeys={}", toStateKeys)
+        log.info("S3 통과 — availableTransitions 에 DONE 전환 포함 확인: toStateKeys={}", toStateKeys)
     }
 }

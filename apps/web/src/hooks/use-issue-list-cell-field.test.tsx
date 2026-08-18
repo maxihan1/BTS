@@ -181,9 +181,9 @@ describe('useIssueListCellField', () => {
   // 와이드 폭 `/issues` 는 목록과 상세 페인을 **동시에** 마운트한다. 목록에서 값을 바꾸면
   // 서버 version 이 오르는데 페인 캐시(`['issue', key]`)는 그대로라, 이어서 페인에서 뭘
   // 바꾸면 409 VERSION_CONFLICT 가 나고 "다른 사용자가 이미 수정했습니다" 가 뜬다.
-  // 다른 사용자는 없다. 전이 목록(`['issue-transitions', key]`)도 같은 이유로 낡는다.
+  // 다른 사용자는 없다. 전환 목록(`['issue-transitions', key]`)도 같은 이유로 낡는다.
   // ───────────────────────────────────────────────────────────────────────────
-  it('저장 후 상세 이슈·전이 목록 캐시까지 무효화한다 (리뷰 C1)', async () => {
+  it('저장 후 상세 이슈·전환 목록 캐시까지 무효화한다 (리뷰 C1)', async () => {
     vi.mocked(updateIssue).mockResolvedValue(makeIssue({ priority: 1, version: 2 }))
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 

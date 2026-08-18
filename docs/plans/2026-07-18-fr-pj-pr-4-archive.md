@@ -144,7 +144,7 @@
 - files: [`.../application/IssueApplicationService.kt`, 대응 test]
 - depends-on: [3]
 
-**RED**: S6/EC-3 — 아카이브 프로젝트 이슈 **쓰기 409**(생성·수정·전이), **읽기 200**. ★`assertPermission(:1477)`은 쓰기 9종 + `listIssues`/`listIssuesByCursor`(BROWSE) 공유 → guard를 **쓰기 진입에만** 정밀 배치(목록조회 409 금지, EC-3 파괴 방지). automation·Import·REST 3경로 동시 차단 단언.
+**RED**: S6/EC-3 — 아카이브 프로젝트 이슈 **쓰기 409**(생성·수정·전환), **읽기 200**. ★`assertPermission(:1477)`은 쓰기 9종 + `listIssues`/`listIssuesByCursor`(BROWSE) 공유 → guard를 **쓰기 진입에만** 정밀 배치(목록조회 409 금지, EC-3 파괴 방지). automation·Import·REST 3경로 동시 차단 단언.
 **GREEN**: 쓰기 메서드에만 `ProjectArchiveGuard.check`. 읽기·목록 경로 무변경.
 **검증**: `--tests '*IssueApplication*'` + 목록조회 200 회귀 테스트.
 

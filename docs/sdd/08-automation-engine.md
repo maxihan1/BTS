@@ -14,7 +14,7 @@
 |---|---|
 | `issue.created` | 이슈 생성 |
 | `issue.updated` | 이슈 변경 (필드별 필터 가능) |
-| `issue.transitioned` | 상태 전이 |
+| `issue.transitioned` | 상태 전환 |
 | `issue.commented` | 댓글 추가 |
 | `issue.assigned` | 담당자 변경 |
 | `schedule.cron` | 스케줄 (예: 매일 09:00) |
@@ -48,7 +48,7 @@ condition: "#issue.type == 'Bug' && #issue.priority == 'Highest' && #issue.assig
 | `SetFixVersions` | 수정 예정 버전(Fix Version) 설정 |
 | `AddComment` | 댓글 추가 (템플릿 변수 지원) |
 | `AddLabel` | 라벨 추가 |
-| `Transition` | 상태 전이 (워크플로우 거침) |
+| `Transition` | 상태 전환 (워크플로우 거침) |
 | `CallWebhook` | 외부 API 호출 |
 | `SendNotification` | 알림 발송 (사용자/채널 지정) |
 | `CreateIssue` | 새 이슈 생성 |

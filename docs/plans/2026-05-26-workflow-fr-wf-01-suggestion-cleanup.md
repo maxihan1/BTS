@@ -23,7 +23,7 @@ PR #13 (FR-WF-01 frontend) 의 codereview 결과 SUGGESTION 2건 후속 정리. 
 
 - **BC**. project-workflow (frontend view layer)
 - **영향 엔티티**. 없음. fixture (MSW mirror data) + UI 컴포넌트 분기 정리만. 도메인 모델 (Workflow / State / Transition) 변경 0.
-- **새 용어**. 0건. glossary.md 의 "전이" / "워크플로우" / "게이트" 모두 기존 등재.
+- **새 용어**. 0건. glossary.md 의 "전환" / "워크플로우" / "게이트" 모두 기존 등재.
 - **기존 결정 충돌**. 없음.
 - **본 작업의 위치 — `workflow-yaml-vs-db-storage` ADR 강화**. PR #10 시점 ADR 5건 (`workflow-validator-terminology` / `workflow-expression-parser-spel` / `workflow-yaml-vs-db-storage` / `workflow-bc-cross-bc-port` / `v001-initial-schema-non-concurrent`) 모두 따름. 옵션 A 채택은 YAML = production source of truth 결정의 frontend 일관성 강화 — fixture mirror 가 YAML 과 1:1 정렬.
 - **관련 ADR 신규**. 0건. cleanup + 기존 결정 일관 → ADR 작성 불요.

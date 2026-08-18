@@ -2,7 +2,7 @@
 
 # FR-IM-01 CSV/JSON Import (Jira 마이그레이션) — PR1 기반+코어 스펙 (백엔드)
 
-> 범위: **PR1만** (기반 + 코어 이슈 필드). 컴포넌트/버전 자동생성·상태전이=PR2, 댓글/Worklog=PR3, 첨부(zip)/이력=PR4, 프론트 UI=후속.
+> 범위: **PR1만** (기반 + 코어 이슈 필드). 컴포넌트/버전 자동생성·상태전환=PR2, 댓글/Worklog=PR3, 첨부(zip)/이력=PR4, 프론트 UI=후속.
 > 도메인/결정 정본: [../plans/2026-07-02-fr-im-01-csv-json-import.md](../plans/2026-07-02-fr-im-01-csv-json-import.md), [../decisions/2026-07-02-fr-im-01-csv-json-import.md](../decisions/2026-07-02-fr-im-01-csv-json-import.md)
 
 ## 사용자 시나리오 (Given-When-Then)
@@ -71,7 +71,7 @@ GET  /api/v1/imports/{jobId}/errors → 200 text/csv (에러 로그) | 404
 ## 제약 조건 (PR1)
 
 - 컴포넌트/버전 자동생성 ✗(이름 연결만, 없으면 스킵+경고) — PR2.
-- Status 전이 ✗(워크플로우 시작 상태 고정) — PR2.
+- Status 전환 ✗(워크플로우 시작 상태 고정) — PR2.
 - 댓글/Worklog ✗ — PR3. 첨부/이력 ✗ — PR4.
 - Jira 원본 키 보존 ✗(새 키 자동생성).
 - 프론트 UI ✗(후속 PR).

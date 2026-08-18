@@ -24,7 +24,7 @@ class ImportMappingInvalidException(val errors: List<MappingIssue>) :
  * 1. **사전확인** — [ImportMappingService.validate]/[ImportMappingService.confirm] 진입 시점에
  *    조회한 작업 상태가 이미 AWAITING_MAPPING 이 아닌 경우.
  * 2. **CAS 실패(TOCTOU 방지)** — [ImportMappingService.confirm] 이 사전확인을 통과한 뒤에도,
- *    실제 상태 전이([com.bts.search.imports.job.repository.ImportJobRepository.transitionToPending])가
+ *    실제 상태 전환([com.bts.search.imports.job.repository.ImportJobRepository.transitionToPending])가
  *    `false` 를 반환한 경우(반복/동시 confirm 요청 사이에 상태가 바뀐 경쟁 상황 — 교훈
  *    advisory-lock-bigint-toctou). 사전확인만으로는 검사와 사용 사이의 상태 변경을 막을 수 없으므로,
  *    실제 쓰기 직전 CAS 결과를 다시 확인해야 한다.

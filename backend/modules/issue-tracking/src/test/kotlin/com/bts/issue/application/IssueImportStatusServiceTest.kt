@@ -212,7 +212,7 @@ class IssueImportStatusServiceTest : DescribeSpec({
         }
     }
 
-    describe("statusNameMatches (dry-run 미리보기 — 실제 전이 없이 name 매칭만 검사)") {
+    describe("statusNameMatches (dry-run 미리보기 — 실제 전환 없이 name 매칭만 검사)") {
         beforeEach {
             every { issueTypeRepository.findById(typeId) } returns issueType
             every { workflowStateCatalog.listStates(projectKey, issueType.key) } returns states

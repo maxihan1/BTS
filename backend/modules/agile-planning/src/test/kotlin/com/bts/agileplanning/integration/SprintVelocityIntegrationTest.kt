@@ -180,7 +180,7 @@ class SprintVelocityIntegrationTest {
             .get("data").get("sprintId").asText()
     }
 
-    /** [sprintId] 를 PLANNED -> ACTIVE -> COMPLETED 로 전이한다. */
+    /** [sprintId] 를 PLANNED -> ACTIVE -> COMPLETED 로 전환한다. */
     private fun completeSprint(sprintId: String) {
         mockMvc.perform(post("/api/v1/sprints/$sprintId/start")).andExpect(status().isOk)
         mockMvc.perform(post("/api/v1/sprints/$sprintId/complete")).andExpect(status().isOk)

@@ -8,8 +8,8 @@
 ## 배경
 
 FR-RP-04는 프로젝트의 **완료된 이슈**가 얼마나 걸려 끝났는지의 **분포**를 시각화한다.
-- **Lead Time** = 이슈 생성 → 마지막 DONE 전이. 모든 완료 이슈 집계.
-- **Cycle Time** = 첫 IN_PROGRESS 전이 → 마지막 DONE 전이. IN_PROGRESS 미경유 이슈 제외(Cycle 표본 ≤ Lead 표본).
+- **Lead Time** = 이슈 생성 → 마지막 DONE 전환. 모든 완료 이슈 집계.
+- **Cycle Time** = 첫 IN_PROGRESS 전환 → 마지막 DONE 전환. IN_PROGRESS 미경유 이슈 제외(Cycle 표본 ≤ Lead 표본).
 
 백엔드가 초 단위 표본 + 요약 통계(nearest-rank 백분위)를 이미 계산해 반환한다. 프론트는 **순수 변환 + 렌더**만 담당(FR-RP-01/02/03 선례 정합, 프론트가 백분위 재계산 금지).
 

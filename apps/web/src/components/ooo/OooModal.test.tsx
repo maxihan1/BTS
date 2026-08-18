@@ -331,7 +331,7 @@ describe('OooModal', () => {
     fireEvent.change(screen.getByLabelText(oooLabels.messageLabel), { target: { value: '편집 중인 메모' } })
 
     // open은 그대로 true인데 OOO 쿼리가 refetch되어 current만 바뀐 상황을 흉내낸다
-    // (window focus refetch/invalidate 등). 열림 전이(false→true)가 아니므로 재초기화되면 안 된다.
+    // (window focus refetch/invalidate 등). 열림 전환(false→true)가 아니므로 재초기화되면 안 된다.
     oooQueryState.data = {
       startsAt: null,
       endsAt: null,

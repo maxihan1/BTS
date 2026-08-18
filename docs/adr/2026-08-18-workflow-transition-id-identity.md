@@ -15,12 +15,12 @@ toStateKey)` 2튜플로 확정했다. 당시 맥락은 PR #27 의 BLOCKER — �
 
 그 ADR 은 자신의 한계도 정확히 적어 뒀다.
 
-> **(i) 같은 `(from, to)`에 여러 전이 정의 영구 차단** — 예. "Cancel"과 "Reject"가 같은
+> **(i) 같은 `(from, to)`에 여러 전환 정의 영구 차단** — 예. "Cancel"과 "Reject"가 같은
 > `(from, to)`를 가지는 경우 불가. 탈출구는 아래 §대안 채택 조건 참조.
 
 그리고 탈출구를 이렇게 열어 뒀다.
 
-> 같은 `(from, to)`에 여러 전이가 필요한 비즈니스 시나리오 출현 시 → 새 ADR 발행 + transition
+> 같은 `(from, to)`에 여러 전환이 필요한 비즈니스 시나리오 출현 시 → 새 ADR 발행 + transition
 > identity 를 `(from, to, label)` 또는 `(from, to, guard)` 분기 메커니즘으로 확장.
 
 **그 시나리오가 왔다.** Jira Cloud 패리티를 목표로 워크플로우 편집기를 만들면서, 사용자가 화면에서

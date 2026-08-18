@@ -1,4 +1,4 @@
-// BulkAvailableTransitionsService 단위 테스트 — 이슈별 가용 전이 조회 + 교집합 계산 (Task 2 TDD RED)
+// BulkAvailableTransitionsService 단위 테스트 — 이슈별 가용 전환 조회 + 교집합 계산 (Task 2 TDD RED)
 
 package com.bts.issue.bulk.application
 
@@ -25,13 +25,13 @@ import java.util.UUID
  * FR-IS-05 Task 2 — BulkAvailableTransitionsService.availableCommonTransitions 단위 테스트.
  *
  * 검증 범위.
- * - 전부 성공 + 공통 전이 → transitions 채워지고 unresolved 빈 목록
+ * - 전부 성공 + 공통 전환 → transitions 채워지고 unresolved 빈 목록
  * - 일부 IssueNotFoundException → 해당 키 unresolved, 나머지 교집합
  * - 일부 IssueWorkflowNotConfiguredException → unresolved
  * - 일부 IssueAccessDeniedException → unresolved (C1 핵심 케이스)
  * - 전부 unresolved → transitions=[], unresolved=전체
  * - 교집합 없음(성공했으나 공통 없음) → transitions=[], unresolved=[]
- * - 단일 이슈 → 그 이슈 전이 그대로
+ * - 단일 이슈 → 그 이슈 전환 그대로
  *
  * 단위 테스트 — IssueApplicationService 는 MockK 모의 객체 사용.
  */
@@ -62,7 +62,7 @@ class BulkAvailableTransitionsServiceTest : DescribeSpec({
 
     // ── 전부 성공 ──────────────────────────────────────────────────────────────
 
-    describe("전부 성공 + 공통 전이 존재") {
+    describe("전부 성공 + 공통 전환 존재") {
         it("transitions 에 교집합을 담고 unresolvedIssueKeys 는 빈 목록이다") {
             every { issueService.availableTransitions(actor, IssueKey("ATLAS-1")) } returns
                 listOf(
@@ -151,7 +151,7 @@ class BulkAvailableTransitionsServiceTest : DescribeSpec({
 
     // ── 교집합 없음 ───────────────────────────────────────────────────────────
 
-    describe("전부 성공이나 공통 전이가 없음") {
+    describe("전부 성공이나 공통 전환이 없음") {
         it("transitions 는 빈 목록이고 unresolvedIssueKeys 도 빈 목록이다") {
             every { issueService.availableTransitions(actor, IssueKey("ATLAS-1")) } returns
                 listOf(transition("OPEN", "IN_PROGRESS"))
@@ -168,7 +168,7 @@ class BulkAvailableTransitionsServiceTest : DescribeSpec({
     // ── 단일 이슈 ─────────────────────────────────────────────────────────────
 
     describe("이슈가 하나뿐일 때") {
-        it("그 이슈의 가용 전이를 그대로 반환한다") {
+        it("그 이슈의 가용 전환을 그대로 반환한다") {
             val transitions =
                 listOf(
                     transition("OPEN", "IN_PROGRESS"),

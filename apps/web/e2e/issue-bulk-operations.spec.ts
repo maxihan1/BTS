@@ -1,10 +1,10 @@
-// FR-IS-05 D7 이슈 일괄 작업 E2E — 일괄 편집/전이 happy path + 부분 실패 + 접수 실패 + 교집합 없음
+// FR-IS-05 D7 이슈 일괄 작업 E2E — 일괄 편집/전환 happy path + 부분 실패 + 접수 실패 + 교집합 없음
 //
 // S1 일괄 편집 happy:    전체 선택 → 편집 Dialog priority 변경 → 접수 toast → 결과 Dialog 완료 → 닫기
-// S2 일괄 전이 happy:    ATLAS-1 + ATLAS-3 선택(공통 closed) → 전이 Dialog → Cancel 선택 → 결과 완료
+// S2 일괄 전환 happy:    ATLAS-1 + ATLAS-3 선택(공통 closed) → 전환 Dialog → Cancel 선택 → 결과 완료
 // S3 부분 실패:          __bts_e2e_bulk_partial_fail='true' → 결과 Dialog 성공 2/실패 1 + 실패 목록 ATLAS-3
 // S4 접수 실패 토스트:   __bts_e2e_bulk_reject='validation' → toast.error + 결과 Dialog 미노출
-// S5 교집합 없음:        전체 선택(open/in_progress/done) → 전이 Dialog → 안내 텍스트 + 적용 disabled
+// S5 교집합 없음:        전체 선택(open/in_progress/done) → 전환 Dialog → 안내 텍스트 + 적용 disabled
 //
 // 교훈 반영.
 //   - e2e-fixture-whoami-userid-alignment: alice userId 정합
@@ -78,16 +78,16 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S2 일괄 전이 happy path
+  // S2 일괄 전환 happy path
   //   Given  alice 로그인 + /issues 진입
-  //   When   ATLAS-1(open) + ATLAS-3(done) 선택 → 일괄 전이 Dialog → Cancel 선택 → resolution 선택 → 적용
+  //   When   ATLAS-1(open) + ATLAS-3(done) 선택 → 일괄 전환 Dialog → Cancel 선택 → resolution 선택 → 적용
   //   Then   결과 Dialog 완료 + 성공 2
   //   주의: ATLAS-1(open→closed: Cancel), ATLAS-3(done→closed: Close)
-  //         intersectTransitions는 첫 이슈(ATLAS-1) 전이 기준 — closed toStateKey 공통 항목 유지
+  //         intersectTransitions는 첫 이슈(ATLAS-1) 전환 기준 — closed toStateKey 공통 항목 유지
   //         → 실제 노출 옵션 이름은 ATLAS-1 기준 'Cancel' (open→closed)
   //         → closed 상태의 category='DONE' → resolution 드롭다운 표시 (FR-IS-07 B14)
   // ───────────────────────────────────────────────────────────────────────────
-  test('S2 일괄 전이 happy — ATLAS-1+ATLAS-3 선택 후 전이 접수 → 결과 Dialog 완료 + 성공 2', async ({ page }) => {
+  test('S2 일괄 전환 happy — ATLAS-1+ATLAS-3 선택 후 전환 접수 → 결과 Dialog 완료 + 성공 2', async ({ page }) => {
     // Given. alice 로그인
     await loginAsAlice(page)
 
@@ -103,16 +103,16 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
     await expect(actionBar).toBeVisible()
     await expect(actionBar).toContainText('2건 선택됨')
 
-    // When. 일괄 전이 버튼 클릭
-    await actionBar.getByRole('button', { name: '일괄 전이' }).click()
+    // When. 일괄 전환 버튼 클릭
+    await actionBar.getByRole('button', { name: '일괄 전환' }).click()
 
-    // When. 전이 Dialog 열림 확인
+    // When. 전환 Dialog 열림 확인
     const transitionDialog = page.getByRole('dialog')
-    await expect(transitionDialog.getByText('일괄 상태 전이')).toBeVisible()
+    await expect(transitionDialog.getByText('일괄 상태 전환')).toBeVisible()
 
     // When. Radix Select 트리거 클릭 → 옵션 선택
     // intersectTransitions가 ATLAS-1(open) 기준 → toStateKey=closed 항목 → 이름 'Cancel'
-    await transitionDialog.getByRole('combobox', { name: '전이 상태' }).click()
+    await transitionDialog.getByRole('combobox', { name: '전환 상태' }).click()
 
     // 드롭다운 팝업에서 'Cancel' 옵션 선택 (Radix SelectContent는 portal로 렌더됨)
     await page.getByRole('option', { name: 'Cancel' }).click()
@@ -220,31 +220,31 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S5 공통 전이 없음
+  // S5 공통 전환 없음
   //   Given  전체 선택(ATLAS-1:open, ATLAS-2:in_progress, ATLAS-3:done)
   //          intersectTransitions 교집합 = 0
-  //   When   일괄 전이 Dialog 열기
+  //   When   일괄 전환 Dialog 열기
   //   Then   안내 텍스트 '선택한 이슈들이 공통으로 이동할 수 있는 상태가 없습니다.' 노출
   //          + 적용 버튼 disabled
   // ───────────────────────────────────────────────────────────────────────────
-  test('S5 공통 전이 없음 — 전체 선택(교집합 0) → 전이 Dialog 안내 텍스트 + 적용 disabled', async ({ page }) => {
+  test('S5 공통 전환 없음 — 전체 선택(교집합 0) → 전환 Dialog 안내 텍스트 + 적용 disabled', async ({ page }) => {
     // Given. alice 로그인
     await loginAsAlice(page)
 
     // When. /issues 진입
     await page.goto('/issues')
 
-    // When. 전체 선택 (4건: open/in_progress/done/in_review → 공통 전이 없음)
+    // When. 전체 선택 (4건: open/in_progress/done/in_review → 공통 전환 없음)
     await page.getByTestId('select-all-page').click()
 
-    // When. 일괄 전이 Dialog 열기
+    // When. 일괄 전환 Dialog 열기
     const actionBar = page.getByTestId('bulk-action-bar')
     await expect(actionBar).toContainText('4건 선택됨')
-    await actionBar.getByRole('button', { name: '일괄 전이' }).click()
+    await actionBar.getByRole('button', { name: '일괄 전환' }).click()
 
-    // Then. 전이 Dialog 열림
+    // Then. 전환 Dialog 열림
     const transitionDialog = page.getByRole('dialog')
-    await expect(transitionDialog.getByText('일괄 상태 전이')).toBeVisible()
+    await expect(transitionDialog.getByText('일괄 상태 전환')).toBeVisible()
 
     // Then. 교집합 0건 안내 텍스트 노출
     await expect(

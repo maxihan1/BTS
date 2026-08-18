@@ -515,13 +515,13 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 **무엇.** `ImportMappingService.kt:143-155` 생성자에 `IssuePermissionResolver` 가 **없다**
 (이 BC 전수 grep — resolver 는 `ImportJobService.kt` 3줄이 전부). confirm 의 유일한 관문
 `requireOwnedAwaitingMapping`(`:439-450`)은 **잡 소유권 + 상태(AWAITING_MAPPING)** 만 본다.
-그 직후 `:265-273` 이 PENDING 전이 · 매핑 3종 `saveAll` · `enqueuePublisher.enqueue` 를 실행하고
+그 직후 `:265-273` 이 PENDING 전환 · 매핑 3종 `saveAll` · `enqueuePublisher.enqueue` 를 실행하고
 HTTP 200 을 돌려준다. `requireOwnedAwaitingMapping` 호출부는 `:176`(validate) `:257`(confirm) `:331` `:403` **4곳**이고,
 읽기 계열(상태 폴링·에러로그)도 `findByIdForRequester` 소유권만 본다.
 
 **이슈는 안 만들어진다. 그러나 no-op 도 아니다.** 실제 이슈 생성은
 `IssueApplicationService.kt:225` 의 `assertPermission(CREATE)`(`createIssue` `:221`)가 막는다.
-그런데 confirm 자체는 **PENDING 전이 + 매핑 3종 `saveAll` + pgmq enqueue 를 수행하고 200 을 돌려준다**
+그런데 confirm 자체는 **PENDING 전환 + 매핑 3종 `saveAll` + pgmq enqueue 를 수행하고 200 을 돌려준다**
 — 사용자는 성공 화면을 받고 뒤늦게 실패한다.
 
 ⚠️ **초판 서술 정정 2건 (게이트 2 재리뷰).** ① 완화 인용을 `IssueImportAdapter.kt:288-294` 라 적었으나
@@ -4262,7 +4262,7 @@ prod 에서도 난다.** 도달 불가한 것은 **대상 프로젝트 미존재
 판별식이 재는 것은 「세 화면이 같은 계약을 따르는가」가 **아니라**(위 참조) 「게이트 훅을 쓰는
 소비처가 전부 **어느 쪽 계약을 따르는지 선언돼 있는가**」다.
 
-**★눈확인 시나리오.** **느린 네트워크에서 로딩 → 판정 전이.** 이 항목에서 무엇을 눈으로 볼지
+**★눈확인 시나리오.** **느린 네트워크에서 로딩 → 판정 전환.** 이 항목에서 무엇을 눈으로 볼지
 지정한 유일한 문장이라 함께 옮긴다(같은 출처).
 
 **E2E 는 별도 항목이다** — 「임포트 CREATE 게이트 E2E 시나리오 부재」.

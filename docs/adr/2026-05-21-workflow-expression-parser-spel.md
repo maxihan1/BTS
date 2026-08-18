@@ -9,7 +9,7 @@
 
 ## 컨텍스트
 
-FR-WF-01 의 `CustomExpressionValidator` 는 워크플로우 전이 조건을 평가해야 한다. 조건 표현식은 "이슈 필드 + 액터 정보 기반 boolean 표현식" 형태로, 워크플로우 정의 YAML/seed 에 포함된다 (관리자만 편집 가능).
+FR-WF-01 의 `CustomExpressionValidator` 는 워크플로우 전환 조건을 평가해야 한다. 조건 표현식은 "이슈 필드 + 액터 정보 기반 boolean 표현식" 형태로, 워크플로우 정의 YAML/seed 에 포함된다 (관리자만 편집 가능).
 
 예시.
 

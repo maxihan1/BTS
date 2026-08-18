@@ -16,7 +16,7 @@ import java.util.UUID
 /**
  * 세션 생명주기 관리 서비스 (FR-AU-09 Task 16 / SDD §19.5).
  *
- * 로그인 1회 = Session row 1개 원칙. 세션은 생성(로그인) → 활성 → 만료/폐기 순으로 전이한다.
+ * 로그인 1회 = Session row 1개 원칙. 세션은 생성(로그인) → 활성 → 만료/폐기 순으로 전환한다.
  *
  * ## 트랜잭션 경계 (DATA.md §6)
  * - [create]: `@Transactional` (REQUIRED) — INSERT 단일 경계

@@ -217,7 +217,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [6]
 
 **RED**: `OpenApiAnnotationTest`
-- 생성된 `/v3/api-docs`에 이슈 CRUD/목록/전이 + 전 목록 GET 엔드포인트의 operationId/요약/응답 스키마 존재
+- 생성된 `/v3/api-docs`에 이슈 CRUD/목록/전환 + 전 목록 GET 엔드포인트의 operationId/요약/응답 스키마 존재
 - cursor envelope 응답 스키마 등록 확인
 - **응답 형태 변경 0**(annotation만, 기존 응답 불변 회귀 가드)
 

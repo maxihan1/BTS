@@ -10,13 +10,13 @@ import com.bts.workflow.expression.DefaultSpelRoot
 import com.bts.workflow.expression.SpelEvaluator
 
 /**
- * SpEL(Spring Expression Language) 표현식을 평가해 전이 허용 여부를 판정하는 [WorkflowValidator] 구현체.
+ * SpEL(Spring Expression Language) 표현식을 평가해 전환 허용 여부를 판정하는 [WorkflowValidator] 구현체.
  *
  * [SpelEvaluator] 에 표현식과 컨텍스트 루트(이슈 뷰 + 액터 뷰)를 전달하고, 반환값에 따라
  * [ValidatorResult.Pass] 또는 [ValidatorResult.Fail] 로 매핑한다.
  *
  * ### timeout 처리
- * [SpelEvaluator] 가 [WorkflowExpressionTimeoutException] 을 던지면 전이를 거부하되
+ * [SpelEvaluator] 가 [WorkflowExpressionTimeoutException] 을 던지면 전환을 거부하되
  * 예외를 전파하지 않는다. 거부 사유는 `"expression_timeout"` 으로 고정한다.
  * 원인 예외는 이 KDoc 에만 명시한다 — [ValidatorResult.Fail] 에 cause 필드가 없기 때문이다.
  *
@@ -30,9 +30,9 @@ class CustomExpressionValidator(
     override val type: String = "CustomExpression"
 
     /**
-     * SpEL 표현식을 평가해 전이 허용 여부를 반환한다.
+     * SpEL 표현식을 평가해 전환 허용 여부를 반환한다.
      *
-     * @param ctx 전이 요청 컨텍스트. [com.bts.workflow.domain.expression.IssueView] 와
+     * @param ctx 전환 요청 컨텍스트. [com.bts.workflow.domain.expression.IssueView] 와
      *   [com.bts.workflow.domain.expression.ActorView] 를 포함한다.
      * @return 표현식이 true 이면 [ValidatorResult.Pass],
      *   false 이면 [ValidatorResult.Fail] (reason = "expression evaluated to false"),

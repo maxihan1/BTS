@@ -20,7 +20,7 @@ classify 결과. type=backend → 풀스택 feature로 교정 (칸반 보드 = �
 - **BC**: agile-planning (**신규 모듈 신설** — backend/modules에 5개만 존재, agile-planning 없음. FR-BD-01이 첫 작업).
 - **영향 엔티티 (신규)**: `Board`, `BoardColumn`. Swimlane은 FR-BD-03(이번 범위 밖).
 - **cross-BC 참조 (읽기/위임)**:
-  - issue-tracking — 보드 카드 = 이슈 목록 읽기. 카드 이동 = **기존 전이 메커니즘 재사용**(전이 API는 `IssueController`/issue-tracking 소유).
+  - issue-tracking — 보드 카드 = 이슈 목록 읽기. 카드 이동 = **기존 전환 메커니즘 재사용**(전환 API는 `IssueController`/issue-tracking 소유).
   - project-workflow — 보드 컬럼 = **워크플로우 상태 카테고리(TODO/IN_PROGRESS/DONE) 매핑**. 상태 카탈로그는 `WorkflowStateCatalogImpl`이 제공. `kanban-basic.yaml` 워크플로우 기존재.
   - identity-access — 보드 조회 권한(기존 프로젝트 권한 resolver 재사용 예정).
 - **새 용어 (glossary 추가 후보, Maxi 승인 필요)**:
@@ -29,9 +29,9 @@ classify 결과. type=backend → 풀스택 feature로 교정 (칸반 보드 = �
   - (domain/agile-planning.md 노트에는 이미 Board/BoardColumn이 엔티티로 언급됨. glossary 정식 행은 없음.)
 - **결정 사항 (Maxi 확정)**:
   1. 작업 범위 = **백엔드 D1~D5만**. 프론트 D6/D7(@dnd-kit, E2E)은 후속 PR.
-  2. 드래그앤드롭 = **컬럼 간 이동만**(= 워크플로우 전이 재사용). 컬럼 내 순서 = 기본 정렬(우선순위/생성일). **LexoRank 불필요** → FR-BL-01로 미룸.
+  2. 드래그앤드롭 = **컬럼 간 이동만**(= 워크플로우 전환 재사용). 컬럼 내 순서 = 기본 정렬(우선순위/생성일). **LexoRank 불필요** → FR-BL-01로 미룸.
   3. §1 기술검증(LexoRank/@dnd-kit/Gantt PoC)은 이번 범위(백엔드, 컬럼 간 이동)에 직접 불필요. @dnd-kit은 후속 프론트 PR(D6)에서 자연 검증.
-- **기존 결정 충돌**: 없음. BC 신설 + 컬럼=상태 매핑 + 카드 이동=전이 재사용은 ADR 신규 후보.
+- **기존 결정 충돌**: 없음. BC 신설 + 컬럼=상태 매핑 + 카드 이동=전환 재사용은 ADR 신규 후보.
 - **관련 ADR**: [docs/decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md](../decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md) (생성됨). 간접 관련 — workflow-transition-identity-policy(2026-05-28), workflow-yaml-vs-db-storage(2026-05-21).
 
 ## 스펙
@@ -41,7 +41,7 @@ classify 결과. type=backend → 풀스택 feature로 교정 (칸반 보드 = �
 핵심 시나리오 요약.
 - 보드 CRUD(명시적 생성, 한 프로젝트 다중 보드). 생성 시 default 워크플로우 상태를 컬럼으로 자동 시드.
 - 보드 조회 = 컬럼(상태별 1:1 매핑) + 컬럼별 카드(이슈). 카드는 current_state_key로 컬럼 배치, viewer visibility 필터, priority ASC 정렬.
-- 카드 이동 = `POST /boards/{id}/cards/{issueKey}/move` → 대상 컬럼 state_key로 cross-BC 전이 포트(issue-tracking) 위임. 전이 규칙/권한/OCC는 issue-tracking 강제.
+- 카드 이동 = `POST /boards/{id}/cards/{issueKey}/move` → 대상 컬럼 state_key로 cross-BC 전환 포트(issue-tracking) 위임. 전환 규칙/권한/OCC는 issue-tracking 강제.
 
 API. POST /boards · GET /boards/{id} · GET /boards?projectKey · POST /boards/{id}/cards/{issueKey}/move
 데이터. boards / board_columns (V500~, project_key 문자열 BC격리)
@@ -107,14 +107,14 @@ cross-BC 포트. WorkflowStateCatalog 확장(category/displayOrder) · BoardIssu
 **REFACTOR**: 술어 단일 source 재사용. ktlint↔detekt 라인길이 블록body.
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests *BoardIssueLookupAdapterTest`
 
-### Task 5. issue-tracking IssueTransitionPort 구현 (전이 위임)
+### Task 5. issue-tracking IssueTransitionPort 구현 (전환 위임)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/IssueTransitionAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/IssueTransitionAdapterTest.kt`]
 - depends-on: [2, 4]
 
-**RED**: 통합테스트 — `transition(cmd)`가 기존 전이 application service에 위임해 상태 변경. 전이 불가→예외 전파, 버전 충돌→예외 전파, 권한 강제, DONE+resolution 누락→예외.
+**RED**: 통합테스트 — `transition(cmd)`가 기존 전환 application service에 위임해 상태 변경. 전환 불가→예외 전파, 버전 충돌→예외 전파, 권한 강제, DONE+resolution 누락→예외.
 **GREEN**: `@Component IssueTransitionAdapter : IssueTransitionPort`. 기존 `IssueApplicationService.transitionIssue`(IssueController가 쓰는 동일 경로) 위임. **actor는 `CurrentActor.current()`로 추출(cmd에서 받지 않음, sec CONCERN-3)** — 동기 호출이라 SecurityContext 유효. 도메인 직접 UPDATE 금지(불변식 우회 회피).
 **REFACTOR**: 예외 매핑 정리.
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests *IssueTransitionAdapterTest`
@@ -162,7 +162,7 @@ cross-BC 포트. WorkflowStateCatalog 확장(category/displayOrder) · BoardIssu
 - files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
 - depends-on: [8]
 
-**RED (리뷰 정정)**: HTTP 통합테스트 — POST/GET/move 4 엔드포인트. **권한 2단 게이트**: 조회 = `IssuePermission.BROWSE`(VIEW 아님, sec BLOCKER-2) on `IssueScope.Project`, **생성 = `IssuePermission.CREATE`(Maxi 게이트1 확정)**, 카드 노출은 행단위 보안필터(T4) 별도 적용, 이동 = TRANSITION(전이 포트 강제). **actor 추출 → 권한 → 리소스 조회(404) → 보드-이슈 정합(E8) 순서**(존재 probe 차단, sec CONCERN-4). 권한/정합 거부 message 일반화(누출 차단). 에러코드(400/403/404/409/422) + 응답 봉투(DataResponse/{error}). 도메인예외 HTTP 매핑(catch-all이 401/타입미스매치 삼키지 않음 — catch-all-exceptionhandler 교훈).
+**RED (리뷰 정정)**: HTTP 통합테스트 — POST/GET/move 4 엔드포인트. **권한 2단 게이트**: 조회 = `IssuePermission.BROWSE`(VIEW 아님, sec BLOCKER-2) on `IssueScope.Project`, **생성 = `IssuePermission.CREATE`(Maxi 게이트1 확정)**, 카드 노출은 행단위 보안필터(T4) 별도 적용, 이동 = TRANSITION(전환 포트 강제). **actor 추출 → 권한 → 리소스 조회(404) → 보드-이슈 정합(E8) 순서**(존재 probe 차단, sec CONCERN-4). 권한/정합 거부 message 일반화(누출 차단). 에러코드(400/403/404/409/422) + 응답 봉투(DataResponse/{error}). 도메인예외 HTTP 매핑(catch-all이 401/타입미스매치 삼키지 않음 — catch-all-exceptionhandler 교훈).
 **GREEN (리뷰 정정)**: `@RestController BoardController`. 권한은 **기존 `IssuePermissionResolver`(shared-kernel 포트) 주입 재사용**(신규 BoardPermissionPort 만들지 않음, eng BLOCKER-2 + sec CONCERN-2). non-null 주입(fail-closed, 빈 부재=부팅실패). 명시 ExceptionHandler. actor=`CurrentActor.current()`.
 **REFACTOR**: DTO/핸들러 정리.
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *BoardControllerIntegrationTest && ./gradlew :modules:agile-planning:ktlintCheck detekt`

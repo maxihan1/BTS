@@ -53,14 +53,14 @@ test.describe('FR-IS-02 이슈 타입 변경 (IssueMetaPanel > IssueTypeSelect)'
   })
 
   // ─────────────────────────────────────────────────────────────────────────
-  // S2 셀렉터 옵션 — 활성 표준 5종 옵션 존재 단언 (전이 셀렉터와 구별)
+  // S2 셀렉터 옵션 — 활성 표준 5종 옵션 존재 단언 (전환 셀렉터와 구별)
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Given   ATLAS-1 이슈 상세 페이지 진입
    * When    유형 셀렉터 옵션 목록 확인
    * Then    표준 5종(버그·스토리·작업·에픽·하위 작업) 옵션이 value/label 로 존재
-   *         전이 셀렉터(transitionSelectLabel) 옵션과 혼용되지 않음
+   *         전환 셀렉터(transitionSelectLabel) 옵션과 혼용되지 않음
    */
   test('S2 셀렉터 옵션 — 유형 셀렉터에 표준 5종 옵션 존재', async ({ page }) => {
     // Given. ATLAS-1 상세 진입
@@ -87,12 +87,12 @@ test.describe('FR-IS-02 이슈 타입 변경 (IssueMetaPanel > IssueTypeSelect)'
     await expect(typeSelect.locator('option[value="5"]')).toHaveCount(1)
     await expect(typeSelect.locator('option[value="5"]')).toContainText('하위 작업')
 
-    // Then. 전이 셀렉터(transitionSelectLabel)는 별도 combobox — 유형 셀렉터와 혼용 없음
+    // Then. 전환 셀렉터(transitionSelectLabel)는 별도 combobox — 유형 셀렉터와 혼용 없음
     const transitionSelect = page.getByRole('combobox', {
       name: i18nLabels.issueDetail.transitionSelectLabel,
     })
     await expect(transitionSelect).toBeVisible()
-    // 유형 셀렉터와 전이 셀렉터는 aria-label 이 다른 별개의 combobox
+    // 유형 셀렉터와 전환 셀렉터는 aria-label 이 다른 별개의 combobox
     await expect(typeSelect).not.toHaveAttribute(
       'aria-label',
       i18nLabels.issueDetail.transitionSelectLabel,

@@ -474,10 +474,10 @@ function countOf(entry: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// E12 — 이관 도중 대상이 COMPLETED 로 전이
+// E12 — 이관 도중 대상이 COMPLETED 로 전환
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('CompleteSprintDialog — E12 대상 스프린트가 이관 중 COMPLETED 로 전이', () => {
+describe('CompleteSprintDialog — E12 대상 스프린트가 이관 중 COMPLETED 로 전환', () => {
   it('POST 409 인 행만 실패하고 Select 는 잠기지 않는다', async () => {
     postOutcomes = { 'ATLAS-2': [409] }
     const { user } = renderDialog()

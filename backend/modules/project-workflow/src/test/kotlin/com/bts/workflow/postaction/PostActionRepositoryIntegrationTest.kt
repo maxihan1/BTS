@@ -27,7 +27,7 @@ import java.util.UUID
  * repository CRUD 를 실 DB 로 검증한다.
  *
  * 검증 범위.
- * - findByTransitionId: 빈 목록 반환 (post-action 없는 전이)
+ * - findByTransitionId: 빈 목록 반환 (post-action 없는 전환)
  * - insert → findByTransitionId: 삽입 후 조회
  * - update: type/config/displayOrder 갱신 반영
  * - deleteById: 행 삭제 확인
@@ -162,7 +162,7 @@ class PostActionRepositoryIntegrationTest {
                         }
                     }
 
-                // post-action 이 있을 전이
+                // post-action 이 있을 전환
                 conn.prepareStatement(
                     """
                     INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
@@ -176,7 +176,7 @@ class PostActionRepositoryIntegrationTest {
                     }
                 }
 
-                // post-action 이 없는 빈 전이
+                // post-action 이 없는 빈 전환
                 conn.prepareStatement(
                     """
                     INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
@@ -206,7 +206,7 @@ class PostActionRepositoryIntegrationTest {
 
     @Test
     @Order(10)
-    fun `findByTransitionId - post-action 없는 전이는 빈 목록 반환`() {
+    fun `findByTransitionId - post-action 없는 전환은 빈 목록 반환`() {
         val result = repository.findByTransitionId(emptyTransitionId)
 
         assertThat(result).isEmpty()
@@ -275,8 +275,8 @@ class PostActionRepositoryIntegrationTest {
     @Test
     @Order(50)
     fun `displayOrder ASC 정렬 - 여러 건 삽입 시 순서대로 반환`() {
-        // 기존 데이터 정리 후 별도 빈 전이 확보
-        val sortTransitionId = emptyTransitionId // 이전에 항목을 추가하지 않은 전이
+        // 기존 데이터 정리 후 별도 빈 전환 확보
+        val sortTransitionId = emptyTransitionId // 이전에 항목을 추가하지 않은 전환
 
         repository.insert(sortTransitionId, "SET_FIELD", mapOf("field" to "assignee"), 30)
         repository.insert(sortTransitionId, "ADD_WATCHER", mapOf("watcher" to "actor"), 10)

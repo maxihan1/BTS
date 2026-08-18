@@ -1,4 +1,4 @@
-// 보드 카드 이동(전이 위임) cross-BC 포트 구현체 — agile-planning → issue-tracking 전이 경로 위임
+// 보드 카드 이동(전환 위임) cross-BC 포트 구현체 — agile-planning → issue-tracking 전환 경로 위임
 
 package com.bts.issue.adapter.outbound.board
 
@@ -20,7 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate
 /**
  * [IssueTransitionPort] 구현체 (FR-BD-01 Task 5).
  *
- * agile-planning BC 의 카드 이동 요청을 issue-tracking BC 의 기존 전이 경로에 위임한다.
+ * agile-planning BC 의 카드 이동 요청을 issue-tracking BC 의 기존 전환 경로에 위임한다.
  *
  * ### actor — cmd.actorUserId 신뢰 (SecurityContext 직접 추출 안 함)
  *
@@ -49,7 +49,7 @@ import org.springframework.transaction.support.TransactionTemplate
  * 문자열 매칭 없이 두 실패를 구분할 수 있어야 하기 때문이다([com.bts.shared.issue.IssueMutationPermissionDeniedException]
  * 과 동형 패턴, FR-AT-02 C3 선례). 원본 도메인 예외는 `cause` 로 보존한다(진단용).
  *
- * @param issueApplicationService 기존 이슈 CRUD + 전이 유스케이스 Application Service.
+ * @param issueApplicationService 기존 이슈 CRUD + 전환 유스케이스 Application Service.
  * @param transactionTemplate 트랜잭션 경계 제공. `IssueApplicationService.transitionIssue` 가
  *   `@Transactional(REQUIRED)` 이므로 adapter 에서도 트랜잭션 내부에서 호출해야 `MANDATORY`
  *   하위 포트(WorkflowKeyResolverImpl 등)가 정상 동작한다.
@@ -68,9 +68,9 @@ class IssueTransitionAdapter(
      * 추출해 채운 값). adapter 는 SecurityContext 를 직접 읽지 않으므로 스레드 무관(async 안전)하다.
      * 401 인증 강제는 호출 컨트롤러가 actor 추출 단계에서 담당한다.
      *
-     * @param cmd 전이 커맨드. actorUserId·issueKey·toStateKey·expectedVersion·resolutionId 포함.
-     * @return 전이 완료 후 상태 키·버전을 담은 [BoardTransitionResult].
-     * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전이 규칙 위반 또는 미정의 전이.
+     * @param cmd 전환 커맨드. actorUserId·issueKey·toStateKey·expectedVersion·resolutionId 포함.
+     * @return 전환 완료 후 상태 키·버전을 담은 [BoardTransitionResult].
+     * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전환 규칙 위반 또는 미정의 전환.
      * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 워크플로우 스킴 미배정.
      * @throws IssueTransitionPermissionDeniedException TRANSITION 권한 없을 때(원래
      *   [com.bts.issue.domain.IssueAccessDeniedException] 를 번역, FR-SL-05 PR1 Task 2).
@@ -126,7 +126,7 @@ class IssueTransitionAdapter(
         try {
             attempt()
         } catch (e: IssueAccessDeniedException) {
-            throw IssueTransitionPermissionDeniedException(e.message ?: "이슈 전이 권한이 없습니다", e)
+            throw IssueTransitionPermissionDeniedException(e.message ?: "이슈 전환 권한이 없습니다", e)
         } catch (e: IssueVersionConflictException) {
             throw IssueOptimisticLockException(e.message ?: "버전 충돌이 발생했습니다", e)
         }

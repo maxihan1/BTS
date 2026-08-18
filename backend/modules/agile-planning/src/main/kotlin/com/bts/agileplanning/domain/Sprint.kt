@@ -6,7 +6,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * 스프린트 상태 전이 위반 예외.
+ * 스프린트 상태 전환 위반 예외.
  *
  * Sprint.start() 또는 Sprint.complete() 가 허용되지 않는 현재 상태에서 호출될 때 던진다.
  *
@@ -18,7 +18,7 @@ class InvalidSprintTransitionException(message: String) : IllegalStateException(
  * 스프린트 애그리게이트 루트.
  *
  * 정해진 기간(startDate ~ endDate) 동안 백로그 아이템을 처리하는 반복 계획 단위.
- * PLANNED -> ACTIVE -> COMPLETED 단방향 FSM 으로 전이한다.
+ * PLANNED -> ACTIVE -> COMPLETED 단방향 FSM 으로 전환한다.
  *
  * ### BC 격리
  * projectKey 는 문자열로 보관한다. issue-tracking 또는 project-workflow BC 를 직접 import 하지 않는다.
@@ -63,7 +63,7 @@ data class Sprint(
      * ACTIVE 또는 COMPLETED 상태에서 호출하면 InvalidSprintTransitionException 을 던진다.
      *
      * @return ACTIVE 상태의 새 Sprint 인스턴스.
-     * @throws InvalidSprintTransitionException 전이가 허용되지 않는 상태에서 호출된 경우.
+     * @throws InvalidSprintTransitionException 전환이 허용되지 않는 상태에서 호출된 경우.
      */
     fun start(): Sprint {
         if (!status.canTransitionTo(SprintStatus.ACTIVE)) {
@@ -82,7 +82,7 @@ data class Sprint(
      * PLANNED 또는 COMPLETED 상태에서 호출하면 InvalidSprintTransitionException 을 던진다.
      *
      * @return COMPLETED 상태의 새 Sprint 인스턴스.
-     * @throws InvalidSprintTransitionException 전이가 허용되지 않는 상태에서 호출된 경우.
+     * @throws InvalidSprintTransitionException 전환이 허용되지 않는 상태에서 호출된 경우.
      */
     fun complete(): Sprint {
         if (!status.canTransitionTo(SprintStatus.COMPLETED)) {

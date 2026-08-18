@@ -90,11 +90,11 @@ API 3종. `POST /search/export-jobs`(202+jobId) · `GET /search/export-jobs/{id}
 - files: [`backend/.../export/job/domain/ExportJobId.kt`, `backend/.../export/job/domain/ExportJobStatus.kt`, `backend/.../export/job/domain/ExportJob.kt`, `backend/.../export/job/domain/ExportJobTest.kt`]
 - depends-on: []
 
-**RED**: `ExportJobTest` — (a) `ExportJobStatus` PENDING/RUNNING/COMPLETED/FAILED 종단 전이 규칙, (b) `ExportJob.progressPercent(processed, total)` 계산(total=0 → 100, 그 외 처리/총*100 내림), (c) `downloadReady` = COMPLETED && resultObjectKey != null. → 클래스 없음 fail.
+**RED**: `ExportJobTest` — (a) `ExportJobStatus` PENDING/RUNNING/COMPLETED/FAILED 종단 전환 규칙, (b) `ExportJob.progressPercent(processed, total)` 계산(total=0 → 100, 그 외 처리/총*100 내림), (c) `downloadReady` = COMPLETED && resultObjectKey != null. → 클래스 없음 fail.
 
 **GREEN**: `ExportJobId`(value class UUID), `ExportJobStatus`(enum, BulkOperationStatus 미러), `ExportJob`(data class + progress/downloadReady 순수 함수).
 
-**REFACTOR**: KDoc(상태 머신 전이 다이어그램) + 상한 상수 `MAX_ROWS=100_000L`를 도메인 companion에.
+**REFACTOR**: KDoc(상태 머신 전환 다이어그램) + 상한 상수 `MAX_ROWS=100_000L`를 도메인 companion에.
 
 **검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobTest"`
 

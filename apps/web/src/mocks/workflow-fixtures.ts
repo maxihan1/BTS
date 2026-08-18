@@ -8,14 +8,14 @@
 //   (PR #16 C-2 옵션 B 채택) 정적 문자열 직접 작성 금지 — transitionKey() helper 호출로 drift 를 원천 차단한다.
 // - description 은 옵션 A 한계: 정적 문자열이므로 backend yaml seed 와 수동으로 동기화해야 함.
 //   workflow-fixtures.test.ts 의 description 회귀 가드가 drift 를 감지한다.
-// - software-default: 5 상태 + 6 전이 (backend YAML 기준)
-// - bug-tracking: 5 상태 + 5 전이
-// - simple: 3 상태 + 3 전이
-// - kanban-basic: 4 상태 + 3 전이
+// - software-default: 5 상태 + 6 전환 (backend YAML 기준)
+// - bug-tracking: 5 상태 + 5 전환
+// - simple: 3 상태 + 3 전환
+// - kanban-basic: 4 상태 + 3 전환
 import type { WorkflowView } from '@/api/workflows'
 import { transitionKey } from '@/components/workflow/workflow.types'
 
-/** 소프트웨어 개발 기본 워크플로우 — 5 상태 + 6 전이 */
+/** 소프트웨어 개발 기본 워크플로우 — 5 상태 + 6 전환 */
 export const softwareDefaultFixture: WorkflowView = {
   key: 'software-default',
   name: '소프트웨어 개발 기본 워크플로우',
@@ -37,7 +37,7 @@ export const softwareDefaultFixture: WorkflowView = {
   ],
 }
 
-/** 버그 추적 워크플로우 — 5 상태 + 5 전이 */
+/** 버그 추적 워크플로우 — 5 상태 + 5 전환 */
 export const bugTrackingFixture: WorkflowView = {
   key: 'bug-tracking',
   name: '버그 추적 워크플로우',
@@ -58,7 +58,7 @@ export const bugTrackingFixture: WorkflowView = {
   ],
 }
 
-/** 단순 워크플로우 — 3 상태 + 3 전이 */
+/** 단순 워크플로우 — 3 상태 + 3 전환 */
 export const simpleFixture: WorkflowView = {
   key: 'simple',
   name: '단순 워크플로우 (TODO/DOING/DONE)',
@@ -75,7 +75,7 @@ export const simpleFixture: WorkflowView = {
   ],
 }
 
-/** 칸반 기본 워크플로우 — 4 상태 + 3 전이 */
+/** 칸반 기본 워크플로우 — 4 상태 + 3 전환 */
 export const kanbanBasicFixture: WorkflowView = {
   key: 'kanban-basic',
   name: '칸반 기본 워크플로우',

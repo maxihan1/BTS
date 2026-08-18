@@ -81,9 +81,9 @@ private typealias ValueMappingTriple = Triple<ValueTargetField, String, String>
  * [confirm] 의 `dryRun` 파라미터는 API 계약(`POST /imports/{jobId}/mapping` body 의 optional
  * `dryRun` 필드, 웹 계층 sibling task)을 그대로 받는다. `AWAITING_MAPPING` job 이 analyze 단계에서
  * 가진 [ImportJob.dryRun] 은 항상 `false`(중립값)이며, 실제 dry-run 여부는 사용자가 confirm 시
- * 선택하는 이 파라미터로 비로소 확정된다. [transactionTemplate] 내부 CAS 전이
+ * 선택하는 이 파라미터로 비로소 확정된다. [transactionTemplate] 내부 CAS 전환
  * ([ImportJobRepository.transitionToPending])가 이 값을 `dry_run` 컬럼에 함께 SET 해 영속하므로,
- * 워커는 확정된 값을 그대로 읽어 dry-run 판정을 수행한다(스펙 §엣지케이스 "dryRun 확정 → 저장·전이·
+ * 워커는 확정된 값을 그대로 읽어 dry-run 판정을 수행한다(스펙 §엣지케이스 "dryRun 확정 → 저장·전환·
  * enqueue 동일, 워커가 dryRun 검증만"). 과거 이 파라미터가 감사 로깅에만 쓰이고 영속되지 않아 워커가
  * 확정된 dryRun 선택을 무시하던 silent bug 가 있었다(재발 금지 — dryrun-fix).
  *
@@ -117,7 +117,7 @@ private typealias ValueMappingTriple = Triple<ValueTargetField, String, String>
  *
  * @param importMappingRepository 필드 매핑 영속 저장소([ImportMappingRepository.saveAll]).
  * @param importJobRepository Import 작업 저장소. 소유확인([ImportJobRepository.findByIdForRequester]) +
- *   CAS 전이([ImportJobRepository.transitionToPending])에 사용.
+ *   CAS 전환([ImportJobRepository.transitionToPending])에 사용.
  * @param enqueuePublisher pgmq 큐에 작업 ID 를 발행하는 아웃바운드 어댑터.
  * @param storage Import 원본 오브젝트 스토리지 포트. 헤더/전량 재읽기용.
  * @param transactionTemplate CAS+saveAll+enqueue 구간의 프로그래밍 방식 트랜잭션 경계. [collectValues]
@@ -134,7 +134,7 @@ private typealias ValueMappingTriple = Triple<ValueTargetField, String, String>
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   (`ImportJobProcessor` 의 동일 기본값 패턴을 따라) 기본값으로 직접 인스턴스화한다.
  *
- * Suppress 근거. `LongParameterList` — DI 생성자, 필드/사용자/값 매핑 영속·CAS 전이·enqueue·cross-BC 조회
+ * Suppress 근거. `LongParameterList` — DI 생성자, 필드/사용자/값 매핑 영속·CAS 전환·enqueue·cross-BC 조회
  * 협력자 11개. `TooManyFunctions` — 필드/사용자/값 매핑 3종의 검증+확정 책임이 늘며 임계값(11)을 자연
  * 초과(12, validate/confirm/collectUsers/collectValues 4개 public API + 매핑 종류별 전용 private 헬퍼).
  */
@@ -178,7 +178,7 @@ class ImportMappingService(
     }
 
     /**
-     * 필드 매핑을 검증한 뒤 저장하고, 작업을 PENDING 으로 전이해 실행 큐에 enqueue 한다.
+     * 필드 매핑을 검증한 뒤 저장하고, 작업을 PENDING 으로 전환해 실행 큐에 enqueue 한다.
      *
      * 클래스 KDoc §확정 트랜잭션 경계 참조 — CAS([ImportJobRepository.transitionToPending])가
      * saveAll/enqueue 보다 먼저 실행되어 반복/동시 confirm 의 중복 실행을 차단한다. `@Transactional`
@@ -204,7 +204,7 @@ class ImportMappingService(
      * @param jobId 확정 대상 Import 작업 식별자.
      * @param actor 요청자 UUID. 소유확인에 사용.
      * @param fieldMappings 소스 필드 이름 → [TargetField.key](또는 [TargetField.IGNORE_KEY]) 매핑.
-     * @param dryRun 확정 시 사용자가 선택한 dry-run 여부(클래스 KDoc §dryRun 참조). CAS 전이로
+     * @param dryRun 확정 시 사용자가 선택한 dry-run 여부(클래스 KDoc §dryRun 참조). CAS 전환으로
      *   `dry_run` 컬럼에 영속된다.
      * @param userMappings 확정할 사용자 매핑 `sourceIdentifier to targetUserId?` 목록. **Map 이 아닌
      *   List** — Map 으로 받으면 동일 키(정규화 전 원본이 다르더라도 정규화 후 겹치는 경우)가 먼저
@@ -236,7 +236,7 @@ class ImportMappingService(
      *
      * @param valueMappings 확정할 값 매핑 `(대상 필드, 소스 값, 대상 값)` 목록. 기본값 빈 목록 — 값
      *   매핑 없이 confirm 하는 기존 호출부와 하위호환.
-     * @return `PENDING` 상태로 전이된 [ImportJob] — [confirm] 호출 직전 조회한 스냅샷에
+     * @return `PENDING` 상태로 전환된 [ImportJob] — [confirm] 호출 직전 조회한 스냅샷에
      *   status/expiresAt/dryRun 만 갱신한 사본이며, CAS 이후 재조회하지 않는다(그 외 필드는 확정으로
      *   바뀌지 않는다).
      * @throws ResponseStatusException(404) 작업이 없거나 [actor] 소유가 아닌 경우.

@@ -455,7 +455,7 @@ class ReleaseNotesIntegrationTest {
     }
 
     /**
-     * 헬퍼: PATCH /{id}/status 로 버전 상태를 전이한다.
+     * 헬퍼: PATCH /{id}/status 로 버전 상태를 전환한다.
      */
     private fun patchStatus(
         id: UUID,

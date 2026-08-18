@@ -20,7 +20,7 @@ object SlackChannelEventType {
     /** 이슈 담당자 지정. */
     const val ISSUE_ASSIGNED = "issue.assigned"
 
-    /** 이슈 상태 전이. */
+    /** 이슈 상태 전환. */
     const val ISSUE_TRANSITIONED = "issue.transitioned"
 
     /** 이슈 댓글 작성. */

@@ -8,7 +8,7 @@
 
 ## 개요
 
-워크플로우 전이 시 발행되어 pgmq 큐 `q_transition_events`에 쌓인 `WebhookRequested` 이벤트를 notification BC의 스케줄 워커가 소비해, 이벤트가 지정한 외부 URL로 HTTP 요청을 보낸다. PR1에서 발행 파이프라인이 배선됐고, 본 PR2가 소비 + 외부 전송을 담당한다. 완료 시 FR-NT-05가 종료된다.
+워크플로우 전환 시 발행되어 pgmq 큐 `q_transition_events`에 쌓인 `WebhookRequested` 이벤트를 notification BC의 스케줄 워커가 소비해, 이벤트가 지정한 외부 URL로 HTTP 요청을 보낸다. PR1에서 발행 파이프라인이 배선됐고, 본 PR2가 소비 + 외부 전송을 담당한다. 완료 시 FR-NT-05가 종료된다.
 
 ## Maxi 게이트 확정 결정 (D1/D2)
 
@@ -17,10 +17,10 @@
 
 ## 사용자 시나리오 (Given-When-Then)
 
-> 사용자 = 워크플로우 전이로 webhook을 트리거한 행위자 + 외부 webhook 수신 서버. 본 PR은 백엔드 비동기 처리라 직접 UI는 없다.
+> 사용자 = 워크플로우 전환으로 webhook을 트리거한 행위자 + 외부 webhook 수신 서버. 본 PR은 백엔드 비동기 처리라 직접 UI는 없다.
 
 1. **정상 전송**
-   - Given. 워크플로우 전이가 `CALL_WEBHOOK` post-action을 실행해 `q_transition_events`에 `WebhookRequested{issueKey, url=공개URL, method=POST}` 1건이 쌓였다.
+   - Given. 워크플로우 전환이 `CALL_WEBHOOK` post-action을 실행해 `q_transition_events`에 `WebhookRequested{issueKey, url=공개URL, method=POST}` 1건이 쌓였다.
    - When. WebhookDispatchWorker가 폴링해 메시지를 읽는다.
    - Then. URL이 SSRF 가드를 통과하면 해당 URL로 `POST` + JSON 엔벨로프 body를 전송하고, 2xx 응답을 받으면 `pgmq.delete`로 메시지를 제거한다.
 

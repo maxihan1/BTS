@@ -509,7 +509,7 @@ class IssueMentionPublishIntegrationTest {
                 stmt.executeUpdate()
             }
 
-            // 워크플로우 — open 상태만 필요 (updateIssue 는 워크플로우 전이 없음)
+            // 워크플로우 — open 상태만 필요 (updateIssue 는 워크플로우 전환 없음)
             val wfId: UUID =
                 c.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('mention-test-wf', '멘션 테스트 워크플로우') " +

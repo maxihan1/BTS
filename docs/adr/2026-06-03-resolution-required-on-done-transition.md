@@ -1,4 +1,4 @@
-# ADR — 종료(DONE) 전이 시 Resolution 필수 강제는 워크플로우 게이트로 한다 (Jira 방식)
+# ADR — 종료(DONE) 전환 시 Resolution 필수 강제는 워크플로우 게이트로 한다 (Jira 방식)
 
 > 날짜: 2026-06-03
 > 상태: 보류 (옵션 A는 최종 목표로 유지하되, 선행 FR "워크플로우 validator 런타임 결선" 완료에 의존)
@@ -9,18 +9,18 @@
 
 ## 맥락
 
-FR-IS-07은 이슈를 종료(StateCategory.DONE) 상태로 전이할 때 Resolution(해결 결과: Fixed / Won't Fix / Duplicate 등)을 필수로 선택하게 하고, 미설정 시 종료 전이를 거부한다.
+FR-IS-07은 이슈를 종료(StateCategory.DONE) 상태로 전환할 때 Resolution(해결 결과: Fixed / Won't Fix / Duplicate 등)을 필수로 선택하게 하고, 미설정 시 종료 전환을 거부한다.
 
-이 "종료 시 Resolution 필수" 강제를 어디에 둘지가 핵심 갈림길이었다. project-workflow에 이미 전이 게이트 검증 프레임워크(`WorkflowValidator` SPI)가 존재하고, 그중 `RequiredFieldValidator`(`com.bts.workflow.validator.RequiredFieldValidator`)의 docstring 설정 예시가 **정확히 `{ "field": "resolution" }`** 이다 — 즉 이 검증기는 resolution 강제를 염두에 두고 설계됐다. 검증기는 전이 시 `TransitionContext.request.issueFields[field]`로 이슈 필드를 검사한다. `StateCategory.DONE` enum도 이미 존재한다.
+이 "종료 시 Resolution 필수" 강제를 어디에 둘지가 핵심 갈림길이었다. project-workflow에 이미 전환 게이트 검증 프레임워크(`WorkflowValidator` SPI)가 존재하고, 그중 `RequiredFieldValidator`(`com.bts.workflow.validator.RequiredFieldValidator`)의 docstring 설정 예시가 **정확히 `{ "field": "resolution" }`** 이다 — 즉 이 검증기는 resolution 강제를 염두에 두고 설계됐다. 검증기는 전환 시 `TransitionContext.request.issueFields[field]`로 이슈 필드를 검사한다. `StateCategory.DONE` enum도 이미 존재한다.
 
-issue-tracking의 전이 경로(`IssueApplicationService.transitionIssue`, `availableTransitions`)는 현재 `issueFields = mapOf("summary" to issue.summary)`로 제목만 워크플로우 포트에 전달한다.
+issue-tracking의 전환 경로(`IssueApplicationService.transitionIssue`, `availableTransitions`)는 현재 `issueFields = mapOf("summary" to issue.summary)`로 제목만 워크플로우 포트에 전달한다.
 
 ## 결정
 
-**옵션 A — 워크플로우 게이트.** 기존 `RequiredFieldValidator`를 재사용해 DONE 전이에 resolution 필수를 강제한다. Jira가 Resolve 전이에 Resolution 필수를 워크플로우 transition screen에서 설정하는 방식과 동일하며, "프론트/이슈가 하드코딩하지 않고 워크플로우가 정답지" 원칙([[2026-06-02-bulk-available-transitions-server-side]])과 일관된다.
+**옵션 A — 워크플로우 게이트.** 기존 `RequiredFieldValidator`를 재사용해 DONE 전환에 resolution 필수를 강제한다. Jira가 Resolve 전환에 Resolution 필수를 워크플로우 transition screen에서 설정하는 방식과 동일하며, "프론트/이슈가 하드코딩하지 않고 워크플로우가 정답지" 원칙([[2026-06-02-bulk-available-transitions-server-side]])과 일관된다.
 
-- project-workflow: DONE 카테고리로 가는 전이의 워크플로우 정의(YAML/seed)에 `validators[].type = "RequiredField"`, config `{ "field": "resolution" }`를 설정한다.
-- issue-tracking: 전이 시 워크플로우 포트로 보내는 `issueFields` 맵에 `"resolution"` 값을 추가 전달한다(`IssueApplicationService` 전이/가용전이 경로). resolution 미설정 시 검증기가 `ValidatorResult.Fail`을 반환 → 기존 `TransitionResult.ValidatorFailure` → `IssueTransitionNotAllowedException` 변환 경로를 그대로 탄다.
+- project-workflow: DONE 카테고리로 가는 전환의 워크플로우 정의(YAML/seed)에 `validators[].type = "RequiredField"`, config `{ "field": "resolution" }`를 설정한다.
+- issue-tracking: 전환 시 워크플로우 포트로 보내는 `issueFields` 맵에 `"resolution"` 값을 추가 전달한다(`IssueApplicationService` 전환/가용전환 경로). resolution 미설정 시 검증기가 `ValidatorResult.Fail`을 반환 → 기존 `TransitionResult.ValidatorFailure` → `IssueTransitionNotAllowedException` 변환 경로를 그대로 탄다.
 - Resolution 데이터 모델은 issue-tracking 소유: `resolutions` 테이블 + `issues.resolution_id`(nullable, FK 미적용 — BC 격리). 표준 세트(Fixed / Won't Fix / Duplicate / Cannot Reproduce / Done)는 불변 + 커스텀 추가 — IssueType 표준 5종 패턴과 동형([[2026-05-29-issue-type-cross-bc-introduction]]).
 
 ### 2 BC 걸침 처리
@@ -34,6 +34,6 @@ issue-tracking의 전이 경로(`IssueApplicationService.transitionIssue`, `avai
 ## 결과
 
 - resolution 강제 로직이 워크플로우 게이트 단일 출처가 되어, 향후 다른 필수 필드(예: 종료 시 fix version) 추가도 같은 프레임워크로 확장 가능.
-- issue-tracking 전이 경로는 `issueFields`에 resolution을 더하는 최소 변경만 받는다.
+- issue-tracking 전환 경로는 `issueFields`에 resolution을 더하는 최소 변경만 받는다.
 - 워크플로우별로 resolution 필수를 켜고 끌 수 있다(유연성 확보).
 - 비용: project-workflow seed/YAML 변경 + 2 BC 동시 변경에 따른 PR 전략 결정이 필요(bts-plan에서 처리).

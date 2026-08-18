@@ -1,4 +1,4 @@
-# FR-NT-05 D6/D7 PR-B — 워크플로우 전이 post-action 설정 UI + E2E
+# FR-NT-05 D6/D7 PR-B — 워크플로우 전환 post-action 설정 UI + E2E
 
 > slug: fr-nt-05-d6-d7-post-action-ui
 > type: ui
@@ -8,13 +8,13 @@
 
 ## Brief
 
-FR-NT-05 D6/D7 — apps/web 워크플로우 화면에 관리자가 전이별 post-action(CALL_WEBHOOK url/method)을 추가/수정/삭제하는 설정 UI + E2E. 현재 `workflows.$key.tsx`는 읽기 전용 mermaid 다이어그램. 백엔드 API는 PR-A(#143)로 준비됨:
+FR-NT-05 D6/D7 — apps/web 워크플로우 화면에 관리자가 전환별 post-action(CALL_WEBHOOK url/method)을 추가/수정/삭제하는 설정 UI + E2E. 현재 `workflows.$key.tsx`는 읽기 전용 mermaid 다이어그램. 백엔드 API는 PR-A(#143)로 준비됨:
 - `GET/POST/PUT/DELETE /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions` (+`/{id}`), transitionKey=`from__to`.
 - 권한 MANAGE_SCHEME(시스템 admin). 요청 {type, config, displayOrder}, 응답 {id, type, config, displayOrder}.
 
 완료 시 **FR-NT-05 [~]→완료 전환**(D6/D7 마킹, product notification-dashboard.md §2.5). 직전: PR2(#141)+PR-A(#143) 머지됨.
 
-- 핵심: admin 전용 게이팅(비admin엔 미노출/403 처리), 전이 선택→post-action 목록/폼, E2E는 MSW로 API mock.
+- 핵심: admin 전용 게이팅(비admin엔 미노출/403 처리), 전환 선택→post-action 목록/폼, E2E는 MSW로 API mock.
 
 classify: type=ui, agent=frontend-engineer, slug=fr-nt-05-d6-d7-post-action-ui (classify qa 오판정 교정)
 
@@ -32,7 +32,7 @@ classify: type=ui, agent=frontend-engineer, slug=fr-nt-05-d6-d7-post-action-ui (
 
 전체. [docs/specs/2026-06-14-fr-nt-05-d6-d7-post-action-ui.md](../specs/2026-06-14-fr-nt-05-d6-d7-post-action-ui.md)
 
-3줄. workflows.$key 하단 admin 섹션(isSystemAdmin)에서 전이 선택→CALL_WEBHOOK post-action CRUD. api/hooks/section/dialog 신규 + workflows.$key 와이어 + MSW/E2E. 백엔드 API=PR-A #143.
+3줄. workflows.$key 하단 admin 섹션(isSystemAdmin)에서 전환 선택→CALL_WEBHOOK post-action CRUD. api/hooks/section/dialog 신규 + workflows.$key 와이어 + MSW/E2E. 백엔드 API=PR-A #143.
 
 Maxi 게이트. 배치=A(workflows.$key 섹션), type=CALL_WEBHOOK, 게이팅=isSystemAdmin.
 
@@ -59,9 +59,9 @@ Maxi 게이트. 배치=A(workflows.$key 섹션), type=CALL_WEBHOOK, 게이팅=is
 **RED**. url/method 입력·검증(http/https·빈값)·추가/수정 겸용·취소/저장. **GREEN**. radix-ui Dialog(SchemeInUseModal 패턴), 제어 폼(useState 또는 RHF, MappingTable 선례). i18n 키. **REFACTOR**. KDoc/접근성(aria).
 **검증**: `pnpm --filter web test -- PostActionFormDialog`
 
-### Task 4. PostActionConfigSection (전이 선택 + 목록 + 게이팅)
+### Task 4. PostActionConfigSection (전환 선택 + 목록 + 게이팅)
 **메타**. agent: `frontend-engineer` · files: [`apps/web/src/components/workflow/PostActionConfigSection.tsx`, `apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx`] · depends-on: [2, 3]
-**RED**. isSystemAdmin true만 렌더, 전이 선택→목록(빈/N건), 추가/수정/삭제 버튼→dialog/mutation, 비admin 미렌더. **GREEN**. hooks+dialog 조합, 전이 목록은 props(workflow.transitions). **REFACTOR**. 목록 테이블 분리.
+**RED**. isSystemAdmin true만 렌더, 전환 선택→목록(빈/N건), 추가/수정/삭제 버튼→dialog/mutation, 비admin 미렌더. **GREEN**. hooks+dialog 조합, 전환 목록은 props(workflow.transitions). **REFACTOR**. 목록 테이블 분리.
 **검증**: `pnpm --filter web test -- PostActionConfigSection`
 
 ### Task 5. workflows.$key.tsx 와이어 + isSystemAdmin 게이팅

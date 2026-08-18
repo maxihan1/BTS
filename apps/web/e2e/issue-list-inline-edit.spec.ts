@@ -3,11 +3,11 @@
 // 시나리오
 //   S1  담당자 셀 클릭 → 검색 → 선택 → 셀 값 반영
 //   S2  우선순위 셀 클릭 → 선택 → 셀 값 반영
-//   S3  상태 셀 클릭 → **그 이슈의 가용 전이만** 노출 (다른 이슈의 전이는 안 보인다)
+//   S3  상태 셀 클릭 → **그 이슈의 가용 전환만** 노출 (다른 이슈의 전환은 안 보인다)
 //   S4  편집 대상이 아닌 셀(요약)·행 여백 클릭 → 기존대로 상세 이동 (회귀 0 의 증인)
 //   S6  popover 를 Esc 로 닫아도 상세로 이동하지 않는다
-//   E14 종료 전이(toCategory === 'DONE') → popover 가 닫히고 결의안 모달이 뜬다.
-//       **결의안 없이 전이 요청이 나가지 않는다** (네트워크로 단정)
+//   E14 종료 전환(toCategory === 'DONE') → popover 가 닫히고 결의안 모달이 뜬다.
+//       **결의안 없이 전환 요청이 나가지 않는다** (네트워크로 단정)
 //   E10 popover 가 열린 동안 j/k 가 목록 커서를 움직이지 않는다
 //   FR3 편집 셀 클릭이 상세를 열지 않는다
 //   §시각검증7 편집 셀 텍스트를 드래그로 선택할 수 있다 (F8 `<button>` user-select 회귀면)
@@ -19,7 +19,7 @@
 //     여러 개라 키 접두가 없으면 역시 strict mode 위반이 난다.
 //   - `미배정` 은 필터 체크박스 라벨과 같은 낱말이라 `getByText` 로 잡지 않는다. 담당자
 //     셀은 트리거 버튼(`ATLAS-1 담당자 변경`)으로 한정해 읽는다.
-//   - 전이 이름은 MSW 워크플로우 fixture(`softwareDefaultFixture`) 의 영문 정본이다
+//   - 전환 이름은 MSW 워크플로우 fixture(`softwareDefaultFixture`) 의 영문 정본이다
 //     (`Start Work` / `Cancel`). 한국어 추정 문구를 쓰면 실패한다.
 //   - MSW `serviceWorkers:'block'` 금지 — 앱 부팅이 깨진다.
 
@@ -46,32 +46,32 @@ function categoryOf(stateKey: string): string | undefined {
 }
 
 /**
- * 어떤 상태에서 나가는 전이 이름 하나를 fixture 에서 뽑는다.
+ * 어떤 상태에서 나가는 전환 이름 하나를 fixture 에서 뽑는다.
  *
  * 상수를 손으로 적지 않는 이유 — fixture 가 바뀌면 이 spec 이 **조용히 공허해지는** 대신
  * 즉시 실패해야 한다. 못 찾으면 던진다.
  *
  * @param stateKey 출발 상태 키
- * @param wantDone true 면 종료(DONE) 전이, false 면 비종료 전이
- * @returns 전이 표시 이름
+ * @param wantDone true 면 종료(DONE) 전환, false 면 비종료 전환
+ * @returns 전환 표시 이름
  */
 function transitionNameFrom(stateKey: string, wantDone: boolean): string {
   const found = softwareDefaultFixture.transitions.find(
     (t) => t.fromStateKey === stateKey && (categoryOf(t.toStateKey) === 'DONE') === wantDone,
   )
   if (found === undefined) {
-    throw new Error(`fixture 에 ${stateKey} → ${wantDone ? 'DONE' : '비DONE'} 전이가 없다`)
+    throw new Error(`fixture 에 ${stateKey} → ${wantDone ? 'DONE' : '비DONE'} 전환이 없다`)
   }
   return found.name
 }
 
-/** ATLAS-1(open) 에서 나가는 비종료 전이 이름 — `Start Work` */
+/** ATLAS-1(open) 에서 나가는 비종료 전환 이름 — `Start Work` */
 const OPEN_NON_DONE_TRANSITION = transitionNameFrom(issueAtlas1Fixture.currentStateKey, false)
 
-/** ATLAS-1(open) 에서 나가는 **종료** 전이 이름 — `Cancel` (E14 의 방아쇠) */
+/** ATLAS-1(open) 에서 나가는 **종료** 전환 이름 — `Cancel` (E14 의 방아쇠) */
 const OPEN_DONE_TRANSITION = transitionNameFrom(issueAtlas1Fixture.currentStateKey, true)
 
-/** ATLAS-2(in_progress) 에서만 나가는 전이 이름 — ATLAS-1 popover 에 보이면 안 된다 */
+/** ATLAS-2(in_progress) 에서만 나가는 전환 이름 — ATLAS-1 popover 에 보이면 안 된다 */
 const OTHER_ONLY_TRANSITION = transitionNameFrom(issueAtlas2Fixture.currentStateKey, false)
 
 /** 우선순위 3(보통) — ATLAS-1 의 초기 표기 */
@@ -152,11 +152,11 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S3 상태 — 가용 전이만
+  // S3 상태 — 가용 전환만
   // ───────────────────────────────────────────────────────────────────────────
-  test('S3 상태 셀은 그 이슈의 가용 전이만 노출한다', async ({ page }) => {
+  test('S3 상태 셀은 그 이슈의 가용 전환만 노출한다', async ({ page }) => {
     // Given open 이슈(ATLAS-1)와 in_progress 이슈(ATLAS-2)가 함께 목록에 있고,
-    //       ATLAS-2 의 셀에는 in_progress 전이가 실제로 뜬다.
+    //       ATLAS-2 의 셀에는 in_progress 전환이 실제로 뜬다.
     //       ★이 대조가 없으면 아래 `toHaveCount(0)` 은 "그 문구가 앱 어디에도 없어서"
     //       통과하는 공허한 단정이 된다.
     await gotoIssueList(page)
@@ -167,7 +167,7 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     // When ATLAS-1 의 상태 셀을 연다
     await editTrigger(page, TARGET_KEY, '상태').click()
 
-    // Then open 에서 나가는 전이만 보이고, 다른 이슈의 전이는 보이지 않는다
+    // Then open 에서 나가는 전환만 보이고, 다른 이슈의 전환은 보이지 않는다
     await expect(
       page.getByRole('button', { name: OPEN_NON_DONE_TRANSITION, exact: true }),
     ).toBeVisible()
@@ -238,13 +238,13 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // E14 종료 전이 — 결의안 없이 전이가 나가지 않는다
+  // E14 종료 전환 — 결의안 없이 전환이 나가지 않는다
   // ───────────────────────────────────────────────────────────────────────────
-  test('E14 종료 전이를 고르면 popover 가 닫히고 결의안 모달이 뜬다', async ({ page }) => {
+  test('E14 종료 전환을 고르면 popover 가 닫히고 결의안 모달이 뜬다', async ({ page }) => {
     // Given 목록이 보인다
     await gotoIssueList(page)
 
-    // When 종료(DONE) 전이를 고른다
+    // When 종료(DONE) 전환을 고른다
     await editTrigger(page, TARGET_KEY, '상태').click()
     await page.getByRole('button', { name: OPEN_DONE_TRANSITION, exact: true }).click()
 
@@ -253,8 +253,8 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     await expect(page.getByRole('button', { name: OPEN_DONE_TRANSITION, exact: true })).toHaveCount(0)
   })
 
-  test('E14 결의안을 고르지 않으면 전이 요청이 나가지 않는다', async ({ page }) => {
-    // Given 전이 요청을 세는 관찰자를 붙이고 목록을 연다
+  test('E14 결의안을 고르지 않으면 전환 요청이 나가지 않는다', async ({ page }) => {
+    // Given 전환 요청을 세는 관찰자를 붙이고 목록을 연다
     let transitionCalls = 0
     await page.route(`**/api/v1/issues/${TARGET_KEY}/transition`, async (route) => {
       transitionCalls += 1
@@ -264,14 +264,14 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     const statusTrigger = editTrigger(page, TARGET_KEY, '상태')
     await expect(statusTrigger).toHaveText(issueAtlas1Fixture.currentStateKey)
 
-    // When 종료 전이를 고른 뒤 결의안을 고르지 않고 모달을 닫는다
+    // When 종료 전환을 고른 뒤 결의안을 고르지 않고 모달을 닫는다
     await statusTrigger.click()
     await page.getByRole('button', { name: OPEN_DONE_TRANSITION, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: RESOLUTION_DIALOG_TITLE })
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: '취소', exact: true }).click()
 
-    // Then 상태는 그대로고 전이 요청은 한 번도 나가지 않았다
+    // Then 상태는 그대로고 전환 요청은 한 번도 나가지 않았다
     await expect(statusTrigger).toHaveText(issueAtlas1Fixture.currentStateKey)
     expect(transitionCalls).toBe(0)
   })

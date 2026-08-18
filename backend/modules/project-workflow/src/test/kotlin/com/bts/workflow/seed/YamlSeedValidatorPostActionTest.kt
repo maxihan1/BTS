@@ -47,10 +47,10 @@ import java.util.concurrent.Executors
  * Spring ApplicationContext 없이 필요한 의존성을 직접 조합한다.
  *
  * 검증 범위.
- * 1. validators/post_actions 가 있는 전이 시드 → workflow_validators/workflow_post_actions 행 삽입 확인
+ * 1. validators/post_actions 가 있는 전환 시드 → workflow_validators/workflow_post_actions 행 삽입 확인
  * 2. type/config/display_order/transition_id 정합 검증
  * 3. idempotency: 동일 YAML 재시드 시 중복 INSERT 없음 (isDirty 변화없음 판정)
- * 4. validators/post_actions 빈 전이는 관련 테이블에 행 없음
+ * 4. validators/post_actions 빈 전환은 관련 테이블에 행 없음
  * 5. 표준 4 워크플로우 시드는 회귀 없음 (seedAll 호출 후 4건 유지)
  */
 @Testcontainers
@@ -156,7 +156,7 @@ class YamlSeedValidatorPostActionTest {
 
     @Test
     @Order(1)
-    fun `validators 가 있는 전이를 시드하면 workflow_validators 에 type 과 config 와 display_order 가 삽입된다`() {
+    fun `validators 가 있는 전환을 시드하면 workflow_validators 에 type 과 config 와 display_order 가 삽입된다`() {
         val yamlBytes = loadTestYaml()
         val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
         val dto = yamlMapper.readValue(yamlBytes, WorkflowYamlDto::class.java)
@@ -178,7 +178,7 @@ class YamlSeedValidatorPostActionTest {
 
     @Test
     @Order(2)
-    fun `post_actions 가 있는 전이를 시드하면 workflow_post_actions 에 type 과 config 가 삽입된다`() {
+    fun `post_actions 가 있는 전환을 시드하면 workflow_post_actions 에 type 과 config 가 삽입된다`() {
         val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
 
@@ -205,18 +205,18 @@ class YamlSeedValidatorPostActionTest {
 
     @Test
     @Order(4)
-    fun `validators 만 있고 post_actions 가 비어 있는 전이는 post_actions 빈 리스트를 반환한다`() {
+    fun `validators 만 있고 post_actions 가 비어 있는 전환은 post_actions 빈 리스트를 반환한다`() {
         val transition = WorkflowTransition(fromStateKey = "in_progress", toStateKey = "done", name = "Complete")
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
 
         assertThat(postActions).isEmpty()
 
-        log.info("시나리오 4 통과 — post_actions 빈 전이 확인")
+        log.info("시나리오 4 통과 — post_actions 빈 전환 확인")
     }
 
     @Test
     @Order(5)
-    fun `validators 와 post_actions 가 모두 없는 전이는 양쪽 다 빈 리스트를 반환한다`() {
+    fun `validators 와 post_actions 가 모두 없는 전환은 양쪽 다 빈 리스트를 반환한다`() {
         val transition = WorkflowTransition(fromStateKey = "done", toStateKey = "open", name = "Reopen")
         val validators = defRepo.findValidators("test-validator-seed", transition)
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
@@ -224,7 +224,7 @@ class YamlSeedValidatorPostActionTest {
         assertThat(validators).isEmpty()
         assertThat(postActions).isEmpty()
 
-        log.info("시나리오 5 통과 — validators/post_actions 모두 없는 전이 확인")
+        log.info("시나리오 5 통과 — validators/post_actions 모두 없는 전환 확인")
     }
 
     // ── 시나리오 6. idempotency — 동일 YAML 재시드 시 중복 INSERT 없음 ──────────────
@@ -262,7 +262,7 @@ class YamlSeedValidatorPostActionTest {
             "test-validator-seed",
         )
 
-        // software-default 전이 수 불변 검증 (FR-IS-07 B7 YAML 변경 후에도 6건 유지)
+        // software-default 전환 수 불변 검증 (FR-IS-07 B7 YAML 변경 후에도 6건 유지)
         val swDefault = all.first { it.key == "software-default" }
         assertThat(swDefault.transitions).hasSize(6)
 

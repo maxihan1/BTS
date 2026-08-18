@@ -421,7 +421,7 @@ describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
     assert.equal(classify({ title: 'SetFieldPostAction 구현' }).primary_bc, 'automation');
   });
 
-  // ★험프는 **소문자→대문자** 전이여야 한다. 연속 대문자는 경계가 아니다 —
+  // ★험프는 **소문자→대문자** 전환이어야 한다. 연속 대문자는 경계가 아니다 —
   //   아니면 `PATCH`·`PATH` 가 `pat` 에 걸려 부채 45 가 대문자로 되살아난다.
   test('연속 대문자는 험프가 아니다 (E19 · 부채 45 의 대문자 역형)', () => {
     for (const title of ['PATCH 파일 적용', 'PATH 계산 수정', 'DISPATCH 로직']) {
@@ -451,7 +451,8 @@ describe('classify — 「전환」은 도메인 구절로만 잡는다 (Transit
   // 단독 키워드로 넣으면 워크플로우와 무관한 인프라·도구 작업이 project-workflow 로 끌려온다
   // (실측 — `self-hosted 러너로 전환` 이 project-workflow 로 분류됐다).
   // 그래서 도메인 구절(`상태 전환`·`전환 규칙`·`전환 id`·`전역 전환`)로만 잡는다.
-  // 「전이」는 지우지 않는다 — 기존 문서·코드·테스트가 아직 그 표기를 쓴다.
+  // 「전이」 키워드는 지우지 않는다 — 저장소 본문은 전량 교체됐지만 git 이력·닫힌 브랜치·
+  // 저장소 밖 메모리·Flyway 로 동결된 마이그레이션 21곳은 여전히 구 표기를 쓴다.
 
   test('워크플로우 편집 도메인 제목 → project-workflow', () => {
     assert.equal(
@@ -477,7 +478,7 @@ describe('classify — 「전환」은 도메인 구절로만 잡는다 (Transit
     );
   });
 
-  test('구 표기 「전이」도 계속 잡는다 (기존 문서 회귀 방지)', () => {
+  test('구 표기 「전이」도 계속 잡는다 (이력·동결 문서 회귀 방지)', () => {
     assert.equal(
       classify({ title: '워크플로우 전이 validator 런타임 결선' }).primary_bc,
       'project-workflow'

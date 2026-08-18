@@ -15,8 +15,8 @@ FR-RP 리포트 시리즈(FR-RP-01 번다운 · FR-RP-02 벨로시티 · FR-RP-0
 
 ## 도메인 정리
 
-- **BC**. 물리 모듈 = `issue-tracking`(상태 전이 이력·이슈 메타 로컬 소유, cross-BC 포트 0 — 스프린트 미참조). 논리 라벨 = notification-dashboard(fr-index, 카운트 14 불변). CFD(FR-RP-03) 동형.
-- **데이터 소스**. on-the-fly 역산 — `issue_change_group`/`issue_change_item`(V018, FR-HS-01) status 전이 이력 + `issues.created_at`. **신규 스키마·스케줄러 0**. CFD 인프라 재사용(`CfdStatusHistoryRepository.fetchStatusChanges`, `IssueRepository.fetchActiveVisibleIssuesForCfd`, `CfdIssueSourceRow`, `IsolatedWorkflowStateLookup`).
+- **BC**. 물리 모듈 = `issue-tracking`(상태 전환 이력·이슈 메타 로컬 소유, cross-BC 포트 0 — 스프린트 미참조). 논리 라벨 = notification-dashboard(fr-index, 카운트 14 불변). CFD(FR-RP-03) 동형.
+- **데이터 소스**. on-the-fly 역산 — `issue_change_group`/`issue_change_item`(V018, FR-HS-01) status 전환 이력 + `issues.created_at`. **신규 스키마·스케줄러 0**. CFD 인프라 재사용(`CfdStatusHistoryRepository.fetchStatusChanges`, `IssueRepository.fetchActiveVisibleIssuesForCfd`, `CfdIssueSourceRow`, `IsolatedWorkflowStateLookup`).
 - **CFD와의 핵심 차이**. CFD=날짜별 누적 카운트(day 절삭). FR-RP-04=이슈별 소요 **기간(duration)**의 **분포** → 실제 타임스탬프 기반 **초 단위**(day 절삭 시 같은 날 완료 이슈가 0이 되어 분포 무의미).
 - **새 도메인 개념(read-model VO, 영속 아님)**. `CycleTimeSample`(이슈별 `{issueKey, cycleTimeSeconds?, leadTimeSeconds, completedAt}`) + `CycleTimeDistribution`(집계 통계). 애그리거트/테이블 없음. CFD `CfdPoint`/`CfdResult` 동형.
 - **정의**(SDD §13.5.5). Cycle Time = In Progress(카테고리) → Done. Lead Time = Created → Done. 카테고리 매핑은 CFD의 `WorkflowStateCatalog.category`(TODO/IN_PROGRESS/DONE) 재사용.
@@ -36,7 +36,7 @@ FR-RP 리포트 시리즈(FR-RP-01 번다운 · FR-RP-02 벨로시티 · FR-RP-0
 전체 스펙. [docs/specs/2026-07-03-fr-rp-04-cycle-time-lead-time.md](../specs/2026-07-03-fr-rp-04-cycle-time-lead-time.md)
 
 핵심 3줄 요약.
-- `GET /api/v1/projects/{key}/cycle-time?from=&to=` — 창 내 **완료 이슈**(마지막 DONE 전이일 기준)의 Lead(created→done)·Cycle(첫 IN_PROGRESS→done, 미경유 제외) 소요를 **초 단위** 분포로 반환.
+- `GET /api/v1/projects/{key}/cycle-time?from=&to=` — 창 내 **완료 이슈**(마지막 DONE 전환일 기준)의 Lead(created→done)·Cycle(첫 IN_PROGRESS→done, 미경유 제외) 소요를 **초 단위** 분포로 반환.
 - 응답 = 이슈별 `samples[{issueKey,seconds}]` + 서버 계산 통계(count·min·max·avg·p25·p50·p75·p90, nearest-rank, count=0→null). CFD 인프라(status 이력·상태 카탈로그·보안 술어) 재사용, 신규 스키마 0.
 - 보안 = BROWSE 선검사 + `buildActiveSecureWhere` 재사용 가시성 필터(기밀 누출 0). 창 상한 180일, 잘못된 창 400, 미존재/무권한 403.
 
@@ -44,7 +44,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 ## Brainstorming Check
 
-✅ 통과 (2회 iteration). gap 4건 보강 — p25(박스플롯 Q1) 추가 · 미존재 프로젝트 403 정합 · EC8 직접생성 전이기반 제외 · NFR4 samples O(issues) 캡없음 명문화.
+✅ 통과 (2회 iteration). gap 4건 보강 — p25(박스플롯 Q1) 추가 · 미존재 프로젝트 403 정합 · EC8 직접생성 전환기반 제외 · NFR4 samples O(issues) 캡없음 명문화.
 
 ## Plan
 
@@ -99,7 +99,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/IssueDurationInput.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeSample.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeMetric.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeResult.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeCalculator.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cycletime/domain/CycleTimeCalculatorTest.kt`]
 - depends-on: [2]
 
-입력. `IssueDurationInput(issueKey, createdAt: Instant, firstInProgressAt: Instant?, lastDoneAt: Instant?)` — 서비스가 상태 이력을 축약해 전달(전이 기반; 초기 event 미사용, EC8).
+입력. `IssueDurationInput(issueKey, createdAt: Instant, firstInProgressAt: Instant?, lastDoneAt: Instant?)` — 서비스가 상태 이력을 축약해 전달(전환 기반; 초기 event 미사용, EC8).
 
 **RED**. `CycleTimeCalculatorTest`(`calculate(from, to, inputs): CycleTimeResult`) —
 - **S1 정상**. lastDone∈창 이슈 → lead=lastDone−created, cycle=lastDone−firstInProgress. 통계 위임(Task 2).
@@ -147,7 +147,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 **RED**. `CycleTimeServiceTest`(mockk) —
 - BROWSE 미보유 → `IssueAccessDeniedException`(repo 조회 전).
 - 가시 이슈 0건 → 즉시 빈 `CycleTimeResult`(status/카탈로그 조회 스킵, EC6).
-- `buildDurationInput` 정확성 — 전이 이력에서 firstInProgressAt=첫 IN_PROGRESS 전이 시각, lastDoneAt=마지막 DONE 전이 시각 추출(카테고리 매핑=stateCache). IN_PROGRESS 미경유→firstInProgressAt=null.
+- `buildDurationInput` 정확성 — 전환 이력에서 firstInProgressAt=첫 IN_PROGRESS 전환 시각, lastDoneAt=마지막 DONE 전환 시각 추출(카테고리 매핑=stateCache). IN_PROGRESS 미경유→firstInProgressAt=null.
 - 삭제된 상태 키 → TODO 폴백(`StatusCategory`).
 
 **GREEN**. `CycleTimeService`(`@Service`, `@Transactional(readOnly=true)`) — CFD `CfdService` 오케스트레이션 미러. (1) `checkBrowsePermission`(선검사). (2) `securityDirectory.accessibleLevels` + `issueRepository.fetchActiveVisibleIssuesForCycleTime`. (3) 빈→빈 결과. (4) `statusHistoryRepository.fetchStatusChanges`(T1 추출 프리미티브 **재사용**) groupBy issueId. (5) `loadTypeIdToKeyMap` + `buildStateCache`(N+1 차단, CFD 미러). (6) 이슈별 `buildDurationInput`→`CycleTimeCalculator.calculate`. categoryOf=`StatusCategory.fromCategoryString`.
@@ -184,13 +184,13 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 - depends-on: [6]
 
 **RED→GREEN**. `CycleTimeIntegrationTest`(CFD `CfdIntegrationTest` 미러, 실 repo+시드) —
-- S1 정상. 이슈 생성→IN_PROGRESS 전이→DONE 전이 시드 후 조회 → cycle/lead 표본·통계 실측.
-- S2 미경유. TODO→DONE 직접 전이 이슈 → lead 표본에 포함·cycle 표본 제외(cycle.count < lead.count) **실측**.
+- S1 정상. 이슈 생성→IN_PROGRESS 전환→DONE 전환 시드 후 조회 → cycle/lead 표본·통계 실측.
+- S2 미경유. TODO→DONE 직접 전환 이슈 → lead 표본에 포함·cycle 표본 제외(cycle.count < lead.count) **실측**.
 - S4 창 밖. 창 밖 완료 이슈 제외.
 - **S6 기밀 누출 차단**(비-vacuous). 뷰어 미가시 기밀 이슈 시드 후 조회 → 샘플·통계에서 제외 확인.
 - S7 403(BROWSE 없음), S8 400(잘못된 창), S5 빈 결과(200).
 
-**REFACTOR**. 시드 헬퍼(전이 이력 생성) 추출 + 시나리오 KDoc.
+**REFACTOR**. 시드 헬퍼(전환 이력 생성) 추출 + 시나리오 KDoc.
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*CycleTimeIntegrationTest'`
 
@@ -203,7 +203,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **작업**(TDD 비대상 — 문서).
 - product `notification-dashboard.md §4.4` — D1~D5 `[x]` 마킹 + `구현 범위` deviation 박스 추가(Maxi 확정 3결정·CFD 인프라 재사용·프론트 D6/D7 후속). **진척 95/123 불변**(백엔드만·D6/D7 미완).
-- SDD `§13.5.5` — 구현 상세(전이 기반 duration·초 단위·응답 샘플+백분위·엔드포인트·on-the-fly) + ADR 링크. CFD §13.5.4 형식 미러.
+- SDD `§13.5.5` — 구현 상세(전환 기반 duration·초 단위·응답 샘플+백분위·엔드포인트·on-the-fly) + ADR 링크. CFD §13.5.4 형식 미러.
 - ADR `2026-07-03-fr-rp-04-cycle-lead-time.md` — 맥락·결정(D1 Cycle 정의+엣지·D2 모집단/창·D3 응답형태·D4 모듈 issue-tracking·D5 보안·D6 CFD 상태이력 프리미티브 `com.bts.issue.statushistory` 중립 추출[CONCERN-1 게이트1 확정])·새 개념·SDD 동기화 대상. CFD ADR 형식 미러.
 - fr-index/README/CLAUDE 카운트 **불변**(BC 라벨 유지) — 변경 없음 확인.
 
@@ -244,7 +244,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 - ✅ 백분위 경계(n=1·짝/홀·count=0 null) 단위 테스트. EC3 음수/EC1·8 무-DONE 제외 계산기 테스트.
 
 **Section 4 성능**.
-- ✅ status 전이 배치 1쿼리 + 타입별 카탈로그 캐싱(N+1 차단, CFD 미러).
+- ✅ status 전환 배치 1쿼리 + 타입별 카탈로그 캐싱(N+1 차단, CFD 미러).
 - ✅ samples O(issues) 무캡 = 히스토그램 정확도 우선(NFR4 명문화, 무언의 절삭 없음). 1K·180일 상한서 유계.
 
 **BLOCKER: 없음.** CONCERN-1(Cfd* 재사용 네이밍)만 게이트1 taste 확인.

@@ -182,8 +182,8 @@ const deletedKeys = new Set<string>()
 // E2E-1 happy path 용 — POST 로 생성된 이슈를 GET 목록/단건 에서 조회 가능하도록 stateful 유지.
 const createdIssues = new Map<string, IssueResponse>()
 
-// 이슈 현재 상태 오버라이드 — issueFixtureMap 원본 불변 유지 + 전이/수정(PATCH) 결과 반영.
-// key: 이슈 키, value: 갱신된 IssueResponse (전이 또는 타입/요약 수정 후)
+// 이슈 현재 상태 오버라이드 — issueFixtureMap 원본 불변 유지 + 전환/수정(PATCH) 결과 반영.
+// key: 이슈 키, value: 갱신된 IssueResponse (전환 또는 타입/요약 수정 후)
 const issueOverrides = new Map<string, IssueResponse>()
 
 /**
@@ -409,7 +409,7 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
   }
 
   // S4 E2E 플래그: done+resolution(Fixed) 이슈로 응답 분기 (오버라이드가 없는 경우만)
-  // 오버라이드가 있으면(전이 후 refetch) 플래그 무시 — stateful 결과 우선
+  // 오버라이드가 있으면(전환 후 refetch) 플래그 무시 — stateful 결과 우선
   if (
     key === 'ATLAS-5' &&
     !issueOverrides.has(key) &&
@@ -610,7 +610,7 @@ export const MOCK_ASSIGNEE_NOT_FOUND = '__ASSIGNEE_NOT_FOUND__'
 /** 백엔드 도메인 기본 우선순위 (Medium). 생성 요청에 priority 가 없을 때 서버가 적용하는 값. */
 const DEFAULT_ISSUE_PRIORITY = 3
 
-/** 전이 워크플로우 미설정 트리거 — toStatusKey 값이 이 문자열이면 422 응답. */
+/** 전환 워크플로우 미설정 트리거 — toStatusKey 값이 이 문자열이면 422 응답. */
 export const MOCK_NO_WORKFLOW_TRIGGER = '__TRIGGER_422_NO_WORKFLOW__'
 
 /**
@@ -627,7 +627,7 @@ export const MOCK_NO_WORKFLOW_TRIGGER = '__TRIGGER_422_NO_WORKFLOW__'
  */
 const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, request }) => {
   const key = params['key'] as string
-  // 오버라이드 → 생성된 이슈 → 정적 fixture 순서 (전이 핸들러와 동일). 반복 수정/전이 후 수정 시 최신 version 기준.
+  // 오버라이드 → 생성된 이슈 → 정적 fixture 순서 (전환 핸들러와 동일). 반복 수정/전환 후 수정 시 최신 version 기준.
   const found = resolveIssue(key)
   if (found === undefined) {
     return HttpResponse.json(
@@ -1281,8 +1281,8 @@ function renderDescriptionHtml(description: string | null): string | null {
 }
 
 /**
- * 현재 이슈 상태 기준 가용전이 반환 helper.
- * softwareDefaultFixture 가 단일 출처 — 전이 직접 정의 금지.
+ * 현재 이슈 상태 기준 가용전환 반환 helper.
+ * softwareDefaultFixture 가 단일 출처 — 전환 직접 정의 금지.
  * toCategory를 toStateKey → states category lookup으로 enrichment.
  */
 function getAvailableTransitions(
@@ -1298,7 +1298,7 @@ function getAvailableTransitions(
 }
 
 /**
- * GET /api/v1/issues/:key/transitions — 현재 상태 기준 가용전이 목록 반환.
+ * GET /api/v1/issues/:key/transitions — 현재 상태 기준 가용전환 목록 반환.
  * 분기 순서 (backend 일치):
  *   (1) 이슈 not-found → 404
  *   (2) 워크플로우 미설정 이슈(ATLAS-NOWF) → 422 (E2E 미설정 UI 검증용)
@@ -1326,12 +1326,12 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
 })
 
 /**
- * POST /api/v1/issues/:key/transition — 이슈 상태 전이 핸들러.
+ * POST /api/v1/issues/:key/transition — 이슈 상태 전환 핸들러.
  * 분기 순서 (backend 일치):
  *   (1) 이슈 not-found → 404
  *   (2) MOCK_NO_WORKFLOW_TRIGGER → 422 (워크플로우 미설정 시뮬)
  *   (3-a) expectedVersion 불일치 → 409 VERSION_CONFLICT (OCC 버전충돌)
- *   (3-b) MOCK_CONFLICT_TRIGGER → 409 TRANSITION_NOT_ALLOWED (전이거부)
+ *   (3-b) MOCK_CONFLICT_TRIGGER → 409 TRANSITION_NOT_ALLOWED (전환거부)
  *   (4) 성공 → 200 + currentStateKey=toStatusKey + version+1, stateful 보관
  */
 const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
@@ -1369,10 +1369,10 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     )
   }
 
-  // (3-b) 전이거부 트리거 → 409 TRANSITION_NOT_ALLOWED
+  // (3-b) 전환거부 트리거 → 409 TRANSITION_NOT_ALLOWED
   if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
     return HttpResponse.json(
-      { errorCode: 'TRANSITION_NOT_ALLOWED', message: '허용되지 않는 전이입니다.' },
+      { errorCode: 'TRANSITION_NOT_ALLOWED', message: '허용되지 않는 전환입니다.' },
       { status: 409 },
     )
   }
@@ -1381,7 +1381,7 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
   // resolutionId가 있으면 resolution 객체를 찾아 채움 (invalidateQueries refetch 롤백 방지).
   const stateMap = new Map(softwareDefaultFixture.states.map((s) => [s.key, s.category]))
   const toCategory = stateMap.get(toStatusKey) ?? null
-  // DONE 전이 시 resolution 영속, 비DONE 전이 시 resolution clear
+  // DONE 전환 시 resolution 영속, 비DONE 전환 시 resolution clear
   let updatedResolution: IssueResponse['resolution'] = found.resolution
   if (toCategory === 'DONE' && body.resolutionId) {
     // resolution-handlers.ts의 표준 5종 seed UUID → name 매핑
@@ -1394,7 +1394,7 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     }
     updatedResolution = resolutionSeedMap[body.resolutionId] ?? null
   } else if (toCategory !== 'DONE') {
-    // 비DONE 전이 시 resolution clear
+    // 비DONE 전환 시 resolution clear
     updatedResolution = null
   }
 
@@ -1410,7 +1410,7 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
 })
 
 /**
- * 전이 항목의 toStateKey 기준으로 두 전이 배열의 교집합을 반환한다.
+ * 전환 항목의 toStateKey 기준으로 두 전환 배열의 교집합을 반환한다.
  * 첫 번째 배열 항목 기준을 유지한다 (fromStateKey·name·key 등은 첫 이슈 기준 보존).
  * backend BulkAvailableTransitionsService.intersect 시맨틱과 동일.
  */
@@ -1448,11 +1448,11 @@ const downloadIssuePdfHandler = http.get('/api/v1/issues/:key/pdf', ({ params })
 })
 
 /**
- * POST /api/v1/issues/bulk-transitions/available — 일괄 가용 전이 교집합 조회 핸들러.
- * 각 이슈의 가용전이를 구한 뒤 toStateKey 기준으로 교집합 계산.
+ * POST /api/v1/issues/bulk-transitions/available — 일괄 가용 전환 교집합 조회 핸들러.
+ * 각 이슈의 가용전환을 구한 뒤 toStateKey 기준으로 교집합 계산.
  * 분기 순서 (backend 일치):
  *   (1) 미존재·소프트삭제·ATLAS-NOWF 이슈 → unresolvedIssueKeys에 추가
- *   (2) 성공분의 가용전이 교집합 계산
+ *   (2) 성공분의 가용전환 교집합 계산
  *   (3) 성공 → 200 + { data: { transitions, unresolvedIssueKeys } }
  * 응답: { data: { transitions: [...], unresolvedIssueKeys: [...] } }
  */

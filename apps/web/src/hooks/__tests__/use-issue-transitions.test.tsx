@@ -1,4 +1,4 @@
-// 이슈 가용전이 조회 + 전이 실행 TanStack Query 훅 테스트 — RED phase
+// 이슈 가용전환 조회 + 전환 실행 TanStack Query 훅 테스트 — RED phase
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -24,7 +24,7 @@ const MOCK_TRANSITIONS: IssueTransition[] = [
 ]
 
 describe('useIssueTransitions', () => {
-  it('가용 전이 목록을 반환한다', async () => {
+  it('가용 전환 목록을 반환한다', async () => {
     server.use(
       http.get('/api/v1/issues/ATLAS-1/transitions', () =>
         HttpResponse.json({ data: { transitions: MOCK_TRANSITIONS } }),
@@ -122,7 +122,7 @@ describe('useIssueTransitions — E5 분기', () => {
 })
 
 describe('useTransitionIssue', () => {
-  it('전이 성공 후 issue + issue-transitions 캐시를 무효화한다', async () => {
+  it('전환 성공 후 issue + issue-transitions 캐시를 무효화한다', async () => {
     const updatedIssue = {
       key: 'ATLAS-1',
       id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
@@ -174,10 +174,10 @@ describe('useTransitionIssue', () => {
     expect(client.getQueryState(['issue-transitions', 'ATLAS-1'])?.isInvalidated).toBe(true)
   })
 
-  it('전이 실패 시 에러를 throw한다', async () => {
+  it('전환 실패 시 에러를 throw한다', async () => {
     server.use(
       http.post('/api/v1/issues/ATLAS-1/transition', () =>
-        HttpResponse.json({ message: '전이 불가' }, { status: 409 }),
+        HttpResponse.json({ message: '전환 불가' }, { status: 409 }),
       ),
     )
 

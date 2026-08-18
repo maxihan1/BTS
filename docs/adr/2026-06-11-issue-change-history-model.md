@@ -25,14 +25,14 @@
 
 ### 2. 데이터 모델 — Jira식 2테이블 (change group + change item)
 
-- `issue_change_group` — 한 번의 변경(한 PATCH/전이) = 1행. 누가(actor)/언제(created_at)/어느 이슈.
+- `issue_change_group` — 한 번의 변경(한 PATCH/전환) = 1행. 누가(actor)/언제(created_at)/어느 이슈.
 - `issue_change_item` — 그 변경에 포함된 필드별 from→to = N행.
 
 근거. 한 PATCH에서 여러 필드가 바뀌어도 "한 번의 편집"으로 묶여 FR-HS-02(조회 UI)에서 자연스럽게 그룹 표시된다. 필드별 from/to를 정규 컬럼으로 둬 인덱스/필터가 JSONB 연산에 의존하지 않는다. Jira 정석(ChangeGroup + ChangeItem)과 동일.
 
 ### 3. 추적 범위 — 전 필드 + 생명주기
 
-추적 필드. summary, description, priority, labels, environment, impact, type, assignee, 상태전이(status), resolution, components, affectsVersions, fixVersions, securityLevel, customFields.
+추적 필드. summary, description, priority, labels, environment, impact, type, assignee, 상태전환(status), resolution, components, affectsVersions, fixVersions, securityLevel, customFields.
 생명주기 이벤트. 이슈 생성(created), 소프트 삭제(soft_deleted)도 이력 그룹으로 기록(필드 변경이 아닌 생명주기 항목).
 
 ### 4. 보존 — append-only

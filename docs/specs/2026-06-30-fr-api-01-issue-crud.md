@@ -34,7 +34,7 @@ Maxi 확정 3선택: ① cursor **병행**(offset 유지·프론트 무회귀) �
 ### S3. 개발자가 Swagger UI로 API를 탐색
 - **Given** issue-tracking 앱이 떠 있고
 - **When** 개발자가 `/swagger-ui`(또는 `/api/v1/docs`)에 접속하면
-- **Then** 이슈 CRUD/목록/전이 엔드포인트가 요청·응답 스키마, 에러 응답(RFC 7807)과 함께 OpenAPI 3.1로 문서화돼 보인다. `/v3/api-docs`(또는 `/api/v1/openapi.json`)는 기계 판독용 스펙을 반환한다.
+- **Then** 이슈 CRUD/목록/전환 엔드포인트가 요청·응답 스키마, 에러 응답(RFC 7807)과 함께 OpenAPI 3.1로 문서화돼 보인다. `/v3/api-docs`(또는 `/api/v1/openapi.json`)는 기계 판독용 스펙을 반환한다.
 
 ### S4. 잘못된 cursor는 명확히 거부
 - **Given** 클라이언트가 위변조되었거나 형식이 깨진 `?cursor=GARBAGE`를 보내면
@@ -56,7 +56,7 @@ Maxi 확정 3선택: ① cursor **병행**(offset 유지·프론트 무회귀) �
 | FR-4 | `GET /api/v1/issues/{key}/changelog`에 동일한 cursor 모드를 병행 추가(정렬 키는 changelog의 안정 정렬 = `(occurred_at DESC, id DESC)` 등 실측 확정). offset 모드 유지. |
 | FR-5 | **응답 envelope**(cursor 경로 한정): `{ "data": [...], "meta": { "page": { "next": "<cursor|null>", "limit": N } } }`. 단건 응답은 기존 `DataResponse`(`{data}`) 유지. |
 | FR-6 | **에러 포맷**: 이슈 CRUD 경로 ProblemDetail이 SDD 11.3 필드(`type`/`title`/`status`/`detail`/`instance`/`errorCode`)를 일관 충족하도록 검증·보강. `type`은 이슈 API 한정으로 절대 URI(`https://bts.example.com/problems/<type-token>`) 정렬 — 기존 25개+ 핸들러 `problem()` 헬퍼 컨벤션과 일치(예: `invalid-cursor`). `<type-token>`은 errorCode가 아닌 kebab-case 토큰. 신규 에러코드 `ISSUE_INVALID_CURSOR`(400), `ISSUE_PAGINATION_MODE_CONFLICT`(400). **errorCode는 기존 issue-tracking 핸들러 컨벤션 SCREAMING_SNAKE_CASE를 따른다**(devex 리뷰 CONCERN-3 — 실제 코드는 `ISSUE_NOT_FOUND` 형식, SDD 예시의 소문자 dot은 미반영 drift). |
-| FR-7 | **OpenAPI 3.1**: `springdoc-openapi-starter-webmvc-ui` 2.6.x를 issue-tracking 모듈에 통합. `/swagger-ui`(별칭 `/api/v1/docs`) + `/v3/api-docs`(별칭 `/api/v1/openapi.json`) 게시. 이슈 CRUD/목록/전이 엔드포인트에 `@Operation`/`@ApiResponse`/스키마 annotation 부여. OpenAPI 버전 3.1 명시. **보안 스킴**: JWT Bearer(`securitySchemes.bearerAuth: http/bearer/JWT`)를 전역 정의하고 인증 필요 엔드포인트에 적용(이슈 API 전체 인증 필요). |
+| FR-7 | **OpenAPI 3.1**: `springdoc-openapi-starter-webmvc-ui` 2.6.x를 issue-tracking 모듈에 통합. `/swagger-ui`(별칭 `/api/v1/docs`) + `/v3/api-docs`(별칭 `/api/v1/openapi.json`) 게시. 이슈 CRUD/목록/전환 엔드포인트에 `@Operation`/`@ApiResponse`/스키마 annotation 부여. OpenAPI 버전 3.1 명시. **보안 스킴**: JWT Bearer(`securitySchemes.bearerAuth: http/bearer/JWT`)를 전역 정의하고 인증 필요 엔드포인트에 적용(이슈 API 전체 인증 필요). |
 | FR-8 | **전 목록 API 문서화**: issue-tracking 목록 API(watchers/components/versions/worklogs/links/templates/custom-fields/attachments 등)에 OpenAPI annotation을 부여한다. **응답 형태는 변경하지 않는다**(무회귀). |
 | FR-9 | **contract test**: 생성된 OpenAPI 스펙과 실제 응답이 일치하는지 검증(이슈 CRUD/목록 + cursor envelope 스키마). cursor 토큰 round-trip + keyset 정렬 안정성(동률 키 tie-break) 단위 테스트 포함. |
 | FR-10 | **bulk ops(FR-IS-05)**: 신규 도메인/엔드포인트 추가 0. 기존 bulk 엔드포인트에 OpenAPI annotation + 에러/응답 표준 정합 검증만. |
@@ -145,7 +145,7 @@ GET /v3/api-docs           (별칭 /api/v1/openapi.json) → OpenAPI 3.1 JSON
 - [ ] 위변조 cursor·모드 충돌 → 400 ProblemDetail 검증 테스트 통과
 - [ ] changelog cursor 모드 동일 검증 통과
 - [ ] springdoc 통합 후 issue-tracking 앱 부팅 + `/v3/api-docs` 200 + OpenAPI 3.1 + `/swagger-ui` 200
-- [ ] 이슈 CRUD/목록/전이 + 전 목록 API OpenAPI annotation 반영
+- [ ] 이슈 CRUD/목록/전환 + 전 목록 API OpenAPI annotation 반영
 - [ ] contract test(OpenAPI 스펙 ↔ 실제 cursor/CRUD 응답) 통과
 - [ ] 백엔드 clean 빌드 + ktlint + detekt 그린, apps/web 미변경 확인
 

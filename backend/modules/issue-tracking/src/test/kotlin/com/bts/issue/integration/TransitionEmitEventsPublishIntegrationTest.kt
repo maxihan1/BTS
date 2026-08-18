@@ -79,15 +79,15 @@ import java.util.concurrent.Executors
  *
  * ## 시드 전략
  * - workflow_post_actions 에 CALL_WEBHOOK(type='CALL_WEBHOOK', config JSONB) 을 시드하여
- *   전이 plan 의 emitEvents 에 WebhookRequested 1건이 포함되도록 한다.
- * - YamlSeedService 없이 SQL 직접 시드 — RequiredField validator 제외 단순 전이만 필요.
+ *   전환 plan 의 emitEvents 에 WebhookRequested 1건이 포함되도록 한다.
+ * - YamlSeedService 없이 SQL 직접 시드 — RequiredField validator 제외 단순 전환만 필요.
  *
  * ## 시나리오
  *
- * ### S1: CallWebhook 시드된 전이 실행 → q_transition_events 에 WebhookRequested 1건 확인
+ * ### S1: CallWebhook 시드된 전환 실행 → q_transition_events 에 WebhookRequested 1건 확인
  * ### S2 롤백: 버전 충돌 예외 → 큐 0건 (트랜잭션 롤백으로 enqueue 취소)
  * ### S3 dry-run: transitionIssue 미호출(availableTransitions 만) → 큐 0건
- * ### S5 회귀: post-action 미시드 전이 → q_transition_events 0건 + q_issue_events IssueTransitioned 정상 발행
+ * ### S5 회귀: post-action 미시드 전환 → q_transition_events 0건 + q_issue_events IssueTransitioned 정상 발행
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [TransitionEmitEventsPublishIntegrationTest.TestConfig::class])
@@ -116,7 +116,7 @@ class TransitionEmitEventsPublishIntegrationTest {
 
             private val spelExecutor = Executors.newCachedThreadPool()
 
-            /** 전이 실행 actor UUID (Zod v4 형식) */
+            /** 전환 실행 actor UUID (Zod v4 형식) */
             val ACTOR_ID: UUID = UUID.fromString("aa000000-0000-4000-8000-000000000001")
 
             /** 웹훅 URL 고정값 */
@@ -342,12 +342,12 @@ class TransitionEmitEventsPublishIntegrationTest {
         private var seeded = false
 
         /**
-         * 테스트 전용 프로젝트 키 — CallWebhook post-action 이 시드된 전이를 보유한다.
+         * 테스트 전용 프로젝트 키 — CallWebhook post-action 이 시드된 전환을 보유한다.
          * IssueTransitionValidatorEndToEndIntegrationTest("VALIDE2E")와 겹치지 않는 이름 사용.
          */
         private const val PROJECT_KEY = "EMITEV"
 
-        /** CallWebhook post-action 이 없는 단순 전이 검증 프로젝트 */
+        /** CallWebhook post-action 이 없는 단순 전환 검증 프로젝트 */
         private const val PROJECT_KEY_NO_ACTION = "EMITEVNA"
     }
 
@@ -376,10 +376,10 @@ class TransitionEmitEventsPublishIntegrationTest {
         }
     }
 
-    // ── S1: CallWebhook 시드된 전이 실행 → q_transition_events WebhookRequested 1건 ──
+    // ── S1: CallWebhook 시드된 전환 실행 → q_transition_events WebhookRequested 1건 ──
 
     /**
-     * S1 — CallWebhook post-action 이 시드된 전이 실행 시 q_transition_events 에 WebhookRequested 이벤트 1건이 enqueue 된다.
+     * S1 — CallWebhook post-action 이 시드된 전환 실행 시 q_transition_events 에 WebhookRequested 이벤트 1건이 enqueue 된다.
      *
      * Given  이슈 currentStateKey = "open", workflow_post_actions 에 CALL_WEBHOOK 시드됨
      * When   transitionIssue(toStateKey = "done")
@@ -387,7 +387,7 @@ class TransitionEmitEventsPublishIntegrationTest {
      *         payload.issueKey, payload.url, payload.method 검증
      */
     @Test
-    fun `S1 — CallWebhook 시드 전이 실행 후 q_transition_events 에 WebhookRequested 가 enqueue 된다`() {
+    fun `S1 — CallWebhook 시드 전환 실행 후 q_transition_events 에 WebhookRequested 가 enqueue 된다`() {
         val issueKey = insertIssue(PROJECT_KEY, "emit events 검증 이슈 S1", "open")
         val actor = ActorId(TestConfig.ACTOR_ID)
         val request = TransitionIssueRequest(toStateKey = "done", expectedVersion = 1L)
@@ -420,14 +420,14 @@ class TransitionEmitEventsPublishIntegrationTest {
     // ── S2 롤백: 버전 충돌 예외 → 큐 0건 ────────────────────────────────────────
 
     /**
-     * S2 — 버전 충돌(expectedVersion 불일치)로 전이가 실패하면 트랜잭션이 롤백되어 q_transition_events 에 메시지가 없다.
+     * S2 — 버전 충돌(expectedVersion 불일치)로 전환이 실패하면 트랜잭션이 롤백되어 q_transition_events 에 메시지가 없다.
      *
      * Given  이슈 currentStateKey = "open", version = 1
      * When   transitionIssue(toStateKey = "done", expectedVersion = 99) — 존재하지 않는 버전
      * Then   IssueVersionConflictException 발생 + q_transition_events 0건
      */
     @Test
-    fun `S2 — 버전 충돌로 전이 실패 시 q_transition_events 에 메시지가 없다`() {
+    fun `S2 — 버전 충돌로 전환 실패 시 q_transition_events 에 메시지가 없다`() {
         val issueKey = insertIssue(PROJECT_KEY, "emit events 검증 이슈 S2", "open")
         val actor = ActorId(TestConfig.ACTOR_ID)
         // expectedVersion = 99 는 DB version = 1 과 충돌하여 applyTransition 이 0 row 반환 → 예외
@@ -468,19 +468,19 @@ class TransitionEmitEventsPublishIntegrationTest {
         log.info("S3 통과 — dry-run(transitionIssue 미호출) 후 q_transition_events 0건 확인")
     }
 
-    // ── S5 회귀: post-action 미시드 전이 → q_transition_events 0건 + q_issue_events 정상 ──
+    // ── S5 회귀: post-action 미시드 전환 → q_transition_events 0건 + q_issue_events 정상 ──
 
     /**
-     * S5 — post-action 이 시드되지 않은 전이 실행 시 q_transition_events 에 메시지가 없고
+     * S5 — post-action 이 시드되지 않은 전환 실행 시 q_transition_events 에 메시지가 없고
      *       q_issue_events 에 IssueTransitioned 이벤트가 정상 발행된다.
      *
-     * Given  이슈 currentStateKey = "open", 전이에 workflow_post_actions 미시드
+     * Given  이슈 currentStateKey = "open", 전환에 workflow_post_actions 미시드
      * When   transitionIssue(toStateKey = "done")
      * Then   q_transition_events 0건
      * And    q_issue_events 에 issue.transitioned 이벤트 1건 (기존 IssueTransitioned 정상 발행)
      */
     @Test
-    fun `S5 — post-action 미시드 전이 실행 시 q_transition_events 0건 + q_issue_events IssueTransitioned 정상 발행`() {
+    fun `S5 — post-action 미시드 전환 실행 시 q_transition_events 0건 + q_issue_events IssueTransitioned 정상 발행`() {
         val issueKey = insertIssue(PROJECT_KEY_NO_ACTION, "emit events 회귀 이슈 S5", "open")
         val actor = ActorId(TestConfig.ACTOR_ID)
         val request = TransitionIssueRequest(toStateKey = "done", expectedVersion = 1L)
@@ -489,13 +489,13 @@ class TransitionEmitEventsPublishIntegrationTest {
 
         val transitionQueueMessages = readTransitionQueueMessages(maxQty = 5)
         check(transitionQueueMessages.isEmpty()) {
-            "post-action 미시드 전이인데 q_transition_events 에 메시지 ${transitionQueueMessages.size}건이 있습니다."
+            "post-action 미시드 전환인데 q_transition_events 에 메시지 ${transitionQueueMessages.size}건이 있습니다."
         }
 
         val issueQueueMessages = readIssueQueueMessages(maxQty = 5)
         val transitionedEvent = issueQueueMessages.firstOrNull { it.get("type")?.asText() == "issue.transitioned" }
         check(transitionedEvent != null) {
-            "post-action 미시드 전이 후 q_issue_events 에 issue.transitioned 이벤트가 없습니다. " +
+            "post-action 미시드 전환 후 q_issue_events 에 issue.transitioned 이벤트가 없습니다. " +
                 "기존 IssueTransitioned 발행 경로가 회귀됐을 수 있습니다. 전체 메시지: ${issueQueueMessages.size}건"
         }
 
@@ -524,10 +524,10 @@ class TransitionEmitEventsPublishIntegrationTest {
     }
 
     /**
-     * 테스트 프로젝트, 워크플로우(open→done 전이), post-action 시드.
+     * 테스트 프로젝트, 워크플로우(open→done 전환), post-action 시드.
      *
-     * PROJECT_KEY: CALL_WEBHOOK post-action 이 시드된 open→done 전이 보유.
-     * PROJECT_KEY_NO_ACTION: post-action 이 없는 open→done 전이만 보유 (S5 회귀 검증용).
+     * PROJECT_KEY: CALL_WEBHOOK post-action 이 시드된 open→done 전환 보유.
+     * PROJECT_KEY_NO_ACTION: post-action 이 없는 open→done 전환만 보유 (S5 회귀 검증용).
      */
     @Suppress("LongMethod")
     private fun seedProjectsAndWorkflows() {
@@ -541,7 +541,7 @@ class TransitionEmitEventsPublishIntegrationTest {
             insertWorkflowState(c, wfId, "done", "Done", "DONE", 1)
             val transitionId = insertWorkflowTransition(c, wfId, "open", "done", "To Done")
 
-            // workflow_post_actions: CALL_WEBHOOK 시드 — open→done 전이 실행 시 WebhookRequested 발행
+            // workflow_post_actions: CALL_WEBHOOK 시드 — open→done 전환 실행 시 WebhookRequested 발행
             c.prepareStatement(
                 "INSERT INTO workflow_post_actions (transition_id, type, config) " +
                     "VALUES (?, 'CALL_WEBHOOK', ?::jsonb)",
@@ -637,9 +637,9 @@ class TransitionEmitEventsPublishIntegrationTest {
      *
      * @param conn DB 커넥션.
      * @param workflowId 워크플로우 UUID.
-     * @param fromStateKey 전이 출발 상태 키 문자열.
-     * @param toStateKey 전이 도착 상태 키 문자열.
-     * @param name 전이 이름.
+     * @param fromStateKey 전환 출발 상태 키 문자열.
+     * @param toStateKey 전환 도착 상태 키 문자열.
+     * @param name 전환 이름.
      * @return 삽입된 transition UUID.
      */
     private fun insertWorkflowTransition(

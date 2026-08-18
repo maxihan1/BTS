@@ -19,7 +19,7 @@ PR1(shared-kernel 추출, #211)·PR2(구독 CRUD + 테이블, #212) 완료 후�
 - 발송이력 기록 (`webhook_deliveries` append-only 테이블 — PR2 V603에서 생성됨)
 
 관련: ADR docs/decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md
-FR-NT-05 webhook dispatcher(notification 전이 webhook)의 상위집합.
+FR-NT-05 webhook dispatcher(notification 전환 webhook)의 상위집합.
 
 ## 도메인 정리 (← /bts-domain 채움)
 
@@ -82,7 +82,7 @@ FR-NT-05 webhook dispatcher(notification 전이 webhook)의 상위집합.
 **GREEN**: `publish()`에 dual-send 추가. **BC 격리** — search `WebhookEventCatalog` import 불가 → issue-tracking 자체 판정. **stringly-typed set 대신 `IssueDomainEvent` sealed 타입 exhaustive `when`**(else 없이 7종 전부 분류: created/transitioned=q_webhook_events 발행, 나머지 5종=미발행) → 새 이벤트 추가 시 컴파일 실패로 강제 분류(C4, silent under-send 차단). 같은 트랜잭션(`@Transactional MANDATORY` 유지) → outbox 보장.
 **REFACTOR**: 판정 `when`을 private 함수로 + KDoc(search `WebhookEventCatalog.PUBLISHABLE`과 값 정합, BC 격리상 코드 공유 불가한 정당한 분리 — exhaustive when + T10 단언이 이중 가드).
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*IssueEventPublisherTest'`
-**리스크 (C4/C6)**: (1) issue-tracking 판정 ↔ search `PUBLISHABLE` drift — exhaustive when으로 under-send는 컴파일 차단, over-send는 search `findMatching`이 무해화. 값 정합은 T10 "PUBLISHABLE 각 이벤트→발송 도달" 단언으로 이중 가드. (2) q_webhook_events는 이제 모든 PUBLISHABLE 발행 경로(create/transition MANDATORY 트랜잭션)의 **하드 의존** → T1 선행 필수, 두 하네스 경로(Flyway migrate / init_codegen) 모두 큐 포함 확인(누락 시 이슈 생성/전이 트랜잭션 롤백).
+**리스크 (C4/C6)**: (1) issue-tracking 판정 ↔ search `PUBLISHABLE` drift — exhaustive when으로 under-send는 컴파일 차단, over-send는 search `findMatching`이 무해화. 값 정합은 T10 "PUBLISHABLE 각 이벤트→발송 도달" 단언으로 이중 가드. (2) q_webhook_events는 이제 모든 PUBLISHABLE 발행 경로(create/transition MANDATORY 트랜잭션)의 **하드 의존** → T1 선행 필수, 두 하네스 경로(Flyway migrate / init_codegen) 모두 큐 포함 확인(누락 시 이슈 생성/전환 트랜잭션 롤백).
 
 ### Task 3. WebhookDelivery 도메인 + Repository (기록 + 조회)
 
@@ -115,7 +115,7 @@ FR-NT-05 webhook dispatcher(notification 전이 webhook)의 상위집합.
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/webhook/dispatch/WebhookCircuitBreaker.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/webhook/dispatch/WebhookCircuitBreakerTest.kt`]
 - depends-on: []
 
-**RED**: 상태 전이 단위 테스트(Clock 주입) — (a) 연속 5회 실패 → `isOpen(id)=true`, (b) OPEN 후 60초 이내 → open 유지, (c) 60초 경과 → half-open(1회 탐침 허용), (d) 탐침 성공 → CLOSED(카운터 리셋), (e) 탐침 실패 → 재OPEN. 클래스 부재로 실패.
+**RED**: 상태 전환 단위 테스트(Clock 주입) — (a) 연속 5회 실패 → `isOpen(id)=true`, (b) OPEN 후 60초 이내 → open 유지, (c) 60초 경과 → half-open(1회 탐침 허용), (d) 탐침 성공 → CLOSED(카운터 리셋), (e) 탐침 실패 → 재OPEN. 클래스 부재로 실패.
 **GREEN**: `Map<UUID, State>`(ConcurrentHashMap). `recordSuccess(id)`/`recordFailure(id)`/`isOpen(id): Boolean`. `Clock` 주입(메모리 authcontroller-revokesession-timebomb — 시각 의존 로직 Clock). 상수 THRESHOLD=5, OPEN_DURATION=60s.
 **REFACTOR**: State data class + KDoc(in-memory **단일 인스턴스 전제** — CLAUDE.md 단일 호스트 토폴로지; 다중 인스턴스 스케일 시 카운터가 인스턴스별 독립 → 실질 임계 5×N 명시, 재시작 리셋 수용 — Maxi 확정. C8).
 **검증**: `./gradlew :backend:modules:search-export-import:test --tests '*WebhookCircuitBreakerTest'`

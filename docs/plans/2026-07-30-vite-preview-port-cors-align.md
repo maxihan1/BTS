@@ -135,7 +135,7 @@ CI 동작은 불변이다.
   **왜 strictPort 인가**(조용한 포트 이동이 같은 403 을 다른 원인으로 재발시킨다) 명시
 
 **검증**. `node --test scripts/workflow/preview-cors-origin-alignment.test.ts` →
-차집합·strictPort 단언 2건 red→green 전이 관측. 나머지 **2건(CI 배선 · E2E 재사용)은 여전히
+차집합·strictPort 단언 2건 red→green 전환 관측. 나머지 **2건(CI 배선 · E2E 재사용)은 여전히
 red** 여야 한다 — 여기서 전부 초록이 되면 그 단언들이 공허하다는 뜻이다.
 
 ---
@@ -253,7 +253,7 @@ aded013ec chore: backend-ci 트리거에 apps/web/vite.config.ts 배선
 
 `test:` 커밋이 모든 수정 커밋보다 선행. RED 를 **출력으로 관측**한 뒤 GREEN 을 썼다.
 
-### RED → GREEN 전이
+### RED → GREEN 전환
 
 | 단언 | RED (973bb47e2) | GREEN (2a82bb110) |
 |---|---|---|

@@ -60,11 +60,11 @@ data class BoardPlacementResult(
  * ## 카드 이동
  * toColumnId → 컬럼의 state_key 도출 → [IssueTransitionPort.transition] 위임.
  * E8: issueKey 가 보드 project_key 소속이 아니거나 형식이 올바르지 않으면 거부.
- * E3(같은 컬럼) no-op 판단은 전이 포트에 위임한다 — 클라이언트(프론트 D6)가 드래그 원위치 감지로 요청 미발생 처리.
+ * E3(같은 컬럼) no-op 판단은 전환 포트에 위임한다 — 클라이언트(프론트 D6)가 드래그 원위치 감지로 요청 미발생 처리.
  *
  * @param workflowStateCatalog default 워크플로우 상태 조회 포트 (project-workflow 구현)
  * @param boardIssueLookupPort 프로젝트 이슈 목록 조회 포트 (issue-tracking 구현)
- * @param issueTransitionPort 전이 위임 포트 — fail-closed (issue-tracking 구현)
+ * @param issueTransitionPort 전환 위임 포트 — fail-closed (issue-tracking 구현)
  * @param boardRepository boards/board_columns jOOQ repository
  * @param boardQuickFilterRepository board_quick_filters jOOQ repository (FR-UX-01 Task 7)
  */
@@ -181,19 +181,19 @@ class BoardApplicationService(
      * E8: issueKey 의 프로젝트 접두사가 보드의 projectKey 와 다르거나 형식이 올바르지 않으면 거부한다.
      *
      * ### E3 (같은 컬럼 no-op) 정책
-     * E3 no-op 판단 책임은 이 서비스에 없다. 같은 컬럼으로의 이동은 전이 포트([IssueTransitionPort])에
+     * E3 no-op 판단 책임은 이 서비스에 없다. 같은 컬럼으로의 이동은 전환 포트([IssueTransitionPort])에
      * 위임하며, 워크플로우 정책(self-transition 허용 여부)을 존중한다.
      * 클라이언트(프론트엔드 D6)가 드래그 원위치를 감지해 요청 자체를 발생시키지 않는 것이 정석이다.
      * 이전에 있던 client-supplied currentStateKey 기반 no-op 분기는 client 신뢰 위험이 있어 제거됐다.
      *
      * @param boardId 이동 대상 보드 UUID.
      * @param issueKey 이동할 이슈 키. 예: `"BTS-1"`. 형식 = `"PROJECT_KEY-NUMBER"`.
-     * @param actorUserId 전이 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 전달한다
+     * @param actorUserId 전환 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 전달한다
      *   (body/param 으로 받지 않음 — 위조 차단, sec codereview-fix P1).
      * @param toColumnId 이동 대상 컬럼 UUID.
      * @param expectedVersion 낙관적 락(OCC) 기대 버전.
-     * @param resolutionId DONE 카테고리 전이 시 필요한 해결 방안 ID. 불필요하면 null.
-     * @return 전이 결과 VO.
+     * @param resolutionId DONE 카테고리 전환 시 필요한 해결 방안 ID. 불필요하면 null.
+     * @return 전환 결과 VO.
      * @throws ResponseStatusException 404 — 보드/컬럼 미존재.
      * @throws ResponseStatusException 400 — E8 보드-이슈 프로젝트 정합 위반.
      */

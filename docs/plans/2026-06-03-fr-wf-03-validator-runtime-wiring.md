@@ -1,4 +1,4 @@
-# FR-WF-03 — 워크플로우 전이 validator/guard/PostAction 런타임 결선
+# FR-WF-03 — 워크플로우 전환 validator/guard/PostAction 런타임 결선
 
 > slug: fr-wf-03-validator-runtime-wiring
 > type: backend (기반 인프라, 블래스트 반경 큼 — 리뷰 엄격)
@@ -8,7 +8,7 @@
 
 ## Brief
 
-FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터페이스(`WorkflowValidator`, `WorkflowValidatorFactory`, `WorkflowDefinitionRepository`)와 4종 validator 구현체만 만들고 **production 결선은 하지 않았다**(테스트 익명 object만 존재, YAML 시드 미지원, workflow_validators 테이블 런타임 미사용). 실동작은 FSM invariant 검증뿐.
+FR-WF-01(PR #10)이 워크플로우 전환 검증 프레임워크의 SPI 인터페이스(`WorkflowValidator`, `WorkflowValidatorFactory`, `WorkflowDefinitionRepository`)와 4종 validator 구현체만 만들고 **production 결선은 하지 않았다**(테스트 익명 object만 존재, YAML 시드 미지원, workflow_validators 테이블 런타임 미사용). 실동작은 FSM invariant 검증뿐.
 
 이 FR은 그 비계를 완성한다 (Maxi 2026-06-03 결정, 전체 범위).
 - WorkflowValidatorFactory / WorkflowDefinitionRepository production 구현 (workflow_validators / workflow_post_actions jOOQ 조회 + type→인스턴스 + jsonb config 파싱)
@@ -17,7 +17,7 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - YAML 워크플로우 정의에 validators/postActions 스키마 확장 + DB 시드 경로(YamlSeedService)
 - WorkflowEngine production 부팅 검증(@SpringBootTest 전체 컨텍스트)
 
-**선행 관계**: 이 FR이 FR-IS-07(이슈 Resolution 종료 전이 필수, 보류 중) 옵션 A의 선행. 완료 시 FR-IS-07 재개.
+**선행 관계**: 이 FR이 FR-IS-07(이슈 Resolution 종료 전환 필수, 보류 중) 옵션 A의 선행. 완료 시 FR-IS-07 재개.
 
 **참조**: 메모리 workflow-validator-framework-unwired. FR-IS-07 ADR docs/adr/2026-06-03-resolution-required-on-done-transition.md(보류). FR-WF-01 docs/plan/product/project-workflow.md §2.1.
 
@@ -32,7 +32,7 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - **기존 결정 충돌**: 없음. FR-WF-01의 의도된 후속 완성. GAP-2(PostAction 적용=호출자 BC) 준수.
 - **관련 ADR**: 신규 후보(YAML validator/postaction 스키마 형태, config 파싱 계약) — spec/plan에서 결정.
 - **spec으로 넘길 미결 질문**.
-  - Q1. validator 적용 단계 구분(availability/execution) — availableTransitions가 EXECUTION validator(RequiredField)를 건너뛰어야 DONE 전이가 목록에서 안 사라짐(FR-IS-07 전제). FR-WF-03에 포함할지 FR-IS-07로 넘길지. (포함 권장 — 프레임워크 정확성)
+  - Q1. validator 적용 단계 구분(availability/execution) — availableTransitions가 EXECUTION validator(RequiredField)를 건너뛰어야 DONE 전환이 목록에서 안 사라짐(FR-IS-07 전제). FR-WF-03에 포함할지 FR-IS-07로 넘길지. (포함 권장 — 프레임워크 정확성)
   - Q2. PostAction 적용(GAP-2 호출자측) — issue-tracking이 PostActionPlan FieldChange를 실제 적용하는 배선이 이 FR 범위인지(cross-BC), 또는 project-workflow 계산 배선까지만.
   - Q3. YAML validators/postActions 스키마 형태 + jsonb config 파싱(Map<String,Any?>) 계약.
   - Q4. 시드 범위 — 기존 4종 표준 워크플로우 YAML에 실제 validator/postaction을 넣을지, 스키마/배선만 하고 시드는 비울지.
@@ -58,7 +58,7 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 ✅ 통과 (1회 iteration). gap 아님 — 오히려 함정 회피 2건 확인.
 - (확인1) jOOQ 상수 WORKFLOW_VALIDATORS/POST_ACTIONS는 V200 직접 codegen으로 자동 생성. init_codegen 미러 트랩(jooq-init-codegen-mirror) 여긴 해당 없음.
 - (확인2) validator/postaction 구현체가 생성자 인자를 받아 factory가 타입별 생성 필요(config Map→인자). CustomExpression은 SpelEvaluator 주입. 구현 가능, 스펙 FR1/FR2 반영.
-- 미결 Q1(phase)/Q2(PostAction 범위)는 Maxi D8=A/D9=A로 해소. Q3(YAML 스키마)/Q4(시드 범위)는 스펙에서 확정(전이별 validators/post_actions 리스트, 표준 워크플로우는 시드 비움).
+- 미결 Q1(phase)/Q2(PostAction 범위)는 Maxi D8=A/D9=A로 해소. Q3(YAML 스키마)/Q4(시드 범위)는 스펙에서 확정(전환별 validators/post_actions 리스트, 표준 워크플로우는 시드 비움).
 
 ## Plan
 
@@ -86,7 +86,7 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailabilityPhaseTest.kt`]
 - depends-on: [1]
 
-**RED**: `WorkflowEngineAvailabilityPhaseTest`(MockK factory/repo) — RequiredField(EXECUTION) 걸린 전이가 availableTransitions에 포함, 동시에 plan은 resolution 없으면 WorkflowValidatorFailureException. 현재 availableTransitions가 제거 → 실패.
+**RED**: `WorkflowEngineAvailabilityPhaseTest`(MockK factory/repo) — RequiredField(EXECUTION) 걸린 전환이 availableTransitions에 포함, 동시에 plan은 resolution 없으면 WorkflowValidatorFailureException. 현재 availableTransitions가 제거 → 실패.
 
 **GREEN**: WorkflowEngine.availableTransitions validator 루프(line ~303)에서 `phase==AVAILABILITY`만 평가. plan(line ~241) 전부 평가(불변).
 
@@ -161,7 +161,7 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineWiringIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/ProjectWorkflowContextBootTest.kt`]
 - depends-on: [2, 3, 4, 5, 6]
 
-**RED**: (a) `ProjectWorkflowContextBootTest`(@SpringBootTest) — 전체 컨텍스트 기동(WorkflowEngine 4빈 결선) 성공. (b) `WorkflowEngineWiringIntegrationTest`(Testcontainers, 실제 factory/repo) — validator 설정 전이를 plan 시 거부 + availableTransitions 시 포함, SetField/Notify PostAction plan 결과 TransitionPlan 누적. 실패(현재 production 빈 부재).
+**RED**: (a) `ProjectWorkflowContextBootTest`(@SpringBootTest) — 전체 컨텍스트 기동(WorkflowEngine 4빈 결선) 성공. (b) `WorkflowEngineWiringIntegrationTest`(Testcontainers, 실제 factory/repo) — validator 설정 전환을 plan 시 거부 + availableTransitions 시 포함, SetField/Notify PostAction plan 결과 TransitionPlan 누적. 실패(현재 production 빈 부재).
 
 **GREEN**: T3/T4/T5 빈으로 결선 완료 상태에서 통과. 부팅 가드 필요 시 보강(메모리 profile-scoped-bean-boot-failure — 전 프로파일 부팅).
 

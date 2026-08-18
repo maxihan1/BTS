@@ -85,7 +85,7 @@ function DelegateResultList({ query, onSelect }: DelegateResultListProps): JSX.E
  * 원자적으로 교체(replace)하거나 해제한다. 저장 성공 시 {@link refreshWhoami}로
  * authStore.user를 최신화해 Header 부재중 표시를 즉시 반영한다(StatusModal 선례).
  *
- * 열림 전이(open false→true)에서만 현재 설정으로 폼을 초기화한다 — 재열림 시 이전 세션 입력이
+ * 열림 전환(open false→true)에서만 현재 설정으로 폼을 초기화한다 — 재열림 시 이전 세션 입력이
  * stale하게 남지 않도록 한다(Radix controlled Dialog 토글닫기 stale 함정 방어, memory:
  * react-usestate-stale-key-prop). 단, 모달이 열린 채 OOO 쿼리가 refetch(window focus/invalidate)되어
  * `current`만 바뀌는 경우는 재초기화하지 않는다 — 편집 중 입력이 서버값으로 덮이는 것을 방지한다
@@ -124,7 +124,7 @@ export function OooModal({ open, onOpenChange }: OooModalProps): JSX.Element {
       setMessage(current?.message ?? '')
       setErrorMessage(null)
     }
-    // current를 의존성에 포함하지 않는다 — 열림 전이(open false→true)에서만 초기화하고, 모달이
+    // current를 의존성에 포함하지 않는다 — 열림 전환(open false→true)에서만 초기화하고, 모달이
     // 열린 채 OOO 쿼리 refetch로 current만 바뀌는 경우는 재초기화하지 않는다(F2, 편집 중 입력
     // 유실 방지가 우선순위).
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,9 +1,9 @@
-// IssueTransitionPort 전이 실패를 타입으로 구분하는 shared-kernel 예외 — 권한 거부·OCC 충돌 (FR-SL-05 PR1 Task 2)
+// IssueTransitionPort 전환 실패를 타입으로 구분하는 shared-kernel 예외 — 권한 거부·OCC 충돌 (FR-SL-05 PR1 Task 2)
 
 package com.bts.shared.board
 
 /**
- * [IssueTransitionPort.transition] 이 위임한 이슈 전이가 actor 권한 부족(TRANSITION 미충족)으로
+ * [IssueTransitionPort.transition] 이 위임한 이슈 전환이 actor 권한 부족(TRANSITION 미충족)으로
  * 거부됐음을 나타내는 타입 있는 예외.
  *
  * ### 배경 — 클래스명 문자열 매칭 금지 (BC 격리)
@@ -28,7 +28,7 @@ class IssueTransitionPermissionDeniedException(
 ) : RuntimeException(message, cause)
 
 /**
- * [IssueTransitionPort.transition] 이 위임한 이슈 전이가 낙관적 잠금(OCC, 여러 요청이 동시에 같은
+ * [IssueTransitionPort.transition] 이 위임한 이슈 전환이 낙관적 잠금(OCC, 여러 요청이 동시에 같은
  * 데이터를 수정하려 할 때 먼저 읽은 버전 번호로 충돌을 감지하는 방식) 버전 충돌로 실패했음을 나타내는
  * 타입 있는 예외.
  *

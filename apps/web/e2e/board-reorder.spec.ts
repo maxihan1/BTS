@@ -4,7 +4,7 @@
 //   S1. 순서변경 happy path — NONE 스윔레인, 같은 컬럼 내 카드를 드래그해 순서 변경
 //   S2. stateful 반영     — S1 이후 react-query invalidateQueries 재조회(onSettled)에서도
 //                           변경된 순서가 유지됨(MSW rerank가 board 조회에 stateful 반영)
-//   S3. 컬럼 간 이동 무회귀 — 상태 전이(카드가 다른 컬럼으로 이동)는 PR21 이전과 동일하게 동작
+//   S3. 컬럼 간 이동 무회귀 — 상태 전환(카드가 다른 컬럼으로 이동)는 PR21 이전과 동일하게 동작
 //   S4. 스윔레인 활성 + 같은 셀 내 순서변경 — ASSIGNEE 스윔레인 on, 같은 담당자 그룹 안에서 순서 변경
 //   S5. 스윔레인 그룹 경계 넘는 드래그 → noop — 다른 담당자 그룹으로 드래그해도 변경 없음(PR21 스코프)
 //   S6. 키보드 순서변경(KeyboardSensor) — Space로 집고 ArrowDown으로 이동, Space로 드롭
@@ -243,7 +243,7 @@ test.describe('FR-UX-06 PR21 칸반 보드 셀 내 카드 순서변경', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────
-  // S3. 컬럼 간 이동 무회귀 — 상태 전이는 PR21 이전과 동일
+  // S3. 컬럼 간 이동 무회귀 — 상태 전환은 PR21 이전과 동일
   //
   // Given  DEFAULT_BOARD, TODO 컬럼에 ATLAS-1 존재
   // When   ATLAS-1을 IN PROGRESS 컬럼으로 드래그(다른 컬럼 = move, reorder 아님)

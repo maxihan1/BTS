@@ -1,6 +1,6 @@
 <!-- FR-IS-01 transition wiring slice — IssueApplicationService/IssueController가 project-workflow BC의 WorkflowResolver를 SPI 경유 호출하도록 연결하는 백엔드 작업 plan -->
 
-# 이슈 상태 전이 백엔드 wiring — WorkflowResolver consumer 연결
+# 이슈 상태 전환 백엔드 wiring — WorkflowResolver consumer 연결
 
 > slug: wiring-workflowresolver-consumer-fr-is-01-transiti
 > type: backend
@@ -19,7 +19,7 @@ PR #18에서 project-workflow BC에 추가된 `WorkflowResolver` (SPI outbound p
 1. `IssueController.kt:179`. `AppTransitionIssueRequest(workflowKey = "DEFAULT", ...)`로 하드코딩. 그러나 시드된 워크플로우는 `software-default` / `bug-tracking` / `kanban-basic` / `simple` — `"DEFAULT"` 미시드
 2. `IssueApplicationService.kt:92`. `currentStateKey = "OPEN"`(대문자). 워크플로우 상태 키는 `software-default.yaml`의 `open` / `in_progress` / `in_review` / `done` / `closed`(소문자). 케이스 불일치
 
-→ 단위 테스트는 `WorkflowTransitionPort`를 mock해서 통과하지만 런타임에 전이가 동작하지 않음.
+→ 단위 테스트는 `WorkflowTransitionPort`를 mock해서 통과하지만 런타임에 전환이 동작하지 않음.
 
 ### 본 PR 변경 (예상 — 구체는 /bts-spec, /bts-plan에서 확정)
 
@@ -29,13 +29,13 @@ PR #18에서 project-workflow BC에 추가된 `WorkflowResolver` (SPI outbound p
 
 ### 목표
 
-이슈 상태 전이가 런타임에 실제 동작하게 만든다. 후속 FR-IS-01 D7 E2E(생성 → 조회 → 수정 → **상태 전이** → 소프트 삭제 → 키 영속성) 풀시나리오를 돌릴 수 있는 상태로 unblock.
+이슈 상태 전환이 런타임에 실제 동작하게 만든다. 후속 FR-IS-01 D7 E2E(생성 → 조회 → 수정 → **상태 전환** → 소프트 삭제 → 키 영속성) 풀시나리오를 돌릴 수 있는 상태로 unblock.
 
 ### 제약
 
 - **BC 격리**. PR #25에서 분리한 공통 SPI 경계를 통해서만 호출. issue-tracking에서 project-workflow 내부 클래스 직접 import 금지
 - 백엔드 작업 단독 (프론트 UI / E2E는 D6 / D7 별 slice)
-- 본 PR scope에서는 전이 UI 신규 생성 없음 — 백엔드 wiring + 단위/통합 테스트만
+- 본 PR scope에서는 전환 UI 신규 생성 없음 — 백엔드 wiring + 단위/통합 테스트만
 
 ## 도메인 정리
 
@@ -50,7 +50,7 @@ PR #18에서 project-workflow BC에 추가된 `WorkflowResolver` (SPI outbound p
 ### 영향 엔티티
 
 - **Issue** (issue-tracking). `currentStateKey` 표현 케이스 변경 (`"OPEN"` 대문자 → 워크플로우 정본 키 `open` 소문자). **필드 추가 없음.**
-- **IssueApplicationService** (issue-tracking). 생성(line 92) + 전이(line 206) 흐름에 `WorkflowResolver` 호출 추가. `workflowKey="DEFAULT"` / `currentStateKey="OPEN"` 하드코딩 제거.
+- **IssueApplicationService** (issue-tracking). 생성(line 92) + 전환(line 206) 흐름에 `WorkflowResolver` 호출 추가. `workflowKey="DEFAULT"` / `currentStateKey="OPEN"` 하드코딩 제거.
 - **IssueController** (issue-tracking). `AppTransitionIssueRequest.workflowKey` 생성 로직에서 `WorkflowResolver` 결과 사용 (line 179).
 
 ### 사실 검증 (코드 grep, 2026-05-28)
@@ -76,8 +76,8 @@ PR #18에서 project-workflow BC에 추가된 `WorkflowResolver` (SPI outbound p
   - (b) shared-kernel 에 신규 SPI `WorkflowKeyResolver` 정의 — consumer 가 알아야 할 최소만 노출(`WorkflowKey` 만 반환). project-workflow 가 두 SPI 구현. **published language 정신 부합**.
   - (c) issue-tracking 에서 project-workflow 직접 import 예외 명문화 — BC 격리 위반, 비추.
 - **D2. 워크플로우 결정 시점**.
-  - (a) 이슈 생성 + 전이 둘 다 (생성 시점에도 `WorkflowResolver` 호출 → 결정된 워크플로우의 시작 상태 사용). 깔끔.
-  - (b) 전이 시점만 (생성은 케이스만 정렬 `"OPEN"` → `"open"`). 작음.
+  - (a) 이슈 생성 + 전환 둘 다 (생성 시점에도 `WorkflowResolver` 호출 → 결정된 워크플로우의 시작 상태 사용). 깔끔.
+  - (b) 전환 시점만 (생성은 케이스만 정렬 `"OPEN"` → `"open"`). 작음.
 - **D3. `currentStateKey` 케이스 마이그레이션**.
   - (a) Flyway 마이그레이션으로 기존 DB 의 `"OPEN"` 데이터 일괄 `"open"` 으로 변경. 안전.
   - (b) 새 데이터부터 소문자, 기존 데이터는 그대로 (호환성 위험).
@@ -101,11 +101,11 @@ PR #18에서 project-workflow BC에 추가된 `WorkflowResolver` (SPI outbound p
 
 핵심 시나리오 3줄 요약.
 - **이슈 생성**. `WorkflowKeyResolver.resolveStart(projectKey, null)` → `WorkflowStartState(workflowKey, startStateKey="open")` → 이슈 INSERT (currentStateKey 소문자 정본)
-- **이슈 전이**. `WorkflowKeyResolver.resolveStart()` → workflowKey → `WorkflowTransitionPort.applyTransition` → 이슈 UPDATE
+- **이슈 전환**. `WorkflowKeyResolver.resolveStart()` → workflowKey → `WorkflowTransitionPort.applyTransition` → 이슈 UPDATE
 - **마이그레이션**. Flyway V00X로 기존 DB `OPEN` → `open` 일괄
 
 **게이트1 추가 검토 항목**.
-- **D2** (워크플로우 결정 시점, 추천 (a) 생성+전이 둘 다)
+- **D2** (워크플로우 결정 시점, 추천 (a) 생성+전환 둘 다)
 - **D3** (마이그레이션 방식, 추천 (a) Flyway)
 - **C-4** (`currentStateKey` 응답 케이스 변경의 D6 UI 영향 — plan 단계에서 grep 검증)
 - **EC-2 도메인 예외** (`IssueWorkflowNotConfiguredException` 신규 vs 기존 통합)
@@ -420,7 +420,7 @@ PR #18에서 project-workflow BC에 추가된 `WorkflowResolver` (SPI outbound p
 
 ### 게이트1 검토 항목 (Maxi 결정 필요)
 
-1. **D2 추천 (a)** — 이슈 생성 + 전이 둘 다 워크플로우 결정. 정합성 vs scope 약간 큼.
+1. **D2 추천 (a)** — 이슈 생성 + 전환 둘 다 워크플로우 결정. 정합성 vs scope 약간 큼.
 2. **D3 추천 (a)** — Flyway 마이그레이션 V00X 로 기존 `OPEN` → `open` 일괄. 안전 vs 새 데이터부터 (호환 위험).
 3. **EC-2 도메인 예외** — `IssueWorkflowNotConfiguredException` 신규 (T3) vs 기존 `IssueDomainException` 통합.
 4. **ADR 미해결 항목** (`@Transactional(MANDATORY)` 위치) — 본 PR 은 shared-kernel 인터페이스 잔류 (PR #18 패턴 일관) 가정. impl 측 이동 옵션 vs 추가 단락 작성 여부.

@@ -107,7 +107,7 @@ async function createVersionInStore(
 }
 
 /**
- * ARCHIVED 전이 — versionId 를 ARCHIVED 상태로 전이한다.
+ * ARCHIVED 전환 — versionId 를 ARCHIVED 상태로 전환한다.
  * PATCH /api/v1/projects/{key}/versions/{id}/status body { status: 'ARCHIVED' }
  */
 async function archiveVersion(
@@ -121,7 +121,7 @@ async function archiveVersion(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'ARCHIVED' }),
       })
-      if (!res.ok) throw new Error(`ARCHIVED 전이 실패: ${res.status}`)
+      if (!res.ok) throw new Error(`ARCHIVED 전환 실패: ${res.status}`)
     },
     [PROJECT_KEY, versionId] as [string, string],
   )
@@ -326,7 +326,7 @@ test.describe('FR-VR-03 이슈 버전 연결 (IssueMetaPanel > VersionMultiSelec
   //         (단, 이미 연결된 ARCHIVED 는 표시 — Jira 정석, 이 테스트는 미연결 케이스)
   // ───────────────────────────────────────────────────────────────────────────
   test('S5 ARCHIVED 버전 미표시 — 드롭다운에서 ARCHIVED 버전이 안 보임', async ({ page }) => {
-    // 사전조건: VER_A seed + VER_ARCHIVED seed → ARCHIVED 전이
+    // 사전조건: VER_A seed + VER_ARCHIVED seed → ARCHIVED 전환
     await createVersionInStore(page, VER_A)
     const archivedId = await createVersionInStore(page, VER_ARCHIVED)
     await archiveVersion(page, archivedId)

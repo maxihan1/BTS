@@ -192,17 +192,17 @@ export function useChangeVersionDates(projectKey: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// useChangeVersionStatus — 상태 전이 (FR-VR-02)
+// useChangeVersionStatus — 상태 전환 (FR-VR-02)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 버전 상태 전이 mutation 입력 타입 */
+/** 버전 상태 전환 mutation 입력 타입 */
 export interface ChangeVersionStatusMutationInput {
   id: string
   status: VersionStatus
 }
 
 /**
- * 버전 상태를 전이한다.
+ * 버전 상태를 전환한다.
  *
  * PATCH /api/v1/projects/{projectKey}/versions/{id}/status → 200 Version
  *

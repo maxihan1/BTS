@@ -1,4 +1,4 @@
-// IssueController — POST /api/v1/issues 이슈 생성, GET 단건/목록, PATCH 수정, POST 전이, DELETE 소프트 삭제 REST 엔드포인트
+// IssueController — POST /api/v1/issues 이슈 생성, GET 단건/목록, PATCH 수정, POST 전환, DELETE 소프트 삭제 REST 엔드포인트
 
 package com.bts.issue.adapter.inbound.rest
 
@@ -102,8 +102,8 @@ private fun requirePageSizeWithinLimit(pageable: Pageable) {
  * - GET    /api/v1/issues/{key} — 이슈 단건 조회 (T14)
  * - GET    /api/v1/issues — 이슈 목록 조회 (페이지) (T14)
  * - PATCH  /api/v1/issues/{key} — 이슈 수정 (T15)
- * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 실행 (T15, T6)
- * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
+ * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전환 실행 (T15, T6)
+ * - GET    /api/v1/issues/{key}/transitions — 가용 전환 목록 조회 (T4)
  * - GET    /api/v1/issues/{key}/changelog — 변경 이력 페이지 조회 (FR-HS-02 T B3)
  * - PATCH  /api/v1/issues/{key}/assignee — 담당자 변경/해제 (FR-IS-03 T8)
  * - PATCH  /api/v1/issues/{key}/components — 컴포넌트 목록 교체 (FR-CM-02 T5)
@@ -127,7 +127,7 @@ private fun requirePageSizeWithinLimit(pageable: Pageable) {
  * 미인증·익명·비-UUID·nil-UUID 주체는 401(UNAUTHORIZED)로 거부한다.
  * actor 추출은 리소스 조회(404)보다 앞서 수행하여 미인증자가 404 로 리소스 존재를 probe 하지 못하게 한다.
  *
- * TooManyFunctions: 이슈 CRUD + 전이 + 클론 + 랭크 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
+ * TooManyFunctions: 이슈 CRUD + 전환 + 클론 + 랭크 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
  * 책임 분리보다 이슈 리소스 응집이 더 적합한 구조이므로 Suppress 처리.
  *
  * @param service 이슈 유스케이스 서비스
@@ -138,7 +138,7 @@ private fun requirePageSizeWithinLimit(pageable: Pageable) {
  * @param backlogRankService 백로그 rank 변경 서비스 (FR-BL-01). 기존 슬라이스 테스트 호환을 위해 null 기본값.
  */
 @Suppress("TooManyFunctions")
-@Tag(name = "Issues", description = "이슈 CRUD, 상태 전이, 클론, 변경 이력, 백로그 랭크 API (FR-IS·FR-HS·FR-BL)")
+@Tag(name = "Issues", description = "이슈 CRUD, 상태 전환, 클론, 변경 이력, 백로그 랭크 API (FR-IS·FR-HS·FR-BL)")
 @RestController
 @RequestMapping("/api/v1/issues")
 class IssueController(
@@ -411,7 +411,7 @@ class IssueController(
     }
 
     /**
-     * 이슈 상태를 전이한다.
+     * 이슈 상태를 전환한다.
      *
      * ### 책임 분리
      * - **컨트롤러 (transport)** — HTTP 요청을 받아 `toStateKey`, `expectedVersion` 만 [IssueApplicationService] 에 위임한다.
@@ -419,29 +419,29 @@ class IssueController(
      * - **[IssueApplicationService]** — [com.bts.shared.workflow.WorkflowKeyResolver] 를 통해
      *   프로젝트에 적합한 `workflowKey` 를 자동 결정한다 (T4 구현).
      *
-     * 워크플로우 정의에 허용된 전이가 아닌 경우 409 Transition Not Allowed.
+     * 워크플로우 정의에 허용된 전환이 아닌 경우 409 Transition Not Allowed.
      * 프로젝트에 기본 워크플로우 스킴이 없는 경우 422 Workflow Not Configured.
      *
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
-     * @param request 전이 요청 바디 (Jakarta Validation 적용)
-     * @return 200 OK + 전이된 [IssueResponse] body
+     * @param request 전환 요청 바디 (Jakarta Validation 적용)
+     * @return 200 OK + 전환된 [IssueResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 프로젝트에 워크플로우 미설정 → 422
-     * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전이 거부 → 409
+     * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전환 거부 → 409
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
     @Operation(
         operationId = "transitionIssue",
-        summary = "이슈 상태 전이",
-        description = "워크플로우 정의에 따라 이슈 상태를 전이한다. 허용되지 않는 전이는 409 로 거부한다.",
+        summary = "이슈 상태 전환",
+        description = "워크플로우 정의에 따라 이슈 상태를 전환한다. 허용되지 않는 전환은 409 로 거부한다.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "전이 성공"),
+        ApiResponse(responseCode = "200", description = "전환 성공"),
         ApiResponse(responseCode = "400", description = "요청 형식 오류", content = [Content()]),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
-        ApiResponse(responseCode = "403", description = "전이 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "전환 권한 없음", content = [Content()]),
         ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
-        ApiResponse(responseCode = "409", description = "전이 불허 또는 낙관적 잠금 충돌", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "전환 불허 또는 낙관적 잠금 충돌", content = [Content()]),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/{key}/transition")
@@ -464,11 +464,11 @@ class IssueController(
     }
 
     /**
-     * 현재 이슈 상태에서 이동 가능한 전이 목록을 반환한다.
+     * 현재 이슈 상태에서 이동 가능한 전환 목록을 반환한다.
      *
      * ### 복수/단수 명명 의도
-     * - 이 엔드포인트 (`GET /{key}/transitions`) 는 **목록 조회** — 가용 전이 여러 건을 열거한다.
-     * - 기존 엔드포인트 (`POST /{key}/transition`) 는 **단건 실행** — 특정 전이 한 건을 수행한다.
+     * - 이 엔드포인트 (`GET /{key}/transitions`) 는 **목록 조회** — 가용 전환 여러 건을 열거한다.
+     * - 기존 엔드포인트 (`POST /{key}/transition`) 는 **단건 실행** — 특정 전환 한 건을 수행한다.
      * 복수형(`transitions`) vs 단수형(`transition`) 명명은 이 의도 차이를 명시한다.
      *
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
@@ -478,11 +478,11 @@ class IssueController(
      */
     @Operation(
         operationId = "availableTransitions",
-        summary = "가용 전이 목록 조회",
-        description = "현재 이슈 상태에서 이동 가능한 전이 목록을 반환한다.",
+        summary = "가용 전환 목록 조회",
+        description = "현재 이슈 상태에서 이동 가능한 전환 목록을 반환한다.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "가용 전이 목록"),
+        ApiResponse(responseCode = "200", description = "가용 전환 목록"),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
         ApiResponse(responseCode = "403", description = "조회 권한 없음", content = [Content()]),
         ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),

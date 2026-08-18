@@ -71,9 +71,9 @@ import java.util.UUID
  * - DELETE-1. DELETE /api/v1/sprints/{id} 정상 → 204
  * - DELETE-2. DELETE 미존재 → 404
  * - START-1. POST /api/v1/sprints/{id}/start 정상 → 200
- * - START-2. POST start 허용되지 않는 전이 → 409 AGILE_CONFLICT
+ * - START-2. POST start 허용되지 않는 전환 → 409 AGILE_CONFLICT
  * - COMPLETE-1. POST /api/v1/sprints/{id}/complete 정상 → 200
- * - COMPLETE-2. POST complete 허용되지 않는 전이 → 409 AGILE_CONFLICT
+ * - COMPLETE-2. POST complete 허용되지 않는 전환 → 409 AGILE_CONFLICT
  * - ASSIGN-1. POST /api/v1/sprints/{id}/issues 정상(최초 할당) → 201
  * - ASSIGN-2. POST issues 이슈 미가시 → 404
  * - ASSIGN-3. POST issues COMPLETED 스프린트 → 409
@@ -393,10 +393,10 @@ class SprintControllerTest {
             .andExpect(jsonPath("$.data.status").value("ACTIVE"))
     }
 
-    // ── START-2. POST start 허용되지 않는 전이 → 409 ─────────────────────────
+    // ── START-2. POST start 허용되지 않는 전환 → 409 ─────────────────────────
 
     @Test
-    fun `POST sprints id start 허용되지 않는 전이면 409 AGILE_CONFLICT를 반환한다`() {
+    fun `POST sprints id start 허용되지 않는 전환이면 409 AGILE_CONFLICT를 반환한다`() {
         every {
             sprintApplicationService.start(actorId, sprintId)
         } throws InvalidSprintTransitionException("Cannot start sprint in status COMPLETED.")
@@ -418,10 +418,10 @@ class SprintControllerTest {
             .andExpect(jsonPath("$.data.status").value("COMPLETED"))
     }
 
-    // ── COMPLETE-2. POST complete 허용되지 않는 전이 → 409 ───────────────────
+    // ── COMPLETE-2. POST complete 허용되지 않는 전환 → 409 ───────────────────
 
     @Test
-    fun `POST sprints id complete 허용되지 않는 전이면 409 AGILE_CONFLICT를 반환한다`() {
+    fun `POST sprints id complete 허용되지 않는 전환이면 409 AGILE_CONFLICT를 반환한다`() {
         every {
             sprintApplicationService.complete(actorId, sprintId)
         } throws InvalidSprintTransitionException("Cannot complete sprint in status PLANNED.")

@@ -108,7 +108,7 @@ describe('useResolvedActiveProject — URL·저장값·목록 조합', () => {
     expect(result.current).toMatchObject({ projectKey: 'ALPHA' })
     expect(useActiveProject.getState().activeProjectKey).toBe('ALPHA')
     // 저장 직후 다음 렌더는 저장값에서 해소되므로 출처가 first → stored 로 정착한다.
-    // 이 전이 자체가 "저장이 일어났다"는 증거다(키는 그대로라 화면 변화 없음).
+    // 이 전환 자체가 "저장이 일어났다"는 증거다(키는 그대로라 화면 변화 없음).
     expect(result.current).toMatchObject({ source: 'stored' })
   })
 

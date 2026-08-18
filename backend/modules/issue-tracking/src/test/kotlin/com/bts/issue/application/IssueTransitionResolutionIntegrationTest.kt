@@ -1,4 +1,4 @@
-// 전이 resolution 영속 + clear + 존재성 검증 통합 테스트 — FR-IS-07 Task B6
+// 전환 resolution 영속 + clear + 존재성 검증 통합 테스트 — FR-IS-07 Task B6
 
 package com.bts.issue.application
 
@@ -73,19 +73,19 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * 이슈 전이 시 resolution 영속 · clear · 존재성 검증 통합 테스트.
+ * 이슈 전환 시 resolution 영속 · clear · 존재성 검증 통합 테스트.
  *
  * Testcontainers PostgreSQL + 두 BC(issue-tracking, project-workflow) 전체 스택 wire.
  * 단위 mock 으로 검출 불가한 DB 영속/clear/존재성을 실제 Postgres 에서 검증한다.
  *
  * ## 검증 시나리오 (B6 명세)
  *
- * ### S1. DONE 전이 + resolutionId → resolution_id 영속
+ * ### S1. DONE 전환 + resolutionId → resolution_id 영속
  * Given  이슈 currentStateKey = "open" (in_progress 거쳐 done 까지 2단계)
  * When   POST /api/v1/issues/{key}/transition { toStateKey: "done", resolutionId: <고정 UUID> }
  * Then   200 OK + DB issues.resolution_id == 제공한 UUID
  *
- * ### S3. done → open 재전이 (resolutionId=null) → resolution_id null clear
+ * ### S3. done → open 재전환 (resolutionId=null) → resolution_id null clear
  * Given  이슈 currentStateKey = "done", resolution_id = 고정 UUID
  * When   POST /api/v1/issues/{key}/transition { toStateKey: "open" } (resolutionId 미제공)
  * Then   200 OK + DB issues.resolution_id IS NULL
@@ -97,9 +97,9 @@ import java.util.UUID
  *
  * ## 워크플로우 시드
  * open → in_progress → done (3-상태 소프트웨어 단순 흐름).
- * done → open 역방향 전이 추가 (S3 재전이 검증).
+ * done → open 역방향 전환 추가 (S3 재전환 검증).
  * B7(DONE 진입 시 resolution 필수 validator) 은 이 테스트에서 시드하지 않는다.
- * 따라서 S1 에서 DONE 전이가 resolutionId 없이도 통과하는 것은 정상 (B7 이전 상태).
+ * 따라서 S1 에서 DONE 전환이 resolutionId 없이도 통과하는 것은 정상 (B7 이전 상태).
  *
  * ## 마이그레이션
  * issue-tracking V001~V011 + project-workflow V200~V202 순차 적용.
@@ -399,10 +399,10 @@ class IssueTransitionResolutionIntegrationTest {
         SecurityContextHolder.clearContext()
     }
 
-    // ── S1. DONE 전이 + resolutionId → resolution_id 영속 ────────────────────────
+    // ── S1. DONE 전환 + resolutionId → resolution_id 영속 ────────────────────────
 
     /**
-     * S1 — DONE 전이 시 resolutionId 가 issues.resolution_id 에 영속됨을 검증한다.
+     * S1 — DONE 전환 시 resolutionId 가 issues.resolution_id 에 영속됨을 검증한다.
      *
      * Given  이슈 currentStateKey = "open", version = 1
      * When   open → in_progress (1단계)
@@ -411,7 +411,7 @@ class IssueTransitionResolutionIntegrationTest {
      * And    DB issues.resolution_id == FIXED_RESOLUTION_ID
      */
     @Test
-    fun `DONE 전이 시 resolutionId 가 issues resolution_id 에 영속된다`() {
+    fun `DONE 전환 시 resolutionId 가 issues resolution_id 에 영속된다`() {
         val issueKey = insertIssue(PROJECT_KEY, "resolution 영속 검증 이슈", "open")
 
         // 1단계: open → in_progress
@@ -442,10 +442,10 @@ class IssueTransitionResolutionIntegrationTest {
         }
     }
 
-    // ── S3. done → open 재전이(resolutionId=null) → resolution_id null clear ────
+    // ── S3. done → open 재전환(resolutionId=null) → resolution_id null clear ────
 
     /**
-     * S3 — 비DONE 재전이 시 issues.resolution_id 가 null 로 clear 됨을 검증한다.
+     * S3 — 비DONE 재전환 시 issues.resolution_id 가 null 로 clear 됨을 검증한다.
      *
      * Given  이슈 currentStateKey = "done", resolution_id = FIXED_RESOLUTION_ID
      * When   POST /api/v1/issues/{key}/transition { toStateKey: "open" } (resolutionId 미제공)
@@ -453,11 +453,11 @@ class IssueTransitionResolutionIntegrationTest {
      * And    DB issues.resolution_id IS NULL
      */
     @Test
-    fun `비DONE 재전이 시 resolution_id 가 null 로 clear 된다`() {
+    fun `비DONE 재전환 시 resolution_id 가 null 로 clear 된다`() {
         // done 상태 + resolution_id 세팅 이슈 직접 삽입
         val issueKey = insertIssueWithResolution(PROJECT_KEY, "resolution clear 검증 이슈", "done", FIXED_RESOLUTION_ID)
 
-        // done → open 역방향 전이 (resolutionId 미제공)
+        // done → open 역방향 전환 (resolutionId 미제공)
         val body = mapOf("toStatusKey" to "open", "expectedVersion" to 1)
         mockMvc.perform(
             post("/api/v1/issues/$issueKey/transition")
@@ -565,7 +565,7 @@ class IssueTransitionResolutionIntegrationTest {
 
             insertTransition(conn, wfId, openId, inProgressId, "Start Work")
             insertTransition(conn, wfId, inProgressId, doneId, "Complete")
-            // S3 검증을 위한 done → open 역방향 전이
+            // S3 검증을 위한 done → open 역방향 전환
             insertTransition(conn, wfId, doneId, openId, "Reopen")
 
             // workflow_scheme + default mapping

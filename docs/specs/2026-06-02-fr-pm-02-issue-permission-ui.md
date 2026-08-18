@@ -63,7 +63,7 @@ EDIT/CREATE는 항상 O. 멤버끼리 갈리는 유일한 권한이 DELETE(ADMIN
 ### 범위 밖 (후속)
 - 목록 "새 이슈"(CREATE, 프로젝트 스코프) 게이트 — 현재 no-op, 별도 프로젝트 스코프 조회 필요.
 - 생성 폼(issues.new.tsx)의 동적 projectKey 권한 체크.
-- 상태 전이(TRANSITION) 버튼 게이트 — 매트릭스 밖(멤버 게이트). 응답엔 포함하되 UI 미사용.
+- 상태 전환(TRANSITION) 버튼 게이트 — 매트릭스 밖(멤버 게이트). 응답엔 포함하되 UI 미사용.
 
 ## 비기능 요구사항 (NFR)
 

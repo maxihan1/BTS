@@ -23,7 +23,7 @@ enqueue(`AutomationExecutionEnqueuer`)하는 이음선까지. FR-AT-02는 그 �
 - `automation_rules`는 **트리거 전용** 스키마 — 조건(FR-AT-03)·액션(FR-AT-02) 컬럼은
   "후행 FR이 add 마이그레이션으로 추가"로 명시(V300 주석). 액션 저장은 본 FR이 신설.
 - cross-BC 변경 위임 선례: `shared-kernel/board/IssueTransitionPort`(agile-planning → issue-tracking
-  전이 위임). fail-closed(default 구현 없음)·actor는 커맨드 VO로 전달·shared-kernel 배치로 BC 격리.
+  전환 위임). fail-closed(default 구현 없음)·actor는 커맨드 VO로 전달·shared-kernel 배치로 BC 격리.
 - 아웃바운드 HTTP SSRF 가드: `shared-kernel/http/OutboundUrlValidator`가 이미 존재(automation import 가능).
 - 권한 판정: `shared-kernel/permission/AutomationPermissionResolver`(prod=identity-access, fail-closed).
 

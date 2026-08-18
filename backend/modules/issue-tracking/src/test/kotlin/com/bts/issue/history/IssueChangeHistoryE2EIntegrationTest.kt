@@ -721,7 +721,7 @@ class IssueChangeHistoryE2EIntegrationTest {
             .contains("HistComp")
     }
 
-    // ── (a-2) 상태 전이 이력 ───────────────────────────────────────────────────
+    // ── (a-2) 상태 전환 이력 ───────────────────────────────────────────────────
 
     /**
      * (a-2) transitionIssue 호출 시 status 변경 이력이 기록된다.
@@ -737,7 +737,7 @@ class IssueChangeHistoryE2EIntegrationTest {
                 ACTOR_ID,
                 CreateIssueRequest(
                     projectKey = PROJECT_KEY,
-                    summary = "a2 시나리오 상태 전이 이슈",
+                    summary = "a2 시나리오 상태 전환 이슈",
                     reporterId = ACTOR_ID,
                 ),
             )
@@ -815,7 +815,7 @@ class IssueChangeHistoryE2EIntegrationTest {
 
             val openId = insertWorkflowState(c, wfId, "open", "Open", "TODO", 0)
             val inProgressId = insertWorkflowState(c, wfId, "in_progress", "In Progress", "IN_PROGRESS", 1)
-            // open → in_progress 전이 삽입 (transitionIssue 시나리오용)
+            // open → in_progress 전환 삽입 (transitionIssue 시나리오용)
             insertWorkflowTransition(c, wfId, openId, inProgressId, "Start Work")
 
             c.createStatement().use { stmt ->

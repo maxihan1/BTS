@@ -87,7 +87,7 @@ import java.util.UUID
  * - S3. invalid transition — open → in_review 미정의 → 409 TRANSITION_NOT_ALLOWED
  * - S4. version conflict — expectedVersion=1 / DB version=2 → 409 VERSION_CONFLICT
  * - IT-2. 프로젝트에 기본 워크플로우 배정 없음 → 422 WORKFLOW_NOT_CONFIGURED
- * - IT-3. 전이 후 IssueResponse.currentStateKey 소문자 확인
+ * - IT-3. 전환 후 IssueResponse.currentStateKey 소문자 확인
  *
  * ## 우회 seed 해제 (Task 5 변형 TDD)
  * PR #27 시점의 통합 테스트는 transitionName=toStateKey 우회 seed 로 production 함정을 가렸음.
@@ -236,7 +236,7 @@ class IssueControllerTransitionIntegrationTest {
 
         /**
          * PRE_EXISTING: FR-WF-02 issueTypeLookupPort 도입 시 이 TestConfiguration 갱신 누락.
-         * 전이(transition) 통합 테스트는 스킴 매핑 뷰를 조회하지 않으므로
+         * 전환(transition) 통합 테스트는 스킴 매핑 뷰를 조회하지 않으므로
          * issueTypeLookupPort 는 relaxed mock 으로 대체한다.
          */
         @Bean
@@ -416,12 +416,12 @@ class IssueControllerTransitionIntegrationTest {
      * Given  TRANSITION 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
      * When   POST /api/v1/issues/TRANSITION-1/transition { toStatusKey: "in_progress", expectedVersion: 1 }
      * Then   200 OK + data.currentStateKey == "in_progress", version == 2
-     *        software-default.yaml 의 "Start Work" 전이 name 과 (from,to) 2-tuple 매칭으로 성공.
+     *        software-default.yaml 의 "Start Work" 전환 name 과 (from,to) 2-tuple 매칭으로 성공.
      *        우회 seed (transitionName=toStateKey) 없이도 정상 동작함을 검증.
      */
     @Test
     fun `POST issues key transition succeeds open to in_progress with auto-resolved workflow`() {
-        val issueKey = insertIssue(NORMAL_PROJECT_KEY, "in_progress 전이 검증용 이슈", "open")
+        val issueKey = insertIssue(NORMAL_PROJECT_KEY, "in_progress 전환 검증용 이슈", "open")
 
         val body = mapOf("toStatusKey" to "in_progress", "expectedVersion" to 1)
 
@@ -456,7 +456,7 @@ class IssueControllerTransitionIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("WORKFLOW_NOT_CONFIGURED"))
     }
 
-    // ── IT-3. 전이 후 currentStateKey 소문자 확인 ────────────────────────────────
+    // ── IT-3. 전환 후 currentStateKey 소문자 확인 ────────────────────────────────
 
     /**
      * Given  TRANSITION 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
@@ -486,12 +486,12 @@ class IssueControllerTransitionIntegrationTest {
      * Given  TRANSITION 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
      * When   POST /api/v1/issues/TRANSITION-1/transition { toStatusKey: "in_review", expectedVersion: 1 }
      * Then   409 Conflict + errorCode == "TRANSITION_NOT_ALLOWED"
-     *        software-default.yaml 에 from=open, to=in_review 전이가 정의되지 않음.
-     *        (from,to) 2-tuple 매칭이 실패하여 전이 거부됨을 검증.
+     *        software-default.yaml 에 from=open, to=in_review 전환이 정의되지 않음.
+     *        (from,to) 2-tuple 매칭이 실패하여 전환 거부됨을 검증.
      */
     @Test
     fun `POST issues key transition returns 409 when transition is not defined in workflow`() {
-        val issueKey = insertIssue(NORMAL_PROJECT_KEY, "전이 미정의 검증용 이슈", "open")
+        val issueKey = insertIssue(NORMAL_PROJECT_KEY, "전환 미정의 검증용 이슈", "open")
 
         val body = mapOf("toStatusKey" to "in_review", "expectedVersion" to 1)
 

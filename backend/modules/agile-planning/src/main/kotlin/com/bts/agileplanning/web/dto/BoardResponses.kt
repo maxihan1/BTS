@@ -39,13 +39,13 @@ data class CreateBoardRequest(
 )
 
 /**
- * 카드 이동(전이) 요청 바디.
+ * 카드 이동(전환) 요청 바디.
  *
  * actor 는 body 로 받지 않는다 — SecurityContext 에서 추출한다(actor 위조 차단).
  *
  * @property toColumnId 이동 대상 컬럼 UUID. 필수.
  * @property expectedVersion 낙관적 락(OCC) 기대 버전. 0 이상 필수.
- * @property resolutionId DONE 카테고리 전이 시 필요한 해결 방안 ID. 불필요하면 null.
+ * @property resolutionId DONE 카테고리 전환 시 필요한 해결 방안 ID. 불필요하면 null.
  */
 data class MoveCardRequest(
     @field:NotNull
@@ -365,11 +365,11 @@ data class BoardMetaResponse(
 }
 
 /**
- * 카드 이동(전이) 응답 DTO.
+ * 카드 이동(전환) 응답 DTO.
  *
  * @property issueKey 이동한 이슈 키.
- * @property currentStateKey 전이 후 현재 상태 키.
- * @property version 전이 후 갱신된 OCC 버전.
+ * @property currentStateKey 전환 후 현재 상태 키.
+ * @property version 전환 후 갱신된 OCC 버전.
  * @property columnId 이동한 대상 컬럼 UUID(요청 toColumnId echo).
  */
 data class MoveCardResponse(
@@ -380,9 +380,9 @@ data class MoveCardResponse(
 ) {
     companion object {
         /**
-         * 전이 결과([BoardTransitionResult])와 대상 컬럼 UUID 를 합쳐 응답을 만든다.
+         * 전환 결과([BoardTransitionResult])와 대상 컬럼 UUID 를 합쳐 응답을 만든다.
          *
-         * @param result 전이 결과(issueKey/currentStateKey/version 출처).
+         * @param result 전환 결과(issueKey/currentStateKey/version 출처).
          * @param toColumnId 이동 대상 컬럼 UUID(응답 columnId echo).
          */
         fun of(

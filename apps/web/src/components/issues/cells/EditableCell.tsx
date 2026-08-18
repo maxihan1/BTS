@@ -32,13 +32,13 @@ export interface EditableCellProps {
   valueLabel: string
   /** 닫힌 상태에서 보이는 내용 (배지·텍스트 등). role 을 가진 노드를 그대로 넣을 수 있다 */
   display: ReactNode
-  /** popover 내용. **열렸을 때만 마운트된다** (FR12 — 전이·권한 조회를 지연시키는 장치) */
+  /** popover 내용. **열렸을 때만 마운트된다** (FR12 — 전환·권한 조회를 지연시키는 장치) */
   children: ReactNode
   /**
    * 제어형 열림 상태. 미전달이면 자체 관리한다.
    *
    * 제어형이 필요한 이유 둘 — ① 저장 성공 시 **코드로 닫는다**(Maxi 확정 2026-08-04)
-   * ② 종료 전이는 popover 를 닫고 결의안 모달로 넘긴다(FR14).
+   * ② 종료 전환은 popover 를 닫고 결의안 모달로 넘긴다(FR14).
    */
   open?: boolean
   /** 제어형일 때 열림 상태 변경 콜백 */

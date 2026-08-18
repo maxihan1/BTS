@@ -8,18 +8,18 @@
 
 ## 배경 / 현 상태 / 스코프 (Maxi 확정 2026-07-25)
 
-칸반 보드는 카드를 다른 컬럼(=다른 워크플로우 상태)으로 옮기는 상태 전이만 지원한다. 같은 컬럼 내 드롭은 `resolveDropAction`에서 noop(EC1, `KanbanBoard.tsx:84`)으로 무시된다.
+칸반 보드는 카드를 다른 컬럼(=다른 워크플로우 상태)으로 옮기는 상태 전환만 지원한다. 같은 컬럼 내 드롭은 `resolveDropAction`에서 noop(EC1, `KanbanBoard.tsx:84`)으로 무시된다.
 
 **최종 목표 = 완전 Jira 스윔레인 보드 드래그(4종 상호작용). 2 PR로 분할.**
 
 | # | 상호작용 | PR21(이번) | PR21b(다음) |
 |---|---|---|---|
 | ① | 같은 셀(스윔레인 그룹 × 컬럼) 내 위아래 = **순서변경(rank)** | ✅ | |
-| ② | 다른 컬럼으로 = **상태 전이** | ✅(기존 유지) | |
+| ② | 다른 컬럼으로 = **상태 전환** | ✅(기존 유지) | |
 | ③ | 담당자 스윔레인 다른 행 = **담당자 재할당** | | ✅(`PATCH /assignee`, UUID 역산 배선) |
 | ④ | 우선순위/에픽 스윔레인 다른 행 = **필드 변경** | | ✅(priority/epic-children) |
 
-**이 PR(PR21) 스코프 = ①순서변경 + ②상태전이(기존).** 스윔레인 활성(ASSIGNEE/PRIORITY/EPIC) 시에도 **같은 스윔레인 그룹 안(=셀) 순서변경**은 지원한다. 다른 스윔레인 그룹으로의 드래그(③④ 필드변경)는 **PR21b로 이연**하며, 이번엔 noop 처리한다.
+**이 PR(PR21) 스코프 = ①순서변경 + ②상태전환(기존).** 스윔레인 활성(ASSIGNEE/PRIORITY/EPIC) 시에도 **같은 스윔레인 그룹 안(=셀) 순서변경**은 지원한다. 다른 스윔레인 그룹으로의 드래그(③④ 필드변경)는 **PR21b로 이연**하며, 이번엔 noop 처리한다.
 
 재사용 인프라(실측 확인).
 - `issues.rank`(TEXT, LexoRank) + `PATCH /api/v1/issues/{key}/rank` + `BacklogRankService.rerank`(이웃 중간값+**null 이웃 시 rebalance 트리거**+OCC) — issue-tracking, **완비**. lazy 미부여(rank=null) 영역도 서버가 처리(`resolveNeighborRanks`).
@@ -31,7 +31,7 @@
 
 - **S1 (같은 컬럼 위→아래 이동)**. Given 보드의 "진행 중" 컬럼에 카드 A,B,C가 이 순서로 있을 때, When 사용자가 A를 C 아래로 드래그하면, Then 순서가 B,C,A로 즉시 바뀌고(낙관적) 서버에 저장되며 새로고침 후에도 유지된다.
 - **S2 (같은 컬럼 맨 앞으로 이동)**. Given 카드 A,B,C, When C를 A 위(맨 앞)로 드래그하면, Then 순서가 C,A,B가 되고 `rerankIssue(C, {nextIssueKey: A})`(previous 없음=맨 앞)가 호출된다.
-- **S3 (컬럼 간 이동은 기존 동작 보존)**. Given 카드를 다른 컬럼으로 드래그하면, Then **기존 상태 전이(move)** 동작이 그대로 실행된다(DONE 컬럼이면 resolution 모달). 순서변경 로직은 개입하지 않는다.
+- **S3 (컬럼 간 이동은 기존 동작 보존)**. Given 카드를 다른 컬럼으로 드래그하면, Then **기존 상태 전환(move)** 동작이 그대로 실행된다(DONE 컬럼이면 resolution 모달). 순서변경 로직은 개입하지 않는다.
 - **S4 (제자리 드롭)**. Given 카드를 원래 위치에 그대로 놓으면, Then noop(API 호출 없음).
 - **S5 (OCC 충돌)**. Given 다른 사용자가 먼저 순서를 바꿔 버전이 어긋나면, When 리랭크가 409를 받으면, Then 낙관적 변경을 롤백하고 목록을 invalidate(재조회)하며 "다른 변경과 충돌" toast를 띄운다(기존 useMoveCard 패턴 재사용).
 - **S6 (키보드 접근성)**. Given 키보드 사용자가 카드에 포커스 후 Space로 집고 방향키로 이동하면, Then 컬럼 내 순서가 바뀐다(@dnd-kit KeyboardSensor + sortable).
@@ -43,7 +43,7 @@
 - **FR1**. 보드 조회 응답 `BoardCardResponse`에 `rank: String?`(nullable, 미부여 시 null)를 추가한다.
 - **FR2**. 보드 카드 조회는 각 컬럼 내 카드를 **rank ASC NULLS LAST → issueKey ASC**로 정렬한다(백로그와 동일 tiebreaker, `BacklogApplicationService` 비교자 패턴).
 - **FR3**. 프론트 boards.ts BoardCard Zod 스키마에 `rank`(nullish→null)를 추가한다.
-- **FR4**. 각 **셀**(스윔레인 그룹 × 컬럼. NONE이면 컬럼 전체)을 `@dnd-kit/sortable` `SortableContext`로 감싸고, 카드를 `useSortable`로 만든다. 컬럼 간 이동(`useDroppable` 상태 전이)과 한 `DndContext`에서 공존한다.
+- **FR4**. 각 **셀**(스윔레인 그룹 × 컬럼. NONE이면 컬럼 전체)을 `@dnd-kit/sortable` `SortableContext`로 감싸고, 카드를 `useSortable`로 만든다. 컬럼 간 이동(`useDroppable` 상태 전환)과 한 `DndContext`에서 공존한다.
 - **FR5**. 같은 셀 내 드롭 시(구 noop 경로), 드롭 위치의 앞/뒤 이웃 카드 issueKey를 **셀 내 카드 기준**으로 계산해 `rerankIssue(dragged, {previousIssueKey, nextIssueKey})`를 호출한다. 맨 앞=previous 생략, 맨 뒤=next 생략.
 - **FR6**. 리랭크는 낙관적 업데이트로 즉시 반영하고, 실패(409/기타) 시 롤백 + queryKey invalidate + toast(기존 useMoveCard 정합). 순서변경 낙관적 업데이트는 셀 내 배열 재정렬(arrayMove) 로직이 필요하므로 전용 mutation 훅(예: `useReorderCard`)을 신설하되 useMoveCard의 filter-aware queryKey·롤백 패턴을 재사용한다.
 - **FR7**. `resolveDropAction`을 확장/분기해 (a) 다른 컬럼=move/needs-resolution(기존), (b) **같은 셀 내 위치변경=rerank**, (c) 같은 컬럼·다른 스윔레인 그룹=noop(PR21b 예정), (d) 제자리=noop를 구분한다. 순수 헬퍼로 유지(테스트 가능). 셀 판정에 스윔레인 그룹 식별자(컬럼 + 그룹 key)를 사용한다.
@@ -78,7 +78,7 @@
 
 ## 제약 조건
 
-- **스윔레인 간 필드변경(③④)은 이 PR 제외 → PR21b.** 이번엔 같은 셀 내 순서변경(①)+상태전이(②)만.
+- **스윔레인 간 필드변경(③④)은 이 PR 제외 → PR21b.** 이번엔 같은 셀 내 순서변경(①)+상태전환(②)만.
 - 컬럼 간 이동 시 순서 지정(drop into position across columns)은 이 PR 제외.
 - 새 리랭크 백엔드 로직 작성 금지(기존 재사용). 새 마이그레이션 금지.
 - rank 계산을 프론트에서 하지 않는다(서버 between 계산). 프론트는 이웃 issueKey만 전달.

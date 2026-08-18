@@ -33,14 +33,14 @@ class CallWebhookPostAction(
     override val type: String = "CALL_WEBHOOK"
 
     /**
-     * 전이 컨텍스트를 바탕으로 WebhookRequested 이벤트 1건을 반환한다.
+     * 전환 컨텍스트를 바탕으로 WebhookRequested 이벤트 1건을 반환한다.
      *
      * payload 구성.
      * - `issueKey` — ctx.request.issueKey
      * - `url` — 구성된 웹훅 URL
      * - `method` — 구성된 HTTP 메서드
      *
-     * @param ctx 전이 실행 시점의 읽기 전용 컨텍스트.
+     * @param ctx 전환 실행 시점의 읽기 전용 컨텍스트.
      * @return fieldChanges 빈 리스트 + emitEvents 1건 (WebhookRequested).
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {

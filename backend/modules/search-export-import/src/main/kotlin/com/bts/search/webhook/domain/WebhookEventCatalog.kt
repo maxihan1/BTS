@@ -12,7 +12,7 @@ object WebhookEventCatalog {
     /** 이슈 생성 이벤트의 wireValue. */
     const val ISSUE_CREATED = "issue.created"
 
-    /** 이슈 상태 전이 이벤트의 wireValue. */
+    /** 이슈 상태 전환 이벤트의 wireValue. */
     const val ISSUE_TRANSITIONED = "issue.transitioned"
 
     /** 현재 발행 가능한 이벤트 wireValue 전체 집합. */

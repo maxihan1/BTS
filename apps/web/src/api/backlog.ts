@@ -359,10 +359,10 @@ export async function updateSprint(sprintId: string, body: UpdateSprintBody): Pr
  * 스프린트를 시작한다.
  *
  * POST /api/v1/sprints/{id}/start → `{ data: SprintMeta }` 언랩.
- * 스프린트 상태가 PLANNED → ACTIVE로 전이된다.
+ * 스프린트 상태가 PLANNED → ACTIVE로 전환된다.
  *
  * @param sprintId 스프린트 UUID
- * @returns SprintMeta — 전이 후 스프린트 정보 (status: "ACTIVE")
+ * @returns SprintMeta — 전환 후 스프린트 정보 (status: "ACTIVE")
  * @throws ApiError 비-2xx 응답 시 (409 = 이미 ACTIVE/COMPLETED)
  * @throws ZodError 응답 스키마 불일치 시
  */
@@ -379,10 +379,10 @@ export async function startSprint(sprintId: string): Promise<SprintMeta> {
  * 스프린트를 완료 처리한다.
  *
  * POST /api/v1/sprints/{id}/complete → `{ data: SprintMeta }` 언랩.
- * 스프린트 상태가 ACTIVE → COMPLETED로 전이된다.
+ * 스프린트 상태가 ACTIVE → COMPLETED로 전환된다.
  *
  * @param sprintId 스프린트 UUID
- * @returns SprintMeta — 전이 후 스프린트 정보 (status: "COMPLETED")
+ * @returns SprintMeta — 전환 후 스프린트 정보 (status: "COMPLETED")
  * @throws ApiError 비-2xx 응답 시 (409 = ACTIVE 상태가 아닌 경우)
  * @throws ZodError 응답 스키마 불일치 시
  */

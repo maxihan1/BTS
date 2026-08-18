@@ -54,7 +54,7 @@ Then.  201 Created + 클론본 summary = "결제 버그 (재현 케이스)"
 ### S4. 클론 — 상태/이력은 새로 시작
 
 ```
-Given. ATLAS-1 이 "In Progress" 상태이고 전이 이력 보유
+Given. ATLAS-1 이 "In Progress" 상태이고 전환 이력 보유
 When.  POST /api/v1/issues/ATLAS-1/clone
 Then.  클론본 currentStateKey = 워크플로우 초기 상태 (원본의 "In Progress" 복사 안 함)
        AND  클론본 version=1, createdAt/updatedAt=클론 시각 (원본 값 복사 안 함)

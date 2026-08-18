@@ -301,7 +301,7 @@ CREATE UNIQUE INDEX ux_components_project_id_name_active
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- V010: versions 테이블 (FR-VR-01 프로젝트별 버전)
--- V016: status / released_at 컬럼 + ck_versions_status (FR-VR-02 버전 상태 전이)
+-- V016: status / released_at 컬럼 + ck_versions_status (FR-VR-02 버전 상태 전환)
 -- 원본: db/migration/issue-tracking/V010__versions.sql + V016__version_status.sql
 -- jOOQ: Versions.ID/PROJECT_ID/NAME/DESCRIPTION/START_DATE/RELEASE_DATE/STATUS/RELEASED_AT/CREATED_AT/UPDATED_AT/DELETED_AT 생성 대상
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -578,7 +578,7 @@ CREATE INDEX idx_issue_links_source_id ON issue_links(source_id);
 CREATE INDEX idx_issue_links_target_id ON issue_links(target_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- V022: pgmq 큐 — q_transition_events (FR-NT-05 워크플로우 전이 post-action 이벤트 발행)
+-- V022: pgmq 큐 — q_transition_events (FR-NT-05 워크플로우 전환 post-action 이벤트 발행)
 -- 원본: db/migration/issue-tracking/V022__pgmq_queue_transition_events.sql
 -- 이미지: quay.io/tembo/pg16-pgmq:latest — pgmq 사전 설치됨 (ADR 2026-05-22-pgmq-postgres-image).
 -- ═══════════════════════════════════════════════════════════════════════════

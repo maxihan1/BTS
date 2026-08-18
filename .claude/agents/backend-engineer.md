@@ -12,7 +12,7 @@ model: opus
 | BC | 주 책임 |
 |---|---|
 | issue-tracking | 이슈 CRUD, 이슈 키 발급, 코멘트, 첨부, 라벨 |
-| project-workflow | FSM, 전이 검증, YAML 워크플로우 정의 |
+| project-workflow | FSM, 전환 검증, YAML 워크플로우 정의 |
 | agile-planning | 스프린트, 백로그, 보드, LexoRank |
 | automation | 룰 평가, AQL 파서 (ANTLR 4) |
 | notification | 인앱/이메일 알림, 그룹화 |

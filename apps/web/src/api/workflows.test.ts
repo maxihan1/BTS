@@ -7,7 +7,7 @@ import { transitionKey } from '@/components/workflow/workflow.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // software-default fixture — backend YAML 기준
-// 5 상태 + 6 전이 (software-default.yaml 실제 데이터)
+// 5 상태 + 6 전환 (software-default.yaml 실제 데이터)
 // ─────────────────────────────────────────────────────────────────────────────
 const softwareDefault = {
   key: 'software-default',
@@ -125,7 +125,7 @@ describe('fetchWorkflows', () => {
         expect(typeof state.displayOrder).toBe('number')
       }
 
-      // 각 전이가 WorkflowTransitionView 필드를 가져야 한다
+      // 각 전환이 WorkflowTransitionView 필드를 가져야 한다
       for (const transition of workflow.transitions) {
         expect(typeof transition.key).toBe('string')
         expect(typeof transition.name).toBe('string')
@@ -138,7 +138,7 @@ describe('fetchWorkflows', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // T4-2. fetchWorkflow('software-default') — 단건 + Zod 파싱
-// backend YAML 기준: software-default = 5 상태 + 6 전이
+// backend YAML 기준: software-default = 5 상태 + 6 전환
 // ─────────────────────────────────────────────────────────────────────────────
 describe('fetchWorkflow', () => {
   it('T4-2: software-default 단건 조회 — key 일치, states.length === 5, transitions.length === 6', async () => {

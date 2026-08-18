@@ -171,7 +171,7 @@ class MfaServiceTest {
     // ── enable ────────────────────────────────────────────────────────────────
 
     @Test
-    fun `enable — 정답 코드면 ACTIVE 로 전이하고 limiter reset 후 MFA_ENABLED 를 emit 한다`() {
+    fun `enable — 정답 코드면 ACTIVE 로 전환하고 limiter reset 후 MFA_ENABLED 를 emit 한다`() {
         every { limiter.isBlocked(userId) } returns false
         every { repo.findByUser(userId) } returns pendingSecret()
         every { encryptor.decrypt(cipher) } returns knownSecret

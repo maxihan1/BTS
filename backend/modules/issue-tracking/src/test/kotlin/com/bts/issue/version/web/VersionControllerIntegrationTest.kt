@@ -1,4 +1,4 @@
-// FR-VR-01 Task 7 + FR-VR-02 Task 4 — VersionController end-to-end 통합테스트 (S1~S9 + 상태 전이)
+// FR-VR-01 Task 7 + FR-VR-02 Task 4 — VersionController end-to-end 통합테스트 (S1~S9 + 상태 전환)
 @file:Suppress("MaxLineLength")
 
 package com.bts.issue.version.web
@@ -188,7 +188,7 @@ class VersionControllerIntegrationTest {
         private var migrated = false
         private var seeded = false
 
-        /** 결정론적 Clock — release 전이 시각 검증용. */
+        /** 결정론적 Clock — release 전환 시각 검증용. */
         val FIXED_CLOCK: Clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC)
     }
 
@@ -552,7 +552,7 @@ class VersionControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
     }
 
-    // ── FR-VR-02: 상태 전이 (S1~S7) ────────────────────────────────────────
+    // ── FR-VR-02: 상태 전환 (S1~S7) ────────────────────────────────────────
 
     /**
      * FR-VR-02 S1 — PATCH /status RELEASED → 200, status=RELEASED, releasedAt!=null.
@@ -694,7 +694,7 @@ class VersionControllerIntegrationTest {
     /**
      * FR-VR-02 S7 — GET 목록/단건 응답에 status, releasedAt 포함.
      *
-     * Given  RELEASED 상태로 전이된 버전
+     * Given  RELEASED 상태로 전환된 버전
      * When   GET /{id}
      * Then   200 + data.status=RELEASED, data.releasedAt!=null
      */
@@ -759,7 +759,7 @@ class VersionControllerIntegrationTest {
     }
 
     /**
-     * 헬퍼: PATCH /{id}/status 로 버전 상태를 전이한다.
+     * 헬퍼: PATCH /{id}/status 로 버전 상태를 전환한다.
      */
     private fun patchStatus(
         id: UUID,

@@ -259,7 +259,7 @@ const BOUNDARY_ONLY = new Set(['pat', 'ui', 'api', 'rest', 'board', 'action', 'l
 | **E16** | `keyboard 단축키` · `transaction 격리` · `interaction 로그` · `relabel 스크립트` | BC `null` | 신규 오배정 4건 |
 | **E17** | `labeling 규칙 정리` · `labeled 항목 필터` | BC `issue-tracking` 유지 | ★독립 검증이 잡은 **이 PR 이 만든** 오배정 |
 | **E18** | `…(PatTokenModal 정본)` · `OpenAPI … Swagger UI` · `BoardCardResponse` · `SetFieldPostAction` | main 과 같은 라우팅 유지 | ★게이트 2 리뷰가 잡은 **이 PR 이 만든 보안 라우팅 회귀** |
-| **E19** | `PATCH 파일 적용` · `PATH 계산 수정` · `DISPATCH 로직` | `auth` 아님 | 험프는 소문자→대문자 전이여야 한다 |
+| **E19** | `PATCH 파일 적용` · `PATH 계산 수정` · `DISPATCH 로직` | `auth` 아님 | 험프는 소문자→대문자 전환이어야 한다 |
 | **E20** | `classify-task misroute 3종` · `reroute 로직` / `route 정의 추가` | `api` 아님 / `api` 유지 | ★§Brief 의 「4회 자기 실연」 중 마지막 하나 |
 
 > **E17 은 이 PR 이 스스로 만든 결함을 닫는 단언이다 (구현 후 추가 · D9).** `label` 을 경계

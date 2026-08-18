@@ -29,9 +29,9 @@ import io.kotest.property.checkAll
  *
  * 목적. 수작업 단위 테스트가 놓칠 수 있는 임의 입력 조합에 대해 3가지 핵심 invariant 를 1000건 검증한다.
  *
- * invariant 1. 모든 전이 결과는 도메인이 정의한 상태 집합에 속한다.
+ * invariant 1. 모든 전환 결과는 도메인이 정의한 상태 집합에 속한다.
  * invariant 2. validator 실패 시 결과 상태는 변하지 않는다 (rollback 보장).
- * invariant 3. PostAction 은 GREEN(validator 전원 통과) 전이에서만 실행된다.
+ * invariant 3. PostAction 은 GREEN(validator 전원 통과) 전환에서만 실행된다.
  *
  * Spring 컨텍스트를 사용하지 않는 순수 도메인 레이어 테스트다.
  * WorkflowEngine 은 Propagation.MANDATORY 로 Spring 트랜잭션이 필요하므로,
@@ -40,17 +40,17 @@ import io.kotest.property.checkAll
 class WorkflowPropertyTest : StringSpec({
 
     // ──────────────────────────────────────────────────────────────────────── //
-    // invariant 1: 모든 전이 결과는 도메인이 정의한 상태 집합에 속한다             //
+    // invariant 1: 모든 전환 결과는 도메인이 정의한 상태 집합에 속한다             //
     // ──────────────────────────────────────────────────────────────────────── //
 
-    "invariant 1: 1000건 임의 전이 시 결과 상태 키는 항상 Workflow.states 집합 안에 있다" {
+    "invariant 1: 1000건 임의 전환 시 결과 상태 키는 항상 Workflow.states 집합 안에 있다" {
         checkAll(1000, WorkflowGenerators.transitionTriples) { triple ->
             val wf = triple.first
             val fromStateKey = triple.second
             val transition = triple.third
             val stateKeys = wf.states.map { it.key }.toSet()
 
-            // 전이가 선택된 경우만 — transition 은 workflow.transitions 에서 뽑혔으므로 반드시 유효
+            // 전환이 선택된 경우만 — transition 은 workflow.transitions 에서 뽑혔으므로 반드시 유효
             stateKeys.contains(transition.toStateKey).shouldBeTrue()
             stateKeys.contains(fromStateKey).shouldBeTrue()
         }
@@ -79,7 +79,7 @@ class WorkflowPropertyTest : StringSpec({
     }
 
     // ──────────────────────────────────────────────────────────────────────── //
-    // invariant 3: PostAction 은 GREEN 전이에서만 실행된다                       //
+    // invariant 3: PostAction 은 GREEN 전환에서만 실행된다                       //
     // ──────────────────────────────────────────────────────────────────────── //
 
     "invariant 3: 1000건 임의 조합 — validator 실패 시 PostAction 실행 횟수 = 0" {
@@ -107,7 +107,7 @@ class WorkflowPropertyTest : StringSpec({
 // ─────────────────────────────────────────────────────────────────────────── //
 
 /**
- * 전이 시뮬레이션 결과.
+ * 전환 시뮬레이션 결과.
  *
  * @param resultStateKey 시뮬레이션 후 결정된 상태 키 (실패 시 = fromStateKey)
  * @param allValidatorsPass 모든 validator 가 Pass 를 반환했는지 여부
@@ -233,7 +233,7 @@ object WorkflowGenerators {
 
             val stateKeys = states.map { it.key }
 
-            // 전이 1~(stateCount*2) 개 생성 — (from, to) 2 튜플 dedup
+            // 전환 1~(stateCount*2) 개 생성 — (from, to) 2 튜플 dedup
             // ADR 2026-05-28-workflow-transition-identity-policy.md 의 transition identity 정책과 정합.
             val transitionCount = Arb.int(1..minOf(stateCount * 2, 8)).bind()
             val transitionSet = mutableSetOf<Pair<String, String>>()
@@ -254,12 +254,12 @@ object WorkflowGenerators {
             Workflow.of(key = wfKey, name = wfKey, states = states, transitions = transitions)
         }
 
-    // ── 전이 선택 Arb ─────────────────────────────────────────────────────────
+    // ── 전환 선택 Arb ─────────────────────────────────────────────────────────
 
     /**
      * (workflow, fromStateKey, transition) 조합.
      *
-     * 전이가 있는 workflow 에서 임의 전이 1개와 해당 출발 상태를 선택한다.
+     * 전환이 있는 workflow 에서 임의 전환 1개와 해당 출발 상태를 선택한다.
      * invariant 1 검증에서 사용한다.
      */
     val transitionTriples: Arb<Triple<Workflow, String, WorkflowTransition>> =

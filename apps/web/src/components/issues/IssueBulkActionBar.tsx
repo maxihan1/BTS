@@ -1,4 +1,4 @@
-// 이슈 일괄 액션 바 컴포넌트 — 선택된 이슈에 대한 일괄 편집/전이/선택 해제 액션 제공
+// 이슈 일괄 액션 바 컴포넌트 — 선택된 이슈에 대한 일괄 편집/전환/선택 해제 액션 제공
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
 
@@ -8,7 +8,7 @@ interface IssueBulkActionBarProps {
   count: number
   /** 일괄 편집 버튼 클릭 콜백 */
   onEdit: () => void
-  /** 일괄 전이 버튼 클릭 콜백 */
+  /** 일괄 전환 버튼 클릭 콜백 */
   onTransition: () => void
   /** 선택 해제 버튼 클릭 콜백 */
   onClear: () => void
@@ -48,7 +48,7 @@ export const IssueBulkActionBar = ({
           일괄 편집
         </Button>
         <Button variant="outline" size="sm" onClick={onTransition}>
-          일괄 전이
+          일괄 전환
         </Button>
         <Button variant="ghost" size="sm" onClick={onClear}>
           선택 해제

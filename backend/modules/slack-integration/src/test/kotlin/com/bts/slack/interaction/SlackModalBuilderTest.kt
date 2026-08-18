@@ -53,7 +53,7 @@ class SlackModalBuilderTest {
     }
 
     @Test
-    fun `done 전이가 다중이면 static_select 옵션으로 doneTransitions 를 렌더한다`() {
+    fun `done 전환이 다중이면 static_select 옵션으로 doneTransitions 를 렌더한다`() {
         val options =
             IssueCompletionOptions(
                 version = 1L,

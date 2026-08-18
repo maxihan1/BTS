@@ -69,7 +69,7 @@ import java.util.UUID
  * - GET-QF2. GET /api/v1/boards/{id} 퀵필터 없음 → quickFilters 빈 배열
  * - LIST-1. GET /api/v1/boards?projectKey= 정상 → 200 + 배열
  * - LIST-2. GET 목록 BROWSE 권한 미충족 → 403
- * - MOVE-1. POST move 정상 → 200 + 전이 결과 + columnId echo
+ * - MOVE-1. POST move 정상 → 200 + 전환 결과 + columnId echo
  * - MOVE-2. POST move 보드 미존재 → 404
  * - MOVE-3. POST move 버전 충돌(서비스 409) → 409
  * - MOVE-4. POST move 보드-이슈 정합 위반(서비스 400) → 400
@@ -493,7 +493,7 @@ class BoardControllerIntegrationTest {
     // ── MOVE-1. POST move 정상 → 200 + columnId echo ──────────────────────────
 
     @Test
-    fun `POST move 정상이면 200 + 전이 결과와 columnId echo`() {
+    fun `POST move 정상이면 200 + 전환 결과와 columnId echo`() {
         val board = sampleBoard()
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
@@ -522,7 +522,7 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.columnId").value(toColumnId.toString()))
 
         // move 의 보드 접근 게이트가 BROWSE + Project(보드 projectKey) 로 판정됐는지 검증 (sec P2).
-        // 이동 자체의 TRANSITION 강제는 전이 포트(IssueTransitionAdapter)가 담당한다.
+        // 이동 자체의 TRANSITION 강제는 전환 포트(IssueTransitionAdapter)가 담당한다.
         assertThat(permissionGate.calls)
             .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
     }

@@ -195,7 +195,7 @@ data class UpdateIssueRequest(
 )
 
 /**
- * 이슈 전이 요청 DTO.
+ * 이슈 전환 요청 DTO.
  *
  * workflowKey 는 [com.bts.issue.application.IssueApplicationService.transitionIssue] 가
  * [com.bts.shared.workflow.WorkflowKeyResolver] 를 통해 자동 결정한다.
@@ -205,8 +205,8 @@ data class UpdateIssueRequest(
  *
  * @param toStateKey 목표 상태 키. 예: "in_progress".
  * @param expectedVersion 낙관적 잠금 버전.
- * @param resolutionId DONE 상태로 전이할 때 지정하는 해결책 UUID.
- *   비DONE 전이에서는 무시되고 서비스 계층에서 clear 처리된다.
+ * @param resolutionId DONE 상태로 전환할 때 지정하는 해결책 UUID.
+ *   비DONE 전환에서는 무시되고 서비스 계층에서 clear 처리된다.
  *   BulkItemApplier 등 기존 생성 지점 호환을 위해 기본값 null로 선언한다.
  */
 data class TransitionIssueRequest(

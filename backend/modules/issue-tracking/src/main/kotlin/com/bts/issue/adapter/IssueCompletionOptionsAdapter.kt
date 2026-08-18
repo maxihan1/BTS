@@ -19,14 +19,14 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
-/** 전이 목표 상태 카테고리 중 "완료" 판정 기준 문자열 ([com.bts.shared.workflow.AvailableTransitionView.toCategory] 계약). */
+/** 전환 목표 상태 카테고리 중 "완료" 판정 기준 문자열 ([com.bts.shared.workflow.AvailableTransitionView.toCategory] 계약). */
 private const val DONE_CATEGORY = "DONE"
 
 /**
  * [IssueCompletionOptionsPort] 의 issue-tracking BC 구현 (FR-SL-05 Task 3).
  *
  * slack-integration BC 가 "완료로 표시" 인터랙션(완료 모달)을 열 때, 이 adapter 를 통해 열람 권한
- * 확인 + OCC(낙관적 락) 버전 + DONE 전이 후보 + resolution 목록을 원자적으로 조회한다.
+ * 확인 + OCC(낙관적 락) 버전 + DONE 전환 후보 + resolution 목록을 원자적으로 조회한다.
  *
  * ## 가시성 게이트 — [IssueUnfurlAdapter] 동형 재사용
  *
@@ -41,10 +41,10 @@ private const val DONE_CATEGORY = "DONE"
  *
  * ## availableTransitions 재사용 — DONE 카테고리만 필터
  *
- * 전이 후보는 [IssueApplicationService.availableTransitions] 를 그대로 호출해 얻는다(워크플로우 키
+ * 전환 후보는 [IssueApplicationService.availableTransitions] 를 그대로 호출해 얻는다(워크플로우 키
  * 결정 + `WorkflowTransitionPort` 호출 로직 중복 방지). 반환된 [com.bts.shared.workflow.AvailableTransitionView]
  * 중 `toCategory` 가 [DONE_CATEGORY] 인 항목만 [DoneTransition] 으로 변환한다 — Slack 완료 모달은
- * "완료" 로 이어지는 전이만 노출해야 하기 때문이다.
+ * "완료" 로 이어지는 전환만 노출해야 하기 때문이다.
  *
  * 이 호출은 자체적으로 VIEW 권한 게이트(`assertViewIssueOrNotFound`)를 한 번 더 통과해야 한다 — BROWSE
  * 게이트와는 다른 차원의 검사([IssueUnfurlAdapter] 클래스 KDoc 참조)이므로 이중 게이트가 의도된 설계다.
@@ -75,7 +75,7 @@ class IssueCompletionOptionsAdapter(
     /**
      * [viewerUserId] 가 [issueKey] 를 볼 수 있으면 완료 옵션을, 없으면 `null` 을 반환한다.
      *
-     * 게이트 통과 후에는 버전·DONE 전이 후보·resolution 목록을 조립만 한다 — fail-closed 계약과
+     * 게이트 통과 후에는 버전·DONE 전환 후보·resolution 목록을 조립만 한다 — fail-closed 계약과
      * 게이트 근거는 클래스 KDoc 참조.
      */
     @Transactional(readOnly = true)

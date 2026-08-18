@@ -10,7 +10,7 @@ import { issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { issueDetailStrings } from '@/i18n/ko'
 
-/** 409 응답 중 "허용되지 않는 전이" 를 가리키는 백엔드 에러코드 */
+/** 409 응답 중 "허용되지 않는 전환" 를 가리키는 백엔드 에러코드 */
 const TRANSITION_NOT_ALLOWED = 'TRANSITION_NOT_ALLOWED'
 
 /**
@@ -69,9 +69,9 @@ export interface IssueCellFieldVars {
   /** field 가 'status' 일 때 목표 상태 키 */
   toStatusKey?: string
   /**
-   * field 가 'status' 이고 **종료(DONE) 전이**일 때 선택된 결의안 UUID (FR14).
+   * field 가 'status' 이고 **종료(DONE) 전환**일 때 선택된 결의안 UUID (FR14).
    *
-   * 해결 결과는 종료 전이의 필수 입력이라 `ResolutionModal` 이 확정한 값을 여기 싣는다.
+   * 해결 결과는 종료 전환의 필수 입력이라 `ResolutionModal` 이 확정한 값을 여기 싣는다.
    * `TransitionIssueInput` 이 이미 받는 선택 필드이므로 그대로 통과시킨다.
    */
   resolutionId?: string
@@ -115,7 +115,7 @@ function requestCellChange(vars: IssueCellFieldVars): Promise<IssueResponse> {
       return transitionIssue(vars.issueKey, {
         toStatusKey: vars.toStatusKey,
         expectedVersion: vars.expectedVersion,
-        // 종료 전이에만 실린다 — 비종료 전이는 undefined 라 body 에서 빠진다 (FR14)
+        // 종료 전환에만 실린다 — 비종료 전환은 undefined 라 body 에서 빠진다 (FR14)
         resolutionId: vars.resolutionId,
       })
     }
@@ -155,7 +155,7 @@ function buildOptimisticPatch(vars: IssueCellFieldVars): IssueCellPatch {
  * (`transitionNotAllowedError` · `transitionVersionConflictError` ·
  * `transitionWorkflowNotConfiguredError`)뿐이고, 상세 화면(`issues.$key.tsx:354`)은 일반
  * 실패(네트워크 등)에도 `transitionNotAllowedError` 를 재사용한다 — 타임아웃에
- * *"현재 상태에서 허용되지 않는 전이입니다"* 라고 말하는 셈이라 그대로 베끼지 않는다.
+ * *"현재 상태에서 허용되지 않는 전환입니다"* 라고 말하는 셈이라 그대로 베끼지 않는다.
  *
  * 키 신설은 이 PR 범위 밖이므로(§제약) 인라인으로 두고 후속 과제로 남긴다.
  */
@@ -189,8 +189,8 @@ function buildErrorMessage(field: IssueCellFieldVars['field']): string {
 /**
  * 실패 사유별 안내 문구를 고른다 (FR15).
  *
- * 상세 화면 `issues.$key.tsx` 의 전이 onError 가 이미 이 3분기를 갖고 있다 — 목록도 같은
- * 어휘를 쓴다. `409` 를 뭉개면 "내가 못 하는 전이" 와 "남이 먼저 바꿔서 낡은 버전" 이 같은
+ * 상세 화면 `issues.$key.tsx` 의 전환 onError 가 이미 이 3분기를 갖고 있다 — 목록도 같은
+ * 어휘를 쓴다. `409` 를 뭉개면 "내가 못 하는 전환" 와 "남이 먼저 바꿔서 낡은 버전" 이 같은
  * 문구로 나와 사용자가 다음 행동을 고를 수 없다.
  *
  * 코드 추출은 인라인으로 다시 짜지 않고 공유 util `extractErrorCode` 를 경유한다 —
@@ -285,7 +285,7 @@ export function useIssueListCellField(listQueryKey: QueryKey) {
       // 를 자기 캐시로 갖는데, 목록에서 값을 바꾸면 서버 version 이 올라간 뒤에도 페인은 옛
       // version 을 들고 있다. 그 상태에서 페인으로 뭔가 바꾸면 **409 VERSION_CONFLICT** 가
       // 나고 "다른 사용자가 이미 수정했습니다" 가 뜬다 — 다른 사용자는 없다.
-      // 상태 전이는 옛 전이 목록까지 남아 409 TRANSITION_NOT_ALLOWED 로도 이어진다.
+      // 상태 전환은 옛 전환 목록까지 남아 409 TRANSITION_NOT_ALLOWED 로도 이어진다.
       //
       // 처방은 저장소 선례를 그대로 따른다 — `useTransitionIssue`(use-issue-transitions.ts)
       // 가 이미 두 캐시를 함께 무효화한다.

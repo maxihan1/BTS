@@ -18,7 +18,7 @@ import java.util.UUID
  * brute-force 방어([MfaAttemptLimiter]), 감사([AuthAuditLogService])를 조립해 다음 흐름을 제공한다.
  *
  * - [setup]: secret 생성 → 암호화 저장(PENDING) → Authenticator 앱용 otpauth/QR 반환.
- * - [enable]: 첫 코드 검증 성공 시 PENDING → ACTIVE 전이(2단계 로그인 적용 시작).
+ * - [enable]: 첫 코드 검증 성공 시 PENDING → ACTIVE 전환(2단계 로그인 적용 시작).
  * - [verifyLogin]: 로그인 2단계에서 코드 검증(+ replay 방어).
  * - [disable]: 현재 코드 검증(step-up)을 거쳐 secret + 백업 코드 삭제(2차 요소 전체 정리).
  * - [isEnabled]: ACTIVE 여부.
@@ -96,7 +96,7 @@ class MfaService(
     }
 
     /**
-     * PENDING secret 의 첫 코드를 검증하고 성공 시 [TotpStatus.ACTIVE] 로 전이한다(2단계 로그인 시작).
+     * PENDING secret 의 첫 코드를 검증하고 성공 시 [TotpStatus.ACTIVE] 로 전환한다(2단계 로그인 시작).
      *
      * @param userId 활성화 주체 사용자.
      * @param code 사용자가 입력한 6자리 코드.
@@ -269,7 +269,7 @@ class MfaService(
 
     /** [enable] 결과. */
     sealed interface EnableResult {
-        /** PENDING → ACTIVE 전이 성공. */
+        /** PENDING → ACTIVE 전환 성공. */
         data object Success : EnableResult
 
         /** 코드 오답. */

@@ -1,4 +1,4 @@
-// 여러 이슈의 가용 전이 교집합 로직을 검증하는 단위 테스트
+// 여러 이슈의 가용 전환 교집합 로직을 검증하는 단위 테스트
 
 package com.bts.issue.bulk.application
 
@@ -13,7 +13,7 @@ class TransitionIntersectionTest {
     private fun view(
         from: String,
         to: String,
-        name: String = "전이-$to",
+        name: String = "전환-$to",
     ) = AvailableTransitionView(fromStateKey = from, toStateKey = to, name = name)
 
     // ────────────────────────────────────────────────
@@ -21,7 +21,7 @@ class TransitionIntersectionTest {
     // ────────────────────────────────────────────────
 
     @Test
-    @DisplayName("두 이슈에 공통 toStateKey 가 존재하면 해당 전이를 반환한다")
+    @DisplayName("두 이슈에 공통 toStateKey 가 존재하면 해당 전환을 반환한다")
     fun `두 이슈 공통 toStateKey 반환`() {
         val issue1 = listOf(view("open", "in-progress"), view("open", "done"))
         val issue2 = listOf(view("open", "in-progress"), view("open", "closed"))
@@ -54,7 +54,7 @@ class TransitionIntersectionTest {
     // ────────────────────────────────────────────────
 
     @Test
-    @DisplayName("이슈 중 하나가 빈 전이 목록을 가지면 교집합은 빈 목록이다")
+    @DisplayName("이슈 중 하나가 빈 전환 목록을 가지면 교집합은 빈 목록이다")
     fun `한 이슈 빈 목록이면 빈 결과`() {
         val issue1 = listOf(view("open", "done"))
         val issue2 = emptyList<AvailableTransitionView>()

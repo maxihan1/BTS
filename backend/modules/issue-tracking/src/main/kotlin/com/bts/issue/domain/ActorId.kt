@@ -5,7 +5,7 @@ package com.bts.issue.domain
 import java.util.UUID
 
 /**
- * 이슈 작업(생성·전이·코멘트 등)을 수행하는 행위자의 식별자 VO.
+ * 이슈 작업(생성·전환·코멘트 등)을 수행하는 행위자의 식별자 VO.
  *
  * identity-access BC 의 UserId 와 동일 UUID 값을 공유하지만,
  * BC 격리 원칙(CLAUDE.md §핵심 패턴)에 따라 다른 BC 의 내부 클래스를 직접 import 하지 않고

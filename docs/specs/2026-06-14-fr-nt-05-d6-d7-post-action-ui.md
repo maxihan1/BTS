@@ -1,4 +1,4 @@
-# FR-NT-05 D6/D7 PR-B — 워크플로우 전이 post-action 설정 UI + E2E 스펙
+# FR-NT-05 D6/D7 PR-B — 워크플로우 전환 post-action 설정 UI + E2E 스펙
 
 > slug: fr-nt-05-d6-d7-post-action-ui
 > BC: project-workflow (프론트 apps/web)
@@ -7,11 +7,11 @@
 
 ## 개요
 
-시스템 관리자가 워크플로우 상세 화면(`workflows.$key.tsx`)에서 전이를 골라 `CALL_WEBHOOK` post-action(url/method)을 추가/수정/삭제할 수 있는 admin 전용 설정 UI + E2E. 완료 시 FR-NT-05 D6/D7이 채워지고 FR-NT-05가 `[~]`→완료로 전환된다.
+시스템 관리자가 워크플로우 상세 화면(`workflows.$key.tsx`)에서 전환을 골라 `CALL_WEBHOOK` post-action(url/method)을 추가/수정/삭제할 수 있는 admin 전용 설정 UI + E2E. 완료 시 FR-NT-05 D6/D7이 채워지고 FR-NT-05가 `[~]`→완료로 전환된다.
 
 ## Maxi 게이트 확정 결정
 
-- **배치(A)**: `workflows.$key.tsx`의 읽기 전용 mermaid 다이어그램 **하단에 admin 전용 "전이 post-action 설정" 섹션** 추가. 전이 목록(workflow.transitions, 이미 로드됨)에서 선택→해당 전이의 post-action 목록/폼.
+- **배치(A)**: `workflows.$key.tsx`의 읽기 전용 mermaid 다이어그램 **하단에 admin 전용 "전환 post-action 설정" 섹션** 추가. 전환 목록(workflow.transitions, 이미 로드됨)에서 선택→해당 전환의 post-action 목록/폼.
 - **type 범위**: CALL_WEBHOOK 중심(FR-NT-05 webhook). 목록은 기존 post-action(모든 type) 표시하되 추가/편집 폼은 CALL_WEBHOOK(url/method). (다른 4종 편집 UI는 FR 밖, speculative 금지.)
 - **권한 게이팅**: `useAuthStore` `user.isSystemAdmin === true`일 때만 섹션 렌더. 백엔드 403은 백스톱(toast 에러).
 - **패턴**: api=`workflow-schemes.ts` mutation 선례(apiFetch+Zod+CSRF 동일), Dialog=radix-ui(SchemeInUseModal 선례), 폼=MappingTable/SchemeMetaPanel 선례, E2E=workflow-handlers MSW stateful.
@@ -20,11 +20,11 @@
 
 1. **admin이 webhook 추가**
    - Given. isSystemAdmin인 사용자가 `/workflows/software-default` 진입.
-   - When. 하단 설정 섹션에서 전이 `open__in_progress` 선택 → "Webhook 추가" → url/method 입력 → 저장.
+   - When. 하단 설정 섹션에서 전환 `open__in_progress` 선택 → "Webhook 추가" → url/method 입력 → 저장.
    - Then. `POST .../transitions/open__in_progress/post-actions` 호출, 목록에 새 행 표시(낙관적/invalidate).
 
 2. **목록/수정/삭제**
-   - 전이 선택 시 `GET .../post-actions` 목록(displayOrder). 행의 수정→`PUT`, 삭제→`DELETE` + 목록 갱신.
+   - 전환 선택 시 `GET .../post-actions` 목록(displayOrder). 행의 수정→`PUT`, 삭제→`DELETE` + 목록 갱신.
 
 3. **비admin 게이팅**
    - Given. isSystemAdmin=false.
@@ -37,7 +37,7 @@
 
 - **FR1.** `api/post-actions.ts` — Zod 스키마(요청 {type,config,displayOrder}, 응답 {id,type,config,displayOrder}, 백엔드 DTO 1:1) + list/create/update/delete fetch 함수(workflow-schemes.ts 패턴: apiFetch, dataOf envelope, ApiError code 보존).
 - **FR2.** TanStack Query hooks — `usePostActions(workflowKey, transitionKey)`(list query), `useAddPostAction`/`useUpdatePostAction`/`useRemovePostAction` mutation(성공 시 list invalidate).
-- **FR3.** `PostActionConfigSection` — 전이 선택(select/list) + 선택 전이의 post-action 목록(테이블) + "Webhook 추가" 버튼. isSystemAdmin 게이팅.
+- **FR3.** `PostActionConfigSection` — 전환 선택(select/list) + 선택 전환의 post-action 목록(테이블) + "Webhook 추가" 버튼. isSystemAdmin 게이팅.
 - **FR4.** `PostActionFormDialog`(radix Dialog) — CALL_WEBHOOK url/method 입력 폼(추가/수정 겸용). url 형식 클라이언트 검증(http/https).
 - **FR5.** `workflows.$key.tsx`에 PostActionConfigSection을 다이어그램 하단에 조건부(isSystemAdmin) 렌더. 기존 read-only 동작 회귀 0.
 - **FR6.** E2E — MSW stateful post-action handlers(GET/POST/PUT/DELETE, 메모리 msw-mutation-stateful-refetch 준수) + Playwright 시나리오(admin 추가→목록→수정→삭제, 비admin 미노출).
@@ -59,7 +59,7 @@
 
 ## 엣지 케이스
 
-- 전이에 post-action 0건 → 빈 목록 안내.
+- 전환에 post-action 0건 → 빈 목록 안내.
 - url 비-http/빈값 → 클라 검증 + 백엔드 400 toast.
 - 403(권한) → toast, 섹션은 isSystemAdmin이라 보통 미도달.
 - 비admin → 섹션 미렌더.

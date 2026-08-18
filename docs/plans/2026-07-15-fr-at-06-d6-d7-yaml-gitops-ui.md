@@ -504,7 +504,7 @@ it('webhookTokens 를 목록+복사로 표시하고 복사 실패 문구를 낸�
 it('토큰을 localStorage/sessionStorage 에 기록하지 않는다 (NFR3)', ...)  // 네거티브
 it('webhookTokens 키가 생략되면 토큰 영역을 렌더하지 않는다 (EC11)', ...)
 it('토큰 노출 중 ESC/오버레이/X 모두 2단계 확인을 거친다 (EC7)', ...)
-it('open 이 false→true 로 재전이하면 파일·결과·에러 상태가 초기화된다 (EC8)', ...)
+it('open 이 false→true 로 재전환하면 파일·결과·에러 상태가 초기화된다 (EC8)', ...)
 ```
 
 > **★ EC8 이 T7 → T5 로 이관**(plan-eng-review §7, **구조 결함 해소**). 초안은 EC8(Dialog 재오픈 시 상태 초기화) 테스트를 T7에 두면서 정작 리셋 로직은 `AutomationYamlImportDialog.tsx` 안에 있어야 한다고 서술했다 — 그 파일은 **T5의 files 선언에만** 있어서, T7 구현자가 병렬 wave 규약("선언 외 파일 수정 금지 → BLOCKED 보고")을 지키면 **실행 중단**된다. 리셋은 Dialog 자신의 책임이므로 구현·테스트 모두 T5 소유. T7은 route 레벨 black-box 관측만 남긴다.
@@ -544,7 +544,7 @@ const labels = {
 - **렌더 순서**(design-review §2) — ① `webhookTokens`(있으면) → ② 결과 카운트(생성/갱신/총) → ③ `conflicts`(있으면). 토큰이 가장 되돌릴 수 없는 정보라 최상단.
 - **`role="alert"`**(design-review §3b) — 토큰 경고 영역과 conflicts 경고 영역 둘 다. `WebhookTokenModal`/`RuleConflictWarningModal` 선례 동형.
 - 토큰 노출 중이면 `<Dialog.Content onEscapeKeyDown={guard} onPointerDownOutside={guard}>` + `onOpenChange` 가드로 **4경로 전부** 확인 절차(EC7).
-- **EC8 리셋** — `useEffect(() => { if (open) resetState() }, [open])` 로 `open` false→true 전이에서 파일·결과·에러 초기화. `key` prop 재마운트 방식 금지([[react-usestate-stale-key-prop]]).
+- **EC8 리셋** — `useEffect(() => { if (open) resetState() }, [open])` 로 `open` false→true 전환에서 파일·결과·에러 초기화. `key` prop 재마운트 방식 금지([[react-usestate-stale-key-prop]]).
 - 파일 읽기 `await file.text()`.
 - **NFR3** — 토큰은 `useState` 로만 보유. storage/URL/로그 기록 금지.
 

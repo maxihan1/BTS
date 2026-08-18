@@ -1,5 +1,5 @@
 // IssueInvariantPropertyTest — Issue 도메인 invariant Kotest property test × 1000
-// (S11 IssueKey regex + S12 version monotonic + S14 state 전이 이름 수용). seed 고정 1234L.
+// (S11 IssueKey regex + S12 version monotonic + S14 state 전환 이름 수용). seed 고정 1234L.
 
 package com.bts.issue.domain
 
@@ -26,7 +26,7 @@ import java.util.UUID
  *
  * S11. IssueKey regex — 유효 형식이면 항상 생성 성공, 반례는 항상 IllegalArgumentException.
  * S12. version monotonic — Issue copy + version+1을 N회 반복하면 version == 1 + N.
- * S14. state 전이 이름 수용 — Issue copy로 임의 toState를 적용하면 currentStateKey == toState.
+ * S14. state 전환 이름 수용 — Issue copy로 임의 toState를 적용하면 currentStateKey == toState.
  *
  * Issue 는 immutable data class이므로 "updateSummary"와 "transition" 연산은
  * copy(field = newValue) 패턴과 동치다. 이 파일은 그 copy 패턴의 수학적 속성을 검증한다.
@@ -181,13 +181,13 @@ class IssueInvariantPropertyTest : FunSpec({
     }
 
     // ────────────────────────────────────────────────────────────────────── //
-    // S14. state 전이 이름 수용 — 임의 toState(영문 대문자+언더스코어, 1~30자)를
+    // S14. state 전환 이름 수용 — 임의 toState(영문 대문자+언더스코어, 1~30자)를
     //       Issue.copy(currentStateKey=toState)로 적용하면 currentStateKey == toState.
     // 도메인 측 invariant — workflow validator 검증은 project-workflow BC 책임 (scope 외).
     // ────────────────────────────────────────────────────────────────────── //
 
     /**
-     * S14 state 전이 이름 수용 — 임의 toState 1000건을 Issue copy로 적용해
+     * S14 state 전환 이름 수용 — 임의 toState 1000건을 Issue copy로 적용해
      * currentStateKey == toState임을 검증한다.
      *
      * Issue 도메인 자체는 state 이름의 형식을 제한하지 않는다. 유효 상태 집합 검증은
@@ -195,7 +195,7 @@ class IssueInvariantPropertyTest : FunSpec({
      * 반례: Issue 자체가 상태 이름을 거부하는 케이스는 존재하지 않음.
      * (상태 이름 유효성 검증은 WorkflowEngine의 역할 — BC 격리 원칙)
      */
-    test("S14 state 전이 이름 수용 — 임의 toState 1000건 모두 currentStateKey 에 적용된다") {
+    test("S14 state 전환 이름 수용 — 임의 toState 1000건 모두 currentStateKey 에 적용된다") {
         val toStateArb: Arb<String> = Arb.string(1, 30, upperAlphaUnderscoreCodepoint)
 
         checkAll(1000, config, toStateArb) { toState ->

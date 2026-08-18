@@ -1,4 +1,4 @@
-// 워크플로우 전이 키 → transition_id UUID 해석 컴포넌트
+// 워크플로우 전환 키 → transition_id UUID 해석 컴포넌트
 
 package com.bts.workflow.postaction
 
@@ -33,7 +33,7 @@ class PostActionTransitionResolver(
      * @param workflowKey 워크플로우 식별 키.
      * @param fromStateKey 출발 상태 키.
      * @param toStateKey 도착 상태 키.
-     * @return 전이 UUID, 미존재 시 null.
+     * @return 전환 UUID, 미존재 시 null.
      */
     @Suppress("ReturnCount")
     @Transactional(readOnly = true)

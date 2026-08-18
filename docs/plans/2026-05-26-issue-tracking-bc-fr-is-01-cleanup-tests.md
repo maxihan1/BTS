@@ -18,7 +18,7 @@ PR #17 머지 후 미결 후속 작업 일괄 정리 PR.
 **(D5) 백엔드 테스트 마무리** — PR #17 후속 PR 로 미뤄둔 Wave 6 6 task.
 - **ArchUnit 룰** — (1) BC 격리 (issue-tracking 이 project-workflow.domain 직접 import 금지, port.outbound 만 허용) + (2) jOOQ 화이트리스트 (jooq.generated.* 는 repository 패키지에서만 import).
 - **Testcontainers singleton 정비** — `IssueRepositoryTest` 의 Flyway 충돌 known issue 해소. PR #8 learnings #2 패턴 (`.apply { start() }` JVM singleton + Ryuk cleanup).
-- **Kotest property test** — Issue aggregate invariant (key 형식 / state 전이 / soft delete 키 보존) × 1000건.
+- **Kotest property test** — Issue aggregate invariant (key 형식 / state 전환 / soft delete 키 보존) × 1000건.
 
 C-6 (SYSTEM_ACTOR_UUID + workflowKey="DEFAULT" hardcoded) 은 FR-AU-10 (시스템 액터 모델) 의존 → 본 PR scope 제외.
 
@@ -85,9 +85,9 @@ C-6 (SYSTEM_ACTOR_UUID + workflowKey="DEFAULT" hardcoded) 은 FR-AU-10 (시스�
 
 ### F1. 시나리오 (Given-When-Then, 기술 시나리오 중심)
 
-**S1. C-2 sealed Result — 정상 전이.**
+**S1. C-2 sealed Result — 정상 전환.**
 - Given. issue-tracking BC 가 `WorkflowTransitionPort.plan(req)` 호출
-- When. project-workflow 가 validator 통과 + 전이 가능 판정
+- When. project-workflow 가 validator 통과 + 전환 가능 판정
 - Then. `TransitionResult.Success(plan: TransitionPlan)` 반환. issue-tracking 은 when 분기에서 plan 추출 후 적용
 
 **S2. C-2 sealed Result — validator 실패.**
@@ -150,7 +150,7 @@ C-6 (SYSTEM_ACTOR_UUID + workflowKey="DEFAULT" hardcoded) 은 FR-AU-10 (시스�
 - When. Issue 생성 → softDelete → 같은 key (예. `BTS-1`) 로 새 Issue 생성 시도
 - Then. `IssueRepository.insert` 가 DB unique constraint 위반 (PostgreSQL 23505) 또는 도메인 계층의 IssueProjectNotFoundException — 1000건 모두 같은 결과.
 
-**S14. Wave 6 Kotest property — state 전이 이름 수용 구간.**
+**S14. Wave 6 Kotest property — state 전환 이름 수용 구간.**
 - Given. random state 이름 (영문 대문자 + 언더스코어, 길이 1~30)
 - When. `Issue.transition(toState)` 호출
 - Then. 1000건 random 모두 toState 가 적용됨 (도메인 측 invariant — workflow validator 는 무관, 그 책임은 project-workflow).
@@ -187,7 +187,7 @@ C-6 (SYSTEM_ACTOR_UUID + workflowKey="DEFAULT" hardcoded) 은 FR-AU-10 (시스�
 
 **FR-6. (Wave 6 Kotest property) 3 invariant (단위 영역 한정).**
 - (a) `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/domain/IssueInvariantPropertyTest.kt` 신규.
-- (b) **(G6 inline 보강)** `forAll(1000) { ... }` **3 case** (S11 IssueKey regex + S12 version monotonic + S14 state 전이 이름 수용). S13 (soft delete 키 보존) 은 DB 통합 영역 → `IssueRepositoryTest` 의 일반 시나리오 신규 1건으로 이동 (T9 신설 — softDelete 후 같은 key INSERT 시 DB unique constraint 위반 검증, IssueTestcontainersBase 상속하여 실 DB 동작).
+- (b) **(G6 inline 보강)** `forAll(1000) { ... }` **3 case** (S11 IssueKey regex + S12 version monotonic + S14 state 전환 이름 수용). S13 (soft delete 키 보존) 은 DB 통합 영역 → `IssueRepositoryTest` 의 일반 시나리오 신규 1건으로 이동 (T9 신설 — softDelete 후 같은 key INSERT 시 DB unique constraint 위반 검증, IssueTestcontainersBase 상속하여 실 DB 동작).
 - (c) random generator — `Arb.string` + `Arb.int` + Kotest 표준 generator. seed 고정 (재현성).
 
 ### F3. 비기능 요구사항 (NFR)
@@ -260,7 +260,7 @@ C-6 (SYSTEM_ACTOR_UUID + workflowKey="DEFAULT" hardcoded) 은 FR-AU-10 (시스�
 **D4. (Wave 6 property) 4 invariant 모두.**
 - 옵션 — **A (4 invariant 모두, 권장 채택)** / B (핵심 2).
 - 결정 — A.
-- 근거 — PR #10 project-workflow 의 4 invariant × 1000 패턴 일관. soft delete 키 보존 + state 전이 invariant 가 핵심 데이터 무결성 영역 (DATA.md §1.1).
+- 근거 — PR #10 project-workflow 의 4 invariant × 1000 패턴 일관. soft delete 키 보존 + state 전환 invariant 가 핵심 데이터 무결성 영역 (DATA.md §1.1).
 
 ### F10. Deferred trigger (본 PR 제외 항목)
 
@@ -364,7 +364,7 @@ C-6 (SYSTEM_ACTOR_UUID + workflowKey="DEFAULT" hardcoded) 은 FR-AU-10 (시스�
 - 파일: `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/dto/TransitionResult.kt`
 - 구현:
   ```kotlin
-  // 워크플로우 전이 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
+  // 워크플로우 전환 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
   sealed interface TransitionResult {
       data class Success(val plan: TransitionPlan) : TransitionResult
       data class ValidatorFailure(val message: String) : TransitionResult

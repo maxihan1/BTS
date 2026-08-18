@@ -1,4 +1,4 @@
-// 워크플로우 전이 post-action 관리 서비스 — 검증·전이해석
+// 워크플로우 전환 post-action 관리 서비스 — 검증·전환해석
 
 package com.bts.workflow.postaction
 
@@ -9,12 +9,12 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * 전이별 post-action CRUD 관리 서비스.
+ * 전환별 post-action CRUD 관리 서비스.
  *
- * URL path 의 transitionKey(`fromStateKey__toStateKey`) 를 전이 UUID 로 해석하고,
+ * URL path 의 transitionKey(`fromStateKey__toStateKey`) 를 전환 UUID 로 해석하고,
  * [WorkflowPostActionFactory] 로 검증 후 [PostActionRepository] 에 영속한다.
  *
- * **캐시 무효화 불필요**: post-action 은 전이 실행 시
+ * **캐시 무효화 불필요**: post-action 은 전환 실행 시
  * `DefaultWorkflowDefinitionRepository.findPostActions` 가 DB 직접 조회(WorkflowEngine.kt:302 경유)한다.
  * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 `Workflow` aggregate 에는 post-action 필드가 없으므로
  * 별도 캐시 무효화가 불필요하다(WorkflowCache 는 states/transitions/validator 만 캐싱, post-action 비캐시).
@@ -38,12 +38,12 @@ class PostActionAdminService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 전이에 속한 post-action 목록을 반환한다.
+     * 전환에 속한 post-action 목록을 반환한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
+     * @param transitionKey `fromStateKey__toStateKey` 형식의 전환 자연키.
      * @return [PostActionRow] 목록 (displayOrder ASC).
-     * @throws PostActionNotFoundException 전이 미존재 또는 transitionKey 형식 오류 시.
+     * @throws PostActionNotFoundException 전환 미존재 또는 transitionKey 형식 오류 시.
      */
     @Transactional(readOnly = true)
     fun listForTransition(
@@ -58,12 +58,12 @@ class PostActionAdminService(
      * post-action 을 생성한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
+     * @param transitionKey `fromStateKey__toStateKey` 형식의 전환 자연키.
      * @param type post-action 타입 식별자.
      * @param config 타입별 설정 Map.
      * @param displayOrder UI 표시 순서.
      * @return 삽입된 [PostActionRow].
-     * @throws PostActionNotFoundException 전이 미존재 또는 transitionKey 형식 오류 시.
+     * @throws PostActionNotFoundException 전환 미존재 또는 transitionKey 형식 오류 시.
      * @throws PostActionValidationException 미지원 type, 필수키 누락, 비-http url 시.
      */
     @Transactional
@@ -91,13 +91,13 @@ class PostActionAdminService(
      * post-action 을 수정한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
+     * @param transitionKey `fromStateKey__toStateKey` 형식의 전환 자연키.
      * @param id 수정할 post-action UUID.
      * @param type 변경할 타입.
      * @param config 변경할 config Map.
      * @param displayOrder 변경할 displayOrder.
      * @return 수정된 [PostActionRow].
-     * @throws PostActionNotFoundException 전이 또는 id 미존재 시.
+     * @throws PostActionNotFoundException 전환 또는 id 미존재 시.
      * @throws PostActionValidationException 미지원 type, 필수키 누락, 비-http url 시.
      */
     @Suppress("LongParameterList")
@@ -128,9 +128,9 @@ class PostActionAdminService(
      * post-action 을 삭제한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
+     * @param transitionKey `fromStateKey__toStateKey` 형식의 전환 자연키.
      * @param id 삭제할 post-action UUID.
-     * @throws PostActionNotFoundException 전이 또는 id 미존재 시.
+     * @throws PostActionNotFoundException 전환 또는 id 미존재 시.
      */
     @Transactional
     fun delete(
@@ -155,7 +155,7 @@ class PostActionAdminService(
      * transitionKey 를 `__` 로 분리해 fromStateKey / toStateKey 를 추출하고
      * [PostActionTransitionResolver] 로 transition_id 를 해석한다.
      *
-     * @throws PostActionNotFoundException transitionKey 형식 오류 또는 전이 미존재 시.
+     * @throws PostActionNotFoundException transitionKey 형식 오류 또는 전환 미존재 시.
      */
     private fun resolveOrThrow(
         workflowKey: String,
@@ -170,7 +170,7 @@ class PostActionAdminService(
         val (fromStateKey, toStateKey) = parts
         return transitionResolver.resolveTransitionId(workflowKey, fromStateKey, toStateKey)
             ?: throw PostActionNotFoundException(
-                "전이 미존재 — workflowKey='$workflowKey' fromStateKey='$fromStateKey' toStateKey='$toStateKey'",
+                "전환 미존재 — workflowKey='$workflowKey' fromStateKey='$fromStateKey' toStateKey='$toStateKey'",
             )
     }
 

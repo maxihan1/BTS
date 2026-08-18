@@ -33,7 +33,7 @@ SDD 참조: §3.2.4
 - **새 엔티티/테이블**: **없음** (D3 = 활용). 릴리즈 노트는 영속화하지 않고 요청 시 생성(조회 전용).
 - **새 도메인 개념**: **릴리즈 노트(Release Notes)** — 한 버전을 Fix Version으로 가진 활성 이슈들을 모아 만든 Markdown 문서. glossary 추가 후보(게이트 1에서 Maxi 확인).
 - **신규 repository 메서드 필요**: 버전 ID → 그 버전을 fix version으로 가진 활성 이슈 역방향 조회 (`IssueRepository`에 추가). 현재는 issue→version 방향(`findFixVersionIdsByIssue`)만 존재.
-- **Issue에 워크플로우 상태 없음**: 상태 전이는 project-workflow BC 위임. issue-tracking에서는 `resolutionId`로 해결 여부 표현 → 릴리즈 노트 필터/그룹핑은 타입·resolution 축만 사용(cross-BC 회피).
+- **Issue에 워크플로우 상태 없음**: 상태 전환은 project-workflow BC 위임. issue-tracking에서는 `resolutionId`로 해결 여부 표현 → 릴리즈 노트 필터/그룹핑은 타입·resolution 축만 사용(cross-BC 회피).
 - **권한**: 기존 `VersionPermissionResolver` READ 패턴 재사용. actorId는 `SYSTEM_ACTOR_UUID` placeholder(FR-PM-03 이연), Security 필터가 401 보장.
 - **기존 결정 충돌**: 없음.
 - **관련 ADR** (참조, 충돌 없음): docs/adr/2026-06-03-version-model-and-permission-deferral.md, 2026-06-10-version-status-and-transitions.md

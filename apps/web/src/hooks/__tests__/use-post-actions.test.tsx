@@ -1,4 +1,4 @@
-// 워크플로우 전이 post-action CRUD TanStack Query hooks 테스트 — RED phase
+// 워크플로우 전환 post-action CRUD TanStack Query hooks 테스트 — RED phase
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'

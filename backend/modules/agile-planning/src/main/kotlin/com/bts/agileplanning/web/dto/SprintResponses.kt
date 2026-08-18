@@ -14,7 +14,7 @@ import java.util.UUID
 /**
  * 스프린트 응답 DTO.
  *
- * 스프린트 단건 조회, 생성, 수정, 전이 결과에 공통으로 사용한다.
+ * 스프린트 단건 조회, 생성, 수정, 전환 결과에 공통으로 사용한다.
  *
  * @property sprintId 스프린트 UUID.
  * @property projectKey 소속 프로젝트 키.

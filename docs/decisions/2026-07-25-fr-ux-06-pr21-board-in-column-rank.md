@@ -8,7 +8,7 @@
 
 ## 맥락
 
-칸반 보드(`KanbanBoard.tsx`)는 현재 카드를 다른 컬럼(=다른 워크플로우 상태)으로 옮기는 상태 전이만 지원한다. `resolveDropAction`은 같은 컬럼 내 드롭을 noop(EC1, `KanbanBoard.tsx:84`)으로 무시한다. FR-UX-06 Phase 5 PR21은 같은 컬럼 안에서 카드의 상하 순서를 드래그로 재배치하는 기능을 신설한다.
+칸반 보드(`KanbanBoard.tsx`)는 현재 카드를 다른 컬럼(=다른 워크플로우 상태)으로 옮기는 상태 전환만 지원한다. `resolveDropAction`은 같은 컬럼 내 드롭을 noop(EC1, `KanbanBoard.tsx:84`)으로 무시한다. FR-UX-06 Phase 5 PR21은 같은 컬럼 안에서 카드의 상하 순서를 드래그로 재배치하는 기능을 신설한다.
 
 실측 결과 백엔드 정합에 갭이 있다.
 
@@ -22,7 +22,7 @@
 **근거**.
 - rank 소유권은 issue-tracking(`issues.rank`)에 그대로 둔다. 보드는 조회 시 rank를 **미러 노출**만 한다(백로그 view가 이미 하는 것과 동일). 새 rank 저장 경로를 만들지 않는다.
 - FR-BL-01 ADR 결정4가 "미래 보드 컬럼 내 정렬(agile-planning)에서도 재사용 가능"을 명시했다. 이 결정이 그 예견을 실현한다.
-- `PatchMerge`/워크플로우 불변식 우회 위험(FR-BD-01 ADR 결정3)은 없다. 리랭크는 rank 스칼라만 바꾸고 상태 전이와 직교한다.
+- `PatchMerge`/워크플로우 불변식 우회 위험(FR-BD-01 ADR 결정3)은 없다. 리랭크는 rank 스칼라만 바꾸고 상태 전환과 직교한다.
 
 ## 결정 2 — 리랭크 저장은 기존 `PATCH /api/v1/issues/{key}/rank` 재사용 (issue-tracking 변경 0)
 
@@ -32,9 +32,9 @@
 - 리랭크 도메인 로직(이웃 rank 사이 중간값, 고갈 시 rebalance, OCC)은 백로그와 동일하다. 재구현은 중복·drift 위험.
 - BC 경계 준수. 실제 코드 변경은 agile-planning(조회) + 프론트뿐. issue-tracking은 호출만 받는다.
 
-## 결정 3 — `@dnd-kit/sortable` 도입, 상태 전이 드래그와 공존
+## 결정 3 — `@dnd-kit/sortable` 도입, 상태 전환 드래그와 공존
 
-컬럼 내 정렬은 `@dnd-kit/sortable`의 `SortableContext` + `useSortable`로 구현한다. 기존 컬럼 간 이동(`useDraggable`/`useDroppable` 기반 상태 전이)과 한 `DndContext` 안에서 공존한다.
+컬럼 내 정렬은 `@dnd-kit/sortable`의 `SortableContext` + `useSortable`로 구현한다. 기존 컬럼 간 이동(`useDraggable`/`useDroppable` 기반 상태 전환)과 한 `DndContext` 안에서 공존한다.
 
 **근거**.
 - `@dnd-kit/core`(6.3.1)·`@dnd-kit/utilities`가 이미 설치돼 있고 sortable은 같은 패밀리 공식 확장(버전 호환). Maxi 승인(2026-07-25).
@@ -48,7 +48,7 @@
 
 ## 결정 4 — 완전 Jira 스윔레인 드래그(4종)를 2 PR로 분할
 
-최종 목표는 Jira Cloud 스윔레인 보드 드래그 4종(①셀 내 순서변경 ②컬럼 간 상태전이 ③담당자 재할당 ④우선순위/에픽 변경)이다. 실측 결과 ③④는 스윔레인 타입별 별도 mutation(담당자 UUID 역산 배선·priority·epic-children)과 낙관적 업데이트 3종을 요구해 단일 PR로는 과대하다. **PR21 = ①+②(스윔레인 활성 시 셀 내 순서변경 포함, 그룹 경계 넘는 드래그는 noop), PR21b = ③+④**로 분할한다.
+최종 목표는 Jira Cloud 스윔레인 보드 드래그 4종(①셀 내 순서변경 ②컬럼 간 상태전환 ③담당자 재할당 ④우선순위/에픽 변경)이다. 실측 결과 ③④는 스윔레인 타입별 별도 mutation(담당자 UUID 역산 배선·priority·epic-children)과 낙관적 업데이트 3종을 요구해 단일 PR로는 과대하다. **PR21 = ①+②(스윔레인 활성 시 셀 내 순서변경 포함, 그룹 경계 넘는 드래그는 noop), PR21b = ③+④**로 분할한다.
 
 **근거**. 22 PR 체인 철학(큰 기능 잘게)과 일치. 각 PR 독립 검증 가능. ③④의 API(`PATCH /assignee`, `updateIssue priority`, `POST epic-children`)는 실재하나 배선 복잡도가 ①②와 분리된다. rank 순서변경만도 백엔드 rank 노출+sortable+낙관적 업데이트로 태스크 6~8개.
 

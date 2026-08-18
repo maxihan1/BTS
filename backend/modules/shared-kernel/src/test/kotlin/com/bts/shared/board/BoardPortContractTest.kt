@@ -277,7 +277,7 @@ class BoardPortContractTest {
     // ── BoardTransitionResult 필드 계약 ──────────────────────────────────────
 
     @Test
-    fun `BoardTransitionResult 는 전이 결과 필드를 보존한다`() {
+    fun `BoardTransitionResult 는 전환 결과 필드를 보존한다`() {
         val result =
             BoardTransitionResult(
                 issueKey = "PROJ-5",

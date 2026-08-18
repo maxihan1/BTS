@@ -101,7 +101,7 @@ describe('GET /api/v1/imports/:id — 진행 시뮬레이션', () => {
     expect(parsed.status).toBe('PENDING')
   })
 
-  it('T3-2: 두 번째 GET은 RUNNING으로 전이한다', async () => {
+  it('T3-2: 두 번째 GET은 RUNNING으로 전환한다', async () => {
     const job = await submitJob()
     await fetch(`/api/v1/imports/${job.jobId}`)
     const res = await fetch(`/api/v1/imports/${job.jobId}`)

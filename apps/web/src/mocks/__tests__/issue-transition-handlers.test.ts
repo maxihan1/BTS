@@ -143,7 +143,7 @@ describe('POST /api/v1/issues/:key/transition — 분기(3) 409', () => {
 })
 
 describe('POST /api/v1/issues/:key/transition — 분기(4) 성공 + stateful', () => {
-  it('open→in_progress 전이 성공 → 200 + currentStateKey=in_progress + version+1', async () => {
+  it('open→in_progress 전환 성공 → 200 + currentStateKey=in_progress + version+1', async () => {
     const res = await postTransition('ATLAS-1', {
       toStatusKey: 'in_progress',
       expectedVersion: 0,
@@ -154,14 +154,14 @@ describe('POST /api/v1/issues/:key/transition — 분기(4) 성공 + stateful', 
     expect(body.data.version).toBe(1) // ATLAS-1 초기 version=0, +1
   })
 
-  it('전이 후 GET /:key 새 상태 반영', async () => {
+  it('전환 후 GET /:key 새 상태 반영', async () => {
     await postTransition('ATLAS-1', { toStatusKey: 'in_progress', expectedVersion: 0 })
     const res = await fetch('/api/v1/issues/ATLAS-1')
     const body = await res.json() as { data: { currentStateKey: string } }
     expect(body.data.currentStateKey).toBe('in_progress')
   })
 
-  it('전이 후 GET /transitions 새 가용전이 반영 (in_progress → Submit for Review)', async () => {
+  it('전환 후 GET /transitions 새 가용전환 반영 (in_progress → Submit for Review)', async () => {
     await postTransition('ATLAS-1', { toStatusKey: 'in_progress', expectedVersion: 0 })
     const res = await getTransitions('ATLAS-1')
     const body = await res.json() as { data: { transitions: { key: string }[] } }

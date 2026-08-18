@@ -121,7 +121,7 @@ data class BulkOperation(
     }
 
     /**
-     * 작업을 PENDING → RUNNING 으로 전이한다.
+     * 작업을 PENDING → RUNNING 으로 전환한다.
      *
      * @return RUNNING 상태의 새 [BulkOperation] 인스턴스.
      * @throws IllegalStateException 현재 상태가 [BulkOperationStatus.PENDING] 이 아닐 때.
@@ -134,7 +134,7 @@ data class BulkOperation(
     }
 
     /**
-     * 작업을 RUNNING → COMPLETED 로 전이한다.
+     * 작업을 RUNNING → COMPLETED 로 전환한다.
      *
      * @return COMPLETED 상태의 새 [BulkOperation] 인스턴스.
      * @throws IllegalStateException 현재 상태가 [BulkOperationStatus.RUNNING] 이 아닐 때.
@@ -147,7 +147,7 @@ data class BulkOperation(
     }
 
     /**
-     * 작업을 FAILED 로 전이한다.
+     * 작업을 FAILED 로 전환한다.
      *
      * PENDING 또는 RUNNING 상태에서만 호출 가능하다(인프라 오류 포함).
      * 종단 상태([BulkOperationStatus.COMPLETED], [BulkOperationStatus.FAILED])에서는 거부한다.

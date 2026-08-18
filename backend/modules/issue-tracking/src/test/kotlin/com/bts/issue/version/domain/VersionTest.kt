@@ -22,8 +22,8 @@ import java.util.UUID
  * - [Version.rename], [Version.changeDescription], [Version.changeDates], [Version.softDelete] 도메인 메서드
  * - softDelete 멱등성 — 이미 삭제된 버전 재삭제 거부
  * - changeDates — 순서 미강제(startDate > releaseDate 허용)
- * - 상태 전이 — release/unrelease/archive/unarchive 5종 + releasedAt 불변식
- * - 거부 케이스 — self-transition, 그래프 외 전이, ARCHIVED 읽기 전용
+ * - 상태 전환 — release/unrelease/archive/unarchive 5종 + releasedAt 불변식
+ * - 거부 케이스 — self-transition, 그래프 외 전환, ARCHIVED 읽기 전용
  */
 class VersionTest : DescribeSpec({
 
@@ -376,7 +376,7 @@ class VersionTest : DescribeSpec({
             }
         }
 
-        it("ARCHIVED 상태에서 release 호출 시 VersionTransitionNotAllowedException 을 던진다 (그래프 외 전이)") {
+        it("ARCHIVED 상태에서 release 호출 시 VersionTransitionNotAllowedException 을 던진다 (그래프 외 전환)") {
             val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
             val version = Version.create(projectId = projectId, name = "1.0.0").archive()
 

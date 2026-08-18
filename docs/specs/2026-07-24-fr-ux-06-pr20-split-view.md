@@ -94,7 +94,7 @@
 - **EC-1**: `?selected` 값이 빈 문자열/공백 → 미선택으로 취급(페인 안 뜸).
 - **EC-2**: 목록이 비어 있는데 `?selected=KEY` → 상세 페인만 정상 표시(목록은 빈 상태 UI).
 - **EC-3**: 좁은폭→와이드 리사이즈 중 `?selected` 존재 → 와이드 되는 순간 페인 등장(CSS 반응형이면 자동). 반대 방향도 목록만 남고 URL의 `selected`는 보존(다시 넓히면 재등장) — 또는 `<lg`에서 selected 무시 표시. **결정: `<lg`에서는 `?selected`가 있어도 페인 미표시(목록만), URL은 보존**(리사이즈 왕복 시 상태 안정).
-- **EC-4**: 상세 페인 안 상태전이/수정 → 목록의 해당 행도 최신값 반영(공유 react-query 캐시 `issueQueryKey` invalidate로 자동, PR19 캐시 관례).
+- **EC-4**: 상세 페인 안 상태전환/수정 → 목록의 해당 행도 최신값 반영(공유 react-query 캐시 `issueQueryKey` invalidate로 자동, PR19 캐시 관례).
 - **EC-5**: bulk 선택 체크박스(`select-{key}`)와 split 선택(`?selected`)은 **독립** — 체크박스 클릭은 stopPropagation으로 행 네비 안 함(기존 IssueTable 계약 유지), 요약/행 클릭만 split 선택.
 - **EC-6**: 같은 이슈를 재선택 → 토글로 페인 닫힘(S2) 또는 유지 — **결정: 재클릭은 닫힘(toggle off)**. 명확한 해제 경로 제공.
 

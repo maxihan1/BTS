@@ -9,7 +9,7 @@
 /** webhook 이벤트 wireValue(e.g. `"issue.created"`) → 한국어 라벨 */
 const eventLabels: Record<string, string> = {
   'issue.created': '이슈 생성',
-  'issue.transitioned': '이슈 상태 전이',
+  'issue.transitioned': '이슈 상태 전환',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

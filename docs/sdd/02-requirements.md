@@ -69,7 +69,7 @@
 | FR-IS-02 | 이슈 타입: Epic/Story/Task/Subtask/Bug + 커스텀 | 필수 |
 | FR-IS-03 | 담당자: Reporter(1), Assignee(1), Watchers(N) | 필수 |
 | FR-IS-04 | 본문(Markdown), 우선순위, 라벨, 환경, 영향도 | 필수 |
-| FR-IS-05 | 이슈 일괄 편집 및 일괄 상태 전이 | 높음 |
+| FR-IS-05 | 이슈 일괄 편집 및 일괄 상태 전환 | 높음 |
 | FR-IS-06 | 이슈 클론 (옵션: 첨부/Watcher/댓글 포함) | 중간 |
 | FR-IS-07 | Resolution 필드 (Fixed/Won't Fix/Duplicate 등) | 필수 |
 | FR-IS-08 | 이슈 인쇄 / PDF 출력 | 중간 |
@@ -114,14 +114,14 @@
 
 | ID | 요구사항 | 우선순위 |
 |---|---|---|
-| FR-NT-01 | 이벤트별 알림 정책: 생성/수정/할당/전이/종료/댓글 | 필수 |
+| FR-NT-01 | 이벤트별 알림 정책: 생성/수정/할당/전환/종료/댓글 | 필수 |
 | FR-NT-02 | 채널: 이메일/인앱 (Slack=slack-integration BC) | 필수 |
 | FR-NT-03 | 수신자 정책: R/A/W/Lead/역할 | 필수 |
 | FR-NT-04 | 사용자별 알림 구독 설정 | 높음 |
-| FR-NT-05 | Webhook 알림 채널: 전이 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 (FR-NT-02에서 분리) | 중간 |
+| FR-NT-05 | Webhook 알림 채널: 전환 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 (FR-NT-02에서 분리) | 중간 |
 | FR-MN-01 | 본문/댓글 @멘션 + 즉시 알림 | 필수 |
 | FR-MN-02 | 멘션 자동완성 | 높음 |
-| FR-HS-01 | 이슈 변경 이력 (필드/댓글/첨부/전이) | 필수 |
+| FR-HS-01 | 이슈 변경 이력 (필드/댓글/첨부/전환) | 필수 |
 | FR-HS-02 | 히스토리 조회 UI | 필수 |
 
 ### 2.2.4a 댓글 (FR-CO)

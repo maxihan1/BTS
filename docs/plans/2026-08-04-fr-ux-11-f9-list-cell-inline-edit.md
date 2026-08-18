@@ -45,8 +45,8 @@
 - **BC.** `issue-tracking` (물리 BC 는 `apps/web` · 논리 BC 는 personalization — FR-UX-07 선례 승계)
 - **영향 엔티티.** `Issue` 만. 신규 0
 - **새 용어.** **0건.** F9 가 다루는 개념은 전부 `glossary.md` 에 이미 있다 —
-  `전이 | Transition. 상태 → 상태로 가는 액션`(`:60`) · `게이트 | Gate. 전이에 걸린 조건`(`:61`) ·
-  `워크플로우 | Workflow. 이슈의 상태 전이 FSM`(`:15`)
+  `전환 | Transition. 상태 → 상태로 가는 액션`(`:60`) · `게이트 | Gate. 전환에 걸린 조건`(`:61`) ·
+  `워크플로우 | Workflow. 이슈의 상태 전환 FSM`(`:15`)
 - **기존 결정 충돌.** **0건.** `docs/decisions/` 128건 중 F9 를 언급하는 2건은 **선행 관계만** 기술한다 —
   `2026-08-03-fr-ux-10-f10-context-shortcuts.md:120`(기각 사유 안에서 "이후 F9·F11 이 그 위에 쌓인다") ·
   `2026-07-28-fr-ux-07-active-project-context.md:108`(PR 카운트 표)
@@ -57,17 +57,17 @@
 ### ★ spec 으로 넘기는 쟁점 2건 (도메인이 아니라 설계 쟁점)
 
 **쟁점 1 — 상태 셀만 나머지 둘과 구조가 다르다.** 담당자·우선순위는 필드 PATCH 지만
-**상태는 FSM 전이**다. 실측한 API 3종.
+**상태는 FSM 전환**다. 실측한 API 3종.
 
 ```
-GET  /api/v1/issues/{key}/transitions          가용 전이 목록 — 이슈마다 다르다
+GET  /api/v1/issues/{key}/transitions          가용 전환 목록 — 이슈마다 다르다
 POST /api/v1/issues/{key}/transition           body { toStatusKey, expectedVersion }
-POST /api/v1/issues/bulk-transitions/available body { issueKeys } → 공통 전이 "교집합"
+POST /api/v1/issues/bulk-transitions/available body { issueKeys } → 공통 전환 "교집합"
 ```
 
-따라서 목록에서 상태 셀을 열려면 **그 행의 가용 전이를 알아야** 하고, 행마다 다르므로
+따라서 목록에서 상태 셀을 열려면 **그 행의 가용 전환을 알아야** 하고, 행마다 다르므로
 N+1 조회 위험이 있다. 기존 `bulk-transitions/available` 은 **교집합**이라 행별 개별 편집에는
-그대로 못 쓴다(교집합은 일괄 전이용). 또 `IssueStateTransition.tsx` 는
+그대로 못 쓴다(교집합은 일괄 전환용). 또 `IssueStateTransition.tsx` 는
 `unavailableReason`(`no-workflow` · `terminal`) 분기와 제어값 리셋(C1 회귀 방지)을 갖고 있다.
 **조회 전략·재사용 범위를 D2 스펙에서 확정한다.**
 
@@ -86,7 +86,7 @@ N+1 조회 위험이 있다. 기존 `bulk-transitions/available` 은 **교집합
 핵심 3줄.
 - 담당자·우선순위·상태 셀에 **hover 어포던스**가 뜨고, 클릭하면 popover 로 그 자리에서 바꾼다
 - 편집 가능 셀 클릭은 **행 클릭(상세 이동)으로 전파되지 않는다**. 나머지 영역은 기존 그대로
-- 가용 전이·권한은 **셀을 열 때만** 조회해 N+1 을 없앤다 → 백엔드 0줄이 성립한다
+- 가용 전환·권한은 **셀을 열 때만** 조회해 N+1 을 없앤다 → 백엔드 0줄이 성립한다
 
 **확정 결정 6건.**
 
@@ -94,7 +94,7 @@ N+1 조회 위험이 있다. 기존 `bulk-transitions/available` 은 **교집합
 |---|---|---|
 | D-1 | 진입 = hover 어포던스 + 셀 클릭 | **Maxi 확정 2026-08-04.** 어포던스 없는 클릭·편집모드 토글 기각 |
 | D-2 | 3종 모두 popover 로 통일 | `ui/popover.tsx` 소비 1→2 |
-| D-3 | 전이·권한은 셀 열 때만 조회 | `bulk-transitions/available` 은 **교집합**이라 행별 편집에 부적합 |
+| D-3 | 전환·권한은 셀 열 때만 조회 | `bulk-transitions/available` 은 **교집합**이라 행별 편집에 부적합 |
 | D-4 | 낙관적 필드 patch + `onSettled` invalidate | `useChangeCardField` 승계. `learnings:616` 과 모순 없음(전체 교체가 아니라 필드 patch) |
 | D-5 | `issue-columns.ts` 순수 계약 유지 | 편집 셀을 별도 `.tsx` 로 빼고 `createElement` 위임 |
 | D-6 | 권한 미확정 시 fail-closed | `IssueAssigneeSelect` 의 기존 `canEdit` 계약 승계 |
@@ -117,7 +117,7 @@ N+1 조회 위험이 있다. 기존 `bulk-transitions/available` 은 **교집합
 **Architecture.** 편집 셀은 `components/issues/cells/` 신설 `.tsx` 3종 + 공통 래퍼 1종.
 `issue-columns.ts` 는 순수 계약을 유지한 채 `createElement` 로 위임만 한다(D-5). 저장은 목록
 캐시 전용 mutation 훅 1개로 모으고 낙관적 필드 patch + `onSettled` invalidate 를 쓴다(D-4).
-전이·권한은 popover 가 열려 `PopoverContent` 가 마운트될 때만 조회된다(D-3).
+전환·권한은 popover 가 열려 `PopoverContent` 가 마운트될 때만 조회된다(D-3).
 
 **Tech Stack.** React 19 · TanStack Query v5 · Radix Popover(`components/ui/popover.tsx`) ·
 vitest + Testing Library · Playwright · MSW.
@@ -133,7 +133,7 @@ vitest + Testing Library · Playwright · MSW.
 | `apps/web/src/components/issues/cells/EditableCell.tsx` | hover 어포던스 · 전파 차단 · popover 껍데기 | 신규 |
 | `apps/web/src/components/issues/cells/PriorityCell.tsx` | 우선순위 편집 | 신규 |
 | `apps/web/src/components/issues/cells/AssigneeCell.tsx` | 담당자 편집 | 신규 |
-| `apps/web/src/components/issues/cells/StatusCell.tsx` | 상태 전이 편집 (`role="status"` 보존) | 신규 |
+| `apps/web/src/components/issues/cells/StatusCell.tsx` | 상태 전환 편집 (`role="status"` 보존) | 신규 |
 | `apps/web/src/components/issues/issue-columns.ts` | 컬럼 정의 — 렌더 위임만 | 수정 |
 | `apps/web/src/components/issues/IssueTable.tsx` | `ctx` 에 편집 컨텍스트 전달 | 수정 |
 | `apps/web/src/routes/issues.index.tsx` | `projectKey`·쿼리키를 테이블에 전달 | 수정 |
@@ -307,7 +307,7 @@ test('.gitignore 가 worktree 심볼릭 링크를 전부 무시한다 (끝 슬�
 - depends-on: []
 
 **왜 새로 만드나**. `useChangeCardField`(보드)가 같은 일을 하지만 캐시가 `BoardDetail` 전용이다
-(`patchCardField` 가 `board.columns` 를 순회). `useTransitionIssue` 는 `['issue', key]` 와 전이
+(`patchCardField` 가 `board.columns` 를 순회). `useTransitionIssue` 는 `['issue', key]` 와 전환
 목록만 무효화해 **목록 캐시를 갱신하지 않는다**. 목록(`Page<IssueResponse>`)용이 없다.
 
 **RED**. `use-issue-list-cell-field.test.tsx`.
@@ -530,7 +530,7 @@ function buildErrorMessage(field: IssueCellFieldVars['field']): string {
  * 실패 사유별 안내 문구 (FR15).
  *
  * 상세 화면 `issues.$key.tsx:359-378` 이 이미 이 3분기를 갖고 있다 — 목록도 같은 어휘를 쓴다.
- * `409` 를 뭉개면 "내가 못 하는 전이" 와 "남이 먼저 바꿔서 낡은 버전" 이 같은 문구로 나온다.
+ * `409` 를 뭉개면 "내가 못 하는 전환" 와 "남이 먼저 바꿔서 낡은 버전" 이 같은 문구로 나온다.
  */
 function resolveCellErrorMessage(err: unknown, field: IssueCellFieldVars['field']): string {
   if (!(err instanceof ApiError)) return buildErrorMessage(field)
@@ -708,13 +708,13 @@ export interface EditableCellProps {
   label: string
   /** 닫힌 상태에서 보이는 내용 (배지·텍스트 등). role 을 가진 노드를 그대로 넣을 수 있다 */
   display: ReactNode
-  /** popover 내용. **열렸을 때만 마운트된다** (FR12 — 전이·권한 조회를 지연시키는 장치) */
+  /** popover 내용. **열렸을 때만 마운트된다** (FR12 — 전환·권한 조회를 지연시키는 장치) */
   children: ReactNode
   /**
    * 제어형 열림 상태. 미전달이면 자체 관리한다.
    *
    * 제어형이 필요한 이유 둘 — ① 저장 성공 시 **코드로 닫는다**(Maxi 확정 2026-08-04)
-   * ② 종료 전이는 popover 를 닫고 결의안 모달로 넘긴다(FR14).
+   * ② 종료 전환은 popover 를 닫고 결의안 모달로 넘긴다(FR14).
    */
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -1127,7 +1127,7 @@ export function AssigneeCellEditor({
 
 ---
 
-### Task 6. 상태 셀 — 전이 목록 + `role="status"` 보존
+### Task 6. 상태 셀 — 전환 목록 + `role="status"` 보존
 
 **메타**.
 - agent: `frontend-engineer`
@@ -1141,17 +1141,17 @@ export function AssigneeCellEditor({
 로 옮기고 상세 화면은 import 로 바꾼다(동작 무변경, 기존 테스트가 증인).
 
 ```ts
-// 전이 가용성 판정 — 422(워크플로우 미설정)와 200+빈 배열(종료 상태)을 가른다
+// 전환 가용성 판정 — 422(워크플로우 미설정)와 200+빈 배열(종료 상태)을 가른다
 // 상세 화면(routes/issues.$key.tsx)과 목록 셀(components/issues/cells/StatusCell.tsx) 공용.
 
-/** 전이 컨트롤을 노출할 수 없는 사유 */
+/** 전환 컨트롤을 노출할 수 없는 사유 */
 export type TransitionUnavailableReason = 'no-workflow' | 'terminal' | null
 ```
 
 본문은 `issues.$key.tsx:55` 의 현재 구현을 **그대로 옮긴다**(로직 변경 금지 — 이번 PR 은 이동만
 한다). `issues.$key.tsx` 는 로컬 정의를 지우고 import 한다.
 
-**RED**. 가용 전이만 노출 · 0건 사유 2종 분기 · **배지가 `role="status"` 유지**.
+**RED**. 가용 전환만 노출 · 0건 사유 2종 분기 · **배지가 `role="status"` 유지**.
 
 ```tsx
 // 상태 셀 테스트 (FR-UX-11 F9 FR7·FR8·FR9)
@@ -1174,7 +1174,7 @@ describe('StatusCellDisplay', () => {
 })
 
 describe('StatusCellEditor', () => {
-  it('가용 전이만 버튼으로 노출하고 고르면 toStateKey 로 onTransition 을 부른다 (FR7)', async () => {
+  it('가용 전환만 버튼으로 노출하고 고르면 toStateKey 로 onTransition 을 부른다 (FR7)', async () => {
     const onTransition = vi.fn()
     render(
       <StatusCellEditor
@@ -1207,10 +1207,10 @@ describe('StatusCellEditor', () => {
       />,
     )
 
-    expect(screen.getByText('더 진행할 전이가 없습니다.')).toBeInTheDocument()
+    expect(screen.getByText('더 진행할 전환이 없습니다.')).toBeInTheDocument()
   })
 
-  it('전이 권한이 없으면 선택지가 비활성이다 (FR10 fail-closed)', () => {
+  it('전환 권한이 없으면 선택지가 비활성이다 (FR10 fail-closed)', () => {
     render(
       <StatusCellEditor
         transitions={TRANSITIONS} unavailableReason={null} canTransition={false} isSaving={false}
@@ -1221,7 +1221,7 @@ describe('StatusCellEditor', () => {
     expect(screen.getByRole('button', { name: '진행 시작' })).toBeDisabled()
   })
 
-  it('종료 전이(toCategory=DONE)는 즉시 전이하지 않고 결의안 요청을 올린다 (FR14)', async () => {
+  it('종료 전환(toCategory=DONE)는 즉시 전환하지 않고 결의안 요청을 올린다 (FR14)', async () => {
     const onTransition = vi.fn()
     const onDoneTransition = vi.fn()
     const doneTransition = {
@@ -1239,7 +1239,7 @@ describe('StatusCellEditor', () => {
     await userEvent.click(screen.getByRole('button', { name: '완료' }))
 
     expect(onDoneTransition).toHaveBeenCalledWith(doneTransition)
-    expect(onTransition).not.toHaveBeenCalled()   // ★결의안 없이 전이하지 않는다
+    expect(onTransition).not.toHaveBeenCalled()   // ★결의안 없이 전환하지 않는다
   })
 })
 ```
@@ -1249,7 +1249,7 @@ describe('StatusCellEditor', () => {
 **GREEN**. `StatusCell.tsx`.
 
 ```tsx
-// 이슈 목록 상태 셀 — 클릭해 가용 전이를 고른다 (FR-UX-11 F9)
+// 이슈 목록 상태 셀 — 클릭해 가용 전환을 고른다 (FR-UX-11 F9)
 import type { JSX } from 'react'
 import type { IssueTransition } from '@/api/issues'
 import { Button } from '@/components/ui/button'
@@ -1279,18 +1279,18 @@ export interface StatusCellEditorProps {
   canTransition: boolean
   isSaving: boolean
   isLoading: boolean
-  /** 비종료 전이 — 즉시 실행 */
+  /** 비종료 전환 — 즉시 실행 */
   onTransition: (toStateKey: string) => void
   /**
-   * ★종료 전이(`toCategory === 'DONE'`) — 즉시 실행하지 않고 결의안 선택을 요청한다.
+   * ★종료 전환(`toCategory === 'DONE'`) — 즉시 실행하지 않고 결의안 선택을 요청한다.
    *
-   * 해결 결과는 종료 상태 전이의 **필수** 입력이다(glossary 「해결 결과」). 상세 화면
+   * 해결 결과는 종료 상태 전환의 **필수** 입력이다(glossary 「해결 결과」). 상세 화면
    * `issues.$key.tsx:672` 가 같은 분기로 `ResolutionModal` 을 띄운다 (FR14).
    */
   onDoneTransition: (transition: IssueTransition) => void
 }
 
-/** popover 안에 뜨는 가용 전이 목록. */
+/** popover 안에 뜨는 가용 전환 목록. */
 export function StatusCellEditor({
   transitions, unavailableReason, canTransition, isSaving, isLoading, onTransition, onDoneTransition,
 }: StatusCellEditorProps): JSX.Element {
@@ -1303,20 +1303,20 @@ export function StatusCellEditor({
       <p className="text-xs text-(--text-subtle)">
         {unavailableReason === 'no-workflow'
           ? '워크플로우가 설정되지 않았습니다.'
-          : '더 진행할 전이가 없습니다.'}
+          : '더 진행할 전환이 없습니다.'}
       </p>
     )
   }
 
   return (
     <div className="flex flex-col gap-0.5">
-      {!canTransition && <p className="px-2 py-1 text-xs text-(--text-subtle)">전이 권한이 없습니다.</p>}
+      {!canTransition && <p className="px-2 py-1 text-xs text-(--text-subtle)">전환 권한이 없습니다.</p>}
       {transitions.map((t) => (
         <Button
           key={t.key}
           type="button" variant="ghost" size="sm"
           disabled={!canTransition || isSaving}
-          // 종료 전이는 결의안을 먼저 받는다 — 여기서 바로 전이하면 필수 입력이 빠진다(FR14)
+          // 종료 전환은 결의안을 먼저 받는다 — 여기서 바로 전환하면 필수 입력이 빠진다(FR14)
           onClick={() => (t.toCategory === 'DONE' ? onDoneTransition(t) : onTransition(t.toStateKey))}
           className="justify-start"
         >
@@ -1418,7 +1418,7 @@ export interface StatusCellProps {
 }
 
 /**
- * 상태 셀 조립 — 배지(닫힘) + 전이 목록(열림).
+ * 상태 셀 조립 — 배지(닫힘) + 전환 목록(열림).
  *
  * 훅은 **`EditableCell` 이 열렸을 때만 마운트되는 자식 안**에 있다. 닫힌 상태에서
  * `useIssueTransitions`·`useIssuePermissions` 가 돌지 않는 것이 D-3 의 이행이다.
@@ -1459,7 +1459,7 @@ function StatusCellPopoverBody({ issue, listQueryKey, onDoneTransition }: Status
           expectedVersion: issue.version,
         })
       }
-      // 종료 전이는 popover 를 닫고 상위(StatusCell)가 ResolutionModal 을 띄운다 (FR14)
+      // 종료 전환은 popover 를 닫고 상위(StatusCell)가 ResolutionModal 을 띄운다 (FR14)
       onDoneTransition={onDoneTransition}
     />
   )
@@ -1475,13 +1475,13 @@ export function StatusCell({ issue, listQueryKey }: StatusCellProps): JSX.Elemen
   const [pendingDone, setPendingDone] = useState<IssueTransition | null>(null)
   const mutation = useIssueListCellField(listQueryKey)
 
-  /** 종료 전이 선택 — popover 를 닫고 결의안 모달로 넘긴다 (E14) */
+  /** 종료 전환 선택 — popover 를 닫고 결의안 모달로 넘긴다 (E14) */
   function handleDoneTransition(transition: IssueTransition): void {
     setOpen(false)
     setPendingDone(transition)
   }
 
-  /** 결의안 확정 — resolutionId 를 실어 전이한다 */
+  /** 결의안 확정 — resolutionId 를 실어 전환한다 */
   function handleResolutionConfirm(resolutionId: string): void {
     if (pendingDone === null) return
     mutation.mutate({
@@ -1521,7 +1521,7 @@ export function StatusCell({ issue, listQueryKey }: StatusCellProps): JSX.Elemen
 }
 ```
 
-> `EditableCell` 은 열림 상태를 **제어형으로도 쓸 수 있어야** 한다 — 종료 전이에서 popover 를
+> `EditableCell` 은 열림 상태를 **제어형으로도 쓸 수 있어야** 한다 — 종료 전환에서 popover 를
 > 코드로 닫아야 하기 때문이다. Task 3 의 내부 `useState` 를 `open`/`onOpenChange` **선택적
 > prop** 으로 승격한다(미전달이면 기존처럼 자체 관리). `ResolutionModal` 의 실제 props 는
 > `components/issue/ResolutionModal.tsx` 를 열어 시그니처를 그대로 맞춘다.
@@ -1696,7 +1696,7 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     await expect(page).toHaveURL(url)
   })
 
-  test('S3 상태 셀은 그 이슈의 가용 전이만 노출한다', async ({ page }) => {
+  test('S3 상태 셀은 그 이슈의 가용 전환만 노출한다', async ({ page }) => {
     await page.goto('/issues')
     await page.getByRole('button', { name: 'ATLAS-1 상태 변경', exact: true }).click()
 
@@ -1713,12 +1713,12 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
       .toContainText('맥시')
   })
 
-  test('E14 종료 전이는 결의안 모달을 거친다 (FR14)', async ({ page }) => {
+  test('E14 종료 전환은 결의안 모달을 거친다 (FR14)', async ({ page }) => {
     await page.goto('/issues')
     await page.getByRole('button', { name: 'ATLAS-1 상태 변경', exact: true }).click()
     await page.getByRole('button', { name: '완료', exact: true }).click()
 
-    // popover 는 닫히고 결의안 모달이 뜬다 — 결의안 없이 전이되지 않는다
+    // popover 는 닫히고 결의안 모달이 뜬다 — 결의안 없이 전환되지 않는다
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByRole('button', { name: 'ATLAS-1 상태 변경', exact: true }))
       .not.toContainText('DONE')
@@ -1846,7 +1846,7 @@ grep -rho '^- \[ \] D[0-9]*\.' docs/plan/product/*.md | wc -l   # 미완
 |---|---|---|---|---|---|
 | 담당자 | `검색 중…` | `검색 결과가 없습니다.` | toast(409 버전충돌 / 일반) | popover 닫힘 + 셀 즉시 갱신 | 권한 미확정 → 컨트롤 `disabled` |
 | 우선순위 | 없음 (정적 1~5) | 해당 없음 | toast(409 / 일반) | popover 닫힘 + 셀 즉시 갱신 | 권한 미확정 → `disabled` |
-| 상태 | `불러오는 중…` | 사유 2종 — `워크플로우가 설정되지 않았습니다.`(422) / `더 진행할 전이가 없습니다.`(200+빈) | toast 3분기 — 전이 불가 / 버전 충돌 / 워크플로우 미설정 | popover 닫힘 + 배지 즉시 갱신. **종료 전이는 결의안 모달 경유** | 전이 권한 없음 → `disabled` |
+| 상태 | `불러오는 중…` | 사유 2종 — `워크플로우가 설정되지 않았습니다.`(422) / `더 진행할 전환이 없습니다.`(200+빈) | toast 3분기 — 전환 불가 / 버전 충돌 / 워크플로우 미설정 | popover 닫힘 + 배지 즉시 갱신. **종료 전환은 결의안 모달 경유** | 전환 권한 없음 → `disabled` |
 
 #### NOT in scope (이연, 사유 명시)
 
@@ -1860,7 +1860,7 @@ grep -rho '^- \[ \] D[0-9]*\.' docs/plan/product/*.md | wc -l   # 미완
 #### What already exists (재사용 확정)
 
 `ui/popover.tsx`(소비처 1→2) · `useChangeCardField` 패턴 · `ResolutionModal` ·
-`resolveTransitionUnavailableReason`(공용 승격) · `issueDetailStrings` 전이 에러 문구 3종 ·
+`resolveTransitionUnavailableReason`(공용 승격) · `issueDetailStrings` 전환 에러 문구 3종 ·
 `useUsers`/`useUsersByIds` · `useIssueTransitions` · `useIssuePermissions` ·
 `IssuePrioritySelect` 의 값 집합·라벨 정본 · `--border`/`--bg-neutral`/`--text-subtle` ADS 토큰
 
@@ -1911,7 +1911,7 @@ F3·F4 는 **main 대조군을 실측해 선재임을 확인**했다 — 「F9 �
 ### D. i18n 정본 부채 3건 (리뷰 C5 봉합 중 실측)
 
 - **컴포넌트 리터럴 5건에 대응 정본이 없다.** `'편집 권한이 없습니다.'`(`PriorityCell` ·
-  `AssigneeCell`) · `'전이 권한이 없습니다.'`(`StatusCell`) · `'검색 중…'` ·
+  `AssigneeCell`) · `'전환 권한이 없습니다.'`(`StatusCell`) · `'검색 중…'` ·
   `'검색 결과가 없습니다.'`(`AssigneeCell`) · `'불러오는 중…'`(`StatusCell`).
   `i18n/ko.ts` 키 신설은 이 PR 범위 밖(§제약)이라 인라인으로 두었다. 다국어 도입 시 이 5건이
   교체 대상이다.
@@ -1919,7 +1919,7 @@ F3·F4 는 **main 대조군을 실측해 선재임을 확인**했다 — 「F9 �
   (`transitionNotAllowedError` · `transitionVersionConflictError` ·
   `transitionWorkflowNotConfiguredError`)뿐이다. 상세 화면(`issues.$key.tsx:354`)은 일반
   실패(네트워크 등)에도 `transitionNotAllowedError` 를 재사용하는데, **타임아웃에 "현재
-  상태에서 허용되지 않는 전이입니다" 라고 말하는 셈**이라 목록은 베끼지 않고 인라인 상수
+  상태에서 허용되지 않는 전환입니다" 라고 말하는 셈**이라 목록은 베끼지 않고 인라인 상수
   (`STATUS_CHANGE_ERROR`)로 두었다. 상세 쪽 fallback 도 함께 손볼 후속 과제다.
 - **★보드 훅에 같은 drift 가 있다 (이 PR 범위 밖).** `hooks/use-change-card-field.ts:264-268`
   이 담당자·우선순위 실패에 `issueDetailStrings` 정본이 아니라 자체 문구
@@ -1973,7 +1973,7 @@ F3·F4 는 **main 대조군을 실측해 선재임을 확인**했다 — 「F9 �
 ### H. 열람 숨김(restrictedFields) 목록 처리 — 담당자만 적용됨 (재리뷰 봉합)
 
 - **적용 대상은 `assigneeId` 하나다.** `priority` 는 `IssueResponse.kt:142` 규칙상 마스킹
-  대상이 아니고(`masked += "priority"` 부재), 상태 전이는 필드 키 자체가 없다.
+  대상이 아니고(`masked += "priority"` 부재), 상태 전환은 필드 키 자체가 없다.
 - **다른 마스킹 대상 필드는 목록 컬럼에 없다.** 마스킹되는 nullable CORE 는
   `description` · `environment` · `labels` · `impact` · `assigneeId` 인데, 목록 6컬럼
   (키·요약·상태·담당자·우선순위·수정일) 중 겹치는 것은 담당자뿐이다. 컬럼이 늘어나면

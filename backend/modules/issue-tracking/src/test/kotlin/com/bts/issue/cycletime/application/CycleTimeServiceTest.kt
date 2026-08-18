@@ -1,4 +1,4 @@
-// CycleTimeService 단위 테스트 — MockK. 권한·빈이슈 방어·전이기반 firstInProgress/lastDone 추출·삭제상태키 폴백 검증 (FR-RP-04 Task 5)
+// CycleTimeService 단위 테스트 — MockK. 권한·빈이슈 방어·전환기반 firstInProgress/lastDone 추출·삭제상태키 폴백 검증 (FR-RP-04 Task 5)
 
 package com.bts.issue.cycletime.application
 
@@ -43,8 +43,8 @@ import java.util.UUID
  * 검증 목록.
  * - BROWSE 권한 없음 → [IssueAccessDeniedException], repo 조회 미수행(probe 차단)
  * - 가시 이슈 0개 → 빈 결과(cycle/lead count 0), fetchStatusChanges/listStates 미호출(빈 IN 방어)
- * - IN_PROGRESS + DONE 전이가 있으면 firstInProgressAt/lastDoneAt 이 각 전이 시각으로 정확히 추출된다
- * - IN_PROGRESS 전이가 없으면 firstInProgressAt=null → cycle 표본 제외, lead 표본에는 남는다
+ * - IN_PROGRESS + DONE 전환이 있으면 firstInProgressAt/lastDoneAt 이 각 전환 시각으로 정확히 추출된다
+ * - IN_PROGRESS 전환이 없으면 firstInProgressAt=null → cycle 표본 제외, lead 표본에는 남는다
  * - 카탈로그에 없는(삭제된) 상태 키는 TODO 로 폴백되어 IN_PROGRESS 진입으로 오집계되지 않는다
  */
 class CycleTimeServiceTest : DescribeSpec({
@@ -143,10 +143,10 @@ class CycleTimeServiceTest : DescribeSpec({
         }
     }
 
-    // ── 전이 기반 firstInProgressAt/lastDoneAt 추출 ─────────────────────────────
+    // ── 전환 기반 firstInProgressAt/lastDoneAt 추출 ─────────────────────────────
 
-    describe("buildDurationInput — 전이 기반 추출") {
-        it("IN_PROGRESS + DONE 전이가 있으면 firstInProgressAt/lastDoneAt 이 각 전이 시각으로 정확히 추출된다") {
+    describe("buildDurationInput — 전환 기반 추출") {
+        it("IN_PROGRESS + DONE 전환이 있으면 firstInProgressAt/lastDoneAt 이 각 전환 시각으로 정확히 추출된다") {
             stubBrowseAndAccess()
             val typeId = 10L
             val issueId = UUID.randomUUID()
@@ -186,7 +186,7 @@ class CycleTimeServiceTest : DescribeSpec({
             result.leadTime.samples[0].seconds shouldBe Duration.between(createdAt, doneAt).seconds
         }
 
-        it("IN_PROGRESS 전이가 없으면 firstInProgressAt=null → cycle 표본 제외, lead 표본에는 남는다") {
+        it("IN_PROGRESS 전환이 없으면 firstInProgressAt=null → cycle 표본 제외, lead 표본에는 남는다") {
             stubBrowseAndAccess()
             val typeId = 11L
             val issueId = UUID.randomUUID()

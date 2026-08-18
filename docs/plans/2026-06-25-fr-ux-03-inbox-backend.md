@@ -25,7 +25,7 @@
 ## 도메인 정리
 
 - **BC**: notification (`backend/modules/notification`, `com.bts.notification` 패키지 직속 — favorite/dashboard처럼 하위 패키지 신설 불필요. Notification Aggregate 자체 확장)
-- **영향 엔티티**: `Notification` (기존 Aggregate). `archivedAt: Instant?` 필드 추가 + read/archive 상태 전이 메서드(`markRead`/`markUnread`/`archive`/`unarchive`, copy 기반).
+- **영향 엔티티**: `Notification` (기존 Aggregate). `archivedAt: Instant?` 필드 추가 + read/archive 상태 전환 메서드(`markRead`/`markUnread`/`archive`/`unarchive`, copy 기반).
 - **새 용어**: 보관함(Inbox), 읽음/안읽음(read/unread), 보관(archive), 그룹화(grouping). glossary 추가 후보 (Maxi 승인 후 머지 시 동기화).
 - **데이터 모델 (Maxi 확정 2026-06-25)**: 별도 `inbox_items` 테이블 폐기 → `notifications`에 `archived_at` 컬럼만 추가(V407). notification이 이미 수신자별 fanout row + `read_at` 보유. product D3 deviation → 같은 PR에서 §5.2 D3 동기화.
 - **기능 범위 (Maxi 확정 2026-06-25)**: SDD 9.2 고급 포함 — 코어(탭 조회·페이지네이션·미읽음 카운트·읽음/보관 변경) + 그룹화(issue_key) + 검색(텍스트/발신자/기간) + 일괄 읽음.
@@ -74,7 +74,7 @@ sanity check 정신으로 2개 gap을 Maxi 결정으로 해소.
 
 **검증**: `./gradlew :backend:modules:notification:test --tests "*NotificationsInboxSchemaMigrationTest" --tests "*NotificationRepositoryIntegrationTest"` + `:backend:modules:notification:generateJooq` 후 `:backend:modules:notification:compileKotlin`(CONCERN-5: init_codegen 미러 누락/오타를 컴파일로 즉시 표면화).
 
-### Task 2. Notification 도메인 확장 — archivedAt/actorUserId + 상태 전이
+### Task 2. Notification 도메인 확장 — archivedAt/actorUserId + 상태 전환
 
 **메타**.
 - agent: `backend-engineer`

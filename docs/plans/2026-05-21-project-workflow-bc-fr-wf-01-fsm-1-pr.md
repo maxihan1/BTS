@@ -12,7 +12,7 @@
 
 ### 사용자 원문
 
-> project-workflow BC FR-WF-01 FSM 워크플로우 완제품 구현 (상태/전이/조건/검증/후처리). §1 인프라 항목 (Gradle workflow 의존성, V001 워크플로우 마이그레이션, Testcontainers postgres) 흡수. 한 PR로 통째 완제품 진행.
+> project-workflow BC FR-WF-01 FSM 워크플로우 완제품 구현 (상태/전환/조건/검증/후처리). §1 인프라 항목 (Gradle workflow 의존성, V001 워크플로우 마이그레이션, Testcontainers postgres) 흡수. 한 PR로 통째 완제품 진행.
 
 ### Classify 결과
 
@@ -50,8 +50,8 @@
 | Workflow | FSM 컨테이너 (Aggregate Root) |
 | WorkflowState | 상태 + category (TODO / IN_PROGRESS / DONE) |
 | WorkflowTransition | from → to 매핑 |
-| WorkflowValidator | 전이 가능 검증 (전이 전 게이트) |
-| WorkflowPostAction | 전이 후 자동 처리 |
+| WorkflowValidator | 전환 가능 검증 (전환 전 게이트) |
+| WorkflowPostAction | 전환 후 자동 처리 |
 
 > FR-WF-02 영역의 `WorkflowScheme` / `WorkflowAssignment` 는 본 PR 범위 외. 후속 FR-WF-02 PR.
 
@@ -66,8 +66,8 @@
 ### 신규 용어 (glossary.md 갱신 후보)
 
 - "WorkflowValidator" — 신규 항목. "워크플로우 / 자동화" 섹션에 추가
-- "게이트" 항목 정정 — 현재 정의는 그대로 (전이에 걸린 조건의 일반 개념). 단, 구현 클래스는 `Validator` 명명
-- "Post-function" / "PostAction" 신규 항목 — "전이 후 자동 처리" 정의
+- "게이트" 항목 정정 — 현재 정의는 그대로 (전환에 걸린 조건의 일반 개념). 단, 구현 클래스는 `Validator` 명명
+- "Post-function" / "PostAction" 신규 항목 — "전환 후 자동 처리" 정의
 
 ### 신규 엔티티 (DB 마이그레이션 V001)
 
@@ -94,8 +94,8 @@
 | 의존 BC | 호출 방향 | 본 PR 처리 |
 |---|---|---|
 | identity-access | PermissionValidator → 권한 시스템 | `PermissionResolver` 인터페이스 stub. 실제 연결은 PR #8 (FR-AU-09) 머지 후 후속 PR |
-| issue-tracking | 이슈 상태 변경 → 전이 실행 | `WorkflowTransitionPort` 인터페이스 본 PR 노출. 실제 호출은 issue-tracking BC PR |
-| automation | 자동화 룰 → 전이 트리거 | 위와 같은 port 재사용. automation BC PR에서 호출 |
+| issue-tracking | 이슈 상태 변경 → 전환 실행 | `WorkflowTransitionPort` 인터페이스 본 PR 노출. 실제 호출은 issue-tracking BC PR |
+| automation | 자동화 룰 → 전환 트리거 | 위와 같은 port 재사용. automation BC PR에서 호출 |
 
 ### 모순 / 충돌 해소
 
@@ -121,12 +121,12 @@
 
 ### 핵심 시나리오 6건 (S1~S6)
 
-- S1. 표준 워크플로우로 이슈 전이 (happy path) — software-default 흐름
+- S1. 표준 워크플로우로 이슈 전환 (happy path) — software-default 흐름
 - S2. PermissionValidator 실패 → 403 + 이벤트 발행
 - S3. RequiredFieldValidator 실패 → 422 + 어떤 필드 누락 명시
 - S4. CustomExpression Validator — SpEL 평가 (sealed root 객체 IssueView/ActorView)
 - S5. PostAction — 필드 자동 채움 + watcher 알림 (호출자 BC outbox)
-- S6. 동시 전이 (낙관적 락) — 호출자가 version 충돌 처리
+- S6. 동시 전환 (낙관적 락) — 호출자가 version 충돌 처리
 
 ### 핵심 변경 — 도메인 단계 결정 적용
 
@@ -348,7 +348,7 @@
 **GREEN**.
 - 3 개 `data class` (모두 `val` immutable). `Workflow` companion factory `of` 가 invariant 검증. `StateCategory` enum (TODO/IN_PROGRESS/DONE).
 
-**REFACTOR**. KDoc 추가 + 첫 줄 한국어 헤더 (`// FSM 워크플로우 Aggregate Root` / `// 워크플로우 상태 + 카테고리` / `// 전이 정의 (from → to)`).
+**REFACTOR**. KDoc 추가 + 첫 줄 한국어 헤더 (`// FSM 워크플로우 Aggregate Root` / `// 워크플로우 상태 + 카테고리` / `// 전환 정의 (from → to)`).
 
 **검증**. `./gradlew :modules:project-workflow:test --tests WorkflowAggregateTest`.
 
@@ -862,7 +862,7 @@
 - depends-on: [30, 31, 33]
 
 **RED**.
-- 테스트 7건 (S1 happy / S2 permission fail / S3 required field fail / S4 SpEL pass / S5 PostAction emitEvents / S6 동시 전이 — 호출자 측 낙관락 시뮬, cache invalidate API 후 다음 조회 miss).
+- 테스트 7건 (S1 happy / S2 permission fail / S3 required field fail / S4 SpEL pass / S5 PostAction emitEvents / S6 동시 전환 — 호출자 측 낙관락 시뮬, cache invalidate API 후 다음 조회 miss).
 - 실패 예상 메시지. `Bean WorkflowEngine not loaded` (의존 task 미완 시).
 
 **GREEN**.
@@ -902,7 +902,7 @@
 - depends-on: [33]
 
 **RED**.
-- 테스트 3건 (Vitest + Testing Library). {workflow prop 주면 mermaid 코드 생성, 상태 4 + 전이 4 → 노드 4 + 엣지 4 렌더, 카테고리별 색상 클래스 적용}.
+- 테스트 3건 (Vitest + Testing Library). {workflow prop 주면 mermaid 코드 생성, 상태 4 + 전환 4 → 노드 4 + 엣지 4 렌더, 카테고리별 색상 클래스 적용}.
 - 실패 예상 메시지. `Cannot find module './WorkflowDiagram'`
 
 **GREEN**.
@@ -922,7 +922,7 @@
 - depends-on: [33, 37]
 
 **RED**.
-- 테스트 4건. {software-default / bug-tracking / simple / kanban-basic 각 1 happy path — UI 에서 워크플로우 다이어그램 표시 + REST API 전이 호출 mock → 200 응답 + 다이어그램 갱신}.
+- 테스트 4건. {software-default / bug-tracking / simple / kanban-basic 각 1 happy path — UI 에서 워크플로우 다이어그램 표시 + REST API 전환 호출 mock → 200 응답 + 다이어그램 갱신}.
 - 실패 예상 메시지. `Playwright spec not found`
 
 **GREEN**.

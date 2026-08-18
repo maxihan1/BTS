@@ -3,7 +3,7 @@
 package com.bts.workflow.domain.exception
 
 /**
- * [com.bts.workflow.domain.spi.WorkflowValidator] 가 전이를 거부할 때 던지는 예외.
+ * [com.bts.workflow.domain.spi.WorkflowValidator] 가 전환을 거부할 때 던지는 예외.
  *
  * @param validatorType 거부한 Validator 의 type 식별자. 예: "RequiredFieldValidator".
  * @param field 문제가 된 필드 이름. 특정 필드에 국한되지 않는 경우 null.

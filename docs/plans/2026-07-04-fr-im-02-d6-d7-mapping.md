@@ -148,7 +148,7 @@ classify: type=ui, agent=frontend-engineer.
 **RED**: `ImportMappingWizard.test.tsx`
 - 상태: `step ∈ {upload,fields,users,values,review,tracking,done}` + `file`·`jobId`·`fieldMappings`·`userOverrides`·`valueOverrides`.
 - upload: format/file → `analyzeImport` → jobId 저장 → CSV면 fields, JSON이면 users로 진입.
-- fields→users 전이 시 `collectUsers` 호출, **빈 목록이면 values로 자동 스킵**(G4). users→values 시 `collectValues`, 빈이면 review 스킵.
+- fields→users 전환 시 `collectUsers` 호출, **빈 목록이면 values로 자동 스킵**(G4). users→values 시 `collectValues`, 빈이면 review 스킵.
 - **stale 재검증**(G2): fields 변경 후 users/values 재진입 시 collect 재호출, override는 살아있는 키만 재적용.
 - review: 매핑 요약 + [검증만 실행](dryRun=true)/[가져오기 실행](dryRun=false) → `confirmMapping` → tracking.
 - tracking: `useImportJobPolling(jobId)` → COMPLETED/FAILED → done.
@@ -157,7 +157,7 @@ classify: type=ui, agent=frontend-engineer.
 
 **GREEN**: `ImportMappingWizard.tsx`
 - 단계 오케스트레이션 + collect mutation + 폴링 hook + 재적용 로직. 검토는 내부 서브뷰(요약+버튼).
-- **DR-1** async 단계 전이(analyze/collect/confirm) pending 라벨·disabled. **DR-4** 재수집 통지 인라인. **DR-5** dry-run 재적용 전이 상태("동일 매핑으로 실제 Import 준비 중..."). **DR-6** 빈 sourceFields→에러+업로드 복귀.
+- **DR-1** async 단계 전환(analyze/collect/confirm) pending 라벨·disabled. **DR-4** 재수집 통지 인라인. **DR-5** dry-run 재적용 전환 상태("동일 매핑으로 실제 Import 준비 중..."). **DR-6** 빈 sourceFields→에러+업로드 복귀.
 
 **REFACTOR**: 검토 서브뷰/스텝퍼 소컴포넌트 추출. 폴링 종단→done `useEffect`는 ImportForm 패턴 미러. **DR-7** stepper `aria-current="step"`·동적 스킵 단계 제외.
 
@@ -232,11 +232,11 @@ classify: type=ui, agent=frontend-engineer.
 
 **BLOCKER: 없음** (전부 UX 강화, 구현 차단 아님).
 
-- **DR-1 (High) async 로딩 상태.** analyze(대용량 업로드)·collectUsers/collectValues(원본 전량 스캔)·confirm은 수 초 소요 가능. 각 전이에 disabled + 진행 라벨("분석 중...", "작성자 수집 중...", "값 수집 중...", "확정 중...") 필수. 기존 `ImportForm`의 "접수 중..." 패턴 재사용. → **Task 3/4/5/6 GREEN에 반영**(버튼/단계 pending 상태).
+- **DR-1 (High) async 로딩 상태.** analyze(대용량 업로드)·collectUsers/collectValues(원본 전량 스캔)·confirm은 수 초 소요 가능. 각 전환에 disabled + 진행 라벨("분석 중...", "작성자 수집 중...", "값 수집 중...", "확정 중...") 필수. 기존 `ImportForm`의 "접수 중..." 패턴 재사용. → **Task 3/4/5/6 GREEN에 반영**(버튼/단계 pending 상태).
 - **DR-2 (High) 필드 매핑 표 시각 위계.** "스캔, 읽지 않기"(Krug). required(summary)=강조, 자동추천=`muted-foreground` "추천" 배지, 미매핑=warning 톤. 한눈에 손볼 행이 보이게. 별도 색 추가 전 `foreground/muted-foreground/primary`로 해결(DESIGN.md §1-4). → **Task 3 REFACTOR에 반영**.
 - **DR-3 (Med) 모드 토글 라벨 + 도움말.** 토글 하단 한 줄 도움말: "바로 가져오기 = canonical·JSON 첨부 / 매핑하며 가져오기 = 임의 CSV 컬럼·작성자·값 매핑". 사용자가 모드 오선택 방지(goodwill). 기본="바로 가져오기". → **Task 7에 반영**.
 - **DR-4 (Med) 하위 단계 재수집 통지(G2 UX).** 필드 매핑 변경으로 작성자/값을 재수집하면, 재진입 시 은근한 인라인 통지("필드 매핑이 바뀌어 작성자/값을 다시 수집했습니다"). 조용한 변경 서프라이즈 차단. → **Task 6에 반영**.
-- **DR-5 (Med) dry-run 재적용 피드백(G1 UX).** [이 매핑으로 실제 가져오기] 클릭 시 재-analyze+재적용 동안 빈 마법사 깜빡임이 아니라 전이 상태("동일 매핑으로 실제 Import 준비 중...") 표시. → **Task 6에 반영**.
+- **DR-5 (Med) dry-run 재적용 피드백(G1 UX).** [이 매핑으로 실제 가져오기] 클릭 시 재-analyze+재적용 동안 빈 마법사 깜빡임이 아니라 전환 상태("동일 매핑으로 실제 Import 준비 중...") 표시. → **Task 6에 반영**.
 - **DR-6 (Med) 빈/오형식 analyze.** analyze가 sourceFields 0(빈/오형식 CSV) 반환 시 빈 필드 매핑 표가 아니라 명확한 에러 + 업로드로 복귀. → **Task 6 + spec EC 추가**.
 - **DR-7 (Low) stepper 접근성.** 활성 단계 `aria-current="step"`, 완료/예정 시각 구분. 동적 스킵 단계는 stepper에서 제외. → **Task 6에 반영**.
 

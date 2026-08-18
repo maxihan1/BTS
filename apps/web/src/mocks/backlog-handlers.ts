@@ -72,7 +72,7 @@ export const LS_KEY_SPRINT_PATCH_FAIL = '__bts_e2e_sprint_patch_fail'
  * - `'true'` → 500. S5(수정은 됐는데 시작이 실패) 재현용.
  * - `'409'` → 409 `SPRINT_INVALID_TRANSITION`. E10(남이 이미 시작함) 재현용.
  *
- * 값이 없으면 정상 전이다 — 실패 토글이 스프린트를 영구히 못 쓰게 만들면 안 된다.
+ * 값이 없으면 정상 전환이다 — 실패 토글이 스프린트를 영구히 못 쓰게 만들면 안 된다.
  */
 export const LS_KEY_SPRINT_START_FAIL = '__bts_e2e_sprint_start_fail'
 
@@ -569,7 +569,7 @@ const patchSprintHandler = http.patch('/api/v1/sprints/:id', async ({ params, re
 const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) => {
   const sprintId = params['id'] as string
 
-  // 실패 토글 — 'true'는 500, '409'는 상태 전이 충돌 (S5 · E10)
+  // 실패 토글 — 'true'는 500, '409'는 상태 전환 충돌 (S5 · E10)
   const startFail = toggle(LS_KEY_SPRINT_START_FAIL)
   if (startFail === 'true') {
     return HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 })

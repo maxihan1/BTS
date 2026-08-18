@@ -51,7 +51,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - U-1. PATCH /{key} 정상 → 200 + IssueResponse
  * - U-2. PATCH /{key} version 충돌 → 409 + ProblemDetail (VERSION_CONFLICT)
  * - T-1. POST /{key}/transition 정상 → 200 + IssueResponse
- * - T-2. POST /{key}/transition 전이 거부 → 409 + ProblemDetail (TRANSITION_NOT_ALLOWED)
+ * - T-2. POST /{key}/transition 전환 거부 → 409 + ProblemDetail (TRANSITION_NOT_ALLOWED)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueControllerUpdateTest.TestMvcConfig::class])
@@ -198,10 +198,10 @@ class IssueControllerUpdateTest {
             .andExpect(jsonPath("$.data.currentStateKey").value("IN_PROGRESS"))
     }
 
-    // ── T-2: POST /{key}/transition 전이 거부 → 409 ProblemDetail ─────────────
+    // ── T-2: POST /{key}/transition 전환 거부 → 409 ProblemDetail ─────────────
 
     @Test
-    fun `POST transition 전이 거부이면 409 ProblemDetail TRANSITION_NOT_ALLOWED`() {
+    fun `POST transition 전환 거부이면 409 ProblemDetail TRANSITION_NOT_ALLOWED`() {
         every {
             issueApplicationService.transitionIssue(any(), IssueKey("ATLAS-1"), any())
         } throws

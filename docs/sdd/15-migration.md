@@ -64,7 +64,7 @@ CREATE TABLE issue_key_redirect (
 
 Jira 워크플로우 → Atlas YAML 변환기:
 
-- 상태/전이 자동 추출
+- 상태/전환 자동 추출
 - Validator/Post-function은 일부만 자동 (복잡한 것은 수동)
 - 변환 결과 검토 UI 제공
 

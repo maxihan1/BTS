@@ -1,4 +1,4 @@
-// 버전 CRUD REST 컨트롤러 — POST/GET/PATCH/DELETE + 상태 전이 (FR-VR-01 Task 7 + FR-VR-02)
+// 버전 CRUD REST 컨트롤러 — POST/GET/PATCH/DELETE + 상태 전환 (FR-VR-01 Task 7 + FR-VR-02)
 
 package com.bts.issue.version.web
 
@@ -43,7 +43,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * - GET  /{id}              — 단건 조회 → 200
  * - PATCH /{id}             — name/description 수정 → 200
  * - PATCH /{id}/dates       — 날짜 지정 / 해제 (2-state each) → 200
- * - PATCH /{id}/status      — 상태 전이 (UNRELEASED/RELEASED/ARCHIVED) → 200
+ * - PATCH /{id}/status      — 상태 전환 (UNRELEASED/RELEASED/ARCHIVED) → 200
  * - DELETE /{id}            — 소프트 삭제 → 204
  *
  * ### 트랜잭션 정책
@@ -57,7 +57,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  *
  * @param service 버전 CRUD Application Service.
  */
-@Tag(name = "Versions", description = "프로젝트 버전 CRUD 및 상태 전이 API (FR-VR-01/02)")
+@Tag(name = "Versions", description = "프로젝트 버전 CRUD 및 상태 전환 API (FR-VR-01/02)")
 @RestController
 @RequestMapping("/api/v1/projects/{projectIdOrKey}/versions")
 class VersionController(
@@ -245,26 +245,26 @@ class VersionController(
     }
 
     /**
-     * 버전의 상태를 전이한다.
+     * 버전의 상태를 전환한다.
      *
-     * 전이 그래프는 [VersionApplicationService.changeStatus] 가 도메인 Aggregate 를 통해 강제한다.
-     * 허용되지 않는 전이는 409 [VersionErrorCodes.VERSION_TRANSITION_NOT_ALLOWED] 로 응답한다.
+     * 전환 그래프는 [VersionApplicationService.changeStatus] 가 도메인 Aggregate 를 통해 강제한다.
+     * 허용되지 않는 전환은 409 [VersionErrorCodes.VERSION_TRANSITION_NOT_ALLOWED] 로 응답한다.
      *
      * @param projectIdOrKey path variable 프로젝트 UUID 또는 projectKey.
      * @param id path variable 버전 UUID.
-     * @param request 상태 전이 요청 바디. status 필수.
-     * @return 200 OK + 전이 후 [VersionResponse].
+     * @param request 상태 전환 요청 바디. status 필수.
+     * @return 200 OK + 전환 후 [VersionResponse].
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
-     * @throws com.bts.issue.version.domain.VersionTransitionNotAllowedException 불허 전이 → 409
+     * @throws com.bts.issue.version.domain.VersionTransitionNotAllowedException 불허 전환 → 409
      */
-    @Operation(operationId = "changeVersionStatus", summary = "버전 상태 전이")
+    @Operation(operationId = "changeVersionStatus", summary = "버전 상태 전환")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "성공"),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
         ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
         ApiResponse(responseCode = "404", description = "버전 또는 프로젝트 미존재", content = [Content()]),
-        ApiResponse(responseCode = "409", description = "허용되지 않는 전이", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "허용되지 않는 전환", content = [Content()]),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{id}/status")

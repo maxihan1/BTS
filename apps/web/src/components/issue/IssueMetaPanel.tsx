@@ -1,4 +1,4 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전환 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX, RefObject } from 'react'
 import { useState } from 'react'
 import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/issues'
@@ -32,10 +32,10 @@ import { IssueStateTransition } from '@/components/issue/meta/IssueStateTransiti
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 전이 컨트롤을 노출할 수 없는 사유.
+ * 전환 컨트롤을 노출할 수 없는 사유.
  * - 'no-workflow': GET /transitions 422 — 워크플로우 미설정 (스펙 E5 S5)
- * - 'terminal': 200 + 빈 배열 — 종료상태, 더 이상 전이 없음 (스펙 E5 S6)
- * - null: 전이 가용 (정상 흐름)
+ * - 'terminal': 200 + 빈 배열 — 종료상태, 더 이상 전환 없음 (스펙 E5 S6)
+ * - null: 전환 가용 (정상 흐름)
  */
 export type TransitionUnavailableReason = 'no-workflow' | 'terminal' | null
 
@@ -51,14 +51,14 @@ export interface IssueMetaPanelProps {
   onDeleteClick: () => void
   /** 클론 버튼 클릭 핸들러 */
   onCloneClick: () => void
-  /** 현재 상태에서 가용한 전이 목록 */
+  /** 현재 상태에서 가용한 전환 목록 */
   transitions: IssueTransition[]
-  /** 전이 실행 핸들러 — 선택한 toStateKey를 전달 */
+  /** 전환 실행 핸들러 — 선택한 toStateKey를 전달 */
   onTransition: (toStateKey: string) => void
-  /** 전이 진행 중 여부 — true 시 셀렉터 disabled (NFR3 중복클릭 방지) */
+  /** 전환 진행 중 여부 — true 시 셀렉터 disabled (NFR3 중복클릭 방지) */
   isTransitioning: boolean
   /**
-   * 전이 컨트롤을 노출할 수 없는 사유 (스펙 E5).
+   * 전환 컨트롤을 노출할 수 없는 사유 (스펙 E5).
    * 'no-workflow' → 미설정 안내, 'terminal' | null → 종료상태 안내.
    * transitions.length > 0 이면 이 값과 관계없이 셀렉터가 노출된다.
    */
@@ -160,7 +160,7 @@ export function isFieldDisabled(fieldKey: string, canEdit: boolean, noneditableF
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
- * - 상태: 읽기전용 배지 + IssueStateTransition 전이 셀렉터
+ * - 상태: 읽기전용 배지 + IssueStateTransition 전환 셀렉터
  * - 유형: IssueTypeIcon + typeName 표시 + 셀렉터(availableTypes 옵션)
  * - 셀렉터 현재값은 issue.typeId props 파생 (useState 초기화 금지 — stale key prop 회귀 방지)
  * - 우선순위: IssuePrioritySelect — 1~5 즉시 콜백
@@ -230,14 +230,14 @@ export function IssueMetaPanel({
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
 
   /**
-   * 전이 셀렉터 제어값 — 전이 시도 후(성공/실패 모두) placeholder로 리셋.
+   * 전환 셀렉터 제어값 — 전환 시도 후(성공/실패 모두) placeholder로 리셋.
    * 실패 후 같은 옵션 재선택 시 onChange 재발화를 보장한다 (C1 회귀 방지).
    */
   const [selectedTransition, setSelectedTransition] = useState('')
 
   function handleTransition(toStateKey: string) {
     onTransition(toStateKey)
-    // 전이 요청 직후 즉시 리셋 — 성공/실패 모두 placeholder로 복귀
+    // 전환 요청 직후 즉시 리셋 — 성공/실패 모두 placeholder로 복귀
     setSelectedTransition('')
   }
 
@@ -245,7 +245,7 @@ export function IssueMetaPanel({
     <aside className="flex flex-col gap-3">
       {/* 메타 패널 카드 */}
       <div className="border border-border rounded-xl overflow-hidden">
-        {/* 상태 — 읽기전용 배지 + 전이 셀렉터 (FR-IS-01) */}
+        {/* 상태 — 읽기전용 배지 + 전환 셀렉터 (FR-IS-01) */}
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.statLabel}</p>
           <span
@@ -265,7 +265,7 @@ export function IssueMetaPanel({
           />
         </div>
 
-        {/* 해결 결과 — DONE 전이 후 resolution이 있을 때만 표시 (FR-IS-07) */}
+        {/* 해결 결과 — DONE 전환 후 resolution이 있을 때만 표시 (FR-IS-07) */}
         {issue.resolution != null && (
           <div className="px-3.5 py-3 border-b border-border">
             <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.resolutionLabel}</p>

@@ -7,14 +7,14 @@
 
 ## Brief
 
-종료(DONE 카테고리) 상태로 전이할 때 Resolution(Fixed/Won't Fix/Duplicate 등)을 필수로
-선택하게 하고, Resolution 미설정 시 종료 전이를 거부한다.
+종료(DONE 카테고리) 상태로 전환할 때 Resolution(Fixed/Won't Fix/Duplicate 등)을 필수로
+선택하게 하고, Resolution 미설정 시 종료 전환을 거부한다.
 
 - 데이터 모델: resolutions 테이블 + issues.resolution_id
-- 백엔드: 종료 전이 가드(Resolution 미설정 시 reject)
-- 프론트: 종료 모달(전이 시 Resolution 선택)
+- 백엔드: 종료 전환 가드(Resolution 미설정 시 reject)
+- 프론트: 종료 모달(전환 시 Resolution 선택)
 - E2E: 종료 시 Resolution 필수 흐름
-- BC: issue-tracking. 선행 FR-IS-01(완료) + project-workflow 전이.
+- BC: issue-tracking. 선행 FR-IS-01(완료) + project-workflow 전환.
 - classify: type=migration, agent=db-engineer
 - 참조: docs/plan/product/issue-tracking.md §2.1.5
 
@@ -23,10 +23,10 @@
 - **BC**: issue-tracking (Resolution 데이터/엔티티). 단, "종료 시 필수" 강제는 project-workflow 게이트 프레임워크와 연관(아래 갈림길).
 - **새 엔티티**: `Resolution`(resolutions 테이블: id, key, name, description?, display_order, is_standard) + `Issue.resolutionId`(nullable FK 미적용, BC격리). 표준 세트(Fixed/Won't Fix/Duplicate/Cannot Reproduce/Done 등) 불변 + 커스텀 추가 — IssueType 표준 5종 패턴과 동형.
 - **새 용어**: glossary "해결 결과(Resolution)" 추가 완료. 상태(open/closed)와 별개 축.
-- **핵심 발견 (아키텍처 갈림길)**: project-workflow에 이미 **전이 게이트 검증 프레임워크**가 존재. `RequiredFieldValidator`(`com.bts.workflow.validator.RequiredFieldValidator`)의 docstring 예시가 **정확히 `{ "field": "resolution" }`** — resolution을 염두에 두고 설계됨. `StateCategory.DONE` enum도 존재. 전이 시 `TransitionContext.request.issueFields[field]`로 이슈 필드 검사.
-  - **옵션 A (워크플로우 게이트, Jira식)**: DONE 전이에 RequiredFieldValidator(field=resolution) 설정 + issue-tracking이 전이 시 issueFields에 resolution 전달. 기존 프레임워크 재사용, 워크플로우별 설정 가능(유연). 단 project-workflow YAML/seed 설정 변경 동반(2 BC 걸침 가능).
-  - **옵션 B (issue-tracking 하드코딩 가드)**: 전이 목표 상태 category==DONE && resolutionId==null → reject(issue-tracking 단독). 단순·단일 BC. 단 항상 강제(워크플로우별 opt-out 불가), 기존 검증 프레임워크 미활용.
-  - → **결정: 옵션 A 채택** (2026-06-03 Maxi). RequiredFieldValidator(config 예시가 정확히 `{ "field": "resolution" }`) 재사용 + Jira 방식. issue-tracking은 전이 시 `issueFields`에 resolution 전달(`IssueApplicationService` 전이/가용전이 경로, 현재 summary만 전달). 2 BC 걸침은 bts-plan에서 PR 분리 또는 learning 2026-05-22 선례 적용으로 처리.
+- **핵심 발견 (아키텍처 갈림길)**: project-workflow에 이미 **전환 게이트 검증 프레임워크**가 존재. `RequiredFieldValidator`(`com.bts.workflow.validator.RequiredFieldValidator`)의 docstring 예시가 **정확히 `{ "field": "resolution" }`** — resolution을 염두에 두고 설계됨. `StateCategory.DONE` enum도 존재. 전환 시 `TransitionContext.request.issueFields[field]`로 이슈 필드 검사.
+  - **옵션 A (워크플로우 게이트, Jira식)**: DONE 전환에 RequiredFieldValidator(field=resolution) 설정 + issue-tracking이 전환 시 issueFields에 resolution 전달. 기존 프레임워크 재사용, 워크플로우별 설정 가능(유연). 단 project-workflow YAML/seed 설정 변경 동반(2 BC 걸침 가능).
+  - **옵션 B (issue-tracking 하드코딩 가드)**: 전환 목표 상태 category==DONE && resolutionId==null → reject(issue-tracking 단독). 단순·단일 BC. 단 항상 강제(워크플로우별 opt-out 불가), 기존 검증 프레임워크 미활용.
+  - → **결정: 옵션 A 채택** (2026-06-03 Maxi). RequiredFieldValidator(config 예시가 정확히 `{ "field": "resolution" }`) 재사용 + Jira 방식. issue-tracking은 전환 시 `issueFields`에 resolution 전달(`IssueApplicationService` 전환/가용전환 경로, 현재 summary만 전달). 2 BC 걸침은 bts-plan에서 PR 분리 또는 learning 2026-05-22 선례 적용으로 처리.
 - **기존 결정**: 충돌 없음. StateCategory.DONE([[domain/project-workflow]]), 워크플로우 게이트/validator 프레임워크 활용. IssueType 표준 불변 패턴 재사용.
 - **관련 ADR**: docs/adr/2026-06-03-resolution-required-on-done-transition.md (옵션 A, 채택).
 - **grill-with-docs 스킵**: 백엔드 구조 직접 grep으로 엔티티·게이트 프레임워크·StateCategory 확인. 핵심 결정은 갈림길 AskUserQuestion으로.
@@ -36,20 +36,20 @@
 전체 스펙. [docs/specs/2026-06-03-fr-is-07-resolution-resolutions-e2e.md](../specs/2026-06-03-fr-is-07-resolution-resolutions-e2e.md)
 
 핵심 시나리오.
-- 종료(DONE) 전이 선택 시 Resolution 모달 → 선택 후 전이(미선택 시 거부, RequiredField validator).
-- 재오픈(DONE→비DONE) 시 resolution_id 자동 clear(모든 전이가 resolution_id=request.resolutionId 영속, 비DONE은 null).
+- 종료(DONE) 전환 선택 시 Resolution 모달 → 선택 후 전환(미선택 시 거부, RequiredField validator).
+- 재오픈(DONE→비DONE) 시 resolution_id 자동 clear(모든 전환이 resolution_id=request.resolutionId 영속, 비DONE은 null).
 - 표준 5종 seed(Fixed/Won't Fix/Duplicate/Cannot Reproduce/Done) + `GET /api/v1/resolutions`. 커스텀 CRUD는 후속(IssueType 선례).
 
 확정 결정.
-- 결정 1: 가용 전이 응답에 `toCategory` additive 노출(프론트가 DONE 판별 → 모달 트리거). "서버가 정답지" ADR 일관.
+- 결정 1: 가용 전환 응답에 `toCategory` additive 노출(프론트가 DONE 판별 → 모달 트리거). "서버가 정답지" ADR 일관.
 - 결정 2: 커스텀 Resolution CRUD는 이번 범위 제외(후속).
-- 결정 3 [Brainstorming BLOCKER]: **옵션 A — validator 단계(availability/execution) 구분 채택**. RequiredField=execution-only, availableTransitions는 availability만 평가(안 그러면 DONE 전이가 목록에서 사라져 이슈를 못 닫는 critical 버그). project-workflow SPI 변경 동반.
+- 결정 3 [Brainstorming BLOCKER]: **옵션 A — validator 단계(availability/execution) 구분 채택**. RequiredField=execution-only, availableTransitions는 availability만 평가(안 그러면 DONE 전환이 목록에서 사라져 이슈를 못 닫는 critical 버그). project-workflow SPI 변경 동반.
 - 결정 4: 재오픈 clear는 카테고리 불필요(resolutionId 영속만으로 충족).
 - 마이그레이션 = **V010**(V009는 components 선점). init_codegen 미러 필수.
 
 ## Brainstorming Check
 
-✅ 통과 (1회 iteration). Critical gap 1건 발견·해소 — availableTransitions가 RequiredField로 DONE 전이를 숨겨 이슈를 못 닫는 버그(결정 3, 옵션 A로 해결). 부수 발견 — 재오픈 clear는 카테고리 불필요(결정 4), 마이그레이션 V009→V010 정정.
+✅ 통과 (1회 iteration). Critical gap 1건 발견·해소 — availableTransitions가 RequiredField로 DONE 전환을 숨겨 이슈를 못 닫는 버그(결정 3, 옵션 A로 해결). 부수 발견 — 재오픈 clear는 카테고리 불필요(결정 4), 마이그레이션 V009→V010 정정.
 
 ## 재개 갱신 (2026-06-03, FR-WF-03 PR #66 머지 후)
 
@@ -57,7 +57,7 @@
 
 **이전 BLOCKER 해소 (코드 재검증 완료).**
 - **B-1 해소.** `DefaultWorkflowValidatorFactory`(@Component) + `DefaultWorkflowDefinitionRepository`(@Component) + `WorkflowEngineConfig` production 결선 완료. 옵션 A "프레임워크 재사용" 전제 복구.
-- **B-2 해소.** `YamlSeedService`가 transitions의 `validators`/`postActions`를 시드(`ValidatorYamlDto`), 부팅 시 type dry-run 검증(미지원 type fail-fast). `applyIfChanged`/`differsInValidators`가 전이별 validator type 목록 비교 → DONE 전이에 validator 추가 시 변경 감지·재시드. (메모리 "isDirty config 미감지"는 *동일 type+config만 변경* 경우 — 우리는 type 추가라 감지됨)
+- **B-2 해소.** `YamlSeedService`가 transitions의 `validators`/`postActions`를 시드(`ValidatorYamlDto`), 부팅 시 type dry-run 검증(미지원 type fail-fast). `applyIfChanged`/`differsInValidators`가 전환별 validator type 목록 비교 → DONE 전환에 validator 추가 시 변경 감지·재시드. (메모리 "isDirty config 미감지"는 *동일 type+config만 변경* 경우 — 우리는 type 추가라 감지됨)
 - **B-3 해소.** B-1+B-2 귀결로 자동 해소.
 
 **이미 구현된 task (제거).**
@@ -66,8 +66,8 @@
 
 **전제 변경 (현 코드 반영).**
 - **B1 마이그레이션: V010 → V011.** V010은 FR-VR-01(versions, PR #67)이 선점. resolutions는 V011.
-- **B7: 마이그레이션(V203) 폐기 → production 워크플로우 YAML 편집.** `src/main/resources/workflows/*.yaml`의 DONE 카테고리 대상 전이에 `validators: [{type: RequiredField, config: {field: resolution}}]` 추가. YamlSeedService가 부팅 시 시드(변경 감지·재시드). seed INSERT 마이그레이션 불필요.
-- **B6 영속 경로(B-4 해소안): raw jOOQ `IssueRepository.applyTransition`(line 209) 확장.** 전이 영속은 *원래부터* 도메인 우회(낙관락 raw UPDATE)가 정본 — resolution 필수 불변식은 Issue Aggregate가 아니라 워크플로우 RequiredField validator(`plan()` 호출 시점, EXECUTION phase)가 강제하므로 patch-merge-domain-bypass 위배 아님. applyTransition에 `resolutionId: UUID?` 파라미터 추가해 같은 UPDATE에서 `ISSUES.RESOLUTION_ID` set(null이면 clear).
+- **B7: 마이그레이션(V203) 폐기 → production 워크플로우 YAML 편집.** `src/main/resources/workflows/*.yaml`의 DONE 카테고리 대상 전환에 `validators: [{type: RequiredField, config: {field: resolution}}]` 추가. YamlSeedService가 부팅 시 시드(변경 감지·재시드). seed INSERT 마이그레이션 불필요.
+- **B6 영속 경로(B-4 해소안): raw jOOQ `IssueRepository.applyTransition`(line 209) 확장.** 전환 영속은 *원래부터* 도메인 우회(낙관락 raw UPDATE)가 정본 — resolution 필수 불변식은 Issue Aggregate가 아니라 워크플로우 RequiredField validator(`plan()` 호출 시점, EXECUTION phase)가 강제하므로 patch-merge-domain-bypass 위배 아님. applyTransition에 `resolutionId: UUID?` 파라미터 추가해 같은 UPDATE에서 `ISSUES.RESOLUTION_ID` set(null이면 clear).
 - **C-3 신규 task (B11): IssueResponse.resolution 노출.** 프론트(B9)가 표시할 resolution을 backend 읽기 모델(`findByKeyWithType`/IssueResponse)에 추가. 누락 시 frontend-zod-backend-dto-contract-gap 재발.
 
 **게이트1에서 Maxi 확인 필요한 설계 갈림길** — 본문 "재개 설계 결정" 참조.
@@ -78,8 +78,8 @@
 > 원래 2-PR(PR-A 인프라 → PR-B 기능) 계획이었으나, PR-A의 핵심이던 validator phase 프레임워크(A2/A3)가 FR-WF-03 PR #66에 흡수되어 PR-A가 toCategory 추가(A1·A4)로 축소됨. toCategory는 B9/B14 전엔 미사용이라 단독 머지 가치 없고, 이 기능은 본래 shared-kernel·project-workflow·issue-tracking·frontend를 걸쳐 분리해도 한 PR=한 BC 달성 불가. → **draft PR #62 단일 PR로 A1·A4·B1~B14 전부 진행.** 아래 PR-A/PR-B 구분은 wave 순서(같은 브랜치 내 의존)로만 유지, depends-on의 A*는 같은 브랜치 선행 의미.
 >
 > **(원안 — 이력 보존) 2 PR, 2026-06-03 Maxi 결정.**
-> - **PR-A** (project-workflow + shared-kernel): validator 단계(availability/execution) 구분 + 가용전이 toCategory 노출. 순수 인프라, 동작 변화 없음, 독립 머지. Task A1~A4.
-> - **PR-B** (issue-tracking + project-workflow DONE seed + frontend + E2E): Resolution 데이터/전이/모달/E2E + DONE 필수 seed. 기능 원자적 활성화, PR-A 의존. Task B1~B10.
+> - **PR-A** (project-workflow + shared-kernel): validator 단계(availability/execution) 구분 + 가용전환 toCategory 노출. 순수 인프라, 동작 변화 없음, 독립 머지. Task A1~A4.
+> - **PR-B** (issue-tracking + project-workflow DONE seed + frontend + E2E): Resolution 데이터/전환/모달/E2E + DONE 필수 seed. 기능 원자적 활성화, PR-A 의존. Task B1~B10.
 > - 회귀 윈도우 방지: DONE 필수 seed(B7)는 issue-tracking이 resolution을 보내는 변경(B6)과 같은 PR-B에 묶임.
 > - depends-on의 `A*`는 PR-A 머지 선행을 의미(cross-PR). PR-B 내부 의존은 `B*`.
 
@@ -126,7 +126,7 @@
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailabilityPhaseTest.kt`]
 - depends-on: [A2]
 
-**RED**: `WorkflowEngineAvailabilityPhaseTest` — RequiredField(resolution) validator가 걸린 DONE 전이가, issueFields에 resolution 없어도 `availableTransitions` 결과에 **포함**됨. 동시에 `plan`(실행)은 resolution 없으면 여전히 `WorkflowValidatorFailureException`. 현재는 availableTransitions가 제거 → 테스트 실패.
+**RED**: `WorkflowEngineAvailabilityPhaseTest` — RequiredField(resolution) validator가 걸린 DONE 전환이, issueFields에 resolution 없어도 `availableTransitions` 결과에 **포함**됨. 동시에 `plan`(실행)은 resolution 없으면 여전히 `WorkflowValidatorFailureException`. 현재는 availableTransitions가 제거 → 테스트 실패.
 
 **GREEN**: `WorkflowEngine.availableTransitions`의 validator 루프(line 303~)에서 `validator.phase == AVAILABILITY`인 것만 평가. `plan`(line 241~)은 전부 평가(변경 없음).
 
@@ -141,7 +141,7 @@
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineToCategoryTest.kt`]
 - depends-on: [A1, A3]
 
-**RED**: `WorkflowEngineToCategoryTest` — `availableTransitions` 결과의 각 `AvailableTransitionView.toCategory`가 목표 상태(toStateKey)의 StateCategory와 일치(DONE 전이는 "DONE"). 실패(현재 미설정).
+**RED**: `WorkflowEngineToCategoryTest` — `availableTransitions` 결과의 각 `AvailableTransitionView.toCategory`가 목표 상태(toStateKey)의 StateCategory와 일치(DONE 전환은 "DONE"). 실패(현재 미설정).
 
 **GREEN**: WorkflowEngine이 transition.toStateKey로 workflow.states에서 목표 상태를 찾아 그 category를 AvailableTransitionView.toCategory에 매핑.
 
@@ -213,7 +213,7 @@
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*ResolutionControllerTest"` + 모듈 전체 test(부팅 확인).
 
-### Task B5. 전이 요청 DTO에 resolutionId 추가 (transport + application)
+### Task B5. 전환 요청 DTO에 resolutionId 추가 (transport + application)
 
 **메타**.
 - agent: `backend-engineer`
@@ -222,9 +222,9 @@
 
 **RED**: `TransitionIssueRequestTest` — transport DTO가 `resolutionId: UUID?`(nullable) 보유 + application DTO로 매핑. 실패.
 
-**GREEN**: 두 DTO에 `resolutionId: UUID?` 추가(nullable, 비DONE 전이는 null). transport→application 매핑 갱신.
+**GREEN**: 두 DTO에 `resolutionId: UUID?` 추가(nullable, 비DONE 전환은 null). transport→application 매핑 갱신.
 
-**REFACTOR**: KDoc — resolutionId 의미(DONE 전이 시 필수, 비DONE은 무시/clear).
+**REFACTOR**: KDoc — resolutionId 의미(DONE 전환 시 필수, 비DONE은 무시/clear).
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*TransitionIssueRequestTest"`
 
@@ -235,26 +235,26 @@
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/domain/Issue.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/*Repository*.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueTransitionResolutionIntegrationTest.kt`]
 - depends-on: [B1, B5]
 
-**RED**: Testcontainers 통합 `IssueTransitionResolutionIntegrationTest` — (1) DONE 전이 + resolutionId → resolution_id 영속, (2) DONE 전이 + resolutionId 누락 → **409 TRANSITION_NOT_ALLOWED**(validator reject, B7 seed 전제 — `WorkflowValidatorFailureException`→`IssueTransitionNotAllowedException`→409, 코드 확인: IssueExceptionHandler.kt:37/224. 422 아님), (3) DONE→비DONE 재전이 → resolution_id null, **(4) [Q3] 존재하지 않는 resolutionId → 거부(권고 404 RESOLUTION_NOT_FOUND, 영속 전 검증)**. 단위 mock 아닌 통합으로(메모리 advisory-lock/transaction self-invocation류 — 통합만 표면화).
+**RED**: Testcontainers 통합 `IssueTransitionResolutionIntegrationTest` — (1) DONE 전환 + resolutionId → resolution_id 영속, (2) DONE 전환 + resolutionId 누락 → **409 TRANSITION_NOT_ALLOWED**(validator reject, B7 seed 전제 — `WorkflowValidatorFailureException`→`IssueTransitionNotAllowedException`→409, 코드 확인: IssueExceptionHandler.kt:37/224. 422 아님), (3) DONE→비DONE 재전환 → resolution_id null, **(4) [Q3] 존재하지 않는 resolutionId → 거부(권고 404 RESOLUTION_NOT_FOUND, 영속 전 검증)**. 단위 mock 아닌 통합으로(메모리 advisory-lock/transaction self-invocation류 — 통합만 표면화).
 
-**GREEN**: `IssueApplicationService.transitionIssue`(현 line 354)와 `availableTransitions`(현 line 303) `issueFields`에 `"resolution" to request.resolutionId?.toString()` 추가 — 이게 EXECUTION phase RequiredField validator의 검사 입력(`plan()` 호출 시점). **[Q3] resolutionId가 non-null이면 plan() 전에 존재성 검증(B3 findById류) → 없으면 거부.** 전이 성공 시 `resolution_id = request.resolutionId` 영속: **`IssueRepository.applyTransition`(현 line 203)에 `resolutionId: UUID?` 파라미터 추가해 같은 낙관락 UPDATE에서 `ISSUES.RESOLUTION_ID` set**(null이면 clear). **B-4 해소 근거**: 전이 영속은 원래부터 raw jOOQ(도메인 우회)가 정본 설계 — resolution 필수 불변식은 Issue Aggregate가 아니라 워크플로우 RequiredField validator가 `plan()`에서 강제하므로 patch-merge-domain-bypass(도메인 검증 우회) 위배 아님. applyTransition은 current_state_key/version/resolution_id를 한 트랜잭션·한 UPDATE로 원자 영속.
+**GREEN**: `IssueApplicationService.transitionIssue`(현 line 354)와 `availableTransitions`(현 line 303) `issueFields`에 `"resolution" to request.resolutionId?.toString()` 추가 — 이게 EXECUTION phase RequiredField validator의 검사 입력(`plan()` 호출 시점). **[Q3] resolutionId가 non-null이면 plan() 전에 존재성 검증(B3 findById류) → 없으면 거부.** 전환 성공 시 `resolution_id = request.resolutionId` 영속: **`IssueRepository.applyTransition`(현 line 203)에 `resolutionId: UUID?` 파라미터 추가해 같은 낙관락 UPDATE에서 `ISSUES.RESOLUTION_ID` set**(null이면 clear). **B-4 해소 근거**: 전환 영속은 원래부터 raw jOOQ(도메인 우회)가 정본 설계 — resolution 필수 불변식은 Issue Aggregate가 아니라 워크플로우 RequiredField validator가 `plan()`에서 강제하므로 patch-merge-domain-bypass(도메인 검증 우회) 위배 아님. applyTransition은 current_state_key/version/resolution_id를 한 트랜잭션·한 UPDATE로 원자 영속.
 
 **REFACTOR**: resolution 전달/영속 로직 명료화, KDoc 흐름 갱신.
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueTransitionResolutionIntegrationTest"` + 모듈 전체 test.
 
-### Task B7. DONE 전이에 RequiredField(resolution) seed — production 워크플로우 YAML 편집 (project-workflow)
+### Task B7. DONE 전환에 RequiredField(resolution) seed — production 워크플로우 YAML 편집 (project-workflow)
 
-> **방식 변경: 마이그레이션(V203) 폐기 → YAML 편집.** FR-WF-03이 YamlSeedService에 validators 시드를 결선했으므로, production YAML의 DONE 대상 전이에 validator 블록을 추가하면 부팅 시 시드된다(`applyIfChanged`/`differsInValidators`가 변경 감지·재시드). 별도 seed 마이그레이션 불필요.
+> **방식 변경: 마이그레이션(V203) 폐기 → YAML 편집.** FR-WF-03이 YamlSeedService에 validators 시드를 결선했으므로, production YAML의 DONE 대상 전환에 validator 블록을 추가하면 부팅 시 시드된다(`applyIfChanged`/`differsInValidators`가 변경 감지·재시드). 별도 seed 마이그레이션 불필요.
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/project-workflow/src/main/resources/workflows/software-default.yaml`, `.../bug-tracking.yaml`, `.../simple.yaml`, `.../kanban-basic.yaml`(각 DONE 대상 전이 존재 시), `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/DoneResolutionValidatorSeedTest.kt`]
+- files: [`backend/modules/project-workflow/src/main/resources/workflows/software-default.yaml`, `.../bug-tracking.yaml`, `.../simple.yaml`, `.../kanban-basic.yaml`(각 DONE 대상 전환 존재 시), `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/DoneResolutionValidatorSeedTest.kt`]
 - depends-on: [B6]
 
-**RED**: Testcontainers — 표준 워크플로우 시드 후, DONE 카테고리 **대상**(toState category==DONE) 전이에 `RequiredField`(config `{field: resolution}`) validator가 DB에 존재. `plan()`(실행) 시 resolution 없으면 `WorkflowValidatorFailureException`, `availableTransitions`엔 노출(A3 — 이미 구현). 실패(YAML 미편집).
+**RED**: Testcontainers — 표준 워크플로우 시드 후, DONE 카테고리 **대상**(toState category==DONE) 전환에 `RequiredField`(config `{field: resolution}`) validator가 DB에 존재. `plan()`(실행) 시 resolution 없으면 `WorkflowValidatorFailureException`, `availableTransitions`엔 노출(A3 — 이미 구현). 실패(YAML 미편집).
 
-**GREEN**: 각 production YAML에서 **toState가 DONE 카테고리인 전이 전부**에 `validators: [{type: RequiredField, config: {field: resolution}}]` 추가([Q1/Q2 확정=권고A]). 대상 = software-default(`in_review→done`, `done→closed`, `open→closed`), bug-tracking(`in_progress→resolved`, `resolved→closed`), simple(`doing→done`), kanban-basic(`in_progress→done`). type 토큰은 정확히 `RequiredField`(DefaultWorkflowValidatorFactory.kt:59 확인됨). 기존 validators 있는 전이는 배열에 append.
+**GREEN**: 각 production YAML에서 **toState가 DONE 카테고리인 전환 전부**에 `validators: [{type: RequiredField, config: {field: resolution}}]` 추가([Q1/Q2 확정=권고A]). 대상 = software-default(`in_review→done`, `done→closed`, `open→closed`), bug-tracking(`in_progress→resolved`, `resolved→closed`), simple(`doing→done`), kanban-basic(`in_progress→done`). type 토큰은 정확히 `RequiredField`(DefaultWorkflowValidatorFactory.kt:59 확인됨). 기존 validators 있는 전환은 배열에 append.
 
 **REFACTOR**: YAML 주석 — FR-IS-07 resolution 강제 근거(ADR 링크).
 
@@ -275,7 +275,7 @@
 
 **검증**: `pnpm --filter @bts/web test resolutions` + `pnpm --filter @bts/web typecheck`
 
-### Task B9. 프론트 — 종료 모달 (toCategory===DONE 트리거 + resolution 드롭다운 + 전이 resolutionId)
+### Task B9. 프론트 — 종료 모달 (toCategory===DONE 트리거 + resolution 드롭다운 + 전환 resolutionId)
 
 **메타**.
 - agent: `frontend-engineer`
@@ -283,9 +283,9 @@
 - depends-on: [B8, B11, B12]
 - (toCategory는 shared-kernel(A1)이 아니라 REST TransitionItem(B12)에서 읽음 — 프론트는 REST만 소비)
 
-**RED**: `ResolutionModal.test.tsx` — 전이 셀렉터에서 `toCategory === 'DONE'`인 전이 선택 시 모달 표시, resolution 미선택 시 확인 비활성, 선택 후 transitionMutation이 `{toStatusKey, expectedVersion, resolutionId}` 전송. 비DONE 전이는 모달 없이 즉시 전이. 실패.
+**RED**: `ResolutionModal.test.tsx` — 전환 셀렉터에서 `toCategory === 'DONE'`인 전환 선택 시 모달 표시, resolution 미선택 시 확인 비활성, 선택 후 transitionMutation이 `{toStatusKey, expectedVersion, resolutionId}` 전송. 비DONE 전환은 모달 없이 즉시 전환. 실패.
 
-**GREEN**: ResolutionModal 컴포넌트 + issues.$key.tsx 전이 흐름 연결. useIssueTransitions의 TransitionItem에 toCategory 반영(A1 응답). transitionIssue api에 resolutionId 추가.
+**GREEN**: ResolutionModal 컴포넌트 + issues.$key.tsx 전환 흐름 연결. useIssueTransitions의 TransitionItem에 toCategory 반영(A1 응답). transitionIssue api에 resolutionId 추가.
 
 **REFACTOR**: 모달 접근성(aria), 셀렉터 strict mode 회피(메모리 playwright-getbyrole-exact / ui-pr-defer-e2e).
 
@@ -298,7 +298,7 @@
 - files: [`apps/web/e2e/issue-resolution.spec.ts`, `apps/web/src/mocks/handlers/resolution-handlers.ts`, `apps/web/src/mocks/handlers/issue-transition-handlers.ts`, `apps/web/src/mocks/handlers/bulk-operation-handlers.ts`]
 - depends-on: [B9, B14]
 
-**RED**: Playwright `issue-resolution.spec.ts` — S1(단건 종료 전이→모달→resolution 선택→성공), S2(미선택 시 확인 비활성/거부), S4(재오픈 시 resolution clear), **S5(일괄 종료 전이→일괄 resolution 드롭다운→선택→전체 성공)**. MSW 핸들러 stateful(메모리 msw-mutation-stateful-refetch — PATCH 결과 영속). 실패.
+**RED**: Playwright `issue-resolution.spec.ts` — S1(단건 종료 전환→모달→resolution 선택→성공), S2(미선택 시 확인 비활성/거부), S4(재오픈 시 resolution clear), **S5(일괄 종료 전환→일괄 resolution 드롭다운→선택→전체 성공)**. MSW 핸들러 stateful(메모리 msw-mutation-stateful-refetch — PATCH 결과 영속). 실패.
 
 **GREEN**: E2E + MSW stateful 핸들러. localStorage 토글로 시나리오 분기(메모리 e2e-msw-scenario-toggle). serviceWorker block 금지(메모리 e2e-msw-serviceworker-block).
 
@@ -323,7 +323,7 @@
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueResponseResolutionTest"` + 모듈 전체 test.
 
-### ── 일괄 전이 연동 (Q4 — 2026-06-03 추가) ──
+### ── 일괄 전환 연동 (Q4 — 2026-06-03 추가) ──
 
 ### Task B12. TransitionItem(REST)에 toCategory 노출 — 단건/일괄 공유 (issue-tracking)
 
@@ -334,7 +334,7 @@
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTransitionsTest.kt`]
 - depends-on: [A1, A4]
 
-**RED**: 단건 `GET /api/v1/issues/{key}/transitions` 응답 TransitionItem에 `toCategory` 포함(DONE 전이는 "DONE"). 실패(필드 없음).
+**RED**: 단건 `GET /api/v1/issues/{key}/transitions` 응답 TransitionItem에 `toCategory` 포함(DONE 전환은 "DONE"). 실패(필드 없음).
 
 **GREEN**: `TransitionItem`에 `val toCategory: String?` 추가 + `TransitionItem.from`이 `view.toCategory` 매핑. 일괄 응답은 같은 TransitionItem 재사용이라 자동 전파.
 
@@ -342,14 +342,14 @@
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueControllerTransitionsTest"` + bulk available 테스트 회귀 0.
 
-### Task B13. 일괄 전이 payload + Applier에 resolutionId 전달 (issue-tracking bulk)
+### Task B13. 일괄 전환 payload + Applier에 resolutionId 전달 (issue-tracking bulk)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkUpdateRequest.kt`(BulkTransitionPayload), `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/*Request*.kt`(일괄 요청 DTO), `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkTransitionResolutionTest.kt`]
 - depends-on: [B5, B6]
 
-**RED**: Testcontainers/통합 — 일괄 전이 payload에 `resolutionId: UUID?` 보유, `BulkItemApplier`가 `transitionIssue`에 resolutionId 전달. DONE 대상 일괄 + resolutionId → 각 이슈 resolution_id 영속. DONE 대상 일괄 + resolutionId 누락 → 각 항목 실패(409, 기존 부분실패 기록 경로). 실패.
+**RED**: Testcontainers/통합 — 일괄 전환 payload에 `resolutionId: UUID?` 보유, `BulkItemApplier`가 `transitionIssue`에 resolutionId 전달. DONE 대상 일괄 + resolutionId → 각 이슈 resolution_id 영속. DONE 대상 일괄 + resolutionId 누락 → 각 항목 실패(409, 기존 부분실패 기록 경로). 실패.
 
 **GREEN**: `BulkTransitionPayload`에 `resolutionId: UUID?` 추가 + 웹 요청 DTO 매핑 + `BulkItemApplier.kt:79` `TransitionIssueRequest(toStateKey, expectedVersion, resolutionId = payload.resolutionId)`. 전체 일괄에 동일 resolution 적용.
 
@@ -357,16 +357,16 @@
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*BulkTransitionResolutionTest"` + bulk 기존 테스트 회귀 0.
 
-### Task B14. 프론트 일괄 전이 UI — 대상 DONE 시 resolution 드롭다운 (frontend bulk)
+### Task B14. 프론트 일괄 전환 UI — 대상 DONE 시 resolution 드롭다운 (frontend bulk)
 
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/issue/BulkTransitionDialog.tsx`(또는 기존 일괄 액션 Dialog), `apps/web/src/api/bulk.ts`(또는 일괄 api), `apps/web/src/mocks/handlers/bulk-operation-handlers.ts`, `apps/web/src/components/issue/__tests__/*BulkTransition*.test.tsx`]
 - depends-on: [B8, B12, B13]
 
-**RED**: 일괄 전이 Dialog에서 선택 전이의 `toCategory === 'DONE'`이면 resolution 드롭다운 표시 + 미선택 시 확인 비활성, 선택 시 일괄 payload에 resolutionId 포함. 비DONE은 드롭다운 없음. 실패.
+**RED**: 일괄 전환 Dialog에서 선택 전환의 `toCategory === 'DONE'`이면 resolution 드롭다운 표시 + 미선택 시 확인 비활성, 선택 시 일괄 payload에 resolutionId 포함. 비DONE은 드롭다운 없음. 실패.
 
-**GREEN**: 기존 일괄 전이 Dialog(FR-IS-05 PR #58)에 resolution 드롭다운 조건부 추가 + useResolutions(B8) 재사용 + 일괄 payload resolutionId. MSW bulk 핸들러는 resolutionId 수용.
+**GREEN**: 기존 일괄 전환 Dialog(FR-IS-05 PR #58)에 resolution 드롭다운 조건부 추가 + useResolutions(B8) 재사용 + 일괄 payload resolutionId. MSW bulk 핸들러는 resolutionId 수용.
 
 **REFACTOR**: 단건 모달(B9)과 resolution 드롭다운 컴포넌트 공유 검토(과도 추상화 금지).
 
@@ -375,17 +375,17 @@
 ## 재개 설계 결정 (게이트1 — 2026-06-03 Maxi 확정 ✅)
 
 > **확정 결과.**
-> - **Q1/Q2 → 권고(A) 채택.** DONE 카테고리 대상 전이 *전부*에 RequiredField(resolution). `done→closed`·`resolved→closed`(DONE→DONE) 포함. 프론트는 toCategory==DONE 전이 시 모달, **기존 resolution이 있으면 pre-fill**(B9 — 기능 정확성 요건: RequiredField가 값 존재만 검사하므로 재전송 필요).
+> - **Q1/Q2 → 권고(A) 채택.** DONE 카테고리 대상 전환 *전부*에 RequiredField(resolution). `done→closed`·`resolved→closed`(DONE→DONE) 포함. 프론트는 toCategory==DONE 전환 시 모달, **기존 resolution이 있으면 pre-fill**(B9 — 기능 정확성 요건: RequiredField가 값 존재만 검사하므로 재전송 필요).
 > - **Q3 → 권고(A) 채택.** B6에서 영속 전 resolutionId 존재성 검증(B3 repository 재사용) → 없으면 거부. 에러코드는 기존 컨벤션 정합(권고 404 RESOLUTION_NOT_FOUND, 구현 시 IssueErrorCodes 확인). E2 테스트로 표면화.
-> - **Q4 → 일괄 전이도 포함(2026-06-03 Maxi).** 일괄 전이(FR-IS-05)는 `BulkItemApplier`가 단건과 동일한 `transitionIssue`→`plan()` 경로를 타므로, B7 RequiredField가 일괄 DONE 전이도 막는다(회귀). 일괄 전이 payload에 resolutionId 추가 + 일괄 UI가 대상=DONE이면 resolution 드롭다운(전체 일괄 적용). toCategory는 단건/일괄 공유 DTO `TransitionItem`로 자동 전파(아래 B12). 신규 task B12~B14 + E2E 확장.
+> - **Q4 → 일괄 전환도 포함(2026-06-03 Maxi).** 일괄 전환(FR-IS-05)는 `BulkItemApplier`가 단건과 동일한 `transitionIssue`→`plan()` 경로를 타므로, B7 RequiredField가 일괄 DONE 전환도 막는다(회귀). 일괄 전환 payload에 resolutionId 추가 + 일괄 UI가 대상=DONE이면 resolution 드롭다운(전체 일괄 적용). toCategory는 단건/일괄 공유 DTO `TransitionItem`로 자동 전파(아래 B12). 신규 task B12~B14 + E2E 확장.
 
 > **코드 근거(재검증).** AvailableTransitionView 생성 production 1곳(WorkflowEngine.kt:212), 테스트 7파일 — non-null 필드 추가 시 컴파일 영향 → **A1은 `toCategory: String?` nullable additive**(테스트 생성지점 무변경, 실데이터는 A4가 항상 채움). 단건/일괄 REST는 둘 다 `TransitionItem.from(AvailableTransitionView)` 경유(AvailableTransitionsResponse.kt:55) → B12 한 곳에서 toCategory 매핑하면 양쪽 노출. 일괄 실행=`BulkItemApplier.kt:79` `transitionIssue` 직호출 → B13에서 resolutionId 전달.
 
 옵션 A(워크플로우 게이트) 방향은 확정·승인됨. 재개하며 코드 정합 과정에서 드러난 **좁은 설계 갈림길 2건**을 게이트1에서 확정했다(위 확정 결과).
 
-- **Q1. resolution 필수를 거는 전이 범위.** "DONE 카테고리 상태로 들어가는 모든 전이"가 자연스러운 해석. software-default 기준 = `in_review→done`(완료), `open→closed`(취소), `done→closed`(이미 DONE→DONE). RequiredField는 전이별 무조건 게이트라 fromCategory 조건 분기 불가.
-  - **권고(A)**: DONE 대상 전이 전부에 RequiredField. `done→closed`는 프론트 모달이 기존 resolution을 pre-fill해 재확인. 단순·일관.
-  - 대안(B): 비DONE→DONE 진입 전이에만(첫 해결 시점). `done→closed`는 resolution 미요구(기존 resolution_id 유지). RequiredField로는 표현 불가 → done→closed 전이에 validator 미부착으로 근사하나, 프론트는 toCategory==DONE이라 여전히 모달 띄움 → 불일치 소지.
+- **Q1. resolution 필수를 거는 전환 범위.** "DONE 카테고리 상태로 들어가는 모든 전환"가 자연스러운 해석. software-default 기준 = `in_review→done`(완료), `open→closed`(취소), `done→closed`(이미 DONE→DONE). RequiredField는 전환별 무조건 게이트라 fromCategory 조건 분기 불가.
+  - **권고(A)**: DONE 대상 전환 전부에 RequiredField. `done→closed`는 프론트 모달이 기존 resolution을 pre-fill해 재확인. 단순·일관.
+  - 대안(B): 비DONE→DONE 진입 전환에만(첫 해결 시점). `done→closed`는 resolution 미요구(기존 resolution_id 유지). RequiredField로는 표현 불가 → done→closed 전환에 validator 미부착으로 근사하나, 프론트는 toCategory==DONE이라 여전히 모달 띄움 → 불일치 소지.
 - **Q2. `done→closed` 재프롬프트 UX.** 권고(A) 채택 시 이미 해결된 이슈를 closed로 옮길 때 모달이 다시 뜸. pre-fill로 마찰 최소화하되, "이미 resolution 있으면 모달 skip하고 그대로 전송"도 가능. → Q1과 묶어 결정. **(주의: 재리뷰 B-NEW-3 — RequiredField는 resolution *값 존재*만 검사하므로 done→closed 시 프론트가 기존 resolution_id를 다시 안 보내면 거부됨. B9 pre-fill은 UX가 아니라 기능 정확성 요건.)**
 - **Q3. 위조 resolutionId 존재성 검증 (재리뷰 B-NEW-4).** `RequiredFieldValidator`는 null/blank만 검사 — 존재하지 않는 UUID도 통과시킨다. 존재하지 않는 resolution_id가 그대로 영속될 위험.
   - **권고(A)**: B6에서 영속 전 issue-tracking이 resolutionId 존재성 확인(B3 repository 재사용) → 없으면 400/404 거부. 책임을 B6에 명시 task로 추가. 단순·단일 BC.
@@ -414,7 +414,7 @@
 - **B-1. validator 프레임워크가 production에 결선돼 있지 않음.** `WorkflowEngine`(@Service)이 요구하는 `WorkflowValidatorFactory`/`WorkflowDefinitionRepository` 구현체가 main에 **0개**. 유일 구현은 테스트 익명 object(`IssueTransitionGuardFilterIntegrationTest.kt:212,257`). 옵션 A의 "기존 프레임워크 재사용" 전제 붕괴.
 - **B-2. validator는 YAML로 시드 불가.** `YamlSeedService`는 workflows/states/transitions 3테이블만 시드, validator 언급 0건. `Workflow` aggregate에 validator 필드 없음. `workflow_validators` 테이블(V200)은 정의만 있고 런타임에 아무도 안 읽음. B7 seed INSERT는 무력.
 - **B-3. 핵심 FR(종료 시 resolution 필수 강제)이 plan 전체 구현해도 동작 안 함** (B-1+B-2 귀결).
-- **B-4. 전이 영속이 도메인 우회(raw jOOQ UPDATE, IssueRepository.applyTransition:209).** 결정4/FR5의 "도메인 경유" 문구와 모순. resolution_id 영속 경로 재설계 필요.
+- **B-4. 전환 영속이 도메인 우회(raw jOOQ UPDATE, IssueRepository.applyTransition:209).** 결정4/FR5의 "도메인 경유" 문구와 모순. resolution_id 영속 경로 재설계 필요.
 
 **CONCERN**.
 - C-1. bulk 교집합 응답 toCategory 전파 task 누락(스펙 결정1은 동반 명시).
@@ -438,8 +438,8 @@
 선행 FR-WF-03(PR #66) 머지 확인 → 보류 해제. main 머지 후 코드 직접 재검증으로 BLOCKER 전수 해소 확인.
 
 - **B-1/B-2/B-3 해소.** DefaultWorkflowValidatorFactory·DefaultWorkflowDefinitionRepository @Component 결선 + YamlSeedService validators 시드(dry-run fail-fast) + applyIfChanged validator 변경 감지. (상단 "재개 갱신" 섹션 근거)
-- **B-4 해소안 확정.** 전이 영속은 raw jOOQ applyTransition이 정본 — resolution 불변식은 워크플로우 RequiredField validator(`plan()`, EXECUTION phase)가 강제. applyTransition에 resolutionId 파라미터 추가(B6 갱신).
+- **B-4 해소안 확정.** 전환 영속은 raw jOOQ applyTransition이 정본 — resolution 불변식은 워크플로우 RequiredField validator(`plan()`, EXECUTION phase)가 강제. applyTransition에 resolutionId 파라미터 추가(B6 갱신).
 - **C-3 → B11 task 신설.** IssueResponse.resolution 노출.
 - **C-5 정정 무효화.** V203 seed 마이그레이션 자체가 폐기(B7 YAML 편집으로 대체) — project-workflow 마이그레이션 추가 없음.
 - **신규 전제.** B1 V010→V011(versions 선점). A2/A3 완료로 PR-A 2 task로 축소.
-- **남은 게이트1 확인.** 재개 설계 결정 Q1(필수 전이 범위)/Q2(done→closed 재프롬프트)만 Maxi 확정 후 구현 착수.
+- **남은 게이트1 확인.** 재개 설계 결정 Q1(필수 전환 범위)/Q2(done→closed 재프롬프트)만 Maxi 확정 후 구현 착수.

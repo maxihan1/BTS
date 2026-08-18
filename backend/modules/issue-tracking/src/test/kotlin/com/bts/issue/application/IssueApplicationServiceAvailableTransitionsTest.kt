@@ -146,7 +146,7 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                 result shouldHaveSize 2
             }
 
-            it("반환된 전이의 toStateKey 가 올바르게 매핑된다") {
+            it("반환된 전환의 toStateKey 가 올바르게 매핑된다") {
                 val result = sut.availableTransitions(actor, issueKey)
                 result[0].toStateKey shouldBe "IN_PROGRESS"
                 result[1].toStateKey shouldBe "DONE"

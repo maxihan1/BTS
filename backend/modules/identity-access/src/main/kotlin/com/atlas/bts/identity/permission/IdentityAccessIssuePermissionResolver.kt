@@ -36,7 +36,7 @@ import java.util.UUID
  * ## 범위 밖 임시 정책 (잔여 항목 이관 예정)
  * BROWSE/VIEW — FR-PM-05(가시성 제어)에서 role_permissions 매트릭스로 이관 완료.
  *   (BROWSE → BROWSE_PROJECT, VIEW → VIEW_ISSUE)
- * TRANSITION — FR-PM-04(전이 권한)에서 매트릭스로 이관한다.
+ * TRANSITION — FR-PM-04(전환 권한)에서 매트릭스로 이관한다.
  * HARD_DELETE — DATA.md §3 하드 삭제 ADR 결정 후 별도 확장.
  * 이관 시 [IssuePermission.toCodeOrNull] 매핑 추가 + 이 KDoc 정책 메모 제거.
  *
@@ -85,7 +85,7 @@ class IdentityAccessIssuePermissionResolver(
         // 보안 등급 게이트 — 이슈 스코프의 **내용 접근 계열 전부**가 추가 통과해야 한다(FR-PM-06).
         //
         // ★2026-07-27 확대. 이전에는 VIEW 에만 걸려, 기밀 이슈를 **볼 수 없는** 멤버가 매트릭스에
-        // EDIT_ISSUE 만 있으면 그 이슈를 수정·전이·삭제할 수 있었다(댓글 수정·삭제, 이슈 PATCH 포함).
+        // EDIT_ISSUE 만 있으면 그 이슈를 수정·전환·삭제할 수 있었다(댓글 수정·삭제, 이슈 PATCH 포함).
         // 볼 수 없는 것을 바꿀 수는 더더욱 없어야 한다.
         //
         // ★매트릭스 판정(code == null) 뒤에 둔다. TRANSITION·HARD_DELETE 는 toCodeOrNull 매핑이 없어
