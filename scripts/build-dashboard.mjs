@@ -234,6 +234,75 @@ export const TODO_STATUS_BY_MARKER = Object.freeze(
   Object.fromEntries(TODO_STATUSES.map(s => [s.marker, s.status])),
 );
 
+/**
+ * 카테고리 분류 + 두 줄 계약의 **대상 상태**.
+ *
+ * 「지금 남은 빚」이 이 화면의 목적이라 해소분은 제외한다. 해소 76건에 두 줄을 소급
+ * 작성하는 비용 대비 가치가 없다. 판별식(`todos-plain-language-contract.test.ts`)이
+ * 이 상수를 **import 해서** 쓴다 — 상태 목록을 두 번 적으면 그것도 갈라지는 두 목록이다.
+ */
+export const CONTRACTED_STATUSES = Object.freeze(['미착수', '보류']);
+
+/**
+ * 화면 카테고리 5종 — 개발자 말(영역)을 **사람 말**로 옮긴 이름과 한 줄 설명.
+ *
+ * 선언 **순서가 곧 화면 표시 순서**다. 사용자가 체감하는 것을 먼저, 안 보이는 것을 나중에 둔다.
+ * 설명 줄이 없으면 비개발자는 그 묶음이 무엇인지 알 수 없다 — 분류만 있고 뜻이 없는 상태가 된다.
+ */
+export const CATEGORIES = Object.freeze({
+  screen: {
+    name: '화면에서 보이는 것',
+    desc: '사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.',
+  },
+  feature: {
+    name: '기능 동작',
+    desc: '이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.',
+  },
+  guard: {
+    name: '개발 안전장치',
+    desc: '사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.',
+  },
+  infra: {
+    name: '빌드·배포 환경',
+    desc: '코드를 검사하고 내보내는 기계 쪽 문제.',
+  },
+  docs: {
+    name: '문서·규칙',
+    desc: '적혀 있는 것과 실제가 다른 곳.',
+  },
+});
+
+/**
+ * 분류에 못 걸린 항목이 담기는 통.
+ *
+ * 실데이터에서는 **항상 비어 있어야** 하고 그것을 판별식이 강제한다. 그럼에도 두는 이유 —
+ * 렌더가 분류 실패를 조용히 버리면 「분류가 틀렸다」와 「화면에서 사라졌다」가 같은 결과가 된다.
+ * 실제로 이 통이 없던 초안이 제목에 영역 접두가 없는 항목을 통째로 증발시켰고,
+ * `build-dashboard.test.mjs` 의 기존 단언이 그것을 잡았다(2026-08-18).
+ */
+export const UNCLASSIFIED = Object.freeze({
+  name: '분류 없음',
+  desc: '제목에 영역 접두(`<영역> — `)가 없어 자동 분류에 실패한 항목. 비어 있는 것이 정상이다.',
+});
+
+/**
+ * `TODOS.md` 제목의 영역 접두 → 화면 카테고리.
+ *
+ * ★값을 `CATEGORIES` 에서 참조한다. 이름·설명을 여기 다시 적으면 같은 문자열이 두 벌이 되고,
+ * 한쪽만 고쳐도 아무도 모른다 — 이 저장소가 이름 붙인 `two-lists-never-check-each-other` 다.
+ * 키 집합과 실제 영역 집합의 **양방향 차집합 0** 은
+ * `scripts/workflow/todos-plain-language-contract.test.ts` 가 강제한다.
+ */
+export const AREA_CATEGORIES = Object.freeze({
+  'apps/web': CATEGORIES.screen,
+  'issue-tracking': CATEGORIES.feature,
+  'search-export-import': CATEGORIES.feature,
+  '도구': CATEGORIES.guard,
+  '워크플로우': CATEGORIES.guard,
+  '인프라': CATEGORIES.infra,
+  '문서': CATEGORIES.docs,
+});
+
 /** 헤딩 마커 인식 정규식. 마커 목록을 문자열로 다시 적지 않고 상수에서 만든다. */
 const TODO_HEADING_RE = new RegExp(
   `^##\\s+(${Object.keys(TODO_STATUS_BY_MARKER).join('|')})\\s+(.+?)\\s*$`,
@@ -266,15 +335,16 @@ export function parseTodos(content) {
       if (current) current.body.push(line);
       continue;
     }
-    const m = line.match(TODO_HEADING_RE);
+    // ★헤딩 판정은 **펜스 밖에서만** 한다. 안에 있는 것은 코드·예시이지 문서 구조가 아니다.
+    //   `## <마커>` 에도 게이트가 필요해진 것은 `TODOS.md` 머리의 **등재 서식 예시**가
+    //   코드블록 안에서 `## ⬜ <영역> — …` 모양을 보여 주기 때문이다. 게이트가 없으면
+    //   그 예시가 **유령 섹션**이 되어 집계와 순수성 판정을 동시에 오염시킨다.
+    const m = inFence ? null : line.match(TODO_HEADING_RE);
     if (m) {
       if (current) items.push(current);
       current = { status: TODO_STATUS_BY_MARKER[m[1]], title: m[2].trim(), body: [] };
       continue;
     }
-    // ★`# ` 는 **펜스 밖에서만** 문서 구분자다. 안에서는 코드 주석이다.
-    //   `## <마커>` 쪽에 같은 게이트를 안 단 것은 의도다 — 펜스 안 `## ` 은 실측 0건이라
-    //   지금 고치면 가설로 섹션 수를 바꾸는 것이 된다. 그 전제도 판별식이 고정한다.
     if (!inFence && line.startsWith('# ')) { if (current) items.push(current); current = null; continue; }
     if (current) current.body.push(line);
   }
@@ -589,23 +659,97 @@ function mdToHtml(md) {
  * 렌더가 그 그룹을 안 그리면 결과는 「파싱은 됐지만 화면에서 사라짐」으로 **동일**하다 —
  * 파서만 고치는 것은 봉합의 절반이다.
  */
+/** 두 줄의 마커. `todos-plain-language-contract.test.ts` 와 같은 문자열을 본다. */
+const PLAIN_LINE_RE = /^\*\*(쉬운 말|방치하면)\.\*\*\s*(.+)$/;
+
+/**
+ * 본문에서 「쉬운 말」·「방치하면」 두 줄을 **떼어 낸다**.
+ *
+ * ★떼어 내는 것이 핵심이다. 본문을 그대로 두고 두 줄을 접기 밖에 또 그리면 같은 문장이
+ * 화면에 **두 번** 나온다(2026-08-18 리뷰 P1 — `renderTodos` 가 `mdToHtml(t.body)` 로
+ * 본문 전체를 그리기 때문이다).
+ */
+function splitPlainLines(body) {
+  const easy = [];
+  const risk = [];
+  const rest = [];
+  for (const line of body.split('\n')) {
+    const m = line.match(PLAIN_LINE_RE);
+    if (m) { (m[1] === '쉬운 말' ? easy : risk).push(m[2].trim()); continue; }
+    rest.push(line);
+  }
+  return { easy: easy.join(' '), risk: risk.join(' '), rest: rest.join('\n').trim() };
+}
+
+/** 제목의 영역 접두(`<영역> — …`)를 뽑는다. 없으면 `null`. */
+function areaOfTitle(title) {
+  const idx = title.indexOf('—');
+  if (idx < 0) return null;
+  const area = title.slice(0, idx).trim();
+  return area.length > 0 ? area : null;
+}
+
 export function renderTodos(todos) {
   const groups = TODO_STATUSES.map(s => ({ ...s, items: todos.filter(t => t.status === s.status) }));
   const countOf = (status) => groups.find(g => g.status === status)?.items.length ?? 0;
 
-  const renderGroup = (items, icon) => items.map(t =>
-    `<details class="todo-item">
-      <summary><span class="todo-icon">${icon}</span><span class="todo-title">${inlineMd(t.title)}</span></summary>
-      <div class="todo-body">${mdToHtml(t.body)}</div>
-    </details>`
-  ).join('');
+  const renderItem = (t, icon) => {
+    const { easy, risk, rest } = splitPlainLines(t.body);
+    const plain = (easy || risk)
+      ? `<div class="todo-plain">
+        ${easy ? `<p class="todo-easy"><b>쉬운 말.</b> ${inlineMd(easy)}</p>` : ''}
+        ${risk ? `<p class="todo-risk"><b>방치하면.</b> ${inlineMd(risk)}</p>` : ''}
+      </div>`
+      : '';
+    return `<div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">${icon}</span><span class="todo-title">${inlineMd(t.title)}</span></div>
+      ${plain}
+      <details class="todo-item">
+        <summary>기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body">${mdToHtml(rest)}</div>
+      </details>
+    </div>`;
+  };
+
+  /**
+   * 미착수·보류는 **카테고리별로** 다시 묶는다.
+   *
+   * 순서는 [CATEGORIES] 선언 순서다 — 사용자가 체감하는 것을 먼저 둔다. 항목이 없는
+   * 카테고리는 절을 만들지 않는다(빈 묶음이 화면에 남지 않게).
+   * 해소분은 묶지 않는다 — 두 줄 계약 대상이 아니고(NFR N2), 76건을 분류해 봐야
+   * 「지금 남은 빚」을 보려는 이 화면의 목적과 어긋난다.
+   */
+  const renderByCategory = (items, icon) => {
+    const buckets = new Map(Object.values(CATEGORIES).map((c) => [c, []]));
+    // ★분류에 못 걸린 항목이 **사라지지 않게** 마지막 통을 둔다.
+    //   실데이터에서는 비어 있어야 하고 그것을 판별식이 강제한다. 그래도 폴백을 두는 이유는
+    //   「분류 실패」와 「화면에서 소실」이 같은 결과가 되는 것을 막기 위해서다 —
+    //   렌더가 조용히 버리면 판별식이 없는 다른 입력(합성·테스트·미래 서식)에서 그대로 증발한다.
+    buckets.set(UNCLASSIFIED, []);
+    for (const t of items) {
+      const cat = AREA_CATEGORIES[areaOfTitle(t.title) ?? ''] ?? UNCLASSIFIED;
+      buckets.get(cat).push(t);
+    }
+    return [...buckets.entries()]
+      .filter(([, list]) => list.length > 0)
+      .map(([cat, list]) =>
+        `<h3 class="todo-cat">${escapeHtml(cat.name)} <span class="todo-cat-count">${list.length}건</span></h3>
+        <p class="todo-cat-desc">${escapeHtml(cat.desc)}</p>
+        <div class="todo-list">${list.map((t) => renderItem(t, icon)).join('')}</div>`,
+      )
+      .join('');
+  };
+
+  const renderGroup = (items, icon) => items.map((t) => renderItem(t, icon)).join('');
 
   return `<section id="todos" class="page">
     <h1>📝 기술 부채 (TODOS)</h1>
     <p class="bc-desc">
       지금 당장 고치지는 않기로 하고 <b>일부러 미뤄 둔 일감</b> 목록이다.
       「나중에 하자」를 머릿속이 아니라 문서에 남겨 두는 곳이라, 잊히거나 조용히 되돌려지는 걸 막는다.
-      제목을 누르면 무엇을·왜·언제 할지가 펼쳐진다. 원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
+      각 항목은 <b>쉬운 말</b>(무슨 상태인가)과 <b>방치하면</b>(안 고치면 뭐가 생기나) 두 줄을
+      먼저 보여 준다 — 접지 않아도 읽힌다. 기술 내용은 그 아래로 접어 뒀다.
+      원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
       <span class="big-pct" style="color:#9ca3af;">${countOf('미착수')}</span>
@@ -616,7 +760,9 @@ export function renderTodos(todos) {
       // 건수는 위 요약 줄이 계속 알려 주므로 분류가 존재한다는 사실은 사라지지 않는다.
       .filter(g => g.items.length > 0)
       .map(g => `<h2>${g.marker} ${g.heading} — ${g.items.length}건</h2>
-    <div class="todo-list">${renderGroup(g.items, g.marker)}</div>`)
+    ${CONTRACTED_STATUSES.includes(g.status)
+      ? renderByCategory(g.items, g.marker)
+      : `<div class="todo-list">${renderGroup(g.items, g.marker)}</div>`}`)
       .join('\n    ')}
   </section>`;
 }
@@ -1013,8 +1159,20 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 .rule-why { font-size: 12px; color: #6b7280; margin-top: 8px; }
 .rule-why b { color: #4b5563; }
 .todo-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-.todo-item { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-.todo-item summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+/* 카테고리 소분류 — 미착수·보류 그룹 안에서만 쓴다. 사람 말 이름 + 한 줄 설명. */
+.todo-cat { font-size: 15px; margin: 22px 0 2px; display: flex; gap: 8px; align-items: baseline; }
+.todo-cat-count { font-size: 12px; font-weight: 400; color: #6b7280; }
+.todo-cat-desc { font-size: 12px; color: #6b7280; margin: 0 0 10px; }
+/* 항목 한 벌 = 제목 + 두 줄(항상 보임) + 접힌 기술 상세 */
+.todo-entry { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.todo-head { display: flex; gap: 10px; align-items: baseline; }
+.todo-plain { margin: 8px 0 2px; }
+.todo-easy, .todo-risk { font-size: 13px; line-height: 1.65; margin: 0 0 4px; color: #374151; }
+.todo-easy b { color: #111827; }
+.todo-risk { color: #6b7280; }
+.todo-risk b { color: #b45309; }
+.todo-item { border-radius: 8px; }
+.todo-item summary { cursor: pointer; font-size: 12px; color: #6b7280; display: flex; gap: 10px; align-items: baseline; list-style: none; }
 .todo-item summary::-webkit-details-marker { display: none; }
 .todo-icon { font-size: 15px; }
 .todo-title { flex: 1; font-size: 14px; }
