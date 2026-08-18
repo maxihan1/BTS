@@ -24,7 +24,7 @@ URL 을 바꾸지 않고 제자리에서 모달을 연다.
 | M4 | 이슈 목록 생성 버튼은 **CREATE 권한 fail-closed 게이트** — 로딩·에러·미보유 전부 비활성 | `routes/issues.index.tsx:371-410,473` |
 | M5 | 백로그 페이지가 같은 권한을 **이미 조회**한다 (`canManageSprint`) | `routes/projects.$projectKey.backlog.tsx:61-64` |
 | M6 | 보드 페이지도 `useProjectPermissions` 를 **이미 import** 한다 | `routes/projects.$projectKey.board.tsx:15` |
-| M7 | 보드 컬럼은 `stateKey` 를 갖지만, 임의 상태 생성은 워크플로우 전이를 거쳐야 하고 **전이가 없으면 불가능** | `api/boards.ts:82` |
+| M7 | 보드 컬럼은 `stateKey` 를 갖지만, 임의 상태 생성은 워크플로우 전환을 거쳐야 하고 **전환이 없으면 불가능** | `api/boards.ts:82` |
 | M8 | 보드/백로그 라우트가 `/projects/$projectKey/*` 라 `useTrackActiveProject` 가 **활성 프로젝트를 그 페이지 프로젝트로 기록**한다 | `hooks/use-track-active-project.ts` |
 | M9 | 컬럼 3종은 전부 `memo` 래핑이다 — prop 을 늘리면 재렌더 스킵 조건이 바뀐다 | `BoardColumn.tsx:202` 외 |
 
@@ -209,7 +209,7 @@ Playwright 의 `getByRole(name)` 과 Testing Library 의 정규식 매칭은 **�
 ## 10. 알려진 한계
 
 - **L1. 보드 컬럼별 생성은 이 PR 이 제공하지 않는다.** 생성 계약에 상태가 없고(M1),
-  전이 기반 우회는 스킴에 따라 「될 때만 되는」 동작이 된다(M7). 백엔드 확장은 별도 FR 후보.
+  전환 기반 우회는 스킴에 따라 「될 때만 되는」 동작이 된다(M7). 백엔드 확장은 별도 FR 후보.
 - **L2. 스프린트 배정은 2회 호출이라 원자적이지 않다.** 배정 실패 시 이슈는 백로그에 남는다.
   ADR D-2 가 이를 명시 수용했고 FR-5 가 사용자에게 숨기지 않는 것으로 대가를 치른다.
 - **L3. 상단바 「만들기」 버튼은 CREATE 권한 게이트가 없다** — F2(#331)가 남긴 **선재** 비대칭이다.

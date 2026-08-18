@@ -16,7 +16,7 @@ vi.mock('mermaid', () => ({
 
 // --- 테스트 픽스처 ---
 
-/** software-default: 5 상태, 4 전이 (spec FR-7) */
+/** software-default: 5 상태, 4 전환 (spec FR-7) */
 const softwareDefaultWorkflow: WorkflowView = {
   key: 'software-default',
   name: '소프트웨어 기본 워크플로우',
@@ -36,7 +36,7 @@ const softwareDefaultWorkflow: WorkflowView = {
   ],
 }
 
-/** bug-tracking: 5 상태, 4 전이 (spec FR-7) */
+/** bug-tracking: 5 상태, 4 전환 (spec FR-7) */
 const bugTrackingWorkflow: WorkflowView = {
   key: 'bug-tracking',
   name: '버그 추적 워크플로우',
@@ -56,7 +56,7 @@ const bugTrackingWorkflow: WorkflowView = {
   ],
 }
 
-/** simple: 2 상태, 2 전이 (spec FR-7 §S2) */
+/** simple: 2 상태, 2 전환 (spec FR-7 §S2) */
 const simpleWorkflow: WorkflowView = {
   key: 'simple',
   name: '단순 워크플로우',
@@ -71,7 +71,7 @@ const simpleWorkflow: WorkflowView = {
   ],
 }
 
-/** kanban-basic: 4 상태, 3 전이 (spec FR-7) */
+/** kanban-basic: 4 상태, 3 전환 (spec FR-7) */
 const kanbanBasicWorkflow: WorkflowView = {
   key: 'kanban-basic',
   name: '칸반 기본 워크플로우',
@@ -124,7 +124,7 @@ describe('generateMermaidCode', () => {
       expect(code).toContain(state.key)
     }
 
-    // 4 전이(엣지) — "fromKey --> toKey : label" 패턴
+    // 4 전환(엣지) — "fromKey --> toKey : label" 패턴
     for (const transition of softwareDefaultWorkflow.transitions) {
       expect(code).toContain(transition.fromStateKey)
       expect(code).toContain(transition.toStateKey)
@@ -138,24 +138,24 @@ describe('generateMermaidCode', () => {
   })
 
   it('T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증', () => {
-    // software-default: 5 상태, 4 전이
+    // software-default: 5 상태, 4 전환
     const sdCode = generateMermaidCode(softwareDefaultWorkflow)
     expect(sdCode).toMatchSnapshot('software-default')
     // 노드 수 검증 (상태 키가 각각 등장하는지)
     expect(softwareDefaultWorkflow.states.every((s) => sdCode.includes(s.key))).toBe(true)
     expect(softwareDefaultWorkflow.transitions.every((t) => sdCode.includes(t.fromStateKey))).toBe(true)
 
-    // bug-tracking: 5 상태, 4 전이
+    // bug-tracking: 5 상태, 4 전환
     const btCode = generateMermaidCode(bugTrackingWorkflow)
     expect(btCode).toMatchSnapshot('bug-tracking')
     expect(bugTrackingWorkflow.states.every((s) => btCode.includes(s.key))).toBe(true)
 
-    // simple: 2 상태, 2 전이
+    // simple: 2 상태, 2 전환
     const simCode = generateMermaidCode(simpleWorkflow)
     expect(simCode).toMatchSnapshot('simple')
     expect(simpleWorkflow.states.every((s) => simCode.includes(s.key))).toBe(true)
 
-    // kanban-basic: 4 상태, 3 전이
+    // kanban-basic: 4 상태, 3 전환
     const kbCode = generateMermaidCode(kanbanBasicWorkflow)
     expect(kbCode).toMatchSnapshot('kanban-basic')
     expect(kanbanBasicWorkflow.states.every((s) => kbCode.includes(s.key))).toBe(true)

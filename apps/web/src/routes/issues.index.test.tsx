@@ -529,9 +529,9 @@ describe('IssueListPage — 일괄 선택 및 액션 바 (Task 9)', () => {
   })
 
   /**
-   * T15. "일괄 전이" 버튼 클릭 시 BulkTransitionDialog가 열린다.
+   * T15. "일괄 전환" 버튼 클릭 시 BulkTransitionDialog가 열린다.
    */
-  it('T15: 액션 바 "일괄 전이" 클릭 시 BulkTransitionDialog가 열린다', async () => {
+  it('T15: 액션 바 "일괄 전환" 클릭 시 BulkTransitionDialog가 열린다', async () => {
     server.use(...issueHandlers)
     const user = userEvent.setup()
     renderPage()
@@ -552,10 +552,10 @@ describe('IssueListPage — 일괄 선택 및 액션 바 (Task 9)', () => {
       }),
     )
 
-    await user.click(screen.getByRole('button', { name: '일괄 전이' }))
+    await user.click(screen.getByRole('button', { name: '일괄 전환' }))
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: '일괄 상태 전이' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: '일괄 상태 전환' })).toBeInTheDocument(),
     )
   })
 

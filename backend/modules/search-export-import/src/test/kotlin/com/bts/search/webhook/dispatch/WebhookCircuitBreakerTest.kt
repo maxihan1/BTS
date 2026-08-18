@@ -1,4 +1,4 @@
-// 인메모리 Webhook circuit breaker 상태 전이 단위 테스트 — Clock 주입 결정성 (FR-API-03 PR3 Task 5)
+// 인메모리 Webhook circuit breaker 상태 전환 단위 테스트 — Clock 주입 결정성 (FR-API-03 PR3 Task 5)
 package com.bts.search.webhook.dispatch
 
 import org.junit.jupiter.api.Assertions.assertFalse

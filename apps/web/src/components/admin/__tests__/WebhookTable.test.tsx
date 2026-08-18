@@ -81,7 +81,7 @@ describe('WebhookTable', () => {
     expect(screen.getByText('이슈 생성 알림')).toBeInTheDocument()
     expect(screen.getByText(webhookWithProject.url)).toBeInTheDocument()
     // 구독 이벤트 두 종류가 라벨 조인된 셀 — 이름 셀과 텍스트가 겹치므로 전체 조인 문자열로 단정
-    expect(screen.getByText('이슈 생성, 이슈 상태 전이')).toBeInTheDocument()
+    expect(screen.getByText('이슈 생성, 이슈 상태 전환')).toBeInTheDocument()
     expect(screen.getByText('PROJ')).toBeInTheDocument()
     expect(screen.getByText('활성')).toBeInTheDocument()
     expect(screen.getByText('서명 설정')).toBeInTheDocument()

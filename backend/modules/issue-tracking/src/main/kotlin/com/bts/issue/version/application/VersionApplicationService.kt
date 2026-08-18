@@ -213,16 +213,16 @@ class VersionApplicationService(
     }
 
     /**
-     * 버전의 상태를 전이한다.
+     * 버전의 상태를 전환한다.
      *
      * 흐름.
      * 1. 프로젝트 resolve — 미존재 시 [VersionProjectNotFoundException].
      * 2. UPDATE 권한 검증 — 거부 시 [VersionAccessDeniedException].
      * 3. 버전 존재 확인 — 미존재 시 [VersionNotFoundException].
-     * 4. 도메인 전이 메서드 호출 — 불허 전이 시 [VersionTransitionNotAllowedException].
+     * 4. 도메인 전환 메서드 호출 — 불허 전환 시 [VersionTransitionNotAllowedException].
      * 5. [VersionRepository.update] 위임.
      *
-     * 전이 그래프.
+     * 전환 그래프.
      * ```
      * UNRELEASED ──release──▶ RELEASED      (releasedAt = Instant.now(clock))
      * RELEASED   ─unrelease─▶ UNRELEASED    (releasedAt = null)
@@ -231,15 +231,15 @@ class VersionApplicationService(
      * ARCHIVED   ─unarchive─▶ UNRELEASED    (releasedAt = null)
      * ```
      *
-     * @param actorId 전이 행위자 UUID.
+     * @param actorId 전환 행위자 UUID.
      * @param projectIdOrKey 프로젝트 UUID 또는 projectKey.
-     * @param versionId 전이할 버전 UUID.
+     * @param versionId 전환할 버전 UUID.
      * @param target 목표 [VersionStatus].
-     * @return 전이 후 [Version].
+     * @return 전환 후 [Version].
      * @throws VersionProjectNotFoundException 프로젝트가 존재하지 않을 때.
      * @throws VersionAccessDeniedException 권한이 없을 때.
      * @throws VersionNotFoundException 버전이 존재하지 않을 때.
-     * @throws VersionTransitionNotAllowedException 전이 그래프에 없는 전이 또는 self-transition 시.
+     * @throws VersionTransitionNotAllowedException 전환 그래프에 없는 전환 또는 self-transition 시.
      */
     fun changeStatus(
         actorId: UUID,
@@ -357,13 +357,13 @@ class VersionApplicationService(
     }
 
     /**
-     * target [VersionStatus] 에 따라 도메인 전이 메서드를 선택해 적용한다.
+     * target [VersionStatus] 에 따라 도메인 전환 메서드를 선택해 적용한다.
      *
-     * 허용 전이 그래프는 도메인 메서드가 검증하므로 불허 경우는 [VersionTransitionNotAllowedException].
+     * 허용 전환 그래프는 도메인 메서드가 검증하므로 불허 경우는 [VersionTransitionNotAllowedException].
      *
      * @param version 현재 상태의 [Version].
      * @param target 목표 상태.
-     * @return 전이 후 새 [Version] 인스턴스.
+     * @return 전환 후 새 [Version] 인스턴스.
      */
     private fun applyTransition(
         version: Version,

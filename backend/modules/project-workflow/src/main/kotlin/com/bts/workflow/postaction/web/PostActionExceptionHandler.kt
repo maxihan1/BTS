@@ -53,7 +53,7 @@ class PostActionExceptionHandler {
     }
 
     /**
-     * post-action 또는 전이 미존재 — 404.
+     * post-action 또는 전환 미존재 — 404.
      *
      * @param ex 조회를 시도한 대상 상세 정보를 담은 예외.
      */
@@ -61,7 +61,7 @@ class PostActionExceptionHandler {
     fun handleNotFound(ex: PostActionNotFoundException): ResponseEntity<PostActionErrorResponse> {
         log.info("POST_ACTION_404 detail='{}'", ex.detail)
         val errorBody =
-            PostActionErrorBody(code = "WORKFLOW_POST_ACTION_NOT_FOUND", message = "post-action 또는 전이를 찾을 수 없습니다.")
+            PostActionErrorBody(code = "WORKFLOW_POST_ACTION_NOT_FOUND", message = "post-action 또는 전환을 찾을 수 없습니다.")
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(PostActionErrorResponse(errorBody))
     }
 }

@@ -1,14 +1,14 @@
-// 칸반 보드 카드 이동(전이 위임) cross-BC 포트 — agile-planning → issue-tracking 위임
+// 칸반 보드 카드 이동(전환 위임) cross-BC 포트 — agile-planning → issue-tracking 위임
 
 package com.bts.shared.board
 
 import java.util.UUID
 
 /**
- * 보드 카드 이동(워크플로우 전이) cross-BC 위임 포트 — agile-planning BC 용 (FR-BD-01).
+ * 보드 카드 이동(워크플로우 전환) cross-BC 위임 포트 — agile-planning BC 용 (FR-BD-01).
  *
- * agile-planning BC 가 카드 이동 시 기존 issue-tracking 전이 메커니즘에 위임하기 위해
- * 이 포트를 호출한다. 전이 규칙 검증·권한 강제·OCC·이벤트 발행은 모두 issue-tracking 이 담당한다.
+ * agile-planning BC 가 카드 이동 시 기존 issue-tracking 전환 메커니즘에 위임하기 위해
+ * 이 포트를 호출한다. 전환 규칙 검증·권한 강제·OCC·이벤트 발행은 모두 issue-tracking 이 담당한다.
  *
  * ### fail-closed — default 구현 없음
  *
@@ -41,21 +41,21 @@ import java.util.UUID
  */
 interface IssueTransitionPort {
     /**
-     * 이슈를 지정한 상태로 전이한다.
+     * 이슈를 지정한 상태로 전환한다.
      *
      * actor 는 [BoardTransitionCommand.actorUserId] 로 전달받는다. adapter 는 이를 신뢰한다
      * (호출 컨트롤러가 SecurityContext 에서 추출해 채운 값 — 위조 차단).
      *
-     * @param cmd 전이 커맨드. actor·이슈 키·대상 상태 키·OCC 버전·해결 ID 포함.
-     * @return 전이 결과. 전이 후 상태 키·버전 포함.
+     * @param cmd 전환 커맨드. actor·이슈 키·대상 상태 키·OCC 버전·해결 ID 포함.
+     * @return 전환 결과. 전환 후 상태 키·버전 포함.
      * @throws RuntimeException (issue-tracking BC 내부 예외)
-     *   전이 불가·버전 충돌·권한 거부·해결 ID 누락 등. consumer 에서 catch 후 HTTP 매핑.
+     *   전환 불가·버전 충돌·권한 거부·해결 ID 누락 등. consumer 에서 catch 후 HTTP 매핑.
      */
     fun transition(cmd: BoardTransitionCommand): BoardTransitionResult
 }
 
 /**
- * 보드 카드 이동(전이) 커맨드 VO.
+ * 보드 카드 이동(전환) 커맨드 VO.
  *
  * ### actorUserId (보안 설계 — async 안전 + 위조 차단)
  *
@@ -65,11 +65,11 @@ interface IssueTransitionPort {
  * - 위조 차단: cmd 를 채우는 유일한 곳이 컨트롤러의 SecurityContext 추출이며,
  *   컨트롤러는 절대 request body/param 으로 actor 를 받지 않는다(sec codereview-fix P1).
  *
- * @property actorUserId 전이 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 채운다.
+ * @property actorUserId 전환 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 채운다.
  * @property issueKey 이동할 이슈 키. 예: `"PROJ-1"`.
  * @property toStateKey 이동 대상 워크플로우 상태 키. 예: `"in-progress"`.
  * @property expectedVersion 낙관적 락(OCC) 기대 버전. 충돌 시 issue-tracking 이 예외를 던진다.
- * @property resolutionId DONE 카테고리 전이 시 필요한 해결 방안 ID. 불필요하면 null.
+ * @property resolutionId DONE 카테고리 전환 시 필요한 해결 방안 ID. 불필요하면 null.
  */
 data class BoardTransitionCommand(
     val actorUserId: UUID,
@@ -80,13 +80,13 @@ data class BoardTransitionCommand(
 )
 
 /**
- * 보드 카드 이동(전이) 결과 VO.
+ * 보드 카드 이동(전환) 결과 VO.
  *
  * [IssueTransitionPort.transition] 성공 후 반환된다.
  *
- * @property issueKey 전이한 이슈 키.
- * @property currentStateKey 전이 완료 후 현재 상태 키.
- * @property version 전이 후 갱신된 OCC 버전. 다음 이동 시 expectedVersion 으로 사용.
+ * @property issueKey 전환한 이슈 키.
+ * @property currentStateKey 전환 완료 후 현재 상태 키.
+ * @property version 전환 후 갱신된 OCC 버전. 다음 이동 시 expectedVersion 으로 사용.
  */
 data class BoardTransitionResult(
     val issueKey: String,

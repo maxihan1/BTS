@@ -36,7 +36,7 @@ Then.  200 OK + 본문 { summary: "긴급 버그 수정", version: 2 }
        AND  pgmq outbox 에 IssueUpdated { fields: ["summary"] } enqueue
 ```
 
-### S4. 상태 전이 — workflow.plan() 호출 후 적용
+### S4. 상태 전환 — workflow.plan() 호출 후 적용
 
 ```
 Given. ATLAS-1 (currentStateKey="TO_DO", version=2), 호출자가 TRANSITION 권한 보유
@@ -77,7 +77,7 @@ Then.  200 OK + Page { content: [50건], pageNumber: 1, pageSize: 50, totalEleme
 | FR-IS-01.a | 이슈 생성 + 키 자동 발급 (`<PROJECT_KEY>-<NUMBER>`) | ✅ |
 | FR-IS-01.b | 이슈 단건 조회 | ✅ |
 | FR-IS-01.c | 이슈 부분 수정 (낙관락 version 검증) | ✅ |
-| FR-IS-01.d | 이슈 상태 전이 (WorkflowTransitionPort.plan() 호출 + pgmq 이벤트) | ✅ |
+| FR-IS-01.d | 이슈 상태 전환 (WorkflowTransitionPort.plan() 호출 + pgmq 이벤트) | ✅ |
 | FR-IS-01.e | 이슈 소프트 삭제 + 키 영구 보존 | ✅ |
 | FR-IS-01.f | 이슈 목록 조회 (페이지네이션 + 프로젝트 필터 + 정렬) | ✅ |
 | FR-IS-01.g | pgmq outbox 패턴으로 이벤트 발행 (동일 트랜잭션) | ✅ |
@@ -93,7 +93,7 @@ Then.  200 OK + Page { content: [50건], pageNumber: 1, pageSize: 50, totalEleme
 | `GET /issues/{key}` 단건 조회 | 200 ms | k6 (Testcontainers PG) | D7 NFR 측정 |
 | `GET /issues?...` 목록 50건 | 500 ms | k6 | D7 NFR 측정 |
 | `POST /issues` 생성 (pgmq 이벤트 포함) | 300 ms | k6 | D7 NFR 측정 |
-| `POST /issues/{key}/transition` 전이 | 400 ms | k6 (workflow.plan() 포함) | D7 NFR 측정 |
+| `POST /issues/{key}/transition` 전환 | 400 ms | k6 (workflow.plan() 포함) | D7 NFR 측정 |
 | `DELETE /issues/{key}` 소프트 삭제 | 200 ms | k6 | D7 NFR 측정 |
 | 동시 PATCH 충돌 처리 (낙관락) | 409 응답 | Testcontainers 통합 테스트 (20 thread) | D5 |
 | pgmq 이벤트 순서 보존 | 동일 트랜잭션 commit 순서 | Testcontainers (pgmq 도구) | D5 |
@@ -137,7 +137,7 @@ OpenAPI 3.1 스타일 요약. 본 PR에서 `apps/web/openapi` 자동 생성 + `s
 | Response 400 | body 빈 객체 (version 만), 형식 위반 |
 | Response 409 | version 충돌 (낙관락 실패) |
 
-### 4.4 `POST /api/v1/issues/{key}/transition` — 상태 전이
+### 4.4 `POST /api/v1/issues/{key}/transition` — 상태 전환
 
 | 항목 | 값 |
 |---|---|
@@ -145,7 +145,7 @@ OpenAPI 3.1 스타일 요약. 본 PR에서 `apps/web/openapi` 자동 생성 + `s
 | Body | `{ transitionKey: string, version: int }` |
 | Response 200 | 갱신된 이슈 본문 (currentStateKey 변경 + version 증가) |
 | Response 400 | `transitionKey` 형식 위반 |
-| Response 409 | version 충돌 OR workflow 가 plan() 에서 전이 거부 (`WorkflowTransitionException`) |
+| Response 409 | version 충돌 OR workflow 가 plan() 에서 전환 거부 (`WorkflowTransitionException`) |
 
 ### 4.5 `DELETE /api/v1/issues/{key}` — 소프트 삭제
 
@@ -232,7 +232,7 @@ SELECT pgmq.create('q_issue_events');
 |---|---|---|---|
 | EC-1 | 중복 키 race condition | **선택. `pg_advisory_xact_lock(hash('project:' || project_id))` + UPDATE projects.key_sequence + INSERT issues**. advisory lock 이 project 단위로 직렬화 → 동시 POST 시 한 트랜잭션씩 처리. UNIQUE 위반 자체는 발생 안 함. lock 보유 시간 < 10 ms (단순 UPDATE + INSERT). PR #10 의 `pg_advisory_xact_lock` 패턴 (200 ms 워크플로우 캐시) 일관 적용 | Testcontainers 20 thread 동시 POST — 모두 200 + 순차 key 발급 |
 | EC-2 | 권한 부재 | `IssuePermissionResolver.hasPermission(actor, IssuePermission.X, scope) == false` → `IssueAccessDeniedException` → 403 + 본문 `{ error: "ACCESS_DENIED", required: "CREATE" }` | MockK 단위 + 통합 (stub 의 거짓 응답 시나리오) |
-| EC-3 | 전이 위반 | `WorkflowTransitionPort.plan()` 이 `WorkflowTransitionException("transition not allowed")` 던짐 → 409 + 본문 `{ error: "TRANSITION_NOT_ALLOWED" }` | 통합 (project-workflow 통합 — 미허용 전이 호출) |
+| EC-3 | 전환 위반 | `WorkflowTransitionPort.plan()` 이 `WorkflowTransitionException("transition not allowed")` 던짐 → 409 + 본문 `{ error: "TRANSITION_NOT_ALLOWED" }` | 통합 (project-workflow 통합 — 미허용 전환 호출) |
 | EC-4 | 대용량 (목록 1000 + 페이지 50건) | 인덱스 사용 (`idx_issues_project_id`) + EXPLAIN 분석. p95 < 500 ms 유지 | k6 + EXPLAIN ANALYZE |
 | EC-5 | 동시 편집 | `version` 낙관락. 두 클라이언트가 version=2 로 PATCH → 한쪽 200, 다른 쪽 409 + 본문 `{ error: "VERSION_CONFLICT", currentVersion: 3 }` | Testcontainers 2 thread 동시 PATCH |
 | EC-6 | 소프트 삭제된 이슈 조회 | `deleted_at IS NOT NULL` → 404 (200 + body 마스킹 아님, 완전 미존재 시뮬레이션) | 통합 (DELETE 후 GET) |

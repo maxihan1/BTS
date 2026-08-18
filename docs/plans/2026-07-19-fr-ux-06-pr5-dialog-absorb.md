@@ -165,7 +165,7 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 ### Task 8. issues/BulkTransitionDialog 흡수
 
 **메타**. files: [`apps/web/src/components/issues/BulkTransitionDialog.tsx`, `apps/web/src/components/issues/BulkTransitionDialog.test.tsx`] · depends-on: [1]
-**특이사항**: 전이 선택 로직 무변화. 공통 절차.
+**특이사항**: 전환 선택 로직 무변화. 공통 절차.
 
 ### Task 9. component/ComponentFormDialog 흡수
 

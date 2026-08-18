@@ -26,7 +26,7 @@ export const workflowHandlers = [
     return HttpResponse.json({ data: found })
   }),
 
-  /** POST /api/v1/workflows/:key/transitions — 첫 번째 전이 기준 mock TransitionPlan 반환 */
+  /** POST /api/v1/workflows/:key/transitions — 첫 번째 전환 기준 mock TransitionPlan 반환 */
   http.post('/api/v1/workflows/:key/transitions', ({ params }) => {
     const key = params['key'] as string
     const workflow = allWorkflowFixtures.find((w) => w.key === key)

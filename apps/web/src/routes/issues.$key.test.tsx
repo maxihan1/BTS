@@ -1,4 +1,4 @@
-// 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
+// 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전환 배선)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -230,10 +230,10 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
 
   /**
    * T7-5. 메타패널에 상태가 읽기전용 배지로 렌더되어야 한다.
-   * 상태 전이 드롭다운이 없어야 한다 (D6 제외).
-   * 유형 셀렉터(combobox)는 있지만, 상태 전이용 combobox는 없다.
+   * 상태 전환 드롭다운이 없어야 한다 (D6 제외).
+   * 유형 셀렉터(combobox)는 있지만, 상태 전환용 combobox는 없다.
    */
-  it('T7-5: 메타패널에 상태 배지가 렌더되고 상태 전이 드롭다운이 없다', async () => {
+  it('T7-5: 메타패널에 상태 배지가 렌더되고 상태 전환 드롭다운이 없다', async () => {
     setupIssueFoundHandler()
 
     const { container } = renderPage('ATLAS-1')
@@ -551,7 +551,7 @@ describe('IssueDetailPage — 타입 변경', () => {
     server.use(...issueTypeHandlers)
     // ATLAS-1 이슈 단건 조회 핸들러
     setupIssueFoundHandler()
-    // ATLAS-1 전이 목록 핸들러 — useIssueTransitions hook이 GET /api/v1/issues/ATLAS-1/transitions 호출
+    // ATLAS-1 전환 목록 핸들러 — useIssueTransitions hook이 GET /api/v1/issues/ATLAS-1/transitions 호출
     setupTransitionsHandler()
     // 사용자 목록 핸들러 — useUsers hook이 GET /api/v1/users 호출
     setupUsersHandler()
@@ -660,11 +660,11 @@ describe('IssueDetailPage — 타입 변경', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 상태전이 배선 테스트 (FR-IS-01 Task-4)
+// 상태전환 배선 테스트 (FR-IS-01 Task-4)
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-/** ATLAS-1(open) 가용전이 목록 핸들러 — 전이 테스트 공통 */
+/** ATLAS-1(open) 가용전환 목록 핸들러 — 전환 테스트 공통 */
 function setupTransitionsHandler() {
   server.use(
     http.get('/api/v1/issues/ATLAS-1/transitions', () =>
@@ -680,7 +680,7 @@ function setupTransitionsHandler() {
   )
 }
 
-/** POST /api/v1/issues/ATLAS-1/transition 성공 핸들러 — 전이 테스트 공통 */
+/** POST /api/v1/issues/ATLAS-1/transition 성공 핸들러 — 전환 테스트 공통 */
 function setupTransitionPostHandler() {
   server.use(
     http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
@@ -696,7 +696,7 @@ function setupTransitionPostHandler() {
       }
       if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
         return HttpResponse.json(
-          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전이 거부' },
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전환 거부' },
           { status: 409 },
         )
       }
@@ -720,7 +720,7 @@ function setupTransitionPostHandler() {
   )
 }
 
-describe('IssueDetailPage — 상태전이', () => {
+describe('IssueDetailPage — 상태전환', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear()
     vi.mocked(toast.success).mockClear()
@@ -732,10 +732,10 @@ describe('IssueDetailPage — 상태전이', () => {
   })
 
   /**
-   * T4-1 (happy): 전이 셀렉터에서 "Start Work" 선택 → POST 요청 발생 + 상태 배지 갱신.
-   * ATLAS-1(open, version=0) → in_progress 전이. stateful override 핸들러 경유.
+   * T4-1 (happy): 전환 셀렉터에서 "Start Work" 선택 → POST 요청 발생 + 상태 배지 갱신.
+   * ATLAS-1(open, version=0) → in_progress 전환. stateful override 핸들러 경유.
    */
-  it('T4-1: 전이 선택 시 POST 요청이 발생하고 상태 배지가 갱신된다', async () => {
+  it('T4-1: 전환 선택 시 POST 요청이 발생하고 상태 배지가 갱신된다', async () => {
     // stateful override: POST 후 GET이 in_progress 상태를 반환하도록 상태 공유
     let currentStateKey = 'open'
     let currentVersion = 0
@@ -766,7 +766,7 @@ describe('IssueDetailPage — 상태전이', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
-    // 전이 셀렉터가 렌더될 때까지 대기
+    // 전환 셀렉터가 렌더될 때까지 대기
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
     )
@@ -785,7 +785,7 @@ describe('IssueDetailPage — 상태전이', () => {
    * 409 transition_not_allowed → transitionNotAllowedError 토스트.
    */
   it('T4-2: 409 transition_not_allowed 시 transitionNotAllowedError 토스트가 노출된다', async () => {
-    // MOCK_CONFLICT_TRIGGER를 전이 옵션에 추가하기 위해 transitions 핸들러 override
+    // MOCK_CONFLICT_TRIGGER를 전환 옵션에 추가하기 위해 transitions 핸들러 override
     server.use(
       http.get('/api/v1/issues/ATLAS-1/transitions', () =>
         HttpResponse.json({
@@ -890,11 +890,11 @@ describe('IssueDetailPage — 상태전이', () => {
   })
 
   /**
-   * T4-5 (S6, closed): closed 상태 이슈 로딩 시 전이 셀렉터 미노출 + "더 진행할 전이 없음" 안내.
-   * ATLAS-1 key로 closed 상태를 시뮬 — 전이 목록 빈 배열 override.
+   * T4-5 (S6, closed): closed 상태 이슈 로딩 시 전환 셀렉터 미노출 + "더 진행할 전환 없음" 안내.
+   * ATLAS-1 key로 closed 상태를 시뮬 — 전환 목록 빈 배열 override.
    */
-  it('T4-5: closed 상태(S6) 이슈에서 전이 셀렉터가 없고 "더 진행할 전이 없음" 안내가 보인다', async () => {
-    // 전이 목록만 빈 배열로 override — issue 단건은 beforeEach가 처리
+  it('T4-5: closed 상태(S6) 이슈에서 전환 셀렉터가 없고 "더 진행할 전환 없음" 안내가 보인다', async () => {
+    // 전환 목록만 빈 배열로 override — issue 단건은 beforeEach가 처리
     server.use(
       http.get('/api/v1/issues/ATLAS-1/transitions', () =>
         HttpResponse.json({ data: { transitions: [] } }),
@@ -917,7 +917,7 @@ describe('IssueDetailPage — 상태전이', () => {
 
   /**
    * T4-6 (E5, S5 미설정): GET /transitions 422 → 미설정 안내문구 노출.
-   * "더 진행할 전이 없음"(종료상태 문구)은 보이지 않아야 한다.
+   * "더 진행할 전환 없음"(종료상태 문구)은 보이지 않아야 한다.
    */
   it('T4-6: GET /transitions 422(워크플로우 미설정) 시 미설정 안내문구가 노출된다', async () => {
     server.use(
@@ -949,17 +949,17 @@ describe('IssueDetailPage — 상태전이', () => {
   })
 
   /**
-   * T4-8 (C1 회귀 가드): 전이 실패(409) 후 셀렉터가 placeholder("")로 리셋되어
+   * T4-8 (C1 회귀 가드): 전환 실패(409) 후 셀렉터가 placeholder("")로 리셋되어
    * 같은 옵션을 재선택하면 onChange가 다시 발화되고 두 번째 POST 요청이 발생한다.
    * defaultValue="" 비제어 패턴이면 이 테스트가 실패한다.
    */
-  it('T4-8: 전이 실패 후 같은 옵션 재선택 시 POST 요청이 다시 발생한다 (select 리셋 가드)', async () => {
+  it('T4-8: 전환 실패 후 같은 옵션 재선택 시 POST 요청이 다시 발생한다 (select 리셋 가드)', async () => {
     let postCallCount = 0
     server.use(
       http.post('/api/v1/issues/:key/transition', () => {
         postCallCount += 1
         return HttpResponse.json(
-          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전이 거부' },
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전환 거부' },
           { status: 409 },
         )
       }),
@@ -1782,7 +1782,7 @@ describe('IssueDetailPage — Task 5 (IssueLinksPanel 통합)', () => {
     server.use(...issueTypeHandlers)
     setupIssueFoundHandler(issueAtlas1Fixture)
     server.use(
-      // 전이 목록 — 패널과 무관하나 useIssueTransitions가 호출됨
+      // 전환 목록 — 패널과 무관하나 useIssueTransitions가 호출됨
       http.get('/api/v1/issues/ATLAS-1/transitions', () =>
         HttpResponse.json({ data: { transitions: [] } }),
       ),
@@ -1978,7 +1978,7 @@ describe('IssueDetailPage — Task 7 (추정 카드 + WorklogSection 배선)', (
     setupIssueFoundHandler(issueAtlas1Fixture)
     server.use(
       ...issueTypeHandlers,
-      // 전이 목록 — WorklogSection 마운트와 무관하나 useIssueTransitions 호출됨
+      // 전환 목록 — WorklogSection 마운트와 무관하나 useIssueTransitions 호출됨
       http.get('/api/v1/issues/ATLAS-1/transitions', () =>
         HttpResponse.json({ data: { transitions: [] } }),
       ),

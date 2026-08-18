@@ -161,7 +161,7 @@ class NotificationWorkerTest : DescribeSpec({
             assertThat(notificationSlot.captured.recipientUserId).isEqualTo(mentionedId)
         }
 
-        it("Notification 은 PENDING 으로 삽입되고 발송 성공 후 markSent 로 SENT 전이된다") {
+        it("Notification 은 PENDING 으로 삽입되고 발송 성공 후 markSent 로 SENT 전환된다") {
             val notificationSlot = slot<Notification>()
             every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
 

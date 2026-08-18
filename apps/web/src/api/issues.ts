@@ -217,30 +217,30 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 이슈 가용 전이 항목 Zod 스키마.
+ * 이슈 가용 전환 항목 Zod 스키마.
  * backend TransitionItem DTO 직렬화 형태와 1:1 대응.
  * workflows.ts의 workflowTransitionViewSchema와 동일 형태이나
- * 이슈 전이 API 계약에 특화된 독립 스키마로 관리한다.
+ * 이슈 전환 API 계약에 특화된 독립 스키마로 관리한다.
  *
- * - `toCategory`: 목표 상태 카테고리 (B12). "DONE" 이면 종료 전이.
- *   백엔드가 DONE 전이에만 값을 채우고 나머지는 null 반환할 수 있으므로 nullable.
+ * - `toCategory`: 목표 상태 카테고리 (B12). "DONE" 이면 종료 전환.
+ *   백엔드가 DONE 전환에만 값을 채우고 나머지는 null 반환할 수 있으므로 nullable.
  */
 export const issueTransitionSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
   fromStateKey: z.string().min(1),
   toStateKey: z.string().min(1),
-  /** 목표 상태 카테고리 (B12). "DONE"이면 종료 전이. */
+  /** 목표 상태 카테고리 (B12). "DONE"이면 종료 전환. */
   toCategory: z.string().nullable().optional(),
 })
 
-/** 이슈 전이 항목 타입 */
+/** 이슈 전환 항목 타입 */
 export type IssueTransition = z.infer<typeof issueTransitionSchema>
 
 /**
- * 일괄 가용 전이 조회 응답 Zod 스키마.
+ * 일괄 가용 전환 조회 응답 Zod 스키마.
  * backend BulkAvailableTransitionsResponse DTO 직렬화 형태와 1:1 대응.
- * - transitions: 모든 대상 이슈에 공통으로 존재하는 전이 교집합
+ * - transitions: 모든 대상 이슈에 공통으로 존재하는 전환 교집합
  * - unresolvedIssueKeys: 미존재·워크플로우 미설정·접근 불가로 조회 실패한 이슈 키 목록
  */
 export const bulkAvailableTransitionsSchema = z.object({
@@ -248,11 +248,11 @@ export const bulkAvailableTransitionsSchema = z.object({
   unresolvedIssueKeys: z.array(z.string()),
 })
 
-/** 이슈 전이 요청 입력 타입 */
+/** 이슈 전환 요청 입력 타입 */
 export interface TransitionIssueInput {
   toStatusKey: string
   expectedVersion: number
-  /** 종료(DONE) 전이 시 선택된 결의안 UUID (B9). 비DONE 전이 시 미전달. */
+  /** 종료(DONE) 전환 시 선택된 결의안 UUID (B9). 비DONE 전환 시 미전달. */
   resolutionId?: string
 }
 
@@ -646,17 +646,17 @@ export async function deleteIssue(key: string): Promise<void> {
   }
 }
 
-/** backend `{ data: { transitions: [...] } }` 전이 목록 응답 파싱 헬퍼 (내부 전용) */
+/** backend `{ data: { transitions: [...] } }` 전환 목록 응답 파싱 헬퍼 (내부 전용) */
 const transitionsResponseSchema = z.object({
   data: z.object({ transitions: z.array(issueTransitionSchema) }),
 })
 
 /**
- * 이슈의 현재 상태에서 가용한 전이 목록을 조회한다.
+ * 이슈의 현재 상태에서 가용한 전환 목록을 조회한다.
  * GET /api/v1/issues/{key}/transitions → { data: { transitions: IssueTransition[] } }
  *
  * @param key 이슈 식별 키 (예: "ATLAS-1")
- * @returns 전이 항목 배열 — 현재 상태에서 이동 가능한 전이들
+ * @returns 전환 항목 배열 — 현재 상태에서 이동 가능한 전환들
  * @throws ApiError(404) 해당 key의 이슈가 없을 때
  */
 export async function fetchIssueTransitions(key: string): Promise<IssueTransition[]> {
@@ -668,17 +668,17 @@ export async function fetchIssueTransitions(key: string): Promise<IssueTransitio
 }
 
 /**
- * 이슈 상태를 전이한다.
+ * 이슈 상태를 전환한다.
  * POST /api/v1/issues/{key}/transition body { toStatusKey, expectedVersion }
  * 성공 200 시 변경된 IssueResponse를 반환한다.
  * 낙관적 잠금(OCC) 충돌 시 ApiError(409)를 throw한다.
  *
- * @param key 전이할 이슈 식별 키
+ * @param key 전환할 이슈 식별 키
  * @param input toStatusKey(목표 상태키) · expectedVersion(현재 버전, OCC용)
- * @returns 전이 완료된 IssueResponse — currentStateKey와 version이 갱신된 상태
+ * @returns 전환 완료된 IssueResponse — currentStateKey와 version이 갱신된 상태
  * @throws ApiError(404) 이슈가 없을 때
- * @throws ApiError(409) 낙관적 잠금 충돌 또는 전이 불허 시
- * @throws ApiError(422) 유효하지 않은 전이 요청 시
+ * @throws ApiError(409) 낙관적 잠금 충돌 또는 전환 불허 시
+ * @throws ApiError(422) 유효하지 않은 전환 요청 시
  */
 export async function transitionIssue(key: string, input: TransitionIssueInput): Promise<IssueResponse> {
   const res = await apiFetch(`/api/v1/issues/${key}/transition`, { method: 'POST', body: input })
@@ -692,13 +692,13 @@ export async function transitionIssue(key: string, input: TransitionIssueInput):
 }
 
 /**
- * 여러 이슈에 공통으로 적용 가능한 전이 교집합을 조회한다.
+ * 여러 이슈에 공통으로 적용 가능한 전환 교집합을 조회한다.
  * POST /api/v1/issues/bulk-transitions/available body { issueKeys }
  * 성공 200 시 { transitions, unresolvedIssueKeys }를 반환한다.
  * 미존재·워크플로우 미설정 이슈는 unresolvedIssueKeys에 포함되고 교집합에서 제외된다.
  *
- * @param issueKeys 가용 전이를 조회할 이슈 키 목록
- * @returns transitions(공통 전이 교집합) + unresolvedIssueKeys(조회 실패 키 목록)
+ * @param issueKeys 가용 전환을 조회할 이슈 키 목록
+ * @returns transitions(공통 전환 교집합) + unresolvedIssueKeys(조회 실패 키 목록)
  * @throws ApiError(400) issueKeys가 빈 배열이거나 1000 초과 시 (ISSUE_BULK_VALIDATION_FAILED)
  */
 export async function fetchBulkAvailableTransitions(

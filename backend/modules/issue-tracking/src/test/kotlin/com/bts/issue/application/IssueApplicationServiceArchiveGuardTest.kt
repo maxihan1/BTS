@@ -581,7 +581,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
         }
 
         context("availableTransitions") {
-            it("guard 가 항상 예외를 던지도록 설정해도 전이 가능목록 조회는 정상 반환된다") {
+            it("guard 가 항상 예외를 던지도록 설정해도 전환 가능목록 조회는 정상 반환된다") {
                 val transitions =
                     listOf(AvailableTransitionView(fromStateKey = "open", toStateKey = "in_progress", name = "시작"))
                 every {

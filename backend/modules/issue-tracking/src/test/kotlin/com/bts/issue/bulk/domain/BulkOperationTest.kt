@@ -1,4 +1,4 @@
-// BulkOperation Aggregate Root 단위 테스트 — 상태 전이, 카운트 집계 멱등, markItem, isTerminal, payload 보유
+// BulkOperation Aggregate Root 단위 테스트 — 상태 전환, 카운트 집계 멱등, markItem, isTerminal, payload 보유
 
 package com.bts.issue.bulk.domain
 
@@ -13,9 +13,9 @@ import java.util.UUID
  *
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  * 테스트 케이스.
- * - transition_pending_to_running — PENDING 상태에서 start() 호출 시 RUNNING 으로 전이한다.
- * - transition_running_to_completed — RUNNING 상태에서 complete() 호출 시 COMPLETED 로 전이한다.
- * - transition_pending_to_failed — PENDING 상태에서 fail() 호출 시 FAILED 로 전이한다.
+ * - transition_pending_to_running — PENDING 상태에서 start() 호출 시 RUNNING 으로 전환한다.
+ * - transition_running_to_completed — RUNNING 상태에서 complete() 호출 시 COMPLETED 로 전환한다.
+ * - transition_pending_to_failed — PENDING 상태에서 fail() 호출 시 FAILED 로 전환한다.
  * - reject_start_when_not_pending — PENDING 이 아닌 상태에서 start() 호출 시 예외를 던진다.
  * - reject_complete_when_not_running — RUNNING 이 아닌 상태에서 complete() 호출 시 예외를 던진다.
  * - reject_fail_when_terminal — COMPLETED/FAILED 상태에서 fail() 호출 시 예외를 던진다.
@@ -51,23 +51,23 @@ class BulkOperationTest {
             payload = payload,
         )
 
-    // ── 상태 전이 ──────────────────────────────────────────────────────────
+    // ── 상태 전환 ──────────────────────────────────────────────────────────
 
     @Test
-    fun `transition_pending_to_running — PENDING 상태에서 start() 호출 시 RUNNING 으로 전이한다`() {
+    fun `transition_pending_to_running — PENDING 상태에서 start() 호출 시 RUNNING 으로 전환한다`() {
         val op = pendingOp()
         val running = op.start()
         assertThat(running.status).isEqualTo(BulkOperationStatus.RUNNING)
     }
 
     @Test
-    fun `transition_running_to_completed — RUNNING 상태에서 complete() 호출 시 COMPLETED 로 전이한다`() {
+    fun `transition_running_to_completed — RUNNING 상태에서 complete() 호출 시 COMPLETED 로 전환한다`() {
         val completed = pendingOp().start().complete()
         assertThat(completed.status).isEqualTo(BulkOperationStatus.COMPLETED)
     }
 
     @Test
-    fun `transition_pending_to_failed — PENDING 상태에서 fail() 호출 시 FAILED 로 전이한다`() {
+    fun `transition_pending_to_failed — PENDING 상태에서 fail() 호출 시 FAILED 로 전환한다`() {
         val failed = pendingOp().fail()
         assertThat(failed.status).isEqualTo(BulkOperationStatus.FAILED)
     }

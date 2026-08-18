@@ -268,7 +268,7 @@ class ImportMappingServiceTest {
     fun `confirm with dryRun=true propagates dryRun to transitionToPending and reflects it in the returned snapshot`() {
         // T7 구현 당시 confirm 의 dryRun 파라미터는 감사 로깅에만 쓰이고 영속되지 않아, 워커가 확정된
         // dryRun 선택을 무시하고 dry-run 매핑 Import 를 실제로 실행하는 silent bug 가 있었다.
-        // transitionToPending(jobId, dryRun) 호출로 CAS 전이와 같은 UPDATE 에서 dry_run 을 확정해야 한다.
+        // transitionToPending(jobId, dryRun) 호출로 CAS 전환과 같은 UPDATE 에서 dry_run 을 확정해야 한다.
         val job = makeJob(format = "CSV")
         val mapping = mapOf("Title" to "summary", "Desc" to "description")
         every { importJobRepository.findByIdForRequester(job.id, actor) } returns job

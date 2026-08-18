@@ -1,4 +1,4 @@
-# FR-IS-05 — 이슈 일괄 편집 + 일괄 상태 전이 (백엔드 D1~D5)
+# FR-IS-05 — 이슈 일괄 편집 + 일괄 상태 전환 (백엔드 D1~D5)
 
 > slug: fr-is-05-bulk-edit
 > type: api
@@ -8,7 +8,7 @@
 
 ## Brief
 
-FR-IS-05 (docs/plan/product/issue-tracking.md §2.2.1) — 이슈 일괄 편집 + 일괄 상태 전이.
+FR-IS-05 (docs/plan/product/issue-tracking.md §2.2.1) — 이슈 일괄 편집 + 일괄 상태 전환.
 이번 작업 범위는 **백엔드만 (D1~D5)**. 프론트 UI(D6)·E2E(D7)는 후속 PR로 분리.
 
 - D1. 도메인 — BulkOp
@@ -17,7 +17,7 @@ FR-IS-05 (docs/plan/product/issue-tracking.md §2.2.1) — 이슈 일괄 편집 
 - D4. 백엔드 — `POST /api/v1/issues/bulk-update`, 청크 처리
 - D5. 백엔드 테스트 — 부분 실패 시 트랜잭션 동작
 
-선행 FR-IS-01~04 모두 구현 완료. 일괄 상태 전이는 FR-IS-01/02의 전이 검증 로직 활용.
+선행 FR-IS-01~04 모두 구현 완료. 일괄 상태 전환은 FR-IS-01/02의 전환 검증 로직 활용.
 
 classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 (classify 원본은 project-workflow 오판 → fr-index.md 근거로 issue-tracking 정정)
@@ -31,7 +31,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 ### 새 Aggregate / 엔티티
 
 - **BulkOperation** (Aggregate Root, 영속) — 일괄 작업 1건
-  - `operationType`: `BULK_EDIT`(필드 일괄 편집) | `BULK_TRANSITION`(일괄 상태 전이)
+  - `operationType`: `BULK_EDIT`(필드 일괄 편집) | `BULK_TRANSITION`(일괄 상태 전환)
   - `status`: `PENDING` → `RUNNING` → `COMPLETED`(부분 실패 포함) | `FAILED`(작업 자체 실패)
   - 진행 카운트: `totalCount`, `processedCount`, `succeededCount`, `failedCount`
   - `actorId`, `createdAt`, `startedAt`, `completedAt`
@@ -40,13 +40,13 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 
 ### 새 용어 (glossary 추가 후보 — Maxi 승인 대기)
 
-- **일괄 작업 (Bulk Operation)** — 여러 이슈에 같은 변경(편집 또는 상태 전이)을 한 번에 적용하는 비동기 작업 단위. best-effort 부분 성공.
+- **일괄 작업 (Bulk Operation)** — 여러 이슈에 같은 변경(편집 또는 상태 전환)을 한 번에 적용하는 비동기 작업 단위. best-effort 부분 성공.
 - **일괄 작업 항목 (Bulk Operation Item)** — 일괄 작업 안의 개별 이슈 처리 결과.
 
 ### 도메인 규칙 / 정합성
 
 - **도메인 우회 금지** — 각 이슈 처리는 기존 `IssueApplicationService.updateIssue`(L212) / `transitionIssue`(L339)의 도메인 정규화·검증을 그대로 거친다. learnings 2026-05-?? "PATCH merge 도메인 우회" 회귀 방지. 일괄이라고 repository 직행 금지.
-- **전이 위임 유지** — 일괄 상태 전이는 이슈별로 기존 `WorkflowTransitionPort.plan()`(project-workflow 위임)을 호출. issue-tracking이 전이 규칙을 자체 구현하지 않는다 (BC 격리).
+- **전환 위임 유지** — 일괄 상태 전환은 이슈별로 기존 `WorkflowTransitionPort.plan()`(project-workflow 위임)을 호출. issue-tracking이 전환 규칙을 자체 구현하지 않는다 (BC 격리).
 - **트랜잭션 경계 충돌 없음** — 각 이슈는 여전히 "이슈+히스토리+이벤트 한 트랜잭션". 일괄은 그 위의 application 오케스트레이션 (이슈별 독립 트랜잭션 N개).
 - **권한** — 일괄 작업 시작 권한 + 이슈별 권한(UPDATE/TRANSITION) 개별 검증. 권한 없는 이슈는 작업 실패가 아니라 `FAILED` 항목으로 기록.
 
@@ -59,7 +59,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 
 - 멱등성/재시도 — pgmq job 재처리 시 이미 SUCCEEDED 항목 중복 처리 방지.
 - 결과 보존 기간 — 완료된 BulkOperation 정리(TTL/배치 cleanup) 정책.
-- 일괄 전이 **혼합 상태(mixed from-state)** 처리 — 선택한 이슈들의 현재 상태가 제각각일 때 `toStateKey` 개별 검증 vs Jira식 그룹핑.
+- 일괄 전환 **혼합 상태(mixed from-state)** 처리 — 선택한 이슈들의 현재 상태가 제각각일 때 `toStateKey` 개별 검증 vs Jira식 그룹핑.
 - 청크 크기 + 한 작업당 이슈 건수 상한.
 - **pgmq consumer 패턴 신규 도입 검증** — prod에 백그라운드 job 소비 선례 없음. spec에서 워커 구동/실패격리/at-least-once 처리 정밀화.
 
@@ -78,7 +78,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 
 핵심 요약.
 - `POST /api/v1/issues/bulk-update` 접수 → `202` + bulkOperationId. 백그라운드 pgmq 워커가 이슈별 처리.
-- best-effort 부분 성공. 항목별 SUCCEEDED/FAILED(reasonCode). 기존 updateIssue/transitionIssue 재사용, 전이는 WorkflowTransitionPort 위임.
+- best-effort 부분 성공. 항목별 SUCCEEDED/FAILED(reasonCode). 기존 updateIssue/transitionIssue 재사용, 전환은 WorkflowTransitionPort 위임.
 - `GET /api/v1/bulk-operations/{id}` 진행률/결과 조회(작업 actor 한정). 완료 시 BulkOperationCompleted 이벤트 발행(FR8).
 - 상한 1000건/청크 50, 멱등(항목 상태 기반), 결과 30일 TTL. 취소 API 없음(범위 제외).
 - 신규 테이블 V008: bulk_operations, bulk_operation_items + pgmq 큐 q_bulk_operations(BTS 최초 consumer).
@@ -123,7 +123,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperation.kt`, `.../bulk/domain/BulkOperationItem.kt`, `.../bulk/domain/BulkOperationStatus.kt`, `.../bulk/domain/BulkOperationType.kt`, `.../bulk/domain/FailureReasonCode.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/domain/BulkOperationTest.kt`]
 - depends-on: []
 
-**RED**: `BulkOperationTest` — 상태 전이(PENDING→RUNNING→COMPLETED/FAILED), **카운트 집계 멱등**(항목 상태 집계로 재계산, 같은 항목 2회 종료 처리해도 카운트 불변), 종료 항목 스킵 판정. 실패: 클래스 없음.
+**RED**: `BulkOperationTest` — 상태 전환(PENDING→RUNNING→COMPLETED/FAILED), **카운트 집계 멱등**(항목 상태 집계로 재계산, 같은 항목 2회 종료 처리해도 카운트 불변), 종료 항목 스킵 판정. 실패: 클래스 없음.
 **GREEN**: 순수 Kotlin Aggregate. `recomputeCounts(items)`, `markItem(issueKey, SUCCEEDED/FAILED, reasonCode)`, `isTerminal(item)`. enum 4종.
 **REFACTOR**: 불변식 KDoc + require 가드.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationTest"`
@@ -171,7 +171,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkOperationProcessor.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkOperationProcessorTest.kt`]
 - depends-on: [4]
 
-**RED**: `BulkOperationProcessorTest`(단위, 워커 타이밍 무관) — **actor 복원**(bulk_operations.actor_id→ActorId), 청크 처리(상한1000/청크50), **best-effort 부분 성공**(권한·전이 실패→항목 FAILED+reasonCode, 나머지 SUCCEEDED), **deny stub 주입**으로 권한 없는 이슈→FAILED(FORBIDDEN) 검증(B1 가짜그린 회피), **멱등 스킵**(종료 항목 재처리 안 함), **이슈 변경+항목 상태 동일 트랜잭션**(C1 부분실패 창 제거). 실패: 클래스 없음.
+**RED**: `BulkOperationProcessorTest`(단위, 워커 타이밍 무관) — **actor 복원**(bulk_operations.actor_id→ActorId), 청크 처리(상한1000/청크50), **best-effort 부분 성공**(권한·전환 실패→항목 FAILED+reasonCode, 나머지 SUCCEEDED), **deny stub 주입**으로 권한 없는 이슈→FAILED(FORBIDDEN) 검증(B1 가짜그린 회피), **멱등 스킵**(종료 항목 재처리 안 함), **이슈 변경+항목 상태 동일 트랜잭션**(C1 부분실패 창 제거). 실패: 클래스 없음.
 **GREEN**: `BulkOperationProcessor.process(bulkOperationId)` — actor 복원 → 항목별 기존 `IssueApplicationService.updateIssue`/`transitionIssue` 재사용(도메인 우회 금지) → 변경+항목기록 한 트랜잭션 → reasonCode 매핑 → 카운트 집계 재계산.
 **REFACTOR**: reasonCode 매핑 분리 + 청크 상수화.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationProcessorTest"`
@@ -219,7 +219,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/integration/BulkOperationIntegrationTest.kt`]
 - depends-on: [7, 8]
 
-**RED**: enqueue→consume→처리→결과 기록 e2e, **워커 재전달 멱등**(같은 메시지 2회 read 시 SUCCEEDED 스킵·카운트 불변), **CAS 동시성**(동시 2워커 단일 처리), 혼합 from-state 일괄 전이 부분 성공, 1000건 상한, 완료 이벤트 발행 확인. 실패: 동작 미구현.
+**RED**: enqueue→consume→처리→결과 기록 e2e, **워커 재전달 멱등**(같은 메시지 2회 read 시 SUCCEEDED 스킵·카운트 불변), **CAS 동시성**(동시 2워커 단일 처리), 혼합 from-state 일괄 전환 부분 성공, 1000건 상한, 완료 이벤트 발행 확인. 실패: 동작 미구현.
 **GREEN**: 위 task들로 통과. 필요한 미세 보강만.
 **REFACTOR**: 픽스처 헬퍼 정리.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationIntegrationTest"`
@@ -247,7 +247,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - **B3. pgmq vt 미정의 + 작업레벨 동시성 제어 없음** — vt 만료 중 처리 지연 시 같은 작업 2워커 동시 처리 → 이슈 2회 변경 위험. 항목 상태 가드는 "결과 기록" 멱등일 뿐 "도메인 변경" 멱등 아님. 작업레벨 advisory lock/CAS 필요(learnings advisory lock TOCTOU).
 
 **CONCERN**
-- C1. NFR5 트랜잭션 분리 vs 부분실패 창 — 이슈변경(A) 커밋 후 항목상태(B) 전 크래시 시 항목 PENDING 잔존 → 재처리가 이미 전이된 이슈 재전이→FAILED로 성공을 덮음. 이슈변경+항목상태 동일 트랜잭션 여부 결정 필요.
+- C1. NFR5 트랜잭션 분리 vs 부분실패 창 — 이슈변경(A) 커밋 후 항목상태(B) 전 크래시 시 항목 PENDING 잔존 → 재처리가 이미 전환된 이슈 재전환→FAILED로 성공을 덮음. 이슈변경+항목상태 동일 트랜잭션 여부 결정 필요.
 - C2. 멀티 프로젝트 혼합 → cross-BC plan() 수천회, 성능 예산(처리시간 SLA) 없음 → vt 산정 근거 부재.
 - C3. TTL cleanup task 누락(NFR4 미구현) — Task에 cleanup 컴포넌트 없음.
 - C4. BulkOperationCompleted 큐/스키마 미정의 + 중복 발행 가능.

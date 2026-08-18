@@ -14,7 +14,7 @@ FR-RP-04는 프로젝트의 **완료된 이슈**들이 얼마나 걸려서 끝�
 - **Cycle Time** = 첫 작업 착수(IN_PROGRESS 카테고리 최초 진입) → 완료까지의 소요.
 
 CFD(FR-RP-03)와 데이터 소스는 같다 — `issue_change_group`/`issue_change_item`(V018, FR-HS-01)의
-status 전이 이력에서 각 이슈의 상태 타임라인을 재구성한다. 그러나 CFD가 "날짜별 카테고리 누적 카운트"를
+status 전환 이력에서 각 이슈의 상태 타임라인을 재구성한다. 그러나 CFD가 "날짜별 카테고리 누적 카운트"를
 day 단위로 계산한 것과 달리, FR-RP-04는 **이슈별 소요 기간(duration)의 분포**를 초 단위로 계산한다
 (같은 날 완료된 이슈가 day 절삭으로 0이 되면 분포가 무의미해지기 때문).
 
@@ -24,8 +24,8 @@ day 단위로 계산한 것과 달리, FR-RP-04는 **이슈별 소요 기간(dur
 
 ### D1. Cycle Time 정의 + 엣지 처리 (Maxi 확정)
 
-- **Cycle Time** = 이슈의 **첫 IN_PROGRESS 카테고리 status 전이** 시각 → **마지막 DONE 카테고리 status 전이**(완료) 시각.
-- **Lead Time** = 이슈 `created_at` → 마지막 DONE 전이 시각.
+- **Cycle Time** = 이슈의 **첫 IN_PROGRESS 카테고리 status 전환** 시각 → **마지막 DONE 카테고리 status 전환**(완료) 시각.
+- **Lead Time** = 이슈 `created_at` → 마지막 DONE 전환 시각.
 - **IN_PROGRESS 미경유**(TODO→DONE 직행, 예: 즉시 close) 이슈는 **Cycle 분포에서 제외**하고 **Lead 분포에만** 집계한다(Cycle 표본 수 < Lead 표본 수).
 - **재오픈**(DONE→IN_PROGRESS→DONE)은 첫 IN_PROGRESS → **마지막** DONE으로 계산(재작업이 cycle을 늘림).
 - **음수**(firstInProgress > lastDone) 이슈는 Cycle 제외(Lead 유지).
@@ -35,7 +35,7 @@ day 단위로 계산한 것과 달리, FR-RP-04는 **이슈별 소요 기간(dur
 
 ### D2. 모집단 + 창(window) (Maxi 확정)
 
-- **모집단** = 이슈의 **마지막 DONE 카테고리 status 전이** 시각(`completedAt`)의 UTC 날짜가 창 `[from, to]`
+- **모집단** = 이슈의 **마지막 DONE 카테고리 status 전환** 시각(`completedAt`)의 UTC 날짜가 창 `[from, to]`
   안에 드는(완료된) 이슈. 소프트 삭제 이슈 제외. 뷰어 가시 이슈로 한정.
 - 창은 UTC 날짜(ISO `yyyy-MM-dd`), 생략 시 기본 최근 30일, 상한 180일(Clock 주입). 잘못된 창(`from>to`·파싱 실패·상한 초과)은 400.
 
@@ -93,18 +93,18 @@ then make the easy change").
 - **Lead Time** — 이슈가 생성(created)부터 완료(DONE)까지 걸린 총 시간. (FR-RP-04)
 - **CycleTimeStats** (VO, 영속 아님) — 초 리스트의 요약 통계 `{count, min, max, avg, p25, p50, p75, p90}`.
   nearest-rank 백분위. count=0이면 통계 null. read-model, 테이블 없음.
-- **IssueDurationInput** (VO) — 서비스가 status 전이 이력을 축약한 이슈별 입력
+- **IssueDurationInput** (VO) — 서비스가 status 전환 이력을 축약한 이슈별 입력
   `{issueKey, createdAt, firstInProgressAt?, lastDoneAt?}`. 계산기 순수성 유지용.
 
 ## v1 한계 (수용)
 
-- status 전이 이력 없는 이슈(V018 이전 생성·직접 DONE/IN_PROGRESS 생성) 제외 — 완료/착수 시각을 전이 이력에서만
+- status 전환 이력 없는 이슈(V018 이전 생성·직접 DONE/IN_PROGRESS 생성) 제외 — 완료/착수 시각을 전환 이력에서만
   신뢰(레거시 오-계산 방지, CFD "V018 이전 이슈" 동종).
 - 완료 후 창 밖에서 재완료한 이슈는 마지막 DONE(창 밖) 기준으로 제외될 수 있음(on-the-fly 철학 정합).
 - `samples` 페이로드 = O(창 내 완료 이슈 수), v1 캡 없음. 장래 대용량 시 서버 사이드 binning 전환 여지.
 
 ## SDD 동기화 대상 (같은 PR 내 필수)
 
-- **SDD §13.5.5** — 구현 상세(전이 기반 duration·초 단위·응답 샘플+백분위·엔드포인트·on-the-fly·공유 프리미티브) 반영.
+- **SDD §13.5.5** — 구현 상세(전환 기반 duration·초 단위·응답 샘플+백분위·엔드포인트·on-the-fly·공유 프리미티브) 반영.
 - product `notification-dashboard.md §4.4` — D1~D5 마킹 + `구현 범위` 박스.
 - fr-index/README/CLAUDE FR 카운트 불변(BC 라벨 유지, 95/123 불변).

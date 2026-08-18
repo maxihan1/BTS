@@ -1,4 +1,4 @@
-// SprintApplicationService MockK 단위 테스트 — 권한 판정 + 도메인 전이 + 이슈 할당/해제 RED 명세 (FR-BL-02 Task 4)
+// SprintApplicationService MockK 단위 테스트 — 권한 판정 + 도메인 전환 + 이슈 할당/해제 RED 명세 (FR-BL-02 Task 4)
 
 package com.bts.agileplanning.application
 
@@ -29,7 +29,7 @@ import java.util.UUID
  * MockK 로 교체해 독립적으로 동작을 검증한다.
  * 권한 판정 순서(actor -> sprint 조회 -> 권한 -> 동작)와 fail-closed 를 집중 검증한다.
  */
-@Suppress("LargeClass") // 서비스 전 시나리오(권한·전이·할당·partial PATCH)를 단일 테스트 클래스로 커버한다
+@Suppress("LargeClass") // 서비스 전 시나리오(권한·전환·할당·partial PATCH)를 단일 테스트 클래스로 커버한다
 class SprintApplicationServiceTest {
     private val actorId: UUID = UUID.randomUUID()
     private val sprintId: UUID = UUID.randomUUID()
@@ -538,7 +538,7 @@ class SprintApplicationServiceTest {
     // ── start ─────────────────────────────────────────────────────────────────
 
     @Test
-    fun `start PLANNED 스프린트는 ACTIVE로 전이되고 영속된다`() {
+    fun `start PLANNED 스프린트는 ACTIVE로 전환되고 영속된다`() {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns plannedSprint
@@ -605,7 +605,7 @@ class SprintApplicationServiceTest {
     // ── complete ──────────────────────────────────────────────────────────────
 
     @Test
-    fun `complete ACTIVE 스프린트는 COMPLETED로 전이되고 영속된다`() {
+    fun `complete ACTIVE 스프린트는 COMPLETED로 전환되고 영속된다`() {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns activeSprint

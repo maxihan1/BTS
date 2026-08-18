@@ -55,7 +55,7 @@ import java.util.concurrent.Future
  * - **MFA 암호화 키 주입** — [com.atlas.bts.identity.mfa.MfaSecretEncryptor] 가 setup/enable 시 요구.
  *
  * ## 백업 코드 발급 경로
- * Task 8 범위(verify method 분기)에는 백업 코드 발급 HTTP 엔드포인트가 없으므로, ACTIVE 전이 후
+ * Task 8 범위(verify method 분기)에는 백업 코드 발급 HTTP 엔드포인트가 없으므로, ACTIVE 전환 후
  * [MfaBackupCodeService.generateOrRegenerate] 를 직접 호출해 평문 코드 묶음을 얻는다(서비스가 ACTIVE
  * 게이트를 강제한다). 이후 검증은 운영 HTTP 경로(`POST /mfa/verify`)로만 수행한다.
  *
@@ -278,7 +278,7 @@ class MfaBackupCodeLoginIntegrationTest {
     // ── private 헬퍼 ────────────────────────────────────────────────────────────
 
     /**
-     * TOTP setup→enable 로 ACTIVE 전이시키고 평문 secret 을 반환한다.
+     * TOTP setup→enable 로 ACTIVE 전환시키고 평문 secret 을 반환한다.
      *
      * setup 은 HTTP, enable 은 정답 코드 계산이 필요해 1단계 로그인으로 JWT 를 확보한 뒤 HTTP 로 수행한다.
      */
@@ -299,7 +299,7 @@ class MfaBackupCodeLoginIntegrationTest {
     }
 
     /**
-     * ACTIVE 전이 후 백업 코드 10개를 발급하고 평문 묶음을 반환한다.
+     * ACTIVE 전환 후 백업 코드 10개를 발급하고 평문 묶음을 반환한다.
      *
      * Task 8 범위에 발급 HTTP 엔드포인트가 없어 서비스를 직접 호출한다(서비스가 ACTIVE 게이트를 강제).
      */

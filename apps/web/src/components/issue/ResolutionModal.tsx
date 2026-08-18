@@ -1,4 +1,4 @@
-// 종료 전이 시 결의안 선택 모달 (FR-IS-07 Task B9)
+// 종료 전환 시 결의안 선택 모달 (FR-IS-07 Task B9)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import {
@@ -42,7 +42,7 @@ export interface ResolutionModalProps {
   /** 모달 열림 여부 */
   readonly open: boolean
   /**
-   * 이미 resolution이 설정된 이슈의 DONE→DONE 전이 시 기존 값으로 pre-fill.
+   * 이미 resolution이 설정된 이슈의 DONE→DONE 전환 시 기존 값으로 pre-fill.
    * null이면 선택 없음 상태로 시작.
    */
   readonly prefilledResolution: PrefilledResolution | null
@@ -60,16 +60,16 @@ export interface ResolutionModalProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 종료 전이 시 결의안 선택 모달.
+ * 종료 전환 시 결의안 선택 모달.
  *
- * - DONE 카테고리 전이 선택 시 부모가 open=true로 마운트한다.
+ * - DONE 카테고리 전환 선택 시 부모가 open=true로 마운트한다.
  * - useResolutions(B8)로 결의안 목록을 로드해 드롭다운에 표시한다.
- * - prefilledResolution이 있으면 초기 선택값으로 pre-fill한다 (DONE→DONE 재전이 시).
+ * - prefilledResolution이 있으면 초기 선택값으로 pre-fill한다 (DONE→DONE 재전환 시).
  * - resolution 미선택 상태에서 확인 버튼은 비활성이다.
  * - 확인 시 onConfirm(resolutionId)를 호출한다.
  *
  * @param open 모달 열림 여부
- * @param prefilledResolution 기존 결의안 (DONE→DONE 전이 시 pre-fill)
+ * @param prefilledResolution 기존 결의안 (DONE→DONE 전환 시 pre-fill)
  * @param onConfirm 확인 콜백 — 선택된 resolutionId 전달
  * @param onCancel 취소 콜백
  */

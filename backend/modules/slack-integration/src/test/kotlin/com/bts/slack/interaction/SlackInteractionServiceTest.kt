@@ -32,7 +32,7 @@ import java.util.UUID
 /**
  * [SlackInteractionService] 단위 테스트 — 모든 협력자를 mockk로 대체한다.
  *
- * 완료 인터랙션의 동기 오케스트레이션(역매핑 → 완료옵션/모달 또는 전이 → 감사)과, 전이 실패를
+ * 완료 인터랙션의 동기 오케스트레이션(역매핑 → 완료옵션/모달 또는 전환 → 감사)과, 전환 실패를
  * shared-kernel 타입 예외([IssueTransitionPermissionDeniedException]/[IssueOptimisticLockException])로
  * 분류해 서로 다른 결과·감사 outcome으로 수렴하는지 검증한다. actor는 오직 역매핑 결과만 쓰이며
  * (위조 차단), 미연결/무권한/충돌은 모두 안전하게 거부된다.
@@ -191,7 +191,7 @@ class SlackInteractionServiceTest {
         assertThat(result).isEqualTo(InteractionResult.AckEmpty)
         verify(exactly = 1) { messageClient.openModal(botToken, "trig-1", "{\"view\":1}") }
         verify(exactly = 0) { responseUrlClient.post(any(), any()) }
-        // 모달 오픈 성공은 완료 자체가 아니므로 V703을 남기지 않는다(완료 SUCCESS는 view_submission 전이 시점).
+        // 모달 오픈 성공은 완료 자체가 아니므로 V703을 남기지 않는다(완료 SUCCESS는 view_submission 전환 시점).
         verify(exactly = 0) { interactionLogRepository.record(any(), any(), any(), any(), any(), any()) }
     }
 
@@ -240,7 +240,7 @@ class SlackInteractionServiceTest {
 
         val result = service.handle(blockActionsComplete())
 
-        // 완료 가능한 전이가 없으면(이미 완료 등) 입력 없는 무효 모달을 열지 않고 안내로 수렴한다.
+        // 완료 가능한 전환이 없으면(이미 완료 등) 입력 없는 무효 모달을 열지 않고 안내로 수렴한다.
         assertThat(result).isEqualTo(InteractionResult.AckEmpty)
         verify(exactly = 0) { botTokenResolver.resolve(any()) }
         verify(exactly = 0) { messageClient.openModal(any(), any(), any()) }
@@ -387,7 +387,7 @@ class SlackInteractionServiceTest {
     // ── view_submission: atlas_complete_modal ─────────────────────────────────
 
     @Test
-    fun `모달 제출 성공 — 전이 실행 + 원본 메시지 갱신 + 빈 200 + V703 SUCCESS`() {
+    fun `모달 제출 성공 — 전환 실행 + 원본 메시지 갱신 + 빈 200 + V703 SUCCESS`() {
         every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
         every { transitionPort.transition(expectedCommand) } returns BoardTransitionResult(issueKey, toStateKey, 4)
         every { botTokenResolver.resolve(teamId) } returns botToken
@@ -407,12 +407,12 @@ class SlackInteractionServiceTest {
     fun `모달 제출 성공 — 원본 메시지 갱신(봇토큰 복호화)이 실패해도 완료는 SUCCESS 유지(장식 실패가 성공을 뒤집지 않는다)`() {
         every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
         every { transitionPort.transition(expectedCommand) } returns BoardTransitionResult(issueKey, toStateKey, 4)
-        // 전이는 커밋된 뒤, 장식용 chat.update 를 위한 봇토큰 복호화가 실패(손상 암호문/키 불일치 등).
+        // 전환은 커밋된 뒤, 장식용 chat.update 를 위한 봇토큰 복호화가 실패(손상 암호문/키 불일치 등).
         every { botTokenResolver.resolve(teamId) } throws RuntimeException("decrypt failed")
 
         val result = service.handle(viewSubmission())
 
-        // 전이는 이미 성공·커밋됨 → 장식용 갱신 실패가 완료를 실패로 오분류하거나 ERROR 로 오기록해선 안 된다.
+        // 전환은 이미 성공·커밋됨 → 장식용 갱신 실패가 완료를 실패로 오분류하거나 ERROR 로 오기록해선 안 된다.
         assertThat(result).isEqualTo(InteractionResult.AckEmpty)
         verify(exactly = 1) {
             interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMPLETE", "SUCCESS", issueKey)
@@ -479,7 +479,7 @@ class SlackInteractionServiceTest {
     }
 
     @Test
-    fun `모달 제출 성공 — resolution 없이도 전이한다(resolutionId null)`() {
+    fun `모달 제출 성공 — resolution 없이도 전환한다(resolutionId null)`() {
         val commandNoResolution = expectedCommand.copy(resolutionId = null)
         every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
         every { transitionPort.transition(commandNoResolution) } returns BoardTransitionResult(issueKey, toStateKey, 4)

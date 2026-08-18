@@ -60,7 +60,7 @@ FR-UX-03은 별도 `inbox_items` 테이블을 만들지 않고(ADR D1) `notifica
 - **Then** title ILIKE `%ATLAS-12%` AND actor_user_id=senderId AND created_at BETWEEN from/to AND 본인 AND IN_APP. AND 결합
 
 ### S7. 그룹화 (같은 이슈)
-- **Given** 이슈 ATLAS-12에 대한 알림 5건(생성/전이/댓글…)
+- **Given** 이슈 ATLAS-12에 대한 알림 5건(생성/전환/댓글…)
 - **When** `GET .../inbox?issueKey=ATLAS-12`
 - **Then** 해당 issue_key 알림만 최신순. (시각적 묶음은 프론트 D6 책임 — 서버는 평면 목록 + issueKey 노출)
 
@@ -180,7 +180,7 @@ CREATE INDEX ix_notifications_recipient_unread
 
 ## 측정 가능한 완료 기준
 
-- **도메인 단위 테스트** — Notification.markRead/markUnread/archive/unarchive 전이(copy 불변, 멱등)
+- **도메인 단위 테스트** — Notification.markRead/markUnread/archive/unarchive 전환(copy 불변, 멱등)
 - **Repository 통합 테스트(Testcontainers)** — 탭 필터/페이지네이션/검색(텍스트·발신자·기간) AND 결합/
   미읽음 카운트/no-bump UPDATE(본인만)/타인 격리/IN_APP 한정/멱등
 - **Controller 슬라이스 테스트** — 401/404/200, 요청 검증(400), 응답 스키마, read-all 건수

@@ -122,7 +122,7 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
     // Then. 셀렉터 현재값이 '1' 로 갱신
     await expect(impactSelect).toHaveValue('1')
 
-    // Then. 미지정 옵션이 disabled 로 전이 — 한 번 설정 후 되돌리기 불가 (enabled→disabled 토글 검증)
+    // Then. 미지정 옵션이 disabled 로 전환 — 한 번 설정 후 되돌리기 불가 (enabled→disabled 토글 검증)
     await expect(unsetOption).toBeDisabled()
   })
 

@@ -1,4 +1,4 @@
-# ADR — Version 상태 모델 + 전이 규칙 (FR-VR-02)
+# ADR — Version 상태 모델 + 전환 규칙 (FR-VR-02)
 
 > 날짜: 2026-06-10
 > 상태: 채택
@@ -9,7 +9,7 @@
 ## 맥락
 
 FR-VR-01은 `versions` 테이블 + Version Aggregate + CRUD를 status 없이 구현하고,
-`versions.status` 컬럼과 상태 전이를 FR-VR-02로 명시 이연했다
+`versions.status` 컬럼과 상태 전환을 FR-VR-02로 명시 이연했다
 (deferral ADR D5, V010 마이그레이션 주석 "status 컬럼은 FR-VR-02 로 이연").
 
 SDD 데이터모델 §05 Version 테이블은 이미 다음을 명세한다.
@@ -17,7 +17,7 @@ SDD 데이터모델 §05 Version 테이블은 이미 다음을 명세한다.
 - `released_at TIMESTAMPTZ NULL` — 실제 릴리스 시각 (`release_date`=릴리스 예정일과 별개)
 
 권한 enum `VersionPermission.UPDATE` 의 KDoc은 이미 "name/description/releaseDate/released 등"으로
-상태 전이가 UPDATE 권한 소관임을 예고한다.
+상태 전환이 UPDATE 권한 소관임을 예고한다.
 
 ## 결정
 
@@ -25,8 +25,8 @@ SDD 데이터모델 §05 Version 테이블은 이미 다음을 명세한다.
 `com.bts.issue.version.domain.VersionStatus` enum 신설 — `UNRELEASED`, `RELEASED`, `ARCHIVED`.
 신규 생성 버전은 항상 `UNRELEASED` 로 시작한다(`Version.create` 기본값). DB 기본값도 동일.
 
-### D2 — 전이 그래프 (Jira 정석, 양방향 + 되돌리기) — Maxi 결정 2026-06-10
-허용 전이만 명시(나머지는 모두 거부).
+### D2 — 전환 그래프 (Jira 정석, 양방향 + 되돌리기) — Maxi 결정 2026-06-10
+허용 전환만 명시(나머지는 모두 거부).
 
 ```
 UNRELEASED ──release──▶ RELEASED
@@ -64,15 +64,15 @@ ARCHIVED 상태 버전은 다른 mutation을 거부한다.
 근거: "보관 = 더 이상 건드리지 않는다"는 의미를 도메인 불변식으로 보장(Jira 동일). UI에서도
 보관 버전의 수정/삭제 버튼을 비활성화한다(D6).
 
-### D5 — 전이 API는 상태 전용 서브리소스 (PATCH .../status)
+### D5 — 전환 API는 상태 전용 서브리소스 (PATCH .../status)
 FR-VR-01의 `/dates` 서브리소스 패턴(`PATCH /{id}/dates`)을 동형 답습한다.
 - `PATCH /api/v1/projects/{projectIdOrKey}/versions/{id}/status` — body `{ "status": "RELEASED" }`.
-- 단일 엔드포인트가 target status를 받아 현재 상태에서의 전이 가능 여부를 도메인이 판정.
+- 단일 엔드포인트가 target status를 받아 현재 상태에서의 전환 가능 여부를 도메인이 판정.
 - 액션별 엔드포인트(`/release`, `/archive`...) 대신 단일 status PATCH로 통일(엔드포인트 수 최소화).
 - 세부 요청/응답 형식은 spec(D2)에서 확정.
 
 ### D6 — 권한은 VersionPermission.UPDATE 재사용 (새 enum 없음)
-상태 전이는 버전 "수정"의 일종이므로 `VersionPermission.UPDATE` 를 재사용한다
+상태 전환은 버전 "수정"의 일종이므로 `VersionPermission.UPDATE` 를 재사용한다
 (enum KDoc이 이미 예고). 새 권한 코드/enum 값을 추가하지 않는다 →
 permission_schemes 시드 변경 불필요, FR-PM 카운트 가드 영향 없음
 (메모리 enum-add-breaks-crossmodule-count-guard 회피).
@@ -89,10 +89,10 @@ actorId 실 추출은 FR-PM-03 소관으로 이연돼 있다. FR-VR-02는 이 �
   (메모리 jooq-init-codegen-mirror).
 - 도메인 — `VersionStatus` enum + `Version.status`/`releasedAt` 필드 +
   `release`/`unrelease`/`archive`/`unarchive` 메서드(Clock 주입) + ARCHIVED 읽기 전용 불변식.
-- 백엔드 — `VersionApplicationService.changeStatus` + 전이 거부 예외(409) +
+- 백엔드 — `VersionApplicationService.changeStatus` + 전환 거부 예외(409) +
   `PATCH /{id}/status` 엔드포인트.
-- 프론트(D6) — 버전 목록에 상태 뱃지 + 전이 버튼(릴리스/보관/되돌리기) + 보관 버전 수정/삭제 비활성화.
-- E2E(D7) — 전이 happy path + 거부 케이스.
+- 프론트(D6) — 버전 목록에 상태 뱃지 + 전환 버튼(릴리스/보관/되돌리기) + 보관 버전 수정/삭제 비활성화.
+- E2E(D7) — 전환 happy path + 거부 케이스.
 
 ## 미해결 / 후속
 

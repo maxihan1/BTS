@@ -305,7 +305,7 @@ class NotificationWorker(
     }
 
     /**
-     * 알림을 채널로 전송하고, 전송이 성공한 경우에만 status 를 SENT 로 전이한다.
+     * 알림을 채널로 전송하고, 전송이 성공한 경우에만 status 를 SENT 로 전환한다.
      *
      * 푸시 실패는 best-effort 로 처리한다 — 예외를 전파하지 않아 pgmq 메시지 재전달(중복 푸시)을 막고,
      * 행은 PENDING 으로 남겨 Inbox(FR-UX-03)가 영속 fallback 이 되게 한다. 이로써 "발송 전 SENT 박제 +
@@ -337,7 +337,7 @@ class NotificationWorker(
      * 이벤트와 수신자 정보로 [Notification] 도메인 객체를 생성한다.
      *
      * title/body 는 issueKey + eventType 기반 간단 문자열 — actor 이름 조회 안 함 (FR10).
-     * status 는 PENDING 으로 삽입한다. 채널 전송이 성공한 뒤에만 [deliver] 가 markSent 로 SENT 전이한다
+     * status 는 PENDING 으로 삽입한다. 채널 전송이 성공한 뒤에만 [deliver] 가 markSent 로 SENT 전환한다
      * (발송 전 SENT 박제 방지 — 푸시 실패 시 PENDING 으로 남아 Inbox(FR-UX-03)가 영속 fallback).
      *
      * ## 발신자(actorUserId) 저장 정책 (CONCERN-3)

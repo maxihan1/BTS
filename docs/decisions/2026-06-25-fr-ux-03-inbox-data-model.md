@@ -45,7 +45,7 @@ notification-dashboard.md §5.2 D3 본문을 "notifications 확장"으로 전수
 - **archive**: `archived_at` NULL(보관 안 됨) ↔ 비-NULL(보관됨). 보관은 단건.
 - 탭 = 두 축의 조합. **전체**(archived_at IS NULL) / **안읽음**(read_at IS NULL AND archived_at
   IS NULL) / **보관함**(archived_at IS NOT NULL). 보관함은 읽음 여부와 무관하게 표시.
-- 도메인 전이는 `Notification` Aggregate에 `markRead(at)` / `markUnread()` / `archive(at)` /
+- 도메인 전환은 `Notification` Aggregate에 `markRead(at)` / `markUnread()` / `archive(at)` /
   `unarchive()` 같은 copy 기반 메서드로 추가한다(기존 불변 data class 패턴 유지). 단, 실제
   상태 변경 영속은 repository의 부분 UPDATE(no-bump, read_at/archived_at만)로 처리한다.
 

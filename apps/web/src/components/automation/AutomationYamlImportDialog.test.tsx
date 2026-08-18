@@ -483,7 +483,7 @@ describe('AutomationYamlImportDialog', () => {
     expect(await screen.findByTestId('automation-yaml-import-apply-button')).toBeInTheDocument()
   })
 
-  it('open 이 false→true 로 재전이하면 파일·결과·에러 상태가 초기화된다 (EC8)', async () => {
+  it('open 이 false→true 로 재전환하면 파일·결과·에러 상태가 초기화된다 (EC8)', async () => {
     const user = userEvent.setup()
     server.use(
       http.post(IMPORT_URL, () =>

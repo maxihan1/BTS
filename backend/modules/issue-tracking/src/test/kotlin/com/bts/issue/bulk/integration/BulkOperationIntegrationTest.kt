@@ -89,7 +89,7 @@ import java.util.concurrent.Executors
  * - S1. 일괄 편집(BULK_EDIT) 전체 흐름 — submit→worker→결과 확인
  * - S2. 워커 재전달 멱등 — 같은 메시지를 2회 읽어도 SUCCEEDED 항목 스킵, 카운트 불변
  * - S3. CAS 동시성 — 동시 2워커가 같은 작업을 단일 처리 (claimForRun)
- * - S4. 혼합 from-state 일괄 전이 부분 성공 — 일부 이슈 전이 가능, 일부 불가
+ * - S4. 혼합 from-state 일괄 전환 부분 성공 — 일부 이슈 전환 가능, 일부 불가
  * - S5. 1000건 상한 — BULK_OPERATION_MAX_SIZE 이슈 처리 완료 검증
  * - S6. 완료 이벤트 발행 — q_bulk_operation_events 큐에 메시지 발행 확인
  *
@@ -553,25 +553,25 @@ class BulkOperationIntegrationTest {
         assertThat(op.failedCount).isEqualTo(0)
     }
 
-    // ── S4. 혼합 from-state 일괄 전이 부분 성공 ─────────────────────────────────
+    // ── S4. 혼합 from-state 일괄 전환 부분 성공 ─────────────────────────────────
 
     /**
      * S4 — 이슈 상태가 제각각일 때 toStateKey 개별 검증, 부분 성공.
      *
      * Given  이슈 3건 삽입
-     *        - key1: open (open→in_progress 전이 가능)
-     *        - key2: open (open→in_progress 전이 가능)
-     *        - key3: done (done→in_progress 전이 미정의 → TRANSITION_NOT_ALLOWED)
+     *        - key1: open (open→in_progress 전환 가능)
+     *        - key2: open (open→in_progress 전환 가능)
+     *        - key3: done (done→in_progress 전환 미정의 → TRANSITION_NOT_ALLOWED)
      * When   BULK_TRANSITION toStateKey=in_progress 접수 → 워커 실행
-     * Then   key1, key2 → SUCCEEDED (전이 성공)
-     *        key3 → FAILED (전이 불가)
+     * Then   key1, key2 → SUCCEEDED (전환 성공)
+     *        key3 → FAILED (전환 불가)
      *        작업 COMPLETED, succeededCount=2, failedCount=1
      */
     @Test
-    fun `S4 - 혼합 from-state 부분 성공 - 전이 가능 이슈 SUCCEEDED 불가 이슈 FAILED`() {
-        val key1 = insertIssue("전이가능1", "open")
-        val key2 = insertIssue("전이가능2", "open")
-        val key3 = insertIssue("전이불가", "done") // done→in_progress 전이 없음
+    fun `S4 - 혼합 from-state 부분 성공 - 전환 가능 이슈 SUCCEEDED 불가 이슈 FAILED`() {
+        val key1 = insertIssue("전환가능1", "open")
+        val key2 = insertIssue("전환가능2", "open")
+        val key3 = insertIssue("전환불가", "done") // done→in_progress 전환 없음
 
         val opId =
             bulkAppService.submit(

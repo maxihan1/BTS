@@ -43,7 +43,7 @@ class DefaultWorkflowDefinitionRepository(
     private val mapTypeRef = object : TypeReference<Map<String, Any?>>() {}
 
     /**
-     * 전이에 설정된 Validator 설정 목록을 display_order ASC 순서로 반환한다.
+     * 전환에 설정된 Validator 설정 목록을 display_order ASC 순서로 반환한다.
      *
      * workflowKey 가 가리키는 workflow 범위 안에서만 state / transition 을 해석하므로
      * 같은 (fromStateKey, toStateKey) 쌍을 사용하는 다른 워크플로우의 validator 행이
@@ -52,7 +52,7 @@ class DefaultWorkflowDefinitionRepository(
      * workflow / state / transition 미존재 시 빈 리스트 반환 (예외 없음).
      *
      * @param workflowKey 워크플로우 식별자 (workflows.key)
-     * @param transition 조회 대상 전이 정의
+     * @param transition 조회 대상 전환 정의
      */
     @Transactional(readOnly = true)
     override fun findValidators(
@@ -78,7 +78,7 @@ class DefaultWorkflowDefinitionRepository(
     }
 
     /**
-     * 전이에 설정된 PostAction 설정 목록을 display_order ASC 순서로 반환한다.
+     * 전환에 설정된 PostAction 설정 목록을 display_order ASC 순서로 반환한다.
      *
      * workflowKey 가 가리키는 workflow 범위 안에서만 state / transition 을 해석하므로
      * 같은 (fromStateKey, toStateKey) 쌍을 사용하는 다른 워크플로우의 post_action 행이
@@ -87,7 +87,7 @@ class DefaultWorkflowDefinitionRepository(
      * workflow / state / transition 미존재 시 빈 리스트 반환 (예외 없음).
      *
      * @param workflowKey 워크플로우 식별자 (workflows.key)
-     * @param transition 조회 대상 전이 정의
+     * @param transition 조회 대상 전환 정의
      */
     @Transactional(readOnly = true)
     override fun findPostActions(

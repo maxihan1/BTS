@@ -3,14 +3,33 @@
 # ADR — 워크플로우 정의 저장: YAML seed vs DB 단독
 
 **일자**. 2026-05-21
-**상태**. Accepted
+**상태**. ⚠️ **대체됨 (Superseded, 2026-08-18)** — `docs/adr/2026-08-18-workflow-db-as-source-of-truth.md`
 **관련 FR**. FR-WF-01 (표준 워크플로우 FSM), FR-WF-02 (커스텀 워크플로우 — deferred)
+
+> **읽기 전 주의 1.** 이 ADR 의 결정(YAML = source of truth, DB = 런타임 캐시)은 **더 이상 유효하지
+> 않다.** FR-WF-04 에서 정본이 DB 로 옮겨졌고, YAML 은 빈 DB 를 채우는 최초 1회 부트스트랩과
+> 「기본값으로 복원」의 기준으로만 남는다. 재기동 시 DB 를 YAML 로 되돌리는 동작은 폐지됐다.
+>
+> **읽기 전 주의 2 — 이 문서는 구현된 적 없는 설계를 서술한다.** 2026-08-18 대조 실측 결과, 아래
+> §Runtime storage 가 규정한 5테이블 중 실제 이름이 맞는 것이 하나도 없다.
+>
+> | 이 문서가 적은 것 | 실제 (V200) |
+> |---|---|
+> | `workflow_definitions` (+ `yaml_hash` 컬럼) | `workflows` — 해시 컬럼 **없음** |
+> | `workflow_statuses` | `workflow_states` |
+> | `workflow_role_constraints` | 없음 — `workflow_validators` 가 그 역할 |
+> | `project_workflow_assignments` | 없음 — V201 `project_workflow_scheme_assignments` |
+> | 멱등성 = YAML 바이트 SHA-256 비교 | `YamlSeedService.isDirty()` 필드 단위 비교 |
+>
+> 이 표의 왼쪽 이름으로 코드를 찾지 마라. 존재하지 않는다.
+>
+> 이 문서는 **당시 판단의 근거를 남기기 위해** 보존한다. 현행 계약은 새 ADR 을 본다.
 **관련 PR**. project-workflow-bc-fr-wf-01-fsm-1-pr
 **작성자**. Maxi + Claude (backend-engineer)
 
 ## 컨텍스트
 
-워크플로우 정의(상태 목록, 전이 규칙, 역할 제약)는 두 가지 방식으로 표현할 수 있다.
+워크플로우 정의(상태 목록, 전환 규칙, 역할 제약)는 두 가지 방식으로 표현할 수 있다.
 
 **방식 A — YAML/코드 파일.**
 
@@ -59,7 +78,7 @@ PostgreSQL 5개 테이블 (Task 3 V001 마이그레이션 결과).
 
 - `workflow_definitions` — 워크플로우 메타 + YAML SHA-256 해시
 - `workflow_statuses` — 상태 목록
-- `workflow_transitions` — 전이 규칙
+- `workflow_transitions` — 전환 규칙
 - `workflow_role_constraints` — 역할 제약
 - `project_workflow_assignments` — 프로젝트↔워크플로우 매핑
 
@@ -92,7 +111,7 @@ YAML 파일이 스키마 검증에 실패하면 `ApplicationContext` 초기화�
 
 ## 근거
 
-1. **표준 워크플로우의 안정성 최우선** — 표준 4종이 런타임에 임의 변경되면 이미 배정된 프로젝트의 이슈 상태 전이가 깨질 수 있다. YAML + PR 리뷰가 이 위험을 차단한다.
+1. **표준 워크플로우의 안정성 최우선** — 표준 4종이 런타임에 임의 변경되면 이미 배정된 프로젝트의 이슈 상태 전환이 깨질 수 있다. YAML + PR 리뷰가 이 위험을 차단한다.
 2. **1인 운영 친화** — 재배포 비용보다 변경 추적 가능성이 더 중요하다. 표준 워크플로우는 자주 바뀌지 않는다.
 3. **시드 멱등성** — SHA-256 해시 비교로 같은 YAML 재부팅이 DB를 건드리지 않는다. 운영 중 예기치 않은 쓰기 없음.
 4. **advisory lock** — Phase 1 이후 다중 인스턴스 운영에 대비한다. 잠금 비용은 부팅 시 1회이며 무시할 수 있다.

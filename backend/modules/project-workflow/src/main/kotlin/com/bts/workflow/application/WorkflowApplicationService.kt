@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional
  * - [planTransition] — 쓰기 가능 트랜잭션. 엔진 MANDATORY 요구 충족.
  * - [listWorkflows] / [getWorkflow] — `readOnly = true` 읽기 전용 트랜잭션.
  *
- * @param workflowEngine 전이 계획 계산 엔진
+ * @param workflowEngine 전환 계획 계산 엔진
  * @param workflowRepository 워크플로우 조회 리포지토리
  */
 @Service
@@ -59,15 +59,15 @@ class WorkflowApplicationService(
     }
 
     /**
-     * 워크플로우 전이 계획을 계산한다.
+     * 워크플로우 전환 계획을 계산한다.
      *
      * [WorkflowEngine.plan] 의 MANDATORY 전파 요구를 충족하기 위해
      * 이 메서드가 트랜잭션을 개시한다.
      *
-     * @param request 전이 요청 도메인 DTO
-     * @return 검증 통과 후 계산된 전이 계획
-     * @throws WorkflowNotFoundException 워크플로우·전이 정의를 찾을 수 없을 때
-     * @throws com.bts.workflow.domain.exception.WorkflowValidatorFailureException Validator 가 전이를 거부할 때
+     * @param request 전환 요청 도메인 DTO
+     * @return 검증 통과 후 계산된 전환 계획
+     * @throws WorkflowNotFoundException 워크플로우·전환 정의를 찾을 수 없을 때
+     * @throws com.bts.workflow.domain.exception.WorkflowValidatorFailureException Validator 가 전환을 거부할 때
      */
     @Transactional
     fun planTransition(request: TransitionRequest): TransitionPlan {

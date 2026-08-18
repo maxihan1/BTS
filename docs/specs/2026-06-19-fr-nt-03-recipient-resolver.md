@@ -27,7 +27,7 @@
 
 ## 사용자 시나리오 (Given-When-Then)
 
-- **S1 워처 알림**. Given 이슈 ATLAS-1에 워처 3명 등록, 정책에 (issue.transitioned × WATCHER × IN_APP) 활성. When 전이 이벤트 소비. Then 워처 3명(actor 제외)에게 인앱 알림 1건씩.
+- **S1 워처 알림**. Given 이슈 ATLAS-1에 워처 3명 등록, 정책에 (issue.transitioned × WATCHER × IN_APP) 활성. When 전환 이벤트 소비. Then 워처 3명(actor 제외)에게 인앱 알림 1건씩.
 - **S2 컴포넌트 리드**. Given 이슈가 컴포넌트 A(lead=u1)·B(lead=u2)에 속함, 정책 (issue.created × COMPONENT_LEAD). When 생성 이벤트. Then u1·u2 수신. lead 미지정 컴포넌트는 건너뜀.
 - **S3 이전 담당자**. Given 담당자가 u1→u2로 변경된 이력, 정책 (issue.assigned류 × PREVIOUS_ASSIGNEE). When 이벤트. Then 직전 담당자 u1 1명만 수신(전체 과거 아님).
 - **S4 프로젝트 멤버/관리자**. Given 프로젝트 ATLAS 멤버 10명(관리자 2명), 정책 (... × PROJECT_MEMBER) 또는 (... × PROJECT_ADMIN). When 이벤트. Then 각각 멤버 10명 / 관리자 2명 수신.
@@ -99,7 +99,7 @@ interface IssueVisibilityPort {
 - projectKey 미해결(삭제 프로젝트) → 빈 멤버(알림 누락, fail-safe).
 - 이슈에 컴포넌트 없음/lead 미지정 → componentLeadIds 빈.
 - assignee 변경 이력 0(한 번도 안 바뀜) → previousAssigneeId null.
-- previousAssignee `from_value` 형식(UUID 텍스트 vs 'NONE' 리터럴)은 impl에서 실측 확인 후 파싱(미할당→할당 전이의 from_value 처리 포함).
+- previousAssignee `from_value` 형식(UUID 텍스트 vs 'NONE' 리터럴)은 impl에서 실측 확인 후 파싱(미할당→할당 전환의 from_value 처리 포함).
 - **G1 — PREVIOUS_ASSIGNEE 근사성**: 본 작업은 "처리 시점 change history의 가장 최근 assignee 변경 from_value"를 직전 담당자로 본다. 이벤트가 큐에 적재된 후 처리 전에 담당자가 또 바뀌면(u1→u2 이벤트 처리 전 u2→u3 발생), 최근 from_value(u2)는 이 이벤트가 의도한 이전 담당자(u1)와 다를 수 있다. 이벤트 payload에 이전 담당자 필드가 없어(IssueUpdated 스키마 한계, FR-NT-02 결정 4) 발생하는 근사이며, **한계를 수용**한다(eventual consistency G4의 일부). 정확화는 이벤트 스키마 확장이 필요한 별도 작업.
 - RULE_OWNER 정책 → skip + 디버그 로그(다른 역할 정상).
 

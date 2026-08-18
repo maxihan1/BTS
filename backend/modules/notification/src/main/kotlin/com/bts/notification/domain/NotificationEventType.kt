@@ -24,7 +24,7 @@ enum class NotificationEventType(
     /** 이슈 담당자 지정 */
     ISSUE_ASSIGNED("issue.assigned", false),
 
-    /** 이슈 상태 전이 — 외부 발행 허용 */
+    /** 이슈 상태 전환 — 외부 발행 허용 */
     ISSUE_TRANSITIONED("issue.transitioned", true),
 
     /** 이슈 댓글 작성 */

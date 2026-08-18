@@ -7,7 +7,7 @@ package com.bts.shared.workflow
  *
  * [WorkflowKeyResolver.resolveStart] 가 반환하는 값 객체.
  * consumer BC(issue-tracking 등)는 이 VO 를 통해 이슈 생성 시 `currentStateKey` 와
- * 전이 요청 시 `workflowKey` 를 얻는다.
+ * 전환 요청 시 `workflowKey` 를 얻는다.
  *
  * ### 불변 계약
  *

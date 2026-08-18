@@ -162,7 +162,7 @@ val issues = dsl.selectFrom(ISSUES).where(cond).fetch()
 
 ### 다중 BC 트랜잭션 금지
 
-- 이슈 + 알림 + 워크플로우 전이가 같이 일어나는 경우. **이벤트 발행만 트랜잭션 내**, 실제 알림 발사는 pgmq 비동기.
+- 이슈 + 알림 + 워크플로우 전환이 같이 일어나는 경우. **이벤트 발행만 트랜잭션 내**, 실제 알림 발사는 pgmq 비동기.
 - 이유. BC 간 결합 최소화. 한 BC 트랜잭션이 다른 BC를 직접 호출하면 격리 깨짐.
 
 ```kotlin
@@ -240,7 +240,7 @@ patRepository.save(PersonalAccessToken(userId, tokenHash, ...))
 - **인앱 기능** — 별도 도구 아님. `POST /api/v1/imports`(multipart) → MinIO(`bts-imports`) 저장 → pgmq `q_import_jobs` 백그라운드 worker. search-export-import BC(`com.bts.search.imports`), FR-EX-02(비동기 Export) 역방향 미러.
 - **새 키 자동생성** — Jira 원본 키는 **보존하지 않는다**(`incrementKeySequence`로 새 키 발급). "이슈 키 재사용 금지" 원칙(§1.1)·충돌 위험 회피. (SDD 원안의 "Jira 키 보존"은 superseded — Maxi 확정.)
 - **행별 best-effort** — 한 행 실패가 다른 행 롤백 안 함(행 원자성: create+update 1 tx). 실패행은 에러 로그(MinIO CSV, formula injection 정화)에 기록. 별도 `import_checkpoint` 테이블 없이 `import_jobs`(V604)가 total/succeeded/failed 카운트 집계. 재실행 시 중복 생성 가능(MVP 허용, dry-run 사전검증 권장).
-- **에픽 PR 구조** — PR1 코어(이슈 코어 필드) → PR2 컴포넌트/버전 자동생성+상태 전이 → PR3 댓글/Worklog → PR4 첨부(zip 업로드)/이력. 첨부 바이너리는 **zip 아카이브 업로드**(서버 fetch 없음=SSRF 없음), MinIO 저장은 PR4.
+- **에픽 PR 구조** — PR1 코어(이슈 코어 필드) → PR2 컴포넌트/버전 자동생성+상태 전환 → PR3 댓글/Worklog → PR4 첨부(zip 업로드)/이력. 첨부 바이너리는 **zip 아카이브 업로드**(서버 fetch 없음=SSRF 없음), MinIO 저장은 PR4.
 - **cross-BC 쓰기** — search BC는 issue-tracking을 직접 호출하지 않고 shared-kernel `IssueImportPort`(BTS 최초 쓰기 포트)로 위임. 권한(CREATE/UPDATE)은 issue-tracking `createIssue`/`updateIssue`가 판정(우회 불가).
 
 ## §10. 변경 이력

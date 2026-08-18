@@ -1,4 +1,4 @@
-// 버전 단일 행 — 상태 뱃지 + 전이 버튼 + 수정/삭제 + ARCHIVED 비활성화 + 릴리즈 노트 버튼 (FR-VR-01, FR-VR-02, FR-VR-04)
+// 버전 단일 행 — 상태 뱃지 + 전환 버튼 + 수정/삭제 + ARCHIVED 비활성화 + 릴리즈 노트 버튼 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
@@ -41,12 +41,12 @@ const STATUS_BADGE_CLASS: Record<VersionStatus, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 전이 액션 맵 — 현재 상태 → 가능한 전이 목록
-// backend 전이 그래프와 1:1 미러 (FR-VR-02)
+// 전환 액션 맵 — 현재 상태 → 가능한 전환 목록
+// backend 전환 그래프와 1:1 미러 (FR-VR-02)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface TransitionAction {
-  /** 전이 대상 상태 */
+  /** 전환 대상 상태 */
   targetStatus: VersionStatus
   /** 버튼 라벨 */
   label: string
@@ -134,7 +134,7 @@ function DeleteConfirm({ onConfirm, onCancel, isDeleting }: DeleteConfirmProps):
  * - 이름 · 설명 표시
  * - 상태 뱃지 (UNRELEASED/RELEASED/ARCHIVED)
  * - 날짜 2열: startDate / releaseDate (null → "—")
- * - 전이 버튼: 현재 상태에서 가능한 전이만 — TRANSITION_ACTIONS 맵
+ * - 전환 버튼: 현재 상태에서 가능한 전환만 — TRANSITION_ACTIONS 맵
  * - 수정 버튼: onEdit(version) 호출 → 상위에서 VersionFormDialog를 엶
  * - 삭제 버튼: 인라인 확인 UI → useDeleteVersion.mutate → onDelete(id) 호출
  * - ARCHIVED 상태에서 수정/삭제 버튼 disabled (읽기 전용)
@@ -222,7 +222,7 @@ export function VersionRow({
 
       {/* 액션 영역 */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* 전이 버튼 — 현재 상태에서 가능한 전이만 */}
+        {/* 전환 버튼 — 현재 상태에서 가능한 전환만 */}
         {transitionActions.map((action) => (
           <Button
             key={action.targetStatus}

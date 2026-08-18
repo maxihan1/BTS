@@ -43,7 +43,7 @@ import java.nio.charset.StandardCharsets
  *
  * ## 3) 전부 동기 — `@Async` 없음, 결과가 곧 응답 본문
  * 완료 인터랙션은 모달 `trigger_id` 3초 만료와 `view_submission` 동기 계약([InteractionResult]) 때문에
- * 비동기로 미룰 수 없다([SlackInteractionService] KDoc). 서비스가 openModal/전이/chat.update 를 동기
+ * 비동기로 미룰 수 없다([SlackInteractionService] KDoc). 서비스가 openModal/전환/chat.update 를 동기
  * 수행하고 [InteractionResult] 를 돌려주면, 이 컨트롤러가 [toResponse] 로 직렬화한다.
  * - [InteractionResult.AckEmpty] → 빈 200(모달 닫기 / block_actions ack / no-op).
  * - [InteractionResult.ResponseActionErrors] → 200 + `{"response_action":"errors",…}` JSON 본문(모달 유지).

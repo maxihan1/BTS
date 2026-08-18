@@ -161,7 +161,7 @@ describe('useTrackActiveProject — 경로 파라미터 기록기 (B1 + CR3)', (
     mockParams = { projectKey: 'INFRA' }
     const { rerender } = renderTracker(true) // 캐시 선주입 → effect 즉시 실행
 
-    // 양성 대조군 — null → 'INFRA' 전이. 이펙트가 실제로 돌아야만 통과한다(t=0 에 참이 아니다)
+    // 양성 대조군 — null → 'INFRA' 전환. 이펙트가 실제로 돌아야만 통과한다(t=0 에 참이 아니다)
     expect(useActiveProject.getState().activeProjectKey).toBe('INFRA')
 
     // 목록이 확정된 상태에서 접근 불가 키로 이동한다 (/projects/TYPO/board, 404)

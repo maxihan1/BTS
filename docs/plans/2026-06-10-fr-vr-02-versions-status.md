@@ -12,9 +12,9 @@ FR-VR-02 — 버전 상태 (Unreleased/Released/Archived). issue-tracking BC, §
 
 명세 D단계 (product/issue-tracking.md §3.2.2):
 - D1. 도메인
-- D2. 명세 — 상태 전이 규칙
+- D2. 명세 — 상태 전환 규칙
 - D3. 데이터 모델 — versions.status
-- D4. 백엔드 — 상태 전이 API + 가드
+- D4. 백엔드 — 상태 전환 API + 가드
 - D5. 백엔드 테스트
 - D6. 프론트 UI
 - D7. E2E
@@ -24,12 +24,12 @@ classify: E2E/UI 키워드로 qa 오판 → 풀스택 feature로 교정 (backend
 ## 도메인 정리
 
 - **BC**: issue-tracking (단일 BC, 격리 유지)
-- **영향 엔티티**: Version Aggregate (FR-VR-01 기존) — `status`/`releasedAt` 필드 추가, 전이 메서드 신설
-- **새 도메인 개념**: `VersionStatus` enum (UNRELEASED/RELEASED/ARCHIVED) + 전이 동사 4종(release/unrelease/archive/unarchive)
+- **영향 엔티티**: Version Aggregate (FR-VR-01 기존) — `status`/`releasedAt` 필드 추가, 전환 메서드 신설
+- **새 도메인 개념**: `VersionStatus` enum (UNRELEASED/RELEASED/ARCHIVED) + 전환 동사 4종(release/unrelease/archive/unarchive)
 - **권한**: `VersionPermission.UPDATE` 재사용 (새 enum 없음, enum KDoc이 이미 "released 등" 예고)
 - **actorId**: `SYSTEM_ACTOR_UUID` placeholder 유지 (FR-PM-03 패턴, Component/Version 컨트롤러 동일)
 
-### 전이 규칙 (Maxi 결정 2026-06-10 — Jira 정석)
+### 전환 규칙 (Maxi 결정 2026-06-10 — Jira 정석)
 
 ```
 UNRELEASED ──release──▶ RELEASED      (released_at = now())
@@ -64,7 +64,7 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
 전체 스펙. [docs/specs/2026-06-10-fr-vr-02-versions-status.md](../specs/2026-06-10-fr-vr-02-versions-status.md)
 
 핵심 시나리오 요약.
-- 버전 상태 UNRELEASED/RELEASED/ARCHIVED + 전이 5종(release/unrelease/archive/unarchive), self·그래프외 전이는 409.
+- 버전 상태 UNRELEASED/RELEASED/ARCHIVED + 전환 5종(release/unrelease/archive/unarchive), self·그래프외 전환은 409.
 - `PATCH .../versions/{id}/status` body `{status}` — VersionPermission.UPDATE 재사용, released_at 자동(Clock).
 - ARCHIVED는 읽기 전용(rename/changeDates/delete 409), unarchive만 허용. VersionResponse에 status/releasedAt 추가.
 
@@ -79,14 +79,14 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
 
 > 경로 약어. IT = `backend/modules/issue-tracking/src`, FE = `apps/web/src`.
 
-### Task 1. 도메인 — VersionStatus enum + 전이 메서드 + ARCHIVED 가드
+### Task 1. 도메인 — VersionStatus enum + 전환 메서드 + ARCHIVED 가드
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`IT/main/kotlin/com/bts/issue/version/domain/VersionStatus.kt`, `IT/main/kotlin/com/bts/issue/version/domain/Version.kt`, `IT/main/kotlin/com/bts/issue/version/domain/VersionExceptions.kt`, `IT/test/kotlin/com/bts/issue/version/domain/VersionTest.kt`]
 - depends-on: []
 
-**RED**: `VersionTest.kt` 에 전이 테스트 추가.
+**RED**: `VersionTest.kt` 에 전환 테스트 추가.
 ```kotlin
 @Test fun `release transitions UNRELEASED to RELEASED and sets releasedAt`() { ... }   // Clock 고정
 @Test fun `unrelease transitions RELEASED to UNRELEASED and clears releasedAt`() { ... }
@@ -104,7 +104,7 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
 
 **GREEN**:
 - `VersionStatus.kt`(신규) — `enum class VersionStatus { UNRELEASED, RELEASED, ARCHIVED }` + L1 한글 주석.
-- `Version.kt` — `status: VersionStatus`(기본 UNRELEASED), `releasedAt: Instant?` 필드 추가. `create()` 기본값 status=UNRELEASED/releasedAt=null. 전이 메서드 4종:
+- `Version.kt` — `status: VersionStatus`(기본 UNRELEASED), `releasedAt: Instant?` 필드 추가. `create()` 기본값 status=UNRELEASED/releasedAt=null. 전환 메서드 4종:
   - `release(now: Instant)`: status==UNRELEASED 아니면 throw. copy(status=RELEASED, releasedAt=now).
   - `unrelease()`: status==RELEASED 아니면 throw. copy(status=UNRELEASED, releasedAt=null).
   - `archive()`: status in (UNRELEASED, RELEASED) 아니면 throw. copy(status=ARCHIVED) — releasedAt 유지.
@@ -114,7 +114,7 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
   - 거부는 `VersionTransitionNotAllowedException` 던짐(IllegalState 아님).
 - `VersionExceptions.kt` — `VersionTransitionNotAllowedException(message)` 를 `VersionDomainException` sealed 서브클래스로 추가(같은 파일).
 
-**REFACTOR**: 전이 가능 여부를 private 헬퍼/when으로 정리. released_at 불변식 KDoc 명시.
+**REFACTOR**: 전환 가능 여부를 private 헬퍼/when으로 정리. released_at 불변식 KDoc 명시.
 
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*VersionTest"`
 
@@ -155,16 +155,16 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
 
 **RED**:
 - `VersionRepositoryTest.kt` — insert/update가 status/released_at 왕복(round-trip) 보존, findById/findByProject가 두 필드 매핑.
-- `VersionApplicationServiceTest.kt` — `changeStatus(actor, project, id, RELEASED)` 호출 시 도메인 전이 경유 + repo.update. 불허 전이 시 `VersionTransitionNotAllowedException`. ARCHIVED 버전 update/changeDates 시 예외 전파(도메인 가드). **ARCHIVED 버전 delete 시 VersionTransitionNotAllowedException 이고 repo.softDelete 미호출**(결함 A 회귀 가드). Clock 고정으로 releasedAt 검증.
+- `VersionApplicationServiceTest.kt` — `changeStatus(actor, project, id, RELEASED)` 호출 시 도메인 전환 경유 + repo.update. 불허 전환 시 `VersionTransitionNotAllowedException`. ARCHIVED 버전 update/changeDates 시 예외 전파(도메인 가드). **ARCHIVED 버전 delete 시 VersionTransitionNotAllowedException 이고 repo.softDelete 미호출**(결함 A 회귀 가드). Clock 고정으로 releasedAt 검증.
 
 **GREEN**:
 - `VersionRepository.kt` — insert/update SQL에 status/released_at 컬럼 추가, record→domain 매핑에 두 필드 추가(jOOQ 생성 컬럼 사용).
-- `VersionApplicationService.kt` — `changeStatus(actorId, projectIdOrKey, versionId, target: VersionStatus): Version` 추가. 흐름: resolveProject → assertPermission(UPDATE) → findActiveVersion → 도메인 전이 메서드(target별 release/unrelease/archive/unarchive) → repo.update. `Clock` 생성자 주입 — **선례 패턴 `private val clock: Clock = Clock.systemUTC()` 생성자 기본값**(identity-access 전체 동형, 별도 @Bean 불필요·기존 테스트 안 깨짐). release 시 `Instant.now(clock)` 를 도메인에 전달.
+- `VersionApplicationService.kt` — `changeStatus(actorId, projectIdOrKey, versionId, target: VersionStatus): Version` 추가. 흐름: resolveProject → assertPermission(UPDATE) → findActiveVersion → 도메인 전환 메서드(target별 release/unrelease/archive/unarchive) → repo.update. `Clock` 생성자 주입 — **선례 패턴 `private val clock: Clock = Clock.systemUTC()` 생성자 기본값**(identity-access 전체 동형, 별도 @Bean 불필요·기존 테스트 안 깨짐). release 시 `Instant.now(clock)` 를 도메인에 전달.
   - **ARCHIVED 거부 분기 (eng 리뷰 결함 A)**:
     - update/changeDates는 도메인 메서드(rename/changeDescription/changeDates)를 경유하므로 T1의 `requireNotArchived()` 가드가 자동 적용 → 별도 코드 불필요.
     - **delete는 예외**. 기존 `delete`가 `repo.softDelete(versionId, projectId)` 로 **repo 직행(도메인 softDelete 미경유)**이라 도메인 가드를 우회한다(메모리 patch-merge-domain-bypass). 따라서 service.delete 에서 `findActiveVersion` 결과의 `status == ARCHIVED` 면 `VersionTransitionNotAllowedException` 을 **명시적으로** 던진 뒤 repo.softDelete 호출. 도메인 softDelete()의 ARCHIVED 가드(T1)는 일관성 안전망으로 유지.
 
-**REFACTOR**: target→전이 메서드 매핑을 private when 헬퍼로. Clock 빈은 기존 설정 재사용 확인.
+**REFACTOR**: target→전환 메서드 매핑을 private when 헬퍼로. Clock 빈은 기존 설정 재사용 확인.
 
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*VersionRepositoryTest" --tests "*VersionApplicationServiceTest"`
 
@@ -201,37 +201,37 @@ GET 목록/단건 → status/releasedAt 포함                                  
 
 ---
 
-### Task 5. 프론트 UI — 상태 뱃지 + 전이 버튼 + ARCHIVED 비활성화
+### Task 5. 프론트 UI — 상태 뱃지 + 전환 버튼 + ARCHIVED 비활성화
 
 **메타**.
 - agent: `frontend-engineer`
 - files: [`FE/api/versions.types.ts`, `FE/api/versions.ts`, `FE/api/versions.test.ts`, `FE/hooks/use-versions.ts`, `FE/hooks/__tests__/use-versions.test.tsx`, `FE/components/version/VersionRow.tsx`, `FE/components/version/VersionRow.test.tsx`, `FE/components/version/VersionList.tsx`, `FE/i18n/version-labels.ts`, `FE/i18n/version-labels.test.ts`, `FE/mocks/version-handlers.ts`, `FE/mocks/version-handlers.test.ts`]
 - depends-on: [4]
 
-**RED**: VersionRow.test — 상태 뱃지 렌더(UNRELEASED/RELEASED/ARCHIVED), 전이 버튼 노출(상태별), ARCHIVED 행은 수정/삭제 비활성화. use-versions.test — useChangeVersionStatus 훅 mutation. versions.test — changeStatus api PATCH /status 호출.
+**RED**: VersionRow.test — 상태 뱃지 렌더(UNRELEASED/RELEASED/ARCHIVED), 전환 버튼 노출(상태별), ARCHIVED 행은 수정/삭제 비활성화. use-versions.test — useChangeVersionStatus 훅 mutation. versions.test — changeStatus api PATCH /status 호출.
 
 **GREEN**:
 - `versions.types.ts` — Zod 스키마에 `status: z.enum(['UNRELEASED','RELEASED','ARCHIVED'])`, `releasedAt: z.string().nullable()` 추가(backend VersionResponse와 정확히 일치 — 메모리 frontend-zod-backend-dto-contract-gap, grep 검증). `ChangeVersionStatusRequest` 타입.
 - `versions.ts` — `changeVersionStatus(projectKey, id, status)` PATCH 호출(CSRF 수동 — 메모리 frontend-api-convention-per-bc, 같은 BC 선례 grep).
 - `use-versions.ts` — `useChangeVersionStatus` mutation(invalidate-only refetch — 메모리 mutation-setquerydata-partial-response-flicker).
-- `VersionRow.tsx` — 상태 뱃지 + 전이 액션 버튼(현재 상태에서 가능한 전이만), ARCHIVED면 수정/삭제 disabled.
-- `version-labels.ts` — 상태/전이 한글 라벨.
-- `version-handlers.ts` — MSW status 전이 핸들러(stateful, 브라우저 시드 가능 — 메모리 msw-derived-behavior-shared-store-e2e). 기존 핸들러 응답에 status/releasedAt 추가.
+- `VersionRow.tsx` — 상태 뱃지 + 전환 액션 버튼(현재 상태에서 가능한 전환만), ARCHIVED면 수정/삭제 disabled.
+- `version-labels.ts` — 상태/전환 한글 라벨.
+- `version-handlers.ts` — MSW status 전환 핸들러(stateful, 브라우저 시드 가능 — 메모리 msw-derived-behavior-shared-store-e2e). 기존 핸들러 응답에 status/releasedAt 추가.
 
-**REFACTOR**: 전이 버튼 매핑을 상태→액션 맵으로.
+**REFACTOR**: 전환 버튼 매핑을 상태→액션 맵으로.
 
 **검증**: `cd apps/web && pnpm typecheck && pnpm test -- version && pnpm lint`
 
 ---
 
-### Task 6. E2E — 버전 상태 전이 시나리오
+### Task 6. E2E — 버전 상태 전환 시나리오
 
 **메타**.
 - agent: `qa-engineer`
 - files: [`apps/web/e2e/version-status.spec.ts`, `FE/mocks/version-handlers.ts`]
 - depends-on: [5]
 
-**RED/GREEN**: `version-status.spec.ts`(신규) — 릴리스→보관→보관해제 happy path + 불허 전이 거부 + ARCHIVED 행 수정/삭제 비활성화 확인. MSW 상태 store 브라우저 시드(메모리 e2e-msw-scenario-toggle-localstorage-flag, worktree-stale-base-rebase-and-e2e-msw-traps). 행 컨테이너 한정 셀렉터(메모리 playwright-getbyrole-exact-strict-mode). 기존 version-management E2E 회귀 동반 실행(메모리 ui-pr-defer-e2e-regression-latent).
+**RED/GREEN**: `version-status.spec.ts`(신규) — 릴리스→보관→보관해제 happy path + 불허 전환 거부 + ARCHIVED 행 수정/삭제 비활성화 확인. MSW 상태 store 브라우저 시드(메모리 e2e-msw-scenario-toggle-localstorage-flag, worktree-stale-base-rebase-and-e2e-msw-traps). 행 컨테이너 한정 셀렉터(메모리 playwright-getbyrole-exact-strict-mode). 기존 version-management E2E 회귀 동반 실행(메모리 ui-pr-defer-e2e-regression-latent).
 
 **검증**: `cd apps/web && pnpm test:e2e -- version`
 

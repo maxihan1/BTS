@@ -23,11 +23,11 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 **Webhook 분리 결정 (Maxi 확정 2026-06-14)**.
 - Webhook 채널은 `NotificationChannelSender`(per-user 모델)가 아니라
   **`WebhookRequested` 이벤트 디스패처**로 구현하기로 방향 확정(옵션 B).
-- 그러나 코드 실측 결과 `WebhookRequested`(전이 post-action `CallWebhookPostAction` 발행)는
-  **현재 어느 pgmq 큐에도 발행되지 않음** — 전이 API 응답(`TransitionResponseDto.events`)에만 존재.
-- 제대로 구현하려면 ① project-workflow BC에 전이 emitEvents pgmq 발행 파이프라인(4종 post-action 공통),
+- 그러나 코드 실측 결과 `WebhookRequested`(전환 post-action `CallWebhookPostAction` 발행)는
+  **현재 어느 pgmq 큐에도 발행되지 않음** — 전환 API 응답(`TransitionResponseDto.events`)에만 존재.
+- 제대로 구현하려면 ① project-workflow BC에 전환 emitEvents pgmq 발행 파이프라인(4종 post-action 공통),
   ② notification BC에 소비+HTTP POST 디스패처가 필요 → cross-BC, 범위 큼.
-- 따라서 **Webhook = 전용 후속 FR**로 분리(전이-이벤트 발행 파이프라인 설계 포함). 이번 PR 범위 밖.
+- 따라서 **Webhook = 전용 후속 FR**로 분리(전환-이벤트 발행 파이프라인 설계 포함). 이번 PR 범위 밖.
 
 **기존 코드 사실(실측)**.
 - `Channel` enum(`domain/Channel.kt`)에 `EMAIL` 이미 정의됨 — enum 추가 불필요.
@@ -53,7 +53,7 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 - **기존 결정 충돌**: 없음. ADR [2026-06-12-notification-inapp-channel-delivery](../decisions/2026-06-12-notification-inapp-channel-delivery.md)
   결정 1·결과영향이 "이메일 채널 = 동일 추상 위 후속 PR"로 명시 → 계획된 연장.
 - **결정 deviation (이번 PR로 ADR 보완)**: ADR 결정 2가 FR-NT-02 채널 = 인앱+이메일+Webhook(3종)이라 했으나,
-  Webhook은 per-user 알림 모델과 맞지 않고(URL 출처 부재) 전이-이벤트 디스패처로 재설계 필요 +
+  Webhook은 per-user 알림 모델과 맞지 않고(URL 출처 부재) 전환-이벤트 디스패처로 재설계 필요 +
   발행 파이프라인이 cross-BC라, **Webhook을 전용 후속 FR로 분리**(Maxi 확정 2026-06-14).
   ADR amendment + product 동기화 필요(스펙/plan 단계에서 처리).
 - **관련 ADR**: [2026-06-12-notification-inapp-channel-delivery](../decisions/2026-06-12-notification-inapp-channel-delivery.md)(보완 대상),
@@ -149,7 +149,7 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 
 **RED**:
 - MailHog `GenericContainer("mailhog/mailhog:v1.0.1")`(SMTP 1025/HTTP 8025), `@DynamicPropertySource`로 `spring.mail.host/port` 주입.
-- 통합테스트 — `channel=EMAIL` Notification을 EmailChannelSender로 발송 → MailHog HTTP API `/api/v2/messages`에서 수신 확인 + **한국어 제목 보존**(NFR-5) + (end-to-end 경로면 notifications 행 `SENT` 전이). email 부재 시 PENDING(S2).
+- 통합테스트 — `channel=EMAIL` Notification을 EmailChannelSender로 발송 → MailHog HTTP API `/api/v2/messages`에서 수신 확인 + **한국어 제목 보존**(NFR-5) + (end-to-end 경로면 notifications 행 `SENT` 전환). email 부재 시 PENDING(S2).
 - **eng-review CONCERN-2 반영**: MailHog가 저장한 Subject 헤더는 MIME encoded-word(`=?UTF-8?...?=`)일 수 있다. 한국어 단언은 **디코드 후**(`jakarta.mail.internet.MimeUtility.decodeText` 또는 본문 part 비교) 수행 — 인코딩 형태로 단언하면 실제 깨짐을 못 잡는 거짓그린.
 - 실패: EmailChannelSender 발송 경로 미완/인코딩 깨짐.
 
@@ -169,7 +169,7 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 - depends-on: [1, 2, 3, 4]
 
 **RED/GREEN(문서)**:
-- ADR 2026-06-12 결정2에 amendment 단락 — Webhook을 전용 후속 FR로 분리(URL 출처/전이-이벤트 발행 파이프라인 미설계 근거), 이번 PR=이메일 채널.
+- ADR 2026-06-12 결정2에 amendment 단락 — Webhook을 전용 후속 FR로 분리(URL 출처/전환-이벤트 발행 파이프라인 미설계 근거), 이번 PR=이메일 채널.
 - product §2.2 — 이메일 채널 완료 반영(D1·D4·D5 이메일 부분 진행 표기), Webhook은 별도 FR 주석. FR-NT-02 전체 부분완료(`[~]`) 유지.
 - FR 카운트 불변(122) 확인 — 신규 FR ID는 이번에 mint하지 않음(Webhook FR는 후속 spec에서).
 

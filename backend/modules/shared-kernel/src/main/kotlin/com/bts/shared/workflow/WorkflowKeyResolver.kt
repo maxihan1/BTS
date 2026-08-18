@@ -9,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * 프로젝트 키와 이슈 타입 키를 기준으로 워크플로우 시작 상태를 결정하는 SPI.
  *
- * issue-tracking BC 등 consumer 가 이슈 생성/전이 시 적용할 워크플로우와 시작 상태를 얻기 위해 호출한다.
+ * issue-tracking BC 등 consumer 가 이슈 생성/전환 시 적용할 워크플로우와 시작 상태를 얻기 위해 호출한다.
  * project-workflow BC 내부의 `WorkflowResolver` (outbound port) 보다 노출 범위를 최소화한
  * published language SPI 다 — consumer 는 [WorkflowStartState] (workflowKey + startStateKey) 만 알면 된다.
  *
@@ -39,8 +39,8 @@ interface WorkflowKeyResolver {
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우 시작 상태를 반환한다.
      *
-     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전이(write path)에서만 호출한다.
-     * 읽기 전용 경로(가용 전이 조회 등)에서는 [resolveExisting] 을 사용해야 한다.
+     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전환(write path)에서만 호출한다.
+     * 읽기 전용 경로(가용 전환 조회 등)에서는 [resolveExisting] 을 사용해야 한다.
      *
      * 호출자 트랜잭션 강제. Application Service 또는 동등 계층에서만 호출.
      *
@@ -62,7 +62,7 @@ interface WorkflowKeyResolver {
     /**
      * **읽기 전용 경로 전용 — auto-assign 없음.**
      *
-     * 가용 전이 조회(GET read path)처럼 부수 효과가 없어야 하는 경로에서 호출한다.
+     * 가용 전환 조회(GET read path)처럼 부수 효과가 없어야 하는 경로에서 호출한다.
      * 프로젝트에 워크플로우 스킴이 할당돼 있지 않으면 auto-assign 을 수행하지 않고
      * `null` 을 반환한다. 호출자는 `null` 반환 시 미설정으로 판단해 422 로 응답해야 한다.
      *

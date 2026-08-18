@@ -23,7 +23,7 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 
 | 항목 | 현재 상태 | 근거 |
 |---|---|---|
-| 보드 컬럼 간 이동(상태 전이) | ✅ 구현됨 | `KanbanBoard.tsx` `resolveDropAction`→`useMoveCard`(`POST /boards/{id}/cards/{key}/move`) |
+| 보드 컬럼 간 이동(상태 전환) | ✅ 구현됨 | `KanbanBoard.tsx` `resolveDropAction`→`useMoveCard`(`POST /boards/{id}/cards/{key}/move`) |
 | **보드 컬럼 내 순서변경** | ❌ **미구현 — 같은 컬럼 드롭 = noop(EC1)** | `KanbanBoard.tsx:84` `fromColumnId === toColumnId → noop` |
 | 보드 카드 응답 rank 노출 | ❌ **없음** | `BoardResponses.kt` `BoardCardResponse`(issueKey/summary/assigneeId/priority/version/epicKey), rank 필드 부재 |
 | 보드 카드 컬럼 내 정렬 기준 | ❌ rank 정렬 아님 | `BoardRepository.kt` 컬럼만 DISPLAY_ORDER 정렬, 카드 정렬 기준 없음 |
@@ -51,7 +51,7 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 전체 스펙. [docs/specs/2026-07-25-fr-ux-06-pr21-dnd-kit-sortable.md](../specs/2026-07-25-fr-ux-06-pr21-dnd-kit-sortable.md)
 
 **스코프 확정(Maxi 2026-07-25) — 완전 Jira 목표를 2 PR로 분할.**
-- **PR21(이번)** = ①같은 셀(스윔레인 그룹×컬럼) 내 순서변경(rank) + ②컬럼 간 상태전이(기존 유지). 스윔레인 활성 시에도 셀 내 순서변경 지원, 그룹 경계 넘는 드래그는 noop.
+- **PR21(이번)** = ①같은 셀(스윔레인 그룹×컬럼) 내 순서변경(rank) + ②컬럼 간 상태전환(기존 유지). 스윔레인 활성 시에도 셀 내 순서변경 지원, 그룹 경계 넘는 드래그는 noop.
 - **PR21b(다음)** = ③담당자 재할당 + ④우선순위/에픽 변경(스윔레인 간 드래그). API 모두 실재(`PATCH /assignee`·`updateIssue priority`·`epic-children`), ASSIGNEE는 UUID 역산 배선 필요.
 
 핵심 3줄.
@@ -159,7 +159,7 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 - files: [`apps/web/e2e/board-reorder.spec.ts`]
 - depends-on: [2, 7]
 
-**RED**: (NONE)같은 컬럼 순서변경 happy path + 새로고침 후 순서 유지 + 컬럼 간 이동(상태전이) 무회귀 + 스윔레인 활성 셀 내 순서변경 + 그룹 경계 넘는 드래그 noop + **키보드 순서변경(KeyboardSensor, DR2)** E2E. 기능 부재로 실패.
+**RED**: (NONE)같은 컬럼 순서변경 happy path + 새로고침 후 순서 유지 + 컬럼 간 이동(상태전환) 무회귀 + 스윔레인 활성 셀 내 순서변경 + 그룹 경계 넘는 드래그 noop + **키보드 순서변경(KeyboardSensor, DR2)** E2E. 기능 부재로 실패.
 **GREEN**: 기능 통합 후 통과. MSW rank stateful 반영. aria/getByRole 계약 준수([[frontend-nav-aria-label-e2e-contract]]·[[playwright-getbyrole-exact-strict-mode]]).
 **REFACTOR**: 드래그 헬퍼 공유.
 **검증**: playwright 바이너리 직접 호출(파일 필터 — [[e2e-playwright-filter-arg-drop]]). **CI에 e2e 잡 없음 → 로컬 필수**([[frontend-ci-10min-timeout-nonrequired]]).
@@ -181,7 +181,7 @@ Maxi 결정으로 mockup 프로세스 생략. 이 PR은 순수 드래그 상호�
 - **DR2 접근성 (✅ plan T6/T8 보강)**: KeyboardSensor 유지로 키보드 순서변경 + 한국어 announcements(스크린리더 집기/이동/드롭/취소 공지). 마우스 전용 드래그는 a11y 실패.
 - **DR3 스윔레인 그룹 경계 UX (⚠️ 주의, PR21b까지 임시)**: PR21 단독 기간 동안 스윔레인 활성 시 다른 그룹으로 끌면 noop(필드변경은 PR21b) → 사용자가 "왜 안 되지" 혼란 가능. 완화=드롭 불가 커서/그룹 하이라이트 억제로 시각 전달. **근본 해소는 PR21b(필드변경) 조속 후속**. Maxi 확정 2 PR 분할의 알려진 트레이드오프.
 - **DR4 낙관적 실패 시각 (✅ 스펙/plan 반영됨)**: 순서변경 즉시 반영(낙관적), 409/실패 시 카드 원위치 복귀 + toast 안내(기존 useMoveCard 패턴 정합). 롤백이 자연스럽도록 transition.
-- **무회귀 관점**: useDraggable→useSortable 전환이 기존 컬럼 간 이동(상태전이)·DONE resolution·DragOverlay·필터·WIP 경고를 깨지 않는지 T7·T8이 명시 검증. 카드 Link 클릭(distance:5)·기존 e2e 계약(aria-label·getByRole) 보존.
+- **무회귀 관점**: useDraggable→useSortable 전환이 기존 컬럼 간 이동(상태전환)·DONE resolution·DragOverlay·필터·WIP 경고를 깨지 않는지 T7·T8이 명시 검증. 카드 Link 클릭(distance:5)·기존 e2e 계약(aria-label·getByRole) 보존.
 - **BLOCKER**: 없음.
 
 ### 리뷰 종합

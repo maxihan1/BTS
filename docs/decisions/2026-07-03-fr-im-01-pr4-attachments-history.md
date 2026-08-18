@@ -34,7 +34,7 @@ Jira `changelog.histories[]`의 각 `history`를 `IssueChangeGroup` 1건(actor=�
 
 - **왜 충실 재생(Maxi 결정)**. 마이그레이션의 목적은 원본 변경이력 보존. provenance 단일 엔트리는 상세 이력을 잃는다.
 - **Jira 표시 문자열 그대로 저장 — BTS 라벨 resolver 미적용**. `IssueChangeLabelResolver`는 현 BTS 엔티티(type/version/user 등)를 조회해 라벨을 박제하나, import된 과거 Jira 상태는 현 BTS 엔티티로 매핑 불가. Jira가 changelog에 이미 담아준 `fromString`/`toString`(사람이 읽는 표시값)을 fromValue/toValue로 직접 저장.
-- **status 변경은 텍스트 이력이지 전이 재생 아님**. FR-HS는 status를 라벨 범위 밖(project-workflow BC)으로 뒀으나, import 이력의 status는 BTS FSM 전이를 실행하는 게 아니라 "field=status, To Do→In Progress" 텍스트 사실을 기록하는 것 → project-workflow BC 미개입, BC 침범 아님.
+- **status 변경은 텍스트 이력이지 전환 재생 아님**. FR-HS는 status를 라벨 범위 밖(project-workflow BC)으로 뒀으나, import 이력의 status는 BTS FSM 전환을 실행하는 게 아니라 "field=status, To Do→In Progress" 텍스트 사실을 기록하는 것 → project-workflow BC 미개입, BC 침범 아님.
 - **occurredAt 주입의 안전성**. append-only 이력에 과거 시각 삽입은 감사 무결성 관점에서 예외적이나, import는 원본 시각을 보존하는 것이 목적이며 조회 인덱스가 `(issue_id, created_at DESC, id DESC)`라 정렬도 자연 정합. 컬럼이 이미 `NOT NULL DEFAULT NOW()`라 마이그레이션 불필요.
 - **필드 매핑**. Jira 필드명(status/priority/assignee/summary/description/resolution/labels/Fix Version/Component 등) → BTS `IssueChangeItem.field` 문자열 매핑 테이블. 미매핑 필드는 원본 필드명을 보존하거나 스킵+경고(스펙 확정).
 

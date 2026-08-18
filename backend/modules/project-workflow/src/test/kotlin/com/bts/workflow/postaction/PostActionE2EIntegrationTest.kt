@@ -46,7 +46,7 @@ import java.sql.DriverManager
  * - 비-http url 검증 실패 400
  * - 미지원 type 400
  *
- * 주의: post-action 은 전이 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
+ * 주의: post-action 은 전환 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
  * WorkflowCache mock 및 캐시 무효화 검증이 불필요하다.
  */
 @Testcontainers
@@ -119,7 +119,7 @@ class PostActionE2EIntegrationTest {
                 .load()
                 .migrate()
 
-            // simple 워크플로우 시드 (todo/doing/done 3상태 + 전이)
+            // simple 워크플로우 시드 (todo/doing/done 3상태 + 전환)
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.createStatement().use { stmt ->
                     stmt.execute(

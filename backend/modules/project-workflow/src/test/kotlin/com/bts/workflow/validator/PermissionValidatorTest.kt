@@ -139,7 +139,7 @@ class PermissionValidatorTest {
     // ── 케이스 4. resolver 예외 → 안전 Fail ────────────────────────────────────
 
     @Test
-    fun `resolver 에서 예외 발생 시 Fail 을 반환하고 전이를 차단한다`() {
+    fun `resolver 에서 예외 발생 시 Fail 을 반환하고 전환을 차단한다`() {
         val permission = "TRANSITION_ISSUE"
         val validator = PermissionValidator(resolver, permission)
         val ctx = buildContext()

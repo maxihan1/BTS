@@ -25,7 +25,7 @@ export interface SlackEventTypeOption {
 export const SLACK_EVENT_TYPE_CATALOG = [
   { wireValue: 'issue.created', label: '이슈 생성', group: '이슈' },
   { wireValue: 'issue.assigned', label: '담당자 지정', group: '이슈' },
-  { wireValue: 'issue.transitioned', label: '상태 전이', group: '이슈' },
+  { wireValue: 'issue.transitioned', label: '상태 전환', group: '이슈' },
   { wireValue: 'issue.commented', label: '댓글 작성', group: '이슈' },
   { wireValue: 'issue.due_soon', label: '마감 임박', group: '이슈' },
   { wireValue: 'issue.overdue', label: '마감 초과', group: '이슈' },

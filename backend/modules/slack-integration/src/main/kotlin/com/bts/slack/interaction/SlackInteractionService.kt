@@ -32,7 +32,7 @@ import java.util.UUID
  * - `block_actions`/`atlas_complete`: 역매핑 → 완료옵션 조회 → 완료 모달 오픈(`views.open`).
  * - `block_actions`/`atlas_assign`·`atlas_comment`: 역매핑 → (완료옵션 조회 없이) 담당자/코멘트 모달
  *   오픈(`views.open`). OCC(낙관적 동시성 제어) 없는 비종료 액션이라 완료와 달리 사전 조회가 없다.
- * - `view_submission`/`atlas_complete_modal`: 역매핑 → 전이 실행([IssueTransitionPort.transition]) →
+ * - `view_submission`/`atlas_complete_modal`: 역매핑 → 전환 실행([IssueTransitionPort.transition]) →
  *   원본 DM 메시지 갱신(`chat.update`).
  * - `view_submission`/`atlas_assign_modal`·`atlas_comment_modal`: 역매핑 → 대상 파싱/역매핑(담당자만) →
  *   [IssueMutationPort.assign]/[IssueMutationPort.addComment] 실행. 장식용 메시지 갱신 없음(비종료 액션).
@@ -45,7 +45,7 @@ import java.util.UUID
  * 이 서비스의 반환값을 그대로 HTTP 본문으로 직렬화한다.
  *
  * ## actor는 오직 역매핑 결과 (위조 차단)
- * 전이/변경 행위자([BoardTransitionCommand.actorUserId], [AssignCommand.actorUserId],
+ * 전환/변경 행위자([BoardTransitionCommand.actorUserId], [AssignCommand.actorUserId],
  * [AddCommentCommand.actorUserId])는 서명 검증된 `user.id`/`team.id`를
  * [SlackUserMappingRepository.findUserIdBySlackUserId]로 역매핑한 BTS 사용자 id만 쓴다. request
  * body/param에서 actor를 받지 않는다([IssueTransitionPort] KDoc 동형). 담당자 변경의 배정 대상도
@@ -53,7 +53,7 @@ import java.util.UUID
  * BTS 사용자로 역매핑되지 않으면([TARGET_NOT_LINKED_MESSAGE]) 배정을 거부한다.
  *
  * ## 판정 불가는 거부 (fail-closed)
- * 미연결(역매핑 null)·무권한/미가시(getCompletionOptions null)·전이/변경 실패는 모두 안전하게 거부한다.
+ * 미연결(역매핑 null)·무권한/미가시(getCompletionOptions null)·전환/변경 실패는 모두 안전하게 거부한다.
  * 이슈 존재·제목 등 내부 사정은 사용자 응답에 노출하지 않고 일반 메시지로 치환한다.
  *
  * ## 실패 분류 — 타입 예외로만 (catch 순서 주의)
@@ -68,7 +68,7 @@ import java.util.UUID
  * @param modalBuilder 완료/담당자/코멘트 모달 view JSON 조립.
  * @param messageClient `views.open`/`chat.update` 호출 클라이언트.
  * @param responseUrlClient `block_actions`의 `response_url`로 ephemeral 안내를 보내는 best-effort 클라이언트.
- * @param transitionPort 완료 전이 실행 cross-BC 포트.
+ * @param transitionPort 완료 전환 실행 cross-BC 포트.
  * @param botTokenResolver teamId → 복호화된 봇 토큰(내부적으로 `SlackInstallRepository.findByTeamId` + 복호화).
  * @param interactionLogRepository V703 감사 로그(append-only, best-effort 기록).
  * @param issueMutationPort 담당자 배정/코멘트 추가 실행 cross-BC 포트(FR-SL-05 PR2).
@@ -149,7 +149,7 @@ class SlackInteractionService(
             )
             return InteractionResult.AckEmpty
         }
-        // 완료 가능한 DONE 전이가 없으면(이미 완료 등) 입력 블록 없는 무효 모달을 열지 않고 안내로 수렴한다
+        // 완료 가능한 DONE 전환이 없으면(이미 완료 등) 입력 블록 없는 무효 모달을 열지 않고 안내로 수렴한다
         // (views.open 무효 거부로 인한 무피드백·무감사 침묵 차단). 오류가 아니므로 별도 outcome 으로 기록한다.
         if (options.doneTransitions.isEmpty()) {
             sendEphemeral(payload.responseUrl, NO_COMPLETABLE_STATE_MESSAGE)
@@ -263,7 +263,7 @@ class SlackInteractionService(
             else -> InteractionResult.AckEmpty
         }
 
-    /** 완료 모달 제출 — 역매핑 → private_metadata/상태값 추출 → 전이 실행. */
+    /** 완료 모달 제출 — 역매핑 → private_metadata/상태값 추출 → 전환 실행. */
     @Suppress("ReturnCount") // actor·역매핑·metadata 각 fail-closed 게이트의 early-return(가드 절).
     private fun handleCompleteSubmission(payload: SlackInteractionPayload.ViewSubmission): InteractionResult {
         val slackUserId = payload.userId
@@ -368,12 +368,12 @@ class SlackInteractionService(
     }
 
     /**
-     * 전이를 실행하고 성공/실패를 타입 예외로 분류한다.
+     * 전환을 실행하고 성공/실패를 타입 예외로 분류한다.
      *
      * catch 순서는 좁은 타입(권한 → OCC) → generic 순이다 — 특정 신호가 generic ERROR로 뭉개지지 않게 한다.
      * `resolutionRaw` 파싱([UUID.fromString])이 실패하면(방어적 케이스) generic catch가 ERROR로 수렴시킨다.
      */
-    @Suppress("TooGenericExceptionCaught") // generic catch는 전이 실패 최종 버킷 — 위의 타입 catch를 먼저 통과시킨다.
+    @Suppress("TooGenericExceptionCaught") // generic catch는 전환 실패 최종 버킷 — 위의 타입 catch를 먼저 통과시킨다.
     private fun executeCompletion(
         actor: InteractionActor,
         metadata: CompletionMetadata,
@@ -496,9 +496,9 @@ class SlackInteractionService(
         }
 
     /**
-     * 전이 성공 후 원본 DM 메시지를 완료 문구로 갱신한다(장식용). 봇 미설치면 조용히 skip(전이는 이미 성공).
+     * 전환 성공 후 원본 DM 메시지를 완료 문구로 갱신한다(장식용). 봇 미설치면 조용히 skip(전환은 이미 성공).
      *
-     * 전이는 이미 독립 트랜잭션으로 커밋된 뒤라, 이 갱신(봇토큰 복호화·`chat.update`)의 실패가 성공한 완료를
+     * 전환은 이미 독립 트랜잭션으로 커밋된 뒤라, 이 갱신(봇토큰 복호화·`chat.update`)의 실패가 성공한 완료를
      * 뒤집어선 안 된다. [executeCompletion]의 결과 분류 catch로 예외가 전파되면 SUCCESS가 ERROR로 오분류·
      * 오기록되므로, 여기서 best-effort로 삼키고 WARN만 남긴다([record] 동형).
      */
@@ -676,7 +676,7 @@ class SlackInteractionService(
         }
     }
 
-    /** 역매핑으로 해석한 인터랙션 행위자 컨텍스트(전이·감사 공통). btsUserId는 매핑 확정 이후라 non-null. */
+    /** 역매핑으로 해석한 인터랙션 행위자 컨텍스트(전환·감사 공통). btsUserId는 매핑 확정 이후라 non-null. */
     private data class InteractionActor(
         val teamId: String,
         val slackUserId: String,
@@ -747,7 +747,7 @@ class SlackInteractionService(
         const val OUTCOME_CONFLICT = "CONFLICT"
         const val OUTCOME_ERROR = "ERROR"
 
-        // 볼 수 있으나(권한 OK) 현 상태에서 완료 가능한 전이가 없음 — 오류·거부와 구분되는 감사 신호.
+        // 볼 수 있으나(권한 OK) 현 상태에서 완료 가능한 전환이 없음 — 오류·거부와 구분되는 감사 신호.
         const val OUTCOME_NOT_APPLICABLE = "NOT_APPLICABLE"
 
         // ── 사용자 노출 메시지 (내부 사정 미노출 — 이슈 존재/제목 등을 드러내지 않는다) ──
@@ -768,7 +768,7 @@ class SlackInteractionService(
  * 컨트롤러가 HTTP로 직렬화할 인터랙션 처리 결과.
  *
  * Slack 인터랙션 응답은 (1) 빈 200으로 모달을 닫거나 no-op 처리하거나, (2) `response_action: errors`로
- * 모달을 열어둔 채 입력 블록에 에러를 표기하는 두 가지로 갈린다. 봇 토큰 조회·모달 오픈·전이·`response_url`
+ * 모달을 열어둔 채 입력 블록에 에러를 표기하는 두 가지로 갈린다. 봇 토큰 조회·모달 오픈·전환·`response_url`
  * ephemeral 전송 같은 side effect는 이미 [SlackInteractionService] 내부에서 **동기** 수행됐고, 이 값은
  * 컨트롤러가 응답 본문으로 쓸 최종 산출물만 담는다.
  */

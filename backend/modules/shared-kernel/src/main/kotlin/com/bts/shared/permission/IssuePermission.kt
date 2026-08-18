@@ -41,7 +41,7 @@ enum class IssuePermission {
     /** 이슈 필드(summary 등) 수정 권한. */
     UPDATE,
 
-    /** 이슈 상태 전이 권한. WorkflowTransitionPort.plan() 호출 전 검증. */
+    /** 이슈 상태 전환 권한. WorkflowTransitionPort.plan() 호출 전 검증. */
     TRANSITION,
 
     /**

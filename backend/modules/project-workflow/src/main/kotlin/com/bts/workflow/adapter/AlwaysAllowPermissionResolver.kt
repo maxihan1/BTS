@@ -35,7 +35,7 @@ class AlwaysAllowPermissionResolver : PermissionResolver {
     /**
      * 항상 `true` 를 반환한다.
      *
-     * 개발/테스트 환경에서 권한 검사 없이 워크플로우 전이를 테스트할 수 있도록
+     * 개발/테스트 환경에서 권한 검사 없이 워크플로우 전환을 테스트할 수 있도록
      * 모든 요청을 허용한다. 운영 환경에서는 이 메서드가 절대 호출되지 않는다.
      *
      * @param actorId 권한을 판정할 액터 식별자.

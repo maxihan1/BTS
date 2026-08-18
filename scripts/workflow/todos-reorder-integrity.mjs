@@ -92,17 +92,50 @@ export function compareTodoIntegrity(before, after) {
     if (!pool.has(k)) pool.set(k, []);
     pool.get(k).push(g);
   }
-  const lost = [];
+  const stillLost = [];
   const renamed = [];
   for (const l of lostRaw) {
     const bucket = pool.get(bodyKey(l));
     if (bucket && bucket.length > 0) renamed.push(`${label(l)}  →  ${label(bucket.shift())}`);
-    else lost.push(label(l));
+    else stillLost.push(l);
+  }
+
+  // ★**본문 편집도 소실이 아니다.** 개명(제목만 바뀜)을 접었으면 그 거울상인 편집
+  // (본문만 바뀜)도 접어야 한다. 접지 않으면 **어떤 PR 도 부채 항목 본문을 고칠 수 없다** —
+  // 실측으로 갱신하는 순간 F2b 가 「항목이 사라졌다」로 red 를 낸다(2026-08-18, 용어 전수
+  // 교체 PR 이 실제로 밟았다). 접는 조건은 **상태·제목 동일**이라 관대하지 않다 —
+  // 둘 다 바뀌면 같은 항목이라는 증거가 없으므로 `lost`·`gained` 양쪽에 그대로 남는다.
+  // 접되 **조용히 접지 않는다** — 무엇이 편집됐는지 호출자가 반드시 볼 수 있게 열거한다.
+  const titleKey = (fp) => {
+    const [status, title] = JSON.parse(fp);
+    return JSON.stringify([status, title]);
+  };
+  // ★접는 조건에 **본문이 줄지 않았을 것**을 넣는다. 낱말을 고친 편집은 줄 수가 그대로지만
+  //   본문 한 줄을 지운 것은 줄 수가 준다. 이 조건이 없으면 「제목만 남기고 본문을 지웠다」가
+  //   편집으로 접혀 조용히 통과한다(그 경우를 잡는 것이 이 판별식의 원래 이유다).
+  const bodyLines = (fp) => JSON.parse(fp)[2].split('\n').filter((l) => l.trim() !== '').length;
+  const gainedPool = new Map();
+  for (const [, bucket] of pool) {
+    for (const g of bucket) {
+      const k = titleKey(g);
+      if (!gainedPool.has(k)) gainedPool.set(k, []);
+      gainedPool.get(k).push(g);
+    }
+  }
+  const lost = [];
+  const edited = [];
+  for (const l of stillLost) {
+    const bucket = gainedPool.get(titleKey(l));
+    const i = bucket ? bucket.findIndex((g) => bodyLines(g) >= bodyLines(l)) : -1;
+    if (i >= 0) {
+      const [g] = bucket.splice(i, 1);
+      edited.push(`${label(l)}  (본문 ${bodyLines(l)}줄 → ${bodyLines(g)}줄)`);
+    } else lost.push(label(l));
   }
   const gained = [];
-  for (const [, bucket] of pool) for (const g of bucket) gained.push(label(g));
+  for (const [, bucket] of gainedPool) for (const g of bucket) gained.push(label(g));
 
-  return { lost, gained, renamed, beforeCount: a.length, afterCount: b.length };
+  return { lost, gained, renamed, edited, beforeCount: a.length, afterCount: b.length };
 }
 
 /**
@@ -147,6 +180,7 @@ export function judgePureMove(before, after, { allowH1Loss = false } = {}) {
     items.lost.length === 0 &&
     items.gained.length === 0 &&
     items.renamed.length === 0 &&
+    items.edited.length === 0 &&
     editedLost.length === 0 &&
     editedGained.length === 0 &&
     (allowH1Loss || h1Lost.length === 0);

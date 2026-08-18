@@ -21,7 +21,7 @@
    - When 사용자 U가 PATCH update로 summary와 priority를 동시에 변경
    - Then group 1행 + item 2행(summary, priority). **한 트랜잭션 = 한 그룹**.
 
-3. **상태 전이**
+3. **상태 전환**
    - When 사용자 U가 transition으로 open→in_progress
    - Then group 1행 + item 1행(field='status', from='open', to='in_progress'). resolution이 함께 설정되면 item 추가(field='resolution').
 

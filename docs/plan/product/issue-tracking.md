@@ -5,12 +5,12 @@
 **소속 FR**. 37개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4).
 **책임**. 이슈/댓글/첨부/관계/이력/템플릿/이동.
 **SDD 참조**. 05장 (데이터 모델), 11장 (API).
-**다른 BC와의 경계**. project-workflow의 상태 전이 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
+**다른 BC와의 경계**. project-workflow의 상태 전환 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
 
 ## §0 진입 조건
 
 - [x] identity-access §2.1 (`AuthenticationProvider`), §4.2 (`PERMISSION` 가드) 완료 — 2026-07-27 실측: `docs/plan/product/identity-access.md` §2.1 FR-AU-01 D1~D7 · §4.2 FR-PM-02 D1~D7 전량 `[x]`
-- [x] project-workflow §1 (FSM PoC) + §2.1 (FR-WF-01) 진입 시 의존 (이슈 상태 전이) — 2026-07-27 실측: `docs/plan/product/project-workflow.md` §1.1 FSM PoC 5항목 · §1.2 pgmq PoC 5항목 · §2.1 FR-WF-01 D1~D7 전량 `[x]` (PR #10/#13/#19)
+- [x] project-workflow §1 (FSM PoC) + §2.1 (FR-WF-01) 진입 시 의존 (이슈 상태 전환) — 2026-07-27 실측: `docs/plan/product/project-workflow.md` §1.1 FSM PoC 5항목 · §1.2 pgmq PoC 5항목 · §2.1 FR-WF-01 D1~D7 전량 `[x]` (PR #10/#13/#19)
 - [ ] notification-dashboard §1 (STOMP PoC), pgmq 트랜잭션 PoC 통과 — 미측정. pgmq 트랜잭션 PoC 는 `project-workflow.md` §1.2 5항목 전량 `[x]` 로 통과했으나, `notification-dashboard.md` §1.1 STOMP PoC 5항목은 전부 미완이고 그중 "알림 지연 p95 < 1s" 는 해당 BC §NFR 표에서도 실측값 `___`. 측정 필요 — 지수 백오프 5s→60s · 네트워크 분리/복귀 통합테스트 · 알림 지연 p95. (STOMP 기능 자체는 FR-NT-01 D4/D6/D7, PR #137 로 구현됨) (2026-07-27 실측)
 - [x] DATA.md §이슈키 영속성 + 소프트 삭제 규칙 숙지 — 2026-07-27 실측: DATA.md §2 4규칙이 구현에 반영됨 (`projects.key_sequence` 발번 · `issue_key_redirects.old_key` PRIMARY KEY · `IssueExceptionHandler.kt:292` `HttpStatus.PERMANENT_REDIRECT` · `V001__issues_initial.sql` `issues.deleted_at` 소프트 삭제)
 - [x] §A.3 #5 (이슈 키 prefix) 결정 — DATA.md 가이드 — 2026-07-27 실측: ADR `docs/adr/2026-05-22-issue-key-prefix-policy.md` 발행. 구현은 `IssueKey.kt` REGEX `^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$` + `IssueKeyPrefixReservedWords` 예약어 차단
@@ -30,13 +30,13 @@
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `issue/crud`
 
 - [x] D1. 도메인 — Issue Aggregate Root, IssueKey VO (책임. backend-engineer + Maxi)
-- [x] D2. 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/전이 위반/대용량/동시 편집/소프트 삭제/키 보존) (책임. backend-engineer)
+- [x] D2. 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/전환 위반/대용량/동시 편집/소프트 삭제/키 보존) (책임. backend-engineer)
 - [x] D3. 데이터 모델 — Flyway. `issues`, `issue_key_redirects`. DATA.md 영속성 (책임. db-engineer)
-- [x] D4. 백엔드 — `POST/GET/PATCH/DELETE /api/v1/issues`. `@Transactional`. pgmq 이벤트 발행 동일 트랜잭션 (책임. backend-engineer + security-engineer 가드) (완료. PR #17 비즈니스 로직 + PR #23 codereview CONCERN cleanup — sealed Result port + PATCH partial RFC 7396 + PR #27 transition wiring — WorkflowResolver consumer (issue-tracking ↔ project-workflow via SPI). 전이 런타임 BLOCKER(DEFAULT 워크플로우 미시드 + OPEN/open 케이스 불일치)는 PR #28 hot-fix로 해소 + PR #38 가용전이 SPI/런타임으로 실 Postgres+워크플로우 시드 검증 완료)
+- [x] D4. 백엔드 — `POST/GET/PATCH/DELETE /api/v1/issues`. `@Transactional`. pgmq 이벤트 발행 동일 트랜잭션 (책임. backend-engineer + security-engineer 가드) (완료. PR #17 비즈니스 로직 + PR #23 codereview CONCERN cleanup — sealed Result port + PATCH partial RFC 7396 + PR #27 transition wiring — WorkflowResolver consumer (issue-tracking ↔ project-workflow via SPI). 전환 런타임 BLOCKER(DEFAULT 워크플로우 미시드 + OPEN/open 케이스 불일치)는 PR #28 hot-fix로 해소 + PR #38 가용전환 SPI/런타임으로 실 Postgres+워크플로우 시드 검증 완료)
 - [x] D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합. TDD red→green→refactor (책임. backend-engineer) (완료. PR #17 단위 + PR #23 ArchUnit 2룰 + Testcontainers singleton base + Kotest property × 3 + PR #24 Flyway namespace 격리로 IssueRepositoryTest `@Disabled` 해제 + NFR-3 2회 연속 BUILD SUCCESSFUL 24s × 2 측정 통과)
-- [x] D6. 프론트 UI — `IssueDetail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트 (책임. designer → frontend-engineer) (완료. PR #26 — 목록(issues.index)+생성(issues.new)+상세(issues.$key, 시안2 사이드 메타패널)+요약 인라인 수정(완전 낙관적 onMutate/onError/onSettled+409 토스트)+소프트 삭제. sonner toast 도입. router 3라우트 requireAuth. 상태 전이 UI는 별 slice로 분리 → D6.5(PR #41)에서 완료. 8 TDD task / 173 테스트 통과)
-- [x] D6.5. 상태 전이 UI + 전이 E2E — 가용전이 드롭다운(서버 권위 `GET /transitions`) + `POST /transition`(409 errorCode 2종 TRANSITION_NOT_ALLOWED/VERSION_CONFLICT, 422 미설정 분기) + Zod(backend DTO 정합) + MSW stateful + i18n + Playwright E2E 4(happy/가용전이 필터/미설정/종료상태) (책임. backend-engineer→frontend-engineer→qa-engineer) (완료. PR #38 백엔드 가용전이 SPI+런타임 + PR #41 프론트 UI+E2E)
-- [x] D7. E2E — FR-IS-01 고유 lifecycle 생성→조회→수정→상태 전이→소프트 삭제 (책임. qa-engineer) (완료. PR #32 E2E-1~4(생성/조회/인라인수정/소프트삭제/목록제외 + 비로그인 가드 + 미존재 키 404 + UI 회귀 가드 3) + PR #41 상태 전이 E2E 4(happy/가용전이 필터/미설정/종료상태). MSW mock 환경. **범위 재정의(2026-05-30)** — 아래 cross-FR/deferred 항목을 각 FR로 이관해 FR-IS-01 고유 E2E만 D7로 한정)
+- [x] D6. 프론트 UI — `IssueDetail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트 (책임. designer → frontend-engineer) (완료. PR #26 — 목록(issues.index)+생성(issues.new)+상세(issues.$key, 시안2 사이드 메타패널)+요약 인라인 수정(완전 낙관적 onMutate/onError/onSettled+409 토스트)+소프트 삭제. sonner toast 도입. router 3라우트 requireAuth. 상태 전환 UI는 별 slice로 분리 → D6.5(PR #41)에서 완료. 8 TDD task / 173 테스트 통과)
+- [x] D6.5. 상태 전환 UI + 전환 E2E — 가용전환 드롭다운(서버 권위 `GET /transitions`) + `POST /transition`(409 errorCode 2종 TRANSITION_NOT_ALLOWED/VERSION_CONFLICT, 422 미설정 분기) + Zod(backend DTO 정합) + MSW stateful + i18n + Playwright E2E 4(happy/가용전환 필터/미설정/종료상태) (책임. backend-engineer→frontend-engineer→qa-engineer) (완료. PR #38 백엔드 가용전환 SPI+런타임 + PR #41 프론트 UI+E2E)
+- [x] D7. E2E — FR-IS-01 고유 lifecycle 생성→조회→수정→상태 전환→소프트 삭제 (책임. qa-engineer) (완료. PR #32 E2E-1~4(생성/조회/인라인수정/소프트삭제/목록제외 + 비로그인 가드 + 미존재 키 404 + UI 회귀 가드 3) + PR #41 상태 전환 E2E 4(happy/가용전환 필터/미설정/종료상태). MSW mock 환경. **범위 재정의(2026-05-30)** — 아래 cross-FR/deferred 항목을 각 FR로 이관해 FR-IS-01 고유 E2E만 D7로 한정)
 
 > **D7 잔여 이관 (2026-05-30)**. 아래 3건은 FR-IS-01 고유 범위가 아니라 각 FR/deferred로 이관 — D7 완료 판정에서 제외:
 > - **이슈 이동 + 키 redirect E2E** → **FR-MV-01**(§6.1.1 프로젝트 간 이슈 이동)의 E2E 범위. 이미 FR-MV-01 D2(옛 키 redirect 명세)/D5(옛 키 308 redirect 테스트)로 추적 중.
@@ -90,16 +90,16 @@
 **우선순위**. 필수 | **선행**. §2.1.1, project-workflow §2.1 | **Plan slug**. `issue/resolution`
 
 - [x] D1. 도메인 (책임. backend-engineer) (완료. PR #62 — Resolution 엔티티(IssueType 패턴 동형, 표준 5종 불변 FIXED/WONT_FIX/DUPLICATE/CANNOT_REPRODUCE/DONE + key 슬러그 검증). 옵션 A(워크플로우 게이트) 채택 — 선행 FR-WF-03(validator 런타임 결선) 머지 후 보류 해제)
-- [x] D2. 명세 — 종료 상태 진입 시 Resolution 필수 (책임. backend-engineer) (완료. PR #62 — DONE 카테고리 전이 시 RequiredField(resolution) validator로 필수 강제. 거부=409 TRANSITION_NOT_ALLOWED(422 아님, 기존 전이거부 계약 재사용). 재오픈(DONE→비DONE) 시 resolution_id clear)
+- [x] D2. 명세 — 종료 상태 진입 시 Resolution 필수 (책임. backend-engineer) (완료. PR #62 — DONE 카테고리 전환 시 RequiredField(resolution) validator로 필수 강제. 거부=409 TRANSITION_NOT_ALLOWED(422 아님, 기존 전환거부 계약 재사용). 재오픈(DONE→비DONE) 시 resolution_id clear)
 - [x] D3. 데이터 모델 — `resolutions`, `issues.resolution_id` (책임. db-engineer) (완료. PR #62 — V011(V010은 versions 선점) resolutions 테이블 + 표준 5종 seed(결정적 Zod v4 UUID) + issues.resolution_id(FK 미적용, BC 격리) + init_codegen 미러)
-- [x] D4. 백엔드 — 상태 전이 가드 (Resolution 미설정 시 reject) (책임. backend-engineer) (완료. PR #62 — production 워크플로우 YAML(software-default 등) DONE 전이에 RequiredField(resolution) 시드(YamlSeedService, FR-WF-03 결선 활용 — 마이그레이션 아님). transitionIssue가 issueFields에 resolution 전달 + raw jOOQ applyTransition으로 resolution_id 영속 + 존재성 검증(위조 UUID→404 RESOLUTION_NOT_FOUND). 일괄 전이(Q4)도 payload resolutionId 전달)
-- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #62 — 마이그레이션/엔티티/repo/엔드포인트/전이 영속·clear·존재성/일괄 Testcontainers 통합 + 실 WorkflowEngine 결선 end-to-end(IssueTransitionValidatorEndToEndIntegrationTest — REST DONE 전이 resolution 누락→409 전체스택). 3모듈 test+detekt 그린)
-- [x] D6. 프론트 UI — 종료 모달 (책임. designer → frontend-engineer) (완료. PR #62 — resolutions API/useResolutions/MSW + 단건 종료 모달(toCategory==='DONE' 트리거, 기존 resolution pre-fill=done→closed 정확성 요건, 미선택 시 확인 비활성) + 일괄 전이 resolution 드롭다운(Q4) + 상세 메타 resolution 표시. vitest 997+typecheck+eslint 그린)
-- [x] D7. E2E (책임. qa-engineer) (완료. PR #62 — issue-resolution.spec.ts S1(단건 종료 happy+resolution 표시)/S2(미선택 거부)/S4(재오픈 clear)/S5(일괄 종료). MSW stateful(전이 결과 영속). 전체 E2E 80 passed/1 skipped 회귀 0)
+- [x] D4. 백엔드 — 상태 전환 가드 (Resolution 미설정 시 reject) (책임. backend-engineer) (완료. PR #62 — production 워크플로우 YAML(software-default 등) DONE 전환에 RequiredField(resolution) 시드(YamlSeedService, FR-WF-03 결선 활용 — 마이그레이션 아님). transitionIssue가 issueFields에 resolution 전달 + raw jOOQ applyTransition으로 resolution_id 영속 + 존재성 검증(위조 UUID→404 RESOLUTION_NOT_FOUND). 일괄 전환(Q4)도 payload resolutionId 전달)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #62 — 마이그레이션/엔티티/repo/엔드포인트/전환 영속·clear·존재성/일괄 Testcontainers 통합 + 실 WorkflowEngine 결선 end-to-end(IssueTransitionValidatorEndToEndIntegrationTest — REST DONE 전환 resolution 누락→409 전체스택). 3모듈 test+detekt 그린)
+- [x] D6. 프론트 UI — 종료 모달 (책임. designer → frontend-engineer) (완료. PR #62 — resolutions API/useResolutions/MSW + 단건 종료 모달(toCategory==='DONE' 트리거, 기존 resolution pre-fill=done→closed 정확성 요건, 미선택 시 확인 비활성) + 일괄 전환 resolution 드롭다운(Q4) + 상세 메타 resolution 표시. vitest 997+typecheck+eslint 그린)
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #62 — issue-resolution.spec.ts S1(단건 종료 happy+resolution 표시)/S2(미선택 거부)/S4(재오픈 clear)/S5(일괄 종료). MSW stateful(전환 결과 영속). 전체 E2E 80 passed/1 skipped 회귀 0)
 
 ### §2.2 보강 2개 (일괄 편집, 라벨 자동완성)
 
-#### §2.2.1 FR-IS-05 — 이슈 일괄 편집 + 일괄 상태 전이
+#### §2.2.1 FR-IS-05 — 이슈 일괄 편집 + 일괄 상태 전환
 
 **우선순위**. 높음 | **선행**. §2.1.1 | **Plan slug**. `issue/bulk-edit`
 
@@ -108,8 +108,8 @@
 - [x] D3. 데이터 모델 — (FR-IS-01 활용) (책임. db-engineer)
 - [x] D4. 백엔드 — `POST /api/v1/issues/bulk-update`. 청크 처리 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 부분 실패 시 트랜잭션 동작 (책임. backend-engineer)
-- [x] D6. 프론트 UI — 다중 선택 + 액션 바 (책임. designer → frontend-engineer) (완료. PR #58 — 이슈 목록 체크박스 다중선택(페이지 교차 누적) + 일괄 액션바 + 일괄 편집/전이 Dialog + 결과 패널(폴링 1.5s 종단중지). 전이 대상=가용전이 교집합만(Promise.allSettled N회). 계약 정합(payload operationType union/DataResponse/errorCode4·failureReasonCode7). B1 BLOCKER(체크박스 행 형제구조+키 비포함 aria-label, getByLabel 회귀0) + 적대적리뷰 결함4건(폴링 에러 무한루프/전량실패 빈드롭다운/stale 덮어쓰기/Dialog 잔상) 수정. 9 TDD task. 프론트 854 단위+typecheck+lint+기존 E2E 24 green. FR-PM-02 #57과 issues.index 충돌→NewIssueButton+일괄UI 공존 통합머지)
-- [x] D7. E2E — 일괄 편집/전이 + 진행률 폴링 시나리오 + bulk MSW 핸들러 정본 (책임. qa-engineer) (완료. PR #60 — bulk 작업 공용 MSW 핸들러 정본(bulk-operation-handlers.ts, stateful 폴링 2폴내 종단 + partial-fail/reject localStorage 토글) + 단위 11 + E2E 5(S1 편집happy/S2 전이happy 교집합closed/S3 부분실패 성공2실패1/S4 접수실패 토스트/S5 교집합0). 코드리뷰 PASS, CONCERNS 2건(payload union 가드+격리주석) 반영. typecheck/lint/단위 865/전체 E2E 71 passed 1 skipped 회귀0)
+- [x] D6. 프론트 UI — 다중 선택 + 액션 바 (책임. designer → frontend-engineer) (완료. PR #58 — 이슈 목록 체크박스 다중선택(페이지 교차 누적) + 일괄 액션바 + 일괄 편집/전환 Dialog + 결과 패널(폴링 1.5s 종단중지). 전환 대상=가용전환 교집합만(Promise.allSettled N회). 계약 정합(payload operationType union/DataResponse/errorCode4·failureReasonCode7). B1 BLOCKER(체크박스 행 형제구조+키 비포함 aria-label, getByLabel 회귀0) + 적대적리뷰 결함4건(폴링 에러 무한루프/전량실패 빈드롭다운/stale 덮어쓰기/Dialog 잔상) 수정. 9 TDD task. 프론트 854 단위+typecheck+lint+기존 E2E 24 green. FR-PM-02 #57과 issues.index 충돌→NewIssueButton+일괄UI 공존 통합머지)
+- [x] D7. E2E — 일괄 편집/전환 + 진행률 폴링 시나리오 + bulk MSW 핸들러 정본 (책임. qa-engineer) (완료. PR #60 — bulk 작업 공용 MSW 핸들러 정본(bulk-operation-handlers.ts, stateful 폴링 2폴내 종단 + partial-fail/reject localStorage 토글) + 단위 11 + E2E 5(S1 편집happy/S2 전환happy 교집합closed/S3 부분실패 성공2실패1/S4 접수실패 토스트/S5 교집합0). 코드리뷰 PASS, CONCERNS 2건(payload union 가드+격리주석) 반영. typecheck/lint/단위 865/전체 E2E 71 passed 1 skipped 회귀0)
 
 #### §2.2.2 FR-IS-09 — 라벨 자동완성
 
@@ -244,12 +244,12 @@
 
 **우선순위**. 필수 | **선행**. §3.2.1 | **Plan slug**. `issue/versions-status`
 
-- [x] D1. 도메인 (책임. backend-engineer) — PR #105 (`VersionStatus` enum 3종 + `Version.status`/`releasedAt` 필드 + release/unrelease/archive/unarchive 전이 메서드 + assertNotArchived 가드. 도메인은 `Instant` 수신, Clock은 서비스 주입)
-- [x] D2. 명세 — 상태 전이 규칙 (책임. backend-engineer) — PR #105 (ADR docs/adr/2026-06-10-version-status-and-transitions.md, Jira 정석 그래프 UNRELEASED⇄RELEASED·둘다→ARCHIVED·ARCHIVED→UNRELEASED, self/그래프외 409, ARCHIVED 읽기전용, released_at 자동)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #105 (`VersionStatus` enum 3종 + `Version.status`/`releasedAt` 필드 + release/unrelease/archive/unarchive 전환 메서드 + assertNotArchived 가드. 도메인은 `Instant` 수신, Clock은 서비스 주입)
+- [x] D2. 명세 — 상태 전환 규칙 (책임. backend-engineer) — PR #105 (ADR docs/adr/2026-06-10-version-status-and-transitions.md, Jira 정석 그래프 UNRELEASED⇄RELEASED·둘다→ARCHIVED·ARCHIVED→UNRELEASED, self/그래프외 409, ARCHIVED 읽기전용, released_at 자동)
 - [x] D3. 데이터 모델 — `versions.status` (책임. db-engineer) — PR #105 (V016 status VARCHAR(20) NOT NULL DEFAULT 'UNRELEASED' + released_at TIMESTAMPTZ + ck_versions_status CHECK, init_codegen 미러)
-- [x] D4. 백엔드 — 상태 전이 API + 가드 (책임. backend-engineer) — PR #105 (PATCH /{id}/status changeStatus + applyTransition when, VersionPermission.UPDATE 재사용, 409 VERSION_TRANSITION_NOT_ALLOWED, delete ARCHIVED 명시 차단(repo 직행 우회 방지))
-- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #105 (도메인 전이/거부 + repo status/released_at 왕복 + service changeStatus + 통합 S1~S7 + 마이그레이션, 136 그린)
-- [x] D6. 프론트 UI (책임. designer → frontend-engineer) — PR #105 (VersionRow 상태 뱃지 + TRANSITION_ACTIONS 전이 버튼 + ARCHIVED 수정/삭제 disabled, Zod status/releasedAt(NON_NULL .nullable().optional()), useChangeVersionStatus invalidate-only, MSW stateful 전이그래프)
+- [x] D4. 백엔드 — 상태 전환 API + 가드 (책임. backend-engineer) — PR #105 (PATCH /{id}/status changeStatus + applyTransition when, VersionPermission.UPDATE 재사용, 409 VERSION_TRANSITION_NOT_ALLOWED, delete ARCHIVED 명시 차단(repo 직행 우회 방지))
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #105 (도메인 전환/거부 + repo status/released_at 왕복 + service changeStatus + 통합 S1~S7 + 마이그레이션, 136 그린)
+- [x] D6. 프론트 UI (책임. designer → frontend-engineer) — PR #105 (VersionRow 상태 뱃지 + TRANSITION_ACTIONS 전환 버튼 + ARCHIVED 수정/삭제 disabled, Zod status/releasedAt(NON_NULL .nullable().optional()), useChangeVersionStatus invalidate-only, MSW stateful 전환그래프)
 - [x] D7. E2E (책임. qa-engineer) — PR #105 (version-status.spec.ts 4시나리오 + 기존 version-management 5 회귀. session-fixtures loginAsAlice FR-AU-07 2단계 hot-fix. issue/workflow fixture 1단계 회귀는 별도 PR)
 
 #### §3.2.3 FR-VR-03 — Affects/Fix Version 연결
@@ -402,7 +402,7 @@
 
 ### §5.1 히스토리 (FR-HS, 2개)
 
-#### §5.1.1 FR-HS-01 — 이슈 변경 이력 (필드/댓글/첨부/전이)
+#### §5.1.1 FR-HS-01 — 이슈 변경 이력 (필드/댓글/첨부/전환)
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/history`
 
@@ -462,7 +462,7 @@
 - [x] D2. 명세 — 양방향성(역방향 라벨 계산) + cycle 검출 (책임. backend-engineer) — PR #135
 - [x] D3. 데이터 모델 — `issue_links(source_id, target_id, link_type)` UUID FK + `issues.parent_id` (책임. db-engineer, V021) — PR #135
 - [x] D4. 백엔드 — `POST/GET/DELETE /api/v1/issues/{key}/links` + `PATCH /api/v1/issues/{key}/parent` (책임. backend-engineer) — PR #135
-- [x] D5. 백엔드 테스트 — cycle 케이스(blocks 전이·부모 조상) (책임. backend-engineer) — PR #135
+- [x] D5. 백엔드 테스트 — cycle 케이스(blocks 전환·부모 조상) (책임. backend-engineer) — PR #135
 - [x] D6. 프론트 UI — 링크 추가/제거 패널 + parent-child set/clear (책임. frontend-engineer) — PR #136
 - [x] D7. E2E (책임. qa-engineer) — PR #136
 

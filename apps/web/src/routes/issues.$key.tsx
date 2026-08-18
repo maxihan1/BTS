@@ -1,4 +1,4 @@
-// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
+// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전환 컨트롤 포함)
 // KeyboardEvent 는 별칭으로 받는다 — 그냥 이름으로 들이면 usePaneEscapeClose(:79)가 쓰는
 // 전역 DOM KeyboardEvent 를 모듈 스코프에서 가려 document 리스너 타입이 조용히 바뀐다.
 import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -48,7 +48,7 @@ import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
 import { issueDetailStrings, worklogStrings } from '@/i18n/ko'
 import { classifyMetaMutationError } from '@/components/issue/meta/meta-mutation-error'
-// 전이 불가 사유 판정(스펙 E5) — 목록 상태 셀과 공용이라 lib 로 승격했다 (FR-UX-11 F9).
+// 전환 불가 사유 판정(스펙 E5) — 목록 상태 셀과 공용이라 lib 로 승격했다 (FR-UX-11 F9).
 // 복제하면 상세와 목록이 같은 응답을 서로 다르게 설명하게 된다.
 import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
 
@@ -181,7 +181,7 @@ interface IssueDetailPageProps {
  * - useQuery로 fetchIssue(issueKey)를 호출한다.
  * - 3 상태 분기: 로딩 → 에러/미존재 → 성공.
  * - 성공 레이아웃: 좌측 본문(breadcrumb + 제목 인라인 편집) + 우측 메타패널.
- * - 상태 전이 셀렉터 + 담당자 셀렉터(useUsersByIds 별도 조회) + debounce 검색 포함.
+ * - 상태 전환 셀렉터 + 담당자 셀렉터(useUsersByIds 별도 조회) + debounce 검색 포함.
  * - 삭제: 확인 UI → useDeleteIssue → 목록으로 navigate.
  * - `variant='pane'`(FR-UX-06 PR20)이면 fullscreen navigate 대신 `onClose`/`onIssueRedirect`/
  *   `onIssueClosed` 콜백에 위임한다 — {@link IssueDetailPageProps} 참조.
@@ -206,7 +206,7 @@ export function IssueDetailPage({
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
 
   // ── Resolution 모달 상태 ──────────────────────────────────────────────────
-  /** 현재 DONE 전이 대기 중인 전이 항목. null이면 모달 닫힘. */
+  /** 현재 DONE 전환 대기 중인 전환 항목. null이면 모달 닫힘. */
   const [pendingDoneTransition, setPendingDoneTransition] = useState<IssueTransition | null>(null)
 
   // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
@@ -371,7 +371,7 @@ export function IssueDetailPage({
     transitionCount: transitions.length,
   })
 
-  // 전이 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
+  // 전환 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
   const transitionMutation = useMutation({
     mutationFn: (input: { toStatusKey: string; expectedVersion: number; resolutionId?: string }) =>
       transitionIssue(issueKey, input),
@@ -389,7 +389,7 @@ export function IssueDetailPage({
         if (errorCode === 'TRANSITION_NOT_ALLOWED') {
           toast.error(issueDetailStrings.transitionNotAllowedError)
         } else {
-          // VERSION_CONFLICT(S4) — 최신 데이터 + 전이 목록 재조회 유도
+          // VERSION_CONFLICT(S4) — 최신 데이터 + 전환 목록 재조회 유도
           void Promise.all([
             queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
             queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
@@ -875,15 +875,15 @@ export function IssueDetailPage({
     changeFixVersionsMutation.mutate({ key: issue.key, versionIds: ids, expectedVersion: issue.version })
   }
 
-  // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
+  // ── 상태전환 핸들러 ───────────────────────────────────────────────────────
 
   /**
-   * 전이 선택 핸들러.
-   * - toCategory === 'DONE': Resolution 모달을 오픈하고 전이를 대기한다.
-   * - 그 외: 즉시 전이 실행 (resolutionId 없음).
+   * 전환 선택 핸들러.
+   * - toCategory === 'DONE': Resolution 모달을 오픈하고 전환을 대기한다.
+   * - 그 외: 즉시 전환 실행 (resolutionId 없음).
    *
    * IssueMetaPanel.onTransition 시그니처가 toStateKey만 넘기므로,
-   * transitions 배열에서 해당 전이 항목을 찾아 toCategory를 판단한다.
+   * transitions 배열에서 해당 전환 항목을 찾아 toCategory를 판단한다.
    *
    * @param toStateKey 목표 상태 키
    */
@@ -891,17 +891,17 @@ export function IssueDetailPage({
     if (issue === undefined) return
     const transition = transitions.find((t) => t.toStateKey === toStateKey)
     if (transition?.toCategory === 'DONE') {
-      // DONE 전이 → 모달 오픈 후 resolution 선택 대기
+      // DONE 전환 → 모달 오픈 후 resolution 선택 대기
       setPendingDoneTransition(transition)
     } else {
-      // 비DONE 전이 → 즉시 실행
+      // 비DONE 전환 → 즉시 실행
       transitionMutation.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
     }
   }
 
   /**
    * Resolution 모달 확인 핸들러.
-   * 모달에서 선택된 resolutionId를 포함해 전이를 실행한다.
+   * 모달에서 선택된 resolutionId를 포함해 전환을 실행한다.
    */
   function handleResolutionConfirm(resolutionId: string) {
     if (issue === undefined || pendingDoneTransition === null) return
@@ -915,7 +915,7 @@ export function IssueDetailPage({
 
   /**
    * Resolution 모달 취소 핸들러.
-   * 대기 중인 전이를 취소하고 모달을 닫는다.
+   * 대기 중인 전환을 취소하고 모달을 닫는다.
    */
   function handleResolutionCancel() {
     setPendingDoneTransition(null)
@@ -1204,7 +1204,7 @@ export function IssueDetailPage({
         commentInputRef={commentInputRef}
       />
 
-      {/* DONE 전이 시 Resolution 선택 모달 (B9) */}
+      {/* DONE 전환 시 Resolution 선택 모달 (B9) */}
       <ResolutionModal
         open={pendingDoneTransition !== null}
         prefilledResolution={issue.resolution ?? null}

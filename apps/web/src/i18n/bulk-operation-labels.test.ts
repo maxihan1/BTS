@@ -35,8 +35,8 @@ describe('failureReasonLabels', () => {
     expect(failureReasonLabels['FORBIDDEN']).toBe('권한 없음')
   })
 
-  it('BULK-LABEL-5: TRANSITION_NOT_ALLOWED는 "허용되지 않는 전이" 이다', () => {
-    expect(failureReasonLabels['TRANSITION_NOT_ALLOWED']).toBe('허용되지 않는 전이')
+  it('BULK-LABEL-5: TRANSITION_NOT_ALLOWED는 "허용되지 않는 전환" 이다', () => {
+    expect(failureReasonLabels['TRANSITION_NOT_ALLOWED']).toBe('허용되지 않는 전환')
   })
 
   it('BULK-LABEL-6: VERSION_CONFLICT는 "다른 요청이 먼저 수정함" 이다', () => {

@@ -196,7 +196,7 @@ class SprintRepository(
     /**
      * 스프린트의 상태를 변경하고 version 을 bump 한다.
      *
-     * 도메인 전이 유효성 검증(PLANNED→ACTIVE→COMPLETED)은 Service 계층(Task 4/5)에서 수행한다.
+     * 도메인 전환 유효성 검증(PLANNED→ACTIVE→COMPLETED)은 Service 계층(Task 4/5)에서 수행한다.
      * 여기서는 상태를 그대로 영속화한다.
      * OCC: WHERE version = :version 조건으로 충돌 감지.
      *

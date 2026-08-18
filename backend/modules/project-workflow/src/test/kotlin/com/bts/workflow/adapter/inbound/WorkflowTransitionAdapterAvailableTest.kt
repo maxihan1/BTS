@@ -82,7 +82,7 @@ class WorkflowTransitionAdapterAvailableTest {
     // ── S3. 어댑터는 엔진에만 위임 — 빈 Success 도 그대로 전달 ───────────────
 
     @Test
-    fun `S3 — 엔진이 빈 전이 목록 Success 를 반환하면 어댑터는 그대로 반환한다`() {
+    fun `S3 — 엔진이 빈 전환 목록 Success 를 반환하면 어댑터는 그대로 반환한다`() {
         val engineResult = AvailableTransitionsResult.Success(emptyList())
         every { mockEngine.availableTransitions(baseRequest) } returns engineResult
 

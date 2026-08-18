@@ -1,4 +1,4 @@
-// 워크플로우 PostAction SPI — 전이 후 자동 처리 계산 (실행은 호출자 BC 책임 — GAP-2)
+// 워크플로우 PostAction SPI — 전환 후 자동 처리 계산 (실행은 호출자 BC 책임 — GAP-2)
 
 package com.bts.workflow.domain.spi
 
@@ -6,7 +6,7 @@ import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 
 /**
- * 전이(Transition) 후 자동 처리 항목을 **계산**하는 SPI (Service Provider Interface).
+ * 전환(Transition) 후 자동 처리 항목을 **계산**하는 SPI (Service Provider Interface).
  *
  * ## GAP-2 결정 — 적용은 호출자 BC 책임
  * 이 interface 는 무엇을 해야 하는지 [PostActionPlan] 으로 반환만 할 뿐,
@@ -25,9 +25,9 @@ interface WorkflowPostAction {
     val type: String
 
     /**
-     * 주어진 전이 컨텍스트를 바탕으로 적용할 처리 계획을 계산한다.
+     * 주어진 전환 컨텍스트를 바탕으로 적용할 처리 계획을 계산한다.
      *
-     * @param ctx 전이 시점의 컨텍스트 (이슈 상태, 액터, 커스텀 필드 등)
+     * @param ctx 전환 시점의 컨텍스트 (이슈 상태, 액터, 커스텀 필드 등)
      * @return 필드 변경 목록 + 발행할 도메인 이벤트 목록을 담은 [PostActionPlan]
      */
     fun evaluate(ctx: TransitionContext): PostActionPlan

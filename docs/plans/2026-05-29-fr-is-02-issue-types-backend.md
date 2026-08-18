@@ -9,7 +9,7 @@
 
 FR-IS-02 이슈 타입의 **백엔드 범위(D1~D5)** 구현. issue-tracking BC.
 
-**범위 한정 (Maxi 결정)**. 백엔드만. 프론트(D6 타입 셀렉터)·E2E(D7)는 진행 중인 transition-e2e(PR #34) 정리 후 별 PR로 분리 — 이슈 상세 화면(`issues.$key.tsx`/`IssueMetaPanel.tsx`)에서 전이 UI와 충돌 회피.
+**범위 한정 (Maxi 결정)**. 백엔드만. 프론트(D6 타입 셀렉터)·E2E(D7)는 진행 중인 transition-e2e(PR #34) 정리 후 별 PR로 분리 — 이슈 상세 화면(`issues.$key.tsx`/`IssueMetaPanel.tsx`)에서 전환 UI와 충돌 회피.
 
 **잔여 본업**.
 - D1 도메인 — Issue 도메인에 type 연결 (IssueType 참조)

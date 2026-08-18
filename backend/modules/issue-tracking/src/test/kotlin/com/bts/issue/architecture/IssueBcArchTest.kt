@@ -18,9 +18,9 @@ import org.junit.jupiter.api.Test
  * - 룰 2 (jOOQ 화이트리스트) — [jooqGeneratedMustOnlyBeUsedInRepositoryLayer]
  *
  * ### 룰 1 — project-workflow 의존 제거 (PR #25 com.bts.shared.workflow 이동)
- * PR #25 (workflow-spi-extraction) 에서 전이 포트/DTO 가 `com.bts.shared.workflow` 로 이동.
+ * PR #25 (workflow-spi-extraction) 에서 전환 포트/DTO 가 `com.bts.shared.workflow` 로 이동.
  * issue-tracking 은 project-workflow 를 gradle 의존으로 선언하지 않으며,
- * 전이 관련 타입은 `com.bts.shared.workflow` 모듈에서 가져온다.
+ * 전환 관련 타입은 `com.bts.shared.workflow` 모듈에서 가져온다.
  * 따라서 `com.bts.workflow.*` 패키지 전체가 이슈 BC 에서 사용 불가여야 한다.
  * 근거. CLAUDE.md §BC 격리 + ADR 2026-05-21-workflow-bc-cross-bc-port +
  * ADR 2026-05-26-workflow-transition-port-result-sealed.
@@ -57,7 +57,7 @@ class IssueBcArchTest {
     /**
      * 룰 1 — issue-tracking BC 는 com.bts.workflow.* 전체를 직접 참조하지 않는다.
      *
-     * PR #25 (workflow-spi-extraction) 에서 전이 포트/DTO 가 `com.bts.shared.workflow` 로 이동.
+     * PR #25 (workflow-spi-extraction) 에서 전환 포트/DTO 가 `com.bts.shared.workflow` 로 이동.
      * issue-tracking gradle 의존에 project-workflow 모듈이 없으므로 `com.bts.workflow.*` 전체가
      * 컴파일 불가. 이 룰은 부정 규칙으로 금지 패키지 접근이 없음을 추가 보증한다.
      *

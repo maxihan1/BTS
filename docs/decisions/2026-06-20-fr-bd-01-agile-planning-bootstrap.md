@@ -12,7 +12,7 @@ agile-planning BC는 그린필드다. `backend/modules/`에는 identity-access �
 
 product 명세(agile-planning §2.1)는 칸반 보드를 도메인(D1. Board/Column) · 명세(D2. 컬럼=상태 매핑) · 데이터 모델(D3. `boards`, `board_columns(state_id)`) · 백엔드(D4. `GET /api/v1/boards/{id}` + 카드 이동 API) · 테스트(D5) · 프론트 UI(D6. @dnd-kit) · E2E+NFR(D7)로 정의한다.
 
-SDD §13.1.1은 칸반 컬럼을 "워크플로우 카테고리(TODO / IN_PROGRESS / DONE)", 카드를 "이슈", 드래그앤드롭을 "@dnd-kit"으로 명시한다. 이슈는 issue-tracking BC가 소유하고 상태 전이 API는 issue-tracking의 `IssueController`가, 워크플로우 상태 카탈로그는 project-workflow의 `WorkflowStateCatalogImpl`이 제공한다.
+SDD §13.1.1은 칸반 컬럼을 "워크플로우 카테고리(TODO / IN_PROGRESS / DONE)", 카드를 "이슈", 드래그앤드롭을 "@dnd-kit"으로 명시한다. 이슈는 issue-tracking BC가 소유하고 상태 전환 API는 issue-tracking의 `IssueController`가, 워크플로우 상태 카탈로그는 project-workflow의 `WorkflowStateCatalogImpl`이 제공한다.
 
 ## 결정 1 — agile-planning을 새 BC 모듈로 부트스트랩
 
@@ -26,11 +26,11 @@ SDD §13.1.1은 칸반 컬럼을 "워크플로우 카테고리(TODO / IN_PROGRES
 
 **근거**. SDD §13.1.1. 칸반은 워크플로우 상태의 시각화이므로 컬럼이 상태(카테고리)에 종속되는 것이 자연스럽다. 보드가 상태를 독자 정의하면 워크플로우와 drift가 발생한다.
 
-## 결정 3 — 카드 이동 = 컬럼 간 이동 = 워크플로우 전이 재사용
+## 결정 3 — 카드 이동 = 컬럼 간 이동 = 워크플로우 전환 재사용
 
-카드를 다른 컬럼으로 드래그 = 대상 컬럼이 매핑한 상태로의 **워크플로우 상태 전이**. issue-tracking의 기존 전이 메커니즘을 재사용하며 agile-planning이 전이 로직을 중복 구현하지 않는다. 컬럼 내 카드 순서는 기본 정렬(우선순위/생성일)이며 **드래그 재정렬(LexoRank)은 이번 범위에서 제외**한다(FR-BL-01로 미룸).
+카드를 다른 컬럼으로 드래그 = 대상 컬럼이 매핑한 상태로의 **워크플로우 상태 전환**. issue-tracking의 기존 전환 메커니즘을 재사용하며 agile-planning이 전환 로직을 중복 구현하지 않는다. 컬럼 내 카드 순서는 기본 정렬(우선순위/생성일)이며 **드래그 재정렬(LexoRank)은 이번 범위에서 제외**한다(FR-BL-01로 미룸).
 
-**근거**. 전이 규칙(게이트/권한/전이 가능 여부)은 project-workflow/issue-tracking이 소유한다. 보드가 상태를 직접 UPDATE하면 워크플로우 불변식(허용된 전이만)을 우회한다(patch-merge-domain-bypass 반례). 구체 메커니즘(전이 API 직접 호출 vs agile-planning 카드 이동 엔드포인트가 전이 포트 위임)은 spec에서 확정.
+**근거**. 전환 규칙(게이트/권한/전환 가능 여부)은 project-workflow/issue-tracking이 소유한다. 보드가 상태를 직접 UPDATE하면 워크플로우 불변식(허용된 전환만)을 우회한다(patch-merge-domain-bypass 반례). 구체 메커니즘(전환 API 직접 호출 vs agile-planning 카드 이동 엔드포인트가 전환 포트 위임)은 spec에서 확정.
 
 ## 결정 4 — FR-BD-01 범위 = 백엔드 D1~D5
 
@@ -40,12 +40,12 @@ SDD §13.1.1은 칸반 컬럼을 "워크플로우 카테고리(TODO / IN_PROGRES
 
 ## 대안
 
-- **보드가 상태를 독자 정의** — 워크플로우와 drift, 전이 불변식 우회. 기각.
-- **카드 이동 시 보드가 직접 issues.status UPDATE** — 전이 게이트/권한 우회. 기각(결정 3).
+- **보드가 상태를 독자 정의** — 워크플로우와 drift, 전환 불변식 우회. 기각.
+- **카드 이동 시 보드가 직접 issues.status UPDATE** — 전환 게이트/권한 우회. 기각(결정 3).
 - **컬럼 내 LexoRank 정렬 동시 도입** — FR-BL-01 범위 침범 + @dnd-kit/LexoRank 선행검증 부담. 이번 제외(Maxi 확정).
 
 ## 결과
 
 - agile-planning 모듈이 신설되어 이후 FR-BD-02/03, FR-BL, FR-TL, FR-TT, FR-PL(일부)의 기반이 된다.
-- 보드는 워크플로우 상태에 종속되며 전이 불변식을 재사용한다.
+- 보드는 워크플로우 상태에 종속되며 전환 불변식을 재사용한다.
 - 컬럼 내 재정렬·@dnd-kit·LexoRank는 후속 FR로 명시 이연.

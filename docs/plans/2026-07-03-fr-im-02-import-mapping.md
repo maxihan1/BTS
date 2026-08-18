@@ -81,7 +81,7 @@ FR-IM-02 Import 매핑 UI (필드/사용자 매핑). 선행 FR-IM-01(CSV/JSON Im
 전체 스펙. [docs/specs/2026-07-03-fr-im-02-import-mapping.md](../specs/2026-07-03-fr-im-02-import-mapping.md)
 
 **PR-A 핵심 (기반 + 필드 매핑)**.
-- 2단계 흐름: `POST /imports/analyze`(persist+AWAITING_MAPPING+헤더/샘플 감지) → `POST /imports/{id}/mapping/validate`(필드매핑 검증) → `POST /imports/{id}/mapping`(저장+PENDING 전이+enqueue).
+- 2단계 흐름: `POST /imports/analyze`(persist+AWAITING_MAPPING+헤더/샘플 감지) → `POST /imports/{id}/mapping/validate`(필드매핑 검증) → `POST /imports/{id}/mapping`(저장+PENDING 전환+enqueue).
 - 매핑-aware CSV 파서(임의 헤더→대상 필드, 매핑 없으면 canonical 폴백). JSON canonical 유지.
 - V606: status CHECK에 AWAITING_MAPPING 추가 + import_mappings 테이블. 워커는 PENDING만 클레임.
 - 대상 필드 카탈로그 11개 + IGNORE. 에러 4종·경고 1종.

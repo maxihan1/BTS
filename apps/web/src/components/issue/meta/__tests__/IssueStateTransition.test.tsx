@@ -12,7 +12,7 @@ const transitionsFixture: IssueTransition[] = [
 ]
 
 describe('IssueStateTransition', () => {
-  it('가용 전이가 있으면 셀렉터와 옵션이 렌더된다', () => {
+  it('가용 전환이 있으면 셀렉터와 옵션이 렌더된다', () => {
     render(
       <IssueStateTransition
         transitions={transitionsFixture}
@@ -29,7 +29,7 @@ describe('IssueStateTransition', () => {
     expect(screen.getByRole('option', { name: 'Cancel' })).toBeInTheDocument()
   })
 
-  it('전이 선택 시 onSelectedValueChange와 onTransition이 toStateKey로 호출된다', async () => {
+  it('전환 선택 시 onSelectedValueChange와 onTransition이 toStateKey로 호출된다', async () => {
     const onTransition = vi.fn()
     const onSelectedValueChange = vi.fn()
     render(
@@ -64,7 +64,7 @@ describe('IssueStateTransition', () => {
     expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeDisabled()
   })
 
-  it("가용 전이 0건 + unavailableReason='no-workflow'이면 워크플로우 미설정 문구가 렌더된다", () => {
+  it("가용 전환 0건 + unavailableReason='no-workflow'이면 워크플로우 미설정 문구가 렌더된다", () => {
     render(
       <IssueStateTransition
         transitions={[]}
@@ -79,7 +79,7 @@ describe('IssueStateTransition', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
-  it("가용 전이 0건 + unavailableReason='terminal'이면 더 이상 전이 없음 문구가 렌더된다", () => {
+  it("가용 전환 0건 + unavailableReason='terminal'이면 더 이상 전환 없음 문구가 렌더된다", () => {
     render(
       <IssueStateTransition
         transitions={[]}
@@ -93,7 +93,7 @@ describe('IssueStateTransition', () => {
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
   })
 
-  it('가용 전이 0건 + unavailableReason=null이면 더 이상 전이 없음 문구가 렌더된다', () => {
+  it('가용 전환 0건 + unavailableReason=null이면 더 이상 전환 없음 문구가 렌더된다', () => {
     render(
       <IssueStateTransition
         transitions={[]}

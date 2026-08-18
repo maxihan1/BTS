@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Test
  * 목표 상태의 [StateCategory] 문자열로 채워지는지 검증한다.
  *
  * 테스트 시나리오.
- * - S1. TODO→IN_PROGRESS 전이: toCategory = "IN_PROGRESS".
- * - S2. IN_PROGRESS→DONE 전이: toCategory = "DONE".
- * - S3. 복수 전이 혼재 시 각 전이마다 올바른 toCategory 가 매핑된다.
+ * - S1. TODO→IN_PROGRESS 전환: toCategory = "IN_PROGRESS".
+ * - S2. IN_PROGRESS→DONE 전환: toCategory = "DONE".
+ * - S3. 복수 전환 혼재 시 각 전환마다 올바른 toCategory 가 매핑된다.
  */
 class WorkflowEngineToCategoryTest {
     private val mockCache: WorkflowCache = mockk()
@@ -65,14 +65,14 @@ class WorkflowEngineToCategoryTest {
     fun setUp() {
         engine = WorkflowEngine(mockCache, mockValidatorFactory, mockPostActionFactory, mockDefinitionRepo)
         every { mockCache.findByKey("simple") } returns simpleWorkflow
-        // validator 없음 — 모든 전이 통과
+        // validator 없음 — 모든 전환 통과
         every { mockDefinitionRepo.findValidators("simple", any()) } returns emptyList()
     }
 
     // ── S1. TODO → IN_PROGRESS ────────────────────────────────────────────
 
     @Test
-    fun `S1 — open→in_progress 전이의 toCategory 는 IN_PROGRESS 여야 한다`() {
+    fun `S1 — open→in_progress 전환의 toCategory 는 IN_PROGRESS 여야 한다`() {
         val result = engine.availableTransitions(baseRequest)
 
         assertThat(result).isInstanceOf(AvailableTransitionsResult.Success::class.java)
@@ -84,7 +84,7 @@ class WorkflowEngineToCategoryTest {
     // ── S2. TODO → DONE ───────────────────────────────────────────────────
 
     @Test
-    fun `S2 — open→done 전이의 toCategory 는 DONE 이어야 한다`() {
+    fun `S2 — open→done 전환의 toCategory 는 DONE 이어야 한다`() {
         val result = engine.availableTransitions(baseRequest)
 
         assertThat(result).isInstanceOf(AvailableTransitionsResult.Success::class.java)
@@ -93,10 +93,10 @@ class WorkflowEngineToCategoryTest {
         assertThat(transition.toCategory).isEqualTo("DONE")
     }
 
-    // ── S3. 복수 전이 혼재 ─────────────────────────────────────────────────
+    // ── S3. 복수 전환 혼재 ─────────────────────────────────────────────────
 
     @Test
-    fun `S3 — open 에서 전이 2건 모두 toCategory 가 올바르게 채워진다`() {
+    fun `S3 — open 에서 전환 2건 모두 toCategory 가 올바르게 채워진다`() {
         val result = engine.availableTransitions(baseRequest)
 
         assertThat(result).isInstanceOf(AvailableTransitionsResult.Success::class.java)

@@ -37,8 +37,8 @@ analyze(업로드+persist) ─▶ AWAITING_MAPPING ─▶ [필드/사용자 매�
 ```
 
 - **분석(analyze)**. 파일을 MinIO에 저장하고 `ImportJob`을 신규 상태 `AWAITING_MAPPING`으로 생성. 파서로 소스 필드(CSV 헤더)와 샘플 행을 감지해 반환. 파일을 두 번 업로드하지 않도록 이 단계에서 persist(대용량 UX).
-- **매핑 확정**. 사용자가 확정한 필드 매핑 + 사용자 매핑을 검증 후 저장하고 `AWAITING_MAPPING → PENDING` 전이 + enqueue. 이후는 기존 워커 경로 재사용.
-- **검증(validate)**. 매핑을 저장·전이 없이 검증만 하는 API(product D4 "매핑 검증 API"). 마법사가 각 단계에서 호출.
+- **매핑 확정**. 사용자가 확정한 필드 매핑 + 사용자 매핑을 검증 후 저장하고 `AWAITING_MAPPING → PENDING` 전환 + enqueue. 이후는 기존 워커 경로 재사용.
+- **검증(validate)**. 매핑을 저장·전환 없이 검증만 하는 API(product D4 "매핑 검증 API"). 마법사가 각 단계에서 호출.
 
 근거. 서버가 파싱의 진실 원천(대용량·JSON 중첩 안전). 파일 1회 업로드로 왕복 최소화. `import_mappings.import_job_id`가 job 선존을 전제하므로 자연스럽게 정합.
 

@@ -163,10 +163,10 @@ class BoardController(
     }
 
     /**
-     * 카드(이슈)를 다른 컬럼으로 이동한다(워크플로우 전이 위임).
+     * 카드(이슈)를 다른 컬럼으로 이동한다(워크플로우 전환 위임).
      *
-     * 권한: 보드 접근 [IssuePermission.BROWSE] + 이동 자체는 전이 포트가 TRANSITION 을 강제한다.
-     * actor 는 body 로 받지 않고 SecurityContext 에서 추출한다(전이 포트 adapter 가 재추출).
+     * 권한: 보드 접근 [IssuePermission.BROWSE] + 이동 자체는 전환 포트가 TRANSITION 을 강제한다.
+     * actor 는 body 로 받지 않고 SecurityContext 에서 추출한다(전환 포트 adapter 가 재추출).
      *
      * @param id path variable 보드 UUID.
      * @param issueKey path variable 이동할 이슈 키. 예: `"BTS-1"`.

@@ -106,7 +106,7 @@ describe('versionErrorMessage', () => {
     )
   })
 
-  it('VERSION_TRANSITION_NOT_ALLOWED → 전이 불허 메시지를 반환한다', () => {
+  it('VERSION_TRANSITION_NOT_ALLOWED → 전환 불허 메시지를 반환한다', () => {
     expect(versionErrorMessage('VERSION_TRANSITION_NOT_ALLOWED')).toBeTruthy()
   })
 
@@ -143,22 +143,22 @@ describe('versionStatusLabel', () => {
 })
 
 describe('versionTransitionLabel', () => {
-  it('release 전이 한국어 라벨을 반환한다', async () => {
+  it('release 전환 한국어 라벨을 반환한다', async () => {
     const { versionTransitionLabel } = await import('./version-labels')
     expect(versionTransitionLabel('release')).toBeTruthy()
   })
 
-  it('unrelease 전이 한국어 라벨을 반환한다', async () => {
+  it('unrelease 전환 한국어 라벨을 반환한다', async () => {
     const { versionTransitionLabel } = await import('./version-labels')
     expect(versionTransitionLabel('unrelease')).toBeTruthy()
   })
 
-  it('archive 전이 한국어 라벨을 반환한다', async () => {
+  it('archive 전환 한국어 라벨을 반환한다', async () => {
     const { versionTransitionLabel } = await import('./version-labels')
     expect(versionTransitionLabel('archive')).toBeTruthy()
   })
 
-  it('unarchive 전이 한국어 라벨을 반환한다', async () => {
+  it('unarchive 전환 한국어 라벨을 반환한다', async () => {
     const { versionTransitionLabel } = await import('./version-labels')
     expect(versionTransitionLabel('unarchive')).toBeTruthy()
   })

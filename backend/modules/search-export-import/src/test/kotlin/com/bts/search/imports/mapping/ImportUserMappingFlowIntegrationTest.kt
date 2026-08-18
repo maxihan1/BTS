@@ -84,7 +84,7 @@ import java.util.concurrent.ConcurrentHashMap
  *   진다(bob/carol 은 추천 없음 — 매핑 UI 가 수동 선택을 요구하는 케이스).
  * - (iii) [ImportMappingService.confirm] 으로 위 필드 매핑 + 사용자 매핑(`bob@corp.com→bobUserId,
  *   alice@corp.com→aliceUserId, carol@corp.com→carolUserId`, 셋 다 실재 사용자로 시딩됨)을 확정하면
- *   [ImportUserMappingRepository] 에 세 매핑이 저장되고 status=PENDING 으로 전이한다.
+ *   [ImportUserMappingRepository] 에 세 매핑이 저장되고 status=PENDING 으로 전환한다.
  * - (iv) [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED 로 전환되고,
  *   [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `reporterUserId`=bobUserId,
  *   `assigneeUserId`=aliceUserId, 댓글 VO 의 `authorUserId`=carolUserId 로 세팅된다 — 이메일 필드

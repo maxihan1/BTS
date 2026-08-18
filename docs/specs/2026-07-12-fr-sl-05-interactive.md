@@ -27,9 +27,9 @@ Slack 알림 메시지(FR-SL-02 담당자 배정 DM)에 액션 요소를 붙이�
 ## 사용자 시나리오 (Given-When-Then)
 
 **S1. 완료로 표시 (resolution 모달).**
-- Given. Slack에 연결된 사용자가 담당자 배정 DM(버튼 포함)을 받았고 이슈에 대해 전이 권한 보유.
+- Given. Slack에 연결된 사용자가 담당자 배정 DM(버튼 포함)을 받았고 이슈에 대해 전환 권한 보유.
 - When. `[완료로 표시]` 클릭 → resolution 선택 모달에서 `Fixed` 선택 후 제출.
-- Then. 이슈가 DONE 상태로 전이(resolution=Fixed 기록)되고, 원본 DM이 `✅ 완료 처리됨(Fixed)`으로 갱신.
+- Then. 이슈가 DONE 상태로 전환(resolution=Fixed 기록)되고, 원본 DM이 `✅ 완료 처리됨(Fixed)`으로 갱신.
 
 **S2. 담당자 변경 (users_select).**
 - Given. 연결된 사용자, 담당자 변경 권한 보유.
@@ -47,14 +47,14 @@ Slack 알림 메시지(FR-SL-02 담당자 배정 DM)에 액션 요소를 붙이�
 - Then. ephemeral "계정 연결이 필요합니다(`/settings/slack` 안내)". 이슈 변경 없음. (FR-SL-04 D6 동형 — 명시적 호출이므로 침묵 금지)
 
 **S5. 무권한.**
-- Given. 연결됐으나 해당 이슈 전이 권한 없음.
+- Given. 연결됐으나 해당 이슈 전환 권한 없음.
 - When. 완료 모달 제출.
 - Then. `IssueTransitionPort.transition`이 **shared-kernel 타입 예외** `IssueTransitionPermissionDeniedException` throw → 모달에 `response_action:{errors}` 인라인 오류("권한이 없습니다") + 모달 유지. 이슈 변경 0. V703 `outcome=PERMISSION_DENIED`.
 
 **S6. OCC 충돌 (모달 제출 지연).**
 - Given. 완료 모달을 연 뒤 다른 사용자가 같은 이슈를 변경(version 증가).
 - When. 모달 제출 → `expectedVersion`(모달 오픈 시점 값) 불일치.
-- Then. 어댑터가 shared-kernel 타입 예외 `IssueOptimisticLockException` throw → 모달에 `response_action:{errors}`("이슈가 그 사이 변경되었습니다. 다시 시도해 주세요") + 모달 유지. 전이 미적용. V703 `outcome=CONFLICT`.
+- Then. 어댑터가 shared-kernel 타입 예외 `IssueOptimisticLockException` throw → 모달에 `response_action:{errors}`("이슈가 그 사이 변경되었습니다. 다시 시도해 주세요") + 모달 유지. 전환 미적용. V703 `outcome=CONFLICT`.
 
 **S5b. 모달 오픈 시 무권한/미가시.**
 - Given. 연결됐으나 완료 옵션을 조회할 수 없음(BROWSE 미충족/미가시).
@@ -71,7 +71,7 @@ Slack 알림 메시지(FR-SL-02 담당자 배정 DM)에 액션 요소를 붙이�
 - **F1. 수신 엔드포인트.** `POST /slack/interactions`. `application/x-www-form-urlencoded`의 단일 `payload` 필드(URL-encoded JSON). `@RequestBody String rawBody`로 원문 수신 → `SlackSignatureVerifier.isValid(ts, sig, rawBody)`로 **먼저** 검증 → 통과 후 form-decode하여 `payload` 추출 → JSON 파싱. (FR-SL-04 D1 동형 — @RequestParam 병용 금지)
 - **F2. payload 타입 분기.** `block_actions`(버튼/셀렉트)와 `view_submission`(모달 제출) 두 종. `type` 필드로 분기. 알 수 없는 타입 → 200 no-op(Slack 재시도 유발 방지).
 - **F3. 상세보기.** `button` with `url`(BTS 웹 이슈 URL). Slack이 링크만 열고 payload는 오지만 `action_id=atlas_view`는 서버에서 no-op 200 ack.
-- **F4. 완료로 표시 (모달 오픈).** `atlas_complete` block_actions 수신 → **동기**로 (a) team_id로 봇 토큰 조회 (b) `IssueCompletionOptionsPort.getCompletionOptions` 조회 — **null이면**(무권한/미가시) 모달 안 열고 block_actions `response_url`로 ephemeral + V703(S5b) (c) `views.open(trigger_id, 모달)` — **3초 내**(trigger_id 만료). private_metadata에 **issueKey·expectedVersion·channel·ts만** 박제. **`toStateKey`는 private_metadata에 넣지 않고**, done 전이 다중 시 모달 `static_select` 선택 → 제출 payload `state_values`에서 읽음(단일 전이면 셀렉트 생략하되 state_values로 통일). 사유. 오픈 시점엔 사용자 선택 미확정이라 박제 시 불일치(리뷰 CONCERN).
+- **F4. 완료로 표시 (모달 오픈).** `atlas_complete` block_actions 수신 → **동기**로 (a) team_id로 봇 토큰 조회 (b) `IssueCompletionOptionsPort.getCompletionOptions` 조회 — **null이면**(무권한/미가시) 모달 안 열고 block_actions `response_url`로 ephemeral + V703(S5b) (c) `views.open(trigger_id, 모달)` — **3초 내**(trigger_id 만료). private_metadata에 **issueKey·expectedVersion·channel·ts만** 박제. **`toStateKey`는 private_metadata에 넣지 않고**, done 전환 다중 시 모달 `static_select` 선택 → 제출 payload `state_values`에서 읽음(단일 전환이면 셀렉트 생략하되 state_values로 통일). 사유. 오픈 시점엔 사용자 선택 미확정이라 박제 시 불일치(리뷰 CONCERN).
 - **F5. 완료 모달 제출.** `atlas_complete_modal` view_submission → **동기** `IssueTransitionPort.transition(actorUserId=역매핑, issueKey, toStateKey=state_values, expectedVersion=private_metadata, resolutionId=선택)` (단일 cross-BC 쓰기 — 3초 내 현실적). 실패는 **shared-kernel 타입 예외**로 분류 → 권한거부(`IssueTransitionPermissionDeniedException`)·OCC(`IssueOptimisticLockException`) 시 `response_action:{errors}`(모달 인라인 오류, 모달 유지) + V703(PERMISSION_DENIED/CONFLICT). 성공 시 빈 200(모달 닫기) + 원본 메시지 `chat.update` + V703 SUCCESS. **view_submission엔 response_url이 없으므로**(block_actions만 보유) ephemeral 대신 response_action/chat.update로 결과 전달(리뷰 BLOCKER 해소 — Option A 동기).
 - **F6. (PR2) 담당자 변경.** `atlas_assign` users_select → 역매핑 → `IssueMutationPort.assign`. block_actions는 `response_url` 보유라 ack200+@Async 가능. **PR2 후속.**
 - **F7. (PR2) 코멘트 추가 (모달).** `atlas_comment` → `views.open` 텍스트 모달 → view_submission → `IssueMutationPort.addComment`. **PR2 후속.**
@@ -132,10 +132,10 @@ CREATE INDEX idx_slack_interaction_log_created ON slack_interaction_log (created
 
 - **E1. url 버튼 payload.** 상세보기는 링크만 열지만 Slack이 block_actions를 보낼 수 있음 → `atlas_view`는 no-op 200(dispatch 경고 방지).
 - **E2. trigger_id 만료.** views.open이 3초 초과 시 Slack 오류 → best-effort 로깅, 사용자 재클릭 유도.
-- **E3. OCC 충돌(S6).** 모달 오픈 시점 version과 제출 시점 불일치 → 전이 예외 → ephemeral 재시도 안내.
+- **E3. OCC 충돌(S6).** 모달 오픈 시점 version과 제출 시점 불일치 → 전환 예외 → ephemeral 재시도 안내.
 - **E4. 역매핑 다중/부재.** 미연결(부재) → ephemeral. (역매핑은 V702 UNIQUE라 다중 없음)
 - **E5. 봇 토큰 부재/미설치.** team_id로 SlackInstall 조회 실패 → 액션 불가, best-effort 로깅.
-- **E6. resolution 불요 워크플로우.** doneTransitions만 있고 resolutions 빈 목록 → 모달에서 resolution 섹션 생략, 전이는 resolutionId=null.
+- **E6. resolution 불요 워크플로우.** doneTransitions만 있고 resolutions 빈 목록 → 모달에서 resolution 섹션 생략, 전환은 resolutionId=null.
 - **E7. 알 수 없는 action_id/callback_id.** 200 no-op(Slack 재시도 방지).
 
 ## 제약 조건

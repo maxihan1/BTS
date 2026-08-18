@@ -3,7 +3,7 @@
 > 날짜: 2026-07-01
 > 상태: Accepted (Maxi 게이트 확정 — 옵션 A)
 > 관련 FR: FR-API-03 (Webhook 외부 시스템 통지), search-export-import BC §5.3
-> 관련 ADR: [2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md](2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md) (FR-NT-05 전이 webhook + SSRF), [2026-06-30-fr-api-01-cursor-pagination-envelope.md](2026-06-30-fr-api-01-cursor-pagination-envelope.md) (REST API 표준 — 선행)
+> 관련 ADR: [2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md](2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md) (FR-NT-05 전환 webhook + SSRF), [2026-06-30-fr-api-01-cursor-pagination-envelope.md](2026-06-30-fr-api-01-cursor-pagination-envelope.md) (REST API 표준 — 선행)
 > 관련 PR: (FR-API-03 백엔드 PR)
 
 ## 맥락
@@ -14,7 +14,7 @@ FR-API-03은 **구독형 범용 아웃바운드 Webhook**이다. 외부 시스�
 
 | 항목 | FR-NT-05 (기존) | FR-API-03 (신규) |
 |---|---|---|
-| 트리거 | 워크플로우 전이 전용(post-action에 URL 박음) | 이벤트 구독(event_filter) |
+| 트리거 | 워크플로우 전환 전용(post-action에 URL 박음) | 이벤트 구독(event_filter) |
 | URL 등록 | 없음(YAML/post-action config) | 구독 CRUD + 관리 UI |
 | 서명 | 없음 | HMAC-SHA256 |
 | 발송 이력 | 없음(pgmq 생명주기만) | `webhook_deliveries` 테이블 |
@@ -42,15 +42,15 @@ FR-API-03의 도메인(OutboundWebhook 구독모델, HMAC 서명, 발송 이력,
 - 추출 대상은 cross-BC 의존이 없는 순수 유틸(`InetAddress`/`URI`/`RestClient`)이라 안전하게 이동 가능.
 - notification BC의 FR-NT-05 코드는 추출된 shared 버전을 import하도록 리팩터링한다.
 - **BC 경계 1회 교차(문서화된 예외)**: 이 PR이 notification BC 코드를 건드리는 것은, 공유 인프라 추출이라는 본질상 불가피하다(FR-MV-01 D6/D7이 view-layer를 cross-BC 패치한 것과 동류). plan §리스크에 명시하고 reviewer가 사유를 즉시 파악하도록 한다.
-- 추출 후 보안 로직(SSRF 차단 리스트)은 **단일 출처** — 한 번 패치하면 전이 webhook + 범용 webhook 양쪽에 적용.
+- 추출 후 보안 로직(SSRF 차단 리스트)은 **단일 출처** — 한 번 패치하면 전환 webhook + 범용 webhook 양쪽에 적용.
 
-### D3. FR-NT-05 전이 webhook은 그대로 유지 (흡수하지 않음)
+### D3. FR-NT-05 전환 webhook은 그대로 유지 (흡수하지 않음)
 
-FR-NT-05의 전이 전용 webhook(post-action)은 이미 완성·머지되어 운영 중이다. FR-API-03의 구독모델로 흡수/리팩터링하지 **않는다**(범위 확대·회귀 위험 회피). 두 경로가 공존한다.
-- notification BC: "이 전이가 일어나면 이 URL 호출"(post-action)
+FR-NT-05의 전환 전용 webhook(post-action)은 이미 완성·머지되어 운영 중이다. FR-API-03의 구독모델로 흡수/리팩터링하지 **않는다**(범위 확대·회귀 위험 회피). 두 경로가 공존한다.
+- notification BC: "이 전환이 일어나면 이 URL 호출"(post-action)
 - search-export-import BC: "이벤트 타입 구독 → HMAC 서명 발송 → 이력/재시도/circuit breaker"
 
-향후 통합(전이 webhook을 구독모델 위에 재구축)은 별도 결정 사안.
+향후 통합(전환 webhook을 구독모델 위에 재구축)은 별도 결정 사안.
 
 ### D4. FR-API-03가 추가하는 신규 역량
 

@@ -1,4 +1,4 @@
-// 스프린트 REST API 컨트롤러 — CRUD + 상태 전이 + 이슈 할당/해제 (FR-BL-02 Task 5)
+// 스프린트 REST API 컨트롤러 — CRUD + 상태 전환 + 이슈 할당/해제 (FR-BL-02 Task 5)
 
 package com.bts.agileplanning.web
 
@@ -195,7 +195,7 @@ class SprintController(
      * @throws ResponseStatusException 401 — 미인증.
      * @throws com.bts.agileplanning.application.SprintNotFoundException 404 — 스프린트 미존재.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
-     * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전이.
+     * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전환.
      */
     @PostMapping("/{id}/start")
     fun start(
@@ -216,7 +216,7 @@ class SprintController(
      * @throws ResponseStatusException 401 — 미인증.
      * @throws com.bts.agileplanning.application.SprintNotFoundException 404 — 스프린트 미존재.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
-     * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전이.
+     * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전환.
      */
     @PostMapping("/{id}/complete")
     fun complete(

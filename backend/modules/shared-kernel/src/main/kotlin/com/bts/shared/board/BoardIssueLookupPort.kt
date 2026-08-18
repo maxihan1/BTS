@@ -153,7 +153,7 @@ data class BoardIssuePage(
  * @property currentStateKey 이슈의 현재 워크플로우 상태 키. 컬럼 배치 기준.
  * @property assigneeId 담당자 UUID. 미배정이면 null.
  * @property priority 우선순위 값. 숫자 작을수록 높은 우선순위. 컬럼 내 정렬 기준.
- * @property version 낙관적 락(OCC) 버전. 카드 이동(전이) 시 expectedVersion 으로 사용.
+ * @property version 낙관적 락(OCC) 버전. 카드 이동(전환) 시 expectedVersion 으로 사용.
  * @property epicKey 이슈가 속한 에픽의 이슈 키. EPIC 스윔레인 그룹화 근거 (FR-EP-01 D6/D7).
  *   에픽 없는 이슈 또는 에픽 자신은 null.
  *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null 처리(P1-A 누출 방지).

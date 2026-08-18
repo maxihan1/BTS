@@ -30,7 +30,7 @@ classify 결과:
 - 기존 활용: Issue, IssueKey, IssueHistory ([[domain/issue-tracking]] §핵심 엔티티 4 항목)
 - 활용 경로: Workflow + Transition (project-workflow BC, PR #27 transition wiring + PR #28 매핑 hot-fix + PR #29 Flyway 정리 + PR #30 invariant 정렬)
 
-**새 용어**: 0 (glossary 갱신 불필요). 기존 용어 인용만 — `이슈` / `이슈 키` / `워크플로우` / `전이` (glossary 라인 11, 12, 14, 33).
+**새 용어**: 0 (glossary 갱신 불필요). 기존 용어 인용만 — `이슈` / `이슈 키` / `워크플로우` / `전환` (glossary 라인 11, 12, 14, 33).
 
 **기존 결정 충돌**: 0
 - 관련 ADR (영향 없음, 활용만): `2026-05-27-shared-kernel-extraction.md` (project-workflow SPI), `2026-05-22-frontend-logging-policy.md` (E2E 콘솔 로깅 정책 일관).
@@ -47,7 +47,7 @@ classify 결과:
 
 **명세 출처**: `docs/plan/product/issue-tracking.md §2.1.1 D7` (line 38).
 
-> D7. E2E + NFR — 생성→조회→수정→상태 전이→소프트 삭제→키 영속성 (이동 후 옛 키 redirect) (책임. qa-engineer)
+> D7. E2E + NFR — 생성→조회→수정→상태 전환→소프트 삭제→키 영속성 (이동 후 옛 키 redirect) (책임. qa-engineer)
 
 **Scope 결정** (Maxi D3 옵션 1, brainstorming 적용 예정):
 
@@ -58,14 +58,14 @@ D7 원본 6단계 vs 현재 코드 상태 매핑.
 | 1 | 생성 | ✅ `issues.new.tsx` | ✅ `POST /api/v1/issues` | ✅ | 포함 |
 | 2 | 조회 | ✅ `issues.index.tsx` / `issues.$key.tsx` | ✅ `GET /api/v1/issues`, `GET /api/v1/issues/{key}` | ✅ | 포함 |
 | 3 | 수정 | ✅ 인라인 summary (낙관적 업데이트) | ✅ `PATCH /api/v1/issues/{key}` | ✅ | 포함 |
-| 4 | 상태 전이 | ❌ **UI 부재** (D6 §메모 "상태 전이 UI는 제외") | ✅ PR #27/#28 wiring 머지 | ❌ | **후속 slice 위임** |
+| 4 | 상태 전환 | ❌ **UI 부재** (D6 §메모 "상태 전환 UI는 제외") | ✅ PR #27/#28 wiring 머지 | ❌ | **후속 slice 위임** |
 | 5 | 소프트 삭제 | ✅ destructive 버튼 + 확인 UI | ✅ `DELETE /api/v1/issues/{key}` | ✅ | 포함 |
 | 6 | 키 영속성 (이동 후 redirect) | ❌ UI 부재 | ❌ **백엔드 미구현** (grep `IssueKeyRedirect`/`/move` 0건) | ❌ | **후속 slice 위임 (FR-IS-12 move)** |
 
 **본 PR 검증 범위** = 4단계 (생성/조회/수정/소프트 삭제) + NFR 측정 3건.
 
 **후속 slice 위임** (이 PR 머지 직후 product plan §2.1.1 §D7 본문 메모 갱신).
-- 상태 전이 UI 추가 → `FR-IS-01 D6.5` 신규 slice (frontend DropdownMenu + `useTransitionMutation` + 이슈 상세 영역 통합)
+- 상태 전환 UI 추가 → `FR-IS-01 D6.5` 신규 slice (frontend DropdownMenu + `useTransitionMutation` + 이슈 상세 영역 통합)
 - 이슈 이동 + 키 redirect → `FR-IS-12 move` (별 FR. backend `IssueKeyRedirect` 엔티티 + Flyway + jOOQ + frontend 이동 다이얼로그 + redirect 라우트)
 - D7 §완료 기준 = **부분 통과** (4단계 + NFR) 명시, full 통과 = 위 2 slice 완료 후 별도 D7-Extended 작업
 
@@ -206,7 +206,7 @@ Then  404 에러 UI 또는 에러 토스트 노출 (apps/web/src/routes/issues.$
 
 본 PR 머지 직후 `docs/plan/product/issue-tracking.md §2.1.1 §D7` 본문 메모 갱신 (1 commit).
 - D7 본 PR = 부분 통과 (E2E-1~4).
-- D7 full 통과 후속 의존: (1) 상태 전이 UI 추가 (FR-IS-01 D6.5 신규 slice), (2) 이슈 이동 + 키 redirect (FR-IS-12 move 별 FR), (3) NFR 측정 (k6 + Playwright NFR 계층 도구 도입 별 PR — Deferred trigger), (4) 권한 모델 E2E (실 RBAC 가드 구현 별 FR 후).
+- D7 full 통과 후속 의존: (1) 상태 전환 UI 추가 (FR-IS-01 D6.5 신규 slice), (2) 이슈 이동 + 키 redirect (FR-IS-12 move 별 FR), (3) NFR 측정 (k6 + Playwright NFR 계층 도구 도입 별 PR — Deferred trigger), (4) 권한 모델 E2E (실 RBAC 가드 구현 별 FR 후).
 
 
 ## Plan
@@ -339,7 +339,7 @@ Then  404 에러 UI 또는 에러 토스트 노출 (apps/web/src/routes/issues.$
 
 ```markdown
 > **D7 본 PR 부분 통과 (PR #32)**. E2E-1~4 (생성→조회→수정→소프트 삭제 / 비로그인 가드 / 미존재 키 404 / UI 회귀 가드 3건). full 통과 후속 의존:
-> - **상태 전이 E2E** ← FR-IS-01 D6.5 신규 slice (전이 UI 추가 — DropdownMenu + useTransitionMutation).
+> - **상태 전환 E2E** ← FR-IS-01 D6.5 신규 slice (전환 UI 추가 — DropdownMenu + useTransitionMutation).
 > - **이슈 이동 + 키 redirect E2E** ← FR-IS-12 move 별 FR (백엔드 IssueKeyRedirect + Flyway + jOOQ + frontend 이동 다이얼로그 + redirect 라우트).
 > - **NFR p95 측정 3건 (조회/목록/POST)** Deferred trigger — (a) k6-load-testing + Playwright NFR 계층 도구 도입 후 + (b) Maxi 1인 선언으로 trigger 조정.
 > - **권한 모델 E2E** ← 실 RBAC 가드 구현 (현재 dev/test = `AlwaysAllowIssuePermissionResolver`) 별 FR 후.

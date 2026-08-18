@@ -1,4 +1,4 @@
-// FR-VR-02 E2E — 버전 상태 전이 시나리오 (릴리스/보관/보관해제/불허 전이 거부)
+// FR-VR-02 E2E — 버전 상태 전환 시나리오 (릴리스/보관/보관해제/불허 전환 거부)
 //
 // MSW version-handlers.ts 의 stateful versionStore 위에서 동작한다.
 // 각 테스트는 X-MSW-Reset-Versions 헤더로 저장소를 초기화해 격리한다.
@@ -7,12 +7,12 @@
 //   T1. UNRELEASED → RELEASED (릴리스): 상태 뱃지 "출시됨" 확인, 릴리스 버튼 사라짐
 //   T2. UNRELEASED → ARCHIVED (보관): 상태 뱃지 "보관됨" + 수정/삭제 버튼 disabled 확인 (S3, S6)
 //   T3. ARCHIVED → UNRELEASED (보관 해제): 상태 뱃지 "미출시" + 수정/삭제 버튼 다시 활성 확인 (S4)
-//   T4. ARCHIVED 상태에서 릴리스 버튼 미노출 확인 (S5 — 불허 전이 버튼 자체 없음)
+//   T4. ARCHIVED 상태에서 릴리스 버튼 미노출 확인 (S5 — 불허 전환 버튼 자체 없음)
 //
 // 교훈 반영.
 //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 미사용
-//   - msw-mutation-stateful-refetch: 전이 후 refetch 결과로 뱃지 상태 검증
-//   - playwright-getbyrole-exact-strict-mode: aria-label("버전명 + 전이라벨") 한정 셀렉터
+//   - msw-mutation-stateful-refetch: 전환 후 refetch 결과로 뱃지 상태 검증
+//   - playwright-getbyrole-exact-strict-mode: aria-label("버전명 + 전환라벨") 한정 셀렉터
 //   - e2e-fixture-whoami-userid-alignment: alice 로그인 고정
 //   - ui-pr-defer-e2e-regression-latent: 기존 version-management 회귀 동반 실행
 import { test, expect } from '@playwright/test'
@@ -35,7 +35,7 @@ const labels = {
   badgeUnreleased: '미출시',
   badgeReleased: '출시됨',
   badgeArchived: '보관됨',
-  // 전이 버튼 라벨 (versionTransitionLabel)
+  // 전환 버튼 라벨 (versionTransitionLabel)
   releaseButton: '릴리스',
   unreleaseButton: '되돌리기',
   archiveButton: '보관',
@@ -83,7 +83,7 @@ async function createVersion(
 // 테스트 suite
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe('버전 상태 전이 (FR-VR-02)', () => {
+test.describe('버전 상태 전환 (FR-VR-02)', () => {
   test.beforeEach(async ({ page }) => {
     // alice 로 로그인 후 버전 설정 페이지 진입
     await loginAsAlice(page)
@@ -111,7 +111,7 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
     const versionRow = page.getByText(versionName, { exact: true }).locator('xpath=ancestor::li[1]')
     await expect(versionRow.getByText(labels.badgeUnreleased)).toBeVisible()
 
-    // "릴리스" 전이 버튼 — aria-label="T1-1.0.0 릴리스" (playwright-getbyrole-exact-strict-mode)
+    // "릴리스" 전환 버튼 — aria-label="T1-1.0.0 릴리스" (playwright-getbyrole-exact-strict-mode)
     await page.getByRole('button', { name: `${versionName} ${labels.releaseButton}` }).click()
 
     // msw-mutation-stateful-refetch 교훈 — refetch 후 뱃지 변화 확인
@@ -138,7 +138,7 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
   // When   행의 "T2-2.0.0 보관" 버튼 클릭
   // Then   상태 뱃지가 "보관됨"으로 변경됨
   //        수정/삭제 버튼이 disabled 상태
-  //        "보관 해제" 버튼만 전이 버튼으로 노출됨
+  //        "보관 해제" 버튼만 전환 버튼으로 노출됨
   // ───────────────────────────────────────────────────────────────────────────
   test('T2 보관 — UNRELEASED → ARCHIVED 뱃지 변화 + 수정/삭제 disabled 확인', async ({ page }) => {
     const versionName = 'T2-2.0.0'
@@ -146,7 +146,7 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
     // 사전조건: UNRELEASED 버전 생성
     await createVersion(page, versionName)
 
-    // "보관" 전이 버튼 클릭
+    // "보관" 전환 버튼 클릭
     await page.getByRole('button', { name: `${versionName} ${labels.archiveButton}` }).click()
 
     // 행 컨테이너 한정 셀렉터
@@ -166,7 +166,7 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
     await expect(deleteButton).toBeVisible()
     await expect(deleteButton).toBeDisabled()
 
-    // ARCHIVED: "보관 해제" 버튼만 전이 버튼으로 노출
+    // ARCHIVED: "보관 해제" 버튼만 전환 버튼으로 노출
     await expect(
       page.getByRole('button', { name: `${versionName} ${labels.unarchiveButton}` }),
     ).toBeVisible()
@@ -193,7 +193,7 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
   test('T3 보관 해제 — ARCHIVED → UNRELEASED 뱃지 복귀 + 수정/삭제 enabled 확인', async ({ page }) => {
     const versionName = 'T3-3.0.0'
 
-    // 사전조건: UNRELEASED 버전 생성 → 보관 전이
+    // 사전조건: UNRELEASED 버전 생성 → 보관 전환
     await createVersion(page, versionName)
     await page.getByRole('button', { name: `${versionName} ${labels.archiveButton}` }).click()
 
@@ -217,27 +217,27 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
     await expect(deleteButton).toBeVisible()
     await expect(deleteButton).not.toBeDisabled()
 
-    // UNRELEASED 전이 버튼 복귀 확인
+    // UNRELEASED 전환 버튼 복귀 확인
     await expect(
       page.getByRole('button', { name: `${versionName} ${labels.releaseButton}` }),
     ).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // T4 — 불허 전이 거부 (S5): ARCHIVED 행에서 릴리스 버튼 미노출
+  // T4 — 불허 전환 거부 (S5): ARCHIVED 행에서 릴리스 버튼 미노출
   //
   // Given  "T4-4.0.0" 버전이 ARCHIVED 상태
-  // When   행의 전이 버튼 목록 확인
-  // Then   "릴리스" 버튼이 미노출 (ARCHIVED → RELEASED 전이 그래프에 없음)
+  // When   행의 전환 버튼 목록 확인
+  // Then   "릴리스" 버튼이 미노출 (ARCHIVED → RELEASED 전환 그래프에 없음)
   //        "보관 해제" 버튼만 노출됨
   //
-  // 전이 버튼 자체가 렌더되지 않는 방식으로 불허 전이를 거부한다.
+  // 전환 버튼 자체가 렌더되지 않는 방식으로 불허 전환을 거부한다.
   // (버튼이 없으면 클릭 자체가 불가 — API 409 응답 경로보다 더 강한 보호)
   // ───────────────────────────────────────────────────────────────────────────
-  test('T4 불허 전이 — ARCHIVED 행에서 릴리스 버튼 미노출 (S5)', async ({ page }) => {
+  test('T4 불허 전환 — ARCHIVED 행에서 릴리스 버튼 미노출 (S5)', async ({ page }) => {
     const versionName = 'T4-4.0.0'
 
-    // 사전조건: UNRELEASED 버전 생성 → 보관 전이
+    // 사전조건: UNRELEASED 버전 생성 → 보관 전환
     await createVersion(page, versionName)
     await page.getByRole('button', { name: `${versionName} ${labels.archiveButton}` }).click()
 
@@ -245,19 +245,19 @@ test.describe('버전 상태 전이 (FR-VR-02)', () => {
     const versionRow = page.getByText(versionName, { exact: true }).locator('xpath=ancestor::li[1]')
     await expect(versionRow.getByText(labels.badgeArchived)).toBeVisible()
 
-    // 불허 전이: ARCHIVED → RELEASED 버튼 미노출
+    // 불허 전환: ARCHIVED → RELEASED 버튼 미노출
     // exact:true 필수 — 부분 문자열 매칭 방지 (playwright-getbyrole-exact-strict-mode)
     await expect(
       page.getByRole('button', { name: `${versionName} ${labels.releaseButton}`, exact: true }),
     ).toHaveCount(0)
 
-    // 불허 전이: ARCHIVED → ARCHIVED 버튼 미노출 (self-transition)
+    // 불허 전환: ARCHIVED → ARCHIVED 버튼 미노출 (self-transition)
     // "보관 해제" 버튼을 "보관" 부분 문자열로 잡는 것을 방지
     await expect(
       page.getByRole('button', { name: `${versionName} ${labels.archiveButton}`, exact: true }),
     ).toHaveCount(0)
 
-    // 허용 전이: "보관 해제" 버튼만 노출됨
+    // 허용 전환: "보관 해제" 버튼만 노출됨
     await expect(
       page.getByRole('button', { name: `${versionName} ${labels.unarchiveButton}` }),
     ).toBeVisible()

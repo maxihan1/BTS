@@ -1,11 +1,11 @@
-// 워크플로우 전이 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
+// 워크플로우 전환 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
 
 package com.bts.shared.workflow
 
 /**
- * 워크플로우 전이 결과를 표현하는 sealed interface.
+ * 워크플로우 전환 결과를 표현하는 sealed interface.
  *
- * project-workflow 모듈이 전이 검증을 완료한 후 호출자 BC(바운디드 컨텍스트)에 반환한다.
+ * project-workflow 모듈이 전환 검증을 완료한 후 호출자 BC(바운디드 컨텍스트)에 반환한다.
  * 호출자는 `when` 식으로 모든 케이스를 exhaustive 하게 처리해야 하며, `else` 브랜치 추가는
  * 새 케이스 누락 위험이 있으므로 금지한다.
  *
@@ -23,16 +23,16 @@ package com.bts.shared.workflow
  */
 sealed interface TransitionResult {
     /**
-     * 전이 검증을 통과했을 때 반환된다.
+     * 전환 검증을 통과했을 때 반환된다.
      *
      * 호출자 BC 는 [plan] 을 자신의 트랜잭션 안에서 이슈에 적용해야 한다.
      *
-     * @param plan 호출자 BC 가 적용할 전이 실행 계획.
+     * @param plan 호출자 BC 가 적용할 전환 실행 계획.
      */
     data class Success(val plan: TransitionPlan) : TransitionResult
 
     /**
-     * 등록된 WorkflowValidator 중 하나 이상이 전이를 거부했을 때 반환된다.
+     * 등록된 WorkflowValidator 중 하나 이상이 전환을 거부했을 때 반환된다.
      *
      * issue-tracking BC 는 이 케이스를 `IssueTransitionNotAllowedException` 으로 변환해 던져야 한다.
      *

@@ -1,4 +1,4 @@
-// PostActionConfigSection 컴포넌트 단위 테스트 — 게이팅/전이선택/목록/추가/수정/삭제
+// PostActionConfigSection 컴포넌트 단위 테스트 — 게이팅/전환선택/목록/추가/수정/삭제
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -91,7 +91,7 @@ describe('PostActionConfigSection — isSystemAdmin 게이팅', () => {
 
     renderSection()
 
-    // 섹션 제목 또는 전이 선택 select가 DOM에 있어야 함
+    // 섹션 제목 또는 전환 선택 select가 DOM에 있어야 함
     expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
@@ -114,7 +114,7 @@ describe('PostActionConfigSection — isSystemAdmin 게이팅', () => {
 
     renderSection()
 
-    // combobox(전이 선택)도 없어야 하고, 특정 헤딩도 없어야 함
+    // combobox(전환 선택)도 없어야 하고, 특정 헤딩도 없어야 함
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
@@ -131,10 +131,10 @@ describe('PostActionConfigSection — isSystemAdmin 게이팅', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PACS-3 ~ PACS-5: 전이 선택
+// PACS-3 ~ PACS-5: 전환 선택
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('PostActionConfigSection — 전이 선택', () => {
+describe('PostActionConfigSection — 전환 선택', () => {
   beforeEach(() => {
     useAuthStore.setState({
       accessToken: 'token',
@@ -151,7 +151,7 @@ describe('PostActionConfigSection — 전이 선택', () => {
   })
 
   /**
-   * PACS-3. 전이 선택 select에 transitions props가 옵션으로 렌더된다.
+   * PACS-3. 전환 선택 select에 transitions props가 옵션으로 렌더된다.
    */
   it('PACS-3: transitions props가 select 옵션으로 렌더된다', () => {
     renderSection()
@@ -159,15 +159,15 @@ describe('PostActionConfigSection — 전이 선택', () => {
     const select = screen.getByRole('combobox')
     expect(select).toBeInTheDocument()
 
-    // 전이 이름이 옵션으로 있어야 함
+    // 전환 이름이 옵션으로 있어야 함
     expect(screen.getByText('진행 시작')).toBeInTheDocument()
     expect(screen.getByText('완료 처리')).toBeInTheDocument()
   })
 
   /**
-   * PACS-4. 전이 미선택 시 목록이 렌더되지 않는다(query 비활성).
+   * PACS-4. 전환 미선택 시 목록이 렌더되지 않는다(query 비활성).
    */
-  it('PACS-4: 전이 미선택 시 목록이 렌더되지 않는다', () => {
+  it('PACS-4: 전환 미선택 시 목록이 렌더되지 않는다', () => {
     renderSection()
 
     // 테이블 또는 로딩 인디케이터가 없어야 함
@@ -175,10 +175,10 @@ describe('PostActionConfigSection — 전이 선택', () => {
   })
 
   /**
-   * PACS-5. 전이를 선택하면 해당 전이의 post-action 목록 API가 호출된다.
+   * PACS-5. 전환을 선택하면 해당 전환의 post-action 목록 API가 호출된다.
    * MSW 응답 1건 → 테이블 행 확인.
    */
-  it('PACS-5: 전이 선택 시 post-action 목록이 렌더된다', async () => {
+  it('PACS-5: 전환 선택 시 post-action 목록이 렌더된다', async () => {
     server.use(
       http.get(BASE_PATH, () =>
         HttpResponse.json({ data: [sampleAction] }),
@@ -199,7 +199,7 @@ describe('PostActionConfigSection — 전이 선택', () => {
   })
 
   /**
-   * PACS-5b. 전이 선택 후 post-action이 0건이면 빈 상태 안내가 렌더된다.
+   * PACS-5b. 전환 선택 후 post-action이 0건이면 빈 상태 안내가 렌더된다.
    */
   it('PACS-5b: post-action 0건이면 빈 상태 안내가 렌더된다', async () => {
     server.use(
@@ -252,7 +252,7 @@ describe('PostActionConfigSection — Webhook 추가', () => {
 
   /**
    * PACS-7. "Webhook 추가" 버튼 클릭 시 PostActionFormDialog(create 모드)가 열린다.
-   * D1 수정 이후: 전이를 먼저 선택해야 버튼이 활성화된다.
+   * D1 수정 이후: 전환을 먼저 선택해야 버튼이 활성화된다.
    */
   it('PACS-7: 추가 버튼 클릭 시 dialog가 열린다', async () => {
     server.use(
@@ -261,7 +261,7 @@ describe('PostActionConfigSection — Webhook 추가', () => {
 
     renderSection()
 
-    // D1: 전이 선택 후에만 버튼 활성화
+    // D1: 전환 선택 후에만 버튼 활성화
     const select = screen.getByRole('combobox')
     fireEvent.change(select, { target: { value: TX_KEY } })
 
@@ -277,7 +277,7 @@ describe('PostActionConfigSection — Webhook 추가', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PACS-8 ~ PACS-9: 수정/삭제 버튼 (전이 선택 후)
+// PACS-8 ~ PACS-9: 수정/삭제 버튼 (전환 선택 후)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('PostActionConfigSection — 수정/삭제', () => {
@@ -308,7 +308,7 @@ describe('PostActionConfigSection — 수정/삭제', () => {
 
     renderSection()
 
-    // 전이 선택
+    // 전환 선택
     const select = screen.getByRole('combobox')
     fireEvent.change(select, { target: { value: TX_KEY } })
 
@@ -343,7 +343,7 @@ describe('PostActionConfigSection — 수정/삭제', () => {
 
     renderSection()
 
-    // 전이 선택
+    // 전환 선택
     const select = screen.getByRole('combobox')
     fireEvent.change(select, { target: { value: TX_KEY } })
 
@@ -439,10 +439,10 @@ describe('PostActionConfigSection — B1 stale 프리필 방지', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PACS-D1: 전이 미선택 시 Webhook 추가 버튼 disabled
+// PACS-D1: 전환 미선택 시 Webhook 추가 버튼 disabled
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('PostActionConfigSection — D1 전이 미선택 시 추가 버튼 disabled', () => {
+describe('PostActionConfigSection — D1 전환 미선택 시 추가 버튼 disabled', () => {
   beforeEach(() => {
     useAuthStore.setState({
       accessToken: 'token',
@@ -459,9 +459,9 @@ describe('PostActionConfigSection — D1 전이 미선택 시 추가 버튼 disa
   })
 
   /**
-   * PACS-D1a. 전이 미선택 상태에서 "Webhook 추가" 버튼이 disabled다.
+   * PACS-D1a. 전환 미선택 상태에서 "Webhook 추가" 버튼이 disabled다.
    */
-  it('PACS-D1a: 전이 미선택 시 추가 버튼이 disabled다', () => {
+  it('PACS-D1a: 전환 미선택 시 추가 버튼이 disabled다', () => {
     renderSection()
 
     const addBtn = screen.getByRole('button', { name: /Webhook 추가/ })
@@ -469,9 +469,9 @@ describe('PostActionConfigSection — D1 전이 미선택 시 추가 버튼 disa
   })
 
   /**
-   * PACS-D1b. 전이 선택 후 "Webhook 추가" 버튼이 enabled된다.
+   * PACS-D1b. 전환 선택 후 "Webhook 추가" 버튼이 enabled된다.
    */
-  it('PACS-D1b: 전이 선택 후 추가 버튼이 enabled된다', () => {
+  it('PACS-D1b: 전환 선택 후 추가 버튼이 enabled된다', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
@@ -700,18 +700,18 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
   })
 
   const ambiguousTransitions: WorkflowTransitionView[] = [
-    // fromStateKey에 '__'가 포함된 전이 — 합성키가 3+ 조각으로 쪼개짐
+    // fromStateKey에 '__'가 포함된 전환 — 합성키가 3+ 조각으로 쪼개짐
     { key: 'in__review__done', name: '리뷰 완료', fromStateKey: 'in__review', toStateKey: 'done' },
-    // toStateKey에 '__'가 포함된 전이
+    // toStateKey에 '__'가 포함된 전환
     { key: 'open__in__review', name: '리뷰 시작', fromStateKey: 'open', toStateKey: 'in__review' },
-    // 정상 전이 — 영향 없어야 함
+    // 정상 전환 — 영향 없어야 함
     { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress' },
   ]
 
   /**
-   * PACS-D6a. '__' 포함 전이 옵션은 disabled 속성을 가진다.
+   * PACS-D6a. '__' 포함 전환 옵션은 disabled 속성을 가진다.
    */
-  it('PACS-D6a: fromStateKey에 __ 포함 전이 option이 disabled다', () => {
+  it('PACS-D6a: fromStateKey에 __ 포함 전환 option이 disabled다', () => {
     renderSection({ transitions: ambiguousTransitions })
 
     // '리뷰 완료' 옵션 — fromStateKey='in__review'
@@ -720,9 +720,9 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
   })
 
   /**
-   * PACS-D6b. toStateKey에 '__' 포함된 전이 옵션도 disabled다.
+   * PACS-D6b. toStateKey에 '__' 포함된 전환 옵션도 disabled다.
    */
-  it('PACS-D6b: toStateKey에 __ 포함 전이 option이 disabled다', () => {
+  it('PACS-D6b: toStateKey에 __ 포함 전환 option이 disabled다', () => {
     renderSection({ transitions: ambiguousTransitions })
 
     const opt = screen.getByRole('option', { name: '리뷰 시작' }) as HTMLOptionElement
@@ -730,9 +730,9 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
   })
 
   /**
-   * PACS-D6c. 정상 전이('open__in-progress')는 disabled가 아니다.
+   * PACS-D6c. 정상 전환('open__in-progress')는 disabled가 아니다.
    */
-  it('PACS-D6c: 정상 전이 option은 disabled가 아니다', () => {
+  it('PACS-D6c: 정상 전환 option은 disabled가 아니다', () => {
     renderSection({ transitions: ambiguousTransitions })
 
     const opt = screen.getByRole('option', { name: '진행 시작' }) as HTMLOptionElement
@@ -740,19 +740,19 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
   })
 
   /**
-   * PACS-D6d. ambiguous 전이가 있으면 안내 문구가 렌더된다.
+   * PACS-D6d. ambiguous 전환이 있으면 안내 문구가 렌더된다.
    */
-  it('PACS-D6d: ambiguous 전이가 있으면 안내 문구가 노출된다', () => {
+  it('PACS-D6d: ambiguous 전환이 있으면 안내 문구가 노출된다', () => {
     renderSection({ transitions: ambiguousTransitions })
 
-    // 안내 문구 — '일부 전이는 키 형식 제약으로 설정할 수 없습니다' 류
+    // 안내 문구 — '일부 전환은 키 형식 제약으로 설정할 수 없습니다' 류
     expect(screen.getByText(/키 형식 제약/)).toBeInTheDocument()
   })
 
   /**
-   * PACS-D6e. ambiguous 전이가 없으면 안내 문구가 렌더되지 않는다.
+   * PACS-D6e. ambiguous 전환이 없으면 안내 문구가 렌더되지 않는다.
    */
-  it('PACS-D6e: ambiguous 전이가 없으면 안내 문구가 노출되지 않는다', () => {
+  it('PACS-D6e: ambiguous 전환이 없으면 안내 문구가 노출되지 않는다', () => {
     renderSection({ transitions: sampleTransitions })
 
     expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()
@@ -895,7 +895,7 @@ describe('PostActionConfigSection — create onSubmit', () => {
 
   /**
    * PACS-10. 추가 dialog에서 onSubmit 시 POST API가 호출된다.
-   * 전이 선택 없이 추가버튼 → dialog → 폼 입력 → 제출.
+   * 전환 선택 없이 추가버튼 → dialog → 폼 입력 → 제출.
    */
   it('PACS-10: dialog create onSubmit 시 POST API가 호출된다', async () => {
     let postCalled = false
@@ -910,7 +910,7 @@ describe('PostActionConfigSection — create onSubmit', () => {
 
     renderSection()
 
-    // 전이 선택
+    // 전환 선택
     const select = screen.getByRole('combobox')
     fireEvent.change(select, { target: { value: TX_KEY } })
 

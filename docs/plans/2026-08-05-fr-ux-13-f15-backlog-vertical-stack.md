@@ -86,7 +86,7 @@ e2e/                 backlog.spec.ts 742
 - **`domain/agile-planning.md` 갱신**. 불필요 — "스프린트 라이프사이클 (계획/시작/종료/회고)"
   서술이 그대로 유효
 
-### 스프린트 상태 전이 (백엔드 확정 · 변경 불가)
+### 스프린트 상태 전환 (백엔드 확정 · 변경 불가)
 
 `PLANNED → ACTIVE → COMPLETED` **단방향 FSM**. 위반 시 409
 (`Sprint.kt` `InvalidSprintTransitionException`).
@@ -440,7 +440,7 @@ plan 이 막겠다던 lint-staged race 가 그대로 재현된다. 공유 자원
 - 이관 요청이 **모두 끝난 뒤에** `complete` 가 호출된다 (호출 순서 배열 단언)
 - 3건 중 1건 실패 → `complete` 호출 수 **0**
 - 재시도 시 성공했던 2건의 요청 수가 **늘지 않는다**
-- **E12.** 이관 도중 대상이 COMPLETED 로 전이 → `POST` 409 → 그 행만 실패 · **Select 를 잠그지 않는다**(대상을 다시 골라야 하므로)
+- **E12.** 이관 도중 대상이 COMPLETED 로 전환 → `POST` 409 → 그 행만 실패 · **Select 를 잠그지 않는다**(대상을 다시 골라야 하므로)
 - **`truncated` 양방향.** `BLOCK_COMPLETE_WHEN_TRUNCATED` 의 **두 값 각각**에 테스트를 붙인다.
   ★상수를 리터럴로 두면 TypeScript 가 좁혀서 반대 분기가 **도달 불가**가 된다 — 그러면 그 테스트가
   또 하나의 가짜 그린이다. **모듈에서 export 하고 `vi.spyOn`/`vi.mock` 으로 뒤집어** 두 경로를 실제로 지난다

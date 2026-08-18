@@ -35,8 +35,8 @@ import java.util.UUID
  * 거부(false)한다. 권한 판정 경로의 불명은 항상 "거부"로 수렴한다.
  *
  * ## 정책 상속
- * - TRANSITION 은 현재 identity 에서 전이 매트릭스를 별도 위임하지 않고 프로젝트 멤버면 통과한다.
- *   이 어댑터는 위임이므로 현행 정책을 그대로 상속하며, 향후 전이 매트릭스 도입 시 자동 반영된다.
+ * - TRANSITION 은 현재 identity 에서 전환 매트릭스를 별도 위임하지 않고 프로젝트 멤버면 통과한다.
+ *   이 어댑터는 위임이므로 현행 정책을 그대로 상속하며, 향후 전환 매트릭스 도입 시 자동 반영된다.
  * - [Scope.Global] 은 현재 `PermissionValidator`(ValidatorScope 는 ISSUE/PROJECT 뿐)가 생성하지
  *   않으나, sealed 완전성을 위해 [SystemPermissionResolver.isSystemAdmin] 으로 처리한다.
  *

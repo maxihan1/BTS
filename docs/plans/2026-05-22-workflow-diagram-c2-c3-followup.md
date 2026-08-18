@@ -46,7 +46,7 @@ PR #13 (FR-WF-01 frontend) 의 /bts-codereview CONCERN-2 + CONCERN-3 후속 PR. 
 전체 스펙. [docs/specs/2026-05-22-workflow-diagram-c2-c3-followup.md](../specs/2026-05-22-workflow-diagram-c2-c3-followup.md)
 
 핵심 시나리오 3줄.
-- mermaid 다이어그램 렌더 회귀 0 — 사용자 시각 변화 0 (classDef 이름만 변경, 색상/노드/전이 동일).
+- mermaid 다이어그램 렌더 회귀 0 — 사용자 시각 변화 0 (classDef 이름만 변경, 색상/노드/전환 동일).
 - transition.key 형식 통일 — fixture 17건 + workflows.test.ts inline 17건 = 34건 일괄 backend computed `${fromStateKey}__${toStateKey}` 형식.
 - mermaid classDef prefix — categoryToClass() 가 `category_todo` / `category_in_progress` / `category_done` 반환, state id 와 토큰 충돌 0.
 
@@ -218,7 +218,7 @@ lines.push(`  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:okl
 **GREEN**. `pnpm --filter web test -- WorkflowDiagram -u`. snapshot 일괄 갱신.
 
 **검증** (필수). `git diff __snapshots__/WorkflowDiagram.test.tsx.snap` 으로 diff 검토. 다음 검증.
-- 변경 라인이 classDef 3 라인 + class N 라인 (prefix `category_` 추가) 만 포함. **노드 / 전이 / 시작·종료 라인 변경 0**.
+- 변경 라인이 classDef 3 라인 + class N 라인 (prefix `category_` 추가) 만 포함. **노드 / 전환 / 시작·종료 라인 변경 0**.
 - 변경되지 않은 라인 (예. `[*] --> open`, `open --> in_progress : 진행 시작`, `done --> [*]`) 가 정확히 보존.
 
 diff 가 예상 패턴과 다르면 RED 로 돌아가서 Task 3 GREEN 점검 (의도치 않은 부수 변경 의심).
@@ -279,7 +279,7 @@ it.skip('T5-2: ...', ...)
 
 ### /plan-design-review — SKIP
 
-본 PR 의 사용자 시각 변화 0 (NFR-1 명시). classDef 이름만 변경 (SVG class 속성 비가시), 색상 / 노드 / 전이 동일. design-review 가 평가할 시각 요소 0. **skip**.
+본 PR 의 사용자 시각 변화 0 (NFR-1 명시). classDef 이름만 변경 (SVG class 속성 비가시), 색상 / 노드 / 전환 동일. design-review 가 평가할 시각 요소 0. **skip**.
 
 ### /plan-eng-review (2026-05-22)
 
@@ -317,7 +317,7 @@ it.skip('T5-2: ...', ...)
 **판정**. ✅ **PASS** (수정 권장 1건, 머지 차단 사유 0건)
 
 검증 결과.
-1. Plan / Spec 정합성 — D1~D5 결정과 실제 구현 5/5 일치. snapshot diff 28 라인 (classDef 12 + class 16), 노드/전이/시작·종료 변경 0.
+1. Plan / Spec 정합성 — D1~D5 결정과 실제 구현 5/5 일치. snapshot diff 28 라인 (classDef 12 + class 16), 노드/전환/시작·종료 변경 0.
 2. BTS 절대 규칙 19개 (DEVELOPMENT.md §1) — ALL PASS. NEVER-11/12/13/15/16/17 모두 0 위반.
 3. TDD red→green→refactor — task 1/2/3 만족. task-4 snapshot 갱신은 generated artifact 라 RED 의미가 task-3 GREEN 의 자동 부산물 — 정당.
 4. learnings.md 회귀 검증 — 2026-05-22 누적 학습 6건 (drift / mermaid SVG 셀렉터 / BC 격리 / hot-fix / TanStack Router) 모두 본 PR 과 정합. PR #13 의 mermaid SVG 셀렉터 학습이 D3 결정 (언더스코어 prefix) 으로 직접 이어짐.

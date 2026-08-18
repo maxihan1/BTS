@@ -1,4 +1,4 @@
-// 워크플로우 전이 CALL_WEBHOOK post-action 추가/수정 다이얼로그
+// 워크플로우 전환 CALL_WEBHOOK post-action 추가/수정 다이얼로그
 import type { JSX } from 'react'
 import { useState, useId } from 'react'
 import {
@@ -87,7 +87,7 @@ function validateForm(values: PostActionFormValues): FormErrors {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 워크플로우 전이 CALL_WEBHOOK post-action 추가/수정 다이얼로그.
+ * 워크플로우 전환 CALL_WEBHOOK post-action 추가/수정 다이얼로그.
  *
  * - create 모드: 빈 폼, 제목 "Post-Action 추가", 버튼 "추가"
  * - edit 모드: initialValues로 프리필, 제목 "Post-Action 수정", 버튼 "저장"

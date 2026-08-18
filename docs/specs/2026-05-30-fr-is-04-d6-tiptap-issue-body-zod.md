@@ -95,7 +95,7 @@
 ## 제약 조건
 
 - BC: issue-tracking 단일. 다른 BC import 금지.
-- 화면 파일(IssueMetaPanel/issues.$key)은 PR #39 D6·PR #41 전이UI와 동일 → 패턴 일관성 유지.
+- 화면 파일(IssueMetaPanel/issues.$key)은 PR #39 D6·PR #41 전환UI와 동일 → 패턴 일관성 유지.
 - MSW(목 서버) mutation 핸들러는 stateful 오버라이드 영속(메모리 msw-mutation-stateful-refetch) — refetch 후 롤백 방지.
 
 ## 측정 가능한 완료 기준

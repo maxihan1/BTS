@@ -1,4 +1,4 @@
-// Cycle/Lead Time 조회 유스케이스 서비스 — 권한 검증·가시 이슈 조회·전이 기반 소요시간 추출·계산 위임 (FR-RP-04 Task 5)
+// Cycle/Lead Time 조회 유스케이스 서비스 — 권한 검증·가시 이슈 조회·전환 기반 소요시간 추출·계산 위임 (FR-RP-04 Task 5)
 
 package com.bts.issue.cycletime.application
 
@@ -28,8 +28,8 @@ import java.time.LocalDate
 /**
  * Cycle/Lead Time 조회 유스케이스 서비스 (FR-RP-04 Task 5).
  *
- * [com.bts.issue.cfd.application.CfdService] 를 미러하되, 이슈 타임라인 전체를 조립하는 대신 전이
- * 이력에서 "첫 IN_PROGRESS 전이"와 "마지막 DONE 전이" 시각만 축약해 [CycleTimeCalculator] 에
+ * [com.bts.issue.cfd.application.CfdService] 를 미러하되, 이슈 타임라인 전체를 조립하는 대신 전환
+ * 이력에서 "첫 IN_PROGRESS 전환"와 "마지막 DONE 전환" 시각만 축약해 [CycleTimeCalculator] 에
  * 위임한다.
  *
  * ## 오케스트레이션 순서
@@ -38,7 +38,7 @@ import java.time.LocalDate
  *    [IssueRepository.fetchActiveVisibleIssuesForCycleTime] 로 활성·가시 이슈 메타를 가져온다.
  * 3. 가시 이슈가 없으면 fetchStatusChanges/listStates 호출 없이 빈 결과를 즉시 반환한다
  *    (jOOQ 빈 `IN` 절 방어).
- * 4. [StatusHistoryRepository.fetchStatusChanges] 로 status 전이 이력을 일괄 조회해 이슈별로
+ * 4. [StatusHistoryRepository.fetchStatusChanges] 로 status 전환 이력을 일괄 조회해 이슈별로
  *    그룹핑한다.
  * 5. `issue_types.id → IssueTypeKey` 역매핑을 1쿼리로 로드하고, 이슈에 등장하는 타입별로
  *    [IsolatedWorkflowStateLookup.listStates] 결과를 캐싱한다(N+1 차단). 스킴/매핑이 없어
@@ -51,7 +51,7 @@ import java.time.LocalDate
  *
  * @param permissionResolver 이슈 권한 판정 포트.
  * @param issueRepository Cycle/Lead Time 원천 이슈 메타 조회 리포지토리.
- * @param statusHistoryRepository status 전이 이력 배치 조회 리포지토리.
+ * @param statusHistoryRepository status 전환 이력 배치 조회 리포지토리.
  * @param securityDirectory 이슈 보안 등급 조회 포트.
  * @param issueTypeRepository 이슈 타입 조회 리포지토리(`id → key` 역매핑용).
  * @param workflowStateLookup 워크플로우 상태 목록 격리 조회 Bean(velocity 가 정의한 기존 Bean 재사용).
@@ -182,18 +182,18 @@ class CycleTimeService(
         }
 
     /**
-     * 이슈 하나의 [IssueDurationInput] 을 전이 이력에서 조립한다.
+     * 이슈 하나의 [IssueDurationInput] 을 전환 이력에서 조립한다.
      *
-     * 초기 상태(생성 시점의 상태)는 신뢰하지 않고 전이 이력만 사용한다(EC8, 전이 기반 신뢰). [changes]
+     * 초기 상태(생성 시점의 상태)는 신뢰하지 않고 전환 이력만 사용한다(EC8, 전환 기반 신뢰). [changes]
      * 는 오름차순 정렬되어 있다고 가정한다(repo 가 이미 정렬해 반환).
      *
-     * - `firstInProgressAt` — `toValue` 카테고리가 [StatusCategory.IN_PROGRESS] 인 **첫** 전이의
+     * - `firstInProgressAt` — `toValue` 카테고리가 [StatusCategory.IN_PROGRESS] 인 **첫** 전환의
      *   `changedAt`. 없으면 `null`(= 착수 시점 미정의, Cycle Time 표본에서 제외됨).
-     * - `lastDoneAt` — `toValue` 카테고리가 [StatusCategory.DONE] 인 **마지막** 전이의 `changedAt`.
+     * - `lastDoneAt` — `toValue` 카테고리가 [StatusCategory.DONE] 인 **마지막** 전환의 `changedAt`.
      *   없으면 `null`(= 미완료, 모집단에서 제외됨).
      *
      * @param issue Cycle/Lead Time 원천 이슈 메타.
-     * @param changes 이 이슈의 status 전이 이력(오름차순).
+     * @param changes 이 이슈의 status 전환 이력(오름차순).
      * @param typeIdToKey `issue_types.id → IssueTypeKey` 역매핑.
      * @param stateCache 타입별 상태 키 → 카테고리 맵 캐시.
      * @return 이 이슈의 [IssueDurationInput].

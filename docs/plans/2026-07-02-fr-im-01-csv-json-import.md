@@ -62,13 +62,13 @@ Maxi가 확장 범위를 택함 → FR-IM-01을 순차 PR 에픽으로 분할. *
 | 이슈 키 | 새 키 자동생성(incrementKeySequence). Jira 키 보존 안 함(키 재사용 금지 원칙) |
 | 임포트 범위 | 확장 포함(첨부·댓글·이력·Worklog) — 순차 PR로 분할 |
 | 컴포넌트/버전 | 없으면 자동 생성 (PR2) |
-| Status | 소스 상태로 전이 시도 (PR2). 도달불가/게이트 폴백은 PR2 스펙 |
+| Status | 소스 상태로 전환 시도 (PR2). 도달불가/게이트 폴백은 PR2 스펙 |
 | 첨부 출처 | zip 아카이브 업로드(서버 fetch 없음=SSRF 없음) (PR4) |
 | 이력 주입 | append-only 이력에 조작 타임스탬프/주체 주입 — 메커니즘 결정은 PR4 스펙 |
 
 **에픽 PR 순서**.
 - **PR1 (이번)**. ImportJob·`import_jobs`(V604)·`q_import_jobs`·multipart 업로드→MinIO·`POST/GET /api/v1/imports`·`ImportJobWorker`·CSV/JSON 파싱·**코어 이슈 필드** 생성(`IssueImportPort`)·이메일 매핑(`UserLookupPort.resolveByEmails`)·dry-run·에러 로그(MinIO)·행 상한(MAX_ROWS)·행별 best-effort.
-- PR2. 컴포넌트/버전 자동생성 + 소스 상태 전이.
+- PR2. 컴포넌트/버전 자동생성 + 소스 상태 전환.
 - PR3. 댓글 + Worklog.
 - PR4. 첨부(zip) + 이력.
 - (D6/D7 프론트 업로드/진행률 UI는 별도 PR — FR-IM-02 매핑 UI와 조율)
@@ -204,7 +204,7 @@ Maxi가 확장 범위를 택함 → FR-IM-01을 순차 PR 에픽으로 분할. *
 - files: [`IT/main/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapter.kt`, `IT/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterTest.kt`]
 - depends-on: [3, 4]
 
-**RED**: 통합 테스트 — cmd(코어 필드) → `createIssue(actor=requester)` + priority/labels/assignee update가 **한 @Transactional**로 실행(update 실패 시 create 롤백=행 원자성) · 이메일 매핑(UserLookupPort) 매칭/폴백 · component 이름 연결(없으면 스킵+result 경고) · CREATE_ISSUE 없으면 FORBIDDEN result · dryRun=true면 생성 0 + 검증 result. 실 repo+시드(mockk 금지 — 전이/권한 통합은 실 repo 선례).
+**RED**: 통합 테스트 — cmd(코어 필드) → `createIssue(actor=requester)` + priority/labels/assignee update가 **한 @Transactional**로 실행(update 실패 시 create 롤백=행 원자성) · 이메일 매핑(UserLookupPort) 매칭/폴백 · component 이름 연결(없으면 스킵+result 경고) · CREATE_ISSUE 없으면 FORBIDDEN result · dryRun=true면 생성 0 + 검증 result. 실 repo+시드(mockk 금지 — 전환/권한 통합은 실 repo 선례).
 **GREEN**: `@Component IssueImportAdapter : IssueImportPort`. `@Transactional` 메서드(REQUIRES_NEW 아님 — 각 행 독립 호출). `IssueApplicationService.createIssue` + update 재사용. 예외→result 코드 변환(도메인 예외 HTTP 누출 방지).
 **REFACTOR**: 사유 코드 매핑 함수·KDoc(책임=행 1건 원자 생성).
 **검증**: `--tests '*IssueImportAdapterTest'` + ArchUnit(shared-kernel port만 의존).

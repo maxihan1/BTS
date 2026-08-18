@@ -1,4 +1,4 @@
-// 상태 전이 이력 배치 조회 jOOQ 리포지토리 — issue_change_group/item JOIN (CFD·cycletime 공유)
+// 상태 전환 이력 배치 조회 jOOQ 리포지토리 — issue_change_group/item JOIN (CFD·cycletime 공유)
 
 package com.bts.issue.statushistory.repository
 
@@ -10,11 +10,11 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * 상태 전이 이력을 여러 이슈에 대해 배치 조회하는 jOOQ 리포지토리.
+ * 상태 전환 이력을 여러 이슈에 대해 배치 조회하는 jOOQ 리포지토리.
  *
  * `issue_change_group`(변경 그룹) 과 `issue_change_item`(개별 필드 변경) 을 조인해
  * [FIELD_STATUS] 인 항목만 추출한다. 상태 이력을 재구성하는 기능(CFD, cycle time/lead time 등)은
- * 이슈의 상태 전이 이력만 필요하므로 assignee/summary 등 다른 필드 변경은 대상에서 제외한다.
+ * 이슈의 상태 전환 이력만 필요하므로 assignee/summary 등 다른 필드 변경은 대상에서 제외한다.
  *
  * **jOOQ 화이트리스트 (ArchUnit 룰 2).** `com.bts.issue.jooq..` 생성 코드는 `..repository..`
  * 패키지에서만 접촉 가능하므로, 이 클래스는 `com.bts.issue.statushistory.repository` 패키지에 위치한다.
@@ -29,7 +29,7 @@ class StatusHistoryRepository(
     private val dsl: DSLContext,
 ) {
     /**
-     * 여러 이슈의 상태 전이 이력을 한 번에 조회한다.
+     * 여러 이슈의 상태 전환 이력을 한 번에 조회한다.
      *
      * `(issueId, changedAt, groupId)` 오름차순으로 정렬해 반환한다 — 같은 시각에 여러 그룹이
      * 기록된 경우 groupId 로 tie-break 한다.
@@ -37,7 +37,7 @@ class StatusHistoryRepository(
      * [issueIds] 가 비어 있으면 jOOQ 빈 IN 절 실행 없이 즉시 빈 리스트를 반환한다.
      *
      * @param issueIds 조회할 이슈 UUID 집합.
-     * @return 상태 전이 이력 행 목록. 이력이 없으면 빈 리스트.
+     * @return 상태 전환 이력 행 목록. 이력이 없으면 빈 리스트.
      */
     @Transactional(readOnly = true)
     fun fetchStatusChanges(issueIds: Set<UUID>): List<StatusChangeRow> {
@@ -74,7 +74,7 @@ class StatusHistoryRepository(
     }
 
     private companion object {
-        /** status 전이만 대상으로 하는 `issue_change_item.field` 값. */
+        /** status 전환만 대상으로 하는 `issue_change_item.field` 값. */
         const val FIELD_STATUS = "status"
     }
 }

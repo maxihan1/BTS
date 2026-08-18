@@ -8,7 +8,7 @@ import java.util.UUID
  * 일괄 작업의 타입별 파라미터를 표현하는 sealed class.
  *
  * - [Edit]: BULK_EDIT 작업의 필드 변경 파라미터.
- * - [Transition]: BULK_TRANSITION 작업의 전이 대상 상태 키.
+ * - [Transition]: BULK_TRANSITION 작업의 전환 대상 상태 키.
  *
  * Repository 는 이 값을 JSONB 컬럼에 직렬화하여 저장하고, 조회 시 복원한다.
  * PR2 워커는 이 payload 를 읽어 실제 이슈 갱신을 수행한다.
@@ -30,11 +30,11 @@ sealed class BulkOperationPayload {
     /**
      * BULK_TRANSITION 작업 파라미터.
      *
-     * 일괄 전이 대상 전체에 동일한 resolutionId 를 적용한다.
-     * null 이면 각 이슈의 resolution_id 를 clear (비DONE 전이 시맨틱과 동일).
+     * 일괄 전환 대상 전체에 동일한 resolutionId 를 적용한다.
+     * null 이면 각 이슈의 resolution_id 를 clear (비DONE 전환 시맨틱과 동일).
      *
-     * @property toStateKey 전이할 대상 상태 키. 비어 있으면 안 된다.
-     * @property resolutionId DONE 상태로 전이할 때 지정하는 해결책 UUID.
+     * @property toStateKey 전환할 대상 상태 키. 비어 있으면 안 된다.
+     * @property resolutionId DONE 상태로 전환할 때 지정하는 해결책 UUID.
      *   null 이면 resolution_id clear. 전체 일괄에 동일하게 적용된다.
      */
     data class Transition(

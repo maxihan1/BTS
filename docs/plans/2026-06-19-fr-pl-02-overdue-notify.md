@@ -37,7 +37,7 @@
   2. `IssueRepository` — 열림(`resolution_id IS NULL AND deleted_at IS NULL`) + due_date 기준 범위 조회 메서드
   3. 신규 `@Scheduled` 워커 (BulkOperationCleanupWorker 패턴: cron + Clock 주입 + `@Transactional`) — 매일 스캔 → `IssueEventPublisher.publish()` (MANDATORY tx outbox)
   4. 백엔드 테스트 (단위 + Testcontainers 통합)
-- **종료 이슈 제외**. `Issue.resolutionId != null` = 해결됨(종료). BC 격리상 워크플로우 상태 직접조회 불가 → `resolution_id IS NULL`이 cross-BC-safe "열림" 신호 (glossary "DONE 전이 시 resolution 필수").
+- **종료 이슈 제외**. `Issue.resolutionId != null` = 해결됨(종료). BC 격리상 워크플로우 상태 직접조회 불가 → `resolution_id IS NULL`이 cross-BC-safe "열림" 신호 (glossary "DONE 전환 시 resolution 필수").
 - **재알림 멱등성**. `dedupKey = hash(eventType, issueKey, occurredAt, recipientUserId, channel)` (NotificationWorker L247). 스케줄러가 `occurredAt`을 **날짜 단위 정규화**하면 "하루 1회 재알림" (같은 날 재전달은 dedup), **고정**하면 "1회만". → 스펙 결정 사항.
 - **스펙에서 정할 핵심 product 결정**. (1) 임박 기준 LEAD_DAYS (며칠 전부터 due_soon) (2) 재알림 정책 (매일 vs 1회) (3) due_date만 vs target_date 포함 (4) cron 시각.
 - **새 용어**. "지연 알림(overdue)", "임박 알림(due_soon)" — glossary 추가 후보 (Maxi 승인 대기).

@@ -91,7 +91,7 @@ event_filter 허용값 10종 + 제안 한글 라벨:
 |---|---|---|
 | issue.created | 이슈 생성 | 이슈 |
 | issue.assigned | 담당자 지정 | 이슈 |
-| issue.transitioned | 상태 전이 | 이슈 |
+| issue.transitioned | 상태 전환 | 이슈 |
 | issue.commented | 댓글 작성 | 이슈 |
 | issue.due_soon | 마감 임박 | 이슈 |
 | issue.overdue | 마감 초과 | 이슈 |

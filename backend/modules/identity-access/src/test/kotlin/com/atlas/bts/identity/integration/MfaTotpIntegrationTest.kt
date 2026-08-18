@@ -223,7 +223,7 @@ class MfaTotpIntegrationTest {
             .isNotNull
             .isNotEqualTo(secret)
 
-        // ── S3. enable — 정답 코드 검증 후 ACTIVE 전이 ─────────────────────────
+        // ── S3. enable — 정답 코드 검증 후 ACTIVE 전환 ─────────────────────────
         val enableResp = mfaEnable(initialAccessToken, currentTotpCode(secret))
         assertThat(enableResp.statusCode)
             .withFailMessage("enable 은 204 이어야 합니다. 실제: ${enableResp.statusCode}, body=${enableResp.body}")

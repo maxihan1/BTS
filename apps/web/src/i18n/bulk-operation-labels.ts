@@ -14,7 +14,7 @@ type FailureReasonCode = z.infer<typeof failureReasonCodeSchema>
 export const failureReasonLabels: Record<FailureReasonCode, string> = {
   NOT_FOUND: '이슈를 찾을 수 없음',
   FORBIDDEN: '권한 없음',
-  TRANSITION_NOT_ALLOWED: '허용되지 않는 전이',
+  TRANSITION_NOT_ALLOWED: '허용되지 않는 전환',
   VERSION_CONFLICT: '다른 요청이 먼저 수정함',
   WORKFLOW_NOT_CONFIGURED: '워크플로우 미구성',
   TYPE_NOT_FOUND: '이슈 유형 없음',
@@ -40,7 +40,7 @@ export const statusLabels: Record<BulkOperationResponse['status'], string> = {
  * `resolution-labels.ts` 가 소유한다.
  */
 export const bulkOperationLabels = {
-  /** 전이 상태 Select 미선택 placeholder (`issues/BulkTransitionDialog.tsx`) */
+  /** 전환 상태 Select 미선택 placeholder (`issues/BulkTransitionDialog.tsx`) */
   statusSelectPlaceholder: '상태를 선택하세요',
 } as const
 

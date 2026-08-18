@@ -48,7 +48,7 @@ port interface 를 통해 메서드 시그니처는 격리했으나, exception �
 ### TransitionResult sealed interface
 
 ```kotlin
-// 워크플로우 전이 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
+// 워크플로우 전환 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
 sealed interface TransitionResult {
     data class Success(val plan: TransitionPlan) : TransitionResult
     data class ValidatorFailure(val message: String) : TransitionResult

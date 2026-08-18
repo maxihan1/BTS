@@ -1,4 +1,4 @@
-// 워크플로우 전이 post-action CRUD API 클라이언트 — Zod 스키마 + fetch 함수 + 에러 클래스
+// 워크플로우 전환 post-action CRUD API 클라이언트 — Zod 스키마 + fetch 함수 + 에러 클래스
 import { z } from 'zod'
 import { apiFetch } from './client'
 import { dataOf } from './workflow-schemes.types'
@@ -105,7 +105,7 @@ function basePath(workflowKey: string, transitionKey: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 전이의 post-action 목록을 조회한다.
+ * 전환의 post-action 목록을 조회한다.
  * GET /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions
  * → 200 → { data: PostActionResponse[] }
  *
@@ -126,7 +126,7 @@ export async function listPostActions(
 }
 
 /**
- * 전이에 post-action을 생성한다.
+ * 전환에 post-action을 생성한다.
  * POST /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions
  * → 201 → { data: PostActionResponse }
  *

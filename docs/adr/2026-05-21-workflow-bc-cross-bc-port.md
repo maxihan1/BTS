@@ -20,8 +20,8 @@ project-workflow BC는 세 타 BC와 상호작용해야 한다.
 | 상호작용 | 방향 | 목적 |
 |---|---|---|
 | identity-access | project-workflow → identity-access | PermissionValidator 평가 시 권한 시스템 조회 |
-| issue-tracking | issue-tracking → project-workflow | 이슈 상태 변경 시 워크플로우 전이 실행 |
-| automation | automation → project-workflow | 자동화 룰이 워크플로우 전이를 트리거 |
+| issue-tracking | issue-tracking → project-workflow | 이슈 상태 변경 시 워크플로우 전환 실행 |
+| automation | automation → project-workflow | 자동화 룰이 워크플로우 전환을 트리거 |
 
 이 상호작용을 "BC 격리 룰" 안에서 어떻게 구현할 것인가가 이 ADR의 핵심 결정 사항이다.
 
@@ -37,8 +37,8 @@ project-workflow BC는 세 타 BC와 상호작용해야 한다.
 
 WorkflowEngine이 이슈 상태를 직접 영속화(저장)하면 이슈 소유권이 issue-tracking BC에 있으면서 project-workflow BC도 이슈 DB를 건드리는 BC 경계 침범이 발생한다.
 
-- **execute()**: 전이 계산 + 이슈 영속화까지 전부 project-workflow가 담당. BC 소유권 위반.
-- **plan()**: 전이 계산만 수행, `TransitionPlan` (toState + fieldChanges + emitEvents) 반환. 이슈 영속화와 이벤트 발행은 호출자(issue-tracking) 책임. BC 소유권 보존.
+- **execute()**: 전환 계산 + 이슈 영속화까지 전부 project-workflow가 담당. BC 소유권 위반.
+- **plan()**: 전환 계산만 수행, `TransitionPlan` (toState + fieldChanges + emitEvents) 반환. 이슈 영속화와 이벤트 발행은 호출자(issue-tracking) 책임. BC 소유권 보존.
 
 ## 결정
 

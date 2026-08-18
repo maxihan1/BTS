@@ -77,14 +77,14 @@ split view(목록+상세 2분할)도 이 PR과 함께 검토 (PR18에서 의도�
 **REFACTOR**: 각 파일 L1 한글 주석, 공유 헬퍼(`isFieldHidden`/`isFieldDisabled`) 노출 경로 정리.
 **검증**: 기존 `IssueMetaPanel.test.tsx`·`__tests__/IssueMetaPanel.test.tsx`·`.fieldperm.test.tsx` **green 유지**(회귀 가드) + 신규 meta 테스트 green. `node_modules/.bin/vitest run IssueMetaPanel meta/`
 
-### Task 3. IssueMetaPanel 분해 B — 담당자·전이 추출 + 조합 확정
+### Task 3. IssueMetaPanel 분해 B — 담당자·전환 추출 + 조합 확정
 
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/meta/IssueAssigneeSelect.tsx`, `apps/web/src/components/issue/meta/AssigneeUserList.tsx`, `apps/web/src/components/issue/meta/IssueStateTransition.tsx`, `apps/web/src/components/issue/meta/__tests__/*.test.tsx`]
 - depends-on: [2]   # 같은 IssueMetaPanel.tsx 편집 → 직렬
 
-**RED**: `IssueAssigneeSelect`(검색·선택·해제)·`AssigneeUserList`·`IssueStateTransition`(전이 select·disabled·unavailableReason terminal/no-workflow) 신규 단위테스트. 실패(파일 없음).
+**RED**: `IssueAssigneeSelect`(검색·선택·해제)·`AssigneeUserList`·`IssueStateTransition`(전환 select·disabled·unavailableReason terminal/no-workflow) 신규 단위테스트. 실패(파일 없음).
 **GREEN**: 인라인 정의(`IssueAssigneeSelect`784·`AssigneeUserList`880·`IssueStateTransition`920) `meta/` 이동·`export`, `IssueMetaPanel`에서 import. 남은 main 파일=순수 조합 + 헬퍼.
 **REFACTOR**: L1 주석. `IssueMetaPanel.tsx` 라인수 유의미 감소 확인(1204 → ~700 목표, −500 LOC급).
 **검증**: 기존 3 테스트파일 green 유지 + 신규 green. `node_modules/.bin/vitest run IssueMetaPanel meta/` + `IssueMetaPanel.tsx` wc -l 대조.

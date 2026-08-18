@@ -1,4 +1,4 @@
-// Notification 도메인 단위 테스트 — 불변 필드, NotificationStatus, dedupKey 결정성, 상태 전이(read/archive) 검증
+// Notification 도메인 단위 테스트 — 불변 필드, NotificationStatus, dedupKey 결정성, 상태 전환(read/archive) 검증
 
 package com.bts.notification.domain
 
@@ -98,9 +98,9 @@ class NotificationTest : DescribeSpec({
     }
 
     // -----------------------------------------------------------------------
-    // 상태 전이 — markRead / markUnread / archive / unarchive
+    // 상태 전환 — markRead / markUnread / archive / unarchive
     // -----------------------------------------------------------------------
-    describe("상태 전이 — 기본 필드 기본값") {
+    describe("상태 전환 — 기본 필드 기본값") {
         it("기본 생성 시 archivedAt 은 null 이다") {
             val n = buildNotification()
             n.archivedAt shouldBe null

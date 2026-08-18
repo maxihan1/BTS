@@ -19,7 +19,7 @@
 - `POST /api/v1/issues` - 생성
 - `PATCH /api/v1/issues/{key}` - 부분 수정
 - `DELETE /api/v1/issues/{key}` - 소프트 삭제
-- `POST /api/v1/issues/{key}/transitions` - 상태 전이
+- `POST /api/v1/issues/{key}/transitions` - 상태 전환
 - `POST /api/v1/issues/{key}/comments` - 댓글
 - `POST /api/v1/issues/{key}/worklog` - Worklog
 - `GET /api/v1/issues/{key}/history` - 이력

@@ -5,7 +5,7 @@
 
 ## 배경
 
-PR21이 칸반 보드의 **같은 셀(컬럼 × 스윔레인 그룹) 내 순서변경(rank)** 과 **컬럼 간 상태전이**를
+PR21이 칸반 보드의 **같은 셀(컬럼 × 스윔레인 그룹) 내 순서변경(rank)** 과 **컬럼 간 상태전환**를
 `@dnd-kit`로 구현했다. 현재 `board-drop.ts`의 `resolveSameColumnDrop`은 카드를 **다른 스윔레인
 그룹(줄)** 으로 드롭하면 `noop`(드롭 불가)으로 처리한다. PR21b는 이 noop을 **필드변경**으로 확장해
 완전한 Jira 스윔레인 드래그를 완성한다.
@@ -59,7 +59,7 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
 ## 비기능 요구사항 (NFR)
 
 - **NFR-1** issue-tracking·agile-planning 백엔드 변경 0(모든 API·필드 실재). 마이그레이션 0.
-- **NFR-2** PR21 순서변경/상태전이 회귀 0(같은 그룹 드롭·컬럼 간 이동 불변).
+- **NFR-2** PR21 순서변경/상태전환 회귀 0(같은 그룹 드롭·컬럼 간 이동 불변).
 - **NFR-3** OCC(낙관적 잠금) — 담당자/우선순위는 board 카드 `version`을 expectedVersion으로 전송. 409 시 롤백.
 - **NFR-4** 접근성 — 드래그 announcements 유지, 드롭 가능 커서 표시.
 
@@ -101,7 +101,7 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
 - E2E: S1~S8 시나리오 재현(ASSIGNEE·PRIORITY·EPIC 각 1 이상 + 롤백 1).
 - 단위: `resolveSameColumnDrop` 필드변경 분기·대표 카드 값 읽기·2-step 에픽·same-value noop.
 - typecheck 0 · eslint 0 error · vitest green · build 0 · verify-master-plan 129/129.
-- PR21 회귀 0(순서변경·상태전이 E2E 유지).
+- PR21 회귀 0(순서변경·상태전환 E2E 유지).
 
 ## 결정 포인트 (게이트 1 — Maxi 확정 2026-07-25)
 

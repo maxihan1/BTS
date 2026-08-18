@@ -1,4 +1,4 @@
-# FR-NT-05 — Webhook 알림 채널 (PR 1: 전이 이벤트 pgmq 발행 파이프라인)
+# FR-NT-05 — Webhook 알림 채널 (PR 1: 전환 이벤트 pgmq 발행 파이프라인)
 
 > slug: fr-nt-05-transition-event-publish
 > type: backend
@@ -11,10 +11,10 @@
 **신규 FR — FR-NT-05 Webhook 알림 채널** (FR-NT-02에서 분리, ADR `2026-06-12-notification-inapp-channel-delivery.md` Amendment 2026-06-14, Maxi 확정).
 
 FR-NT-05 전체는 cross-BC라 PR 2개로 분할.
-- **PR 1 (이번 작업)**: project-workflow BC — 워크플로우 전이 post-action(`CallWebhookPostAction` 등)이 발행하는 이벤트(`WebhookRequested`)를 실제 pgmq 큐에 발행하는 전이 emitEvents 파이프라인.
+- **PR 1 (이번 작업)**: project-workflow BC — 워크플로우 전환 post-action(`CallWebhookPostAction` 등)이 발행하는 이벤트(`WebhookRequested`)를 실제 pgmq 큐에 발행하는 전환 emitEvents 파이프라인.
 - **PR 2 (후속 /bts)**: notification BC — `WebhookRequested` 소비 + 외부 URL HTTP POST 디스패처.
 
-**현황(코드 실측)**: `WebhookRequested` 이벤트는 현재 전이 API 응답 `TransitionResponseDto.events`에만 존재하고 **어느 pgmq 큐에도 발행되지 않음**. 이번 PR이 그 발행 파이프라인을 만든다.
+**현황(코드 실측)**: `WebhookRequested` 이벤트는 현재 전환 API 응답 `TransitionResponseDto.events`에만 존재하고 **어느 pgmq 큐에도 발행되지 않음**. 이번 PR이 그 발행 파이프라인을 만든다.
 
 **Maxi 게이트 결정(2026-06-14)**:
 - FR ID = **FR-NT-05** (알림 FR-NT 그룹, fr-index BC 컬럼=notification). FR 총수 122→123.
@@ -29,10 +29,10 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 - **핵심 발견(코드 실측)**:
   - `WorkflowPostAction` SPI는 **계산만**(GAP-2): `evaluate(ctx) → PostActionPlan(fieldChanges, emitEvents)`. 실행(필드 적용 + 이벤트 발행)은 **호출자 BC 책임**.
   - `CallWebhookPostAction.evaluate()`가 `DomainEvent("WebhookRequested", {issueKey, url, method})`를 `emitEvents`에 담아 반환. `WorkflowEngine.runPostActions()`가 누적 → `TransitionPlan.emitEvents`.
-  - **실제 전이 실행 경로** = `IssueApplicationService.transitionIssue()` (issue-tracking). `workflowPort.plan()`으로 `TransitionPlan`을 받아 `plan.toStateKey`만 사용하고 **`plan.emitEvents`(+post-action fieldChanges)를 그대로 버림**. → WebhookRequested가 어느 큐에도 발행 안 되는 근본 원인.
+  - **실제 전환 실행 경로** = `IssueApplicationService.transitionIssue()` (issue-tracking). `workflowPort.plan()`으로 `TransitionPlan`을 받아 `plan.toStateKey`만 사용하고 **`plan.emitEvents`(+post-action fieldChanges)를 그대로 버림**. → WebhookRequested가 어느 큐에도 발행 안 되는 근본 원인.
   - project-workflow `POST /workflows/{key}/transitions`(`WorkflowController.plan`)는 **dry-run 미리보기 전용** — 상태 변경 없이 `TransitionResponseDto.events`로 노출만. `WorkflowEngine.plan()`은 `Propagation.MANDATORY`로 미리보기·실행 양쪽에서 호출되므로 거기서 발행하면 미리보기에서도 webhook 발사(오발사 버그).
 - **결정(Maxi 확정 2026-06-14)**: 발행 파이프라인은 **issue-tracking `transitionIssue()`**가 소유. `repo.applyTransition()` 성공(updatedRows≠0) 직후, 같은 클래스-레벨 `@Transactional`(REQUIRED) 안에서 `plan.emitEvents`를 pgmq에 발행(transaction outbox 정합, DATA.md §7.2). 기존 `IssueEventPublisher`/`q_issue_events` 패턴 재사용 후보(큐 선택은 spec에서 확정).
-- **기존 결정 충돌(정정됨)**: ADR `2026-06-12-notification-inapp-channel-delivery.md` Amendment의 "① project-workflow BC에 전이 emitEvents 발행 파이프라인" 표현이 GAP-2 아키텍처와 충돌 → FR-NT-05 ADR에서 issue-tracking으로 정정.
+- **기존 결정 충돌(정정됨)**: ADR `2026-06-12-notification-inapp-channel-delivery.md` Amendment의 "① project-workflow BC에 전환 emitEvents 발행 파이프라인" 표현이 GAP-2 아키텍처와 충돌 → FR-NT-05 ADR에서 issue-tracking으로 정정.
 - **새 용어**: 없음 (WebhookRequested·PostActionPlan·emitEvents·transaction outbox 모두 기존). glossary 변경 없음.
 - **관련 ADR**: [docs/decisions/2026-06-14-fr-nt-05-transition-event-outbox.md](../decisions/2026-06-14-fr-nt-05-transition-event-outbox.md) (생성) · [2026-06-12-notification-inapp-channel-delivery.md](../decisions/2026-06-12-notification-inapp-channel-delivery.md) (정정 노트 추가)
 - **PR 2(후속)**: notification BC가 발행된 WebhookRequested를 소비 + 외부 URL HTTP POST 디스패처.
@@ -44,7 +44,7 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 핵심 요약.
 - `transitionIssue()`가 `applyTransition` 성공 직후 같은 트랜잭션에서 `plan.emitEvents` **전부**를 신규 큐 `q_transition_events`에 발행(generic outbox). 현재는 버려짐.
 - 신규 `TransitionEventPublisher`(@Component, MANDATORY) — `IssueEventPublisher` 1:1 미러. Flyway V022로 `q_transition_events` 큐 생성 + init_codegen 미러.
-- bulk 전이는 `transitionIssue()` 경유라 자동 커버. dry-run·롤백은 미발행. post-action 미설정 시 no-op(현 default).
+- bulk 전환은 `transitionIssue()` 경유라 자동 커버. dry-run·롤백은 미발행. post-action 미설정 시 no-op(현 default).
 - 신규 FR → fr-index/SDD/product/README/CLAUDE 전수 동기화(FR-NT 4→5, 122→123) + verify-master-plan 통과.
 
 **Maxi 확인 포인트(게이트 1)**:
@@ -91,8 +91,8 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 - depends-on: [1]
 
 **RED**:
-- 통합: `TransitionEmitEventsPublishIntegrationTest` (참조 `IssueTransitionValidatorEndToEndIntegrationTest` 시드 패턴 + pg16-pgmq). 전이에 CallWebhook post-action을 시드(`workflow_post_actions` INSERT) → `transitionIssue` 실행 → `q_transition_events`에서 `WebhookRequested` 1건 read. 추가: 버전 충돌 롤백 → 큐 0건, dry-run(`POST /workflows/{key}/transitions`만) → 0건, post-action 미설정 → 0건(+IssueTransitioned는 q_issue_events 정상). 실패: emitEvents가 버려져 큐 0건.
-- 단위: `IssueApplicationServiceTransitionTest`에 mock `TransitionEventPublisher` 주입 → emitEvents 보유 plan 전이 시 `publish` 호출 검증, emitEvents 빈 plan은 미호출. 실패: 미배선.
+- 통합: `TransitionEmitEventsPublishIntegrationTest` (참조 `IssueTransitionValidatorEndToEndIntegrationTest` 시드 패턴 + pg16-pgmq). 전환에 CallWebhook post-action을 시드(`workflow_post_actions` INSERT) → `transitionIssue` 실행 → `q_transition_events`에서 `WebhookRequested` 1건 read. 추가: 버전 충돌 롤백 → 큐 0건, dry-run(`POST /workflows/{key}/transitions`만) → 0건, post-action 미설정 → 0건(+IssueTransitioned는 q_issue_events 정상). 실패: emitEvents가 버려져 큐 0건.
+- 단위: `IssueApplicationServiceTransitionTest`에 mock `TransitionEventPublisher` 주입 → emitEvents 보유 plan 전환 시 `publish` 호출 검증, emitEvents 빈 plan은 미호출. 실패: 미배선.
 
 **GREEN**:
 - 생성자에 **trailing nullable 기본값** `transitionEventPublisher: TransitionEventPublisher? = null` 추가(securityDirectory/issueTemplateRepository 패턴 동형 — **33개 기존 생성 지점 변경 0**, 메모리 plan-files-constructor-injection-existing-tests 회피).
@@ -119,7 +119,7 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 
 **GREEN** (전수 동기화):
 - fr-index: 알림 §헤더 `(FR-NT, 4개)`→`5개`, FR-NT-05 행 추가, 합계 122→123, §A.2 notification 카운트 +1, 상단 주석 `122개`→`123개`, **FR-NT-02 행 "채널 (이메일/인앱/Webhook…)"의 stale Webhook 표기 정정**(인앱/이메일만, Webhook=FR-NT-05).
-- SDD: `02-requirements.md` FR 표에 FR-NT-05 행 + notification 챕터(§9)에 FR-NT-05 절(전이 post-action 이벤트 발행→Webhook 디스패처, PR1/PR2 분할 명시).
+- SDD: `02-requirements.md` FR 표에 FR-NT-05 행 + notification 챕터(§9)에 FR-NT-05 절(전환 post-action 이벤트 발행→Webhook 디스패처, PR1/PR2 분할 명시).
 - product `notification-dashboard.md`: FR-NT-05 § 추가(소속 FR 카운트·§헤더 `(FR-XX,N개)` 갱신, D단계 — PR1=발행 issue-tracking, PR2=디스패처 notification, 부분완료 마킹).
 - README §1 BC 테이블 합계(122→123, notification 행).
 - CLAUDE.md: `122 FR`/`122개` 표기 → 123.
@@ -145,8 +145,8 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 - **Step 0 스코프**: 기존 흐름(`plan.emitEvents` 계산 + `IssueEventPublisher`/outbox 패턴) 재사용 — 병렬 구축 아님. 신규 클래스 1개(`TransitionEventPublisher`), 코드 ~4파일 + docs. 복잡도 smell 없음(<8파일, <2 신규 클래스). 스코프 축소 불요.
 - **아키텍처 ✅**: 발행 BC 배치(issue-tracking)가 shared-kernel `TransitionPlan` KDoc 계약("호출자 BC가 emitEvents를 outbox에 INSERT")과 일치. outbox = boring/proven(Layer 1). blast radius 작음(휴면 인프라 + nullable no-op + 전용 큐 격리).
 - **C1 (P3, DRY)**: `TransitionEventPublisher`가 `IssueEventPublisher`·`WorkflowSchemeEventPublisher`와 거의 동일 → pgmq publisher 3번째 사본. 공유 베이스(`PgmqEventPublisher(queueName)`) 추출 후보. **이번 PR은 일관 복제**(기존 2사본 패턴 따름), 추출은 후속 TODO(범위 밖).
-- **C2 (수용)**: webhook 이벤트 enqueue 실패 → 전이 트랜잭션 롤백(outbox 결합). 기존 `IssueTransitioned` 발행과 **동일 속성**이라 신규 리스크 아님. DATA.md §7.2 정합 우선.
-- **C3 (P3, 테스트)**: bulk 전이 통합 커버리지 — `BulkItemApplier`가 `transitionIssue()` 경유라 단건 통합테스트가 메커니즘 증명. bulk 전용 assertion은 선택적(동일 코드패스).
+- **C2 (수용)**: webhook 이벤트 enqueue 실패 → 전환 트랜잭션 롤백(outbox 결합). 기존 `IssueTransitioned` 발행과 **동일 속성**이라 신규 리스크 아님. DATA.md §7.2 정합 우선.
+- **C3 (P3, 테스트)**: bulk 전환 통합 커버리지 — `BulkItemApplier`가 `transitionIssue()` 경유라 단건 통합테스트가 메커니즘 증명. bulk 전용 assertion은 선택적(동일 코드패스).
 - **C4 (수용)**: nullable 기본값 fail-safe 리스크는 통합테스트(실 Spring 배선 발행 검증)가 가드 → 배선 회귀 시 CI fail.
 
 **테스트 커버리지**: 발행(happy)/롤백(0)/dry-run(0)/post-action 미설정 회귀(0)/단위(MANDATORY). 회귀 가드 포함. GAP 0(C3 bulk만 선택적 P3).

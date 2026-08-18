@@ -80,9 +80,9 @@ import java.util.UUID
  * FR-RP-03 Task 6 — GET /api/v1/projects/{projectKey}/cfd 실 스택 통합 테스트.
  *
  * 실제 Testcontainers PostgreSQL + 실 컨트롤러→서비스→리포지토리(jOOQ) 경로로 조회한다.
- * status 전이 이력은 [IssueHistoryRecorder] 등 실 전이 서비스를 거치지 않고
+ * status 전환 이력은 [IssueHistoryRecorder] 등 실 전환 서비스를 거치지 않고
  * `issue_change_group`/`issue_change_item` 에 **직접 jOOQ insert** 하되 `created_at` 을 명시적
- * 과거 [OffsetDateTime] 으로 지정한다(CONCERN-2). 실 전이 서비스를 쓰면 `created_at=NOW()` 로
+ * 과거 [OffsetDateTime] 으로 지정한다(CONCERN-2). 실 전환 서비스를 쓰면 `created_at=NOW()` 로
  * 박혀 30일 과거 CFD 를 시드할 수 없기 때문이다.
  *
  * ## 결정성 — 명시 from/to
@@ -97,14 +97,14 @@ import java.util.UUID
  *   [WorkflowStateCatalogImpl] 이 빈 리스트 반환, 예외 없음). S6 전용.
  *
  * ## 검증 시나리오
- * - S1. 이력 있는 프로젝트 — 여러 이슈 + status 전이 이력 시드, 날짜별 밴드 이동 검증.
+ * - S1. 이력 있는 프로젝트 — 여러 이슈 + status 전환 이력 시드, 날짜별 밴드 이동 검증.
  * - S2. 빈 프로젝트(이슈 0) — 창 길이만큼 0점.
  * - S3. 기밀 이슈 제외 — unrestricted/restricted 뷰어 대조로 비-vacuous 검증.
  * - S4. BROWSE 권한 없음 → 403.
  * - S5. 미인증 → 401.
  * - S6. 워크플로우 스킴 미할당 → 200, TODO 폴백.
  * - S7. 잘못된 창(파싱 불가/from>to/180일 초과) → 400.
- * - S8. 전이 이력 없음 — currentStateKey 카테고리로 전 기간 집계.
+ * - S8. 전환 이력 없음 — currentStateKey 카테고리로 전 기간 집계.
  * - S9. 소프트 삭제 이슈 — 삭제 전후 대조로 비-vacuous 검증.
  */
 @ExtendWith(SpringExtension::class)
@@ -419,11 +419,11 @@ class CfdIntegrationTest {
     // ── S1. 이력 있는 프로젝트 — 밴드 이동 검증 ──────────────────────────────
 
     /**
-     * S1. 이슈 3건(A/B/C) + status 전이 이력으로 날짜별 밴드 이동을 검증한다.
+     * S1. 이슈 3건(A/B/C) + status 전환 이력으로 날짜별 밴드 이동을 검증한다.
      *
-     * Given  A(06-01 생성, 06-03 open→in_progress 전이)
-     *          B(06-01 생성, 06-02 open→in_progress, 06-04 in_progress→done 전이)
-     *          C(06-03 생성, 전이 없음, open)
+     * Given  A(06-01 생성, 06-03 open→in_progress 전환)
+     *          B(06-01 생성, 06-02 open→in_progress, 06-04 in_progress→done 전환)
+     *          C(06-03 생성, 전환 없음, open)
      * When   GET /api/v1/projects/CFDP/cfd?from=2026-06-01&to=2026-06-05
      * Then   200, 날짜별 todo/inProgress/done 이 정확히 밴드 이동(폭 변화)을 반영한다.
      *          06-01: todo=2,       06-02: todo=1,inProgress=1,
@@ -646,17 +646,17 @@ class CfdIntegrationTest {
         ).andExpect(status().isBadRequest)
     }
 
-    // ── S8. 전이 이력 없음 — currentStateKey 로 전 기간 집계 ────────────────
+    // ── S8. 전환 이력 없음 — currentStateKey 로 전 기간 집계 ────────────────
 
     /**
-     * S8. 전이 이력이 없는 이슈는 존재 기간 내내 currentStateKey 카테고리로 집계된다.
+     * S8. 전환 이력이 없는 이슈는 존재 기간 내내 currentStateKey 카테고리로 집계된다.
      *
-     * Given  06-01 생성, currentStateKey="done", 전이 이력 없음
+     * Given  06-01 생성, currentStateKey="done", 전환 이력 없음
      * When   GET /api/v1/projects/CFDP/cfd?from=2026-06-01&to=2026-06-03
-     * Then   200, 3일 모두 doneCount=1, todoCount=0 (전이 이력이 없어도 창 전체에서 일관)
+     * Then   200, 3일 모두 doneCount=1, todoCount=0 (전환 이력이 없어도 창 전체에서 일관)
      */
     @Test
-    fun `S8 전이 이력 없음 - currentStateKey 카테고리로 전 기간 집계`() {
+    fun `S8 전환 이력 없음 - currentStateKey 카테고리로 전 기간 집계`() {
         val created = OffsetDateTime.of(2026, 6, 1, 1, 0, 0, 0, ZoneOffset.UTC)
         createIssue(testProjectId, PROJECT_KEY, "이력 없는 이슈", DONE_KEY, taskTypeId, created)
 
@@ -719,7 +719,7 @@ class CfdIntegrationTest {
      * @param projectId 소속 프로젝트 UUID.
      * @param projectKeyPrefix 이슈 키 prefix(예: "CFDP").
      * @param summary 이슈 제목.
-     * @param stateKey 현재 워크플로우 상태 키(전이 이력이 있으면 초기 상태 계산에는 쓰이지 않는다).
+     * @param stateKey 현재 워크플로우 상태 키(전환 이력이 있으면 초기 상태 계산에는 쓰이지 않는다).
      * @param typeId 이슈 타입 BIGSERIAL id.
      * @param createdAt 이슈 생성 시각(명시 과거 시각 — CFD 밴드 이동 시드 필수).
      * @param securityLevelId 보안 등급 UUID. null 이면 공개(등급 없음).
@@ -776,14 +776,14 @@ class CfdIntegrationTest {
     }
 
     /**
-     * status 전이 이력 1건(`issue_change_group` 1행 + `issue_change_item` 1행, field="status")
-     * 을 명시적 과거 시각으로 직접 시드한다(CONCERN-2 — 실 전이 서비스는 `created_at=NOW()` 강제).
+     * status 전환 이력 1건(`issue_change_group` 1행 + `issue_change_item` 1행, field="status")
+     * 을 명시적 과거 시각으로 직접 시드한다(CONCERN-2 — 실 전환 서비스는 `created_at=NOW()` 강제).
      *
      * @param issueId 소속 이슈 UUID.
      * @param issueKey 기록 시점 이슈 키.
-     * @param changedAt 전이 발생 시각(명시 과거 시각).
-     * @param fromValue 전이 전 상태 키.
-     * @param toValue 전이 후 상태 키.
+     * @param changedAt 전환 발생 시각(명시 과거 시각).
+     * @param fromValue 전환 전 상태 키.
+     * @param toValue 전환 후 상태 키.
      */
     private fun seedStatusChange(
         issueId: UUID,

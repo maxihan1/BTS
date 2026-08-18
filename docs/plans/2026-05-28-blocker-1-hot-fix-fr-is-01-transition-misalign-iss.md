@@ -56,7 +56,7 @@ PR #27 (FR-IS-01 transition wiring) 머지 직전 `/review` adversarial subagent
 
 ### ubiquitous language 영향
 
-- 현재 glossary `전이 (Transition. 상태 → 상태로 가는 액션)` 정의는 identity 명시 안 함.
+- 현재 glossary `전환 (Transition. 상태 → 상태로 가는 액션)` 정의는 identity 명시 안 함.
 - 옵션 b 채택 시 "transition key" / "transition label" 분리 후보 (key = 라우팅 식별자, label = 사람 친화 표시).
 - 옵션 a 채택 시 "transition name" 이 1급 시민, glossary 갱신 가능.
 
@@ -240,7 +240,7 @@ PR #27 (FR-IS-01 transition wiring) 머지 직전 `/review` adversarial subagent
 **RED 변형**. 본 task 는 우회 seed 제거 단계라 정통 RED commit 분리 불가능 — PR #12, #16, #19 패턴 적용. commit message 에 변형 사유 명시 + plan §Plan 변형 단락 inline (verifier prompt 첨부 대상).
 
 - 변형 본질. PR #27 머지 시점의 통합 테스트가 `transitionName=toStateKey` 우회 seed 로 production 함정을 가렸음 — 본 task 가 그 우회 제거. 우회 제거 후 시드를 표준 `software-default.yaml` 로 정렬하면, Task 1~4 의 GREEN 이 이미 적용된 상태에서는 PASS 가 정상.
-- 회귀 가드. 같은 (from, to) 전이가 정상 매칭되는 시나리오 (S1) + 정의 안 된 (from, to) 가 409 (S3) + version conflict 409 (S4) 추가.
+- 회귀 가드. 같은 (from, to) 전환이 정상 매칭되는 시나리오 (S1) + 정의 안 된 (from, to) 가 409 (S3) + version conflict 409 (S4) 추가.
 
 **GREEN**.
 - `IssueControllerTransitionIntegrationTest.kt` 의 setup 단계에서 hand-crafted `transitionName=toStateKey` 우회 yaml 제거.

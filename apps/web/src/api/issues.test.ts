@@ -398,10 +398,10 @@ describe('deleteIssue', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T1-7. issueTransitionSchema — 전이 항목 Zod 스키마 파싱
+// T1-7. issueTransitionSchema — 전환 항목 Zod 스키마 파싱
 // ─────────────────────────────────────────────────────────────────────────────
 describe('issueTransitionSchema', () => {
-  it('T1-7a: 4개 string 필드가 모두 있는 전이 항목을 파싱한다', () => {
+  it('T1-7a: 4개 string 필드가 모두 있는 전환 항목을 파싱한다', () => {
     const raw = { fromStateKey: 'open', toStateKey: 'in_progress', name: '작업 시작', key: 'open__in_progress' }
     const result = issueTransitionSchema.parse(raw)
     expect(result.fromStateKey).toBe('open')
@@ -439,7 +439,7 @@ describe('fetchIssueTransitions', () => {
     )
   })
 
-  it('T1-8a: 존재하는 이슈 key로 전이 목록을 조회해 배열로 반환한다', async () => {
+  it('T1-8a: 존재하는 이슈 key로 전환 목록을 조회해 배열로 반환한다', async () => {
     const result = await fetchIssueTransitions('ATLAS-1')
     expect(result).toHaveLength(2)
     expect(result[0]?.fromStateKey).toBe('open')
@@ -452,7 +452,7 @@ describe('fetchIssueTransitions', () => {
     await expect(fetchIssueTransitions('NOT-EXISTS')).rejects.toThrow()
   })
 
-  it('T1-8c: 전이가 없는 이슈의 경우 빈 배열을 반환한다', async () => {
+  it('T1-8c: 전환이 없는 이슈의 경우 빈 배열을 반환한다', async () => {
     server.use(
       http.get('/api/v1/issues/:key/transitions', () =>
         HttpResponse.json({ data: { transitions: [] } }),
@@ -485,13 +485,13 @@ describe('transitionIssue', () => {
     )
   })
 
-  it('T1-9a: 정상 전이 요청 시 변경된 상태키와 증가된 version을 가진 IssueResponse를 반환한다', async () => {
+  it('T1-9a: 정상 전환 요청 시 변경된 상태키와 증가된 version을 가진 IssueResponse를 반환한다', async () => {
     const result = await transitionIssue('ATLAS-1', { toStatusKey: 'in_progress', expectedVersion: 1 })
     expect(result.currentStateKey).toBe('in_progress')
     expect(result.version).toBe(2)
   })
 
-  it('T1-9b: 없는 key로 전이 시 ApiError(404)를 throw한다', async () => {
+  it('T1-9b: 없는 key로 전환 시 ApiError(404)를 throw한다', async () => {
     await expect(
       transitionIssue('NOT-EXISTS', { toStatusKey: 'in_progress', expectedVersion: 1 }),
     ).rejects.toThrow()

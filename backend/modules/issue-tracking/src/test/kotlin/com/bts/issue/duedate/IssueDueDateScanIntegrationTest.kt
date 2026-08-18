@@ -335,7 +335,7 @@ class IssueDueDateScanIntegrationTest {
 
     /**
      * resolution_id 를 임의 UUID 로 설정해 이슈를 "종료" 상태로 만든다.
-     * 시드 전용 헬퍼 — 도메인 전이를 거치지 않는다.
+     * 시드 전용 헬퍼 — 도메인 전환을 거치지 않는다.
      */
     private fun setResolution(issueKey: String) {
         conn().use { c ->

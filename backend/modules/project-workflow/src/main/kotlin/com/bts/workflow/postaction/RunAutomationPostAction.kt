@@ -10,11 +10,11 @@ import com.bts.workflow.domain.spi.WorkflowPostAction
 /**
  * 자동화 트리거 PostAction 구현체.
  *
- * 전이(Transition) 완료 시 automation BC 가 구독하는 [DomainEvent]("AutomationRequested") 를
+ * 전환(Transition) 완료 시 automation BC 가 구독하는 [DomainEvent]("AutomationRequested") 를
  * 발행 예약한다. 이벤트 실제 발행(pgmq outbox INSERT)은 이 plan 을 수신한 호출자 BC 가 수행한다.
  *
  * ## payload 구성
- * - `issueKey` — 전이 대상 이슈 키 (ctx.request.issueKey)
+ * - `issueKey` — 전환 대상 이슈 키 (ctx.request.issueKey)
  * - `automationKey` — 실행할 자동화 규칙 식별자 (생성자 파라미터)
  *
  * ## 제약
@@ -38,7 +38,7 @@ class RunAutomationPostAction(
      *
      * 필드 변경은 없으므로 [PostActionPlan.fieldChanges] 는 빈 리스트다.
      *
-     * @param ctx 전이 실행 시점의 읽기 전용 컨텍스트.
+     * @param ctx 전환 실행 시점의 읽기 전용 컨텍스트.
      * @return fieldChanges 빈 리스트 + emitEvents 1건 (type="AutomationRequested", payload=issueKey+automationKey).
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {

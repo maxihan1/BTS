@@ -45,8 +45,8 @@ import java.util.UUID
  * - 가시 이슈 0개 → 창 전체 0점, fetchStatusChanges/listStates 미호출(빈 IN 방어)
  * - 같은 타입 이슈 여러 개라도 listStates 는 타입당 1회(N+1 차단)
  * - WorkflowSchemeNoDefaultException → 해당 타입 TODO 폴백, 예외 전파 없음(500 차단)
- * - 초기 상태 역산 — 전이 없으면 currentStateKey, 있으면 첫 전이 fromValue
- * - 같은 날 다중 전이 → end-of-day(마지막 toValue) 카테고리만 반영
+ * - 초기 상태 역산 — 전환 없으면 currentStateKey, 있으면 첫 전환 fromValue
+ * - 같은 날 다중 전환 → end-of-day(마지막 toValue) 카테고리만 반영
  */
 class CfdServiceTest : DescribeSpec({
 
@@ -215,7 +215,7 @@ class CfdServiceTest : DescribeSpec({
     // ── 초기 상태 역산 ──────────────────────────────────────────────────────────
 
     describe("초기 상태 역산") {
-        it("전이 이력이 없으면 currentStateKey 카테고리로 전 기간 집계") {
+        it("전환 이력이 없으면 currentStateKey 카테고리로 전 기간 집계") {
             stubBrowseAndAccess()
             val typeId = 30L
             val issueId = UUID.randomUUID()
@@ -238,11 +238,11 @@ class CfdServiceTest : DescribeSpec({
             result.points[0].todoCount shouldBe 0
         }
 
-        it("전이 이력이 있으면 첫 전이의 fromValue 가 초기 상태") {
+        it("전환 이력이 있으면 첫 전환의 fromValue 가 초기 상태") {
             stubBrowseAndAccess()
             val typeId = 31L
             val issueId = UUID.randomUUID()
-            // currentStateKey 는 무시되고 첫 전이의 fromValue("open")가 초기 상태로 쓰인다.
+            // currentStateKey 는 무시되고 첫 전환의 fromValue("open")가 초기 상태로 쓰인다.
             val issue = CfdIssueSourceRow(issueId, typeId, "in_progress", Instant.parse("2026-06-01T00:00:00Z"))
             every {
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
@@ -278,15 +278,15 @@ class CfdServiceTest : DescribeSpec({
             // 2026-06-01: 초기 상태(open→TODO)
             result.points[0].todoCount shouldBe 1
             result.points[0].inProgressCount shouldBe 0
-            // 2026-06-02: 전이 이후(in_progress→IN_PROGRESS)
+            // 2026-06-02: 전환 이후(in_progress→IN_PROGRESS)
             result.points[1].todoCount shouldBe 0
             result.points[1].inProgressCount shouldBe 1
         }
     }
 
-    // ── 같은 날 다중 전이 — end-of-day 카테고리만 반영 ─────────────────────────
+    // ── 같은 날 다중 전환 — end-of-day 카테고리만 반영 ─────────────────────────
 
-    describe("같은 날 다중 전이") {
+    describe("같은 날 다중 전환") {
         it("마지막 toValue 만 그 날짜 카테고리로 반영된다") {
             stubBrowseAndAccess()
             val typeId = 40L

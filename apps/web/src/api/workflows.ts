@@ -20,7 +20,7 @@ export const workflowStateViewSchema = z.object({
   displayOrder: z.number().int().nonnegative(),
 })
 
-/** 워크플로우 전이(화살표) Zod 스키마 */
+/** 워크플로우 전환(화살표) Zod 스키마 */
 export const workflowTransitionViewSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
@@ -40,7 +40,7 @@ export const workflowViewSchema = z.object({
 /** 워크플로우 목록 Zod 스키마 */
 export const workflowListSchema = z.array(workflowViewSchema)
 
-/** 전이 계획 결과 Zod 스키마 — backend TransitionResponseDto 대응 */
+/** 전환 계획 결과 Zod 스키마 — backend TransitionResponseDto 대응 */
 export const transitionPlanSchema = z.object({
   toStateKey: z.string().min(1),
   fieldChanges: z.array(
@@ -103,14 +103,14 @@ export async function fetchWorkflow(key: string): Promise<WorkflowView> {
 }
 
 /**
- * 워크플로우 전이 계획을 계산한다.
+ * 워크플로우 전환 계획을 계산한다.
  * POST /api/v1/workflows/{key}/transitions → { data: TransitionPlan }
  *
  * transition identity = (fromStateKey, toStateKey) — transitionName은 불필요.
  * ADR 2026-05-28-workflow-transition-identity-policy 참조.
  *
  * @param key 워크플로우 식별 키
- * @param request 전이 요청 — issueKey와 transitionKey를 포함
+ * @param request 전환 요청 — issueKey와 transitionKey를 포함
  */
 export async function planTransition(
   key: string,

@@ -181,12 +181,12 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
 
     /**
      * Given  삽입된 Issue (version=1)
-     * When   applyTransition 으로 version=1 로 상태 전이 시도
+     * When   applyTransition 으로 version=1 로 상태 전환 시도
      * Then   반환값 1, findByKey 로 조회 시 currentStateKey 가 "IN_PROGRESS" 로 변경된다.
      */
     @Test
     @Order(5)
-    fun `T4 - applyTransition - version 일치 시 상태가 전이되고 1 이 반환된다`() {
+    fun `T4 - applyTransition - version 일치 시 상태가 전환되고 1 이 반환된다`() {
         val key = IssueKey.of("TPRJ", 1L)
         val issue =
             Issue.create(
@@ -212,7 +212,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
 
     /**
      * Given  삽입된 Issue (version=1)
-     * When   applyTransition 으로 version=99 (stale) 로 전이 시도
+     * When   applyTransition 으로 version=99 (stale) 로 전환 시도
      * Then   반환값 0 — 업데이트 행 없음, 낙관락 충돌.
      */
     @Test

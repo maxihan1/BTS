@@ -1,4 +1,4 @@
-// ExportJob 도메인 단위 테스트 — 상태 전이 규칙, progressPercent 계산, downloadReady 조건
+// ExportJob 도메인 단위 테스트 — 상태 전환 규칙, progressPercent 계산, downloadReady 조건
 
 package com.bts.search.export.job.domain
 
@@ -12,7 +12,7 @@ import java.util.UUID
  * [ExportJob] 도메인 단위 테스트.
  *
  * 검증 범위.
- * - [ExportJobStatus] 허용/거부 전이 규칙
+ * - [ExportJobStatus] 허용/거부 전환 규칙
  * - [ExportJob.progressPercent] 계산 (total=0 → 100, 그 외 (processed*100/total) 내림)
  * - [ExportJob.downloadReady] 조건 (status==COMPLETED && resultObjectKey != null)
  */
@@ -39,9 +39,9 @@ class ExportJobTest : DescribeSpec({
         completedAt = null,
     )
 
-    // ── (a) 상태 전이 규칙 ──────────────────────────────────────────────────────
+    // ── (a) 상태 전환 규칙 ──────────────────────────────────────────────────────
 
-    describe("ExportJobStatus 전이 규칙") {
+    describe("ExportJobStatus 전환 규칙") {
         it("PENDING → RUNNING 허용") {
             ExportJobStatus.PENDING.transitionTo(ExportJobStatus.RUNNING) shouldBe ExportJobStatus.RUNNING
         }
@@ -64,25 +64,25 @@ class ExportJobTest : DescribeSpec({
             }
         }
 
-        it("COMPLETED → RUNNING 거부 — 종단 상태 재전이 불가") {
+        it("COMPLETED → RUNNING 거부 — 종단 상태 재전환 불가") {
             shouldThrow<IllegalStateException> {
                 ExportJobStatus.COMPLETED.transitionTo(ExportJobStatus.RUNNING)
             }
         }
 
-        it("COMPLETED → FAILED 거부 — 종단 상태 재전이 불가") {
+        it("COMPLETED → FAILED 거부 — 종단 상태 재전환 불가") {
             shouldThrow<IllegalStateException> {
                 ExportJobStatus.COMPLETED.transitionTo(ExportJobStatus.FAILED)
             }
         }
 
-        it("FAILED → RUNNING 거부 — 종단 상태 재전이 불가") {
+        it("FAILED → RUNNING 거부 — 종단 상태 재전환 불가") {
             shouldThrow<IllegalStateException> {
                 ExportJobStatus.FAILED.transitionTo(ExportJobStatus.RUNNING)
             }
         }
 
-        it("FAILED → COMPLETED 거부 — 종단 상태 재전이 불가") {
+        it("FAILED → COMPLETED 거부 — 종단 상태 재전환 불가") {
             shouldThrow<IllegalStateException> {
                 ExportJobStatus.FAILED.transitionTo(ExportJobStatus.COMPLETED)
             }

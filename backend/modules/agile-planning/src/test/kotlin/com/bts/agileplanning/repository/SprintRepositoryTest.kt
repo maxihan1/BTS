@@ -26,7 +26,7 @@ import java.util.concurrent.Future
  * ## 검증 범위
  * - insert / findById(소프트삭제 제외) / findByProject(status별·deleted_at 제외)
  * - updateMeta(name·goal·기간 변경 + version bump)
- * - updateStatus(상태전이 영속 + version bump)
+ * - updateStatus(상태전환 영속 + version bump)
  * - softDelete(sprint_issues 먼저 삭제 + sprints.deleted_at 세팅)
  * - assignIssue(delete-then-insert 단일 트랜잭션, COMPLETED 가드, 영향 행수 반환)
  * - unassignIssue(연관 DELETE, 멱등, COMPLETED 가드)

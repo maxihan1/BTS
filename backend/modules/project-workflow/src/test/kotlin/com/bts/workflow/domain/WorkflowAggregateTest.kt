@@ -112,7 +112,7 @@ class WorkflowAggregateTest {
     fun `transition fromStateKey 가 states 집합에 없으면 IllegalArgumentException`() {
         val invalidTransitions =
             listOf(
-                WorkflowTransition(fromStateKey = "UNKNOWN", toStateKey = "IN_PROGRESS", name = "잘못된 전이"),
+                WorkflowTransition(fromStateKey = "UNKNOWN", toStateKey = "IN_PROGRESS", name = "잘못된 전환"),
             )
 
         assertThatThrownBy {
@@ -132,7 +132,7 @@ class WorkflowAggregateTest {
     fun `transition toStateKey 가 states 집합에 없으면 IllegalArgumentException`() {
         val invalidTransitions =
             listOf(
-                WorkflowTransition(fromStateKey = "TODO", toStateKey = "MISSING", name = "잘못된 전이"),
+                WorkflowTransition(fromStateKey = "TODO", toStateKey = "MISSING", name = "잘못된 전환"),
             )
 
         assertThatThrownBy {
@@ -159,7 +159,7 @@ class WorkflowAggregateTest {
         assertThatThrownBy {
             Workflow.of(
                 key = "WF-006",
-                name = "중복 전이 워크플로우",
+                name = "중복 전환 워크플로우",
                 states = defaultStates,
                 transitions = duplicateTransitions,
             )
@@ -179,7 +179,7 @@ class WorkflowAggregateTest {
         assertThatThrownBy {
             Workflow.of(
                 key = "WF-007",
-                name = "name 다른 중복 전이 워크플로우",
+                name = "name 다른 중복 전환 워크플로우",
                 states = defaultStates,
                 transitions = duplicateTransitions,
             )

@@ -27,8 +27,8 @@ F2(#331)가 `CreateIssueDialog` 를 **라우터 훅 import 0** 으로 완성해,
 - 스프린트 배정은 **기존 API 가 있다** — `POST /api/v1/sprints/{id}/issues`
   (`api/backlog.ts:222 assignToSprint`). 생성 후 1회 더 부르면 반영된다.
 - 보드 컬럼은 `stateKey` 를 갖고 있으나(`api/boards.ts:82`), 임의 상태로의 이동은
-  워크플로우 전이(`POST /issues/{key}/transition`)를 거쳐야 하고 **초기 상태에서 그 컬럼으로
-  가는 전이가 없으면 애초에 불가능**하다. 스킴마다 다르므로 「될 때만 되는」 동작이 된다.
+  워크플로우 전환(`POST /issues/{key}/transition`)를 거쳐야 하고 **초기 상태에서 그 컬럼으로
+  가는 전환이 없으면 애초에 불가능**하다. 스킴마다 다르므로 「될 때만 되는」 동작이 된다.
 
 ## D-1. 컨텍스트 반영 범위 — 스프린트만 반영한다 (2026-08-03 Maxi 확정)
 

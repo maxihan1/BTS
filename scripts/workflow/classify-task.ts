@@ -138,7 +138,7 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
   'project-workflow': [
     'project-workflow', 'project workflow',
     '워크플로우', 'workflow',
-    '전이', 'transition', 'fsm',
+    '전이', '상태 전환', '전환 규칙', '전환 id', '전역 전환', 'transition', 'fsm',
     '상태', 'status',
     '게이트', 'gate',
   ],

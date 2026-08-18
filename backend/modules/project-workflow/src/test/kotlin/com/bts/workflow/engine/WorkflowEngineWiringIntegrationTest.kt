@@ -53,9 +53,9 @@ import java.util.concurrent.Executors
  * WorkflowEngine.plan() 은 Propagation.MANDATORY 이므로 TransactionTemplate 으로 감싼다.
  *
  * ### 시나리오 목록
- * - S1. validator 거부 — RequiredField(EXECUTION) 가 걸린 전이를 resolution 없이 plan() 시
+ * - S1. validator 거부 — RequiredField(EXECUTION) 가 걸린 전환을 resolution 없이 plan() 시
  *       WorkflowValidatorFailureException 발생.
- * - S2. availableTransitions EXECUTION 페이즈 포함 — 동일 전이가 availableTransitions 결과에 포함됨
+ * - S2. availableTransitions EXECUTION 페이즈 포함 — 동일 전환이 availableTransitions 결과에 포함됨
  *       (EXECUTION 페이즈는 목록에서 skip 하므로 버튼 표시).
  * - S3. PostAction plan 누적 — SET_FIELD PostAction 이 TransitionPlan.fieldChanges 에,
  *       NOTIFY PostAction 이 TransitionPlan.emitEvents 에 누적됨.
@@ -172,15 +172,15 @@ class WorkflowEngineWiringIntegrationTest {
 
             // 테스트용 워크플로우 시드
             // open → done: RequiredField("resolution") + SET_FIELD("assignee") + NOTIFY
-            // open → closed: validator/postAction 없음 (단순 전이)
+            // open → closed: validator/postAction 없음 (단순 전환)
             seedTestWorkflow()
         }
 
         /**
          * wiring-test 워크플로우를 직접 시드한다.
          *
-         * open → done 전이: RequiredField validator + SET_FIELD/NOTIFY postAction
-         * open → closed 전이: validator/postAction 없음
+         * open → done 전환: RequiredField validator + SET_FIELD/NOTIFY postAction
+         * open → closed 전환: validator/postAction 없음
          */
         private fun seedTestWorkflow() {
             val dto =
@@ -234,7 +234,7 @@ class WorkflowEngineWiringIntegrationTest {
     // ── S1. validator 거부 — RequiredField(EXECUTION) + resolution 없음 → 예외 ──────
 
     /**
-     * Given   open → done 전이에 RequiredField("resolution") validator 등록 (EXECUTION 페이즈)
+     * Given   open → done 전환에 RequiredField("resolution") validator 등록 (EXECUTION 페이즈)
      *         issueFields 에 resolution 없음
      * When    plan() 호출
      * Then    WorkflowValidatorFailureException 발생, field == "resolution"
@@ -244,7 +244,7 @@ class WorkflowEngineWiringIntegrationTest {
      */
     @Test
     @Order(1)
-    fun `S1 - RequiredField EXECUTION 게이트가 걸린 전이를 resolution 없이 plan 하면 WorkflowValidatorFailureException 이 발생한다`() {
+    fun `S1 - RequiredField EXECUTION 게이트가 걸린 전환을 resolution 없이 plan 하면 WorkflowValidatorFailureException 이 발생한다`() {
         val request =
             TransitionRequest(
                 workflowKey = WIRING_WF_KEY,
@@ -269,19 +269,19 @@ class WorkflowEngineWiringIntegrationTest {
             })
     }
 
-    // ── S2. availableTransitions — EXECUTION 페이즈 전이가 목록에 포함됨 ─────────────
+    // ── S2. availableTransitions — EXECUTION 페이즈 전환이 목록에 포함됨 ─────────────
 
     /**
-     * Given   open → done 전이에 RequiredField(EXECUTION 페이즈) validator 등록
+     * Given   open → done 전환에 RequiredField(EXECUTION 페이즈) validator 등록
      * When    availableTransitions(from = "open") 호출
-     * Then    결과에 open → done 전이 포함 (EXECUTION 페이즈는 목록 노출에서 skip 됨)
-     *         open → closed 전이도 포함
+     * Then    결과에 open → done 전환 포함 (EXECUTION 페이즈는 목록 노출에서 skip 됨)
+     *         open → closed 전환도 포함
      *
-     * AVAILABILITY 페이즈 validator 가 없으면 EXECUTION 게이트 전이도 버튼에 표시된다.
+     * AVAILABILITY 페이즈 validator 가 없으면 EXECUTION 게이트 전환도 버튼에 표시된다.
      */
     @Test
     @Order(2)
-    fun `S2 - availableTransitions 는 EXECUTION 페이즈 게이트 전이도 목록에 포함한다`() {
+    fun `S2 - availableTransitions 는 EXECUTION 페이즈 게이트 전환도 목록에 포함한다`() {
         val request =
             AvailableTransitionsRequest(
                 workflowKey = WIRING_WF_KEY,
@@ -307,7 +307,7 @@ class WorkflowEngineWiringIntegrationTest {
     // ── S3. PostAction plan 누적 ─────────────────────────────────────────────────
 
     /**
-     * Given   open → done 전이에 SET_FIELD("assignee") + NOTIFY("slack") postAction 등록
+     * Given   open → done 전환에 SET_FIELD("assignee") + NOTIFY("slack") postAction 등록
      *         issueFields 에 resolution 포함 (RequiredField 통과)
      * When    plan() 호출
      * Then    TransitionPlan.fieldChanges 에 SET_FIELD 결과 누적

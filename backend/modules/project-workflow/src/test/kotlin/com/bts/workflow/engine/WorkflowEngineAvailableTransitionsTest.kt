@@ -1,4 +1,4 @@
-// WorkflowEngine.availableTransitions — fromStateKey 기준 전이 enumerate + validator 평가 단위 테스트
+// WorkflowEngine.availableTransitions — fromStateKey 기준 전환 enumerate + validator 평가 단위 테스트
 
 package com.bts.workflow.engine
 
@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test
  * 테스트 시나리오.
  * - S1. software-default 워크플로우에서 fromStateKey=open 요청 → Success 에 [open→in_progress, open→closed] 정확히 2건 반환.
  * - S2. 존재하지 않는 workflowKey → WorkflowNotFound.
- * - S3. validator 가 특정 전이를 거부하면 해당 전이는 결과에서 제외된다.
+ * - S3. validator 가 특정 전환을 거부하면 해당 전환은 결과에서 제외된다.
  */
 class WorkflowEngineAvailableTransitionsTest {
     private val mockCache: WorkflowCache = mockk()
@@ -88,7 +88,7 @@ class WorkflowEngineAvailableTransitionsTest {
     // ── S1. 정상 케이스 ──────────────────────────────────────────────────────
 
     @Test
-    fun `S1 — open 상태에서 가용 전이 2건 반환 — 다른 fromState 전이는 제외된다`() {
+    fun `S1 — open 상태에서 가용 전환 2건 반환 — 다른 fromState 전환은 제외된다`() {
         every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
         // validator 없음 → 모두 통과
         every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()
@@ -103,7 +103,7 @@ class WorkflowEngineAvailableTransitionsTest {
             AvailableTransitionView("open", "in_progress", "Start Work", toCategory = "IN_PROGRESS"),
             AvailableTransitionView("open", "closed", "Cancel", toCategory = "DONE"),
         )
-        // in_progress, in_review, done 에서 출발하는 전이는 포함되지 않아야 한다
+        // in_progress, in_review, done 에서 출발하는 전환은 포함되지 않아야 한다
         assertThat(success.transitions.map { it.fromStateKey }).allMatch { it == "open" }
     }
 
@@ -161,10 +161,10 @@ class WorkflowEngineAvailableTransitionsTest {
         assertThat(success.transitions).hasSize(2)
     }
 
-    // ── S3. 가드 validator 거부 시 해당 전이 제외 ──────────────────────────
+    // ── S3. 가드 validator 거부 시 해당 전환 제외 ──────────────────────────
 
     @Test
-    fun `S3 — validator 가 open→closed 전이를 거부하면 결과에서 제외된다`() {
+    fun `S3 — validator 가 open→closed 전환을 거부하면 결과에서 제외된다`() {
         every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
         // open→in_progress: validator 없음 → 통과
         every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()

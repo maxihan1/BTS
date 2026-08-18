@@ -38,9 +38,9 @@ class SetFieldPostAction(
     override val type: String = "SET_FIELD"
 
     /**
-     * 전이 컨텍스트를 바탕으로 필드 변경 계획 1건을 반환한다.
+     * 전환 컨텍스트를 바탕으로 필드 변경 계획 1건을 반환한다.
      *
-     * @param ctx 전이 실행 시점의 읽기 전용 컨텍스트.
+     * @param ctx 전환 실행 시점의 읽기 전용 컨텍스트.
      * @return fieldChanges 1건 (field, oldValue, newValue) + emitEvents 빈 리스트.
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {

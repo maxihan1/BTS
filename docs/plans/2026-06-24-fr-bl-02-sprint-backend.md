@@ -41,11 +41,11 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 전체 스펙. [docs/specs/2026-06-24-fr-bl-02-sprint-backend.md](../specs/2026-06-24-fr-bl-02-sprint-backend.md)
 
 핵심 결정 (Maxi 확정).
-- 범위: 스프린트 CRUD + 이슈 할당/해제 + 상태전이(PLANNED→ACTIVE→COMPLETED). 스프린트 내 순서(rank)는 이연. 동시 ACTIVE 다중 허용.
+- 범위: 스프린트 CRUD + 이슈 할당/해제 + 상태전환(PLANNED→ACTIVE→COMPLETED). 스프린트 내 순서(rank)는 이연. 동시 ACTIVE 다중 허용.
 - 관계: `sprint_issues(sprint_id, issue_key)` 조인, `UNIQUE(issue_key)`로 1:N 강제(다른 스프린트 할당 시 원자적 이동). issues 무변경.
-- 9개 엔드포인트(`/api/v1/sprints` CRUD 5 + start/complete 2 + 이슈 할당/해제 2). 권한(게이트1) `IssuePermission` — CRUD/상태전이=`CREATE`, **할당/해제=`UPDATE`**, 조회=`BROWSE` + `IssuePermissionResolver` 재사용(board 선례). 권한 판정 순서 actor→sprint조회(projectKey)→권한.
+- 9개 엔드포인트(`/api/v1/sprints` CRUD 5 + start/complete 2 + 이슈 할당/해제 2). 권한(게이트1) `IssuePermission` — CRUD/상태전환=`CREATE`, **할당/해제=`UPDATE`**, 조회=`BROWSE` + `IssuePermissionResolver` 재사용(board 선례). 권한 판정 순서 actor→sprint조회(projectKey)→권한.
 - 할당 가시성 검증은 **단건 포트 `isVisibleIssue`**(T8, 게이트1 — truncated 오거부/probe 회피). 미가시/타프로젝트/미존재 단일 404.
-- **백로그 조회 API는 D6 이연**(rank 정렬=포트 확장 회피). version: 할당/해제=no-bump, 상태전이/메타수정=bump. 소프트삭제 시 연관 제거→백로그 복귀.
+- **백로그 조회 API는 D6 이연**(rank 정렬=포트 확장 회피). version: 할당/해제=no-bump, 상태전환/메타수정=bump. 소프트삭제 시 연관 제거→백로그 복귀.
 - 데이터: V503 `sprints` + `sprint_issues`(agile-planning), init_codegen 미러.
 
 ## Brainstorming Check
@@ -73,7 +73,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:flywayMigrate :modules:agile-planning:generateJooq` + 마이그레이션 테스트. ⚠️ V503 번호 머지 직전 재확인(메모리 migration-vnumber, 현재 최신 V502).
 
-### Task 2. [x] Sprint 도메인 — 엔티티 + 상태전이 규칙(start/complete)
+### Task 2. [x] Sprint 도메인 — 엔티티 + 상태전환 규칙(start/complete)
 
 **메타**.
 - agent: `backend-engineer`
@@ -86,9 +86,9 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - 기간 검증: startDate > endDate → `require` 실패(E11). 둘 중 하나만/둘 다 null 허용.
 - name 공백 → `require` 실패(E10, 도메인 레벨).
 
-**GREEN**: `Sprint` data class(id, projectKey, name, goal?, status, startDate?, endDate?, version) + `start()/complete()`가 새 상태의 Sprint 반환(불변). `SprintStatus` enum(PLANNED/ACTIVE/COMPLETED) + 허용 전이 맵. 다중 ACTIVE 허용이라 전이에 외부 스프린트 조회 불필요(순수).
+**GREEN**: `Sprint` data class(id, projectKey, name, goal?, status, startDate?, endDate?, version) + `start()/complete()`가 새 상태의 Sprint 반환(불변). `SprintStatus` enum(PLANNED/ACTIVE/COMPLETED) + 허용 전환 맵. 다중 ACTIVE 허용이라 전환에 외부 스프린트 조회 불필요(순수).
 
-**REFACTOR**: 전이 규칙 상수화, KDoc(중괄호·백틱 금지, 메모리 ktlint-kdoc-brace).
+**REFACTOR**: 전환 규칙 상수화, KDoc(중괄호·백틱 금지, 메모리 ktlint-kdoc-brace).
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintTest"`
 
@@ -113,7 +113,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:compileKotlin :modules:agile-planning:integrationTest --tests "*SprintRepositoryTest"` (+ Task1 마이그레이션 테스트 이 시점 정식 실행).
 
-### Task 4. [x] SprintApplicationService — CRUD + 상태전이 + 할당/해제 + 권한
+### Task 4. [x] SprintApplicationService — CRUD + 상태전환 + 할당/해제 + 권한
 
 **메타**.
 - agent: `backend-engineer` (권한 부분 security-engineer 검토)
@@ -125,7 +125,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 **RED**: `SprintApplicationServiceTest`(mockk repo/port + 분기 단위) —
 - `create`: body projectKey로 `CREATE` 권한(생성만 리소스 부재). unknown projectKey → resolver fail-closed 403(C4).
 - `update/softDelete/list/get`: 조회 메타로 projectKey 확보 → 쓰기=`CREATE`/조회=`BROWSE` on `IssueScope.Project(sprint.projectKey)`(메모리 crossbc-permission-resolver-not-role-lookup, role 직접조회 금지). 권한 없음 → 403(E6). 미존재/소프트삭제 → `SprintNotFoundException`(E2, 404).
-- `start/complete`: 메타 조회 → CREATE 권한 → 도메인 `Sprint.start()/complete()` 위임 → 잘못된 전이 `InvalidSprintTransitionException`(E1, 409). 다중 ACTIVE 허용(기존 ACTIVE 조회·차단 없음).
+- `start/complete`: 메타 조회 → CREATE 권한 → 도메인 `Sprint.start()/complete()` 위임 → 잘못된 전환 `InvalidSprintTransitionException`(E1, 409). 다중 ACTIVE 허용(기존 ACTIVE 조회·차단 없음).
 - `assignIssue(actor, sprintId, issueKey)`: actor 추출 → **스프린트 조회(404 E2)로 projectKey 확보** → **`UPDATE` 권한**(Maxi 확정) on Project(403 E6) → `BoardIssueLookupPort.isVisibleIssue(projectKey, issueKey, actor)` **단건 검증**(false → **단일 404** E3, probe 차단 FR5-1) → `repo.assignIssue`(조건부 DML로 COMPLETED→E5 409, 이동 E8/멱등 E7).
 - `unassignIssue`: 조회 → UPDATE 권한 → repo.unassign(멱등 204 E9, COMPLETED→E5).
 - 권한 resolver는 non-null fail-closed 주입(메모리 crossbc-resolver-nullable-fail-open). 가시성 포트 adapter 빈 페이지→isVisibleIssue=false→할당 거부(fail-closed, security-C3).
@@ -158,7 +158,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - files: [`backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/integration/SprintIntegrationTest.kt`]
 - depends-on: [5]
 
-**RED→GREEN**: 실 repo + 시드 end-to-end(board 통합테스트 `BoardControllerIntegrationTest` 시드 패턴 참고, 메모리 issue-tracking-transition-test-mocks) — S1 생성 / S2 할당 / S3 해제 / S4 start / S5 complete / S6 단건(할당목록 created_at 순) / S7 목록 / S8 수정·삭제 + E1(전이 409) E2(404) E3(미가시/타프로젝트/미존재 **단일 404** probe 차단) E5(COMPLETED 할당 409, TOCTOU 조건부 DML) E6(권한 403) E7(멱등 재할당 200) E8(이동 원자성 — 다른 sprint→delete-then-insert) E9(해제 없음 **멱등 204**) E11(기간역전 400) **E12(동시 할당 409 — Testcontainers 2 커넥션 동시 이동으로 UNIQUE 위반 실제 발생 검증, eng-N3 vacuous 회피)** + **가시성 포트 fail-closed**(adapter 빈 페이지 시 할당 거부, security-C3). E13(FR-MV orphan)은 범위 밖이라 미포함.
+**RED→GREEN**: 실 repo + 시드 end-to-end(board 통합테스트 `BoardControllerIntegrationTest` 시드 패턴 참고, 메모리 issue-tracking-transition-test-mocks) — S1 생성 / S2 할당 / S3 해제 / S4 start / S5 complete / S6 단건(할당목록 created_at 순) / S7 목록 / S8 수정·삭제 + E1(전환 409) E2(404) E3(미가시/타프로젝트/미존재 **단일 404** probe 차단) E5(COMPLETED 할당 409, TOCTOU 조건부 DML) E6(권한 403) E7(멱등 재할당 200) E8(이동 원자성 — 다른 sprint→delete-then-insert) E9(해제 없음 **멱등 204**) E11(기간역전 400) **E12(동시 할당 409 — Testcontainers 2 커넥션 동시 이동으로 UNIQUE 위반 실제 발생 검증, eng-N3 vacuous 회피)** + **가시성 포트 fail-closed**(adapter 빈 페이지 시 할당 거부, security-C3). E13(FR-MV orphan)은 범위 밖이라 미포함.
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:integrationTest --tests "*SprintIntegrationTest"`
 
@@ -224,7 +224,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **CONCERN 4.** C1 권한 판정 순서 — **actor 추출→sprint 조회(projectKey 확보,404)→IssueScope.Project 권한판정(403)**으로 정정(plan Task4 "권한→조회" 순서 오류, board loadBoard* 동형). 자동 반영 / C2 예외 message에 issueKey/projectKey/sprintId echo 누출(board 선례 오염, 베끼지 말 것)→detail 일반화·403 인자없는 예외. 자동 반영 / C3 가시성 포트 fail-safe(빈 페이지)가 권한경로서 fail-closed인지 통합테스트(adapter 빈→할당거부). 자동 반영 / C4 resolver 우회(멤버십 role 직접조회) codereview 체크포인트. 자동 반영.
 
-**NIT 3.** N1 전이권한 CREATE 근거 명시(B1과 묶음) / N2 E9 404 vs 멱등204→멱등204 채택(probe 표면 작음) / N3 할당-INSERT 사이 soft-delete TOCTOU 인지주석(무해, 고아연관 가시성필터 배제). → 자동 반영.
+**NIT 3.** N1 전환권한 CREATE 근거 명시(B1과 묶음) / N2 E9 404 vs 멱등204→멱등204 채택(probe 표면 작음) / N3 할당-INSERT 사이 soft-delete TOCTOU 인지주석(무해, 고아연관 가시성필터 배제). → 자동 반영.
 
 ### 종합 판정
 
@@ -232,7 +232,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 ### 최종 반영 (2026-06-24, Maxi 게이트1 결정 후)
 
-- **security-B1**: 할당/해제 권한 = **UPDATE** 확정(Maxi). CRUD/상태전이 CREATE 유지. → spec §4 / Task 4·5 반영.
+- **security-B1**: 할당/해제 권한 = **UPDATE** 확정(Maxi). CRUD/상태전환 CREATE 유지. → spec §4 / Task 4·5 반영.
 - **security-B2**: **단건 가시성 포트 `isVisibleIssue` 추가**(Maxi) → 신규 **Task 8**(shared-kernel 포트 + issue-tracking adapter). E3/E4 단일 404 수렴(probe 차단). task 7→8.
 - 기술 BLOCKER/CONCERN/NIT 전건 반영: eng-B1(ExceptionHandler 입력예외 포함)·eng-B2(delete-then-insert 확정)·eng-B3(COMPLETED 조건부 DML)·security-C1(권한 순서)·eng-C5(소프트삭제 명시 DELETE)·security-C2(message 일반화)·eng-C1(E13 명시)·eng-C6(version stale 명시)·eng-C3(ArchUnit vacuous 영구단언)·security-C4(resolver 우회 codereview)·NIT(§8 오타·S6 rank D6·E9 멱등204·통합 vacuous 표현). → **모든 BLOCKER 해소, impl 진행 가능.**
 

@@ -1,4 +1,4 @@
-// WorkflowController MockMvc 슬라이스 테스트 — 4 케이스 (목록/단건/전이/캐시무효화+권한)
+// WorkflowController MockMvc 슬라이스 테스트 — 4 케이스 (목록/단건/전환/캐시무효화+권한)
 
 package com.bts.workflow.web
 
@@ -147,7 +147,7 @@ class WorkflowControllerMvcTest {
 
     @Test
     @WithMockUser
-    fun `POST 전이 계획 — TransitionPlan 반환 200`() {
+    fun `POST 전환 계획 — TransitionPlan 반환 200`() {
         val plan =
             TransitionPlan(
                 toStateKey = "IN_PROGRESS",
@@ -237,7 +237,7 @@ class WorkflowControllerMvcTest {
                 WorkflowTransition(
                     fromStateKey = "STATE_$i",
                     toStateKey = "STATE_${i + 1}",
-                    name = "전이_$i",
+                    name = "전환_$i",
                 )
             }
         return Workflow.of(key = key, name = name, states = states, transitions = transitions)

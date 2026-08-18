@@ -46,7 +46,7 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 |---|---|---|
 | `WorkflowDiagram` | React 컴포넌트 이름 (시각화) | ❌ 구현 디테일 |
 | `StateNode` | mermaid stateDiagram 의 상태 표현 | ❌ 라이브러리 용어 |
-| `TransitionEdge` | mermaid stateDiagram 의 전이 표현 | ❌ 라이브러리 용어 |
+| `TransitionEdge` | mermaid stateDiagram 의 전환 표현 | ❌ 라이브러리 용어 |
 | `CategoryColor` | `StateCategory` 별 색상 매핑 (CSS 클래스 또는 mermaid theme override) | ❌ 시각 디테일 |
 
 **결론**. glossary 갱신 0건. 모든 후보가 frontend 구현 디테일로 BTS 의 ubiquitous language (도메인 모델 용어) 가치 낮음. 후속 frontend 작업에서 자연스럽게 재사용될 단어들이라 컴포넌트 이름 / type 정의 / 색상 상수로 표현되면 충분.
@@ -76,9 +76,9 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 전체 스펙. [docs/specs/2026-05-22-project-workflow-fr-wf-01-frontend-2-pr.md](../specs/2026-05-22-project-workflow-fr-wf-01-frontend-2-pr.md)
 
 핵심 시나리오 3줄.
-- **S1 (Task 37 핵심)**. 사용자가 워크플로우 상세 진입 → `WorkflowDiagram` 이 5 상태 + 4 전이 mermaid stateDiagram-v2 다이어그램으로 카테고리별 색상 (TODO/IN_PROGRESS/DONE) 구분해서 렌더.
+- **S1 (Task 37 핵심)**. 사용자가 워크플로우 상세 진입 → `WorkflowDiagram` 이 5 상태 + 4 전환 mermaid stateDiagram-v2 다이어그램으로 카테고리별 색상 (TODO/IN_PROGRESS/DONE) 구분해서 렌더.
 - **S2~S3**. 작은 워크플로우 (`simple` 2 상태) 도 정상 + debug prop 시 mermaid source 노출.
-- **S4 (Task 38 핵심)**. Playwright 가 표준 4 워크플로우 happy path — 페이지 진입 + 다이어그램 렌더 + 첫 전이 호출 + 200 응답 검증.
+- **S4 (Task 38 핵심)**. Playwright 가 표준 4 워크플로우 happy path — 페이지 진입 + 다이어그램 렌더 + 첫 전환 호출 + 200 응답 검증.
 
 핵심 FR 9건 + NFR 4건 + EC 6건. 측정 가능한 완료 기준 7항목.
 
@@ -247,10 +247,10 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 - depends-on. [3, 4, 5]
 
 **RED**. 테스트 4건 (4 표준 워크플로우).
-- T5-1. `software-default` happy path — 페이지 진입 + 다이어그램 SVG 렌더 (`svg.mermaid` + node count) + 첫 전이 호출 + 200 검증.
+- T5-1. `software-default` happy path — 페이지 진입 + 다이어그램 SVG 렌더 (`svg.mermaid` + node count) + 첫 전환 호출 + 200 검증.
 - T5-2. `bug-tracking` 동일 패턴.
-- T5-3. `simple` 동일 패턴 (2 상태 / 2 전이 검증).
-- T5-4. `kanban-basic` 동일 패턴 (4 상태 / 3 전이 검증).
+- T5-3. `simple` 동일 패턴 (2 상태 / 2 전환 검증).
+- T5-4. `kanban-basic` 동일 패턴 (4 상태 / 3 전환 검증).
 
 실패 예상. `workflow.spec.ts` 신규라 첫 실행 시 즉시 RED 또는 라우트 미존재 시 navigation fail.
 

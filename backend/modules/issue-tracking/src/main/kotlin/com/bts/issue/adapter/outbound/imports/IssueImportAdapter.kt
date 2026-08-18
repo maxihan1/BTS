@@ -250,7 +250,7 @@ class IssueImportAdapter(
     }
 
     /**
-     * dryRun 검증 — 실제 생성/수정/자동생성/전이 호출 없이 유효성만 확인한다.
+     * dryRun 검증 — 실제 생성/수정/자동생성/전환 호출 없이 유효성만 확인한다.
      *
      * CREATE_ISSUE 권한을 [permissionResolver] 로 직접 확인한다(이 경로에서만 예외적으로 권한을
      * 판단 — createIssue 를 호출할 수 없는 dryRun 특성상 불가피하다. 클래스 KDoc 참조).

@@ -14,13 +14,13 @@ describe('resolveTransitionUnavailableReason', () => {
     ).toBe('no-workflow')
   })
 
-  it('정상 응답 + 전이 0건이면 종료 상태로 판정한다', () => {
+  it('정상 응답 + 전환 0건이면 종료 상태로 판정한다', () => {
     expect(
       resolveTransitionUnavailableReason({ isError: false, error: null, transitionCount: 0 }),
     ).toBe('terminal')
   })
 
-  it('정상 응답 + 전이가 있으면 사유가 없다', () => {
+  it('정상 응답 + 전환이 있으면 사유가 없다', () => {
     expect(
       resolveTransitionUnavailableReason({ isError: false, error: null, transitionCount: 2 }),
     ).toBeNull()

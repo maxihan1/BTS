@@ -108,14 +108,14 @@ export function versionErrorMessage(errorCode: string | null): string {
     case 'VERSION_ACCESS_DENIED':
       return '버전을 수정할 권한이 없습니다.'
     case 'VERSION_TRANSITION_NOT_ALLOWED':
-      return '이 상태에서는 해당 전이를 수행할 수 없습니다.'
+      return '이 상태에서는 해당 전환을 수행할 수 없습니다.'
     default:
       return '요청을 처리하지 못했습니다.'
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 상태 / 전이 라벨 — FR-VR-02
+// 상태 / 전환 라벨 — FR-VR-02
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 버전 상태 → 한국어 뱃지 라벨 */
@@ -130,7 +130,7 @@ export function versionStatusLabel(status: VersionStatus): string {
   }
 }
 
-/** 전이 동사 → 한국어 버튼 라벨 */
+/** 전환 동사 → 한국어 버튼 라벨 */
 export function versionTransitionLabel(
   transition: 'release' | 'unrelease' | 'archive' | 'unarchive',
 ): string {

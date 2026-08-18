@@ -18,7 +18,7 @@
 ### S2. 사용자 매핑 확정 (필드 매핑과 동시)
 - **Given** 사용자가 수집된 식별자마다 BTS 사용자를 확정(또는 미매핑 유지)했다.
 - **When** `POST /imports/{jobId}/mapping`(confirm)에 필드 매핑 + **사용자 매핑 목록**을 담아 호출한다.
-- **Then** 사용자 매핑을 검증(대상 사용자 실재·중복 없음) 후, PR-A와 **같은 CAS-우선 트랜잭션** 안에서 `import_user_mappings`를 저장하고 job을 PENDING으로 전이·enqueue한다.
+- **Then** 사용자 매핑을 검증(대상 사용자 실재·중복 없음) 후, PR-A와 **같은 CAS-우선 트랜잭션** 안에서 `import_user_mappings`를 저장하고 job을 PENDING으로 전환·enqueue한다.
 
 ### S3. 워커 실행 — userId 우선 해석
 - **Given** 확정된 사용자 매핑이 있는 job을 워커가 처리한다.

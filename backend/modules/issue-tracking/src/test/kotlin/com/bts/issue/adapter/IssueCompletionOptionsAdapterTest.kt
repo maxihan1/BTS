@@ -1,4 +1,4 @@
-// IssueCompletionOptionsAdapter 통합 테스트 — BROWSE 게이트 + DONE 전이 필터 + resolution 목록 결합 fail-closed 검증 (FR-SL-05 Task 3)
+// IssueCompletionOptionsAdapter 통합 테스트 — BROWSE 게이트 + DONE 전환 필터 + resolution 목록 결합 fail-closed 검증 (FR-SL-05 Task 3)
 
 package com.bts.issue.adapter
 
@@ -67,7 +67,7 @@ import java.util.UUID
  * 카테고리를 반환해야 DONE 필터 검증이 의미가 있기 때문이다.
  *
  * ## 시나리오
- * - 가시 이슈 → (version, DONE 카테고리 전이 후보만, resolution 목록) 반환.
+ * - 가시 이슈 → (version, DONE 카테고리 전환 후보만, resolution 목록) 반환.
  * - 프로젝트 BROWSE 권한 없음 → null(fail-closed) — [IssueApplicationService.availableTransitions] 는
  *   호출되지 않는다(게이트가 먼저 차단).
  * - 활성 resolution 이 전혀 없으면(전역 soft-delete) resolutions 는 빈 목록 — `@Order` 로 마지막에
@@ -380,7 +380,7 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
 
     @Test
     @Order(1)
-    fun `가시 이슈는 버전 DONE 전이 후보 resolution 목록을 반환한다`() {
+    fun `가시 이슈는 버전 DONE 전환 후보 resolution 목록을 반환한다`() {
         val viewer = UUID.randomUUID()
         insertIssue(seq = 1, currentStateKey = "open")
 

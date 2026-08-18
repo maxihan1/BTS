@@ -1,16 +1,16 @@
-// 이슈 상태 전이 가용목록 조회 + 전이 실행 TanStack Query 훅
+// 이슈 상태 전환 가용목록 조회 + 전환 실행 TanStack Query 훅
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchIssueTransitions, transitionIssue } from '@/api/issues'
 import type { TransitionIssueInput } from '@/api/issues'
 
-/** 이슈 전이 관련 queryKey 팩토리 */
+/** 이슈 전환 관련 queryKey 팩토리 */
 export const issueTransitionKeys = {
-  /** 특정 이슈의 가용 전이 목록 queryKey */
+  /** 특정 이슈의 가용 전환 목록 queryKey */
   list: (key: string) => ['issue-transitions', key] as const,
 }
 
 /**
- * 이슈의 현재 상태에서 가용한 전이 목록을 조회한다.
+ * 이슈의 현재 상태에서 가용한 전환 목록을 조회한다.
  * GET /api/v1/issues/{key}/transitions
  *
  * @param key 이슈 식별 키 (예: "ATLAS-1")
@@ -23,13 +23,13 @@ export function useIssueTransitions(key: string) {
 }
 
 /**
- * 이슈 상태를 전이한다.
+ * 이슈 상태를 전환한다.
  * POST /api/v1/issues/{key}/transition
  *
- * onSuccess 시 해당 이슈 캐시('issue', key)와 가용 전이 목록 캐시를 모두 무효화해
- * 상태 배지 및 전이 버튼이 최신 상태로 갱신되도록 한다.
+ * onSuccess 시 해당 이슈 캐시('issue', key)와 가용 전환 목록 캐시를 모두 무효화해
+ * 상태 배지 및 전환 버튼이 최신 상태로 갱신되도록 한다.
  *
- * @param key 전이할 이슈 식별 키
+ * @param key 전환할 이슈 식별 키
  */
 export function useTransitionIssue(key: string) {
   const queryClient = useQueryClient()

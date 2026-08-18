@@ -216,7 +216,7 @@ class WebhookDispatchEndToEndIntegrationTest : SearchPersistenceTestBase() {
     // ── IT-E2E-2: issue.transitioned 실 발송 — projectKey 파생 + fromState/toState payload ──
 
     @Test
-    fun `IT-E2E-2 issue_transitioned 구독에 발송하고 projectKey 파생·전이 payload 를 검증한다`() {
+    fun `IT-E2E-2 issue_transitioned 구독에 발송하고 projectKey 파생·전환 payload 를 검증한다`() {
         val webhook =
             saveWebhook(
                 url = "$stubBase/hook-transitioned",

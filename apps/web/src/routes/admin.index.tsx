@@ -45,7 +45,7 @@ const ADMIN_HUB_LINKS: readonly AdminHubLink[] = [
   {
     to: '/admin/workflow-schemes',
     label: '워크플로우 스킴',
-    description: '이슈 상태 전이 워크플로우 스킴을 생성·관리합니다',
+    description: '이슈 상태 전환 워크플로우 스킴을 생성·관리합니다',
     Icon: Workflow,
   },
   {

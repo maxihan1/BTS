@@ -52,12 +52,12 @@ import java.util.concurrent.Executors
  * Spring ApplicationContext 없이 의존 객체를 직접 조합한다 (기존 테스트 패턴 유지).
  *
  * ### 시나리오 목록
- * - S1. happy path — 표준 워크플로우(software-default) open→in_progress 정상 전이
+ * - S1. happy path — 표준 워크플로우(software-default) open→in_progress 정상 전환
  * - S2. permission fail — PermissionValidator Fail 반환 시 WorkflowValidatorFailureException
  * - S3. required field fail — RequiredFieldValidator: 필수 필드 누락 → WorkflowValidatorFailureException
- * - S4. SpEL pass — CustomExpressionValidator: SpEL 표현식 true → 전이 성공
+ * - S4. SpEL pass — CustomExpressionValidator: SpEL 표현식 true → 전환 성공
  * - S5. PostAction emitEvents — Notify PostAction 이 DomainEvent 발행
- * - S6. 동시 전이 낙관락 — 동일 요청 두 번 실행, plan() 멱등성 검증
+ * - S6. 동시 전환 낙관락 — 동일 요청 두 번 실행, plan() 멱등성 검증
  * - S7. cache invalidate — invalidate 후 다음 findByKey 가 DB 재조회(miss)
  *
  * 참조. FR-WF-01 Task 35 / docs/plans/2026-05-21-project-workflow-bc-fr-wf-01-fsm-1-pr.md
@@ -159,16 +159,16 @@ class WorkflowIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(workflowCache, validatorFactory, postActionFactory, definitionRepo)
     }
 
-    // ── S1. happy path — open→in_progress 정상 전이 ─────────────────────────────
+    // ── S1. happy path — open→in_progress 정상 전환 ─────────────────────────────
 
     /**
      * Given  software-default 워크플로우 DB 적재 완료, validator/postAction 없음
-     * When   open→in_progress "Start Work" 전이 요청
+     * When   open→in_progress "Start Work" 전환 요청
      * Then   TransitionPlan.toStateKey == "in_progress", fieldChanges/emitEvents 빈 리스트
      */
     @Test
     @Order(1)
-    fun `S1 - happy path - open 에서 in_progress 로 정상 전이된다`() {
+    fun `S1 - happy path - open 에서 in_progress 로 정상 전환된다`() {
         // Given
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
@@ -192,7 +192,7 @@ class WorkflowIntegrationTest {
 
     /**
      * Given  Permission validator 가 Fail 을 반환하도록 stub
-     * When   전이 요청
+     * When   전환 요청
      * Then   WorkflowValidatorFailureException 발생, validatorType == "permission-check"
      */
     @Test
@@ -242,7 +242,7 @@ class WorkflowIntegrationTest {
 
     /**
      * Given  RequiredFieldValidator("resolution") 설정, issueFields에 resolution 없음
-     * When   전이 요청
+     * When   전환 요청
      * Then   WorkflowValidatorFailureException, field == "resolution"
      */
     @Test
@@ -282,17 +282,17 @@ class WorkflowIntegrationTest {
             })
     }
 
-    // ── S4. SpEL pass — CustomExpression 표현식 true 시 전이 성공 ────────────────
+    // ── S4. SpEL pass — CustomExpression 표현식 true 시 전환 성공 ────────────────
 
     /**
      * Given  CustomExpressionValidator("issue.priority == 'HIGH'") 설정
      *        issueFields["priority"] = "HIGH"
-     * When   전이 요청
-     * Then   SpEL true → Validator pass → 전이 성공 (TransitionPlan 반환)
+     * When   전환 요청
+     * Then   SpEL true → Validator pass → 전환 성공 (TransitionPlan 반환)
      */
     @Test
     @Order(4)
-    fun `S4 - SpEL pass - 커스텀 SpEL 표현식 true 평가 후 전이가 성공한다`() {
+    fun `S4 - SpEL pass - 커스텀 SpEL 표현식 true 평가 후 전환이 성공한다`() {
         // Given — SpelEvaluator 실제 구현체 + CustomExpressionValidator 실제 구현체
         val spelValidator =
             CustomExpressionValidator(
@@ -335,12 +335,12 @@ class WorkflowIntegrationTest {
 
     /**
      * Given  Notify PostAction 이 "NotificationRequested" DomainEvent 를 emitEvents 에 담아 반환
-     * When   전이 요청
+     * When   전환 요청
      * Then   TransitionPlan.emitEvents 에 "NotificationRequested" 이벤트 1건 포함
      */
     @Test
     @Order(5)
-    fun `S5 - PostAction emitEvents - Notify PostAction 이 전이 후 DomainEvent 를 발행한다`() {
+    fun `S5 - PostAction emitEvents - Notify PostAction 이 전환 후 DomainEvent 를 발행한다`() {
         // Given
         val notifyEvent =
             DomainEvent(
@@ -386,17 +386,17 @@ class WorkflowIntegrationTest {
         assertThat(plan.emitEvents.first().payload["channel"]).isEqualTo("slack")
     }
 
-    // ── S6. 동시 전이 낙관락 시뮬 ────────────────────────────────────────────────
+    // ── S6. 동시 전환 낙관락 시뮬 ────────────────────────────────────────────────
 
     /**
-     * Given  version=1 의 전이 요청 두 건이 동시에 도달하는 상황
+     * Given  version=1 의 전환 요청 두 건이 동시에 도달하는 상황
      * When   두 요청 모두 engine.plan() 호출
      * Then   plan() 은 두 번 모두 동일한 TransitionPlan 을 반환한다 (멱등성)
      *        version 충돌 처리는 호출자 BC(이슈 트래킹 BC) 책임이므로 plan() 은 관여하지 않는다
      */
     @Test
     @Order(6)
-    fun `S6 - 동시 전이 낙관락 - 동일 전이 두 번 호출 시 동일 결과를 반환한다`() {
+    fun `S6 - 동시 전환 낙관락 - 동일 전환 두 번 호출 시 동일 결과를 반환한다`() {
         // Given
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
@@ -462,9 +462,9 @@ data class StateInsertSpec(
 )
 
 /**
- * softwareDefaultRequest 생성 시 재정의할 수 있는 전이 파라미터 모음.
+ * softwareDefaultRequest 생성 시 재정의할 수 있는 전환 파라미터 모음.
  *
- * 기본값은 open→in_progress "Start Work" 전이다.
+ * 기본값은 open→in_progress "Start Work" 전환이다.
  */
 data class TransitionRequestSpec(
     val fromStateKey: String = "open",
@@ -477,14 +477,14 @@ data class TransitionRequestSpec(
 /**
  * 통합 테스트 전용 픽스처 빌더.
  *
- * 표준 seed 데이터 삽입([seedSoftwareDefault])과 표준 전이 요청 생성([softwareDefaultRequest])을
+ * 표준 seed 데이터 삽입([seedSoftwareDefault])과 표준 전환 요청 생성([softwareDefaultRequest])을
  * 한 곳에 모아 여러 테스트가 재사용할 수 있도록 한다.
  */
 object WorkflowFixtures {
     /**
-     * software-default 워크플로우 기반 표준 전이 요청을 생성한다.
+     * software-default 워크플로우 기반 표준 전환 요청을 생성한다.
      *
-     * @param spec 재정의할 전이 파라미터. 기본값 사용 시 open→in_progress "Start Work" 전이 생성.
+     * @param spec 재정의할 전환 파라미터. 기본값 사용 시 open→in_progress "Start Work" 전환 생성.
      */
     fun softwareDefaultRequest(spec: TransitionRequestSpec = TransitionRequestSpec()): TransitionRequest =
         TransitionRequest(

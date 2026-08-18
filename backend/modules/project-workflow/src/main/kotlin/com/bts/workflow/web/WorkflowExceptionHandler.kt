@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  *
  * 매핑 규칙:
  * - [WorkflowValidatorFailureException] → 422 Unprocessable Entity (검증 실패)
- * - [WorkflowNotFoundException] → 404 Not Found (워크플로우/전이 부재)
+ * - [WorkflowNotFoundException] → 404 Not Found (워크플로우/전환 부재)
  * - [WorkflowCacheLockTimeoutException] → 503 Service Unavailable (캐시 lock 타임아웃)
  * - [WorkflowExpressionTimeoutException] → 503 Service Unavailable (SpEL 평가 타임아웃)
  * - [AccessDeniedException] → 403 Forbidden (@PreAuthorize 실패)
@@ -49,7 +49,7 @@ class WorkflowExceptionHandler {
     }
 
     /**
-     * 워크플로우/전이 부재 — 404.
+     * 워크플로우/전환 부재 — 404.
      *
      * @param ex 조회를 시도한 워크플로우 키를 담은 예외
      */

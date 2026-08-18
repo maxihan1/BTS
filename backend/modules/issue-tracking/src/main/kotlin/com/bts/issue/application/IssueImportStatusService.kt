@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional
  * ### FSM 우회 direct-set — transitionIssue 와의 차이
  *
  * [IssueApplicationService.transitionIssue] 는 `workflowPort.plan()` 으로 워크플로우 FSM 의 유효
- * edge(from→to)만 허용한다. 그러나 마이그레이션 소스 상태는 대상 워크플로우의 전이 그래프 경로를
+ * edge(from→to)만 허용한다. 그러나 마이그레이션 소스 상태는 대상 워크플로우의 전환 그래프 경로를
  * 따르지 않으므로(예: 시작 상태에서 임의의 종료 상태로 한 번에), edge 검증으로는 반영할 수 없다.
  * 따라서 이 서비스는 [IssueMoveService](FR-MV-01 cross-project move)와 동형으로 **FSM edge 검증을
  * 우회**하고, "대상 상태집합 포함 여부"만 검증한 뒤 [IssueRepository.applyTransition] 으로
@@ -113,7 +113,7 @@ class IssueImportStatusService(
 
     /**
      * [statusName] 이 (projectKey, issueTypeId) 대상 워크플로우 상태 이름과 매칭되는지만 검사한다
-     * (실제 전이·부수효과 없음) — dry-run 미리보기 전용.
+     * (실제 전환·부수효과 없음) — dry-run 미리보기 전용.
      *
      * [applyImportedStatus] 3단계 매칭과 **동일 기준**(같은 [WorkflowStateCatalog.listStates] +
      * 대소문자 무시 name 비교)을 사용하므로, 매칭 결과가 실제 실행의 [ImportStatusOutcome.NoMatch]

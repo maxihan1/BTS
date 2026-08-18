@@ -11,7 +11,7 @@
 ## 사용자 시나리오 (Given-When-Then)
 
 - **S1 값 수집.** Given AWAITING_MAPPING job + 필드매핑 확정. When `collect values` 호출. Then status/type/priority로 흘러드는 컬럼의 **distinct 소스값** + 각 값의 **자동추천 타깃값**(대소문자 무시 정확 일치)을 target_field별로 반환.
-- **S2 값 확정.** Given 사용자가 값매핑 확정(일부는 자동추천 수락, 일부 수동). When `confirm(valueMappings)`. Then 유효성 검증 후 `import_value_mappings` 저장 + `AWAITING_MAPPING→PENDING` 전이 + enqueue(기존 워커 경로).
+- **S2 값 확정.** Given 사용자가 값매핑 확정(일부는 자동추천 수락, 일부 수동). When `confirm(valueMappings)`. Then 유효성 검증 후 `import_value_mappings` 저장 + `AWAITING_MAPPING→PENDING` 전환 + enqueue(기존 워커 경로).
 - **S3 치환 적용.** Given 확정된 값매핑. When 워커가 행 처리. Then 프로세서가 매핑 1회 로드해 행별 status/type/priority 값을 타깃값으로 치환 → 어댑터의 기존 name 해석에 전달. 미매핑 값은 원본 유지(name-match 폴백).
 - **S4 하위호환.** Given 즉시-업로드 경로(매핑 없음) 또는 값매핑 미제공. When 워커 처리. Then 기존 동작 완전 불변(회귀 0).
 
@@ -81,7 +81,7 @@ CREATE TABLE import_value_mappings (
 ## 엣지 케이스
 
 - **E1 빈 valueMappings.** 저장 0행(delete만), 전량 폴백. 정상.
-- **E2 미실재 타깃값.** 존재하지 않는 status/type name 또는 범위 밖 priority → 422(FR7). 저장·전이 없음.
+- **E2 미실재 타깃값.** 존재하지 않는 status/type name 또는 범위 밖 priority → 422(FR7). 저장·전환 없음.
 - **E3 priority 사전정규화(narrow).** 파서가 priorityName을 canonical 5로 정규화·미인식→null. 따라서 collect의 priority distinct = canonical 5 부분집합. 값매핑은 5종 간 remap만 유효(커스텀명은 이미 소실). 스펙에 명시, 저장/치환은 정상 동작.
 - **E4 대소문자/공백 변형.** 같은 소스값 변형은 `ValueMappingNormalizer`로 dedup(수집·저장·치환 동일 키).
 - **E5 CSV/JSON 공통.** 값매핑은 CSV(필드매핑 파싱)·JSON(canonical 파싱) 모두 적용 — 파서가 이미 `statusName`/`typeName`/`priorityName`으로 정규화하므로 collect/치환은 파싱 결과만 본다.

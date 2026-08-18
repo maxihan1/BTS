@@ -10,24 +10,24 @@
 
 ## §1. 사용자 시나리오 (Given-When-Then)
 
-### S1. 표준 워크플로우로 이슈 전이 (기본 흐름)
+### S1. 표준 워크플로우로 이슈 전환 (기본 흐름)
 
 ```gherkin
 Given software-default 워크플로우가 시드 적재됨 (To Do → In Progress → Review → Done)
 And  이슈 PROJ-1 의 상태 = "To Do"
 And  사용자 alice 가 PROJ-1 에 대해 ISSUE_EDIT 권한 보유
-When alice 가 "To Do → In Progress" 전이를 발사
+When alice 가 "To Do → In Progress" 전환을 발사
 Then 이슈 PROJ-1 의 상태 = "In Progress" 로 변경
 And  WorkflowTransitionExecuted 이벤트 발행 (pgmq, BC 격리)
-And  이슈 변경 이력에 전이 기록 (issue-tracking BC가 구독)
+And  이슈 변경 이력에 전환 기록 (issue-tracking BC가 구독)
 ```
 
 ### S2. Validator 실패 — 권한 부재
 
 ```gherkin
-Given bug-tracking 워크플로우의 "Verified → Closed" 전이가 PermissionValidator(ISSUE_CLOSE) 보유
+Given bug-tracking 워크플로우의 "Verified → Closed" 전환이 PermissionValidator(ISSUE_CLOSE) 보유
 And  사용자 bob 는 ISSUE_CLOSE 권한 없음
-When bob 가 "Verified → Closed" 전이를 발사
+When bob 가 "Verified → Closed" 전환을 발사
 Then HTTP 403 반환
 And  이슈 상태 변경 없음 (트랜잭션 롤백)
 And  WorkflowTransitionRejected 이벤트 발행 (이유. permission_denied)
@@ -36,9 +36,9 @@ And  WorkflowTransitionRejected 이벤트 발행 (이유. permission_denied)
 ### S3. Validator 실패 — 필수 필드 누락
 
 ```gherkin
-Given simple 워크플로우의 "Open → Closed" 전이가 RequiredFieldValidator(resolution) 보유
+Given simple 워크플로우의 "Open → Closed" 전환이 RequiredFieldValidator(resolution) 보유
 And  이슈 PROJ-2 의 resolution 필드 = null
-When alice 가 "Open → Closed" 전이를 발사
+When alice 가 "Open → Closed" 전환을 발사
 Then HTTP 422 반환 (errors. {resolution: "required"})
 And  이슈 상태 변경 없음
 ```
@@ -46,30 +46,30 @@ And  이슈 상태 변경 없음
 ### S4. CustomExpression Validator — SpEL 평가
 
 ```gherkin
-Given software-default 워크플로우의 "Review → Done" 전이에 CustomExpressionValidator 설정
+Given software-default 워크플로우의 "Review → Done" 전환에 CustomExpressionValidator 설정
 And  표현식 = "#issue.priority == 'HIGH' && #user.hasRole('LEAD')"
 And  이슈 priority = HIGH, 사용자 charlie 는 LEAD 역할
-When charlie 가 "Review → Done" 전이를 발사
-Then 표현식 평가 true → 전이 통과
+When charlie 가 "Review → Done" 전환을 발사
+Then 표현식 평가 true → 전환 통과
 ```
 
 ### S5. PostAction — 필드 자동 채움 + 알림
 
 ```gherkin
-Given software-default 의 "Review → Done" 전이에 두 PostAction 설정
+Given software-default 의 "Review → Done" 전환에 두 PostAction 설정
         1. SetField(resolution = "fixed")
         2. Notify(channel = "inapp", recipients = "watchers")
 And  이슈 PROJ-3 에 워처 alice, bob
-When charlie 가 "Review → Done" 전이를 발사 (S1 흐름 통과)
+When charlie 가 "Review → Done" 전환을 발사 (S1 흐름 통과)
 Then 이슈 resolution = "fixed" 자동 설정
 And  alice/bob 에게 인앱 알림 (notification BC가 이벤트 구독)
 ```
 
-### S6. 동시 전이 (낙관적 락)
+### S6. 동시 전환 (낙관적 락)
 
 ```gherkin
 Given 이슈 PROJ-4 의 version = 5
-When  alice 와 bob 이 동시에 "To Do → In Progress" 전이 발사
+When  alice 와 bob 이 동시에 "To Do → In Progress" 전환 발사
 Then  먼저 도착한 쪽 성공. 늦은 쪽은 HTTP 409 (OptimisticLockException)
 And  최종 이슈 version = 6, 상태 = "In Progress" (멱등성 보장 안 됨 — 클라이언트가 재시도 결정)
 ```
@@ -86,7 +86,7 @@ And  최종 이슈 version = 6, 상태 = "In Progress" (멱등성 보장 안 됨
 | Validator | RequiredField, Permission, NotStatusCategory, CustomExpression 4종 |
 | PostAction | SetField, AddWatcher, Notify, CallWebhook, RunAutomation 5종 |
 
-### §2.2 전이 발사 API
+### §2.2 전환 발사 API
 
 | FR-WF-01-FN-02 | `POST /api/v1/workflows/{workflowKey}/transitions:plan` (검증/계산 — 적용 X) |
 | --- | --- |
@@ -152,7 +152,7 @@ And  최종 이슈 version = 6, 상태 = "In Progress" (멱등성 보장 안 됨
 
 | 항목 | 기준 |
 |---|---|
-| Property-based test (Kotest property) | **표준 4종 워크플로우 × 임의 전이 시퀀스 길이 1~20 × validator 조합 무작위 × 1000건**. 불변식. (1) 도달한 상태는 워크플로우의 reachable 집합 내, (2) 모든 워크플로우의 DONE 카테고리 상태 1개 이상 도달 가능, (3) 같은 입력 → 같은 TransitionPlan (멱등) |
+| Property-based test (Kotest property) | **표준 4종 워크플로우 × 임의 전환 시퀀스 길이 1~20 × validator 조합 무작위 × 1000건**. 불변식. (1) 도달한 상태는 워크플로우의 reachable 집합 내, (2) 모든 워크플로우의 DONE 카테고리 상태 1개 이상 도달 가능, (3) 같은 입력 → 같은 TransitionPlan (멱등) |
 | 표준 4종 closed 검증 | 각 워크플로우 — 모든 state 가 시작점 (To Do/New/Open/Backlog) 에서 도달 가능 + DONE 카테고리 1개 이상 + 고아 상태 0건 |
 | Validator 단위 테스트 | 4종 × {pass, fail, null/empty/whitespace edge} = 12건 |
 | PostAction config 평가 단위 테스트 | 5종 × {valid config → fieldChange 계산, invalid config → exception} = 10건 |
@@ -215,7 +215,7 @@ GET /api/v1/workflows/{key}
 }
 ```
 
-### §4.2 전이 발사
+### §4.2 전환 발사
 
 ```http
 POST /api/v1/workflows/{workflowKey}/transitions
@@ -324,14 +324,14 @@ CREATE INDEX idx_workflow_post_actions_transition ON workflow_post_actions(trans
 |---|---|
 | Self-transition (from = to) | 명시적 허용 (이슈 코멘트만 추가 + 알림 같은 케이스). YAML에서 명시적 정의해야 함 (자동 생성 안 함) |
 | Validator 4종 부분 통과 (3 pass + 1 fail) | 1 fail로 전체 reject. 422 + 어떤 validator 가 실패했는지 모두 반환 |
-| PostAction 5종 부분 실행 (2 success + 3rd fail) | 전이 + 1, 2 PostAction 모두 롤백 (트랜잭션 단위) |
+| PostAction 5종 부분 실행 (2 success + 3rd fail) | 전환 + 1, 2 PostAction 모두 롤백 (트랜잭션 단위) |
 | 워크플로우 정의 YAML 파싱 실패 | 부팅 차단 (FailFast). 이전 정의 유지 안 함 — 명시적 |
-| YAML 해시 변경 + 마이그레이션 진행 중 동시 전이 요청 | **PostgreSQL advisory lock** (`pg_advisory_xact_lock(<workflow_id_hash>)`) — 캐시 무효화 + 새 정의 적재 동안 같은 workflow 전이 요청은 lock 대기. 대기 timeout 200ms 초과 시 503 응답 |
+| YAML 해시 변경 + 마이그레이션 진행 중 동시 전환 요청 | **PostgreSQL advisory lock** (`pg_advisory_xact_lock(<workflow_id_hash>)`) — 캐시 무효화 + 새 정의 적재 동안 같은 workflow 전환 요청은 lock 대기. 대기 timeout 200ms 초과 시 503 응답 |
 | 다중 인스턴스 캐시 정합성 | **본 PR 은 단일 인스턴스 가정** (Naver Cloud Docker Compose 단일 호스트). 다중 인스턴스 확장 시 cache invalidate 가 instance A → B 전파 안 됨 → 후속 PR (pgmq pub/sub 또는 LISTEN/NOTIFY) 에서 해소. spec 본문 명시. |
 | CustomExpression 의 SpEL 평가 무한 루프 | SimpleEvaluationContext + 평가 timeout 50ms — 초과 시 422 (`validator_error`) |
 | 표준 4종 워크플로우 수정 시도 | DB constraint 또는 application 검증으로 차단. "표준은 코드/YAML 변경으로만" 명시 |
 | issueRef 의 version 누락 또는 0 | 422 (낙관적 락 불가 — 명시적 reject) |
-| from State 가 issue 의 현재 State 와 불일치 | 409 (conflict — 다른 클라이언트가 먼저 전이). 클라이언트 재시도 결정 |
+| from State 가 issue 의 현재 State 와 불일치 | 409 (conflict — 다른 클라이언트가 먼저 전환). 클라이언트 재시도 결정 |
 
 ## §7. 제약 조건
 
@@ -355,11 +355,11 @@ CREATE INDEX idx_workflow_post_actions_transition ON workflow_post_actions(trans
 - [ ] WorkflowEngine 구현 + property-based test 1000건 통과
 - [ ] 4 Validator + 5 PostAction 구현 + 단위 테스트 18건 (4×2 + 5×2)
 - [ ] Validator/PostAction config jsonb 직렬화 라운드트립 테스트
-- [ ] REST API 3개 (GET 목록/단건, POST 전이, POST 캐시 무효화)
+- [ ] REST API 3개 (GET 목록/단건, POST 전환, POST 캐시 무효화)
 - [ ] Testcontainers 통합 테스트 7건 (S1~S6 + cache invalidate)
 - [ ] 워크플로우 다이어그램 mermaid 컴포넌트 (D6)
 - [ ] E2E (Playwright) — 4 표준 워크플로우 happy path 4건 (D7)
-- [ ] p95 전이 처리 측정 — 100ms 미만 + plan/product/project-workflow.md 표 갱신
+- [ ] p95 전환 처리 측정 — 100ms 미만 + plan/product/project-workflow.md 표 갱신
 - [ ] ArchUnit 룰 4건 (@Service 강제 + BC 격리 3건. id-access/issue-tracking/automation)
 - [ ] ADR 4건 작성 (terminology/spel/yaml-vs-db/cross-bc-port)
 - [ ] `docs/plan/product/project-workflow.md` §2.1 FR-WF-01 의 D1~D7 체크박스 [x]

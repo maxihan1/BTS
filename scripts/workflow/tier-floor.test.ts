@@ -67,8 +67,19 @@ export const parseDeclaration = (planBody: string): Pick<Declaration, 'tier' | '
 };
 
 /** 변경 목록에서 plan 파일을 찾아 선언을 읽는다 */
+/**
+ * 바뀐 plan 후보를 **이 PR 의 선언일 가능성이 높은 순서**로 늘어놓는다.
+ *
+ * ★사전순 첫 번째를 쓰면 **문서 전수 편집 PR 에서 무너진다.** 2026-08-18 실측 —
+ * Transition 용어 교체 PR 이 옛 계획서 89개를 함께 바꾸자 `2026-05-21-…` 이 먼저 잡혀
+ * 이 PR 이 만든 `2026-08-18-…`(티어 T2)이 가려졌고, 보안 하한이 「T0/T1 선언」으로 오판했다.
+ * 파일명이 `YYYY-MM-DD-slug.md` 라 **이름 내림차순 = 날짜 내림차순**이다.
+ */
+export const orderPlanCandidates = (paths: readonly string[]): string[] =>
+  paths.filter((p) => matchesGlob(PLAN_GLOB, p)).sort().reverse();
+
 const declarationOf = (paths: readonly string[]): Declaration => {
-  const planFiles = paths.filter((p) => matchesGlob(PLAN_GLOB, p)).sort();
+  const planFiles = orderPlanCandidates(paths);
   for (const planFile of planFiles) {
     const abs = path.join(REPO_ROOT, planFile);
     // 삭제된 plan 파일은 선언이 아니다. 디스크에 있는 것만 읽는다.
@@ -292,6 +303,29 @@ describe('티어 판정 5조', () => {
 const SECURITY_PATH = 'backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/auth/Jwt.kt';
 const MIGRATION_PATH = 'backend/modules/issue-tracking/src/main/resources/db/migration/V99__x.sql';
 const PLAN_PATH = 'docs/plans/2026-08-13-x.md';
+
+describe('plan 선언 고르기 — 여럿이 바뀌어도 이 PR 의 것을 읽는다', () => {
+  test('최신 날짜 plan 이 먼저 온다 (문서 전수 편집 PR 회귀 방지)', () => {
+    const ordered = orderPlanCandidates([
+      'docs/plans/2026-05-21-project-workflow-bc-fr-wf-01-fsm-1-pr.md',
+      'backend/modules/identity-access/src/main/kotlin/X.kt',
+      'docs/plans/2026-08-18-workflow-editor-adr-fr.md',
+      'docs/plans/2026-07-16-something.md',
+    ]);
+    assert.equal(
+      ordered[0],
+      'docs/plans/2026-08-18-workflow-editor-adr-fr.md',
+      '사전순 첫 번째를 읽으면 옛 계획서가 이 PR 의 선언을 가린다',
+    );
+    assert.equal(ordered.length, 3, 'plan 이 아닌 경로가 후보에 섞였다');
+  });
+
+  test('plan 이 하나뿐이면 그대로 고른다 (오탐 대조)', () => {
+    assert.deepEqual(orderPlanCandidates(['docs/plans/2026-08-18-a.md', 'apps/web/src/X.tsx']), [
+      'docs/plans/2026-08-18-a.md',
+    ]);
+  });
+});
 
 describe('ⓐ 보안 표면 하한', () => {
   test('plan 부재 = T0/T1 선언이면 위반', () => {

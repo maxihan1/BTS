@@ -41,13 +41,13 @@ class BulkItemApplier(
      * 예외가 발생하면 트랜잭션이 롤백되며 호출자([BulkItemExecutor.executeItem]) 에게 전파된다.
      * 호출자는 이 예외를 catch 하여 [BulkItemFailureRecorder.recordFailure] 로 실패를 기록한다.
      *
-     * repository 직행 금지 — 도메인 정규화·검증·권한 검증·전이 위임은
+     * repository 직행 금지 — 도메인 정규화·검증·권한 검증·전환 위임은
      * [IssueApplicationService] 를 통해 수행한다 (learnings: PATCH-merge-domain-bypass).
      *
      * ## BULK_TRANSITION + resolutionId
      * [BulkOperationPayload.Transition.resolutionId] 를 [TransitionIssueRequest.resolutionId] 에 그대로 전달한다.
      * 전체 일괄 항목에 동일한 resolutionId 가 적용된다.
-     * null 이면 단건 전이와 동일하게 issues.resolution_id 를 clear 한다.
+     * null 이면 단건 전환과 동일하게 issues.resolution_id 를 clear 한다.
      * 존재하지 않는 resolutionId 는 [IssueApplicationService.transitionIssue] 에서 거부되어
      * 해당 항목이 FAILED 로 기록된다.
      *

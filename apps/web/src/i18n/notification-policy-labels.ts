@@ -29,7 +29,7 @@ export function labelFor(map: Record<string, string>, key: string): string {
 export const eventTypeLabels: Record<string, string> = {
   'issue.created': '이슈 생성',
   'issue.assigned': '이슈 담당자 지정',
-  'issue.transitioned': '이슈 상태 전이',
+  'issue.transitioned': '이슈 상태 전환',
   'issue.commented': '이슈 댓글 작성',
   'issue.comment_deleted': '이슈 댓글 삭제',
   'issue.mentioned': '이슈 멘션',

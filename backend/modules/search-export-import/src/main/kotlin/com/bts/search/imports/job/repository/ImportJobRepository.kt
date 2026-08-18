@@ -294,7 +294,7 @@ class ImportJobRepository(
      *
      * `WHERE id=? AND status='AWAITING_MAPPING'` 조건의 단일 UPDATE 로,
      * status 를 PENDING 으로 바꾸고 expires_at 을 NULL 로 해제하며 dry_run 을 [dryRun] 값으로
-     * 확정한다 (FR-IM-02). 사용자가 소스 필드 ↔ 대상 필드 매핑을 확정(confirm)하면 이 전이가 일어나
+     * 확정한다 (FR-IM-02). 사용자가 소스 필드 ↔ 대상 필드 매핑을 확정(confirm)하면 이 전환이 일어나
      * 워커가 처리를 시작한다.
      *
      * **CAS 의도** — affected rows 1 = 확정 성공. 이미 PENDING/RUNNING 등 다른 상태이면 0 = false 를 반환해

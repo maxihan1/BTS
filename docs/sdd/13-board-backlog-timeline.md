@@ -83,17 +83,17 @@
 - Cumulative Flow Diagram (누적 흐름 다이어그램)
 - X축: 시간(일 단위, UTC), Y축: 상태 카테고리별 순간 이슈 수를 stacked
 - **카테고리 3띠**(TODO/IN_PROGRESS/DONE) — 워크플로우 상태별 N띠 아님(프로젝트 무관 균일, ADR D1 확정)
-- **데이터 = on-the-fly 역산**: `issue_change` status 전이 이력에서 각 이슈 상태 타임라인 재구성(스냅샷/스케줄러 0, ADR D2)
+- **데이터 = on-the-fly 역산**: `issue_change` status 전환 이력에서 각 이슈 상태 타임라인 재구성(스냅샷/스케줄러 0, ADR D2)
 - 엔드포인트 `GET /api/v1/projects/{projectKey}/cfd?from=&to=`(모듈 issue-tracking, 프로젝트 BROWSE + 이슈별 가시성 필터)
 - **프론트(PR #227)**: recharts 누적 영역 차트(`AreaChart` 3 stacked `Area`, 아래→위 DONE→IN_PROGRESS→TODO), 전용 라우트 `/projects/$projectKey/reports/cfd`(백로그 nav 진입), 순수변환 `toCfdSeries`+`isCfdEmpty` 단위·실렌더 E2E 위임. 날짜 피커 v1 미노출(백엔드 기본 30일). FR-RP-02 미러.
 - ADR [CFD 데이터 모델](../decisions/2026-07-03-fr-rp-03-cfd.md)
 
 ### 13.5.5 Cycle Time / Lead Time (FR-RP-04) — 구현됨 (백엔드 D1~D5 PR #228, 프론트 D6/D7 후속)
-- **Lead Time**: Created → Done(마지막 DONE 카테고리 전이). **Cycle Time**: 첫 In Progress 카테고리 전이 → Done.
+- **Lead Time**: Created → Done(마지막 DONE 카테고리 전환). **Cycle Time**: 첫 In Progress 카테고리 전환 → Done.
 - **분포**: 이슈별 소요 **초(seconds)** 배열(`samples[{issueKey,seconds}]`) + 서버 계산 요약 통계(count·min·max·avg·p25·p50·p75·p90, **nearest-rank** `idx=clamp(ceil(p/100·n)−1,0,n−1)`, count=0→null). 프론트(후속)가 히스토그램 binning + 박스플롯(min·p25·p50·p75·max) 렌더.
 - **CFD와 차이**: CFD는 날짜별 누적 카운트(day 절삭), FR-RP-04는 이슈별 소요 기간의 분포 → 실제 타임스탬프 초 단위(같은 날 완료 이슈가 0으로 뭉개지는 것 방지).
-- **모집단**: 완료(마지막 DONE 전이)일이 창 `[from,to]` 안인 이슈. Cycle 미경유(IN_PROGRESS 전이 없음)·음수(firstInProgress>lastDone) 이슈는 Cycle 분포 제외(Lead는 유지). status 전이 이력 없는 이슈(V018 이전·직접 생성)는 제외(v1 한계).
-- **데이터 = on-the-fly 역산**: CFD와 동일하게 `issue_change_group`/`issue_change_item` status 전이 이력에서 첫 IN_PROGRESS·마지막 DONE 전이 시각을 추출(스냅샷/스케줄러 0). 상태키→카테고리는 `WorkflowStateCatalog.category`(TODO/IN_PROGRESS/DONE).
+- **모집단**: 완료(마지막 DONE 전환)일이 창 `[from,to]` 안인 이슈. Cycle 미경유(IN_PROGRESS 전환 없음)·음수(firstInProgress>lastDone) 이슈는 Cycle 분포 제외(Lead는 유지). status 전환 이력 없는 이슈(V018 이전·직접 생성)는 제외(v1 한계).
+- **데이터 = on-the-fly 역산**: CFD와 동일하게 `issue_change_group`/`issue_change_item` status 전환 이력에서 첫 IN_PROGRESS·마지막 DONE 전환 시각을 추출(스냅샷/스케줄러 0). 상태키→카테고리는 `WorkflowStateCatalog.category`(TODO/IN_PROGRESS/DONE).
 - 엔드포인트 `GET /api/v1/projects/{projectKey}/cycle-time?from=&to=`(모듈 issue-tracking, 프로젝트 BROWSE + 이슈별 가시성 필터 `buildActiveSecureWhere` 재사용, 창 기본 30일·상한 180일·잘못된 창 400·미존재/무권한 403).
 - **공유 프리미티브**: CFD의 상태 이력 재구성 프리미티브를 `com.bts.issue.statushistory`(StatusCategory·StatusHistoryRepository·StatusChangeRow) 중립 패키지로 추출해 CFD·cycletime 공유(FR-RP-04 CONCERN-1).
 - ADR [Cycle Time / Lead Time 분포 데이터 모델](../decisions/2026-07-03-fr-rp-04-cycle-lead-time.md)
@@ -106,7 +106,7 @@
 - 과거 스프린트도 소급 계산 가능 (스냅샷 방식은 도입 이후 데이터만 쌓여 과거 소급이 불가능)
 - 1,000명 규모에서 스프린트당 이슈·worklog 행 수가 적어 요청 시 계산 부담은 무시 가능
 
-아래는 최초 설계 시점의 스냅샷 테이블 안이며, 번다운(FR-RP-01)은 위 결정으로 대체됐다. **벨로시티(FR-RP-02, ADR [벨로시티](../decisions/2026-07-02-fr-rp-02-velocity.md))·CFD(FR-RP-03, ADR [CFD](../decisions/2026-07-03-fr-rp-03-cfd.md))도 스냅샷 테이블을 채택하지 않고 on-the-fly 재구성으로 구현됐다** — 벨로시티는 현재 상태 집계, CFD는 `issue_change` status 전이 이력에서 상태 타임라인을 소급 재구성. 스냅샷 안은 셋 다 미채택.
+아래는 최초 설계 시점의 스냅샷 테이블 안이며, 번다운(FR-RP-01)은 위 결정으로 대체됐다. **벨로시티(FR-RP-02, ADR [벨로시티](../decisions/2026-07-02-fr-rp-02-velocity.md))·CFD(FR-RP-03, ADR [CFD](../decisions/2026-07-03-fr-rp-03-cfd.md))도 스냅샷 테이블을 채택하지 않고 on-the-fly 재구성으로 구현됐다** — 벨로시티는 현재 상태 집계, CFD는 `issue_change` status 전환 이력에서 상태 타임라인을 소급 재구성. 스냅샷 안은 셋 다 미채택.
 
 ```sql
 -- 미채택 설계(참고). 벨로시티/CFD 구현 시 재검토 대상

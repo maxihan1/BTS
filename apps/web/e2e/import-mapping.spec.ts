@@ -144,7 +144,7 @@ async function unassignSummaryTarget(page: Page): Promise<void> {
   await page.getByRole('option', { name: '매핑 안 함', exact: true }).click()
 }
 
-/** 필드 매핑 단계 — summary 대상 지정 후 [다음] 클릭(검증 통과 시 사용자 매핑으로 전이) */
+/** 필드 매핑 단계 — summary 대상 지정 후 [다음] 클릭(검증 통과 시 사용자 매핑으로 전환) */
 async function proceedFieldsStep(page: Page): Promise<void> {
   await assignSummaryTarget(page)
   await page.getByRole('button', { name: '다음', exact: true }).click()
@@ -278,7 +278,7 @@ test.describe('FR-IM-02 D6/D7 Import 매핑 마법사 (S1 CSV 전체 흐름 / S5
     await unassignSummaryTarget(page)
     await page.getByRole('button', { name: '다음', exact: true }).click()
 
-    // Then. 에러 노출 + 필드 매핑 단계에 그대로 머무름(사용자 매핑으로 전이하지 않음)
+    // Then. 에러 노출 + 필드 매핑 단계에 그대로 머무름(사용자 매핑으로 전환하지 않음)
     await expect(page.getByRole('alert')).toContainText('summary(제목) 대상에 매핑된 소스 필드가 없습니다.')
     await expect(page.getByTestId('field-mapping-row-Summary')).toBeVisible()
   })

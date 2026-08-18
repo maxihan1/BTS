@@ -1,4 +1,4 @@
-// 종료 전이 시 Resolution 선택 모달 단위 테스트 (FR-IS-07 Task B9)
+// 종료 전환 시 Resolution 선택 모달 단위 테스트 (FR-IS-07 Task B9)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

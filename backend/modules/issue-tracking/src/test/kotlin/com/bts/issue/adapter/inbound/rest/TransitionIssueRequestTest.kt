@@ -9,7 +9,7 @@ import java.util.UUID
 import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
 
 /**
- * Task B5: 전이 요청 DTO에 resolutionId 필드가 존재하는지 검증한다.
+ * Task B5: 전환 요청 DTO에 resolutionId 필드가 존재하는지 검증한다.
  *
  * transport(REST 요청 바디)와 application 계층 DTO 모두에 resolutionId: UUID? 가 있어야 하며,
  * 컨트롤러가 transport→application 매핑 시 resolutionId 를 전달해야 한다.

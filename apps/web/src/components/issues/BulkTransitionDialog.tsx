@@ -1,4 +1,4 @@
-// 일괄 상태 전이 Dialog — 선택 이슈 가용 전이 교집합 노출 + BULK_TRANSITION 접수 (FR-IS-05, B14)
+// 일괄 상태 전환 Dialog — 선택 이슈 가용 전환 교집합 노출 + BULK_TRANSITION 접수 (FR-IS-05, B14)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import {
@@ -29,7 +29,7 @@ import { resolutionLabels } from '@/i18n/resolution-labels'
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface BulkTransitionDialogProps {
-  /** 일괄 전이 대상 이슈 키 목록 */
+  /** 일괄 전환 대상 이슈 키 목록 */
   readonly issueKeys: string[]
   /** Dialog 열림 여부 */
   readonly open: boolean
@@ -44,20 +44,20 @@ interface BulkTransitionDialogProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 일괄 상태 전이 Dialog.
+ * 일괄 상태 전환 Dialog.
  *
- * 1. open 시 `fetchBulkAvailableTransitions(issueKeys)` 단일 호출로 서버가 계산한 교집합 전이를 받는다.
+ * 1. open 시 `fetchBulkAvailableTransitions(issueKeys)` 단일 호출로 서버가 계산한 교집합 전환을 받는다.
  * 2. transitions를 드롭다운에 노출한다.
  * 3. unresolvedIssueKeys가 1건 이상이면 경고 메시지를 표시한다.
  * 4. transitions가 0건이고 unresolvedIssueKeys도 없으면 교집합 없음 안내를 표시한다.
  * 5. transitions가 0건이고 unresolvedIssueKeys === issueKeys 전량이면 전량 실패 에러를 표시한다.
- * 6. 전이 선택 후 적용 시 issueKeys 전체를 백엔드에 전송한다.
+ * 6. 전환 선택 후 적용 시 issueKeys 전체를 백엔드에 전송한다.
  *    — 백엔드 best-effort가 개별 처리하므로 전체 목록을 그대로 보낸다.
- * 7. 선택한 전이의 toCategory가 'DONE'이면 resolution 드롭다운을 표시한다 (B14).
+ * 7. 선택한 전환의 toCategory가 'DONE'이면 resolution 드롭다운을 표시한다 (B14).
  *    — resolution 미선택 시 적용 버튼 비활성. 선택 시 transitionPayload.resolutionId 포함.
  * 8. 성공 시 onSubmitted(bulkOperationId)와 onOpenChange(false)를 호출한다.
  *
- * @param issueKeys 일괄 전이 대상 이슈 키 목록
+ * @param issueKeys 일괄 전환 대상 이슈 키 목록
  * @param open Dialog 열림 여부
  * @param onOpenChange Dialog 열림 상태 변경 핸들러
  * @param onSubmitted 접수 성공 콜백 — bulkOperationId 전달
@@ -68,7 +68,7 @@ export function BulkTransitionDialog({
   onOpenChange,
   onSubmitted,
 }: BulkTransitionDialogProps): JSX.Element {
-  /** 서버가 계산한 공통 전이 목록 */
+  /** 서버가 계산한 공통 전환 목록 */
   const [transitions, setTransitions] = useState<IssueTransition[]>([])
   /** 조회 실패한 issueKey가 1건 이상이면 true */
   const [hasPartialFailure, setHasPartialFailure] = useState(false)
@@ -76,13 +76,13 @@ export function BulkTransitionDialog({
   const [hasTotalFailure, setHasTotalFailure] = useState(false)
   /** 선택된 toStateKey */
   const [selectedStateKey, setSelectedStateKey] = useState<string>('')
-  /** DONE 전이 시 선택된 결의안 ID */
+  /** DONE 전환 시 선택된 결의안 ID */
   const [selectedResolutionId, setSelectedResolutionId] = useState<string>('')
 
   const submitBulkOperation = useSubmitBulkOperation()
   const { data: resolutions = [] } = useResolutions()
 
-  /** 현재 선택된 전이가 DONE 카테고리인지 여부 */
+  /** 현재 선택된 전환이 DONE 카테고리인지 여부 */
   const selectedTransition = transitions.find((t) => t.toStateKey === selectedStateKey)
   const isDoneTransition = selectedTransition?.toCategory === 'DONE'
 
@@ -118,14 +118,14 @@ export function BulkTransitionDialog({
     }
   }, [open, issueKeys])
 
-  /** 교집합이 0건이고 전량 실패도 아닌 경우 — 공통 전이 없음 안내 */
+  /** 교집합이 0건이고 전량 실패도 아닌 경우 — 공통 전환 없음 안내 */
   const hasNoCommonTransitions = !hasTotalFailure && transitions.length === 0 && !hasPartialFailure
 
   /**
    * 적용 버튼 활성 조건.
    * - 전량 실패 없음
-   * - 전이가 있고 선택됨
-   * - DONE 전이이면 resolution도 선택됨
+   * - 전환이 있고 선택됨
+   * - DONE 전환이면 resolution도 선택됨
    */
   const canSubmit =
     !hasTotalFailure &&
@@ -146,7 +146,7 @@ export function BulkTransitionDialog({
 
   function handleTransitionChange(value: string): void {
     setSelectedStateKey(value)
-    // 전이 변경 시 resolution 선택 초기화
+    // 전환 변경 시 resolution 선택 초기화
     setSelectedResolutionId('')
   }
 
@@ -178,21 +178,21 @@ export function BulkTransitionDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>일괄 상태 전이</DialogTitle>
+          <DialogTitle>일괄 상태 전환</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* 전량 조회 실패 에러 — Select 숨김 + 적용 비활성 */}
           {hasTotalFailure ? (
             <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
-              전이 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+              전환 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
             </p>
           ) : (
             <>
               {/* 일부 조회 실패 경고 */}
               {hasPartialFailure && (
                 <p className="text-sm text-warning-text bg-warning/10 rounded-md px-3 py-2">
-                  일부 이슈의 전이 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전이를 표시합니다.
+                  일부 이슈의 전환 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전환을 표시합니다.
                 </p>
               )}
 
@@ -205,13 +205,13 @@ export function BulkTransitionDialog({
                 <div className="space-y-3">
                   <div>
                     <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
-                      전이 상태
+                      전환 상태
                     </label>
                     <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
                       <SelectTrigger
                         id="bulk-transition-state"
                         className="w-full"
-                        aria-label="전이 상태"
+                        aria-label="전환 상태"
                       >
                         <SelectValue placeholder={bulkOperationLabels.statusSelectPlaceholder} />
                       </SelectTrigger>
@@ -225,7 +225,7 @@ export function BulkTransitionDialog({
                     </Select>
                   </div>
 
-                  {/* DONE 전이 선택 시 resolution 드롭다운 (B14) */}
+                  {/* DONE 전환 선택 시 resolution 드롭다운 (B14) */}
                   {isDoneTransition && (
                     <div>
                       <label htmlFor="bulk-transition-resolution" className="text-sm font-medium mb-1 block">

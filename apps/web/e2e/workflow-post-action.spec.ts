@@ -1,4 +1,4 @@
-// FR-NT-05 D7 E2E — 워크플로우 전이 post-action CRUD + 비admin 게이팅
+// FR-NT-05 D7 E2E — 워크플로우 전환 post-action CRUD + 비admin 게이팅
 import { test, expect } from '@playwright/test'
 import { postActionLabels } from '../src/i18n/post-action-labels'
 import { E2E_IS_SYSTEM_ADMIN_KEY } from '../src/mocks/auth-handlers'
@@ -8,11 +8,11 @@ import { loginAsAlice } from './fixtures/auth-fixtures'
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 테스트에 사용할 워크플로우 키 — workflow-fixtures.ts의 simple 워크플로우 (3전이로 select 선택 단순) */
+/** 테스트에 사용할 워크플로우 키 — workflow-fixtures.ts의 simple 워크플로우 (3전환으로 select 선택 단순) */
 const WORKFLOW_KEY = 'simple'
 
 /**
- * simple 워크플로우의 첫 번째 전이 display name — 전이 선택 드롭다운에서 이 텍스트 선택.
+ * simple 워크플로우의 첫 번째 전환 display name — 전환 선택 드롭다운에서 이 텍스트 선택.
  * workflow-fixtures.ts: { key: 'todo__doing', name: 'Start', ... }
  */
 const TRANSITION_NAME = 'Start'
@@ -39,7 +39,7 @@ async function resetPostActionStore(page: import('@playwright/test').Page): Prom
 //
 // Given: SYSTEM_ADMIN 사용자(alice + E2E_IS_SYSTEM_ADMIN 플래그)로 로그인
 // When: /workflows/simple 진입 → post-action 섹션 노출 확인
-//       → 전이 선택 → Webhook 추가 → url/method 저장
+//       → 전환 선택 → Webhook 추가 → url/method 저장
 //       → 목록에 행 표시 → 행 수정(url 변경) → 반영 확인 → 삭제 → 목록에서 사라짐
 // Then: 각 단계 assertion 통과
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ test.describe('FR-NT-05 post-action CRUD (SYSTEM_ADMIN)', () => {
     // Then: post-action 섹션 제목 노출
     await expect(page.getByText(labels.section.title)).toBeVisible()
 
-    // Then: 전이 선택 드롭다운 노출
+    // Then: 전환 선택 드롭다운 노출
     await expect(page.getByLabel(labels.section.transitionSelectLabel)).toBeVisible()
 
     // Then: "Webhook 추가" 버튼 노출
@@ -91,7 +91,7 @@ test.describe('FR-NT-05 post-action CRUD (SYSTEM_ADMIN)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('단순 워크플로우')
     await expect(page.getByText(labels.section.title)).toBeVisible()
 
-    // ── When 1. 전이 선택 ─────────────────────────────────────────────────
+    // ── When 1. 전환 선택 ─────────────────────────────────────────────────
     const transitionSelect = page.getByLabel(labels.section.transitionSelectLabel)
     await transitionSelect.selectOption({ label: TRANSITION_NAME })
 
@@ -156,14 +156,14 @@ test.describe('FR-NT-05 post-action CRUD (SYSTEM_ADMIN)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   // T4 — B1(다중 행 stale 프리필) 검증
   //
-  // Given: SYSTEM_ADMIN, /workflows/simple 진입, 전이 선택
+  // Given: SYSTEM_ADMIN, /workflows/simple 진입, 전환 선택
   // When: url_a로 Webhook A 생성 → url_b로 Webhook B 생성
   //       → A 행의 "수정" 버튼 클릭
   // Then: 다이얼로그에 url_a가 프리필됨 (B의 url_b 새지 않음)
   //       Fix-A key 재마운트가 올바르면 통과
   // ─────────────────────────────────────────────────────────────────────────────
   test('T4 2행 시나리오 — A 수정 다이얼로그에 A url 프리필됨 (B url 새지 않음)', async ({ page }) => {
-    // Given: /workflows/simple 진입 + 전이 선택
+    // Given: /workflows/simple 진입 + 전환 선택
     await page.goto(`/workflows/${WORKFLOW_KEY}`)
     await expect(page.getByRole('heading', { level: 1 })).toContainText('단순 워크플로우')
     await expect(page.getByText(labels.section.title)).toBeVisible()
@@ -256,7 +256,7 @@ test.describe('FR-NT-05 post-action 섹션 비admin 미노출', () => {
       page.getByRole('button', { name: labels.section.addWebhookButton, exact: true }),
     ).not.toBeVisible()
 
-    // Then: 전이 선택 드롭다운 미노출
+    // Then: 전환 선택 드롭다운 미노출
     await expect(page.getByLabel(labels.section.transitionSelectLabel)).not.toBeVisible()
   })
 })

@@ -112,7 +112,7 @@ test('parseFrIndex — fr-index.md 테이블 행에서 FR 117개 추출', () => 
   const md = `| FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
 | FR-IS-01 | 이슈 CRUD, 상태 변경 시 워크플로우 검증 + 알림 | 필수 | issue-tracking | §2.1.1 |
-| FR-WF-01 | FSM 워크플로우 (상태/전이/조건/검증/후처리) | 필수 | project-workflow | §2.1 |
+| FR-WF-01 | FSM 워크플로우 (상태/전환/조건/검증/후처리) | 필수 | project-workflow | §2.1 |
 `;
   const idx = parseFrIndex(md);
   assert.equal(idx.size, 2);

@@ -18,8 +18,8 @@
 - **S2 (멤버 삭제 거부)**. Given bob이 ATLAS의 MEMBER. When ATLAS-1 소프트 삭제. Then 거부(403 ACCESS_DENIED).
 - **S3 (멤버 생성/수정 허용)**. Given bob MEMBER. When 이슈 생성/ATLAS-1 수정. Then 허용.
 - **S4 (비멤버 전면 차단)**. Given carol 비멤버. When 생성/조회/수정/삭제 어느 것이든. Then 거부(403).
-- **S5 (범위 밖 멤버 통과)**. Given bob MEMBER. When ATLAS-1 조회(VIEW)/전이(TRANSITION). Then 허용(범위 밖, 멤버 게이트만).
-- **S6 (범위 밖 비멤버 차단)**. Given carol 비멤버. When 조회/전이. Then 거부.
+- **S5 (범위 밖 멤버 통과)**. Given bob MEMBER. When ATLAS-1 조회(VIEW)/전환(TRANSITION). Then 허용(범위 밖, 멤버 게이트만).
+- **S6 (범위 밖 비멤버 차단)**. Given carol 비멤버. When 조회/전환. Then 거부.
 - **S7 (prod adapter 작동)**. Given prod. When 권한 판정. Then IdentityAccessIssuePermissionResolver가 role_permissions 조회.
 - **S8 (dev/staging stub)**. Given !prod. When 판정. Then AlwaysAllow true(기존 동작 보존).
 

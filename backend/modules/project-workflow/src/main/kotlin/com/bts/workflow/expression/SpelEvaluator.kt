@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * 워크플로우 전이 조건 표현식을 평가하는 SpEL(Spring Expression Language) 평가기.
+ * 워크플로우 전환 조건 표현식을 평가하는 SpEL(Spring Expression Language) 평가기.
  *
  * ### 보안 모델 (sandbox 3중 방어)
  *

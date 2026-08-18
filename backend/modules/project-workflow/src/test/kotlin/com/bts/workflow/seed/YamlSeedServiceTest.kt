@@ -372,11 +372,11 @@ class YamlSeedServiceTest {
         log.info("시나리오 4 통과 — FailFast 부팅 차단 확인")
     }
 
-    // ── 시나리오 5. (from, to) 중복 전이 정의 → IllegalStateException fail-fast ─────
+    // ── 시나리오 5. (from, to) 중복 전환 정의 → IllegalStateException fail-fast ─────
 
     @Test
     @Order(5)
-    fun `같은 워크플로우 안에 from-to 가 동일한 전이가 중복 정의되면 IllegalStateException 이 발생한다`() {
+    fun `같은 워크플로우 안에 from-to 가 동일한 전환이 중복 정의되면 IllegalStateException 이 발생한다`() {
         val dataSource =
             DriverManagerDataSource(
                 postgres.jdbcUrl,
@@ -444,7 +444,7 @@ class YamlSeedServiceTest {
      * 제거 후: YAML state/transition 이 동일하면 isDirty=false → skip → 런타임 행 보존 → GREEN.
      *
      * simple 워크플로우를 선택한 이유.
-     * - 상태 3개 / 전이 3개의 가장 단순한 구조.
+     * - 상태 3개 / 전환 3개의 가장 단순한 구조.
      * - YAML post_action 이 0건이라 런타임 추가 행이 유일한 DB 행.
      * - Order(3) 에서 이름이 변경되어 재적재된 뒤 Order(7) 에서 재시드 = same-YAML no-op.
      *
@@ -464,7 +464,7 @@ class YamlSeedServiceTest {
             )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
-        // simple 워크플로우의 todo→doing 전이 id 를 직접 조회 (jOOQ 없이 SQL)
+        // simple 워크플로우의 todo→doing 전환 id 를 직접 조회 (jOOQ 없이 SQL)
         val transitionId: java.util.UUID =
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.prepareStatement(
@@ -481,7 +481,7 @@ class YamlSeedServiceTest {
                         if (rs.next()) {
                             java.util.UUID.fromString(rs.getString("id"))
                         } else {
-                            error("simple 워크플로우 todo→doing 전이 없음 — Order(1) 이 먼저 실행되어야 함")
+                            error("simple 워크플로우 todo→doing 전환 없음 — Order(1) 이 먼저 실행되어야 함")
                         }
                     }
                 }
@@ -731,7 +731,7 @@ private class DuplicateTransitionResourceLoader : ResourceLoader {
     private val duplicateTransitionYaml =
         """
         key: software-default
-        name: 중복전이 워크플로우
+        name: 중복전환 워크플로우
         states:
           - { key: open,   name: Open,   category: TODO,        displayOrder: 1 }
           - { key: done,   name: Done,   category: DONE,        displayOrder: 2 }

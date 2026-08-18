@@ -18,7 +18,7 @@ FR-IS-04(이슈 본문 Markdown + 우선순위/라벨/환경/영향도)의 프�
 
 **계약 주의(stored XSS 방지)**: 이슈 목록/표시는 raw `description`이 아니라 정화본 `descriptionHtml`을 써야 함. raw description은 편집 폼에서만 사용.
 
-**선례 패턴**: PR #39 D6(타입 셀렉터)·PR #41(전이 UI)이 같은 화면(IssueMetaPanel / issues.$key) 작업. 계약갭(frontend-zod-backend-dto-contract-gap) 회피 위해 spec 단계에서 백엔드 DTO grep 검증 필수.
+**선례 패턴**: PR #39 D6(타입 셀렉터)·PR #41(전환 UI)이 같은 화면(IssueMetaPanel / issues.$key) 작업. 계약갭(frontend-zod-backend-dto-contract-gap) 회피 위해 spec 단계에서 백엔드 DTO grep 검증 필수.
 
 ## 도메인 정리
 
@@ -57,7 +57,7 @@ FR-IS-04(이슈 본문 Markdown + 우선순위/라벨/환경/영향도)의 프�
 
 - Zod 스키마 위치: `apps/web/src/api/issues.ts` (`issueResponseSchema` / `UpdateIssueInput` 5필드 추가 대상).
 - TipTap **미설치** — `@tiptap/*` 설치 + **Markdown 직렬화 확장** 필요 (HTML 아닌 Markdown 저장).
-- 화면 파일: `IssueMetaPanel` / `issues.$key` (PR #39 D6 타입셀렉터·PR #41 전이UI와 동일 화면 — 패턴 재사용).
+- 화면 파일: `IssueMetaPanel` / `issues.$key` (PR #39 D6 타입셀렉터·PR #41 전환UI와 동일 화면 — 패턴 재사용).
 
 ## 스펙
 

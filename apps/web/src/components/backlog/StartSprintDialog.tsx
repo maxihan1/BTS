@@ -141,7 +141,7 @@ function isEndBeforeStart(values: SprintFormValues): boolean {
   return values.startDate !== '' && values.endDate !== '' && values.endDate < values.startDate
 }
 
-/** 낙관적 잠금·상태 전이 충돌(409)인지 */
+/** 낙관적 잠금·상태 전환 충돌(409)인지 */
 function isConflict(error: unknown): boolean {
   return error instanceof ApiError && error.status === 409
 }

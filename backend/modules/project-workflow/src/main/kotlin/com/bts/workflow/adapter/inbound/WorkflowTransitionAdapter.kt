@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional
  *
  * [WorkflowEngine] 을 호출하고 내부 예외를 [TransitionResult] 케이스로 매핑한다.
  * 호출자 BC (바운디드 컨텍스트 — 책임 범위로 나눈 도메인 단위) 인 issue-tracking / automation 은
- * 이 adapter 를 통해 전이를 요청하며,
+ * 이 adapter 를 통해 전환을 요청하며,
  * `com.bts.workflow.domain.exception.*` 를 직접 import 하지 않아도 된다 (BC 격리 보장).
  *
  * ### 트랜잭션 계약
@@ -42,12 +42,12 @@ class WorkflowTransitionAdapter(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 전이 요청을 [WorkflowEngine] 에 위임하고 결과를 [TransitionResult] 로 매핑한다.
+     * 전환 요청을 [WorkflowEngine] 에 위임하고 결과를 [TransitionResult] 로 매핑한다.
      *
      * 내부 예외는 [mapException] 에서 [TransitionResult] 케이스로 변환한다.
      * 인식되지 않은 예외는 그대로 re-throw 한다.
      *
-     * @param req 전이 요청 DTO
+     * @param req 전환 요청 DTO
      * @return [TransitionResult] — 4 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조
      */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -62,12 +62,12 @@ class WorkflowTransitionAdapter(
         }
 
     /**
-     * 현재 상태에서 validator 를 통과하는 가용 전이 목록 조회를 [WorkflowEngine] 에 위임한다.
+     * 현재 상태에서 validator 를 통과하는 가용 전환 목록 조회를 [WorkflowEngine] 에 위임한다.
      *
      * post-action (SetField/Notify 등) 은 절대 실행하지 않는다.
      * 실질 로직은 [WorkflowEngine.availableTransitions] 가 담당한다.
      *
-     * @param req 가용 전이 열거 요청 DTO
+     * @param req 가용 전환 열거 요청 DTO
      * @return 2 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조
      */
     @Transactional(readOnly = true, propagation = Propagation.MANDATORY)

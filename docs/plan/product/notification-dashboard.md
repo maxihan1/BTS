@@ -62,7 +62,7 @@
 
 **우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `notify/channels`
 
-**범위(누적)**. 인앱(WebSocket) slice(PR #126/#137) + **이메일 채널**(EmailChannelSender — Spring Mail/MimeMessageHelper UTF-8 + Testcontainers MailHog, PR #139) — **FR-NT-02 범위(인앱+이메일) 전부 완료**. **Webhook 채널은 FR-NT-05로 분리·완료**(per-user 알림 모델과 맞지 않아 `WebhookRequested` 이벤트 디스패처로 재설계 + 전이-이벤트 발행 파이프라인이 cross-BC라 별도 FR, ADR 2026-06-12 amendment + §2.5 FR-NT-05 참조). Slack=slack-integration BC, Teams=범위 밖. D6·D7(프론트/E2E)은 인앱 채널 기준 완료(PR #137; 이메일은 시스템 자동 발송이라 별도 UI 불요, 채널 구독 on/off는 FR-NT-04).
+**범위(누적)**. 인앱(WebSocket) slice(PR #126/#137) + **이메일 채널**(EmailChannelSender — Spring Mail/MimeMessageHelper UTF-8 + Testcontainers MailHog, PR #139) — **FR-NT-02 범위(인앱+이메일) 전부 완료**. **Webhook 채널은 FR-NT-05로 분리·완료**(per-user 알림 모델과 맞지 않아 `WebhookRequested` 이벤트 디스패처로 재설계 + 전환-이벤트 발행 파이프라인이 cross-BC라 별도 FR, ADR 2026-06-12 amendment + §2.5 FR-NT-05 참조). Slack=slack-integration BC, Teams=범위 밖. D6·D7(프론트/E2E)은 인앱 채널 기준 완료(PR #137; 이메일은 시스템 자동 발송이라 별도 UI 불요, 채널 구독 on/off는 FR-NT-04).
 
 - [x] D1. 도메인 — Channel 추상 + 인앱·이메일 구현 (Webhook=FR-NT-05 분리) (책임. backend-engineer)
 - [x] D2. 명세 — fanout + 재시도 정책 (책임. backend-engineer)
@@ -113,17 +113,17 @@
 - [x] D6. 프론트 UI — 개인 설정 페이지 (책임. designer → frontend-engineer) — PR #162 (`/settings/notifications` data-driven 매트릭스 토글, 버튼 토글)
 - [x] D7. E2E (책임. qa-engineer) — PR #162 (Playwright S1 매트릭스 표시 + S4 토글·SPA 재진입 영속)
 
-### §2.5 FR-NT-05 — Webhook 알림 채널 (전이 post-action 이벤트 발행 + HTTP POST 디스패처)
+### §2.5 FR-NT-05 — Webhook 알림 채널 (전환 post-action 이벤트 발행 + HTTP POST 디스패처)
 
 **우선순위**. 중간 | **선행**. §2.1, §2.2 | **분리 근거**. FR-NT-02에서 분리 (ADR `2026-06-14-fr-nt-05-transition-event-outbox.md`) | **Plan slug**. `fr-nt-05-transition-event-publish`(PR1) · `fr-nt-05-webhook-dispatcher`(PR2) · `fr-nt-05-d6-post-action-api`(PR-A) · `fr-nt-05-d6-d7-post-action-ui`(PR-B)
 
-**범위**. cross-BC라 PR 4개로 분할. PR 1 (issue-tracking BC) — 전이 post-action emitEvents를 `q_transition_events` pgmq 큐에 발행하는 파이프라인. PR 2 (notification BC) — `WebhookRequested` 소비 + 외부 URL HTTP POST 디스패처. PR-A (project-workflow BC) — 전이 post-action 런타임 CRUD API(D6 백엔드 enabler). PR-B (apps/web) — 워크플로우 post-action 설정 UI + E2E(D6/D7). **FR-NT-05 전체 완료**(D1~D7 [x]).
+**범위**. cross-BC라 PR 4개로 분할. PR 1 (issue-tracking BC) — 전환 post-action emitEvents를 `q_transition_events` pgmq 큐에 발행하는 파이프라인. PR 2 (notification BC) — `WebhookRequested` 소비 + 외부 URL HTTP POST 디스패처. PR-A (project-workflow BC) — 전환 post-action 런타임 CRUD API(D6 백엔드 enabler). PR-B (apps/web) — 워크플로우 post-action 설정 UI + E2E(D6/D7). **FR-NT-05 전체 완료**(D1~D7 [x]).
 
 - [x] D1. 도메인 — TransitionEventPublisher (책임. backend-engineer) — PR #140 (PR 1, issue-tracking)
 - [x] D2. 명세 — 큐/이벤트 계약 (`q_transition_events`, DomainEvent 직렬화) (책임. backend-engineer) — PR #140
 - [x] D3. 데이터 모델 — Flyway V022 `q_transition_events` 큐 생성 + init_codegen 미러 (책임. db-engineer) — PR #140
 - [x] D4. 백엔드 — `transitionIssue()` emitEvents 배선 (PR 1) + WebhookRequested HTTP POST 디스패처 (PR 2, notification BC: WebhookDispatchWorker/WebhookDispatcher/WebhookUrlValidator) (책임. backend-engineer) — PR2
-- [x] D5. 백엔드 테스트 — Testcontainers: 전이→큐 enqueue 확인(PR1) + WebhookRequested 소비→HTTP POST/SSRF 차단/생명주기(PR2) (책임. backend-engineer) — PR2
+- [x] D5. 백엔드 테스트 — Testcontainers: 전환→큐 enqueue 확인(PR1) + WebhookRequested 소비→HTTP POST/SSRF 차단/생명주기(PR2) (책임. backend-engineer) — PR2
 - [x] D6. 프론트 UI — 워크플로우 post-action 설정 UI (선행. project-workflow post-action CRUD API 신설) (책임. designer → frontend-engineer) — PR #144 (workflows.$key 하단 admin 섹션, CALL_WEBHOOK url/method CRUD, isSystemAdmin 게이팅, PR-A #143 API 소비)
 - [x] D7. E2E (책임. qa-engineer) — PR #144 (Playwright: admin 추가→목록→수정→삭제 + 비admin 미노출, MSW stateful post-action 핸들러)
 
@@ -205,7 +205,7 @@
 
 **우선순위**. 필수 | **선행**. §4.1 | **Plan slug**. `report/cfd`
 
-> **구현 범위 (#225 백엔드 D1~D5, Maxi 확정 2026-07-03)**. **누적 띠 = 카테고리 3띠**(TODO/IN_PROGRESS/DONE, 워크플로우 상태별 N띠 아님 — 프로젝트 무관 균일·비교 가능, WorkflowStateCatalog category 매핑·삭제된 상태 TODO 폴백[EpicProgress 선례]). **시계열 = on-the-fly 역산**(`issue_change_group`/`issue_change_item` V018 status 전이 이력에서 각 이슈 상태 타임라인 재구성 — 스냅샷 테이블·@Scheduled 0, 번다운 D3 선례). 초기상태 = 첫 status 전이 from_value(없으면 current_state_key), day D = end-of-day 스냅샷(`created_at::date ≤ D` 마지막 전이). **모듈 = issue-tracking**(데이터 로컬 소유, cross-BC 신규 포트 0 — 스프린트 미참조. 논리 BC 라벨 notification-dashboard 유지, 총수 14 불변). **보안 = 프로젝트 BROWSE + 이슈별 가시성 필터**(`filterVisibleIssueKeys`→`buildActiveSecureWhere` 재사용, 기밀 누출 0). 창 = from/to UTC 날짜(기본 최근 30일·상한 180일, Clock 주입), 잘못된 창 400. 신규 스키마·인덱스 0. **v1 한계(수용)**: 삭제 이슈 제외(과거 소폭 언더카운트)·V018 이전 이슈는 current_state_key로만·이동 이슈는 현재 소속 기준(on-the-fly 철학 정합). 프론트 D6/D7 완료(#227 — recharts 누적 영역 차트 3띠·백로그 nav 진입·순수변환 toCfdSeries·isCfdEmpty 빈판정·E2E, FR-RP-02 미러·날짜 피커 v1 미노출). **FR-RP-03 전체 완료.** ADR `2026-07-03-fr-rp-03-cfd`.
+> **구현 범위 (#225 백엔드 D1~D5, Maxi 확정 2026-07-03)**. **누적 띠 = 카테고리 3띠**(TODO/IN_PROGRESS/DONE, 워크플로우 상태별 N띠 아님 — 프로젝트 무관 균일·비교 가능, WorkflowStateCatalog category 매핑·삭제된 상태 TODO 폴백[EpicProgress 선례]). **시계열 = on-the-fly 역산**(`issue_change_group`/`issue_change_item` V018 status 전환 이력에서 각 이슈 상태 타임라인 재구성 — 스냅샷 테이블·@Scheduled 0, 번다운 D3 선례). 초기상태 = 첫 status 전환 from_value(없으면 current_state_key), day D = end-of-day 스냅샷(`created_at::date ≤ D` 마지막 전환). **모듈 = issue-tracking**(데이터 로컬 소유, cross-BC 신규 포트 0 — 스프린트 미참조. 논리 BC 라벨 notification-dashboard 유지, 총수 14 불변). **보안 = 프로젝트 BROWSE + 이슈별 가시성 필터**(`filterVisibleIssueKeys`→`buildActiveSecureWhere` 재사용, 기밀 누출 0). 창 = from/to UTC 날짜(기본 최근 30일·상한 180일, Clock 주입), 잘못된 창 400. 신규 스키마·인덱스 0. **v1 한계(수용)**: 삭제 이슈 제외(과거 소폭 언더카운트)·V018 이전 이슈는 current_state_key로만·이동 이슈는 현재 소속 기준(on-the-fly 철학 정합). 프론트 D6/D7 완료(#227 — recharts 누적 영역 차트 3띠·백로그 nav 진입·순수변환 toCfdSeries·isCfdEmpty 빈판정·E2E, FR-RP-02 미러·날짜 피커 v1 미노출). **FR-RP-03 전체 완료.** ADR `2026-07-03-fr-rp-03-cfd`.
 
 - [x] D1. 도메인 (책임. backend-engineer) (완료. PR #225 — CfdPoint/CfdResult/CfdCategory 순수 read-model VO + CfdCalculator 델타-누적 계산기)
 - [x] D2. 명세 — 상태별 누적 (책임. backend-engineer) (완료. PR #225 — 카테고리 3띠 on-the-fly 역산, 상태 타임라인 end-of-day 스냅샷)
@@ -219,10 +219,10 @@
 
 **우선순위**. 높음 | **선행**. §4.3 | **Plan slug**. `report/cycle-lead-time`
 
-> **구현 범위 (#228 백엔드 D1~D5, Maxi 확정 2026-07-03)**. **완료된 이슈**의 소요 시간 **분포**를 조회한다. **Lead Time = 생성(created)→완료(마지막 DONE 카테고리 전이)**, **Cycle Time = 첫 IN_PROGRESS 카테고리 전이→완료**. **초 단위**(CFD의 day 절삭과 달리 실제 타임스탬프 — 같은 날 완료 이슈가 0으로 뭉개지면 분포 무의미). **Maxi 확정 3결정**. ① Cycle 미경유(IN_PROGRESS 안 거친) 이슈는 Cycle 분포 제외·Lead만 집계 ② 모집단=완료일(마지막 DONE 전이일) 기준 창 내 완료 이슈(기본 30일·상한 180일) ③ 응답=이슈별 `samples[{issueKey,seconds}]` + 서버 계산 요약 통계(count·min·max·avg·**p25**·p50·p75·p90, nearest-rank, count=0→null·p25는 프론트 박스플롯 Q1용). **모듈=issue-tracking**(상태 이력·이슈 로컬 소유, cross-BC 포트 0 — CFD 동형. 논리 BC 라벨 notification-dashboard 유지, 총수 14·123 불변). **데이터=on-the-fly 역산**(`issue_change_group`/`issue_change_item` status 전이 이력, 신규 스키마·스케줄러 0). **CONCERN-1(게이트1)**. CFD의 상태 이력 프리미티브를 `com.bts.issue.statushistory`(StatusCategory·StatusHistoryRepository·StatusChangeRow, 구 `Cfd*`) 중립 패키지로 추출해 CFD·cycletime 공유. **보안**. 프로젝트 BROWSE + 이슈별 가시성 필터(`buildActiveSecureWhere` 재사용, 기밀 누출 0). **v1 한계(수용)**. status 전이 이력 없는(V018 이전·직접 생성) 이슈 제외·이동 이슈 현재 소속 기준. **프론트 D6/D7 완료(PR #231)** — 히스토그램(recharts)+박스플롯(커스텀 SVG), Maxi 확정 3결정(기간 피커 없음·세로 스택·표준 Tukey), 박스플롯 독립 스케일 v1 수용. **FR-RP-04 완결**(D1~D7). ADR `2026-07-03-fr-rp-04-cycle-lead-time`.
+> **구현 범위 (#228 백엔드 D1~D5, Maxi 확정 2026-07-03)**. **완료된 이슈**의 소요 시간 **분포**를 조회한다. **Lead Time = 생성(created)→완료(마지막 DONE 카테고리 전환)**, **Cycle Time = 첫 IN_PROGRESS 카테고리 전환→완료**. **초 단위**(CFD의 day 절삭과 달리 실제 타임스탬프 — 같은 날 완료 이슈가 0으로 뭉개지면 분포 무의미). **Maxi 확정 3결정**. ① Cycle 미경유(IN_PROGRESS 안 거친) 이슈는 Cycle 분포 제외·Lead만 집계 ② 모집단=완료일(마지막 DONE 전환일) 기준 창 내 완료 이슈(기본 30일·상한 180일) ③ 응답=이슈별 `samples[{issueKey,seconds}]` + 서버 계산 요약 통계(count·min·max·avg·**p25**·p50·p75·p90, nearest-rank, count=0→null·p25는 프론트 박스플롯 Q1용). **모듈=issue-tracking**(상태 이력·이슈 로컬 소유, cross-BC 포트 0 — CFD 동형. 논리 BC 라벨 notification-dashboard 유지, 총수 14·123 불변). **데이터=on-the-fly 역산**(`issue_change_group`/`issue_change_item` status 전환 이력, 신규 스키마·스케줄러 0). **CONCERN-1(게이트1)**. CFD의 상태 이력 프리미티브를 `com.bts.issue.statushistory`(StatusCategory·StatusHistoryRepository·StatusChangeRow, 구 `Cfd*`) 중립 패키지로 추출해 CFD·cycletime 공유. **보안**. 프로젝트 BROWSE + 이슈별 가시성 필터(`buildActiveSecureWhere` 재사용, 기밀 누출 0). **v1 한계(수용)**. status 전환 이력 없는(V018 이전·직접 생성) 이슈 제외·이동 이슈 현재 소속 기준. **프론트 D6/D7 완료(PR #231)** — 히스토그램(recharts)+박스플롯(커스텀 SVG), Maxi 확정 3결정(기간 피커 없음·세로 스택·표준 Tukey), 박스플롯 독립 스케일 v1 수용. **FR-RP-04 완결**(D1~D7). ADR `2026-07-03-fr-rp-04-cycle-lead-time`.
 
 - [x] D1. 도메인 — CycleTime / LeadTime VO (책임. backend-engineer) (완료. PR #228 — CycleTimeStats(nearest-rank 백분위)·IssueDurationInput·CycleTimeSample·CycleTimeMetric·CycleTimeResult·순수 CycleTimeCalculator)
-- [x] D2. 명세 — 상태 시작/종료 시점 정의 (책임. backend-engineer) (완료. PR #228 — Cycle=첫 IN_PROGRESS 전이→마지막 DONE 전이·미경유/음수 제외, Lead=created→마지막 DONE, 전이 기반 신뢰(EC8))
+- [x] D2. 명세 — 상태 시작/종료 시점 정의 (책임. backend-engineer) (완료. PR #228 — Cycle=첫 IN_PROGRESS 전환→마지막 DONE 전환·미경유/음수 제외, Lead=created→마지막 DONE, 전환 기반 신뢰(EC8))
 - [x] D3. 데이터 모델 — `issue_history` 활용 (책임. db-engineer) (완료. PR #228 — 신규 스키마 0, issue_change_group/item·issues 재사용, CycleTimeIssueSourceRow(+issueKey)·fetchActiveVisibleIssuesForCycleTime(보안술어 재사용))
 - [x] D4. 백엔드 — `GET /api/v1/projects/{id}/cycle-time` (책임. backend-engineer) (완료. PR #228 — CycleTimeController+Service, 401/403/400, BROWSE 선검사·이슈별 가시성 필터·StatusCategory 카테고리 매핑·창 기본30/상한180)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #228 — 통계 단위 6·계산기 단위 9·repo Testcontainers 4(비-vacuous 기밀 제외)·서비스 mockk 5·컨트롤러 슬라이스 12·통합 8(S2 lead>cycle·S6 기밀 before/after 대조))
@@ -251,7 +251,7 @@
 
 > **구현 범위 (#186, Maxi 확정 2026-06-25)**. 백엔드 D1~D5만 본 PR — 프론트 D6/D7(Inbox 페이지·카운트 뱃지·E2E)은 후속 PR. **데이터 모델 deviation**. 별도 `inbox_items` 조인 테이블 폐기 → 기존 `notifications`(FR-NT-02 V402, 수신자별 fanout + `read_at` 보유) 확장(V407: `archived_at` + `actor_user_id`). read/archive 2축 독립. 기능 범위는 SDD 9.2 고급 포함(코어 + 검색(텍스트/발신자/기간) + 일괄 읽음). **프론트 deviation(#187, Maxi 확정 2026-06-25)**. 그룹화(issueKey 묶음렌더)는 미채택 — 평면 목록 + issueKey 검색 필터로 충족(백엔드 응답에 그룹 메타 없음, 묶음렌더 deferred). ADR `2026-06-25-fr-ux-03-inbox-data-model`.
 
-- [x] D1. 도메인 — Notification 상태 전이(markRead/markUnread/archive/unarchive, 멱등) (책임. backend-engineer) (완료. PR #186 — 별도 InboxItem 미신설, 기존 Notification Aggregate에 archivedAt/actorUserId 필드 + copy 기반 전이)
+- [x] D1. 도메인 — Notification 상태 전환(markRead/markUnread/archive/unarchive, 멱등) (책임. backend-engineer) (완료. PR #186 — 별도 InboxItem 미신설, 기존 Notification Aggregate에 archivedAt/actorUserId 필드 + copy 기반 전환)
 - [x] D2. 명세 — 읽음/안읽음 + 보관 + 필터 (책임. backend-engineer) (완료. PR #186 — read/archive 2축, 탭(all/unread/archived), 검색, 일괄 읽음)
 - [x] D3. 데이터 모델 — `notifications` 확장(`archived_at`, `actor_user_id`, 미읽음 부분 인덱스) (책임. db-engineer) (완료. PR #186 — V407 + init_codegen 미러. 별도 inbox_items 테이블 폐기, notifications가 이미 수신자별 fanout이라 1:1 중복 회피)
 - [x] D4. 백엔드 — `GET /api/v1/users/me/inbox` + 미읽음 카운트 + 읽음/보관 토글 + 일괄 읽음 API (책임. backend-engineer) (완료. PR #186 — 본인+IN_APP 한정, 401/404 격리, no-bump UPDATE(COALESCE 시각 보존), PATCH 204, InboxExceptionHandler 격리)

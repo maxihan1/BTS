@@ -1,4 +1,4 @@
-// WorkflowController — 워크플로우 REST API 3종 (목록/단건/전이/캐시무효화)
+// WorkflowController — 워크플로우 REST API 3종 (목록/단건/전환/캐시무효화)
 
 package com.bts.workflow.web
 
@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController
  * 엔드포인트 목록.
  * - GET  /api/v1/workflows             — 전체 워크플로우 목록 조회
  * - GET  /api/v1/workflows/{key}       — 워크플로우 단건 조회 (계층 구조)
- * - POST /api/v1/workflows/{key}/transitions — 워크플로우 전이 계획 계산
+ * - POST /api/v1/workflows/{key}/transitions — 워크플로우 전환 계획 계산
  * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (WORKFLOW_MANAGE 권한 필요)
  *
  * ### 트랜잭션 정책
@@ -73,13 +73,13 @@ class WorkflowController(
     }
 
     /**
-     * 워크플로우 전이 계획을 계산한다.
+     * 워크플로우 전환 계획을 계산한다.
      *
      * 트랜잭션 경계는 [WorkflowApplicationService.planTransition] 이 담당한다.
      *
      * @param key 적용할 워크플로우 키 (경로 변수)
-     * @param body 전이 요청 바디
-     * @return 200 + 전이 계획 `{ "data": { ... } }`
+     * @param body 전환 요청 바디
+     * @return 200 + 전환 계획 `{ "data": { ... } }`
      */
     @PostMapping("/{key}/transitions")
     fun plan(
@@ -97,7 +97,7 @@ class WorkflowController(
         val validation = dto.validate()
         if (validation is Invalid) {
             val messages = validation.errors.joinToString("; ") { it.message }
-            throw IllegalArgumentException("전이 요청 검증 실패: $messages")
+            throw IllegalArgumentException("전환 요청 검증 실패: $messages")
         }
 
         val req =
@@ -137,14 +137,14 @@ class WorkflowController(
 }
 
 /**
- * 전이 계획 요청 바디.
+ * 전환 계획 요청 바디.
  *
- * @property toStateKey 전이 목표 상태 키
+ * @property toStateKey 전환 목표 상태 키
  * @property fields 이슈 커스텀 필드 스냅샷 (기본값 빈 Map)
  * @property version 낙관적 잠금 버전
- * @property issueKey 전이 대상 이슈 키
+ * @property issueKey 전환 대상 이슈 키
  * @property fromStateKey 이슈의 현재 상태 키
- * @property actorId 전이를 실행하는 사용자 ID
+ * @property actorId 전환을 실행하는 사용자 ID
  * @property actorRoles 실행자의 역할 집합
  */
 data class TransitionPlanRequestBody(

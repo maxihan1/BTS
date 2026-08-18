@@ -1,4 +1,4 @@
-// 워크플로우 전이 post-action CRUD MSW stateful 핸들러 (GET/POST/PUT/DELETE + reset)
+// 워크플로우 전환 post-action CRUD MSW stateful 핸들러 (GET/POST/PUT/DELETE + reset)
 import { http, HttpResponse } from 'msw'
 import type { PostActionResponse } from '@/api/post-actions'
 

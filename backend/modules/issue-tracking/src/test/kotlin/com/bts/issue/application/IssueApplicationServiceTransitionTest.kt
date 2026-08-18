@@ -146,7 +146,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             (classAnnotation != null || methodAnnotation != null) shouldBe true
         }
 
-        context("S1 — TransitionResult.Success 반환 시 정상 전이") {
+        context("S1 — TransitionResult.Success 반환 시 정상 전환") {
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
@@ -472,7 +472,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             // sec codereview-fix P1 — 존재/버전 probe 차단.
             // 권한 체크가 findByKeyForUpdate(버전 비교) 보다 먼저 수행되므로,
-            // 권한 없는 actor 의 전이는 version 상태와 무관하게 403(IssueAccessDeniedException)으로 거부되고
+            // 권한 없는 actor 의 전환은 version 상태와 무관하게 403(IssueAccessDeniedException)으로 거부되고
             // 이슈 조회(findByKeyForUpdate) 자체가 호출되지 않는다.
             // → BROWSE-yes/TRANSITION-no actor 가 409(버전충돌) vs 403 차이로 이슈 존재/버전을 probe 할 수 없다.
             it("findByKeyForUpdate(버전 probe)가 권한 거부보다 먼저 호출되지 않는다") {
@@ -485,7 +485,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 verify(exactly = 0) { repo.findByKeyForUpdate(issueKey) }
             }
 
-            it("권한 없는 actor 의 전이는 version 불일치여도 409 가 아니라 403 으로 거부된다") {
+            it("권한 없는 actor 의 전환은 version 불일치여도 409 가 아니라 403 으로 거부된다") {
                 // expectedVersion 을 실제와 다르게 줘도(99) version 충돌(409) 이전에 권한(403)이 거부돼야 한다.
                 val staleRequest =
                     TransitionIssueRequest(toStateKey = "IN_PROGRESS", expectedVersion = 99L)
@@ -496,7 +496,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             }
         }
 
-        context("T1 — emitEvents 포함 plan 전이 시 TransitionEventPublisher.publish 호출") {
+        context("T1 — emitEvents 포함 plan 전환 시 TransitionEventPublisher.publish 호출") {
             val webhookEvent =
                 DomainEvent(
                     type = "WebhookRequested",
@@ -543,7 +543,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             }
         }
 
-        context("T2 — emitEvents 빈 plan 전이 시 TransitionEventPublisher.publish 미호출") {
+        context("T2 — emitEvents 빈 plan 전환 시 TransitionEventPublisher.publish 미호출") {
             val emptyPlan =
                 TransitionPlan(
                     toStateKey = "IN_PROGRESS",
@@ -635,7 +635,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
-            it("transitionEventPublisher 가 null 이어도 예외 없이 정상 전이한다") {
+            it("transitionEventPublisher 가 null 이어도 예외 없이 정상 전환한다") {
                 val result = sutNoPublisher.transitionIssue(actor, issueKey, request)
                 result.currentStateKey shouldBe "IN_PROGRESS"
             }

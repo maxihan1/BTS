@@ -1,4 +1,4 @@
-// IssueTransitionAdapter 통합 테스트 — 보드 카드 이동이 기존 전이 경로에 위임됨을 검증
+// IssueTransitionAdapter 통합 테스트 — 보드 카드 이동이 기존 전환 경로에 위임됨을 검증
 
 package com.bts.issue.adapter.outbound.board
 
@@ -58,12 +58,12 @@ import java.util.UUID
  *
  * 보드 카드 이동(`transition(cmd)`)이 기존 `IssueApplicationService.transitionIssue`
  * 경로에 위임되는지를 실제 Testcontainers PostgreSQL + 두 BC 전체 스택으로 검증한다.
- * mock 없이 실제 워크플로우 시드를 사용해 전이 규칙·OCC·예외 전파 경로를 확인한다.
+ * mock 없이 실제 워크플로우 시드를 사용해 전환 규칙·OCC·예외 전파 경로를 확인한다.
  *
  * ## 검증 시나리오
  *
- * - S1. 정상 전이 — open → in_progress 성공, currentStateKey / version 갱신.
- * - S2. 전이 불가 — open → done(미정의 전이) → [IssueTransitionNotAllowedException] 전파.
+ * - S1. 정상 전환 — open → in_progress 성공, currentStateKey / version 갱신.
+ * - S2. 전환 불가 — open → done(미정의 전환) → [IssueTransitionNotAllowedException] 전파.
  * - S3. 버전 충돌 — expectedVersion 불일치 → [IssueOptimisticLockException] 번역 전파.
  * - S4. 워크플로우 미설정 — no-scheme 프로젝트 → [IssueWorkflowNotConfiguredException] 전파.
  * - S5. actor 신뢰 — `cmd.actorUserId` 를 actor 로 위임한다. SecurityContext 에 의존하지 않는다.
@@ -195,7 +195,7 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      */
     private fun insertIssue(
         projectKey: String = NORMAL_PROJECT_KEY,
-        summary: String = "전이 테스트 이슈",
+        summary: String = "전환 테스트 이슈",
         currentStateKey: String = "open",
     ): String {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -259,7 +259,7 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      *
      * - BDTRANS 프로젝트 — software-scheme(software-default 워크플로우) 배정.
      * - BDNOSCH 프로젝트 — 스킴 미배정 (S4 시나리오).
-     * - software-default 워크플로우 (open/in_progress/done 상태 + "Start Work" 전이).
+     * - software-default 워크플로우 (open/in_progress/done 상태 + "Start Work" 전환).
      * - no-default-scheme — default mapping 없음.
      */
     private fun seedWorkflowsAndSchemes() {
@@ -328,7 +328,7 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
                 )
             }
 
-            // BDNOSCH ← no-default-scheme-bd 배정 (default mapping 없으므로 전이 시 WorkflowSchemeNoDefaultException)
+            // BDNOSCH ← no-default-scheme-bd 배정 (default mapping 없으므로 전환 시 WorkflowSchemeNoDefaultException)
             conn.createStatement().use { stmt ->
                 stmt.execute(
                     """
@@ -404,10 +404,10 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
         }
     }
 
-    // ── S1. 정상 전이 — open → in_progress ──────────────────────────────────────
+    // ── S1. 정상 전환 — open → in_progress ──────────────────────────────────────
 
     /**
-     * S1. 보드 카드 이동이 기존 전이 경로에 위임되어 상태 갱신 + version 증가를 반환한다.
+     * S1. 보드 카드 이동이 기존 전환 경로에 위임되어 상태 갱신 + version 증가를 반환한다.
      *
      * Given  BDTRANS-N 이슈 (currentStateKey="open", version=1)
      * When   adapter.transition(cmd(toStateKey="in_progress", expectedVersion=1))
@@ -433,10 +433,10 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
         assertThat(result.version).isEqualTo(2L)
     }
 
-    // ── S2. 전이 불가 — 미정의 전이 → IssueTransitionNotAllowedException ──────────
+    // ── S2. 전환 불가 — 미정의 전환 → IssueTransitionNotAllowedException ──────────
 
     /**
-     * S2. 정의되지 않은 전이 시 [IssueTransitionNotAllowedException] 이 그대로 전파된다.
+     * S2. 정의되지 않은 전환 시 [IssueTransitionNotAllowedException] 이 그대로 전파된다.
      *
      * Given  BDTRANS-N 이슈 (currentStateKey="open")
      * When   adapter.transition(cmd(toStateKey="done"))
@@ -518,13 +518,13 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     /**
      * S5. adapter 는 SecurityContext 가 아닌 `cmd.actorUserId` 를 actor 로 신뢰해 위임한다.
      *
-     * SecurityContext 가 비어 있어도(adapter 가 그것을 읽지 않으므로) 전이가 정상 동작한다.
+     * SecurityContext 가 비어 있어도(adapter 가 그것을 읽지 않으므로) 전환이 정상 동작한다.
      * 이는 스레드 무관(async 안전) 설계이며(sec codereview-fix P1), 401 인증 강제는
      * 호출 컨트롤러([com.bts.agileplanning.web.BoardController])가 담당한다.
      *
      * Given  SecurityContext clear + BDTRANS-N 이슈 (open, version=1)
      * When   adapter.transition(cmd(actorUserId=actorId, toStateKey="in_progress"))
-     * Then   SecurityContext 가 비어도 cmd.actorUserId 로 위임되어 전이 성공.
+     * Then   SecurityContext 가 비어도 cmd.actorUserId 로 위임되어 전환 성공.
      */
     @Test
     fun `transition trusts cmd actorUserId and does not read SecurityContext`() {

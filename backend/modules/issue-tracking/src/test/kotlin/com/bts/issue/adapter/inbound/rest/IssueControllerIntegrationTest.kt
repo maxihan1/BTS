@@ -508,7 +508,7 @@ class IssueControllerIntegrationTest {
      * MDIT 프로젝트 삽입.
      *
      * software-scheme 배정은 TRANSITION 프로젝트가 이미 같은 컨테이너에 seeded.
-     * MDIT 프로젝트는 전이가 불필요하므로 workflow scheme 배정 없이 생성한다.
+     * MDIT 프로젝트는 전환이 불필요하므로 workflow scheme 배정 없이 생성한다.
      * PATCH/GET 경로는 workflowKeyResolver 를 호출하지 않으므로 scheme 없어도 무방하다.
      */
     private fun seedProject() {

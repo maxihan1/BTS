@@ -32,7 +32,7 @@ const webhookFixtureA = {
 
 const webhookFixtureB = {
   id: '22222222-2222-4222-a222-222222222222',
-  name: '이슈 전이 알림',
+  name: '이슈 전환 알림',
   url: 'https://example.com/hook-b',
   eventFilter: ['issue.transitioned'],
   enabled: true,

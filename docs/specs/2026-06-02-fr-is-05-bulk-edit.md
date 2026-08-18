@@ -1,4 +1,4 @@
-# FR-IS-05 — 이슈 일괄 편집 + 일괄 상태 전이 (백엔드 D1~D5) — 스펙
+# FR-IS-05 — 이슈 일괄 편집 + 일괄 상태 전환 (백엔드 D1~D5) — 스펙
 
 > slug: fr-is-05-bulk-edit · BC: issue-tracking · 생성: 2026-06-02
 > 도메인 결정: [docs/adr/2026-06-02-bulk-operation-async-architecture.md](../adr/2026-06-02-bulk-operation-async-architecture.md)
@@ -11,10 +11,10 @@
 - **When** `POST /api/v1/issues/bulk-update`로 `operationType=BULK_EDIT`, 우선순위=High를 보내면
 - **Then** 즉시 `202 Accepted` + `{ bulkOperationId, status: PENDING }`를 받고, 백그라운드 워커가 이후 처리한다.
 
-### S2. 일괄 상태 전이 — 부분 성공
-- **Given** 현재 상태가 제각각인 이슈 100개를 골랐고 `toStateKey=in_progress`로 전이를 요청
+### S2. 일괄 상태 전환 — 부분 성공
+- **Given** 현재 상태가 제각각인 이슈 100개를 골랐고 `toStateKey=in_progress`로 전환을 요청
 - **When** 워커가 각 이슈를 처리하면
-- **Then** 전이가 유효한 이슈는 `SUCCEEDED`, 권한 없음·전이 규칙 위반·전이 불가 상태인 이슈는 `FAILED`(사유 포함). 작업 전체는 `COMPLETED`(부분 실패 포함).
+- **Then** 전환이 유효한 이슈는 `SUCCEEDED`, 권한 없음·전환 규칙 위반·전환 불가 상태인 이슈는 `FAILED`(사유 포함). 작업 전체는 `COMPLETED`(부분 실패 포함).
 
 ### S3. 진행률/결과 조회
 - **Given** 접수된 작업 id가 있고
@@ -34,7 +34,7 @@
   - BULK_TRANSITION → 기존 `transitionIssue`(내부에서 `WorkflowTransitionPort.plan` 위임) 재사용.
 - **FR3** 이슈별 처리 결과를 `bulk_operation_items.status`(SUCCEEDED/FAILED + failureReason)에 기록하고 `bulk_operations` 카운트를 갱신. 모든 항목 종료 시 작업 `COMPLETED`.
 - **FR4** `GET /api/v1/bulk-operations/{id}` — 진행률/결과 조회. 작업 actor 또는 admin만 조회.
-- **FR5** **혼합 from-state 전이**: `toStateKey`만 받고 각 이슈의 현재 상태→`toStateKey` 전이 유효성을 이슈별로 `WorkflowTransitionPort`에 위임 검증. 불가하면 그 이슈만 `FAILED`. (Jira식 from-state 그룹핑 UI는 D6 범위.)
+- **FR5** **혼합 from-state 전환**: `toStateKey`만 받고 각 이슈의 현재 상태→`toStateKey` 전환 유효성을 이슈별로 `WorkflowTransitionPort`에 위임 검증. 불가하면 그 이슈만 `FAILED`. (Jira식 from-state 그룹핑 UI는 D6 범위.)
 - **FR6** **멱등성**: 워커는 `status=PENDING` 항목만 처리. at-least-once 재전달 시 종료 항목 스킵.
 - **FR7** **권한**: 접수는 인증 사용자(JWT/PAT). 이슈별 UPDATE/TRANSITION 권한을 처리 시점에 개별 검증. 권한 없는 이슈는 작업 실패가 아니라 `FAILED` 항목.
 - **FR8** **완료 이벤트 발행**: 작업이 `COMPLETED`되면 `BulkOperationCompleted`(id, actorId, total/succeeded/failed) 이벤트를 pgmq outbox로 발행. notification BC가 후속 소비해 알림(범위 밖, D6/후속). 이벤트 발행은 작업 메타 완료 트랜잭션에 묶음.
@@ -114,10 +114,10 @@ init_codegen.sql 미러 필수 (learnings "jOOQ init_codegen 미러" — 안 하
 - **BULK_EDIT 필드 시맨틱**: 기존 `updateIssue`의 RFC 7396 JSON Merge Patch 그대로. 필드 미포함/null = 무변경, 빈 배열(`labels: []`) = 라벨 비우기. 일괄도 동일 시맨틱.
 - **접수 시 검증 vs 처리 시 실패 구분**:
   - **모든 이슈에 공통인 오류**(payload 자체 정합성 — priority 1..5, impact 1..3, toStateKey 형식, operationType↔payload 일치)는 **접수 시 전체 `400`**.
-  - **이슈별로 갈리는 실패**(존재/권한/전이 가능 여부/낙관락)는 처리 시 항목 `FAILED`.
+  - **이슈별로 갈리는 실패**(존재/권한/전환 가능 여부/낙관락)는 처리 시 항목 `FAILED`.
 - **failure_reason 구조화**: 자유 텍스트 아님. `reasonCode`(enum: `NOT_FOUND`, `FORBIDDEN`, `TRANSITION_NOT_ALLOWED`, `VERSION_CONFLICT`, `WORKFLOW_NOT_CONFIGURED`, `TYPE_NOT_FOUND`) + 사람용 `message`. D6 UI가 코드로 분기 표시.
 - **카운트 멱등성**: `processed/succeeded/failed_count`는 증분(+1)이 아니라 **항목 상태 집계로 재계산**. 재전달로 같은 항목을 다시 봐도 이미 종료 상태면 스킵 → 카운트 이중 증가 없음.
-- **상태 전이 시점**: 워커가 작업을 처음 read 하면 PENDING→`RUNNING`. 모든 항목 종료 시 `COMPLETED`. 인프라 오류로 진행 불가 시에만 `FAILED`.
+- **상태 전환 시점**: 워커가 작업을 처음 read 하면 PENDING→`RUNNING`. 모든 항목 종료 시 `COMPLETED`. 인프라 오류로 진행 불가 시에만 `FAILED`.
 - **여러 프로젝트 혼합 issueKeys 허용**: 한 작업에 서로 다른 프로젝트 이슈 혼합 가능. 권한/워크플로우는 이슈별로 독립 평가되므로 best-effort와 정합.
 
 ## 엣지 케이스
@@ -126,7 +126,7 @@ init_codegen.sql 미러 필수 (learnings "jOOQ init_codegen 미러" — 안 하
 - 중복 `issueKeys` → 접수 시 dedup (UNIQUE 제약).
 - 존재하지 않는/소프트 삭제된 이슈키 → 항목 `FAILED`(NotFound 사유).
 - 권한 없는 이슈 → 항목 `FAILED`(권한 사유).
-- 전이 불가(현재 상태에서 toState 불가) → 항목 `FAILED`(전이 규칙 사유).
+- 전환 불가(현재 상태에서 toState 불가) → 항목 `FAILED`(전환 규칙 사유).
 - 낙관락 충돌 → 항목 단위 1회 재조회 후 재시도, 그래도 충돌 시 `FAILED`.
 - 처리 중 이슈 삭제됨 → 항목 `FAILED`.
 - `operationType`과 payload 불일치(BULK_EDIT인데 transition만 있음) → `400`.
@@ -134,15 +134,15 @@ init_codegen.sql 미러 필수 (learnings "jOOQ init_codegen 미러" — 안 하
 
 ## 제약 조건
 
-- BC 격리: 전이 규칙 자체 구현 금지(WorkflowTransitionPort 위임). 다른 BC 직접 import 금지.
+- BC 격리: 전환 규칙 자체 구현 금지(WorkflowTransitionPort 위임). 다른 BC 직접 import 금지.
 - 도메인 우회 금지: repository 직행 금지, 기존 application service 재사용.
 - 절대 규칙(DEVELOPMENT.md): 소프트 삭제, 트랜잭션 경계 명시, 완제품 품질.
 
 ## 측정 가능한 완료 기준
 
-- 단위 테스트: 접수 검증(상한/dedup/payload 불일치), 항목 상태 전이, 멱등 스킵, 부분 성공 카운트.
-- 통합 테스트(Testcontainers): pgmq enqueue→consume→처리→결과 기록 e2e, 워커 재전달 멱등(SUCCEEDED 스킵), 1000건 상한, 혼합 from-state 전이 부분 성공.
-- best-effort: 100건 중 일부 권한/전이 실패 시 나머지 SUCCEEDED + 정확한 카운트.
+- 단위 테스트: 접수 검증(상한/dedup/payload 불일치), 항목 상태 전환, 멱등 스킵, 부분 성공 카운트.
+- 통합 테스트(Testcontainers): pgmq enqueue→consume→처리→결과 기록 e2e, 워커 재전달 멱등(SUCCEEDED 스킵), 1000건 상한, 혼합 from-state 전환 부분 성공.
+- best-effort: 100건 중 일부 권한/전환 실패 시 나머지 SUCCEEDED + 정확한 카운트.
 
 ## 비동기 인프라 보강 (게이트1 리뷰 BLOCKER 해소 — Maxi 비동기(B) 확정 2026-06-02)
 
@@ -153,7 +153,7 @@ code-reviewer 적대적 리뷰 BLOCKER/CONCERN 반영. 비동기(B) 유지 + 워
 - **B3 작업레벨 동시성**: vt 만료 중 동시 2워커 처리 방지 위해 **작업레벨 CAS** — `UPDATE bulk_operations SET status='RUNNING' WHERE id=? AND status='PENDING'`로 단일 워커만 진입(0 row면 타 워커 처리 중 → skip). vt는 "최대 청크 처리시간 + 여유"로 산정(성능예산 기반). learnings advisory lock TOCTOU대로 lock/CAS 후 재조회.
 - **C1 부분실패 창 제거 (NFR5 수정)**: 이슈 변경과 **해당 항목 상태 기록(SUCCEEDED/FAILED)을 동일 트랜잭션**으로 묶는다(같은 모듈·DB라 가능). 워커 크래시 시 이슈도 항목도 함께 롤백 → 재처리 시 PENDING이라 안전. 작업 카운트(processed/succeeded/failed)는 항목 상태 집계 재계산(멱등). → 기존 NFR5의 "이슈 변경 ≠ 항목 트랜잭션 분리"를 **폐기**.
 - **C2 성능 예산**: 1,000건 처리 목표시간 명시(NFR 추가). 이슈별 cross-BC `WorkflowTransitionPort.plan()` 호출 횟수(최대 1,000회) 인지 → vt 산정 근거.
-- **C4 완료 이벤트 큐 확정**: 별도 큐 `q_bulk_operation_events`(issue 이벤트 큐 `q_issue_events`와 분리, BulkOperation은 IssueDomainEvent 아님). 스키마: `{bulkOperationId, actorId, total, succeeded, failed, completedAt}`. **COMPLETED 전이는 1회만**(CAS RUNNING→COMPLETED) → 이벤트 1회 발행 보장.
+- **C4 완료 이벤트 큐 확정**: 별도 큐 `q_bulk_operation_events`(issue 이벤트 큐 `q_issue_events`와 분리, BulkOperation은 IssueDomainEvent 아님). 스키마: `{bulkOperationId, actorId, total, succeeded, failed, completedAt}`. **COMPLETED 전환은 1회만**(CAS RUNNING→COMPLETED) → 이벤트 1회 발행 보장.
 - **C5 PAT/JWT**: 기존 이슈 API 인증 정책 그대로(JWT/PAT 모두 허용). 일괄도 동일 — 별도 제외 안 함(기존 이슈 단건 편집과 동일 권한면 일괄도 허용이 일관).
 - **C3 TTL cleanup**: `@Scheduled` cleanup 컴포넌트로 완료 30일 경과 BulkOperation 삭제. 별도 task로 분해.
 - **N1**: 워커(폴링/큐 I/O)와 processor(순수 처리)를 별 task로 분리 — 멱등·동시성을 타이밍 의존 없이 단위 검증.
@@ -161,5 +161,5 @@ code-reviewer 적대적 리뷰 BLOCKER/CONCERN 반영. 비동기(B) 유지 + 워
 ## Brainstorming Check
 
 ✅ 통과 (1회 iteration). 발견 gap 7건 처리.
-- 수정 가능 5건 인라인 보강: BULK_EDIT merge patch 시맨틱, 접수검증 vs 항목실패 구분, failure_reason 구조화(reasonCode enum), 카운트 집계 멱등, RUNNING 전이 시점 + 멀티 프로젝트 혼합 허용.
+- 수정 가능 5건 인라인 보강: BULK_EDIT merge patch 시맨틱, 접수검증 vs 항목실패 구분, failure_reason 구조화(reasonCode enum), 카운트 집계 멱등, RUNNING 전환 시점 + 멀티 프로젝트 혼합 허용.
 - Maxi 결정 2건: 작업 취소 = **제외**(Jira 정합, 후속), 완료 알림 = **이벤트 발행만**(FR8, BulkOperationCompleted outbox).

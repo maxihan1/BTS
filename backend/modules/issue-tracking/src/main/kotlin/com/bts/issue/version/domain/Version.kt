@@ -42,8 +42,8 @@ internal const val MAX_NAME = 255
  * @property startDate 버전 시작일. null 이면 미지정 상태.
  * @property releaseDate 버전 릴리스 예정일. null 이면 미지정 상태.
  * @property status 버전 생명주기 상태. 기본값 [VersionStatus.UNRELEASED].
- * @property releasedAt 실제 릴리스 시각. RELEASED 전이 시 설정, UNRELEASED/unarchive 전이 시 null.
- *   ARCHIVED 전이 시에는 보관 직전 값을 유지한다.
+ * @property releasedAt 실제 릴리스 시각. RELEASED 전환 시 설정, UNRELEASED/unarchive 전환 시 null.
+ *   ARCHIVED 전환 시에는 보관 직전 값을 유지한다.
  * @property deletedAt 소프트 삭제 타임스탬프. null 이면 활성 상태.
  */
 data class Version(
@@ -157,11 +157,11 @@ data class Version(
     }
 
     /**
-     * 이 버전을 RELEASED 상태로 전이한다.
+     * 이 버전을 RELEASED 상태로 전환한다.
      *
      * UNRELEASED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
-     * releasedAt 불변식: 전이 후 status==RELEASED, releasedAt==[now].
+     * releasedAt 불변식: 전환 후 status==RELEASED, releasedAt==[now].
      *
      * @param now 릴리스 시각 (Clock 은 서비스 레이어 책임, 도메인은 파라미터로 수신).
      * @return status=RELEASED, releasedAt=[now] 로 설정된 새 [Version] 인스턴스.
@@ -177,7 +177,7 @@ data class Version(
      *
      * RELEASED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
-     * releasedAt 불변식: 전이 후 status==UNRELEASED, releasedAt==null.
+     * releasedAt 불변식: 전환 후 status==UNRELEASED, releasedAt==null.
      *
      * @return status=UNRELEASED, releasedAt=null 로 설정된 새 [Version] 인스턴스.
      * @throws VersionTransitionNotAllowedException RELEASED 외 상태에서 호출 시.
@@ -188,11 +188,11 @@ data class Version(
     }
 
     /**
-     * 이 버전을 ARCHIVED 상태로 전이한다.
+     * 이 버전을 ARCHIVED 상태로 전환한다.
      *
      * UNRELEASED 또는 RELEASED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
-     * releasedAt 불변식: 전이 후 status==ARCHIVED, releasedAt 은 보관 직전 값 유지.
+     * releasedAt 불변식: 전환 후 status==ARCHIVED, releasedAt 은 보관 직전 값 유지.
      * (RELEASED → ARCHIVED 시 releasedAt 시각 보존, UNRELEASED → ARCHIVED 시 null 유지)
      *
      * @return status=ARCHIVED, releasedAt 유지된 새 [Version] 인스턴스.
@@ -208,7 +208,7 @@ data class Version(
      *
      * ARCHIVED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
-     * releasedAt 불변식: 전이 후 status==UNRELEASED, releasedAt==null.
+     * releasedAt 불변식: 전환 후 status==UNRELEASED, releasedAt==null.
      *
      * @return status=UNRELEASED, releasedAt=null 로 설정된 새 [Version] 인스턴스.
      * @throws VersionTransitionNotAllowedException ARCHIVED 외 상태에서 호출 시.
@@ -219,7 +219,7 @@ data class Version(
     }
 
     /**
-     * 전이 가능 여부를 검사한다.
+     * 전환 가능 여부를 검사한다.
      *
      * 현재 [status] 가 [allowedStatuses] 에 포함되지 않으면 [VersionTransitionNotAllowedException] 을 던진다.
      *

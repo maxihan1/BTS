@@ -22,7 +22,7 @@ FR-API-03(외부 시스템 통지용 구독형 아웃바운드 Webhook, search-e
 선행:
 - PR1(shared-kernel `com.bts.shared.http` 인프라 추출: OutboundUrlValidator + OutboundHttpClientConfig)은 main 머지 완료 (#211, squash f339ff06).
 - 관련 ADR: docs/decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md
-- 참고: FR-NT-05 전이 webhook(이미 완료) — 상위집합 관계.
+- 참고: FR-NT-05 전환 webhook(이미 완료) — 상위집합 관계.
 
 ## 도메인 정리
 
@@ -31,10 +31,10 @@ FR-API-03(외부 시스템 통지용 구독형 아웃바운드 Webhook, search-e
   - `OutboundWebhook` (신규 애그리거트) — 구독. url + secret(암호화 저장) + event_filter + enabled 상태.
   - `WebhookDelivery` (신규, 이번 PR은 **테이블만** 생성) — 발송 이력. 실제 발송/기록은 PR3.
 - **새 용어 (glossary 등록 제안, Maxi 게이트1 확인)**:
-  - **아웃바운드 웹훅 구독** (OutboundWebhook) — 외부 시스템이 URL+secret+event_filter를 등록해 두면, 매칭 이벤트 발생 시 BTS가 HMAC 서명과 함께 HTTP로 통지하는 구독 단위. FR-NT-05 전이 webhook(post-action, 흡수 안 함)과 별개 경로로 공존.
+  - **아웃바운드 웹훅 구독** (OutboundWebhook) — 외부 시스템이 URL+secret+event_filter를 등록해 두면, 매칭 이벤트 발생 시 BTS가 HMAC 서명과 함께 HTTP로 통지하는 구독 단위. FR-NT-05 전환 webhook(post-action, 흡수 안 함)과 별개 경로로 공존.
   - **이벤트 필터** (event_filter) — 구독이 관심 두는 이벤트 타입 집합. 매칭 판정에 사용(발송 로직은 PR3).
   - **발송 이력** (WebhookDelivery) — 발송 시도/결과(status, response_code) 추적 단위. 관리 UI(PR4)에 노출.
-- **기존 결정 충돌**: 없음. FR-NT-05 전이 webhook은 유지·공존(PR1 ADR D3).
+- **기존 결정 충돌**: 없음. FR-NT-05 전환 webhook은 유지·공존(PR1 ADR D3).
 - **★도메인 결정 (Maxi 게이트, 2026-07-01) — secret 암호화 재사용 = shared 추출(옵션 A / PR1 대칭)**:
   - `SecretEncryptor` 클래스(현재 identity-access `com.atlas.bts.identity.config`, AES-256-GCM·범용 생성자)를 shared-kernel `com.bts.shared.crypto`로 이동.
   - identity-access `OidcEncryptionConfig`는 shared 클래스 import로 변경, 기존 `BTS_OIDC_ENCRYPTION_*` 키 유지(OIDC 암호화 경로 동작 불변).

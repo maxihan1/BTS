@@ -118,7 +118,7 @@ class TotpSecretRepositoryTest {
     // ── activate ────────────────────────────────────────────────────────────────
 
     @Test
-    fun `activate는 PENDING을 ACTIVE로 전이하고 confirmed_at을 채운다`() {
+    fun `activate는 PENDING을 ACTIVE로 전환하고 confirmed_at을 채운다`() {
         repo.upsertPending(userId, "cipher-1")
 
         repo.activate(userId)

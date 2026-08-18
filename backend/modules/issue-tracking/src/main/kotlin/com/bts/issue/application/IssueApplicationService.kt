@@ -1,4 +1,4 @@
-// IssueApplicationService — 이슈 CRUD + 전이 유스케이스 조율. 모든 public 메서드 @Transactional 명시
+// IssueApplicationService — 이슈 CRUD + 전환 유스케이스 조율. 모든 public 메서드 @Transactional 명시
 
 package com.bts.issue.application
 
@@ -103,14 +103,14 @@ data class CursorPage<T>(
 )
 
 /**
- * 이슈 CRUD + 전이 유스케이스를 조율하는 Application Service.
+ * 이슈 CRUD + 전환 유스케이스를 조율하는 Application Service.
  *
  * - 권한 검증: [IssuePermissionResolver] 를 통해 각 메서드 진입 직후 체크
  * - 이슈 키 발급: [IssueRepository.incrementKeySequence] (pg_advisory_xact_lock 포함)
  * - 이슈 타입 결정: [IssueTypeRepository.findByKey] (task fallback) / [IssueTypeRepository.findById] (지정 타입 검증)
  *   FR-6 — 모든 이슈는 유효한 타입을 보유해야 한다. typeId 미지정 시 표준 task 타입으로 자동 fallback.
  * - 이벤트 발행: [IssueEventPublisher] (Propagation.MANDATORY — 같은 트랜잭션)
- * - 워크플로우 전이: [WorkflowTransitionPort] (inbound port — BC 격리 준수)
+ * - 워크플로우 전환: [WorkflowTransitionPort] (inbound port — BC 격리 준수)
  * - 워크플로우 키 결정: [WorkflowKeyResolver] (shared-kernel SPI — project-workflow BC 내부 직접 import 금지)
  * - 이슈 이동 리다이렉트: [IssueKeyRedirectRepository.findCurrentKey] — 옛 키 조회 시 redirect 체인 순회 후
  *   [IssueMovedException] 발행 → 308 Permanent Redirect 응답 (FR-MV-01, DATA.md §2)
@@ -121,7 +121,7 @@ data class CursorPage<T>(
  *
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  *
- * TooManyFunctions: 이슈 CRUD + 전이 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
+ * TooManyFunctions: 이슈 CRUD + 전환 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
  * availableTransitions 추가로 11개, changeAssignee 추가로 12개, changeComponents 추가로 13개가 됐으나
  * 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
  * LargeClass: 필드 마스킹 헬퍼(FR-PM-07 Task-7) 추가로 임계치를 초과했으나 같은 응집 이유가 적용된다.
@@ -158,7 +158,7 @@ class IssueApplicationService(
     // Spring 컨텍스트에서는 IssueTemplateRepository Bean 이 주입된다.
     // 기존 단위 테스트 호환을 위해 null 기본값 유지 (customFieldDefinitionRepository 패턴 동형).
     private val issueTemplateRepository: com.bts.issue.template.repository.IssueTemplateRepository? = null,
-    // 전이 post-action 이벤트(plan.emitEvents)를 q_transition_events 큐에 enqueue 하는 어댑터.
+    // 전환 post-action 이벤트(plan.emitEvents)를 q_transition_events 큐에 enqueue 하는 어댑터.
     // prod 컨텍스트에서는 TransitionEventPublisher(@Component) Bean 이 주입된다.
     // null 이면 발행을 skip 한다(기존 단위 테스트 호환용 fallback — customFieldDefinitionRepository 패턴 동형).
     // 통합 테스트에서는 실 Bean 을 주입해 enqueue 경로 전체를 검증한다.
@@ -604,7 +604,7 @@ class IssueApplicationService(
     }
 
     /**
-     * 이슈의 현재 상태에서 이동 가능한 전이 목록을 조회한다.
+     * 이슈의 현재 상태에서 이동 가능한 전환 목록을 조회한다.
      *
      * 흐름.
      * 1. VIEW 권한 검증 (Issue 범위) — 미인가 시 [assertViewIssueOrNotFound] 가 존재를 숨겨 404 로 응답
@@ -652,7 +652,7 @@ class IssueApplicationService(
     }
 
     /**
-     * 이슈 상태를 전이하고 resolution_id 를 영속한다 (WorkflowKeyResolver → workflowPort.plan() + 낙관락).
+     * 이슈 상태를 전환하고 resolution_id 를 영속한다 (WorkflowKeyResolver → workflowPort.plan() + 낙관락).
      *
      * 흐름 (FR-IS-07 B6 포함).
      * 1. TRANSITION 권한 검증 (Issue 범위)
@@ -664,7 +664,7 @@ class IssueApplicationService(
      * 5. workflowPort.plan() 호출 — [TransitionResult] sealed 분기 처리.
      *    issueFields 에 resolution 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
      * 6. [IssueRepository.applyTransition] 호출 — resolutionId 함께 UPDATE.
-     *    null 이면 DB NULL(비DONE 재전이 clear), non-null 이면 지정값 SET.
+     *    null 이면 DB NULL(비DONE 재전환 clear), non-null 이면 지정값 SET.
      *    0 row 면 IssueVersionConflictException.
      * 7. IssueTransitioned 이벤트 발행 (q_issue_events 큐)
      * 8. [publishTransitionEvents] — plan.emitEvents 를 q_transition_events 큐에 발행 (FR-NT-05).
@@ -674,10 +674,10 @@ class IssueApplicationService(
      * 클래스 레벨 @Transactional(REQUIRED) 이 적용되므로 workflowKeyResolver.resolveStart (MANDATORY),
      * workflowPort.plan (MANDATORY) 호출 모두 만족한다.
      *
-     * @param actor 전이 행위자.
-     * @param key 전이할 이슈 키.
-     * @param request 전이 요청 DTO. resolutionId=null 이면 resolution_id clear.
-     * @return 전이된 이슈의 [IssueResponse].
+     * @param actor 전환 행위자.
+     * @param key 전환할 이슈 키.
+     * @param request 전환 요청 DTO. resolutionId=null 이면 resolution_id clear.
+     * @return 전환된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws com.bts.issue.resolution.domain.ResolutionNotFoundException resolutionId non-null 이지만
      *   resolutions 테이블에 존재하지 않을 때 (404, 영속 전 검증).
@@ -742,7 +742,7 @@ class IssueApplicationService(
             ),
         )
         publishTransitionEvents(plan)
-        // after 는 전이 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
+        // after 는 전환 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
         val afterTransitioned =
             issue.copy(
                 currentStateKey = plan.toStateKey,
@@ -1158,9 +1158,9 @@ class IssueApplicationService(
      * automation BC 가 동일 패턴을 사용할 경우 이 helper 를 공통 모듈로 이동할 수 있다 (plan F10 deferred G2).
      *
      * @param result workflowPort.plan 반환값.
-     * @param issueKey 전이 대상 이슈 키 — 예외 컨텍스트용.
-     * @param fromStatus 전이 전 상태 키.
-     * @param toStatus 전이 목표 상태 키.
+     * @param issueKey 전환 대상 이슈 키 — 예외 컨텍스트용.
+     * @param fromStatus 전환 전 상태 키.
+     * @param toStatus 전환 목표 상태 키.
      * @return [TransitionPlan] — [TransitionResult.Success] 케이스에서만 반환.
      * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
      *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스.
@@ -1437,7 +1437,7 @@ class IssueApplicationService(
      * 호출 시점은 [transitionIssue] 의 클래스 레벨 @Transactional(REQUIRED) 트랜잭션 안이므로
      * 상태 변경([IssueRepository.applyTransition])과 enqueue 가 원자적으로 커밋된다 (outbox 정합, DATA.md §7.2).
      *
-     * @param plan [WorkflowTransitionPort.plan] 이 반환한 전이 실행 계획.
+     * @param plan [WorkflowTransitionPort.plan] 이 반환한 전환 실행 계획.
      */
     private fun publishTransitionEvents(plan: TransitionPlan) {
         transitionEventPublisher?.let { publisher ->

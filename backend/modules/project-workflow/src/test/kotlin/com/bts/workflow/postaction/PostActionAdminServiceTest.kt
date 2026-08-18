@@ -25,9 +25,9 @@ import java.util.UUID
  * - update 미존재 id: PostActionNotFoundException(404)
  * - delete: deleteById 수행
  * - transitionKey 형식 오류(__ 없음): PostActionNotFoundException(404)
- * - 전이 미존재: PostActionNotFoundException(404)
+ * - 전환 미존재: PostActionNotFoundException(404)
  *
- * 주의: post-action 은 전이 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
+ * 주의: post-action 은 전환 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
  * WorkflowCache 의존성이 없고 캐시 무효화 단언도 불필요하다.
  */
 class PostActionAdminServiceTest {
@@ -199,7 +199,7 @@ class PostActionAdminServiceTest {
         }.isInstanceOf(PostActionNotFoundException::class.java)
     }
 
-    // ── transitionKey 파싱 오류 / 전이 미존재 ─────────────────────────────────
+    // ── transitionKey 파싱 오류 / 전환 미존재 ─────────────────────────────────
 
     @Test
     fun `create - transitionKey 에 __ 없으면 PostActionNotFoundException(404) 발생`() {
@@ -211,7 +211,7 @@ class PostActionAdminServiceTest {
     }
 
     @Test
-    fun `create - 전이 미존재이면 PostActionNotFoundException(404) 발생`() {
+    fun `create - 전환 미존재이면 PostActionNotFoundException(404) 발생`() {
         val config = mapOf("field" to "assignee")
         every { transitionResolver.resolveTransitionId(workflowKey, "open", "nonexistent") } returns null
 

@@ -423,7 +423,7 @@ class UserGroupIntegrationTest {
     /**
      * 사용자의 TOTP secret 을 ACTIVE 상태로 직접 시드한다(FR-MF-04 게이트 통과용).
      *
-     * 실제 enable 흐름(setup→ACTIVE 전이) 후의 DB 상태를 그대로 재현한다 — 게이트는 끄지 않고 admin 을
+     * 실제 enable 흐름(setup→ACTIVE 전환) 후의 DB 상태를 그대로 재현한다 — 게이트는 끄지 않고 admin 을
      * enrolled 로 만들어 통과시킨다. secret 은 운영과 동일하게 [MfaSecretEncryptor] 로 암호화해 저장하므로
      * (평문 미저장, §1.1.1), login 2단계 검증에서 서버가 같은 키로 복호화해 코드를 대조할 수 있다.
      */

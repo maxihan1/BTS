@@ -70,7 +70,7 @@ interface SprintVelocityLookupPort {
  *
  * @property commitmentSeconds 스프린트에 계획된 이슈들의 추정 시간 합계(초).
  *   NULL 추정치는 0 으로 간주해 합산한다.
- * @property completedSeconds 스프린트에서 완료 상태로 전이된 이슈들의 추정 시간 합계(초).
+ * @property completedSeconds 스프린트에서 완료 상태로 전환된 이슈들의 추정 시간 합계(초).
  */
 data class VelocityContribution(
     val commitmentSeconds: Long,

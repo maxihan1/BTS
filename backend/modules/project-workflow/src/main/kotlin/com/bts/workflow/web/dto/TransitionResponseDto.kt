@@ -1,16 +1,16 @@
-// 전이 응답 REST DTO — TransitionPlan → REST 응답 변환
+// 전환 응답 REST DTO — TransitionPlan → REST 응답 변환
 
 package com.bts.workflow.web.dto
 
 import com.bts.shared.workflow.TransitionPlan
 
 /**
- * REST 전이 응답 DTO.
+ * REST 전환 응답 DTO.
  *
  * 서비스 레이어가 반환한 [TransitionPlan] 을 [TransitionPlan.toDto] extension 으로 변환하여
  * 컨트롤러가 클라이언트에 반환하는 형태.
  *
- * @property toStateKey 전이 후 도달하는 상태의 키.
+ * @property toStateKey 전환 후 도달하는 상태의 키.
  * @property fieldChanges 이슈에 적용된 필드 변경 목록.
  * @property events 발행이 예약된 도메인 이벤트 목록.
  */

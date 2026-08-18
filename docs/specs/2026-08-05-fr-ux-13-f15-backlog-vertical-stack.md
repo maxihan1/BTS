@@ -445,7 +445,7 @@
 `updateSprint(sprintId, body)` 를 같은 파일에 추가하고, `hooks/use-backlog.ts` 에 `useUpdateSprint` 를 더한다.
 기존 훅의 `invalidate-only` 규약(setQueryData 금지)을 그대로 따른다.
 
-**상태 전이 계약 (백엔드 확정, 변경 불가).**
+**상태 전환 계약 (백엔드 확정, 변경 불가).**
 `PLANNED → ACTIVE → COMPLETED` 단방향 FSM. 위반 시 409 (`Sprint.kt:68-95` `InvalidSprintTransitionException`).
 
 ---
@@ -483,7 +483,7 @@
 | **E9** | 시작 다이얼로그 열려 있는 사이 다른 사람이 같은 스프린트를 수정 | `PATCH` 409 → FR-4 의 409 분기. 백로그를 invalidate 하고 기준값·`version` 을 새 값으로 교체한 뒤 사용자에게 재확인을 요청한다 |
 | **E10** | 시작 다이얼로그 열려 있는 사이 다른 사람이 스프린트를 이미 시작 | `POST /start` 가 409(`InvalidSprintTransitionException`) → 「이미 시작된 스프린트입니다.」 + 백로그 invalidate + 다이얼로그 닫기. 재시도 버튼을 주지 않는다(재시도해도 반드시 409) |
 | **E11** | 완료 다이얼로그의 미완료가 0건 | 목록·Select 없이 「옮길 이슈가 없습니다.」. 제출은 `POST /complete` 1회 |
-| **E12** | 이관 대상 스프린트가 이관 도중 COMPLETED 로 전이 | `POST /{targetId}/issues` 가 409 → 그 행이 「이관 실패」. 완료 미실행. 재시도 전에 대상을 다시 고를 수 있어야 하므로 Select 를 잠그지 않는다 |
+| **E12** | 이관 대상 스프린트가 이관 도중 COMPLETED 로 전환 | `POST /{targetId}/issues` 가 409 → 그 행이 「이관 실패」. 완료 미실행. 재시도 전에 대상을 다시 고를 수 있어야 하므로 Select 를 잠그지 않는다 |
 | **E13** | 이관 중 이슈가 이미 스프린트에서 빠져 있다 | `DELETE` 가 멱등 204 라 성공으로 처리된다. 이어지는 `POST` 도 정상 |
 | **E14** | 워크플로우 조회 실패 | FR-7 의 fail-safe — 전부 미완료로 보고 안내를 띄운다. 다이얼로그를 막지 않는다 |
 | **E15** | `truncated=true` 인 상태에서 완료를 시도 | 완료 다이얼로그에 「일부 이슈만 표시되어 안전하게 완료할 수 없습니다.」 alert + 제출 버튼 비활성. 근거는 C1 |
@@ -991,7 +991,7 @@ FR-11 은 「삭제·개명 금지」만 요구했지 **추가를 요구하지 �
 | E7(없어진 sprint id) | T5 RED 에 추가 |
 | E8(종료일 < 시작일) | T7 RED 에 추가 — 눈확인만으로는 부족하다 |
 | E10(`start` 409) | T7 RED·GREEN (FR-4 네 번째 갈래) |
-| E12(대상이 COMPLETED 로 전이) | T8 RED |
+| E12(대상이 COMPLETED 로 전환) | T8 RED |
 | E19(이관 중 닫기 차단) | T8 GREEN |
 | E1·E3·E4(스프린트 0 · 전부 접힘 · 접힌 섹션 드롭) | T6 RED |
 

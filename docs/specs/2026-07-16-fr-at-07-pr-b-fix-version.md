@@ -23,7 +23,7 @@ PR-C가 "PR이 머지되면 이슈의 Fix Version을 자동 설정한다"를 완
 
 이 PR은 통로만 만든다. 트리거(PR_MERGED)·Git webhook은 PR-C.
 
-**이 PR만으로도 사용자 가치가 성립한다** — 기존 트리거 5종으로 "이슈가 Done으로 전이되면 Fix Version을 1.2.0으로
+**이 PR만으로도 사용자 가치가 성립한다** — 기존 트리거 5종으로 "이슈가 Done으로 전환되면 Fix Version을 1.2.0으로
 설정" 같은 룰을 만들 수 있다.
 
 ## 1. 사용자 시나리오 (Given-When-Then)
@@ -44,7 +44,7 @@ Then  룰이 저장되고, 목록의 그 룰 행에 "수정 예정 버전" 배�
 > **★ 개정 4회차 — `TriggerType.TRANSITION`은 존재하지 않는다.** 실제 값은 `ISSUE_CREATED` · `ISSUE_UPDATED` ·
 > `ISSUE_COMMENTED` · `SCHEDULED` · `WEBHOOK` **5종**뿐이다(`TriggerType.kt:15-21`). 1~3회차 스펙의
 > *"트리거 = TRANSITION to Done"* 은 **phantom** — 존재하지 않는 값을 근거로 시나리오를 썼다(learnings
-> 2026-05-20 "phantom 엔티티 가설 검증 누락"과 같은 결). "Done으로 전이되면"은 아래처럼 표현한다.
+> 2026-05-20 "phantom 엔티티 가설 검증 누락"과 같은 결). "Done으로 전환되면"은 아래처럼 표현한다.
 
 ```
 Given 룰(트리거 = ISSUE_UPDATED + triggerConfig.fields=["status"],

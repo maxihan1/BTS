@@ -35,7 +35,7 @@ interface WorkflowResolver {
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우를 반환한다.
      *
-     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전이(write path)에서만 호출한다.
+     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전환(write path)에서만 호출한다.
      * 읽기 전용 경로에서는 [resolveExistingFor] 를 사용해야 한다.
      *
      * 호출자 트랜잭션 강제. Application Service 또는 동등 계층에서만 호출.

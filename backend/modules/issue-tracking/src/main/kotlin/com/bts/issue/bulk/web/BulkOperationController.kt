@@ -1,4 +1,4 @@
-// BulkOperationController — POST 일괄 작업 접수(202) + GET 조회(200) + POST 가용 전이 조회(200) REST 엔드포인트
+// BulkOperationController — POST 일괄 작업 접수(202) + GET 조회(200) + POST 가용 전환 조회(200) REST 엔드포인트
 
 package com.bts.issue.bulk.web
 
@@ -38,7 +38,7 @@ import java.util.UUID
  * 엔드포인트 목록.
  * - POST  /api/v1/issues/bulk-update — 일괄 작업 접수 (PR1 Task 8)
  * - GET   /api/v1/bulk-operations/{id} — 일괄 작업 조회 (PR1 Task 8)
- * - POST  /api/v1/issues/bulk-transitions/available — 일괄 가용 전이 조회 (FR-IS-05 Task 3)
+ * - POST  /api/v1/issues/bulk-transitions/available — 일괄 가용 전환 조회 (FR-IS-05 Task 3)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
@@ -53,11 +53,11 @@ import java.util.UUID
  *
  * @param service 일괄 작업 접수 유스케이스 서비스.
  * @param repo 일괄 작업 Repository (조회 전용).
- * @param bulkAvailableTransitionsService 일괄 가용 전이 조회 서비스.
+ * @param bulkAvailableTransitionsService 일괄 가용 전환 조회 서비스.
  */
 @Tag(
     name = "Bulk Operations",
-    description = "이슈 일괄 작업 접수·조회 및 일괄 가용 전이 조회 API (FR-IS-05)",
+    description = "이슈 일괄 작업 접수·조회 및 일괄 가용 전환 조회 API (FR-IS-05)",
 )
 @RestController
 class BulkOperationController(
@@ -80,7 +80,7 @@ class BulkOperationController(
     @Operation(
         summary = "이슈 일괄 작업 접수",
         description =
-            "여러 이슈에 일괄 수정(BULK_EDIT) 또는 일괄 전이(BULK_TRANSITION)를 비동기로 접수한다. " +
+            "여러 이슈에 일괄 수정(BULK_EDIT) 또는 일괄 전환(BULK_TRANSITION)를 비동기로 접수한다. " +
                 "202 Accepted 와 함께 추적용 bulkOperationId 를 반환하며, 실제 처리는 백그라운드 워커가 수행한다.",
     )
     @ApiResponses(
@@ -167,9 +167,9 @@ class BulkOperationController(
     }
 
     /**
-     * 여러 이슈에 공통으로 적용 가능한 전이 목록을 조회한다.
+     * 여러 이슈에 공통으로 적용 가능한 전환 목록을 조회한다.
      *
-     * issueKeys 의 각 이슈에 대해 best-effort 로 가용 전이를 조회한 후 교집합을 반환한다.
+     * issueKeys 의 각 이슈에 대해 best-effort 로 가용 전환을 조회한 후 교집합을 반환한다.
      * 조회에 실패한 이슈(미존재·워크플로우 미설정·접근 불가)는 unresolvedIssueKeys 에 포함한다.
      *
      * @param request 조회 대상 이슈 키 목록.
@@ -177,13 +177,13 @@ class BulkOperationController(
      * @throws IllegalArgumentException issueKeys 비어있음 또는 1000 초과 시 → 400 (핸들러 처리)
      */
     @Operation(
-        summary = "일괄 가용 전이 조회",
+        summary = "일괄 가용 전환 조회",
         description =
-            "여러 이슈에 공통으로 적용 가능한 워크플로우 전이 목록(교집합)을 조회한다. " +
+            "여러 이슈에 공통으로 적용 가능한 워크플로우 전환 목록(교집합)을 조회한다. " +
                 "조회에 실패한 이슈(미존재·워크플로우 미설정·접근 불가)는 unresolvedIssueKeys 로 반환한다.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "공통 가용 전이 + 미해결 이슈 키 반환"),
+        ApiResponse(responseCode = "200", description = "공통 가용 전환 + 미해결 이슈 키 반환"),
         ApiResponse(responseCode = "400", description = "issueKeys 비어있음/상한 초과", content = [Content()]),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
     )

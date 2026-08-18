@@ -373,7 +373,7 @@ describe('DELETE /api/v1/projects/:projectIdOrKey/versions/:id', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
-  it('UNRELEASED → RELEASED 전이 후 200 + status=RELEASED + releasedAt이 반환된다', async () => {
+  it('UNRELEASED → RELEASED 전환 후 200 + status=RELEASED + releasedAt이 반환된다', async () => {
     const createRes = await fetch(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -393,7 +393,7 @@ describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
     expect(typeof body.data.releasedAt).toBe('string')
   })
 
-  it('RELEASED → UNRELEASED 전이 후 200 + status=UNRELEASED + releasedAt이 없다', async () => {
+  it('RELEASED → UNRELEASED 전환 후 200 + status=UNRELEASED + releasedAt이 없다', async () => {
     const createRes = await fetch(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -420,7 +420,7 @@ describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
     expect(body.data.releasedAt).toBeUndefined()
   })
 
-  it('UNRELEASED → ARCHIVED 전이 후 200 + status=ARCHIVED', async () => {
+  it('UNRELEASED → ARCHIVED 전환 후 200 + status=ARCHIVED', async () => {
     const createRes = await fetch(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -439,7 +439,7 @@ describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
     expect(body.data.status).toBe('ARCHIVED')
   })
 
-  it('ARCHIVED → RELEASED 불허 전이는 409 + VERSION_TRANSITION_NOT_ALLOWED를 반환한다', async () => {
+  it('ARCHIVED → RELEASED 불허 전환은 409 + VERSION_TRANSITION_NOT_ALLOWED를 반환한다', async () => {
     const createRes = await fetch(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -485,7 +485,7 @@ describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
     expect(body['errorCode']).toBe('VERSION_TRANSITION_NOT_ALLOWED')
   })
 
-  it('상태 전이 후 GET 목록 refetch 시 status가 반영된다(stateful 영속)', async () => {
+  it('상태 전환 후 GET 목록 refetch 시 status가 반영된다(stateful 영속)', async () => {
     const createRes = await fetch(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

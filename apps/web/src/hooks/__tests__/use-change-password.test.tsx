@@ -1,4 +1,4 @@
-// useChangePassword 훅 테스트 — MSW 핸들러 위에서 성공/실패 시나리오 + isPending 전이 검증
+// useChangePassword 훅 테스트 — MSW 핸들러 위에서 성공/실패 시나리오 + isPending 전환 검증
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -70,7 +70,7 @@ describe('useChangePassword', () => {
     // mutate 직후 응답이 아직 안 왔으므로 isPending이 true여야 한다
     await waitFor(() => expect(result.current.isPending).toBe(true))
 
-    // 응답 해제 후 성공 상태로 전이
+    // 응답 해제 후 성공 상태로 전환
     resolveResponse()
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })

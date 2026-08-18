@@ -242,7 +242,7 @@ describe('BulkOperationResultDialog', () => {
     await waitFor(() => {
       expect(screen.getByText('PROJ-10')).toBeInTheDocument()
     })
-    expect(screen.getByText('허용되지 않는 전이')).toBeInTheDocument()
+    expect(screen.getByText('허용되지 않는 전환')).toBeInTheDocument()
     expect(screen.getByText('PROJ-11')).toBeInTheDocument()
     expect(screen.getByText('다른 요청이 먼저 수정함')).toBeInTheDocument()
   })

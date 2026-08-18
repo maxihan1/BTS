@@ -196,7 +196,7 @@ combo(`g j`)는 leader 대기 중 컨텍스트로 넘어가지 않으므로(E6) 
 
 ### D-5-b. 모달 열림 중 차단 (독립 리뷰 I-3)
 
-일괄 편집·전이·결과 다이얼로그는 **입력 요소가 없어** `shouldIgnoreEvent`
+일괄 편집·전환·결과 다이얼로그는 **입력 요소가 없어** `shouldIgnoreEvent`
 (input/textarea/select/contentEditable 만 검사)를 통과한다. 막지 않으면 다이얼로그가
 떠 있는데 `j` 가 배후 목록을 옮기고, **`o` 는 다이얼로그를 띄운 채 화면을 통째로
 갈아치운다.** D-5-a 의 활성 조건에 얹어 닫았다.

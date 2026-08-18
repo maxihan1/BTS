@@ -1,4 +1,4 @@
-// 버전 BC REST API 클라이언트 — CRUD + 날짜 변경 + 상태 전이 + 릴리즈 노트 조회 + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-VR-01, FR-VR-02, FR-VR-04)
+// 버전 BC REST API 클라이언트 — CRUD + 날짜 변경 + 상태 전환 + 릴리즈 노트 조회 + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { z } from 'zod'
 import { apiGet, apiFetch, ApiError } from './client'
 import { readXsrfToken } from './sessions'
@@ -192,7 +192,7 @@ export async function deleteVersion(projectIdOrKey: string, id: string): Promise
 }
 
 /**
- * 버전 상태를 전이한다.
+ * 버전 상태를 전환한다.
  *
  * PATCH /api/v1/projects/{projectIdOrKey}/versions/{id}/status → `{ data: ... }` 언래핑 후 반환.
  * CSRF 방어를 위해 X-XSRF-TOKEN 헤더를 포함한다.
@@ -200,9 +200,9 @@ export async function deleteVersion(projectIdOrKey: string, id: string): Promise
  *
  * @param projectIdOrKey 프로젝트 UUID 또는 키
  * @param id 버전 UUID
- * @param status 전이 대상 상태 (UNRELEASED | RELEASED | ARCHIVED)
- * @returns 전이된 Version
- * @throws ApiError(409, VERSION_TRANSITION_NOT_ALLOWED) 불허 전이 시
+ * @param status 전환 대상 상태 (UNRELEASED | RELEASED | ARCHIVED)
+ * @returns 전환된 Version
+ * @throws ApiError(409, VERSION_TRANSITION_NOT_ALLOWED) 불허 전환 시
  * @throws ApiError(404) 버전 미존재 시
  */
 export async function changeVersionStatus(

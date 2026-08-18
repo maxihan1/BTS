@@ -9,7 +9,7 @@
 PR #10 의 backend FR-WF-01 (FSM 워크플로우) 의 시각화 + E2E 검증. 본 PR 로 FR-WF-01 **완결**.
 
 - 사용자가 표준 4 워크플로우 (`software-default` / `bug-tracking` / `simple` / `kanban-basic`) 를 **시각적으로 이해**.
-- 워크플로우 전이 호출 결과가 UI 에 반영됨을 **end-to-end 검증**.
+- 워크플로우 전환 호출 결과가 UI 에 반영됨을 **end-to-end 검증**.
 
 ## 2. 사용자 시나리오 (Given-When-Then)
 
@@ -17,14 +17,14 @@ PR #10 의 backend FR-WF-01 (FSM 워크플로우) 의 시각화 + E2E 검증. �
 
 ```
 Given. 사용자가 워크플로우 상세 화면 진입 (예. /workflows/software-default).
-When. WorkflowDiagram 컴포넌트가 mount 되고 workflow prop (5 상태 + 4 전이) 받음.
-Then. mermaid stateDiagram-v2 다이어그램 렌더 — 상태 5 노드 + 전이 4 엣지, 카테고리별 색상 구분 (todo=회색 / in_progress=파랑 / done=초록).
+When. WorkflowDiagram 컴포넌트가 mount 되고 workflow prop (5 상태 + 4 전환) 받음.
+Then. mermaid stateDiagram-v2 다이어그램 렌더 — 상태 5 노드 + 전환 4 엣지, 카테고리별 색상 구분 (todo=회색 / in_progress=파랑 / done=초록).
 ```
 
 ### S2. 작은 워크플로우 (`simple`) — 2 상태
 
 ```
-Given. simple 워크플로우 (open / closed 2 상태 + 2 전이).
+Given. simple 워크플로우 (open / closed 2 상태 + 2 전환).
 When. WorkflowDiagram mount.
 Then. 노드 2 + 엣지 2, 다이어그램 컨테이너 height 자동 조정.
 ```
@@ -42,7 +42,7 @@ Then. mermaid 텍스트 코드 (`stateDiagram-v2 ... ` 블록) 가 `<details>` �
 ```
 Given. backend dev 서버 (PR #10 의 4 표준 YAML 시드 적재 완료) + frontend dev 서버 가동.
 When. Playwright 가 4 워크플로우 각각의 상세 페이지 진입.
-Then. (1) GET /api/v1/workflows/{key} 200 응답, (2) 다이어그램 노드 수 + 엣지 수 검증, (3) 첫 전이 buttons 클릭 → POST /api/v1/workflows/{key}/transitions 200 + UI 업데이트.
+Then. (1) GET /api/v1/workflows/{key} 200 응답, (2) 다이어그램 노드 수 + 엣지 수 검증, (3) 첫 전환 buttons 클릭 → POST /api/v1/workflows/{key}/transitions 200 + UI 업데이트.
 ```
 
 ## 3. 기능 요구사항 (FR)
@@ -63,7 +63,7 @@ Then. (1) GET /api/v1/workflows/{key} 200 응답, (2) 다이어그램 노드 수
 | FR | 내용 |
 |---|---|
 | FR-7 | 4 표준 워크플로우 각 1 시나리오 — `software-default` (5 상태), `bug-tracking` (5 상태), `simple` (2 상태), `kanban-basic` (4 상태) |
-| FR-8 | 각 시나리오. (1) 페이지 진입 + 200 응답 검증, (2) 다이어그램 SVG 렌더 검증 (`svg.mermaid` 존재 + `g[class*="node"]` 수), (3) 첫 전이 트리거 + 200 응답 검증 |
+| FR-8 | 각 시나리오. (1) 페이지 진입 + 200 응답 검증, (2) 다이어그램 SVG 렌더 검증 (`svg.mermaid` 존재 + `g[class*="node"]` 수), (3) 첫 전환 트리거 + 200 응답 검증 |
 | FR-9 | backend dev seed (`data-dev.sql`) 의 알리스 사용자 (PR #11 도입) 로 로그인 → 워크플로우 페이지 진입. 또는 인증 우회 dev profile |
 
 ## 4. 비기능 요구사항 (NFR)
@@ -81,7 +81,7 @@ Then. (1) GET /api/v1/workflows/{key} 200 응답, (2) 다이어그램 노드 수
 
 - `GET /api/v1/workflows` — 4 워크플로우 목록.
 - `GET /api/v1/workflows/{key}` — 단건 + 상세 (계층 구조 — states + transitions).
-- `POST /api/v1/workflows/{key}/transitions` — 전이 호출.
+- `POST /api/v1/workflows/{key}/transitions` — 전환 호출.
 
 API client 코드. `apps/web/src/api/workflows.ts` 신규 (또는 기존 `client.ts` 확장).
 
@@ -147,7 +147,7 @@ backend `WorkflowDto` (`web/dto/`) 직렬화와 1:1 대응. Zod schema 로 런�
 
 ## 10. 본 PR 미포함 (후속 PR 후보)
 
-- 워크플로우 다이어그램 인터랙티브 (노드 클릭 → 상세 / 전이 클릭 → confirm).
+- 워크플로우 다이어그램 인터랙티브 (노드 클릭 → 상세 / 전환 클릭 → confirm).
 - 워크플로우 편집 UI (생성 / 수정 / 삭제).
 - 다크 모드.
 - 워크플로우 변경 이력 (changelog 시각화).

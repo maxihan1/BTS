@@ -51,7 +51,7 @@ FR-IM-02 백엔드는 "임의 CSV 헤더 자유 필드매핑 + 전 작성자 사
 ### S4. 검토 → 검증만 실행 → (매핑 보존) 실제 실행
 - **Given** 필드/사용자/값 매핑을 마친 상태.
 - **When** **검토 단계**에서 [검증만 실행](dryRun=true)을 누른다.
-- **Then** `POST /{jobId}/mapping`(dryRun=true)이 job을 PENDING으로 전이하고, 기존 폴링
+- **Then** `POST /{jobId}/mapping`(dryRun=true)이 job을 PENDING으로 전환하고, 기존 폴링
   (`GET /{jobId}`, `useImportJobPolling`)으로 진행률→완료를 추적한다. 완료 시 성공/실패 건수 + 실패행
   에러 로그 다운로드를 노출한다(FR-IM-01 done 단계 재사용, 라벨="검증 완료").
 - **When** dry-run 완료 후 [이 매핑으로 실제 가져오기]를 누른다.
@@ -69,7 +69,7 @@ FR-IM-02 백엔드는 "임의 CSV 헤더 자유 필드매핑 + 전 작성자 사
   매핑 payload는 빈 배열로 전송한다.
 
 ### S6. 상태 충돌 / 소유권
-- **Given** 다른 세션이 같은 job을 이미 확정(PENDING 전이)했거나, 타인 소유 jobId.
+- **Given** 다른 세션이 같은 job을 이미 확정(PENDING 전환)했거나, 타인 소유 jobId.
 - **When** 매핑 API를 호출.
 - **Then** 409 IMPORT_MAPPING_STATE_CONFLICT(이미 대기 상태 아님) 또는 404(타인/미존재)를 사용자
   메시지로 안내하고 처음(업로드)으로 되돌린다.

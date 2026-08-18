@@ -1,4 +1,4 @@
-// 워크플로우 전이별 post-action 목록 + Webhook 추가/수정/삭제 섹션 — isSystemAdmin 게이팅
+// 워크플로우 전환별 post-action 목록 + Webhook 추가/수정/삭제 섹션 — isSystemAdmin 게이팅
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button'
 export interface PostActionConfigSectionProps {
   /** 워크플로우 키 */
   workflowKey: string
-  /** 상위(workflows.$key)가 로드한 전이 목록 */
+  /** 상위(workflows.$key)가 로드한 전환 목록 */
   transitions: WorkflowTransitionView[]
 }
 
@@ -178,10 +178,10 @@ function PostActionTable({ actions, onEditClick, onDeleteClick, isDeleting }: Po
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 워크플로우 전이별 post-action 설정 섹션.
+ * 워크플로우 전환별 post-action 설정 섹션.
  *
  * - isSystemAdmin=true 인 경우에만 렌더 (아니면 null 반환).
- * - 전이 선택 → usePostActions(workflowKey, transitionKey) 쿼리 활성.
+ * - 전환 선택 → usePostActions(workflowKey, transitionKey) 쿼리 활성.
  * - 0건 → 빈 상태 안내, N건 → 테이블 (type/config 요약/displayOrder/수정·삭제).
  * - CALL_WEBHOOK 행만 수정 버튼 활성 (config에서 url/method 추출 가능 시).
  * - "Webhook 추가" 버튼 → PostActionFormDialog(create 모드).
@@ -315,7 +315,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         <h3 className="text-sm font-semibold text-foreground">
           {postActionLabels.section.title}
         </h3>
-        {/* D1: 전이 미선택 시 disabled + 안내 텍스트 */}
+        {/* D1: 전환 미선택 시 disabled + 안내 텍스트 */}
         <Button
           type="button"
           variant="default"
@@ -334,7 +334,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         </Button>
       </div>
 
-      {/* 전이 선택 */}
+      {/* 전환 선택 */}
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground" htmlFor="post-action-transition-select">
           {postActionLabels.section.transitionSelectLabel}
@@ -362,7 +362,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
             )
           })}
         </select>
-        {/* D6: ambiguous 전이가 하나라도 있으면 안내 문구 노출 */}
+        {/* D6: ambiguous 전환이 하나라도 있으면 안내 문구 노출 */}
         {transitions.some((t) => t.fromStateKey.includes('__') || t.toStateKey.includes('__')) && (
           <p className="text-xs text-muted-foreground">
             {postActionLabels.section.ambiguousKeyHint}
@@ -370,7 +370,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         )}
       </div>
 
-      {/* 목록 영역 — 전이 선택 시만 표시 */}
+      {/* 목록 영역 — 전환 선택 시만 표시 */}
       {selectedTxKey !== '' && (
         <div className="overflow-hidden rounded-lg border border-border">
           {isLoading ? (

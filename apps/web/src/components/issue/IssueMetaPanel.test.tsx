@@ -1,4 +1,4 @@
-// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 + 즐겨찾기 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6, FR-UX-02 D6 Task-6
+// IssueMetaPanel 유형 행 + 셀렉터 + 상태전환 + 우선순위/영향도/환경/라벨 + 담당자 + 즐겨찾기 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6, FR-UX-02 D6 Task-6
 import type { ReactElement } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
@@ -76,7 +76,7 @@ beforeEach(() => {
 // 테스트 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 테스트용 전이 목록 픽스처 — open 상태에서 2개 */
+/** 테스트용 전환 목록 픽스처 — open 상태에서 2개 */
 const transitionsFixture: IssueTransition[] = [
   { key: 'open__in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
   { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
@@ -380,24 +380,24 @@ describe('IssueMetaPanel — 접근성', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IMP-11~17. 상태전이 컨트롤 — FR-IS-01 Task-4
+// IMP-11~17. 상태전환 컨트롤 — FR-IS-01 Task-4
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('IssueMetaPanel — 상태전이 컨트롤 렌더', () => {
+describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
   /**
-   * IMP-11: 가용전이 목록이 있으면 전이 셀렉터가 렌더된다.
+   * IMP-11: 가용전환 목록이 있으면 전환 셀렉터가 렌더된다.
    */
-  it('IMP-11: 가용전이가 있을 때 전이 셀렉터가 렌더된다', () => {
+  it('IMP-11: 가용전환이 있을 때 전환 셀렉터가 렌더된다', () => {
     renderPanel()
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
     expect(select).toBeInTheDocument()
   })
 
   /**
-   * IMP-12: 전이 셀렉터에 가용전이 name이 옵션으로 노출된다.
+   * IMP-12: 전환 셀렉터에 가용전환 name이 옵션으로 노출된다.
    * options: placeholder + "Start Work" + "Cancel"
    */
-  it('IMP-12: 전이 셀렉터에 가용전이 name 옵션이 모두 노출된다', () => {
+  it('IMP-12: 전환 셀렉터에 가용전환 name 옵션이 모두 노출된다', () => {
     renderPanel()
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
     expect(within(select as HTMLElement).getByRole('option', { name: 'Start Work' })).toBeInTheDocument()
@@ -405,9 +405,9 @@ describe('IssueMetaPanel — 상태전이 컨트롤 렌더', () => {
   })
 
   /**
-   * IMP-13: 전이 선택 시 onTransition(toStateKey)이 호출된다.
+   * IMP-13: 전환 선택 시 onTransition(toStateKey)이 호출된다.
    */
-  it('IMP-13: 전이 선택 시 onTransition(toStateKey)이 호출된다', async () => {
+  it('IMP-13: 전환 선택 시 onTransition(toStateKey)이 호출된다', async () => {
     const onTransition = vi.fn()
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, onTransition)
     const user = userEvent.setup()
@@ -420,28 +420,28 @@ describe('IssueMetaPanel — 상태전이 컨트롤 렌더', () => {
   })
 
   /**
-   * IMP-14: isTransitioning=true 시 전이 셀렉터가 disabled 상태가 된다 (중복클릭 방지, NFR3).
+   * IMP-14: isTransitioning=true 시 전환 셀렉터가 disabled 상태가 된다 (중복클릭 방지, NFR3).
    */
-  it('IMP-14: isTransitioning=true 시 전이 셀렉터가 disabled가 된다', () => {
+  it('IMP-14: isTransitioning=true 시 전환 셀렉터가 disabled가 된다', () => {
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, vi.fn(), true)
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
     expect(select).toBeDisabled()
   })
 })
 
-describe('IssueMetaPanel — 가용전이 0건 (종료상태 S6)', () => {
+describe('IssueMetaPanel — 가용전환 0건 (종료상태 S6)', () => {
   /**
-   * IMP-15: 가용전이 0건이면 전이 셀렉터가 렌더되지 않는다.
+   * IMP-15: 가용전환 0건이면 전환 셀렉터가 렌더되지 않는다.
    */
-  it('IMP-15: 가용전이 0건이면 전이 셀렉터가 렌더되지 않는다', () => {
+  it('IMP-15: 가용전환 0건이면 전환 셀렉터가 렌더되지 않는다', () => {
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), [])
     expect(screen.queryByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).not.toBeInTheDocument()
   })
 
   /**
-   * IMP-16: 가용전이 0건이면 "더 진행할 전이 없음" 안내 문구가 렌더된다.
+   * IMP-16: 가용전환 0건이면 "더 진행할 전환 없음" 안내 문구가 렌더된다.
    */
-  it('IMP-16: 가용전이 0건이면 "더 진행할 전이 없음" 안내가 렌더된다', () => {
+  it('IMP-16: 가용전환 0건이면 "더 진행할 전환 없음" 안내가 렌더된다', () => {
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), [])
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
   })
@@ -519,9 +519,9 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
   })
 
   /**
-   * IMP-20: 전이가 있으면 unavailableReason과 무관하게 셀렉터가 렌더된다.
+   * IMP-20: 전환이 있으면 unavailableReason과 무관하게 셀렉터가 렌더된다.
    */
-  it('IMP-20: 전이가 있으면 unavailableReason=no-workflow여도 셀렉터가 렌더된다', () => {
+  it('IMP-20: 전환이 있으면 unavailableReason=no-workflow여도 셀렉터가 렌더된다', () => {
     setupFullPermissions()
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -551,11 +551,11 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
   })
 })
 
-describe('IssueMetaPanel — 전이 셀렉터 접근성 (WCAG AA)', () => {
+describe('IssueMetaPanel — 전환 셀렉터 접근성 (WCAG AA)', () => {
   /**
-   * IMP-17: 전이 셀렉터에 aria-label이 있고 min-h-[44px] 클래스가 있다.
+   * IMP-17: 전환 셀렉터에 aria-label이 있고 min-h-[44px] 클래스가 있다.
    */
-  it('IMP-17: 전이 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다', () => {
+  it('IMP-17: 전환 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다', () => {
     renderPanel()
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
     expect(select).toHaveAttribute('aria-label')

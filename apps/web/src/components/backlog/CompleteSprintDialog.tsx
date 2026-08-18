@@ -199,7 +199,7 @@ function useSprintCompletion(
   const derived = useMemo(() => buildView(sprint.issues, categoryMap), [sprint.issues, categoryMap])
   const view = snapshot ?? derived
 
-  // 닫힘 전이에서 회차 상태를 비운다 — 같은 스프린트로 다시 열면 처음부터다.
+  // 닫힘 전환에서 회차 상태를 비운다 — 같은 스프린트로 다시 열면 처음부터다.
   // 상태를 가진 훅 안에 두어야 setter 만 의존성이 되어 exhaustive-deps 를 그대로 만족한다.
   useEffect(() => {
     if (open) return

@@ -27,7 +27,7 @@ import type {
  * 백로그 BC queryKey 팩토리.
  *
  * 모든 mutation의 onSuccess에서 이 키를 통해 invalidate하므로
- * 드래그 순서 변경·스프린트 이동·스프린트 상태 전이 후 단일 재조회로 정합이 보장된다.
+ * 드래그 순서 변경·스프린트 이동·스프린트 상태 전환 후 단일 재조회로 정합이 보장된다.
  */
 export const backlogKeys = {
   /**

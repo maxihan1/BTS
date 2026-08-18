@@ -5,7 +5,7 @@ package com.bts.issue.resolution.domain
 import java.util.UUID
 
 /**
- * 전이 요청에 포함된 resolutionId 가 resolutions 테이블에 존재하지 않을 때.
+ * 전환 요청에 포함된 resolutionId 가 resolutions 테이블에 존재하지 않을 때.
  *
  * [com.bts.issue.application.IssueApplicationService.transitionIssue] 에서
  * [com.bts.issue.resolution.repository.ResolutionRepository.findById] 호출 후 null 이면 발생한다.

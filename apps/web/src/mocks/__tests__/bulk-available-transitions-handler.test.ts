@@ -27,8 +27,8 @@ async function postBulkAvailableTransitions(issueKeys: string[]): Promise<Respon
 // POST /api/v1/issues/bulk-transitions/available
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('POST /api/v1/issues/bulk-transitions/available — 공통 전이 교집합', () => {
-  it('ATLAS-1(open) + ATLAS-3(done) 공통 toStateKey=closed 전이 반환', async () => {
+describe('POST /api/v1/issues/bulk-transitions/available — 공통 전환 교집합', () => {
+  it('ATLAS-1(open) + ATLAS-3(done) 공통 toStateKey=closed 전환 반환', async () => {
     const res = await postBulkAvailableTransitions(['ATLAS-1', 'ATLAS-3'])
     expect(res.status).toBe(200)
     const body = await res.json() as { data: { transitions: { toStateKey: string }[]; unresolvedIssueKeys: string[] } }
@@ -36,7 +36,7 @@ describe('POST /api/v1/issues/bulk-transitions/available — 공통 전이 교�
     // ATLAS-1(open): open__in_progress, open__closed
     // ATLAS-3(done): done__closed
     // 교집합(toStateKey): closed → done__closed 는 교집합 아님, open__closed 도 교집합 아님
-    // open의 closed 전이 toStateKey=closed, done의 closed 전이 toStateKey=closed → toStateKey 기준 교집합
+    // open의 closed 전환 toStateKey=closed, done의 closed 전환 toStateKey=closed → toStateKey 기준 교집합
     const toKeys = transitions.map((t) => t.toStateKey)
     expect(toKeys).toContain('closed')
     expect(unresolvedIssueKeys).toEqual([])
@@ -84,7 +84,7 @@ describe('POST /api/v1/issues/bulk-transitions/available — 공통 전이 교�
 })
 
 describe('POST /api/v1/issues/bulk-transitions/available — 단일 이슈', () => {
-  it('단일 이슈 ATLAS-1(open) → open에서의 전이 모두 반환', async () => {
+  it('단일 이슈 ATLAS-1(open) → open에서의 전환 모두 반환', async () => {
     const res = await postBulkAvailableTransitions(['ATLAS-1'])
     expect(res.status).toBe(200)
     const body = await res.json() as { data: { transitions: { key: string }[] } }

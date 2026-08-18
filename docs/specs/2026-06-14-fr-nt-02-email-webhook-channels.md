@@ -11,7 +11,7 @@ FR-NT-02 인앱 채널은 머지 완료(#126/#137). 발송 코어(`NotificationW
 
 ## 사용자 시나리오 (Given-When-Then)
 
-- **S1 (이메일 발송 성공)**. Given 관리자가 어떤 이벤트에 대해 `channel=EMAIL` 알림 정책을 설정했고 수신자가 이메일을 가진 사용자다. When 그 이벤트가 발생한다. Then 수신자의 이메일 주소로 알림 메일이 발송되고, 해당 notifications 행이 `SENT`로 전이된다.
+- **S1 (이메일 발송 성공)**. Given 관리자가 어떤 이벤트에 대해 `channel=EMAIL` 알림 정책을 설정했고 수신자가 이메일을 가진 사용자다. When 그 이벤트가 발생한다. Then 수신자의 이메일 주소로 알림 메일이 발송되고, 해당 notifications 행이 `SENT`로 전환된다.
 - **S2 (이메일 주소 부재)**. Given 수신자 사용자가 `users.email`이 비어있거나 사용자 행이 없다. When 이메일 알림을 발송한다. Then 메일을 보내지 않고 경고 로그를 남기며, notifications 행은 `PENDING`으로 남는다(`deliver()` best-effort — markSent 안 함).
 - **S3 (SMTP 전송 실패)**. Given SMTP 서버가 일시적으로 응답하지 않는다. When 이메일 알림을 발송한다. Then 예외가 `deliver()`에서 흡수되어 경고 로그 + notifications 행 `PENDING` 유지(능동 재시도 없음 — pgmq dedup이 같은 알림 재발송을 막으므로 PENDING이 "미발송" 사실을 정확히 표현).
 - **S4 (인앱 무영향)**. Given 정책이 `channel=IN_APP`이다. When 이벤트가 발생한다. Then `EmailChannelSender.supports(IN_APP)=false`라 이메일 경로를 타지 않고 기존 인앱 푸시만 동작한다(회귀 없음).
@@ -67,7 +67,7 @@ FR-NT-02 인앱 채널은 머지 완료(#126/#137). 발송 코어(`NotificationW
 ## 측정 가능한 완료 기준
 
 1. `EmailChannelSenderTest`(단위) — FR-1~4 + supports 매트릭스 그린.
-2. MailHog Testcontainers 통합 테스트 — `channel=EMAIL` 알림이 실제 SMTP로 발송돼 MailHog HTTP API에서 수신 확인 + notifications 행 `SENT` 전이(S1). 이메일 부재 시 PENDING(S2).
+2. MailHog Testcontainers 통합 테스트 — `channel=EMAIL` 알림이 실제 SMTP로 발송돼 MailHog HTTP API에서 수신 확인 + notifications 행 `SENT` 전환(S1). 이메일 부재 시 PENDING(S2).
 3. `UserLookupAdapter`에 `findEmailById` override + identity-access 통합 테스트(실 users 행 조회) 그린.
 4. ArchUnit BC 격리 + ktlint/detekt(신규 파일 baseline 밖) 그린.
 5. 기존 notification 인앱 통합/단위 테스트 회귀 없음.

@@ -16,7 +16,7 @@
 |---|---|
 | Identity & Access | 사용자, 조직, 그룹, 역할, 권한, 인증, LDAP 동기화 |
 | Issue Tracking | 이슈, 댓글, 첨부, 관계, 커스텀 필드, 이력, 템플릿, 검색, Export/Import |
-| Project & Workflow | 프로젝트, 컴포넌트, 버전, 워크플로우, 상태 전이 |
+| Project & Workflow | 프로젝트, 컴포넌트, 버전, 워크플로우, 상태 전환 |
 | Agile Planning | 스프린트, 보드, 백로그, 타임라인, 에픽, Worklog |
 | Automation | 트리거-조건-액션 규칙, 실행 이력 |
 | Notification & Dashboard | 알림 정책, 채널, 인앱 Inbox, 대시보드, 가젯, 리포트 |

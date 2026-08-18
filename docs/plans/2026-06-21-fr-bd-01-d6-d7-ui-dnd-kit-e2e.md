@@ -13,7 +13,7 @@ API)·#168(필터 API)로 완료. 이번 작업은 그 API를 호출해 보여�
 신규 구축.
 
 - **D6**. @dnd-kit 기반 컬럼/카드 드래그앤드롭 보드 페이지. 카드 이동 = 대상 컬럼
-  state_key로 전이 위임(POST .../move). resolution 필요 전이(E4)·전이 불가(E4)·
+  state_key로 전환 위임(POST .../move). resolution 필요 전환(E4)·전환 불가(E4)·
   버전 충돌(E5) 처리.
 - **D7**. Playwright E2E + NFR(보드 200건 렌더 p95 < 1.5s) 검증.
 - **범위 외**. FR-BD-02 필터 칩 UI(보드 안정화 후 별도 결정 — Maxi 2026-06-21).
@@ -24,7 +24,7 @@ API)·#168(필터 API)로 완료. 이번 작업은 그 API를 호출해 보여�
 
 ## 도메인 정리
 
-- **BC**: agile-planning (보드 소유). 카드 이동은 cross-BC 전이 위임(issue-tracking)을
+- **BC**: agile-planning (보드 소유). 카드 이동은 cross-BC 전환 위임(issue-tracking)을
   이미 백엔드(#165)가 처리 — 프론트는 백엔드 API 호출만.
 - **영향 엔티티**: 신규 0. Board / BoardColumn / Card(=이슈 뷰) 모두 백엔드에 존재.
   이번 작업은 **프레젠테이션 레이어**(D6/D7)만 — 도메인 모델 무변경.
@@ -37,13 +37,13 @@ API)·#168(필터 API)로 완료. 이번 작업은 그 API를 호출해 보여�
 
 - **결정 2 — 컬럼 = 상태 매핑**. 카드는 `currentStateKey`가 매핑된 컬럼에 배치. 어떤
   컬럼에도 매핑 안 되는 상태의 이슈는 보드에서 제외(spec E2 = 백엔드가 이미 제외).
-- **결정 3 — 카드 드래그 = 컬럼 간 이동 = 워크플로우 전이**. 카드를 A→B 컬럼으로
-  드래그하면 B 컬럼의 `stateKey`로 **전이 위임**(`POST /api/v1/boards/{id}/cards/{issueKey}/move`).
+- **결정 3 — 카드 드래그 = 컬럼 간 이동 = 워크플로우 전환**. 카드를 A→B 컬럼으로
+  드래그하면 B 컬럼의 `stateKey`로 **전환 위임**(`POST /api/v1/boards/{id}/cards/{issueKey}/move`).
   **직접 상태 UPDATE 금지**(불변식 우회 — patch-merge-domain-bypass 반례). 프론트는
   move API만 호출, 응답으로 카드 갱신.
 - **컬럼 내 재정렬(LexoRank) 범위 제외**(ADR 결정 3 / FR-BL-01). → @dnd-kit은 **컬럼 간
   이동에만** 사용. 같은 컬럼 내 카드 순서 변경 드롭은 no-op(서버 정렬 priority ASC 유지).
-- **전이 결과 분기**(백엔드 spec E3~E5): 같은 컬럼=no-op(200), 전이 불가=409,
+- **전환 결과 분기**(백엔드 spec E3~E5): 같은 컬럼=no-op(200), 전환 불가=409,
   resolution 필요=422, 버전 충돌=409. 프론트가 각각 처리(드래그 원복 + 모달/토스트).
 
 - 관련 ADR: [docs/decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md](../decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md) (기존, 무변경)
@@ -58,7 +58,7 @@ API)·#168(필터 API)로 완료. 이번 작업은 그 API를 호출해 보여�
 - 카드 드래그=컬럼 간 이동=move 위임(낙관적+롤백). DONE 컬럼 드롭 → resolution 모달 사전 요구
   (category 사전 감지, 422 사후 의존 제거 — 백엔드 errorCode 일반화 한계 우회).
 - boards.ts Zod 1:1 미러. 담당자 best-effort(fetchUsers Map + 이니셜 fallback, 1,000명 한계 명시).
-- 에러: 409 AGILE_CONFLICT(전이불가+버전충돌 동일)·422 AGILE_UNPROCESSABLE → 토스트+원위치(+409 refetch).
+- 에러: 409 AGILE_CONFLICT(전환불가+버전충돌 동일)·422 AGILE_UNPROCESSABLE → 토스트+원위치(+409 refetch).
 
 ## Brainstorming Check
 
@@ -243,7 +243,7 @@ transform. DESIGN.md 토큰(Tailwind) 사용.
 - depends-on: [7, 8]
 
 **작업**.
-- 시나리오: 보드 생성 → 조회(컬럼/카드) → 카드 이동(일반 전이, 컬럼 변경 확인) → DONE 이동(resolution
+- 시나리오: 보드 생성 → 조회(컬럼/카드) → 카드 이동(일반 전환, 컬럼 변경 확인) → DONE 이동(resolution
   모달 선택) → 409 충돌(원위치+토스트). MSW stateful store 시드(SPA 내부 이동, reload 금지 — store 리셋
   가짜그린 회피).
 - NFR-1: 200건 보드 렌더 시간 측정(trace) — 임계 1.5s 참고 기록.

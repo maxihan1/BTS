@@ -1,11 +1,11 @@
-<!-- 139개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 143개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (139개 전수)
+## §A.1 FR 역인덱스 (143개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 139개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 143개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -15,7 +15,7 @@
 | FR-IS-02 | 이슈 타입 (Epic/Story/Task/Subtask/Bug + 커스텀) | 필수 | issue-tracking | §2.1.2 |
 | FR-IS-03 | 담당자 (Reporter 1 / Assignee 1 / Watchers N) | 필수 | issue-tracking | §2.1.3 |
 | FR-IS-04 | 본문(Markdown) + 우선순위/라벨/환경/영향도 | 필수 | issue-tracking | §2.1.4 |
-| FR-IS-05 | 이슈 일괄 편집 + 일괄 상태 전이 | 높음 | issue-tracking | §2.2.1 |
+| FR-IS-05 | 이슈 일괄 편집 + 일괄 상태 전환 | 높음 | issue-tracking | §2.2.1 |
 | FR-IS-06 | 이슈 클론 (옵션) | 중간 | issue-tracking | §2.3.1 |
 | FR-IS-07 | Resolution 필드 | 필수 | issue-tracking | §2.1.5 |
 | FR-IS-08 | 이슈 인쇄 + PDF 출력 | 중간 | issue-tracking | §2.3.2 |
@@ -44,13 +44,17 @@
 | FR-VR-03 | Affects/Fix Version 연결 | 필수 | issue-tracking | §3.2.3 |
 | FR-VR-04 | 버전 릴리즈 노트 자동 생성 | 중간 | issue-tracking | §3.2.4 |
 
-### 워크플로우 / 자동화 (FR-WF, FR-AT, 10개)
+### 워크플로우 / 자동화 (FR-WF, FR-AT, 14개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
-| FR-WF-01 | FSM 워크플로우 (상태/전이/조건/검증/후처리) | 필수 | project-workflow | §2.1 |
+| FR-WF-01 | FSM 워크플로우 (상태/전환/조건/검증/후처리) | 필수 | project-workflow | §2.1 |
 | FR-WF-02 | 프로젝트별 워크플로우 스킴 + 타입별 매핑 | 필수 | project-workflow | §2.2 |
-| FR-WF-03 | 워크플로우 전이 validator/PostAction 런타임 결선 | 필수 | project-workflow | §2.3 |
+| FR-WF-03 | 워크플로우 전환 validator/PostAction 런타임 결선 | 필수 | project-workflow | §2.3 |
+| FR-WF-04 | 워크플로우 CRUD + 전역 상태 카탈로그 | 필수 | project-workflow | §2.4 |
+| FR-WF-05 | 전환 ID 식별자 — 다중 전환 + 전역/최초 전환 | 필수 | project-workflow | §2.5 |
+| FR-WF-06 | 전환 규칙(조건/검증기/후처리) 편집 | 필수 | project-workflow | §2.6 |
+| FR-WF-07 | 워크플로우 초안·발행 + 상태 이관 마법사 | 필수 | project-workflow | §2.7 |
 | FR-AT-01 | 트리거 (생성/변경/댓글/스케줄/Webhook) | 필수 | automation | §2.1 |
 | FR-AT-02 | 액션 (필드 변경/담당자/댓글/API 호출) | 필수 | automation | §2.2 |
 | FR-AT-03 | 조건 분기 (if-else, 표현식) | 필수 | automation | §2.3 |
@@ -67,7 +71,7 @@
 | FR-NT-02 | 채널 (이메일/인앱, Slack=slack-integration BC) | 필수 | notification-dashboard | §2.2 |
 | FR-NT-03 | 수신자 정책 (R/A/W/Lead/역할) | 필수 | notification-dashboard | §2.3 |
 | FR-NT-04 | 사용자별 알림 구독 설정 | 높음 | notification-dashboard | §2.4 |
-| FR-NT-05 | Webhook 알림 채널 — 전이 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 | 중간 | notification-dashboard | §2.5 |
+| FR-NT-05 | Webhook 알림 채널 — 전환 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 | 중간 | notification-dashboard | §2.5 |
 
 ### 멘션 / 히스토리 (FR-MN, FR-HS, 4개)
 
@@ -247,14 +251,14 @@
 |---|---|---|
 | identity-access | 25 | AU(10) + MF(5) + PM(10) |
 | issue-tracking | 37 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + CO(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) + PJ(4) |
-| project-workflow | 3 | WF(3) |
+| project-workflow | 7 | WF(7) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
 | notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
 | personalization | 21 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06,07~14(12) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **139** | |
+| **합계** | **143** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -290,3 +294,4 @@
 - 2026-07-29. **FR-UX-07 분할 — FR-UX-08~14 신설**(personalization, +7). 합계 132→139. FR-UX-07이 27 PR 로드맵 전체를 한 FR로 묶은 결과 `product/personalization.md §4.5`의 D1~D7이 `[~]`·`[x]`·`[ ]` 세 상태로 섞였다. **D 단계는 완주 단위**여야 한다 — "도메인 정리(D1)가 절반 완료"인 상태는 성립하지 않는다. 그래서 기능 축으로 쪼갠다. 선례 FR-UX-06(22 PR)이 단일 FR로 D1~D7을 함께 닫은 것은 디자인 스펙 1벌·ADR 1벌로 굴러가는 하나의 캠페인이었기 때문이고, FR-UX-07의 단축키·인라인 편집·생성 모달·백로그는 각자 도메인 정리와 명세가 따로 필요하다. 승계 관계는 F1→UX-07 / F12,F17→UX-08 / F2,F3,B1→UX-09 / F10,F11→UX-10 / F8,F9→UX-11 / F4,F13→UX-12 / F5,F15,F16→UX-13 / F14,B2→UX-14 (로드맵 정본 `~/.claude/plans/ui-ux-sorted-kay.md` §PR 체인의 F번호). 나머지 10 PR(F6·F7·F18~F25)은 기존 FR 결손 봉합이라 chore로 남는다 — 17 + 10 = 27 PR로 로드맵 총량은 불변이다. FR-UX-07은 D1~D7 전량 완료, FR-UX-08~14는 등록만(D1~D7 전량 미착수).
 - 2026-07-29. **B1·B2 백엔드 작업을 chore → D4로 승격**(2026-07-28 Maxi 결정 #3 정정, 조용한 변경 아님). 원 결정은 "B1/B2는 기존 FR 결손 봉합이라 chore"였다. 분할 후에는 B1(이슈 생성 시 담당자·우선순위·라벨)이 FR-UX-09의 D4, B2(보드/백로그 카드 필드)가 FR-UX-14의 D4가 된다. "백엔드 없음"으로 비던 칸이 실제 내용으로 채워지는 쪽이 정확하다.
 - 2026-07-29. **§A.3 Open Questions 전수 재실측 — 8건 중 5건이 낡아 있었다.** 계기는 `issue-tracking 29 FR`(#8) 드리프트 1건이었으나, 알려진 1건만 고치지 않고 표 전체를 대조하니 **BC 가 완료돼 질문 자체가 소멸했는데도 상태가 그대로인 항목이 4건 더** 나왔다(#1 pgmq — ADR `2026-05-22-pgmq-postgres-image.md` 로 이미 해소된 것을 "보류"로 방치 / #3 9 BC 진입 순서 / #6 identity-access 우선순위 / #8 issue-tracking 진입 순서). **표와 BC 진척이 서로를 보지 않았다** — 지배적 결함 양식 그대로다. 실제 미해결은 2건뿐이다 — #4 `verify-master-plan.sh` CI 미통합(`.github/workflows/*` 실측 0건, 로컬·훅에서만 동작) · #7 TipTap PoC(Wiki v0.5+ 대상이라 Phase 1 범위 밖, 정당하게 열림). #8 의 `29 FR` 은 실측 **37** 로 정정했다. 표 머리말도 실측에 맞췄다 — 규칙은 *"ADR 발행 시 표에서 제거"* 였으나 실제 운용은 `✅ 해소` 마킹이었고(#2 선례), 지우면 "왜 그렇게 정했나" 의 추적선이 끊기므로 마킹 쪽을 정본으로 확정했다. **BC 완료 게이트를 닫을 때 이 표를 함께 훑는다**를 머리말에 못박았다.
+- 2026-08-18. **FR-WF-04~07 신설**(project-workflow, +4). 합계 139→143. 워크플로우가 **읽기 전용**이라는 구조적 부재를 닫는다 — 표준 4종이 YAML 에 하드코딩돼 있고 `YamlSeedService` 가 기동마다 DB 를 YAML 로 되돌리며, 워크플로우·상태·전환·검증기를 만들거나 고치는 API 가 하나도 없었다. FR-WF-02 가 구현한 것은 **기존 워크플로우를 이슈 타입에 배정하는 스킴 매핑**이지 워크플로우 자체의 편집이 아니다. Jira Cloud 패리티 기준으로 넷으로 쪼갠다 — WF-04(워크플로우 CRUD + 전역 상태 카탈로그) · WF-05(전환 ID 식별자 — 같은 상태쌍 다중 전환·전역·최초 전환) · WF-06(전환 규칙 편집) · WF-07(초안·발행 + 상태 이관 마법사). **D 단계는 완주 단위**라는 FR-UX-07 분할의 선례를 따라 기능 축으로 나눴다 — 넷은 각각 마이그레이션·API·화면이 따로 필요하고 하나의 D1~D7 로 묶으면 체크박스가 섞인다. 기존 ADR 2건을 대체한다(`2026-05-21-workflow-yaml-vs-db-storage` → DB 정본 · `2026-05-28-workflow-transition-identity-policy` → 전환 ID). 로드맵 정본 `~/.claude/plans/cozy-hatching-otter.md`(10 PR).

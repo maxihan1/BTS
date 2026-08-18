@@ -658,7 +658,7 @@ data class AutomationActionInput(
  * `patch()` 자체에 인라인했을 때 순환 복잡도(detekt CyclomaticComplexMethod)와 클래스 함수 개수
  * (detekt TooManyFunctions) 예산을 함께 넘겨서 뺐다 — 클래스 멤버가 아닌 패키지 top-level 함수라 클래스
  * 함수 개수 집계에서 제외된다(`AutomationRuleResponses.kt`/`ActionExecutor.kt` 의 top-level 매핑 함수
- * 선례 동형). enabled 전이는 `patch()` 에 남긴다 — nextFireAt 재계산이 enabled 전이 결과(활성화 전환
+ * 선례 동형). enabled 전환은 `patch()` 에 남긴다 — nextFireAt 재계산이 enabled 전환 결과(활성화 전환
  * 여부)에 의존해 분리하면 오히려 상태를 두 번 오가야 한다.
  *
  * 다섯 필드 모두 같은 `updated` 인스턴스에 순차 체이닝된다 — [AutomationRuleService.patch] 가 이 함수의

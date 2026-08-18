@@ -83,7 +83,7 @@ import java.util.UUID
  * FR-RP-04 Task 7 — GET /api/v1/projects/{projectKey}/cycle-time 실 스택 통합 테스트.
  *
  * 실제 Testcontainers PostgreSQL + 실 컨트롤러→서비스→리포지토리(jOOQ) 경로로 조회한다.
- * [com.bts.issue.cfd.CfdIntegrationTest]를 미러한다 — status 전이 이력은 실 전이 서비스를 거치지
+ * [com.bts.issue.cfd.CfdIntegrationTest]를 미러한다 — status 전환 이력은 실 전환 서비스를 거치지
  * 않고 `issue_change_group`/`issue_change_item`에 **직접 jOOQ insert**하되 `created_at`을 명시적
  * [OffsetDateTime]으로 지정해 결정적 duration을 만든다.
  *
@@ -97,7 +97,7 @@ import java.util.UUID
  * done=DONE)를 CYCP 프로젝트에 배정한다.
  *
  * ## 검증 시나리오
- * - S1. 정상 — IN_PROGRESS→DONE 전이 시각 차이로 cycle/lead 표본·통계가 정확히 계산된다.
+ * - S1. 정상 — IN_PROGRESS→DONE 전환 시각 차이로 cycle/lead 표본·통계가 정확히 계산된다.
  * - S2. 미경유 — TODO→DONE 직행 이슈는 lead 표본에는 남고 cycle 표본에서는 제외된다(비-vacuous).
  * - S4. 창 밖 — 완료일이 to보다 뒤인 이슈는 모집단에서 제외된다.
  * - S5. 빈 결과 — 창 내 완료 이슈 0건이면 count 0·samples []·통계 null.
@@ -415,18 +415,18 @@ class CycleTimeIntegrationTest {
         }
     }
 
-    // ── S1. 정상 — 전이 시각 차이로 cycle/lead 표본·통계가 정확히 계산된다 ──────
+    // ── S1. 정상 — 전환 시각 차이로 cycle/lead 표본·통계가 정확히 계산된다 ──────
 
     /**
-     * S1. IN_PROGRESS→DONE 전이 시각 차이로 cycle/lead 표본·통계가 정확히 계산된다.
+     * S1. IN_PROGRESS→DONE 전환 시각 차이로 cycle/lead 표본·통계가 정확히 계산된다.
      *
-     * Given  이슈 A(06-01 생성, 06-02 open→in_progress, 06-03 in_progress→done 전이, 창 내)
+     * Given  이슈 A(06-01 생성, 06-02 open→in_progress, 06-03 in_progress→done 전환, 창 내)
      * When   GET /api/v1/projects/CYCP/cycle-time?from=2026-06-01&to=2026-06-05
      * Then   200, cycleTime 표본 seconds=(06-03−06-02), leadTime 표본 seconds=(06-03−06-01),
      *          count=1이라 min=max=avg=p25~p90 모두 표본값과 동일.
      */
     @Test
-    fun `S1 정상 - 전이 시각 차이로 cycle,lead 표본·통계가 정확히 계산된다`() {
+    fun `S1 정상 - 전환 시각 차이로 cycle,lead 표본·통계가 정확히 계산된다`() {
         val created = OffsetDateTime.of(2026, 6, 1, 0, 0, 0, 0, ZoneOffset.UTC)
         val inProgressAt = OffsetDateTime.of(2026, 6, 2, 0, 0, 0, 0, ZoneOffset.UTC)
         val doneAt = OffsetDateTime.of(2026, 6, 3, 0, 0, 0, 0, ZoneOffset.UTC)
@@ -503,7 +503,7 @@ class CycleTimeIntegrationTest {
     // ── S4. 창 밖 — 완료일이 to보다 뒤인 이슈는 모집단에서 제외된다 ─────────────
 
     /**
-     * S4. 완료(마지막 DONE 전이)일이 `to`보다 뒤인 이슈는 모집단에서 제외된다.
+     * S4. 완료(마지막 DONE 전환)일이 `to`보다 뒤인 이슈는 모집단에서 제외된다.
      *
      * Given  창 안 완료 이슈(06-03 완료, 창=06-01~06-05)
      *          창 밖 완료 이슈(06-10 완료, 창 밖)
@@ -701,7 +701,7 @@ class CycleTimeIntegrationTest {
      * @param projectId 소속 프로젝트 UUID.
      * @param projectKeyPrefix 이슈 키 prefix(예: "CYCP").
      * @param summary 이슈 제목.
-     * @param stateKey 현재 워크플로우 상태 키(전이 이력이 있으면 소요 시간 계산에는 쓰이지 않는다).
+     * @param stateKey 현재 워크플로우 상태 키(전환 이력이 있으면 소요 시간 계산에는 쓰이지 않는다).
      * @param typeId 이슈 타입 BIGSERIAL id.
      * @param createdAt 이슈 생성 시각(명시 과거 시각 — Lead Time 시드 필수).
      * @param securityLevelId 보안 등급 UUID. null이면 공개(등급 없음).
@@ -758,14 +758,14 @@ class CycleTimeIntegrationTest {
     }
 
     /**
-     * status 전이 이력 1건(`issue_change_group` 1행 + `issue_change_item` 1행, field="status")을
-     * 명시적 과거 시각으로 직접 시드한다(실 전이 서비스는 `created_at=NOW()` 강제).
+     * status 전환 이력 1건(`issue_change_group` 1행 + `issue_change_item` 1행, field="status")을
+     * 명시적 과거 시각으로 직접 시드한다(실 전환 서비스는 `created_at=NOW()` 강제).
      *
      * @param issueId 소속 이슈 UUID.
      * @param issueKey 기록 시점 이슈 키.
-     * @param changedAt 전이 발생 시각(명시 과거 시각).
-     * @param fromValue 전이 전 상태 키.
-     * @param toValue 전이 후 상태 키.
+     * @param changedAt 전환 발생 시각(명시 과거 시각).
+     * @param fromValue 전환 전 상태 키.
+     * @param toValue 전환 후 상태 키.
      */
     private fun seedStatusChange(
         issueId: UUID,

@@ -16,7 +16,7 @@ import java.time.ZoneOffset
  * ### 용어 정의
  * - **Lead Time** — 이슈 생성부터 완료까지 전체 소요 시간(`lastDoneAt - createdAt`). 모집단(완료
  *   이슈) 전원이 표본이 된다.
- * - **Cycle Time** — 실제 작업 착수(첫 IN_PROGRESS 전이)부터 완료까지 소요 시간
+ * - **Cycle Time** — 실제 작업 착수(첫 IN_PROGRESS 전환)부터 완료까지 소요 시간
  *   (`lastDoneAt - firstInProgressAt`). IN_PROGRESS를 한 번도 거치지 않은 이슈(TODO → DONE 직행)는
  *   "착수" 시점이 정의되지 않으므로 Cycle Time 표본에서 제외한다(Lead Time 표본에는 남는다).
  *
@@ -29,7 +29,7 @@ import java.time.ZoneOffset
  * ### 음수 방어
  * `lastDoneAt < firstInProgressAt`인 이슈(데이터 이상 또는 시각 역전)는 Cycle Time 표본에서
  * 제외한다. 음수 소요 시간은 통계적으로 의미가 없고 차트를 왜곡시키기 때문이다. Lead Time은
- * `lastDoneAt ≥ createdAt`이 항상 보장되므로(전이는 생성 이후에만 발생) 이 방어가 불필요하다.
+ * `lastDoneAt ≥ createdAt`이 항상 보장되므로(전환은 생성 이후에만 발생) 이 방어가 불필요하다.
  */
 object CycleTimeCalculator {
     /**

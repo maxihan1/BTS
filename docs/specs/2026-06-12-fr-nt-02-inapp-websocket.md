@@ -19,12 +19,12 @@
 
 **S2. 담당자/리포터 알림**
 - Given. 이슈 ATLAS-42의 담당자=Alice, 리포터=Carol. 둘 다 구독 중.
-- When. 이슈가 전이됨 → `IssueTransitioned` 발행.
+- When. 이슈가 전환됨 → `IssueTransitioned` 발행.
 - Then. Worker가 `IssueRecipientLookupPort`로 ATLAS-42의 담당자/리포터 조회 → 정책상 인앱 활성 수신자(Alice, Carol)에게 각각 Notification 기록 + 실시간 푸시. 행위자(자기 변경) 본인은 제외.
 
 **S3. 정책 비활성 시 미발송**
 - Given. 전역/프로젝트 정책에서 `issue.transitioned × Assignee × IN_APP = disabled`.
-- When. 전이 발생.
+- When. 전환 발생.
 - Then. 평가 엔진이 해당 (역할×채널) 조합 미반환 → 그 수신자에게 알림 생성 안 됨.
 
 **S4. 재전달 멱등 (at-least-once)**
@@ -94,7 +94,7 @@
 
 ## 엣지 케이스
 
-- E1. 멘션 + 담당자가 동일인 → 같은 이벤트로 중복 알림? dedup_key가 (event+user+channel)이라 1건. (단 event_type이 다르면 별건 — 멘션은 issue.mentioned, 전이는 issue.transitioned로 자연 분리.)
+- E1. 멘션 + 담당자가 동일인 → 같은 이벤트로 중복 알림? dedup_key가 (event+user+channel)이라 1건. (단 event_type이 다르면 별건 — 멘션은 issue.mentioned, 전환은 issue.transitioned로 자연 분리.)
 - E2. 행위자 본인이 수신자 후보 → 자기 행동 알림 제외(IssueMentioned는 이미 자기제외; 담당/리포터는 actorId와 비교 제외).
 - E3. 이슈 조회 실패(삭제됨/권한) → 빈 수신자, 알림 미발송(fail-safe). 멘션은 payload 수신자라 영향 없음.
 - E4. 정책 0건 매칭 → 알림 미생성(정상).

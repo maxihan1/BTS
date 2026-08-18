@@ -232,7 +232,7 @@ class WebhookDispatchWorker(
 
     companion object {
         /**
-         * pgmq 전이 이벤트 큐 이름 — PR1 V022 마이그레이션에서 생성된 큐와 일치해야 한다.
+         * pgmq 전환 이벤트 큐 이름 — PR1 V022 마이그레이션에서 생성된 큐와 일치해야 한다.
          *
          * ## 유일 소비자
          * [NotificationWorker] 의 `q_issue_events` 와 달리 이 큐는 [WebhookDispatchWorker] 만 소비한다.

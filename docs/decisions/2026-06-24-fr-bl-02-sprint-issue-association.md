@@ -53,8 +53,8 @@ product 명세대로 `issues.sprint_id UUID nullable`을 issue-tracking에 추�
 
 ## 결정 이력 (spec/게이트1에서 확정)
 
-- Sprint 상태 모델 = PLANNED/ACTIVE/COMPLETED, start/complete 단방향 전이. ✅
+- Sprint 상태 모델 = PLANNED/ACTIVE/COMPLETED, start/complete 단방향 전환. ✅
 - 동시 ACTIVE 제약 = **없음(다중 허용)**. ✅ (Maxi)
 - 스프린트 내 이슈 순서(rank) = **D6 이연**(포트가 rank 미노출). ✅
-- 권한 = CRUD/상태전이 `CREATE`, **할당/해제 `UPDATE`**, 조회 `BROWSE`. ✅ (Maxi 게이트1)
+- 권한 = CRUD/상태전환 `CREATE`, **할당/해제 `UPDATE`**, 조회 `BROWSE`. ✅ (Maxi 게이트1)
 - 가시성 검증 = 단건 포트 `isVisibleIssue` + adapter 구현, 미가시/타프로젝트/미존재 단일 404(probe 차단). ✅ (Maxi 게이트1)

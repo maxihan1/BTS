@@ -421,7 +421,7 @@ describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
     assert.equal(classify({ title: 'SetFieldPostAction 구현' }).primary_bc, 'automation');
   });
 
-  // ★험프는 **소문자→대문자** 전이여야 한다. 연속 대문자는 경계가 아니다 —
+  // ★험프는 **소문자→대문자** 전환이어야 한다. 연속 대문자는 경계가 아니다 —
   //   아니면 `PATCH`·`PATH` 가 `pat` 에 걸려 부채 45 가 대문자로 되살아난다.
   test('연속 대문자는 험프가 아니다 (E19 · 부채 45 의 대문자 역형)', () => {
     for (const title of ['PATCH 파일 적용', 'PATH 계산 수정', 'DISPATCH 로직']) {
@@ -442,5 +442,46 @@ describe('classify — ASCII 키워드의 단어 경계 (부채 45)', () => {
     assert.equal(classify({ title: 'route 정의 추가' }).type, 'api');
     assert.equal(classify({ title: 'routes 목록 정리' }).type, 'api');
     assert.equal(classify({ title: 'API route 추가' }).type, 'api');
+  });
+});
+
+describe('classify — 「전환」은 도메인 구절로만 잡는다 (Transition 용어 정본 교체)', () => {
+  // 2026-08-18. Transition 의 한국어 정본이 「전이」 → 「전환」 으로 바뀌었다(Maxi 결정, FR-WF-04~07).
+  // 그런데 「전환」은 「self-hosted 로 전환」·「MSW v2 로 전환」처럼 **일반 동사**로도 흔히 쓰인다.
+  // 단독 키워드로 넣으면 워크플로우와 무관한 인프라·도구 작업이 project-workflow 로 끌려온다
+  // (실측 — `self-hosted 러너로 전환` 이 project-workflow 로 분류됐다).
+  // 그래서 도메인 구절(`상태 전환`·`전환 규칙`·`전환 id`·`전역 전환`)로만 잡는다.
+  // 「전이」 키워드는 지우지 않는다 — 저장소 본문은 전량 교체됐지만 git 이력·닫힌 브랜치·
+  // 저장소 밖 메모리·Flyway 로 동결된 마이그레이션 21곳은 여전히 구 표기를 쓴다.
+
+  test('워크플로우 편집 도메인 제목 → project-workflow', () => {
+    assert.equal(
+      classify({ title: '전환 규칙(조건/검증기/후처리) 편집' }).primary_bc,
+      'project-workflow'
+    );
+    assert.equal(
+      classify({ title: '전환 ID 식별자 (다중 전환 + 전역/최초 전환)' }).primary_bc,
+      'project-workflow'
+    );
+    assert.equal(
+      classify({ title: '이슈 상태 전환 API 하위호환' }).primary_bc,
+      'project-workflow'
+    );
+  });
+
+  test('일반 동사 「전환」은 project-workflow 를 끌어오지 않는다', () => {
+    assert.equal(classify({ title: 'self-hosted 러너로 전환' }).primary_bc, null);
+    assert.equal(classify({ title: 'MSW 핸들러를 v2 로 전환' }).primary_bc, null);
+    assert.notEqual(
+      classify({ title: '프로젝트 전환 · 최근 항목' }).primary_bc,
+      'project-workflow'
+    );
+  });
+
+  test('구 표기 「전이」도 계속 잡는다 (이력·동결 문서 회귀 방지)', () => {
+    assert.equal(
+      classify({ title: '워크플로우 전이 validator 런타임 결선' }).primary_bc,
+      'project-workflow'
+    );
   });
 });

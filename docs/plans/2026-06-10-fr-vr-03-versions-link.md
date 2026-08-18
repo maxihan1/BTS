@@ -44,7 +44,7 @@ Plan slug(정본): issue/versions-link
 - **기존 결정 충돌**: 없음
 - **관련 ADR**:
   - `docs/adr/2026-06-03-version-model-and-permission-deferral.md` (Version 모델 + 권한 이연 — VersionPermissionResolver 포트)
-  - `docs/adr/2026-06-10-version-status-and-transitions.md` (버전 상태 전이)
+  - `docs/adr/2026-06-10-version-status-and-transitions.md` (버전 상태 전환)
   - 신규 ADR 후보: affects/fix 연결 정책 (ARCHIVED 허용 + 권한 재사용) — bts-spec/plan에서 판단
 
 ### Maxi 확정 결정 (2026-06-10)

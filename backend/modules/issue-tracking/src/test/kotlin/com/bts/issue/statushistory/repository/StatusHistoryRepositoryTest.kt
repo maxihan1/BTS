@@ -1,4 +1,4 @@
-// StatusHistoryRepository Testcontainers 통합 테스트 — status 전이 이력 배치 조회 검증 (FR-RP-03 Task 3, FR-RP-04 Task 1 통계 이관)
+// StatusHistoryRepository Testcontainers 통합 테스트 — status 전환 이력 배치 조회 검증 (FR-RP-03 Task 3, FR-RP-04 Task 1 통계 이관)
 
 package com.bts.issue.statushistory.repository
 
@@ -31,7 +31,7 @@ class StatusHistoryRepositoryTest : IssueTestcontainersBase() {
      * `issue_change_group` 1행 + `issue_change_item` N행을 시드하고 group id 를 반환한다.
      *
      * @param issueId 소속 이슈 UUID.
-     * @param createdAt 그룹 생성(=전이 발생) 시각. 정렬 검증을 위해 명시적으로 과거 시각을 지정한다.
+     * @param createdAt 그룹 생성(=전환 발생) 시각. 정렬 검증을 위해 명시적으로 과거 시각을 지정한다.
      * @param items (field, fromValue, toValue) 트리플 목록.
      */
     private fun seedGroup(
@@ -89,7 +89,7 @@ class StatusHistoryRepositoryTest : IssueTestcontainersBase() {
     // ── CFD-T3-2. (issueId, changedAt ASC, groupId ASC) 정렬 ──────────────────
 
     @Test
-    fun `CFD-T3-2 - 여러 전이를 changedAt 오름차순 groupId 오름차순으로 반환한다`() {
+    fun `CFD-T3-2 - 여러 전환을 changedAt 오름차순 groupId 오름차순으로 반환한다`() {
         val issueId = UUID.randomUUID()
         val t1 = OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC)
         val t2 = OffsetDateTime.of(2026, 1, 2, 0, 0, 0, 0, ZoneOffset.UTC)
