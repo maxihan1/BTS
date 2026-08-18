@@ -92,7 +92,15 @@
 
 ## 5.5 Workflow (FSM 정의)
 
-워크플로우는 상태(State)와 전이(Transition)로 구성된 FSM. YAML로 정의 가능.
+워크플로우는 상태(State)와 전환(Transition)로 구성된 FSM. YAML로 정의 가능.
+
+> **2026-08-18 정정 — 아래 모양은 셋이 바뀐다. 오늘 코드는 아직 아래 그대로다.**
+> ① 정본이 YAML 에서 **DB** 로 간다(`2026-08-18-workflow-db-as-source-of-truth`). 아래 YAML 은
+> 빈 DB 최초 1회 부트스트랩과 「기본값으로 복원」의 기준일 뿐 편집 수단이 아니다.
+> ② 전환 식별자가 `(from, to)` 2튜플에서 **전환 ID** 로 간다(`2026-08-18-workflow-transition-id-identity`)
+> — 같은 상태쌍에 전환을 여럿 둘 수 있고, `from` 이 없는 전역·최초 전환이 생긴다.
+> ③ 상태가 워크플로우 종속에서 **사이트 전역 카탈로그**로 올라간다(`2026-08-18-workflow-global-status-catalog`).
+> 셋 다 FR-WF-04~07 이 구현한다. 결정 요약 → [07. 워크플로우 엔진 §7.5](07-workflow-engine.md).
 
 ```yaml
 workflow:
