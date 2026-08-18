@@ -36,7 +36,7 @@ import { parseTodos } from '../build-dashboard.mjs';
  * 바뀐 것이 통과한다. JSON 배열로 직렬화하는 이유는 구분자가 값 안에 나타나
  * 경계가 모호해지는 일이 없기 때문이다 — 되읽어 제목만 뽑을 수도 있다.
  */
-export function todoFingerprint(t) {
+function todoFingerprint(t) {
   return JSON.stringify([t.status, t.title, t.body]);
 }
 
@@ -117,9 +117,41 @@ export function compareAllLines(before, after) {
   return { lost: multisetDiff(a, b), gained: multisetDiff(b, a) };
 }
 
-/** H1 추가·제거와 빈 줄은 재배열의 **의도된** 차이다. 그 밖은 전부 편집이다. */
+/** H1 과 빈 줄은 재배열이 만드는 **의도된** 줄 차이다. 그 밖의 줄 차이는 전부 편집이다. */
 export function isStructuralLine(line) {
   return line.startsWith('# ') || line.trim() === '';
+}
+
+/**
+ * 순수 이동 판정. **CLI 와 판별식이 같은 이 함수를 부른다.**
+ *
+ * ★판정을 호출자마다 다시 적으면 안 된다. 2026-08-18 코드 리뷰 실측 —
+ * `isStructuralLine` 을 `return true` 로 바꿔도 387종 전량이 초록이었다. 판별식이 CLI 의
+ * 판정을 import 하지 않고 **손으로 다시 적었기** 때문이다(`[[two-lists-never-check-each-other]]`).
+ *
+ * ★**H1 소실은 이동이 아니다.** 절 H1 이 사라지면 그 절의 항목이 통째로 앞 절에 흡수되는데,
+ * 항목 지문에 절이 없어 항목 축이 이것을 보지 못한다. 같은 실측에서 실파일의 H1 한 줄을
+ * 지우고 돌렸더니 「순수 이동이다」 EXIT 0 이었다. 절을 실제로 없애는 재배열은 정당하지만
+ * 그 승인은 **호출자의 명시 선택**이어야 한다 — 기본값이 아니다.
+ */
+export function judgePureMove(before, after, { allowH1Loss = false } = {}) {
+  const items = compareTodoIntegrity(before, after);
+  const lines = compareAllLines(before, after);
+  const editedLost = lines.lost.filter((l) => !isStructuralLine(l));
+  const editedGained = lines.gained.filter((l) => !isStructuralLine(l));
+  const h1Lost = lines.lost.filter((l) => l.startsWith('# '));
+
+  // ★순수 이동 판정에는 개명도 0 이어야 한다. 개명은 정당한 편집이지 이동이 아니다 —
+  //   F2b(상시 소실 검사)는 개명을 허용하지만, 이동 커밋의 검증은 허용하지 않는다.
+  const clean =
+    items.lost.length === 0 &&
+    items.gained.length === 0 &&
+    items.renamed.length === 0 &&
+    editedLost.length === 0 &&
+    editedGained.length === 0 &&
+    (allowH1Loss || h1Lost.length === 0);
+
+  return { clean, items, lines, editedLost, editedGained, h1Lost };
 }
 
 /**
@@ -130,36 +162,63 @@ export function isStructuralLine(line) {
  * 건너뛰어졌다」가 구분되지 않는다. 이 저장소가 여러 번 겪은 「0 이 나오면 판별식을
  * 의심하라」의 같은 계열이다.
  */
-export function readBaseTodos(repoRoot, ref = 'origin/main') {
+export function readBaseTodos(repoRoot, refs = ['origin/main', 'main']) {
   const git = (args) =>
     execFileSync('git', args, { cwd: repoRoot, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  let sha;
-  try {
-    sha = git(['merge-base', ref, 'HEAD']);
-  } catch {
-    return { content: null, sha: null, reason: `merge-base ${ref} HEAD 실패 — ${ref} 부재이거나 shallow clone` };
+
+  // ★후보를 **목록**으로 받는다. `origin/main` 하나만 보면 원격 이름이 `upstream` 인 클론이나
+  //   fork 체크아웃에서 이 축만 꺼지고 다른 판별식은 `main` 폴백으로 멀쩡히 돈다 —
+  //   「검사가 깨졌다」가 아니라 「검사가 안 돌았다」쪽이라 아무도 모른다.
+  //   같은 정책의 정본은 `changed-paths.ts` 의 `firstExistingRef` 다. 여기서 다시 적는 이유는
+  //   이 파일이 타입 스트립 플래그 없이 도는 CLI 라 `.ts` 를 import 할 수 없기 때문이다.
+  let sha = null;
+  let picked = null;
+  for (const ref of refs) {
+    try {
+      sha = git(['merge-base', ref, 'HEAD']);
+      picked = ref;
+      break;
+    } catch {
+      // 다음 후보로. 전부 실패하면 아래에서 이유를 만든다.
+    }
+  }
+  if (sha === null) {
+    return {
+      content: null,
+      sha: null,
+      reason: `merge-base 실패 — 후보 ${refs.join(' · ')} 가 전부 부재이거나 shallow clone`,
+    };
   }
   try {
-    return { content: git(['show', `${sha}:TODOS.md`]), sha, reason: `merge-base ${sha.slice(0, 9)}` };
+    return { content: git(['show', `${sha}:TODOS.md`]), sha, reason: `${picked} 병합기점 ${sha.slice(0, 9)}` };
   } catch {
     return { content: null, sha, reason: `${sha.slice(0, 9)}:TODOS.md 를 읽지 못했다` };
   }
 }
 
-/** CLI. `node scripts/workflow/todos-reorder-integrity.mjs <before-file> <after-file>` */
+/**
+ * CLI.
+ *
+ * ```
+ * node scripts/workflow/todos-reorder-integrity.mjs <before-file> <after-file> [--allow-h1-loss]
+ * ```
+ *
+ * `--allow-h1-loss` 는 **절을 실제로 없애는** 재배열에만 쓴다. 무엇을 승인했는지는 붙이든
+ * 안 붙이든 출력에 남는다 — 승인이 곧 침묵이 되면 안 된다.
+ */
 function main(argv) {
-  const [beforePath, afterPath] = argv;
+  const allowH1Loss = argv.includes('--allow-h1-loss');
+  const [beforePath, afterPath] = argv.filter((a) => !a.startsWith('--'));
   if (!beforePath || !afterPath) {
-    console.error('Usage: node scripts/workflow/todos-reorder-integrity.mjs <before-file> <after-file>');
+    console.error(
+      'Usage: node scripts/workflow/todos-reorder-integrity.mjs <before-file> <after-file> [--allow-h1-loss]',
+    );
     return 2;
   }
   const before = fs.readFileSync(beforePath, 'utf-8');
   const after = fs.readFileSync(afterPath, 'utf-8');
 
-  const items = compareTodoIntegrity(before, after);
-  const lines = compareAllLines(before, after);
-  const editedLost = lines.lost.filter((l) => !isStructuralLine(l));
-  const editedGained = lines.gained.filter((l) => !isStructuralLine(l));
+  const { clean, items, lines, editedLost, editedGained, h1Lost } = judgePureMove(before, after, { allowH1Loss });
 
   console.log(`항목  before ${items.beforeCount} → after ${items.afterCount}`);
   console.log(`  사라진 항목 ${items.lost.length}건`);
@@ -174,15 +233,9 @@ function main(argv) {
   console.log(
     `줄    구조 차이 — 사라진 ${lines.lost.length - editedLost.length} · 생긴 ${lines.gained.length - editedGained.length}`,
   );
+  console.log(`H1    사라진 절 제목 ${h1Lost.length}건${allowH1Loss ? ' (--allow-h1-loss 로 승인됨)' : ''}`);
+  for (const s of h1Lost) console.log(`    - ${JSON.stringify(s)}`);
 
-  // ★순수 이동 판정에는 개명도 0 이어야 한다. 개명은 정당한 편집이지 이동이 아니다 —
-  //   F2b(상시 소실 검사)는 개명을 허용하지만, 이동 커밋의 검증은 허용하지 않는다.
-  const clean =
-    items.lost.length === 0 &&
-    items.gained.length === 0 &&
-    items.renamed.length === 0 &&
-    editedLost.length === 0 &&
-    editedGained.length === 0;
   console.log(clean ? '\n순수 이동이다 — 차집합 0.' : '\n★이동이 아니라 편집이 섞였다.');
   return clean ? 0 : 1;
 }
