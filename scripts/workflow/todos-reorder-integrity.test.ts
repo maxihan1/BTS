@@ -28,6 +28,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -288,12 +289,34 @@ describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
 })
 
 describe('TODOS.md — base ref 해석 (F2b 배선)', () => {
-  test('첫 후보가 없으면 다음 후보로 넘어간다', () => {
-    // `origin/main` 하나만 보면 원격 이름이 다른 클론에서 이 축만 꺼지고 다른 판별식은
-    // `main` 폴백으로 멀쩡히 돈다. 그 비대칭이 「검사가 안 돌았다」를 숨긴다.
-    const r = readBaseTodos(REPO_ROOT, ['refs/heads/bts-존재하지-않는-ref', 'main'])
-    assert.notEqual(r.content, null, `첫 후보가 없을 때 다음 후보로 넘어가지 않는다 — ${r.reason}`)
-    assert.match(r.reason, /main/, '어느 후보로 잡았는지가 이유에 안 남는다')
+  test('원격이 없는 체크아웃에서도 기본값이 base 를 얻는다', () => {
+    // ★후보 목록을 인자로 넘겨 확인하면 **기본값**은 아무도 안 본다. 실측(2026-08-18) —
+    //   기본값을 `['origin/main']` 로 되돌려도 판별식 393종이 전량 초록이었다.
+    //   그래서 원격이 아예 없는 저장소를 만들어 **기본 인자 그대로** 부른다.
+    //   재현 조건은 원격 이름이 `upstream` 인 클론·fork 체크아웃·로컬 pnpm test:workflow 다.
+    //   그 상황에서 다른 판별식은 `main` 폴백으로 살고 이 축만 꺼지면 아무도 모른다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-base-ref-'))
+    try {
+      const git = (...args: string[]) =>
+        execFileSync('git', args, { cwd: tmp, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
+      git('init', '-q', '-b', 'main')
+      git('config', 'user.email', 'test@example.com')
+      git('config', 'user.name', 'test')
+      fs.writeFileSync(path.join(tmp, 'TODOS.md'), BASE)
+      git('add', 'TODOS.md')
+      git('commit', '-q', '-m', 'base')
+
+      const r = readBaseTodos(tmp)
+      assert.notEqual(
+        r.content,
+        null,
+        `origin 이 없는 저장소에서 기본 후보만으로 base 를 못 얻었다 — ${r.reason}\n` +
+          '기본값에 `main` 폴백이 없으면 이 축만 조용히 꺼진다.',
+      )
+      assert.equal(compareTodoIntegrity(r.content, BASE).beforeCount, 3, '엉뚱한 파일을 읽었다')
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
   })
 
   test('후보가 전부 없으면 이유와 함께 미획득을 알린다', () => {
