@@ -3,9 +3,9 @@
 # project-workflow BC
 
 **소속 FR**. 7개 (WF 7).
-**책임**. 상태 기계(FSM) 기반 워크플로우, 정의 편집(CRUD·초안/발행), 전이 검증, 후처리.
+**책임**. 상태 기계(FSM) 기반 워크플로우, 정의 편집(CRUD·초안/발행), 전환 검증, 후처리.
 **SDD 참조**. 07장 (워크플로우 엔진).
-**다른 BC와의 경계**. issue-tracking BC의 상태 전이 호출을 받아 검증. pgmq 이벤트 발행.
+**다른 BC와의 경계**. issue-tracking BC의 상태 전환 호출을 받아 검증. pgmq 이벤트 발행.
 
 ## §0 진입 조건
 
@@ -22,7 +22,7 @@
 - [x] PostgreSQL 테이블 스키마 1차 안정 (Flyway V001) (PR #10, 2026-05-22)
 - [x] Spring Boot 진입점 (`./gradlew :backend:bootRun` 성공) (PR #10, 2026-05-22)
 - [x] TDD 사이클 1회 완료 (`test:` → `feat:` → `refactor:`) (PR #10, 2026-05-22)
-- [x] Testcontainers 통합 테스트 1개 통과 (상태 전이 invariant 검증) (PR #10, 2026-05-22)
+- [x] Testcontainers 통합 테스트 1개 통과 (상태 전환 invariant 검증) (PR #10, 2026-05-22)
 - [x] Maxi 검토 통과 (PR #10, 2026-05-22)
 
 ### §1.2 pgmq 트랜잭션 일관성 PoC (1일)
@@ -37,21 +37,21 @@
 
 ## §2 워크플로우 (FR-WF, 7개)
 
-### §2.1 FR-WF-01 — FSM 워크플로우 (상태/전이/조건/검증/후처리)
+### §2.1 FR-WF-01 — FSM 워크플로우 (상태/전환/조건/검증/후처리)
 
 **우선순위**. 필수 | **선행**. §1 | **Plan slug**. `workflow/fsm`
 
 - [x] D1. 도메인 — Workflow Aggregate, State, Transition, Guard, PostAction (책임. backend-engineer + Maxi) (PR #10, 2026-05-22)
 - [x] D2. 명세 — Given/When/Then. 표준 4종 워크플로우 (Software Dev, Bug Tracking, Service Desk, Task) (책임. backend-engineer) (PR #10, 2026-05-22)
 - [x] D3. 데이터 모델 — `workflows`, `workflow_states`, `workflow_transitions`, `workflow_guards` (책임. db-engineer) (PR #10, 2026-05-22)
-- [x] D4. 백엔드 — `WorkflowEngine` + 상태 전이 API + invariant 검증 (책임. backend-engineer) (PR #10, 2026-05-22)
-- [x] D5. 백엔드 테스트 — TDD + property-based test (전이 무결성) (책임. backend-engineer) (PR #10, 2026-05-22)
+- [x] D4. 백엔드 — `WorkflowEngine` + 상태 전환 API + invariant 검증 (책임. backend-engineer) (PR #10, 2026-05-22)
+- [x] D5. 백엔드 테스트 — TDD + property-based test (전환 무결성) (책임. backend-engineer) (PR #10, 2026-05-22)
 - [x] D6. 프론트 UI — 워크플로우 다이어그램 (mermaid 또는 SVG) (책임. designer → frontend-engineer) (PR #13, 2026-05-22; 후속 cleanup PR #16/#20/#21)
-- [x] D7. E2E + NFR — 상태 전이 6단계 시나리오 (책임. qa-engineer) (PR #13 + PR #19, 2026-05-22 ~ 2026-05-23; 후속 cleanup PR #16/#20/#21)
+- [x] D7. E2E + NFR — 상태 전환 6단계 시나리오 (책임. qa-engineer) (PR #13 + PR #19, 2026-05-22 ~ 2026-05-23; 후속 cleanup PR #16/#20/#21)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
-| 상태 전이 처리 | 100ms | ___ |
+| 상태 전환 처리 | 100ms | ___ |
 
 ### §2.2 FR-WF-02 — 프로젝트별 워크플로우 스킴 + 타입별 매핑
 
@@ -65,11 +65,11 @@
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
 
-### §2.3 FR-WF-03 — 워크플로우 전이 validator/PostAction 런타임 결선
+### §2.3 FR-WF-03 — 워크플로우 전환 validator/PostAction 런타임 결선
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `workflow/validator-runtime-wiring`
 
-> FR-WF-01(PR #10)이 SPI 인터페이스 + 구현체(validator 4종/PostAction 5종)만 만들고 production 결선은 안 한 비계(테스트 익명 object만, 실동작 FSM invariant뿐)를 완성. FR-IS-07(resolution 종료 전이 필수) 선행. 배포 조립 부재(no-cross-bc-deployment-assembly)로 검증은 test-assembled 컨텍스트 한정 — 실배포 부팅 결선은 BC 조립 모듈 후속.
+> FR-WF-01(PR #10)이 SPI 인터페이스 + 구현체(validator 4종/PostAction 5종)만 만들고 production 결선은 안 한 비계(테스트 익명 object만, 실동작 FSM invariant뿐)를 완성. FR-IS-07(resolution 종료 전환 필수) 선행. 배포 조립 부재(no-cross-bc-deployment-assembly)로 검증은 test-assembled 컨텍스트 한정 — 실배포 부팅 결선은 BC 조립 모듈 후속.
 
 - [x] D1. 도메인 — validator 적용 단계(phase) 구분 AVAILABILITY/EXECUTION, 결선 범위 확정 (책임. backend-engineer + Maxi) (PR #66, 2026-06-03)
 - [x] D2. 명세 — factory/repo/seed 결선 + test-assembled 검증. 확정 D8=A(phase 구분)/D9=A(PostAction 계산만, GAP-2)/D10=B(test-assembled 검증) (책임. backend-engineer) (PR #66, 2026-06-03)
@@ -102,7 +102,7 @@
 
 **우선순위**. 필수 | **선행**. §2.4 | **Plan slug**. `workflow/transition-id-identity`
 
-> 전이 identity 를 `(from,to)` 2튜플에서 **전환 ID** 로 옮겨 같은 상태쌍에 이름이 다른 전환을 여러 개 둘 수 있게 하고, `kind` 로 `NORMAL`/`GLOBAL`(모든 상태에서)/`INITIAL`(생성 시 진입) 을 가른다. `docs/adr/2026-05-28-workflow-transition-identity-policy.md` 를 대체한다 — 그 ADR 이 열어 둔 「대안 채택 조건」 탈출구를 쓰는 것이다.
+> 전환 identity 를 `(from,to)` 2튜플에서 **전환 ID** 로 옮겨 같은 상태쌍에 이름이 다른 전환을 여러 개 둘 수 있게 하고, `kind` 로 `NORMAL`/`GLOBAL`(모든 상태에서)/`INITIAL`(생성 시 진입) 을 가른다. `docs/adr/2026-05-28-workflow-transition-identity-policy.md` 를 대체한다 — 그 ADR 이 열어 둔 「대안 채택 조건」 탈출구를 쓰는 것이다.
 
 - [ ] D1. 도메인 — `Workflow.of()` invariant 재정의((from,to) 중복 금지 제거 · kind 규칙) (책임. backend-engineer + Maxi)
 - [ ] D2. 명세 — 하위호환 계약(`transitionId` 우선 · `toStatusKey` 는 유일 해석 가능할 때만 · 모호하면 409) (책임. backend-engineer)
@@ -121,9 +121,9 @@
 - [ ] D1. 도메인 — validator type 4종의 config 스키마 확정 (책임. backend-engineer)
 - [ ] D2. 명세 — 알 수 없는 type·잘못된 config 의 400 계약 · post-action 경로를 transitionId 로 정렬(구 경로 유지) (책임. backend-engineer)
 - [ ] D4. 백엔드 — validator CRUD API (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전이에서 동작(엔진 통합) (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전환에서 동작(엔진 통합) (책임. backend-engineer)
 - [ ] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer)
-- [ ] D7. E2E — 규칙을 걸면 전이가 막히고, 풀면 통과한다 (책임. qa-engineer)
+- [ ] D7. E2E — 규칙을 걸면 전환가 막히고, 풀면 통과한다 (책임. qa-engineer)
 
 > **D3 비해당 예정**. `workflow_validators`/`workflow_post_actions` 는 V200 기존 테이블이고 스키마 변경 없이 CRUD 만 얹는다. 착수 시 재확인한다.
 
@@ -131,7 +131,7 @@
 
 **우선순위**. 필수 | **선행**. §2.5 | **Plan slug**. `workflow/draft-publish-migration`
 
-> 사용 중인 워크플로우를 직접 고치면 편집 중간 상태가 운영에 샌다. 초안(JSONB)을 따로 두고 발행할 때만 정규 테이블에 반영한다. 발행 시 빠지는 상태에 이슈가 남아 있으면 **어디로 옮길지 묻는 마법사**를 띄운다 — 지금은 FK 가 없어 상태를 지우면 이슈가 유령 상태를 가리키고 그 이슈는 이후 어떤 전이도 계산할 수 없다.
+> 사용 중인 워크플로우를 직접 고치면 편집 중간 상태가 운영에 샌다. 초안(JSONB)을 따로 두고 발행할 때만 정규 테이블에 반영한다. 발행 시 빠지는 상태에 이슈가 남아 있으면 **어디로 옮길지 묻는 마법사**를 띄운다 — 지금은 FK 가 없어 상태를 지우면 이슈가 유령 상태를 가리키고 그 이슈는 이후 어떤 전환도 계산할 수 없다.
 
 - [ ] D1. 도메인 — 초안 표현(JSONB) · 발행 이력 append-only · 기본값 복원의 의미 (책임. backend-engineer + Maxi)
 - [ ] D2. 명세 — 낙관적 락(base_version) 충돌 409 · 이관 대상 산출 규칙 · cross-BC 포트 계약 (책임. backend-engineer)
@@ -141,7 +141,7 @@
 - [ ] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer)
 - [ ] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer)
 
-> **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전이가 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
+> **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환가 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 
 ## §NFR project-workflow BC 완료 게이트
 
@@ -149,7 +149,7 @@
 
 | 항목 | 임계 | 실측 (p95) | 비고 |
 |---|---|---|---|
-| 상태 전이 처리 (FSM) | 100ms | ___ | k6 (단일 트랜잭션 + pgmq 이벤트) — k6 + axe 도입 후속 |
+| 상태 전환 처리 (FSM) | 100ms | ___ | k6 (단일 트랜잭션 + pgmq 이벤트) — k6 + axe 도입 후속 |
 | 스킴 매핑 조회 | 50ms | ___ | k6 — k6 + axe 도입 후속 |
 | 워크플로우 다이어그램 렌더 | 1s | ___ | Playwright — k6 + axe 도입 후속 |
 | pgmq 트랜잭션 롤백 정합성 | 100% | ___ | 통합 테스트 — k6 + axe 도입 후속 |

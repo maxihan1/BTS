@@ -74,7 +74,7 @@ workflow_statuses
 
 근거는 위 §맥락의 두 소비자다. `issues.current_state_key` 와 `board_columns.state_key` 가 FK 없이
 문자열로 참조하므로, 키를 바꾸면 **DB 가 막아 주지 않은 채** 이슈가 존재하지 않는 상태를 가리키게
-된다. 그 이슈는 `WorkflowEngine` 이 `fromStateKey` 를 못 찾아 이후 어떤 전이도 계산할 수 없다.
+된다. 그 이슈는 `WorkflowEngine` 이 `fromStateKey` 를 못 찾아 이후 어떤 전환도 계산할 수 없다.
 
 이름만 바꾸는 것은 완전히 안전하다 — 이슈·보드·검색·내보내기 어디도 키만 보기 때문이다.
 **「이름은 자유, 키는 불변」이 사용자에게 보이는 계약**이다.

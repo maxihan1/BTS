@@ -1,4 +1,4 @@
-# ADR — 전이 identity 를 (from, to) 2튜플에서 전환 ID 로 옮긴다
+# ADR — 전환의 identity 를 (from, to) 2튜플에서 전환 ID 로 옮긴다
 
 > 날짜. 2026-08-18
 > 상태. **채택 (Active)**
@@ -8,7 +8,7 @@
 
 ## 맥락
 
-`2026-05-28-workflow-transition-identity-policy.md` 는 전이의 1급 식별자를 `(fromStateKey,
+`2026-05-28-workflow-transition-identity-policy.md` 는 전환의 1급 식별자를 `(fromStateKey,
 toStateKey)` 2튜플로 확정했다. 당시 맥락은 PR #27 의 BLOCKER — 도메인 모델이 3튜플과 2튜플을
 동시에 선언하는 모순 때문에 production 전건 409 가 나던 사고 — 였고, 2튜플 채택은 그 사고에 대한
 정확한 처방이었다.
@@ -60,7 +60,7 @@ Jira Cloud 도 다이어그램에 별도의 Create 노드를 그려 이 둘을 �
 INITIAL 백필은 각 워크플로우의 `display_order` 최소 상태를 대상으로 1건씩 만든다 — **현행
 `minByOrNull` 동작을 그대로 보존**한 뒤, 이후로는 순서가 아니라 이 명시 전환이 시작 상태를 정한다.
 
-### D3. 이슈 전이 API 는 하위호환을 유지한다
+### D3. 이슈 전환 API 는 하위호환을 유지한다
 
 `POST /api/v1/issues/{key}/transition` 이 `transitionId` 를 **추가로** 받는다.
 
@@ -119,7 +119,7 @@ Maxi 가 요구한 「전환 이름 추가」는 같은 상태쌍에 여러 전�
 - **보드에서 409 가 보일 수 있다.** 같은 상태쌍에 전환이 둘인데 보드는 `toStateKey` 로만 호출하므로
   모호해진다. 이번 범위에서는 409 로 정직하게 막고, 보드 드래그앤드롭에 「어떤 전환인가요」 선택
   다이얼로그를 붙이는 것은 후속 과제로 남긴다. **조용히 아무거나 고르지 않는다.**
-- `Workflow.of()` 의 invariant 5개 중 하나(전이 중복 금지)가 바뀌므로 이를 검증하던 기존 테스트가
+- `Workflow.of()` 의 invariant 5개 중 하나(전환 중복 금지)가 바뀌므로 이를 검증하던 기존 테스트가
   함께 바뀐다. 삭제가 아니라 새 규칙(GLOBAL/INITIAL)으로 교체한다.
 - `PostActionTransitionResolver` 가 (from, to) 로 transition 을 해석하고 있어 함께 바뀐다.
   기존 post-action 경로(`.../transitions/{transitionKey}/post-actions`)는 유지한다.
