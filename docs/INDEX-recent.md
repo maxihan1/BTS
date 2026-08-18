@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (470건, 최신순)
+# 시간 축 인덱스 (471건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | FR-DB-01 |
 | 2026-08-17 | classify-task-misroute-3-44-33-45 | — | ✔ | — | — | — |
 | 2026-08-14 | debt-14-16-permission-gate | — | ✔ | — | — | — |
 | 2026-08-14 | node-ts-invocation-flag-guard | — | ✔ | — | — | — |
