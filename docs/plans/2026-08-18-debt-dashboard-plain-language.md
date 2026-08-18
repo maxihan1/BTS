@@ -421,4 +421,146 @@ When CI 가 돈다 Then **빨간불**이 난다.
 - **뮤테이션 5종** — 스펙 §완료 기준 3 그대로. GREEN 선커밋 뒤에 돌린다.
 - **범위 밖.** W7(재배열) · W10(접두 없는 ✅ 1건) — 후속 PR.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 렌즈 · 절차 이탈 2건
+
+**`/plan-eng-review` 1종** (분기 표 `{bugfix, chore, qa}` 행). `chore`@T2 는 어제까지 **리뷰 0종**이던 자리다 — PR #388 이 고친 결과가 이 PR 에서 처음 작동했다.
+
+① **발견별 `AskUserQuestion` 대신 합산 후 게이트 1 판정.** gstack 스킬은 「1발견 = 1질문」을 요구하지만 `bts-review-plan` Step 4 가 「BLOCKER 는 **합산한 뒤 한 번에** 판정한다」로 정한다. 저장소 계약이 이 워크플로우의 정본이라 그쪽을 따랐다.
+② **아웃사이드 보이스 생략 — 이제 상시 정책이다.** 2026-08-18 Maxi 결정으로 **외부 모델 리뷰를 앞으로 쓰지 않는다.** `gstack-config set codex_reviews disabled` 로 껐으므로 이후 리뷰 스킬은 이 절을 아예 건너뛴다. 폴백인 Claude 서브에이전트도 안 쓴다 — Maxi 결정 ②가 서브에이전트를 **[6] 리뷰 2종에만** 허가했다.
+
+**대신 무엇이 그 자리를 메우나.** 독립 관점의 몫은 체인 **[6] `bts-codereview`** 가 진다. 이 저장소에서 실제로 결함을 잡아 온 것도 그쪽이다 — PR #388 에서 리뷰 4라운드가 **그 PR 이 스스로 만든 회귀 4건**을, 재리뷰가 **GREEN 탈출구 12개**를 잡았다. 외부 모델 없이 나온 숫자다.
+
+### Step 0 — 범위 도전
+
+**결과. 범위 유지.** 파일 **6개**(임계 8 미만) · 새 클래스/서비스 **0** → 복잡도 게이트 미발동.
+이미 존재하는 것을 재사용하는지 확인함 — `renderTodos`·`parseTodos`·`inlineMd`·`mdToHtml` 전부 재사용이고 신규 렌더러 0. `TODOS.md` 는 이미 영역 접두를 갖고 있어 **분류 데이터를 새로 만들지 않는다**(접두를 읽을 뿐).
+`docs/plan/README.md`·`fr-index.md` 는 안 건드린다 — FR 축과 무관하다.
+
+### 1. 아키텍처 — 발견 3건
+
+**[P1] (confidence: 9/10) `scripts/build-dashboard.mjs:575` — 두 줄이 화면에 두 번 나온다.**
+근거 인용.
+```js
+<div class="todo-body">${mdToHtml(t.body)}</div>
+```
+본문 전체를 그리므로, 두 줄을 `<details>` **밖**에 따로 그리면 **안쪽 본문에도 그대로** 남는다. plan Task 5 에 이 처리가 없다.
+→ **처방.** Task 5 GREEN 에 「렌더 직전 본문에서 두 줄을 제거한다」를 추가하고, `build-dashboard.test.mjs` 에 「두 줄이 `<details>` 안에는 없다」 단언을 넣는다.
+
+**[P1] (confidence: 9/10) 파서가 이미 두 벌이고, 이 PR 이 세 벌째를 만들 뻔했다.**
+근거 인용. `scripts/build-dashboard.mjs:249` 가 `if (line.startsWith('# ')) { … current = null }` 로 `# ` 에서 항목을 닫는데, `scripts/workflow/todos-resolved-section-purity.test.ts:55` 의 `parseSections` 는 `## ` 만 경계로 보고 **`# ` 를 무시한다**. 즉 **대시보드가 보는 본문과 순수성 판별식이 보는 본문이 이미 다르다.**
+plan 은 신규 판별식이 어느 파서를 쓰는지 안 적었다 — 안 정하면 세 번째 파서가 생긴다(`[[two-lists-never-check-each-other]]`).
+→ **처방.** 신규 판별식은 `build-dashboard.mjs` 가 export 하는 `parseTodos` 를 **import 해서 쓴다**. Task 3·4 메타 `files` 에 그 사실을 명시한다.
+
+**[P2] (confidence: 8/10) 같은 파일 안에서 fence 판정이 갈린다.**
+근거 인용. `mdToHtml` 은 `if (line.startsWith('```'))` 로 fence 를 **알고** 있는데(`:485`), 같은 파일 `parseTodos` 는 모른다. W9 을 고치면서 `parseTodos` 에 fence 판정을 **또** 적으면 한 파일 안에 두 벌이 된다.
+→ **처방.** fence 토글 판정을 이름 있는 헬퍼 하나로 빼고 두 곳이 그것을 쓴다. Task 1 REFACTOR 를 그 내용으로 확정한다.
+
+### 2. 코드 품질 — 발견 1건 (실측으로 해소)
+
+**[P3] (confidence: 9/10) fence 서식 범위가 plan 에 없었다 → 실측으로 확정.**
+`TODOS.md` 실측 — 백틱 펜스 **34줄** · 물결(`~~~`) **0** · 4칸 들여쓰기 안의 `# ` **0건**.
+→ **결론. ``` 만 추적하면 충분하다.** 다만 「지금 0건이라 충분」이 조용히 낡지 않게, `~~~` 가 등장하면 red 가 나는 단언을 Task 1 에 함께 넣는다(비용 1줄).
+
+### 3. 테스트 — 커버리지 다이어그램
+
+프레임워크. `node:test` + `--experimental-strip-types` (`package.json:10` `test:workflow`). CI 잡 「워크플로우 스크립트 판별식」이 같은 목록을 돈다.
+
+```
+코드 경로                                              사용자 흐름 (비개발자 독자)
+[~] scripts/build-dashboard.mjs
+  ├── parseTodos()                                     [+] 대시보드 부채 페이지
+  │   ├── [GAP] 펜스 안 `# ` → 절단 없음  (Task 1)       ├── [GAP] 카테고리별로 훑는다      (Task 5)
+  │   ├── [GAP] 펜스 밖 `# ` → 절단 유지  (Task 1)       ├── [GAP] 접지 않고 뜻을 읽는다    (Task 5)
+  │   └── [GAP] `~~~` 등장 시 red        (Task 1)       └── [GAP] 카테고리가 뭔지 안다     (Task 5)
+  ├── AREA_CATEGORIES (신규)
+  │   └── [GAP] 영역 집합 ↔ 매핑 차집합 0  (Task 4)     [+] 등재하는 개발자
+  └── renderTodos()                                      ├── [GAP] 두 줄 빠뜨리면 CI red  (Task 3)
+      ├── [GAP] 카테고리 소제목 5종        (Task 5)       └── [GAP] 서식을 어디서 보나      (Task 6)
+      ├── [GAP] 카테고리 설명 줄           (Task 5)
+      ├── [GAP] 두 줄이 details 밖         (Task 5)     [+] 회귀 방어
+      └── [GAP] ★두 줄이 details 안에 없다 (신규 · A1)    ├── [GAP] 접두↔마스터 차집합 0   (Task 2)
+[~] TODOS.md                                             └── [GAP] ★두 파서 경계 일치      (신규 · T2)
+      └── [GAP] 미착수·보류 두 줄 전량      (Task 3)
+
+커버리지. 계획된 단언 13 / 필요 13 (100%)  ·  신규 발견으로 +2
+품질 목표. ★★★ (동작 + 경계 + 오류 경로) — 전부 뮤테이션으로 대조
+```
+
+**[P1] (confidence: 9/10) 신규 단언 2개가 plan 에 없다** — ① 두 줄이 `<details>` **안에는** 없다(A1) ② `parseTodos` 와 purity test 의 `parseSections` 가 **같은 경계**를 본다(위 아키텍처 P1). ②는 회귀 규칙 대상이다 — 지금 실제로 어긋나 있고, W9 이 그 격차를 **더 벌린다**(대시보드만 고쳐지고 purity 는 그대로).
+
+**회귀 규칙 발동.** ② 는 REGRESSION 이므로 `AskUserQuestion` 없이 계획에 넣는다.
+
+### 4. 성능 — 발견 0건
+
+5,060줄 1회 파싱 · 정규식 선형 · 렌더 1회. N+1·메모리·캐시 이슈 없음. **No issues, moving on.**
+
+### NOT in scope (의도적 보류)
+
+| 항목 | 근거 |
+|---|---|
+| W7 `TODOS.md` 물리 재배열 | Maxi 결정 ③ — 안전망(본문 해시 불변)이 이 PR 에서 나온다 |
+| W10 접두 없는 ✅ 1건 | 판별식 대상이 미착수·보류라 지금 red 를 안 낸다. W7 과 함께 |
+| 해소 76건에 두 줄 | NFR N2 — 「지금 남은 빚」이 이 화면의 목적 |
+| purity test 의 `parseSections` 를 `parseTodos` 로 통합 | 파서 통합은 그 테스트의 계약을 바꾼다. **경계 일치 단언까지만** 이 PR 에서 하고 통합은 별건 |
+| 아웃사이드 보이스 | 이탈 ② |
+
+### What already exists (재사용 확인)
+
+| 이미 있는 것 | 이 plan 의 처리 |
+|---|---|
+| `renderTodos` 상태 그룹 3종 | **유지**. 카테고리는 미착수 그룹 **안**에 넣는다(NFR N3) |
+| `parseTodos` · `TODO_STATUSES` export | **재사용**. 신규 판별식이 import 한다(위 처방) |
+| `inlineMd` · `mdToHtml` 이스케이프 | **재사용**. 이스케이프 재구현 금지(엣지 E4) |
+| `TODOS.md` 영역 접두 | **재사용**. 분류 데이터를 새로 안 만든다 |
+| `TODOS.md` 머리 「티어 표기」 규약 블록 | **같은 자리**에 등재 서식을 붙인다(Task 6) |
+| `debt-ledger-mapping.test.ts` 제목 키 조인 | **그대로 둠**. Task 2 가 두 파일을 동시에 고쳐 이 판별식을 깨지 않는다 |
+
+### 실패 모드 (신규 코드 경로별)
+
+| 경로 | 프로덕션 실패 | 테스트 | 오류 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| `parseTodos` fence 추적 | 펜스가 홀수 개면 파일 끝까지 코드로 읽힘 | Task 1 | 없음 | **조용한 실패** — 항목이 통째로 사라짐 |
+| 두 줄 추출 | 마커는 있는데 내용이 공백 | Task 3(길이 하한) | 없음 | 빈칸 |
+| `AREA_CATEGORIES` 조회 | 새 영역이 매핑에 없음 | Task 4 | 없음 | 항목이 어느 묶음에도 안 나옴 |
+
+**★critical gap 1건.** 첫 행 — 펜스 홀수 개는 **테스트도 오류 처리도 없고 화면에서 조용히 사라진다**. 지금 34줄로 짝수지만 누가 하나 더 열면 그날부터 그 아래 전부가 사라진다.
+→ **처방.** Task 1 에 「펜스 열림/닫힘 개수가 짝수다」 단언 1줄 추가. 비용 1줄, 막는 것은 문서 통째 소실.
+
+### 병렬화 전략
+
+**순차 구현 · 병렬 기회 없음.** 6 task 중 5개가 `scripts/build-dashboard.mjs` 또는 `TODOS.md` 를 공유한다. worktree 분리 이점 0(구현이 인라인이라 더욱).
+
+### Implementation Tasks (리뷰 발견 → 계획 반영)
+
+- [ ] **T1 (P1, human: ~30min / CC: ~5min)** — `build-dashboard.mjs` — 두 줄을 본문에서 제거한 뒤 렌더
+  - 발견. 아키텍처 P1 — `:575` 가 본문 전체를 그려 두 줄이 중복된다
+  - 반영. **Task 5** GREEN + 단언 1개 추가
+- [ ] **T2 (P1, human: ~20min / CC: ~5min)** — 신규 판별식이 `parseTodos` 를 import 한다
+  - 발견. 아키텍처 P1 — 파서가 이미 2벌, 3벌째를 막는다
+  - 반영. **Task 3·4** 메타 `files` 주석
+- [ ] **T3 (P1, human: ~40min / CC: ~10min)** — 두 파서 경계 일치 단언 (**REGRESSION**)
+  - 발견. 테스트 P1 — `parseTodos` 는 `# ` 를 자르고 `parseSections` 는 안 자른다
+  - 반영. **Task 1** 에 단언 추가
+- [ ] **T4 (P2, human: ~10min / CC: ~2min)** — 펜스 짝수 단언 + `~~~` 금지 단언
+  - 발견. 실패 모드 critical gap · 코드 품질 P3
+  - 반영. **Task 1** 에 단언 2개 추가
+- [ ] **T5 (P3, human: ~15min / CC: ~3min)** — fence 판정을 공용 헬퍼로
+  - 발견. 아키텍처 P2 — 한 파일 안 두 벌 방지
+  - 반영. **Task 1** REFACTOR 확정
+
+### Completion summary
+
+- Step 0 범위 도전 — **범위 유지**(게이트 미발동)
+- 아키텍처 — **3건**(P1 2 · P2 1)
+- 코드 품질 — **1건**(P3 · 실측으로 해소)
+- 테스트 — 다이어그램 산출 · **신규 갭 2건**(그중 1건 REGRESSION)
+- 성능 — **0건**
+- NOT in scope — 작성 · What already exists — 작성
+- 실패 모드 — **critical gap 1건**
+- 아웃사이드 보이스 — **생략**(이탈 ②)
+- 병렬화 — 0 lane(순차)
+- TODOS 등재 제안 — **0건**. 발견 5건 전부 이 PR 안에서 닫는다(장부를 또 늘리지 않는다)
+
+**BLOCKER 0 · P1 3건 전부 계획에 반영 가능.** 게이트 1 로 넘긴다.
