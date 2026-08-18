@@ -1532,7 +1532,7 @@ PR-1이 N파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical, 변경�
 
 </details>
 
-## ✅ CREATE_PROJECT 상수 단일화 (해소 2026-07-27)
+## ✅ identity-access — CREATE_PROJECT 상수 단일화 (해소 2026-07-27)
 
 **해소.** identity 의 리터럴을 shared-kernel `GlobalPermissionCodes.CREATE_PROJECT` 참조로 교체했다.
 
