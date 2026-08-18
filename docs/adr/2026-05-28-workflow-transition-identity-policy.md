@@ -3,8 +3,18 @@
 # ADR — 워크플로우 전이 identity 정책: (from, to) 2 튜플 채택
 
 **일자**. 2026-05-28
-**상태**. Accepted
+**상태**. ⚠️ **대체됨 (Superseded, 2026-08-18)** — `docs/adr/2026-08-18-workflow-transition-id-identity.md`
 **관련 FR**. FR-IS-01 BLOCKER 1 hot-fix (본 PR #28)
+
+> **읽기 전 주의.** 이 ADR 의 결정(전이 identity = `(from, to)` 2튜플)은 **더 이상 유효하지 않다.**
+> 아래 §대안 채택 조건이 예비한 탈출구가 FR-WF-05 에서 발동해, identity 가 `workflow_transitions.id`
+> (UUID)로 옮겨졌고 `(from, to)` 유일성 제약도 해제됐다. 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수
+> 있고, `kind` 로 전역 전환(GLOBAL)·최초 전환(INITIAL)을 표현한다.
+>
+> **다만 이 ADR 의 다음 조항은 살아 있다** — 「`name` 은 사람 친화 표시 라벨이며 엔진 매칭에 쓰지
+> 않는다」. 새 ADR 은 매칭 기준을 `name` 이 아니라 `id` 로 두어 이 분리를 더 강하게 지킨다.
+>
+> 이 문서는 **당시 판단의 근거를 남기기 위해** 보존한다. 현행 계약은 새 ADR 을 본다.
 **관련 PR**. #28
 **작성자**. Maxi + Claude (backend-engineer)
 

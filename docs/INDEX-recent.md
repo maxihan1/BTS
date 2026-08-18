@@ -1,6 +1,6 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (472건, 최신순)
+# 시간 축 인덱스 (476건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
@@ -8,6 +8,10 @@
 |---|---|---|---|---|---|---|
 | 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | FR-DB-01 |
 | 2026-08-18 | todos-category-sections | — | ✔ | — | — | — |
+| 2026-08-18 | workflow-db-as-source-of-truth | — | — | — | ✔ | FR-WF-02 FR-WF-04 FR-WF-07 |
+| 2026-08-18 | workflow-editor-canvas-library | — | — | — | ✔ | FR-WF-04 FR-WF-05 |
+| 2026-08-18 | workflow-global-status-catalog | — | — | — | ✔ | FR-WF-04 |
+| 2026-08-18 | workflow-transition-id-identity | — | — | — | ✔ | FR-WF-05 FR-WF-06 |
 | 2026-08-17 | classify-task-misroute-3-44-33-45 | — | ✔ | — | — | — |
 | 2026-08-14 | debt-14-16-permission-gate | — | ✔ | — | — | — |
 | 2026-08-14 | node-ts-invocation-flag-guard | — | ✔ | — | — | — |
@@ -427,7 +431,7 @@
 | 2026-05-28 | wiring-workflowresolver-consumer-fr-is-01-transiti | ✔ | ✔ | — | — | FR-IS-01 FR-IS-02 |
 | 2026-05-28 | workflow-aggregate-invariant-2tuple | — | ✔ | — | — | FR-WF-02 |
 | 2026-05-28 | workflow-scheme-frontend-view-layer-cross-bc-lookup | — | — | — | ✔ | FR-WF-02 |
-| 2026-05-28 | workflow-transition-identity-policy | — | — | — | ✔ | FR-IS-01 FR-WF-02 |
+| 2026-05-28 | workflow-transition-identity-policy | — | — | — | ✔ | FR-IS-01 FR-WF-02 FR-WF-05 |
 | 2026-05-27 | flyway-v001-namespace-issue-tracking-project-workf | — | ✔ | — | — | FR-IS-01 |
 | 2026-05-27 | fr-is-01-d6-issuedetail-tsx-ui-tanstack-query | ✔ | ✔ | — | — | FR-IS-01 |
 | 2026-05-27 | shared-kernel-extraction | — | — | ✔ | — | FR-IS-01 FR-WF-02 |
@@ -458,7 +462,7 @@
 | 2026-05-21 | workflow-bc-cross-bc-port | — | — | — | ✔ | — |
 | 2026-05-21 | workflow-expression-parser-spel | — | — | — | ✔ | FR-WF-01 |
 | 2026-05-21 | workflow-validator-terminology | — | — | — | ✔ | — |
-| 2026-05-21 | workflow-yaml-vs-db-storage | — | — | — | ✔ | FR-WF-01 FR-WF-02 |
+| 2026-05-21 | workflow-yaml-vs-db-storage | — | — | — | ✔ | FR-WF-01 FR-WF-02 FR-WF-04 |
 | 2026-05-20 | argon2id-parameters | — | — | ✔ | — | — |
 | 2026-05-20 | authentication-provider-spi-naming | — | — | ✔ | — | FR-AU-01 |
 | 2026-05-20 | csrf-cookie-mode | — | — | ✔ | — | FR-AU-09 |

@@ -3,8 +3,27 @@
 # ADR — 워크플로우 정의 저장: YAML seed vs DB 단독
 
 **일자**. 2026-05-21
-**상태**. Accepted
+**상태**. ⚠️ **대체됨 (Superseded, 2026-08-18)** — `docs/adr/2026-08-18-workflow-db-as-source-of-truth.md`
 **관련 FR**. FR-WF-01 (표준 워크플로우 FSM), FR-WF-02 (커스텀 워크플로우 — deferred)
+
+> **읽기 전 주의 1.** 이 ADR 의 결정(YAML = source of truth, DB = 런타임 캐시)은 **더 이상 유효하지
+> 않다.** FR-WF-04 에서 정본이 DB 로 옮겨졌고, YAML 은 빈 DB 를 채우는 최초 1회 부트스트랩과
+> 「기본값으로 복원」의 기준으로만 남는다. 재기동 시 DB 를 YAML 로 되돌리는 동작은 폐지됐다.
+>
+> **읽기 전 주의 2 — 이 문서는 구현된 적 없는 설계를 서술한다.** 2026-08-18 대조 실측 결과, 아래
+> §Runtime storage 가 규정한 5테이블 중 실제 이름이 맞는 것이 하나도 없다.
+>
+> | 이 문서가 적은 것 | 실제 (V200) |
+> |---|---|
+> | `workflow_definitions` (+ `yaml_hash` 컬럼) | `workflows` — 해시 컬럼 **없음** |
+> | `workflow_statuses` | `workflow_states` |
+> | `workflow_role_constraints` | 없음 — `workflow_validators` 가 그 역할 |
+> | `project_workflow_assignments` | 없음 — V201 `project_workflow_scheme_assignments` |
+> | 멱등성 = YAML 바이트 SHA-256 비교 | `YamlSeedService.isDirty()` 필드 단위 비교 |
+>
+> 이 표의 왼쪽 이름으로 코드를 찾지 마라. 존재하지 않는다.
+>
+> 이 문서는 **당시 판단의 근거를 남기기 위해** 보존한다. 현행 계약은 새 ADR 을 본다.
 **관련 PR**. project-workflow-bc-fr-wf-01-fsm-1-pr
 **작성자**. Maxi + Claude (backend-engineer)
 
