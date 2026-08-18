@@ -30,14 +30,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
-import { parseTodos } from '../build-dashboard.mjs';
+import { parseTodos, AREA_CATEGORIES, CONTRACTED_STATUSES } from '../build-dashboard.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LEDGER = path.join(REPO_ROOT, 'TODOS.md');
 const MASTER = path.join(REPO_ROOT, 'docs/plans/2026-08-12-debt24-master.md');
-
-/** 두 줄을 요구하는 상태. 「지금 남은 빚」이 이 계약의 대상이다 — 해소분은 제외한다. */
-const CONTRACTED_STATUSES = ['미착수', '보류'];
 
 /** 두 줄의 마커. 서식을 바꾸려면 `TODOS.md` 머리의 등재 서식과 **함께** 고쳐야 한다. */
 const PLAIN_MARKERS = ['**쉬운 말.**', '**방치하면.**'] as const;
@@ -54,7 +51,7 @@ interface Todo {
 /** 계약 대상 항목만 추린다. */
 function contractedTodos(): Todo[] {
   const todos = parseTodos(fs.readFileSync(LEDGER, 'utf8')) as Todo[];
-  return todos.filter((t) => CONTRACTED_STATUSES.includes(t.status));
+  return todos.filter((t) => (CONTRACTED_STATUSES as readonly string[]).includes(t.status));
 }
 
 /**
@@ -147,6 +144,68 @@ describe('TODOS.md — 비개발자 계약', () => {
       [],
       `두 줄이 없는 항목:\n  ${missing.join('\n  ')}\n` +
         '서식은 `TODOS.md` 머리의 등재 서식을 볼 것. 비개발자가 읽는 유일한 줄이다.',
+    );
+  });
+
+  test('카테고리 매핑이 실제 영역 집합과 양방향으로 같다', () => {
+    // 한쪽만 늘면 새 영역이 조용히 「기타」로 떨어지거나(매핑 부족),
+    // 아무도 안 쓰는 카테고리가 화면에 빈 묶음으로 남는다(매핑 과잉).
+    const actual = new Set(
+      contractedTodos()
+        .map((t) => areaOf(t.title))
+        .filter((a): a is string => a !== null),
+    );
+    const mapped = new Set(Object.keys(AREA_CATEGORIES as Record<string, unknown>));
+
+    const unmapped = [...actual].filter((a) => !mapped.has(a)).sort();
+    const unused = [...mapped].filter((a) => !actual.has(a)).sort();
+
+    assert.deepEqual(
+      { unmapped, unused },
+      { unmapped: [], unused: [] },
+      `매핑에 없는 영역: ${unmapped.join(', ') || '없음'}\n` +
+        `쓰이지 않는 매핑: ${unused.join(', ') || '없음'}\n` +
+        'AREA_CATEGORIES 는 화면 분류의 정본이다. 새 영역이 생기면 여기부터 red 가 난다.',
+    );
+  });
+
+  test('모든 카테고리가 이름과 한 줄 설명을 갖는다', () => {
+    const thin = Object.entries(AREA_CATEGORIES as Record<string, { name?: string; desc?: string }>)
+      .filter(([, v]) => !v?.name?.trim() || (v?.desc ?? '').replace(/\s/g, '').length < MIN_CONTENT_LEN)
+      .map(([k]) => k);
+
+    assert.deepEqual(
+      thin,
+      [],
+      `이름 또는 설명이 빈 카테고리: ${thin.join(', ')}\n` +
+        '설명 줄이 없으면 비개발자는 그 묶음이 무엇인지 알 수 없다 — 분류만 있고 뜻이 없다.',
+    );
+  });
+
+  test('`TODOS.md` 머리에 등재 서식이 적혀 있다', () => {
+    // 규율을 판별식에만 두면 다음 사람은 **왜 red 인지** 모른 채 마커만 채운다.
+    // 서식은 파일 머리 한 곳에만 둔다 — 사본을 만들면 그 둘이 갈라진다.
+    // 머리 = **첫 항목 헤딩 앞**. 두 가지를 조심한다.
+    //   ① `## ` 로 자르면 머리 안의 소제목(`## 등재 서식`)에서 잘려 서식을 못 본다.
+    //   ② 서식 예시가 **코드펜스 안에** `## ⬜ <영역> — …` 를 보여 주므로, 펜스를 모르면
+    //      그 예시를 첫 항목으로 읽어 머리가 통째로 사라진다(2026-08-18 실측 — 이 테스트가
+    //      바로 그렇게 틀렸다. 같은 fence-맹목이 하루에 세 번 나왔다).
+    const src = fs.readFileSync(LEDGER, 'utf8');
+    const lines = src.split('\n');
+    let inFence = false;
+    let firstItem = -1;
+    for (const [i, line] of lines.entries()) {
+      if (line.startsWith('```')) { inFence = !inFence; continue; }
+      if (!inFence && /^## [⬜📌✅] /.test(line)) { firstItem = i; break; }
+    }
+    const head = firstItem > 0 ? lines.slice(0, firstItem).join('\n') : src;
+    const absent = PLAIN_MARKERS.filter((m) => !head.includes(m));
+
+    assert.deepEqual(
+      absent,
+      [],
+      `머리 설명에 없는 마커: ${absent.join(' · ')}\n` +
+        '새로 등재하는 사람이 서식을 볼 곳이 여기뿐이다.',
     );
   });
 

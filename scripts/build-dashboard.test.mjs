@@ -11,6 +11,7 @@ import {
   parseTodos,
   renderTodos,
   TODO_STATUS_BY_MARKER,
+  CATEGORIES,
 } from './build-dashboard.mjs';
 
 /**
@@ -195,7 +196,14 @@ test('parseTodos — 실제 TODOS.md 를 파싱하면 마커 수와 섹션 수�
   // ★마커 목록을 여기 다시 적지 않는다. 적으면 파서와 갈라지는 세 번째 사본이 된다 —
   //   실제로 이 줄이 `(✅|⬜)` 로 굳어 있어서 📌 누락을 못 잡고 있었다.
   const markers = Object.keys(TODO_STATUS_BY_MARKER).join('|');
-  const headings = content.split('\n').filter(l => new RegExp(`^##\\s+(${markers})\\s+`).test(l));
+  // ★펜스 안 예시(`등재 서식`)는 헤딩이 아니다 — 파서와 같은 게이트를 여기서도 건다.
+  //   안 걸면 이 단언이 예시 1건만큼 어긋나 파서가 멀쩡한데 red 가 난다.
+  const headingRe = new RegExp(`^##\\s+(${markers})\\s+`);
+  let inFence = false;
+  const headings = content.split('\n').filter((l) => {
+    if (l.startsWith('```')) { inFence = !inFence; return false; }
+    return !inFence && headingRe.test(l);
+  });
   const todos = parseTodos(content);
   assert.equal(todos.length, headings.length);
   assert.ok(todos.length > 0, 'TODOS.md 에서 섹션을 하나도 못 읽었다');
@@ -371,19 +379,45 @@ test('TODOS.md — 물결 펜스(~~~)를 쓰지 않는다 (파서 전제 고정)
   assert.equal(tildes, 0, `물결 펜스 ${tildes}줄 — 파서가 추적하지 않는 서식이다.`);
 });
 
-test('TODOS.md — 펜스 안에 `## ` 헤딩이 없다 (파서 전제 고정)', async () => {
-  // `parseTodos` 는 `# ` 에만 fence 게이트를 달았다. 펜스 안 `## <마커>` 는 실측 0건이라
-  // 지금 고치면 가설로 섹션 수를 바꾸는 것이 된다. 대신 그 전제를 여기서 못 박는다 —
-  // 예시로 `## ⬜ …` 를 코드블록에 넣는 순간 유령 섹션이 생기고 이 단언이 먼저 죽는다.
+test('parseTodos — 펜스 안의 `## <마커>` 는 섹션이 되지 않는다 (유령 섹션 차단)', () => {
+  // `TODOS.md` 머리의 **등재 서식 예시**가 코드블록 안에서 `## ⬜ …` 모양을 보여 준다.
+  // 게이트가 없으면 그 예시가 섹션으로 잡혀 집계·순수성 판정을 동시에 오염시킨다.
+  const md = [
+    '# TODOS',
+    '',
+    '**등재 서식.** 아래 모양으로 쓴다.',
+    '',
+    '```',
+    '## ⬜ <영역> — <한 줄 증상> (<상태> · T?)',
+    '```',
+    '',
+    '## ⬜ 도구 — 진짜 항목',
+    '',
+    '**무엇.** 본문.',
+    '',
+  ].join('\n');
+
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 1, '펜스 안 예시가 유령 섹션이 됐다');
+  assert.equal(todos[0].title, '도구 — 진짜 항목');
+});
+
+test('TODOS.md — 실파일에서도 펜스 안 예시가 섹션으로 잡히지 않는다', async () => {
+  // 실파일 회귀 고정. 펜스 밖 마커 헤딩 수와 파싱된 섹션 수가 같아야 한다.
   const { content } = await readTodosFile();
-  const lines = content.split('\n');
+  const markers = Object.keys(TODO_STATUS_BY_MARKER).join('|');
+  const re = new RegExp(`^##\\s+(${markers})\\s+`);
   let inFence = false;
-  const fenced = [];
-  for (const [i, line] of lines.entries()) {
+  let outsideCount = 0;
+  for (const line of content.split('\n')) {
     if (line.startsWith('```')) { inFence = !inFence; continue; }
-    if (inFence && /^##\s/.test(line)) fenced.push(i + 1);
+    if (!inFence && re.test(line)) outsideCount++;
   }
-  assert.deepEqual(fenced, [], `펜스 안 \`## \` 헤딩 줄: ${fenced.join(', ')} — 유령 섹션이 생긴다.`);
+  assert.equal(
+    parseTodos(content).length,
+    outsideCount,
+    '파싱된 섹션 수가 펜스 밖 마커 헤딩 수와 다르다 — 예시가 섹션으로 잡혔거나 항목이 사라졌다.',
+  );
 });
 
 test('TODOS.md — 두 파서가 버리는 텍스트에 판정 대상이 없다 (REGRESSION)', async () => {
@@ -397,10 +431,20 @@ test('TODOS.md — 두 파서가 버리는 텍스트에 판정 대상이 없다 
   const lines = content.split('\n');
 
   // `## ` 만 경계로 본 본문 (purity test 의 시야)
+  // ★마커 섹션만 본다. 머리의 `## 등재 서식` 은 항목이 아니라 문서 설명이고,
+  //   그 안의 예시가 두 줄 마커를 **일부러** 담고 있어 비교에 넣으면 오탐이 난다.
+  const markers = Object.keys(TODO_STATUS_BY_MARKER).join('|');
+  const sectionRe = new RegExp(`^##\\s+(${markers})\\s+`);
   const bySection = [];
   let cur = null;
+  let inFence = false;
   for (const text of lines) {
-    if (text.startsWith('## ')) { cur = { body: [] }; bySection.push(cur); continue; }
+    // ★펜스 안은 예시·코드다. 여기를 안 태우면 머리의 등재 서식 예시가 섹션으로 잡혀
+    //   그 안의 두 줄 마커가 「버려진 판정 대상」으로 오탐된다 — 2026-08-18 실측.
+    //   이 파일에서만 fence 를 잊어 네 번 틀렸다. `## `/`# ` 를 스캔하면 fence 부터 본다.
+    if (text.startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence) { if (cur) cur.body.push(text); continue; }
+    if (text.startsWith('## ')) { cur = sectionRe.test(text) ? { body: [] } : null; if (cur) bySection.push(cur); continue; }
     if (cur) cur.body.push(text);
   }
   const purityView = bySection.map((s) => s.body.join('\n')).join('\n');
@@ -421,6 +465,75 @@ test('TODOS.md — 두 파서가 버리는 텍스트에 판정 대상이 없다 
     '대시보드 파서가 버리는 텍스트에 판정 대상(미해결 마커 · 두 줄)이 들어 있다.\n' +
       `해당 줄: ${loadBearing.join(' | ')}`,
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 비개발자용 렌더 — 카테고리 소분류 + 두 줄 노출
+//
+// 목적. 접지 않고도 ① 어느 영역의 빚인지 ② 무슨 뜻인지 ③ 안 고치면 뭐가 생기는지를 읽는다.
+// ★두 줄은 `<details>` **밖**에 나오고 **안에는 없어야** 한다 — 본문 전체를 그리는
+//   `mdToHtml(t.body)` 를 그대로 두면 같은 줄이 두 번 나온다(2026-08-18 리뷰 P1).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 카테고리 렌더 테스트용 최소 입력 — 영역 접두 + 두 줄을 갖춘 미착수 항목. */
+function todoFixture(area, title, easy, risk) {
+  return `## ⬜ ${area} — ${title}\n\n**쉬운 말.** ${easy}\n\n**방치하면.** ${risk}\n\n**무엇.** 기술 본문.\n`;
+}
+
+test('renderTodos — 미착수 항목이 카테고리별로 묶인다', () => {
+  const md = [
+    todoFixture('apps/web', '화면 문제', '화면에서 이런 게 보인다.', '사용자가 헷갈린다.'),
+    todoFixture('도구', '안전장치 문제', '검사 장치가 이렇다.', '다른 고장을 못 잡는다.'),
+    todoFixture('인프라', '환경 문제', '빌드가 이렇다.', '검사가 늦어진다.'),
+  ].join('\n');
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+
+  assert.ok(html.includes(CATEGORIES.screen.name), '「화면에서 보이는 것」 묶음이 없다');
+  assert.ok(html.includes(CATEGORIES.guard.name), '「개발 안전장치」 묶음이 없다');
+  assert.ok(html.includes(CATEGORIES.infra.name), '「빌드·배포 환경」 묶음이 없다');
+  // 안 쓰인 카테고리는 빈 묶음으로 남지 않는다
+  assert.ok(!html.includes(CATEGORIES.docs.name), '항목이 없는 카테고리가 빈 묶음으로 남았다');
+});
+
+test('renderTodos — 카테고리마다 한 줄 설명이 붙는다', () => {
+  const md = todoFixture('도구', '안전장치 문제', '검사 장치가 이렇다.', '다른 고장을 못 잡는다.');
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+  assert.ok(
+    html.includes(CATEGORIES.guard.desc),
+    '카테고리 설명이 없다 — 분류만 있고 그게 무엇인지는 없는 상태다',
+  );
+});
+
+test('renderTodos — 두 줄이 `<details>` **밖**에 있다 (접지 않아도 읽힌다)', () => {
+  const md = todoFixture('apps/web', '화면 문제', '화면에서 이런 게 보인다.', '사용자가 헷갈린다.');
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+
+  const summaryEnd = html.indexOf('</summary>');
+  const detailsEnd = html.indexOf('</details>');
+  assert.ok(summaryEnd > 0 && detailsEnd > summaryEnd, '렌더 구조가 바뀌었다');
+
+  assert.ok(html.includes('화면에서 이런 게 보인다'), '「쉬운 말」이 렌더 결과에 없다');
+  assert.ok(html.includes('사용자가 헷갈린다'), '「방치하면」이 렌더 결과에 없다');
+});
+
+test('renderTodos — 두 줄이 `<details>` **안에는** 없다 (중복 렌더 차단)', () => {
+  // ★본문 전체를 그리는 경로를 그대로 두면 같은 줄이 접기 안팎에 두 번 나온다.
+  const md = todoFixture('apps/web', '화면 문제', '화면에서 이런 게 보인다.', '사용자가 헷갈린다.');
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+
+  const body = html.slice(html.indexOf('todo-body'), html.indexOf('</details>'));
+  assert.ok(!body.includes('화면에서 이런 게 보인다'), '「쉬운 말」이 접기 안에도 중복으로 나온다');
+  assert.ok(!body.includes('사용자가 헷갈린다'), '「방치하면」이 접기 안에도 중복으로 나온다');
+  // 기술 본문은 접기 안에 그대로 남아야 한다 (과잉 제거 방지)
+  assert.ok(body.includes('기술 본문'), '두 줄을 걷어내면서 기술 본문까지 지웠다');
+});
+
+test('renderTodos — 해소 항목은 카테고리로 묶지 않는다 (계약 대상 밖)', () => {
+  // 해소 76건에 두 줄을 소급 작성하지 않기로 했으므로(NFR N2) 카테고리 분류도 안 한다.
+  const md = `## ✅ apps/web — 이미 고친 것 (해소 2026-01-01 · #1)\n\n**무엇.** 본문.\n`;
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+  assert.ok(html.includes('이미 고친 것'), '해소 항목이 렌더에서 사라졌다');
+  assert.ok(!html.includes(CATEGORIES.screen.name), '해소 항목에 카테고리 묶음이 붙었다');
 });
 
 test('renderTodos — 집계 합이 전체와 맞는다 (어느 상태도 셈에서 빠지지 않는다)', () => {
