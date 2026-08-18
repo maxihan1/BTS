@@ -6,7 +6,10 @@
 //    사라진 항목·생긴 항목을 **제목과 함께** 열거한다.
 // ② `compareAllLines` — 두 버전의 **모든 줄** 멀티셋 차집합. 항목 안팎을 가리지 않으므로
 //    파일 머리 산문이나 절 사이 설명이 사라져도 잡는다.
-// ③ **F2b 실파일 축** — merge-base 대비 부채 항목이 사라졌는지를 매 PR 이 검사한다.
+// ③ `judgePureMove` — CLI 가 쓰는 **순수 이동 판정 그 자체**. 판정을 여기서 다시 적지
+//    않는다. 다시 적으면 판별기를 어떻게 바꿔도 초록이다(2026-08-18 코드 리뷰 C1 실측).
+// ④ **F2b 실파일 축** — merge-base 대비 부채 항목이 사라졌는지를 매 PR 이 검사한다.
+//    base 를 못 얻으면 **실패**다. skip 은 exit 0 이라 「안 돌았다」가 「통과」로 보인다.
 //
 // ## 이 파일이 지키지 **않는** 것
 //
@@ -32,6 +35,8 @@ import { fileURLToPath } from 'node:url'
 import {
   compareTodoIntegrity,
   compareAllLines,
+  isStructuralLine,
+  judgePureMove,
   readBaseTodos,
 } from './todos-reorder-integrity.mjs'
 
@@ -150,21 +155,86 @@ describe('TODOS.md — 대량 이동 무손실 대조', () => {
     assert.match(lines.lost[0], /머리 산문/)
   })
 
-  test('줄 축이 H1 추가와 실제 소실을 구분한다', () => {
-    // 재배열은 H1 을 새로 만든다. 그 차이는 정상이고, 그 밖의 줄 차이는 소실이다.
+  test('구조 줄의 정의를 판별기에서 직접 읽는다', () => {
+    // ★판정을 테스트가 손으로 다시 적으면 판별기를 어떻게 바꿔도 초록이다.
+    //   `isStructuralLine` 을 `return true` 로 바꿔도 387종 전량이 통과했던 것이
+    //   그 증거다(코드 리뷰 C1 실측). 여기서 정의 자체를 대조한다.
+    assert.equal(isStructuralLine('# 화면에서 보이는 것'), true, 'H1 이 구조 줄로 인식되지 않는다')
+    assert.equal(isStructuralLine(''), true, '빈 줄이 구조 줄로 인식되지 않는다')
+    assert.equal(isStructuralLine('**무엇.** 본문 A 첫 줄.'), false, '본문 줄이 구조 줄로 인식됐다 — 편집이 전부 축복된다')
+    assert.equal(isStructuralLine('## ⬜ apps/web — 첫 번째'), false, '항목 헤딩이 구조 줄로 인식됐다')
+  })
+
+  test('음성 대조군 — H1 추가만 있으면 순수 이동이다', () => {
+    // 재배열은 H1 을 새로 만든다. 그 차이는 정상이고, 그 밖의 줄 차이는 편집이다.
     const after = BASE.replace('## ⬜ apps/web — 첫 번째', '# 화면에서 보이는 것\n\n## ⬜ apps/web — 첫 번째')
-    const lines = compareAllLines(BASE, after)
-    assert.deepEqual(lines.lost, [], 'H1 만 추가했는데 소실을 보고했다')
-    assert.deepEqual(
-      lines.gained.filter((l: string) => !l.startsWith('# ') && l.trim() !== ''),
-      [],
-      'H1 과 빈 줄 말고 다른 줄이 생겼다 — 이동이 아니라 편집이다',
-    )
+    const r = judgePureMove(BASE, after)
+    assert.deepEqual(r.editedLost, [], 'H1 만 추가했는데 편집된 줄이 사라졌다고 보고했다')
+    assert.deepEqual(r.editedGained, [], 'H1 과 빈 줄 말고 다른 줄이 생겼다 — 이동이 아니라 편집이다')
+    assert.deepEqual(r.h1Lost, [], 'H1 을 추가만 했는데 소실로 셌다')
+    assert.equal(r.clean, true, 'H1 추가만 있는 재배열을 순수 이동으로 판정하지 못한다')
+  })
+
+  test('양성 ⑦ — H1 하나를 지우면 순수 이동이 아니다 (절 통삭제)', () => {
+    // 절 H1 이 사라지면 그 절의 항목이 통째로 앞 절에 흡수된다. 항목 축은 지문에 절이
+    // 없어 이것을 보지 못하고, 줄 축은 H1 을 구조 줄로 접는다. 그 사이로 절 삭제가
+    // 「순수 이동」으로 축복됐다(코드 리뷰 C1 — 실파일에서 EXIT 0 재현).
+    const after = BASE.replace('# TODOS\n', '')
+    const items = compareTodoIntegrity(BASE, after)
+    assert.deepEqual(items.lost, [], '전제 확인 — 항목 축은 H1 소실을 보지 못한다')
+    const r = judgePureMove(BASE, after)
+    assert.equal(r.h1Lost.length, 1, 'H1 소실을 열거하지 못했다')
+    assert.equal(r.clean, false, 'H1 을 통째로 지웠는데 순수 이동이라고 판정했다')
+  })
+
+  test('H1 소실은 호출자가 명시로 승인할 때만 통과한다', () => {
+    // 절을 실제로 없애는 재배열은 정당하다. 다만 **조용히** 통과하면 안 된다 —
+    // 승인은 기본값이 아니라 호출자의 명시 선택이어야 한다.
+    const after = BASE.replace('# TODOS\n', '')
+    const r = judgePureMove(BASE, after, { allowH1Loss: true })
+    assert.equal(r.h1Lost.length, 1, '승인해도 무엇을 승인했는지는 보여야 한다')
+    assert.equal(r.clean, true, '명시 승인했는데도 통과시키지 않는다')
+  })
+
+  test('양성 ⑧ — 항목 밖 산문 1줄이 바뀌면 순수 이동이 아니다 (줄 축 단독)', () => {
+    // 항목 밖 줄은 `parseTodos` 가 버리므로 항목 축이 못 본다. 이 축이 `isStructuralLine`
+    // 의 유일한 판별자다 — 항목 안 줄로 시험하면 항목 축이 대신 red 를 내서
+    // 구조 줄 판정이 망가져도 초록이 된다.
+    const after = BASE.replace('이 줄은 어느 항목에도 속하지 않는 머리 산문이다.', '이 줄은 산문이다.')
+    const items = compareTodoIntegrity(BASE, after)
+    assert.deepEqual(items.lost, [], '전제 확인 — 항목 축은 항목 밖 줄 편집을 보지 못한다')
+    const r = judgePureMove(BASE, after)
+    assert.equal(r.editedLost.length, 1, '항목 밖 산문 편집을 못 잡았다 — 구조 줄 판정이 너무 넓다')
+    assert.equal(r.editedGained.length, 1)
+    assert.equal(r.clean, false, '항목 밖 산문이 바뀌었는데 순수 이동이라고 판정했다')
   })
 })
 
+/**
+ * base 미획득을 통과로 볼지. **기본은 아니다 — 실패다.**
+ *
+ * `t.skip` 은 `node --test` 에서 exit 0 이다. 즉 「base 를 못 얻었다」가 「검사가 통과했다」와
+ * 구분되지 않는다. 같은 디렉터리의 정본(`changed-paths.ts`)이 정확히 반대를 적는다 —
+ * 「부재를 0건으로 바꾸면 그 순간 모든 하한 검사가 공허하게 통과한다」. 이 축도 같은 규칙을
+ * 따른다. 정말로 base 가 없는 환경(원격 없는 로컬 클론 등)에서만 명시로 끈다.
+ */
+const ALLOW_NO_BASE = process.env.BTS_ALLOW_NO_BASE === '1'
+
 describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
   const base = readBaseTodos(REPO_ROOT)
+
+  /** base 본문. 못 얻었으면 **실패**시킨다 (명시 opt-out 이 있을 때만 null 을 돌려준다). */
+  function baseContentOrFail(): string | null {
+    if (base.content !== null) return base.content
+    assert.ok(
+      ALLOW_NO_BASE,
+      `base 미획득 (${base.reason}) — 이 축이 조용히 꺼졌다.\n` +
+        `CI 라면 fetch-depth: 0 이 사라졌거나 원격 ref 가 없다. 둘 다 배선 결함이다.\n` +
+        `정말로 base 가 없는 환경이면 BTS_ALLOW_NO_BASE=1 로 명시해서 끈다 — 침묵으로 끄지 않는다.`,
+    )
+    console.log(`[F2b] base 미획득 — ${base.reason}. BTS_ALLOW_NO_BASE=1 이라 이 축은 돌지 않았다.`)
+    return null
+  }
 
   test('base 획득 결과를 반드시 보고한다 (조용한 통과 차단)', () => {
     assert.ok(
@@ -179,13 +249,11 @@ describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
     }
   })
 
-  test('merge-base 에 있던 부채 항목이 이 브랜치에서 사라지지 않았다', (t) => {
-    if (base.content === null) {
-      t.skip(`base 미획득 (${base.reason}) — 이 축은 이 실행에서 돌지 않는다`)
-      return
-    }
+  test('merge-base 에 있던 부채 항목이 이 브랜치에서 사라지지 않았다', () => {
+    const content = baseContentOrFail()
+    if (content === null) return
     const current = fs.readFileSync(LEDGER, 'utf-8')
-    const r = compareTodoIntegrity(base.content, current)
+    const r = compareTodoIntegrity(content, current)
     if (r.renamed.length > 0) {
       // 개명은 정당한 편집이라 통과시키되, **무엇이 바뀌었는지는 반드시 보인다.**
       // 조용히 접으면 제목 변경이 기록 없이 지나가고, 제목은 장부의 조인 키다.
@@ -201,17 +269,37 @@ describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
   })
 
   test('자기 자신과의 비교는 공허하므로 그 사실을 보고한다', () => {
-    if (base.content === null) return
+    const content = baseContentOrFail()
+    if (content === null) return
     const current = fs.readFileSync(LEDGER, 'utf-8')
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf-8' }).trim()
     if (base.sha === head) {
       console.log('[F2b] merge-base == HEAD — 비교가 공허하다. 이 축은 PR 브랜치에서만 유효하다.')
     }
     // 공허하든 아니든 파서는 실제로 항목을 봐야 한다 (비-공허 짝).
-    const r = compareTodoIntegrity(base.content, current)
+    // 하한은 **0 초과**다. 숫자를 올리면 근거 없는 매직 넘버가 되고, 장부가 줄어든 날
+    // 소실과 무관하게 red 가 난다 — 막으려는 것은 「파서가 0건을 뱉는 것」 하나다.
+    const r = compareTodoIntegrity(content, current)
     assert.ok(
-      r.beforeCount > 10,
-      `merge-base 장부에서 항목을 ${r.beforeCount}건밖에 못 찾았다 — 파서가 깨졌거나 base 가 엉뚱한 파일이다.`,
+      r.beforeCount > 0,
+      `merge-base 장부에서 항목을 하나도 못 찾았다 — 파서가 깨졌거나 base 가 엉뚱한 파일이다.`,
     )
+  })
+})
+
+describe('TODOS.md — base ref 해석 (F2b 배선)', () => {
+  test('첫 후보가 없으면 다음 후보로 넘어간다', () => {
+    // `origin/main` 하나만 보면 원격 이름이 다른 클론에서 이 축만 꺼지고 다른 판별식은
+    // `main` 폴백으로 멀쩡히 돈다. 그 비대칭이 「검사가 안 돌았다」를 숨긴다.
+    const r = readBaseTodos(REPO_ROOT, ['refs/heads/bts-존재하지-않는-ref', 'main'])
+    assert.notEqual(r.content, null, `첫 후보가 없을 때 다음 후보로 넘어가지 않는다 — ${r.reason}`)
+    assert.match(r.reason, /main/, '어느 후보로 잡았는지가 이유에 안 남는다')
+  })
+
+  test('후보가 전부 없으면 이유와 함께 미획득을 알린다', () => {
+    const r = readBaseTodos(REPO_ROOT, ['refs/heads/bts-없는-ref-1', 'refs/heads/bts-없는-ref-2'])
+    assert.equal(r.content, null, '없는 ref 로도 base 를 얻었다고 답한다')
+    assert.match(r.reason, /bts-없는-ref-1/, '실패 이유에 시도한 후보가 안 남는다')
+    assert.match(r.reason, /bts-없는-ref-2/, '실패 이유에 시도한 후보가 안 남는다')
   })
 })
