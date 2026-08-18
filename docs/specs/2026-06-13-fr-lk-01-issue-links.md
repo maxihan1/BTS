@@ -115,7 +115,7 @@ CREATE INDEX idx_issues_parent_id ON issues(parent_id);
 - **init_codegen.sql 미러 필수** (메모리 jooq-init-codegen-mirror) — 두 변경 모두.
 
 ## 도메인 불변식 (D5 테스트 케이스)
-- 링크. (1) source≠target, (2) (source,target,type) 중복 금지(409), (3) blocks 그래프 acyclic(전환 탐색, 409), (4) 소프트삭제 이슈 대상 금지(404).
+- 링크. (1) source≠target, (2) (source,target,type) 중복 금지(409), (3) blocks 그래프 acyclic(전이 탐색, 409), (4) 소프트삭제 이슈 대상 금지(404).
 - parent. (1) 단일 부모(컬럼), (2) self-parent 금지(422), (3) 조상 체인 acyclic(409), (4) 소프트삭제 이슈 부모 금지(404).
 - **hierarchy_level 위계 — 강제 안 함(Maxi 확정, Phase B).** 구조적 무결성(단일 부모·acyclic·self 금지)만 강제. 타입 계층 위계 규칙(부모 level > 자식)은 Subtask/issue-type 후속 FR로 이연(FR-IS-02 'parent_id 강제 이연' 부합).
 
@@ -147,4 +147,4 @@ CREATE INDEX idx_issues_parent_id ON issues(parent_id);
 
 ✅ 통과 (1회 iteration). 직접 기술 스펙 작성(well-specified FR — office-hours 대신, 메모리 bts-spec-office-hours-mismatch). 발견·해소한 gap.
 - parent-child hierarchy_level 위계 강제 여부 → Maxi 확정 B(구조만 강제, 위계 이연).
-- 자기 결정 항목(선례·범위 기반): blocks 순환=전환 탐색 409, 중복=409, self=422, target/소프트삭제=404, cross-project 허용, relates 대칭 조회 union, 이력·알림 미발행(비목표), 권한 placeholder resolver(component 선례), API에 PATCH /parent 추가(ADR deviation, product D4 보강).
+- 자기 결정 항목(선례·범위 기반): blocks 순환=전이 탐색 409, 중복=409, self=422, target/소프트삭제=404, cross-project 허용, relates 대칭 조회 union, 이력·알림 미발행(비목표), 권한 placeholder resolver(component 선례), API에 PATCH /parent 추가(ADR deviation, product D4 보강).

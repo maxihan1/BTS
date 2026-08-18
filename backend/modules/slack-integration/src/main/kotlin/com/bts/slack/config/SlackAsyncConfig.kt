@@ -38,7 +38,7 @@ private const val DEFAULT_COMMAND_QUEUE_CAPACITY = 100
  *
  * ## 왜 unfurl과 slash가 executor를 공유하지 않는가
  * [SLACK_UNFURL_EXECUTOR_BEAN_NAME]은 이름이 unfurl 전용이라 slash에 재사용하면 의미가 어긋나고,
- * unfurl 트래픽 폭주가 slash 응답 지연으로 전환(noisy neighbor)되는 것도 막는다.
+ * unfurl 트래픽 폭주가 slash 응답 지연으로 전이(noisy neighbor)되는 것도 막는다.
  *
  * ## 왜 이 클래스가 [SlackUnfurlService][com.bts.slack.unfurl.SlackUnfurlService]/
  * [SlashCommandService][com.bts.slack.command.SlashCommandService]와 분리되어 있는가
@@ -83,7 +83,7 @@ class SlackAsyncConfig(
      * (FR-SL-04 Task 7).
      *
      * [slackUnfurlExecutor]와 스레드 자원을 공유하지 않는다 — 이름이 unfurl 전용이라 slash에
-     * 재사용하면 의미가 어긋나고, unfurl 트래픽 폭주가 slash 응답 지연으로 전환되는 것도 막는다.
+     * 재사용하면 의미가 어긋나고, unfurl 트래픽 폭주가 slash 응답 지연으로 전이되는 것도 막는다.
      * 골격(경계 pool + [CallerRunsPolicy] 배압)은 [slackUnfurlExecutor]와 동일하며, core/max/queue는
      * `bts.slack.command-executor.*` 프로퍼티로 별도 조정 가능하다(미설정 시 안전한 기본값).
      */
