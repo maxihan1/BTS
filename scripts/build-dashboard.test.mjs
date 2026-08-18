@@ -562,6 +562,38 @@ test('TODOS.md — 펜스 안에 `## ` 헤딩이 없다 (다른 두 파서를 �
   );
 });
 
+test('renderTodos — 본문 코드블록 안의 두 줄 예시는 접기 밖으로 승격되지 않는다', () => {
+  // ★B2 회귀 고정. `splitPlainLines` 가 펜스를 안 보면 코드블록 안의 예시가 뜯겨 나와
+  //   그 항목의 진짜 두 줄인 척 렌더된다 — 이 PR 이 parseTodos 에서 고친 맹목을 새 코드에
+  //   다시 심었던 자리다. 고쳐 놓고 지키는 테스트를 안 만들어 뮤테이션 ⑩ 이 GREEN 이었다.
+  const md = [
+    '## ⬜ 도구 — 서식을 설명하는 항목',
+    '',
+    '**쉬운 말.** 진짜 쉬운 말이다 충분히 길게 적은 문장이다.',
+    '',
+    '**방치하면.** 진짜 위험이다 충분히 길게 적은 문장이다.',
+    '',
+    '**무엇.** 서식은 아래와 같다.',
+    '',
+    '```',
+    '**쉬운 말.** 이건 코드블록 안의 예시일 뿐이다.',
+    '```',
+    '',
+  ].join('\n');
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+
+  const plainStart = html.indexOf('todo-plain');
+  const plainEnd = html.indexOf('<details');
+  const plain = html.slice(plainStart, plainEnd);
+  assert.ok(plain.includes('진짜 쉬운 말이다'), '진짜 두 줄이 접기 밖에 없다');
+  assert.ok(
+    !plain.includes('코드블록 안의 예시'),
+    '코드블록 안 예시가 접기 밖으로 승격됐다 — 펜스 게이트가 없다',
+  );
+  const body = html.slice(html.indexOf('todo-body'), html.indexOf('</details>'));
+  assert.ok(body.includes('코드블록 안의 예시'), '예시가 기술 상세에서 사라졌다');
+});
+
 test('renderTodos — 해소 항목은 카테고리로 묶지 않는다 (계약 대상 밖)', () => {
   // 해소 76건에 두 줄을 소급 작성하지 않기로 했으므로(NFR N2) 카테고리 분류도 안 한다.
   const md = `## ✅ apps/web — 이미 고친 것 (해소 2026-01-01 · #1)\n\n**무엇.** 본문.\n`;

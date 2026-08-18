@@ -210,10 +210,32 @@ describe('TODOS.md — 비개발자 계약', () => {
     );
   });
 
+  test('영역 → 카테고리 배정이 기대와 정확히 일치한다', () => {
+    // ★기대값을 **검사 대상 상수에서 읽으면 동어반복**이다. 매핑에서 파생한 첫 시도가 정확히
+    //   그랬고, 값을 바꿔도 초록이었다(2026-08-18 뮤테이션 ⑦ 실측). 배정은 사람 판단이라
+    //   기계 오라클이 없으므로, 이 저장소의 처방대로 **두 번째 목록**을 여기 두고 양방향 대조한다.
+    //   표를 의도적으로 바꾸려면 이 목록도 같은 커밋에서 고쳐라.
+    const EXPECTED: Record<string, string> = {
+      'apps/web': CATEGORIES.screen.name,
+      'issue-tracking': CATEGORIES.feature.name,
+      'search-export-import': CATEGORIES.feature.name,
+      '도구': CATEGORIES.guard.name,
+      '워크플로우': CATEGORIES.guard.name,
+      '인프라': CATEGORIES.infra.name,
+      '문서': CATEGORIES.docs.name,
+    };
+    const actual = Object.fromEntries(
+      Object.entries(AREA_CATEGORIES as Record<string, { name: string }>).map(([k, v]) => [k, v.name]),
+    );
+    assert.deepEqual(
+      actual,
+      EXPECTED,
+      '영역 → 카테고리 배정이 기대와 다르다 — 「개발자 말 → 사람 말」 번역이 이 기능의 본체다.',
+    );
+  });
+
   test('실파일 렌더에서 영역이 **배정된 카테고리 이름 아래** 나온다', () => {
-    // ★키 집합 차집합만으로는 **값**이 무보호다. 실측(2026-08-18 리뷰) — 매핑 7개 중 4개를
-    //   다른 카테고리로 바꿔도 전부 초록이었다. 「개발자 말 → 사람 말」 번역이 이 기능의
-    //   본체인데 그 절반 이상이 장식이던 것이다. 기대값을 손으로 적지 않고 매핑에서 파생한다.
+    // 위 단언이 「배정이 맞는가」를, 이것이 「화면에 그대로 반영되는가」를 본다.
     const html = renderTodos(parseTodos(fs.readFileSync(LEDGER, 'utf8'))) as string;
     const catOf = new Map<string, string>();
     for (const todo of contractedTodos()) {
