@@ -339,6 +339,37 @@ describe('TODOS.md — 비개발자 계약', () => {
     );
   });
 
+  test('`TODOS.md` 머리에 절 배치 규칙과 매핑 정본 포인터가 적혀 있다', () => {
+    // PR #390 이 파일을 카테고리 절로 재배열하면서 **새 규칙**이 생겼다 — 항목은 아무 데나
+    // 적는 것이 아니라 자기 영역이 가리키는 절 안에 둬야 한다. 규칙을 판별식에만 두면
+    // 다음 사람은 CI red 를 보고서야 안다.
+    //
+    // ★**카테고리 이름 5종을 머리에 적는지는 묻지 않는다.** 적으면 그것이 사본이 되고,
+    //   상수를 고쳐도 머리는 옛 이름을 계속 보여 준다. 대신 **매핑 정본을 가리키는지**를
+    //   본다 — 정본 이름이 바뀌면 이 단언이 red 를 내서 포인터가 썩지 않는다.
+    const src = fs.readFileSync(LEDGER, 'utf8');
+    const lines = src.split('\n');
+    let inFence = false;
+    let firstItem = -1;
+    for (const [i, line] of lines.entries()) {
+      if (line.startsWith('```')) { inFence = !inFence; continue; }
+      if (!inFence && /^## [⬜📌✅] /.test(line)) { firstItem = i; break; }
+    }
+    assert.ok(firstItem > 0, '첫 항목 헤딩을 찾지 못했다 — 이 단언이 공허해진다.');
+    const head = lines.slice(0, firstItem).join('\n');
+
+    assert.ok(
+      head.includes('AREA_CATEGORIES'),
+      '머리에 영역 → 절 매핑의 정본(`AREA_CATEGORIES`)을 가리키는 포인터가 없다.\n' +
+        '새로 등재하는 사람이 「어느 절에 넣나」를 볼 곳이 여기뿐이다.\n' +
+        '★카테고리 이름을 여기 나열하지 말 것 — 사본은 상수와 갈라진다.',
+    );
+    assert.ok(
+      head.includes('todos-structure-contract'),
+      '머리에 절 배치를 강제하는 판별식 이름이 없다 — red 를 만난 사람이 어디를 볼지 모른다.',
+    );
+  });
+
   test('두 줄의 내용이 비어 있지 않다', () => {
     const thin: string[] = [];
 
