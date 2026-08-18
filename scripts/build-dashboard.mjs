@@ -239,18 +239,43 @@ const TODO_HEADING_RE = new RegExp(
   `^##\\s+(${Object.keys(TODO_STATUS_BY_MARKER).join('|')})\\s+(.+?)\\s*$`,
 );
 
+/**
+ * 코드펜스 여닫이 줄인가.
+ *
+ * ★이 파일은 fence 를 **두 곳**에서 본다 — `parseTodos` 의 H1 판정과 `mdToHtml` 의
+ * 코드블록 렌더. 각자 적으면 한 파일 안에 두 목록이 생기고, 실제로 `parseTodos` 만
+ * fence 를 몰라서 **코드 주석을 문서 제목으로 읽는** 결함이 있었다
+ * (2026-08-18 실측 · `TODOS.md:455` bash 주석 · `:753` Kotlin 주석 — 두 항목의 본문이
+ * 그 지점에서 잘려 화면에서 사라지고 있었다). 그래서 판정을 여기 한 벌만 둔다.
+ *
+ * 백틱만 본다. 물결 펜스(`~~~`)는 `TODOS.md` 에 0건이고 그 전제를
+ * `build-dashboard.test.mjs` 가 단언으로 고정한다 — 쓰려면 여기를 먼저 고쳐야 red 가 풀린다.
+ */
+function isFenceLine(line) {
+  return line.startsWith('```');
+}
+
 export function parseTodos(content) {
   // TODOS.md 는 `## <마커> <제목>` 단위 섹션의 나열이다. 마커가 상태, 그 뒤 전부가 본문.
   const items = [];
   let current = null;
+  let inFence = false;
   for (const line of content.split('\n')) {
+    if (isFenceLine(line)) {
+      inFence = !inFence;
+      if (current) current.body.push(line);
+      continue;
+    }
     const m = line.match(TODO_HEADING_RE);
     if (m) {
       if (current) items.push(current);
       current = { status: TODO_STATUS_BY_MARKER[m[1]], title: m[2].trim(), body: [] };
       continue;
     }
-    if (line.startsWith('# ')) { if (current) items.push(current); current = null; continue; }
+    // ★`# ` 는 **펜스 밖에서만** 문서 구분자다. 안에서는 코드 주석이다.
+    //   `## <마커>` 쪽에 같은 게이트를 안 단 것은 의도다 — 펜스 안 `## ` 은 실측 0건이라
+    //   지금 고치면 가설로 섹션 수를 바꾸는 것이 된다. 그 전제도 판별식이 고정한다.
+    if (!inFence && line.startsWith('# ')) { if (current) items.push(current); current = null; continue; }
     if (current) current.body.push(line);
   }
   if (current) items.push(current);
