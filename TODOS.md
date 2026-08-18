@@ -1510,7 +1510,7 @@ SPA(`location /`)와 백엔드 프록시(`location ~ ^/(api|...)`)가 같은 오
   e2e `E2E-5 S10` 을 **함께** 제거해야 죽은 코드가 안 남는다. 처방 B(GET 의 자동 배정 = 부수효과 있는 GET 재고)는
   계약 스냅샷 8 endpoint 전부에 영향 → 별도 스펙 작업.
 
-## ⬜ personalization — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 **의도된 대가** · 미착수 · T1)
+## ⬜ apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 **의도된 대가** · 미착수 · T1)
 
 > **⚠️ 이건 결함이 아니라 결정이다.** 「고쳐야 할 버그」로 오인해 조용히 되돌리지 말 것.
 
@@ -3708,7 +3708,7 @@ KDoc 도 같은 서술이고, 프론트의 도달 불가 문구 2건이 여기�
 
 ---
 
-## ⬜ 인프라 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수 · T2)
+## ⬜ 도구 — Obsidian 동기화가 「자동」이라 적혀 있으나 그 스크립트가 존재하지 않는다 (신규 · 미착수 · T2)
 
 **무엇.** `Maxi_wiki/BTS/_index.md:59` 는 「**Repo → Obsidian** (단방향, 자동) — 머지 시 post-merge hook 이
 `scripts/workflow/sync-obsidian.ts` 실행」이라 적는다. **그 파일은 저장소에 없다**
@@ -4139,7 +4139,7 @@ CI 빨강」인데 여기는 **「로컬 빨강 → CI 초록」**이라 더 나
 
 ---
 
-## ⬜ apps/web(E2E) — `workflow-scheme-assignment` E2E-5 가 **전량 실행에서만** strict mode 위반으로 죽는다 (선재 · 미착수 · T1)
+## ⬜ apps/web — `workflow-scheme-assignment` E2E-5 가 **전량 실행에서만** strict mode 위반으로 죽는다 (선재 · 미착수 · T1)
 
 **무엇.** `apps/web/e2e/workflow-scheme-assignment.spec.ts:45` 의
 `expect(page.getByText('소프트웨어 개발 기본 스킴')).toBeVisible()` 이 **2개 요소에 매칭**된다.
@@ -4504,7 +4504,7 @@ fail-fast 하는데 confirm 은 안 한다 — **같은 BC 안에서 두 진입�
 
 ---
 
-## ⬜ 디자인 — `DESIGN.md` 에 `aria-live` 정책이 없다 (신규 · 미착수 · T0)
+## ⬜ 문서 — `DESIGN.md` 에 `aria-live` 정책이 없다 (신규 · 미착수 · T0)
 
 **무엇.** `DESIGN.md` 는 `role="alert"` 만 다룬다(`:497` 코드 예시 · `:505` 「에러 메시지가
 동적으로 나타날 때 즉시 알림」). **`role="status"` 와 `aria-live` 는 전수 grep 0건**이고,
