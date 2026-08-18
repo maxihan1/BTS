@@ -111,10 +111,24 @@ describe('TODOS.md — 대량 이동 무손실 대조', () => {
     assert.equal(r.gained.length, 1, '본문이 바뀐 항목은 사라진 것 + 생긴 것 양쪽에 나와야 한다')
   })
 
-  test('양성 ③ — 제목 1글자만 바꿔도 잡는다', () => {
+  test('양성 ③ — 제목 1글자만 바꾸면 개명으로 잡는다 (소실 아님)', () => {
+    // 제목만 바뀌고 본문이 같으면 그것은 소실이 아니라 개명이다. 소실로 세면
+    // 정당한 제목 수정이 전부 red 가 되어 판별식이 마찰 장치로 전락한다.
     const after = BASE.replace('첫 번째', '첫 번쨰')
     const r = compareTodoIntegrity(BASE, after)
-    assert.equal(r.lost.length, 1, '제목 변경을 못 잡았다')
+    assert.deepEqual(r.lost, [], '제목만 바뀐 것을 소실로 셌다')
+    assert.deepEqual(r.gained, [], '제목만 바뀐 것을 신규로 셌다')
+    assert.equal(r.renamed.length, 1, '제목 변경을 개명으로 잡지 못했다')
+    assert.match(r.renamed[0], /첫 번째.*→.*첫 번쨰/, '개명 보고가 이전 → 이후를 보여주지 않는다')
+  })
+
+  test('양성 ⑥ — 본문이 다르면 개명으로 접지 않는다 (관대함 차단)', () => {
+    // 개명 인식이 본문까지 안 보면 「제목이 바뀌고 본문도 통째로 갈린」 항목이
+    // 조용히 개명으로 접힌다. 그러면 소실 검사가 무력해진다.
+    const after = BASE.replace('첫 번째', '첫 번쨰').replace('**또.** 본문 A 둘째 줄.\n', '')
+    const r = compareTodoIntegrity(BASE, after)
+    assert.deepEqual(r.renamed, [], '본문이 다른데 개명으로 접었다 — 소실이 숨는다')
+    assert.equal(r.lost.length, 1, '본문까지 바뀐 항목을 소실로 잡지 못했다')
     assert.equal(r.gained.length, 1)
   })
 
@@ -172,11 +186,16 @@ describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
     }
     const current = fs.readFileSync(LEDGER, 'utf-8')
     const r = compareTodoIntegrity(base.content, current)
+    if (r.renamed.length > 0) {
+      // 개명은 정당한 편집이라 통과시키되, **무엇이 바뀌었는지는 반드시 보인다.**
+      // 조용히 접으면 제목 변경이 기록 없이 지나가고, 제목은 장부의 조인 키다.
+      for (const s of r.renamed) console.log(`[F2b] 개명 — ${s}`)
+    }
     assert.deepEqual(
       r.lost,
       [],
       `merge-base 에 있던 부채 항목이 사라졌다 — 이 저장소는 항목을 지우지 않고 ✅ 로 바꾼다.\n` +
-        `제목을 고쳤다면 그것도 여기 나온다(사라진 것 + 생긴 것 한 쌍).\n\n` +
+        `제목만 바뀐 것은 개명으로 접히므로 여기 나오지 않는다. 여기 나온 것은 본문까지 사라진 것이다.\n\n` +
         r.lost.map((s: string) => `  - ${s}`).join('\n'),
     )
   })

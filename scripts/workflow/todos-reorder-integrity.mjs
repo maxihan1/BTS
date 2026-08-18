@@ -65,16 +65,44 @@ function label(fingerprint) {
  * ★기대값은 호출자가 넘긴 `before` 다. 대상 파일에서 파생시키지 않는다 —
  * 파생시키면 무엇을 바꿔도 둘이 함께 변해 영원히 초록이 된다
  * (`[[expected-value-derived-from-subject-is-a-tautology]]`).
+ *
+ * ★**개명은 소실이 아니다.** 한쪽에서 사라지고 다른 쪽에서 생긴 항목 중 **상태와 본문이
+ * 똑같은** 것은 제목만 바뀐 것이다. 그것까지 소실로 세면 정당한 제목 수정이 전부 red 가
+ * 되고, 판별식은 「고칠 때마다 판별식을 고쳐야 하는」 마찰 장치로 전락한다.
+ * 개명을 접는 조건이 **본문 동일**이라 관대하지 않다 — 본문이 한 글자라도 다르면
+ * 그대로 `lost` 와 `gained` 양쪽에 남는다.
+ *
+ * 제목이 장부의 조인 키라는 계약은 `debt-ledger-mapping.test.ts` 가 마스터 계획과 대조해
+ * 따로 본다. 이 파일의 책임은 **내용이 사라졌는가** 하나다.
  */
 export function compareTodoIntegrity(before, after) {
   const a = parseTodos(before).map(todoFingerprint);
   const b = parseTodos(after).map(todoFingerprint);
-  return {
-    lost: multisetDiff(a, b).map(label),
-    gained: multisetDiff(b, a).map(label),
-    beforeCount: a.length,
-    afterCount: b.length,
+  const lostRaw = multisetDiff(a, b);
+  const gainedRaw = multisetDiff(b, a);
+
+  // (상태, 본문) 이 같은 lost/gained 를 짝지어 개명으로 뺀다.
+  const bodyKey = (fp) => {
+    const [status, , body] = JSON.parse(fp);
+    return JSON.stringify([status, body]);
   };
+  const pool = new Map();
+  for (const g of gainedRaw) {
+    const k = bodyKey(g);
+    if (!pool.has(k)) pool.set(k, []);
+    pool.get(k).push(g);
+  }
+  const lost = [];
+  const renamed = [];
+  for (const l of lostRaw) {
+    const bucket = pool.get(bodyKey(l));
+    if (bucket && bucket.length > 0) renamed.push(`${label(l)}  →  ${label(bucket.shift())}`);
+    else lost.push(label(l));
+  }
+  const gained = [];
+  for (const [, bucket] of pool) for (const g of bucket) gained.push(label(g));
+
+  return { lost, gained, renamed, beforeCount: a.length, afterCount: b.length };
 }
 
 /**
@@ -138,6 +166,8 @@ function main(argv) {
   for (const s of items.lost) console.log(`    - ${s}`);
   console.log(`  생긴 항목 ${items.gained.length}건`);
   for (const s of items.gained) console.log(`    + ${s}`);
+  console.log(`  개명 ${items.renamed.length}건 (상태·본문 동일)`);
+  for (const s of items.renamed) console.log(`    ~ ${s}`);
   console.log(`줄    구조 차이(H1·빈 줄) 제외 — 사라진 ${editedLost.length} · 생긴 ${editedGained.length}`);
   for (const s of editedLost) console.log(`    - ${JSON.stringify(s)}`);
   for (const s of editedGained) console.log(`    + ${JSON.stringify(s)}`);
@@ -145,8 +175,14 @@ function main(argv) {
     `줄    구조 차이 — 사라진 ${lines.lost.length - editedLost.length} · 생긴 ${lines.gained.length - editedGained.length}`,
   );
 
+  // ★순수 이동 판정에는 개명도 0 이어야 한다. 개명은 정당한 편집이지 이동이 아니다 —
+  //   F2b(상시 소실 검사)는 개명을 허용하지만, 이동 커밋의 검증은 허용하지 않는다.
   const clean =
-    items.lost.length === 0 && items.gained.length === 0 && editedLost.length === 0 && editedGained.length === 0;
+    items.lost.length === 0 &&
+    items.gained.length === 0 &&
+    items.renamed.length === 0 &&
+    editedLost.length === 0 &&
+    editedGained.length === 0;
   console.log(clean ? '\n순수 이동이다 — 차집합 0.' : '\n★이동이 아니라 편집이 섞였다.');
   return clean ? 0 : 1;
 }
