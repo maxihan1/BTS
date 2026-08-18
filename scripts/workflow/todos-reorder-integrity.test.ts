@@ -197,6 +197,31 @@ describe('TODOS.md — 대량 이동 무손실 대조', () => {
     assert.equal(r.clean, true, '명시 승인했는데도 통과시키지 않는다')
   })
 
+  test('본문만 바뀌면 **편집**으로 접히고 소실이 아니다', () => {
+    // 2026-08-18 실측 — Transition 용어 전수 교체 PR 이 이것을 밟았다. 항목 본문 안의 낱말
+    // 하나를 고쳤을 뿐인데 F2b 가 「부채 항목이 사라졌다」로 red 를 냈다. 개명(제목 축)만
+    // 접고 편집(본문 축)을 안 접으면 **어떤 PR 도 부채 항목 본문을 고칠 수 없다**.
+    const after = BASE.replace('**무엇.** 본문 B.', '**무엇.** 본문 B — 2026-08-18 실측으로 갱신.')
+    const r = compareTodoIntegrity(BASE, after)
+    assert.deepEqual(r.lost, [], '본문 편집을 소실로 셌다 — 정당한 갱신이 전부 red 가 된다')
+    assert.deepEqual(r.gained, [], '본문 편집을 신규 항목으로 셌다')
+    assert.equal(r.edited.length, 1, '편집이 목록에 안 남았다 — 조용히 접으면 삭제와 구분되지 않는다')
+  })
+
+  test('음성 대조군 — 제목과 본문이 **함께** 바뀌면 접지 않는다 (소실 1 + 생성 1)', () => {
+    // 둘 다 바뀌면 같은 항목이라는 증거가 없다. 접으면 「지우고 새로 썼다」가 통과한다.
+    const after = BASE.replace('## ⬜ 도구 — 두 번째', '## ⬜ 도구 — 다른 것').replace('**무엇.** 본문 B.', '**무엇.** 본문 Z.')
+    const r = compareTodoIntegrity(BASE, after)
+    assert.equal(r.lost.length, 1, '제목·본문이 모두 바뀐 것을 접었다')
+    assert.equal(r.gained.length, 1)
+    assert.equal(r.edited.length, 0)
+  })
+
+  test('양성 ⑨ — 본문 편집은 순수 이동이 아니다', () => {
+    const after = BASE.replace('**무엇.** 본문 B.', '**무엇.** 본문 B 갱신.')
+    assert.equal(judgePureMove(BASE, after).clean, false, '본문을 고쳤는데 순수 이동이라고 판정했다')
+  })
+
   test('양성 ⑧ — 항목 밖 산문 1줄이 바뀌면 순수 이동이 아니다 (줄 축 단독)', () => {
     // 항목 밖 줄은 `parseTodos` 가 버리므로 항목 축이 못 본다. 이 축이 `isStructuralLine`
     // 의 유일한 판별자다 — 항목 안 줄로 시험하면 항목 축이 대신 red 를 내서
@@ -259,6 +284,11 @@ describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
       // 개명은 정당한 편집이라 통과시키되, **무엇이 바뀌었는지는 반드시 보인다.**
       // 조용히 접으면 제목 변경이 기록 없이 지나가고, 제목은 장부의 조인 키다.
       for (const s of r.renamed) console.log(`[F2b] 개명 — ${s}`)
+    }
+    if (r.edited.length > 0) {
+      // 본문 편집도 같은 이유로 **반드시 보인다.** 조용히 접으면 「실측을 지우고 다시 썼다」가
+      // 기록 없이 지나간다. 접는 조건(제목 동일 + 본문 줄 수 유지)은 판별기 쪽에 있다.
+      for (const s of r.edited) console.log(`[F2b] 본문 편집 — ${s}`)
     }
     assert.deepEqual(
       r.lost,
