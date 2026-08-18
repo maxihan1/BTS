@@ -13,6 +13,22 @@ import {
   TODO_STATUS_BY_MARKER,
 } from './build-dashboard.mjs';
 
+/**
+ * 실제 `TODOS.md` 를 읽는다.
+ *
+ * 경로 조립을 테스트마다 다시 적지 않는다 — 아래 실파일 단언이 여럿이라 사본을 두면
+ * 그것들이 서로 갈라진다. 기존 단건 테스트(`마커 수와 섹션 수가 일치한다`)는
+ * 인라인 조립을 그대로 두었다 — 이 PR 이 건드리지 않은 코드다.
+ */
+async function readTodosFile() {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const url = await import('node:url');
+  const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+  const file = path.join(repoRoot, 'TODOS.md');
+  return { content: fs.readFileSync(file, 'utf-8'), file };
+}
+
 test('parsePlanFile — 4단계 마커 4종(완료/진행중/차단/미진행) 정확히 인식', () => {
   const md = `# issue-tracking BC
 
@@ -252,6 +268,159 @@ test('renderTodos — 선언된 모든 상태가 렌더 그룹을 갖는다 (파
     assert.ok(html.includes(`항목${i} 제목`), `${t.status} 항목이 렌더 결과에 없다`);
     assert.ok(html.includes(`본문${i} 내용`), `${t.status} 본문이 렌더 결과에 없다`);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 코드펜스 안의 `# ` — 파서가 H1 로 오인해 항목 본문을 그 자리에서 자른다
+//
+// 왜. `parseTodos` 는 `line.startsWith('# ')` 를 만나면 항목을 닫는다. 코드펜스를
+// 추적하지 않으므로 **코드블록 안의 bash·Kotlin 주석**이 H1 로 읽힌다.
+// 2026-08-18 실측 — `TODOS.md:455`(`# 비-기본 권한 스킴을 만드는 프로덕션 쓰기 경로`) ·
+// `:753`(`# 생성자 (L87-91) …`) 두 곳이 항목 본문을 절단하고 있었다. 화면에서는
+// 「그 아래가 통째로 없다」로 보이고, 아무 판정도 그것을 세지 않았다.
+//
+// ★같은 파일 `mdToHtml` 은 fence 를 이미 안다(`if (line.startsWith('```'))`).
+//   한 파일 안에서 fence 판정이 갈려 있던 것이 이 결함의 뿌리다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('parseTodos — 코드펜스 안의 `# ` 는 항목을 자르지 않는다', () => {
+  const md = [
+    '# TODOS',
+    '',
+    '## ⬜ 인프라 — 펜스 안에 주석이 있는 항목',
+    '',
+    '**무엇.** 아래 코드블록에 `#` 주석이 있다.',
+    '',
+    '```',
+    '# 이것은 bash 주석이지 문서 제목이 아니다',
+    'grep -rn "foo" .',
+    '```',
+    '',
+    '**펜스 뒤 본문.** 이 문장이 사라지면 절단된 것이다.',
+    '',
+  ].join('\n');
+
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 1, '펜스 안 주석이 항목을 쪼갰다');
+  assert.ok(
+    todos[0].body.includes('펜스 뒤 본문'),
+    '펜스 안 `# ` 에서 본문이 잘렸다 — 그 아래가 화면에서 사라진다',
+  );
+});
+
+test('parseTodos — 펜스 **밖**의 `# ` 는 여전히 항목을 닫는다 (음성 대조군)', () => {
+  // 과잉 수정 방지. fence 추적이 `# ` 판정을 통째로 없애 버리면 문서 구분자가
+  // 항목 본문으로 흡수돼 반대 방향 사고가 난다.
+  const md = [
+    '# TODOS',
+    '',
+    '## ⬜ 인프라 — 앞 항목',
+    '',
+    '**무엇.** 본문.',
+    '',
+    '# 문서 구분자',
+    '',
+    '구분자 뒤 서문은 어느 항목에도 속하지 않는다.',
+    '',
+  ].join('\n');
+
+  const todos = parseTodos(md);
+  assert.equal(todos.length, 1);
+  assert.ok(!todos[0].body.includes('구분자 뒤 서문'), '펜스 밖 `# ` 가 항목을 안 닫았다');
+});
+
+test('TODOS.md — 펜스 안 `# ` 로 절단된 항목이 0 이다 (실파일 회귀 고정)', async () => {
+  const { content } = await readTodosFile();
+  const lines = content.split('\n');
+
+  // 펜스 안에 있는 `# ` 줄을 실측한다. 이 줄들은 항목을 자르면 안 된다.
+  let inFence = false;
+  const fencedHashLines = [];
+  for (const [i, line] of lines.entries()) {
+    if (line.startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence && line.startsWith('# ')) fencedHashLines.push(i + 1);
+  }
+
+  const todos = parseTodos(content);
+  const joined = todos.map((t) => t.body).join('\n');
+  const missing = fencedHashLines.filter((ln) => {
+    const after = lines[ln]; // 그 주석 바로 다음 줄이 본문에 남아 있는가
+    return after && after.trim().length > 0 && !joined.includes(after.trim());
+  });
+
+  assert.deepEqual(
+    missing,
+    [],
+    `펜스 안 \`# \` 뒤 본문이 사라진 줄: ${missing.join(', ')} — 파서가 코드 주석을 H1 로 읽었다.`,
+  );
+});
+
+test('TODOS.md — 코드펜스 열림/닫힘이 짝수다 (홀수면 문서가 통째로 사라진다)', async () => {
+  // ★critical gap. 펜스가 홀수 개면 그 아래 전부가 코드로 읽혀 화면에서 조용히 없어진다.
+  //   테스트도 오류 처리도 없고 사용자는 「원래 없었나」로 읽는다. 막는 비용이 이 한 줄이다.
+  const { content } = await readTodosFile();
+  const fences = content.split('\n').filter((l) => l.startsWith('```')).length;
+  assert.equal(fences % 2, 0, `코드펜스가 ${fences}개(홀수)다 — 닫히지 않은 블록이 있다.`);
+});
+
+test('TODOS.md — 물결 펜스(~~~)를 쓰지 않는다 (파서 전제 고정)', async () => {
+  // 파서는 백틱 펜스만 추적한다. 2026-08-18 실측 기준 물결 펜스는 0건이고, 그 전제가
+  // 조용히 낡지 않도록 못 박는다. 물결을 쓰려면 파서를 먼저 고쳐라.
+  const { content } = await readTodosFile();
+  const tildes = content.split('\n').filter((l) => l.startsWith('~~~')).length;
+  assert.equal(tildes, 0, `물결 펜스 ${tildes}줄 — 파서가 추적하지 않는 서식이다.`);
+});
+
+test('TODOS.md — 펜스 안에 `## ` 헤딩이 없다 (파서 전제 고정)', async () => {
+  // `parseTodos` 는 `# ` 에만 fence 게이트를 달았다. 펜스 안 `## <마커>` 는 실측 0건이라
+  // 지금 고치면 가설로 섹션 수를 바꾸는 것이 된다. 대신 그 전제를 여기서 못 박는다 —
+  // 예시로 `## ⬜ …` 를 코드블록에 넣는 순간 유령 섹션이 생기고 이 단언이 먼저 죽는다.
+  const { content } = await readTodosFile();
+  const lines = content.split('\n');
+  let inFence = false;
+  const fenced = [];
+  for (const [i, line] of lines.entries()) {
+    if (line.startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence && /^##\s/.test(line)) fenced.push(i + 1);
+  }
+  assert.deepEqual(fenced, [], `펜스 안 \`## \` 헤딩 줄: ${fenced.join(', ')} — 유령 섹션이 생긴다.`);
+});
+
+test('TODOS.md — 두 파서가 버리는 텍스트에 판정 대상이 없다 (REGRESSION)', async () => {
+  // ★두 파서가 이미 서로 다르게 읽는다.
+  //   `parseTodos`(대시보드)는 `# ` 에서 항목을 닫고,
+  //   `todos-resolved-section-purity.test.ts` 의 `parseSections` 는 `## ` 만 경계로 본다.
+  //   즉 대시보드가 못 보는 본문을 순수성 판별식은 본다 — 두 목록이 서로를 검사하지 않는다.
+  //   통합은 그 테스트의 계약을 바꾸므로 별건이고, 여기서는 **차이가 판정 대상을 삼키지
+  //   않는다**만 강제한다. 삼키면 순수성 판별식과 두 줄 판별식이 동시에 눈이 먼다.
+  const { content } = await readTodosFile();
+  const lines = content.split('\n');
+
+  // `## ` 만 경계로 본 본문 (purity test 의 시야)
+  const bySection = [];
+  let cur = null;
+  for (const text of lines) {
+    if (text.startsWith('## ')) { cur = { body: [] }; bySection.push(cur); continue; }
+    if (cur) cur.body.push(text);
+  }
+  const purityView = bySection.map((s) => s.body.join('\n')).join('\n');
+  const dashboardView = parseTodos(content).map((t) => t.body).join('\n');
+
+  // 차이 = purity 는 보는데 dashboard 는 못 보는 줄
+  const dropped = purityView
+    .split('\n')
+    .filter((l) => l.trim() && !dashboardView.includes(l));
+
+  const loadBearing = dropped.filter((l) =>
+    /^##\s*[⬜📌]|^\s*-\s*[⬜📌]|\*\*쉬운 말\.\*\*|\*\*방치하면\.\*\*/.test(l),
+  );
+
+  assert.deepEqual(
+    loadBearing,
+    [],
+    '대시보드 파서가 버리는 텍스트에 판정 대상(미해결 마커 · 두 줄)이 들어 있다.\n' +
+      `해당 줄: ${loadBearing.join(' | ')}`,
+  );
 });
 
 test('renderTodos — 집계 합이 전체와 맞는다 (어느 상태도 셈에서 빠지지 않는다)', () => {
