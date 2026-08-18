@@ -38,6 +38,7 @@ import {
   CATEGORIES,
   CONTRACTED_STATUSES,
   PLAIN_LINE_RE,
+  TODO_STATUSES,
   UNCLASSIFIED,
 } from '../build-dashboard.mjs';
 
@@ -58,6 +59,35 @@ const PLAIN_LABELS = ['쉬운 말', '방치하면'] as const;
  * 실측 최소의 절반 이하라 「빈칸」만 막고 「무의미」는 못 막는다. 20 으로 올려도 현행 전량 통과다.
  */
 const MIN_CONTENT_LEN = 20;
+
+/**
+ * 항목 헤딩 정규식. 마커 목록은 `TODO_STATUSES` **정본에서 파생**한다.
+ * `[⬜📌✅]` 를 손으로 적으면 네 번째 상태가 생긴 날 이 스캐너만 조용히 옛 목록을 쓴다.
+ */
+const ITEM_HEADING_RE = new RegExp(`^## [${TODO_STATUSES.map((s: { marker: string }) => s.marker).join('')}] `);
+
+/**
+ * 파일 **머리** = 첫 항목 헤딩 앞. 두 가지를 조심한다.
+ *   ① `## ` 로 자르면 머리 안의 소제목(`## 등재 서식`)에서 잘려 서식을 못 본다.
+ *   ② 서식 예시가 **코드펜스 안에** `## ⬜ <영역> — …` 를 보여 주므로, 펜스를 모르면
+ *      그 예시를 첫 항목으로 읽어 머리가 통째로 사라진다(2026-08-18 실측 — 이 테스트가
+ *      바로 그렇게 틀렸다. 같은 fence-맹목이 하루에 세 번 나왔다).
+ *
+ * ★스캐너는 이 파일에 **한 벌만** 둔다. 같은 루프가 두 벌이면 한쪽만 고쳐진 채로 갈라진다.
+ */
+function ledgerHead(src: string): string {
+  const lines = src.split('\n');
+  let inFence = false;
+  let firstItem = -1;
+  for (const [i, line] of lines.entries()) {
+    if (line.startsWith('```')) { inFence = !inFence; continue; }
+    if (!inFence && ITEM_HEADING_RE.test(line)) { firstItem = i; break; }
+  }
+  // 항목을 하나도 못 찾으면 머리가 파일 전체가 되어 **항목 본문의 마커만으로 항상 통과**한다.
+  // 판정이 사라져도 초록인 상태이므로 실패로 둔다.
+  assert.ok(firstItem > 0, '첫 항목 헤딩을 찾지 못했다 — 머리 단언이 공허해진다.');
+  return lines.slice(0, firstItem).join('\n');
+}
 
 /**
  * 카테고리 설명의 최소 길이(공백 제외).
@@ -312,23 +342,7 @@ describe('TODOS.md — 비개발자 계약', () => {
   test('`TODOS.md` 머리에 등재 서식이 적혀 있다', () => {
     // 규율을 판별식에만 두면 다음 사람은 **왜 red 인지** 모른 채 마커만 채운다.
     // 서식은 파일 머리 한 곳에만 둔다 — 사본을 만들면 그 둘이 갈라진다.
-    // 머리 = **첫 항목 헤딩 앞**. 두 가지를 조심한다.
-    //   ① `## ` 로 자르면 머리 안의 소제목(`## 등재 서식`)에서 잘려 서식을 못 본다.
-    //   ② 서식 예시가 **코드펜스 안에** `## ⬜ <영역> — …` 를 보여 주므로, 펜스를 모르면
-    //      그 예시를 첫 항목으로 읽어 머리가 통째로 사라진다(2026-08-18 실측 — 이 테스트가
-    //      바로 그렇게 틀렸다. 같은 fence-맹목이 하루에 세 번 나왔다).
-    const src = fs.readFileSync(LEDGER, 'utf8');
-    const lines = src.split('\n');
-    let inFence = false;
-    let firstItem = -1;
-    for (const [i, line] of lines.entries()) {
-      if (line.startsWith('```')) { inFence = !inFence; continue; }
-      if (!inFence && /^## [⬜📌✅] /.test(line)) { firstItem = i; break; }
-    }
-    // 항목을 하나도 못 찾으면 head 가 파일 전체가 되어 **항목 본문의 마커만으로 항상 통과**한다.
-    // 판정이 사라져도 초록인 상태이므로 실패로 둔다.
-    assert.ok(firstItem > 0, '첫 항목 헤딩을 찾지 못했다 — 이 단언이 공허해진다.');
-    const head = lines.slice(0, firstItem).join('\n');
+    const head = ledgerHead(fs.readFileSync(LEDGER, 'utf8'));
     const absent = PLAIN_LABELS.filter((l) => !head.includes(`**${l}.**`));
 
     assert.deepEqual(
@@ -347,16 +361,7 @@ describe('TODOS.md — 비개발자 계약', () => {
     // ★**카테고리 이름 5종을 머리에 적는지는 묻지 않는다.** 적으면 그것이 사본이 되고,
     //   상수를 고쳐도 머리는 옛 이름을 계속 보여 준다. 대신 **매핑 정본을 가리키는지**를
     //   본다 — 정본 이름이 바뀌면 이 단언이 red 를 내서 포인터가 썩지 않는다.
-    const src = fs.readFileSync(LEDGER, 'utf8');
-    const lines = src.split('\n');
-    let inFence = false;
-    let firstItem = -1;
-    for (const [i, line] of lines.entries()) {
-      if (line.startsWith('```')) { inFence = !inFence; continue; }
-      if (!inFence && /^## [⬜📌✅] /.test(line)) { firstItem = i; break; }
-    }
-    assert.ok(firstItem > 0, '첫 항목 헤딩을 찾지 못했다 — 이 단언이 공허해진다.');
-    const head = lines.slice(0, firstItem).join('\n');
+    const head = ledgerHead(fs.readFileSync(LEDGER, 'utf8'));
 
     assert.ok(
       head.includes('AREA_CATEGORIES'),
