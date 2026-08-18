@@ -30,17 +30,56 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
-import { parseTodos, AREA_CATEGORIES, CONTRACTED_STATUSES } from '../build-dashboard.mjs';
+import {
+  parseTodos,
+  renderTodos,
+  areaOfTitle,
+  AREA_CATEGORIES,
+  CATEGORIES,
+  CONTRACTED_STATUSES,
+  PLAIN_LINE_RE,
+  UNCLASSIFIED,
+} from '../build-dashboard.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LEDGER = path.join(REPO_ROOT, 'TODOS.md');
 const MASTER = path.join(REPO_ROOT, 'docs/plans/2026-08-12-debt24-master.md');
 
-/** 두 줄의 마커. 서식을 바꾸려면 `TODOS.md` 머리의 등재 서식과 **함께** 고쳐야 한다. */
-const PLAIN_MARKERS = ['**쉬운 말.**', '**방치하면.**'] as const;
+/**
+ * 두 줄의 라벨. 마커 **서식**은 여기 적지 않는다 — `PLAIN_LINE_RE` 가 정본이고 이 배열은
+ * 「어느 라벨이 있어야 하는가」만 센다. 서식을 두 번 적으면 렌더러와 갈라진다.
+ */
+const PLAIN_LABELS = ['쉬운 말', '방치하면'] as const;
 
-/** 마커 뒤 내용의 최소 길이(공백 제외). 존재만 보면 빈 문자열이 통과한다. */
-const MIN_CONTENT_LEN = 10;
+/**
+ * 마커 뒤 내용의 최소 길이(공백 제외).
+ *
+ * 실측(2026-08-18) — 현행 56줄의 길이 최소 24 · 중앙값 36 · 최대 64. 하한을 10 으로 두면
+ * 실측 최소의 절반 이하라 「빈칸」만 막고 「무의미」는 못 막는다. 20 으로 올려도 현행 전량 통과다.
+ */
+const MIN_CONTENT_LEN = 20;
+
+/**
+ * 카테고리 설명의 최소 길이(공백 제외).
+ *
+ * 두 줄과 성격이 다르다 — 항목 설명이 아니라 **묶음 이름의 부연**이라 짧은 것이 정상이다.
+ * 실측 — 현행 5종의 길이 13 · 17 · 24 · 26 · 28. 하한을 두 줄과 같은 20 으로 두면
+ * 멀쩡한 설명 2종이 red 가 된다. 임계를 나눈 이유가 그것이다.
+ */
+const MIN_DESC_LEN = 10;
+
+/** 본문에서 라벨별 내용을 **렌더러와 같은 규칙으로** 뽑는다. */
+function plainLinesOf(body: string): Map<string, string> {
+  const found = new Map<string, string>();
+  let inFence = false;
+  for (const line of body.split('\n')) {
+    if (line.startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const m = line.match(PLAIN_LINE_RE as RegExp);
+    if (m) found.set(m[1] as string, (m[2] as string).trim());
+  }
+  return found;
+}
 
 interface Todo {
   status: string;
@@ -52,18 +91,6 @@ interface Todo {
 function contractedTodos(): Todo[] {
   const todos = parseTodos(fs.readFileSync(LEDGER, 'utf8')) as Todo[];
   return todos.filter((t) => (CONTRACTED_STATUSES as readonly string[]).includes(t.status));
-}
-
-/**
- * 제목에서 영역 접두를 뽑는다 — `<영역> — <한 줄 증상>` 의 앞부분.
- *
- * `—`(em dash)가 없으면 `null` 을 낸다. 조용히 「기타」로 떨어지지 않게 호출부가 red 를 낸다.
- */
-function areaOf(title: string): string | null {
-  const idx = title.indexOf('—');
-  if (idx < 0) return null;
-  const area = title.slice(0, idx).trim();
-  return area.length > 0 ? area : null;
 }
 
 /** 마스터 §전수 매핑에서 미해소 행의 `제목 → 영역` 을 뽑는다. */
@@ -100,7 +127,7 @@ describe('TODOS.md — 비개발자 계약', () => {
 
   test('모든 계약 항목이 영역 접두를 갖는다', () => {
     const missing = contractedTodos()
-      .filter((t) => areaOf(t.title) === null)
+      .filter((t) => areaOfTitle(t.title) === null)
       .map((t) => t.title);
 
     assert.deepEqual(
@@ -119,7 +146,7 @@ describe('TODOS.md — 비개발자 계약', () => {
       const key = normalizeKey(todo.title);
       const want = master.get(key);
       if (want === undefined) continue; // 마스터에 없는 항목은 장부 판별식 소관
-      const got = areaOf(todo.title);
+      const got = areaOfTitle(todo.title);
       if (got !== want) mismatched.push(`${key}\n      TODOS 「${got}」 ≠ 마스터 「${want}」`);
     }
 
@@ -135,7 +162,8 @@ describe('TODOS.md — 비개발자 계약', () => {
     const missing: string[] = [];
 
     for (const todo of contractedTodos()) {
-      const absent = PLAIN_MARKERS.filter((m) => !todo.body.includes(m));
+      const found = plainLinesOf(todo.body);
+      const absent = PLAIN_LABELS.filter((l) => !found.has(l));
       if (absent.length > 0) missing.push(`${todo.title}\n      빠진 것: ${absent.join(' · ')}`);
     }
 
@@ -152,7 +180,7 @@ describe('TODOS.md — 비개발자 계약', () => {
     // 아무도 안 쓰는 카테고리가 화면에 빈 묶음으로 남는다(매핑 과잉).
     const actual = new Set(
       contractedTodos()
-        .map((t) => areaOf(t.title))
+        .map((t) => areaOfTitle(t.title))
         .filter((a): a is string => a !== null),
     );
     const mapped = new Set(Object.keys(AREA_CATEGORIES as Record<string, unknown>));
@@ -171,7 +199,7 @@ describe('TODOS.md — 비개발자 계약', () => {
 
   test('모든 카테고리가 이름과 한 줄 설명을 갖는다', () => {
     const thin = Object.entries(AREA_CATEGORIES as Record<string, { name?: string; desc?: string }>)
-      .filter(([, v]) => !v?.name?.trim() || (v?.desc ?? '').replace(/\s/g, '').length < MIN_CONTENT_LEN)
+      .filter(([, v]) => !v?.name?.trim() || (v?.desc ?? '').replace(/\s/g, '').length < MIN_DESC_LEN)
       .map(([k]) => k);
 
     assert.deepEqual(
@@ -179,6 +207,57 @@ describe('TODOS.md — 비개발자 계약', () => {
       [],
       `이름 또는 설명이 빈 카테고리: ${thin.join(', ')}\n` +
         '설명 줄이 없으면 비개발자는 그 묶음이 무엇인지 알 수 없다 — 분류만 있고 뜻이 없다.',
+    );
+  });
+
+  test('실파일 렌더에서 영역이 **배정된 카테고리 이름 아래** 나온다', () => {
+    // ★키 집합 차집합만으로는 **값**이 무보호다. 실측(2026-08-18 리뷰) — 매핑 7개 중 4개를
+    //   다른 카테고리로 바꿔도 전부 초록이었다. 「개발자 말 → 사람 말」 번역이 이 기능의
+    //   본체인데 그 절반 이상이 장식이던 것이다. 기대값을 손으로 적지 않고 매핑에서 파생한다.
+    const html = renderTodos(parseTodos(fs.readFileSync(LEDGER, 'utf8'))) as string;
+    const catOf = new Map<string, string>();
+    for (const todo of contractedTodos()) {
+      const area = areaOfTitle(todo.title);
+      if (area) catOf.set(area, (AREA_CATEGORIES as Record<string, { name: string }>)[area]?.name);
+    }
+
+    const wrong: string[] = [];
+    for (const [area, catName] of catOf) {
+      if (!catName) { wrong.push(`${area} — 매핑 없음`); continue; }
+      const catStart = html.indexOf(`>${catName} <`);
+      if (catStart < 0) { wrong.push(`${area} → 「${catName}」 묶음이 화면에 없다`); continue; }
+      const nextCat = html.indexOf('<h3 class="todo-cat">', catStart + 1);
+      const block = nextCat > 0 ? html.slice(catStart, nextCat) : html.slice(catStart);
+      if (!block.includes(`${area} —`)) wrong.push(`${area} 가 「${catName}」 묶음 안에 없다`);
+    }
+
+    assert.deepEqual(
+      wrong,
+      [],
+      `영역이 배정된 카테고리 아래 없다:\n  ${wrong.join('\n  ')}\n` +
+        'AREA_CATEGORIES 의 값을 바꿔도 초록이면 그 번역은 장식이다.',
+    );
+  });
+
+  test('카테고리 표시 순서가 선언 순서와 같다', () => {
+    // 생성기 주석이 「선언 순서가 곧 화면 표시 순서」라 못 박았는데 그것을 지키는 단언이 없었다.
+    const html = renderTodos(parseTodos(fs.readFileSync(LEDGER, 'utf8'))) as string;
+    const shown = [...html.matchAll(/<h3 class="todo-cat">([^<]+?) </g)].map((m) => (m[1] as string).trim());
+    const declared = Object.values(CATEGORIES as Record<string, { name: string }>).map((c) => c.name);
+    assert.deepEqual(
+      shown,
+      declared.filter((n) => shown.includes(n)),
+      '카테고리가 선언 순서와 다르게 나온다 — 「사용자가 체감하는 것을 먼저」가 무근거가 된다.',
+    );
+  });
+
+  test('실파일 렌더에 `분류 없음` 묶음이 없다', () => {
+    // `UNCLASSIFIED` 는 소실 방지 폴백이고 실데이터에서는 **비어 있어야** 한다.
+    // 그것을 강제하는 단언이 0건이라 생성기 주석의 「판별식이 강제한다」가 거짓이었다.
+    const html = renderTodos(parseTodos(fs.readFileSync(LEDGER, 'utf8'))) as string;
+    assert.ok(
+      !html.includes((UNCLASSIFIED as { name: string }).name),
+      '`분류 없음` 묶음이 떴다 — 영역 접두가 매핑에 없는 항목이 있다.',
     );
   });
 
@@ -198,13 +277,16 @@ describe('TODOS.md — 비개발자 계약', () => {
       if (line.startsWith('```')) { inFence = !inFence; continue; }
       if (!inFence && /^## [⬜📌✅] /.test(line)) { firstItem = i; break; }
     }
-    const head = firstItem > 0 ? lines.slice(0, firstItem).join('\n') : src;
-    const absent = PLAIN_MARKERS.filter((m) => !head.includes(m));
+    // 항목을 하나도 못 찾으면 head 가 파일 전체가 되어 **항목 본문의 마커만으로 항상 통과**한다.
+    // 판정이 사라져도 초록인 상태이므로 실패로 둔다.
+    assert.ok(firstItem > 0, '첫 항목 헤딩을 찾지 못했다 — 이 단언이 공허해진다.');
+    const head = lines.slice(0, firstItem).join('\n');
+    const absent = PLAIN_LABELS.filter((l) => !head.includes(`**${l}.**`));
 
     assert.deepEqual(
       absent,
       [],
-      `머리 설명에 없는 마커: ${absent.join(' · ')}\n` +
+      `머리 설명에 없는 라벨: ${absent.join(' · ')}\n` +
         '새로 등재하는 사람이 서식을 볼 곳이 여기뿐이다.',
     );
   });
@@ -213,12 +295,9 @@ describe('TODOS.md — 비개발자 계약', () => {
     const thin: string[] = [];
 
     for (const todo of contractedTodos()) {
-      for (const marker of PLAIN_MARKERS) {
-        const at = todo.body.indexOf(marker);
-        if (at < 0) continue; // 부재는 위 단언 소관
-        const rest = todo.body.slice(at + marker.length).split('\n\n')[0] ?? '';
-        if (rest.replace(/\s/g, '').length < MIN_CONTENT_LEN) {
-          thin.push(`${todo.title} — ${marker} 내용이 너무 짧다`);
+      for (const [label, content] of plainLinesOf(todo.body)) {
+        if (content.replace(/\s/g, '').length < MIN_CONTENT_LEN) {
+          thin.push(`${todo.title} — 「${label}」 내용이 ${MIN_CONTENT_LEN}자 미만이다`);
         }
       }
     }

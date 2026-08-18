@@ -577,11 +577,11 @@ function mdToHtml(md) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    if (line.startsWith('```')) {
+    if (isFenceLine(line)) {
       flushPara();
       const code = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith('```')) { code.push(lines[i]); i++; }
+      while (i < lines.length && !isFenceLine(lines[i])) { code.push(lines[i]); i++; }
       out.push(`<pre class="md-code">${escapeHtml(code.join('\n'))}</pre>`);
       continue;
     }
@@ -659,8 +659,16 @@ function mdToHtml(md) {
  * 렌더가 그 그룹을 안 그리면 결과는 「파싱은 됐지만 화면에서 사라짐」으로 **동일**하다 —
  * 파서만 고치는 것은 봉합의 절반이다.
  */
-/** 두 줄의 마커. `todos-plain-language-contract.test.ts` 와 같은 문자열을 본다. */
-const PLAIN_LINE_RE = /^\*\*(쉬운 말|방치하면)\.\*\*\s*(.+)$/;
+/**
+ * 두 줄의 **서식 정본**. 렌더러와 판별식이 **같은 인식기**를 쓴다.
+ *
+ * ★export 하는 이유. 종전에는 판별식이 `body.includes('**쉬운 말.**')` 로 부분 문자열만 보고
+ * 렌더러는 줄머리 앵커 + 같은 줄 내용을 요구했다. 그래서 `> **쉬운 말.** …`(인용) ·
+ * `- **쉬운 말.** …`(목록) · 마커 다음 줄에 내용을 두는 세 형태에서 **CI 초록 + 화면 빈칸**이
+ * 동시에 성립했다(2026-08-18 리뷰 2종이 각자 실측). 이 PR 의 존재 이유가 「빠뜨리면 CI 가
+ * 막는다」인데 그 자리에 가짜 그린을 심는 셈이라, 서식 정의를 여기 한 벌만 둔다.
+ */
+export const PLAIN_LINE_RE = /^\*\*(쉬운 말|방치하면)\.\*\*\s*(.+)$/;
 
 /**
  * 본문에서 「쉬운 말」·「방치하면」 두 줄을 **떼어 낸다**.
@@ -673,16 +681,26 @@ function splitPlainLines(body) {
   const easy = [];
   const risk = [];
   const rest = [];
+  let inFence = false;
   for (const line of body.split('\n')) {
-    const m = line.match(PLAIN_LINE_RE);
+    // ★펜스 안의 `**쉬운 말.**` 은 **예시**다. 태우지 않으면 코드블록에서 뜯겨 나와
+    //   그 항목의 진짜 두 줄인 척 접기 밖에 렌더된다 — 이 PR 이 `parseTodos` 에서 고친
+    //   바로 그 맹목을 새 코드에 다시 심은 자리였다(2026-08-18 리뷰 실측).
+    if (isFenceLine(line)) { inFence = !inFence; rest.push(line); continue; }
+    const m = inFence ? null : line.match(PLAIN_LINE_RE);
     if (m) { (m[1] === '쉬운 말' ? easy : risk).push(m[2].trim()); continue; }
     rest.push(line);
   }
   return { easy: easy.join(' '), risk: risk.join(' '), rest: rest.join('\n').trim() };
 }
 
-/** 제목의 영역 접두(`<영역> — …`)를 뽑는다. 없으면 `null`. */
-function areaOfTitle(title) {
+/**
+ * 제목의 영역 접두(`<영역> — …`)를 뽑는다. 없으면 `null`.
+ *
+ * export 하는 이유는 `PLAIN_LINE_RE` 와 같다 — 판별식이 같은 로직을 다시 적으면 둘이 갈라져
+ * 「판별식은 초록인데 화면은 `분류 없음`」이 된다.
+ */
+export function areaOfTitle(title) {
   const idx = title.indexOf('—');
   if (idx < 0) return null;
   const area = title.slice(0, idx).trim();
@@ -705,7 +723,7 @@ export function renderTodos(todos) {
       <div class="todo-head"><span class="todo-icon">${icon}</span><span class="todo-title">${inlineMd(t.title)}</span></div>
       ${plain}
       <details class="todo-item">
-        <summary>기술 상세 (안 봐도 됨)</summary>
+        <summary aria-label="기술 상세 — ${escapeAttr(t.title)}">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body">${mdToHtml(rest)}</div>
       </details>
     </div>`;

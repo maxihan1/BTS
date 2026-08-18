@@ -528,6 +528,40 @@ test('renderTodos — 두 줄이 `<details>` **안에는** 없다 (중복 렌더
   assert.ok(body.includes('기술 본문'), '두 줄을 걷어내면서 기술 본문까지 지웠다');
 });
 
+test('renderTodos — 보류(📌)도 카테고리 경로를 탄다 (실데이터 0건이라 공허한 축을 합성으로 태운다)', () => {
+  // ★실데이터에 📌 가 0건이라 계약·렌더의 보류 축이 통째로 공허했다 —
+  //   `CONTRACTED_STATUSES` 에서 '보류' 를 빼도 전량 초록이었다(2026-08-18 리뷰 실측).
+  //   스펙 E6 이 「보류는 미착수와 같은 의무」라고 못 박았으므로 합성으로 그 경로를 태운다.
+  const md = `## 📌 도구 — 판단 보류 항목\n\n**쉬운 말.** 지금은 고치지 않기로 한 것이다.\n\n**방치하면.** 판단을 다시 하게 되는 날까지 그대로 남는다.\n\n**무엇.** 기술 본문.\n`;
+  const html = renderTodos(parseTodos(`# TODOS\n\n${md}`));
+
+  assert.ok(html.includes(CATEGORIES.guard.name), '보류 항목이 카테고리로 안 묶였다');
+  assert.ok(html.includes(CATEGORIES.guard.desc), '보류 묶음에 카테고리 설명이 없다');
+  assert.ok(html.includes('지금은 고치지 않기로 한 것이다'), '보류 항목의 두 줄이 안 나온다');
+  const body = html.slice(html.indexOf('todo-body'), html.indexOf('</details>'));
+  assert.ok(!body.includes('지금은 고치지 않기로 한 것이다'), '보류 항목도 두 줄이 접기 안에 중복된다');
+});
+
+test('TODOS.md — 펜스 안에 `## ` 헤딩이 없다 (다른 두 파서를 지키는 단언)', async () => {
+  // `parseTodos` 는 펜스 안 `## ` 를 무시하지만 `debt-ledger-mapping.test.ts` 와
+  // `todos-resolved-section-purity.test.ts` 는 **여전히 펜스를 안 본다**. 그 둘을 고치면
+  // 순수성 판별식이 「펜스 안에 숨긴 미해결 마커」를 놓치므로, 파서를 합치는 대신
+  // **입력 쪽에서** 그 모양을 금지한다. 등재 서식의 제목 줄을 코드블록 밖에 둔 이유다.
+  const { content } = await readTodosFile();
+  const lines = content.split('\n');
+  let inFence = false;
+  const fenced = [];
+  for (const [i, line] of lines.entries()) {
+    if (line.startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence && /^##\s/.test(line)) fenced.push(i + 1);
+  }
+  assert.deepEqual(
+    fenced,
+    [],
+    `펜스 안 \`## \` 헤딩 줄: ${fenced.join(', ')} — 펜스를 안 보는 파서 2벌이 유령 항목으로 읽는다.`,
+  );
+});
+
 test('renderTodos — 해소 항목은 카테고리로 묶지 않는다 (계약 대상 밖)', () => {
   // 해소 76건에 두 줄을 소급 작성하지 않기로 했으므로(NFR N2) 카테고리 분류도 안 한다.
   const md = `## ✅ apps/web — 이미 고친 것 (해소 2026-01-01 · #1)\n\n**무엇.** 본문.\n`;
