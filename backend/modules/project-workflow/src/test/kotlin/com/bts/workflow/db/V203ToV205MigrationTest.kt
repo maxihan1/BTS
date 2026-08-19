@@ -109,7 +109,7 @@ class V203ToV205MigrationTest {
                 .migrate()
         }
 
-        /** 남은 마이그레이션을 전부 적용한다. `target` 을 숫자로 고정하면 그 버전이 생기기 전 단계에서 클래스가 통째로 죽는다. */
+        /** 남은 마이그레이션을 전부 적용한다. `target` 을 숫자로 고정하면 해당 마이그레이션이 만들어지기 전 단계에서 클래스가 통째로 죽는다. */
         @JvmStatic
         fun migrateToLatest(jdbcUrl: String) {
             Flyway.configure()
