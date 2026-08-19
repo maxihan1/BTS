@@ -640,6 +640,102 @@ class V203ToV206MigrationTest {
         }
     }
 
+
+    /**
+     * ### 왜 컬럼 축만으로는 부족한가 — V206 이 실증했다
+     *
+     * 위 테스트는 **테이블 → (컬럼명 → 타입)** 만 대조한다. 그래서 `V206` 이 `key` 의 컬럼 UNIQUE 를
+     * 부분 인덱스로 바꿨을 때 **미러를 안 고쳐도 통과**했다 — 컬럼 이름과 타입은 그대로이기 때문이다.
+     * 저장소가 반복해 물린 「판별식이 표의 일부 열만 읽으면 안 읽는 열은 조용히 썩는다」 양식이다.
+     *
+     * 미러가 썩으면 jOOQ 생성물이 **실재하지 않는 UniqueKey** 를 들고 있게 되고, `onConflict` 처럼
+     * 그 메타데이터를 쓰는 쿼리가 런타임에 엇나간다.
+     *
+     * 그래서 대조 축을 둘 더 연다 — **제약**(UNIQUE·CHECK·FK 이름과 종류)과 **인덱스 정의**.
+     */
+    @Test
+    fun `codegen 미러가 제약과 인덱스까지 마이그레이션과 일치한다`() {
+        val mirrorSql =
+            javaClass.getResource("/db/codegen/init_codegen.sql")?.readText()
+                ?: error("db/codegen/init_codegen.sql 이 클래스패스에 없다 — 코드젠 입력이 사라졌다")
+        val mirrorUrl = applyToFreshDatabase("codegen_mirror_constraints", mirrorSql)
+
+        // 미러는 코드젠 입력이라 **project-workflow 가 쓰는 테이블만** 담는다. 마이그레이션 DB 에는
+        // issue-tracking 테이블까지 있으므로 전체 집합을 비교하면 안 된다 — 미러에 있는 테이블로 좁힌다.
+        // (위 컬럼 축 테스트도 `for ((table, _) in mirror)` 로 같은 범위를 쓴다.)
+        val mirrorConstraints = constraintsByTable(mirrorUrl)
+        val migratedConstraints = constraintsByTable(postgres.jdbcUrl)
+        for ((table, expected) in mirrorConstraints) {
+            assertThat(expected)
+                .describedAs("테이블 '%s' — 미러와 마이그레이션의 제약(UNIQUE·PK·FK)이 갈라졌다", table)
+                .isEqualTo(migratedConstraints[table] ?: emptySet<String>())
+        }
+
+        val mirrorTables = mirrorConstraints.keys
+        assertThat(indexDefinitions(mirrorUrl, mirrorTables))
+            .describedAs("미러와 마이그레이션의 인덱스 정의가 갈라졌다")
+            .isEqualTo(indexDefinitions(postgres.jdbcUrl, mirrorTables))
+    }
+
+    /**
+     * public 스키마의 테이블 → 제약 집합. 이름은 제외하고 **종류 + 대상 컬럼**으로 비교한다.
+     *
+     * 이름을 넣으면 PostgreSQL 이 자동 생성한 이름(`statuses_key_key`)이 선언 순서에 따라 달라질 때
+     * 실질이 같은데도 red 가 난다. 반대로 종류와 컬럼을 빼면 이 판별식이 다시 공허해진다.
+     *
+     * CHECK 는 제외한다 — PostgreSQL 이 `NOT NULL` 을 CHECK 제약으로도 노출해 컬럼 축과 중복되고,
+     * 자동 생성 이름이 섞여 실질 없는 red 를 만든다. `NOT NULL` 은 위 컬럼 축이 이미 본다.
+     */
+    private fun constraintsByTable(url: String): Map<String, Set<String>> {
+        val sql =
+            "SELECT tc.table_name, tc.constraint_type, COALESCE(kcu.column_name, '') AS col" +
+                " FROM information_schema.table_constraints tc" +
+                " LEFT JOIN information_schema.key_column_usage kcu" +
+                "   ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema" +
+                " WHERE tc.table_schema = 'public' AND tc.table_name <> 'flyway_schema_history'" +
+                "   AND tc.constraint_type IN ('UNIQUE', 'PRIMARY KEY', 'FOREIGN KEY')" +
+                " ORDER BY 1, 2, 3"
+        val result = mutableMapOf<String, MutableSet<String>>()
+        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use { rs ->
+                    while (rs.next()) {
+                        result
+                            .getOrPut(rs.getString(1)) { mutableSetOf() }
+                            .add("${rs.getString(2)}(${rs.getString(3)})")
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    /**
+     * public 스키마의 인덱스 정의 집합. 인덱스 **이름은 사람이 정하므로 비교에 넣는다** —
+     * 제약과 달리 자동 생성이 아니라 미러와 마이그레이션이 같은 이름을 써야 한다.
+     * 다만 정의 문자열의 DB 이름 부분은 URL 마다 달라지지 않으므로 그대로 쓴다.
+     */
+    private fun indexDefinitions(
+        url: String,
+        tables: Set<String>,
+    ): Set<String> {
+        if (tables.isEmpty()) error("대조할 테이블이 0개다 — 미러가 비었거나 조회가 어긋났다 (비-공허 확인)")
+        val inList = tables.joinToString(", ") { "'$it'" }
+        val sql =
+            "SELECT indexdef FROM pg_indexes" +
+                " WHERE schemaname = 'public' AND tablename IN ($inList)" +
+                " ORDER BY indexdef"
+        val result = mutableSetOf<String>()
+        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use { rs ->
+                    while (rs.next()) result.add(rs.getString(1))
+                }
+            }
+        }
+        return result
+    }
+
     /** 격리 DB 를 만들어 SQL 한 덩어리를 적용하고 URL 을 준다. */
     private fun applyToFreshDatabase(
         dbName: String,
