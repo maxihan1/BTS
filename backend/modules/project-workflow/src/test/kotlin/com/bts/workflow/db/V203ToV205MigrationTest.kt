@@ -138,6 +138,67 @@ class V203ToV205MigrationTest {
             }
         }
 
+        /**
+         * 같은 컨테이너 안에 격리 DB 를 만들고 V203 까지 적용한 뒤 위반 픽스처를 심고 남은 마이그레이션을 돌린다.
+         *
+         * V204 의 `RAISE EXCEPTION` 은 **마이그레이션을 실패시키는** 검증이라 메인 체인을 오염시킨다.
+         * 컨테이너를 더 띄우지 않고 DB 만 갈라 격리한다.
+         *
+         * @return 마이그레이션이 실패하며 남긴 메시지 전문. 성공하면 테스트를 실패시킨다.
+         */
+        @JvmStatic
+        fun migrationFailureMessage(
+            dbName: String,
+            violatingFixture: (Connection) -> Unit,
+        ): String {
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.createStatement().use { it.execute("CREATE DATABASE $dbName") }
+            }
+            val url = postgres.jdbcUrl.replace("/${postgres.databaseName}", "/$dbName")
+            migrateTo(url, "200")
+            createIssueTypes(url)
+            migrateTo(url, "203")
+            DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+                violatingFixture(conn)
+            }
+            try {
+                migrateToLatest(url)
+            } catch (ex: org.flywaydb.core.api.FlywayException) {
+                return generateSequence<Throwable>(ex) { it.cause }
+                    .mapNotNull { it.message }
+                    .joinToString(" | ")
+            }
+            error("V204 가 위반 데이터를 막아야 하는데 마이그레이션이 성공했다: $dbName")
+        }
+
+        /** workflow_states 1행을 임의 값으로 심는다. 가드 위반 픽스처 전용. */
+        @JvmStatic
+        fun insertState(
+            conn: Connection,
+            workflowKey: String,
+            stateKey: String,
+            name: String,
+            category: String,
+        ) {
+            conn.prepareStatement(
+                "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+            ).use { stmt ->
+                stmt.setString(1, workflowKey)
+                stmt.setString(2, workflowKey)
+                stmt.executeUpdate()
+            }
+            conn.prepareStatement(
+                "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
+                    "SELECT id, ?, ?, ?, 1 FROM workflows WHERE key = ?",
+            ).use { stmt ->
+                stmt.setString(1, stateKey)
+                stmt.setString(2, name)
+                stmt.setString(3, category)
+                stmt.setString(4, workflowKey)
+                stmt.executeUpdate()
+            }
+        }
+
         /** workflows + workflow_states 픽스처를 심는다. V204 백필의 원본이다. */
         @JvmStatic
         fun seedWorkflowStates(
@@ -310,6 +371,98 @@ class V203ToV205MigrationTest {
         assertThat(columnDataType("statuses", "deleted_at")).isEqualTo("timestamp with time zone")
         assertThat(columnDataType("workflow_statuses", "created_at")).isEqualTo("timestamp with time zone")
         assertThat(columnDataType("workflow_statuses", "updated_at")).isEqualTo("timestamp with time zone")
+    }
+
+    // ── V204. 백필 ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `V204 백필이 statuses 12행을 만든다`() {
+        val count = query("SELECT COUNT(*) FROM statuses") { it.getInt(1) }
+        assertThat(count).isEqualTo(seedStates.map { it.stateKey }.distinct().size)
+        assertThat(count).isEqualTo(12)
+    }
+
+    @Test
+    fun `V204 백필이 workflow_statuses 17행을 만든다`() {
+        val count = query("SELECT COUNT(*) FROM workflow_statuses") { it.getInt(1) }
+        assertThat(count).isEqualTo(seedStates.size)
+        assertThat(count).isEqualTo(17)
+    }
+
+    @Test
+    fun `V204 백필이 키별 이름과 카테고리를 그대로 옮긴다`() {
+        val expected = seedStates.associate { it.stateKey to (it.name to it.category) }
+        val actual = mutableMapOf<String, Pair<String, String>>()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery("SELECT key, name, category FROM statuses").use { rs ->
+                    while (rs.next()) {
+                        actual[rs.getString(1)] = rs.getString(2) to rs.getString(3)
+                    }
+                }
+            }
+        }
+        assertThat(actual).isEqualTo(expected)
+    }
+
+    @Test
+    fun `V204 백필이 워크플로우별 display_order 를 보존한다`() {
+        val expected = seedStates.associate { (it.workflowKey to it.stateKey) to it.displayOrder }
+        val actual = mutableMapOf<Pair<String, String>, Int>()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(
+                    "SELECT w.key, s.key, ws.display_order FROM workflow_statuses ws" +
+                        " JOIN workflows w ON w.id = ws.workflow_id" +
+                        " JOIN statuses s ON s.id = ws.status_id",
+                ).use { rs ->
+                    while (rs.next()) {
+                        actual[rs.getString(1) to rs.getString(2)] = rs.getInt(3)
+                    }
+                }
+            }
+        }
+        assertThat(actual).isEqualTo(expected)
+    }
+
+    @Test
+    fun `V204 백필은 원본 workflow_states 를 지우지 않는다`() {
+        val count = query("SELECT COUNT(*) FROM workflow_states") { it.getInt(1) }
+        assertThat(count).isEqualTo(seedStates.size)
+    }
+
+    // ── V204. 유일성 가드 3종 (격리 DB — ADR D4 는 위반 데이터로 red 1회를 요구한다) ──
+
+    @Test
+    fun `V204 는 같은 키에 다른 이름 카테고리가 있으면 마이그레이션을 실패시킨다`() {
+        val message =
+            migrationFailureMessage("guard_dup_key") { conn ->
+                insertState(conn, "wf-a", "in_progress", "In Progress", "IN_PROGRESS")
+                insertState(conn, "wf-b", "in_progress", "진행중", "TODO")
+            }
+        assertThat(message).contains("in_progress")
+        assertThat(message).contains("상태 키")
+    }
+
+    @Test
+    fun `V204 는 다른 키가 같은 이름을 쓰면 마이그레이션을 실패시킨다`() {
+        val message =
+            migrationFailureMessage("guard_dup_name") { conn ->
+                insertState(conn, "wf-a", "done", "Done", "DONE")
+                insertState(conn, "wf-b", "complete", "done", "DONE")
+            }
+        assertThat(message).contains("done")
+        assertThat(message).contains("이름")
+    }
+
+    @Test
+    fun `V204 는 키가 50자를 넘으면 마이그레이션을 실패시킨다`() {
+        val longKey = "x".repeat(51)
+        val message =
+            migrationFailureMessage("guard_long_key") { conn ->
+                insertState(conn, "wf-a", longKey, "Long Key", "TODO")
+            }
+        assertThat(message).contains("50")
     }
 
     /** INSERT 가 실패하기를 기대하고 그 메시지를 돌려준다. 성공하면 테스트를 실패시킨다. */
