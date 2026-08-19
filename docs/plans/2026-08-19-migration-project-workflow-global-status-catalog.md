@@ -87,6 +87,208 @@ BC 무관을 반환하기 때문이다(`classify-task.ts:480`) — 오분류가 
 **의도적으로 테스트를 만들지 않고** PR 3 로 넘겼다. Maxi 결정 필요 항목은 D1 하나였고 확정됐다.
 상세는 스펙 §Sanity Check.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+전 task 공통. **RED 는 저절로 나지 않는다** — Flyway `locations` 가 recursive 스캔이라 파일을 BC 폴더에
+넣는 것만으로는 아무 테스트도 빨개지지 않는다(learnings 2026-05-28). 각 task 의 RED 는 테스트가
+**명시적으로** 만든다.
+
+### Task 1. V203 — `statuses` · `workflow_statuses` 신설
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V203__add_global_status_catalog.sql`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V203MigrationTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V203MigrationTest.kt` (신규 · `V200MigrationTest.kt` 패턴 그대로 — 이미지 `quay.io/tembo/pg16-pgmq:latest`, `target("203")`)
+- 테스트: 테이블 2종 존재 · `statuses.key` UNIQUE · `uq_statuses_lower_name` 부분 UNIQUE(`deleted_at IS NULL`) ·
+  `category` CHECK 3종 · `workflow_statuses` FK 2개의 삭제 규칙(`CASCADE` / `RESTRICT`) ·
+  `UNIQUE(workflow_id, status_id)` · FK 인덱스 2개 · 전 타임스탬프 `timestamptz` (N5)
+- 실패 메시지 (예상): `relation "statuses" does not exist` — V203 파일 부재
+
+**GREEN**:
+- 파일: `backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V203__add_global_status_catalog.sql`
+- 스펙 §데이터 모델 변경 V203 DDL 그대로. `layout_x`/`layout_y` 는 `REAL` NULL
+
+**REFACTOR**:
+- `COMMENT ON TABLE/COLUMN` 을 V200 서식대로 부착(이 저장소의 마이그레이션 관례)
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*V203MigrationTest'`
+
+### Task 2. V204 — 백필 + 유일성 가드
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V204__backfill_status_catalog.sql`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V204BackfillMigrationTest.kt`]
+- depends-on: [1]
+
+**RED**:
+- 파일: `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V204BackfillMigrationTest.kt` (신규)
+- 테스트 2종.
+  - ① V203 까지 적용 → 시드 4종 모양의 `workflow_states` 17행을 심는다 → V204 적용
+    → `statuses` 12행 · `workflow_statuses` 17행 · 키별 `(name, category)` 일치 · `display_order` 보존
+  - ② 같은 `key` 에 다른 `(name, category)` 2행을 심는다 → V204 적용 → `RAISE EXCEPTION`
+    (예외 메시지에 위반 키 문자열이 담긴다)
+- 실패 메시지 (예상): ① `statuses` 0행 ② 예외 없이 통과 — 둘 다 V204 부재 탓
+- **근거.** ADR D4 는 「가드가 실제로 동작하는지 일부러 위반 데이터로 red 를 1회 확인」을 요구한다.
+  위반을 넣어보지 않은 가드는 장식이다 (`[[invariant-satisfied-by-helptext-not-logic]]`)
+
+**GREEN**:
+- 파일: `backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V204__backfill_status_catalog.sql`
+- 순서 ① 가드(`key` 로 묶어 `(name, category)` 유일 조합이 2개 이상이면 `RAISE EXCEPTION`, 메시지에 위반 키·상충 조합)
+  → ② `statuses` 승격(`is_system=FALSE`) → ③ `workflow_statuses` 채움(`display_order` 이전)
+- **INSERT only.** 기존 행 UPDATE·DELETE 0 (N1). `ON CONFLICT DO NOTHING` 으로 멱등 (E8)
+
+**REFACTOR**:
+- 가드를 `DO $$ … $$` 블록으로 묶고 주석에 「왜 실패시키는가」를 1문단으로 남긴다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*V204BackfillMigrationTest'`
+
+### Task 3. V205 — `workflows` 컬럼 4종 + `origin='SEED'` 표기
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V205__workflows_add_version_origin.sql`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V205MigrationTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V205MigrationTest.kt` (신규)
+- 테스트: 컬럼 4종 존재 + 기본값(`version=0` · `origin='CUSTOM'` · `is_locked=false` · `deleted_at` NULL 허용) ·
+  `ck_workflows_origin` CHECK 가 `'OTHER'` 삽입을 거부 · 표준 4키를 심어 두면 V205 적용 후 `origin='SEED'`,
+  그 밖 키는 `'CUSTOM'` 유지
+- 실패 메시지 (예상): `column "origin" does not exist`
+
+**GREEN**:
+- 파일: `backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V205__workflows_add_version_origin.sql`
+- `ALTER TABLE … ADD COLUMN … DEFAULT` 4종 + CHECK + 표준 4키 `UPDATE` (스펙 V205 DDL 그대로)
+
+**REFACTOR**:
+- `COMMENT ON COLUMN` 4개 부착 — 특히 `origin` 에 「기본값 복원 대상 식별」 근거를 적는다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*V205MigrationTest'`
+
+### Task 4. `YamlSeedService` — 「없을 때만 삽입」으로 축소
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`]
+- depends-on: [3]
+
+**RED**:
+- 파일: `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt` (기존 파일에 추가)
+- 테스트:
+  - `재기동해도 DB 에서 고친 워크플로우 이름이 유지된다` — `seedAll()` 1회 → `workflows.name` 을
+    「우리 개발 워크플로우」로 UPDATE → `seedAll()` 재호출 → 이름이 그대로다
+  - `삽입되는 워크플로우의 origin 은 SEED 다`
+- 실패 메시지 (예상): 첫 테스트가 `expected '우리 개발 워크플로우' but was '소프트웨어 개발 기본 워크플로우'`
+  — 현재 `isDirty()` 가 이름 차이를 감지해 `deleteWorkflow` → 재삽입한다
+
+**GREEN**:
+- 파일: `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`
+- `applyIfChanged` → 「`findByKey` 가 null 일 때만 `insertWorkflow`」로 축소. 삽입 시 `origin='SEED'`
+- 제거 대상. `isDirty` · `differsInName` · `differsInStateSet` · `differsInStateDetails` ·
+  `differsInTransitions` · `differsInValidators` · `fetchValidatorTypesByTransition` ·
+  `fetchTransitionStateKeys` · `deleteWorkflow` · `detachMappingsByWorkflowId`/`reinsertMappings` 호출
+- **유지.** `mappingRepository.repairDefaultMappings()`(빈 DB 백필 · 루프 밖 1회) · `seedSingle` ·
+  Konform 검증 · validator/postAction dry-run · fail-fast 부팅 차단(N7) · YAML 원본 파일
+
+**REFACTOR**:
+- 파일 헤더 1줄 주석과 클래스 KDoc 의 「dirty-diff 비교 후 재적재」 서술을 새 정책으로 교체
+- 제거로 고아가 된 import 만 정리한다
+- **주의.** `SchemeIssueTypeMappingRepository` 주입 자체는 남긴다 — `repairDefaultMappings` 가 계속 쓴다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*YamlSeedServiceTest'`
+
+### Task 5. 시드 이중 기록 — `statuses` · `workflow_statuses` 동시 적재
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/SeedStatusCatalogIntegrationTest.kt`]
+- depends-on: [1, 4]
+
+**RED**:
+- 파일: `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/SeedStatusCatalogIntegrationTest.kt` (신규)
+- 테스트 3종.
+  - ① 빈 DB 에서 `seedAll()` → `statuses` 12행 · `workflow_statuses` 17행 (E1 · C2 와 같은 기대값)
+  - ② `statuses` 에 `key='in_progress', name='진행 중'` 을 미리 넣고 `seedAll()` → 이름이 「진행 중」 그대로다
+    (F9 · E3 — 운영자가 바꾼 이름을 시드가 덮지 않는다)
+  - ③ `seedAll()` 2회 호출해도 `workflow_statuses` 가 17행 그대로다 (멱등 · E4)
+- 실패 메시지 (예상): ① `statuses` 0행 — 시드가 아직 `workflow_states` 에만 쓴다
+
+**GREEN**:
+- 파일: `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`
+- `insertWorkflow` 의 상태 루프 1회에서 **둘 다** 기록한다.
+  ① `workflow_states` (기존 — `workflow_transitions` FK 가 아직 이 테이블을 참조한다)
+  ② `statuses` `ON CONFLICT (key) DO NOTHING` 후 id 조회 → `workflow_statuses`
+  `ON CONFLICT (workflow_id, status_id) DO NOTHING`
+- 같은 `@Transactional` 경계 안이라 실패 시 전체 롤백 (F8)
+
+**REFACTOR**:
+- 상태 1건 적재를 `insertStatusForWorkflow(workflowId, state)` 로 뽑아 두 기록이 **한 자리**에 남게 한다
+  — 갈라지면 정확히 C4 판별식이 잡으려는 drift 가 된다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*SeedStatusCatalogIntegrationTest'`
+(새 테이블 접근은 jOOQ 생성물이 필요하나 `compileKotlin` 이 `generateJooq` 에 `dependsOn` 걸려 있어 자동 재생성된다.
+`src/generated/jooq/` 는 `.gitignore` 대상이라 **커밋하지 않는다**)
+
+### Task 6. C4 대조 판별식 — 두 서랍의 상태 집합이 갈라지면 red
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/StatusCatalogParityTest.kt`]
+- depends-on: [5]
+
+**RED**:
+- 파일: `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/StatusCatalogParityTest.kt` (신규)
+- 테스트: `seedAll()` 직후 **모든 워크플로우**에 대해 `workflow_states` 의 키 집합과
+  `workflow_statuses ⨝ statuses` 의 키 집합이 같고 `(name, category, display_order)` 도 일치한다.
+  워크플로우 키·건수를 하드코딩하지 않고 **전수 열거**로 센다(「N건」은 눈가리개다)
+- **뮤테이션 red 1회.** GREEN 확인 후 `insertStatusForWorkflow` 의 ② 경로를 일부러 끊어 이 테스트가
+  빨개지는 것을 본다. 원복 뒤 `git status` 를 **눈으로** 확인한다 (`[[bts-git-add-path-base-in-worktree]]`)
+- **근거.** D1 로 읽기 전환을 미뤄 새 테이블이 이 PR 동안 write-only 다. 아무도 안 읽는 데이터는
+  틀려도 조용하다 (`[[two-lists-never-check-each-other]]`) — 이 판별식이 그 사각을 막는 유일한 장치다
+
+**GREEN**: Task 5 가 이미 통과시킨다. 이 task 의 산출물은 **판별식 자체**다
+
+**REFACTOR**:
+- 뮤테이션 절차(무엇을 끊어 red 를 봤는지)를 테스트 파일 상단 주석에 남긴다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*StatusCatalogParityTest'`
+
+### Task 7. ADR 정정 — jOOQ 생성물은 커밋 대상이 아니다
+
+**메타**.
+- agent: `db-engineer`
+- files: [`docs/adr/2026-08-18-workflow-global-status-catalog.md`]
+- depends-on: []
+
+**RED**: 없음 — 문서 1줄 정정. 이 저장소의 문서 task 는 red 를 만들지 않는다
+
+**GREEN**:
+- §영향 / 부정·위험의 「`src/generated/jooq/` 는 git 커밋 대상이라 마이그레이션마다 …후 커밋한다」를
+  실측대로 고친다. 근거 — `.gitignore:21` 이 `**/src/generated/jooq/` 를 제외하고,
+  `git ls-files '*/src/generated/*'` 는 1파일(issue-tracking `.editorconfig`)뿐이다.
+  대체 문구는 「빌드마다 `generateJooq` 로 재생성되며 커밋 대상이 아니다」
+
+**REFACTOR**: 없음
+
+**검증**: `node scripts/build-doc-index.mjs --check` PASS · `bash scripts/verify-master-plan.sh` EXIT 0
+
+## Plan 메타
+
+- **task 수** 7 · **예상 wave 4** — W1 `[1, 3, 7]` · W2 `[2, 4]` · W3 `[5]` · W4 `[6]`
+  (Task 4·5 는 `YamlSeedService.kt` 를 공유해 파일 겹침으로 자동 직렬화된다)
+- **구현 규율** TDD red-first. T3 이므로 `test:` → `feat:`/`fix:` 커밋 순서가 대조된다.
+  Task 7 만 문서라 red 가 없고, 그 사실을 위에 명시했다
+- **추가 검증** (전 task 통과 후 1회)
+  - `./gradlew :modules:project-workflow:test :modules:issue-tracking:test ktlintCheck detekt` (backend/ 에서)
+  - `./gradlew :modules:app:test` — 실제 Postgres(5433) 필요. `docker-compose -f infra/docker-compose.dev.yml up -d postgres` 선행
+  - `pnpm --filter web test` — `apps/web` 0파일 변경 확인 겸용
+  - `bash scripts/verify-master-plan.sh` (EXIT 4 면 차단) · `node scripts/build-doc-index.mjs --check`
+  - `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`
+    (worktree 에서 `pnpm test:workflow` 는 심볼릭 `node_modules` 때문에 죽는다)
+- **범위 밖 (D1)** 읽기 경로 3파일(`WorkflowRepository` · `DefaultWorkflowDefinitionRepository` ·
+  `PostActionTransitionResolver`)과 `workflow_states` DROP 은 이 PR 이 건드리지 않는다
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
