@@ -49,7 +49,7 @@ import java.util.concurrent.Executors
  * 검증 범위.
  * 1. validators/post_actions 가 있는 전환 시드 → workflow_validators/workflow_post_actions 행 삽입 확인
  * 2. type/config/display_order/transition_id 정합 검증
- * 3. idempotency: 동일 YAML 재시드 시 중복 INSERT 없음 (isDirty 변화없음 판정)
+ * 3. idempotency: 동일 YAML 재시드 시 중복 INSERT 없음 (「없을 때만 삽입」 판정)
  * 4. validators/post_actions 빈 전환은 관련 테이블에 행 없음
  * 5. 표준 4 워크플로우 시드는 회귀 없음 (seedAll 호출 후 4건 유지)
  */
@@ -269,12 +269,16 @@ class YamlSeedValidatorPostActionTest {
         log.info("시나리오 7 통과 — 표준 4 워크플로우 회귀 없음 확인, total={}", all.size)
     }
 
-    // ── 시나리오 8. validator 변경 시 isDirty true — 재적재 발생 ──────────────────────
+    // ── 시나리오 8. validator 를 바꾼 YAML 을 재시드해도 기존 DB 는 그대로다 ──────────
+    //
+    // 2026-08-19 이전에는 「isDirty 가 true 여서 재적재가 발생한다」를 단언했다. ADR
+    // 2026-08-18-workflow-db-as-source-of-truth D2 가 그 경로를 없애 시드는 「없을 때만 삽입」이 됐다.
+    // 삭제하지 않고 뒤집어 새 계약의 회귀 테스트로 남긴다.
 
     @Suppress("LongMethod")
     @Test
     @Order(8)
-    fun `validator 가 변경된 YAML 재시드 시 isDirty 가 true 여서 재적재가 발생한다`() {
+    fun `validator 를 바꾼 YAML 을 재시드해도 기존 validator 가 그대로다`() {
         val modifiedYaml =
             """
             key: test-validator-seed
@@ -342,12 +346,13 @@ class YamlSeedValidatorPostActionTest {
         val defRepoNew = DefaultWorkflowDefinitionRepository(dsl)
         val validators = defRepoNew.findValidators("test-validator-seed", transition)
 
-        // 재적재 후 3건으로 변경됨
-        assertThat(validators).hasSize(3)
+        // 시드는 「없을 때만 삽입」이라 이미 있는 워크플로우의 validator 를 건드리지 않는다.
+        // 시나리오 1 이 심은 2건(RequiredField · permission-check)이 그대로여야 한다.
+        assertThat(validators).hasSize(2)
         assertThat(validators.map { it.type })
-            .containsExactly("RequiredField", "permission-check", "not-status-category")
+            .containsExactly("RequiredField", "permission-check")
 
-        log.info("시나리오 8 통과 — validator 변경 후 재적재 확인, 새 validator 수: {}", validators.size)
+        log.info("시나리오 8 통과 — YAML 의 validator 변경이 기존 DB 를 덮지 않는다, validator 수: {}", validators.size)
     }
 
     // ── 시나리오 9. 미지원 validator type → IllegalStateException fail-fast ──────────
