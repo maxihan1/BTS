@@ -39,9 +39,9 @@ class WorkflowStatusCompositionRepository(
             .fetch()
             .map {
                 ComposedStatus(
-                    statusId = it[WORKFLOW_STATUSES.STATUS_ID]!!,
-                    statusKey = it[STATUSES.KEY]!!,
-                    displayOrder = it[WORKFLOW_STATUSES.DISPLAY_ORDER]!!,
+                    statusId = it.required(WORKFLOW_STATUSES.STATUS_ID),
+                    statusKey = it.required(STATUSES.KEY),
+                    displayOrder = it.required(WORKFLOW_STATUSES.DISPLAY_ORDER),
                 )
             }
 

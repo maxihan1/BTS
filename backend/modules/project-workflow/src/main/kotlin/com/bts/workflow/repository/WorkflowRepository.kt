@@ -208,10 +208,10 @@ class WorkflowRepository(private val dsl: DSLContext) {
     /** Record → [WorkflowState] 변환. */
     private fun Record.toWorkflowState(): WorkflowState =
         WorkflowState(
-            key = this[STATUSES.KEY]!!,
-            name = this[STATUSES.NAME]!!,
-            category = StateCategory.valueOf(this[STATUSES.CATEGORY]!!),
-            displayOrder = this[WORKFLOW_STATUSES.DISPLAY_ORDER]!!,
+            key = required(STATUSES.KEY),
+            name = required(STATUSES.NAME),
+            category = StateCategory.valueOf(required(STATUSES.CATEGORY)),
+            displayOrder = required(WORKFLOW_STATUSES.DISPLAY_ORDER),
         )
 
     /**

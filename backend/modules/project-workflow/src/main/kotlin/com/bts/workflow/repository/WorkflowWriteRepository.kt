@@ -77,7 +77,8 @@ class WorkflowWriteRepository(
             .set(WORKFLOWS.DESCRIPTION, description)
             .set(WORKFLOWS.ORIGIN, "CUSTOM")
             .returning(WORKFLOWS.ID)
-            .fetchOne(WORKFLOWS.ID)!!
+            .fetchOne(WORKFLOWS.ID)
+            ?: error("workflows INSERT 가 id 를 돌려주지 않았다 — RETURNING 절을 확인할 것")
 
     /**
      * 상태 씨앗을 전역 카탈로그에 넣고(있으면 재사용) 워크플로우에 편성한다.
@@ -101,7 +102,8 @@ class WorkflowWriteRepository(
                     .doUpdate()
                     .set(STATUSES.NAME, seed.name)
                     .returning(STATUSES.ID)
-                    .fetchOne(STATUSES.ID)!!
+                    .fetchOne(STATUSES.ID)
+                    ?: error("statuses upsert 가 id 를 돌려주지 않았다 — ON CONFLICT 술어가 부분 인덱스와 맞는지 확인할 것")
 
             dsl
                 .insertInto(WORKFLOW_STATUSES)

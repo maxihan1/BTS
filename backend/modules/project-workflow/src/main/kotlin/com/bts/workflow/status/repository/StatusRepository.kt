@@ -5,6 +5,7 @@ package com.bts.workflow.status.repository
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
+import com.bts.workflow.repository.required
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
@@ -128,7 +129,8 @@ class StatusRepository(
             .set(STATUSES.DESCRIPTION, description)
             .set(STATUSES.CATEGORY, category)
             .returning(STATUSES.ID)
-            .fetchOne(STATUSES.ID)!!
+            .fetchOne(STATUSES.ID)
+            ?: error("statuses INSERT 가 id 를 돌려주지 않았다 — RETURNING 절을 확인할 것")
 
     /** 이름·설명·카테고리를 고친다. `key` 는 건드리지 않는다. */
     fun update(
@@ -159,11 +161,11 @@ class StatusRepository(
 
     private fun org.jooq.Record.toRow(): StatusRow =
         StatusRow(
-            id = this[STATUSES.ID]!!,
-            key = this[STATUSES.KEY]!!,
-            name = this[STATUSES.NAME]!!,
+            id = required(STATUSES.ID),
+            key = required(STATUSES.KEY),
+            name = required(STATUSES.NAME),
             description = this[STATUSES.DESCRIPTION],
-            category = this[STATUSES.CATEGORY]!!,
-            isSystem = this[STATUSES.IS_SYSTEM]!!,
+            category = required(STATUSES.CATEGORY),
+            isSystem = required(STATUSES.IS_SYSTEM),
         )
 }
