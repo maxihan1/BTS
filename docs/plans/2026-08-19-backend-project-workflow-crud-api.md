@@ -429,6 +429,88 @@ workflows
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*V206MigrationTest*'`
 
+## 구현 중 발견 (wave 1~2)
+
+계획에 없던 것들이다. 게이트 2 요약에 그대로 싣는다.
+
+### F1. `V206` 의 파급 — `ON CONFLICT (key)` 33곳
+
+컬럼 UNIQUE 를 DROP 하고 **부분** 인덱스로 바꾸면 PostgreSQL 이 `ON CONFLICT (key)` 만으로는
+그 인덱스를 추론하지 못한다. 실측 오류 문구.
+
+```
+ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification
+```
+
+| 대상 | 건수 | 처방 |
+|---|---|---|
+| 테스트 픽스처 `INSERT INTO workflows ... ON CONFLICT (key)` | 31 | `ON CONFLICT (key) WHERE deleted_at IS NULL` |
+| 프로덕션 `YamlSeedService` jOOQ `.onConflict(STATUSES.KEY)` | 2 | `.where(STATUSES.DELETED_AT.isNull)` 추가 |
+
+★ **예외 1건.** `V203ToV206MigrationTest` 는 **V205 이전 시점**(`deleted_at` 컬럼 부재)에 픽스처를
+심으므로 술어를 붙이면 `column "deleted_at" does not exist` 로 죽는다. 마이그레이션 중간 상태를
+다루는 픽스처는 그 시점의 스키마를 따라야 한다.
+
+이 파급은 게이트 1 리뷰가 예측하지 못했다. D3 의 A안을 유지한 이유 — 전부 기계적 치환이고,
+대안(tombstone)은 key 를 변형해 「키 불변」 원칙과 충돌한다.
+
+### F2. 존재 판정에 aggregate 복원을 쓰면 중간 상태를 못 견딘다
+
+`YamlSeedService.insertIfAbsent` 가 `workflowRepository.findByKey()` 로 존재를 판정했다.
+읽기가 2단으로 바뀐 뒤 **`workflow_statuses` 가 빈 중간 상태**에서 그 복원이
+`Workflow.of()` invariant(「상태가 하나 이상」)에 걸려 죽는다.
+
+```
+Workflow.of(Workflow.kt:45) ← toWorkflows(:192) ← findByKey(:43) ← insertIfAbsent(:378) ← seedAll(:226)
+```
+
+그러면 **바로 그 중간 상태를 되채우려던 보정 경로에 닿기도 전에** 시드가 실패한다.
+처방 — 존재 판정을 `fetchExists(selectOne from workflows where key = ?)` 로 낮춘다.
+invariant 는 옳으므로 완화하지 않는다.
+
+### F3. 자동 치환이 상태 2개를 삼켰다 — 대조가 잡았다
+
+29파일 이주를 스크립트로 돌렸더니 3파일에서 **멀티행 `VALUES` 를 1행으로 축소**하고
+`wfId` 정의 블록까지 삼켰다. `git diff` 로는 「헬퍼 호출로 바뀌었다」로만 보인다.
+
+파일별 **상태 삽입 건수 대조**(원본 `VALUES` 튜플 수 vs 현재 `insertWorkflowStatus(` 호출 수)가
+`원본 3 → 현재 0` 으로 잡아냈다. 원복 후 수동 이주했다.
+#390 의 「대량 이동은 diff 로 사람이 판정할 수 없다」가 그대로 재현됐다.
+
+### F4. 권한 어댑터를 3종 → 2종으로 줄였다
+
+plan 은 prod · DevAllow · AlwaysAllow 3종이었으나 **스킴 관례는 2종**(prod + BC stub)이다.
+`@Profile("!prod")` 빈을 identity-access 와 BC 양쪽에 두면 비-prod 에서 둘 다 살아 충돌한다.
+`WorkflowSchemePermissionResolver` 와 동형으로 맞췄다.
+
+### F5. 이주 대상은 29파일 (허용목록 2항목)
+
+허용목록은 파일명 기준 2항목이다 — `V203ToV206MigrationTest.kt`(V204 백필 원본) ·
+`WorkflowStatusFixture.kt`(헬퍼 자신, 두 BC 에 각 1개). 계획의 31/30 은 헬퍼를 세지 않은 값이었다.
+「썩은 항목」 단언이 처음 적은 허용목록 5개 중 4개를 즉시 잡아냈다 — 그 4개는 `workflow_states` 를
+**언급만** 하고 INSERT 는 하지 않는다.
+
+### F6. `insertIfAbsent` 변경이 만든 orphan — 생성자 파라미터 1개
+
+`YamlSeedService` 가 존재 판정에서 `workflowRepository` 를 쓰지 않게 되자 그 생성자 파라미터가
+**미사용**이 됐다(detekt `UnusedPrivateProperty`). 내 변경이 만든 orphan 이므로 제거했다 —
+생성자 1곳 + 호출부 **8곳**(named argument 1곳 포함). 「내 변경이 만든 orphan 은 제거한다」 규칙 그대로다.
+
+### F7. ktlint 와 detekt 의 줄 길이 기준이 다르다
+
+`ktlintCheck` 는 **140자**, detekt `MaxLineLength` 는 **120자**(detekt 기본값)다.
+그 사이 길이의 줄은 **ktlint 를 통과하고 detekt 에서 걸린다.** 두 도구를 모두 돌려야 안다.
+
+`ktlintFormat` 은 이 PR 이 만진 **31파일만** 바꿨다(부수 변경 0). 「모듈 전체 format 이 PRE_EXISTING
+파일을 부수 변경한다」는 함정은 **커밋을 먼저 하고 `git diff --name-only main...HEAD` 와 대조**해
+확인했다. 그 절차 없이 format 을 돌리면 함정에 그대로 걸린다.
+
+detekt 처방 2건은 억제가 아니라 근거를 남겼다.
+- `LongParameterList`(픽스처 6개 파라미터) — spec data class 로 묶으면 **두 BC 에 또 하나의 복제**가
+  생긴다. 호출부 40여 곳의 가독성도 떨어진다. KDoc 에 근거를 적고 `@Suppress`
+- `NestedBlockDepth`(JDBC try-with-resources 3단 + 행 루프) — 더 쪼개면 자원 해제 경계가 흐려진다.
+  공통 헬퍼 `forEachRow` 로 중첩을 한 곳에 모으고 그 함수에만 `@Suppress`
+
 ## Plan 메타
 
 - **task 수** — 11 (리뷰에서 Task 11 신설)
