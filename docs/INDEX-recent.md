@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-08-19 | migration-project-workflow-global-status-catalog | — | ✔ | — | — | FR-WF-04 FR-WF-05 FR-WF-06 FR-WF-07 |
+| 2026-08-19 | migration-project-workflow-global-status-catalog | ✔ | ✔ | — | — | FR-WF-04 FR-WF-05 FR-WF-06 FR-WF-07 |
 | 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | FR-DB-01 |
 | 2026-08-18 | todos-category-sections | — | ✔ | — | — | — |
 | 2026-08-18 | workflow-db-as-source-of-truth | — | — | — | ✔ | FR-WF-02 FR-WF-04 FR-WF-07 |
