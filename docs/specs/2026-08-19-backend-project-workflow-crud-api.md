@@ -159,12 +159,16 @@ FR-WF-04 의 D 단계. 하위 항목.
 
 | 기준 | issue-tracking | project-workflow | 계 |
 |---|---|---|---|
-| `INSERT INTO workflow_states` 를 실제로 하는 테스트 = **이주 대상** | 21 | 10 | **31** |
+| `INSERT INTO workflow_states` 를 실제로 하는 테스트 | 21 | 10 | 31 |
+| 그중 **이주 대상** (아래 제외 1건 뺀 값) | 21 | 9 | **30** |
 | `workflow_states` 를 언급만 하는 테스트 = **이주 대상 아님** | 0 | 4 | 4 |
 | 이미 `workflow_statuses` 를 쓰는 테스트 (PR 2 산출) | 0 | 4 | 4 |
 
-이주 제외 4파일은 `V200MigrationTest` · `SeedStatusCatalogIntegrationTest` · `StatusCatalogParityTest` ·
-`YamlSeedServiceTest` — **구형 테이블 자체를 검증하는 것이 목적**이라 헬퍼로 감싸면 검증이 사라진다.
+이주 제외는 **5파일**이다(구현 중 실측으로 1건 추가).
+- 언급만 하는 4건 — `V200MigrationTest` · `SeedStatusCatalogIntegrationTest` · `StatusCatalogParityTest` · `YamlSeedServiceTest`
+- ★ INSERT 를 하지만 **그 INSERT 자체가 검증 대상**인 1건 — `V203ToV206MigrationTest`. `V204` 백필의 **원본**을 심는 것이 목적이라 헬퍼로 감싸면 백필 검증이 통째로 사라진다
+
+전부 **구형 테이블 자체를 검증하는 것이 목적**이라 판별식 허용목록에 넣는다.
 
 **BC 격리.** issue-tracking 21파일은 그 BC 의 테스트다. 한 PR = 한 BC 규칙과 충돌하는지 여부는
 §제약 C2 에서 다룬다.
@@ -277,7 +281,7 @@ CI 러너가 개발 머신과 같은 컴퓨터다. 로컬 gradle 과 CI 를 동�
 | M5 | 캐시 무효화 누락 0 | 차집합 판별식 — 쓰기 엔드포인트 집합 ⊖ `invalidate` 호출부 집합 = ∅ |
 | M6 | 판별식이 **비어 있지 않다** | 뮤테이션 2회 — ①`invalidate` 호출 1개 삭제 → M5 red ②테스트 1개에 원시 SQL 재삽입 → M4 red. **GREEN 선커밋 뒤** 실행 |
 | M7 | 백엔드 전량 green | `./gradlew :modules:project-workflow:test :modules:issue-tracking:test :modules:app:test ktlintCheck detekt` EXIT=0 |
-| M8 ★ | jOOQ 생성물 동기 | `generateJooq` 재실행 후 커밋. **diff 가 나오는 것이 정상** — 리뷰 A1 로 `V206` 이 추가돼 인덱스가 바뀐다(정정 전 기대는 「diff 0」이었다) |
+| M8 ★★ | jOOQ 생성물 재생성 | `generateJooq` **EXIT=0** + 컴파일 통과. **커밋하지 않는다** — `.gitignore:21` 이 `**/src/generated/jooq/` 를 무시하고 주석이 「SQL 이 source of truth, 매 빌드시 재생성」이라 명시한다. 로드맵 §제약의 「생성물은 git 커밋 대상」과 이 항목의 이전 두 기대(「diff 0」·「diff 가 나온다」)는 **둘 다 틀렸다**(구현 중 실측). 대신 **미러 정합**이 진짜 검증이다 |
 | M9 | 문서 정합 | `verify-master-plan.sh` EXIT 0 · `build-doc-index.mjs --check` EXIT 0 |
 | M11 ★ | **`hasAuthority(` 재유입 0.** 판별식이 `backend/**/main` 에서 `@PreAuthorize` SpEL 권한 검사를 금지한다 | `VersionPermissionResolver` 가 명문화한 관례(N5)를 기계가 강제. 뮤테이션 — 아무 컨트롤러에 `@PreAuthorize` 1줄 추가 → red |
 | M10 | CI 전건 green | 머지 전 실측 |

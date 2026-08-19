@@ -139,7 +139,8 @@ Maxi 결정 2건은 아래에서 확정.
 - 테스트: 테스트 소스 트리를 스캔해 `INSERT INTO workflow_states` 를 하는 파일이 **허용목록 4파일 외에 0개**임을 단언
 - 실패 메시지 (예상): 위반 31파일 열거 — 이 시점에는 아직 아무것도 이주하지 않았으므로 **31건 전부 red**
 - ★ **탐지 문자열을 런타임 조립**한다 — `val NEEDLE = "INSERT INTO " + "workflow_states"`. 리터럴로 적으면 판별식 파일 자신이 위반으로 잡히고, 자기를 허용목록에 넣으면 「판별식은 검사에서 빠진다」 구멍이 열린다(#356 선례)
-- 허용목록 4파일 — `V200MigrationTest` · `SeedStatusCatalogIntegrationTest` · `StatusCatalogParityTest` · `YamlSeedServiceTest`. **구형 테이블 자체를 검증하는 것이 목적**이라 헬퍼로 감싸면 검증이 사라진다
+- 허용목록 **5파일** (구현 중 실측으로 1건 추가) — `V200MigrationTest` · `SeedStatusCatalogIntegrationTest` · `StatusCatalogParityTest` · `YamlSeedServiceTest` · ★`V203ToV206MigrationTest`. 앞 4건은 언급만 하고, 마지막 1건은 **INSERT 를 하지만 그 INSERT 가 `V204` 백필의 원본**이라 헬퍼로 감싸면 백필 검증이 사라진다. 전부 **구형 테이블 자체를 검증하는 것이 목적**이다
+- 따라서 이주 대상은 31 → **30** (issue-tracking 21 · project-workflow 9)
 - ★ 허용목록의 **썩은 항목 0도 함께 강제**한다 — 목록에 있는데 실제로는 더 이상 위반하지 않는 파일이 남으면, 그 줄이 미래의 신규 위반을 조용히 통과시킨다(#356 의 `stale` 단언과 같은 형태)
 
 **GREEN**:
@@ -206,7 +207,7 @@ Maxi 결정 2건은 아래에서 확정.
 
 **검증**:
 - `./gradlew :modules:project-workflow:test :modules:issue-tracking:test`
-- Task 1 의 `RawWorkflowStateInsertGuardTest` 가 **green 으로 전환**(31 → 0 위반)
+- Task 1 의 `RawWorkflowStateInsertGuardTest` 가 **green 으로 전환**(30 → 0 위반)
 - ★ **무손실 대조 (리뷰 T2)** — 31파일 대량 이동은 diff 로 사람이 판정할 수 없다(#390 실증). 이주 **전** 커밋에서 `:modules:project-workflow:test :modules:issue-tracking:test` 의 **테스트 이름 전량을 파일로 뽑아 두고**, 이주 후 같은 목록을 뽑아 **차집합 0** 을 확인한다. 테스트가 조용히 사라지거나 `@Disabled` 로 바뀌는 것을 사람 눈에 맡기지 않는다
 - `apps/web` **0파일 변경** 확인 — `git diff --name-only main -- apps/web | wc -l` 이 0
 
@@ -419,7 +420,9 @@ workflows
   - `statuses` 의 컬럼 레벨 `UNIQUE` 를 DROP 하고 `CREATE UNIQUE INDEX ... (key) WHERE deleted_at IS NULL` 로 교체
   - `workflows` 도 동일
   - ★ **DROP 전에 위반 데이터 가드**를 둔다. 부분 유니크로 바꾸는 것은 제약을 **완화**하는 방향이라 기존 데이터가 깨지지 않지만, 인덱스 생성이 실패하면 원인을 알 수 있게 `RAISE EXCEPTION` 메시지를 남긴다 (V204 의 유일성 가드 관례)
-- `./gradlew :modules:project-workflow:generateJooq` 재실행 후 생성물 커밋 — ★ 이 Task 때문에 **M8 의 「diff 0」 기대가 뒤집힌다**. 인덱스 변경은 jOOQ 생성물에 반영되므로 **diff 가 나오는 것이 정상**이다
+- `./gradlew :modules:project-workflow:generateJooq` 재실행 — ★★ **생성물은 커밋하지 않는다**. `.gitignore:21` 이 `**/src/generated/jooq/` 를 무시한다(구현 중 실측). 로드맵 §제약의 「jOOQ 생성물은 git 커밋 대상」은 **거짓**이다
+- ★★ **진짜 검증은 코드젠 미러다.** `project-workflow` 의 jOOQ 입력은 손 유지 사본 `db/codegen/init_codegen.sql` 이라 마이그레이션만 고치면 생성물이 안 바뀐다. 미러를 함께 고쳐야 한다
+- ★★ **PR 2 의 미러 판별식에 갭이 있었다** — 테이블→(컬럼명→타입) 한 축만 대조해 `key` 의 UNIQUE 소멸을 못 잡았다(`partial-column-parser-lets-unread-column-rot`). 이 Task 가 **제약·인덱스 축을 추가**해 막는다
 
 **REFACTOR**:
 - 마이그레이션 머리에 위 비대칭 표를 주석으로 남긴다 — 다음 사람이 「왜 컬럼 UNIQUE 를 인덱스로 바꿨나」를 묻지 않게
@@ -437,7 +440,7 @@ workflows
   - wave 5 — Task 9 (←5,6,7,8) → Task 10 (←9)
 - **구현 규율** — TDD red-first. `test:` 커밋이 `feat:` 보다 선행
 - **추가 검증** — ktlint · detekt · `:modules:app:test`(5433 실제 Postgres 필요 — `bts-postgres-dev` 유지) · `verify-master-plan.sh` · `build-doc-index.mjs --check`
-- **★ `generateJooq` 기대 정정** — Task 11 이 인덱스를 바꾸므로 **diff 0 이 아니라 diff 가 나오는 것이 정상**이다. 스펙 M8 의 「diff 0」은 Task 11 도입 전 기대였다
+- **★★ `generateJooq` 기대 재정정 (구현 중 실측)** — 생성물은 `.gitignore:21` 대상이라 **git diff 가 원리적으로 항상 0** 이다. 커밋하지 않는다. 검증은 `generateJooq` EXIT=0 + 컴파일 통과 + **코드젠 미러 정합 판별식**이다
 - **프론트** — `apps/web` **0파일**(N2). 프론트 검증은 회귀 확인 목적으로만 `pnpm --filter web test` 1회
 - **의도적 편차 (게이트 2 요약에 싣는다)** — ① BC 격리 — issue-tracking 테스트 21파일 포함, 프로덕션 0줄(D2) ② 서브에이전트 dispatch 미사용 — Maxi 정책, 인라인 구현으로 대체하되 TDD·순서·검증은 그대로
 
