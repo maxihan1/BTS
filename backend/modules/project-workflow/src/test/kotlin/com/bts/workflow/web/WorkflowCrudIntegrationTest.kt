@@ -124,7 +124,9 @@ class WorkflowCrudIntegrationTest {
     private val actor = UUID.randomUUID()
 
     private fun seeds(vararg keys: String): List<WorkflowStatusSeed> =
-        keys.mapIndexed { i, k -> WorkflowStatusSeed(key = k, name = k.uppercase(), category = "TODO", displayOrder = i) }
+        keys.mapIndexed { i, k ->
+            WorkflowStatusSeed(key = k, name = k.uppercase(), category = "TODO", displayOrder = i)
+        }
 
     private fun create(
         key: String,
@@ -263,18 +265,19 @@ class WorkflowCrudIntegrationTest {
                 conn.prepareStatement(
                     "INSERT INTO workflow_schemes (key, name) VALUES (?, ?) RETURNING id",
                 ).use { stmt ->
-                    stmt.setString(1, "scheme-$workflowId")
+                    stmt.setString(1, "sch-" + workflowId.toString().take(8))
                     stmt.setString(2, "참조 스킴")
                     stmt.executeQuery().use { rs ->
                         rs.next()
-                        rs.getObject(1) as UUID
+                        // workflow_schemes.id 는 BIGSERIAL 이다(V201:24). workflows 만 UUID 다.
+                        rs.getLong(1)
                     }
                 }
             conn.prepareStatement(
                 "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)" +
                     " VALUES (?, NULL, ?)",
             ).use { stmt ->
-                stmt.setObject(1, schemeId)
+                stmt.setLong(1, schemeId)
                 stmt.setObject(2, workflowId)
                 stmt.executeUpdate()
             }

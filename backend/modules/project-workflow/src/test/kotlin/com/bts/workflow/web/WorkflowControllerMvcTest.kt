@@ -6,6 +6,7 @@ import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.workflow.application.WorkflowApplicationService
+import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
@@ -75,10 +76,14 @@ class WorkflowControllerMvcTest {
         open fun workflowApplicationService(): WorkflowApplicationService = mockk(relaxed = true)
 
         @Bean
+        open fun workflowCommandService(): WorkflowCommandService = mockk(relaxed = true)
+
+        @Bean
         open fun workflowController(
             service: WorkflowApplicationService,
+            commandService: WorkflowCommandService,
             cache: WorkflowCache,
-        ): WorkflowController = WorkflowController(service, cache)
+        ): WorkflowController = WorkflowController(service, commandService, cache)
 
         @Bean
         open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()

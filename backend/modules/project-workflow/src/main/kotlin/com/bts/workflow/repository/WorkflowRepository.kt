@@ -70,6 +70,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
             .select(WORKFLOWS.ID)
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(key))
+            .and(WORKFLOWS.DELETED_AT.isNull)
             .fetchOne()
             ?.get(WORKFLOWS.ID) as UUID?
 
@@ -145,6 +146,11 @@ class WorkflowRepository(private val dsl: DSLContext) {
             .leftJoin(WORKFLOW_STATES).on(WORKFLOW_STATES.WORKFLOW_ID.eq(WORKFLOWS.ID))
             .leftJoin(WORKFLOW_TRANSITIONS).on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
             .where(condition)
+            // ★ 소프트 삭제 필터를 **여기 한 곳**에 둔다. 이 저장소에는 공통 필터 래퍼가 없어
+            //   (DATA.md §3) 호출부마다 붙이면 언젠가 빠뜨린다 — 그러면 지운 워크플로우가
+            //   목록과 전환 계산에 되살아난다. V205 가 deleted_at 을 만들었으나 읽기는
+            //   그것을 보지 않고 있었다(PR 3 에서 실측).
+            .and(WORKFLOWS.DELETED_AT.isNull)
             .fetch()
 
     /**

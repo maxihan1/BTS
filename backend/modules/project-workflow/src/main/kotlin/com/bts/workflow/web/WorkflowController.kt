@@ -4,20 +4,29 @@ package com.bts.workflow.web
 
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.application.WorkflowApplicationService
+import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.port.outbound.toUuid
+import com.bts.workflow.web.dto.CreateWorkflowRequest
+import com.bts.workflow.web.dto.DuplicateWorkflowRequest
 import com.bts.workflow.web.dto.TransitionRequestDto
 import com.bts.workflow.web.dto.TransitionResponseDto
+import com.bts.workflow.web.dto.UpdateWorkflowRequest
 import com.bts.workflow.web.dto.WorkflowDto
 import com.bts.workflow.web.dto.toDto
 import io.konform.validation.Invalid
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -40,6 +49,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/workflows")
 class WorkflowController(
     private val workflowApplicationService: WorkflowApplicationService,
+    private val workflowCommandService: WorkflowCommandService,
     private val workflowCache: WorkflowCache,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -134,6 +144,73 @@ class WorkflowController(
         workflowCache.invalidate(body.key)
         return ResponseEntity.ok(DataResponse(data = null))
     }
+
+    /**
+     * 워크플로우를 만든다.
+     *
+     * 상태 씨앗이 비면 400 이다 — `Workflow.of()` invariant 상 상태 0개 워크플로우는 조회가 불가능하다.
+     * 살아 있는 워크플로우가 이미 그 key 를 쓰면 409. 소프트 삭제된 key 는 재사용할 수 있다(V206).
+     *
+     * @return 201 + `{ "data": { "key": ... } }`
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    fun createWorkflow(
+        @RequestBody request: CreateWorkflowRequest,
+    ): DataResponse<CreatedWorkflowResponse> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.createWorkflow key={}", request.key)
+        workflowCommandService.create(actor.toUuid(), request.toCommand())
+        return DataResponse(CreatedWorkflowResponse(request.key))
+    }
+
+    /**
+     * 이름·설명을 고친다. `key` 는 받지 않는다 — 참조가 문자열이라 바뀌면 조용히 끊긴다.
+     *
+     * 대상이 없으면 404, 편집이 잠겼으면 409.
+     */
+    @PutMapping("/{key}")
+    fun updateWorkflow(
+        @PathVariable key: String,
+        @RequestBody request: UpdateWorkflowRequest,
+    ): DataResponse<Nothing?> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.updateWorkflow key={}", key)
+        workflowCommandService.update(actor.toUuid(), key, request.toCommand())
+        return DataResponse(null)
+    }
+
+    /**
+     * 소프트 삭제한다. 스킴 매핑이 참조 중이면 409.
+     *
+     * 행을 지우지 않고 `deleted_at` 만 채운다(`DATA.md §1.2`).
+     */
+    @DeleteMapping("/{key}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteWorkflow(
+        @PathVariable key: String,
+    ) {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.deleteWorkflow key={}", key)
+        workflowCommandService.delete(actor.toUuid(), key)
+    }
+
+    /**
+     * 워크플로우를 복제한다. 상태 편성과 전환을 함께 복사하고 `origin='CUSTOM'` 으로 만든다.
+     *
+     * 원본이 없으면 404, 새 key 가 이미 쓰이면 409.
+     */
+    @PostMapping("/{key}/duplicate")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun duplicateWorkflow(
+        @PathVariable key: String,
+        @RequestBody request: DuplicateWorkflowRequest,
+    ): DataResponse<CreatedWorkflowResponse> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.duplicateWorkflow source={} target={}", key, request.key)
+        workflowCommandService.duplicate(actor.toUuid(), key, request.key, request.name)
+        return DataResponse(CreatedWorkflowResponse(request.key))
+    }
 }
 
 /**
@@ -171,3 +248,6 @@ data class CacheInvalidateRequest(val key: String)
  * @property data 응답 페이로드
  */
 data class DataResponse<T>(val data: T)
+
+/** 생성·복제 응답. 만들어진 워크플로우의 key 만 준다 — 상세는 GET 으로 받는다. */
+data class CreatedWorkflowResponse(val key: String)

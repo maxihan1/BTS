@@ -38,3 +38,34 @@ class WorkflowExpressionTimeoutException(
     val timeoutMillis: Long,
     cause: Throwable? = null,
 ) : RuntimeException("SpEL expression evaluation exceeded ${timeoutMillis}ms: '$expression'", cause)
+
+/**
+ * 이미 살아 있는 워크플로우가 같은 `key` 를 쓰고 있을 때 던진다. → 409
+ *
+ * 소프트 삭제된 워크플로우의 key 는 이 예외의 대상이 **아니다** — `V206` 이 key 유니크를
+ * `WHERE deleted_at IS NULL` 부분 인덱스로 바꿔 지운 key 를 다시 쓸 수 있게 했다.
+ */
+class WorkflowKeyConflictException(
+    val workflowKey: String,
+) : RuntimeException("Workflow key already in use: '$workflowKey'")
+
+/**
+ * 다른 자원이 참조 중인 워크플로우를 지우려 할 때 던진다. → 409
+ *
+ * 판정 기준은 **스킴 매핑**(`workflow_scheme_issue_type_mappings`)이다. 그 FK 는 `ON DELETE RESTRICT`
+ * 라 하드 삭제는 DB 가 막지만, 이 PR 의 삭제는 소프트 삭제라 DB 가 개입하지 않는다.
+ * 그래서 애플리케이션이 직접 센다.
+ */
+class WorkflowInUseException(
+    val workflowKey: String,
+    val referenceCount: Int,
+) : RuntimeException("Workflow '$workflowKey' is referenced by $referenceCount scheme mapping(s)")
+
+/**
+ * 편집이 잠긴 워크플로우를 고치려 할 때 던진다. → 409
+ *
+ * `workflows.is_locked` 는 `V205` 가 만들었다. 발행 중처럼 일시적으로 수정을 막아야 할 때 쓴다.
+ */
+class WorkflowLockedException(
+    val workflowKey: String,
+) : RuntimeException("Workflow '$workflowKey' is locked for editing")
