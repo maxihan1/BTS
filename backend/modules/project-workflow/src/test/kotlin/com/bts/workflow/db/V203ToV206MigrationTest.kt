@@ -236,7 +236,7 @@ class V203ToV206MigrationTest {
             for (workflowKey in states.map { it.workflowKey }.distinct()) {
                 conn.prepareStatement(
                     // V206 술어를 붙이지 않는다 — 이 픽스처는 V205 이전 시점(deleted_at 컬럼 부재)에 돈다.
-                "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                    "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
                 ).use { stmt ->
                     stmt.setString(1, workflowKey)
                     stmt.setString(2, workflowKey)
@@ -696,16 +696,8 @@ class V203ToV206MigrationTest {
                 "   AND tc.constraint_type IN ('UNIQUE', 'PRIMARY KEY', 'FOREIGN KEY')" +
                 " ORDER BY 1, 2, 3"
         val result = mutableMapOf<String, MutableSet<String>>()
-        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(sql).use { rs ->
-                    while (rs.next()) {
-                        result
-                            .getOrPut(rs.getString(1)) { mutableSetOf() }
-                            .add("${rs.getString(2)}(${rs.getString(3)})")
-                    }
-                }
-            }
+        forEachRow(url, sql) { rs ->
+            result.getOrPut(rs.getString(1)) { mutableSetOf() }.add("${rs.getString(2)}(${rs.getString(3)})")
         }
         return result
     }
@@ -726,14 +718,38 @@ class V203ToV206MigrationTest {
                 " WHERE schemaname = 'public' AND tablename IN ($inList)" +
                 " ORDER BY indexdef"
         val result = mutableSetOf<String>()
+        forEachRow(url, sql) { rs -> result.add(rs.getString(1)) }
+        return result
+    }
+
+    /** 소프트 삭제 1행. 부분 유니크 인덱스 검증에서 「지운 뒤 다시 만든다」를 표현한다. */
+    private fun softDelete(
+        conn: Connection,
+        table: String,
+        key: String,
+    ) {
+        conn.createStatement().use { it.executeUpdate("UPDATE $table SET deleted_at = NOW() WHERE key = '$key'") }
+    }
+
+    /**
+     * 결과 행마다 [read] 를 호출한다. JDBC 보일러플레이트의 중첩을 한 곳에 모은다.
+     *
+     * try-with-resources 3단(Connection → Statement → ResultSet)에 행 루프가 얹혀 중첩이 깊다.
+     * 그것이 JDBC 의 표준 형태이고 더 쪼개면 자원 해제 경계가 흐려진다.
+     */
+    @Suppress("NestedBlockDepth")
+    private fun forEachRow(
+        url: String,
+        sql: String,
+        read: (java.sql.ResultSet) -> Unit,
+    ) {
         DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
                 stmt.executeQuery(sql).use { rs ->
-                    while (rs.next()) result.add(rs.getString(1))
+                    while (rs.next()) read(rs)
                 }
             }
         }
-        return result
     }
 
     /** 격리 DB 를 만들어 SQL 한 덩어리를 적용하고 URL 을 준다. */
@@ -821,10 +837,11 @@ class V203ToV206MigrationTest {
         val url = migrateWithFixture("v206_status_recreate") { }
         withConnection(url) { conn ->
             insertStatus(conn, "blocked", "Blocked", "IN_PROGRESS")
-            conn.createStatement().use { it.executeUpdate("UPDATE statuses SET deleted_at = NOW() WHERE key = 'blocked'") }
+            softDelete(conn, "statuses", "blocked")
             // 같은 key 로 재생성 — 살아 있는 행이 없으므로 부분 유니크가 허용해야 한다.
             insertStatus(conn, "blocked", "Blocked Again", "TODO")
-            assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked' AND deleted_at IS NULL")).isEqualTo(1)
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked' AND deleted_at IS NULL"))
+                .isEqualTo(1)
             assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked'")).isEqualTo(2)
         }
     }
@@ -845,9 +862,11 @@ class V203ToV206MigrationTest {
         val url = migrateWithFixture("v206_workflow_recreate") { }
         withConnection(url) { conn ->
             insertWorkflow(conn, "retired-flow")
-            conn.createStatement().use { it.executeUpdate("UPDATE workflows SET deleted_at = NOW() WHERE key = 'retired-flow'") }
+            softDelete(conn, "workflows", "retired-flow")
             insertWorkflow(conn, "retired-flow")
-            assertThat(countWhere(conn, "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow' AND deleted_at IS NULL")).isEqualTo(1)
+            val alive = "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow' AND deleted_at IS NULL"
+            assertThat(countWhere(conn, alive))
+                .isEqualTo(1)
             assertThat(countWhere(conn, "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow'")).isEqualTo(2)
         }
     }

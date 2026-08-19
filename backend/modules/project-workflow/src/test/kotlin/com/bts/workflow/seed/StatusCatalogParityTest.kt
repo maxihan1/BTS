@@ -2,7 +2,6 @@
 
 package com.bts.workflow.seed
 
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -69,7 +68,6 @@ class StatusCatalogParityTest {
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 DefaultResourceLoader(),
                 mockk(relaxed = true),

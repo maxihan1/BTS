@@ -11,7 +11,6 @@ import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -155,7 +154,6 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * 빈 DB 최초 부팅용 `workflow_scheme_issue_type_mappings` 기본 매핑 보강은 [seedAll] 말미의
  * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 가 계속 담당한다.
  *
- * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
  * @param dsl jOOQ DSLContext. 전환/상태/validator/postAction 직접 INSERT 에 사용한다.
  * @param resourceLoader classpath YAML 파일 접근용 Spring ResourceLoader.
  * @param yamlMapper YAML 파일 역직렬화용 Jackson ObjectMapper (YAMLFactory 기반).
@@ -167,7 +165,6 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  */
 @Service
 class YamlSeedService(
-    private val workflowRepository: WorkflowRepository,
     private val dsl: DSLContext,
     private val resourceLoader: ResourceLoader,
     private val validatorFactory: WorkflowValidatorFactory,

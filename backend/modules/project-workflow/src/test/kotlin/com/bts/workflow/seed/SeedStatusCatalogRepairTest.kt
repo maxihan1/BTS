@@ -2,7 +2,6 @@
 
 package com.bts.workflow.seed
 
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -70,7 +69,6 @@ class SeedStatusCatalogRepairTest {
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             service =
                 YamlSeedService(
-                    WorkflowRepository(dsl),
                     dsl,
                     DefaultResourceLoader(),
                     mockk(relaxed = true),

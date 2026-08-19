@@ -3,7 +3,6 @@
 
 package com.bts.issue.integration
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.TransitionIssueRequest
@@ -13,6 +12,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.TransitionEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeRef

@@ -3,12 +3,12 @@
 
 package com.bts.issue.epic.web
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -901,7 +901,9 @@ class IssueEpicProgressControllerIntegrationTest {
         name: String,
     ): UUID =
         conn.prepareStatement(
-            "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+            "INSERT INTO workflows (key, name) VALUES (?, ?)" +
+                " ON CONFLICT (key) WHERE deleted_at IS NULL" +
+                " DO UPDATE SET name = EXCLUDED.name RETURNING id",
         ).use { stmt ->
             stmt.setString(1, key)
             stmt.setString(2, name)
@@ -919,8 +921,7 @@ class IssueEpicProgressControllerIntegrationTest {
         name: String,
         category: String,
         displayOrder: Int,
-    ): UUID =
-        insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
+    ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

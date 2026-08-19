@@ -2,7 +2,6 @@
 
 package com.bts.issue.integration
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.adapter.inbound.rest.IssueExceptionHandler
 import com.bts.issue.application.IssueApplicationService
@@ -22,6 +21,7 @@ import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.issue.watcher.repository.IssueWatcherRepository
@@ -936,8 +936,7 @@ class IssueMoveIntegrationTest {
                 name: String,
                 category: String,
                 displayOrder: Int,
-            ): UUID =
-                insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
+            ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
             val openId = insertStateIfAbsent("open", "Open", "TODO", 0)
             val inProgressId = insertStateIfAbsent("in_progress", "In Progress", "IN_PROGRESS", 1)

@@ -2,13 +2,13 @@
 
 package com.bts.issue.application
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermissionResolver

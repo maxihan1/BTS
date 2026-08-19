@@ -162,7 +162,6 @@ class WorkflowEngineWiringIntegrationTest {
             // TestConfig 에 이미 factory 빈 있음 — 동일 인스턴스를 시드 서비스에 주입
             seedService =
                 YamlSeedService(
-                    workflowRepository,
                     dsl,
                     DefaultResourceLoader(),
                     validatorFactory,

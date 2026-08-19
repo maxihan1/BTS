@@ -83,7 +83,10 @@ class RawWorkflowStateInsertGuardTest {
     fun `판별식이 실제로 파일을 읽는다`() {
         // 비-공허 짝. 스캔 경로가 어긋나 0개 파일을 읽으면 위 두 단언이 자동으로 통과한다.
         assertThat(testSourceRoots()).describedAs("스캔할 테스트 소스 루트를 하나도 못 찾았다").isNotEmpty()
-        val scanned = testSourceRoots().sumOf { root -> Files.walk(root).use { it.asSequence().count { p -> p.extension == "kt" } } }
+        val scanned =
+            testSourceRoots().sumOf { root ->
+                Files.walk(root).use { stream -> stream.asSequence().count { it.extension == "kt" } }
+            }
         assertThat(scanned).describedAs("스캔한 Kotlin 테스트 파일이 0개다").isGreaterThan(100)
     }
 

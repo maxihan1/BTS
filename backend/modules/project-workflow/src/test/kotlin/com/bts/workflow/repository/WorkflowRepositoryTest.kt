@@ -295,11 +295,13 @@ class WorkflowRepositoryTest {
     private fun cleanupCatalogOnly() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
-                stmt.executeUpdate("DELETE FROM workflow_statuses WHERE workflow_id IN (SELECT id FROM workflows WHERE key = 'catalog-only')")
+                stmt.executeUpdate(
+                    "DELETE FROM workflow_statuses" +
+                        " WHERE workflow_id IN (SELECT id FROM workflows WHERE key = 'catalog-only')",
+                )
                 stmt.executeUpdate("DELETE FROM workflows WHERE key = 'catalog-only'")
                 stmt.executeUpdate("DELETE FROM statuses WHERE key = 'blocked'")
             }
         }
     }
-
 }

@@ -326,7 +326,6 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
             mappingRepo: SchemeIssueTypeMappingRepository,
         ): YamlSeedService =
             YamlSeedService(
-                workflowRepository = workflowRepo,
                 dsl = dsl,
                 resourceLoader = DefaultResourceLoader(),
                 validatorFactory = validatorFactory,

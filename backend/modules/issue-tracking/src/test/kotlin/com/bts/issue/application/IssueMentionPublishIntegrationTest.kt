@@ -3,13 +3,13 @@
 
 package com.bts.issue.application
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.domain.ActorId
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueMentioned
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter

@@ -2,12 +2,12 @@
 
 package com.bts.workflow.postaction
 
-import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
@@ -141,7 +141,14 @@ class PostActionE2EIntegrationTest {
                     }
 
                 insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "todo", "To Do", "TODO", 1)
-                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "doing", "In Progress", "IN_PROGRESS", 2)
+                insertWorkflowStatus(
+                    conn,
+                    java.util.UUID.fromString(workflowId),
+                    "doing",
+                    "In Progress",
+                    "IN_PROGRESS",
+                    2,
+                )
                 insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "done", "Done", "DONE", 3)
 
                 val todoId: String =

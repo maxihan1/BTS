@@ -31,7 +31,12 @@ import java.util.UUID
  * @param key 상태 키. 전역 카탈로그에서 유일하다 — 같은 키면 기존 카탈로그 행을 재사용한다
  * @param category `TODO` · `IN_PROGRESS` · `DONE` 중 하나
  * @return `workflow_states.id`. 전환 픽스처가 from/to 로 쓴다
+ *
+ * ### 파라미터가 6개인 이유
+ * DB 컬럼을 그대로 받는 픽스처라 자연스러운 형태다. spec data class 로 묶으면 **두 BC 에 또 하나의
+ * 복제**가 생기고(이 헬퍼가 이미 2벌이다) 호출부 40여 곳의 가독성도 떨어진다.
  */
+@Suppress("LongParameterList")
 fun insertWorkflowStatus(
     conn: Connection,
     workflowId: UUID,
@@ -89,6 +94,7 @@ private fun linkStatusToWorkflow(
  *
  * 이 함수가 이 저장소에서 `workflow_states` 에 INSERT 하는 것이 허용된 유일한 테스트 경로다.
  */
+@Suppress("LongParameterList")
 private fun insertLegacyState(
     conn: Connection,
     workflowId: UUID,

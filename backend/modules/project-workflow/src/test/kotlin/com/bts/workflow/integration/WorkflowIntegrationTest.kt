@@ -2,7 +2,6 @@
 
 package com.bts.workflow.integration
 
-import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.cache.WorkflowCache
@@ -19,6 +18,7 @@ import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.CustomExpressionValidator
 import com.bts.workflow.validator.RequiredFieldValidator
 import io.mockk.every
@@ -546,8 +546,7 @@ object WorkflowFixtures {
         conn: Connection,
         wfId: UUID,
         spec: StateInsertSpec,
-    ): UUID =
-        insertWorkflowStatus(conn, wfId, spec.key, spec.name, spec.category, spec.displayOrder)
+    ): UUID = insertWorkflowStatus(conn, wfId, spec.key, spec.name, spec.category, spec.displayOrder)
 
     private fun insertTransition(
         conn: Connection,

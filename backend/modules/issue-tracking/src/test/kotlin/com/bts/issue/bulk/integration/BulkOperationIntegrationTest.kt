@@ -3,7 +3,6 @@
 
 package com.bts.issue.bulk.integration
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.bulk.application.BulkEditPayload
@@ -26,6 +25,7 @@ import com.bts.issue.bulk.worker.BulkOperationWorker
 import com.bts.issue.domain.ActorId
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
@@ -905,8 +905,7 @@ class BulkOperationIntegrationTest {
         name: String,
         category: String,
         displayOrder: Int,
-    ): UUID =
-        insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
+    ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

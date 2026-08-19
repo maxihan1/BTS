@@ -3,7 +3,6 @@
 
 package com.bts.issue.cycletime
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
 import com.bts.issue.cycletime.application.CycleTimeService
 import com.bts.issue.cycletime.web.CycleTimeController
@@ -13,6 +12,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.statushistory.repository.StatusHistoryRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -903,7 +903,9 @@ class CycleTimeIntegrationTest {
         name: String,
     ): UUID =
         conn.prepareStatement(
-            "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+            "INSERT INTO workflows (key, name) VALUES (?, ?)" +
+                " ON CONFLICT (key) WHERE deleted_at IS NULL" +
+                " DO UPDATE SET name = EXCLUDED.name RETURNING id",
         ).use { stmt ->
             stmt.setString(1, key)
             stmt.setString(2, name)
@@ -921,8 +923,7 @@ class CycleTimeIntegrationTest {
         name: String,
         category: String,
         displayOrder: Int,
-    ): UUID =
-        insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
+    ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

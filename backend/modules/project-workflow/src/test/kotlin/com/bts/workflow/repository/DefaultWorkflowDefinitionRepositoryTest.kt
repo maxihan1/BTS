@@ -2,8 +2,8 @@
 
 package com.bts.workflow.repository
 
-import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -164,8 +164,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
             conn: java.sql.Connection,
             workflowId: UUID,
             spec: StateSpec,
-        ): UUID =
-            insertWorkflowStatus(conn, workflowId, spec.key, spec.name, spec.category, spec.displayOrder)
+        ): UUID = insertWorkflowStatus(conn, workflowId, spec.key, spec.name, spec.category, spec.displayOrder)
 
         private fun insertTransition(
             conn: java.sql.Connection,

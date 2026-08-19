@@ -2,7 +2,6 @@
 
 package com.bts.issue.adapter
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
@@ -12,6 +11,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
@@ -264,8 +264,7 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
         name: String,
         category: String,
         displayOrder: Int,
-    ): UUID =
-        insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
+    ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

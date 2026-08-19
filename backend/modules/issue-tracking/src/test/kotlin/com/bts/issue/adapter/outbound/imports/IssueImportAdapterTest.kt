@@ -2,7 +2,6 @@
 
 package com.bts.issue.adapter.outbound.imports
 
-import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueImportStatusService
@@ -30,6 +29,7 @@ import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository

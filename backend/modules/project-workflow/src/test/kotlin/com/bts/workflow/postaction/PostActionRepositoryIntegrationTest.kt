@@ -121,7 +121,14 @@ class PostActionRepositoryIntegrationTest {
                     }
 
                 insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "open", "Open", "TODO", 1)
-                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "in_progress", "In Progress", "IN_PROGRESS", 2)
+                insertWorkflowStatus(
+                    conn,
+                    java.util.UUID.fromString(workflowId),
+                    "in_progress",
+                    "In Progress",
+                    "IN_PROGRESS",
+                    2,
+                )
                 insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "done", "Done", "DONE", 3)
 
                 val fromStateId: String =
