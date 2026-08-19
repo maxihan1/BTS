@@ -5,6 +5,9 @@ package com.bts.workflow.web
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
@@ -40,6 +43,18 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+
+/** 테스트 행위자. `CurrentActor` 가 UUID 형식을 요구하므로 실제 UUID 를 쓴다. */
+private const val ACTOR_ID = "11111111-2222-3333-4444-555555555555"
+
+/**
+ * 권한 판정기 목. 테스트마다 `every { ... }` 로 허용·거부를 바꾼다.
+ *
+ * authority 를 손수 심지 않는 것이 요점이다 — 그 방식이 발급 경로 없는 권한을 요구하는
+ * 죽은 게이트를 가려 왔다.
+ */
+private val permissionResolver: WorkflowDefinitionPermissionResolver = mockk()
+
 
 /**
  * WorkflowController REST API 슬라이스 테스트.
@@ -79,11 +94,15 @@ class WorkflowControllerMvcTest {
         open fun workflowCommandService(): WorkflowCommandService = mockk(relaxed = true)
 
         @Bean
+        open fun workflowDefinitionPermissionResolver(): WorkflowDefinitionPermissionResolver = permissionResolver
+
+        @Bean
         open fun workflowController(
             service: WorkflowApplicationService,
             commandService: WorkflowCommandService,
             cache: WorkflowCache,
-        ): WorkflowController = WorkflowController(service, commandService, cache)
+            resolver: WorkflowDefinitionPermissionResolver,
+        ): WorkflowController = WorkflowController(service, commandService, cache, resolver)
 
         @Bean
         open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()
@@ -184,10 +203,21 @@ class WorkflowControllerMvcTest {
     }
 
     // ── Case 4: POST /api/v1/workflows/cache/invalidate — 권한 검증 ───────────
+    //
+    // ★ 이 두 테스트는 **반전된 것**이다. 종전에는 @WithMockUser(authorities = ["WORKFLOW_MANAGE"])
+    //   로 authority 를 손수 심어 200 을 받았다. 그런데 그 authority 를 **발급하는 경로가
+    //   저장소 어디에도 없었다** — 정본 권한 코드는 철자가 뒤집힌 MANAGE_WORKFLOW(V013 시드)이고,
+    //   authority 를 만드는 곳 2군데(SidRevokeJwtConverter:115 · PatAuthenticationFilter:48)는
+    //   둘 다 ROLE_ 접두어를 붙인다. 즉 이 엔드포인트는 **어떤 실제 요청으로도 통과할 수 없었고**,
+    //   테스트만 초록이었다(unreachable-state-fixture-is-fake-green).
+    //
+    //   지금은 WorkflowDefinitionPermissionResolver 가 판정한다. 테스트도 authority 를 심지 않고
+    //   **resolver 의 판정 결과**로 갈린다 — prod 에서 실제로 일어나는 경로와 같은 모양이다.
 
     @Test
-    @WithMockUser(authorities = ["WORKFLOW_MANAGE"])
-    fun `POST 캐시 무효화 — WORKFLOW_MANAGE 권한 있으면 200`() {
+    @WithMockUser(username = ACTOR_ID)
+    fun `POST 캐시 무효화 — 권한 판정을 통과하면 200`() {
+        every { permissionResolver.requirePermission(any(), any()) } returns Unit
         val body = mapOf("key" to "software-default")
 
         mockMvc.perform(
@@ -199,8 +229,13 @@ class WorkflowControllerMvcTest {
     }
 
     @Test
-    @WithMockUser
-    fun `POST 캐시 무효화 — WORKFLOW_MANAGE 권한 없으면 403`() {
+    @WithMockUser(username = ACTOR_ID)
+    fun `POST 캐시 무효화 — 권한 판정이 거부하면 403`() {
+        every { permissionResolver.requirePermission(any(), any()) } throws
+            WorkflowDefinitionAccessDeniedException(
+                java.util.UUID.fromString(ACTOR_ID),
+                WorkflowDefinitionPermission.UPDATE,
+            )
         val body = mapOf("key" to "software-default")
 
         mockMvc.perform(
