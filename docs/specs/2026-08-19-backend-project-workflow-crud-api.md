@@ -284,7 +284,7 @@ CI 러너가 개발 머신과 같은 컴퓨터다. 로컬 gradle 과 CI 를 동�
 | M7 | 백엔드 전량 green | `./gradlew :modules:project-workflow:test :modules:issue-tracking:test :modules:app:test ktlintCheck detekt` EXIT=0 |
 | M8 ★★ | jOOQ 생성물 재생성 | `generateJooq` **EXIT=0** + 컴파일 통과. **커밋하지 않는다** — `.gitignore:21` 이 `**/src/generated/jooq/` 를 무시하고 주석이 「SQL 이 source of truth, 매 빌드시 재생성」이라 명시한다. 로드맵 §제약의 「생성물은 git 커밋 대상」과 이 항목의 이전 두 기대(「diff 0」·「diff 가 나온다」)는 **둘 다 틀렸다**(구현 중 실측). 대신 **미러 정합**이 진짜 검증이다 |
 | M9 | 문서 정합 | `verify-master-plan.sh` EXIT 0 · `build-doc-index.mjs --check` EXIT 0 |
-| M11 ★ | **`hasAuthority(` 재유입 0.** 판별식이 `backend/**/main` 에서 `@PreAuthorize` SpEL 권한 검사를 금지한다 | `VersionPermissionResolver` 가 명문화한 관례(N5)를 기계가 강제. 뮤테이션 — 아무 컨트롤러에 `@PreAuthorize` 1줄 추가 → red |
+| M11 ★★ | **발급 경로 없는 authority 요구 0.** 판별식이 `backend/**/main` 의 `hasAuthority('X')` 에서 X 가 `ROLE_` 로 시작하지 않으면 red | 초안의 「`@PreAuthorize` 자체 금지」는 실측으로 기각 — 저장소에 49건이 있고 `isAuthenticated()`·`hasRole()` 은 정당하다. 이 저장소가 만드는 authority 는 전부 `ROLE_` 접두어다. 뮤테이션 — 아무 컨트롤러에 `hasAuthority('X')` 1줄 추가 → red |
 | M10 | CI 전건 green | 머지 전 실측 |
 
 ## Sanity Check

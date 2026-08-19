@@ -338,7 +338,15 @@ Maxi 결정 2건은 아래에서 확정.
 
 **RED**:
 - **M5 차집합** — 「쓰기 엔드포인트 집합」 ⊖ 「`WorkflowCache.invalidate` 호출부 집합」 = ∅ 을 단언. MEMORY `two-lists-never-check-each-other` 의 처방 그대로다. 한쪽만 읽으면 안 읽는 쪽이 조용히 썩는다
-- **M11** — `backend/**/main` 전체에서 `@PreAuthorize` SpEL 권한 검사 **0건**. ★ 탐지 범위는 `hasAuthority(` **와 `hasRole(` 둘 다**(리뷰 T3) — `hasAuthority` 만 잡으면 `hasRole` 로 같은 결함이 재유입된다. `@PreAuthorize` 애노테이션 자체를 금지 대상으로 삼는다
+- **M11 ★★ (구현 중 재설계)** — `backend/**/main` 의 `hasAuthority('X')` 에서 **X 가 `ROLE_` 로 시작하지 않으면 red**.
+
+  초안은 「`@PreAuthorize` 애노테이션 자체 금지」였는데 **실측이 그것을 뒤집었다** — 저장소에 `@PreAuthorize` 가 **49건** 있고 `isAuthenticated()` · `hasRole('SYSTEM_ADMIN')` 은 **정당한 사용**이다. 애노테이션을 금지하면 무관한 49건이 red 가 되고 판별식이 곧 꺼진다.
+
+  진짜 결함은 **발급되지 않는 authority 를 요구하는 것**이었다. 이 저장소가 만드는 authority 는 전부 `ROLE_` 접두어를 갖는다(`SidRevokeJwtConverter:115` 가 `setAuthorityPrefix("ROLE_")` · `PatAuthenticationFilter:48` 이 `ROLE_PAT`). 접두어 없는 문자열을 요구하면 그 게이트는 **어떤 요청으로도 통과할 수 없다**.
+
+  `hasRole(` 은 검사하지 않는다 — Spring 이 `ROLE_` 을 자동으로 붙여 주므로 같은 결함이 생기지 않는다. 리뷰 T3 의 「`hasRole` 로 재유입된다」는 우려는 이 접두어 규칙으로 해소된다.
+
+  실측 현재값 — `hasAuthority(` 사용처 **0건**(Task 8 이 마지막 1건을 제거).
 - ★ 두 판별식 모두 탐지 문자열을 **런타임 조립**한다
 - ★ M5 는 「쓰기 엔드포인트」를 **손으로 다시 적지 않는다** — 컨트롤러 소스에서 `@PostMapping`·`@PutMapping`·`@DeleteMapping` 을 스캔해 집합을 만든다. 손으로 적으면 그 목록이 두 번째 리스트가 되어 같은 결함을 재생산한다(#390 의 C1 선례 — 판별식이 CLI 판정을 import 하지 않고 손으로 다시 적었다)
 - ★ **스캐너의 사각을 막는다 (리뷰 Q3)** — 스캔 대상 **파일 목록을 하드코딩하지 않는다**. `backend/modules/project-workflow/src/main/**` 를 **디렉터리 전수 순회**해 `@RestController` 를 가진 파일을 찾는다. 파일 목록을 적으면 새 컨트롤러가 목록 밖에서 태어나 조용히 빠진다 — 그것이 세 번째 리스트다
