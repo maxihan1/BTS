@@ -226,7 +226,52 @@ class YamlSeedService(
         // 루프 밖(4 워크플로우 처리 완료 후) 1회 호출해 매 seedAll() 마다 dangling/누락을 보정한다.
         mappingRepository.repairDefaultMappings()
 
+        // 상태 카탈로그 보정 — 같은 자리에서 같은 이유(유실 보정)로 돈다. 아래 KDoc 참조.
+        repairStatusCatalog()
+
         log.info("YamlSeedService 완료 — 표준 4 워크플로우 시드 점검 끝")
+    }
+
+    /**
+     * `workflow_states` 를 기준으로 전역 상태 카탈로그의 **빠진 행만** 채운다.
+     *
+     * ### 왜 필요한가
+     * 이 서비스는 「workflow 행이 없을 때만 삽입」한다. 그래서 workflow 행은 있는데 카탈로그만 비어 있는
+     * 상태에 빠지면 재기동으로는 영영 복구되지 않는다. 그런 상태는 실제로 만들어질 수 있다 —
+     * 이 PR 배포 후 앱만 이전 버전으로 롤백하면 구 코드의 `deleteWorkflow` → 재삽입이 돌고,
+     * `workflow_statuses` 가 `workflows` FK CASCADE 로 함께 사라진다. 다시 롤포워드해도 workflow 행은
+     * 이미 있으므로 삽입 경로를 타지 않는다.
+     *
+     * CI 판별식은 운영 DB 를 보지 않으므로 이 상태는 **조용하다.** 그래서 부팅마다 스스로 보정한다.
+     *
+     * 선례는 바로 위의 [SchemeIssueTypeMappingRepository.repairDefaultMappings] 다 — 같은 자리에서
+     * 같은 이유(빈 DB·유실 보정)로 루프 밖 1회 돈다. 새 패턴이 아니다.
+     *
+     * INSERT 만 한다. `ON CONFLICT DO NOTHING` 이라 멀쩡한 DB 에서는 아무 행도 늘지 않는다.
+     * 로직은 V204 백필과 같다 — 마이그레이션이 한 번 하는 일을 런타임이 반복 가능하게 한다.
+     */
+    private fun repairStatusCatalog() {
+        val insertedStatuses =
+            dsl.execute(
+                "INSERT INTO statuses (key, name, category) " +
+                    "SELECT DISTINCT ON (key) key, name, category FROM workflow_states ORDER BY key " +
+                    "ON CONFLICT (key) DO NOTHING",
+            )
+        val insertedLinks =
+            dsl.execute(
+                "INSERT INTO workflow_statuses (workflow_id, status_id, display_order) " +
+                    "SELECT ws.workflow_id, s.id, ws.display_order " +
+                    "FROM workflow_states ws JOIN statuses s ON s.key = ws.key " +
+                    "ON CONFLICT (workflow_id, status_id) DO NOTHING",
+            )
+        if (insertedStatuses > 0 || insertedLinks > 0) {
+            log.warn(
+                "상태 카탈로그 보정 — statuses {}행 · workflow_statuses {}행을 되채웠다. " +
+                    "정상 상태에서는 0행이다 (앱만 롤백한 이력이 있는지 확인할 것).",
+                insertedStatuses,
+                insertedLinks,
+            )
+        }
     }
 
     /**
