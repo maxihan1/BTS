@@ -100,12 +100,9 @@ class SeedStatusCatalogIntegrationTest {
 
     private fun count(table: String): Int =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT COUNT(*) FROM $table").use { rs ->
-                    rs.next()
-                    rs.getInt(1)
-                }
-            }
+            val rs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM $table")
+            rs.next()
+            rs.getInt(1)
         }
 
     private fun execute(sql: String) {
@@ -116,11 +113,8 @@ class SeedStatusCatalogIntegrationTest {
 
     private fun statusName(key: String): String? =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT name FROM statuses WHERE key = '$key'").use { rs ->
-                    if (rs.next()) rs.getString(1) else null
-                }
-            }
+            val rs = conn.createStatement().executeQuery("SELECT name FROM statuses WHERE key = '$key'")
+            if (rs.next()) rs.getString(1) else null
         }
 
     @Test
@@ -153,7 +147,10 @@ class SeedStatusCatalogIntegrationTest {
         execute("UPDATE statuses SET name = '진행 중' WHERE key = 'doing'")
         // 그 상태를 쓰던 워크플로우를 지운다 — CASCADE 로 workflow_statuses 도 사라지고,
         // 다음 seedAll() 이 'simple' 을 다시 넣는 경로를 탄다(「없을 때만 삽입」).
-        execute("DELETE FROM workflow_scheme_issue_type_mappings WHERE workflow_id IN (SELECT id FROM workflows WHERE key = 'simple')")
+        execute(
+            "DELETE FROM workflow_scheme_issue_type_mappings " +
+                "WHERE workflow_id IN (SELECT id FROM workflows WHERE key = 'simple')",
+        )
         execute("DELETE FROM workflows WHERE key = 'simple'")
 
         service.seedAll()

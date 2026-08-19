@@ -38,7 +38,8 @@ import java.sql.DriverManager
  * 이미지는 `quay.io/tembo/pg16-pgmq:latest` — V004 가 pgmq 확장을 요구한다
  * (ADR 2026-05-22-pgmq-postgres-image · `V200MigrationTest` 와 동일).
  *
- * 참조. FR-WF-04 · ADR 2026-08-18-workflow-global-status-catalog · `docs/plans/2026-08-19-migration-project-workflow-global-status-catalog.md`
+ * 참조. FR-WF-04 · ADR 2026-08-18-workflow-global-status-catalog ·
+ * `docs/plans/2026-08-19-migration-project-workflow-global-status-catalog.md`
  */
 @Testcontainers
 class V203ToV205MigrationTest {
@@ -419,12 +420,9 @@ class V203ToV205MigrationTest {
         val expected = seedStates.associate { it.stateKey to (it.name to it.category) }
         val actual = mutableMapOf<String, Pair<String, String>>()
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT key, name, category FROM statuses").use { rs ->
-                    while (rs.next()) {
-                        actual[rs.getString(1)] = rs.getString(2) to rs.getString(3)
-                    }
-                }
+            val rs = conn.createStatement().executeQuery("SELECT key, name, category FROM statuses")
+            while (rs.next()) {
+                actual[rs.getString(1)] = rs.getString(2) to rs.getString(3)
             }
         }
         assertThat(actual).isEqualTo(expected)
@@ -435,16 +433,14 @@ class V203ToV205MigrationTest {
         val expected = seedStates.associate { (it.workflowKey to it.stateKey) to it.displayOrder }
         val actual = mutableMapOf<Pair<String, String>, Int>()
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(
+            val rs =
+                conn.createStatement().executeQuery(
                     "SELECT w.key, s.key, ws.display_order FROM workflow_statuses ws" +
                         " JOIN workflows w ON w.id = ws.workflow_id" +
                         " JOIN statuses s ON s.id = ws.status_id",
-                ).use { rs ->
-                    while (rs.next()) {
-                        actual[rs.getString(1) to rs.getString(2)] = rs.getInt(3)
-                    }
-                }
+                )
+            while (rs.next()) {
+                actual[rs.getString(1) to rs.getString(2)] = rs.getInt(3)
             }
         }
         assertThat(actual).isEqualTo(expected)
@@ -529,11 +525,8 @@ class V203ToV205MigrationTest {
             }
         val origins = mutableMapOf<String, String>()
         DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT key, origin FROM workflows").use { rs ->
-                    while (rs.next()) origins[rs.getString(1)] = rs.getString(2)
-                }
-            }
+            val rs = conn.createStatement().executeQuery("SELECT key, origin FROM workflows")
+            while (rs.next()) origins[rs.getString(1)] = rs.getString(2)
         }
         assertThat(origins["software-default"]).isEqualTo("SEED")
         assertThat(origins["our-custom-workflow"]).isEqualTo("CUSTOM")

@@ -96,13 +96,10 @@ class StatusCatalogParityTest {
     private fun readRows(sql: String): Map<Pair<String, String>, Triple<String, String, Int>> {
         val rows = mutableMapOf<Pair<String, String>, Triple<String, String, Int>>()
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(sql).use { rs ->
-                    while (rs.next()) {
-                        rows[rs.getString(1) to rs.getString(2)] =
-                            Triple(rs.getString(3), rs.getString(4), rs.getInt(5))
-                    }
-                }
+            val rs = conn.createStatement().executeQuery(sql)
+            while (rs.next()) {
+                rows[rs.getString(1) to rs.getString(2)] =
+                    Triple(rs.getString(3), rs.getString(4), rs.getInt(5))
             }
         }
         return rows

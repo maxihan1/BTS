@@ -3,7 +3,6 @@
 package com.bts.workflow.seed
 
 import com.bts.workflow.repository.WorkflowRepository
-import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import io.mockk.mockk
@@ -31,7 +30,6 @@ import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.sql.DriverManager
-import java.time.Instant
 
 /**
  * YamlSeedService 통합 테스트.
@@ -576,11 +574,8 @@ class YamlSeedServiceTest {
     fun `시드가 삽입한 워크플로우의 origin 은 SEED 다`() {
         val origins = mutableMapOf<String, String>()
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT key, origin FROM workflows").use { rs ->
-                    while (rs.next()) origins[rs.getString(1)] = rs.getString(2)
-                }
-            }
+            val rs = conn.createStatement().executeQuery("SELECT key, origin FROM workflows")
+            while (rs.next()) origins[rs.getString(1)] = rs.getString(2)
         }
         assertThat(origins).containsKeys("software-default", "bug-tracking", "simple", "kanban-basic")
         assertThat(origins.values).allMatch { it == "SEED" }

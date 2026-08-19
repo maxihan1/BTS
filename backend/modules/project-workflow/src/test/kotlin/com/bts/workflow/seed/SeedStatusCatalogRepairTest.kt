@@ -95,12 +95,9 @@ class SeedStatusCatalogRepairTest {
 
     private fun count(table: String): Int =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT COUNT(*) FROM $table").use { rs ->
-                    rs.next()
-                    rs.getInt(1)
-                }
-            }
+            val rs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM $table")
+            rs.next()
+            rs.getInt(1)
         }
 
     @Test

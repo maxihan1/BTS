@@ -2,7 +2,6 @@
 
 package com.bts.workflow.seed
 
-import com.bts.workflow.domain.Workflow
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
@@ -444,7 +443,19 @@ class YamlSeedService(
             insertPostActions(transitionId, transition.postActions)
         }
 
-        // 카탈로그 건수를 함께 남긴다 — 부팅 로그만 보고 statuses/workflow_statuses 가 채워졌는지 알 수 있어야 한다.
+        logSeeded(dto, workflowId)
+
+        return workflowId
+    }
+
+    /**
+     * 적재 결과를 한 줄로 남긴다. 카탈로그 건수를 포함해 **부팅 로그만 보고** `statuses`/`workflow_statuses`
+     * 가 채워졌는지 알 수 있게 한다 (게이트 1 리뷰 R8).
+     */
+    private fun logSeeded(
+        dto: WorkflowYamlDto,
+        workflowId: java.util.UUID,
+    ) {
         val catalogRows =
             dsl.fetchValue(
                 "SELECT COUNT(*) FROM workflow_statuses WHERE workflow_id = ?",
@@ -462,8 +473,6 @@ class YamlSeedService(
             catalogRows,
             dsl.fetchValue("SELECT COUNT(*) FROM statuses") as Number,
         )
-
-        return workflowId
     }
 
     /**
