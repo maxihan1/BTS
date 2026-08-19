@@ -1,4 +1,4 @@
-// 표준 4 워크플로우 YAML 시드 — 부팅 시 dirty-diff 비교 후 변경된 경우만 재적재 (fail-fast 부팅 차단)
+// 표준 4 워크플로우 YAML 시드 — 해당 key 의 workflow 행이 없을 때만 삽입한다 (fail-fast 부팅 차단)
 
 package com.bts.workflow.seed
 
@@ -126,35 +126,32 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
 /**
  * 표준 4 워크플로우 YAML 시드 서비스.
  *
- * 부팅 완료 후 [ApplicationReadyEvent] 를 통해 classpath:workflows/ 아래 4개 YAML 파일을 읽고
- * 현재 DB 상태와 dirty-diff 비교해 변경이 있는 경우만 재적재한다.
+ * 부팅 완료 후 [ApplicationReadyEvent] 로 classpath:workflows/ 아래 4개 YAML 을 읽고,
+ * **해당 key 의 workflow 행이 없을 때만** 삽입한다. 이미 있으면 손대지 않는다.
  *
- * YAML 파싱/검증 실패, 또는 미지원 validator/postAction type 감지 시
- * [IllegalStateException] 을 던져 부팅을 차단한다 (fail-fast).
+ * YAML 파싱/검증 실패, 또는 미지원 validator/postAction type 감지 시 [IllegalStateException] 을 던져
+ * 부팅을 차단한다 (fail-fast). validator/postAction type 검증은 DB INSERT 전에 factory dry-run 으로 한다.
  *
- * validator/postAction type 검증은 DB INSERT 전에 factory dry-run 으로 수행한다.
- * dry-run 으로 생성된 인스턴스는 버리며, 실제 적재는 INSERT 경로에서 별도로 처리한다.
+ * ### 정본은 DB 다 (ADR 2026-08-18-workflow-db-as-source-of-truth)
+ * 종전에는 YAML 과 DB 를 dirty-diff 비교해 다르면 삭제 후 재삽입했다. 그 경로가 운영자의 DB 수정을
+ * 재기동마다 되돌렸고, 그래서 워크플로우를 화면에서 편집할 수 없었다. 이제 YAML 은 **빈 DB 를 채우는
+ * 최초 1회 부트스트랩**이고, 되돌림은 「기본값으로 복원」(로드맵 PR 6)이 명시적으로 한다.
+ * 삽입한 워크플로우에는 `origin='SEED'` 를 표기해 복원 대상을 식별한다 (ADR D3).
  *
- * 해시 저장 테이블 없이 dirty-diff (DB row vs YAML 내용 비교) 를 사용하므로
- * 별도 마이그레이션 추가가 필요 없다. 표준 4 워크플로우 한정이므로 성능 영향 미미.
+ * 부작용 — 시드 YAML 을 고쳐 배포해도 기존 DB 에는 반영되지 않는다. 의도된 동작이다.
+ *
+ * ### 전역 상태 카탈로그 이중 기록 (FR-WF-04)
+ * 삽입 시 `workflow_states` 와 `statuses`/`workflow_statuses` 를 같은 트랜잭션에서 함께 기록한다.
+ * 전자는 `workflow_transitions` 의 FK 대상이라 아직 필요하고, 후자가 없으면 빈 DB(시드가 채움)와
+ * 기존 DB(V204 백필이 채움)의 카탈로그 상태가 갈라진다.
  *
  * ### post-action 공존 정책 (FR-NT-05 D6)
- * post-action 은 런타임 API(PostActionAdminService) 로만 관리되며, YAML dirty 비교에서 제외된다.
- * 따라서 평상시(YAML 무변경) 재시드 시 런타임 post-action 이 보존된다.
- * 단, YAML structural 변경(state 추가/삭제 등) 으로 deleteWorkflow→reinsert 가 발생하면
- * CASCADE 로 런타임 post-action 이 소실된다 — 알려진 한계. YAML 변경 시 운영팀이 post-action 을
- * 재설정해야 한다. 단, 이 CASCADE 는 workflows→workflow_transitions→workflow_post_actions 체인에
- * 한정된다. 스킴 매핑이 그 workflow 를 가리키는 상태라면 아래 §재적재 매핑 기록→재연결 로 그 매핑을
- * 먼저 제거하지 않는 한 `workflow_scheme_issue_type_mappings` 의 FK `ON DELETE RESTRICT` 로
- * deleteWorkflow 자체가 실패해 CASCADE 에 도달하지 못한다 (post-action 소실이 아니라 재적재 실패).
+ * post-action 은 런타임 API(PostActionAdminService)로만 관리된다. 시드가 기존 워크플로우를 지우지
+ * 않게 되면서 「YAML structural 변경 → CASCADE 로 런타임 post-action 소실」 경로도 함께 사라졌다.
  *
- * ### 재적재 매핑 기록→재연결 (R6-B, ★★ 수정판)
- * `workflow_scheme_issue_type_mappings.workflow_id` 는 FK `ON DELETE RESTRICT` 다. structural
- * 변경으로 [applyIfChanged] 가 deleteWorkflow→insertWorkflow 를 수행하기 전, 그 workflow 를
- * 가리키는 매핑 전체(default + admin 이 건 특정타입)를 [SchemeIssueTypeMappingRepository]로
- * 기록→삭제하고, 새 UUID 발급 후 같은 튜플로 재INSERT 한다. `seedAll` 의 `@Transactional` 경계
- * 안이므로 실패 시 전체 롤백된다. 빈 DB 최초 부팅용 default 매핑 백필은 별도로 `seedAll` 말미에
- * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 를 호출해 처리한다.
+ * ### default 매핑 백필 (R6)
+ * 빈 DB 최초 부팅용 `workflow_scheme_issue_type_mappings` 기본 매핑 보강은 [seedAll] 말미의
+ * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 가 계속 담당한다.
  *
  * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
  * @param dsl jOOQ DSLContext. 전환/상태/validator/postAction 직접 INSERT 에 사용한다.
@@ -221,11 +218,11 @@ class YamlSeedService(
 
             val content = resource.inputStream.use { it.readBytes() }
             val dto = parseAndValidate(key, content)
-            applyIfChanged(dto)
+            insertIfAbsent(dto)
         }
 
         // R6 백필 — 빈 DB 최초 부팅 시 표준 4 스킴 default 매핑을 보강한다. 위치가 load-bearing이다:
-        // applyIfChanged 는 !isDirty 면 skip 하므로 루프 안에 두면 기존 DB(EC-9)에서 안 돈다.
+        // insertIfAbsent 는 이미 있는 워크플로우를 건너뛰므로 루프 안에 두면 기존 DB(EC-9)에서 안 돈다.
         // 루프 밖(4 워크플로우 처리 완료 후) 1회 호출해 매 seedAll() 마다 dangling/누락을 보정한다.
         mappingRepository.repairDefaultMappings()
 
@@ -297,39 +294,23 @@ class YamlSeedService(
     }
 
     /**
-     * 현재 DB 상태와 dto 를 dirty-diff 비교해 변경이 있으면 재적재한다.
+     * 해당 key 의 workflow 행이 **없을 때만** 삽입한다. 이미 있으면 아무것도 하지 않는다.
      *
-     * 비교 기준.
-     * - workflows.name 변경 여부
-     * - states 키/이름/카테고리/displayOrder 변경 여부
-     * - transitions from/to/name 변경 여부
-     * - 전환별 validators/post_actions type 목록 변경 여부
+     * ### 왜 비교하지 않는가
+     * 종전에는 YAML 과 DB 를 dirty-diff 비교해 다르면 `deleteWorkflow` → 재삽입했다. 그 경로가
+     * **운영자의 DB 수정을 재기동마다 되돌렸다.** DB 가 워크플로우 정의의 정본이 되면서
+     * (ADR 2026-08-18-workflow-db-as-source-of-truth D1·D2) YAML 은 빈 DB 를 채우는 최초 1회
+     * 부트스트랩 전용이 됐다. 되돌림이 필요하면 「기본값으로 복원」(로드맵 PR 6)이 명시적으로 한다.
      *
-     * 변경 감지 시 매핑을 기록→삭제(FK RESTRICT 회피) 한 뒤 CASCADE DELETE·전체 재삽입하고,
-     * 새 workflow UUID 로 기록해 둔 매핑을 재연결한다 (R6-B, ★★ 수정판 — default + admin
-     * 특정타입 매핑 전부 보존).
+     * 이 결정의 부작용 — 시드 YAML 을 고쳐 배포해도 **기존 DB 에는 반영되지 않는다.** 의도된 동작이다.
      */
-    private fun applyIfChanged(dto: WorkflowYamlDto) {
-        val existing = workflowRepository.findByKey(dto.key)
-
-        if (existing != null && !isDirty(existing, dto)) {
-            log.debug("워크플로우 '{}' — 변경 없음, skip", dto.key)
+    private fun insertIfAbsent(dto: WorkflowYamlDto) {
+        if (workflowRepository.findByKey(dto.key) != null) {
+            log.debug("워크플로우 '{}' — 이미 있음, 건너뜀", dto.key)
             return
         }
-
-        if (existing != null) {
-            log.info("워크플로우 '{}' — 변경 감지, 재적재 시작", dto.key)
-            val oldWorkflowId =
-                workflowRepository.findIdByKey(dto.key)
-                    ?: error("워크플로우 '${dto.key}' UUID 조회 실패 — findByKey 는 성공했으나 findIdByKey 가 실패")
-            val mappingTuples = mappingRepository.detachMappingsByWorkflowId(oldWorkflowId)
-            deleteWorkflow(dto.key)
-            val newWorkflowId = insertWorkflow(dto)
-            mappingRepository.reinsertMappings(mappingTuples, newWorkflowId)
-        } else {
-            log.info("워크플로우 '{}' — 신규 적재", dto.key)
-            insertWorkflow(dto)
-        }
+        log.info("워크플로우 '{}' — 신규 적재", dto.key)
+        insertWorkflow(dto)
     }
 
     /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전환이 있으면 [IllegalStateException] 을 던진다. */
@@ -348,162 +329,6 @@ class YamlSeedService(
     }
 
     /**
-     * 기존 [Workflow] aggregate 와 [WorkflowYamlDto] 를 비교해 dirty 여부를 반환한다.
-     *
-     * post-action 은 런타임 전용(API 관리) 이므로 dirty 비교에서 제외한다.
-     * YAML structural 변경(state/transition) 으로 deleteWorkflow→reinsert 가 발생하면
-     * CASCADE 로 런타임 post-action 이 소실되는 것은 알려진 한계(공존 B 결정, FR-NT-05 D6).
-     * 평상시(YAML 무변경)에는 재시드가 트리거되지 않아 런타임 post-action 이 보존된다.
-     *
-     * @return 변경이 있으면 true, 없으면 false
-     */
-    private fun isDirty(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean =
-        differsInName(existing, dto) ||
-            existing.description != dto.description ||
-            differsInStateSet(existing, dto) ||
-            differsInStateDetails(existing, dto) ||
-            differsInTransitions(existing, dto) ||
-            differsInValidators(existing, dto)
-
-    private fun differsInName(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean = existing.name != dto.name
-
-    private fun differsInStateSet(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean = existing.states.map { it.key }.toSet() != dto.states.map { it.key }.toSet()
-
-    private fun differsInStateDetails(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean =
-        dto.states.any { dtoState ->
-            val existingState = existing.states.firstOrNull { it.key == dtoState.key }
-            existingState == null ||
-                existingState.name != dtoState.name ||
-                existingState.category.name != dtoState.category ||
-                existingState.displayOrder != dtoState.displayOrder
-        }
-
-    private fun differsInTransitions(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean {
-        val existingTransitions =
-            existing.transitions
-                .map { Triple(it.fromStateKey, it.toStateKey, it.name) }
-                .toSet()
-        val dtoTransitions =
-            dto.transitions
-                .map { Triple(it.from, it.to, it.name) }
-                .toSet()
-        return existingTransitions != dtoTransitions
-    }
-
-    /**
-     * DB 에 저장된 workflow_validators 와 YAML 정의를 전환별로 비교해 변경 여부를 반환한다.
-     *
-     * 전환별 (fromStateKey, toStateKey) 를 키로 DB validators type 목록과 YAML validators type 목록을
-     * 비교한다. 총 count 비교만으로는 전환별 분포 변경을 감지하지 못하므로 전환별 비교를 사용한다.
-     */
-    private fun differsInValidators(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean {
-        val dbValidatorsByTransition = fetchValidatorTypesByTransition(existing.key)
-        return dto.transitions.any { transition ->
-            val key = transition.from to transition.to
-            val dbTypes = dbValidatorsByTransition[key] ?: emptyList()
-            val dtoTypes = transition.validators.map { it.type }
-            dbTypes != dtoTypes
-        }
-    }
-
-    /**
-     * 워크플로우 키에 속한 모든 전환의 validator type 목록을 (fromStateKey, toStateKey) 기준으로
-     * 그루핑해 반환한다. display_order ASC 정렬.
-     *
-     * FROM / TO state 는 fetchTransitionStateKeys 로 별도 조회해 cartesian product 를 피한다.
-     */
-    private fun fetchValidatorTypesByTransition(workflowKey: String): Map<Pair<String, String>, List<String>> {
-        val rows =
-            dsl.select(
-                WORKFLOW_TRANSITIONS.ID,
-                WORKFLOW_VALIDATORS.TYPE,
-                WORKFLOW_VALIDATORS.DISPLAY_ORDER,
-            )
-                .from(WORKFLOW_VALIDATORS)
-                .join(WORKFLOW_TRANSITIONS)
-                .on(WORKFLOW_VALIDATORS.TRANSITION_ID.eq(WORKFLOW_TRANSITIONS.ID))
-                .join(WORKFLOWS)
-                .on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
-                .where(WORKFLOWS.KEY.eq(workflowKey))
-                .orderBy(WORKFLOW_VALIDATORS.DISPLAY_ORDER.asc())
-                .fetch()
-
-        val transitionKeyMap = fetchTransitionStateKeys(workflowKey)
-        return rows
-            .groupBy { it.get(WORKFLOW_TRANSITIONS.ID) }
-            .mapNotNull { (transitionId, records) ->
-                val stateKeys = transitionKeyMap[transitionId] ?: return@mapNotNull null
-                stateKeys to records.map { it.get(WORKFLOW_VALIDATORS.TYPE) ?: "" }
-            }
-            .toMap()
-    }
-
-    /**
-     * 워크플로우 키에 속한 모든 전환의 (transition_id to (fromStateKey, toStateKey)) 매핑을 반환한다.
-     *
-     * FROM / TO state 를 별칭 JOIN 으로 조회해 cartesian product 없이 확보한다.
-     */
-    private fun fetchTransitionStateKeys(workflowKey: String): Map<java.util.UUID?, Pair<String, String>> {
-        val fromState = WORKFLOW_STATES.`as`("from_state")
-        val toState = WORKFLOW_STATES.`as`("to_state")
-        return dsl.select(
-            WORKFLOW_TRANSITIONS.ID,
-            fromState.KEY,
-            toState.KEY,
-        )
-            .from(WORKFLOW_TRANSITIONS)
-            .join(WORKFLOWS)
-            .on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
-            .join(fromState)
-            .on(WORKFLOW_TRANSITIONS.FROM_STATE_ID.eq(fromState.ID))
-            .join(toState)
-            .on(WORKFLOW_TRANSITIONS.TO_STATE_ID.eq(toState.ID))
-            .where(WORKFLOWS.KEY.eq(workflowKey))
-            .fetch()
-            .associate { record ->
-                record.get(WORKFLOW_TRANSITIONS.ID) to
-                    (
-                        (record.get(fromState.KEY) ?: "") to
-                            (record.get(toState.KEY) ?: "")
-                    )
-            }
-    }
-
-    /**
-     * workflows 테이블에서 key 로 워크플로우를 삭제한다.
-     *
-     * workflow_states / workflow_transitions 는 ON DELETE CASCADE 이므로 자동 삭제된다.
-     * `workflow_scheme_issue_type_mappings.workflow_id` 는 FK `ON DELETE RESTRICT` (V201:84) 이므로,
-     * 이 workflow 를 가리키는 매핑이 남아 있으면 이 DELETE 자체가 FK 위반으로 실패한다.
-     * 호출자([applyIfChanged])가 이 메서드 호출 전에 [SchemeIssueTypeMappingRepository.detachMappingsByWorkflowId]
-     * 로 매핑을 기록→삭제(detach)해 RESTRICT 를 회피한다.
-     */
-    private fun deleteWorkflow(key: String) {
-        dsl.deleteFrom(WORKFLOWS)
-            .where(WORKFLOWS.KEY.eq(key))
-            .execute()
-        log.debug("워크플로우 '{}' 삭제 완료 (CASCADE)", key)
-    }
-
-    /**
      * [WorkflowYamlDto] 를 workflows / workflow_states / workflow_transitions /
      * workflow_validators / workflow_post_actions 에 삽입한다.
      *
@@ -512,8 +337,7 @@ class YamlSeedService(
      * 2. workflow_states 행 삽입 → state key → UUID 매핑 구성
      * 3. workflow_transitions 행 삽입 → transition UUID 획득 후 validators/post_actions 삽입
      *
-     * @return 새로 발급된 workflows.id (UUID). 호출자([applyIfChanged])가 재적재 시
-     *   [SchemeIssueTypeMappingRepository.reinsertMappings] 로 매핑을 재연결하는 데 사용한다.
+     * @return 새로 발급된 workflows.id (UUID).
      */
     private fun insertWorkflow(dto: WorkflowYamlDto): java.util.UUID {
         // 1. workflows 삽입
@@ -526,6 +350,11 @@ class YamlSeedService(
                 .fetchOne()
                 ?.value1()
                 ?: error("workflows 삽입 실패: ${dto.key}")
+
+        // origin 표기는 원시 SQL 이다. jOOQ 코드 생성은 `TC_INITSCRIPT` 로 **V200 한 파일만** 적용하므로
+        // (`build.gradle.kts` jooq.jdbc.url) V205 가 추가한 컬럼이 생성물에 없다. 같은 이유로
+        // `SchemeIssueTypeMappingRepository` 도 V201 테이블을 원시 SQL 로 다룬다 — 그 선례를 따른다.
+        dsl.execute("UPDATE workflows SET origin = 'SEED' WHERE id = ?", workflowId)
 
         // 2. workflow_states 삽입 + key → UUID 매핑
         val stateKeyToId = mutableMapOf<String, java.util.UUID>()
@@ -639,6 +468,6 @@ class YamlSeedService(
     fun seedSingle(dto: WorkflowYamlDto) {
         validateTransitionUniqueness(dto.key, dto.transitions)
         dryRunValidatorAndPostActionTypes(dto)
-        applyIfChanged(dto)
+        insertIfAbsent(dto)
     }
 }
