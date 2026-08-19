@@ -111,6 +111,269 @@ Maxi 결정 2건은 아래에서 확정.
 별도로 `workflow_states` 를 언급만 하는 4파일은 **구형 테이블 자체를 검증하는 것이 목적**이라
 이주 대상이 아니다 — 헬퍼로 감싸면 검증이 사라진다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 규율 — **TDD red-first**. T3 이므로 `test:` 커밋이 `feat:` 보다 선행하고 CI 판별식이 대조한다.
+> 이 세션은 서브에이전트 dispatch 를 쓰지 않으므로(Maxi 정책) wave 는 **순서 근거**로만 쓰고 인라인 순차 구현한다.
+
+### 판별식 배치 결정 (전 task 공통 전제)
+
+판별식 3종(M4·M5·M11)은 **backend 테스트 소스셋**에 둔다. `scripts/workflow/` 가 아니다.
+
+| 후보 | 판정 |
+|---|---|
+| `scripts/workflow/` + `workflow-scripts-ci` | ❌ 그 워크플로우의 `paths` 는 **판별식 전량의 입력 합집합**이라는 계약이고(파일 머리 주석), 여기에 `backend/**` 를 넣으면 백엔드 변경마다 끌려온다. 주석이 그 배치를 명시적으로 반대한다 |
+| backend 테스트 소스셋 | ✅ `backend-ci.yml` 이 `backend/**` 를 이미 걸어 **반드시 돈다**. ArchUnit 룰 선례도 있다(learnings 2026-05-21) |
+
+부채 15 의 A안과 같은 논리다 — 「그 CI 가 반드시 도는 자리에 둔다」.
+
+### Task 1. 워크플로우 상태 픽스처 헬퍼 신설 + 원시 SQL 재유입 금지 판별식
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/testsupport/WorkflowStatusFixture.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/testsupport/WorkflowStatusFixture.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/guard/RawWorkflowStateInsertGuardTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `.../guard/RawWorkflowStateInsertGuardTest.kt`
+- 테스트: 테스트 소스 트리를 스캔해 `INSERT INTO workflow_states` 를 하는 파일이 **허용목록 4파일 외에 0개**임을 단언
+- 실패 메시지 (예상): 위반 31파일 열거 — 이 시점에는 아직 아무것도 이주하지 않았으므로 **31건 전부 red**
+- ★ **탐지 문자열을 런타임 조립**한다 — `val NEEDLE = "INSERT INTO " + "workflow_states"`. 리터럴로 적으면 판별식 파일 자신이 위반으로 잡히고, 자기를 허용목록에 넣으면 「판별식은 검사에서 빠진다」 구멍이 열린다(#356 선례)
+- 허용목록 4파일 — `V200MigrationTest` · `SeedStatusCatalogIntegrationTest` · `StatusCatalogParityTest` · `YamlSeedServiceTest`. **구형 테이블 자체를 검증하는 것이 목적**이라 헬퍼로 감싸면 검증이 사라진다
+- ★ 허용목록의 **썩은 항목 0도 함께 강제**한다 — 목록에 있는데 실제로는 더 이상 위반하지 않는 파일이 남으면, 그 줄이 미래의 신규 위반을 조용히 통과시킨다(#356 의 `stale` 단언과 같은 형태)
+
+**GREEN**:
+- 파일: 두 BC 의 `testsupport/WorkflowStatusFixture.kt`
+- 헬퍼가 **신형 2단 삽입**을 한다 — `statuses` upsert(키 기준) → `workflow_statuses` insert(`display_order` 포함). 반환값은 `statusId`
+- learnings `2026-05-23 fixture 옵션 B 패턴` — 픽스처가 **헬퍼를 호출**하게 만들어 drift 를 본질 차단한다. 회귀 가드는 보조다
+
+**REFACTOR**:
+- KDoc 에 「원시 SQL 로 상태를 심지 말 것 · 이유는 2단 카탈로그」를 남긴다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*RawWorkflowStateInsertGuardTest*'`
+
+**❓ 남는 위험 (리뷰 렌즈 판단 요청).** `java-test-fixtures` 관례가 이 저장소에 **없어서**(실측) 헬퍼가
+두 BC 에 **2벌**이 된다. 두 벌이 갈라질 여지가 있다. 대안은 `shared-kernel` 에 testFixtures 소스셋을
+도입하는 것이나 **모듈 토폴로지 변경**이라 이 PR 범위를 넘는다. 헬퍼를 「신형 테이블 2개 삽입」으로
+얇게 유지해 drift 여지를 줄이는 선에서 막는다.
+
+### Task 2. `WorkflowDefinitionPermission` enum + resolver 포트 신설
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/WorkflowDefinitionPermission.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/WorkflowDefinitionPermissionResolver.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/permission/WorkflowDefinitionPermissionTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `.../shared/permission/WorkflowDefinitionPermissionTest.kt`
+- 테스트: enum 이 `CREATE`·`UPDATE`·`DELETE`·`PUBLISH` 4값을 갖고, resolver 포트가 **Guard 패턴**(권한 없으면 예외)임을 단언
+- 실패 메시지 (예상): `WorkflowDefinitionPermission` 클래스 없음
+
+**GREEN**:
+- enum 4값 + `WorkflowDefinitionPermissionResolver` 인터페이스
+- ★ **`WorkflowSchemePermission` 에 값을 끼워 넣지 않는다** — 이름이 스킴을 뜻하는데 워크플로우 정의를 담게 되어 다음 사람이 오해한다
+- 반환 규약은 **Guard 패턴**(예외). 근거 — `WorkflowSchemePermissionResolver` 가 전역 자원 + 같은 BC 소비라는 두 조건에서 동형이다. `VersionPermissionResolver` 의 `Boolean` 규약은 프로젝트 스코프 자원의 것이다
+
+**REFACTOR**:
+- KDoc 에 권한↔엔드포인트 대응표(`VersionPermission` 관례) + 「전역 자원이라 `isSystemAdmin` 으로 판정」 근거
+
+**검증**: `./gradlew :modules:shared-kernel:test --tests '*WorkflowDefinitionPermission*'`
+
+### Task 3. 읽기 경로 2단 join 전환 + 픽스처 31파일 일괄 이주
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionTransitionResolver.kt`, `backend/modules/project-workflow/src/test/**`, `backend/modules/issue-tracking/src/test/**`]
+- depends-on: [1]
+
+**RED**:
+- 파일: `.../repository/WorkflowRepositoryStatusCatalogTest.kt` (신규)
+- 테스트: 헬퍼로 심은 상태(= `statuses` + `workflow_statuses` 에만 있고 `workflow_states` 에는 **없는** 상태)가 `WorkflowRepository.findByKey` 결과의 `states[]` 에 나타나는가
+- 실패 메시지 (예상): `states[]` 가 비어 있음 — 읽기가 아직 구형 테이블을 본다
+- ★ 이 RED 가 D1 이관의 본질이다. 지금 main 은 write 는 신형, read 는 구형인 상태다
+
+**GREEN**:
+- main 3파일의 join 을 `statuses` + `workflow_statuses` 2단으로 교체
+- 31파일을 Task 1 의 헬퍼 호출로 이주 (issue-tracking 21 · project-workflow 10)
+- ★ **N1 하위호환** — `GET /api/v1/workflows/{key}` 응답 형태는 `{key,name,description,states[],transitions[]}` 그대로다. 내부만 바뀐다
+
+**REFACTOR**:
+- 2단 join SQL 을 리포지토리 상수로 추출
+
+**검증**:
+- `./gradlew :modules:project-workflow:test :modules:issue-tracking:test`
+- Task 1 의 `RawWorkflowStateInsertGuardTest` 가 **green 으로 전환**(31 → 0 위반)
+- `apps/web` **0파일 변경** 확인 — `git diff --name-only main -- apps/web | wc -l` 이 0
+
+### Task 4. 권한 어댑터 3종 배선
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/IdentityAccessWorkflowDefinitionPermissionResolver.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/DevAllowWorkflowDefinitionPermissionResolver.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/adapter/AlwaysAllowWorkflowDefinitionPermissionResolver.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessWorkflowDefinitionPermissionResolverIntegrationTest.kt`]
+- depends-on: [2]
+
+**RED**:
+- 테스트: 시스템 관리자는 통과, 아닌 사용자는 `WorkflowDefinitionAccessDeniedException`
+- 실패 메시지 (예상): prod resolver 빈 없음
+
+**GREEN**:
+- prod 어댑터가 `SystemPermissionResolver.isSystemAdmin` 으로 판정한다. ★ **권한 매트릭스를 거치지 않는다** — `IdentityAccessWorkflowSchemePermissionResolver` 주석이 「Global 스코프는 매트릭스를 거치지 않고 isSystemAdmin 로 판정한다」를 명시했고 워크플로우 정의도 같은 전역 자원이다
+- `DevAllow*`(비-prod) + BC 쪽 `AlwaysAllow*` stub
+
+**REFACTOR**:
+- prod 어댑터 KDoc 에 판정 경로표
+
+**검증**: `./gradlew :modules:identity-access:test --tests '*WorkflowDefinitionPermissionResolver*'`
+
+### Task 5. 워크플로우 CRUD API — 생성·수정·삭제·복제
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowApplicationService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowExceptionHandler.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowCrudIntegrationTest.kt`]
+- depends-on: [3, 4]
+
+**RED** (red-first 3건):
+- ① 이름 수정 후 `GET` 이 새 이름을 준다 (S1)
+- ② 사용 중 워크플로우 삭제가 409 (S3 · E3 — 스킴 매핑 참조 기준)
+- ③ 편집 후 캐시가 갱신된다 (E1)
+- 실패 메시지 (예상): `POST/PUT/DELETE /api/v1/workflows` 매핑 없음 → 405/404
+
+**GREEN**:
+- `POST /` (201) · `PUT /{key}` (200) · `DELETE /{key}` (200, **소프트 삭제** = `deleted_at`) · `POST /{key}/duplicate` (201)
+- 복제는 워크플로우 행 + `workflow_statuses` 편성 + 전환을 함께 복사하고 `origin='CUSTOM'` (F9)
+- 신규 생성 기본값 `origin='CUSTOM'` · `version=0` · `is_locked=false` (F10)
+- 쓰기 경로 끝에서 `WorkflowCache.invalidate(key)` + ★ `WorkflowCache.withWriteLock` 을 **실제로 호출**한다(현재 호출부 0곳 — 로드맵이 지목)
+- 권한 게이트는 Task 2 의 resolver **메서드 호출**. `@PreAuthorize` SpEL 을 쓰지 않는다(N5)
+- ★ E7 검사 순서 — **존재 확인을 권한 판정보다 먼저** 한다. 없는 워크플로우는 404, 있는데 권한이 없으면 403. MEMORY `permission-assert-before-existence-makes-403-lie` — 순서로 의미가 뒤집히고 로컬은 `AlwaysAllow` stub 이라 보이지 않는다
+
+**REFACTOR**:
+- 예외 → 상태코드 매핑을 `WorkflowExceptionHandler` 로 모은다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*WorkflowCrudIntegrationTest*'`
+
+### Task 6. 전역 상태 카탈로그 CRUD API + 키 불변 강제
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/web/StatusController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/web/dto/StatusDto.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/application/StatusApplicationService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/repository/StatusRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/web/StatusExceptionHandler.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/status/web/StatusCrudIntegrationTest.kt`]
+- depends-on: [3, 4]
+
+**RED** (red-first 1건 + 엣지 3건):
+- ① **`key` 변경 시도가 400** (S2 · F5) — 요청 DTO 가 `key` 를 아예 받지 않으므로 알 수 없는 필드로 거부된다
+- E12 워크플로우가 참조 중인 상태 삭제 → 409 (`workflow_statuses.status_id` FK **RESTRICT** 를 409 로 번역)
+- E13 이름이 대소문자만 다른 상태 생성 → 409 (`UNIQUE INDEX on lower(name) WHERE deleted_at IS NULL`)
+- E15 소프트 삭제된 상태 조회 → 404
+- 실패 메시지 (예상): `/api/v1/statuses` 컨트롤러 자체가 없음 → 404
+
+**GREEN**:
+- `GET /` · `POST /` (201) · `PUT /{id}` (200, `name`·`description`·`category` **만**) · `DELETE /{id}` (200, 소프트 삭제)
+- 권한 게이트 + 캐시 무효화 — 상태 변경은 그 상태를 쓰는 **모든 워크플로우**의 캐시를 무효화한다
+
+**REFACTOR**:
+- `category` CHECK 값(TODO·IN_PROGRESS·DONE)을 enum 으로
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*StatusCrudIntegrationTest*'`
+
+### Task 7. 워크플로우↔상태 편성 API — 추가·제거·순서변경
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowApplicationService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowStatusRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowStatusCompositionIntegrationTest.kt`]
+- depends-on: [5, 6]
+
+**RED**:
+- S5 상태를 넣으면 `GET` 의 `states[]` 에 나타나고, 순서를 바꾸면 순서가 바뀐다
+- E5 이슈가 실제로 그 상태에 있는데 워크플로우에서 제거 → 409 (이관 마법사는 PR 10)
+- E10 그 워크플로우에 없는 상태 id 가 순서 요청에 포함 → 400
+- E11 순서 요청이 일부 상태를 누락 → 400 (전체 집합 일치 강제)
+
+**GREEN**:
+- `POST /{key}/statuses` (201) · `DELETE /{key}/statuses/{statusId}` (200) · `PUT /{key}/statuses/order` (200)
+- `display_order` 만 다룬다. ★ `layout_x`·`layout_y` 는 **PR 9 범위라 건드리지 않는다**(C7)
+
+**REFACTOR**:
+- 순서 일치 검증을 도메인 불변식으로 끌어올린다
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*WorkflowStatusCompositionIntegrationTest*'`
+
+### Task 8. 죽은 권한 게이트 교체 (Maxi 결정 D1)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowController.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowControllerMvcTest.kt`]
+- depends-on: [4, 5]
+
+**RED** (red-first 2건 — E16):
+- ⑤ **실제로 발급되는 신원**(시스템 관리자)으로 `POST /api/v1/workflows/cache/invalidate` → 200
+- ⑥ 같은 경로를 비-관리자로 → 403
+- ★ `@WithMockUser(authorities = ["WORKFLOW_MANAGE"])` 로 authority 를 **손수 심지 않는다**. 그 방식이 지금까지 이 결함을 가려 왔다(MEMORY `unreachable-state-fixture-is-fake-green`)
+- 실패 메시지 (예상): ⑤가 **403** — 시스템 관리자에게도 `WORKFLOW_MANAGE` authority 가 발급되지 않기 때문. **이 red 가 결함의 증인이다**
+
+**GREEN**:
+- `@PreAuthorize("hasAuthority('WORKFLOW_MANAGE')")` 제거 → `WorkflowDefinitionPermissionResolver` 메서드 호출로 교체
+- 기존 `@WithMockUser(authorities=[...])` 테스트 2건을 도달 가능한 신원 기반으로 **반전**한다(삭제가 아니라 반전 — 새 계약의 증인으로 남긴다)
+
+**REFACTOR**:
+- 컨트롤러 머리 주석의 엔드포인트 목록과 권한 표기를 실제와 맞춘다(`:30` 이 `WORKFLOW_MANAGE` 라고 적혀 있다)
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*WorkflowControllerMvcTest*'`
+
+### Task 9. 판별식 2종 — 캐시 무효화 차집합 · `@PreAuthorize` 재유입 금지
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/guard/CacheInvalidationCoverageTest.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/guard/NoPreAuthorizeSpelGuardTest.kt`]
+- depends-on: [5, 6, 7, 8]
+
+**RED**:
+- **M5 차집합** — 「쓰기 엔드포인트 집합」 ⊖ 「`WorkflowCache.invalidate` 호출부 집합」 = ∅ 을 단언. MEMORY `two-lists-never-check-each-other` 의 처방 그대로다. 한쪽만 읽으면 안 읽는 쪽이 조용히 썩는다
+- **M11** — `backend/**/main` 전체에서 `hasAuthority(` SpEL 권한 검사 **0건**
+- ★ 두 판별식 모두 탐지 문자열을 **런타임 조립**한다
+- ★ M5 는 「쓰기 엔드포인트」를 **손으로 다시 적지 않는다** — 컨트롤러 소스에서 `@PostMapping`·`@PutMapping`·`@DeleteMapping` 을 스캔해 집합을 만든다. 손으로 적으면 그 목록이 두 번째 리스트가 되어 같은 결함을 재생산한다(#390 의 C1 선례 — 판별식이 CLI 판정을 import 하지 않고 손으로 다시 적었다)
+
+**GREEN**:
+- 두 판별식 통과
+
+**REFACTOR**:
+- 스캐너 공통부를 테스트 헬퍼로
+
+**검증**: `./gradlew :modules:project-workflow:test :modules:shared-kernel:test`
+
+### Task 10. 뮤테이션 검증 3회 + 문서 전수 동기화
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plans/2026-08-19-backend-project-workflow-crud-api.md`, `docs/specs/2026-08-19-backend-project-workflow-crud-api.md`, `docs/plan/product/project-workflow.md`, `TODOS.md`]
+- depends-on: [9]
+
+**RED** — 해당 없음(검증 task).
+
+**GREEN**:
+- ★ **뮤테이션은 GREEN 선커밋 뒤에** 넣는다. 미커밋 원복은 소실이다(함정)
+- ① `invalidate` 호출 1개 삭제 → `CacheInvalidationCoverageTest` red 확인 → 원복
+- ② 이주한 테스트 1개에 원시 SQL 재삽입 → `RawWorkflowStateInsertGuardTest` red 확인 → 원복
+- ③ 아무 컨트롤러에 `@PreAuthorize("hasAuthority('X')")` 1줄 추가 → `NoPreAuthorizeSpelGuardTest` red 확인 → 원복
+- 각 원복 후 `git status` 를 **눈으로 확인**한다
+- FR 동기화 — FR-WF-04 의 D 단계 상태를 `docs/plan/product/project-workflow.md` 에 반영. **FR 총수는 143 불변**(신규 FR 없음)
+
+**검증**:
+- `bash scripts/verify-master-plan.sh` EXIT 0
+- `node scripts/build-doc-index.mjs --check` EXIT 0
+- `./gradlew :modules:project-workflow:test :modules:issue-tracking:test :modules:app:test ktlintCheck detekt` EXIT 0 (**단일 실행** — 같은 프로젝트 gradle 2개 동시 실행 금지)
+- `./gradlew :modules:project-workflow:generateJooq` 후 **diff 0** (스키마 무변경이므로 diff 가 나오면 이상 신호)
+
+## Plan 메타
+
+- **task 수** — 10
+- **예상 wave** — 5. `WorkflowController.kt` 를 Task 5·7·8 이 공유해 자동 직렬화된다
+  - wave 1 — Task 1 · 2 (독립)
+  - wave 2 — Task 3 (←1) · Task 4 (←2)
+  - wave 3 — Task 5 (←3,4) → Task 6 (←3,4)
+  - wave 4 — Task 7 (←5,6) → Task 8 (←4,5)
+  - wave 5 — Task 9 (←5,6,7,8) → Task 10 (←9)
+- **구현 규율** — TDD red-first. `test:` 커밋이 `feat:` 보다 선행
+- **추가 검증** — ktlint · detekt · `:modules:app:test`(5433 실제 Postgres 필요 — `bts-postgres-dev` 유지) · `generateJooq` diff 0 · `verify-master-plan.sh` · `build-doc-index.mjs --check`
+- **프론트** — `apps/web` **0파일**(N2). 프론트 검증은 회귀 확인 목적으로만 `pnpm --filter web test` 1회
+- **의도적 편차 (게이트 2 요약에 싣는다)** — ① BC 격리 — issue-tracking 테스트 21파일 포함, 프로덕션 0줄(D2) ② 서브에이전트 dispatch 미사용 — Maxi 정책, 인라인 구현으로 대체하되 TDD·순서·검증은 그대로
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
