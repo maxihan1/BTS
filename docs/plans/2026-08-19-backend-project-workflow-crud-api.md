@@ -355,7 +355,7 @@ Maxi 결정 2건은 아래에서 확정.
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`docs/plans/2026-08-19-backend-project-workflow-crud-api.md`, `docs/specs/2026-08-19-backend-project-workflow-crud-api.md`, `docs/plan/product/project-workflow.md`, `TODOS.md`]
+- files: [`docs/plans/2026-08-19-backend-project-workflow-crud-api.md`, `docs/specs/2026-08-19-backend-project-workflow-crud-api.md`, `docs/plan/product/project-workflow.md`, `TODOS.md`]  # 로드맵 정본은 저장소 밖(`~/.claude/plans/`)이라 files 에 넣지 않으나 Task 10 이 함께 갱신한다
 - depends-on: [9]
 
 **RED** — 해당 없음(검증 task).
@@ -367,6 +367,15 @@ Maxi 결정 2건은 아래에서 확정.
 - ③ 아무 컨트롤러에 `@PreAuthorize("hasAuthority('X')")` 1줄 추가 → `NoPreAuthorizeSpelGuardTest` red 확인 → 원복
 - 각 원복 후 `git status` 를 **눈으로 확인**한다
 - FR 동기화 — FR-WF-04 의 D 단계 상태를 `docs/plan/product/project-workflow.md` 에 반영. **FR 총수는 143 불변**(신규 FR 없음)
+- ★ **로드맵 번호 재정렬 (게이트 1 채택 TODO ③)** — 이 PR 이 `V206` 을 쓰므로 로드맵 정본
+  `~/.claude/plans/cozy-hatching-otter.md` 의 §DB 스키마(`V203 ~ V208` → `V203 ~ V209`) ·
+  §PR 분해의 PR 4 `V206__transitions_multi_and_global.sql` → `V207` · PR 6 `V207__workflow_drafts…` → `V208`
+  을 갱신한다. 안 하면 다음 PR 이 이미 쓴 번호를 다시 쓴다
+- ★ **TODOS.md 등재 2건 (게이트 1 채택 TODO ①②)** — `TODOS.md` 머리의 등재 서식(#389 가 세운 「쉬운 말」·
+  「방치하면」 두 줄 포함)을 따른다
+  - ① `shared-kernel` 에 `java-test-fixtures` 소스셋 도입 — 픽스처 헬퍼가 BC 마다 복제되는 **구조적 원인**.
+    이 PR 은 대조 판별식으로 증상만 막는다. 근본 해소는 모듈 토폴로지 변경(T3)이라 별도 PR
+  - ② `workflow_states` DROP — `DATA.md` §4 add→backfill→drop 3단 분할의 마지막. 선행 = 로드맵 PR 4~10 완료
 
 **검증**:
 - `bash scripts/verify-master-plan.sh` EXIT 0
@@ -651,7 +660,7 @@ GAPS: 0 (리뷰에서 T1·T2·Q3 3건을 메워 닫음)
 VERDICT: **PASS with changes applied.** BLOCKER 0 · 발견 10건 중 9건 plan 반영 · 1건 근거와 함께 미채택.
 CODEX: not run (disabled). CROSS-MODEL: none.
 
-**UNRESOLVED DECISIONS:**
-- TODO ① `shared-kernel` testFixtures 소스셋 도입 여부 (게이트 1 판정)
-- TODO ② `workflow_states` DROP 시점 (게이트 1 판정 · 선행 로드맵 PR 4~10)
-- TODO ③ 로드맵 마이그레이션 번호 재정렬 — `V206` 을 이 PR 이 쓰면서 PR 4~6 예약 번호가 한 칸씩 밀림 (Task 10 에서 처리 예정이나 Maxi 승인 필요)
+게이트 1 (2026-08-19) — **승인.** TODO ①②③ 전부 채택 → Task 10 이 처리한다
+(① `TODOS.md` 등재 · ② `TODOS.md` 등재 · ③ 로드맵 정본 번호 재정렬).
+
+NO UNRESOLVED DECISIONS
