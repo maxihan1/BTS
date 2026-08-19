@@ -139,6 +139,31 @@ class V203ToV205MigrationTest {
         }
 
         /**
+         * 격리 DB 를 만들어 V203 까지 적용 → 픽스처 주입 → 남은 마이그레이션 적용까지 **성공**시키고 URL 을 준다.
+         *
+         * 메인 체인의 픽스처(시드 4종 17행)는 백필 기대값 12/17 을 고정하고 있어 여기에 행을 더할 수 없다.
+         * 「표준이 아닌 워크플로우는 origin 이 CUSTOM 으로 남는가」처럼 다른 픽스처가 필요한 검증은 DB 를 가른다.
+         */
+        @JvmStatic
+        fun migrateWithFixture(
+            dbName: String,
+            fixture: (Connection) -> Unit,
+        ): String {
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.createStatement().use { it.execute("CREATE DATABASE $dbName") }
+            }
+            val url = postgres.jdbcUrl.replace("/${postgres.databaseName}", "/$dbName")
+            migrateTo(url, "200")
+            createIssueTypes(url)
+            migrateTo(url, "203")
+            DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+                fixture(conn)
+            }
+            migrateToLatest(url)
+            return url
+        }
+
+        /**
          * 같은 컨테이너 안에 격리 DB 를 만들고 V203 까지 적용한 뒤 위반 픽스처를 심고 남은 마이그레이션을 돌린다.
          *
          * V204 의 `RAISE EXCEPTION` 은 **마이그레이션을 실패시키는** 검증이라 메인 체인을 오염시킨다.
@@ -463,6 +488,55 @@ class V203ToV205MigrationTest {
                 insertState(conn, "wf-a", longKey, "Long Key", "TODO")
             }
         assertThat(message).contains("50")
+    }
+
+    // ── V205. workflows 컬럼 4종 + origin 표기 ────────────────────────────────
+
+    @Test
+    fun `V205 workflows 에 컬럼 4종이 생긴다`() {
+        assertThat(columnDataType("workflows", "version")).isEqualTo("bigint")
+        assertThat(columnDataType("workflows", "origin")).isEqualTo("text")
+        assertThat(columnDataType("workflows", "deleted_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnDataType("workflows", "is_locked")).isEqualTo("boolean")
+    }
+
+    @Test
+    fun `V205 새 워크플로우는 version 0 · origin CUSTOM · is_locked false 로 시작한다`() {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use {
+                it.execute("INSERT INTO workflows (key, name) VALUES ('default-probe', 'default probe')")
+            }
+        }
+        val row =
+            query(
+                "SELECT version, origin, is_locked, deleted_at FROM workflows WHERE key = 'default-probe'",
+            ) { listOf(it.getLong(1).toString(), it.getString(2), it.getBoolean(3).toString(), it.getString(4)) }
+        assertThat(row).containsExactly("0", "CUSTOM", "false", null)
+    }
+
+    @Test
+    fun `V205 origin 은 SEED 와 CUSTOM 만 허용한다`() {
+        assertThat(insertFailsWith("INSERT INTO workflows (key, name, origin) VALUES ('bad-origin', 'x', 'OTHER')"))
+            .contains("ck_workflows_origin")
+    }
+
+    @Test
+    fun `V205 는 표준 4키의 origin 만 SEED 로 표기한다`() {
+        val url =
+            migrateWithFixture("origin_scope") { conn ->
+                insertState(conn, "software-default", "open", "Open", "TODO")
+                insertState(conn, "our-custom-workflow", "open2", "Open Two", "TODO")
+            }
+        val origins = mutableMapOf<String, String>()
+        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery("SELECT key, origin FROM workflows").use { rs ->
+                    while (rs.next()) origins[rs.getString(1)] = rs.getString(2)
+                }
+            }
+        }
+        assertThat(origins["software-default"]).isEqualTo("SEED")
+        assertThat(origins["our-custom-workflow"]).isEqualTo("CUSTOM")
     }
 
     /** INSERT 가 실패하기를 기대하고 그 메시지를 돌려준다. 성공하면 테스트를 실패시킨다. */
