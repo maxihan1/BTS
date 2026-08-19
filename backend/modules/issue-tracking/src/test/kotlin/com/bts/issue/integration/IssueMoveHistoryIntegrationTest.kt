@@ -2,6 +2,7 @@
 
 package com.bts.issue.integration
 
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.adapter.inbound.rest.IssueExceptionHandler
 import com.bts.issue.application.IssueMoveService
@@ -563,7 +564,7 @@ class IssueMoveHistoryIntegrationTest {
                 stmt.execute(
                     "INSERT INTO workflows (key, name) " +
                         "VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                        "ON CONFLICT (key) DO NOTHING",
+                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING",
                 )
             }
 
@@ -582,18 +583,7 @@ class IssueMoveHistoryIntegrationTest {
                 category: String,
                 displayOrder: Int,
             ) {
-                conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
-                        "DO UPDATE SET display_order = EXCLUDED.display_order",
-                ).use { ps ->
-                    ps.setObject(1, wfId)
-                    ps.setString(2, key)
-                    ps.setString(3, name)
-                    ps.setString(4, category)
-                    ps.setInt(5, displayOrder)
-                    ps.executeUpdate()
-                }
+                insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
             }
 
             insertStateIfAbsent("open", "Open", "TODO", 0)

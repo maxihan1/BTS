@@ -3,6 +3,7 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.domain.ActorId
 import com.bts.issue.event.IssueEventPublisher
@@ -513,7 +514,7 @@ class IssueMentionPublishIntegrationTest {
             val wfId: UUID =
                 c.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('mention-test-wf', '멘션 테스트 워크플로우') " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -521,14 +522,7 @@ class IssueMentionPublishIntegrationTest {
                     }
                 }
 
-            c.prepareStatement(
-                "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                    "VALUES (?, 'open', 'Open', 'TODO', 0) " +
-                    "ON CONFLICT (workflow_id, key) DO UPDATE SET display_order = EXCLUDED.display_order",
-            ).use { stmt ->
-                stmt.setObject(1, wfId)
-                stmt.executeUpdate()
-            }
+            insertWorkflowStatus(c, wfId, "open", "Open", "TODO", 0)
 
             // workflow_scheme + default mapping
             val schemeId: Long =

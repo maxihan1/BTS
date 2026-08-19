@@ -2,6 +2,7 @@
 
 package com.bts.workflow.scheme.adapter.inbound
 
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
@@ -191,7 +192,7 @@ class WorkflowStateCatalogImplTest {
                             ('bug-tracking',     '버그 추적 워크플로우',            NULL),
                             ('simple',           '단순 워크플로우',                 NULL),
                             ('kanban-basic',     '칸반 기본 워크플로우',            NULL)
-                        ON CONFLICT (key) DO NOTHING
+                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }
@@ -202,17 +203,9 @@ class WorkflowStateCatalogImplTest {
                     stmt.executeQuery().use { rs ->
                         rs.next()
                         val wfId = rs.getObject(1) as UUID
-                        conn.createStatement().use { s ->
-                            s.execute(
-                                """
-                                INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES
-                                    ('$wfId', 'open',        '열림',    'TODO',        0),
-                                    ('$wfId', 'in-progress', '진행 중', 'IN_PROGRESS', 1),
-                                    ('$wfId', 'done',        '완료',    'DONE',        2)
-                                ON CONFLICT DO NOTHING
-                                """.trimIndent(),
-                            )
-                        }
+                        insertWorkflowStatus(conn, wfId, "open", "열림", "TODO", 0)
+                        insertWorkflowStatus(conn, wfId, "in-progress", "진행 중", "IN_PROGRESS", 1)
+                        insertWorkflowStatus(conn, wfId, "done", "완료", "DONE", 2)
                     }
                 }
 
@@ -222,16 +215,8 @@ class WorkflowStateCatalogImplTest {
                     stmt.executeQuery().use { rs ->
                         rs.next()
                         val wfId = rs.getObject(1) as UUID
-                        conn.createStatement().use { s ->
-                            s.execute(
-                                """
-                                INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES
-                                    ('$wfId', 'new',      '신규',    'TODO',        0),
-                                    ('$wfId', 'resolved', '해결됨',  'DONE',        1)
-                                ON CONFLICT DO NOTHING
-                                """.trimIndent(),
-                            )
-                        }
+                        insertWorkflowStatus(conn, wfId, "new", "신규", "TODO", 0)
+                        insertWorkflowStatus(conn, wfId, "resolved", "해결됨", "DONE", 1)
                     }
                 }
 

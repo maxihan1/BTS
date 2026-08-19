@@ -208,6 +208,7 @@ class V203ToV206MigrationTest {
             category: String,
         ) {
             conn.prepareStatement(
+                // V206 술어를 붙이지 않는다 — 이 픽스처는 V205 이전 시점(deleted_at 컬럼 부재)에 돈다.
                 "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
             ).use { stmt ->
                 stmt.setString(1, workflowKey)
@@ -234,7 +235,8 @@ class V203ToV206MigrationTest {
         ) {
             for (workflowKey in states.map { it.workflowKey }.distinct()) {
                 conn.prepareStatement(
-                    "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                    // V206 술어를 붙이지 않는다 — 이 픽스처는 V205 이전 시점(deleted_at 컬럼 부재)에 돈다.
+                "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
                 ).use { stmt ->
                     stmt.setString(1, workflowKey)
                     stmt.setString(2, workflowKey)

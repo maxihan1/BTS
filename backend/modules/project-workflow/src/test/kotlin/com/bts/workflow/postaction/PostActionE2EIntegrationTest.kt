@@ -2,6 +2,7 @@
 
 package com.bts.workflow.postaction
 
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
@@ -126,7 +127,7 @@ class PostActionE2EIntegrationTest {
                         """
                         INSERT INTO workflows (key, name)
                         VALUES ('$WORKFLOW_KEY', '단순 워크플로우')
-                        ON CONFLICT (key) DO NOTHING
+                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }
@@ -139,17 +140,9 @@ class PostActionE2EIntegrationTest {
                         }
                     }
 
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES
-                          ('$workflowId'::uuid, 'todo',  'To Do',       'TODO',        1),
-                          ('$workflowId'::uuid, 'doing', 'In Progress', 'IN_PROGRESS', 2),
-                          ('$workflowId'::uuid, 'done',  'Done',        'DONE',        3)
-                        ON CONFLICT DO NOTHING
-                        """.trimIndent(),
-                    )
-                }
+                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "todo", "To Do", "TODO", 1)
+                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "doing", "In Progress", "IN_PROGRESS", 2)
+                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "done", "Done", "DONE", 3)
 
                 val todoId: String =
                     conn.prepareStatement(

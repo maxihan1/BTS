@@ -2,6 +2,7 @@
 
 package com.bts.issue.integration
 
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -305,7 +306,7 @@ class IssueCloneIntegrationTest {
                     """
                     INSERT INTO workflows (key, name)
                     VALUES ('software-default', '소프트웨어 개발 기본 워크플로우')
-                    ON CONFLICT (key) DO NOTHING
+                    ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
                     """.trimIndent(),
                 )
             }
@@ -323,23 +324,7 @@ class IssueCloneIntegrationTest {
                 name: String,
                 category: String,
                 displayOrder: Int,
-            ): UUID {
-                conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) DO UPDATE " +
-                        "SET display_order = EXCLUDED.display_order RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId)
-                    stmt.setString(2, key)
-                    stmt.setString(3, name)
-                    stmt.setString(4, category)
-                    stmt.setInt(5, displayOrder)
-                    stmt.executeQuery().use { rs ->
-                        rs.next()
-                        return rs.getObject(1) as UUID
-                    }
-                }
-            }
+            ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
             val openId = insertStateIfAbsent("open", "Open", "TODO", 0)
             val inProgressId = insertStateIfAbsent("in_progress", "In Progress", "IN_PROGRESS", 1)

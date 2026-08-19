@@ -3,6 +3,7 @@
 
 package com.bts.issue.bulk.integration
 
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.bulk.application.BulkEditPayload
@@ -825,7 +826,7 @@ class BulkOperationIntegrationTest {
             val wfId: UUID =
                 conn.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('software-default', 'Software Default') " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -905,21 +906,7 @@ class BulkOperationIntegrationTest {
         category: String,
         displayOrder: Int,
     ): UUID =
-        conn.prepareStatement(
-            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
-                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
-        ).use { stmt ->
-            stmt.setObject(1, wfId)
-            stmt.setString(2, key)
-            stmt.setString(3, name)
-            stmt.setString(4, category)
-            stmt.setInt(5, displayOrder)
-            stmt.executeQuery().use { rs ->
-                rs.next()
-                rs.getObject(1) as UUID
-            }
-        }
+        insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

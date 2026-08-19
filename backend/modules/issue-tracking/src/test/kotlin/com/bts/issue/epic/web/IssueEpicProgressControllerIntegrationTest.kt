@@ -3,6 +3,7 @@
 
 package com.bts.issue.epic.web
 
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.archive.ProjectArchiveGuard
@@ -900,7 +901,7 @@ class IssueEpicProgressControllerIntegrationTest {
         name: String,
     ): UUID =
         conn.prepareStatement(
-            "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+            "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
         ).use { stmt ->
             stmt.setString(1, key)
             stmt.setString(2, name)
@@ -919,21 +920,7 @@ class IssueEpicProgressControllerIntegrationTest {
         category: String,
         displayOrder: Int,
     ): UUID =
-        conn.prepareStatement(
-            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
-                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
-        ).use { stmt ->
-            stmt.setObject(1, wfId)
-            stmt.setString(2, key)
-            stmt.setString(3, name)
-            stmt.setString(4, category)
-            stmt.setInt(5, displayOrder)
-            stmt.executeQuery().use { rs ->
-                rs.next()
-                rs.getObject(1) as UUID
-            }
-        }
+        insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

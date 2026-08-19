@@ -2,6 +2,7 @@
 
 package com.bts.workflow.integration
 
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.cache.WorkflowCache
@@ -546,20 +547,7 @@ object WorkflowFixtures {
         wfId: UUID,
         spec: StateInsertSpec,
     ): UUID =
-        conn.prepareStatement(
-            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order)" +
-                " VALUES (?, ?, ?, ?, ?) RETURNING id",
-        ).use { stmt ->
-            stmt.setObject(1, wfId)
-            stmt.setString(2, spec.key)
-            stmt.setString(3, spec.name)
-            stmt.setString(4, spec.category)
-            stmt.setInt(5, spec.displayOrder)
-            stmt.executeQuery().use { rs ->
-                rs.next()
-                rs.getObject(1) as UUID
-            }
-        }
+        insertWorkflowStatus(conn, wfId, spec.key, spec.name, spec.category, spec.displayOrder)
 
     private fun insertTransition(
         conn: Connection,

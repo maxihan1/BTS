@@ -44,7 +44,14 @@ class RawWorkflowStateInsertGuardTest {
      * `YamlSeedServiceTest` 는 `workflow_states` 를 **언급만 하고 INSERT 는 하지 않는다**.
      * 필요 없는 예외를 목록에 두면 그 줄이 미래의 신규 위반을 조용히 통과시킨다.
      */
-    private val allowed = setOf("V203ToV206MigrationTest.kt")
+    private val allowed =
+        setOf(
+            // V204 백필의 원본을 심는 것이 검증 목적이다.
+            "V203ToV206MigrationTest.kt",
+            // ★ 헬퍼 자신. 이 저장소에서 workflow_states 에 INSERT 하는 것이 허용된 유일한 경로다.
+            //   전환 FK 가 아직 구형 테이블을 참조하므로 헬퍼가 양쪽에 심는다(로드맵 PR 4 가 재지정).
+            "WorkflowStatusFixture.kt",
+        )
 
     @Test
     fun `테스트는 원시 SQL 로 workflow_states 에 INSERT 하지 않는다`() {
