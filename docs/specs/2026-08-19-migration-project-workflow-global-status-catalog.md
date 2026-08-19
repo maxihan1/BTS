@@ -198,6 +198,18 @@ UPDATE workflows SET origin = 'SEED'
 - 프로덕션 프로파일 부팅 테스트(`:modules:app:test`)는 **실제 Postgres(5433)** 를 요구한다.
   `docker-compose -f infra/docker-compose.dev.yml up -d postgres` 선행.
 
+### 운영 공백 고지 (R7 · 게이트 1 승인분)
+
+**이 PR 이후 시드 YAML 편집은 「빈 DB 최초 부팅」에만 효력이 있다.** 기존 DB 에 반영하는 수단은
+로드맵 PR 8~10 의 편집 UI 이며, 그 전에는 직접 SQL 뿐이다.
+
+종전에는 `workflows/*.yaml` 을 고쳐 배포하면 `isDirty()` 가 감지해 재적재했다. ADR
+`2026-08-18-workflow-db-as-source-of-truth` D2 가 그 경로를 의도적으로 없앤다(자동 되돌림이 곧
+운영자 수정 소실이었다). 대체 수단인 「기본값으로 복원」 버튼은 PR 6, 편집 화면은 PR 8~10 이다.
+
+그 사이 기간에 표준 워크플로우를 바꿔야 하면 DB 를 직접 고친다 — 그리고 이제 그 수정은
+**재기동해도 살아남는다**. 그것이 이 PR 의 목적이다.
+
 ## 측정 가능한 완료 기준
 
 | # | 기준 | 확인 방법 |
