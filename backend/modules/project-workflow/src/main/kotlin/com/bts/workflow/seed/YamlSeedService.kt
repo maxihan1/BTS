@@ -4,8 +4,10 @@ package com.bts.workflow.seed
 
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
+import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
+import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
@@ -19,6 +21,7 @@ import io.konform.validation.jsonschema.minItems
 import io.konform.validation.jsonschema.minLength
 import org.jooq.DSLContext
 import org.jooq.JSONB
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
@@ -173,6 +176,9 @@ class YamlSeedService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    /** 시드가 적재한 워크플로우의 출처 표기. `workflows.origin` CHECK(SEED|CUSTOM) 과 V205 의 UPDATE 대상이 같은 값이다. */
+    private val seedOrigin = "SEED"
+
     /**
      * YAML 워크플로우 파일 역직렬화 전용 매퍼 — YAMLFactory 기반, 내부 생성.
      *
@@ -251,18 +257,34 @@ class YamlSeedService(
      */
     private fun repairStatusCatalog() {
         val insertedStatuses =
-            dsl.execute(
-                "INSERT INTO statuses (key, name, category) " +
-                    "SELECT DISTINCT ON (key) key, name, category FROM workflow_states ORDER BY key " +
-                    "ON CONFLICT (key) DO NOTHING",
-            )
+            dsl.insertInto(STATUSES)
+                .columns(STATUSES.KEY, STATUSES.NAME, STATUSES.CATEGORY)
+                .select(
+                    dsl.selectDistinct(WORKFLOW_STATES.KEY, WORKFLOW_STATES.NAME, WORKFLOW_STATES.CATEGORY)
+                        .on(WORKFLOW_STATES.KEY)
+                        .from(WORKFLOW_STATES)
+                        .orderBy(WORKFLOW_STATES.KEY),
+                )
+                .onConflict(STATUSES.KEY)
+                .doNothing()
+                .execute()
+
         val insertedLinks =
-            dsl.execute(
-                "INSERT INTO workflow_statuses (workflow_id, status_id, display_order) " +
-                    "SELECT ws.workflow_id, s.id, ws.display_order " +
-                    "FROM workflow_states ws JOIN statuses s ON s.key = ws.key " +
-                    "ON CONFLICT (workflow_id, status_id) DO NOTHING",
-            )
+            dsl.insertInto(WORKFLOW_STATUSES)
+                .columns(
+                    WORKFLOW_STATUSES.WORKFLOW_ID,
+                    WORKFLOW_STATUSES.STATUS_ID,
+                    WORKFLOW_STATUSES.DISPLAY_ORDER,
+                )
+                .select(
+                    dsl.select(WORKFLOW_STATES.WORKFLOW_ID, STATUSES.ID, WORKFLOW_STATES.DISPLAY_ORDER)
+                        .from(WORKFLOW_STATES)
+                        .join(STATUSES)
+                        .on(STATUSES.KEY.eq(WORKFLOW_STATES.KEY)),
+                )
+                .onConflict(WORKFLOW_STATUSES.WORKFLOW_ID, WORKFLOW_STATUSES.STATUS_ID)
+                .doNothing()
+                .execute()
         if (insertedStatuses > 0 || insertedLinks > 0) {
             log.warn(
                 "상태 카탈로그 보정 — statuses {}행 · workflow_statuses {}행을 되채웠다. " +
@@ -390,15 +412,11 @@ class YamlSeedService(
                 .set(WORKFLOWS.KEY, dto.key)
                 .set(WORKFLOWS.NAME, dto.name)
                 .set(WORKFLOWS.DESCRIPTION, dto.description)
+                .set(WORKFLOWS.ORIGIN, seedOrigin)
                 .returningResult(WORKFLOWS.ID)
                 .fetchOne()
                 ?.value1()
                 ?: error("workflows 삽입 실패: ${dto.key}")
-
-        // origin 표기는 원시 SQL 이다. jOOQ 코드 생성은 `TC_INITSCRIPT` 로 **V200 한 파일만** 적용하므로
-        // (`build.gradle.kts` jooq.jdbc.url) V205 가 추가한 컬럼이 생성물에 없다. 같은 이유로
-        // `SchemeIssueTypeMappingRepository` 도 V201 테이블을 원시 SQL 로 다룬다 — 그 선례를 따른다.
-        dsl.execute("UPDATE workflows SET origin = 'SEED' WHERE id = ?", workflowId)
 
         // 2. 상태 적재 — workflow_states 와 전역 카탈로그를 **같은 루프에서** 기록한다.
         //    두 기록이 갈라지면 StatusCatalogParityTest 가 red 를 낸다.
@@ -456,11 +474,7 @@ class YamlSeedService(
         dto: WorkflowYamlDto,
         workflowId: java.util.UUID,
     ) {
-        val catalogRows =
-            dsl.fetchValue(
-                "SELECT COUNT(*) FROM workflow_statuses WHERE workflow_id = ?",
-                workflowId,
-            ) as Number
+        val catalogRows = dsl.fetchCount(WORKFLOW_STATUSES, WORKFLOW_STATUSES.WORKFLOW_ID.eq(workflowId))
 
         log.info(
             "워크플로우 '{}' 적재 완료 — states: {}, transitions: {}, validators: {}, postActions: {}, " +
@@ -471,17 +485,12 @@ class YamlSeedService(
             dto.transitions.sumOf { it.validators.size },
             dto.transitions.sumOf { it.postActions.size },
             catalogRows,
-            dsl.fetchValue("SELECT COUNT(*) FROM statuses") as Number,
+            dsl.fetchCount(STATUSES),
         )
     }
 
     /**
      * 상태 1건을 전역 카탈로그(`statuses`)와 워크플로우 연결(`workflow_statuses`)에 기록한다.
-     *
-     * ### 왜 원시 SQL 인가
-     * jOOQ 코드 생성은 `TC_INITSCRIPT` 로 **V200 한 파일만** 적용한다(`build.gradle.kts` 의
-     * `jooq.jdbc.url`). 그래서 V203 이 만든 두 테이블은 생성물에 없다. 같은 이유로
-     * `SchemeIssueTypeMappingRepository` 도 V201 테이블을 원시 SQL 로 다룬다 — 그 선례를 따른다.
      *
      * ### 왜 ON CONFLICT DO NOTHING 인가
      * 상태 키는 전역 유일이다. 이미 있는 키면 **기존 행을 그대로 쓴다** — 운영자가 바꾼 이름을
@@ -491,20 +500,24 @@ class YamlSeedService(
         workflowId: java.util.UUID,
         state: StateYamlDto,
     ) {
-        dsl.execute(
-            "INSERT INTO statuses (key, name, category) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING",
-            state.key,
-            state.name,
-            state.category,
-        )
-        dsl.execute(
-            "INSERT INTO workflow_statuses (workflow_id, status_id, display_order) " +
-                "SELECT ?, id, ? FROM statuses WHERE key = ? " +
-                "ON CONFLICT (workflow_id, status_id) DO NOTHING",
-            workflowId,
-            state.displayOrder,
-            state.key,
-        )
+        dsl.insertInto(STATUSES)
+            .set(STATUSES.KEY, state.key)
+            .set(STATUSES.NAME, state.name)
+            .set(STATUSES.CATEGORY, state.category)
+            .onConflict(STATUSES.KEY)
+            .doNothing()
+            .execute()
+
+        dsl.insertInto(WORKFLOW_STATUSES)
+            .columns(WORKFLOW_STATUSES.WORKFLOW_ID, WORKFLOW_STATUSES.STATUS_ID, WORKFLOW_STATUSES.DISPLAY_ORDER)
+            .select(
+                dsl.select(DSL.value(workflowId), STATUSES.ID, DSL.value(state.displayOrder))
+                    .from(STATUSES)
+                    .where(STATUSES.KEY.eq(state.key)),
+            )
+            .onConflict(WORKFLOW_STATUSES.WORKFLOW_ID, WORKFLOW_STATUSES.STATUS_ID)
+            .doNothing()
+            .execute()
     }
 
     /**
