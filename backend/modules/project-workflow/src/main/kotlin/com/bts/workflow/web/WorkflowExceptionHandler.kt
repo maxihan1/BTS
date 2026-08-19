@@ -2,6 +2,7 @@
 
 package com.bts.workflow.web
 
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.workflow.cache.WorkflowCacheLockTimeoutException
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.exception.WorkflowInUseException
@@ -122,6 +123,26 @@ class WorkflowExceptionHandler {
                     ErrorBody(
                         code = "WORKFLOW_LOCKED",
                         message = "편집이 잠긴 워크플로우입니다. 발행이 끝난 뒤 다시 시도해 주세요.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 워크플로우 정의 권한 거부 — 403.
+     *
+     * 스킴 권한 거부와 **다른 에러 코드**를 쓴다. 같으면 프론트가 「스킴 권한이 없다」와
+     * 「워크플로우 편집 권한이 없다」를 같은 문구로 안내한다.
+     */
+    @ExceptionHandler(WorkflowDefinitionAccessDeniedException::class)
+    fun handleDefinitionAccessDenied(ex: WorkflowDefinitionAccessDeniedException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_403_DEFINITION code={}", ex.errorCode)
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = ex.errorCode,
+                        message = "워크플로우를 편집할 권한이 없습니다. 시스템 관리자에게 요청해 주세요.",
                     ),
             ),
         )

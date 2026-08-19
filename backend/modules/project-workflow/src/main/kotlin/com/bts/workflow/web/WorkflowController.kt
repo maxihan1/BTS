@@ -2,6 +2,8 @@
 
 package com.bts.workflow.web
 
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.application.WorkflowCommandService
@@ -18,7 +20,6 @@ import io.konform.validation.Invalid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -36,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController
  * - GET  /api/v1/workflows             — 전체 워크플로우 목록 조회
  * - GET  /api/v1/workflows/{key}       — 워크플로우 단건 조회 (계층 구조)
  * - POST /api/v1/workflows/{key}/transitions — 워크플로우 전환 계획 계산
- * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (WORKFLOW_MANAGE 권한 필요)
+ * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (워크플로우 정의 UPDATE 권한 필요)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다 (learning #91).
@@ -51,6 +52,7 @@ class WorkflowController(
     private val workflowApplicationService: WorkflowApplicationService,
     private val workflowCommandService: WorkflowCommandService,
     private val workflowCache: WorkflowCache,
+    private val permissionResolver: WorkflowDefinitionPermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -129,17 +131,24 @@ class WorkflowController(
     /**
      * 지정된 key 의 워크플로우 캐시를 무효화한다.
      *
-     * WORKFLOW_MANAGE 권한이 없으면 403 Forbidden 을 반환한다.
+     * 워크플로우 정의 UPDATE 권한이 없으면 403 Forbidden 을 반환한다.
+     *
+     * ★ 종전에는 `@PreAuthorize("hasAuthority('WORKFLOW_MANAGE')")` 였다. 그 authority 를 발급하는
+     * 경로가 저장소에 없어(정본 코드는 철자가 뒤집힌 `MANAGE_WORKFLOW` · authority 생성처 2곳은
+     * 둘 다 `ROLE_` 접두어) **어떤 실제 요청으로도 통과할 수 없었다.**
+     * 이 저장소의 권한 검사 관례는 `@PreAuthorize` SpEL 이 아니라 **명시적 resolver 호출**이다
+     * (`VersionPermissionResolver` KDoc 이 명문화).
      * 캐시 무효화는 캐시 레이어 직접 호출로 처리한다 (DB 트랜잭션 불필요).
      *
      * @param body 무효화할 워크플로우 키를 담은 바디
      * @return 200 + `{ "data": null }`
      */
     @PostMapping("/cache/invalidate")
-    @PreAuthorize("hasAuthority('WORKFLOW_MANAGE')")
     fun invalidateCache(
         @RequestBody body: CacheInvalidateRequest,
     ): ResponseEntity<DataResponse<Nothing?>> {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowDefinitionPermission.UPDATE)
         log.info("WorkflowController.invalidateCache key={}", body.key)
         workflowCache.invalidate(body.key)
         return ResponseEntity.ok(DataResponse(data = null))
