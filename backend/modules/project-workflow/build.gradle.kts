@@ -153,8 +153,11 @@ jooq {
                 // TC_INITSCRIPT: 컨테이너 기동 직후 JDBC를 통해 SQL 파일을 실행하므로 PostgreSQL 문법 그대로 적용 가능
                 jdbc.apply {
                     driver = "org.testcontainers.jdbc.ContainerDatabaseDriver"
+                    // 코드젠 입력은 마이그레이션 원본이 아니라 **구조 미러**다 (다른 4개 모듈과 같은 관례).
+                    // V200 하나만 가리키던 종전 배선은 V201 이후 스키마를 영영 못 봐서 신규 테이블이
+                    // 생성물에 안 잡혔다. 미러와 마이그레이션의 drift 는 CodegenMirrorParityTest 가 막는다.
                     url = "jdbc:tc:postgresql:16-alpine:///bts_codegen" +
-                        "?TC_INITSCRIPT=file:src/main/resources/db/migration/project-workflow/V200__init_workflow.sql"
+                        "?TC_INITSCRIPT=file:src/main/resources/db/codegen/init_codegen.sql"
                     user = "test"
                     password = "test"
                 }

@@ -562,6 +562,62 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
     // 캐시하지 않고 매번 fetchWorkflowIdByKey 로 최신 상태를 조회한다 (테스트 2 가 workflow 를
     // delete/reinsert 해 UUID 를 바꾸므로, 캐시하면 다른 테스트가 stale UUID 를 참조하게 된다).
 
+    // ── detach → reinsert 왕복 ────────────────────────────────────────────────
+    //
+    // `workflow_scheme_issue_type_mappings.workflow_id` 는 FK ON DELETE RESTRICT (V201:84) 다.
+    // 워크플로우를 지우려면 그 워크플로우를 가리키는 매핑을 먼저 기록→삭제하고 새 UUID 로 재연결해야 한다.
+    // 2026-08-19 이전에는 YamlSeedService 의 재적재 경로가 이 왕복의 유일한 호출부였고 그 커버리지가
+    // YamlSeedServiceTest 시나리오 8·9 였다. 재적재 경로가 사라져 여기로 옮긴다 — 로드맵 PR 3 의
+    // 워크플로우 삭제 CRUD 가 같은 FK 를 만난다.
+
+    @Test
+    fun `detachMappingsByWorkflowId - default 와 특정타입 매핑을 함께 기록하고 지운다`() {
+        val schemeId = fetchSchemeIdByKey("software-scheme")
+        clearDefaultMapping(schemeId)
+        val workflowId = fetchWorkflowIdByKey("software-default") ?: error("fixture 워크플로우 없음")
+
+        repository.addMapping(
+            SchemeIssueTypeMapping(null, WorkflowSchemeId(schemeId), null, workflowId, Instant.now()),
+        )
+        repository.addMapping(
+            SchemeIssueTypeMapping(
+                null,
+                WorkflowSchemeId(schemeId),
+                IssueTypeId(issueTypeId1),
+                workflowId,
+                Instant.now(),
+            ),
+        )
+
+        val tuples = repository.detachMappingsByWorkflowId(workflowId)
+
+        assertThat(tuples).hasSize(2)
+        assertThat(tuples.map { it.second?.value }).containsExactlyInAnyOrder(null, issueTypeId1)
+        assertThat(repository.findDefaultMapping(WorkflowSchemeId(schemeId))).isNull()
+        assertThat(repository.findByIssueType(WorkflowSchemeId(schemeId), IssueTypeId(issueTypeId1))).isNull()
+    }
+
+    @Test
+    fun `reinsertMappings - 기록한 튜플을 새 workflow UUID 로 되돌린다`() {
+        val schemeId = fetchSchemeIdByKey("software-scheme")
+        clearDefaultMapping(schemeId)
+        val oldWorkflowId = fetchWorkflowIdByKey("software-default") ?: error("fixture 워크플로우 없음")
+        repository.addMapping(
+            SchemeIssueTypeMapping(null, WorkflowSchemeId(schemeId), null, oldWorkflowId, Instant.now()),
+        )
+
+        val tuples = repository.detachMappingsByWorkflowId(oldWorkflowId)
+        reinsertWorkflow("software-default")
+        val newWorkflowId = fetchWorkflowIdByKey("software-default") ?: error("재삽입 후 조회 실패")
+        assertThat(newWorkflowId).isNotEqualTo(oldWorkflowId)
+
+        repository.reinsertMappings(tuples, newWorkflowId)
+
+        val mapping = repository.findDefaultMapping(WorkflowSchemeId(schemeId))
+        assertThat(mapping).isNotNull
+        assertThat(mapping!!.workflowId).isEqualTo(newWorkflowId)
+    }
+
     @Test
     fun `repairDefaultMappings - 매핑 없는 스킴에 default 매핑을 만든다 (R6 백필)`() {
         val expectedWorkflowKeyByScheme =

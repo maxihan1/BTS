@@ -128,8 +128,11 @@ workflow_statuses
 - **마이그레이션이 크다.** 신설 2 · 백필 1 · DROP 1 로 4단계이고, `WorkflowRepository` 의 join 이
   2단으로 깊어진다. `PostActionTransitionResolver` · `DefaultWorkflowDefinitionRepository` ·
   `YamlSeedService` 도 함께 바뀐다.
-- **jOOQ 생성물 재생성이 필요하다.** `src/generated/jooq/` 는 git 커밋 대상이라 마이그레이션마다
-  `./gradlew :modules:project-workflow:generateJooq` 후 커밋한다.
+- **jOOQ 생성물 재생성이 필요하다.** 단 `src/generated/jooq/` 는 **커밋 대상이 아니다** —
+  `.gitignore:21` 이 `**/src/generated/jooq/` 를 제외하고, `compileKotlin` 이 `generateJooq` 에
+  `dependsOn` 이라 빌드마다 자동 재생성된다(2026-08-19 실측 정정 — `git ls-files '*/src/generated/*'` 는
+  issue-tracking `.editorconfig` 1건뿐이다). 로컬에서 새 테이블이 안 잡히면
+  `./gradlew :modules:project-workflow:generateJooq` 를 직접 부른다.
 - **읽기 API 응답 형태는 바꾸지 않는다.** `GET /api/v1/workflows/{key}` 는 지금과 같은
   `{ key, name, description, states[], transitions[] }` 를 유지한다. 이 약속이 없으면 프론트의
   Zod 스키마 · MSW 픽스처 · e2e 4건이 스키마 전환 단계에서 함께 깨진다. 새 필드는 추가만 한다.
