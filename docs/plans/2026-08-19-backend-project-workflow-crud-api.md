@@ -152,10 +152,14 @@ Maxi 결정 2건은 아래에서 확정.
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*RawWorkflowStateInsertGuardTest*'`
 
-**❓ 남는 위험 (리뷰 렌즈 판단 요청).** `java-test-fixtures` 관례가 이 저장소에 **없어서**(실측) 헬퍼가
-두 BC 에 **2벌**이 된다. 두 벌이 갈라질 여지가 있다. 대안은 `shared-kernel` 에 testFixtures 소스셋을
-도입하는 것이나 **모듈 토폴로지 변경**이라 이 PR 범위를 넘는다. 헬퍼를 「신형 테이블 2개 삽입」으로
-얇게 유지해 drift 여지를 줄이는 선에서 막는다.
+**★ 리뷰 C2 반영 — 헬퍼 2벌에 대조 판별식을 짝으로 붙인다.**
+`java-test-fixtures` 관례가 이 저장소에 **없어서**(실측) 헬퍼가 두 BC 에 **2벌**이 된다.
+`shared-kernel` testFixtures 도입은 **모듈 토폴로지 변경**이라 이 PR 범위를 넘는다.
+
+「얇게 유지한다」만으로는 부족하다 — 그것은 사람의 규율이지 기계의 강제가 아니고, 정확히
+`two-lists-never-check-each-other` 의 양식이다. 따라서 **두 헬퍼가 같은 계약을 지키는지 대조하는
+판별식**을 함께 둔다. 두 헬퍼가 삽입하는 **컬럼 집합**(`statuses` 측 · `workflow_statuses` 측)과
+**함수 시그니처**를 각각 뽑아 **차집합 0** 을 단언한다. 한쪽만 컬럼이 늘면 red 가 된다.
 
 ### Task 2. `WorkflowDefinitionPermission` enum + resolver 포트 신설
 
@@ -203,6 +207,7 @@ Maxi 결정 2건은 아래에서 확정.
 **검증**:
 - `./gradlew :modules:project-workflow:test :modules:issue-tracking:test`
 - Task 1 의 `RawWorkflowStateInsertGuardTest` 가 **green 으로 전환**(31 → 0 위반)
+- ★ **무손실 대조 (리뷰 T2)** — 31파일 대량 이동은 diff 로 사람이 판정할 수 없다(#390 실증). 이주 **전** 커밋에서 `:modules:project-workflow:test :modules:issue-tracking:test` 의 **테스트 이름 전량을 파일로 뽑아 두고**, 이주 후 같은 목록을 뽑아 **차집합 0** 을 확인한다. 테스트가 조용히 사라지거나 `@Disabled` 로 바뀌는 것을 사람 눈에 맡기지 않는다
 - `apps/web` **0파일 변경** 확인 — `git diff --name-only main -- apps/web | wc -l` 이 0
 
 ### Task 4. 권한 어댑터 3종 배선
@@ -230,7 +235,7 @@ Maxi 결정 2건은 아래에서 확정.
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowApplicationService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowExceptionHandler.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowCrudIntegrationTest.kt`]
-- depends-on: [3, 4]
+- depends-on: [3, 4, 11]
 
 **RED** (red-first 3건):
 - ① 이름 수정 후 `GET` 이 새 이름을 준다 (S1)
@@ -244,7 +249,10 @@ Maxi 결정 2건은 아래에서 확정.
 - 신규 생성 기본값 `origin='CUSTOM'` · `version=0` · `is_locked=false` (F10)
 - 쓰기 경로 끝에서 `WorkflowCache.invalidate(key)` + ★ `WorkflowCache.withWriteLock` 을 **실제로 호출**한다(현재 호출부 0곳 — 로드맵이 지목)
 - 권한 게이트는 Task 2 의 resolver **메서드 호출**. `@PreAuthorize` SpEL 을 쓰지 않는다(N5)
-- ★ E7 검사 순서 — **존재 확인을 권한 판정보다 먼저** 한다. 없는 워크플로우는 404, 있는데 권한이 없으면 403. MEMORY `permission-assert-before-existence-makes-403-lie` — 순서로 의미가 뒤집히고 로컬은 `AlwaysAllow` stub 이라 보이지 않는다
+- ★ E7 검사 순서 — **권한 판정을 존재 확인보다 먼저** 한다(리뷰 A2 로 반전). 비-관리자는 워크플로우 존재 여부와 무관하게 **403**, 권한 보유자가 없는 key 를 치면 404
+  - 근거 실측 — `VersionApplicationService.kt:136-138` 이 `assertPermission` → `findActiveVersion` 순이다. 저장소 관례가 권한 먼저다
+  - MEMORY `permission-assert-before-existence-makes-403-lie` 는 **순서를 뒤집으라는 처방이 아니다**. 그 메모리 본문이 「이 순서는 버그가 아니라 **의도된 정책**이다 — 존재 probe 방지」라고 명시한다. 처방은 **사용자 문구**를 그 순서에 맞게 쓰라는 것이다
+  - 워크플로우 정의는 전역 + 시스템 관리자 전용이라 존재 숨김이 더 맞다. 409/403/404 문구는 원인을 뭉뚱그리지 않는다
 
 **REFACTOR**:
 - 예외 → 상태코드 매핑을 `WorkflowExceptionHandler` 로 모은다
@@ -256,18 +264,20 @@ Maxi 결정 2건은 아래에서 확정.
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/web/StatusController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/web/dto/StatusDto.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/application/StatusApplicationService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/repository/StatusRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/web/StatusExceptionHandler.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/status/web/StatusCrudIntegrationTest.kt`]
-- depends-on: [3, 4]
+- depends-on: [3, 4, 11]
 
 **RED** (red-first 1건 + 엣지 3건):
 - ① **`key` 변경 시도가 400** (S2 · F5) — 요청 DTO 가 `key` 를 아예 받지 않으므로 알 수 없는 필드로 거부된다
 - E12 워크플로우가 참조 중인 상태 삭제 → 409 (`workflow_statuses.status_id` FK **RESTRICT** 를 409 로 번역)
 - E13 이름이 대소문자만 다른 상태 생성 → 409 (`UNIQUE INDEX on lower(name) WHERE deleted_at IS NULL`)
 - E15 소프트 삭제된 상태 조회 → 404
+- ★ **E17 (리뷰 T1 신설)** 상태를 소프트 삭제한 뒤 **같은 `key` 로 재생성** → 201. Task 11 의 부분 유니크 인덱스가 없으면 이 케이스가 409 로 영구 차단된다
 - 실패 메시지 (예상): `/api/v1/statuses` 컨트롤러 자체가 없음 → 404
 
 **GREEN**:
 - `GET /` · `POST /` (201) · `PUT /{id}` (200, `name`·`description`·`category` **만**) · `DELETE /{id}` (200, 소프트 삭제)
 - 권한 게이트 + 캐시 무효화 — 상태 변경은 그 상태를 쓰는 **모든 워크플로우**의 캐시를 무효화한다
+- ★ **무효화 방법 (리뷰 A3)** — `WorkflowCache` 는 `findByKey`(`:52`)·`invalidate(key)`(`:74`) 두 메서드뿐이고 **상태→워크플로우 역인덱스도 `invalidateAll` 도 없다**. 따라서 `workflow_statuses ⋈ workflows` 로 **DB 역조회해 key 목록을 얻어** `invalidate` 를 반복 호출한다. 캐시에 역인덱스를 새로 심지 않는다 — 두 번째 리스트가 되어 워크플로우 편성이 바뀔 때마다 갈라진다
 
 **REFACTOR**:
 - `category` CHECK 값(TODO·IN_PROGRESS·DONE)을 enum 으로
@@ -327,9 +337,11 @@ Maxi 결정 2건은 아래에서 확정.
 
 **RED**:
 - **M5 차집합** — 「쓰기 엔드포인트 집합」 ⊖ 「`WorkflowCache.invalidate` 호출부 집합」 = ∅ 을 단언. MEMORY `two-lists-never-check-each-other` 의 처방 그대로다. 한쪽만 읽으면 안 읽는 쪽이 조용히 썩는다
-- **M11** — `backend/**/main` 전체에서 `hasAuthority(` SpEL 권한 검사 **0건**
+- **M11** — `backend/**/main` 전체에서 `@PreAuthorize` SpEL 권한 검사 **0건**. ★ 탐지 범위는 `hasAuthority(` **와 `hasRole(` 둘 다**(리뷰 T3) — `hasAuthority` 만 잡으면 `hasRole` 로 같은 결함이 재유입된다. `@PreAuthorize` 애노테이션 자체를 금지 대상으로 삼는다
 - ★ 두 판별식 모두 탐지 문자열을 **런타임 조립**한다
 - ★ M5 는 「쓰기 엔드포인트」를 **손으로 다시 적지 않는다** — 컨트롤러 소스에서 `@PostMapping`·`@PutMapping`·`@DeleteMapping` 을 스캔해 집합을 만든다. 손으로 적으면 그 목록이 두 번째 리스트가 되어 같은 결함을 재생산한다(#390 의 C1 선례 — 판별식이 CLI 판정을 import 하지 않고 손으로 다시 적었다)
+- ★ **스캐너의 사각을 막는다 (리뷰 Q3)** — 스캔 대상 **파일 목록을 하드코딩하지 않는다**. `backend/modules/project-workflow/src/main/**` 를 **디렉터리 전수 순회**해 `@RestController` 를 가진 파일을 찾는다. 파일 목록을 적으면 새 컨트롤러가 목록 밖에서 태어나 조용히 빠진다 — 그것이 세 번째 리스트다
+- ★ 비-공허 짝 — 컨트롤러가 **0개로 스캔되면 실패**한다. 스캐너가 경로를 잘못 짚어 빈 집합을 만들면 차집합이 자동으로 ∅ 이 되어 통과하기 때문이다
 
 **GREEN**:
 - 두 판별식 통과
@@ -362,18 +374,284 @@ Maxi 결정 2건은 아래에서 확정.
 - `./gradlew :modules:project-workflow:test :modules:issue-tracking:test :modules:app:test ktlintCheck detekt` EXIT 0 (**단일 실행** — 같은 프로젝트 gradle 2개 동시 실행 금지)
 - `./gradlew :modules:project-workflow:generateJooq` 후 **diff 0** (스키마 무변경이므로 diff 가 나오면 이상 신호)
 
+### Task 11. ★ 최선행 — `V206` 소프트 삭제 부분 유니크 인덱스 (리뷰 A1 / Maxi 결정 D3)
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V206__soft_delete_partial_unique_keys.sql`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V206MigrationTest.kt`, `backend/modules/project-workflow/src/generated/jooq/**`]
+- depends-on: []
+
+> **번호 주의.** 로드맵은 `V206` 을 PR 4(전환 다중화)에 예약했다. 이 PR 이 `V206` 을 쓰므로
+> **PR 4 는 `V207` 로 밀린다.** 로드맵 정본 `~/.claude/plans/cozy-hatching-otter.md` §DB 스키마 ·
+> §PR 분해의 번호를 Task 10 의 문서 동기화에서 함께 갱신한다.
+
+**무엇이 문제였나.** PR 2 가 만든 DDL 을 읽어 확인한 **비대칭**이다.
+
+```
+statuses
+  key   VARCHAR(50) NOT NULL UNIQUE                          (V203:13)  ← 무조건 유니크
+  name  UNIQUE INDEX ... WHERE deleted_at IS NULL            (V203:32)  ← 부분 유니크
+workflows
+  key   TEXT NOT NULL UNIQUE                                 (V200:7)   ← 무조건 유니크
+  deleted_at TIMESTAMPTZ                                     (V205:8)   ← 소프트 삭제 도입
+```
+
+이름은 소프트 삭제 후 재사용되는데 **key 는 죽은 행이 영원히 점유**한다. 편집기 UI(PR 8~10)에서
+운영자가 상태를 지웠다 다시 만드는 것은 일상 조작인데, 그때마다 409 가 나고 원인인 죽은 행은
+보이지도 지워지지도 않는다.
+
+**RED**:
+- 파일: `.../db/V206MigrationTest.kt` (`V200MigrationTest.kt` 패턴 · 이미지 `quay.io/tembo/pg16-pgmq:latest`)
+- 테스트: ① `statuses` 행을 소프트 삭제한 뒤 **같은 `key`** 로 INSERT → 성공 ② 살아 있는 두 행이 같은 `key` → 여전히 위반 ③ `workflows` 도 ①②와 동일
+- 실패 메시지 (예상): ① 이 `duplicate key value violates unique constraint` 로 실패
+
+**GREEN**:
+- `V206__soft_delete_partial_unique_keys.sql`
+  - `statuses` 의 컬럼 레벨 `UNIQUE` 를 DROP 하고 `CREATE UNIQUE INDEX ... (key) WHERE deleted_at IS NULL` 로 교체
+  - `workflows` 도 동일
+  - ★ **DROP 전에 위반 데이터 가드**를 둔다. 부분 유니크로 바꾸는 것은 제약을 **완화**하는 방향이라 기존 데이터가 깨지지 않지만, 인덱스 생성이 실패하면 원인을 알 수 있게 `RAISE EXCEPTION` 메시지를 남긴다 (V204 의 유일성 가드 관례)
+- `./gradlew :modules:project-workflow:generateJooq` 재실행 후 생성물 커밋 — ★ 이 Task 때문에 **M8 의 「diff 0」 기대가 뒤집힌다**. 인덱스 변경은 jOOQ 생성물에 반영되므로 **diff 가 나오는 것이 정상**이다
+
+**REFACTOR**:
+- 마이그레이션 머리에 위 비대칭 표를 주석으로 남긴다 — 다음 사람이 「왜 컬럼 UNIQUE 를 인덱스로 바꿨나」를 묻지 않게
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*V206MigrationTest*'`
+
 ## Plan 메타
 
-- **task 수** — 10
+- **task 수** — 11 (리뷰에서 Task 11 신설)
 - **예상 wave** — 5. `WorkflowController.kt` 를 Task 5·7·8 이 공유해 자동 직렬화된다
-  - wave 1 — Task 1 · 2 (독립)
+  - wave 1 — Task 1 · 2 · **11** (전부 독립 · 11 은 마이그레이션이라 실행 순서상 최선행)
   - wave 2 — Task 3 (←1) · Task 4 (←2)
-  - wave 3 — Task 5 (←3,4) → Task 6 (←3,4)
+  - wave 3 — Task 5 (←3,4,11) → Task 6 (←3,4,11)
   - wave 4 — Task 7 (←5,6) → Task 8 (←4,5)
   - wave 5 — Task 9 (←5,6,7,8) → Task 10 (←9)
 - **구현 규율** — TDD red-first. `test:` 커밋이 `feat:` 보다 선행
-- **추가 검증** — ktlint · detekt · `:modules:app:test`(5433 실제 Postgres 필요 — `bts-postgres-dev` 유지) · `generateJooq` diff 0 · `verify-master-plan.sh` · `build-doc-index.mjs --check`
+- **추가 검증** — ktlint · detekt · `:modules:app:test`(5433 실제 Postgres 필요 — `bts-postgres-dev` 유지) · `verify-master-plan.sh` · `build-doc-index.mjs --check`
+- **★ `generateJooq` 기대 정정** — Task 11 이 인덱스를 바꾸므로 **diff 0 이 아니라 diff 가 나오는 것이 정상**이다. 스펙 M8 의 「diff 0」은 Task 11 도입 전 기대였다
 - **프론트** — `apps/web` **0파일**(N2). 프론트 검증은 회귀 확인 목적으로만 `pnpm --filter web test` 1회
 - **의도적 편차 (게이트 2 요약에 싣는다)** — ① BC 격리 — issue-tracking 테스트 21파일 포함, 프로덕션 0줄(D2) ② 서브에이전트 dispatch 미사용 — Maxi 정책, 인라인 구현으로 대체하되 TDD·순서·검증은 그대로
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+렌즈 — `/plan-eng-review` **1종**(분기 표 `TYPE == "api"`). Outside voice 는 `codex_reviews=disabled`
+이고 `codex` 가 PATH 에 없어 **미실행**(조용히 0종으로 넘기지 않고 여기 명시한다).
+서브에이전트 dispatch 미사용(Maxi 정책) — 렌즈를 인라인 적용했다.
+
+### 판정 요약
+
+| # | 심각도 | 신뢰도 | 발견 | 처리 |
+|---|---|---|---|---|
+| A1 | **P1 BLOCKER** | 9/10 | 소프트 삭제 vs `key` 무조건 UNIQUE 충돌 — 같은 key 재생성 영구 차단 | **Maxi 결정 D3 = A** → Task 11 신설(`V206`) |
+| A2 | **P1** | 9/10 | E7 검사 순서가 저장소 관례와 **정반대** | Task 5 에서 **권한 먼저**로 반전 |
+| A3 | P2 | 8/10 | `WorkflowCache` 에 상태→워크플로우 역인덱스도 `invalidateAll` 도 없다 | Task 6 에 DB 역조회 방식 명시 |
+| C1 | P2 | 7/10 | `WorkflowController` 가 4 → 11 엔드포인트로 비대해진다 | **미채택** — 아래 근거 |
+| C2 | P2 | 8/10 | 픽스처 헬퍼 2벌을 「얇게 유지」로만 막는 것은 사람의 규율이지 기계의 강제가 아니다 | Task 1 에 **대조 판별식** 추가 |
+| T1 | **P1** | 9/10 | red-first 에 소프트 삭제 후 재생성 케이스 부재 (A1 이 드러냄) | E17 신설 · red-first 6 → **7건** |
+| T2 | P2 | 8/10 | 31파일 대량 이주에 **회귀 증인**이 없다 | Task 3 에 테스트 이름 **무손실 대조** 추가 |
+| T3 | P2 | 7/10 | M11 이 `hasAuthority(` 만 잡으면 `hasRole(` 로 재유입된다 | `@PreAuthorize` 애노테이션 자체를 금지 대상으로 |
+| Q3 | P2 | 8/10 | M5 스캐너가 파일 목록을 하드코딩하면 **세 번째 리스트**가 된다 | 디렉터리 전수 순회 + **비-공허 짝**(0개 스캔 시 실패) |
+| P1 | — | 9/10 | N+1 **없음** | `fetchJoinedRows`(`WorkflowRepository.kt:114`)가 단일 join 후 메모리 grouping. 2단 전환도 join 1개 추가일 뿐 |
+
+**BLOCKER 0 (A1 은 Maxi 결정 D3 으로 해소).** 게이트 1 진입 가능.
+
+### 1. Architecture review
+
+**A1 [P1] (9/10) `V203:13` · `V200:7` — 소프트 삭제와 `key` 무조건 UNIQUE 의 충돌.**
+근거 라인.
+```
+V203:13   key         VARCHAR(50)  NOT NULL UNIQUE
+V203:32   CREATE UNIQUE INDEX uq_statuses_lower_name ... WHERE deleted_at IS NULL
+V200:7    key         TEXT        NOT NULL UNIQUE
+V205:8    ADD COLUMN deleted_at TIMESTAMPTZ
+```
+같은 테이블에서 **이름은 부분 유니크, key 는 무조건 유니크**다. F8(소프트 삭제)과 짝이 맞지 않는다.
+→ Maxi 결정 D3 = A. Task 11(`V206`) 신설.
+
+**A2 [P1] (9/10) Task 5 E7 — 검사 순서가 관례와 정반대였다.**
+근거 라인 — `VersionApplicationService.kt:136-138`.
+```
+136   assertPermission(actorId, VersionPermission.UPDATE, projectId)
+137   archiveGuard.check(projectId)
+138   val existing = findActiveVersion(versionId, projectId)
+```
+권한이 **먼저**다. MEMORY `permission-assert-before-existence-makes-403-lie` 본문도
+「이 순서는 버그가 아니라 **의도된 정책**이다 — 존재 probe 방지」라고 못박는다.
+plan 초안은 그 메모리를 **「순서를 뒤집으라」로 오독**했다. 메모리의 처방은 순서가 아니라
+**사용자 문구**(원인을 뭉뚱그리지 말 것)다. → Task 5 에서 반전.
+
+**A3 [P2] (8/10) `WorkflowCache.kt:52,74` — 무효화 경로가 미정이었다.**
+공개 메서드는 `findByKey(key)`·`invalidate(key)` 둘뿐이다. `invalidateAll` 도, 상태→워크플로우
+역인덱스도 없다. Task 6 이 「그 상태를 쓰는 모든 워크플로우 무효화」를 하려면 방법이 필요하다.
+→ DB 역조회(`workflow_statuses ⋈ workflows`)로 key 목록을 얻어 반복 호출. **캐시에 역인덱스를
+새로 심지 않는다** — 편성이 바뀔 때마다 갈라지는 두 번째 리스트가 된다.
+
+**C1 [P2] (7/10) `WorkflowController` 비대화 — 미채택.**
+엔드포인트가 4 → 11 로 는다. 분리를 검토했으나 **채택하지 않는다**. 근거 — 상태 카탈로그는 이미
+Task 6 에서 `status/web/StatusController` 로 분리돼 별 경로(`/api/v1/statuses`)를 갖고, 남는 것은
+`/api/v1/workflows` **한 경로의 자원 CRUD** 라 한 컨트롤러가 맞다. 지금 나누면 경로가 같은데 클래스만
+둘이 되어 다음 사람이 어느 쪽에 추가할지 모른다. 로드맵 PR 4~6 이 전환·규칙·초안을 각각 하위 경로로
+붙이므로, **분리는 그때 하위 경로 단위로** 하는 것이 자연스럽다.
+
+**데이터 흐름 (2단 전환 전후).**
+```
+[전]  workflows ─┬─ workflow_states ────────── (워크플로우 종속 상태)
+                 └─ workflow_transitions
+
+[후]  workflows ─┬─ workflow_statuses ── statuses   (전역 카탈로그 · N:M)
+                 │        │ display_order
+                 │        └ (layout_x/y — PR 9 범위, 무변경)
+                 └─ workflow_transitions
+
+  쓰기 경로 ──► WorkflowCache.withWriteLock ──► DB ──► invalidate(key)
+                 (현재 호출부 0곳 — 이 PR 이 처음 씀)
+  상태 변경 ──► workflow_statuses ⋈ workflows 역조회 ──► invalidate(key) × N
+```
+
+### 2. Code quality review
+
+**C2 [P2] (8/10) Task 1 픽스처 헬퍼 2벌.**
+`java-test-fixtures` 관례 부재는 실측으로 확인했다(`backend/**/build.gradle.kts` 에 0건).
+plan 초안의 처방은 「헬퍼를 얇게 유지한다」였는데 그것은 **사람의 규율이지 기계의 강제가 아니다** —
+정확히 `two-lists-never-check-each-other` 의 양식이다. → 두 헬퍼의 **삽입 컬럼 집합 + 시그니처**를
+뽑아 차집합 0 을 단언하는 판별식을 짝으로 붙인다.
+
+**stale 주석 1건.** `WorkflowRepository.kt:111-112` 의 「현재 스키마는 states 필수이나 향후 확장성을
+위해 LEFT JOIN 유지」는 2단 전환 후 문맥이 달라진다. Task 3 REFACTOR 에서 함께 갱신한다.
+
+**DRY** — 위반 없음. 세 리포지토리가 같은 join 을 각자 쓰게 되므로 Task 3 REFACTOR 의
+「2단 join SQL 을 리포지토리 상수로 추출」이 그 자리를 막는다.
+
+### 3. Test review
+
+```
+CODE PATHS                                           USER FLOWS
+[+] V206 부분 유니크 인덱스                          [+] 상태 편집
+  ├── [★★★ 계획됨] 소프트삭제→재생성 (E17·T1 신설)     ├── [★★★ 계획됨] 이름 수정 → GET 반영 (S1)
+  ├── [★★  계획됨] 살아있는 중복 key → 여전히 위반      ├── [★★★ 계획됨] key 변경 거부 (S2)
+  └── [★★  계획됨] workflows 도 동일                   ├── [★★  계획됨] 소프트삭제 후 재생성 (E17)
+[+] 읽기 경로 2단 join                                └── [★★  계획됨] 대소문자 중복 (E13)
+  ├── [★★★ 계획됨] 신형에만 있는 상태가 states[] 에
+  ├── [★★★ 계획됨] 31파일 무손실 대조 (T2 신설)      [+] 권한
+  └── [★★  계획됨] 응답 형태 무변경 (N1)               ├── [★★★ 계획됨] 관리자 200 / 비관리자 403 (E16)
+[+] 쓰기 CRUD 11종                                    └── [★★★ 계획됨] 존재 숨김 순서 (E7·A2 반전)
+  ├── [★★★ 계획됨] 생성·수정·삭제·복제
+  ├── [★★★ 계획됨] 409 3종 (사용중·중복·잠금)
+  └── [★★  계획됨] 순서 전체집합 일치 (E10·E11)
+[+] 판별식 3종
+  ├── [★★★ 계획됨] 뮤테이션 3회로 비-공허 확인
+  └── [★★★ 계획됨] M5 스캐너 0개 스캔 시 실패 (Q3 신설)
+
+COVERAGE: 계획 단계 — 구현 전이므로 실측 아님. red-first 7건 + 엣지 17건이 task 에 배치됨
+GAPS: 0 (리뷰에서 T1·T2·Q3 3건을 메워 닫음)
+```
+
+**REGRESSION RULE 적용 1건.** Task 3 의 31파일 이주는 **기존 동작을 바꾸는 변경**이고 기존 테스트가
+「이주 자체」를 덮지 않는다. 따라서 무손실 대조(T2)는 **AskUserQuestion 없이 필수로 추가**했다.
+
+**T3** — M11 탐지 범위를 `@PreAuthorize` 애노테이션 자체로 넓혔다. `hasAuthority(` 만 막으면
+`hasRole(` 로 같은 결함이 다시 들어온다.
+
+### 4. Performance review
+
+**N+1 없음 (9/10).** 근거 — `WorkflowRepository.kt:100-103`.
+```
+100   fun findAll(): List<Workflow> {
+101       val rows = fetchJoinedRows(DSL_TRUE)
+102       return rows.toWorkflows()
+```
+`fetchJoinedRows`(`:114`)가 단일 join 쿼리로 전부 가져와 `:154` 에서 메모리 grouping 한다.
+2단 join 전환은 **join 1개 추가**일 뿐 쿼리 수가 늘지 않는다.
+
+**캐시** — `ConcurrentHashMap<String, Workflow>`(`:42`) 전량 적재. 워크플로우 수가 수십 단위라
+메모리 우려 없음. 상태 변경 시 N개 무효화도 N 이 작다.
+
+**주의 1건 (5/10 · 확인 권장).** `withWriteLock` 이 `pg_try_advisory_xact_lock`(`:135`)을 쓴다.
+이 PR 이 그 첫 호출부가 되므로, 쓰기가 잦아지면 락 경합이 처음으로 관측될 수 있다.
+현 사용 규모(관리자 1인 편집)에서는 문제되지 않는다.
+
+### NOT in scope
+
+| 항목 | 왜 미룸 |
+|---|---|
+| 전환(transition) CRUD | 로드맵 PR 4. 이 PR 은 읽기 경로만 |
+| 전환 규칙(validator) CRUD | 로드맵 PR 5 |
+| Draft/Publish · 기본값 복원 · `base_version` 낙관적 락 | 로드맵 PR 6. `workflows.version` 은 증가만 (C6) |
+| 상태 이관 마법사 · 이슈 일괄 이관 | 로드맵 PR 7·10. E5 는 지금 409 로 막는다 |
+| `layout_x` · `layout_y` | 로드맵 PR 9 (C7) |
+| 편집기 UI 전량 | 로드맵 PR 8~10. `apps/web` 0파일 (N2) |
+| `workflow_states` DROP | 로드맵 마지막 PR. `DATA.md` §4 add→backfill→drop 3단 |
+| `shared-kernel` testFixtures 소스셋 도입 | 모듈 토폴로지 변경. C2 는 대조 판별식으로 대신 막는다 |
+
+### What already exists
+
+| 이미 있는 것 | 이 PR 의 태도 |
+|---|---|
+| `statuses` · `workflow_statuses` 테이블 (V203·V204) | **재사용.** 새로 만들지 않는다 |
+| `workflows.version`·`origin`·`deleted_at`·`is_locked` (V205) | **재사용.** 컬럼 추가 없음 |
+| `WorkflowCache.withWriteLock`(`:94`) | **재사용.** 호출부 0곳이던 자산을 처음 쓴다 |
+| `WorkflowExceptionHandler` | **재사용.** 새 예외를 여기 얹는다 |
+| 권한 3벌 관례 (`VersionPermission` 외 5종) | **모방.** 새 패턴을 만들지 않는다 |
+| `IdentityAccessWorkflowSchemePermissionResolver` 의 Global=isSystemAdmin 판정 | **모방** |
+| `V200MigrationTest` 패턴 | **모방.** Task 11 이 그대로 따른다 |
+| `GET /workflows`·`GET /{key}`·`POST /{key}/transitions` | **무변경.** 내부 join 만 바뀐다 (N1) |
+
+### 실패 모드 (신규 코드경로별 1건씩)
+
+| 경로 | 현실적 실패 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| 2단 join 읽기 | 상태가 카탈로그에서 소프트 삭제됐는데 편성은 남음 → `states[]` 결손 | E15 + 무손실 대조 | 카탈로그 삭제를 FK RESTRICT 가 막음(E12) | 발생 불가 경로 |
+| 워크플로우 삭제 | 스킴 매핑이 참조 중 | S3·E3 | 409 | 「사용 중이라 지울 수 없습니다」 |
+| 상태 제거 | 이슈가 실제로 그 상태에 있음 | E5 | 409 | 「이 상태를 쓰는 이슈가 있습니다」 |
+| 캐시 무효화 | 상태 변경 후 일부 워크플로우 캐시가 남음 | M5 차집합 + 뮤테이션 | — | **조용한 실패** → 그래서 판별식이 필수 |
+| 권한 게이트 | prod resolver 빈 부재로 부팅 실패 | Task 4 RED | `BeanCreationException` (의도) | 부팅 차단 — 임시 stub 금지 관례 |
+| `V206` | 인덱스 생성 실패 | `V206MigrationTest` | `RAISE EXCEPTION` 메시지 | 마이그레이션 중단 |
+| `withWriteLock` | advisory lock 타임아웃 | 기존 `WorkflowCacheLockTimeoutException`(`:151`) | 예외 | 「잠시 후 다시 시도」 |
+
+### 인라인 ASCII 다이어그램을 넣을 파일
+
+- `WorkflowRepository.kt` — 2단 join 구조 (위 §1 데이터 흐름 도해). `:111-112` stale 주석과 함께 갱신
+- `WorkflowCache.kt` — 무효화 트리거 경로 (쓰기 CRUD → invalidate, 상태 변경 → 역조회 → invalidate × N)
+- `V206__soft_delete_partial_unique_keys.sql` — 비대칭 표 (Task 11 REFACTOR 에 이미 배치)
+
+### TODO 후보 (게이트 1 에서 Maxi 판정)
+
+| # | 무엇 | 왜 | 얻는 것 / 비용 | 선행 |
+|---|---|---|---|---|
+| ① | `shared-kernel` 에 `java-test-fixtures` 소스셋 도입 | 픽스처 헬퍼가 BC 마다 복제되는 구조적 원인. 이번엔 대조 판별식으로 증상만 막는다 | 얻음 — 헬퍼 한 벌 · 비용 — 모듈 토폴로지 변경(T3) · 기존 테스트 의존 재배선 | 없음 |
+| ② | `workflow_states` DROP | 3단 분할의 마지막 단계. 남겨 두면 「어느 쪽이 정본인가」가 계속 모호 | 얻음 — 모호성 제거 · 비용 — 되돌릴 수 없음 | 로드맵 PR 4~10 완료 |
+| ③ | 로드맵 마이그레이션 번호 재정렬 | 이 PR 이 `V206` 을 쓰면서 PR 4~6 의 예약 번호가 한 칸씩 밀린다 | 얻음 — 정본 일치 · 비용 — 문서 3줄 | 이 PR (Task 10 에서 처리) |
+
+## GSTACK REVIEW REPORT
+
+| Runs | Status | Findings |
+|---|---|---|
+| `/plan-eng-review` (인라인 · 서브에이전트 미사용) | 완료 | 10 (P1 3 · P2 6 · 확인 1) |
+| Outside voice (`codex`) | **미실행** | `codex_reviews=disabled` + `codex` PATH 부재 |
+| Scope gate | 사용자 지정 경로 (Exception 2) | — |
+| Design doc | `DESIGN.md` 는 UI 디자인 시스템 문서라 **무관** — 입력으로 쓰지 않음 | — |
+
+| # | 심각도 | 신뢰도 | 상태 |
+|---|---|---|---|
+| A1 소프트삭제 vs key UNIQUE | P1 BLOCKER | 9/10 | 해소 — Maxi 결정 D3=A · Task 11 신설 |
+| A2 E7 검사 순서 반대 | P1 | 9/10 | 해소 — Task 5 반전 |
+| T1 소프트삭제 재생성 red 부재 | P1 | 9/10 | 해소 — E17 신설 · red-first 7건 |
+| A3 캐시 무효화 경로 미정 | P2 | 8/10 | 해소 — Task 6 에 DB 역조회 명시 |
+| C2 픽스처 헬퍼 2벌 | P2 | 8/10 | 해소 — Task 1 에 대조 판별식 |
+| T2 31파일 이주 회귀 증인 부재 | P2 | 8/10 | 해소 — 무손실 대조 (REGRESSION RULE) |
+| Q3 스캐너 파일목록 하드코딩 | P2 | 8/10 | 해소 — 전수 순회 + 비-공허 짝 |
+| T3 M11 탐지 범위 | P2 | 7/10 | 해소 — `@PreAuthorize` 자체 금지 |
+| C1 컨트롤러 비대화 | P2 | 7/10 | **미채택** — 경로 단위 분리는 PR 4~6 이 자연스러움 |
+| P1 N+1 | — | 9/10 | 없음 확인 (`WorkflowRepository.kt:100-114`) |
+
+**Q1~Q4 판정** — Q1(헬퍼 2벌) 불충분 → 대조 판별식 추가 · Q2(판별식 배치) **타당**, backend-ci 가
+`backend/**` 를 걸어 반드시 돈다 · Q3(소스 스캔) 사각 있음 → 전수 순회 + 비-공허 짝 · Q4(E7 순서)
+**plan 이 틀렸음** → 관례대로 권한 먼저로 반전.
+
+VERDICT: **PASS with changes applied.** BLOCKER 0 · 발견 10건 중 9건 plan 반영 · 1건 근거와 함께 미채택.
+CODEX: not run (disabled). CROSS-MODEL: none.
+
+**UNRESOLVED DECISIONS:**
+- TODO ① `shared-kernel` testFixtures 소스셋 도입 여부 (게이트 1 판정)
+- TODO ② `workflow_states` DROP 시점 (게이트 1 판정 · 선행 로드맵 PR 4~10)
+- TODO ③ 로드맵 마이그레이션 번호 재정렬 — `V206` 을 이 PR 이 쓰면서 PR 4~6 예약 번호가 한 칸씩 밀림 (Task 10 에서 처리 예정이나 Maxi 승인 필요)

@@ -134,8 +134,15 @@ FR-WF-04 의 D 단계. 하위 항목.
 
 ## 데이터 모델 변경
 
-**신규 마이그레이션 없음.** PR 2 의 `V203`(카탈로그) · `V204`(백필) · `V205`(version·origin·deleted_at·is_locked)
-가 이미 자리를 만들었다. 이 PR 은 그 자리를 **읽고 쓰기 시작**할 뿐이다.
+**신규 마이그레이션 1건 — `V206` (리뷰 A1 / Maxi 결정 D3).** 당초 「신규 마이그레이션 없음」이었으나,
+소프트 삭제(F8)와 `key` 의 **무조건 UNIQUE** 가 충돌하는 것이 리뷰에서 실측으로 드러났다.
+`statuses.name` 은 이미 부분 유니크(`WHERE deleted_at IS NULL`)인데 `statuses.key`(V203:13)와
+`workflows.key`(V200:7)만 무조건 유니크라, 소프트 삭제된 행이 key 를 영원히 점유해 **같은 key 재생성이
+영구 차단**된다. `V206` 이 두 key 를 부분 유니크 인덱스로 바꿔 규칙을 한 벌로 맞춘다.
+★ 로드맵이 `V206` 을 PR 4 에 예약했으므로 **PR 4 는 `V207` 로 밀린다** — 로드맵 정본을 함께 갱신한다.
+
+나머지는 PR 2 의 `V203`(카탈로그) · `V204`(백필) · `V205`(version·origin·deleted_at·is_locked)가
+이미 만든 자리를 **읽고 쓰기 시작**하는 것이다.
 
 읽기 경로 실측 — main 에서 아직 구형 `workflow_states` 를 읽는 파일.
 
@@ -181,6 +188,7 @@ FR-WF-04 의 D 단계. 하위 항목.
 | E13 ❓ | 이름이 대소문자만 다른 상태 생성 (`Blocked` vs `blocked`) | 409. `UNIQUE INDEX on lower(name) WHERE deleted_at IS NULL` (Jira Cloud 동일 정책) |
 | E14 ❓ | 이미 있는 key 로 워크플로우 복제 | 409 |
 | E15 ❓ | 소프트 삭제된 워크플로우·상태를 조회·수정 | 404. `deleted_at IS NOT NULL` 은 없는 것으로 취급 |
+| E17 ★ | 상태를 소프트 삭제한 뒤 **같은 `key` 로 재생성** | 201. `V206` 부분 유니크 인덱스가 없으면 409 로 영구 차단된다 (리뷰 A1) |
 | E16 ★ | **실제로 발급되는 신원**으로 `cache/invalidate` 호출 | 시스템 관리자는 200, 아닌 사용자는 403. `@WithMockUser(authorities=[...])` 로 authority 를 손수 심지 않고 **도달 가능한 경로**로 검증한다 (C1 결정 · MEMORY `unreachable-state-fixture-is-fake-green`) |
 
 ## 제약 조건
@@ -262,14 +270,14 @@ CI 러너가 개발 머신과 같은 컴퓨터다. 로컬 gradle 과 CI 를 동�
 
 | # | 기준 | 확인 방법 |
 |---|---|---|
-| M1 | red-first **6건**(원 4건 + C1 결정분 E16 2케이스)이 구현 전 red, 구현 후 green | `test:` 커밋이 `feat:` 보다 선행 (CI 판별식이 대조) |
+| M1 | red-first **7건**(원 4건 + C1 결정분 E16 2케이스 + 리뷰 T1 의 E17 소프트삭제 재생성)이 구현 전 red, 구현 후 green | `test:` 커밋이 `feat:` 보다 선행 (CI 판별식이 대조) |
 | M2 | 신규 엔드포인트 11종이 실제로 매핑된다 | `grep -cE '@(Get\|Post\|Put\|Delete)Mapping'` 로 세어 대조 |
 | M3 | 읽기 응답 형태 무변경 | `apps/web` **0파일 변경** · 프론트 vitest 전건 green · e2e 4건 green |
 | M4 | 픽스처 이주 31파일 완료 · 원시 SQL 재유입 0 | 판별식이 `INSERT INTO workflow_states` 를 테스트에서 금지(허용목록 4파일) |
 | M5 | 캐시 무효화 누락 0 | 차집합 판별식 — 쓰기 엔드포인트 집합 ⊖ `invalidate` 호출부 집합 = ∅ |
 | M6 | 판별식이 **비어 있지 않다** | 뮤테이션 2회 — ①`invalidate` 호출 1개 삭제 → M5 red ②테스트 1개에 원시 SQL 재삽입 → M4 red. **GREEN 선커밋 뒤** 실행 |
 | M7 | 백엔드 전량 green | `./gradlew :modules:project-workflow:test :modules:issue-tracking:test :modules:app:test ktlintCheck detekt` EXIT=0 |
-| M8 | jOOQ 생성물 동기 | `generateJooq` 재실행 후 diff 0 (스키마 무변경이므로 diff 가 나오면 이상 신호) |
+| M8 ★ | jOOQ 생성물 동기 | `generateJooq` 재실행 후 커밋. **diff 가 나오는 것이 정상** — 리뷰 A1 로 `V206` 이 추가돼 인덱스가 바뀐다(정정 전 기대는 「diff 0」이었다) |
 | M9 | 문서 정합 | `verify-master-plan.sh` EXIT 0 · `build-doc-index.mjs --check` EXIT 0 |
 | M11 ★ | **`hasAuthority(` 재유입 0.** 판별식이 `backend/**/main` 에서 `@PreAuthorize` SpEL 권한 검사를 금지한다 | `VersionPermissionResolver` 가 명문화한 관례(N5)를 기계가 강제. 뮤테이션 — 아무 컨트롤러에 `@PreAuthorize` 1줄 추가 → red |
 | M10 | CI 전건 green | 머지 전 실측 |
