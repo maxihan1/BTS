@@ -136,11 +136,13 @@ class StatusCrudIntegrationTest {
     fun `이름과 카테고리는 고칠 수 있고 key 는 그대로다`() {
         val id = create("mutable-status", name = "옛 이름", category = "TODO")
 
-        service.update(actor, id, UpdateStatusCommand(name = "새 이름", description = "설명", category = "DONE"))
+        // ★ 이름은 카탈로그 **전역**에서 유일하다. 테스트마다 다른 이름을 써야 서로 충돌하지 않는다 —
+        //   실제로 한 번 충돌시켜 보고 알았다. 이 전역성이 카탈로그의 본질이다.
+        service.update(actor, id, UpdateStatusCommand(name = "고쳐진 이름", description = "설명", category = "DONE"))
 
         val found = statusRepository.findLiveById(id)!!
         assertThat(found.key).isEqualTo("mutable-status")
-        assertThat(found.name).isEqualTo("새 이름")
+        assertThat(found.name).isEqualTo("고쳐진 이름")
         assertThat(found.category).isEqualTo("DONE")
     }
 
