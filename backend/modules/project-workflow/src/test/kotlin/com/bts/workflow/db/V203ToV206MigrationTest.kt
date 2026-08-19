@@ -1,4 +1,4 @@
-// V203~V205 (전역 상태 카탈로그) 마이그레이션 검증 — 컨테이너 1개로 스키마·백필·컬럼을 한 번에 확인한다
+// V203~V206 (전역 상태 카탈로그 + 소프트삭제 부분 유니크) 마이그레이션 검증 — 컨테이너 1개로 스키마·백필·컬럼·인덱스를 한 번에 확인한다
 
 package com.bts.workflow.db
 
@@ -14,10 +14,11 @@ import java.sql.Connection
 import java.sql.DriverManager
 
 /**
- * Flyway V203(전역 상태 카탈로그 신설) · V204(백필 + 유일성 가드) · V205(workflows 컬럼 4종) 검증.
+ * Flyway V203(전역 상태 카탈로그 신설) · V204(백필 + 유일성 가드) · V205(workflows 컬럼 4종) ·
+ * V206(소프트 삭제 부분 유니크 인덱스) 검증.
  *
  * ### 왜 한 클래스인가
- * `V200MigrationTest` 는 `@Container @JvmStatic` 이라 **클래스당 컨테이너 1개**를 띄운다. V203·V204·V205 를
+ * `V200MigrationTest` 는 `@Container @JvmStatic` 이라 **클래스당 컨테이너 1개**를 띄운다. V203·V204·V205·V206 을
  * 각각 클래스로 나누면 컨테이너가 3~4번 뜨는데, 착수 시점 러너 실측이 load 3.90배였다(게이트 1 리뷰 R4).
  * 세 마이그레이션은 어차피 한 체인으로만 의미가 있으므로 컨테이너 1개에서 순서대로 적용한다.
  *
@@ -42,7 +43,7 @@ import java.sql.DriverManager
  * `docs/plans/2026-08-19-migration-project-workflow-global-status-catalog.md`
  */
 @Testcontainers
-class V203ToV205MigrationTest {
+class V203ToV206MigrationTest {
     companion object {
         private val temboImage: DockerImageName =
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
@@ -286,6 +287,63 @@ class V203ToV205MigrationTest {
                 " WHERE table_schema = 'public' AND table_name = '$tableName'",
         ) { it.getInt(1) > 0 }
 
+
+    /** 격리 DB 에 접속해 블록을 실행한다. V206 재생성 검증용. */
+    private fun <T> withConnection(
+        url: String,
+        block: (Connection) -> T,
+    ): T = DriverManager.getConnection(url, postgres.username, postgres.password).use(block)
+
+    /** statuses 1행을 심는다. V206 부분 유니크 검증 전용. */
+    private fun insertStatus(
+        conn: Connection,
+        key: String,
+        name: String,
+        category: String,
+    ) {
+        conn.prepareStatement("INSERT INTO statuses (key, name, category) VALUES (?, ?, ?)").use { stmt ->
+            stmt.setString(1, key)
+            stmt.setString(2, name)
+            stmt.setString(3, category)
+            stmt.executeUpdate()
+        }
+    }
+
+    /** workflows 1행을 심는다. ON CONFLICT 를 쓰지 않는다 — 충돌 자체가 검증 대상이다. */
+    private fun insertWorkflow(
+        conn: Connection,
+        key: String,
+    ) {
+        conn.prepareStatement("INSERT INTO workflows (key, name) VALUES (?, ?)").use { stmt ->
+            stmt.setString(1, key)
+            stmt.setString(2, key)
+            stmt.executeUpdate()
+        }
+    }
+
+    private fun countWhere(
+        conn: Connection,
+        sql: String,
+    ): Int =
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery(sql).use { rs ->
+                rs.next()
+                rs.getInt(1)
+            }
+        }
+
+    /** 지정 테이블·컬럼에 걸린 **컬럼 레벨** UNIQUE 제약 수. 부분 유니크 인덱스는 여기 잡히지 않는다. */
+    private fun uniqueConstraintCount(
+        tableName: String,
+        columnName: String,
+    ): Int =
+        query(
+            "SELECT COUNT(*) FROM information_schema.table_constraints tc" +
+                " JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name" +
+                " WHERE tc.table_name = '$tableName' AND tc.constraint_type = 'UNIQUE'" +
+                " AND kcu.column_name = '$columnName'",
+        ) { it.getInt(1) }
+
     private fun indexExists(indexName: String): Boolean =
         query(
             "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = '$indexName'",
@@ -332,16 +390,20 @@ class V203ToV205MigrationTest {
         assertThat(tableExists("workflow_statuses")).isTrue()
     }
 
+    /**
+     * V203 이 세운 「key 는 무조건 UNIQUE」계약을 **V206 이 뒤집는다**.
+     *
+     * 삭제하지 않고 반전해 남긴다 — 새 계약의 증인이다. 컬럼 레벨 UNIQUE 제약이 사라지고
+     * 부분 유니크 인덱스가 그 자리를 대신한다는 것이 V206 의 골자다.
+     */
     @Test
-    fun `V203 statuses key 는 전역 UNIQUE`() {
-        val count =
-            query(
-                "SELECT COUNT(*) FROM information_schema.table_constraints tc" +
-                    " JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name" +
-                    " WHERE tc.table_name = 'statuses' AND tc.constraint_type = 'UNIQUE'" +
-                    " AND kcu.column_name = 'key'",
-            ) { it.getInt(1) }
-        assertThat(count).isGreaterThan(0)
+    fun `V206 이후 statuses key 의 컬럼 UNIQUE 제약은 사라진다`() {
+        assertThat(uniqueConstraintCount("statuses", "key")).isZero()
+    }
+
+    @Test
+    fun `V206 이후 workflows key 의 컬럼 UNIQUE 제약은 사라진다`() {
+        assertThat(uniqueConstraintCount("workflows", "key")).isZero()
     }
 
     @Test
@@ -623,4 +685,86 @@ class V203ToV205MigrationTest {
         }
         error("INSERT 가 실패해야 하는데 성공했다: $sql")
     }
+
+    // ── V206. 소프트 삭제 부분 유니크 인덱스 ────────────────────────────────────
+
+    /**
+     * ### 무엇을 막는 검증인가
+     *
+     * V203 은 `statuses.key` 를 **무조건 UNIQUE** 로, `name` 은 `WHERE deleted_at IS NULL` **부분 UNIQUE**
+     * 로 만들었다. 같은 테이블 안에서 규칙이 둘로 갈라진 상태다. 소프트 삭제를 쓰기로 한 이상
+     * 이 비대칭은 「지운 상태의 key 를 영원히 재사용할 수 없다」로 나타난다.
+     *
+     * ```
+     *  [V205 까지]                          [V206 이후]
+     *  key   UNIQUE            (전역)       key   UNIQUE WHERE deleted_at IS NULL
+     *  name  UNIQUE WHERE alive             name  UNIQUE WHERE deleted_at IS NULL
+     *        ↑ 규칙 2벌                            ↑ 규칙 1벌
+     * ```
+     */
+    @Test
+    fun `V206 statuses key 는 소프트 삭제를 제외한 부분 UNIQUE 인덱스다`() {
+        assertThat(indexExists("uq_statuses_key")).isTrue()
+        val definition =
+            query("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_statuses_key'") { it.getString(1) }
+        assertThat(definition).contains("UNIQUE")
+        assertThat(definition).contains("deleted_at IS NULL")
+    }
+
+    @Test
+    fun `V206 workflows key 는 소프트 삭제를 제외한 부분 UNIQUE 인덱스다`() {
+        assertThat(indexExists("uq_workflows_key")).isTrue()
+        val definition =
+            query("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_workflows_key'") { it.getString(1) }
+        assertThat(definition).contains("UNIQUE")
+        assertThat(definition).contains("deleted_at IS NULL")
+    }
+
+    @Test
+    fun `V206 statuses 를 소프트 삭제한 뒤 같은 key 로 다시 만들 수 있다`() {
+        val url = migrateWithFixture("v206_status_recreate") { }
+        withConnection(url) { conn ->
+            insertStatus(conn, "blocked", "Blocked", "IN_PROGRESS")
+            conn.createStatement().use { it.executeUpdate("UPDATE statuses SET deleted_at = NOW() WHERE key = 'blocked'") }
+            // 같은 key 로 재생성 — 살아 있는 행이 없으므로 부분 유니크가 허용해야 한다.
+            insertStatus(conn, "blocked", "Blocked Again", "TODO")
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked' AND deleted_at IS NULL")).isEqualTo(1)
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked'")).isEqualTo(2)
+        }
+    }
+
+    @Test
+    fun `V206 살아 있는 두 statuses 가 같은 key 면 여전히 거부된다`() {
+        val url = migrateWithFixture("v206_status_alive_dup") { }
+        withConnection(url) { conn ->
+            insertStatus(conn, "dup_key", "First", "TODO")
+            val failure = runCatching { insertStatus(conn, "dup_key", "Second", "DONE") }.exceptionOrNull()
+            assertThat(failure).isNotNull()
+            assertThat(failure!!.message).contains("uq_statuses_key")
+        }
+    }
+
+    @Test
+    fun `V206 workflows 를 소프트 삭제한 뒤 같은 key 로 다시 만들 수 있다`() {
+        val url = migrateWithFixture("v206_workflow_recreate") { }
+        withConnection(url) { conn ->
+            insertWorkflow(conn, "retired-flow")
+            conn.createStatement().use { it.executeUpdate("UPDATE workflows SET deleted_at = NOW() WHERE key = 'retired-flow'") }
+            insertWorkflow(conn, "retired-flow")
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow' AND deleted_at IS NULL")).isEqualTo(1)
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow'")).isEqualTo(2)
+        }
+    }
+
+    @Test
+    fun `V206 살아 있는 두 workflows 가 같은 key 면 여전히 거부된다`() {
+        val url = migrateWithFixture("v206_workflow_alive_dup") { }
+        withConnection(url) { conn ->
+            insertWorkflow(conn, "dup-flow")
+            val failure = runCatching { insertWorkflow(conn, "dup-flow") }.exceptionOrNull()
+            assertThat(failure).isNotNull()
+            assertThat(failure!!.message).contains("uq_workflows_key")
+        }
+    }
+
 }
