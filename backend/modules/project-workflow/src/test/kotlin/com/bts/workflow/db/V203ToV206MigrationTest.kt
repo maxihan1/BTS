@@ -287,7 +287,6 @@ class V203ToV206MigrationTest {
                 " WHERE table_schema = 'public' AND table_name = '$tableName'",
         ) { it.getInt(1) > 0 }
 
-
     /** 격리 DB 에 접속해 블록을 실행한다. V206 재생성 검증용. */
     private fun <T> withConnection(
         url: String,
@@ -640,7 +639,6 @@ class V203ToV206MigrationTest {
         }
     }
 
-
     /**
      * ### 왜 컬럼 축만으로는 부족한가 — V206 이 실증했다
      *
@@ -862,5 +860,4 @@ class V203ToV206MigrationTest {
             assertThat(failure!!.message).contains("uq_workflows_key")
         }
     }
-
 }
