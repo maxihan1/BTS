@@ -356,7 +356,8 @@ class YamlSeedService(
         // `SchemeIssueTypeMappingRepository` 도 V201 테이블을 원시 SQL 로 다룬다 — 그 선례를 따른다.
         dsl.execute("UPDATE workflows SET origin = 'SEED' WHERE id = ?", workflowId)
 
-        // 2. workflow_states 삽입 + key → UUID 매핑
+        // 2. 상태 적재 — workflow_states 와 전역 카탈로그를 **같은 루프에서** 기록한다.
+        //    두 기록이 갈라지면 StatusCatalogParityTest 가 red 를 낸다.
         val stateKeyToId = mutableMapOf<String, java.util.UUID>()
         for (state in dto.states) {
             val stateId =
@@ -371,6 +372,7 @@ class YamlSeedService(
                     ?.value1()
                     ?: error("workflow_states 삽입 실패: ${dto.key}/${state.key}")
             stateKeyToId[state.key] = stateId
+            insertStatusForWorkflow(workflowId, state)
         }
 
         // 3. workflow_transitions 삽입 + validators/post_actions 삽입
@@ -397,16 +399,58 @@ class YamlSeedService(
             insertPostActions(transitionId, transition.postActions)
         }
 
+        // 카탈로그 건수를 함께 남긴다 — 부팅 로그만 보고 statuses/workflow_statuses 가 채워졌는지 알 수 있어야 한다.
+        val catalogRows =
+            dsl.fetchValue(
+                "SELECT COUNT(*) FROM workflow_statuses WHERE workflow_id = ?",
+                workflowId,
+            ) as Number
+
         log.info(
-            "워크플로우 '{}' 적재 완료 — states: {}, transitions: {}, validators: {}, postActions: {}",
+            "워크플로우 '{}' 적재 완료 — states: {}, transitions: {}, validators: {}, postActions: {}, " +
+                "workflow_statuses: {}, statuses(전역 누적): {}",
             dto.key,
             dto.states.size,
             dto.transitions.size,
             dto.transitions.sumOf { it.validators.size },
             dto.transitions.sumOf { it.postActions.size },
+            catalogRows,
+            dsl.fetchValue("SELECT COUNT(*) FROM statuses") as Number,
         )
 
         return workflowId
+    }
+
+    /**
+     * 상태 1건을 전역 카탈로그(`statuses`)와 워크플로우 연결(`workflow_statuses`)에 기록한다.
+     *
+     * ### 왜 원시 SQL 인가
+     * jOOQ 코드 생성은 `TC_INITSCRIPT` 로 **V200 한 파일만** 적용한다(`build.gradle.kts` 의
+     * `jooq.jdbc.url`). 그래서 V203 이 만든 두 테이블은 생성물에 없다. 같은 이유로
+     * `SchemeIssueTypeMappingRepository` 도 V201 테이블을 원시 SQL 로 다룬다 — 그 선례를 따른다.
+     *
+     * ### 왜 ON CONFLICT DO NOTHING 인가
+     * 상태 키는 전역 유일이다. 이미 있는 키면 **기존 행을 그대로 쓴다** — 운영자가 바꾼 이름을
+     * 시드가 덮지 않는다(ADR 2026-08-18-workflow-global-status-catalog D3 「이름은 자유, 키는 불변」).
+     */
+    private fun insertStatusForWorkflow(
+        workflowId: java.util.UUID,
+        state: StateYamlDto,
+    ) {
+        dsl.execute(
+            "INSERT INTO statuses (key, name, category) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING",
+            state.key,
+            state.name,
+            state.category,
+        )
+        dsl.execute(
+            "INSERT INTO workflow_statuses (workflow_id, status_id, display_order) " +
+                "SELECT ?, id, ? FROM statuses WHERE key = ? " +
+                "ON CONFLICT (workflow_id, status_id) DO NOTHING",
+            workflowId,
+            state.displayOrder,
+            state.key,
+        )
     }
 
     /**
