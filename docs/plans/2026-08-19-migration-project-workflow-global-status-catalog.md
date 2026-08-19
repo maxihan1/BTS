@@ -518,3 +518,28 @@ ADR D1 이 `statuses` 에 `UNIQUE INDEX on lower(name) WHERE deleted_at IS NULL`
 | 되돌리기 등급 | **한쪽 문(one-way)에 가깝다** — 마이그레이션은 forward-only 이고 C1 이 그 대가다. R6 가 되돌리기 비용을 크게 낮춘다 |
 | 혁신 토큰 | **0개 소모.** 표준 SQL·기존 패턴만 |
 | 6개월 뒤 관점 | 이 PR 없이는 편집기 로드맵 전체가 성립하지 않는다. 방향 정합 |
+
+### 게이트 2 (1차) — Maxi 확정 B (2026-08-19)
+
+`/review` 가 BTS 체크리스트의 **CRITICAL 「init_codegen.sql 미러」** 1건을 냈고, Maxi 가 **B(지금 미러 추가)**
+를 택했다. `/bts` 규정대로 concerns 를 붙여 [5] 구현 → [6] 재리뷰로 되돌아갔다.
+
+**실측 근거.** `project-workflow` 만 코드젠 입력이 `TC_INITSCRIPT=…/V200__init_workflow.sql` 한 파일이었다.
+다른 4개 모듈(issue-tracking · agile-planning · notification · search-export-import)은 전부
+`db/codegen/init_codegen.sql` 구조 미러를 쓴다. 그래서 V201 이후 스키마가 jOOQ 생성물에 영영 안 잡혔고,
+이 PR 은 원시 SQL 로 우회하고 있었다.
+
+**추가 산출물 4종.**
+1. `db/codegen/init_codegen.sql` 신설 — V200 + V203 + V205 구조 미러. V201·V202 는 의도적 제외
+   (종전에도 코드젠 밖이고 소비처가 그 전제로 쓰여 있다).
+2. `build.gradle.kts` 코드젠 입력을 미러로 교체.
+3. **미러 정합 판별식** — `V203ToV205MigrationTest` 의 「codegen 미러가 마이그레이션 스키마와 일치한다」.
+   파서를 쓰지 않고 **실제 PostgreSQL 두 곳에 적용해** `information_schema` 로 컬럼·타입을 대조한다.
+   뮤테이션(`statuses.is_system` 제거) red 1회 확인 후 원복. 관례상 이 미러는 손으로 유지하는 사본이고
+   **지금까지 어떤 판별식도 그것을 검사하지 않았다** — 저장소의 지배 결함 양식이라 같이 닫았다.
+4. `YamlSeedService` 의 카탈로그 접근을 원시 SQL → **jOOQ 타입 접근**으로 되돌림
+   (`STATUSES` · `WORKFLOW_STATUSES` · `WORKFLOWS.ORIGIN` 상수가 생성됐다).
+
+**부채 등재 1건.** 나머지 4개 모듈은 여전히 미러 대조가 없다 → 부채 `54`(장부 + 마스터 §전수 매핑 동시 등재).
+한 PR = 한 BC 규칙상 모듈별 후속 PR 로 나눈다.
+
