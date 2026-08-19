@@ -519,6 +519,19 @@ detekt 처방 2건은 억제가 아니라 근거를 남겼다.
 - `NestedBlockDepth`(JDBC try-with-resources 3단 + 행 루프) — 더 쪼개면 자원 해제 경계가 흐려진다.
   공통 헬퍼 `forEachRow` 로 중첩을 한 곳에 모으고 그 함수에만 `@Suppress`
 
+## 뮤테이션 검증 실측 (Task 10)
+
+**GREEN 선커밋 뒤**에 넣고, 각 원복 후 `git status` 를 눈으로 확인했다(미커밋 원복은 소실이다).
+
+| # | 넣은 결함 | 판별식 | 결과 | 잡은 것 |
+|---|---|---|---|---|
+| ① | `WorkflowCommandService.update` 의 `invalidate` 호출 1개 삭제 | `CacheInvalidationCoverageTest` | **red** | `["WorkflowCommandService.update"]` |
+| ② | 이주한 테스트에 원시 SQL `INSERT INTO workflow_states` 1건 재삽입 | `RawWorkflowStateInsertGuardTest` | **red** | `["…/cache/WorkflowCacheTest.kt"]` |
+| ③ | `StatusController.list` 에 `hasAuthority('STATUS_READ')` 1줄 추가 | `GrantedAuthorityPrefixGuardTest` | **red** | `["…/StatusController.kt → hasAuthority('STATUS_READ')"]` |
+| ④ | issue-tracking 헬퍼만 `display_order + 1` 로 변경 | `WorkflowStatusFixtureParityTest` | **red** | 본문 불일치 |
+
+네 판별식 모두 **실제로 값을 본다.** 원복 후 `git status` 는 매번 0건이었다.
+
 ## Plan 메타
 
 - **task 수** — 11 (리뷰에서 Task 11 신설)
@@ -644,7 +657,7 @@ CODE PATHS                                           USER FLOWS
   ├── [★★★ 계획됨] 뮤테이션 3회로 비-공허 확인
   └── [★★★ 계획됨] M5 스캐너 0개 스캔 시 실패 (Q3 신설)
 
-COVERAGE: 계획 단계 — 구현 전이므로 실측 아님. red-first 7건 + 엣지 17건이 task 에 배치됨
+COVERAGE: 계획 단계 — 아직 구현하지 않아 실측이 아니다. red-first 7건 + 엣지 17건이 task 에 배치됨
 GAPS: 0 (리뷰에서 T1·T2·Q3 3건을 메워 닫음)
 ```
 
