@@ -69,3 +69,25 @@ class WorkflowInUseException(
 class WorkflowLockedException(
     val workflowKey: String,
 ) : RuntimeException("Workflow '$workflowKey' is locked for editing")
+
+/**
+ * 상태 편성 요청이 규칙을 어겼을 때 던진다. → 400
+ *
+ * 세 가지를 한 예외로 묶는다 — 순서 요청이 그 워크플로우의 상태 전부를 담지 않았을 때,
+ * 남의 상태가 섞였을 때, 마지막 상태를 빼려 할 때. 전부 **요청이 잘못된** 경우다.
+ */
+class WorkflowStatusCompositionException(
+    val workflowKey: String,
+    val reason: String,
+) : RuntimeException("Invalid status composition for workflow '$workflowKey': $reason")
+
+/**
+ * 이슈가 쓰고 있는 상태를 워크플로우에서 빼려 할 때 던진다. → 409
+ *
+ * 빼면 그 이슈들이 「워크플로우에 없는 상태」에 남는다. 일괄 이관은 로드맵 PR 10 의 마법사가 한다.
+ */
+class WorkflowStatusInUseException(
+    val workflowKey: String,
+    val statusKey: String,
+    val issueCount: Long,
+) : RuntimeException("Status '$statusKey' in workflow '$workflowKey' is used by $issueCount issue(s)")
