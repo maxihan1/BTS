@@ -10,6 +10,7 @@ import com.bts.workflow.application.command.UpdateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.exception.WorkflowInUseException
+import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowKeyConflictException
 import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
@@ -187,7 +188,9 @@ class WorkflowCrudIntegrationTest {
     fun `상태 씨앗이 비면 생성이 거부된다`() {
         assertThatThrownBy { create("no-states", statuses = emptyList()) }
             .describedAs("Workflow.of() invariant 상 상태 0개 워크플로우는 조회 자체가 불가능하다")
-            .isInstanceOf(IllegalArgumentException::class.java)
+            // ★ IllegalArgumentException 이 아니라 전용 예외다 — 전역 advice 가 그 타입을 잡으면
+            //   다른 BC 의 require() 실패까지 400 으로 둔갑한다(코드리뷰 렌즈 2 지적).
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
     @Test
@@ -286,14 +289,18 @@ class WorkflowCrudIntegrationTest {
 
     private fun lockWorkflow(key: String) {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { it.executeUpdate("UPDATE workflows SET is_locked = TRUE WHERE key = '$key'") }
+            conn.prepareStatement("UPDATE workflows SET is_locked = TRUE WHERE key = ?").use { stmt ->
+                stmt.setString(1, key)
+                stmt.executeUpdate()
+            }
         }
     }
 
     private fun originOf(key: String): String =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SELECT origin FROM workflows WHERE key = '$key' AND deleted_at IS NULL").use { rs ->
+            conn.prepareStatement("SELECT origin FROM workflows WHERE key = ? AND deleted_at IS NULL").use { stmt ->
+                stmt.setString(1, key)
+                stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getString(1)
                 }

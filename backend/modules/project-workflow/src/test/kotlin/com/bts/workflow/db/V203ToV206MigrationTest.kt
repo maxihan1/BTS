@@ -728,7 +728,18 @@ class V203ToV206MigrationTest {
         table: String,
         key: String,
     ) {
-        conn.createStatement().use { it.executeUpdate("UPDATE $table SET deleted_at = NOW() WHERE key = '$key'") }
+        // 테이블명은 바인딩할 수 없으므로 호출부가 주는 리터럴 2종으로 고정한다.
+        // key 는 파라미터로 넘긴다 — 테스트라도 SQL 문자열 결합을 남기지 않는다(DEVELOPMENT.md §1.1-3).
+        val sql =
+            when (table) {
+                "statuses" -> "UPDATE statuses SET deleted_at = NOW() WHERE key = ?"
+                "workflows" -> "UPDATE workflows SET deleted_at = NOW() WHERE key = ?"
+                else -> error("소프트 삭제 대상이 아닌 테이블: $table")
+            }
+        conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, key)
+            stmt.executeUpdate()
+        }
     }
 
     /**

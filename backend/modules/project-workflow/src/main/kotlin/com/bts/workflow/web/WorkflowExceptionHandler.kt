@@ -6,6 +6,7 @@ import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.workflow.cache.WorkflowCacheLockTimeoutException
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.exception.WorkflowInUseException
+import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowKeyConflictException
 import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
@@ -148,18 +149,19 @@ class WorkflowExceptionHandler {
         )
     }
 
-    /** 커맨드 입력 위반(상태 씨앗 부재 등) — 400. */
-    @ExceptionHandler(IllegalArgumentException::class)
-    fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
-        log.info("WORKFLOW_400 message='{}'", ex.message)
+    /**
+     * 커맨드 입력 위반(상태 씨앗 부재 등) — 400.
+     *
+     * ★ `IllegalArgumentException` 을 잡지 **않는다.** 이 advice 는 `@RestControllerAdvice` 에
+     * 스코프가 없어 **전역**이라, 그 타입을 잡으면 다른 BC 의 `require()` 실패까지 400 으로
+     * 둔갑한다. 500 이어야 할 서버 결함이 400 으로 보이면 장애 대응이 엉뚱한 곳을 판다.
+     * 그래서 이 BC 전용 예외만 잡는다.
+     */
+    @ExceptionHandler(WorkflowInvalidRequestException::class)
+    fun handleInvalidRequest(ex: WorkflowInvalidRequestException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_400 key='{}' reason='{}'", ex.workflowKey, ex.reason)
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-            ErrorResponse(
-                error =
-                    ErrorBody(
-                        code = "WORKFLOW_INVALID_REQUEST",
-                        message = ex.message ?: "요청이 올바르지 않습니다.",
-                    ),
-            ),
+            ErrorResponse(error = ErrorBody(code = "WORKFLOW_INVALID_REQUEST", message = ex.reason)),
         )
     }
 

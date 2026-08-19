@@ -91,3 +91,19 @@ class WorkflowStatusInUseException(
     val statusKey: String,
     val issueCount: Long,
 ) : RuntimeException("Status '$statusKey' in workflow '$workflowKey' is used by $issueCount issue(s)")
+
+/**
+ * 워크플로우 쓰기 요청의 입력이 규칙을 어겼을 때 던진다. → 400
+ *
+ * ### 왜 `IllegalArgumentException` 을 쓰지 않는가
+ * `WorkflowExceptionHandler` 는 `@RestControllerAdvice` 에 **스코프가 없어 전역**이다.
+ * 거기에 `IllegalArgumentException` 핸들러를 달면 **다른 BC 의 `require()` 실패까지**
+ * 400 으로 둔갑한다(`agile-planning` 의 도메인 invariant 등). 500 이어야 할 서버 결함이
+ * 400 으로 보이면 장애 대응이 엉뚱한 곳을 판다.
+ *
+ * 그래서 이 BC 전용 예외를 따로 둔다 — 전역 advice 라도 **이 타입만** 잡는다.
+ */
+class WorkflowInvalidRequestException(
+    val workflowKey: String,
+    val reason: String,
+) : RuntimeException("Invalid workflow request for '$workflowKey': $reason")

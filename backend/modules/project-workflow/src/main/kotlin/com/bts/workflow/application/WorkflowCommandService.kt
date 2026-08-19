@@ -8,6 +8,7 @@ import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.UpdateWorkflowCommand
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.exception.WorkflowInUseException
+import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowKeyConflictException
 import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
@@ -46,7 +47,7 @@ class WorkflowCommandService(
      *
      * @return 생성된 워크플로우의 id
      * @throws WorkflowKeyConflictException 살아 있는 워크플로우가 이미 그 key 를 쓸 때 (409)
-     * @throws IllegalArgumentException 상태 씨앗이 비었을 때 (400) — `Workflow.of()` invariant
+     * @throws WorkflowInvalidRequestException 상태 씨앗이 비었을 때 (400) — `Workflow.of()` invariant
      */
     @Transactional
     fun create(
@@ -54,8 +55,11 @@ class WorkflowCommandService(
         command: CreateWorkflowCommand,
     ): UUID {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.CREATE)
-        require(command.statuses.isNotEmpty()) {
-            "워크플로우에는 상태가 하나 이상 있어야 한다: '${command.key}'"
+        if (command.statuses.isEmpty()) {
+            throw WorkflowInvalidRequestException(
+                command.key,
+                "워크플로우에는 상태가 하나 이상 있어야 한다 — 상태가 0개면 조회 자체가 불가능하다",
+            )
         }
         if (writeRepository.existsByKey(command.key)) {
             throw WorkflowKeyConflictException(command.key)
