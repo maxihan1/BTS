@@ -291,4 +291,215 @@ BC 무관을 반환하기 때문이다(`classify-task.ts:480`) — 오분류가 
 - **범위 밖 (D1)** 읽기 경로 3파일(`WorkflowRepository` · `DefaultWorkflowDefinitionRepository` ·
   `PostActionTransitionResolver`)과 `workflow_states` DROP 은 이 PR 이 건드리지 않는다
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 렌즈 1 — `/plan-eng-review` (2026-08-19)
+
+**결과. 주의 5건 (P1 2 · P2 2 · P3 1) · BLOCKER 0.** 전 findings 는 근거 줄을 인용해 확인했다.
+
+| # | 심각도 | 확신 | 발견 |
+|---|---|---|---|
+| F1 | P1 | 9/10 | **기존 테스트 2건이 이 PR 이 없애는 계약을 단언한다** |
+| F2 | P1 | 8/10 | **V204 유일성 가드가 한 방향만 본다** |
+| F3 | P2 | 9/10 | V205 의 표준 4키 목록이 코드 상수의 사본이다 |
+| F4 | P2 | 7/10 | Testcontainers 클래스 4개 = 컨테이너 4회 기동 |
+| F5 | P3 | 7/10 | `key` 타입 폭이 좁아진다(TEXT → VARCHAR(50)) |
+
+**F1 — 기존 테스트 2건이 제거될 계약을 단언한다. (REGRESSION RULE 적용 — 선택이 아니다)**
+
+- `backend/modules/project-workflow/src/test/.../seed/YamlSeedServiceTest.kt:312`
+  `fun \`YAML 변경 시 dirty diff 감지 후 재적재한다\`()` — 시나리오 3
+- `backend/modules/project-workflow/src/test/.../seed/YamlSeedValidatorPostActionTest.kt:277`
+  `fun \`validator 가 변경된 YAML 재시드 시 isDirty 가 true 여서 재적재가 발생한다\`()` — 시나리오 8
+
+Task 4 가 `isDirty` 를 제거하면 이 둘은 **반드시 red 가 된다.** 계획은 이 사실을 적지 않았다.
+그대로 두면 구현 중에 「모르는 실패」로 만나고, 급히 지우면 **새 계약을 지키는 테스트가 0** 이 된다.
+
+→ **처방.** Task 4 의 files 에 두 파일을 넣고, 두 테스트를 **뒤집어** 새 계약의 회귀 테스트로 만든다
+(「YAML 을 바꿔도 기존 DB 는 그대로다」). 삭제가 아니라 반전이다 — 이 PR 이 바꾼 동작의 유일한 증인이다.
+
+**F2 — V204 가드가 `key → (name, category)` 만 보고 `lower(name) → key` 는 안 본다.**
+
+ADR D1 이 `statuses` 에 `UNIQUE INDEX on lower(name) WHERE deleted_at IS NULL` 을 요구한다.
+서로 **다른 키**가 같은 이름을 갖는 데이터(예: `done`/Done 과 `complete`/Done)에서는 계획의 가드가
+통과하고, 그 다음 `INSERT` 가 인덱스에 걸려 `duplicate key value violates unique constraint
+"uq_statuses_lower_name"` 로 죽는다. **배포가 멈추는 건 같은데 메시지가 원인을 말해주지 않는다.**
+
+시드 4종에는 이런 데이터가 없다(이름 12개 전부 다름 — 실측). 하지만 ADR 은 「마이그레이션은 이 실측을
+가정하지 않는다」를 명문화했고, 그 정신은 두 방향 모두에 적용된다.
+
+→ **처방.** V204 가드에 2번째 검사를 넣는다 — `lower(name)` 으로 묶어 서로 다른 `key` 가 2개 이상이면
+`RAISE EXCEPTION`, 메시지에 이름과 충돌 키 목록. Task 2 의 RED 에 이 케이스를 1건 추가한다(도달 가능하다 —
+테스트가 데이터를 심으면 된다).
+
+**F3 — V205 의 `WHERE key IN ('software-default','bug-tracking','simple','kanban-basic')` 는 사본이다.**
+
+정본은 `backend/modules/project-workflow/src/main/.../seed/YamlSeedService.kt:194`
+`private val standardWorkflowKeys = listOf(...)` 다. 두 목록은 서로를 검사하지 않는다 — 5번째 표준
+워크플로우가 생기면 마이그레이션만 조용히 뒤처지고 `origin` 이 `CUSTOM` 으로 남아 「기본값 복원」 대상에서
+빠진다. 저장소가 반복해 물린 양식이다 (`[[two-lists-never-check-each-other]]`).
+
+→ **처방.** Task 3 에 대조 단언 1개 — V205 SQL 텍스트에서 키 목록을 파싱해 `standardWorkflowKeys` 와
+집합 비교. 차집합이 있으면 red.
+
+**F4 — 마이그레이션 테스트 클래스가 4개면 Testcontainers 가 4번 뜬다.**
+
+`V200MigrationTest` 는 `@Container @JvmStatic` 로 클래스당 컨테이너 1개다. 계획대로면 V203·V204·V205·
+체인(C5) 이 각각 컨테이너를 띄운다. 착수 시 러너 실측이 **load 3.90배**(`verify-runner-health.sh`)였다.
+
+→ **처방.** Task 1~3 의 검증을 **한 클래스**(`V203ToV205MigrationTest`)로 합치고 `target("205")` 로
+체인을 한 번에 적용한다. C5(체인 적용)가 별도 산출물 없이 충족된다. 컨테이너 4회 → 1회.
+
+**F5 — `workflow_states.key` 는 `TEXT`(V200:23), 새 `statuses.key` 는 `VARCHAR(50)`.**
+
+폭이 좁아지므로 50자를 넘는 키가 있으면 백필이 `value too long for type character varying(50)` 로 죽는다.
+현재 데이터에는 없지만(최장 `in_progress` 11자) F2 와 같은 이유로 가정하지 않는다.
+
+→ **처방.** V204 가드에 길이 검사를 얹어 사유를 말하게 한다. `VARCHAR(50)` 자체는 ADR·소비자
+(`issues.current_state_key VARCHAR(50)`)와 맞으므로 **바꾸지 않는다.**
+
+#### 테스트 커버리지 지도
+
+```
+코드 경로                                          커버리지
+[+] V203 (DDL)
+  └── 테이블·제약·인덱스·타입                      [★★★] Task 1 RED
+[+] V204 (백필)
+  ├── 정상 백필 12/17행                            [★★★] Task 2 RED ①
+  ├── key→(name,category) 위반                     [★★★] Task 2 RED ② (가드 red 확인)
+  ├── lower(name) 역방향 충돌                      [GAP → F2]  ← 처방 반영 시 해소
+  └── key 길이 초과                                [GAP → F5]  ← 처방 반영 시 해소
+[+] V205 (컬럼 + origin)
+  ├── 컬럼·기본값·CHECK                            [★★★] Task 3 RED
+  └── 표준키 목록 사본 정합                        [GAP → F3]  ← 처방 반영 시 해소
+[+] YamlSeedService
+  ├── 없을 때만 삽입 (재기동 보존)                 [★★★] Task 4 RED
+  ├── origin='SEED'                                [★★ ] Task 4 RED
+  ├── 이중 기록 12/17행                            [★★★] Task 5 RED ①
+  ├── 기존 전역 상태 이름 보존                     [★★★] Task 5 RED ②
+  ├── 멱등 (2회 호출)                              [★★★] Task 5 RED ③
+  ├── 두 서랍 대조 + 뮤테이션                      [★★★] Task 6
+  └── 구 계약 테스트 2건 반전                      [GAP → F1]  ← REGRESSION, 필수
+[·] 읽기 경로 3파일                                 무변경 (D1) — 기존 테스트가 그대로 지킨다
+
+커버리지 12/16 (75%) → 처방 4건 반영 시 16/16
+```
+
+#### 실패 양식 (프로덕션에서 어떻게 깨지나)
+
+| 경로 | 현실적 실패 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| V204 백필 | 키 이름 충돌 | F2 반영 후 O | `RAISE EXCEPTION` | 배포 중단 + 원인 메시지 |
+| V204 백필 | 키 50자 초과 | F5 반영 후 O | 〃 | 〃 |
+| 시드 이중 기록 | 한쪽만 기록돼 카탈로그가 갈라짐 | Task 6 | 없음(판별식이 CI 에서 잡음) | 없음 — **조용하다.** 그래서 Task 6 이 필수다 |
+| 시드 삽입 | `lower(name)` 인덱스 충돌로 부팅 실패 | 도달 불가(E5) | fail-fast 부팅 차단 | 앱이 안 뜬다 — PR 3 요구사항으로 이월 |
+
+**치명 사각 0건.** 「조용한 실패」 후보 1건(카탈로그 갈라짐)은 Task 6 판별식이 덮는다.
+
+#### 범위 밖으로 확정 (NOT in scope)
+
+- **읽기 경로 2단 join 교체** — Maxi D1. 픽스처 32파일 동반 이주라 PR 3.
+- **`workflow_states` DROP** — `DATA.md §4` 3단 분할 · ADR D5. 로드맵 마지막 PR.
+- **`workflow_transitions` 재구성(`kind`·다중 전환·`transitionId`)** — PR 4.
+- **권한(`WorkflowDefinitionPermission`)** — CRUD 가 없으므로 이 PR 에 지킬 표면이 없다. PR 3.
+- **`WorkflowCache.invalidate` 배선** — 쓰기 경로가 이 PR 에 없다. PR 3.
+- **`workflow_drafts` · `workflow_publications`** — PR 6.
+
+#### 이미 있는 것 (재사용 확인)
+
+| 자산 | 계획의 처리 |
+|---|---|
+| `V200MigrationTest` (Testcontainers + Flyway target) | 패턴 그대로 재사용 — **F4 로 클래스 통합 권고** |
+| `YamlSeedService` 의 Konform 검증 · dry-run · fail-fast | 유지 (Task 4 가 명시) |
+| `mappingRepository.repairDefaultMappings()` | 유지 — 빈 DB 백필은 여전히 필요 |
+| `SchemeIssueTypeMappingRepository.detach/reinsert` | **호출만** 제거. 리포지토리는 남는다(PR 3 이 쓸 수 있다) |
+| ADR 4건 (#391) | 새 ADR 만들지 않고 구현 — **판단 타당**. 신규 결정이 없다 |
+
+#### 병렬화
+
+| 단계 | 건드리는 모듈 | 의존 |
+|---|---|---|
+| 마이그레이션 3종 (T1·T2·T3) | `project-workflow/resources/db` · `test/db` | — |
+| 시드 (T4·T5·T6) | `project-workflow/main/seed` · `test/seed` | T1·T3 |
+| 문서 (T7) | `docs/adr` | — |
+
+레인 A(마이그레이션) · 레인 B(문서)는 병렬. 레인 C(시드)는 A 완료 후. **파일 충돌 0** — 세 레인이 서로 다른
+디렉터리다. 단, F4 처방을 받으면 T1~T3 가 한 파일이 되어 레인 A 는 직렬 1건이 된다.
+
+#### 이 리뷰가 계획에 제안하는 변경 (게이트 1 승인 대상)
+
+- [ ] **R1 (P1)** — Task 4 files 에 `YamlSeedValidatorPostActionTest.kt` 추가 + 구 계약 테스트 2건을 **반전**
+- [ ] **R2 (P1)** — Task 2 에 `lower(name)` 역방향 가드 + RED 케이스 1건 추가
+- [ ] **R3 (P2)** — Task 3 에 V205 키 목록 ↔ `standardWorkflowKeys` 대조 단언 추가
+- [ ] **R4 (P2)** — Task 1~3 을 `V203ToV205MigrationTest` 한 클래스로 통합 (컨테이너 4회 → 1회)
+- [ ] **R5 (P3)** — V204 가드에 `key` 길이 검사 추가
+
+**절차 편차 2건 (의도적).**
+① 이 렌즈는 발견마다 개별 `AskUserQuestion` 을 요구하지만, `/bts` 가 「BLOCKER 는 합산한 뒤 게이트 1 에서
+한 번에 판정」을 지시한다 — 프로젝트 절차가 상위라 5건을 게이트 1 로 모았다.
+② outside voice(codex)는 `codex_reviews=disabled` 라 건너뛰었다. 규칙상 Claude 서브에이전트 대체도 하지 않는다.
+③ QA 테스트 계획 산출물은 쓰지 않았다 — 이 PR 에 UI·수동 QA 표면이 0 이다.
+
+
+### 렌즈 2 — `/plan-ceo-review` (2026-08-19 · 모드 HOLD SCOPE)
+
+**모드 근거.** 승인된 10 PR 로드맵 안의 마이그레이션이고 범위 결정(D1)이 이미 났다. 확장 제안 0건 —
+이 PR 은 토대이지 제품 결정이 아니다. 새 개념 도입도 0(표준 SQL 테이블 2 + 컬럼 4)이라 혁신 토큰을 쓰지 않는다.
+
+**결과. 주의 3건 (P1 1 · P2 1 · P3 1) · BLOCKER 0.**
+
+**C1 [P1] (8/10) — 앱만 롤백하면 상태 카탈로그가 조용히 영구 공백이 된다.**
+
+이 PR 이 배포된 뒤 운영자가 DB 에서 워크플로우를 고치는 것이 **정상 동작**이 된다(그게 이 PR 의 목적이다).
+그 상태에서 앱을 이전 버전으로 롤백하면 구 `YamlSeedService` 가 되살아나 다음을 한다.
+
+```
+구 코드 applyIfChanged (YamlSeedService.kt:325-327)
+   isDirty = true (운영자가 고쳤으니까)
+        ↓
+   detachMappingsByWorkflowId → deleteWorkflow(key) → insertWorkflow(dto)
+        ↓
+   workflows 행 삭제 → workflow_statuses 가 FK CASCADE 로 함께 삭제
+        ↓
+   새 workflow 행 삽입 — 구 코드는 workflow_statuses 를 모른다 → 매핑 0행
+        ↓
+   [다시 롤포워드] 새 시드는 「workflow 행이 있으면 삽입 안 함」 → 영영 안 채운다
+```
+
+`statuses` 전역 행은 남는다(아무도 지우지 않는다). 남는 것은 **매핑만 빈 상태**이고, 이 PR 의 판별식
+(Task 6)은 CI 에서만 돌아 **운영 DB 에서는 아무도 눈치채지 못한다.** 조용한 실패다.
+
+→ **처방 (R6).** 시드 말미에 보정 경로를 1개 둔다 — 「workflow 행은 있는데 그 워크플로우의
+`workflow_statuses` 가 비었으면 `workflow_states` 기준으로 채운다」. **선례가 이미 있다** —
+`YamlSeedService.kt:230` 의 `mappingRepository.repairDefaultMappings()` 가 정확히 같은 자리(루프 밖 1회)에서
+같은 이유(빈 DB·유실 보정)로 돈다. 새 패턴이 아니라 있는 패턴을 한 번 더 쓰는 것이다.
+
+**C2 [P2] (9/10) — 운영 계약이 바뀌는데 대체 수단이 8 PR 뒤다.**
+
+지금까지는 「시드 YAML 을 고쳐 배포하면 표준 워크플로우가 바뀐다」가 사실상의 운영 수단이었다.
+이 PR 이후 그 경로는 **없어진다**(ADR D2 의 의도). 대체 수단인 편집 UI 는 로드맵 PR 8~10, 즉 8개 뒤다.
+그 사이 표준 워크플로우를 바꾸려면 직접 SQL 뿐이다.
+
+기술적으로는 옳은 결정이고 ADR 이 이미 승인했다. 문제는 **아무 데도 안 적혀 있다는 것** — 계획서·스펙·PR 본문
+어디에도 이 공백 기간이 없다. 3개월 뒤 누가 YAML 을 고치고 「반영이 안 된다」로 한나절을 태운다.
+
+→ **처방 (R7).** PR 본문과 계획서에 「이 PR 이후 YAML 편집은 빈 DB 최초 부팅에만 효력이 있다.
+기존 DB 반영 수단은 PR 8~10 의 편집 UI 이며 그 전에는 직접 SQL」을 명시. 코드 변경 0.
+
+**C3 [P3] (8/10) — 이중 기록의 관측성이 없다.**
+
+기존 시드는 적재 결과를 `log.info("워크플로우 '{}' 적재 완료 — states: {}, transitions: {} …")` 로 남긴다.
+새로 채우는 `statuses`/`workflow_statuses` 건수는 로그에 없다. 부팅 로그만 보고 카탈로그가 채워졌는지
+알 수 없다.
+
+→ **처방 (R8).** 같은 로그 라인에 `statuses`·`workflow_statuses` 건수를 더한다. 1줄.
+
+#### 범위 판정
+
+| 항목 | 판정 |
+|---|---|
+| 확장 제안 | **0건.** 토대 PR 이라 제품 표면이 없다 |
+| 축소 제안 | **0건.** D1 로 이미 좁혔다 |
+| 되돌리기 등급 | **한쪽 문(one-way)에 가깝다** — 마이그레이션은 forward-only 이고 C1 이 그 대가다. R6 가 되돌리기 비용을 크게 낮춘다 |
+| 혁신 토큰 | **0개 소모.** 표준 SQL·기존 패턴만 |
+| 6개월 뒤 관점 | 이 PR 없이는 편집기 로드맵 전체가 성립하지 않는다. 방향 정합 |
