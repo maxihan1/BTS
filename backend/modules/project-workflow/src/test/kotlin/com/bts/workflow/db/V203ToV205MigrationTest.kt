@@ -532,6 +532,83 @@ class V203ToV205MigrationTest {
         assertThat(origins["our-custom-workflow"]).isEqualTo("CUSTOM")
     }
 
+    // ── 코드젠 미러 정합 (게이트 2 · Maxi 결정 B) ─────────────────────────────
+    //
+    // jOOQ 코드 생성은 `db/codegen/init_codegen.sql` 한 파일을 입력으로 받는다(build.gradle.kts).
+    // 그 파일은 **손으로 유지하는 사본**이라 마이그레이션과 조용히 갈라질 수 있다 — 저장소가 반복해 물린
+    // 「두 목록이 서로를 검사하지 않는다」 양식이다. 파서를 쓰지 않고 **실제 PostgreSQL 두 곳에 적용해**
+    // information_schema 로 대조한다. 파싱 오차가 없고, 타입까지 본다.
+
+    @Test
+    fun `codegen 미러가 마이그레이션 스키마와 일치한다`() {
+        val mirrorSql =
+            javaClass.getResource("/db/codegen/init_codegen.sql")?.readText()
+                ?: error("db/codegen/init_codegen.sql 이 클래스패스에 없다 — 코드젠 입력이 사라졌다")
+        val mirrorUrl = applyToFreshDatabase("codegen_mirror", mirrorSql)
+
+        val mirror = columnsByTable(mirrorUrl)
+        val migrated = columnsByTable(postgres.jdbcUrl)
+
+        // 코드젠이 반드시 알아야 하는 테이블 — 하나라도 빠지면 jOOQ 상수가 안 생긴다.
+        assertThat(mirror.keys)
+            .describedAs("미러에 있어야 할 테이블이 빠졌다")
+            .contains(
+                "workflows",
+                "workflow_states",
+                "workflow_transitions",
+                "workflow_validators",
+                "workflow_post_actions",
+                "statuses",
+                "workflow_statuses",
+            )
+
+        // 미러에 있는 테이블은 마이그레이션 결과와 컬럼 이름·타입이 정확히 같아야 한다.
+        for ((table, mirrorColumns) in mirror) {
+            val migratedColumns =
+                migrated[table]
+                    ?: error("미러에 있는 테이블 '$table' 이 마이그레이션 결과에 없다")
+            assertThat(mirrorColumns)
+                .describedAs(
+                    "테이블 '%s' — 미러에만 있는 컬럼 %s · 마이그레이션에만 있는 컬럼 %s",
+                    table,
+                    mirrorColumns.keys - migratedColumns.keys,
+                    migratedColumns.keys - mirrorColumns.keys,
+                )
+                .isEqualTo(migratedColumns)
+        }
+    }
+
+    /** 격리 DB 를 만들어 SQL 한 덩어리를 적용하고 URL 을 준다. */
+    private fun applyToFreshDatabase(
+        dbName: String,
+        sql: String,
+    ): String {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { it.execute("CREATE DATABASE $dbName") }
+        }
+        val url = postgres.jdbcUrl.replace("/${postgres.databaseName}", "/$dbName")
+        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { it.execute(sql) }
+        }
+        return url
+    }
+
+    /** public 스키마의 테이블 → (컬럼명 → 데이터 타입). flyway 이력 테이블은 뺀다. */
+    private fun columnsByTable(url: String): Map<String, Map<String, String>> {
+        val result = mutableMapOf<String, MutableMap<String, String>>()
+        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+            val rs =
+                conn.createStatement().executeQuery(
+                    "SELECT table_name, column_name, data_type FROM information_schema.columns" +
+                        " WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'",
+                )
+            while (rs.next()) {
+                result.getOrPut(rs.getString(1)) { mutableMapOf() }[rs.getString(2)] = rs.getString(3)
+            }
+        }
+        return result
+    }
+
     /** INSERT 가 실패하기를 기대하고 그 메시지를 돌려준다. 성공하면 테스트를 실패시킨다. */
     private fun insertFailsWith(sql: String): String {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
