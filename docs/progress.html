@@ -1654,10 +1654,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">31</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 76건 · 전체 107건</span>
+      <span class="big-pct" style="color:#9ca3af;">33</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 76건 · 전체 109건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 31건</h2>
+    <h2>⬜ 아직 안 한 것 — 33건</h2>
     <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">7건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1909,7 +1909,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — 워크플로우 — 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 (미착수 · T3)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>V204</code> 백필이 <code>workflow_states</code> 를 <code>statuses</code> + <code>workflow_statuses</code> 로 승격했으나 원본 표를 지우지 않았다. <code>DATA.md §4</code> 의 add → backfill → drop 3단 분할에서 <b>drop 단계가 남은 것</b>이다. 지금은 <code>workflow_transitions.from_state_id</code> · <code>to_state_id</code> 가 아직 <code>workflow_states(id)</code> 를 참조하므로 지울 수 없다.</p><p><b>지금 막아 둔 것.</b> <code>RawWorkflowStateInsertGuardTest</code> 가 테스트의 원시 SQL 재유입을 막는다(허용목록 2항목 + 썩은 항목 0 + 비-공허). 뮤테이션으로 확인했다.</p><p><b>선행.</b> 로드맵 PR 4(전환을 <code>workflow_statuses</code> 참조로 재지정) ~ PR 10 완료. 그 뒤에야 FK 가 풀린다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">4건</span></h3>
+    </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">6건</span></h3>
         <p class="todo-cat-desc">코드를 검사하고 내보내는 기계 쪽 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · <b>후속 3건</b> · 착수 · T2)</span></div>
@@ -1951,6 +1951,26 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
       <details class="todo-item">
         <summary aria-label="기술 상세 — 인프라 — 살아 있는 정본이 `docs/plans/` 안에 있어 판별식 사각이 된다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/node-ts-invocation.test.ts</code> 는 <code>docs/plans/<b></code> 를 스캔에서 뺀다. 그 안의 호출문 대부분이 </b>그 시점에 실제로 친 명령의 기록**이고, 판별식이 red 로 만들면 사람은 기록을 고쳐 초록을 만들게 되어 「무엇을 왜 했나」의 원본이 훼손되기 때문이다.</p><p>그런데 <code>docs/plans/2026-08-12-debt24-master.md</code> 는 과거 기록이 아니라 <b>운영 중인 부채 장부 정본</b>인데 같은 규칙에 걸린다. #383 에서 그 파일의 호출문 1건을 <b>손으로</b> 고쳤고, 판별식은 그것을 지키지 못한다. 같은 성격의 파일이 늘면 사각도 함께 는다.</p><p><b>왜 지금 등재하나.</b> #383 이 닫은 매핑 <code>27</code> 의 교훈이 「같은 사실이 세 곳에 기록돼 있었지만 <b>아무것도 강제하지 않아</b> 살아남았다」였다. 사각을 코드 주석과 PR 본문에만 적고 장부에 안 올리면 <b>정확히 그 양식을 반복</b>한다.</p><p><b>처방 후보 2 (착수 시 확정).</b> ① frontmatter 로 살아있음을 표시하고(<code>status: living</code>) 스캐너가 그 키를 읽어 제외에서 뺀다 — 디렉터리 규칙에 파일 하나짜리 구멍을 내지 않으면서 정본만 되살린다. ② 부채 장부를 <code>docs/plans/</code> 밖(예: <code>docs/ledger/</code>)으로 옮긴다 — 링크·인덱스 전수 갱신을 부른다.</p><p><b>권하지 않는 안.</b> 수정 시각(<code>git log -1 --format=%cI</code>)으로 「살아 있음」을 가르는 것. 판별식이 시간 의존이 되어 같은 트리에서 다른 답을 낸다.</p><p><b>발견 경위.</b> #383 독립 코드 리뷰 C7. 사각 자체는 구현자가 먼저 명시했고 은폐는 없었다 — 빠진 것은 <b>추적 항목</b>이었다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — <code>runner-health</code> 의 Docker 점검이 run 시작 시점 1회뿐이다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 검사를 시작할 때 「도커가 켜져 있나」를 한 번 보고 마는데, 검사가 몇 시간씩 줄을 서다 보면 그 사이에 도커가 꺼져도 아무도 모른다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 2026-08-20 에 잡 5건이 이 경로로 죽었다. 코드는 멀쩡한데 빨간불이 뜨므로 사람이 「어느 모듈에 버그가 있나」부터 뒤지게 된다 — 실제로 그 오진에 시간을 썼다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 인프라 — `runner-health` 의 Docker 점검이 run 시작 시점 1회뿐이다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>.github/workflows/backend-ci.yml:90</code> 은 <code>require_docker: true</code> 로 <code>runner-health</code> 를 부른다. 데몬이 죽어 있으면 잡을 <b>차단</b>하도록 설계돼 있고 실제로 그렇게 동작한다. 그런데 <b>run 시작 시점 1회</b>만 돈다.</p><p><b>실측 (2026-08-20 · PR #393 · run <code>32307915897</code>).</b></p><table class="md-table"><thead><tr><th>시작 (UTC)</th><th>잡</th><th>결과</th></tr></thead><tbody><tr><td>22:15</td><td><code>runner-health</code> (<code>require_docker: true</code>)</td><td><b>통과</b> — 이 시점엔 데몬이 살아 있었다</td></tr><tr><td>22:15~22:31</td><td><code>대상 모듈 선별</code> · <code>app (조립 부팅)</code> · <code>ktlint + detekt</code> · <code>notification</code></td><td>전부 성공</td></tr><tr><td>22:31</td><td><code>issue-tracking</code></td><td>30분 매달린 뒤 실패</td></tr><tr><td>23:49~23:55</td><td><code>search-export-import</code> · <code>agile-planning</code> · <code>automation</code> · <code>identity-access</code></td><td><b>전부 실패</b></td></tr></tbody></table><p>프리플라이트 통과와 무거운 잡 시작 사이가 <b>1시간 36분</b>이다. 러너가 1대라 큐 대기가 그만큼 길고 그 사이에 머신이 죽었다(항목 <code>58</code>). 최종 실패 원인은 <code>DockerClientProviderStrategy.java:274</code> — Testcontainers 가 데몬을 못 찾은 것이고, <code>generateJooq</code> 의 exit 255 도 같은 뿌리다.</p><p><b>★왜 선재 봉합이 이것을 못 덮나 — 그 봉합이 배선된 상태에서 죽었다.</b> 항목 <code>30</code>(2026-08-12 · <b>#378</b> 해소)이 닫은 것은 「<b>시작 시점에 이미</b> 꺼져 있는 상태」다. 그때 채택한 처방 ②가 바로 이 <code>runner-health</code> 프리플라이트이고, <b>그것이 배선돼 통과한 run 에서 이번 5건이 죽었다.</b> 이번은 「<b>시작 후</b> 죽는 상태」로 <b>다른 실패 모드</b>다 — <code>runner-health.yml</code> 의 Docker 점검 주석도 「데몬 기동 중」 시나리오만 다룬다. 시작 후 사망은 설계에 들어 있지 않다. (#367 은 그 결함을 <b>뒤집어쓴 PR</b> 이지 봉합 PR 이 아니다.)</p><p><b>처방 후보.</b> ① 각 BC 잡의 첫 스텝에 얇은 데몬 확인을 넣는다 — 다만 판정 규칙이 <b>세 번째 복사본</b>이 되므로 <code>scripts/verify-runner-health.sh</code> 를 호출하는 형태여야 한다(<span class="md-wikilink">two-lists-never-check-each-other</span>). ② 러너 증설로 큐 대기 자체를 줄인다 — 「CI 벽시계」 항목의 축 A 와 같은 처방이라 함께 봐야 한다. ③ 실패 로그에서 「데몬 부재」를 코드 결함과 구분해 표출한다 — 차단은 못 해도 오진 시간은 없앤다.</p><p><b>착수 시 주의.</b> 표면이 <code>.github/workflows/<b></code> 라 <code>GUARD_CI</code> 다. 가드를 고칠 때는 </b>일부러 끊어 red 를 1회 본다** — 표면을 없애면 판별자도 함께 사라진다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — 러너 맥이 메모리 압박 끝에 커널 패닉으로 재부팅된다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 검사를 돌리는 컴퓨터가 메모리가 모자라 스스로 멈췄다가 강제로 다시 켜졌다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 다시 켜질 때 도커가 자동으로 안 켜져서 그 뒤에 시작한 검사가 전부 헛되이 실패한다. 2026-08-20 에 잡 5건이 그렇게 죽었고, 무엇이 메모리를 먹었는지는 아직 모른다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 인프라 — 러너 맥이 메모리 압박 끝에 커널 패닉으로 재부팅된다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 러너 머신(MacBookPro18,3 · 8코어 16GB)이 2026-08-20 08:48:21 에 패닉했다. <code>/Library/Logs/DiagnosticReports/panic-full-2026-08-20-084821.0002.panic</code> 의 <code>panicString</code> 은 <code>watchdog timeout: no checkins from watchdogd in 94 seconds</code> — 시스템이 94초간 응답을 못 했다는 뜻이다. 전조는 같은 폴더의 <code>JetsamEvent-*.ips</code> <b>3건</b>(06:40 · 06:53 · 07:13)으로, 메모리 부족에 의한 프로세스 강제 종료 기록이다.</p><p><b>★재부팅은 Docker Desktop 을 자동 시작하지 않는다.</b> 러너는 부팅과 함께 살아나 대기 중이던 잡을 바로 집어가므로 그 사이에 시작한 잡이 전부 죽는다(항목 <code>57</code>). 08:48:22 부팅 → 08:49~08:55 시작한 잡 4건 전부 실패가 실측이다.</p><p><b>★★재부팅 직후는 자원 판정도 못 믿는다.</b> Spotlight 재인덱싱(<code>mds_stores</code>)이 붙어 load 가 정상의 <b>10배</b>(8코어에 81.93)까지 뛴다. 그 상태에서 재실행을 얹으면 패닉이 재발할 수 있어 2.48배까지 기다린 뒤 돌렸다. 정본 <span class="md-wikilink">reboot-resets-swap-but-spotlight-spikes-load</span>.</p><p><b>미추적 — 무엇이 메모리를 먹었나.</b> Jetsam 로그에 강제 종료 대상이 남아 있으나 읽지 않았다. 「CI 벽시계」 항목의 축 B 실측에서는 Chrome ~10.4GB + Docker VM 8.1GB 였는데 같은 범인인지는 확인되지 않았다. <b>확인 전에는 처방을 정할 수 없다.</b></p><p><b>왜 「CI 벽시계」와 별건인가.</b> 그 항목의 축 B 는 「초록인 채 2배 느려진다」이고 처방이 경고 표출이다. 이번은 「머신이 죽고 그 뒤 잡이 전부 오진 실패한다」로 <b>결과가 다르다</b> — 경고를 아무리 잘 내도 죽은 뒤에는 낼 곳이 없다.</p><p><b>처방 후보.</b> ① Jetsam 로그로 범인 규명이 <b>선행 필수</b> — 이것 없이는 나머지가 전부 추측이다. ② 재부팅 시 Docker 동반 기동 — ★<b>새 제안이 아니라 재론이다.</b> 항목 <code>30</code>(#378)에서 처방 ③ 으로 검토돼 「머신 상태 관리라 자동 검증이 어렵다」는 이유로 <b>미채택</b>됐고 <code>docs/runbooks/self-hosted-runner.md</code> §7 에 남아 있다. 재론 근거는 <b>계기가 확정됐다는 것</b> — 그때는 데몬이 꺼진 이유가 불명이었고, 지금은 「재부팅이 자동 시작을 안 한다」는 재현 가능한 원인이 있다. 미채택 사유(자동 검증 곤란)는 그대로이므로 그 축을 어떻게 풀지가 착수 조건이다. ③ 러너 자원 가드에 「패닉·Jetsam 이력」 판정 추가 — 지금 가드는 load·swap 두 축만 본다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">문서·규칙 <span class="todo-cat-count">3건</span></h3>
         <p class="todo-cat-desc">적혀 있는 것과 실제가 다른 곳.</p>
