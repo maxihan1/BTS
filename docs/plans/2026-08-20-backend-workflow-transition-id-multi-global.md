@@ -420,4 +420,271 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 - **FR 동기화** `docs/plan/product/project-workflow.md §2.5` 의 D1~D5 체크박스를 이 PR 에서 `[x]` 로
   (`docs/rules/fr-sync-checklist.md` 9항목)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈 1종 — `/plan-eng-review`** (`type=backend` · UI 미포함 → 분기표대로 1종).
+아웃사이드 보이스(codex)는 `codex_reviews=disabled` 라 미실행 — 0종으로 조용히 통과시키지 않고 여기 명시한다.
+
+**판정. ✅ 통과 · BLOCKER 0 · P1 1건 · P2 5건 · P3 1건.**
+개별 발견마다 `AskUserQuestion` 을 쏘지 않고 **게이트 1 에서 합산 판정**한다 —
+`/bts-review-plan` §Step 3 이 「BLOCKER 는 합산한 뒤 한 번에」로 정한 절차이고 게이트 1 이 바로 다음이다.
+
+### Step 0 — 스코프 도전
+
+**복잡도 체크 트리거됨** — files 합계 약 25개(임계 8) · 새 타입 3종 이상
+(`AmbiguousTransitionException`·`TransitionKind`·전환 CRUD DTO). 다만 이 PR 은 **이미 분할의 산물**이다
+(로드맵이 10 PR 로 쪼갠 4번). 추가 분할안은 「(마이그레이션+도메인) / (엔진+API)」 2개인데,
+**권장하지 않는다** — Task 4(리포지토리)가 두 덩어리를 잇는 이음매라 어디서 잘라도 한쪽이 컴파일되지 않는
+중간 상태가 main 에 남는다. 로드맵의 「각 PR 이 독립적으로 main 초록」 원칙과 충돌한다.
+**게이트 1 에서 Maxi 가 확인할 항목**으로 올린다.
+
+검색 체크는 생략했다 — 이 설계는 저장소 고유 스키마·포트 계약에 매인 것이라 외부 사례 검색의 산출이 없다.
+`TODOS.md` 교차 확인 — 이 PR 을 막는 항목 **0건**(워크플로우 관련 부채 4건은 전부 하네스/스킬 쪽이지
+도메인 워크플로우가 아니다).
+
+### 1. 아키텍처 리뷰 — 1건
+
+**[P1] (confidence: 9/10) Task 9 — 계약 스냅샷을 MVC 슬라이스에 두면 틀린 계약을 박제한다.**
+
+Prior learning applied: **`contract-snapshot-must-be-generated-in-assembly-not-slice`** (confidence 9/10, 2026-07-27)
+
+실측 인용.
+```
+backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowControllerMvcTest.kt:82
+    @EnableWebMvc
+backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowControllerMvcTest.kt:128
+    private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
+```
+`JavaTimeModule` 이 없다. Task 9 의 `WorkflowReadContractTest` 를 이 슬라이스 옆에 두면 조립 앱
+(Spring Boot 자동설정)과 **다른 직렬화**를 계약으로 고정하게 된다. 그 스냅샷에 맞춰 PR 8 의 프론트 Zod 를
+고치면 프로덕션이 깨진다. 같은 사고가 이 저장소에서 `LocalDate` 배열 직렬화로 이미 한 번 났다.
+
+**처방.** Task 9 의 계약 테스트를 `:app` 조립 컨텍스트(`ProdAssemblyHttpTestBase`)로 옮긴다.
+그러면 `[[bts-assembly-test-pat-bearer-and-httpclient]]` 의 두 함정이 함께 걸린다 —
+① PAT Bearer 를 쓴다(JWT 면 `MfaEnrollmentGateFilter` 에서 관리자 endpoint 가 전부 403)
+② 베이스의 `TestRestTemplate` 대신 JDK `java.net.http.HttpClient` 로 원 응답을 관측한다.
+`ProdAssemblyHttpTestBase` 를 **상속만** 하고 `@SpringBootTest`·`@ActiveProfiles` 를 자체 선언하지 않는다.
+
+**비용.** human ~1.5h / CC ~10min. 슬라이스에 두는 것보다 느리지만 계약의 진위가 걸린 자리다.
+
+### 2. 코드 품질 리뷰 — 2건
+
+**[P2] (confidence: 7/10) Task 3 — `key` 계산 프로퍼티의 `*` 가 URL 세그먼트로 샌다.**
+
+plan Task 3 GREEN 이 `key` 를 `"${fromStateKey ?: "*"}__$toStateKey"` 로 적었다. 그런데 `key` 는
+**URL 경로 세그먼트로 쓰인다** — `PostActionController` 의 `.../transitions/{transitionKey}/post-actions`
+(MSW 목 `apps/web/src/mocks/post-action-handlers.ts:60` 이 같은 모양을 안다). `*` 는 경로 문자로
+인코딩·매칭이 갈린다.
+
+**처방.** GLOBAL·INITIAL 의 `key` 는 `null` 을 돌려주거나 `"GLOBAL__$toStateKey"` 처럼 **문자 클래스가
+안전한 토큰**을 쓴다. 구 경로는 「단일 NORMAL 전환일 때만 유효한 축약」이라는 ADR 의 규정과도 맞는다.
+
+**[P2] (confidence: 8/10) Task 5·6 — `INITIAL` 제외가 한쪽에만 적혀 있다.**
+
+Task 5 는 `availableTransitions` 에서 INITIAL 을 빼도록 명시했지만, Task 6 의 `resolveTransition`
+후보 산출에는 그 문구가 없다. 그대로 두면 `toStatusKey` 가 INITIAL 의 도착지와 같을 때
+**있지도 않은 모호성**으로 409 가 난다(E12 와 다른 경로다).
+
+**처방.** Task 6 의 후보 산출에도 「INITIAL 은 항상 제외」를 명시하고, 후보 산출을 **Task 5 가 추출하는
+`candidatesFor()` 하나로 공유**한다. 두 벌로 두면 갈라진다 — DRY.
+
+### 3. 테스트 리뷰 — 다이어그램 + gap 2건
+
+```
+CODE PATHS                                                 검증 수단
+[+] V207 마이그레이션
+  ├── UNIQUE DROP ────────────────── [★★★ 계획됨] V207MigrationTest
+  ├── kind CHECK ─────────────────── [★★★ 계획됨] V207MigrationTest
+  ├── INITIAL 부분 유니크 ─────────── [★★★ 계획됨] V207MigrationTest
+  ├── INITIAL 백필(=구 minByOrNull) ─ [★★★ 계획됨] V207MigrationTest + C7
+  └── display_order 백필 ──────────── [GAP-1] 계획 없음 · 전부 0 이 된다
+[+] Workflow.of() invariant
+  ├── (from,to) 중복 허용 ─────────── [★★★ 계획됨] WorkflowTest
+  ├── GLOBAL/INITIAL from=NULL ────── [★★★ 계획됨] WorkflowTest
+  ├── INITIAL 1개 ────────────────── [★★★ 계획됨] WorkflowTest
+  └── key 하위호환 ───────────────── [★★  계획됨] · `*` 문자 케이스 미커버 → 코드품질 P2
+[+] WorkflowEngine
+  ├── GLOBAL 후보 포함 ───────────── [★★★ 계획됨] C2
+  ├── 자기 자신 제외 ─────────────── [★★★ 계획됨] E1
+  ├── 모호 감지 → 예외 ───────────── [★★★ 계획됨] C3
+  └── INITIAL 이 resolve 후보에서 제외 [GAP-2] 계획 없음 → 코드품질 P2 와 같은 뿌리
+[+] 시작 상태 해석
+  └── 순서 변경 무영향 ───────────── [★★★ 계획됨] C4
+[+] 전환 CRUD
+  ├── 생성/수정/삭제 ─────────────── [★★★ 계획됨] TransitionCrudMvcTest
+  ├── 400 4종 (E3·E4) ────────────── [★★★ 계획됨]
+  ├── 409 (E5) · 404 (E8·E9) ─────── [★★★ 계획됨]
+  ├── 403/404 검사 순서 ──────────── [★★★ 계획됨]
+  └── 캐시 무효화 ────────────────── [★★★ 계획됨] N5
+[+] 읽기 계약
+  └── 응답 형태 불변 ─────────────── [★★  계획됨] → 아키텍처 P1 (슬라이스→조립 이전 필요)
+
+COVERAGE: 19/21 경로 계획됨 (90%)  |  GAPS: 2
+```
+
+**[P2] (confidence: 9/10) GAP-1 — `display_order NOT NULL DEFAULT 0` 이 기존 전환 순서를 뭉갠다.**
+
+spec §데이터 모델 ③이 `display_order INT NOT NULL DEFAULT 0` 을 추가하는데 백필이 없다. 기존 전환이
+전부 `0` 이 되어 **PR 8 의 편집기가 전환을 임의 순서로 그린다.** 지금은 화면이 없어 안 보이고,
+화면이 생기는 순간 「순서가 뒤죽박죽」으로 드러난다.
+
+**처방.** 백필에 `row_number() OVER (PARTITION BY workflow_id ORDER BY created_at, name)` 을 쓰고
+V207MigrationTest 에 「같은 워크플로우 안에서 display_order 가 중복 없이 1..n」 단언을 추가한다.
+
+**GAP-2** 는 코드품질 §2 의 두 번째 발견과 같은 뿌리다 — 거기서 함께 닫힌다.
+
+**[P2] (confidence: 9/10) Task 8 의 검증 명령이 worktree 에서 죽는다.**
+
+Prior learning applied: **`worktree-pnpm-blocked-use-node-test-directly`** (confidence 9/10, 2026-08-18)
+
+Task 8 검증이 `pnpm --filter web test -- workflow` 인데, worktree 의 `node_modules` 는 심볼릭이라
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다. **처방** — MSW 목 1줄 변경의 검증은
+main 워크스페이스에서 돌리거나, 프론트 테스트 대신 **목 경로 문자열 grep** 으로 갈음한다
+(이 PR 의 프론트 변경은 1줄이고 `apps/web` 0파일 원칙의 예외다).
+
+### 4. 성능 리뷰 — 0건
+
+`availableTransitions` 가 GLOBAL 을 매번 훑지만 워크플로우당 전환은 10~20건이고 `WorkflowCache` 가
+정의를 메모리에 들고 있어 DB 왕복이 늘지 않는다. 리포지토리의 `workflow_statuses` join 은 단건 조회
+경로라 N+1 이 생기지 않는다. 쓰기 3종의 전체 캐시 무효화는 편집 빈도가 낮아 정상.
+**No issues found.**
+
+### 5. 트랜잭션 위험 — 1건 (잠복)
+
+**[P2] (confidence: 8/10) 결정 D-2 는 지금은 안전하지만, catch 폴백이 들어오면 500 으로 뒤집힌다.**
+
+Prior learning applied: **`[[workflowstatecatalog-mandatory-rollback-poison]]`**
+
+실측 인용.
+```
+backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/WorkflowTransitionPort.kt:12
+    @Transactional(propagation = Propagation.MANDATORY)
+    fun plan(req: TransitionRequest): TransitionResult
+backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt:1174-1190
+    when (result) { is TransitionResult.Success -> ... }   // catch 폴백 없음 · 전부 throw
+```
+`MANDATORY` 안에서 예외를 던지면 Spring 이 **호출자의 공유 트랜잭션을 rollback-only 로 마킹**한다.
+지금은 `IssueApplicationService` 가 예외를 흡수하지 않고 그대로 던지므로 롤백이 정상 동작이고
+**D-2 는 유효하다.** 위험은 미래에 있다 — 누가 「모호하면 후보를 보여주고 계속 진행」 같은 폴백을 넣는
+순간 `UnexpectedRollbackException` 으로 500 이 된다. 같은 양식의 잠복 버그가 이 저장소에
+이미 2건 기록돼 있다(`IssueEpicService.resolveStateCategories` 등).
+
+**처방.** ① Task 1 ②의 판정 기준을 「409 가 나오는가」에서 **「409 가 나오고 트랜잭션이 rollback-only
+로 마킹되는가」**로 넓힌다 ② 「`AmbiguousTransitionException` 을 catch 해 폴백하려면 `REQUIRES_NEW`
+격리 빈이 필요하다」를 아래 §다음 PR 이 물려받는 제약에 등재한다.
+
+### NOT in scope — 고려했으나 뺀 것
+
+| 항목 | 왜 뺐나 |
+|---|---|
+| 보드 드래그앤드롭의 「어떤 전환인가요」 선택 다이얼로그 | 프론트 표면 · ADR §영향-부정이 후속으로 명시. 이 PR 은 409 로 정직하게 막는 데까지 |
+| `POST /api/v1/issues/{key}/transition` 의 `transitionId` 수용 | issue-tracking BC · 로드맵 PR 7 |
+| 전환 규칙(validator) CRUD 경로의 `transitionId` 정렬 | 로드맵 PR 5 (FR-WF-06) |
+| `workflow_states`·`from_state_id`·`to_state_id` DROP | `DATA.md` §4 3단 분할의 3단계 — 로드맵이 마지막 PR 로 못박음 |
+| `/admin/workflows` 화면 | 로드맵 PR 8 |
+| `TransitionResult` sealed 확장 | 결정 D-2 로 기각 · cross-BC 컴파일 파괴 |
+
+### What already exists — 재사용 대 재구축
+
+| 이미 있는 것 | 이 plan 의 처리 |
+|---|---|
+| `workflow_transitions.id UUID PRIMARY KEY` (V200:66) | **재사용** — id 는 이미 있다. V207 은 노출과 제약만 바꾼다 |
+| `WorkflowSchemeExceptionHandler` 의 `SchemeInUseException → 409 + 목록` | **재사용** — D-2 가 그대로 본뜬다 |
+| `RecordAccess.kt` 의 `Record.required()` | **재사용** — Task 4 가 `!!` 대신 씀 |
+| `testsupport/WorkflowStatusFixture.kt` | **재사용** — 원시 SQL 금지 관례 |
+| `V203ToV206MigrationTest.kt` | **더 가까운 선례** — plan 은 `V200MigrationTest.kt` 를 지목했으나 같은 대역·같은 카탈로그를 다루는 쪽은 이것이다 [P2 · confidence 9/10] |
+| `workflow_validators`/`workflow_post_actions` 의 `ON DELETE CASCADE` (V200:74·95) | **확인 완료** — E6 의 「CASCADE 로 함께 삭제」가 실제와 일치 |
+| `WorkflowCache` | **재사용** — 무효화 결선만 |
+
+### 실패 모드 — 프로덕션에서 어떻게 깨지나
+
+| 경로 | 실패 시나리오 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| 모호 전환 | 보드 DnD 가 후보 2개인 상태쌍으로 이동 | C3 ✓ | 409 ✓ | 명시적 409 — 조용한 실패 아님 ✓ |
+| INITIAL 백필 누락 | 마이그레이션이 일부 워크플로우를 못 채움 | C7 ✓ | Task 7 의 `minByOrNull` 폴백 ✓ | 종전과 동일 동작 ✓ |
+| display_order 뭉개짐 | PR 8 편집기가 전환을 임의 순서로 그림 | **GAP-1** ✗ | 없음 ✗ | **조용한 실패** ⚠ |
+| 계약 스냅샷 오박제 | 조립과 다른 직렬화를 고정 → PR 8 Zod 가 틀린 형식에 맞춰짐 | P1 ✗ | 없음 ✗ | **조용한 실패** ⚠ |
+| rollback poison | 미래의 catch 폴백이 500 을 만듦 | §5 ✗ | 없음 ✗ | 500 ⚠ (잠복) |
+
+**critical gap 2건** — `display_order`(GAP-1) 과 계약 스냅샷 위치(P1). 둘 다 테스트도 에러 처리도 없고
+증상이 조용하다. 위 처방으로 닫는다.
+
+### 병렬화 전략
+
+| 단계 | 건드리는 모듈 | 의존 |
+|---|---|---|
+| Task 1 예외·핸들러 | project-workflow/web · issue-tracking/test | — |
+| Task 2 마이그레이션 | project-workflow/resources | — |
+| Task 3 도메인 | project-workflow/domain | — |
+| Task 4 리포지토리 | project-workflow/repository | 2·3 |
+| Task 5·6 엔진 | project-workflow/engine · shared-kernel | 3·4 (6 은 1 도) |
+| Task 7 리졸버 | project-workflow/scheme | 3·4 |
+| Task 8 CRUD | project-workflow/web · application · apps/web | 2·3·4 |
+| Task 9 계약 | project-workflow/web/dto (P1 반영 시 app/test) | 4·8 |
+
+`Lane A: 1 (독립)` / `Lane B: 2 → 4 → {5,6,7} → 9` / `Lane C: 3 (B 에 합류)`.
+**worktree 분리는 권장하지 않는다** — Task 5·6·8 이 전부 `project-workflow` 한 모듈을 건드려
+병렬 worktree 가 곧 머지 충돌이다. 순차 wave 로 충분하다.
+
+### Implementation Tasks — 이 리뷰가 만든 작업
+
+- [ ] **T1 (P1, human: ~1.5h / CC: ~10min)** — Task 9 — 계약 스냅샷을 `:app` 조립으로 옮긴다
+  - Surfaced by: 아키텍처 리뷰 — `WorkflowControllerMvcTest.kt:82` `@EnableWebMvc` · `:128` JavaTimeModule 부재
+  - Files: `backend/modules/app/src/test/kotlin/com/bts/app/WorkflowReadContractProdBootTest.kt`
+  - Verify: `./gradlew :modules:app:test --tests '*WorkflowReadContract*'` (Postgres 5433 선행 기동 필요)
+- [ ] **T2 (P2, human: ~30min / CC: ~5min)** — Task 2 — `display_order` 백필 + 중복 없음 단언
+  - Surfaced by: 테스트 리뷰 GAP-1
+  - Files: `V207__transitions_multi_and_global.sql` · `V207MigrationTest.kt`
+  - Verify: `./gradlew :modules:project-workflow:test --tests V207MigrationTest`
+- [ ] **T3 (P2, human: ~20min / CC: ~5min)** — Task 5·6 — 후보 산출을 `candidatesFor()` 하나로 공유하고 INITIAL 을 양쪽에서 제외
+  - Surfaced by: 코드 품질 리뷰 · 테스트 리뷰 GAP-2
+  - Files: `WorkflowEngine.kt` · `WorkflowEngineGlobalTransitionTest.kt` · `WorkflowEngineAmbiguousTest.kt`
+  - Verify: `./gradlew :modules:project-workflow:test --tests '*Transition*'`
+- [ ] **T4 (P2, human: ~15min / CC: ~3min)** — Task 3 — GLOBAL/INITIAL 의 `key` 에 URL 안전 토큰
+  - Surfaced by: 코드 품질 리뷰 — `*` 가 `.../transitions/{transitionKey}/post-actions` 세그먼트로 샌다
+  - Files: `WorkflowTransition.kt` · `WorkflowTransitionTest.kt`
+  - Verify: `./gradlew :modules:project-workflow:test --tests '*WorkflowTransitionTest*'`
+- [ ] **T5 (P2, human: ~5min / CC: ~1min)** — Task 1 — 판정 기준에 rollback-only 마킹 관측 추가
+  - Surfaced by: 트랜잭션 위험 §5
+  - Files: `AmbiguousTransitionStatusCodeIntegrationTest.kt`
+  - Verify: 같은 테스트
+- [ ] **T6 (P2, human: ~5min / CC: ~1min)** — Task 2 선례를 `V203ToV206MigrationTest.kt` 로 · Task 8 검증 명령에서 worktree `pnpm` 제거
+  - Surfaced by: What already exists · 테스트 리뷰
+  - Files: plan 문서만
+  - Verify: 문서 확인
+
+### ★ 다음 PR 이 물려받는 제약 (이 리뷰가 추가)
+
+1. **`AmbiguousTransitionException` 을 catch 해 폴백하지 마라.** `WorkflowTransitionPort.plan` 이
+   `MANDATORY` 라 공유 트랜잭션이 rollback-only 로 마킹된다 — 폴백해도 커밋 시점에
+   `UnexpectedRollbackException` 으로 500 이 된다. 굳이 하려면 `REQUIRES_NEW` 격리 빈이 필요하다
+   (`IsolatedWorkflowStateLookup` 선례).
+2. **`GET /api/v1/workflows/{key}` 의 `transitions[].fromStateKey` 가 nullable 이 됐다.** PR 8 이
+   프론트 Zod 를 완화해야 한다 (`apps/web/src/api/workflows.ts`).
+3. **전환 `display_order` 는 V207 백필이 정한 순서다.** 편집기가 순서를 바꾸면 이 컬럼을 쓴다.
+
+## GSTACK REVIEW REPORT
+
+| Runs | Status | Findings |
+|---|---|---|
+| plan-eng-review ×1 | issues_open | P1 1 · P2 5 · P3 1 · BLOCKER 0 |
+| 아웃사이드 보이스 (codex) | skipped | `codex_reviews=disabled` — 0종 통과가 아니라 미실행임을 명시 |
+
+- Step 0 스코프 도전 — 복잡도 임계 초과(파일 ~25 · 임계 8). **분할 권장하지 않음** (Task 4 가 이음매라 어디서 잘라도 중간 상태가 main 에 남는다). 게이트 1 확인 항목.
+- 아키텍처 — 1건 (P1 계약 스냅샷 위치)
+- 코드 품질 — 2건 (P2 `key` 의 `*` · P2 INITIAL 제외 누락)
+- 테스트 — 다이어그램 산출 · 21경로 중 19 계획됨(90%) · GAP 2
+- 성능 — 0건
+- 트랜잭션 위험 — 1건 (P2 rollback poison 잠복)
+- NOT in scope — 작성 · What already exists — 작성
+- 실패 모드 — **critical gap 2건** (display_order · 계약 스냅샷 위치)
+- 병렬화 — Lane 3개이나 한 모듈 집중이라 **순차 권장**
+- Prior learnings applied — 3건 (`contract-snapshot-must-be-generated-in-assembly-not-slice` · `worktree-pnpm-blocked-use-node-test-directly` · `workflowstatecatalog-mandatory-rollback-poison`)
+- Lake Score — 6/6 권고가 완전판을 택함
+
+VERDICT: **PASS WITH FIXES** — BLOCKER 0. T1~T6 을 구현 전에 plan 에 반영한다. CODEX: skipped (disabled). CROSS-MODEL: n/a.
+
+**UNRESOLVED DECISIONS:**
+- 게이트 1 — 결정 D-1 (전환 계획 경로 이동) 승인 여부
+- 게이트 1 — 결정 D-2 (모호 전환을 예외로) 승인 여부 · Task 1 ② 판정 전까지 잠정
+- 게이트 1 — Step 0 복잡도 임계 초과를 그대로 진행할지
