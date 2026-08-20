@@ -105,7 +105,7 @@ Git Push → GitHub Actions:
 ### 복구 절차
 - RPO 24시간 / RTO 1시간
 - 백업에서 복원 → 마지막 백업 시점까지 일치
-- 운영 가이드: `docs/runbook/disaster-recovery.md`
+- 운영 가이드: `docs/runbooks/disaster-recovery.md`
 
 ## 16.6 모니터링
 

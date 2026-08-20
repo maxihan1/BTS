@@ -61,9 +61,32 @@ if [ -n "\$(docker ps -q -f name=bts-postgres)" ]; then
   STAMP=\$(date +%Y%m%d-%H%M%S)
   docker exec bts-postgres pg_dump -U "\${BTS_DB_USERNAME:-bts}" -d "\${BTS_DB_NAME:-bts}" -Fc \
     > "backups/bts-\${STAMP}.dump"
-  echo "💾 DB 덤프 backups/bts-\${STAMP}.dump (\$(du -h "backups/bts-\${STAMP}.dump" | cut -f1))"
+
+  # ★ 아카이브가 열리는지 + 내용이 비지 않았는지까지 본다.
+  #   크기만 보면 「빈 DB 를 성공적으로 덤프한」 상태가 그대로 통과한다 — 복구가 필요한
+  #   순간에 못 쓰는 백업이 백업의 가장 흔한 실패 방식이다.
+  DATA_COUNT=\$(docker exec -i bts-postgres pg_restore -l < "backups/bts-\${STAMP}.dump" \
+    | grep -c "TABLE DATA" || true)
+  [ "\$DATA_COUNT" -gt 0 ] || { echo "❌ 덤프에 TABLE DATA 가 0건 — 배포 중단"; exit 1; }
+
+  # ★★ pgmq 큐는 이 덤프에 담기지 않는다.
+  #   큐 테이블은 확장(pgmq) 소속이라 pg_dump 가 DDL·데이터를 통째로 건너뛴다
+  #   (--extension=pgmq 도, -t 'pgmq.q_*' 도 효과 없음 — 2026-08-21 실측).
+  #   그런데 Flyway 이력은 public 이라 데이터까지 담긴다. 그 덤프를 **새 DB 에 복원하면**
+  #   Flyway 가 큐 생성 마이그레이션을 「적용됨」으로 보고 재실행하지 않아,
+  #   큐가 없는데 이력만 완료인 상태가 된다 → pgmq.send 가 전부 실패하고
+  #   이슈 생성·전환·웹훅·자동화·Slack 이 동시에 죽는다.
+  #   그래서 큐 목록을 덤프 옆에 남긴다. 복원 절차. docs/runbooks/disaster-recovery.md
+  docker exec bts-postgres psql -U "\${BTS_DB_USERNAME:-bts}" -d "\${BTS_DB_NAME:-bts}" -tAc \
+    "select queue_name from pgmq.list_queues() order by 1" \
+    > "backups/bts-\${STAMP}.pgmq-queues.txt"
+
+  echo "💾 DB 덤프 backups/bts-\${STAMP}.dump (\$(du -h "backups/bts-\${STAMP}.dump" | cut -f1) · TABLE DATA \${DATA_COUNT}건)"
+  echo "💾 pgmq 큐 목록 backups/bts-\${STAMP}.pgmq-queues.txt (\$(wc -l < "backups/bts-\${STAMP}.pgmq-queues.txt" | tr -d ' ')개 — 덤프에 안 담기므로 별도 보관)"
+
   # 최근 10개만 남긴다 — 무한 증가로 디스크를 채우면 그것이 다음 장애가 된다.
   ls -1t backups/bts-*.dump 2>/dev/null | tail -n +11 | xargs -r rm -f
+  ls -1t backups/bts-*.pgmq-queues.txt 2>/dev/null | tail -n +11 | xargs -r rm -f
 else
   echo "ℹ️  bts-postgres 미기동 — 최초 배포로 보고 덤프를 건너뛴다"
 fi
