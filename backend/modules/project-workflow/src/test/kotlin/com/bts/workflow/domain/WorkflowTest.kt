@@ -77,7 +77,8 @@ class WorkflowTest {
                 key = "WF-GLOBAL-OK",
                 name = "전역 전환 워크플로우",
                 states = defaultStates,
-                transitions = listOf(transition(from = null, to = "DONE", name = "긴급 완료", kind = TransitionKind.GLOBAL)),
+                transitions =
+                    listOf(transition(from = null, to = "DONE", name = "긴급 완료", kind = TransitionKind.GLOBAL)),
             )
         assertThat(accepted.transitions).hasSize(1)
         assertThat(accepted.transitions.first().fromStateKey).isNull()
