@@ -4,13 +4,17 @@ package com.bts.workflow.web
 
 import com.bts.workflow.domain.exception.AmbiguousTransitionException
 import com.bts.workflow.domain.exception.TransitionCandidate
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.core.Ordered
+import org.springframework.core.annotation.Order
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -58,6 +62,10 @@ private class AmbiguousTransitionThrowingController {
  * 매핑은 [AmbiguousTransitionExceptionHandler] 가 단독으로 들고 있고, 형제인
  * [WorkflowExceptionHandler] 는 이 예외를 더는 잡지 않는다. 둘을 같이 올려 두는 이유는
  * 조립 상태를 흉내내기 위해서다 — 형제가 옆에 있어도 응답이 이 advice 것으로 나오는지 본다.
+ *
+ * 다만 「누군가 편의상 [WorkflowExceptionHandler] 로 매핑을 되돌리는」 회귀는 **응답으로는 안 보인다**
+ * (되돌려도 409 는 그대로 나온다 — 대신 스킴 404 계약이 조용히 깨진다).
+ * 그래서 두 번째 테스트가 advice 구조 자체를 판정한다.
  */
 class WorkflowExceptionHandlerAmbiguousTest {
     private lateinit var mockMvc: MockMvc
@@ -82,5 +90,45 @@ class WorkflowExceptionHandlerAmbiguousTest {
             .andExpect(jsonPath("$.candidates[0].name").value("조건부 승인"))
             .andExpect(jsonPath("$.candidates[1].transitionId").value(CANDIDATE_TWO_ID.toString()))
             .andExpect(jsonPath("$.candidates[1].name").value("즉시 완료"))
+    }
+
+    /**
+     * INVARIANT — 모호 전환 매핑은 **예외 한 종류만 잡는 advice** 에 있어야 하고,
+     * 예외 여러 종을 잡는 [WorkflowExceptionHandler] 는 전역 최우선권을 가지면 안 된다.
+     *
+     * 이 둘 중 하나라도 무너지면 `WorkflowNotFoundException` 이
+     * `com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler` 에서 [WorkflowExceptionHandler] 로
+     * 넘어가, 스킴 404 응답이 RFC 7807 `ProblemDetail` 에서 `{error:{code,message}}` 로 **조용히 바뀐다.**
+     * `WorkflowSchemeExceptionHandlerTest` 는 스킴 advice 만 등록하므로 그 회귀를 못 잡는다 —
+     * 그래서 여기서 advice 구조를 직접 판정한다.
+     */
+    @Test
+    fun `모호 전환 매핑은 다중 advice 로 되돌아가지 않는다`() {
+        val handledByMultiAdvice: List<String> =
+            WorkflowExceptionHandler::class.java.declaredMethods
+                .mapNotNull { method -> method.getAnnotation(ExceptionHandler::class.java) }
+                .flatMap { annotation -> annotation.value.map { handled -> handled.java.name } }
+
+        assertThat(handledByMultiAdvice)
+            .describedAs(
+                "AmbiguousTransitionException 매핑을 WorkflowExceptionHandler 로 되돌리면 " +
+                    "@Order(HIGHEST_PRECEDENCE) 도 따라와 스킴 404 의 ProblemDetail 계약을 깬다",
+            )
+            .doesNotContain(AmbiguousTransitionException::class.java.name)
+
+        val claimsGlobalTopPriority =
+            WorkflowExceptionHandler::class.java.getAnnotation(Order::class.java)?.value ==
+                Ordered.HIGHEST_PRECEDENCE
+        assertThat(claimsGlobalTopPriority)
+            .describedAs("예외 여러 종을 잡는 advice 에 전역 최우선권을 주면 형제 advice 의 매핑을 빼앗는다")
+            .isFalse()
+
+        val handledByDedicatedAdvice: List<String> =
+            AmbiguousTransitionExceptionHandler::class.java.declaredMethods
+                .mapNotNull { method -> method.getAnnotation(ExceptionHandler::class.java) }
+                .flatMap { annotation -> annotation.value.map { handled -> handled.java.name } }
+        assertThat(handledByDedicatedAdvice)
+            .describedAs("전역 최우선권은 예외 한 종류만 잡는 advice 에만 준다 — 종류가 늘면 같은 강탈이 반복된다")
+            .containsExactly(AmbiguousTransitionException::class.java.name)
     }
 }

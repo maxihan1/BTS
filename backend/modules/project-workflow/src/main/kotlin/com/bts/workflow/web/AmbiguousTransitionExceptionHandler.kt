@@ -80,3 +80,17 @@ class AmbiguousTransitionExceptionHandler {
         )
     }
 }
+
+/**
+ * 모호 전환 409 전용 응답.
+ *
+ * 표준 [ErrorResponse] 와 같은 `error` 를 그대로 두고 최상위에 `candidates` 를 **덧붙이기만** 한다 —
+ * 기존 에러 응답을 읽는 클라이언트는 영향받지 않는다.
+ *
+ * @property error 표준 에러 상세. `code` 는 항상 `AMBIGUOUS_TRANSITION`.
+ * @property candidates 호출자가 다시 지목할 수 있는 전환 후보 전량. 던진 순서를 그대로 보존한다.
+ */
+data class AmbiguousTransitionErrorResponse(
+    val error: ErrorBody,
+    val candidates: List<TransitionCandidate>,
+)
