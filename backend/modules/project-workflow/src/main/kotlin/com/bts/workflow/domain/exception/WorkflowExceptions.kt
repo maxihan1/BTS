@@ -2,6 +2,8 @@
 
 package com.bts.workflow.domain.exception
 
+import java.util.UUID
+
 /**
  * [com.bts.workflow.domain.spi.WorkflowValidator] 가 전환을 거부할 때 던지는 예외.
  *
@@ -107,3 +109,41 @@ class WorkflowInvalidRequestException(
     val workflowKey: String,
     val reason: String,
 ) : RuntimeException("Invalid workflow request for '$workflowKey': $reason")
+
+/**
+ * 모호 전환 후보 1건.
+ *
+ * 예외와 409 응답이 함께 쓰는 최소 식별 정보다. 호출자는 [transitionId] 를 다시 실어 재요청하고,
+ * [name] 으로 사람이 둘을 구분한다.
+ *
+ * @property transitionId 전환 1급 식별자 (`workflow_transitions.id`).
+ * @property name 사람 친화 표시 라벨. 예: "조건부 승인".
+ */
+data class TransitionCandidate(
+    val transitionId: UUID,
+    val name: String,
+)
+
+/**
+ * `transitionId` 없이 도착 상태만으로 전환을 요청했는데 후보가 둘 이상일 때 던진다. → 409
+ *
+ * ### 왜 예외인가 (결정 D-2)
+ * `TransitionResult` 는 sealed interface 이고 issue-tracking 이 exhaustive `when` 으로 받는다.
+ * 케이스를 더하면 그 BC 가 컴파일 실패한다 = cross-BC 프로덕션 변경. 전환 해석 실패는 이미
+ * 예외 경로이므로([WorkflowNotFoundException]) 모호성도 같은 층에서 예외로 낸다.
+ * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` · spec FR-WF-05 §결정 D-2.
+ *
+ * ### 이 예외를 catch 해 폴백하지 마라
+ * `WorkflowTransitionPort.plan` 이 `@Transactional(propagation = MANDATORY)` 라 이 예외는 호출자의
+ * 공유 트랜잭션을 rollback-only 로 마킹한다. 삼키고 진행하면 커밋 시점에
+ * `UnexpectedRollbackException` 으로 500 이 된다. 굳이 하려면 `REQUIRES_NEW` 격리 빈이 필요하다.
+ *
+ * @param workflowKey 모호성이 발생한 워크플로우 키.
+ * @param candidates 조건을 만족하는 전환 후보 전량. 호출자에게 그대로 돌려준다.
+ */
+class AmbiguousTransitionException(
+    val workflowKey: String,
+    val candidates: List<TransitionCandidate>,
+) : RuntimeException(
+        "Ambiguous transition in workflow '$workflowKey': ${candidates.size} candidates match",
+    )

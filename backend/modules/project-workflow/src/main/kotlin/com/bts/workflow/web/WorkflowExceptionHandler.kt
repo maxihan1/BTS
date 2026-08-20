@@ -4,6 +4,8 @@ package com.bts.workflow.web
 
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.workflow.cache.WorkflowCacheLockTimeoutException
+import com.bts.workflow.domain.exception.AmbiguousTransitionException
+import com.bts.workflow.domain.exception.TransitionCandidate
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.exception.WorkflowInUseException
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
@@ -110,6 +112,32 @@ class WorkflowExceptionHandler {
                             "워크플로우 스킴 ${ex.referenceCount}곳이 이 워크플로우를 쓰고 있습니다. " +
                                 "스킴에서 먼저 뗀 뒤 삭제해 주세요.",
                     ),
+            ),
+        )
+    }
+
+    /**
+     * 모호 전환 — 409 + 후보 목록.
+     *
+     * 후보가 둘 이상인데 호출자가 `transitionId` 를 주지 않았다. 조용히 아무거나 고르지 않고
+     * 후보를 그대로 돌려줘 호출자가 다시 지목하게 한다 (spec FR-WF-05 §S4).
+     * 선례는 `WorkflowSchemeExceptionHandler` 의 `SchemeInUseException(usedByProjects) → 409` 다.
+     *
+     * @param ex 모호성이 발생한 워크플로우 키와 후보 전량을 담은 예외.
+     */
+    @ExceptionHandler(AmbiguousTransitionException::class)
+    fun handleAmbiguousTransition(ex: AmbiguousTransitionException): ResponseEntity<AmbiguousTransitionErrorResponse> {
+        log.info("WORKFLOW_409_AMBIGUOUS key='{}' candidates={}", ex.workflowKey, ex.candidates.size)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            AmbiguousTransitionErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "AMBIGUOUS_TRANSITION",
+                        message =
+                            "이동할 수 있는 전환이 ${ex.candidates.size}개입니다. " +
+                                "어느 전환인지 골라 주세요.",
+                    ),
+                candidates = ex.candidates,
             ),
         )
     }
@@ -240,3 +268,17 @@ data class ErrorResponse(val error: ErrorBody)
  * @property message 사람이 읽을 수 있는 에러 설명
  */
 data class ErrorBody(val code: String, val message: String)
+
+/**
+ * 모호 전환 409 전용 응답.
+ *
+ * 표준 `error` 를 그대로 두고 최상위에 `candidates` 를 **덧붙이기만** 한다 — 기존 에러 응답을
+ * 읽는 클라이언트는 영향받지 않는다.
+ *
+ * @property error 표준 에러 상세. `code` 는 항상 `AMBIGUOUS_TRANSITION`.
+ * @property candidates 호출자가 다시 지목할 수 있는 전환 후보 전량.
+ */
+data class AmbiguousTransitionErrorResponse(
+    val error: ErrorBody,
+    val candidates: List<TransitionCandidate>,
+)
