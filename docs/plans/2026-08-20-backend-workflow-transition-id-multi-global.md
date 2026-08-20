@@ -1098,3 +1098,61 @@ files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domai
 **규칙이 요구하는 모양이 원래 구조였다.** 원복 후 `@Suppress` + 사유를 달았고, KDoc 에
 「인라인은 실측으로 기각했다」와 그 근거를 남겨 **다음 사람이 같은 시도를 반복하지 않게** 했다.
 정본 처방은 전환 해석을 `TransitionResolver` 로 떼는 것이고 다음 PR 몫이다.
+
+## 리뷰 결과 (PR 단위 · 2026-08-20)
+
+**렌즈 7종** — `code-reviewer`(절대 규칙) · `/review` 스페셜리스트 6(data-migration · security ·
+api-contract · testing · performance · maintainability). T3 이므로 `/bts` 표의 「2종 + ceo」를 넘겨
+가짜 그린 사냥까지 붙였다.
+
+**판정. 🛑 BLOCKER — 수정 후 재리뷰.**
+
+| 렌즈 | 판정 | 요지 |
+|---|---|---|
+| code-reviewer | **BLOCKER 1 · CONCERNS 8** | V207 INITIAL 백필이 프론트 화면 2개를 **확정적으로** 깬다 |
+| api-contract | **CRITICAL 4** · INFO 6 | D-1 근거 거짓 · Zod 미완화 · 목이 자가 초록 · post-action 404 |
+| data-migration | **CRITICAL 4** · INFO 3 | 구 컬럼 잔존 → 조회 500 · 신규 설치에 INITIAL 없음 · 롤백 주장 과장 |
+| testing | **CRITICAL 4** · INFO 6 | 복제 전환 복사가 0행으로만 돎 · B2 판정 공허화 · 도달 불가 분기 |
+| maintainability | **CRITICAL 2** · INFO 11 | 존재하지 않는 제약을 안전망으로 인용 · 300줄 장부 자기 누락 |
+| security | CRITICAL 0 · INFO 7 | 4개 판정 항목 전부 통과. `resolveById` 무방비는 미래 위험 |
+| performance | CRITICAL 0 · INFO 5 | 곱집합 축소·N+1 부재·캐시 무효화 3종 전부 **확인** |
+
+### ★ 교차 확인된 결함 (2개 이상 렌즈가 독립 지목)
+
+| # | 결함 | 렌즈 수 | 등급 |
+|---|---|---|---|
+| 1 | **프론트 Zod 미완화 → 배포 즉시 워크플로우 화면 2곳 실패** | 2 | **P0** |
+| 2 | `PostActionTransitionResolver` 미이전 → 신규 전환의 규칙 편집 404 | **4** | P1 |
+| 3 | `copyTransitions` KDoc 이 **존재하지 않는 CHECK** 를 안전망으로 인용 | **4** | P1 |
+| 4 | D-1 「실호출부 0」 근거가 **거짓** — `api/workflows.ts:128` | 2 | P1 |
+| 5 | `WorkflowGraphClosedTest` GLOBAL·INITIAL 분기 **지워도 초록** | 3 | P2 |
+| 6 | `AvailableTransitionView.transitionId` 항상 null → **409 재요청 왕복이 성립 안 함** | 3 | P1 |
+| 7 | 시드가 INITIAL 을 안 심음 → **신규 설치에서 C4/F10 이 거짓** | 2 | P1 |
+| 8 | `resolveById` 가 현재 상태를 대조하지 않음 | 2 | P2(미래 P0) |
+
+### 단독 CRITICAL 7건
+
+`updateTransition` 이 구 컬럼을 안 지워 조회 500 · 워크플로우 복제의 전환 복사가 **0행으로만 실행**
+(함수를 비워도 초록) · B2 cross-workflow 판정이 id 전환으로 **공허해짐** ·
+`hasInitialTransition(excludingId)` 미도달(최초 전환 수정이 영구 409) · 프론트 테스트가 인라인 목으로
+**자가 초록** · 롤백 주석이 forward-only 를 「데이터 온전」이라 서술 ·
+`WorkflowRepository.kt` 241→354줄인데 300줄 장부에서 **자기 누락**.
+
+### ★ controller 가 낸 오류 3건 — 기록
+
+1. **D-1 근거 「실호출부 0」이 거짓이었다.** 초기 확인에서 `grep ... | head -15` 로 결과가 잘려
+   `api/workflows.ts` 를 못 보고, 그 잘린 출력을 근거로 삼았다. **개수 제한을 걸고 「없다」로 결론 낸 것**이 오류다.
+2. **회귀 가드를 잘못 지목했다.** `@Order` 제거를 잡는 것은 `GlobalControllerAdviceSealTest` 가 아니라
+   `AmbiguousTransitionStatusCodeIntegrationTest` 다. 전자는 `@Order` 를 떼도 초록이다.
+3. **`@Suppress` 4곳은 전부 `TooManyFunctions`** 다. 「300줄 초과 3 + 1」이라 적었으나 300줄은 억제된 적이 없다.
+
+### 통과 확인된 것
+
+- **N2 cross-BC 프로덕션 0줄** — issue-tracking 16파일 **전부 `src/test`**, shared-kernel 은 기본값 있는
+  nullable 추가만. agile-planning·slack-integration·automation **0파일** (code-reviewer 전수 확인)
+- **403/404 의미** — 미보유자는 존재 여부와 무관히 403, 보유자만 404. 존재 probe 불가 (security)
+- **인증 경계** — SecurityConfig·permitAll·CSRF 무변경. 오히려 기존 원시 SQL 1건 제거 (security)
+- **광역 advice 응답 유출 없음** — 둘 다 `ProblemDetail` 이 아니라 URI 자동 채움 경로에 안 닿는다 (security)
+- **성능** — 곱집합 한 겹 축소 · 폴백은 N+1 아님(1회 배치, 백필 완료 시 0회) · 캐시 무효화 3종 전부 (performance)
+- **하네스 고정 2줄** — `verify-master-plan.sh` · `classify-task.ts --cache` 호출문 그대로. `.claude/**` 무변경
+- **CI** — 실패 0건 (SUCCESS 9 · 진행 중 5)
