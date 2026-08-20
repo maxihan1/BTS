@@ -237,7 +237,13 @@ WHERE t.id = s.id;
 **REFACTOR**: SQL 각 블록에 한국어 주석 1줄 — 왜 DROP 하지 않는지(N4)를 명시
 
 **검증**: `./gradlew :modules:project-workflow:test --tests V207MigrationTest` ·
-`:modules:project-workflow:generateJooq` 후 **생성물 커밋**
+`:modules:project-workflow:generateJooq` EXIT=0 확인
+
+**★ 정정 (2026-08-20 실측).** 이 절은 원래 「생성물 **커밋**」이라 적었으나 **이 저장소는 jOOQ
+생성물을 추적하지 않는다** — `.gitignore:21` 이 `**/src/generated/jooq/` 를 제외하고
+`git ls-files | grep -c generated/jooq` 는 **0** 이다. `DATA.md §5` 의 「생성물은 git 에 커밋」과
+`.gitignore` 가 **서로를 검사하지 않는 두 정본**이라 어긋나 있다(문서 부채 후보).
+확인은 커밋이 아니라 **생성 성공 + 생성물에 새 컬럼 상수가 실제로 나오는지**로 한다.
 
 **함정**. `init_codegen.sql` 미러를 빠뜨리면 jOOQ 상수가 안 생겨 Task 4 의 리포지토리가
 **컴파일되지 않는다** (`[[jooq-init-codegen-mirror]]`).
@@ -338,8 +344,28 @@ WHERE t.id = s.id;
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`,
   `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowWriteRepository.kt`,
   `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepository.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
   `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/WorkflowRepositoryTransitionTest.kt`]
-- depends-on: [2, 3]
+- depends-on: [2, 3, 10]
+
+**★ `WorkflowEngine.kt` 는 `:214` 타입 보정 1줄만.** 후보 산출 로직은 Task 5·6 의 몫이다.
+Task 10 이 `WorkflowDto.kt` 1줄을 앞당긴 것과 같은 이유 — 이 1줄이 없으면 모듈 main 이
+wave 3 전까지 컴파일되지 않아 **이 task 자신의 검증 명령이 성립하지 않는다.**
+
+**★ 이 task 가 컴파일을 EXIT=0 으로 되돌리는 지점이다.** 복구 직후 **가장 먼저** 아래를 돌려라 —
+wave 1 의 Task 10 이 만든 테스트가 **한 번도 실행된 적이 없다**(컴파일 차단). 그 미확인 상태를
+닫는 것이 이 task 의 인수 조건에 포함된다.
+```
+./gradlew :modules:project-workflow:test --tests '*YamlSeedServiceTest*' --tests '*WorkflowAggregateTest*'
+./gradlew :modules:project-workflow:test --tests V207MigrationTest
+./gradlew :modules:project-workflow:test --tests '*WorkflowExceptionHandlerAmbiguousTest*' --tests '*WorkflowSchemeExceptionHandlerTest*'
+```
+
+**★ 프로덕션에서만 터지는 함정 (Task 2 가 남긴 인수인계).** INITIAL 백필 행은 구 컬럼
+`from_state_id`·`to_state_id` 가 NULL 이다. `WorkflowRepository.kt:224` 의
+`this[WORKFLOW_TRANSITIONS.FROM_STATE_ID] as UUID` 가 여기서 터진다.
+**테스트에서는 드러나지 않는다** — 빈 DB 에 마이그레이션이 돌면 백필 대상이 0행이기 때문이다.
+읽기를 `workflow_statuses` 로 재지정하며 이 캐스팅을 함께 닫아라.
 
 **RED**:
 - 테스트:
@@ -816,3 +842,32 @@ VERDICT: **PASS WITH FIXES** — BLOCKER 0. T1~T6 을 구현 전에 plan 에 반
 - 게이트 1 — 결정 D-1 (전환 계획 경로 이동) 승인 여부
 - 게이트 1 — 결정 D-2 (모호 전환을 예외로) 승인 여부 · Task 1 ② 판정 전까지 잠정
 - 게이트 1 — Step 0 복잡도 임계 초과를 그대로 진행할지
+
+## wave 1 결과 (2026-08-20)
+
+| task | implementer | verifier | 비고 |
+|---|---|---|---|
+| Task 1 | DONE_WITH_CONCERNS | **PASS** | 판정 ② **409 확정** — 결정 D-2 유효. 역-뮤테이션(`@Order` 제거 → 500)으로 비-공허 확인 |
+| Task 2 | DONE_WITH_CONCERNS | **PASS** | 가짜 그린 1건 자체 적발 → `pg_get_constraintdef` 스키마 축 추가. N4 위반 0 |
+| Task 3 | DONE_WITH_CONCERNS | **PASS** | 수용 단언이 거부 단언과 함께 있어 「전부 거부」 구현이 통과 못 한다 |
+| Task 10 | DONE_WITH_CONCERNS | DRIFT → **PASS** | DRIFT 는 **controller 의 diff 수집 실수**였다. `WorkflowTransition.kt` 를 Task 10 수집 목록에서 빠뜨렸고, 실제로는 `:30` 에 `val id: UUID = UUID.randomUUID(),` 가 커밋 `dc4318013` 로 실재한다. 컴파일 오류에서 `No value passed for parameter 'id'` 가 사라진 것이 기계적 증거다 |
+
+**커밋 16개 · TDD 순서 전수 통과 · 선언 외 파일 0건 · `[skip ci]` 0건.**
+
+### wave 1 이 남긴 미확인 2건 — Task 4 가 닫는다
+
+1. **Task 10 의 테스트가 한 번도 실행된 적이 없다.** `compileTestKotlin` 이 `compileKotlin` 에 걸려
+   단 1건도 돌지 못했다. 뒤집은 시드 시나리오는 「중복 거부 red → 규칙 제거 green」이라는
+   **의미적 대조를 확보하지 못했고**, 지금 있는 red 는 컴파일 실패뿐이다.
+2. **Task 1 의 검증은 격리 트리 하네스에서 이뤄졌다.** worktree 에서 3개 테스트 재실행이 필요하다.
+
+현재 컴파일 잔여 오류 2건 — `WorkflowEngine.kt:214`(Task 4 가 1줄 보정) ·
+`DefaultWorkflowDefinitionRepository.kt:135`(Task 4 본업).
+
+### 부수 발견 (이 PR 밖 · 장부 후보)
+
+- **`DATA.md §5`(「jOOQ 생성물은 git 에 커밋」)와 `.gitignore:21`(`**/src/generated/jooq/` 제외)이
+  서로를 검사하지 않는 두 정본이다.** 실측 `git ls-files | grep -c generated/jooq` = 0.
+  `[[two-lists-never-check-each-other]]` 양식.
+- `detekt` 위반 1건 — `seed/YamlSeedServiceTest.kt:385 NestedBlockDepth`(Task 10 이 들여옴).
+  게이트 2 전에 해소한다.
