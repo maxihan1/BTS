@@ -15,6 +15,8 @@ import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.dto.TransitionContext
+import com.bts.workflow.domain.exception.AmbiguousTransitionException
+import com.bts.workflow.domain.exception.TransitionCandidate
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.expression.DefaultActorView
@@ -27,6 +29,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 // ──────────────────────────────────────────────────────────────────────── //
 // SPI factory / repository 인터페이스 — 실제 구현은 후속 task 에서 등록      //
@@ -229,18 +232,90 @@ class WorkflowEngine(
             ?: throw WorkflowNotFoundException(req.workflowKey)
 
     /**
-     * transition identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
+     * 실행할 전환 하나를 확정한다.
+     *
+     * 전환의 1급 식별자는 `workflow_transitions.id` 다 —
+     * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D3.
+     * (구 ADR `2026-05-28-workflow-transition-identity-policy` 의 「identity = (from, to)」 정책은
+     * 그 ADR 이 대체했다. 같은 상태쌍에 이름만 다른 전환을 여럿 둘 수 있게 되어 2튜플로는 못 가른다.)
+     *
+     * 1. [TransitionRequest.transitionId] 가 오면 그것으로 지목한다 ([resolveById]).
+     * 2. 없으면 [candidatesFor] 로 후보를 얻어 [TransitionRequest.toStateKey] 로 좁힌다.
+     *    **열거(버튼 목록)와 실행(클릭)이 같은 함수를 쓴다** — 두 벌로 두면 「목록에는 보이는데
+     *    눌러도 안 되는 버튼」이 생긴다. INITIAL 제외도 그 함수가 이미 처리한다.
+     * 3. 후보 0개 — 종전과 같은 [WorkflowNotFoundException] (spec FR-WF-05 E11 → 404).
+     * 4. 후보 1개 — 종전과 완전히 같은 실행 (spec S5). 보드 드래그앤드롭·슬랙 완료 모달이
+     *    `transitionId` 없이 호출해도 그대로 산다 — 이 경로가 그 두 BC 의 하위호환 계약이다.
+     * 5. 후보 2개 이상 — [AmbiguousTransitionException] (spec S4 · E12 → 409).
+     *    조용히 첫 번째를 고르지 않는다. 어느 쪽 규칙이 도는지 호출자가 알 수 없기 때문이다.
+     *
+     * @param req 전환 요청
+     * @param workflow 해석 대상 워크플로우 정의
+     * @throws WorkflowNotFoundException 지목한 전환이 이 워크플로우에 없거나 후보가 0개일 때
+     * @throws AmbiguousTransitionException 후보가 2개 이상인데 지목이 없을 때
      */
     private fun resolveTransition(
         req: TransitionRequest,
         workflow: Workflow,
+    ): WorkflowTransition {
+        req.transitionId?.let { return resolveById(req, workflow, it) }
+
+        val candidates =
+            candidatesFor(workflow, req.fromStateKey).filter { it.toStateKey == req.toStateKey }
+        return when (candidates.size) {
+            0 ->
+                throw WorkflowNotFoundException(
+                    "${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}",
+                )
+            1 -> candidates.first()
+            else -> throw ambiguousTransition(req, candidates)
+        }
+    }
+
+    /**
+     * 전환 ID 로 전환을 지목한다.
+     *
+     * **소속을 반드시 대조한다** — [workflow] 의 전환 목록 안에서만 찾는다. 남의 워크플로우의 전환 ID 로
+     * 남의 validator·post-action 을 실행시키면 안 된다 (spec FR-WF-05 E9 → 404).
+     *
+     * @param req 전환 요청 (오류 메시지의 워크플로우 키 출처)
+     * @param workflow 소속 대조 대상 워크플로우 정의
+     * @param transitionId 지목된 전환 1급 식별자
+     * @throws WorkflowNotFoundException 그 ID 의 전환이 이 워크플로우에 없을 때
+     */
+    private fun resolveById(
+        req: TransitionRequest,
+        workflow: Workflow,
+        transitionId: UUID,
     ): WorkflowTransition =
-        workflow.transitions.find {
-            it.fromStateKey == req.fromStateKey &&
-                it.toStateKey == req.toStateKey
-        } ?: throw WorkflowNotFoundException(
-            "${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}",
+        workflow.transitions.find { it.id == transitionId }
+            ?: throw WorkflowNotFoundException("${req.workflowKey}::transition::$transitionId")
+
+    /**
+     * 모호 전환 예외를 만든다 — 후보 전량을 실어 호출자가 그대로 되쏠 수 있게 한다.
+     *
+     * 이 예외를 catch 해 폴백하지 마라. [plan] 이 [Propagation.MANDATORY] 라 호출자의 공유 트랜잭션이
+     * rollback-only 로 마킹되고, 삼키고 진행하면 커밋 시점에 `UnexpectedRollbackException` 500 이 된다.
+     *
+     * @param req 전환 요청
+     * @param candidates 조건을 만족한 전환 후보 전량
+     */
+    private fun ambiguousTransition(
+        req: TransitionRequest,
+        candidates: List<WorkflowTransition>,
+    ): AmbiguousTransitionException {
+        log.info(
+            "WorkflowEngine.plan: ambiguous transition workflowKey={} {}->{} candidateIds={}",
+            req.workflowKey,
+            req.fromStateKey,
+            req.toStateKey,
+            candidates.map { it.id },
         )
+        return AmbiguousTransitionException(
+            req.workflowKey,
+            candidates.map { TransitionCandidate(it.id, it.name) },
+        )
+    }
 
     /**
      * 현재 상태에서 쓸 수 있는 전환 후보를 전환 종류별 규칙으로 골라낸다.
