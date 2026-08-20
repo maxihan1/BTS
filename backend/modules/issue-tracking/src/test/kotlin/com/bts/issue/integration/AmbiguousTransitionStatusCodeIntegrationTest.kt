@@ -4,6 +4,7 @@ package com.bts.issue.integration
 
 import com.bts.issue.adapter.inbound.rest.IssueController
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.domain.IssueKey
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowTransitionPort
@@ -129,12 +130,9 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
         nameGenerator = FullyQualifiedAnnotationBeanNameGenerator::class,
     )
     open class AdviceScanConfig {
-        /** 전환 요청을 받자마자 모호 전환 예외를 던지는 서비스 목. */
+        /** 전환 요청을 받자마자 모호 전환 예외를 던질 서비스 목. 스텁 설정은 `@BeforeEach` 가 한다. */
         @Bean
-        open fun issueApplicationService(): IssueApplicationService =
-            mockk<IssueApplicationService>().also {
-                every { it.transitionIssue(any(), any(), any()) } throws ambiguousTransitionException()
-            }
+        open fun issueApplicationService(): IssueApplicationService = mockk()
 
         @Bean
         open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
@@ -142,6 +140,9 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
 
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    lateinit var issueApplicationService: IssueApplicationService
 
     private lateinit var mockMvc: MockMvc
 
@@ -156,6 +157,11 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
                 null,
                 listOf(SimpleGrantedAuthority("ROLE_USER")),
             )
+        // IssueKey 는 `value class` 라 MockK 의 any() 가 빈 문자열로 인스턴스를 만들다 init require 에 걸린다.
+        // 그래서 이 자리만 실제 값을 준다.
+        every {
+            issueApplicationService.transitionIssue(any(), IssueKey(ISSUE_KEY), any())
+        } throws ambiguousTransitionException()
     }
 
     @Test
