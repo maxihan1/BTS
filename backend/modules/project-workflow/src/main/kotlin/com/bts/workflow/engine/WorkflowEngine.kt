@@ -10,6 +10,7 @@ import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
@@ -205,13 +206,24 @@ class WorkflowEngine(
                     return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
                 }
 
-        val candidates = workflow.transitions.filter { it.fromStateKey == req.fromStateKey }
+        val candidates =
+            workflow.transitions.filter { transition ->
+                when (transition.kind) {
+                    // NORMAL — 출발 상태가 현재 상태와 같을 때만 후보다.
+                    TransitionKind.NORMAL -> transition.fromStateKey == req.fromStateKey
+                    // GLOBAL — 현재 상태와 무관하게 항상 후보다. 단 도착지가 현재 상태면 자기 자신으로 가는
+                    // 전환이므로 제외한다 (spec E1).
+                    TransitionKind.GLOBAL -> transition.toStateKey != req.fromStateKey
+                    // INITIAL — 이슈 생성 진입에만 쓰이며 전환 후보가 아니다.
+                    TransitionKind.INITIAL -> false
+                }
+            }
         val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
 
         return AvailableTransitionsResult.Success(
             passed.map { transition ->
                 AvailableTransitionView(
-                    // 후보 필터가 fromStateKey == req.fromStateKey 인 전환만 남기므로 여기서는 항상 같은 값이다.
+                    // GLOBAL 전환은 fromStateKey 가 null 이므로 요청한 현재 상태로 채운다.
                     fromStateKey = transition.fromStateKey ?: req.fromStateKey,
                     toStateKey = transition.toStateKey,
                     name = transition.name,
