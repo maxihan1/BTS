@@ -1504,3 +1504,177 @@ Task 14 · 15 · 18 · 19. 매번 「선언 안은 초록인데 그 변경이 �
 `files` 를 정할 때 다음 두 질문을 반드시 함께 물어야 한다.
 ① 이 값을 **쓰는** 곳은 어디인가 ② 이 값을 **값으로 비교하거나 개수로 세는** 테스트는 어디인가.
 ②를 빠뜨린 것이 15(렌더링) · 18(data class 값 비교) · 19(개수 단언) 세 건의 직접 원인이다.
+
+## wave 6b/6c 결과 (2026-08-20)
+
+| task | 판정 | 커밋 |
+|---|---|---|
+| 18 transitionId·kind | BLOCKED → Task 22 가 해소 | RED `d85f1d060` · GREEN `0da289209` |
+| 19 시드 INITIAL | BLOCKED → Task 24 가 해소 | RED `82f8730c0` · GREEN `281524b4b` · REF `658e0dd6e` |
+| 20 프론트 렌더링 | DONE_WITH_CONCERNS | RED `e686c902e` · GREEN `c02dc9231` · REF `f30cab4d0` |
+| 22 값비교 기대값 | **DONE** | `3c0b63b43` |
+| 23 cross-BC 왕복 | DONE_WITH_CONCERNS | RED `3d10c5670` · GREEN `43fb4960c` · REF `31e355a90` · docs `cdc22cb92` |
+| 24 시드 전환 수 | **DONE** | `cbcbe48cc` |
+
+### ★ controller 의 오류 3건 추가 — 총 6건
+
+3. **`files` 설계 실수 4회째 (Task 19).** `hasSize(6)` 개수 단언을 안 셌다.
+4. **브리핑의 고장 경로가 틀렸다 (Task 17).** `legacyStateKeyOf` 의 `error()` 로 500 이 난다고 적었으나
+   구 컬럼이 `ON DELETE CASCADE` FK 라 **도달 불가**다. 실제 고장은 더 나쁘다 — 구 출발 상태가 폴백으로
+   되살아나 `Workflow.of()` invariant 가 던져 **워크플로우 전체가 조회 불능**이 된다.
+5. **브리핑의 `null__to` 예측이 틀렸다 (Task 23).** `WorkflowEngine` 이
+   `fromStateKey = transition.fromStateKey ?: req.fromStateKey` 로 요청 상태를 채우고
+   `AvailableTransitionView.fromStateKey` 는 non-null `String` 이라 **구조적으로 불가능**하다.
+   생산자는 저장소 전체에 `WorkflowEngine.kt:231` 한 곳뿐이다(전수 확인).
+   **두 번 다 서브에이전트가 실측으로 정정했다 — 브리핑을 근거로 삼지 않은 것이 옳다.**
+
+### ★ 이 PR 이 새로 도달 가능하게 만든 결함 — Task 23 이 발견
+
+`key` 의 정본은 도메인 게터 `WorkflowTransition.key` 다(`WorkflowTransition.kt:42-47`).
+
+```kotlin
+NORMAL          -> "${fromStateKey ?: kind.name}__$toStateKey"
+GLOBAL, INITIAL -> "${kind.name}__$toStateKey"
+```
+
+그런데 `AvailableTransitionsResponse.kt` 의 `TransitionItem.from` 은 **항상 `from__to`** 로 재계산한다.
+같은 GLOBAL 전환을 도메인은 `"GLOBAL__done"`, REST 응답은 `"open__done"` 이라 부른다.
+
+- **이 PR 이 원인이다.** `TransitionKind` 는 이 브랜치가 `0c55ebf88`(task-3)에서 처음 만들었고
+  `origin/main` 에 없다. `candidatesFor` 가 GLOBAL 을 목록에 넣으므로 **이 PR 로 처음 도달 가능**해졌다.
+  INITIAL 은 이 목록에 안 나오므로 영향 없다.
+- **실사용 영향.** `key` 는 `PostActionController` 의
+  `/api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions` **경로 세그먼트**로 소비된다.
+  이 응답의 `key` 를 그 경로에 쓰면 GLOBAL 전환에서 빗나간다.
+- **프론트가 이미 이 값에 의존한다.** Task 20 이 `workflow.types.ts:44-50` 에
+  「GLOBAL·INITIAL 은 `KIND__to` … 응답에 실린 `key` 를 그대로 쓰는 것이 정답」이라 적었다.
+  그 전제가 이 엔드포인트에서 깨져 있다.
+- Task 23 이 고치지 않은 이유가 옳다 — 자기 `files` 안에서 고치려면 `KIND__to` 규칙을 **세 번째로**
+  구현해야 하고, 그것이 `two-lists-never-check-each-other` 의 재생산이다.
+
+### Task 25. `key` 정본화 — 도메인 게터 하나만 남긴다 (Task 23 CONCERN 1·2 해소)
+
+**메타**. agent `backend-engineer` ·
+files(main 3): [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`,
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`] ·
+files(test 12): [`shared-kernel/.../AvailableTransitionViewTest.kt`,
+`project-workflow/.../engine/{WorkflowEngineGlobalTransitionTest,WorkflowEngineToCategoryTest,WorkflowEngineAvailableTransitionsTest,WorkflowEngineAvailabilityPhaseTest}.kt`,
+`project-workflow/.../adapter/inbound/WorkflowTransitionAdapterAvailableTest.kt`,
+`issue-tracking/.../bulk/application/{TransitionIntersectionTest,BulkAvailableTransitionsServiceTest}.kt`,
+`issue-tracking/.../bulk/web/BulkOperationControllerTest.kt`,
+`issue-tracking/.../adapter/inbound/rest/IssueControllerTransitionsTest.kt`,
+`issue-tracking/.../application/{IssueApplicationServiceAvailableTransitionsTest,IssueApplicationServiceArchiveGuardTest}.kt`] ·
+depends-on: [23]
+
+- **★ test 12개는 「그 타입을 값으로 만드는」 파일 전수다**(`grep -rln "AvailableTransitionView("` = 12).
+  data class 에 필드를 더하면 값 비교가 깨지므로 미리 열어 뒀다 — controller 가 이 PR 에서 같은 실수를
+  4회 했다. **전부 고치라는 뜻이 아니다.** 실제로 안 깨진 파일은 손대지 말고 「무수정」으로 보고하라.
+- **처방.** `AvailableTransitionView` 에 `key` 를 싣고 `WorkflowEngine.kt:231` 이
+  **도메인 게터 결과(`transition.key`)를 그대로** 전달한다. `AvailableTransitionsResponse` 는
+  재계산 대신 그 값을 쓴다. **규칙 구현은 도메인 게터 하나로 남는다.**
+- **★ 설계 결정 1개는 네가 하고 근거를 대라.** 새 필드를 `key: String? = null` 로 두면 기존 생성 지점이
+  안 깨지지만, 목이 만든 뷰는 `key` 가 null 이라 REST 의 non-null `TransitionItem.key` 를 못 채운다.
+  ① REST 를 nullable 로 바꾼다 ② 목 쪽에 값을 넣는다 ③ 다른 방법 — 무엇을 골랐고 왜인지 적어라.
+  **`?:` 로 재계산 폴백을 두는 것만은 금지다** — 그게 세 번째 구현이고 이 task 의 목적을 무효화한다.
+- **기본값 `= null` 과 `AvailableTransitionViewTest` 의 3인자 생성 가드는 spec N2 를 지키는 장치다.**
+  없애야 한다는 결론이면 없애지 말고 BLOCKED 로 보고하라.
+- **CONCERN 2 동승.** `AvailableTransitionsResult.kt:54-57` KDoc 이 「HTTP 응답은 아직 버린다」라고
+  적었는데 Task 23 이 실었으므로 **이제 거짓**이다. 같은 파일이니 함께 고쳐라.
+- **red-first.** 「GLOBAL 전환의 REST 응답 `key` 가 도메인 게터와 같다(`GLOBAL__done`)」를 먼저 red 로.
+
+## Task 25 결과 + 프론트 범위 재판정 (2026-08-20)
+
+**Task 25 DONE** — RED `99fcb5014` · GREEN `2ccf086ab`. `key` 규칙 구현이 도메인 게터 하나로 남았다.
+설계 결정 = ① REST `TransitionItem.key` 를 nullable 로. ②(목에 값 넣기)는 **타입 수준에서 불가능**하고
+(`view.key` 가 `String?` 이라 non-null 파라미터에 못 넣는다 · `!!` 는 절대 규칙 위반 ·
+`requireNotNull` 은 「미계산」이라는 정상 상태를 500 으로 바꾼다) 형제 필드
+`toCategory`·`transitionId`·`kind` 가 같은 이유로 이미 nullable 이다. `?:` 재계산 폴백 0건.
+**비-공허 확인** — GREEN 선커밋 뒤 `key = transition.key` 를 옛 재계산식으로 되돌려 `PROBE_EXIT=1` ·
+4/4 실패를 보고 원복했다. 12개 test 중 **고침 6 · 무수정 6**(안 깨진 것은 손대지 않음).
+
+### ★ 프론트 범위 재판정 — Maxi 응답 = C안
+
+`grep -rn "AMBIGUOUS" apps/web/src` = **0건**. 프론트에 409 처리가 전혀 없다.
+이 PR 이 같은 (from,to) 에 전환을 여럿 만들 수 있게 허용해 **409 가 처음 도달 가능**해졌으므로,
+그대로 두면 사용자가 알 수 없는 오류를 보고 **그 상태 변경을 영영 못 한다.**
+
+**Maxi 가 C(후보 선택 UI 까지)를 골랐다.** A(스키마 필드만)·B(409 안내만) 기각.
+성격이 앞선 두 결정과 다르다는 점(결함 수정이 아니라 **신규 UI**)을 명시하고 물었다.
+
+### Task 21. 이슈 전환 409 후보 선택 — 프론트 완결 (P1 #6 의 마지막 절반)
+
+**메타**. agent `frontend-engineer` ·
+files(main 4): [`apps/web/src/api/issues.ts`, `apps/web/src/hooks/use-issue-transitions.ts`,
+`apps/web/src/components/issue/meta/IssueStateTransition.tsx`, `apps/web/src/mocks/issue-handlers.ts`] ·
+files(test 5): [`apps/web/src/api/issues.test.ts`,
+`apps/web/src/hooks/__tests__/use-issue-transitions.test.tsx`,
+`apps/web/src/components/issue/meta/__tests__/IssueStateTransition.test.tsx`,
+`apps/web/src/mocks/__tests__/issue-transition-handlers.test.ts`,
+`apps/web/e2e/issue-transition.spec.ts`] ·
+files(파급 대비 6): [`apps/web/src/components/issue/IssueMetaPanel.tsx`,
+`apps/web/src/components/issue/IssueMetaPanel.test.tsx`,
+`apps/web/src/components/issues/BulkTransitionDialog.tsx`,
+`apps/web/src/components/issues/cells/StatusCell.tsx`,
+`apps/web/src/components/issues/cells/StatusCell.test.tsx`,
+`apps/web/src/routes/issues.$key.tsx`] ·
+depends-on: [23, 25]
+
+- **백엔드는 준비됐다.** Task 23 이 요청·응답 사슬을 이었고 Task 25 가 `key` 를 정본화했다.
+  409 응답 실측 형태(Task 23 의 RED 출력) —
+  `{"error":{"code":"AMBIGUOUS_TRANSITION","message":"…"},"candidates":[{"transitionId":"…","name":"…"}]}`
+- `ApiError`(`client.ts:15-23`)가 `status`·`body` 를 노출하므로 **`client.ts` 는 안 건드려도 된다.**
+- **파급 대비 6파일은 「전부 고치라」는 뜻이 아니다.** 스키마에 필드를 더하면 산재한 인라인 목이
+  깨질 수 있어 미리 열어 둔 것이다(learnings 2026-05-30). 안 깨진 파일은 **무수정으로 보고**하라.
+- **설계 결정 1개는 네가 하고 근거를 대라.** `transitionId`·`kind` 를 required 로 할지
+  `.nullable().optional()` 로 할지. 형제 필드 `toCategory` 가 후자다. required 면 왕복이 타입으로
+  보장되지만 인라인 목 전수가 깨진다.
+- **규율.** 로직(409 파싱·재요청 분기)이 크므로 **TDD 현행**이다. UI 부분은 눈확인 + E2E 동반.
+- **디자인.** `docs/design/jira-parity-contract.md` 를 따른다. 계약이 안 덮는 새 요소면 그 사실을
+  보고에 적어라 — 별도 디자인 스펙이 필요하면 만들지 말고 BLOCKED 로 올려라.
+
+## Task 21 결과 + 래칫 판정 (2026-08-21)
+
+**Task 21 BLOCKED** — RED `89f0cf1c0` · GREEN `ccf64fb97` · REFACTOR `8dd71f002`.
+구현·테스트·E2E(신규 2건 + 인접 5스펙 26건)·눈확인 전부 통과. 타입 `EXIT=0`.
+유닛 **9,657/9,658** — 남은 red 1건이 `lint-ratchet`.
+
+### ★ controller 판정 — 래칫 장부를 올리지 않는다
+
+Task 21 이 제안한 처방은 `lint-ratchet-baseline.ts` 의
+`"src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1041` → `1077` 이다.
+**계약이 그것을 금지한다.** `lint-ratchet.test.ts` 의 `DRIFT_HINT` 원문:
+
+> 늘렸다면 **되돌리거나 함수를 쪼개고**, 줄였다면 `BASELINE_PATH` 의 숫자를 그만큼 낮춰라.
+
+장부를 올리는 선택지는 계약에 없다. 게다가 같은 파일이 **엄격 일치로 바꾼 근거**로
+「#367 이 15줄 재성장 여지를 남긴 채 지나갔고 그것을 기계가 아니라 독립 리뷰어가 겨우 잡았다」를
+인용한다(부채 매핑 22 · Maxi 확정 2026-08-15). 여기서 1041→1077 을 승인하면 **36줄 재성장 여지**를
+그 가드가 막으려던 방식 그대로 남긴다.
+
+**controller 의 오류 6건째** — 「이 변경이 무엇을 깨뜨리나」를 또 안 셌다. 이번엔 파일이 아니라
+**동결 장부**였다. 1041줄짜리 동결 함수에 UI 배선을 얹으면 래칫에 걸린다는 것이 예측 가능했다.
+
+### Task 26. 409 배선을 `IssueDetailPage` 밖으로 분리 (Task 21 BLOCKED 해소)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/routes/issues.$key.tsx`,
+`apps/web/src/components/issue/meta/IssueStateTransition.tsx`,
+`apps/web/src/hooks/use-issue-transitions.ts`,
+`apps/web/src/test/lint-ratchet-baseline.ts`,
+`apps/web/src/routes/issues.$key.test.tsx`,
+`apps/web/src/components/issue/meta/__tests__/IssueStateTransition.test.tsx`,
+`apps/web/src/hooks/__tests__/use-issue-transitions.test.tsx`,
++ 신규 파일 1개(위치는 구현자 판단)] · depends-on: [21]
+
+- **목표.** `IssueDetailPage` 를 **1041 이하**로 되돌린다. 1041 이면 장부 무변경, 그 아래면
+  **장부를 실측치로 낮춘다**(계약이 명시한 유일한 하향 경로).
+- **분리 대상** — Task 21 이 넣은 +36줄. `ambiguousTransition.capture` 판정 · 후보 선택 핸들러 ·
+  `AmbiguousTransitionDialog` 렌더. mutation 이 `IssueDetailPage` 안에 있다는 것이 분리 불가의
+  근거가 되지 않는다 — 자식 컴포넌트가 mutation 결과를 props 로 받거나, 배선 전체를 소유하는
+  컴포넌트를 새로 만들면 된다.
+- **★ `lint-ratchet-baseline.ts` 를 올리지 마라.** 낮추는 것만 허용된다. 200줄 밑으로 내려가면
+  그 줄을 **지워라**(계약 원문). 올려야만 한다는 결론이면 고치지 말고 **BLOCKED 로 보고**하라 —
+  그건 Maxi 판단이다.
+- **행동 불변.** Task 21 의 E2E 2건(S7 · S7-2)과 유닛이 그대로 초록이어야 한다. 리팩터이지 기능
+  변경이 아니다.
