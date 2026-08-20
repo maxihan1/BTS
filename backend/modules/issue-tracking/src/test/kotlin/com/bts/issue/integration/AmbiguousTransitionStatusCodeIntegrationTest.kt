@@ -3,6 +3,7 @@
 package com.bts.issue.integration
 
 import com.bts.issue.adapter.inbound.rest.IssueController
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.workflow.TransitionRequest
@@ -10,6 +11,7 @@ import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.domain.exception.AmbiguousTransitionException
 import com.bts.workflow.domain.exception.TransitionCandidate
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -48,6 +50,7 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.util.UUID
 import javax.sql.DataSource
+import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
 
 /** 전환을 시도할 이슈 키. `IssueKey` 정규식 `^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$` 를 만족한다. */
 private const val ISSUE_KEY = "AMB-1"
@@ -63,6 +66,38 @@ private val CANDIDATE_ONE_ID: UUID = UUID.fromString("33333333-3333-4333-8333-33
 
 /** 두 번째 후보 전환 ID. */
 private val CANDIDATE_TWO_ID: UUID = UUID.fromString("44444444-4444-4444-8444-444444444444")
+
+/** 재요청이 성공했을 때 서비스가 돌려주는 응답. 전환 실행 자체는 이 테스트의 판정 대상이 아니다. */
+private fun transitionedIssueResponse(): IssueResponse =
+    IssueResponse(
+        key = ISSUE_KEY,
+        id = UUID.fromString("55555555-5555-4555-8555-555555555555"),
+        projectKey = "AMB",
+        summary = "모호 전환 후보 지목 재요청",
+        currentStateKey = "DONE",
+        reporterId = UUID.fromString(ACTOR_ID),
+        version = 2L,
+        createdAt = null,
+        updatedAt = null,
+        typeId = 1L,
+        typeKey = "task",
+        typeName = "Task",
+    )
+
+/**
+ * application DTO 가 실제로 받은 `transitionId` 를 읽는다.
+ *
+ * 필드를 직접 참조하지 않고 직렬화한 JSON 으로 읽는 이유는, 이 판정이 **DTO 사슬에 필드가 있는지**를
+ * 묻기 때문이다. 필드를 직접 참조하면 필드가 없을 때 컴파일이 깨져 red 가 실행 결과로 남지 않는다.
+ *
+ * @param req 컨트롤러가 application 계층으로 넘긴 전환 요청.
+ * @return `transitionId` 문자열. 필드 자체가 없거나 null 이면 null.
+ */
+private fun ObjectMapper.transitionIdOf(req: AppTransitionIssueRequest): String? {
+    val node: JsonNode = valueToTree(req)
+    val field = node.path("transitionId")
+    return if (field.isMissingNode || field.isNull) null else field.asText()
+}
 
 /** 테스트가 던지는 모호 전환 예외. 후보 2건. */
 private fun ambiguousTransitionException(): AmbiguousTransitionException =
@@ -203,6 +238,51 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
                 .isInstanceOf(UnexpectedRollbackException::class.java)
         }
     }
+
+    @Test
+    fun `409 후보의 transitionId 를 되실어 재요청하면 200 으로 실행된다`() {
+        val received = mutableListOf<AppTransitionIssueRequest>()
+        every {
+            issueApplicationService.transitionIssue(any(), IssueKey(ISSUE_KEY), capture(received))
+        } answers {
+            // 엔진과 같은 판단을 흉내낸다 — 후보 지목이 없으면 조용히 고르지 않고 409 로 되돌린다.
+            if (mapper.transitionIdOf(received.last()) == null) throw ambiguousTransitionException()
+            transitionedIssueResponse()
+        }
+
+        val conflict = performTransition(mapOf("toStatusKey" to "DONE", "expectedVersion" to 1L))
+        assertThat(conflict.response.status).isEqualTo(409)
+        val candidateId = firstCandidateId(conflict.response.contentAsString)
+        assertThat(candidateId).isEqualTo(CANDIDATE_ONE_ID.toString())
+
+        val retried =
+            performTransition(
+                mapOf("toStatusKey" to "DONE", "expectedVersion" to 1L, "transitionId" to candidateId),
+            )
+
+        assertThat(retried.response.status)
+            .withFailMessage(
+                "409 후보 왕복 판정 — 기대 200, 실제 %d. 응답 본문=%s",
+                retried.response.status,
+                retried.response.contentAsString,
+            )
+            .isEqualTo(200)
+        assertThat(mapper.transitionIdOf(received.last()))
+            .describedAs("REST 바디의 transitionId 가 application DTO 까지 그대로 도달해야 한다")
+            .isEqualTo(candidateId)
+    }
+
+    /** 전환 엔드포인트를 한 번 호출한다. 바디는 맵 그대로 직렬화한다. */
+    private fun performTransition(body: Map<String, Any?>) =
+        mockMvc.perform(
+            post("/api/v1/issues/{key}/transition", ISSUE_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        ).andReturn()
+
+    /** 409 응답 본문에서 첫 후보의 전환 ID 를 읽는다. */
+    private fun firstCandidateId(responseBody: String): String =
+        mapper.readTree(responseBody).path("candidates").path(0).path("transitionId").asText()
 
     private fun transitionRequest(): TransitionRequest =
         TransitionRequest(
