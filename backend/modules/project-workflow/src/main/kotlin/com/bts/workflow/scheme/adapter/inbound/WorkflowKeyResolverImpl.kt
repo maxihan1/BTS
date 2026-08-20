@@ -6,6 +6,7 @@ import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
 import com.bts.workflow.domain.TransitionKind
+import com.bts.workflow.domain.Workflow
 import com.bts.workflow.scheme.port.outbound.WorkflowResolver
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -89,18 +90,7 @@ class WorkflowKeyResolverImpl(
 
         val workflow = workflowResolver.resolveFor(internalProjectKey, issueTypeKey)
 
-        val startStateKey =
-            workflow.transitions.firstOrNull { it.kind == TransitionKind.INITIAL }?.toStateKey
-                ?: workflow.states.minByOrNull { it.displayOrder }?.key
-                ?: error(
-                    "Workflow '${workflow.key}' 에 INITIAL 전환도 상태도 없습니다. " +
-                        "Workflow.of() factory invariant 위반 — 데이터 무결성 오류.",
-                )
-
-        return WorkflowStartState(
-            workflowKey = workflow.key,
-            startStateKey = startStateKey,
-        )
+        return resolveStartState(workflow)
     }
 
     /**
@@ -130,6 +120,20 @@ class WorkflowKeyResolverImpl(
             workflowResolver.resolveExistingFor(internalProjectKey, issueTypeKey)
                 ?: return null
 
+        return resolveStartState(workflow)
+    }
+
+    /**
+     * 워크플로우에서 시작 상태를 뽑아 [WorkflowStartState] 로 만든다.
+     *
+     * 클래스 KDoc 의 「시작 상태 결정 규칙」을 구현하는 유일한 자리다.
+     * [resolveStart] 와 [resolveExisting] 이 각자 해석하던 것을 여기로 모았다 —
+     * 두 경로가 갈라지면 쓰기 경로와 읽기 경로가 서로 다른 시작 상태를 말하게 된다.
+     *
+     * @param workflow 해석 대상 워크플로우.
+     * @return workflowKey + startStateKey 를 담은 [WorkflowStartState].
+     */
+    private fun resolveStartState(workflow: Workflow): WorkflowStartState {
         val startStateKey =
             workflow.transitions.firstOrNull { it.kind == TransitionKind.INITIAL }?.toStateKey
                 ?: workflow.states.minByOrNull { it.displayOrder }?.key
