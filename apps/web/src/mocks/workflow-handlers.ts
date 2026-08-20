@@ -7,7 +7,7 @@ import { allWorkflowFixtures } from './workflow-fixtures'
  *
  * - GET  /api/v1/workflows       — 4 표준 워크플로우 배열 반환 (`{ data: [...] }`)
  * - GET  /api/v1/workflows/:key  — key 매칭 단건 반환 (없으면 404)
- * - POST /api/v1/workflows/:key/transitions — mock TransitionPlan 반환
+ * - POST /api/v1/workflows/:key/transitions/plan — mock TransitionPlan 반환
  *
  * 응답 형식: backend의 `DataResponse<T>` 래퍼 (`{ data: T }`)와 일치.
  */
@@ -26,7 +26,7 @@ export const workflowHandlers = [
     return HttpResponse.json({ data: found })
   }),
 
-  /** POST /api/v1/workflows/:key/transitions — 첫 번째 전환 기준 mock TransitionPlan 반환 */
+  /** POST /api/v1/workflows/:key/transitions/plan — 첫 번째 전환 기준 mock TransitionPlan 반환 */
   http.post('/api/v1/workflows/:key/transitions/plan', ({ params }) => {
     const key = params['key'] as string
     const workflow = allWorkflowFixtures.find((w) => w.key === key)
