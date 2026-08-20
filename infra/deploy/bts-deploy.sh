@@ -49,6 +49,25 @@ echo "🔄 원격 compose build + up"
 ssh -i "$SSH_KEY" "${SSH_USER}@${SERVER}" bash -s <<REMOTE
 set -euo pipefail
 cd ${REMOTE_DIR}
+
+# ── 배포 전 DB 덤프 ──────────────────────────────────────────────────────────
+# 왜 조건 없이 매번 뜨나. 「마이그레이션이 포함됐는가」를 판정하려면 배포마다 사람이 판단해야
+# 하고, 판단이 끼면 「이번엔 없겠지」가 섞인다. Flyway 마이그레이션은 forward-only 라
+# 되돌릴 SQL 이 없으므로, 판단이 한 번 틀리면 복구 수단 자체가 없다. 덤프는 몇 초이고
+# 실패 시 잃는 것과 비교가 안 된다.
+# ★덤프 실패는 배포 중단이다 — 백업 없이 스키마를 바꾸는 것이 이 단계가 막으려는 상태다.
+if [ -n "\$(docker ps -q -f name=bts-postgres)" ]; then
+  mkdir -p backups
+  STAMP=\$(date +%Y%m%d-%H%M%S)
+  docker exec bts-postgres pg_dump -U "\${BTS_DB_USERNAME:-bts}" -d "\${BTS_DB_NAME:-bts}" -Fc \
+    > "backups/bts-\${STAMP}.dump"
+  echo "💾 DB 덤프 backups/bts-\${STAMP}.dump (\$(du -h "backups/bts-\${STAMP}.dump" | cut -f1))"
+  # 최근 10개만 남긴다 — 무한 증가로 디스크를 채우면 그것이 다음 장애가 된다.
+  ls -1t backups/bts-*.dump 2>/dev/null | tail -n +11 | xargs -r rm -f
+else
+  echo "ℹ️  bts-postgres 미기동 — 최초 배포로 보고 덤프를 건너뛴다"
+fi
+
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env build
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
 sleep 10
