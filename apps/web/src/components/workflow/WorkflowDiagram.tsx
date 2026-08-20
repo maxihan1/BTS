@@ -66,8 +66,7 @@ const GLOBAL_SOURCE_NODE_LABEL = '어디서나'
  * @returns mermaid 엣지 한 줄 (들여쓰기 포함)
  */
 function transitionLine(transition: WorkflowTransitionView): string {
-  const source = transitionSourceNode(transition)
-  return `  ${source} --> ${transition.toStateKey} : ${transition.name}`
+  return `  ${transitionSourceNode(transition)} --> ${transition.toStateKey} : ${transition.name}`
 }
 
 /**
@@ -95,6 +94,29 @@ function transitionSourceNode(transition: WorkflowTransitionView): string {
 }
 
 /**
+ * INITIAL 전환이 없는 워크플로우를 위해 시작 엣지 `[*] --> firstState` 를 합성한다.
+ *
+ * INITIAL 이 데이터로 오면 **그것이 시작 엣지의 정본**이므로 합성하지 않는다. 합성은 INITIAL 이
+ * 없던 시절의 대역이었고, 둘을 함께 찍으면 시작 화살표가 겹쳐 보인다.
+ *
+ * @param states 워크플로우 상태 목록 (비어 있지 않다고 가정)
+ * @param transitions 워크플로우 전환 목록
+ * @returns 합성한 시작 엣지 1줄, 합성이 필요 없으면 빈 배열
+ */
+function syntheticStartLines(
+  states: WorkflowStateView[],
+  transitions: WorkflowTransitionView[],
+): string[] {
+  if (transitions.some((t) => t.kind === 'INITIAL')) {
+    return []
+  }
+  // noUncheckedIndexedAccess 대응으로 undefined 가드
+  const sortedByOrder = [...states].sort((a, b) => a.displayOrder - b.displayOrder)
+  const firstState: WorkflowStateView | undefined = sortedByOrder[0]
+  return firstState === undefined ? [] : [`  [*] --> ${firstState.key}`]
+}
+
+/**
  * WorkflowView 데이터로부터 mermaid stateDiagram-v2 코드 문자열을 생성한다.
  *
  * 노드 ID = WorkflowStateView.key (영문만 사용 — EC-5: 한글/특수문자 key는 mermaid 직렬화 불안정).
@@ -119,16 +141,7 @@ export function generateMermaidCode(workflow: WorkflowView): string {
     lines.push(`  state "${GLOBAL_SOURCE_NODE_LABEL}" as ${GLOBAL_SOURCE_NODE_ID}`)
   }
 
-  // 시작 노드. INITIAL 전환이 데이터로 오면 그것이 시작 엣지의 정본이므로 합성하지 않는다.
-  // displayOrder 기반 합성은 INITIAL 이 없던 시절의 대역이고, 둘을 함께 찍으면 시작 화살표가 겹친다.
-  if (!transitions.some((t) => t.kind === 'INITIAL')) {
-    // noUncheckedIndexedAccess 대응으로 undefined 가드
-    const sortedByOrder = [...states].sort((a, b) => a.displayOrder - b.displayOrder)
-    const initialState: WorkflowStateView | undefined = sortedByOrder[0]
-    if (initialState !== undefined) {
-      lines.push(`  [*] --> ${initialState.key}`)
-    }
-  }
+  lines.push(...syntheticStartLines(states, transitions))
 
   // 전환 라인 — "from --> to : label" (출발 자리는 종류마다 다르다 — transitionSourceNode 참조)
   for (const transition of transitions) {
