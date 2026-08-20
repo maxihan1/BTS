@@ -63,11 +63,67 @@ shared-kernel 표면이 확실하므로 **T3 를 지정 선언**했다.
 - `[[permission-assert-before-existence-makes-403-lie]]` 권한 단언을 존재 확인보다 먼저 두면
   403/404 의미가 뒤집힌다.
 
-## 도메인 정리 (← /bts-spec §1 채움)
+## 도메인 정리
 
-## 스펙 (← /bts-spec §2 채움)
+**BC.** project-workflow (단일). shared-kernel 은 계약 **추가만** — `TransitionRequest.transitionId: UUID?`
+nullable 추가라 기존 호출부 컴파일이 깨지지 않는다.
 
-## Sanity Check (← /bts-spec §3 채움)
+**영향 엔티티.**
+
+| 엔티티 | 변경 |
+|---|---|
+| `WorkflowTransition` | `id: UUID` 1급 식별자 추가 · `kind` 추가 · `fromStateKey` 가 nullable 이 된다 |
+| `Workflow` | `of()` invariant 5개 중 5번(전환 (from,to) 중복 금지)을 새 규칙 2개로 교체 |
+| `workflow_transitions` (테이블) | V207 — UNIQUE 해제 · `kind` · `from_status_id`/`to_status_id`/`display_order` 추가 |
+| `WorkflowKeyResolverImpl` | 시작 상태 해석이 `minByOrNull(displayOrder)` → INITIAL 전환 |
+| `PostActionTransitionResolver` | (from,to) 해석이 전환 ID 기준으로 바뀐다. 구 경로는 유지 |
+
+**새 용어 0건.** 「전환」·「전역 전환」·「최초 전환」은 이미 ADR `2026-08-18-workflow-transition-id-identity.md`
+와 로드맵이 쓰는 말이고, `glossary.md` 의 「전환」 항목이 정본이다. `glossary.md` 갱신 불필요.
+
+**기존 결정 충돌 — 없음.** 구 ADR `2026-05-28-workflow-transition-identity-policy.md`(2튜플 identity)는
+`2026-08-18-workflow-transition-id-identity.md` 가 **이미 supersede** 했고, 그 구 ADR 이 §대안 채택 조건에
+적어 둔 탈출구를 발동하는 것이다. 이 PR 은 새 ADR 을 만들지 않는다.
+
+**관련 ADR.**
+
+- `docs/adr/2026-08-18-workflow-transition-id-identity.md` — 이 PR 의 설계 정본 (D1~D4)
+- `docs/adr/2026-08-18-workflow-global-status-catalog.md` — 전환이 참조할 `workflow_statuses`
+- `docs/adr/2026-05-26-workflow-transition-port-result-sealed.md` — sealed Result port (**유효** ·
+  결정 D-2 가 이 ADR 을 지키려고 예외 경로를 택했다)
+- `docs/adr/2026-05-28-workflow-transition-identity-policy.md` — supersede 됨
+
+## 스펙
+
+정본. **`docs/specs/2026-08-20-backend-workflow-transition-id-multi-global.md`** (9섹션)
+
+핵심 시나리오 3줄.
+
+1. 같은 상태쌍에 이름이 다른 전환을 여럿 두고, 각각을 `transitionId` 로 지목해 실행한다.
+2. `kind=GLOBAL` 전환은 현재 상태와 무관하게 후보에 오른다(자기 자신 제외). `kind=INITIAL` 은
+   이슈 생성 진입 상태를 명시해, 관리자가 상태 순서를 바꿔도 생성 동작이 흔들리지 않게 한다.
+3. `transitionId` 없이 `toStatusKey` 만으로 호출했을 때 후보가 둘이면 **409 `AMBIGUOUS_TRANSITION`**
+   과 후보 목록을 돌려준다 — 조용히 아무거나 고르지 않는다.
+
+### ★ 게이트 1 확인 대상 결정 2건
+
+| 결정 | 내용 | 왜 확인이 필요한가 |
+|---|---|---|
+| **D-1** | 기존 `POST /{key}/transitions`(전환 계획)를 `POST /{key}/transitions/plan` 으로 옮기고 `/transitions` 를 전환 정의 CRUD 에 준다 | **API 계약 변경**이다. 지금 실호출부가 0(프론트 `src/api/*.ts` 에 없음 · MSW 목 1건 · MVC 테스트 1건)이라 비용은 작지만, 계약을 옮기는 판단은 사람이 한다 |
+| **D-2** | 모호 전환 409 를 `TransitionResult` sealed 확장이 아니라 **`AmbiguousTransitionException` + 핸들러**로 낸다 | sealed 에 케이스를 더하면 `IssueApplicationService.kt:1175` 의 exhaustive `when` 이 깨져 **issue-tracking 이 컴파일 실패**한다 = cross-BC 변경. 로드맵은 issue-tracking 대응을 PR 7 에 배정했다 |
+
+## Sanity Check
+
+**gap 4건 발견 — 2건 흡수 · 2건 게이트 1 확인 대상.** 남은 미확정 0건.
+
+- **G1 ❓** 로드맵 PR 4 절 요약에 **INITIAL(최초 전환)이 빠져 있었다**. ADR §D2 와
+  `docs/plan/product/project-workflow.md §2.5` 제목은 포함한다 → **범위에 포함**. 로드맵 요약이
+  축약이고 ADR 이 정본이다.
+- **G2 ❓** `POST /{key}/transitions` **경로 충돌** → 결정 D-1. 게이트 1 확인 대상.
+- **G3 ❓** 모호 전환 409 의 sealed 확장이 **cross-BC 컴파일 파괴** → 결정 D-2 (예외 경로).
+  게이트 1 확인 대상 + 통합테스트로 실측(예외가 issue 경로에서도 409 로 나오는지).
+- **G4 ❓** `fromStateKey` nullable 화가 프론트 Zod 를 깰 수 있다 → 이 PR 은 `apps/web` 0파일이므로
+  **PR 8 이 물려받을 제약**으로 남긴다.
 
 ## Plan (← /bts-plan 채움)
 
