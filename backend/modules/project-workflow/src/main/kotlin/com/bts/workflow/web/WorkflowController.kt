@@ -1,4 +1,4 @@
-// WorkflowController — 워크플로우 REST API 3종 (목록/단건/전환/캐시무효화)
+// WorkflowController — 워크플로우 REST API (목록/단건/전환계획/전환정의 CRUD/워크플로우 CRUD/캐시무효화)
 
 package com.bts.workflow.web
 

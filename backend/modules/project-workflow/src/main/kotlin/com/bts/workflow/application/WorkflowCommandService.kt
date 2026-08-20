@@ -179,11 +179,7 @@ class WorkflowCommandService(
         workflowKey: String,
         command: TransitionDefinitionCommand,
     ): WorkflowTransition {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
-        val workflowId = requireLiveWorkflow(workflowKey)
-        if (writeRepository.isLocked(workflowId)) {
-            throw WorkflowLockedException(workflowKey)
-        }
+        val workflowId = requireEditable(actorId, workflowKey)
 
         val shape = resolveShape(workflowKey, workflowId, command, excludingId = null)
         val transitionId =
@@ -212,11 +208,7 @@ class WorkflowCommandService(
         transitionId: UUID,
         command: TransitionDefinitionCommand,
     ): WorkflowTransition {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
-        val workflowId = requireLiveWorkflow(workflowKey)
-        if (writeRepository.isLocked(workflowId)) {
-            throw WorkflowLockedException(workflowKey)
-        }
+        val workflowId = requireEditable(actorId, workflowKey)
         requireOwnedTransition(workflowKey, workflowId, transitionId)
 
         val shape = resolveShape(workflowKey, workflowId, command, excludingId = transitionId)
@@ -244,11 +236,7 @@ class WorkflowCommandService(
         workflowKey: String,
         transitionId: UUID,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
-        val workflowId = requireLiveWorkflow(workflowKey)
-        if (writeRepository.isLocked(workflowId)) {
-            throw WorkflowLockedException(workflowKey)
-        }
+        val workflowId = requireEditable(actorId, workflowKey)
         val kind = requireOwnedTransition(workflowKey, workflowId, transitionId)
         if (kind == TransitionKind.INITIAL.name) {
             throw TransitionConflictException(
@@ -350,6 +338,34 @@ class WorkflowCommandService(
     ): String {
         return writeRepository.findTransitionKind(workflowId, transitionId)
             ?: throw WorkflowNotFoundException("$workflowKey::transition::$transitionId")
+    }
+
+    /**
+     * 전환 정의를 고칠 수 있는 상태인지 확인하고 워크플로우 id 를 준다.
+     *
+     * 세 진입점(생성·수정·삭제)이 **똑같은 전처리**를 한다. 흩어 두면 한 곳에서 한 줄이 빠져도
+     * 나머지 둘이 초록이라 눈에 띄지 않는다 — 실제로 빠지는 것은 권한 한 줄이고, 그 순간 그
+     * 엔드포인트만 무방비가 된다.
+     *
+     * ### 검사 순서를 바꾸지 마라
+     * 권한이 먼저, 존재 확인이 나중이다. 이 클래스의 다른 쓰기 함수와 같은 순서이며 존재 probe 를
+     * 막기 위한 의도된 정책이다(`VersionApplicationService.kt:136-138` 관례).
+     * 권한이 있는 행위자에게는 **없는 워크플로우가 404, 있는 워크플로우가 403** 으로 정확히 갈린다 —
+     * 그 둘을 뒤집으면 오타가 권한 문제로 보인다(MEMORY `permission-assert-before-existence-makes-403-lie`).
+     *
+     * @throws WorkflowNotFoundException 살아 있는 워크플로우가 없을 때 (404)
+     * @throws WorkflowLockedException 편집이 잠겼을 때 (409)
+     */
+    private fun requireEditable(
+        actorId: UUID,
+        workflowKey: String,
+    ): UUID {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        val workflowId = requireLiveWorkflow(workflowKey)
+        if (writeRepository.isLocked(workflowId)) {
+            throw WorkflowLockedException(workflowKey)
+        }
+        return workflowId
     }
 
     /** 살아 있는 워크플로우의 id 를 준다. 없으면 404 예외. */
