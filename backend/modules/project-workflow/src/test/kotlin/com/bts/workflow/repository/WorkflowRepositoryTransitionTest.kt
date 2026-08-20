@@ -447,7 +447,7 @@ private data class LegacyColumns(
  *
  * 두 세대는 상태 key 를 다리로 이어져 있다. 신 컬럼은 `workflow_statuses` → `statuses.key`,
  * 구 컬럼은 `workflow_states.key` 다. **신 컬럼이 찬 행만** 본다 — 구 컬럼만 있는 행은 아직 이주
- * 전이고 읽기 폴백의 정당한 대상이다 (3단 분할 2단계).
+ * 되지 않았고 읽기 폴백의 정당한 대상이다 (3단 분할 2단계).
  *
  * `from` 은 신 컬럼이 NULL 인데 구 컬럼에 값이 있는 경우도 어긋남으로 센다. 그 조합이 바로 폴백이
  * 지워진 출발 상태를 되살리는 자리라 `IS DISTINCT FROM` 으로 NULL 까지 대조한다.
