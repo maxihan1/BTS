@@ -404,23 +404,19 @@ class YamlSeedServiceTest {
 
         serviceWithMulti.seedAll()
 
-        val names = mutableListOf<String>()
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                """
-                SELECT wt.name
-                FROM workflow_transitions wt
-                JOIN workflow_states fs ON wt.from_state_id = fs.id
-                JOIN workflow_states ts ON wt.to_state_id = ts.id
-                JOIN workflows w ON wt.workflow_id = w.id
-                WHERE w.key = 'multi-transition-wf' AND fs.key = 'open' AND ts.key = 'done'
-                """.trimIndent(),
-            ).use { ps ->
-                ps.executeQuery().use { rs ->
-                    while (rs.next()) names += rs.getString(1)
-                }
+        val names =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    """
+                    SELECT wt.name
+                    FROM workflow_transitions wt
+                    JOIN workflow_states fs ON wt.from_state_id = fs.id
+                    JOIN workflow_states ts ON wt.to_state_id = ts.id
+                    JOIN workflows w ON wt.workflow_id = w.id
+                    WHERE w.key = 'multi-transition-wf' AND fs.key = 'open' AND ts.key = 'done'
+                    """.trimIndent(),
+                ).use { ps -> ps.executeQuery().use { rs -> readFirstColumn(rs) } }
             }
-        }
 
         assertThat(names)
             .withFailMessage("같은 (open,done) 에 이름이 다른 전환 2개가 시드돼야 한다 — 실제=%s", names)
@@ -625,35 +621,7 @@ class YamlSeedServiceTest {
     fun `시드가 심은 전환은 from_status_id·to_status_id·kind 를 채운다`() {
         service.seedAll()
 
-        val rows = mutableListOf<List<String?>>()
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                """
-                SELECT wt.name, wt.kind,
-                       fs.key  AS legacy_from, ts.key  AS legacy_to,
-                       nfs.key AS status_from, nts.key AS status_to
-                  FROM workflow_transitions wt
-                  JOIN workflows w ON w.id = wt.workflow_id
-                  LEFT JOIN workflow_states  fs  ON fs.id  = wt.from_state_id
-                  LEFT JOIN workflow_states  ts  ON ts.id  = wt.to_state_id
-                  LEFT JOIN workflow_statuses wfs ON wfs.id = wt.from_status_id
-                  LEFT JOIN statuses          nfs ON nfs.id = wfs.status_id
-                  LEFT JOIN workflow_statuses wts ON wts.id = wt.to_status_id
-                  LEFT JOIN statuses          nts ON nts.id = wts.status_id
-                 WHERE w.key = 'software-default'
-                """.trimIndent(),
-            ).use { ps ->
-                ps.executeQuery().use { rs ->
-                    while (rs.next()) {
-                        rows +=
-                            listOf(
-                                rs.getString(1), rs.getString(2), rs.getString(3),
-                                rs.getString(4), rs.getString(5), rs.getString(6),
-                            )
-                    }
-                }
-            }
-        }
+        val rows = fetchTransitionStateKeys("software-default")
 
         assertThat(rows)
             .describedAs("software-default 의 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
@@ -673,6 +641,58 @@ class YamlSeedServiceTest {
         }
 
         log.info("시나리오 12 통과 — 시드가 전환 신 컬럼(from_status_id·to_status_id·kind)을 채운다")
+    }
+
+    /**
+     * 그 워크플로우의 전환마다 (이름, kind, 구 from key, 구 to key, 신 from key, 신 to key) 를 읽는다.
+     *
+     * 구 세대(`workflow_states`)와 신 세대(`workflow_statuses ⋈ statuses`) 를 **같은 행에 나란히** 놓아야
+     * 「신 컬럼이 구 컬럼과 같은 상태를 가리키는가」를 한 번에 대조할 수 있다. 신 컬럼이 비어 있으면
+     * 그 자리가 NULL 로 남아 대조가 어긋난다 — 그것이 이 조회가 잡으려는 것이다.
+     *
+     * @param workflowKey 대상 `workflows.key`
+     */
+    private fun fetchTransitionStateKeys(workflowKey: String): List<List<String?>> =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                """
+                SELECT wt.name, wt.kind,
+                       fs.key  AS legacy_from, ts.key  AS legacy_to,
+                       nfs.key AS status_from, nts.key AS status_to
+                  FROM workflow_transitions wt
+                  JOIN workflows w ON w.id = wt.workflow_id
+                  LEFT JOIN workflow_states   fs  ON fs.id  = wt.from_state_id
+                  LEFT JOIN workflow_states   ts  ON ts.id  = wt.to_state_id
+                  LEFT JOIN workflow_statuses wfs ON wfs.id = wt.from_status_id
+                  LEFT JOIN statuses          nfs ON nfs.id = wfs.status_id
+                  LEFT JOIN workflow_statuses wts ON wts.id = wt.to_status_id
+                  LEFT JOIN statuses          nts ON nts.id = wts.status_id
+                 WHERE w.key = ?
+                """.trimIndent(),
+            ).use { ps ->
+                ps.setString(1, workflowKey)
+                ps.executeQuery().use { rs -> readSixColumns(rs) }
+            }
+        }
+
+    /** [java.sql.ResultSet] 의 1열을 문자열 목록으로 옮긴다. while 루프를 밖으로 빼 중첩 깊이를 낮춘다. */
+    private fun readFirstColumn(rs: java.sql.ResultSet): List<String> {
+        val result = mutableListOf<String>()
+        while (rs.next()) result += rs.getString(1)
+        return result
+    }
+
+    /** [java.sql.ResultSet] 을 6열 문자열 행 목록으로 옮긴다. while 루프를 밖으로 빼 중첩 깊이를 낮춘다. */
+    private fun readSixColumns(rs: java.sql.ResultSet): List<List<String?>> {
+        val result = mutableListOf<List<String?>>()
+        while (rs.next()) {
+            result +=
+                listOf(
+                    rs.getString(1), rs.getString(2), rs.getString(3),
+                    rs.getString(4), rs.getString(5), rs.getString(6),
+                )
+        }
+        return result
     }
 }
 
