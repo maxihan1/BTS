@@ -48,6 +48,11 @@ class RawWorkflowStateInsertGuardTest {
         setOf(
             // V204 백필의 원본을 심는 것이 검증 목적이다.
             "V203ToV206MigrationTest.kt",
+            // 마이그레이션 체인 테스트는 **대상 마이그레이션 이전 시점**의 스키마를 다룬다.
+            // V207MigrationTest 는 V203 까지만 적용한 뒤 픽스처를 심고 나머지를 적용하는데, 그 시점엔
+            // 헬퍼가 전제하는 statuses·workflow_statuses 가 아직 없다(V204 가 만든다). 헬퍼로 감싸면
+            // 「없는 테이블에 INSERT」로 클래스가 통째로 죽는다. 그래서 여기서만 구형 테이블에 직접 심는다.
+            "V207MigrationTest.kt",
             // ★ 헬퍼 자신. 이 저장소에서 workflow_states 에 INSERT 하는 것이 허용된 유일한 경로다.
             //   전환 FK 가 아직 구형 테이블을 참조하므로 헬퍼가 양쪽에 심는다(로드맵 PR 4 가 재지정).
             "WorkflowStatusFixture.kt",
