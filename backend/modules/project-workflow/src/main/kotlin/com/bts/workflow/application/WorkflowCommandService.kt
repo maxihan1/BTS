@@ -10,6 +10,7 @@ import com.bts.workflow.application.command.UpdateWorkflowCommand
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.domain.exception.TransitionConflictException
 import com.bts.workflow.domain.exception.WorkflowInUseException
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowKeyConflictException
@@ -18,10 +19,8 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -240,6 +239,7 @@ class WorkflowCommandService(
         val kind = requireOwnedTransition(workflowKey, workflowId, transitionId)
         if (kind == TransitionKind.INITIAL.name) {
             throw TransitionConflictException(
+                workflowKey,
                 "최초 전환은 삭제할 수 없습니다. 이슈가 처음 놓일 상태가 사라지면 이슈를 만들 수 없게 됩니다.",
             )
         }
@@ -270,6 +270,7 @@ class WorkflowCommandService(
         requireOriginMatchesKind(workflowKey, kind, command.fromStatusKey)
         if (kind == TransitionKind.INITIAL && writeRepository.hasInitialTransition(workflowId, excludingId)) {
             throw TransitionConflictException(
+                workflowKey,
                 "최초 전환은 워크플로우당 하나입니다. 기존 최초 전환을 고치거나 지운 뒤 다시 시도해 주세요.",
             )
         }
@@ -401,21 +402,3 @@ private fun TransitionDefinitionCommand.toTransition(
         id = transitionId,
         kind = kind,
     )
-
-/**
- * 전환 정의가 「워크플로우당 최초 전환 1개」 규칙과 부딪힐 때 던진다. → 409
- *
- * ### 왜 도메인 예외 + advice 가 아니라 [ResponseStatusException] 인가
- * 이 BC 의 409 매핑은 `WorkflowExceptionHandler` 가 들고 있는데 그 advice 는 이미 detekt
- * `TooManyFunctions` 한도에 닿아 있고(`WorkflowStatusCompositionExceptionHandler` KDoc 이 그 이유로
- * 갈라져 나왔다), Task 8 의 파일 허용 범위에 예외 정의 파일과 advice 파일이 둘 다 없다.
- * 그래서 `agile-planning` 의 `BoardQuickFilterExceptions.kt` 선례를 따라 **application 계층 예외가
- * 스스로 상태 코드를 지고** 간다.
- *
- * ### 남는 차이 — 본문 형식
- * 이 예외는 표준 `{ "error": { "code", "message" } }` 가 아니라 Spring 의 `ProblemDetail` 로 나간다.
- * 전환 편집 화면(로드맵 PR 8)이 이 코드를 읽기 전에 도메인 예외 + advice 로 접는 것이 정본 방향이다.
- */
-class TransitionConflictException(
-    reason: String,
-) : ResponseStatusException(HttpStatus.CONFLICT, reason)

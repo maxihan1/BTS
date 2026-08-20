@@ -147,3 +147,26 @@ class AmbiguousTransitionException(
 ) : RuntimeException(
         "Ambiguous transition in workflow '$workflowKey': ${candidates.size} candidates match",
     )
+
+/**
+ * 전환 정의가 「워크플로우당 최초 전환 1개」 규칙과 부딪힐 때 던진다. → 409
+ *
+ * 두 자리에서 난다 — 최초(`INITIAL`) 전환이 이미 있는데 하나 더 만들려 할 때(spec E2), 그리고
+ * 하나뿐인 최초 전환을 지우려 할 때(spec E5). 둘 다 「지금 상태와 요청이 부딪힌다」라서 409 이고,
+ * 어느 쪽인지는 [reason] 이 사람 말로 갈라 준다.
+ *
+ * ### 왜 `ResponseStatusException` 이 아닌가 (되돌리지 마라)
+ * 이전 구현은 이 예외가 스스로 상태 코드를 지는
+ * [org.springframework.web.server.ResponseStatusException] 이었다. 그러면 본문이 이 BC 표준
+ * `{ "error": { "code", "message" } }` 가 아니라 **빈 본문 + `sendError` 경유 Boot 기본 오류 페이지**
+ * 로 나간다(실측 — MockMvc standalone 에서 본문 길이 0, `json can not be null or empty`).
+ * 워크플로우 편집 화면 하나가 두 가지 오류 형식을 다뤄야 해서 도메인 예외로 되돌리고 매핑은
+ * [com.bts.workflow.web.TransitionConflictExceptionHandler] 에 맡긴다.
+ *
+ * @param workflowKey 충돌이 난 워크플로우 키. 응답에는 싣지 않고 로그로만 남긴다.
+ * @param reason 사람이 읽을 수 있는 충돌 사유. 그대로 응답 `message` 가 된다.
+ */
+class TransitionConflictException(
+    val workflowKey: String,
+    val reason: String,
+) : RuntimeException("Transition conflict in workflow '$workflowKey': $reason")

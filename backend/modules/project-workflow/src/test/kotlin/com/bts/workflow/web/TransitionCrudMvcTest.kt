@@ -133,7 +133,8 @@ class TransitionCrudMvcTest {
             )
         mockMvc =
             MockMvcBuilders.standaloneSetup(controller)
-                .setControllerAdvice(WorkflowExceptionHandler())
+                // 전환 충돌 409 는 전용 advice 가 맡는다 — 빼면 본문이 비고 $.error.code 가 사라진다.
+                .setControllerAdvice(WorkflowExceptionHandler(), TransitionConflictExceptionHandler())
                 .build()
         SecurityContextHolder.getContext().authentication =
             UsernamePasswordAuthenticationToken(actor.toString(), null, emptyList())
