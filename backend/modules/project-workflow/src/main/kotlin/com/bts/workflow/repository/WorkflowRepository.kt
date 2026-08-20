@@ -123,25 +123,19 @@ class WorkflowRepository(private val dsl: DSLContext) {
     private fun fetchJoinedRows(condition: Condition): List<Record> =
         dsl
             .select(
-                // workflows 컬럼
-                WORKFLOWS.ID,
-                WORKFLOWS.KEY,
-                WORKFLOWS.NAME,
-                WORKFLOWS.DESCRIPTION,
-                // 상태 — 전역 카탈로그 2단 (workflow_statuses ⋈ statuses)
-                WORKFLOW_STATUSES.ID,
-                WORKFLOW_STATUSES.DISPLAY_ORDER,
-                STATUSES.KEY,
-                STATUSES.NAME,
-                STATUSES.CATEGORY,
-                // workflow_transitions 컬럼
-                WORKFLOW_TRANSITIONS.ID,
-                WORKFLOW_TRANSITIONS.WORKFLOW_ID,
-                WORKFLOW_TRANSITIONS.KIND,
-                WORKFLOW_TRANSITIONS.FROM_STATUS_ID,
-                WORKFLOW_TRANSITIONS.TO_STATUS_ID,
-                WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
-                WORKFLOW_TRANSITIONS.NAME,
+                listOf(
+                    // workflows 컬럼
+                    WORKFLOWS.ID,
+                    WORKFLOWS.KEY,
+                    WORKFLOWS.NAME,
+                    WORKFLOWS.DESCRIPTION,
+                    // 상태 — 전역 카탈로그 2단 (workflow_statuses ⋈ statuses)
+                    WORKFLOW_STATUSES.ID,
+                    WORKFLOW_STATUSES.DISPLAY_ORDER,
+                    STATUSES.KEY,
+                    STATUSES.NAME,
+                    STATUSES.CATEGORY,
+                ) + TRANSITION_COLUMNS,
             )
             .from(WORKFLOWS)
             // 상태 목록의 정본. 소프트 삭제된 카탈로그 항목은 없는 것으로 취급한다.
@@ -162,7 +156,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
     /**
      * 조회 결과 Record 목록을 workflow_id 기준으로 그룹핑해 [Workflow] 목록으로 변환한다.
      *
-     * LEFT JOIN 결과는 (workflow × states × transitions) 의 카르테시안 곱이므로
+     * LEFT JOIN 결과는 (workflow × 상태 편성 × transitions) 의 카르테시안 곱이므로
      * workflow_id → (고유 states, 고유 transitions) 으로 dedup 후 aggregate 를 복원한다.
      */
     private fun List<Record>.toWorkflows(): List<Workflow> {
@@ -226,6 +220,8 @@ class WorkflowRepository(private val dsl: DSLContext) {
      * 그 종류의 정의다. 종전 구현은 구 컬럼을 `as UUID` 로 캐스팅해 V207 이 백필한 INITIAL 행에서
      * `NullPointerException` 을 냈다.
      *
+     * 읽는 컬럼의 정본은 [TRANSITION_COLUMNS] 다 — 새 읽기 경로는 그 목록과 이 함수를 함께 쓴다.
+     *
      * @param statusIdToKey 이 워크플로우의 `workflow_statuses.id` → 상태 key 매핑.
      */
     private fun Record.toWorkflowTransition(statusIdToKey: Map<UUID, String>): WorkflowTransition =
@@ -242,6 +238,25 @@ class WorkflowRepository(private val dsl: DSLContext) {
         private val DSL_TRUE: Condition = DSL.trueCondition()
     }
 }
+
+/**
+ * 전환 1행을 복원하는 데 필요한 컬럼 묶음.
+ *
+ * [WorkflowRepository] 안의 `Record.toWorkflowTransition` 과 **짝**이다. 전환을 읽는 경로가
+ * 늘어날 때(로드맵 PR 4 의 전환 CRUD 가 곧 하나 더 만든다) 컬럼 목록을 손으로 다시 적으면
+ * 하나를 빠뜨려도 컴파일이 통과하고 `required(...)` 가 런타임에야 죽는다. 목록과 매핑을
+ * 한 파일에 나란히 두어 한쪽만 바뀌는 것을 막는다.
+ */
+private val TRANSITION_COLUMNS =
+    listOf(
+        WORKFLOW_TRANSITIONS.ID,
+        WORKFLOW_TRANSITIONS.WORKFLOW_ID,
+        WORKFLOW_TRANSITIONS.KIND,
+        WORKFLOW_TRANSITIONS.FROM_STATUS_ID,
+        WORKFLOW_TRANSITIONS.TO_STATUS_ID,
+        WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
+        WORKFLOW_TRANSITIONS.NAME,
+    )
 
 /**
  * `workflow_statuses.id` 를 상태 key 로 되돌린다. FK 제약상 실패할 수 없으나, 대상 상태가
