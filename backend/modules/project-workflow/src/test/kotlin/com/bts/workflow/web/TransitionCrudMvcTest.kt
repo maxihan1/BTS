@@ -31,6 +31,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.testcontainers.containers.PostgreSQLContainer
@@ -169,6 +170,8 @@ class TransitionCrudMvcTest {
 
         mockMvc.perform(postTransition("global-edge", body(from = "open", to = "done", name = "전역", kind = "GLOBAL")))
             .andExpect(status().isBadRequest)
+            // 400 만 보면 「바디를 못 읽어서 400」과 구분되지 않는다 — 도메인 판정이 낸 400 인지까지 본다.
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
     }
 
     @Test
@@ -177,6 +180,7 @@ class TransitionCrudMvcTest {
 
         mockMvc.perform(postTransition("normal-edge", body(to = "done", name = "출발지 없음")))
             .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
     }
 
     // ── E5·E2. 최초 전환 ───────────────────────────────────────────────────────
