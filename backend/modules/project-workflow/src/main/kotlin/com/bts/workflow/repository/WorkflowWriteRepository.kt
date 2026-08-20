@@ -322,9 +322,14 @@ class WorkflowWriteRepository(
     /**
      * 원본의 구형 상태 행과 전환을 복사한다. 전역 카탈로그 편성은 [copyStatusComposition] 이 먼저 한다.
      *
-     * 구형 `workflow_states` 도 함께 복사한다 — 전환은 더 이상 그 테이블을 참조하지 않지만
-     * `PostActionTransitionResolver` 가 아직 상태 키를 그 테이블로 해석한다. add → backfill → drop
-     * 의 3단(DROP)이 오기 전까지는 두 세대를 나란히 유지하는 편이 안전하다.
+     * ### 복제본의 구형 `workflow_states` 를 가리키는 것은 지금 아무것도 없다
+     * [copyTransitions] 가 복제본 전환에 **신 컬럼만** 채우므로 구 컬럼은 NULL 이다. 구 테이블을
+     * 보는 두 경로 — `WorkflowRepository` 의 읽기 폴백과 `PostActionTransitionResolver` 의 해석 —
+     * 은 **둘 다 신 컬럼이 정본이고 구 컬럼은 신 컬럼이 NULL 인 행에서만 탄다**. 복제본은 신 컬럼이
+     * 차 있으므로 어느 쪽도 이 복사된 행에 닿지 않는다.
+     *
+     * 그럼에도 함께 복사하는 것은 add → backfill → drop 의 3단(DROP)까지 원본과 복제본의 모양을
+     * 같게 두려는 보수적 선택이다. 3단계가 구 컬럼·구 테이블과 함께 이 복사도 지운다.
      */
     fun copyLegacyStatesAndTransitions(
         sourceId: UUID,
