@@ -293,9 +293,12 @@ class YamlSeedValidatorPostActionTest {
             "test-validator-seed",
         )
 
-        // software-default 전환 수 불변 검증 (FR-IS-07 B7 YAML 변경 후에도 6건 유지)
+        // software-default 전환 수 불변 검증 (FR-IS-07 B7 YAML 을 바꿔도 유지) — NORMAL 6 + INITIAL 1 = 7.
+        // 6 이 아닌 이유. 이 단언은 원래부터 환경 의존이었다 — V207 ⑨ 백필이 끝난 DB 는 워크플로우마다
+        // INITIAL 1건을 이미 갖고 있어 진작 7건이고, 빈 Testcontainers DB 에서만 6이었다. 시드 YAML 이
+        // 같은 모양(도착지 = displayOrder 최소 상태)의 INITIAL 을 심으면서 두 환경이 7로 맞았다.
         val swDefault = all.first { it.key == "software-default" }
-        assertThat(swDefault.transitions).hasSize(6)
+        assertThat(swDefault.transitions).hasSize(7)
 
         log.info("시나리오 7 통과 — 표준 4 워크플로우 회귀 없음 확인, total={}", all.size)
     }
