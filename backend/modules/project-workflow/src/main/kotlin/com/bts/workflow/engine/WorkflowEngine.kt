@@ -206,18 +206,7 @@ class WorkflowEngine(
                     return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
                 }
 
-        val candidates =
-            workflow.transitions.filter { transition ->
-                when (transition.kind) {
-                    // NORMAL — 출발 상태가 현재 상태와 같을 때만 후보다.
-                    TransitionKind.NORMAL -> transition.fromStateKey == req.fromStateKey
-                    // GLOBAL — 현재 상태와 무관하게 항상 후보다. 단 도착지가 현재 상태면 자기 자신으로 가는
-                    // 전환이므로 제외한다 (spec E1).
-                    TransitionKind.GLOBAL -> transition.toStateKey != req.fromStateKey
-                    // INITIAL — 이슈 생성 진입에만 쓰이며 전환 후보가 아니다.
-                    TransitionKind.INITIAL -> false
-                }
-            }
+        val candidates = candidatesFor(workflow, req.fromStateKey)
         val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
 
         return AvailableTransitionsResult.Success(
@@ -252,6 +241,32 @@ class WorkflowEngine(
         } ?: throw WorkflowNotFoundException(
             "${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}",
         )
+
+    /**
+     * 현재 상태에서 쓸 수 있는 전환 후보를 전환 종류별 규칙으로 골라낸다.
+     *
+     * - [TransitionKind.NORMAL] — 출발 상태가 [fromStateKey] 와 같을 때만 후보다.
+     * - [TransitionKind.GLOBAL] — 현재 상태와 무관하게 항상 후보다. 단 도착지가 [fromStateKey] 와 같으면
+     *   자기 자신으로 가는 전환이므로 제외한다 (spec 2026-08-20-backend-workflow-transition-id-multi-global E1).
+     * - [TransitionKind.INITIAL] — 이슈 생성 진입에만 쓰이며 전환 후보가 아니다.
+     *
+     * 열거 경로([availableTransitions])와 실행 경로([resolveTransition])의 후보 산출이 갈라지면
+     * 「목록에는 보이는데 실행은 안 되는」 전환이 생긴다. 두 경로 모두 이 함수를 거쳐야 한다.
+     *
+     * @param workflow 후보를 고를 대상 워크플로우 정의
+     * @param fromStateKey 이슈의 현재 상태 키
+     */
+    private fun candidatesFor(
+        workflow: Workflow,
+        fromStateKey: String,
+    ): List<WorkflowTransition> =
+        workflow.transitions.filter { transition ->
+            when (transition.kind) {
+                TransitionKind.NORMAL -> transition.fromStateKey == fromStateKey
+                TransitionKind.GLOBAL -> transition.toStateKey != fromStateKey
+                TransitionKind.INITIAL -> false
+            }
+        }
 
     private fun buildContext(
         req: TransitionRequest,
