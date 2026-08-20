@@ -9,6 +9,7 @@ import {
   useIssueTransitions,
   useTransitionIssue,
   useAmbiguousTransition,
+  useIssueTransitionFlow,
 } from '../use-issue-transitions'
 
 function createWrapper() {
@@ -354,5 +355,132 @@ describe('전환 409 왕복 — 후보 2개 → 고름 → transitionId 재요�
     expect(sentTransitionIds).toEqual([undefined, CANDIDATE_TWO_ID])
     expect(result.current.mutation.data?.currentStateKey).toBe('done')
     expect(result.current.ambiguous.prompt).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T26. 전환 배선 한 덩어리 — 이슈 상세 화면에서 훅으로 옮긴 계약
+//   화면이 아니라 훅이 소유하므로, 왕복이 깨지면 화면 테스트가 아니라 여기가 먼저 red 다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useIssueTransitionFlow', () => {
+  it('T26-F1: 409 모호 전환이면 실패로 닫지 않고 후보 프롬프트를 연다', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () =>
+        HttpResponse.json(AMBIGUOUS_BODY, { status: 409 }),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+
+    await act(async () => {
+      result.current.mutate({ toStatusKey: 'done', expectedVersion: 1 })
+    })
+
+    await waitFor(() => expect(result.current.prompt).not.toBeNull())
+    expect(result.current.prompt?.candidates).toHaveLength(2)
+    expect(result.current.prompt?.input).toEqual({ toStatusKey: 'done', expectedVersion: 1 })
+  })
+
+  it('T26-F2: 모호 전환이 아닌 실패는 프롬프트를 열지 않는다 (기존 에러 안내 경로 유지)', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () =>
+        HttpResponse.json({ errorCode: 'TRANSITION_NOT_ALLOWED', message: '전환 불가' }, { status: 409 }),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+
+    await act(async () => {
+      result.current.mutate({ toStatusKey: 'done', expectedVersion: 1 })
+    })
+
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(result.current.prompt).toBeNull()
+  })
+
+  it('T26-F3: 후보를 고르면 원 요청에 transitionId 만 얹어 재요청하고 프롬프트가 닫힌다', async () => {
+    const sentBodies: { transitionId?: string; expectedVersion?: number; resolutionId?: string }[] = []
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', async ({ request }) => {
+        const body = (await request.json()) as (typeof sentBodies)[number]
+        sentBodies.push(body)
+        // transitionId 가 없으면 후보가 2개라 못 가른다 → 409 (ADR §D3)
+        if (body.transitionId === undefined) {
+          return HttpResponse.json(AMBIGUOUS_BODY, { status: 409 })
+        }
+        return HttpResponse.json({ data: TRANSITIONED_ISSUE })
+      }),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+
+    await act(async () => {
+      result.current.mutate({ toStatusKey: 'done', expectedVersion: 7, resolutionId: 'res-1' })
+    })
+    await waitFor(() => expect(result.current.prompt).not.toBeNull())
+
+    await act(async () => {
+      result.current.selectCandidate(CANDIDATE_TWO_ID)
+    })
+    await waitFor(() => expect(result.current.prompt).toBeNull())
+
+    // 재요청은 고른 후보로 나갔고, OCC 버전·결의안을 잃지 않았다 —
+    // 하나라도 빠지면 사용자에게는 「골랐는데 또 실패」로만 보인다
+    expect(sentBodies).toEqual([
+      { toStatusKey: 'done', expectedVersion: 7, resolutionId: 'res-1' },
+      { toStatusKey: 'done', expectedVersion: 7, resolutionId: 'res-1', transitionId: CANDIDATE_TWO_ID },
+    ])
+  })
+
+  it('T26-F4: 취소하면 프롬프트만 닫히고 재요청은 나가지 않는다', async () => {
+    let postCount = 0
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () => {
+        postCount++
+        return HttpResponse.json(AMBIGUOUS_BODY, { status: 409 })
+      }),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+
+    await act(async () => {
+      result.current.mutate({ toStatusKey: 'done', expectedVersion: 1 })
+    })
+    await waitFor(() => expect(result.current.prompt).not.toBeNull())
+
+    await act(async () => {
+      result.current.cancelPrompt()
+    })
+
+    expect(result.current.prompt).toBeNull()
+    expect(postCount).toBe(1)
+  })
+
+  it('T26-F5: 전환 성공 후 issue + issue-transitions 캐시를 함께 무효화한다', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () =>
+        HttpResponse.json({ data: TRANSITIONED_ISSUE }),
+      ),
+    )
+
+    const { client, wrapper } = createWrapper()
+    client.setQueryData(['issue', 'ATLAS-1'], { key: 'ATLAS-1', version: 1 })
+    client.setQueryData(['issue-transitions', 'ATLAS-1'], MOCK_TRANSITIONS)
+
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+
+    await act(async () => {
+      result.current.mutate({ toStatusKey: 'done', expectedVersion: 1 })
+    })
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+
+    // 한쪽만 무효화하면 배지는 바뀌었는데 셀렉터는 옛 전환을 계속 보여 준다
+    expect(client.getQueryState(['issue', 'ATLAS-1'])?.isInvalidated).toBe(true)
+    expect(client.getQueryState(['issue-transitions', 'ATLAS-1'])?.isInvalidated).toBe(true)
   })
 })

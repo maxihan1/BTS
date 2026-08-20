@@ -8,6 +8,8 @@ import {
   AmbiguousTransitionDialog,
   ambiguousTransitionStrings,
 } from '@/components/issue/meta/IssueStateTransition'
+import { AmbiguousTransitionPrompt } from '@/components/issue/meta/AmbiguousTransitionPrompt'
+import type { IssueTransitionFlow } from '@/hooks/use-issue-transitions'
 import { issueDetailStrings } from '@/i18n/ko'
 
 const transitionsFixture: IssueTransition[] = [
@@ -213,6 +215,80 @@ describe('AmbiguousTransitionDialog', () => {
         onSelect={vi.fn()}
         onCancel={vi.fn()}
       />,
+    )
+    expect(screen.getByRole('button', { name: '조건부 승인' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '즉시 완료' })).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AmbiguousTransitionPrompt — 같은 409 프롬프트의 「상태 ↔ 표현」 이음매라 여기서 함께 잰다.
+//   커넥터가 prop 하나를 흘려도 표현 컴포넌트 테스트(T21-C*)는 그대로 초록이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 커넥터 계약만 재려고 만든 가짜 플로우. 훅 자체는 use-issue-transitions.test 가 잰다. */
+function createFlowStub(overrides: Partial<IssueTransitionFlow> = {}): IssueTransitionFlow {
+  return {
+    mutate: vi.fn(),
+    isPending: false,
+    prompt: null,
+    selectCandidate: vi.fn(),
+    cancelPrompt: vi.fn(),
+    ...overrides,
+  }
+}
+
+/** 열려 있는 프롬프트 — 서버가 돌려준 안내 문구 + 후보 전량 + 재요청에 쓸 원 요청. */
+const OPEN_PROMPT = {
+  message: AMBIGUOUS_MESSAGE,
+  candidates: CANDIDATES,
+  input: { toStatusKey: 'done', expectedVersion: 7 },
+}
+
+describe('AmbiguousTransitionPrompt', () => {
+  it('T26-P1: 열린 프롬프트가 없으면 다이얼로그를 그리지 않는다', () => {
+    render(<AmbiguousTransitionPrompt flow={createFlowStub()} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('T26-P2: 프롬프트가 열리면 서버 문구와 후보 전량이 다이얼로그로 노출된다', () => {
+    render(<AmbiguousTransitionPrompt flow={createFlowStub({ prompt: OPEN_PROMPT })} />)
+    expect(
+      screen.getByRole('dialog', { name: ambiguousTransitionStrings.dialogTitle }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(AMBIGUOUS_MESSAGE)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '조건부 승인' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '즉시 완료' })).toBeInTheDocument()
+  })
+
+  it('T26-P3: 후보를 고르면 flow.selectCandidate 가 그 transitionId 로 호출된다', async () => {
+    const selectCandidate = vi.fn()
+    render(
+      <AmbiguousTransitionPrompt flow={createFlowStub({ prompt: OPEN_PROMPT, selectCandidate })} />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '즉시 완료' }))
+    expect(selectCandidate).toHaveBeenCalledOnce()
+    expect(selectCandidate).toHaveBeenCalledWith(CANDIDATE_TWO_ID)
+  })
+
+  it('T26-P4: 취소하면 flow.cancelPrompt 만 호출된다 (전환 미실행)', async () => {
+    const cancelPrompt = vi.fn()
+    const selectCandidate = vi.fn()
+    render(
+      <AmbiguousTransitionPrompt
+        flow={createFlowStub({ prompt: OPEN_PROMPT, cancelPrompt, selectCandidate })}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: ambiguousTransitionStrings.cancel }))
+    expect(cancelPrompt).toHaveBeenCalledOnce()
+    expect(selectCandidate).not.toHaveBeenCalled()
+  })
+
+  it('T26-P5: 재요청 진행 중이면 후보 버튼이 disabled 된다 (isPending 전달 확인)', () => {
+    render(
+      <AmbiguousTransitionPrompt flow={createFlowStub({ prompt: OPEN_PROMPT, isPending: true })} />,
     )
     expect(screen.getByRole('button', { name: '조건부 승인' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '즉시 완료' })).toBeDisabled()

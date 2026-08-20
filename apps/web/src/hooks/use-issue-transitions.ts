@@ -1,12 +1,17 @@
-// 이슈 상태 전환 가용목록 조회 + 전환 실행 TanStack Query 훅 + 409 모호 전환 후보 선택 상태
+// 이슈 상태 전환 가용목록 조회 + 전환 실행 TanStack Query 훅 + 409 모호 전환 후보 선택 · 전환 플로우
 import { useCallback, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   fetchIssueTransitions,
   transitionIssue,
   parseAmbiguousTransitionError,
 } from '@/api/issues'
 import type { AmbiguousTransitionCandidate, TransitionIssueInput } from '@/api/issues'
+import { ApiError } from '@/api/client'
+import { issueQueryKey } from '@/api/useUpdateIssueSummary'
+import { issueDetailStrings } from '@/i18n/ko'
 
 /** 이슈 전환 관련 queryKey 팩토리 */
 export const issueTransitionKeys = {
@@ -113,4 +118,120 @@ export function useAmbiguousTransition(): AmbiguousTransitionController {
   }, [])
 
   return { prompt, capture, clear }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 전환 실행 플로우 — 전환 mutation + 409 후보 선택을 한 덩어리로 (이슈 상세용)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 이슈 단건 캐시와 가용 전환 목록 캐시를 함께 무효화한다.
+ *
+ * 전환은 두 캐시를 동시에 낡게 만든다 — 상태 배지는 이슈 단건에서, 다음에 고를 수 있는
+ * 전환은 목록에서 온다. 한쪽만 무효화하면 배지는 바뀌었는데 셀렉터는 옛 전환을 계속 보여 준다.
+ *
+ * @param queryClient 무효화를 수행할 TanStack Query 클라이언트
+ * @param key 전환한 이슈 식별 키
+ */
+async function invalidateIssueTransitionCaches(
+  queryClient: QueryClient,
+  key: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: issueQueryKey(key) }),
+    queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(key) }),
+  ])
+}
+
+/**
+ * 모호 전환이 아닌 전환 실패를 사용자에게 알린다 (스펙 E5 S3·S4·S5).
+ *
+ * @param error mutation 이 던진 값
+ * @param invalidate VERSION_CONFLICT 일 때 최신 데이터 재조회를 유도하는 무효화기
+ */
+function notifyTransitionFailure(error: unknown, invalidate: () => void): void {
+  if (error instanceof ApiError && error.status === 409) {
+    // errorCode 구분: TRANSITION_NOT_ALLOWED(S3) vs VERSION_CONFLICT(S4)
+    const body = error.body as Record<string, unknown> | undefined
+    const errorCode = typeof body?.['errorCode'] === 'string' ? body['errorCode'] : ''
+    if (errorCode === 'TRANSITION_NOT_ALLOWED') {
+      toast.error(issueDetailStrings.transitionNotAllowedError)
+      return
+    }
+    // VERSION_CONFLICT(S4) — 최신 데이터 + 전환 목록 재조회 유도
+    invalidate()
+    toast.error(issueDetailStrings.transitionVersionConflictError)
+    return
+  }
+  if (error instanceof ApiError && error.status === 422) {
+    toast.error(issueDetailStrings.transitionWorkflowNotConfiguredError)
+    return
+  }
+  toast.error(issueDetailStrings.transitionNotAllowedError)
+}
+
+/** {@link useIssueTransitionFlow} 반환값 — 화면이 필요한 전환 배선 전부. */
+export interface IssueTransitionFlow {
+  /** 전환을 실행한다. 409 모호 전환이면 토스트 대신 후보 프롬프트가 열린다 */
+  readonly mutate: (input: TransitionIssueInput) => void
+  /** 전환 요청 진행 중 여부 — 셀렉터·후보 버튼 disabled 에 쓴다 (NFR3) */
+  readonly isPending: boolean
+  /** 열려 있는 409 후보 선택 프롬프트. 없으면 null */
+  readonly prompt: AmbiguousTransitionPrompt | null
+  /** 후보를 지목해 재요청한다 — 원 요청에 `transitionId` 만 덧붙인다 */
+  readonly selectCandidate: (transitionId: string) => void
+  /** 후보 선택을 취소하고 프롬프트를 닫는다 (전환 미실행) */
+  readonly cancelPrompt: () => void
+}
+
+/**
+ * 이슈 상세의 전환 실행 배선 전부 — mutation · 캐시 무효화 · 에러 토스트 ·
+ * 409 `AMBIGUOUS_TRANSITION` 후보 선택 왕복(ADR 2026-08-18 §D3).
+ *
+ * 화면이 아니라 여기에 모아 둔 이유는 네 조각(실행·무효화·에러 분기·후보 왕복)이 **하나의
+ * 프로토콜**이기 때문이다. 화면에 흩어 두면 후보를 고른 뒤 원 요청의 `expectedVersion` 을
+ * 다시 조립하는 식으로 갈라지고, 그때 사용자에게는 「골랐는데 또 실패」로만 보인다.
+ *
+ * @param issueKey 전환할 이슈 식별 키 (예: "ATLAS-1")
+ * @returns 전환 실행기 + 진행 상태 + 후보 프롬프트 상태
+ */
+export function useIssueTransitionFlow(issueKey: string): IssueTransitionFlow {
+  const queryClient = useQueryClient()
+  const ambiguous = useAmbiguousTransition()
+
+  const mutation = useMutation({
+    mutationFn: (input: TransitionIssueInput) => transitionIssue(issueKey, input),
+    onSuccess: () => invalidateIssueTransitionCaches(queryClient, issueKey),
+    onError: (error: unknown, input: TransitionIssueInput) => {
+      // ★모호 전환(409 AMBIGUOUS_TRANSITION)은 토스트로 닫지 않는다 — 후보를 고르면 실행할 수
+      //   있는 상태라 "허용되지 않는 전환" 이라고 말하면 거짓이고, 사용자는 그 상태 변경을
+      //   영영 못 하게 된다. 원 요청을 그대로 들고 후보 선택 프롬프트로 넘긴다.
+      if (ambiguous.capture(error, input)) return
+      notifyTransitionFailure(error, () => {
+        void invalidateIssueTransitionCaches(queryClient, issueKey)
+      })
+    },
+  })
+
+  const { prompt, clear } = ambiguous
+  const { mutate } = mutation
+
+  const selectCandidate = useCallback(
+    (transitionId: string) => {
+      if (prompt === null) return
+      // 원 요청(`prompt.input`)에 고른 후보의 `transitionId` 만 덧붙인다 — 여기서
+      // `expectedVersion`·`resolutionId` 를 다시 조립하면 한 쪽이 빠졌을 때 또 실패한다.
+      clear()
+      mutate({ ...prompt.input, transitionId })
+    },
+    [prompt, clear, mutate],
+  )
+
+  return {
+    mutate,
+    isPending: mutation.isPending,
+    prompt,
+    selectCandidate,
+    cancelPrompt: clear,
+  }
 }
