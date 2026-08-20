@@ -230,8 +230,7 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
         open fun dataSource(): DataSource = mockk(relaxed = true)
 
         @Bean
-        open fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-            DataSourceTransactionManager(dataSource)
+        open fun transactionManager(dataSource: DataSource) = DataSourceTransactionManager(dataSource)
 
         @Bean
         open fun workflowTransitionPort(): WorkflowTransitionPort = AmbiguousThrowingTransitionPort()
