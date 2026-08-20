@@ -604,6 +604,76 @@ class YamlSeedServiceTest {
 
         log.info("시나리오 11 통과 — 시드 적재분 origin=SEED")
     }
+
+    // ── 시나리오 12. 시드가 전환의 신 컬럼을 채운다 (프로덕션 부팅 회귀 가드) ────────
+
+    /**
+     * 시드가 심은 전환이 `from_status_id`·`to_status_id`·`kind` 를 채우는가.
+     *
+     * ### 왜 이 가드가 필요한가 — 빈 DB 부팅이 조용히 반쪽이 된다
+     * V207 이 전환의 출발·도착을 `workflow_states` 에서 전역 카탈로그 편성 `workflow_statuses` 로
+     * 재지정했다. 재지정 백필은 **마이그레이션 시점에 있던 행**만 손대므로, 그 뒤에 시드가 심는 행은
+     * 시드가 직접 신 컬럼을 채워야 한다. 채우지 않으면 표준 4 워크플로우의 전환이 전부 신 컬럼 NULL 로
+     * 남아 ① 3단계에서 NOT NULL 을 걸 수 없고 ② 읽기가 구 컬럼 폴백에만 의존하게 된다.
+     *
+     * ### 왜 `repository.findAll()` 로는 못 잡는가
+     * 읽기에 구 컬럼 폴백이 있어 신 컬럼이 비어도 aggregate 복원은 성공한다(시나리오 1 이 그래서 초록이다).
+     * 그래서 **컬럼을 직접 본다** — 폴백이 가리는 것을 드러내는 유일한 축이다.
+     */
+    @Test
+    @Order(12)
+    fun `시드가 심은 전환은 from_status_id·to_status_id·kind 를 채운다`() {
+        service.seedAll()
+
+        val rows = mutableListOf<List<String?>>()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                """
+                SELECT wt.name, wt.kind,
+                       fs.key  AS legacy_from, ts.key  AS legacy_to,
+                       nfs.key AS status_from, nts.key AS status_to
+                  FROM workflow_transitions wt
+                  JOIN workflows w ON w.id = wt.workflow_id
+                  LEFT JOIN workflow_states  fs  ON fs.id  = wt.from_state_id
+                  LEFT JOIN workflow_states  ts  ON ts.id  = wt.to_state_id
+                  LEFT JOIN workflow_statuses wfs ON wfs.id = wt.from_status_id
+                  LEFT JOIN statuses          nfs ON nfs.id = wfs.status_id
+                  LEFT JOIN workflow_statuses wts ON wts.id = wt.to_status_id
+                  LEFT JOIN statuses          nts ON nts.id = wts.status_id
+                 WHERE w.key = 'software-default'
+                """.trimIndent(),
+            ).use { ps ->
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        rows +=
+                            listOf(
+                                rs.getString(1), rs.getString(2), rs.getString(3),
+                                rs.getString(4), rs.getString(5), rs.getString(6),
+                            )
+                    }
+                }
+            }
+        }
+
+        assertThat(rows)
+            .describedAs("software-default 의 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
+            .hasSize(6)
+        assertThat(rows).allSatisfy { row ->
+            assertThat(row[1]).describedAs("전환 '%s' 의 kind", row[0]).isEqualTo("NORMAL")
+            // 대조 기준이 NULL 이면 아래 isEqualTo 가 「둘 다 NULL」로 조용히 통과한다.
+            // 3단계에서 시드가 구 컬럼을 그만 채울 때 여기가 먼저 red 를 낸다.
+            assertThat(row[2]).describedAs("전환 '%s' 의 구 from 컬럼이 대조 기준이다", row[0]).isNotNull()
+            assertThat(row[3]).describedAs("전환 '%s' 의 구 to 컬럼이 대조 기준이다", row[0]).isNotNull()
+            assertThat(row[4])
+                .describedAs("전환 '%s' 의 from_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
+                .isEqualTo(row[2])
+            assertThat(row[5])
+                .describedAs("전환 '%s' 의 to_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
+                .isEqualTo(row[3])
+        }
+
+        log.info("시나리오 12 통과 — 시드가 전환 신 컬럼(from_status_id·to_status_id·kind)을 채운다")
+    }
 }
 
 // ── 테스트 헬퍼 ResourceLoader ──────────────────────────────────────────────────

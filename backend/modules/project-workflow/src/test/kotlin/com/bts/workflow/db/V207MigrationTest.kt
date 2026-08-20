@@ -341,10 +341,12 @@ class V207MigrationTest {
     /**
      * ### 왜 스키마 축이 먼저인가 — 동작 축만 두면 이 판별식이 공허해진다
      *
-     * `ck_transition_kind_from` 은 「NORMAL 이면 from 있음 · GLOBAL/INITIAL 이면 from 없음」이라
-     * **목록 밖의 kind 는 어느 분기도 만족시키지 못해 함께 거부한다.** 그래서 INSERT 실패만 보면
-     * `ck_workflow_transitions_kind` 를 통째로 지워도 초록이다(실측 — 지운 상태에서 PostgreSQL 이
-     * `ck_transition_kind_from` 위반으로 막았다). 허용 목록의 정본이 어느 제약인지는 정의를 직접 읽어야 한다.
+     * 원래 `ck_transition_kind_from` 이 「NORMAL 이면 from 있음 · GLOBAL/INITIAL 이면 from 없음」으로
+     * **목록 밖의 kind 를 어느 분기도 만족시키지 못해 함께 거부**했다. 그래서 INSERT 실패만 보면
+     * `ck_workflow_transitions_kind` 를 통째로 지워도 초록이었다(실측). 그 제약은 3단계로 이연했지만
+     * (`kind 와 from_status_id 조합 CHECK 는 3단계로 이연됐다` 참조) 판별식은 그 시절 모양대로 둔다 —
+     * 3단계가 제약을 되살릴 때 이 자리가 다시 공허해지기 때문이다. 허용 목록의 정본이 어느 제약인지는
+     * 정의를 직접 읽어야 한다.
      */
     @Test
     fun `kind CHECK 가 NORMAL GLOBAL INITIAL 만 허용한다`() {
@@ -411,29 +413,109 @@ class V207MigrationTest {
         assertThat(failure).contains("uq_workflow_transitions_initial")
     }
 
-    @Test
-    fun `kind=NORMAL 인데 from_status_id 가 NULL 이면 CHECK 위반`() {
-        val failure =
-            insertFailsWith(
-                "INSERT INTO workflow_transitions" +
-                    " (workflow_id, to_status_id, name, kind, display_order)" +
-                    " SELECT t.workflow_id, t.to_status_id, '알파 출발지 없는 보통 전환', 'NORMAL', 99" +
-                    "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
-                    "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
-            )
-        assertThat(failure).contains("ck_transition_kind_from")
+    // ── V207. 3단 분할 2단계 계약 — 신 컬럼 강제는 3단계로 이연했다 ────────────
+    //
+    // spec `## 데이터 모델 변경` 의 ★ 정정(2026-08-20) 이 정본이다. 지금은 구 컬럼과 신 컬럼이
+    // **공존**하는 구간이라, 신 컬럼에 NOT NULL·CHECK 를 걸면 구 컬럼으로만 쓰는 코드가 전부 깨진다.
+    // 아래 3개는 「아직 안 건다」를 못박는 자리다 — 3단계(workflow_states DROP) PR 이 이 3개를
+    // 뒤집힌 단언으로 교체한다.
 
-        // 반대 방향 — GLOBAL 인데 출발지가 있으면 같은 CHECK 가 막는다.
-        val reverse =
-            insertFailsWith(
-                "INSERT INTO workflow_transitions" +
-                    " (workflow_id, from_status_id, to_status_id, name, kind, display_order)" +
-                    " SELECT t.workflow_id, t.from_status_id, t.to_status_id, '알파 출발지 있는 전역 전환'," +
-                    "        'GLOBAL', 99" +
-                    "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
-                    "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
-            )
-        assertThat(reverse).contains("ck_transition_kind_from")
+    /**
+     * `to_status_id` 의 NOT NULL 승격을 3단계로 미뤘는가.
+     *
+     * 스키마 축이다. 동작 축(아래 두 테스트)만 두면 「INSERT 가 성공한다」를 다른 이유로도 만족시킬 수
+     * 있어 무엇이 이연됐는지 말하지 못한다.
+     */
+    @Test
+    fun `to_status_id 는 아직 NULL 을 허용한다`() {
+        val nullable =
+            query(
+                "SELECT is_nullable FROM information_schema.columns" +
+                    " WHERE table_schema = 'public' AND table_name = 'workflow_transitions'" +
+                    "   AND column_name = 'to_status_id'",
+            ) { it.getString(1) }
+
+        assertThat(nullable)
+            .describedAs(
+                "3단 분할 2단계는 구·신 공존 구간이다. to_status_id 를 NOT NULL 로 올리면 " +
+                    "구 컬럼만 채우는 기존 픽스처 21파일과 시드가 전부 제약 위반으로 죽는다",
+            ).isEqualTo("YES")
+    }
+
+    /**
+     * 구 컬럼(`from_state_id`·`to_state_id`)만 채운 INSERT 가 살아 있는가.
+     *
+     * 이 저장소에서 `workflow_transitions` 에 직접 INSERT 하는 테스트 23파일 중 21파일이 이 모양이다.
+     * 프로덕션 시드도 같았다 — 그것이 이 계약을 지켜야 하는 이유다.
+     */
+    @Test
+    fun `구 컬럼만 채운 INSERT 가 성공한다`() {
+        inRolledBackTransaction { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)" +
+                        " SELECT t.workflow_id, t.from_state_id, t.to_state_id, '알파 구 컬럼만 채운 전환'" +
+                        "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
+                        "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
+                )
+            }
+            val legacyOnly =
+                countOf(
+                    conn,
+                    "SELECT COUNT(*) FROM workflow_transitions" +
+                        " WHERE name = '알파 구 컬럼만 채운 전환'" +
+                        "   AND from_status_id IS NULL AND to_status_id IS NULL AND kind = 'NORMAL'",
+                )
+            assertThat(legacyOnly)
+                .describedAs("구 컬럼만 채운 행이 신 컬럼 NULL 상태로 들어가야 한다")
+                .isEqualTo(1)
+        }
+    }
+
+    /**
+     * `ck_transition_kind_from` 을 이 PR 에서 걸지 않았는가.
+     *
+     * ### 왜 뺐나
+     * 「NORMAL 이면 from_status_id 가 있어야 한다」는 위 테스트의 구 컬럼 INSERT 를 그대로 거부한다.
+     * 정의 시점 강제는 애플리케이션이 이미 지고 있다 — `Workflow.of()` 의 invariant 5·6 이
+     * NORMAL 의 from 필수 · GLOBAL/INITIAL 의 from 금지 · INITIAL 1개를 검증한다
+     * (ADR 2026-08-18-workflow-transition-id-identity §D4 「모호하면 정의 시점에 막는다」).
+     */
+    @Test
+    fun `kind 와 from_status_id 조합 CHECK 는 3단계로 이연됐다`() {
+        val constraintNames =
+            rows(
+                "SELECT conname FROM pg_constraint" +
+                    " WHERE conrelid = 'workflow_transitions'::regclass AND contype = 'c'",
+            ) { it.getString(1) }
+
+        assertThat(constraintNames)
+            .describedAs("kind 허용 목록 CHECK 는 남아 있어야 한다 — 이연 대상이 아니다")
+            .contains("ck_workflow_transitions_kind")
+        assertThat(constraintNames)
+            .describedAs(
+                "ck_transition_kind_from 은 workflow_states DROP 과 같은 PR(3단계)의 몫이다. " +
+                    "지금 걸면 구 컬럼만 채우는 INSERT 를 전부 거부한다",
+            ).doesNotContain("ck_transition_kind_from")
+
+        // 동작 축 — 제약이 없으므로 NORMAL 인데 from_status_id 가 NULL 인 행이 실제로 들어간다.
+        inRolledBackTransaction { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    "INSERT INTO workflow_transitions" +
+                        " (workflow_id, to_status_id, name, kind, display_order)" +
+                        " SELECT t.workflow_id, t.to_status_id, '알파 출발지 없는 보통 전환', 'NORMAL', 99" +
+                        "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
+                        "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
+                )
+            }
+            val inserted =
+                countOf(
+                    conn,
+                    "SELECT COUNT(*) FROM workflow_transitions WHERE name = '알파 출발지 없는 보통 전환'",
+                )
+            assertThat(inserted).isEqualTo(1)
+        }
     }
 
     // ── V207. INITIAL 백필 ────────────────────────────────────────────────────
@@ -499,7 +581,7 @@ class V207MigrationTest {
      * 화면이 없는 지금은 안 보이는 조용한 실패라 여기서 못을 박는다.
      */
     @Test
-    fun `display_order 가 워크플로우 안에서 1..n 로 중복 없이 채워진다`() {
+    fun `display_order 가 워크플로우 안에서 1 부터 n 까지 중복 없이 채워진다`() {
         val ordersByWorkflow =
             rows(
                 "SELECT w.key, t.kind, t.display_order FROM workflow_transitions t" +
