@@ -149,6 +149,8 @@ nullable 추가라 기존 호출부 컴파일이 깨지지 않는다.
   @Test fun `모호 전환 예외는 409 AMBIGUOUS_TRANSITION 과 후보 목록을 낸다`()
   // ② ★판정 — issue-tracking 컨트롤러 경로에서도 409 인가
   @Test fun `issue 전환 경로에서 던져진 AmbiguousTransitionException 이 500 이 아니라 409 로 나온다`()
+  // ③ ★판정 보강 (리뷰 T5) — 트랜잭션이 rollback-only 로 마킹되는가
+  @Test fun `모호 전환 예외 뒤 호출자 트랜잭션이 rollback-only 로 마킹된다`()
   ```
 - 실패 메시지 (예상): `AmbiguousTransitionException` 클래스 없음
 
@@ -166,6 +168,13 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 (대안 — `TransitionResult` sealed 확장 + issue-tracking `when` 분기 추가, 단 N2 예외 승인 필요).
 구현을 계속 진행하지 않는다.
 
+**리뷰 T5 반영.** 판정 기준을 「409 가 나오는가」가 아니라 **「409 가 나오고 호출자 트랜잭션이
+rollback-only 로 마킹되는가」**로 넓혔다. `WorkflowTransitionPort.plan` 이
+`@Transactional(propagation = MANDATORY)` 라 예외가 공유 트랜잭션을 오염시킨다
+(`[[workflowstatecatalog-mandatory-rollback-poison]]`). 지금은 `IssueApplicationService.kt:1174`
+가 catch 폴백 없이 전부 throw 하므로 안전하지만, ③을 남겨 두어야 **미래에 폴백을 넣는 사람이
+red 로 걸린다.**
+
 ### Task 2. V207 마이그레이션 + jOOQ 코드젠 미러
 
 **메타**.
@@ -176,7 +185,8 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 - depends-on: []
 
 **RED**:
-- 파일: `.../workflow/db/V207MigrationTest.kt` (`V200MigrationTest.kt` 패턴 · 이미지 `quay.io/tembo/pg16-pgmq:latest`)
+- 파일: `.../workflow/db/V207MigrationTest.kt` (**선례는 `V203ToV206MigrationTest.kt`** — 같은 대역·같은
+  카탈로그 스키마를 다룬다. 리뷰 T6 반영 · 이미지 `quay.io/tembo/pg16-pgmq:latest`)
 - 테스트:
   ```kotlin
   @Test fun `UNIQUE(workflow_id, from_state_id, to_state_id) 가 사라져 같은 상태쌍 2행이 들어간다`()
@@ -185,11 +195,21 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
   @Test fun `kind=NORMAL 인데 from_status_id 가 NULL 이면 CHECK 위반`()
   @Test fun `INITIAL 백필 도착지가 백필 전 display_order 최소 상태와 같다`()
   @Test fun `from_state_id·to_state_id 와 workflow_states 는 살아 있다`()   // N4
+  @Test fun `display_order 가 워크플로우 안에서 1..n 로 중복 없이 채워진다`()  // 리뷰 T2
   ```
 - 실패 메시지 (예상): `column "kind" does not exist`
 
 **GREEN**: `V207__transitions_multi_and_global.sql` — spec §데이터 모델 변경의 ①~⑧.
 백필은 대응 `workflow_statuses` 행이 없으면 `RAISE EXCEPTION` (V204 가 세운 유일성 가드 관례).
+
+**리뷰 T2 반영 — `display_order` 를 백필한다.** `NOT NULL DEFAULT 0` 만 두면 기존 전환이 전부 0 이 되어
+PR 8 의 편집기가 **임의 순서로 그린다**(화면이 없는 지금은 안 보이는 조용한 실패).
+```sql
+UPDATE workflow_transitions t SET display_order = s.rn
+FROM (SELECT id, row_number() OVER (PARTITION BY workflow_id ORDER BY created_at, name) AS rn
+      FROM workflow_transitions) s
+WHERE t.id = s.id;
+```
 
 **REFACTOR**: SQL 각 블록에 한국어 주석 1줄 — 왜 DROP 하지 않는지(N4)를 명시
 
@@ -222,7 +242,11 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 
 **GREEN**:
 - `WorkflowTransition` 에 `id: UUID`·`kind: TransitionKind` 추가, `fromStateKey: String?` 로 완화.
-  `key` 는 `"${fromStateKey ?: "*"}__$toStateKey"` 로 **계속 계산**한다 (하위호환)
+  `key` 는 **계속 계산**한다 (하위호환). **리뷰 T4 반영 — `*` 를 쓰지 않는다.**
+  `key` 는 URL 경로 세그먼트로 소비된다(`.../transitions/{transitionKey}/post-actions` ·
+  MSW 목 `apps/web/src/mocks/post-action-handlers.ts:60`). `*` 는 인코딩·매칭이 갈리므로
+  `NORMAL` 은 종전대로 `"$fromStateKey__$toStateKey"`, `GLOBAL`·`INITIAL` 은
+  `"${kind.name}__$toStateKey"` 로 **문자 클래스가 안전한 토큰**을 쓴다
 - `Workflow.of()` invariant 5번을 삭제하고 GLOBAL/INITIAL 규칙 2개로 **교체**.
   3·4번(from/to 가 states 안) 은 `fromStateKey != null` 일 때만 검사
 
@@ -281,7 +305,8 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 **GREEN**: `WorkflowEngine.kt:208` 의 `filter { it.fromStateKey == req.fromStateKey }` 를
 `NORMAL(from 일치) + GLOBAL(to != 현재 상태)` 합집합으로. **INITIAL 은 항상 제외**한다.
 
-**REFACTOR**: 후보 산출을 `private fun candidatesFor(...)` 로 추출
+**REFACTOR**: 후보 산출을 `private fun candidatesFor(workflow, fromStateKey)` 로 추출.
+**리뷰 T3 반영 — 이 함수는 Task 6 의 `resolveTransition` 도 함께 쓴다.** 두 벌로 두면 갈라진다(DRY).
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*GlobalTransition*'`
 
@@ -309,8 +334,12 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 **GREEN**:
 - `TransitionRequest` 에 `val transitionId: UUID? = null` **기본값과 함께** 추가 (기존 호출부 무변경)
 - `AvailableTransitionView` 에 `transitionId: UUID?`·`kind: String?` 추가 (같은 이유로 기본값)
-- `WorkflowEngine.resolveTransition` — `transitionId` 우선 → 없으면 `(from,to)` 후보 산출 →
-  0개면 종전 `WorkflowNotFoundException`(E11) · 2개 이상이면 `AmbiguousTransitionException`
+- `WorkflowEngine.resolveTransition` — `transitionId` 우선 → 없으면 **Task 5 가 추출한
+  `candidatesFor()` 로** 후보 산출 → 0개면 종전 `WorkflowNotFoundException`(E11) ·
+  2개 이상이면 `AmbiguousTransitionException`
+- **리뷰 T3 반영 — `INITIAL` 은 여기서도 후보에서 제외한다.** 안 빼면 `toStatusKey` 가 INITIAL 의
+  도착지와 같을 때 **있지도 않은 모호성**으로 409 가 난다. 추가 테스트 —
+  `@Test fun \`INITIAL 도착지와 같은 toStatusKey 로 호출해도 모호가 아니다\`()`
 
 **REFACTOR**: `resolveTransition` KDoc 을 새 identity 정책으로 교체하고 구 ADR 링크를 새 ADR 로 갱신
 
@@ -383,16 +412,32 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 
 **REFACTOR**: CRUD 3종의 권한·존재 확인 전처리를 `private fun requireEditable(key)` 로 통합
 
-**검증**: `./gradlew :modules:project-workflow:test --tests '*MvcTest'` ·
-`pnpm --filter web test -- workflow` (목 경로 변경이 프론트 테스트를 깨지 않는지)
+**검증**: `./gradlew :modules:project-workflow:test --tests '*MvcTest'`
+**리뷰 T6 반영 — worktree 에서 `pnpm` 을 부르지 않는다.** 심볼릭 `node_modules` 때문에
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다(`[[worktree-pnpm-blocked-use-node-test-directly]]`).
+MSW 목 1줄 변경의 검증은 **경로 문자열 grep** 으로 갈음한다 —
+`grep -n "transitions/plan" apps/web/src/mocks/workflow-handlers.ts`
 
 ### Task 9. 읽기 응답 계약 스냅샷 — 형태 불변 + 새 필드 추가만 (C5)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`,
-  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowReadContractTest.kt`]
+  `backend/modules/app/src/test/kotlin/com/bts/app/WorkflowReadContractProdBootTest.kt`]
 - depends-on: [4, 8]
+
+**★ 리뷰 T1 반영 — 계약 스냅샷은 `:app` 조립에서 만든다. MVC 슬라이스에 두지 않는다.**
+실측 근거 — `WorkflowControllerMvcTest.kt:82` 가 `@EnableWebMvc` 로 MVC 를 직접 구성하고 `:128` 이
+`ObjectMapper().registerKotlinModule()`(**`JavaTimeModule` 없음**)을 쓴다. 그 옆에 계약 테스트를 두면
+조립 앱과 **다른 직렬화**를 계약으로 박제하고, PR 8 이 그 틀린 형식에 맞춰 Zod 를 고치면 프로덕션이
+깨진다(`[[contract-snapshot-must-be-generated-in-assembly-not-slice]]` · 같은 사고가 `LocalDate` 배열로 1회).
+
+조립 테스트의 두 함정도 함께 지킨다(`[[bts-assembly-test-pat-bearer-and-httpclient]]`).
+① **PAT Bearer** 를 쓴다 — JWT 면 `MfaEnrollmentGateFilter` 에서 관리자 endpoint 가 전부 403 이 되어
+기능 파손으로 오진한다. ② 베이스의 `TestRestTemplate` 대신 **JDK `java.net.http.HttpClient`** 로 원 응답을
+관측한다(`:modules:app` 에 HttpComponents5 가 없어 401/403 본문을 못 읽는다).
+③ `ProdAssemblyHttpTestBase` 를 **상속만** 하고 `@SpringBootTest`·`@ActiveProfiles`·`@DynamicPropertySource`
+를 자체 선언하지 않는다(컨텍스트 캐시 키가 갈리면 9-BC 컨텍스트가 2회 부팅된다).
 
 **RED**:
 - 테스트:
@@ -400,6 +445,7 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
   @Test fun `GET workflows-key 응답 최상위 키가 정확히 key name description states transitions 5개다`()
   @Test fun `transitions 원소에 id 와 kind 가 추가됐고 기존 필드는 그대로다`()
   @Test fun `GLOBAL 전환의 fromStateKey 는 null 로 직렬화된다`()               // G4 — PR 8 이 물려받을 제약
+  @Test fun `timestamp 계열 필드가 배열이 아니라 ISO 문자열이다`()              // 리뷰 T1 회귀 가드
   ```
 - 실패 메시지 (예상): `id` 필드 없음
 
@@ -407,7 +453,10 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 
 **REFACTOR**: 계약 테스트에 「이 테스트가 깨지면 프론트가 깨진다」 주석 1줄
 
-**검증**: `./gradlew :modules:project-workflow:test --tests '*ReadContract*'`
+**검증**: `./gradlew :modules:app:test --tests '*WorkflowReadContract*'`
+**선행** — `:modules:app:test` 는 Testcontainers 가 아니라 실제 Postgres(5433)를 요구한다.
+`docker-compose -f infra/docker-compose.dev.yml up -d postgres` 를 먼저 띄운다
+(`[[worktree-pnpm-blocked-use-node-test-directly]]` 의 후반부).
 
 ## Plan 메타
 
@@ -419,6 +468,9 @@ BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기�
 - **선행 판정** Task 1 ②가 red 로 남으면 **구현을 멈추고 게이트 1 로 되돌아간다**. 결정 D-2 가 무효다
 - **FR 동기화** `docs/plan/product/project-workflow.md §2.5` 의 D1~D5 체크박스를 이 PR 에서 `[x]` 로
   (`docs/rules/fr-sync-checklist.md` 9항목)
+- **리뷰 반영** 게이트 1 승인(2026-08-20). `/plan-eng-review` 의 T1~T6 을 위 task 본문에 흡수했다 —
+  T1 Task 9 를 `:app` 조립으로 · T2 `display_order` 백필 · T3 `candidatesFor()` 공유 + INITIAL 양쪽 제외 ·
+  T4 `key` 의 URL 안전 토큰 · T5 rollback-only 관측 · T6 선례 교체 + worktree `pnpm` 제거
 
 ## 리뷰 결과
 
