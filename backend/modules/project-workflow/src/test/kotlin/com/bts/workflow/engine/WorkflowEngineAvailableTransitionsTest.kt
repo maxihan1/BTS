@@ -100,8 +100,8 @@ class WorkflowEngineAvailableTransitionsTest {
         val success = result as AvailableTransitionsResult.Success
         assertThat(success.transitions).hasSize(2)
         assertThat(success.transitions).containsExactlyInAnyOrder(
-            AvailableTransitionView("open", "in_progress", "Start Work", toCategory = "IN_PROGRESS"),
-            AvailableTransitionView("open", "closed", "Cancel", toCategory = "DONE"),
+            viewOf(txOpenToInProgress, "IN_PROGRESS"),
+            viewOf(txOpenToClosed, "DONE"),
         )
         // in_progress, in_review, done 에서 출발하는 전환은 포함되지 않아야 한다
         assertThat(success.transitions.map { it.fromStateKey }).allMatch { it == "open" }
@@ -187,7 +187,47 @@ class WorkflowEngineAvailableTransitionsTest {
         val success = result as AvailableTransitionsResult.Success
         assertThat(success.transitions).hasSize(1)
         assertThat(success.transitions.single()).isEqualTo(
-            AvailableTransitionView("open", "in_progress", "Start Work", toCategory = "IN_PROGRESS"),
+            viewOf(txOpenToInProgress, "IN_PROGRESS"),
         )
     }
+
+    // ── S5. transitionId·kind 채우기 — 409 재요청 왕복의 전제 ────────────────
+
+    @Test
+    fun `S5 — 각 뷰가 실제 전환 id 와 NORMAL kind 를 싣는다`() {
+        every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns emptyList()
+
+        val result = engine.availableTransitions(baseRequest)
+
+        val success = result as AvailableTransitionsResult.Success
+        val startWork = success.transitions.single { it.name == "Start Work" }
+        // 모호 전환 409 응답의 후보 id 를 클라이언트가 되실어 보내려면 열거 응답에 id 가 있어야 한다.
+        assertThat(startWork.transitionId).isEqualTo(txOpenToInProgress.id)
+        // BC 격리상 내부 enum 이 아니라 문자열로 나간다. 값은 enum 이름과 같아야 한다.
+        assertThat(startWork.kind).isEqualTo("NORMAL")
+
+        val cancel = success.transitions.single { it.name == "Cancel" }
+        assertThat(cancel.transitionId).isEqualTo(txOpenToClosed.id)
+        assertThat(cancel.kind).isEqualTo("NORMAL")
+    }
+
+    /**
+     * 기대 뷰 한 건을 만든다 — `transitionId` 는 픽스처 UUID 라 손으로 쓸 수 없고 `kind` 도 enum 에서 파생시킨다.
+     *
+     * @param transition 기대값의 출처가 되는 픽스처 전환 (모두 NORMAL 이라 출발 상태가 그대로 실린다)
+     * @param toCategory 도착 상태의 카테고리 문자열
+     */
+    private fun viewOf(
+        transition: WorkflowTransition,
+        toCategory: String,
+    ) = AvailableTransitionView(
+        fromStateKey = "open",
+        toStateKey = transition.toStateKey,
+        name = transition.name,
+        toCategory = toCategory,
+        transitionId = transition.id,
+        kind = transition.kind.name,
+    )
 }

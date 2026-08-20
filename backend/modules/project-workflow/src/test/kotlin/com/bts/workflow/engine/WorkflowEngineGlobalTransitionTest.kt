@@ -93,16 +93,16 @@ class WorkflowEngineGlobalTransitionTest {
         // NORMAL 출발 전환이 있는 상태(open)
         val fromOpen = successOf(baseRequest)
         assertThat(fromOpen).containsExactlyInAnyOrder(
-            AvailableTransitionView("open", "in_progress", "Start Work", toCategory = "IN_PROGRESS"),
-            AvailableTransitionView("open", "closed", "Close Anytime", toCategory = "DONE"),
-            AvailableTransitionView("open", "in_progress", "Jump To Work", toCategory = "IN_PROGRESS"),
+            viewOf(txOpenToInProgress, "open", "IN_PROGRESS"),
+            viewOf(txGlobalToClosed, "open", "DONE"),
+            viewOf(txGlobalToInProgress, "open", "IN_PROGRESS"),
         )
 
         // NORMAL 출발 전환이 하나도 없는 상태(done) 에서도 GLOBAL 은 그대로 나온다
         val fromDone = successOf(baseRequest.copy(fromStateKey = "done"))
         assertThat(fromDone).containsExactlyInAnyOrder(
-            AvailableTransitionView("done", "closed", "Close Anytime", toCategory = "DONE"),
-            AvailableTransitionView("done", "in_progress", "Jump To Work", toCategory = "IN_PROGRESS"),
+            viewOf(txGlobalToClosed, "done", "DONE"),
+            viewOf(txGlobalToInProgress, "done", "IN_PROGRESS"),
         )
     }
 
@@ -113,8 +113,8 @@ class WorkflowEngineGlobalTransitionTest {
         val fromInProgress = successOf(baseRequest.copy(fromStateKey = "in_progress"))
 
         assertThat(fromInProgress).containsExactlyInAnyOrder(
-            AvailableTransitionView("in_progress", "done", "Resolve", toCategory = "DONE"),
-            AvailableTransitionView("in_progress", "closed", "Close Anytime", toCategory = "DONE"),
+            viewOf(txInProgressToDone, "in_progress", "DONE"),
+            viewOf(txGlobalToClosed, "in_progress", "DONE"),
         )
         // 자기 자신으로 가는 전환은 이름조차 나오면 안 된다
         assertThat(fromInProgress.map { it.name }).doesNotContain("Jump To Work")
@@ -131,13 +131,58 @@ class WorkflowEngineGlobalTransitionTest {
 
         // GLOBAL 2건만 남는다 — INITIAL(→open) 이 섞이면 3건이 된다
         assertThat(fromDone).containsExactlyInAnyOrder(
-            AvailableTransitionView("done", "closed", "Close Anytime", toCategory = "DONE"),
-            AvailableTransitionView("done", "in_progress", "Jump To Work", toCategory = "IN_PROGRESS"),
+            viewOf(txGlobalToClosed, "done", "DONE"),
+            viewOf(txGlobalToInProgress, "done", "IN_PROGRESS"),
         )
         assertThat(fromDone.map { it.name }).doesNotContain("Create Issue")
         assertThat(fromDone.map { it.toStateKey }).doesNotContain("open")
         verify(exactly = 0) { mockDefinitionRepo.findValidators(any(), txInitialToOpen) }
     }
+
+    // ── transitionId·kind 채우기 — 409 재요청 왕복의 전제 ─────────────────────
+
+    @Test
+    fun `GLOBAL 전환 뷰가 실제 전환 id 와 GLOBAL kind 를 싣는다`() {
+        val fromDone = successOf(baseRequest.copy(fromStateKey = "done"))
+
+        val closeAnytime = fromDone.single { it.name == "Close Anytime" }
+        // 409 AMBIGUOUS_TRANSITION 재요청은 이 id 를 그대로 되실어 보내는 왕복이다 (ADR 2026-08-18 §D3).
+        assertThat(closeAnytime.transitionId).isEqualTo(txGlobalToClosed.id)
+        // BC 격리상 내부 enum 이 아니라 문자열로 나간다. 값은 enum 이름과 같아야 한다.
+        assertThat(closeAnytime.kind).isEqualTo("GLOBAL")
+        // GLOBAL 은 출발 상태가 없으므로 요청한 현재 상태로 대체된다
+        assertThat(closeAnytime.fromStateKey).isEqualTo("done")
+
+        val jumpToWork = fromDone.single { it.name == "Jump To Work" }
+        assertThat(jumpToWork.transitionId).isEqualTo(txGlobalToInProgress.id)
+        assertThat(jumpToWork.kind).isEqualTo("GLOBAL")
+
+        // 두 GLOBAL 이 같은 id 를 실으면 왕복이 엉뚱한 전환을 실행한다
+        assertThat(fromDone.map { it.transitionId }).doesNotContainNull().doesNotHaveDuplicates()
+    }
+
+    /**
+     * 기대 뷰 한 건을 만든다.
+     *
+     * `transitionId` 는 픽스처가 무작위 UUID 로 만들어 손으로 쓸 수 없고 `kind` 도 enum 에서 파생시켜야
+     * 문자열이 굳어 썩지 않는다. `fromStateKey`·`toCategory` 는 호출부가 명시로 넘겨 기대값이 구현을 베끼지 않게 한다.
+     *
+     * @param transition 기대값의 출처가 되는 픽스처 전환
+     * @param fromStateKey 응답에 실려야 할 출발 상태 키 (GLOBAL 이면 요청한 현재 상태)
+     * @param toCategory 도착 상태의 카테고리 문자열
+     */
+    private fun viewOf(
+        transition: WorkflowTransition,
+        fromStateKey: String,
+        toCategory: String,
+    ) = AvailableTransitionView(
+        fromStateKey = fromStateKey,
+        toStateKey = transition.toStateKey,
+        name = transition.name,
+        toCategory = toCategory,
+        transitionId = transition.id,
+        kind = transition.kind.name,
+    )
 
     /** [AvailableTransitionsResult.Success] 임을 확인하고 전환 뷰 목록을 꺼낸다. */
     private fun successOf(req: AvailableTransitionsRequest): List<AvailableTransitionView> {
