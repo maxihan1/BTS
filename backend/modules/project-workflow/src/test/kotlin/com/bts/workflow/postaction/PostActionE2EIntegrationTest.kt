@@ -3,6 +3,8 @@
 package com.bts.workflow.postaction
 
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.workflow.domain.TransitionKind
+import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
@@ -33,7 +35,9 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
+import java.sql.Connection
 import java.sql.DriverManager
+import java.util.UUID
 
 /**
  * post-action CRUD E2E 통합 테스트.
@@ -46,6 +50,7 @@ import java.sql.DriverManager
  * - 미존재 transitionKey 404
  * - 비-http url 검증 실패 400
  * - 미지원 type 400
+ * - 신 컬럼(`from_status_id`/`to_status_id`)만 채운 전환 · GLOBAL · INITIAL 에 규칙을 붙일 수 있다
  *
  * 주의: post-action 은 전환 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
  * WorkflowCache mock 및 캐시 무효화 검증이 불필요하다.
@@ -70,6 +75,15 @@ class PostActionE2EIntegrationTest {
 
         private const val WORKFLOW_KEY = "simple"
         private const val TRANSITION_KEY = "todo__doing"
+
+        // 전환 키의 정본은 도메인의 계산 프로퍼티다. 리터럴로 적으면 key 형식이 바뀌어도
+        // 이 테스트가 눈치채지 못한다 — 두 목록이 서로를 검사하게 둔다.
+        private val MODERN_NORMAL_KEY =
+            WorkflowTransition("doing", "done", "Finish", kind = TransitionKind.NORMAL).key
+        private val GLOBAL_KEY =
+            WorkflowTransition(null, "done", "긴급 종료", kind = TransitionKind.GLOBAL).key
+        private val INITIAL_KEY =
+            WorkflowTransition(null, "todo", "이슈 생성", kind = TransitionKind.INITIAL).key
         private const val ACTOR_UUID = "11111111-1111-1111-1111-111111111111"
         private val basePath =
             "/api/v1/workflows/$WORKFLOW_KEY/transitions/$TRANSITION_KEY/post-actions"
@@ -178,6 +192,8 @@ class PostActionE2EIntegrationTest {
                     ON CONFLICT DO NOTHING
                     """.trimIndent(),
                 ).use { it.execute() }
+
+                seedModernTransitions(conn, java.util.UUID.fromString(workflowId))
             }
 
             // 컴포넌트 조립
@@ -224,6 +240,88 @@ class PostActionE2EIntegrationTest {
             } finally {
                 SecurityContextHolder.clearContext()
             }
+        }
+
+        /**
+         * 신 컬럼(`from_status_id`·`to_status_id`)만 채운 전환 3종을 심는다.
+         *
+         * 전환 정의 CRUD(`WorkflowWriteRepository.insertTransition`)가 만드는 행이 정확히 이 모양이다 —
+         * 구 컬럼은 손대지 않으므로 NULL 로 남는다. 위의 'Start' 전환은 반대로 구 컬럼만 채운
+         * 종전 세대 행이라, 두 세대가 한 워크플로우 안에 나란히 있는 상태를 만든다.
+         */
+        private fun seedModernTransitions(
+            conn: Connection,
+            workflowId: UUID,
+        ) {
+            val todo = statusCompositionId(conn, workflowId, "todo")
+            val doing = statusCompositionId(conn, workflowId, "doing")
+            val done = statusCompositionId(conn, workflowId, "done")
+
+            insertModernTransition(conn, workflowId, TransitionKind.NORMAL, "Finish", doing, done)
+            insertModernTransition(conn, workflowId, TransitionKind.GLOBAL, "긴급 종료", null, done)
+            insertModernTransition(conn, workflowId, TransitionKind.INITIAL, "이슈 생성", null, todo)
+        }
+
+        /** 워크플로우에 편성된 상태 1개의 `workflow_statuses.id`. 전환의 신 컬럼이 가리키는 값이다. */
+        private fun statusCompositionId(
+            conn: Connection,
+            workflowId: UUID,
+            stateKey: String,
+        ): UUID =
+            conn.prepareStatement(
+                "SELECT ws.id FROM workflow_statuses ws" +
+                    " JOIN statuses s ON s.id = ws.status_id AND s.deleted_at IS NULL" +
+                    " WHERE ws.workflow_id = ? AND s.key = ?",
+            ).use { stmt ->
+                stmt.setObject(1, workflowId)
+                stmt.setString(2, stateKey)
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "workflow_statuses 에 '$stateKey' 편성이 없다" }
+                    rs.getObject(1) as UUID
+                }
+            }
+
+        /** 구 컬럼을 비운 채 전환 1행. INITIAL 만 표시 순서 0 이다 (V207 ⑨ 와 같은 규칙). */
+        @Suppress("LongParameterList")
+        private fun insertModernTransition(
+            conn: Connection,
+            workflowId: UUID,
+            kind: TransitionKind,
+            name: String,
+            fromStatusId: UUID?,
+            toStatusId: UUID,
+        ) {
+            conn.prepareStatement(
+                "INSERT INTO workflow_transitions" +
+                    " (workflow_id, kind, name, from_status_id, to_status_id, display_order)" +
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, workflowId)
+                stmt.setString(2, kind.name)
+                stmt.setString(3, name)
+                stmt.setObject(4, fromStatusId)
+                stmt.setObject(5, toStatusId)
+                stmt.setInt(6, if (kind == TransitionKind.INITIAL) 0 else 1)
+                stmt.execute()
+            }
+        }
+
+        /** 전환 하나에 post-action 을 만들고(201) 같은 경로로 다시 읽는다(200 · 1건). */
+        private fun assertPostActionRoundTrip(transitionKey: String) {
+            val path = "/api/v1/workflows/$WORKFLOW_KEY/transitions/$transitionKey/post-actions"
+            val body = """{"type":"SET_FIELD","config":{"field":"assignee","value":"me"},"displayOrder":0}"""
+
+            mockMvc.perform(
+                post(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isCreated)
+
+            mockMvc.perform(get(path))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].type").value("SET_FIELD"))
         }
     }
 
@@ -364,6 +462,41 @@ class PostActionE2EIntegrationTest {
                     .content(body),
             )
                 .andExpect(status().isBadRequest)
+        }
+    }
+
+    // ── 신 컬럼만 채운 전환에도 규칙을 붙일 수 있다 (P1 #2) ────────────────────
+    //
+    // 전환 정의 CRUD 가 만드는 행은 구 컬럼이 NULL 이다. 구 컬럼으로만 찾던 종전 resolver 는
+    // 이 세 전환을 한 건도 못 잡아 전부 404 였다 — 새로 만든 전환에 규칙을 붙일 방법이 없었다.
+
+    @Test
+    @Order(90)
+    fun `신 컬럼만 채운 NORMAL 전환에 post-action 을 붙인다`() {
+        withActor { assertPostActionRoundTrip(MODERN_NORMAL_KEY) }
+    }
+
+    @Test
+    @Order(100)
+    fun `GLOBAL 전환에 post-action 을 붙인다`() {
+        withActor { assertPostActionRoundTrip(GLOBAL_KEY) }
+    }
+
+    @Test
+    @Order(110)
+    fun `INITIAL 전환에 post-action 을 붙인다`() {
+        withActor { assertPostActionRoundTrip(INITIAL_KEY) }
+    }
+
+    // ── 구 컬럼만 채운 전환은 폴백으로 계속 해석된다 ──────────────────────────
+
+    @Test
+    @Order(120)
+    fun `구 컬럼만 채운 전환도 여전히 해석된다`() {
+        withActor {
+            mockMvc.perform(get(basePath))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(0))
         }
     }
 }
