@@ -136,9 +136,32 @@ nullable 추가라 기존 호출부 컴파일이 깨지지 않는다.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/exception/WorkflowExceptions.kt`,
   `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowExceptionHandler.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/AmbiguousTransitionExceptionHandler.kt`,
   `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowExceptionHandlerAmbiguousTest.kt`,
   `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/AmbiguousTransitionStatusCodeIntegrationTest.kt`]
 - depends-on: []
+
+**★ 1차 시도 실측 결과 (2026-08-20) — 판정 ②가 500. 그러나 D-2 는 유효하다.**
+plan 이 적은 폐기 조건은 「`@RestControllerAdvice` 스캔 범위가 BC 경계를 넘지 못한다」였는데
+**그 가설이 거짓으로 실측됐다.** 스캔은 정상이고 원인은 **advice 등록 순서**다.
+
+```
+IssueExceptionHandler.kt:98   @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
+IssueExceptionHandler.kt:763  @ExceptionHandler(Exception::class)   ← catch-all, @Order 없음
+```
+Spring 의 `ExceptionHandlerExceptionResolver` 는 advice 를 등록 순서대로 훑어 **처음 매칭되는 것**을
+쓴다. 둘 다 `@Order` 가 없어 클래스패스 순서가 승자를 정했다. 진단 실험에서
+`@Order(HIGHEST_PRECEDENCE)` 를 주자 ②·③ 모두 409 로 PASS 했다.
+
+**채택 — 단일 예외 전용 advice 신설.** `WorkflowExceptionHandler` 에 `@Order` 를 붙이는 안은
+그 advice 가 예외 **8종**을 잡는 다중 advice 라 `WorkflowNotFoundException` 까지
+`WorkflowSchemeExceptionHandler`(`basePackages = ["com.bts.workflow.scheme"]`)에서 빼앗고,
+스킴 404 응답 형태가 `ProblemDetail` 에서 `{error:{code,message}}` 로 **조용히 바뀐다.**
+그 회귀는 슬라이스 테스트가 잡지 못한다.
+
+**선례를 그대로 따른다** — `issue-tracking/.../project/archive/web/ProjectArchivedExceptionHandler.kt:40-41`
+이 정확히 같은 문제(catch-all 삼킴)를 **단일 예외 전용 advice + `@Order(Ordered.HIGHEST_PRECEDENCE)`**
+로 이미 풀었고, 그 KDoc 이 위험 원천을 명시한다.
 
 **RED**:
 - 파일 ①: `.../workflow/web/WorkflowExceptionHandlerAmbiguousTest.kt`
@@ -255,6 +278,58 @@ WHERE t.id = s.id;
 **검증**: `./gradlew :modules:project-workflow:test --tests 'com.bts.workflow.domain.*'`
 
 **근거**. ADR §D4 — 「모호하면 런타임이 아니라 정의 시점에 막는다」는 유지된다.
+
+### Task 10. 도메인 정책 정합 보정 — 갈라진 두 번째 정본을 닫는다
+
+> **wave 1 실측이 만든 신규 task.** plan 작성 시점에 보이지 않던 것 3건을 닫는다.
+> Task 4 의 선행이다 — 이것이 없으면 wave 2·3 의 검증 명령이 컴파일 단계에서 성립하지 않는다.
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/domain/WorkflowAggregateTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`]
+- depends-on: [3]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  // YamlSeedServiceTest — 시나리오 5 를 뒤집는다
+  @Test fun `같은 워크플로우 안에 from-to 가 같고 이름이 다른 전환 2개가 시드된다`()
+  // WorkflowAggregateTest — 기존 호출부가 id 없이 그대로 컴파일된다 (회귀 가드)
+  @Test fun `WorkflowTransition 을 id 없이 만들면 새 UUID 가 자동 부여된다`()
+  ```
+- 실패 메시지 (예상): `IllegalStateException: Workflow '...' has duplicate (from, to)=(TODO,DONE)`
+
+**GREEN — 3건**
+
+1. **★ 갈라진 두 번째 정본을 닫는다.** `YamlSeedService.validateTransitionUniqueness`(`:399-411`)가
+   `error("Workflow '$key' has duplicate (from, to)=$dup")` 로 **여전히 (from,to) 중복을 막는다.**
+   Task 3 이 `Workflow.of()` 에서 지운 바로 그 규칙의 **복제본**이다. 한쪽만 고치면 도메인 규칙이
+   두 곳에 갈라진 채 하나만 바뀐 상태로 남는다 — 이 저장소가 반복해서 물린
+   `[[two-lists-never-check-each-other]]` 양식이다. 함수와 호출부를 제거하고
+   `YamlSeedServiceTest` 시나리오 5(`:376`)를 **수용 단언으로 뒤집는다.**
+2. **`WorkflowTransition.id` 에 기본값을 준다** — `val id: UUID = UUID.randomUUID()`.
+   현재 `id` 가 필수라 기존 호출부 **27곳**(test 25파일 · main 2파일)이 전부 컴파일되지 않는다.
+   DB 도 `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`(V200:66) 이므로 도메인 기본값이 정합이다.
+   **이 한 줄이 25개 파일의 일괄 수정을 없앤다** — 새 코드만 `id` 를 명시한다.
+3. **`WorkflowDto.kt:92` 의 `fromStateKey` 를 `String?` 로** — Task 9 소유 파일이지만 이 1줄이
+   없으면 project-workflow **main 이 wave 4 전까지 컴파일되지 않아** wave 2·3 의 검증 명령이
+   전부 성립하지 않는다. 1줄만 앞당기고 나머지 DTO 작업은 Task 9 가 그대로 한다.
+
+**REFACTOR**: `WorkflowAggregateTest.kt:152`·`:172` 의 죽은 테스트 2개를 **삭제**한다 —
+삭제된 invariant(「(from,to) 조합 중복 금지」)를 단언하므로 컴파일을 고쳐도 의미상 반드시 실패한다.
+대체 커버리지는 Task 3 이 만든 `WorkflowTest.kt` 가 이미 제공한다(같은 커밋에서 그 사실을 주석으로 남긴다).
+
+**검증**: `./gradlew :modules:project-workflow:compileKotlin` EXIT=0 (이것이 이 task 의 1차 성공 기준) ·
+`./gradlew :modules:project-workflow:test --tests '*YamlSeedServiceTest*' --tests '*WorkflowAggregateTest*'`
+
+**범위 근거.** spec F2 는 「같은 상태쌍에 전환을 여럿 둔다」이고 ①은 그 F2 가 시드 경로에서
+성립하도록 만드는 **누락 보정**이다. 범위 확대가 아니다 — 고치지 않으면 YAML 로 시드되는 표준
+워크플로우에서만 F2 가 거짓이 되고, 로드맵 PR 6·10 의 「기본값 복원」이 YAML 을 소스로 쓰므로
+그 지점에서 다시 터진다.
 
 ### Task 4. 리포지토리 — `workflow_statuses` 참조 + `id`·`kind` 매핑
 
@@ -460,7 +535,8 @@ MSW 목 1줄 변경의 검증은 **경로 문자열 grep** 으로 갈음한다 �
 
 ## Plan 메타
 
-- **task 수** 9 · **예상 wave** 4 (`w1` 1·2·3 → `w2` 4 → `w3` 5·6·7·8 → `w4` 9)
+- **task 수** 10 · **예상 wave** 5 (`w1` 1·2·3 → `w1.5` **10**(신규) → `w2` 4 → `w3` 5·7·8 → `w4` 6 → `w5` 9)
+  Task 5·6 은 `WorkflowEngine.kt` 를 공유해 `files` 교집합으로 자동 직렬화된다.
 - **구현 규율** TDD red-first. T3 이므로 `test:` 커밋이 `feat:` 보다 **먼저** 대조된다
 - **추가 검증** `./gradlew :modules:project-workflow:test :modules:shared-kernel:test ktlintCheck detekt` ·
   `pnpm test:workflow`(판별식 406) · `node scripts/build-doc-index.mjs --check` ·
