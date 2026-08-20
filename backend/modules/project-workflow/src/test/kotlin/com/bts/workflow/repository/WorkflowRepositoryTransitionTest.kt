@@ -1,4 +1,4 @@
-// 전환 읽기 통합 테스트 — workflow_statuses 참조로 id·kind 를 복원하고 display_order 순으로 돌려주는가
+// 전환 읽기/쓰기 통합 테스트 — workflow_statuses 로 id·kind 를 복원하고 쓰기가 구 세대 컬럼을 남기지 않는가
 
 package com.bts.workflow.repository
 
@@ -98,6 +98,9 @@ class WorkflowRepositoryTransitionTest {
 
         lateinit var repository: WorkflowRepository
 
+        /** 쓰기 경로. 구 세대 컬럼이 정리되는지 보려면 `updateTransition` 을 실제로 불러야 한다. */
+        lateinit var writeRepository: WorkflowWriteRepository
+
         /** 전환 이름 → DB 가 부여한 `workflow_transitions.id`. 읽기가 그대로 채웠는지 대조한다. */
         lateinit var seededTransitionIds: Map<String, UUID>
 
@@ -107,7 +110,9 @@ class WorkflowRepositoryTransitionTest {
             migrate()
             seededTransitionIds = seedData()
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-            repository = WorkflowRepository(DSL.using(dataSource, SQLDialect.POSTGRES))
+            val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+            repository = WorkflowRepository(dsl)
+            writeRepository = WorkflowWriteRepository(dsl)
         }
 
         /** Flyway 2단계 — V201(workflow_schemes) 이 issue_types 를 cross-BC FK 로 요구한다. */
@@ -222,6 +227,64 @@ class WorkflowRepositoryTransitionTest {
                 }
             }
         }
+
+        /**
+         * 테스트 전용 워크플로우 1개를 새로 심는다. `@BeforeAll` 픽스처는 여러 테스트가 함께 읽으므로
+         * **쓰기 테스트는 공유 픽스처를 건드리면 안 된다** — 실행 순서에 따라 옆 단언이 무너진다.
+         */
+        private fun seedFreshWorkflow(
+            key: String,
+            seeds: List<TransitionSeed>,
+        ): Map<String, UUID> =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.autoCommit = false
+                val ids = seedWorkflow(conn, key, seeds)
+                conn.commit()
+                ids
+            }
+
+        /** 그 워크플로우의 상태 키 → `workflow_statuses.id`. 쓰기 API 에 넘길 **신** 컬럼 값이다. */
+        private fun compositionIdsOf(workflowKey: String): Map<String, UUID> =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                compositionIds(conn, requireNotNull(writeRepository.findLiveIdByKey(workflowKey)))
+            }
+
+        /** 그 전환 행의 **구** 컬럼 실측값. 읽기를 거치지 않고 저장된 값 자체를 본다. */
+        private fun legacyColumnsOf(transitionId: UUID): LegacyColumns =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "SELECT from_state_id, to_state_id FROM workflow_transitions WHERE id = ?",
+                ).use { stmt ->
+                    stmt.setObject(1, transitionId)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        LegacyColumns(rs.getObject(1) as UUID?, rs.getObject(2) as UUID?)
+                    }
+                }
+            }
+
+        /** 신 세대 쓰기가 다녀간 행 수. 0 이면 아래 판별식이 저절로 통과하므로 함께 단언한다. */
+        private fun newGenerationRowCount(): Int =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "SELECT count(*) FROM workflow_transitions WHERE to_status_id IS NOT NULL",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getInt(1)
+                    }
+                }
+            }
+
+        /** 불변식을 어긴 전환의 이름 목록. 비어 있어야 한다. 질의 정본은 [DIVERGENCE_SQL]. */
+        private fun divergentTransitionNames(): List<String> =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(DIVERGENCE_SQL).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        buildList { while (rs.next()) add(rs.getString(1)) }
+                    }
+                }
+            }
     }
 
     // ── RED 1. id · kind 매핑 ──────────────────────────────────────────────────
@@ -296,4 +359,113 @@ class WorkflowRepositoryTransitionTest {
             .describedAs("V207 이 row_number() 로 채운 display_order 가 편집기 표시 순서의 정본이다")
             .containsExactly("시작", "완료", "조건부 승인")
     }
+
+    // ── RED 5. ★ 수정이 구 세대를 남기면 읽기 폴백이 그것을 되살린다 ──────────
+
+    @Test
+    fun `updateTransition 이 GLOBAL 로 바꾸면 구 출발 상태가 되살아나지 않는다`() {
+        val key = "update-to-global"
+        val transitionId =
+            seedFreshWorkflow(key, listOf(TransitionSeed("NORMAL", "완료", "open", "done", 1)))
+                .getValue("$key/완료")
+
+        writeRepository.updateTransition(
+            transitionId = transitionId,
+            kind = TransitionKind.GLOBAL.name,
+            name = "즉시 완료",
+            fromStatusId = null,
+            toStatusId = compositionIdsOf(key).getValue("done"),
+        )
+
+        val legacy = legacyColumnsOf(transitionId)
+        assertThat(legacy.fromStateId)
+            .describedAs(
+                "GLOBAL 로 바꿔 from_status_id 를 NULL 로 만들었는데 구 from_state_id 가 남았다. " +
+                    "읽기는 신 컬럼이 NULL 이면 구 컬럼으로 폴백하므로 바꾸기 전 출발 상태가 되살아난다",
+            ).isNull()
+        assertThat(legacy.toStateId)
+            .describedAs("신 컬럼이 정본이므로 구 도착 컬럼도 함께 비워야 두 세대가 갈라지지 않는다")
+            .isNull()
+
+        assertThatCode { repository.findByKey(key) }
+            .describedAs(
+                "구 출발 컬럼이 남으면 폴백이 fromStateKey 를 채운다. GLOBAL 인데 출발지가 있는 꼴이라 " +
+                    "Workflow.of() invariant 6 이 IllegalArgumentException 을 던지고 워크플로우 전체가 못 읽힌다",
+            ).doesNotThrowAnyException()
+
+        val updated = repository.findByKey(key)?.transitions?.firstOrNull { it.id == transitionId }
+        assertThat(updated?.kind).isEqualTo(TransitionKind.GLOBAL)
+        assertThat(updated?.fromStateKey).isNull()
+        assertThat(updated?.toStateKey).isEqualTo("done")
+    }
+
+    // ── RED 6. 판별식 — 신·구가 다른 상태를 가리키는 행이 생기지 않는다 ───────
+
+    @Test
+    fun `쓰기 뒤에도 신 세대와 구 세대가 다른 상태를 가리키는 전환이 없다`() {
+        val key = "update-target-state"
+        val transitionId =
+            seedFreshWorkflow(key, listOf(TransitionSeed("NORMAL", "시작", "open", "done", 1)))
+                .getValue("$key/시작")
+        val composition = compositionIdsOf(key)
+
+        writeRepository.updateTransition(
+            transitionId = transitionId,
+            kind = TransitionKind.NORMAL.name,
+            name = "시작",
+            fromStatusId = composition.getValue("open"),
+            toStatusId = composition.getValue("in-progress"),
+        )
+
+        // 비-공허 짝. 검사 대상 행이 0 이면 아래 판별식은 아무것도 막지 않은 채 초록이 된다.
+        assertThat(newGenerationRowCount())
+            .describedAs("신 컬럼이 찬 전환이 하나도 없다 — 판별식이 공허하게 통과한다")
+            .isGreaterThan(0)
+
+        assertThat(divergentTransitionNames())
+            .describedAs(
+                "신 컬럼(workflow_statuses)과 구 컬럼(workflow_states)이 서로 다른 상태를 가리키는 행이 " +
+                    "남았다. 읽기 폴백이 그 구 값을 되살리는 순간 조용한 오답이 된다 — 신 컬럼을 쓰는 " +
+                    "경로는 구 컬럼을 같은 값으로 맞추거나 NULL 로 비워야 한다 (wave 공통 불변식)",
+            ).isEmpty()
+
+        val updated = repository.findByKey(key)?.transitions?.firstOrNull { it.id == transitionId }
+        assertThat(updated?.toStateKey)
+            .describedAs("신 컬럼이 정본이므로 도착지는 새로 지정한 상태여야 한다")
+            .isEqualTo("in-progress")
+    }
 }
+
+/** 전환 1행의 **구 세대** 컬럼 실측값. 둘 다 null 인 것이 신 세대 쓰기가 지나간 행의 모양이다. */
+private data class LegacyColumns(
+    val fromStateId: UUID?,
+    val toStateId: UUID?,
+)
+
+/**
+ * 신·구 두 세대가 **서로 다른 상태를 가리키는** 전환 행을 찾는다 — 이 wave 공통 불변식의 판별식이다.
+ *
+ * 두 세대는 상태 key 를 다리로 이어져 있다. 신 컬럼은 `workflow_statuses` → `statuses.key`,
+ * 구 컬럼은 `workflow_states.key` 다. **신 컬럼이 찬 행만** 본다 — 구 컬럼만 있는 행은 아직 이주
+ * 전이고 읽기 폴백의 정당한 대상이다 (3단 분할 2단계).
+ *
+ * `from` 은 신 컬럼이 NULL 인데 구 컬럼에 값이 있는 경우도 어긋남으로 센다. 그 조합이 바로 폴백이
+ * 지워진 출발 상태를 되살리는 자리라 `IS DISTINCT FROM` 으로 NULL 까지 대조한다.
+ *
+ * LEFT JOIN 이 여럿이지만 전부 PK 대조라 행이 곱으로 늘지 않고 집계도 하지 않는다
+ * (PR #31 의 cartesian product 사고와는 다른 모양이다).
+ */
+private val DIVERGENCE_SQL =
+    """
+    SELECT t.name
+      FROM workflow_transitions t
+      LEFT JOIN workflow_statuses nf ON nf.id = t.from_status_id
+      LEFT JOIN statuses ns ON ns.id = nf.status_id
+      LEFT JOIN workflow_statuses nt ON nt.id = t.to_status_id
+      LEFT JOIN statuses nd ON nd.id = nt.status_id
+      LEFT JOIN workflow_states lf ON lf.id = t.from_state_id
+      LEFT JOIN workflow_states lt ON lt.id = t.to_state_id
+     WHERE t.to_status_id IS NOT NULL
+       AND ((t.from_state_id IS NOT NULL AND lf.key IS DISTINCT FROM ns.key)
+         OR (t.to_state_id IS NOT NULL AND lt.key IS DISTINCT FROM nd.key))
+    """.trimIndent()

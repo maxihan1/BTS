@@ -10,12 +10,15 @@ import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.flywaydb.core.Flyway
 import org.hamcrest.Matchers.containsString
 import org.jooq.SQLDialect
@@ -39,6 +42,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
+import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -280,6 +284,34 @@ class TransitionCrudMvcTest {
             .isEmpty()
     }
 
+    // ── ★ 구 세대 컬럼이 찬 행을 PUT 으로 고쳤을 때 ───────────────────────────
+
+    @Test
+    fun `구 세대 컬럼이 찬 전환을 GLOBAL 로 바꿔도 옛 출발 상태가 되살아나지 않는다`() {
+        createWorkflow("legacy-carryover", "open", "done")
+        val transitionId = createTransition("legacy-carryover", body(from = "open", to = "done", name = "완료"))
+        fillLegacyColumns("legacy-carryover", transitionId, fromStatusKey = "open", toStatusKey = "done")
+
+        mockMvc.perform(
+            putTransition("legacy-carryover", transitionId, body(to = "done", name = "즉시 완료", kind = "GLOBAL")),
+        ).andExpect(status().isOk)
+
+        assertThatCode { repository.findByKey("legacy-carryover") }
+            .describedAs(
+                "PUT 은 200 인데 그 뒤 조회가 죽는다 — 구 from_state_id 가 남아 읽기 폴백이 출발지를 되살리고, " +
+                    "GLOBAL 인데 출발지가 있는 꼴이라 Workflow.of() invariant 6 이 워크플로우 전체를 거부한다",
+            ).doesNotThrowAnyException()
+
+        val transition = repository.findByKey("legacy-carryover")?.transitions?.singleOrNull()
+        assertThat(transition?.kind).isEqualTo(TransitionKind.GLOBAL)
+        assertThat(transition?.fromStateKey)
+            .describedAs(
+                "전역 전환으로 바꿨는데 바꾸기 전 출발 상태가 그대로 조회된다 — " +
+                    "사용자에게는 수정이 아예 안 먹은 것으로 보인다",
+            ).isNull()
+        assertThat(transition?.toStateKey).isEqualTo("done")
+    }
+
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
 
     private fun createWorkflow(
@@ -341,6 +373,50 @@ class TransitionCrudMvcTest {
         if (kind != null) fields["kind"] = kind
         return mapper.writeValueAsString(fields)
     }
+
+    /**
+     * 전환의 **구 세대** 컬럼을 채워 프로덕션에 실제로 있는 행의 모양을 만든다.
+     *
+     * CRUD 로 갓 만든 전환은 구 컬럼이 처음부터 NULL 이라 이 결함이 드러나지 않는다. 운영 DB 의
+     * 전환은 V200 세대에서 왔고 V207 백필로 신 컬럼까지 **둘 다** 찬 상태다 — 그 행을 PUT 으로
+     * 고칠 때 문제가 난다. 상태는 헬퍼로만 심는다 (`RawWorkflowStateInsertGuardTest` 가 강제).
+     */
+    private fun fillLegacyColumns(
+        workflowKey: String,
+        transitionId: UUID,
+        fromStatusKey: String,
+        toStatusKey: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            val workflowId = findWorkflowId(conn, workflowKey)
+            val legacyIds =
+                listOf(fromStatusKey, toStatusKey).withIndex().associate { (order, statusKey) ->
+                    statusKey to
+                        insertWorkflowStatus(conn, workflowId, statusKey, statusKey.uppercase(), "TODO", order)
+                }
+            conn.prepareStatement(
+                "UPDATE workflow_transitions SET from_state_id = ?, to_state_id = ? WHERE id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, legacyIds.getValue(fromStatusKey))
+                stmt.setObject(2, legacyIds.getValue(toStatusKey))
+                stmt.setObject(3, transitionId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    /** 살아 있는 워크플로우의 id. 픽스처가 안 심겼으면 그 자리에서 멈춘다. */
+    private fun findWorkflowId(
+        conn: Connection,
+        key: String,
+    ): UUID =
+        conn.prepareStatement("SELECT id FROM workflows WHERE key = ? AND deleted_at IS NULL").use { stmt ->
+            stmt.setString(1, key)
+            stmt.executeQuery().use { rs ->
+                check(rs.next()) { "워크플로우 '$key' 가 없다 — 픽스처 생성이 실패했다" }
+                rs.getObject(1) as UUID
+            }
+        }
 }
 
 /** 판정을 뒤집을 수 있는 권한 리졸버. 거부는 운영 리졸버와 같은 예외로 낸다. */
