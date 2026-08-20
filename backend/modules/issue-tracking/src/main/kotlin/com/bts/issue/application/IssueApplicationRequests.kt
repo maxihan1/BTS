@@ -201,18 +201,27 @@ data class UpdateIssueRequest(
  * [com.bts.shared.workflow.WorkflowKeyResolver] 를 통해 자동 결정한다.
  * 컨트롤러(transport 계층) 는 toStateKey 만 전달한다.
  *
- * transition identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
+ * 전환의 1급 식별자는 `workflow_transitions.id` 다 —
+ * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D3 참조.
+ * (구 ADR `2026-05-28-workflow-transition-identity-policy` 의 「identity = (from, to)」 정책은
+ * 그 ADR 이 대체했다. 같은 상태쌍에 이름만 다른 전환을 여럿 둘 수 있게 되어 2튜플로는 못 가른다.)
  *
  * @param toStateKey 목표 상태 키. 예: "in_progress".
  * @param expectedVersion 낙관적 잠금 버전.
  * @param resolutionId DONE 상태로 전환할 때 지정하는 해결책 UUID.
  *   비DONE 전환에서는 무시되고 서비스 계층에서 clear 처리된다.
  *   BulkItemApplier 등 기존 생성 지점 호환을 위해 기본값 null로 선언한다.
+ * @param transitionId 실행할 전환의 1급 식별자. [com.bts.shared.workflow.TransitionRequest.transitionId]
+ *   로 그대로 전달된다. null 이면 ([toStateKey]) 로 후보를 찾아 정확히 1개일 때만 실행하고,
+ *   2개 이상이면 `409 AMBIGUOUS_TRANSITION` 이다.
+ *   **기본값 null 을 지우지 마라** — `BulkItemApplier` · `IssueTransitionAdapter` 등
+ *   이 DTO 를 만드는 기존 지점이 전부 컴파일 실패한다.
  */
 data class TransitionIssueRequest(
     val toStateKey: String,
     val expectedVersion: Long,
     val resolutionId: UUID? = null,
+    val transitionId: UUID? = null,
 )
 
 /**

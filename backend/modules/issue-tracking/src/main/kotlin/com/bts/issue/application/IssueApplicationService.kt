@@ -686,8 +686,12 @@ class IssueApplicationService(
      * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
      *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
+     *
+     * `LongMethod` 억제 이유. `transitionId` 인자 1줄이 더해져 본문이 60줄(임계값)에 정확히 닿았다.
+     * 이 클래스의 분리 리팩터는 별도 작업이므로 여기서는 **국소 억제**만 한다 —
+     * 전역 detekt 임계값이나 `detekt-baseline.xml` 은 건드리지 않는다.
      */
-    @Suppress("ThrowsCount", "TooGenericExceptionCaught")
+    @Suppress("ThrowsCount", "TooGenericExceptionCaught", "LongMethod")
     fun transitionIssue(
         actor: ActorId,
         key: IssueKey,
@@ -719,6 +723,9 @@ class IssueApplicationService(
                 issueFields = issueFieldsForTransition,
                 actorRoles = emptySet(),
                 version = request.expectedVersion,
+                // 후보 지목. null 이면 엔진이 (from, to) 로 후보를 찾아 1개일 때만 실행한다
+                // (ADR 2026-08-18-workflow-transition-id-identity §D3).
+                transitionId = request.transitionId,
             )
         val plan =
             resolveWorkflowResult(
