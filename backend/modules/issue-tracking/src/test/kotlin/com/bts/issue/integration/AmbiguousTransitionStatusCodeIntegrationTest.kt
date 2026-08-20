@@ -11,7 +11,6 @@ import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.domain.exception.AmbiguousTransitionException
 import com.bts.workflow.domain.exception.TransitionCandidate
-import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -83,21 +82,6 @@ private fun transitionedIssueResponse(): IssueResponse =
         typeKey = "task",
         typeName = "Task",
     )
-
-/**
- * application DTO 가 실제로 받은 `transitionId` 를 읽는다.
- *
- * 필드를 직접 참조하지 않고 직렬화한 JSON 으로 읽는 이유는, 이 판정이 **DTO 사슬에 필드가 있는지**를
- * 묻기 때문이다. 필드를 직접 참조하면 필드가 없을 때 컴파일이 깨져 red 가 실행 결과로 남지 않는다.
- *
- * @param req 컨트롤러가 application 계층으로 넘긴 전환 요청.
- * @return `transitionId` 문자열. 필드 자체가 없거나 null 이면 null.
- */
-private fun ObjectMapper.transitionIdOf(req: AppTransitionIssueRequest): String? {
-    val node: JsonNode = valueToTree(req)
-    val field = node.path("transitionId")
-    return if (field.isMissingNode || field.isNull) null else field.asText()
-}
 
 /** 테스트가 던지는 모호 전환 예외. 후보 2건. */
 private fun ambiguousTransitionException(): AmbiguousTransitionException =
@@ -246,7 +230,7 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
             issueApplicationService.transitionIssue(any(), IssueKey(ISSUE_KEY), capture(received))
         } answers {
             // 엔진과 같은 판단을 흉내낸다 — 후보 지목이 없으면 조용히 고르지 않고 409 로 되돌린다.
-            if (mapper.transitionIdOf(received.last()) == null) throw ambiguousTransitionException()
+            if (received.last().transitionId == null) throw ambiguousTransitionException()
             transitionedIssueResponse()
         }
 
@@ -267,9 +251,9 @@ class AmbiguousTransitionStatusCodeIntegrationTest {
                 retried.response.contentAsString,
             )
             .isEqualTo(200)
-        assertThat(mapper.transitionIdOf(received.last()))
+        assertThat(received.last().transitionId)
             .describedAs("REST 바디의 transitionId 가 application DTO 까지 그대로 도달해야 한다")
-            .isEqualTo(candidateId)
+            .isEqualTo(CANDIDATE_ONE_ID)
     }
 
     /** 전환 엔드포인트를 한 번 호출한다. 바디는 맵 그대로 직렬화한다. */

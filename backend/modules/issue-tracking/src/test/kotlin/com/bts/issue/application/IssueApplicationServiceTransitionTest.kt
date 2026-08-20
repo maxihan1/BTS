@@ -28,8 +28,6 @@ import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -607,7 +605,13 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             }
 
             it("transitionId 가 지정되면 workflowPort.plan 에 그대로 실려야 한다") {
-                sut.transitionIssue(actor, issueKey, requestWithTransitionId(targetTransitionId))
+                val request =
+                    TransitionIssueRequest(
+                        toStateKey = "IN_PROGRESS",
+                        expectedVersion = existingVersion,
+                        transitionId = targetTransitionId,
+                    )
+                sut.transitionIssue(actor, issueKey, request)
                 verify {
                     workflowPort.plan(match { req -> req.transitionId == targetTransitionId })
                 }
@@ -686,25 +690,5 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         }
     }
 })
-
-/**
- * `transitionId` 를 담은 application 전환 요청을 만든다.
- *
- * 생성자를 직접 부르지 않고 JSON 으로 역직렬화하는 이유는, 이 테스트가 **DTO 에 필드가 있는지**를
- * 묻기 때문이다. 생성자 인자로 쓰면 필드가 없을 때 컴파일이 깨져 red 가 실행 결과로 남지 않는다.
- * 기본 [ObjectMapper] 는 미지의 필드를 예외로 거절하므로 필드 부재가 실행 시점에 그대로 드러난다.
- *
- * @param transitionId 지목할 전환의 1급 식별자.
- * @return `transitionId` 가 실린 application 전환 요청 DTO.
- */
-private fun requestWithTransitionId(transitionId: UUID): TransitionIssueRequest =
-    ObjectMapper().registerKotlinModule().convertValue(
-        mapOf(
-            "toStateKey" to "IN_PROGRESS",
-            "expectedVersion" to 1L,
-            "transitionId" to transitionId.toString(),
-        ),
-        TransitionIssueRequest::class.java,
-    )
 
 // WorkflowSchemeNoDefaultException 스텁은 WorkflowSchemeNoDefaultException.kt (공유 파일) 에 정의.
