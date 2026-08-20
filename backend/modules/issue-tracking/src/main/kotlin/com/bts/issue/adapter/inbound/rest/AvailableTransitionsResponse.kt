@@ -51,9 +51,20 @@ data class AvailableTransitionsResponse(
  *   language 인 [AvailableTransitionView] 에는 `key` 필드가 없다. 그래서 여기서 조립한다 —
  *   **[transitionId] 가 이 값을 대체했으므로 이 재계산을 더 늘리지 마라.**
  *
- *   `"null__..."` 이 나오지 않는다(실측). GLOBAL 전환은 정의상 출발 상태가 없지만,
+ *   `"null__..."` 은 나오지 않는다(실측). GLOBAL 전환은 정의상 출발 상태가 없지만,
  *   `WorkflowEngine.availableTransitions` 가 `transition.fromStateKey ?: req.fromStateKey` 로
  *   **요청한 현재 상태**를 채워 넘기고 [AvailableTransitionView.fromStateKey] 도 non-null 이다.
+ *
+ *   ★ **GLOBAL 전환에서 이 값은 도메인 게터와 다르다(실측·미해결).** 도메인 게터는 종류마다 규칙이
+ *   달라 NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to` 를 만든다. 그래서 같은 GLOBAL 전환을
+ *   도메인은 `"GLOBAL__done"` 으로, 여기서는 `"open__done"` 으로 부른다. `key` 는
+ *   `PostActionController` 의 `.../transitions/{transitionKey}/post-actions` 경로 세그먼트로도
+ *   소비되므로 이 응답의 `key` 를 그 경로에 그대로 쓰면 GLOBAL 전환에서 빗나간다.
+ *   전환 지목에는 [transitionId] 를 쓰면 되므로 실사용 영향은 그 경로 하나뿐이다.
+ *
+ *   여기서 규칙을 한 벌 더 구현해 맞추지 않는다 — 서로를 검사하지 않는 사본이 또 생긴다.
+ *   올바른 해법은 shared-kernel [AvailableTransitionView] 에 `key` 를 실어 엔진이 **도메인 게터
+ *   결과 그대로** 넘기는 것이다. 그 두 파일은 이 작업(Task 23)의 수정 허용 범위 밖이라 후속으로 남긴다.
  * @property toCategory 전환 목표 상태의 카테고리 문자열. 예: `"DONE"`, `"IN_PROGRESS"`, `"TODO"`.
  *   프론트엔드가 종료(DONE) 전환을 판별할 때 사용한다.
  *   null 은 워크플로우 미설정 등 비정상 상태를 의미한다. 실 API 응답은 항상 non-null.
