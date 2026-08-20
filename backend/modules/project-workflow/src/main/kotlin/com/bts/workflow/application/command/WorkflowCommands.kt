@@ -39,3 +39,24 @@ data class UpdateWorkflowCommand(
     val name: String,
     val description: String?,
 )
+
+/**
+ * 전환 정의 입력. 생성(`POST`)과 수정(`PUT`)이 **같은 모양**을 쓴다.
+ *
+ * `PUT` 은 표현을 통째로 갈아 끼우는 REST 의 replace 의미이므로 부분 필드를 따로 받지 않는다.
+ * 두 유스케이스가 검증 규칙도 같아 커맨드를 나누면 규칙이 두 벌이 되고 한쪽만 고쳐질 자리가 생긴다.
+ *
+ * @property fromStatusKey 출발 상태 키. [kind] 가 `NORMAL` 이면 필수이고 `GLOBAL`·`INITIAL` 이면 없어야 한다
+ *   (`Workflow.of()` invariant 5 와 같은 규칙)
+ * @property toStatusKey 도착 상태 키. 도착지 없는 전환은 어느 종류에도 없다
+ * @property name 사람 친화 표시 라벨. 매칭에 쓰지 않는다 — identity 는 전환 id 다
+ * @property kind 전환 종류 문자열(`NORMAL`·`GLOBAL`·`INITIAL`). null 이면 `NORMAL` 로 본다.
+ *   문자열로 받는 것은 **알 수 없는 값을 400 으로 돌려주기 위해서**다. enum 으로 받으면 역직렬화가
+ *   먼저 죽어 「무엇이 잘못됐는지」를 말할 자리가 사라진다
+ */
+data class TransitionDefinitionCommand(
+    val fromStatusKey: String?,
+    val toStatusKey: String,
+    val name: String,
+    val kind: String?,
+)

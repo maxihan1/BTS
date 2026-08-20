@@ -11,11 +11,14 @@ import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.CreateWorkflowRequest
 import com.bts.workflow.web.dto.DuplicateWorkflowRequest
+import com.bts.workflow.web.dto.TransitionDefinitionRequest
 import com.bts.workflow.web.dto.TransitionRequestDto
+import com.bts.workflow.web.dto.TransitionResponse
 import com.bts.workflow.web.dto.TransitionResponseDto
 import com.bts.workflow.web.dto.UpdateWorkflowRequest
 import com.bts.workflow.web.dto.WorkflowDto
 import com.bts.workflow.web.dto.toDto
+import com.bts.workflow.web.dto.toTransitionResponse
 import io.konform.validation.Invalid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
 
 /**
  * 워크플로우 REST API 컨트롤러.
@@ -36,16 +40,26 @@ import org.springframework.web.bind.annotation.RestController
  * 엔드포인트 목록.
  * - GET  /api/v1/workflows             — 전체 워크플로우 목록 조회
  * - GET  /api/v1/workflows/{key}       — 워크플로우 단건 조회 (계층 구조)
- * - POST /api/v1/workflows/{key}/transitions — 워크플로우 전환 계획 계산
+ * - POST /api/v1/workflows/{key}/transitions/plan — 워크플로우 전환 계획 계산
+ * - POST /api/v1/workflows/{key}/transitions — 전환 정의 생성
+ * - PUT  /api/v1/workflows/{key}/transitions/{transitionId} — 전환 정의 수정
+ * - DELETE /api/v1/workflows/{key}/transitions/{transitionId} — 전환 정의 삭제
  * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (워크플로우 정의 UPDATE 권한 필요)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다 (learning #91).
  * 트랜잭션 개시는 [WorkflowApplicationService] 가 담당한다.
  *
+ * ### `TooManyFunctions` 억제 사유
+ * 전환 정의 CRUD 3종이 붙어 함수 수가 detekt 한도(11)에 닿았다. 하위 경로 단위로
+ * `WorkflowTransitionController` 를 떼는 것이 이 BC 의 관례이고
+ * (`WorkflowStatusCompositionController` 가 그 선례) **다음 PR 의 몫**이다 — 이 PR 의 파일
+ * 범위(Task 8)에 새 컨트롤러 파일이 없다. 전역 임계값은 건드리지 않는다.
+ *
  * @param workflowApplicationService 워크플로우 유스케이스 서비스
  * @param workflowCache 워크플로우 인메모리 캐시 (무효화 용도)
  */
+@Suppress("TooManyFunctions")
 @RestController
 @RequestMapping("/api/v1/workflows")
 class WorkflowController(
@@ -89,11 +103,15 @@ class WorkflowController(
      *
      * 트랜잭션 경계는 [WorkflowApplicationService.planTransition] 이 담당한다.
      *
+     * ★ 경로가 `/{key}/transitions` 에서 내려왔다 (spec FR-WF-05 결정 D-1). 그 자리는 이제
+     * **전환 정의 컬렉션**([createTransition])이 쓴다 — 같은 method+path 를 두 번 매핑하면 Spring 이
+     * 기동에 실패한다. `plan` 은 자원이 아니라 계산이므로 하위 동사 경로가 REST 의미상으로도 맞다.
+     *
      * @param key 적용할 워크플로우 키 (경로 변수)
      * @param body 전환 요청 바디
      * @return 200 + 전환 계획 `{ "data": { ... } }`
      */
-    @PostMapping("/{key}/transitions")
+    @PostMapping("/{key}/transitions/plan")
     fun plan(
         @PathVariable key: String,
         @RequestBody body: TransitionPlanRequestBody,
@@ -219,6 +237,60 @@ class WorkflowController(
         log.info("WorkflowController.duplicateWorkflow source={} target={}", key, request.key)
         workflowCommandService.duplicate(actor.toUuid(), key, request.key, request.name)
         return DataResponse(CreatedWorkflowResponse(request.key))
+    }
+
+    /**
+     * 전환 정의를 만든다. 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있다 (FR-WF-05 F2).
+     *
+     * `kind` 를 생략하면 `NORMAL` 이다. `GLOBAL`·`INITIAL` 에 `fromStatusKey` 를 실으면 400,
+     * `NORMAL` 인데 없으면 400. 최초 전환이 이미 있는데 또 만들면 409.
+     *
+     * @return 201 + 만들어진 전환 `{ "data": { "id": ..., "kind": ... } }`
+     */
+    @PostMapping("/{key}/transitions")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun createTransition(
+        @PathVariable key: String,
+        @RequestBody request: TransitionDefinitionRequest,
+    ): DataResponse<TransitionResponse> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.createTransition workflow={} kind={}", key, request.kind)
+        val created = workflowCommandService.createTransition(actor.toUuid(), key, request.toCommand())
+        return DataResponse(created.toTransitionResponse())
+    }
+
+    /**
+     * 전환 정의를 통째로 갈아 끼운다. 부분 수정이 아니다 — 바디는 생성과 같은 모양이다.
+     *
+     * 그 워크플로우의 전환이 아니면 404 다 (spec E9) — 남의 전환을 경로만 바꿔 고칠 수 없다.
+     */
+    @PutMapping("/{key}/transitions/{transitionId}")
+    fun updateTransition(
+        @PathVariable key: String,
+        @PathVariable transitionId: UUID,
+        @RequestBody request: TransitionDefinitionRequest,
+    ): DataResponse<TransitionResponse> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.updateTransition workflow={} id={}", key, transitionId)
+        val updated =
+            workflowCommandService.updateTransition(actor.toUuid(), key, transitionId, request.toCommand())
+        return DataResponse(updated.toTransitionResponse())
+    }
+
+    /**
+     * 전환 정의를 지운다. 매달린 validator·post-action 도 함께 사라진다 (spec E6).
+     *
+     * 최초 전환은 지울 수 없다 — 409 (spec E5).
+     */
+    @DeleteMapping("/{key}/transitions/{transitionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteTransition(
+        @PathVariable key: String,
+        @PathVariable transitionId: UUID,
+    ) {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.deleteTransition workflow={} id={}", key, transitionId)
+        workflowCommandService.deleteTransition(actor.toUuid(), key, transitionId)
     }
 }
 

@@ -27,7 +27,7 @@ export const workflowHandlers = [
   }),
 
   /** POST /api/v1/workflows/:key/transitions — 첫 번째 전환 기준 mock TransitionPlan 반환 */
-  http.post('/api/v1/workflows/:key/transitions', ({ params }) => {
+  http.post('/api/v1/workflows/:key/transitions/plan', ({ params }) => {
     const key = params['key'] as string
     const workflow = allWorkflowFixtures.find((w) => w.key === key)
     if (workflow === undefined) {

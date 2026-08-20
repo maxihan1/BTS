@@ -3,6 +3,7 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.application.command.WorkflowStatusSeed
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
@@ -24,7 +25,13 @@ import java.util.UUID
  * ### 소프트 삭제 규약
  * 모든 조회는 `deleted_at IS NULL` 을 **명시적으로** 붙인다. 이 저장소에는 공통 필터 래퍼가
  * 없다(`DATA.md §3`) — 빠뜨리면 삭제된 행이 그대로 노출된다.
+ *
+ * ### `TooManyFunctions` 억제 사유
+ * FR-WF-05 가 전환 정의 CRUD 를 얹어 함수 수가 detekt 한도(11)를 넘었다. 전환 쓰기를
+ * `TransitionWriteRepository` 로 떼는 것이 정본 방향이고 **다음 PR 의 몫**이다 —
+ * 이 PR 의 파일 범위(Task 8)에 새 리포지토리 파일이 없다. 전역 임계값은 건드리지 않는다.
  */
+@Suppress("TooManyFunctions")
 @Repository
 class WorkflowWriteRepository(
     private val dsl: DSLContext,
@@ -144,6 +151,136 @@ class WorkflowWriteRepository(
             .where(WORKFLOWS.ID.eq(workflowId))
             .execute()
     }
+
+    // ── 전환 정의 CRUD (FR-WF-05 F6) ──────────────────────────────────────────
+    //
+    // 전환의 출발·도착은 **신 컬럼**(from_status_id·to_status_id)만 채운다. 구 컬럼은 V207 이
+    // NOT NULL 을 풀어 뒀고, 3단계(workflow_states DROP)가 그것을 떨어뜨린다 — 지금 채우면
+    // 지울 때 되살아난다.
+
+    /**
+     * 이 워크플로우에 편성된 상태의 `workflow_statuses.id`. 없으면 null.
+     *
+     * 전환이 가리키는 것은 전역 카탈로그(`statuses`)가 아니라 **그 워크플로우의 편성 행**이다.
+     * 소프트 삭제된 카탈로그 항목은 없는 것으로 본다 — 읽기 경로(`WorkflowRepository`)와 같은 집합을 봐야
+     * 조회에서 조용히 사라지는 전환이 생기지 않는다.
+     */
+    fun findStatusCompositionId(
+        workflowId: UUID,
+        statusKey: String,
+    ): UUID? =
+        dsl
+            .select(WORKFLOW_STATUSES.ID)
+            .from(WORKFLOW_STATUSES)
+            .join(STATUSES)
+            .on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID).and(STATUSES.DELETED_AT.isNull))
+            .where(WORKFLOW_STATUSES.WORKFLOW_ID.eq(workflowId))
+            .and(STATUSES.KEY.eq(statusKey))
+            .fetchOne(WORKFLOW_STATUSES.ID)
+
+    /**
+     * 전환의 종류 문자열. **경로의 워크플로우에 속한 전환만** 준다.
+     *
+     * 남의 워크플로우 전환 id 로 부르면 null 이라 호출부가 404 를 낸다 (spec E9) — 소속을 따로
+     * 대조하는 분기를 두면 그 분기를 빠뜨린 경로가 생긴다. 조회 조건에 못을 박아 둔다.
+     */
+    fun findTransitionKind(
+        workflowId: UUID,
+        transitionId: UUID,
+    ): String? =
+        dsl
+            .select(WORKFLOW_TRANSITIONS.KIND)
+            .from(WORKFLOW_TRANSITIONS)
+            .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId))
+            .and(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+            .fetchOne(WORKFLOW_TRANSITIONS.KIND)
+
+    /**
+     * 이 워크플로우에 최초 전환이 이미 있는지. [excludingId] 는 수정 대상 자신을 셈에서 뺀다.
+     *
+     * DB 는 부분 유니크 인덱스(`uq_workflow_transitions_initial`)로 같은 것을 막지만, 그 위반은
+     * 500 으로 나온다. 사용자에게 409 를 돌려주려면 애플리케이션이 먼저 센다.
+     */
+    fun hasInitialTransition(
+        workflowId: UUID,
+        excludingId: UUID?,
+    ): Boolean =
+        dsl.fetchExists(
+            dsl
+                .selectOne()
+                .from(WORKFLOW_TRANSITIONS)
+                .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+                .and(WORKFLOW_TRANSITIONS.KIND.eq(TransitionKind.INITIAL.name))
+                .and(if (excludingId == null) DSL.noCondition() else WORKFLOW_TRANSITIONS.ID.ne(excludingId)),
+        )
+
+    /**
+     * 전환 1행. 표시 순서는 그 워크플로우의 마지막 뒤에 붙인다.
+     *
+     * 최초 전환만 0 이다 — 이슈 생성 시점의 전환이라 편집기에서 항상 맨 앞이고, V207 ⑨ 의 백필도
+     * 같은 값을 심었다. 순서를 여기서 갈라 두지 않으면 백필된 워크플로우와 새로 만든 워크플로우의
+     * 편집기 배열이 서로 다르게 보인다.
+     */
+    fun insertTransition(
+        workflowId: UUID,
+        kind: String,
+        name: String,
+        fromStatusId: UUID?,
+        toStatusId: UUID,
+    ): UUID {
+        val displayOrder = if (kind == TransitionKind.INITIAL.name) 0 else lastDisplayOrder(workflowId) + 1
+        return dsl
+            .insertInto(WORKFLOW_TRANSITIONS)
+            .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)
+            .set(WORKFLOW_TRANSITIONS.KIND, kind)
+            .set(WORKFLOW_TRANSITIONS.NAME, name)
+            .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromStatusId)
+            .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, toStatusId)
+            .set(WORKFLOW_TRANSITIONS.DISPLAY_ORDER, displayOrder)
+            .returning(WORKFLOW_TRANSITIONS.ID)
+            .fetchOne(WORKFLOW_TRANSITIONS.ID)
+            ?: error("workflow_transitions INSERT 가 id 를 돌려주지 않았다 — RETURNING 절을 확인할 것")
+    }
+
+    /**
+     * 전환의 정의를 통째로 갈아 끼운다. 표시 순서는 건드리지 않는다 — 순서 변경은 별도 관심사다.
+     *
+     * 구 컬럼(`from_state_id`·`to_state_id`)은 손대지 않는다. 이 행이 구 세대에서 왔다면 그 값이
+     * 남아 있는데, 읽기가 신 컬럼을 먼저 보므로(`WorkflowRepository` 폴백 순서) 결과는 신 컬럼이 정한다.
+     */
+    fun updateTransition(
+        transitionId: UUID,
+        kind: String,
+        name: String,
+        fromStatusId: UUID?,
+        toStatusId: UUID,
+    ) {
+        dsl
+            .update(WORKFLOW_TRANSITIONS)
+            .set(WORKFLOW_TRANSITIONS.KIND, kind)
+            .set(WORKFLOW_TRANSITIONS.NAME, name)
+            .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromStatusId)
+            .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, toStatusId)
+            .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId))
+            .execute()
+    }
+
+    /**
+     * 전환을 지운다. 매달린 validator·post-action 은 FK `ON DELETE CASCADE` 로 함께 사라진다 (spec E6).
+     *
+     * 규칙 편집 API 가 열리기 전이라(FR-WF-06) 고아 규칙이 남으면 화면에서 지울 방법이 없다.
+     */
+    fun deleteTransition(transitionId: UUID) {
+        dsl.deleteFrom(WORKFLOW_TRANSITIONS).where(WORKFLOW_TRANSITIONS.ID.eq(transitionId)).execute()
+    }
+
+    /** 이 워크플로우 전환의 마지막 표시 순서. 전환이 없으면 0. */
+    private fun lastDisplayOrder(workflowId: UUID): Int =
+        dsl
+            .select(DSL.max(WORKFLOW_TRANSITIONS.DISPLAY_ORDER))
+            .from(WORKFLOW_TRANSITIONS)
+            .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+            .fetchOne(0, Int::class.java) ?: 0
 
     /** 원본의 상태 편성을 그대로 복사한다. 전환 복사는 [copyTransitions] 가 맡는다. */
     fun copyStatusComposition(
