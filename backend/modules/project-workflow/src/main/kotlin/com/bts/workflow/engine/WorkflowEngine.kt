@@ -211,7 +211,8 @@ class WorkflowEngine(
         return AvailableTransitionsResult.Success(
             passed.map { transition ->
                 AvailableTransitionView(
-                    fromStateKey = transition.fromStateKey,
+                    // 후보 필터가 fromStateKey == req.fromStateKey 인 전환만 남기므로 여기서는 항상 같은 값이다.
+                    fromStateKey = transition.fromStateKey ?: req.fromStateKey,
                     toStateKey = transition.toStateKey,
                     name = transition.name,
                     toCategory = workflow.states.find { it.key == transition.toStateKey }?.category?.name,

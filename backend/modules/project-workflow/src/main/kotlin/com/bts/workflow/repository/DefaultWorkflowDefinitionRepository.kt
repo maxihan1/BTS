@@ -132,7 +132,8 @@ class DefaultWorkflowDefinitionRepository(
         if (workflowId == null) {
             log.debug("DefaultWorkflowDefinitionRepository: workflow 미존재 key={}", workflowKey)
         }
-        val fromStateId = workflowId?.let { resolveStateId(it, transition.fromStateKey) }
+        val fromStateId =
+            workflowId?.let { wfId -> transition.fromStateKey?.let { key -> resolveStateId(wfId, key) } }
         if (workflowId != null && fromStateId == null) {
             log.debug(
                 "DefaultWorkflowDefinitionRepository: fromState 미존재 workflowKey={} fromStateKey={}",
