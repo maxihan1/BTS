@@ -136,12 +136,22 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
  * 반환된 [TransitionPlan] 을 호출자 ([com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter]) 가
  * [com.bts.shared.workflow.TransitionResult] 로 래핑하여 상위 BC 에 전달한다.
  *
+ * ## `@Suppress("TooManyFunctions")` 근거 (FR-WF-05)
+ *
+ * 전환 identity 가 (from,to) 2튜플에서 전환 ID 로 바뀌면서 해석 경로가 `resolveById`(지목) 와
+ * `ambiguousTransition`(모호 판정) 둘로 갈렸고 클래스 함수가 detekt 임계값 11 에 닿았다.
+ * **인라인은 실측으로 기각했다** — `resolveById` 를 [resolveTransition] 안으로 접으면 그 함수의
+ * `throw` 가 3개가 되어 `ThrowsCount`(상한 2) 를 대신 위반한다. 즉 규칙이 요구하는 모양이 지금 구조다.
+ * 정본 처방은 전환 해석을 `TransitionResolver` 로 떼는 것이고 **다음 PR 의 몫**이다 — 이 PR 의 파일
+ * 범위(Task 6)에 새 파일이 없다. 전역 임계값은 건드리지 않는다.
+ *
  * @param cache 워크플로우 메모리 캐시
  * @param validatorFactory Validator 인스턴스 팩토리
  * @param postActionFactory PostAction 인스턴스 팩토리
  * @param definitionRepo 전환별 Validator/PostAction 설정 조회 repository
  */
 @Service
+@Suppress("TooManyFunctions")
 class WorkflowEngine(
     private val cache: WorkflowCache,
     private val validatorFactory: WorkflowValidatorFactory,
