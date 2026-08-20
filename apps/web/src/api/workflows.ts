@@ -20,12 +20,27 @@ export const workflowStateViewSchema = z.object({
   displayOrder: z.number().int().nonnegative(),
 })
 
-/** 워크플로우 전환(화살표) Zod 스키마 */
+/** 전환 종류 — backend TransitionKind enum 3종과 1:1 대응 */
+export const transitionKindSchema = z.enum(['NORMAL', 'GLOBAL', 'INITIAL'])
+
+/**
+ * 워크플로우 전환(화살표) Zod 스키마 — backend `WorkflowTransitionDto` 6필드와 1:1.
+ *
+ * `fromStateKey` 가 nullable 인 이유. 출발 상태가 없는 전환이 두 종류 있다 —
+ * GLOBAL(어느 상태에서나)과 INITIAL(이슈 생성 진입). 마이그레이션 V207 ⑨ 가 워크플로우마다
+ * INITIAL 1건을 백필하므로 **모든 기존 DB 의 응답에 null 원소가 섞인다**.
+ *
+ * 빈 문자열 폴백을 넣지 않는다. null 을 `''` 로 흡수하면 계약 위반이 화면까지 조용히 흘러가고,
+ * 「출발 상태가 없다」와 「출발 상태 키가 빈 문자열이다」를 소비처가 구별할 수 없게 된다.
+ * 두 종류의 의미는 정반대이므로 `kind` 로 갈라서 그린다.
+ */
 export const workflowTransitionViewSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
-  fromStateKey: z.string().min(1),
+  fromStateKey: z.string().min(1).nullable(),
   toStateKey: z.string().min(1),
+  id: z.string().uuid(),
+  kind: transitionKindSchema,
 })
 
 /** 워크플로우 전체 Zod 스키마 */
@@ -104,10 +119,12 @@ export async function fetchWorkflow(key: string): Promise<WorkflowView> {
 
 /**
  * 워크플로우 전환 계획을 계산한다.
- * POST /api/v1/workflows/{key}/transitions → { data: TransitionPlan }
+ * POST /api/v1/workflows/{key}/transitions/plan → { data: TransitionPlan }
  *
- * transition identity = (fromStateKey, toStateKey) — transitionName은 불필요.
- * ADR 2026-05-28-workflow-transition-identity-policy 참조.
+ * 경로가 `/transitions` 가 아니라 `/transitions/plan` 인 이유. `/transitions` 는 전환 **정의**
+ * CRUD 로 쓰인다(POST 는 전환 생성). 계획 요청을 그리로 보내면 조용히 오라우팅된다 — 결정 D-1.
+ *
+ * ADR 2026-08-18-workflow-transition-id-identity 참조.
  *
  * @param key 워크플로우 식별 키
  * @param request 전환 요청 — issueKey와 transitionKey를 포함
@@ -125,7 +142,7 @@ export async function planTransition(
   },
 ): Promise<TransitionPlan> {
   const wrapped = await apiPost(
-    `/api/v1/workflows/${key}/transitions`,
+    `/api/v1/workflows/${key}/transitions/plan`,
     {
       issueKey: request.issueKey,
       fromStateKey: request.fromStateKey,
