@@ -268,7 +268,7 @@ class WorkflowWriteRepository(
     /**
      * 전환을 지운다. 매달린 validator·post-action 은 FK `ON DELETE CASCADE` 로 함께 사라진다 (spec E6).
      *
-     * 규칙 편집 API 가 열리기 전이라(FR-WF-06) 고아 규칙이 남으면 화면에서 지울 방법이 없다.
+     * 규칙 편집 API 가 아직 없어(FR-WF-06) 고아 규칙이 남으면 화면에서 지울 방법이 없다.
      */
     fun deleteTransition(transitionId: UUID) {
         dsl.deleteFrom(WORKFLOW_TRANSITIONS).where(WORKFLOW_TRANSITIONS.ID.eq(transitionId)).execute()

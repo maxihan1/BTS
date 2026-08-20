@@ -216,7 +216,7 @@ CHECK」를 이 PR 에 넣으라고 적었다. **그것이 `DATA.md §4-1` 의 a
 | E3 | `kind=GLOBAL` 인데 `fromStatusKey` 를 보냄 | 400 |
 | E4 | `kind=NORMAL` 인데 `fromStatusKey` 없음 | 400 |
 | E5 | INITIAL 전환을 삭제하려 함 | 409 — 시작 상태가 사라지면 이슈 생성이 불가능해진다 |
-| E6 | 전환에 validator·post-action 이 매달린 채 삭제 | CASCADE 로 함께 삭제. FR-WF-06 이 규칙 편집을 열기 전이라 고아 규칙이 남으면 안 된다 |
+| E6 | 전환에 validator·post-action 이 매달린 채 삭제 | CASCADE 로 함께 삭제. FR-WF-06 이 규칙 편집을 아직 열지 않아 고아 규칙이 남으면 안 된다 |
 | E7 | 삭제된(soft-deleted) 워크플로우의 전환 CRUD | 404 |
 | E8 | 존재하지 않는 `transitionId` 로 PUT/DELETE | 404 |
 | E9 | 다른 워크플로우의 `transitionId` 를 이 워크플로우 경로로 호출 | 404 (경로의 `key` 와 소속 대조) |

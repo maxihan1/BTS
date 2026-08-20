@@ -104,11 +104,11 @@
 
 > 전환 identity 를 `(from,to)` 2튜플에서 **전환 ID** 로 옮겨 같은 상태쌍에 이름이 다른 전환을 여러 개 둘 수 있게 하고, `kind` 로 `NORMAL`/`GLOBAL`(모든 상태에서)/`INITIAL`(생성 시 진입) 을 가른다. `docs/adr/2026-05-28-workflow-transition-identity-policy.md` 를 대체한다 — 그 ADR 이 열어 둔 「대안 채택 조건」 탈출구를 쓰는 것이다.
 
-- [ ] D1. 도메인 — `Workflow.of()` invariant 재정의((from,to) 중복 금지 제거 · kind 규칙) (책임. backend-engineer + Maxi)
-- [ ] D2. 명세 — 하위호환 계약(`transitionId` 우선 · `toStatusKey` 는 유일 해석 가능할 때만 · 모호하면 409) (책임. backend-engineer)
-- [ ] D3. 마이그레이션 — V207 UNIQUE 해제 · `from_status_id` NULL 허용 · `kind` 추가 · INITIAL 백필(현행 최소 displayOrder 동작 보존) (책임. db-engineer)
-- [ ] D4. 백엔드 — 전환 CRUD + 엔진의 전역 전환 처리 + shared-kernel 계약 확장(nullable 추가로 기존 호출부 무변경) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 같은 쌍 다중 전환 · 전역 전환 후보 노출 · 모호 시 409 (책임. backend-engineer)
+- [x] D1. 도메인 — `Workflow.of()` invariant 재정의((from,to) 중복 금지 제거 · kind 규칙) (책임. backend-engineer + Maxi) (PR #395, 2026-08-20)
+- [x] D2. 명세 — 하위호환 계약(`transitionId` 우선 · `toStatusKey` 는 유일 해석 가능할 때만 · 모호하면 409) (책임. backend-engineer) (PR #395, 2026-08-20)
+- [x] D3. 마이그레이션 — V207 UNIQUE 해제 · `from_status_id` NULL 허용 · `kind` 추가 · INITIAL 백필(현행 최소 displayOrder 동작 보존) (책임. db-engineer) (PR #395, 2026-08-20). *`to_status_id` NOT NULL 승격과 `ck_transition_kind_from` CHECK 는 `DATA.md §4-1` 3단 분할의 3단계(=`workflow_states` DROP 과 같은 PR)로 이연*
+- [x] D4. 백엔드 — 전환 CRUD + 엔진의 전역 전환 처리 + shared-kernel 계약 확장(nullable 추가로 기존 호출부 무변경) (책임. backend-engineer) (PR #395, 2026-08-20)
+- [x] D5. 백엔드 테스트 — 같은 쌍 다중 전환 · 전역 전환 후보 노출 · 모호 시 409 (책임. backend-engineer) (PR #395, 2026-08-20)
 - [ ] D6. 프론트 — 이슈 상태 드롭다운이 전환 이름을 구분해 표시 (책임. frontend-engineer)
 - [ ] D7. E2E — 같은 쌍 두 전환이 각각 보이고 각각 실행된다 (책임. qa-engineer)
 
