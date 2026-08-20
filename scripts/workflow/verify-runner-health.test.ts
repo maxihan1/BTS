@@ -91,10 +91,53 @@ function healthyRoot(): string {
   return root;
 }
 
+// ── 리눅스 러너 레이아웃 ──────────────────────────────────────────────────────
+//
+// 왜 필요한가. 러너를 늘리면 두 번째 러너는 리눅스다(2026-08-20 · 네이버 클라우드 VM).
+// 그런데 JDK 툴캐시의 실행 파일 경로가 OS 마다 다르다 — macOS 는 `<arch>/Contents/Home/bin/java`,
+// 리눅스는 `<arch>/bin/java` 로 중간 두 단계가 없다. 한쪽을 하드코딩하면 다른 쪽에서
+// **「표식은 있는데 바이너리가 없다」**로 읽혀 `report` 가 실패를 내고, 이 스크립트는
+// 모든 잡의 선행(`needs: runner-health`)이므로 그 러너가 집은 잡이 전부 차단된다.
+//
+// ★그 실패는 setup-java 가 한 번 돌아 `.complete` 표식이 생긴 뒤에야 나타난다. 갓 설치한
+//   러너는 툴캐시가 비어 「경고」로 지나가므로, 러너를 붙인 당일에는 초록이다가 며칠 뒤
+//   빨간불이 된다 — 원인을 러너 증설과 잇기 가장 어려운 시점이다.
+const JAVA_LINUX_REL = '_work/_tool/Java_Temurin-Hotspot_jdk/21.0.11-10.0.LTS/x64/bin/java';
+const JAVA_LINUX_MARKER_REL = '_work/_tool/Java_Temurin-Hotspot_jdk/21.0.11-10.0.LTS/x64.complete';
+const TOOLCACHE_NODE_LINUX_REL = '_work/_tool/node/22.23.2/x64/bin/node';
+const NODE_LINUX_MARKER_REL = '_work/_tool/node/22.23.2/x64.complete';
+
+/** [healthyRoot] 와 같은 「전부 정상」 상태를 **리눅스 러너의 경로 레이아웃**으로 만든 것. */
+function healthyLinuxRoot(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-runner-linux-'));
+  const stub = (rel: string, body: string) => {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  };
+  stub('externals/node20/bin/node', 'echo v20.20.2');
+  stub('externals/node24/bin/node', 'echo v24.18.0');
+  stub(TOOLCACHE_NODE_LINUX_REL, 'echo v22.23.2');
+  stub(JAVA_LINUX_REL, 'echo "openjdk version \\"21.0.11\\"" 1>&2');
+  fs.writeFileSync(path.join(root, NODE_LINUX_MARKER_REL), '');
+  fs.writeFileSync(path.join(root, JAVA_LINUX_MARKER_REL), '');
+  return root;
+}
+
 describe('러너 엔진 헬스체크 스크립트', () => {
   test('엔진 4종이 모두 실행되면 exit 0 (양성 대조군)', () => {
     const { code, out } = run(healthyRoot());
     assert.equal(code, 0, `초록이어야 하는데 실패했다\n${out}`);
+  });
+
+  test('★리눅스 러너의 JDK 레이아웃(Contents/Home 없음)도 초록 — 러너가 두 OS 에 걸친다', () => {
+    const { code, out } = run(healthyLinuxRoot());
+    assert.equal(
+      code,
+      0,
+      `리눅스 레이아웃에서 실패했다. macOS 경로를 하드코딩하면 리눅스 러너가 집은 잡이 전부 차단된다\n${out}`,
+    );
+    assert.match(out, /✅ toolcache java/, `java 검사가 아예 안 돌았다(공허한 통과)\n${out}`);
   });
 
   test('★파일은 있는데 실행이 실패하면 red — 존재 확인으로는 못 잡는 결함', () => {
@@ -128,7 +171,11 @@ describe('러너 엔진 헬스체크 스크립트', () => {
     const { code, out } = run(root);
     assert.ok(fs.existsSync(path.join(root, NODE_MARKER_REL)), '전제 확인 — 표식은 남아 있다');
     assert.notEqual(code, 0, `툴캐시 알맹이 부재를 놓쳤다\n${out}`);
-    assert.match(out, /arm64\.complete/, '표식 삭제 복구 절차가 안내되지 않았다');
+    // arch 이름(arm64/x64)을 고정하지 않는다. 러너가 두 OS 에 걸치면서 복구 안내가
+    // arch 중립 문구(`<arch>.complete`)로 바뀌었다 — 리눅스 러너에게 `arm64.complete` 를
+    // 지우라고 안내하는 것은 **틀린 복구 절차**다. 검증 대상은 arch 이름이 아니라
+    // 「표식을 지우라고 안내하는가」이므로 그 부분만 단언한다.
+    assert.match(out, /\.complete 표식 삭제/, '표식 삭제 복구 절차가 안내되지 않았다');
   });
 
   test('★★표식이 이미 없으면 실패가 아니라 경고다 — 안 그러면 자가 치유를 자기가 막는다', () => {
