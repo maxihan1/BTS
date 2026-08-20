@@ -17,6 +17,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
+import org.hamcrest.Matchers.containsString
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.AfterEach
@@ -192,6 +193,9 @@ class TransitionCrudMvcTest {
 
         mockMvc.perform(delete("/api/v1/workflows/initial-edge/transitions/$initialId"))
             .andExpect(status().isConflict)
+            // 상태 코드만 보면 본문 형식을 아무도 안 지킨다 — 이 BC 표준 {error:{code,message}} 인지까지 본다.
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_TRANSITION_CONFLICT"))
+            .andExpect(jsonPath("$.error.message", containsString("최초 전환은 삭제할 수 없습니다")))
     }
 
     @Test
@@ -201,6 +205,9 @@ class TransitionCrudMvcTest {
 
         mockMvc.perform(postTransition("initial-dup", body(to = "done", name = "또 다른 생성", kind = "INITIAL")))
             .andExpect(status().isConflict)
+            // 두 409 가 같은 code 를 쓰되 message 로 갈린다. 그 message 까지 단언해야 E5 와 안 뒤바뀐다.
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_TRANSITION_CONFLICT"))
+            .andExpect(jsonPath("$.error.message", containsString("워크플로우당 하나")))
     }
 
     // ── E9. 소속 대조 ──────────────────────────────────────────────────────────
