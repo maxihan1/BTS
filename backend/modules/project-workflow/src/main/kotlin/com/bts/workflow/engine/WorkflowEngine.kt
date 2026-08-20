@@ -198,6 +198,10 @@ class WorkflowEngine(
      * PostAction 은 절대 실행하지 않는다. GET 읽기 경로이므로 부수 효과 없음.
      * 반드시 활성 읽기 전용 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY], readOnly=true).
      *
+     * 각 뷰에는 전환 1급 식별자([AvailableTransitionView.transitionId])와 종류 문자열
+     * ([AvailableTransitionView.kind])이 실린다. 모호 전환 409 응답의 후보 중 하나를 클라이언트가
+     * 지목 실행하려면 그 id 가 열거 응답에 있어야 한다.
+     *
      * @param req 가용 전환 열거 요청 DTO
      * @return [AvailableTransitionsResult.Success] 또는 [AvailableTransitionsResult.WorkflowNotFound]
      */
@@ -230,6 +234,12 @@ class WorkflowEngine(
                     toStateKey = transition.toStateKey,
                     name = transition.name,
                     toCategory = workflow.states.find { it.key == transition.toStateKey }?.category?.name,
+                    // 409 AMBIGUOUS_TRANSITION 재요청은 후보 id 를 되실어 보내는 왕복이다 —
+                    // 열거 응답에 id 가 없으면 그 왕복이 API 로 성립하지 않는다 (ADR 2026-08-18 §D3).
+                    transitionId = transition.id,
+                    // BC 격리 — 내부 enum [TransitionKind] 를 그대로 내보내지 않고 이름 문자열로 파생시킨다.
+                    // 리터럴을 손으로 쓰면 enum 값이 늘 때 조용히 썩는다.
+                    kind = transition.kind.name,
                 )
             },
         )
