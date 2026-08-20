@@ -1586,7 +1586,9 @@ const bulkAvailableTransitionsHandler = http.post(
         unresolvedIssueKeys.push(key)
         continue
       }
-      transitionSets.push(getAvailableTransitions(found.currentStateKey))
+      // ★단건 조회와 같은 helper 를 쓴다. 여기만 `getAvailableTransitions` 를 직접 부르면
+      //   「이 이슈의 가용 전환」 규칙이 두 벌이 되어 조용히 갈라진다.
+      transitionSets.push(getAvailableTransitionsForIssue(key, found.currentStateKey))
     }
 
     // 성공 분이 없으면 빈 교집합
