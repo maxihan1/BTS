@@ -1,6 +1,16 @@
-// 이슈 상태 전환 셀렉터 (IssueMetaPanel 분해 B, FR-IS-01)
+// 이슈 상태 전환 셀렉터 + 409 모호 전환 후보 선택 다이얼로그 (IssueMetaPanel 분해 B, FR-IS-01)
 import type { JSX } from 'react'
-import type { IssueTransition } from '@/api/issues'
+import type { AmbiguousTransitionCandidate, IssueTransition } from '@/api/issues'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 // IssueMetaPanel.tsx가 정본으로 export하는 타입을 재사용 — type-only import라 컴파일 시
 // 소거되므로 IssueMetaPanel.tsx가 이 파일을 값으로 import해도 런타임 순환 문제는 없다
 // (meta/IssueCustomFieldsEdit.tsx의 isFieldHidden/isFieldDisabled 재사용 선례 동형).
@@ -85,10 +95,113 @@ export function IssueStateTransition({
         {issueDetailStrings.transitionSelectLabel}
       </option>
       {transitions.map((t) => (
-        <option key={t.key} value={t.toStateKey}>
+        // ★React key 는 `transitionId` 우선이다. `key`(`from__to`)는 같은 상태쌍의 전환 둘이
+        //   서로 **같은 값**이라(ADR 2026-08-18 로 UNIQUE 해제) key 중복이 나고 한쪽이
+        //   조용히 사라진다. `transitionId` 는 미계산(null)일 수 있어 폴백을 남긴다.
+        <option key={t.transitionId ?? t.key} value={t.toStateKey}>
           {t.name}
         </option>
       ))}
     </select>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 409 AMBIGUOUS_TRANSITION 후보 선택 다이얼로그
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 후보 선택 다이얼로그 표시 문구.
+ *
+ * 안내 본문은 **서버가 준 문구**를 그대로 쓴다(후보 개수가 들어 있어 여기서 다시 조립하면
+ * 서버와 갈린다). 여기 있는 것은 서버가 주지 않는 껍데기 라벨뿐이다.
+ * 같은 화면의 `ResolutionModal` 이 쓰는 방식과 같다.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- 다이얼로그 접근성 이름을 유닛 테스트가 정본으로 참조한다. 문자열만 별도 파일로 빼면 이 파일과 갈라질 자리가 하나 더 생긴다 (IssueMetaPanel.tsx 의 isFieldHidden 공개 선례 동형)
+export const ambiguousTransitionStrings = {
+  /**
+   * 다이얼로그 접근성 이름.
+   * ★패리티 계약 §2 — 신규 다이얼로그는 **고유** 이름이어야 e2e strict mode 가 안 깨진다.
+   * 기존 이름(`종료 결의안 선택` · `새 이슈 만들기` 등)과 겹치지 않는다.
+   */
+  dialogTitle: '이동할 전환 선택',
+  /** 취소 버튼 라벨. */
+  cancel: '취소',
+} as const
+
+/** AmbiguousTransitionDialog props */
+export interface AmbiguousTransitionDialogProps {
+  /** 서버가 돌려준 전환 후보 전량. 순서를 보존해 그대로 그린다 */
+  candidates: AmbiguousTransitionCandidate[]
+  /** 서버가 만든 안내 문구 — 후보가 몇 개인지까지 이 문구가 말한다 */
+  message: string
+  /** 재요청 진행 중 여부 — true 면 후보 버튼 disabled (중복 제출 방지, NFR3) */
+  isTransitioning: boolean
+  /** 후보 선택 콜백 — 고른 후보의 transitionId 를 전달 */
+  onSelect: (transitionId: string) => void
+  /** 취소 콜백 — 전환을 실행하지 않고 닫는다 */
+  onCancel: () => void
+}
+
+/**
+ * 409 `AMBIGUOUS_TRANSITION` 후보 선택 다이얼로그.
+ *
+ * 같은 도착 상태로 가는 전환이 여럿이라 서버가 실행을 보류하고 후보를 돌려줬을 때 뜬다
+ * (ADR 2026-08-18 §D3). 사용자가 고른 후보의 `transitionId` 로 재요청하면 전환이 실행된다.
+ *
+ * - 후보는 버튼 목록이다 — 이름 말고 가를 근거가 없어 `<select>` 로 감추면 비교가 어렵다
+ * - WCAG AA: 후보 버튼 `min-h-[44px]` 터치 타깃
+ * - 열림 상태는 부모가 마운트로 제어한다 (`ResolutionModal` 과 같은 계약)
+ *
+ * @param props 후보 전량 · 안내 문구 · 진행 상태 · 선택/취소 콜백
+ * @returns 후보 선택 다이얼로그
+ */
+export function AmbiguousTransitionDialog({
+  candidates,
+  message,
+  isTransitioning,
+  onSelect,
+  onCancel,
+}: AmbiguousTransitionDialogProps): JSX.Element {
+  // ★열림을 레지스트리에 보고한다. 이 다이얼로그는 입력 요소가 없어 `shouldIgnoreEvent` 를
+  //   그대로 통과하므로, 보고하지 않으면 후보를 고르는 중에 이슈 상세 단축키(`i`·`a` …)가
+  //   실제 PATCH 를 발행한다 (FR-UX-10 F11 이 같은 형태로 뚫렸던 자리다).
+  //   부모가 조건부 렌더로 열림을 제어하므로 마운트 = 열림이다.
+  useReportModalOpen(true)
+
+  function handleOpenChange(next: boolean): void {
+    if (!next) onCancel()
+  }
+
+  return (
+    <Dialog open onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{ambiguousTransitionStrings.dialogTitle}</DialogTitle>
+          <DialogDescription>{message}</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-1.5">
+          {candidates.map((candidate) => (
+            <Button
+              key={candidate.transitionId}
+              type="button"
+              variant="outline"
+              disabled={isTransitioning}
+              onClick={() => onSelect(candidate.transitionId)}
+              className="w-full justify-start min-h-[44px]"
+            >
+              {candidate.name}
+            </Button>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            {ambiguousTransitionStrings.cancel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

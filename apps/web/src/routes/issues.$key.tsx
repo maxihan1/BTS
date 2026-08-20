@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fetchIssue, updateIssue, transitionIssue, IssueRedirectError } from '@/api/issues'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
-import type { IssueTransition, CustomFieldValues } from '@/api/issues'
+import type { IssueTransition, CustomFieldValues, TransitionIssueInput } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useChangeAssignee } from '@/api/useChangeAssignee'
@@ -21,7 +21,11 @@ import { fetchComponents } from '@/api/components'
 import { useVersions } from '@/hooks/use-versions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useCustomFields } from '@/hooks/use-custom-fields'
-import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
+import {
+  useIssueTransitions,
+  useAmbiguousTransition,
+  issueTransitionKeys,
+} from '@/hooks/use-issue-transitions'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
@@ -33,6 +37,7 @@ import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
+import { AmbiguousTransitionDialog } from '@/components/issue/meta/IssueStateTransition'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
 import { IssueActivityTabs, ACTIVITY_TABS } from '@/components/issue/IssueActivityTabs'
@@ -371,17 +376,26 @@ export function IssueDetailPage({
     transitionCount: transitions.length,
   })
 
+  /**
+   * 409 AMBIGUOUS_TRANSITION 후보 선택 상태 (ADR 2026-08-18 §D3).
+   * 같은 도착 상태로 가는 전환이 여럿이면 서버가 실행을 보류하고 후보를 돌려준다.
+   */
+  const ambiguousTransition = useAmbiguousTransition()
+
   // 전환 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
   const transitionMutation = useMutation({
-    mutationFn: (input: { toStatusKey: string; expectedVersion: number; resolutionId?: string }) =>
-      transitionIssue(issueKey, input),
+    mutationFn: (input: TransitionIssueInput) => transitionIssue(issueKey, input),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
         queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
       ])
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, variables: TransitionIssueInput) => {
+      // ★모호 전환(409 AMBIGUOUS_TRANSITION)은 토스트로 닫지 않는다 — 후보를 고르면 실행할 수
+      //   있는 상태라 "허용되지 않는 전환" 이라고 말하면 거짓이고, 사용자는 그 상태 변경을
+      //   영영 못 하게 된다. 원 요청을 그대로 들고 후보 선택 다이얼로그로 넘긴다.
+      if (ambiguousTransition.capture(err, variables)) return
       if (err instanceof ApiError && err.status === 409) {
         // errorCode 구분: TRANSITION_NOT_ALLOWED(S3) vs VERSION_CONFLICT(S4)
         const body = err.body as Record<string, unknown> | undefined
@@ -921,6 +935,22 @@ export function IssueDetailPage({
     setPendingDoneTransition(null)
   }
 
+  /**
+   * 모호 전환 후보 선택 핸들러.
+   *
+   * 원 요청(`prompt.input`)에 고른 후보의 `transitionId` 만 덧붙여 재요청한다 —
+   * `expectedVersion`·`resolutionId` 를 여기서 다시 조립하면 한 쪽이 빠졌을 때
+   * 사용자에게는 「골랐는데 또 실패」로만 보인다.
+   *
+   * @param transitionId 사용자가 고른 후보 전환의 1급 식별자
+   */
+  function handleAmbiguousTransitionSelect(transitionId: string) {
+    const prompt = ambiguousTransition.prompt
+    if (prompt === null) return
+    ambiguousTransition.clear()
+    transitionMutation.mutate({ ...prompt.input, transitionId })
+  }
+
   // ── 삭제 핸들러 ───────────────────────────────────────────────────────────
   function handleDeleteClick() {
     setConfirmDelete(true)
@@ -1211,6 +1241,17 @@ export function IssueDetailPage({
         onConfirm={handleResolutionConfirm}
         onCancel={handleResolutionCancel}
       />
+
+      {/* 모호 전환(409 AMBIGUOUS_TRANSITION) 후보 선택 다이얼로그 (ADR 2026-08-18 §D3) */}
+      {ambiguousTransition.prompt !== null && (
+        <AmbiguousTransitionDialog
+          candidates={ambiguousTransition.prompt.candidates}
+          message={ambiguousTransition.prompt.message}
+          isTransitioning={transitionMutation.isPending}
+          onSelect={handleAmbiguousTransitionSelect}
+          onCancel={ambiguousTransition.clear}
+        />
+      )}
 
       {/* 이슈 클론 Dialog (FR-IS-06) */}
       <CloneIssueDialog
