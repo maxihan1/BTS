@@ -338,8 +338,29 @@ class V207MigrationTest {
 
     // ── V207. kind CHECK ──────────────────────────────────────────────────────
 
+    /**
+     * ### 왜 스키마 축이 먼저인가 — 동작 축만 두면 이 판별식이 공허해진다
+     *
+     * `ck_transition_kind_from` 은 「NORMAL 이면 from 있음 · GLOBAL/INITIAL 이면 from 없음」이라
+     * **목록 밖의 kind 는 어느 분기도 만족시키지 못해 함께 거부한다.** 그래서 INSERT 실패만 보면
+     * `ck_workflow_transitions_kind` 를 통째로 지워도 초록이다(실측 — 지운 상태에서 PostgreSQL 이
+     * `ck_transition_kind_from` 위반으로 막았다). 허용 목록의 정본이 어느 제약인지는 정의를 직접 읽어야 한다.
+     */
     @Test
     fun `kind CHECK 가 NORMAL GLOBAL INITIAL 만 허용한다`() {
+        val definition =
+            query(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint" +
+                    " WHERE conrelid = 'workflow_transitions'::regclass" +
+                    "   AND conname = 'ck_workflow_transitions_kind'",
+            ) { it.getString(1) }
+        assertThat(definition)
+            .describedAs("허용 목록의 정본은 ck_workflow_transitions_kind 다")
+            .contains("'NORMAL'")
+            .contains("'GLOBAL'")
+            .contains("'INITIAL'")
+
+        // 동작 축 — 목록 밖의 값은 실제로 거부된다.
         val failure =
             insertFailsWith(
                 "INSERT INTO workflow_transitions" +
@@ -348,25 +369,32 @@ class V207MigrationTest {
                     "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
                     "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
             )
-        assertThat(failure).contains("ck_workflow_transitions_kind")
+        assertThat(failure).contains("violates check constraint")
 
-        // 허용 3종 중 GLOBAL 은 실제로 들어가야 한다 — CHECK 가 전부를 막으면 이 판별식이 공허해진다.
+        // 허용 3종이 전부 실제로 저장된다 — CHECK 가 다 막으면 위 단언이 공허해진다.
+        // INITIAL 은 ⑨ 백필이 이미 심어 두었으므로 여기서는 NORMAL·GLOBAL 을 더해 3종을 채운다.
         inRolledBackTransaction { conn ->
             conn.createStatement().use { stmt ->
                 stmt.execute(
                     "INSERT INTO workflow_transitions" +
                         " (workflow_id, to_status_id, name, kind, display_order)" +
-                        " SELECT t.workflow_id, t.to_status_id, '알파 어디서든 완료', 'GLOBAL', 99" +
+                        " SELECT t.workflow_id, t.to_status_id, '알파 어디서든 완료', 'GLOBAL', 98" +
+                        "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
+                        "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
+                )
+                stmt.execute(
+                    "INSERT INTO workflow_transitions" +
+                        " (workflow_id, from_status_id, to_status_id, name, kind, display_order)" +
+                        " SELECT t.workflow_id, t.from_status_id, t.to_status_id," +
+                        "        '알파 또 다른 보통 전환', 'NORMAL', 99" +
                         "   FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
                         "  WHERE w.key = 'wf-alpha' AND t.name = '알파 시작'",
                 )
             }
-            val global =
-                countOf(
-                    conn,
-                    "SELECT COUNT(*) FROM workflow_transitions WHERE kind = 'GLOBAL'",
-                )
-            assertThat(global).isEqualTo(1)
+            val distinctKinds = countOf(conn, "SELECT COUNT(DISTINCT kind) FROM workflow_transitions")
+            assertThat(distinctKinds)
+                .describedAs("NORMAL·GLOBAL·INITIAL 3종이 모두 저장돼야 한다")
+                .isEqualTo(3)
         }
     }
 
