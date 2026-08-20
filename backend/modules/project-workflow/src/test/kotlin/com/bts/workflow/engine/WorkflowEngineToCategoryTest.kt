@@ -103,8 +103,24 @@ class WorkflowEngineToCategoryTest {
         val success = result as AvailableTransitionsResult.Success
         assertThat(success.transitions).hasSize(2)
         assertThat(success.transitions).containsExactlyInAnyOrder(
-            AvailableTransitionView("open", "in_progress", "Start Work", "IN_PROGRESS"),
-            AvailableTransitionView("open", "done", "Fast Close", "DONE"),
+            // transitionId·kind 는 픽스처 전환 객체에서 파생시킨다 — id 가 UUID.randomUUID() 라
+            // 리터럴을 적으면 매 실행 어긋나고, kind 리터럴은 enum 값이 늘 때 조용히 썩는다.
+            AvailableTransitionView(
+                "open",
+                "in_progress",
+                "Start Work",
+                "IN_PROGRESS",
+                transitionId = txOpenToInProgress.id,
+                kind = txOpenToInProgress.kind.name,
+            ),
+            AvailableTransitionView(
+                "open",
+                "done",
+                "Fast Close",
+                "DONE",
+                transitionId = txOpenToDone.id,
+                kind = txOpenToDone.kind.name,
+            ),
         )
     }
 }

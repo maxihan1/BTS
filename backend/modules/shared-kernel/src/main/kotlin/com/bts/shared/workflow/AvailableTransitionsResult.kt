@@ -51,11 +51,14 @@ sealed interface AvailableTransitionsResult {
  * ([fromStateKey], [toStateKey]) 쌍은 더 이상 유일하지 않다. 같은 상태쌍에 이름만 다른 전환을
  * 여럿 둘 수 있기 때문이다.
  *
- * ### 값 채우기는 아직이다 — 지금 [transitionId]·[kind] 는 항상 null 이다
- * project-workflow 의 `WorkflowEngine.availableTransitions` 가 이 둘을 아직 넘기지 않는다.
- * 넘기기 시작하면 이 뷰를 **값으로 통째 비교**하는 기존 단위 테스트들(`WorkflowEngine*Test`)의
- * 기대값을 같은 커밋에서 함께 고쳐야 한다. 그때까지 호출자는 null 을 「미계산」으로 읽어야 하며
- * 「전환 ID 가 없다」로 읽으면 안 된다.
+ * ### 값 채우기 현황 — 엔진은 채운다. HTTP 응답은 아직 버린다
+ * project-workflow 의 `WorkflowEngine.availableTransitions` 는 이 둘을 **항상 채워** 넘긴다.
+ * 다만 issue-tracking 의 `TransitionItem.from` 이 5필드(from·to·name·key·toCategory)만 싣고
+ * 두 값을 버리므로 `GET /api/v1/issues/{key}/transitions` 응답에는 아직 나타나지 않는다.
+ * 파라미터 기본값이 null 이라 이 뷰를 직접 만드는 테스트 픽스처·다른 생산자는 여전히 null 일 수 있다 —
+ * 호출자는 null 을 「미계산」으로 읽어야 하며 「전환 ID 가 없다」로 읽으면 안 된다.
+ * 이 뷰를 **값으로 통째 비교**하는 단위 테스트는 두 필드까지 기대값에 담아야 한다
+ * (data class 라 `equals` 가 6필드 전부를 본다).
  *
  * @param fromStateKey 전환 출발 상태 키.
  * @param toStateKey 전환 도착 상태 키.
