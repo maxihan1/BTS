@@ -177,11 +177,25 @@ class GlobalControllerAdviceSealTest {
          *   `assignableTypes` 로 좁힐 대상이 없다(그 클래스 KDoc). `instance` 고정으로 유출을 막는다
          * - `WorkflowExceptionHandler` — 손수 만든 `ErrorResponse` 를 반환해 URI 필드 자체가 없다.
          *   축 2 는 `ProblemDetail` 반환 핸들러만 보므로 이 클래스에는 적용되지 않는다
+         * - `AmbiguousTransitionExceptionHandler` (FR-WF-05) — **광역이어야만 한다.**
+         *   `AmbiguousTransitionException` 은 project-workflow 엔진이 던지지만 실제로 노출되는 경로는
+         *   issue-tracking 의 `POST /api/v1/issues/{key}/transition` 이고, 그쪽 `IssueExceptionHandler`
+         *   의 catch-all(`@ExceptionHandler(Exception::class)`)이 **등록 순서로 먼저 잡아 500 으로
+         *   뭉갠다**(실측). `@Order(HIGHEST_PRECEDENCE)` 로 선점해야 409 가 나간다.
+         *   `basePackages` 로 좁히면 그 경로를 못 덮어 목적 자체가 사라진다.
+         *   손수 만든 `AmbiguousTransitionErrorResponse` 를 반환하므로 축 2 비대상
+         * - `TransitionConflictExceptionHandler` (FR-WF-05) — 손수 만든 `ErrorResponse` 반환(축 2 비대상).
+         *   `@Order` 는 **일부러 붙이지 않았다** — 이 예외를 던지는 두 함수의 호출자가
+         *   `WorkflowController` 하나뿐이고 그 경로를 덮는 catch-all 이 저장소에 없다(advice 39개 전수 확인).
+         *   `WorkflowExceptionHandler` 에 얹지 않은 이유는 그쪽이 이미 detekt `TooManyFunctions` 한도에
+         *   닿아서다(`WorkflowStatusCompositionExceptionHandler` 가 같은 이유로 갈라져 나온 선례)
          */
         val EXPECTED_BROAD_ADVICES =
             listOf(
                 "com.bts.issue.project.archive.web.ProjectArchivedExceptionHandler",
                 "com.bts.workflow.web.WorkflowExceptionHandler",
+                "com.bts.workflow.web.AmbiguousTransitionExceptionHandler",
+                "com.bts.workflow.web.TransitionConflictExceptionHandler",
             )
 
         /**
