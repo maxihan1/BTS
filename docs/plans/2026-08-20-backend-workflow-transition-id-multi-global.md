@@ -1059,3 +1059,42 @@ files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domai
 - **병렬 wave 가 Gradle `build/` 를 공유해 서로의 test XML 을 덮고 지운다.** 실측 3종 —
   `NoSuchFileException: output.bin.idx` · `BUILD SUCCESSFUL` 인데 결과 디렉터리 소실 · 낡은 XML 을
   읽을 뻔함. `--rerun-tasks` 를 test 와 함께 쓰면 특히 심하다.
+
+## wave 4 결과 (2026-08-20) — Task 6
+
+**중단·재개.** Task 6 은 「전체 스위트 검증」 직전에 Maxi 가 중단시켰다. 구현 3파일이 미커밋으로
+워킹트리에 남아 있었고 유실은 0 이었다. controller 가 이어받아 커밋·검증을 마쳤다.
+
+| 커밋 | 내용 |
+|---|---|
+| `ea1cd09ae` | test red — transitionId 우선 실행과 모호 감지 |
+| `cfc0bbf4e` | feat green — `transitionId` 우선 + `AmbiguousTransitionException` |
+| `01ce66da1` | refactor — `TooManyFunctions` 근거 명시 |
+
+**검증 전량**
+
+| 대상 | 결과 |
+|---|---|
+| `shared-kernel` (`cleanTest`) | **314 tests / 0 failures** |
+| `project-workflow` (`cleanTest`) | **690 tests / 0 failures** (683 → 690) |
+| `issue-tracking` (`cleanTest`) | **3,286 tests / 0 failures** — ★하위호환 계약 판정 |
+| detekt · ktlint (양 모듈) | EXIT=0 |
+
+**뮤테이션 3회 — 전부 red (비-공허 확인)**
+
+| # | 훼손 | 결과 |
+|---|---|---|
+| 1 | 모호 감지 분기 → `candidates.first()` | 2 red — 「후보 2개면 예외」·「NORMAL 과 GLOBAL 이 같은 도착지면 모호」 |
+| 2 | `transitionId` 우선 분기 제거 | 2 red — 「지목 실행」·「타 워크플로우 transitionId 는 404」 |
+| 3 | `candidatesFor` 재사용 → 자체 필터 | 1 red — GLOBAL 이 후보에서 빠져 모호 판정이 무너진다 |
+
+3회 모두 `git checkout -- <파일>` 로 원복하고 `git status` 와 `grep` 으로 눈 확인했다.
+
+### ★ controller 의 시행착오 1건 — 기록
+
+`WorkflowEngine` 이 detekt `TooManyFunctions`(임계 11)에 닿아, `@Suppress` 를 쌓기보다
+2줄 헬퍼 `resolveById` 를 인라인하려 했다. **실패했다** — 인라인하면 `resolveTransition` 의 `throw` 가
+3개가 되어 `ThrowsCount`(상한 2)를 대신 위반하고 `UUID` import 도 미사용이 된다.
+**규칙이 요구하는 모양이 원래 구조였다.** 원복 후 `@Suppress` + 사유를 달았고, KDoc 에
+「인라인은 실측으로 기각했다」와 그 근거를 남겨 **다음 사람이 같은 시도를 반복하지 않게** 했다.
+정본 처방은 전환 해석을 `TransitionResolver` 로 떼는 것이고 다음 PR 몫이다.
