@@ -52,12 +52,21 @@ cd ${REMOTE_DIR}
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env build
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
 sleep 10
-curl -fsS http://localhost:18080/ >/dev/null && echo "✅ 프론트 응답"
+# 호스트 포트로 확인하지 않는다. 앞단 bts-caddy 는 도메인(SNI)으로만 사이트를 매칭하므로
+# localhost 요청은 사이트에 닿지 않는다 — 그 결과를 프론트 장애로 오독하게 된다.
+# 각 컨테이너 내부에서 직접 묻고, 도메인 경유 https 는 배포 후 외부에서 확인한다.
+docker exec bts-web wget -qO- http://127.0.0.1/ >/dev/null 2>&1 \
+  && echo "✅ 프론트(nginx) 응답" \
+  || echo "⚠️ 프론트 미응답 — 'docker logs bts-web' 확인"
 # 백엔드 health 는 nginx 가 /actuator 를 프록시하지 않으므로(SPA fallback 가짜그린 방지)
 # 백엔드 컨테이너 내부에서 직접 확인한다.
 docker exec bts-backend curl -fsS http://localhost:8080/actuator/health >/dev/null \
   && echo "✅ 백엔드 health UP" \
   || echo "⚠️ 백엔드 health 대기 필요(기동 수십 초 소요) — 'docker compose ... ps'로 healthy 확인"
+# 인증서는 첫 요청 때 발급된다(수십 초). 여기서 실패해도 배포 실패가 아니다.
+docker logs bts-caddy 2>&1 | grep -qE "certificate obtained|certificate.*renew|serving initial configuration" \
+  && echo "✅ Caddy 기동 (인증서 발급 로그 확인)" \
+  || echo "ℹ️  Caddy 인증서 발급 진행 중일 수 있음 — 'docker logs bts-caddy' 확인"
 REMOTE
 
 echo "✅ 배포 명령 완료 (health 는 기동까지 수십 초 소요될 수 있음)"
