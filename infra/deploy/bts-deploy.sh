@@ -26,7 +26,25 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "🔨 백엔드 fat jar 빌드"
 (cd backend && ./gradlew :modules:app:bootJar)
 echo "🔨 프론트 dist 빌드"
-pnpm --filter @bts/web build
+# ★pnpm 을 통과하지 못하면 vite 를 직접 부른다.
+#
+# 왜. 워크트리(.worktrees/*)가 붙어 있는 동안 그 node_modules 는 메인을 가리키는 **심볼릭**이고,
+# 그 상태에서 pnpm 은 모듈 디렉터리를 지우고 다시 깔아야 한다고 판단한다. 비대화형 실행에는
+# TTY 가 없어 확인을 받지 못하고 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다
+# (2026-08-21 실측 — 배포가 이 지점에서 exit 1).
+#
+# ★★purge 를 승인해서(`CI=true`) 뚫으면 안 된다. 지워지는 실체를 워크트리의 심볼릭이
+#   가리키고 있어 **옆 세션의 작업이 함께 깨진다.** 배포 하나를 통과시키려고 남의 작업을
+#   부수는 거래다.
+#
+# 빌드 자체는 pnpm 을 필요로 하지 않는다 — apps/web 의 build 는 `vite build` 하나뿐이고
+# 바이너리는 apps/web/node_modules/.bin 에 실재한다. 그래서 폴백이 성립한다.
+if ! pnpm --filter @bts/web build; then
+  echo "⚠️  pnpm 빌드 실패 — vite 직접 호출로 폴백 (워크트리 간섭 추정, node_modules 는 건드리지 않는다)"
+  [ -x apps/web/node_modules/.bin/vite ] || { echo "❌ vite 바이너리도 없다 — 의존성 복구가 선행돼야 한다"; exit 1; }
+  (cd apps/web && node_modules/.bin/vite build)
+fi
+[ -f apps/web/dist/index.html ] || { echo "❌ dist/index.html 부재 — 빌드가 산출물을 남기지 못했다"; exit 1; }
 
 # 3. 서버로 전송 (빌드 산출물 포함, 소스/의존성 제외)
 echo "📤 서버 업로드"
