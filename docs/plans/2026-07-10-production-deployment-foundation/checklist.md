@@ -46,10 +46,28 @@
 - [x] ✅ **`docker compose up` 전체 6서비스 기동** — postgres·minio·minio-init·clamav·backend·web. **backend `Started BtsApplicationKt in 15s`**(Flyway·MinIO버킷·워크플로우시드·DelegatingPermissionResolver 배선). worktree `.worktrees/deploy-prod-foundation`에서(2차 hijack 격리).
 - [x] ✅ **health/actuator UP + 프록시 검증** — backend `/actuator/health` 200 UP(env crutch 없이 application.yml 수정만) · web healthy · nginx SPA 서빙(`<title>BTS — Atlas</title>`) · nginx→백엔드 프록시(`/api/v1/whoami`→401 정상). **health 오탐 2건 소스 수정**(commit bdccebbde). (로그인→CRUD 브라우저 스모크는 시드 사용자 없어 미실시 — 후속.)
 
-## P5 서버 배포 (Maxi 승인 — 준비 착수)
-- [x] ✅ `bts-deploy.sh` health 버그 수정 (nginx /actuator 미프록시 → docker exec 백엔드 직접 확인). config.sh.example 완비(REMOTE_DIR=/home/testify/bts, AIG와 분리).
-- [ ] 🚧 **VM 점검 (네트워크 블로커)** — 이 Mac에서 `61.107.200.30:22` 라우팅 불가("Network is unreachable", 게이트웨이 10.22.6.60). AIG는 이 Mac에서 로컬 배포하므로 평소엔 접속됨 → **사내망/VPN 미접속 상태로 추정**. 네트워크 회복 후 아래 읽기전용 점검 실행:
-  - `ssh -i ~/.ssh/id_ed25519 testify@61.107.200.30 'free -m; df -h /; nproc; docker --version; docker compose version; ps aux --sort=-%mem | head'`
-  - 확인 항목: RAM 여유(BTS ~4.5GB + AIG 기존), 디스크, **Docker/Compose 설치 여부(AIG는 PM2라 미설치 가능성)**, AIG 현재 메모리 점유.
-- [ ] 포트/도메인/TLS 결정 (현재 18080 평문, P5서 Let's Encrypt/앞단 프록시)
-- [ ] 격리 배포 + AIG 무영향 확인 (bts-net·18080·/home/testify/bts 분리 설계 완료)
+## P5 서버 배포 ✅ 완료 (2026-08-20)
+
+**배포처가 바뀌었다.** AIG 공존 VM(61.107.200.30)이 아니라 **BTS 전용 네이버 클라우드 VM**
+(101.79.19.193 · Rocky 8.8 · 2코어 16GB)에 올렸다. AIG 와 자원을 다투지 않으므로 원래 설계의
+격리 장치(18080 포트 회피 등) 중 일부는 불필요해졌다.
+
+- [x] ✅ `bts-deploy.sh` health 버그 수정 (nginx /actuator 미프록시 → docker exec 백엔드 직접 확인).
+- [x] ✅ **VM 점검** — 구 서버 네트워크 블로커는 소멸(전용 VM 신설). 실측: Rocky 8.8 x86_64 · 2코어 · RAM 15.7GB(여유 15.2) · 디스크 99GB(여유 96) · SELinux Disabled · firewalld inactive(ACG 가 유일한 방화벽).
+- [x] ✅ **서버 준비** — 스왑 8GB 신설(+`/etc/fstab` 등록, 스왑 0 이었다) · Docker 26.1.3 + Compose v2.27.0 설치 후 `systemctl enable`(재부팅 자동기동 — 부채 `58` 이 이 호스트엔 구조적으로 없다). Rocky 8.8 의 `$releasever` 가 `8.8` 로 풀려 Docker repo 404 → repo 파일을 `8` 로 고정해 해소.
+- [x] ✅ **시크릿** — `/opt/bts/infra/prod/.env`(600) 22키 전량 · JWT RSA 키 생성. **암호화 키 4쌍(MFA·OIDC·Webhook·Automation)을 모두 채웠다** — 미설정이면 부팅·health 는 green 이고 기능 첫 호출에서 500 이 나므로 나중에 발견하는 것이 최악이다.
+- [x] ✅ **포트/도메인/TLS 결정** — `bts.maxihan.com`(A 레코드가 이미 이 IP 를 가리킴) · **Caddy 를 앞단 TLS 종단으로 신설**해 Let's Encrypt 자동 발급·갱신. ACG 가 22/443/80/3000 만 열어 18080 은 애초에 닿지 않는다. `nginx.conf` 는 로그 마스킹 봉인이 걸려 있어 한 줄도 건드리지 않았다(종단 분리). `X-Forwarded-Proto` 만 앞단 값 우선으로 수정.
+- [x] ✅ **배포 + 검증** — 6서비스 전부 healthy · 백엔드 `{"status":"UP"}` `RestartCount=0` · 외부 `https://bts.maxihan.com` **HTTP 200 · 인증서 검증 0** · `/api/v1/whoami` 401(프록시 정상 도달).
+
+### 배포 중 실측한 결함 2건 (둘 다 로컬 검증이 못 잡던 층)
+
+1. **rsync 프로토콜 불일치** — macOS 기본 `/usr/bin/rsync` 는 openrsync(protocol 29)라 서버 GNU rsync 3.1.3(protocol 31)과 협상이 깨진다. 에러(`unexpected end of file`)가 원인을 전혀 안 가리킨다. `brew install rsync`(3.4.4) 로 해소. 정본 [[macos-openrsync-breaks-deploy-with-opaque-error]].
+2. **JWT 키 Permission denied** — 키를 `root:root 600` 으로 두면 비루트 컨테이너(`USER bts` uid 999)가 못 읽어 부팅이 재시작 루프에 빠진다. **P4 로컬 검증이 통과한 이유는 Docker Desktop 의 uid 매핑**이다 — 리눅스 실서버에서만 드러난다. 소유자를 999:999 · 400 으로 이관해 해소. 정본 [[docker-desktop-uid-mapping-hides-secret-permission-bug]].
+
+### 미완 — 로그인 계정이 없다
+
+`users` 0행이다. `SystemAdminBootstrapRunner` 는 *이미 있는* 사용자를 SYSTEM_ADMIN 으로 승격할 뿐
+계정을 만들지 않고, `POST /api/v1/users` 는 `hasRole('SYSTEM_ADMIN')` 이라 최초 1명은 그 경로로
+불가능하다. `infra/local/seed-admin.sql` 은 첫 줄에 **prod 금지**로 못 박혀 있다(비밀번호 `password`).
+→ 강한 임시 비밀번호의 Argon2id(`m=65536,t=3,p=4`) 해시를 `must_change_password=true` 로 삽입하고
+실제 로그인 API 로 검증하는 절차가 남았다. Maxi 결정으로 후속.

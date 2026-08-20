@@ -33,15 +33,30 @@ self-hosted 러너 잡은 분(minute) 과금 대상이 아니라 이 차단을 �
 
 ## 2. 러너 신원
 
-| 항목 | 값 |
-|---|---|
-| 이름 | `maxi-mac-bts` |
-| 라벨 | `self-hosted`, `macOS`, `ARM64`, **`bts-local`** (워크플로우가 요구하는 것은 `bts-local`) |
-| 설치 위치 | `~/actions-runner-bts` (저장소 밖) |
-| 작업 디렉터리 | `~/actions-runner-bts/_work/BTS/BTS` — **Maxi 작업 트리와 별개** |
-| 서비스 | launchd `~/Library/LaunchAgents/actions.runner.maxihan1-BTS.maxi-mac-bts.plist` |
-| 로그 | `~/Library/Logs/actions.runner.maxihan1-BTS.maxi-mac-bts` |
-| 버전 | 2.336.0 (osx-arm64), tarball sha256 `8e8839c4…b079` 검증 후 설치 |
+**2026-08-20 부터 2대다.** 워크플로우가 요구하는 라벨이 `bts-local` 하나뿐이고 둘 다 그것을
+달고 있으므로, **어느 러너가 어느 잡을 집을지는 고를 수 없다** — GitHub 이 빈 쪽에 배정한다.
+
+| 항목 | `maxi-mac-bts` | `ncp-linux-bts` |
+|---|---|---|
+| OS · arch | macOS · ARM64 (MacBookPro18,3 · 8코어 16GB) | Rocky Linux 8.8 · x86_64 (2코어 16GB) |
+| 라벨 | `self-hosted` `macOS` `ARM64` **`bts-local`** | `self-hosted` `Linux` `X64` **`bts-local`** |
+| 설치 위치 | `~/actions-runner-bts` (저장소 밖) | `/home/runner/actions-runner-bts` |
+| 작업 디렉터리 | `~/actions-runner-bts/_work/BTS/BTS` — **Maxi 작업 트리와 별개** | `/home/runner/actions-runner-bts/_work/BTS/BTS` |
+| 서비스 | launchd `~/Library/LaunchAgents/actions.runner.maxihan1-BTS.maxi-mac-bts.plist` | systemd `actions.runner.maxihan1-BTS.ncp-linux-bts.service` (`enabled`) |
+| 로그 | `~/Library/Logs/actions.runner.maxihan1-BTS.maxi-mac-bts` | `journalctl -u actions.runner.maxihan1-BTS.ncp-linux-bts` |
+| 버전 | 2.336.0 (osx-arm64), tarball sha256 `8e8839c4…b079` 검증 후 설치 | 2.336.0 (linux-x64) |
+| 접속 | 로컬 | `ssh -i ~/.ssh/ncp-bts.pem root@101.79.19.193` |
+
+### 리눅스 러너가 다른 점
+
+- **Docker 가 systemd 로 자동 기동한다** (`systemctl is-enabled docker` → `enabled`).
+  부채 `58`「재부팅이 Docker Desktop 을 자동 시작하지 않는다」가 이 러너에는 **구조적으로 없다**.
+- 러너는 `runner` 사용자로 돌고 `docker` 그룹에 속한다 — 러너는 root 실행을 거부한다.
+- **CPU 2코어**다. 맥(8코어)의 1/4이라 무거운 백엔드 잡을 집으면 **그 잡 자체는 느리다**.
+  증설의 이득은 잡 단축이 아니라 **큐 대기 감소와 단일 장애점 제거**다(부채 `57` 처방 ②).
+- **자원 판정이 동작하지 않는다.** `verify-runner-health.sh` 의 측정이 `sysctl`/`uptime` 의
+  macOS 출력 형식을 전제해 리눅스에서는 `⚠️ 자원 판정 건너뜀` 으로 지나간다 — 엔진 점검은
+  정상 동작하지만 자원 고갈은 이 러너에서 못 본다. 부채 `59`.
 
 상태 확인.
 
