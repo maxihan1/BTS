@@ -1156,3 +1156,351 @@ api-contract · testing · performance · maintainability). T3 이므로 `/bts` 
 - **성능** — 곱집합 한 겹 축소 · 폴백은 N+1 아님(1회 배치, 백필 완료 시 0회) · 캐시 무효화 3종 전부 (performance)
 - **하네스 고정 2줄** — `verify-master-plan.sh` · `classify-task.ts --cache` 호출문 그대로. `.claude/**` 무변경
 - **CI** — 실패 0건 (SUCCESS 9 · 진행 중 5)
+
+## 게이트 2 결과 (2026-08-20) — 수정 후 재리뷰
+
+**Maxi 응답 = A안(전부 수정 후 재리뷰).** B(P0 만 고치고 머지)·C(보류) 기각.
+근거 — 교차 결함 #2·#4·#6 이 합쳐지면 이 PR 이 파는 「전환 ID」가 끝에서 끝까지 성립하지 않는다.
+`transitionId` 가 항상 null 이면 409 재요청 왕복이 API 로 불가능하고, post-action 규칙 편집은 404 이며,
+프론트는 옛 경로를 부른다. 문서상 존재하나 실제로 못 쓰는 기능을 main 에 넣지 않는다.
+
+### ★ 분류 누락 1건 — 이 범위에 편입한다
+
+리뷰의 **단독 CRITICAL 7건 중 1건(`updateTransition` 이 구 컬럼을 안 지운다)이 P0~P3 어느 등급에도
+실리지 않았다.** 나머지 6건은 P2·P3 로 분류돼 있다. 두 목록이 서로를 검사하지 않아 생긴 누락이며,
+저장소가 `two-lists-never-check-each-other` 로 부르는 그 양식이다.
+
+**실측으로 확인했다(추정 아님).**
+
+- `WorkflowWriteRepository.kt:251-266` `updateTransition` 은 `KIND`·`NAME`·`FROM_STATUS_ID`·
+  `TO_STATUS_ID` 만 `set` 한다. 구 컬럼 `FROM_STATE_ID`·`TO_STATE_ID` 는 손대지 않는다.
+- `WorkflowRepository.kt:275-283` 읽기는 **신 컬럼 우선 · 구 컬럼 폴백**이다.
+- 따라서 전환을 GLOBAL/INITIAL 로 바꿔 `from_status_id` 를 NULL 로 만들면, 남아 있는 구
+  `from_state_id` 가 폴백으로 되살아나 **바꾸기 전 출발 상태가 그대로 조회된다**(조용한 오답).
+- 그 구 id 가 더 이상 해석되지 않으면 `legacyStateKeyOf`(`:333-338`)가 `error()` 를 던져 **500** 이다.
+- main 의 구 컬럼 사용처는 10곳이다(`head` 없이 전수 grep). `YamlSeedService.kt:477-478` ·
+  `WorkflowRepository.kt:236·238·276·279·312·313` · `PostActionTransitionResolver.kt:73-74`.
+
+### 이 wave 의 공통 불변식 — 구 컬럼 정책
+
+**어떤 쓰기 경로도 신 컬럼과 구 컬럼이 서로 다른 값을 가리키는 행을 만들지 않는다.**
+신 컬럼이 정본이고, 구 컬럼은 같은 값으로 동기화하거나 NULL 로 비운다. 3단 분할 3단계(구 컬럼 drop)가
+올 때까지 이 불변식이 읽기 폴백의 안전을 유지하는 유일한 장치다. Task 17 이 이를 판별식으로 고정한다.
+
+### 수정 범위 — 7건 (P0 1 · P1 5 · 편입 1)
+
+| # | 결함 | 등급 | task |
+|---|---|---|---|
+| 1 | 프론트 Zod 미완화 → 배포 즉시 워크플로우 화면 2곳 실패 | **P0** | 15 |
+| 4 | `planTransition` 이 옛 경로 호출 | P1 | 15 |
+| 2 | `PostActionTransitionResolver` 미이전 → 규칙 편집 404 | P1 | 16 |
+| — | `updateTransition` 이 구 컬럼을 안 지운다 | **편입** | 17 |
+| 3 | `copyTransitions` KDoc 이 존재하지 않는 CHECK 인용 | P1 | 17 |
+| 6 | `AvailableTransitionView.transitionId` 항상 null | P1 | 18 |
+| 7 | 시드가 INITIAL 을 안 심음 | P1 | 19 |
+
+**P2 8건 · P3 3건 · 장부 후보 6건은 이 범위 밖이다.** `TODOS.md` 등재로 분리한다 — 머지 후 별도 작업.
+
+### Task 15. 프론트 계약 정합 — Zod 완화 + 신 필드 + 경로 정정 (P0 #1 · P1 #4)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/api/workflows.ts`, `apps/web/src/api/workflows.test.ts`,
+`apps/web/src/mocks/workflow-fixtures.ts`, `apps/web/src/mocks/workflow-fixtures.test.ts`,
+`apps/web/src/mocks/workflow-handlers.ts`] · depends-on: []
+
+- **문제 1 (P0).** `workflows.ts:27` 의 `fromStateKey: z.string().min(1)` 이 non-null 을 요구한다.
+  V207 이 워크플로우마다 `INITIAL`(`from_status_id = NULL`)을 백필하므로 응답에 `fromStateKey: null`
+  원소가 **모든 기존 DB 에서 반드시** 섞인다. `client.ts:133` 이 `safeParse` 가 아니라 `parse` 라
+  ZodError 를 throw 하고, `routes/workflows.$key.tsx:51` 과 `MappingTable.tsx:292` 두 화면이 죽는다.
+  `PostActionConfigSection.tsx:357` 은 TypeError 다.
+- **처방 1.** `fromStateKey` 를 `.nullable()` 로 완화하고 `id`·`kind` 를 스키마에 추가한다.
+  소비처 3곳이 null 을 어떻게 그리는지도 함께 정한다 — GLOBAL 은 「어느 상태에서나」, INITIAL 은
+  「이슈 생성」. **임의로 빈 문자열 폴백을 넣지 마라**(enum fallback 이 계약 위반을 침묵시킨 선례.
+  learnings 2026-05-26 defense-in-depth).
+- **문제 2 (P1 #4).** `workflows.ts:128` 의 `planTransition` 이 `/api/v1/workflows/${key}/transitions`
+  를 부른다. 결정 D-1 이 그 경로를 `/transitions/plan` 으로 옮겼고 옛 경로는 이제 **전환 정의 CRUD** 다.
+  현재 그대로면 계획 요청이 CRUD 로 오라우팅된다. D-1 의 「실호출부 0」 근거가 `head` 로 잘린 grep 이었다.
+- **처방 2.** 경로를 `/transitions/plan` 으로 고치고, MSW 핸들러·주석도 같이 맞춘다.
+- **★ 인라인 목 전수 검색 필수.** learnings 2026-05-30(「Zod 응답 스키마 강화가 산재한 인라인 mock 을
+  깬다」)이 정확히 이 형태다. `grep -rln "fromStateKey" apps/web/src` 가 **22파일**을 낸다 —
+  `head` 를 붙이지 말고 전수를 본다. 그중 `workflowTransitionViewSchema` 를 통과하는 것만 골라 보강한다
+  (`AvailableTransitionView` 계열은 다른 모양이니 혼동 금지).
+- **검증.** `vitest` 는 타입을 안 본다. `tsc --noEmit`(=`pnpm typecheck`)를 **반드시 동반**한다.
+- **red-first.** 픽스처에 `fromStateKey: null` 인 INITIAL 원소를 먼저 넣어 기존 테스트가 실제로 깨지는
+  것을 본다. 그 red 가 이 task 의 판별식이다 — 넣어도 초록이면 목이 자가 초록인 것이다(리뷰 지적).
+
+### Task 16. `PostActionTransitionResolver` 신 컬럼 이전 (P1 #2 · 4렌즈)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionTransitionResolver.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionAdminServiceTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionE2EIntegrationTest.kt`] ·
+depends-on: []
+
+- **문제.** `:73-74` 가 `FROM_STATE_ID`·`TO_STATE_ID`(구 컬럼)로 전환을 찾는다. 신규 CRUD 로 만든
+  전환은 신 컬럼만 차 있어 **한 건도 안 잡히고 `PostActionNotFoundException` → 404** 다.
+  새로 만든 전환에 규칙을 못 붙인다 — 4개 렌즈가 독립 지목했다.
+- **처방.** 신 컬럼(`FROM_STATUS_ID`·`TO_STATUS_ID`) 기준으로 해석하고, 구 컬럼은 폴백으로만 둔다
+  (`WorkflowRepository` 의 읽기와 같은 우선순위). GLOBAL(`from` null)·INITIAL 도 해석 가능해야 한다.
+- **red-first.** 신 컬럼만 채운 전환에 post-action 을 붙이는 통합 테스트를 먼저 red 로 만든다.
+
+### Task 17. 구 컬럼 불변식 — `updateTransition` 정합 + KDoc 정정 + 판별식 (편입 CRITICAL · P1 #3)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowWriteRepository.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/WorkflowRepositoryTransitionTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/TransitionCrudMvcTest.kt`] ·
+depends-on: []
+
+- **문제 1 (편입).** 위 「분류 누락 1건」 전문 참조. `updateTransition:251-266` 이 구 컬럼을 방치해
+  조용한 오답 또는 500 을 만든다.
+- **처방 1.** 이 wave 의 공통 불변식대로 `updateTransition` 이 신 컬럼을 쓸 때 구 컬럼을 함께 정리한다.
+- **처방 1-b (판별식).** 「신·구가 다른 값을 가리키는 행이 생기지 않는다」를 테스트로 고정한다.
+  **비-공허 짝 필수** — 처방을 일부러 되돌려 red 1회를 확인하고 그 사실을 보고에 적는다.
+  가드가 자기가 막겠다고 서술한 것을 안 막던 자리가 이 저장소에서 반복 적발됐다.
+- **문제 2 (P1 #3).** `WorkflowWriteRepository.kt:354` 부근 `copyTransitions` KDoc 이
+  **존재하지 않는** `ck_transition_kind_from` CHECK 제약을 안전망으로 인용한다. 3단 분할 이연으로
+  V207 에서 빠졌는데 주석만 남았다. 4개 렌즈가 지목했다. 실재하는 근거로 고쳐 쓰거나 문장을 지운다.
+  **거짓 안전망 서술은 다음 사람이 그 위에 판단을 쌓는다** — 이 PR 이 이미 한 번 물린 형태다.
+
+### Task 18. `availableTransitions` 가 `transitionId`·`kind` 를 채운다 (P1 #6 · 3렌즈)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailableTransitionsTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineGlobalTransitionTest.kt`] ·
+depends-on: []
+
+- **문제.** `WorkflowEngine.kt:227` 이 `AvailableTransitionView` 를 **4인자로만** 만든다.
+  `transitionId`·`kind` 는 기본값 null 이라 응답에서 **항상 null** 이다. 그런데 모호 전환 409 계약은
+  클라이언트가 후보 중 하나의 `transitionId` 를 **되돌려 보내는** 왕복을 전제한다.
+  보낼 id 가 응답에 없으므로 **409 재요청이 API 로 성립하지 않는다.** 3개 렌즈가 지목했다.
+- **처방.** 두 필드를 실제 값으로 채운다. `AvailableTransitionsResult.kt:70-84` 의 기본값 null 은
+  **지우지 마라** — 그 기본값이 cross-BC 프로덕션 0줄(N2)을 지키는 장치이고 `AvailableTransitionViewTest`
+  의 3인자 생성이 그 가드다.
+- **red-first.** 「응답의 `transitionId` 가 실제 전환 id 와 같다」를 먼저 red 로 만든다.
+  GLOBAL 전환도 포함한다(`fromStateKey` 가 요청 상태로 대체되는 경로).
+
+### Task 19. 시드가 INITIAL 전환을 심는다 + 신 컬럼 병행 기입 (P1 #7)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`,
+`backend/modules/project-workflow/src/main/resources/workflows/simple.yaml`,
+`backend/modules/project-workflow/src/main/resources/workflows/software-default.yaml`,
+`backend/modules/project-workflow/src/main/resources/workflows/bug-tracking.yaml`,
+`backend/modules/project-workflow/src/main/resources/workflows/kanban-basic.yaml`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`] ·
+depends-on: []
+
+- **문제 1.** V207 백필은 **기존 DB** 에만 INITIAL 을 넣는다. 신규 설치는 시드가 만드는데
+  시드가 INITIAL 을 안 심는다. 그래서 **빈 DB 로 올린 환경에서는 C4(시작 상태 해석)·F10 이 거짓**이다.
+  기존 DB 에서만 초록인 기능은 `shared-dev-db-preexisting-rows-fake-green` 그 자체다.
+- **문제 2.** `YamlSeedService.kt:477-478` 이 구 컬럼만 `set` 한다. 이 wave 의 공통 불변식에 걸린다.
+- **처방.** 표준 4 워크플로우 YAML 에 INITIAL 전환을 명시하고, 시드가 신 컬럼을 정본으로 기입하도록
+  옮긴다. `display_order` 가 전부 0 이 되는 문제(장부 후보)는 이 범위 밖이나, 새로 심는 INITIAL 이
+  그 문제를 늘리지 않게 한다.
+- **red-first.** **빈 스키마에서 시드만 돌린 뒤** INITIAL 전환이 있는지 보는 통합 테스트를 먼저
+  red 로 만든다. 기존 개발 DB 에 이미 있는 행으로 판정하면 가짜 그린이다.
+
+### 게이트 2 재작업 메타
+
+- **task 수** 5(15~19) · **예상 wave** 1 — `files` 교집합이 없어 **전부 wave 6 병렬**이다.
+  Task 15 는 프론트, 16~19 는 서로 다른 백엔드 파일이다.
+- **구현 규율** T3 유지. TDD red-first — `test:` 커밋이 `feat:` 보다 먼저 대조된다.
+  Task 15 는 로직 변경(스키마·경로)이라 ui 시각 트랙이 아니라 **TDD 현행**이다.
+- **추가 검증** `./gradlew :modules:project-workflow:test :modules:shared-kernel:test ktlintCheck detekt` ·
+  `pnpm typecheck lint test` · `pnpm test:workflow` · `node scripts/build-doc-index.mjs --check` ·
+  `bash scripts/verify-master-plan.sh`
+- **★ 부재 증명에 `head` 금지.** 이 PR 이 이미 한 번 물렸다(D-1). 개수는 `grep -c`, 목록은 전량 출력.
+- **재리뷰** 완료 후 [6] `bts-codereview` 재호출. 렌즈는 직전과 같은 7종을 유지한다.
+
+## wave 6a 결과 (2026-08-20)
+
+| task | 판정 | 커밋 |
+|---|---|---|
+| 15 프론트 계약 | **BLOCKED** — 선언 파일 안은 완료·초록. 검증(타입)이 선언 밖을 요구 | RED `59c306ffe` · GREEN `dd385862e` |
+| 16 post-action resolver | DONE_WITH_CONCERNS | RED `c087ff82c` · GREEN `c93f81a68` |
+| 17 구 컬럼 불변식 | **DONE** | RED `d8460fd91` · GREEN `d5c81d359` · KDoc `6b1c333e4` |
+
+### ★ controller 의 오류 2건 — 기록
+
+1. **Task 15 의 `files` 를 너무 좁게 선언했다.** `fromStateKey` 를 nullable 로 완화하면 그 값을 **그리는** 쪽이 함께 바뀌어야 하는데 api·mocks 5파일만 허용했다. 그 결과 선언 안은 초록인데 전체 스위트가 red 다. Task 14 가 같은 양식(「controller 의 `files` 설계 실수」)으로 신설된 전례가 있는데 **되풀이했다.** 처방 = Task 20 신설.
+2. **검증 명령을 공허한 것으로 줬다.** dispatch 프롬프트에 `tsc --noEmit -p apps/web/tsconfig.json` 을 적었는데, 그 파일은 `"files": []` + `references` 인 solution tsconfig 라 `--build` 없이 `-p` 로 부르면 **아무것도 컴파일하지 않는다**. controller 가 직접 A/B 로 실측했다 — 타입 에러 2건이 실재하는 상태에서 그 명령은 `EXIT=0` · 출력 0줄, `tsc -p tsconfig.app.json --noEmit` 은 `EXIT=2` · 12줄. 저장소 안에는 이 형태가 **0건**이고(`pnpm typecheck` = `tsc -p tsconfig.app.json --noEmit` 이 정본) **controller 가 새로 만든 잘못**이다.
+   **장부 후보** — `.claude/skills/bts-impl/worktree-commands.md` 에 worktree 용 `vitest`·`lint-staged` 대체 명령은 있으나 **`typecheck` 짝이 없다.** 그 빈칸이 이 오발명을 불렀다.
+
+### Task 15 의 잔여 발견 (Task 20 이 받는다)
+
+- `workflows.test.ts` 는 자기 `beforeEach` 인라인 목이 핸들러를 덮어써 **픽스처를 한 번도 보지 않았다.** 리뷰가 지목한 「프론트 테스트가 인라인 목으로 자가 초록」이 실재했다. 인라인 목 4벌에 직접 INITIAL 원소를 심어야 red 가 났다.
+- **grep 만으로는 부족했다.** `routes/__tests__/workflows.$key.test.tsx` 는 `fromStateKey` 문자열이 없어 22파일 목록에 안 잡혔으나 `workflowHandlers` 를 통해 픽스처를 소비해 실제로 깨졌다. 전수 스위트 실행이 없었으면 놓쳤다.
+- 22파일 분류 — A(`workflowTransitionViewSchema` 계열) 5 = 완료 · B(`workflow.types.ts` 중복 인터페이스 계열) 5 = **Task 20** · C(`issueTransitionSchema` 계열) 12 = 다른 모양, 무수정.
+
+### Task 20. 프론트 렌더링 계층 — nullable 출발 상태를 그린다 (Task 15 BLOCKED 해소)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/components/workflow/workflow.types.ts`,
+`apps/web/src/components/workflow/PostActionConfigSection.tsx`,
+`apps/web/src/components/workflow/WorkflowDiagram.tsx`,
+`apps/web/src/routes/workflows.$key.tsx`,
+`apps/web/src/components/workflow/WorkflowDiagram.test.tsx`,
+`apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx`,
+`apps/web/src/routes/__tests__/workflows.$key.test.tsx`,
+`apps/web/e2e/workflow.spec.ts`] · depends-on: [15]
+
+- **현재 브랜치가 red 다.** `routes/__tests__/workflows.$key.test.tsx` 2건 실패 —
+  `PostActionConfigSection.tsx:357` 의 `t.fromStateKey.includes('__')` 가 null 에서 TypeError.
+  타입도 red — `tsc -p apps/web/tsconfig.app.json --noEmit` 이 `routes/workflows.$key.tsx:83,86` 에 TS2322 2건.
+- **근본 원인은 두 벌의 정본이다.** `workflow.types.ts:18` 의 `WorkflowTransitionView` 가 `@/api/workflows` 의
+  Zod 추론 타입과 **별개로 손으로 선언**돼 있고 둘이 서로를 검사하지 않는다.
+  `two-lists-never-check-each-other` 그 양식이다.
+  **처방 1순위 = 중복 인터페이스를 지우고 Zod 추론 타입을 재수출한다.** 손으로 `| null` 만 더하면
+  두 벌이 남아 다음 필드 추가에서 같은 사고가 재발한다. 재수출이 불가능하다는 결론이면 그 근거를 보고에 적어라.
+- **`transitionKey(from, to)` 재계산을 없앤다.** 응답에 이미 `key` 가 실려 온다 — 백엔드 게터가
+  NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to` 로 만들고 URL 경로 세그먼트로 그대로 쓰인다.
+  프론트가 같은 규칙을 두 번째로 구현하지 마라.
+- **`WorkflowDiagram.tsx:67`** 이 null 을 문자열 `null` 로 찍는다. INITIAL 은 mermaid 의 `[*] --> to`,
+  GLOBAL 은 별도 표기가 필요하다. **`e2e/workflow.spec.ts` 가 `.statediagram-state` 노드 수를
+  5/5/3/4 로 단언**한다 — `null` 노드가 생기면 1씩 늘어 4건이 깨진다. Task 15 는 이걸 **미측정 예측**으로
+  남겼다. 반드시 실측하라.
+- **INITIAL·GLOBAL 을 post-action 대상 select 에 넣을지**를 결정하고 근거를 보고에 적어라.
+- **규율.** 로직 변경(타입·키 계산·분기)이 섞이므로 **TDD 현행**이다. ui 시각 트랙이 아니다.
+  단 다이어그램 표기는 시각 결과물이므로 눈확인 요지를 함께 보고한다.
+- **검증.** `tsc -p tsconfig.app.json --noEmit` 로 재라(위 오류 2 참조). 전체 유닛 스위트와
+  `e2e/workflow.spec.ts` 를 **둘 다** 초록으로 만든다.
+
+### Task 21. 이슈 전환 프론트 짝 — `transitionId` 왕복을 성립시킨다 (P1 #6 의 프론트 절반)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/issues.test.ts`,
+`apps/web/src/mocks/issue-handlers.ts`, `apps/web/src/hooks/use-issue-transitions.ts`,
+`apps/web/src/hooks/__tests__/use-issue-transitions.test.tsx`] · depends-on: [18]
+
+- **Task 15 가 찾은 공백이다.** Task 18 이 `AvailableTransitionView.transitionId`·`kind` 를 채워도
+  프론트 `api/issues.ts:231` 의 `issueTransitionSchema` 에 두 필드가 **없어 Zod 가 버린다.**
+  409 재요청 왕복은 클라이언트가 후보의 `transitionId` 를 **되돌려 보내는** 것이 전제이므로,
+  이 짝이 없으면 **P1 #6 이 백엔드만 고쳐진 채 여전히 성립하지 않는다.**
+- **처방.** `issueTransitionSchema` 에 `transitionId`·`kind` 를 더하고, 전환 실행 요청이 있으면
+  `transitionId` 를 실어 보낸다. 409 `AMBIGUOUS_TRANSITION` 응답의 후보 목록을 받아 재요청하는 경로까지 잇는다.
+- **주의.** 이 스키마는 `workflowTransitionViewSchema` 와 **다른 모양**이다(`api/issues.ts` KDoc 이
+  「독립 스키마로 관리한다」고 명시). 두 벌을 합치려 들지 마라 — 합칠지는 별건 결정이다.
+- **red-first.** 「후보가 2개일 때 409 를 받고 `transitionId` 로 재요청해 성공한다」를 먼저 red 로 만든다.
+
+### 게이트 2 재작업 메타 (갱신)
+
+- **task 수** 7(15~21) · **wave** 6a(15·16·17 완료) → 6b(18·19·20 병렬) → 6c(21)
+- Task 21 은 `depends-on: [18]` 이라 6c 다. Task 20 은 `depends-on: [15]` 이고 15 는 커밋 완료라 6b 진입 가능.
+- **검증 명령 정정** — 프론트 타입 검사는 `cd apps/web && node_modules/.bin/tsc -p tsconfig.app.json --noEmit` 다.
+  `-p tsconfig.json` 은 공허하다.
+
+### Task 22. `AvailableTransitionView` 값 비교 테스트 2건 기대값 갱신 (Task 18 BLOCKED 해소)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineToCategoryTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailabilityPhaseTest.kt`,
+`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`] ·
+depends-on: [18]
+
+- **`AvailableTransitionView` 는 data class 라 `equals` 가 6필드 전부를 본다.** Task 18 이
+  `transitionId`·`kind` 를 채우자 값 통째 비교를 하는 테스트가 깨졌다. `AvailableTransitionsResult.kt`
+  KDoc 이 이 파급을 **미리 예고**했는데 controller 가 Task 18 의 `files` 에 두 파일을 안 넣었다
+  (**controller 의 `files` 설계 실수 — 이 PR 에서 3회째**. Task 14 · Task 15 · Task 18).
+- `WorkflowEngineToCategoryTest.kt:106-107` · `WorkflowEngineAvailabilityPhaseTest.kt:106` 각 1곳.
+  **UUID 는 픽스처가 `UUID.randomUUID()` 로 만든다 — 손으로 쓰지 말고 픽스처 전환에서 파생시켜라**
+  (`ToCategory` 는 42-43행, `AvailabilityPhase` 는 55행에 변수가 이미 있다).
+- **KDoc 정정 동승.** `AvailableTransitionsResult.kt` 의 「### 값 채우기는 아직이다 — 지금
+  `transitionId`·`kind` 는 항상 null 이다」 절이 이제 **사실과 반대**다. 고쳐라.
+  **단 기본값 `= null` 2개와 `AvailableTransitionViewTest` 의 3인자 생성 가드는 건드리지 마라**
+  — spec N2(cross-BC 프로덕션 0줄)를 지키는 장치다. 이 task 의 shared-kernel 변경은 **KDoc 뿐**이다.
+- **규율.** 기대값 갱신이라 신규 red 를 만들지 않는다. **현재 red 2건이 그 자체로 red 증거**다 —
+  갱신 전 실패 출력과 갱신 후 초록을 둘 다 보고에 실어라. 커밋은 `test:` 하나로 충분하다.
+
+### ★ 범위 밖으로 확인된 것 — cross-BC 차단 (Task 18 이 발견)
+
+`GET /api/v1/issues/{key}/transitions` 의 응답 매핑
+`issue-tracking/.../rest/AvailableTransitionsResponse.kt` 의 `TransitionItem` 이
+`fromStateKey`·`toStateKey`·`name`·`key`·`toCategory` **5필드만** 싣고 `transitionId`·`kind` 를 **버린다**
+(그 파일에 `transitionId` 등장 **0회** — controller 실측). 게다가 `:67` 이
+`key = "${view.fromStateKey}__${view.toStateKey}"` 로 **구 2튜플 규칙을 재계산**하고, KDoc `:34` 이
+**대체된 ADR**(`2026-05-28-workflow-transition-identity-policy`)을 정본으로 인용한다.
+
+**따라서 P1 #6(409 재요청 왕복)은 이 PR 에서 끝까지 닫히지 않는다.** shared-kernel 뷰까지는 값이
+왔지만 HTTP 표면에서 버려진다. 고치려면 **issue-tracking BC 의 프로덕션 코드**를 건드려야 하는데,
+① `CLAUDE.md` 의 「한 PR = 한 BC」 ② 이 PR 의 리뷰가 **PASS 로 판정한 N2「cross-BC 프로덕션 0줄」**
+두 가지를 동시에 깬다. Task 21(프론트 짝)도 이것이 없으면 읽을 값이 없어 의미가 없다.
+
+**게이트 2 재판정 사항이다 — Maxi 결정 대기.**
+
+## 게이트 2 재판정 — cross-BC 결정 (2026-08-20)
+
+**Maxi 응답 = A안.** issue-tracking BC 의 REST 표면까지 이 PR 에서 고쳐 P1 #6 을 끝까지 닫는다.
+B(후속 PR 분리)·C(범위 재설계) 기각.
+
+**명시적으로 깨는 것 2가지 — 재리뷰가 이 사실을 알고 판정해야 한다.**
+① `CLAUDE.md` 의 「한 PR = 한 BC」 PR 범위 관례
+② 직전 리뷰가 **PASS 로 판정한 N2「cross-BC 프로덕션 0줄」** — 이제 거짓이다.
+
+**깨지지 않는 것.** BC 격리 원칙 자체. 이 변경은 project-workflow 를 직접 import 하는 것이 아니라
+issue-tracking 이 **자기 shared-kernel 의존 DTO 를 자기 REST 어댑터에 매핑**하는 일이다.
+
+### ★ 실측 — 요청 쪽도 없다
+
+`grep -rn "transitionId" issue-tracking/src/main` = **0건**. 응답만이 아니라 **요청 경로에도
+`transitionId` 가 전혀 없다.** ADR D3 이 「`POST /api/v1/issues/{key}/transition` 이 `transitionId` 를
+추가로 받는다」고 정했는데 미구현이다. 사슬은 이렇다.
+
+```
+adapter/inbound/rest/TransitionIssueRequest.kt (REST 바디)
+  → IssueController.kt:457  application/IssueApplicationRequests.kt:212 (앱 DTO) 로 매핑
+  → IssueApplicationService.kt:713  shared-kernel TransitionRequest 생성  ← 여기 transitionId 는 이미 있다
+```
+
+즉 shared-kernel 은 준비돼 있고 **issue-tracking 의 3단 DTO 사슬만 비어 있다.**
+
+### Task 23. issue-tracking REST 표면 — `transitionId` 왕복을 잇는다 (P1 #6 완결)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/TransitionIssueRequest.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/TransitionIssueRequestTest.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/AmbiguousTransitionStatusCodeIntegrationTest.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTransitionTest.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/web/BulkOperationControllerTest.kt`] ·
+depends-on: [18, 22]
+
+- **응답** — `AvailableTransitionsResponse.TransitionItem` 에 `transitionId`·`kind` 를 싣는다.
+  같은 파일 `:67` 의 `key = "${view.fromStateKey}__${view.toStateKey}"` 는 **구 2튜플 규칙 재계산**이고,
+  KDoc `:34` 은 **대체된 ADR**(`2026-05-28-workflow-transition-identity-policy`)을 정본으로 인용한다.
+  둘 다 정정한다 — 정본은 `2026-08-18-workflow-transition-id-identity` 다.
+- **요청** — 3단 DTO 사슬에 `transitionId: UUID? = null` 을 통과시킨다. **기본값 null 필수** —
+  `BulkItemApplier.kt:85` · `IssueTransitionAdapter.kt:94` 가 같은 앱 DTO 를 만들고 있어
+  기본값이 없으면 컴파일이 깨진다(둘 다 이 task 의 `files` 밖이다).
+- **★ `TransitionResult` sealed 를 확장하지 마라.** 결정 D-2 가 그것을 기각했다 —
+  `IssueApplicationService` 의 exhaustive `when` 을 깨서 cross-BC 가 된다. 409 는 예외 경로다.
+- **red-first.** 「후보 2개 → 409 → 응답의 `transitionId` 로 재요청 → 성공」을 **끝에서 끝까지**
+  먼저 red 로 만든다. `AmbiguousTransitionStatusCodeIntegrationTest` 가 그 자리다 —
+  체크포인트가 「`@Order` 회귀를 실제로 잡는 가드는 이 파일」이라 확인한 파일이다.
+- **범위 밖(손대지 마라)** — `bulk/` 의 `TransitionIntersection` 도 (from,to) 동일성을 쓰지만
+  일괄 전환은 409 왕복 대상이 아니다. **장부 후보**로 남긴다.
+
+### Task 24. 시드 전환 수 단언 6 → 7 (Task 19 BLOCKED 해소)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedValidatorPostActionTest.kt`] ·
+depends-on: [19]
+
+- Task 19 가 시드에 INITIAL 전환을 심자 `software-default` 의 전환이 6 → 7 이 됐다.
+  `:298` 의 `assertThat(swDefault.transitions).hasSize(6)` 이 그 한 줄이다.
+- **★ 이 단언은 원래부터 환경 의존이었다.** V207 ⑨ 가 이미 적용된 DB 에서는 그 워크플로우가 진작
+  7건이고, Testcontainers 빈 DB 라서만 6이었다. **7 로 올리면 오히려 환경 독립이 된다** —
+  숫자를 눈감아 주는 변경이 아니라 갈라져 있던 두 환경을 맞추는 변경이다.
+- `hasSize(7)` + 주석 문구 정정. **그 이상 넓히지 마라** — 이 파일은 FR-IS-07 B7 의 관심사다.
+
+### ★ controller 의 `files` 설계 실수 — 4회째
+
+Task 14 · 15 · 18 · 19. 매번 「선언 안은 초록인데 그 변경이 밖을 깨뜨린다」는 같은 모양이다.
+**뿌리는 「무엇을 고치나」만 세고 「그 변경이 무엇을 깨뜨리나」를 안 센 것이다.**
+`files` 를 정할 때 다음 두 질문을 반드시 함께 물어야 한다.
+① 이 값을 **쓰는** 곳은 어디인가 ② 이 값을 **값으로 비교하거나 개수로 세는** 테스트는 어디인가.
+②를 빠뜨린 것이 15(렌더링) · 18(data class 값 비교) · 19(개수 단언) 세 건의 직접 원인이다.

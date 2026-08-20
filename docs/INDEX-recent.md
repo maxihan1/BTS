@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-08-20 | backend-workflow-transition-id-multi-global | ✔ | ✔ | — | — | FR-WF-05 FR-WF-06 |
+| 2026-08-20 | backend-workflow-transition-id-multi-global | ✔ | ✔ | — | — | FR-IS-07 FR-WF-05 FR-WF-06 |
 | 2026-08-19 | backend-project-workflow-crud-api | ✔ | ✔ | — | — | FR-WF-04 |
 | 2026-08-19 | migration-project-workflow-global-status-catalog | ✔ | ✔ | — | — | FR-WF-04 FR-WF-05 FR-WF-06 FR-WF-07 |
 | 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | FR-DB-01 |
