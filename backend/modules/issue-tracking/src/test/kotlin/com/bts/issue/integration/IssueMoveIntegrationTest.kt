@@ -951,12 +951,17 @@ class IssueMoveIntegrationTest {
             ) {
                 conn.prepareStatement(
                     "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
-                        "VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOTHING",
+                        "SELECT ?, ?, ?, ? WHERE NOT EXISTS (" +
+                        "SELECT 1 FROM workflow_transitions " +
+                        "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ?)",
                 ).use { ps ->
                     ps.setObject(1, wfId)
                     ps.setObject(2, fromId)
                     ps.setObject(3, toId)
                     ps.setString(4, name)
+                    ps.setObject(5, wfId)
+                    ps.setObject(6, fromId)
+                    ps.setObject(7, toId)
                     ps.executeUpdate()
                 }
             }
