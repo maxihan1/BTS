@@ -1,0 +1,26 @@
+# BTS TLS 종단 — Let's Encrypt 인증서를 자동 발급·갱신하고 내부 nginx(bts-web)로 넘긴다
+#
+# 왜 nginx 앞에 한 겹 더 두나. 기존 `nginx.conf` 는 SPA 서빙 + 백엔드 프록시 + 접속로그
+# 토큰 마스킹을 담고 있고, 그 마스킹은 봉인 스크립트(scripts/verify/nginx-log-masking.sh)가
+# 지키는 계약이다. TLS 를 그 파일에 얹으면 인증서 경로·갱신 재적재가 그 계약과 얽힌다.
+# 종단을 분리하면 nginx.conf 를 한 줄도 건드리지 않고 https 를 얻는다.
+#
+# 인증서는 `bts-caddy-data` 볼륨에 영속된다. 이 볼륨을 지우면 재발급이 일어나고
+# Let's Encrypt 발급 한도(도메인당 주 5회)를 소모하므로 함부로 지우지 않는다.
+#
+# 사전 조건 두 가지. 둘 중 하나만 어긋나도 발급이 실패한다.
+#   1. bts.maxihan.com 의 A 레코드가 이 서버 공인 IP(101.79.19.193)를 가리킬 것
+#   2. ACG 에서 80·443 이 0.0.0.0/0 에 열려 있을 것 (80 은 ACME HTTP-01 챌린지에 쓴다)
+
+{
+	# ACME 계정 이메일 — 인증서 만료 임박 알림이 여기로 온다.
+	email admin@maxihan.com
+}
+
+bts.maxihan.com {
+	encode gzip zstd
+
+	# 내부 nginx 로 전달. Caddy 가 X-Forwarded-Proto: https 를 자동으로 붙이고,
+	# WebSocket(/ws STOMP) 업그레이드도 별도 설정 없이 통과시킨다.
+	reverse_proxy bts-web:80
+}
