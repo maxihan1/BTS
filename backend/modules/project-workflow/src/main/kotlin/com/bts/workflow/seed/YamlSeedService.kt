@@ -472,7 +472,8 @@ class YamlSeedService(
      * 구 컬럼을 보지 않는다(`WorkflowRepository` 폴백 순서).
      *
      * ### `display_order` 를 여기서 지정하지 않는 이유
-     * INITIAL 이 받아야 할 값은 0 이고(V207 ⑨ · [WorkflowWriteRepository.insertTransition]),
+     * INITIAL 이 받아야 할 값은 0 이고
+     * (V207 ⑨ · [com.bts.workflow.repository.WorkflowWriteRepository.insertTransition]),
      * 컬럼 DEFAULT 가 이미 0 이라 그대로 두면 맞는다. 시드가 심는 NORMAL 전환이 전부 0 으로 남는
      * 것은 별개의 선재 결함(장부 후보)이며 이 함수의 변경이 그것을 늘리지 않는다.
      *
