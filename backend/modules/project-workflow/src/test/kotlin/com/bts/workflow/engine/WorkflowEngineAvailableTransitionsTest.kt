@@ -229,5 +229,6 @@ class WorkflowEngineAvailableTransitionsTest {
         toCategory = toCategory,
         transitionId = transition.id,
         kind = transition.kind.name,
+        key = transition.key,
     )
 }

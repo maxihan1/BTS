@@ -41,30 +41,21 @@ data class AvailableTransitionsResponse(
  * @property fromStateKey 전환 출발 상태 키. 예: `"open"`
  * @property toStateKey 전환 도착 상태 키. 예: `"in_progress"`
  * @property name 전환 표시 이름. UI 버튼 레이블 용도. 예: `"시작"`
- * @property key 하위호환용 계산 문자열 (`"${fromStateKey}__${toStateKey}"`). 예: `"open__in_progress"`.
+ * @property key 하위호환용 계산 문자열. NORMAL 은 `"open__in_progress"`, GLOBAL·INITIAL 은
+ *   `"GLOBAL__done"` 처럼 `KIND__to` 형태다.
  *   **식별자가 아니다.** 같은 상태쌍의 전환 둘은 이 값이 서로 같으므로 이 값으로 전환을 지목하면
  *   틀린 전환을 고른다. 지목에는 반드시 [transitionId] 를 써라. ADR §D3 이 「기존 `key` 는 남긴다」로
  *   정해 두었기에 삭제하지 않고 남긴다.
  *
- *   재계산인 이유. 정본 게터는 project-workflow 의 `WorkflowTransition.key` 인데, 그것은 그 BC 의
- *   내부 도메인 타입이라 issue-tracking 이 import 하면 BC 격리를 깬다. 두 BC 사이의 published
- *   language 인 [AvailableTransitionView] 에는 `key` 필드가 없다. 그래서 여기서 조립한다 —
- *   **[transitionId] 가 이 값을 대체했으므로 이 재계산을 더 늘리지 마라.**
+ *   **여기서 재계산하지 않는다.** 정본 구현은 project-workflow 의 `WorkflowTransition.key` 게터
+ *   하나뿐이고, 엔진이 그 결과를 published language [AvailableTransitionView.key] 에 실어 보내며
+ *   이 DTO 는 그 값을 그대로 옮긴다. 종전처럼 `"${fromStateKey}__${toStateKey}"` 로 조립하면
+ *   같은 GLOBAL 전환을 도메인은 `"GLOBAL__done"`, 응답은 `"open__done"` 이라 부르는 발산이 생기고,
+ *   이 값이 `PostActionController` 의 `.../transitions/{transitionKey}/post-actions` 경로 세그먼트로
+ *   소비되므로 그 경로가 빗나간다. 규칙 사본을 다시 만들지 마라 — 서로를 검사하지 않는 두 벌이 된다.
  *
- *   `"null__..."` 은 나오지 않는다(실측). GLOBAL 전환은 정의상 출발 상태가 없지만,
- *   `WorkflowEngine.availableTransitions` 가 `transition.fromStateKey ?: req.fromStateKey` 로
- *   **요청한 현재 상태**를 채워 넘기고 [AvailableTransitionView.fromStateKey] 도 non-null 이다.
- *
- *   ★ **GLOBAL 전환에서 이 값은 도메인 게터와 다르다(실측·미해결).** 도메인 게터는 종류마다 규칙이
- *   달라 NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to` 를 만든다. 그래서 같은 GLOBAL 전환을
- *   도메인은 `"GLOBAL__done"` 으로, 여기서는 `"open__done"` 으로 부른다. `key` 는
- *   `PostActionController` 의 `.../transitions/{transitionKey}/post-actions` 경로 세그먼트로도
- *   소비되므로 이 응답의 `key` 를 그 경로에 그대로 쓰면 GLOBAL 전환에서 빗나간다.
- *   전환 지목에는 [transitionId] 를 쓰면 되므로 실사용 영향은 그 경로 하나뿐이다.
- *
- *   여기서 규칙을 한 벌 더 구현해 맞추지 않는다 — 서로를 검사하지 않는 사본이 또 생긴다.
- *   올바른 해법은 shared-kernel [AvailableTransitionView] 에 `key` 를 실어 엔진이 **도메인 게터
- *   결과 그대로** 넘기는 것이다. 그 두 파일은 이 작업(Task 23)의 수정 허용 범위 밖이라 후속으로 남긴다.
+ *   null 은 「키가 없다」가 아니라 **미계산**이다 — 뷰를 직접 만든 테스트 픽스처에서만 나온다.
+ *   유일한 생산자인 `WorkflowEngine.availableTransitions` 가 항상 채우므로 실 API 응답은 non-null 이다.
  * @property toCategory 전환 목표 상태의 카테고리 문자열. 예: `"DONE"`, `"IN_PROGRESS"`, `"TODO"`.
  *   프론트엔드가 종료(DONE) 전환을 판별할 때 사용한다.
  *   null 은 워크플로우 미설정 등 비정상 상태를 의미한다. 실 API 응답은 항상 non-null.
@@ -78,7 +69,7 @@ data class TransitionItem(
     val fromStateKey: String,
     val toStateKey: String,
     val name: String,
-    val key: String,
+    val key: String?,
     val toCategory: String?,
     val transitionId: UUID?,
     val kind: String?,
@@ -94,6 +85,10 @@ data class TransitionItem(
          * 409 `AMBIGUOUS_TRANSITION` 재요청은 후보 id 를 되실어 보내는 왕복이라
          * 목록 응답에 id 가 없으면 그 왕복이 API 로 성립하지 않는다 (ADR 2026-08-18 §D3).
          *
+         * [TransitionItem.key] 는 [AvailableTransitionView.key] 를 **손대지 않고** 옮긴다.
+         * 정본은 project-workflow 의 도메인 게터 하나이고, 여기서 재조립하거나 `?:` 로 폴백을 두면
+         * 규칙 구현이 두 벌이 되어 GLOBAL 전환에서 이름이 갈린다.
+         *
          * @param view shared-kernel 의 가용 전환 뷰.
          * @return REST 응답 항목.
          */
@@ -102,7 +97,7 @@ data class TransitionItem(
                 fromStateKey = view.fromStateKey,
                 toStateKey = view.toStateKey,
                 name = view.name,
-                key = "${view.fromStateKey}__${view.toStateKey}",
+                key = view.key,
                 toCategory = view.toCategory,
                 transitionId = view.transitionId,
                 kind = view.kind,

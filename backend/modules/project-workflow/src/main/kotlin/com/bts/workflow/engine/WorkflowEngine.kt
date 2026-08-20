@@ -199,8 +199,9 @@ class WorkflowEngine(
      * 반드시 활성 읽기 전용 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY], readOnly=true).
      *
      * 각 뷰에는 전환 1급 식별자([AvailableTransitionView.transitionId])와 종류 문자열
-     * ([AvailableTransitionView.kind])이 실린다. 모호 전환 409 응답의 후보 중 하나를 클라이언트가
-     * 지목 실행하려면 그 id 가 열거 응답에 있어야 한다.
+     * ([AvailableTransitionView.kind]), 하위호환 키([AvailableTransitionView.key])가 실린다.
+     * 모호 전환 409 응답의 후보 중 하나를 클라이언트가 지목 실행하려면 그 id 가 열거 응답에 있어야 한다.
+     * 하위호환 키는 도메인 게터 결과를 그대로 넘긴다 — 호출자 BC 가 규칙을 다시 구현하지 않게 하기 위함이다.
      *
      * @param req 가용 전환 열거 요청 DTO
      * @return [AvailableTransitionsResult.Success] 또는 [AvailableTransitionsResult.WorkflowNotFound]
@@ -240,6 +241,10 @@ class WorkflowEngine(
                     // BC 격리 — 내부 enum [TransitionKind] 를 그대로 내보내지 않고 이름 문자열로 파생시킨다.
                     // 리터럴을 손으로 쓰면 enum 값이 늘 때 조용히 썩는다.
                     kind = transition.kind.name,
+                    // 하위호환 key 의 정본은 도메인 게터 [WorkflowTransition.key] 하나뿐이다.
+                    // 위에서 채운 fromStateKey 로 호출자가 재조립하면 GLOBAL 전환(`KIND__to`)에서
+                    // 도메인과 이름이 갈리므로, 게터 결과를 손대지 않고 그대로 실어 보낸다.
+                    key = transition.key,
                 )
             },
         )

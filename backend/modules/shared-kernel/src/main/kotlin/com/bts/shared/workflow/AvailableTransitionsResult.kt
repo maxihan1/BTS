@@ -51,14 +51,15 @@ sealed interface AvailableTransitionsResult {
  * ([fromStateKey], [toStateKey]) 쌍은 더 이상 유일하지 않다. 같은 상태쌍에 이름만 다른 전환을
  * 여럿 둘 수 있기 때문이다.
  *
- * ### 값 채우기 현황 — 엔진은 채운다. HTTP 응답은 아직 버린다
- * project-workflow 의 `WorkflowEngine.availableTransitions` 는 이 둘을 **항상 채워** 넘긴다.
- * 다만 issue-tracking 의 `TransitionItem.from` 이 5필드(from·to·name·key·toCategory)만 싣고
- * 두 값을 버리므로 `GET /api/v1/issues/{key}/transitions` 응답에는 아직 나타나지 않는다.
+ * ### 값 채우기 현황 — 엔진이 채우고 HTTP 응답도 그대로 싣는다
+ * project-workflow 의 `WorkflowEngine.availableTransitions` 는 [toCategory]·[transitionId]·[kind]·[key] 를
+ * **항상 채워** 넘기고, issue-tracking 의 `TransitionItem.from` 이 그 값을 **그대로** 전달한다.
+ * 그래서 `GET /api/v1/issues/{key}/transitions` 와 `POST /api/v1/issues/bulk-transitions/available`
+ * 응답에 네 값이 모두 나타난다.
  * 파라미터 기본값이 null 이라 이 뷰를 직접 만드는 테스트 픽스처·다른 생산자는 여전히 null 일 수 있다 —
  * 호출자는 null 을 「미계산」으로 읽어야 하며 「전환 ID 가 없다」로 읽으면 안 된다.
- * 이 뷰를 **값으로 통째 비교**하는 단위 테스트는 두 필드까지 기대값에 담아야 한다
- * (data class 라 `equals` 가 6필드 전부를 본다).
+ * 이 뷰를 **값으로 통째 비교**하는 단위 테스트는 네 필드까지 기대값에 담아야 한다
+ * (data class 라 `equals` 가 7필드 전부를 본다).
  *
  * @param fromStateKey 전환 출발 상태 키.
  * @param toStateKey 전환 도착 상태 키.
@@ -76,6 +77,14 @@ sealed interface AvailableTransitionsResult {
  * @param kind 전환 종류 문자열. "NORMAL"(출발 상태 지정) · "GLOBAL"(어느 상태에서나) ·
  *   "INITIAL"(이슈 생성 진입 전용, 이 목록에는 절대 안 나온다).
  *   BC 격리 원칙에 따라 내부 enum(TransitionKind) 대신 문자열로 노출한다. null 은 미계산 상태다.
+ * @param key 하위호환용 계산 키. **정본 구현은 project-workflow 의 `WorkflowTransition.key` 게터 하나뿐이고**
+ *   엔진이 그 결과를 그대로 실어 보낸다. 규칙이 종류마다 다르다 — NORMAL 은 `from__to`,
+ *   GLOBAL·INITIAL 은 `KIND__to`. 그래서 호출자가 ([fromStateKey], [toStateKey]) 로 다시 조립하면
+ *   GLOBAL 전환에서 도메인과 이름이 갈린다(같은 전환을 `GLOBAL__done` 과 `open__done` 으로 부르게 된다).
+ *   **재조립하지 말고 이 값을 그대로 써라** — 서로를 검사하지 않는 사본이 또 생긴다.
+ *   `PostActionController` 의 `.../transitions/{transitionKey}/post-actions` 경로 세그먼트로도 소비된다.
+ *   전환 **지목**에는 [transitionId] 를 써라. [key] 는 같은 상태쌍의 전환 둘을 못 가른다.
+ *   null 은 미계산 상태다.
  */
 data class AvailableTransitionView(
     val fromStateKey: String,
@@ -84,4 +93,5 @@ data class AvailableTransitionView(
     val toCategory: String? = null,
     val transitionId: UUID? = null,
     val kind: String? = null,
+    val key: String? = null,
 )

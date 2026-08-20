@@ -109,8 +109,15 @@ class IssueControllerTransitionsTest {
                     toStateKey = "in_progress",
                     name = "시작",
                     toCategory = "IN_PROGRESS",
+                    key = "open__in_progress",
                 ),
-                AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기", toCategory = "DONE"),
+                AvailableTransitionView(
+                    fromStateKey = "open",
+                    toStateKey = "closed",
+                    name = "닫기",
+                    toCategory = "DONE",
+                    key = "open__closed",
+                ),
             )
 
         every {
@@ -173,6 +180,8 @@ class IssueControllerTransitionsTest {
                 name = "즉시 완료",
                 toCategory = "DONE",
                 kind = "GLOBAL",
+                // 엔진이 도메인 게터 결과를 그대로 실어 보내는 값 — fromStateKey 와 어긋난 채로 들어온다.
+                key = "GLOBAL__done",
             )
 
         every {

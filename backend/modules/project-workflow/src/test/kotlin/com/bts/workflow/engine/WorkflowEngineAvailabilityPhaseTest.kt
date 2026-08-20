@@ -112,6 +112,7 @@ class WorkflowEngineAvailabilityPhaseTest {
                 toCategory = "DONE",
                 transitionId = txOpenToClosed.id,
                 kind = txOpenToClosed.kind.name,
+                key = txOpenToClosed.key,
             ),
         )
     }

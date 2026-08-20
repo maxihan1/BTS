@@ -333,6 +333,7 @@ class BulkOperationControllerTest {
                 fromStateKey = "open",
                 toStateKey = "in_progress",
                 name = "시작",
+                key = "open__in_progress",
             )
         val result =
             BulkAvailableTransitionsResult(
@@ -424,6 +425,8 @@ class BulkOperationControllerTest {
                 toCategory = "DONE",
                 transitionId = transitionUuid,
                 kind = "GLOBAL",
+                // 엔진이 도메인 게터 결과를 그대로 실어 보내는 값 — fromStateKey 와 어긋난 채로 들어온다.
+                key = "GLOBAL__done",
             )
         every { bulkAvailableTransitionsService.availableCommonTransitions(any(), any()) } returns
             BulkAvailableTransitionsResult(

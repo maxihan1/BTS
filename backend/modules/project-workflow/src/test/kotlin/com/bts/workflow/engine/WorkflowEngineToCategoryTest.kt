@@ -112,6 +112,7 @@ class WorkflowEngineToCategoryTest {
                 "IN_PROGRESS",
                 transitionId = txOpenToInProgress.id,
                 kind = txOpenToInProgress.kind.name,
+                key = txOpenToInProgress.key,
             ),
             AvailableTransitionView(
                 "open",
@@ -120,6 +121,7 @@ class WorkflowEngineToCategoryTest {
                 "DONE",
                 transitionId = txOpenToDone.id,
                 kind = txOpenToDone.kind.name,
+                key = txOpenToDone.key,
             ),
         )
     }
