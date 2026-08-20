@@ -11,7 +11,6 @@ import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -155,7 +154,6 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * 빈 DB 최초 부팅용 `workflow_scheme_issue_type_mappings` 기본 매핑 보강은 [seedAll] 말미의
  * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 가 계속 담당한다.
  *
- * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
  * @param dsl jOOQ DSLContext. 전환/상태/validator/postAction 직접 INSERT 에 사용한다.
  * @param resourceLoader classpath YAML 파일 접근용 Spring ResourceLoader.
  * @param yamlMapper YAML 파일 역직렬화용 Jackson ObjectMapper (YAMLFactory 기반).
@@ -167,7 +165,6 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  */
 @Service
 class YamlSeedService(
-    private val workflowRepository: WorkflowRepository,
     private val dsl: DSLContext,
     private val resourceLoader: ResourceLoader,
     private val validatorFactory: WorkflowValidatorFactory,
@@ -265,7 +262,11 @@ class YamlSeedService(
                         .from(WORKFLOW_STATES)
                         .orderBy(WORKFLOW_STATES.KEY),
                 )
+                // V206 이 statuses.key 를 부분 유니크 인덱스(WHERE deleted_at IS NULL)로 바꿨다.
+                // 술어를 함께 적지 않으면 PostgreSQL 이 추론할 제약을 못 찾아
+                // "there is no unique or exclusion constraint matching the ON CONFLICT specification" 로 죽는다.
                 .onConflict(STATUSES.KEY)
+                .where(STATUSES.DELETED_AT.isNull)
                 .doNothing()
                 .execute()
 
@@ -371,13 +372,29 @@ class YamlSeedService(
      * 이 결정의 부작용 — 시드 YAML 을 고쳐 배포해도 **기존 DB 에는 반영되지 않는다.** 의도된 동작이다.
      */
     private fun insertIfAbsent(dto: WorkflowYamlDto) {
-        if (workflowRepository.findByKey(dto.key) != null) {
+        if (workflowRowExists(dto.key)) {
             log.debug("워크플로우 '{}' — 이미 있음, 건너뜀", dto.key)
             return
         }
         log.info("워크플로우 '{}' — 신규 적재", dto.key)
         insertWorkflow(dto)
     }
+
+    /**
+     * `workflows` 행의 **존재만** 확인한다. aggregate 를 복원하지 않는다.
+     *
+     * ### 왜 findByKey 를 쓰지 않는가
+     * `findByKey` 는 [com.bts.workflow.domain.Workflow] 를 만들고 그 invariant 가 「상태가 하나 이상」을
+     * 요구한다. 읽기 경로가 전역 카탈로그 2단으로 옮겨진 뒤에는 **`workflow_statuses` 가 비어 있는
+     * 중간 상태**(구 코드로 롤백했다가 롤포워드한 이력 등)에서 그 복원이 `IllegalArgumentException` 으로
+     * 죽는다. 그러면 바로 그 중간 상태를 되채우려던 보정 경로에 **닿기도 전에** 시드가 실패한다.
+     *
+     * 존재 판정에는 행 하나만 있으면 된다. 복원 비용도 없다.
+     */
+    private fun workflowRowExists(key: String): Boolean =
+        dsl.fetchExists(
+            dsl.selectOne().from(WORKFLOWS).where(WORKFLOWS.KEY.eq(key)),
+        )
 
     /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전환이 있으면 [IllegalStateException] 을 던진다. */
     private fun validateTransitionUniqueness(
@@ -504,7 +521,9 @@ class YamlSeedService(
             .set(STATUSES.KEY, state.key)
             .set(STATUSES.NAME, state.name)
             .set(STATUSES.CATEGORY, state.category)
+            // V206 부분 유니크 인덱스 술어. 위 주석과 같은 이유다.
             .onConflict(STATUSES.KEY)
+            .where(STATUSES.DELETED_AT.isNull)
             .doNothing()
             .execute()
 

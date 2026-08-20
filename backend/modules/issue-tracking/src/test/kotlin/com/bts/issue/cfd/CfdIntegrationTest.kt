@@ -11,6 +11,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.statushistory.repository.StatusHistoryRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -949,7 +950,9 @@ class CfdIntegrationTest {
         name: String,
     ): UUID =
         conn.prepareStatement(
-            "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+            "INSERT INTO workflows (key, name) VALUES (?, ?)" +
+                " ON CONFLICT (key) WHERE deleted_at IS NULL" +
+                " DO UPDATE SET name = EXCLUDED.name RETURNING id",
         ).use { stmt ->
             stmt.setString(1, key)
             stmt.setString(2, name)
@@ -967,22 +970,7 @@ class CfdIntegrationTest {
         name: String,
         category: String,
         displayOrder: Int,
-    ): UUID =
-        conn.prepareStatement(
-            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
-                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
-        ).use { stmt ->
-            stmt.setObject(1, wfId)
-            stmt.setString(2, key)
-            stmt.setString(3, name)
-            stmt.setString(4, category)
-            stmt.setInt(5, displayOrder)
-            stmt.executeQuery().use { rs ->
-                rs.next()
-                rs.getObject(1) as UUID
-            }
-        }
+    ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

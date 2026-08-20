@@ -3,6 +3,7 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -163,21 +164,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
             conn: java.sql.Connection,
             workflowId: UUID,
             spec: StateSpec,
-        ): UUID =
-            conn.prepareStatement(
-                "INSERT INTO workflow_states (workflow_id, key, name, category, display_order)" +
-                    " VALUES (?, ?, ?, ?, ?) RETURNING id",
-            ).use { stmt ->
-                stmt.setObject(1, workflowId)
-                stmt.setString(2, spec.key)
-                stmt.setString(3, spec.name)
-                stmt.setString(4, spec.category)
-                stmt.setInt(5, spec.displayOrder)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
-                }
-            }
+        ): UUID = insertWorkflowStatus(conn, workflowId, spec.key, spec.name, spec.category, spec.displayOrder)
 
         private fun insertTransition(
             conn: java.sql.Connection,

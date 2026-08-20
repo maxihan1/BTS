@@ -11,6 +11,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
@@ -190,7 +191,7 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
             val wfId =
                 conn.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('slcomp-wf', 'Slack 완료 테스트 워크플로우') " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -263,22 +264,7 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
         name: String,
         category: String,
         displayOrder: Int,
-    ): UUID =
-        conn.prepareStatement(
-            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
-                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
-        ).use { stmt ->
-            stmt.setObject(1, wfId)
-            stmt.setString(2, key)
-            stmt.setString(3, name)
-            stmt.setString(4, category)
-            stmt.setInt(5, displayOrder)
-            stmt.executeQuery().use { rs ->
-                rs.next()
-                rs.getObject(1) as UUID
-            }
-        }
+    ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
     private fun insertTransition(
         conn: Connection,

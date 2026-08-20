@@ -142,7 +142,6 @@ class YamlSeedValidatorPostActionTest {
             defRepo = DefaultWorkflowDefinitionRepository(dsl)
             service =
                 YamlSeedService(
-                    workflowRepo,
                     dsl,
                     DefaultResourceLoader(),
                     validatorFactory,
@@ -327,7 +326,6 @@ class YamlSeedValidatorPostActionTest {
         val spelExecutor = Executors.newCachedThreadPool()
         val serviceWithModified =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 modifiedLoader,
                 DefaultWorkflowValidatorFactory(
@@ -389,7 +387,6 @@ class YamlSeedValidatorPostActionTest {
         val spelExecutor = Executors.newCachedThreadPool()
         val svc =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 DefaultResourceLoader(),
                 DefaultWorkflowValidatorFactory(
@@ -425,7 +422,6 @@ class YamlSeedValidatorPostActionTest {
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         val svc =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 DefaultResourceLoader(),
                 validatorFactory,

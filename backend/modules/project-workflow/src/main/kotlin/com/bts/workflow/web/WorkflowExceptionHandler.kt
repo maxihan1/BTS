@@ -2,8 +2,13 @@
 
 package com.bts.workflow.web
 
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.workflow.cache.WorkflowCacheLockTimeoutException
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
+import com.bts.workflow.domain.exception.WorkflowInUseException
+import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowKeyConflictException
+import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import org.slf4j.LoggerFactory
@@ -64,6 +69,99 @@ class WorkflowExceptionHandler {
                         message = ex.message ?: "워크플로우를 찾을 수 없습니다.",
                     ),
             ),
+        )
+    }
+
+    /**
+     * key 중복 — 409.
+     *
+     * 소프트 삭제된 워크플로우의 key 는 여기 걸리지 않는다. `V206` 이 key 유니크를
+     * `WHERE deleted_at IS NULL` 부분 인덱스로 바꿔 지운 key 를 다시 쓸 수 있게 했다.
+     */
+    @ExceptionHandler(WorkflowKeyConflictException::class)
+    fun handleKeyConflict(ex: WorkflowKeyConflictException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_409_KEY key='{}'", ex.workflowKey)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_KEY_CONFLICT",
+                        message = "이미 쓰이고 있는 워크플로우 키입니다. 다른 키를 입력해 주세요.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 사용 중 워크플로우 삭제 — 409.
+     *
+     * 원인을 뭉뚱그리지 않는다. 사용자가 먼저 할 수 있는 행동(스킴에서 뗀다)을 앞에 둔다
+     * (MEMORY `permission-assert-before-existence-makes-403-lie` §처방 2).
+     */
+    @ExceptionHandler(WorkflowInUseException::class)
+    fun handleInUse(ex: WorkflowInUseException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_409_IN_USE key='{}' refs={}", ex.workflowKey, ex.referenceCount)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_IN_USE",
+                        message =
+                            "워크플로우 스킴 ${ex.referenceCount}곳이 이 워크플로우를 쓰고 있습니다. " +
+                                "스킴에서 먼저 뗀 뒤 삭제해 주세요.",
+                    ),
+            ),
+        )
+    }
+
+    /** 편집 잠금 — 409. */
+    @ExceptionHandler(WorkflowLockedException::class)
+    fun handleLocked(ex: WorkflowLockedException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_409_LOCKED key='{}'", ex.workflowKey)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_LOCKED",
+                        message = "편집이 잠긴 워크플로우입니다. 발행이 끝난 뒤 다시 시도해 주세요.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 워크플로우 정의 권한 거부 — 403.
+     *
+     * 스킴 권한 거부와 **다른 에러 코드**를 쓴다. 같으면 프론트가 「스킴 권한이 없다」와
+     * 「워크플로우 편집 권한이 없다」를 같은 문구로 안내한다.
+     */
+    @ExceptionHandler(WorkflowDefinitionAccessDeniedException::class)
+    fun handleDefinitionAccessDenied(ex: WorkflowDefinitionAccessDeniedException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_403_DEFINITION code={}", ex.errorCode)
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = ex.errorCode,
+                        message = "워크플로우를 편집할 권한이 없습니다. 시스템 관리자에게 요청해 주세요.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 커맨드 입력 위반(상태 씨앗 부재 등) — 400.
+     *
+     * ★ `IllegalArgumentException` 을 잡지 **않는다.** 이 advice 는 `@RestControllerAdvice` 에
+     * 스코프가 없어 **전역**이라, 그 타입을 잡으면 다른 BC 의 `require()` 실패까지 400 으로
+     * 둔갑한다. 500 이어야 할 서버 결함이 400 으로 보이면 장애 대응이 엉뚱한 곳을 판다.
+     * 그래서 이 BC 전용 예외만 잡는다.
+     */
+    @ExceptionHandler(WorkflowInvalidRequestException::class)
+    fun handleInvalidRequest(ex: WorkflowInvalidRequestException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_400 key='{}' reason='{}'", ex.workflowKey, ex.reason)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ErrorResponse(error = ErrorBody(code = "WORKFLOW_INVALID_REQUEST", message = ex.reason)),
         )
     }
 

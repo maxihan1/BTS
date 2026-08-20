@@ -16,6 +16,7 @@ import com.bts.workflow.scheme.port.outbound.WorkflowResolver
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.mockk.mockk
@@ -199,7 +200,7 @@ class WorkflowResolverImplIntegrationTest {
                             ('bug-tracking',     '버그 추적 워크플로우',            NULL),
                             ('simple',           '단순 워크플로우',                 NULL),
                             ('kanban-basic',     '칸반 기본 워크플로우',            NULL)
-                        ON CONFLICT (key) DO NOTHING
+                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }
@@ -212,17 +213,9 @@ class WorkflowResolverImplIntegrationTest {
                     stmt.executeQuery().use { rs ->
                         rs.next()
                         val wfId = rs.getObject(1) as UUID
-                        conn.createStatement().use { s ->
-                            s.execute(
-                                """
-                                INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES
-                                    ('$wfId', 'open', '열림', 'TODO', 0),
-                                    ('$wfId', 'in-progress', '진행 중', 'IN_PROGRESS', 1),
-                                    ('$wfId', 'done', '완료', 'DONE', 2)
-                                ON CONFLICT DO NOTHING
-                                """.trimIndent(),
-                            )
-                        }
+                        insertWorkflowStatus(conn, wfId, "open", "열림", "TODO", 0)
+                        insertWorkflowStatus(conn, wfId, "in-progress", "진행 중", "IN_PROGRESS", 1)
+                        insertWorkflowStatus(conn, wfId, "done", "완료", "DONE", 2)
                     }
                 }
 

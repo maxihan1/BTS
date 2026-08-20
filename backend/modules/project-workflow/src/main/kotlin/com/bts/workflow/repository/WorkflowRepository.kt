@@ -1,4 +1,4 @@
-// 워크플로우 조회 Repository — jOOQ generated 3 테이블 join → Workflow aggregate 복원
+// 워크플로우 조회 Repository — 전역 상태 카탈로그 2단 join + 전환 join → Workflow aggregate 복원
 
 package com.bts.workflow.repository
 
@@ -6,7 +6,9 @@ import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
+import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.Condition
@@ -68,6 +70,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
             .select(WORKFLOWS.ID)
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(key))
+            .and(WORKFLOWS.DELETED_AT.isNull)
             .fetchOne()
             ?.get(WORKFLOWS.ID) as UUID?
 
@@ -119,13 +122,15 @@ class WorkflowRepository(private val dsl: DSLContext) {
                 WORKFLOWS.KEY,
                 WORKFLOWS.NAME,
                 WORKFLOWS.DESCRIPTION,
-                // workflow_states 컬럼
+                // 상태 — 전역 카탈로그 2단 (workflow_statuses ⋈ statuses)
+                WORKFLOW_STATUSES.ID,
+                WORKFLOW_STATUSES.DISPLAY_ORDER,
+                STATUSES.KEY,
+                STATUSES.NAME,
+                STATUSES.CATEGORY,
+                // workflow_states 컬럼 — 전환의 from/to 를 상태 키로 되돌리는 데만 쓴다
                 WORKFLOW_STATES.ID,
-                WORKFLOW_STATES.WORKFLOW_ID,
                 WORKFLOW_STATES.KEY,
-                WORKFLOW_STATES.NAME,
-                WORKFLOW_STATES.CATEGORY,
-                WORKFLOW_STATES.DISPLAY_ORDER,
                 // workflow_transitions 컬럼
                 WORKFLOW_TRANSITIONS.ID,
                 WORKFLOW_TRANSITIONS.WORKFLOW_ID,
@@ -134,9 +139,18 @@ class WorkflowRepository(private val dsl: DSLContext) {
                 WORKFLOW_TRANSITIONS.NAME,
             )
             .from(WORKFLOWS)
+            // 상태 목록의 정본. 소프트 삭제된 카탈로그 항목은 없는 것으로 취급한다.
+            .leftJoin(WORKFLOW_STATUSES).on(WORKFLOW_STATUSES.WORKFLOW_ID.eq(WORKFLOWS.ID))
+            .leftJoin(STATUSES).on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID).and(STATUSES.DELETED_AT.isNull))
+            // 전환 FK 가 아직 workflow_states(id) 를 가리킨다. 재지정은 로드맵 PR 4 의 일이다.
             .leftJoin(WORKFLOW_STATES).on(WORKFLOW_STATES.WORKFLOW_ID.eq(WORKFLOWS.ID))
             .leftJoin(WORKFLOW_TRANSITIONS).on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
             .where(condition)
+            // ★ 소프트 삭제 필터를 **여기 한 곳**에 둔다. 이 저장소에는 공통 필터 래퍼가 없어
+            //   (DATA.md §3) 호출부마다 붙이면 언젠가 빠뜨린다 — 그러면 지운 워크플로우가
+            //   목록과 전환 계산에 되살아난다. V205 가 deleted_at 을 만들었으나 읽기는
+            //   그것을 보지 않고 있었다(PR 3 에서 실측).
+            .and(WORKFLOWS.DELETED_AT.isNull)
             .fetch()
 
     /**
@@ -157,15 +171,15 @@ class WorkflowRepository(private val dsl: DSLContext) {
             val workflowName = firstRow[WORKFLOWS.NAME]!!
             val workflowDescription = firstRow[WORKFLOWS.DESCRIPTION]
 
-            // states — (workflow_states.id, key, name, category, display_order) 기준 dedup
+            // states — 전역 카탈로그 편성(workflow_statuses.id) 기준 dedup
             val states =
                 rows
-                    .filter { it[WORKFLOW_STATES.ID] != null }
-                    .distinctBy { it[WORKFLOW_STATES.ID] as UUID }
+                    .filter { it[WORKFLOW_STATUSES.ID] != null }
+                    .distinctBy { it[WORKFLOW_STATUSES.ID] as UUID }
                     .map { row -> row.toWorkflowState() }
                     .sortedBy { it.displayOrder }
 
-            // UUID → state key 매핑 (transitions 복원에 사용)
+            // UUID → state key 매핑 (transitions 복원에만 사용 — 구형 테이블이 전환 FK 의 대상이다)
             val stateIdToKey: Map<UUID, String> =
                 rows
                     .filter { it[WORKFLOW_STATES.ID] != null }
@@ -194,10 +208,10 @@ class WorkflowRepository(private val dsl: DSLContext) {
     /** Record → [WorkflowState] 변환. */
     private fun Record.toWorkflowState(): WorkflowState =
         WorkflowState(
-            key = this[WORKFLOW_STATES.KEY]!!,
-            name = this[WORKFLOW_STATES.NAME]!!,
-            category = StateCategory.valueOf(this[WORKFLOW_STATES.CATEGORY]!!),
-            displayOrder = this[WORKFLOW_STATES.DISPLAY_ORDER]!!,
+            key = required(STATUSES.KEY),
+            name = required(STATUSES.NAME),
+            category = StateCategory.valueOf(required(STATUSES.CATEGORY)),
+            displayOrder = required(WORKFLOW_STATUSES.DISPLAY_ORDER),
         )
 
     /**

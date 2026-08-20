@@ -2,6 +2,7 @@
 
 package com.bts.workflow.postaction
 
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
@@ -106,7 +107,7 @@ class PostActionRepositoryIntegrationTest {
                         """
                         INSERT INTO workflows (key, name)
                         VALUES ('test-wf', '테스트 워크플로우')
-                        ON CONFLICT (key) DO NOTHING
+                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }
@@ -119,18 +120,16 @@ class PostActionRepositoryIntegrationTest {
                         }
                     }
 
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        INSERT INTO workflow_states (workflow_id, key, name, category, display_order)
-                        VALUES
-                          ('$workflowId'::uuid, 'open',     'Open',        'TODO',        1),
-                          ('$workflowId'::uuid, 'in_progress', 'In Progress', 'IN_PROGRESS', 2),
-                          ('$workflowId'::uuid, 'done',     'Done',        'DONE',        3)
-                        ON CONFLICT DO NOTHING
-                        """.trimIndent(),
-                    )
-                }
+                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "open", "Open", "TODO", 1)
+                insertWorkflowStatus(
+                    conn,
+                    java.util.UUID.fromString(workflowId),
+                    "in_progress",
+                    "In Progress",
+                    "IN_PROGRESS",
+                    2,
+                )
+                insertWorkflowStatus(conn, java.util.UUID.fromString(workflowId), "done", "Done", "DONE", 3)
 
                 val fromStateId: String =
                     conn.prepareStatement(

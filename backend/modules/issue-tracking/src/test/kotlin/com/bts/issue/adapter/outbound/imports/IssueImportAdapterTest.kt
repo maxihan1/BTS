@@ -29,6 +29,7 @@ import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
@@ -2756,7 +2757,7 @@ class IssueImportAdapterTest {
             val wfId =
                 c.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -2764,14 +2765,7 @@ class IssueImportAdapterTest {
                     }
                 }
 
-            c.prepareStatement(
-                "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                    "VALUES (?, 'open', 'Open', 'TODO', 0) " +
-                    "ON CONFLICT (workflow_id, key) DO UPDATE SET display_order = EXCLUDED.display_order",
-            ).use { stmt ->
-                stmt.setObject(1, wfId)
-                stmt.executeUpdate()
-            }
+            insertWorkflowStatus(c, wfId, "open", "Open", "TODO", 0)
 
             // import-scheme 독립 생성 — 다른 통합 테스트의 scheme 과 충돌 방지(싱글톤 DB 공유)
             c.createStatement().use { stmt ->

@@ -129,7 +129,6 @@ class YamlSeedServiceTest {
             // 검증하므로 실제 인스턴스가 필요하다.
             service =
                 YamlSeedService(
-                    repository,
                     dsl,
                     DefaultResourceLoader(),
                     mockk(relaxed = true),
@@ -325,7 +324,6 @@ class YamlSeedServiceTest {
         val modifiedResourceLoader = ModifiedSimpleWorkflowResourceLoader()
         val serviceWithModified =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 modifiedResourceLoader,
                 mockk(relaxed = true),
@@ -360,7 +358,6 @@ class YamlSeedServiceTest {
         val invalidResourceLoader = InvalidWorkflowResourceLoader()
         val serviceWithInvalid =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 invalidResourceLoader,
                 mockk(relaxed = true),
@@ -391,7 +388,6 @@ class YamlSeedServiceTest {
         val duplicateTransitionResourceLoader = DuplicateTransitionResourceLoader()
         val serviceWithDuplicate =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 duplicateTransitionResourceLoader,
                 mockk(relaxed = true),
@@ -510,7 +506,6 @@ class YamlSeedServiceTest {
         // ModifiedSimpleWorkflowResourceLoader 는 Order(3) 와 동일 내용 → no-op 기대
         val serviceToReseed =
             YamlSeedService(
-                WorkflowRepository(dsl),
                 dsl,
                 ModifiedSimpleWorkflowResourceLoader(),
                 mockk(relaxed = true),

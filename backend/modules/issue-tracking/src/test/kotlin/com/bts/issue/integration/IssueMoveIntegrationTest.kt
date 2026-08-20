@@ -21,6 +21,7 @@ import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.issue.watcher.repository.IssueWatcherRepository
@@ -917,7 +918,7 @@ class IssueMoveIntegrationTest {
                 stmt.execute(
                     "INSERT INTO workflows (key, name) " +
                         "VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                        "ON CONFLICT (key) DO NOTHING",
+                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING",
                 )
             }
 
@@ -935,22 +936,7 @@ class IssueMoveIntegrationTest {
                 name: String,
                 category: String,
                 displayOrder: Int,
-            ): UUID =
-                conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
-                        "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
-                ).use { ps ->
-                    ps.setObject(1, wfId)
-                    ps.setString(2, key)
-                    ps.setString(3, name)
-                    ps.setString(4, category)
-                    ps.setInt(5, displayOrder)
-                    ps.executeQuery().use { rs ->
-                        rs.next()
-                        rs.getObject(1, UUID::class.java)
-                    }
-                }
+            ): UUID = insertWorkflowStatus(conn, wfId, key, name, category, displayOrder)
 
             val openId = insertStateIfAbsent("open", "Open", "TODO", 0)
             val inProgressId = insertStateIfAbsent("in_progress", "In Progress", "IN_PROGRESS", 1)

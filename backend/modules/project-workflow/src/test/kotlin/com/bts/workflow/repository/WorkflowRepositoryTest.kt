@@ -3,6 +3,7 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.domain.StateCategory
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -140,26 +141,12 @@ class WorkflowRepositoryTest {
                 }
             }
 
+        /** 공용 픽스처로 위임한다. 상태는 전역 카탈로그(2단)와 구형 테이블 양쪽에 심긴다. */
         private fun insertStateRaw(
             conn: java.sql.Connection,
             wfId: java.util.UUID,
             spec: RawState,
-        ): java.util.UUID =
-            conn.prepareStatement(
-                "INSERT INTO workflow_states" +
-                    " (workflow_id, key, name, category, display_order)" +
-                    " VALUES (?, ?, ?, ?, ?) RETURNING id",
-            ).use { stmt ->
-                stmt.setObject(1, wfId)
-                stmt.setString(2, spec.key)
-                stmt.setString(3, spec.name)
-                stmt.setString(4, spec.category)
-                stmt.setInt(5, spec.displayOrder)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as java.util.UUID
-                }
-            }
+        ): java.util.UUID = insertWorkflowStatus(conn, wfId, spec.key, spec.name, spec.category, spec.displayOrder)
 
         private fun insertTransitionRaw(
             conn: java.sql.Connection,
@@ -239,5 +226,82 @@ class WorkflowRepositoryTest {
         assertThat(bugTracking.states).hasSize(2)
         assertThat(bugTracking.transitions).hasSize(1)
         assertThat(bugTracking.transitions.first().name).isEqualTo("수정")
+    }
+
+    /**
+     * ### 이 테스트가 D1 이관의 본질이다
+     *
+     * PR 2 는 쓰기(시드)를 전역 카탈로그로 옮겼지만 **읽기는 구형 `workflow_states` 그대로** 두었다.
+     * 그래서 카탈로그에만 편성된 상태는 조회 결과에 나타나지 않는다.
+     *
+     * ```
+     *   statuses ── workflow_statuses ──┐
+     *                                    ├─ 여기서 읽어야 한다 (PR 3)
+     *   workflows ───────────────────────┘
+     *        └── workflow_states  ← 지금 읽는 곳 (구형)
+     * ```
+     *
+     * 일부러 **구형 테이블을 건드리지 않고** 카탈로그에만 심는다. 공용 픽스처는 양쪽에 심으므로
+     * 여기서는 쓰지 않는다 — 그러면 전환 없이도 이 갭이 드러나지 않는다.
+     */
+    @Test
+    fun `카탈로그에만 편성된 상태도 조회 결과에 나타난다`() {
+        // ★ 자기가 만든 데이터를 반드시 되돌린다. 이 워크플로우가 남으면 `findAll` 의 개수 단언이
+        //   실행 순서에 따라 깨진다 — 실제로 한 번 깨뜨려 보고 넣은 정리다.
+        try {
+            catalogOnlyFixture()
+
+            val workflow = repository.findByKey("catalog-only")
+
+            assertThat(workflow).describedAs("카탈로그 전용 워크플로우를 못 읽었다").isNotNull()
+            assertThat(workflow!!.states.map { it.key })
+                .describedAs("읽기 경로가 아직 구형 workflow_states 를 본다 — statuses + workflow_statuses 2단으로 옮겨야 한다")
+                .containsExactly("blocked")
+        } finally {
+            cleanupCatalogOnly()
+        }
+    }
+
+    private fun catalogOnlyFixture() {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            val wfId =
+                conn.prepareStatement("INSERT INTO workflows (key, name) VALUES (?, ?) RETURNING id").use { stmt ->
+                    stmt.setString(1, "catalog-only")
+                    stmt.setString(2, "카탈로그 전용")
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as java.util.UUID
+                    }
+                }
+            val statusId =
+                conn.prepareStatement(
+                    "INSERT INTO statuses (key, name, category) VALUES ('blocked', '차단됨', 'IN_PROGRESS') RETURNING id",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as java.util.UUID
+                    }
+                }
+            conn.prepareStatement(
+                "INSERT INTO workflow_statuses (workflow_id, status_id, display_order) VALUES (?, ?, 0)",
+            ).use { stmt ->
+                stmt.setObject(1, wfId)
+                stmt.setObject(2, statusId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    private fun cleanupCatalogOnly() {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeUpdate(
+                    "DELETE FROM workflow_statuses" +
+                        " WHERE workflow_id IN (SELECT id FROM workflows WHERE key = 'catalog-only')",
+                )
+                stmt.executeUpdate("DELETE FROM workflows WHERE key = 'catalog-only'")
+                stmt.executeUpdate("DELETE FROM statuses WHERE key = 'blocked'")
+            }
+        }
     }
 }

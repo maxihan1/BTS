@@ -158,7 +158,6 @@ class DoneResolutionValidatorSeedTest {
 
             seedService =
                 YamlSeedService(
-                    workflowRepository,
                     dsl,
                     DefaultResourceLoader(),
                     validatorFactory,

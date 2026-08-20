@@ -2,22 +2,32 @@
 
 package com.bts.workflow.web
 
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.application.WorkflowApplicationService
+import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.port.outbound.toUuid
+import com.bts.workflow.web.dto.CreateWorkflowRequest
+import com.bts.workflow.web.dto.DuplicateWorkflowRequest
 import com.bts.workflow.web.dto.TransitionRequestDto
 import com.bts.workflow.web.dto.TransitionResponseDto
+import com.bts.workflow.web.dto.UpdateWorkflowRequest
 import com.bts.workflow.web.dto.WorkflowDto
 import com.bts.workflow.web.dto.toDto
 import io.konform.validation.Invalid
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -27,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController
  * - GET  /api/v1/workflows             — 전체 워크플로우 목록 조회
  * - GET  /api/v1/workflows/{key}       — 워크플로우 단건 조회 (계층 구조)
  * - POST /api/v1/workflows/{key}/transitions — 워크플로우 전환 계획 계산
- * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (WORKFLOW_MANAGE 권한 필요)
+ * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (워크플로우 정의 UPDATE 권한 필요)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다 (learning #91).
@@ -40,7 +50,9 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/workflows")
 class WorkflowController(
     private val workflowApplicationService: WorkflowApplicationService,
+    private val workflowCommandService: WorkflowCommandService,
     private val workflowCache: WorkflowCache,
+    private val permissionResolver: WorkflowDefinitionPermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -119,20 +131,94 @@ class WorkflowController(
     /**
      * 지정된 key 의 워크플로우 캐시를 무효화한다.
      *
-     * WORKFLOW_MANAGE 권한이 없으면 403 Forbidden 을 반환한다.
+     * 워크플로우 정의 UPDATE 권한이 없으면 403 Forbidden 을 반환한다.
+     *
+     * ★ 종전에는 `@PreAuthorize("hasAuthority('WORKFLOW_MANAGE')")` 였다. 그 authority 를 발급하는
+     * 경로가 저장소에 없어(정본 코드는 철자가 뒤집힌 `MANAGE_WORKFLOW` · authority 생성처 2곳은
+     * 둘 다 `ROLE_` 접두어) **어떤 실제 요청으로도 통과할 수 없었다.**
+     * 이 저장소의 권한 검사 관례는 `@PreAuthorize` SpEL 이 아니라 **명시적 resolver 호출**이다
+     * (`VersionPermissionResolver` KDoc 이 명문화).
      * 캐시 무효화는 캐시 레이어 직접 호출로 처리한다 (DB 트랜잭션 불필요).
      *
      * @param body 무효화할 워크플로우 키를 담은 바디
      * @return 200 + `{ "data": null }`
      */
     @PostMapping("/cache/invalidate")
-    @PreAuthorize("hasAuthority('WORKFLOW_MANAGE')")
     fun invalidateCache(
         @RequestBody body: CacheInvalidateRequest,
     ): ResponseEntity<DataResponse<Nothing?>> {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowDefinitionPermission.UPDATE)
         log.info("WorkflowController.invalidateCache key={}", body.key)
         workflowCache.invalidate(body.key)
         return ResponseEntity.ok(DataResponse(data = null))
+    }
+
+    /**
+     * 워크플로우를 만든다.
+     *
+     * 상태 씨앗이 비면 400 이다 — `Workflow.of()` invariant 상 상태 0개 워크플로우는 조회가 불가능하다.
+     * 살아 있는 워크플로우가 이미 그 key 를 쓰면 409. 소프트 삭제된 key 는 재사용할 수 있다(V206).
+     *
+     * @return 201 + `{ "data": { "key": ... } }`
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    fun createWorkflow(
+        @RequestBody request: CreateWorkflowRequest,
+    ): DataResponse<CreatedWorkflowResponse> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.createWorkflow key={}", request.key)
+        workflowCommandService.create(actor.toUuid(), request.toCommand())
+        return DataResponse(CreatedWorkflowResponse(request.key))
+    }
+
+    /**
+     * 이름·설명을 고친다. `key` 는 받지 않는다 — 참조가 문자열이라 바뀌면 조용히 끊긴다.
+     *
+     * 대상이 없으면 404, 편집이 잠겼으면 409.
+     */
+    @PutMapping("/{key}")
+    fun updateWorkflow(
+        @PathVariable key: String,
+        @RequestBody request: UpdateWorkflowRequest,
+    ): DataResponse<Nothing?> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.updateWorkflow key={}", key)
+        workflowCommandService.update(actor.toUuid(), key, request.toCommand())
+        return DataResponse(null)
+    }
+
+    /**
+     * 소프트 삭제한다. 스킴 매핑이 참조 중이면 409.
+     *
+     * 행을 지우지 않고 `deleted_at` 만 채운다(`DATA.md §1.2`).
+     */
+    @DeleteMapping("/{key}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteWorkflow(
+        @PathVariable key: String,
+    ) {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.deleteWorkflow key={}", key)
+        workflowCommandService.delete(actor.toUuid(), key)
+    }
+
+    /**
+     * 워크플로우를 복제한다. 상태 편성과 전환을 함께 복사하고 `origin='CUSTOM'` 으로 만든다.
+     *
+     * 원본이 없으면 404, 새 key 가 이미 쓰이면 409.
+     */
+    @PostMapping("/{key}/duplicate")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun duplicateWorkflow(
+        @PathVariable key: String,
+        @RequestBody request: DuplicateWorkflowRequest,
+    ): DataResponse<CreatedWorkflowResponse> {
+        val actor = CurrentActor.current()
+        log.info("WorkflowController.duplicateWorkflow source={} target={}", key, request.key)
+        workflowCommandService.duplicate(actor.toUuid(), key, request.key, request.name)
+        return DataResponse(CreatedWorkflowResponse(request.key))
     }
 }
 
@@ -171,3 +257,6 @@ data class CacheInvalidateRequest(val key: String)
  * @property data 응답 페이로드
  */
 data class DataResponse<T>(val data: T)
+
+/** 생성·복제 응답. 만들어진 워크플로우의 key 만 준다 — 상세는 GET 으로 받는다. */
+data class CreatedWorkflowResponse(val key: String)

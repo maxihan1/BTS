@@ -1,4 +1,4 @@
-// V203~V205 (전역 상태 카탈로그) 마이그레이션 검증 — 컨테이너 1개로 스키마·백필·컬럼을 한 번에 확인한다
+// V203~V206 (전역 상태 카탈로그 + 소프트삭제 부분 유니크) 마이그레이션 검증 — 컨테이너 1개로 스키마·백필·컬럼·인덱스를 한 번에 확인한다
 
 package com.bts.workflow.db
 
@@ -14,10 +14,11 @@ import java.sql.Connection
 import java.sql.DriverManager
 
 /**
- * Flyway V203(전역 상태 카탈로그 신설) · V204(백필 + 유일성 가드) · V205(workflows 컬럼 4종) 검증.
+ * Flyway V203(전역 상태 카탈로그 신설) · V204(백필 + 유일성 가드) · V205(workflows 컬럼 4종) ·
+ * V206(소프트 삭제 부분 유니크 인덱스) 검증.
  *
  * ### 왜 한 클래스인가
- * `V200MigrationTest` 는 `@Container @JvmStatic` 이라 **클래스당 컨테이너 1개**를 띄운다. V203·V204·V205 를
+ * `V200MigrationTest` 는 `@Container @JvmStatic` 이라 **클래스당 컨테이너 1개**를 띄운다. V203·V204·V205·V206 을
  * 각각 클래스로 나누면 컨테이너가 3~4번 뜨는데, 착수 시점 러너 실측이 load 3.90배였다(게이트 1 리뷰 R4).
  * 세 마이그레이션은 어차피 한 체인으로만 의미가 있으므로 컨테이너 1개에서 순서대로 적용한다.
  *
@@ -42,7 +43,7 @@ import java.sql.DriverManager
  * `docs/plans/2026-08-19-migration-project-workflow-global-status-catalog.md`
  */
 @Testcontainers
-class V203ToV205MigrationTest {
+class V203ToV206MigrationTest {
     companion object {
         private val temboImage: DockerImageName =
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
@@ -207,6 +208,7 @@ class V203ToV205MigrationTest {
             category: String,
         ) {
             conn.prepareStatement(
+                // V206 술어를 붙이지 않는다 — 이 픽스처는 V205 이전 시점(deleted_at 컬럼 부재)에 돈다.
                 "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
             ).use { stmt ->
                 stmt.setString(1, workflowKey)
@@ -233,6 +235,7 @@ class V203ToV205MigrationTest {
         ) {
             for (workflowKey in states.map { it.workflowKey }.distinct()) {
                 conn.prepareStatement(
+                    // V206 술어를 붙이지 않는다 — 이 픽스처는 V205 이전 시점(deleted_at 컬럼 부재)에 돈다.
                     "INSERT INTO workflows (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
                 ).use { stmt ->
                     stmt.setString(1, workflowKey)
@@ -286,6 +289,62 @@ class V203ToV205MigrationTest {
                 " WHERE table_schema = 'public' AND table_name = '$tableName'",
         ) { it.getInt(1) > 0 }
 
+    /** 격리 DB 에 접속해 블록을 실행한다. V206 재생성 검증용. */
+    private fun <T> withConnection(
+        url: String,
+        block: (Connection) -> T,
+    ): T = DriverManager.getConnection(url, postgres.username, postgres.password).use(block)
+
+    /** statuses 1행을 심는다. V206 부분 유니크 검증 전용. */
+    private fun insertStatus(
+        conn: Connection,
+        key: String,
+        name: String,
+        category: String,
+    ) {
+        conn.prepareStatement("INSERT INTO statuses (key, name, category) VALUES (?, ?, ?)").use { stmt ->
+            stmt.setString(1, key)
+            stmt.setString(2, name)
+            stmt.setString(3, category)
+            stmt.executeUpdate()
+        }
+    }
+
+    /** workflows 1행을 심는다. ON CONFLICT 를 쓰지 않는다 — 충돌 자체가 검증 대상이다. */
+    private fun insertWorkflow(
+        conn: Connection,
+        key: String,
+    ) {
+        conn.prepareStatement("INSERT INTO workflows (key, name) VALUES (?, ?)").use { stmt ->
+            stmt.setString(1, key)
+            stmt.setString(2, key)
+            stmt.executeUpdate()
+        }
+    }
+
+    private fun countWhere(
+        conn: Connection,
+        sql: String,
+    ): Int =
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery(sql).use { rs ->
+                rs.next()
+                rs.getInt(1)
+            }
+        }
+
+    /** 지정 테이블·컬럼에 걸린 **컬럼 레벨** UNIQUE 제약 수. 부분 유니크 인덱스는 여기 잡히지 않는다. */
+    private fun uniqueConstraintCount(
+        tableName: String,
+        columnName: String,
+    ): Int =
+        query(
+            "SELECT COUNT(*) FROM information_schema.table_constraints tc" +
+                " JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name" +
+                " WHERE tc.table_name = '$tableName' AND tc.constraint_type = 'UNIQUE'" +
+                " AND kcu.column_name = '$columnName'",
+        ) { it.getInt(1) }
+
     private fun indexExists(indexName: String): Boolean =
         query(
             "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = '$indexName'",
@@ -332,16 +391,20 @@ class V203ToV205MigrationTest {
         assertThat(tableExists("workflow_statuses")).isTrue()
     }
 
+    /**
+     * V203 이 세운 「key 는 무조건 UNIQUE」계약을 **V206 이 뒤집는다**.
+     *
+     * 삭제하지 않고 반전해 남긴다 — 새 계약의 증인이다. 컬럼 레벨 UNIQUE 제약이 사라지고
+     * 부분 유니크 인덱스가 그 자리를 대신한다는 것이 V206 의 골자다.
+     */
     @Test
-    fun `V203 statuses key 는 전역 UNIQUE`() {
-        val count =
-            query(
-                "SELECT COUNT(*) FROM information_schema.table_constraints tc" +
-                    " JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name" +
-                    " WHERE tc.table_name = 'statuses' AND tc.constraint_type = 'UNIQUE'" +
-                    " AND kcu.column_name = 'key'",
-            ) { it.getInt(1) }
-        assertThat(count).isGreaterThan(0)
+    fun `V206 이후 statuses key 의 컬럼 UNIQUE 제약은 사라진다`() {
+        assertThat(uniqueConstraintCount("statuses", "key")).isZero()
+    }
+
+    @Test
+    fun `V206 이후 workflows key 의 컬럼 UNIQUE 제약은 사라진다`() {
+        assertThat(uniqueConstraintCount("workflows", "key")).isZero()
     }
 
     @Test
@@ -578,6 +641,128 @@ class V203ToV205MigrationTest {
         }
     }
 
+    /**
+     * ### 왜 컬럼 축만으로는 부족한가 — V206 이 실증했다
+     *
+     * 위 테스트는 **테이블 → (컬럼명 → 타입)** 만 대조한다. 그래서 `V206` 이 `key` 의 컬럼 UNIQUE 를
+     * 부분 인덱스로 바꿨을 때 **미러를 안 고쳐도 통과**했다 — 컬럼 이름과 타입은 그대로이기 때문이다.
+     * 저장소가 반복해 물린 「판별식이 표의 일부 열만 읽으면 안 읽는 열은 조용히 썩는다」 양식이다.
+     *
+     * 미러가 썩으면 jOOQ 생성물이 **실재하지 않는 UniqueKey** 를 들고 있게 되고, `onConflict` 처럼
+     * 그 메타데이터를 쓰는 쿼리가 런타임에 엇나간다.
+     *
+     * 그래서 대조 축을 둘 더 연다 — **제약**(UNIQUE·CHECK·FK 이름과 종류)과 **인덱스 정의**.
+     */
+    @Test
+    fun `codegen 미러가 제약과 인덱스까지 마이그레이션과 일치한다`() {
+        val mirrorSql =
+            javaClass.getResource("/db/codegen/init_codegen.sql")?.readText()
+                ?: error("db/codegen/init_codegen.sql 이 클래스패스에 없다 — 코드젠 입력이 사라졌다")
+        val mirrorUrl = applyToFreshDatabase("codegen_mirror_constraints", mirrorSql)
+
+        // 미러는 코드젠 입력이라 **project-workflow 가 쓰는 테이블만** 담는다. 마이그레이션 DB 에는
+        // issue-tracking 테이블까지 있으므로 전체 집합을 비교하면 안 된다 — 미러에 있는 테이블로 좁힌다.
+        // (위 컬럼 축 테스트도 `for ((table, _) in mirror)` 로 같은 범위를 쓴다.)
+        val mirrorConstraints = constraintsByTable(mirrorUrl)
+        val migratedConstraints = constraintsByTable(postgres.jdbcUrl)
+        for ((table, expected) in mirrorConstraints) {
+            assertThat(expected)
+                .describedAs("테이블 '%s' — 미러와 마이그레이션의 제약(UNIQUE·PK·FK)이 갈라졌다", table)
+                .isEqualTo(migratedConstraints[table] ?: emptySet<String>())
+        }
+
+        val mirrorTables = mirrorConstraints.keys
+        assertThat(indexDefinitions(mirrorUrl, mirrorTables))
+            .describedAs("미러와 마이그레이션의 인덱스 정의가 갈라졌다")
+            .isEqualTo(indexDefinitions(postgres.jdbcUrl, mirrorTables))
+    }
+
+    /**
+     * public 스키마의 테이블 → 제약 집합. 이름은 제외하고 **종류 + 대상 컬럼**으로 비교한다.
+     *
+     * 이름을 넣으면 PostgreSQL 이 자동 생성한 이름(`statuses_key_key`)이 선언 순서에 따라 달라질 때
+     * 실질이 같은데도 red 가 난다. 반대로 종류와 컬럼을 빼면 이 판별식이 다시 공허해진다.
+     *
+     * CHECK 는 제외한다 — PostgreSQL 이 `NOT NULL` 을 CHECK 제약으로도 노출해 컬럼 축과 중복되고,
+     * 자동 생성 이름이 섞여 실질 없는 red 를 만든다. `NOT NULL` 은 위 컬럼 축이 이미 본다.
+     */
+    private fun constraintsByTable(url: String): Map<String, Set<String>> {
+        val sql =
+            "SELECT tc.table_name, tc.constraint_type, COALESCE(kcu.column_name, '') AS col" +
+                " FROM information_schema.table_constraints tc" +
+                " LEFT JOIN information_schema.key_column_usage kcu" +
+                "   ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema" +
+                " WHERE tc.table_schema = 'public' AND tc.table_name <> 'flyway_schema_history'" +
+                "   AND tc.constraint_type IN ('UNIQUE', 'PRIMARY KEY', 'FOREIGN KEY')" +
+                " ORDER BY 1, 2, 3"
+        val result = mutableMapOf<String, MutableSet<String>>()
+        forEachRow(url, sql) { rs ->
+            result.getOrPut(rs.getString(1)) { mutableSetOf() }.add("${rs.getString(2)}(${rs.getString(3)})")
+        }
+        return result
+    }
+
+    /**
+     * public 스키마의 인덱스 정의 집합. 인덱스 **이름은 사람이 정하므로 비교에 넣는다** —
+     * 제약과 달리 자동 생성이 아니라 미러와 마이그레이션이 같은 이름을 써야 한다.
+     * 다만 정의 문자열의 DB 이름 부분은 URL 마다 달라지지 않으므로 그대로 쓴다.
+     */
+    private fun indexDefinitions(
+        url: String,
+        tables: Set<String>,
+    ): Set<String> {
+        if (tables.isEmpty()) error("대조할 테이블이 0개다 — 미러가 비었거나 조회가 어긋났다 (비-공허 확인)")
+        val inList = tables.joinToString(", ") { "'$it'" }
+        val sql =
+            "SELECT indexdef FROM pg_indexes" +
+                " WHERE schemaname = 'public' AND tablename IN ($inList)" +
+                " ORDER BY indexdef"
+        val result = mutableSetOf<String>()
+        forEachRow(url, sql) { rs -> result.add(rs.getString(1)) }
+        return result
+    }
+
+    /** 소프트 삭제 1행. 부분 유니크 인덱스 검증에서 「지운 뒤 다시 만든다」를 표현한다. */
+    private fun softDelete(
+        conn: Connection,
+        table: String,
+        key: String,
+    ) {
+        // 테이블명은 바인딩할 수 없으므로 호출부가 주는 리터럴 2종으로 고정한다.
+        // key 는 파라미터로 넘긴다 — 테스트라도 SQL 문자열 결합을 남기지 않는다(DEVELOPMENT.md §1.1-3).
+        val sql =
+            when (table) {
+                "statuses" -> "UPDATE statuses SET deleted_at = NOW() WHERE key = ?"
+                "workflows" -> "UPDATE workflows SET deleted_at = NOW() WHERE key = ?"
+                else -> error("소프트 삭제 대상이 아닌 테이블: $table")
+            }
+        conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, key)
+            stmt.executeUpdate()
+        }
+    }
+
+    /**
+     * 결과 행마다 [read] 를 호출한다. JDBC 보일러플레이트의 중첩을 한 곳에 모은다.
+     *
+     * try-with-resources 3단(Connection → Statement → ResultSet)에 행 루프가 얹혀 중첩이 깊다.
+     * 그것이 JDBC 의 표준 형태이고 더 쪼개면 자원 해제 경계가 흐려진다.
+     */
+    @Suppress("NestedBlockDepth")
+    private fun forEachRow(
+        url: String,
+        sql: String,
+        read: (java.sql.ResultSet) -> Unit,
+    ) {
+        DriverManager.getConnection(url, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use { rs ->
+                    while (rs.next()) read(rs)
+                }
+            }
+        }
+    }
+
     /** 격리 DB 를 만들어 SQL 한 덩어리를 적용하고 URL 을 준다. */
     private fun applyToFreshDatabase(
         dbName: String,
@@ -622,5 +807,89 @@ class V203ToV205MigrationTest {
             }
         }
         error("INSERT 가 실패해야 하는데 성공했다: $sql")
+    }
+
+    // ── V206. 소프트 삭제 부분 유니크 인덱스 ────────────────────────────────────
+
+    /**
+     * ### 무엇을 막는 검증인가
+     *
+     * V203 은 `statuses.key` 를 **무조건 UNIQUE** 로, `name` 은 `WHERE deleted_at IS NULL` **부분 UNIQUE**
+     * 로 만들었다. 같은 테이블 안에서 규칙이 둘로 갈라진 상태다. 소프트 삭제를 쓰기로 한 이상
+     * 이 비대칭은 「지운 상태의 key 를 영원히 재사용할 수 없다」로 나타난다.
+     *
+     * ```
+     *  [V205 까지]                          [V206 이후]
+     *  key   UNIQUE            (전역)       key   UNIQUE WHERE deleted_at IS NULL
+     *  name  UNIQUE WHERE alive             name  UNIQUE WHERE deleted_at IS NULL
+     *        ↑ 규칙 2벌                            ↑ 규칙 1벌
+     * ```
+     */
+    @Test
+    fun `V206 statuses key 는 소프트 삭제를 제외한 부분 UNIQUE 인덱스다`() {
+        assertThat(indexExists("uq_statuses_key")).isTrue()
+        val definition =
+            query("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_statuses_key'") { it.getString(1) }
+        assertThat(definition).contains("UNIQUE")
+        assertThat(definition).contains("deleted_at IS NULL")
+    }
+
+    @Test
+    fun `V206 workflows key 는 소프트 삭제를 제외한 부분 UNIQUE 인덱스다`() {
+        assertThat(indexExists("uq_workflows_key")).isTrue()
+        val definition =
+            query("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_workflows_key'") { it.getString(1) }
+        assertThat(definition).contains("UNIQUE")
+        assertThat(definition).contains("deleted_at IS NULL")
+    }
+
+    @Test
+    fun `V206 statuses 를 소프트 삭제한 뒤 같은 key 로 다시 만들 수 있다`() {
+        val url = migrateWithFixture("v206_status_recreate") { }
+        withConnection(url) { conn ->
+            insertStatus(conn, "blocked", "Blocked", "IN_PROGRESS")
+            softDelete(conn, "statuses", "blocked")
+            // 같은 key 로 재생성 — 살아 있는 행이 없으므로 부분 유니크가 허용해야 한다.
+            insertStatus(conn, "blocked", "Blocked Again", "TODO")
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked' AND deleted_at IS NULL"))
+                .isEqualTo(1)
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM statuses WHERE key = 'blocked'")).isEqualTo(2)
+        }
+    }
+
+    @Test
+    fun `V206 살아 있는 두 statuses 가 같은 key 면 여전히 거부된다`() {
+        val url = migrateWithFixture("v206_status_alive_dup") { }
+        withConnection(url) { conn ->
+            insertStatus(conn, "dup_key", "First", "TODO")
+            val failure = runCatching { insertStatus(conn, "dup_key", "Second", "DONE") }.exceptionOrNull()
+            assertThat(failure).isNotNull()
+            assertThat(failure!!.message).contains("uq_statuses_key")
+        }
+    }
+
+    @Test
+    fun `V206 workflows 를 소프트 삭제한 뒤 같은 key 로 다시 만들 수 있다`() {
+        val url = migrateWithFixture("v206_workflow_recreate") { }
+        withConnection(url) { conn ->
+            insertWorkflow(conn, "retired-flow")
+            softDelete(conn, "workflows", "retired-flow")
+            insertWorkflow(conn, "retired-flow")
+            val alive = "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow' AND deleted_at IS NULL"
+            assertThat(countWhere(conn, alive))
+                .isEqualTo(1)
+            assertThat(countWhere(conn, "SELECT COUNT(*) FROM workflows WHERE key = 'retired-flow'")).isEqualTo(2)
+        }
+    }
+
+    @Test
+    fun `V206 살아 있는 두 workflows 가 같은 key 면 여전히 거부된다`() {
+        val url = migrateWithFixture("v206_workflow_alive_dup") { }
+        withConnection(url) { conn ->
+            insertWorkflow(conn, "dup-flow")
+            val failure = runCatching { insertWorkflow(conn, "dup-flow") }.exceptionOrNull()
+            assertThat(failure).isNotNull()
+            assertThat(failure!!.message).contains("uq_workflows_key")
+        }
     }
 }

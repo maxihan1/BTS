@@ -15,7 +15,7 @@
 -- ── workflows ─────────────────────────────────────────────────────────────────
 CREATE TABLE workflows (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    key         TEXT        NOT NULL UNIQUE,
+    key         TEXT        NOT NULL,  -- V206. 컬럼 UNIQUE → 부분 유니크 인덱스 uq_workflows_key
     name        TEXT        NOT NULL,
     description TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -27,6 +27,8 @@ CREATE TABLE workflows (
     is_locked   BOOLEAN     NOT NULL DEFAULT FALSE,
     CONSTRAINT ck_workflows_origin CHECK (origin IN ('SEED', 'CUSTOM'))
 );
+
+CREATE UNIQUE INDEX uq_workflows_key ON workflows (key) WHERE deleted_at IS NULL;
 
 -- ── workflow_states ───────────────────────────────────────────────────────────
 CREATE TABLE workflow_states (
@@ -88,7 +90,7 @@ CREATE INDEX idx_workflow_post_actions_transition ON workflow_post_actions (tran
 -- ── statuses (V203) ───────────────────────────────────────────────────────────
 CREATE TABLE statuses (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    key         VARCHAR(50)  NOT NULL UNIQUE,
+    key         VARCHAR(50)  NOT NULL,  -- V206. 컬럼 UNIQUE → 부분 유니크 인덱스 uq_statuses_key
     name        VARCHAR(100) NOT NULL,
     description TEXT,
     category    TEXT         NOT NULL CHECK (category IN ('TODO', 'IN_PROGRESS', 'DONE')),
@@ -99,6 +101,7 @@ CREATE TABLE statuses (
 );
 
 CREATE UNIQUE INDEX uq_statuses_lower_name ON statuses (lower(name)) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX uq_statuses_key ON statuses (key) WHERE deleted_at IS NULL;
 
 -- ── workflow_statuses (V203) ──────────────────────────────────────────────────
 CREATE TABLE workflow_statuses (

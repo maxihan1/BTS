@@ -7,6 +7,7 @@ import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.testsupport.insertWorkflowStatus
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -121,30 +122,10 @@ class WorkflowCacheTest {
                     }
 
                 val openId =
-                    conn.prepareStatement(
-                        "INSERT INTO workflow_states" +
-                            " (workflow_id, key, name, category, display_order)" +
-                            " VALUES (?, 'open', '열림', 'TODO', 0) RETURNING id",
-                    ).use { stmt ->
-                        stmt.setObject(1, wfId)
-                        stmt.executeQuery().use { rs ->
-                            rs.next()
-                            rs.getObject(1) as java.util.UUID
-                        }
-                    }
+                    insertWorkflowStatus(conn, wfId, "open", "열림", "TODO", 0)
 
                 val doneId =
-                    conn.prepareStatement(
-                        "INSERT INTO workflow_states" +
-                            " (workflow_id, key, name, category, display_order)" +
-                            " VALUES (?, 'done', '완료', 'DONE', 1) RETURNING id",
-                    ).use { stmt ->
-                        stmt.setObject(1, wfId)
-                        stmt.executeQuery().use { rs ->
-                            rs.next()
-                            rs.getObject(1) as java.util.UUID
-                        }
-                    }
+                    insertWorkflowStatus(conn, wfId, "done", "완료", "DONE", 1)
 
                 conn.prepareStatement(
                     "INSERT INTO workflow_transitions" +
