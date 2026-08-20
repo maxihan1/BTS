@@ -13,7 +13,6 @@ import type { PostActionResponse } from '@/api/post-actions'
 import { PostActionFormDialog } from '@/components/workflow/PostActionFormDialog'
 import type { PostActionFormValues } from '@/components/workflow/PostActionFormDialog'
 import type { WorkflowTransitionView } from '@/components/workflow/workflow.types'
-import { transitionKey } from '@/components/workflow/workflow.types'
 import { postActionLabels } from '@/i18n/post-action-labels'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -48,6 +47,25 @@ function extractWebhookValues(config: Record<string, unknown>): PostActionFormVa
     return { url, method }
   }
   return null
+}
+
+/** backend `split("__")` 가 요구하는 전환 키 조각 수 */
+const TRANSITION_KEY_SEGMENTS = 2
+
+/**
+ * 전환의 `key` 가 backend post-action 경로에서 되돌려질 수 있는 모양인지 판정한다.
+ *
+ * backend `PostActionAdminService.resolveOrThrow` 가 URL 세그먼트를 `split("__")` 하고
+ * **정확히 2조각**이 아니면 `PostActionNotFoundException` 을 던진다. 그러므로 「설정 가능 여부」의
+ * 정확한 기준은 조각 수 하나뿐이다 — 종전처럼 `fromStateKey`·`toStateKey` 각각에서 `'__'` 를
+ * 찾던 방식은 출발 상태가 없는 전환(GLOBAL·INITIAL)에서 null 을 만나 터졌고, 판정하려던 대상
+ * (합성 키의 조각 수)을 간접적으로 흉내 내던 것이라 종류가 늘 때마다 어긋난다.
+ *
+ * @param transition 전환 view 모델
+ * @returns 조각 수가 2가 아니어서 규칙을 붙일 수 없으면 true
+ */
+function isAmbiguousTransitionKey(transition: WorkflowTransitionView): boolean {
+  return transition.key.split('__').length !== TRANSITION_KEY_SEGMENTS
 }
 
 /** configSummary 반환 타입 — 절단 여부와 전체 원본을 함께 반환 */
@@ -349,21 +367,21 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           )}
         >
           <option value="">{postActionLabels.section.transitionSelectPlaceholder}</option>
-          {transitions.map((t) => {
-            const tKey = transitionKey(t.fromStateKey, t.toStateKey)
-            // D6 방어 가드: fromStateKey 또는 toStateKey에 '__'가 포함되면 선택 비활성.
-            // 근본 원인 — transitionKey()는 `${from}__${to}` 형식이며, 백엔드 WorkflowTransition.kt도
-            // 동일 구분자로 split(정확히 2조각 요구)한다. 구분자 변경은 cross-BC 후속 작업.
-            const isAmbiguous = t.fromStateKey.includes('__') || t.toStateKey.includes('__')
-            return (
-              <option key={tKey} value={tKey} disabled={isAmbiguous}>
-                {t.name}
-              </option>
-            )
-          })}
+          {/*
+            value 는 응답의 `key` 를 그대로 쓴다 — backend 게터가 NORMAL 은 `from__to`,
+            GLOBAL·INITIAL 은 `KIND__to` 로 만들고 그 문자열이 post-action 경로 세그먼트다.
+            프론트가 다시 합성하면 규칙이 두 벌이 되고 출발 상태가 없는 전환에서 즉시 어긋난다.
+            React key 는 `id` — 같은 (from, to) 쌍에 이름이 다른 전환을 여럿 둘 수 있어
+            `key` 는 더 이상 유일하지 않다 (ADR 2026-08-18 §D1).
+          */}
+          {transitions.map((t) => (
+            <option key={t.id} value={t.key} disabled={isAmbiguousTransitionKey(t)}>
+              {t.name}
+            </option>
+          ))}
         </select>
         {/* D6: ambiguous 전환이 하나라도 있으면 안내 문구 노출 */}
-        {transitions.some((t) => t.fromStateKey.includes('__') || t.toStateKey.includes('__')) && (
+        {transitions.some(isAmbiguousTransitionKey) && (
           <p className="text-xs text-muted-foreground">
             {postActionLabels.section.ambiguousKeyHint}
           </p>
