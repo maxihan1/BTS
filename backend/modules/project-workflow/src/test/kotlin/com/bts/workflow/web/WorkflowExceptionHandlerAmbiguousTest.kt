@@ -28,7 +28,7 @@ private const val WORKFLOW_KEY = "software-default"
 /**
  * [AmbiguousTransitionException] 을 그대로 던지는 최소 컨트롤러.
  *
- * project-workflow 컨트롤러 경로에서 예외가 표면화될 때 [WorkflowExceptionHandler] 가
+ * project-workflow 컨트롤러 경로에서 예외가 표면화될 때 [AmbiguousTransitionExceptionHandler] 가
  * 어떤 HTTP 응답을 만드는지만 보기 위한 스텁이다. 실제 전환 해석(Task 6)에 의존하지 않는다.
  */
 @RestController
@@ -53,6 +53,11 @@ private class AmbiguousTransitionThrowingController {
  * 같은 상태쌍에 전환이 둘 이상이고 호출자가 `transitionId` 를 주지 않았을 때,
  * 조용히 아무거나 고르지 않고 **409 `AMBIGUOUS_TRANSITION` + 후보 목록**을 돌려주는지 고정한다.
  * 선례는 `WorkflowSchemeExceptionHandler` 의 `SchemeInUseException(usedByProjects) → 409` 다.
+ *
+ * ## 형제 advice 를 일부러 함께 등록한다
+ * 매핑은 [AmbiguousTransitionExceptionHandler] 가 단독으로 들고 있고, 형제인
+ * [WorkflowExceptionHandler] 는 이 예외를 더는 잡지 않는다. 둘을 같이 올려 두는 이유는
+ * 조립 상태를 흉내내기 위해서다 — 형제가 옆에 있어도 응답이 이 advice 것으로 나오는지 본다.
  */
 class WorkflowExceptionHandlerAmbiguousTest {
     private lateinit var mockMvc: MockMvc
@@ -62,7 +67,7 @@ class WorkflowExceptionHandlerAmbiguousTest {
         mockMvc =
             MockMvcBuilders
                 .standaloneSetup(AmbiguousTransitionThrowingController())
-                .setControllerAdvice(WorkflowExceptionHandler())
+                .setControllerAdvice(AmbiguousTransitionExceptionHandler(), WorkflowExceptionHandler())
                 .build()
     }
 
