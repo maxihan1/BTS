@@ -58,7 +58,26 @@ check_exec() {
 }
 
 FIX_EXTERNALS="nodejs.org 공식 배포본을 SHASUMS256.txt 로 sha256 대조 후 bin/node 만 복원"
-FIX_TOOLCACHE="그 버전 디렉터리의 arm64.complete 표식 삭제 → setup-* 가 자가 재설치"
+FIX_TOOLCACHE="그 버전 디렉터리의 <arch>.complete 표식 삭제 → setup-* 가 자가 재설치"
+
+# JDK 툴캐시의 실행 파일 경로는 OS 마다 다르다 — macOS 는 `<arch>/Contents/Home/bin/java`,
+# 리눅스는 `<arch>/bin/java` 로 중간 두 단계가 없다. 러너가 두 OS 에 걸쳐 있으므로
+# 한쪽을 하드코딩하면 다른 쪽에서 「표식은 있는데 바이너리가 없다」로 읽혀 report 가 실패를 낸다.
+# 이 스크립트는 모든 잡의 선행이라, 그 러너가 집은 잡이 전부 차단된다.
+#
+# ★ uname 으로 분기하지 않는다. 판정 대상은 「이 스크립트가 도는 OS」가 아니라 「툴캐시가
+#   어떤 레이아웃으로 깔렸는가」이고, 둘은 같다는 보장이 없다(테스트는 macOS 에서 리눅스
+#   레이아웃 트리를 만들어 검증한다). 그래서 실재하는 경로를 고른다.
+# ★ 둘 다 없으면 리눅스 경로를 돌려준다 — check_exec 가 「바이너리 부재」로 정상 판정한다.
+#   여기서 조용히 빈 문자열을 돌려주면 그 결함이 검사에서 사라진다.
+java_bin() {
+  local dir="$1"
+  if [ -e "${dir}Contents/Home/bin/java" ]; then
+    echo "${dir}Contents/Home/bin/java"
+  else
+    echo "${dir}bin/java"
+  fi
+}
 
 # 1) 러너 내장 엔진 — 러너가 JavaScript 액션(actions/checkout 등)을 돌리는 데 쓴다.
 #    여기가 죽으면 잡이 Checkout 스텝에서 죽고 테스트는 한 줄도 안 돈다.
@@ -80,7 +99,7 @@ done
 for dir in "$ROOT"/_work/_tool/Java_*/*/*/; do
   TOOLCACHE_SEEN=1
   check_exec "toolcache java ($(basename "$(dirname "$dir")"))" \
-    "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
+    "$(java_bin "$dir")" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
 done
 
 # 툴캐시가 통째로 비어 있는 것은 「갓 설치한 러너」의 정상 상태이기도 하다(setup-* 가 캐시

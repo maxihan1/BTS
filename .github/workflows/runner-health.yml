@@ -81,7 +81,21 @@ jobs:
           }
 
           FIX_EXTERNALS="nodejs.org 공식 배포본을 SHASUMS256.txt 로 sha256 대조 후 bin/node 만 복원"
-          FIX_TOOLCACHE="그 버전 디렉터리의 arm64.complete 표식 삭제 → setup-* 가 자가 재설치"
+          FIX_TOOLCACHE="그 버전 디렉터리의 <arch>.complete 표식 삭제 → setup-* 가 자가 재설치"
+
+          # JDK 툴캐시의 실행 파일 경로는 OS 마다 다르다 — macOS 는 `<arch>/Contents/Home/bin/java`,
+          # 리눅스는 `<arch>/bin/java` 다. 러너가 두 OS 에 걸치므로 한쪽을 하드코딩하면 다른 쪽에서
+          # 「표식은 있는데 바이너리가 없다」로 읽혀, 이 잡을 선행으로 두는 모든 잡이 차단된다.
+          # uname 이 아니라 실재하는 경로로 고른다 — 판정 대상은 이 스크립트가 도는 OS 가 아니라
+          # 툴캐시가 깔린 레이아웃이다. 둘 다 없으면 리눅스 경로를 돌려 「부재」로 정상 판정시킨다.
+          java_bin() {
+            local dir="$1"
+            if [ -e "${dir}Contents/Home/bin/java" ]; then
+              echo "${dir}Contents/Home/bin/java"
+            else
+              echo "${dir}bin/java"
+            fi
+          }
 
           for v in node20 node24; do
             check_exec "externals/$v" "$ROOT/externals/$v/bin/node" -v "$FIX_EXTERNALS"
@@ -97,7 +111,7 @@ jobs:
 
           for dir in "$ROOT"/_work/_tool/Java_*/*/*/; do
             check_exec "toolcache java ($(basename "$(dirname "$dir")"))" \
-              "${dir}Contents/Home/bin/java" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
+              "$(java_bin "$dir")" -version "$FIX_TOOLCACHE" "${dir%/}.complete"
           done
 
           if [ "$FAILED" -ne 0 ]; then
