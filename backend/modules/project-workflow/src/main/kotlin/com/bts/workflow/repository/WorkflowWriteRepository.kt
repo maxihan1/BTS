@@ -4,7 +4,9 @@ package com.bts.workflow.repository
 
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
+import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
+import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -166,36 +168,87 @@ class WorkflowWriteRepository(
     }
 
     /**
-     * 원본의 상태·전환을 복사한다.
+     * 원본의 구형 상태 행과 전환을 복사한다. 전역 카탈로그 편성은 [copyStatusComposition] 이 먼저 한다.
      *
-     * 전환은 아직 구형 `workflow_states.id` 를 참조하므로(로드맵 PR 4 가 재지정) 그 테이블의
-     * 행도 함께 복사해야 from/to 가 이어진다. 원시 SQL 을 쓰는 이유 —
-     * `workflow_states` 는 코드젠 미러에 있으나 이 복사는 **id 매핑을 DB 안에서 끝내야** 한다.
+     * 구형 `workflow_states` 도 함께 복사한다 — 전환은 더 이상 그 테이블을 참조하지 않지만
+     * `PostActionTransitionResolver` 가 아직 상태 키를 그 테이블로 해석한다. add → backfill → drop
+     * 의 3단(DROP)이 오기 전까지는 두 세대를 나란히 유지하는 편이 안전하다.
      */
     fun copyLegacyStatesAndTransitions(
         sourceId: UUID,
         targetId: UUID,
     ) {
-        dsl.execute(
-            """
-            WITH copied AS (
-                INSERT INTO workflow_states (workflow_id, key, name, category, display_order)
-                SELECT ?, key, name, category, display_order FROM workflow_states WHERE workflow_id = ?
-                RETURNING id, key
-            )
-            INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
-            SELECT ?, f.id, t.id, wt.name
-              FROM workflow_transitions wt
-              JOIN workflow_states src_f ON src_f.id = wt.from_state_id
-              JOIN workflow_states src_t ON src_t.id = wt.to_state_id
-              JOIN copied f ON f.key = src_f.key
-              JOIN copied t ON t.key = src_t.key
-             WHERE wt.workflow_id = ?
-            """.trimIndent(),
-            targetId,
-            sourceId,
-            targetId,
-            sourceId,
-        )
+        dsl.copyLegacyStates(sourceId, targetId)
+        dsl.copyTransitions(sourceId, targetId)
     }
+}
+
+/** 구형 `workflow_states` 행 복사. 전환 FK 는 더 이상 이 테이블을 쓰지 않으므로 id 매핑이 필요 없다. */
+private fun DSLContext.copyLegacyStates(
+    sourceId: UUID,
+    targetId: UUID,
+) {
+    insertInto(WORKFLOW_STATES)
+        .columns(
+            WORKFLOW_STATES.WORKFLOW_ID,
+            WORKFLOW_STATES.KEY,
+            WORKFLOW_STATES.NAME,
+            WORKFLOW_STATES.CATEGORY,
+            WORKFLOW_STATES.DISPLAY_ORDER,
+        ).select(
+            select(
+                DSL.value(targetId),
+                WORKFLOW_STATES.KEY,
+                WORKFLOW_STATES.NAME,
+                WORKFLOW_STATES.CATEGORY,
+                WORKFLOW_STATES.DISPLAY_ORDER,
+            ).from(WORKFLOW_STATES)
+                .where(WORKFLOW_STATES.WORKFLOW_ID.eq(sourceId)),
+        ).execute()
+}
+
+/**
+ * 전환을 복사하며 출발·도착을 **복제본의** `workflow_statuses` 행으로 다시 잇는다 (V207).
+ *
+ * 두 세대를 잇는 다리는 전역 카탈로그의 `status_id` 다. 원본 편성 행 → 그 status_id →
+ * 복제본에서 같은 status_id 를 가진 편성 행, 순서로 찾는다.
+ *
+ * 출발지 join 만 LEFT 인 것은 GLOBAL·INITIAL 전환의 `from_status_id` 가 NULL 이기 때문이다.
+ * NORMAL 인데 대응 행을 못 찾으면 NULL 이 되어 `ck_transition_kind_from` 이 즉시 막는다 —
+ * 조용히 끊어진 전환을 만드는 것보다 복제를 실패시키는 편이 싸다.
+ */
+private fun DSLContext.copyTransitions(
+    sourceId: UUID,
+    targetId: UUID,
+) {
+    val sourceFrom = WORKFLOW_STATUSES.`as`("src_from")
+    val targetFrom = WORKFLOW_STATUSES.`as`("tgt_from")
+    val sourceTo = WORKFLOW_STATUSES.`as`("src_to")
+    val targetTo = WORKFLOW_STATUSES.`as`("tgt_to")
+
+    insertInto(WORKFLOW_TRANSITIONS)
+        .columns(
+            WORKFLOW_TRANSITIONS.WORKFLOW_ID,
+            WORKFLOW_TRANSITIONS.KIND,
+            WORKFLOW_TRANSITIONS.NAME,
+            WORKFLOW_TRANSITIONS.FROM_STATUS_ID,
+            WORKFLOW_TRANSITIONS.TO_STATUS_ID,
+            WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
+        ).select(
+            select(
+                DSL.value(targetId),
+                WORKFLOW_TRANSITIONS.KIND,
+                WORKFLOW_TRANSITIONS.NAME,
+                targetFrom.ID,
+                targetTo.ID,
+                WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
+            ).from(WORKFLOW_TRANSITIONS)
+                .leftJoin(sourceFrom).on(sourceFrom.ID.eq(WORKFLOW_TRANSITIONS.FROM_STATUS_ID))
+                .leftJoin(targetFrom)
+                .on(targetFrom.WORKFLOW_ID.eq(targetId).and(targetFrom.STATUS_ID.eq(sourceFrom.STATUS_ID)))
+                .join(sourceTo).on(sourceTo.ID.eq(WORKFLOW_TRANSITIONS.TO_STATUS_ID))
+                .join(targetTo)
+                .on(targetTo.WORKFLOW_ID.eq(targetId).and(targetTo.STATUS_ID.eq(sourceTo.STATUS_ID)))
+                .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(sourceId)),
+        ).execute()
 }
