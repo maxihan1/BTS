@@ -230,6 +230,38 @@ class WorkflowEngineWiringIntegrationTest {
         }
     }
 
+    // ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 시드가 DB 에 심은 전환을 되읽어 **DB 가 정한 `workflow_transitions.id`** 를 가진 전환을 준다.
+     *
+     * validator/post_action 조회는 (from, to) 상태쌍이 아니라 [WorkflowTransition.id] 로 전환을
+     * 해석한다 (V207 · FR-WF-05 · F1). 픽스처가 [WorkflowTransition] 을 직접 만들면 `id` 가 임의
+     * UUID 라 조회가 **언제나 빈 리스트**이고, 아래 단언들이 통째로 공허해진다.
+     *
+     * 이름까지 함께 맞춘다 — 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있게 된 것이 이 변경의
+     * 골자라, (from, to) 만으로 고르면 그 자리가 다시 모호해진다.
+     *
+     * @param workflowKey 시드된 워크플로우 키
+     * @param from 출발 상태 key
+     * @param to 도착 상태 key
+     * @param name 전환 표시 이름 (YAML 시드의 `name`)
+     * @return DB 의 전환 id 를 실은 [WorkflowTransition]
+     */
+    private fun seededTransition(
+        workflowKey: String,
+        from: String,
+        to: String,
+        name: String,
+    ): WorkflowTransition {
+        val workflow =
+            workflowRepository.findByKey(workflowKey)
+                ?: error("시드된 워크플로우가 없다: $workflowKey")
+        return workflow.transitions.firstOrNull {
+            it.fromStateKey == from && it.toStateKey == to && it.name == name
+        } ?: error("시드된 전환이 없다: $workflowKey $from→$to '$name'")
+    }
+
     // ── S1. validator 거부 — RequiredField(EXECUTION) + resolution 없음 → 예외 ──────
 
     /**
@@ -358,7 +390,7 @@ class WorkflowEngineWiringIntegrationTest {
     @Test
     @Order(4)
     fun `S4 - YAML 시드한 validator 와 post_action 을 DefaultWorkflowDefinitionRepository 로 조회할 수 있다`() {
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "Complete")
+        val transition = seededTransition(WIRING_WF_KEY, from = "open", to = "done", name = "Complete")
 
         val validators = definitionRepo.findValidators(WIRING_WF_KEY, transition)
         val postActions = definitionRepo.findPostActions(WIRING_WF_KEY, transition)
