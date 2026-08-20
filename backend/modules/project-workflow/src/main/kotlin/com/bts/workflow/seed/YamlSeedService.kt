@@ -320,7 +320,6 @@ class YamlSeedService(
             error("워크플로우 YAML '$key' 검증 실패: ${result.errors}")
         }
 
-        validateTransitionUniqueness(dto.key, dto.transitions)
         dryRunValidatorAndPostActionTypes(dto)
 
         return dto
@@ -395,21 +394,6 @@ class YamlSeedService(
         dsl.fetchExists(
             dsl.selectOne().from(WORKFLOWS).where(WORKFLOWS.KEY.eq(key)),
         )
-
-    /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전환이 있으면 [IllegalStateException] 을 던진다. */
-    private fun validateTransitionUniqueness(
-        workflowKey: String,
-        transitions: List<TransitionYamlDto>,
-    ) {
-        val duplicates =
-            transitions
-                .groupBy { it.from to it.to }
-                .filter { it.value.size > 1 }
-        if (duplicates.isNotEmpty()) {
-            val dup = duplicates.keys.first().let { (f, t) -> "($f,$t)" }
-            error("Workflow '$workflowKey' has duplicate (from, to)=$dup")
-        }
-    }
 
     /**
      * [WorkflowYamlDto] 를 workflows / workflow_states / workflow_transitions /
@@ -589,14 +573,12 @@ class YamlSeedService(
      * 단건 [WorkflowYamlDto] 를 파싱 없이 직접 시드한다.
      *
      * 테스트에서 표준 4 YAML 목록 밖의 테스트 픽스처를 시드할 때 사용한다.
-     * Konform 검증 및 transition 중복 검증은 [parseAndValidate] 에서 수행하므로 호출 전 검증이
-     * 완료된 DTO 를 전달해야 한다.
+     * Konform 검증은 [parseAndValidate] 에서 수행하므로 호출 전 검증이 완료된 DTO 를 전달해야 한다.
      *
      * @param dto 파싱 및 검증이 완료된 [WorkflowYamlDto]
      */
     @Transactional
     fun seedSingle(dto: WorkflowYamlDto) {
-        validateTransitionUniqueness(dto.key, dto.transitions)
         dryRunValidatorAndPostActionTypes(dto)
         insertIfAbsent(dto)
     }

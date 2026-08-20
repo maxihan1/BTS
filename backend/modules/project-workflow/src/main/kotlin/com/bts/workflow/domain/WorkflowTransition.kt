@@ -14,6 +14,9 @@ import java.util.UUID
  * 결정 근거. ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D2.
  *
  * @property id 전환 1급 식별자. `workflow_transitions.id` 와 같은 값이다.
+ *   **실제 값은 DB 가 정한다** — `workflow_transitions.id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+ *   (V200). 기본값은 DB 를 거치지 않고 도메인에서 전환을 새로 만들 때 쓰는 임시 UUID 이고,
+ *   DB 에서 읽어온 전환은 언제나 그 행의 id 를 명시로 받는다.
  * @property fromStateKey 전환 출발 상태의 키. [TransitionKind.NORMAL] 은 필수이고
  *   [TransitionKind.GLOBAL]·[TransitionKind.INITIAL] 은 null 이어야 한다 ([Workflow.of] 가 검증).
  * @property toStateKey 전환 도착 상태의 키. [Workflow.states] 집합에 포함돼야 한다.
@@ -24,7 +27,7 @@ import java.util.UUID
  *   NORMAL 은 종전대로 `from__to`, GLOBAL·INITIAL 은 `KIND__to`.
  */
 data class WorkflowTransition(
-    val id: UUID,
+    val id: UUID = UUID.randomUUID(),
     val fromStateKey: String?,
     val toStateKey: String,
     val name: String,

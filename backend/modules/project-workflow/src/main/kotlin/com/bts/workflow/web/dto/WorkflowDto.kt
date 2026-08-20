@@ -47,13 +47,13 @@ data class WorkflowStateDto(
  * [WorkflowTransition] 의 REST 응답 DTO.
  *
  * @property key 전환 고유 식별 키. fromStateKey__toStateKey 합성. 향후 라우팅/API 호출용.
- * @property fromStateKey 전환 출발 상태의 키.
+ * @property fromStateKey 전환 출발 상태의 키. 출발 상태가 없는 전환(GLOBAL·INITIAL)은 null 이다.
  * @property toStateKey 전환 도착 상태의 키.
  * @property name 전환 이름. 예: "시작", "완료", "재열기".
  */
 data class WorkflowTransitionDto(
     val key: String,
-    val fromStateKey: String,
+    val fromStateKey: String?,
     val toStateKey: String,
     val name: String,
 )
