@@ -561,7 +561,7 @@ MSW 목 1줄 변경의 검증은 **경로 문자열 grep** 으로 갈음한다 �
 
 ## Plan 메타
 
-- **task 수** 10 · **예상 wave** 5 (`w1` 1·2·3 → `w1.5` **10**(신규) → `w2` 4 → `w3` 5·7·8 → `w4` 6 → `w5` 9)
+- **task 수** 11 · **예상 wave** 6 (`w1` 1·2·3 → `w1.5` **10**(신규) → `w2` 4 → `w3` 5·7·8 → `w4` 6 → `w5` 9)
   Task 5·6 은 `WorkflowEngine.kt` 를 공유해 `files` 교집합으로 자동 직렬화된다.
 - **구현 규율** TDD red-first. T3 이므로 `test:` 커밋이 `feat:` 보다 **먼저** 대조된다
 - **추가 검증** `./gradlew :modules:project-workflow:test :modules:shared-kernel:test ktlintCheck detekt` ·
@@ -871,3 +871,66 @@ VERDICT: **PASS WITH FIXES** — BLOCKER 0. T1~T6 을 구현 전에 plan 에 반
   `[[two-lists-never-check-each-other]]` 양식.
 - `detekt` 위반 1건 — `seed/YamlSeedServiceTest.kt:385 NestedBlockDepth`(Task 10 이 들여옴).
   게이트 2 전에 해소한다.
+
+### Task 11. 3단 분할 2단계 정합 복구 — 프로덕션 시드 파손 차단 + 호출부 회생
+
+> **wave 2 실측이 만든 신규 task.** Task 4 가 `BLOCKED` 로 보고한 근본 원인을 닫는다.
+> spec `## 데이터 모델 변경` 의 **★ 정정** 절이 이 task 의 근거다.
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V207__transitions_multi_and_global.sql`,
+  `backend/modules/project-workflow/src/main/resources/db/codegen/init_codegen.sql`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V207MigrationTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowPropertyTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepositoryTest.kt`]
+- depends-on: [2, 3, 4, 10]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  // V207MigrationTest — 3단 분할 2단계 계약을 못박는다
+  @Test fun `to_status_id 는 아직 NULL 을 허용한다`()          // 3단계로 이연됐음을 고정
+  @Test fun `구 컬럼만 채운 INSERT 가 성공한다`()               // 기존 21파일이 사는 근거
+  // YamlSeedServiceTest 계열 — 프로덕션 부팅 회귀 가드
+  @Test fun `시드가 심은 전환은 from_status_id·to_status_id·kind 를 채운다`()
+  ```
+- 실패 메시지 (예상): `null value in column "to_status_id" violates not-null constraint`
+
+**GREEN — 5건**
+
+1. **★ V207 에서 `:153` `ALTER COLUMN to_status_id SET NOT NULL` 과 `:194` `ck_transition_kind_from`
+   CHECK 를 제거한다.** 근거 주석을 그 자리에 남겨라 — 「3단 분할 2단계는 구·신 공존 구간이다.
+   NOT NULL·CHECK 는 `workflow_states` DROP 과 같은 PR(3단계)로 이연. 정의 시점 강제는
+   `Workflow.of()` 가 진다」. `init_codegen.sql` 미러도 같이 맞춘다.
+2. **★ `YamlSeedService.kt:451-456` 의 INSERT 가 신 컬럼도 채운다** — `FROM_STATUS_ID`·`TO_STATUS_ID`·
+   `KIND`. **이것이 프로덕션 부팅 파손을 막는 핵심**이다(현재 `grep -c "TO_STATUS_ID" YamlSeedService.kt`
+   = 0). `workflow_statuses` 에서 `status_id` 를 찾아 넣는다.
+3. **읽기가 구·신 양쪽을 견딘다** — `WorkflowRepository` 의 전환 매핑에서 신 컬럼이 NULL 이면 구 컬럼
+   경유로 폴백한다. 3단계에서 이 폴백을 지운다는 주석을 남겨라.
+4. **★ `WorkflowTransition` 의 파라미터 순서를 바꾼다** — `id` 와 `kind` 를 **뒤로** 보내
+   `(fromStateKey, toStateKey, name, id = …, kind = …)` 로. 지금은 `id` 가 첫 자리라
+   위치 인자 호출 `WorkflowTransition("open", "done", "완료")` 가 `id: UUID` 에 묶여
+   `String vs UUID` 로 죽는다 — **테스트 컴파일 오류 62건 중 55건이 이 하나 때문**이다.
+   기본값은 **이름 붙인 호출만** 구한다는 것이 실측된 교훈이다.
+5. `V207MigrationTest.kt:502` 의 백틱 함수명에서 `..` 을 없앤다 — JVM 이 허용하지 않는 문자라
+   **이 파일은 지금껏 한 번도 컴파일된 적이 없다**(`Name contains illegal characters: ..`).
+
+**REFACTOR**: 남은 nullable 타입 불일치 6건 보정 — `WorkflowPropertyTest.kt:270`(`Triple<…, String?, …>`) ·
+`DefaultWorkflowDefinitionRepositoryTest.kt:253`. 후자는 Task 4 가 validator 조회를 `transition.id`
+기준으로 바꿨으므로 **임의 UUID 로 만든 전환이 조회되기를 기대하는 픽스처**(`:108-109`)를
+DB 에서 읽어 온 전환을 쓰도록 고쳐야 한다.
+
+**검증** (순서대로, 각각 종료 코드를 보고에 적을 것):
+```
+./gradlew :modules:project-workflow:compileTestKotlin        # 0 이어야 한다 — 이 task 의 1차 성공 기준
+./gradlew :modules:project-workflow:test
+./gradlew :modules:issue-tracking:test --tests '*Transition*'
+```
+
+**★ 이 task 가 닫는 미확인** — wave 1·2 를 통틀어 이 모듈의 테스트가 **한 번도 실행된 적이 없다.**
+Task 1·2·3·4·10 의 테스트 전부가 이 task 이후에 처음 돌아간다. 하나라도 red 면 원문을 인용해
+보고하라 — controller 가 담당 task 로 되돌린다.

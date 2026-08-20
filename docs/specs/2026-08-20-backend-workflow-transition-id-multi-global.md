@@ -167,16 +167,38 @@ ALTER TABLE workflow_transitions
   ADD COLUMN display_order  INT  NOT NULL DEFAULT 0;
 
 -- ④ 백필 — from_state_id/to_state_id → workflow_statuses 행으로 대응
--- ⑤ 백필 후 to_status_id 를 NOT NULL 로 승격
--- ⑥ INITIAL 백필 — 워크플로우별 display_order 최소 상태를 도착지로 1건씩
+-- ⑤ INITIAL 백필 — 워크플로우별 display_order 최소 상태를 도착지로 1건씩
+-- ⑥ display_order 백필 — row_number() OVER (PARTITION BY workflow_id ORDER BY created_at, name)
 -- ⑦ 부분 유니크 — 워크플로우당 INITIAL 1개
 CREATE UNIQUE INDEX uq_workflow_transitions_initial
   ON workflow_transitions (workflow_id) WHERE kind = 'INITIAL';
--- ⑧ 무결성 가드 — kind 와 from_status_id 의 조합
-ALTER TABLE workflow_transitions ADD CONSTRAINT ck_transition_kind_from
-  CHECK ((kind = 'NORMAL' AND from_status_id IS NOT NULL)
-      OR (kind IN ('GLOBAL','INITIAL') AND from_status_id IS NULL));
 ```
+
+### ★ 정정 (2026-08-20 · wave 2 실측) — `NOT NULL` 승격과 `CHECK` 는 3단계로 이연한다
+
+이 절은 원래 ⑤ 「백필 후 `to_status_id` 를 NOT NULL 로 승격」과 ⑧ 「`ck_transition_kind_from`
+CHECK」를 이 PR 에 넣으라고 적었다. **그것이 `DATA.md §4-1` 의 add → backfill → drop 3단 분할과
+어긋난다.** 2단계(지금)는 구·신 컬럼이 **공존**하는 구간이고, 구 컬럼으로 쓰는 코드가 아직 살아 있다.
+신 컬럼에 NOT NULL 을 걸면 그 코드가 전부 깨진다.
+
+**실측 파급** — `workflow_transitions` 에 직접 INSERT 하는 테스트가 **23파일**이고 그중 **21파일이
+`to_status_id` 를 채우지 않는다**(issue-tracking 15 · project-workflow 6). 프로덕션 쪽은 더 나쁘다 —
+`YamlSeedService.kt:451-456` 이 구 컬럼만 채우므로 **빈 DB 부팅 시 표준 워크플로우 시드가 전부
+제약 위반으로 실패**한다.
+
+**채택.** ⑤와 ⑧을 **로드맵 마지막 PR(3단계, `workflow_states` DROP 과 같은 PR)로 이연**한다.
+그 대신 이 PR 은 —
+
+1. **프로덕션 쓰기 경로가 신 컬럼을 채운다** — `YamlSeedService` · `WorkflowWriteRepository`.
+   새로 들어오는 행은 신 컬럼이 정본이다.
+2. **읽기가 구·신 양쪽을 견딘다** — 신 컬럼이 NULL 이면 구 컬럼으로 폴백한다. 3단계에서 폴백을 지운다.
+3. **정의 시점 강제는 애플리케이션이 진다** — `Workflow.of()` 의 invariant(GLOBAL·INITIAL 의 from 은
+   NULL · INITIAL 은 1개)가 이미 ⑧이 하려던 일을 한다. ADR §D4 의 「모호하면 정의 시점에 막는다」가
+   그 근거다.
+
+**기각한 대안** — 21파일을 전환 INSERT 픽스처 헬퍼로 일괄 이주(#393 의 `WorkflowStatusFixture`
+선례). 방향은 옳지만 이 PR 을 두 배로 키우고, 3단 분할을 지키면 **애초에 필요 없는 작업**이다.
+헬퍼 이주는 3단계 PR 이 NOT NULL 을 걸 때 그 PR 의 몫으로 남긴다.
 
 - **`from_state_id`·`to_state_id` 는 이 PR 에서 DROP 하지 않는다** (N4). `workflow_states` 도
   살려 둔다 — 로드맵이 「마지막 PR 에서 떨어뜨린다」고 못박았다.
