@@ -52,9 +52,31 @@ data class Workflow private constructor(
                 "Workflow '$key': duplicate state keys found — $duplicateStateKeys"
             }
 
-            val stateKeySet = stateKeys.toSet()
+            requireValidTransitions(key, stateKeys.toSet(), transitions)
 
-            val invalidFromKeys = transitions.filter { it.fromStateKey !in stateKeySet }.map { it.fromStateKey }
+            return Workflow(
+                key = key,
+                name = name,
+                description = description,
+                states = states,
+                transitions = transitions,
+            )
+        }
+
+        /**
+         * 전환 목록의 invariant 검증. [of] 가 states 검증을 마친 뒤 호출한다.
+         *
+         * @param key 오류 메시지에 실을 워크플로우 키.
+         * @param stateKeySet 이 워크플로우가 가진 상태 키 집합.
+         * @param transitions 검증 대상 전환 목록.
+         * @throws IllegalArgumentException invariant 3~6 중 하나라도 위반 시
+         */
+        private fun requireValidTransitions(
+            key: String,
+            stateKeySet: Set<String>,
+            transitions: List<WorkflowTransition>,
+        ) {
+            val invalidFromKeys = transitions.mapNotNull { it.fromStateKey }.filter { it !in stateKeySet }
             require(invalidFromKeys.isEmpty()) {
                 "Workflow '$key': transition fromStateKey not in states — $invalidFromKeys"
             }
@@ -64,19 +86,23 @@ data class Workflow private constructor(
                 "Workflow '$key': transition toStateKey not in states — $invalidToKeys"
             }
 
-            val transitionKeys = transitions.map { it.fromStateKey to it.toStateKey }
-            val duplicateTransitions = transitionKeys.groupBy { it }.filter { it.value.size > 1 }.keys
-            require(duplicateTransitions.isEmpty()) {
-                "Workflow '$key': duplicate transition (from, to) combinations found — $duplicateTransitions"
+            val normalWithoutFrom =
+                transitions.filter { it.kind == TransitionKind.NORMAL && it.fromStateKey == null }
+            require(normalWithoutFrom.isEmpty()) {
+                "Workflow '$key': NORMAL transition requires non-null fromStateKey — ${normalWithoutFrom.map { it.name }}"
             }
 
-            return Workflow(
-                key = key,
-                name = name,
-                description = description,
-                states = states,
-                transitions = transitions,
-            )
+            val originlessWithFrom =
+                transitions.filter { it.kind != TransitionKind.NORMAL && it.fromStateKey != null }
+            require(originlessWithFrom.isEmpty()) {
+                "Workflow '$key': GLOBAL/INITIAL transition must have null fromStateKey — " +
+                    "${originlessWithFrom.map { it.name }}"
+            }
+
+            val initialCount = transitions.count { it.kind == TransitionKind.INITIAL }
+            require(initialCount <= 1) {
+                "Workflow '$key': at most one INITIAL transition allowed — found $initialCount"
+            }
         }
     }
 }
