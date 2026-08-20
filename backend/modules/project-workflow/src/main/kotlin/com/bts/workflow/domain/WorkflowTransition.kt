@@ -13,24 +13,30 @@ import java.util.UUID
  *
  * 결정 근거. ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D2.
  *
- * @property id 전환 1급 식별자. `workflow_transitions.id` 와 같은 값이다.
- *   **실제 값은 DB 가 정한다** — `workflow_transitions.id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
- *   (V200). 기본값은 DB 를 거치지 않고 도메인에서 전환을 새로 만들 때 쓰는 임시 UUID 이고,
- *   DB 에서 읽어온 전환은 언제나 그 행의 id 를 명시로 받는다.
+ * ### 왜 [id]·[kind] 가 뒤에 있는가 — 기본값은 **이름 붙인 호출만** 구한다
+ * 이 둘은 [id] 가 DB 가 정하는 값이고 [kind] 가 대부분 `NORMAL` 이라 기본값을 갖는다. 그런데 기본값이
+ * 있어도 **파라미터가 앞자리에 있으면 위치 인자 호출이 그 자리에 묶인다** — `WorkflowTransition("open",
+ * "done", "완료")` 의 첫 인자가 `id: UUID` 에 바인딩돼 `String vs UUID` 로 죽는다. 실측으로 이 한 가지가
+ * 테스트 컴파일 오류 62건 중 55건이었다. 기본값 있는 파라미터는 뒤로 몰아야 종전 호출부가 그대로 산다.
+ *
  * @property fromStateKey 전환 출발 상태의 키. [TransitionKind.NORMAL] 은 필수이고
  *   [TransitionKind.GLOBAL]·[TransitionKind.INITIAL] 은 null 이어야 한다 ([Workflow.of] 가 검증).
  * @property toStateKey 전환 도착 상태의 키. [Workflow.states] 집합에 포함돼야 한다.
  * @property name 사람 친화 표시 라벨 (예. "Start Work", "Resolve"). 매칭에 사용 안 함.
+ * @property id 전환 1급 식별자. `workflow_transitions.id` 와 같은 값이다.
+ *   **실제 값은 DB 가 정한다** — `workflow_transitions.id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+ *   (V200). 기본값은 DB 를 거치지 않고 도메인에서 전환을 새로 만들 때 쓰는 임시 UUID 이고,
+ *   DB 에서 읽어온 전환은 언제나 그 행의 id 를 명시로 받는다.
  * @property kind 전환 종류. 기본값 [TransitionKind.NORMAL] — DB 컬럼 기본값과 같다.
  * @property key 하위호환용 계산 키. [key] 는 URL 경로 세그먼트로 소비되므로
  *   (`PostActionController` 의 `.../transitions/{transitionKey}/post-actions`) 경로 문자로 안전한 토큰만 쓴다.
  *   NORMAL 은 종전대로 `from__to`, GLOBAL·INITIAL 은 `KIND__to`.
  */
 data class WorkflowTransition(
-    val id: UUID = UUID.randomUUID(),
     val fromStateKey: String?,
     val toStateKey: String,
     val name: String,
+    val id: UUID = UUID.randomUUID(),
     val kind: TransitionKind = TransitionKind.NORMAL,
 ) {
     val key: String

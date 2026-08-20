@@ -139,14 +139,10 @@ ALTER TABLE workflow_transitions
 CREATE INDEX idx_workflow_transitions_from_status ON workflow_transitions (from_status_id);
 CREATE INDEX idx_workflow_transitions_to_status ON workflow_transitions (to_status_id);
 
-ALTER TABLE workflow_transitions
-    ALTER COLUMN to_status_id SET NOT NULL;
+-- V207 ⑦·⑪. to_status_id 의 NOT NULL 승격과 ck_transition_kind_from CHECK 는 **3단계로 이연**했다.
+-- 2단계인 지금은 구·신 컬럼이 공존하는 구간이라 구 컬럼만 채우는 INSERT 가 아직 정상 경로다.
+-- 미러가 마이그레이션보다 엄격하면 코드젠 DB 에서만 통과하는 쿼리가 생긴다 — 반드시 같이 비워 둔다.
 
 CREATE UNIQUE INDEX uq_workflow_transitions_initial
     ON workflow_transitions (workflow_id)
  WHERE kind = 'INITIAL';
-
-ALTER TABLE workflow_transitions
-    ADD CONSTRAINT ck_transition_kind_from
-    CHECK ((kind = 'NORMAL' AND from_status_id IS NOT NULL)
-        OR (kind IN ('GLOBAL', 'INITIAL') AND from_status_id IS NULL));

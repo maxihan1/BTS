@@ -18,12 +18,16 @@
 -- DATA.md §4 의 add → backfill → drop 3단 분할에서 이 PR 은 **1·2 단만** 한다.
 --
 --   1단 add       새 컬럼(from_status_id·to_status_id)을 NULL 허용으로 추가   ← 여기
---   2단 backfill  구 컬럼의 값을 새 컬럼으로 옮기고 NOT NULL 로 승격          ← 여기
---   3단 drop      읽기·쓰기가 전부 새 컬럼으로 옮겨간 뒤 구 컬럼을 떨어뜨린다  ← 로드맵 마지막 PR
+--   2단 backfill  구 컬럼의 값을 새 컬럼으로 옮긴다 (신 컬럼은 NULL 허용 유지)  ← 여기
+--   3단 drop      읽기·쓰기가 전부 새 컬럼으로 옮겨간 뒤 구 컬럼을 떨어뜨리고
+--                 그때 신 컬럼에 NOT NULL·CHECK 를 건다                        ← 로드맵 마지막 PR
 --
 -- 3단을 같은 PR 에서 하면 롤백할 자리가 없어진다. 배포 직후 읽기 경로에 문제가 드러나도 되돌릴
 -- 값이 이미 사라진 뒤다. 구 컬럼이 남아 있는 동안에는 마이그레이션을 되돌려도 데이터가 온전하다.
--- 대신 NOT NULL 만 푼다(⑧) — 새로 생기는 GLOBAL·INITIAL 전환은 구 컬럼을 채우지 않기 때문이다.
+-- 대신 구 컬럼의 NOT NULL 만 푼다(⑧) — 새로 생기는 GLOBAL·INITIAL 전환은 구 컬럼을 채우지 않는다.
+--
+-- ★ 신 컬럼에 NOT NULL·CHECK 를 **이 PR 에서 걸지 않는 이유**는 ⑦·⑪ 에 적었다. 요지는 2단계가
+--   구·신 공존 구간이라는 것이다 — 구 컬럼으로만 쓰는 코드가 아직 살아 있다.
 --
 -- ## 인덱스를 CONCURRENTLY 로 만들지 않는 이유
 -- Flyway 트랜잭션 안에서는 쓸 수 없고 대상 테이블이 소규모다 (V203·V206 과 같은 판단 ·
@@ -147,10 +151,15 @@ UPDATE workflow_transitions t
        ) s
  WHERE t.id = s.id;
 
--- ── ⑦ to_status_id NOT NULL 승격 ────────────────────────────────────────────
--- ④ 의 가드를 통과했으므로 남은 NULL 이 없다. 도착지 없는 전환은 어느 종류에도 없다.
-ALTER TABLE workflow_transitions
-    ALTER COLUMN to_status_id SET NOT NULL;
+-- ── ⑦ to_status_id NOT NULL 승격은 **3단계로 이연한다** ──────────────────────
+-- 3단 분할 2단계인 지금은 구 컬럼과 신 컬럼이 **공존**하는 구간이다. ④ 의 가드는 「마이그레이션
+-- 시점에 있던 행」만 본다 — 그 뒤에 구 컬럼으로만 쓰는 코드가 아직 살아 있고(실측: 전환을 직접
+-- INSERT 하는 테스트 23파일 중 21파일), 그 코드가 넣는 행은 신 컬럼이 NULL 이다.
+-- 여기서 NOT NULL 을 걸면 그것들이 전부 제약 위반으로 죽는다.
+--
+-- NOT NULL 승격은 `workflow_states` DROP 과 **같은 PR(3단계)** 의 몫이다. 그 PR 이 쓰기 경로를
+-- 전부 신 컬럼으로 옮긴 뒤에 걸어야 안전하다.
+-- 판별식. V207MigrationTest `to_status_id 는 아직 NULL 을 허용한다`
 
 -- ── ⑧ 구 FK 의 NOT NULL 완화 — 컬럼은 지우지 않는다 (★ 위 「왜 DROP 하지 않는가」) ──
 -- 이제부터 만들어지는 GLOBAL·INITIAL 전환은 구 컬럼을 채우지 않는다. 출발지가 없거나
@@ -187,10 +196,15 @@ CREATE UNIQUE INDEX uq_workflow_transitions_initial
 COMMENT ON INDEX uq_workflow_transitions_initial
     IS '워크플로우당 최초 전환은 1개다. 둘이면 이슈 생성 진입 상태가 어느 쪽인지 정할 수 없다';
 
--- ── ⑪ 무결성 가드 — kind 와 from_status_id 의 조합 ──────────────────────────
--- ⑤ 백필과 ⑨ INITIAL 삽입이 모두 끝난 뒤에 건다. 순서를 앞당기면 아직 from_status_id 가
--- NULL 인 기존 NORMAL 행 때문에 제약 추가 자체가 실패한다.
-ALTER TABLE workflow_transitions
-    ADD CONSTRAINT ck_transition_kind_from
-    CHECK ((kind = 'NORMAL' AND from_status_id IS NOT NULL)
-        OR (kind IN ('GLOBAL', 'INITIAL') AND from_status_id IS NULL));
+-- ── ⑪ kind 와 from_status_id 의 조합 CHECK 도 **3단계로 이연한다** ───────────
+-- 원래 여기에 `ck_transition_kind_from` 을 걸려 했다 —
+--   CHECK ((kind = 'NORMAL' AND from_status_id IS NOT NULL)
+--       OR (kind IN ('GLOBAL','INITIAL') AND from_status_id IS NULL))
+-- 그런데 그 제약은 ⑦ 과 같은 이유로 **구 컬럼만 채우는 INSERT 를 통째로 거부한다**. 2단계에서
+-- 그것들은 아직 정상 경로다.
+--
+-- 정의 시점 강제는 그동안 **애플리케이션이 진다** — `Workflow.of()` 의 invariant 5·6 이
+-- 「NORMAL 은 from 필수 · GLOBAL/INITIAL 은 from 금지 · INITIAL 은 워크플로우당 1개」를 검증한다.
+-- ADR 2026-08-18-workflow-transition-id-identity §D4 「모호하면 런타임이 아니라 정의 시점에
+-- 막는다」가 그 근거다. DB CHECK 는 3단계에서 그 위에 한 겹 더 얹는다.
+-- 판별식. V207MigrationTest `kind 와 from_status_id 조합 CHECK 는 3단계로 이연됐다`

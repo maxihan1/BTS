@@ -8,6 +8,7 @@ import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
+import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
@@ -162,6 +163,9 @@ class WorkflowRepository(private val dsl: DSLContext) {
     private fun List<Record>.toWorkflows(): List<Workflow> {
         if (isEmpty()) return emptyList()
 
+        // 구 컬럼 폴백용 매핑. 신 컬럼이 채워진 행만 있으면 빈 맵이라 조회도 일어나지 않는다.
+        val legacyStateKeys = fetchLegacyStateKeys(this)
+
         // workflow_id 기준 그룹핑
         val grouped = this.groupBy { it[WORKFLOWS.ID] as UUID }
 
@@ -190,7 +194,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
                 rows
                     .filter { it[WORKFLOW_TRANSITIONS.ID] != null }
                     .distinctBy { it.required(WORKFLOW_TRANSITIONS.ID) }
-                    .map { row -> row.toWorkflowTransition(statusIdToKey) }
+                    .map { row -> row.toWorkflowTransition(statusIdToKey, legacyStateKeys) }
 
             Workflow.of(
                 key = workflowKey,
@@ -212,23 +216,71 @@ class WorkflowRepository(private val dsl: DSLContext) {
         )
 
     /**
+     * 구 컬럼(`workflow_states.id`) → 상태 key 매핑을 만든다. **폴백 전용**이다.
+     *
+     * ### ★ 3단계에서 이 함수와 호출부를 통째로 지운다
+     * 지금은 add → backfill → drop 3단 분할의 2단계라 구·신 컬럼이 공존한다. `workflow_transitions`
+     * 에 구 컬럼만 채워 넣는 코드가 아직 살아 있고(전환을 직접 INSERT 하는 테스트 23파일 중 21파일),
+     * 그 행들은 신 컬럼이 NULL 이다. 읽기가 신 컬럼만 보면 그 행에서 죽는다.
+     * `workflow_states` 를 DROP 하는 3단계 PR 이 이 폴백을 함께 지운다.
+     *
+     * ### 왜 join 이 아니라 별도 조회인가
+     * `workflow_states` 를 메인 쿼리에 LEFT JOIN 하면 결과 행이 (상태 편성 × 전환 × 구 상태)로
+     * 한 겹 더 곱해진다. 필요한 id 만 모아 한 번 조회하면 곱이 늘지 않고, 폴백이 필요 없는
+     * 배포(신 컬럼이 다 찬 상태)에서는 조회 자체가 일어나지 않는다.
+     */
+    private fun fetchLegacyStateKeys(rows: List<Record>): Map<UUID, String> {
+        val legacyIds =
+            rows.flatMapTo(mutableSetOf()) { row ->
+                listOfNotNull(
+                    row[WORKFLOW_TRANSITIONS.FROM_STATE_ID]
+                        .takeIf { row[WORKFLOW_TRANSITIONS.FROM_STATUS_ID] == null },
+                    row[WORKFLOW_TRANSITIONS.TO_STATE_ID]
+                        .takeIf { row[WORKFLOW_TRANSITIONS.TO_STATUS_ID] == null },
+                )
+            }
+        if (legacyIds.isEmpty()) return emptyMap()
+
+        return dsl
+            .select(WORKFLOW_STATES.ID, WORKFLOW_STATES.KEY)
+            .from(WORKFLOW_STATES)
+            .where(WORKFLOW_STATES.ID.`in`(legacyIds))
+            .fetch()
+            .associate { row -> row.required(WORKFLOW_STATES.ID) to row.required(WORKFLOW_STATES.KEY) }
+    }
+
+    /**
      * Record → [WorkflowTransition] 변환.
      *
      * [statusIdToKey] 로 from_status_id / to_status_id (workflow_statuses.id) 를 상태 key 로 되돌린다.
+     * 신 컬럼이 NULL 이면 [legacyStateKeys] 로 구 컬럼(`workflow_states.id`)을 거쳐 같은 key 에 닿는다 —
+     * 두 세대는 상태 key 를 다리로 이어져 있다(V204 가 key 기준으로 카탈로그를 승격했다).
      *
-     * **`from_status_id` 의 null 은 정상이다** — GLOBAL·INITIAL 전환은 출발 상태가 없다는 것이
-     * 그 종류의 정의다. 종전 구현은 구 컬럼을 `as UUID` 로 캐스팅해 V207 이 백필한 INITIAL 행에서
-     * `NullPointerException` 을 냈다.
+     * **`from_status_id` 의 null 은 두 가지 뜻이다.** ① GLOBAL·INITIAL 이라 출발 상태가 없다
+     * ② 구 컬럼만 채운 행이다. ②는 구 컬럼이 값을 갖고 있어 갈린다. 종전 구현은 구 컬럼을
+     * `as UUID` 로 캐스팅해 V207 이 백필한 INITIAL 행에서 `NullPointerException` 을 냈다.
      *
      * 읽는 컬럼의 정본은 [TRANSITION_COLUMNS] 다 — 새 읽기 경로는 그 목록과 이 함수를 함께 쓴다.
      *
      * @param statusIdToKey 이 워크플로우의 `workflow_statuses.id` → 상태 key 매핑.
+     * @param legacyStateKeys 구 컬럼 폴백용 `workflow_states.id` → 상태 key 매핑. 3단계에서 사라진다.
      */
-    private fun Record.toWorkflowTransition(statusIdToKey: Map<UUID, String>): WorkflowTransition =
+    private fun Record.toWorkflowTransition(
+        statusIdToKey: Map<UUID, String>,
+        legacyStateKeys: Map<UUID, String>,
+    ): WorkflowTransition =
         WorkflowTransition(
             id = required(WORKFLOW_TRANSITIONS.ID),
-            fromStateKey = this[WORKFLOW_TRANSITIONS.FROM_STATUS_ID]?.let { statusIdToKey.statusKeyOf(it) },
-            toStateKey = statusIdToKey.statusKeyOf(required(WORKFLOW_TRANSITIONS.TO_STATUS_ID)),
+            fromStateKey =
+                this[WORKFLOW_TRANSITIONS.FROM_STATUS_ID]?.let { statusIdToKey.statusKeyOf(it) }
+                    ?: this[WORKFLOW_TRANSITIONS.FROM_STATE_ID]?.let { legacyStateKeys.legacyStateKeyOf(it) },
+            toStateKey =
+                this[WORKFLOW_TRANSITIONS.TO_STATUS_ID]?.let { statusIdToKey.statusKeyOf(it) }
+                    ?: this[WORKFLOW_TRANSITIONS.TO_STATE_ID]?.let { legacyStateKeys.legacyStateKeyOf(it) }
+                    ?: error(
+                        "전환 id=${required(WORKFLOW_TRANSITIONS.ID)} 의 도착 상태가 신·구 컬럼 모두 " +
+                            "NULL 이다. 도착지 없는 전환은 어느 종류에도 없다",
+                    ),
             name = required(WORKFLOW_TRANSITIONS.NAME),
             kind = transitionKind(),
         )
@@ -256,6 +308,9 @@ private val TRANSITION_COLUMNS =
         WORKFLOW_TRANSITIONS.TO_STATUS_ID,
         WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
         WORKFLOW_TRANSITIONS.NAME,
+        // ★ 3단계(workflow_states DROP)에서 아래 2개와 폴백 경로를 함께 지운다.
+        WORKFLOW_TRANSITIONS.FROM_STATE_ID,
+        WORKFLOW_TRANSITIONS.TO_STATE_ID,
     )
 
 /**
@@ -267,6 +322,19 @@ private fun Map<UUID, String>.statusKeyOf(statusCompositionId: UUID): String =
         ?: error(
             "workflow_statuses.id=$statusCompositionId 에 해당하는 상태 key 가 없다. " +
                 "그 상태가 소프트 삭제됐는지 확인할 것",
+        )
+
+/**
+ * 구 컬럼 `workflow_states.id` 를 상태 key 로 되돌린다. **3단계에서 이 함수를 지운다.**
+ *
+ * 여기까지 왔다는 것은 신 컬럼이 NULL 이라 폴백을 탄다는 뜻이다. 그런데 구 컬럼이 가리키는 상태 행이
+ * 없다면 두 세대 어느 쪽으로도 상태를 정할 수 없다 — 조용히 빠뜨리면 그 전환이 화면에서 사라진다.
+ */
+private fun Map<UUID, String>.legacyStateKeyOf(legacyStateId: UUID): String =
+    this[legacyStateId]
+        ?: error(
+            "workflow_states.id=$legacyStateId 에 해당하는 상태가 없다. " +
+                "전환이 신 컬럼(workflow_statuses)도 구 컬럼도 못 가리키는 상태다",
         )
 
 /**

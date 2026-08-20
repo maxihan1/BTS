@@ -2,6 +2,7 @@
 
 package com.bts.workflow.seed
 
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
@@ -11,6 +12,7 @@ import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
+import com.bts.workflow.repository.required
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -439,19 +441,50 @@ class YamlSeedService(
         }
 
         // 3. workflow_transitions 삽입 + validators/post_actions 삽입
-        for (transition in dto.transitions) {
-            val fromStateId =
-                stateKeyToId[transition.from]
-                    ?: error("전환 from 상태 키 '${transition.from}' 가 states 에 없음: ${dto.key}")
-            val toStateId =
-                stateKeyToId[transition.to]
-                    ?: error("전환 to 상태 키 '${transition.to}' 가 states 에 없음: ${dto.key}")
+        insertTransitions(dto, workflowId, stateKeyToId)
 
+        logSeeded(dto, workflowId)
+
+        return workflowId
+    }
+
+    /**
+     * 전환과 그에 딸린 validator / post_action 을 심는다.
+     *
+     * ### 구 컬럼과 신 컬럼을 **함께** 채운다 (V207 · 3단 분할 2단계)
+     * V207 이 전환의 출발·도착을 워크플로우 종속 `workflow_states` 에서 전역 카탈로그 편성
+     * `workflow_statuses` 로 재지정했다. 그 재지정 백필은 **마이그레이션 시점에 있던 행**만 손댄다 —
+     * 그 뒤에 시드가 심는 행은 시드가 직접 신 컬럼을 채워야 한다. 채우지 않으면 빈 DB 로 부팅한
+     * 사이트의 표준 워크플로우 전환이 전부 신 컬럼 NULL 로 남아, 3단계에서 NOT NULL 을 걸 수 없다.
+     *
+     * 구 컬럼은 아직 함께 채운다 — 3단계(`workflow_states` DROP)까지 롤백 자리를 지킨다.
+     * 시드가 만드는 전환은 전부 출발지가 있는 보통 전환이므로 [TransitionKind.NORMAL] 이다.
+     *
+     * @param dto 파싱·검증이 끝난 워크플로우 정의
+     * @param workflowId 방금 삽입한 `workflows.id`
+     * @param stateKeyToId 상태 키 → 구형 `workflow_states.id`
+     */
+    private fun insertTransitions(
+        dto: WorkflowYamlDto,
+        workflowId: java.util.UUID,
+        stateKeyToId: Map<String, java.util.UUID>,
+    ) {
+        val stateKeyToCompositionId = fetchStatusCompositionIds(workflowId)
+        for (transition in dto.transitions) {
             val transitionId =
                 dsl.insertInto(WORKFLOW_TRANSITIONS)
                     .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)
-                    .set(WORKFLOW_TRANSITIONS.FROM_STATE_ID, fromStateId)
-                    .set(WORKFLOW_TRANSITIONS.TO_STATE_ID, toStateId)
+                    .set(WORKFLOW_TRANSITIONS.FROM_STATE_ID, stateKeyToId.stateIdOf(dto.key, transition.from))
+                    .set(WORKFLOW_TRANSITIONS.TO_STATE_ID, stateKeyToId.stateIdOf(dto.key, transition.to))
+                    .set(
+                        WORKFLOW_TRANSITIONS.FROM_STATUS_ID,
+                        stateKeyToCompositionId.stateIdOf(dto.key, transition.from),
+                    )
+                    .set(
+                        WORKFLOW_TRANSITIONS.TO_STATUS_ID,
+                        stateKeyToCompositionId.stateIdOf(dto.key, transition.to),
+                    )
+                    .set(WORKFLOW_TRANSITIONS.KIND, TransitionKind.NORMAL.name)
                     .set(WORKFLOW_TRANSITIONS.NAME, transition.name)
                     .returningResult(WORKFLOW_TRANSITIONS.ID)
                     .fetchOne()
@@ -461,11 +494,25 @@ class YamlSeedService(
             insertValidators(transitionId, transition.validators)
             insertPostActions(transitionId, transition.postActions)
         }
-
-        logSeeded(dto, workflowId)
-
-        return workflowId
     }
+
+    /**
+     * 그 워크플로우의 상태 키 → `workflow_statuses.id` 매핑. 전환의 신 FK 가 가리키는 것이 이 id 다.
+     *
+     * [insertStatusForWorkflow] 의 INSERT 는 `ON CONFLICT DO NOTHING` 이라 편성 행의 id 를 돌려주지
+     * 않는다(이미 있던 행이면 삽입 자체가 없다). 상태 루프가 끝난 뒤 한 번 되읽는 편이 조회 1회로
+     * 끝나고, 「기존 행 재사용」 경로에서도 같은 값을 준다.
+     *
+     * @param workflowId 대상 `workflows.id`
+     */
+    private fun fetchStatusCompositionIds(workflowId: java.util.UUID): Map<String, java.util.UUID> =
+        dsl.select(STATUSES.KEY, WORKFLOW_STATUSES.ID)
+            .from(WORKFLOW_STATUSES)
+            .join(STATUSES).on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID))
+            .where(WORKFLOW_STATUSES.WORKFLOW_ID.eq(workflowId))
+            .and(STATUSES.DELETED_AT.isNull)
+            .fetch()
+            .associate { record -> record.required(STATUSES.KEY) to record.required(WORKFLOW_STATUSES.ID) }
 
     /**
      * 적재 결과를 한 줄로 남긴다. 카탈로그 건수를 포함해 **부팅 로그만 보고** `statuses`/`workflow_statuses`
@@ -583,3 +630,19 @@ class YamlSeedService(
         insertIfAbsent(dto)
     }
 }
+
+/**
+ * 상태 키에 대응하는 id 를 돌려준다. 구형 `workflow_states.id` 맵과 전역 카탈로그 편성
+ * `workflow_statuses.id` 맵이 **같은 키 집합**을 갖는다는 전제를 여기 한 곳에서 확인한다.
+ *
+ * 없으면 조용히 NULL 을 넣지 않고 멈춘다 — NULL 이 들어가면 그 전환이 새 읽기 경로에서 사라진다.
+ *
+ * @param workflowKey 오류 메시지에 실을 워크플로우 키
+ * @param stateKey 찾을 상태 키
+ */
+private fun Map<String, java.util.UUID>.stateIdOf(
+    workflowKey: String,
+    stateKey: String,
+): java.util.UUID =
+    this[stateKey]
+        ?: error("전환 상태 키 '$stateKey' 가 states 에 없음: $workflowKey")
