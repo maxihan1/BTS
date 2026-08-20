@@ -5,6 +5,7 @@ package com.bts.workflow.domain
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.util.UUID
 
 /**
  * Workflow.of(...) companion factory 의 invariant 검증 테스트.
@@ -205,5 +206,26 @@ class WorkflowAggregateTest {
             )
 
         assertThat(workflow.transitions).hasSize(2)
+    }
+
+    // ── transition id 기본값 ───────────────────────────────────────────────────
+
+    @Test
+    fun `WorkflowTransition 을 id 없이 만들면 새 UUID 가 자동 부여된다`() {
+        val first = WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "Start Work")
+        val second = WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작")
+
+        assertThat(first.id).isNotEqualTo(second.id)
+
+        val explicitId = UUID.randomUUID()
+        val given =
+            WorkflowTransition(
+                id = explicitId,
+                fromStateKey = "TODO",
+                toStateKey = "DONE",
+                name = "Close",
+            )
+
+        assertThat(given.id).isEqualTo(explicitId)
     }
 }
