@@ -2,6 +2,7 @@
 
 package com.bts.workflow.scheme
 
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.TransitionKind
@@ -10,10 +11,9 @@ import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
 import com.bts.workflow.scheme.port.outbound.WorkflowResolver
-import io.mockk.every
-import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import com.bts.workflow.scheme.domain.ProjectKey as InternalProjectKey
 
 /**
  * [WorkflowKeyResolverImpl] 의 시작 상태 해석 규칙 단위 테스트.
@@ -29,6 +29,12 @@ import org.junit.jupiter.api.Test
  * 그 단언은 폴백 구현으로도 우연히 통과할 수 있다. 그래서 **같은 상태 집합에 displayOrder 만
  * 정반대로 뒤집은 픽스처 2개**를 만들어 두 결과가 동일한지 본다. 폴백 구현이면 두 결과가 갈린다.
  *
+ * ## MockK 를 쓰지 않는 이유
+ * [WorkflowResolver] 의 `projectKey` 파라미터가 `init { require(...) }` 로 형식을 검증하는
+ * `@JvmInline value class` 다. MockK 의 `any()` 는 이 자리에 무작위 시그니처 문자열을 만들어 넣는데
+ * 그게 검증에 걸려 `IllegalArgumentException: Invalid project key` 로 죽는다(실측 확인).
+ * 그래서 손으로 만든 [StubWorkflowResolver] 를 쓴다.
+ *
  * ## 두 메서드 모두 본다
  * 시작 상태 해석은 [WorkflowKeyResolverImpl.resolveStart] (쓰기 경로) 와
  * [WorkflowKeyResolverImpl.resolveExisting] (읽기 경로) 두 곳에 있으므로 매 케이스마다 둘 다 단언한다.
@@ -36,7 +42,7 @@ import org.junit.jupiter.api.Test
  * 결정 근거. ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §맥락 · §D2.
  */
 class WorkflowStartStateInitialTest {
-    private val workflowResolver = mockk<WorkflowResolver>()
+    private val workflowResolver = StubWorkflowResolver()
     private val sut = WorkflowKeyResolverImpl(workflowResolver)
     private val projectKey = ProjectKey("ATLAS")
 
@@ -104,12 +110,12 @@ class WorkflowStartStateInitialTest {
     // ── 픽스처 ────────────────────────────────────────────────────────────────────
 
     private fun resolveStartKey(workflow: Workflow): String {
-        every { workflowResolver.resolveFor(any(), any()) } returns workflow
+        workflowResolver.workflow = workflow
         return sut.resolveStart(projectKey, null).startStateKey
     }
 
     private fun resolveExistingKey(workflow: Workflow): String? {
-        every { workflowResolver.resolveExistingFor(any(), any()) } returns workflow
+        workflowResolver.workflow = workflow
         return sut.resolveExisting(projectKey, null)?.startStateKey
     }
 
@@ -142,4 +148,19 @@ class WorkflowStartStateInitialTest {
             states = states,
             transitions = transitions,
         )
+
+    /** 지정된 [workflow] 를 그대로 돌려주는 [WorkflowResolver] 테스트 스텁. */
+    private class StubWorkflowResolver : WorkflowResolver {
+        lateinit var workflow: Workflow
+
+        override fun resolveFor(
+            projectKey: InternalProjectKey,
+            issueTypeKey: IssueTypeKey?,
+        ): Workflow = workflow
+
+        override fun resolveExistingFor(
+            projectKey: InternalProjectKey,
+            issueTypeKey: IssueTypeKey?,
+        ): Workflow? = workflow
+    }
 }
