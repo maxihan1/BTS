@@ -443,8 +443,9 @@ class BulkOperationControllerTest {
             // 목록 응답에 id 가 없으면 그 왕복이 API 로 성립하지 않는다 (ADR 2026-08-18 §D3).
             .andExpect(jsonPath("$.data.transitions[0].transitionId").value(transitionUuid.toString()))
             .andExpect(jsonPath("$.data.transitions[0].kind").value("GLOBAL"))
-            // GLOBAL 전환이라도 엔진이 요청한 현재 상태를 fromStateKey 에 채워 넘기므로
-            // 하위호환 key 는 "null__done" 이 아니라 "open__done" 이다 (실측 고정).
-            .andExpect(jsonPath("$.data.transitions[0].key").value("open__done"))
+            // 하위호환 key 는 도메인 게터(`WorkflowTransition.key`) 결과를 그대로 실어야 한다.
+            // GLOBAL 은 `KIND__to` 규칙이라 "GLOBAL__done" 이다 — 엔진이 fromStateKey 에 채워 넣은
+            // 현재 상태(open)로 재조립하면 같은 전환을 두 이름으로 부르게 된다.
+            .andExpect(jsonPath("$.data.transitions[0].key").value("GLOBAL__done"))
     }
 }
