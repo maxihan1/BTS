@@ -934,3 +934,71 @@ DB 에서 읽어 온 전환을 쓰도록 고쳐야 한다.
 **★ 이 task 가 닫는 미확인** — wave 1·2 를 통틀어 이 모듈의 테스트가 **한 번도 실행된 적이 없다.**
 Task 1·2·3·4·10 의 테스트 전부가 이 task 이후에 처음 돌아간다. 하나라도 red 면 원문을 인용해
 보고하라 — controller 가 담당 task 로 되돌린다.
+
+## wave 2 결과 (2026-08-20)
+
+| task | 결과 | 핵심 |
+|---|---|---|
+| Task 4 | BLOCKED (구현 3커밋 완료 · 검증만 막힘) | `compileKotlin` EXIT=0 복구 · `as UUID` 함정 제거 · **프로덕션 시드 파손 발견** |
+| Task 11 | DONE_WITH_CONCERNS | 3단 분할 2단계 정합 복구 · 컴파일 오류 **62 → 1** · 시드 파손 차단 + 회귀 가드 · 역-뮤테이션 2회 |
+
+**Task 11 담당 파일 전부 초록** — `V207MigrationTest` 9/9 · `YamlSeedServiceTest` 12/12 ·
+`WorkflowRepositoryTransitionTest` 5/5 · `DefaultWorkflowDefinitionRepositoryTest` 9/9 ·
+`WorkflowPropertyTest` 3/3 · `V203ToV206MigrationTest` 31/31. detekt·ktlint EXIT=0.
+임시 패치 적용 시 모듈 전체 **668 tests / 14 failed**(전부 아래 잔여).
+
+### 규약 이탈 1건 — **승인함**
+
+Task 11 이 `files` 밖의 `seed/YamlSeedServiceTest.kt` 를 수정했다. **plan 작성자(controller)의 실수가
+원인이다** — Task 11 의 RED 절이 「`YamlSeedServiceTest` 계열 회귀 가드」를 명시로 요구하면서
+메타 `files` 에는 그 파일을 넣지 않았다(GREEN 대상만 모았다). 그 파일을 안 건드리면 이 task 의 핵심인
+GREEN 2(시드 신컬럼 충전)가 **테스트 없는 변경**이 되어 TDD 가 성립하지 않는다. 이탈이 아니라
+메타 누락이므로 승인하고 여기 기록한다.
+
+### Task 12. 잔여 회귀 정리 — project-workflow
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowGraphClosedTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/DoneResolutionValidatorSeedTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedValidatorPostActionTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineWiringIntegrationTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/guard/RawWorkflowStateInsertGuardTest.kt`] ·
+depends-on: [4, 11]
+
+- **(A) 컴파일 1건.** `WorkflowGraphClosedTest.kt:174` 의 `groupBy { it.fromStateKey }` 가
+  `Map<String?, …>` 를 낸다. **기계적 수정이 아니다** — 그래프 도달성의 의미가 확장됐다.
+  **채택할 의미** — 시작점은 `INITIAL` 전환의 `toStateKey`(없으면 종전 `minByOrNull` 폴백) ·
+  `NORMAL` 은 `from → to` 간선 · `GLOBAL` 은 **모든 상태 → to** 간선 · `INITIAL` 은 시작점 결정에만
+  쓰고 간선으로 세지 않는다.
+- **(B) 13건.** `DefaultWorkflowDefinitionRepository.findValidators/findPostActions` 가 `transition.id`
+  로 찾는데 3파일이 임의 UUID 로 만든 전환을 넘겨 항상 빈 리스트를 받는다.
+  **처방은 확립돼 있다** — Task 11 이 `DefaultWorkflowDefinitionRepositoryTest` 에서 쓴
+  `SeededTransitions` 패턴(시드가 DB 에서 받은 전환 id 를 픽스처에 넣는다)을 그대로 재사용한다.
+- **(C) 1건.** `RawWorkflowStateInsertGuardTest` 가 `V207MigrationTest` 를 원시 SQL 위반으로 잡는다.
+  그 픽스처는 **V204 적용 전** 시점에 심어야 해서 `statuses` 가 아직 없어 헬퍼를 쓸 수 없다.
+  **가드에 예외를 등재하고 사유를 그 자리에 적는다**(가드를 무력화하지 말 것 — 파일 1개 화이트리스트).
+
+### Task 13. 잔여 회귀 정리 — issue-tracking 픽스처 15파일
+
+**메타**. agent `backend-engineer` · files: `backend/modules/issue-tracking/src/test/**` 중
+아래 15파일 · depends-on: [2, 11]
+
+V207 ①이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를 DROP 했는데 픽스처들이 그 제약을
+`ON CONFLICT` 대상으로 쓴다 → `PSQLException: there is no unique or exclusion constraint matching
+the ON CONFLICT specification`. **15파일이 전부 동일한 한 패턴**이다.
+
+```sql
+INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
+VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOTHING
+```
+
+**처방** — `DO NOTHING` 의 멱등성을 `WHERE NOT EXISTS` 로 옮긴다(단순 삭제 금지 — 픽스처가 같은
+전환을 두 번 심는 경로가 있으면 깨진다. 파일별로 호출 횟수를 먼저 확인할 것).
+**N2 유지** — `issue-tracking/src/main` 은 0줄이다. 테스트 픽스처만 고친다.
+
+### 부수 발견 — 장부 등재 후보 (이 PR 밖)
+
+- **시드가 심는 전환의 `display_order` 가 전부 0.** V207 ⑥이 **기존 행**에 대해 정확히 이 문제를
+  막았는데(`row_number()` 백필), **시드가 새로 심는 행**에는 같은 보호가 없다. `WorkflowRepository`
+  가 `ORDER BY display_order, id` 로 읽으므로 시드 워크플로우의 전환 순서가 사실상 UUID 순이다.
+  편집기 UI(로드맵 PR 8)가 생기는 순간 드러나는 조용한 실패다.
