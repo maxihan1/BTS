@@ -245,8 +245,20 @@ class WorkflowWriteRepository(
     /**
      * 전환의 정의를 통째로 갈아 끼운다. 표시 순서는 건드리지 않는다 — 순서 변경은 별도 관심사다.
      *
-     * 구 컬럼(`from_state_id`·`to_state_id`)은 손대지 않는다. 이 행이 구 세대에서 왔다면 그 값이
-     * 남아 있는데, 읽기가 신 컬럼을 먼저 보므로(`WorkflowRepository` 폴백 순서) 결과는 신 컬럼이 정한다.
+     * ### ★ 구 컬럼을 함께 비운다 — 안 비우면 읽기 폴백이 옛 값을 되살린다
+     * 지금은 add → backfill → drop 3단 분할의 2단계라 구(`from_state_id`·`to_state_id`)와
+     * 신(`from_status_id`·`to_status_id`) 컬럼이 공존하고, 읽기는 **신 컬럼 우선 · 구 컬럼 폴백**
+     * 이다(`WorkflowRepository`). 신 컬럼만 갈아 끼우면 GLOBAL·INITIAL 로 바꿔 `from_status_id` 를
+     * NULL 로 만든 순간 남아 있던 구 `from_state_id` 가 폴백으로 되살아난다. 그 행은 「출발지 없는
+     * 전환에 출발지가 있는」 꼴이라 `Workflow.of()` invariant 6 이 워크플로우 **전체**를 거부한다 —
+     * 수정 요청은 200 인데 그 뒤 그 워크플로우 조회가 전부 죽는다.
+     *
+     * ### 왜 같은 값 동기화가 아니라 NULL 인가
+     * 구 컬럼은 구형 `workflow_states(id)` 를 가리키는 FK 다. 그런데 CRUD 로 만든 워크플로우는
+     * 전역 카탈로그(`workflow_statuses`)에만 상태를 두고 `workflow_states` 행이 아예 없어서
+     * **같은 값으로 맞추려 해도 가리킬 행이 없다**. V207 ⑧ 이 두 컬럼의 NOT NULL 을 풀었으므로
+     * NULL 은 적법하고, [insertTransition] 도 구 컬럼을 채우지 않는다 — 수정 결과가 생성 결과와
+     * 같은 모양이 된다. 3단계(구 컬럼 DROP)가 오면 아래 두 줄을 함께 지운다.
      */
     fun updateTransition(
         transitionId: UUID,
@@ -261,6 +273,9 @@ class WorkflowWriteRepository(
             .set(WORKFLOW_TRANSITIONS.NAME, name)
             .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromStatusId)
             .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, toStatusId)
+            // ★ 3단계에서 아래 두 줄을 지운다. 신 컬럼이 정본이므로 구 세대는 남기지 않는다.
+            .setNull(WORKFLOW_TRANSITIONS.FROM_STATE_ID)
+            .setNull(WORKFLOW_TRANSITIONS.TO_STATE_ID)
             .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId))
             .execute()
     }
@@ -351,8 +366,15 @@ private fun DSLContext.copyLegacyStates(
  * 복제본에서 같은 status_id 를 가진 편성 행, 순서로 찾는다.
  *
  * 출발지 join 만 LEFT 인 것은 GLOBAL·INITIAL 전환의 `from_status_id` 가 NULL 이기 때문이다.
- * NORMAL 인데 대응 행을 못 찾으면 NULL 이 되어 `ck_transition_kind_from` 이 즉시 막는다 —
- * 조용히 끊어진 전환을 만드는 것보다 복제를 실패시키는 편이 싸다.
+ *
+ * ### 여기에 DB CHECK 안전망은 없다
+ * NORMAL 인데 출발지 대응 행을 못 찾으면 `from_status_id` 가 NULL 인 채로 복사된다. 그것을 막는
+ * `ck_transition_kind_from` CHECK 는 **스키마에 존재하지 않는다** — V207 ⑪ 이 3단계로 이연했고
+ * `V207MigrationTest` 가 그 부재를 단언한다. 그동안의 방어선은 애플리케이션이다. 읽기 때
+ * `Workflow.of()` invariant 5 가 「NORMAL 은 출발지 필수」로 그 워크플로우를 거부한다.
+ *
+ * 다만 호출부(`WorkflowCommandService.duplicate`)가 [WorkflowWriteRepository.copyStatusComposition]
+ * 으로 편성 행을 통째로 복사한 **뒤에** 이 함수를 부르므로, 원본 편성 행에는 언제나 복제본 짝이 있다.
  */
 private fun DSLContext.copyTransitions(
     sourceId: UUID,
