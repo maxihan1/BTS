@@ -102,14 +102,22 @@ class DefaultWorkflowDefinitionRepositoryTest {
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
             // 테스트 데이터 시드 — 두 워크플로우, B2 격리 검증용
-            seedData()
+            val seeded = seedData()
 
             repository = DefaultWorkflowDefinitionRepository(dsl)
-            alphaTransition = WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료")
-            betaTransition = WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료")
+            // ★ id 는 **DB 가 정한 값**이어야 한다. validator/post_action 조회가 (from, to) 가 아니라
+            //   workflow_transitions.id 로 전환을 해석하기 때문이다 (V207 · FR-WF-05 · F1).
+            //   임의 UUID 로 만든 전환을 넣으면 조회가 언제나 빈 리스트라 아래 테스트 전부가 공허해진다.
+            alphaTransition =
+                WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료", id = seeded.alpha)
+            betaTransition =
+                WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료", id = seeded.beta)
         }
 
-        private fun seedData() {
+        /** 시드가 만든 두 전환의 `workflow_transitions.id`. 픽스처가 DB 값을 그대로 들고 가는 통로다. */
+        private data class SeededTransitions(val alpha: UUID, val beta: UUID)
+
+        private fun seedData(): SeededTransitions {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.autoCommit = false
 
@@ -134,6 +142,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 // post_action 없음 — 빈 리스트 반환 검증
 
                 conn.commit()
+                return SeededTransitions(alpha = alphaTransId, beta = betaTransId)
             }
         }
 

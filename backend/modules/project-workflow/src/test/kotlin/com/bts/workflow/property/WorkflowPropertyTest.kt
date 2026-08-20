@@ -257,6 +257,20 @@ object WorkflowGenerators {
     // ── 전환 선택 Arb ─────────────────────────────────────────────────────────
 
     /**
+     * 이 생성기가 만든 전환의 출발 상태 키. 타입은 nullable 이지만 **여기서는 절대 null 이 아니다**.
+     *
+     * V207 이후 [WorkflowTransition.fromStateKey] 는 nullable 이다 — GLOBAL·INITIAL 전환은 출발지가
+     * 없다는 것이 그 종류의 정의이기 때문이다. 반면 위 [workflow] Arb 는 `NORMAL` 전환만 만든다.
+     * 그래서 `String?` 를 그대로 흘리는 대신 여기서 한 번 좁혀 시나리오 타입을 `String` 으로 유지한다 —
+     * 시뮬레이션 함수들이 「출발 상태가 반드시 있다」를 전제로 쓰여 있고, 그 전제가 깨지는 날
+     * 이 자리가 원인을 말하며 멈춘다.
+     */
+    private fun WorkflowTransition.requireFromStateKey(): String =
+        requireNotNull(fromStateKey) {
+            "전환 '$name' 의 fromStateKey 가 null 이다 — 이 생성기는 NORMAL 전환만 만들어야 한다"
+        }
+
+    /**
      * (workflow, fromStateKey, transition) 조합.
      *
      * 전환이 있는 workflow 에서 임의 전환 1개와 해당 출발 상태를 선택한다.
@@ -267,7 +281,7 @@ object WorkflowGenerators {
             val wf = workflow.bind()
             // transitions 이 비어 있는 경우 대비 — 최소 1개 보장하는 workflow Arb 덕분에 safe
             val tr = Arb.element(wf.transitions).bind()
-            Triple(wf, tr.fromStateKey, tr)
+            Triple(wf, tr.requireFromStateKey(), tr)
         }
 
     // ── Validator/PostAction stub Arb ─────────────────────────────────────────
@@ -297,7 +311,7 @@ object WorkflowGenerators {
 
             ValidatorScenario(
                 workflow = wf,
-                fromStateKey = tr.fromStateKey,
+                fromStateKey = tr.requireFromStateKey(),
                 transition = tr,
                 validators = validators,
                 postActions = postActions,
