@@ -1002,3 +1002,60 @@ VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOT
   막았는데(`row_number()` 백필), **시드가 새로 심는 행**에는 같은 보호가 없다. `WorkflowRepository`
   가 `ORDER BY display_order, id` 로 읽으므로 시드 워크플로우의 전환 순서가 사실상 UUID 순이다.
   편집기 UI(로드맵 PR 8)가 생기는 순간 드러나는 조용한 실패다.
+
+## wave 3 결과 (2026-08-20)
+
+| task | 결과 | 핵심 |
+|---|---|---|
+| Task 5 | DONE_WITH_CONCERNS | `candidatesFor()` 추출(enum 전수 `when` — 종류 추가 시 컴파일 파손) · **뮤테이션 3회 전부 red** · GLOBAL 2 + INITIAL 1 인라인 픽스처로 엔진 쪽 dead branch 해소 |
+| Task 7 | DONE_WITH_CONCERNS | INITIAL 우선 + `minByOrNull` 폴백 · **`displayOrder` 를 정반대로 뒤집은 픽스처 2개**로 대조(폴백 구현이 통과 못 하게) · 뮤테이션 red · issue-tracking 이슈 생성 64건 무회귀 |
+| Task 8 | DONE_WITH_CONCERNS | CRUD 3종 + 경로 이동 · `requireEditable`(권한 → 존재 → 잠금) · **뮤테이션 2회 red** · MSW 목 1줄 |
+
+**`:modules:project-workflow:cleanTest test` EXIT=0 · 683 tests / 0 failures** (XML 신선도 확인) ·
+detekt·ktlint EXIT=0 · `issue-tracking` 무회귀.
+
+### Task 8 의 판단 2건 — 승인
+
+- **Jakarta Validation 어노테이션을 새 요청 DTO 에 달지 않았다.** 이 모듈은 `jakarta.validation-api` 만
+  있고 구현체(hibernate-validator)가 없어 컨트롤러도 `@Valid` 를 쓰지 않는다 — 달면 **장식이 된다**
+  (`[[decorative-annotation-copied-from-sibling]]` 을 정확히 적용한 판단이다). 실제 판정은 서비스가
+  지고 `WORKFLOW_INVALID_REQUEST`(400)로 나가며 그 400 이 도메인 판정인지까지 테스트가 대조한다.
+- **응답 필드 이름을 읽기 API 와 맞췄다**(`fromStateKey`/`toStateKey` + `id`·`key`·`kind`).
+  요청 바디만 spec 이 못박은 `fromStatusKey`/`toStatusKey` 다. Task 9 가 읽기 DTO 에 `id`·`kind` 를
+  더하면 두 모양이 같아져 프론트 스키마가 하나로 유지된다.
+
+### Task 14. 409 응답 형식 통일 + 목 주석 정합
+
+> **wave 3 실측이 만든 신규 task.** Task 8 의 concern 1·3 을 닫는다. Task 9 와 파일이 겹치지 않아
+> wave 5 에서 병렬로 돈다.
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/exception/WorkflowExceptions.kt`,
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/TransitionConflictExceptionHandler.kt`(신규),
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowCommandService.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/TransitionCrudMvcTest.kt`,
+`apps/web/src/mocks/workflow-handlers.ts`] · depends-on: [8]
+
+- **문제.** Task 8 이 E5(INITIAL 삭제 409)·E2(INITIAL 중복 409)를 `ResponseStatusException` 으로 냈다.
+  허용 파일에 도메인 예외와 advice 가 없었기 때문이다(controller 의 `files` 설계 실수). 그 결과
+  **이 두 409 만 `ProblemDetail` 로 나가고 나머지 워크플로우 오류는 `{error:{code,message}}` 다.**
+  프론트가 한 화면에서 두 형식을 다뤄야 한다.
+- **처방.** `TransitionConflictException` 을 도메인 예외로 옮기고 **전용 advice** 로 409 +
+  `{error:{code,message}}` 를 낸다. `WorkflowExceptionHandler` 에 얹지 **않는다** — 그 advice 는 이미
+  detekt `TooManyFunctions` 한도에 닿아 있고, `WorkflowStatusCompositionExceptionHandler` 가 정확히
+  그 이유로 갈라져 나온 선례다. Task 1 이 만든 `AmbiguousTransitionExceptionHandler` 와 같은 모양.
+- **MSW 목 주석 2줄**(`workflow-handlers.ts` 10행·29행)이 옛 경로를 가리킨 채 남았다 — N3 「경로 문자열
+  1줄만」을 문자 그대로 지킨 결과다. 주석까지 갱신한다.
+
+### 부수 발견 — 장부 후보 추가
+
+- **파일 300줄 초과 3건** — `WorkflowCommandService.kt` 421 · `WorkflowWriteRepository.kt` 391 ·
+  `WorkflowController.kt` 334. 정본 처방은 `WorkflowTransitionController`/`TransitionCommandService`/
+  `TransitionWriteRepository` 분리인데 전부 신규 파일이라 이 PR 범위 밖이다. Task 8 이 `@Suppress` 3곳에
+  사유 KDoc 을 달았고 **전역 임계값은 건드리지 않았다**.
+- **`WorkflowGraphClosedTest` 의 그래프 도달성 쪽 GLOBAL·INITIAL 간선 규칙은 여전히 미도달.**
+  Task 5 가 엔진 쪽 구멍은 닫았으나 도달성 속성은 별건이다 — 표준 4개 워크플로우에 해당 전환이 없어
+  **그 규칙을 지워도 초록**이다.
+- **병렬 wave 가 Gradle `build/` 를 공유해 서로의 test XML 을 덮고 지운다.** 실측 3종 —
+  `NoSuchFileException: output.bin.idx` · `BUILD SUCCESSFUL` 인데 결과 디렉터리 소실 · 낡은 XML 을
+  읽을 뻔함. `--rerun-tasks` 를 test 와 함께 쓰면 특히 심하다.
