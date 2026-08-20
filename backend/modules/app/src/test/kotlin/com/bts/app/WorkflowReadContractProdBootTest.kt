@@ -25,6 +25,13 @@ import java.util.UUID
 /**
  * `GET /api/v1/workflows/{key}` **읽기 응답 계약 스냅샷** (FR-WF-05 Task 9 · spec N1).
  *
+ * ## ★★ 이 테스트가 깨지면 프론트가 깨진다
+ * 여기 적힌 필드 이름·개수·nullability 가 곧 `apps/web` 이 파싱하는 형태다. 이 테스트를 초록으로
+ * 되돌리려고 **단언을 고치는 것은 계약을 바꾸는 것**이고, 그 순간 프론트는 배포 전까지 아무 경고
+ * 없이 어긋난 채로 남는다. 빨간불이 켜지면 순서는 하나뿐이다 —
+ * ① 백엔드 변경이 의도된 계약 변경인지 먼저 정한다 ② 의도됐다면 프론트 스키마를 **같은 PR 에서**
+ * 함께 고친다 ③ 의도되지 않았다면 백엔드를 되돌린다. 단언을 먼저 고치는 선택지는 없다.
+ *
  * ## ★ 왜 MVC 슬라이스가 아니라 `:modules:app` 조립인가
  * 형제 `WorkflowControllerMvcTest` 는 `@EnableWebMvc`(:82)로 MVC 를 직접 구성하고
  * `ObjectMapper().registerKotlinModule()`(:128, **`JavaTimeModule` 없음**)로 본문을 만든다.
@@ -159,6 +166,13 @@ class WorkflowReadContractProdBootTest : ProdAssemblyHttpTestBase() {
         assertThat(global.path("toStateKey").asText()).isEqualTo(TODO_KEY)
     }
 
+    /**
+     * ### 왜 HTTP 본문이 아니라 컨버터의 mapper 를 겨누나
+     * 읽기 계약(`WorkflowDto`)에 **timestamp 필드가 0개**라 본문만 훑으면 아무것도 검사하지 않는
+     * 공허한 테스트가 된다. 그래서 그 본문을 실제로 만든 주체 — Spring MVC 가 쓰는
+     * [MappingJackson2HttpMessageConverter] 의 mapper — 를 직접 겨눈다. 이 계약에 timestamp 가
+     * 처음 붙는 날 이 가드가 이미 서 있게 된다.
+     */
     @Test
     fun `timestamp 계열 필드가 배열이 아니라 ISO 문자열이다`() {
         // ★ 이 테스트를 슬라이스가 아니라 조립에 둔 이유 자체의 회귀 가드다.
