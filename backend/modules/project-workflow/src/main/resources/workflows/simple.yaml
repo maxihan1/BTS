@@ -1,4 +1,4 @@
-# 단순 워크플로우 (3 상태 + 3 전환 — TODO/DOING/DONE) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
+# 단순 워크플로우 (3 상태 + 4 전환 — TODO/DOING/DONE · 최초 전환 1 포함) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
 key: simple
 name: 단순 워크플로우 (TODO/DOING/DONE)
 description: "To Do → Doing → Done 3단계 단순 워크플로우"
@@ -7,6 +7,10 @@ states:
   - { key: doing, name: Doing, category: IN_PROGRESS, displayOrder: 2 }
   - { key: done, name: Done, category: DONE, displayOrder: 3 }
 transitions:
+  # 이슈 생성 진입 전용 전환(kind: INITIAL) — 출발 상태가 없어 from 을 적지 않는다.
+  # 도착지는 displayOrder 가 가장 작은 상태다. V207 ⑨ 백필이 기존 DB 에 심은 것과 같은 선택이라
+  # 빈 DB 로 올린 사이트와 기존 사이트의 이슈 생성 진입 상태가 갈리지 않는다.
+  - { kind: INITIAL, to: todo, name: "이슈 생성" }
   - { from: todo, to: doing, name: Start }
   - from: doing
     to: done

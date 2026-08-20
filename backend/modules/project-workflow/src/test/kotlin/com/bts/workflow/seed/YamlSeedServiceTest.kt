@@ -264,25 +264,28 @@ class YamlSeedServiceTest {
             "kanban-basic",
         )
 
-        // software-default: 5 states, 6 transitions
+        // 전환 수는 YAML 의 보통 전환 + INITIAL 1건이다. INITIAL 은 aggregate 에도 실린다 —
+        // 시작 상태 해석(WorkflowKeyResolverImpl)이 그 행을 읽어야 하기 때문이다.
+
+        // software-default: 5 states, 6 + INITIAL 1 transitions
         val softwareDefault = workflows.first { it.key == "software-default" }
         assertThat(softwareDefault.states).hasSize(5)
-        assertThat(softwareDefault.transitions).hasSize(6)
+        assertThat(softwareDefault.transitions).hasSize(7)
 
-        // bug-tracking: 5 states, 5 transitions
+        // bug-tracking: 5 states, 5 + INITIAL 1 transitions
         val bugTracking = workflows.first { it.key == "bug-tracking" }
         assertThat(bugTracking.states).hasSize(5)
-        assertThat(bugTracking.transitions).hasSize(5)
+        assertThat(bugTracking.transitions).hasSize(6)
 
-        // simple: 3 states, 3 transitions
+        // simple: 3 states, 3 + INITIAL 1 transitions
         val simple = workflows.first { it.key == "simple" }
         assertThat(simple.states).hasSize(3)
-        assertThat(simple.transitions).hasSize(3)
+        assertThat(simple.transitions).hasSize(4)
 
-        // kanban-basic: 4 states, 3 transitions
+        // kanban-basic: 4 states, 3 + INITIAL 1 transitions
         val kanbanBasic = workflows.first { it.key == "kanban-basic" }
         assertThat(kanbanBasic.states).hasSize(4)
-        assertThat(kanbanBasic.transitions).hasSize(3)
+        assertThat(kanbanBasic.transitions).hasSize(4)
 
         log.info("시나리오 1 통과 — 4 workflows 적재 완료")
     }
@@ -626,12 +629,12 @@ class YamlSeedServiceTest {
         service.seedAll()
 
         val rows = fetchTransitionStateKeys("software-default")
+        val normalRows = rows.filter { it[1] == "NORMAL" }
 
-        assertThat(rows)
-            .describedAs("software-default 의 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
+        assertThat(normalRows)
+            .describedAs("software-default 의 보통 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
             .hasSize(6)
-        assertThat(rows).allSatisfy { row ->
-            assertThat(row[1]).describedAs("전환 '%s' 의 kind", row[0]).isEqualTo("NORMAL")
+        assertThat(normalRows).allSatisfy { row ->
             // 대조 기준이 NULL 이면 아래 isEqualTo 가 「둘 다 NULL」로 조용히 통과한다.
             // 3단계에서 시드가 구 컬럼을 그만 채울 때 여기가 먼저 red 를 낸다.
             assertThat(row[2]).describedAs("전환 '%s' 의 구 from 컬럼이 대조 기준이다", row[0]).isNotNull()
@@ -643,6 +646,12 @@ class YamlSeedServiceTest {
                 .describedAs("전환 '%s' 의 to_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
                 .isEqualTo(row[3])
         }
+
+        // INITIAL 은 구 컬럼을 비운 채 신 컬럼만 채운다 — V207 ⑨ 가 기존 DB 에 심은 행과 같은 모양이다.
+        // 여기서 구 컬럼을 채우면 빈 DB 사이트와 기존 사이트의 같은 전환이 서로 다른 모양이 된다.
+        assertThat(rows.filter { it[1] == "INITIAL" })
+            .describedAs("INITIAL — (이름, kind, 구 from, 구 to, 신 from, 신 to)")
+            .containsExactly(listOf("이슈 생성", "INITIAL", null, null, null, "open"))
 
         log.info("시나리오 12 통과 — 시드가 전환 신 컬럼(from_status_id·to_status_id·kind)을 채운다")
     }
