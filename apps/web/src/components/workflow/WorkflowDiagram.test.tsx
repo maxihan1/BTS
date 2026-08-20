@@ -16,6 +16,18 @@ vi.mock('mermaid', () => ({
 
 // --- 테스트 픽스처 ---
 
+/**
+ * 테스트 픽스처 전용 결정적 전환 UUID 를 만든다.
+ * 실제 값은 DB 가 정하지만(`workflow_transitions.id`) 테스트는 재현 가능해야 하므로 순번으로 합성한다.
+ * RFC4122 v4 형식(version=4 · variant=8) — Zod `z.string().uuid()` 통과 보장.
+ *
+ * @param seq 픽스처 안에서 유일한 순번
+ * @returns `00000000-0000-4000-8000-` 로 시작하는 UUID 문자열
+ */
+function txId(seq: number): string {
+  return `00000000-0000-4000-8000-${`${seq}`.padStart(12, '0')}`
+}
+
 /** software-default: 5 상태, 4 전환 (spec FR-7) */
 const softwareDefaultWorkflow: WorkflowView = {
   key: 'software-default',
@@ -29,10 +41,10 @@ const softwareDefaultWorkflow: WorkflowView = {
     { key: 'closed', name: '닫힘', category: 'DONE', displayOrder: 4 },
   ],
   transitions: [
-    { key: 't1', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in_progress' },
-    { key: 't2', name: '검토 요청', fromStateKey: 'in_progress', toStateKey: 'in_review' },
-    { key: 't3', name: '해결 완료', fromStateKey: 'in_review', toStateKey: 'resolved' },
-    { key: 't4', name: '닫기', fromStateKey: 'resolved', toStateKey: 'closed' },
+    { key: 't1', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in_progress', id: txId(1), kind: 'NORMAL' },
+    { key: 't2', name: '검토 요청', fromStateKey: 'in_progress', toStateKey: 'in_review', id: txId(2), kind: 'NORMAL' },
+    { key: 't3', name: '해결 완료', fromStateKey: 'in_review', toStateKey: 'resolved', id: txId(3), kind: 'NORMAL' },
+    { key: 't4', name: '닫기', fromStateKey: 'resolved', toStateKey: 'closed', id: txId(4), kind: 'NORMAL' },
   ],
 }
 
@@ -49,10 +61,10 @@ const bugTrackingWorkflow: WorkflowView = {
     { key: 'verified', name: '검증됨', category: 'DONE', displayOrder: 4 },
   ],
   transitions: [
-    { key: 'b1', name: '분류', fromStateKey: 'reported', toStateKey: 'triaged' },
-    { key: 'b2', name: '수정 시작', fromStateKey: 'triaged', toStateKey: 'fixing' },
-    { key: 'b3', name: '수정 완료', fromStateKey: 'fixing', toStateKey: 'fixed' },
-    { key: 'b4', name: '검증 완료', fromStateKey: 'fixed', toStateKey: 'verified' },
+    { key: 'b1', name: '분류', fromStateKey: 'reported', toStateKey: 'triaged', id: txId(5), kind: 'NORMAL' },
+    { key: 'b2', name: '수정 시작', fromStateKey: 'triaged', toStateKey: 'fixing', id: txId(6), kind: 'NORMAL' },
+    { key: 'b3', name: '수정 완료', fromStateKey: 'fixing', toStateKey: 'fixed', id: txId(7), kind: 'NORMAL' },
+    { key: 'b4', name: '검증 완료', fromStateKey: 'fixed', toStateKey: 'verified', id: txId(8), kind: 'NORMAL' },
   ],
 }
 
@@ -66,8 +78,8 @@ const simpleWorkflow: WorkflowView = {
     { key: 'closed', name: '닫힘', category: 'DONE', displayOrder: 1 },
   ],
   transitions: [
-    { key: 's1', name: '닫기', fromStateKey: 'open', toStateKey: 'closed' },
-    { key: 's2', name: '다시 열기', fromStateKey: 'closed', toStateKey: 'open' },
+    { key: 's1', name: '닫기', fromStateKey: 'open', toStateKey: 'closed', id: txId(9), kind: 'NORMAL' },
+    { key: 's2', name: '다시 열기', fromStateKey: 'closed', toStateKey: 'open', id: txId(10), kind: 'NORMAL' },
   ],
 }
 
@@ -83,9 +95,9 @@ const kanbanBasicWorkflow: WorkflowView = {
     { key: 'done', name: '완료', category: 'DONE', displayOrder: 3 },
   ],
   transitions: [
-    { key: 'k1', name: '계획', fromStateKey: 'backlog', toStateKey: 'todo' },
-    { key: 'k2', name: '시작', fromStateKey: 'todo', toStateKey: 'doing' },
-    { key: 'k3', name: '완료', fromStateKey: 'doing', toStateKey: 'done' },
+    { key: 'k1', name: '계획', fromStateKey: 'backlog', toStateKey: 'todo', id: txId(11), kind: 'NORMAL' },
+    { key: 'k2', name: '시작', fromStateKey: 'todo', toStateKey: 'doing', id: txId(12), kind: 'NORMAL' },
+    { key: 'k3', name: '완료', fromStateKey: 'doing', toStateKey: 'done', id: txId(13), kind: 'NORMAL' },
   ],
 }
 
@@ -125,8 +137,13 @@ describe('generateMermaidCode', () => {
     }
 
     // 4 전환(엣지) — "fromKey --> toKey : label" 패턴
+    // fromStateKey 는 GLOBAL·INITIAL 에서 null 이므로 명시적 null 체크로 좁힌다(이 픽스처는 전부 NORMAL).
     for (const transition of softwareDefaultWorkflow.transitions) {
-      expect(code).toContain(transition.fromStateKey)
+      const from = transition.fromStateKey
+      expect(from).not.toBeNull()
+      if (from !== null) {
+        expect(code).toContain(from)
+      }
       expect(code).toContain(transition.toStateKey)
     }
 
@@ -143,7 +160,7 @@ describe('generateMermaidCode', () => {
     expect(sdCode).toMatchSnapshot('software-default')
     // 노드 수 검증 (상태 키가 각각 등장하는지)
     expect(softwareDefaultWorkflow.states.every((s) => sdCode.includes(s.key))).toBe(true)
-    expect(softwareDefaultWorkflow.transitions.every((t) => sdCode.includes(t.fromStateKey))).toBe(true)
+    expect(softwareDefaultWorkflow.transitions.every((t) => t.fromStateKey !== null && sdCode.includes(t.fromStateKey))).toBe(true)
 
     // bug-tracking: 5 상태, 4 전환
     const btCode = generateMermaidCode(bugTrackingWorkflow)
@@ -159,6 +176,105 @@ describe('generateMermaidCode', () => {
     const kbCode = generateMermaidCode(kanbanBasicWorkflow)
     expect(kbCode).toMatchSnapshot('kanban-basic')
     expect(kanbanBasicWorkflow.states.every((s) => kbCode.includes(s.key))).toBe(true)
+  })
+})
+
+describe('generateMermaidCode — 출발 상태가 없는 전환 (GLOBAL·INITIAL)', () => {
+  let generateMermaidCode: (workflow: WorkflowView) => string
+
+  beforeEach(async () => {
+    const mod = await import('./WorkflowDiagram')
+    generateMermaidCode = mod.generateMermaidCode
+  })
+
+  /** V207 ⑨ 백필과 같은 모양 — INITIAL 1건 + NORMAL 1건 */
+  const withInitial: WorkflowView = {
+    key: 'with-initial',
+    name: 'INITIAL 포함 워크플로우',
+    description: '이슈 생성 진입 전환을 가진 워크플로우',
+    states: [
+      { key: 'open', name: '열림', category: 'TODO', displayOrder: 1 },
+      { key: 'done', name: '완료', category: 'DONE', displayOrder: 2 },
+    ],
+    transitions: [
+      { key: 'INITIAL__open', name: '이슈 생성', fromStateKey: null, toStateKey: 'open', id: txId(101), kind: 'INITIAL' },
+      { key: 'open__done', name: '완료 처리', fromStateKey: 'open', toStateKey: 'done', id: txId(102), kind: 'NORMAL' },
+    ],
+  }
+
+  /** 어느 상태에서나 쓸 수 있는 전환(GLOBAL) 1건 */
+  const withGlobal: WorkflowView = {
+    key: 'with-global',
+    name: 'GLOBAL 포함 워크플로우',
+    description: '어느 상태에서나 쓸 수 있는 전환을 가진 워크플로우',
+    states: [
+      { key: 'open', name: '열림', category: 'TODO', displayOrder: 1 },
+      { key: 'closed', name: '닫힘', category: 'DONE', displayOrder: 2 },
+    ],
+    transitions: [
+      { key: 'GLOBAL__closed', name: '강제 종료', fromStateKey: null, toStateKey: 'closed', id: txId(111), kind: 'GLOBAL' },
+      { key: 'open__closed', name: '종료', fromStateKey: 'open', toStateKey: 'closed', id: txId(112), kind: 'NORMAL' },
+    ],
+  }
+
+  /**
+   * T3-N1. 회귀 방지 핵심 — fromStateKey 가 null 인 전환이 문자열 'null' 노드로 새지 않는다.
+   * `${transition.fromStateKey}` 템플릿 보간이 null 을 그대로 찍던 결함의 재현 단언이다.
+   */
+  it('T3-N1: INITIAL 전환이 있어도 mermaid 코드에 문자열 null 이 없다', () => {
+    expect(generateMermaidCode(withInitial)).not.toContain('null')
+  })
+
+  it('T3-N2: GLOBAL 전환이 있어도 mermaid 코드에 문자열 null 이 없다', () => {
+    expect(generateMermaidCode(withGlobal)).not.toContain('null')
+  })
+
+  /** T3-N3. INITIAL 은 mermaid 표준 시작 표기 `[*] --> to` 로 그린다 (ADR — Jira 도 Create 노드를 별도로 그린다). */
+  it('T3-N3: INITIAL 전환은 [*] --> to : name 으로 그려진다', () => {
+    expect(generateMermaidCode(withInitial)).toContain('[*] --> open : 이슈 생성')
+  })
+
+  /**
+   * T3-N4. INITIAL 이 데이터로 오면 displayOrder 기반 합성 시작 엣지를 겹쳐 그리지 않는다.
+   * 합성 엣지는 INITIAL 이 없던 시절의 대역이었으므로, 둘을 함께 찍으면 시작 화살표가 중복된다.
+   */
+  it('T3-N4: INITIAL 이 있으면 시작 엣지가 정확히 INITIAL 수만큼만 생성된다', () => {
+    const startEdges = generateMermaidCode(withInitial)
+      .split('\n')
+      .filter((line) => line.trim().startsWith('[*] -->'))
+    expect(startEdges).toHaveLength(1)
+  })
+
+  /** T3-N5. INITIAL 이 없는 워크플로우는 종전대로 displayOrder 최소 상태로 합성 시작 엣지를 낸다. */
+  it('T3-N5: INITIAL 이 없으면 displayOrder 최소 상태로 합성 시작 엣지를 유지한다', () => {
+    expect(generateMermaidCode(withGlobal)).toContain('[*] --> open')
+  })
+
+  /** T3-N6. GLOBAL 은 「어느 상태에서나」를 뜻하는 공용 의사 노드에서 출발하는 엣지로 그린다. */
+  it('T3-N6: GLOBAL 전환은 공용 의사 노드에서 출발하는 엣지로 그려진다', () => {
+    const code = generateMermaidCode(withGlobal)
+    expect(code).toContain('state "어디서나" as any_state')
+    expect(code).toContain('any_state --> closed : 강제 종료')
+  })
+
+  /** T3-N7. GLOBAL 이 여러 건이어도 의사 노드 선언은 1회뿐이다 (mermaid 중복 선언 방지). */
+  it('T3-N7: GLOBAL 이 2건이어도 의사 노드 선언은 1회다', () => {
+    const twoGlobals: WorkflowView = {
+      ...withGlobal,
+      transitions: [
+        ...withGlobal.transitions,
+        { key: 'GLOBAL__open', name: '강제 재개', fromStateKey: null, toStateKey: 'open', id: txId(113), kind: 'GLOBAL' },
+      ],
+    }
+    const declarations = generateMermaidCode(twoGlobals)
+      .split('\n')
+      .filter((line) => line.includes('as any_state'))
+    expect(declarations).toHaveLength(1)
+  })
+
+  /** T3-N8. GLOBAL 이 없으면 의사 노드를 선언하지 않는다 — 빈 노드가 다이어그램에 남지 않아야 한다. */
+  it('T3-N8: GLOBAL 이 없으면 의사 노드를 선언하지 않는다', () => {
+    expect(generateMermaidCode(withInitial)).not.toContain('any_state')
   })
 })
 

@@ -15,9 +15,21 @@ import { PostActionConfigSection } from '@/components/workflow/PostActionConfigS
 
 const WORKFLOW_KEY = 'software-default'
 
+/**
+ * 테스트 픽스처 전용 결정적 전환 UUID 를 만든다.
+ * 실제 값은 DB 가 정하지만(`workflow_transitions.id`) 테스트는 재현 가능해야 하므로 순번으로 합성한다.
+ * RFC4122 v4 형식(version=4 · variant=8) — Zod `z.string().uuid()` 통과 보장.
+ *
+ * @param seq 픽스처 안에서 유일한 순번
+ * @returns `00000000-0000-4000-8000-` 로 시작하는 UUID 문자열
+ */
+function txId(seq: number): string {
+  return `00000000-0000-4000-8000-${`${seq}`.padStart(12, '0')}`
+}
+
 const sampleTransitions: WorkflowTransitionView[] = [
-  { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress' },
-  { key: 'in-progress__done', name: '완료 처리', fromStateKey: 'in-progress', toStateKey: 'done' },
+  { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress', id: txId(1), kind: 'NORMAL' },
+  { key: 'in-progress__done', name: '완료 처리', fromStateKey: 'in-progress', toStateKey: 'done', id: txId(2), kind: 'NORMAL' },
 ]
 
 const sampleAction = {
@@ -701,11 +713,11 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
 
   const ambiguousTransitions: WorkflowTransitionView[] = [
     // fromStateKey에 '__'가 포함된 전환 — 합성키가 3+ 조각으로 쪼개짐
-    { key: 'in__review__done', name: '리뷰 완료', fromStateKey: 'in__review', toStateKey: 'done' },
+    { key: 'in__review__done', name: '리뷰 완료', fromStateKey: 'in__review', toStateKey: 'done', id: txId(3), kind: 'NORMAL' },
     // toStateKey에 '__'가 포함된 전환
-    { key: 'open__in__review', name: '리뷰 시작', fromStateKey: 'open', toStateKey: 'in__review' },
+    { key: 'open__in__review', name: '리뷰 시작', fromStateKey: 'open', toStateKey: 'in__review', id: txId(4), kind: 'NORMAL' },
     // 정상 전환 — 영향 없어야 함
-    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress' },
+    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress', id: txId(5), kind: 'NORMAL' },
   ]
 
   /**
@@ -756,6 +768,108 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
     renderSection({ transitions: sampleTransitions })
 
     expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PACS-K1 ~ PACS-K6: 출발 상태가 없는 전환 (GLOBAL·INITIAL)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — 출발 상태가 없는 전환 (GLOBAL·INITIAL)', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * V207 ⑨ 백필이 심는 INITIAL 1건 + GLOBAL 1건 + NORMAL 1건.
+   * INITIAL·GLOBAL 의 `key` 는 backend 게터 규칙대로 `KIND__to` 이고 `fromStateKey` 는 null 이다.
+   */
+  const kindTransitions: WorkflowTransitionView[] = [
+    { key: 'INITIAL__open', name: '이슈 생성', fromStateKey: null, toStateKey: 'open', id: txId(11), kind: 'INITIAL' },
+    { key: 'GLOBAL__done', name: '강제 완료', fromStateKey: null, toStateKey: 'done', id: txId(12), kind: 'GLOBAL' },
+    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress', id: txId(13), kind: 'NORMAL' },
+  ]
+
+  /**
+   * PACS-K1. 회귀 방지 핵심 — fromStateKey 가 null 이어도 섹션이 예외 없이 렌더된다.
+   * `t.fromStateKey.includes('__')` 가 null 에서 TypeError 를 던지던 결함의 재현 단언이다.
+   */
+  it('PACS-K1: fromStateKey 가 null 인 전환이 섞여도 예외 없이 렌더된다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '이슈 생성' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '강제 완료' })).toBeInTheDocument()
+  })
+
+  /**
+   * PACS-K2. option value 는 응답의 `key` 를 그대로 쓴다 — 프론트가 합성 규칙을 두 번째로 구현하지 않는다.
+   * 재계산하면 INITIAL 이 `null__open` 이 되어 backend 경로(`INITIAL__open`)와 어긋난다.
+   */
+  it('PACS-K2: INITIAL option value 는 응답 key(INITIAL__open) 다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    const opt = screen.getByRole('option', { name: '이슈 생성' }) as HTMLOptionElement
+    expect(opt.value).toBe('INITIAL__open')
+  })
+
+  it('PACS-K3: GLOBAL option value 는 응답 key(GLOBAL__done) 다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    const opt = screen.getByRole('option', { name: '강제 완료' }) as HTMLOptionElement
+    expect(opt.value).toBe('GLOBAL__done')
+  })
+
+  /**
+   * PACS-K4. INITIAL·GLOBAL 은 선택 가능하다.
+   * backend `PostActionTransitionResolver` 가 `KIND_TOKENS` 로 두 종류를 전환 id 로 해석하므로
+   * 규칙을 붙일 수 있는 대상이다 — 막으면 그 경로가 UI 에서 도달 불가가 된다.
+   */
+  it('PACS-K4: INITIAL·GLOBAL option 은 disabled 가 아니다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    expect((screen.getByRole('option', { name: '이슈 생성' }) as HTMLOptionElement).disabled).toBe(false)
+    expect((screen.getByRole('option', { name: '강제 완료' }) as HTMLOptionElement).disabled).toBe(false)
+  })
+
+  /** PACS-K5. INITIAL·GLOBAL 만 있어도 '키 형식 제약' 안내가 잘못 뜨지 않는다. */
+  it('PACS-K5: INITIAL·GLOBAL 은 ambiguous 안내를 유발하지 않는다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * PACS-K6. 선택하면 그 응답 key 로 post-action 목록을 조회한다.
+   * 경로 세그먼트가 `INITIAL__open` 이어야 backend `split("__")` 2조각 규칙을 만족한다.
+   */
+  it('PACS-K6: INITIAL 선택 시 응답 key 경로로 목록을 조회한다', async () => {
+    const requested: string[] = []
+    server.use(
+      http.get(
+        '/api/v1/workflows/:workflowKey/transitions/:transitionKey/post-actions',
+        ({ params }) => {
+          requested.push(String(params['transitionKey']))
+          return HttpResponse.json({ data: [] })
+        },
+      ),
+    )
+
+    renderSection({ transitions: kindTransitions })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'INITIAL__open' } })
+
+    await waitFor(() => expect(requested).toContain('INITIAL__open'))
   })
 })
 

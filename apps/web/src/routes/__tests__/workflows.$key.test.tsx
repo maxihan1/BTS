@@ -148,6 +148,37 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
   })
 
   /**
+   * T5-7. MSW 픽스처(= 실제 응답 모양)의 INITIAL 전환이 화면까지 닿는다.
+   *
+   * 마이그레이션 V207 ⑨ 가 워크플로우마다 `fromStateKey: null` 인 INITIAL 1건을 백필하므로
+   * 모든 실제 응답에 null 원소가 섞인다. 그 원소가 렌더 계층에서 TypeError 를 내던 결함의 재현 단언이고,
+   * option value 가 응답 `key`(`INITIAL__open`) 여야 backend post-action 경로와 어긋나지 않는다.
+   */
+  it('T5-7: admin이면 INITIAL 전환이 응답 key 로 전환 선택에 나타난다', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+
+    renderPage()
+
+    const option = await screen.findByRole('option', { name: '이슈 생성' })
+    expect((option as HTMLOptionElement).value).toBe('INITIAL__open')
+
+    // 재계산 흔적(`null__open`)이 한 건도 없어야 한다
+    const values = screen.getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
+    expect(values.some((v) => v.includes('null'))).toBe(false)
+  })
+
+  /**
    * T5-5. isSystemAdmin=false이면 PostActionConfigSection이 렌더되지 않는다.
    * 다이어그램(워크플로우 이름)은 여전히 표시되어야 한다.
    */
