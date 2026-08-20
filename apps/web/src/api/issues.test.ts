@@ -21,6 +21,7 @@ import {
   downloadIssuePdf,
   IssueRedirectError,
   buildIssueFilterQuery,
+  parseAmbiguousTransitionError,
 } from './issues'
 import { ApiError } from './client'
 import { useChangeAssignee } from './useChangeAssignee'
@@ -519,6 +520,192 @@ describe('transitionIssue', () => {
     await transitionIssue('ATLAS-1', { toStatusKey: 'done', expectedVersion: 1 })
     expect(capturedBody['toStatusKey']).toBe('done')
     expect(capturedBody['expectedVersion']).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T21. FR-WF-05 — transitionId 왕복 (ADR 2026-08-18 §D3)
+//   같은 (from,to) 에 전환이 여럿일 수 있으므로 toStatusKey 만으로는 못 가른다.
+//   서버가 409 AMBIGUOUS_TRANSITION + 후보 목록을 돌려주면 클라이언트가 후보 하나의
+//   transitionId 를 되실어 재요청한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 후보 전환 1번의 1급 식별자 — backend AmbiguousTransitionStatusCodeIntegrationTest 와 같은 값. */
+const CANDIDATE_ONE_ID = '33333333-3333-4333-8333-333333333333'
+/** 후보 전환 2번의 1급 식별자. */
+const CANDIDATE_TWO_ID = '44444444-4444-4444-8444-444444444444'
+
+/** backend AmbiguousTransitionErrorResponse 직렬화 형태 — Task 23 RED 출력 실측. */
+const AMBIGUOUS_BODY = {
+  error: {
+    code: 'AMBIGUOUS_TRANSITION',
+    message: '이동할 수 있는 전환이 2개입니다. 어느 전환인지 골라 주세요.',
+  },
+  candidates: [
+    { transitionId: CANDIDATE_ONE_ID, name: '조건부 승인' },
+    { transitionId: CANDIDATE_TWO_ID, name: '즉시 완료' },
+  ],
+}
+
+describe('issueTransitionSchema — transitionId·kind (T21)', () => {
+  it('T21-1a: transitionId·kind 가 실려 오면 그대로 보존한다', () => {
+    const parsed = issueTransitionSchema.parse({
+      fromStateKey: 'open',
+      toStateKey: 'done',
+      name: '조건부 승인',
+      key: 'open__done',
+      toCategory: 'DONE',
+      transitionId: CANDIDATE_ONE_ID,
+      kind: 'NORMAL',
+    })
+    expect(parsed.transitionId).toBe(CANDIDATE_ONE_ID)
+    expect(parsed.kind).toBe('NORMAL')
+  })
+
+  it('T21-1b: GLOBAL 전환의 kind 도 보존한다', () => {
+    const parsed = issueTransitionSchema.parse({
+      fromStateKey: 'open',
+      toStateKey: 'done',
+      name: '즉시 완료',
+      key: 'GLOBAL__done',
+      transitionId: CANDIDATE_TWO_ID,
+      kind: 'GLOBAL',
+    })
+    expect(parsed.kind).toBe('GLOBAL')
+  })
+
+  it('T21-1c: 두 필드가 빠져도 파싱된다 — backend DTO 가 UUID?·String? 라 required 로 올리면 계약보다 엄격해진다', () => {
+    const parsed = issueTransitionSchema.parse({
+      fromStateKey: 'open',
+      toStateKey: 'in_progress',
+      name: 'Start Work',
+      key: 'open__in_progress',
+    })
+    expect(parsed.transitionId).toBeUndefined()
+    expect(parsed.kind).toBeUndefined()
+  })
+
+  it('T21-1d: null 이어도 파싱된다 (미계산 상태)', () => {
+    const parsed = issueTransitionSchema.parse({
+      fromStateKey: 'open',
+      toStateKey: 'in_progress',
+      name: 'Start Work',
+      key: 'open__in_progress',
+      transitionId: null,
+      kind: null,
+    })
+    expect(parsed.transitionId).toBeNull()
+    expect(parsed.kind).toBeNull()
+  })
+
+  it('T21-1e: transitionId 가 UUID 형식이 아니면 ZodError 를 throw 한다', () => {
+    expect(() =>
+      issueTransitionSchema.parse({
+        fromStateKey: 'open',
+        toStateKey: 'in_progress',
+        name: 'Start Work',
+        key: 'open__in_progress',
+        transitionId: 'open__in_progress',
+      }),
+    ).toThrow()
+  })
+})
+
+describe('fetchIssueTransitions — transitionId 왕복 전제 (T21)', () => {
+  it('T21-2a: 목록 응답의 transitionId 가 Zod 에서 버려지지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/issues/:key/transitions', () =>
+        HttpResponse.json({
+          data: {
+            transitions: [
+              {
+                fromStateKey: 'open',
+                toStateKey: 'done',
+                name: '조건부 승인',
+                key: 'open__done',
+                toCategory: 'DONE',
+                transitionId: CANDIDATE_ONE_ID,
+                kind: 'NORMAL',
+              },
+            ],
+          },
+        }),
+      ),
+    )
+    const result = await fetchIssueTransitions('ATLAS-1')
+    expect(result[0]?.transitionId).toBe(CANDIDATE_ONE_ID)
+    expect(result[0]?.kind).toBe('NORMAL')
+  })
+})
+
+describe('transitionIssue — transitionId 재요청 (T21)', () => {
+  it('T21-3a: transitionId 를 주면 request body 에 그대로 실려 나간다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues/:key/transition', async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ data: { ...issueFixture, currentStateKey: 'done', version: 2 } })
+      }),
+    )
+    await transitionIssue('ATLAS-1', {
+      toStatusKey: 'done',
+      expectedVersion: 1,
+      transitionId: CANDIDATE_TWO_ID,
+    })
+    expect(capturedBody['transitionId']).toBe(CANDIDATE_TWO_ID)
+  })
+
+  it('T21-3b: transitionId 를 안 주면 body 에 키가 없다 — 기존 클라이언트 계약 보존', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues/:key/transition', async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ data: { ...issueFixture, currentStateKey: 'done', version: 2 } })
+      }),
+    )
+    await transitionIssue('ATLAS-1', { toStatusKey: 'done', expectedVersion: 1 })
+    expect('transitionId' in capturedBody).toBe(false)
+  })
+})
+
+describe('parseAmbiguousTransitionError (T21)', () => {
+  it('T21-4a: 409 AMBIGUOUS_TRANSITION 이면 후보 전량과 안내 문구를 뽑는다', () => {
+    const parsed = parseAmbiguousTransitionError(new ApiError(409, AMBIGUOUS_BODY))
+    expect(parsed).not.toBeNull()
+    expect(parsed?.candidates).toHaveLength(2)
+    expect(parsed?.candidates[0]?.transitionId).toBe(CANDIDATE_ONE_ID)
+    expect(parsed?.candidates[0]?.name).toBe('조건부 승인')
+    expect(parsed?.message).toBe(AMBIGUOUS_BODY.error.message)
+  })
+
+  it('T21-4b: 같은 409 라도 VERSION_CONFLICT 면 null — 두 409 가 섞이면 안 된다', () => {
+    expect(
+      parseAmbiguousTransitionError(
+        new ApiError(409, { errorCode: 'VERSION_CONFLICT', message: '버전 충돌' }),
+      ),
+    ).toBeNull()
+  })
+
+  it('T21-4c: 409 가 아니면 null', () => {
+    expect(parseAmbiguousTransitionError(new ApiError(422, AMBIGUOUS_BODY))).toBeNull()
+  })
+
+  it('T21-4d: ApiError 가 아니면 null', () => {
+    expect(parseAmbiguousTransitionError(new Error('boom'))).toBeNull()
+  })
+
+  it('T21-4e: 실제 409 응답을 transitionIssue 가 던진 에러에서 그대로 읽는다', async () => {
+    server.use(
+      http.post('/api/v1/issues/:key/transition', () =>
+        HttpResponse.json(AMBIGUOUS_BODY, { status: 409 }),
+      ),
+    )
+    const error = await transitionIssue('ATLAS-1', {
+      toStatusKey: 'done',
+      expectedVersion: 1,
+    }).catch((e: unknown) => e)
+    const parsed = parseAmbiguousTransitionError(error)
+    expect(parsed?.candidates.map((c) => c.name)).toEqual(['조건부 승인', '즉시 완료'])
   })
 })
 

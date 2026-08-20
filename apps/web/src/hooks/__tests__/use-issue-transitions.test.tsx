@@ -3,8 +3,13 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import type { IssueTransition } from '@/api/issues'
-import { useIssueTransitions, useTransitionIssue } from '../use-issue-transitions'
+import type { IssueTransition, TransitionIssueInput } from '@/api/issues'
+import { ApiError } from '@/api/client'
+import {
+  useIssueTransitions,
+  useTransitionIssue,
+  useAmbiguousTransition,
+} from '../use-issue-transitions'
 
 function createWrapper() {
   const client = new QueryClient({
@@ -189,5 +194,165 @@ describe('useTransitionIssue', () => {
         await result.current.mutateAsync({ toStatusKey: 'done', expectedVersion: 1 })
       }),
     ).rejects.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T21. 409 AMBIGUOUS_TRANSITION 왕복 (ADR 2026-08-18 §D3)
+//   같은 (from,to) 에 전환이 여럿이면 서버가 후보를 돌려준다. 사용자가 고른 후보의
+//   transitionId 를 되실어 재요청해야 전환이 실행된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 후보 전환 1번의 1급 식별자 — backend 통합 테스트와 같은 값. */
+const CANDIDATE_ONE_ID = '33333333-3333-4333-8333-333333333333'
+/** 후보 전환 2번의 1급 식별자. */
+const CANDIDATE_TWO_ID = '44444444-4444-4444-8444-444444444444'
+
+/** backend AmbiguousTransitionErrorResponse 직렬화 형태 — Task 23 RED 출력 실측. */
+const AMBIGUOUS_BODY = {
+  error: {
+    code: 'AMBIGUOUS_TRANSITION',
+    message: '이동할 수 있는 전환이 2개입니다. 어느 전환인지 골라 주세요.',
+  },
+  candidates: [
+    { transitionId: CANDIDATE_ONE_ID, name: '조건부 승인' },
+    { transitionId: CANDIDATE_TWO_ID, name: '즉시 완료' },
+  ],
+}
+
+/** 전환 성공 응답 — issueResponseSchema 최소 필드. */
+const TRANSITIONED_ISSUE = {
+  key: 'ATLAS-1',
+  id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+  projectKey: 'ATLAS',
+  summary: '모호 전환 후보 지목 재요청',
+  currentStateKey: 'done',
+  reporterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+  assigneeId: null,
+  version: 2,
+  createdAt: null,
+  updatedAt: null,
+  typeId: 1,
+  typeKey: 'task',
+  typeName: '작업',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
+}
+
+describe('useAmbiguousTransition', () => {
+  it('T21-H1: 초기 prompt 는 null 이다', () => {
+    const { result } = renderHook(() => useAmbiguousTransition())
+    expect(result.current.prompt).toBeNull()
+  })
+
+  it('T21-H2: 409 AMBIGUOUS_TRANSITION 을 잡으면 true 를 돌려주고 후보를 노출한다', () => {
+    const { result } = renderHook(() => useAmbiguousTransition())
+    const input: TransitionIssueInput = { toStatusKey: 'done', expectedVersion: 1 }
+
+    let captured = false
+    act(() => {
+      captured = result.current.capture(new ApiError(409, AMBIGUOUS_BODY), input)
+    })
+
+    expect(captured).toBe(true)
+    expect(result.current.prompt?.candidates).toHaveLength(2)
+    expect(result.current.prompt?.candidates[1]?.name).toBe('즉시 완료')
+    // 재요청에 쓸 원 요청을 그대로 보관해야 한다 — expectedVersion 을 잃으면 OCC 로 죽는다
+    expect(result.current.prompt?.input).toEqual(input)
+  })
+
+  it('T21-H3: 다른 에러는 잡지 않는다 — false 를 돌려줘 호출자가 기존 토스트를 띄우게 한다', () => {
+    const { result } = renderHook(() => useAmbiguousTransition())
+
+    let captured = true
+    act(() => {
+      captured = result.current.capture(
+        new ApiError(409, { errorCode: 'VERSION_CONFLICT', message: '버전 충돌' }),
+        { toStatusKey: 'done', expectedVersion: 1 },
+      )
+    })
+
+    expect(captured).toBe(false)
+    expect(result.current.prompt).toBeNull()
+  })
+
+  it('T21-H4: clear() 로 후보 선택을 취소한다', () => {
+    const { result } = renderHook(() => useAmbiguousTransition())
+    act(() => {
+      result.current.capture(new ApiError(409, AMBIGUOUS_BODY), {
+        toStatusKey: 'done',
+        expectedVersion: 1,
+      })
+    })
+    act(() => {
+      result.current.clear()
+    })
+    expect(result.current.prompt).toBeNull()
+  })
+})
+
+describe('전환 409 왕복 — 후보 2개 → 고름 → transitionId 재요청 → 성공', () => {
+  it('T21-H5: 첫 요청은 transitionId 없이, 재요청은 고른 후보의 transitionId 로 나간다', async () => {
+    const sentTransitionIds: (string | undefined)[] = []
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', async ({ request }) => {
+        const body = (await request.json()) as { transitionId?: string; expectedVersion?: number }
+        sentTransitionIds.push(body.transitionId)
+        // transitionId 가 없으면 후보가 2개라 못 가른다 → 409 (ADR §D3)
+        if (body.transitionId === undefined) {
+          return HttpResponse.json(AMBIGUOUS_BODY, { status: 409 })
+        }
+        return HttpResponse.json({ data: TRANSITIONED_ISSUE })
+      }),
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: MOCK_TRANSITIONS } }),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(
+      () => {
+        const ambiguous = useAmbiguousTransition()
+        const mutation = useTransitionIssue('ATLAS-1')
+        return { ambiguous, mutation }
+      },
+      { wrapper },
+    )
+
+    // When 1. toStatusKey 만으로 전환을 시도한다
+    const firstInput: TransitionIssueInput = { toStatusKey: 'done', expectedVersion: 1 }
+    await act(async () => {
+      result.current.mutation.mutate(firstInput, {
+        onError: (error) => {
+          result.current.ambiguous.capture(error, firstInput)
+        },
+      })
+    })
+
+    // Then 1. 409 후보 목록이 사용자에게 노출된다
+    await waitFor(() => expect(result.current.ambiguous.prompt).not.toBeNull())
+    expect(result.current.ambiguous.prompt?.candidates).toHaveLength(2)
+
+    // When 2. 사용자가 두 번째 후보를 고른다
+    const chosen = result.current.ambiguous.prompt?.candidates[1]?.transitionId
+    const retryInput = result.current.ambiguous.prompt?.input
+    expect(chosen).toBe(CANDIDATE_TWO_ID)
+    if (chosen === undefined || retryInput === undefined) throw new Error('후보 프롬프트 소실')
+
+    await act(async () => {
+      result.current.ambiguous.clear()
+      await result.current.mutation.mutateAsync({ ...retryInput, transitionId: chosen })
+    })
+
+    // Then 2. 재요청이 고른 후보의 transitionId 로 나갔고 전환이 실행됐다
+    expect(sentTransitionIds).toEqual([undefined, CANDIDATE_TWO_ID])
+    expect(result.current.mutation.data?.currentStateKey).toBe('done')
+    expect(result.current.ambiguous.prompt).toBeNull()
   })
 })
