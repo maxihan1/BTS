@@ -16,7 +16,7 @@ import java.util.UUID
  * 3. state.key 중복 → IllegalArgumentException
  * 4. transition.fromStateKey 가 states 집합에 없음 → IllegalArgumentException
  * 5. transition.toStateKey 가 states 집합에 없음 → IllegalArgumentException
- * 6. transition (from, to) 조합 중복 → IllegalArgumentException
+ * 6. transition.id 기본값 — 명시하지 않으면 새 UUID 가 부여된다
  */
 class WorkflowAggregateTest {
     // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -148,46 +148,11 @@ class WorkflowAggregateTest {
     }
 
     // ── transition (from, to) 조합 중복 ──────────────────────────────────────
-
-    @Test
-    fun `transition (from, to) 조합 중복 시 IllegalArgumentException`() {
-        val duplicateTransitions =
-            listOf(
-                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
-                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
-            )
-
-        assertThatThrownBy {
-            Workflow.of(
-                key = "WF-006",
-                name = "중복 전환 워크플로우",
-                states = defaultStates,
-                transitions = duplicateTransitions,
-            )
-        }.isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("duplicate")
-            .hasMessageContaining("(from, to)")
-    }
-
-    @Test
-    fun `transition (from, to) 가 같고 name 만 다른 두 transition 시 IllegalArgumentException`() {
-        val duplicateTransitions =
-            listOf(
-                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "Start Work"),
-                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
-            )
-
-        assertThatThrownBy {
-            Workflow.of(
-                key = "WF-007",
-                name = "name 다른 중복 전환 워크플로우",
-                states = defaultStates,
-                transitions = duplicateTransitions,
-            )
-        }.isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("duplicate")
-            .hasMessageContaining("(from, to)")
-    }
+    //
+    // 「(from, to) 조합 중복 금지」invariant 를 단언하던 테스트 2건을 FR-WF-05 에서 삭제했다 —
+    // 전환 identity 가 (from, to) 에서 id 로 바뀌면서 그 규칙 자체가 없어져 단언이 거짓이 됐다
+    // (ADR docs/adr/2026-08-18-workflow-transition-id-identity.md §D1). 대체 커버리지는
+    // WorkflowTest.kt 의 `같은 (from,to) 에 이름이 다른 전환 2개를 of() 가 받는다` 가 제공한다.
 
     @Test
     fun `다른 (from, to) 가 같은 name 인 두 transition 은 정상 생성`() {
