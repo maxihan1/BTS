@@ -224,15 +224,17 @@ function remainingGitVars(scrub: string, dirty: NodeJS.ProcessEnv): number {
   return Number(out.trim())
 }
 
-/** 훅이 상속받는 상황을 재현한 환경. 값에 공백이 든 것도 섞어 이름 추출을 함께 잰다. */
-function dirtyEnv(): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    GIT_DIR: '/nonexistent-decoy/.git',
-    GIT_WORK_TREE: '/nonexistent-decoy',
-    GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
-    GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
-  }
+/**
+ * 훅이 상속받는 상황을 재현한 환경. 값에 공백이 든 것을 섞어 **이름만** 뽑히는지도 함께 잰다.
+ * 경로는 전부 실재하지 않는 미끼다 — 이 판정은 git 을 부르지 않지만, 그래도 진짜 저장소를
+ * 가리키는 값을 자식 프로세스에 넘기지 않는다.
+ */
+const DIRTY_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_DIR: '/nonexistent-decoy/.git',
+  GIT_WORK_TREE: '/nonexistent-decoy',
+  GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
+  GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
 }
 
 const WHY_SCRUB =
@@ -285,18 +287,17 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
     if (scrub === undefined) {
       assert.fail(`${HOOK} 에 GIT_* 스크럽이 없어 실효를 잴 대상이 없다.\n\n${WHY_SCRUB}`)
     }
-    const dirty = dirtyEnv()
 
     // ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 0 이면
     //   「원래 GIT_* 가 없어서 0」이라 아래 판정은 아무것도 증명하지 못한다.
     assert.ok(
-      remainingGitVars('', dirty) > 0,
+      remainingGitVars('', DIRTY_ENV) > 0,
       '스크럽을 안 돌린 대조군에서도 GIT_* 가 0개다 — 오염 환경 재현이 실패했다. ' +
         '이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
     )
 
     assert.equal(
-      remainingGitVars(scrub, dirty),
+      remainingGitVars(scrub, DIRTY_ENV),
       0,
       `${HOOK} 의 스크럽 줄이 **문법적으로는 있는데 실제로는 GIT_* 를 안 지운다.**\n` +
         `실행한 줄: ${scrub}\n\n` +
