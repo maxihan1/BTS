@@ -1247,16 +1247,21 @@ ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 
 
 ---
 
-## ⬜ 워크플로우 — `resolveWorkflowId` 2곳이 소프트 삭제 조건을 안 걸어 부분 인덱스를 못 탄다 (선재 · 미착수 · T2)
+## ⬜ 워크플로우 — `resolveWorkflowId` 가 소프트 삭제 조건을 안 걸어 부분 인덱스를 못 탄다 (선재 · 미착수 · T2)
 
 **쉬운 말.** 워크플로우를 이름으로 찾는 코드 두 곳이 「지워진 것 빼고」 조건을 안 건다. 그래서 데이터베이스가 빠른 색인을 못 쓰고 표를 처음부터 끝까지 훑는다.
 
 **방치하면.** 워크플로우가 늘어나면 이 경로가 점점 느려진다. 지금은 표가 작아 체감 피해가 없다.
 
 **무엇.** `V206` 이 `uq_workflows_key` 를 `WHERE deleted_at IS NULL` **부분 유니크 인덱스**로 바꿨다.
-부분 인덱스는 질의에 같은 조건이 있을 때만 선택된다. 그런데 두 곳이 조건 없이 `key` 만 본다 —
-`DefaultWorkflowDefinitionRepository.resolveWorkflowId`(`:164-170`) ·
-`PostActionTransitionResolver.resolveWorkflowId`(`:120-124`).
+부분 인덱스는 질의에 같은 조건이 있을 때만 선택된다. 그런데 조건 없이 `key` 만 보는 자리가 남아 있다 —
+`DefaultWorkflowDefinitionRepository.resolveWorkflowId`(`:164-170`).
+
+**★ 등재 당일에 절반이 닫혔다 (2026-08-21 · PR #395).** 처음 등재할 때는 2곳이었고
+`PostActionTransitionResolver.resolveWorkflowId` 가 그 하나였다. 같은 PR 의 Task 28 이 그것을
+**성능이 아니라 500 결함으로** 닫았다 — 소프트 삭제된 동명 행과 살아 있는 행이 함께 잡히면
+`fetchOne` 이 2행을 만나 `TooManyRowsException` 이 된다. 아래 「부수 위험」이 그 경로다.
+남은 한 곳도 같은 성격이므로 **인덱스 문제가 아니라 정확성 문제로 다뤄야 한다.**
 
 **실측.** 같은 질의에 `deleted_at IS NULL` 을 붙이면 `Index Scan`, 없으면 `Seq Scan` 이다.
 
@@ -1264,7 +1269,7 @@ ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 
 둘 이상 있을 수 있다. 그때 `fetchOne` 이 어느 행을 집을지가 정의되지 않는다 — 지금은 재사용 경로를
 밟는 데이터가 없어 드러나지 않는다.
 
-**처방.** 두 함수의 `where` 에 `WORKFLOWS.DELETED_AT.isNull` 을 더한다. 한 줄씩이다.
+**처방.** 남은 함수의 `where` 에 `WORKFLOWS.DELETED_AT.isNull` 을 더한다. 한 줄이다.
 같은 조건을 빠뜨린 다른 자리가 더 있는지 `WORKFLOWS.KEY.eq` 전수로 확인한다.
 
 ---
