@@ -178,13 +178,17 @@ function runFixtureProcedure(workDir: string, env: NodeJS.ProcessEnv): void {
 /**
  * 비-공허 짝이 픽스처에 넘기는 env — **일부러** `GIT_DIR` 를 걸어 오염을 재현시킨다.
  *
+ * 바탕은 **스크럽된** env 다. `process.env` 를 통째로 깔면 주변 `GIT_INDEX_FILE` 이
+ * 여기 얹은 `GIT_DIR` 를 **이겨** 짝이 제 victim 이 아니라 제3의 저장소를 덮는다.
+ * `GIT_DIR` 하나만으로도 victim 은 그대로 오염되므로 짝의 무는 힘은 줄지 않는다.
+ *
  * 짝과 그 짝을 검사하는 판정이 각자 env 를 조립하면 두 벌이 되고 서로를 안 본다. 한 자리만 둔다.
  *
  * @param gitDir victim 의 `.git` 경로
  * @returns 픽스처에 넘길 환경변수
  */
 function leakEnv(gitDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, GIT_DIR: gitDir }
+  return { ...gitFixtureEnv(), GIT_DIR: gitDir }
 }
 
 describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {

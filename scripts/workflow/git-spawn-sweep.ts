@@ -35,8 +35,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  *
  * 반대로 판별식 파일 자신은 **특별 취급하지 않는다.** victim 을 세우려고 실제로 git 을
  * 부르므로 파생 집합에 들고, 그래서 헬퍼도 실제로 임포트한다 — 규칙이 제 파일에 먼저 걸린다.
- * 비-공허 짝만 일부러 스크럽 없이 부르는데, 그 대상은 `assertVictimPathSafe` 를 통과한
- * mkdtemp 아래 victim 이라 저장소에 닿지 않는다.
+ * 비-공허 짝만 일부러 `GIT_DIR` 를 걸어 오염을 재현하는데, 그 바탕 env 는 스크럽된 것이다.
+ * 경로만으로는 못 막기 때문이다 — `assertVictimPathSafe` 는 victim **경로**를 지키지만
+ * `GIT_INDEX_FILE` 은 `GIT_DIR` 를 이겨 그 경로를 무력화한다. 상속된 GIT_* 하나면 충분하다.
+ * 그 방향을 지키는 것은 이 주석이 아니라 판별식의 bystander 판정이다.
  */
 const HELPER_MODULE = 'scripts/workflow/git-fixture-env.mjs'
 
