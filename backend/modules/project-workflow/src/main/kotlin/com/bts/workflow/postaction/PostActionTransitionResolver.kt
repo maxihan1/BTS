@@ -18,10 +18,17 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * [WorkflowTransition.key] 를 `workflow_transitions.id` 로 되돌리는 컴포넌트.
+ * post-action 경로가 받은 전환 지목값을 `workflow_transitions.id` 로 되돌리는 컴포넌트.
  *
- * post-action 관리 경로(`.../transitions/{transitionKey}/post-actions`)가 URL 세그먼트로 받는
- * 합성 키를 전환 1급 식별자로 옮긴다. 어느 단계에서든 미존재면 null 을 돌려주고 호출자가 404 로 바꾼다.
+ * ### 1급 식별자는 id 다 (ADR 2026-08-18 §D1)
+ * 경로 세그먼트가 UUID 로 파싱되면 [resolveById] 로 간다. 그쪽이 정본이다 —
+ * `workflow_transitions.id` 는 PK 라 언제나 단건이다.
+ *
+ * [WorkflowTransition.key] 로 지목하는 [resolveTransitionIds] 는 **하위호환 경로**다.
+ * V207 ① 이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를 풀어 같은 (from,to) 구간에
+ * 전환을 여럿 둘 수 있게 됐으므로 `key` 는 더 이상 유일하지 않다. 그래서 이 함수는 **목록**을
+ * 돌려주고 몇 건인지는 호출자가 보고 판단한다 — `fetchOne` 으로 단건을 가정하면 2행을 만나는
+ * 순간 `TooManyRowsException` 이고, 저장소에 그 예외를 잡는 곳이 없어 곧바로 500 이 된다.
  *
  * ### 신 컬럼이 정본, 구 컬럼은 폴백이다 (3단 분할의 2단계)
  * `workflow_transitions` 는 출발·도착을 가리키는 컬럼을 두 벌 갖고 있다 — 구형
@@ -47,22 +54,57 @@ class PostActionTransitionResolver(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * (workflowKey, fromStateKey, toStateKey) → `workflow_transitions.id` 를 반환한다.
+     * 전환 id 가 그 워크플로우의 것인지 확인하고 그대로 돌려준다.
      *
-     * 어느 단계에서든 미존재 시 null 반환 (예외 아님 — 호출자가 404 처리).
+     * 경로 세그먼트가 UUID 로 파싱되면 이 길로 온다. PK 조회라 다건이 될 수 없고, 워크플로우
+     * 소속을 같은 질의에서 확인하므로 남의 워크플로우 전환을 지목할 수 없다.
+     *
+     * @param workflowKey 워크플로우 식별 키.
+     * @param transitionId 경로가 지목한 전환 UUID.
+     * @return 전환 UUID, 그 워크플로우에 없으면 null (예외 아님 — 호출자가 404 처리).
+     */
+    @Transactional(readOnly = true)
+    fun resolveById(
+        workflowKey: String,
+        transitionId: UUID,
+    ): UUID? {
+        val found =
+            dsl
+                .select(WORKFLOW_TRANSITIONS.ID)
+                .from(WORKFLOW_TRANSITIONS)
+                .join(WORKFLOWS)
+                .on(WORKFLOWS.ID.eq(WORKFLOW_TRANSITIONS.WORKFLOW_ID).and(WORKFLOWS.DELETED_AT.isNull))
+                .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId).and(WORKFLOWS.KEY.eq(workflowKey)))
+                .fetchOne(WORKFLOW_TRANSITIONS.ID)
+        if (found == null) {
+            log.debug(
+                "PostActionTransitionResolver: 전환 id 미존재 workflowKey={} transitionId={}",
+                workflowKey,
+                transitionId,
+            )
+        }
+        return found
+    }
+
+    /**
+     * (workflowKey, fromStateKey, toStateKey) 에 걸리는 전환 id 를 **전부** 반환한다.
+     *
+     * ★ 단건을 가정하지 않는다. 같은 (from,to) 구간에 전환이 여럿일 수 있고, GLOBAL 은 조건이
+     * `kind = 'GLOBAL'` + 도착 상태뿐이라 같은 도착지를 향한 2건이면 그것만으로 다건이 된다.
+     * 몇 건인지를 보고 404 로 바꿀지 결정하는 것은 호출자([PostActionAdminService])의 몫이다.
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param fromStateKey 출발 상태 키. GLOBAL·INITIAL 전환은 상태 키 대신 종류 이름이 온다.
      * @param toStateKey 도착 상태 키.
-     * @return 전환 UUID, 미존재 시 null.
+     * @return 걸린 전환 UUID 목록. 어느 단계에서든 미존재면 빈 목록.
      */
     @Suppress("ReturnCount")
     @Transactional(readOnly = true)
-    fun resolveTransitionId(
+    fun resolveTransitionIds(
         workflowKey: String,
         fromStateKey: String,
         toStateKey: String,
-    ): UUID? {
+    ): List<UUID> {
         val workflowId = resolveWorkflowId(workflowKey) ?: return miss("workflow", workflowKey, workflowKey)
         val from = fromCondition(workflowId, fromStateKey) ?: return miss("fromState", workflowKey, fromStateKey)
         val to = toCondition(workflowId, toStateKey) ?: return miss("toState", workflowKey, toStateKey)
@@ -70,22 +112,23 @@ class PostActionTransitionResolver(
             .select(WORKFLOW_TRANSITIONS.ID)
             .from(WORKFLOW_TRANSITIONS)
             .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId).and(from).and(to))
-            .fetchOne(WORKFLOW_TRANSITIONS.ID)
+            .fetch(WORKFLOW_TRANSITIONS.ID)
+            .filterNotNull()
     }
 
-    /** 해석 실패를 남기고 null 을 돌려준다. 어느 단계에서 끊겼는지가 404 의 유일한 단서다. */
+    /** 해석 실패를 남기고 빈 목록을 돌려준다. 어느 단계에서 끊겼는지가 404 의 유일한 단서다. */
     private fun miss(
         stage: String,
         workflowKey: String,
         detail: String,
-    ): UUID? {
+    ): List<UUID> {
         log.debug(
             "PostActionTransitionResolver: {} 미존재 workflowKey={} value={}",
             stage,
             workflowKey,
             detail,
         )
-        return null
+        return emptyList()
     }
 
     /**
@@ -117,10 +160,17 @@ class PostActionTransitionResolver(
             resolveLegacyStateId(workflowId, toStateKey),
         )
 
+    /**
+     * 워크플로우 키 → id.
+     *
+     * ★ `DELETED_AT.isNull` 이 빠지면 `fetchOne` 이 다건을 만난다. V206 이 key 유니크를
+     * 「살아 있는 행끼리만」으로 완화해 **삭제된 동명 워크플로우가 함께 잡히기 때문**이다.
+     * 읽기 정본(`WorkflowRepository`)도 같은 조건을 걸어 두 경로가 같은 집합을 본다.
+     */
     private fun resolveWorkflowId(workflowKey: String): UUID? =
         dsl.select(WORKFLOWS.ID)
             .from(WORKFLOWS)
-            .where(WORKFLOWS.KEY.eq(workflowKey))
+            .where(WORKFLOWS.KEY.eq(workflowKey).and(WORKFLOWS.DELETED_AT.isNull))
             .fetchOne(WORKFLOWS.ID)
 
     /**

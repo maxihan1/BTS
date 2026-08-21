@@ -49,25 +49,6 @@ function extractWebhookValues(config: Record<string, unknown>): PostActionFormVa
   return null
 }
 
-/** backend `split("__")` 가 요구하는 전환 키 조각 수 */
-const TRANSITION_KEY_SEGMENTS = 2
-
-/**
- * 전환의 `key` 가 backend post-action 경로에서 되돌려질 수 있는 모양인지 판정한다.
- *
- * backend `PostActionAdminService.resolveOrThrow` 가 URL 세그먼트를 `split("__")` 하고
- * **정확히 2조각**이 아니면 `PostActionNotFoundException` 을 던진다. 그러므로 「설정 가능 여부」의
- * 정확한 기준은 조각 수 하나뿐이다 — 종전처럼 `fromStateKey`·`toStateKey` 각각에서 `'__'` 를
- * 찾던 방식은 출발 상태가 없는 전환(GLOBAL·INITIAL)에서 null 을 만나 터졌고, 판정하려던 대상
- * (합성 키의 조각 수)을 간접적으로 흉내 내던 것이라 종류가 늘 때마다 어긋난다.
- *
- * @param transition 전환 view 모델
- * @returns 조각 수가 2가 아니어서 규칙을 붙일 수 없으면 true
- */
-function isAmbiguousTransitionKey(transition: WorkflowTransitionView): boolean {
-  return transition.key.split('__').length !== TRANSITION_KEY_SEGMENTS
-}
-
 /** configSummary 반환 타입 — 절단 여부와 전체 원본을 함께 반환 */
 interface ConfigSummaryResult {
   /** 화면에 표시할 요약 문자열 (절단 시 '…' 포함) */
@@ -238,20 +219,21 @@ const CLOSED_DIALOG: DialogState = {
 }
 
 function PostActionConfigSectionContent({ workflowKey, transitions }: PostActionConfigSectionProps): JSX.Element {
-  const [selectedTxKey, setSelectedTxKey] = useState<string>('')
+  // 선택 값은 전환 id 다 — 그 문자열이 post-action 경로 세그먼트로 그대로 나간다.
+  const [selectedTxId, setSelectedTxId] = useState<string>('')
   const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG)
 
-  const { data: actions = [], isLoading, isError } = usePostActions(workflowKey, selectedTxKey)
+  const { data: actions = [], isLoading, isError } = usePostActions(workflowKey, selectedTxId)
 
   // 모든 mutation hook은 컴포넌트 최상단에서 호출 (hook 규칙)
-  const addMutation = useAddPostAction(workflowKey, selectedTxKey)
-  const updateMutation = useUpdatePostAction(workflowKey, selectedTxKey, dialog.editingId)
-  const removeMutation = useRemovePostAction(workflowKey, selectedTxKey)
+  const addMutation = useAddPostAction(workflowKey, selectedTxId)
+  const updateMutation = useUpdatePostAction(workflowKey, selectedTxId, dialog.editingId)
+  const removeMutation = useRemovePostAction(workflowKey, selectedTxId)
 
   // ─── 이벤트 핸들러 ──────────────────────────────────────────────────────
 
   function handleTransitionChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    setSelectedTxKey(e.target.value)
+    setSelectedTxId(e.target.value)
   }
 
   function handleAddClick() {
@@ -339,9 +321,9 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           variant="default"
           size="xs"
           onClick={handleAddClick}
-          disabled={selectedTxKey === ''}
+          disabled={selectedTxId === ''}
           aria-label={postActionLabels.section.addWebhookButton}
-          title={selectedTxKey === '' ? postActionLabels.error.selectTransitionFirst : undefined}
+          title={selectedTxId === '' ? postActionLabels.error.selectTransitionFirst : undefined}
           className={cn(
             'rounded-md px-3',
             'hover:bg-primary/90',
@@ -359,7 +341,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         </label>
         <select
           id="post-action-transition-select"
-          value={selectedTxKey}
+          value={selectedTxId}
           onChange={handleTransitionChange}
           className={cn(
             'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
@@ -368,28 +350,22 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         >
           <option value="">{postActionLabels.section.transitionSelectPlaceholder}</option>
           {/*
-            value 는 응답의 `key` 를 그대로 쓴다 — backend 게터가 NORMAL 은 `from__to`,
-            GLOBAL·INITIAL 은 `KIND__to` 로 만들고 그 문자열이 post-action 경로 세그먼트다.
-            프론트가 다시 합성하면 규칙이 두 벌이 되고 출발 상태가 없는 전환에서 즉시 어긋난다.
-            React key 는 `id` — 같은 (from, to) 쌍에 이름이 다른 전환을 여럿 둘 수 있어
-            `key` 는 더 이상 유일하지 않다 (ADR 2026-08-18 §D1).
+            value 는 전환의 `id` 다. `key`(NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to`)는
+            하위호환용 계산 프로퍼티로 강등됐고 더 이상 유일하지 않다 (ADR 2026-08-18 §D1) —
+            같은 (from, to) 구간에 이름만 다른 전환을 여럿 둘 수 있기 때문이다. `key` 를 보내면
+            그 둘이 같은 요청을 내 화면에서 구별할 방법이 사라진다.
+            backend 는 세그먼트가 UUID 로 파싱되면 `workflow_transitions.id` 로 해석한다.
           */}
           {transitions.map((t) => (
-            <option key={t.id} value={t.key} disabled={isAmbiguousTransitionKey(t)}>
+            <option key={t.id} value={t.id}>
               {t.name}
             </option>
           ))}
         </select>
-        {/* D6: ambiguous 전환이 하나라도 있으면 안내 문구 노출 */}
-        {transitions.some(isAmbiguousTransitionKey) && (
-          <p className="text-xs text-muted-foreground">
-            {postActionLabels.section.ambiguousKeyHint}
-          </p>
-        )}
       </div>
 
       {/* 목록 영역 — 전환 선택 시만 표시 */}
-      {selectedTxKey !== '' && (
+      {selectedTxId !== '' && (
         <div className="overflow-hidden rounded-lg border border-border">
           {isLoading ? (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">

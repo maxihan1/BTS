@@ -104,6 +104,15 @@ class PostActionE2EIntegrationTest {
         /** 중복 NORMAL 전환 2건의 id. 선언 순서 = 「빠른 완료 A」, 「빠른 완료 B」. */
         private lateinit var dupNormalIds: List<UUID>
 
+        // ── 같은 키로 되살린 워크플로우 ────────────────────────────────────────
+        //
+        // V206 이 `workflows.key` 유니크를 「살아 있는 행끼리만」으로 완화해 소프트 삭제된 동명 행과
+        // 살아 있는 행이 공존할 수 있다. 워크플로우 해석이 `deleted_at` 을 안 보면 그 둘이 함께
+        // 잡혀 `fetchOne` 이 2행을 만난다 — 전환 다건과 똑같이 미처리 예외로 500 이 되는 자리다.
+        private const val REVIVED_WORKFLOW_KEY = "revived"
+        private val REVIVED_TRANSITION_KEY =
+            WorkflowTransition("todo", "done", "되살린 완료", kind = TransitionKind.NORMAL).key
+
         @BeforeAll
         @JvmStatic
         @Suppress("LongMethod")
@@ -211,6 +220,7 @@ class PostActionE2EIntegrationTest {
 
                 seedModernTransitions(conn, java.util.UUID.fromString(workflowId))
                 dupNormalIds = seedDuplicateWorkflow(conn)
+                seedRevivedWorkflow(conn)
             }
 
             // 컴포넌트 조립
@@ -370,6 +380,33 @@ class PostActionE2EIntegrationTest {
             )
         }
 
+        /**
+         * 소프트 삭제된 동명 워크플로우와 공존하는 살아 있는 워크플로우를 심는다.
+         *
+         * 지우고 같은 키로 다시 만드는 것은 V206 이 일부러 허용한 일상 조작이다. 전환은 1건뿐이라
+         * 다건 여부와 무관하게 200 이어야 하고, 그래서 이 경로가 **워크플로우 해석 단계만** 가른다.
+         */
+        private fun seedRevivedWorkflow(conn: Connection) {
+            conn.prepareStatement(
+                "INSERT INTO workflows (key, name, deleted_at) VALUES (?, ?, now())",
+            ).use { stmt ->
+                stmt.setString(1, REVIVED_WORKFLOW_KEY)
+                stmt.setString(2, "삭제된 되살림 워크플로우")
+                stmt.execute()
+            }
+            val workflowId = insertWorkflow(conn, REVIVED_WORKFLOW_KEY, "되살린 워크플로우")
+            insertWorkflowStatus(conn, workflowId, "todo", "To Do", "TODO", 1)
+            insertWorkflowStatus(conn, workflowId, "done", "Done", "DONE", 2)
+            insertModernTransition(
+                conn,
+                workflowId,
+                TransitionKind.NORMAL,
+                "되살린 완료",
+                statusCompositionId(conn, workflowId, "todo"),
+                statusCompositionId(conn, workflowId, "done"),
+            )
+        }
+
         /** 워크플로우 1행. 같은 키가 이미 있으면 그 id 를 준다. */
         private fun insertWorkflow(
             conn: Connection,
@@ -390,8 +427,9 @@ class PostActionE2EIntegrationTest {
             }
 
         /** 중복 워크플로우의 post-action 경로. 세그먼트는 전환 id 이거나 종전 합성 키다. */
-        private fun dupPath(transitionRef: String): String =
-            "/api/v1/workflows/$DUP_WORKFLOW_KEY/transitions/$transitionRef/post-actions"
+        private fun dupPath(transitionRef: String): String {
+            return "/api/v1/workflows/$DUP_WORKFLOW_KEY/transitions/$transitionRef/post-actions"
+        }
 
         /** 경로 하나에 SET_FIELD 규칙을 만들고(201) 그 경로에 그 규칙 1건만 보이는지 본다. */
         private fun assertRuleIsolatedTo(
@@ -627,6 +665,21 @@ class PostActionE2EIntegrationTest {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].config.field").value("assignee"))
+        }
+    }
+
+    @Test
+    @Order(160)
+    fun `같은 키의 삭제된 워크플로우가 있어도 합성 키가 해석된다`() {
+        withActor {
+            // 전환은 1건뿐이라 다건 판정과 무관하다. 워크플로우 해석이 삭제된 동명 행까지 세면
+            // 그 단계의 fetchOne 이 2행을 만나 미처리 예외 → 500 이 되고 이 단언이 깨진다.
+            val path =
+                "/api/v1/workflows/$REVIVED_WORKFLOW_KEY/transitions/$REVIVED_TRANSITION_KEY/post-actions"
+
+            mockMvc.perform(get(path))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(0))
         }
     }
 }

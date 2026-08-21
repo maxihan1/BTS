@@ -26,6 +26,8 @@ import java.util.UUID
  * - delete: deleteById 수행
  * - transitionKey 형식 오류(__ 없음): PostActionNotFoundException(404)
  * - 전환 미존재: PostActionNotFoundException(404)
+ * - transitionKey 가 UUID: resolveById 로 해석 (합성 키 분해를 시도하지 않는다)
+ * - 합성 키가 2건 이상에 걸림: PostActionNotFoundException(404) — 미처리 예외(500)가 아니다
  *
  * 주의: post-action 은 전환 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
  * WorkflowCache 의존성이 없고 캐시 무효화 단언도 불필요하다.
@@ -48,8 +50,10 @@ class PostActionAdminServiceTest {
         transitionResolver = mockk()
         service = PostActionAdminService(repository, factory, transitionResolver)
 
-        // 기본 stub: transitionKey 해석 성공
-        every { transitionResolver.resolveTransitionId(workflowKey, "open", "in_progress") } returns transitionId
+        // 기본 stub: 합성 키 해석 성공 (단건)
+        every {
+            transitionResolver.resolveTransitionIds(workflowKey, "open", "in_progress")
+        } returns listOf(transitionId)
     }
 
     // ── listForTransition ─────────────────────────────────────────────────────
@@ -210,10 +214,48 @@ class PostActionAdminServiceTest {
         }.isInstanceOf(PostActionNotFoundException::class.java)
     }
 
+    // ── 전환 지목값이 id 일 때 / 합성 키가 유일하지 않을 때 ──────────────────
+
+    @Test
+    fun `listForTransition - transitionKey 가 UUID 면 id 로 해석한다`() {
+        every { transitionResolver.resolveById(workflowKey, transitionId) } returns transitionId
+        every { repository.findByTransitionId(transitionId) } returns emptyList()
+
+        service.listForTransition(workflowKey, transitionId.toString())
+
+        verify(exactly = 1) { transitionResolver.resolveById(workflowKey, transitionId) }
+        // 합성 키 분해를 시도하면 UUID 의 '-' 를 상태 키로 오해한다 — 그 경로로 새지 않는지 본다.
+        verify(exactly = 0) { transitionResolver.resolveTransitionIds(any(), any(), any()) }
+    }
+
+    @Test
+    fun `listForTransition - UUID 가 그 워크플로우의 전환이 아니면 PostActionNotFoundException(404) 발생`() {
+        every { transitionResolver.resolveById(workflowKey, transitionId) } returns null
+
+        assertThatThrownBy {
+            service.listForTransition(workflowKey, transitionId.toString())
+        }.isInstanceOf(PostActionNotFoundException::class.java)
+    }
+
+    @Test
+    fun `listForTransition - 합성 키가 2건에 걸리면 PostActionNotFoundException(404) 발생`() {
+        // V207 ① 이 UNIQUE(workflow, from, to) 를 풀어 생길 수 있는 모양이다.
+        // 종전 구현은 여기서 jOOQ TooManyRowsException 을 미처리로 흘려 500 이 됐다.
+        every {
+            transitionResolver.resolveTransitionIds(workflowKey, "open", "in_progress")
+        } returns listOf(transitionId, UUID.fromString("aaaaaaaa-0000-0000-0000-000000000002"))
+
+        assertThatThrownBy {
+            service.listForTransition(workflowKey, transitionKey)
+        }.isInstanceOf(PostActionNotFoundException::class.java)
+    }
+
     @Test
     fun `create - 전환 미존재이면 PostActionNotFoundException(404) 발생`() {
         val config = mapOf("field" to "assignee")
-        every { transitionResolver.resolveTransitionId(workflowKey, "open", "nonexistent") } returns null
+        every {
+            transitionResolver.resolveTransitionIds(workflowKey, "open", "nonexistent")
+        } returns emptyList()
 
         assertThatThrownBy {
             service.create(workflowKey, "open__nonexistent", "SET_FIELD", config, 0)
