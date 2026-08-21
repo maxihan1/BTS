@@ -2,6 +2,7 @@
 
 package com.bts.workflow.web
 
+import com.bts.workflow.application.WorkflowStatusReferencedByTransitionException
 import com.bts.workflow.domain.exception.WorkflowStatusCompositionException
 import com.bts.workflow.domain.exception.WorkflowStatusInUseException
 import org.slf4j.LoggerFactory
@@ -40,6 +41,34 @@ class WorkflowStatusCompositionExceptionHandler {
                     ErrorBody(
                         code = "WORKFLOW_STATUS_IN_USE",
                         message = "이 상태에 있는 이슈가 ${ex.issueCount}건입니다. 이슈를 다른 상태로 옮긴 뒤 빼 주세요.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 전환이 가리키는 상태를 빼려 함 — 409. [handleStatusInUse] 와 같은 모양이고, 붙잡는 주체만 다르다.
+     *
+     * 막은 전환 **이름**을 본문에 싣는다. 개수만 주면 사용자는 편집기에서 어느 선을 먼저 지워야 할지
+     * 알 수 없어 409 가 「그냥 안 됨」이 된다. 매핑이 없으면 이 예외는 advice 를 통과해 500 이 되고,
+     * 프론트는 그것을 서버 고장과 구별하지 못한다.
+     */
+    @ExceptionHandler(WorkflowStatusReferencedByTransitionException::class)
+    fun handleStatusReferenced(ex: WorkflowStatusReferencedByTransitionException): ResponseEntity<ErrorResponse> {
+        log.info(
+            "WORKFLOW_409_STATUS_REFERENCED_BY_TRANSITION workflow='{}' status='{}' transitions={}",
+            ex.workflowKey,
+            ex.statusKey,
+            ex.transitionNames,
+        )
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_STATUS_REFERENCED_BY_TRANSITION",
+                        message =
+                            "이 상태를 쓰는 전환이 ${ex.transitionNames.size}건입니다" +
+                                "(${ex.transitionNames.joinToString(", ")}). 그 전환을 먼저 지운 뒤 빼 주세요.",
                     ),
             ),
         )
