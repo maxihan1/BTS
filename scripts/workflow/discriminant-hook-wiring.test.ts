@@ -34,7 +34,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { GUARD_OPERATORS, HOOK, PNPM_WRAPPER, blockDepthAt, commandLines } from './hook-source.ts'
+import {
+  DEPLOY_GATE,
+  GUARD_OPERATORS,
+  HOOK,
+  PNPM_WRAPPER,
+  blockDepthAt,
+  commandLines,
+} from './hook-source.ts'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -336,5 +343,138 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
     for (const notScrub of ['echo "$GIT_DIR"', 'unset BTS_SKIP_MODULE_TEST', call]) {
       assert.equal(isGitScrub(notScrub), false, `정상 명령을 GIT_* 스크럽으로 읽었다: ${notScrub}`)
     }
+  })
+})
+
+/**
+ * 배포 게이트 스크립트 본문. 없으면 실패한다 — 파일이 사라지면 「훅과 같은 한 줄」이라는
+ * 약속의 상대가 사라지고, 아래 판정 전부가 검사할 대상 없이 조용히 통과한다.
+ */
+function readDeployGate(): string {
+  const p = path.join(REPO_ROOT, DEPLOY_GATE)
+  assert.ok(
+    fs.existsSync(p),
+    `${DEPLOY_GATE} 가 없다. 이 스크립트는 프로덕션 직전의 유일한 전수 게이트이고, ` +
+      `그 앞의 GIT_* 스크럽이 여기서 재는 대상이다.`,
+  )
+  return fs.readFileSync(p, 'utf-8')
+}
+
+const WHY_SAME_LINE =
+  `${HOOK} 와 ${DEPLOY_GATE} 는 **같은 스크럽 한 줄**을 공유한다. 그 동일성이 지켜지는 ` +
+  `동안에만 배포 쪽 줄이 훅 쪽 판정(존재·순서·비가드·실효 실측)에 **무임승차**한다.\n` +
+  `두 줄이 갈라지는 순간 배포 쪽은 아무도 실행해 보지 않는 사본이 되고, 갈라진 뒤에도 초록이다 — ` +
+  `이 저장소가 이름 붙인 지배 결함 양식 그대로다. 실제로 그 자리 주석은 이 위험을 ` +
+  `문장으로 적어 두기까지 했는데, 그 동일성을 재는 기계가 없었다.\n` +
+  `배포 줄을 바꾸고 싶으면 훅 줄을 **같은 커밋에서 같은 형태로** 바꿔라.`
+
+describe('배포 게이트의 GIT_* 스크럽 (훅 판정에 무임승차한다)', () => {
+  test('★★배포 게이트의 스크럽 줄이 훅의 그 줄과 문자열로 같다', () => {
+    // ★왜 실행해 보지 않고 문자열만 대조하나. 배포 줄의 **실효**는 훅 줄의 실효 실측이
+    //   이미 판정한다(위 §푸시 훅의 GIT_* 스크럽). 두 줄이 같다면 실효도 같다 — 사본을
+    //   두 벌 실행하는 것은 같은 것을 두 번 재면서 `sh -c` 호출만 하나 늘리는 거래다.
+    //   동일성이 깨지는 순간 이 판정이 red 이므로 무임승차가 소리 없이 끊기지도 않는다.
+    const hookSrc = readHook()
+    const deploySrc = readDeployGate()
+
+    // 비-공허 짝 ①. 서로 **다른 두 파일**을 읽었는가. 경로 배선이 미끄러져 같은 파일을
+    // 두 번 읽으면 아래 동일성은 무엇을 하든 참이다.
+    assert.notEqual(
+      hookSrc,
+      deploySrc,
+      `${HOOK} 와 ${DEPLOY_GATE} 의 내용이 통째로 같게 읽혔다 — 경로 배선이 죽어 같은 파일을 두 번 읽는다.`,
+    )
+
+    const hookScrub = commandLines(hookSrc).find(isGitScrub)
+    const deployScrub = commandLines(deploySrc).find(isGitScrub)
+
+    // 비-공허 짝 ②. 양쪽에서 정말 **찾았는가**. 둘 다 못 찾은 채 `undefined === undefined` 로
+    // 통과하면 이 판정은 아무것도 증명하지 않는다.
+    assert.ok(
+      hookScrub !== undefined,
+      `${HOOK} 에서 GIT_* 스크럽을 못 찾았다 — 비교할 원본이 없다.\n\n${WHY_SCRUB}`,
+    )
+    assert.ok(
+      deployScrub !== undefined,
+      `${DEPLOY_GATE} 에서 GIT_* 스크럽을 못 찾았다.\n\n${WHY_SAME_LINE}\n\n${WHY_SCRUB}`,
+    )
+
+    assert.equal(
+      deployScrub,
+      hookScrub,
+      `${DEPLOY_GATE} 의 스크럽 줄이 ${HOOK} 의 그 줄과 다르다.\n` +
+        `  ${HOOK}: ${hookScrub}\n` +
+        `  ${DEPLOY_GATE}: ${deployScrub}\n\n${WHY_SAME_LINE}`,
+    )
+  })
+
+  test('★배포 스크럽이 전량 검증 게이트보다 앞에 있다', () => {
+    // 동일성만으로는 「배포 스크립트 **어디에** 있는가」가 안 잡힌다. 게이트 뒤로 밀리면
+    // 판별식은 이미 오염된 환경을 상속한 뒤이고, 뒤에서 지워도 늦다.
+    const lines = commandLines(readDeployGate())
+    const scrubAt = lines.findIndex(isGitScrub)
+    const gateAt = lines.findIndex(isDiscriminantCall)
+
+    assert.notEqual(scrubAt, -1, `${DEPLOY_GATE} 에 GIT_* 스크럽이 없다.\n\n${WHY_SAME_LINE}`)
+    assert.notEqual(
+      gateAt,
+      -1,
+      `${DEPLOY_GATE} 에 판별식 전량 호출이 없다 — 순서를 잴 상대가 없다. 게이트 자체가 사라졌는지 본다.`,
+    )
+    assert.ok(
+      scrubAt < gateAt,
+      `${DEPLOY_GATE} 의 GIT_* 스크럽이 전량 검증 게이트보다 뒤에 있다 (스크럽 ${scrubAt} · 게이트 ${gateAt}).\n` +
+        `배포는 훅·\`git bisect run\`·\`git rebase --exec\` 아래에서도 불릴 수 있고, ` +
+        `그때 판별식이 먼저 돌면 픽스처가 진짜 저장소를 건드린 뒤다.\n\n${WHY_SCRUB}`,
+    )
+  })
+
+  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', () => {
+    const lines = commandLines(readDeployGate())
+    const scrub = lines.find(isGitScrub)
+    const depth = blockDepthAt(lines, isGitScrub)
+
+    const why =
+      `조건이 붙으면 그 조건이 거짓인 배포에서 스크럽이 통째로 사라진다 — 조용한 부재다.\n` +
+      `특히 \`BTS_SKIP_DEPLOY_TEST\` 분기 안으로 들어가면 「테스트를 건너뛴 배포」가 ` +
+      `동시에 「스크럽도 건너뛴 배포」가 된다.\n\n${WHY_SCRUB}`
+
+    assert.equal(depth, 0, `${DEPLOY_GATE} 의 GIT_* 스크럽이 셸 블록 깊이 ${depth} 에 있다.\n\n${why}`)
+
+    const guarded = GUARD_OPERATORS.filter((op) => (scrub ?? '').includes(op))
+    assert.deepEqual(
+      guarded,
+      [],
+      `${DEPLOY_GATE} 의 GIT_* 스크럽이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n\n${why}`,
+    )
+  })
+
+  test('동일성 판정이 변형을 실제로 잡아낸다 (양성 대조군)', () => {
+    // 위 판정이 초록인 이유가 「두 줄이 같아서」인지 「비교가 죽어서」인지 가른다.
+    const real = "unset $(env | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p')"
+    const narrowed = 'unset GIT_DIR'
+    const call = "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"
+
+    const asHook = ['# 훅 쪽 주석은 여기서 이렇게 길다', real, call].join('\n')
+    const asDeploy = ['#!/bin/bash', '# 배포 쪽 주석은 다른 문장이다', real, call].join('\n')
+    const mutated = ['#!/bin/bash', '# 배포 쪽 주석은 다른 문장이다', narrowed, call].join('\n')
+
+    const pick = (sh: string): string | undefined => commandLines(sh).find(isGitScrub)
+
+    // ★주석이 판정에 안 샌다. 두 파일의 산문이 전혀 달라도 뽑히는 것은 실행 줄뿐이므로
+    //   동일성은 「같은 명령을 쓰는가」만 묻는다 — 주석을 맞추라고 요구하지 않는다.
+    assert.equal(pick(asHook), pick(asDeploy), '주석이 다르다는 이유로 같은 실행 줄을 다르게 읽었다.')
+    assert.equal(pick(asDeploy), real, '실행 줄을 원형 그대로 뽑지 못했다 — 어딘가에서 문자열이 변형된다.')
+
+    // ★MC2 의 구조. 좁혀진 변형은 존재·비가드 판정을 **통과**하고 동일성만 red 다.
+    //   그 자리가 이 판정이 존재하는 이유다 — 다른 판정은 아무도 그 변형을 못 잡는다.
+    assert.ok(isGitScrub(narrowed), '좁혀진 변형을 스크럽으로 못 읽었다 — 그러면 존재 판정이 대신 red 가 되어 동일성의 몫이 흐려진다.')
+    assert.equal(blockDepthAt(commandLines(mutated), isGitScrub), 0, '좁혀진 변형을 조건부로 읽었다.')
+    assert.notEqual(pick(mutated), pick(asHook), '좁혀진 변형(`unset GIT_DIR`)을 원형과 같은 줄로 읽었다 — 동일성 비교가 죽어 있다.')
+
+    // 부재를 「같음」으로 읽지 않는가. 스크럽이 통째로 빠진 파일에서는 undefined 가 나와야 하고,
+    // 그것을 원형과 같다고 읽으면 MC1(줄 삭제)이 초록으로 통과한다.
+    assert.equal(pick([call].join('\n')), undefined, '스크럽이 없는 소스에서 무언가를 뽑았다.')
+    assert.notEqual(pick([call].join('\n')), pick(asHook), '스크럽 부재를 원형과 같다고 읽었다.')
   })
 })
