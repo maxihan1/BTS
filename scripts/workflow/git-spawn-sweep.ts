@@ -392,7 +392,11 @@ function endOfString(code: string, start: number): number {
 }
 
 /**
- * 호출 인자에서 **마지막 최상위 객체 리터럴**을 잘라낸다 — 그것이 옵션 객체다.
+ * 호출 인자에서 **첫 최상위 객체 리터럴**을 잘라낸다 — 그것이 옵션 객체다.
+ *
+ * 「마지막」으로 잡으면 옵션 뒤에 객체가 하나 더 붙은 호출에서 그 뒤엣것이 옵션 행세를
+ * 하고, 거기 적힌 `env` 가 판정을 대신 만족시킨다. spawn 계열의 인자는 명령·인자배열·
+ * 옵션·콜백이라 객체 리터럴을 하나만 받는다 — 첫 번째가 옵션이고 뒤엣것은 옵션이 아니다.
  *
  * 줄 단위로 안 본다. 여러 줄에 걸쳐 쓴 호출이 바로 이 스윕이 놓쳤던 형태이므로
  * 괄호 균형을 따라가고, 문자열 리터럴 안은 건너뛴다.
@@ -405,20 +409,19 @@ function optionsObject(code: string, openParen: number): string | null {
   const ARGUMENT_DEPTH = 1
   let depth = 0
   let objectStart = -1
-  let last: string | null = null
   for (let i = openParen; i < code.length; i += 1) {
     const c = code[i] ?? ''
     if (c === "'" || c === '"' || c === '`') i = endOfString(code, i)
     else if (c === '(' || c === '[' || c === '{') {
       depth += 1
-      if (c === '{' && depth === ARGUMENT_DEPTH + 1) objectStart = i
+      if (c === '{' && depth === ARGUMENT_DEPTH + 1 && objectStart < 0) objectStart = i
     } else if (c === ')' || c === ']' || c === '}') {
-      if (c === '}' && depth === ARGUMENT_DEPTH + 1 && objectStart >= 0) last = code.slice(objectStart, i + 1)
+      if (c === '}' && depth === ARGUMENT_DEPTH + 1 && objectStart >= 0) return code.slice(objectStart, i + 1)
       depth -= 1
-      if (depth === 0) return last
+      if (depth === 0) return null
     }
   }
-  return last
+  return null
 }
 
 /**
@@ -446,8 +449,14 @@ function topLevelEntries(objectText: string): string[] {
   return entries.map((e) => e.trim()).filter((e) => e !== '')
 }
 
-/** `env` 키를 명시한 조각. `env: X` 와 축약형 `{ …, env }` 를 함께 인정한다. */
-const ENV_ENTRY = /^['"]?env['"]?\s*(?::|$)/
+/**
+ * `env` 를 **제 값과 함께** 명시한 조각. `env: X` 와 축약형 `{ …, env }` 를 함께 인정한다.
+ *
+ * 값이 `process.env` 인 자리와 `undefined` 인 자리는 뺀다 — 앞은 GIT_* 를 통째로 물려주고,
+ * 뒤는 Node 에서 `env` 를 아예 안 준 것과 같다. 둘 다 스크럽의 반대인데 키만 보면 통과한다.
+ * 이름 둘을 빼는 것은 예외 목록이 아니다 — 여기 이름을 얹어 red 를 끌 수 있는 자리가 없다.
+ */
+const ENV_ENTRY = /^['"]?env['"]?\s*(?::\s*(?!process\.env\b|undefined\b)\S|$)/
 
 /**
  * 옵션 객체가 `env` 를 **명시**했는가.
