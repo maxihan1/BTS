@@ -776,8 +776,18 @@ function tapCounts(output: string): Map<string, number> {
   return counts
 }
 
-/** 러너가 그 파일만 단독으로 돌릴 수 있는 픽스처 생성자. 자식으로 태울 대상이다. */
-const DIRECTLY_RUNNABLE_CREATORS = KNOWN_FIXTURE_CREATORS.filter((file) => matchesRunnerGlob(file))
+/**
+ * 자식으로 태울 대상 전량. 사람 목록이 아니라 **파생**이다.
+ *
+ * git 을 부르는 파일과 그것에 닿는 파일 전량에서 러너가 단독으로 돌릴 수 있는 것을 고른다.
+ * 사람이 적으면 파일이 하나 늘 때마다 목록이 조용히 낡고, 그 낡음이 「덮었다」로 읽힌다.
+ *
+ * 저 자신만 뺀다 — 자식이 이 파일을 다시 돌리면 그 자식이 또 자식을 띄워 끝나지 않는다.
+ * 이름을 적어 빼지 않고 `import.meta.url` 로 저를 식별한다. 예외 목록이 아니라는 것은
+ * 아래 판정이 값으로 확인한다. 뺀 자리는 호출부 층위가 덮는다 — 그 층위는 파일을 하나도
+ * 안 빼므로 이 파일의 git 호출도 env 를 명시해야 통과한다.
+ */
+const DIRECTLY_RUNNABLE_CREATORS = deriveGitTouchingFiles().filter((file) => matchesRunnerGlob(file) && file !== SELF)
 
 /**
  * 원본 전량을 차례로 자식에 태우고, **자식마다** victim 을 다시 읽는다.
@@ -865,6 +875,35 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
     }
+  })
+
+  test('★★자식 대상 파생이 비어 있지 않고 저 자신을 실제로 빼고 있다 (비-공허 짝)', () => {
+    // 파생이 무너지면 자식이 0개가 되고, 아래 무손상 단언은 「아무 일도 안 일어났다」로
+    // 통과한다. 무너짐은 빈 목록으로 오므로 비어 있지 않음을 값으로 확인한다.
+    assert.notDeepEqual(DIRECTLY_RUNNABLE_CREATORS, [], '자식으로 태울 대상이 하나도 없다 — 아래 판정이 통째로 공허하다.')
+
+    const missed = KNOWN_FIXTURE_CREATORS.filter((file) => !deriveGitTouchingFiles().includes(file))
+    assert.deepEqual(
+      missed,
+      [],
+      '임시 저장소를 세우는 것으로 알려진 파일이 자식 대상 파생에서 빠졌다 — 파생이 썩었다.\n' +
+        `빠진 것 전수. ${JSON.stringify(missed)}\n` +
+        `실제 파생 전량. ${JSON.stringify(deriveGitTouchingFiles())}`,
+    )
+
+    // ★저를 빼는 것이 **실제로 무언가를 빼고 있는지**를 잰다. 자기 식별이 어긋나면 이 뺄셈은
+    //   아무것도 안 빼는 no-op 이 되고, 그 순간 자식이 저를 다시 돌려 끝나지 않는다.
+    //   그때 보이는 것은 「판정이 틀렸다」가 아니라 「하네스가 멈췄다」라 원인에서 멀다.
+    assert.ok(
+      deriveGitTouchingFiles().includes(SELF) && matchesRunnerGlob(SELF),
+      '이 파일이 자식 대상 파생에 안 든다 — 저를 빼는 뺄셈이 아무것도 안 빼고 있다.\n' +
+        `자기 식별. ${JSON.stringify(SELF)}\n` +
+        `실제 파생 전량. ${JSON.stringify(deriveGitTouchingFiles())}`,
+    )
+    assert.ok(
+      !DIRECTLY_RUNNABLE_CREATORS.includes(SELF),
+      '자식으로 태울 대상에 이 파일이 들었다 — 자식이 저를 다시 돌려 끝나지 않는다.',
+    )
   })
 
   test('★★아무것도 안 돈 자식을 「돌았다」로 세지 않는다 (비-공허 짝)', () => {

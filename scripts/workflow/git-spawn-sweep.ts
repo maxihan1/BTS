@@ -445,7 +445,7 @@ export function strippedSources(): StrippedSource[] {
 }
 
 /**
- * git 을 부르는 파일과 **그것에 닿는 파일** 전량. 임포트를 따라 전이로 넓힌다.
+ * git 을 부르는 파일과 **그것에 닿는 파일** 전량. 임포트를 따라 이어서 넓힌다.
  *
  * 자식으로 태울 대상이 여기서 나온다. spawn 하는 파일만 태우면 그것을 임포트해서 부르는
  * 파일이 아무 자식에도 안 실려 사각지대가 된다 — 실측에서 `push-backend-tests.ts` 가
