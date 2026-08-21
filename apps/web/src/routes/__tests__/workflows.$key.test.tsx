@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import { workflowHandlers } from '@/mocks/workflow-handlers'
+import { softwareDefaultFixture } from '@/mocks/workflow-fixtures'
 import { useAuthStore } from '@/auth/authStore'
 import { WorkflowDetailPage } from '@/routes/workflows.$key'
 
@@ -148,13 +149,21 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
   })
 
   /**
-   * T5-7. MSW 픽스처(= 실제 응답 모양)의 INITIAL 전환이 화면까지 닿는다.
+   * T5-7. MSW 픽스처(= 실제 응답 모양)의 INITIAL 전환이 화면까지 닿고, 전환 선택의 값이
+   * 응답에 실린 전환 `id` 그대로다.
    *
    * 마이그레이션 V207 ⑨ 가 워크플로우마다 `fromStateKey: null` 인 INITIAL 1건을 백필하므로
-   * 모든 실제 응답에 null 원소가 섞인다. 그 원소가 렌더 계층에서 TypeError 를 내던 결함의 재현 단언이고,
-   * option value 가 응답 `key`(`INITIAL__open`) 여야 backend post-action 경로와 어긋나지 않는다.
+   * 모든 실제 응답에 null 원소가 섞인다. 그 원소가 렌더 계층에서 TypeError 를 내던 결함의 재현 단언이다.
+   *
+   * 지목값이 `id` 인 이유. 전환의 1급 식별자는 `workflow_transitions.id` 이고 `key`(`INITIAL__open`)는
+   * 하위호환용 계산 프로퍼티로 강등돼 더는 유일하지 않다 (ADR 2026-08-18 §D1). backend 는 합성 키가
+   * 2건 이상에 걸리면 대상을 특정할 수 없다고 보고 404 로 거절하므로, 화면이 `key` 를 보내면
+   * 같은 구간에 전환이 둘 생기는 순간 조용히 못 쓰게 된다.
+   *
+   * 재조립 판정은 **option 전량**으로 잰다. INITIAL 한 건만 보면 나머지 전환에서 프론트가 값을
+   * 다시 만들어 내도 통과한다 — 기대값은 하드코딩이 아니라 픽스처(= 응답)에서 뽑는다.
    */
-  it('T5-7: admin이면 INITIAL 전환이 응답 key 로 전환 선택에 나타난다', async () => {
+  it('T5-7: admin이면 INITIAL 전환이 응답 전환 id 로 전환 선택에 나타난다', async () => {
     useAuthStore.setState({
       accessToken: 'token',
       user: {
@@ -170,12 +179,17 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
 
     renderPage()
 
-    const option = await screen.findByRole('option', { name: '이슈 생성' })
-    expect((option as HTMLOptionElement).value).toBe('INITIAL__open')
+    // 재현 대상(출발 상태 없는 INITIAL)이 응답에 실제로 있어야 아래 단언이 공허하지 않다
+    const initial = softwareDefaultFixture.transitions.find((t) => t.kind === 'INITIAL')
+    expect(initial).toBeDefined()
+    expect(initial?.fromStateKey).toBeNull()
 
-    // 재계산 흔적(`null__open`)이 한 건도 없어야 한다
+    const option = await screen.findByRole('option', { name: '이슈 생성' })
+    expect((option as HTMLOptionElement).value).toBe(initial?.id)
+
+    // 응답을 그대로 쓴다 = option value 전량이 (placeholder + 응답 전환 id 목록) 과 같다
     const values = screen.getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
-    expect(values.some((v) => v.includes('null'))).toBe(false)
+    expect(values).toEqual(['', ...softwareDefaultFixture.transitions.map((t) => t.id)])
   })
 
   /**
