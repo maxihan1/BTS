@@ -79,7 +79,7 @@ const HELPER_IMPORT = /\bfrom\s*(['"])[^'"]*git-fixture-env\.mjs\1/
  * @param src 원본 소스
  * @returns 주석이 빠진 소스
  */
-function stripComments(src: string): string {
+export function stripComments(src: string): string {
   let out = ''
   let quote: string | null = null
   for (let i = 0; i < src.length; i += 1) {
@@ -137,6 +137,30 @@ function scriptSources(): string[] {
   return found.sort()
 }
 
+/** 주석을 걷은 소스 한 벌. 파일 경로와 그 텍스트. */
+export interface StrippedSource {
+  /** 저장소 상대 경로 */
+  file: string
+  /** 주석이 빠진 소스 */
+  code: string
+}
+
+/**
+ * `scripts` 아래 소스 전량을 읽어 주석을 걷는다.
+ *
+ * 아래 파생 집합들이 전부 여기를 지난다 — 판별식이 「주석이 실제로 걷혔는가」를 잴 때
+ * **판정이 소비하는 바로 그 텍스트**를 보게 하려는 것이다. 따로 읽어 따로 걷으면
+ * 재는 텍스트와 판정하는 텍스트가 두 벌이 되고, 둘은 서로를 검사하지 않는다.
+ *
+ * @returns 정렬된 경로 순서의 소스 목록
+ */
+export function strippedSources(): StrippedSource[] {
+  return scriptSources().map((file) => ({
+    file,
+    code: stripComments(fs.readFileSync(path.join(REPO_ROOT, file), 'utf-8')),
+  }))
+}
+
 /** 소스에서 재계산한 두 집합. 사람이 유지하는 목록은 어느 쪽에도 없다. */
 export interface WiringSets {
   /** git 을 spawn 하는 파일 */
@@ -153,11 +177,10 @@ export interface WiringSets {
 export function deriveWiringSets(): WiringSets {
   const spawners: string[] = []
   const importers: string[] = []
-  for (const rel of scriptSources()) {
-    if (rel === HELPER_MODULE) continue
-    const code = stripComments(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8'))
-    if (GIT_SPAWN.test(code)) spawners.push(rel)
-    if (HELPER_IMPORT.test(code)) importers.push(rel)
+  for (const { file, code } of strippedSources()) {
+    if (file === HELPER_MODULE) continue
+    if (GIT_SPAWN.test(code)) spawners.push(file)
+    if (HELPER_IMPORT.test(code)) importers.push(file)
   }
   return { spawners, importers }
 }
@@ -331,8 +354,7 @@ function lineNumberAt(code: string, index: number): number {
  */
 export function deriveGitSpawnCallSites(): GitSpawnCallSite[] {
   const sites: GitSpawnCallSite[] = []
-  for (const rel of scriptSources()) {
-    const code = stripComments(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8'))
+  for (const { file: rel, code } of strippedSources()) {
     const scanner = new RegExp(GIT_SPAWN_SOURCE, 'g')
     let hit: RegExpExecArray | null
     while ((hit = scanner.exec(code)) !== null) {

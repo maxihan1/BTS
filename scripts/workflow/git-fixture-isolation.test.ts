@@ -32,7 +32,13 @@ import { fileURLToPath } from 'node:url'
 
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs'
-import { deriveGitSpawnCallSites, deriveWiringSets, wiringMismatch } from './git-spawn-sweep.ts'
+import {
+  deriveGitSpawnCallSites,
+  deriveWiringSets,
+  stripComments,
+  strippedSources,
+  wiringMismatch,
+} from './git-spawn-sweep.ts'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -321,6 +327,84 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
       (v) => !resolveExisting(v).startsWith(tmpReal + path.sep) || resolveExisting(v).startsWith(repoReal + path.sep),
     )
     assert.deepEqual(strayed, [], `mkdtemp 밖에 victim 을 만들었다 — 전수. ${JSON.stringify(strayed)}`)
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// 주석 걷기 — 아래 두 층위가 전부 여기를 지난다
+// ─────────────────────────────────────────────────────────
+//
+// 주석이 남으면 파생 집합이 **green 쪽으로** 뚫린다. 주석 처리된 임포트 한 줄이 파일 단위
+// 대조를 만족시키고, 배선이 없는데도 초록이 된다 — 스트리핑이 막겠다고 적어 둔 그것이다.
+// 정규식 리터럴에 따옴표가 들면(`/['"]/`) 유령 문자열 상태가 열려 그 뒤가 통째로 살아남고,
+// 슬래시가 들면 닫히지 않은 블록 주석이 열려 파일 나머지가 통째로 지워진다.
+// 앞쪽은 green 쪽, 뒤쪽은 A3 과 같은 **대칭 실명**이다 — 지워진 파일은 양쪽 집합에서
+// 동시에 빠져 차집합이 `빈집합 == 빈집합` 이 된다.
+
+/**
+ * 정규식 리터럴이 스트리핑을 망가뜨리는 합성 소스.
+ *
+ * `keep` 은 리터럴 **뒤**의 코드다. 주석이 지워졌는지와 코드가 남았는지를 함께 봐야
+ * 두 방향(주석 생존 · 코드 소실)이 다 잡힌다. 한쪽만 보면 다른 쪽 손상이 초록이다.
+ */
+const REGEX_LITERAL_TRAPS = [
+  {
+    label: '따옴표가 든 정규식 리터럴',
+    source: ['const QUOTED = /[\'"]/', "// import { gitFixtureEnv } from './git-fixture-env.mjs'", 'const keep = 1'].join(
+      '\n',
+    ),
+  },
+  {
+    label: '슬래시가 든 정규식 리터럴',
+    source: [
+      'const SLASHED = /a\\/*b/',
+      "// import { gitFixtureEnv } from './git-fixture-env.mjs'",
+      'const keep = 1',
+    ].join('\n'),
+  },
+]
+
+describe('주석 걷기가 정규식 리터럴 뒤에서도 듣는다', () => {
+  test('★★정규식 리터럴 뒤의 주석이 지워지고 그 뒤 코드는 남는다 (비-공허 짝)', () => {
+    const survived = REGEX_LITERAL_TRAPS.filter((t) => stripComments(t.source).includes('git-fixture-env.mjs')).map(
+      (t) => t.label,
+    )
+    assert.deepEqual(
+      survived,
+      [],
+      '정규식 리터럴 뒤의 **주석 처리된 임포트**가 살아남았다 — 배선 없이 파일 단위 대조를\n' +
+        '만족시키는 형태다. 스트리핑이 막겠다고 적어 둔 바로 그 구멍이다.\n' +
+        `살아남은 형태 전수. ${JSON.stringify(survived)}`,
+    )
+
+    const erased = REGEX_LITERAL_TRAPS.filter((t) => !stripComments(t.source).includes('const keep = 1')).map(
+      (t) => t.label,
+    )
+    assert.deepEqual(
+      erased,
+      [],
+      '정규식 리터럴 뒤의 **코드**가 통째로 지워졌다 — 닫히지 않은 블록 주석이 열린 것이다.\n' +
+        '그 파일은 두 집합에서 동시에 빠져 차집합이 `빈집합 == 빈집합` 으로 조용히 통과한다.\n' +
+        `지워진 형태 전수. ${JSON.stringify(erased)}`,
+    )
+  })
+
+  test('★★scripts 전량에서 살아남은 줄 주석이 하나도 없다', () => {
+    const LINE_COMMENT = /^\s*\/\//
+    const survived = strippedSources().flatMap(({ file, code }) =>
+      code
+        .split('\n')
+        .map((text, index) => ({ text, line: index + 1 }))
+        .filter(({ text }) => LINE_COMMENT.test(text))
+        .map(({ line }) => `${file}:${line}`),
+    )
+    assert.deepEqual(
+      survived,
+      [],
+      '주석이 걷히지 않고 살아남은 자리가 있다 — 그 파일에서는 주석에 적어 둔 임포트·호출 예시가\n' +
+        '파생 집합을 그대로 만족시킨다. 판정이 실행되는 코드가 아니라 적혀 있는 글을 읽게 된다.\n' +
+        `자리 전수. ${JSON.stringify(survived, null, 2)}`,
+    )
   })
 })
 
