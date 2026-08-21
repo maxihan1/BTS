@@ -229,6 +229,231 @@ Then 판별식이 **red** 가 되어 머지 전에 잡힌다.
 **Sanity Check ✅ 통과** — gap 3건 발견, 전부 스펙에 반영(N1 승격 · E2 분리 · R7/E4 명시).
 Maxi 결정이 필요한 항목 0건.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### 설계 결정 (task 앞에 확정한 것)
+
+**D1 — 스크럽 헬퍼는 신규 모듈 `scripts/workflow/git-fixture-env.ts` 다.**
+두 픽스처 테스트에 각자 스크럽을 복붙하면 그 둘이 서로를 검사하지 않는다. 공유 모듈이어야
+**R4 의 소스 재계산이 「헬퍼를 임포트했는가」라는 하나의 신호**로 성립한다.
+`scripts/workflow/*.{ts,mjs}` 는 이미 `GUARD_CI` 표면이라 티어가 안 바뀐다.
+
+**D2 — 지우는 형태는 접두 스윕 한 줄이다.**
+
+```sh
+unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
+```
+
+루프를 안 쓴다 — `for` 는 `BLOCK_OPEN` 이라 기존 파서의 블록 깊이 판정과 얽힌다. 한 줄이면
+**깊이 0 · 가드 연산자 없음**이 자명하다. `GIT_*` 가 하나도 없으면 `unset` 이 인자 없이 불려
+무해한 no-op 이다(E7).
+
+**D3 — R4 는 「파생 집합 ↔ 선언 집합」 양방향 대조다.**
+`init`/`clone` 문자열만 찾으면 읽기 전용 파일이 우연히 그 문자열을 가질 때 오탐이 난다.
+대신 **소스에서 파생**한 「git 을 spawn 하는 파일 전량」이
+**(헬퍼 임포트 파일) ∪ (READ_ONLY 선언)** 과 양방향으로 같은지 본다.
+새 파일이 어느 쪽에도 없으면 red, 선언에만 있고 실재하지 않아도 red.
+그리고 **READ_ONLY 로 선언된 파일이 `init`·`clone` 을 갖게 되면 red** — 이 조항이 선언의
+비-공허성을 지킨다(선언이 「읽기 전용」이라는 주장의 반증 가능성).
+
+**D4 — 판정의 집을 둘로 나눈다.**
+`discriminant-hook-wiring.test.ts` 는 **훅 배선**이 관심사다(R1·R2). 여기에 얹어 `HOOK` 상수와
+블록 깊이·가드 연산자 파서를 재사용한다 — 사본을 만들면 두 벌이 갈린다.
+**픽스처 격리**(R5·R6·R7)와 소스 재계산(R3·R4)은 관심사가 달라 신규
+`scripts/workflow/git-fixture-isolation.test.ts` 로 분리한다. 300줄 상한 규율(부채 65)도
+216줄짜리 기존 파일에 전부 얹지 말라고 말한다.
+
+**E7 (스펙 엣지 케이스 추가).** `GIT_*` 가 환경에 하나도 없는 경우 — `unset` 이 인자 없이 불린다.
+POSIX 상 무해하고 종료 코드 0 이다. 훅이 셸에서 직접 실행될 때(= `GIT_DIR` 부재)가 이 경우다.
+
+---
+
+### Task 1. 픽스처 격리를 실측하는 판별식과 스크럽 헬퍼
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/git-fixture-env.ts`, `scripts/workflow/git-fixture-isolation.test.ts`]
+- depends-on: []
+
+**RED**:
+- 파일: `scripts/workflow/git-fixture-isolation.test.ts` (신규)
+- 테스트 3종.
+  ```ts
+  // ① 판정 — 스크럽 env 로 픽스처를 만들면 victim 이 안 바뀐다
+  test('GIT_DIR 가 걸려 있어도 픽스처가 진짜 저장소를 안 바꾼다', ...)
+  // ② 비-공허 짝 — 스크럽을 끄면 victim 이 실제로 바뀐다
+  test('★★스크럽을 끄면 실제로 오염된다 (비-공허 짝)', ...)
+  // ③ 자기 함정 — 이 판별식이 REPO_ROOT 를 대상으로 삼지 않는다
+  test('★victim 은 언제나 mkdtemp 아래이고 REPO_ROOT 가 아니다', ...)
+  ```
+- 판정 방법. victim 은 `fs.mkdtempSync(os.tmpdir())` 아래에 **스크럽된 env 로** 만든다.
+  그 다음 `GIT_DIR=<victim>/.git` 를 건 채 픽스처 절차(`init`→`add`→`commit`)를 돌리고
+  victim 의 **커밋 수 · `core.bare` 유무 · HEAD** 를 전후 비교한다.
+- 실패 메시지 (예상): `Cannot find module '.../git-fixture-env.ts'`
+
+**GREEN**:
+- 파일: `scripts/workflow/git-fixture-env.ts` (신규)
+- 최소 구현. `process.env` 사본에서 `GIT_` 로 시작하는 키를 전량 삭제해 돌려주는 함수 하나.
+  **열거하지 않는다**(N1) — 접두로 판정한다.
+
+**REFACTOR**:
+- 파일 첫 줄에 역할 한국어 주석 1줄. 접두 문자열을 상수로.
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/git-fixture-isolation.test.ts`
+→ 3종 pass · fail 0
+
+---
+
+### Task 2. git 을 부르는 파일 전량이 헬퍼 경유이거나 읽기 전용 선언이다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/git-fixture-isolation.test.ts`, `scripts/workflow/select-backend-modules.test.ts`, `scripts/workflow/todos-reorder-integrity.test.ts`]
+- depends-on: [1]
+
+**RED**:
+- 파일: `scripts/workflow/git-fixture-isolation.test.ts` (판정 추가)
+- 테스트.
+  ```ts
+  test('★★git 을 spawn 하는 파일 전량이 헬퍼 경유이거나 READ_ONLY 로 선언돼 있다 (양방향)', ...)
+  test('★READ_ONLY 선언 파일이 init·clone 을 갖게 되면 red (선언의 비-공허성)', ...)
+  test('READ_ONLY 선언 파일이 전부 실재한다 (선언 부패 차단)', ...)
+  ```
+- 파생 집합. `scripts/**/*.{ts,mjs}` 소스에서 `spawnSync('git'` · `execFileSync('git'` ·
+  `execSync('git` 을 부르는 파일을 **계산**한다. 사람이 적은 목록을 쓰지 않는다(D3).
+- 실패 메시지 (예상): 두 픽스처 생성자가 헬퍼 임포트도 READ_ONLY 선언도 아니라서 차집합 2건.
+
+**GREEN**:
+- `select-backend-modules.test.ts:700~715` 의 `spawnSync('git', args, { cwd: tmp, env: { ...process.env, HOME: tmp } })`
+  를 헬퍼 경유로 바꾼다. **`HOME: tmp` 는 유지**한다 — 전역 git config 격리 목적이라 이번 결함과 무관하다.
+- `todos-reorder-integrity.test.ts:328~337` 의 `execFileSync('git', args, { cwd: tmp, ... })` 에
+  스크럽된 `env` 를 넘긴다.
+- 읽기 전용 6곳을 `READ_ONLY` 로 선언하고 **각 1줄 사유**를 붙인다 —
+  `tier-floor.test.ts`(`ls-files`·`log`·`merge-base`) · `transition-term-guard.test.ts`(`ls-files`) ·
+  `snapshot-baseline-guard.test.ts`(`ls-files`) · `changed-paths.ts` · `push-backend-tests.ts` ·
+  `todos-reorder-integrity.mjs`. 이들은 **진짜 저장소를 보는 게 정상 동작**이다(E2).
+
+**REFACTOR**:
+- 파생 집합 계산과 선언 대조를 각각 함수로 분리. 실패 메시지가 **차집합 양쪽을 전량 열거**하게 한다
+  (개수를 안 적는다).
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/git-fixture-isolation.test.ts scripts/workflow/select-backend-modules.test.ts scripts/workflow/todos-reorder-integrity.test.ts`
+
+---
+
+### Task 3. 훅이 판별식보다 먼저, 무조건으로 `GIT_*` 를 지운다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/discriminant-hook-wiring.test.ts`, `.husky/pre-push`]
+- depends-on: []
+
+**RED**:
+- 파일: `scripts/workflow/discriminant-hook-wiring.test.ts` (판정 추가 — 기존 `HOOK` 상수와
+  `BLOCK_OPEN`/`BLOCK_CLOSE`/`GUARD_OPERATORS` 파서를 **재사용**한다)
+- 테스트.
+  ```ts
+  test('★푸시 훅이 판별식 전에 GIT_* 를 지운다', ...)
+  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', ...)
+  test('주석이 아니라 실행 줄을 본다 (산문 오탐 방지)', ...)
+  ```
+- 판정. 실행 줄만 훑어 ① `GIT_` 접두를 지우는 구문이 있고 ② 그 줄의 블록 깊이가 0 이며
+  ③ `&&`·`||` 로 앞 명령에 안 붙고 ④ **첫 판별식 호출 줄보다 앞**인지 본다.
+- 실패 메시지 (예상): `.husky/pre-push` 에 `GIT_*` 스크럽이 없다.
+
+**GREEN**:
+- 파일: `.husky/pre-push`
+- D2 의 한 줄을 판별식 호출 **앞**에 넣는다. 왜 지우는지를 기존 주석 관례대로 위에 적되,
+  **주석이 판정을 대신 만족시키지 못하게** 판정은 실행 줄만 본다.
+
+**REFACTOR**:
+- 파일이 300줄 상한(부채 65)에 걸리면 판정 묶음을 분리하고 그 판단 근거를 커밋 메시지에 남긴다.
+  현재 216줄이므로 여유를 실측해 결정한다.
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/discriminant-hook-wiring.test.ts`
+
+---
+
+### Task 4. 각 신규 판정을 일부러 끊어 red 를 1회 관측한다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plans/2026-08-21-pre-push-git-dir.md`]
+- depends-on: [1, 2, 3]
+
+**RED/GREEN 없음 — 관측 task 다.**
+
+**★순서 규율.** 뮤테이션 검증은 **GREEN 을 먼저 커밋한 뒤** 한다. 미커밋 상태에서 끊었다가
+되돌리면 그 되돌림이 소실이다(저장소 함정 목록).
+
+**관측 항목** — 각각 끊고 red 를 본 뒤 되돌린다.
+
+| # | 끊는 것 | 기대 red |
+|---|---|---|
+| M1 | `.husky/pre-push` 의 스크럽 줄 삭제 | Task 3 의 R1 판정 |
+| M2 | 스크럽 줄을 판별식 호출 **뒤로** 이동 | Task 3 의 순서 판정 |
+| M3 | 스크럽 줄을 `&&` 로 앞 명령에 붙임 | Task 3 의 R2 판정 |
+| M4 | `git-fixture-env.ts` 의 삭제 로직을 no-op 으로 | Task 1 의 판정 ① |
+| M5 | 두 픽스처 중 하나를 헬퍼 미경유로 되돌림 | Task 2 의 양방향 판정 |
+| M6 | `READ_ONLY` 선언 하나를 삭제 | Task 2 의 양방향 판정 |
+
+**산출물**. plan 파일 `## red 관측` 절에 M1~M6 각 1줄 — 끊은 것 · 실제 실패 메시지 · 되돌림 확인.
+
+**검증**: 관측 6건 전부 red 확인 후 원복. 원복 뒤 `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` 가 초록.
+
+---
+
+### Task 5. 전량 검증 + `--no-verify` 없이 실제 푸시해 오염 0 을 실측한다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plans/2026-08-21-pre-push-git-dir.md`]
+- depends-on: [4]
+
+**RED/GREEN 없음 — 최종 판별 task 다.**
+
+**5-1. 전량 검증** (각 명령을 **개별 로그로** 돌린다 — 배경 묶음의 종료 코드는 마지막 명령 것이라
+중간 실패를 가린다).
+
+| 검사 | 명령 | 기준 |
+|---|---|---|
+| 판별식 | `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` | fail 0 · skipped 0 · EXIT=0 |
+| 정본 정합 | `bash scripts/verify-master-plan.sh` | EXIT=0 · FR 143/143 |
+| 문서 인덱스 | `node scripts/build-doc-index.mjs --check` | drift 0 · EXIT=0 |
+
+**5-2. C7 — 진짜 판별자.** 여기서만 `--no-verify` 를 뺀다.
+
+푸시 **전** 측정 → `git push` (플래그 없이) → 푸시 **후** 측정. 네 값이 전부 같아야 한다.
+
+```
+git ls-files | wc -l                 # 건수 불변
+git config --get core.bare           # 전후 모두 부재
+git rev-parse HEAD                   # 불변 (푸시는 로컬 ref 를 안 바꾼다)
+git status --porcelain | wc -l       # 전후 모두 0
+```
+
+**★훅이 실제로 돌았는지 눈으로 확인한다.** worktree 가 husky 를 침묵 무력화하는 함정이 있어
+「깨끗함」이 「훅이 안 돌아서 깨끗함」일 수 있다 — 훅 출력(판별식 tests/pass 줄)이 푸시 로그에
+보이는지 확인한다. 안 보이면 이 검증은 **공허하다**.
+
+**산출물**. plan 파일 `## C7 실측` 절에 전후 4값 표 + 훅 실행 증거 1줄.
+
+**검증**: 위 표의 4값 전후 일치 + 훅 출력 관측.
+
+## Plan 메타
+
+- **task 수**. 5 (Task 1~3 은 TDD 사이클 · Task 4~5 는 관측·검증)
+- **예상 wave**. 4
+  - wave 1. Task 1 · Task 3 (파일 교집합 0 — 병렬)
+  - wave 2. Task 2 (Task 1 의 헬퍼 API 에 의존)
+  - wave 3. Task 4 (1·2·3 전부 GREEN 커밋된 뒤)
+  - wave 4. Task 5
+- **구현 규율**. TDD red-first. T2 이므로 `test:` → `feat:` 커밋 순서가 대조된다.
+  Task 4·5 는 사이클이 아니므로 `docs:` 커밋.
+- **추가 검증**. typecheck·ktlint·detekt·vitest·playwright **해당 없음** — 프로덕션 Kotlin 0줄 ·
+  `apps/web` 0파일이다. 판별식·정본 정합·문서 인덱스가 이 작업의 전량 검증이다.
+- **병렬 상한**. 동시 dispatch 2건 (wave 1). 스왑 압박 이력 때문에 3건을 안 넘긴다.
+- **`--no-verify` 규율**. Task 5 의 C7 을 제외한 이 체인의 모든 푸시는 `--no-verify` 다.
+  고치려는 훅이 푸시마다 저장소를 깨뜨리기 때문이다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
