@@ -121,11 +121,30 @@ Then 판별식이 **red** 가 되어 머지 전에 잡힌다.
 |---|---|
 | **R1** | `.husky/pre-push` 가 판별식을 부르기 **전에** `GIT_*` 환경변수 네임스페이스를 지운다 |
 | **R2** | R1 의 스크럽은 **조건에 매달리지 않는다** — 셸 블록 깊이 0 · `&&`/`\|\|` 로 앞 명령에 안 붙는다 |
-| **R3** | 임시 git 저장소를 만드는 테스트 전량이 **스크럽된 env** 로 `git` 을 부른다 |
+| **R3** | `git` 을 spawn 하는 파일 **전량**이 스크럽된 env 로 부른다. 예외 선언 목록을 두지 않는다 |
 | **R4** | R3 의 「전량」은 사람이 유지하는 목록이 아니라 **소스에서 재계산**된다 |
 | **R5** | 격리가 실제로 유지되는지를 **실측**하는 판별식이 있다 — 배선 문자열만 재지 않는다 |
-| **R6** | R5 의 판별식이 **비-공허 짝**을 갖는다 — 스크럽을 끄면 red 가 된다 |
+| **R6** | R5 가 **비-공허 짝**을 갖는다 — 스크럽을 끄면 red 가 된다 |
 | **R7** | R5 의 판별식 자신이 `GIT_DIR` 를 새게 하지 않는다 |
+| **R8** | 훅 스크럽이 **문법적 존재가 아니라 실효로** 판정된다 — 훅 파일에서 읽어낸 그 줄을 실제로 실행해 `GIT_*` 가 0개 남는지 잰다 |
+| **R9** | R4 의 파생 집합 자체가 **비-공허 짝**을 갖는다 — 집합이 비어 있지 않고 알려진 픽스처 생성자를 실제로 문다 |
+
+**★ R3 에서 예외 목록을 지운 이유 (리뷰 F1).** 종전 안은 「헬퍼 경유 ∪ READ_ONLY 선언」과
+대조했다. 그러나 `READ_ONLY` 만 사람이 적는 목록이고, **red 를 끄는 가장 싼 방법**이 된다 —
+새 픽스처 테스트로 red 가 나면 헬퍼 배선보다 그 목록에 한 줄 얹는 게 빠르다.
+그 목록의 의미를 지키는 유일한 장치가 `init`·`clone` **문자열 검사**인데
+`git worktree add` · `git clone --bare` · 변수에 담은 서브커맨드가 전부 빠져나간다
+(`invariant-satisfied-by-helptext-not-logic` 계열).
+전량을 헬퍼로 보내면 대조가 **파생집합 == 파생집합**이 되어 사람 목록이 0개다.
+
+**읽기 전용 호출도 스크럽이 안전한 근거 (실측).** `git` 을 부르는 전량이 `cwd` 를 **명시적으로
+넘기고**, `REPO_ROOT` 를 `path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')`
+로 계산한다. `GIT_*` 가 없으면 git 은 그 `cwd` 에서 저장소를 찾으므로 같은 저장소다.
+worktree 에서는 오히려 더 정확하다.
+
+**★ R9 가 필요한 이유 (리뷰 F2).** 예외 목록을 없애면 대조가 `파생집합 == 헬퍼임포트집합` 이
+된다. 파생 집합을 만드는 소스 정규식이 미래의 호출 형태를 놓쳐 집합이 비면 **`빈집합 == 빈집합`
+으로 조용히 통과**한다 — `discriminant-erases-its-own-evidence` 그 자체다.
 
 ### 비기능 요구사항
 
@@ -135,6 +154,7 @@ Then 판별식이 **red** 가 되어 머지 전에 잡힌다.
 | **N2** | 스크럽이 훅의 **다른 동작을 안 깨뜨린다** |
 | **N3** | 판별식 실행 시간이 눈에 띄게 늘지 않는다 (현재 전량 약 5초) |
 | **N4** | 프로덕션 Kotlin 0줄 · `apps/web` 0파일 · 마이그레이션 0 · 신규 의존성 0 |
+| **N5** | 판정 파서·상수를 **한 벌만** 둔다. 파일이 나뉘어도 복제하지 않는다 |
 
 **N2 의 실측 근거 (착수 전 확인).**
 
@@ -143,10 +163,9 @@ Then 판별식이 **red** 가 되어 머지 전에 잡힌다.
 | `.husky/` 전체의 `GIT_` 언급 | **0건** — 래퍼(`.husky/_/h`)도 안 쓴다 |
 | `scripts/workflow/push-backend-tests.ts` 의 `GIT_` 언급 | **0건** |
 | `infra/deploy/bts-deploy.sh` 의 `GIT_` 언급 | **0건** |
-| 판별식의 `REPO_ROOT` 계산 | 전부 `path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')` — **파일 위치 기준이라 git 환경변수에 안 기댄다** |
-
-즉 `GIT_*` 를 지우면 git 이 `cwd` 로 저장소를 탐색하는데, pre-push 의 `cwd` 는 작업 트리
-루트이므로 같은 저장소를 찾는다. **오히려 worktree 에서 더 정확하다.**
+| `scripts/build-dashboard.mjs` · `build-doc-index.mjs` 의 git 호출 | **0건** |
+| 판별식의 `REPO_ROOT` 계산 | 전부 `import.meta.url` 기준 — git 환경변수에 안 기댄다 |
+| D2 한 줄 스크럽을 `sh -e` 에서 실행 | `GIT_*` 있을 때 전량 제거·EXIT=0 · 하나도 없을 때(인자 없는 `unset`)도 EXIT=0 · 값에 공백이 든 `GIT_SSH_COMMAND` 도 이름만 추출 |
 
 ### API 인터페이스
 
@@ -161,11 +180,14 @@ Then 판별식이 **red** 가 되어 머지 전에 잡힌다.
 | # | 케이스 | 처리 |
 |---|---|---|
 | **E1** | `GIT_ASKPASS`·`GIT_SSH_COMMAND` 등 사용자 인증 설정도 함께 지워진다 | 무해하다. 실제 푸시는 **부모 git 프로세스**가 하고, 훅 스크립트는 node 테스트만 돌린다. unset 범위는 훅 셸과 그 자식뿐이다 |
-| **E2** | 읽기 전용으로 진짜 저장소를 보는 판별식 6곳(`ls-files`·`log`·`merge-base`) | 스크럽 대상이 **아니다.** 그것들은 실저장소를 보는 게 정상 동작이고, `cwd` 탐색으로 같은 저장소를 찾는다 |
-| **E3** | `git init` 이 아니라 `git clone`·`git worktree add` 로 픽스처를 만드는 테스트가 새로 생긴다 | R4 의 소스 재계산이 `init` 과 `clone` **둘 다** 신호로 본다. `worktree add` 는 실저장소를 대상으로 하므로 별개 — **알려진 한계로 남기고** 스펙에 적는다 |
-| **E4** | 판별식이 자기가 만든 victim 을 진짜 저장소로 착각한다 | victim 은 항상 `mkdtemp` 아래다. `REPO_ROOT` 를 victim 으로 삼는 경로를 **테스트가 스스로 금지**한다 |
+| **E2** | 읽기 전용으로 진짜 저장소를 보는 호출(`ls-files`·`log`·`merge-base`) | **스크럽 대상이다**(R3). `cwd` 탐색으로 같은 저장소를 찾으므로 동작이 같고, 예외를 두면 그 예외가 탈출구가 된다 |
+| **E3** | `git init` 이 아니라 `clone`·`worktree add`·`.git` 복사로 픽스처를 만드는 테스트가 새로 생긴다 | 서브커맨드를 신호로 쓰지 않으므로 무관하다. 그 파일도 「git 을 spawn 한다」는 이유만으로 헬퍼가 강제된다 |
+| **E4** | 판별식이 자기가 만든 victim 을 진짜 저장소로 착각한다 | victim 은 항상 `mkdtemp` 아래다. `REPO_ROOT` 를 대상으로 삼는 경로를 **테스트가 스스로 금지**한다 |
 | **E5** | 훅에서 스크럽 줄만 지우고 판별식 호출은 남긴다 | R1·R2 앵커가 red |
-| **E6** | 헬퍼는 남기고 두 테스트가 헬퍼를 안 쓰게 되돌린다 | R4 의 소스 재계산이 red |
+| **E6** | 파일 하나를 헬퍼 미경유로 되돌린다 | R3·R4 양방향 대조가 red |
+| **E7** | `GIT_*` 가 환경에 하나도 없다 | `unset` 이 인자 없이 불린다. `sh -e` 에서 EXIT=0 · 무해(실측 완료) |
+| **E8** | `.mjs` 파일이 `.ts` 헬퍼를 임포트한다 | `scripts/workflow/todos-reorder-integrity.mjs:201` 이 git 을 부른다. 러너가 `--experimental-strip-types` 로 도니 될 것으로 보이나 **미실측** — 착수 첫 단계에서 잰다. 안 되면 헬퍼를 `.mjs` 로 둔다 |
+| **E9** | 스크럽 줄이 **문법적으로 있는데 실제로는 아무것도 안 지운다** (BSD/GNU `sed` 차이 등) | 배선 판정만으로는 못 잡는다. **R8 의 실효 실측**이 이 자리를 막는다 |
 
 ### 제약 조건
 
@@ -173,26 +195,40 @@ Then 판별식이 **red** 가 되어 머지 전에 잡힌다.
   붙어 있으면 pnpm 이 모듈 재설치를 시도하다 무-TTY 로 죽고, `CI=true` 로 뚫으면 워크트리의
   심볼릭이 가리키는 실체가 지워져 **옆 세션 작업이 함께 깨진다**.
 - **가드 수정이다 — 일부러 끊어 red 를 1회 본다.** 표면을 없애면 판별자도 함께 사라지므로,
-  각 새 판정마다 「끊었을 때 red」를 실제로 관측하고 그 사실을 plan 에 기록한다.
-- **주석·도움말 문자열로 판정을 만족시키지 않는다.** `discriminant-hook-wiring.test.ts` 가 이미
-  「주석이 아니라 실행 줄을 본다」를 갖고 있다. 새 판정도 같은 규율을 따른다
-  (`invariant-satisfied-by-helptext-not-logic`).
-- **개수를 안 적는다.** 이 문서에도, 판별식 메시지에도 「N건」을 쓰지 않는다 — 전수 열거·집합
+  각 새 판정마다 「끊었을 때 red」를 실제로 관측하고 **어느 판정이 red 였는지 이름으로** 기록한다.
+- **주석·도움말 문자열로 판정을 만족시키지 않는다.** 새 판정도 「주석이 아니라 실행 줄을 본다」
+  규율을 따른다(`invariant-satisfied-by-helptext-not-logic`).
+- **개수를 안 적는다.** 이 문서에도, 판정 메시지에도 「N건」을 쓰지 않는다 — 전수 열거·집합
   대조만 쓴다.
+- **구조 변경과 동작 변경을 같은 커밋에 섞지 않는다.** 파서 추출(구조)을 먼저 하고 판정 추가(동작)를
+  나중에 한다.
 
 ### 측정 가능한 완료 기준
 
 | # | 기준 | 측정 방법 |
 |---|---|---|
-| **C1** | 훅이 판별식 호출 전에 무조건으로 `GIT_*` 를 지운다 | `discriminant-hook-wiring.test.ts` 신규 판정 green |
-| **C2** | `git init`/`clone` 을 부르는 테스트 전량이 스크럽 헬퍼 경유 | 소스 재계산 판정 green |
-| **C3** | `GIT_DIR` 를 건 채 픽스처를 돌려도 victim 이 안 바뀐다 | 신규 실측 판정 green |
-| **C4** | C3 의 비-공허 짝 — 스크럽을 끄면 victim 이 실제로 바뀐다 | 짝 판정 green |
-| **C5** | 각 신규 판정이 끊었을 때 red 였다 | plan 에 red 관측 기록 |
-| **C6** | 판별식 전량 초록 | `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` · fail 0 · skipped 0 · EXIT=0 |
-| **C7** | **최종 판별자 — `--no-verify` 없이 실제로 푸시해서 저장소 오염 0** | 푸시 전후 `git ls-files \| wc -l` 동일 · `git config --get core.bare` 부재 · `git log --oneline -1` 불변 · `git status --porcelain` 0건 |
+| **C1** | 훅이 판별식 호출 전에 무조건으로 `GIT_*` 를 지운다 | 배선 앵커 판정 green |
+| **C2** | `git` 을 spawn 하는 파일 전량이 헬퍼 경유 (예외 목록 0개) | 파생 집합 양방향 대조 green |
+| **C3** | 파생 집합이 비-공허 — 알려진 픽스처 생성자를 실제로 문다 | 비-공허 짝 green |
+| **C4** | `GIT_DIR` 를 건 채 픽스처를 돌려도 victim 이 안 바뀐다 | 격리 실측 판정 green |
+| **C5** | C4 의 비-공허 짝 — 스크럽을 끄면 victim 이 실제로 바뀐다 | 짝 판정 green |
+| **C6** | 훅의 스크럽 줄이 **실효로** 0개를 남긴다 | 훅에서 읽어낸 줄을 실행해 `env \| grep -c '^GIT_'` == 0 |
+| **C7** | 판정 파서·상수가 한 벌이다 | `hook-source.ts` 를 두 테스트가 임포트 · 복제 0 |
+| **C8** | 각 뮤테이션이 **어느 판정을** red 로 만들었는지 이름으로 기록됐다 | plan `## red 관측` 표 (M1~M8) |
+| **C9** | 판별식 전량 초록 | fail 0 · skipped 0 · EXIT=0 |
+| **C10** | **최종 판별자 — `--no-verify` 없이 실제로 푸시해 오염 0** | 아래 5-2 |
 
-**C7 이 이 작업의 진짜 완료 기준이다.** 나머지는 그것을 지속시키는 장치다.
+**C10 의 측정 (리뷰 F4 반영).** 푸시 출력을 **로그 파일로 캡처**하고 다음을 전부 확인한다.
+
+| 축 | 확인 |
+|---|---|
+| 훅이 실제로 돌았다 | 로그에 판별식 요약 줄(`# pass`)과 `push-backend-tests` 출력이 **문자열로 존재**한다. 없으면 이 검증은 **무효** |
+| worktree 저장소 | `git ls-files \| wc -l` 전후 동일 · `git status --porcelain` 전후 0 · `git rev-parse HEAD` 불변 |
+| 공유 config | `git config --get core.bare` 전후 모두 부재 (worktree 에서 읽어도 공유 config 를 본다) |
+| **메인 워크트리** | `git -C /Users/maxi.moff/Projects/BTS status --porcelain` 0건 · `ls-files` 건수 불변 |
+
+**C10 이 이 작업의 진짜 완료 기준이다.** 나머지는 그것을 지속시키는 장치다.
+
 
 ## Sanity Check
 
@@ -231,12 +267,18 @@ Maxi 결정이 필요한 항목 0건.
 
 ## Plan
 
-### 설계 결정 (task 앞에 확정한 것)
+> **개정 이력.** 초판(task 5)이 `/plan-eng-review` 에서 BLOCKER 2 · critical gap 1 · 주의 6 을 받았다.
+> Maxi 가 게이트 1 에서 **A안(plan 수정 후 진행)** 을 선택해 아래로 개정했다. 리뷰 원문은 `## 리뷰 결과`.
+> 바뀐 핵심 — `READ_ONLY` 예외 목록 삭제(F1) · 파생 집합 비-공허 짝 추가(F2) ·
+> 훅 스크럽 실효 실측 추가(★) · 파서 선추출(F6) · 뮤테이션 M7·M8 추가(F3) ·
+> C10 강화(F4) · `--no-verify` 규율 완화(F5) · 배포 게이트 보험(F8) · `.mjs` 임포트 실측(F7).
 
-**D1 — 스크럽 헬퍼는 신규 모듈 `scripts/workflow/git-fixture-env.ts` 다.**
-두 픽스처 테스트에 각자 스크럽을 복붙하면 그 둘이 서로를 검사하지 않는다. 공유 모듈이어야
-**R4 의 소스 재계산이 「헬퍼를 임포트했는가」라는 하나의 신호**로 성립한다.
-`scripts/workflow/*.{ts,mjs}` 는 이미 `GUARD_CI` 표면이라 티어가 안 바뀐다.
+### 설계 결정
+
+**D1 — 스크럽 헬퍼는 신규 모듈이다.**
+두 곳에 복붙하면 그 둘이 서로를 검사하지 않는다. 공유 모듈이어야 R4 의 재계산이
+「헬퍼를 임포트했는가」라는 **하나의 신호**로 성립한다. `scripts/workflow/*.{ts,mjs}` 는 이미
+`GUARD_CI` 표면이라 티어가 안 바뀐다. 확장자는 E8 실측 결과가 정한다.
 
 **D2 — 지우는 형태는 접두 스윕 한 줄이다.**
 
@@ -244,217 +286,217 @@ Maxi 결정이 필요한 항목 0건.
 unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 ```
 
-루프를 안 쓴다 — `for` 는 `BLOCK_OPEN` 이라 기존 파서의 블록 깊이 판정과 얽힌다. 한 줄이면
-**깊이 0 · 가드 연산자 없음**이 자명하다. `GIT_*` 가 하나도 없으면 `unset` 이 인자 없이 불려
-무해한 no-op 이다(E7).
+루프를 안 쓴다 — `for` 는 `BLOCK_OPEN` 이라 블록 깊이 판정과 얽힌다. 한 줄이면 **깊이 0 ·
+가드 연산자 없음**이 자명하다. `sh -e` 동작은 실측 완료(E7).
 
-**D3 — R4 는 「파생 집합 ↔ 선언 집합」 양방향 대조다.**
-`init`/`clone` 문자열만 찾으면 읽기 전용 파일이 우연히 그 문자열을 가질 때 오탐이 난다.
-대신 **소스에서 파생**한 「git 을 spawn 하는 파일 전량」이
-**(헬퍼 임포트 파일) ∪ (READ_ONLY 선언)** 과 양방향으로 같은지 본다.
-새 파일이 어느 쪽에도 없으면 red, 선언에만 있고 실재하지 않아도 red.
-그리고 **READ_ONLY 로 선언된 파일이 `init`·`clone` 을 갖게 되면 red** — 이 조항이 선언의
-비-공허성을 지킨다(선언이 「읽기 전용」이라는 주장의 반증 가능성).
+**D3 — 대조는 「파생집합 == 파생집합」이다. 사람이 적는 목록이 0개다.**
+`git` 을 spawn 하는 파일 집합(소스에서 계산)과 헬퍼를 임포트하는 파일 집합(소스에서 계산)이
+**양방향으로 같다.** 예외 선언을 두지 않는다 — 예외는 red 를 끄는 탈출구가 된다(F1).
+그리고 **파생 집합이 비-공허함을 함께 단언**한다 — 안 그러면 둘 다 비었을 때 조용히 통과한다(F2).
 
-**D4 — 판정의 집을 둘로 나눈다.**
-`discriminant-hook-wiring.test.ts` 는 **훅 배선**이 관심사다(R1·R2). 여기에 얹어 `HOOK` 상수와
-블록 깊이·가드 연산자 파서를 재사용한다 — 사본을 만들면 두 벌이 갈린다.
-**픽스처 격리**(R5·R6·R7)와 소스 재계산(R3·R4)은 관심사가 달라 신규
-`scripts/workflow/git-fixture-isolation.test.ts` 로 분리한다. 300줄 상한 규율(부채 65)도
-216줄짜리 기존 파일에 전부 얹지 말라고 말한다.
+**D4 — 판정의 집은 둘이되 파서는 한 벌이다.**
+훅 배선(R1·R2·R8)은 기존 `discriminant-hook-wiring.test.ts`, 픽스처 격리(R3~R7·R9)는 신규
+`git-fixture-isolation.test.ts`. 두 파일이 같은 파서를 쓰므로 **`hook-source.ts` 로 먼저 추출**한다
+(F6 — 300줄 상한과 복제 위험을 한 번에 푼다). 구조 변경을 동작 변경보다 앞에 둔다.
 
-**E7 (스펙 엣지 케이스 추가).** `GIT_*` 가 환경에 하나도 없는 경우 — `unset` 이 인자 없이 불린다.
-POSIX 상 무해하고 종료 코드 0 이다. 훅이 셸에서 직접 실행될 때(= `GIT_DIR` 부재)가 이 경우다.
+**D5 — 훅 스크럽은 존재가 아니라 실효로 잰다.**
+「그 줄이 있는가」만 보면 `sed` 방언 차이 하나로 0개를 지워도 초록이다(E9).
+훅 파일에서 **읽어낸 그 줄을 실제로 실행**해 `GIT_*` 가 0개 남는지 본다.
 
 ---
 
-### Task 1. 픽스처 격리를 실측하는 판별식과 스크럽 헬퍼
+### Task 1. 훅 소스 파서·상수를 공유 모듈로 추출한다 (구조 변경 · 동작 불변)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/hook-source.ts`, `scripts/workflow/discriminant-hook-wiring.test.ts`]
+- depends-on: []
+
+**RED**: 없음 — **동작을 안 바꾸는 순수 추출**이다. 기존 판정 전량이 추출 전후로 **같은 결과**여야
+한다. 추출 전 `node --experimental-strip-types --test scripts/workflow/discriminant-hook-wiring.test.ts`
+결과(tests/pass/fail)를 적어 두고, 추출 후 **같은 값**임을 대조한다.
+
+**GREEN**:
+- `scripts/workflow/hook-source.ts` (신규) — `HOOK` 경로 상수 · `BLOCK_OPEN`/`BLOCK_CLOSE` ·
+  `GUARD_OPERATORS` · 「실행 줄만 뽑는」 파서 · 블록 깊이 계산을 export.
+- `discriminant-hook-wiring.test.ts` 는 그것을 임포트하도록 바꾼다. **판정 로직은 안 건드린다.**
+
+**REFACTOR**: 파일 첫 줄에 역할 한국어 주석. 추출 후 기존 파일 줄수를 기록한다(300줄 상한 여유 확인).
+
+**검증**: 추출 전후 tests/pass/fail 3값 일치 · EXIT=0
+
+---
+
+### Task 2. 픽스처 격리 실측 짝과 스크럽 헬퍼
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`scripts/workflow/git-fixture-env.ts`, `scripts/workflow/git-fixture-isolation.test.ts`]
 - depends-on: []
 
+**★ 착수 첫 동작 — E8 실측.** `.mjs` 에서 `.ts` 헬퍼를 임포트할 수 있는지 먼저 잰다
+(`todos-reorder-integrity.mjs` 가 Task 3 에서 이 헬퍼를 써야 한다). 안 되면 헬퍼를 `.mjs` 로 만들고
+그 사실을 plan 에 적는다. **추측하지 말고 실행해서 본다.**
+
 **RED**:
 - 파일: `scripts/workflow/git-fixture-isolation.test.ts` (신규)
 - 테스트 3종.
   ```ts
-  // ① 판정 — 스크럽 env 로 픽스처를 만들면 victim 이 안 바뀐다
-  test('GIT_DIR 가 걸려 있어도 픽스처가 진짜 저장소를 안 바꾼다', ...)
-  // ② 비-공허 짝 — 스크럽을 끄면 victim 이 실제로 바뀐다
-  test('★★스크럽을 끄면 실제로 오염된다 (비-공허 짝)', ...)
-  // ③ 자기 함정 — 이 판별식이 REPO_ROOT 를 대상으로 삼지 않는다
-  test('★victim 은 언제나 mkdtemp 아래이고 REPO_ROOT 가 아니다', ...)
+  test('GIT_DIR 가 걸려 있어도 픽스처가 진짜 저장소를 안 바꾼다', ...)          // R5
+  test('★★스크럽을 끄면 실제로 오염된다 (비-공허 짝)', ...)                   // R6
+  test('★victim 은 언제나 mkdtemp 아래이고 REPO_ROOT 가 아니다 (자기 함정)', ...) // R7
   ```
-- 판정 방법. victim 은 `fs.mkdtempSync(os.tmpdir())` 아래에 **스크럽된 env 로** 만든다.
-  그 다음 `GIT_DIR=<victim>/.git` 를 건 채 픽스처 절차(`init`→`add`→`commit`)를 돌리고
-  victim 의 **커밋 수 · `core.bare` 유무 · HEAD** 를 전후 비교한다.
-- 실패 메시지 (예상): `Cannot find module '.../git-fixture-env.ts'`
+- 판정 방법. victim 을 `fs.mkdtempSync(os.tmpdir())` 아래에 **스크럽된 env 로** 만든다.
+  `GIT_DIR=<victim>/.git` 를 건 채 픽스처 절차(`init`→`add`→`commit`)를 돌리고 victim 의
+  **커밋 수 · `core.bare` 유무 · HEAD** 를 전후 비교한다.
+- 실패 메시지 (예상): `Cannot find module '.../git-fixture-env'`
 
 **GREEN**:
-- 파일: `scripts/workflow/git-fixture-env.ts` (신규)
-- 최소 구현. `process.env` 사본에서 `GIT_` 로 시작하는 키를 전량 삭제해 돌려주는 함수 하나.
-  **열거하지 않는다**(N1) — 접두로 판정한다.
+- `scripts/workflow/git-fixture-env.ts` — `process.env` 사본에서 `GIT_` 로 시작하는 키를 전량
+  삭제해 돌려주는 함수. **열거하지 않는다**(N1).
 
-**REFACTOR**:
-- 파일 첫 줄에 역할 한국어 주석 1줄. 접두 문자열을 상수로.
+**REFACTOR**: 역할 주석 1줄 + 접두 상수화.
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/git-fixture-isolation.test.ts`
 → 3종 pass · fail 0
 
 ---
 
-### Task 2. git 을 부르는 파일 전량이 헬퍼 경유이거나 읽기 전용 선언이다
+### Task 3. `git` 을 spawn 하는 전량이 헬퍼를 거친다 (예외 목록 없음)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`scripts/workflow/git-fixture-isolation.test.ts`, `scripts/workflow/select-backend-modules.test.ts`, `scripts/workflow/todos-reorder-integrity.test.ts`]
-- depends-on: [1]
+- files: [`scripts/workflow/git-fixture-isolation.test.ts`, `scripts/workflow/select-backend-modules.test.ts`, `scripts/workflow/todos-reorder-integrity.test.ts`, `scripts/workflow/todos-reorder-integrity.mjs`, `scripts/workflow/tier-floor.test.ts`, `scripts/workflow/transition-term-guard.test.ts`, `scripts/workflow/snapshot-baseline-guard.test.ts`, `scripts/workflow/changed-paths.ts`, `scripts/workflow/push-backend-tests.ts`]
+- depends-on: [2]
 
 **RED**:
 - 파일: `scripts/workflow/git-fixture-isolation.test.ts` (판정 추가)
 - 테스트.
   ```ts
-  test('★★git 을 spawn 하는 파일 전량이 헬퍼 경유이거나 READ_ONLY 로 선언돼 있다 (양방향)', ...)
-  test('★READ_ONLY 선언 파일이 init·clone 을 갖게 되면 red (선언의 비-공허성)', ...)
-  test('READ_ONLY 선언 파일이 전부 실재한다 (선언 부패 차단)', ...)
+  test('★★git 을 spawn 하는 파일 집합과 헬퍼 임포트 집합이 양방향으로 같다', ...)   // R3·R4
+  test('★★파생 집합이 비어 있지 않고 알려진 픽스처 생성자를 실제로 문다 (비-공허 짝)', ...) // R9
   ```
-- 파생 집합. `scripts/**/*.{ts,mjs}` 소스에서 `spawnSync('git'` · `execFileSync('git'` ·
-  `execSync('git` 을 부르는 파일을 **계산**한다. 사람이 적은 목록을 쓰지 않는다(D3).
-- 실패 메시지 (예상): 두 픽스처 생성자가 헬퍼 임포트도 READ_ONLY 선언도 아니라서 차집합 2건.
+- 파생 집합. `scripts/**/*.{ts,mjs}` 소스에서 git 을 spawn 하는 파일을 **계산**한다.
+  실패 메시지가 **차집합 양쪽을 전량 열거**한다(개수를 안 적는다).
+- 실패 메시지 (예상): 헬퍼를 임포트하지 않은 파일이 차집합으로 전량 열거된다.
 
 **GREEN**:
-- `select-backend-modules.test.ts:700~715` 의 `spawnSync('git', args, { cwd: tmp, env: { ...process.env, HOME: tmp } })`
-  를 헬퍼 경유로 바꾼다. **`HOME: tmp` 는 유지**한다 — 전역 git config 격리 목적이라 이번 결함과 무관하다.
-- `todos-reorder-integrity.test.ts:328~337` 의 `execFileSync('git', args, { cwd: tmp, ... })` 에
-  스크럽된 `env` 를 넘긴다.
-- 읽기 전용 6곳을 `READ_ONLY` 로 선언하고 **각 1줄 사유**를 붙인다 —
-  `tier-floor.test.ts`(`ls-files`·`log`·`merge-base`) · `transition-term-guard.test.ts`(`ls-files`) ·
-  `snapshot-baseline-guard.test.ts`(`ls-files`) · `changed-paths.ts` · `push-backend-tests.ts` ·
-  `todos-reorder-integrity.mjs`. 이들은 **진짜 저장소를 보는 게 정상 동작**이다(E2).
+- git 을 spawn 하는 전량을 헬퍼 경유로 바꾼다. **`cwd` 인자는 전부 그대로 둔다** — 그것이
+  스크럽 후 저장소를 찾는 근거다.
+- `select-backend-modules.test.ts` 의 `HOME: tmp` 는 **유지**한다 — 전역 git config 격리 목적이라
+  이번 결함과 무관하다.
+- 로직·서브커맨드·단언은 **한 줄도 바꾸지 않는다.** 이 task 는 env 배선만 바꾼다.
 
-**REFACTOR**:
-- 파생 집합 계산과 선언 대조를 각각 함수로 분리. 실패 메시지가 **차집합 양쪽을 전량 열거**하게 한다
-  (개수를 안 적는다).
+**REFACTOR**: 파생 집합 계산과 대조를 각각 함수로 분리.
 
-**검증**: `node --experimental-strip-types --test scripts/workflow/git-fixture-isolation.test.ts scripts/workflow/select-backend-modules.test.ts scripts/workflow/todos-reorder-integrity.test.ts`
+**검증**: `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`
+→ fail 0 (읽기 전용 6곳의 동작이 안 바뀌었다는 것이 여기서 증명된다)
 
 ---
 
-### Task 3. 훅이 판별식보다 먼저, 무조건으로 `GIT_*` 를 지운다
+### Task 4. 훅과 배포 게이트가 `GIT_*` 를 지우고, 그것이 **실효**로 판정된다
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`scripts/workflow/discriminant-hook-wiring.test.ts`, `.husky/pre-push`]
-- depends-on: []
+- files: [`scripts/workflow/discriminant-hook-wiring.test.ts`, `.husky/pre-push`, `infra/deploy/bts-deploy.sh`]
+- depends-on: [1]
 
 **RED**:
-- 파일: `scripts/workflow/discriminant-hook-wiring.test.ts` (판정 추가 — 기존 `HOOK` 상수와
-  `BLOCK_OPEN`/`BLOCK_CLOSE`/`GUARD_OPERATORS` 파서를 **재사용**한다)
+- 파일: `discriminant-hook-wiring.test.ts` (판정 추가 — Task 1 이 추출한 `hook-source.ts` 를 쓴다)
 - 테스트.
   ```ts
-  test('★푸시 훅이 판별식 전에 GIT_* 를 지운다', ...)
-  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', ...)
+  test('★푸시 훅이 판별식 전에 GIT_* 를 지운다', ...)                        // R1
+  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', ...)      // R2
+  test('★★훅에서 읽어낸 그 줄을 실행하면 GIT_* 가 0개 남는다 (실효 실측)', ...) // R8
   test('주석이 아니라 실행 줄을 본다 (산문 오탐 방지)', ...)
   ```
-- 판정. 실행 줄만 훑어 ① `GIT_` 접두를 지우는 구문이 있고 ② 그 줄의 블록 깊이가 0 이며
-  ③ `&&`·`||` 로 앞 명령에 안 붙고 ④ **첫 판별식 호출 줄보다 앞**인지 본다.
+- **R8 의 판정 방법.** 훅 파일에서 스크럽 줄을 **문자열로 뽑아** `sh -e -c '<그 줄>; env | grep -c "^GIT_"'`
+  를 `GIT_*` 를 건 환경에서 실행하고 결과가 `0` 인지 본다. 손으로 적은 사본을 실행하면 안 된다 —
+  **훅 파일에서 읽어낸 것**을 실행해야 배선과 실효가 같은 대상을 가리킨다.
 - 실패 메시지 (예상): `.husky/pre-push` 에 `GIT_*` 스크럽이 없다.
 
 **GREEN**:
-- 파일: `.husky/pre-push`
-- D2 의 한 줄을 판별식 호출 **앞**에 넣는다. 왜 지우는지를 기존 주석 관례대로 위에 적되,
-  **주석이 판정을 대신 만족시키지 못하게** 판정은 실행 줄만 본다.
+- `.husky/pre-push` — D2 의 한 줄을 판별식 호출 **앞**에.
+- `infra/deploy/bts-deploy.sh` — 전량 검증 게이트 앞에 같은 한 줄(F8 · 심층 방어).
 
-**REFACTOR**:
-- 파일이 300줄 상한(부채 65)에 걸리면 판정 묶음을 분리하고 그 판단 근거를 커밋 메시지에 남긴다.
-  현재 216줄이므로 여유를 실측해 결정한다.
+**REFACTOR**: Task 1 추출 덕에 파일이 줄었으므로 300줄 여유를 재확인하고 수치를 기록한다.
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/discriminant-hook-wiring.test.ts`
 
 ---
 
-### Task 4. 각 신규 판정을 일부러 끊어 red 를 1회 관측한다
+### Task 5. 뮤테이션 M1~M8 을 관측하고 **red 판정 이름을 전수 기록**한다
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`docs/plans/2026-08-21-pre-push-git-dir.md`]
-- depends-on: [1, 2, 3]
+- depends-on: [1, 2, 3, 4]
 
 **RED/GREEN 없음 — 관측 task 다.**
 
 **★순서 규율.** 뮤테이션 검증은 **GREEN 을 먼저 커밋한 뒤** 한다. 미커밋 상태에서 끊었다가
-되돌리면 그 되돌림이 소실이다(저장소 함정 목록).
+되돌리면 그 되돌림이 소실이다.
 
-**관측 항목** — 각각 끊고 red 를 본 뒤 되돌린다.
-
-| # | 끊는 것 | 기대 red |
+| # | 끊는 것 | 기대 |
 |---|---|---|
-| M1 | `.husky/pre-push` 의 스크럽 줄 삭제 | Task 3 의 R1 판정 |
-| M2 | 스크럽 줄을 판별식 호출 **뒤로** 이동 | Task 3 의 순서 판정 |
-| M3 | 스크럽 줄을 `&&` 로 앞 명령에 붙임 | Task 3 의 R2 판정 |
-| M4 | `git-fixture-env.ts` 의 삭제 로직을 no-op 으로 | Task 1 의 판정 ① |
-| M5 | 두 픽스처 중 하나를 헬퍼 미경유로 되돌림 | Task 2 의 양방향 판정 |
-| M6 | `READ_ONLY` 선언 하나를 삭제 | Task 2 의 양방향 판정 |
+| M1 | `.husky/pre-push` 의 스크럽 줄 삭제 | red — **어느 판정이 red 였는지 전량 적는다.** 3종이 함께 죽는 것이 정상이며, 그 사실 자체를 기록한다 |
+| M2 | 스크럽 줄을 판별식 호출 **뒤로** 이동 | 순서 판정만 red |
+| M3 | 스크럽 줄을 `&&` 로 앞 명령에 붙임 | 비가드 판정만 red |
+| M4 | `git-fixture-env` 의 삭제 로직을 no-op 으로 | 격리 실측 판정 red |
+| M5 | 파일 하나를 헬퍼 미경유로 되돌림 | 양방향 대조 red |
+| M6 | 헬퍼 임포트는 남기고 실제 사용만 제거 | — **관측 결과를 그대로 적는다.** red 가 안 나면 그것이 이 판별식의 알려진 한계다 |
+| **M7** | 스크럽을 `GIT_DIR` 하나만 지우도록 **좁힘** | R8 실효 실측 red (N1 네임스페이스가 지켜지는지) |
+| **M8** | 파생 집합 정규식을 무력화 | R9 비-공허 짝 red |
 
-**산출물**. plan 파일 `## red 관측` 절에 M1~M6 각 1줄 — 끊은 것 · 실제 실패 메시지 · 되돌림 확인.
+**산출물**. plan `## red 관측` 절에 M1~M8 각 1행 — 끊은 것 · **red 가 된 판정 이름 전량** ·
+실제 실패 메시지 첫 줄 · 되돌림 확인.
 
-**검증**: 관측 6건 전부 red 확인 후 원복. 원복 뒤 `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` 가 초록.
+**검증**: 원복 뒤 판별식 전량 초록.
 
 ---
 
-### Task 5. 전량 검증 + `--no-verify` 없이 실제 푸시해 오염 0 을 실측한다
+### Task 6. 전량 검증 + `--no-verify` 없이 실제 푸시해 오염 0 을 실측한다
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`docs/plans/2026-08-21-pre-push-git-dir.md`]
-- depends-on: [4]
+- depends-on: [5]
 
 **RED/GREEN 없음 — 최종 판별 task 다.**
 
-**5-1. 전량 검증** (각 명령을 **개별 로그로** 돌린다 — 배경 묶음의 종료 코드는 마지막 명령 것이라
+**6-1. 전량 검증** (명령마다 **개별 로그** — 배경 묶음의 종료 코드는 마지막 명령 것이라
 중간 실패를 가린다).
 
-| 검사 | 명령 | 기준 |
-|---|---|---|
-| 판별식 | `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` | fail 0 · skipped 0 · EXIT=0 |
-| 정본 정합 | `bash scripts/verify-master-plan.sh` | EXIT=0 · FR 143/143 |
-| 문서 인덱스 | `node scripts/build-doc-index.mjs --check` | drift 0 · EXIT=0 |
+| 검사 | 기준 |
+|---|---|
+| 판별식 전량 | fail 0 · skipped 0 · EXIT=0 |
+| `bash scripts/verify-master-plan.sh` | EXIT=0 · FR 143/143 |
+| `node scripts/build-doc-index.mjs --check` | drift 0 · EXIT=0 |
 
-**5-2. C7 — 진짜 판별자.** 여기서만 `--no-verify` 를 뺀다.
+**6-2. C10 — 진짜 판별자.** 푸시 출력을 **로그로 캡처**하고 스펙 §측정 가능한 완료 기준의
+C10 표 4축을 전부 확인한다. 훅 실행 증거(`# pass` 문자열 · `push-backend-tests` 출력)가
+로그에 없으면 **이 검증은 무효**라고 기록한다.
 
-푸시 **전** 측정 → `git push` (플래그 없이) → 푸시 **후** 측정. 네 값이 전부 같아야 한다.
-
-```
-git ls-files | wc -l                 # 건수 불변
-git config --get core.bare           # 전후 모두 부재
-git rev-parse HEAD                   # 불변 (푸시는 로컬 ref 를 안 바꾼다)
-git status --porcelain | wc -l       # 전후 모두 0
-```
-
-**★훅이 실제로 돌았는지 눈으로 확인한다.** worktree 가 husky 를 침묵 무력화하는 함정이 있어
-「깨끗함」이 「훅이 안 돌아서 깨끗함」일 수 있다 — 훅 출력(판별식 tests/pass 줄)이 푸시 로그에
-보이는지 확인한다. 안 보이면 이 검증은 **공허하다**.
-
-**산출물**. plan 파일 `## C7 실측` 절에 전후 4값 표 + 훅 실행 증거 1줄.
-
-**검증**: 위 표의 4값 전후 일치 + 훅 출력 관측.
+**산출물**. plan `## C10 실측` 절에 4축 전후 표 + 로그 경로 + 훅 실행 증거 인용 1줄.
 
 ## Plan 메타
 
-- **task 수**. 5 (Task 1~3 은 TDD 사이클 · Task 4~5 는 관측·검증)
+- **task 수**. 6 (Task 1~4 는 사이클 · Task 5~6 은 관측·검증)
 - **예상 wave**. 4
-  - wave 1. Task 1 · Task 3 (파일 교집합 0 — 병렬)
-  - wave 2. Task 2 (Task 1 의 헬퍼 API 에 의존)
-  - wave 3. Task 4 (1·2·3 전부 GREEN 커밋된 뒤)
-  - wave 4. Task 5
-- **구현 규율**. TDD red-first. T2 이므로 `test:` → `feat:` 커밋 순서가 대조된다.
-  Task 4·5 는 사이클이 아니므로 `docs:` 커밋.
+  - wave 1. Task 1 · Task 2 (파일 교집합 0 — 병렬 2건)
+  - wave 2. Task 3 (Task 2 헬퍼 의존) · Task 4 (Task 1 파서 의존) — 병렬 2건
+  - wave 3. Task 5
+  - wave 4. Task 6
+- **구현 규율**. TDD red-first. Task 1 은 **동작 불변 추출**이라 red 가 없고, 전후 결과 동일이
+  그 자리의 판별자다. T2 이므로 `test:` → `feat:` 커밋 순서가 대조된다. Task 5·6 은 `docs:`.
 - **추가 검증**. typecheck·ktlint·detekt·vitest·playwright **해당 없음** — 프로덕션 Kotlin 0줄 ·
-  `apps/web` 0파일이다. 판별식·정본 정합·문서 인덱스가 이 작업의 전량 검증이다.
-- **병렬 상한**. 동시 dispatch 2건 (wave 1). 스왑 압박 이력 때문에 3건을 안 넘긴다.
-- **`--no-verify` 규율**. Task 5 의 C7 을 제외한 이 체인의 모든 푸시는 `--no-verify` 다.
-  고치려는 훅이 푸시마다 저장소를 깨뜨리기 때문이다.
+  `apps/web` 0파일이다.
+- **병렬 상한**. 동시 dispatch 2건. 스왑 압박 이력 때문에 3건을 안 넘긴다.
+- **`--no-verify` 규율 (F5 반영)**. Task 4 GREEN 이 커밋되기 **전까지만** `--no-verify` 다.
+  그 구간의 각 푸시는 **직전에 판별식 전량을 수동 실행**하고 pass/fail/EXIT 를 기록한다 —
+  기계 강제가 없는 구간을 무검증으로 두지 않는다.
+  Task 4 이후의 푸시는 플래그를 뗀다. 그러면 C10 이 한 번이 아니라 **여러 번** 관측된다.
+
 
 ## 리뷰 결과
 
@@ -640,5 +682,8 @@ wave 1 의 Task 1·Task 3 은 파일 교집합 0 이라 병렬 가능하다. 다
 **VERDICT. CHANGES REQUESTED** — BLOCKER 2건과 critical gap 1건은 plan 수정 없이 착수하면
 이 PR 이 막으려는 결함 양식을 그대로 재생산한다.
 
-**UNRESOLVED DECISIONS:**
-- F1·F2·critical gap 을 반영해 plan 을 고칠지, 위험을 인정하고 그대로 갈지, 작업을 보류할지 — Maxi 판정 필요
+**게이트 1 판정 (2026-08-21).** Maxi 가 **A안 — plan 수정 후 진행** 을 선택했다.
+F1·F2·critical gap 과 주의 6건을 전부 `## Plan` 에 반영했다(개정 이력은 그 절 머리).
+task 5 → 6 · 건드리는 파일 2 → 12.
+
+NO UNRESOLVED DECISIONS
