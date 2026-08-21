@@ -53,14 +53,6 @@ export const postActionLabels = {
     transitionSelectPlaceholder: '전환을 선택하세요',
     /** Webhook 추가 버튼 텍스트 */
     addWebhookButton: 'Webhook 추가',
-    /**
-     * 일부 전환이 '__' 구분자 계약 충돌로 선택 불가임을 알리는 안내 문구.
-     * 근본 원인: transitionKey()는 `${from}__${to}` 형식으로 합성하며,
-     * 백엔드 WorkflowTransition.kt도 동일 구분자로 split한다.
-     * state key에 '__'가 포함되면 합성키가 3+ 조각으로 쪼개져 PostActionNotFoundException 발생.
-     * 구분자 자체 변경은 cross-BC 계약 변경이라 이 PR 밖 후속 작업.
-     */
-    ambiguousKeyHint: '일부 전환은 키 형식 제약으로 설정할 수 없습니다.',
   },
 
   /** post-action 목록 테이블 헤더·빈 상태 (PostActionConfigSection 기준) */
