@@ -6,6 +6,7 @@ import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.WorkflowStatusCompositionService
+import com.bts.workflow.application.WorkflowStatusReferencedByTransitionException
 import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.TransitionDefinitionCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
@@ -104,6 +105,7 @@ class WorkflowStatusCompositionIntegrationTest {
                 WorkflowStatusCompositionService(
                     WorkflowStatusCompositionRepository(dsl),
                     writeRepository,
+                    repository,
                     statusRepository,
                     IssueStatusUsageStub,
                     cache,
@@ -276,6 +278,7 @@ class WorkflowStatusCompositionIntegrationTest {
             .isEqualTo(1)
         assertThat(thrown)
             .describedAs("무엇이 막는지 알아야 다음 행동을 정한다 — 막은 전환 이름이 메시지에 있어야 한다")
+            .isInstanceOf(WorkflowStatusReferencedByTransitionException::class.java)
             .hasMessageContaining("작업 시작")
     }
 
@@ -295,6 +298,7 @@ class WorkflowStatusCompositionIntegrationTest {
             .isEqualTo(1)
         assertThat(thrown)
             .describedAs("출발지 없는 전환도 도착지로 편성을 가리킨다 — to_status_id 쪽 CASCADE 도 같이 막아야 한다")
+            .isInstanceOf(WorkflowStatusReferencedByTransitionException::class.java)
             .hasMessageContaining("이슈 생성")
     }
 
