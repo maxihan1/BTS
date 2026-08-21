@@ -29,6 +29,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -50,9 +51,17 @@ function readHook(): string {
   return fs.readFileSync(p, 'utf-8')
 }
 
+/**
+ * 판별식 전량을 부르는 줄인가. 술어를 한 벌만 둔다 — 사본을 만들면 「호출을 찾는 규칙」이
+ * 두 벌이 되고, 둘은 서로를 검사하지 않는다.
+ */
+function isDiscriminantCall(line: string): boolean {
+  return line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g))
+}
+
 /** 훅 안에서 판별식 전량을 부르는 줄. 없으면 undefined. */
 function discriminantInvocation(lines: string[]): string | undefined {
-  return lines.find((l) => l.includes('--test') && REQUIRED_GLOBS.every((g) => l.includes(g)))
+  return lines.find(isDiscriminantCall)
 }
 
 /**
@@ -61,7 +70,7 @@ function discriminantInvocation(lines: string[]): string | undefined {
  * 호출이 아예 없으면 `null` — 그 경우는 위 단언이 먼저 잡으므로 여기서 판정하지 않는다.
  */
 function invocationBlockDepth(lines: string[]): number | null {
-  return blockDepthAt(lines, (line) => line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g)))
+  return blockDepthAt(lines, isDiscriminantCall)
 }
 
 describe('판별식 훅 배선 정합', () => {
@@ -177,5 +186,154 @@ describe('판별식 훅 배선 정합', () => {
     assert.deepEqual(lines.length, 1, '주석·빈 줄을 실행 줄로 셌다.')
     assert.equal(PNPM_WRAPPER.test(lines[0]), false, '주석의 pnpm 언급을 위반으로 읽었다.')
     assert.equal(invocationBlockDepth(lines), 0, '주석의 if 언급을 블록 시작으로 읽었다.')
+  })
+})
+
+/**
+ * `GIT_*` 네임스페이스를 지우는 실행 줄인가.
+ *
+ * ★무엇을 지우는지 **열거해서 맞추지 않는다.** 열거하면 「git 이 훅에 넣는 목록」과
+ *   「우리가 재는 목록」이라는 두 목록이 생기고, 둘은 서로를 검사하지 않는다.
+ *   여기서는 접두를 건드리는 `unset` 줄을 **찾기만** 하고, 그 줄이 정말 지우는지는
+ *   아래 실효 실측이 그 줄을 실행해서 판정한다.
+ */
+function isGitScrub(line: string): boolean {
+  return /(^|[;&|(\s])unset\b/.test(line) && line.includes('GIT_')
+}
+
+/**
+ * 스크럽 줄을 `sh -e` 로 실제로 실행하고, 그 셸에 남은 `GIT_*` 개수를 돌려준다.
+ *
+ * ★왜 실행하나. 배선 판정은 「그 줄이 있는가」만 본다. 그러면 줄이 문법적으로 존재하는데
+ *   실제로는 아무것도 안 지우는 경우(BSD/GNU `sed` 방언 차이 등)를 아무도 못 잡는다 —
+ *   이 저장소가 `invariant-satisfied-by-helptext-not-logic` 로 이름 붙인 양식이다.
+ *
+ * ★DEVELOPMENT.md §1.1⑥(검증되지 않은 사용자 입력으로 외부 명령 실행 금지)과의 관계.
+ *   실행하는 문자열은 **저장소가 소유한 `.husky/pre-push`** 를 `readHook()` 이 읽은 것이지
+ *   사용자 입력이 아니다. 훅 파일 밖에서 온 문자열은 이 함수에 들어오지 않는다.
+ *   그리고 손으로 적은 사본을 실행하면 배선과 실효가 **다른 대상**을 가리켜 판정이 공허해진다.
+ *
+ * @param scrub 훅 파일에서 읽어낸 스크럽 줄. 빈 문자열이면 「스크럽을 안 돌린」 대조군이다
+ * @param dirty `GIT_*` 가 실제로 걸린 환경
+ */
+function remainingGitVars(scrub: string, dirty: NodeJS.ProcessEnv): number {
+  const out = execFileSync('sh', ['-e', '-c', `${scrub}\nenv | grep -c '^GIT_' || true`], {
+    env: dirty,
+    encoding: 'utf-8',
+  })
+  return Number(out.trim())
+}
+
+/** 훅이 상속받는 상황을 재현한 환경. 값에 공백이 든 것도 섞어 이름 추출을 함께 잰다. */
+function dirtyEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    GIT_DIR: '/nonexistent-decoy/.git',
+    GIT_WORK_TREE: '/nonexistent-decoy',
+    GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
+    GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
+  }
+}
+
+const WHY_SCRUB =
+  'git 은 훅 프로세스에 GIT_DIR 를 export 한다. 판별식의 git 픽스처가 그것을 상속하면 ' +
+  'tmp 에서 부른 init·add·commit 이 **진짜 저장소**로 간다 — 2026-08-21 에 공유 config 의 ' +
+  'core.bare 와 브랜치 ref·인덱스가 실제로 그렇게 깨졌다.'
+
+describe('푸시 훅의 GIT_* 스크럽', () => {
+  test('★판별식을 부르기 전에 GIT_* 를 지운다', () => {
+    const lines = commandLines(readHook())
+    const scrubAt = lines.findIndex(isGitScrub)
+    const callAt = lines.findIndex(isDiscriminantCall)
+
+    assert.notEqual(
+      scrubAt,
+      -1,
+      `${HOOK} 에 GIT_* 스크럽이 없다.\n\n${WHY_SCRUB}\n\n` +
+        `실행 줄(주석 제외):\n${lines.map((l) => `  ${l}`).join('\n') || '  (없음)'}`,
+    )
+    assert.notEqual(callAt, -1, `${HOOK} 에 판별식 호출이 없다 — 순서를 잴 대상이 없다.`)
+    assert.ok(
+      scrubAt < callAt,
+      `${HOOK} 의 GIT_* 스크럽이 판별식 호출보다 뒤에 있다.\n` +
+        `판별식이 먼저 돌면 그 안의 git 픽스처는 이미 오염된 환경을 상속한 뒤다 — ` +
+        `뒤에서 지워도 늦다.\n\n${WHY_SCRUB}`,
+    )
+  })
+
+  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', () => {
+    const lines = commandLines(readHook())
+    const scrub = lines.find(isGitScrub)
+    const depth = blockDepthAt(lines, isGitScrub)
+
+    const why =
+      `조건이 붙으면 그 조건이 거짓인 실행에서 스크럽이 통째로 사라지고, 훅은 그 사실을 ` +
+      `말하지 않는다 — 조용한 부재다. 그리고 오염은 조용한 부재가 가장 비싼 자리다.\n\n${WHY_SCRUB}`
+
+    assert.equal(depth, 0, `${HOOK} 의 GIT_* 스크럽이 셸 블록 깊이 ${depth} 에 있다.\n\n${why}`)
+
+    const guarded = GUARD_OPERATORS.filter((op) => (scrub ?? '').includes(op))
+    assert.deepEqual(
+      guarded,
+      [],
+      `${HOOK} 의 GIT_* 스크럽이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n\n${why}`,
+    )
+  })
+
+  test('★★훅에서 읽어낸 그 줄을 실행하면 GIT_* 가 0개 남는다 (실효 실측)', () => {
+    const scrub = commandLines(readHook()).find(isGitScrub)
+    if (scrub === undefined) {
+      assert.fail(`${HOOK} 에 GIT_* 스크럽이 없어 실효를 잴 대상이 없다.\n\n${WHY_SCRUB}`)
+    }
+    const dirty = dirtyEnv()
+
+    // ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 0 이면
+    //   「원래 GIT_* 가 없어서 0」이라 아래 판정은 아무것도 증명하지 못한다.
+    assert.ok(
+      remainingGitVars('', dirty) > 0,
+      '스크럽을 안 돌린 대조군에서도 GIT_* 가 0개다 — 오염 환경 재현이 실패했다. ' +
+        '이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
+    )
+
+    assert.equal(
+      remainingGitVars(scrub, dirty),
+      0,
+      `${HOOK} 의 스크럽 줄이 **문법적으로는 있는데 실제로는 GIT_* 를 안 지운다.**\n` +
+        `실행한 줄: ${scrub}\n\n` +
+        `배선만 재는 판정은 이 상태를 초록으로 읽는다 — ` +
+        `\`sed\` 방언 차이 하나로 0개를 지워도 줄은 그대로 거기 있기 때문이다.\n\n${WHY_SCRUB}`,
+    )
+  })
+
+  test('스크럽 판정이 주석이 아니라 실행 줄을 본다 (산문 오탐 방지 · 양성 대조군)', () => {
+    const real = "unset $(env | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p')"
+    const call = "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"
+
+    const prose = ['# ★GIT_DIR 를 unset 한다고 여기 적어 두기만 하면 아무것도 안 지워진다.', '', call].join('\n')
+    assert.equal(commandLines(prose).find(isGitScrub), undefined, '주석의 unset 언급을 스크럽으로 읽었다.')
+
+    // 탐지 로직이 살아 있는가. 죽어 있으면 위 판정들은 「없어서」가 아니라 「못 봐서」 초록이다.
+    assert.ok(isGitScrub(real), '실제 스크럽 줄을 못 잡았다 — 탐지 로직이 죽어 있다.')
+
+    const afterCall = [call, real]
+    assert.ok(
+      afterCall.findIndex(isGitScrub) > afterCall.findIndex(isDiscriminantCall),
+      '판별식 호출 뒤에 놓인 스크럽을 앞선 것으로 읽었다.',
+    )
+    assert.equal(
+      blockDepthAt(['if [ -n "$GIT_DIR" ]; then', `  ${real}`, 'fi', call], isGitScrub),
+      1,
+      '`if` 블록 안의 스크럽을 무조건 실행으로 읽었다.',
+    )
+    assert.ok(
+      GUARD_OPERATORS.some((op) => `changed=$(git diff --name-only) && ${real}`.includes(op)),
+      '`&&` 로 앞 명령에 매달린 스크럽을 무조건 실행으로 읽었다.',
+    )
+
+    // 오탐 대조. GIT_ 를 언급만 하거나 unset 만 쓰는 정상 명령을 스크럽으로 읽으면
+    // 훅을 고칠 방법이 없어진다.
+    for (const notScrub of ['echo "$GIT_DIR"', 'unset BTS_SKIP_MODULE_TEST', call]) {
+      assert.equal(isGitScrub(notScrub), false, `정상 명령을 GIT_* 스크럽으로 읽었다: ${notScrub}`)
+    }
   })
 })
