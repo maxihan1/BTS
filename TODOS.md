@@ -1847,20 +1847,25 @@ Testcontainers 의 Ryuk 컨테이너를 **공유**한다. 실측 2종이다.
 **무엇.** `docs/plans/2026-08-20-backend-workflow-transition-id-multi-global.md:1051-1053` 이
 「파일 300줄 초과 **3건**」이라 적고 셋을 열거한다. 그 시점 실측 자체도 지금과 다르다.
 
-**실측 (2026-08-21 · HEAD `414479645` · `wc -l`).** 이 PR 영향권의 300줄 초과는 **7건**이다.
+**★스냅샷을 정본으로 읽지 마라.** 아래 숫자는 **재는 방법의 예시**이지 목록이 아니다.
+이 항목이 지적하는 결함이 바로 「손으로 센 숫자가 세 번째 목록이 되는 것」이라, 여기에 목록을 박으면
+같은 결함을 한 번 더 저지른다. 셀 때는 매번 아래 명령을 돌린다.
 
-| 파일 | 줄 |
-|---|---|
-| `project-workflow/.../seed/YamlSeedService.kt` | 716 |
-| `project-workflow/.../engine/WorkflowEngine.kt` | 499 |
-| `project-workflow/.../repository/WorkflowWriteRepository.kt` | 418 |
-| `project-workflow/.../application/WorkflowCommandService.kt` | 404 |
-| `project-workflow/.../repository/WorkflowRepository.kt` | 354 |
-| `project-workflow/.../web/WorkflowController.kt` | 334 |
-| `issue-tracking/.../application/IssueApplicationRequests.kt` | 307 |
+```
+find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $2!="total"'
+```
 
-계획 문서가 적은 셋 중 둘은 줄 수도 어긋났다(`WorkflowCommandService` 421 → 404 ·
-`WorkflowWriteRepository` 391 → 418). **손으로 센 숫자가 세 번째 목록이 된 형태다.**
+**스냅샷 (2026-08-21 · 커밋 `73679db84`).** 이 PR 이 손댄 7파일은 전부 300 을 넘는다 —
+`YamlSeedService` 716 · `WorkflowEngine` 527 · `WorkflowWriteRepository` 418 ·
+`WorkflowCommandService` 404 · `WorkflowRepository` 354 · `WorkflowController` 340 ·
+`IssueApplicationRequests` 307. 계획 문서가 적은 셋 중 둘은 줄 수까지 어긋났고
+(`WorkflowCommandService` 421 → 404 · `WorkflowWriteRepository` 391 → 418),
+남은 하나도 이 PR 안에서 다시 움직였다(`WorkflowController` 334 → 340).
+**같은 하루에 세 번 흔들렸다는 것이 손으로 세면 안 되는 이유다.**
+
+**범위가 훨씬 넓다.** 같은 명령을 `project-workflow` + `issue-tracking` 의 `src/main` 전량에 돌리면
+**39파일**이 300 을 넘고 최대는 `IssueRepository.kt` **3,096줄**이다. 이 PR 영향권 7건은 그 부분집합이다 —
+**상환 계획을 세울 때 7 이 아니라 39 를 봐야 한다.**
 
 **왜 별건인가.** 상한 자체의 정본 충돌은 항목 `19`(#365 해소)가 닫았고, `apps/web` 쪽 강제 수단은
 줄수 래칫이 갖고 있다. **백엔드에는 그 래칫이 없다** — 그래서 숫자를 손으로 적게 되고 갈라진다.
