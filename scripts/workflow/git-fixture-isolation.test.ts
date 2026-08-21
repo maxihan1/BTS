@@ -686,38 +686,58 @@ function runWithGitDir(target: string, gitDir: string): { status: number | null;
 /** 러너가 그 파일만 단독으로 돌릴 수 있는 픽스처 생성자. 자식으로 태울 대상이다. */
 const DIRECTLY_RUNNABLE_CREATORS = KNOWN_FIXTURE_CREATORS.filter((file) => matchesRunnerGlob(file))
 
+/**
+ * 원본 전량을 차례로 자식에 태우고, **자식마다** victim 을 다시 읽는다.
+ *
+ * 한 번만 읽으면 「어느 원본이 오염시켰나」가 사라져 실패 메시지가 대상에서 멀어진다.
+ *
+ * @param victim 오염 여부를 잴 저장소
+ * @param before 자식을 태우기 전의 상태
+ * @returns 안 돈 자식과 오염시킨 자식을 각각 이름으로 열거한 것
+ */
+function runOriginalsAgainstVictim(
+  victim: { root: string; gitDir: string },
+  before: RepoSnapshot,
+): { notRun: string[]; polluted: string[] } {
+  const notRun: string[] = []
+  const polluted: string[] = []
+  let previous = before
+  for (const file of DIRECTLY_RUNNABLE_CREATORS) {
+    const run = runWithGitDir(file, victim.gitDir)
+    if (run.status !== 0) notRun.push(`${file} — exit ${run.status}\n${run.output}`)
+    const after = snapshotRepo(victim.root, victim.gitDir)
+    const axes = changedAxes(previous, after)
+    if (axes.length > 0) polluted.push(`${file} — ${JSON.stringify(axes)}`)
+    previous = after
+  }
+  return { notRun, polluted }
+}
+
 describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim 을 안 바꾼다', () => {
   test('★★원본을 그 파일만 단독 실행해도 victim 이 그대로다', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-original-'))
     try {
       const victim = createVictimRepo(tmp)
       const before = snapshotRepo(victim.root, victim.gitDir)
-
-      const runs = DIRECTLY_RUNNABLE_CREATORS.map((file) => ({ file, run: runWithGitDir(file, victim.gitDir) }))
+      const { notRun, polluted } = runOriginalsAgainstVictim(victim, before)
 
       // 전제부터 값으로 확인한다 — 자식이 안 돌면 victim 이 안 변하는 것은 격리가 아니다.
       // 그 자식들의 다른 판정은 저장소를 스크럽된 env 로 읽으므로 정상 통과해야 한다.
-      const notRun = runs.filter(({ run }) => run.status !== 0).map(({ file, run }) => `${file} — exit ${run.status}`)
       assert.deepEqual(
         notRun,
         [],
         'GIT_DIR 를 건 채 원본을 돌렸더니 자식이 실패했다 — 아래 무손상 단언의 전제가 깨졌다.\n' +
           '이 상태에서 victim 이 안 변한 것은 격리가 아니라 원본이 아예 안 돈 것이다.\n' +
-          `실패한 자식 전수. ${JSON.stringify(notRun)}\n` +
-          runs
-            .filter(({ run }) => run.status !== 0)
-            .map(({ file, run }) => `── ${file} 출력\n${run.output}`)
-            .join('\n'),
+          `실패한 자식 전수.\n${notRun.join('\n')}`,
       )
 
-      const after = snapshotRepo(victim.root, victim.gitDir)
       assert.deepEqual(
-        after,
-        before,
-        'GIT_DIR 아래서 원본을 돌렸더니 victim 이 바뀌었다 — 원본 어딘가가 스크럽을 잃었다.\n' +
+        polluted,
+        [],
+        'GIT_DIR 아래서 원본을 돌렸더니 victim 이 바뀌었다 — 그 원본이 스크럽을 잃었다.\n' +
           '훅 안에서 그 자리는 작업 중이던 진짜 저장소다.\n' +
           `돌린 원본 전수. ${JSON.stringify(DIRECTLY_RUNNABLE_CREATORS)}\n` +
-          `달라진 축. ${JSON.stringify(changedAxes(before, after))}`,
+          `오염시킨 원본 전수.\n${polluted.join('\n')}`,
       )
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
