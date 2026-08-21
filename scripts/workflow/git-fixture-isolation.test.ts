@@ -95,7 +95,14 @@ function resolveExisting(target: string): string {
   return path.join(resolveExisting(parent), path.basename(absolute))
 }
 
-/** victim 저장소의 관측 축 — 오염되면 이 중 하나 이상이 반드시 변한다. */
+/**
+ * victim 저장소의 관측 축.
+ *
+ * 「오염되면 반드시 하나가 변한다」가 **아니다**. `git config user.email` 이나
+ * `remote add` 는 네 축이 전부 그대로다 — 실제로 이 하네스 자신이 `user.email` 을 부른다.
+ * 여기서 재는 것은 **작업 트리·인덱스·ref 를 바꾸는 오염**이고, 픽스처가 저장소를 깨뜨린
+ * 실제 사고가 그 부류였다. 설정만 건드리는 오염은 이 축들이 못 본다.
+ */
 interface RepoSnapshot {
   commitCount: string
   coreBare: string
