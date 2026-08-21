@@ -351,6 +351,51 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 
 ---
 
+## ⬜ apps/web — 목록 인라인 상태 편집이 React `key` 중복과 409 미처리를 함께 갖는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 이슈 목록에서 상태를 바꾸는 작은 메뉴가 있는데, 이름이 다른 화살표 둘이 같은 꼬리표를 달고 있어 한쪽이 조용히 사라진다. 게다가 「어느 쪽이냐」고 되물으면 답할 창이 없다.
+
+**방치하면.** 사용자가 목록에서 고를 수 있는 전환이 이유 없이 하나 모자란다. 되물음이 오면 그 자리에서 막히고 상세 화면으로 가야 한다는 안내조차 없다.
+
+**무엇.** 두 결함이 한 파일에 있다.
+- `StatusCell.tsx:108` 이 `key={t.key}` 로 목록을 그린다. 전환 `key` 는 NORMAL 이 `from__to`,
+  GLOBAL·INITIAL 이 `KIND__to` 라 **같은 상태쌍의 전환 둘이 같은 값**을 갖는다(FR-WF-05 가 연 바로 그 경우).
+  React 는 같은 `key` 의 형제 중 하나만 그린다.
+- 같은 파일에 409 `AMBIGUOUS_TRANSITION` 처리가 **0건**이다(`grep -n '409\|AMBIGUOUS\|candidate'` 0건).
+  후보 선택 프롬프트 없이 요청이 실패로 끝난다.
+
+**왜 지금 붙이기 쉬운가.** PR #395 Task 21·26 이 상세 화면의 409 배선을 **판정 · 훅 · 다이얼로그
+세 조각**으로 분리해 뒀다(`use-issue-transitions.ts` 의 훅 + `AmbiguousTransitionPrompt.tsx` 커넥터).
+목록 셀은 그 셋을 재사용하면 되고 새로 만들 것이 없다.
+
+**처방.** ① `key` 를 전환 `id`(1급 식별자)로 바꾼다. ② 커넥터를 붙여 후보 선택을 잇는다.
+①은 「같은 상태쌍 전환 둘을 렌더하면 둘 다 보인다」로, ②는 「409 를 받으면 후보 창이 뜬다」로 red 를 먼저 만든다.
+
+---
+
+## ⬜ apps/web — 전환 `key` 규칙 사본이 프론트에만 3벌이고 서로를 검사한다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 화살표에 붙이는 꼬리표를 만드는 규칙이 화면 쪽에만 세 벌 적혀 있다. 그중 「백엔드와 같은지 확인한다」는 이름이 붙은 시험은 실제로는 사본끼리 비교하고 있다.
+
+**방치하면.** 백엔드가 규칙을 바꿔도 프론트 시험은 전부 초록이다. 규칙이 갈라진 사실을 사용자 화면에서 처음 알게 된다.
+
+**무엇.** 정본은 백엔드 `WorkflowTransition.key` 게터 하나다. 프론트에는 사본이 셋 있다.
+- `components/workflow/workflow.types.ts:56` — `transitionKey(from, to)`(NORMAL 규칙만)
+- `mocks/workflow-fixtures.ts:47` — `kindTransitionKey(kind, to)`(GLOBAL·INITIAL 규칙)
+- `mocks/workflow-fixtures.test.ts:17-22` — 두 규칙을 **인라인으로 다시 구현**해 기대값을 만든다
+
+**★셋째가 문제의 핵심이다.** 그 테스트 이름은 「모든 transition.key 가 backend
+`WorkflowTransition.key` 게터 규칙과 일치」인데, 실제로 대조하는 것은 **사본 A(픽스처)와 사본 B(인라인 재구현)**다.
+백엔드는 이 판정의 시야 밖이라 게터를 바꿔도 red 가 나지 않는다 — 이름이 주장하는 것을 재지 않는
+`[[invariant-satisfied-by-helptext-not-logic]]` 양식이다.
+
+**처방 후보.** ① 규칙 구현을 프론트 한 곳(`workflow.types.ts`)으로 모으고 `kind` 를 인자로 받게 한다 —
+사본 3 → 1. ② 백엔드와의 일치는 재조립이 아니라 **응답의 `key` 를 그대로 쓰는 것**으로 없앤다
+(`AvailableTransitionsResult` KDoc 이 「재조립하지 말고 이 값을 그대로 써라」로 이미 못박았다).
+②까지 가면 프론트 사본이 0 이 되고 이 항목이 통째로 사라진다.
+
+---
+
 # 기능 동작
 
 ## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수 · T2)
@@ -539,6 +584,54 @@ fail-fast 하는데 confirm 은 안 한다 — **같은 BC 안에서 두 진입�
 매핑 4종이 한 곳에서 덮인다. cross-BC 계약이라 **한 PR 한 BC** 규칙상 별도 PR 이다.
 
 **발견 경위.** #384 게이트 2 적대적 리뷰. 백엔드 소스로 재확인했다.
+
+---
+
+## ⬜ issue-tracking — 여러 이슈 한꺼번에 전환할 때 응답의 전환 ID 가 첫 이슈 대표값이다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 이슈 여러 개를 한 번에 옮길 수 있는지 물어보면, 돌려주는 답에 「첫 번째 이슈의 화살표 번호」가 실려 나온다. 나머지 이슈에게는 남의 번호다.
+
+**방치하면.** 그 번호를 그대로 되실어 실행하는 화면이 생기는 순간 엉뚱한 화살표가 실행된다. 지금은 되실어 보내는 곳이 없어 오늘 실제 피해는 0 이다.
+
+**무엇.** `TransitionIntersection.intersect` 는 이슈별 가용 전환 목록의 교집합을 `toStateKey` 로 잡고,
+KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 기준으로 채택**」한다. `transitionId` 도 그 필드 중 하나다.
+같은 도착 상태로 가는 전환이라도 **워크플로우가 다르면 전환 행이 다르므로 id 가 다르다.**
+
+**어긋난 계약.** 응답 DTO 는 단건과 같은 `TransitionItem` 이고 그 KDoc 은 `transitionId` 를
+「호출자가 그대로 되실어 모호성 없이 그 전환을 지목 실행할 수 있다」고 적는다
+(`AvailableTransitionsResult.kt`). bulk 응답에서는 그 문장이 **첫 이슈에만 참**이다.
+
+**왜 지금은 안 아픈가.** bulk 실행 경로(`BulkItemExecutor`)가 `transitionId` 를 안 쓰고 `toStateKey` 로만 실행한다.
+드러나는 시점은 화면이 그 값을 되실어 보내기 시작할 때다.
+
+**처방 후보.** ㉮ bulk 응답에서 `transitionId` 를 빼거나 null 로 둔다 — 계약을 사실에 맞춘다.
+㉯ bulk 전용 응답 타입을 나눠 「이 목록의 id 는 지목에 못 쓴다」를 타입으로 못박는다.
+**㉮ 가 싸고 ㉯ 가 재발을 막는다.** 어느 쪽이든 KDoc 을 함께 고쳐야 한다 — 지금은 문장이 거짓이다.
+
+---
+
+## ⬜ issue-tracking — 같은 엔드포인트의 409 응답이 두 형식이다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 같은 창구가 「충돌」을 알릴 때 어떤 때는 이 모양, 어떤 때는 저 모양으로 답한다. 받는 쪽은 두 가지를 다 알아들어야 한다.
+
+**방치하면.** 클라이언트가 한쪽 모양만 처리하면 나머지 충돌은 「알 수 없는 오류」가 된다. 새 충돌 종류가 늘 때마다 어느 모양인지 매번 확인해야 한다.
+
+**무엇.** `POST /api/v1/issues/{key}/transition` 이 돌려주는 409 가 두 종류다.
+- `VERSION_CONFLICT` · `TRANSITION_NOT_ALLOWED` → `IssueExceptionHandler` 가 RFC 7807
+  `ProblemDetail`(`type`/`title`/`status`/`detail` 필드)로 낸다.
+- `AMBIGUOUS_TRANSITION` → `AmbiguousTransitionExceptionHandler` 가
+  `AmbiguousTransitionErrorResponse`(`{error:{code,message}, candidates:[...]}`)로 낸다.
+
+**구분은 가능하다.** 본문 모양이 달라 클라이언트가 갈라 읽을 수는 있다. 결함은 **한 창구에 계약이 둘**이라는 것이다.
+
+**★같은 문제가 BC 경계를 넘어 재발한 모양이다.** PR #395 Task 14 가 project-workflow **안에서**
+같은 이중 형식을 없앴다. 이번 것은 project-workflow 의 advice 가 issue-tracking 컨트롤러에 붙어서 생긴다 —
+그 advice 가 `ProblemDetail` 을 안 쓰는 이유는 KDoc 에 적혀 있고(요청 URI 자동 채움 회피) **정당하다.**
+그래서 처방은 「advice 를 되돌리는 것」이 아니다.
+
+**처방 후보.** ㉮ `candidates` 를 `ProblemDetail` 의 확장 속성으로 실어 형식을 하나로 모은다 —
+`instance` 는 명시적으로 URN 으로 채워 요청 URI 자동 채움을 막는다(`ProjectArchivedExceptionHandler` 선례).
+㉯ 두 형식을 유지하되 OpenAPI 문서와 프론트 스키마에 둘 다 명시한다. **어느 쪽이든 지금은 어디에도 안 적혀 있다.**
 
 ---
 
@@ -996,6 +1089,287 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 **선행.** 로드맵 PR 4(전환을 `workflow_statuses` 참조로 재지정) ~ PR 10 완료. 그 뒤에야 FK 가 풀린다.
 
 
+---
+
+## ⬜ 워크플로우 — 복제 전환 복사가 **0행으로만** 실행돼 새 쿼리가 미검증이다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 워크플로우를 복사할 때 전환(상태와 상태를 잇는 화살표)까지 복사하는 코드를 통째로 새로 썼는데, 시험에 쓰는 자료에 화살표가 하나도 없어서 그 코드가 한 번도 실제로 돌아 본 적이 없다.
+
+**방치하면.** 복사 기능이 화살표를 잃어버려도 검사에서는 초록이 뜬다. 사용자가 워크플로우를 복제한 뒤에야 「화살표가 다 사라졌다」로 드러난다.
+
+**무엇.** PR #395 가 `WorkflowWriteRepository.copyTransitions` 를 원시 SQL 에서 jOOQ 셀프조인으로
+**통째로 다시 썼다**(`:381-418`). 원본 전환의 출발·도착 `workflow_statuses` 행을 대상 워크플로우의
+같은 `status_id` 행으로 다시 이어 붙이는 4중 join 이다.
+
+**실측 (2026-08-21).** 이 함수를 실 DB 로 밟는 유일한 테스트는
+`WorkflowCrudIntegrationTest` 의 「복제는 상태 편성을 함께 복사하고 origin 을 CUSTOM 으로 둔다」와
+「이미 있는 key 로 복제하면 거부된다」 2건인데, 둘 다 `create(...)` 로 **상태만** 심고 전환은 0건이다.
+`INSERT ... SELECT` 가 0행을 처리하고 끝나므로 **함수 본문을 통째로 비워도 두 테스트는 초록**이다.
+단언도 `copy.states.map { it.key }` 만 본다 — 전환은 아예 안 본다.
+
+**왜 지금 안 고쳤나.** 직전 계획이 이 항목을 P2 로 미루면서 「`TODOS.md` 등재로 분리한다」고
+선언했는데 등재가 없었다. 그 누락 자체가 이 PR 게이트 2 재리뷰의 BLOCKER 4건을 잃어버린 경로다
+([[two-lists-never-check-each-other]]).
+
+**처방.** 복제 테스트 픽스처에 전환을 심는다. **NORMAL·GLOBAL·INITIAL 셋을 다 넣어야** 한다 —
+`copyTransitions` 의 출발지 join 만 `leftJoin` 이라 GLOBAL·INITIAL(출발지 NULL) 경로가 별개 분기다.
+심은 뒤 함수를 비워 red 1회를 확인한다(비-공허 짝).
+
+---
+
+## ⬜ 워크플로우 — 최초 전환 수정 경로가 미도달이라 「영구 409」가 잡히지 않는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 「이슈를 처음 만들 때 들어가는 화살표」를 고치는 길이 시험에서 한 번도 지나가지 않는다. 그래서 그 길이 막혀 있어도 아무도 모른다.
+
+**방치하면.** 관리자가 최초 전환의 이름이나 도착 상태를 고치려 하면 항상 「이미 있습니다」라고 거절당한다. 그 상태로 배포되면 최초 전환은 만들 수만 있고 고칠 수는 없는 기능이 된다.
+
+**무엇.** `WorkflowCommandService.updateTransition` 은 `hasInitialTransition(workflowId, excludingId)`
+로 최초 전환 중복을 센다(`:271`). `excludingId` 는 **수정 대상 자신을 셈에서 빼는** 인자다
+(`WorkflowWriteRepository:204-216`). 이것이 빠지면 자기 자신이 중복으로 잡혀 `TransitionConflictException`
+= 409 가 항상 난다.
+
+**실측 (2026-08-21).** `TransitionCrudMvcTest` 의 `putTransition` 호출은 **4건**이고
+(`:227` · `:230` · `:274` · `:296`) `kind` 는 각각 없음(NORMAL 기본) · 없음 · 없음 · `GLOBAL` 이다.
+`kind="INITIAL"` 로 PUT 하는 테스트는 **0건**이라 `excludingId` 를 `null` 로 바꿔도 전량 초록이다.
+INITIAL 이 나오는 테스트 2건은 DELETE 409(`:195`)와 2건째 POST 409(`:207`)로 **수정 경로가 아니다**.
+
+**처방.** 「INITIAL 전환을 PUT 으로 고치면 200 이고 그 뒤 조회에 반영된다」를 추가한다.
+red 1회는 `excludingId` 를 `null` 로 바꿔 확인한다.
+
+---
+
+## ⬜ 워크플로우 — 편집 잠금 409 가 세 곳 중 한 곳만 판정된다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 「편집 잠김」 표시가 걸린 워크플로우를 건드리면 거절해야 하는데, 거절하는 자리 셋 중 하나만 시험이 있다.
+
+**방치하면.** 잠긴 워크플로우인데도 삭제되거나 화살표가 바뀔 수 있고, 그 사고가 나기 전까지는 검사가 계속 초록이다.
+
+**무엇.** `WorkflowCommandService` 가 `WorkflowLockedException` 을 던지는 자리는 셋이다 —
+`update`(`:100`) · `delete`(`:123`) · `requireEditable`(`:367`). 마지막 하나는
+`createTransition`(`:181`) · `updateTransition`(`:210`) · `deleteTransition`(`:238`) **셋이 공유**한다.
+
+**실측 (2026-08-21).** `WorkflowLockedException` 을 단언하는 테스트는 저장소 전체에 **1건**뿐이다
+(`WorkflowCrudIntegrationTest:239` — 「잠긴 워크플로우는 수정할 수 없다」, `update` 경로).
+`delete` 와 전환 CRUD 3함수의 잠금 판정은 **0건**이다.
+
+**처방.** 잠긴 워크플로우에 대한 `delete` · 전환 생성/수정/삭제 각각의 409 를 판정한다.
+`requireEditable` 은 한 함수라 대표 1건으로 접고 싶어지지만, **호출을 빠뜨린 함수는 그 대표가 못 잡는다** —
+세 함수 각각에서 봐야 한다.
+
+---
+
+## ⬜ 워크플로우 — V207 백필 가드가 한 번도 발화하지 않는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 데이터 이사 중에 「짝을 못 찾은 화살표가 있으면 멈춰라」는 안전장치를 넣었는데, 그 안전장치가 실제로 멈추는지 확인한 시험이 없다.
+
+**방치하면.** 안전장치가 고장 나 있어도 모른다. 짝을 못 찾은 화살표가 조용히 끊어진 채 이사가 끝나고, 그 워크플로우는 나중에 전환 계산이 통째로 죽는다.
+
+**무엇.** `V207__transitions_multi_and_global.sql` ④(`:98-120`)는 구 컬럼이 가리키는 상태에 대응하는
+`workflow_statuses` 행이 없으면 `RAISE EXCEPTION` 으로 마이그레이션을 **멈춘다**. 그 뒤 ⑤ 백필이 돈다.
+
+**실측 (2026-08-21).** `V207MigrationTest` 의 테스트 9건 중 이 가드를 발화시키는 것은 **0건**이다
+(`grep -c '대응하는 workflow_statuses 행이 없다' V207MigrationTest.kt` = 0).
+`DO $$ ... END $$` 블록을 통째로 지워도 전량 초록이다.
+
+**처방.** 대응 없는 전환 1행을 심은 스키마에 V207 을 태워 실패를 단언한다.
+Testcontainers 로 빈 스키마를 올려 V206 까지 태운 뒤 행을 심고 V207 만 따로 태우는 형태가
+같은 파일의 다른 테스트와 같은 모양이다.
+
+---
+
+## ⬜ 워크플로우 — worktree 용 `typecheck` 대체 명령이 없어 **아무것도 검사하지 않는 명령**이 지어졌다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 별도 작업 폴더에서 타입 검사를 어떻게 부르는지가 안내서에 빠져 있었다. 그래서 그 자리에서 즉석으로 지어낸 명령이 쓰였는데, 그 명령은 아무것도 검사하지 않고 「이상 없음」을 낸다.
+
+**방치하면.** 「타입 검사 통과」라고 보고된 변경이 실제로는 검사되지 않은 채 지나간다. 이미 여럿 그렇게 지나갔을 수 있다.
+
+**무엇.** `.claude/skills/bts-impl/worktree-commands.md` 는 worktree 에서 `pnpm` 래퍼가 죽는 이유와
+대체 호출을 설명하고, `SKILL.md` Step 4 가 `node_modules/.bin/lint-staged`(`:97`)와
+`apps/web/node_modules/.bin/vitest run`(`:98`)을 준다. **`typecheck` 짝만 없다.**
+
+**실측 A/B (2026-08-20 · PR #395 wave 6a).** 그 빈칸 때문에 dispatch 프롬프트에
+`tsc --noEmit -p apps/web/tsconfig.json` 이 즉석에서 지어졌다. `apps/web/tsconfig.json` 은
+`"files": []` + `references` 인 solution tsconfig 라 `--build` 없이 `-p` 로 부르면 **아무것도 컴파일하지 않는다** —
+타입 에러 2건이 실재하는 상태에서 `EXIT=0` · 출력 0줄이었고, 정본인
+`tsc -p tsconfig.app.json --noEmit` 은 같은 순간 `EXIT=2` · 12줄이었다.
+
+**왜 우선순위가 높은가.** 이 항목은 「검사가 없다」가 아니라 **「검사했다고 믿게 만든다」**다.
+저장소가 `[[safety-claim-asserted-but-never-measured]]` 로 부르는 양식이고, 이미 통과시킨 변경의
+재검증 범위를 정하는 일이 처방에 포함된다.
+
+**처방.** ① `worktree-commands.md` 에 `typecheck` 절을 추가하고 `SKILL.md` 명령 블록에
+`cd apps/web && node_modules/.bin/tsc -p tsconfig.app.json --noEmit` 을 넣는다.
+② `package.json` 의 `typecheck` 스크립트와 문서의 명령이 같은 tsconfig 를 가리키는지 대조하는 판별식을
+건다 — 지금은 두 목록이 서로를 안 본다. ③ solution tsconfig 를 `-p` 로 부르는 형태를 금지 목록에 넣는다.
+
+---
+
+## ⬜ 워크플로우 — 신규 설치와 기존 DB 의 전환 표시 순서가 갈린다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 화살표를 화면에 늘어놓는 순서가, 예전부터 쓰던 데이터베이스와 새로 깔린 데이터베이스에서 서로 다르다.
+
+**방치하면.** 워크플로우 편집기가 생기는 순간 「같은 워크플로우인데 사람마다 화살표 순서가 다르게 보인다」가 된다. 새로 깐 환경에서는 순서가 사실상 무작위다.
+
+**무엇.** `V207` ⑥(`:145-151`)이 **기존 DB** 의 전환에 `row_number() OVER (PARTITION BY workflow_id
+ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 가 훑을 행이 없고
+시드(`YamlSeedService`)가 `display_order` 를 지정하지 않아 컬럼 기본값 **0 이 전부**다.
+
+**결과.** `WorkflowRepository` 가 `orderBy(DISPLAY_ORDER, ID)` 로 읽으므로 값이 전부 0 인 신규 설치에서는
+2차 기준인 **`id`(UUID) 순서**로 떨어진다 — 사람이 예측할 수 없는 순서다.
+게다가 V207 ⑨(`:179`)와 `WorkflowWriteRepository.insertTransition` KDoc 이 공통으로 적은
+「INITIAL 은 `display_order` 0 이라 편집기에서 항상 맨 앞」이 **신규 설치에서는 성립하지 않는다** —
+거기서는 모든 전환이 0 이다.
+
+**처방 후보.** ① 시드가 YAML 순서를 `display_order` 로 기입한다 — V207 ⑥ 과 같은 1..n 규칙으로 맞춘다.
+② 그 뒤 「신규 설치와 백필된 DB 의 전환 순서가 같다」를 판별식으로 고정한다. 지금은 두 경로가 서로를 안 본다.
+
+---
+
+## ⬜ 워크플로우 — 전환 CRUD 가 워크플로우의 수정 시각·버전을 안 올려 낙관적 잠금이 없다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 화살표를 고쳐도 그 워크플로우의 「마지막으로 고친 시각」과 「몇 번째 판인가」가 그대로다. 두 사람이 동시에 고치면 나중 사람이 앞사람 작업을 조용히 덮어쓴다.
+
+**방치하면.** 편집기가 생기면 「분명 저장했는데 내 변경이 사라졌다」가 재현 불가로 올라온다. 지금은 편집기가 없어 오늘 실제 피해는 0 이다.
+
+**무엇.** `WorkflowWriteRepository.updateNameAndDescription` 은 `WORKFLOWS.VERSION.plus(1)` 과
+`WORKFLOWS.UPDATED_AT` 를 함께 올린다(`:139-140`). 반면 전환 CRUD 3함수
+(`insertTransition` · `updateTransition` · `deleteTransition`)는 `workflow_transitions` 만 건드리고
+부모 `workflows` 행은 **손대지 않는다**. 전환 편집 요청 바디에도 `expectedVersion` 이 없다.
+
+**결과.** 전환은 낙관적 잠금(optimistic lock — 「내가 읽은 판이 아직 최신인가」를 저장 시점에 확인하는 방식)
+밖에 있다. 두 편집이 겹치면 last-write-wins 이고 충돌을 알릴 수단이 없다.
+
+**왜 지금은 안 아픈가.** 전환 편집 화면이 아직 없다(FR-WF-06·07 미착수). 편집기가 열리는 순간
+드러나므로 **그 PR 의 선행으로 본다.**
+
+**처방 후보.** ① 전환 CRUD 가 `workflows.version`·`updated_at` 을 함께 올린다.
+② 전환 편집 요청에 `expectedVersion` 을 받아 불일치면 409. ①만 하면 감지는 되지만 거절은 못 한다.
+
+---
+
+## ⬜ 워크플로우 — `resolveWorkflowId` 2곳이 소프트 삭제 조건을 안 걸어 부분 인덱스를 못 탄다 (선재 · 미착수 · T2)
+
+**쉬운 말.** 워크플로우를 이름으로 찾는 코드 두 곳이 「지워진 것 빼고」 조건을 안 건다. 그래서 데이터베이스가 빠른 색인을 못 쓰고 표를 처음부터 끝까지 훑는다.
+
+**방치하면.** 워크플로우가 늘어나면 이 경로가 점점 느려진다. 지금은 표가 작아 체감 피해가 없다.
+
+**무엇.** `V206` 이 `uq_workflows_key` 를 `WHERE deleted_at IS NULL` **부분 유니크 인덱스**로 바꿨다.
+부분 인덱스는 질의에 같은 조건이 있을 때만 선택된다. 그런데 두 곳이 조건 없이 `key` 만 본다 —
+`DefaultWorkflowDefinitionRepository.resolveWorkflowId`(`:164-170`) ·
+`PostActionTransitionResolver.resolveWorkflowId`(`:120-124`).
+
+**실측.** 같은 질의에 `deleted_at IS NULL` 을 붙이면 `Index Scan`, 없으면 `Seq Scan` 이다.
+
+**부수 위험.** 소프트 삭제된 워크플로우의 key 는 재사용할 수 있으므로(V206 의 목적) 같은 key 행이
+둘 이상 있을 수 있다. 그때 `fetchOne` 이 어느 행을 집을지가 정의되지 않는다 — 지금은 재사용 경로를
+밟는 데이터가 없어 드러나지 않는다.
+
+**처방.** 두 함수의 `where` 에 `WORKFLOWS.DELETED_AT.isNull` 을 더한다. 한 줄씩이다.
+같은 조건을 빠뜨린 다른 자리가 더 있는지 `WORKFLOWS.KEY.eq` 전수로 확인한다.
+
+---
+
+## ⬜ 워크플로우 — 전환 계획 미리보기에 `transitionId` 필드가 없어 409 왕복이 구조적으로 막힌다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 「이 화살표를 타면 어떻게 되나」를 미리 계산해 주는 창구가 있는데, 화살표가 둘 이상이라 「어느 쪽이냐」고 되물으면 답을 실어 보낼 칸이 그 창구에는 없다.
+
+**방치하면.** 같은 상태쌍에 화살표를 둘 만든 워크플로우에서는 미리보기가 영영 409 만 돌려준다. 실행은 되는데 미리보기만 막히는 비대칭이 남는다.
+
+**무엇.** ADR `2026-08-18-workflow-transition-id-identity` §D3 은 「모호하면 후보를 돌려주고,
+호출자가 `transitionId` 를 되실어 다시 부른다」는 왕복을 계약으로 못박았다. 실행 경로
+(`POST /api/v1/issues/{key}/transition`)는 PR #395 Task 23 이 그 칸을 이었다.
+
+**남은 자리.** `POST /api/v1/workflows/{key}/transitions/plan` 의 바디
+`TransitionPlanRequestBody`(`WorkflowController.kt:308-316`)에는 `transitionId` 필드가 **없다**.
+`toStateKey` · `fromStateKey` 만 받으므로 후보가 둘이면 `AmbiguousTransitionException` 이 나고
+**되돌려 보낼 칸이 없어** 그 자리에서 끝난다.
+
+**처방.** 바디에 `transitionId: UUID? = null` 을 더하고 `TransitionRequest` 로 그대로 넘긴다.
+아래 「`toDomain()` 이 죽었다」 항목과 **같은 자리**라 함께 본다 — 매핑이 두 벌인 상태에서 필드만 더하면
+한 벌에만 붙는다.
+
+---
+
+## ⬜ 워크플로우 — `TransitionRequestDto.toDomain()` 이 죽고 같은 매핑이 두 벌이 됐다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 요청을 내부 형태로 옮기는 코드가 두 벌인데, 실제로 도는 것은 한 벌뿐이다. 나머지 한 벌은 아무도 안 쓰는데 남아 있다.
+
+**방치하면.** 필드를 하나 더할 때 안 쓰는 쪽만 고치면 아무 일도 일어나지 않는다. 「고쳤는데 안 바뀐다」로 시간을 쓰게 된다.
+
+**무엇.** `TransitionRequestDto` 는 `toDomain()` 을 갖고 KDoc 도 「[toDomain] 을 통해 도메인 DTO
+[TransitionRequest] 로 변환한다」고 적는다. 그런데 유일한 소비처인 `WorkflowController.plan`
+(`:114-146`)은 DTO 를 **검증용으로만** 만들어 `dto.validate()` 를 부른 뒤,
+`TransitionRequest` 를 8개 인자로 **손으로 다시 조립**한다.
+
+**결과.** 같은 매핑이 두 벌이고 한 벌만 실행된다. 저장소가 `[[two-lists-never-check-each-other]]` 로
+부르는 지배 결함 양식의 축소판이다.
+
+**처방 후보.** ㉮ `toDomain()` 이 나머지 인자를 받도록 넓히고 컨트롤러가 그것을 쓴다.
+㉯ `toDomain()` 을 지우고 KDoc 도 함께 고친다. **㉮ 가 낫다** — 위 「`transitionId` 필드가 없다」 항목이
+이 매핑에 필드를 하나 더하는 일이라 합류 지점이 하나여야 한다.
+
+---
+
+## ⬜ 워크플로우 — 전환 이름이 무검증이라 빈 문자열이 저장되고 후보 다이얼로그를 막는다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 화살표 이름을 비운 채로도 저장이 된다. 그 화살표가 「어느 쪽이냐」를 묻는 창에 섞이면 창이 아예 안 뜨고 사용자가 갇힌다.
+
+**방치하면.** 이름 없는 화살표 하나가 그 상태쌍의 전환을 **통째로 못 쓰게** 만든다. 사용자는 이유를 알 수 없고 되돌릴 방법도 화면에 없다.
+
+**무엇.** 세 층 전부 비어 있다.
+- `WorkflowController.createTransition`(`:250-264`)에 `@Valid` 가 없다 — 이 컨트롤러 전체에 `@Valid` 0건이다.
+- `TransitionDefinitionRequest`(`WorkflowCommandDtos.kt:96-101`)의 `name: String` 에 제약 애노테이션이 없다.
+- `workflow_transitions.name` 에 `CHECK` 제약이 없다.
+
+**연쇄.** 프론트의 후보 스키마는 `z.string().min(1)` 이라 `name: ""` 이 섞인 409 응답은 **파싱에 실패**한다.
+후보 선택 다이얼로그가 안 뜨므로 사용자는 「고르라는데 고를 창이 없는」 상태가 된다.
+서버가 만든 값이 클라이언트 계약을 깨는 형태라 클라이언트 쪽 완화로는 못 막는다.
+
+**처방 후보.** ① DTO 에 `@field:NotBlank` + 컨트롤러에 `@Valid`(400 계약). ② 3단계 마이그레이션에
+`CHECK (length(btrim(name)) > 0)` 을 함께 건다. **①이 하한이고 ②는 T3 이라 마이그레이션 PR 로 붙인다** —
+①만 하면 API 밖 경로(시드·직접 INSERT)가 남는다.
+
+---
+
+## ⬜ 도구 — `WorkflowController` KDoc 의 엔드포인트 목록을 실제 매핑과 대조하는 판별식이 없다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 창구 파일 맨 위에 「이 파일이 제공하는 창구 목록」이 손으로 적혀 있는데, 실제 창구와 같은지 확인하는 장치가 없다.
+
+**방치하면.** 창구를 더해도 목록에 안 적히고, 그 목록을 믿고 「그런 창구는 없다」고 판단하는 일이 반복된다. 실제로 4개가 빠져 있었다.
+
+**무엇.** `WorkflowController` KDoc(`:39-46`)이 엔드포인트를 **7개** 나열하는데 실제 매핑은 **11개**다
+(클래스 레벨 `@RequestMapping` 제외). PR #395 게이트 2 재리뷰가 적발해 같은 PR 에서 목록을 고쳤지만,
+**대조하는 장치가 없으므로 다음 엔드포인트에서 다시 갈라진다.**
+
+**실측 (2026-08-21).** `grep -cE '@(Get|Post|Put|Delete|Patch)Mapping'` = 11 · KDoc 목록 = 7(정정 전).
+빠져 있던 넷은 `POST /workflows` · `PUT /{key}` · `DELETE /{key}` · `POST /{key}/duplicate` 로,
+전부 PR #393 이 추가한 워크플로우 CRUD 다.
+
+**처방.** `scripts/workflow/` 에 판별식을 하나 둔다 — 컨트롤러 파일에서 `@*Mapping` 의 메서드·경로를 뽑고
+KDoc 「엔드포인트 목록」 블록의 줄과 양방향 차집합 0 을 강제한다. 비-공허 짝으로 「목록에서 한 줄을 지우면 red」를 함께 고정한다.
+대상을 이 컨트롤러 하나로 좁힐지 전 컨트롤러로 넓힐지는 착수 시 정한다 — 넓히면 선재 불일치가 다수 나올 수 있다.
+
+---
+
+## ⬜ 도구 — `DATA.md §5`(「jOOQ 생성물은 커밋」)와 `.gitignore` 가 서로를 검사하지 않는다 (선재 · 미착수 · T1)
+
+**쉬운 말.** 규칙 문서는 「자동 생성된 코드를 저장소에 넣는다」고 적는데, 저장소 설정은 정확히 그 코드를 넣지 말라고 적는다. 둘이 정반대인데 아무도 대조하지 않는다.
+
+**방치하면.** 어느 쪽이 맞는지 매번 다시 판단하게 된다. 문서를 믿고 「생성물이 저장소에 있다」고 전제한 절차가 조용히 헛돈다.
+
+**무엇.** `DATA.md §5 코드 생성`(`:160`)은 「생성물은 git에 커밋 (개발 환경 일관성)」이라 적는다.
+`.gitignore:21` 은 `**/src/generated/jooq/` 로 그 경로를 통째로 무시한다.
+
+**실측 (2026-08-21).** `git ls-files | grep -c 'src/generated/jooq'` = **0**.
+**추적되는 생성물은 한 파일도 없다** — 실제 관행은 `.gitignore` 쪽이고 `DATA.md` 문장이 거짓이다.
+
+**처방 후보.** ㉮ `DATA.md §5` 를 실제(「생성물은 커밋하지 않는다 · 매 빌드 `generateJooq` 로 재생성」)에 맞춘다.
+㉯ 두 정본을 대조하는 판별식을 건다 — 「§5 가 커밋한다고 적으면 `.gitignore` 에 그 경로가 없어야 한다」.
+**㉮ 가 하한이고 ㉯ 가 재발을 막는다.** 항목 `54`(코드젠 미러 대조)와 **다른 자리**다 — 그쪽은 미러 SQL 과
+마이그레이션의 정합이고 이쪽은 생성물의 커밋 여부다.
+
+---
+
 # 빌드·배포 환경
 
 ## ⬜ 인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · **후속 3건** · 착수 · T2)
@@ -1199,6 +1573,11 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/<slug>/ap
 유닛 292 통과만으로는 브라우저 영향을 못 봤고 **게이트 2 리뷰에서 E2E 를 손으로 돌려**
 5/5 통과를 확인했다. 그 절차가 없었다면 미검증인 채 머지됐을 것이다.
 
+**노출이 커졌다 (2026-08-21 · PR #395).** 이 PR 이 워크플로우·이슈 전환 E2E 를 **3종 새로 넣었다.**
+셋 다 머지 후 자동 회귀 감지 대상이 아니다 — 사람이 손으로 돌린 그 한 번이 유일한 실행 기록이다.
+**새 항목을 만들지 않는다.** 같은 결함이고, 두 번 등재하면 그것이 이 장부가 막으려는
+`[[two-lists-never-check-each-other]]` 그 자체다.
+
 **착수 시 주의.** 러너가 1대라 E2E 를 무조건 붙이면 「CI 벽시계」 항목과 충돌한다.
 **어떤 트리거에서 돌릴지**(예. `apps/web/**` 변경 시에만)를 먼저 정해야 한다.
 `playwright.config.ts` 의 webServer 가 dev 서버를 띄우므로 5173 orphan 정리도 함께 배선할 것
@@ -1340,6 +1719,32 @@ load·swap 두 축만 본다.
 
 ---
 
+## ⬜ 인프라 — 병렬 작업이 Gradle 결과 디렉터리를 공유해 서로의 검사 결과를 지운다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 검사를 여러 개 동시에 돌리면 결과를 적는 공책이 하나뿐이라 서로 덮어쓴다. 그래서 「검사 실패 0건」인데도 전체는 빨간불이 뜬다.
+
+**방치하면.** 사람이 「어느 테스트가 깨졌나」부터 찾는다. 깨진 테스트가 없으니 찾을 수가 없고, 그 오진에 시간을 쓴다. 2026-08-20~21 에 실제로 그랬다.
+
+**무엇.** 한 worktree 에서 sub-agent 여럿이 동시에 `./gradlew` 를 부르면 `build/test-results/` 와
+Testcontainers 의 Ryuk 컨테이너를 **공유**한다. 실측 2종이다.
+- `Could not write XML test results ...` — 다른 실행이 같은 디렉터리를 지우거나 갈아 끼운 뒤다.
+- `Could not connect to Ryuk` — Testcontainers 정리 컨테이너 연결 실패.
+
+**★오독하기 쉬운 서명.** 둘 다 `EXIT=1` 인데 **개별 FAILED 는 0건**이다. 종료 코드만 보면 테스트 실패와
+구분되지 않는다. 「통과 건수와 종료 코드를 함께 적는다」는 규율(`worktree-commands.md §3`)이
+이 경우에는 **둘 다 적어도** 판별이 안 된다 — 실패 0 · EXIT 1 이 정상 서명이기 때문이다.
+
+**★부채 `59`(리눅스 러너 자원 고갈 판정 미동작)와 함께 본다.** 성격이 겹친다 — 둘 다
+「자원 경합이 코드 결함으로 보이는 실패」이고, 러너 자원 판정이 살아 있어야 이쪽 오진도 줄어든다.
+항목 `4`(CI 벽시계) 축 A, 항목 `57`(러너 프리플라이트 시점 갭)도 같은 계열이라 처방을 따로 세우면
+네 곳에 흩어진다.
+
+**처방 후보.** ① 병렬 실행마다 `--project-cache-dir`·`GRADLE_USER_HOME` 또는 결과 디렉터리를 분리한다.
+② `/bts-impl` 이 같은 worktree 에서 백엔드 wave 를 **직렬화**한다 — 지금은 그 규율이 문서에 없다.
+③ 「FAILED 0 인데 EXIT≠0」을 자원 경합으로 분류해 표출한다. **③은 오진 시간만 줄이고 원인을 안 없앤다.**
+
+---
+
 # 문서·규칙
 
 ## ⬜ 문서 — `DESIGN.md` 에 `aria-live` 정책이 없다 (신규 · 미착수 · T0)
@@ -1404,6 +1809,89 @@ load·swap 두 축만 본다.
 
 **처방 후보 (Maxi 판정).** ㉮ 문서를 `[type]` 관행으로 정정 — 관행 25건이 이미 그렇다.
 ㉯ 제목 ↔ 첫 커밋 대조를 머지 가드에 추가. **㉮ 를 먼저 하지 않으면 ㉯ 는 25건을 전부 빨갛게 만든다.**
+
+---
+
+## ⬜ 문서 — V207 롤백 주석이 되돌릴 수 없는 마이그레이션을 「데이터 온전」이라 적는다 (신규 · 미착수 · T3)
+
+**쉬운 말.** 데이터 이사 파일에 「되돌려도 자료는 그대로다」라고 적혀 있는데, 되돌리는 장치 자체가 없다. 게다가 같은 PR 이 옛 자료를 지우게 만들어 문장이 더 틀려졌다.
+
+**방치하면.** 사고가 났을 때 「되돌리면 된다」는 전제로 판단하게 된다. 실제로는 되돌릴 수단이 없어 그 판단이 통째로 헛돈다.
+
+**무엇.** `V207__transitions_multi_and_global.sql:25-26` 이 이렇게 적는다 —
+「3단을 같은 PR 에서 하면 롤백할 자리가 없어진다. … 구 컬럼이 남아 있는 동안에는 **마이그레이션을
+되돌려도 데이터가 온전하다**」. 저장소의 Flyway 배선은 **forward-only** 다. `undo` 스크립트도
+다운 마이그레이션도 없으므로 「마이그레이션을 되돌린다」는 행위 자체가 존재하지 않는다.
+
+**★같은 PR 이 이 문장을 더 틀리게 만들었다.** Task 17 이 `WorkflowWriteRepository.updateTransition` 에
+`setNull(FROM_STATE_ID)`·`setNull(TO_STATE_ID)` 를 넣었다(정당한 처방이다 — 안 비우면 읽기 폴백이
+옛 값을 되살린다). 결과로 **한 번이라도 수정된 전환은 구 컬럼 값을 영구히 잃는다.**
+「구 컬럼이 남아 있어서 온전하다」는 근거가 그만큼 좁아졌다.
+
+**정확한 서술.** 되돌리기는 마이그레이션 역행이 아니라 **배포 전 `pg_dump` 복원**뿐이며,
+그 사이에 들어온 쓰기는 유실된다.
+
+**처방.** 위 두 줄을 정확한 서술로 바꾸고, 3단 분할이 지키는 것이 「롤백 가능성」이 아니라
+「**읽기 경로를 단계적으로 옮길 여지**」임을 명시한다.
+**착수 시 주의.** 적용된 마이그레이션 파일의 내용을 고치면 Flyway 체크섬이 바뀐다.
+아직 배포되지 않았으면 그대로 고칠 수 있고, 배포 뒤라면 `flyway repair` 가 함께 필요하다.
+
+---
+
+## ⬜ 문서 — 파일 300줄 상한 초과가 실측 7건인데 계획 문서는 3건이라 적는다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 「파일 하나가 300줄을 넘으면 안 된다」는 규칙이 있는데, 넘긴 파일을 세어 적은 목록이 실제보다 적다.
+
+**방치하면.** 목록에 없는 파일은 아무도 안 쪼갠다. 목록을 믿고 「셋만 남았다」고 판단하는데 실제로는 일곱이다.
+
+**무엇.** `docs/plans/2026-08-20-backend-workflow-transition-id-multi-global.md:1051-1053` 이
+「파일 300줄 초과 **3건**」이라 적고 셋을 열거한다. 그 시점 실측 자체도 지금과 다르다.
+
+**실측 (2026-08-21 · HEAD `414479645` · `wc -l`).** 이 PR 영향권의 300줄 초과는 **7건**이다.
+
+| 파일 | 줄 |
+|---|---|
+| `project-workflow/.../seed/YamlSeedService.kt` | 716 |
+| `project-workflow/.../engine/WorkflowEngine.kt` | 499 |
+| `project-workflow/.../repository/WorkflowWriteRepository.kt` | 418 |
+| `project-workflow/.../application/WorkflowCommandService.kt` | 404 |
+| `project-workflow/.../repository/WorkflowRepository.kt` | 354 |
+| `project-workflow/.../web/WorkflowController.kt` | 334 |
+| `issue-tracking/.../application/IssueApplicationRequests.kt` | 307 |
+
+계획 문서가 적은 셋 중 둘은 줄 수도 어긋났다(`WorkflowCommandService` 421 → 404 ·
+`WorkflowWriteRepository` 391 → 418). **손으로 센 숫자가 세 번째 목록이 된 형태다.**
+
+**왜 별건인가.** 상한 자체의 정본 충돌은 항목 `19`(#365 해소)가 닫았고, `apps/web` 쪽 강제 수단은
+줄수 래칫이 갖고 있다. **백엔드에는 그 래칫이 없다** — 그래서 숫자를 손으로 적게 되고 갈라진다.
+
+**처방 후보.** ① 백엔드에도 줄수 래칫(동결 장부 + 엄격 일치)을 둔다 — 손으로 세는 목록이 사라진다.
+② 정본 처방인 `WorkflowTransitionController`/`TransitionCommandService`/`TransitionWriteRepository` 분리를 실행한다.
+**②만 하면 다음 파일에서 같은 일이 반복된다.** ①이 재발을 막는 쪽이다.
+
+---
+
+## ⬜ 문서 — 전환 하드 삭제가 `DATA.md §3` 예외 목록에 없다 (신규 · 미착수 · T0)
+
+**쉬운 말.** 이 저장소는 자료를 지울 때 「지웠다는 표시만 남기고 실제로는 안 지운다」가 원칙인데, 화살표만 진짜로 지운다. 그런데 그 예외가 규칙 문서에 안 적혀 있다.
+
+**방치하면.** 실수로 지운 화살표는 되돌릴 수 없고, 그게 의도된 결정인지 빠뜨린 것인지 아무도 판단할 수 없다.
+
+**무엇.** `WorkflowWriteRepository.deleteTransition` 은 `deleteFrom(WORKFLOW_TRANSITIONS)` 로 **행을 지운다.**
+매달린 validator·post-action 도 FK `ON DELETE CASCADE` 로 함께 사라진다.
+`DATA.md §3 하드 삭제 허용 영역(예외)` 의 다른 8건은 전부 「ADR `…`(FR-xx, Maxi 확정)」 꼬리표를 달고 있는데
+**이 하나만 목록에 없다.**
+
+**★비대칭이 눈에 띈다.** 같은 §3 의 「적용 대상」이 `workflows` 와 `statuses` 를 소프트 삭제로 못박는다
+(V205·V203·FR-WF-04). 그 **둘 사이에 있는** `workflow_transitions` 만 하드다.
+워크플로우는 지운 표시만 남는데 그 안의 화살표는 흔적 없이 사라지는 구조다.
+
+**★이것은 Maxi 확인 사항이다.** 필요한 것은 둘이다 — ① `DATA.md §3` 예외 목록에 등재
+② 판단 근거를 남기는 ADR. 다른 8건이 전부 그 짝을 갖고 있으므로 형식도 그대로 따른다.
+소프트 삭제로 돌리는 선택지도 열려 있고 그쪽이면 마이그레이션이 붙어 **T3 으로 재판정**된다.
+**어느 쪽인지는 자의로 정하지 않는다.**
+
+---
 
 # 해소된 것
 
