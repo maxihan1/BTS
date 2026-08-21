@@ -787,9 +787,11 @@ function whyChildDidNotRun(run: ChildRun, target: string): string | null {
   if (total === undefined || passed === undefined) {
     return `러너 계수를 못 읽었다 — 자식이 러너로 돌지 않았거나 출력 형식이 바뀌었다. 읽은 계수 ${JSON.stringify([...counts])}`
   }
-  // 통과가 전량이 아니면 건너뜀·실패·취소가 섞였다는 뜻이다. 계수 이름을 열거하지 않는
-  // 이유는 `GIT_` 를 접두로만 보는 이유와 같다 — 러너가 하나 더 넣으면 열거는 조용히 낡는다.
-  if (total === 0 || passed !== total) return `통과가 전량이 아니다 — 계수 ${JSON.stringify([...counts])}`
+  // ★재는 것은 「전량 통과」가 아니라 **선 판정이 하나라도 있는가**다. 전량 통과로 재면
+  //   자식 파일에 건너뛴 판정 하나가 생기는 순간 이 파일이 red 가 된다 — 고칠 자리는 저쪽인데
+  //   red 는 여기서 난다. 그 형태가 디버깅하던 사람을 「판별식을 지우자」로 민다.
+  //   실패가 섞였으면 종료 코드가 이미 0 이 아니라 위에서 걸린다.
+  if (passed === 0) return `선 판정이 하나도 없다 — 계수 ${JSON.stringify([...counts])}`
   // ★테스트가 하나도 없는 파일은 계수로 안 갈린다. 러너가 **파일 자신**을 판정 하나로 세어
   //   `tests 1 · pass 1` 을 찍기 때문이다. 갈리는 자리는 이름이다 — 통과 이름이 우리가 넘긴
   //   대상뿐이면 그 안에서 선 판정이 없다는 뜻이다.
@@ -883,8 +885,9 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
       assert.deepEqual(
         notRun,
         [],
-        'GIT_DIR 를 건 채 원본을 돌렸더니 자식이 실패했다 — 아래 무손상 단언의 전제가 깨졌다.\n' +
+        'GIT_DIR 를 건 채 원본을 돌렸더니 자식이 판정을 못 세웠다 — 아래 무손상 단언의 전제가 깨졌다.\n' +
           '이 상태에서 victim 이 안 변한 것은 격리가 아니라 원본이 아예 안 돈 것이다.\n' +
+          '고칠 자리는 이 파일이 아니라 **아래에 이름이 뜬 자식**이다. 계수를 보고 어느 쪽인지 갈라라.\n' +
           `실패한 자식 전수.\n${notRun.join('\n')}`,
       )
 
@@ -975,6 +978,17 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
         fs.writeFileSync(file, source)
         return whyChildDidNotRun(runWithGitDir(file, victim.gitDir), file) === null
       })
+
+      // 반대 방향 — 건너뛴 판정이 **섞인** 자식은 돈 것이다. 전량 통과로 재면 자식 파일에
+      // test.skip 하나가 생기는 순간 이 파일이 거짓 red 가 되고, 고칠 자리가 여기로 오해된다.
+      const mixed = path.join(tmp, 'mixed.test.mjs')
+      fs.writeFileSync(mixed, mixedFixtureSource())
+      const mixedWhy = whyChildDidNotRun(runWithGitDir(mixed, victim.gitDir), mixed)
+      assert.equal(
+        mixedWhy,
+        null,
+        `건너뛴 판정이 섞였다고 「안 돌았다」로 셌다 — 자식 파일의 정상 변경이 이 파일을 깨뜨린다.\n까닭. ${mixedWhy}`,
+      )
       assert.deepEqual(
         missed.map(({ label }) => label),
         [],
@@ -1082,6 +1096,20 @@ function skippedFixtureSource(): string {
  */
 function emptyFixtureSource(): string {
   return ["import { test } from 'node:test'", '', 'const unused = test'].join('\n')
+}
+
+/**
+ * 선 판정과 건너뛴 판정이 **섞인** 픽스처의 소스. 이것은 「돌았다」여야 한다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function mixedFixtureSource(): string {
+  return [
+    "import { test } from 'node:test'",
+    '',
+    "test('선 판정', () => {})",
+    "test.skip('임시로 꺼 둔 판정', () => {})",
+  ].join('\n')
 }
 
 /**
