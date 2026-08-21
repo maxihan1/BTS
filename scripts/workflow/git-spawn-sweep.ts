@@ -329,7 +329,8 @@ function stepStripComment(src: string, i: number): Step | null {
  * @returns 식을 끝냈으면 true
  */
 function endsExpression(src: string, i: number, c: string): boolean {
-  return EXPRESSION_END.test(c)
+  if (EXPRESSION_END.test(c)) return true
+  return (c === '+' || c === '-') && src[i - 1] === c
 }
 
 /**
