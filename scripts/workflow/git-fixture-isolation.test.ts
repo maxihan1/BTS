@@ -156,7 +156,15 @@ function createVictimRepo(parentDir: string, name = 'victim'): { root: string; g
   assertVictimPathSafe(root)
   fs.mkdirSync(root, { recursive: true })
   CREATED_VICTIMS.push(root)
-  const git = (...args: string[]) => spawnSync('git', args, { cwd: root, encoding: 'utf-8', env: gitFixtureEnv() })
+  // ★종료 코드를 본다. victim 생성이 통째로 실패하면 `snapshotRepo` 가 앞뒤 모두 `<exit …>` 를
+  //   돌려줘 before === after 가 되고, 격리가 없어도 무손상 판정이 초록이 된다.
+  //   픽스처 쪽 커밋 수 가드는 픽스처만 덮는다 — victim 쪽은 여기서 막는다.
+  const git = (...args: string[]): void => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf-8', env: gitFixtureEnv() })
+    if (result.status !== 0) {
+      throw new Error(`victim 을 세우다 실패했다 — git ${args.join(' ')} → exit ${result.status}\n${result.stderr}`)
+    }
+  }
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 'victim@example.com')
   git('config', 'user.name', 'victim')
@@ -206,6 +214,13 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
     try {
       const victim = createVictimRepo(tmp)
       const before = snapshotRepo(victim.root, victim.gitDir)
+      // ★victim 쪽 전제도 **값으로** 확인한다. 읽기가 통째로 실패하면 앞뒤가 나란히
+      //   `<exit …>` 라 before === after 가 되고 이 판정이 공허하게 통과한다.
+      assert.match(
+        before.commitCount,
+        /^[1-9][0-9]*$/,
+        `victim 이 커밋을 하나도 못 가졌다 — 무손상 판정의 관측 대상이 없다. 관측. ${JSON.stringify(before)}`,
+      )
 
       // 훅이 만드는 상황 그대로 — GIT_DIR 가 victim 을 가리킨 채 픽스처가 돈다.
       const workDir = path.join(tmp, 'work')
@@ -319,10 +334,21 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
       '임시 디렉터리 밖을 victim 으로 허용한다',
     )
 
-    // 그리고 이 파일이 **실제로 만든** 경로 전량이 그 금지를 지켰어야 한다.
+    // ★이 판정이 훑는 것은 **이 파일이 실제로 만든 경로 전량**이다. 앞 판정이 먼저 돌아야만
+    //   장부가 차던 시절에는 `--test-name-pattern` 으로 이것만 돌리면 무관한 red 가 났다.
+    //   그 형태는 디버깅하던 사람을 「판별식을 지우자」로 민다(`hook-source.ts` 에 적힌 사고).
+    //   그래서 여기서 팩토리를 제 손으로 한 번 지난다 — 순서 의존이 사라지고, 비어 있음
+    //   단언은 **팩토리가 만든 것을 장부에 적는가**를 재는 판정으로 남는다.
+    const audit = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-audit-'))
+    try {
+      createVictimRepo(audit)
+    } finally {
+      fs.rmSync(audit, { recursive: true, force: true })
+    }
     assert.ok(
       CREATED_VICTIMS.length > 0,
-      'victim 을 하나도 안 만들었다 — 이 판정이 훑을 대상이 없어 공허하다. 앞 판정이 먼저 돌아야 한다.',
+      'victim 을 만들었는데 장부가 비었다 — 팩토리가 만든 경로를 안 적는다.\n' +
+        '적히지 않은 경로는 아래 훑기가 못 본다. 이 판정이 통째로 공허해진다.',
     )
     const tmpReal = fs.realpathSync(os.tmpdir())
     const repoReal = fs.realpathSync(REPO_ROOT)

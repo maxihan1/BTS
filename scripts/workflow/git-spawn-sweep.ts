@@ -131,8 +131,23 @@ const GIT_SPAWN_SOURCE = '\\b(' + SPAWN_CALLEES.join('|') + ')\\s*\\(\\s*([\'"`]
 /** 파일 하나가 git 을 부르는지 보는 술어. `lastIndex` 를 안 남기도록 전역 플래그를 뺀다. */
 const GIT_SPAWN = new RegExp(GIT_SPAWN_SOURCE)
 
-/** 스크럽 헬퍼를 임포트하는 자리. 모듈 지정자로만 판정한다 — 이름을 바꿔 달아도 걸린다. */
-const HELPER_IMPORT = /\bfrom\s*(['"])[^'"]*git-fixture-env\.mjs\1/
+/**
+ * 정규식 안에 넣어도 제 뜻대로 읽히도록 특수문자를 막는다.
+ *
+ * @param text 원문
+ * @returns 이스케이프된 텍스트
+ */
+function escapeForRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 스크럽 헬퍼를 임포트하는 자리. 모듈 지정자로만 판정한다 — 이름을 바꿔 달아도 걸린다.
+ *
+ * 파일 이름은 `HELPER_MODULE` 한 자리에서 뽑는다. 두 곳에 적으면 헬퍼를 옮길 때 한쪽만
+ * 따라가고, 그러면 임포트 집합이 통째로 비어 양방향 차집합이 `빈집합 == 빈집합` 이 된다.
+ */
+const HELPER_IMPORT = new RegExp(`\\bfrom\\s*(['"])[^'"]*${escapeForRegExp(path.basename(HELPER_MODULE))}\\1`)
 
 /** 직전 유의 토큰이 식을 끝냈는가를 가리는 마지막 문자. 이 뒤의 `/` 는 나눗셈이다. */
 const EXPRESSION_END = /[A-Za-z0-9_$)\]]/
