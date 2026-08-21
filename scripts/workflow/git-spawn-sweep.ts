@@ -369,7 +369,9 @@ function stepStripComment(src: string, i: number): Step | null {
  */
 function endsExpression(src: string, i: number, c: string): boolean {
   if ((c === '+' || c === '-') && src[i - 1] === c) return true
-  return EXPRESSION_END.test(c)
+  if (!EXPRESSION_END.test(c)) return false
+  if (!WORD_CHAR.test(c)) return true
+  return !KEYWORDS_BEFORE_REGEX.has(wordEndingAt(src, i))
 }
 
 /**
