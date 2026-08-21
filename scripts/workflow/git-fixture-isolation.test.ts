@@ -182,10 +182,16 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
         `GIT_DIR 를 건 픽스처가 victim 을 바꿨다 — 스크럽이 실효가 없다.\n` +
           `달라진 축. ${JSON.stringify(changedAxes(before, after))}`,
       )
-      // 「아무 일도 안 일어났다」가 통과하지 않게 — 픽스처는 제 자리에 저장소를 만들었어야 한다.
-      assert.ok(
-        fs.existsSync(path.join(workDir, '.git')),
-        '픽스처가 제 작업 디렉터리에 저장소를 안 만들었다 — 이 판정의 전제가 깨졌다',
+      // 「아무 일도 안 일어났다」가 통과하지 않게 — 픽스처는 제 저장소에 **커밋을 만들었어야** 한다.
+      // ★`.git` 존재만 보면 이 판정이 자립하지 못한다. victim 생성이나 픽스처 절차가 통째로
+      //   실패하면 `snapshotRepo` 가 양쪽 다 `<exit …>` 를 돌려줘 before === after 가 되고,
+      //   격리가 없어도 초록이 된다. 그래서 전제를 **값으로** 확인한다 — 커밋 수를 실제로 읽는다.
+      const fixtureOwn = snapshotRepo(workDir, path.join(workDir, '.git'))
+      assert.match(
+        fixtureOwn.commitCount,
+        /^[1-9][0-9]*$/,
+        '픽스처가 제 저장소에 커밋을 하나도 못 만들었다 — 이 판정의 전제가 깨졌다.\n' +
+          `victim 이 안 변한 것은 격리가 아니라 픽스처 생성 실패다. 관측. ${JSON.stringify(fixtureOwn)}`,
       )
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
@@ -241,5 +247,175 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
       (v) => !resolveExisting(v).startsWith(tmpReal + path.sep) || resolveExisting(v).startsWith(repoReal + path.sep),
     )
     assert.deepEqual(strayed, [], `mkdtemp 밖에 victim 을 만들었다 — 전수. ${JSON.stringify(strayed)}`)
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// git 을 spawn 하는 전량이 헬퍼를 거치는지 — 소스에서 재계산한다
+// ─────────────────────────────────────────────────────────
+
+/**
+ * 스크럽 헬퍼 모듈 자신. 파생 집합 계산에서 뺀다.
+ *
+ * 정의부는 소비자가 아니다 — 자기를 임포트할 수 없고 git 도 안 부른다. 빼지 않으면
+ * 「정의부가 제 규칙을 어겼다」는 오탐이 언제든 살아난다. 그리고 이것은 예외 목록이 아니다.
+ * 여기 이름을 얹어 red 를 끌 수 있는 파일은 헬퍼 자신 하나뿐이고, git 호출을 헬퍼 안으로
+ * 옮겨 숨기면 호출자 쪽에 임포트만 남아 **반대 방향 차집합**이 red 가 된다.
+ *
+ * 반대로 이 판별식 파일 자신은 **특별 취급하지 않는다.** victim 을 세우려고 실제로 git 을
+ * 부르므로 파생 집합에 들고, 그래서 헬퍼도 실제로 임포트한다 — 규칙이 제 파일에 먼저 걸린다.
+ * 비-공허 짝만 일부러 스크럽 없이 부르는데, 그 대상은 `assertVictimPathSafe` 를 통과한
+ * mkdtemp 아래 victim 이라 저장소에 닿지 않는다.
+ */
+const HELPER_MODULE = 'scripts/workflow/git-fixture-env.mjs'
+
+/** 파생 집합이 훑는 소스 확장자. 판별식 러너가 실행하는 것과 같은 둘이다. */
+const SOURCE_EXTENSIONS = ['.ts', '.mjs']
+
+/**
+ * 파생 집합이 반드시 물어야 하는 픽스처 생성자 — 이 스윕의 **비-공허 짝**이다.
+ *
+ * 이름을 더하면 판정이 엄해지기만 한다. 얹어서 red 를 끌 수 없다는 점이 예외 목록과
+ * 다른 자리다. 호출 형태를 놓쳐 파생 집합이 비면 양방향 대조가 `빈집합 == 빈집합` 으로
+ * 조용히 통과하는데, 그 자리를 이 상수가 막는다.
+ */
+const KNOWN_FIXTURE_CREATORS = [
+  'scripts/workflow/select-backend-modules.test.ts',
+  'scripts/workflow/todos-reorder-integrity.test.ts',
+]
+
+/**
+ * `git` 이라는 프로그램을 부르는 호출 형태.
+ *
+ * 서브커맨드를 신호로 쓰지 않는다 — `init`·`clone` 을 세면 `worktree add` 나 `clone --bare`,
+ * 변수에 담은 서브커맨드가 전부 빠져나간다. 「git 을 spawn 한다」만 본다.
+ * 인자 배열 형태와 명령 문자열 형태를 함께 문다.
+ */
+const GIT_SPAWN = /\b(?:spawnSync|spawn|execFileSync|execFile|execSync|exec)\s*\(\s*(['"`])git(\1|\s)/
+
+/** 스크럽 헬퍼를 임포트하는 자리. 모듈 지정자로만 판정한다 — 이름을 바꿔 달아도 걸린다. */
+const HELPER_IMPORT = /\bfrom\s*(['"])[^'"]*git-fixture-env\.mjs\1/
+
+/**
+ * 주석을 걷어낸 소스. 재는 것은 「무엇이 적혀 있나」가 아니라 「무엇이 실행되나」다.
+ *
+ * 주석을 남기면 양쪽으로 뚫린다 — 설명문에 적어 둔 호출 예시가 파생 집합을 부풀리고,
+ * 주석 처리된 임포트 한 줄이 배선 없이 대조를 만족시킨다.
+ * 문자열 리터럴 안의 `//` 를 주석으로 오인하지 않도록 따옴표 상태를 따라간다.
+ * 정규식 리터럴은 안 따라간다 — 그 손상은 호출이나 임포트를 지워 **red 쪽으로** 기운다.
+ *
+ * @param src 원본 소스
+ * @returns 주석이 빠진 소스
+ */
+function stripComments(src: string): string {
+  let out = ''
+  let quote: string | null = null
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i] ?? ''
+    if (quote !== null) {
+      if (c === '\\') out += c + (src[(i += 1)] ?? '')
+      else if (c === quote) {
+        quote = null
+        out += c
+      } else out += c
+      continue
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      quote = c
+      out += c
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') i += 1
+      out += '\n'
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      for (i += 2; i < src.length && !(src[i] === '*' && src[i + 1] === '/'); i += 1);
+      i += 1
+      continue
+    }
+    out += c
+  }
+  return out
+}
+
+/**
+ * `scripts` 아래 소스 전량의 저장소 상대 경로.
+ *
+ * `git ls-files` 를 안 쓴다 — 아직 추적되지 않은 새 파일도 이 규칙의 대상이다.
+ * 「추적되면 검사한다」로 두면 새 픽스처 테스트가 첫 커밋 전까지 규칙 밖에 산다.
+ *
+ * @returns 정렬된 저장소 상대 경로 목록
+ */
+function scriptSources(): string[] {
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (SOURCE_EXTENSIONS.includes(path.extname(entry.name))) found.push(path.relative(REPO_ROOT, full))
+    }
+  }
+  walk(path.join(REPO_ROOT, 'scripts'))
+  return found.sort()
+}
+
+/** 소스에서 재계산한 두 집합. 사람이 유지하는 목록은 어느 쪽에도 없다. */
+interface WiringSets {
+  /** git 을 spawn 하는 파일 */
+  spawners: string[]
+  /** 스크럽 헬퍼를 임포트하는 파일 */
+  importers: string[]
+}
+
+/**
+ * 두 집합을 한 번의 순회로 계산한다. 같은 소스를 한 번만 읽어 두 술어를 적용한다.
+ *
+ * @returns 정렬된 두 집합
+ */
+function deriveWiringSets(): WiringSets {
+  const spawners: string[] = []
+  const importers: string[] = []
+  for (const rel of scriptSources()) {
+    if (rel === HELPER_MODULE) continue
+    const code = stripComments(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8'))
+    if (GIT_SPAWN.test(code)) spawners.push(rel)
+    if (HELPER_IMPORT.test(code)) importers.push(rel)
+  }
+  return { spawners, importers }
+}
+
+describe('git 을 spawn 하는 전량이 스크럽 헬퍼를 거친다 (파생집합 양방향)', () => {
+  test('★★파생 집합이 비어 있지 않고 알려진 픽스처 생성자를 실제로 문다 (비-공허 짝)', () => {
+    const { spawners } = deriveWiringSets()
+    assert.notDeepEqual(
+      spawners,
+      [],
+      'git 을 spawn 하는 파일을 하나도 못 찾았다 — 호출 형태를 놓친 것이다.\n' +
+        '이대로면 아래 양방향 대조가 `빈집합 == 빈집합` 으로 조용히 통과한다.',
+    )
+    const missed = KNOWN_FIXTURE_CREATORS.filter((f) => !spawners.includes(f))
+    assert.deepEqual(
+      missed,
+      [],
+      '임시 저장소를 세우는 것으로 알려진 파일이 파생 집합에서 빠졌다 — 스윕이 썩었다.\n' +
+        `빠진 것 전수. ${JSON.stringify(missed)}\n` +
+        `실제 파생 집합 전수. ${JSON.stringify(spawners)}`,
+    )
+  })
+
+  test('★★git 을 spawn 하는 파일 집합과 헬퍼 임포트 집합이 양방향으로 같다', () => {
+    const { spawners, importers } = deriveWiringSets()
+    const unscrubbed = spawners.filter((f) => !importers.includes(f))
+    const stray = importers.filter((f) => !spawners.includes(f))
+    assert.deepEqual(
+      { 'git 을 부르는데 헬퍼를 안 거친다': unscrubbed, '헬퍼를 임포트하는데 git 을 안 부른다': stray },
+      { 'git 을 부르는데 헬퍼를 안 거친다': [], '헬퍼를 임포트하는데 git 을 안 부른다': [] },
+      'git 을 spawn 하는 파일과 스크럽 헬퍼를 거치는 파일이 어긋난다.\n' +
+        '앞쪽은 훅 안에서 GIT_DIR 를 상속해 실저장소를 건드릴 수 있는 자리다 — 헬퍼로 배선하라.\n' +
+        '뒤쪽은 배선만 남은 자리이거나, 호출 형태를 파생 집합이 놓친 자리다.\n' +
+        '예외 선언은 두지 않는다 — 목록에 한 줄 얹는 것이 red 를 끄는 가장 싼 방법이 되기 때문이다.',
+    )
   })
 })
