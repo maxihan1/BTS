@@ -439,6 +439,9 @@ describe('주석 걷기가 정규식 리터럴 뒤에서도 듣는다', () => {
 const KNOWN_FIXTURE_CREATORS = [
   'scripts/workflow/select-backend-modules.test.ts',
   'scripts/workflow/todos-reorder-integrity.test.ts',
+  // ★확장자가 다른 것을 반드시 하나 둔다. 훑는 범위가 `.ts` 로 좁아지면 이 자리가 red 다 —
+  //   범위 손실은 spawners 와 importers 에서 **동시에** 빼가므로 양방향 차집합이 못 본다.
+  'scripts/workflow/todos-reorder-integrity.mjs',
 ]
 
 describe('git 을 spawn 하는 전량이 스크럽 헬퍼를 거친다 (파생집합 양방향)', () => {

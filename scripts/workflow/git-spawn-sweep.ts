@@ -42,8 +42,58 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  */
 const HELPER_MODULE = 'scripts/workflow/git-fixture-env.mjs'
 
-/** 파생 집합이 훑는 소스 확장자. 판별식 러너가 실행하는 것과 같은 둘이다. */
-const SOURCE_EXTENSIONS = ['.ts', '.mjs']
+/** 러너 글롭의 정본이 들어 있는 `package.json` 스크립트 이름. */
+const RUNNER_SCRIPT = 'test:workflow'
+
+/**
+ * 판별식 러너가 실제로 실행하는 글롭 전량. `package.json` 에서 읽는다.
+ *
+ * 확장자를 손으로 적으면 「러너가 도는 것」과 「스윕이 훑는 것」이 두 벌이 되고, 둘은
+ * 서로를 검사하지 않는다. 그 어긋남의 손실은 **대칭**이라 양방향 차집합이 원리적으로
+ * 못 본다 — 러너만 도는 확장자에 사는 git 스포너는 spawners 와 importers 에서 **동시에**
+ * 빠져 `빈집합 == 빈집합` 이 된다. 실제로 `.mjs` 를 빼면 전량이 초록이었다.
+ *
+ * @returns 따옴표를 턴 글롭 목록. 스크립트가 없으면 빈 목록이고, 그러면 파생 집합이
+ *   비어 판별식의 비-공허 짝이 red 가 된다
+ */
+export function runnerGlobs(): string[] {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf-8')) as {
+    scripts?: Record<string, string>
+  }
+  const command = packageJson.scripts?.[RUNNER_SCRIPT] ?? ''
+  return [...command.matchAll(/'([^']*\*[^']*)'/g)].map((hit) => hit[1] ?? '')
+}
+
+/** 글롭 조각을 자리표로 바꿀 때 쓰는 문자. 소스에 나올 수 없는 것을 고른다. */
+const GLOB_PLACEHOLDER = '\u0000'
+
+/**
+ * 글롭 하나를 경로 정규식으로 바꾼다. `**` 는 디렉터리 여러 겹, `*` 는 한 겹 안이다.
+ *
+ * @param glob 러너 글롭
+ * @returns 저장소 상대 경로에 맞춰 볼 정규식
+ */
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  const source = escaped
+    .replaceAll('**/', GLOB_PLACEHOLDER)
+    .replaceAll('*', '[^/]*')
+    .replaceAll(GLOB_PLACEHOLDER, '(?:[^/]+/)*')
+  return new RegExp('^' + source + '$')
+}
+
+/**
+ * 러너가 그 파일 하나만 직접 실행할 수 있는 경로인가.
+ *
+ * @param rel 저장소 상대 경로
+ * @returns 러너 글롭에 걸리면 true
+ */
+export function matchesRunnerGlob(rel: string): boolean {
+  return runnerGlobs().some((glob) => globToRegExp(glob).test(rel))
+}
+
+/** 파생 집합이 훑는 소스 확장자. 러너 글롭에서 뽑으므로 러너와 목록이 하나다. */
+const SOURCE_EXTENSIONS = [...new Set(runnerGlobs().map((glob) => path.extname(glob)))]
 
 /**
  * 자식 프로세스를 띄우는 함수 이름. 긴 이름을 앞에 둬야 교대가 짧은 쪽으로 먼저 안 먹는다.
