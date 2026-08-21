@@ -390,6 +390,12 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
 const COMMENT_OPEN = '/'.repeat(2)
 
 /**
+ * 주석을 여는 자리 전량. 줄 주석만 재면 블록 주석이 통째로 사각이다 —
+ * 적대적 렌즈가 살아남은 블록 주석 하나로 임포트 집합을 만족시켜 보였다.
+ */
+const COMMENT_OPENERS = [COMMENT_OPEN, `/${'*'}`]
+
+/**
  * 미끼 주석 한 줄. 스트리핑이 새면 이 줄이 그대로 임포트 집합을 만족시킨다.
  *
  * 여는 자리를 런타임에 잇는다 — 소스에 그대로 적으면 아래 전량 판정이 **제 미끼**를
@@ -489,10 +495,11 @@ describe('주석 걷기가 정규식 리터럴 뒤에서도 듣는다', () => {
     // `//` 를 위치 제약 없이 세면 문자열·정규식 안의 그것(URL·경로 글롭)까지 물어 오탐이 된다.
     // 가르는 기준은 위치가 아니라 **판정을 속일 수 있는가**다 — 그래서 예외 목록이 0개다.
     const LINE_HEAD_COMMENT = /^\s*\/\//
-    const deceives = (text: string): boolean => {
-      const opened = text.indexOf(COMMENT_OPEN)
-      return opened !== -1 && satisfiesWiringPredicate(text.slice(opened))
-    }
+    const deceives = (text: string): boolean =>
+      COMMENT_OPENERS.some((opener) => {
+        const opened = text.indexOf(opener)
+        return opened !== -1 && satisfiesWiringPredicate(text.slice(opened))
+      })
     const survived = strippedSources().flatMap(({ file, code }) =>
       code
         .split('\n')

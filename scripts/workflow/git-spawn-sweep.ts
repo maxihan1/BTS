@@ -163,6 +163,10 @@ const HELPER_IMPORT = new RegExp(`\\bfrom\\s*(['"])[^'"]*${escapeForRegExp(path.
  * spawn 집합을 부풀린다. 판별식이 술어를 제 손으로 다시 적으면 두 벌이 되고,
  * 스윕이 형태를 넓힐 때 판별식 쪽만 낡아 「막았다」가 거짓이 된다.
  *
+ * **여기 있는 것은 텍스트 한 줄로 판정되는 술어뿐이다.** 도달성 술어(`importsAnyOf`)는
+ * importer 경로를 기준으로 지정자를 풀어야 하므로 텍스트만으로 못 잰다 — 그래서 여기 없다.
+ * 「파생 술어 전량」이라고 읽지 마라. 게이트 2 라운드 3 이 그 오독을 지적했다.
+ *
  * @param text 재어 볼 텍스트
  * @returns 술어를 하나라도 만족하면 true
  */
@@ -534,8 +538,43 @@ export function deriveGitTouchingFiles(): string[] {
  * @returns 하나라도 임포트하면 true
  */
 export function importsAnyOf(importer: string, code: string, targets: Iterable<string>): boolean {
-  for (const target of targets) if (code.includes(`./${path.basename(target)}`)) return true
+  const imported = new Set(importedFiles(importer, code))
+  for (const target of targets) {
+    if (imported.has(target)) return true
+    // 확장자를 안 쓴 지정자도 같은 파일을 가리킨다. 러너가 그 형태를 실제로 푼다.
+    if (imported.has(target.replace(/\.[^.\\/]+$/, ''))) return true
+  }
   return false
+}
+
+/**
+ * 모듈 지정자를 뽑는 자리 — `from '…'` · `import('…')` · `require('…')`.
+ *
+ * **임포트 문법**만 문다. 부분 문자열로 재면 문자열 리터럴에 적힌 파일 이름 한 줄이
+ * 도달 간선을 만들고, 사각지대 판정이 그 한 줄로 꺼진다. 실측으로 심어 확인한 형태다.
+ */
+const MODULE_SPECIFIER = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*(['"])([^'"]+)\1/g
+
+/**
+ * 이 소스가 임포트하는 파일 전량. 상대 지정자를 importer 기준으로 푼다.
+ *
+ * 경로를 풀지 않으면 디렉터리가 다른 **동명 파일**이 같은 것으로 읽힌다 —
+ * `scripts/doc-index/surfaces.ts` 가 `scripts/workflow/surfaces.ts` 로 통했다.
+ * 상대가 아닌 지정자(`node:path` · 패키지)는 저장소 파일이 아니므로 뺀다.
+ *
+ * @param importer 이 소스의 저장소 상대 경로
+ * @param code 주석이 걷힌 소스
+ * @returns 저장소 상대 경로로 푼 임포트 대상 전량
+ */
+export function importedFiles(importer: string, code: string): string[] {
+  const dir = path.dirname(importer)
+  const found: string[] = []
+  for (const match of code.matchAll(MODULE_SPECIFIER)) {
+    const specifier = match[2]
+    if (specifier === undefined || !specifier.startsWith('.')) continue
+    found.push(path.normalize(path.join(dir, specifier)))
+  }
+  return found
 }
 
 /** 소스에서 재계산한 두 집합. 사람이 유지하는 목록은 어느 쪽에도 없다. */
