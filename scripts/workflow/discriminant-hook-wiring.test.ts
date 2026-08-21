@@ -33,41 +33,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { GUARD_OPERATORS, HOOK, PNPM_WRAPPER, blockDepthAt, commandLines } from './hook-source.ts'
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const HOOK = '.husky/pre-push'
 
 /** 훅이 반드시 덮어야 하는 판별식 글롭. `package.json` 의 `test:workflow` 와 같은 범위다. */
 const REQUIRED_GLOBS = ['scripts/**/*.test.ts', 'scripts/**/*.test.mjs']
-
-/**
- * 셸 블록을 여는/닫는 토큰. 판별식 호출이 **블록 안에 있으면** 조건부 실행이다.
- *
- * ★훅 전체에 조건문을 금지하지 않는다. 훅에는 판별식 말고 다른 명령도 산다(백엔드 모듈
- *   테스트 등). 그것들은 조건을 가져도 된다 — 재는 것은 **판별식 호출 한 줄의 도달성**이다.
- *   종전 규칙은 「훅 어디에도 조건문 금지」였고, 정당한 조건문을 막아 다음 사람이 이 판별식을
- *   지우게 만드는 형태였다(2026-08-21 정정).
- */
-const BLOCK_OPEN = /^(if|for|while|case|until)\b/
-const BLOCK_CLOSE = /^(fi|done|esac)\b/
-
-/**
- * 호출 자체를 조건부로 만드는 연산자.
- *
- * ★`&&`·`||` 는 겉보기에 조건문이 아니지만 앞 명령이 실패하면 판별식이 통째로 스킵되고
- *   훅은 초록이다 — 조용한 부재다.
- */
-const GUARD_OPERATORS = ['&&', '||']
-
-/** pnpm 래퍼. 워크트리에서 모듈 재설치를 유발해 무-TTY 로 죽는다. */
-const PNPM_WRAPPER = /(^|[;&|(\s])(npx\s+)?pnpm(\s|$)/
-
-/** 주석과 빈 줄을 제거한 실행 줄만. 판정 대상은 「무엇이 적혀 있나」가 아니라 「무엇이 실행되나」다. */
-function commandLines(sh: string): string[] {
-  return sh
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l !== '' && !l.startsWith('#'))
-}
 
 function readHook(): string {
   const p = path.join(REPO_ROOT, HOOK)
@@ -90,13 +61,7 @@ function discriminantInvocation(lines: string[]): string | undefined {
  * 호출이 아예 없으면 `null` — 그 경우는 위 단언이 먼저 잡으므로 여기서 판정하지 않는다.
  */
 function invocationBlockDepth(lines: string[]): number | null {
-  let depth = 0
-  for (const line of lines) {
-    if (line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g))) return depth
-    if (BLOCK_OPEN.test(line)) depth += 1
-    else if (BLOCK_CLOSE.test(line)) depth = Math.max(0, depth - 1)
-  }
-  return null
+  return blockDepthAt(lines, (line) => line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g)))
 }
 
 describe('판별식 훅 배선 정합', () => {
