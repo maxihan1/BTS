@@ -41,6 +41,7 @@ import {
   PNPM_WRAPPER,
   blockDepthAt,
   commandLines,
+  inlineBlockOpeners,
 } from './hook-source.ts'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -131,20 +132,39 @@ function assertUnconditional(target: {
 }): void {
   const { where, subject, lines, matches, why } = target
   const line = lines.find(matches)
-  const depth = blockDepthAt(lines, matches)
 
+  // ★부재를 **먼저** 판정한다. `blockDepthAt` 은 부재를 `null` 로 돌려주고 그 판정을 호출자
+  //   몫으로 남긴다. 그것을 안 하면 「깊이 null 에 있다」는 **거짓** 메시지가 나오고 —
+  //   어디에도 없는 것은 어떤 깊이에도 있지 않다 — 가드 축은 빈 문자열을 검사하며 통과한다.
+  if (line === undefined) {
+    assert.fail(`${where} 에 ${subject}이 아예 없다 — 어떤 깊이에도 있지 않다.\n\n${why}`)
+  }
+
+  const depth = blockDepthAt(lines, matches)
   assert.equal(
     depth,
     0,
     `${where} 의 ${subject}이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
   )
 
-  const guarded = GUARD_OPERATORS.filter((op) => (line ?? '').includes(op))
+  const guarded = GUARD_OPERATORS.filter((op) => line.includes(op))
   assert.deepEqual(
     guarded,
     [],
     `${where} 의 ${subject}이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
       `앞이 실패하면 그 줄은 **한 줄도 안 돌고** 파일은 그 사실을 말하지 않는다.\n\n${why}`,
+  )
+
+  // ★깊이는 **줄 단위**라 자기 완결형 한 줄(`if …; then … ; fi`)을 못 본다. 그 형태는
+  //   깊이 0 · 가드 없음으로 축 전부를 통과하므로 줄 안쪽을 따로 본다.
+  const openers = inlineBlockOpeners(line)
+  assert.deepEqual(
+    openers,
+    [],
+    `${where} 의 ${subject}이 한 줄 안에서 블록을 연다 (${openers.join(' · ')}).\n` +
+      `  ${line}\n` +
+      `그 조건이 거짓인 실행에서는 그 줄이 통째로 사라지는데, 셸 블록 깊이는 줄 단위로 세므로 ` +
+      `깊이 0 으로 읽힌다 — 가장 비싼 자리의 조용한 부재다.\n\n${why}`,
   )
 }
 
@@ -560,6 +580,33 @@ describe('무조건성 판정 자체의 양성 대조군', () => {
       `한 줄 조건부 스크럽을 무조건 실행으로 읽었다: ${oneLine}\n` +
         `그 조건이 거짓인 실행에서는 스크럽이 통째로 사라지는데 판정은 초록이다 — 조용한 부재다.`,
     )
+  })
+
+  test('★`case` 한 줄 조건도 같은 축이 잡는다 (키워드 한 벌에서 나온다)', () => {
+    const caseForm = `case "${'$'}{GIT_DIR:-}" in ?*) ${REAL_SCRUB} ;; esac`
+
+    assert.throws(
+      () => judgeSynthetic([caseForm, DISCRIMINANT_CALL]),
+      /한 줄 안에서 블록을 연다 \(case\)/,
+      `\`case\` 한 줄 조건부를 무조건 실행으로 읽었다: ${caseForm}`,
+    )
+  })
+
+  test('오탐 대조 — 정상 줄을 한 줄 조건부로 읽지 않는다', () => {
+    // 새 축이 정상 명령을 막으면 훅을 고칠 방법이 없어진다. 특히 키워드가 **단어 일부**로
+    // 들어간 경우(`format` 의 `for`, `notify` 의 `if`)를 잡으면 안 된다.
+    for (const clean of [
+      REAL_SCRUB,
+      DISCRIMINANT_CALL,
+      'node --experimental-strip-types scripts/workflow/push-backend-tests.ts',
+      "unset $(env | awk -F= '/^GIT_/ {print $1}') # format 유지 · notify 안 함",
+    ]) {
+      assert.deepEqual(
+        inlineBlockOpeners(clean),
+        [],
+        `정상 줄을 한 줄 조건부로 읽었다: ${clean}`,
+      )
+    }
   })
 
   test('부재를 「어떤 깊이에 있다」로 말하지 않는다', () => {

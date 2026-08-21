@@ -36,6 +36,9 @@ export const HOOK = '.husky/pre-push'
  */
 export const DEPLOY_GATE = 'infra/deploy/bts-deploy.sh'
 
+/** 셸 블록을 여는 키워드. 아래 두 판독기가 **이 한 벌**에서 나온다. */
+const BLOCK_KEYWORDS = ['if', 'for', 'while', 'case', 'until'] as const
+
 /**
  * 셸 블록을 여는/닫는 토큰. 대상 줄이 **블록 안에 있으면** 조건부 실행이다.
  *
@@ -44,8 +47,28 @@ export const DEPLOY_GATE = 'infra/deploy/bts-deploy.sh'
  *   종전 규칙은 「훅 어디에도 조건문 금지」였고, 정당한 조건문을 막아 다음 사람이 이 판별식을
  *   지우게 만드는 형태였다(2026-08-21 정정).
  */
-export const BLOCK_OPEN = /^(if|for|while|case|until)\b/
+export const BLOCK_OPEN = new RegExp(`^(${BLOCK_KEYWORDS.join('|')})\\b`)
 export const BLOCK_CLOSE = /^(fi|done|esac)\b/
+
+/**
+ * 그 줄이 **자기 줄 안에서** 여는 블록 키워드 전량. 없으면 빈 배열.
+ *
+ * ★`blockDepthAt` 이 못 보는 자리다. 그 함수는 깊이를 **줄 단위**로 세고 대상 줄인지를
+ *   블록 토큰보다 먼저 본다 — 여러 줄 `if` 에는 옳은 설계지만, 조건과 본문과 닫기가
+ *   **한 줄**에 담긴 `if …; then … ; fi` 는 깊이 0 으로 읽힌다. `GUARD_OPERATORS` 도
+ *   `&&`·`||` 만 알아 `; then` 을 모른다. 그래서 그 형태는 무조건성 축 전부를 통과했다.
+ *   여러 줄 의미론은 그대로 두고, 한 줄 조건만 이 어휘가 따로 잡는다.
+ *
+ * ★개수가 아니라 이름을 돌려준다. 호출자의 실패 메시지가 **어느 키워드**인지 말해야 한다.
+ *
+ * ★키워드 목록은 `BLOCK_OPEN` 과 **같은 한 벌**에서 나온다. 두 벌로 적으면 한쪽에만
+ *   키워드가 붙고, 둘은 서로를 검사하지 않는다.
+ *
+ * @param line 주석을 걷어낸 실행 줄 하나 (`commandLines` 산출물의 원소)
+ */
+export function inlineBlockOpeners(line: string): string[] {
+  return BLOCK_KEYWORDS.filter((kw) => new RegExp(`(^|[;&|(\\s])${kw}\\b`).test(line))
+}
 
 /**
  * 호출 자체를 조건부로 만드는 연산자.
