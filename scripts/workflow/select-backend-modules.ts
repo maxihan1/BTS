@@ -205,7 +205,33 @@ function moduleOf(file: string): string | null {
  * 빨간불이 아니라 부재라 아무도 눈치채지 못한 채 초록으로 머지된다. 장부(매핑 31)가 착수
  * 조건으로 못박은 위험이 정확히 그것이다.
  */
-export function selectModules(changedFiles: string[], labels: string[] = []): Selection {
+/**
+ * 선별 동작을 바꾸는 호출자 옵션.
+ *
+ * ★기본값은 전부 **넓히는 쪽**이다. 이 파일의 규율(「모르겠으면 넓힌다」)을 옵션이 뚫지
+ *   못하게 하려면, 좁히는 것은 부르는 쪽이 명시적으로 요구해야 한다.
+ */
+export interface SelectOptions {
+  /**
+   * 마이그레이션 파일이 있을 때 전 모듈로 넓힐지. 기본 `true`.
+   *
+   * `false` 는 **로컬 푸시 훅 전용**이다. CI 자동 실행을 끈 뒤(2026-08-21) 백엔드 테스트를
+   * 실제로 돌리는 유일한 자리가 `.husky/pre-push` 인데, 마이그레이션 하나로 9모듈(약 55분)을
+   * 돌리면 사람이 `--no-verify` 를 쓰기 시작하고 그 순간 훅 전체가 죽는다.
+   *
+   * ★끄면 **스키마 영향 검증이 사라진다.** 마이그레이션이 다른 BC 의 테이블을 건드리면
+   *   그 BC 는 안 돈다. 의도된 거래이고, 되찾는 자리는 배포 전 전량 실행이다.
+   *   그래프로 계산 가능한 넓힘(역의존 폐포)은 이 옵션이 건드리지 않는다.
+   */
+  widenOnMigration?: boolean
+}
+
+export function selectModules(
+  changedFiles: string[],
+  labels: string[] = [],
+  opts: SelectOptions = {},
+): Selection {
+  const widenOnMigration = opts.widenOnMigration ?? true
   const universe = allModules()
   const wide = (reason: string): Selection => {
     // ★「절대 비지 않는다」를 **코드로** 성립시킨다. `allModules()` 는 모듈 디렉터리가 없으면
@@ -235,7 +261,7 @@ export function selectModules(changedFiles: string[], labels: string[] = []): Se
   //   `moduleOf()` 가 먼저 돌면 그 모듈로 귀속돼 **좁혀진다** — 스키마 영향은 그래프로 계산할 수
   //   없는 축이므로 그 좁힘은 「검증 안 된 코드가 초록으로 머지된다」 방향이다.
   const migration = files.find((f) => f.includes(MIGRATION_MARKER))
-  if (migration !== undefined) {
+  if (migration !== undefined && widenOnMigration) {
     return wide(`마이그레이션 변경이 있다 (${migration}) — 스키마 영향은 모듈 그래프로 계산할 수 없다`)
   }
 
