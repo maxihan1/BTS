@@ -35,6 +35,8 @@ import { gitFixtureEnv } from './git-fixture-env.mjs'
 import {
   deriveGitSpawnCallSites,
   deriveWiringSets,
+  matchesRunnerGlob,
+  runnerFlags,
   scanGitSpawnCallSites,
   stripComments,
   strippedSources,
@@ -610,3 +612,167 @@ describe('호출부 판정이 env 의 값까지 본다', () => {
     )
   })
 })
+
+// ─────────────────────────────────────────────────────────
+// 원본을 실제로 돌려 잰다 — 사본이 지켜도 원본은 썩는다
+// ─────────────────────────────────────────────────────────
+//
+// 위 `runFixtureProcedure` 는 진짜 픽스처 절차의 **사본**이다. 사본이 스크럽을 지켜도
+// 원본이 잃으면 아무 판정도 안 문다. 실제로 `select-backend-modules.test.ts` 의 호출을
+// 이 PR 이전 형태로 되돌려도 전량이 초록이었다 — 파일 단위 대조는 임포트가 남아 초록이고,
+// 호출 단위 대조는 `env:` 키가 있어 초록이다. **값을 보는 판정이 없었다.**
+// 원본과 사본이 서로를 검사하지 않는 그 양식(`two-lists-never-check-each-other`)이다.
+//
+// 그래서 원본을 **그 파일만 단독으로** 자식 프로세스에 태우고 `GIT_DIR` 를 victim 에 건다.
+// 스크럽이 살아 있으면 victim 은 그대로이고, 한 자리라도 잃으면 victim 이 실제로 바뀐다.
+// 문자열이 아니라 동작으로 갈린다.
+
+/**
+ * node 테스트 러너가 자식에 심는 네임스페이스 접두.
+ *
+ * 이것을 물려주면 자식이 「테스트 파일 안에서 재귀 호출」로 보고 **파일을 건너뛴다.**
+ * 종료 코드는 0 이라 판정은 초록인데 아무것도 안 돈다 — 실제로 이 하네스가 처음
+ * 그렇게 통과했고, 잡아낸 것은 아래 비-공허 짝이었다. 이름을 열거하지 않는 이유는
+ * `GIT_` 를 접두로만 판정하는 이유와 같다. node 가 하나 더 넣으면 열거는 조용히 낡는다.
+ */
+const TEST_RUNNER_ENV_PREFIX = 'NODE_TEST_'
+
+/**
+ * 파일 하나를 `GIT_DIR` 를 건 자식 프로세스로 돌린다.
+ *
+ * 러너와 같은 플래그를 `package.json` 에서 뽑아 쓴다 — 플래그가 어긋나 자식이 원본을
+ * 아예 못 도는 경우는 아래 판정이 종료 코드로 먼저 잡는다.
+ *
+ * @param target 실행할 파일. 저장소 상대 경로이거나 절대 경로
+ * @param gitDir 자식에게 물릴 `GIT_DIR`
+ * @returns 종료 코드와 출력
+ */
+function runWithGitDir(target: string, gitDir: string): { status: number | null; output: string } {
+  const inherited = Object.entries(leakEnv(gitDir)).filter(([key]) => !key.startsWith(TEST_RUNNER_ENV_PREFIX))
+  const child = spawnSync(process.execPath, [...runnerFlags(), target], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+    env: Object.fromEntries(inherited),
+  })
+  return { status: child.status, output: `${child.stdout ?? ''}${child.stderr ?? ''}` }
+}
+
+/** 러너가 그 파일만 단독으로 돌릴 수 있는 픽스처 생성자. 자식으로 태울 대상이다. */
+const DIRECTLY_RUNNABLE_CREATORS = KNOWN_FIXTURE_CREATORS.filter((file) => matchesRunnerGlob(file))
+
+describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim 을 안 바꾼다', () => {
+  test('★★원본을 그 파일만 단독 실행해도 victim 이 그대로다', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-original-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const before = snapshotRepo(victim.root, victim.gitDir)
+
+      const runs = DIRECTLY_RUNNABLE_CREATORS.map((file) => ({ file, run: runWithGitDir(file, victim.gitDir) }))
+
+      // 전제부터 값으로 확인한다 — 자식이 안 돌면 victim 이 안 변하는 것은 격리가 아니다.
+      // 그 자식들의 다른 판정은 저장소를 스크럽된 env 로 읽으므로 정상 통과해야 한다.
+      const notRun = runs.filter(({ run }) => run.status !== 0).map(({ file, run }) => `${file} — exit ${run.status}`)
+      assert.deepEqual(
+        notRun,
+        [],
+        'GIT_DIR 를 건 채 원본을 돌렸더니 자식이 실패했다 — 아래 무손상 단언의 전제가 깨졌다.\n' +
+          '이 상태에서 victim 이 안 변한 것은 격리가 아니라 원본이 아예 안 돈 것이다.\n' +
+          `실패한 자식 전수. ${JSON.stringify(notRun)}\n` +
+          runs
+            .filter(({ run }) => run.status !== 0)
+            .map(({ file, run }) => `── ${file} 출력\n${run.output}`)
+            .join('\n'),
+      )
+
+      const after = snapshotRepo(victim.root, victim.gitDir)
+      assert.deepEqual(
+        after,
+        before,
+        'GIT_DIR 아래서 원본을 돌렸더니 victim 이 바뀌었다 — 원본 어딘가가 스크럽을 잃었다.\n' +
+          '훅 안에서 그 자리는 작업 중이던 진짜 저장소다.\n' +
+          `돌린 원본 전수. ${JSON.stringify(DIRECTLY_RUNNABLE_CREATORS)}\n` +
+          `달라진 축. ${JSON.stringify(changedAxes(before, after))}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★같은 하네스에 스크럽 없는 픽스처를 물리면 victim 이 실제로 바뀐다 (비-공허 짝)', () => {
+    // ★하네스가 죽어 있으면(자식이 안 뜨거나 GIT_DIR 가 안 실리거나 스냅숏이 눈이 멀면)
+    //   위 판정은 「아무 일도 안 일어난다」로 통과한다. 그래서 **같은 함수**에 스크럽을
+    //   잃은 픽스처를 물려 victim 이 실제로 바뀌는지 본다. 진짜 파일은 커밋 상태 그대로 두고
+    //   합성 픽스처를 임시 디렉터리에 세운다 — 저장소를 뮤테이션한 채 두면 그 자체가 사고다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-harness-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const before = snapshotRepo(victim.root, victim.gitDir)
+
+      const leaky = path.join(tmp, 'unscrubbed.test.mjs')
+      fs.writeFileSync(leaky, unscrubbedFixtureSource())
+      const run = runWithGitDir(leaky, victim.gitDir)
+      assert.equal(run.status, 0, `합성 픽스처 자체가 안 돌았다 — 짝이 공허하다.\n${run.output}`)
+
+      const after = snapshotRepo(victim.root, victim.gitDir)
+      assert.notDeepEqual(
+        after,
+        before,
+        '스크럽 없는 픽스처를 물렸는데도 victim 이 그대로다 — 이 하네스가 오염을 못 본다.\n' +
+          '자식에 GIT_DIR 가 안 실렸거나 스냅숏이 축을 못 읽는 것이다. 위 판정도 함께 공허하다.\n' +
+          `관측한 상태. ${JSON.stringify(after)}\n` +
+          `합성 픽스처 출력.\n${run.output}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★자식으로 못 도는 픽스처 생성자는 자식으로 도는 파일이 임포트한다', () => {
+    // 러너 글롭에 안 걸리는 항목(CLI 모듈)은 단독 실행 대상이 아니다. 그 자리의 git 호출이
+    // 아무 자식에도 안 실리면 위 판정에 사각지대가 생긴다 — 임포트로 이어져 있어야 한다.
+    const indirect = KNOWN_FIXTURE_CREATORS.filter((file) => !matchesRunnerGlob(file))
+    const sources = strippedSources()
+    const reaches = (importer: string, target: string): boolean =>
+      sources.some(({ file, code }) => file === importer && code.includes(`./${path.basename(target)}`))
+    const unreached = indirect.filter((file) => !DIRECTLY_RUNNABLE_CREATORS.some((runnable) => reaches(runnable, file)))
+    assert.deepEqual(
+      unreached,
+      [],
+      '자식으로 단독 실행할 수 없는 픽스처 생성자가 어느 자식에도 안 실린다 — 사각지대다.\n' +
+        '그 파일이 스크럽을 잃어도 위 판정이 못 본다. 도는 파일이 임포트하게 잇거나 직접 돌려라.\n' +
+        `안 실리는 것 전수. ${JSON.stringify(unreached)}\n` +
+        `자식으로 도는 것 전수. ${JSON.stringify(DIRECTLY_RUNNABLE_CREATORS)}`,
+    )
+  })
+})
+
+/**
+ * 스크럽을 잃은 픽스처의 소스. 비-공허 짝이 임시 디렉터리에 세워 같은 하네스에 물린다.
+ *
+ * 호출 이름을 자리표시자로 적는다 — 이 파일 자신이 호출부 스캐너의 대상이라 미끼를
+ * 그대로 적으면 「env 없는 호출부」 판정이 제 미끼를 위반으로 읽는다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function unscrubbedFixtureSource(): string {
+  return [
+    "import { test } from 'node:test'",
+    "import { spawnSync } from 'node:child_process'",
+    "import fs from 'node:fs'",
+    "import path from 'node:path'",
+    '',
+    "test('스크럽을 잃은 픽스처', () => {",
+    "  const work = path.join(import.meta.dirname, 'work')",
+    '  fs.mkdirSync(work, { recursive: true })',
+    `  const git = (...args) => ${CALLEE_PLACEHOLDER}('git', args, { cwd: work, encoding: 'utf-8' })`,
+    "  git('init', '-q')",
+    "  git('config', 'user.email', 'leak@example.com')",
+    "  git('config', 'user.name', 'leak')",
+    "  fs.writeFileSync(path.join(work, 'L.kt'), 'leak')",
+    "  git('add', '-A')",
+    "  git('commit', '-qm', 'leak')",
+    '})',
+  ]
+    .join('\n')
+    .replaceAll(CALLEE_PLACEHOLDER, 'spawnSync')
+}

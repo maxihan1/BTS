@@ -64,6 +64,22 @@ export function runnerGlobs(): string[] {
   return [...command.matchAll(/'([^']*\*[^']*)'/g)].map((hit) => hit[1] ?? '')
 }
 
+/**
+ * 판별식 러너가 쓰는 실행 플래그 전량. 글롭과 같은 한 줄에서 뽑는다.
+ *
+ * 원본을 자식으로 돌려 재는 판정이 이것을 쓴다. 플래그를 따로 적으면 러너와 두 벌이 되고,
+ * 러너 쪽만 바뀌면 자식이 원본을 아예 못 돈다 — 그 실패는 자식의 종료 코드로 드러난다.
+ *
+ * @returns `--` 로 시작하는 토큰 목록
+ */
+export function runnerFlags(): string[] {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf-8')) as {
+    scripts?: Record<string, string>
+  }
+  const command = packageJson.scripts?.[RUNNER_SCRIPT] ?? ''
+  return command.split(/\s+/).filter((token) => token.startsWith('--'))
+}
+
 /** 글롭 조각을 자리표로 바꿀 때 쓰는 문자. 소스에 나올 수 없는 것을 고른다. */
 const GLOB_PLACEHOLDER = '\u0000'
 
