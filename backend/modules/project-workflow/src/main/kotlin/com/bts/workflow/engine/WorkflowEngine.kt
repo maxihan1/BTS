@@ -264,29 +264,34 @@ class WorkflowEngine(
      * (구 ADR `2026-05-28-workflow-transition-identity-policy` 의 「identity = (from, to)」 정책은
      * 그 ADR 이 대체했다. 같은 상태쌍에 이름만 다른 전환을 여럿 둘 수 있게 되어 2튜플로는 못 가른다.)
      *
-     * 1. [TransitionRequest.transitionId] 가 오면 그것으로 지목한다 ([resolveById]).
-     * 2. 없으면 [candidatesFor] 로 후보를 얻어 [TransitionRequest.toStateKey] 로 좁힌다.
+     * 1. **먼저 후보를 만든다** — [candidatesFor] 로 얻은 목록을 [TransitionRequest.toStateKey] 로 좁힌다.
      *    **열거(버튼 목록)와 실행(클릭)이 같은 함수를 쓴다** — 두 벌로 두면 「목록에는 보이는데
      *    눌러도 안 되는 버튼」이 생긴다. INITIAL 제외도 그 함수가 이미 처리한다.
+     * 2. [TransitionRequest.transitionId] 가 오면 **그 후보 목록 안에서** 지목한다 ([resolveById]).
+     *    지목은 후보를 **좁히는** 수단이지 후보 판정을 **건너뛰는** 수단이 아니다 — 순서를 뒤집어
+     *    지목을 먼저 처리하면 위 규칙 전부가 지목 경로에서만 무력화된다.
      * 3. 후보 0개 — 종전과 같은 [WorkflowNotFoundException] (spec FR-WF-05 E11 → 404).
      * 4. 후보 1개 — 종전과 완전히 같은 실행 (spec S5). 보드 드래그앤드롭·슬랙 완료 모달이
      *    `transitionId` 없이 호출해도 그대로 산다 — 이 경로가 그 두 BC 의 하위호환 계약이다.
      * 5. 후보 2개 이상 — [AmbiguousTransitionException] (spec S4 · E12 → 409).
      *    조용히 첫 번째를 고르지 않는다. 어느 쪽 규칙이 도는지 호출자가 알 수 없기 때문이다.
      *
+     * 409 왕복은 이 순서로도 깨지지 않는다. 409 가 실어 보낸 후보는 바로 이 목록에서 나왔으므로,
+     * 되실어 온 id 는 언제나 같은 목록 안에 있다.
+     *
      * @param req 전환 요청
      * @param workflow 해석 대상 워크플로우 정의
-     * @throws WorkflowNotFoundException 지목한 전환이 이 워크플로우에 없거나 후보가 0개일 때
+     * @throws WorkflowNotFoundException 지목한 전환이 후보가 아니거나 후보가 0개일 때
      * @throws AmbiguousTransitionException 후보가 2개 이상인데 지목이 없을 때
      */
     private fun resolveTransition(
         req: TransitionRequest,
         workflow: Workflow,
     ): WorkflowTransition {
-        req.transitionId?.let { return resolveById(req, workflow, it) }
-
         val candidates =
             candidatesFor(workflow, req.fromStateKey).filter { it.toStateKey == req.toStateKey }
+        req.transitionId?.let { return resolveById(req, candidates, it) }
+
         return when (candidates.size) {
             0 ->
                 throw WorkflowNotFoundException(
@@ -298,23 +303,46 @@ class WorkflowEngine(
     }
 
     /**
-     * 전환 ID 로 전환을 지목한다.
+     * 전환 ID 로 전환을 지목한다 — **[candidates] 안에서만 찾는다.**
      *
-     * **소속을 반드시 대조한다** — [workflow] 의 전환 목록 안에서만 찾는다. 남의 워크플로우의 전환 ID 로
-     * 남의 validator·post-action 을 실행시키면 안 된다 (spec FR-WF-05 E9 → 404).
+     * 이 함수는 후보 판정 규칙을 **한 줄도 다시 적지 않는다.** 판정은 전부 [candidatesFor] 와
+     * [resolveTransition] 의 도착지 필터가 이미 끝냈고, 여기서는 그 결과 목록을 좁히기만 한다.
+     * 규칙을 여기 다시 적으면 같은 규칙이 두 벌이 되어 한쪽만 늙는다.
      *
-     * @param req 전환 요청 (오류 메시지의 워크플로우 키 출처)
-     * @param workflow 소속 대조 대상 워크플로우 정의
+     * 이 목록에 없으면 아래가 전부 거부된다 — 어느 것도 통과시키면 안 된다.
+     * - 남의 워크플로우 전환 ID (spec FR-WF-05 E9)
+     * - 출발 상태가 다른 [TransitionKind.NORMAL] 전환
+     * - 도착지가 현재 상태인 [TransitionKind.GLOBAL] 자기 전환 (열거에서도 빠지는 조합이다)
+     * - 이슈 생성 진입 전용인 [TransitionKind.INITIAL] 전환
+     * - 요청이 선언한 [TransitionRequest.toStateKey] 와 도착지가 다른 전환.
+     *   호출자는 [TransitionPlan.toStateKey] 를 그대로 영속하므로, 통과시키면 이슈가 요청이
+     *   선언하지 않은 상태로 간다.
+     *
+     * 다섯 경우가 **모두 같은 [WorkflowNotFoundException]** 인 것은 의도다 — 응답을 갈라 두면
+     * 「그 전환 ID 가 이 워크플로우에 있는가」를 되묻는 oracle 이 된다. 어느 경우였는지는 로그로만 남긴다.
+     *
+     * @param req 전환 요청 (오류 메시지·로그의 맥락 출처)
+     * @param candidates [resolveTransition] 이 산출한 실행 가능 후보 전량
      * @param transitionId 지목된 전환 1급 식별자
-     * @throws WorkflowNotFoundException 그 ID 의 전환이 이 워크플로우에 없을 때
+     * @throws WorkflowNotFoundException 그 ID 가 후보 목록에 없을 때
      */
     private fun resolveById(
         req: TransitionRequest,
-        workflow: Workflow,
+        candidates: List<WorkflowTransition>,
         transitionId: UUID,
     ): WorkflowTransition =
-        workflow.transitions.find { it.id == transitionId }
-            ?: throw WorkflowNotFoundException("${req.workflowKey}::transition::$transitionId")
+        candidates.find { it.id == transitionId }
+            ?: run {
+                log.info(
+                    "WorkflowEngine.plan: transitionId not a candidate workflowKey={} {}->{} id={} candidates={}",
+                    req.workflowKey,
+                    req.fromStateKey,
+                    req.toStateKey,
+                    transitionId,
+                    candidates.map { it.id },
+                )
+                throw WorkflowNotFoundException("${req.workflowKey}::transition::$transitionId")
+            }
 
     /**
      * 모호 전환 예외를 만든다 — 후보 전량을 실어 호출자가 그대로 되쏠 수 있게 한다.
