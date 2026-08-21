@@ -724,9 +724,54 @@ interface ChildRun {
  * @param run 자식 한 번의 결과
  * @returns 안 돌았으면 까닭. 돌았으면 null
  */
-function whyChildDidNotRun(run: ChildRun): string | null {
+function whyChildDidNotRun(run: ChildRun, target: string): string | null {
   if (run.status !== 0) return `exit ${run.status}`
+  const counts = tapCounts(run.output)
+  const total = counts.get('tests')
+  const passed = counts.get('pass')
+  if (total === undefined || passed === undefined) {
+    return `러너 계수를 못 읽었다 — 자식이 러너로 돌지 않았거나 출력 형식이 바뀌었다. 읽은 계수 ${JSON.stringify([...counts])}`
+  }
+  // 통과가 전량이 아니면 건너뜀·실패·취소가 섞였다는 뜻이다. 계수 이름을 열거하지 않는
+  // 이유는 `GIT_` 를 접두로만 보는 이유와 같다 — 러너가 하나 더 넣으면 열거는 조용히 낡는다.
+  if (total === 0 || passed !== total) return `통과가 전량이 아니다 — 계수 ${JSON.stringify([...counts])}`
+  // ★테스트가 하나도 없는 파일은 계수로 안 갈린다. 러너가 **파일 자신**을 판정 하나로 세어
+  //   `tests 1 · pass 1` 을 찍기 때문이다. 갈리는 자리는 이름이다 — 통과 이름이 우리가 넘긴
+  //   대상뿐이면 그 안에서 선 판정이 없다는 뜻이다.
+  const passedNames = tapPassNames(run.output)
+  const namesTargetOnly = passedNames.every((name) => path.resolve(REPO_ROOT, name) === path.resolve(REPO_ROOT, target))
+  if (namesTargetOnly) return `파일 자체가 유일한 판정이다 — 그 안에서 선 판정이 없다. 통과 이름 ${JSON.stringify(passedNames)}`
   return null
+}
+
+/**
+ * 자식이 통과로 보고한 판정 이름 전량.
+ *
+ * @param output 자식의 표준 출력과 오류를 이은 것
+ * @returns 통과한 판정의 이름 목록
+ */
+function tapPassNames(output: string): string[] {
+  const names: string[] = []
+  for (const line of output.split('\n')) {
+    const found = /^ok \d+ - (.+?)(?: # SKIP.*)?$/.exec(line)
+    if (found?.[1] !== undefined) names.push(found[1])
+  }
+  return names
+}
+
+/**
+ * 자식이 남긴 러너 계수 전량. `# pass 32` 같은 줄을 이름 → 값으로 읽는다.
+ *
+ * @param output 자식의 표준 출력과 오류를 이은 것
+ * @returns 이름에서 값으로 가는 표
+ */
+function tapCounts(output: string): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const line of output.split('\n')) {
+    const found = /^\s*# ([a-z]+) (\d+)\s*$/.exec(line)
+    if (found?.[1] !== undefined && found[2] !== undefined) counts.set(found[1], Number(found[2]))
+  }
+  return counts
 }
 
 /** 러너가 그 파일만 단독으로 돌릴 수 있는 픽스처 생성자. 자식으로 태울 대상이다. */
@@ -750,7 +795,7 @@ function runOriginalsAgainstVictim(
   let previous = before
   for (const file of DIRECTLY_RUNNABLE_CREATORS) {
     const run = runWithGitDir(file, victim.gitDir)
-    const why = whyChildDidNotRun(run)
+    const why = whyChildDidNotRun(run, file)
     if (why !== null) notRun.push(`${file} — ${why}\n${run.output}`)
     const after = snapshotRepo(victim.root, victim.gitDir)
     const axes = changedAxes(previous, after)
@@ -834,7 +879,7 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
       const missed = idle.filter(({ label, source }) => {
         const file = path.join(tmp, `${label}.test.mjs`)
         fs.writeFileSync(file, source)
-        return whyChildDidNotRun(runWithGitDir(file, victim.gitDir)) === null
+        return whyChildDidNotRun(runWithGitDir(file, victim.gitDir), file) === null
       })
       assert.deepEqual(
         missed.map(({ label }) => label),
