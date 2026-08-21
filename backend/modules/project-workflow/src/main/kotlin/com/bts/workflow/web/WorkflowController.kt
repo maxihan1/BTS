@@ -37,14 +37,20 @@ import java.util.UUID
 /**
  * 워크플로우 REST API 컨트롤러.
  *
- * 엔드포인트 목록.
- * - GET  /api/v1/workflows             — 전체 워크플로우 목록 조회
- * - GET  /api/v1/workflows/{key}       — 워크플로우 단건 조회 (계층 구조)
- * - POST /api/v1/workflows/{key}/transitions/plan — 워크플로우 전환 계획 계산
- * - POST /api/v1/workflows/{key}/transitions — 전환 정의 생성
- * - PUT  /api/v1/workflows/{key}/transitions/{transitionId} — 전환 정의 수정
- * - DELETE /api/v1/workflows/{key}/transitions/{transitionId} — 전환 정의 삭제
- * - POST /api/v1/workflows/cache/invalidate  — 캐시 무효화 (워크플로우 정의 UPDATE 권한 필요)
+ * 엔드포인트 목록 — **매핑 애노테이션 11개와 1:1 이다.** 하나를 더하면 여기도 함께 늘린다.
+ * (이 목록은 2026-08-21 에 4줄이 빠진 채 발견됐다 — #393 이 추가한 워크플로우 CRUD 4종이다.
+ *  대조하는 판별식이 아직 없어 `TODOS.md` 매핑 `79` 로 등재했다.)
+ * - GET    /api/v1/workflows                — 전체 워크플로우 목록 조회
+ * - GET    /api/v1/workflows/{key}          — 워크플로우 단건 조회 (계층 구조)
+ * - POST   /api/v1/workflows                — 워크플로우 생성 (201)
+ * - PUT    /api/v1/workflows/{key}          — 이름·설명 수정 (`key` 는 안 바꾼다)
+ * - DELETE /api/v1/workflows/{key}          — 소프트 삭제 (204)
+ * - POST   /api/v1/workflows/{key}/duplicate — 복제 (201 · 상태 편성과 전환을 함께 복사)
+ * - POST   /api/v1/workflows/{key}/transitions/plan — 워크플로우 전환 계획 계산
+ * - POST   /api/v1/workflows/{key}/transitions — 전환 정의 생성 (201)
+ * - PUT    /api/v1/workflows/{key}/transitions/{transitionId} — 전환 정의 수정
+ * - DELETE /api/v1/workflows/{key}/transitions/{transitionId} — 전환 정의 삭제 (204)
+ * - POST   /api/v1/workflows/cache/invalidate — 캐시 무효화 (워크플로우 정의 UPDATE 권한 필요)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다 (learning #91).

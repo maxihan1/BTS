@@ -1,4 +1,4 @@
-// FR-WF-01 도메인 예외 3종 — Validator 실패 / Workflow 부재 / SpEL timeout
+// project-workflow 도메인 예외 11종 + 전환 후보 값 객체 1종 (FR-WF-01·04·05)
 
 package com.bts.workflow.domain.exception
 

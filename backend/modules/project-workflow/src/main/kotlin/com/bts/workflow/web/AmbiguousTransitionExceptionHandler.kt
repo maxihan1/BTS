@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 결정 D-2("모호하면 조용히 고르지 말고 후보를 돌려준다")가 그 자리에서 통째로 무효가 된다.
  *
  * 처방은 `@Order(HIGHEST_PRECEDENCE)` 로 catch-all 보다 앞세우는 것이다. 그런데 그 우선권을
- * [WorkflowExceptionHandler] 에 주면 **안 된다** — 그쪽은 예외 8종을 잡는 다중 advice 라
+ * [WorkflowExceptionHandler] 에 주면 **안 된다** — 그쪽은 예외 10종을 잡는 다중 advice 라
  * 전역 최우선이 되는 순간 `WorkflowNotFoundException` 까지
  * `com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler`
  * (`basePackages = ["com.bts.workflow.scheme"]`)에서 빼앗는다. 그러면 스킴 404 응답이

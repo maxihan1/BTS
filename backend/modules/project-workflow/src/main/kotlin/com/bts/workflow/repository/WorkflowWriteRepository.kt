@@ -250,7 +250,7 @@ class WorkflowWriteRepository(
      * 신(`from_status_id`·`to_status_id`) 컬럼이 공존하고, 읽기는 **신 컬럼 우선 · 구 컬럼 폴백**
      * 이다(`WorkflowRepository`). 신 컬럼만 갈아 끼우면 GLOBAL·INITIAL 로 바꿔 `from_status_id` 를
      * NULL 로 만든 순간 남아 있던 구 `from_state_id` 가 폴백으로 되살아난다. 그 행은 「출발지 없는
-     * 전환에 출발지가 있는」 꼴이라 `Workflow.of()` invariant 6 이 워크플로우 **전체**를 거부한다 —
+     * 전환에 출발지가 있는」 꼴이라 `Workflow.of()` invariant 5 가 워크플로우 **전체**를 거부한다 —
      * 수정 요청은 200 인데 그 뒤 그 워크플로우 조회가 전부 죽는다.
      *
      * ### 왜 같은 값 동기화가 아니라 NULL 인가

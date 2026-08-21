@@ -26,8 +26,10 @@ private val transitionRequestDtoValidation: Validation<TransitionRequestDto> =
  * 클라이언트가 이슈 전환을 요청할 때 HTTP 요청 바디로 전달하는 형태.
  * [toDomain] 을 통해 서비스 레이어에서 사용하는 도메인 DTO [TransitionRequest] 로 변환한다.
  *
- * 전환 동일성 식별 정책. [WorkflowTransition.key] (`from__to`) 합성 기반 매칭 —
- * ADR 2026-05-28-workflow-transition-identity-policy 참조.
+ * 전환의 1급 식별자는 `workflow_transitions.id` 다 —
+ * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D3 참조.
+ * (구 ADR `2026-05-28-workflow-transition-identity-policy` 의 「identity = (from, to)」 정책은
+ * 그 ADR 이 대체했다. 같은 상태쌍에 이름만 다른 전환을 여럿 둘 수 있게 되어 2튜플로는 못 가른다.)
  *
  * @property toStateKey 전환 목표 상태 키. 예: "IN_PROGRESS", "DONE".
  * @property fields 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다. 기본값 빈 Map.

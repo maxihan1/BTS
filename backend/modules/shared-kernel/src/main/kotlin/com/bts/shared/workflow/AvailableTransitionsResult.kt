@@ -67,7 +67,7 @@ sealed interface AvailableTransitionsResult {
  * @param toCategory 전환 목표 상태의 카테고리 문자열(예: "DONE", "IN_PROGRESS", "TODO").
  *   프론트엔드가 종료(DONE) 전환을 판별할 때 사용한다.
  *   null 은 미계산 상태를 의미하며 테스트 픽스처에서만 허용된다.
- *   실 API 응답은 항상 non-null 값이 채워진다(후속 task A4 에서 보장).
+ *   실 API 응답은 항상 non-null 값이 채워진다.
  *   BC 격리 원칙에 따라 내부 enum(StateCategory) 대신 문자열로 노출한다.
  * @param transitionId 전환 1급 식별자(`workflow_transitions.id`). 호출자는 이 값을
  *   `TransitionRequest.transitionId` 에 그대로 되실어 모호성 없이 그 전환을 지목 실행할 수 있다
