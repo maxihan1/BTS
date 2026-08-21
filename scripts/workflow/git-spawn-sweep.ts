@@ -46,22 +46,30 @@ const HELPER_MODULE = 'scripts/workflow/git-fixture-env.mjs'
 const RUNNER_SCRIPT = 'test:workflow'
 
 /**
- * 판별식 러너가 실제로 실행하는 글롭 전량. `package.json` 에서 읽는다.
+ * 판별식 러너의 명령 한 줄. 글롭도 플래그도 여기서만 나온다.
+ *
+ * @returns `package.json` 이 적어 둔 명령. 그 스크립트가 없으면 빈 문자열
+ */
+function runnerCommand(): string {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf-8')) as {
+    scripts?: Record<string, string>
+  }
+  return packageJson.scripts?.[RUNNER_SCRIPT] ?? ''
+}
+
+/**
+ * 판별식 러너가 실제로 실행하는 글롭 전량.
  *
  * 확장자를 손으로 적으면 「러너가 도는 것」과 「스윕이 훑는 것」이 두 벌이 되고, 둘은
  * 서로를 검사하지 않는다. 그 어긋남의 손실은 **대칭**이라 양방향 차집합이 원리적으로
  * 못 본다 — 러너만 도는 확장자에 사는 git 스포너는 spawners 와 importers 에서 **동시에**
  * 빠져 `빈집합 == 빈집합` 이 된다. 실제로 `.mjs` 를 빼면 전량이 초록이었다.
  *
- * @returns 따옴표를 턴 글롭 목록. 스크립트가 없으면 빈 목록이고, 그러면 파생 집합이
+ * @returns 따옴표를 턴 글롭 목록. 명령이 비면 빈 목록이고, 그러면 파생 집합이
  *   비어 판별식의 비-공허 짝이 red 가 된다
  */
 export function runnerGlobs(): string[] {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf-8')) as {
-    scripts?: Record<string, string>
-  }
-  const command = packageJson.scripts?.[RUNNER_SCRIPT] ?? ''
-  return [...command.matchAll(/'([^']*\*[^']*)'/g)].map((hit) => hit[1] ?? '')
+  return [...runnerCommand().matchAll(/'([^']*\*[^']*)'/g)].map((hit) => hit[1] ?? '')
 }
 
 /**
@@ -73,11 +81,9 @@ export function runnerGlobs(): string[] {
  * @returns `--` 로 시작하는 토큰 목록
  */
 export function runnerFlags(): string[] {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf-8')) as {
-    scripts?: Record<string, string>
-  }
-  const command = packageJson.scripts?.[RUNNER_SCRIPT] ?? ''
-  return command.split(/\s+/).filter((token) => token.startsWith('--'))
+  return runnerCommand()
+    .split(/\s+/)
+    .filter((token) => token.startsWith('--'))
 }
 
 /** 글롭 조각을 자리표로 바꿀 때 쓰는 문자. 소스에 나올 수 없는 것을 고른다. */
