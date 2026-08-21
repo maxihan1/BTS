@@ -20,3 +20,16 @@
 #
 # 건너뛰려면 `git push --no-verify`. 다만 그러면 lint 검사까지 함께 죽는다는 것을 알고 쓸 것.
 node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
+
+# 백엔드 모듈 테스트 — **바뀐 모듈만**. CI 자동 실행을 끈 뒤 백엔드 코드에 대한 유일한 기계 검증이다.
+#
+# ★전 모듈이 아니다. 마이그레이션 넓힘을 끄고 부르므로 보통 1~3모듈(2~20분)이다.
+#   전 모듈은 약 55분이고, 그러면 사람이 `--no-verify` 를 쓰기 시작한다 — 그것은 이 검사만이
+#   아니라 위 판별식과 lint 까지 **함께** 끄는 우회다. 좁은 탈출구(`BTS_SKIP_MODULE_TEST=1`)를
+#   두는 이유가 그것이다.
+#
+# ★잃는 것을 적어 둔다. 마이그레이션이 **다른 BC 의 테이블**을 건드리면 그 BC 는 안 돈다.
+#   되찾는 자리는 배포 전 전량 실행이다. 역의존 폐포는 그대로 살아 있다.
+#
+# 계약. scripts/workflow/push-backend-tests.test.ts
+node --experimental-strip-types scripts/workflow/push-backend-tests.ts
