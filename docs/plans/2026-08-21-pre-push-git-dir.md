@@ -366,7 +366,7 @@ unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 - 실패 메시지 (예상): `Cannot find module '.../git-fixture-env'`
 
 **GREEN**:
-- `scripts/workflow/git-fixture-env.ts` — `process.env` 사본에서 `GIT_` 로 시작하는 키를 전량
+- `scripts/workflow/git-fixture-env.mjs` — `process.env` 사본에서 `GIT_` 로 시작하는 키를 전량
   삭제해 돌려주는 함수. **열거하지 않는다**(N1).
 
 **REFACTOR**: 역할 주석 1줄 + 접두 상수화.
