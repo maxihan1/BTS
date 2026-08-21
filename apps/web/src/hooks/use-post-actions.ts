@@ -17,7 +17,7 @@ export const POST_ACTION_KEYS = {
   /**
    * 전환별 post-action 목록 queryKey.
    * @param workflowKey  워크플로우 키
-   * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+   * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
    */
   list: (workflowKey: string, transitionKey: string) =>
     ['post-actions', workflowKey, transitionKey] as const,
@@ -35,7 +35,7 @@ export const POST_ACTION_KEYS = {
  * (전환 미선택 상태에서 불필요한 API 호출 방지).
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키 (호출자가 조합)
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  */
 export function usePostActions(workflowKey: string, transitionKey: string) {
   return useQuery<PostActionResponse[]>({
@@ -56,7 +56,7 @@ export function usePostActions(workflowKey: string, transitionKey: string) {
  * 성공 시 목록 캐시를 무효화한다 (invalidate-only, 플리커 회피).
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  */
 export function useAddPostAction(workflowKey: string, transitionKey: string) {
   const queryClient = useQueryClient()
@@ -77,7 +77,7 @@ export function useAddPostAction(workflowKey: string, transitionKey: string) {
  * 성공 시 목록 캐시를 무효화한다 (invalidate-only, 플리커 회피).
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  * @param id  수정할 post-action UUID
  */
 export function useUpdatePostAction(workflowKey: string, transitionKey: string, id: string) {
@@ -99,7 +99,7 @@ export function useUpdatePostAction(workflowKey: string, transitionKey: string, 
  * 성공 시 목록 캐시를 무효화한다 (invalidate-only, 플리커 회피).
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  */
 export function useRemovePostAction(workflowKey: string, transitionKey: string) {
   const queryClient = useQueryClient()
