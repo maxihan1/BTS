@@ -288,8 +288,8 @@ node --experimental-strip-types consumer.mjs → IMPORT_OK function             
 ```
 
 `.ts` 로 두면 **플래그 없는 경로가 죽는다.** `scripts/workflow/todos-reorder-integrity.mjs:237` 이
-플래그 없는 CLI 진입점을 문서화하고 있고, 임포트 해석은 `main()` 진입 전이라 인자와 무관하게
-즉사한다. 게다가 `ERR_UNKNOWN_FILE_EXTENSION` 은 이 저장소가 `node-ts-invocation.test.ts` 를
+플래그 없는 CLI 진입점을 문서화하고 있고, 임포트 해석이 `main()` 을 부르기도 **전에 끝나므로**
+인자와 무관하게 즉사한다. 게다가 `ERR_UNKNOWN_FILE_EXTENSION` 은 이 저장소가 `node-ts-invocation.test.ts` 를
 세워 이미 막고 있는 바로 그 실패다. 역방향(`.ts` 테스트 → `.mjs` 헬퍼)은
 `todos-reorder-integrity.test.ts:42` 가 in-repo 로 증명한다.
 → 정본은 `scripts/workflow/git-fixture-env.mjs` 다.
@@ -311,7 +311,16 @@ unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 **D4 — 판정의 집은 둘이되 파서는 한 벌이다.**
 훅 배선(R1·R2·R8)은 기존 `discriminant-hook-wiring.test.ts`, 픽스처 격리(R3~R7·R9)는 신규
 `git-fixture-isolation.test.ts`. 두 파일이 같은 파서를 쓰므로 **`hook-source.ts` 로 먼저 추출**한다
-(F6 — 300줄 상한과 복제 위험을 한 번에 푼다). 구조 변경을 동작 변경보다 앞에 둔다.
+(F6 — 복제 위험을 없앤다). 구조 변경을 동작 변경보다 앞에 둔다.
+
+**★정정 (2026-08-21 · Task 4 가 실측해 적발).** 이 plan 의 초판과 `## 리뷰 결과` 주의 4 는
+「파일 300줄 상한」을 근거로 들었는데 **그 상한은 TypeScript 에 적용되지 않는다.**
+`DEVELOPMENT.md:55` 의 「함수 30줄, 파일 300줄」은 **§2.1 Kotlin** 절 안에 있고,
+§2.2 TypeScript 는 「함수 30줄, **컴포넌트** 200줄」로 파일 상한이 없다.
+`TODOS.md` 가 Maxi 확정으로 「⇒ TypeScript 에 파일 300줄 상한은 무효다」를 못박아 뒀다
+(2026-08-12 · PR #365 에서 정본 충돌 해소). `scripts/**` 에 줄수를 강제하는 기계 판정도 0건이다.
+→ **파서 추출의 근거는 복제 방지 하나로 충분하고, 실제로 그것만으로 정당하다.**
+   `discriminant-hook-wiring.test.ts` 가 340줄이 된 것은 위반이 아니다.
 
 **D5 — 훅 스크럽은 존재가 아니라 실효로 잰다.**
 「그 줄이 있는가」만 보면 `sed` 방언 차이 하나로 0개를 지워도 초록이다(E9).
@@ -335,7 +344,8 @@ unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
   `GUARD_OPERATORS` · 「실행 줄만 뽑는」 파서 · 블록 깊이 계산을 export.
 - `discriminant-hook-wiring.test.ts` 는 그것을 임포트하도록 바꾼다. **판정 로직은 안 건드린다.**
 
-**REFACTOR**: 파일 첫 줄에 역할 한국어 주석. 추출 후 기존 파일 줄수를 기록한다(300줄 상한 여유 확인).
+**REFACTOR**: 파일 첫 줄에 역할 한국어 주석. 추출 후 기존 파일 줄수를 기록한다(추이 관측용 —
+위 ★정정대로 TypeScript 에 파일 상한은 없다).
 
 **검증**: 추출 전후 tests/pass/fail 3값 일치 · EXIT=0
 
@@ -433,7 +443,8 @@ unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 - `.husky/pre-push` — D2 의 한 줄을 판별식 호출 **앞**에.
 - `infra/deploy/bts-deploy.sh` — 전량 검증 게이트 앞에 같은 한 줄(F8 · 심층 방어).
 
-**REFACTOR**: Task 1 추출 덕에 파일이 줄었으므로 300줄 여유를 재확인하고 수치를 기록한다.
+**REFACTOR**: 최종 줄수를 기록한다. **상한 판정은 하지 않는다** — 위 ★정정대로 TypeScript 에
+파일 300줄 상한은 무효다(Kotlin 전용).
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/discriminant-hook-wiring.test.ts`
 
@@ -602,7 +613,7 @@ Task 1~4 의 푸시는 기계 강제가 0이다. plan 은 그 사실을 적기�
 「Task 5 만 예외」는 과하다. Task 3 이후 푸시는 플래그를 뗄 수 있고, 그렇게 하면 C7 이
 한 번이 아니라 여러 번 관측된다.
 
-### ⚠️ 주의 4 — 300줄 결정을 착수 전에 못 박아야 한다
+### ⚠️ 주의 4 — 파서를 먼저 추출해야 한다  ~~(300줄 결정을 착수 전에)~~
 
 216줄 + 판정 3종. 이 저장소의 주석 밀도면 60~100줄이라 **상한 초과가 유력**하다.
 REFACTOR 에 「넘으면 분리」로 미루면 구현 중 즉흥 결정이 되고, 더 나쁘게 —
@@ -688,7 +699,7 @@ wave 1 의 Task 1·Task 3 은 파일 교집합 0 이라 병렬 가능하다. 다
 | F3 | 주의 | M1 이 판정 3종을 한꺼번에 끊어 분리 증명이 안 된다 · 부분 스크럽(M7)·파서 무력화(M8) 뮤테이션 누락 |
 | F4 | 주의 | C7 이 눈확인에 의존하고 메인 워크트리를 안 잰다 |
 | F5 | 주의 | `--no-verify` 구간 무검증 · Task 3 이후엔 플래그를 뗄 수 있다 |
-| F6 | 주의 | 300줄 결정을 착수 전에. 파서를 `hook-source.ts` 로 먼저 추출 |
+| F6 | 주의 | 파서를 `hook-source.ts` 로 먼저 추출 (~~300줄~~ → **근거 정정**. 복제 방지가 진짜 이유이고, TypeScript 에 파일 300줄 상한은 무효다) |
 | F7 | 주의 | `.mjs` → `.ts` 헬퍼 임포트 가능성 미실측 |
 | F8 | 주의 | `bts-deploy.sh` 에 같은 한 줄 보험 없음 |
 | ★ | critical gap | 스크럽 줄이 **있는데 아무것도 안 지우는** 경우를 아무 판정도 안 잡는다 — 훅 스크럽에도 실측 짝 필요 |
