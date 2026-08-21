@@ -253,6 +253,16 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
 // ─────────────────────────────────────────────────────────
 // git 을 spawn 하는 전량이 헬퍼를 거치는지 — 소스에서 재계산한다
 // ─────────────────────────────────────────────────────────
+//
+// ## 이 대조가 못 잡는 것 — 파일 단위라서
+//
+// 이미 배선된 파일에 스크럽 없는 git 호출을 더 붙이면 파일 단위 대조는 초록이다.
+// 실제로 이 배선 작업 중에 `select-backend-modules.test.ts` 의 여러 줄로 쓴 호출이 그렇게
+// 빠졌고, 잡아낸 것은 `GIT_DIR` 를 건 채 판별식 전량을 돌린 실측이었다.
+//
+// 호출 단위로 좁히지 않는 이유는 아래 비-공허 짝이 **일부러** 스크럽 없이 부르기 때문이다.
+// 호출 단위 규칙은 그 한 자리를 살리려고 사람이 적는 예외 목록을 되살리고, 그 목록이
+// 다시 red 를 끄는 가장 싼 방법이 된다 — 이 판별식이 없애려던 바로 그 탈출구다.
 
 /**
  * 스크럽 헬퍼 모듈 자신. 파생 집합 계산에서 뺀다.
@@ -386,6 +396,30 @@ function deriveWiringSets(): WiringSets {
   return { spawners, importers }
 }
 
+/** 양방향 차집합 — 어느 쪽으로 어긋났는지 이름으로 남긴다. */
+interface WiringMismatch {
+  /** git 을 부르는데 헬퍼를 안 거치는 파일 */
+  unscrubbed: string[]
+  /** 헬퍼를 임포트하는데 git 을 안 부르는 파일 */
+  stray: string[]
+}
+
+/**
+ * 두 집합의 차집합을 양방향으로 낸다.
+ *
+ * 뒤쪽 방향을 함께 재는 진짜 이유는 죽은 배선이 아니라 **정규식 부패의 조기 경보**다 —
+ * 호출 형태를 놓쳐 파생 집합에서 파일이 빠져도 임포트는 남으므로 그쪽이 red 가 된다.
+ *
+ * @param sets 소스에서 재계산한 두 집합
+ * @returns 양방향 차집합
+ */
+function wiringMismatch(sets: WiringSets): WiringMismatch {
+  return {
+    unscrubbed: sets.spawners.filter((f) => !sets.importers.includes(f)),
+    stray: sets.importers.filter((f) => !sets.spawners.includes(f)),
+  }
+}
+
 describe('git 을 spawn 하는 전량이 스크럽 헬퍼를 거친다 (파생집합 양방향)', () => {
   test('★★파생 집합이 비어 있지 않고 알려진 픽스처 생성자를 실제로 문다 (비-공허 짝)', () => {
     const { spawners } = deriveWiringSets()
@@ -406,9 +440,7 @@ describe('git 을 spawn 하는 전량이 스크럽 헬퍼를 거친다 (파생�
   })
 
   test('★★git 을 spawn 하는 파일 집합과 헬퍼 임포트 집합이 양방향으로 같다', () => {
-    const { spawners, importers } = deriveWiringSets()
-    const unscrubbed = spawners.filter((f) => !importers.includes(f))
-    const stray = importers.filter((f) => !spawners.includes(f))
+    const { unscrubbed, stray } = wiringMismatch(deriveWiringSets())
     assert.deepEqual(
       { 'git 을 부르는데 헬퍼를 안 거친다': unscrubbed, '헬퍼를 임포트하는데 git 을 안 부른다': stray },
       { 'git 을 부르는데 헬퍼를 안 거친다': [], '헬퍼를 임포트하는데 git 을 안 부른다': [] },
