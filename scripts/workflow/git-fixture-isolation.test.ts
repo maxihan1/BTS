@@ -34,7 +34,9 @@ import { fileURLToPath } from 'node:url'
 import { gitFixtureEnv } from './git-fixture-env.mjs'
 import {
   deriveGitSpawnCallSites,
+  deriveGitTouchingFiles,
   deriveWiringSets,
+  importsAnyOf,
   matchesRunnerGlob,
   runnerFlags,
   satisfiesWiringPredicate,
@@ -893,13 +895,15 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
     }
   })
 
-  test('★자식으로 못 도는 픽스처 생성자는 자식으로 도는 파일이 임포트한다', () => {
-    // 러너 글롭에 안 걸리는 항목(CLI 모듈)은 단독 실행 대상이 아니다. 그 자리의 git 호출이
+  test('★★git 을 부르는 전량이 자식으로 돌거나 자식이 임포트한다', () => {
+    // 러너 글롭에 안 걸리는 것(CLI 모듈)은 단독 실행 대상이 아니다. 그 자리의 git 호출이
     // 아무 자식에도 안 실리면 위 판정에 사각지대가 생긴다 — 임포트로 이어져 있어야 한다.
-    const indirect = KNOWN_FIXTURE_CREATORS.filter((file) => !matchesRunnerGlob(file))
+    // 양쪽을 다 파생으로 잡는다. 왼쪽을 사람 목록으로 두면 목록에 없는 것이 사각지대인
+    // 채로 초록이고, 그 초록은 「덮었다」로 읽힌다.
+    const indirect = deriveWiringSets().spawners.filter((file) => !matchesRunnerGlob(file))
     const sources = strippedSources()
     const reaches = (importer: string, target: string): boolean =>
-      sources.some(({ file, code }) => file === importer && code.includes(`./${path.basename(target)}`))
+      sources.some(({ file, code }) => file === importer && importsAnyOf(code, [target]))
     const unreached = indirect.filter((file) => !DIRECTLY_RUNNABLE_CREATORS.some((runnable) => reaches(runnable, file)))
     assert.deepEqual(
       unreached,

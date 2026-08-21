@@ -444,6 +444,45 @@ export function strippedSources(): StrippedSource[] {
   }))
 }
 
+/**
+ * git 을 부르는 파일과 **그것에 닿는 파일** 전량. 임포트를 따라 전이로 넓힌다.
+ *
+ * 자식으로 태울 대상이 여기서 나온다. spawn 하는 파일만 태우면 그것을 임포트해서 부르는
+ * 파일이 아무 자식에도 안 실려 사각지대가 된다 — 실측에서 `push-backend-tests.ts` 가
+ * 정확히 그 자리였다. 사람이 목록을 적으면 파일이 하나 늘 때마다 조용히 낡는다.
+ *
+ * 임포트는 모듈 지정자의 파일 이름으로 본다. 경로를 통째로 맞추면 상대 경로 표기가
+ * 갈릴 때마다 사각지대가 다시 열린다.
+ *
+ * @returns 정렬된 저장소 상대 경로 전량
+ */
+export function deriveGitTouchingFiles(): string[] {
+  const sources = strippedSources()
+  const touching = new Set(deriveWiringSets().spawners)
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const { file, code } of sources) {
+      if (touching.has(file) || !importsAnyOf(code, touching)) continue
+      touching.add(file)
+      grew = true
+    }
+  }
+  return [...touching].sort()
+}
+
+/**
+ * 이 소스가 주어진 것 중 하나라도 임포트하는가.
+ *
+ * @param code 주석이 걷힌 소스
+ * @param targets 저장소 상대 경로들
+ * @returns 하나라도 임포트하면 true
+ */
+export function importsAnyOf(code: string, targets: Iterable<string>): boolean {
+  for (const target of targets) if (code.includes(`./${path.basename(target)}`)) return true
+  return false
+}
+
 /** 소스에서 재계산한 두 집합. 사람이 유지하는 목록은 어느 쪽에도 없다. */
 export interface WiringSets {
   /** git 을 spawn 하는 파일 */
