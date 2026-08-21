@@ -291,27 +291,61 @@ function isGitScrub(line: string): boolean {
   return /(^|[;&|(\s])unset\b/.test(line) && line.includes('GIT_')
 }
 
+/** 실효 실측 셸이 **열거 지점까지 갔다**는 표식. `GIT_` 로 시작하지 않아 열거에 안 섞인다. */
+const PROBE_REACHED = 'scrub-probe-reached'
+
 /**
- * 스크럽 줄을 `sh -e` 로 실제로 실행하고, 그 셸에 남은 `GIT_*` 개수를 돌려준다.
+ * 스크럽 줄을 `sh -e` 로 실제로 실행하고, 그 셸에 **남은 `GIT_*` 이름 전량**을 돌려준다.
  *
  * ★왜 실행하나. 배선 판정은 「그 줄이 있는가」만 본다. 그러면 줄이 문법적으로 존재하는데
  *   실제로는 아무것도 안 지우는 경우(BSD/GNU `sed` 방언 차이 등)를 아무도 못 잡는다 —
  *   이 저장소가 `invariant-satisfied-by-helptext-not-logic` 로 이름 붙인 양식이다.
  *
+ * ★개수가 아니라 이름이다. 개수면 실패가 「어떤 수를 다른 수로 기대」가 되어 **어느 변수가
+ *   샜는지** 말하지 않는다. 호출자의 비-공허 짝도 `notDeepEqual(…, [])` 로 열거를 공짜로 얻는다.
+ *
+ * ★열거 지점에 **도달했는지**를 표식으로 먼저 본다. 스크럽 줄이 그 전에 셸을 끝내면 출력이
+ *   비는데, 빈 출력은 「하나도 안 남았다」와 구별되지 않아 판정이 조용히 통과한다.
+ *
+ * ★이름을 뽑는 식은 훅이 지울 때 쓰는 그 식이다. 방언 차이로 뽑기가 통째로 실패하면 결과가
+ *   빈 배열이 되는데, 그 경우는 호출자의 비-공허 짝(스크럽 없이도 남는 것이 있어야 한다)이
+ *   먼저 red 로 잡는다.
+ *
  * ★DEVELOPMENT.md §1.1⑥(검증되지 않은 사용자 입력으로 외부 명령 실행 금지)과의 관계.
- *   실행하는 문자열은 **저장소가 소유한 `.husky/pre-push`** 를 `readHook()` 이 읽은 것이지
- *   사용자 입력이 아니다. 훅 파일 밖에서 온 문자열은 이 함수에 들어오지 않는다.
+ *   실행하는 문자열은 **저장소가 소유한 파일**(`.husky/pre-push`·`infra/deploy/bts-deploy.sh`)을
+ *   읽은 것이거나 이 파일이 적은 합성 대조군이지 사용자 입력이 아니다.
  *   그리고 손으로 적은 사본을 실행하면 배선과 실효가 **다른 대상**을 가리켜 판정이 공허해진다.
  *
  * @param scrub 훅 파일에서 읽어낸 스크럽 줄. 빈 문자열이면 「스크럽을 안 돌린」 대조군이다
  * @param dirty `GIT_*` 가 실제로 걸린 환경
  */
-function remainingGitVars(scrub: string, dirty: NodeJS.ProcessEnv): number {
-  const out = execFileSync('sh', ['-e', '-c', `${scrub}\nenv | grep -c '^GIT_' || true`], {
-    env: dirty,
-    encoding: 'utf-8',
-  })
-  return Number(out.trim())
+function remainingGitVars(scrub: string, dirty: NodeJS.ProcessEnv): string[] {
+  const out = execFileSync(
+    'sh',
+    [
+      '-e',
+      '-c',
+      `${scrub}\necho '${PROBE_REACHED}'\nenv | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p'`,
+    ],
+    { env: dirty, encoding: 'utf-8' },
+  )
+
+  const lines = out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+  const probeAt = lines.indexOf(PROBE_REACHED)
+
+  assert.notEqual(
+    probeAt,
+    -1,
+    `실효 실측 셸이 **열거 지점에 도달하지 못했다.**\n` +
+      `실행한 줄: ${scrub}\n` +
+      `셸이 낸 것: ${lines.join(' · ') || '(없음)'}\n\n` +
+      `여기서 멈추지 않으면 빈 출력이 「GIT_* 가 하나도 안 남았다」로 읽혀 판정이 조용히 통과한다.`,
+  )
+
+  return lines.slice(probeAt + 1)
 }
 
 /**
@@ -326,17 +360,59 @@ const GIT_FREE_ENV: NodeJS.ProcessEnv = Object.fromEntries(
 )
 
 /**
- * 훅이 상속받는 상황을 재현한 환경. 값에 공백이 든 것을 섞어 **이름만** 뽑히는지도 함께 잰다.
- * 경로는 전부 실재하지 않는 미끼이고 바탕에서 상속 `GIT_*` 를 걷어냈으므로, 진짜 저장소를
- * 가리키는 값이 자식 프로세스로 가지 않는다.
+ * git 이 훅에 실제로 export 하는 형태들(2026-08-21 실측).
+ *
+ * ★**한 벌로 고정하지 않는다.** 픽스처가 한 형태뿐이면 그 형태가 참으로 만드는 조건
+ *   (`[ -n "$GIT_DIR" ]` 같은)이 측정 중 늘 참이고, 그 조건에 매달린 스크럽이 실효 축을
+ *   그대로 통과한다. `GIT_DIR` 가 **없는** 실행 형태가 실제로 있다는 것이 요점이다.
+ *
+ * ★경로·값은 전부 실재하지 않는 미끼이고 바탕에서 상속 `GIT_*` 를 걷어냈으므로
+ *   (`GIT_FREE_ENV`), 진짜 저장소를 가리키는 값이 자식 프로세스로 가지 않는다.
+ *
+ * ★`GIT_SSH_COMMAND` 는 git 이 훅에 넣는 것이 아니라 사람이 export 해 두는 값이다.
+ *   **공백이 든 값**에서도 이름만 뽑히는지 함께 재려고 첫 형태에 섞어 둔다.
  */
-const DIRTY_ENV: NodeJS.ProcessEnv = {
-  ...GIT_FREE_ENV,
-  GIT_DIR: '/nonexistent-decoy/.git',
-  GIT_WORK_TREE: '/nonexistent-decoy',
-  GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
-  GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
-}
+const DIRTY_ENVS: ReadonlyArray<{ label: string; env: NodeJS.ProcessEnv }> = [
+  {
+    label: 'pre-push (연결된 worktree)',
+    env: {
+      ...GIT_FREE_ENV,
+      GIT_DIR: '/nonexistent-decoy/.git',
+      GIT_EDITOR: ':',
+      GIT_EXEC_PATH: '/nonexistent-decoy/libexec/git-core',
+      GIT_PREFIX: '',
+      GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
+    },
+  },
+  {
+    label: 'pre-commit (연결된 worktree)',
+    env: {
+      ...GIT_FREE_ENV,
+      GIT_DIR: '/nonexistent-decoy/.git',
+      GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
+      GIT_AUTHOR_NAME: 'decoy',
+      GIT_AUTHOR_EMAIL: 'decoy@example.invalid',
+      GIT_AUTHOR_DATE: '@0 +0000',
+    },
+  },
+  {
+    label: 'pre-commit (일반 저장소 · GIT_DIR 없음)',
+    env: { ...GIT_FREE_ENV, GIT_INDEX_FILE: '/nonexistent-decoy/.git/index' },
+  },
+  {
+    label: 'rebase --exec (GIT_DIR 없음)',
+    env: {
+      ...GIT_FREE_ENV,
+      GIT_EDITOR: ':',
+      GIT_EXEC_PATH: '/nonexistent-decoy/libexec/git-core',
+      GIT_PREFIX: '',
+      GIT_SEQUENCE_EDITOR: ':',
+    },
+  },
+]
+
+/** 환경 자체가 판정 대상이 아닌 자리에서 쓰는 오염 환경 하나. */
+const ANY_DIRTY_ENV = DIRTY_ENVS[0].env
 
 /**
  * 스크럽 줄이 `GIT_*` 를 정말 비우는지 실행해서 판정한다.
@@ -348,20 +424,28 @@ const DIRTY_ENV: NodeJS.ProcessEnv = {
  * @param scrub 훅·배포에서 읽어낸 스크럽 줄
  */
 function assertScrubEmptiesGitNamespace(where: string, scrub: string): void {
-  assert.ok(
-    remainingGitVars('', DIRTY_ENV) > 0,
-    '스크럽을 안 돌린 대조군에서도 GIT_* 가 남지 않았다 — 오염 환경 재현이 실패했다. ' +
-      '이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
-  )
+  for (const { label, env } of DIRTY_ENVS) {
+    // ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 남는 것이 없으면
+    //   「원래 GIT_* 가 없어서」이고, 그 상태에서 아래 판정은 아무것도 증명하지 못한다.
+    assert.notDeepEqual(
+      remainingGitVars('', env),
+      [],
+      `스크럽을 안 돌린 대조군(${label})에서도 GIT_* 가 남지 않았다 — 오염 환경 재현이 ` +
+        '실패했다. 이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
+    )
 
-  assert.equal(
-    remainingGitVars(scrub, DIRTY_ENV),
-    0,
-    `${where} 의 스크럽 줄이 **문법적으로는 있는데 실제로는 GIT_* 를 안 지운다.**\n` +
-      `실행한 줄: ${scrub}\n\n` +
-      `배선만 재는 판정은 이 상태를 초록으로 읽는다 — ` +
-      `\`sed\` 방언 차이 하나로 아무것도 안 지워도 줄은 그대로 거기 있기 때문이다.\n\n${WHY_SCRUB}`,
-  )
+    const remaining = remainingGitVars(scrub, env)
+    assert.deepEqual(
+      remaining,
+      [],
+      `${where} 의 스크럽 줄이 실행 뒤에도 GIT_* 를 남긴다 (${label}).\n` +
+        `  남은 것: ${remaining.join(' · ')}\n` +
+        `  실행한 줄: ${scrub}\n\n` +
+        `줄이 **문법적으로는 있는데** 지우지 않는 상태를 배선 판정은 초록으로 읽는다. ` +
+        `그리고 환경 형태를 한 벌로 고정하면 그 한 벌이 참으로 만드는 조건에 매달린 스크럽도 ` +
+        `여기를 통과한다 — 그래서 형태별로 잰다.\n\n${WHY_SCRUB}`,
+    )
+  }
 }
 
 const WHY_SCRUB =
@@ -490,7 +574,7 @@ describe('실효 실측 자체의 양성 대조군', () => {
     // 구별되지 않아 판정이 조용히 통과한다. 비-공허 짝(`scrub=''`)은 대조군만 재므로 이 경로를
     // 안 막는다 — 대조군 셸은 끝까지 가기 때문이다.
     assert.throws(
-      () => remainingGitVars('exit 0', DIRTY_ENV),
+      () => remainingGitVars('exit 0', ANY_DIRTY_ENV),
       /열거 지점에 도달하지 못했다/,
       '스크럽 줄이 셸을 먼저 끝내 출력이 비었는데 그것을 「남은 것이 없다」로 읽었다.',
     )
