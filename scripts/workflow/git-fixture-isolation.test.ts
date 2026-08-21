@@ -35,6 +35,7 @@ import { gitFixtureEnv } from './git-fixture-env.mjs'
 import {
   deriveGitSpawnCallSites,
   deriveWiringSets,
+  scanGitSpawnCallSites,
   stripComments,
   strippedSources,
   wiringMismatch,
@@ -527,6 +528,82 @@ describe('git 을 spawn 하는 호출부 전량이 env 를 명시한다 (호출 
       '여러 줄에 걸쳐 쓴 호출을 이 스윕이 더는 못 문다 — 줄 단위로 좁혀졌거나 앵커가 접혔다.\n' +
         '앵커는 이 파일의 snapshotRepo 안에 있다. 그 호출을 한 줄로 접었다면 되돌려라.\n' +
         `이 파일에서 찾은 호출부 전수. ${JSON.stringify(sites.filter((s) => s.file === SELF))}`,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// 호출부 판정의 값 층위 — 「env 키가 있다」로는 모자란 자리
+// ─────────────────────────────────────────────────────────
+//
+// 「명시했는가」로 재는 것은 예외 목록을 없애려는 선택이다. 그런데 키만 보면 값이
+// `process.env` 인 자리와 `undefined` 인 자리가 그대로 통과한다 — 앞은 GIT_* 를 통째로
+// 물려주고, 뒤는 Node 에서 `env` 를 아예 안 준 것과 같다. 둘 다 스크럽의 반대다.
+// 그리고 옵션 객체를 **마지막** 객체 리터럴로 잡으면 옵션 뒤에 객체가 하나 더 붙은 호출에서
+// 그 뒤엣것이 옵션 행세를 한다. 이 두 층위는 값을 봐야 갈린다.
+
+/** 합성 호출의 호출 이름 자리표시자. 스캔 직전에 되돌린다. */
+const CALLEE_PLACEHOLDER = 'CALLEE'
+
+/**
+ * 합성 소스 한 줄을 실제 스캐너에 통과시킨다.
+ *
+ * 호출 이름을 자리표시자로 적는 이유는 이 파일 자신이 스캐너의 대상이기 때문이다.
+ * 미끼를 그대로 적으면 「env 없는 호출부」 판정이 제 미끼를 위반으로 읽는다
+ * (`node-ts-invocation.test.ts` 가 같은 이유로 예시를 문자열 그대로 적는다).
+ *
+ * @param source 자리표시자가 든 합성 소스
+ * @returns 스캐너가 찾은 호출부
+ */
+function scanSynthetic(source: string): ReturnType<typeof scanGitSpawnCallSites> {
+  return scanGitSpawnCallSites('합성', stripComments(source.replaceAll(CALLEE_PLACEHOLDER, 'spawnSync')))
+}
+
+/** 값 층위가 갈라야 하는 형태 전수. 통과해야 하는 쪽을 함께 둬야 「전부 거부」가 안 통한다. */
+const CALL_SITE_SHAPES = [
+  {
+    label: '옵션 뒤에 객체가 하나 더 붙은 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp }, { env: 1 })",
+    hasEnv: false,
+  },
+  {
+    label: 'process.env 를 그대로 넘긴 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp, env: process.env })",
+    hasEnv: false,
+  },
+  {
+    label: 'env 를 undefined 로 넘긴 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp, env: undefined })",
+    hasEnv: false,
+  },
+  { label: '옵션 객체가 아예 없는 호출', source: "CALLEE('git', ['init'])", hasEnv: false },
+  {
+    label: '스크럽한 env 를 넘긴 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp, env: gitFixtureEnv() })",
+    hasEnv: true,
+  },
+  { label: '축약형으로 env 를 넘긴 호출', source: "CALLEE('git', args, { cwd, env })", hasEnv: true },
+  {
+    label: 'process.env 를 펼쳐 덮어쓴 호출',
+    source: "CALLEE('git', args, { env: { ...process.env, GIT_DIR: d } })",
+    hasEnv: true,
+  },
+]
+
+describe('호출부 판정이 env 의 값까지 본다', () => {
+  test('★★키만이 아니라 값을 본다 — 통과해야 하는 형태도 함께 잰다 (비-공허 짝)', () => {
+    const observed = Object.fromEntries(
+      CALL_SITE_SHAPES.map((c) => [c.label, scanSynthetic(c.source).map((site) => site.hasEnv)]),
+    )
+    const expected = Object.fromEntries(CALL_SITE_SHAPES.map((c) => [c.label, [c.hasEnv]]))
+    assert.deepEqual(
+      observed,
+      expected,
+      '호출부 판정이 형태를 잘못 가린다.\n' +
+        '값이 `process.env` 나 `undefined` 인 자리는 스크럽의 반대인데 「env 를 명시했다」로 통과한다.\n' +
+        '옵션 뒤에 붙은 객체가 옵션 행세를 하는 자리도 마찬가지다.\n' +
+        '거꾸로 통과해야 하는 형태까지 거부하면 이 판정은 배선을 지우는 쪽으로 사람을 민다.\n' +
+        `기대는 호출부 하나와 그 hasEnv 다 — 빈 배열은 스캐너가 그 형태를 아예 못 문 것이다.`,
     )
   })
 })

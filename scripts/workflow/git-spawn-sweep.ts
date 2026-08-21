@@ -488,21 +488,34 @@ function lineNumberAt(code: string, index: number): number {
  * @returns 파일·줄 순서대로 쌓인 호출부 목록
  */
 export function deriveGitSpawnCallSites(): GitSpawnCallSite[] {
+  return strippedSources().flatMap(({ file, code }) => scanGitSpawnCallSites(file, code))
+}
+
+/**
+ * 주석이 걷힌 소스 **하나**에서 git 을 spawn 하는 호출부를 모은다.
+ *
+ * 판별식이 합성 소스로 이 층위를 직접 재려고 갈라 둔 자리다. 소스를 못 넣으면 「어떤
+ * 형태가 통과하는가」를 저장소에 실제로 그 형태를 심어야만 잴 수 있고, 그 순간 판정이
+ * 제 미끼를 위반으로 읽는다.
+ *
+ * @param file 실패 메시지에 실을 이름
+ * @param code 주석이 걷힌 소스
+ * @returns 줄 순서대로 쌓인 호출부 목록
+ */
+export function scanGitSpawnCallSites(file: string, code: string): GitSpawnCallSite[] {
   const sites: GitSpawnCallSite[] = []
-  for (const { file: rel, code } of strippedSources()) {
-    const scanner = new RegExp(GIT_SPAWN_SOURCE, 'g')
-    let hit: RegExpExecArray | null
-    while ((hit = scanner.exec(code)) !== null) {
-      const options = optionsObject(code, code.indexOf('(', hit.index))
-      sites.push({
-        file: rel,
-        line: lineNumberAt(code, hit.index),
-        callee: hit[1] ?? '',
-        hasEnv: options !== null && hasEnvKey(options),
-        calleeSpansLines: hit[0].includes('\n'),
-        optionsSpanLines: options !== null && options.includes('\n'),
-      })
-    }
+  const scanner = new RegExp(GIT_SPAWN_SOURCE, 'g')
+  let hit: RegExpExecArray | null
+  while ((hit = scanner.exec(code)) !== null) {
+    const options = optionsObject(code, code.indexOf('(', hit.index))
+    sites.push({
+      file,
+      line: lineNumberAt(code, hit.index),
+      callee: hit[1] ?? '',
+      hasEnv: options !== null && hasEnvKey(options),
+      calleeSpansLines: hit[0].includes('\n'),
+      optionsSpanLines: options !== null && options.includes('\n'),
+    })
   }
   return sites
 }
