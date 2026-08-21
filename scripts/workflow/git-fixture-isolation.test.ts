@@ -698,7 +698,7 @@ const TEST_RUNNER_ENV_PREFIX = 'NODE_TEST_'
  * @param gitDir 자식에게 물릴 `GIT_DIR`
  * @returns 종료 코드와 출력
  */
-function runWithGitDir(target: string, gitDir: string): { status: number | null; output: string } {
+function runWithGitDir(target: string, gitDir: string): ChildRun {
   const inherited = Object.entries(leakEnv(gitDir)).filter(([key]) => !key.startsWith(TEST_RUNNER_ENV_PREFIX))
   const child = spawnSync(process.execPath, [...runnerFlags(), target], {
     cwd: REPO_ROOT,
@@ -706,6 +706,27 @@ function runWithGitDir(target: string, gitDir: string): { status: number | null;
     env: Object.fromEntries(inherited),
   })
   return { status: child.status, output: `${child.stdout ?? ''}${child.stderr ?? ''}` }
+}
+
+/** 자식 한 번의 결과. */
+interface ChildRun {
+  status: number | null
+  output: string
+}
+
+/**
+ * 자식이 **실제로 돌았는지**를 판정한다. 안 돌았으면 까닭을, 돌았으면 null 을 준다.
+ *
+ * 종료 코드 0 은 두 가지를 함께 뜻한다 — 「다 통과했다」와 「아무것도 안 돌았다」.
+ * 뒤쪽에서는 아래 무손상 단언이 「victim 이 안 바뀌었다」로 통과하는데, 그것은 격리가
+ * 아니라 관측이 없는 것이다.
+ *
+ * @param run 자식 한 번의 결과
+ * @returns 안 돌았으면 까닭. 돌았으면 null
+ */
+function whyChildDidNotRun(run: ChildRun): string | null {
+  if (run.status !== 0) return `exit ${run.status}`
+  return null
 }
 
 /** 러너가 그 파일만 단독으로 돌릴 수 있는 픽스처 생성자. 자식으로 태울 대상이다. */
@@ -729,7 +750,8 @@ function runOriginalsAgainstVictim(
   let previous = before
   for (const file of DIRECTLY_RUNNABLE_CREATORS) {
     const run = runWithGitDir(file, victim.gitDir)
-    if (run.status !== 0) notRun.push(`${file} — exit ${run.status}\n${run.output}`)
+    const why = whyChildDidNotRun(run)
+    if (why !== null) notRun.push(`${file} — ${why}\n${run.output}`)
     const after = snapshotRepo(victim.root, victim.gitDir)
     const axes = changedAxes(previous, after)
     if (axes.length > 0) polluted.push(`${file} — ${JSON.stringify(axes)}`)
@@ -798,6 +820,34 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
     }
   })
 
+  test('★★아무것도 안 돈 자식을 「돌았다」로 세지 않는다 (비-공허 짝)', () => {
+    // ★위 무손상 단언의 전제는 **자식이 실제로 돌았다**는 것이다. 종료 코드만 보면 0 이
+    //   「다 통과했다」와 「아무것도 안 돌았다」를 함께 뜻하고, 뒤쪽에서는 victim 이 안 바뀐 것이
+    //   격리가 아니라 관측 부재다. 그래서 같은 판정에 **안 도는 자식**을 물려 red 가 나는지 본다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-idle-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const idle = [
+        { label: '전부 건너뛴 파일', source: skippedFixtureSource() },
+        { label: '테스트가 없는 파일', source: emptyFixtureSource() },
+      ]
+      const missed = idle.filter(({ label, source }) => {
+        const file = path.join(tmp, `${label}.test.mjs`)
+        fs.writeFileSync(file, source)
+        return whyChildDidNotRun(runWithGitDir(file, victim.gitDir)) === null
+      })
+      assert.deepEqual(
+        missed.map(({ label }) => label),
+        [],
+        '아무것도 안 돈 자식을 「돌았다」로 셌다 — 위 무손상 단언이 통째로 공허해진다.\n' +
+          'victim 이 안 바뀐 것은 원본이 스크럽을 지킨 것이 아니라 원본이 아예 안 돈 것이다.\n' +
+          `놓친 형태 전수. ${JSON.stringify(missed.map(({ label }) => label))}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
   test('★자식으로 못 도는 픽스처 생성자는 자식으로 도는 파일이 임포트한다', () => {
     // 러너 글롭에 안 걸리는 항목(CLI 모듈)은 단독 실행 대상이 아니다. 그 자리의 git 호출이
     // 아무 자식에도 안 실리면 위 판정에 사각지대가 생긴다 — 임포트로 이어져 있어야 한다.
@@ -816,6 +866,26 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
     )
   })
 })
+
+/**
+ * 있는 테스트를 전부 건너뛰는 픽스처의 소스.
+ *
+ * 러너는 이것을 종료 코드 0 으로 끝낸다. 계수를 안 보면 「돌았다」와 구별되지 않는다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function skippedFixtureSource(): string {
+  return ["import { test } from 'node:test'", '', "test.skip('건너뛴다', () => {})"].join('\n')
+}
+
+/**
+ * 테스트가 하나도 없는 픽스처의 소스. 이것도 종료 코드가 0 이다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function emptyFixtureSource(): string {
+  return ["import { test } from 'node:test'", '', 'const unused = test'].join('\n')
+}
 
 /**
  * 스크럽을 잃은 픽스처의 소스. 비-공허 짝이 임시 디렉터리에 세워 같은 하네스에 물린다.
