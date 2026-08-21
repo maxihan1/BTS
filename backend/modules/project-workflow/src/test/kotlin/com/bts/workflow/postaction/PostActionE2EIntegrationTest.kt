@@ -88,6 +88,22 @@ class PostActionE2EIntegrationTest {
         private val basePath =
             "/api/v1/workflows/$WORKFLOW_KEY/transitions/$TRANSITION_KEY/post-actions"
 
+        // ── 같은 (from,to) 구간에 전환이 여럿인 워크플로우 ─────────────────────
+        //
+        // V207 ① 이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를 풀어 DB 가 이 모양을 허용한다.
+        // 종전에는 중복을 **만드는** 테스트(V207MigrationTest)와 resolver 를 **태우는** 테스트가
+        // 서로를 만나지 않아 결함이 초록에 가려졌다. 여기서 둘을 한 클래스 안에서 만나게 한다.
+        private const val DUP_WORKFLOW_KEY = "dup-target"
+
+        // 중복 쌍의 전환 키도 도메인 계산 프로퍼티에서 얻는다 — 리터럴로 적으면 규칙이 두 벌이 된다.
+        private val DUP_NORMAL_KEY =
+            WorkflowTransition("todo", "done", "빠른 완료 A", kind = TransitionKind.NORMAL).key
+        private val DUP_GLOBAL_KEY =
+            WorkflowTransition(null, "done", "긴급 A", kind = TransitionKind.GLOBAL).key
+
+        /** 중복 NORMAL 전환 2건의 id. 선언 순서 = 「빠른 완료 A」, 「빠른 완료 B」. */
+        private lateinit var dupNormalIds: List<UUID>
+
         @BeforeAll
         @JvmStatic
         @Suppress("LongMethod")
@@ -194,6 +210,7 @@ class PostActionE2EIntegrationTest {
                 ).use { it.execute() }
 
                 seedModernTransitions(conn, java.util.UUID.fromString(workflowId))
+                dupNormalIds = seedDuplicateWorkflow(conn)
             }
 
             // 컴포넌트 조립
@@ -281,7 +298,11 @@ class PostActionE2EIntegrationTest {
                 }
             }
 
-        /** 구 컬럼을 비운 채 전환 1행. INITIAL 만 표시 순서 0 이다 (V207 ⑨ 와 같은 규칙). */
+        /**
+         * 구 컬럼을 비운 채 전환 1행. INITIAL 만 표시 순서 0 이다 (V207 ⑨ 와 같은 규칙).
+         *
+         * @return 새로 만든 전환의 id. 같은 (from,to) 쌍을 두 번 심으면 이 값만이 둘을 가른다.
+         */
         @Suppress("LongParameterList")
         private fun insertModernTransition(
             conn: Connection,
@@ -290,11 +311,11 @@ class PostActionE2EIntegrationTest {
             name: String,
             fromStatusId: UUID?,
             toStatusId: UUID,
-        ) {
+        ): UUID =
             conn.prepareStatement(
                 "INSERT INTO workflow_transitions" +
                     " (workflow_id, kind, name, from_status_id, to_status_id, display_order)" +
-                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    " VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
             ).use { stmt ->
                 stmt.setObject(1, workflowId)
                 stmt.setString(2, kind.name)
@@ -302,9 +323,11 @@ class PostActionE2EIntegrationTest {
                 stmt.setObject(4, fromStatusId)
                 stmt.setObject(5, toStatusId)
                 stmt.setInt(6, if (kind == TransitionKind.INITIAL) 0 else 1)
-                stmt.execute()
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "workflow_transitions INSERT 가 id 를 돌려주지 않았다" }
+                    rs.getObject(1) as UUID
+                }
             }
-        }
 
         /** 전환 하나에 post-action 을 만들고(201) 같은 경로로 다시 읽는다(200 · 1건). */
         private fun assertPostActionRoundTrip(transitionKey: String) {
@@ -322,6 +345,72 @@ class PostActionE2EIntegrationTest {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].type").value("SET_FIELD"))
+        }
+
+        /**
+         * 같은 (from,to) 구간에 전환이 여럿인 워크플로우를 심는다.
+         *
+         * NORMAL 2건(`todo`→`done`)과 GLOBAL 2건(→`done`)을 넣는다. 두 종류를 다 넣는 이유는
+         * 해석 조건이 서로 다르기 때문이다 — NORMAL 은 출발·도착 상태 비교로, GLOBAL 은
+         * `kind = 'GLOBAL'` + 도착 상태 비교로 걸린다. 어느 쪽이든 다건이 될 수 있으므로 둘 다 본다.
+         *
+         * @return 중복 NORMAL 전환 2건의 id.
+         */
+        private fun seedDuplicateWorkflow(conn: Connection): List<UUID> {
+            val workflowId = insertWorkflow(conn, DUP_WORKFLOW_KEY, "중복 전환 워크플로우")
+            insertWorkflowStatus(conn, workflowId, "todo", "To Do", "TODO", 1)
+            insertWorkflowStatus(conn, workflowId, "done", "Done", "DONE", 2)
+            val todo = statusCompositionId(conn, workflowId, "todo")
+            val done = statusCompositionId(conn, workflowId, "done")
+            insertModernTransition(conn, workflowId, TransitionKind.GLOBAL, "긴급 A", null, done)
+            insertModernTransition(conn, workflowId, TransitionKind.GLOBAL, "긴급 B", null, done)
+            return listOf(
+                insertModernTransition(conn, workflowId, TransitionKind.NORMAL, "빠른 완료 A", todo, done),
+                insertModernTransition(conn, workflowId, TransitionKind.NORMAL, "빠른 완료 B", todo, done),
+            )
+        }
+
+        /** 워크플로우 1행. 같은 키가 이미 있으면 그 id 를 준다. */
+        private fun insertWorkflow(
+            conn: Connection,
+            key: String,
+            name: String,
+        ): UUID =
+            conn.prepareStatement(
+                "INSERT INTO workflows (key, name) VALUES (?, ?)" +
+                    " ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name" +
+                    " RETURNING id",
+            ).use { stmt ->
+                stmt.setString(1, key)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "workflows INSERT 가 id 를 돌려주지 않았다" }
+                    rs.getObject(1) as UUID
+                }
+            }
+
+        /** 중복 워크플로우의 post-action 경로. 세그먼트는 전환 id 이거나 종전 합성 키다. */
+        private fun dupPath(transitionRef: String): String =
+            "/api/v1/workflows/$DUP_WORKFLOW_KEY/transitions/$transitionRef/post-actions"
+
+        /** 경로 하나에 SET_FIELD 규칙을 만들고(201) 그 경로에 그 규칙 1건만 보이는지 본다. */
+        private fun assertRuleIsolatedTo(
+            path: String,
+            fieldName: String,
+        ) {
+            val body = """{"type":"SET_FIELD","config":{"field":"$fieldName","value":"me"},"displayOrder":0}"""
+
+            mockMvc.perform(
+                post(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isCreated)
+
+            mockMvc.perform(get(path))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].config.field").value(fieldName))
         }
     }
 
@@ -497,6 +586,47 @@ class PostActionE2EIntegrationTest {
             mockMvc.perform(get(basePath))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.length()").value(0))
+        }
+    }
+
+    // ── 같은 (from,to) 에 전환이 여럿일 때 (V207 ① 이 UNIQUE 를 푼 결과) ──────
+    //
+    // 이 세 건이 중복 쌍과 resolver 를 **한 테스트 안에서** 만나게 한다. 종전에는 중복을 만드는
+    // 테스트와 resolver 를 태우는 테스트가 따로 살아 결함이 초록에 가려져 있었다.
+
+    @Test
+    @Order(130)
+    fun `중복 NORMAL 전환을 key 로 지목하면 500 이 아니라 404 다`() {
+        withActor {
+            mockMvc.perform(get(dupPath(DUP_NORMAL_KEY)))
+                .andExpect(status().isNotFound)
+        }
+    }
+
+    @Test
+    @Order(140)
+    fun `중복 GLOBAL 전환을 key 로 지목하면 500 이 아니라 404 다`() {
+        withActor {
+            mockMvc.perform(get(dupPath(DUP_GLOBAL_KEY)))
+                .andExpect(status().isNotFound)
+        }
+    }
+
+    @Test
+    @Order(150)
+    fun `중복 전환도 transitionId 로 지목하면 각각 다른 규칙을 갖는다`() {
+        withActor {
+            val firstPath = dupPath(dupNormalIds[0].toString())
+            val secondPath = dupPath(dupNormalIds[1].toString())
+
+            assertRuleIsolatedTo(firstPath, "assignee")
+            assertRuleIsolatedTo(secondPath, "priority")
+
+            // 두 번째에 붙인 규칙이 첫 번째로 새지 않는다 — id 만이 둘을 가른다.
+            mockMvc.perform(get(firstPath))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].config.field").value("assignee"))
         }
     }
 }
