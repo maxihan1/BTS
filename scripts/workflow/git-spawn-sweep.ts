@@ -155,6 +155,21 @@ function escapeForRegExp(text: string): string {
  */
 const HELPER_IMPORT = new RegExp(`\\bfrom\\s*(['"])[^'"]*${escapeForRegExp(path.basename(HELPER_MODULE))}\\1`)
 
+/**
+ * 어떤 텍스트가 파생 집합 술어를 하나라도 만족하는가.
+ *
+ * 살아남은 주석이 위험한 까닭은 그것이 **이 술어들을 그대로 만족시키기** 때문이다.
+ * 주석에 적어 둔 임포트 한 줄이 배선 없이 임포트 집합에 들고, 호출 예시 한 줄이
+ * spawn 집합을 부풀린다. 판별식이 술어를 제 손으로 다시 적으면 두 벌이 되고,
+ * 스윕이 형태를 넓힐 때 판별식 쪽만 낡아 「막았다」가 거짓이 된다.
+ *
+ * @param text 재어 볼 텍스트
+ * @returns 술어를 하나라도 만족하면 true
+ */
+export function satisfiesWiringPredicate(text: string): boolean {
+  return GIT_SPAWN.test(text) || HELPER_IMPORT.test(text)
+}
+
 /** 직전 유의 토큰이 식을 끝냈는가를 가리는 마지막 문자. 이 뒤의 `/` 는 나눗셈이다. */
 const EXPRESSION_END = /[A-Za-z0-9_$)\]]/
 
@@ -258,6 +273,66 @@ function stepInsideTemplate(src: string, i: number, stack: ScanContext[]): Step 
 }
 
 /**
+ * 코드 자리에서 문자열·템플릿 리터럴을 연다.
+ *
+ * @param c 현재 글자
+ * @param i 현재 위치
+ * @param stack 스캐너 상태 스택
+ * @returns 리터럴을 열었으면 한 걸음. 아니면 null
+ */
+function stepOpenLiteral(c: string, i: number, stack: ScanContext[]): Step | null {
+  if (c === "'" || c === '"') {
+    stack.push({ kind: 'quote', mark: c })
+    return { text: c, next: i }
+  }
+  if (c === '`') {
+    stack.push({ kind: 'template' })
+    return { text: c, next: i }
+  }
+  return null
+}
+
+/**
+ * 코드 자리에서 주석을 걷는다. 줄 주석은 줄 끝까지, 블록 주석은 닫는 자리까지.
+ *
+ * @param src 소스
+ * @param i 현재 위치
+ * @returns 주석이면 한 걸음. 아니면 null
+ */
+function stepStripComment(src: string, i: number): Step | null {
+  if (src[i] !== '/') return null
+  if (src[i + 1] === '/') {
+    const newline = src.indexOf('\n', i)
+    return { text: '\n', next: newline === -1 ? src.length : newline }
+  }
+  if (src[i + 1] === '*') {
+    const closing = src.indexOf('*/', i + 2)
+    const stop = closing === -1 ? src.length : closing + 2
+    // 줄바꿈만 남긴다 — 호출부 파생 집합이 **원본 줄번호**를 실패 메시지에 실어야 한다.
+    // 통째로 지우면 JSDoc 뒤의 호출이 전부 위로 밀려 file:line 이 엉뚱한 자리를 가리킨다.
+    return { text: src.slice(i, stop).replace(/[^\n]/g, ''), next: stop - 1 }
+  }
+  return null
+}
+
+/**
+ * 이 글자가 식을 끝냈는가. 끝냈으면 바로 뒤의 `/` 는 나눗셈이다.
+ *
+ * 마지막 **한 글자**만 보면 후위 증감(`i++`)이 `+` 로 읽혀 식이 안 끝난 것이 된다.
+ * 그러면 그 뒤의 `/` 가 정규식을 열고, 같은 줄의 주석 여는 자리를 종결자로 먹는다 —
+ * 주석이 통째로 살아남아 임포트·호출 예시가 파생 집합에 든다. 실제로 그렇게 뚫렸다.
+ * 앞 글자까지 보는 형태는 후위 증감뿐이라 두 글자만 본다.
+ *
+ * @param src 소스
+ * @param i 현재 위치
+ * @param c 현재 글자
+ * @returns 식을 끝냈으면 true
+ */
+function endsExpression(src: string, i: number, c: string): boolean {
+  return EXPRESSION_END.test(c)
+}
+
+/**
  * 코드 자리에서 한 글자를 옮긴다. 주석은 여기서만 걷힌다.
  *
  * @param src 소스
@@ -268,25 +343,10 @@ function stepInsideTemplate(src: string, i: number, stack: ScanContext[]): Step 
  */
 function stepInsideCode(src: string, i: number, stack: ScanContext[], top: CodeContext): Step {
   const c = src[i] ?? ''
-  if (c === "'" || c === '"') {
-    stack.push({ kind: 'quote', mark: c })
-    return { text: c, next: i }
-  }
-  if (c === '`') {
-    stack.push({ kind: 'template' })
-    return { text: c, next: i }
-  }
-  if (c === '/' && src[i + 1] === '/') {
-    const newline = src.indexOf('\n', i)
-    return { text: '\n', next: newline === -1 ? src.length : newline }
-  }
-  if (c === '/' && src[i + 1] === '*') {
-    const closing = src.indexOf('*/', i + 2)
-    const stop = closing === -1 ? src.length : closing + 2
-    // 줄바꿈만 남긴다 — 호출부 파생 집합이 **원본 줄번호**를 실패 메시지에 실어야 한다.
-    // 통째로 지우면 JSDoc 뒤의 호출이 전부 위로 밀려 file:line 이 엉뚱한 자리를 가리킨다.
-    return { text: src.slice(i, stop).replace(/[^\n]/g, ''), next: stop - 1 }
-  }
+  const literal = stepOpenLiteral(c, i, stack)
+  if (literal !== null) return literal
+  const comment = stepStripComment(src, i)
+  if (comment !== null) return comment
   if (c === '/' && !top.expressionEnded) {
     const end = endOfRegex(src, i)
     if (end !== -1) {
@@ -300,7 +360,7 @@ function stepInsideCode(src: string, i: number, stack: ScanContext[], top: CodeC
   }
   if (c === '{') top.braces += 1
   else if (c === '}') top.braces -= 1
-  if (c.trim() !== '') top.expressionEnded = EXPRESSION_END.test(c)
+  if (c.trim() !== '') top.expressionEnded = endsExpression(src, i, c)
   return { text: c, next: i }
 }
 

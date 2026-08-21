@@ -37,6 +37,7 @@ import {
   deriveWiringSets,
   matchesRunnerGlob,
   runnerFlags,
+  satisfiesWiringPredicate,
   scanGitSpawnCallSites,
   stripComments,
   strippedSources,
@@ -376,20 +377,36 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
  * `keep` 은 리터럴 **뒤**의 코드다. 주석이 지워졌는지와 코드가 남았는지를 함께 봐야
  * 두 방향(주석 생존 · 코드 소실)이 다 잡힌다. 한쪽만 보면 다른 쪽 손상이 초록이다.
  */
+const COMMENT_OPEN = '/'.repeat(2)
+
+/**
+ * 미끼 주석 한 줄. 스트리핑이 새면 이 줄이 그대로 임포트 집합을 만족시킨다.
+ *
+ * 여는 자리를 런타임에 잇는다 — 소스에 그대로 적으면 아래 전량 판정이 **제 미끼**를
+ * 위반으로 읽는다. 문자열 안의 그것과 코드 자리에 살아남은 그것을 텍스트로 가를 길이
+ * 없기 때문이다. 예외 목록을 만드는 대신 미끼를 판정 밖으로 치운다.
+ */
+const BAITED_IMPORT = `${COMMENT_OPEN} import { gitFixtureEnv } from './git-fixture-env.mjs'`
+
 const REGEX_LITERAL_TRAPS = [
   {
     label: '따옴표가 든 정규식 리터럴',
-    source: ['const QUOTED = /[\'"]/', "// import { gitFixtureEnv } from './git-fixture-env.mjs'", 'const keep = 1'].join(
-      '\n',
-    ),
+    source: ['const QUOTED = /[\'"]/', BAITED_IMPORT, 'const keep = 1'].join('\n'),
   },
   {
     label: '슬래시가 든 정규식 리터럴',
-    source: [
-      'const SLASHED = /a\\/*b/',
-      "// import { gitFixtureEnv } from './git-fixture-env.mjs'",
-      'const keep = 1',
-    ].join('\n'),
+    source: ['const SLASHED = /a\\/*b/', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  // ★후위 연산자 뒤의 `/` 는 나눗셈이다. 마지막 **한 글자**만 보면 `+` 라 식이 안 끝난
+  //   것으로 읽히고, 그 `/` 가 정규식을 열어 같은 줄의 주석 여는 자리를 종결자로 먹는다.
+  //   주석이 통째로 살아남는데 줄머리는 코드라 줄머리 판정이 못 본다.
+  {
+    label: '후위 증가 뒤의 나눗셈',
+    source: [`const RATE = i++ / total ${BAITED_IMPORT}`, 'const keep = 1'].join('\n'),
+  },
+  {
+    label: '후위 감소 뒤의 나눗셈',
+    source: [`const RATE = i-- / total ${BAITED_IMPORT}`, 'const keep = 1'].join('\n'),
   },
 ]
 
@@ -419,12 +436,20 @@ describe('주석 걷기가 정규식 리터럴 뒤에서도 듣는다', () => {
   })
 
   test('★★scripts 전량에서 살아남은 줄 주석이 하나도 없다', () => {
-    const LINE_COMMENT = /^\s*\/\//
+    // 줄머리에 남은 것과, **줄 어디든** 남았는데 꼬리가 파생 술어를 만족하는 것을 함께 센다.
+    // 줄머리만 보면 이번 회귀처럼 코드 뒤에 붙어 살아남은 주석을 통째로 놓친다. 그렇다고
+    // `//` 를 위치 제약 없이 세면 문자열·정규식 안의 그것(URL·경로 글롭)까지 물어 오탐이 된다.
+    // 가르는 기준은 위치가 아니라 **판정을 속일 수 있는가**다 — 그래서 예외 목록이 0개다.
+    const LINE_HEAD_COMMENT = /^\s*\/\//
+    const deceives = (text: string): boolean => {
+      const opened = text.indexOf(COMMENT_OPEN)
+      return opened !== -1 && satisfiesWiringPredicate(text.slice(opened))
+    }
     const survived = strippedSources().flatMap(({ file, code }) =>
       code
         .split('\n')
         .map((text, index) => ({ text, line: index + 1 }))
-        .filter(({ text }) => LINE_COMMENT.test(text))
+        .filter(({ text }) => LINE_HEAD_COMMENT.test(text) || deceives(text))
         .map(({ line }) => `${file}:${line}`),
     )
     assert.deepEqual(
