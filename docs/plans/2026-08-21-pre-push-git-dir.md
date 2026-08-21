@@ -654,6 +654,59 @@ red 만 적으면 판별식이 실제보다 넓어 보인다. **안 죽은 것**
 확인했고, 마지막 원복 뒤 전량을 다시 돌려 `tests 374 · pass 374 · fail 0 · skipped 0 · EXIT=0`
 으로 기준선에 복귀했다.
 
+## C10 실측 — `--no-verify` 없이 실제로 푸시했다
+
+**이 절이 이 작업의 완료 근거다.** 나머지 판정은 전부 이 상태를 지속시키는 장치다.
+
+**전량 검증 (명령마다 개별 로그 · 종료 코드로 판정).**
+
+| 검사 | 결과 |
+|---|---|
+| 판별식 전량 | `tests 374 · pass 374 · fail 0 · skipped 0 · cancelled 0` · `not ok` 0줄 · **EXIT=0** |
+| 정본 정합 `verify-master-plan.sh` | `PASS. FR ID 143/143` · **EXIT=0** |
+| 문서 인덱스 `build-doc-index.mjs --check` | `drift 0 · 고아 0 · 깨진 링크 0 · ★ 12/12` · **EXIT=0** |
+
+**푸시 전후 대조.** `git push origin chore/pre-push-git-dir` — **플래그 없음**.
+
+| 축 | 푸시 전 | 푸시 후 | 판정 |
+|---|---|---|---|
+| worktree `ls-files` | 4811 | 4811 | 불변 |
+| worktree `status --porcelain` | 빈 출력 | 빈 출력 | 불변 |
+| worktree `HEAD` | `02960e2ea` | `02960e2ea` | 불변 |
+| **공유 `core.bare`** | 부재 | 부재 | 불변 |
+| **main 워크트리 `ls-files`** | 4806 | 4806 | 불변 |
+| **main 워크트리 `status`** | 빈 출력 | 빈 출력 | 불변 |
+| **main 워크트리 `HEAD`** | `623041bce` | `623041bce` | 불변 |
+| 픽스처 커밋(`base`/`move`) | — | 0건 | 없음 |
+| 인덱스 `backend/` · `apps/web/` | — | 2357 · 1482 | 온전 |
+
+`PUSH_EXIT=0` · 미푸시 커밋 0.
+
+**★훅 실행 증거 — 이게 없으면 위 「불변」은 무효다.**
+
+worktree 가 husky 를 침묵 무력화하는 함정이 있어, 「깨끗함」이 「훅이 안 돌아서 깨끗함」일 수 있다.
+그래서 푸시 출력을 로그로 캡처하고 **문자열로 확인**했다.
+
+```
+core.hooksPath = .husky/_          (훅 배선 실재)
+푸시 로그에서 뽑은 줄:
+  # tests 374 / # pass 374 / # fail 0 / # skipped 0
+  ✓ 백엔드 변경 없음 — 모듈 테스트 생략.
+  husky ... failed  → 0건
+```
+
+판별식 요약 줄과 `push-backend-tests.ts` 출력이 **푸시 출력 안에** 있다. 훅이 실제로 돌았고,
+그 상태에서 저장소가 안 바뀌었다.
+
+**대조 — 같은 명령의 어제와 오늘.**
+
+| | 2026-08-21 수정 전 | 수정 후 |
+|---|---|---|
+| 인덱스 | 4,824 entries → **2 entries** | 4811 → 4811 |
+| 공유 `.git/config` | `core.bare = true` 가 박힘 | 부재 유지 |
+| 브랜치 ref | 픽스처 커밋 `base`→`move`→`base` 가 얹힘 | 불변 |
+| 푸시 | 훅이 실패해 거부됨 | `PUSH_EXIT=0` |
+
 ## Plan 메타
 
 - **task 수**. 8 (Task 1~4·7·8 은 사이클 · Task 5~6 은 관측·검증). **Task 7·8 은 착수 후 추가됐다** — Task 3 이 파일 단위 판정의 구멍을 실측으로 찾아서다
