@@ -84,7 +84,7 @@ Skill({ skill: "plan-ceo-review", args: "이 PR 이 plan 단계 ceo 리뷰의 �
 
 ## Step 6. 게이트 2 요약 → `/bts` 반환
 
-**글로벌 §Explanation Style 계층형 3블록을 먼저 낸다.** Maxi 가 승인을 판단하는 지점이므로 리뷰 지적은 쉬운 문장으로 `✅`+`💡` 에 요약하고 기술 내용은 `🔧` 아래로 격리한다. 처음 나온 약어(ReDoS·OCC·nullable 등)는 괄호 풀이 필수.
+**i-have-adhd 규칙으로 낸다.** Maxi 가 승인을 판단하는 지점이므로 첫 줄은 판정(승인 가능 / 차단 사유)이고, 지적은 심각도 순 최대 5건까지 번호를 매긴다. 처음 나온 약어(ReDoS·OCC·nullable 등)는 괄호 풀이 필수. 마지막 줄은 Maxi 가 2분 안에 할 수 있는 다음 행동 하나.
 
 ```
 🛑 게이트 2 — Maxi 검토 부탁드립니다.

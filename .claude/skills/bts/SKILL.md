@@ -80,7 +80,7 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 ## 진행 출력
 
 각 단계마다 1줄 출력해 black box 를 피한다(`🔄 [1/7] 분류 중… → type=feature, tier=T2, tasks=4`).
-**보고는 글로벌 §Explanation Style 계층형 3블록**(`✅ 한 줄` → `💡 의미` → `🔧 기술 상세`)으로 낸다. T0/T1 은 축약형 — `✅` 1줄 + `💡` 1줄 + `🔧` 에 바꾼 파일·확인 방법 각 1줄. T2/T3 은 `🔧` 하위 4구성 필수.
+**보고는 i-have-adhd 규칙을 따른다** — 다음 행동부터, 여러 단계는 번호, 서두·요약·마무리 인사 없음. T0/T1 은 바꾼 파일과 확인 방법 각 1줄. T2/T3 은 무엇을 왜 · 확인 방법 · 남은 위험 · 다음 할 일 각 1줄.
 
 ## 실패 / 엣지 케이스
 

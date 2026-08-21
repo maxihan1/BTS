@@ -146,7 +146,7 @@ git -C /Users/maxi.moff/Projects/BTS status
 
 ## 출력 형식
 
-**아래 진행 트리 위에 글로벌 §Explanation Style Work-Report Format(계층형 요약)을 먼저 얹는다.** 트리(verify-master-plan/orphan 5173 kill 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞에 `✅ 한 줄`+`💡 의미`로 "무엇이 실제 반영됐고, Maxi가 뭘 확인할 수 있는지"를 비전문가 문장으로 먼저 말한다.
+**아래 진행 트리 위에 i-have-adhd 규칙의 결과 줄을 먼저 얹는다.** 트리(verify-master-plan/orphan 5173 kill 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞 첫 줄에서 "무엇이 실제 반영됐고, Maxi가 뭘 확인할 수 있는지"를 비전문가 문장으로 말한다. 요약·마무리 인사는 붙이지 않는다.
 
 ```
 ✅ 한 줄  <비전문가 한 문장 — 무엇이 반영됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
