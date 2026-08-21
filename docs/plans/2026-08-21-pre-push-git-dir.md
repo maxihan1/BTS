@@ -278,7 +278,21 @@ Maxi 결정이 필요한 항목 0건.
 **D1 — 스크럽 헬퍼는 신규 모듈이다.**
 두 곳에 복붙하면 그 둘이 서로를 검사하지 않는다. 공유 모듈이어야 R4 의 재계산이
 「헬퍼를 임포트했는가」라는 **하나의 신호**로 성립한다. `scripts/workflow/*.{ts,mjs}` 는 이미
-`GUARD_CI` 표면이라 티어가 안 바뀐다. 확장자는 E8 실측 결과가 정한다.
+`GUARD_CI` 표면이라 티어가 안 바뀐다.
+
+**★확장자는 `.mjs` 로 확정됐다 (E8 실측 · 2026-08-21).** 격리 디렉터리에서 실제로 실행해 쟀다.
+
+```
+node consumer.mjs                            → ERR_UNKNOWN_FILE_EXTENSION ".ts"  EXIT=1
+node --experimental-strip-types consumer.mjs → IMPORT_OK function                EXIT=0
+```
+
+`.ts` 로 두면 **플래그 없는 경로가 죽는다.** `scripts/workflow/todos-reorder-integrity.mjs:237` 이
+플래그 없는 CLI 진입점을 문서화하고 있고, 임포트 해석은 `main()` 진입 전이라 인자와 무관하게
+즉사한다. 게다가 `ERR_UNKNOWN_FILE_EXTENSION` 은 이 저장소가 `node-ts-invocation.test.ts` 를
+세워 이미 막고 있는 바로 그 실패다. 역방향(`.ts` 테스트 → `.mjs` 헬퍼)은
+`todos-reorder-integrity.test.ts:42` 가 in-repo 로 증명한다.
+→ 정본은 `scripts/workflow/git-fixture-env.mjs` 다.
 
 **D2 — 지우는 형태는 접두 스윕 한 줄이다.**
 
@@ -331,7 +345,7 @@ unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`scripts/workflow/git-fixture-env.ts`, `scripts/workflow/git-fixture-isolation.test.ts`]
+- files: [`scripts/workflow/git-fixture-env.mjs`, `scripts/workflow/git-fixture-isolation.test.ts`]  ← E8 실측으로 `.ts` → `.mjs`
 - depends-on: []
 
 **★ 착수 첫 동작 — E8 실측.** `.mjs` 에서 `.ts` 헬퍼를 임포트할 수 있는지 먼저 잰다
