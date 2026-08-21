@@ -205,6 +205,73 @@ describe('backend-ci 모듈 선별', () => {
     assert.equal(picked.all, true)
   })
 
+  /**
+   * 로컬 푸시 훅용 옵션 — 마이그레이션 넓힘만 끈다.
+   *
+   * ## 왜 필요한가
+   *
+   * 2026-08-21 CI 자동 실행을 껐다. 이제 백엔드 테스트를 실제로 돌리는 유일한 자리는
+   * `.husky/pre-push` 다. 그런데 마이그레이션이 하나만 있어도 전 모듈로 넓히면 로컬 푸시가
+   * 9모듈 = 약 55분 걸린다 — 사람이 `--no-verify` 를 쓰기 시작하고 그 순간 훅 전체가 죽는다.
+   *
+   * ## ★기본값은 넓히는 쪽이다
+   *
+   * 「모르겠으면 넓힌다」는 이 파일의 규율이다. 옵션을 안 주면 종전과 **완전히 같게** 동작해야
+   * 하고, 좁히는 것은 부르는 쪽이 명시적으로 요구할 때만이다.
+   *
+   * ## ★그래프 넓힘은 끄지 않는다
+   *
+   * `shared-kernel` 처럼 역의존 폐포가 전 모듈이 되는 경우는 **정당한 넓힘**이다. 스키마와
+   * 달리 그래프로 계산 가능하고, 끄면 검증 안 된 코드가 통과한다. 이 옵션은 그것을 건드리지 않는다.
+   */
+  describe('마이그레이션 넓힘 스위치 (로컬 훅용)', () => {
+    const MIGRATION =
+      'backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V500__x.sql'
+
+    test('옵션을 안 주면 종전대로 전 모듈이다 (안전한 기본값)', () => {
+      const picked = selectModules([MIGRATION])
+      assert.deepEqual(
+        picked.modules.sort(),
+        allModules().sort(),
+        '기본값이 좁아졌다 — 옵션 도입이 기존 호출자의 동작을 바꿨다.',
+      )
+      assert.equal(picked.all, true)
+    })
+
+    test('★widenOnMigration:false 면 그 모듈의 폐포만 고른다', () => {
+      const picked = selectModules([MIGRATION], [], { widenOnMigration: false })
+      assert.notDeepEqual(
+        picked.modules.sort(),
+        allModules().sort(),
+        '스위치를 껐는데 여전히 전 모듈이다 — 옵션이 배선되지 않았다.',
+      )
+      assert.ok(
+        picked.modules.includes('project-workflow'),
+        `마이그레이션이 속한 모듈이 빠졌다: ${JSON.stringify(picked.modules)}`,
+      )
+    })
+
+    test('★★스위치를 꺼도 그래프 넓힘은 살아 있다 (shared-kernel)', () => {
+      // 이것이 깨지면 「스키마 넓힘만 끈다」가 「전부 끈다」가 된 것이다.
+      const picked = selectModules(
+        ['backend/modules/shared-kernel/src/main/kotlin/X.kt'],
+        [],
+        { widenOnMigration: false },
+      )
+      assert.deepEqual(
+        picked.modules.sort(),
+        allModules().sort(),
+        'shared-kernel 역의존 폐포가 사라졌다 — 검증 안 된 코드가 통과하는 방향의 회귀다.',
+      )
+    })
+
+    test('★스위치를 꺼도 ci:full 라벨은 여전히 전 모듈이다', () => {
+      // 사람의 명시 지시가 어떤 자동 판정보다 세다는 규율이 옵션 뒤에서도 유지되는지.
+      const picked = selectModules([MIGRATION], ['ci:full'], { widenOnMigration: false })
+      assert.deepEqual(picked.modules.sort(), allModules().sort())
+    })
+  })
+
   test('★워크플로우 자신이 바뀌면 전 모듈이다', () => {
     // 선별 로직·잡 정의가 바뀐 PR 에서 일부만 돌면 그 변경 자체를 검증하지 못한다.
     const picked = selectModules(['.github/workflows/backend-ci.yml'])

@@ -40,12 +40,23 @@ const HOOK = '.husky/pre-push'
 const REQUIRED_GLOBS = ['scripts/**/*.test.ts', 'scripts/**/*.test.mjs']
 
 /**
- * 조건 분기 토큰. 하나라도 있으면 「무조건」이 깨진다.
+ * 셸 블록을 여는/닫는 토큰. 판별식 호출이 **블록 안에 있으면** 조건부 실행이다.
  *
- * ★`&&`·`||` 도 넣는다. `changed=$(...) && node --experimental-strip-types --test ...` 형태는 겉보기에 조건문이 아니지만
- *   앞 명령이 실패하면 판별식이 통째로 스킵되고 훅은 초록이다 — 조용한 부재다.
+ * ★훅 전체에 조건문을 금지하지 않는다. 훅에는 판별식 말고 다른 명령도 산다(백엔드 모듈
+ *   테스트 등). 그것들은 조건을 가져도 된다 — 재는 것은 **판별식 호출 한 줄의 도달성**이다.
+ *   종전 규칙은 「훅 어디에도 조건문 금지」였고, 정당한 조건문을 막아 다음 사람이 이 판별식을
+ *   지우게 만드는 형태였다(2026-08-21 정정).
  */
-const BRANCH_TOKENS = ['if ', 'elif ', 'case ', '&&', '||', 'for ', 'while ']
+const BLOCK_OPEN = /^(if|for|while|case|until)\b/
+const BLOCK_CLOSE = /^(fi|done|esac)\b/
+
+/**
+ * 호출 자체를 조건부로 만드는 연산자.
+ *
+ * ★`&&`·`||` 는 겉보기에 조건문이 아니지만 앞 명령이 실패하면 판별식이 통째로 스킵되고
+ *   훅은 초록이다 — 조용한 부재다.
+ */
+const GUARD_OPERATORS = ['&&', '||']
 
 /** pnpm 래퍼. 워크트리에서 모듈 재설치를 유발해 무-TTY 로 죽는다. */
 const PNPM_WRAPPER = /(^|[;&|(\s])(npx\s+)?pnpm(\s|$)/
@@ -73,6 +84,21 @@ function discriminantInvocation(lines: string[]): string | undefined {
   return lines.find((l) => l.includes('--test') && REQUIRED_GLOBS.every((g) => l.includes(g)))
 }
 
+/**
+ * 판별식 호출이 놓인 셸 블록 깊이. 0 이면 무조건 도달한다.
+ *
+ * 호출이 아예 없으면 `null` — 그 경우는 위 단언이 먼저 잡으므로 여기서 판정하지 않는다.
+ */
+function invocationBlockDepth(lines: string[]): number | null {
+  let depth = 0
+  for (const line of lines) {
+    if (line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g))) return depth
+    if (BLOCK_OPEN.test(line)) depth += 1
+    else if (BLOCK_CLOSE.test(line)) depth = Math.max(0, depth - 1)
+  }
+  return null
+}
+
 describe('판별식 훅 배선 정합', () => {
   test('푸시 훅이 판별식 전량을 부른다', () => {
     const lines = commandLines(readHook())
@@ -88,18 +114,29 @@ describe('판별식 훅 배선 정합', () => {
     )
   })
 
-  test('★조건 없이 부른다 (경로별 선별로 되돌아가지 않는다)', () => {
+  test('★판별식 호출이 조건에 매달리지 않는다 (경로별 선별로 되돌아가지 않는다)', () => {
     const lines = commandLines(readHook())
-    const found = BRANCH_TOKENS.filter((t) => lines.some((l) => l.includes(t)))
+    const call = discriminantInvocation(lines)
+    const depth = invocationBlockDepth(lines)
 
+    const why =
+      `조건을 걸면 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록이 되살아난다. 그 둘은 서로를 ` +
+      `안 보므로 갈라진 뒤에도 초록이다 — 이 저장소가 이미 여러 번 물린 양식이고, ` +
+      `이 호출이 무조건인 유일한 이유다.\n` +
+      `느려서 줄이고 싶다면 조건이 아니라 **판별식 자체를 줄여라.**`
+
+    assert.equal(
+      depth,
+      0,
+      `${HOOK} 의 판별식 호출이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
+    )
+
+    const guarded = GUARD_OPERATORS.filter((op) => (call ?? '').includes(op))
     assert.deepEqual(
-      found,
+      guarded,
       [],
-      `${HOOK} 에 조건 분기가 들어왔다: ${found.join(' · ')}\n\n` +
-        `조건을 걸면 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록이 되살아난다. 그 둘은 서로를 ` +
-        `안 보므로 갈라진 뒤에도 초록이다 — 이 저장소가 이미 여러 번 물린 양식이고, ` +
-        `이 훅이 무조건인 유일한 이유다.\n` +
-        `느려서 줄이고 싶다면 조건이 아니라 **판별식 자체를 줄여라.**`,
+      `${HOOK} 의 판별식 호출이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
+        `앞이 실패하면 판별식은 **한 줄도 안 돌고** 훅은 그 사실을 말하지 않는다.\n\n${why}`,
     )
   })
 
@@ -130,15 +167,27 @@ describe('판별식 훅 배선 정합', () => {
     assert.ok(discriminantInvocation(ok) !== undefined, '정상 배선을 못 잡았다 — 탐지 로직이 죽어 있다.')
     assert.equal(discriminantInvocation(halfSealed), undefined, '절반 봉인(.mjs 누락)을 정상으로 읽었다.')
 
+    assert.equal(invocationBlockDepth(ok), 0, '최상위 호출을 블록 안으로 읽었다.')
+    assert.equal(invocationBlockDepth(conditional), 1, '`if` 블록 안의 호출을 무조건으로 읽었다.')
     assert.ok(
-      BRANCH_TOKENS.some((t) => conditional.some((l) => l.includes(t))),
-      '조건문 안의 호출을 무조건으로 읽었다.',
-    )
-    assert.ok(
-      BRANCH_TOKENS.some((t) => andGuarded.some((l) => l.includes(t))),
+      GUARD_OPERATORS.some((op) => andGuarded[0].includes(op)),
       '`&&` 로 앞 명령에 매달린 호출을 무조건으로 읽었다 — 앞이 실패하면 조용히 스킵된다.',
     )
     assert.ok(viaPnpm.some((l) => PNPM_WRAPPER.test(l)), 'pnpm 래퍼를 놓쳤다.')
+
+    // ★오탐 대조 — 훅의 **다른** 명령이 조건을 가져도 판별식 호출은 여전히 깊이 0 이다.
+    //   이 대조가 없으면 종전의 과한 규칙(「훅 어디에도 조건문 금지」)으로 되돌아간다.
+    const otherCmdBranches = [
+      "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
+      'if [ -n "$SOMETHING" ]; then',
+      '  ./gradlew :modules:x:test',
+      'fi',
+    ]
+    assert.equal(
+      invocationBlockDepth(otherCmdBranches),
+      0,
+      '판별식 뒤의 조건문을 판별식 호출의 조건으로 읽었다 — 정당한 다른 명령을 막는다.',
+    )
 
     // 오탐 대조. 정상 처방을 위반으로 읽으면 훅을 고칠 방법이 없어진다.
     for (const allowed of [
@@ -162,10 +211,6 @@ describe('판별식 훅 배선 정합', () => {
     const lines = commandLines(prose)
     assert.deepEqual(lines.length, 1, '주석·빈 줄을 실행 줄로 셌다.')
     assert.equal(PNPM_WRAPPER.test(lines[0]), false, '주석의 pnpm 언급을 위반으로 읽었다.')
-    assert.deepEqual(
-      BRANCH_TOKENS.filter((t) => lines.some((l) => l.includes(t))),
-      [],
-      '주석의 if 언급을 조건 분기로 읽었다.',
-    )
+    assert.equal(invocationBlockDepth(lines), 0, '주석의 if 언급을 블록 시작으로 읽었다.')
   })
 })
