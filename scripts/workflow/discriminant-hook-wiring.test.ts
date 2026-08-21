@@ -110,62 +110,100 @@ function invocationBlockDepth(lines: string[]): number | null {
   return blockDepthAt(lines, isDiscriminantCall)
 }
 
-/**
- * 「그 줄이 조건 없이 실행되는가」를 재는 축 한 벌. 훅 쪽과 배포 쪽이 **같은 판정**을 쓰므로
- * 복붙 대신 여기로 모은다 — 사본을 두면 한쪽에만 축이 붙고, 두 벌은 서로를 검사하지 않는다.
- *
- * 판정은 판별식 파일인 여기 남는다(`hook-source.ts` 는 어휘와 파서만 갖는다).
- * 실패 메시지가 대상에서 멀어지지 않도록 `where`·`subject` 를 호출자가 준다.
- *
- * @param target.where 대상 파일의 저장소 상대 경로. 실패 메시지에 그대로 싣는다
- * @param target.subject 무엇의 무조건성을 재는지 (실패 메시지용)
- * @param target.lines 주석을 걷어낸 실행 줄 (`commandLines` 산출물)
- * @param target.matches 대상 줄을 고르는 술어
- * @param target.why 왜 무조건이어야 하는지. 실패 메시지 꼬리에 붙는다
- */
-function assertUnconditional(target: {
+/** 무조건성을 잴 대상. 실패 메시지가 대상에서 멀어지지 않게 이름과 사유를 함께 받는다. */
+interface UnconditionalTarget {
+  /** 대상 파일의 저장소 상대 경로. 실패 메시지에 그대로 싣는다 */
   where: string
+  /** 무엇의 무조건성을 재는지 (실패 메시지용) */
   subject: string
+  /** 주석을 걷어낸 실행 줄 (`commandLines` 산출물) */
   lines: string[]
+  /** 대상 줄을 고르는 술어 */
   matches: (line: string) => boolean
+  /** 왜 무조건이어야 하는지. 실패 메시지 꼬리에 붙는다 */
   why: string
-}): void {
+}
+
+/**
+ * 축 ①. 그 줄이 **여러 줄 블록 안**에 있지 않다. 깊이 0 이면 무조건 도달한다.
+ *
+ * @param target 무조건성을 잴 대상
+ */
+function assertNotInBlock(target: UnconditionalTarget): void {
   const { where, subject, lines, matches, why } = target
-  const line = lines.find(matches)
-
-  // ★부재를 **먼저** 판정한다. `blockDepthAt` 은 부재를 `null` 로 돌려주고 그 판정을 호출자
-  //   몫으로 남긴다. 그것을 안 하면 「깊이 null 에 있다」는 **거짓** 메시지가 나오고 —
-  //   어디에도 없는 것은 어떤 깊이에도 있지 않다 — 가드 축은 빈 문자열을 검사하며 통과한다.
-  if (line === undefined) {
-    assert.fail(`${where} 에 ${subject}이 아예 없다 — 어떤 깊이에도 있지 않다.\n\n${why}`)
-  }
-
   const depth = blockDepthAt(lines, matches)
+
   assert.equal(
     depth,
     0,
     `${where} 의 ${subject}이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
   )
+}
 
+/**
+ * 축 ②. 그 줄이 `&&`·`||` 로 앞 명령에 매달려 있지 않다.
+ *
+ * @param target 무조건성을 잴 대상
+ * @param line 대상 줄. 부재 판정을 이미 통과한 것만 들어온다
+ */
+function assertNotGuarded(target: UnconditionalTarget, line: string): void {
   const guarded = GUARD_OPERATORS.filter((op) => line.includes(op))
+
   assert.deepEqual(
     guarded,
     [],
-    `${where} 의 ${subject}이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
-      `앞이 실패하면 그 줄은 **한 줄도 안 돌고** 파일은 그 사실을 말하지 않는다.\n\n${why}`,
+    `${target.where} 의 ${target.subject}이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
+      `앞이 실패하면 그 줄은 **한 줄도 안 돌고** 파일은 그 사실을 말하지 않는다.\n\n${target.why}`,
   )
+}
 
-  // ★깊이는 **줄 단위**라 자기 완결형 한 줄(`if …; then … ; fi`)을 못 본다. 그 형태는
-  //   깊이 0 · 가드 없음으로 축 전부를 통과하므로 줄 안쪽을 따로 본다.
+/**
+ * 축 ③. 그 줄이 **자기 줄 안에서** 블록을 열지 않는다.
+ *
+ * ★셸 블록 깊이는 **줄 단위**라 자기 완결형 한 줄(`if …; then … ; fi`)을 못 본다.
+ *   그 형태는 깊이 0 · 가드 없음으로 다른 축 전부를 통과하므로 줄 안쪽을 따로 본다.
+ *
+ * @param target 무조건성을 잴 대상
+ * @param line 대상 줄. 부재 판정을 이미 통과한 것만 들어온다
+ */
+function assertNoInlineBlock(target: UnconditionalTarget, line: string): void {
   const openers = inlineBlockOpeners(line)
+
   assert.deepEqual(
     openers,
     [],
-    `${where} 의 ${subject}이 한 줄 안에서 블록을 연다 (${openers.join(' · ')}).\n` +
+    `${target.where} 의 ${target.subject}이 한 줄 안에서 블록을 연다 (${openers.join(' · ')}).\n` +
       `  ${line}\n` +
       `그 조건이 거짓인 실행에서는 그 줄이 통째로 사라지는데, 셸 블록 깊이는 줄 단위로 세므로 ` +
-      `깊이 0 으로 읽힌다 — 가장 비싼 자리의 조용한 부재다.\n\n${why}`,
+      `깊이 0 으로 읽힌다 — 가장 비싼 자리의 조용한 부재다.\n\n${target.why}`,
   )
+}
+
+/**
+ * 「그 줄이 조건 없이 실행되는가」 — 부재·블록 깊이·가드 연산자·한 줄 오프너 네 축.
+ *
+ * 훅 쪽과 배포 쪽이 **같은 판정**을 쓰므로 복붙 대신 여기로 모은다. 사본을 두면 한쪽에만
+ * 축이 붙고, 두 벌은 서로를 검사하지 않는다. 판정은 판별식 파일인 여기 남는다
+ * (`hook-source.ts` 는 어휘와 파서만 갖는다).
+ *
+ * ★부재를 **먼저** 판정한다. `blockDepthAt` 은 부재를 `null` 로 돌려주고 그 판정을 호출자
+ *   몫으로 남긴다. 그것을 안 하면 「깊이 null 에 있다」는 **거짓** 메시지가 나오고 —
+ *   어디에도 없는 것은 어떤 깊이에도 있지 않다 — 가드 축은 빈 문자열을 검사하며 통과한다.
+ *
+ * @param target 무조건성을 잴 대상
+ */
+function assertUnconditional(target: UnconditionalTarget): void {
+  const line = target.lines.find(target.matches)
+
+  if (line === undefined) {
+    assert.fail(
+      `${target.where} 에 ${target.subject}이 아예 없다 — 어떤 깊이에도 있지 않다.\n\n${target.why}`,
+    )
+  }
+
+  assertNotInBlock(target)
+  assertNotGuarded(target, line)
+  assertNoInlineBlock(target, line)
 }
 
 describe('판별식 훅 배선 정합', () => {
@@ -372,18 +410,17 @@ const GIT_FREE_ENV: NodeJS.ProcessEnv = Object.fromEntries(
  * ★`GIT_SSH_COMMAND` 는 git 이 훅에 넣는 것이 아니라 사람이 export 해 두는 값이다.
  *   **공백이 든 값**에서도 이름만 뽑히는지 함께 재려고 첫 형태에 섞어 둔다.
  */
+const PRE_PUSH_DIRTY_ENV: NodeJS.ProcessEnv = {
+  ...GIT_FREE_ENV,
+  GIT_DIR: '/nonexistent-decoy/.git',
+  GIT_EDITOR: ':',
+  GIT_EXEC_PATH: '/nonexistent-decoy/libexec/git-core',
+  GIT_PREFIX: '',
+  GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
+}
+
 const DIRTY_ENVS: ReadonlyArray<{ label: string; env: NodeJS.ProcessEnv }> = [
-  {
-    label: 'pre-push (연결된 worktree)',
-    env: {
-      ...GIT_FREE_ENV,
-      GIT_DIR: '/nonexistent-decoy/.git',
-      GIT_EDITOR: ':',
-      GIT_EXEC_PATH: '/nonexistent-decoy/libexec/git-core',
-      GIT_PREFIX: '',
-      GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
-    },
-  },
+  { label: 'pre-push (연결된 worktree)', env: PRE_PUSH_DIRTY_ENV },
   {
     label: 'pre-commit (연결된 worktree)',
     env: {
@@ -411,8 +448,6 @@ const DIRTY_ENVS: ReadonlyArray<{ label: string; env: NodeJS.ProcessEnv }> = [
   },
 ]
 
-/** 환경 자체가 판정 대상이 아닌 자리에서 쓰는 오염 환경 하나. */
-const ANY_DIRTY_ENV = DIRTY_ENVS[0].env
 
 /**
  * 스크럽 줄이 `GIT_*` 를 정말 비우는지 실행해서 판정한다.
@@ -574,7 +609,7 @@ describe('실효 실측 자체의 양성 대조군', () => {
     // 구별되지 않아 판정이 조용히 통과한다. 비-공허 짝(`scrub=''`)은 대조군만 재므로 이 경로를
     // 안 막는다 — 대조군 셸은 끝까지 가기 때문이다.
     assert.throws(
-      () => remainingGitVars('exit 0', ANY_DIRTY_ENV),
+      () => remainingGitVars('exit 0', PRE_PUSH_DIRTY_ENV),
       /열거 지점에 도달하지 못했다/,
       '스크럽 줄이 셸을 먼저 끝내 출력이 비었는데 그것을 「남은 것이 없다」로 읽었다.',
     )
