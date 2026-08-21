@@ -517,7 +517,7 @@ export function deriveGitTouchingFiles(): string[] {
   while (grew) {
     grew = false
     for (const { file, code } of sources) {
-      if (touching.has(file) || !importsAnyOf(code, touching)) continue
+      if (touching.has(file) || !importsAnyOf(file, code, touching)) continue
       touching.add(file)
       grew = true
     }
@@ -528,11 +528,12 @@ export function deriveGitTouchingFiles(): string[] {
 /**
  * 이 소스가 주어진 것 중 하나라도 임포트하는가.
  *
+ * @param importer 이 소스의 저장소 상대 경로. 상대 지정자를 푸는 기준이다
  * @param code 주석이 걷힌 소스
  * @param targets 저장소 상대 경로들
  * @returns 하나라도 임포트하면 true
  */
-export function importsAnyOf(code: string, targets: Iterable<string>): boolean {
+export function importsAnyOf(importer: string, code: string, targets: Iterable<string>): boolean {
   for (const target of targets) if (code.includes(`./${path.basename(target)}`)) return true
   return false
 }

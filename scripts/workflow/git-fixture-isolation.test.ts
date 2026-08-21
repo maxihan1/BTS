@@ -980,6 +980,62 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
     }
   })
 
+  test('★★임포트 판정이 언급과 이름 충돌에 안 속는다 (비-공허 짝)', () => {
+    // ★도달성을 **글자**로 재면 임포트가 아닌 것이 간선을 만든다. 사람 목록보다 나쁘다 —
+    //   목록은 눈에 보이지만 이 간선은 안 보인다. 사각지대를 막으라고 세운 판정이
+    //   무관한 파일의 한 줄로 꺼진다. 적대적 렌즈가 둘 다 실측으로 심어 보였다.
+    const deceits = [
+      {
+        label: '문자열 언급',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `const DOC_NOTE = './push-backend-tests.ts'`,
+        target: 'scripts/workflow/push-backend-tests.ts',
+      },
+      {
+        label: '다른 디렉터리 동명 파일',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `import { SURFACES } from './surfaces.ts'`,
+        target: 'scripts/doc-index/surfaces.ts',
+      },
+    ]
+    const fooled = deceits.filter((d) => importsAnyOf(d.importer, d.code, [d.target])).map((d) => d.label)
+    assert.deepEqual(
+      fooled,
+      [],
+      '임포트가 아닌 것이 도달 간선을 만들었다 — 사각지대 판정이 그 한 줄로 꺼진다.\n' +
+        `속은 형태 전수. ${JSON.stringify(fooled)}`,
+    )
+
+    // 반대 방향도 함께 잰다. 좁히다 진짜 임포트를 놓치면 판정이 통째로 red 로 굳는다.
+    const real = [
+      {
+        label: '같은 디렉터리',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `import { changedPaths } from './changed-paths.ts'`,
+        target: 'scripts/workflow/changed-paths.ts',
+      },
+      {
+        label: '상위 경로',
+        importer: 'scripts/doc-index/build.ts',
+        code: `import { changedPaths } from '../workflow/changed-paths.ts'`,
+        target: 'scripts/workflow/changed-paths.ts',
+      },
+      {
+        label: '동적 임포트',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `const m = await import('./changed-paths.ts')`,
+        target: 'scripts/workflow/changed-paths.ts',
+      },
+    ]
+    const missed = real.filter((d) => !importsAnyOf(d.importer, d.code, [d.target])).map((d) => d.label)
+    assert.deepEqual(
+      missed,
+      [],
+      '진짜 임포트를 놓쳤다 — 도달 간선이 끊겨 사각지대 판정이 거짓 red 로 굳는다.\n' +
+        `놓친 형태 전수. ${JSON.stringify(missed)}`,
+    )
+  })
+
   test('★★git 을 부르는 전량이 자식으로 돌거나 자식이 임포트한다', () => {
     // 러너 글롭에 안 걸리는 것(CLI 모듈)은 단독 실행 대상이 아니다. 그 자리의 git 호출이
     // 아무 자식에도 안 실리면 위 판정에 사각지대가 생긴다 — 임포트로 이어져 있어야 한다.
@@ -988,7 +1044,7 @@ describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim �
     const indirect = deriveWiringSets().spawners.filter((file) => !matchesRunnerGlob(file))
     const sources = strippedSources()
     const reaches = (importer: string, target: string): boolean =>
-      sources.some(({ file, code }) => file === importer && importsAnyOf(code, [target]))
+      sources.some(({ file, code }) => file === importer && importsAnyOf(file, code, [target]))
     const unreached = indirect.filter((file) => !DIRECTLY_RUNNABLE_CREATORS.some((runnable) => reaches(runnable, file)))
     assert.deepEqual(
       unreached,
