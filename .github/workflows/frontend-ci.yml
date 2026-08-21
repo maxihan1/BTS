@@ -11,38 +11,28 @@
 # 이 파일의 `runs-on` 을 되돌리면 scripts/workflow/ci-runner-label-alignment.test.ts 가 차단한다.
 name: frontend-ci
 
+# ★2026-08-21 — 자동 실행을 껐다. `workflow_dispatch` 로만 돈다.
+#
+# 왜. 1인 개발 · 실사용자 0명 단계에서 이 CI 는 값을 하지 않는다. 실증 —
+# 제품을 못 쓰게 만든 결함(`users` 0행 → 로그인 계정 0개)을 CI 4종·판별식 25종·
+# 게이트 2개 중 아무것도 잡지 못했다. 반면 벽시계의 59%(run 당 23.7분)를 큐 대기로 태웠고
+# 러너 2대가 같은 라벨이라 판정이 배정에 따라 갈렸다(판별식 잡 최근 12회 중 7회 실패).
+#
+# ★`ubuntu-latest` 로 옮기는 선택지는 없다 — 결제 차단으로 배정조차 안 된다(`steps=0`).
+#   docs/runbooks/self-hosted-runner.md §1 이 이를 영구 설계로 확정했다.
+#
+# 대신 어디서 보는가. 커밋 전 = `.husky/pre-commit`(바뀐 모듈만) · 배포 전 = `bts-deploy.sh`.
+# 되살리려면 이 블록을 지우고 원본 트리거를 복원한다 — `git show <이 커밋>^:<이 파일>`.
 on:
-  pull_request:
-    paths:
-      - 'apps/web/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/frontend-ci.yml'
-      # 계약 정본. 백엔드 DTO 를 고치고 스냅샷만 재생성하는 PR 은 backend/** + docs/** 만 건드려
-      # 이 워크플로우가 아예 안 돌았다 — 계약을 바꾸는 바로 그 PR 에서 프론트 검증이 빠진다.
-      - 'docs/contracts/**'
-  push:
-    branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/frontend-ci.yml'
-      # 계약 정본. 백엔드 DTO 를 고치고 스냅샷만 재생성하는 PR 은 backend/** + docs/** 만 건드려
-      # 이 워크플로우가 아예 안 돌았다 — 계약을 바꾸는 바로 그 PR 에서 프론트 검증이 빠진다.
-      - 'docs/contracts/**'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다.
-  runner-health:
-    uses: ./.github/workflows/runner-health.yml
 
   lint:
-    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
@@ -63,7 +53,6 @@ jobs:
         run: pnpm --filter @bts/web lint
 
   typecheck:
-    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
@@ -84,7 +73,6 @@ jobs:
         run: pnpm --filter @bts/web typecheck
 
   test:
-    needs: runner-health
     runs-on: [self-hosted, bts-local]
     # 관측치. 전체 스위트가 CI에서 ~12m47s (2026-07-07 #242). 성장 여유를 위해 20분.
     # 스위트가 계속 커지면 vitest --shard 매트릭스로 벽시계 단축(후속).

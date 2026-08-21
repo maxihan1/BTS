@@ -46,7 +46,7 @@ pnpm test:workflow  # 판별식 — CI 와 같은 목록
 node scripts/build-doc-index.mjs [--check]  # 인덱스 · pre-commit
 node scripts/build-dashboard.mjs  # progress.html
 bash scripts/verify-master-plan.sh  # 정본 정합 (EXIT 4 차단)
-bash scripts/{doc-index/mutation-probe,workflow/ci-trigger-mutation}.sh  # 비-공허 확인
+bash scripts/doc-index/mutation-probe.sh  # 비-공허 확인
 docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 ```
 

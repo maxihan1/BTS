@@ -12,60 +12,29 @@
 # 이 파일의 `runs-on` 을 되돌리면 scripts/workflow/ci-runner-label-alignment.test.ts 가 차단한다.
 name: infra-ci
 
+# ★2026-08-21 — 자동 실행을 껐다. `workflow_dispatch` 로만 돈다.
+#
+# 왜. 1인 개발 · 실사용자 0명 단계에서 이 CI 는 값을 하지 않는다. 실증 —
+# 제품을 못 쓰게 만든 결함(`users` 0행 → 로그인 계정 0개)을 CI 4종·판별식 25종·
+# 게이트 2개 중 아무것도 잡지 못했다. 반면 벽시계의 59%(run 당 23.7분)를 큐 대기로 태웠고
+# 러너 2대가 같은 라벨이라 판정이 배정에 따라 갈렸다(판별식 잡 최근 12회 중 7회 실패).
+#
+# ★`ubuntu-latest` 로 옮기는 선택지는 없다 — 결제 차단으로 배정조차 안 된다(`steps=0`).
+#   docs/runbooks/self-hosted-runner.md §1 이 이를 영구 설계로 확정했다.
+#
+# 대신 어디서 보는가. 커밋 전 = `.husky/pre-commit`(바뀐 모듈만) · 배포 전 = `bts-deploy.sh`.
+# 되살리려면 이 블록을 지우고 원본 트리거를 복원한다 — `git show <이 커밋>^:<이 파일>`.
 on:
-  pull_request:
-    paths:
-      - 'infra/**'
-      # ★backend/** 는 실수로 들어간 것이 아니다 — 지우면 봉인이 뚫린다.
-      # 봉인의 축 A(토큰 길이)·축 B(토큰 알파벳)는 Kotlin 토큰 발급기 소스를 읽는다.
-      # infra/** 만 걸면 "토큰 바이트 수를 32→8 로 줄이는" 변경이 아무 검사도 안 받고 지나가고,
-      # 그 순간 nginx 판별식(40자 이상)이 토큰을 못 가리게 된다.
-      - 'backend/**'
-      - 'scripts/verify/nginx-log-masking.sh'
-      - 'scripts/verify/springdoc-not-exposed.sh'
-      - '.github/workflows/infra-ci.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'infra/**'
-      - 'backend/**'
-      - 'scripts/verify/nginx-log-masking.sh'
-      - 'scripts/verify/springdoc-not-exposed.sh'
-      - '.github/workflows/infra-ci.yml'
+  workflow_dispatch:
 
-# 낡은 run 취소 — 다른 3개 워크플로우와 동일한 형태. infra-ci 만 빠져 있었다.
-#
-# 왜 필요한가. 러너가 1대(`maxi-mac-bts`)라 잡이 전부 한 줄로 선다. **같은 PR 에 새 커밋이
-# 올라오면 낡은 run 이 러너를 계속 점유해** 현재 커밋의 검증이 시작조차 못 한다.
-#
-# ★이 선언이 닫는 것과 못 닫는 것을 구분할 것 (게이트2 리뷰 지적).
-# `group: <workflow>-<ref>` + `cancel-in-progress` 는 **같은 그룹에 새 run 이 생길 때만**
-# 이전 run 을 취소한다. 그래서
-#   · 닫는다   — 같은 PR/브랜치에 새 push 가 겹치는 경로.
-#   · 못 닫는다 — **이미 머지되고 브랜치가 삭제된 PR** 의 큐 잔존분. 그 ref 에는 후속 run 이
-#                영영 생기지 않아 취소가 발화할 계기 자체가 없다. 2026-08-07 큐의 PR #346
-#                3건이 그 경우였다. 이건 별개 처방이 필요하다(TODOS 「CI 벽시계」 후속 참조).
-#
-# 되돌리면 scripts/workflow/ci-concurrency-coverage.test.ts 가 차단한다.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # 러너 엔진 점검 — 모든 잡의 선행. 엔진이 없으면 아래 잡은 Checkout 에서 죽는다.
-  runner-health:
-    uses: ./.github/workflows/runner-health.yml
-    # ★이 워크플로우는 Docker 데몬을 쓴다 — nginx 봉인이 nginx:1.27-alpine 컨테이너로
-    #   문법·실효 검증을 한다. 데몬이 꺼지면 뒤 잡이 **코드와 무관하게** 빨간불이 되고
-    #   로그는 「설정이 잘못됐다」로 읽힌다(2026-08-12 PR #367 실측). 여기서 먼저 멈춘다.
-    #   이 플래그를 손으로 관리하지 않는다 — runner-healthcheck-wiring.test.ts 가 실제
-    #   docker 사용을 훑어 양방향(누락·과잉)으로 강제한다.
-    with:
-      require_docker: true
 
   nginx-log-masking:
     name: nginx 접속로그 마스킹 봉인
-    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 10
     steps:
@@ -78,7 +47,6 @@ jobs:
 
   springdoc-not-exposed:
     name: springdoc 외부 미노출 봉인
-    needs: runner-health
     runs-on: [self-hosted, bts-local]
     timeout-minutes: 5
     steps:

@@ -521,12 +521,13 @@ const NODE_WORKFLOWS: Record<string, string> = {
 /**
  * setup-node 를 **갖지 않아야** 하는 워크플로우와 그 이유.
  *
- * 빈 값이 아니라 사유를 요구한다 — 「왜 없는가」가 사라지면 다음 사람이 「빠뜨렸다」로 읽고
- * 넣게 되고, `runner-health` 의 경우 그 순간 점검이 무력화된다.
+ * 빈 값이 아니라 사유를 요구한다 — 「왜 없는가」가 사라지면 다음 사람이 「빠뜨렸다」로 읽고 넣는다.
+ *
+ * ★2026-08-21 — `runner-health.yml` 항목을 지웠다. 그 워크플로우가 삭제됐기 때문이다
+ *   (CI 자동 실행 중단 + 자체호스팅 러너 관리 장치 제거). 위 산문의 「가드가 다른 가드의
+ *   존재 이유를 거스를 뻔했다」는 교훈 자체는 유효하므로 문서로 남긴다.
  */
 const NODE_FREE_WORKFLOWS: Record<string, string> = {
-  'runner-health.yml':
-    '★반드시 순수 shell. JavaScript 액션은 node 로 돌아가므로 setup-node 를 쓰면 node 사망 시 점검 자신이 먼저 죽는다(2026-08-04 사고의 사각).',
   'infra-ci.yml': 'node 를 쓰지 않는다.',
 }
 
@@ -929,25 +930,8 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
         `입력을 바꾸는 PR 에서 판별식이 안 돈다.`,
     )
   })
-
-  for (const trigger of CI_TRIGGERS) {
-    test(`workflow-scripts-ci 의 ${trigger} 트리거가 이 판별식 입력을 전부 건다`, () => {
-      const block = triggerBlock(
-        fs.readFileSync(path.join(REPO_ROOT, DISCRIMINANT_WORKFLOW), 'utf8'),
-        trigger,
-      )
-      assert.ok(block.length > 0, `${DISCRIMINANT_WORKFLOW} 에서 ${trigger} 블록을 못 잘랐다.`)
-
-      const required = [...new Set(Object.values(INPUTS).map((i) => i.coveredBy))]
-      const missing = required.filter((p) => !block.includes(`'${p}'`))
-
-      assert.deepEqual(
-        missing,
-        [],
-        `${trigger} 트리거에 다음 경로가 없다: ${missing.join(', ')}\n\n` +
-          `이 목록은 손으로 유지하지 않는다 — INPUTS 의 coveredBy 에서 파생된다.\n` +
-          `빠진 경로만 바꾸는 PR 은 이 판별식을 0회 실행하고 통과한다.`,
-      )
-    })
-  }
+  // ★2026-08-21 — 「내 입력이 CI 트리거 paths 에 있는가」 단언을 여기서 지웠다.
+  //   CI 자동 실행을 껐고, 판별식은 이제 `.husky/pre-push` 가 **조건 없이 전량** 돌린다.
+  //   그 무조건성은 `scripts/workflow/discriminant-hook-wiring.test.ts` 가 강제한다.
+  //   경로 짝맞춤 목록이 필요 없어졌으므로 보장은 유지되고 유지비만 사라진다.
 })

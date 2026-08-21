@@ -73,55 +73,7 @@ test('룰 K — 인덱스가 가리키는 파일이 전부 실재한다', () => 
   }
   assert.deepEqual(broken, [], `깨진 링크 ${broken.length}건`);
 });
-
-test('룰 L — 생성기 SOURCES 가 전부 CI 트리거 paths 에 있다 (pull_request·push 양쪽)', async () => {
-  const { SOURCES } = await import('../doc-index/config.mjs');
-  const ci = fs.readFileSync(CI_FILE, 'utf8');
-  // pull_request 블록과 push 블록을 갈라 각각 검사한다. 한쪽만 걸면 절반 봉인이다 —
-  // PR 에서는 돌고 main 직접 push 에서는 안 도는 상태가 된다.
-  const prBlock = ci.slice(ci.indexOf('pull_request:'), ci.indexOf('push:'));
-  const pushBlock = ci.slice(ci.indexOf('push:'), ci.indexOf('concurrency:'));
-  const missing: string[] = [];
-  for (const src of SOURCES.filter((s: { repoRelative: boolean }) => s.repoRelative)) {
-    for (const [name, block] of [
-      ['pull_request', prBlock],
-      ['push', pushBlock],
-    ] as const) {
-      // 상위 와일드카드는 **그 접두를 실제로 가진 경로만** 커버한다.
-      //   `block.includes("'docs/**'")` 를 무조건 OR 로 붙이면 other/probe 같은 완전히 다른
-      //   경로까지 "커버됨"으로 판정한다 — 뮤테이션 주입에서 이 버그로 룰 L 이 green 이었다.
-      const covered =
-        block.includes(`'${src.dir}/**'`) ||
-        src.dir
-          .split('/')
-          .slice(0, -1)
-          .some((_, i) => {
-            const prefix = src.dir.split('/').slice(0, i + 1).join('/');
-            return block.includes(`'${prefix}/**'`);
-          });
-      if (!covered) missing.push(`${src.dir} (${name})`);
-    }
-  }
-  assert.deepEqual(
-    missing,
-    [],
-    `CI 트리거 미포함 ${missing.length}건 — 이 입력만 바꾸는 PR 에서 판별식이 0회 실행된다`,
-  );
-});
-
-test('룰 L-2 — 생성기 자신의 경로도 CI 트리거에 있다', () => {
-  // 생성기를 고치면 인덱스 결과가 바뀐다. 생성기 경로가 트리거에 없으면
-  // 생성기만 고치는 PR 에서 룰 I 가 0회 실행되고 통과한다.
-  const ci = fs.readFileSync(CI_FILE, 'utf8');
-  const prBlock = ci.slice(ci.indexOf('pull_request:'), ci.indexOf('push:'));
-  const pushBlock = ci.slice(ci.indexOf('push:'), ci.indexOf('concurrency:'));
-  for (const [name, block] of [
-    ['pull_request', prBlock],
-    ['push', pushBlock],
-  ] as const) {
-    assert.ok(
-      block.includes("'scripts/doc-index/**'"),
-      `scripts/doc-index/** 가 ${name} paths 에 없다`,
-    );
-  }
-});
+// ★2026-08-21 — 「내 입력이 CI 트리거 paths 에 있는가」 단언을 여기서 지웠다.
+//   CI 자동 실행을 껐고, 판별식은 이제 `.husky/pre-push` 가 **조건 없이 전량** 돌린다.
+//   그 무조건성은 `scripts/workflow/discriminant-hook-wiring.test.ts` 가 강제한다.
+//   경로 짝맞춤 목록이 필요 없어졌으므로 보장은 유지되고 유지비만 사라진다.

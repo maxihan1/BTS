@@ -1,0 +1,22 @@
+# 판별식 전량 — CI 자동 실행을 끈 뒤(2026-08-21) 이것이 유일한 기계 강제 지점이다.
+#
+# 왜 pre-commit 이 아닌가. 전량 **5.1초**다(2026-08-21 실측 — 러너 관리 판별식을 지우면서
+# 35초에서 7배 빨라졌다. 하위 프로세스를 띄우던 것들이었다). 즉 「느려서」가 이유는 아니다.
+# 푸시는 코드가 이 기계를 떠나는 마지막 지점이고, CI 자동 실행이 없는 지금 그 경계가
+# 유일하게 남은 「돌이킬 수 없기 직전」이다. 커밋 훅은 lint-staged + doc-index 로 얇게 둔다.
+#
+# ★5초라면 pre-commit 도 무리가 아니다. 옮길 이유가 생기면 옮기되,
+#   `scripts/workflow/discriminant-hook-wiring.test.ts` 의 `HOOK` 상수를 **같은 커밋에서**
+#   바꿔야 한다 — 안 그러면 그 판별식이 없는 파일을 보며 red 가 된다.
+#
+# ★`pnpm` 을 쓰지 않는다. 워크트리가 붙어 있으면 pnpm 이 모듈 재설치를 시도하다 무-TTY 로
+#   죽는다(`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`). `CI=true` 로 뚫으면 안 된다 —
+#   지워지는 실체를 워크트리의 심볼릭이 가리키고 있어 **옆 세션 작업이 함께 깨진다.**
+#
+# ★★조건을 걸지 않는다. 경로별 선별은 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록을 만들고,
+#   그 둘이 서로를 안 보면 조용히 썩는다. 이 저장소가 이미 이름 붙인 지배 결함 양식이다.
+#   전량 무조건이 그 양식을 원천 차단한다.
+#   `scripts/workflow/discriminant-hook-wiring.test.ts` 가 이 무조건성을 강제한다.
+#
+# 건너뛰려면 `git push --no-verify`. 다만 그러면 lint 검사까지 함께 죽는다는 것을 알고 쓸 것.
+node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'

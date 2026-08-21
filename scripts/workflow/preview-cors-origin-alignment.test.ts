@@ -21,10 +21,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-// 판별식(`pnpm test:workflow`)을 실제로 돌리는 워크플로우. 2026-07-30 에 backend-ci 에서
-// 이관됐다 — 잡이 옮겨갔는데 이 상수를 안 바꾸면 **엉뚱한 파일의 트리거를 보며 통과**한다.
-const DISCRIMINANT_WORKFLOW = path.join(REPO_ROOT, '.github/workflows/workflow-scripts-ci.yml');
-
 /**
  * 이 판별식이 의존하는 입력 파일과, workflow-scripts-ci 트리거에서 그 파일을 덮는 경로 패턴.
  *
@@ -62,11 +58,6 @@ function read(input: { readonly file: string }): string {
   return fs.readFileSync(path.join(REPO_ROOT, input.file), 'utf8');
 }
 
-/** `coveredBy` 패턴이 실제로 그 파일을 덮는지. 잘못 선언한 짝을 잡는다. */
-function globCovers(glob: string, file: string): boolean {
-  if (glob === file) return true;
-  return glob.endsWith('/**') && file.startsWith(glob.slice(0, -2));
-}
 
 /**
  * vite 가 로컬에서 브라우저에 서빙하는 블록.
@@ -76,18 +67,7 @@ function globCovers(glob: string, file: string): boolean {
  */
 const VITE_SERVE_BLOCKS = ['server', 'preview'] as const;
 
-/** `on:` 아래에서 판별식 입력을 걸어야 하는 트리거. 한쪽만 걸면 봉인이 절반만 닫힌다. */
-const CI_TRIGGERS = ['pull_request', 'push'] as const;
 
-/**
- * 트리거에 반드시 있어야 하는 경로 — [INPUTS] 에서 파생한다(중복 제거).
- *
- * 판별식을 만들어도 CI 가 안 돌리면 로컬 1회성 확인으로 끝나고 썩는다
- * (`pnpm test:workflow` 를 어느 CI 도 돌리지 않던 2026-07-27 사고와 같은 양식).
- */
-const REQUIRED_CI_TRIGGER_PATHS = [
-  ...new Set(Object.values(INPUTS).map((input) => input.coveredBy)),
-];
 
 /** 파서가 고장났을 때 차집합이 공허하게 통과하는 것을 막는 하한. */
 const MIN_CORS_ORIGINS = 1;
@@ -144,51 +124,11 @@ function corsAllowedOriginDefaults(): Set<string> {
   );
 }
 
-/**
- * `workflow-scripts-ci.yml` 의 `on.<trigger>.paths` 를 **트리거별로** 수집한다.
- *
- * 한 덩어리로 합치면 `pull_request` 에만 배선돼도 통과한다 — 봉인이 절반만 닫히는 양식이다.
- * 정규식으로 블록을 잘라내는 대신 줄 단위로 읽는다. YAML 은 들여쓰기가 곧 구조라
- * 들여쓰기를 상태로 쓰는 편이 주석·빈 줄에 견고하다.
- */
-function discriminantWorkflowTriggerPaths(): Map<string, Set<string>> {
-  const collected = new Map<string, Set<string>>();
-  let trigger: string | undefined;
-  let inPaths = false;
-
-  for (const line of fs.readFileSync(DISCRIMINANT_WORKFLOW, 'utf8').split('\n')) {
-    const triggerKey = /^ {2}([a-z_]+):/.exec(line)?.[1];
-    if (triggerKey !== undefined) {
-      trigger = triggerKey;
-      inPaths = false;
-      continue;
-    }
-    if (/^ {4}paths:/.test(line)) {
-      inPaths = true;
-      continue;
-    }
-    // `branches:` 같은 paths 의 형제 키를 만나면 목록이 끝났다.
-    if (/^ {4}\S/.test(line)) {
-      inPaths = false;
-      continue;
-    }
-
-    const item = /^ {6}- '(.+)'$/.exec(line)?.[1];
-    if (!inPaths || trigger === undefined || item === undefined) continue;
-
-    const paths = collected.get(trigger) ?? new Set<string>();
-    paths.add(item);
-    collected.set(trigger, paths);
-  }
-
-  return collected;
-}
 
 describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => {
   test('판별식이 비어 있지 않다 (양성 대조군)', () => {
     const blocks = viteServeBlocks();
     const origins = corsAllowedOriginDefaults();
-    const triggers = discriminantWorkflowTriggerPaths();
 
     // 하한이 없으면 파서가 0건을 내도 아래 차집합이 전부 공허하게 통과한다.
     // 0 이라는 결과는 「없다」가 아니라 「내 판별식이 틀렸다」를 먼저 의심해야 한다.
@@ -201,13 +141,6 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
       origins.size >= MIN_CORS_ORIGINS,
       `application.yml 에서 CORS 허용 오리진을 ${origins.size}건 찾았다 — 파서가 고장났다.`,
     );
-    for (const trigger of CI_TRIGGERS) {
-      const paths = triggers.get(trigger);
-      assert.ok(
-        paths !== undefined && paths.size >= REQUIRED_CI_TRIGGER_PATHS.length,
-        `workflow-scripts-ci.yml 의 on.${trigger}.paths 를 ${paths?.size ?? 0}건 찾았다 — 파서가 고장났다.`,
-      );
-    }
   });
 
   test('vite 가 서빙하는 모든 로컬 포트가 CORS 허용목록에 있다', () => {
@@ -256,39 +189,9 @@ describe('vite 로컬 포트 ↔ 백엔드 CORS 허용 오리진 정합', () => 
     );
   });
 
-  test('양쪽 트리거가 판별식 입력 경로를 전부 건다', () => {
-    const triggers = discriminantWorkflowTriggerPaths();
+  // ★2026-08-21 — 「입력이 CI 트리거 paths 에 있는가」 단언을 지웠다. CI 자동 실행을 껐고,
+  //   판별식은 `.husky/pre-push` 가 조건 없이 전량 돌린다(discriminant-hook-wiring.test.ts 강제).
 
-    const missing = CI_TRIGGERS.flatMap((trigger) => {
-      const paths = triggers.get(trigger) ?? new Set<string>();
-      return REQUIRED_CI_TRIGGER_PATHS.filter((required) => !paths.has(required)).map(
-        (required) => `on.${trigger}.paths 에 '${required}' 없음`,
-      );
-    });
-
-    assert.deepEqual(
-      missing,
-      [],
-      `판별식 입력이 바뀌어도 CI 가 안 도는 경로가 있다.\n` +
-        `${missing.join('\n')}\n` +
-        `이 판별식은 workflow-scripts-ci 의 discriminants 잡(pnpm test:workflow)에서 돈다. ` +
-        `입력 파일이 트리거에 없으면 그 파일만 바꾼 PR 에서 판별식이 0회 실행된다.`,
-    );
-  });
-
-  test('선언한 coveredBy 패턴이 실제로 그 입력 파일을 덮는다', () => {
-    // 트리거 요구를 INPUTS 에서 파생시키므로, 짝을 잘못 적으면 위 단언이 **틀린 경로를 요구**하며
-    // 통과한다. 짝 자체가 맞는지 보는 눈이 따로 있어야 한다.
-    const mismatched = Object.entries(INPUTS)
-      .filter(([, input]) => !globCovers(input.coveredBy, input.file))
-      .map(([key, input]) => `${key}. '${input.coveredBy}' 가 '${input.file}' 를 덮지 않는다`);
-
-    assert.deepEqual(
-      mismatched,
-      [],
-      `INPUTS 의 coveredBy 선언이 실제 파일 경로를 덮지 않는다.\n${mismatched.join('\n')}`,
-    );
-  });
 
   test('E2E 가 이미 떠 있는 서버를 재사용하지 않는다', () => {
     const src = read(INPUTS.playwright);

@@ -285,20 +285,11 @@ describe('backend-ci 모듈 선별', () => {
     )
   })
 
-  test('★★선별기 자신의 변경은 backend-ci 를 트리거하고 전 모듈을 고른다', () => {
-    // 없으면 「선별기를 너무 좁게 고치는 PR」이 `scripts/**` 만 건드리므로 backend-ci 가
-    // PR 에서도 머지 후에도 **0회** 돈다 — 무엇을 돌릴지 정하는 코드가 정작 백엔드 잡으로는
-    // 한 번도 검증되지 않는다(독립 리뷰 적발).
+  test('★★선별기 자신의 변경은 전 모듈을 고른다', () => {
+    // ★2026-08-21 — 앞쪽 절반(「backend-ci 트리거 paths 에 선별기가 2곳 걸려 있다」)을 지웠다.
+    //   CI 자동 실행을 껐으므로 트리거 paths 자체가 없다. 뒤쪽 절반은 그대로 살아 있다 —
+    //   선별기를 좁히는 실수를 그 PR 안에서 잡는 것이 이 단언의 본체다.
     const SELF = 'scripts/workflow/select-backend-modules.ts'
-    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
-
-    // 트리거 2벌(pull_request · push). 한쪽만 걸면 봉인이 절반이다.
-    const occurrences = [...workflow.matchAll(new RegExp(`^\\s*-\\s*'${SELF}'$`, 'gm'))].length
-    assert.equal(
-      occurrences,
-      2,
-      `${WORKFLOW} 의 paths 에 선별기가 ${occurrences}곳 걸려 있다 (pull_request·push 2곳이어야 한다).`,
-    )
 
     // 그리고 그 변경은 전 모듈이어야 한다 — 일부로 검증하면 좁히는 실수를 그 PR 에서 못 잡는다.
     //

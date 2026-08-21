@@ -707,3 +707,46 @@ test('parseTodos — H1 앞의 항목은 section 이 null 이다 (음성 대조�
   );
   assert.equal(todos[1].section, '화면에서 보이는 것');
 });
+
+/**
+ * ★★대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다 (두 목록 짝맞춤)
+ *
+ * 2026-08-21 이관. 원래 `scripts/workflow/merged-pr-run-cleanup.test.ts` 에 있었는데
+ * 그 파일이 좀비 run 정리(러너 관리) 장치라 CI 중단과 함께 삭제됐다. **이 단언만은 러너와
+ * 무관한 보장**이라 여기로 옮긴다 — 생성기의 출력 경로와 그것을 지시하는 문서의 짝이다.
+ *
+ * 왜 필요한가. `/bts-merge` 는 훅이 안 돌았을 때의 수동 폴백으로 `git add <progress.html>` 을
+ * 지시한다. 그 경로가 생성기의 실제 출력과 다르면 **실행하는 순간 pathspec 오류로 죽는다.**
+ * 2026-07-17 에 이미 적발됐는데 문서만 남아 26일간 그대로였다 — 사람 기억은 짝을 유지하지
+ * 못한다는 증거라 판별식으로 못박는다.
+ */
+test('★★대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다 (두 목록 짝맞춤)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const url = await import('node:url');
+  const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+  const mergeSkill = path.join(repoRoot, '.claude/skills/bts-merge/SKILL.md');
+
+  const generator = fs.readFileSync(path.join(repoRoot, 'scripts/build-dashboard.mjs'), 'utf-8');
+  const m = generator.match(/OUTPUT_PATH\s*=\s*path\.join\([^,]+,\s*'([^']+)'\)/);
+  assert.ok(m !== null, 'build-dashboard.mjs 에서 OUTPUT_PATH 를 못 읽었다 — 아래 대조가 공허해진다.');
+  const actual = m[1];
+
+  const skill = fs.readFileSync(mergeSkill, 'utf-8');
+  // 스킬이 적은 progress.html 경로를 전부 모은다. 경로 없이 파일명만 쓴 산문은 제외한다.
+  const mentioned = [...new Set([...skill.matchAll(/[\w./-]*progress\.html/g)].map((x) => x[0]))];
+  const wrong = mentioned.filter((q) => q.includes('/') && q !== actual);
+
+  assert.deepEqual(
+    wrong,
+    [],
+    `.claude/skills/bts-merge/SKILL.md 가 실재하지 않는 경로를 지시한다: ${wrong.join(' · ')}\n` +
+      `생성기(build-dashboard.mjs)의 실제 출력은 '${actual}' 이다.\n` +
+      `그대로 실행하면 git 이 pathspec 오류로 죽어 폴백 절차 자체가 성립하지 않는다.`,
+  );
+  assert.ok(
+    skill.includes(actual),
+    `.claude/skills/bts-merge/SKILL.md 가 실제 출력 경로 '${actual}' 를 한 번도 적지 않는다 — ` +
+      '폴백 절차가 무엇을 커밋해야 하는지 알 수 없다.',
+  );
+});

@@ -607,25 +607,10 @@ describe('worktree 훅 배선 정합', () => {
       assert.equal(PNPM_WRAPPER.test(allowed), false, `정상 명령을 위반으로 읽었다: ${allowed}`);
     }
   });
-
-  for (const trigger of CI_TRIGGERS) {
-    test(`workflow-scripts-ci 의 ${trigger} 트리거가 이 판별식 입력을 전부 건다`, () => {
-      const block = triggerBlock(read({ file: DISCRIMINANT_WORKFLOW }), trigger);
-
-      assert.ok(block.length > 0, `${DISCRIMINANT_WORKFLOW} 에서 ${trigger} 블록을 못 잘랐다.`);
-
-      const required = [...new Set(Object.values(INPUTS).map((i) => i.coveredBy))];
-      const missing = required.filter((p) => !block.includes(`'${p}'`));
-
-      assert.deepEqual(
-        missing,
-        [],
-        `${trigger} 트리거에 다음 경로가 없다: ${missing.join(', ')}\n\n` +
-          `이 목록은 손으로 유지하지 않는다 — INPUTS 의 coveredBy 에서 파생된다.\n` +
-          `빠진 경로만 바꾸는 PR 은 이 판별식을 0회 실행하고 통과한다.`,
-      );
-    });
-  }
+  // ★2026-08-21 — 「내 입력이 CI 트리거 paths 에 있는가」 단언을 여기서 지웠다.
+  //   CI 자동 실행을 껐고, 판별식은 이제 `.husky/pre-push` 가 **조건 없이 전량** 돌린다.
+  //   그 무조건성은 `scripts/workflow/discriminant-hook-wiring.test.ts` 가 강제한다.
+  //   경로 짝맞춤 목록이 필요 없어졌으므로 보장은 유지되고 유지비만 사라진다.
 
   test('선언한 coveredBy 패턴이 실제로 그 입력을 덮는다', () => {
     const mismatched = Object.entries(INPUTS)
