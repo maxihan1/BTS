@@ -48,6 +48,35 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 /** 훅이 반드시 덮어야 하는 판별식 글롭. `package.json` 의 `test:workflow` 와 같은 범위다. */
 const REQUIRED_GLOBS = ['scripts/**/*.test.ts', 'scripts/**/*.test.mjs']
 
+/** 글롭을 셸에 적히는 모양(작은따옴표)으로 잇는다. */
+function quoted(globs: readonly string[]): string {
+  return globs.map((g) => `'${g}'`).join(' ')
+}
+
+/**
+ * 대조군이 쓰는 판별식 전량 호출 줄. **`REQUIRED_GLOBS` 에서 조립한다.**
+ *
+ * ★리터럴로 다시 적으면 글롭이 바뀌는 순간 둘이 갈라지고, 갈라진 사본은
+ *   `isDiscriminantCall` 이 거짓으로 읽는다 → `findIndex` 가 `-1` → 순서 대조군이
+ *   `1 > -1` 로 **공허 통과**한다. 두 목록이 갈라지는 바로 그 순간 대조군이 침묵하는
+ *   구조라 조립으로 막는다. 그래도 남는 부재는 호출자가 `-1` 단언으로 잡는다.
+ */
+const DISCRIMINANT_CALL = `node --experimental-strip-types --test ${quoted(REQUIRED_GLOBS)}`
+
+/** 글롭 하나만 거는 **절반 봉인** 변형. 이것도 상수에서 파생시킨다. */
+const HALF_SEALED_CALL = `node --experimental-strip-types --test ${quoted(REQUIRED_GLOBS.slice(0, 1))}`
+
+/**
+ * 훅·배포에 실제로 적힌 스크럽 줄의 **독립 사본**. 대조군이 「탐지 로직이 살아 있는가」를
+ * 물으려면 탐지기가 뽑아낸 값이 아니라 손으로 적은 값이어야 한다 — `find(isGitScrub)` 로
+ * 얻은 줄에 `isGitScrub` 를 다시 물으면 언제나 참이라 아무것도 증명하지 못한다.
+ *
+ * ★독립을 유지하는 대신 **실물과 잇는 단언**을 §대조군 픽스처가 둔다. 그 단언이 없으면
+ *   훅 줄이 형태를 바꿔도 이 사본은 옛 값을 유지하고, 대조군은 「탐지기가 **진짜** 줄을
+ *   잡는다」에서 「**옛날에** 진짜였던 줄을 잡는다」로 조용히 퇴화한다.
+ */
+const REAL_SCRUB = "unset $(env | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p')"
+
 function readHook(): string {
   const p = path.join(REPO_ROOT, HOOK)
   assert.ok(
@@ -166,11 +195,18 @@ describe('판별식 훅 배선 정합', () => {
 
   test('판별식이 합성 위반을 실제로 잡아낸다 (양성 대조군)', () => {
     // 위 단언들이 초록인 이유가 「배선이 옳아서」인지 「탐지 로직이 죽어서」인지 가른다.
-    const ok = ["node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"]
-    const halfSealed = ["node --experimental-strip-types --test 'scripts/**/*.test.ts'"]
-    const conditional = ['if git diff --quiet scripts/; then', "  node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'", 'fi']
+    const ok = [DISCRIMINANT_CALL]
+    const halfSealed = [HALF_SEALED_CALL]
+    const conditional = ['if git diff --quiet scripts/; then', `  ${DISCRIMINANT_CALL}`, 'fi']
     const viaPnpm = ['pnpm test:workflow']
-    const andGuarded = ["changed=$(git diff --name-only) && node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"]
+    const andGuarded = [`changed=$(git diff --name-only) && ${DISCRIMINANT_CALL}`]
+
+    // 절반 봉인 변형이 원본과 같아지면 아래 `halfSealed` 판정이 공허해진다.
+    assert.notDeepEqual(
+      REQUIRED_GLOBS.slice(0, 1),
+      REQUIRED_GLOBS,
+      '글롭이 한 벌뿐이라 절반 봉인 대조군이 원본과 같아졌다 — 그 변형을 재는 판정이 공허하다.',
+    )
 
     assert.ok(discriminantInvocation(ok) !== undefined, '정상 배선을 못 잡았다 — 탐지 로직이 죽어 있다.')
     assert.equal(discriminantInvocation(halfSealed), undefined, '절반 봉인(.mjs 누락)을 정상으로 읽었다.')
@@ -186,7 +222,7 @@ describe('판별식 훅 배선 정합', () => {
     // ★오탐 대조 — 훅의 **다른** 명령이 조건을 가져도 판별식 호출은 여전히 깊이 0 이다.
     //   이 대조가 없으면 종전의 과한 규칙(「훅 어디에도 조건문 금지」)으로 되돌아간다.
     const otherCmdBranches = [
-      "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
+      DISCRIMINANT_CALL,
       'if [ -n "$SOMETHING" ]; then',
       '  ./gradlew :modules:x:test',
       'fi',
@@ -213,7 +249,7 @@ describe('판별식 훅 배선 정합', () => {
     const prose = [
       '# ★`pnpm` 을 쓰지 않는다. if 조건을 걸어도 안 된다.',
       '',
-      "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
+      DISCRIMINANT_CALL,
     ].join('\n')
 
     const lines = commandLines(prose)
@@ -334,8 +370,8 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
   })
 
   test('스크럽 판정이 주석이 아니라 실행 줄을 본다 (산문 오탐 방지 · 양성 대조군)', () => {
-    const real = "unset $(env | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p')"
-    const call = "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"
+    const real = REAL_SCRUB
+    const call = DISCRIMINANT_CALL
 
     const prose = ['# ★GIT_DIR 를 unset 한다고 여기 적어 두기만 하면 아무것도 안 지워진다.', '', call].join('\n')
     assert.equal(commandLines(prose).find(isGitScrub), undefined, '주석의 unset 언급을 스크럽으로 읽었다.')
@@ -344,10 +380,14 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
     assert.ok(isGitScrub(real), '실제 스크럽 줄을 못 잡았다 — 탐지 로직이 죽어 있다.')
 
     const afterCall = [call, real]
-    assert.ok(
-      afterCall.findIndex(isGitScrub) > afterCall.findIndex(isDiscriminantCall),
-      '판별식 호출 뒤에 놓인 스크럽을 앞선 것으로 읽었다.',
-    )
+    const scrubAt = afterCall.findIndex(isGitScrub)
+    const callAt = afterCall.findIndex(isDiscriminantCall)
+
+    // ★비교 전에 **둘 다 찾았는지**부터 본다. 못 찾으면 `-1` 이 나오고 `0 > -1` 이 참이라
+    //   순서 대조군이 아무것도 안 재면서 통과한다.
+    assert.notEqual(scrubAt, -1, `대조군 픽스처에서 스크럽을 못 찾았다: ${real}`)
+    assert.notEqual(callAt, -1, `대조군 픽스처에서 판별식 호출을 못 찾았다: ${call}`)
+    assert.ok(scrubAt > callAt, '판별식 호출 뒤에 놓인 스크럽을 앞선 것으로 읽었다.')
     assert.equal(
       blockDepthAt(['if [ -n "$GIT_DIR" ]; then', `  ${real}`, 'fi', call], isGitScrub),
       1,
@@ -464,9 +504,9 @@ describe('배포 게이트의 GIT_* 스크럽 (훅 판정에 무임승차한다)
 
   test('동일성 판정이 변형을 실제로 잡아낸다 (양성 대조군)', () => {
     // 위 판정이 초록인 이유가 「두 줄이 같아서」인지 「비교가 죽어서」인지 가른다.
-    const real = "unset $(env | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p')"
+    const real = REAL_SCRUB
     const narrowed = 'unset GIT_DIR'
-    const call = "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"
+    const call = DISCRIMINANT_CALL
 
     const asHook = ['# 훅 쪽 주석은 여기서 이렇게 길다', real, call].join('\n')
     const asDeploy = ['#!/bin/bash', '# 배포 쪽 주석은 다른 문장이다', real, call].join('\n')
@@ -489,5 +529,34 @@ describe('배포 게이트의 GIT_* 스크럽 (훅 판정에 무임승차한다)
     // 그것을 원형과 같다고 읽으면 MC1(줄 삭제)이 초록으로 통과한다.
     assert.equal(pick([call].join('\n')), undefined, '스크럽이 없는 소스에서 무언가를 뽑았다.')
     assert.notEqual(pick([call].join('\n')), pick(asHook), '스크럽 부재를 원형과 같다고 읽었다.')
+  })
+})
+
+describe('대조군 픽스처가 실물과 이어져 있다', () => {
+  test('★손으로 적은 스크럽 사본이 훅·배포의 그 줄과 문자로 같다', () => {
+    // ★이 단언이 없으면 위 대조군들은 「탐지기가 **진짜** 줄을 잡는다」가 아니라
+    //   「**옛날에** 진짜였던 줄을 잡는다」를 증명한다. 훅·배포 줄이 형태를 바꿔도
+    //   `REAL_SCRUB` 는 옛 값을 유지하고 `isGitScrub(REAL_SCRUB)` 는 여전히 통과하므로
+    //   그 퇴화는 소리 없이 일어난다. 훅↔배포 쌍은 기계 대조하는데 사본만 빠져 있었다.
+    const hookScrub = commandLines(readHook()).find(isGitScrub)
+    const deployScrub = commandLines(readDeployGate()).find(isGitScrub)
+
+    const why =
+      `대조군 픽스처는 탐지기와 **독립**이어야 한다(탐지기가 뽑아낸 줄에 탐지기를 다시 물으면 ` +
+      `언제나 참이다). 독립을 유지하는 값이라 실물과 갈라질 수 있고, 그래서 이 한 줄이 필요하다.\n` +
+      `훅·배포 줄을 바꿨다면 이 사본도 **같은 커밋에서** 같은 형태로 바꿔라.`
+
+    assert.equal(
+      hookScrub,
+      REAL_SCRUB,
+      `대조군의 손복사 스크럽이 ${HOOK} 의 그 줄과 다르다.\n` +
+        `  ${HOOK}: ${hookScrub}\n  대조군 사본: ${REAL_SCRUB}\n\n${why}`,
+    )
+    assert.equal(
+      deployScrub,
+      REAL_SCRUB,
+      `대조군의 손복사 스크럽이 ${DEPLOY_GATE} 의 그 줄과 다르다.\n` +
+        `  ${DEPLOY_GATE}: ${deployScrub}\n  대조군 사본: ${REAL_SCRUB}\n\n${why}`,
+    )
   })
 })
