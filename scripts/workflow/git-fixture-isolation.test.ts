@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url'
 
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs'
-import { deriveWiringSets, wiringMismatch } from './git-spawn-sweep.ts'
+import { deriveGitSpawnCallSites, deriveWiringSets, wiringMismatch } from './git-spawn-sweep.ts'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -99,11 +99,18 @@ interface RepoSnapshot {
  */
 function snapshotRepo(root: string, gitDir: string): RepoSnapshot {
   const read = (...args: string[]): string => {
-    const r = spawnSync('git', ['--git-dir', gitDir, ...args], {
-      cwd: root,
-      encoding: 'utf-8',
-      env: gitFixtureEnv(),
-    })
+    // ★이 호출은 **일부러 여러 줄로** 쓴다 — 호출 이름과 프로그램 이름이 다른 줄에 있고
+    //   옵션 객체도 줄을 넘긴다. 아래 호출부 비-공허 짝이 이 형태를 근거로 삼는다.
+    //   스캐너가 줄 단위로 썩으면 여기가 집합에서 빠져 그 짝이 red 가 된다. 한 줄로 접지 마라.
+    const r = spawnSync(
+      'git',
+      ['--git-dir', gitDir, ...args],
+      {
+        cwd: root,
+        encoding: 'utf-8',
+        env: gitFixtureEnv(),
+      },
+    )
     return r.status === 0 ? r.stdout.trim() : `<exit ${r.status}>`
   }
   return {
@@ -255,15 +262,21 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
 // git 을 spawn 하는 전량이 헬퍼를 거치는지 — 소스에서 재계산한다
 // ─────────────────────────────────────────────────────────
 //
-// ## 이 대조가 못 잡는 것 — 파일 단위라서
+// ## 층위가 둘이다 — 파일 단위는 호출 하나를 빠뜨린 파일을 못 본다
 //
 // 이미 배선된 파일에 스크럽 없는 git 호출을 더 붙이면 파일 단위 대조는 초록이다.
 // 실제로 이 배선 작업 중에 `select-backend-modules.test.ts` 의 여러 줄로 쓴 호출이 그렇게
 // 빠졌고, 잡아낸 것은 `GIT_DIR` 를 건 채 판별식 전량을 돌린 실측이었다.
+// 요구는 「호출 단위」인데 판정이 「파일 단위」였다 — 두 층위가 어긋난 그 틈으로 샜다.
 //
-// 호출 단위로 좁히지 않는 이유는 아래 비-공허 짝이 **일부러** 스크럽 없이 부르기 때문이다.
-// 호출 단위 규칙은 그 한 자리를 살리려고 사람이 적는 예외 목록을 되살리고, 그 목록이
-// 다시 red 를 끄는 가장 싼 방법이 된다 — 이 판별식이 없애려던 바로 그 탈출구다.
+// 그래서 아래 두 describe 가 층위를 나눠 맡는다. 파일 단위는 「헬퍼를 아예 안 쓰는 파일」을,
+// 호출 단위는 「쓰는데 일부 호출을 빠뜨린 파일」을 잡는다. 둘 다 소스에서 재계산되므로
+// 사람이 유지하는 목록은 어느 쪽에도 없다.
+//
+// 호출 단위 규칙을 「스크럽 헬퍼를 부른다」로 쓰지 않는 이유는 이 파일의 비-공허 짝이
+// **일부러** 스크럽 없이 부르기 때문이다. 그렇게 쓰면 그 한 자리를 살리려고 사람이 적는
+// 예외 목록이 되살아나고, 그 목록이 red 를 끄는 가장 싼 방법이 된다.
+// 「env 를 명시했는가」로 쓰면 그 자리도 자연히 통과하므로 **예외가 0개**다.
 
 /**
  * 파생 집합이 반드시 물어야 하는 픽스처 생성자 — 이 스윕의 **비-공허 짝**이다.
@@ -305,6 +318,65 @@ describe('git 을 spawn 하는 전량이 스크럽 헬퍼를 거친다 (파생�
         '앞쪽은 훅 안에서 GIT_DIR 를 상속해 실저장소를 건드릴 수 있는 자리다 — 헬퍼로 배선하라.\n' +
         '뒤쪽은 배선만 남은 자리이거나, 호출 형태를 파생 집합이 놓친 자리다.\n' +
         '예외 선언은 두지 않는다 — 목록에 한 줄 얹는 것이 red 를 끄는 가장 싼 방법이 되기 때문이다.',
+    )
+  })
+})
+
+/**
+ * 이 판별식 파일 자신의 저장소 상대 경로.
+ *
+ * 형태 앵커를 **제 파일 안**에 둔다. 다른 파일의 서식에 기대면 그쪽을 한 줄로 접는 순간
+ * 여기가 red 인데 고칠 자리는 저기라 다음 사람이 판정을 지우는 쪽으로 기운다.
+ */
+const SELF = path.relative(REPO_ROOT, fileURLToPath(import.meta.url))
+
+describe('git 을 spawn 하는 호출부 전량이 env 를 명시한다 (호출 단위)', () => {
+  test('★★옵션 객체에 env 키가 없는 호출부가 하나도 없다', () => {
+    const bare = deriveGitSpawnCallSites()
+      .filter((site) => !site.hasEnv)
+      .map((site) => `${site.file}:${site.line} ${site.callee}`)
+    assert.deepEqual(
+      bare,
+      [],
+      'git 을 부르면서 env 를 스스로 정하지 않은 호출부가 있다 — 훅 안에서 GIT_DIR 를 상속해\n' +
+        '실저장소의 인덱스·ref·config 를 건드릴 수 있는 자리다. 스크럽 헬퍼로 배선하라.\n' +
+        '파일 단위 대조는 이 자리를 못 본다 — 이미 배선된 파일에 호출을 하나 더 붙인 형태라\n' +
+        '그쪽 집합은 그대로 초록이다. 그래서 이 판정이 따로 있다.\n' +
+        `자리 전수. ${JSON.stringify(bare, null, 2)}`,
+    )
+  })
+
+  test('★★호출부 파생 집합이 비어 있지 않고 여러 줄로 쓴 호출까지 문다 (비-공허 짝)', () => {
+    // 정규식이 썩어 집합이 비면 위 판정이 `빈집합 == 빈집합` 으로 조용히 통과한다.
+    const sites = deriveGitSpawnCallSites()
+    assert.notDeepEqual(
+      sites,
+      [],
+      'git 을 spawn 하는 호출부를 하나도 못 찾았다 — 호출 형태를 놓친 것이다.\n' +
+        '이대로면 위 판정이 아무것도 안 지킨다.',
+    )
+
+    const files = [...new Set(sites.map((site) => site.file))]
+    const missed = KNOWN_FIXTURE_CREATORS.filter((f) => !files.includes(f))
+    assert.deepEqual(
+      missed,
+      [],
+      '임시 저장소를 세우는 것으로 알려진 파일에서 호출부를 하나도 못 찾았다 — 스캐너가 썩었다.\n' +
+        `빠진 것 전수. ${JSON.stringify(missed)}\n` +
+        `호출부를 찾은 파일 전수. ${JSON.stringify(files)}`,
+    )
+
+    // ★형태 앵커. 이 파일의 `snapshotRepo` 호출은 일부러 줄을 넘겨 쓴다 — 줄 단위로 보는
+    //   스캐너였다면 놓쳤을 형태이고, 실제로 그 형태가 이번에 빠져나갔다.
+    const acrossLines = sites
+      .filter((site) => site.file === SELF && site.calleeSpansLines && site.optionsSpanLines)
+      .map((site) => `${site.file}:${site.line}`)
+    assert.notDeepEqual(
+      acrossLines,
+      [],
+      '여러 줄에 걸쳐 쓴 호출을 이 스윕이 더는 못 문다 — 줄 단위로 좁혀졌거나 앵커가 접혔다.\n' +
+        '앵커는 이 파일의 snapshotRepo 안에 있다. 그 호출을 한 줄로 접었다면 되돌려라.\n' +
+        `이 파일에서 찾은 호출부 전수. ${JSON.stringify(sites.filter((s) => s.file === SELF))}`,
     )
   })
 })
