@@ -173,6 +173,45 @@ export function satisfiesWiringPredicate(text: string): boolean {
 /** 직전 유의 토큰이 식을 끝냈는가를 가리는 마지막 문자. 이 뒤의 `/` 는 나눗셈이다. */
 const EXPRESSION_END = /[A-Za-z0-9_$)\]]/
 
+/** 식별자를 이룰 수 있는 글자. 낱말의 경계를 뒤로 훑을 때 쓴다. */
+const WORD_CHAR = /[A-Za-z0-9_$]/
+
+/**
+ * 뒤에 오는 `/` 가 **정규식을 여는** 예약어.
+ *
+ * 마지막 글자만 보면 `return` 의 `n` 이 식별자 끝과 구별되지 않아 식이 끝난 것으로 읽히고,
+ * 그 `/` 가 나눗셈이 된다. 그러면 리터럴 본문이 코드 자리에서 스캔돼 따옴표는 유령 문자열을,
+ * 슬래시는 안 닫히는 블록 주석을 연다 — 앞은 주석 생존, 뒤는 파일이 파생 집합에서 통째로
+ * 빠지는 대칭 실명이다. 게이트 2 라운드 3 의 적대적 렌즈가 둘 다 실측으로 심어 보였다.
+ *
+ * **값**인 예약어(`this` · `super` · `true` · `false` · `null`)는 여기 없다 — 그 뒤의 `/` 는
+ * 나눗셈이다. 넣으면 진짜 나눗셈이 정규식으로 읽혀 반대 방향으로 뚫린다.
+ *
+ * 이것은 언어가 정하는 **닫힌 집합**이지 이 저장소가 유지하는 목록이 아니다. 그래도 원소가
+ * 빠지면 green 쪽으로 뚫리므로, 판별식이 **원소마다** 실제로 행동을 바꾸는지 값으로 잰다.
+ */
+const KEYWORDS_BEFORE_REGEX = new Set([
+  'await',
+  'case',
+  'delete',
+  'do',
+  'else',
+  'in',
+  'instanceof',
+  'new',
+  'of',
+  'return',
+  'throw',
+  'typeof',
+  'void',
+  'yield',
+])
+
+/** 예약어 집합을 판별식이 값으로 훑을 수 있게 내보낸다. */
+export function keywordsBeforeRegex(): string[] {
+  return [...KEYWORDS_BEFORE_REGEX].sort()
+}
+
 /** 코드 자리. 템플릿 보간(`${…}`)은 코드 자리를 다시 열므로 제 상태를 따로 갖는다. */
 interface CodeContext {
   kind: 'code'
@@ -329,8 +368,21 @@ function stepStripComment(src: string, i: number): Step | null {
  * @returns 식을 끝냈으면 true
  */
 function endsExpression(src: string, i: number, c: string): boolean {
-  if (EXPRESSION_END.test(c)) return true
-  return (c === '+' || c === '-') && src[i - 1] === c
+  if ((c === '+' || c === '-') && src[i - 1] === c) return true
+  return EXPRESSION_END.test(c)
+}
+
+/**
+ * 이 위치에서 끝나는 낱말. 예약어인지 보려면 마지막 글자가 아니라 낱말 전체가 필요하다.
+ *
+ * @param src 소스
+ * @param i 낱말의 마지막 글자 위치
+ * @returns 낱말
+ */
+function wordEndingAt(src: string, i: number): string {
+  let start = i
+  while (start > 0 && WORD_CHAR.test(src[start - 1] ?? '')) start -= 1
+  return src.slice(start, i + 1)
 }
 
 /**

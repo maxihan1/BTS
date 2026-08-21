@@ -37,6 +37,7 @@ import {
   deriveGitTouchingFiles,
   deriveWiringSets,
   importsAnyOf,
+  keywordsBeforeRegex,
   matchesRunnerGlob,
   runnerFlags,
   satisfiesWiringPredicate,
@@ -397,6 +398,9 @@ const COMMENT_OPEN = '/'.repeat(2)
  */
 const BAITED_IMPORT = `${COMMENT_OPEN} import { gitFixtureEnv } from './git-fixture-env.mjs'`
 
+/** 블록 주석에 담은 미끼. 여닫는 자리도 런타임에 이어 제 판정에 안 걸리게 한다. */
+const BAITED_BLOCK_IMPORT = `/${'*'} 배선 메모. import { gitFixtureEnv } from './git-fixture-env.mjs' ${'*'}/`
+
 const REGEX_LITERAL_TRAPS = [
   {
     label: '따옴표가 든 정규식 리터럴',
@@ -416,6 +420,22 @@ const REGEX_LITERAL_TRAPS = [
   {
     label: '후위 감소 뒤의 나눗셈',
     source: [`const RATE = i-- / total ${BAITED_IMPORT}`, 'const keep = 1'].join('\n'),
+  },
+  // ★예약어 뒤의 `/` 는 **정규식**이다. 마지막 글자만 보면 `return` 의 `n` 이 식별자 끝과 같아
+  //   식이 끝난 것으로 읽히고, 그 `/` 가 나눗셈이 된다. 그러면 리터럴 본문이 코드 자리에서
+  //   스캔돼 따옴표는 유령 문자열을, 슬래시는 안 닫히는 블록 주석을 연다. 두 방향 다 심는다.
+  {
+    label: '예약어 뒤의 정규식 — 따옴표 (주석 생존)',
+    source: ['function f(s) {', `  return /['\"]/.test(s)`, '}', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  {
+    label: '예약어 뒤의 정규식 — 슬래시 (코드 소실)',
+    source: ['function f(p) {', '  return /^\\.\\/*/.test(p)', '}', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  // ★블록 주석도 같은 자리에서 살아남는다. 줄 주석만 재면 이 형태가 통째로 사각이다.
+  {
+    label: '예약어 뒤의 정규식 — 살아남은 블록 주석',
+    source: ['function f(s) {', `  return /['\"]/.test(s)`, '}', BAITED_BLOCK_IMPORT, 'const keep = 1'].join('\n'),
   },
 ]
 
@@ -441,6 +461,25 @@ describe('주석 걷기가 정규식 리터럴 뒤에서도 듣는다', () => {
       '정규식 리터럴 뒤의 **코드**가 통째로 지워졌다 — 닫히지 않은 블록 주석이 열린 것이다.\n' +
         '그 파일은 두 집합에서 동시에 빠져 차집합이 `빈집합 == 빈집합` 으로 조용히 통과한다.\n' +
         `지워진 형태 전수. ${JSON.stringify(erased)}`,
+    )
+  })
+
+  test('★★예약어 집합이 원소마다 실제로 행동을 바꾼다 (비-공허 짝)', () => {
+    // ★집합에서 원소 하나가 빠지면 그 예약어 뒤의 정규식이 나눗셈으로 읽혀 주석이 살아남는다.
+    //   집합을 통째로 재면 「어느 원소가 일하고 있나」를 못 본다 — 원소마다 제 형태를 세운다.
+    //   이 판정이 있으면 목록을 줄이는 수정이 즉시 red 다.
+    const leaking = keywordsBeforeRegex().filter((keyword) =>
+      stripComments([`const hit = ${keyword} /['\"]/ ${BAITED_IMPORT}`, 'const keep = 1'].join('\n')).includes(
+        'git-fixture-env.mjs',
+      ),
+    )
+    assert.deepEqual(
+      leaking,
+      [],
+      '예약어 뒤의 정규식이 나눗셈으로 읽혀 그 줄의 주석이 살아남았다 — 집합에서 빠진 원소다.\n' +
+        '살아남은 주석은 배선 없이 임포트 집합을 만족시킨다. 그 파일은 판정을 그대로 속인다.\n' +
+        `새는 예약어 전수. ${JSON.stringify(leaking)}\n` +
+        `집합 전량. ${JSON.stringify(keywordsBeforeRegex())}`,
     )
   })
 
