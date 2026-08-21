@@ -183,7 +183,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-08-20 갱신</div>
+      <div class="updated">2026-08-21 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1654,10 +1654,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">33</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 76건 · 전체 109건</span>
+      <span class="big-pct" style="color:#9ca3af;">34</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 76건 · 전체 110건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 33건</h2>
+    <h2>⬜ 아직 안 한 것 — 34건</h2>
     <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">7건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1909,7 +1909,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — 워크플로우 — 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 (미착수 · T3)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>V204</code> 백필이 <code>workflow_states</code> 를 <code>statuses</code> + <code>workflow_statuses</code> 로 승격했으나 원본 표를 지우지 않았다. <code>DATA.md §4</code> 의 add → backfill → drop 3단 분할에서 <b>drop 단계가 남은 것</b>이다. 지금은 <code>workflow_transitions.from_state_id</code> · <code>to_state_id</code> 가 아직 <code>workflow_states(id)</code> 를 참조하므로 지울 수 없다.</p><p><b>지금 막아 둔 것.</b> <code>RawWorkflowStateInsertGuardTest</code> 가 테스트의 원시 SQL 재유입을 막는다(허용목록 2항목 + 썩은 항목 0 + 비-공허). 뮤테이션으로 확인했다.</p><p><b>선행.</b> 로드맵 PR 4(전환을 <code>workflow_statuses</code> 참조로 재지정) ~ PR 10 완료. 그 뒤에야 FK 가 풀린다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">6건</span></h3>
+    </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">7건</span></h3>
         <p class="todo-cat-desc">코드를 검사하고 내보내는 기계 쪽 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — CI 벽시계가 실제 실행의 10배다 (러너 1대 직렬 + 자원 경쟁 · <b>후속 3건</b> · 착수 · T2)</span></div>
@@ -1971,6 +1971,20 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
       <details class="todo-item">
         <summary aria-label="기술 상세 — 인프라 — 러너 맥이 메모리 압박 끝에 커널 패닉으로 재부팅된다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> 러너 머신(MacBookPro18,3 · 8코어 16GB)이 2026-08-20 08:48:21 에 패닉했다. <code>/Library/Logs/DiagnosticReports/panic-full-2026-08-20-084821.0002.panic</code> 의 <code>panicString</code> 은 <code>watchdog timeout: no checkins from watchdogd in 94 seconds</code> — 시스템이 94초간 응답을 못 했다는 뜻이다. 전조는 같은 폴더의 <code>JetsamEvent-*.ips</code> <b>3건</b>(06:40 · 06:53 · 07:13)으로, 메모리 부족에 의한 프로세스 강제 종료 기록이다.</p><p><b>★재부팅은 Docker Desktop 을 자동 시작하지 않는다.</b> 러너는 부팅과 함께 살아나 대기 중이던 잡을 바로 집어가므로 그 사이에 시작한 잡이 전부 죽는다(항목 <code>57</code>). 08:48:22 부팅 → 08:49~08:55 시작한 잡 4건 전부 실패가 실측이다.</p><p><b>★★재부팅 직후는 자원 판정도 못 믿는다.</b> Spotlight 재인덱싱(<code>mds_stores</code>)이 붙어 load 가 정상의 <b>10배</b>(8코어에 81.93)까지 뛴다. 그 상태에서 재실행을 얹으면 패닉이 재발할 수 있어 2.48배까지 기다린 뒤 돌렸다. 정본 <span class="md-wikilink">reboot-resets-swap-but-spotlight-spikes-load</span>.</p><p><b>미추적 — 무엇이 메모리를 먹었나.</b> Jetsam 로그에 강제 종료 대상이 남아 있으나 읽지 않았다. 「CI 벽시계」 항목의 축 B 실측에서는 Chrome ~10.4GB + Docker VM 8.1GB 였는데 같은 범인인지는 확인되지 않았다. <b>확인 전에는 처방을 정할 수 없다.</b></p><p><b>왜 「CI 벽시계」와 별건인가.</b> 그 항목의 축 B 는 「초록인 채 2배 느려진다」이고 처방이 경고 표출이다. 이번은 「머신이 죽고 그 뒤 잡이 전부 오진 실패한다」로 <b>결과가 다르다</b> — 경고를 아무리 잘 내도 죽은 뒤에는 낼 곳이 없다.</p><p><b>처방 후보.</b> ① Jetsam 로그로 범인 규명이 <b>선행 필수</b> — 이것 없이는 나머지가 전부 추측이다. ② 재부팅 시 Docker 동반 기동 — ★<b>새 제안이 아니라 재론이다.</b> 항목 <code>30</code>(#378)에서 처방 ③ 으로 검토돼 「머신 상태 관리라 자동 검증이 어렵다」는 이유로 <b>미채택</b>됐고 <code>docs/runbooks/self-hosted-runner.md</code> §7 에 남아 있다. 재론 근거는 <b>계기가 확정됐다는 것</b> — 그때는 데몬이 꺼진 이유가 불명이었고, 지금은 「재부팅이 자동 시작을 안 한다」는 재현 가능한 원인이 있다. 미채택 사유(자동 검증 곤란)는 그대로이므로 그 축을 어떻게 풀지가 착수 조건이다. ③ 러너 자원 가드에 「패닉·Jetsam 이력」 판정 추가 — 지금 가드는 load·swap 두 축만 본다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — 리눅스 러너에서 자원 고갈 판정이 통째로 건너뛴다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 검사 기계가 느려지고 있는지 재는 장치가 있는데, 새로 붙인 리눅스 기계에서는 그 장치가 아예 안 켜진다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 「엔진은 전부 정상인데 CI 가 2.4배 느려지는」 실패 양식을 이 러너에서는 <b>아무도 못 본다</b>. 초록불인 채 느려지고, 감속이 어느 러너에서 났는지도 구분되지 않는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 인프라 — 리눅스 러너에서 자원 고갈 판정이 통째로 건너뛴다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 2026-08-20 러너 증설(<code>ncp-linux-bts</code> · Rocky 8.8)에서 실측했다. <code>scripts/verify-runner-health.sh</code> 의 <b>엔진 점검(node·java·docker)은 리눅스에서 정상 동작한다.</b> 못 도는 것은 자원 측정이다.</p><pre class="md-code">✅ externals/node20      ✅ toolcache node (22.23.2)
+✅ externals/node24      ✅ toolcache java (21.0.11-10.0.LTS)
+✅ Docker 데몬 가동중
+⚠️  자원 판정 건너뜀 — 측정 실패 (sysctl/uptime 은 macOS 기준이다)
+러너 엔진 정상.  EXIT=0</pre><p>측정이 <code>sysctl</code>(메모리·코어 수)과 <code>uptime</code>(load) 의 <b>macOS 출력 형식</b>을 전제한다. 리눅스는 같은 이름의 명령이 있거나(<code>uptime</code>) 아예 없어서(<code>sysctl -n hw.memsize</code>) 파싱이 실패하고, 스크립트는 설계대로 「측정 실패 → 건너뜀」으로 넘어간다.</p><p><b>★경고라 차단이 없다 — 그래서 늦게 발견된다.</b> 자원 판정은 원래 실패시키지 않는다(프론트 작업까지 막지 않으려는 설계). 리눅스에서는 그 경고조차 「측정 실패」로 바뀌므로, 진짜 고갈과 측정 부재가 <b>같은 출력</b>으로 보인다. 항목 <code>58</code>(맥 커널 패닉)의 전조였던 swap·load 급등을 리눅스 러너에서 겪으면 아무 신호도 남지 않는다.</p><p><b>처방 후보.</b> ① <code>uname</code> 으로 <b>측정 명령만</b> 분기한다 — 리눅스는 <code>/proc/loadavg</code> · <code>free -m</code> · <code>nproc</code>. 임계값과 판정 로직은 공유해야 한다(분기가 판정까지 복제되면 두 규칙이 갈린다). ② 측정 실패와 「자원 정상」을 출력에서 구분한다 — 지금은 둘 다 초록으로 끝난다. ③ 러너별 자원 이력을 잡 요약에 남겨 감속이 어느 러너에서 났는지 사후 추적 가능하게 한다.</p><p><b>착수 시 주의.</b> 판정 코드는 <code>scripts/verify-runner-health.sh</code> 와 <code>.github/workflows/runner-health.yml</code> <b>인라인 두 곳</b>에 있다(잡 시작 시점엔 저장소가 없어 파일을 부를 수 없다). 한쪽만 고치면 실제로 도는 쪽이 남는다 — <code>runner-healthcheck-wiring.test.ts</code> 의 INVARIANTS 가 그 동형성을 강제하므로 함께 고쳐야 초록이다. 표면이 <code>.github/workflows/<b></code> 라 <code>GUARD_CI</code> 이고, 가드를 고칠 때는 </b>일부러 끊어 red 를 1회 본다**. 정본 <span class="md-wikilink">runner-health-assumes-macos-so-linux-runner-self-blocks</span>.</p></div>
       </details>
     </div></div><h3 class="todo-cat">문서·규칙 <span class="todo-cat-count">3건</span></h3>
         <p class="todo-cat-desc">적혀 있는 것과 실제가 다른 곳.</p>
