@@ -80,6 +80,45 @@ function invocationBlockDepth(lines: string[]): number | null {
   return blockDepthAt(lines, isDiscriminantCall)
 }
 
+/**
+ * 「그 줄이 조건 없이 실행되는가」를 재는 축 한 벌. 훅 쪽과 배포 쪽이 **같은 판정**을 쓰므로
+ * 복붙 대신 여기로 모은다 — 사본을 두면 한쪽에만 축이 붙고, 두 벌은 서로를 검사하지 않는다.
+ *
+ * 판정은 판별식 파일인 여기 남는다(`hook-source.ts` 는 어휘와 파서만 갖는다).
+ * 실패 메시지가 대상에서 멀어지지 않도록 `where`·`subject` 를 호출자가 준다.
+ *
+ * @param target.where 대상 파일의 저장소 상대 경로. 실패 메시지에 그대로 싣는다
+ * @param target.subject 무엇의 무조건성을 재는지 (실패 메시지용)
+ * @param target.lines 주석을 걷어낸 실행 줄 (`commandLines` 산출물)
+ * @param target.matches 대상 줄을 고르는 술어
+ * @param target.why 왜 무조건이어야 하는지. 실패 메시지 꼬리에 붙는다
+ */
+function assertUnconditional(target: {
+  where: string
+  subject: string
+  lines: string[]
+  matches: (line: string) => boolean
+  why: string
+}): void {
+  const { where, subject, lines, matches, why } = target
+  const line = lines.find(matches)
+  const depth = blockDepthAt(lines, matches)
+
+  assert.equal(
+    depth,
+    0,
+    `${where} 의 ${subject}이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
+  )
+
+  const guarded = GUARD_OPERATORS.filter((op) => (line ?? '').includes(op))
+  assert.deepEqual(
+    guarded,
+    [],
+    `${where} 의 ${subject}이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
+      `앞이 실패하면 그 줄은 **한 줄도 안 돌고** 파일은 그 사실을 말하지 않는다.\n\n${why}`,
+  )
+}
+
 describe('판별식 훅 배선 정합', () => {
   test('푸시 훅이 판별식 전량을 부른다', () => {
     const lines = commandLines(readHook())
@@ -96,29 +135,17 @@ describe('판별식 훅 배선 정합', () => {
   })
 
   test('★판별식 호출이 조건에 매달리지 않는다 (경로별 선별로 되돌아가지 않는다)', () => {
-    const lines = commandLines(readHook())
-    const call = discriminantInvocation(lines)
-    const depth = invocationBlockDepth(lines)
-
-    const why =
-      `조건을 걸면 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록이 되살아난다. 그 둘은 서로를 ` +
-      `안 보므로 갈라진 뒤에도 초록이다 — 이 저장소가 이미 여러 번 물린 양식이고, ` +
-      `이 호출이 무조건인 유일한 이유다.\n` +
-      `느려서 줄이고 싶다면 조건이 아니라 **판별식 자체를 줄여라.**`
-
-    assert.equal(
-      depth,
-      0,
-      `${HOOK} 의 판별식 호출이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
-    )
-
-    const guarded = GUARD_OPERATORS.filter((op) => (call ?? '').includes(op))
-    assert.deepEqual(
-      guarded,
-      [],
-      `${HOOK} 의 판별식 호출이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
-        `앞이 실패하면 판별식은 **한 줄도 안 돌고** 훅은 그 사실을 말하지 않는다.\n\n${why}`,
-    )
+    assertUnconditional({
+      where: HOOK,
+      subject: '판별식 호출',
+      lines: commandLines(readHook()),
+      matches: isDiscriminantCall,
+      why:
+        `조건을 걸면 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록이 되살아난다. 그 둘은 서로를 ` +
+        `안 보므로 갈라진 뒤에도 초록이다 — 이 저장소가 이미 여러 번 물린 양식이고, ` +
+        `이 호출이 무조건인 유일한 이유다.\n` +
+        `느려서 줄이고 싶다면 조건이 아니라 **판별식 자체를 줄여라.**`,
+    })
   })
 
   test('★pnpm 을 거치지 않는다 (워크트리 모듈 삭제 사고)', () => {
@@ -270,23 +297,16 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
     )
   })
 
-  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', () => {
-    const lines = commandLines(readHook())
-    const scrub = lines.find(isGitScrub)
-    const depth = blockDepthAt(lines, isGitScrub)
-
-    const why =
-      `조건이 붙으면 그 조건이 거짓인 실행에서 스크럽이 통째로 사라지고, 훅은 그 사실을 ` +
-      `말하지 않는다 — 조용한 부재다. 그리고 오염은 조용한 부재가 가장 비싼 자리다.\n\n${WHY_SCRUB}`
-
-    assert.equal(depth, 0, `${HOOK} 의 GIT_* 스크럽이 셸 블록 깊이 ${depth} 에 있다.\n\n${why}`)
-
-    const guarded = GUARD_OPERATORS.filter((op) => (scrub ?? '').includes(op))
-    assert.deepEqual(
-      guarded,
-      [],
-      `${HOOK} 의 GIT_* 스크럽이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n\n${why}`,
-    )
+  test('★푸시 훅의 스크럽이 조건에 안 매달린다', () => {
+    assertUnconditional({
+      where: HOOK,
+      subject: 'GIT_* 스크럽',
+      lines: commandLines(readHook()),
+      matches: isGitScrub,
+      why:
+        `조건이 붙으면 그 조건이 거짓인 실행에서 스크럽이 통째로 사라지고, 훅은 그 사실을 ` +
+        `말하지 않는다 — 조용한 부재다. 그리고 오염은 조용한 부재가 가장 비싼 자리다.\n\n${WHY_SCRUB}`,
+    })
   })
 
   test('★★훅에서 읽어낸 그 줄을 실행하면 GIT_* 가 0개 남는다 (실효 실측)', () => {
@@ -429,24 +449,17 @@ describe('배포 게이트의 GIT_* 스크럽 (훅 판정에 무임승차한다)
     )
   })
 
-  test('★그 스크럽이 조건에 안 매달린다 (깊이 0 · 가드 연산자 없음)', () => {
-    const lines = commandLines(readDeployGate())
-    const scrub = lines.find(isGitScrub)
-    const depth = blockDepthAt(lines, isGitScrub)
-
-    const why =
-      `조건이 붙으면 그 조건이 거짓인 배포에서 스크럽이 통째로 사라진다 — 조용한 부재다.\n` +
-      `특히 \`BTS_SKIP_DEPLOY_TEST\` 분기 안으로 들어가면 「테스트를 건너뛴 배포」가 ` +
-      `동시에 「스크럽도 건너뛴 배포」가 된다.\n\n${WHY_SCRUB}`
-
-    assert.equal(depth, 0, `${DEPLOY_GATE} 의 GIT_* 스크럽이 셸 블록 깊이 ${depth} 에 있다.\n\n${why}`)
-
-    const guarded = GUARD_OPERATORS.filter((op) => (scrub ?? '').includes(op))
-    assert.deepEqual(
-      guarded,
-      [],
-      `${DEPLOY_GATE} 의 GIT_* 스크럽이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n\n${why}`,
-    )
+  test('★배포 게이트의 스크럽이 조건에 안 매달린다', () => {
+    assertUnconditional({
+      where: DEPLOY_GATE,
+      subject: 'GIT_* 스크럽',
+      lines: commandLines(readDeployGate()),
+      matches: isGitScrub,
+      why:
+        `조건이 붙으면 그 조건이 거짓인 배포에서 스크럽이 통째로 사라진다 — 조용한 부재다.\n` +
+        `특히 \`BTS_SKIP_DEPLOY_TEST\` 분기 안으로 들어가면 「테스트를 건너뛴 배포」가 ` +
+        `동시에 「스크럽도 건너뛴 배포」가 된다.\n\n${WHY_SCRUB}`,
+    })
   })
 
   test('동일성 판정이 변형을 실제로 잡아낸다 (양성 대조군)', () => {
