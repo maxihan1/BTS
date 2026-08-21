@@ -68,50 +68,185 @@ const GIT_SPAWN = new RegExp(GIT_SPAWN_SOURCE)
 /** 스크럽 헬퍼를 임포트하는 자리. 모듈 지정자로만 판정한다 — 이름을 바꿔 달아도 걸린다. */
 const HELPER_IMPORT = /\bfrom\s*(['"])[^'"]*git-fixture-env\.mjs\1/
 
+/** 직전 유의 토큰이 식을 끝냈는가를 가리는 마지막 문자. 이 뒤의 `/` 는 나눗셈이다. */
+const EXPRESSION_END = /[A-Za-z0-9_$)\]]/
+
+/** 코드 자리. 템플릿 보간(`${…}`)은 코드 자리를 다시 열므로 제 상태를 따로 갖는다. */
+interface CodeContext {
+  kind: 'code'
+  /** 이 자리에서 연 중괄호 깊이. 0 에서 만난 `}` 는 보간의 끝이다 */
+  braces: number
+  /** 직전 유의 토큰이 식을 끝냈는가 */
+  expressionEnded: boolean
+}
+
+/** 스캐너가 서 있는 자리. 중첩 템플릿이 실재하므로 스택으로 쌓는다. */
+type ScanContext = CodeContext | { kind: 'template' } | { kind: 'quote'; mark: string }
+
+/** 한 걸음 — 내보낼 텍스트와 이번 걸음이 소비한 마지막 위치. */
+interface Step {
+  text: string
+  next: number
+}
+
+/**
+ * 정규식 리터럴이 닫히는 자리. 문자 클래스 안의 `/` 는 종결자가 아니다.
+ *
+ * 줄 안에서 안 닫히면 -1 을 돌려준다 — 정규식 리터럴은 줄을 넘지 못하므로 그 `/` 는
+ * 나눗셈이었다는 뜻이다. 되돌릴 길을 남겨야 오판이 소스를 먹지 않는다.
+ *
+ * @param src 소스
+ * @param start 여는 `/` 위치
+ * @returns 닫는 `/` 위치. 줄 안에서 안 닫히면 -1
+ */
+function endOfRegex(src: string, start: number): number {
+  let inClass = false
+  for (let i = start + 1; i < src.length; i += 1) {
+    const c = src[i]
+    if (c === '\n') return -1
+    if (c === '\\') {
+      i += 1
+      continue
+    }
+    if (c === '[') inClass = true
+    else if (c === ']') inClass = false
+    else if (c === '/' && !inClass) return i
+  }
+  return -1
+}
+
+/**
+ * 리터럴이 닫혔음을 바깥 코드 자리에 알린다. 그 뒤의 `/` 는 나눗셈이다.
+ *
+ * @param stack 스캐너 상태 스택
+ */
+function markExpressionEnded(stack: ScanContext[]): void {
+  const outer = stack[stack.length - 1]
+  if (outer !== undefined && outer.kind === 'code') outer.expressionEnded = true
+}
+
+/**
+ * 따옴표 문자열 안에서 한 글자를 옮긴다.
+ *
+ * @param src 소스
+ * @param i 현재 위치
+ * @param stack 스캐너 상태 스택
+ * @param mark 열려 있는 따옴표
+ * @returns 한 걸음
+ */
+function stepInsideQuote(src: string, i: number, stack: ScanContext[], mark: string): Step {
+  const c = src[i] ?? ''
+  if (c === '\\') return { text: c + (src[i + 1] ?? ''), next: i + 1 }
+  if (c === mark) {
+    stack.pop()
+    markExpressionEnded(stack)
+  }
+  return { text: c, next: i }
+}
+
+/**
+ * 템플릿 리터럴 안에서 한 글자를 옮긴다. `${` 는 코드 자리를 다시 연다.
+ *
+ * 보간 안을 문자열로 흘려보내면 그 안의 닫는 백틱이 짝을 어긋내고, 그 뒤 파일 전체가
+ * 유령 문자열이 된다 — 실측에서 `${x.map(...)}` 하나가 파일 나머지의 주석을 다 살렸다.
+ *
+ * @param src 소스
+ * @param i 현재 위치
+ * @param stack 스캐너 상태 스택
+ * @returns 한 걸음
+ */
+function stepInsideTemplate(src: string, i: number, stack: ScanContext[]): Step {
+  const c = src[i] ?? ''
+  if (c === '\\') return { text: c + (src[i + 1] ?? ''), next: i + 1 }
+  if (c === '`') {
+    stack.pop()
+    markExpressionEnded(stack)
+    return { text: c, next: i }
+  }
+  if (c === '$' && src[i + 1] === '{') {
+    stack.push({ kind: 'code', braces: 0, expressionEnded: false })
+    return { text: '${', next: i + 1 }
+  }
+  return { text: c, next: i }
+}
+
+/**
+ * 코드 자리에서 한 글자를 옮긴다. 주석은 여기서만 걷힌다.
+ *
+ * @param src 소스
+ * @param i 현재 위치
+ * @param stack 스캐너 상태 스택
+ * @param top 지금 서 있는 코드 자리
+ * @returns 한 걸음
+ */
+function stepInsideCode(src: string, i: number, stack: ScanContext[], top: CodeContext): Step {
+  const c = src[i] ?? ''
+  if (c === "'" || c === '"') {
+    stack.push({ kind: 'quote', mark: c })
+    return { text: c, next: i }
+  }
+  if (c === '`') {
+    stack.push({ kind: 'template' })
+    return { text: c, next: i }
+  }
+  if (c === '/' && src[i + 1] === '/') {
+    const newline = src.indexOf('\n', i)
+    return { text: '\n', next: newline === -1 ? src.length : newline }
+  }
+  if (c === '/' && src[i + 1] === '*') {
+    const closing = src.indexOf('*/', i + 2)
+    const stop = closing === -1 ? src.length : closing + 2
+    // 줄바꿈만 남긴다 — 호출부 파생 집합이 **원본 줄번호**를 실패 메시지에 실어야 한다.
+    // 통째로 지우면 JSDoc 뒤의 호출이 전부 위로 밀려 file:line 이 엉뚱한 자리를 가리킨다.
+    return { text: src.slice(i, stop).replace(/[^\n]/g, ''), next: stop - 1 }
+  }
+  if (c === '/' && !top.expressionEnded) {
+    const end = endOfRegex(src, i)
+    if (end !== -1) {
+      top.expressionEnded = true
+      return { text: src.slice(i, end + 1), next: end }
+    }
+  }
+  if (c === '}' && top.braces === 0 && stack.length > 1) {
+    stack.pop()
+    return { text: c, next: i }
+  }
+  if (c === '{') top.braces += 1
+  else if (c === '}') top.braces -= 1
+  if (c.trim() !== '') top.expressionEnded = EXPRESSION_END.test(c)
+  return { text: c, next: i }
+}
+
 /**
  * 주석을 걷어낸 소스. 재는 것은 「무엇이 적혀 있나」가 아니라 「무엇이 실행되나」다.
  *
  * 주석을 남기면 양쪽으로 뚫린다 — 설명문에 적어 둔 호출 예시가 파생 집합을 부풀리고,
  * 주석 처리된 임포트 한 줄이 배선 없이 대조를 만족시킨다.
- * 문자열 리터럴 안의 `//` 를 주석으로 오인하지 않도록 따옴표 상태를 따라간다.
- * 정규식 리터럴은 안 따라간다 — 그 손상은 호출이나 임포트를 지워 **red 쪽으로** 기운다.
+ *
+ * 그래서 문자열·템플릿·**정규식 리터럴**을 함께 따라간다. 정규식을 안 따라가면
+ * `/['"]/` 의 따옴표가 유령 문자열을 열어 그 뒤가 주석까지 통째로 살아남고(green 쪽),
+ * 슬래시가 든 리터럴은 닫히지 않은 블록 주석을 열어 파일 나머지를 지운다 — 그 파일은
+ * 파생 집합 양쪽에서 동시에 빠져 차집합이 `빈집합 == 빈집합` 이 된다(대칭 실명).
+ *
+ * 「무엇이 실행되나」로 재고 있는지는 판별식의 전량 생존 판정이 잰다. 이 주석이 아니다.
  *
  * @param src 원본 소스
  * @returns 주석이 빠진 소스
  */
 export function stripComments(src: string): string {
+  const stack: ScanContext[] = [{ kind: 'code', braces: 0, expressionEnded: false }]
   let out = ''
-  let quote: string | null = null
   for (let i = 0; i < src.length; i += 1) {
-    const c = src[i] ?? ''
-    if (quote !== null) {
-      if (c === '\\') out += c + (src[(i += 1)] ?? '')
-      else if (c === quote) {
-        quote = null
-        out += c
-      } else out += c
-      continue
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      quote = c
-      out += c
-      continue
-    }
-    if (c === '/' && src[i + 1] === '/') {
-      while (i < src.length && src[i] !== '\n') i += 1
-      out += '\n'
-      continue
-    }
-    if (c === '/' && src[i + 1] === '*') {
-      const closing = src.indexOf('*/', i + 2)
-      const stop = closing === -1 ? src.length : closing + 2
-      // 줄바꿈만 남긴다 — 호출부 파생 집합이 **원본 줄번호**를 실패 메시지에 실어야 한다.
-      // 통째로 지우면 JSDoc 뒤의 호출이 전부 위로 밀려 file:line 이 엉뚱한 자리를 가리킨다.
-      out += src.slice(i, stop).replace(/[^\n]/g, '')
-      i = stop - 1
-      continue
-    }
-    out += c
+    const top = stack[stack.length - 1]
+    if (top === undefined) break
+    const step =
+      top.kind === 'quote'
+        ? stepInsideQuote(src, i, stack, top.mark)
+        : top.kind === 'template'
+          ? stepInsideTemplate(src, i, stack)
+          : stepInsideCode(src, i, stack, top)
+    out += step.text
+    i = step.next
   }
   return out
 }
