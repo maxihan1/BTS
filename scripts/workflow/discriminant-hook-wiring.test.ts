@@ -29,45 +29,54 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import {
+  DEPLOY_GATE,
+  GUARD_OPERATORS,
+  HOOK,
+  PNPM_WRAPPER,
+  blockDepthAt,
+  commandLines,
+  inlineBlockOpeners,
+} from './hook-source.ts'
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const HOOK = '.husky/pre-push'
 
 /** 훅이 반드시 덮어야 하는 판별식 글롭. `package.json` 의 `test:workflow` 와 같은 범위다. */
 const REQUIRED_GLOBS = ['scripts/**/*.test.ts', 'scripts/**/*.test.mjs']
 
-/**
- * 셸 블록을 여는/닫는 토큰. 판별식 호출이 **블록 안에 있으면** 조건부 실행이다.
- *
- * ★훅 전체에 조건문을 금지하지 않는다. 훅에는 판별식 말고 다른 명령도 산다(백엔드 모듈
- *   테스트 등). 그것들은 조건을 가져도 된다 — 재는 것은 **판별식 호출 한 줄의 도달성**이다.
- *   종전 규칙은 「훅 어디에도 조건문 금지」였고, 정당한 조건문을 막아 다음 사람이 이 판별식을
- *   지우게 만드는 형태였다(2026-08-21 정정).
- */
-const BLOCK_OPEN = /^(if|for|while|case|until)\b/
-const BLOCK_CLOSE = /^(fi|done|esac)\b/
-
-/**
- * 호출 자체를 조건부로 만드는 연산자.
- *
- * ★`&&`·`||` 는 겉보기에 조건문이 아니지만 앞 명령이 실패하면 판별식이 통째로 스킵되고
- *   훅은 초록이다 — 조용한 부재다.
- */
-const GUARD_OPERATORS = ['&&', '||']
-
-/** pnpm 래퍼. 워크트리에서 모듈 재설치를 유발해 무-TTY 로 죽는다. */
-const PNPM_WRAPPER = /(^|[;&|(\s])(npx\s+)?pnpm(\s|$)/
-
-/** 주석과 빈 줄을 제거한 실행 줄만. 판정 대상은 「무엇이 적혀 있나」가 아니라 「무엇이 실행되나」다. */
-function commandLines(sh: string): string[] {
-  return sh
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l !== '' && !l.startsWith('#'))
+/** 글롭을 셸에 적히는 모양(작은따옴표)으로 잇는다. */
+function quoted(globs: readonly string[]): string {
+  return globs.map((g) => `'${g}'`).join(' ')
 }
+
+/**
+ * 대조군이 쓰는 판별식 전량 호출 줄. **`REQUIRED_GLOBS` 에서 조립한다.**
+ *
+ * ★리터럴로 다시 적으면 글롭이 바뀌는 순간 둘이 갈라지고, 갈라진 사본은
+ *   `isDiscriminantCall` 이 거짓으로 읽는다 → `findIndex` 가 `-1` → 순서 대조군이
+ *   `1 > -1` 로 **공허 통과**한다. 두 목록이 갈라지는 바로 그 순간 대조군이 침묵하는
+ *   구조라 조립으로 막는다. 그래도 남는 부재는 호출자가 `-1` 단언으로 잡는다.
+ */
+const DISCRIMINANT_CALL = `node --experimental-strip-types --test ${quoted(REQUIRED_GLOBS)}`
+
+/** 글롭 하나만 거는 **절반 봉인** 변형. 이것도 상수에서 파생시킨다. */
+const HALF_SEALED_CALL = `node --experimental-strip-types --test ${quoted(REQUIRED_GLOBS.slice(0, 1))}`
+
+/**
+ * 훅·배포에 실제로 적힌 스크럽 줄의 **독립 사본**. 대조군이 「탐지 로직이 살아 있는가」를
+ * 물으려면 탐지기가 뽑아낸 값이 아니라 손으로 적은 값이어야 한다 — `find(isGitScrub)` 로
+ * 얻은 줄에 `isGitScrub` 를 다시 물으면 언제나 참이라 아무것도 증명하지 못한다.
+ *
+ * ★독립을 유지하는 대신 **실물과 잇는 단언**을 §대조군 픽스처가 둔다. 그 단언이 없으면
+ *   훅 줄이 형태를 바꿔도 이 사본은 옛 값을 유지하고, 대조군은 「탐지기가 **진짜** 줄을
+ *   잡는다」에서 「**옛날에** 진짜였던 줄을 잡는다」로 조용히 퇴화한다.
+ */
+const REAL_SCRUB = "unset $(env | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p')"
 
 function readHook(): string {
   const p = path.join(REPO_ROOT, HOOK)
@@ -79,9 +88,17 @@ function readHook(): string {
   return fs.readFileSync(p, 'utf-8')
 }
 
+/**
+ * 판별식 전량을 부르는 줄인가. 술어를 한 벌만 둔다 — 사본을 만들면 「호출을 찾는 규칙」이
+ * 두 벌이 되고, 둘은 서로를 검사하지 않는다.
+ */
+function isDiscriminantCall(line: string): boolean {
+  return line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g))
+}
+
 /** 훅 안에서 판별식 전량을 부르는 줄. 없으면 undefined. */
 function discriminantInvocation(lines: string[]): string | undefined {
-  return lines.find((l) => l.includes('--test') && REQUIRED_GLOBS.every((g) => l.includes(g)))
+  return lines.find(isDiscriminantCall)
 }
 
 /**
@@ -90,13 +107,103 @@ function discriminantInvocation(lines: string[]): string | undefined {
  * 호출이 아예 없으면 `null` — 그 경우는 위 단언이 먼저 잡으므로 여기서 판정하지 않는다.
  */
 function invocationBlockDepth(lines: string[]): number | null {
-  let depth = 0
-  for (const line of lines) {
-    if (line.includes('--test') && REQUIRED_GLOBS.every((g) => line.includes(g))) return depth
-    if (BLOCK_OPEN.test(line)) depth += 1
-    else if (BLOCK_CLOSE.test(line)) depth = Math.max(0, depth - 1)
+  return blockDepthAt(lines, isDiscriminantCall)
+}
+
+/** 무조건성을 잴 대상. 실패 메시지가 대상에서 멀어지지 않게 이름과 사유를 함께 받는다. */
+interface UnconditionalTarget {
+  /** 대상 파일의 저장소 상대 경로. 실패 메시지에 그대로 싣는다 */
+  where: string
+  /** 무엇의 무조건성을 재는지 (실패 메시지용) */
+  subject: string
+  /** 주석을 걷어낸 실행 줄 (`commandLines` 산출물) */
+  lines: string[]
+  /** 대상 줄을 고르는 술어 */
+  matches: (line: string) => boolean
+  /** 왜 무조건이어야 하는지. 실패 메시지 꼬리에 붙는다 */
+  why: string
+}
+
+/**
+ * 축 ①. 그 줄이 **여러 줄 블록 안**에 있지 않다. 깊이 0 이면 무조건 도달한다.
+ *
+ * @param target 무조건성을 잴 대상
+ */
+function assertNotInBlock(target: UnconditionalTarget): void {
+  const { where, subject, lines, matches, why } = target
+  const depth = blockDepthAt(lines, matches)
+
+  assert.equal(
+    depth,
+    0,
+    `${where} 의 ${subject}이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
+  )
+}
+
+/**
+ * 축 ②. 그 줄이 `&&`·`||` 로 앞 명령에 매달려 있지 않다.
+ *
+ * @param target 무조건성을 잴 대상
+ * @param line 대상 줄. 부재 판정을 이미 통과한 것만 들어온다
+ */
+function assertNotGuarded(target: UnconditionalTarget, line: string): void {
+  const guarded = GUARD_OPERATORS.filter((op) => line.includes(op))
+
+  assert.deepEqual(
+    guarded,
+    [],
+    `${target.where} 의 ${target.subject}이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
+      `앞이 실패하면 그 줄은 **한 줄도 안 돌고** 파일은 그 사실을 말하지 않는다.\n\n${target.why}`,
+  )
+}
+
+/**
+ * 축 ③. 그 줄이 **자기 줄 안에서** 블록을 열지 않는다.
+ *
+ * ★셸 블록 깊이는 **줄 단위**라 자기 완결형 한 줄(`if …; then … ; fi`)을 못 본다.
+ *   그 형태는 깊이 0 · 가드 없음으로 다른 축 전부를 통과하므로 줄 안쪽을 따로 본다.
+ *
+ * @param target 무조건성을 잴 대상
+ * @param line 대상 줄. 부재 판정을 이미 통과한 것만 들어온다
+ */
+function assertNoInlineBlock(target: UnconditionalTarget, line: string): void {
+  const openers = inlineBlockOpeners(line)
+
+  assert.deepEqual(
+    openers,
+    [],
+    `${target.where} 의 ${target.subject}이 한 줄 안에서 블록을 연다 (${openers.join(' · ')}).\n` +
+      `  ${line}\n` +
+      `그 조건이 거짓인 실행에서는 그 줄이 통째로 사라지는데, 셸 블록 깊이는 줄 단위로 세므로 ` +
+      `깊이 0 으로 읽힌다 — 가장 비싼 자리의 조용한 부재다.\n\n${target.why}`,
+  )
+}
+
+/**
+ * 「그 줄이 조건 없이 실행되는가」 — 부재·블록 깊이·가드 연산자·한 줄 오프너 네 축.
+ *
+ * 훅 쪽과 배포 쪽이 **같은 판정**을 쓰므로 복붙 대신 여기로 모은다. 사본을 두면 한쪽에만
+ * 축이 붙고, 두 벌은 서로를 검사하지 않는다. 판정은 판별식 파일인 여기 남는다
+ * (`hook-source.ts` 는 어휘와 파서만 갖는다).
+ *
+ * ★부재를 **먼저** 판정한다. `blockDepthAt` 은 부재를 `null` 로 돌려주고 그 판정을 호출자
+ *   몫으로 남긴다. 그것을 안 하면 「깊이 null 에 있다」는 **거짓** 메시지가 나오고 —
+ *   어디에도 없는 것은 어떤 깊이에도 있지 않다 — 가드 축은 빈 문자열을 검사하며 통과한다.
+ *
+ * @param target 무조건성을 잴 대상
+ */
+function assertUnconditional(target: UnconditionalTarget): void {
+  const line = target.lines.find(target.matches)
+
+  if (line === undefined) {
+    assert.fail(
+      `${target.where} 에 ${target.subject}이 아예 없다 — 어떤 깊이에도 있지 않다.\n\n${target.why}`,
+    )
   }
-  return null
+
+  assertNotInBlock(target)
+  assertNotGuarded(target, line)
+  assertNoInlineBlock(target, line)
 }
 
 describe('판별식 훅 배선 정합', () => {
@@ -115,29 +222,17 @@ describe('판별식 훅 배선 정합', () => {
   })
 
   test('★판별식 호출이 조건에 매달리지 않는다 (경로별 선별로 되돌아가지 않는다)', () => {
-    const lines = commandLines(readHook())
-    const call = discriminantInvocation(lines)
-    const depth = invocationBlockDepth(lines)
-
-    const why =
-      `조건을 걸면 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록이 되살아난다. 그 둘은 서로를 ` +
-      `안 보므로 갈라진 뒤에도 초록이다 — 이 저장소가 이미 여러 번 물린 양식이고, ` +
-      `이 호출이 무조건인 유일한 이유다.\n` +
-      `느려서 줄이고 싶다면 조건이 아니라 **판별식 자체를 줄여라.**`
-
-    assert.equal(
-      depth,
-      0,
-      `${HOOK} 의 판별식 호출이 셸 블록 깊이 ${depth} 에 있다 — 조건부로 실행된다.\n\n${why}`,
-    )
-
-    const guarded = GUARD_OPERATORS.filter((op) => (call ?? '').includes(op))
-    assert.deepEqual(
-      guarded,
-      [],
-      `${HOOK} 의 판별식 호출이 ${guarded.join(' · ')} 로 앞 명령에 매달려 있다.\n` +
-        `앞이 실패하면 판별식은 **한 줄도 안 돌고** 훅은 그 사실을 말하지 않는다.\n\n${why}`,
-    )
+    assertUnconditional({
+      where: HOOK,
+      subject: '판별식 호출',
+      lines: commandLines(readHook()),
+      matches: isDiscriminantCall,
+      why:
+        `조건을 걸면 「바뀐 경로 ↔ 판별식 입력」이라는 두 목록이 되살아난다. 그 둘은 서로를 ` +
+        `안 보므로 갈라진 뒤에도 초록이다 — 이 저장소가 이미 여러 번 물린 양식이고, ` +
+        `이 호출이 무조건인 유일한 이유다.\n` +
+        `느려서 줄이고 싶다면 조건이 아니라 **판별식 자체를 줄여라.**`,
+    })
   })
 
   test('★pnpm 을 거치지 않는다 (워크트리 모듈 삭제 사고)', () => {
@@ -158,11 +253,18 @@ describe('판별식 훅 배선 정합', () => {
 
   test('판별식이 합성 위반을 실제로 잡아낸다 (양성 대조군)', () => {
     // 위 단언들이 초록인 이유가 「배선이 옳아서」인지 「탐지 로직이 죽어서」인지 가른다.
-    const ok = ["node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"]
-    const halfSealed = ["node --experimental-strip-types --test 'scripts/**/*.test.ts'"]
-    const conditional = ['if git diff --quiet scripts/; then', "  node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'", 'fi']
+    const ok = [DISCRIMINANT_CALL]
+    const halfSealed = [HALF_SEALED_CALL]
+    const conditional = ['if git diff --quiet scripts/; then', `  ${DISCRIMINANT_CALL}`, 'fi']
     const viaPnpm = ['pnpm test:workflow']
-    const andGuarded = ["changed=$(git diff --name-only) && node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'"]
+    const andGuarded = [`changed=$(git diff --name-only) && ${DISCRIMINANT_CALL}`]
+
+    // 절반 봉인 변형이 원본과 같아지면 아래 `halfSealed` 판정이 공허해진다.
+    assert.notDeepEqual(
+      REQUIRED_GLOBS.slice(0, 1),
+      REQUIRED_GLOBS,
+      '글롭이 한 벌뿐이라 절반 봉인 대조군이 원본과 같아졌다 — 그 변형을 재는 판정이 공허하다.',
+    )
 
     assert.ok(discriminantInvocation(ok) !== undefined, '정상 배선을 못 잡았다 — 탐지 로직이 죽어 있다.')
     assert.equal(discriminantInvocation(halfSealed), undefined, '절반 봉인(.mjs 누락)을 정상으로 읽었다.')
@@ -178,7 +280,7 @@ describe('판별식 훅 배선 정합', () => {
     // ★오탐 대조 — 훅의 **다른** 명령이 조건을 가져도 판별식 호출은 여전히 깊이 0 이다.
     //   이 대조가 없으면 종전의 과한 규칙(「훅 어디에도 조건문 금지」)으로 되돌아간다.
     const otherCmdBranches = [
-      "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
+      DISCRIMINANT_CALL,
       'if [ -n "$SOMETHING" ]; then',
       '  ./gradlew :modules:x:test',
       'fi',
@@ -205,12 +307,535 @@ describe('판별식 훅 배선 정합', () => {
     const prose = [
       '# ★`pnpm` 을 쓰지 않는다. if 조건을 걸어도 안 된다.',
       '',
-      "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
+      DISCRIMINANT_CALL,
     ].join('\n')
 
     const lines = commandLines(prose)
     assert.deepEqual(lines.length, 1, '주석·빈 줄을 실행 줄로 셌다.')
     assert.equal(PNPM_WRAPPER.test(lines[0]), false, '주석의 pnpm 언급을 위반으로 읽었다.')
     assert.equal(invocationBlockDepth(lines), 0, '주석의 if 언급을 블록 시작으로 읽었다.')
+  })
+})
+
+/**
+ * `GIT_*` 네임스페이스를 지우는 실행 줄인가.
+ *
+ * ★무엇을 지우는지 **열거해서 맞추지 않는다.** 열거하면 「git 이 훅에 넣는 목록」과
+ *   「우리가 재는 목록」이라는 두 목록이 생기고, 둘은 서로를 검사하지 않는다.
+ *   여기서는 접두를 건드리는 `unset` 줄을 **찾기만** 하고, 그 줄이 정말 지우는지는
+ *   아래 실효 실측이 그 줄을 실행해서 판정한다.
+ */
+function isGitScrub(line: string): boolean {
+  return /(^|[;&|(\s])unset\b/.test(line) && line.includes('GIT_')
+}
+
+/** 실효 실측 셸이 **열거 지점까지 갔다**는 표식. `GIT_` 로 시작하지 않아 열거에 안 섞인다. */
+const PROBE_REACHED = 'scrub-probe-reached'
+
+/**
+ * 스크럽 줄을 `sh -e` 로 실제로 실행하고, 그 셸에 **남은 `GIT_*` 이름 전량**을 돌려준다.
+ *
+ * ★왜 실행하나. 배선 판정은 「그 줄이 있는가」만 본다. 그러면 줄이 문법적으로 존재하는데
+ *   실제로는 아무것도 안 지우는 경우(BSD/GNU `sed` 방언 차이 등)를 아무도 못 잡는다 —
+ *   이 저장소가 `invariant-satisfied-by-helptext-not-logic` 로 이름 붙인 양식이다.
+ *
+ * ★개수가 아니라 이름이다. 개수면 실패가 「어떤 수를 다른 수로 기대」가 되어 **어느 변수가
+ *   샜는지** 말하지 않는다. 호출자의 비-공허 짝도 `notDeepEqual(…, [])` 로 열거를 공짜로 얻는다.
+ *
+ * ★열거 지점에 **도달했는지**를 표식으로 먼저 본다. 스크럽 줄이 그 전에 셸을 끝내면 출력이
+ *   비는데, 빈 출력은 「하나도 안 남았다」와 구별되지 않아 판정이 조용히 통과한다.
+ *
+ * ★이름을 뽑는 식은 훅이 지울 때 쓰는 그 식이다. 방언 차이로 뽑기가 통째로 실패하면 결과가
+ *   빈 배열이 되는데, 그 경우는 호출자의 비-공허 짝(스크럽 없이도 남는 것이 있어야 한다)이
+ *   먼저 red 로 잡는다.
+ *
+ * ★DEVELOPMENT.md §1.1⑥(검증되지 않은 사용자 입력으로 외부 명령 실행 금지)과의 관계.
+ *   실행하는 문자열은 **저장소가 소유한 파일**(`.husky/pre-push`·`infra/deploy/bts-deploy.sh`)을
+ *   읽은 것이거나 이 파일이 적은 합성 대조군이지 사용자 입력이 아니다.
+ *   그리고 손으로 적은 사본을 실행하면 배선과 실효가 **다른 대상**을 가리켜 판정이 공허해진다.
+ *
+ * @param scrub 훅 파일에서 읽어낸 스크럽 줄. 빈 문자열이면 「스크럽을 안 돌린」 대조군이다
+ * @param dirty `GIT_*` 가 실제로 걸린 환경
+ */
+function remainingGitVars(scrub: string, dirty: NodeJS.ProcessEnv): string[] {
+  const out = execFileSync(
+    'sh',
+    [
+      '-e',
+      '-c',
+      `${scrub}\necho '${PROBE_REACHED}'\nenv | sed -n 's/^\\(GIT_[A-Za-z0-9_]*\\)=.*/\\1/p'`,
+    ],
+    { env: dirty, encoding: 'utf-8' },
+  )
+
+  const lines = out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+  const probeAt = lines.indexOf(PROBE_REACHED)
+
+  assert.notEqual(
+    probeAt,
+    -1,
+    `실효 실측 셸이 **열거 지점에 도달하지 못했다.**\n` +
+      `실행한 줄: ${scrub}\n` +
+      `셸이 낸 것: ${lines.join(' · ') || '(없음)'}\n\n` +
+      `여기서 멈추지 않으면 빈 출력이 「GIT_* 가 하나도 안 남았다」로 읽혀 판정이 조용히 통과한다.`,
+  )
+
+  return lines.slice(probeAt + 1)
+}
+
+/**
+ * 상속된 `GIT_*` 를 **걷어낸** 바탕 환경. 오염 환경 변종은 전부 이 위에 세운다.
+ *
+ * ★`process.env` 를 그대로 펼치면 이 판별식이 훅 아래에서 돌 때 **진짜** `GIT_DIR` 가
+ *   섞여 들어온다. 그러면 「GIT_DIR 없는 환경」 변종이 이름만 그렇게 되고, 그 변종으로
+ *   가르려던 것(조건부 스크럽)을 그대로 통과시킨다. 걷어내는 것이 그 사고를 막는다.
+ */
+const GIT_FREE_ENV: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
+)
+
+/**
+ * git 이 훅에 실제로 export 하는 형태들(2026-08-21 실측).
+ *
+ * ★**한 벌로 고정하지 않는다.** 픽스처가 한 형태뿐이면 그 형태가 참으로 만드는 조건
+ *   (`[ -n "$GIT_DIR" ]` 같은)이 측정 중 늘 참이고, 그 조건에 매달린 스크럽이 실효 축을
+ *   그대로 통과한다. `GIT_DIR` 가 **없는** 실행 형태가 실제로 있다는 것이 요점이다.
+ *
+ * ★경로·값은 전부 실재하지 않는 미끼이고 바탕에서 상속 `GIT_*` 를 걷어냈으므로
+ *   (`GIT_FREE_ENV`), 진짜 저장소를 가리키는 값이 자식 프로세스로 가지 않는다.
+ *
+ * ★`GIT_SSH_COMMAND` 는 git 이 훅에 넣는 것이 아니라 사람이 export 해 두는 값이다.
+ *   **공백이 든 값**에서도 이름만 뽑히는지 함께 재려고 첫 형태에 섞어 둔다.
+ */
+const PRE_PUSH_DIRTY_ENV: NodeJS.ProcessEnv = {
+  ...GIT_FREE_ENV,
+  GIT_DIR: '/nonexistent-decoy/.git',
+  GIT_EDITOR: ':',
+  GIT_EXEC_PATH: '/nonexistent-decoy/libexec/git-core',
+  GIT_PREFIX: '',
+  GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
+}
+
+const DIRTY_ENVS: ReadonlyArray<{ label: string; env: NodeJS.ProcessEnv }> = [
+  { label: 'pre-push (연결된 worktree)', env: PRE_PUSH_DIRTY_ENV },
+  {
+    label: 'pre-commit (연결된 worktree)',
+    env: {
+      ...GIT_FREE_ENV,
+      GIT_DIR: '/nonexistent-decoy/.git',
+      GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
+      GIT_AUTHOR_NAME: 'decoy',
+      GIT_AUTHOR_EMAIL: 'decoy@example.invalid',
+      GIT_AUTHOR_DATE: '@0 +0000',
+    },
+  },
+  {
+    label: 'pre-commit (일반 저장소 · GIT_DIR 없음)',
+    env: { ...GIT_FREE_ENV, GIT_INDEX_FILE: '/nonexistent-decoy/.git/index' },
+  },
+  {
+    label: 'rebase --exec (GIT_DIR 없음)',
+    env: {
+      ...GIT_FREE_ENV,
+      GIT_EDITOR: ':',
+      GIT_EXEC_PATH: '/nonexistent-decoy/libexec/git-core',
+      GIT_PREFIX: '',
+      GIT_SEQUENCE_EDITOR: ':',
+    },
+  },
+]
+
+
+/**
+ * 스크럽 줄이 `GIT_*` 를 정말 비우는지 실행해서 판정한다.
+ *
+ * ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 남는 것이 없으면
+ *   「원래 GIT_* 가 없어서」이고, 그 상태에서 아래 판정은 아무것도 증명하지 못한다.
+ *
+ * @param where 그 줄을 읽어낸 파일의 저장소 상대 경로. 실패 메시지에 그대로 싣는다
+ * @param scrub 훅·배포에서 읽어낸 스크럽 줄
+ */
+function assertScrubEmptiesGitNamespace(where: string, scrub: string): void {
+  for (const { label, env } of DIRTY_ENVS) {
+    // ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 남는 것이 없으면
+    //   「원래 GIT_* 가 없어서」이고, 그 상태에서 아래 판정은 아무것도 증명하지 못한다.
+    assert.notDeepEqual(
+      remainingGitVars('', env),
+      [],
+      `스크럽을 안 돌린 대조군(${label})에서도 GIT_* 가 남지 않았다 — 오염 환경 재현이 ` +
+        '실패했다. 이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
+    )
+
+    const remaining = remainingGitVars(scrub, env)
+    assert.deepEqual(
+      remaining,
+      [],
+      `${where} 의 스크럽 줄이 실행 뒤에도 GIT_* 를 남긴다 (${label}).\n` +
+        `  남은 것: ${remaining.join(' · ')}\n` +
+        `  실행한 줄: ${scrub}\n\n` +
+        `줄이 **문법적으로는 있는데** 지우지 않는 상태를 배선 판정은 초록으로 읽는다. ` +
+        `그리고 환경 형태를 한 벌로 고정하면 그 한 벌이 참으로 만드는 조건에 매달린 스크럽도 ` +
+        `여기를 통과한다 — 그래서 형태별로 잰다.\n\n${WHY_SCRUB}`,
+    )
+  }
+}
+
+const WHY_SCRUB =
+  'git 은 훅 프로세스에 GIT_DIR 를 export 한다. 판별식의 git 픽스처가 그것을 상속하면 ' +
+  'tmp 에서 부른 init·add·commit 이 **진짜 저장소**로 간다 — 2026-08-21 에 공유 config 의 ' +
+  'core.bare 와 브랜치 ref·인덱스가 실제로 그렇게 깨졌다.'
+
+describe('푸시 훅의 GIT_* 스크럽', () => {
+  test('★판별식을 부르기 전에 GIT_* 를 지운다', () => {
+    const lines = commandLines(readHook())
+    const scrubAt = lines.findIndex(isGitScrub)
+    const callAt = lines.findIndex(isDiscriminantCall)
+
+    assert.notEqual(
+      scrubAt,
+      -1,
+      `${HOOK} 에 GIT_* 스크럽이 없다.\n\n${WHY_SCRUB}\n\n` +
+        `실행 줄(주석 제외):\n${lines.map((l) => `  ${l}`).join('\n') || '  (없음)'}`,
+    )
+    assert.notEqual(callAt, -1, `${HOOK} 에 판별식 호출이 없다 — 순서를 잴 대상이 없다.`)
+    assert.ok(
+      scrubAt < callAt,
+      `${HOOK} 의 GIT_* 스크럽이 판별식 호출보다 뒤에 있다.\n` +
+        `판별식이 먼저 돌면 그 안의 git 픽스처는 이미 오염된 환경을 상속한 뒤다 — ` +
+        `뒤에서 지워도 늦다.\n\n${WHY_SCRUB}`,
+    )
+  })
+
+  test('★푸시 훅의 스크럽이 조건에 안 매달린다', () => {
+    assertUnconditional({
+      where: HOOK,
+      subject: 'GIT_* 스크럽',
+      lines: commandLines(readHook()),
+      matches: isGitScrub,
+      why:
+        `조건이 붙으면 그 조건이 거짓인 실행에서 스크럽이 통째로 사라지고, 훅은 그 사실을 ` +
+        `말하지 않는다 — 조용한 부재다. 그리고 오염은 조용한 부재가 가장 비싼 자리다.\n\n${WHY_SCRUB}`,
+    })
+  })
+
+  test('★★훅에서 읽어낸 그 줄을 실행하면 GIT_* 가 하나도 안 남는다 (실효 실측)', () => {
+    const scrub = commandLines(readHook()).find(isGitScrub)
+    if (scrub === undefined) {
+      assert.fail(`${HOOK} 에 GIT_* 스크럽이 없어 실효를 잴 대상이 없다.\n\n${WHY_SCRUB}`)
+    }
+
+    assertScrubEmptiesGitNamespace(HOOK, scrub)
+  })
+
+  test('스크럽 판정이 주석이 아니라 실행 줄을 본다 (산문 오탐 방지 · 양성 대조군)', () => {
+    const real = REAL_SCRUB
+    const call = DISCRIMINANT_CALL
+
+    const prose = ['# ★GIT_DIR 를 unset 한다고 여기 적어 두기만 하면 아무것도 안 지워진다.', '', call].join('\n')
+    assert.equal(commandLines(prose).find(isGitScrub), undefined, '주석의 unset 언급을 스크럽으로 읽었다.')
+
+    // 탐지 로직이 살아 있는가. 죽어 있으면 위 판정들은 「없어서」가 아니라 「못 봐서」 초록이다.
+    assert.ok(isGitScrub(real), '실제 스크럽 줄을 못 잡았다 — 탐지 로직이 죽어 있다.')
+
+    const afterCall = [call, real]
+    const scrubAt = afterCall.findIndex(isGitScrub)
+    const callAt = afterCall.findIndex(isDiscriminantCall)
+
+    // ★비교 전에 **둘 다 찾았는지**부터 본다. 못 찾으면 `-1` 이 나오고 `0 > -1` 이 참이라
+    //   순서 대조군이 아무것도 안 재면서 통과한다.
+    assert.notEqual(scrubAt, -1, `대조군 픽스처에서 스크럽을 못 찾았다: ${real}`)
+    assert.notEqual(callAt, -1, `대조군 픽스처에서 판별식 호출을 못 찾았다: ${call}`)
+    assert.ok(scrubAt > callAt, '판별식 호출 뒤에 놓인 스크럽을 앞선 것으로 읽었다.')
+    assert.equal(
+      blockDepthAt(['if [ -n "$GIT_DIR" ]; then', `  ${real}`, 'fi', call], isGitScrub),
+      1,
+      '`if` 블록 안의 스크럽을 무조건 실행으로 읽었다.',
+    )
+    assert.ok(
+      GUARD_OPERATORS.some((op) => `changed=$(git diff --name-only) && ${real}`.includes(op)),
+      '`&&` 로 앞 명령에 매달린 스크럽을 무조건 실행으로 읽었다.',
+    )
+
+    // 오탐 대조. GIT_ 를 언급만 하거나 unset 만 쓰는 정상 명령을 스크럽으로 읽으면
+    // 훅을 고칠 방법이 없어진다.
+    for (const notScrub of ['echo "$GIT_DIR"', 'unset BTS_SKIP_MODULE_TEST', call]) {
+      assert.equal(isGitScrub(notScrub), false, `정상 명령을 GIT_* 스크럽으로 읽었다: ${notScrub}`)
+    }
+  })
+})
+
+describe('실효 실측 자체의 양성 대조군', () => {
+  test('★한 줄 조건부 스크럽을 실효 실측이 잡아낸다', () => {
+    // ★픽스처가 **한 벌**이면 그 한 벌이 참으로 만드는 조건을 실효 축이 못 본다.
+    //   `GIT_DIR` 가 늘 걸려 있으면 아래 조건은 측정 중 항상 참이고, 조건부 스크럽은
+    //   실효 판정을 그대로 통과한다. `GIT_DIR` 가 없고 `GIT_INDEX_FILE` 만 있는 실환경
+    //   (일반 저장소의 `pre-commit`)에서는 잔존이 남는다.
+    const conditional = `{ if [ -n "$GIT_DIR" ]; then ${REAL_SCRUB}; fi ; }`
+
+    assert.throws(
+      () => assertScrubEmptiesGitNamespace('합성 입력', conditional),
+      /실행 뒤에도 GIT_\* 를 남긴다/,
+      `조건부 스크럽을 실효 있는 스크럽으로 읽었다: ${conditional}\n` +
+        `오염 환경 픽스처가 그 조건을 늘 참으로 만들면 실효 축은 눈이 먼다.`,
+    )
+  })
+
+  test('실효 실측이 남은 변수를 이름으로 말한다 (개수가 아니라 집합)', () => {
+    const env: NodeJS.ProcessEnv = {
+      ...GIT_FREE_ENV,
+      GIT_DIR: '/nonexistent-decoy/.git',
+      GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
+    }
+
+    assert.deepEqual(
+      remainingGitVars('unset GIT_DIR', env),
+      ['GIT_INDEX_FILE'],
+      '부분 스크럽 뒤 남은 것을 **이름으로** 말하지 않는다. 개수로 뭉개면 실패가 ' +
+        '「어떤 수를 다른 수로 기대」가 되어 **어느 변수가 샜는지** 알려주지 않는다 — ' +
+        '이 저장소가 금지한 눈가리개이고, 이 파일의 다른 새 단언은 전부 전수 열거한다.',
+    )
+    assert.deepEqual(
+      [...remainingGitVars('', env)].sort(),
+      ['GIT_DIR', 'GIT_INDEX_FILE'],
+      '스크럽을 안 돌린 대조군이 걸어 둔 이름 전량을 돌려주지 않는다.',
+    )
+  })
+
+  test('실효 실측이 열거 지점 도달을 확인한다 (빈 출력을 「안 남았다」로 읽지 않는다)', () => {
+    // 스크럽 줄이 열거에 닿기 전에 셸을 끝내면 출력이 빈다. 그 빈 출력은 「하나도 안 남았다」와
+    // 구별되지 않아 판정이 조용히 통과한다. 비-공허 짝(`scrub=''`)은 대조군만 재므로 이 경로를
+    // 안 막는다 — 대조군 셸은 끝까지 가기 때문이다.
+    assert.throws(
+      () => remainingGitVars('exit 0', PRE_PUSH_DIRTY_ENV),
+      /열거 지점에 도달하지 못했다/,
+      '스크럽 줄이 셸을 먼저 끝내 출력이 비었는데 그것을 「남은 것이 없다」로 읽었다.',
+    )
+  })
+})
+
+/**
+ * 배포 게이트 스크립트 본문. 없으면 실패한다 — 파일이 사라지면 「훅과 같은 한 줄」이라는
+ * 약속의 상대가 사라지고, 아래 판정 전부가 검사할 대상 없이 조용히 통과한다.
+ */
+function readDeployGate(): string {
+  const p = path.join(REPO_ROOT, DEPLOY_GATE)
+  assert.ok(
+    fs.existsSync(p),
+    `${DEPLOY_GATE} 가 없다. 이 스크립트는 프로덕션 직전의 유일한 전수 게이트이고, ` +
+      `그 앞의 GIT_* 스크럽이 여기서 재는 대상이다.`,
+  )
+  return fs.readFileSync(p, 'utf-8')
+}
+
+const WHY_SAME_LINE =
+  `${HOOK} 와 ${DEPLOY_GATE} 는 **같은 스크럽 한 줄**을 공유한다. 그 동일성이 지켜지는 ` +
+  `동안에만 배포 쪽 줄이 훅 쪽 판정(존재·순서·비가드·실효 실측)에 **무임승차**한다.\n` +
+  `두 줄이 갈라지는 순간 배포 쪽은 아무도 실행해 보지 않는 사본이 되고, 갈라진 뒤에도 초록이다 — ` +
+  `이 저장소가 이름 붙인 지배 결함 양식 그대로다. 실제로 그 자리 주석은 이 위험을 ` +
+  `문장으로 적어 두기까지 했는데, 그 동일성을 재는 기계가 없었다.\n` +
+  `배포 줄을 바꾸고 싶으면 훅 줄을 **같은 커밋에서 같은 형태로** 바꿔라.`
+
+describe('배포 게이트의 GIT_* 스크럽 (훅 판정에 무임승차한다)', () => {
+  test('★★배포 게이트의 스크럽 줄이 훅의 그 줄과 문자열로 같다', () => {
+    // ★왜 실행해 보지 않고 문자열만 대조하나. 배포 줄의 **실효**는 훅 줄의 실효 실측이
+    //   이미 판정한다(위 §푸시 훅의 GIT_* 스크럽). 두 줄이 같다면 실효도 같다 — 사본을
+    //   두 벌 실행하는 것은 같은 것을 두 번 재면서 `sh -c` 호출만 하나 늘리는 거래다.
+    //   동일성이 깨지는 순간 이 판정이 red 이므로 무임승차가 소리 없이 끊기지도 않는다.
+    const hookSrc = readHook()
+    const deploySrc = readDeployGate()
+
+    // 비-공허 짝 ①. 서로 **다른 두 파일**을 읽었는가. 경로 배선이 미끄러져 같은 파일을
+    // 두 번 읽으면 아래 동일성은 무엇을 하든 참이다.
+    assert.notEqual(
+      hookSrc,
+      deploySrc,
+      `${HOOK} 와 ${DEPLOY_GATE} 의 내용이 통째로 같게 읽혔다 — 경로 배선이 죽어 같은 파일을 두 번 읽는다.`,
+    )
+
+    const hookScrub = commandLines(hookSrc).find(isGitScrub)
+    const deployScrub = commandLines(deploySrc).find(isGitScrub)
+
+    // 비-공허 짝 ②. 양쪽에서 정말 **찾았는가**. 둘 다 못 찾은 채 `undefined === undefined` 로
+    // 통과하면 이 판정은 아무것도 증명하지 않는다.
+    assert.ok(
+      hookScrub !== undefined,
+      `${HOOK} 에서 GIT_* 스크럽을 못 찾았다 — 비교할 원본이 없다.\n\n${WHY_SCRUB}`,
+    )
+    assert.ok(
+      deployScrub !== undefined,
+      `${DEPLOY_GATE} 에서 GIT_* 스크럽을 못 찾았다.\n\n${WHY_SAME_LINE}\n\n${WHY_SCRUB}`,
+    )
+
+    assert.equal(
+      deployScrub,
+      hookScrub,
+      `${DEPLOY_GATE} 의 스크럽 줄이 ${HOOK} 의 그 줄과 다르다.\n` +
+        `  ${HOOK}: ${hookScrub}\n` +
+        `  ${DEPLOY_GATE}: ${deployScrub}\n\n${WHY_SAME_LINE}`,
+    )
+  })
+
+  test('★배포 스크럽이 전량 검증 게이트보다 앞에 있다', () => {
+    // 동일성만으로는 「배포 스크립트 **어디에** 있는가」가 안 잡힌다. 게이트 뒤로 밀리면
+    // 판별식은 이미 오염된 환경을 상속한 뒤이고, 뒤에서 지워도 늦다.
+    const lines = commandLines(readDeployGate())
+    const scrubAt = lines.findIndex(isGitScrub)
+    const gateAt = lines.findIndex(isDiscriminantCall)
+
+    assert.notEqual(scrubAt, -1, `${DEPLOY_GATE} 에 GIT_* 스크럽이 없다.\n\n${WHY_SAME_LINE}`)
+    assert.notEqual(
+      gateAt,
+      -1,
+      `${DEPLOY_GATE} 에 판별식 전량 호출이 없다 — 순서를 잴 상대가 없다. 게이트 자체가 사라졌는지 본다.`,
+    )
+    assert.ok(
+      scrubAt < gateAt,
+      `${DEPLOY_GATE} 의 GIT_* 스크럽이 전량 검증 게이트보다 뒤에 있다 (스크럽 ${scrubAt} · 게이트 ${gateAt}).\n` +
+        `배포는 훅·\`git bisect run\`·\`git rebase --exec\` 아래에서도 불릴 수 있고, ` +
+        `그때 판별식이 먼저 돌면 픽스처가 진짜 저장소를 건드린 뒤다.\n\n${WHY_SCRUB}`,
+    )
+  })
+
+  test('★배포 게이트의 스크럽이 조건에 안 매달린다', () => {
+    assertUnconditional({
+      where: DEPLOY_GATE,
+      subject: 'GIT_* 스크럽',
+      lines: commandLines(readDeployGate()),
+      matches: isGitScrub,
+      why:
+        `조건이 붙으면 그 조건이 거짓인 배포에서 스크럽이 통째로 사라진다 — 조용한 부재다.\n` +
+        `특히 \`BTS_SKIP_DEPLOY_TEST\` 분기 안으로 들어가면 「테스트를 건너뛴 배포」가 ` +
+        `동시에 「스크럽도 건너뛴 배포」가 된다.\n\n${WHY_SCRUB}`,
+    })
+  })
+
+  test('동일성 판정이 변형을 실제로 잡아낸다 (양성 대조군)', () => {
+    // 위 판정이 초록인 이유가 「두 줄이 같아서」인지 「비교가 죽어서」인지 가른다.
+    const real = REAL_SCRUB
+    const narrowed = 'unset GIT_DIR'
+    const call = DISCRIMINANT_CALL
+
+    const asHook = ['# 훅 쪽 주석은 여기서 이렇게 길다', real, call].join('\n')
+    const asDeploy = ['#!/bin/bash', '# 배포 쪽 주석은 다른 문장이다', real, call].join('\n')
+    const mutated = ['#!/bin/bash', '# 배포 쪽 주석은 다른 문장이다', narrowed, call].join('\n')
+
+    const pick = (sh: string): string | undefined => commandLines(sh).find(isGitScrub)
+
+    // ★주석이 판정에 안 샌다. 두 파일의 산문이 전혀 달라도 뽑히는 것은 실행 줄뿐이므로
+    //   동일성은 「같은 명령을 쓰는가」만 묻는다 — 주석을 맞추라고 요구하지 않는다.
+    assert.equal(pick(asHook), pick(asDeploy), '주석이 다르다는 이유로 같은 실행 줄을 다르게 읽었다.')
+    assert.equal(pick(asDeploy), real, '실행 줄을 원형 그대로 뽑지 못했다 — 어딘가에서 문자열이 변형된다.')
+
+    // ★MC2 의 구조. 좁혀진 변형은 존재·비가드 판정을 **통과**하고 동일성만 red 다.
+    //   그 자리가 이 판정이 존재하는 이유다 — 다른 판정은 아무도 그 변형을 못 잡는다.
+    assert.ok(isGitScrub(narrowed), '좁혀진 변형을 스크럽으로 못 읽었다 — 그러면 존재 판정이 대신 red 가 되어 동일성의 몫이 흐려진다.')
+    assert.equal(blockDepthAt(commandLines(mutated), isGitScrub), 0, '좁혀진 변형을 조건부로 읽었다.')
+    assert.notEqual(pick(mutated), pick(asHook), '좁혀진 변형(`unset GIT_DIR`)을 원형과 같은 줄로 읽었다 — 동일성 비교가 죽어 있다.')
+
+    // 부재를 「같음」으로 읽지 않는가. 스크럽이 통째로 빠진 파일에서는 undefined 가 나와야 하고,
+    // 그것을 원형과 같다고 읽으면 MC1(줄 삭제)이 초록으로 통과한다.
+    assert.equal(pick([call].join('\n')), undefined, '스크럽이 없는 소스에서 무언가를 뽑았다.')
+    assert.notEqual(pick([call].join('\n')), pick(asHook), '스크럽 부재를 원형과 같다고 읽었다.')
+  })
+})
+
+describe('무조건성 판정 자체의 양성 대조군', () => {
+  /** 합성 입력에 붙이는 사유. 판정이 죽었는지만 가르므로 문장은 짧게 둔다. */
+  const WHY_SYNTHETIC = '합성 입력으로 탐지 로직이 살아 있는지만 가른다.'
+
+  /** 합성 줄 묶음에 무조건성 판정을 건다. 실패하면 그 AssertionError 가 그대로 올라온다. */
+  function judgeSynthetic(lines: string[]): void {
+    assertUnconditional({
+      where: '합성 입력',
+      subject: 'GIT_* 스크럽',
+      lines,
+      matches: isGitScrub,
+      why: WHY_SYNTHETIC,
+    })
+  }
+
+  test('★자기 완결형 한 줄에 담긴 조건을 조건부로 읽는다', () => {
+    // ★여기가 이 판정이 눈멀었던 자리다. `blockDepthAt` 은 깊이를 **줄 단위**로 세고 대상 줄을
+    //   블록 토큰보다 먼저 보므로, `if …; then … ; fi` 가 한 줄에 담기면 깊이 0 으로 읽힌다.
+    //   `&&`·`||` 도 없으니 가드 축도 통과한다. 실측 — 이 형태를 훅과 배포에 같이 넣었더니
+    //   존재·순서·깊이·가드·실효 다섯이 전부 초록이었다(판별식 전량 13/13 pass).
+    const oneLine = `{ if [ -n "$GIT_DIR" ]; then ${REAL_SCRUB}; fi ; }`
+
+    assert.throws(
+      () => judgeSynthetic([oneLine, DISCRIMINANT_CALL]),
+      /한 줄 안에서 블록을 연다 \(if\)/,
+      `한 줄 조건부 스크럽을 무조건 실행으로 읽었다: ${oneLine}\n` +
+        `그 조건이 거짓인 실행에서는 스크럽이 통째로 사라지는데 판정은 초록이다 — 조용한 부재다.`,
+    )
+  })
+
+  test('★`case` 한 줄 조건도 같은 축이 잡는다 (키워드 한 벌에서 나온다)', () => {
+    const caseForm = `case "${'$'}{GIT_DIR:-}" in ?*) ${REAL_SCRUB} ;; esac`
+
+    assert.throws(
+      () => judgeSynthetic([caseForm, DISCRIMINANT_CALL]),
+      /한 줄 안에서 블록을 연다 \(case\)/,
+      `\`case\` 한 줄 조건부를 무조건 실행으로 읽었다: ${caseForm}`,
+    )
+  })
+
+  test('오탐 대조 — 정상 줄을 한 줄 조건부로 읽지 않는다', () => {
+    // 새 축이 정상 명령을 막으면 훅을 고칠 방법이 없어진다. 특히 키워드가 **단어 일부**로
+    // 들어간 경우(`format` 의 `for`, `notify` 의 `if`)를 잡으면 안 된다.
+    for (const clean of [
+      REAL_SCRUB,
+      DISCRIMINANT_CALL,
+      'node --experimental-strip-types scripts/workflow/push-backend-tests.ts',
+      "unset $(env | awk -F= '/^GIT_/ {print $1}') # format 유지 · notify 안 함",
+    ]) {
+      assert.deepEqual(
+        inlineBlockOpeners(clean),
+        [],
+        `정상 줄을 한 줄 조건부로 읽었다: ${clean}`,
+      )
+    }
+  })
+
+  test('부재를 「어떤 깊이에 있다」로 말하지 않는다', () => {
+    // `blockDepthAt` 은 부재를 `null` 로 돌려주고 그 판정을 호출자에게 맡긴다고 문서화했다.
+    // 호출자가 안 지키면 메시지가 「깊이 null 에 있다」가 되는데, 그것은 **거짓**이다 —
+    // 어디에도 없는 것은 어떤 깊이에도 있지 않다. 게다가 가드 축은 `?? ''` 때문에 조용히 통과한다.
+    assert.throws(
+      () => judgeSynthetic([DISCRIMINANT_CALL]),
+      /아예 없다/,
+      '스크럽이 통째로 빠진 입력에서 부재를 부재라고 말하지 않았다.',
+    )
+  })
+})
+
+describe('대조군 픽스처가 실물과 이어져 있다', () => {
+  test('★손으로 적은 스크럽 사본이 훅·배포의 그 줄과 문자로 같다', () => {
+    // ★이 단언이 없으면 위 대조군들은 「탐지기가 **진짜** 줄을 잡는다」가 아니라
+    //   「**옛날에** 진짜였던 줄을 잡는다」를 증명한다. 훅·배포 줄이 형태를 바꿔도
+    //   `REAL_SCRUB` 는 옛 값을 유지하고 `isGitScrub(REAL_SCRUB)` 는 여전히 통과하므로
+    //   그 퇴화는 소리 없이 일어난다. 훅↔배포 쌍은 기계 대조하는데 사본만 빠져 있었다.
+    const hookScrub = commandLines(readHook()).find(isGitScrub)
+    const deployScrub = commandLines(readDeployGate()).find(isGitScrub)
+
+    const why =
+      `대조군 픽스처는 탐지기와 **독립**이어야 한다(탐지기가 뽑아낸 줄에 탐지기를 다시 물으면 ` +
+      `언제나 참이다). 독립을 유지하는 값이라 실물과 갈라질 수 있고, 그래서 이 한 줄이 필요하다.\n` +
+      `훅·배포 줄을 바꿨다면 이 사본도 **같은 커밋에서** 같은 형태로 바꿔라.`
+
+    assert.equal(
+      hookScrub,
+      REAL_SCRUB,
+      `대조군의 손복사 스크럽이 ${HOOK} 의 그 줄과 다르다.\n` +
+        `  ${HOOK}: ${hookScrub}\n  대조군 사본: ${REAL_SCRUB}\n\n${why}`,
+    )
+    assert.equal(
+      deployScrub,
+      REAL_SCRUB,
+      `대조군의 손복사 스크럽이 ${DEPLOY_GATE} 의 그 줄과 다르다.\n` +
+        `  ${DEPLOY_GATE}: ${deployScrub}\n  대조군 사본: ${REAL_SCRUB}\n\n${why}`,
+    )
   })
 })

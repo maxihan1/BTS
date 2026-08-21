@@ -18,6 +18,9 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs';
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 export interface ChangedPaths {
@@ -36,6 +39,7 @@ const git = (args: string[]): { ok: boolean; stdout: string; stderr: string } =>
   const run = spawnSync('git', ['-c', 'core.quotePath=false', ...args], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
+    env: gitFixtureEnv(),
   });
   return {
     ok: run.status === 0,

@@ -1,0 +1,1144 @@
+// git 픽스처가 GIT_DIR 를 상속해 진짜 저장소를 오염시키지 않는지 실측하는 판별식
+//
+// ## 왜 이 파일이 있나
+//
+// git 은 훅 프로세스에 `GIT_DIR` 를 **export 한다.** 그런데 판별식의 git 픽스처는 `cwd` 로만
+// 격리하고 `GIT_DIR` 는 `process.env` 째로 상속했다. **`GIT_DIR` 는 `cwd` 를 이긴다** —
+// 그래서 픽스처의 `init`/`add`/`commit` 이 작업 중이던 실저장소에 걸렸다.
+// 실피해는 공유 `.git/config` 의 `core.bare = true` · 브랜치 ref 위의 픽스처 커밋 ·
+// 인덱스 파괴였다. 같은 명령이 일반 셸에서는 초록이고 pre-push 훅에서만 터진다.
+//
+// ## 배선 문자열을 재지 않는다
+//
+// 「스크럽을 부르는가」만 보면 스크럽이 **문법적으로 있는데 아무것도 안 지우는** 경우가
+// 그대로 통과한다(`invariant-satisfied-by-helptext-not-logic`). 그래서 이 파일은 실제로
+// 임시 저장소(victim)를 세우고 `GIT_DIR` 를 건 채 픽스처를 돌려 **victim 이 변했는지**를 잰다.
+//
+// ## 이 판별식 자신이 함정에 빠지지 않게 하는 것
+//
+// 격리를 재려면 이 파일도 `git init` 을 부른다. 그 대상이 실저장소가 되는 순간
+// **고치려던 결함을 고치는 코드가 저지르게 된다.** 그래서 victim 을 만드는 경로를
+// 코드가 스스로 금지하고(`assertVictimPathSafe`), 만들어진 경로 전량을 마지막 판정이 훑는다.
+// victim 을 세우는 git 호출도 **스크럽된 env** 로 부른다 — 이 파일은
+// `process.env.GIT_DIR` 가 있든 없든 같은 결과여야 한다.
+
+import { test, describe } from 'node:test'
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs'
+import {
+  deriveGitSpawnCallSites,
+  deriveGitTouchingFiles,
+  deriveWiringSets,
+  importsAnyOf,
+  keywordsBeforeRegex,
+  matchesRunnerGlob,
+  runnerFlags,
+  satisfiesWiringPredicate,
+  scanGitSpawnCallSites,
+  stripComments,
+  strippedSources,
+  wiringMismatch,
+} from './git-spawn-sweep.ts'
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+/**
+ * 이 파일이 실제로 만든 victim 경로 전량.
+ *
+ * 마지막 판정이 이 목록을 훑어 「언제나 mkdtemp 아래」를 사후 확인한다. 목록이 비면
+ * 그 판정은 아무것도 안 지킨 것이므로 **비어 있음 자체를 실패로 다룬다.**
+ */
+const CREATED_VICTIMS: string[] = []
+
+/**
+ * victim 저장소로 삼아도 되는 경로인지 판정한다.
+ *
+ * 저장소 트리 안이거나 임시 디렉터리 밖이면 던진다. `git init` 이 불리기 **전에** 막는 것이
+ * 요점이라 이 함수는 팩토리의 첫 문장에서 불린다.
+ *
+ * @param candidate 검사할 절대 경로 (존재하지 않아도 된다)
+ * @throws {Error} 저장소 트리 안이거나 임시 디렉터리 밖일 때
+ */
+function assertVictimPathSafe(candidate: string): void {
+  const real = resolveExisting(candidate)
+  const repoReal = fs.realpathSync(REPO_ROOT)
+  const tmpReal = fs.realpathSync(os.tmpdir())
+  if (real === repoReal || real.startsWith(repoReal + path.sep)) {
+    throw new Error(`victim 이 저장소 트리 안이다 — ${real}`)
+  }
+  if (real !== tmpReal && !real.startsWith(tmpReal + path.sep)) {
+    throw new Error(`victim 이 임시 디렉터리 밖이다 — ${real}`)
+  }
+}
+
+/**
+ * 심볼릭 링크를 푼 절대 경로를 얻는다.
+ *
+ * macOS 의 `os.tmpdir()` 은 `/var/folders/...` 이고 실체는 `/private/var/folders/...` 다.
+ * 한쪽만 풀면 「tmp 아래인가」 판정이 항상 거짓이 된다. 아직 없는 경로도 검사 대상이라
+ * 존재하는 조상까지만 풀고 나머지는 이어 붙인다.
+ *
+ * @param target 절대 경로
+ * @returns 실경로
+ */
+function resolveExisting(target: string): string {
+  const absolute = path.resolve(target)
+  if (fs.existsSync(absolute)) return fs.realpathSync(absolute)
+  const parent = path.dirname(absolute)
+  if (parent === absolute) return absolute
+  return path.join(resolveExisting(parent), path.basename(absolute))
+}
+
+/**
+ * victim 저장소의 관측 축.
+ *
+ * 「오염되면 반드시 하나가 변한다」가 **아니다**. `git config user.email` 이나
+ * `remote add` 는 네 축이 전부 그대로다 — 실제로 이 하네스 자신이 `user.email` 을 부른다.
+ * 여기서 재는 것은 **작업 트리·인덱스·ref 를 바꾸는 오염**이고, 픽스처가 저장소를 깨뜨린
+ * 실제 사고가 그 부류였다. 설정만 건드리는 오염은 이 축들이 못 본다.
+ */
+interface RepoSnapshot {
+  commitCount: string
+  coreBare: string
+  head: string
+  /** 인덱스에 올라 있는 경로. `GIT_INDEX_FILE` 오염은 커밋·ref 를 안 건드리고 여기만 바꾼다. */
+  indexEntries: string
+}
+
+/**
+ * victim 의 상태를 읽는다. **스크럽된 env** 로 읽으므로 주변 `GIT_DIR` 에 안 흔들린다.
+ *
+ * @param root victim 작업 디렉터리
+ * @param gitDir victim 의 `.git` 경로
+ * @returns 커밋 수 · `core.bare` · HEAD · 인덱스 경로
+ */
+function snapshotRepo(root: string, gitDir: string): RepoSnapshot {
+  const read = (...args: string[]): string => {
+    // ★이 호출은 **일부러 여러 줄로** 쓴다 — 호출 이름과 프로그램 이름이 다른 줄에 있고
+    //   옵션 객체도 줄을 넘긴다. 아래 호출부 비-공허 짝이 이 형태를 근거로 삼는다.
+    //   스캐너가 줄 단위로 썩으면 여기가 집합에서 빠져 그 짝이 red 가 된다. 한 줄로 접지 마라.
+    const r = spawnSync(
+      'git',
+      ['--git-dir', gitDir, ...args],
+      {
+        cwd: root,
+        encoding: 'utf-8',
+        env: gitFixtureEnv(),
+      },
+    )
+    return r.status === 0 ? r.stdout.trim() : `<exit ${r.status}>`
+  }
+  return {
+    commitCount: read('rev-list', '--count', '--all'),
+    coreBare: read('config', '--get', 'core.bare'),
+    head: read('rev-parse', 'HEAD'),
+    indexEntries: read('ls-files'),
+  }
+}
+
+/**
+ * 두 스냅숏에서 **달라진 축을 전수 열거**한다. 개수를 세지 않고 이름을 적는다.
+ *
+ * @param before 이전 상태
+ * @param after 이후 상태
+ * @returns `축 before → after` 문자열 목록
+ */
+function changedAxes(before: RepoSnapshot, after: RepoSnapshot): string[] {
+  const keys = Object.keys(before) as (keyof RepoSnapshot)[]
+  return keys.filter((k) => before[k] !== after[k]).map((k) => `${k} ${before[k]} → ${after[k]}`)
+}
+
+/**
+ * victim 저장소를 세운다. 경로 금지를 통과한 자리에만 만든다.
+ *
+ * @param parentDir mkdtemp 가 내준 임시 부모 디렉터리
+ * @param name 부모 아래 만들 디렉터리 이름. 한 판정이 저장소를 둘 이상 세울 때 갈라 쓴다
+ * @returns victim 작업 디렉터리와 `.git` 경로
+ */
+function createVictimRepo(parentDir: string, name = 'victim'): { root: string; gitDir: string } {
+  const root = path.join(parentDir, name)
+  assertVictimPathSafe(root)
+  fs.mkdirSync(root, { recursive: true })
+  CREATED_VICTIMS.push(root)
+  // ★종료 코드를 본다. victim 생성이 통째로 실패하면 `snapshotRepo` 가 앞뒤 모두 `<exit …>` 를
+  //   돌려줘 before === after 가 되고, 격리가 없어도 무손상 판정이 초록이 된다.
+  //   픽스처 쪽 커밋 수 가드는 픽스처만 덮는다 — victim 쪽은 여기서 막는다.
+  const git = (...args: string[]): void => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf-8', env: gitFixtureEnv() })
+    if (result.status !== 0) {
+      throw new Error(`victim 을 세우다 실패했다 — git ${args.join(' ')} → exit ${result.status}\n${result.stderr}`)
+    }
+  }
+  git('init', '-q', '-b', 'main')
+  git('config', 'user.email', 'victim@example.com')
+  git('config', 'user.name', 'victim')
+  fs.writeFileSync(path.join(root, 'KEEP.md'), 'victim\n')
+  git('add', '-A')
+  git('commit', '-qm', 'victim base')
+  return { root, gitDir: path.join(root, '.git') }
+}
+
+/**
+ * 기존 픽스처 테스트가 하는 절차(`init` → `add` → `commit`)를 그대로 재현한다.
+ *
+ * `cwd` 는 언제나 넘긴다 — 스크럽 뒤 git 이 저장소를 찾는 근거가 그것이다.
+ *
+ * @param workDir 픽스처가 제 저장소를 만들려는 디렉터리
+ * @param env git 에 넘길 환경변수
+ */
+function runFixtureProcedure(workDir: string, env: NodeJS.ProcessEnv): void {
+  const git = (...args: string[]) => spawnSync('git', args, { cwd: workDir, encoding: 'utf-8', env })
+  git('init', '-q')
+  git('config', 'user.email', 'fixture@example.com')
+  git('config', 'user.name', 'fixture')
+  fs.writeFileSync(path.join(workDir, 'F.kt'), 'fixture\n')
+  git('add', '-A')
+  git('commit', '-qm', 'base')
+}
+
+/**
+ * 비-공허 짝이 픽스처에 넘기는 env — **일부러** `GIT_DIR` 를 걸어 오염을 재현시킨다.
+ *
+ * 바탕은 **스크럽된** env 다. `process.env` 를 통째로 깔면 주변 `GIT_INDEX_FILE` 이
+ * 여기 얹은 `GIT_DIR` 를 **이겨** 짝이 제 victim 이 아니라 제3의 저장소를 덮는다.
+ * `GIT_DIR` 하나만으로도 victim 은 그대로 오염되므로 짝의 무는 힘은 줄지 않는다.
+ *
+ * 짝과 그 짝을 검사하는 판정이 각자 env 를 조립하면 두 벌이 되고 서로를 안 본다. 한 자리만 둔다.
+ *
+ * @param gitDir victim 의 `.git` 경로
+ * @returns 픽스처에 넘길 환경변수
+ */
+function leakEnv(gitDir: string): NodeJS.ProcessEnv {
+  return { ...gitFixtureEnv(), GIT_DIR: gitDir }
+}
+
+describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
+  test('GIT_DIR 가 걸려 있어도 헬퍼로 만든 픽스처가 victim 저장소를 안 바꾼다', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const before = snapshotRepo(victim.root, victim.gitDir)
+      // ★victim 쪽 전제도 **값으로** 확인한다. 읽기가 통째로 실패하면 앞뒤가 나란히
+      //   `<exit …>` 라 before === after 가 되고 이 판정이 공허하게 통과한다.
+      assert.match(
+        before.commitCount,
+        /^[1-9][0-9]*$/,
+        `victim 이 커밋을 하나도 못 가졌다 — 무손상 판정의 관측 대상이 없다. 관측. ${JSON.stringify(before)}`,
+      )
+
+      // 훅이 만드는 상황 그대로 — GIT_DIR 가 victim 을 가리킨 채 픽스처가 돈다.
+      const workDir = path.join(tmp, 'work')
+      fs.mkdirSync(workDir)
+      runFixtureProcedure(workDir, gitFixtureEnv({ ...process.env, GIT_DIR: victim.gitDir }))
+
+      const after = snapshotRepo(victim.root, victim.gitDir)
+      assert.deepEqual(
+        after,
+        before,
+        `GIT_DIR 를 건 픽스처가 victim 을 바꿨다 — 스크럽이 실효가 없다.\n` +
+          `달라진 축. ${JSON.stringify(changedAxes(before, after))}`,
+      )
+      // 「아무 일도 안 일어났다」가 통과하지 않게 — 픽스처는 제 저장소에 **커밋을 만들었어야** 한다.
+      // ★`.git` 존재만 보면 이 판정이 자립하지 못한다. victim 생성이나 픽스처 절차가 통째로
+      //   실패하면 `snapshotRepo` 가 양쪽 다 `<exit …>` 를 돌려줘 before === after 가 되고,
+      //   격리가 없어도 초록이 된다. 그래서 전제를 **값으로** 확인한다 — 커밋 수를 실제로 읽는다.
+      const fixtureOwn = snapshotRepo(workDir, path.join(workDir, '.git'))
+      assert.match(
+        fixtureOwn.commitCount,
+        /^[1-9][0-9]*$/,
+        '픽스처가 제 저장소에 커밋을 하나도 못 만들었다 — 이 판정의 전제가 깨졌다.\n' +
+          `victim 이 안 변한 것은 격리가 아니라 픽스처 생성 실패다. 관측. ${JSON.stringify(fixtureOwn)}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★스크럽을 끄면 같은 절차가 victim 을 실제로 바꾼다 (비-공허 짝)', () => {
+    // ★이 짝이 없으면 위 판정은 「원래 아무 일도 안 일어나는 조합」을 지키는 가짜 그린이다.
+    //   같은 절차·같은 GIT_DIR 로, 스크럽만 빼고 돌려 victim 이 실제로 오염되는지 본다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-leak-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const before = snapshotRepo(victim.root, victim.gitDir)
+
+      const workDir = path.join(tmp, 'work')
+      fs.mkdirSync(workDir)
+      runFixtureProcedure(workDir, leakEnv(victim.gitDir))
+
+      const after = snapshotRepo(victim.root, victim.gitDir)
+      assert.notDeepEqual(
+        after,
+        before,
+        'GIT_DIR 를 상속시켜도 victim 이 그대로다 — 이 결함이 재현되지 않으니 위 판정이 공허하다.\n' +
+          `관측한 상태. ${JSON.stringify(after)}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★비-공허 짝이 주변 GIT_* 를 함께 상속하지 않는다 — 제3 저장소 무손상', () => {
+    // ★`GIT_DIR` 하나만 덮어쓰고 나머지를 상속하면 `GIT_INDEX_FILE` 이 그 `GIT_DIR` 를 **이긴다** —
+    //   짝이 오염시키는 곳이 제 victim 이 아니라 그 변수가 가리키는 **제3의 저장소**가 된다.
+    //   훅 아래에서 그 자리는 작업 중이던 진짜 저장소였고, 인덱스가 통째로 비었다.
+    //   경로 금지(`assertVictimPathSafe`)는 victim **경로**만 지키므로 이 방향을 원리적으로 못 본다.
+    //   그래서 짝이 실제로 넘기는 env 를 제3의 저장소(bystander)로 실측한다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-bystander-'))
+    const savedIndexFile = process.env.GIT_INDEX_FILE
+    try {
+      const victim = createVictimRepo(tmp, 'victim')
+      const bystander = createVictimRepo(tmp, 'bystander')
+      const victimBefore = snapshotRepo(victim.root, victim.gitDir)
+      const before = snapshotRepo(bystander.root, bystander.gitDir)
+
+      const workDir = path.join(tmp, 'work')
+      fs.mkdirSync(workDir)
+      // git 이 pre-commit 훅에 실제로 심는 그대로 — `GIT_DIR` 와 `GIT_INDEX_FILE` 가 함께 온다.
+      process.env.GIT_INDEX_FILE = path.join(bystander.gitDir, 'index')
+      runFixtureProcedure(workDir, leakEnv(victim.gitDir))
+
+      const after = snapshotRepo(bystander.root, bystander.gitDir)
+      assert.deepEqual(
+        after,
+        before,
+        '비-공허 짝이 GIT_DIR 밖의 GIT_* 를 상속해 제3의 저장소를 건드렸다.\n' +
+          '짝의 바탕 env 를 스크럽하고 GIT_DIR 하나만 얹어라 — 짝이 오염시켜도 되는 곳은\n' +
+          '그 짝이 제 손으로 만든 victim 뿐이다.\n' +
+          `달라진 축. ${JSON.stringify(changedAxes(before, after))}`,
+      )
+
+      // 짝이 여전히 무는지 — 바탕을 스크럽해도 GIT_DIR 하나로 victim 은 계속 오염돼야 한다.
+      // 이 단언이 없으면 위 deepEqual 은 「짝이 아무것도 안 한다」로도 통과한다.
+      const victimAfter = snapshotRepo(victim.root, victim.gitDir)
+      assert.notDeepEqual(
+        victimAfter,
+        victimBefore,
+        '짝이 제 victim 조차 안 바꿨다 — 오염 재현이 죽었으니 이 파일의 비-공허성이 통째로 공허하다.\n' +
+          `관측한 상태. ${JSON.stringify(victimAfter)}`,
+      )
+    } finally {
+      if (savedIndexFile === undefined) delete process.env.GIT_INDEX_FILE
+      else process.env.GIT_INDEX_FILE = savedIndexFile
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★victim 은 언제나 mkdtemp 아래이고 REPO_ROOT 가 아니다 (자기 함정)', () => {
+    // 금지가 실제로 무는지 — 저장소 자신 · 저장소 안 · 임시 디렉터리 밖을 전부 거부해야 한다.
+    assert.throws(() => assertVictimPathSafe(REPO_ROOT), /저장소 트리 안/, 'REPO_ROOT 를 victim 으로 허용한다')
+    assert.throws(
+      () => assertVictimPathSafe(path.join(REPO_ROOT, 'scripts', 'victim')),
+      /저장소 트리 안/,
+      '저장소 안의 경로를 victim 으로 허용한다',
+    )
+    assert.throws(
+      () => assertVictimPathSafe(path.join(os.homedir(), 'bts-victim')),
+      /임시 디렉터리 밖/,
+      '임시 디렉터리 밖을 victim 으로 허용한다',
+    )
+
+    // ★이 판정이 훑는 것은 **이 파일이 실제로 만든 경로 전량**이다. 앞 판정이 먼저 돌아야만
+    //   장부가 차던 시절에는 `--test-name-pattern` 으로 이것만 돌리면 무관한 red 가 났다.
+    //   그 형태는 디버깅하던 사람을 「판별식을 지우자」로 민다(`hook-source.ts` 에 적힌 사고).
+    //   그래서 여기서 팩토리를 제 손으로 한 번 지난다 — 순서 의존이 사라지고, 비어 있음
+    //   단언은 **팩토리가 만든 것을 장부에 적는가**를 재는 판정으로 남는다.
+    const audit = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-audit-'))
+    try {
+      createVictimRepo(audit)
+    } finally {
+      fs.rmSync(audit, { recursive: true, force: true })
+    }
+    assert.ok(
+      CREATED_VICTIMS.length > 0,
+      'victim 을 만들었는데 장부가 비었다 — 팩토리가 만든 경로를 안 적는다.\n' +
+        '적히지 않은 경로는 아래 훑기가 못 본다. 이 판정이 통째로 공허해진다.',
+    )
+    const tmpReal = fs.realpathSync(os.tmpdir())
+    const repoReal = fs.realpathSync(REPO_ROOT)
+    const strayed = CREATED_VICTIMS.filter(
+      (v) => !resolveExisting(v).startsWith(tmpReal + path.sep) || resolveExisting(v).startsWith(repoReal + path.sep),
+    )
+    assert.deepEqual(strayed, [], `mkdtemp 밖에 victim 을 만들었다 — 전수. ${JSON.stringify(strayed)}`)
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// 주석 걷기 — 아래 두 층위가 전부 여기를 지난다
+// ─────────────────────────────────────────────────────────
+//
+// 주석이 남으면 파생 집합이 **green 쪽으로** 뚫린다. 주석 처리된 임포트 한 줄이 파일 단위
+// 대조를 만족시키고, 배선이 없는데도 초록이 된다 — 스트리핑이 막겠다고 적어 둔 그것이다.
+// 정규식 리터럴에 따옴표가 들면(`/['"]/`) 유령 문자열 상태가 열려 그 뒤가 통째로 살아남고,
+// 슬래시가 들면 닫히지 않은 블록 주석이 열려 파일 나머지가 통째로 지워진다.
+// 앞쪽은 green 쪽, 뒤쪽은 A3 과 같은 **대칭 실명**이다 — 지워진 파일은 양쪽 집합에서
+// 동시에 빠져 차집합이 `빈집합 == 빈집합` 이 된다.
+
+/**
+ * 정규식 리터럴이 스트리핑을 망가뜨리는 합성 소스.
+ *
+ * `keep` 은 리터럴 **뒤**의 코드다. 주석이 지워졌는지와 코드가 남았는지를 함께 봐야
+ * 두 방향(주석 생존 · 코드 소실)이 다 잡힌다. 한쪽만 보면 다른 쪽 손상이 초록이다.
+ */
+const COMMENT_OPEN = '/'.repeat(2)
+
+/**
+ * 주석을 여는 자리 전량. 줄 주석만 재면 블록 주석이 통째로 사각이다 —
+ * 적대적 렌즈가 살아남은 블록 주석 하나로 임포트 집합을 만족시켜 보였다.
+ */
+const COMMENT_OPENERS = [COMMENT_OPEN, `/${'*'}`]
+
+/**
+ * 미끼 주석 한 줄. 스트리핑이 새면 이 줄이 그대로 임포트 집합을 만족시킨다.
+ *
+ * 여는 자리를 런타임에 잇는다 — 소스에 그대로 적으면 아래 전량 판정이 **제 미끼**를
+ * 위반으로 읽는다. 문자열 안의 그것과 코드 자리에 살아남은 그것을 텍스트로 가를 길이
+ * 없기 때문이다. 예외 목록을 만드는 대신 미끼를 판정 밖으로 치운다.
+ */
+const BAITED_IMPORT = `${COMMENT_OPEN} import { gitFixtureEnv } from './git-fixture-env.mjs'`
+
+/** 블록 주석에 담은 미끼. 여닫는 자리도 런타임에 이어 제 판정에 안 걸리게 한다. */
+const BAITED_BLOCK_IMPORT = `/${'*'} 배선 메모. import { gitFixtureEnv } from './git-fixture-env.mjs' ${'*'}/`
+
+const REGEX_LITERAL_TRAPS = [
+  {
+    label: '따옴표가 든 정규식 리터럴',
+    source: ['const QUOTED = /[\'"]/', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  {
+    label: '슬래시가 든 정규식 리터럴',
+    source: ['const SLASHED = /a\\/*b/', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  // ★후위 연산자 뒤의 `/` 는 나눗셈이다. 마지막 **한 글자**만 보면 `+` 라 식이 안 끝난
+  //   것으로 읽히고, 그 `/` 가 정규식을 열어 같은 줄의 주석 여는 자리를 종결자로 먹는다.
+  //   주석이 통째로 살아남는데 줄머리는 코드라 줄머리 판정이 못 본다.
+  {
+    label: '후위 증가 뒤의 나눗셈',
+    source: [`const RATE = i++ / total ${BAITED_IMPORT}`, 'const keep = 1'].join('\n'),
+  },
+  {
+    label: '후위 감소 뒤의 나눗셈',
+    source: [`const RATE = i-- / total ${BAITED_IMPORT}`, 'const keep = 1'].join('\n'),
+  },
+  // ★예약어 뒤의 `/` 는 **정규식**이다. 마지막 글자만 보면 `return` 의 `n` 이 식별자 끝과 같아
+  //   식이 끝난 것으로 읽히고, 그 `/` 가 나눗셈이 된다. 그러면 리터럴 본문이 코드 자리에서
+  //   스캔돼 따옴표는 유령 문자열을, 슬래시는 안 닫히는 블록 주석을 연다. 두 방향 다 심는다.
+  {
+    label: '예약어 뒤의 정규식 — 따옴표 (주석 생존)',
+    source: ['function f(s) {', `  return /['\"]/.test(s)`, '}', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  {
+    label: '예약어 뒤의 정규식 — 슬래시 (코드 소실)',
+    source: ['function f(p) {', '  return /^\\.\\/*/.test(p)', '}', BAITED_IMPORT, 'const keep = 1'].join('\n'),
+  },
+  // ★블록 주석도 같은 자리에서 살아남는다. 줄 주석만 재면 이 형태가 통째로 사각이다.
+  {
+    label: '예약어 뒤의 정규식 — 살아남은 블록 주석',
+    source: ['function f(s) {', `  return /['\"]/.test(s)`, '}', BAITED_BLOCK_IMPORT, 'const keep = 1'].join('\n'),
+  },
+]
+
+describe('주석 걷기가 정규식 리터럴 뒤에서도 듣는다', () => {
+  test('★★정규식 리터럴 뒤의 주석이 지워지고 그 뒤 코드는 남는다 (비-공허 짝)', () => {
+    const survived = REGEX_LITERAL_TRAPS.filter((t) => stripComments(t.source).includes('git-fixture-env.mjs')).map(
+      (t) => t.label,
+    )
+    assert.deepEqual(
+      survived,
+      [],
+      '정규식 리터럴 뒤의 **주석 처리된 임포트**가 살아남았다 — 배선 없이 파일 단위 대조를\n' +
+        '만족시키는 형태다. 스트리핑이 막겠다고 적어 둔 바로 그 구멍이다.\n' +
+        `살아남은 형태 전수. ${JSON.stringify(survived)}`,
+    )
+
+    const erased = REGEX_LITERAL_TRAPS.filter((t) => !stripComments(t.source).includes('const keep = 1')).map(
+      (t) => t.label,
+    )
+    assert.deepEqual(
+      erased,
+      [],
+      '정규식 리터럴 뒤의 **코드**가 통째로 지워졌다 — 닫히지 않은 블록 주석이 열린 것이다.\n' +
+        '그 파일은 두 집합에서 동시에 빠져 차집합이 `빈집합 == 빈집합` 으로 조용히 통과한다.\n' +
+        `지워진 형태 전수. ${JSON.stringify(erased)}`,
+    )
+  })
+
+  test('★★예약어 집합이 원소마다 실제로 행동을 바꾼다 (비-공허 짝)', () => {
+    // ★집합에서 원소 하나가 빠지면 그 예약어 뒤의 정규식이 나눗셈으로 읽혀 주석이 살아남는다.
+    //   집합을 통째로 재면 「어느 원소가 일하고 있나」를 못 본다 — 원소마다 제 형태를 세운다.
+    //   이 판정이 있으면 목록을 줄이는 수정이 즉시 red 다.
+    const leaking = keywordsBeforeRegex().filter((keyword) =>
+      stripComments([`const hit = ${keyword} /['\"]/ ${BAITED_IMPORT}`, 'const keep = 1'].join('\n')).includes(
+        'git-fixture-env.mjs',
+      ),
+    )
+    assert.deepEqual(
+      leaking,
+      [],
+      '예약어 뒤의 정규식이 나눗셈으로 읽혀 그 줄의 주석이 살아남았다 — 집합에서 빠진 원소다.\n' +
+        '살아남은 주석은 배선 없이 임포트 집합을 만족시킨다. 그 파일은 판정을 그대로 속인다.\n' +
+        `새는 예약어 전수. ${JSON.stringify(leaking)}\n` +
+        `집합 전량. ${JSON.stringify(keywordsBeforeRegex())}`,
+    )
+  })
+
+  test('★★scripts 전량에서 살아남은 줄 주석이 하나도 없다', () => {
+    // 줄머리에 남은 것과, **줄 어디든** 남았는데 꼬리가 파생 술어를 만족하는 것을 함께 센다.
+    // 줄머리만 보면 이번 회귀처럼 코드 뒤에 붙어 살아남은 주석을 통째로 놓친다. 그렇다고
+    // `//` 를 위치 제약 없이 세면 문자열·정규식 안의 그것(URL·경로 글롭)까지 물어 오탐이 된다.
+    // 가르는 기준은 위치가 아니라 **판정을 속일 수 있는가**다 — 그래서 예외 목록이 0개다.
+    const LINE_HEAD_COMMENT = /^\s*\/\//
+    const deceives = (text: string): boolean =>
+      COMMENT_OPENERS.some((opener) => {
+        const opened = text.indexOf(opener)
+        return opened !== -1 && satisfiesWiringPredicate(text.slice(opened))
+      })
+    const survived = strippedSources().flatMap(({ file, code }) =>
+      code
+        .split('\n')
+        .map((text, index) => ({ text, line: index + 1 }))
+        .filter(({ text }) => LINE_HEAD_COMMENT.test(text) || deceives(text))
+        .map(({ line }) => `${file}:${line}`),
+    )
+    assert.deepEqual(
+      survived,
+      [],
+      '주석이 걷히지 않고 살아남은 자리가 있다 — 그 파일에서는 주석에 적어 둔 임포트·호출 예시가\n' +
+        '파생 집합을 그대로 만족시킨다. 판정이 실행되는 코드가 아니라 적혀 있는 글을 읽게 된다.\n' +
+        `자리 전수. ${JSON.stringify(survived, null, 2)}`,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// git 을 spawn 하는 전량이 헬퍼를 거치는지 — 소스에서 재계산한다
+// ─────────────────────────────────────────────────────────
+//
+// ## 층위가 둘이다 — 파일 단위는 호출 하나를 빠뜨린 파일을 못 본다
+//
+// 이미 배선된 파일에 스크럽 없는 git 호출을 더 붙이면 파일 단위 대조는 초록이다.
+// 실제로 이 배선 작업 중에 `select-backend-modules.test.ts` 의 여러 줄로 쓴 호출이 그렇게
+// 빠졌고, 잡아낸 것은 `GIT_DIR` 를 건 채 판별식 전량을 돌린 실측이었다.
+// 요구는 「호출 단위」인데 판정이 「파일 단위」였다 — 두 층위가 어긋난 그 틈으로 샜다.
+//
+// 그래서 아래 두 describe 가 층위를 나눠 맡는다. 파일 단위는 「헬퍼를 아예 안 쓰는 파일」을,
+// 호출 단위는 「쓰는데 일부 호출을 빠뜨린 파일」을 잡는다. 둘 다 소스에서 재계산되므로
+// 사람이 유지하는 목록은 어느 쪽에도 없다.
+//
+// 호출 단위 규칙을 「스크럽 헬퍼를 부른다」로 쓰지 않는 이유는 이 파일의 비-공허 짝이
+// **일부러** 스크럽 없이 부르기 때문이다. 그렇게 쓰면 그 한 자리를 살리려고 사람이 적는
+// 예외 목록이 되살아나고, 그 목록이 red 를 끄는 가장 싼 방법이 된다.
+// 「env 를 명시했는가」로 쓰면 그 자리도 자연히 통과하므로 **예외가 0개**다.
+
+/**
+ * 파생 집합이 반드시 물어야 하는 픽스처 생성자 — 이 스윕의 **비-공허 짝**이다.
+ *
+ * 이름을 더하면 판정이 엄해지기만 한다. 얹어서 red 를 끌 수 없다는 점이 예외 목록과
+ * 다른 자리다. 호출 형태를 놓쳐 파생 집합이 비면 양방향 대조가 `빈집합 == 빈집합` 으로
+ * 조용히 통과하는데, 그 자리를 이 상수가 막는다.
+ */
+const KNOWN_FIXTURE_CREATORS = [
+  'scripts/workflow/select-backend-modules.test.ts',
+  'scripts/workflow/todos-reorder-integrity.test.ts',
+  // ★확장자가 다른 것을 반드시 하나 둔다. 훑는 범위가 `.ts` 로 좁아지면 이 자리가 red 다 —
+  //   범위 손실은 spawners 와 importers 에서 **동시에** 빼가므로 양방향 차집합이 못 본다.
+  'scripts/workflow/todos-reorder-integrity.mjs',
+]
+
+describe('git 을 spawn 하는 전량이 스크럽 헬퍼를 거친다 (파생집합 양방향)', () => {
+  test('★★파생 집합이 비어 있지 않고 알려진 픽스처 생성자를 실제로 문다 (비-공허 짝)', () => {
+    const { spawners } = deriveWiringSets()
+    assert.notDeepEqual(
+      spawners,
+      [],
+      'git 을 spawn 하는 파일을 하나도 못 찾았다 — 호출 형태를 놓친 것이다.\n' +
+        '이대로면 아래 양방향 대조가 `빈집합 == 빈집합` 으로 조용히 통과한다.',
+    )
+    const missed = KNOWN_FIXTURE_CREATORS.filter((f) => !spawners.includes(f))
+    assert.deepEqual(
+      missed,
+      [],
+      '임시 저장소를 세우는 것으로 알려진 파일이 파생 집합에서 빠졌다 — 스윕이 썩었다.\n' +
+        `빠진 것 전수. ${JSON.stringify(missed)}\n` +
+        `실제 파생 집합 전수. ${JSON.stringify(spawners)}`,
+    )
+  })
+
+  test('★★git 을 spawn 하는 파일 집합과 헬퍼 임포트 집합이 양방향으로 같다', () => {
+    const { unscrubbed, stray } = wiringMismatch(deriveWiringSets())
+    assert.deepEqual(
+      { 'git 을 부르는데 헬퍼를 안 거친다': unscrubbed, '헬퍼를 임포트하는데 git 을 안 부른다': stray },
+      { 'git 을 부르는데 헬퍼를 안 거친다': [], '헬퍼를 임포트하는데 git 을 안 부른다': [] },
+      'git 을 spawn 하는 파일과 스크럽 헬퍼를 거치는 파일이 어긋난다.\n' +
+        '앞쪽은 훅 안에서 GIT_DIR 를 상속해 실저장소를 건드릴 수 있는 자리다 — 헬퍼로 배선하라.\n' +
+        '뒤쪽은 배선만 남은 자리이거나, 호출 형태를 파생 집합이 놓친 자리다.\n' +
+        '예외 선언은 두지 않는다 — 목록에 한 줄 얹는 것이 red 를 끄는 가장 싼 방법이 되기 때문이다.',
+    )
+  })
+})
+
+/**
+ * 이 판별식 파일 자신의 저장소 상대 경로.
+ *
+ * 형태 앵커를 **제 파일 안**에 둔다. 다른 파일의 서식에 기대면 그쪽을 한 줄로 접는 순간
+ * 여기가 red 인데 고칠 자리는 저기라 다음 사람이 판정을 지우는 쪽으로 기운다.
+ */
+const SELF = path.relative(REPO_ROOT, fileURLToPath(import.meta.url))
+
+describe('git 을 spawn 하는 호출부 전량이 env 를 명시한다 (호출 단위)', () => {
+  test('★★옵션 객체에 env 키가 없는 호출부가 하나도 없다', () => {
+    const bare = deriveGitSpawnCallSites()
+      .filter((site) => !site.hasEnv)
+      .map((site) => `${site.file}:${site.line} ${site.callee}`)
+    assert.deepEqual(
+      bare,
+      [],
+      'git 을 부르면서 env 를 스스로 정하지 않은 호출부가 있다 — 훅 안에서 GIT_DIR 를 상속해\n' +
+        '실저장소의 인덱스·ref·config 를 건드릴 수 있는 자리다. 스크럽 헬퍼로 배선하라.\n' +
+        '파일 단위 대조는 이 자리를 못 본다 — 이미 배선된 파일에 호출을 하나 더 붙인 형태라\n' +
+        '그쪽 집합은 그대로 초록이다. 그래서 이 판정이 따로 있다.\n' +
+        `자리 전수. ${JSON.stringify(bare, null, 2)}`,
+    )
+  })
+
+  test('★★호출부 파생 집합이 비어 있지 않고 여러 줄로 쓴 호출까지 문다 (비-공허 짝)', () => {
+    // 정규식이 썩어 집합이 비면 위 판정이 `빈집합 == 빈집합` 으로 조용히 통과한다.
+    const sites = deriveGitSpawnCallSites()
+    assert.notDeepEqual(
+      sites,
+      [],
+      'git 을 spawn 하는 호출부를 하나도 못 찾았다 — 호출 형태를 놓친 것이다.\n' +
+        '이대로면 위 판정이 아무것도 안 지킨다.',
+    )
+
+    const files = [...new Set(sites.map((site) => site.file))]
+    const missed = KNOWN_FIXTURE_CREATORS.filter((f) => !files.includes(f))
+    assert.deepEqual(
+      missed,
+      [],
+      '임시 저장소를 세우는 것으로 알려진 파일에서 호출부를 하나도 못 찾았다 — 스캐너가 썩었다.\n' +
+        `빠진 것 전수. ${JSON.stringify(missed)}\n` +
+        `호출부를 찾은 파일 전수. ${JSON.stringify(files)}`,
+    )
+
+    // ★형태 앵커. 이 파일의 `snapshotRepo` 호출은 일부러 줄을 넘겨 쓴다 — 줄 단위로 보는
+    //   스캐너였다면 놓쳤을 형태이고, 실제로 그 형태가 이번에 빠져나갔다.
+    const acrossLines = sites
+      .filter((site) => site.file === SELF && site.calleeSpansLines && site.optionsSpanLines)
+      .map((site) => `${site.file}:${site.line}`)
+    assert.notDeepEqual(
+      acrossLines,
+      [],
+      '여러 줄에 걸쳐 쓴 호출을 이 스윕이 더는 못 문다 — 줄 단위로 좁혀졌거나 앵커가 접혔다.\n' +
+        '앵커는 이 파일의 snapshotRepo 안에 있다. 그 호출을 한 줄로 접었다면 되돌려라.\n' +
+        `이 파일에서 찾은 호출부 전수. ${JSON.stringify(sites.filter((s) => s.file === SELF))}`,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// 호출부 판정의 값 층위 — 「env 키가 있다」로는 모자란 자리
+// ─────────────────────────────────────────────────────────
+//
+// 「명시했는가」로 재는 것은 예외 목록을 없애려는 선택이다. 그런데 키만 보면 값이
+// `process.env` 인 자리와 `undefined` 인 자리가 그대로 통과한다 — 앞은 GIT_* 를 통째로
+// 물려주고, 뒤는 Node 에서 `env` 를 아예 안 준 것과 같다. 둘 다 스크럽의 반대다.
+// 그리고 옵션 객체를 **마지막** 객체 리터럴로 잡으면 옵션 뒤에 객체가 하나 더 붙은 호출에서
+// 그 뒤엣것이 옵션 행세를 한다. 이 두 층위는 값을 봐야 갈린다.
+
+/** 합성 호출의 호출 이름 자리표시자. 스캔 직전에 되돌린다. */
+const CALLEE_PLACEHOLDER = 'CALLEE'
+
+/**
+ * 합성 소스 한 줄을 실제 스캐너에 통과시킨다.
+ *
+ * 호출 이름을 자리표시자로 적는 이유는 이 파일 자신이 스캐너의 대상이기 때문이다.
+ * 미끼를 그대로 적으면 「env 없는 호출부」 판정이 제 미끼를 위반으로 읽는다
+ * (`node-ts-invocation.test.ts` 가 같은 이유로 예시를 문자열 그대로 적는다).
+ *
+ * @param source 자리표시자가 든 합성 소스
+ * @returns 스캐너가 찾은 호출부
+ */
+function scanSynthetic(source: string): ReturnType<typeof scanGitSpawnCallSites> {
+  return scanGitSpawnCallSites('합성', stripComments(source.replaceAll(CALLEE_PLACEHOLDER, 'spawnSync')))
+}
+
+/** 값 층위가 갈라야 하는 형태 전수. 통과해야 하는 쪽을 함께 둬야 「전부 거부」가 안 통한다. */
+const CALL_SITE_SHAPES = [
+  {
+    label: '옵션 뒤에 객체가 하나 더 붙은 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp }, { env: 1 })",
+    hasEnv: false,
+  },
+  {
+    label: 'process.env 를 그대로 넘긴 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp, env: process.env })",
+    hasEnv: false,
+  },
+  {
+    label: 'env 를 undefined 로 넘긴 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp, env: undefined })",
+    hasEnv: false,
+  },
+  { label: '옵션 객체가 아예 없는 호출', source: "CALLEE('git', ['init'])", hasEnv: false },
+  {
+    label: '스크럽한 env 를 넘긴 호출',
+    source: "CALLEE('git', ['init'], { cwd: tmp, env: gitFixtureEnv() })",
+    hasEnv: true,
+  },
+  { label: '축약형으로 env 를 넘긴 호출', source: "CALLEE('git', args, { cwd, env })", hasEnv: true },
+  {
+    label: 'process.env 를 펼쳐 덮어쓴 호출',
+    source: "CALLEE('git', args, { env: { ...process.env, GIT_DIR: d } })",
+    hasEnv: true,
+  },
+]
+
+describe('호출부 판정이 env 의 값까지 본다', () => {
+  test('★★키만이 아니라 값을 본다 — 통과해야 하는 형태도 함께 잰다 (비-공허 짝)', () => {
+    const observed = Object.fromEntries(
+      CALL_SITE_SHAPES.map((c) => [c.label, scanSynthetic(c.source).map((site) => site.hasEnv)]),
+    )
+    const expected = Object.fromEntries(CALL_SITE_SHAPES.map((c) => [c.label, [c.hasEnv]]))
+    assert.deepEqual(
+      observed,
+      expected,
+      '호출부 판정이 형태를 잘못 가린다.\n' +
+        '값이 `process.env` 나 `undefined` 인 자리는 스크럽의 반대인데 「env 를 명시했다」로 통과한다.\n' +
+        '옵션 뒤에 붙은 객체가 옵션 행세를 하는 자리도 마찬가지다.\n' +
+        '거꾸로 통과해야 하는 형태까지 거부하면 이 판정은 배선을 지우는 쪽으로 사람을 민다.\n' +
+        `기대는 호출부 하나와 그 hasEnv 다 — 빈 배열은 스캐너가 그 형태를 아예 못 문 것이다.`,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────
+// 원본을 실제로 돌려 잰다 — 사본이 지켜도 원본은 썩는다
+// ─────────────────────────────────────────────────────────
+//
+// 위 `runFixtureProcedure` 는 진짜 픽스처 절차의 **사본**이다. 사본이 스크럽을 지켜도
+// 원본이 잃으면 아무 판정도 안 문다. 실제로 `select-backend-modules.test.ts` 의 호출을
+// 이 PR 이전 형태로 되돌려도 전량이 초록이었다 — 파일 단위 대조는 임포트가 남아 초록이고,
+// 호출 단위 대조는 `env:` 키가 있어 초록이다. **값을 보는 판정이 없었다.**
+// 원본과 사본이 서로를 검사하지 않는 그 양식(`two-lists-never-check-each-other`)이다.
+//
+// 그래서 원본을 **그 파일만 단독으로** 자식 프로세스에 태우고 `GIT_DIR` 를 victim 에 건다.
+// 스크럽이 살아 있으면 victim 은 그대로이고, 한 자리라도 잃으면 victim 이 실제로 바뀐다.
+// 문자열이 아니라 동작으로 갈린다.
+
+/**
+ * node 테스트 러너가 자식에 심는 네임스페이스 접두.
+ *
+ * 이것을 물려주면 자식이 「테스트 파일 안에서 재귀 호출」로 보고 **파일을 건너뛴다.**
+ * 종료 코드는 0 이라 판정은 초록인데 아무것도 안 돈다 — 실제로 이 하네스가 처음
+ * 그렇게 통과했고, 잡아낸 것은 아래 비-공허 짝이었다. 이름을 열거하지 않는 이유는
+ * `GIT_` 를 접두로만 판정하는 이유와 같다. node 가 하나 더 넣으면 열거는 조용히 낡는다.
+ */
+const TEST_RUNNER_ENV_PREFIX = 'NODE_TEST_'
+
+/**
+ * 파일 하나를 `GIT_DIR` 를 건 자식 프로세스로 돌린다.
+ *
+ * 러너와 같은 플래그를 `package.json` 에서 뽑아 쓴다 — 플래그가 어긋나 자식이 원본을
+ * 아예 못 도는 경우는 아래 판정이 종료 코드로 먼저 잡는다.
+ *
+ * @param target 실행할 파일. 저장소 상대 경로이거나 절대 경로
+ * @param gitDir 자식에게 물릴 `GIT_DIR`
+ * @returns 종료 코드와 출력
+ */
+function runWithGitDir(target: string, gitDir: string): ChildRun {
+  const inherited = Object.entries(leakEnv(gitDir)).filter(([key]) => !key.startsWith(TEST_RUNNER_ENV_PREFIX))
+  const child = spawnSync(process.execPath, [...runnerFlags(), target], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+    env: Object.fromEntries(inherited),
+  })
+  return { status: child.status, output: `${child.stdout ?? ''}${child.stderr ?? ''}` }
+}
+
+/** 자식 한 번의 결과. */
+interface ChildRun {
+  status: number | null
+  output: string
+}
+
+/**
+ * 자식이 **실제로 돌았는지**를 판정한다. 안 돌았으면 까닭을, 돌았으면 null 을 준다.
+ *
+ * 종료 코드 0 은 두 가지를 함께 뜻한다 — 「다 통과했다」와 「아무것도 안 돌았다」.
+ * 뒤쪽에서는 아래 무손상 단언이 「victim 이 안 바뀌었다」로 통과하는데, 그것은 격리가
+ * 아니라 관측이 없는 것이다.
+ *
+ * @param run 자식 한 번의 결과
+ * @returns 안 돌았으면 까닭. 돌았으면 null
+ */
+function whyChildDidNotRun(run: ChildRun, target: string): string | null {
+  if (run.status !== 0) return `exit ${run.status}`
+  const counts = tapCounts(run.output)
+  const total = counts.get('tests')
+  const passed = counts.get('pass')
+  if (total === undefined || passed === undefined) {
+    return `러너 계수를 못 읽었다 — 자식이 러너로 돌지 않았거나 출력 형식이 바뀌었다. 읽은 계수 ${JSON.stringify([...counts])}`
+  }
+  // ★재는 것은 「전량 통과」가 아니라 **선 판정이 하나라도 있는가**다. 전량 통과로 재면
+  //   자식 파일에 건너뛴 판정 하나가 생기는 순간 이 파일이 red 가 된다 — 고칠 자리는 저쪽인데
+  //   red 는 여기서 난다. 그 형태가 디버깅하던 사람을 「판별식을 지우자」로 민다.
+  //   실패가 섞였으면 종료 코드가 이미 0 이 아니라 위에서 걸린다.
+  if (passed === 0) return `선 판정이 하나도 없다 — 계수 ${JSON.stringify([...counts])}`
+  // ★테스트가 하나도 없는 파일은 계수로 안 갈린다. 러너가 **파일 자신**을 판정 하나로 세어
+  //   `tests 1 · pass 1` 을 찍기 때문이다. 갈리는 자리는 이름이다 — 통과 이름이 우리가 넘긴
+  //   대상뿐이면 그 안에서 선 판정이 없다는 뜻이다.
+  const passedNames = tapPassNames(run.output)
+  const namesTargetOnly = passedNames.every((name) => path.resolve(REPO_ROOT, name) === path.resolve(REPO_ROOT, target))
+  if (namesTargetOnly) return `파일 자체가 유일한 판정이다 — 그 안에서 선 판정이 없다. 통과 이름 ${JSON.stringify(passedNames)}`
+  return null
+}
+
+/**
+ * 자식이 통과로 보고한 판정 이름 전량.
+ *
+ * @param output 자식의 표준 출력과 오류를 이은 것
+ * @returns 통과한 판정의 이름 목록
+ */
+function tapPassNames(output: string): string[] {
+  const names: string[] = []
+  for (const line of output.split('\n')) {
+    const found = /^ok \d+ - (.+?)(?: # SKIP.*)?$/.exec(line)
+    if (found?.[1] !== undefined) names.push(found[1])
+  }
+  return names
+}
+
+/**
+ * 자식이 남긴 러너 계수 전량. `# pass 32` 같은 줄을 이름 → 값으로 읽는다.
+ *
+ * @param output 자식의 표준 출력과 오류를 이은 것
+ * @returns 이름에서 값으로 가는 표
+ */
+function tapCounts(output: string): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const line of output.split('\n')) {
+    const found = /^\s*# ([a-z]+) (\d+)\s*$/.exec(line)
+    if (found?.[1] !== undefined && found[2] !== undefined) counts.set(found[1], Number(found[2]))
+  }
+  return counts
+}
+
+/**
+ * 자식으로 태울 대상 전량. 사람 목록이 아니라 **파생**이다.
+ *
+ * git 을 부르는 파일과 그것에 닿는 파일 전량에서 러너가 단독으로 돌릴 수 있는 것을 고른다.
+ * 사람이 적으면 파일이 하나 늘 때마다 목록이 조용히 낡고, 그 낡음이 「덮었다」로 읽힌다.
+ *
+ * 저 자신만 뺀다 — 자식이 이 파일을 다시 돌리면 그 자식이 또 자식을 띄워 끝나지 않는다.
+ * 이름을 적어 빼지 않고 `import.meta.url` 로 저를 식별한다. 예외 목록이 아니라는 것은
+ * 아래 판정이 값으로 확인한다. 뺀 자리는 호출부 층위가 덮는다 — 그 층위는 파일을 하나도
+ * 안 빼므로 이 파일의 git 호출도 env 를 명시해야 통과한다.
+ */
+const DIRECTLY_RUNNABLE_CREATORS = deriveGitTouchingFiles().filter((file) => matchesRunnerGlob(file) && file !== SELF)
+
+/**
+ * 원본 전량을 차례로 자식에 태우고, **자식마다** victim 을 다시 읽는다.
+ *
+ * 한 번만 읽으면 「어느 원본이 오염시켰나」가 사라져 실패 메시지가 대상에서 멀어진다.
+ *
+ * @param victim 오염 여부를 잴 저장소
+ * @param before 자식을 태우기 전의 상태
+ * @returns 안 돈 자식과 오염시킨 자식을 각각 이름으로 열거한 것
+ */
+function runOriginalsAgainstVictim(
+  victim: { root: string; gitDir: string },
+  before: RepoSnapshot,
+): { notRun: string[]; polluted: string[] } {
+  const notRun: string[] = []
+  const polluted: string[] = []
+  let previous = before
+  for (const file of DIRECTLY_RUNNABLE_CREATORS) {
+    const run = runWithGitDir(file, victim.gitDir)
+    const why = whyChildDidNotRun(run, file)
+    if (why !== null) notRun.push(`${file} — ${why}\n${run.output}`)
+    const after = snapshotRepo(victim.root, victim.gitDir)
+    const axes = changedAxes(previous, after)
+    if (axes.length > 0) polluted.push(`${file} — ${JSON.stringify(axes)}`)
+    previous = after
+  }
+  return { notRun, polluted }
+}
+
+describe('픽스처 생성자 **원본**이 GIT_DIR 아래서 돌아도 victim 을 안 바꾼다', () => {
+  test('★★원본을 그 파일만 단독 실행해도 victim 이 그대로다', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-original-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const before = snapshotRepo(victim.root, victim.gitDir)
+      const { notRun, polluted } = runOriginalsAgainstVictim(victim, before)
+
+      // 전제부터 값으로 확인한다 — 자식이 안 돌면 victim 이 안 변하는 것은 격리가 아니다.
+      // 그 자식들의 다른 판정은 저장소를 스크럽된 env 로 읽으므로 정상 통과해야 한다.
+      assert.deepEqual(
+        notRun,
+        [],
+        'GIT_DIR 를 건 채 원본을 돌렸더니 자식이 판정을 못 세웠다 — 아래 무손상 단언의 전제가 깨졌다.\n' +
+          '이 상태에서 victim 이 안 변한 것은 격리가 아니라 원본이 아예 안 돈 것이다.\n' +
+          '고칠 자리는 이 파일이 아니라 **아래에 이름이 뜬 자식**이다. 계수를 보고 어느 쪽인지 갈라라.\n' +
+          `실패한 자식 전수.\n${notRun.join('\n')}`,
+      )
+
+      assert.deepEqual(
+        polluted,
+        [],
+        'GIT_DIR 아래서 원본을 돌렸더니 victim 이 바뀌었다 — 그 원본이 스크럽을 잃었다.\n' +
+          '훅 안에서 그 자리는 작업 중이던 진짜 저장소다.\n' +
+          `돌린 원본 전수. ${JSON.stringify(DIRECTLY_RUNNABLE_CREATORS)}\n` +
+          `오염시킨 원본 전수.\n${polluted.join('\n')}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★같은 하네스에 스크럽 없는 픽스처를 물리면 victim 이 실제로 바뀐다 (비-공허 짝)', () => {
+    // ★하네스가 죽어 있으면(자식이 안 뜨거나 GIT_DIR 가 안 실리거나 스냅숏이 눈이 멀면)
+    //   위 판정은 「아무 일도 안 일어난다」로 통과한다. 그래서 **같은 함수**에 스크럽을
+    //   잃은 픽스처를 물려 victim 이 실제로 바뀌는지 본다. 진짜 파일은 커밋 상태 그대로 두고
+    //   합성 픽스처를 임시 디렉터리에 세운다 — 저장소를 뮤테이션한 채 두면 그 자체가 사고다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-harness-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const before = snapshotRepo(victim.root, victim.gitDir)
+
+      const leaky = path.join(tmp, 'unscrubbed.test.mjs')
+      fs.writeFileSync(leaky, unscrubbedFixtureSource())
+      const run = runWithGitDir(leaky, victim.gitDir)
+      assert.equal(run.status, 0, `합성 픽스처 자체가 안 돌았다 — 짝이 공허하다.\n${run.output}`)
+
+      const after = snapshotRepo(victim.root, victim.gitDir)
+      assert.notDeepEqual(
+        after,
+        before,
+        '스크럽 없는 픽스처를 물렸는데도 victim 이 그대로다 — 이 하네스가 오염을 못 본다.\n' +
+          '자식에 GIT_DIR 가 안 실렸거나 스냅숏이 축을 못 읽는 것이다. 위 판정도 함께 공허하다.\n' +
+          `관측한 상태. ${JSON.stringify(after)}\n` +
+          `합성 픽스처 출력.\n${run.output}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★자식 대상 파생이 비어 있지 않고 저 자신을 실제로 빼고 있다 (비-공허 짝)', () => {
+    // 파생이 무너지면 자식이 0개가 되고, 아래 무손상 단언은 「아무 일도 안 일어났다」로
+    // 통과한다. 무너짐은 빈 목록으로 오므로 비어 있지 않음을 값으로 확인한다.
+    assert.notDeepEqual(DIRECTLY_RUNNABLE_CREATORS, [], '자식으로 태울 대상이 하나도 없다 — 아래 판정이 통째로 공허하다.')
+
+    const missed = KNOWN_FIXTURE_CREATORS.filter((file) => !deriveGitTouchingFiles().includes(file))
+    assert.deepEqual(
+      missed,
+      [],
+      '임시 저장소를 세우는 것으로 알려진 파일이 자식 대상 파생에서 빠졌다 — 파생이 썩었다.\n' +
+        `빠진 것 전수. ${JSON.stringify(missed)}\n` +
+        `실제 파생 전량. ${JSON.stringify(deriveGitTouchingFiles())}`,
+    )
+
+    // ★저를 빼는 것이 **실제로 무언가를 빼고 있는지**를 잰다. 자기 식별이 어긋나면 이 뺄셈은
+    //   아무것도 안 빼는 no-op 이 되고, 그 순간 자식이 저를 다시 돌려 끝나지 않는다.
+    //   그때 보이는 것은 「판정이 틀렸다」가 아니라 「하네스가 멈췄다」라 원인에서 멀다.
+    assert.ok(
+      deriveGitTouchingFiles().includes(SELF) && matchesRunnerGlob(SELF),
+      '이 파일이 자식 대상 파생에 안 든다 — 저를 빼는 뺄셈이 아무것도 안 빼고 있다.\n' +
+        `자기 식별. ${JSON.stringify(SELF)}\n` +
+        `실제 파생 전량. ${JSON.stringify(deriveGitTouchingFiles())}`,
+    )
+    assert.ok(
+      !DIRECTLY_RUNNABLE_CREATORS.includes(SELF),
+      '자식으로 태울 대상에 이 파일이 들었다 — 자식이 저를 다시 돌려 끝나지 않는다.',
+    )
+  })
+
+  test('★★아무것도 안 돈 자식을 「돌았다」로 세지 않는다 (비-공허 짝)', () => {
+    // ★위 무손상 단언의 전제는 **자식이 실제로 돌았다**는 것이다. 종료 코드만 보면 0 이
+    //   「다 통과했다」와 「아무것도 안 돌았다」를 함께 뜻하고, 뒤쪽에서는 victim 이 안 바뀐 것이
+    //   격리가 아니라 관측 부재다. 그래서 같은 판정에 **안 도는 자식**을 물려 red 가 나는지 본다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-idle-'))
+    try {
+      const victim = createVictimRepo(tmp)
+      const idle = [
+        { label: '전부 건너뛴 파일', source: skippedFixtureSource() },
+        { label: '테스트가 없는 파일', source: emptyFixtureSource() },
+      ]
+      const missed = idle.filter(({ label, source }) => {
+        const file = path.join(tmp, `${label}.test.mjs`)
+        fs.writeFileSync(file, source)
+        return whyChildDidNotRun(runWithGitDir(file, victim.gitDir), file) === null
+      })
+
+      // 반대 방향 — 건너뛴 판정이 **섞인** 자식은 돈 것이다. 전량 통과로 재면 자식 파일에
+      // test.skip 하나가 생기는 순간 이 파일이 거짓 red 가 되고, 고칠 자리가 여기로 오해된다.
+      const mixed = path.join(tmp, 'mixed.test.mjs')
+      fs.writeFileSync(mixed, mixedFixtureSource())
+      const mixedWhy = whyChildDidNotRun(runWithGitDir(mixed, victim.gitDir), mixed)
+      assert.equal(
+        mixedWhy,
+        null,
+        `건너뛴 판정이 섞였다고 「안 돌았다」로 셌다 — 자식 파일의 정상 변경이 이 파일을 깨뜨린다.\n까닭. ${mixedWhy}`,
+      )
+      assert.deepEqual(
+        missed.map(({ label }) => label),
+        [],
+        '아무것도 안 돈 자식을 「돌았다」로 셌다 — 위 무손상 단언이 통째로 공허해진다.\n' +
+          'victim 이 안 바뀐 것은 원본이 스크럽을 지킨 것이 아니라 원본이 아예 안 돈 것이다.\n' +
+          `놓친 형태 전수. ${JSON.stringify(missed.map(({ label }) => label))}`,
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★임포트 판정이 언급과 이름 충돌에 안 속는다 (비-공허 짝)', () => {
+    // ★도달성을 **글자**로 재면 임포트가 아닌 것이 간선을 만든다. 사람 목록보다 나쁘다 —
+    //   목록은 눈에 보이지만 이 간선은 안 보인다. 사각지대를 막으라고 세운 판정이
+    //   무관한 파일의 한 줄로 꺼진다. 적대적 렌즈가 둘 다 실측으로 심어 보였다.
+    const deceits = [
+      {
+        label: '문자열 언급',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `const DOC_NOTE = './push-backend-tests.ts'`,
+        target: 'scripts/workflow/push-backend-tests.ts',
+      },
+      {
+        label: '다른 디렉터리 동명 파일',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `import { SURFACES } from './surfaces.ts'`,
+        target: 'scripts/doc-index/surfaces.ts',
+      },
+    ]
+    const fooled = deceits.filter((d) => importsAnyOf(d.importer, d.code, [d.target])).map((d) => d.label)
+    assert.deepEqual(
+      fooled,
+      [],
+      '임포트가 아닌 것이 도달 간선을 만들었다 — 사각지대 판정이 그 한 줄로 꺼진다.\n' +
+        `속은 형태 전수. ${JSON.stringify(fooled)}`,
+    )
+
+    // 반대 방향도 함께 잰다. 좁히다 진짜 임포트를 놓치면 판정이 통째로 red 로 굳는다.
+    const real = [
+      {
+        label: '같은 디렉터리',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `import { changedPaths } from './changed-paths.ts'`,
+        target: 'scripts/workflow/changed-paths.ts',
+      },
+      {
+        label: '상위 경로',
+        importer: 'scripts/doc-index/build.ts',
+        code: `import { changedPaths } from '../workflow/changed-paths.ts'`,
+        target: 'scripts/workflow/changed-paths.ts',
+      },
+      {
+        label: '동적 임포트',
+        importer: 'scripts/workflow/tier-floor.test.ts',
+        code: `const m = await import('./changed-paths.ts')`,
+        target: 'scripts/workflow/changed-paths.ts',
+      },
+    ]
+    const missed = real.filter((d) => !importsAnyOf(d.importer, d.code, [d.target])).map((d) => d.label)
+    assert.deepEqual(
+      missed,
+      [],
+      '진짜 임포트를 놓쳤다 — 도달 간선이 끊겨 사각지대 판정이 거짓 red 로 굳는다.\n' +
+        `놓친 형태 전수. ${JSON.stringify(missed)}`,
+    )
+  })
+
+  test('★★git 을 부르는 전량이 자식으로 돌거나 자식이 임포트한다', () => {
+    // 러너 글롭에 안 걸리는 것(CLI 모듈)은 단독 실행 대상이 아니다. 그 자리의 git 호출이
+    // 아무 자식에도 안 실리면 위 판정에 사각지대가 생긴다 — 임포트로 이어져 있어야 한다.
+    // 양쪽을 다 파생으로 잡는다. 왼쪽을 사람 목록으로 두면 목록에 없는 것이 사각지대인
+    // 채로 초록이고, 그 초록은 「덮었다」로 읽힌다.
+    const indirect = deriveWiringSets().spawners.filter((file) => !matchesRunnerGlob(file))
+    const sources = strippedSources()
+    const reaches = (importer: string, target: string): boolean =>
+      sources.some(({ file, code }) => file === importer && importsAnyOf(file, code, [target]))
+    const unreached = indirect.filter((file) => !DIRECTLY_RUNNABLE_CREATORS.some((runnable) => reaches(runnable, file)))
+    assert.deepEqual(
+      unreached,
+      [],
+      '자식으로 단독 실행할 수 없는 픽스처 생성자가 어느 자식에도 안 실린다 — 사각지대다.\n' +
+        '그 파일이 스크럽을 잃어도 위 판정이 못 본다. 도는 파일이 임포트하게 잇거나 직접 돌려라.\n' +
+        `안 실리는 것 전수. ${JSON.stringify(unreached)}\n` +
+        `자식으로 도는 것 전수. ${JSON.stringify(DIRECTLY_RUNNABLE_CREATORS)}`,
+    )
+  })
+})
+
+/**
+ * 있는 테스트를 전부 건너뛰는 픽스처의 소스.
+ *
+ * 러너는 이것을 종료 코드 0 으로 끝낸다. 계수를 안 보면 「돌았다」와 구별되지 않는다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function skippedFixtureSource(): string {
+  return ["import { test } from 'node:test'", '', "test.skip('건너뛴다', () => {})"].join('\n')
+}
+
+/**
+ * 테스트가 하나도 없는 픽스처의 소스. 이것도 종료 코드가 0 이다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function emptyFixtureSource(): string {
+  return ["import { test } from 'node:test'", '', 'const unused = test'].join('\n')
+}
+
+/**
+ * 선 판정과 건너뛴 판정이 **섞인** 픽스처의 소스. 이것은 「돌았다」여야 한다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function mixedFixtureSource(): string {
+  return [
+    "import { test } from 'node:test'",
+    '',
+    "test('선 판정', () => {})",
+    "test.skip('임시로 꺼 둔 판정', () => {})",
+  ].join('\n')
+}
+
+/**
+ * 스크럽을 잃은 픽스처의 소스. 비-공허 짝이 임시 디렉터리에 세워 같은 하네스에 물린다.
+ *
+ * 호출 이름을 자리표시자로 적는다 — 이 파일 자신이 호출부 스캐너의 대상이라 미끼를
+ * 그대로 적으면 「env 없는 호출부」 판정이 제 미끼를 위반으로 읽는다.
+ *
+ * @returns 자식으로 돌릴 수 있는 픽스처 소스
+ */
+function unscrubbedFixtureSource(): string {
+  return [
+    "import { test } from 'node:test'",
+    "import { spawnSync } from 'node:child_process'",
+    "import fs from 'node:fs'",
+    "import path from 'node:path'",
+    '',
+    "test('스크럽을 잃은 픽스처', () => {",
+    "  const work = path.join(import.meta.dirname, 'work')",
+    '  fs.mkdirSync(work, { recursive: true })',
+    `  const git = (...args) => ${CALLEE_PLACEHOLDER}('git', args, { cwd: work, encoding: 'utf-8' })`,
+    "  git('init', '-q')",
+    "  git('config', 'user.email', 'leak@example.com')",
+    "  git('config', 'user.name', 'leak')",
+    "  fs.writeFileSync(path.join(work, 'L.kt'), 'leak')",
+    "  git('add', '-A')",
+    "  git('commit', '-qm', 'leak')",
+    '})',
+  ]
+    .join('\n')
+    .replaceAll(CALLEE_PLACEHOLDER, 'spawnSync')
+}

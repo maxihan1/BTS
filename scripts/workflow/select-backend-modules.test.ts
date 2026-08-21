@@ -40,6 +40,8 @@ import {
   selectModules,
   modulesWithUnparsedRefs,
 } from './select-backend-modules.ts'
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -568,7 +570,7 @@ describe('backend-ci 모듈 선별', () => {
     const real = spawnSync(
       'git',
       ['ls-files', 'backend/modules/*/src/main/resources/db/migration/**'],
-      { cwd: REPO_ROOT, encoding: 'utf8' },
+      { cwd: REPO_ROOT, encoding: 'utf8', env: gitFixtureEnv() },
     )
     const files = real.stdout.split('\n').filter((f) => f.trim() !== '')
     assert.ok(
@@ -587,7 +589,7 @@ describe('backend-ci 모듈 선별', () => {
     //   이 PR 이 방금 걷어낸 양식이 다른 자리에서 그대로 재발한다.
     //   그래서 「존재」가 아니라 **차집합**을 잰다. 이 저장소의 표준 처방이다
     //   (`[[two-lists-never-check-each-other]]`).
-    const allSql = spawnSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8' })
+    const allSql = spawnSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8', env: gitFixtureEnv() })
       .stdout.split('\n')
       .filter((f) => /\/V\d+__.*\.sql$/.test(f))
     assert.ok(
@@ -700,7 +702,7 @@ describe('backend-ci 모듈 선별', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-rename-'))
     try {
       const git = (...args: string[]) =>
-        spawnSync('git', args, { cwd: tmp, encoding: 'utf8', env: { ...process.env, HOME: tmp } })
+        spawnSync('git', args, { cwd: tmp, encoding: 'utf8', env: gitFixtureEnv({ ...process.env, HOME: tmp }) })
       git('init', '-q')
       git('config', 'user.email', 'x@example.com')
       git('config', 'user.name', 'x')

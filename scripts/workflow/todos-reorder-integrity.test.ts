@@ -40,6 +40,8 @@ import {
   judgePureMove,
   readBaseTodos,
 } from './todos-reorder-integrity.mjs'
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const LEDGER = path.join(REPO_ROOT, 'TODOS.md')
@@ -303,7 +305,7 @@ describe('TODOS.md — merge-base 대비 항목 소실 (F2b)', () => {
     const content = baseContentOrFail()
     if (content === null) return
     const current = fs.readFileSync(LEDGER, 'utf-8')
-    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf-8' }).trim()
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf-8', env: gitFixtureEnv() }).trim()
     if (base.sha === head) {
       console.log('[F2b] merge-base == HEAD — 비교가 공허하다. 이 축은 PR 브랜치에서만 유효하다.')
     }
@@ -328,7 +330,7 @@ describe('TODOS.md — base ref 해석 (F2b 배선)', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-base-ref-'))
     try {
       const git = (...args: string[]) =>
-        execFileSync('git', args, { cwd: tmp, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
+        execFileSync('git', args, { cwd: tmp, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: gitFixtureEnv() })
       git('init', '-q', '-b', 'main')
       git('config', 'user.email', 'test@example.com')
       git('config', 'user.name', 'test')

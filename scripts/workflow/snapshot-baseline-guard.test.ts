@@ -19,6 +19,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { matchesGlob } from './detect-tier.ts';
 import { changedPaths } from './changed-paths.ts';
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -51,6 +53,7 @@ const trackedFiles = (): string[] => {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     maxBuffer: 64 * 1024 * 1024,
+    env: gitFixtureEnv(),
   });
   assert.equal(run.status, 0, `git ls-files 실패: ${run.stderr}`);
   return run.stdout.split('\0').filter((p) => p.length > 0);
