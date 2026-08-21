@@ -30,6 +30,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { allModules, selectModules } from './select-backend-modules.ts'
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -48,7 +50,7 @@ const BACKEND_PREFIX = 'backend/'
 const FALLBACK_BASE = 'origin/main'
 
 function git(args: string[]): string | null {
-  const r = spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf-8' })
+  const r = spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf-8', env: gitFixtureEnv() })
   if (r.status !== 0) return null
   return r.stdout.trim()
 }

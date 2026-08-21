@@ -24,6 +24,7 @@
 // 줄 축은 파싱이 아니라 줄 나누기라 스캐너가 아니다.
 
 import { execFileSync } from 'node:child_process';
+import { gitFixtureEnv } from './git-fixture-env.mjs';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -198,7 +199,12 @@ export function judgePureMove(before, after, { allowH1Loss = false } = {}) {
  */
 export function readBaseTodos(repoRoot, refs = ['origin/main', 'main']) {
   const git = (args) =>
-    execFileSync('git', args, { cwd: repoRoot, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: gitFixtureEnv(),
+    }).trim();
 
   // ★후보를 **목록**으로 받는다. `origin/main` 하나만 보면 원격 이름이 `upstream` 인 클론이나
   //   fork 체크아웃에서 이 축만 꺼지고 다른 판별식은 `main` 폴백으로 멀쩡히 돈다 —
