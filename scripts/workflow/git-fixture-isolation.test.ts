@@ -88,6 +88,8 @@ interface RepoSnapshot {
   commitCount: string
   coreBare: string
   head: string
+  /** 인덱스에 올라 있는 경로. `GIT_INDEX_FILE` 오염은 커밋·ref 를 안 건드리고 여기만 바꾼다. */
+  indexEntries: string
 }
 
 /**
@@ -95,7 +97,7 @@ interface RepoSnapshot {
  *
  * @param root victim 작업 디렉터리
  * @param gitDir victim 의 `.git` 경로
- * @returns 커밋 수 · `core.bare` · HEAD
+ * @returns 커밋 수 · `core.bare` · HEAD · 인덱스 경로
  */
 function snapshotRepo(root: string, gitDir: string): RepoSnapshot {
   const read = (...args: string[]): string => {
@@ -117,6 +119,7 @@ function snapshotRepo(root: string, gitDir: string): RepoSnapshot {
     commitCount: read('rev-list', '--count', '--all'),
     coreBare: read('config', '--get', 'core.bare'),
     head: read('rev-parse', 'HEAD'),
+    indexEntries: read('ls-files'),
   }
 }
 
@@ -136,10 +139,11 @@ function changedAxes(before: RepoSnapshot, after: RepoSnapshot): string[] {
  * victim 저장소를 세운다. 경로 금지를 통과한 자리에만 만든다.
  *
  * @param parentDir mkdtemp 가 내준 임시 부모 디렉터리
+ * @param name 부모 아래 만들 디렉터리 이름. 한 판정이 저장소를 둘 이상 세울 때 갈라 쓴다
  * @returns victim 작업 디렉터리와 `.git` 경로
  */
-function createVictimRepo(parentDir: string): { root: string; gitDir: string } {
-  const root = path.join(parentDir, 'victim')
+function createVictimRepo(parentDir: string, name = 'victim'): { root: string; gitDir: string } {
+  const root = path.join(parentDir, name)
   assertVictimPathSafe(root)
   fs.mkdirSync(root, { recursive: true })
   CREATED_VICTIMS.push(root)
@@ -169,6 +173,18 @@ function runFixtureProcedure(workDir: string, env: NodeJS.ProcessEnv): void {
   fs.writeFileSync(path.join(workDir, 'F.kt'), 'fixture\n')
   git('add', '-A')
   git('commit', '-qm', 'base')
+}
+
+/**
+ * 비-공허 짝이 픽스처에 넘기는 env — **일부러** `GIT_DIR` 를 걸어 오염을 재현시킨다.
+ *
+ * 짝과 그 짝을 검사하는 판정이 각자 env 를 조립하면 두 벌이 되고 서로를 안 본다. 한 자리만 둔다.
+ *
+ * @param gitDir victim 의 `.git` 경로
+ * @returns 픽스처에 넘길 환경변수
+ */
+function leakEnv(gitDir: string): NodeJS.ProcessEnv {
+  return { ...process.env, GIT_DIR: gitDir }
 }
 
 describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
@@ -216,7 +232,7 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
 
       const workDir = path.join(tmp, 'work')
       fs.mkdirSync(workDir)
-      runFixtureProcedure(workDir, { ...process.env, GIT_DIR: victim.gitDir })
+      runFixtureProcedure(workDir, leakEnv(victim.gitDir))
 
       const after = snapshotRepo(victim.root, victim.gitDir)
       assert.notDeepEqual(
@@ -226,6 +242,52 @@ describe('git 픽스처 격리 — GIT_DIR 상속 차단', () => {
           `관측한 상태. ${JSON.stringify(after)}`,
       )
     } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('★★비-공허 짝이 주변 GIT_* 를 함께 상속하지 않는다 — 제3 저장소 무손상', () => {
+    // ★`GIT_DIR` 하나만 덮어쓰고 나머지를 상속하면 `GIT_INDEX_FILE` 이 그 `GIT_DIR` 를 **이긴다** —
+    //   짝이 오염시키는 곳이 제 victim 이 아니라 그 변수가 가리키는 **제3의 저장소**가 된다.
+    //   훅 아래에서 그 자리는 작업 중이던 진짜 저장소였고, 인덱스가 통째로 비었다.
+    //   경로 금지(`assertVictimPathSafe`)는 victim **경로**만 지키므로 이 방향을 원리적으로 못 본다.
+    //   그래서 짝이 실제로 넘기는 env 를 제3의 저장소(bystander)로 실측한다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-git-iso-bystander-'))
+    const savedIndexFile = process.env.GIT_INDEX_FILE
+    try {
+      const victim = createVictimRepo(tmp, 'victim')
+      const bystander = createVictimRepo(tmp, 'bystander')
+      const victimBefore = snapshotRepo(victim.root, victim.gitDir)
+      const before = snapshotRepo(bystander.root, bystander.gitDir)
+
+      const workDir = path.join(tmp, 'work')
+      fs.mkdirSync(workDir)
+      // git 이 pre-commit 훅에 실제로 심는 그대로 — `GIT_DIR` 와 `GIT_INDEX_FILE` 가 함께 온다.
+      process.env.GIT_INDEX_FILE = path.join(bystander.gitDir, 'index')
+      runFixtureProcedure(workDir, leakEnv(victim.gitDir))
+
+      const after = snapshotRepo(bystander.root, bystander.gitDir)
+      assert.deepEqual(
+        after,
+        before,
+        '비-공허 짝이 GIT_DIR 밖의 GIT_* 를 상속해 제3의 저장소를 건드렸다.\n' +
+          '짝의 바탕 env 를 스크럽하고 GIT_DIR 하나만 얹어라 — 짝이 오염시켜도 되는 곳은\n' +
+          '그 짝이 제 손으로 만든 victim 뿐이다.\n' +
+          `달라진 축. ${JSON.stringify(changedAxes(before, after))}`,
+      )
+
+      // 짝이 여전히 무는지 — 바탕을 스크럽해도 GIT_DIR 하나로 victim 은 계속 오염돼야 한다.
+      // 이 단언이 없으면 위 deepEqual 은 「짝이 아무것도 안 한다」로도 통과한다.
+      const victimAfter = snapshotRepo(victim.root, victim.gitDir)
+      assert.notDeepEqual(
+        victimAfter,
+        victimBefore,
+        '짝이 제 victim 조차 안 바꿨다 — 오염 재현이 죽었으니 이 파일의 비-공허성이 통째로 공허하다.\n' +
+          `관측한 상태. ${JSON.stringify(victimAfter)}`,
+      )
+    } finally {
+      if (savedIndexFile === undefined) delete process.env.GIT_INDEX_FILE
+      else process.env.GIT_INDEX_FILE = savedIndexFile
       fs.rmSync(tmp, { recursive: true, force: true })
     }
   })
