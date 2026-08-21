@@ -315,16 +315,53 @@ function remainingGitVars(scrub: string, dirty: NodeJS.ProcessEnv): number {
 }
 
 /**
+ * 상속된 `GIT_*` 를 **걷어낸** 바탕 환경. 오염 환경 변종은 전부 이 위에 세운다.
+ *
+ * ★`process.env` 를 그대로 펼치면 이 판별식이 훅 아래에서 돌 때 **진짜** `GIT_DIR` 가
+ *   섞여 들어온다. 그러면 「GIT_DIR 없는 환경」 변종이 이름만 그렇게 되고, 그 변종으로
+ *   가르려던 것(조건부 스크럽)을 그대로 통과시킨다. 걷어내는 것이 그 사고를 막는다.
+ */
+const GIT_FREE_ENV: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
+)
+
+/**
  * 훅이 상속받는 상황을 재현한 환경. 값에 공백이 든 것을 섞어 **이름만** 뽑히는지도 함께 잰다.
- * 경로는 전부 실재하지 않는 미끼다 — 이 판정은 git 을 부르지 않지만, 그래도 진짜 저장소를
- * 가리키는 값을 자식 프로세스에 넘기지 않는다.
+ * 경로는 전부 실재하지 않는 미끼이고 바탕에서 상속 `GIT_*` 를 걷어냈으므로, 진짜 저장소를
+ * 가리키는 값이 자식 프로세스로 가지 않는다.
  */
 const DIRTY_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
+  ...GIT_FREE_ENV,
   GIT_DIR: '/nonexistent-decoy/.git',
   GIT_WORK_TREE: '/nonexistent-decoy',
   GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
   GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=yes',
+}
+
+/**
+ * 스크럽 줄이 `GIT_*` 를 정말 비우는지 실행해서 판정한다.
+ *
+ * ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 남는 것이 없으면
+ *   「원래 GIT_* 가 없어서」이고, 그 상태에서 아래 판정은 아무것도 증명하지 못한다.
+ *
+ * @param where 그 줄을 읽어낸 파일의 저장소 상대 경로. 실패 메시지에 그대로 싣는다
+ * @param scrub 훅·배포에서 읽어낸 스크럽 줄
+ */
+function assertScrubEmptiesGitNamespace(where: string, scrub: string): void {
+  assert.ok(
+    remainingGitVars('', DIRTY_ENV) > 0,
+    '스크럽을 안 돌린 대조군에서도 GIT_* 가 남지 않았다 — 오염 환경 재현이 실패했다. ' +
+      '이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
+  )
+
+  assert.equal(
+    remainingGitVars(scrub, DIRTY_ENV),
+    0,
+    `${where} 의 스크럽 줄이 **문법적으로는 있는데 실제로는 GIT_* 를 안 지운다.**\n` +
+      `실행한 줄: ${scrub}\n\n` +
+      `배선만 재는 판정은 이 상태를 초록으로 읽는다 — ` +
+      `\`sed\` 방언 차이 하나로 아무것도 안 지워도 줄은 그대로 거기 있기 때문이다.\n\n${WHY_SCRUB}`,
+  )
 }
 
 const WHY_SCRUB =
@@ -365,28 +402,13 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
     })
   })
 
-  test('★★훅에서 읽어낸 그 줄을 실행하면 GIT_* 가 0개 남는다 (실효 실측)', () => {
+  test('★★훅에서 읽어낸 그 줄을 실행하면 GIT_* 가 하나도 안 남는다 (실효 실측)', () => {
     const scrub = commandLines(readHook()).find(isGitScrub)
     if (scrub === undefined) {
       assert.fail(`${HOOK} 에 GIT_* 스크럽이 없어 실효를 잴 대상이 없다.\n\n${WHY_SCRUB}`)
     }
 
-    // ★비-공허 짝을 **먼저** 잰다. 같은 환경에서 스크럽을 안 돌렸는데도 0 이면
-    //   「원래 GIT_* 가 없어서 0」이라 아래 판정은 아무것도 증명하지 못한다.
-    assert.ok(
-      remainingGitVars('', DIRTY_ENV) > 0,
-      '스크럽을 안 돌린 대조군에서도 GIT_* 가 0개다 — 오염 환경 재현이 실패했다. ' +
-        '이 상태에서는 아래 실효 판정이 공허하게 통과한다.',
-    )
-
-    assert.equal(
-      remainingGitVars(scrub, DIRTY_ENV),
-      0,
-      `${HOOK} 의 스크럽 줄이 **문법적으로는 있는데 실제로는 GIT_* 를 안 지운다.**\n` +
-        `실행한 줄: ${scrub}\n\n` +
-        `배선만 재는 판정은 이 상태를 초록으로 읽는다 — ` +
-        `\`sed\` 방언 차이 하나로 0개를 지워도 줄은 그대로 거기 있기 때문이다.\n\n${WHY_SCRUB}`,
-    )
+    assertScrubEmptiesGitNamespace(HOOK, scrub)
   })
 
   test('스크럽 판정이 주석이 아니라 실행 줄을 본다 (산문 오탐 방지 · 양성 대조군)', () => {
@@ -423,6 +445,55 @@ describe('푸시 훅의 GIT_* 스크럽', () => {
     for (const notScrub of ['echo "$GIT_DIR"', 'unset BTS_SKIP_MODULE_TEST', call]) {
       assert.equal(isGitScrub(notScrub), false, `정상 명령을 GIT_* 스크럽으로 읽었다: ${notScrub}`)
     }
+  })
+})
+
+describe('실효 실측 자체의 양성 대조군', () => {
+  test('★한 줄 조건부 스크럽을 실효 실측이 잡아낸다', () => {
+    // ★픽스처가 **한 벌**이면 그 한 벌이 참으로 만드는 조건을 실효 축이 못 본다.
+    //   `GIT_DIR` 가 늘 걸려 있으면 아래 조건은 측정 중 항상 참이고, 조건부 스크럽은
+    //   실효 판정을 그대로 통과한다. `GIT_DIR` 가 없고 `GIT_INDEX_FILE` 만 있는 실환경
+    //   (일반 저장소의 `pre-commit`)에서는 잔존이 남는다.
+    const conditional = `{ if [ -n "$GIT_DIR" ]; then ${REAL_SCRUB}; fi ; }`
+
+    assert.throws(
+      () => assertScrubEmptiesGitNamespace('합성 입력', conditional),
+      /실행 뒤에도 GIT_\* 를 남긴다/,
+      `조건부 스크럽을 실효 있는 스크럽으로 읽었다: ${conditional}\n` +
+        `오염 환경 픽스처가 그 조건을 늘 참으로 만들면 실효 축은 눈이 먼다.`,
+    )
+  })
+
+  test('실효 실측이 남은 변수를 이름으로 말한다 (개수가 아니라 집합)', () => {
+    const env: NodeJS.ProcessEnv = {
+      ...GIT_FREE_ENV,
+      GIT_DIR: '/nonexistent-decoy/.git',
+      GIT_INDEX_FILE: '/nonexistent-decoy/.git/index',
+    }
+
+    assert.deepEqual(
+      remainingGitVars('unset GIT_DIR', env),
+      ['GIT_INDEX_FILE'],
+      '부분 스크럽 뒤 남은 것을 **이름으로** 말하지 않는다. 개수로 뭉개면 실패가 ' +
+        '「어떤 수를 다른 수로 기대」가 되어 **어느 변수가 샜는지** 알려주지 않는다 — ' +
+        '이 저장소가 금지한 눈가리개이고, 이 파일의 다른 새 단언은 전부 전수 열거한다.',
+    )
+    assert.deepEqual(
+      [...remainingGitVars('', env)].sort(),
+      ['GIT_DIR', 'GIT_INDEX_FILE'],
+      '스크럽을 안 돌린 대조군이 걸어 둔 이름 전량을 돌려주지 않는다.',
+    )
+  })
+
+  test('실효 실측이 열거 지점 도달을 확인한다 (빈 출력을 「안 남았다」로 읽지 않는다)', () => {
+    // 스크럽 줄이 열거에 닿기 전에 셸을 끝내면 출력이 빈다. 그 빈 출력은 「하나도 안 남았다」와
+    // 구별되지 않아 판정이 조용히 통과한다. 비-공허 짝(`scrub=''`)은 대조군만 재므로 이 경로를
+    // 안 막는다 — 대조군 셸은 끝까지 가기 때문이다.
+    assert.throws(
+      () => remainingGitVars('exit 0', DIRTY_ENV),
+      /열거 지점에 도달하지 못했다/,
+      '스크럽 줄이 셸을 먼저 끝내 출력이 비었는데 그것을 「남은 것이 없다」로 읽었다.',
+    )
   })
 })
 
