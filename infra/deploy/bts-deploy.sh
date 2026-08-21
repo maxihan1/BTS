@@ -22,6 +22,38 @@ echo "🚀 BTS 배포 시작 (서버 ${SERVER})"
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 [ "$CURRENT_BRANCH" = "$DEPLOY_BRANCH" ] || { echo "⚠️ 현재 브랜치($CURRENT_BRANCH) != 배포 브랜치($DEPLOY_BRANCH). 중단."; exit 1; }
 
+# 1.5. 전량 검증 — 프로덕션 직전의 **유일한 전수 게이트**
+#
+# 왜 여기인가. 2026-08-21 CI 자동 실행을 껐고, 푸시 훅은 **바뀐 모듈만** 돈다(약 2~20분).
+# 그 훅은 `widenOnMigration:false` 로 부르므로, 마이그레이션이 **다른 BC 의 테이블**을
+# 건드리는 경우처럼 모듈 그래프로 계산할 수 없는 영향을 원리적으로 못 본다.
+# 그 사각을 되찾는 자리가 여기다 — 프로덕션에 올라가기 직전.
+#
+# ★`pnpm` 을 쓰지 않는다. 워크트리가 붙어 있으면 모듈 재설치를 시도하다 무-TTY 로 죽는다.
+#   아래 프론트 빌드 단계가 같은 이유로 이미 폴백을 갖고 있다.
+#
+# ★건너뛰려면 `BTS_SKIP_DEPLOY_TEST=1`. 다만 그러면 이 배포는 **전수 검증 0회**다.
+#
+# 계약. scripts/workflow/push-backend-tests.test.ts §배포 전 전량 게이트
+if [ "${BTS_SKIP_DEPLOY_TEST:-}" = "1" ]; then
+  echo "⏭  BTS_SKIP_DEPLOY_TEST=1 — 전량 테스트 생략. 이 배포는 전수 검증 0회다."
+else
+  echo "🧪 전량 검증 — 판별식"
+  node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
+
+  echo "🧪 전량 검증 — 백엔드 9 BC (Testcontainers 포함, 수십 분 소요)"
+  if ! docker info >/dev/null 2>&1; then
+    echo "❌ Docker 데몬이 응답하지 않는다 — Testcontainers 테스트가 전부 깨진다."
+    echo "   이것은 코드 문제가 아니다. Docker 를 켜고 다시 실행할 것."
+    exit 1
+  fi
+  (cd backend && ./gradlew test --console=plain)
+
+  echo "🧪 전량 검증 — 프론트 (vitest)"
+  [ -x apps/web/node_modules/.bin/vitest ] || { echo "❌ vitest 바이너리 부재 — 의존성 복구가 선행돼야 한다"; exit 1; }
+  (cd apps/web && node_modules/.bin/vitest run)
+fi
+
 # 2. 호스트에서 산출물 빌드 (jOOQ 코드생성이 Docker 를 요구하므로 호스트 빌드)
 echo "🔨 백엔드 fat jar 빌드"
 (cd backend && ./gradlew :modules:app:bootJar)

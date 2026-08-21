@@ -141,6 +141,64 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
     )
   })
 
+  /**
+   * ★보상 통제 — 훅이 좁게 도는 대가를 되찾는 자리가 실재하는가.
+   *
+   * 이 스크립트는 `widenOnMigration:false` 로 부르므로, 마이그레이션이 **다른 BC 의 테이블**을
+   * 건드리는 영향을 원리적으로 못 본다. 그 거래를 소스 주석과 커밋 메시지가
+   * 「되찾는 자리는 배포 전 전량 실행이다」라고 약속한다.
+   *
+   * **약속한 자리가 없으면 그 주석은 거짓말이다.** 이 저장소가 반복해 물린 양식이 정확히
+   * 그것이다 — 문서가 존재하지 않는 장치를 가리키고, 아무도 대조하지 않아 조용히 썩는다.
+   * 그래서 두 목록(주석의 약속 ↔ 배포 스크립트의 실물)을 여기서 짝지어 둔다.
+   */
+  describe('배포 전 전량 게이트 (훅이 좁게 도는 대가의 보상)', () => {
+    const DEPLOY = 'infra/deploy/bts-deploy.sh'
+
+    test('★배포 스크립트가 백엔드 전량 테스트를 돌린다', () => {
+      const sh = read(DEPLOY)
+      assert.ok(
+        /\.\/gradlew test\b/.test(sh),
+        `${DEPLOY} 에 백엔드 전량 테스트(\`./gradlew test\`)가 없다.\n` +
+          '푸시 훅은 바뀐 모듈만 돈다. 이 게이트가 없으면 마이그레이션의 cross-BC 영향은 ' +
+          '**어디서도 검증되지 않은 채** 프로덕션에 올라간다.',
+      )
+    })
+
+    test('★게이트가 빌드·업로드보다 앞에 있다', () => {
+      const sh = read(DEPLOY)
+      const gate = sh.search(/\.\/gradlew test\b/)
+      const build = sh.indexOf('bootJar')
+      assert.ok(gate >= 0 && build >= 0, '게이트 또는 빌드 단계를 못 찾았다 — 파서가 낡았다.')
+      assert.ok(
+        gate < build,
+        `${DEPLOY} 의 전량 테스트가 빌드(${build}) 뒤(${gate})에 있다.\n` +
+          '뒤에 두면 깨진 산출물을 이미 만든 뒤에 멈춘다 — 게이트의 의미가 절반이다.',
+      )
+    })
+
+    test('★★게이트가 pnpm 을 거치지 않는다', () => {
+      // 워크트리가 붙어 있으면 pnpm 이 모듈 재설치를 시도하다 무-TTY 로 죽는다.
+      // 배포가 그 지점에서 죽은 실측이 있다(2026-08-21, 커밋 78734fa04).
+      const sh = read(DEPLOY)
+      const gateBlock = sh.slice(sh.indexOf('BTS_SKIP_DEPLOY_TEST'), sh.indexOf('bootJar'))
+      assert.equal(
+        /(^|[;&|(\s])(npx\s+)?pnpm(\s|$)/m.test(gateBlock),
+        false,
+        `${DEPLOY} 의 게이트가 pnpm 을 거친다 — 워크트리가 붙어 있으면 배포가 여기서 죽는다.`,
+      )
+    })
+
+    test('★게이트도 「Docker 부재」를 구분해 말한다', () => {
+      const sh = read(DEPLOY)
+      assert.ok(
+        sh.includes('코드 문제가 아니다'),
+        `${DEPLOY} 의 게이트가 Docker 부재를 테스트 실패와 구분하지 않는다 — ` +
+          '배포 직전에 그 오진이 나면 가장 비싸다.',
+      )
+    })
+  })
+
   test('★새 브랜치(upstream 없음)를 위한 폴백 기준이 있다', () => {
     // 새 브랜치의 첫 푸시가 가장 검증이 필요한 순간인데, `@{u}` 는 그때 실패한다.
     const src = read(SCRIPT)
