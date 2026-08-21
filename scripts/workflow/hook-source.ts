@@ -9,7 +9,15 @@
 // 그 순간 「블록을 여는 토큰」이 두 벌이 되고, 둘은 서로를 검사하지 않는다.
 // 이 저장소가 이미 이름 붙인 지배 결함 양식(`two-lists-never-check-each-other`)이다.
 //
-// 그래서 어휘와 파서는 여기 한 벌만 둔다.
+// 그래서 **이 모듈을 임포트하는 판정들에 대해서는** 어휘와 파서를 여기 한 벌만 둔다.
+//
+// ## ★「한 벌」이 저장소 전체를 뜻하지는 않는다 (2026-08-21 사실 정정)
+//
+// 종전 이 자리 문장은 「어휘와 파서는 여기 한 벌만 둔다」였는데 사실이 아니었다.
+// `scripts/workflow/worktree-hook-wiring.test.ts` 가 pnpm 래퍼 정규식을 **따로** 갖고 있고,
+// 그쪽은 경로 구분자까지 경계로 쳐서 `node_modules/.bin/pnpm` 을 잡는다 — 아래 `PNPM_WRAPPER`
+// 는 그것을 못 잡으므로 **더 엄한 쪽은 저쪽**이다. 통합은 그 파일을 함께 고쳐야 해서
+// 후속 부채로 남긴다. 코드에 없는 보장을 이 주석이 선언하지 않도록 사실대로 적어 둔다.
 //
 // ## 이 모듈은 판정하지 않는다
 //
@@ -47,8 +55,8 @@ const BLOCK_KEYWORDS = ['if', 'for', 'while', 'case', 'until'] as const
  *   종전 규칙은 「훅 어디에도 조건문 금지」였고, 정당한 조건문을 막아 다음 사람이 이 판별식을
  *   지우게 만드는 형태였다(2026-08-21 정정).
  */
-export const BLOCK_OPEN = new RegExp(`^(${BLOCK_KEYWORDS.join('|')})\\b`)
-export const BLOCK_CLOSE = /^(fi|done|esac)\b/
+const BLOCK_OPEN = new RegExp(`^(${BLOCK_KEYWORDS.join('|')})\\b`)
+const BLOCK_CLOSE = /^(fi|done|esac)\b/
 
 /**
  * 그 줄이 **자기 줄 안에서** 여는 블록 키워드 전량. 없으면 빈 배열.
@@ -78,7 +86,14 @@ export function inlineBlockOpeners(line: string): string[] {
  */
 export const GUARD_OPERATORS = ['&&', '||']
 
-/** pnpm 래퍼. 워크트리에서 모듈 재설치를 유발해 무-TTY 로 죽는다. */
+/**
+ * pnpm 래퍼. 워크트리에서 모듈 재설치를 유발해 무-TTY 로 죽는다.
+ *
+ * ★`worktree-hook-wiring.test.ts` 에 같은 목적의 정규식이 **따로 있고 경계가 다르다.**
+ *   그쪽은 경로 구분자를 경계로 쳐 `node_modules/.bin/pnpm` 을 잡고, 이 사본은 못 잡는다.
+ *   두 벌이 있다는 사실과 어느 쪽이 엄한지를 여기 적어 둔다 — 합치려면 그 파일을 함께
+ *   고쳐야 하므로 후속 부채다.
+ */
 export const PNPM_WRAPPER = /(^|[;&|(\s])(npx\s+)?pnpm(\s|$)/
 
 /** 주석과 빈 줄을 제거한 실행 줄만. 판정 대상은 「무엇이 적혀 있나」가 아니라 「무엇이 실행되나」다. */
