@@ -252,7 +252,7 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
       )
     })
 
-    test('★부재 메시지가 복구 명령과 그 전제를 함께 준다', () => {
+    test('★부재 메시지가 복구 명령과 그 전제를 준다', () => {
       const body = helperBody(read(DEPLOY))
       assert.ok(
         body.includes('pnpm install --frozen-lockfile'),
@@ -264,6 +264,22 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
           `${DEPLOY} 는 같은 파일 안에서 \`CI=true\` purge 를 ★★로 금지한다. 그 금지의 근거는 ` +
           '「워크트리의 심볼릭이 지워지는 실체를 가리킨다」이고, 워크트리가 0개면 성립하지 않는다. ' +
           '조건을 안 적으면 메시지와 금지 주석이 서로를 반박한다.',
+      )
+    })
+
+    /**
+     * ★★위 판정과 이 판정을 가르는 이유. 뮤테이션 실측 —
+     * 「복구 명령 줄」 하나에 명령과 전제(`.worktrees/*` 가 0개인지)가 같이 있어서,
+     * **대가를 적은 줄만 지우면 위 판정이 그대로 초록**이었다. 판정이 그 줄에만 있는
+     * 문자열을 안 보면 그 줄은 아무도 안 지키는 주석이 된다.
+     */
+    test('★부재 메시지가 전제를 어겼을 때의 대가를 말한다', () => {
+      const body = helperBody(read(DEPLOY))
+      assert.ok(
+        body.includes('워크트리가 붙어 있으면'),
+        `${GUARD} 가 「워크트리가 붙어 있으면 무슨 일이 나는가」를 안 말한다.\n` +
+          '전제만 적고 대가를 안 적으면 급한 사람은 전제를 건너뛴다 — 그 거래의 값이 ' +
+          '「옆 세션의 모듈 실체가 함께 지워진다」임을 그 자리에서 읽혀야 한다.',
       )
     })
 
@@ -281,15 +297,24 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
       )
     })
 
-    test('★게이트가 vitest 를, 빌드 폴백이 vite 를 각각 확인하고 부른다', () => {
+    /**
+     * ★두 자리를 **두 판정으로** 가른다. 한 판정에 두 단언을 넣었더니 뮤테이션 M1(게이트만
+     * 되돌림)과 M2(폴백만 되돌림)가 같은 이름으로 red 를 냈다 — 실패 이름만 보고는
+     * 어느 자리가 깨졌는지 못 가른다.
+     */
+    test('★전량 검증 게이트가 vitest 모듈을 확인하고 부른다', () => {
       const sh = read(DEPLOY)
       const gateBlock = sh.slice(sh.indexOf('BTS_SKIP_DEPLOY_TEST'), sh.indexOf('bootJar'))
-      const afterBuild = sh.slice(sh.indexOf('bootJar'))
       assert.match(
         gateBlock,
         new RegExp(`${GUARD}\\s+vitest\\b`),
-        `전량 검증 게이트가 vitest 모듈을 확인하지 않는다.`,
+        '전량 검증 게이트가 vitest 모듈을 확인하지 않는다 — 파괴된 node_modules 로 vitest 를 부른다.',
       )
+    })
+
+    test('★빌드 폴백이 vite 모듈을 확인하고 부른다', () => {
+      const sh = read(DEPLOY)
+      const afterBuild = sh.slice(sh.indexOf('bootJar'))
       assert.match(
         afterBuild,
         new RegExp(`${GUARD}\\s+vite\\b`),
