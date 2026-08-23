@@ -269,6 +269,15 @@ describe('ⓔ 배포 게이트의 표면 등록', () => {
   test('★★훅과 배포 게이트의 티어가 같다', () => {
     const hookTier = detectTier([HOOK]).tier;
     const deployTier = detectTier([DEPLOY]).tier;
+    // ★절대 단언을 **먼저** 둔다. 상대 비교만 두면 둘 다 같은 `GUARD_CI` 항목 안의 글로브라
+    //   두 글로브를 함께 지웠을 때 「T1 == T1」로 초록이 된다(2026-08-23 리뷰 실측 S2).
+    //   그러면 ★★가 있지도 않은 보장을 선언하게 된다 —
+    //   `[[invariant-satisfied-by-helptext-not-logic]]` 계열이다.
+    assert.equal(
+      deployTier,
+      'T2',
+      `${DEPLOY} 가 ${deployTier} 다. 프로덕션 직전의 마지막 검사대는 T2 미만일 수 없다.`,
+    );
     assert.equal(
       deployTier,
       hookTier,
