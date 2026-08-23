@@ -28,7 +28,7 @@ import { gitFixtureEnv } from './git-fixture-env.mjs';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { parseTodos } from '../build-dashboard.mjs';
+import { parseTodos, TODO_STATUS_BY_MARKER } from '../build-dashboard.mjs';
 
 /**
  * 항목 하나의 지문. 세 값을 **전부** 넣는다.
@@ -123,7 +123,7 @@ export function compareTodoIntegrity(before, after) {
       gainedPool.get(k).push(g);
     }
   }
-  const lost = [];
+  const notEdited = [];
   const edited = [];
   for (const l of stillLost) {
     const bucket = gainedPool.get(titleKey(l));
@@ -131,12 +131,56 @@ export function compareTodoIntegrity(before, after) {
     if (i >= 0) {
       const [g] = bucket.splice(i, 1);
       edited.push(`${label(l)}  (본문 ${bodyLines(l)}줄 → ${bodyLines(g)}줄)`);
+    } else notEdited.push(l);
+  }
+
+  // ★**해소도 소실이 아니다.** `⬜`→`✅` 는 이 장부의 정상 종착점인데, 위 두 접기가 둘 다
+  // **상태 동일**을 요구해서 해소는 어느 쪽에도 안 걸렸다. 2026-08-23 실측 — 마커만 바꿔도,
+  // 관례대로 제목 괄호와 해소 주석까지 붙여도, **본문을 통째로 지우고 ✅ 로 바꿔도** 전부
+  // `lost 1` 이었다. 정당한 해소와 본문 삭제가 같은 신호를 내면 엄격한 것이 아니라 판정 불능이다.
+  // #390(2026-08-18) 착지 이후 ✅ 개수가 76 에서 안 움직여 5일간 잠복했다 — 해소가 한 번도
+  // 없었기 때문이다. 판별식이 자기가 막는 것을 한 번도 만나지 않은 것이다.
+  //
+  // ★접는 조건은 **본문의 빈 줄 아닌 모든 줄이 그대로 남아 있을 것**이다. 한 줄이라도 줄면
+  // 접지 않는다 — 「✅ 로 덮고 본문을 지웠다」를 잡는 것이 이 판별식의 원래 이유이기 때문이다.
+  // 제목이 함께 바뀌는 것은 허용한다. 제목은 이 파일의 책임이 아니라
+  // `debt-ledger-mapping.test.ts` 가 마스터 계획과 대조하는 조인 키다.
+  //
+  // ★접되 **조용히 접지 않는다.** 개명·편집과 같은 이유다.
+  const RESOLVED = TODO_STATUS_BY_MARKER['✅'];
+  const bodyMultiset = (fp) => {
+    const m = new Map();
+    for (const line of JSON.parse(fp)[2].split('\n')) {
+      const t = line.trim();
+      if (t === '') continue;
+      m.set(t, (m.get(t) ?? 0) + 1);
+    }
+    return m;
+  };
+  /** `g` 의 본문이 `l` 의 본문을 **한 줄도 빠짐없이** 품는가 */
+  const covers = (g, l) => {
+    const G = bodyMultiset(g);
+    for (const [line, n] of bodyMultiset(l)) if ((G.get(line) ?? 0) < n) return false;
+    return true;
+  };
+
+  const remaining = [];
+  for (const [, bucket] of gainedPool) for (const g of bucket) remaining.push(g);
+  const lost = [];
+  const resolved = [];
+  for (const l of notEdited) {
+    const i =
+      JSON.parse(l)[0] === RESOLVED
+        ? -1
+        : remaining.findIndex((g) => JSON.parse(g)[0] === RESOLVED && covers(g, l));
+    if (i >= 0) {
+      const [g] = remaining.splice(i, 1);
+      resolved.push(`${label(l)}  →  ${label(g)}`);
     } else lost.push(label(l));
   }
-  const gained = [];
-  for (const [, bucket] of gainedPool) for (const g of bucket) gained.push(label(g));
+  const gained = remaining.map(label);
 
-  return { lost, gained, renamed, edited, beforeCount: a.length, afterCount: b.length };
+  return { lost, gained, renamed, edited, resolved, beforeCount: a.length, afterCount: b.length };
 }
 
 /**
@@ -177,11 +221,18 @@ export function judgePureMove(before, after, { allowH1Loss = false } = {}) {
 
   // ★순수 이동 판정에는 개명도 0 이어야 한다. 개명은 정당한 편집이지 이동이 아니다 —
   //   F2b(상시 소실 검사)는 개명을 허용하지만, 이동 커밋의 검증은 허용하지 않는다.
+  //
+  // ★★아래 **항목 축 조건 3건(개명·편집·해소)은 현재 아무 판정도 안 잡는다.** 2026-08-23
+  //   실측 — 셋 중 어느 줄을 지워도 판별식 405종 전량이 초록이었다. 줄 축이 먼저 `clean` 을
+  //   깨기 때문이다(제목·마커·본문은 전부 줄이므로). 셋이 실제로 필요해지는 경우는
+  //   **줄이 항목 사이를 이동하는** 재배치뿐인데 그 케이스를 아무도 안 쓴다.
+  //   지우지 않고 두되 **판정되고 있다고 착각하지 않도록** 여기 적는다. 부채 `98`.
   const clean =
     items.lost.length === 0 &&
     items.gained.length === 0 &&
     items.renamed.length === 0 &&
     items.edited.length === 0 &&
+    items.resolved.length === 0 &&
     editedLost.length === 0 &&
     editedGained.length === 0 &&
     (allowH1Loss || h1Lost.length === 0);
