@@ -1654,10 +1654,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">34</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 76건 · 전체 110건</span>
+      <span class="big-pct" style="color:#9ca3af;">44</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 76건 · 전체 120건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 34건</h2>
+    <h2>⬜ 아직 안 한 것 — 44건</h2>
     <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">7건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1774,7 +1774,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — search-export-import — 매핑 마법사 `confirm` 경로에 CREATE 재검사가 없다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>ImportMappingService.kt:143-155</code> 생성자에 <code>IssuePermissionResolver</code> 가 <b>없다</b> (이 BC 전수 grep — resolver 는 <code>ImportJobService.kt</code> 3줄이 전부). confirm 의 유일한 관문 <code>requireOwnedAwaitingMapping</code>(<code>:439-450</code>)은 <b>잡 소유권 + 상태(AWAITING_MAPPING)</b> 만 본다. 그 직후 <code>:265-273</code> 이 PENDING 전환 · 매핑 3종 <code>saveAll</code> · <code>enqueuePublisher.enqueue</code> 를 실행하고 HTTP 200 을 돌려준다. <code>requireOwnedAwaitingMapping</code> 호출부는 <code>:176</code>(validate) <code>:257</code>(confirm) <code>:331</code> <code>:403</code> <b>4곳</b>이고, 읽기 계열(상태 폴링·에러로그)도 <code>findByIdForRequester</code> 소유권만 본다.</p><p><b>이슈는 안 만들어진다. 그러나 no-op 도 아니다.</b> 실제 이슈 생성은 <code>IssueApplicationService.kt:225</code> 의 <code>assertPermission(CREATE)</code>(<code>createIssue</code> <code>:221</code>)가 막는다. 그런데 confirm 자체는 <b>PENDING 전환 + 매핑 3종 <code>saveAll</code> + pgmq enqueue 를 수행하고 200 을 돌려준다</b> — 사용자는 성공 화면을 받고 뒤늦게 실패한다.</p><p>⚠️ <b>초판 서술 정정 2건 (게이트 2 재리뷰).</b> ① 완화 인용을 <code>IssueImportAdapter.kt:288-294</code> 라 적었으나 그 블록은 <code>validateDryRun</code>(<code>:283</code>) 안이고 <code>:239 if (cmd.dryRun)</code> 로만 도달하는 <b>dry-run 미리보기</b> 경로다 — 원래 아무것도 안 만드는 곳이라 근거가 못 된다. ② 소유권만 보는 지점을 「3종」이라 적고 처방 줄엔 「4종」이라 적어 <b>자기와 어긋났다.</b></p><p><b>그런데 왜 등재하나.</b> 접수(<code>POST /imports</code>)는 <code>ImportJobService.kt:380-395</code> 에서 mutation <b>이전에</b> fail-fast 하는데 confirm 은 안 한다 — <b>같은 BC 안에서 두 진입점의 강제 시점이 다르다.</b> 그리고 #384 가 「진행 중이면 화면을 안 바꾼다」를 넣으면서 그 근거로 「서버가 403 으로 최종 판정한다」를 KDoc·i18n 에 적었는데, 그 주장이 마법사가 실제로 도달하는 엔드포인트에서 성립하지 않는다. #384 는 프론트 문구를 사유 중립으로 좁히는 것으로 대응했고, 서버 몫은 이 항목이다.</p><p><b>처방 후보.</b> <code>requireOwnedAwaitingMapping</code> 안에 <code>IssuePermissionResolver</code> CREATE 검사를 넣으면 매핑 4종이 한 곳에서 덮인다. cross-BC 계약이라 <b>한 PR 한 BC</b> 규칙상 별도 PR 이다.</p><p><b>발견 경위.</b> #384 게이트 2 적대적 리뷰. 백엔드 소스로 재확인했다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">13건</span></h3>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">23건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — jOOQ 코드젠 미러가 마이그레이션과 갈라져도 4개 모듈은 아무도 안 본다 (선재 · 미착수 · T2)</span></div>
@@ -1908,6 +1908,106 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — 워크플로우 — 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 (미착수 · T3)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>V204</code> 백필이 <code>workflow_states</code> 를 <code>statuses</code> + <code>workflow_statuses</code> 로 승격했으나 원본 표를 지우지 않았다. <code>DATA.md §4</code> 의 add → backfill → drop 3단 분할에서 <b>drop 단계가 남은 것</b>이다. 지금은 <code>workflow_transitions.from_state_id</code> · <code>to_state_id</code> 가 아직 <code>workflow_states(id)</code> 를 참조하므로 지울 수 없다.</p><p><b>지금 막아 둔 것.</b> <code>RawWorkflowStateInsertGuardTest</code> 가 테스트의 원시 SQL 재유입을 막는다(허용목록 2항목 + 썩은 항목 0 + 비-공허). 뮤테이션으로 확인했다.</p><p><b>선행.</b> 로드맵 PR 4(전환을 <code>workflow_statuses</code> 참조로 재지정) ~ PR 10 완료. 그 뒤에야 FK 가 풀린다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>infra/deploy/bts-deploy.sh</code> 가 티어 표면 카탈로그에 없다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 배포 직전에 전량을 검사하는 스크립트가 「어느 등급의 파일인가」 목록에 빠져 있어, 그 파일만 고치는 작업은 가장 가벼운 절차로 통과한다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 프로덕션 직전의 마지막 검사대를 계획 없이 리뷰 한 종으로 고칠 수 있다. 그 게이트가 조용히 약해져도 절차 강도가 올라가지 않는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `infra/deploy/bts-deploy.sh` 가 티어 표면 카탈로그에 없다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 실측 — <code>node --experimental-strip-types scripts/workflow/detect-tier.ts infra/deploy/bts-deploy.sh</code> 가 <code>TIER: T1</code> · <code>SURFACES: (없음)</code> · <code>UNMAPPED: infra/deploy/bts-deploy.sh</code> 를 낸다. <code>scripts/workflow/surfaces.ts</code> 전문에 <code>infra</code> 문자열이 <b>0건</b>이라 어느 글로브에도 안 걸린다.</p><p><b>왜 지금인가 — 결합이 이 PR 에서 생겼다.</b> #396 이 배포 게이트에 <code>GIT_<i></code> 스크럽 한 줄을 넣었고, <code>discriminant-hook-wiring.test.ts</code> 가 훅↔배포의 <b>문자열 동일성</b>·<b>전량 검증 게이트보다 앞</b>·<b>비가드</b>를 판정한다. 그 판정들은 T2 표면(<code>scripts/workflow/</i>.ts</code>)에 사는데 <b>대상 파일은 T1 로 분류된다</b> — 판정과 대상의 절차 강도가 갈렸다.</p><p><b>미룬 이유.</b> <code>surfaces.ts</code> 자신이 <code>GUARD_CI</code>(T2)이고 <code>tier-floor.test.ts</code>·<code>snapshot-baseline-guard.test.ts</code> 가 그 카탈로그에서 기대값을 파생시킨다. 글로브를 하나 더하면 리뷰 표면이 티어 카탈로그 전체로 넓어져 이 PR 의 범위를 넘는다.</p><p><b>선례.</b> <code>.nvmrc</code> 가 같은 양식이었다 — 표면에 없어서 node 정본 한 줄을 바꾸는 PR 이 기본 T1 로 떨어졌고, <code>DEPS</code> 글로브에 한 줄을 더해 닫았다(learnings 의 #383 C5 · <code>surfaces.ts</code> 의 그 줄에 근거 주석이 남아 있다).</p><p><b>처방 후보.</b> ① <code>GUARD_CI</code> 에 <code>infra/deploy/**</code> 를 더한다 — 「강제 장치 3층」이라는 그 표면의 성격에 맞는다. ② 배포 전용 표면 이름을 새로 만든다 — 그러면 <code>docs/rules/behavior-rules.md</code> 의 표면 표와 차집합 0 을 맞추는 일이 따라온다(<code>tier-floor.test.ts</code> 가 양방향으로 강제).</p><p><b>착수 시 주의.</b> 글로브를 더하면 「아무 파일도 안 걸리는 글로브는 red」를 <code>tier-floor.test.ts</code> 가 강제하므로 실파일 대조가 함께 필요하다. 가드를 고칠 때는 일부러 끊어 red 를 1회 본다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>PNPM_WRAPPER</code> 가 두 벌이고 잡는 것이 서로 다르다 (선재 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「훅에서 pnpm 을 부르지 마라」를 검사하는 규칙이 두 곳에 각각 적혀 있고, 둘이 잡는 범위가 다르다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 한쪽만 통과하는 명령이 훅에 들어가도 그쪽 판정은 초록이다. 워크트리에서 모듈 재설치가 걸려 푸시가 죽는 사고가 그 틈으로 되돌아온다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `PNPM_WRAPPER` 가 두 벌이고 잡는 것이 서로 다르다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 두 사본의 경계가 다르다.</p><ul class="md-list"><li><code>scripts/workflow/hook-source.ts:97</code> — <code>/(^|[;&amp;|(\s])(npx\s+)?pnpm(\s|$)/</code></li><li><code>scripts/workflow/worktree-hook-wiring.test.ts:118</code> — <code>/(?:^|[\s;|&amp;(]|\/)pnpm(?:[\s;|&amp;)]|$)/</code></li></ul><p><b>실측.</b> 같은 줄 <code>node_modules/.bin/pnpm run x</code> 를 두 정규식에 물리면 <code>hook-source: false</code> · <code>worktree: true</code> 다. 뒤쪽은 <b>경로 구분자까지 경계로</b> 치기 때문이다. 즉 훅이 그 경로로 pnpm 을 부르면 <code>hook-source</code> 를 쓰는 판정은 그것을 못 본다.</p><p><b>선재다.</b> 두 벌이 된 것은 #396 착수보다 앞이다. 이 PR 이 한 것은 공유 모듈 헤더에 「한 벌만 둔다」고 적었다가 사실이 아님이 적발돼 문구를 사실로 고친 것뿐이다(커밋 <code>0e3750752</code>). 코드에 없는 보장을 주석이 선언하지 않는 상태가 됐을 뿐, 두 벌이 하나가 된 것은 아니다.</p><p><b>처방 후보.</b> 엄한 쪽(<code>worktree-hook-wiring.test.ts</code>)의 경계를 정본으로 삼아 <code>hook-source.ts</code> 의 <code>PNPM_WRAPPER</code> 를 그것으로 바꾸고, 그 판별식이 상수를 임포트하게 한다. 그러면 사본이 사라진다.</p><p><b>착수 시 주의.</b> <code>worktree-hook-wiring.test.ts</code> 를 <b>같은 커밋에서</b> 고쳐야 한다 — 그쪽은 <code>PNPM_WRAPPER_REMEDY</code> 문구까지 붙여 쓰므로 상수만 옮기면 실패 메시지가 갈린다. 경계를 넓히는 쪽이므로 <code>.husky/**</code> 실파일에서 오탐이 없는지 먼저 잰다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>blockDepthAt</code> 이 자기 완결형 한 줄 조건 뒤에서 거짓 red 를 낸다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 훅 파일을 읽어 「이 줄이 조건문 안에 있나」를 세는 계산기가, 한 줄로 끝나는 조건문을 만나면 그 뒤 줄을 조건문 안이라고 잘못 센다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 훅 본문에 한 줄짜리 조건문을 쓰면 멀쩡한 배선이 빨간불이 된다. 「가드가 또 거짓말한다」가 쌓이면 다음 사람이 가드를 믿지 않게 된다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `blockDepthAt` 이 자기 완결형 한 줄 조건 뒤에서 거짓 red 를 낸다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/hook-source.ts:120</code> 의 <code>blockDepthAt</code> 은 줄 단위로 깊이를 센다. <code>if [ … ]; then …; fi</code> 처럼 조건·본문·닫기가 <b>한 줄</b>에 든 형태를 만나면 <code>BLOCK_OPEN</code> 이 깊이를 +1 하는데, 같은 줄의 <code>fi</code> 는 <code>else if</code> 분기(<code>:124</code>~<code>:125</code>)라 -1 이 실행되지 않는다. 그 줄이 판정 대상보다 <b>앞</b>에 있으면 뒤따르는 대상 줄이 깊이 1 로 읽힌다.</p><p><b>실측.</b> 이 PR 의 A4 초기 관측에서 판별식 호출 판정이 그렇게 red 였다 — 스크럽과 무관한 거짓 진술이었다.</p><p><b>방향이 안전한 쪽이라 미뤘다.</b> 결함은 <b>거짓 red</b> 다 — 없는 위반을 있다고 말하는 쪽이라 조용히 새지 않는다. 반대 방향(거짓 green)이었으면 이 PR 에서 닫았어야 한다. 고치면 훅 본문에 조건문을 쓸 자유가 는다.</p><p><b>처방 후보.</b> ① 한 줄 안에서 열고 닫는 형태를 깊이 계산 전에 상쇄한다 — <code>inlineBlockOpeners</code> 가 이미 같은 어휘(<code>BLOCK_KEYWORDS</code>)로 한 줄 조건을 인식하므로 그 한 벌에서 파생시킨다. ② <code>BLOCK_CLOSE</code> 판정을 <code>else if</code> 에서 떼어 같은 줄에서도 닫히게 한다 — 여러 줄 의미론을 안 깨는지 대조군이 필요하다.</p><p><b>착수 시 주의.</b> 깊이 계산은 훅·배포 양쪽 무조건성 판정의 바탕이다. 고치면 <code>★자기 완결형 한 줄에 담긴 조건을 조건부로 읽는다</code> 와 그 오탐 대조군이 함께 흔들리므로 그 짝을 먼저 읽는다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — git spawn 스윕이 못 보는 호출 형태가 있다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「모든 git 호출이 환경을 지우고 부르는가」를 훑는 검사가, 어떤 방식으로 쓴 git 호출은 아예 못 본다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 훑기가 안 무는 형태로 git 을 부르면 판정은 초록인 채 훅 안에서 <code>GIT_DIR</code> 를 상속한다. 이 PR 이 없앤 저장소 오염이 그 형태로 되돌아온다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — git spawn 스윕이 못 보는 호출 형태가 있다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/git-spawn-sweep.ts</code> 는 <code>spawnSync</code>·<code>spawn</code>·<code>execFileSync</code>·<code>execFile</code>·<code>execSync</code>·<code>exec</code> 뒤에 <b>리터럴</b> <code>&#39;git&#39;</code> 이 오는 형태만 본다(<code>:126</code> <code>SPAWN_CALLEES</code> · <code>:135</code> <code>GIT_SPAWN_SOURCE</code>). 아래는 파일 단위·호출부 단위 양쪽에서 전부 비가시다(실측 확인).</p><ul class="md-list"><li>다른 러너 — <code>execa(&#39;git&#39;, …)</code> · <code>zx</code></li><li>절대 경로 — <code>spawnSync(&#39;/usr/bin/git&#39;, …)</code></li><li>별칭 — <code>const GIT = &#39;git&#39;; spawnSync(GIT, …)</code></li><li>셸 우회 — <code>spawnSync(&#39;sh&#39;, [&#39;-c&#39;, &#39;git init&#39;])</code></li><li>셸 스크립트 위임 — <code>execFileSync(&#39;bash&#39;, [&#39;scripts/x.sh&#39;])</code></li></ul><p><b>마지막 것은 가정이 아니다.</b> 훑는 확장자(<code>SOURCE_EXTENSIONS</code>)가 러너 글롭에서 나오므로 <code>.sh</code> 가 없고, <code>scripts/doc-index/mutation-probe.sh:28</code> 이 실제로 <code>git checkout</code> 을 부른다. 그리고 <code>select-backend-modules.test.ts:495</code> 와 <code>nginx-docker-precondition.test.ts:68</code> 이 이미 저장소 셸 스크립트에 <code>bash</code> 를 spawn 한다.</p><p><b>★어휘를 넓히는 것은 처방이 아니다.</b> 호출 형태를 하나씩 더 세는 순간 그 목록이 되살아나고, 목록은 새 형태가 생길 때마다 조용히 뒤처진다. 지금 정직한 진술은 「<code>scripts/</code> 아래 <code>.ts</code>/<code>.mjs</code> 에서 <b>직접 리터럴</b> <code>git</code> 을 spawn 하는 자리에 <code>env</code> 가 빠지지 않는다」이다.</p><p><b>처방 후보.</b> 보장을 그보다 넓혀야 한다면 판정을 <b>런타임 경계</b>로 옮긴다 — 허용된 유일한 spawn 경로가 되는 래퍼 모듈을 두고 그 밖의 직접 spawn 을 금지한다. 그러면 형태 열거가 필요 없다. 대가는 임포트 자리 전량 재배선이다.</p><p><b>착수 시 주의.</b> 지금의 사정거리는 이 항목이 유일한 기록이다 — 코드 주석은 「어휘를 한 벌만 둔다」까지만 적고 사정거리는 안 적는다. 넓히면 두 자리를 같은 커밋에서 고친다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>.husky/pre-commit</code>·<code>post-merge</code> 에는 <code>GIT_*</code> 스크럽이 없다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 푸시할 때 도는 훅에는 「git 환경변수를 지운다」 한 줄이 들어갔는데, 커밋할 때와 머지 뒤에 도는 훅에는 없다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 그 훅들이 부르는 것 중 하나라도 git 픽스처를 만들게 되면, 이 PR 이 없앤 저장소 오염이 그 경로로 되살아난다. 지금은 잠재고, 잠재인 채로 아무도 안 본다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `.husky/pre-commit`·`post-merge` 에는 `GIT_*` 스크럽이 없다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 스크럽 판정 전량이 <code>.husky/pre-push</code> 와 <code>infra/deploy/bts-deploy.sh</code> <b>두 경로만</b> 읽는다. 저장소의 훅은 <code>pre-commit</code>·<code>post-merge</code>·<code>pre-push</code> 다.</p><p><b>실측.</b> 연결된 worktree 의 <code>pre-commit</code> 은 <code>GIT_DIR</code> 과 <code>GIT_INDEX_FILE</code> 을 <b>둘 다</b> 받고, 일반 저장소의 <code>pre-commit</code> 은 <code>GIT_DIR</code> 없이 <b><code>GIT_INDEX_FILE</code></b> 을 받는다. <code>post-merge</code> 는 훅 안에서 <code>git push</code> 를 부른다.</p><p><b>오늘은 잠재다.</b> 그 훅들이 부르는 것(<code>lint-staged</code> · <code>build-doc-index.mjs</code> · <code>build-dashboard.mjs</code>)은 git 픽스처를 만들지 않는다. <b>오늘 실제 피해는 0 이다.</b></p><p><b>왜 그래도 등재하나.</b> 「어느 진입점이 스크럽해야 하는가」와 「판정이 읽는 파일」이 서로를 검사하지 않는 두 목록이다. 배포 게이트에서 이미 한 번 적발된 양식이고(이 PR 의 Task 8 이 그것을 닫았다), 같은 구멍이 나머지 훅에 그대로 남아 있다. <code><span class="md-wikilink">two-lists-never-check-each-other</span></code>.</p><p><b>처방 후보.</b> ① 판정이 읽는 훅 목록을 <code>.husky/</code> 실파일에서 파생시킨다 — 훅이 늘면 판정이 자동으로 그것을 요구한다. ② 스크럽 한 줄을 훅 전량에 넣고 동일성 판정을 그 전량으로 넓힌다. ①이 목록을 없애고 ②는 목록을 채운다.</p><p><b>착수 시 주의.</b> <code>post-merge</code> 는 훅 안에서 <code>git commit</code>·<code>git push</code> 를 부른다 — 스크럽이 그 호출의 대상 저장소를 바꾸지 않는지 실측이 필요하다. <code>.husky/**</code> 는 <code>GUARD_CI</code> 라 일부러 끊어 red 를 1회 본다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>gitFixtureEnv</code> 라는 이름이 의무 범위를 가린다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 모든 git 호출이 거쳐야 하는 도우미인데, 이름이 「테스트용 임시 저장소 전용」처럼 읽힌다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 다음 사람이 「내 스크립트는 테스트가 아니니 해당 없음」으로 읽고 그냥 git 을 부른다. 이름이 규칙을 반대로 가르친다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `gitFixtureEnv` 라는 이름이 의무 범위를 가린다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/git-fixture-env.mjs</code> 의 export 이름은 <code>gitFixtureEnv</code> 지만, 의무 범위는 <code>scripts/</code> 아래 <b>모든</b> git spawn 이다. 프로덕션 경로도 부른다 — <code>changed-paths.ts</code> 와 푸시 훅 러너 자신인 <code>push-backend-tests.ts</code> 가 그렇다.</p><p><b>왜 문제인가.</b> 이름이 판정 범위보다 좁으면, 판정이 red 를 낼 때 사람은 「판정이 과하다」로 읽는다. 「내 것은 픽스처가 아니다」가 red 를 끄는 가장 싼 오독 경로다.</p><p><b>처방 후보.</b> export 이름을 의무 범위대로 바꾼다(예 — <code>gitSpawnEnv</code>). 파일명까지 바꾸면 더 정직하지만 그만큼 고칠 자리가 는다.</p><p><b>착수 시 주의.</b> 임포트 자리 <b>전량</b>과 <code>git-spawn-sweep.ts</code> 의 <code>HELPER_MODULE</code>(<code>:43</code>) · <code>HELPER_IMPORT</code>(<code>:156</code>)를 <b>같은 커밋</b>에서 고쳐야 한다. 그 상수가 파일 이름에서 임포트 정규식을 만들기 때문에 한쪽만 바꾸면 파생 집합이 통째로 어긋나 전량이 red 다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>stripComments</code> 의 <code>/</code> 판별이 휴리스틱이다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 소스에서 주석을 걷어내는 코드가 「나눗셈의 <code>/</code>」와 「정규식의 <code>/</code>」를 앞 글자로 짐작해 가른다. 짐작이라 언제나 맞지는 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 짐작이 틀리는 소스가 들어오면 그 파일의 훑기가 조용히 어긋난다. 코드가 주석으로 읽히면 그 안의 git 호출이 안 보이고, 주석이 코드로 읽히면 없는 호출이 보인다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `stripComments` 의 `/` 판별이 휴리스틱이다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/git-spawn-sweep.ts</code> 의 주석 걷기는 <code>/</code> 앞의 <b>직전 유의 토큰</b>으로 나눗셈과 정규식 리터럴을 가른다(<code>}</code> 뒤는 정규식으로 본다). 이번 수정으로 문자열·템플릿 리터럴·중첩 템플릿 보간· 정규식까지 함께 따라가게 됐다(커밋 <code>3e7b3412f</code>).</p><p><b>지금 막아 둔 것 (범위를 사실대로).</b> <code>scripts/</code> 전량에서 ① <b>판정을 속일 수 있는</b> 줄 주석 0 ② 코드 소실 0 ③ 파생 집합 불변을 판정한다 (<code>★★scripts 전량에서 살아남은 줄 주석이 하나도 없다</code> · <code>★★정규식 리터럴 뒤의 주석이 지워지고 그 뒤 코드는 남는다</code>).</p><p><b>★앞선 판에서 이 자리를 「살아남은 줄 주석 0」이라 적었는데 거짓이었다.</b> 그때 전량 판정은 <code>/^\s*\/\//</code> 로 <b>줄머리만</b> 봤다 — 코드 뒤에 붙어 살아남은 주석은 통째로 못 봤다. 게이트 2 라운드 2 가 실측으로 잡았다 (<code>i++ / total // …</code>). 지금은 위치가 아니라 <b>파생 술어를 만족하는가</b>로 판정하고, 줄 주석과 블록 주석 여는 자리를 함께 본다. 그래도 「모든 살아남은 주석 0」은 <b>아니다</b> — 판정을 못 속이는 주석은 여전히 안 잡힌다. 코드에 없는 보장을 문서가 선언하면 다음 사람이 틀린 근거로 사각을 재확인한다(#383 C4 의 교훈).</p><p><b>★라운드 3 이후의 사정거리 (전부 실측).</b> <code>/</code> 앞이 후위 증감(<code>i++ /</code>)이거나 예약어(<code>return /…/</code> 등 14종)인 자리는 이제 바르게 읽는다. <b>남은 형태는 닫는 괄호 뒤다</b> — <code>if (x) /[&#39;&quot;]/.test(s)</code> 는 여전히 나눗셈으로 읽혀 그 줄의 주석이 살아남는다. <code>)</code> 를 그 여는 짝까지 되짚어 <code>if</code>·<code>while</code>·<code>for</code> 인지 가려야 하므로 사실상 토크나이저 일이다. 저장소 현재 트리에 이 형태는 없다(전량 스트리핑 출력 차분 0).</p><p><b>그래도 완전한 파서는 아니다.</b> 그 사실을 주석에 보장으로 적지 않은 것은 맞은 판단이다 — 코드에 없는 보장을 문서가 선언하면 다음 사람이 틀린 근거로 사각을 재확인한다(#383 C4 의 교훈). 완전성이 필요해지면 실제 토크나이저로 옮겨야 한다.</p><p><b>처방 후보.</b> ① 지금 상태를 유지하고 위 세 축의 실측 짝으로 계속 지킨다 — **오판을 부르는 소스는 <code>return /…/</code> 꼴로 3자리 있으나 본문에 따옴표·<code>/<i></code> 가 없어 스트리핑 출력 차분이 0 이다.</i>* 「오판이 없다」가 아니라 「오판의 결과가 출력에 안 나타난다」가 사실이다. ② 토크나이저로 옮긴다 — 의존성이 늘고 러너 기동이 느려지는 대가가 있다.</p><p><b>착수 시 주의.</b> 옮기면 파생 집합이 바뀔 수 있다. 갈아타기 앞뒤로 파생 집합이 <b>같은 파일 목록</b>임을 값으로 대조하고 나서 옛 구현을 지운다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — <code>env</code> 명시 판정이 <code>process.env</code> 우회 형태를 정적으로 못 가른다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 자식 프로세스를 띄울 때 「환경 변수를 제 손으로 정했는가」를 소스만 읽어 가른다. 그런데</p>
+        <p class="todo-risk"><b>방치하면.</b> 그 형태로 적힌 새 호출부는 정적 판정을 초록으로 통과한다. 실제로 오염되는지는 그 파일이</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — `env` 명시 판정이 `process.env` 우회 형태를 정적으로 못 가른다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><code>process.env</code> 를 다른 이름에 담아 넘기면 소스만으로는 정한 것처럼 보인다.</p><p>자식으로 도는 층위에서만 드러나므로, 자식 대상에서 빠지는 파일이 생기면 그 자리가 사각이 된다.</p><p><b>무엇.</b> <code>scripts/workflow/git-spawn-sweep.ts</code> 의 <code>ENV_ENTRY</code>(<code>:546</code> 부근)는 값이 <code>process.env</code> 이거나 <code>undefined</code> 인 자리만 뺀다. 게이트 2 라운드 2 가 실측으로 통과시킨 우회 형태 전수 — <code>globalThis.process.env</code> · <code>{ ...process.env }</code> · <code>const e = process.env; env: e</code> · <code>Object.assign({}, process.env)</code> · <code>structuredClone(process.env)</code> · <code>process . env</code>(사이 공백).</p><p><b>지금 막아 둔 것 (사정거리를 실측대로).</b> 정적 층위가 아니라 <b>실측 층위</b>다. git 을 부르는 파일과 그것에 닿는 파일 전량에서 러너가 단독으로 돌릴 수 있는 것을 파생해 <code>GIT_DIR</code> 를 건 자식으로 돌린다. 잡히는 경로는 <b>둘</b>이다 — ① 자식이 victim 의 관측 4축(커밋 수·<code>core.bare</code>·HEAD·인덱스)을 바꾼다 ② 자식 자신이 <code>GIT_DIR</code> 오염 탓에 판정을 못 세운다. 어느 쪽도 아니면 안 잡힌다.</p><p><b>★실측 (파생 8종에 <code>{ ...process.env }</code> 를 하나씩 심고 전량 실행).</b> 6종은 ②로 잡히고, <b><code>changed-paths.ts</code> 와 <code>snapshot-baseline-guard.test.ts</code> 는 안 잡힌다.</b> 둘은 git 을 <b>읽기 전용</b>으로만 부르므로(<code>rev-parse</code> · <code>merge-base</code> · <code>diff --name-only</code> · <code>ls-files</code>) 관측 4축이 원리적으로 안 움직이고, 읽기만 하니 제 판정도 안 깨진다. 이 사각은 부채 <code>89</code> 에 따로 적었다 — 거기가 훅의 1차 입력이라 결과가 가볍지 않다.</p><p><b>처방 후보.</b> ① 지금처럼 실측 백스톱으로 지킨다 — 정적 판정에 형태를 더 얹지 않는다. 형태를 쫓으면 그 목록이 <b>사람이 유지하는 세 번째 목록</b>이 되고, 목록에 없는 형태는 조용히 통과한다. ② 값 흐름을 좇는 판정을 세운다 — 별칭·전개·복제를 따라가야 하므로 사실상 작은 해석기가 된다.</p><p><b>착수 시 주의.</b> ①을 유지한다면 자식 실행 시간이 늘어난다는 것을 감수해야 한다. 자식 2 → 6 으로 늘었을 때 이 파일 하나가 2초에서 11초가 됐다. 줄이려고 자식 대상을 사람이 좁히는 순간 백스톱이 사라진다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 자식 백스톱이 <b>읽기 전용</b> git 호출의 오염을 못 본다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「실제로 돌려 보고 오염을 잡는」 장치가 저장소를 <b>바꾸는</b> 호출만 본다. 남의 저장소를 몰래</p>
+        <p class="todo-risk"><b>방치하면.</b> 훅 안에서 스크럽을 잃은 파일이 <b>엉뚱한 저장소의 diff</b> 를 읽고, 그 결과로 「어떤 백엔드</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 자식 백스톱이 **읽기 전용** git 호출의 오염을 못 본다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>읽기만</b> 하는 호출은 아무것도 안 바꾸므로 그 장치에 안 보인다.</p><p>모듈을 테스트할지」가 정해진다. 테스트는 초록인데 정작 바뀐 모듈이 안 돈다.</p><p><b>무엇.</b> <code>scripts/workflow/git-fixture-isolation.test.ts</code> 의 관측 축은 커밋 수 · <code>core.bare</code> · HEAD · 인덱스 경로 넷이다. <code>scripts/workflow/changed-paths.ts</code> 는 <code>rev-parse</code> · <code>merge-base</code> · <code>diff --name-only</code> 만 부르므로 스크럽을 잃어도 이 넷이 하나도 안 움직인다. <code>snapshot-baseline-guard.test.ts</code> 도 같다 (<code>ls-files</code> 하나).</p><p><b>실측.</b> <code>changed-paths.ts:42</code> 의 <code>env: gitFixtureEnv()</code> 를 <code>env: { ...process.env }</code> 로 한 줄 바꾸고 전량을 돌리면 <code># fail 0</code> 이다. 같은 파일을 decoy 저장소 아래서 부르면 <code>GIT_DIR</code> 없이 <code>{&quot;paths&quot;:[]}</code> · <code>GIT_DIR</code> 걸고 <code>{&quot;paths&quot;:[&quot;SECOND_DECOY.kt&quot;]}</code> 로 <b>남의 저장소를 읽는다.</b> <code>.husky/pre-push</code> 가 이 함수를 1차 입력으로 쓰고 그 위에 <code>select-backend-modules</code> 가 얹혀 있다.</p><p><b>처방 후보.</b> ① 관측 축에 <b>읽기도 드러나는 축</b>을 더한다 — victim 쪽 <code>.git</code> 접근 흔적이나 자식에 <code>GIT_TRACE</code> 를 걸어 실제로 문 저장소를 값으로 받는다. ② 자식마다 스크럽을 잃은 변종을 한 번 더 돌려 red 가 나는지 재는 짝을 세운다 — 정직하지만 자식 수만큼 비싸진다.</p><p><b>착수 시 주의.</b> ①을 고를 때 축을 늘리면 무손상 단언이 무관한 이유로 흔들릴 수 있다. 축을 더하기 전에 현재 8종에 대해 <b>새 축이 실제로 두 파일을 무는지</b> 먼저 값으로 확인한다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 임포트 도달성이 <b>실행</b> 도달성이 아니다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「이 파일이 자식으로 돌거나, 자식이 이 파일을 쓴다」까지만 확인한다. 자식이 그 안의 **함수를</p>
+        <p class="todo-risk"><b>방치하면.</b> 테스트가 안 덮는 코드 경로에 스크럽 없는 git 호출이 들어가면 네 층위를 전부 통과한다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 임포트 도달성이 **실행** 도달성이 아니다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>실제로 부르는지**는 안 본다. 안 불리는 함수의 오염은 아무도 못 본다.</p><p><b>무엇.</b> <code>deriveGitTouchingFiles()</code> 는 임포트 간선을 따라 넓힌다. 적대적 렌즈가 <code>mirrorStatus</code> 는 스크럽하고 <code>publishMirror</code> 는 <code>env: { ...process.env }</code> 로 <code>add</code>+<code>commit</code> 하는 모듈을 심었다 — 파생 4층 전부 통과, 자식도 실제로 돌고 그 자식이 이 모듈을 임포트까지 하는데, 자식이 <code>publishMirror</code> 를 안 부르므로 전량 초록 (<code># tests 392 · # pass 392</code>)이고 직접 부르면 victim 이 오염된다.</p><p><b>같은 뿌리의 곁가지.</b> <code>whyChildDidNotRun</code> 은 「선 판정이 있는가」만 본다. 알맹이 없는 <code>test()</code> 하나짜리 파일도 「돌았다」이고, 자식이 표준출력에 <code>ok 1 - …</code> 를 <b>스스로 찍으면</b> 통과 이름 판정이 위조된다. 악의를 막는 장치가 아니므로 등급을 나누지 않되, 「자식이 돌았다 ⇒ 그 파일의 git 호출이 실행됐다」가 성립하지 않는다는 사실은 여기 남긴다.</p><p><b>처방 후보.</b> ① 커버리지를 켜서 <b>실행된 줄</b>로 도달성을 잰다 — 가장 정직하고 가장 비싸다. ② <code>git</code> 을 부르는 유일한 경로를 래퍼 모듈로 좁히고 그 안에서 런타임 단언한다(부채 <code>84</code> 의 처방과 같은 자리).</p><p><b>착수 시 주의.</b> ②는 부채 <code>84</code>·<code>88</code> 과 한 덩어리다. 셋을 따로 착수하면 같은 배선을 세 번 건드린다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">7건</span></h3>
         <p class="todo-cat-desc">코드를 검사하고 내보내는 기계 쪽 문제.</p>

@@ -34,6 +34,8 @@ import { SURFACES, SURFACE_PRECEDENCE, type SurfaceName } from './surfaces.ts';
 import { detectTier, matchesGlob, surfaceOf, TIER_ORDER } from './detect-tier.ts';
 import { changedPaths } from './changed-paths.ts';
 import type { Tier } from './types.ts';
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { gitFixtureEnv } from './git-fixture-env.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const DETECT_TIER_CLI = path.join(REPO_ROOT, 'scripts/workflow/detect-tier.ts');
@@ -153,11 +155,13 @@ const branchSubjects = (): string[] | null => {
   const base = spawnSync('git', ['merge-base', 'origin/main', 'HEAD'], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
+    env: gitFixtureEnv(),
   });
   if (base.status !== 0) return null;
   const log = spawnSync('git', ['log', '--reverse', '--format=%s', `${base.stdout.trim()}..HEAD`], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
+    env: gitFixtureEnv(),
   });
   if (log.status !== 0) return null;
   return log.stdout.split('\n').filter((s) => s.trim().length > 0);
@@ -169,6 +173,7 @@ const trackedFiles = (): string[] => {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     maxBuffer: 64 * 1024 * 1024,
+    env: gitFixtureEnv(),
   });
   assert.equal(run.status, 0, `git ls-files 실패: ${run.stderr}`);
   return run.stdout.split('\0').filter((p) => p.length > 0);
