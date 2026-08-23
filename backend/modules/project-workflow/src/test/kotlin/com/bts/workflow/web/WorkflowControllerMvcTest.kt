@@ -64,7 +64,7 @@ private val permissionResolver: WorkflowDefinitionPermissionResolver = mockk()
  * 테스트 케이스 4건 + 권한 실패 1건.
  * - Case 1. GET /api/v1/workflows — 200 + 4 워크플로우 목록
  * - Case 2. GET /api/v1/workflows/{key} — 200 + 계층 구조 (states + transitions)
- * - Case 3. POST /api/v1/workflows/{key}/transitions — 200 + TransitionPlan 반환
+ * - Case 3. POST /api/v1/workflows/{key}/transitions/plan — 200 + TransitionPlan 반환
  * - Case 4a. POST /api/v1/workflows/cache/invalidate — WORKFLOW_MANAGE 권한 있으면 200
  * - Case 4b. POST /api/v1/workflows/cache/invalidate — WORKFLOW_MANAGE 권한 없으면 403
  */
@@ -166,11 +166,15 @@ class WorkflowControllerMvcTest {
             .andExpect(jsonPath("$.data.transitions.length()").value(2))
     }
 
-    // ── Case 3: POST /api/v1/workflows/{key}/transitions — TransitionPlan 200 ─
+    // ── Case 3: POST /api/v1/workflows/{key}/transitions/plan — TransitionPlan 200 ─
+    //
+    // ★ 경로가 옮겨졌다 (spec FR-WF-05 결정 D-1). 종전 `/{key}/transitions` 는 이제 **전환 정의
+    //   컬렉션**이다 — 같은 method+path 를 두 번 매핑하면 Spring 이 기동에 실패하므로 계산 경로인
+    //   `plan` 이 하위 동사 경로로 내려갔다. 자원이 아니라 계산이므로 REST 의미상으로도 이쪽이 맞다.
 
     @Test
     @WithMockUser
-    fun `POST 전환 계획 — TransitionPlan 반환 200`() {
+    fun `전환 계획은 POST 워크플로우 transitions plan 으로 옮겨졌다`() {
         val plan =
             TransitionPlan(
                 toStateKey = "IN_PROGRESS",
@@ -191,7 +195,7 @@ class WorkflowControllerMvcTest {
             )
 
         mockMvc.perform(
-            post("/api/v1/workflows/software-default/transitions")
+            post("/api/v1/workflows/software-default/transitions/plan")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(body)),
         )

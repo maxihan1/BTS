@@ -1065,7 +1065,8 @@ function resolveIssue(key: string): IssueResponse | undefined {
     issueOverrides.get(key) ??
     createdIssues.get(key) ??
     issueFixtureMap[key] ??
-    backlogEpicIssueMap[key]
+    backlogEpicIssueMap[key] ??
+    ambiguousIssueMap[key]
   )
 }
 
@@ -1281,20 +1282,108 @@ function renderDescriptionHtml(description: string | null): string | null {
 }
 
 /**
+ * 가용 전환 응답 1건 — backend `TransitionItem` 7필드와 1:1.
+ *
+ * 워크플로우 픽스처의 `id` 가 여기서 `transitionId` 로 바뀐다. 실제 응답에 없는 `id` 를
+ * 흘려보내면 프론트가 한 번도 없는 필드를 있다고 믿게 되므로 이름을 맞춰 옮긴다.
+ */
+interface MockTransitionItem {
+  key: string
+  name: string
+  fromStateKey: string
+  toStateKey: string
+  toCategory: string | null
+  transitionId: string
+  kind: string
+}
+
+/**
  * 현재 이슈 상태 기준 가용전환 반환 helper.
  * softwareDefaultFixture 가 단일 출처 — 전환 직접 정의 금지.
  * toCategory를 toStateKey → states category lookup으로 enrichment.
+ *
+ * @param currentStateKey 이슈의 현재 상태 키
+ * @returns 그 상태에서 출발하는 전환 목록 (backend TransitionItem 형태)
  */
-function getAvailableTransitions(
-  currentStateKey: string,
-): (typeof softwareDefaultFixture.transitions[0] & { toCategory: string | null })[] {
+function getAvailableTransitions(currentStateKey: string): MockTransitionItem[] {
   const stateMap = new Map(softwareDefaultFixture.states.map((s) => [s.key, s.category]))
   return softwareDefaultFixture.transitions
     .filter((t) => t.fromStateKey === currentStateKey)
     .map((t) => ({
-      ...t,
+      key: t.key,
+      name: t.name,
+      fromStateKey: currentStateKey,
+      toStateKey: t.toStateKey,
       toCategory: stateMap.get(t.toStateKey) ?? null,
+      transitionId: t.id,
+      kind: t.kind,
     }))
+}
+
+/**
+ * 모호 전환(409 `AMBIGUOUS_TRANSITION`) 검증 전용 이슈 키.
+ *
+ * ★`issueFixtureMap` 에 **넣지 않는다.** 그 맵은 이슈 목록의 모수이자 클론 키 채번의
+ *   모수라 거기에 1건을 더하면 목록 건수를 세는 기존 테스트가 함께 흔들린다.
+ *   `backlogEpicIssueMap` 과 같은 처방으로 {@link resolveIssue} 체인 끝에만 붙인다.
+ */
+export const MOCK_AMBIGUOUS_ISSUE_KEY = 'ATLAS-AMBIG'
+
+/** 모호 전환 후보 중 픽스처에 없는 쪽의 이름 — E2E 가 이 버튼을 눌러 후보를 지목한다. */
+export const MOCK_AMBIGUOUS_TRANSITION_NAME = '긴급 착수'
+
+/**
+ * 위 전환의 1급 식별자.
+ * `workflow-fixtures.ts` 의 `fixtureTransitionId(워크플로우번호, 전환번호)` 와 같은 RFC4122 v4
+ * 형식이되 워크플로우 번호 `00` 대역을 써서 픽스처 전환 id 와 겹치지 않는다.
+ */
+const MOCK_AMBIGUOUS_TRANSITION_ID = '00000000-0000-4000-8000-000000000099'
+
+/**
+ * 모호 전환 이슈 — open 에서 in_progress 로 가는 전환이 **2건**이라 도착 상태만으로는 못 가른다.
+ * ATLAS-1 을 그대로 복제하고 키·id·요약만 갈아 끼운다 (상세 화면 렌더 경로를 그대로 태우기 위함).
+ */
+const ambiguousIssueFixture: IssueResponse = {
+  ...issueAtlas1Fixture,
+  key: MOCK_AMBIGUOUS_ISSUE_KEY,
+  id: 'd4e5f6a7-b8c9-4d0e-8f1a-2b3c4d5e6f70',
+  summary: '같은 도착 상태로 가는 전환이 둘인 이슈 (409 후보 선택 검증용)',
+}
+
+/** 모호 전환 이슈 단건 조회용 맵 — resolveIssue 체인 맨 끝. */
+const ambiguousIssueMap: Record<string, IssueResponse> = {
+  [MOCK_AMBIGUOUS_ISSUE_KEY]: ambiguousIssueFixture,
+}
+
+/**
+ * 이슈 키 기준 가용전환 — 모호 전환 이슈면 같은 도착 상태 전환을 하나 더 얹는다.
+ *
+ * backend 는 `UNIQUE(workflow_id, from, to)` 해제로 같은 상태쌍에 이름만 다른 전환을
+ * 여럿 둘 수 있다(ADR 2026-08-18). 목이 그 상태를 한 번도 만들지 않으면 409 경로가
+ * 프론트에서 영원히 도달 불가가 되어 후보 선택 UI 가 죽은 코드로 남는다.
+ *
+ * @param key 이슈 키
+ * @param currentStateKey 이슈의 현재 상태 키
+ * @returns 그 이슈에서 지금 이동 가능한 전환 목록
+ */
+function getAvailableTransitionsForIssue(
+  key: string,
+  currentStateKey: string,
+): MockTransitionItem[] {
+  const base = getAvailableTransitions(currentStateKey)
+  if (key !== MOCK_AMBIGUOUS_ISSUE_KEY || currentStateKey !== 'open') return base
+  return [
+    ...base,
+    {
+      key: 'open__in_progress',
+      name: MOCK_AMBIGUOUS_TRANSITION_NAME,
+      fromStateKey: 'open',
+      toStateKey: 'in_progress',
+      toCategory: 'IN_PROGRESS',
+      transitionId: MOCK_AMBIGUOUS_TRANSITION_ID,
+      kind: 'NORMAL',
+    },
+  ]
 }
 
 /**
@@ -1321,7 +1410,7 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
       { status: 422 },
     )
   }
-  const transitions = getAvailableTransitions(found.currentStateKey)
+  const transitions = getAvailableTransitionsForIssue(key, found.currentStateKey)
   return HttpResponse.json({ data: { transitions } })
 })
 
@@ -1332,6 +1421,7 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
  *   (2) MOCK_NO_WORKFLOW_TRIGGER → 422 (워크플로우 미설정 시뮬)
  *   (3-a) expectedVersion 불일치 → 409 VERSION_CONFLICT (OCC 버전충돌)
  *   (3-b) MOCK_CONFLICT_TRIGGER → 409 TRANSITION_NOT_ALLOWED (전환거부)
+ *   (3-c) transitionId 없이 도착 상태만 왔는데 후보가 2개 이상 → 409 AMBIGUOUS_TRANSITION
  *   (4) 성공 → 200 + currentStateKey=toStatusKey + version+1, stateful 보관
  */
 const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
@@ -1348,6 +1438,7 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     toStatusKey?: string
     expectedVersion?: number
     resolutionId?: string
+    transitionId?: string
   }
   const toStatusKey = body.toStatusKey ?? ''
 
@@ -1373,6 +1464,25 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
   if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
     return HttpResponse.json(
       { errorCode: 'TRANSITION_NOT_ALLOWED', message: '허용되지 않는 전환입니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (3-c) 모호 전환 → 409 AMBIGUOUS_TRANSITION + 후보 전량 (ADR 2026-08-18 §D3).
+  //   transitionId 가 오면 그것으로 실행하고, 없이 toStatusKey 만 오면 후보가 정확히 1개일
+  //   때만 실행한다. 조용히 첫 후보를 고르지 않는다 — 그러면 틀린 전환이 실행된다.
+  //   backend AmbiguousTransitionExceptionHandler 의 응답 골격과 같은 모양이다.
+  const candidates = getAvailableTransitionsForIssue(key, found.currentStateKey)
+    .filter((t) => t.toStateKey === toStatusKey)
+  if (body.transitionId === undefined && candidates.length > 1) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: 'AMBIGUOUS_TRANSITION',
+          message: `이동할 수 있는 전환이 ${candidates.length}개입니다. 어느 전환인지 골라 주세요.`,
+        },
+        candidates: candidates.map((t) => ({ transitionId: t.transitionId, name: t.name })),
+      },
       { status: 409 },
     )
   }
@@ -1415,9 +1525,9 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
  * backend BulkAvailableTransitionsService.intersect 시맨틱과 동일.
  */
 function intersectByToStateKey(
-  base: typeof softwareDefaultFixture.transitions,
-  other: typeof softwareDefaultFixture.transitions,
-): typeof softwareDefaultFixture.transitions {
+  base: MockTransitionItem[],
+  other: MockTransitionItem[],
+): MockTransitionItem[] {
   const otherToKeys = new Set(other.map((t) => t.toStateKey))
   return base.filter((t) => otherToKeys.has(t.toStateKey))
 }
@@ -1463,7 +1573,7 @@ const bulkAvailableTransitionsHandler = http.post(
     const issueKeys = body.issueKeys ?? []
 
     const unresolvedIssueKeys: string[] = []
-    const transitionSets: (typeof softwareDefaultFixture.transitions)[] = []
+    const transitionSets: MockTransitionItem[][] = []
 
     for (const key of issueKeys) {
       const found = resolveIssue(key)
@@ -1476,11 +1586,13 @@ const bulkAvailableTransitionsHandler = http.post(
         unresolvedIssueKeys.push(key)
         continue
       }
-      transitionSets.push(getAvailableTransitions(found.currentStateKey))
+      // ★단건 조회와 같은 helper 를 쓴다. 여기만 `getAvailableTransitions` 를 직접 부르면
+      //   「이 이슈의 가용 전환」 규칙이 두 벌이 되어 조용히 갈라진다.
+      transitionSets.push(getAvailableTransitionsForIssue(key, found.currentStateKey))
     }
 
     // 성공 분이 없으면 빈 교집합
-    let transitions: typeof softwareDefaultFixture.transitions = []
+    let transitions: MockTransitionItem[] = []
     if (transitionSets.length > 0) {
       const [first, ...rest] = transitionSets
       transitions = rest.reduce(

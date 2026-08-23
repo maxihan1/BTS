@@ -22,11 +22,24 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * project-workflow BC 의 도메인 예외를 HTTP 응답으로 변환하는 핸들러.
  *
  * 매핑 규칙:
- * - [WorkflowValidatorFailureException] → 422 Unprocessable Entity (검증 실패)
+ * - [WorkflowInvalidRequestException] → 400 Bad Request (커맨드 입력 위반)
  * - [WorkflowNotFoundException] → 404 Not Found (워크플로우/전환 부재)
+ * - [WorkflowKeyConflictException] → 409 Conflict + `WORKFLOW_KEY_CONFLICT` (key 중복)
+ * - [WorkflowInUseException] → 409 Conflict + `WORKFLOW_IN_USE` (스킴이 참조 중)
+ * - [WorkflowLockedException] → 409 Conflict + `WORKFLOW_LOCKED` (편집 잠금)
+ * - [WorkflowValidatorFailureException] → 422 Unprocessable Entity (검증 실패)
  * - [WorkflowCacheLockTimeoutException] → 503 Service Unavailable (캐시 lock 타임아웃)
  * - [WorkflowExpressionTimeoutException] → 503 Service Unavailable (SpEL 평가 타임아웃)
+ * - [WorkflowDefinitionAccessDeniedException] → 403 Forbidden (워크플로우 편집 권한 없음)
  * - [AccessDeniedException] → 403 Forbidden (@PreAuthorize 실패)
+ *
+ * ★ 409 중 `AMBIGUOUS_TRANSITION` 만 여기 없다. 그 매핑은
+ * [AmbiguousTransitionExceptionHandler] 가 **일부러 따로** 들고 있다 — 그 예외는 issue-tracking
+ * 컨트롤러에서 표면화되는데 그쪽 catch-all `@ExceptionHandler(Exception::class)` 이 먼저 삼켜
+ * 500 이 되므로 `@Order(HIGHEST_PRECEDENCE)` 가 필요하다. 그 우선권을 예외 여러 종을 잡는
+ * **이 advice** 에 주면 [WorkflowNotFoundException] 까지
+ * `com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler` 에서 빼앗아 스킴 404 응답이
+ * RFC 7807 `ProblemDetail` 에서 아래 포맷으로 조용히 바뀐다. **합치지 마라.**
  *
  * 응답 포맷은 표준 `{ "error": { "code": "...", "message": "..." } }` 를 따른다.
  */

@@ -7,10 +7,9 @@ import { flushSync } from 'react-dom'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { fetchIssue, updateIssue, transitionIssue, IssueRedirectError } from '@/api/issues'
+import { fetchIssue, updateIssue, IssueRedirectError } from '@/api/issues'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
 import type { IssueTransition, CustomFieldValues } from '@/api/issues'
-import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
@@ -21,7 +20,7 @@ import { fetchComponents } from '@/api/components'
 import { useVersions } from '@/hooks/use-versions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useCustomFields } from '@/hooks/use-custom-fields'
-import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
+import { useIssueTransitions, useIssueTransitionFlow } from '@/hooks/use-issue-transitions'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
@@ -33,6 +32,7 @@ import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
+import { AmbiguousTransitionPrompt } from '@/components/issue/meta/AmbiguousTransitionPrompt'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
 import { IssueActivityTabs, ACTIVITY_TABS } from '@/components/issue/IssueActivityTabs'
@@ -371,38 +371,8 @@ export function IssueDetailPage({
     transitionCount: transitions.length,
   })
 
-  // 전환 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
-  const transitionMutation = useMutation({
-    mutationFn: (input: { toStatusKey: string; expectedVersion: number; resolutionId?: string }) =>
-      transitionIssue(issueKey, input),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
-        queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
-      ])
-    },
-    onError: (err: unknown) => {
-      if (err instanceof ApiError && err.status === 409) {
-        // errorCode 구분: TRANSITION_NOT_ALLOWED(S3) vs VERSION_CONFLICT(S4)
-        const body = err.body as Record<string, unknown> | undefined
-        const errorCode = typeof body?.['errorCode'] === 'string' ? body['errorCode'] : ''
-        if (errorCode === 'TRANSITION_NOT_ALLOWED') {
-          toast.error(issueDetailStrings.transitionNotAllowedError)
-        } else {
-          // VERSION_CONFLICT(S4) — 최신 데이터 + 전환 목록 재조회 유도
-          void Promise.all([
-            queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
-            queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
-          ])
-          toast.error(issueDetailStrings.transitionVersionConflictError)
-        }
-      } else if (err instanceof ApiError && err.status === 422) {
-        toast.error(issueDetailStrings.transitionWorkflowNotConfiguredError)
-      } else {
-        toast.error(issueDetailStrings.transitionNotAllowedError)
-      }
-    },
-  })
+  // 전환 실행 배선 전부 — mutation · 에러 토스트 · 409 후보 선택 (ADR 2026-08-18 §D3)
+  const transitionFlow = useIssueTransitionFlow(issueKey)
 
   const updateMutation = useUpdateIssueSummary()
   const deleteMutation = useDeleteIssue({
@@ -895,7 +865,7 @@ export function IssueDetailPage({
       setPendingDoneTransition(transition)
     } else {
       // 비DONE 전환 → 즉시 실행
-      transitionMutation.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
+      transitionFlow.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
     }
   }
 
@@ -905,7 +875,7 @@ export function IssueDetailPage({
    */
   function handleResolutionConfirm(resolutionId: string) {
     if (issue === undefined || pendingDoneTransition === null) return
-    transitionMutation.mutate({
+    transitionFlow.mutate({
       toStatusKey: pendingDoneTransition.toStateKey,
       expectedVersion: issue.version,
       resolutionId,
@@ -1147,7 +1117,7 @@ export function IssueDetailPage({
               onCloneClick={() => setCloneDialogOpen(true)}
               transitions={transitions}
               onTransition={handleTransition}
-              isTransitioning={transitionMutation.isPending}
+              isTransitioning={transitionFlow.isPending}
               unavailableReason={transitionUnavailableReason}
               onPriorityChange={handlePriorityChange}
               onImpactChange={handleImpactChange}
@@ -1211,6 +1181,9 @@ export function IssueDetailPage({
         onConfirm={handleResolutionConfirm}
         onCancel={handleResolutionCancel}
       />
+
+      {/* 모호 전환(409 AMBIGUOUS_TRANSITION) 후보 선택 프롬프트 (ADR 2026-08-18 §D3) */}
+      <AmbiguousTransitionPrompt flow={transitionFlow} />
 
       {/* 이슈 클론 Dialog (FR-IS-06) */}
       <CloneIssueDialog

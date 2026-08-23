@@ -15,9 +15,21 @@ import { PostActionConfigSection } from '@/components/workflow/PostActionConfigS
 
 const WORKFLOW_KEY = 'software-default'
 
+/**
+ * 테스트 픽스처 전용 결정적 전환 UUID 를 만든다.
+ * 실제 값은 DB 가 정하지만(`workflow_transitions.id`) 테스트는 재현 가능해야 하므로 순번으로 합성한다.
+ * RFC4122 v4 형식(version=4 · variant=8) — Zod `z.string().uuid()` 통과 보장.
+ *
+ * @param seq 픽스처 안에서 유일한 순번
+ * @returns `00000000-0000-4000-8000-` 로 시작하는 UUID 문자열
+ */
+function txId(seq: number): string {
+  return `00000000-0000-4000-8000-${`${seq}`.padStart(12, '0')}`
+}
+
 const sampleTransitions: WorkflowTransitionView[] = [
-  { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress' },
-  { key: 'in-progress__done', name: '완료 처리', fromStateKey: 'in-progress', toStateKey: 'done' },
+  { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress', id: txId(1), kind: 'NORMAL' },
+  { key: 'in-progress__done', name: '완료 처리', fromStateKey: 'in-progress', toStateKey: 'done', id: txId(2), kind: 'NORMAL' },
 ]
 
 const sampleAction = {
@@ -27,8 +39,12 @@ const sampleAction = {
   displayOrder: 0,
 }
 
-const TX_KEY = 'open__in-progress'
-const BASE_PATH = `/api/v1/workflows/${WORKFLOW_KEY}/transitions/${TX_KEY}/post-actions`
+/**
+ * 경로 세그먼트로 보내는 전환 지목 값. 정본은 `id` 다 — `key` 는 하위호환용 계산 프로퍼티로
+ * 강등됐고 같은 (from, to) 에 전환을 여럿 둘 수 있어 더 이상 유일하지 않다 (ADR 2026-08-18 §D1).
+ */
+const TX_REF = txId(1)
+const BASE_PATH = `/api/v1/workflows/${WORKFLOW_KEY}/transitions/${TX_REF}/post-actions`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -188,7 +204,7 @@ describe('PostActionConfigSection — 전환 선택', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() =>
       expect(screen.getByRole('table')).toBeInTheDocument(),
@@ -211,7 +227,7 @@ describe('PostActionConfigSection — 전환 선택', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() =>
       expect(screen.queryByRole('table')).not.toBeInTheDocument(),
@@ -263,7 +279,7 @@ describe('PostActionConfigSection — Webhook 추가', () => {
 
     // D1: 전환 선택 후에만 버튼 활성화
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     // 빈 상태가 렌더될 때까지 대기
     await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument())
@@ -310,7 +326,7 @@ describe('PostActionConfigSection — 수정/삭제', () => {
 
     // 전환 선택
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() =>
       expect(screen.getByRole('table')).toBeInTheDocument(),
@@ -345,7 +361,7 @@ describe('PostActionConfigSection — 수정/삭제', () => {
 
     // 전환 선택
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() =>
       expect(screen.getByRole('table')).toBeInTheDocument(),
@@ -404,7 +420,7 @@ describe('PostActionConfigSection — B1 stale 프리필 방지', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
@@ -475,7 +491,7 @@ describe('PostActionConfigSection — D1 전환 미선택 시 추가 버튼 disa
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     const addBtn = screen.getByRole('button', { name: /Webhook 추가/ })
     expect(addBtn).not.toBeDisabled()
@@ -518,7 +534,7 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument())
 
@@ -561,7 +577,7 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
@@ -586,7 +602,7 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     // 에러 UI — role=alert 또는 에러 관련 텍스트 존재
     await waitFor(() =>
@@ -659,7 +675,7 @@ describe('PostActionConfigSection — C2 displayOrder 중복 방지', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
@@ -680,10 +696,14 @@ describe('PostActionConfigSection — C2 displayOrder 중복 방지', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PACS-D6: transitionKey '__' 모호성 방어 가드
+// PACS-D6: 전환 지목은 `id` 로 한다 (ADR 2026-08-18 §D1)
+//
+// V207 ① 이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를 풀어 같은 (from, to) 구간에
+// 전환을 여럿 둘 수 있게 됐다. 그래서 `key` 는 유일하지 않고, option value 를 `key` 로 두면
+// 중복 전환 둘이 **같은 요청**을 낸다 — 화면에서 둘을 구별할 방법이 사라진다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => {
+describe('PostActionConfigSection — D6 전환 지목은 id 로 한다', () => {
   beforeEach(() => {
     useAuthStore.setState({
       accessToken: 'token',
@@ -699,63 +719,186 @@ describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => 
     })
   })
 
-  const ambiguousTransitions: WorkflowTransitionView[] = [
-    // fromStateKey에 '__'가 포함된 전환 — 합성키가 3+ 조각으로 쪼개짐
-    { key: 'in__review__done', name: '리뷰 완료', fromStateKey: 'in__review', toStateKey: 'done' },
-    // toStateKey에 '__'가 포함된 전환
-    { key: 'open__in__review', name: '리뷰 시작', fromStateKey: 'open', toStateKey: 'in__review' },
-    // 정상 전환 — 영향 없어야 함
-    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress' },
+  /** 상태 키에 '__' 가 섞인 전환 + 정상 전환. id 로 지목하므로 조각 수 제약이 사라진다. */
+  const separatorTransitions: WorkflowTransitionView[] = [
+    { key: 'in__review__done', name: '리뷰 완료', fromStateKey: 'in__review', toStateKey: 'done', id: txId(3), kind: 'NORMAL' },
+    { key: 'open__in__review', name: '리뷰 시작', fromStateKey: 'open', toStateKey: 'in__review', id: txId(4), kind: 'NORMAL' },
+    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress', id: txId(5), kind: 'NORMAL' },
+  ]
+
+  /** 같은 (from, to) 에 이름만 다른 전환 2건 — `key` 가 같고 `id` 만 다르다. */
+  const duplicateTransitions: WorkflowTransitionView[] = [
+    { key: 'open__done', name: '빠른 완료 A', fromStateKey: 'open', toStateKey: 'done', id: txId(6), kind: 'NORMAL' },
+    { key: 'open__done', name: '빠른 완료 B', fromStateKey: 'open', toStateKey: 'done', id: txId(7), kind: 'NORMAL' },
   ]
 
   /**
-   * PACS-D6a. '__' 포함 전환 옵션은 disabled 속성을 가진다.
+   * PACS-D6a. option value 는 전환 id 다 — 합성 키가 아니다.
    */
-  it('PACS-D6a: fromStateKey에 __ 포함 전환 option이 disabled다', () => {
-    renderSection({ transitions: ambiguousTransitions })
-
-    // '리뷰 완료' 옵션 — fromStateKey='in__review'
-    const opt = screen.getByRole('option', { name: '리뷰 완료' }) as HTMLOptionElement
-    expect(opt.disabled).toBe(true)
-  })
-
-  /**
-   * PACS-D6b. toStateKey에 '__' 포함된 전환 옵션도 disabled다.
-   */
-  it('PACS-D6b: toStateKey에 __ 포함 전환 option이 disabled다', () => {
-    renderSection({ transitions: ambiguousTransitions })
-
-    const opt = screen.getByRole('option', { name: '리뷰 시작' }) as HTMLOptionElement
-    expect(opt.disabled).toBe(true)
-  })
-
-  /**
-   * PACS-D6c. 정상 전환('open__in-progress')는 disabled가 아니다.
-   */
-  it('PACS-D6c: 정상 전환 option은 disabled가 아니다', () => {
-    renderSection({ transitions: ambiguousTransitions })
+  it('PACS-D6a: option value 는 전환 id 다', () => {
+    renderSection({ transitions: separatorTransitions })
 
     const opt = screen.getByRole('option', { name: '진행 시작' }) as HTMLOptionElement
-    expect(opt.disabled).toBe(false)
+    expect(opt.value).toBe(txId(5))
   })
 
   /**
-   * PACS-D6d. ambiguous 전환이 있으면 안내 문구가 렌더된다.
+   * PACS-D6b. 중복 전환 2건이 서로 다른 값을 갖는다.
+   * 이것이 이 블록의 핵심 회귀 단언이다 — `key` 를 쓰던 종전 구현에서는 둘 다 'open__done' 이었다.
    */
-  it('PACS-D6d: ambiguous 전환이 있으면 안내 문구가 노출된다', () => {
-    renderSection({ transitions: ambiguousTransitions })
+  it('PACS-D6b: 같은 key 를 가진 중복 전환 2건이 서로 다른 option value 를 갖는다', () => {
+    renderSection({ transitions: duplicateTransitions })
 
-    // 안내 문구 — '일부 전환은 키 형식 제약으로 설정할 수 없습니다' 류
-    expect(screen.getByText(/키 형식 제약/)).toBeInTheDocument()
+    const a = screen.getByRole('option', { name: '빠른 완료 A' }) as HTMLOptionElement
+    const b = screen.getByRole('option', { name: '빠른 완료 B' }) as HTMLOptionElement
+    expect(a.value).toBe(txId(6))
+    expect(b.value).toBe(txId(7))
+    expect(a.value).not.toBe(b.value)
   })
 
   /**
-   * PACS-D6e. ambiguous 전환이 없으면 안내 문구가 렌더되지 않는다.
+   * PACS-D6c. 중복 전환 중 두 번째를 고르면 **그 전환의 id** 로 목록을 조회한다.
+   * 종전에는 어느 쪽을 골라도 같은 경로가 나가 규칙이 엉뚱한 전환에 붙었다.
    */
-  it('PACS-D6e: ambiguous 전환이 없으면 안내 문구가 노출되지 않는다', () => {
-    renderSection({ transitions: sampleTransitions })
+  it('PACS-D6c: 중복 전환 중 두 번째를 고르면 그 전환 id 경로로 조회한다', async () => {
+    const requested: string[] = []
+    server.use(
+      http.get(
+        '/api/v1/workflows/:workflowKey/transitions/:transitionKey/post-actions',
+        ({ params }) => {
+          requested.push(String(params['transitionKey']))
+          return HttpResponse.json({ data: [] })
+        },
+      ),
+    )
+
+    renderSection({ transitions: duplicateTransitions })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: txId(7) } })
+
+    await waitFor(() => expect(requested).toContain(txId(7)))
+    expect(requested).not.toContain('open__done')
+  })
+
+  /**
+   * PACS-D6d. 상태 키에 '__' 가 섞여도 선택 가능하다.
+   * 종전 disabled 가드는 backend 가 세그먼트를 `split('__')` 하던 시절의 제약이었고,
+   * id 로 지목하는 지금은 그 전환들을 UI 에서 도달 불가로 만드는 잘못된 금지다.
+   */
+  it('PACS-D6d: 상태 키에 __ 가 섞인 전환도 disabled 가 아니다', () => {
+    renderSection({ transitions: separatorTransitions })
+
+    expect((screen.getByRole('option', { name: '리뷰 완료' }) as HTMLOptionElement).disabled).toBe(false)
+    expect((screen.getByRole('option', { name: '리뷰 시작' }) as HTMLOptionElement).disabled).toBe(false)
+    expect((screen.getByRole('option', { name: '진행 시작' }) as HTMLOptionElement).disabled).toBe(false)
+  })
+
+  /** PACS-D6e. '키 형식 제약' 안내는 근거가 사라졌으므로 노출되지 않는다. */
+  it('PACS-D6e: 키 형식 제약 안내가 노출되지 않는다', () => {
+    renderSection({ transitions: separatorTransitions })
 
     expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PACS-K1 ~ PACS-K6: 출발 상태가 없는 전환 (GLOBAL·INITIAL)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — 출발 상태가 없는 전환 (GLOBAL·INITIAL)', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * V207 ⑨ 백필이 심는 INITIAL 1건 + GLOBAL 1건 + NORMAL 1건.
+   * INITIAL·GLOBAL 의 `key` 는 backend 게터 규칙대로 `KIND__to` 이고 `fromStateKey` 는 null 이다.
+   */
+  const kindTransitions: WorkflowTransitionView[] = [
+    { key: 'INITIAL__open', name: '이슈 생성', fromStateKey: null, toStateKey: 'open', id: txId(11), kind: 'INITIAL' },
+    { key: 'GLOBAL__done', name: '강제 완료', fromStateKey: null, toStateKey: 'done', id: txId(12), kind: 'GLOBAL' },
+    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress', id: txId(13), kind: 'NORMAL' },
+  ]
+
+  /**
+   * PACS-K1. 회귀 방지 핵심 — fromStateKey 가 null 이어도 섹션이 예외 없이 렌더된다.
+   * `t.fromStateKey.includes('__')` 가 null 에서 TypeError 를 던지던 결함의 재현 단언이다.
+   */
+  it('PACS-K1: fromStateKey 가 null 인 전환이 섞여도 예외 없이 렌더된다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '이슈 생성' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '강제 완료' })).toBeInTheDocument()
+  })
+
+  /**
+   * PACS-K2. 출발 상태가 없는 전환도 option value 는 응답의 `id` 다.
+   * 프론트가 `KIND__to` 합성 규칙을 두 번째로 구현하지 않는다 — 규칙이 두 벌이면 서로 썩는다.
+   */
+  it('PACS-K2: INITIAL option value 는 전환 id 다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    const opt = screen.getByRole('option', { name: '이슈 생성' }) as HTMLOptionElement
+    expect(opt.value).toBe(txId(11))
+  })
+
+  it('PACS-K3: GLOBAL option value 는 전환 id 다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    const opt = screen.getByRole('option', { name: '강제 완료' }) as HTMLOptionElement
+    expect(opt.value).toBe(txId(12))
+  })
+
+  /**
+   * PACS-K4. INITIAL·GLOBAL 은 선택 가능하다.
+   * backend `PostActionTransitionResolver` 가 `KIND_TOKENS` 로 두 종류를 전환 id 로 해석하므로
+   * 규칙을 붙일 수 있는 대상이다 — 막으면 그 경로가 UI 에서 도달 불가가 된다.
+   */
+  it('PACS-K4: INITIAL·GLOBAL option 은 disabled 가 아니다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    expect((screen.getByRole('option', { name: '이슈 생성' }) as HTMLOptionElement).disabled).toBe(false)
+    expect((screen.getByRole('option', { name: '강제 완료' }) as HTMLOptionElement).disabled).toBe(false)
+  })
+
+  /** PACS-K5. INITIAL·GLOBAL 만 있어도 '키 형식 제약' 안내가 잘못 뜨지 않는다. */
+  it('PACS-K5: INITIAL·GLOBAL 은 ambiguous 안내를 유발하지 않는다', () => {
+    renderSection({ transitions: kindTransitions })
+
+    expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * PACS-K6. 선택하면 그 전환 id 로 post-action 목록을 조회한다.
+   * backend 는 세그먼트가 UUID 로 파싱되면 `workflow_transitions.id` 로 해석한다.
+   */
+  it('PACS-K6: INITIAL 선택 시 전환 id 경로로 목록을 조회한다', async () => {
+    const requested: string[] = []
+    server.use(
+      http.get(
+        '/api/v1/workflows/:workflowKey/transitions/:transitionKey/post-actions',
+        ({ params }) => {
+          requested.push(String(params['transitionKey']))
+          return HttpResponse.json({ data: [] })
+        },
+      ),
+    )
+
+    renderSection({ transitions: kindTransitions })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: txId(11) } })
+
+    await waitFor(() => expect(requested).toContain(txId(11)))
   })
 })
 
@@ -801,7 +944,7 @@ describe('PostActionConfigSection — D7 configSummary 절단 표시', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
@@ -833,7 +976,7 @@ describe('PostActionConfigSection — D7 configSummary 절단 표시', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
@@ -863,7 +1006,7 @@ describe('PostActionConfigSection — D7 configSummary 절단 표시', () => {
     renderSection()
 
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
@@ -912,7 +1055,7 @@ describe('PostActionConfigSection — create onSubmit', () => {
 
     // 전환 선택
     const select = screen.getByRole('combobox')
-    fireEvent.change(select, { target: { value: TX_KEY } })
+    fireEvent.change(select, { target: { value: TX_REF } })
 
     // 추가 버튼 → dialog 열기
     fireEvent.click(screen.getByRole('button', { name: /Webhook 추가/ }))

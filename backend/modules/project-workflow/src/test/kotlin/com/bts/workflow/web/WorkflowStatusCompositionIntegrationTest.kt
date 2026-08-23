@@ -6,24 +6,38 @@ import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.WorkflowStatusCompositionService
+import com.bts.workflow.application.WorkflowStatusReferencedByTransitionException
 import com.bts.workflow.application.command.CreateWorkflowCommand
+import com.bts.workflow.application.command.TransitionDefinitionCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.exception.WorkflowStatusCompositionException
 import com.bts.workflow.domain.exception.WorkflowStatusInUseException
+import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import com.bts.workflow.status.repository.StatusRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.flywaydb.core.Flyway
+import org.hamcrest.Matchers.containsString
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -45,6 +59,20 @@ import java.util.UUID
  * ### 이슈가 쓰는 상태는 뺄 수 없다
  * 빼면 이슈가 「워크플로우에 없는 상태」에 남는다. 판정은 `IssueStatusUsagePort` 가 하고,
  * 그 어댑터는 `IssueTypeUsageAdapter` 와 같은 방식으로 다른 BC 테이블을 **읽기만** 한다.
+ *
+ * ### 전환이 가리키는 상태는 뺄 수 없다
+ * `workflow_transitions.from_status_id`·`to_status_id` 는 `ON DELETE CASCADE`(V207 ③)다. 편성을 떼면
+ * 그 전환이 **하드 삭제**되고 매달린 validator·post-action 까지 FK CASCADE 로 함께 사라진다 —
+ * 소프트 삭제도 감사 로그도 없어 되살릴 방법이 없다(`DATA.md §1.2`).
+ *
+ * 그래서 이 아래 두 테스트는 전환을 **실제로 심는다.** 전환이 0건이면 CASCADE 가 발화하지 않아
+ * 가드를 지워도 초록이다 — 그것이 이 파일의 종전 상태였다.
+ *
+ * ### 가드가 막았다는 사실이 HTTP 로도 전달돼야 한다
+ * 서비스가 예외를 던지는 것만으로는 화면이 아무것도 못 한다. 매핑이 없으면 그 예외는 advice 를
+ * 통과해 컨테이너까지 올라가 **500** 이 되고, 프론트는 「막힌 이유」와 「서버 고장」을 구별할 수 없다.
+ * 그래서 마지막 제거 가드 테스트는 계층을 건너뛰지 않고 컨트롤러 + advice 를 통과시켜
+ * **상태 코드와 본문**을 잰다.
  */
 @Testcontainers
 class WorkflowStatusCompositionIntegrationTest {
@@ -93,6 +121,7 @@ class WorkflowStatusCompositionIntegrationTest {
                 WorkflowStatusCompositionService(
                     WorkflowStatusCompositionRepository(dsl),
                     writeRepository,
+                    repository,
                     statusRepository,
                     IssueStatusUsageStub,
                     cache,
@@ -139,6 +168,30 @@ class WorkflowStatusCompositionIntegrationTest {
     }
 
     private val actor = UUID.randomUUID()
+
+    private lateinit var mockMvc: MockMvc
+
+    /**
+     * HTTP 계약을 재기 위한 최소 조립.
+     *
+     * 이 컨트롤러에 실제로 붙는 advice 는 [WorkflowStatusCompositionExceptionHandler] 하나뿐이다
+     * (`assignableTypes` 로 좁혀져 있다). 그러니 여기서도 그것만 등록한다 — 없는 advice 를 더 끼우면
+     * 배포와 다른 결과가 나온다.
+     */
+    @BeforeEach
+    fun setUpMockMvc() {
+        mockMvc =
+            MockMvcBuilders.standaloneSetup(WorkflowStatusCompositionController(service))
+                .setControllerAdvice(WorkflowStatusCompositionExceptionHandler())
+                .build()
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(actor.toString(), null, emptyList())
+    }
+
+    @AfterEach
+    fun clearSecurityContext() {
+        SecurityContextHolder.clearContext()
+    }
 
     private fun makeWorkflow(
         key: String,
@@ -247,6 +300,65 @@ class WorkflowStatusCompositionIntegrationTest {
         }
     }
 
+    // ── 제거 가드 · 전환 CASCADE (V207 ③) ─────────────────────────────────────
+
+    @Test
+    fun `전환이 출발지로 쓰는 상태는 뺄 수 없고 그 전환은 살아남는다`() {
+        val workflowId = makeWorkflow("compose-txn-from", "tf1", "tf2")
+        workflowService.createTransition(
+            actor,
+            "compose-txn-from",
+            TransitionDefinitionCommand(fromStatusKey = "tf1", toStatusKey = "tf2", name = "작업 시작", kind = "NORMAL"),
+        )
+
+        val thrown = catchThrowable { service.removeStatus(actor, "compose-txn-from", statusIdOf("tf1")) }
+
+        assertThat(transitionCount(workflowId))
+            .describedAs("from_status_id 의 ON DELETE CASCADE 가 전환을 하드 삭제하면 되살릴 방법이 없다")
+            .isEqualTo(1)
+        assertThat(thrown)
+            .describedAs("무엇이 막는지 알아야 다음 행동을 정한다 — 막은 전환 이름이 메시지에 있어야 한다")
+            .isInstanceOf(WorkflowStatusReferencedByTransitionException::class.java)
+            .hasMessageContaining("작업 시작")
+    }
+
+    @Test
+    fun `최초 전환이 도착지로 쓰는 상태는 뺄 수 없고 그 전환은 살아남는다`() {
+        val workflowId = makeWorkflow("compose-txn-initial", "ti1", "ti2")
+        workflowService.createTransition(
+            actor,
+            "compose-txn-initial",
+            TransitionDefinitionCommand(fromStatusKey = null, toStatusKey = "ti1", name = "이슈 생성", kind = "INITIAL"),
+        )
+
+        val thrown = catchThrowable { service.removeStatus(actor, "compose-txn-initial", statusIdOf("ti1")) }
+
+        assertThat(transitionCount(workflowId))
+            .describedAs("INITIAL 이 사라지면 WorkflowKeyResolverImpl 이 displayOrder 폴백으로 내려가 진입 상태가 조용히 바뀐다")
+            .isEqualTo(1)
+        assertThat(thrown)
+            .describedAs("출발지 없는 전환도 도착지로 편성을 가리킨다 — to_status_id 쪽 CASCADE 도 같이 막아야 한다")
+            .isInstanceOf(WorkflowStatusReferencedByTransitionException::class.java)
+            .hasMessageContaining("이슈 생성")
+    }
+
+    @Test
+    fun `전환이 가리키는 상태를 HTTP 로 빼려 하면 409 와 막은 전환 이름이 온다`() {
+        makeWorkflow("compose-txn-http", "th1", "th2")
+        workflowService.createTransition(
+            actor,
+            "compose-txn-http",
+            TransitionDefinitionCommand(fromStatusKey = "th1", toStatusKey = "th2", name = "검토 요청", kind = "NORMAL"),
+        )
+
+        mockMvc.perform(delete("/api/v1/workflows/compose-txn-http/statuses/${statusIdOf("th1")}"))
+            // 500 이 나가면 프론트는 「서버 고장」과 구별하지 못해 재시도 안내를 띄울 수 없다.
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_STATUS_REFERENCED_BY_TRANSITION"))
+            // 이름이 없으면 사용자는 편집기에서 어느 선을 먼저 지워야 할지 모른다.
+            .andExpect(jsonPath("$.error.message", containsString("검토 요청")))
+    }
+
     // ── 좌표는 이 PR 범위가 아니다 (C7) ────────────────────────────────────────
 
     @Test
@@ -262,6 +374,15 @@ class WorkflowStatusCompositionIntegrationTest {
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
+
+    /**
+     * 그 워크플로우에 남아 있는 전환 행 수.
+     *
+     * 읽기 경로(`WorkflowRepository`)가 아니라 **테이블을 직접 센다** — 재려는 것이 CASCADE 하드 삭제
+     * 그 자체이고, 읽기 경로는 상태가 사라지면 전환도 함께 감춰 손실을 숨긴다.
+     */
+    private fun transitionCount(workflowId: UUID): Int =
+        dsl.fetchCount(WORKFLOW_TRANSITIONS, WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
 
     private fun setLayout(
         workflowKey: String,

@@ -93,8 +93,19 @@ async function throwPostActionApiError(res: Response): Promise<never> {
 
 /**
  * 경로 베이스 빌더.
+ *
+ * ### 전환 세그먼트는 전환 id 가 정본이고 합성 키는 하위호환 폴백이다
+ * backend `PostActionAdminService` 는 세그먼트가 UUID 형태로 파싱되면 `workflow_transitions.id`
+ * 로 읽고(1급 식별자 · ADR 2026-08-18 §D1), 아니면 `__` 로 갈라 종전 `fromStateKey__toStateKey`
+ * 합성 키로 읽는다. 두 갈래는 합성 키가 반드시 `__` 를 품으므로 겹치지 않는다.
+ *
+ * ★ 합성 키로 부르면 **다건일 때 404** 다. V207 ① 이 `UNIQUE(workflow_id, from_state_id,
+ * to_state_id)` 를 풀어 같은 (from, to) 구간에 전환을 여럿 둘 수 있게 됐고, backend 는 그 이름으로
+ * 대상을 특정할 수 없다고 보고 거절한다(0건도 404 · `__` 조각이 2개가 아닌 형식 오류도 404).
+ * 그래서 새 호출자는 전환 id 를 넘긴다 — 화면(PostActionConfigSection)이 이미 그렇게 한다.
+ *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 형태의 합성 키 (호출자가 조합)
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백
  */
 function basePath(workflowKey: string, transitionKey: string): string {
   return `/api/v1/workflows/${workflowKey}/transitions/${transitionKey}/post-actions`
@@ -110,7 +121,7 @@ function basePath(workflowKey: string, transitionKey: string): string {
  * → 200 → { data: PostActionResponse[] }
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  * @throws PostActionApiError  비-2xx 응답 시
  */
 export async function listPostActions(
@@ -131,7 +142,7 @@ export async function listPostActions(
  * → 201 → { data: PostActionResponse }
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  * @param body  PostActionRequest (type, config, displayOrder)
  * @throws PostActionApiError  비-2xx 응답 시
  */
@@ -154,7 +165,7 @@ export async function createPostAction(
  * → 200 → { data: PostActionResponse }
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  * @param id  수정할 post-action UUID
  * @param body  PostActionRequest
  * @throws PostActionApiError  비-2xx 응답 시
@@ -182,7 +193,7 @@ export async function updatePostAction(
  * → 204 (빈 바디)
  *
  * @param workflowKey  워크플로우 키
- * @param transitionKey  `fromStateKey__toStateKey` 합성 키
+ * @param transitionKey  전환 지목값 — 전환 id(UUID) 가 정본, `fromStateKey__toStateKey` 합성 키는 하위호환 폴백(다건이면 404)
  * @param id  삭제할 post-action UUID
  * @throws PostActionApiError  비-2xx 응답 시
  */

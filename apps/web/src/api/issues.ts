@@ -224,6 +224,15 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
  *
  * - `toCategory`: 목표 상태 카테고리 (B12). "DONE" 이면 종료 전환.
  *   백엔드가 DONE 전환에만 값을 채우고 나머지는 null 반환할 수 있으므로 nullable.
+ *
+ * ### `transitionId`·`kind` 를 required 로 올리지 마라 (ADR 2026-08-18)
+ * backend `TransitionItem` 이 두 필드를 **`UUID?`·`String?`** 로 선언한다 —
+ * 실 API 응답은 항상 채워지지만 계약상 nullable 이다. 클라이언트를 서버 계약보다 엄격하게
+ * 만들면 「서버가 보낸 정상 응답을 클라이언트가 거부」하는 경로가 생긴다.
+ * `optional()` 은 그 위에 하나 더 얹은 방어다 — 이 스키마를 소비하는 인라인 목이 저장소에
+ * 산재해 있어(`grep -rln "fromStateKey" apps/web/src`) required 로 올리면 그 전부가 동시에
+ * `z.parse` 실패로 깨진다 (learnings 2026-05-30 · PR #46 이 정확히 그 사고다).
+ * 형제 필드 `toCategory` 가 같은 이유로 같은 모양이다.
  */
 export const issueTransitionSchema = z.object({
   key: z.string().min(1),
@@ -232,10 +241,80 @@ export const issueTransitionSchema = z.object({
   toStateKey: z.string().min(1),
   /** 목표 상태 카테고리 (B12). "DONE"이면 종료 전환. */
   toCategory: z.string().nullable().optional(),
+  /**
+   * 전환의 1급 식별자 (`workflow_transitions.id`).
+   *
+   * `UNIQUE(workflow_id, from, to)` 해제로 같은 상태쌍에 이름만 다른 전환이 여럿 있을 수 있어
+   * `key`(`from__to`)로는 전환을 지목할 수 없다. 409 `AMBIGUOUS_TRANSITION` 재요청은 이 값을
+   * `POST /api/v1/issues/{key}/transition` 의 `transitionId` 에 되실어 보내는 왕복이다.
+   */
+  transitionId: z.string().uuid().nullable().optional(),
+  /**
+   * 전환 종류. `"NORMAL"`(출발 상태 지정) · `"GLOBAL"`(어느 상태에서나).
+   * `"INITIAL"`(이슈 생성 진입 전용)은 이 목록에 나오지 않는다.
+   *
+   * `z.enum` 으로 좁히지 않는다 — backend 가 `String?` 로 보내므로 종류가 늘어난 순간
+   * 목록 전체가 파싱 실패로 사라진다(전환 버튼이 통째로 증발하는 형태의 회귀).
+   */
+  kind: z.string().min(1).nullable().optional(),
 })
 
 /** 이슈 전환 항목 타입 */
 export type IssueTransition = z.infer<typeof issueTransitionSchema>
+
+/**
+ * 409 `AMBIGUOUS_TRANSITION` 응답이 돌려주는 전환 후보 1건 Zod 스키마.
+ * backend `TransitionCandidate`(전환 UUID + 표시 라벨) 와 1:1.
+ */
+const ambiguousTransitionCandidateSchema = z.object({
+  transitionId: z.string().uuid(),
+  name: z.string().min(1),
+})
+
+/**
+ * 409 `AMBIGUOUS_TRANSITION` 응답 본문 Zod 스키마.
+ * backend `AmbiguousTransitionErrorResponse` 직렬화 형태와 1:1 —
+ * 표준 `{ error: { code, message } }` 위에 최상위 `candidates` 를 덧붙인 모양이다.
+ */
+const ambiguousTransitionErrorSchema = z.object({
+  error: z.object({
+    code: z.literal('AMBIGUOUS_TRANSITION'),
+    message: z.string().min(1),
+  }),
+  candidates: z.array(ambiguousTransitionCandidateSchema).min(1),
+})
+
+/** 모호 전환 후보 1건 타입 */
+export type AmbiguousTransitionCandidate = z.infer<typeof ambiguousTransitionCandidateSchema>
+
+/** 모호 전환 409 응답 타입 */
+export type AmbiguousTransitionErrorBody = z.infer<typeof ambiguousTransitionErrorSchema>
+
+/** 후보 선택 UI 가 쓰는 모호 전환 정보 — 안내 문구 + 후보 전량. */
+export interface AmbiguousTransition {
+  /** 서버가 만든 안내 문구. 후보 개수가 문구에 들어 있어 클라이언트가 다시 조립하지 않는다. */
+  readonly message: string
+  /** 사용자가 지목할 수 있는 전환 후보 전량. 서버가 준 순서를 보존한다. */
+  readonly candidates: AmbiguousTransitionCandidate[]
+}
+
+/**
+ * 전환 실행 에러가 409 `AMBIGUOUS_TRANSITION` 인지 판정하고 후보를 뽑는다.
+ *
+ * ★에러 코드 → 화면 분기 매핑을 화면마다 인라인으로 만들지 마라. 같은 409 에
+ * `VERSION_CONFLICT`·`TRANSITION_NOT_ALLOWED` 가 함께 오므로, 판별을 복제하면 화면마다
+ * 조금씩 다른 규칙이 생겨 raw 코드가 새는 가짜 그린이 난다 (learnings PR #106).
+ * 판정은 이 함수 하나만 쓴다.
+ *
+ * @param error `transitionIssue` 가 던진 값. `ApiError` 가 아니어도 안전하게 받는다.
+ * @returns 모호 전환이면 안내 문구 + 후보 전량, 아니면 null
+ */
+export function parseAmbiguousTransitionError(error: unknown): AmbiguousTransition | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const parsed = ambiguousTransitionErrorSchema.safeParse(error.body)
+  if (!parsed.success) return null
+  return { message: parsed.data.error.message, candidates: parsed.data.candidates }
+}
 
 /**
  * 일괄 가용 전환 조회 응답 Zod 스키마.
@@ -254,6 +333,14 @@ export interface TransitionIssueInput {
   expectedVersion: number
   /** 종료(DONE) 전환 시 선택된 결의안 UUID (B9). 비DONE 전환 시 미전달. */
   resolutionId?: string
+  /**
+   * 실행할 전환의 1급 식별자 (ADR 2026-08-18 §D3).
+   *
+   * 미전달이면 서버가 `toStatusKey` 로 후보를 찾아 **정확히 1개일 때만** 실행하고,
+   * 2개 이상이면 409 `AMBIGUOUS_TRANSITION` + 후보 목록을 돌려준다. 그 후보 하나의
+   * `transitionId` 를 여기에 실어 재요청하는 것이 왕복의 두 번째 절반이다.
+   */
+  transitionId?: string
 }
 
 /** 이슈 단건 응답 타입 */
@@ -673,11 +760,15 @@ export async function fetchIssueTransitions(key: string): Promise<IssueTransitio
  * 성공 200 시 변경된 IssueResponse를 반환한다.
  * 낙관적 잠금(OCC) 충돌 시 ApiError(409)를 throw한다.
  *
+ * 409 는 세 가지가 섞여 온다 — 낙관적 잠금 충돌(`VERSION_CONFLICT`) · 전환 불허
+ * (`TRANSITION_NOT_ALLOWED`) · 모호 전환(`AMBIGUOUS_TRANSITION`). 마지막 것만
+ * {@link parseAmbiguousTransitionError} 로 갈라 후보 선택 UI 로 넘긴다.
+ *
  * @param key 전환할 이슈 식별 키
- * @param input toStatusKey(목표 상태키) · expectedVersion(현재 버전, OCC용)
+ * @param input toStatusKey(목표 상태키) · expectedVersion(현재 버전, OCC용) · transitionId(후보 지목)
  * @returns 전환 완료된 IssueResponse — currentStateKey와 version이 갱신된 상태
  * @throws ApiError(404) 이슈가 없을 때
- * @throws ApiError(409) 낙관적 잠금 충돌 또는 전환 불허 시
+ * @throws ApiError(409) 낙관적 잠금 충돌 · 전환 불허 · 모호 전환 시
  * @throws ApiError(422) 유효하지 않은 전환 요청 시
  */
 export async function transitionIssue(key: string, input: TransitionIssueInput): Promise<IssueResponse> {

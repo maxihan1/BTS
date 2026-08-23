@@ -2,7 +2,12 @@
 /* eslint-disable react-refresh/only-export-components -- generateMermaidCode/categoryToClass는 단위 테스트용 named export (spec FR-1 명시) */
 import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { WorkflowView, WorkflowStateView, StateCategory } from './workflow.types'
+import type {
+  WorkflowView,
+  WorkflowStateView,
+  WorkflowTransitionView,
+  StateCategory,
+} from './workflow.types'
 
 // --- 카테고리 → mermaid classDef 이름 매핑 ---
 
@@ -33,14 +38,91 @@ export function categoryToClass(category: StateCategory): string {
   }
 }
 
+// --- 출발 상태가 없는 전환(GLOBAL) 의사 노드 ---
+
+/**
+ * GLOBAL 전환의 출발 자리를 대신하는 의사 노드 id.
+ * mermaid 노드 id 는 영문만 쓴다 (EC-5 — 한글/특수문자 key 는 직렬화가 불안정하다).
+ */
+const GLOBAL_SOURCE_NODE_ID = 'any_state'
+
+/** GLOBAL 의사 노드의 표시 라벨 — 「어느 상태에서나 쓸 수 있다」는 뜻을 그대로 적는다 */
+const GLOBAL_SOURCE_NODE_LABEL = '어디서나'
+
 // --- mermaid 코드 생성 helper ---
+
+/**
+ * 전환 1건을 mermaid 엣지 한 줄로 옮긴다.
+ *
+ * 종류마다 출발 자리가 다르다 — `fromStateKey` 는 GLOBAL·INITIAL 에서 null 이라
+ * 그대로 문자열 보간하면 `null` 이라는 이름의 상태 노드가 다이어그램에 생긴다.
+ * - NORMAL. `from --> to` — 출발 상태가 있다.
+ * - INITIAL. `[*] --> to` — 이슈 생성 진입이므로 mermaid 표준 시작 표기를 쓴다.
+ *   ADR 근거 — Jira Cloud 도 다이어그램에 별도의 Create 노드를 그려 이 둘을 나눈다.
+ * - GLOBAL. `any_state --> to` — 어느 상태에서나 쓸 수 있다는 뜻의 공용 의사 노드에서 출발한다.
+ *   mermaid 에 「모든 상태」를 뜻하는 표준 표기가 없어 라벨 붙인 노드로 대신한다.
+ *
+ * @param transition 전환 view 모델
+ * @returns mermaid 엣지 한 줄 (들여쓰기 포함)
+ */
+function transitionLine(transition: WorkflowTransitionView): string {
+  return `  ${transitionSourceNode(transition)} --> ${transition.toStateKey} : ${transition.name}`
+}
+
+/**
+ * 전환의 출발 자리에 찍을 mermaid 노드 id 를 고른다.
+ * `default` 의 never 가드로 [TransitionKind] 확장 시 컴파일 에러를 유도한다.
+ *
+ * @param transition 전환 view 모델
+ * @returns 출발 노드 id (`[*]` · 의사 노드 id · 상태 키)
+ */
+function transitionSourceNode(transition: WorkflowTransitionView): string {
+  switch (transition.kind) {
+    case 'INITIAL':
+      return '[*]'
+    case 'GLOBAL':
+      return GLOBAL_SOURCE_NODE_ID
+    case 'NORMAL':
+      // NORMAL 은 출발 상태가 필수지만 스키마상 nullable 이라 명시적 null 체크로 좁힌다.
+      // 계약 위반 데이터가 오면 문자열 'null' 대신 시작 표기로 떨어뜨려 정체불명 노드를 막는다.
+      return transition.fromStateKey ?? '[*]'
+    default: {
+      const _exhaustive: never = transition.kind
+      return _exhaustive
+    }
+  }
+}
+
+/**
+ * INITIAL 전환이 없는 워크플로우를 위해 시작 엣지 `[*] --> firstState` 를 합성한다.
+ *
+ * INITIAL 이 데이터로 오면 **그것이 시작 엣지의 정본**이므로 합성하지 않는다. 합성은 INITIAL 이
+ * 없던 시절의 대역이었고, 둘을 함께 찍으면 시작 화살표가 겹쳐 보인다.
+ *
+ * @param states 워크플로우 상태 목록 (비어 있지 않다고 가정)
+ * @param transitions 워크플로우 전환 목록
+ * @returns 합성한 시작 엣지 1줄, 합성이 필요 없으면 빈 배열
+ */
+function syntheticStartLines(
+  states: WorkflowStateView[],
+  transitions: WorkflowTransitionView[],
+): string[] {
+  if (transitions.some((t) => t.kind === 'INITIAL')) {
+    return []
+  }
+  // noUncheckedIndexedAccess 대응으로 undefined 가드
+  const sortedByOrder = [...states].sort((a, b) => a.displayOrder - b.displayOrder)
+  const firstState: WorkflowStateView | undefined = sortedByOrder[0]
+  return firstState === undefined ? [] : [`  [*] --> ${firstState.key}`]
+}
 
 /**
  * WorkflowView 데이터로부터 mermaid stateDiagram-v2 코드 문자열을 생성한다.
  *
  * 노드 ID = WorkflowStateView.key (영문만 사용 — EC-5: 한글/특수문자 key는 mermaid 직렬화 불안정).
  * 표시 라벨 = WorkflowStateView.name (한글 허용 — mermaid 전환 라벨은 따옴표 없이도 처리).
- * displayOrder 최솟값 state → 시작 [*], category === 'DONE' state → 종료 [*].
+ * 시작 [*] 는 INITIAL 전환이 있으면 그것으로, 없으면 displayOrder 최솟값 state 로 합성한다.
+ * category === 'DONE' state → 종료 [*].
  *
  * @param workflow WorkflowView — states + transitions
  * @returns mermaid stateDiagram-v2 코드 문자열. states가 비어있으면 빈 문자열 반환.
@@ -54,17 +136,16 @@ export function generateMermaidCode(workflow: WorkflowView): string {
 
   const lines: string[] = ['stateDiagram-v2']
 
-  // 시작 노드: displayOrder가 가장 낮은 state — noUncheckedIndexedAccess 대응으로 undefined 가드
-  const sortedByOrder = [...states].sort((a, b) => a.displayOrder - b.displayOrder)
-  const initialState: WorkflowStateView | undefined = sortedByOrder[0]
-  if (initialState !== undefined) {
-    lines.push(`  [*] --> ${initialState.key}`)
+  // GLOBAL 의사 노드 선언 — 엣지보다 먼저 한 번만 낸다 (중복 선언 시 mermaid 파서가 흔들린다)
+  if (transitions.some((t) => t.kind === 'GLOBAL')) {
+    lines.push(`  state "${GLOBAL_SOURCE_NODE_LABEL}" as ${GLOBAL_SOURCE_NODE_ID}`)
   }
 
-  // 전환 라인 — "from --> to : label"
-  // mermaid stateDiagram-v2 에서 라벨이 있는 전환: "from --> to : label"
+  lines.push(...syntheticStartLines(states, transitions))
+
+  // 전환 라인 — "from --> to : label" (출발 자리는 종류마다 다르다 — transitionSourceNode 참조)
   for (const transition of transitions) {
-    lines.push(`  ${transition.fromStateKey} --> ${transition.toStateKey} : ${transition.name}`)
+    lines.push(transitionLine(transition))
   }
 
   // 종료 노드: DONE 카테고리의 state

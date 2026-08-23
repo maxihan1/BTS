@@ -581,6 +581,54 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             }
         }
 
+        context("S9 — 요청의 transitionId 를 shared-kernel TransitionRequest 로 넘긴다") {
+            val targetTransitionId = UUID.fromString("66666666-6666-4666-8666-666666666666")
+            val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
+            val updatedResponse = makeResponse(state = "IN_PROGRESS", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("transitionId 가 지정되면 workflowPort.plan 에 그대로 실려야 한다") {
+                val request =
+                    TransitionIssueRequest(
+                        toStateKey = "IN_PROGRESS",
+                        expectedVersion = existingVersion,
+                        transitionId = targetTransitionId,
+                    )
+                sut.transitionIssue(actor, issueKey, request)
+                verify {
+                    workflowPort.plan(match { req -> req.transitionId == targetTransitionId })
+                }
+            }
+
+            it("transitionId 를 안 주면 null 로 넘겨 (from,to) 후보 탐색 경로를 유지한다") {
+                sut.transitionIssue(
+                    actor,
+                    issueKey,
+                    TransitionIssueRequest(toStateKey = "IN_PROGRESS", expectedVersion = existingVersion),
+                )
+                verify {
+                    workflowPort.plan(match { req -> req.transitionId == null })
+                }
+            }
+        }
+
         context("T3 — transitionEventPublisher null (기존 단위 테스트 호환)") {
             val sutNoPublisher =
                 IssueApplicationService(

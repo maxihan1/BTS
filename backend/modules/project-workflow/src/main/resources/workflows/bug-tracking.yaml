@@ -1,4 +1,4 @@
-# 버그 추적 워크플로우 (5 상태 + 5 전환) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
+# 버그 추적 워크플로우 (5 상태 + 6 전환 — 최초 전환 1 포함) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
 key: bug-tracking
 name: 버그 추적 워크플로우
 description: "Reported → Triaged → In Progress → Resolved → Closed 흐름의 버그 추적 워크플로우"
@@ -9,6 +9,10 @@ states:
   - { key: resolved, name: Resolved, category: DONE, displayOrder: 4 }
   - { key: closed, name: Closed, category: DONE, displayOrder: 5 }
 transitions:
+  # 이슈 생성 진입 전용 전환(kind: INITIAL) — 출발 상태가 없어 from 을 적지 않는다.
+  # 도착지는 displayOrder 가 가장 작은 상태다. V207 ⑨ 백필이 기존 DB 에 심은 것과 같은 선택이라
+  # 빈 DB 로 올린 사이트와 기존 사이트의 이슈 생성 진입 상태가 갈리지 않는다.
+  - { kind: INITIAL, to: reported, name: "이슈 생성" }
   - { from: reported, to: triaged, name: Triage }
   - { from: triaged, to: in_progress, name: Start Fix }
   - from: in_progress

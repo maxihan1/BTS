@@ -10,10 +10,13 @@ import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.dto.TransitionContext
+import com.bts.workflow.domain.exception.AmbiguousTransitionException
+import com.bts.workflow.domain.exception.TransitionCandidate
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.expression.DefaultActorView
@@ -26,6 +29,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 // ──────────────────────────────────────────────────────────────────────── //
 // SPI factory / repository 인터페이스 — 실제 구현은 후속 task 에서 등록      //
@@ -132,12 +136,22 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
  * 반환된 [TransitionPlan] 을 호출자 ([com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter]) 가
  * [com.bts.shared.workflow.TransitionResult] 로 래핑하여 상위 BC 에 전달한다.
  *
+ * ## `@Suppress("TooManyFunctions")` 근거 (FR-WF-05)
+ *
+ * 전환 identity 가 (from,to) 2튜플에서 전환 ID 로 바뀌면서 해석 경로가 `resolveById`(지목) 와
+ * `ambiguousTransition`(모호 판정) 둘로 갈렸고 클래스 함수가 detekt 임계값 11 에 닿았다.
+ * **인라인은 실측으로 기각했다** — `resolveById` 를 [resolveTransition] 안으로 접으면 그 함수의
+ * `throw` 가 3개가 되어 `ThrowsCount`(상한 2) 를 대신 위반한다. 즉 규칙이 요구하는 모양이 지금 구조다.
+ * 정본 처방은 전환 해석을 `TransitionResolver` 로 떼는 것이고 **다음 PR 의 몫**이다 — 이 PR 의 파일
+ * 범위(Task 6)에 새 파일이 없다. 전역 임계값은 건드리지 않는다.
+ *
  * @param cache 워크플로우 메모리 캐시
  * @param validatorFactory Validator 인스턴스 팩토리
  * @param postActionFactory PostAction 인스턴스 팩토리
  * @param definitionRepo 전환별 Validator/PostAction 설정 조회 repository
  */
 @Service
+@Suppress("TooManyFunctions")
 class WorkflowEngine(
     private val cache: WorkflowCache,
     private val validatorFactory: WorkflowValidatorFactory,
@@ -184,6 +198,11 @@ class WorkflowEngine(
      * PostAction 은 절대 실행하지 않는다. GET 읽기 경로이므로 부수 효과 없음.
      * 반드시 활성 읽기 전용 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY], readOnly=true).
      *
+     * 각 뷰에는 전환 1급 식별자([AvailableTransitionView.transitionId])와 종류 문자열
+     * ([AvailableTransitionView.kind]), 하위호환 키([AvailableTransitionView.key])가 실린다.
+     * 모호 전환 409 응답의 후보 중 하나를 클라이언트가 지목 실행하려면 그 id 가 열거 응답에 있어야 한다.
+     * 하위호환 키는 도메인 게터 결과를 그대로 넘긴다 — 호출자 BC 가 규칙을 다시 구현하지 않게 하기 위함이다.
+     *
      * @param req 가용 전환 열거 요청 DTO
      * @return [AvailableTransitionsResult.Success] 또는 [AvailableTransitionsResult.WorkflowNotFound]
      */
@@ -205,16 +224,27 @@ class WorkflowEngine(
                     return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
                 }
 
-        val candidates = workflow.transitions.filter { it.fromStateKey == req.fromStateKey }
+        val candidates = candidatesFor(workflow, req.fromStateKey)
         val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
 
         return AvailableTransitionsResult.Success(
             passed.map { transition ->
                 AvailableTransitionView(
-                    fromStateKey = transition.fromStateKey,
+                    // GLOBAL 전환은 fromStateKey 가 null 이므로 요청한 현재 상태로 채운다.
+                    fromStateKey = transition.fromStateKey ?: req.fromStateKey,
                     toStateKey = transition.toStateKey,
                     name = transition.name,
                     toCategory = workflow.states.find { it.key == transition.toStateKey }?.category?.name,
+                    // 409 AMBIGUOUS_TRANSITION 재요청은 후보 id 를 되실어 보내는 왕복이다 —
+                    // 열거 응답에 id 가 없으면 그 왕복이 API 로 성립하지 않는다 (ADR 2026-08-18 §D3).
+                    transitionId = transition.id,
+                    // BC 격리 — 내부 enum [TransitionKind] 를 그대로 내보내지 않고 이름 문자열로 파생시킨다.
+                    // 리터럴을 손으로 쓰면 enum 값이 늘 때 조용히 썩는다.
+                    kind = transition.kind.name,
+                    // 하위호환 key 의 정본은 도메인 게터 [WorkflowTransition.key] 하나뿐이다.
+                    // 위에서 채운 fromStateKey 로 호출자가 재조립하면 GLOBAL 전환(`KIND__to`)에서
+                    // 도메인과 이름이 갈리므로, 게터 결과를 손대지 않고 그대로 실어 보낸다.
+                    key = transition.key,
                 )
             },
         )
@@ -227,18 +257,144 @@ class WorkflowEngine(
             ?: throw WorkflowNotFoundException(req.workflowKey)
 
     /**
-     * transition identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
+     * 실행할 전환 하나를 확정한다.
+     *
+     * 전환의 1급 식별자는 `workflow_transitions.id` 다 —
+     * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D3.
+     * (구 ADR `2026-05-28-workflow-transition-identity-policy` 의 「identity = (from, to)」 정책은
+     * 그 ADR 이 대체했다. 같은 상태쌍에 이름만 다른 전환을 여럿 둘 수 있게 되어 2튜플로는 못 가른다.)
+     *
+     * 1. **먼저 후보를 만든다** — [candidatesFor] 로 얻은 목록을 [TransitionRequest.toStateKey] 로 좁힌다.
+     *    **열거(버튼 목록)와 실행(클릭)이 같은 함수를 쓴다** — 두 벌로 두면 「목록에는 보이는데
+     *    눌러도 안 되는 버튼」이 생긴다. INITIAL 제외도 그 함수가 이미 처리한다.
+     * 2. [TransitionRequest.transitionId] 가 오면 **그 후보 목록 안에서** 지목한다 ([resolveById]).
+     *    지목은 후보를 **좁히는** 수단이지 후보 판정을 **건너뛰는** 수단이 아니다 — 순서를 뒤집어
+     *    지목을 먼저 처리하면 위 규칙 전부가 지목 경로에서만 무력화된다.
+     * 3. 후보 0개 — 종전과 같은 [WorkflowNotFoundException] (spec FR-WF-05 E11 → 404).
+     * 4. 후보 1개 — 종전과 완전히 같은 실행 (spec S5). 보드 드래그앤드롭·슬랙 완료 모달이
+     *    `transitionId` 없이 호출해도 그대로 산다 — 이 경로가 그 두 BC 의 하위호환 계약이다.
+     * 5. 후보 2개 이상 — [AmbiguousTransitionException] (spec S4 · E12 → 409).
+     *    조용히 첫 번째를 고르지 않는다. 어느 쪽 규칙이 도는지 호출자가 알 수 없기 때문이다.
+     *
+     * 409 왕복은 이 순서로도 깨지지 않는다. 409 가 실어 보낸 후보는 바로 이 목록에서 나왔으므로,
+     * 되실어 온 id 는 언제나 같은 목록 안에 있다.
+     *
+     * @param req 전환 요청
+     * @param workflow 해석 대상 워크플로우 정의
+     * @throws WorkflowNotFoundException 지목한 전환이 후보가 아니거나 후보가 0개일 때
+     * @throws AmbiguousTransitionException 후보가 2개 이상인데 지목이 없을 때
      */
     private fun resolveTransition(
         req: TransitionRequest,
         workflow: Workflow,
+    ): WorkflowTransition {
+        val candidates =
+            candidatesFor(workflow, req.fromStateKey).filter { it.toStateKey == req.toStateKey }
+        req.transitionId?.let { return resolveById(req, candidates, it) }
+
+        return when (candidates.size) {
+            0 ->
+                throw WorkflowNotFoundException(
+                    "${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}",
+                )
+            1 -> candidates.first()
+            else -> throw ambiguousTransition(req, candidates)
+        }
+    }
+
+    /**
+     * 전환 ID 로 전환을 지목한다 — **[candidates] 안에서만 찾는다.**
+     *
+     * 이 함수는 후보 판정 규칙을 **한 줄도 다시 적지 않는다.** 판정은 전부 [candidatesFor] 와
+     * [resolveTransition] 의 도착지 필터가 이미 끝냈고, 여기서는 그 결과 목록을 좁히기만 한다.
+     * 규칙을 여기 다시 적으면 같은 규칙이 두 벌이 되어 한쪽만 늙는다.
+     *
+     * 이 목록에 없으면 아래가 전부 거부된다 — 어느 것도 통과시키면 안 된다.
+     * - 남의 워크플로우 전환 ID (spec FR-WF-05 E9)
+     * - 출발 상태가 다른 [TransitionKind.NORMAL] 전환
+     * - 도착지가 현재 상태인 [TransitionKind.GLOBAL] 자기 전환 (열거에서도 빠지는 조합이다)
+     * - 이슈 생성 진입 전용인 [TransitionKind.INITIAL] 전환
+     * - 요청이 선언한 [TransitionRequest.toStateKey] 와 도착지가 다른 전환.
+     *   호출자는 [TransitionPlan.toStateKey] 를 그대로 영속하므로, 통과시키면 이슈가 요청이
+     *   선언하지 않은 상태로 간다.
+     *
+     * 다섯 경우가 **모두 같은 [WorkflowNotFoundException]** 인 것은 의도다 — 응답을 갈라 두면
+     * 「그 전환 ID 가 이 워크플로우에 있는가」를 되묻는 oracle 이 된다. 어느 경우였는지는 로그로만 남긴다.
+     *
+     * @param req 전환 요청 (오류 메시지·로그의 맥락 출처)
+     * @param candidates [resolveTransition] 이 산출한 실행 가능 후보 전량
+     * @param transitionId 지목된 전환 1급 식별자
+     * @throws WorkflowNotFoundException 그 ID 가 후보 목록에 없을 때
+     */
+    private fun resolveById(
+        req: TransitionRequest,
+        candidates: List<WorkflowTransition>,
+        transitionId: UUID,
     ): WorkflowTransition =
-        workflow.transitions.find {
-            it.fromStateKey == req.fromStateKey &&
-                it.toStateKey == req.toStateKey
-        } ?: throw WorkflowNotFoundException(
-            "${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}",
+        candidates.find { it.id == transitionId }
+            ?: run {
+                log.info(
+                    "WorkflowEngine.plan: transitionId not a candidate workflowKey={} {}->{} id={} candidates={}",
+                    req.workflowKey,
+                    req.fromStateKey,
+                    req.toStateKey,
+                    transitionId,
+                    candidates.map { it.id },
+                )
+                throw WorkflowNotFoundException("${req.workflowKey}::transition::$transitionId")
+            }
+
+    /**
+     * 모호 전환 예외를 만든다 — 후보 전량을 실어 호출자가 그대로 되쏠 수 있게 한다.
+     *
+     * 이 예외를 catch 해 폴백하지 마라. [plan] 이 [Propagation.MANDATORY] 라 호출자의 공유 트랜잭션이
+     * rollback-only 로 마킹되고, 삼키고 진행하면 커밋 시점에 `UnexpectedRollbackException` 500 이 된다.
+     *
+     * @param req 전환 요청
+     * @param candidates 조건을 만족한 전환 후보 전량
+     */
+    private fun ambiguousTransition(
+        req: TransitionRequest,
+        candidates: List<WorkflowTransition>,
+    ): AmbiguousTransitionException {
+        log.info(
+            "WorkflowEngine.plan: ambiguous transition workflowKey={} {}->{} candidateIds={}",
+            req.workflowKey,
+            req.fromStateKey,
+            req.toStateKey,
+            candidates.map { it.id },
         )
+        return AmbiguousTransitionException(
+            req.workflowKey,
+            candidates.map { TransitionCandidate(it.id, it.name) },
+        )
+    }
+
+    /**
+     * 현재 상태에서 쓸 수 있는 전환 후보를 전환 종류별 규칙으로 골라낸다.
+     *
+     * - [TransitionKind.NORMAL] — 출발 상태가 [fromStateKey] 와 같을 때만 후보다.
+     * - [TransitionKind.GLOBAL] — 현재 상태와 무관하게 항상 후보다. 단 도착지가 [fromStateKey] 와 같으면
+     *   자기 자신으로 가는 전환이므로 제외한다 (spec 2026-08-20-backend-workflow-transition-id-multi-global E1).
+     * - [TransitionKind.INITIAL] — 이슈 생성 진입에만 쓰이며 전환 후보가 아니다.
+     *
+     * 열거 경로([availableTransitions])와 실행 경로([resolveTransition])의 후보 산출이 갈라지면
+     * 「목록에는 보이는데 실행은 안 되는」 전환이 생긴다. 두 경로 모두 이 함수를 거쳐야 한다.
+     *
+     * @param workflow 후보를 고를 대상 워크플로우 정의
+     * @param fromStateKey 이슈의 현재 상태 키
+     */
+    private fun candidatesFor(
+        workflow: Workflow,
+        fromStateKey: String,
+    ): List<WorkflowTransition> =
+        workflow.transitions.filter { transition ->
+            when (transition.kind) {
+                TransitionKind.NORMAL -> transition.fromStateKey == fromStateKey
+                TransitionKind.GLOBAL -> transition.toStateKey != fromStateKey
+                TransitionKind.INITIAL -> false
+            }
+        }
 
     private fun buildContext(
         req: TransitionRequest,

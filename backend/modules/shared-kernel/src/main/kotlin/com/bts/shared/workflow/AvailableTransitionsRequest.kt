@@ -22,8 +22,10 @@ private val availableTransitionsRequestValidation: Validation<AvailableTransitio
  * 호출자 BC(바운디드 컨텍스트 — 책임 범위로 나눈 도메인 단위, 예: issue-tracking)가
  * project-workflow 에 특정 상태에서 이동 가능한 전환 목록을 요청할 때 이 DTO 를 구성해 전달한다.
  *
- * 전환 동일성 식별 정책. (fromStateKey, toStateKey) 합성 기반 매칭 —
- * ADR 2026-05-28-workflow-transition-identity-policy 참조.
+ * 전환의 1급 식별자는 `workflow_transitions.id` 다 —
+ * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D3 참조.
+ * (구 ADR `2026-05-28-workflow-transition-identity-policy` 의 「identity = (from, to)」 정책은
+ * 그 ADR 이 대체했다. 같은 상태쌍에 이름만 다른 전환을 여럿 둘 수 있게 되어 2튜플로는 못 가른다.)
  *
  * @param workflowKey 적용할 워크플로우의 고유 키. 예: "DEFAULT", "BUGFIX".
  * @param fromStateKey 현재 이슈 상태 키. 예: "TODO".

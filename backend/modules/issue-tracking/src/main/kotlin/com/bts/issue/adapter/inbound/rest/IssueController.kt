@@ -422,6 +422,13 @@ class IssueController(
      * 워크플로우 정의에 허용된 전환이 아닌 경우 409 Transition Not Allowed.
      * 프로젝트에 기본 워크플로우 스킴이 없는 경우 422 Workflow Not Configured.
      *
+     * ### 모호 전환 왕복
+     * `toStatusKey` 만으로 후보가 2개 이상이면 409 `AMBIGUOUS_TRANSITION` + 후보 목록이 나간다.
+     * 클라이언트는 후보 하나의 `transitionId` 를 요청 바디에 실어 재요청한다
+     * (ADR `2026-08-18-workflow-transition-id-identity` §D3). 그 409 응답은
+     * `com.bts.workflow.web.AmbiguousTransitionExceptionHandler` 가 만든다 —
+     * [IssueExceptionHandler] 의 catch-all 보다 앞서야 하므로 순서를 건드리지 마라.
+     *
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
      * @param request 전환 요청 바디 (Jakarta Validation 적용)
      * @return 200 OK + 전환된 [IssueResponse] body
@@ -441,7 +448,11 @@ class IssueController(
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
         ApiResponse(responseCode = "403", description = "전환 권한 없음", content = [Content()]),
         ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
-        ApiResponse(responseCode = "409", description = "전환 불허 또는 낙관적 잠금 충돌", content = [Content()]),
+        ApiResponse(
+            responseCode = "409",
+            description = "전환 불허 · 낙관적 잠금 충돌 · 모호 전환(AMBIGUOUS_TRANSITION, 후보 목록 동봉)",
+            content = [Content()],
+        ),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/{key}/transition")
@@ -458,6 +469,7 @@ class IssueController(
                 toStateKey = request.toStatusKey,
                 expectedVersion = request.expectedVersion,
                 resolutionId = request.resolutionId,
+                transitionId = request.transitionId,
             )
         val response = service.transitionIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))

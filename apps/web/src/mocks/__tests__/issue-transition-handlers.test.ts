@@ -1,7 +1,12 @@
 // GET /api/v1/issues/:key/transitions + POST /api/v1/issues/:key/transition MSW 핸들러 단위 테스트
 import { server } from '@/test/server'
 import { afterEach, describe, expect, it } from 'vitest'
-import { issueHandlers, resetIssueState, MOCK_NO_WORKFLOW_TRIGGER } from '../issue-handlers'
+import {
+  issueHandlers,
+  resetIssueState,
+  MOCK_NO_WORKFLOW_TRIGGER,
+  MOCK_AMBIGUOUS_ISSUE_KEY,
+} from '../issue-handlers'
 import { issueAtlasNoWorkflowFixture } from '../issue-fixtures'
 
 beforeEach(() => {
@@ -175,5 +180,96 @@ describe('POST /api/v1/issues/:key/transition — 분기(4) 성공 + stateful', 
     const res = await fetch('/api/v1/issues/ATLAS-1')
     const body = await res.json() as { data: { currentStateKey: string } }
     expect(body.data.currentStateKey).toBe('open')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T21. 409 AMBIGUOUS_TRANSITION — 같은 (from,to) 에 전환이 여럿일 때 (ADR 2026-08-18 §D3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 409 응답 본문 — backend AmbiguousTransitionErrorResponse 와 같은 모양. */
+interface AmbiguousBody {
+  error: { code: string; message: string }
+  candidates: { transitionId: string; name: string }[]
+}
+
+/** 가용 전환 항목 — backend TransitionItem 과 같은 모양. */
+interface TransitionItemBody {
+  key: string
+  name: string
+  fromStateKey: string
+  toStateKey: string
+  toCategory: string | null
+  transitionId: string
+  kind: string
+}
+
+async function readTransitions(key: string): Promise<TransitionItemBody[]> {
+  const res = await getTransitions(key)
+  const body = (await res.json()) as { data: { transitions: TransitionItemBody[] } }
+  return body.data.transitions
+}
+
+describe('GET /api/v1/issues/:key/transitions — transitionId·kind (T21)', () => {
+  it('T21-M1: 전환 항목마다 1급 식별자 transitionId 와 kind 가 실린다', async () => {
+    const transitions = await readTransitions('ATLAS-1')
+    expect(transitions).toHaveLength(2)
+    for (const t of transitions) {
+      expect(typeof t.transitionId).toBe('string')
+      expect(t.transitionId.length).toBeGreaterThan(0)
+      expect(t.kind).toBe('NORMAL')
+    }
+  })
+
+  it('T21-M2: 실제 API 에 없는 id 필드는 응답에 남기지 않는다', async () => {
+    const transitions = await readTransitions('ATLAS-1')
+    expect(transitions[0]).not.toHaveProperty('id')
+  })
+
+  it('T21-M3: 모호 전환 이슈는 같은 도착 상태 후보를 2건 돌려준다', async () => {
+    const transitions = await readTransitions(MOCK_AMBIGUOUS_ISSUE_KEY)
+    const toInProgress = transitions.filter((t) => t.toStateKey === 'in_progress')
+    expect(toInProgress).toHaveLength(2)
+    // 1급 식별자는 서로 달라야 후보를 가를 수 있다
+    expect(toInProgress[0]?.transitionId).not.toBe(toInProgress[1]?.transitionId)
+  })
+})
+
+describe('POST /api/v1/issues/:key/transition — 분기(3-c) 409 AMBIGUOUS_TRANSITION (T21)', () => {
+  it('T21-M4: 후보가 2개인데 transitionId 가 없으면 409 + 후보 전량', async () => {
+    const res = await postTransition(MOCK_AMBIGUOUS_ISSUE_KEY, {
+      toStatusKey: 'in_progress',
+      expectedVersion: 0,
+    })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as AmbiguousBody
+    expect(body.error.code).toBe('AMBIGUOUS_TRANSITION')
+    expect(body.candidates).toHaveLength(2)
+    expect(body.candidates[0]?.name.length).toBeGreaterThan(0)
+  })
+
+  it('T21-M5: 후보의 transitionId 를 실어 재요청하면 200 + 상태가 갱신된다', async () => {
+    const conflict = await postTransition(MOCK_AMBIGUOUS_ISSUE_KEY, {
+      toStatusKey: 'in_progress',
+      expectedVersion: 0,
+    })
+    const { candidates } = (await conflict.json()) as AmbiguousBody
+    const chosen = candidates[1]?.transitionId
+    expect(chosen).toBeDefined()
+
+    const res = await postTransition(MOCK_AMBIGUOUS_ISSUE_KEY, {
+      toStatusKey: 'in_progress',
+      expectedVersion: 0,
+      transitionId: chosen,
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { currentStateKey: string; version: number } }
+    expect(body.data.currentStateKey).toBe('in_progress')
+    expect(body.data.version).toBe(1)
+  })
+
+  it('T21-M6: 후보가 1개면 transitionId 없이도 200 — 기존 클라이언트가 안 깨진다', async () => {
+    const res = await postTransition('ATLAS-1', { toStatusKey: 'in_progress', expectedVersion: 0 })
+    expect(res.status).toBe(200)
   })
 })

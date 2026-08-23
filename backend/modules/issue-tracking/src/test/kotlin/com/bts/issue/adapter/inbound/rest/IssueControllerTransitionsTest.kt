@@ -37,10 +37,11 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
  * `@SpringBootApplication` 없이 `@ContextConfiguration` 으로 최소 컨텍스트를 직접 구성한다.
  * [IssueApplicationService] 는 MockK stub 으로 대체한다.
  *
- * 테스트 케이스 3건.
+ * 테스트 케이스 4건.
  * - T-1. service 가 2건 반환 시 200 + `data.transitions` 배열 2건 + 각 필드(fromStateKey, toStateKey, name, key) 직렬화 확인.
  * - T-2. service 가 [IssueNotFoundException] throw → 404.
  * - T-3. service 가 [IssueWorkflowNotConfiguredException] throw → 422.
+ * - T-4. GLOBAL 전환의 `key` 가 도메인 게터 규칙(`GLOBAL__<to>`)과 같다 — 응답이 재계산하지 않는다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueControllerTransitionsTest.TestMvcConfig::class])
@@ -108,8 +109,15 @@ class IssueControllerTransitionsTest {
                     toStateKey = "in_progress",
                     name = "시작",
                     toCategory = "IN_PROGRESS",
+                    key = "open__in_progress",
                 ),
-                AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기", toCategory = "DONE"),
+                AvailableTransitionView(
+                    fromStateKey = "open",
+                    toStateKey = "closed",
+                    name = "닫기",
+                    toCategory = "DONE",
+                    key = "open__closed",
+                ),
             )
 
         every {
@@ -153,5 +161,36 @@ class IssueControllerTransitionsTest {
 
         mockMvc.perform(get("/api/v1/issues/ATLAS-1/transitions"))
             .andExpect(status().isUnprocessableEntity)
+    }
+
+    // ── T-4: GLOBAL 전환 key 는 도메인 게터 결과 그대로 ───────────────────────
+
+    @Test
+    fun `GET transitions — GLOBAL 전환의 key 는 재계산이 아니라 도메인 게터 결과 그대로다`() {
+        // 도메인 게터(project-workflow `WorkflowTransition.key`)는 종류마다 규칙이 다르다 —
+        // NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to`. 엔진은 GLOBAL 의 빈 출발 상태를
+        // 요청한 현재 상태(open)로 채워 넘기므로, 응답이 fromStateKey 로 key 를 재조립하면
+        // 같은 전환을 도메인은 "GLOBAL__done", 응답은 "open__done" 이라 부르는 발산이 생긴다.
+        // 이 key 는 `PostActionController` 의 `.../transitions/{transitionKey}/post-actions`
+        // 경로 세그먼트로 소비되므로 발산하면 그 경로가 빗나간다.
+        val globalView =
+            AvailableTransitionView(
+                fromStateKey = "open",
+                toStateKey = "done",
+                name = "즉시 완료",
+                toCategory = "DONE",
+                kind = "GLOBAL",
+                // 엔진이 도메인 게터 결과를 그대로 실어 보내는 값 — fromStateKey 와 어긋난 채로 들어온다.
+                key = "GLOBAL__done",
+            )
+
+        every {
+            issueApplicationService.availableTransitions(any(), IssueKey("ATLAS-1"))
+        } returns listOf(globalView)
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-1/transitions"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.transitions[0].kind").value("GLOBAL"))
+            .andExpect(jsonPath("$.data.transitions[0].key").value("GLOBAL__done"))
     }
 }

@@ -2,6 +2,8 @@
 
 package com.bts.workflow.seed
 
+import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
@@ -9,7 +11,9 @@ import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.configuration.FluentConfiguration
 import org.jooq.DSLContext
+import org.jooq.Record
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -260,25 +264,28 @@ class YamlSeedServiceTest {
             "kanban-basic",
         )
 
-        // software-default: 5 states, 6 transitions
+        // 전환 수는 YAML 의 보통 전환 + INITIAL 1건이다. INITIAL 은 aggregate 에도 실린다 —
+        // 시작 상태 해석(WorkflowKeyResolverImpl)이 그 행을 읽어야 하기 때문이다.
+
+        // software-default: 5 states, 6 + INITIAL 1 transitions
         val softwareDefault = workflows.first { it.key == "software-default" }
         assertThat(softwareDefault.states).hasSize(5)
-        assertThat(softwareDefault.transitions).hasSize(6)
+        assertThat(softwareDefault.transitions).hasSize(7)
 
-        // bug-tracking: 5 states, 5 transitions
+        // bug-tracking: 5 states, 5 + INITIAL 1 transitions
         val bugTracking = workflows.first { it.key == "bug-tracking" }
         assertThat(bugTracking.states).hasSize(5)
-        assertThat(bugTracking.transitions).hasSize(5)
+        assertThat(bugTracking.transitions).hasSize(6)
 
-        // simple: 3 states, 3 transitions
+        // simple: 3 states, 3 + INITIAL 1 transitions
         val simple = workflows.first { it.key == "simple" }
         assertThat(simple.states).hasSize(3)
-        assertThat(simple.transitions).hasSize(3)
+        assertThat(simple.transitions).hasSize(4)
 
-        // kanban-basic: 4 states, 3 transitions
+        // kanban-basic: 4 states, 3 + INITIAL 1 transitions
         val kanbanBasic = workflows.first { it.key == "kanban-basic" }
         assertThat(kanbanBasic.states).hasSize(4)
-        assertThat(kanbanBasic.transitions).hasSize(3)
+        assertThat(kanbanBasic.transitions).hasSize(4)
 
         log.info("시나리오 1 통과 — 4 workflows 적재 완료")
     }
@@ -371,11 +378,18 @@ class YamlSeedServiceTest {
         log.info("시나리오 4 통과 — FailFast 부팅 차단 확인")
     }
 
-    // ── 시나리오 5. (from, to) 중복 전환 정의 → IllegalStateException fail-fast ─────
+    // ── 시나리오 5. 같은 (from, to) 에 이름이 다른 전환 2개가 정상 시드된다 (FR-WF-05) ──
 
+    /**
+     * 전환 identity 가 `(from, to)` 조합에서 `id` 로 바뀌면서 「같은 상태쌍에 전환 하나」 규칙이 사라졌다.
+     * 도메인 `Workflow.of()` 는 이미 이 조합을 받아들이므로 **시드 경로도 같아야 한다** —
+     * 한쪽만 바뀌면 YAML 로 부트스트랩되는 표준 워크플로우에서만 다중 전환이 거짓이 된다.
+     *
+     * 근거. ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1.
+     */
     @Test
     @Order(5)
-    fun `같은 워크플로우 안에 from-to 가 동일한 전환이 중복 정의되면 IllegalStateException 이 발생한다`() {
+    fun `같은 워크플로우 안에 from-to 가 같고 이름이 다른 전환 2개가 시드된다`() {
         val dataSource =
             DriverManagerDataSource(
                 postgres.jdbcUrl,
@@ -384,22 +398,38 @@ class YamlSeedServiceTest {
             )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
-        // (from: open, to: done) 이 name 만 다르게 두 번 정의된 중복 YAML
-        val duplicateTransitionResourceLoader = DuplicateTransitionResourceLoader()
-        val serviceWithDuplicate =
+        // (from: open, to: done) 이 name 만 다르게 두 번 정의된 YAML
+        val multiTransitionResourceLoader = MultiTransitionResourceLoader()
+        val serviceWithMulti =
             YamlSeedService(
                 dsl,
-                duplicateTransitionResourceLoader,
+                multiTransitionResourceLoader,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 SchemeIssueTypeMappingRepository(dsl),
             )
 
-        assertThatThrownBy { serviceWithDuplicate.seedAll() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("duplicate (from, to)=(open,done)")
+        serviceWithMulti.seedAll()
 
-        log.info("시나리오 5 통과 — (from,to) 중복 fail-fast 확인")
+        val names =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    """
+                    SELECT wt.name
+                    FROM workflow_transitions wt
+                    JOIN workflow_states fs ON wt.from_state_id = fs.id
+                    JOIN workflow_states ts ON wt.to_state_id = ts.id
+                    JOIN workflows w ON wt.workflow_id = w.id
+                    WHERE w.key = 'multi-transition-wf' AND fs.key = 'open' AND ts.key = 'done'
+                    """.trimIndent(),
+                ).use { ps -> ps.executeQuery().use { rs -> readFirstColumn(rs) } }
+            }
+
+        assertThat(names)
+            .withFailMessage("같은 (open,done) 에 이름이 다른 전환 2개가 시드돼야 한다 — 실제=%s", names)
+            .containsExactlyInAnyOrder("A", "B")
+
+        log.info("시나리오 5 통과 — 같은 상태쌍 다중 전환 수용 확인")
     }
 
     // ── 시나리오 6. seedAll() 에 @Transactional 어노테이션 존재 검증 ─────────────────
@@ -577,7 +607,277 @@ class YamlSeedServiceTest {
 
         log.info("시나리오 11 통과 — 시드 적재분 origin=SEED")
     }
+
+    // ── 시나리오 12. 시드가 전환의 신 컬럼을 채운다 (프로덕션 부팅 회귀 가드) ────────
+
+    /**
+     * 시드가 심은 전환이 `from_status_id`·`to_status_id`·`kind` 를 채우는가.
+     *
+     * ### 왜 이 가드가 필요한가 — 빈 DB 부팅이 조용히 반쪽이 된다
+     * V207 이 전환의 출발·도착을 `workflow_states` 에서 전역 카탈로그 편성 `workflow_statuses` 로
+     * 재지정했다. 재지정 백필은 **마이그레이션 시점에 있던 행**만 손대므로, 그 뒤에 시드가 심는 행은
+     * 시드가 직접 신 컬럼을 채워야 한다. 채우지 않으면 표준 4 워크플로우의 전환이 전부 신 컬럼 NULL 로
+     * 남아 ① 3단계에서 NOT NULL 을 걸 수 없고 ② 읽기가 구 컬럼 폴백에만 의존하게 된다.
+     *
+     * ### 왜 `repository.findAll()` 로는 못 잡는가
+     * 읽기에 구 컬럼 폴백이 있어 신 컬럼이 비어도 aggregate 복원은 성공한다(시나리오 1 이 그래서 초록이다).
+     * 그래서 **컬럼을 직접 본다** — 폴백이 가리는 것을 드러내는 유일한 축이다.
+     */
+    @Test
+    @Order(12)
+    fun `시드가 심은 전환은 from_status_id·to_status_id·kind 를 채운다`() {
+        service.seedAll()
+
+        val rows = fetchTransitionStateKeys("software-default")
+        val normalRows = rows.filter { it[1] == "NORMAL" }
+
+        assertThat(normalRows)
+            .describedAs("software-default 의 보통 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
+            .hasSize(6)
+        assertThat(normalRows).allSatisfy { row ->
+            // 대조 기준이 NULL 이면 아래 isEqualTo 가 「둘 다 NULL」로 조용히 통과한다.
+            // 3단계에서 시드가 구 컬럼을 그만 채울 때 여기가 먼저 red 를 낸다.
+            assertThat(row[2]).describedAs("전환 '%s' 의 구 from 컬럼이 대조 기준이다", row[0]).isNotNull()
+            assertThat(row[3]).describedAs("전환 '%s' 의 구 to 컬럼이 대조 기준이다", row[0]).isNotNull()
+            assertThat(row[4])
+                .describedAs("전환 '%s' 의 from_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
+                .isEqualTo(row[2])
+            assertThat(row[5])
+                .describedAs("전환 '%s' 의 to_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
+                .isEqualTo(row[3])
+        }
+
+        // INITIAL 은 구 컬럼을 비운 채 신 컬럼만 채운다 — V207 ⑨ 가 기존 DB 에 심은 행과 같은 모양이다.
+        // 여기서 구 컬럼을 채우면 빈 DB 사이트와 기존 사이트의 같은 전환이 서로 다른 모양이 된다.
+        assertThat(rows.filter { it[1] == "INITIAL" })
+            .describedAs("INITIAL — (이름, kind, 구 from, 구 to, 신 from, 신 to)")
+            .containsExactly(listOf("이슈 생성", "INITIAL", null, null, null, "open"))
+
+        log.info("시나리오 12 통과 — 시드가 전환 신 컬럼(from_status_id·to_status_id·kind)을 채운다")
+    }
+
+    // ── 시나리오 13. 빈 스키마에 시드만 돌려도 INITIAL 전환이 생긴다 (P1 #7) ────────
+
+    /**
+     * **빈 스키마를 이 테스트가 직접 만든 뒤** 시드만 돌려 INITIAL 전환이 생기는지 본다.
+     *
+     * ### 왜 컨테이너를 하나 더 띄우나 — 선재 행이 판정을 가짜로 만든다
+     * V207 ⑨ 의 INITIAL 백필은 **마이그레이션 시점에 있던 워크플로우**에만 1건씩 넣는다. 그래서
+     * 이미 워크플로우가 들어 있는 DB 에서는 시드가 INITIAL 을 안 심어도 INITIAL 행이 보인다 —
+     * 저장소가 `shared-dev-db-preexisting-rows-fake-green` 으로 부르는 그 양식이다. 클래스 공용
+     * 컨테이너는 앞선 시나리오들이 이미 시드를 돌려 놓았으므로 여기서 쓸 수 없다. 새 컨테이너에
+     * 마이그레이션만 적용하면 `workflows` 가 비어 백필이 0행이고, 그 뒤에 나타나는 INITIAL 은
+     * **시드가 심은 것뿐**이다. 시드 전 전환 0건을 직접 단언해 그 전제를 못 박는다.
+     *
+     * ### 무엇을 대조하나
+     * 도착지·이름·표시순서·구 컬럼 NULL 여부를 V207 ⑨ 가 기존 DB 에 심은 것과 같은 모양으로 맞춘다.
+     * 어긋나면 빈 DB 로 올린 사이트와 기존 사이트의 이슈 생성 진입 상태가 갈린다.
+     * 도착지 규칙(`display_order` 최소 편성)은 하드코딩 기대값과 **V207 ⑨ 규칙 재현 조회**를 함께 본다.
+     */
+    @Test
+    @Order(13)
+    fun `빈 스키마에 시드만 돌려도 표준 4 워크플로우가 INITIAL 전환을 1건씩 갖는다`() {
+        val fresh: PostgreSQLContainer<*> =
+            PostgreSQLContainer(temboImage)
+                .withDatabaseName("bts_seed_only")
+                .withUsername("bts")
+                .withPassword("bts_test")
+
+        fresh.use { container ->
+            container.start()
+            migrateWorkflowSchema(container)
+            val dsl = dslFor(container)
+
+            assertThat(dsl.fetchValue("SELECT COUNT(*) FROM workflow_transitions") as Long)
+                .withFailMessage("빈 스키마 전제가 깨졌다 — 시드 전에 전환이 이미 있다(%s)", "선재 행")
+                .isZero()
+
+            seedServiceFor(dsl).seedAll()
+
+            assertThat(dsl.fetch(initialTransitionSql).map { it.rowText() })
+                .describedAs("INITIAL 전환 — 워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL")
+                .containsExactly(
+                    "bug-tracking|이슈 생성|reported|0|true|true|true",
+                    "kanban-basic|이슈 생성|backlog|0|true|true|true",
+                    "simple|이슈 생성|todo|0|true|true|true",
+                    "software-default|이슈 생성|open|0|true|true|true",
+                )
+
+            assertThat(dsl.fetch(initialTargetSql).map { it.rowText() })
+                .describedAs("시드가 고른 INITIAL 도착지가 V207 ⑨ 백필 규칙과 어긋나면 기존 DB 와 갈린다")
+                .isEqualTo(dsl.fetch(v207InitialTargetRuleSql).map { it.rowText() })
+        }
+
+        log.info("시나리오 13 통과 — 빈 스키마 + 시드만으로 INITIAL 전환 4건이 생긴다")
+    }
+
+    /**
+     * 그 워크플로우의 전환마다 (이름, kind, 구 from key, 구 to key, 신 from key, 신 to key) 를 읽는다.
+     *
+     * 구 세대(`workflow_states`)와 신 세대(`workflow_statuses ⋈ statuses`) 를 **같은 행에 나란히** 놓아야
+     * 「신 컬럼이 구 컬럼과 같은 상태를 가리키는가」를 한 번에 대조할 수 있다. 신 컬럼이 비어 있으면
+     * 그 자리가 NULL 로 남아 대조가 어긋난다 — 그것이 이 조회가 잡으려는 것이다.
+     *
+     * @param workflowKey 대상 `workflows.key`
+     */
+    private fun fetchTransitionStateKeys(workflowKey: String): List<List<String?>> =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                """
+                SELECT wt.name, wt.kind,
+                       fs.key  AS legacy_from, ts.key  AS legacy_to,
+                       nfs.key AS status_from, nts.key AS status_to
+                  FROM workflow_transitions wt
+                  JOIN workflows w ON w.id = wt.workflow_id
+                  LEFT JOIN workflow_states   fs  ON fs.id  = wt.from_state_id
+                  LEFT JOIN workflow_states   ts  ON ts.id  = wt.to_state_id
+                  LEFT JOIN workflow_statuses wfs ON wfs.id = wt.from_status_id
+                  LEFT JOIN statuses          nfs ON nfs.id = wfs.status_id
+                  LEFT JOIN workflow_statuses wts ON wts.id = wt.to_status_id
+                  LEFT JOIN statuses          nts ON nts.id = wts.status_id
+                 WHERE w.key = ?
+                """.trimIndent(),
+            ).use { ps ->
+                ps.setString(1, workflowKey)
+                ps.executeQuery().use { rs -> readSixColumns(rs) }
+            }
+        }
+
+    /** [java.sql.ResultSet] 의 1열을 문자열 목록으로 옮긴다. while 루프를 밖으로 빼 중첩 깊이를 낮춘다. */
+    private fun readFirstColumn(rs: java.sql.ResultSet): List<String> {
+        val result = mutableListOf<String>()
+        while (rs.next()) result += rs.getString(1)
+        return result
+    }
+
+    /** [java.sql.ResultSet] 을 6열 문자열 행 목록으로 옮긴다. while 루프를 밖으로 빼 중첩 깊이를 낮춘다. */
+    private fun readSixColumns(rs: java.sql.ResultSet): List<List<String?>> {
+        val result = mutableListOf<List<String?>>()
+        while (rs.next()) {
+            result +=
+                listOf(
+                    rs.getString(1), rs.getString(2), rs.getString(3),
+                    rs.getString(4), rs.getString(5), rs.getString(6),
+                )
+        }
+        return result
+    }
 }
+
+// ── 시나리오 13 헬퍼 — 빈 스키마를 새로 만드는 도구 ─────────────────────────────
+//
+// 클래스 밖 top-level 로 둔 것은 클래스 공용 `setup()` 이 static 필드(service·repository)를 세팅해
+// 앞선 시나리오들의 대상 DB 를 바꿔 버리기 때문이다. 여기 함수들은 넘겨받은 컨테이너만 건드린다.
+
+/** V201 의 cross-BC FK 통과용 `issue_types` 스텁. 프로덕션에서는 issue-tracking V003 이 만든다. */
+private val issueTypesStubDdl =
+    """
+    CREATE TABLE IF NOT EXISTS issue_types (
+        id          BIGSERIAL    PRIMARY KEY,
+        key         VARCHAR(30)  NOT NULL UNIQUE,
+        name        VARCHAR(255) NOT NULL,
+        is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        deleted_at  TIMESTAMPTZ
+    )
+    """.trimIndent()
+
+/**
+ * INITIAL 전환 1행을 (워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL) 로 읽는다.
+ *
+ * 신·구 컬럼의 NULL 여부를 같은 행에 실어야 「신 컬럼이 정본이고 구 컬럼은 비어 있다」를 한 번에 본다.
+ */
+private val initialTransitionSql =
+    """
+    SELECT w.key, t.name, s.key, t.display_order,
+           t.from_status_id IS NULL, t.from_state_id IS NULL, t.to_state_id IS NULL
+      FROM workflow_transitions t
+      JOIN workflows          w  ON w.id  = t.workflow_id
+      JOIN workflow_statuses  ws ON ws.id = t.to_status_id
+      JOIN statuses           s  ON s.id  = ws.status_id
+     WHERE t.kind = 'INITIAL'
+     ORDER BY w.key
+    """.trimIndent()
+
+/** 시드가 심은 INITIAL 의 (워크플로우|도착상태). 아래 V207 재현 규칙과 대조할 좌변이다. */
+private val initialTargetSql =
+    """
+    SELECT w.key, s.key
+      FROM workflow_transitions t
+      JOIN workflows          w  ON w.id  = t.workflow_id
+      JOIN workflow_statuses  ws ON ws.id = t.to_status_id
+      JOIN statuses           s  ON s.id  = ws.status_id
+     WHERE t.kind = 'INITIAL'
+     ORDER BY w.key
+    """.trimIndent()
+
+/**
+ * V207 ⑨ 백필이 도착지를 고른 규칙을 **그대로 재현**한다 — 워크플로우별 `display_order` 최소 편성.
+ *
+ * 기대값을 손으로 적기만 하면 YAML 의 `displayOrder` 가 바뀌었을 때 시드와 마이그레이션의 선택이
+ * 갈라져도 아무도 못 잡는다. 마이그레이션은 append-only 라 이 재현이 썩지 않는다.
+ */
+private val v207InitialTargetRuleSql =
+    """
+    SELECT w.key, s.key
+      FROM (SELECT DISTINCT ON (ws.workflow_id) ws.workflow_id, ws.status_id
+              FROM workflow_statuses ws
+              JOIN statuses s2 ON s2.id = ws.status_id AND s2.deleted_at IS NULL
+             ORDER BY ws.workflow_id, ws.display_order, ws.id) f
+      JOIN workflows w ON w.id = f.workflow_id
+      JOIN statuses  s ON s.id = f.status_id
+     ORDER BY w.key
+    """.trimIndent()
+
+/**
+ * 새 컨테이너에 project-workflow 스키마를 끝까지 적용한다.
+ *
+ * 클래스 공용 `setup()` 과 같은 2단계 절차다 — V201(workflow_schemes)이 issue-tracking 의
+ * `issue_types` 를 FK 로 참조하므로 V200 까지 올린 뒤 스텁을 만들고 나머지를 올린다.
+ *
+ * @param container 방금 띄운 빈 PostgreSQL 컨테이너
+ */
+private fun migrateWorkflowSchema(container: PostgreSQLContainer<*>) {
+    flywayFor(container).target("200").load().migrate()
+    DriverManager.getConnection(container.jdbcUrl, container.username, container.password).use { conn ->
+        conn.createStatement().use { it.execute(issueTypesStubDdl) }
+    }
+    flywayFor(container).load().migrate()
+}
+
+/** issue-tracking + project-workflow 두 위치를 함께 보는 Flyway 설정. */
+private fun flywayFor(container: PostgreSQLContainer<*>): FluentConfiguration =
+    Flyway.configure()
+        .dataSource(container.jdbcUrl, container.username, container.password)
+        .placeholderReplacement(false)
+        .locations(
+            "classpath:db/migration/issue-tracking",
+            "classpath:db/migration/project-workflow",
+        )
+
+/** 컨테이너 접속 정보로 jOOQ DSLContext 를 만든다. */
+private fun dslFor(container: PostgreSQLContainer<*>): DSLContext =
+    DSL.using(
+        DriverManagerDataSource(container.jdbcUrl, container.username, container.password),
+        SQLDialect.POSTGRES,
+    )
+
+/**
+ * 표준 4 YAML 을 classpath 에서 읽는 시드 서비스. validator/postAction 은 factory dry-run 만 하므로
+ * relaxed mock 으로 충분하다 (클래스 공용 setup 과 같은 판단).
+ */
+private fun seedServiceFor(dsl: DSLContext): YamlSeedService =
+    YamlSeedService(
+        dsl,
+        DefaultResourceLoader(),
+        mockk<WorkflowValidatorFactory>(relaxed = true),
+        mockk<WorkflowPostActionFactory>(relaxed = true),
+        SchemeIssueTypeMappingRepository(dsl),
+    )
+
+/** 조회 결과 한 행을 `|` 로 이어 붙인다. 실패 메시지가 곧 행 내용이 되어 어디가 어긋났는지 바로 보인다. */
+private fun Record.rowText(): String = intoArray().joinToString("|")
 
 // ── 테스트 헬퍼 ResourceLoader ──────────────────────────────────────────────────
 
@@ -643,16 +943,19 @@ private class InvalidWorkflowResourceLoader : ResourceLoader {
 
 /**
  * (from: open, to: done) 이 name 만 다르게 두 번 정의된 YAML 을 반환하는 ResourceLoader.
- * 시나리오 5 ((from,to) 중복 fail-fast) 검증에 사용한다.
+ * 시나리오 5 (같은 상태쌍 다중 전환 수용) 검증에 사용한다.
+ *
+ * 워크플로우 key 를 `multi-transition-wf` 로 둔 것이 load-bearing 이다 — 시드는 「행이 없을 때만
+ * 삽입」하므로 이미 적재된 `software-default` 키를 쓰면 건너뛰어 삽입 결과를 볼 수 없다.
  */
-private class DuplicateTransitionResourceLoader : ResourceLoader {
+private class MultiTransitionResourceLoader : ResourceLoader {
     private val delegate = DefaultResourceLoader()
 
-    /** (from: open, to: done) 이 A / B 두 개 정의된 중복 YAML. */
-    private val duplicateTransitionYaml =
+    /** (from: open, to: done) 이 A / B 두 개 정의된 다중 전환 YAML. */
+    private val multiTransitionYaml =
         """
-        key: software-default
-        name: 중복전환 워크플로우
+        key: multi-transition-wf
+        name: 다중전환 워크플로우
         states:
           - { key: open,   name: Open,   category: TODO,        displayOrder: 1 }
           - { key: done,   name: Done,   category: DONE,        displayOrder: 2 }
@@ -663,7 +966,7 @@ private class DuplicateTransitionResourceLoader : ResourceLoader {
 
     override fun getResource(location: String): Resource =
         if (location.endsWith("software-default.yaml")) {
-            InMemoryResource(duplicateTransitionYaml, "software-default.yaml")
+            InMemoryResource(multiTransitionYaml, "software-default.yaml")
         } else {
             delegate.getResource(location)
         }

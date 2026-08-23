@@ -50,7 +50,9 @@ class WorkflowStatusCompositionController(
     /**
      * 편성을 뗀다. 카탈로그의 상태 자체는 남는다.
      *
-     * 마지막 상태면 400, 이슈가 쓰고 있으면 409.
+     * 마지막 상태면 400, 이슈가 쓰고 있으면 409, 전환이 출발지·도착지로 가리키고 있어도 409.
+     * 전환 쪽을 막는 이유는 `workflow_transitions` 의 상태 FK 가 `ON DELETE CASCADE`(V207 ③)라
+     * 편성을 떼는 순간 그 전환이 **하드 삭제**되기 때문이다.
      */
     @DeleteMapping("/{statusId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

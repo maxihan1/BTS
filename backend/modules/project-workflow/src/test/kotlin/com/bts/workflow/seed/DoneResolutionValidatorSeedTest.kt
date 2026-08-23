@@ -170,6 +170,38 @@ class DoneResolutionValidatorSeedTest {
         }
     }
 
+    // ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 시드가 DB 에 심은 전환을 되읽어 **DB 가 정한 `workflow_transitions.id`** 를 가진 전환을 준다.
+     *
+     * validator/post_action 조회는 (from, to) 상태쌍이 아니라 [WorkflowTransition.id] 로 전환을
+     * 해석한다 (V207 · FR-WF-05 · F1). 픽스처가 [WorkflowTransition] 을 직접 만들면 `id` 가 임의
+     * UUID 라 조회가 **언제나 빈 리스트**이고, 아래 단언들이 통째로 공허해진다.
+     *
+     * 이름까지 함께 맞춘다 — 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있게 된 것이 이 변경의
+     * 골자라, (from, to) 만으로 고르면 그 자리가 다시 모호해진다.
+     *
+     * @param workflowKey 시드된 워크플로우 키
+     * @param from 출발 상태 key
+     * @param to 도착 상태 key
+     * @param name 전환 표시 이름 (YAML 시드의 `name`)
+     * @return DB 의 전환 id 를 실은 [WorkflowTransition]
+     */
+    private fun seededTransition(
+        workflowKey: String,
+        from: String,
+        to: String,
+        name: String,
+    ): WorkflowTransition {
+        val workflow =
+            workflowRepository.findByKey(workflowKey)
+                ?: error("시드된 워크플로우가 없다: $workflowKey")
+        return workflow.transitions.firstOrNull {
+            it.fromStateKey == from && it.toStateKey == to && it.name == name
+        } ?: error("시드된 전환이 없다: $workflowKey $from→$to '$name'")
+    }
+
     // ── S1. DONE 진입 전환마다 RequiredField(resolution) validator 존재 ──────────────
 
     /**
@@ -182,7 +214,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(1)
     fun `software-default in_review→done 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "in_review", toStateKey = "done", name = "Approve")
+        val transition = seededTransition("software-default", from = "in_review", to = "done", name = "Approve")
         val validators = definitionRepo.findValidators("software-default", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
@@ -200,7 +232,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(2)
     fun `software-default done→closed 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "done", toStateKey = "closed", name = "Close")
+        val transition = seededTransition("software-default", from = "done", to = "closed", name = "Close")
         val validators = definitionRepo.findValidators("software-default", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
@@ -218,7 +250,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(3)
     fun `software-default open→closed 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "closed", name = "Cancel")
+        val transition = seededTransition("software-default", from = "open", to = "closed", name = "Cancel")
         val validators = definitionRepo.findValidators("software-default", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
@@ -236,7 +268,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(4)
     fun `bug-tracking in_progress→resolved 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "in_progress", toStateKey = "resolved", name = "Resolve")
+        val transition = seededTransition("bug-tracking", from = "in_progress", to = "resolved", name = "Resolve")
         val validators = definitionRepo.findValidators("bug-tracking", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
@@ -254,7 +286,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(5)
     fun `bug-tracking resolved→closed 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "resolved", toStateKey = "closed", name = "Close")
+        val transition = seededTransition("bug-tracking", from = "resolved", to = "closed", name = "Close")
         val validators = definitionRepo.findValidators("bug-tracking", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
@@ -272,7 +304,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(6)
     fun `simple doing→done 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "doing", toStateKey = "done", name = "Complete")
+        val transition = seededTransition("simple", from = "doing", to = "done", name = "Complete")
         val validators = definitionRepo.findValidators("simple", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }
@@ -290,7 +322,7 @@ class DoneResolutionValidatorSeedTest {
     @Test
     @Order(7)
     fun `kanban-basic in_progress→done 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = WorkflowTransition(fromStateKey = "in_progress", toStateKey = "done", name = "Finish")
+        val transition = seededTransition("kanban-basic", from = "in_progress", to = "done", name = "Finish")
         val validators = definitionRepo.findValidators("kanban-basic", transition)
 
         val requiredField = validators.find { it.type == "RequiredField" }

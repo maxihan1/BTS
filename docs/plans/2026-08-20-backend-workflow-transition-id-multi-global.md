@@ -1,0 +1,1959 @@
+# [backend] project-workflow — 전환 ID + 전역 전환 + 다중 전환
+
+> 티어: T3
+> slug: backend-workflow-transition-id-multi-global
+> type: backend
+> agent: backend-engineer
+> 생성: 2026-08-20
+
+## Brief
+
+FR-WF-05. 워크플로우 편집기 로드맵(`~/.claude/plans/cozy-hatching-otter.md`) **PR 4**.
+선행은 PR 3(#393 `00949bb1f`) · PR 2(#392 `213e8a317`).
+
+전환(transition)의 identity 를 `(from, to)` 2튜플에서 **전환 ID(UUID)** 로 옮긴다.
+그래야 ① 같은 두 상태 사이에 이름이 다른 전환을 둘 이상 만들 수 있고(다중 전환)
+② 시작 상태가 없는 전환(전역 전환)을 표현할 수 있다.
+설계 근거는 이미 승인된 ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` (D1~D4) 이고,
+이 PR 은 그 ADR 의 **구현**이다 — 새 ADR 을 만들지 않는다.
+
+### 범위 (로드맵 PR 4 절)
+
+- `V207__transitions_multi_and_global.sql` — `UNIQUE(workflow_id, from_state_id, to_state_id)` DROP ·
+  `from_status_id` NULL 허용 · `workflow_statuses` 참조로 재지정
+- `Workflow.of()` invariant — 「(from,to) 중복 금지」 제거 · 「전역 전환은 from 이 NULL」 규칙 추가
+- `WorkflowTransition` 에 `id: UUID` 를 1급 식별자로 (기존 `key` 계산 프로퍼티는 하위호환용 유지)
+- `WorkflowEngine.availableTransitions` 가 전역 전환을 포함
+- shared-kernel `TransitionRequest`·`AvailableTransitionsResult` 에 `transitionId` 추가 (nullable)
+- `POST/PUT/DELETE /api/v1/workflows/{key}/transitions` CRUD
+
+### red-first 3종 (로드맵이 지정)
+
+1. 같은 (from, to) 에 이름이 다른 전환 2개를 만들 수 있는가
+2. 전역 전환이 모든 상태에서 후보로 나오는가
+3. `toStatusKey` 만으로 호출했을 때 후보가 2개면 409 인가
+
+### classify 결과
+
+`type=backend · agent=backend-engineer · tier=T3(지정) · primary_bc=project-workflow`.
+**classify 의 자동 tier 는 T1** 이었다 — `classify-task.ts:517` 은 `--tier` 미지정 시 `DEFAULT_TIER`
+를 쓰고 실측 티어는 `detect-tier.ts` 가 변경 경로에서 따로 낸다(판정 규칙 ②). 마이그레이션·
+shared-kernel 표면이 확실하므로 **T3 를 지정 선언**했다.
+
+### 선행 PR 이 물려준 제약 (메모리 `fr-wf-04-workflow-crud-backend-done`)
+
+- 워크플로우 상태를 **원시 SQL 로 심지 마라** — 픽스처 헬퍼 사용.
+  `RawWorkflowStateInsertGuardTest` 가 재유입을 막고 `WorkflowStatusFixtureParityTest` 가
+  두 BC 헬퍼의 본문을 대조한다.
+- 쓰기 경로 끝에 **`WorkflowCache.invalidate(workflowKey)`** 필수.
+  `CacheInvalidationCoverageTest` 가 차집합으로 누락을 잡는다.
+- jOOQ 레코드 접근은 `Record.required(field)` (`!!` 금지). 반환 타입은 `T & Any`.
+- 권한 축은 `isSystemAdmin` 하나. `WorkflowDefinitionPermission` 4종은 감사·에러 메시지용 구분이다.
+
+### learnings 발췌 (체인 전체 주입)
+
+- **「백엔드 완비」 판정은 컨트롤러의 HTTP 매핑을 세어서 한다** — 파일 존재 ≠ 기능 존재 (2026-07-17).
+- **Zod 응답 스키마 강화가 산재 인라인 mock 을 깬다** (2026-05-30). 응답에 `transitionId`·`kind` 를
+  더할 때 PR 2 가 세운 「읽기 API 응답 형태 불변 · 새 필드는 추가만」 계약을 지킨다.
+  `apps/web` 의 `api/workflows.ts` Zod · `mocks/workflow-fixtures.ts` · e2e 영향 확인.
+- `[[jooq-init-codegen-mirror]]` 마이그레이션으로 컬럼을 더하면 `init_codegen.sql` 에도 미러해야
+  jOOQ 상수가 생성된다.
+- `[[bts-cross-bc-test-migration]]` project-workflow 통합테스트는 issue-tracking 마이그레이션을
+  `testRuntimeOnly` 로 의존한다.
+- `[[permission-assert-before-existence-makes-403-lie]]` 권한 단언을 존재 확인보다 먼저 두면
+  403/404 의미가 뒤집힌다.
+
+## 도메인 정리
+
+**BC.** project-workflow (단일). shared-kernel 은 계약 **추가만** — `TransitionRequest.transitionId: UUID?`
+nullable 추가라 기존 호출부 컴파일이 깨지지 않는다.
+
+**영향 엔티티.**
+
+| 엔티티 | 변경 |
+|---|---|
+| `WorkflowTransition` | `id: UUID` 1급 식별자 추가 · `kind` 추가 · `fromStateKey` 가 nullable 이 된다 |
+| `Workflow` | `of()` invariant 5개 중 5번(전환 (from,to) 중복 금지)을 새 규칙 2개로 교체 |
+| `workflow_transitions` (테이블) | V207 — UNIQUE 해제 · `kind` · `from_status_id`/`to_status_id`/`display_order` 추가 |
+| `WorkflowKeyResolverImpl` | 시작 상태 해석이 `minByOrNull(displayOrder)` → INITIAL 전환 |
+| `PostActionTransitionResolver` | (from,to) 해석이 전환 ID 기준으로 바뀐다. 구 경로는 유지 |
+
+**새 용어 0건.** 「전환」·「전역 전환」·「최초 전환」은 이미 ADR `2026-08-18-workflow-transition-id-identity.md`
+와 로드맵이 쓰는 말이고, `glossary.md` 의 「전환」 항목이 정본이다. `glossary.md` 갱신 불필요.
+
+**기존 결정 충돌 — 없음.** 구 ADR `2026-05-28-workflow-transition-identity-policy.md`(2튜플 identity)는
+`2026-08-18-workflow-transition-id-identity.md` 가 **이미 supersede** 했고, 그 구 ADR 이 §대안 채택 조건에
+적어 둔 탈출구를 발동하는 것이다. 이 PR 은 새 ADR 을 만들지 않는다.
+
+**관련 ADR.**
+
+- `docs/adr/2026-08-18-workflow-transition-id-identity.md` — 이 PR 의 설계 정본 (D1~D4)
+- `docs/adr/2026-08-18-workflow-global-status-catalog.md` — 전환이 참조할 `workflow_statuses`
+- `docs/adr/2026-05-26-workflow-transition-port-result-sealed.md` — sealed Result port (**유효** ·
+  결정 D-2 가 이 ADR 을 지키려고 예외 경로를 택했다)
+- `docs/adr/2026-05-28-workflow-transition-identity-policy.md` — supersede 됨
+
+## 스펙
+
+정본. **`docs/specs/2026-08-20-backend-workflow-transition-id-multi-global.md`** (9섹션)
+
+핵심 시나리오 3줄.
+
+1. 같은 상태쌍에 이름이 다른 전환을 여럿 두고, 각각을 `transitionId` 로 지목해 실행한다.
+2. `kind=GLOBAL` 전환은 현재 상태와 무관하게 후보에 오른다(자기 자신 제외). `kind=INITIAL` 은
+   이슈 생성 진입 상태를 명시해, 관리자가 상태 순서를 바꿔도 생성 동작이 흔들리지 않게 한다.
+3. `transitionId` 없이 `toStatusKey` 만으로 호출했을 때 후보가 둘이면 **409 `AMBIGUOUS_TRANSITION`**
+   과 후보 목록을 돌려준다 — 조용히 아무거나 고르지 않는다.
+
+### ★ 게이트 1 확인 대상 결정 2건
+
+| 결정 | 내용 | 왜 확인이 필요한가 |
+|---|---|---|
+| **D-1** | 기존 `POST /{key}/transitions`(전환 계획)를 `POST /{key}/transitions/plan` 으로 옮기고 `/transitions` 를 전환 정의 CRUD 에 준다 | **API 계약 변경**이다. 지금 실호출부가 0(프론트 `src/api/*.ts` 에 없음 · MSW 목 1건 · MVC 테스트 1건)이라 비용은 작지만, 계약을 옮기는 판단은 사람이 한다 |
+| **D-2** | 모호 전환 409 를 `TransitionResult` sealed 확장이 아니라 **`AmbiguousTransitionException` + 핸들러**로 낸다 | sealed 에 케이스를 더하면 `IssueApplicationService.kt:1175` 의 exhaustive `when` 이 깨져 **issue-tracking 이 컴파일 실패**한다 = cross-BC 변경. 로드맵은 issue-tracking 대응을 PR 7 에 배정했다 |
+
+## Sanity Check
+
+**gap 4건 발견 — 2건 흡수 · 2건 게이트 1 확인 대상.** 남은 미확정 0건.
+
+- **G1 ❓** 로드맵 PR 4 절 요약에 **INITIAL(최초 전환)이 빠져 있었다**. ADR §D2 와
+  `docs/plan/product/project-workflow.md §2.5` 제목은 포함한다 → **범위에 포함**. 로드맵 요약이
+  축약이고 ADR 이 정본이다.
+- **G2 ❓** `POST /{key}/transitions` **경로 충돌** → 결정 D-1. 게이트 1 확인 대상.
+- **G3 ❓** 모호 전환 409 의 sealed 확장이 **cross-BC 컴파일 파괴** → 결정 D-2 (예외 경로).
+  게이트 1 확인 대상 + 통합테스트로 실측(예외가 issue 경로에서도 409 로 나오는지).
+- **G4 ❓** `fromStateKey` nullable 화가 프론트 Zod 를 깰 수 있다 → 이 PR 은 `apps/web` 0파일이므로
+  **PR 8 이 물려받을 제약**으로 남긴다.
+
+## Plan
+
+> 경로는 모두 repo 루트 기준. `PW = backend/modules/project-workflow/src`,
+> `SK = backend/modules/shared-kernel/src` 로 줄여 적는다.
+
+### Task 1. 모호 전환 409 계약 — 예외 신설 + 두 경로 실측 (★결정 D-2 판정)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/exception/WorkflowExceptions.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowExceptionHandler.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/AmbiguousTransitionExceptionHandler.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowExceptionHandlerAmbiguousTest.kt`,
+  `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/AmbiguousTransitionStatusCodeIntegrationTest.kt`]
+- depends-on: []
+
+**★ 1차 시도 실측 결과 (2026-08-20) — 판정 ②가 500. 그러나 D-2 는 유효하다.**
+plan 이 적은 폐기 조건은 「`@RestControllerAdvice` 스캔 범위가 BC 경계를 넘지 못한다」였는데
+**그 가설이 거짓으로 실측됐다.** 스캔은 정상이고 원인은 **advice 등록 순서**다.
+
+```
+IssueExceptionHandler.kt:98   @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
+IssueExceptionHandler.kt:763  @ExceptionHandler(Exception::class)   ← catch-all, @Order 없음
+```
+Spring 의 `ExceptionHandlerExceptionResolver` 는 advice 를 등록 순서대로 훑어 **처음 매칭되는 것**을
+쓴다. 둘 다 `@Order` 가 없어 클래스패스 순서가 승자를 정했다. 진단 실험에서
+`@Order(HIGHEST_PRECEDENCE)` 를 주자 ②·③ 모두 409 로 PASS 했다.
+
+**채택 — 단일 예외 전용 advice 신설.** `WorkflowExceptionHandler` 에 `@Order` 를 붙이는 안은
+그 advice 가 예외 **8종**을 잡는 다중 advice 라 `WorkflowNotFoundException` 까지
+`WorkflowSchemeExceptionHandler`(`basePackages = ["com.bts.workflow.scheme"]`)에서 빼앗고,
+스킴 404 응답 형태가 `ProblemDetail` 에서 `{error:{code,message}}` 로 **조용히 바뀐다.**
+그 회귀는 슬라이스 테스트가 잡지 못한다.
+
+**선례를 그대로 따른다** — `issue-tracking/.../project/archive/web/ProjectArchivedExceptionHandler.kt:40-41`
+이 정확히 같은 문제(catch-all 삼킴)를 **단일 예외 전용 advice + `@Order(Ordered.HIGHEST_PRECEDENCE)`**
+로 이미 풀었고, 그 KDoc 이 위험 원천을 명시한다.
+
+**RED**:
+- 파일 ①: `.../workflow/web/WorkflowExceptionHandlerAmbiguousTest.kt`
+- 파일 ②: `.../issue/integration/AmbiguousTransitionStatusCodeIntegrationTest.kt`
+- 테스트:
+  ```kotlin
+  // ① project-workflow 자기 경로
+  @Test fun `모호 전환 예외는 409 AMBIGUOUS_TRANSITION 과 후보 목록을 낸다`()
+  // ② ★판정 — issue-tracking 컨트롤러 경로에서도 409 인가
+  @Test fun `issue 전환 경로에서 던져진 AmbiguousTransitionException 이 500 이 아니라 409 로 나온다`()
+  // ③ ★판정 보강 (리뷰 T5) — 트랜잭션이 rollback-only 로 마킹되는가
+  @Test fun `모호 전환 예외 뒤 호출자 트랜잭션이 rollback-only 로 마킹된다`()
+  ```
+- 실패 메시지 (예상): `AmbiguousTransitionException` 클래스 없음
+
+**GREEN**:
+- `WorkflowExceptions.kt` 에 `AmbiguousTransitionException(val workflowKey: String, val candidates: List<TransitionCandidate>)` 추가
+- `WorkflowExceptionHandler` 에 `@ExceptionHandler` 1개 — 409 + `errorCode="AMBIGUOUS_TRANSITION"` + `candidates` 배열.
+  **선례를 그대로 따른다** — `WorkflowSchemeExceptionHandler` 의 `SchemeInUseException(usedByProjects) → 409`
+
+**REFACTOR**: 후보 DTO 를 `web/dto` 로 승격할지 판단. 핸들러 KDoc 에 409 목록 1행 추가
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*AmbiguousTest' :modules:issue-tracking:test --tests '*AmbiguousTransitionStatusCode*'`
+
+**★ 이 task 가 BLOCKER 판정 지점이다.** ②가 500 으로 나오면 `@RestControllerAdvice` 스캔 범위가
+BC 경계를 넘지 못한다는 뜻이고, 그 경우 **결정 D-2 를 폐기하고 게이트 1 로 되돌아간다**
+(대안 — `TransitionResult` sealed 확장 + issue-tracking `when` 분기 추가, 단 N2 예외 승인 필요).
+구현을 계속 진행하지 않는다.
+
+**리뷰 T5 반영.** 판정 기준을 「409 가 나오는가」가 아니라 **「409 가 나오고 호출자 트랜잭션이
+rollback-only 로 마킹되는가」**로 넓혔다. `WorkflowTransitionPort.plan` 이
+`@Transactional(propagation = MANDATORY)` 라 예외가 공유 트랜잭션을 오염시킨다
+(`[[workflowstatecatalog-mandatory-rollback-poison]]`). 지금은 `IssueApplicationService.kt:1174`
+가 catch 폴백 없이 전부 throw 하므로 안전하지만, ③을 남겨 두어야 **미래에 폴백을 넣는 사람이
+red 로 걸린다.**
+
+### Task 2. V207 마이그레이션 + jOOQ 코드젠 미러
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V207__transitions_multi_and_global.sql`,
+  `backend/modules/project-workflow/src/main/resources/db/codegen/init_codegen.sql`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V207MigrationTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `.../workflow/db/V207MigrationTest.kt` (**선례는 `V203ToV206MigrationTest.kt`** — 같은 대역·같은
+  카탈로그 스키마를 다룬다. 리뷰 T6 반영 · 이미지 `quay.io/tembo/pg16-pgmq:latest`)
+- 테스트:
+  ```kotlin
+  @Test fun `UNIQUE(workflow_id, from_state_id, to_state_id) 가 사라져 같은 상태쌍 2행이 들어간다`()
+  @Test fun `kind CHECK 가 NORMAL GLOBAL INITIAL 만 허용한다`()
+  @Test fun `INITIAL 은 워크플로우당 1개 — 2건째 INSERT 가 유니크 위반`()
+  @Test fun `kind=NORMAL 인데 from_status_id 가 NULL 이면 CHECK 위반`()
+  @Test fun `INITIAL 백필 도착지가 백필 전 display_order 최소 상태와 같다`()
+  @Test fun `from_state_id·to_state_id 와 workflow_states 는 살아 있다`()   // N4
+  @Test fun `display_order 가 워크플로우 안에서 1..n 로 중복 없이 채워진다`()  // 리뷰 T2
+  ```
+- 실패 메시지 (예상): `column "kind" does not exist`
+
+**GREEN**: `V207__transitions_multi_and_global.sql` — spec §데이터 모델 변경의 ①~⑧.
+백필은 대응 `workflow_statuses` 행이 없으면 `RAISE EXCEPTION` (V204 가 세운 유일성 가드 관례).
+
+**리뷰 T2 반영 — `display_order` 를 백필한다.** `NOT NULL DEFAULT 0` 만 두면 기존 전환이 전부 0 이 되어
+PR 8 의 편집기가 **임의 순서로 그린다**(화면이 없는 지금은 안 보이는 조용한 실패).
+```sql
+UPDATE workflow_transitions t SET display_order = s.rn
+FROM (SELECT id, row_number() OVER (PARTITION BY workflow_id ORDER BY created_at, name) AS rn
+      FROM workflow_transitions) s
+WHERE t.id = s.id;
+```
+
+**REFACTOR**: SQL 각 블록에 한국어 주석 1줄 — 왜 DROP 하지 않는지(N4)를 명시
+
+**검증**: `./gradlew :modules:project-workflow:test --tests V207MigrationTest` ·
+`:modules:project-workflow:generateJooq` EXIT=0 확인
+
+**★ 정정 (2026-08-20 실측).** 이 절은 원래 「생성물 **커밋**」이라 적었으나 **이 저장소는 jOOQ
+생성물을 추적하지 않는다** — `.gitignore:21` 이 `**/src/generated/jooq/` 를 제외하고
+`git ls-files | grep -c generated/jooq` 는 **0** 이다. `DATA.md §5` 의 「생성물은 git 에 커밋」과
+`.gitignore` 가 **서로를 검사하지 않는 두 정본**이라 어긋나 있다(문서 부채 후보).
+확인은 커밋이 아니라 **생성 성공 + 생성물에 새 컬럼 상수가 실제로 나오는지**로 한다.
+
+**함정**. `init_codegen.sql` 미러를 빠뜨리면 jOOQ 상수가 안 생겨 Task 4 의 리포지토리가
+**컴파일되지 않는다** (`[[jooq-init-codegen-mirror]]`).
+
+### Task 3. `WorkflowTransition` 확장 + `Workflow.of()` invariant 교체
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/Workflow.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/domain/WorkflowTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/domain/WorkflowTransitionTest.kt`]
+- depends-on: []
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `같은 (from,to) 에 이름이 다른 전환 2개를 of() 가 받는다`()          // C1 도메인 층
+  @Test fun `GLOBAL 전환은 fromStateKey 가 null 이어야 한다 — 값이 있으면 거부`()
+  @Test fun `INITIAL 전환은 워크플로우당 1개 — 2개면 거부`()
+  @Test fun `NORMAL 전환의 fromStateKey 가 null 이면 거부`()
+  @Test fun `key 계산 프로퍼티는 그대로 from__to 를 낸다`()                     // 하위호환
+  ```
+- 실패 메시지 (예상): `duplicate transition (from, to) combinations found`
+
+**GREEN**:
+- `WorkflowTransition` 에 `id: UUID`·`kind: TransitionKind` 추가, `fromStateKey: String?` 로 완화.
+  `key` 는 **계속 계산**한다 (하위호환). **리뷰 T4 반영 — `*` 를 쓰지 않는다.**
+  `key` 는 URL 경로 세그먼트로 소비된다(`.../transitions/{transitionKey}/post-actions` ·
+  MSW 목 `apps/web/src/mocks/post-action-handlers.ts:60`). `*` 는 인코딩·매칭이 갈리므로
+  `NORMAL` 은 종전대로 `"$fromStateKey__$toStateKey"`, `GLOBAL`·`INITIAL` 은
+  `"${kind.name}__$toStateKey"` 로 **문자 클래스가 안전한 토큰**을 쓴다
+- `Workflow.of()` invariant 5번을 삭제하고 GLOBAL/INITIAL 규칙 2개로 **교체**.
+  3·4번(from/to 가 states 안) 은 `fromStateKey != null` 일 때만 검사
+
+**REFACTOR**: `TransitionKind` enum 을 별도 파일로. `Workflow.of()` KDoc 의 invariant 목록 갱신 (5개 → 6개)
+
+**검증**: `./gradlew :modules:project-workflow:test --tests 'com.bts.workflow.domain.*'`
+
+**근거**. ADR §D4 — 「모호하면 런타임이 아니라 정의 시점에 막는다」는 유지된다.
+
+### Task 10. 도메인 정책 정합 보정 — 갈라진 두 번째 정본을 닫는다
+
+> **wave 1 실측이 만든 신규 task.** plan 작성 시점에 보이지 않던 것 3건을 닫는다.
+> Task 4 의 선행이다 — 이것이 없으면 wave 2·3 의 검증 명령이 컴파일 단계에서 성립하지 않는다.
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/domain/WorkflowAggregateTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`]
+- depends-on: [3]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  // YamlSeedServiceTest — 시나리오 5 를 뒤집는다
+  @Test fun `같은 워크플로우 안에 from-to 가 같고 이름이 다른 전환 2개가 시드된다`()
+  // WorkflowAggregateTest — 기존 호출부가 id 없이 그대로 컴파일된다 (회귀 가드)
+  @Test fun `WorkflowTransition 을 id 없이 만들면 새 UUID 가 자동 부여된다`()
+  ```
+- 실패 메시지 (예상): `IllegalStateException: Workflow '...' has duplicate (from, to)=(TODO,DONE)`
+
+**GREEN — 3건**
+
+1. **★ 갈라진 두 번째 정본을 닫는다.** `YamlSeedService.validateTransitionUniqueness`(`:399-411`)가
+   `error("Workflow '$key' has duplicate (from, to)=$dup")` 로 **여전히 (from,to) 중복을 막는다.**
+   Task 3 이 `Workflow.of()` 에서 지운 바로 그 규칙의 **복제본**이다. 한쪽만 고치면 도메인 규칙이
+   두 곳에 갈라진 채 하나만 바뀐 상태로 남는다 — 이 저장소가 반복해서 물린
+   `[[two-lists-never-check-each-other]]` 양식이다. 함수와 호출부를 제거하고
+   `YamlSeedServiceTest` 시나리오 5(`:376`)를 **수용 단언으로 뒤집는다.**
+2. **`WorkflowTransition.id` 에 기본값을 준다** — `val id: UUID = UUID.randomUUID()`.
+   현재 `id` 가 필수라 기존 호출부 **27곳**(test 25파일 · main 2파일)이 전부 컴파일되지 않는다.
+   DB 도 `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`(V200:66) 이므로 도메인 기본값이 정합이다.
+   **이 한 줄이 25개 파일의 일괄 수정을 없앤다** — 새 코드만 `id` 를 명시한다.
+3. **`WorkflowDto.kt:92` 의 `fromStateKey` 를 `String?` 로** — Task 9 소유 파일이지만 이 1줄이
+   없으면 project-workflow **main 이 wave 4 전까지 컴파일되지 않아** wave 2·3 의 검증 명령이
+   전부 성립하지 않는다. 1줄만 앞당기고 나머지 DTO 작업은 Task 9 가 그대로 한다.
+
+**REFACTOR**: `WorkflowAggregateTest.kt:152`·`:172` 의 죽은 테스트 2개를 **삭제**한다 —
+삭제된 invariant(「(from,to) 조합 중복 금지」)를 단언하므로 컴파일을 고쳐도 의미상 반드시 실패한다.
+대체 커버리지는 Task 3 이 만든 `WorkflowTest.kt` 가 이미 제공한다(같은 커밋에서 그 사실을 주석으로 남긴다).
+
+**검증**: `./gradlew :modules:project-workflow:compileKotlin` EXIT=0 (이것이 이 task 의 1차 성공 기준) ·
+`./gradlew :modules:project-workflow:test --tests '*YamlSeedServiceTest*' --tests '*WorkflowAggregateTest*'`
+
+**범위 근거.** spec F2 는 「같은 상태쌍에 전환을 여럿 둔다」이고 ①은 그 F2 가 시드 경로에서
+성립하도록 만드는 **누락 보정**이다. 범위 확대가 아니다 — 고치지 않으면 YAML 로 시드되는 표준
+워크플로우에서만 F2 가 거짓이 되고, 로드맵 PR 6·10 의 「기본값 복원」이 YAML 을 소스로 쓰므로
+그 지점에서 다시 터진다.
+
+### Task 4. 리포지토리 — `workflow_statuses` 참조 + `id`·`kind` 매핑
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowWriteRepository.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepository.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/WorkflowRepositoryTransitionTest.kt`]
+- depends-on: [2, 3, 10]
+
+**★ `WorkflowEngine.kt` 는 `:214` 타입 보정 1줄만.** 후보 산출 로직은 Task 5·6 의 몫이다.
+Task 10 이 `WorkflowDto.kt` 1줄을 앞당긴 것과 같은 이유 — 이 1줄이 없으면 모듈 main 이
+wave 3 전까지 컴파일되지 않아 **이 task 자신의 검증 명령이 성립하지 않는다.**
+
+**★ 이 task 가 컴파일을 EXIT=0 으로 되돌리는 지점이다.** 복구 직후 **가장 먼저** 아래를 돌려라 —
+wave 1 의 Task 10 이 만든 테스트가 **한 번도 실행된 적이 없다**(컴파일 차단). 그 미확인 상태를
+닫는 것이 이 task 의 인수 조건에 포함된다.
+```
+./gradlew :modules:project-workflow:test --tests '*YamlSeedServiceTest*' --tests '*WorkflowAggregateTest*'
+./gradlew :modules:project-workflow:test --tests V207MigrationTest
+./gradlew :modules:project-workflow:test --tests '*WorkflowExceptionHandlerAmbiguousTest*' --tests '*WorkflowSchemeExceptionHandlerTest*'
+```
+
+**★ 프로덕션에서만 터지는 함정 (Task 2 가 남긴 인수인계).** INITIAL 백필 행은 구 컬럼
+`from_state_id`·`to_state_id` 가 NULL 이다. `WorkflowRepository.kt:224` 의
+`this[WORKFLOW_TRANSITIONS.FROM_STATE_ID] as UUID` 가 여기서 터진다.
+**테스트에서는 드러나지 않는다** — 빈 DB 에 마이그레이션이 돌면 백필 대상이 0행이기 때문이다.
+읽기를 `workflow_statuses` 로 재지정하며 이 캐스팅을 함께 닫아라.
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `읽기가 transition 의 id 와 kind 를 채운다`()
+  @Test fun `GLOBAL 전환은 fromStateKey 가 null 로 읽힌다`()
+  @Test fun `같은 상태쌍 2행이 각각 다른 id 로 읽힌다`()
+  ```
+- 실패 메시지 (예상): `Unresolved reference: KIND`
+
+**GREEN**: 읽기 쿼리를 `workflow_statuses` join 으로 재지정하고 `id`·`kind`·`display_order` 를 매핑.
+**`Record.required(field)` 를 쓴다 — `!!` 금지, 반환 타입 `T & Any`** (`RecordAccess.kt`).
+
+**REFACTOR**: 전환 매핑 함수 1개로 추출 (읽기 3곳이 같은 매핑을 반복하지 않게)
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*RepositoryTransition*'`
+
+**함정**. 픽스처는 `testsupport/WorkflowStatusFixture.kt` 헬퍼만 쓴다 — 원시 SQL 로 심으면
+`RawWorkflowStateInsertGuardTest` 가 red 를 낸다 (N6).
+
+### Task 5. `availableTransitions` 가 GLOBAL 전환을 후보에 넣는다 (C2)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineGlobalTransitionTest.kt`]
+- depends-on: [3, 4]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `GLOBAL 전환이 어느 상태에서도 후보에 나온다`()
+  @Test fun `GLOBAL 전환의 도착지가 현재 상태와 같으면 후보에서 빠진다`()   // E1
+  @Test fun `INITIAL 전환은 availableTransitions 후보에 절대 안 나온다`()
+  ```
+- 실패 메시지 (예상): 후보 목록에 GLOBAL 전환 없음 (`expected 2 but was 1`)
+
+**GREEN**: `WorkflowEngine.kt:208` 의 `filter { it.fromStateKey == req.fromStateKey }` 를
+`NORMAL(from 일치) + GLOBAL(to != 현재 상태)` 합집합으로. **INITIAL 은 항상 제외**한다.
+
+**REFACTOR**: 후보 산출을 `private fun candidatesFor(workflow, fromStateKey)` 로 추출.
+**리뷰 T3 반영 — 이 함수는 Task 6 의 `resolveTransition` 도 함께 쓴다.** 두 벌로 두면 갈라진다(DRY).
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*GlobalTransition*'`
+
+### Task 6. `transitionId` 우선 실행 + 모호 감지 + shared-kernel 계약 추가 (C3)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/TransitionRequest.kt`,
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAmbiguousTest.kt`,
+  `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/workflow/TransitionRequestTest.kt`]
+- depends-on: [1, 3, 4]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `후보가 2개인데 transitionId 가 없으면 AmbiguousTransitionException`()   // C3
+  @Test fun `transitionId 를 주면 그 전환으로 실행된다`()
+  @Test fun `후보가 1개면 transitionId 없이도 종전대로 실행된다`()                  // S5 하위호환
+  @Test fun `transitionId 를 안 넣은 기존 생성자 호출이 그대로 컴파일된다`()        // N2
+  ```
+- 실패 메시지 (예상): 후보 2개인데 예외 없이 첫 번째가 선택됨
+
+**GREEN**:
+- `TransitionRequest` 에 `val transitionId: UUID? = null` **기본값과 함께** 추가 (기존 호출부 무변경)
+- `AvailableTransitionView` 에 `transitionId: UUID?`·`kind: String?` 추가 (같은 이유로 기본값)
+- `WorkflowEngine.resolveTransition` — `transitionId` 우선 → 없으면 **Task 5 가 추출한
+  `candidatesFor()` 로** 후보 산출 → 0개면 종전 `WorkflowNotFoundException`(E11) ·
+  2개 이상이면 `AmbiguousTransitionException`
+- **리뷰 T3 반영 — `INITIAL` 은 여기서도 후보에서 제외한다.** 안 빼면 `toStatusKey` 가 INITIAL 의
+  도착지와 같을 때 **있지도 않은 모호성**으로 409 가 난다. 추가 테스트 —
+  `@Test fun \`INITIAL 도착지와 같은 toStatusKey 로 호출해도 모호가 아니다\`()`
+
+**REFACTOR**: `resolveTransition` KDoc 을 새 identity 정책으로 교체하고 구 ADR 링크를 새 ADR 로 갱신
+
+**검증**: `./gradlew :modules:shared-kernel:test :modules:project-workflow:test --tests '*Ambiguous*'`
+
+**함정**. 새 필드는 **반드시 기본값**을 준다. 기본값이 없으면 `TransitionRequest(...)` 호출부
+(issue-tracking·automation)가 컴파일 실패해 N2 가 깨진다.
+
+### Task 7. 시작 상태 해석을 INITIAL 전환으로 (C4)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/adapter/inbound/WorkflowKeyResolverImpl.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/WorkflowStartStateInitialTest.kt`]
+- depends-on: [3, 4]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `상태 display_order 를 바꿔도 시작 상태가 안 바뀐다`()               // C4
+  @Test fun `INITIAL 전환이 가리키는 상태가 시작 상태다`()
+  @Test fun `INITIAL 전환이 없으면 종전 minByOrNull 폴백`()                     // 백필 누락 방어
+  ```
+- 실패 메시지 (예상): 순서를 바꾸자 시작 상태가 따라 바뀜
+
+**GREEN**: `WorkflowKeyResolverImpl.kt:83`·`:123` 의 `states.minByOrNull { it.displayOrder }` 를
+`transitions.firstOrNull { it.kind == INITIAL }?.toStateKey` 우선, 없으면 종전 폴백
+
+**REFACTOR**: 두 곳의 중복 해석을 `private fun resolveStartState(workflow)` 로 통합
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*StartStateInitial*'`
+
+**근거**. ADR §맥락 — 「관리자가 순서를 바꾸는 순간 이슈 생성 상태가 조용히 바뀐다」가 이 task 가 닫는 결함이다.
+
+### Task 8. 전환 정의 CRUD + 경로 이동 (C1 · ★결정 D-1)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/WorkflowController.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowCommandDtos.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowCommandService.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/command/WorkflowCommands.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowWriteRepository.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowControllerMvcTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/TransitionCrudMvcTest.kt`,
+  `apps/web/src/mocks/workflow-handlers.ts`]
+- depends-on: [2, 3, 4]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `POST 로 같은 상태쌍에 이름이 다른 전환을 하나 더 만든다`()          // C1
+  @Test fun `kind=GLOBAL 인데 fromStatusKey 를 보내면 400`()                    // E3
+  @Test fun `kind=NORMAL 인데 fromStatusKey 가 없으면 400`()                    // E4
+  @Test fun `INITIAL 전환 DELETE 는 409`()                                      // E5
+  @Test fun `다른 워크플로우의 transitionId 로 PUT 하면 404`()                  // E9
+  @Test fun `권한 없는 액터는 403 — 존재하지 않는 워크플로우는 404`()           // 검사 순서
+  @Test fun `쓰기 3종 모두 WorkflowCache.invalidate 를 부른다`()                // N5
+  @Test fun `전환 계획은 POST /{key}/transitions/plan 으로 옮겨졌다`()          // D-1
+  ```
+- 실패 메시지 (예상): `POST /transitions` 가 `TransitionPlan` 을 돌려줌 (CRUD 아님)
+
+**GREEN**:
+- 기존 `plan()` 을 `@PostMapping("/{key}/transitions/plan")` 으로 이동
+- `POST /{key}/transitions`(201) · `PUT /{key}/transitions/{transitionId}`(200) ·
+  `DELETE /{key}/transitions/{transitionId}`(204) 신설
+- **권한 단언을 존재 확인 앞에 두지 않는다** (`[[permission-assert-before-existence-makes-403-lie]]`)
+- 쓰기 3종 끝에 `WorkflowCache.invalidate(workflowKey)`
+- `apps/web/src/mocks/workflow-handlers.ts:30` 의 목 경로를 `/transitions/plan` 으로 (**이 1줄만** — N3 예외)
+
+**REFACTOR**: CRUD 3종의 권한·존재 확인 전처리를 `private fun requireEditable(key)` 로 통합
+
+**검증**: `./gradlew :modules:project-workflow:test --tests '*MvcTest'`
+**리뷰 T6 반영 — worktree 에서 `pnpm` 을 부르지 않는다.** 심볼릭 `node_modules` 때문에
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다(`[[worktree-pnpm-blocked-use-node-test-directly]]`).
+MSW 목 1줄 변경의 검증은 **경로 문자열 grep** 으로 갈음한다 —
+`grep -n "transitions/plan" apps/web/src/mocks/workflow-handlers.ts`
+
+### Task 9. 읽기 응답 계약 스냅샷 — 형태 불변 + 새 필드 추가만 (C5)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`,
+  `backend/modules/app/src/test/kotlin/com/bts/app/WorkflowReadContractProdBootTest.kt`]
+- depends-on: [4, 8]
+
+**★ 리뷰 T1 반영 — 계약 스냅샷은 `:app` 조립에서 만든다. MVC 슬라이스에 두지 않는다.**
+실측 근거 — `WorkflowControllerMvcTest.kt:82` 가 `@EnableWebMvc` 로 MVC 를 직접 구성하고 `:128` 이
+`ObjectMapper().registerKotlinModule()`(**`JavaTimeModule` 없음**)을 쓴다. 그 옆에 계약 테스트를 두면
+조립 앱과 **다른 직렬화**를 계약으로 박제하고, PR 8 이 그 틀린 형식에 맞춰 Zod 를 고치면 프로덕션이
+깨진다(`[[contract-snapshot-must-be-generated-in-assembly-not-slice]]` · 같은 사고가 `LocalDate` 배열로 1회).
+
+조립 테스트의 두 함정도 함께 지킨다(`[[bts-assembly-test-pat-bearer-and-httpclient]]`).
+① **PAT Bearer** 를 쓴다 — JWT 면 `MfaEnrollmentGateFilter` 에서 관리자 endpoint 가 전부 403 이 되어
+기능 파손으로 오진한다. ② 베이스의 `TestRestTemplate` 대신 **JDK `java.net.http.HttpClient`** 로 원 응답을
+관측한다(`:modules:app` 에 HttpComponents5 가 없어 401/403 본문을 못 읽는다).
+③ `ProdAssemblyHttpTestBase` 를 **상속만** 하고 `@SpringBootTest`·`@ActiveProfiles`·`@DynamicPropertySource`
+를 자체 선언하지 않는다(컨텍스트 캐시 키가 갈리면 9-BC 컨텍스트가 2회 부팅된다).
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `GET workflows-key 응답 최상위 키가 정확히 key name description states transitions 5개다`()
+  @Test fun `transitions 원소에 id 와 kind 가 추가됐고 기존 필드는 그대로다`()
+  @Test fun `GLOBAL 전환의 fromStateKey 는 null 로 직렬화된다`()               // G4 — PR 8 이 물려받을 제약
+  @Test fun `timestamp 계열 필드가 배열이 아니라 ISO 문자열이다`()              // 리뷰 T1 회귀 가드
+  ```
+- 실패 메시지 (예상): `id` 필드 없음
+
+**GREEN**: `WorkflowDto` 의 전환 DTO 에 `id`·`kind` 추가. **필드 삭제·이름 변경 0**
+
+**REFACTOR**: 계약 테스트에 「이 테스트가 깨지면 프론트가 깨진다」 주석 1줄
+
+**검증**: `./gradlew :modules:app:test --tests '*WorkflowReadContract*'`
+**선행** — `:modules:app:test` 는 Testcontainers 가 아니라 실제 Postgres(5433)를 요구한다.
+`docker-compose -f infra/docker-compose.dev.yml up -d postgres` 를 먼저 띄운다
+(`[[worktree-pnpm-blocked-use-node-test-directly]]` 의 후반부).
+
+## Plan 메타
+
+- **task 수** 11 · **예상 wave** 6 (`w1` 1·2·3 → `w1.5` **10**(신규) → `w2` 4 → `w3` 5·7·8 → `w4` 6 → `w5` 9)
+  Task 5·6 은 `WorkflowEngine.kt` 를 공유해 `files` 교집합으로 자동 직렬화된다.
+- **구현 규율** TDD red-first. T3 이므로 `test:` 커밋이 `feat:` 보다 **먼저** 대조된다
+- **추가 검증** `./gradlew :modules:project-workflow:test :modules:shared-kernel:test ktlintCheck detekt` ·
+  `pnpm test:workflow`(판별식 406) · `node scripts/build-doc-index.mjs --check` ·
+  `bash scripts/verify-master-plan.sh`
+- **선행 판정** Task 1 ②가 red 로 남으면 **구현을 멈추고 게이트 1 로 되돌아간다**. 결정 D-2 가 무효다
+- **FR 동기화** `docs/plan/product/project-workflow.md §2.5` 의 D1~D5 체크박스를 이 PR 에서 `[x]` 로
+  (`docs/rules/fr-sync-checklist.md` 9항목)
+- **리뷰 반영** 게이트 1 승인(2026-08-20). `/plan-eng-review` 의 T1~T6 을 위 task 본문에 흡수했다 —
+  T1 Task 9 를 `:app` 조립으로 · T2 `display_order` 백필 · T3 `candidatesFor()` 공유 + INITIAL 양쪽 제외 ·
+  T4 `key` 의 URL 안전 토큰 · T5 rollback-only 관측 · T6 선례 교체 + worktree `pnpm` 제거
+
+## 리뷰 결과
+
+**렌즈 1종 — `/plan-eng-review`** (`type=backend` · UI 미포함 → 분기표대로 1종).
+아웃사이드 보이스(codex)는 `codex_reviews=disabled` 라 미실행 — 0종으로 조용히 통과시키지 않고 여기 명시한다.
+
+**판정. ✅ 통과 · BLOCKER 0 · P1 1건 · P2 5건 · P3 1건.**
+개별 발견마다 `AskUserQuestion` 을 쏘지 않고 **게이트 1 에서 합산 판정**한다 —
+`/bts-review-plan` §Step 3 이 「BLOCKER 는 합산한 뒤 한 번에」로 정한 절차이고 게이트 1 이 바로 다음이다.
+
+### Step 0 — 스코프 도전
+
+**복잡도 체크 트리거됨** — files 합계 약 25개(임계 8) · 새 타입 3종 이상
+(`AmbiguousTransitionException`·`TransitionKind`·전환 CRUD DTO). 다만 이 PR 은 **이미 분할의 산물**이다
+(로드맵이 10 PR 로 쪼갠 4번). 추가 분할안은 「(마이그레이션+도메인) / (엔진+API)」 2개인데,
+**권장하지 않는다** — Task 4(리포지토리)가 두 덩어리를 잇는 이음매라 어디서 잘라도 한쪽이 컴파일되지 않는
+중간 상태가 main 에 남는다. 로드맵의 「각 PR 이 독립적으로 main 초록」 원칙과 충돌한다.
+**게이트 1 에서 Maxi 가 확인할 항목**으로 올린다.
+
+검색 체크는 생략했다 — 이 설계는 저장소 고유 스키마·포트 계약에 매인 것이라 외부 사례 검색의 산출이 없다.
+`TODOS.md` 교차 확인 — 이 PR 을 막는 항목 **0건**(워크플로우 관련 부채 4건은 전부 하네스/스킬 쪽이지
+도메인 워크플로우가 아니다).
+
+### 1. 아키텍처 리뷰 — 1건
+
+**[P1] (confidence: 9/10) Task 9 — 계약 스냅샷을 MVC 슬라이스에 두면 틀린 계약을 박제한다.**
+
+Prior learning applied: **`contract-snapshot-must-be-generated-in-assembly-not-slice`** (confidence 9/10, 2026-07-27)
+
+실측 인용.
+```
+backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowControllerMvcTest.kt:82
+    @EnableWebMvc
+backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowControllerMvcTest.kt:128
+    private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
+```
+`JavaTimeModule` 이 없다. Task 9 의 `WorkflowReadContractTest` 를 이 슬라이스 옆에 두면 조립 앱
+(Spring Boot 자동설정)과 **다른 직렬화**를 계약으로 고정하게 된다. 그 스냅샷에 맞춰 PR 8 의 프론트 Zod 를
+고치면 프로덕션이 깨진다. 같은 사고가 이 저장소에서 `LocalDate` 배열 직렬화로 이미 한 번 났다.
+
+**처방.** Task 9 의 계약 테스트를 `:app` 조립 컨텍스트(`ProdAssemblyHttpTestBase`)로 옮긴다.
+그러면 `[[bts-assembly-test-pat-bearer-and-httpclient]]` 의 두 함정이 함께 걸린다 —
+① PAT Bearer 를 쓴다(JWT 면 `MfaEnrollmentGateFilter` 에서 관리자 endpoint 가 전부 403)
+② 베이스의 `TestRestTemplate` 대신 JDK `java.net.http.HttpClient` 로 원 응답을 관측한다.
+`ProdAssemblyHttpTestBase` 를 **상속만** 하고 `@SpringBootTest`·`@ActiveProfiles` 를 자체 선언하지 않는다.
+
+**비용.** human ~1.5h / CC ~10min. 슬라이스에 두는 것보다 느리지만 계약의 진위가 걸린 자리다.
+
+### 2. 코드 품질 리뷰 — 2건
+
+**[P2] (confidence: 7/10) Task 3 — `key` 계산 프로퍼티의 `*` 가 URL 세그먼트로 샌다.**
+
+plan Task 3 GREEN 이 `key` 를 `"${fromStateKey ?: "*"}__$toStateKey"` 로 적었다. 그런데 `key` 는
+**URL 경로 세그먼트로 쓰인다** — `PostActionController` 의 `.../transitions/{transitionKey}/post-actions`
+(MSW 목 `apps/web/src/mocks/post-action-handlers.ts:60` 이 같은 모양을 안다). `*` 는 경로 문자로
+인코딩·매칭이 갈린다.
+
+**처방.** GLOBAL·INITIAL 의 `key` 는 `null` 을 돌려주거나 `"GLOBAL__$toStateKey"` 처럼 **문자 클래스가
+안전한 토큰**을 쓴다. 구 경로는 「단일 NORMAL 전환일 때만 유효한 축약」이라는 ADR 의 규정과도 맞는다.
+
+**[P2] (confidence: 8/10) Task 5·6 — `INITIAL` 제외가 한쪽에만 적혀 있다.**
+
+Task 5 는 `availableTransitions` 에서 INITIAL 을 빼도록 명시했지만, Task 6 의 `resolveTransition`
+후보 산출에는 그 문구가 없다. 그대로 두면 `toStatusKey` 가 INITIAL 의 도착지와 같을 때
+**있지도 않은 모호성**으로 409 가 난다(E12 와 다른 경로다).
+
+**처방.** Task 6 의 후보 산출에도 「INITIAL 은 항상 제외」를 명시하고, 후보 산출을 **Task 5 가 추출하는
+`candidatesFor()` 하나로 공유**한다. 두 벌로 두면 갈라진다 — DRY.
+
+### 3. 테스트 리뷰 — 다이어그램 + gap 2건
+
+```
+CODE PATHS                                                 검증 수단
+[+] V207 마이그레이션
+  ├── UNIQUE DROP ────────────────── [★★★ 계획됨] V207MigrationTest
+  ├── kind CHECK ─────────────────── [★★★ 계획됨] V207MigrationTest
+  ├── INITIAL 부분 유니크 ─────────── [★★★ 계획됨] V207MigrationTest
+  ├── INITIAL 백필(=구 minByOrNull) ─ [★★★ 계획됨] V207MigrationTest + C7
+  └── display_order 백필 ──────────── [GAP-1] 계획 없음 · 전부 0 이 된다
+[+] Workflow.of() invariant
+  ├── (from,to) 중복 허용 ─────────── [★★★ 계획됨] WorkflowTest
+  ├── GLOBAL/INITIAL from=NULL ────── [★★★ 계획됨] WorkflowTest
+  ├── INITIAL 1개 ────────────────── [★★★ 계획됨] WorkflowTest
+  └── key 하위호환 ───────────────── [★★  계획됨] · `*` 문자 케이스 미커버 → 코드품질 P2
+[+] WorkflowEngine
+  ├── GLOBAL 후보 포함 ───────────── [★★★ 계획됨] C2
+  ├── 자기 자신 제외 ─────────────── [★★★ 계획됨] E1
+  ├── 모호 감지 → 예외 ───────────── [★★★ 계획됨] C3
+  └── INITIAL 이 resolve 후보에서 제외 [GAP-2] 계획 없음 → 코드품질 P2 와 같은 뿌리
+[+] 시작 상태 해석
+  └── 순서 변경 무영향 ───────────── [★★★ 계획됨] C4
+[+] 전환 CRUD
+  ├── 생성/수정/삭제 ─────────────── [★★★ 계획됨] TransitionCrudMvcTest
+  ├── 400 4종 (E3·E4) ────────────── [★★★ 계획됨]
+  ├── 409 (E5) · 404 (E8·E9) ─────── [★★★ 계획됨]
+  ├── 403/404 검사 순서 ──────────── [★★★ 계획됨]
+  └── 캐시 무효화 ────────────────── [★★★ 계획됨] N5
+[+] 읽기 계약
+  └── 응답 형태 불변 ─────────────── [★★  계획됨] → 아키텍처 P1 (슬라이스→조립 이전 필요)
+
+COVERAGE: 19/21 경로 계획됨 (90%)  |  GAPS: 2
+```
+
+**[P2] (confidence: 9/10) GAP-1 — `display_order NOT NULL DEFAULT 0` 이 기존 전환 순서를 뭉갠다.**
+
+spec §데이터 모델 ③이 `display_order INT NOT NULL DEFAULT 0` 을 추가하는데 백필이 없다. 기존 전환이
+전부 `0` 이 되어 **PR 8 의 편집기가 전환을 임의 순서로 그린다.** 지금은 화면이 없어 안 보이고,
+화면이 생기는 순간 「순서가 뒤죽박죽」으로 드러난다.
+
+**처방.** 백필에 `row_number() OVER (PARTITION BY workflow_id ORDER BY created_at, name)` 을 쓰고
+V207MigrationTest 에 「같은 워크플로우 안에서 display_order 가 중복 없이 1..n」 단언을 추가한다.
+
+**GAP-2** 는 코드품질 §2 의 두 번째 발견과 같은 뿌리다 — 거기서 함께 닫힌다.
+
+**[P2] (confidence: 9/10) Task 8 의 검증 명령이 worktree 에서 죽는다.**
+
+Prior learning applied: **`worktree-pnpm-blocked-use-node-test-directly`** (confidence 9/10, 2026-08-18)
+
+Task 8 검증이 `pnpm --filter web test -- workflow` 인데, worktree 의 `node_modules` 는 심볼릭이라
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다. **처방** — MSW 목 1줄 변경의 검증은
+main 워크스페이스에서 돌리거나, 프론트 테스트 대신 **목 경로 문자열 grep** 으로 갈음한다
+(이 PR 의 프론트 변경은 1줄이고 `apps/web` 0파일 원칙의 예외다).
+
+### 4. 성능 리뷰 — 0건
+
+`availableTransitions` 가 GLOBAL 을 매번 훑지만 워크플로우당 전환은 10~20건이고 `WorkflowCache` 가
+정의를 메모리에 들고 있어 DB 왕복이 늘지 않는다. 리포지토리의 `workflow_statuses` join 은 단건 조회
+경로라 N+1 이 생기지 않는다. 쓰기 3종의 전체 캐시 무효화는 편집 빈도가 낮아 정상.
+**No issues found.**
+
+### 5. 트랜잭션 위험 — 1건 (잠복)
+
+**[P2] (confidence: 8/10) 결정 D-2 는 지금은 안전하지만, catch 폴백이 들어오면 500 으로 뒤집힌다.**
+
+Prior learning applied: **`[[workflowstatecatalog-mandatory-rollback-poison]]`**
+
+실측 인용.
+```
+backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/WorkflowTransitionPort.kt:12
+    @Transactional(propagation = Propagation.MANDATORY)
+    fun plan(req: TransitionRequest): TransitionResult
+backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt:1174-1190
+    when (result) { is TransitionResult.Success -> ... }   // catch 폴백 없음 · 전부 throw
+```
+`MANDATORY` 안에서 예외를 던지면 Spring 이 **호출자의 공유 트랜잭션을 rollback-only 로 마킹**한다.
+지금은 `IssueApplicationService` 가 예외를 흡수하지 않고 그대로 던지므로 롤백이 정상 동작이고
+**D-2 는 유효하다.** 위험은 미래에 있다 — 누가 「모호하면 후보를 보여주고 계속 진행」 같은 폴백을 넣는
+순간 `UnexpectedRollbackException` 으로 500 이 된다. 같은 양식의 잠복 버그가 이 저장소에
+이미 2건 기록돼 있다(`IssueEpicService.resolveStateCategories` 등).
+
+**처방.** ① Task 1 ②의 판정 기준을 「409 가 나오는가」에서 **「409 가 나오고 트랜잭션이 rollback-only
+로 마킹되는가」**로 넓힌다 ② 「`AmbiguousTransitionException` 을 catch 해 폴백하려면 `REQUIRES_NEW`
+격리 빈이 필요하다」를 아래 §다음 PR 이 물려받는 제약에 등재한다.
+
+### NOT in scope — 고려했으나 뺀 것
+
+| 항목 | 왜 뺐나 |
+|---|---|
+| 보드 드래그앤드롭의 「어떤 전환인가요」 선택 다이얼로그 | 프론트 표면 · ADR §영향-부정이 후속으로 명시. 이 PR 은 409 로 정직하게 막는 데까지 |
+| `POST /api/v1/issues/{key}/transition` 의 `transitionId` 수용 | issue-tracking BC · 로드맵 PR 7 |
+| 전환 규칙(validator) CRUD 경로의 `transitionId` 정렬 | 로드맵 PR 5 (FR-WF-06) |
+| `workflow_states`·`from_state_id`·`to_state_id` DROP | `DATA.md` §4 3단 분할의 3단계 — 로드맵이 마지막 PR 로 못박음 |
+| `/admin/workflows` 화면 | 로드맵 PR 8 |
+| `TransitionResult` sealed 확장 | 결정 D-2 로 기각 · cross-BC 컴파일 파괴 |
+
+### What already exists — 재사용 대 재구축
+
+| 이미 있는 것 | 이 plan 의 처리 |
+|---|---|
+| `workflow_transitions.id UUID PRIMARY KEY` (V200:66) | **재사용** — id 는 이미 있다. V207 은 노출과 제약만 바꾼다 |
+| `WorkflowSchemeExceptionHandler` 의 `SchemeInUseException → 409 + 목록` | **재사용** — D-2 가 그대로 본뜬다 |
+| `RecordAccess.kt` 의 `Record.required()` | **재사용** — Task 4 가 `!!` 대신 씀 |
+| `testsupport/WorkflowStatusFixture.kt` | **재사용** — 원시 SQL 금지 관례 |
+| `V203ToV206MigrationTest.kt` | **더 가까운 선례** — plan 은 `V200MigrationTest.kt` 를 지목했으나 같은 대역·같은 카탈로그를 다루는 쪽은 이것이다 [P2 · confidence 9/10] |
+| `workflow_validators`/`workflow_post_actions` 의 `ON DELETE CASCADE` (V200:74·95) | **확인 완료** — E6 의 「CASCADE 로 함께 삭제」가 실제와 일치 |
+| `WorkflowCache` | **재사용** — 무효화 결선만 |
+
+### 실패 모드 — 프로덕션에서 어떻게 깨지나
+
+| 경로 | 실패 시나리오 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| 모호 전환 | 보드 DnD 가 후보 2개인 상태쌍으로 이동 | C3 ✓ | 409 ✓ | 명시적 409 — 조용한 실패 아님 ✓ |
+| INITIAL 백필 누락 | 마이그레이션이 일부 워크플로우를 못 채움 | C7 ✓ | Task 7 의 `minByOrNull` 폴백 ✓ | 종전과 동일 동작 ✓ |
+| display_order 뭉개짐 | PR 8 편집기가 전환을 임의 순서로 그림 | **GAP-1** ✗ | 없음 ✗ | **조용한 실패** ⚠ |
+| 계약 스냅샷 오박제 | 조립과 다른 직렬화를 고정 → PR 8 Zod 가 틀린 형식에 맞춰짐 | P1 ✗ | 없음 ✗ | **조용한 실패** ⚠ |
+| rollback poison | 미래의 catch 폴백이 500 을 만듦 | §5 ✗ | 없음 ✗ | 500 ⚠ (잠복) |
+
+**critical gap 2건** — `display_order`(GAP-1) 과 계약 스냅샷 위치(P1). 둘 다 테스트도 에러 처리도 없고
+증상이 조용하다. 위 처방으로 닫는다.
+
+### 병렬화 전략
+
+| 단계 | 건드리는 모듈 | 의존 |
+|---|---|---|
+| Task 1 예외·핸들러 | project-workflow/web · issue-tracking/test | — |
+| Task 2 마이그레이션 | project-workflow/resources | — |
+| Task 3 도메인 | project-workflow/domain | — |
+| Task 4 리포지토리 | project-workflow/repository | 2·3 |
+| Task 5·6 엔진 | project-workflow/engine · shared-kernel | 3·4 (6 은 1 도) |
+| Task 7 리졸버 | project-workflow/scheme | 3·4 |
+| Task 8 CRUD | project-workflow/web · application · apps/web | 2·3·4 |
+| Task 9 계약 | project-workflow/web/dto (P1 반영 시 app/test) | 4·8 |
+
+`Lane A: 1 (독립)` / `Lane B: 2 → 4 → {5,6,7} → 9` / `Lane C: 3 (B 에 합류)`.
+**worktree 분리는 권장하지 않는다** — Task 5·6·8 이 전부 `project-workflow` 한 모듈을 건드려
+병렬 worktree 가 곧 머지 충돌이다. 순차 wave 로 충분하다.
+
+### Implementation Tasks — 이 리뷰가 만든 작업
+
+- [ ] **T1 (P1, human: ~1.5h / CC: ~10min)** — Task 9 — 계약 스냅샷을 `:app` 조립으로 옮긴다
+  - Surfaced by: 아키텍처 리뷰 — `WorkflowControllerMvcTest.kt:82` `@EnableWebMvc` · `:128` JavaTimeModule 부재
+  - Files: `backend/modules/app/src/test/kotlin/com/bts/app/WorkflowReadContractProdBootTest.kt`
+  - Verify: `./gradlew :modules:app:test --tests '*WorkflowReadContract*'` (Postgres 5433 선행 기동 필요)
+- [ ] **T2 (P2, human: ~30min / CC: ~5min)** — Task 2 — `display_order` 백필 + 중복 없음 단언
+  - Surfaced by: 테스트 리뷰 GAP-1
+  - Files: `V207__transitions_multi_and_global.sql` · `V207MigrationTest.kt`
+  - Verify: `./gradlew :modules:project-workflow:test --tests V207MigrationTest`
+- [ ] **T3 (P2, human: ~20min / CC: ~5min)** — Task 5·6 — 후보 산출을 `candidatesFor()` 하나로 공유하고 INITIAL 을 양쪽에서 제외
+  - Surfaced by: 코드 품질 리뷰 · 테스트 리뷰 GAP-2
+  - Files: `WorkflowEngine.kt` · `WorkflowEngineGlobalTransitionTest.kt` · `WorkflowEngineAmbiguousTest.kt`
+  - Verify: `./gradlew :modules:project-workflow:test --tests '*Transition*'`
+- [ ] **T4 (P2, human: ~15min / CC: ~3min)** — Task 3 — GLOBAL/INITIAL 의 `key` 에 URL 안전 토큰
+  - Surfaced by: 코드 품질 리뷰 — `*` 가 `.../transitions/{transitionKey}/post-actions` 세그먼트로 샌다
+  - Files: `WorkflowTransition.kt` · `WorkflowTransitionTest.kt`
+  - Verify: `./gradlew :modules:project-workflow:test --tests '*WorkflowTransitionTest*'`
+- [ ] **T5 (P2, human: ~5min / CC: ~1min)** — Task 1 — 판정 기준에 rollback-only 마킹 관측 추가
+  - Surfaced by: 트랜잭션 위험 §5
+  - Files: `AmbiguousTransitionStatusCodeIntegrationTest.kt`
+  - Verify: 같은 테스트
+- [ ] **T6 (P2, human: ~5min / CC: ~1min)** — Task 2 선례를 `V203ToV206MigrationTest.kt` 로 · Task 8 검증 명령에서 worktree `pnpm` 제거
+  - Surfaced by: What already exists · 테스트 리뷰
+  - Files: plan 문서만
+  - Verify: 문서 확인
+
+### ★ 다음 PR 이 물려받는 제약 (이 리뷰가 추가)
+
+1. **`AmbiguousTransitionException` 을 catch 해 폴백하지 마라.** `WorkflowTransitionPort.plan` 이
+   `MANDATORY` 라 공유 트랜잭션이 rollback-only 로 마킹된다 — 폴백해도 커밋 시점에
+   `UnexpectedRollbackException` 으로 500 이 된다. 굳이 하려면 `REQUIRES_NEW` 격리 빈이 필요하다
+   (`IsolatedWorkflowStateLookup` 선례).
+2. **`GET /api/v1/workflows/{key}` 의 `transitions[].fromStateKey` 가 nullable 이 됐다.** PR 8 이
+   프론트 Zod 를 완화해야 한다 (`apps/web/src/api/workflows.ts`).
+3. **전환 `display_order` 는 V207 백필이 정한 순서다.** 편집기가 순서를 바꾸면 이 컬럼을 쓴다.
+
+## GSTACK REVIEW REPORT
+
+| Runs | Status | Findings |
+|---|---|---|
+| plan-eng-review ×1 | issues_open | P1 1 · P2 5 · P3 1 · BLOCKER 0 |
+| 아웃사이드 보이스 (codex) | skipped | `codex_reviews=disabled` — 0종 통과가 아니라 미실행임을 명시 |
+
+- Step 0 스코프 도전 — 복잡도 임계 초과(파일 ~25 · 임계 8). **분할 권장하지 않음** (Task 4 가 이음매라 어디서 잘라도 중간 상태가 main 에 남는다). 게이트 1 확인 항목.
+- 아키텍처 — 1건 (P1 계약 스냅샷 위치)
+- 코드 품질 — 2건 (P2 `key` 의 `*` · P2 INITIAL 제외 누락)
+- 테스트 — 다이어그램 산출 · 21경로 중 19 계획됨(90%) · GAP 2
+- 성능 — 0건
+- 트랜잭션 위험 — 1건 (P2 rollback poison 잠복)
+- NOT in scope — 작성 · What already exists — 작성
+- 실패 모드 — **critical gap 2건** (display_order · 계약 스냅샷 위치)
+- 병렬화 — Lane 3개이나 한 모듈 집중이라 **순차 권장**
+- Prior learnings applied — 3건 (`contract-snapshot-must-be-generated-in-assembly-not-slice` · `worktree-pnpm-blocked-use-node-test-directly` · `workflowstatecatalog-mandatory-rollback-poison`)
+- Lake Score — 6/6 권고가 완전판을 택함
+
+VERDICT: **PASS WITH FIXES** — BLOCKER 0. T1~T6 을 구현 전에 plan 에 반영한다. CODEX: skipped (disabled). CROSS-MODEL: n/a.
+
+**UNRESOLVED DECISIONS:**
+- 게이트 1 — 결정 D-1 (전환 계획 경로 이동) 승인 여부
+- 게이트 1 — 결정 D-2 (모호 전환을 예외로) 승인 여부 · Task 1 ② 판정 전까지 잠정
+- 게이트 1 — Step 0 복잡도 임계 초과를 그대로 진행할지
+
+## wave 1 결과 (2026-08-20)
+
+| task | implementer | verifier | 비고 |
+|---|---|---|---|
+| Task 1 | DONE_WITH_CONCERNS | **PASS** | 판정 ② **409 확정** — 결정 D-2 유효. 역-뮤테이션(`@Order` 제거 → 500)으로 비-공허 확인 |
+| Task 2 | DONE_WITH_CONCERNS | **PASS** | 가짜 그린 1건 자체 적발 → `pg_get_constraintdef` 스키마 축 추가. N4 위반 0 |
+| Task 3 | DONE_WITH_CONCERNS | **PASS** | 수용 단언이 거부 단언과 함께 있어 「전부 거부」 구현이 통과 못 한다 |
+| Task 10 | DONE_WITH_CONCERNS | DRIFT → **PASS** | DRIFT 는 **controller 의 diff 수집 실수**였다. `WorkflowTransition.kt` 를 Task 10 수집 목록에서 빠뜨렸고, 실제로는 `:30` 에 `val id: UUID = UUID.randomUUID(),` 가 커밋 `dc4318013` 로 실재한다. 컴파일 오류에서 `No value passed for parameter 'id'` 가 사라진 것이 기계적 증거다 |
+
+**커밋 16개 · TDD 순서 전수 통과 · 선언 외 파일 0건 · `[skip ci]` 0건.**
+
+### wave 1 이 남긴 미확인 2건 — Task 4 가 닫는다
+
+1. **Task 10 의 테스트가 한 번도 실행된 적이 없다.** `compileTestKotlin` 이 `compileKotlin` 에 걸려
+   단 1건도 돌지 못했다. 뒤집은 시드 시나리오는 「중복 거부 red → 규칙 제거 green」이라는
+   **의미적 대조를 확보하지 못했고**, 지금 있는 red 는 컴파일 실패뿐이다.
+2. **Task 1 의 검증은 격리 트리 하네스에서 이뤄졌다.** worktree 에서 3개 테스트 재실행이 필요하다.
+
+현재 컴파일 잔여 오류 2건 — `WorkflowEngine.kt:214`(Task 4 가 1줄 보정) ·
+`DefaultWorkflowDefinitionRepository.kt:135`(Task 4 본업).
+
+### 부수 발견 (이 PR 밖 · 장부 후보)
+
+- **`DATA.md §5`(「jOOQ 생성물은 git 에 커밋」)와 `.gitignore:21`(`**/src/generated/jooq/` 제외)이
+  서로를 검사하지 않는 두 정본이다.** 실측 `git ls-files | grep -c generated/jooq` = 0.
+  `[[two-lists-never-check-each-other]]` 양식.
+- `detekt` 위반 1건 — `seed/YamlSeedServiceTest.kt:385 NestedBlockDepth`(Task 10 이 들여옴).
+  게이트 2 전에 해소한다.
+
+### Task 11. 3단 분할 2단계 정합 복구 — 프로덕션 시드 파손 차단 + 호출부 회생
+
+> **wave 2 실측이 만든 신규 task.** Task 4 가 `BLOCKED` 로 보고한 근본 원인을 닫는다.
+> spec `## 데이터 모델 변경` 의 **★ 정정** 절이 이 task 의 근거다.
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V207__transitions_multi_and_global.sql`,
+  `backend/modules/project-workflow/src/main/resources/db/codegen/init_codegen.sql`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowRepository.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/db/V207MigrationTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowPropertyTest.kt`,
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepositoryTest.kt`]
+- depends-on: [2, 3, 4, 10]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  // V207MigrationTest — 3단 분할 2단계 계약을 못박는다
+  @Test fun `to_status_id 는 아직 NULL 을 허용한다`()          // 3단계로 이연됐음을 고정
+  @Test fun `구 컬럼만 채운 INSERT 가 성공한다`()               // 기존 21파일이 사는 근거
+  // YamlSeedServiceTest 계열 — 프로덕션 부팅 회귀 가드
+  @Test fun `시드가 심은 전환은 from_status_id·to_status_id·kind 를 채운다`()
+  ```
+- 실패 메시지 (예상): `null value in column "to_status_id" violates not-null constraint`
+
+**GREEN — 5건**
+
+1. **★ V207 에서 `:153` `ALTER COLUMN to_status_id SET NOT NULL` 과 `:194` `ck_transition_kind_from`
+   CHECK 를 제거한다.** 근거 주석을 그 자리에 남겨라 — 「3단 분할 2단계는 구·신 공존 구간이다.
+   NOT NULL·CHECK 는 `workflow_states` DROP 과 같은 PR(3단계)로 이연. 정의 시점 강제는
+   `Workflow.of()` 가 진다」. `init_codegen.sql` 미러도 같이 맞춘다.
+2. **★ `YamlSeedService.kt:451-456` 의 INSERT 가 신 컬럼도 채운다** — `FROM_STATUS_ID`·`TO_STATUS_ID`·
+   `KIND`. **이것이 프로덕션 부팅 파손을 막는 핵심**이다(현재 `grep -c "TO_STATUS_ID" YamlSeedService.kt`
+   = 0). `workflow_statuses` 에서 `status_id` 를 찾아 넣는다.
+3. **읽기가 구·신 양쪽을 견딘다** — `WorkflowRepository` 의 전환 매핑에서 신 컬럼이 NULL 이면 구 컬럼
+   경유로 폴백한다. 3단계에서 이 폴백을 지운다는 주석을 남겨라.
+4. **★ `WorkflowTransition` 의 파라미터 순서를 바꾼다** — `id` 와 `kind` 를 **뒤로** 보내
+   `(fromStateKey, toStateKey, name, id = …, kind = …)` 로. 지금은 `id` 가 첫 자리라
+   위치 인자 호출 `WorkflowTransition("open", "done", "완료")` 가 `id: UUID` 에 묶여
+   `String vs UUID` 로 죽는다 — **테스트 컴파일 오류 62건 중 55건이 이 하나 때문**이다.
+   기본값은 **이름 붙인 호출만** 구한다는 것이 실측된 교훈이다.
+5. `V207MigrationTest.kt:502` 의 백틱 함수명에서 `..` 을 없앤다 — JVM 이 허용하지 않는 문자라
+   **이 파일은 지금껏 한 번도 컴파일된 적이 없다**(`Name contains illegal characters: ..`).
+
+**REFACTOR**: 남은 nullable 타입 불일치 6건 보정 — `WorkflowPropertyTest.kt:270`(`Triple<…, String?, …>`) ·
+`DefaultWorkflowDefinitionRepositoryTest.kt:253`. 후자는 Task 4 가 validator 조회를 `transition.id`
+기준으로 바꿨으므로 **임의 UUID 로 만든 전환이 조회되기를 기대하는 픽스처**(`:108-109`)를
+DB 에서 읽어 온 전환을 쓰도록 고쳐야 한다.
+
+**검증** (순서대로, 각각 종료 코드를 보고에 적을 것):
+```
+./gradlew :modules:project-workflow:compileTestKotlin        # 0 이어야 한다 — 이 task 의 1차 성공 기준
+./gradlew :modules:project-workflow:test
+./gradlew :modules:issue-tracking:test --tests '*Transition*'
+```
+
+**★ 이 task 가 닫는 미확인** — wave 1·2 를 통틀어 이 모듈의 테스트가 **한 번도 실행된 적이 없다.**
+Task 1·2·3·4·10 의 테스트 전부가 이 task 이후에 처음 돌아간다. 하나라도 red 면 원문을 인용해
+보고하라 — controller 가 담당 task 로 되돌린다.
+
+## wave 2 결과 (2026-08-20)
+
+| task | 결과 | 핵심 |
+|---|---|---|
+| Task 4 | BLOCKED (구현 3커밋 완료 · 검증만 막힘) | `compileKotlin` EXIT=0 복구 · `as UUID` 함정 제거 · **프로덕션 시드 파손 발견** |
+| Task 11 | DONE_WITH_CONCERNS | 3단 분할 2단계 정합 복구 · 컴파일 오류 **62 → 1** · 시드 파손 차단 + 회귀 가드 · 역-뮤테이션 2회 |
+
+**Task 11 담당 파일 전부 초록** — `V207MigrationTest` 9/9 · `YamlSeedServiceTest` 12/12 ·
+`WorkflowRepositoryTransitionTest` 5/5 · `DefaultWorkflowDefinitionRepositoryTest` 9/9 ·
+`WorkflowPropertyTest` 3/3 · `V203ToV206MigrationTest` 31/31. detekt·ktlint EXIT=0.
+임시 패치 적용 시 모듈 전체 **668 tests / 14 failed**(전부 아래 잔여).
+
+### 규약 이탈 1건 — **승인함**
+
+Task 11 이 `files` 밖의 `seed/YamlSeedServiceTest.kt` 를 수정했다. **plan 작성자(controller)의 실수가
+원인이다** — Task 11 의 RED 절이 「`YamlSeedServiceTest` 계열 회귀 가드」를 명시로 요구하면서
+메타 `files` 에는 그 파일을 넣지 않았다(GREEN 대상만 모았다). 그 파일을 안 건드리면 이 task 의 핵심인
+GREEN 2(시드 신컬럼 충전)가 **테스트 없는 변경**이 되어 TDD 가 성립하지 않는다. 이탈이 아니라
+메타 누락이므로 승인하고 여기 기록한다.
+
+### Task 12. 잔여 회귀 정리 — project-workflow
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowGraphClosedTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/DoneResolutionValidatorSeedTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedValidatorPostActionTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineWiringIntegrationTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/guard/RawWorkflowStateInsertGuardTest.kt`] ·
+depends-on: [4, 11]
+
+- **(A) 컴파일 1건.** `WorkflowGraphClosedTest.kt:174` 의 `groupBy { it.fromStateKey }` 가
+  `Map<String?, …>` 를 낸다. **기계적 수정이 아니다** — 그래프 도달성의 의미가 확장됐다.
+  **채택할 의미** — 시작점은 `INITIAL` 전환의 `toStateKey`(없으면 종전 `minByOrNull` 폴백) ·
+  `NORMAL` 은 `from → to` 간선 · `GLOBAL` 은 **모든 상태 → to** 간선 · `INITIAL` 은 시작점 결정에만
+  쓰고 간선으로 세지 않는다.
+- **(B) 13건.** `DefaultWorkflowDefinitionRepository.findValidators/findPostActions` 가 `transition.id`
+  로 찾는데 3파일이 임의 UUID 로 만든 전환을 넘겨 항상 빈 리스트를 받는다.
+  **처방은 확립돼 있다** — Task 11 이 `DefaultWorkflowDefinitionRepositoryTest` 에서 쓴
+  `SeededTransitions` 패턴(시드가 DB 에서 받은 전환 id 를 픽스처에 넣는다)을 그대로 재사용한다.
+- **(C) 1건.** `RawWorkflowStateInsertGuardTest` 가 `V207MigrationTest` 를 원시 SQL 위반으로 잡는다.
+  그 픽스처는 **V204 적용 전** 시점에 심어야 해서 `statuses` 가 아직 없어 헬퍼를 쓸 수 없다.
+  **가드에 예외를 등재하고 사유를 그 자리에 적는다**(가드를 무력화하지 말 것 — 파일 1개 화이트리스트).
+
+### Task 13. 잔여 회귀 정리 — issue-tracking 픽스처 15파일
+
+**메타**. agent `backend-engineer` · files: `backend/modules/issue-tracking/src/test/**` 중
+아래 15파일 · depends-on: [2, 11]
+
+V207 ①이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를 DROP 했는데 픽스처들이 그 제약을
+`ON CONFLICT` 대상으로 쓴다 → `PSQLException: there is no unique or exclusion constraint matching
+the ON CONFLICT specification`. **15파일이 전부 동일한 한 패턴**이다.
+
+```sql
+INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
+VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOTHING
+```
+
+**처방** — `DO NOTHING` 의 멱등성을 `WHERE NOT EXISTS` 로 옮긴다(단순 삭제 금지 — 픽스처가 같은
+전환을 두 번 심는 경로가 있으면 깨진다. 파일별로 호출 횟수를 먼저 확인할 것).
+**N2 유지** — `issue-tracking/src/main` 은 0줄이다. 테스트 픽스처만 고친다.
+
+### 부수 발견 — 장부 등재 후보 (이 PR 밖)
+
+- **시드가 심는 전환의 `display_order` 가 전부 0.** V207 ⑥이 **기존 행**에 대해 정확히 이 문제를
+  막았는데(`row_number()` 백필), **시드가 새로 심는 행**에는 같은 보호가 없다. `WorkflowRepository`
+  가 `ORDER BY display_order, id` 로 읽으므로 시드 워크플로우의 전환 순서가 사실상 UUID 순이다.
+  편집기 UI(로드맵 PR 8)가 생기는 순간 드러나는 조용한 실패다.
+
+## wave 3 결과 (2026-08-20)
+
+| task | 결과 | 핵심 |
+|---|---|---|
+| Task 5 | DONE_WITH_CONCERNS | `candidatesFor()` 추출(enum 전수 `when` — 종류 추가 시 컴파일 파손) · **뮤테이션 3회 전부 red** · GLOBAL 2 + INITIAL 1 인라인 픽스처로 엔진 쪽 dead branch 해소 |
+| Task 7 | DONE_WITH_CONCERNS | INITIAL 우선 + `minByOrNull` 폴백 · **`displayOrder` 를 정반대로 뒤집은 픽스처 2개**로 대조(폴백 구현이 통과 못 하게) · 뮤테이션 red · issue-tracking 이슈 생성 64건 무회귀 |
+| Task 8 | DONE_WITH_CONCERNS | CRUD 3종 + 경로 이동 · `requireEditable`(권한 → 존재 → 잠금) · **뮤테이션 2회 red** · MSW 목 1줄 |
+
+**`:modules:project-workflow:cleanTest test` EXIT=0 · 683 tests / 0 failures** (XML 신선도 확인) ·
+detekt·ktlint EXIT=0 · `issue-tracking` 무회귀.
+
+### Task 8 의 판단 2건 — 승인
+
+- **Jakarta Validation 어노테이션을 새 요청 DTO 에 달지 않았다.** 이 모듈은 `jakarta.validation-api` 만
+  있고 구현체(hibernate-validator)가 없어 컨트롤러도 `@Valid` 를 쓰지 않는다 — 달면 **장식이 된다**
+  (`[[decorative-annotation-copied-from-sibling]]` 을 정확히 적용한 판단이다). 실제 판정은 서비스가
+  지고 `WORKFLOW_INVALID_REQUEST`(400)로 나가며 그 400 이 도메인 판정인지까지 테스트가 대조한다.
+- **응답 필드 이름을 읽기 API 와 맞췄다**(`fromStateKey`/`toStateKey` + `id`·`key`·`kind`).
+  요청 바디만 spec 이 못박은 `fromStatusKey`/`toStatusKey` 다. Task 9 가 읽기 DTO 에 `id`·`kind` 를
+  더하면 두 모양이 같아져 프론트 스키마가 하나로 유지된다.
+
+### Task 14. 409 응답 형식 통일 + 목 주석 정합
+
+> **wave 3 실측이 만든 신규 task.** Task 8 의 concern 1·3 을 닫는다. Task 9 와 파일이 겹치지 않아
+> wave 5 에서 병렬로 돈다.
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/exception/WorkflowExceptions.kt`,
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/TransitionConflictExceptionHandler.kt`(신규),
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowCommandService.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/TransitionCrudMvcTest.kt`,
+`apps/web/src/mocks/workflow-handlers.ts`] · depends-on: [8]
+
+- **문제.** Task 8 이 E5(INITIAL 삭제 409)·E2(INITIAL 중복 409)를 `ResponseStatusException` 으로 냈다.
+  허용 파일에 도메인 예외와 advice 가 없었기 때문이다(controller 의 `files` 설계 실수). 그 결과
+  **이 두 409 만 `ProblemDetail` 로 나가고 나머지 워크플로우 오류는 `{error:{code,message}}` 다.**
+  프론트가 한 화면에서 두 형식을 다뤄야 한다.
+- **처방.** `TransitionConflictException` 을 도메인 예외로 옮기고 **전용 advice** 로 409 +
+  `{error:{code,message}}` 를 낸다. `WorkflowExceptionHandler` 에 얹지 **않는다** — 그 advice 는 이미
+  detekt `TooManyFunctions` 한도에 닿아 있고, `WorkflowStatusCompositionExceptionHandler` 가 정확히
+  그 이유로 갈라져 나온 선례다. Task 1 이 만든 `AmbiguousTransitionExceptionHandler` 와 같은 모양.
+- **MSW 목 주석 2줄**(`workflow-handlers.ts` 10행·29행)이 옛 경로를 가리킨 채 남았다 — N3 「경로 문자열
+  1줄만」을 문자 그대로 지킨 결과다. 주석까지 갱신한다.
+
+### 부수 발견 — 장부 후보 추가
+
+- **파일 300줄 초과 3건** — `WorkflowCommandService.kt` 421 · `WorkflowWriteRepository.kt` 391 ·
+  `WorkflowController.kt` 334. 정본 처방은 `WorkflowTransitionController`/`TransitionCommandService`/
+  `TransitionWriteRepository` 분리인데 전부 신규 파일이라 이 PR 범위 밖이다. Task 8 이 `@Suppress` 3곳에
+  사유 KDoc 을 달았고 **전역 임계값은 건드리지 않았다**.
+- **`WorkflowGraphClosedTest` 의 그래프 도달성 쪽 GLOBAL·INITIAL 간선 규칙은 여전히 미도달.**
+  Task 5 가 엔진 쪽 구멍은 닫았으나 도달성 속성은 별건이다 — 표준 4개 워크플로우에 해당 전환이 없어
+  **그 규칙을 지워도 초록**이다.
+- **병렬 wave 가 Gradle `build/` 를 공유해 서로의 test XML 을 덮고 지운다.** 실측 3종 —
+  `NoSuchFileException: output.bin.idx` · `BUILD SUCCESSFUL` 인데 결과 디렉터리 소실 · 낡은 XML 을
+  읽을 뻔함. `--rerun-tasks` 를 test 와 함께 쓰면 특히 심하다.
+
+## wave 4 결과 (2026-08-20) — Task 6
+
+**중단·재개.** Task 6 은 「전체 스위트 검증」 직전에 Maxi 가 중단시켰다. 구현 3파일이 미커밋으로
+워킹트리에 남아 있었고 유실은 0 이었다. controller 가 이어받아 커밋·검증을 마쳤다.
+
+| 커밋 | 내용 |
+|---|---|
+| `ea1cd09ae` | test red — transitionId 우선 실행과 모호 감지 |
+| `cfc0bbf4e` | feat green — `transitionId` 우선 + `AmbiguousTransitionException` |
+| `01ce66da1` | refactor — `TooManyFunctions` 근거 명시 |
+
+**검증 전량**
+
+| 대상 | 결과 |
+|---|---|
+| `shared-kernel` (`cleanTest`) | **314 tests / 0 failures** |
+| `project-workflow` (`cleanTest`) | **690 tests / 0 failures** (683 → 690) |
+| `issue-tracking` (`cleanTest`) | **3,286 tests / 0 failures** — ★하위호환 계약 판정 |
+| detekt · ktlint (양 모듈) | EXIT=0 |
+
+**뮤테이션 3회 — 전부 red (비-공허 확인)**
+
+| # | 훼손 | 결과 |
+|---|---|---|
+| 1 | 모호 감지 분기 → `candidates.first()` | 2 red — 「후보 2개면 예외」·「NORMAL 과 GLOBAL 이 같은 도착지면 모호」 |
+| 2 | `transitionId` 우선 분기 제거 | 2 red — 「지목 실행」·「타 워크플로우 transitionId 는 404」 |
+| 3 | `candidatesFor` 재사용 → 자체 필터 | 1 red — GLOBAL 이 후보에서 빠져 모호 판정이 무너진다 |
+
+3회 모두 `git checkout -- <파일>` 로 원복하고 `git status` 와 `grep` 으로 눈 확인했다.
+
+### ★ controller 의 시행착오 1건 — 기록
+
+`WorkflowEngine` 이 detekt `TooManyFunctions`(임계 11)에 닿아, `@Suppress` 를 쌓기보다
+2줄 헬퍼 `resolveById` 를 인라인하려 했다. **실패했다** — 인라인하면 `resolveTransition` 의 `throw` 가
+3개가 되어 `ThrowsCount`(상한 2)를 대신 위반하고 `UUID` import 도 미사용이 된다.
+**규칙이 요구하는 모양이 원래 구조였다.** 원복 후 `@Suppress` + 사유를 달았고, KDoc 에
+「인라인은 실측으로 기각했다」와 그 근거를 남겨 **다음 사람이 같은 시도를 반복하지 않게** 했다.
+정본 처방은 전환 해석을 `TransitionResolver` 로 떼는 것이고 다음 PR 몫이다.
+
+## 리뷰 결과 (PR 단위 · 2026-08-20)
+
+**렌즈 7종** — `code-reviewer`(절대 규칙) · `/review` 스페셜리스트 6(data-migration · security ·
+api-contract · testing · performance · maintainability). T3 이므로 `/bts` 표의 「2종 + ceo」를 넘겨
+가짜 그린 사냥까지 붙였다.
+
+**판정. 🛑 BLOCKER — 수정 후 재리뷰.**
+
+| 렌즈 | 판정 | 요지 |
+|---|---|---|
+| code-reviewer | **BLOCKER 1 · CONCERNS 8** | V207 INITIAL 백필이 프론트 화면 2개를 **확정적으로** 깬다 |
+| api-contract | **CRITICAL 4** · INFO 6 | D-1 근거 거짓 · Zod 미완화 · 목이 자가 초록 · post-action 404 |
+| data-migration | **CRITICAL 4** · INFO 3 | 구 컬럼 잔존 → 조회 500 · 신규 설치에 INITIAL 없음 · 롤백 주장 과장 |
+| testing | **CRITICAL 4** · INFO 6 | 복제 전환 복사가 0행으로만 돎 · B2 판정 공허화 · 도달 불가 분기 |
+| maintainability | **CRITICAL 2** · INFO 11 | 존재하지 않는 제약을 안전망으로 인용 · 300줄 장부 자기 누락 |
+| security | CRITICAL 0 · INFO 7 | 4개 판정 항목 전부 통과. `resolveById` 무방비는 미래 위험 |
+| performance | CRITICAL 0 · INFO 5 | 곱집합 축소·N+1 부재·캐시 무효화 3종 전부 **확인** |
+
+### ★ 교차 확인된 결함 (2개 이상 렌즈가 독립 지목)
+
+| # | 결함 | 렌즈 수 | 등급 |
+|---|---|---|---|
+| 1 | **프론트 Zod 미완화 → 배포 즉시 워크플로우 화면 2곳 실패** | 2 | **P0** |
+| 2 | `PostActionTransitionResolver` 미이전 → 신규 전환의 규칙 편집 404 | **4** | P1 |
+| 3 | `copyTransitions` KDoc 이 **존재하지 않는 CHECK** 를 안전망으로 인용 | **4** | P1 |
+| 4 | D-1 「실호출부 0」 근거가 **거짓** — `api/workflows.ts:128` | 2 | P1 |
+| 5 | `WorkflowGraphClosedTest` GLOBAL·INITIAL 분기 **지워도 초록** | 3 | P2 |
+| 6 | `AvailableTransitionView.transitionId` 항상 null → **409 재요청 왕복이 성립 안 함** | 3 | P1 |
+| 7 | 시드가 INITIAL 을 안 심음 → **신규 설치에서 C4/F10 이 거짓** | 2 | P1 |
+| 8 | `resolveById` 가 현재 상태를 대조하지 않음 | 2 | P2(미래 P0) |
+
+### 단독 CRITICAL 7건
+
+`updateTransition` 이 구 컬럼을 안 지워 조회 500 · 워크플로우 복제의 전환 복사가 **0행으로만 실행**
+(함수를 비워도 초록) · B2 cross-workflow 판정이 id 전환으로 **공허해짐** ·
+`hasInitialTransition(excludingId)` 미도달(최초 전환 수정이 영구 409) · 프론트 테스트가 인라인 목으로
+**자가 초록** · 롤백 주석이 forward-only 를 「데이터 온전」이라 서술 ·
+`WorkflowRepository.kt` 241→354줄인데 300줄 장부에서 **자기 누락**.
+
+### ★ controller 가 낸 오류 3건 — 기록
+
+1. **D-1 근거 「실호출부 0」이 거짓이었다.** 초기 확인에서 `grep ... | head -15` 로 결과가 잘려
+   `api/workflows.ts` 를 못 보고, 그 잘린 출력을 근거로 삼았다. **개수 제한을 걸고 「없다」로 결론 낸 것**이 오류다.
+2. **회귀 가드를 잘못 지목했다.** `@Order` 제거를 잡는 것은 `GlobalControllerAdviceSealTest` 가 아니라
+   `AmbiguousTransitionStatusCodeIntegrationTest` 다. 전자는 `@Order` 를 떼도 초록이다.
+3. **`@Suppress` 4곳은 전부 `TooManyFunctions`** 다. 「300줄 초과 3 + 1」이라 적었으나 300줄은 억제된 적이 없다.
+
+### 통과 확인된 것
+
+- **N2 cross-BC 프로덕션 0줄** — issue-tracking 16파일 **전부 `src/test`**, shared-kernel 은 기본값 있는
+  nullable 추가만. agile-planning·slack-integration·automation **0파일** (code-reviewer 전수 확인)
+- **403/404 의미** — 미보유자는 존재 여부와 무관히 403, 보유자만 404. 존재 probe 불가 (security)
+- **인증 경계** — SecurityConfig·permitAll·CSRF 무변경. 오히려 기존 원시 SQL 1건 제거 (security)
+- **광역 advice 응답 유출 없음** — 둘 다 `ProblemDetail` 이 아니라 URI 자동 채움 경로에 안 닿는다 (security)
+- **성능** — 곱집합 한 겹 축소 · 폴백은 N+1 아님(1회 배치, 백필 완료 시 0회) · 캐시 무효화 3종 전부 (performance)
+- **하네스 고정 2줄** — `verify-master-plan.sh` · `classify-task.ts --cache` 호출문 그대로. `.claude/**` 무변경
+- **CI** — 실패 0건 (SUCCESS 9 · 진행 중 5)
+
+## 게이트 2 결과 (2026-08-20) — 수정 후 재리뷰
+
+**Maxi 응답 = A안(전부 수정 후 재리뷰).** B(P0 만 고치고 머지)·C(보류) 기각.
+근거 — 교차 결함 #2·#4·#6 이 합쳐지면 이 PR 이 파는 「전환 ID」가 끝에서 끝까지 성립하지 않는다.
+`transitionId` 가 항상 null 이면 409 재요청 왕복이 API 로 불가능하고, post-action 규칙 편집은 404 이며,
+프론트는 옛 경로를 부른다. 문서상 존재하나 실제로 못 쓰는 기능을 main 에 넣지 않는다.
+
+### ★ 분류 누락 1건 — 이 범위에 편입한다
+
+리뷰의 **단독 CRITICAL 7건 중 1건(`updateTransition` 이 구 컬럼을 안 지운다)이 P0~P3 어느 등급에도
+실리지 않았다.** 나머지 6건은 P2·P3 로 분류돼 있다. 두 목록이 서로를 검사하지 않아 생긴 누락이며,
+저장소가 `two-lists-never-check-each-other` 로 부르는 그 양식이다.
+
+**실측으로 확인했다(추정 아님).**
+
+- `WorkflowWriteRepository.kt:251-266` `updateTransition` 은 `KIND`·`NAME`·`FROM_STATUS_ID`·
+  `TO_STATUS_ID` 만 `set` 한다. 구 컬럼 `FROM_STATE_ID`·`TO_STATE_ID` 는 손대지 않는다.
+- `WorkflowRepository.kt:275-283` 읽기는 **신 컬럼 우선 · 구 컬럼 폴백**이다.
+- 따라서 전환을 GLOBAL/INITIAL 로 바꿔 `from_status_id` 를 NULL 로 만들면, 남아 있는 구
+  `from_state_id` 가 폴백으로 되살아나 **바꾸기 전 출발 상태가 그대로 조회된다**(조용한 오답).
+- 그 구 id 가 더 이상 해석되지 않으면 `legacyStateKeyOf`(`:333-338`)가 `error()` 를 던져 **500** 이다.
+- main 의 구 컬럼 사용처는 10곳이다(`head` 없이 전수 grep). `YamlSeedService.kt:477-478` ·
+  `WorkflowRepository.kt:236·238·276·279·312·313` · `PostActionTransitionResolver.kt:73-74`.
+
+### 이 wave 의 공통 불변식 — 구 컬럼 정책
+
+**어떤 쓰기 경로도 신 컬럼과 구 컬럼이 서로 다른 값을 가리키는 행을 만들지 않는다.**
+신 컬럼이 정본이고, 구 컬럼은 같은 값으로 동기화하거나 NULL 로 비운다. 3단 분할 3단계(구 컬럼 drop)가
+올 때까지 이 불변식이 읽기 폴백의 안전을 유지하는 유일한 장치다. Task 17 이 이를 판별식으로 고정한다.
+
+### 수정 범위 — 7건 (P0 1 · P1 5 · 편입 1)
+
+| # | 결함 | 등급 | task |
+|---|---|---|---|
+| 1 | 프론트 Zod 미완화 → 배포 즉시 워크플로우 화면 2곳 실패 | **P0** | 15 |
+| 4 | `planTransition` 이 옛 경로 호출 | P1 | 15 |
+| 2 | `PostActionTransitionResolver` 미이전 → 규칙 편집 404 | P1 | 16 |
+| — | `updateTransition` 이 구 컬럼을 안 지운다 | **편입** | 17 |
+| 3 | `copyTransitions` KDoc 이 존재하지 않는 CHECK 인용 | P1 | 17 |
+| 6 | `AvailableTransitionView.transitionId` 항상 null | P1 | 18 |
+| 7 | 시드가 INITIAL 을 안 심음 | P1 | 19 |
+
+**P2 8건 · P3 3건 · 장부 후보 6건은 이 범위 밖이다.** `TODOS.md` 등재로 분리한다 — 머지 후 별도 작업.
+
+### Task 15. 프론트 계약 정합 — Zod 완화 + 신 필드 + 경로 정정 (P0 #1 · P1 #4)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/api/workflows.ts`, `apps/web/src/api/workflows.test.ts`,
+`apps/web/src/mocks/workflow-fixtures.ts`, `apps/web/src/mocks/workflow-fixtures.test.ts`,
+`apps/web/src/mocks/workflow-handlers.ts`] · depends-on: []
+
+- **문제 1 (P0).** `workflows.ts:27` 의 `fromStateKey: z.string().min(1)` 이 non-null 을 요구한다.
+  V207 이 워크플로우마다 `INITIAL`(`from_status_id = NULL`)을 백필하므로 응답에 `fromStateKey: null`
+  원소가 **모든 기존 DB 에서 반드시** 섞인다. `client.ts:133` 이 `safeParse` 가 아니라 `parse` 라
+  ZodError 를 throw 하고, `routes/workflows.$key.tsx:51` 과 `MappingTable.tsx:292` 두 화면이 죽는다.
+  `PostActionConfigSection.tsx:357` 은 TypeError 다.
+- **처방 1.** `fromStateKey` 를 `.nullable()` 로 완화하고 `id`·`kind` 를 스키마에 추가한다.
+  소비처 3곳이 null 을 어떻게 그리는지도 함께 정한다 — GLOBAL 은 「어느 상태에서나」, INITIAL 은
+  「이슈 생성」. **임의로 빈 문자열 폴백을 넣지 마라**(enum fallback 이 계약 위반을 침묵시킨 선례.
+  learnings 2026-05-26 defense-in-depth).
+- **문제 2 (P1 #4).** `workflows.ts:128` 의 `planTransition` 이 `/api/v1/workflows/${key}/transitions`
+  를 부른다. 결정 D-1 이 그 경로를 `/transitions/plan` 으로 옮겼고 옛 경로는 이제 **전환 정의 CRUD** 다.
+  현재 그대로면 계획 요청이 CRUD 로 오라우팅된다. D-1 의 「실호출부 0」 근거가 `head` 로 잘린 grep 이었다.
+- **처방 2.** 경로를 `/transitions/plan` 으로 고치고, MSW 핸들러·주석도 같이 맞춘다.
+- **★ 인라인 목 전수 검색 필수.** learnings 2026-05-30(「Zod 응답 스키마 강화가 산재한 인라인 mock 을
+  깬다」)이 정확히 이 형태다. `grep -rln "fromStateKey" apps/web/src` 가 **22파일**을 낸다 —
+  `head` 를 붙이지 말고 전수를 본다. 그중 `workflowTransitionViewSchema` 를 통과하는 것만 골라 보강한다
+  (`AvailableTransitionView` 계열은 다른 모양이니 혼동 금지).
+- **검증.** `vitest` 는 타입을 안 본다. `tsc --noEmit`(=`pnpm typecheck`)를 **반드시 동반**한다.
+- **red-first.** 픽스처에 `fromStateKey: null` 인 INITIAL 원소를 먼저 넣어 기존 테스트가 실제로 깨지는
+  것을 본다. 그 red 가 이 task 의 판별식이다 — 넣어도 초록이면 목이 자가 초록인 것이다(리뷰 지적).
+
+### Task 16. `PostActionTransitionResolver` 신 컬럼 이전 (P1 #2 · 4렌즈)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionTransitionResolver.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionAdminServiceTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionE2EIntegrationTest.kt`] ·
+depends-on: []
+
+- **문제.** `:73-74` 가 `FROM_STATE_ID`·`TO_STATE_ID`(구 컬럼)로 전환을 찾는다. 신규 CRUD 로 만든
+  전환은 신 컬럼만 차 있어 **한 건도 안 잡히고 `PostActionNotFoundException` → 404** 다.
+  새로 만든 전환에 규칙을 못 붙인다 — 4개 렌즈가 독립 지목했다.
+- **처방.** 신 컬럼(`FROM_STATUS_ID`·`TO_STATUS_ID`) 기준으로 해석하고, 구 컬럼은 폴백으로만 둔다
+  (`WorkflowRepository` 의 읽기와 같은 우선순위). GLOBAL(`from` null)·INITIAL 도 해석 가능해야 한다.
+- **red-first.** 신 컬럼만 채운 전환에 post-action 을 붙이는 통합 테스트를 먼저 red 로 만든다.
+
+### Task 17. 구 컬럼 불변식 — `updateTransition` 정합 + KDoc 정정 + 판별식 (편입 CRITICAL · P1 #3)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowWriteRepository.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/WorkflowRepositoryTransitionTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/TransitionCrudMvcTest.kt`] ·
+depends-on: []
+
+- **문제 1 (편입).** 위 「분류 누락 1건」 전문 참조. `updateTransition:251-266` 이 구 컬럼을 방치해
+  조용한 오답 또는 500 을 만든다.
+- **처방 1.** 이 wave 의 공통 불변식대로 `updateTransition` 이 신 컬럼을 쓸 때 구 컬럼을 함께 정리한다.
+- **처방 1-b (판별식).** 「신·구가 다른 값을 가리키는 행이 생기지 않는다」를 테스트로 고정한다.
+  **비-공허 짝 필수** — 처방을 일부러 되돌려 red 1회를 확인하고 그 사실을 보고에 적는다.
+  가드가 자기가 막겠다고 서술한 것을 안 막던 자리가 이 저장소에서 반복 적발됐다.
+- **문제 2 (P1 #3).** `WorkflowWriteRepository.kt:354` 부근 `copyTransitions` KDoc 이
+  **존재하지 않는** `ck_transition_kind_from` CHECK 제약을 안전망으로 인용한다. 3단 분할 이연으로
+  V207 에서 빠졌는데 주석만 남았다. 4개 렌즈가 지목했다. 실재하는 근거로 고쳐 쓰거나 문장을 지운다.
+  **거짓 안전망 서술은 다음 사람이 그 위에 판단을 쌓는다** — 이 PR 이 이미 한 번 물린 형태다.
+
+### Task 18. `availableTransitions` 가 `transitionId`·`kind` 를 채운다 (P1 #6 · 3렌즈)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailableTransitionsTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineGlobalTransitionTest.kt`] ·
+depends-on: []
+
+- **문제.** `WorkflowEngine.kt:227` 이 `AvailableTransitionView` 를 **4인자로만** 만든다.
+  `transitionId`·`kind` 는 기본값 null 이라 응답에서 **항상 null** 이다. 그런데 모호 전환 409 계약은
+  클라이언트가 후보 중 하나의 `transitionId` 를 **되돌려 보내는** 왕복을 전제한다.
+  보낼 id 가 응답에 없으므로 **409 재요청이 API 로 성립하지 않는다.** 3개 렌즈가 지목했다.
+- **처방.** 두 필드를 실제 값으로 채운다. `AvailableTransitionsResult.kt:70-84` 의 기본값 null 은
+  **지우지 마라** — 그 기본값이 cross-BC 프로덕션 0줄(N2)을 지키는 장치이고 `AvailableTransitionViewTest`
+  의 3인자 생성이 그 가드다.
+- **red-first.** 「응답의 `transitionId` 가 실제 전환 id 와 같다」를 먼저 red 로 만든다.
+  GLOBAL 전환도 포함한다(`fromStateKey` 가 요청 상태로 대체되는 경로).
+
+### Task 19. 시드가 INITIAL 전환을 심는다 + 신 컬럼 병행 기입 (P1 #7)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`,
+`backend/modules/project-workflow/src/main/resources/workflows/simple.yaml`,
+`backend/modules/project-workflow/src/main/resources/workflows/software-default.yaml`,
+`backend/modules/project-workflow/src/main/resources/workflows/bug-tracking.yaml`,
+`backend/modules/project-workflow/src/main/resources/workflows/kanban-basic.yaml`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`] ·
+depends-on: []
+
+- **문제 1.** V207 백필은 **기존 DB** 에만 INITIAL 을 넣는다. 신규 설치는 시드가 만드는데
+  시드가 INITIAL 을 안 심는다. 그래서 **빈 DB 로 올린 환경에서는 C4(시작 상태 해석)·F10 이 거짓**이다.
+  기존 DB 에서만 초록인 기능은 `shared-dev-db-preexisting-rows-fake-green` 그 자체다.
+- **문제 2.** `YamlSeedService.kt:477-478` 이 구 컬럼만 `set` 한다. 이 wave 의 공통 불변식에 걸린다.
+- **처방.** 표준 4 워크플로우 YAML 에 INITIAL 전환을 명시하고, 시드가 신 컬럼을 정본으로 기입하도록
+  옮긴다. `display_order` 가 전부 0 이 되는 문제(장부 후보)는 이 범위 밖이나, 새로 심는 INITIAL 이
+  그 문제를 늘리지 않게 한다.
+- **red-first.** **빈 스키마에서 시드만 돌린 뒤** INITIAL 전환이 있는지 보는 통합 테스트를 먼저
+  red 로 만든다. 기존 개발 DB 에 이미 있는 행으로 판정하면 가짜 그린이다.
+
+### 게이트 2 재작업 메타
+
+- **task 수** 5(15~19) · **예상 wave** 1 — `files` 교집합이 없어 **전부 wave 6 병렬**이다.
+  Task 15 는 프론트, 16~19 는 서로 다른 백엔드 파일이다.
+- **구현 규율** T3 유지. TDD red-first — `test:` 커밋이 `feat:` 보다 먼저 대조된다.
+  Task 15 는 로직 변경(스키마·경로)이라 ui 시각 트랙이 아니라 **TDD 현행**이다.
+- **추가 검증** `./gradlew :modules:project-workflow:test :modules:shared-kernel:test ktlintCheck detekt` ·
+  `pnpm typecheck lint test` · `pnpm test:workflow` · `node scripts/build-doc-index.mjs --check` ·
+  `bash scripts/verify-master-plan.sh`
+- **★ 부재 증명에 `head` 금지.** 이 PR 이 이미 한 번 물렸다(D-1). 개수는 `grep -c`, 목록은 전량 출력.
+- **재리뷰** 완료 후 [6] `bts-codereview` 재호출. 렌즈는 직전과 같은 7종을 유지한다.
+
+## wave 6a 결과 (2026-08-20)
+
+| task | 판정 | 커밋 |
+|---|---|---|
+| 15 프론트 계약 | **BLOCKED** — 선언 파일 안은 완료·초록. 검증(타입)이 선언 밖을 요구 | RED `59c306ffe` · GREEN `dd385862e` |
+| 16 post-action resolver | DONE_WITH_CONCERNS | RED `c087ff82c` · GREEN `c93f81a68` |
+| 17 구 컬럼 불변식 | **DONE** | RED `d8460fd91` · GREEN `d5c81d359` · KDoc `6b1c333e4` |
+
+### Task 17 의 뮤테이션 이행 보고 (2026-08-21 소급 등재)
+
+**왜 소급인가.** Task 17 스펙은 「**비-공허 짝 필수** — 처방을 일부러 되돌려 red 1회를 확인하고
+**그 사실을 보고에 적는다**」고 명령했다. 서브에이전트는 실제로 이행했으나 **위 결과표에 그 기록이 없었다.**
+「돌렸는데 안 적었다」는 다음 사람에게 「안 돌렸다」와 구분되지 않는다 —
+`[[safety-claim-asserted-but-never-measured]]` 가 열리는 자리다. 원문 그대로 등재한다.
+
+**서브에이전트 보고 원문.** `WorkflowWriteRepository.updateTransition` 의
+`setNull(FROM_STATE_ID)`·`setNull(TO_STATE_ID)` 3줄을 제거하고 재실행 → `EXIT=1` · **3건 실패**.
+
+| 실패한 판정 |
+|---|
+| 쓰기 뒤에도 신 세대와 구 세대가 다른 상태를 가리키는 전환이 없다 |
+| `updateTransition` 이 GLOBAL 로 바꾸면 구 출발 상태가 되살아나지 않는다 |
+| 구 세대 컬럼이 찬 전환을 GLOBAL 로 바꿔도 옛 출발 상태가 되살아나지 않는다 |
+
+이어서 `git checkout --` 로 원복하고 `grep -n setNull` 로 복구를 확인했다(**277·278행**).
+원복 확인까지 적는 이유는 이 저장소의 함정 그대로다 — **미커밋 상태의 뮤테이션 원복은 소실이다.**
+
+### ★ controller 의 오류 2건 — 기록
+
+1. **Task 15 의 `files` 를 너무 좁게 선언했다.** `fromStateKey` 를 nullable 로 완화하면 그 값을 **그리는** 쪽이 함께 바뀌어야 하는데 api·mocks 5파일만 허용했다. 그 결과 선언 안은 초록인데 전체 스위트가 red 다. Task 14 가 같은 양식(「controller 의 `files` 설계 실수」)으로 신설된 전례가 있는데 **되풀이했다.** 처방 = Task 20 신설.
+2. **검증 명령을 공허한 것으로 줬다.** dispatch 프롬프트에 `tsc --noEmit -p apps/web/tsconfig.json` 을 적었는데, 그 파일은 `"files": []` + `references` 인 solution tsconfig 라 `--build` 없이 `-p` 로 부르면 **아무것도 컴파일하지 않는다**. controller 가 직접 A/B 로 실측했다 — 타입 에러 2건이 실재하는 상태에서 그 명령은 `EXIT=0` · 출력 0줄, `tsc -p tsconfig.app.json --noEmit` 은 `EXIT=2` · 12줄. 저장소 안에는 이 형태가 **0건**이고(`pnpm typecheck` = `tsc -p tsconfig.app.json --noEmit` 이 정본) **controller 가 새로 만든 잘못**이다.
+   **장부 후보** — `.claude/skills/bts-impl/worktree-commands.md` 에 worktree 용 `vitest`·`lint-staged` 대체 명령은 있으나 **`typecheck` 짝이 없다.** 그 빈칸이 이 오발명을 불렀다.
+
+### Task 15 의 잔여 발견 (Task 20 이 받는다)
+
+- `workflows.test.ts` 는 자기 `beforeEach` 인라인 목이 핸들러를 덮어써 **픽스처를 한 번도 보지 않았다.** 리뷰가 지목한 「프론트 테스트가 인라인 목으로 자가 초록」이 실재했다. 인라인 목 4벌에 직접 INITIAL 원소를 심어야 red 가 났다.
+- **grep 만으로는 부족했다.** `routes/__tests__/workflows.$key.test.tsx` 는 `fromStateKey` 문자열이 없어 22파일 목록에 안 잡혔으나 `workflowHandlers` 를 통해 픽스처를 소비해 실제로 깨졌다. 전수 스위트 실행이 없었으면 놓쳤다.
+- 22파일 분류 — A(`workflowTransitionViewSchema` 계열) 5 = 완료 · B(`workflow.types.ts` 중복 인터페이스 계열) 5 = **Task 20** · C(`issueTransitionSchema` 계열) 12 = 다른 모양, 무수정.
+
+### Task 20. 프론트 렌더링 계층 — nullable 출발 상태를 그린다 (Task 15 BLOCKED 해소)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/components/workflow/workflow.types.ts`,
+`apps/web/src/components/workflow/PostActionConfigSection.tsx`,
+`apps/web/src/components/workflow/WorkflowDiagram.tsx`,
+`apps/web/src/routes/workflows.$key.tsx`,
+`apps/web/src/components/workflow/WorkflowDiagram.test.tsx`,
+`apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx`,
+`apps/web/src/routes/__tests__/workflows.$key.test.tsx`,
+`apps/web/e2e/workflow.spec.ts`] · depends-on: [15]
+
+- **현재 브랜치가 red 다.** `routes/__tests__/workflows.$key.test.tsx` 2건 실패 —
+  `PostActionConfigSection.tsx:357` 의 `t.fromStateKey.includes('__')` 가 null 에서 TypeError.
+  타입도 red — `tsc -p apps/web/tsconfig.app.json --noEmit` 이 `routes/workflows.$key.tsx:83,86` 에 TS2322 2건.
+- **근본 원인은 두 벌의 정본이다.** `workflow.types.ts:18` 의 `WorkflowTransitionView` 가 `@/api/workflows` 의
+  Zod 추론 타입과 **별개로 손으로 선언**돼 있고 둘이 서로를 검사하지 않는다.
+  `two-lists-never-check-each-other` 그 양식이다.
+  **처방 1순위 = 중복 인터페이스를 지우고 Zod 추론 타입을 재수출한다.** 손으로 `| null` 만 더하면
+  두 벌이 남아 다음 필드 추가에서 같은 사고가 재발한다. 재수출이 불가능하다는 결론이면 그 근거를 보고에 적어라.
+- **`transitionKey(from, to)` 재계산을 없앤다.** 응답에 이미 `key` 가 실려 온다 — 백엔드 게터가
+  NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to` 로 만들고 URL 경로 세그먼트로 그대로 쓰인다.
+  프론트가 같은 규칙을 두 번째로 구현하지 마라.
+- **`WorkflowDiagram.tsx:67`** 이 null 을 문자열 `null` 로 찍는다. INITIAL 은 mermaid 의 `[*] --> to`,
+  GLOBAL 은 별도 표기가 필요하다. **`e2e/workflow.spec.ts` 가 `.statediagram-state` 노드 수를
+  5/5/3/4 로 단언**한다 — `null` 노드가 생기면 1씩 늘어 4건이 깨진다. Task 15 는 이걸 **미측정 예측**으로
+  남겼다. 반드시 실측하라.
+- **INITIAL·GLOBAL 을 post-action 대상 select 에 넣을지**를 결정하고 근거를 보고에 적어라.
+- **규율.** 로직 변경(타입·키 계산·분기)이 섞이므로 **TDD 현행**이다. ui 시각 트랙이 아니다.
+  단 다이어그램 표기는 시각 결과물이므로 눈확인 요지를 함께 보고한다.
+- **검증.** `tsc -p tsconfig.app.json --noEmit` 로 재라(위 오류 2 참조). 전체 유닛 스위트와
+  `e2e/workflow.spec.ts` 를 **둘 다** 초록으로 만든다.
+
+### Task 21. 이슈 전환 프론트 짝 — `transitionId` 왕복을 성립시킨다 (P1 #6 의 프론트 절반)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/issues.test.ts`,
+`apps/web/src/mocks/issue-handlers.ts`, `apps/web/src/hooks/use-issue-transitions.ts`,
+`apps/web/src/hooks/__tests__/use-issue-transitions.test.tsx`] · depends-on: [18]
+
+- **Task 15 가 찾은 공백이다.** Task 18 이 `AvailableTransitionView.transitionId`·`kind` 를 채워도
+  프론트 `api/issues.ts:231` 의 `issueTransitionSchema` 에 두 필드가 **없어 Zod 가 버린다.**
+  409 재요청 왕복은 클라이언트가 후보의 `transitionId` 를 **되돌려 보내는** 것이 전제이므로,
+  이 짝이 없으면 **P1 #6 이 백엔드만 고쳐진 채 여전히 성립하지 않는다.**
+- **처방.** `issueTransitionSchema` 에 `transitionId`·`kind` 를 더하고, 전환 실행 요청이 있으면
+  `transitionId` 를 실어 보낸다. 409 `AMBIGUOUS_TRANSITION` 응답의 후보 목록을 받아 재요청하는 경로까지 잇는다.
+- **주의.** 이 스키마는 `workflowTransitionViewSchema` 와 **다른 모양**이다(`api/issues.ts` KDoc 이
+  「독립 스키마로 관리한다」고 명시). 두 벌을 합치려 들지 마라 — 합칠지는 별건 결정이다.
+- **red-first.** 「후보가 2개일 때 409 를 받고 `transitionId` 로 재요청해 성공한다」를 먼저 red 로 만든다.
+
+### 게이트 2 재작업 메타 (갱신)
+
+- **task 수** 7(15~21) · **wave** 6a(15·16·17 완료) → 6b(18·19·20 병렬) → 6c(21)
+- Task 21 은 `depends-on: [18]` 이라 6c 다. Task 20 은 `depends-on: [15]` 이고 15 는 커밋 완료라 6b 진입 가능.
+- **검증 명령 정정** — 프론트 타입 검사는 `cd apps/web && node_modules/.bin/tsc -p tsconfig.app.json --noEmit` 다.
+  `-p tsconfig.json` 은 공허하다.
+
+### Task 22. `AvailableTransitionView` 값 비교 테스트 2건 기대값 갱신 (Task 18 BLOCKED 해소)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineToCategoryTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailabilityPhaseTest.kt`,
+`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`] ·
+depends-on: [18]
+
+- **`AvailableTransitionView` 는 data class 라 `equals` 가 6필드 전부를 본다.** Task 18 이
+  `transitionId`·`kind` 를 채우자 값 통째 비교를 하는 테스트가 깨졌다. `AvailableTransitionsResult.kt`
+  KDoc 이 이 파급을 **미리 예고**했는데 controller 가 Task 18 의 `files` 에 두 파일을 안 넣었다
+  (**controller 의 `files` 설계 실수 — 이 PR 에서 3회째**. Task 14 · Task 15 · Task 18).
+- `WorkflowEngineToCategoryTest.kt:106-107` · `WorkflowEngineAvailabilityPhaseTest.kt:106` 각 1곳.
+  **UUID 는 픽스처가 `UUID.randomUUID()` 로 만든다 — 손으로 쓰지 말고 픽스처 전환에서 파생시켜라**
+  (`ToCategory` 는 42-43행, `AvailabilityPhase` 는 55행에 변수가 이미 있다).
+- **KDoc 정정 동승.** `AvailableTransitionsResult.kt` 의 「### 값 채우기는 아직이다 — 지금
+  `transitionId`·`kind` 는 항상 null 이다」 절이 이제 **사실과 반대**다. 고쳐라.
+  **단 기본값 `= null` 2개와 `AvailableTransitionViewTest` 의 3인자 생성 가드는 건드리지 마라**
+  — spec N2(cross-BC 프로덕션 0줄)를 지키는 장치다. 이 task 의 shared-kernel 변경은 **KDoc 뿐**이다.
+- **규율.** 기대값 갱신이라 신규 red 를 만들지 않는다. **현재 red 2건이 그 자체로 red 증거**다 —
+  갱신 전 실패 출력과 갱신 후 초록을 둘 다 보고에 실어라. 커밋은 `test:` 하나로 충분하다.
+
+### ★ 범위 밖으로 확인된 것 — cross-BC 차단 (Task 18 이 발견)
+
+`GET /api/v1/issues/{key}/transitions` 의 응답 매핑
+`issue-tracking/.../rest/AvailableTransitionsResponse.kt` 의 `TransitionItem` 이
+`fromStateKey`·`toStateKey`·`name`·`key`·`toCategory` **5필드만** 싣고 `transitionId`·`kind` 를 **버린다**
+(그 파일에 `transitionId` 등장 **0회** — controller 실측). 게다가 `:67` 이
+`key = "${view.fromStateKey}__${view.toStateKey}"` 로 **구 2튜플 규칙을 재계산**하고, KDoc `:34` 이
+**대체된 ADR**(`2026-05-28-workflow-transition-identity-policy`)을 정본으로 인용한다.
+
+**따라서 P1 #6(409 재요청 왕복)은 이 PR 에서 끝까지 닫히지 않는다.** shared-kernel 뷰까지는 값이
+왔지만 HTTP 표면에서 버려진다. 고치려면 **issue-tracking BC 의 프로덕션 코드**를 건드려야 하는데,
+① `CLAUDE.md` 의 「한 PR = 한 BC」 ② 이 PR 의 리뷰가 **PASS 로 판정한 N2「cross-BC 프로덕션 0줄」**
+두 가지를 동시에 깬다. Task 21(프론트 짝)도 이것이 없으면 읽을 값이 없어 의미가 없다.
+
+**게이트 2 재판정 사항이다 — Maxi 결정 대기.**
+
+## 게이트 2 재판정 — cross-BC 결정 (2026-08-20)
+
+**Maxi 응답 = A안.** issue-tracking BC 의 REST 표면까지 이 PR 에서 고쳐 P1 #6 을 끝까지 닫는다.
+B(후속 PR 분리)·C(범위 재설계) 기각.
+
+**명시적으로 깨는 것 2가지 — 재리뷰가 이 사실을 알고 판정해야 한다.**
+① `CLAUDE.md` 의 「한 PR = 한 BC」 PR 범위 관례
+② 직전 리뷰가 **PASS 로 판정한 N2「cross-BC 프로덕션 0줄」** — 이제 거짓이다.
+
+**깨지지 않는 것.** BC 격리 원칙 자체. 이 변경은 project-workflow 를 직접 import 하는 것이 아니라
+issue-tracking 이 **자기 shared-kernel 의존 DTO 를 자기 REST 어댑터에 매핑**하는 일이다.
+
+### ★ 실측 — 요청 쪽도 없다
+
+`grep -rn "transitionId" issue-tracking/src/main` = **0건**. 응답만이 아니라 **요청 경로에도
+`transitionId` 가 전혀 없다.** ADR D3 이 「`POST /api/v1/issues/{key}/transition` 이 `transitionId` 를
+추가로 받는다」고 정했는데 미구현이다. 사슬은 이렇다.
+
+```
+adapter/inbound/rest/TransitionIssueRequest.kt (REST 바디)
+  → IssueController.kt:457  application/IssueApplicationRequests.kt:212 (앱 DTO) 로 매핑
+  → IssueApplicationService.kt:713  shared-kernel TransitionRequest 생성  ← 여기 transitionId 는 이미 있다
+```
+
+즉 shared-kernel 은 준비돼 있고 **issue-tracking 의 3단 DTO 사슬만 비어 있다.**
+
+### Task 23. issue-tracking REST 표면 — `transitionId` 왕복을 잇는다 (P1 #6 완결)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/TransitionIssueRequest.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/TransitionIssueRequestTest.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/AmbiguousTransitionStatusCodeIntegrationTest.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTransitionTest.kt`,
+`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/web/BulkOperationControllerTest.kt`] ·
+depends-on: [18, 22]
+
+- **응답** — `AvailableTransitionsResponse.TransitionItem` 에 `transitionId`·`kind` 를 싣는다.
+  같은 파일 `:67` 의 `key = "${view.fromStateKey}__${view.toStateKey}"` 는 **구 2튜플 규칙 재계산**이고,
+  KDoc `:34` 은 **대체된 ADR**(`2026-05-28-workflow-transition-identity-policy`)을 정본으로 인용한다.
+  둘 다 정정한다 — 정본은 `2026-08-18-workflow-transition-id-identity` 다.
+- **요청** — 3단 DTO 사슬에 `transitionId: UUID? = null` 을 통과시킨다. **기본값 null 필수** —
+  `BulkItemApplier.kt:85` · `IssueTransitionAdapter.kt:94` 가 같은 앱 DTO 를 만들고 있어
+  기본값이 없으면 컴파일이 깨진다(둘 다 이 task 의 `files` 밖이다).
+- **★ `TransitionResult` sealed 를 확장하지 마라.** 결정 D-2 가 그것을 기각했다 —
+  `IssueApplicationService` 의 exhaustive `when` 을 깨서 cross-BC 가 된다. 409 는 예외 경로다.
+- **red-first.** 「후보 2개 → 409 → 응답의 `transitionId` 로 재요청 → 성공」을 **끝에서 끝까지**
+  먼저 red 로 만든다. `AmbiguousTransitionStatusCodeIntegrationTest` 가 그 자리다 —
+  체크포인트가 「`@Order` 회귀를 실제로 잡는 가드는 이 파일」이라 확인한 파일이다.
+- **범위 밖(손대지 마라)** — `bulk/` 의 `TransitionIntersection` 도 (from,to) 동일성을 쓰지만
+  일괄 전환은 409 왕복 대상이 아니다. **장부 후보**로 남긴다.
+
+### Task 24. 시드 전환 수 단언 6 → 7 (Task 19 BLOCKED 해소)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedValidatorPostActionTest.kt`] ·
+depends-on: [19]
+
+- Task 19 가 시드에 INITIAL 전환을 심자 `software-default` 의 전환이 6 → 7 이 됐다.
+  `:298` 의 `assertThat(swDefault.transitions).hasSize(6)` 이 그 한 줄이다.
+- **★ 이 단언은 원래부터 환경 의존이었다.** V207 ⑨ 가 이미 적용된 DB 에서는 그 워크플로우가 진작
+  7건이고, Testcontainers 빈 DB 라서만 6이었다. **7 로 올리면 오히려 환경 독립이 된다** —
+  숫자를 눈감아 주는 변경이 아니라 갈라져 있던 두 환경을 맞추는 변경이다.
+- `hasSize(7)` + 주석 문구 정정. **그 이상 넓히지 마라** — 이 파일은 FR-IS-07 B7 의 관심사다.
+
+### ★ controller 의 `files` 설계 실수 — 4회째
+
+Task 14 · 15 · 18 · 19. 매번 「선언 안은 초록인데 그 변경이 밖을 깨뜨린다」는 같은 모양이다.
+**뿌리는 「무엇을 고치나」만 세고 「그 변경이 무엇을 깨뜨리나」를 안 센 것이다.**
+`files` 를 정할 때 다음 두 질문을 반드시 함께 물어야 한다.
+① 이 값을 **쓰는** 곳은 어디인가 ② 이 값을 **값으로 비교하거나 개수로 세는** 테스트는 어디인가.
+②를 빠뜨린 것이 15(렌더링) · 18(data class 값 비교) · 19(개수 단언) 세 건의 직접 원인이다.
+
+## wave 6b/6c 결과 (2026-08-20)
+
+| task | 판정 | 커밋 |
+|---|---|---|
+| 18 transitionId·kind | BLOCKED → Task 22 가 해소 | RED `d85f1d060` · GREEN `0da289209` |
+| 19 시드 INITIAL | BLOCKED → Task 24 가 해소 | RED `82f8730c0` · GREEN `281524b4b` · REF `658e0dd6e` |
+| 20 프론트 렌더링 | DONE_WITH_CONCERNS | RED `e686c902e` · GREEN `c02dc9231` · REF `f30cab4d0` |
+| 22 값비교 기대값 | **DONE** | `3c0b63b43` |
+| 23 cross-BC 왕복 | DONE_WITH_CONCERNS | RED `3d10c5670` · GREEN `43fb4960c` · REF `31e355a90` · docs `cdc22cb92` |
+| 24 시드 전환 수 | **DONE** | `cbcbe48cc` |
+
+### ★ controller 의 오류 3건 추가 — 총 6건
+
+3. **`files` 설계 실수 4회째 (Task 19).** `hasSize(6)` 개수 단언을 안 셌다.
+4. **브리핑의 고장 경로가 틀렸다 (Task 17).** `legacyStateKeyOf` 의 `error()` 로 500 이 난다고 적었으나
+   구 컬럼이 `ON DELETE CASCADE` FK 라 **도달 불가**다. 실제 고장은 더 나쁘다 — 구 출발 상태가 폴백으로
+   되살아나 `Workflow.of()` invariant 가 던져 **워크플로우 전체가 조회 불능**이 된다.
+5. **브리핑의 `null__to` 예측이 틀렸다 (Task 23).** `WorkflowEngine` 이
+   `fromStateKey = transition.fromStateKey ?: req.fromStateKey` 로 요청 상태를 채우고
+   `AvailableTransitionView.fromStateKey` 는 non-null `String` 이라 **구조적으로 불가능**하다.
+   생산자는 저장소 전체에 `WorkflowEngine.kt:231` 한 곳뿐이다(전수 확인).
+   **두 번 다 서브에이전트가 실측으로 정정했다 — 브리핑을 근거로 삼지 않은 것이 옳다.**
+
+### ★ 이 PR 이 새로 도달 가능하게 만든 결함 — Task 23 이 발견
+
+`key` 의 정본은 도메인 게터 `WorkflowTransition.key` 다(`WorkflowTransition.kt:42-47`).
+
+```kotlin
+NORMAL          -> "${fromStateKey ?: kind.name}__$toStateKey"
+GLOBAL, INITIAL -> "${kind.name}__$toStateKey"
+```
+
+그런데 `AvailableTransitionsResponse.kt` 의 `TransitionItem.from` 은 **항상 `from__to`** 로 재계산한다.
+같은 GLOBAL 전환을 도메인은 `"GLOBAL__done"`, REST 응답은 `"open__done"` 이라 부른다.
+
+- **이 PR 이 원인이다.** `TransitionKind` 는 이 브랜치가 `0c55ebf88`(task-3)에서 처음 만들었고
+  `origin/main` 에 없다. `candidatesFor` 가 GLOBAL 을 목록에 넣으므로 **이 PR 로 처음 도달 가능**해졌다.
+  INITIAL 은 이 목록에 안 나오므로 영향 없다.
+- **실사용 영향.** `key` 는 `PostActionController` 의
+  `/api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions` **경로 세그먼트**로 소비된다.
+  이 응답의 `key` 를 그 경로에 쓰면 GLOBAL 전환에서 빗나간다.
+- **프론트가 이미 이 값에 의존한다.** Task 20 이 `workflow.types.ts:44-50` 에
+  「GLOBAL·INITIAL 은 `KIND__to` … 응답에 실린 `key` 를 그대로 쓰는 것이 정답」이라 적었다.
+  그 전제가 이 엔드포인트에서 깨져 있다.
+- Task 23 이 고치지 않은 이유가 옳다 — 자기 `files` 안에서 고치려면 `KIND__to` 규칙을 **세 번째로**
+  구현해야 하고, 그것이 `two-lists-never-check-each-other` 의 재생산이다.
+
+### Task 25. `key` 정본화 — 도메인 게터 하나만 남긴다 (Task 23 CONCERN 1·2 해소)
+
+**메타**. agent `backend-engineer` ·
+files(main 3): [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`,
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`] ·
+files(test 12): [`shared-kernel/.../AvailableTransitionViewTest.kt`,
+`project-workflow/.../engine/{WorkflowEngineGlobalTransitionTest,WorkflowEngineToCategoryTest,WorkflowEngineAvailableTransitionsTest,WorkflowEngineAvailabilityPhaseTest}.kt`,
+`project-workflow/.../adapter/inbound/WorkflowTransitionAdapterAvailableTest.kt`,
+`issue-tracking/.../bulk/application/{TransitionIntersectionTest,BulkAvailableTransitionsServiceTest}.kt`,
+`issue-tracking/.../bulk/web/BulkOperationControllerTest.kt`,
+`issue-tracking/.../adapter/inbound/rest/IssueControllerTransitionsTest.kt`,
+`issue-tracking/.../application/{IssueApplicationServiceAvailableTransitionsTest,IssueApplicationServiceArchiveGuardTest}.kt`] ·
+depends-on: [23]
+
+- **★ test 12개는 「그 타입을 값으로 만드는」 파일 전수다**(`grep -rln "AvailableTransitionView("` = 12).
+  data class 에 필드를 더하면 값 비교가 깨지므로 미리 열어 뒀다 — controller 가 이 PR 에서 같은 실수를
+  4회 했다. **전부 고치라는 뜻이 아니다.** 실제로 안 깨진 파일은 손대지 말고 「무수정」으로 보고하라.
+- **처방.** `AvailableTransitionView` 에 `key` 를 싣고 `WorkflowEngine.kt:231` 이
+  **도메인 게터 결과(`transition.key`)를 그대로** 전달한다. `AvailableTransitionsResponse` 는
+  재계산 대신 그 값을 쓴다. **규칙 구현은 도메인 게터 하나로 남는다.**
+- **★ 설계 결정 1개는 네가 하고 근거를 대라.** 새 필드를 `key: String? = null` 로 두면 기존 생성 지점이
+  안 깨지지만, 목이 만든 뷰는 `key` 가 null 이라 REST 의 non-null `TransitionItem.key` 를 못 채운다.
+  ① REST 를 nullable 로 바꾼다 ② 목 쪽에 값을 넣는다 ③ 다른 방법 — 무엇을 골랐고 왜인지 적어라.
+  **`?:` 로 재계산 폴백을 두는 것만은 금지다** — 그게 세 번째 구현이고 이 task 의 목적을 무효화한다.
+- **기본값 `= null` 과 `AvailableTransitionViewTest` 의 3인자 생성 가드는 spec N2 를 지키는 장치다.**
+  없애야 한다는 결론이면 없애지 말고 BLOCKED 로 보고하라.
+- **CONCERN 2 동승.** `AvailableTransitionsResult.kt:54-57` KDoc 이 「HTTP 응답은 아직 버린다」라고
+  적었는데 Task 23 이 실었으므로 **이제 거짓**이다. 같은 파일이니 함께 고쳐라.
+- **red-first.** 「GLOBAL 전환의 REST 응답 `key` 가 도메인 게터와 같다(`GLOBAL__done`)」를 먼저 red 로.
+
+## Task 25 결과 + 프론트 범위 재판정 (2026-08-20)
+
+**Task 25 DONE** — RED `99fcb5014` · GREEN `2ccf086ab`. `key` 규칙 구현이 도메인 게터 하나로 남았다.
+설계 결정 = ① REST `TransitionItem.key` 를 nullable 로. ②(목에 값 넣기)는 **타입 수준에서 불가능**하고
+(`view.key` 가 `String?` 이라 non-null 파라미터에 못 넣는다 · `!!` 는 절대 규칙 위반 ·
+`requireNotNull` 은 「미계산」이라는 정상 상태를 500 으로 바꾼다) 형제 필드
+`toCategory`·`transitionId`·`kind` 가 같은 이유로 이미 nullable 이다. `?:` 재계산 폴백 0건.
+**비-공허 확인** — GREEN 선커밋 뒤 `key = transition.key` 를 옛 재계산식으로 되돌려 `PROBE_EXIT=1` ·
+4/4 실패를 보고 원복했다. 12개 test 중 **고침 6 · 무수정 6**(안 깨진 것은 손대지 않음).
+
+### ★ 프론트 범위 재판정 — Maxi 응답 = C안
+
+`grep -rn "AMBIGUOUS" apps/web/src` = **0건**. 프론트에 409 처리가 전혀 없다.
+이 PR 이 같은 (from,to) 에 전환을 여럿 만들 수 있게 허용해 **409 가 처음 도달 가능**해졌으므로,
+그대로 두면 사용자가 알 수 없는 오류를 보고 **그 상태 변경을 영영 못 한다.**
+
+**Maxi 가 C(후보 선택 UI 까지)를 골랐다.** A(스키마 필드만)·B(409 안내만) 기각.
+성격이 앞선 두 결정과 다르다는 점(결함 수정이 아니라 **신규 UI**)을 명시하고 물었다.
+
+### Task 21. 이슈 전환 409 후보 선택 — 프론트 완결 (P1 #6 의 마지막 절반)
+
+**메타**. agent `frontend-engineer` ·
+files(main 4): [`apps/web/src/api/issues.ts`, `apps/web/src/hooks/use-issue-transitions.ts`,
+`apps/web/src/components/issue/meta/IssueStateTransition.tsx`, `apps/web/src/mocks/issue-handlers.ts`] ·
+files(test 5): [`apps/web/src/api/issues.test.ts`,
+`apps/web/src/hooks/__tests__/use-issue-transitions.test.tsx`,
+`apps/web/src/components/issue/meta/__tests__/IssueStateTransition.test.tsx`,
+`apps/web/src/mocks/__tests__/issue-transition-handlers.test.ts`,
+`apps/web/e2e/issue-transition.spec.ts`] ·
+files(파급 대비 6): [`apps/web/src/components/issue/IssueMetaPanel.tsx`,
+`apps/web/src/components/issue/IssueMetaPanel.test.tsx`,
+`apps/web/src/components/issues/BulkTransitionDialog.tsx`,
+`apps/web/src/components/issues/cells/StatusCell.tsx`,
+`apps/web/src/components/issues/cells/StatusCell.test.tsx`,
+`apps/web/src/routes/issues.$key.tsx`] ·
+depends-on: [23, 25]
+
+- **백엔드는 준비됐다.** Task 23 이 요청·응답 사슬을 이었고 Task 25 가 `key` 를 정본화했다.
+  409 응답 실측 형태(Task 23 의 RED 출력) —
+  `{"error":{"code":"AMBIGUOUS_TRANSITION","message":"…"},"candidates":[{"transitionId":"…","name":"…"}]}`
+- `ApiError`(`client.ts:15-23`)가 `status`·`body` 를 노출하므로 **`client.ts` 는 안 건드려도 된다.**
+- **파급 대비 6파일은 「전부 고치라」는 뜻이 아니다.** 스키마에 필드를 더하면 산재한 인라인 목이
+  깨질 수 있어 미리 열어 둔 것이다(learnings 2026-05-30). 안 깨진 파일은 **무수정으로 보고**하라.
+- **설계 결정 1개는 네가 하고 근거를 대라.** `transitionId`·`kind` 를 required 로 할지
+  `.nullable().optional()` 로 할지. 형제 필드 `toCategory` 가 후자다. required 면 왕복이 타입으로
+  보장되지만 인라인 목 전수가 깨진다.
+- **규율.** 로직(409 파싱·재요청 분기)이 크므로 **TDD 현행**이다. UI 부분은 눈확인 + E2E 동반.
+- **디자인.** `docs/design/jira-parity-contract.md` 를 따른다. 계약이 안 덮는 새 요소면 그 사실을
+  보고에 적어라 — 별도 디자인 스펙이 필요하면 만들지 말고 BLOCKED 로 올려라.
+
+## Task 21 결과 + 래칫 판정 (2026-08-21)
+
+**Task 21 BLOCKED** — RED `89f0cf1c0` · GREEN `ccf64fb97` · REFACTOR `8dd71f002`.
+구현·테스트·E2E(신규 2건 + 인접 5스펙 26건)·눈확인 전부 통과. 타입 `EXIT=0`.
+유닛 **9,657/9,658** — 남은 red 1건이 `lint-ratchet`.
+
+### ★ controller 판정 — 래칫 장부를 올리지 않는다
+
+Task 21 이 제안한 처방은 `lint-ratchet-baseline.ts` 의
+`"src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1041` → `1077` 이다.
+**계약이 그것을 금지한다.** `lint-ratchet.test.ts` 의 `DRIFT_HINT` 원문:
+
+> 늘렸다면 **되돌리거나 함수를 쪼개고**, 줄였다면 `BASELINE_PATH` 의 숫자를 그만큼 낮춰라.
+
+장부를 올리는 선택지는 계약에 없다. 게다가 같은 파일이 **엄격 일치로 바꾼 근거**로
+「#367 이 15줄 재성장 여지를 남긴 채 지나갔고 그것을 기계가 아니라 독립 리뷰어가 겨우 잡았다」를
+인용한다(부채 매핑 22 · Maxi 확정 2026-08-15). 여기서 1041→1077 을 승인하면 **36줄 재성장 여지**를
+그 가드가 막으려던 방식 그대로 남긴다.
+
+**controller 의 오류 6건째** — 「이 변경이 무엇을 깨뜨리나」를 또 안 셌다. 이번엔 파일이 아니라
+**동결 장부**였다. 1041줄짜리 동결 함수에 UI 배선을 얹으면 래칫에 걸린다는 것이 예측 가능했다.
+
+### Task 26. 409 배선을 `IssueDetailPage` 밖으로 분리 (Task 21 BLOCKED 해소)
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/routes/issues.$key.tsx`,
+`apps/web/src/components/issue/meta/IssueStateTransition.tsx`,
+`apps/web/src/hooks/use-issue-transitions.ts`,
+`apps/web/src/test/lint-ratchet-baseline.ts`,
+`apps/web/src/routes/issues.$key.test.tsx`,
+`apps/web/src/components/issue/meta/__tests__/IssueStateTransition.test.tsx`,
+`apps/web/src/hooks/__tests__/use-issue-transitions.test.tsx`,
++ 신규 파일 1개(위치는 구현자 판단)] · depends-on: [21]
+
+- **목표.** `IssueDetailPage` 를 **1041 이하**로 되돌린다. 1041 이면 장부 무변경, 그 아래면
+  **장부를 실측치로 낮춘다**(계약이 명시한 유일한 하향 경로).
+- **분리 대상** — Task 21 이 넣은 +36줄. `ambiguousTransition.capture` 판정 · 후보 선택 핸들러 ·
+  `AmbiguousTransitionDialog` 렌더. mutation 이 `IssueDetailPage` 안에 있다는 것이 분리 불가의
+  근거가 되지 않는다 — 자식 컴포넌트가 mutation 결과를 props 로 받거나, 배선 전체를 소유하는
+  컴포넌트를 새로 만들면 된다.
+- **★ `lint-ratchet-baseline.ts` 를 올리지 마라.** 낮추는 것만 허용된다. 200줄 밑으로 내려가면
+  그 줄을 **지워라**(계약 원문). 올려야만 한다는 결론이면 고치지 말고 **BLOCKED 로 보고**하라 —
+  그건 Maxi 판단이다.
+- **행동 불변.** Task 21 의 E2E 2건(S7 · S7-2)과 유닛이 그대로 초록이어야 한다. 리팩터이지 기능
+  변경이 아니다.
+
+## Task 26 결과 (2026-08-21)
+
+**DONE** — commit `4f3d8ab0f` `refactor: transition-id-multi-global task-26`.
+
+**목표를 넘겨 달성했다.** `IssueDetailPage` **1077 → 1014**. 동결값 1041 보다 **짧아졌으므로**
+`lint-ratchet-baseline.ts` 를 **1014 로 하향**했다 — 계약이 명시한 유일한 하향 경로이고,
+올리는 선택지는 여기서도 쓰지 않았다.
+
+**분리 방식.** 409 배선을 두 조각으로 뺐다.
+- `use-issue-transitions.ts` 의 훅이 판정과 후보 상태를 갖는다.
+- 신규 `AmbiguousTransitionPrompt.tsx` 커넥터가 다이얼로그 렌더와 후보 선택 핸들러를 갖는다.
+
+`IssueDetailPage` 에는 커넥터 한 줄만 남는다. **후속 소비처(목록 인라인 상태 편집 등)가
+같은 셋을 재사용할 수 있는 모양**이고, 그 사실을 `TODOS.md` 매핑 `75` 가 처방으로 인용한다.
+
+**검증.**
+
+| 축 | 결과 |
+|---|---|
+| 유닛 전량 | **582 files / 9,668 tests · `EXIT=0` · skipped 0** |
+| 타입 | `EXIT=0` |
+| E2E | `6 passed` |
+
+착수 시점 분모는 9,657/9,658 이었고 신규 10건으로 늘었다 — **분모가 커진 것이지 줄지 않았다.**
+(통과 건수와 종료 코드를 함께 적는 이유는 `worktree-commands.md §3` 이 정본이다.)
+
+**비-공허 프로브 2건.**
+
+| 프로브 | 결과 |
+|---|---|
+| `selectCandidate` 에서 `transitionId` 제거 | T26-F3 red |
+| 커넥터 props 를 상수화 | T26-P3 · T26-P5 red |
+
+둘 다 확인 후 원복했다.
+
+## 재리뷰 결과 (7렌즈 · 2026-08-21) — 🛑 BLOCKER 4건
+
+| 렌즈 | 판정 | 요지 |
+|---|---|---|
+| code-reviewer | **BLOCKER 2** | 직전 15건 중 닫힘 9 · 미닫힘 5 · 미확인 1 |
+| security | **BLOCKER 1** | 프로브 4종 실행 — 전부 우회 성공 |
+| data-migration | **BLOCKER 2** | CASCADE 하드 삭제 신규 · 직전 4건 중 2닫힘 |
+| api-contract | **BLOCKER 1** | 왕복 사슬은 성립 · 인접 경로 500 |
+| testing | **BLOCKER 2** | 새 분기가 죽은 코드 · `transitionId` 검사 테스트 0건 |
+| maintainability | CONCERNS | 거짓 서술 6건 신규 · 300줄 장부 누락 악화 |
+| performance | **PASS** | 조회 4.57배 경량화 · 직전 PASS 3건 유지 |
+
+**게이트 2 재판정 = Maxi A안.** BLOCKER 4건 전부 수정 + 장부 등재를 같은 PR 에서. B·C 기각.
+
+### ★ 넷을 잃어버린 경로가 같다 — 이번 사고의 뿌리
+
+```
+TODOS.md 커밋 0 · resolveById 0 · copyTransitions 0 · WorkflowGraphClosed 0
+```
+plan `:1202` 가 「P2 8건 · P3 3건 · 장부 후보 6건은 `TODOS.md` 등재로 분리한다」고 **선언하고 한 건도 안 했다.**
+BLOCKER 1 은 직전 리뷰에서 「P2 — 미래 P0」였고 유예 근거가 **「아직 HTTP 로 못 보낸다」**였는데,
+**같은 PR 의 Task 23 이 그 전제를 없앴는데 재등급이 없었다.** `two-lists-never-check-each-other` 네 번째다.
+
+### Task 27. `resolveById` 가 상태 관문을 타게 한다 (BLOCKER 1 · 5렌즈 교차 · P0)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAmbiguousTest.kt`] ·
+depends-on: []
+
+- `resolveTransition:286` 이 `req.transitionId?.let { return resolveById(...) }` 로 즉시 반환해
+  `candidatesFor:359-368` 의 관문 3개(NORMAL 출발 일치 · GLOBAL 자기루프 제외 · INITIAL 항상 제외)를
+  **통째로 건너뛴다.** 요청의 `toStateKey` 는 검사조차 안 된다.
+- **처방** — `resolveById` 가 `candidatesFor(workflow, req.fromStateKey)` 안에서만 찾는다.
+  **`candidatesFor` 를 재사용하라** — `kind` 분기를 다시 적으면 규칙이 세 벌이 된다.
+- **409 왕복은 안 깨진다.** 후보 목록이 `:289` 에서 이미 `candidatesFor` 의 부분집합으로 만들어진다.
+- **red-first 4건** — 프로브 A(NORMAL 출발 불일치) · B(INITIAL 지목) · C(GLOBAL 자기전환) ·
+  D(선언 `toStateKey` ≠ 실제 도착지). D 를 400 으로 거절할지는 **네가 판단하고 근거를 대라**.
+
+### Task 28. post-action 전환 지목을 `transitionId` 로 (BLOCKER 2 · 3렌즈 교차)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionTransitionResolver.kt`,
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminService.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionE2EIntegrationTest.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionAdminServiceTest.kt`,
+`apps/web/src/components/workflow/PostActionConfigSection.tsx`,
+`apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx`] · depends-on: []
+
+- `PostActionTransitionResolver.kt:73` 이 `fetchOne` 인데 V207 이 `UNIQUE(workflow,from,to)` 를 없앴다.
+  실측 — `TooManyRows` 잡는 곳 **0건** · `createTransition` 중복 금지 가드 **0건** ·
+  프론트 `<option key={t.id} value={t.key}>` 라 중복 전환 둘이 **같은 값**을 보낸다.
+- **처방 방향(권고)** — 경로 세그먼트가 **UUID 로 파싱되면 id 로 해석**하고, 아니면 종전 `key` 경로로
+  폴백한다. 새 라우트 없이 하위호환을 유지하면서 중복을 구별할 수 있다. 프론트는 `value={t.id}` 로 맞춘다.
+  **이 방향이 불가하다는 결론이면 그 근거를 대고**, 최소한 다중 매치가 **500 이 아닌 명시 오류**가 되게 하라.
+- **red-first** — 같은 (from,to) 전환 2건을 만든 뒤 post-action 을 붙이는 테스트. **중복 쌍과 resolver 를
+  한 테스트에서 만나게 하는 것**이 핵심이다. 지금은 중복을 만드는 테스트와 resolver 를 태우는 테스트가
+  서로를 만나지 않아 초록이다.
+
+### Task 29. 상태 편성 해제가 전환을 CASCADE 삭제하지 못하게 (BLOCKER 3 · 데이터 손실)
+
+**메타**. agent `backend-engineer` ·
+files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowStatusCompositionService.kt`,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowStatusCompositionIntegrationTest.kt`] ·
+depends-on: []
+
+- `V207:75-76` 이 `from_status_id`·`to_status_id` 에 `ON DELETE CASCADE` 를 걸었는데
+  `WorkflowStatusCompositionController.kt:55` 에 **삭제 엔드포인트가 살아 있다.**
+  `requireRemovable:116-131` 은 ① 마지막 상태인가 ② 그 상태를 쓰는 **이슈**가 있는가 둘만 본다 —
+  **전환은 세지 않는다.**
+- **구 컬럼의 CASCADE 는 도달 불가였다** — `workflow_states` 를 지우는 코드가 저장소에 **0건**이다.
+  이 PR 이 처음 도달 가능하게 만들었다. V207 주석의 「구 컬럼과 같은 규칙」이 그래서 거짓이다.
+- **폭발 반경 실측(개발 DB)** — 편성 **17행 중 17행 전부**가 CASCADE 대상 전환을 갖는다.
+  `INITIAL` 이 사라지면 `WorkflowKeyResolverImpl` 이 `minByOrNull` 폴백으로 내려가
+  **이슈 생성 진입 상태가 조용히 바뀐다** — ADR 2026-08-18 이 닫으려던 결함의 부활이다.
+- **처방** — `requireRemovable` 에 「그 편성을 가리키는 전환이 있으면 409」를 더한다.
+  FK 를 `RESTRICT` 로 바꾸는 안은 **마이그레이션이 필요하니 고르지 마라**(3단 분할 이연 중이다).
+  V207 의 CASCADE 근거 주석도 사실대로 고쳐라.
+- **red-first** — 전환이 있는 상태를 빼려 하면 409. **현재 테스트는 전환을 한 건도 안 만들어 공허하다**
+  (`grep -c 'workflow_transitions'` = 0).
+
+### Task 30. `WorkflowGraphClosedTest` 픽스처를 YAML 과 맞춘다 (BLOCKER 4 · 죽은 코드)
+
+**메타**. agent `qa-engineer` ·
+files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowGraphClosedTest.kt`] ·
+depends-on: []
+
+- 픽스처 전환 **17개 전부 3인자 생성자**라 `kind` 가 NORMAL 기본값이다. 그래서 이 PR 이 새로 쓴
+  `buildAdjacency` 의 GLOBAL 분기와 `resolveInitialState` 의 INITIAL 분기가 **한 번도 실행되지 않는다.**
+  지워도 초록이다 — **태어나자마자 죽은 코드다.**
+- 파일 헤더가 「4 워크플로우는 YAML 과 동일한 구조를 내장한다」고 주장하는데, Task 19 가 YAML 을
+  6/5/3/3 → **7/6/4/4** 로 바꿔 이미 갈라졌다. MSW 픽스처와 `YamlSeedServiceTest` 는 맞췄고
+  **이 파일만 누락**이다.
+- **처방** — 4 픽스처에 INITIAL 1건씩 + **GLOBAL 로만 닿는 상태**를 만들어 GLOBAL 분기를 비-공허로.
+  INITIAL 분기는 도착지가 `display_order` 최소면 폴백과 답이 같아 **구조적으로 판별 불가**다 —
+  그 사실을 인지하고, 판별 가능한 픽스처(최소 상태가 아닌 곳을 가리키는 INITIAL)를 만들어라.
+- **비-공허 확인 필수** — 두 분기를 각각 지워 red 1회씩 보고 원복하라.
+
+### Task 31. 장부 등재 + 거짓 서술 정정 (controller 직접 · 이번 사고의 뿌리)
+
+**메타**. agent `controller 인라인` ·
+files: [`TODOS.md`, `docs/plans/2026-08-12-debt24-master.md`, `CLAUDE.md`,
+`docs/plans/2026-08-20-backend-workflow-transition-id-multi-global.md`, 거짓 서술 6곳] · depends-on: []
+
+- **부채 60부터** (59 는 인프라 세션 사용). `TODOS.md` + `debt24-master.md` **양쪽** 갱신 후
+  `debt-ledger-mapping.test.ts` 확인. 인프라 세션의 부채 59 를 상호 참조한다.
+- `CLAUDE.md:11` 「FR-WF-05~07 미착수」가 이 PR 로 거짓이 됐다.
+- 거짓 서술 6건 — `WorkflowWriteRepository.kt:253`(invariant 6→5) ·
+  `AmbiguousTransitionExceptionHandler.kt:27`(8종→10종) · `AvailableTransitionsResult.kt:70`(A4 참조 삭제) ·
+  `WorkflowExceptions.kt:1`(3종→11종) · `WorkflowController.kt:37-47`(엔드포인트 4개 누락) ·
+  `TransitionRequestDto.kt`·`AvailableTransitionsRequest.kt` 구 ADR 인용.
+- plan 결과 등재 누락 2건 — Task 17 뮤테이션 이행 보고 · Task 26 결과 섹션.
+
+
+## 재리뷰 이행 결과 (Task 27~33 · 2026-08-23 등재)
+
+**왜 이 절이 있나.** 라운드 2 가 이번 사고의 뿌리로 지목한 것이 「plan `:1202` 가 분리한다고 선언하고
+한 건도 안 했다」였다. 그 지적을 받은 라운드가 **자기 결과를 또 안 적으면** 같은 양식 다섯 번째다.
+라운드 3 리뷰가 이 절의 부재를 CONCERN 으로 냈고, 그 자리에서 쓴다.
+
+### 판정표 — 라운드 2 BLOCKER 4건 + 등재 의무
+
+| Task | 판정 | 무엇으로 닫혔나 | 커밋 (red → green) |
+|---|---|---|---|
+| **27** `resolveById` 관문 | **닫힘** | `WorkflowEngine.kt:292` 가 `candidatesFor(...)` 를 먼저 만들고 `:293` 이 그 목록 안에서만 찾는다. `resolveById:329` 본문은 `candidates.find { it.id == transitionId }` 하나 — **`kind` 재구현 0줄**(처방이 요구한 재사용). 프로브 A~D 는 `WorkflowEngineAmbiguousTest.kt:210·218·226·234` | `ad0288640` → `e61fe752d` |
+| **28** post-action `fetchOne` | **닫힘** | `PostActionTransitionResolver.kt:115` 가 `fetch` 로 목록 반환, `:67` 에 PK 기반 `resolveById` 신설. 다건은 `PostActionAdminService.kt:199` 가 404. red 는 같은 (todo,done) NORMAL 2건 + 같은 도착지 GLOBAL 2건을 실DB 에 심어 **중복과 resolver 를 한 테스트에서 만나게** 한다 | `6e81a7fa0` → `123be042f` |
+| **29** CASCADE 데이터 손실 | **닫힘** (처방 4 중 3 이행 · 1 기각 → 아래) | `WorkflowStatusCompositionService.kt:139→:154` 가 편성을 가리키는 전환을 세어 409. red 가 전환을 **실제로 심고** `transitionCount()`(실 `dsl.fetchCount`)로 잰다 — 출발지·도착지(INITIAL)·HTTP 409 세 축 | `f224cadf0` → `9317ca5b9` |
+| **30** 죽은 분기 | **닫힘** | 표준 4 픽스처를 YAML 과 같은 7/6/4/4 로 맞추고 판별용 합성 2벌(`WorkflowGraphClosedTest.kt:143`·`:177`) 추가. **비-공허는 아래 뮤테이션 2회로 확인** | `8604feaac` (단일 `test:`) |
+| **31** 장부 등재 + 거짓 서술 6건 | **닫힘** | `TODOS.md` + `debt24-master.md` 양쪽에 부채 60~80 21건. 정정한 숫자 4종을 라운드 3 이 재측정해 전부 일치 | `8a48864d3` · `6e5e12d53` |
+
+### Task 30 의 뮤테이션 이행 보고 (2026-08-23 · GREEN 선커밋 뒤)
+
+**왜 필요했나.** Task 30 스펙(`:1832`)이 「**비-공허 확인 필수** — 두 분기를 각각 지워 red 1회씩 보고
+원복하라」고 명령했는데 Task 30 은 red/green 짝 없는 **단일 `test:` 커밋**이라 red 를 한 번도 안 본
+채 초록이었다. 뮤테이션이 유일한 증거다. 「돌렸는데 안 적었다」는 「안 돌렸다」와 구분되지 않는다.
+
+명령. `./gradlew :modules:project-workflow:test --tests '*WorkflowGraphClosedTest*'`
+
+| # | 끊은 자리 | 결과 |
+|---|---|---|
+| ① GLOBAL 분기 | `WorkflowGraphClosedTest.kt:392` 의 `+ globalTargets.filter { it != state.key }` 제거 | **`28 tests completed, 1 failed` · BUILD FAILED in 28s**<br>`global-only-reachable: 고아 상태 0건 — 모든 상태가 initial state 에서 BFS 도달 가능` FAILED |
+| ② INITIAL 분기 | 같은 파일 `:321-324` 의 INITIAL 분기 제거(= `minByOrNull { displayOrder }` 폴백만) | **`28 tests completed, 2 failed` · BUILD FAILED in 27s**<br>`initial-not-lowest-order: 고아 상태 0건 …` FAILED<br>`initial-not-lowest-order: 시작점은 INITIAL 도착지이지 displayOrder 최소 상태가 아니다` FAILED |
+
+**두 회차 모두 표준 4 픽스처는 초록을 유지했다** — 판별력이 새로 넣은 합성 픽스처에서 나온다는 뜻이다.
+각 회차 뒤 `git checkout -- <파일>` 로 원복하고 `git status` 가 빈 출력임을 확인했다(바이트 동일).
+원복 후 재실행 `BUILD SUCCESSFUL in 26s`.
+
+**★이 결과를 「프로덕션 GLOBAL·INITIAL 분기 커버리지 확보」로 읽으면 안 된다.** 여기서 살아난 것은
+**테스트 파일 안의 죽은 분기**다. 프로덕션 정본은 `WorkflowKeyResolverImpl.kt:135-143` 이고
+`GraphVerifier.resolveInitialState`(`:318`)는 그 규칙의 **사본**이다 — 둘은 서로를 검사하지 않는다.
+프로덕션 쪽은 Task 5·7 이 이미 덮었다(`:1010-1011`, 뮤테이션 3회 red · displayOrder 반전 픽스처 2개).
+라운드 3 이 이 사본 관계를 CONCERN 으로 지목했고 아래 후속에 남긴다.
+
+### Task 29 의 처방 1건 — 기각과 사유 (V207 주석 정정)
+
+Task 29 스펙(`:1812`)이 「V207 의 CASCADE 근거 주석도 사실대로 고쳐라」를 포함했다. **기각한다.**
+
+**사유.** `V207__transitions_multi_and_global.sql` 은 **이미 공유 dev DB(localhost:5433)에 적용돼 있다**
+(2026-08-23 실측 — `kind`·`from_status_id`·`to_status_id`·`display_order` 4컬럼 실재,
+`from_state_id` nullable, `kind='INITIAL'` 4행). 적용 완료된 마이그레이션 파일은 **주석 한 줄만 고쳐도
+Flyway 체크섬이 바뀌어 다음 기동이 `FlywayValidateException` 으로 죽는다.** 고치는 것이 오답이다.
+
+**기각도 결과다** — 흔적 없이 안 하면 「지시받고 안 한 항목」이 되고, 그것이 라운드 2 가 지목한 뿌리다.
+대신 셋을 남겼다. ① `TODOS.md` + `debt24-master.md` 에 부채 `91` 등재(상환 시점 = 3단 분할 3단계에서
+FK 를 `RESTRICT` 로 재정의할 때) ② V207 을 읽고 온 사람이 반드시 지나는
+`WorkflowStatusCompositionService.requireNoReferencingTransition` KDoc 에 보상 서술 ③ 이 문단.
+
+**무엇이 거짓인가 (정확히).** `V207:71-73` 의 「구 컬럼과 같은 규칙」은 **FK 절에 한하면 참**이다
+(양쪽 다 `ON DELETE CASCADE`, dev DB 실측 확인). 거짓인 것은 **함의**다 — 구 컬럼 CASCADE 는
+`workflow_states` 를 지우는 코드가 저장소에 0건이라 **도달 불가**였고, 이 PR 이 처음 도달 가능하게 만들었다.
+
+### Task 32 — 사후 정의와 결과 (plan 에 정의가 없던 것)
+
+**메타**. agent `backend-engineer` ·
+files: [`WorkflowStatusCompositionController.kt`, `WorkflowStatusCompositionExceptionHandler.kt`] ·
+depends-on: [Task 29] · 커밋 `5d0041964` (red) → `c2368eeec` (green)
+
+**★Task 29 의 green 이 만든 결함이다.** `9317ca5b9` 가 `WorkflowStatusReferencedByTransitionException`
+을 신설하면서 **advice 매핑을 안 붙여** 409 여야 할 응답이 500 으로 나갔다. 같은 PR 안에서 90분 뒤
+자체 적발해 `WorkflowStatusCompositionExceptionHandler.kt:56` 을 신설했다.
+
+**「고치는 과정이 새 결함을 만든다」 이번 라운드 1회차.** 순서가 정형이다 — 예외 신설 → advice 누락 →
+500. 다음 라운드가 새 도메인 예외를 만들 때 **핸들러 매핑을 같은 커밋에서** 확인하면 이 순서를 안 밟는다.
+
+### Task 33 — 사후 정의와 결과
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx`] ·
+depends-on: [Task 28] · 커밋 `2c782179a` (단일 `test:`)
+
+Task 28 이 post-action 지목을 `transitionId` 로 옮기면서 프론트 T5-7 단언 자리가 함께 옮겨졌다.
+그 이동을 테스트에 반영한 건이다. 상세는 커밋 본문에 있다.
+
+### 라운드 3 이 남긴 후속 (머지 후)
+
+| # | 요지 | 처리 |
+|---|---|---|
+| C6 | 새 409 계약 `WORKFLOW_STATUS_REFERENCED_BY_TRANSITION` 이 spec 엣지 케이스 표에 없다 | spec `E13` 로 이 PR 에서 추가 |
+| C7 | 부채 71 이 「2곳」이라 적었는데 실측 3곳(`SchemeIssueTypeMappingRepository.kt:352` 누락)이고 성능이 아니라 재현 가능한 500 이다 | 장부 정정 |
+| C8 | 죽은 단언 2건 — `키 형식 제약` 문자열이 저장소에서 사라져 `PostActionConfigSection.test.tsx:799·879` 가 무엇을 해도 초록 | 부채 등재 |
+| C9 | 시작상태 규칙이 프로덕션(`WorkflowKeyResolverImpl.kt:135-143`)과 테스트 사본(`GraphVerifier:318`) 두 벌이고 서로를 안 검사한다 | 부채 등재 |
+| C10 | INITIAL 전환에 규칙을 붙일 수 있는데 **실행 경로가 없다.** 후보 계산이 INITIAL 을 빼고 이슈 생성은 엔진을 건너뛴다. 그런데 두 테스트가 「붙일 수 있다」를 계약으로 못 박았다 | 부채 등재 |
+
+**C10 의 현재 피해는 0이다** — 시드 YAML 4개의 INITIAL 전환에 `validators`·`postActions` 가 한 건도
+안 붙어 있음을 확인했다. 다만 GLOBAL 은 실제로 실행되고 INITIAL 만 안 되는데 둘을 나란히
+「붙일 수 있다」로 단언해 둔 상태라, 다음 사람이 그 테스트를 근거로 설계하면 조용히 실패한다.
+
+### 이 라운드의 검증 실측 (2026-08-23)
+
+| 무엇 | 결과 |
+|---|---|
+| 백엔드 전량 (강제 재실행) | **10,401 테스트 · 실패 0 · 에러 0 · 건너뜀 0** · 10개 모듈 전부 실행(UP-TO-DATE 0) · 17분 46초 |
+| 판별식 전량 | 393/393 · EXIT 0 |
+| 정본 정합 | FR 143/143 |
+| 문서 인덱스 | drift 0 |
+| 장부 양방향 | `debt-ledger-mapping.test.ts` 10/10 |
+
+**★`cleanTest` 없이 돌린 첫 회차는 가짜였다.** `BUILD SUCCESSFUL in 1m 18s` 인데 10개 중 **9개 모듈이
+UP-TO-DATE** 로 안 돌았고 결과 XML 1013건이 이틀 전(08-21) 것이었다. 이 저장소는 워크트리끼리
+Gradle 결과 디렉터리를 공유하므로(부채 `66`) 그 XML 이 이 브랜치 것이라는 보장도 없다.
+**`BUILD SUCCESSFUL` 을 초록의 증거로 쓰지 마라 — 실행된 태스크 수와 결과 파일 시각을 함께 봐라.**
+
+**★전량 초록은 「회귀가 없음」의 증거이지 「새 테스트가 판별력을 갖는다」의 증거가 아니다.**
+그래서 위 뮤테이션 2회는 전량 초록으로 대체되지 않는다.

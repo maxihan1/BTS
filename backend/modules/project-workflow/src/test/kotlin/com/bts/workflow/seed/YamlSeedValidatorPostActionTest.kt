@@ -151,6 +151,38 @@ class YamlSeedValidatorPostActionTest {
         }
     }
 
+    // ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 시드가 DB 에 심은 전환을 되읽어 **DB 가 정한 `workflow_transitions.id`** 를 가진 전환을 준다.
+     *
+     * validator/post_action 조회는 (from, to) 상태쌍이 아니라 [WorkflowTransition.id] 로 전환을
+     * 해석한다 (V207 · FR-WF-05 · F1). 픽스처가 [WorkflowTransition] 을 직접 만들면 `id` 가 임의
+     * UUID 라 조회가 **언제나 빈 리스트**이고, 아래 단언들이 통째로 공허해진다.
+     *
+     * 이름까지 함께 맞춘다 — 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있게 된 것이 이 변경의
+     * 골자라, (from, to) 만으로 고르면 그 자리가 다시 모호해진다.
+     *
+     * @param workflowKey 시드된 워크플로우 키
+     * @param from 출발 상태 key
+     * @param to 도착 상태 key
+     * @param name 전환 표시 이름 (YAML 시드의 `name`)
+     * @return DB 의 전환 id 를 실은 [WorkflowTransition]
+     */
+    private fun seededTransition(
+        workflowKey: String,
+        from: String,
+        to: String,
+        name: String,
+    ): WorkflowTransition {
+        val workflow =
+            workflowRepo.findByKey(workflowKey)
+                ?: error("시드된 워크플로우가 없다: $workflowKey")
+        return workflow.transitions.firstOrNull {
+            it.fromStateKey == from && it.toStateKey == to && it.name == name
+        } ?: error("시드된 전환이 없다: $workflowKey $from→$to '$name'")
+    }
+
     // ── 시나리오 1. test-validator-seed.yaml 단건 시드 → validators/post_actions 행 삽입 확인 ──
 
     @Test
@@ -163,7 +195,7 @@ class YamlSeedValidatorPostActionTest {
         // parseAndValidate 는 private — 직접 인라인 시드 경로 사용
         seedTestWorkflow()
 
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
+        val transition = seededTransition("test-validator-seed", from = "open", to = "in_progress", name = "Start Work")
         val validators = defRepo.findValidators("test-validator-seed", transition)
 
         assertThat(validators).hasSize(2)
@@ -178,7 +210,7 @@ class YamlSeedValidatorPostActionTest {
     @Test
     @Order(2)
     fun `post_actions 가 있는 전환을 시드하면 workflow_post_actions 에 type 과 config 가 삽입된다`() {
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
+        val transition = seededTransition("test-validator-seed", from = "open", to = "in_progress", name = "Start Work")
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
 
         assertThat(postActions).hasSize(1)
@@ -192,7 +224,7 @@ class YamlSeedValidatorPostActionTest {
     @Test
     @Order(3)
     fun `display_order 는 YAML 리스트 인덱스 순서와 일치한다`() {
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
+        val transition = seededTransition("test-validator-seed", from = "open", to = "in_progress", name = "Start Work")
         val validators = defRepo.findValidators("test-validator-seed", transition)
 
         // display_order ASC 정렬 — 0=RequiredField, 1=permission-check
@@ -205,7 +237,7 @@ class YamlSeedValidatorPostActionTest {
     @Test
     @Order(4)
     fun `validators 만 있고 post_actions 가 비어 있는 전환은 post_actions 빈 리스트를 반환한다`() {
-        val transition = WorkflowTransition(fromStateKey = "in_progress", toStateKey = "done", name = "Complete")
+        val transition = seededTransition("test-validator-seed", from = "in_progress", to = "done", name = "Complete")
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
 
         assertThat(postActions).isEmpty()
@@ -216,7 +248,7 @@ class YamlSeedValidatorPostActionTest {
     @Test
     @Order(5)
     fun `validators 와 post_actions 가 모두 없는 전환은 양쪽 다 빈 리스트를 반환한다`() {
-        val transition = WorkflowTransition(fromStateKey = "done", toStateKey = "open", name = "Reopen")
+        val transition = seededTransition("test-validator-seed", from = "done", to = "open", name = "Reopen")
         val validators = defRepo.findValidators("test-validator-seed", transition)
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
 
@@ -234,7 +266,7 @@ class YamlSeedValidatorPostActionTest {
         // 2번째 시드 — isDirty 가 변화없음으로 skip 해야 함
         seedTestWorkflow()
 
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
+        val transition = seededTransition("test-validator-seed", from = "open", to = "in_progress", name = "Start Work")
         val validators = defRepo.findValidators("test-validator-seed", transition)
 
         // 중복 INSERT 됐다면 4건이 됨 — 2건 유지가 idempotency 증거
@@ -261,9 +293,12 @@ class YamlSeedValidatorPostActionTest {
             "test-validator-seed",
         )
 
-        // software-default 전환 수 불변 검증 (FR-IS-07 B7 YAML 변경 후에도 6건 유지)
+        // software-default 전환 수 불변 검증 (FR-IS-07 B7 YAML 을 바꿔도 유지) — NORMAL 6 + INITIAL 1 = 7.
+        // 6 이 아닌 이유. 이 단언은 원래부터 환경 의존이었다 — V207 ⑨ 백필이 끝난 DB 는 워크플로우마다
+        // INITIAL 1건을 이미 갖고 있어 진작 7건이고, 빈 Testcontainers DB 에서만 6이었다. 시드 YAML 이
+        // 같은 모양(도착지 = displayOrder 최소 상태)의 INITIAL 을 심으면서 두 환경이 7로 맞았다.
         val swDefault = all.first { it.key == "software-default" }
-        assertThat(swDefault.transitions).hasSize(6)
+        assertThat(swDefault.transitions).hasSize(7)
 
         log.info("시나리오 7 통과 — 표준 4 워크플로우 회귀 없음 확인, total={}", all.size)
     }
@@ -340,7 +375,7 @@ class YamlSeedValidatorPostActionTest {
         val dto = yamlMapper.readValue(modifiedYaml, WorkflowYamlDto::class.java)
         serviceWithModified.seedSingle(dto)
 
-        val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
+        val transition = seededTransition("test-validator-seed", from = "open", to = "in_progress", name = "Start Work")
         val defRepoNew = DefaultWorkflowDefinitionRepository(dsl)
         val validators = defRepoNew.findValidators("test-validator-seed", transition)
 

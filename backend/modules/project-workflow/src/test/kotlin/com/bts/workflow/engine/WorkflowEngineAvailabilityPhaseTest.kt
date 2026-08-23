@@ -103,7 +103,17 @@ class WorkflowEngineAvailabilityPhaseTest {
         // EXECUTION 게이트가 있어도 목록에는 반드시 노출되어야 한다
         assertThat(success.transitions).hasSize(1)
         assertThat(success.transitions.single()).isEqualTo(
-            AvailableTransitionView("open", "closed", "Close", toCategory = "DONE"),
+            // transitionId·kind 는 픽스처 전환 객체에서 파생시킨다 — id 가 UUID.randomUUID() 라
+            // 리터럴을 적으면 매 실행 어긋난다.
+            AvailableTransitionView(
+                "open",
+                "closed",
+                "Close",
+                toCategory = "DONE",
+                transitionId = txOpenToClosed.id,
+                kind = txOpenToClosed.kind.name,
+                key = txOpenToClosed.key,
+            ),
         )
     }
 

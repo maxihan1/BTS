@@ -1,9 +1,11 @@
--- jOOQ 코드 생성용 초기화 SQL (project-workflow BC) — V200 · V203 · V205 구조 미러 (시드 제외, codegen은 구조만 필요)
+-- jOOQ 코드 생성용 초기화 SQL (project-workflow BC) — V200 · V203 · V205 · V207 구조 미러 (시드 제외, codegen은 구조만 필요)
 --
 -- workflows / workflow_states / workflow_transitions / workflow_validators / workflow_post_actions DDL 은
 -- V200__init_workflow.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- workflows 의 version/origin/deleted_at/is_locked 는 V205__workflows_add_version_origin.sql 과 동일하게 유지한다.
 -- statuses / workflow_statuses DDL 은 V203__add_global_status_catalog.sql 과 동일하게 유지한다.
+-- workflow_transitions 의 kind/from_status_id/to_status_id/display_order 는
+-- V207__transitions_multi_and_global.sql 과 동일하게 유지한다 (파일 끝의 V207 블록).
 --
 -- V201(workflow_schemes) · V202 는 **의도적으로 미러하지 않는다.** 종전에도 코드젠 밖이었고
 -- 소비처(SchemeIssueTypeMappingRepository)가 그 전제 위에 원시 SQL 로 쓰여 있다. 여기에 넣으면
@@ -49,12 +51,13 @@ CREATE INDEX idx_workflow_states_workflow ON workflow_states (workflow_id);
 CREATE TABLE workflow_transitions (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     workflow_id   UUID        NOT NULL REFERENCES workflows (id) ON DELETE CASCADE,
-    from_state_id UUID        NOT NULL REFERENCES workflow_states (id) ON DELETE CASCADE,
-    to_state_id   UUID        NOT NULL REFERENCES workflow_states (id) ON DELETE CASCADE,
+    -- V207. NOT NULL 해제 — GLOBAL·INITIAL 전환은 구 FK 를 채우지 않는다 (컬럼 자체는 살려 둔다)
+    from_state_id UUID        REFERENCES workflow_states (id) ON DELETE CASCADE,
+    to_state_id   UUID        REFERENCES workflow_states (id) ON DELETE CASCADE,
     name          TEXT        NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (workflow_id, from_state_id, to_state_id)
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    -- V207. UNIQUE (workflow_id, from_state_id, to_state_id) 해제 — 같은 상태쌍에 전환을 여럿 둔다
 );
 
 CREATE INDEX idx_workflow_transitions_workflow ON workflow_transitions (workflow_id);
@@ -118,3 +121,28 @@ CREATE TABLE workflow_statuses (
 
 CREATE INDEX idx_workflow_statuses_workflow ON workflow_statuses (workflow_id);
 CREATE INDEX idx_workflow_statuses_status ON workflow_statuses (status_id);
+
+-- ── workflow_transitions 확장 (V207) ──────────────────────────────────────────
+-- workflow_statuses 뒤에 둔다 — 참조 대상 테이블이 먼저 있어야 한다.
+-- 컬럼 추가 순서를 V207 과 똑같이 맞춘다. 순서가 갈리면 jOOQ 생성 필드 순서가 실 DB 와 어긋난다.
+ALTER TABLE workflow_transitions
+    ADD COLUMN kind TEXT NOT NULL DEFAULT 'NORMAL';
+
+ALTER TABLE workflow_transitions
+    ADD CONSTRAINT ck_workflow_transitions_kind CHECK (kind IN ('NORMAL', 'GLOBAL', 'INITIAL'));
+
+ALTER TABLE workflow_transitions
+    ADD COLUMN from_status_id UUID    NULL REFERENCES workflow_statuses (id) ON DELETE CASCADE,
+    ADD COLUMN to_status_id   UUID    NULL REFERENCES workflow_statuses (id) ON DELETE CASCADE,
+    ADD COLUMN display_order  INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX idx_workflow_transitions_from_status ON workflow_transitions (from_status_id);
+CREATE INDEX idx_workflow_transitions_to_status ON workflow_transitions (to_status_id);
+
+-- V207 ⑦·⑪. to_status_id 의 NOT NULL 승격과 ck_transition_kind_from CHECK 는 **3단계로 이연**했다.
+-- 2단계인 지금은 구·신 컬럼이 공존하는 구간이라 구 컬럼만 채우는 INSERT 가 아직 정상 경로다.
+-- 미러가 마이그레이션보다 엄격하면 코드젠 DB 에서만 통과하는 쿼리가 생긴다 — 반드시 같이 비워 둔다.
+
+CREATE UNIQUE INDEX uq_workflow_transitions_initial
+    ON workflow_transitions (workflow_id)
+ WHERE kind = 'INITIAL';

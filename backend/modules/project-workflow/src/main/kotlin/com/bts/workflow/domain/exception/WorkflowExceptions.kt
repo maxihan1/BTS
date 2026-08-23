@@ -1,6 +1,8 @@
-// FR-WF-01 도메인 예외 3종 — Validator 실패 / Workflow 부재 / SpEL timeout
+// project-workflow 도메인 예외 11종 + 전환 후보 값 객체 1종 (FR-WF-01·04·05)
 
 package com.bts.workflow.domain.exception
+
+import java.util.UUID
 
 /**
  * [com.bts.workflow.domain.spi.WorkflowValidator] 가 전환을 거부할 때 던지는 예외.
@@ -107,3 +109,64 @@ class WorkflowInvalidRequestException(
     val workflowKey: String,
     val reason: String,
 ) : RuntimeException("Invalid workflow request for '$workflowKey': $reason")
+
+/**
+ * 모호 전환 후보 1건.
+ *
+ * 예외와 409 응답이 함께 쓰는 최소 식별 정보다. 호출자는 [transitionId] 를 다시 실어 재요청하고,
+ * [name] 으로 사람이 둘을 구분한다.
+ *
+ * @property transitionId 전환 1급 식별자 (`workflow_transitions.id`).
+ * @property name 사람 친화 표시 라벨. 예: "조건부 승인".
+ */
+data class TransitionCandidate(
+    val transitionId: UUID,
+    val name: String,
+)
+
+/**
+ * `transitionId` 없이 도착 상태만으로 전환을 요청했는데 후보가 둘 이상일 때 던진다. → 409
+ *
+ * ### 왜 예외인가 (결정 D-2)
+ * `TransitionResult` 는 sealed interface 이고 issue-tracking 이 exhaustive `when` 으로 받는다.
+ * 케이스를 더하면 그 BC 가 컴파일 실패한다 = cross-BC 프로덕션 변경. 전환 해석 실패는 이미
+ * 예외 경로이므로([WorkflowNotFoundException]) 모호성도 같은 층에서 예외로 낸다.
+ * ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` · spec FR-WF-05 §결정 D-2.
+ *
+ * ### 이 예외를 catch 해 폴백하지 마라
+ * `WorkflowTransitionPort.plan` 이 `@Transactional(propagation = MANDATORY)` 라 이 예외는 호출자의
+ * 공유 트랜잭션을 rollback-only 로 마킹한다. 삼키고 진행하면 커밋 시점에
+ * `UnexpectedRollbackException` 으로 500 이 된다. 굳이 하려면 `REQUIRES_NEW` 격리 빈이 필요하다.
+ *
+ * @param workflowKey 모호성이 발생한 워크플로우 키.
+ * @param candidates 조건을 만족하는 전환 후보 전량. 호출자에게 그대로 돌려준다.
+ */
+class AmbiguousTransitionException(
+    val workflowKey: String,
+    val candidates: List<TransitionCandidate>,
+) : RuntimeException(
+        "Ambiguous transition in workflow '$workflowKey': ${candidates.size} candidates match",
+    )
+
+/**
+ * 전환 정의가 「워크플로우당 최초 전환 1개」 규칙과 부딪힐 때 던진다. → 409
+ *
+ * 두 자리에서 난다 — 최초(`INITIAL`) 전환이 이미 있는데 하나 더 만들려 할 때(spec E2), 그리고
+ * 하나뿐인 최초 전환을 지우려 할 때(spec E5). 둘 다 「지금 상태와 요청이 부딪힌다」라서 409 이고,
+ * 어느 쪽인지는 [reason] 이 사람 말로 갈라 준다.
+ *
+ * ### 왜 `ResponseStatusException` 이 아닌가 (되돌리지 마라)
+ * 이전 구현은 이 예외가 스스로 상태 코드를 지는
+ * [org.springframework.web.server.ResponseStatusException] 이었다. 그러면 본문이 이 BC 표준
+ * `{ "error": { "code", "message" } }` 가 아니라 **빈 본문 + `sendError` 경유 Boot 기본 오류 페이지**
+ * 로 나간다(실측 — MockMvc standalone 에서 본문 길이 0, `json can not be null or empty`).
+ * 워크플로우 편집 화면 하나가 두 가지 오류 형식을 다뤄야 해서 도메인 예외로 되돌리고 매핑은
+ * [com.bts.workflow.web.TransitionConflictExceptionHandler] 에 맡긴다.
+ *
+ * @param workflowKey 충돌이 난 워크플로우 키. 응답에는 싣지 않고 로그로만 남긴다.
+ * @param reason 사람이 읽을 수 있는 충돌 사유. 그대로 응답 `message` 가 된다.
+ */
+class TransitionConflictException(
+    val workflowKey: String,
+    val reason: String,
+) : RuntimeException("Transition conflict in workflow '$workflowKey': $reason")

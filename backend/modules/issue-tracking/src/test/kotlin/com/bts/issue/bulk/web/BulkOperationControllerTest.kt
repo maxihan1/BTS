@@ -60,6 +60,7 @@ import java.util.UUID
  * - AT-2. POST bulk-transitions/available 교집합 전환 없음 → 200 + data.transitions 빈 배열
  * - AT-3. POST bulk-transitions/available issueKeys 빈 배열 → 400 + ISSUE_BULK_VALIDATION_FAILED
  * - AT-4. POST bulk-transitions/available issueKeys 1000 초과 → 400 + ISSUE_BULK_VALIDATION_FAILED
+ * - AT-5. POST bulk-transitions/available 응답 항목이 transitionId·kind 를 싣는다 (ADR 2026-08-18 §D3)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BulkOperationControllerTest.TestMvcConfig::class])
@@ -332,6 +333,7 @@ class BulkOperationControllerTest {
                 fromStateKey = "open",
                 toStateKey = "in_progress",
                 name = "시작",
+                key = "open__in_progress",
             )
         val result =
             BulkAvailableTransitionsResult(
@@ -408,5 +410,45 @@ class BulkOperationControllerTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(BulkErrorCodes.VALIDATION_FAILED))
+    }
+
+    // ── AT-5: 응답 항목이 전환 1급 식별자(transitionId)·종류(kind)를 싣는다 ─────────────────────
+
+    @Test
+    fun `POST bulk-transitions available — 응답 항목이 transitionId 와 kind 를 싣는다`() {
+        val transitionUuid = UUID.fromString("55555555-5555-4555-8555-555555555555")
+        val globalView =
+            AvailableTransitionView(
+                fromStateKey = "open",
+                toStateKey = "done",
+                name = "즉시 완료",
+                toCategory = "DONE",
+                transitionId = transitionUuid,
+                kind = "GLOBAL",
+                // 엔진이 도메인 게터 결과를 그대로 실어 보내는 값 — fromStateKey 와 어긋난 채로 들어온다.
+                key = "GLOBAL__done",
+            )
+        every { bulkAvailableTransitionsService.availableCommonTransitions(any(), any()) } returns
+            BulkAvailableTransitionsResult(
+                transitions = listOf(globalView),
+                unresolvedIssueKeys = emptyList(),
+            )
+
+        val body = mapOf("issueKeys" to listOf("ATLAS-1"))
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-transitions/available")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            // 409 AMBIGUOUS_TRANSITION 재요청은 후보 id 를 되실어 보내는 왕복이다 —
+            // 목록 응답에 id 가 없으면 그 왕복이 API 로 성립하지 않는다 (ADR 2026-08-18 §D3).
+            .andExpect(jsonPath("$.data.transitions[0].transitionId").value(transitionUuid.toString()))
+            .andExpect(jsonPath("$.data.transitions[0].kind").value("GLOBAL"))
+            // 하위호환 key 는 도메인 게터(`WorkflowTransition.key`) 결과를 그대로 실어야 한다.
+            // GLOBAL 은 `KIND__to` 규칙이라 "GLOBAL__done" 이다 — 엔진이 fromStateKey 에 채워 넣은
+            // 현재 상태(open)로 재조립하면 같은 전환을 두 이름으로 부르게 된다.
+            .andExpect(jsonPath("$.data.transitions[0].key").value("GLOBAL__done"))
     }
 }

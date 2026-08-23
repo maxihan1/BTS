@@ -642,22 +642,57 @@ class TransitionEmitEventsPublishIntegrationTest {
         val fromStateId = findWorkflowStateId(conn, workflowId, fromStateKey)
         val toStateId = findWorkflowStateId(conn, workflowId, toStateKey)
 
-        return conn.prepareStatement(
+        conn.prepareStatement(
             "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
-                "VALUES (?, ?, ?, ?) " +
-                "ON CONFLICT (workflow_id, from_state_id, to_state_id) DO UPDATE SET name = EXCLUDED.name " +
-                "RETURNING id",
+                "SELECT ?, ?, ?, ? WHERE NOT EXISTS (" +
+                "SELECT 1 FROM workflow_transitions " +
+                "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ?)",
         ).use { stmt ->
             stmt.setObject(1, workflowId)
             stmt.setObject(2, fromStateId)
             stmt.setObject(3, toStateId)
             stmt.setString(4, name)
+            stmt.setObject(5, workflowId)
+            stmt.setObject(6, fromStateId)
+            stmt.setObject(7, toStateId)
+            stmt.executeUpdate()
+        }
+
+        return findWorkflowTransitionId(conn, workflowId, fromStateId, toStateId)
+    }
+
+    /**
+     * workflow_transitions 에서 (workflowId, fromStateId, toStateId) 로 전환 UUID 를 조회한다.
+     *
+     * V207 이 상태쌍 UNIQUE 를 제거해 같은 쌍에 복수 전환이 가능하므로 가장 먼저 심긴 행을 취한다.
+     *
+     * @param conn DB 커넥션.
+     * @param workflowId 워크플로우 UUID.
+     * @param fromStateId 출발 상태 UUID.
+     * @param toStateId 도착 상태 UUID.
+     * @return 전환 UUID.
+     */
+    private fun findWorkflowTransitionId(
+        conn: Connection,
+        workflowId: UUID,
+        fromStateId: UUID,
+        toStateId: UUID,
+    ): UUID =
+        conn.prepareStatement(
+            "SELECT id FROM workflow_transitions " +
+                "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ? " +
+                "ORDER BY created_at, id LIMIT 1",
+        ).use { stmt ->
+            stmt.setObject(1, workflowId)
+            stmt.setObject(2, fromStateId)
+            stmt.setObject(3, toStateId)
             stmt.executeQuery().use { rs ->
-                rs.next()
+                check(rs.next()) {
+                    "workflow_transitions 시드 실패 — workflowId=$workflowId, $fromStateId->$toStateId"
+                }
                 rs.getObject(1) as UUID
             }
         }
-    }
 
     /**
      * workflow_states 에서 (workflowId, key) 로 상태 UUID 를 조회한다.

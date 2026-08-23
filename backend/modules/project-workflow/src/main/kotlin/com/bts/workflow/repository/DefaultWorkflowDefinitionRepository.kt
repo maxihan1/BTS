@@ -7,7 +7,6 @@ import com.bts.workflow.engine.PostActionConfig
 import com.bts.workflow.engine.ValidatorConfig
 import com.bts.workflow.engine.WorkflowDefinitionRepository
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
-import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
@@ -26,13 +25,17 @@ import java.util.UUID
  *
  * transition_id 해석 단계.
  * 1. workflowKey to workflows.key to workflows.id 조회.
- * 2. transition.fromStateKey, transition.toStateKey to workflow_states.key (해당 workflow_id 범위) to
- *    from_state_id, to_state_id 조회.
- * 3. workflow_transitions 에서 (workflow_id, from_state_id, to_state_id) 로 transition_id 조회.
- * 4. workflow_validators / workflow_post_actions 에서 transition_id = ? 행을 display_order ASC 정렬 조회.
+ * 2. `workflow_transitions` 에서 (id = transition.id, workflow_id) 로 그 워크플로우 소속임을 확인.
+ * 3. workflow_validators / workflow_post_actions 에서 transition_id = ? 행을 display_order ASC 정렬 조회.
  *
  * workflowKey 를 필수 1급 인자로 받아 cross-workflow 오매칭(B2)을 방지한다.
- * workflow / state / transition 중 하나라도 미존재 시 빈 리스트를 반환한다 (예외 아님 — 검증할 게 없으면 통과).
+ * workflow / transition 중 하나라도 미존재 시 빈 리스트를 반환한다 (예외 아님 — 검증할 게 없으면 통과).
+ *
+ * ### 왜 (from, to) 가 아니라 [WorkflowTransition.id] 로 찾는가 (FR-WF-05 · F1)
+ * V207 이후 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있다. (from, to) 로 찾으면 **어느 전환의
+ * validator 인지 정할 수 없고**, 출발지가 없는 GLOBAL·INITIAL 전환은 애초에 그 쌍으로 표현되지도
+ * 않는다. 전환의 1급 식별자는 `workflow_transitions.id` 이고 [WorkflowRepository] 가 읽어 온
+ * [WorkflowTransition.id] 가 바로 그 값이다.
  */
 @Repository
 class DefaultWorkflowDefinitionRepository(
@@ -45,11 +48,10 @@ class DefaultWorkflowDefinitionRepository(
     /**
      * 전환에 설정된 Validator 설정 목록을 display_order ASC 순서로 반환한다.
      *
-     * workflowKey 가 가리키는 workflow 범위 안에서만 state / transition 을 해석하므로
-     * 같은 (fromStateKey, toStateKey) 쌍을 사용하는 다른 워크플로우의 validator 행이
-     * 결과에 포함되지 않는다 (B2 cross-workflow 격리 보장).
+     * workflowKey 가 가리키는 workflow 범위 안에서만 transition 을 해석하므로 다른 워크플로우의
+     * validator 행이 결과에 포함되지 않는다 (B2 cross-workflow 격리 보장).
      *
-     * workflow / state / transition 미존재 시 빈 리스트 반환 (예외 없음).
+     * workflow / transition 미존재 시 빈 리스트 반환 (예외 없음).
      *
      * @param workflowKey 워크플로우 식별자 (workflows.key)
      * @param transition 조회 대상 전환 정의
@@ -80,11 +82,10 @@ class DefaultWorkflowDefinitionRepository(
     /**
      * 전환에 설정된 PostAction 설정 목록을 display_order ASC 순서로 반환한다.
      *
-     * workflowKey 가 가리키는 workflow 범위 안에서만 state / transition 을 해석하므로
-     * 같은 (fromStateKey, toStateKey) 쌍을 사용하는 다른 워크플로우의 post_action 행이
-     * 결과에 포함되지 않는다 (B2 cross-workflow 격리 보장).
+     * workflowKey 가 가리키는 workflow 범위 안에서만 transition 을 해석하므로 다른 워크플로우의
+     * post_action 행이 결과에 포함되지 않는다 (B2 cross-workflow 격리 보장).
      *
-     * workflow / state / transition 미존재 시 빈 리스트 반환 (예외 없음).
+     * workflow / transition 미존재 시 빈 리스트 반환 (예외 없음).
      *
      * @param workflowKey 워크플로우 식별자 (workflows.key)
      * @param transition 조회 대상 전환 정의
@@ -115,12 +116,14 @@ class DefaultWorkflowDefinitionRepository(
     // ── private helpers ──────────────────────────────────────────────────────
 
     /**
-     * workflowKey + transition 정의로부터 workflow_transitions.id 를 단계적으로 해석한다.
+     * workflowKey + transition 으로부터 workflow_transitions.id 를 해석한다.
      *
      * 단계.
      * 1. workflowKey to workflows.id
-     * 2. fromStateKey, toStateKey to workflow_states.id (workflow_id 범위 한정)
-     * 3. (workflow_id, from_state_id, to_state_id) to workflow_transitions.id
+     * 2. (transition.id, workflow_id) 로 그 전환이 이 워크플로우 소속인지 확인
+     *
+     * 2단계가 `workflow_id` 를 함께 거는 것이 B2(cross-workflow 오매칭) 차단 지점이다 —
+     * 다른 워크플로우의 전환 id 를 실어 보내도 여기서 걸러진다.
      *
      * 어느 단계에서든 미존재 시 null 반환 (예외 아님).
      */
@@ -131,37 +134,25 @@ class DefaultWorkflowDefinitionRepository(
         val workflowId = resolveWorkflowId(workflowKey)
         if (workflowId == null) {
             log.debug("DefaultWorkflowDefinitionRepository: workflow 미존재 key={}", workflowKey)
+            return null
         }
-        val fromStateId = workflowId?.let { resolveStateId(it, transition.fromStateKey) }
-        if (workflowId != null && fromStateId == null) {
-            log.debug(
-                "DefaultWorkflowDefinitionRepository: fromState 미존재 workflowKey={} fromStateKey={}",
-                workflowKey,
-                transition.fromStateKey,
-            )
-        }
-        val toStateId = workflowId?.let { wfId -> fromStateId?.let { resolveStateId(wfId, transition.toStateKey) } }
-        if (workflowId != null && fromStateId != null && toStateId == null) {
-            log.debug(
-                "DefaultWorkflowDefinitionRepository: toState 미존재 workflowKey={} toStateKey={}",
-                workflowKey,
-                transition.toStateKey,
-            )
-        }
-        return if (workflowId != null && fromStateId != null && toStateId != null) {
+        val resolved =
             dsl
                 .select(WORKFLOW_TRANSITIONS.ID)
                 .from(WORKFLOW_TRANSITIONS)
                 .where(
-                    WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId)
-                        .and(WORKFLOW_TRANSITIONS.FROM_STATE_ID.eq(fromStateId))
-                        .and(WORKFLOW_TRANSITIONS.TO_STATE_ID.eq(toStateId)),
+                    WORKFLOW_TRANSITIONS.ID.eq(transition.id)
+                        .and(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId)),
                 )
-                .fetchOne()
-                ?.get(WORKFLOW_TRANSITIONS.ID) as UUID?
-        } else {
-            null
+                .fetchOne(WORKFLOW_TRANSITIONS.ID)
+        if (resolved == null) {
+            log.debug(
+                "DefaultWorkflowDefinitionRepository: transition 미존재 workflowKey={} transitionId={}",
+                workflowKey,
+                transition.id,
+            )
         }
+        return resolved
     }
 
     /**
@@ -177,29 +168,6 @@ class DefaultWorkflowDefinitionRepository(
             .where(WORKFLOWS.KEY.eq(workflowKey))
             .fetchOne()
             ?.get(WORKFLOWS.ID) as UUID?
-
-    /**
-     * (workflow_id, stateKey) to workflow_states.id 조회.
-     *
-     * workflow_id 범위를 한정해 cross-workflow 동명 state 오매칭을 방지한다.
-     *
-     * @param workflowId 워크플로우 PK
-     * @param stateKey 상태 식별 키 (workflow_states.key)
-     * @return workflow_states.id, 미존재 시 null
-     */
-    private fun resolveStateId(
-        workflowId: UUID,
-        stateKey: String,
-    ): UUID? =
-        dsl
-            .select(WORKFLOW_STATES.ID)
-            .from(WORKFLOW_STATES)
-            .where(
-                WORKFLOW_STATES.WORKFLOW_ID.eq(workflowId)
-                    .and(WORKFLOW_STATES.KEY.eq(stateKey)),
-            )
-            .fetchOne()
-            ?.get(WORKFLOW_STATES.ID) as UUID?
 
     /**
      * jOOQ JSONB 값을 Map 으로 역직렬화한다.

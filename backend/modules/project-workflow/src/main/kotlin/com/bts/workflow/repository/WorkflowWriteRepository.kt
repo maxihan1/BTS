@@ -3,8 +3,11 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.application.command.WorkflowStatusSeed
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
+import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
+import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -22,7 +25,13 @@ import java.util.UUID
  * ### 소프트 삭제 규약
  * 모든 조회는 `deleted_at IS NULL` 을 **명시적으로** 붙인다. 이 저장소에는 공통 필터 래퍼가
  * 없다(`DATA.md §3`) — 빠뜨리면 삭제된 행이 그대로 노출된다.
+ *
+ * ### `TooManyFunctions` 억제 사유
+ * FR-WF-05 가 전환 정의 CRUD 를 얹어 함수 수가 detekt 한도(11)를 넘었다. 전환 쓰기를
+ * `TransitionWriteRepository` 로 떼는 것이 정본 방향이고 **다음 PR 의 몫**이다 —
+ * 이 PR 의 파일 범위(Task 8)에 새 리포지토리 파일이 없다. 전역 임계값은 건드리지 않는다.
  */
+@Suppress("TooManyFunctions")
 @Repository
 class WorkflowWriteRepository(
     private val dsl: DSLContext,
@@ -143,6 +152,151 @@ class WorkflowWriteRepository(
             .execute()
     }
 
+    // ── 전환 정의 CRUD (FR-WF-05 F6) ──────────────────────────────────────────
+    //
+    // 전환의 출발·도착은 **신 컬럼**(from_status_id·to_status_id)만 채운다. 구 컬럼은 V207 이
+    // NOT NULL 을 풀어 뒀고, 3단계(workflow_states DROP)가 그것을 떨어뜨린다 — 지금 채우면
+    // 지울 때 되살아난다.
+
+    /**
+     * 이 워크플로우에 편성된 상태의 `workflow_statuses.id`. 없으면 null.
+     *
+     * 전환이 가리키는 것은 전역 카탈로그(`statuses`)가 아니라 **그 워크플로우의 편성 행**이다.
+     * 소프트 삭제된 카탈로그 항목은 없는 것으로 본다 — 읽기 경로(`WorkflowRepository`)와 같은 집합을 봐야
+     * 조회에서 조용히 사라지는 전환이 생기지 않는다.
+     */
+    fun findStatusCompositionId(
+        workflowId: UUID,
+        statusKey: String,
+    ): UUID? =
+        dsl
+            .select(WORKFLOW_STATUSES.ID)
+            .from(WORKFLOW_STATUSES)
+            .join(STATUSES)
+            .on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID).and(STATUSES.DELETED_AT.isNull))
+            .where(WORKFLOW_STATUSES.WORKFLOW_ID.eq(workflowId))
+            .and(STATUSES.KEY.eq(statusKey))
+            .fetchOne(WORKFLOW_STATUSES.ID)
+
+    /**
+     * 전환의 종류 문자열. **경로의 워크플로우에 속한 전환만** 준다.
+     *
+     * 남의 워크플로우 전환 id 로 부르면 null 이라 호출부가 404 를 낸다 (spec E9) — 소속을 따로
+     * 대조하는 분기를 두면 그 분기를 빠뜨린 경로가 생긴다. 조회 조건에 못을 박아 둔다.
+     */
+    fun findTransitionKind(
+        workflowId: UUID,
+        transitionId: UUID,
+    ): String? =
+        dsl
+            .select(WORKFLOW_TRANSITIONS.KIND)
+            .from(WORKFLOW_TRANSITIONS)
+            .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId))
+            .and(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+            .fetchOne(WORKFLOW_TRANSITIONS.KIND)
+
+    /**
+     * 이 워크플로우에 최초 전환이 이미 있는지. [excludingId] 는 수정 대상 자신을 셈에서 뺀다.
+     *
+     * DB 는 부분 유니크 인덱스(`uq_workflow_transitions_initial`)로 같은 것을 막지만, 그 위반은
+     * 500 으로 나온다. 사용자에게 409 를 돌려주려면 애플리케이션이 먼저 센다.
+     */
+    fun hasInitialTransition(
+        workflowId: UUID,
+        excludingId: UUID?,
+    ): Boolean =
+        dsl.fetchExists(
+            dsl
+                .selectOne()
+                .from(WORKFLOW_TRANSITIONS)
+                .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+                .and(WORKFLOW_TRANSITIONS.KIND.eq(TransitionKind.INITIAL.name))
+                .and(if (excludingId == null) DSL.noCondition() else WORKFLOW_TRANSITIONS.ID.ne(excludingId)),
+        )
+
+    /**
+     * 전환 1행. 표시 순서는 그 워크플로우의 마지막 뒤에 붙인다.
+     *
+     * 최초 전환만 0 이다 — 이슈 생성 시점의 전환이라 편집기에서 항상 맨 앞이고, V207 ⑨ 의 백필도
+     * 같은 값을 심었다. 순서를 여기서 갈라 두지 않으면 백필된 워크플로우와 새로 만든 워크플로우의
+     * 편집기 배열이 서로 다르게 보인다.
+     */
+    fun insertTransition(
+        workflowId: UUID,
+        kind: String,
+        name: String,
+        fromStatusId: UUID?,
+        toStatusId: UUID,
+    ): UUID {
+        val displayOrder = if (kind == TransitionKind.INITIAL.name) 0 else lastDisplayOrder(workflowId) + 1
+        return dsl
+            .insertInto(WORKFLOW_TRANSITIONS)
+            .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)
+            .set(WORKFLOW_TRANSITIONS.KIND, kind)
+            .set(WORKFLOW_TRANSITIONS.NAME, name)
+            .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromStatusId)
+            .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, toStatusId)
+            .set(WORKFLOW_TRANSITIONS.DISPLAY_ORDER, displayOrder)
+            .returning(WORKFLOW_TRANSITIONS.ID)
+            .fetchOne(WORKFLOW_TRANSITIONS.ID)
+            ?: error("workflow_transitions INSERT 가 id 를 돌려주지 않았다 — RETURNING 절을 확인할 것")
+    }
+
+    /**
+     * 전환의 정의를 통째로 갈아 끼운다. 표시 순서는 건드리지 않는다 — 순서 변경은 별도 관심사다.
+     *
+     * ### ★ 구 컬럼을 함께 비운다 — 안 비우면 읽기 폴백이 옛 값을 되살린다
+     * 지금은 add → backfill → drop 3단 분할의 2단계라 구(`from_state_id`·`to_state_id`)와
+     * 신(`from_status_id`·`to_status_id`) 컬럼이 공존하고, 읽기는 **신 컬럼 우선 · 구 컬럼 폴백**
+     * 이다(`WorkflowRepository`). 신 컬럼만 갈아 끼우면 GLOBAL·INITIAL 로 바꿔 `from_status_id` 를
+     * NULL 로 만든 순간 남아 있던 구 `from_state_id` 가 폴백으로 되살아난다. 그 행은 「출발지 없는
+     * 전환에 출발지가 있는」 꼴이라 `Workflow.of()` invariant 5 가 워크플로우 **전체**를 거부한다 —
+     * 수정 요청은 200 인데 그 뒤 그 워크플로우 조회가 전부 죽는다.
+     *
+     * ### 왜 같은 값 동기화가 아니라 NULL 인가
+     * 구 컬럼은 구형 `workflow_states(id)` 를 가리키는 FK 다. 그런데 CRUD 로 만든 워크플로우는
+     * 전역 카탈로그(`workflow_statuses`)에만 상태를 두고 `workflow_states` 행이 아예 없어서
+     * **같은 값으로 맞추려 해도 가리킬 행이 없다**. V207 ⑧ 이 두 컬럼의 NOT NULL 을 풀었으므로
+     * NULL 은 적법하고, [insertTransition] 도 구 컬럼을 채우지 않는다 — 수정 결과가 생성 결과와
+     * 같은 모양이 된다. 3단계(구 컬럼 DROP)가 오면 아래 두 줄을 함께 지운다.
+     */
+    fun updateTransition(
+        transitionId: UUID,
+        kind: String,
+        name: String,
+        fromStatusId: UUID?,
+        toStatusId: UUID,
+    ) {
+        dsl
+            .update(WORKFLOW_TRANSITIONS)
+            .set(WORKFLOW_TRANSITIONS.KIND, kind)
+            .set(WORKFLOW_TRANSITIONS.NAME, name)
+            .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromStatusId)
+            .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, toStatusId)
+            // ★ 3단계에서 아래 두 줄을 지운다. 신 컬럼이 정본이므로 구 세대는 남기지 않는다.
+            .setNull(WORKFLOW_TRANSITIONS.FROM_STATE_ID)
+            .setNull(WORKFLOW_TRANSITIONS.TO_STATE_ID)
+            .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId))
+            .execute()
+    }
+
+    /**
+     * 전환을 지운다. 매달린 validator·post-action 은 FK `ON DELETE CASCADE` 로 함께 사라진다 (spec E6).
+     *
+     * 규칙 편집 API 가 아직 없어(FR-WF-06) 고아 규칙이 남으면 화면에서 지울 방법이 없다.
+     */
+    fun deleteTransition(transitionId: UUID) {
+        dsl.deleteFrom(WORKFLOW_TRANSITIONS).where(WORKFLOW_TRANSITIONS.ID.eq(transitionId)).execute()
+    }
+
+    /** 이 워크플로우 전환의 마지막 표시 순서. 전환이 없으면 0. */
+    private fun lastDisplayOrder(workflowId: UUID): Int =
+        dsl
+            .select(DSL.max(WORKFLOW_TRANSITIONS.DISPLAY_ORDER))
+            .from(WORKFLOW_TRANSITIONS)
+            .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+            .fetchOne(0, Int::class.java) ?: 0
+
     /** 원본의 상태 편성을 그대로 복사한다. 전환 복사는 [copyTransitions] 가 맡는다. */
     fun copyStatusComposition(
         sourceId: UUID,
@@ -166,36 +320,99 @@ class WorkflowWriteRepository(
     }
 
     /**
-     * 원본의 상태·전환을 복사한다.
+     * 원본의 구형 상태 행과 전환을 복사한다. 전역 카탈로그 편성은 [copyStatusComposition] 이 먼저 한다.
      *
-     * 전환은 아직 구형 `workflow_states.id` 를 참조하므로(로드맵 PR 4 가 재지정) 그 테이블의
-     * 행도 함께 복사해야 from/to 가 이어진다. 원시 SQL 을 쓰는 이유 —
-     * `workflow_states` 는 코드젠 미러에 있으나 이 복사는 **id 매핑을 DB 안에서 끝내야** 한다.
+     * ### 복제본의 구형 `workflow_states` 를 가리키는 것은 지금 아무것도 없다
+     * [copyTransitions] 가 복제본 전환에 **신 컬럼만** 채우므로 구 컬럼은 NULL 이다. 구 테이블을
+     * 보는 두 경로 — `WorkflowRepository` 의 읽기 폴백과 `PostActionTransitionResolver` 의 해석 —
+     * 은 **둘 다 신 컬럼이 정본이고 구 컬럼은 신 컬럼이 NULL 인 행에서만 탄다**. 복제본은 신 컬럼이
+     * 차 있으므로 어느 쪽도 이 복사된 행에 닿지 않는다.
+     *
+     * 그럼에도 함께 복사하는 것은 add → backfill → drop 의 3단(DROP)까지 원본과 복제본의 모양을
+     * 같게 두려는 보수적 선택이다. 3단계가 구 컬럼·구 테이블과 함께 이 복사도 지운다.
      */
     fun copyLegacyStatesAndTransitions(
         sourceId: UUID,
         targetId: UUID,
     ) {
-        dsl.execute(
-            """
-            WITH copied AS (
-                INSERT INTO workflow_states (workflow_id, key, name, category, display_order)
-                SELECT ?, key, name, category, display_order FROM workflow_states WHERE workflow_id = ?
-                RETURNING id, key
-            )
-            INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
-            SELECT ?, f.id, t.id, wt.name
-              FROM workflow_transitions wt
-              JOIN workflow_states src_f ON src_f.id = wt.from_state_id
-              JOIN workflow_states src_t ON src_t.id = wt.to_state_id
-              JOIN copied f ON f.key = src_f.key
-              JOIN copied t ON t.key = src_t.key
-             WHERE wt.workflow_id = ?
-            """.trimIndent(),
-            targetId,
-            sourceId,
-            targetId,
-            sourceId,
-        )
+        dsl.copyLegacyStates(sourceId, targetId)
+        dsl.copyTransitions(sourceId, targetId)
     }
+}
+
+/** 구형 `workflow_states` 행 복사. 전환 FK 는 더 이상 이 테이블을 쓰지 않으므로 id 매핑이 필요 없다. */
+private fun DSLContext.copyLegacyStates(
+    sourceId: UUID,
+    targetId: UUID,
+) {
+    insertInto(WORKFLOW_STATES)
+        .columns(
+            WORKFLOW_STATES.WORKFLOW_ID,
+            WORKFLOW_STATES.KEY,
+            WORKFLOW_STATES.NAME,
+            WORKFLOW_STATES.CATEGORY,
+            WORKFLOW_STATES.DISPLAY_ORDER,
+        ).select(
+            select(
+                DSL.value(targetId),
+                WORKFLOW_STATES.KEY,
+                WORKFLOW_STATES.NAME,
+                WORKFLOW_STATES.CATEGORY,
+                WORKFLOW_STATES.DISPLAY_ORDER,
+            ).from(WORKFLOW_STATES)
+                .where(WORKFLOW_STATES.WORKFLOW_ID.eq(sourceId)),
+        ).execute()
+}
+
+/**
+ * 전환을 복사하며 출발·도착을 **복제본의** `workflow_statuses` 행으로 다시 잇는다 (V207).
+ *
+ * 두 세대를 잇는 다리는 전역 카탈로그의 `status_id` 다. 원본 편성 행 → 그 status_id →
+ * 복제본에서 같은 status_id 를 가진 편성 행, 순서로 찾는다.
+ *
+ * 출발지 join 만 LEFT 인 것은 GLOBAL·INITIAL 전환의 `from_status_id` 가 NULL 이기 때문이다.
+ *
+ * ### 여기에 DB CHECK 안전망은 없다
+ * NORMAL 인데 출발지 대응 행을 못 찾으면 `from_status_id` 가 NULL 인 채로 복사된다. 그것을 막는
+ * `ck_transition_kind_from` CHECK 는 **스키마에 존재하지 않는다** — V207 ⑪ 이 3단계로 이연했고
+ * `V207MigrationTest` 가 그 부재를 단언한다. 그동안의 방어선은 애플리케이션이다. 읽기 때
+ * `Workflow.of()` invariant 5 가 「NORMAL 은 출발지 필수」로 그 워크플로우를 거부한다.
+ *
+ * 다만 호출부(`WorkflowCommandService.duplicate`)가 [WorkflowWriteRepository.copyStatusComposition]
+ * 으로 편성 행을 통째로 복사한 **뒤에** 이 함수를 부르므로, 원본 편성 행에는 언제나 복제본 짝이 있다.
+ */
+private fun DSLContext.copyTransitions(
+    sourceId: UUID,
+    targetId: UUID,
+) {
+    val sourceFrom = WORKFLOW_STATUSES.`as`("src_from")
+    val targetFrom = WORKFLOW_STATUSES.`as`("tgt_from")
+    val sourceTo = WORKFLOW_STATUSES.`as`("src_to")
+    val targetTo = WORKFLOW_STATUSES.`as`("tgt_to")
+
+    insertInto(WORKFLOW_TRANSITIONS)
+        .columns(
+            WORKFLOW_TRANSITIONS.WORKFLOW_ID,
+            WORKFLOW_TRANSITIONS.KIND,
+            WORKFLOW_TRANSITIONS.NAME,
+            WORKFLOW_TRANSITIONS.FROM_STATUS_ID,
+            WORKFLOW_TRANSITIONS.TO_STATUS_ID,
+            WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
+        ).select(
+            select(
+                DSL.value(targetId),
+                WORKFLOW_TRANSITIONS.KIND,
+                WORKFLOW_TRANSITIONS.NAME,
+                targetFrom.ID,
+                targetTo.ID,
+                WORKFLOW_TRANSITIONS.DISPLAY_ORDER,
+            ).from(WORKFLOW_TRANSITIONS)
+                .leftJoin(sourceFrom).on(sourceFrom.ID.eq(WORKFLOW_TRANSITIONS.FROM_STATUS_ID))
+                .leftJoin(targetFrom)
+                .on(targetFrom.WORKFLOW_ID.eq(targetId).and(targetFrom.STATUS_ID.eq(sourceFrom.STATUS_ID)))
+                .join(sourceTo).on(sourceTo.ID.eq(WORKFLOW_TRANSITIONS.TO_STATUS_ID))
+                .join(targetTo)
+                .on(targetTo.WORKFLOW_ID.eq(targetId).and(targetTo.STATUS_ID.eq(sourceTo.STATUS_ID)))
+                .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(sourceId)),
+        ).execute()
 }

@@ -5,6 +5,8 @@ package com.bts.workflow.scheme.adapter.inbound
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
+import com.bts.workflow.domain.TransitionKind
+import com.bts.workflow.domain.Workflow
 import com.bts.workflow.scheme.port.outbound.WorkflowResolver
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -23,12 +25,21 @@ import com.bts.workflow.scheme.domain.ProjectKey as InternalProjectKey
  * - 실제 워크플로우 결정 로직은 [WorkflowResolver] (= [WorkflowResolverImpl])가 담당한다.
  * - 본 구현체는 SPI 경계 변환만 수행한다.
  *   - [SharedProjectKey] → [InternalProjectKey] (값 동일, 타입 변환)
- *   - [com.bts.workflow.domain.Workflow] → [WorkflowStartState] (workflowKey + 최소 displayOrder 상태 키)
+ *   - [com.bts.workflow.domain.Workflow] → [WorkflowStartState] (workflowKey + 시작 상태 키)
  *
  * ## 시작 상태 결정 규칙
- * `Workflow.states` 중 `displayOrder` 가 가장 작은 상태를 시작 상태로 간주한다.
- * [com.bts.workflow.domain.Workflow.of] factory 가 `states.isNotEmpty()` invariant 를 보장하므로
- * `minByOrNull` 결과는 항상 non-null 이다. null 인 경우는 데이터 무결성 위반으로 처리한다.
+ * 1. [TransitionKind.INITIAL] 전환이 있으면 그 전환의 도착 상태가 시작 상태다.
+ *    [com.bts.workflow.domain.Workflow.of] factory 가 INITIAL 은 워크플로우당 최대 1개이고
+ *    `toStateKey` 가 `states` 집합 안에 있음을 보장한다.
+ * 2. INITIAL 전환이 없으면 `displayOrder` 가 가장 작은 상태로 폴백한다.
+ *    V207 백필이 닿지 않은 워크플로우를 방어하는 경로다.
+ *
+ * 종전에는 2번만 있었고, 그래서 **관리자가 상태 표시 순서를 바꾸면 이슈 생성 상태가 조용히 바뀌었다.**
+ * 워크플로우 편집(FR-WF-04~07)이 열리면서 사고가 되므로 1번이 앞에 섰다
+ * (ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §맥락 · §D2).
+ *
+ * factory 가 `states.isNotEmpty()` 를 보장하므로 두 경로 모두 실패하는 일은 없다.
+ * 그럼에도 null 이면 데이터 무결성 위반으로 처리한다.
  *
  * ## 시나리오 요약
  * - **EC-1 auto-assign**: assignment 없는 신규 프로젝트 → [WorkflowResolver] 가 software-scheme 자동 배정 후 결정.
@@ -52,7 +63,7 @@ class WorkflowKeyResolverImpl(
      * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전환(write path)에서만 호출한다.
      *
      * 내부적으로 [WorkflowResolver.resolveFor] 에 위임하고,
-     * 반환된 [com.bts.workflow.domain.Workflow] 에서 최소 displayOrder 상태를 시작 상태로 추출한다.
+     * 반환된 [com.bts.workflow.domain.Workflow] 에서 위 「시작 상태 결정 규칙」대로 시작 상태를 추출한다.
      *
      * ## 시나리오별 동작
      * - **EC-1 auto-assign**: assignment 없는 신규 프로젝트는 software-scheme 을 자동 배정한 뒤 default mapping workflow 를 반환한다.
@@ -79,17 +90,7 @@ class WorkflowKeyResolverImpl(
 
         val workflow = workflowResolver.resolveFor(internalProjectKey, issueTypeKey)
 
-        val startState =
-            workflow.states.minByOrNull { it.displayOrder }
-                ?: error(
-                    "Workflow '${workflow.key}' 에 상태가 없습니다. " +
-                        "Workflow.of() factory invariant 위반 — 데이터 무결성 오류.",
-                )
-
-        return WorkflowStartState(
-            workflowKey = workflow.key,
-            startStateKey = startState.key,
-        )
+        return resolveStartState(workflow)
     }
 
     /**
@@ -119,16 +120,31 @@ class WorkflowKeyResolverImpl(
             workflowResolver.resolveExistingFor(internalProjectKey, issueTypeKey)
                 ?: return null
 
-        val startState =
-            workflow.states.minByOrNull { it.displayOrder }
+        return resolveStartState(workflow)
+    }
+
+    /**
+     * 워크플로우에서 시작 상태를 뽑아 [WorkflowStartState] 로 만든다.
+     *
+     * 클래스 KDoc 의 「시작 상태 결정 규칙」을 구현하는 유일한 자리다.
+     * [resolveStart] 와 [resolveExisting] 이 각자 해석하던 것을 여기로 모았다 —
+     * 두 경로가 갈라지면 쓰기 경로와 읽기 경로가 서로 다른 시작 상태를 말하게 된다.
+     *
+     * @param workflow 해석 대상 워크플로우.
+     * @return workflowKey + startStateKey 를 담은 [WorkflowStartState].
+     */
+    private fun resolveStartState(workflow: Workflow): WorkflowStartState {
+        val startStateKey =
+            workflow.transitions.firstOrNull { it.kind == TransitionKind.INITIAL }?.toStateKey
+                ?: workflow.states.minByOrNull { it.displayOrder }?.key
                 ?: error(
-                    "Workflow '${workflow.key}' 에 상태가 없습니다. " +
+                    "Workflow '${workflow.key}' 에 INITIAL 전환도 상태도 없습니다. " +
                         "Workflow.of() factory invariant 위반 — 데이터 무결성 오류.",
                 )
 
         return WorkflowStartState(
             workflowKey = workflow.key,
-            startStateKey = startState.key,
+            startStateKey = startStateKey,
         )
     }
 }

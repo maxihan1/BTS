@@ -1,4 +1,4 @@
-# 칸반 기본 워크플로우 (4 상태 + 3 전환) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
+# 칸반 기본 워크플로우 (4 상태 + 4 전환 — 최초 전환 1 포함) — FR-IS-07: DONE 카테고리 진입 전환에 resolution 필수
 key: kanban-basic
 name: 칸반 기본 워크플로우
 description: "Backlog → Ready → In Progress → Done 흐름의 칸반 기본 워크플로우"
@@ -8,6 +8,10 @@ states:
   - { key: in_progress, name: In Progress, category: IN_PROGRESS, displayOrder: 3 }
   - { key: done, name: Done, category: DONE, displayOrder: 4 }
 transitions:
+  # 이슈 생성 진입 전용 전환(kind: INITIAL) — 출발 상태가 없어 from 을 적지 않는다.
+  # 도착지는 displayOrder 가 가장 작은 상태다. V207 ⑨ 백필이 기존 DB 에 심은 것과 같은 선택이라
+  # 빈 DB 로 올린 사이트와 기존 사이트의 이슈 생성 진입 상태가 갈리지 않는다.
+  - { kind: INITIAL, to: backlog, name: "이슈 생성" }
   - { from: backlog, to: ready, name: Refine }
   - { from: ready, to: in_progress, name: Pull }
   - from: in_progress

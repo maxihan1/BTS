@@ -33,7 +33,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/issues/NodeMappingSection.tsx::Function 'NodeMappingSection'": 232,
   "src/components/search/ExportDialog.tsx::Function 'ExportForm'": 334,
   "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 332,
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1041,
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1014,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 367,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
