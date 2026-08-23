@@ -1,12 +1,13 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (480건, 최신순)
+# 시간 축 인덱스 (481건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-08-21 | pre-push-git-dir | — | ✔ | — | — | — |
+| 2026-08-20 | backend-workflow-transition-id-multi-global | ✔ | ✔ | — | — | FR-IS-07 FR-WF-05 FR-WF-06 |
 | 2026-08-19 | backend-project-workflow-crud-api | ✔ | ✔ | — | — | FR-WF-04 |
 | 2026-08-19 | migration-project-workflow-global-status-catalog | ✔ | ✔ | — | — | FR-WF-04 FR-WF-05 FR-WF-06 FR-WF-07 |
 | 2026-08-18 | debt-dashboard-plain-language | — | ✔ | — | — | FR-DB-01 |
