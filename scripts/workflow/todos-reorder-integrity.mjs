@@ -54,6 +54,26 @@ function multisetDiff(a, b) {
   return out;
 }
 
+/**
+ * 제목 끝의 **상태 괄호 하나**를 떼어 항목 어간을 만든다.
+ *
+ * 장부의 해소 관례가 바꾸는 곳이 정확히 거기다 — 이 PR 의 diff 가 그 관례를 증명한다.
+ *
+ * ```
+ * -## ⬜ 워크플로우 — `…bts-deploy.sh` 가 티어 표면 카탈로그에 없다 (신규 · 미착수 · T2)
+ * +## ✅ 워크플로우 — `…bts-deploy.sh` 가 티어 표면 카탈로그에 없다 (해소 2026-08-23 · #397)
+ * ```
+ *
+ * ★「괄호 앞까지 자르기」로 하면 안 된다. 괄호가 **맨 앞**이거나(`apps/web(테스트 인프라) — …`)
+ * **중간**인(`… 고정됨(2026-08-10), …`) 제목이 실재한다. 끝에 붙은 것 하나만 뗀다.
+ *
+ * ★`debt-ledger-mapping.test.ts` 가 장부↔마스터 조인 키를 만들 때 **이 함수를 import 한다.**
+ * 같은 규칙을 두 곳에 적으면 그 둘은 서로를 검사하지 않는 두 목록이 된다.
+ */
+export function stripStatusParen(heading) {
+  return heading.replace(/\s*\([^()]*\)\s*$/, '').trim();
+}
+
 /** 지문에서 사람이 읽을 표시로. 본문은 길어서 상태·제목까지만 보인다. */
 function label(fingerprint) {
   const [status, title] = JSON.parse(fingerprint);
@@ -163,6 +183,20 @@ export function compareTodoIntegrity(before, after) {
     for (const [line, n] of bodyMultiset(l)) if ((G.get(line) ?? 0) < n) return false;
     return true;
   };
+  /**
+   * 두 항목이 **같은 항목인가.** 제목 어간(끝 상태 괄호 하나를 뗀 것)이 같아야 한다.
+   *
+   * ★이 조건이 없으면 `covers` 만으로 접힌다. 빈 멀티셋은 **무엇에나 포함**되므로 본문
+   * 없는 항목이 아무 ✅ 에나 붙고, 짝 없는 ✅ 하나가 무관한 삭제를 흡수한다 —
+   * 「지우고 다른 것 하나를 해소했다」가 소실 0 으로 통과한다. 판별식이 존재하는 이유 자체가
+   * 뚫리는 자리라 2026-08-23 리뷰가 둘 다 지적했다. 짝이 엇갈려 **엉뚱한 이름**으로
+   * red 가 나던 것도 같은 뿌리다.
+   *
+   * ★제목을 여기서 보는 것이 「제목은 debt-ledger 소관」과 어긋나지 않는다. 그쪽은
+   * 장부↔마스터의 **조인 키 정합**을 보고, 여기는 lost/gained 를 **짝짓는 동일성 증거**로 쓴다.
+   * 기존 두 접기가 「제목과 본문이 함께 바뀌면 접지 않는다」인 것과 같은 규율이다.
+   */
+  const sameItem = (g, l) => stripStatusParen(JSON.parse(g)[1]) === stripStatusParen(JSON.parse(l)[1]);
 
   const remaining = [];
   for (const [, bucket] of gainedPool) for (const g of bucket) remaining.push(g);
@@ -172,7 +206,9 @@ export function compareTodoIntegrity(before, after) {
     const i =
       JSON.parse(l)[0] === RESOLVED
         ? -1
-        : remaining.findIndex((g) => JSON.parse(g)[0] === RESOLVED && covers(g, l));
+        : remaining.findIndex(
+            (g) => JSON.parse(g)[0] === RESOLVED && sameItem(g, l) && covers(g, l),
+          );
     if (i >= 0) {
       const [g] = remaining.splice(i, 1);
       resolved.push(`${label(l)}  →  ${label(g)}`);
@@ -318,6 +354,10 @@ function main(argv) {
   for (const s of items.gained) console.log(`    + ${s}`);
   console.log(`  개명 ${items.renamed.length}건 (상태·본문 동일)`);
   for (const s of items.renamed) console.log(`    ~ ${s}`);
+  console.log(`  본문 편집 ${items.edited.length}건 (상태·제목 동일)`);
+  for (const s of items.edited) console.log(`    ≈ ${s}`);
+  console.log(`  해소 ${items.resolved.length}건 (제목 어간 동일 + 본문 보존)`);
+  for (const s of items.resolved) console.log(`    ✅ ${s}`);
   console.log(`줄    구조 차이(H1·빈 줄) 제외 — 사라진 ${editedLost.length} · 생긴 ${editedGained.length}`);
   for (const s of editedLost) console.log(`    - ${JSON.stringify(s)}`);
   for (const s of editedGained) console.log(`    + ${JSON.stringify(s)}`);
