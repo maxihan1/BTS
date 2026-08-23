@@ -155,6 +155,25 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
   describe('배포 전 전량 게이트 (훅이 좁게 도는 대가의 보상)', () => {
     const DEPLOY = 'infra/deploy/bts-deploy.sh'
 
+    /**
+     * 배포 스크립트와 이 판별식이 공유하는 **유일한 문자열**. 셸 함수 이름이다.
+     * 두 자리가 각자 경로를 적으면 그 둘은 서로를 검사하지 않는 두 목록이 된다.
+     */
+    const GUARD = 'require_web_module'
+
+    /** 헬퍼 정의 본문만 잘라 낸다. 못 자르면 실패한다 — 조용히 빈 문자열을 판정하면 공허해진다 */
+    const helperBody = (sh: string): string => {
+      const at = sh.indexOf(`${GUARD}() {`)
+      assert.notEqual(
+        at,
+        -1,
+        `${DEPLOY} 에 ${GUARD} 정의가 없다. 의존성 판정이 어디로 갔는지 확인할 것.`,
+      )
+      const end = sh.indexOf('\n}\n', at)
+      assert.notEqual(end, -1, `${GUARD} 의 닫는 괄호를 못 찾았다 — 이 파서가 낡았다.`)
+      return sh.slice(at, end)
+    }
+
     test('★배포 스크립트가 백엔드 전량 테스트를 돌린다', () => {
       const sh = read(DEPLOY)
       assert.ok(
@@ -195,6 +214,86 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
         sh.includes('코드 문제가 아니다'),
         `${DEPLOY} 의 게이트가 Docker 부재를 테스트 실패와 구분하지 않는다 — ` +
           '배포 직전에 그 오진이 나면 가장 비싸다.',
+      )
+    })
+
+    /**
+     * ★★셰임 존재는 의존성의 증거가 아니다.
+     *
+     * pnpm 의 `node_modules/.bin/<도구>` 는 모듈을 부르는 **독립 셸 스크립트**다. 모듈이
+     * 사라져도 그 파일은 남으므로 `-x` 가 통과하고, 바로 다음 줄이 `MODULE_NOT_FOUND` 로 죽는다.
+     * 그러면 「의존성 복구가 선행돼야 한다」는 안내 대신 스택이 쏟아지고 `set -euo pipefail` 이
+     * 스크립트를 끝낸다 — 원인이 배포가 아니라 **테스트 실패로 오독된다.**
+     *
+     * 실측 2026-08-23 — `apps/web/node_modules` 의 선언 의존성 50개가 전부 부재였는데
+     * `.bin/vitest` 만 남아 `-x` 를 통과했다. #395 배포가 백엔드 게이트(10m55s · 10,401 초록)를
+     * 지난 직후 여기서 26초 만에 끝났다. **그 상태가 이틀 동안 안 보였다** — 앞의 백엔드
+     * 게이트가 매번 먼저 죽어 여기까지 온 적이 없었기 때문이다.
+     */
+    test('★★의존성 판정이 `.bin` 셰임 존재로 서지 않는다', () => {
+      const sh = read(DEPLOY)
+      const shimTests = sh.match(/\[\s*-[a-z]+\s+[^\]]*node_modules\/\.bin\/[^\]]*\]/g) ?? []
+      assert.deepEqual(
+        shimTests,
+        [],
+        `${DEPLOY} 가 \`.bin\` 셰임 존재를 의존성 판정으로 쓴다 — ${shimTests.join(' · ')}\n` +
+          '셰임은 모듈이 사라져도 남는다. 이 판정은 파괴된 node_modules 를 그대로 통과시키고, ' +
+          '바로 다음 줄에서 MODULE_NOT_FOUND 로 죽는다.',
+      )
+    })
+
+    test('★모듈 확인 헬퍼가 셰임이 아니라 `package.json` 실체를 본다', () => {
+      const body = helperBody(read(DEPLOY))
+      assert.ok(
+        body.includes('node_modules/$1/package.json'),
+        `${GUARD} 가 모듈 실체를 안 본다.\n` +
+          '빈 스코프 디렉터리만 남는 파괴 양식이 실측이었다(2026-08-23 — 41개 항목이 전부 빈 ' +
+          '디렉터리). 디렉터리 존재로는 못 가른다 — `package.json` 을 봐야 한다.',
+      )
+    })
+
+    test('★부재 메시지가 복구 명령과 그 전제를 함께 준다', () => {
+      const body = helperBody(read(DEPLOY))
+      assert.ok(
+        body.includes('pnpm install --frozen-lockfile'),
+        `${GUARD} 가 복구 명령을 안 준다 — 「복구가 선행돼야 한다」만 말하고 방법을 안 말한다.`,
+      )
+      assert.ok(
+        body.includes('.worktrees'),
+        `${GUARD} 가 복구 명령의 **전제**를 안 준다.\n` +
+          `${DEPLOY} 는 같은 파일 안에서 \`CI=true\` purge 를 ★★로 금지한다. 그 금지의 근거는 ` +
+          '「워크트리의 심볼릭이 지워지는 실체를 가리킨다」이고, 워크트리가 0개면 성립하지 않는다. ' +
+          '조건을 안 적으면 메시지와 금지 주석이 서로를 반박한다.',
+      )
+    })
+
+    test('★헬퍼 정의가 게이트 블록 **밖**에 있다', () => {
+      // 정의를 게이트 안으로 옮기면 메시지의 `pnpm install` 문자열이
+      // 위 「★★게이트가 pnpm 을 거치지 않는다」를 엉뚱한 이유로 red 로 만든다.
+      // 그때 읽히는 실패 사유가 「워크트리가 붙어 있으면 배포가 죽는다」라 원인을 가린다.
+      const sh = read(DEPLOY)
+      const def = sh.indexOf(`${GUARD}() {`)
+      const gate = sh.indexOf('BTS_SKIP_DEPLOY_TEST')
+      assert.ok(def >= 0 && gate >= 0, '헬퍼 정의 또는 게이트를 못 찾았다 — 파서가 낡았다.')
+      assert.ok(
+        def < gate,
+        `${GUARD} 정의(${def})가 게이트(${gate}) 안으로 들어갔다. 게이트 밖으로 뺄 것.`,
+      )
+    })
+
+    test('★게이트가 vitest 를, 빌드 폴백이 vite 를 각각 확인하고 부른다', () => {
+      const sh = read(DEPLOY)
+      const gateBlock = sh.slice(sh.indexOf('BTS_SKIP_DEPLOY_TEST'), sh.indexOf('bootJar'))
+      const afterBuild = sh.slice(sh.indexOf('bootJar'))
+      assert.match(
+        gateBlock,
+        new RegExp(`${GUARD}\\s+vitest\\b`),
+        `전량 검증 게이트가 vitest 모듈을 확인하지 않는다.`,
+      )
+      assert.match(
+        afterBuild,
+        new RegExp(`${GUARD}\\s+vite\\b`),
+        'pnpm 빌드 폴백이 vite 모듈을 확인하지 않는다 — 폴백은 `.bin/vite` 를 직접 부르는 자리다.',
       )
     })
   })
