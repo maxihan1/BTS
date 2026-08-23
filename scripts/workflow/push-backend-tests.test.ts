@@ -244,15 +244,24 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
         .split('\n')
         .map((l) => l.trim())
         .filter((l) => !l.startsWith('#') && l.includes('node_modules/.bin/'))
+      // ★줄 **모양**을 재고 개수를 단언한다. 문자열을 통째로 고정하면 `--reporter=dot` 을
+      //   붙이는 것 같은 **정당한 편집**까지 red 가 되고, 그때 읽히는 사유가
+      //   「의존성 판정에 셰임을 썼다」라 원인을 가린다. 지켜야 할 불변식은
+      //   「`.bin` 이 나오는 줄은 **부르는 줄**이다」 하나다.
+      const INVOKE = /^\(cd apps\/web && node_modules\/\.bin\/[a-z]+ /
+      const notInvocations = probes.filter((l) => !INVOKE.test(l))
       assert.deepEqual(
-        probes,
-        [
-          '(cd apps/web && node_modules/.bin/vitest run)',
-          '(cd apps/web && node_modules/.bin/vite build)',
-        ],
-        `${DEPLOY} 의 헬퍼 밖에서 \`.bin\` 이 실행 이외의 자리에 쓰였다 — ${probes.join(' · ')}\n` +
+        notInvocations,
+        [],
+        `${DEPLOY} 의 헬퍼 밖에서 \`.bin\` 이 실행 이외의 자리에 쓰였다 — ${notInvocations.join(' · ')}\n` +
           '셰임은 모듈이 사라져도 남는다. 그것으로 의존성을 판정하면 파괴된 node_modules 를 ' +
           '그대로 통과시키고 바로 다음 줄에서 MODULE_NOT_FOUND 로 죽는다.',
+      )
+      assert.equal(
+        probes.length,
+        2,
+        `${DEPLOY} 의 \`.bin\` 실행 줄이 2개가 아니다 (${probes.length}) — ` +
+          '전량 검증 게이트와 빌드 폴백 둘이어야 한다. 하나가 사라졌으면 그 자리의 확인도 함께 사라졌다.',
       )
     })
 
