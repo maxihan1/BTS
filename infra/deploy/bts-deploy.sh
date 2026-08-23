@@ -53,14 +53,23 @@ unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 #
 # 계약. scripts/workflow/push-backend-tests.test.ts §배포 전 전량 게이트
 require_web_module() {
-  if [ -e "apps/web/node_modules/$1/package.json" ]; then
-    return 0
+  if [ ! -e "apps/web/node_modules/$1/package.json" ]; then
+    echo "❌ $1 모듈 부재 — 의존성 복구가 선행돼야 한다."
+    echo "   ↳ apps/web/node_modules/.bin/$1 셰임이 남아 있어도 모듈이 없으면 여기서 죽는다."
+    echo "   ↳ 복구. .worktrees/* 가 0개인지 먼저 보고 \`CI=true pnpm install --frozen-lockfile\`."
+    echo "   ↳ 워크트리가 붙어 있으면 그 명령이 지우는 실체를 그쪽 심볼릭이 가리킨다. 먼저 정리할 것."
+    exit 1
   fi
-  echo "❌ $1 모듈 부재 — 의존성 복구가 선행돼야 한다."
-  echo "   ↳ apps/web/node_modules/.bin/$1 셰임이 남아 있어도 모듈이 없으면 여기서 죽는다."
-  echo "   ↳ 복구. .worktrees/* 가 0개인지 먼저 보고 \`CI=true pnpm install --frozen-lockfile\`."
-  echo "   ↳ 워크트리가 붙어 있으면 그 명령이 지우는 실체를 그쪽 심볼릭이 가리킨다. 먼저 정리할 것."
-  exit 1
+  # ★모듈을 본 **뒤에** 셰임도 본다. 순서가 뒤집히면 부채 95 가 그대로 돌아온다.
+  #   이 2차 확인이 없으면 「모듈은 있는데 링크만 안 걸린」 상태가 여기를 지나 다음 줄에서
+  #   exit 127 로 죽는다. `CLAUDE.md §함정` 이 「worktree node_modules 는 심볼릭 —
+  #   `.bin` 부재부터 의심」으로 이름 붙인 반복 고장이 정확히 그것이다.
+  if [ ! -x "apps/web/node_modules/.bin/$1" ]; then
+    echo "❌ $1 셰임 부재 — 모듈은 실재하는데 apps/web/node_modules/.bin/$1 이 없거나 실행 불가다."
+    echo "   ↳ 스토어는 멀쩡하고 링크만 안 걸린 상태다. 복구 명령은 위와 같다."
+    echo "   ↳ 워크트리를 붙였다 떼는 과정에서 나는 양식이다 — .worktrees/* 를 먼저 본다."
+    exit 1
+  fi
 }
 
 # 1.5. 전량 검증 — 프로덕션 직전의 **유일한 전수 게이트**
