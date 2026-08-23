@@ -1845,3 +1845,115 @@ files: [`TODOS.md`, `docs/plans/2026-08-12-debt24-master.md`, `CLAUDE.md`,
   `WorkflowExceptions.kt:1`(3종→11종) · `WorkflowController.kt:37-47`(엔드포인트 4개 누락) ·
   `TransitionRequestDto.kt`·`AvailableTransitionsRequest.kt` 구 ADR 인용.
 - plan 결과 등재 누락 2건 — Task 17 뮤테이션 이행 보고 · Task 26 결과 섹션.
+
+
+## 재리뷰 이행 결과 (Task 27~33 · 2026-08-23 등재)
+
+**왜 이 절이 있나.** 라운드 2 가 이번 사고의 뿌리로 지목한 것이 「plan `:1202` 가 분리한다고 선언하고
+한 건도 안 했다」였다. 그 지적을 받은 라운드가 **자기 결과를 또 안 적으면** 같은 양식 다섯 번째다.
+라운드 3 리뷰가 이 절의 부재를 CONCERN 으로 냈고, 그 자리에서 쓴다.
+
+### 판정표 — 라운드 2 BLOCKER 4건 + 등재 의무
+
+| Task | 판정 | 무엇으로 닫혔나 | 커밋 (red → green) |
+|---|---|---|---|
+| **27** `resolveById` 관문 | **닫힘** | `WorkflowEngine.kt:292` 가 `candidatesFor(...)` 를 먼저 만들고 `:293` 이 그 목록 안에서만 찾는다. `resolveById:329` 본문은 `candidates.find { it.id == transitionId }` 하나 — **`kind` 재구현 0줄**(처방이 요구한 재사용). 프로브 A~D 는 `WorkflowEngineAmbiguousTest.kt:210·218·226·234` | `ad0288640` → `e61fe752d` |
+| **28** post-action `fetchOne` | **닫힘** | `PostActionTransitionResolver.kt:115` 가 `fetch` 로 목록 반환, `:67` 에 PK 기반 `resolveById` 신설. 다건은 `PostActionAdminService.kt:199` 가 404. red 는 같은 (todo,done) NORMAL 2건 + 같은 도착지 GLOBAL 2건을 실DB 에 심어 **중복과 resolver 를 한 테스트에서 만나게** 한다 | `6e81a7fa0` → `123be042f` |
+| **29** CASCADE 데이터 손실 | **닫힘** (처방 4 중 3 이행 · 1 기각 → 아래) | `WorkflowStatusCompositionService.kt:139→:154` 가 편성을 가리키는 전환을 세어 409. red 가 전환을 **실제로 심고** `transitionCount()`(실 `dsl.fetchCount`)로 잰다 — 출발지·도착지(INITIAL)·HTTP 409 세 축 | `f224cadf0` → `9317ca5b9` |
+| **30** 죽은 분기 | **닫힘** | 표준 4 픽스처를 YAML 과 같은 7/6/4/4 로 맞추고 판별용 합성 2벌(`WorkflowGraphClosedTest.kt:143`·`:177`) 추가. **비-공허는 아래 뮤테이션 2회로 확인** | `8604feaac` (단일 `test:`) |
+| **31** 장부 등재 + 거짓 서술 6건 | **닫힘** | `TODOS.md` + `debt24-master.md` 양쪽에 부채 60~80 21건. 정정한 숫자 4종을 라운드 3 이 재측정해 전부 일치 | `8a48864d3` · `6e5e12d53` |
+
+### Task 30 의 뮤테이션 이행 보고 (2026-08-23 · GREEN 선커밋 뒤)
+
+**왜 필요했나.** Task 30 스펙(`:1832`)이 「**비-공허 확인 필수** — 두 분기를 각각 지워 red 1회씩 보고
+원복하라」고 명령했는데 Task 30 은 red/green 짝 없는 **단일 `test:` 커밋**이라 red 를 한 번도 안 본
+채 초록이었다. 뮤테이션이 유일한 증거다. 「돌렸는데 안 적었다」는 「안 돌렸다」와 구분되지 않는다.
+
+명령. `./gradlew :modules:project-workflow:test --tests '*WorkflowGraphClosedTest*'`
+
+| # | 끊은 자리 | 결과 |
+|---|---|---|
+| ① GLOBAL 분기 | `WorkflowGraphClosedTest.kt:392` 의 `+ globalTargets.filter { it != state.key }` 제거 | **`28 tests completed, 1 failed` · BUILD FAILED in 28s**<br>`global-only-reachable: 고아 상태 0건 — 모든 상태가 initial state 에서 BFS 도달 가능` FAILED |
+| ② INITIAL 분기 | 같은 파일 `:321-324` 의 INITIAL 분기 제거(= `minByOrNull { displayOrder }` 폴백만) | **`28 tests completed, 2 failed` · BUILD FAILED in 27s**<br>`initial-not-lowest-order: 고아 상태 0건 …` FAILED<br>`initial-not-lowest-order: 시작점은 INITIAL 도착지이지 displayOrder 최소 상태가 아니다` FAILED |
+
+**두 회차 모두 표준 4 픽스처는 초록을 유지했다** — 판별력이 새로 넣은 합성 픽스처에서 나온다는 뜻이다.
+각 회차 뒤 `git checkout -- <파일>` 로 원복하고 `git status` 가 빈 출력임을 확인했다(바이트 동일).
+원복 후 재실행 `BUILD SUCCESSFUL in 26s`.
+
+**★이 결과를 「프로덕션 GLOBAL·INITIAL 분기 커버리지 확보」로 읽으면 안 된다.** 여기서 살아난 것은
+**테스트 파일 안의 죽은 분기**다. 프로덕션 정본은 `WorkflowKeyResolverImpl.kt:135-143` 이고
+`GraphVerifier.resolveInitialState`(`:318`)는 그 규칙의 **사본**이다 — 둘은 서로를 검사하지 않는다.
+프로덕션 쪽은 Task 5·7 이 이미 덮었다(`:1010-1011`, 뮤테이션 3회 red · displayOrder 반전 픽스처 2개).
+라운드 3 이 이 사본 관계를 CONCERN 으로 지목했고 아래 후속에 남긴다.
+
+### Task 29 의 처방 1건 — 기각과 사유 (V207 주석 정정)
+
+Task 29 스펙(`:1812`)이 「V207 의 CASCADE 근거 주석도 사실대로 고쳐라」를 포함했다. **기각한다.**
+
+**사유.** `V207__transitions_multi_and_global.sql` 은 **이미 공유 dev DB(localhost:5433)에 적용돼 있다**
+(2026-08-23 실측 — `kind`·`from_status_id`·`to_status_id`·`display_order` 4컬럼 실재,
+`from_state_id` nullable, `kind='INITIAL'` 4행). 적용 완료된 마이그레이션 파일은 **주석 한 줄만 고쳐도
+Flyway 체크섬이 바뀌어 다음 기동이 `FlywayValidateException` 으로 죽는다.** 고치는 것이 오답이다.
+
+**기각도 결과다** — 흔적 없이 안 하면 「지시받고 안 한 항목」이 되고, 그것이 라운드 2 가 지목한 뿌리다.
+대신 셋을 남겼다. ① `TODOS.md` + `debt24-master.md` 에 부채 `91` 등재(상환 시점 = 3단 분할 3단계에서
+FK 를 `RESTRICT` 로 재정의할 때) ② V207 을 읽고 온 사람이 반드시 지나는
+`WorkflowStatusCompositionService.requireNoReferencingTransition` KDoc 에 보상 서술 ③ 이 문단.
+
+**무엇이 거짓인가 (정확히).** `V207:71-73` 의 「구 컬럼과 같은 규칙」은 **FK 절에 한하면 참**이다
+(양쪽 다 `ON DELETE CASCADE`, dev DB 실측 확인). 거짓인 것은 **함의**다 — 구 컬럼 CASCADE 는
+`workflow_states` 를 지우는 코드가 저장소에 0건이라 **도달 불가**였고, 이 PR 이 처음 도달 가능하게 만들었다.
+
+### Task 32 — 사후 정의와 결과 (plan 에 정의가 없던 것)
+
+**메타**. agent `backend-engineer` ·
+files: [`WorkflowStatusCompositionController.kt`, `WorkflowStatusCompositionExceptionHandler.kt`] ·
+depends-on: [Task 29] · 커밋 `5d0041964` (red) → `c2368eeec` (green)
+
+**★Task 29 의 green 이 만든 결함이다.** `9317ca5b9` 가 `WorkflowStatusReferencedByTransitionException`
+을 신설하면서 **advice 매핑을 안 붙여** 409 여야 할 응답이 500 으로 나갔다. 같은 PR 안에서 90분 뒤
+자체 적발해 `WorkflowStatusCompositionExceptionHandler.kt:56` 을 신설했다.
+
+**「고치는 과정이 새 결함을 만든다」 이번 라운드 1회차.** 순서가 정형이다 — 예외 신설 → advice 누락 →
+500. 다음 라운드가 새 도메인 예외를 만들 때 **핸들러 매핑을 같은 커밋에서** 확인하면 이 순서를 안 밟는다.
+
+### Task 33 — 사후 정의와 결과
+
+**메타**. agent `frontend-engineer` ·
+files: [`apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx`] ·
+depends-on: [Task 28] · 커밋 `2c782179a` (단일 `test:`)
+
+Task 28 이 post-action 지목을 `transitionId` 로 옮기면서 프론트 T5-7 단언 자리가 함께 옮겨졌다.
+그 이동을 테스트에 반영한 건이다. 상세는 커밋 본문에 있다.
+
+### 라운드 3 이 남긴 후속 (머지 후)
+
+| # | 요지 | 처리 |
+|---|---|---|
+| C6 | 새 409 계약 `WORKFLOW_STATUS_REFERENCED_BY_TRANSITION` 이 spec 엣지 케이스 표에 없다 | spec `E13` 로 이 PR 에서 추가 |
+| C7 | 부채 71 이 「2곳」이라 적었는데 실측 3곳(`SchemeIssueTypeMappingRepository.kt:352` 누락)이고 성능이 아니라 재현 가능한 500 이다 | 장부 정정 |
+| C8 | 죽은 단언 2건 — `키 형식 제약` 문자열이 저장소에서 사라져 `PostActionConfigSection.test.tsx:799·879` 가 무엇을 해도 초록 | 부채 등재 |
+| C9 | 시작상태 규칙이 프로덕션(`WorkflowKeyResolverImpl.kt:135-143`)과 테스트 사본(`GraphVerifier:318`) 두 벌이고 서로를 안 검사한다 | 부채 등재 |
+| C10 | INITIAL 전환에 규칙을 붙일 수 있는데 **실행 경로가 없다.** 후보 계산이 INITIAL 을 빼고 이슈 생성은 엔진을 건너뛴다. 그런데 두 테스트가 「붙일 수 있다」를 계약으로 못 박았다 | 부채 등재 |
+
+**C10 의 현재 피해는 0이다** — 시드 YAML 4개의 INITIAL 전환에 `validators`·`postActions` 가 한 건도
+안 붙어 있음을 확인했다. 다만 GLOBAL 은 실제로 실행되고 INITIAL 만 안 되는데 둘을 나란히
+「붙일 수 있다」로 단언해 둔 상태라, 다음 사람이 그 테스트를 근거로 설계하면 조용히 실패한다.
+
+### 이 라운드의 검증 실측 (2026-08-23)
+
+| 무엇 | 결과 |
+|---|---|
+| 백엔드 전량 (강제 재실행) | **10,401 테스트 · 실패 0 · 에러 0 · 건너뜀 0** · 10개 모듈 전부 실행(UP-TO-DATE 0) · 17분 46초 |
+| 판별식 전량 | 393/393 · EXIT 0 |
+| 정본 정합 | FR 143/143 |
+| 문서 인덱스 | drift 0 |
+| 장부 양방향 | `debt-ledger-mapping.test.ts` 10/10 |
+
+**★`cleanTest` 없이 돌린 첫 회차는 가짜였다.** `BUILD SUCCESSFUL in 1m 18s` 인데 10개 중 **9개 모듈이
+UP-TO-DATE** 로 안 돌았고 결과 XML 1013건이 이틀 전(08-21) 것이었다. 이 저장소는 워크트리끼리
+Gradle 결과 디렉터리를 공유하므로(부채 `66`) 그 XML 이 이 브랜치 것이라는 보장도 없다.
+**`BUILD SUCCESSFUL` 을 초록의 증거로 쓰지 마라 — 실행된 태스크 수와 결과 파일 시각을 함께 봐라.**
+
+**★전량 초록은 「회귀가 없음」의 증거이지 「새 테스트가 판별력을 갖는다」의 증거가 아니다.**
+그래서 위 뮤테이션 2회는 전량 초록으로 대체되지 않는다.

@@ -396,6 +396,28 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 
 ---
 
+## ⬜ apps/web — post-action 테스트의 단언 2건이 사라진 문자열을 검사한다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 테스트 두 개가 「이 문구가 화면에 없어야 한다」를 확인하는데, 그 문구는 이미 코드에서 통째로
+사라졌다. 무엇을 망가뜨려도 이 둘은 초록이다.
+
+**방치하면.** 가짜 그린 2건이 커버리지로 세어진다. 그 문구가 되돌아와도 아무도 못 본다.
+
+**무엇.** `apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx:799`(PACS-D6e)
+와 `:879`(PACS-K5) 가 `expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()` 를 단언한다.
+커밋 `b8e2e9643` 이 `postActionLabels.section.ambiguousKeyHint`(`apps/web/src/i18n/post-action-labels.ts`)
+를 지웠고, 실측 — `grep -rn '키 형식 제약' apps backend` 결과 그 문자열은 **이 테스트 두 줄에만** 남았다.
+
+**「판정 문자열은 그 블록에만 있어야 한다」의 반대 방향이다.** 정본 메모리
+[[invariant-satisfied-by-helptext-not-logic]] 가 「판정을 지워도 통과했다」를 말하는데, 이쪽은
+「검사 대상이 사라져서 판정이 공허해졌다」다. 같은 뿌리다 — 판정과 대상이 서로를 안 검사한다.
+
+**처방 후보.** ① 두 테스트를 삭제한다 — 커버리지 손실 0이다. `PACS-D6d`(`:791`)가 `disabled === false`
+로 실제를 이미 재고 있다. ② 남기려면 「선택 불가(`disabled`) option 이 0건이다」처럼 구현이 되돌아왔을 때
+**실제로 red 를 낼** 단언으로 바꾼다.
+
+---
+
 # 기능 동작
 
 ## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수 · T2)
@@ -1247,15 +1269,32 @@ ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 
 
 ---
 
-## ⬜ 워크플로우 — `resolveWorkflowId` 가 소프트 삭제 조건을 안 걸어 부분 인덱스를 못 탄다 (선재 · 미착수 · T2)
+## ⬜ 워크플로우 — `key` 조회 2곳이 소프트 삭제를 안 걸러 재현 가능한 500 을 낸다 (선재 · 미착수 · T2)
 
-**쉬운 말.** 워크플로우를 이름으로 찾는 코드 두 곳이 「지워진 것 빼고」 조건을 안 건다. 그래서 데이터베이스가 빠른 색인을 못 쓰고 표를 처음부터 끝까지 훑는다.
+**쉬운 말.** 워크플로우를 이름으로 찾는 코드가 「지워진 것 빼고」 조건을 안 건다. 지웠다가 같은 이름으로 다시 만들면 두 개가 함께 잡혀 서버가 500 으로 죽는다.
 
-**방치하면.** 워크플로우가 늘어나면 이 경로가 점점 느려진다. 지금은 표가 작아 체감 피해가 없다.
+**방치하면.** 이름을 재사용한 워크플로우에서 이슈를 전환하면 500 이다. 색인을 못 타는 것은 부수 효과일 뿐 본질이 아니다.
+
+**★제목이 성능 문제로 적혀 있었고 대상을 「2곳」이라 적었다 (2026-08-23 정정).** 라운드 3 실측 —
+`WORKFLOWS.KEY.eq` 전수에서 `deleted_at` 필터 없이 `fetchOne` 하는 자리는 **처음 등재 시점 기준 3곳**이고
+장부는 2곳만 셌다. 누락분은 `scheme/repository/SchemeIssueTypeMappingRepository.kt:352` 로
+`repairDefaultMappings()` 안이라 같은 상황에서 **시드·부팅이 죽는다.** 본문이 스스로 「인덱스 문제가 아니라
+정확성 문제」라 적으면서 제목·요약은 성능으로 남아 있던 자기모순도 함께 고쳤다.
 
 **무엇.** `V206` 이 `uq_workflows_key` 를 `WHERE deleted_at IS NULL` **부분 유니크 인덱스**로 바꿨다.
 부분 인덱스는 질의에 같은 조건이 있을 때만 선택된다. 그런데 조건 없이 `key` 만 보는 자리가 남아 있다 —
-`DefaultWorkflowDefinitionRepository.resolveWorkflowId`(`:164-170`).
+`DefaultWorkflowDefinitionRepository.resolveWorkflowId`(`:164-170`) 와
+`scheme/repository/SchemeIssueTypeMappingRepository.kt:352`.
+
+**무해함을 확인한 자리 (오탐 방지).** `WorkflowWriteRepository.kt:50` 은 다음 줄에 필터가 있고,
+`WorkflowRepository.kt:46` 은 `fetchJoinedRows:151` 이 필터를 걸며, `YamlSeedService.kt:400` 은
+`fetchExists` 라 다건 예외가 없다.
+
+**재현 조건 (실측 경로).** ① CUSTOM 워크플로우 `X` 생성 → ② 스킴 참조 0 인 상태로 소프트 삭제 →
+③ 같은 key 로 재생성(`WorkflowCommandService.kt:74` 의 `existsByKey` 는 살아 있는 행만 세므로 통과) →
+④ `X` 를 쓰는 이슈를 전환 → `WorkflowEngine.kt:458` → `findValidators`/`findPostActions` →
+`resolveWorkflowId("X")` 가 2행을 만나 `TooManyRowsException` → **전환 실행 경로 500.**
+캐시는 `deleted_at` 을 거르므로 엔진은 맞는 워크플로우를 잡는데 규칙 조회에서 터진다.
 
 **★ 등재 당일에 절반이 닫혔다 (2026-08-21 · PR #395).** 처음 등재할 때는 2곳이었고
 `PostActionTransitionResolver.resolveWorkflowId` 가 그 하나였다. 같은 PR 의 Task 28 이 그것을
@@ -1644,6 +1683,89 @@ red 가 나는지 재는 짝을 세운다 — 정직하지만 자식 수만큼 �
 ② `git` 을 부르는 유일한 경로를 래퍼 모듈로 좁히고 그 안에서 런타임 단언한다(부채 `84` 의 처방과 같은 자리).
 
 **착수 시 주의.** ②는 부채 `84`·`88` 과 한 덩어리다. 셋을 따로 착수하면 같은 배선을 세 번 건드린다.
+
+
+## ⬜ 워크플로우 — `V207` 의 CASCADE 근거 주석이 도달 가능성 변화를 감춘다 (선재 · 미착수 · T3)
+
+**쉬운 말.** 마이그레이션 주석이 「새 규칙은 옛 규칙과 같다」고 적는데, 글자만 같고 **위험도는 전혀 다르다.**
+옛 규칙은 아무도 못 건드리는 자리라 안전했고, 새 규칙은 화면에서 누를 수 있는 버튼에 걸려 있다.
+
+**방치하면.** V207 을 읽은 사람이 「종전과 같으니 새 위험 없음」으로 판단한다. 실제로는 이 PR 이 처음으로
+편성 삭제 → 전환 하드 삭제 경로를 **도달 가능하게** 만들었다.
+
+**무엇.** `backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V207__transitions_multi_and_global.sql:71-73`
+이 「`ON DELETE CASCADE` 는 구 컬럼(V200 의 `from_state_id`·`to_state_id`)과 **같은 규칙**이다」라 적는다.
+**FK 절에 한하면 참**이다 — 양쪽 다 `ON DELETE CASCADE`(dev DB 실측 확인). 거짓인 것은 **함의**다.
+구 컬럼 CASCADE 는 `workflow_states` 를 지우는 코드가 저장소에 **0건**이라 도달 불가였다.
+
+**★고칠 수 없는 이유 — 체크섬.** V207 은 이미 공유 dev DB(localhost:5433)에 적용돼 있다
+(2026-08-23 실측 — `kind`·`from_status_id`·`to_status_id`·`display_order` 실재, `kind='INITIAL'` 4행).
+**적용 완료된 마이그레이션은 주석 한 줄만 고쳐도 Flyway 체크섬이 바뀌어 다음 기동이
+`FlywayValidateException` 으로 죽는다.** 그래서 PR #395 는 이 정정을 **기각**하고 여기로 이연했다.
+
+**지금 막아 둔 것.** 코드 계층이 막는다 — `WorkflowStatusCompositionService.requireNoReferencingTransition`
+이 편성을 가리키는 전환이 있으면 409 를 던지고, 그 KDoc 이 이 부채를 상호 참조한다.
+
+**처방 후보.** 3단 분할 3단계에서 `workflow_states` 를 DROP 하며 이 FK 를 `RESTRICT` 로 재정의할 때,
+**그 마이그레이션의 주석에 정확한 서술을 적는다.** V207 자체는 영원히 안 고친다 — 이미 나간 마이그레이션이다.
+
+**착수 시 주의.** 「주석이 틀렸으니 고치자」로 접근하면 dev·prod 양쪽 Flyway 가 깨진다. `flyway repair` 로
+뚫는 것도 권하지 않는다 — 체크섬 무력화는 마이그레이션 정합의 마지막 방어선이다.
+
+---
+
+## ⬜ 워크플로우 — 시작 상태 규칙이 프로덕션과 테스트에 두 벌이고 서로를 안 검사한다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 「이슈를 만들면 어느 상태에서 시작하나」를 정하는 규칙이 실제 코드와 테스트 코드에 **따로**
+적혀 있다. 한쪽을 바꿔도 다른 쪽은 모른다.
+
+**방치하면.** 프로덕션 규칙을 바꿨는데 테스트는 옛 규칙으로 계속 초록이다. 반대도 같다.
+
+**무엇.** 프로덕션 정본은
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/adapter/inbound/WorkflowKeyResolverImpl.kt:135-143`
+(`INITIAL 도착지 ?: minByOrNull(displayOrder)`)이고,
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowGraphClosedTest.kt:318`
+의 `GraphVerifier.resolveInitialState` 가 **그 규칙의 사본**이다. 프로덕션 분기를 지워도 이 테스트는
+안 깨지고 반대도 마찬가지다.
+
+**★PR #395 Task 30 의 결과를 오독하지 말 것.** Task 30 이 뮤테이션 2회로 비-공허를 확인한 것은
+**테스트 파일 안의 죽은 분기**이지 프로덕션 커버리지가 아니다. 프로덕션 쪽은 Task 5·7 이 덮었다
+(plan `2026-08-20-…:1010-1011`). 이 구분을 흐리면 그 자체가 거짓 서술이 된다.
+
+**처방 후보.** ① `GraphVerifier` KDoc 에 「이것은 `WorkflowKeyResolverImpl.resolveStartState` 의 사본이다.
+그쪽이 바뀌면 같은 커밋에서 여기도 바꾼다」를 명시 — 하한이다. ② 두 구현을 차집합으로 대조하는 판별식.
+지배 결함 양식 [[two-lists-never-check-each-other]] 의 정식 처방이 ②다.
+
+---
+
+## ⬜ 워크플로우 — INITIAL 전환에 붙인 규칙은 저장되지만 실행 경로가 없다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 「이슈를 만들 때」 전환에 자동 규칙을 붙일 수 있게 화면이 열려 있는데, 그 규칙은 **절대 안 돈다.**
+저장도 되고 목록에도 뜨는데 실행만 안 된다.
+
+**방치하면.** 관리자가 「이슈 생성 시 담당자 자동 배정」 같은 규칙을 만들고 동작한다고 믿는다.
+아무 오류도 안 나므로 안 돈다는 것을 알 방법이 없다.
+
+**무엇.** post-action 실행 자리는 `WorkflowEngine.kt:458` 하나뿐인데, 그 앞의
+`candidatesFor:387-397` 이 `TransitionKind.INITIAL -> false` 로 INITIAL 을 후보에서 뺀다.
+이슈 생성은 `WorkflowKeyResolverImpl.kt:138` 이 INITIAL 의 `toStateKey` 만 읽고 **엔진을 건너뛴다.**
+따라서 `executePostActions` 도 `passesValidators` 도 INITIAL 전환을 **한 번도 보지 못한다.**
+
+**★그런데 두 곳이 「붙일 수 있다」를 계약으로 못 박았다.**
+`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionE2EIntegrationTest.kt:614`
+(`INITIAL 전환에 post-action 을 붙인다` — 201 → 200 왕복 단언) ·
+`apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx:868`
+(`PACS-K4: INITIAL·GLOBAL option 은 disabled 가 아니다`).
+`PostActionTransitionResolver` 의 `KIND_TOKENS` KDoc 은 「규칙을 붙일 수 있는 대상이다 — 막으면 그 경로가
+UI 에서 도달 불가가 된다」고 적는데 **실제로는 붙여도 도달 불가**다.
+
+**현재 피해는 0이다.** 시드 YAML 4개의 INITIAL 전환에 `validators`·`postActions` 가 한 건도 안 붙어
+있음을 확인했다. **GLOBAL 은 실제로 실행되고 INITIAL 만 안 된다** — 둘을 나란히 「붙일 수 있다」로
+단언해 둔 것이 위험의 실체다.
+
+**처방 후보.** ① 이슈 생성 경로가 INITIAL 의 post-action 을 돌게 한다 — 정공법이나 범위가 크다.
+② INITIAL 에는 규칙을 못 붙이게 막고 위 두 테스트를 「거절된다」로 뒤집는다.
+**③ 지금처럼 「붙일 수 있다」만 단언해 두는 것이 제일 나쁘다** — 어느 쪽으로 갈지는 Maxi 확인 사항이다.
 
 
 # 빌드·배포 환경

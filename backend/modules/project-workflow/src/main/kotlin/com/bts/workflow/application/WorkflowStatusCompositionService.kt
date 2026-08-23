@@ -150,6 +150,14 @@ class WorkflowStatusCompositionService(
      *
      * FK 를 `RESTRICT` 로 바꾸는 것이 정공법이나 그것은 마이그레이션이라 `workflow_states` 를
      * 떨어뜨리는 3단 분할 2단계의 몫이다. 그때까지 이 계층이 막는다.
+     *
+     * ### ★V207 의 「구 컬럼과 같은 규칙」을 그대로 믿지 마라
+     * `V207:71-73` 이 이 CASCADE 를 「구 컬럼(V200)과 같은 규칙」이라 적는다. **FK 절에 한하면 참**이다 —
+     * 양쪽 다 `ON DELETE CASCADE`. 그러나 **도달 가능성은 같지 않다.** 구 컬럼 CASCADE 는
+     * `workflow_states` 를 지우는 코드가 저장소에 0건이라 발화할 길이 없었고, 이 PR 이 편성 삭제
+     * 엔드포인트를 통해 **처음으로 도달 가능하게** 만들었다. 그 주석은 이미 적용된 마이그레이션이라
+     * 체크섬 때문에 못 고친다 — 사정은 `TODOS.md` 부채 `91` 에 있다. V207 을 읽고 여기 온 사람이
+     * 「종전과 같으니 새 위험 없음」으로 판단하지 않도록 이 자리에 적어 둔다.
      */
     private fun requireNoReferencingTransition(
         workflowKey: String,

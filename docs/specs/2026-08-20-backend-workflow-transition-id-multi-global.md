@@ -69,8 +69,8 @@
 | ID | 내용 |
 |---|---|
 | N1 | **읽기 API 응답 형태 불변.** `GET /api/v1/workflows/{key}` 는 `{ key, name, description, states[], transitions[] }` 를 유지하고 새 필드(`transitions[].id`·`kind`)는 **추가만** 한다 |
-| N2 | **cross-BC 프로덕션 코드 0줄.** agile-planning·slack-integration·issue-tracking 의 main 소스를 건드리지 않는다. shared-kernel 은 nullable 필드 **추가**만 (컴파일 파괴 없음) |
-| N3 | `apps/web` 0파일. 프론트는 로드맵 PR 8 이 담당한다 |
+| N2 | **agile-planning·slack-integration main 0줄** (유지 · 실측 확인). shared-kernel 은 nullable 필드 **추가**만 (컴파일 파괴 없음). ~~issue-tracking 0줄~~ → **issue-tracking main 5파일 +80/−8 — 게이트 2 cross-BC 재판정(plan `:1451`)으로 승인된 확대.** `transitionId` 왕복을 REST 로 잇는 최소 표면(`TransitionIssueRequest`·`IssueController`·`IssueApplicationRequests`·`IssueApplicationService`·`AvailableTransitionsResponse`) |
+| N3 | ~~`apps/web` 0파일~~ → **`apps/web` 27파일 +2302/−282.** 프론트 범위 재판정(plan `:1615` · Maxi C안)으로 이 PR 이 흡수했다. 로드맵 PR 8 로 남는 것은 **워크플로우 편집기 UI 본체**다 |
 | N4 | 마이그레이션은 `DATA.md` §4 add → backfill → drop 3단 분할을 따른다. `workflow_states` 는 이 PR 에서 **DROP 하지 않는다** |
 | N5 | 모든 쓰기 경로 끝에 `WorkflowCache.invalidate(workflowKey)` |
 | N6 | 워크플로우 상태를 원시 SQL 로 심지 않는다 — 픽스처 헬퍼 사용 |
@@ -223,11 +223,14 @@ CHECK」를 이 PR 에 넣으라고 적었다. **그것이 `DATA.md §4-1` 의 a
 | E10 | 모호 전환이 **보드 드래그앤드롭**에서 발생 | 409 로 정직하게 막는다. 선택 다이얼로그는 후속 (ADR §영향-부정) |
 | E11 | `toStatusKey` 후보가 0개 | 기존과 동일 404 (`WorkflowNotFoundException`) |
 | E12 | GLOBAL 전환이 여럿이고 같은 도착지 | 그것도 모호 — S4 와 같은 409 경로 |
+| E13 | 전환이 출발지·도착지로 가리키는 상태를 워크플로우 편성에서 빼려 함 | 409 `WORKFLOW_STATUS_REFERENCED_BY_TRANSITION` — 막은 전환 이름을 본문에 싣는다. FK 가 `ON DELETE CASCADE`(V207 ③)라 그냥 두면 전환이 **하드 삭제**된다 |
 
 ## 제약 조건
 
-- **한 PR = 한 BC.** project-workflow 만 건드린다. shared-kernel 은 nullable 필드 추가만 허용
-  (컴파일 파괴 없음). issue-tracking·agile-planning·slack-integration main 소스 0줄.
+- **한 PR = 한 BC** 가 원칙이고 **이 PR 은 그 예외다.** 승인 위치는 plan `:1451`(cross-BC 재판정) ·
+  `:1615`(프론트 범위 · Maxi C안). shared-kernel 은 nullable 필드 추가만 허용(컴파일 파괴 없음).
+  agile-planning·slack-integration main 소스는 **0줄을 유지**한다. issue-tracking main 과 `apps/web` 은
+  재판정으로 열린 범위 안이다 — 그 밖으로 넓히려면 다시 판정을 받는다.
 - **jOOQ 레코드 접근은 `Record.required(field)`** (`!!` 금지). 반환 타입 `T & Any`.
 - **권한 축은 `isSystemAdmin` 하나.** `WorkflowDefinitionPermission` 4종은 감사·에러 메시지용 구분이지
   부여 단위가 아니다.
@@ -247,9 +250,9 @@ CHECK」를 이 PR 에 넣으라고 적었다. **그것이 `DATA.md §4-1` 의 a
 | C5 | `GET /api/v1/workflows/{key}` 응답의 기존 5필드 구조가 그대로다 | 계약 스냅샷 테스트 |
 | C6 | V207 마이그레이션 체인이 빈 DB·기존 DB 양쪽에서 통과 | `V207MigrationTest` (`V200MigrationTest.kt` 패턴, `quay.io/tembo/pg16-pgmq:latest`) |
 | C7 | INITIAL 백필이 각 워크플로우당 정확히 1건, 도착지가 종전 `minByOrNull` 결과와 동일 | 마이그레이션 테스트 |
-| C8 | `apps/web` 0파일 · issue-tracking·agile-planning·slack-integration main 0줄 | `git diff --stat` |
+| C8 | agile-planning·slack-integration main **0줄** (재판정이 안 연 BC 는 그대로다) | `git diff --name-only main...HEAD -- backend/modules/{agile-planning,slack-integration}/src/main` 이 빈 출력 |
 | C9 | `./gradlew :modules:project-workflow:test :modules:shared-kernel:test` 초록 | CI |
-| C10 | 판별식 406건 전량 pass | `pnpm test:workflow` |
+| C10 | 판별식 전량 pass | `pnpm test:workflow` EXIT 0. **건수를 적지 않는다** — 손으로 센 숫자는 판별식이 늘 때마다 조용히 낡는다(부채 `65`). 참고로 2026-08-23 실측은 393건 |
 
 ## Sanity Check
 
@@ -260,6 +263,6 @@ CHECK」를 이 PR 에 넣으라고 적었다. **그것이 `DATA.md §4-1` 의 a
 | G1 | ❓ 발견 — 로드맵 PR 4 절 요약에 **INITIAL(최초 전환)이 빠져 있었다**. ADR §D2 와 FR §2.5 제목은 포함한다 | **범위에 포함**했다 (F3·F4·F10·C4·C7). 로드맵 요약이 축약이고 ADR 이 정본이다 |
 | G2 | ❓ 발견 — `POST /{key}/transitions` **경로 충돌** (기존 plan) | 결정 D-1 로 흡수. **게이트 1 확인 대상** |
 | G3 | ❓ 발견 — 모호 전환 409 를 sealed 확장으로 내면 **issue-tracking 이 컴파일 실패**(cross-BC) | 결정 D-2 로 흡수 (예외 경로). **게이트 1 확인 대상** + 통합테스트로 실측 |
-| G4 | ❓ 발견 — `fromStateKey` 가 nullable 이 되면 프론트 Zod 가 깨질 수 있다 | 이 PR 은 `apps/web` 0파일이므로 **PR 8 이 물려받을 제약**으로 plan 에 기록 |
+| G4 | ❓ 발견 — `fromStateKey` 가 nullable 이 되면 프론트 Zod 가 깨질 수 있다 | ~~PR 8 이 물려받을 제약~~ → **재판정으로 이 PR 이 흡수해 닫았다.** `workflowTransitionViewSchema`(`apps/web/src/api/workflows.ts:40`)에서 완화했고 렌더 계층은 Task 20 이 처리 |
 
 **남은 미확정 0건.** 2회째 보강 없이 게이트 1 로 간다.
