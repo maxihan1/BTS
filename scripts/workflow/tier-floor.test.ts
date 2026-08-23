@@ -231,6 +231,64 @@ describe('표면 카탈로그', () => {
 });
 
 // ─────────────────────────────────────────────────────────
+// ⓔ 배포 게이트도 강제 장치다 — 판정하는 자리와 판정되는 자리의 티어를 맞춘다
+// ─────────────────────────────────────────────────────────
+
+/**
+ * `infra/deploy/bts-deploy.sh` 는 **프로덕션 직전의 마지막 검사대**다.
+ *
+ * 2026-08-23 실측 — 이 파일이 `surfaces.ts` 의 어느 글로브에도 안 걸려
+ * `TIER: T1` · `SURFACES: (없음)` · `UNMAPPED: infra/deploy/bts-deploy.sh` 가 나왔다.
+ * 그 상태에서는 게이트가 조용히 약해져도 절차 강도가 안 올라간다 — 계획 0 · 리뷰 1종으로
+ * 프로덕션 직전 검사대를 고칠 수 있다.
+ *
+ * ★왜 훅과 짝으로 재나. 두 파일은 `GIT_*` 스크럽 **같은 한 줄**을 공유하고,
+ * `discriminant-hook-wiring.test.ts` 가 「배포 줄을 바꾸려면 훅 줄을 **같은 커밋에서 같은
+ * 형태로** 바꿔라」를 강제한다. 티어가 갈리면 그 한 커밋 안에서 한쪽은 T2 절차, 다른 쪽은
+ * T1 절차가 된다 — 같이 움직이라고 묶어 놓고 절차만 갈라 놓는 셈이다.
+ */
+describe('ⓔ 배포 게이트의 표면 등록', () => {
+  const DEPLOY = 'infra/deploy/bts-deploy.sh';
+  const HOOK = '.husky/pre-push';
+
+  test('★배포 게이트가 미분류로 떨어지지 않는다', () => {
+    const verdict = detectTier([DEPLOY]);
+    assert.deepEqual(
+      verdict.unmapped,
+      [],
+      `${DEPLOY} 가 어느 표면에도 안 걸린다.\n` +
+        '프로덕션 직전의 마지막 검사대가 기본 T1 로 떨어진다 — 계획 0 · 리뷰 1종이다.',
+    );
+    assert.equal(
+      surfaceOf(DEPLOY),
+      'GUARD_CI',
+      `${DEPLOY} 가 GUARD_CI 가 아니다. 배포 게이트는 강제 장치이지 배포 산출물이 아니다.`,
+    );
+  });
+
+  test('★★훅과 배포 게이트의 티어가 같다', () => {
+    const hookTier = detectTier([HOOK]).tier;
+    const deployTier = detectTier([DEPLOY]).tier;
+    // ★절대 단언을 **먼저** 둔다. 상대 비교만 두면 둘 다 같은 `GUARD_CI` 항목 안의 글로브라
+    //   두 글로브를 함께 지웠을 때 「T1 == T1」로 초록이 된다(2026-08-23 리뷰 실측 S2).
+    //   그러면 ★★가 있지도 않은 보장을 선언하게 된다 —
+    //   `[[invariant-satisfied-by-helptext-not-logic]]` 계열이다.
+    assert.equal(
+      deployTier,
+      'T2',
+      `${DEPLOY} 가 ${deployTier} 다. 프로덕션 직전의 마지막 검사대는 T2 미만일 수 없다.`,
+    );
+    assert.equal(
+      deployTier,
+      hookTier,
+      `${HOOK} 는 ${hookTier} 인데 ${DEPLOY} 는 ${deployTier} 다.\n` +
+        '두 파일은 GIT_* 스크럽 같은 한 줄을 공유하고, 그 동일성을 판별식이 강제한다. ' +
+        '한 커밋에서 함께 바뀌어야 하는 두 자리의 절차 강도가 갈렸다.',
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────
 // 판정 5조 단위 케이스 — 판정기가 살아 있음을 먼저 증명한다
 // ─────────────────────────────────────────────────────────
 

@@ -43,6 +43,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
+import { stripStatusParen } from './todos-reorder-integrity.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const LEDGER = path.join(REPO_ROOT, 'TODOS.md')
@@ -60,12 +62,13 @@ const OPEN_PR_ALLOWED = ['미배정', '보류']
 /**
  * 제목 끝의 상태 괄호 하나를 떼어 키로 만든다.
  *
+ * ★규칙을 여기 다시 적지 않는다. `todos-reorder-integrity.mjs` 가 정본이고 그쪽 해소 접기가
+ * **같은 어간**으로 짝을 짓는다. 두 곳에 적으면 서로를 검사하지 않는 두 목록이 된다.
+ *
  * @param heading `## ⬜ ` 를 제거한 제목 줄
  * @returns 비교에 쓸 키
  */
-function normalizeKey(heading: string): string {
-  return heading.replace(/\s*\([^()]*\)\s*$/, '').trim()
-}
+const normalizeKey = (heading: string): string => stripStatusParen(heading)
 
 /** 볼드 마크업(`**x**`)을 떼어 셀 값을 비교 가능한 형태로 만든다. */
 function stripBold(cell: string): string {

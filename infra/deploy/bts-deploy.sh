@@ -34,6 +34,48 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 #   그 둘은 서로를 검사하지 않는 두 목록이 된다.
 unset $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p')
 
+# 의존성 실체 확인 — 셰임이 아니라 **모듈**을 본다.
+#
+# ★왜 `.bin/<도구>` 를 안 보나. pnpm 의 `.bin` 엔트리는 모듈을 부르는 **독립 셸 스크립트**라
+#   모듈이 사라져도 그대로 남는다. `-x` 는 통과하고 바로 다음 줄이 `MODULE_NOT_FOUND` 로 죽어
+#   원인이 배포가 아니라 **테스트 실패로 오독된다.**
+#   2026-08-23 실측 — 선언 의존성 50개가 전부 부재인데 `.bin/vitest` 만 남아 `-x` 를 통과했고,
+#   #395 배포가 백엔드 게이트(10m55s · 10,401 초록)를 지난 26초 뒤 여기서 끝났다.
+#
+# ★디렉터리 존재로는 못 가른다. 같은 실측에서 남아 있던 41개 항목이 전부 **빈 스코프
+#   디렉터리**였다. 그래서 `package.json` 을 본다.
+#
+# ★두 벌로 적지 않는다. 부르는 자리가 둘(전량 검증 게이트 · 빌드 폴백)이라 복붙하면
+#   한쪽만 고쳐지는 자리가 된다.
+#
+# ★정의는 아래 게이트 블록 **밖**이어야 한다. 메시지가 복구 명령으로 `pnpm` 을 언급하는데,
+#   게이트 안으로 들어가면 「게이트가 pnpm 을 거치지 않는다」 판정이 엉뚱한 사유로 깨진다.
+#
+# 계약. scripts/workflow/push-backend-tests.test.ts §배포 전 전량 게이트
+require_web_module() {
+  if [ ! -e "apps/web/node_modules/$1/package.json" ]; then
+    echo "❌ $1 모듈 부재 — 의존성 복구가 선행돼야 한다."
+    echo "   ↳ apps/web/node_modules/.bin/$1 셰임이 남아 있어도 모듈이 없으면 여기서 죽는다."
+    echo "   ↳ 복구. .worktrees/* 가 0개인지 먼저 보고 \`CI=true pnpm install --frozen-lockfile\`."
+    echo "   ↳ 워크트리가 붙어 있으면 그 명령이 지우는 실체를 그쪽 심볼릭이 가리킨다. 먼저 정리할 것."
+    exit 1
+  fi
+  # ★2차 확인 — 「모듈은 있는데 링크만 안 걸린」 상태를 잡는다. 이것이 없으면 그 트리가
+  #   여기를 지나 다음 줄에서 exit 127 로 죽는다. `CLAUDE.md §함정` 이 「worktree
+  #   node_modules 는 심볼릭 — `.bin` 부재부터 의심」으로 이름 붙인 반복 고장이 그것이다.
+  #
+  #   ★순서는 안전에 영향이 없다. 두 검사가 다 hard exit 이라 논리곱이고, 뒤집어도 둘 다
+  #   막는다(2026-08-23 실측 — 두 순서를 부채 95 트리에 각각 물려 확인). 모듈을 먼저 두는
+  #   이유는 **둘 다 없을 때 더 근본적인 원인을 먼저 말하기** 위해서다. 없는 위험을 주석이
+  #   선언하지 않도록 이 문장을 사실로 적어 둔다.
+  if [ ! -x "apps/web/node_modules/.bin/$1" ]; then
+    echo "❌ $1 셰임 부재 — 모듈은 실재하는데 apps/web/node_modules/.bin/$1 이 없거나 실행 불가다."
+    echo "   ↳ 스토어는 멀쩡하고 링크만 안 걸린 상태다. 복구 명령은 위와 같다."
+    echo "   ↳ 워크트리를 붙였다 떼는 과정에서 나는 양식이다 — .worktrees/* 를 먼저 본다."
+    exit 1
+  fi
+}
+
 # 1.5. 전량 검증 — 프로덕션 직전의 **유일한 전수 게이트**
 #
 # 왜 여기인가. 2026-08-21 CI 자동 실행을 껐고, 푸시 훅은 **바뀐 모듈만** 돈다(약 2~20분).
@@ -62,7 +104,7 @@ else
   (cd backend && ./gradlew test --console=plain)
 
   echo "🧪 전량 검증 — 프론트 (vitest)"
-  [ -x apps/web/node_modules/.bin/vitest ] || { echo "❌ vitest 바이너리 부재 — 의존성 복구가 선행돼야 한다"; exit 1; }
+  require_web_module vitest
   (cd apps/web && node_modules/.bin/vitest run)
 fi
 
@@ -77,15 +119,20 @@ echo "🔨 프론트 dist 빌드"
 # TTY 가 없어 확인을 받지 못하고 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다
 # (2026-08-21 실측 — 배포가 이 지점에서 exit 1).
 #
-# ★★purge 를 승인해서(`CI=true`) 뚫으면 안 된다. 지워지는 실체를 워크트리의 심볼릭이
-#   가리키고 있어 **옆 세션의 작업이 함께 깨진다.** 배포 하나를 통과시키려고 남의 작업을
-#   부수는 거래다.
+# ★★purge 를 승인해서(`CI=true`) 뚫으면 안 된다 — **워크트리가 붙어 있는 동안은.**
+#   지워지는 실체를 워크트리의 심볼릭이 가리키고 있어 **옆 세션의 작업이 함께 깨진다.**
+#   배포 하나를 통과시키려고 남의 작업을 부수는 거래다.
+#
+#   ★조건을 적는 이유. `.worktrees/*` 가 0개면 그 근거가 성립하지 않는다. 2026-08-23 실측 —
+#   워크트리 0개에서 `CI=true pnpm install --frozen-lockfile` 이 17초에 복구했다
+#   (796개 전부 스토어 재사용 · 다운로드 0). 조건 없이 적으면 그 상황에서 복구를 막기만 하고,
+#   위 `require_web_module` 의 부재 메시지가 안내하는 복구 절차와 정면으로 어긋난다.
 #
 # 빌드 자체는 pnpm 을 필요로 하지 않는다 — apps/web 의 build 는 `vite build` 하나뿐이고
 # 바이너리는 apps/web/node_modules/.bin 에 실재한다. 그래서 폴백이 성립한다.
 if ! pnpm --filter @bts/web build; then
   echo "⚠️  pnpm 빌드 실패 — vite 직접 호출로 폴백 (워크트리 간섭 추정, node_modules 는 건드리지 않는다)"
-  [ -x apps/web/node_modules/.bin/vite ] || { echo "❌ vite 바이너리도 없다 — 의존성 복구가 선행돼야 한다"; exit 1; }
+  require_web_module vite
   (cd apps/web && node_modules/.bin/vite build)
 fi
 [ -f apps/web/dist/index.html ] || { echo "❌ dist/index.html 부재 — 빌드가 산출물을 남기지 못했다"; exit 1; }
