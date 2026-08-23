@@ -1784,6 +1784,27 @@ UI 에서 도달 불가가 된다」고 적는데 **실제로는 붙여도 도�
 
 # 빌드·배포 환경
 
+## ⬜ 인프라 — 프로덕션 이미지·리버스 프록시 설정이 티어 표면 카탈로그에 없다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 서버에 올라가는 컨테이너 이미지와 웹 서버 설정 파일이 「어느 등급인가」 목록에 빠져 있어, 그것만 고치는 작업은 가장 가벼운 절차로 통과한다.
+
+**방치하면.** 프로덕션 이미지·리버스 프록시·compose 정의가 계획 0 · 리뷰 1종으로 바뀔 수 있다. 배포 게이트를 T2 로 올려 놓고 정작 **배포되는 물건**은 T1 로 남는다.
+
+**무엇.** 실측 — `infra/prod/**` 와 `infra/docker-compose.prod.yml` 전량이 미분류다.
+
+```
+$ node --experimental-strip-types scripts/workflow/detect-tier.ts infra/prod/Dockerfile.backend
+TIER: T1 · SURFACES: (없음) · UNMAPPED: infra/prod/Dockerfile.backend
+```
+
+같은 결과가 `infra/prod/Dockerfile.web` · `infra/prod/Caddyfile` · `infra/prod/nginx.conf` · `infra/docker-compose.prod.yml` 에서 나온다.
+
+**부채 `81` 의 잔여다.** 81 은 문구가 `infra/deploy/bts-deploy.sh` 하나를 지목했고 PR #397 이 그것만 닫았다(`GUARD_CI` 에 `infra/deploy/**` 추가 → 실파일 2건). 「프로덕션 직전 단계라 절차 강도가 높아야 한다」는 논거는 이쪽에 **더 강하게** 적용된다 — 게이트는 검사하는 물건이고 이쪽은 **배포되는 물건**이다.
+
+**처방 후보.** ① `GUARD_CI` 글로브를 `infra/**` 로 넓힌다 — 가장 싸다. 다만 `GUARD_CI` 의 성격이 「강제 장치」인데 프로덕션 이미지는 강제 장치가 아니다. ② `INFRA_PROD` 표면을 새로 만든다 — 성격은 맞지만 `docs/rules/behavior-rules.md` 표면 표와 차집합 0 을 맞추는 일이 따라온다(`tier-floor.test.ts` 가 양방향 강제).
+
+**착수 시 주의.** 글로브를 더하면 「아무 파일도 안 걸리는 글로브는 red」를 `tier-floor.test.ts` 가 강제한다. `infra/` 아래 추적 파일은 14건뿐이라 실파일 대조가 쉽다.
+
 ## ⬜ 인프라 — 배포 전량 검증이 첫 실패에서 멈춰 뒤 관문의 고장을 가린다 (신규 · 미착수 · T2)
 
 **쉬운 말.** 배포 전 검사가 여러 관문을 차례로 지나는데, 앞에서 한 번 걸리면 거기서 끝나서 뒤 관문이 고장 나 있어도 아무도 모른다.
@@ -2174,6 +2195,24 @@ Testcontainers 의 Ryuk 컨테이너를 **공유**한다. 실측 2종이다.
 ---
 
 # 문서·규칙
+
+## ⬜ 문서 — PR 제목 규칙이 실제 관행과 어긋나고 그것을 보는 판정이 없다 (신규 · 미착수 · T0)
+
+**쉬운 말.** 「PR 제목은 첫 커밋 제목과 같게 쓴다」는 규칙이 문서에 있는데, 실제 PR 은 전부 다른 모양으로 달려 있고 아무도 대조하지 않는다.
+
+**방치하면.** 정본이 거짓인 채로 남는다. 새로 들어온 사람(사람이든 에이전트든)이 문서를 믿고 따르면 관행과 어긋나는 제목을 달고, 관행을 따르면 문서를 어긴다. 어느 쪽도 red 가 안 난다.
+
+**무엇.** `DEVELOPMENT.md:140` 은 「PR 제목 = 첫 커밋 제목과 동일 (Conventional Commits)」이라 적는다.
+
+실제 머지 이력은 대괄호 형태다 — `[backend] project-workflow — 전환 ID + 전역 전환 + 다중 전환 (#395)` · `[chore] pre-push 훅이 GIT_DIR 를 상속해…`. 첫 커밋 제목은 `feat:`·`docs:` 같은 Conventional 접두다. **두 규칙이 다른 문법이다.**
+
+**아무도 안 본다.** `grep -rl "PR 제목" scripts/workflow/*.test.ts` → 해당 없음. 판별식 0건.
+
+**어느 쪽이 정본인지부터 정해야 한다.** 관행(대괄호)이 15개월 누적이고 `bts-merge` 가 그 형태를 만들므로 문서가 낡았을 가능성이 크다. 다만 이 항목은 **판정하지 않고 결정만 미룬 상태**이므로 Maxi 확인이 선행이다.
+
+**처방 후보.** ① `DEVELOPMENT.md:140` 을 관행에 맞춰 고치고, PR 제목 형태를 보는 판별식을 `bts-merge` 쪽에 둔다. ② 관행을 문서에 맞춘다 — `bts-merge` 의 제목 생성부를 바꿔야 한다.
+
+**착수 시 주의.** 문서만 고치고 판별식을 안 두면 같은 어긋남이 다시 자란다. 이 저장소가 이름 붙인 지배 결함 양식(`two-lists-never-check-each-other`) 그대로다.
 
 ## ⬜ 문서 — `DESIGN.md` 에 `aria-live` 정책이 없다 (신규 · 미착수 · T0)
 
