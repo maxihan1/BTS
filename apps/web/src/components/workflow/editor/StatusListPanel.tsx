@@ -26,6 +26,14 @@ interface StatusListPanelProps {
   onRemove: (status: PanelStatus) => void
   onReorder: (orderedIds: string[]) => void
   disabled?: boolean
+  /**
+   * 순서 변경만 잠근다.
+   *
+   * 카탈로그에 없는 상태가 섞여 있으면 **전체 id 목록**을 만들 수 없어 부분 목록이 나가고
+   * 백엔드가 400 을 던진다. 그렇다고 패널 전체를 막으면 나머지 상태를 보지도 빼지도
+   * 못한다 — 못 하는 것만 정확히 막는다.
+   */
+  reorderDisabled?: boolean
 }
 
 /**
@@ -38,10 +46,12 @@ function SortableStatusRow({
   status,
   onRemove,
   disabled,
+  dragDisabled,
 }: {
   status: PanelStatus
   onRemove: (status: PanelStatus) => void
   disabled: boolean
+  dragDisabled: boolean
 }): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id })
 
@@ -57,7 +67,7 @@ function SortableStatusRow({
         size="sm"
         aria-label={`${labels.statusPanel.dragHandle} ${status.name}`}
         className="cursor-grab text-(--text-subtle)"
-        disabled={disabled}
+        disabled={dragDisabled}
         {...attributes}
         {...listeners}
       >
@@ -90,6 +100,7 @@ function StatusListPanel({
   onRemove,
   onReorder,
   disabled = false,
+  reorderDisabled = false,
 }: StatusListPanelProps): React.JSX.Element {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -124,7 +135,13 @@ function StatusListPanel({
           <SortableContext items={statuses.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <ul aria-label={labels.statusPanel.list} className="flex flex-col gap-2">
               {statuses.map((status) => (
-                <SortableStatusRow key={status.id} status={status} onRemove={onRemove} disabled={disabled} />
+                <SortableStatusRow
+                  key={status.id}
+                  status={status}
+                  onRemove={onRemove}
+                  disabled={disabled}
+                  dragDisabled={disabled || reorderDisabled}
+                />
               ))}
             </ul>
           </SortableContext>

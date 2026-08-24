@@ -199,6 +199,62 @@ describe('실패와 「없음」을 가른다', () => {
     expect(screen.queryByRole('button', { name: L.statusPanel.add })).not.toBeInTheDocument()
   })
 
+  it('일부 상태만 카탈로그에 없으면 나머지는 그대로 보인다 — 순서 변경만 잠긴다', async () => {
+    // ★ 없애려던 거짓말은 조인이 **통째로 비었을 때만** 뜬다. `droppedKeys` 가 하나 있다고
+    //   패널을 안 그리면 카탈로그가 멀쩡한데도 나머지 상태가 화면에서 사라지고 추가·제거
+    //   버튼까지 없어진다 — 수정이 근거보다 넓었던 자리다.
+    server.use(
+      http.get('/api/v1/workflows/partial', () =>
+        HttpResponse.json({
+          data: {
+            key: 'partial',
+            name: '일부만 아는 워크플로우',
+            description: '',
+            states: [
+              { key: 'open', name: 'Open', category: 'TODO', displayOrder: 1 },
+              { key: 'ghost', name: '유령 상태', category: 'TODO', displayOrder: 2 },
+            ],
+            transitions: [],
+          },
+        }),
+      ),
+    )
+    renderEditor('partial')
+    await waitForLoaded()
+
+    // 공지는 뜬다
+    expect(screen.getByText(L.editor.unknownStatuses)).toBeInTheDocument()
+    // 그러나 아는 상태는 그대로 보이고
+    const list = screen.getByRole('list', { name: L.statusPanel.list })
+    expect(within(list).getByText('Open')).toBeInTheDocument()
+    // 추가·제거는 여전히 쓸 수 있다
+    expect(screen.getByRole('button', { name: L.statusPanel.add })).toBeEnabled()
+    expect(screen.getByRole('button', { name: `${L.statusPanel.remove} Open` })).toBeEnabled()
+    // 잠기는 것은 순서 변경뿐이다
+    expect(screen.getByRole('button', { name: `${L.statusPanel.dragHandle} Open` })).toBeDisabled()
+  })
+
+  it('아는 상태가 하나도 없으면 패널을 그리지 않는다 — 「없다」는 거짓말을 피한다', async () => {
+    server.use(
+      http.get('/api/v1/workflows/allghost', () =>
+        HttpResponse.json({
+          data: {
+            key: 'allghost',
+            name: '전부 모르는 워크플로우',
+            description: '',
+            states: [{ key: 'ghost', name: '유령 상태', category: 'TODO', displayOrder: 1 }],
+            transitions: [],
+          },
+        }),
+      ),
+    )
+    renderEditor('allghost')
+    await waitForLoaded()
+    expect(screen.getByText(L.editor.unknownStatuses)).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: L.statusPanel.list })).not.toBeInTheDocument()
+    expect(screen.queryByText(L.statusPanel.empty)).not.toBeInTheDocument()
+  })
+
   it('없는 워크플로우는 404 전용 문구를 쓴다 — 「불러오지 못했습니다」와 구별된다', async () => {
     server.use(
       http.get('/api/v1/workflows/nope', () =>

@@ -9,7 +9,11 @@
  * `i18n/__tests__/nav-labels.test.ts` FR15 substring 판별식은 `navLabels` 키만 훑으므로
  * 이 리터럴을 **잡아 주지 않는다**. 사람이 지켜야 하는 자리다.
  *
- * 그룹 — placeholder(최상위) / nav / list / editor / statusPanel / transitionPanel / dialog
+ * 그룹 — placeholder(최상위) / list / editor / statusPanel / transitionPanel / transitionForm / dialog
+ *
+ * ★ `nav` 블록은 없다. 사이드바·관리 허브 라벨은 `Sidebar.tsx`·`admin.index.tsx` 에 리터럴로
+ * 박혀 있고 이 모듈을 안 본다 — 「정본」이라 선언만 하고 소비처가 0 이면 그 선언이 거짓이다.
+ * 실제 통합은 부채 123 이다. 그때까지 없는 것으로 둔다.
  */
 export const workflowEditorLabels = {
   /** 워크플로우 키 input placeholder */
@@ -22,14 +26,6 @@ export const workflowEditorLabels = {
   statusSearchPlaceholder: '상태 이름으로 검색...',
   /** 전환 이름 input placeholder */
   transitionNamePlaceholder: '예: 검토 요청',
-
-  /** 사이드바·관리 허브 진입점 */
-  nav: {
-    /** ★ `'워크플로우'` 금지 — 위 substring 경고 참조 */
-    label: '워크플로우 관리',
-    /** 관리 허브 카드 설명 */
-    description: '워크플로우를 만들고 상태와 전환을 편집합니다',
-  },
 
   /** 목록 화면 (`/admin/workflows`) */
   list: {
@@ -152,7 +148,7 @@ export const workflowEditorLabels = {
   dialog: {
     /** 상태 선택 다이얼로그 */
     statusPicker: '워크플로우에 추가할 상태 선택',
-    /** 상태 선택 다이얼로그 설명 — 관리 허브 카드 설명(`nav.description`)을 빌려 쓰지 마라 */
+    /** 상태 선택 다이얼로그 설명 — 뜻이 다른 문구를 빌려 쓰지 마라(한때 관리 허브 카드 설명을 썼다) */
     statusPickerDescription: '카탈로그에서 이 워크플로우에 넣을 상태를 고릅니다',
     /** 전환 폼 다이얼로그 — 생성 */
     transitionCreate: '전환 만들기',

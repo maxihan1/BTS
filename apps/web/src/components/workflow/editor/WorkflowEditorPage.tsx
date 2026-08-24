@@ -114,6 +114,11 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
     //   렌더된다 — 내부 예외 문구를 사용자 표면으로 흘리지 않는다(FR-PM-04 교훈).
     // ★★ 404 를 여기서 가른다. 종전에는 `notFound` 라벨을 만들어 두고 그 아래 분기에
     //   뒀는데, TanStack v5 는 실패를 `isError` 로 보내므로 그 분기가 **도달 불가**였다.
+    // ★★★ `ApiError` 로 좁히는 것이 맞는 이유. 이 BC 에는 에러 클래스가 **둘이고 상속
+    //   관계가 없다** — 조회(`api/workflows.ts`)는 `ApiError`, 쓰기(`api/workflows-admin.ts`)는
+    //   `WorkflowAdminApiError` 다. 이 분기가 보는 것은 `useWorkflowDetail` 의 조회 실패뿐이라
+    //   `ApiError` 하나면 충분하다. 조회 경로가 admin 클라이언트로 바뀌면 여기도 함께 바꿔야
+    //   한다 — 안 그러면 404 가 조용히 「불러오지 못했습니다」로 떨어진다.
     const notFound = detail.error instanceof ApiError && detail.error.status === 404
     return <EmptyState title={notFound ? labels.editor.notFound : labels.editor.loadFailed} />
   }
@@ -124,9 +129,13 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   const catalogEntries = catalog.data ?? []
   const { joined: panelStatuses, droppedKeys } = joinStatusIds(workflow.states, catalogEntries)
   const stateNames = Object.fromEntries(workflow.states.map((s) => [s.key, s.name]))
-  // 카탈로그가 실패하면 조인이 전부 비어 「편성된 상태가 없습니다」라는 **거짓말**이 뜬다.
-  // 상태가 있는데 못 그리는 것과 상태가 없는 것은 다른 사실이다.
-  const statusPanelBlocked = catalog.isError || droppedKeys.length > 0
+  // ★ 게이트를 **근거만큼만** 좁힌다.
+  //
+  // 없애려던 거짓말(「편성된 상태가 없습니다」)은 조인 결과가 **통째로 비었을 때만** 뜬다.
+  // 종전에는 `droppedKeys` 가 하나만 있어도 패널을 안 그려, 카탈로그가 멀쩡한데도 나머지
+  // 상태가 화면에서 사라지고 추가·제거 버튼까지 없어졌다 — 수정이 근거보다 넓었다.
+  const hasUnknownStatuses = droppedKeys.length > 0
+  const cannotRenderPanel = catalog.isError || (panelStatuses.length === 0 && workflow.states.length > 0)
   const statusPanelNotice = catalog.isError ? labels.editor.catalogFailed : labels.editor.unknownStatuses
 
   return (
@@ -153,22 +162,22 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         </TabsList>
 
         <TabsContent value="statuses">
-          {statusPanelBlocked ? (
-            // ★ 막혔으면 패널을 **아예 안 그린다.** 공지만 덧붙이고 패널을 함께 그리면
-            //   조인이 비어 「편성된 상태가 없습니다」라는 거짓말이 공지 바로 아래 나란히
-            //   뜬다 — 그 문구를 없애려던 수정이 절반만 닿아 있던 자리다.
+          {catalog.isError || hasUnknownStatuses ? (
+            // 못 그리는 것과 없는 것은 다른 사실이다 — 공지를 먼저 낸다.
             <EmptyState
               title={statusPanelNotice}
-              description={droppedKeys.length > 0 ? droppedKeys.join(', ') : undefined}
+              description={hasUnknownStatuses ? droppedKeys.join(', ') : undefined}
             />
-          ) : (
-          <StatusListPanel
-            statuses={panelStatuses}
-            onAdd={() => setPickerOpen(true)}
-            onRemove={setStatusToRemove}
-            onReorder={(orderedIds) => reorderStatuses.mutate(orderedIds)}
-            disabled={addStatus.isPending || removeStatus.isPending || reorderStatuses.isPending}
-          />
+          ) : null}
+          {cannotRenderPanel ? null : (
+            <StatusListPanel
+              statuses={panelStatuses}
+              onAdd={() => setPickerOpen(true)}
+              onRemove={setStatusToRemove}
+              onReorder={(orderedIds) => reorderStatuses.mutate(orderedIds)}
+              disabled={addStatus.isPending || removeStatus.isPending || reorderStatuses.isPending}
+              reorderDisabled={hasUnknownStatuses}
+            />
           )}
         </TabsContent>
 
