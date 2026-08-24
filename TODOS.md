@@ -2313,14 +2313,27 @@ enum `.name` · 보간 `"WORKFLOW_${ex.scope}_QUOTA"` · **밑줄 없는 단어*
 **기존 공격면의 단가가 세 자릿수 배 올랐다.** `bts.maxihan.com` 은 공개 도메인이라
 모집단이 사내로 묶이지 않는다 — ADR 초판이 「사내 1,000명 규모에서 수용」이라 적은 것은 사실 오류였고 정정했다.
 
-**처방.** nginx **두 곳**을 함께 고친다 — `http` 컨텍스트에 `limit_conn_zone` 선언, 그리고
-`location /ws` 에 `limit_conn`.
-★**「한 줄」이 아니다**(재리뷰 CONCERNS-N5 정정). `limit_conn` 은 zone 이 먼저 선언돼 있어야 하는데
-`infra/` 전체에 `limit_conn_zone` 도 **0건**이다 — location 만 고치면 nginx 가 아예 뜨지 않는다.
-「배포 전 필수」 항목의 처방이 그대로는 실행 불가한 형태였다.
-정상 사용자는 탭당 소켓 1개라 실사용을 막지 않는다. Tomcat 쪽 상한도 함께 검토.
-★이 PR 에서 안 한 이유 — `infra/**` 는 선언 티어(T2) 밖 표면이라 실측 티어를 바꾼다. 배포가
-아직 안 됐으므로 **배포 전에 별건으로** 처리하는 것이 순서다.
+**처방 (2026-08-24 배포 직전에 정정 · 속도 상한은 적용 완료).**
+
+★★**종전 처방이 토폴로지를 틀리게 전제하고 있었다.** 「`limit_conn_zone` + `limit_conn`」이라
+적혀 있었으나 실제 구조는 `인터넷 → bts-caddy(80/443) → bts-web(nginx, 호스트 포트 없음)` 이다.
+nginx 에서 `$binary_remote_addr` 는 **Caddy 컨테이너 IP 하나**라, 그대로 걸면 전 사용자를 한
+사람으로 세어 **낮으면 사이트가 통째로 막히고 높으면 아무 공격도 못 막는다.** 그 처방을 그대로
+따랐다면 배포와 함께 서비스가 죽었다.
+
+**적용한 것.** `infra/prod/nginx.conf` 에 ① 실 클라이언트 IP 복원(`set_real_ip_from` 사설 대역 +
+`real_ip_header X-Forwarded-For`) ② `/ws` 핸드셰이크 **속도** 상한(`limit_req` 10 r/s · burst 20 ·
+`limit_req_status 429`). 실제 nginx 이미지로 `nginx -t` 통과했고, zone 선언을 빼면
+`[emerg] zero size shared memory zone` 으로 **뜨지 않는 것**까지 확인했다(두 곳이 물려 있다는 증거).
+
+**남은 것 — 동시 연결 상한(`limit_conn`)은 보류다.** 사용자가 NAT·VPN 뒤에서 공인 IP 를 공유하면
+동시 연결 상한이 그 조직 전체를 한 사람으로 묶어 정상 사용을 막는다. `docs/sdd/04-architecture.md`
+§4.3 이 직접 접속과 VPN 을 함께 그려 공유 IP 를 배제할 수 없다. **접속 IP 분포를 실측한 뒤**
+판단한다. 속도 상한만으로도 단일 출처가 30초 창에서 붙들 수 있는 슬롯이 수백 개로 유한해진다.
+Tomcat 쪽 상한도 함께 검토.
+
+★`infra/prod/nginx.conf` 은 표면 카탈로그에 없어(UNMAPPED) 절차가 T1 로 낮게 잡힌다 — 아래
+「프로덕션 이미지·리버스 프록시 설정이 티어 표면 카탈로그에 없다」가 그 부채다.
 
 ---
 
