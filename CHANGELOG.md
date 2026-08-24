@@ -105,7 +105,7 @@ BC "완료 선언" 은 별개 절차다 — 각 BC 의 §NFR 측정표 · 이 �
 |---|---|---|---|---|
 | identity-access | 25 (AU 10 · MF 5 · PM 10) | 2026-05-20 ~ 07-18 | 42 (#8~#134 외) | 플러그형 AuthN Provider · LDAP/SAML/OIDC SSO · TOTP/백업코드/WebAuthn MFA · 권한 스킴 · 감사 로그 |
 | issue-tracking | 37 (IS 10 · CM 4 · VR 4 · PJ 4 · AC 2 · MN 2 · CO 2 · LK 2 · HS 2 · TM 2 · MV 2 · WT 1) | 2026-05-22 ~ 07-27 | 67 (#17~#316) | 이슈 CRUD/일괄편집/클론 · JSONB 커스텀 필드 · MinIO 첨부 · flexmark 멘션 · 이슈 이동+키 리다이렉트 · 프로젝트 CRUD · 댓글 |
-| project-workflow | 3 완료 / 7 등록 (WF 3 완료 + WF-04~07 4 미착수) | 2026-05-22 ~ 07-11 | 9 (#10~#66 외) | YAML FSM 워크플로우 · 워크플로우/권한 스킴 · 스킴 배정 · **워크플로우 편집기 4건은 2026-08-18 등재만** |
+| project-workflow | 4 완료 / 7 등록 (WF 3 + WF-05 완료 · WF-04·06·07 3 미착수) | 2026-05-22 ~ 07-11 | 9 (#10~#66 외) | YAML FSM 워크플로우 · 워크플로우/권한 스킴 · 스킴 배정 · **워크플로우 편집기 4건은 2026-08-18 등재만** |
 | agile-planning | 14 (BD 3 · TL 3 · BL 2 · EP 2 · TT 2 · PL 2) | 2026-06-19 ~ 06-29 | 15 (#168~#202) | @dnd-kit 칸반 · LexoRank 백로그 · 에픽 링크 · Gantt(자체 SVG) · 워크로그 |
 | notification-dashboard | 14 (NT 5 · RP 4 · DB 3 · UX 2) | 2026-06-11 ~ 07-03 | 28 (#118~#231) | STOMP WebSocket 알림 · Inbox 멱등 · 대시보드 가젯 · 공유 토큰 · 번다운/CFD/사이클타임 |
 | search-export-import | 12 (SR 4 · API 4 · EX 2 · IM 2) | 2026-06-23 ~ 07-04 | 15 (#180~#226) | AQL 손수 파서 + `pg_trgm` · 한글 FTS(simple) · CSV/XLSX Export(수식 인젝션 방어) · pgmq+MinIO Import |
