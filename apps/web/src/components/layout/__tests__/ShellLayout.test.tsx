@@ -9,6 +9,8 @@ import type { WhoamiResponse } from '@/api/schemas'
 import { navLabels } from '@/i18n/nav-labels'
 import { dispatchContextAction } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
+import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarDrawer, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
 import { ShellLayout } from '../ShellLayout'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,5 +374,41 @@ describe('ShellLayout', () => {
     })
 
     expect(useCommandPaletteStore.getState().open).toBe(false)
+  })
+
+  it('모바일에서 `[` 는 드로어를 여닫는다 — collapsed 는 건드리지 않는다 (F24)', () => {
+    // 🛑 회귀 고정용이다. 토글 지점은 셋(상단바 버튼 · `[` 단축키 · 사이드바 하단 버튼)이고
+    //    폭에 따른 대상 선택은 `useSidebarToggle` 한 곳이 소유해야 한다. 여기(=`[` 경로)만
+    //    그 훅을 안 쓰고 판정을 인라인 복제하면 오늘은 동작이 같아 아무 테스트도 red 가
+    //    되지 않고, 훗날 훅만 고쳐질 때 이 경로가 조용히 썩는다.
+    //    구조 자체는 `hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts` 가 지고,
+    //    이 테스트는 그 구조가 만들어내는 **행동**을 고정한다. 둘은 짝이다.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    )
+    try {
+      // ★인증을 여기서 명시적으로 세운다 — `beforeEach` 가 `useAuthStore` 를 리셋하지 않아
+      //   직전 테스트의 `accessToken: null` 이 새고, 그러면 `app-shell` 레이어가 아예
+      //   등록되지 않아 dispatch 가 무동작이 된다(실측 — 이 단언이 그 이유로 한 번 red 였다).
+      useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+      useSidebarDrawer.setState({ open: false })
+      useSidebarCollapsed.setState({ collapsed: false })
+      renderShell()
+
+      act(() => {
+        dispatchContextAction({ layer: 'app-shell', action: { kind: 'toggle-sidebar' } })
+      })
+
+      expect(useSidebarDrawer.getState().open).toBe(true)
+      expect(useSidebarCollapsed.getState().collapsed).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
