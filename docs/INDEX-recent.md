@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-08-24 | prod-ui-defects-12-ws-permitall | — | ✔ | — | — | FR-NT-02 FR-PM-07 |
+| 2026-08-24 | prod-ui-defects-12-ws-permitall | — | ✔ | — | — | FR-NT-02 FR-PM-07 FR-UX-08 |
 | 2026-08-23 | deploy-dep-guard | — | ✔ | — | — | — |
 | 2026-08-21 | pre-push-git-dir | — | ✔ | — | — | — |
 | 2026-08-20 | backend-workflow-transition-id-multi-global | ✔ | ✔ | — | — | FR-IS-07 FR-WF-05 FR-WF-06 |
