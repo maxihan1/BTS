@@ -921,23 +921,26 @@ ADR 의 기각 목록은 「왜 이 방식인가」의 기록인데, 가장 근�
 | 8 | **리뷰 렌즈 발행 방식** — `/bts-review-plan` Step 3 은 2종을 한 응답에 발행하라고 하나 eng → design 순차 발행 | 실행은 어차피 순차라 결과 동일. 기록만 남긴다 |
 | 9 | **Task 4 를 Task 8 에 흡수** | Esc 를 실제로 만들면 Task 4 가 고칠 주석이 참이 된다. 두 번 고칠 이유가 없다 |
 | 10 | **ceo 렌즈 미발행** — `DATA.md §1-5` 가 요구하는 렌즈가 [4] 에서 자동 발행되지 않았다 | **해소함** — 독립 코드 리뷰의 BLOCKER B2 로 드러나 커밋 `7b40d7933` 에서 사후 수행, 판정 **CONCERNS**. 원인은 렌즈 분기가 `classify.type` 만 보고 변경 대상을 안 보는 것(`detect-tier` 는 경로로 `SEC_BE` 를 정확히 짚었다) — **부채 110** 등재 |
+| 11 | **Task 11 의 `files` 메타와 실제가 다르다** — 계획은 2개(`AccountMenu.tsx`·`AccountMenu.test.tsx`), 실제는 4개(`AccountMenu.tsx` · `lib/settings-hub-links.ts` **신설** · `routes/settings.index.tsx` · `__tests__/settings-reachability.test.ts` **신설**) | 정본을 라우트 파일에서 `lib/` 로 뽑은 것은 **정당한 개선**이다 — 판별식이 정규식 파싱 대신 정본을 import 하게 된다. 다만 메타를 안 고쳤다. 재리뷰 지적 |
+| 12 | **Agent 도구 예외 2회차** — 재리뷰도 `code-reviewer` 서브에이전트로 돌렸다 | **Maxi 승인(D2 · 이 세션)**. 지난 세션의 예외는 세션을 넘어오지 않으므로 다시 물었다. T2 는 독립 리뷰 2종이 계약이고, 자기 수정을 자가 채점하면 독립 리뷰가 아니다 |
+| 13 | **e2e 전량 검증 보류** — 라운드 3 수정 뒤의 e2e 가 초록으로 확인되지 않았다 | **Maxi 결정** — 프로덕션 환경이 제대로 세팅된 뒤에 수행한다. 상세와 실측은 §🛑 e2e 전량 절. 이 항목은 **미검증**으로 게이트에 올린다 |
 
-#### 검증 — 전량, 종료 코드로 판정 (**라운드 2** — 리뷰 수정 반영 후 재실행)
+#### 검증 — 전량, 종료 코드로 판정 (**라운드 3** — 재리뷰 수정 반영 후 재실행)
 
-리뷰 BLOCKER 4 + CONCERNS 를 고친 커밋 `18cf27a5f`~`7b40d7933` **뒤에** 다시 돌린 값이다.
-라운드 1 수치는 그 커밋들보다 앞서 있어 폐기했다. 전 항목이 `EXIT=` 줄을 남긴다 — 파이프 없음.
+재리뷰 BLOCKER-N1 + CONCERNS 를 고친 커밋 `92387be4d`~`8aaa7ffd9` **뒤에** 다시 돌린 값이다.
+전 항목이 `EXIT=` 줄을 남긴다 — 파이프 없음. **e2e 만 보류이며 그 사유를 표 아래에 적는다.**
 
 | 항목 | 결과 | 로그 |
 |---|---|---|
-| `pnpm -r run lint` | **`LINT_EXIT=0`** (경고 8건은 이 PR 밖 파일 — `SlackResultBanner.tsx`·`WeekGrid.tsx`, 선재) | `/tmp/lint-f3.log` |
-| `pnpm -r run typecheck` | **`TC_EXIT=0`** | `/tmp/tc-f3.log` |
-| `pnpm --filter web exec vitest run` (전량) | **`VITEST_EXIT=0`** · **585 files / 9,696 tests** | `/tmp/vt3.log` |
-| `pnpm -r run build` | **`BUILD_EXIT=0`** | `/tmp/build-f3.log` |
-| `pnpm --filter web exec playwright test` (**전량**) | **`E2E_EXIT=0`** · **704 passed · 3 skipped** (13.2m) | `/tmp/e2e-f2.log` |
-| `./gradlew test ktlintCheck detekt` (**전 모듈**) | **`GRADLE_EXIT=0`** · BUILD SUCCESSFUL · `FAILED` **0건** | `/tmp/gradle-f3.log` |
-| `pnpm test:workflow` (판별식) | **`WF_EXIT=0`** · **412 / 412 pass · fail 0** | `/tmp/wf-f3.log` |
-| `node scripts/build-doc-index.mjs --check` | **`DOCIDX_EXIT=0`** | `/tmp/di-f3.log` |
-| `bash scripts/verify-master-plan.sh` | **`VMP_EXIT=0`** · FR 143/143 | `/tmp/vmp-f3.log` |
+| `pnpm -r run lint` | **`LINT_EXIT=0`** (경고 8건은 이 PR 밖 파일 — `SlackResultBanner.tsx`·`WeekGrid.tsx`, 선재) | `/tmp/lint-f4.log` |
+| `pnpm -r run typecheck` | **`TC_EXIT=0`** | `/tmp/tc-f4.log` |
+| `pnpm --filter web exec vitest run` (전량) | **`VITEST_EXIT=0`** · **585 files / 9,698 tests** | `/tmp/vt-f4.log` |
+| `pnpm -r run build` | **`BUILD_EXIT=0`** | `/tmp/build-f4.log` |
+| `pnpm --filter web exec playwright test` (전량) | 🛑 **보류 — Maxi 결정.** 아래 절 참조 | `/tmp/e2e-f4.log` |
+| `./gradlew test ktlintCheck detekt` (**전 모듈**) | **`GRADLE_EXIT=0`** · BUILD SUCCESSFUL · `FAILED` **0건** · `app`·`identity-access`·`notification` 3모듈 실제 재실행 | `/tmp/gradle-f4.log` |
+| `pnpm test:workflow` (판별식) | **`WF_EXIT=0`** · **412 / 412 pass · fail 0** | `/tmp/wf-c5.log` |
+| `node scripts/build-doc-index.mjs --check` | **`DOCIDX_EXIT=0`** | `/tmp/di-f4.log` |
+| `bash scripts/verify-master-plan.sh` | **`VMP_EXIT=0`** · FR 143/143 | `/tmp/vmp-f4.log` |
 
 ★**gradle 은 라운드 2 에서 한 번 red 였다.** 첫 실행(`/tmp/gradle-f2.log`)이 `GRADLE_EXIT=1` 로
 끝났고 `FAILED` 는 `:modules:notification:ktlintTestSourceSetCheck` **단 하나** —
@@ -946,18 +949,65 @@ ADR 의 기각 목록은 「왜 이 방식인가」의 기록인데, 가장 근�
 재실행에서 `:modules:notification:test` 가 `UP-TO-DATE` 인 것은 import 재배열이 **바이트 동일한
 클래스**를 내기 때문이다. 고친 내용에 대한 ktlint·detekt 는 `/tmp/ktl.log` 에서 실제로 실행돼 통과했다.
 
-**뮤테이션 검증 4건 — 전부 red 확인 (GREEN 선커밋 뒤 실행 · 원복 완료)**
+#### 🛑 e2e 전량 — **보류** (Maxi 결정 · 프로덕션 환경 세팅 후 수행)
 
-| 뮤테이션 | 결과 |
+**초록이라고 적지 않는다.** 마지막으로 전량 통과한 실행은 라운드 3 커밋보다 **앞선다.**
+
+| | 실측 |
 |---|---|
-| `/ws` permitAll 줄을 끊는다 | `:modules:app` **EXIT=1** — 400 양성 판별자가 red |
-| 허용목록에서 `use-sidebar-drawer` 제거 | **EXIT=1** |
-| `RecentIssuesMenu` 를 직접 소비로 되돌림 | **EXIT=1** — 그 파일을 지목해 red |
-| `Sidebar` 에 `max-lg:` 주입(경계 이원화) | **EXIT=1** — 그 파일을 지목해 red |
+| 마지막 초록 | `/tmp/e2e-f2.log` — `Running 707 tests` · **704 passed · 3 skipped · `E2E_EXIT=0`** (13.2m) |
+| 그 실행 시점 | 라운드 2 직후. 라운드 3 커밋 `92387be4d`~`8aaa7ffd9` **이전**이다 |
+| 라운드 3 재실행 | `/tmp/e2e-f4.log` — `Running 711 tests` · **`E2E_EXIT=1`** · 699 passed · **9 failed** · 3 skipped |
+
+**9건의 정체 — 두 갈래로 갈린다.**
+
+**① `[visual]` 4건 — 로컬에서 통과 불가(설계).** 실패 사유는 회귀가 아니라
+`A snapshot doesn't exist at …/__screenshots__/issue-list-light.png, writing actual` 이다.
+베이스라인이 **저장소에 없다**(`git ls-files` 0건). `playwright.config.ts` 가 스냅샷 접미
+(`-darwin`)를 일부러 없앴고, 그 주석이 「baseline 은 러너와 동일 환경에서만 생성한다」를 계약으로
+못박는다 — 개발 맥에서 만든 베이스라인을 커밋하면 러너에서 **조용히 새 파일을 만들며 초록**이 되는
+가짜초록을 막기 위해서다.
+★**f2 는 이 프로젝트를 아예 돌리지 않았다** — `Running 707` vs `Running 711`, 차이가 정확히
+visual 4건이다. 즉 이 plan 이 지금까지 적어 온 「e2e 704 passed」는 **처음부터 chromium 범위**였다.
+표가 그 범위를 숨기고 있었다.
+
+**② `[chromium]` 5건 — 판정 미결.** f2 에서는 704 전량 통과했다. 그중
+`workflow-scheme-assignment` E2E-5 는 **이미 등재된 부채**(「전량 실행에서만 strict mode 위반으로
+죽는다」)이고 실패 메시지도 로케이터가 2개로 풀린 그 양식이다. visual 프로젝트가 같은 4 worker 를
+나눠 쓰며 타이밍이 흔들렸을 가능성이 있으나 **확인하지 못했다** — `--project=chromium` 재실행을
+시작했다가 Maxi 지시로 중단했다.
+
+**라운드 3 이 `apps/web` 런타임에 남긴 변경.** `ShellLayout.tsx` 의 **주석 2곳**뿐이다(JSX 주석 ·
+줄 주석). 나머지는 Kotlin 테스트 · vitest 판별식 · 문서다. 주석은 빌드 산출물에 남지 않으므로
+**e2e 결과를 바꿀 경로가 없다.** 다만 이는 추론이고, 실행으로 확인한 것이 아니다.
+
+**남은 로컬 산출물.** `apps/web/e2e/visual/__screenshots__/` 에 PNG 4개가 그 실패 실행으로
+생성됐다(미추적). 프로덕션 러너에서 베이스라인을 만들기 전에 지우는 편이 안전하다 —
+그대로 두면 이 맥의 다음 visual 실행이 그것과 대조해 **가짜초록**이 된다.
+
+**게이트 2 판단에 필요한 것.** 이 항목은 **미검증**이다. 배포 전 눈확인 6항목(§시각 검증 기준)과
+함께 프로덕션 환경에서 처리한다.
+
+**뮤테이션 검증 8건 — 전부 red 확인 (GREEN 선커밋 뒤 실행 · 원복 완료)**
+
+| # | 뮤테이션 | 결과 |
+|---|---|---|
+| 1 | `/ws` permitAll 줄을 끊는다 | `:modules:app` **EXIT=1** — 400 양성 판별자가 red |
+| 2 | 허용목록에서 `use-sidebar-drawer` 제거 | **EXIT=1** |
+| 3 | `RecentIssuesMenu` 를 직접 소비로 되돌림 | **EXIT=1** — 그 파일을 지목해 red |
+| 4 | `Sidebar` 에 `max-lg:` 주입(경계 이원화) | **EXIT=1** — 그 파일을 지목해 red |
+| 5 | `ShellLayout` 백드롭을 `md:hidden` → `lg:hidden` | **EXIT=1** — **B3 이 고친 바로 그 자리**. 수정 전에는 주석 속 `md:hidden` 에 매칭돼 초록이었다 |
+| 6 | `SecurityConfig` 의 GET 고정을 주석으로만 남기고 등록에서 제거 | `:modules:identity-access` **EXIT=1** · `failures=3` — 수정 전에는 EXIT=0 이었다(BLOCKER-N1) |
+| 7 | 같은 뮤테이션 · 행동 층 | `:modules:app` **EXIT=1** — `HEAD /ws` 가 **405** 로 바뀐다(401 이 아니다) |
+| 8 | `TopBar` 를 prettier 형태로 리플로우 + 계정 메뉴 허브 링크 제거 | **EXIT=1** — 도달성 단언 **2건**이 red. 수정 전에는 4번째 단언만 걸려 진단이 엉뚱했다(C4) |
+
+★5번은 **리뷰어가 표의 누락으로 지적한 줄**이다. 기존 4번(`Sidebar` 에 `max-lg:` 주입)은 다른
+단언이라 B3 처방이 그 결함을 실제로 닫았는지를 표만 보고는 알 수 없었다.
+★6·7 은 같은 한 줄을 끊고 **소스 층과 행동 층을 따로** 잰 것이다. 두 층이 함께 뚫리지 않는다는 증명.
 
 **즉사 계약 8행** — `h1` 단 하나 포함 전량 통과(`board.tsx` h1 = 1개 실측).
 
-#### ★ 검증 과정에서 잡은 것 — 두 번 놓칠 뻔했다
+#### ★ 검증 과정에서 잡은 것 (전량)
 
 1. **`./gradlew … | tail -40` 로 돌려 종료 코드가 `tail` 의 것이 됐다.** 그래서 「백엔드 EXIT=0」을
    한 번 **잘못 보고했다.** 실제로는 `notification` 단독 테스트가 컨텍스트 로딩에서 죽어 있었고
@@ -970,8 +1020,60 @@ ADR 의 기각 목록은 「왜 이 방식인가」의 기록인데, 가장 근�
    결함의 변주다. 라운드 2 는 전 항목에 `echo "…_EXIT=$?"` 를 붙여 다시 돌렸다. 같은 신선도
    감사에서 `verify-master-plan` 이 ADR 문서 커밋(`7b40d7933`)보다 **앞선 실행**이었음도 드러나
    함께 재실행했다. **표에 적는 값은 그 커밋보다 뒤에 돌았는지까지 확인한다.**
+4. **주석 제거를 정규식 한 방으로 했다가 가드를 더 공허하게 만들었다.** BLOCKER-N1 처방에서
+   블록 주석을 비탐욕 정규식으로 지웠더니 `"/actuator/**"` 같은 **Ant 경로 패턴**의 슬래시-별표가
+   여는 표기로 잡혀 아래 KDoc 의 닫는 표기까지가 통째로 지워졌고, 지키려던 배선이 함께 사라졌다.
+   이 저장소는 문자열 리터럴에 그 표기를 5곳에서 쓴다. **함께 넣은 비-공허 짝
+   (「주석 제거가 실제 배선까지 지우지는 않는다」)이 그것을 잡았다** — 짝이 장식이 아님을
+   같은 PR 안에서 실측으로 보였다. 처방은 문자열 리터럴을 건너뛰는 스캐너.
+5. **낡은 test XML 을 신선한 결과로 읽었다.** 컴파일이 깨져 종료 코드가 1 이었는데 XML 을 먼저
+   읽어 「테스트 2건 실패」로 오독했다. 실제로는 **테스트가 실행조차 안 됐다.** 같은 라운드에서
+   `:modules:app` 뮤테이션 결과도 앞 태스크 실패로 실행되지 않은 XML 을 볼 뻔했다.
+   → 이후 전 판독에 **XML mtime 대조**를 붙였다. 저장소 메모리
+   `lint-fails-first-leaves-stale-test-xml` 그대로다.
+6. **Kotlin KDoc 본문에 블록 주석 표기를 글자 그대로 써서 컴파일이 깨졌다.** Kotlin 블록 주석은
+   **중첩**되므로 여는 표기는 짝을 요구하고 닫는 표기 하나면 KDoc 이 거기서 끝난다.
+   「주석 때문에 가드가 공허하다」를 설명하는 주석이 주석 문법으로 깨진 것이다. 그 사실을
+   해당 KDoc 에 남겼다.
 
-#### 범위 밖으로 남긴 것 (전부 `TODOS.md` + 마스터 매핑 104~108 등재)
+#### [6] 독립 리뷰 — 라운드 1·2 판정과 처리 (전량)
+
+`code-reviewer` 서브에이전트를 **두 번** 돌렸다(Agent 도구 예외 · 이탈 #12). 라운드 2 는 라운드 1
+수정이 실제로 닫혔는지를 커밋 메시지가 아니라 **코드와 뮤테이션으로** 다시 물은 것이다.
+
+| 지적 | 라운드 1 | 라운드 2 판정 | 처리 |
+|---|---|---|---|
+| **B1** Escape 가 split view pane 닫기를 죽였다 | BLOCKER | **닫힘** — 2층 뮤테이션 red 실측 | `af2abdf79` |
+| **B2** `/ws` permitAll 에 ADR 인용이 없다 | BLOCKER | **닫힘** — `infra/` 상한 0건 재확인 · 부채 109 양쪽 등재 | `8c6080776` · `7b40d7933` |
+| **B3** 판별식 3종이 주석을 맞춰 공허 | BLOCKER | **부분** — 원 결함은 red / 후행 `//` 는 여전히 통과 | `18cf27a5f` · 잔여 **부채 113** |
+| **B4** 판별식이 실제 표기를 놓친다 | BLOCKER | **닫힘** — 쌍따옴표·동적·`import type` 전부 red / 확장자만 우회 | `18cf27a5f` · 잔여 **부채 114** |
+| **C1** GET 고정 | CONCERNS | **닫힘** (단 아래 N1 로 가드가 무력화 가능했다) | `8c6080776` |
+| **C2** `setTimeToFirstMessage` | CONCERNS | **닫힘** — 그 줄 삭제 시 red 실측 | `8c6080776` |
+| **C3** 와일드카드 거부 | CONCERNS | **닫힘** — `require` 삭제 시 red 실측 | `8c6080776` |
+| **C4** 도달성 가드가 포매터 리플로우에 눈먼다 | CONCERNS | **안 닫힘** → 수정 | `ed1b34f78` |
+| **C5** 브레이크포인트 스캔 범위가 과하다 | CONCERNS | **안 닫힘** · 부채 가능 | **부채 115** |
+| **C6** 개발 오리진 차집합 판별식 부재 | CONCERNS | **안 닫힘** · 부채 가능 | **부채 112** |
+| **C7** 실패 메시지가 이동한 정본을 가리킨다 | CONCERNS | **안 닫힘** → 수정 | `ed1b34f78` |
+
+**라운드 2 신규 — BLOCKER 1 · CONCERNS 4**
+
+| 신규 | 무엇 | 처리 |
+|---|---|---|
+| 🛑 **N1** | 이 PR 이 **신설한** `/ws` 소스 가드가 주석 제거 없이 단언한다. GET 고정을 주석으로만 남기고 등록에서 빼도 **EXIT=0** — `POST /ws`·`DELETE /ws` 가 익명이 돼도 초록이었다. B3 이 프론트에서 닫은 양식을 같은 PR 이 보안 표면에 새로 만든 것이다 | **수정** `92387be4d`(소스 층) · `7e1195f2e`(행동 층 — `HEAD /ws` 401) |
+| **N2** | `withoutComments()` 가 후행 주석을 못 지우고 3벌 복제 | **부채 113** |
+| **N3** | B1 수정이 자기 주석 3곳을 거짓으로 만들었다. 특히 `ShellLayout.tsx:85` 는 **회귀를 만든 배치를 다음 사람에게 지시**한다 | **수정** `71b7e4b9e` |
+| **N4** | 모듈 지정자 정규식이 확장자 표기를 놓친다 | **부채 114** |
+| **N5** | 부채 109 의 처방(`limit_conn` 한 줄)이 `limit_conn_zone` 누락으로 **실행 불가** | **정정** `8aaa7ffd9` |
+
+**리뷰가 게이트 2 요약 자체도 검증했다.** 라운드 2 리뷰어가 티어 판정·vitest·판별식·doc-index·
+verify-master-plan 을 **직접 재실행해** 표의 값과 대조했고 전부 일치했다. 그때 지적된 누락 1건
+(뮤테이션 표에 B3 이 고친 뮤테이션이 없다)은 위 뮤테이션 표 5번으로 채웠다.
+
+**남은 미처리 — 전부 장부에 있다.** 부채 **109**(배포 전 필수) · **111**(permitAll 메서드 고정
+판별식 · ceo C-3) · **112~115**. 산문으로만 남기지 않은 이유는 `debt-ledger-mapping` 판별식이
+`TODOS.md` ↔ 마스터 §전수 매핑 양방향 일치를 강제하기 때문이다 — 장부 밖 산문은 기계가 안 본다.
+
+#### 범위 밖으로 남긴 것 (전부 `TODOS.md` + 마스터 매핑 **104~115** 등재)
 
 | 항목 | 왜 안 했나 |
 |---|---|

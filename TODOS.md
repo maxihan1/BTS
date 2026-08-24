@@ -509,6 +509,72 @@ PR #399 는 `settings/details` **하나가** 형제 11개 탭과 236px 어긋난
 
 ---
 
+## ⬜ apps/web — 판별식의 주석 제거 헬퍼가 3벌 복제돼 있고 후행 주석을 못 지운다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 「주석은 코드가 아니다」를 걸러 주는 함수가 세 파일에 똑같이 복사돼 있고, 셋 다
+줄 **맨 앞**의 주석만 지운다. 코드 뒤에 붙은 주석은 그대로 남는다.
+
+**방치하면.** 한 곳을 고쳐도 나머지 둘이 조용히 낡는다. 그리고 후행 주석에 같은 글자를 적어
+두면 판별식이 코드를 안 봐도 통과한다 — PR #399 의 BLOCKER-N1 이 정확히 그 실패였다(Kotlin 쪽).
+
+**무엇 (재리뷰 CONCERNS-N2 실측).** `withoutComments()` 가 바이트 동일하게 3벌 있다 —
+`components/layout/__tests__/settings-reachability.test.ts` ·
+`components/layout/__tests__/sidebar-breakpoint-alignment.test.ts` ·
+`hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`.
+셋 다 `/^\s*(\/\/|\*)/` 로 **줄 시작**만 본다.
+실측 — `Sidebar.tsx` 에서 실제 클래스를 지우고 같은 토큰을 후행 `//` 주석에만 남기면 **6/6 초록**이다.
+오늘 공허한 단언은 없다(스캔 대상 파일에 그런 후행 주석이 현재 0건). 그래서 부채다.
+그 셋을 묶어 검사하는 판별식도 없다 — 저장소 지배 결함 양식 `two-lists-never-check-each-other`.
+
+**처방.** 헬퍼를 `apps/web/src/test/` 로 뽑고 후행 `//` 도 함께 제거한다. 문자열 리터럴 속
+`//` 오탐은 **과다 제거 → red** 라 fail-closed 다. `identity-access` 의
+`WebSocketHandshakePathGuardTest` 가 같은 문제를 문자열 인지 스캐너로 이미 풀었다 — 그 설계를 옮긴다.
+
+---
+
+## ⬜ apps/web — 소비처 판별식의 모듈 지정자 정규식이 확장자 표기를 놓친다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 어떤 파일이 특정 모듈을 쓰는지 찾는 검사가 파일 이름 뒤에 확장자를 붙여 쓴 표기를
+못 알아본다.
+
+**방치하면.** 허용목록 밖에서 그 훅을 몰래 쓰는 코드가 검사를 통과한다. 허용목록의 존재 이유가
+사라진다.
+
+**무엇 (재리뷰 CONCERNS-N4 실측).**
+`hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts:36` 의
+`MODULE_SPECIFIER_RE = /['"][^'"]*use-sidebar-collapsed['"]/` 는 쌍따옴표·동적 `import()`·
+`import type` 을 모두 잡는다(전부 red 실측). 그런데 `'…use-sidebar-collapsed.ts'` 처럼 확장자를
+붙이면 **EXIT=0 으로 통과**한다.
+★같은 저장소에 이미 정답이 있다 —
+`components/issue/create/__tests__/permission-gate-loading-contract.test.ts:468` 은
+`'./create/use-issue-create-permission-gate.js'` 표기를 명시적으로 못박는다. 이쪽만 안 따라왔다.
+
+**처방.** `['"][^'"]*use-sidebar-collapsed(\.[a-z]+)?['"]` 로 넓힌다. 저장소가 확장자 없는 표기를
+관례로 쓰므로 즉시 위험은 낮다 — 그래서 부채다.
+
+---
+
+## ⬜ apps/web — 브레이크포인트 판별식의 스캔 범위가 앱 전역이라 무관한 파일을 막는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 사이드바의 모바일 경계를 지키려는 검사가 앱 전체 파일을 뒤져서, 사이드바와 상관없는
+화면이 다른 화면 크기 규칙을 쓰면 사이드바 이야기를 하며 막는다.
+
+**방치하면.** 무관한 컴포넌트가 정당하게 두 번째 경계를 쓸 때 「모바일 경계가 둘로 갈렸다」는
+오해 소지 있는 메시지로 red 가 난다. 고치는 사람이 엉뚱한 곳을 본다.
+
+**무엇 (재리뷰 CONCERNS-C5 실측).** `sidebar-breakpoint-alignment.test.ts` 의
+`filesUsingMaxVariant()` 가 `apps/web/src` 프로덕션 **611 파일**을 훑어 상한 변형(`max-*`)을 쓰는
+**4 파일**을 찾는다. 비용은 문제가 아니다(전체 초 단위). 쟁점은 **정책 범위**다 — 이 단언은
+사실상 저장소 전역에서 `max-sm:`·`max-lg:`·`max-xl:` 를 금지한다.
+
+**왜 부채인가.** fail-closed 방향이다(잘못 열리는 게 아니라 잘못 막힌다). 진단이 위반 파일명을
+찍어 주고, 실제로 두 번째 경계가 필요해지는 시점에 정책을 명시하면 되는 문제다.
+
+**처방.** 스캔 범위를 셸·사이드바 계열로 좁히거나, 「상한 변형은 `max-md` 하나」를 **셸 계열에만**
+적용하고 그 밖은 허용목록으로 뺀다. 어느 쪽이든 범위 결정이 먼저다.
+
+---
+
 # 기능 동작
 
 ## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수 · T2)
