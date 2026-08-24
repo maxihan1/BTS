@@ -11,8 +11,14 @@ export interface StatusOption {
   name: string
 }
 
-/** 워크플로우 queryKey 상수 — 매직 문자열 방지 */
-const WORKFLOW_QUERY_KEY = ['workflows'] as const
+/**
+ * 워크플로우 queryKey 상수 — 매직 문자열 방지.
+ *
+ * ★ **export 한다.** `use-workflows-admin` 의 쓰기 훅이 이 키를 무효화해야 편집 결과가
+ * 필터 UI 까지 닿는다. 관리 쪽이 자기 키를 따로 만들면 캐시가 둘로 갈려 「편집했는데
+ * 목록이 안 바뀐다」가 되고, 그 어긋남은 화면에서만 드러난다.
+ */
+export const WORKFLOW_QUERY_KEY = ['workflows'] as const
 
 /** 캐시 유지 시간 (ms) — 30초 */
 const STALE_TIME_MS = 30_000

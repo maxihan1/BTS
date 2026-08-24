@@ -1,6 +1,15 @@
 // project-workflow BC MSW mock handlers (4 표준 워크플로우 fixture)
 import { http, HttpResponse } from 'msw'
-import { allWorkflowFixtures } from './workflow-fixtures'
+import { workflowStore } from './workflow-admin-fixtures'
+
+/**
+ * 조회 대상은 **관리 저장소**다(픽스처 배열이 아니다).
+ *
+ * 정적 픽스처를 그대로 돌려주면 `workflow-admin-handlers` 의 쓰기 결과가 조회에 안 보여
+ * 편집기가 「저장했는데 화면이 그대로」가 된다. 저장소는 픽스처로 초기화되므로 쓰기가
+ * 없는 기존 소비처의 응답은 종전과 같다.
+ */
+const currentWorkflows = () => [...workflowStore.values()]
 
 /**
  * project-workflow BC MSW 핸들러 목록.
@@ -17,12 +26,12 @@ import { allWorkflowFixtures } from './workflow-fixtures'
 export const workflowHandlers = [
   /** GET /api/v1/workflows — 4 표준 워크플로우 목록 */
   http.get('/api/v1/workflows', () => {
-    return HttpResponse.json({ data: allWorkflowFixtures })
+    return HttpResponse.json({ data: currentWorkflows() })
   }),
 
   /** GET /api/v1/workflows/:key — 단건 조회, 없으면 404 */
   http.get('/api/v1/workflows/:key', ({ params }) => {
-    const found = allWorkflowFixtures.find((w) => w.key === params['key'])
+    const found = currentWorkflows().find((w) => w.key === params['key'])
     if (found === undefined) {
       return HttpResponse.json({ message: '워크플로우를 찾을 수 없습니다' }, { status: 404 })
     }
@@ -38,7 +47,7 @@ export const workflowHandlers = [
    */
   http.post('/api/v1/workflows/:key/transitions/plan', ({ params }) => {
     const key = params['key'] as string
-    const workflow = allWorkflowFixtures.find((w) => w.key === key)
+    const workflow = currentWorkflows().find((w) => w.key === key)
     if (workflow === undefined) {
       return HttpResponse.json({ message: '워크플로우를 찾을 수 없습니다' }, { status: 404 })
     }

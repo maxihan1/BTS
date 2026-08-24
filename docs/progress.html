@@ -205,16 +205,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="14.576989912656654"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="7.288494956328327"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">98%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">99%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">140 / 143</div>
+        <div class="big-num">141 / 143</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>140</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>141</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>2</b></div>
         </div>
@@ -228,9 +228,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
-      <div class="bc-card-stats">4 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:57%"></div></div>
-      <div class="bc-card-pct">57%</div>
+      <div class="bc-card-stats">5 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
+      <div class="bc-card-pct">71%</div>
     </div><div class="bc-card" data-nav="bc-automation">
       <div class="bc-card-head">🤖 자동화 규칙</div>
       <div class="bc-card-stats">7 / 7 완료</div>
@@ -777,12 +777,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔄 워크플로우</h1>
     <p class="bc-desc">이슈가 어떤 상태를 거쳐 가는지 규칙을 정하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">57%</div>
-      <div>4 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:57%"></div></div>
+      <div class="big-pct">71%</div>
+      <div>5 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 4</div>
-        <div>🔄 진행중 1</div>
+        <div>✅ 완료 5</div>
+        <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 2</div>
       </div>
@@ -809,13 +809,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 전환 validator/Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span> 런타임 결선</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — validator 적용 단계(phase) 구분 AVAILABILITY/EXECUTION, 결선 범위 확정</li><li><span class="step-icon">✅</span> D2 — 명세 — factory/repo/seed 결선 + test-assembled 검증. 확정 D8=A(phase 구분)/D9=A(Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span> 계산만, GAP-2)/D10=B(test-assembled 검증)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — Default<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>ValidatorFactory/Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span>Factory + DefaultWorkflowDefinitionRepository(<span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">jOOQ</span>, workflowKey로 transition_id 해석) + WorkflowEn<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eConfig(<span class="term" data-def="&quot;문장 성분 분해 트리 / 자동 조건 판독기&quot; &quot;10만 원 이상이면 팀장 승인&quot; 같은 복잡한 조건을 컴퓨터가 이해하도록 주어/동사로 쪼개고(AST), 스스로 계산해 주는(SpEL) 기술입니다.">Spel</span>Evaluator·ExecutorService @Bean) + YamlSeedService validators/post_actions 시드(시드 시점 type fail-fast) + WorkflowValidator.phase</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> 8 <span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">task</span>(red→green→refactor) + test-assembled @ContextConfiguration 통합검증(B2 cross-<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span> 격리, validator plan 거부/availableTransitions 포함, Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span> plan 누적)</li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-WF-04</span>
         <span class="fr-desc"><span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> CRUD + 전역 상태 카탈로그</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `statuses` 전역 카탈로그 · `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>_statuses` N:M · 키 불변 원칙 · 표준 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 편집 허용 범위</li><li><span class="step-icon">✅</span> D2 — 명세 — 읽기 API 응답 형태 불변 계약(`GET /<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s/{key}` 는 states[]/transitions[] 유지) · 권한 모델</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — V203 카탈로그 생성 · V204 백필(키당 name/category 유일성 가드) · V205 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s 컬럼(<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>/ori<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>/deleted_at/is_locked) · **V206 소프트삭제 부분 유니크 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span>**(#393 — 지운 key 재사용 차단 해소)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span>·상태 CRUD + `YamlSeedService` 부트스트랩 전환 + `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>Cache` 무효화 결선</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red-first · 마이그레이션 체인 검증 · 재기동 후 편집분 생존 · 캐시 무효화 누락 감지</li><li><span class="step-icon">⬜</span> D6 — 프론트 — `/admin/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s` 목록 + 목록 모드 편집기(상태 추가·제거·순서)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이름 수정 · 상태 추가 · 재기동 생존</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `statuses` 전역 카탈로그 · `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>_statuses` N:M · 키 불변 원칙 · 표준 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 편집 허용 범위</li><li><span class="step-icon">✅</span> D2 — 명세 — 읽기 API 응답 형태 불변 계약(`GET /<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s/{key}` 는 states[]/transitions[] 유지) · 권한 모델</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — V203 카탈로그 생성 · V204 백필(키당 name/category 유일성 가드) · V205 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s 컬럼(<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>/ori<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>/deleted_at/is_locked) · **V206 소프트삭제 부분 유니크 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span>**(#393 — 지운 key 재사용 차단 해소)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span>·상태 CRUD + `YamlSeedService` 부트스트랩 전환 + `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>Cache` 무효화 결선</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red-first · 마이그레이션 체인 검증 · 재기동 후 편집분 생존 · 캐시 무효화 누락 감지</li><li><span class="step-icon">✅</span> D6 — 프론트 — `/admin/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s` 목록 + 목록 모드 편집기(상태 추가·제거·순서)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이름 수정 · 상태 추가 · 재기동 생존 (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #400, 2026-08-24). *스펙 4시나리오. 처음엔 Maxi 지시로 작성만 했으나, 리뷰가 그중 1건이 **돌리면 red** 임을 실행으로 밝혀 재설계 후 Maxi 승인으로 실행했다 — **4/4 통과**(PR #400)*</li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
@@ -1654,11 +1654,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">88</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 166건</span>
+      <span class="big-pct" style="color:#9ca3af;">100</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 178건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 88건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">18건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 100건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 <b>의도된 대가</b> · 미착수 · T1)</span></div>
@@ -1842,6 +1842,66 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 브레이크포인트 판별식의 스캔 범위가 앱 전역이라 무관한 파일을 막는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p>화면이 다른 화면 크기 규칙을 쓰면 사이드바 이야기를 하며 막는다.</p><p>오해 소지 있는 메시지로 red 가 난다. 고치는 사람이 엉뚱한 곳을 본다.</p><p><b>무엇 (재리뷰 CONCERNS-C5 실측).</b> <code>sidebar-breakpoint-alignment.test.ts</code> 의 <code>filesUsingMaxVariant()</code> 가 <code>apps/web/src</code> 프로덕션 <b>611 파일</b>을 훑어 상한 변형(<code>max-*</code>)을 쓰는 <b>4 파일</b>을 찾는다. 비용은 문제가 아니다(전체 초 단위). 쟁점은 <b>정책 범위</b>다 — 이 단언은 사실상 저장소 전역에서 <code>max-sm:</code>·<code>max-lg:</code>·<code>max-xl:</code> 를 금지한다.</p><p><b>왜 부채인가.</b> fail-closed 방향이다(잘못 열리는 게 아니라 잘못 막힌다). 진단이 위반 파일명을 찍어 주고, 실제로 두 번째 경계가 필요해지는 시점에 정책을 명시하면 되는 문제다.</p><p><b>처방.</b> 스캔 범위를 셸·사이드바 계열로 좁히거나, 「상한 변형은 <code>max-md</code> 하나」를 <b>셸 계열에만</b> 적용하고 그 밖은 허용목록으로 뺀다. 어느 쪽이든 범위 결정이 먼저다.</p></div>
       </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 봉인·토스트 판정이 대표 1건만 태워 나머지가 지워져도 초록이다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 잘못된 서버 응답을 막는 장치와 실패를 알려 주는 장치가 여러 곳에 있는데, 그것들이 제대로 붙어 있는지 확인하는 검사는 각각 한 곳만 본다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 나머지 자리에서 그 장치를 실수로 빼도 아무 검사도 빨간불이 되지 않는다. 서버가 이상한 값을 보내거나 저장이 실패해도 화면이 조용히 지나간다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 봉인·토스트 판정이 대표 1건만 태워 나머지가 지워져도 초록이다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> PR #400 독립 리뷰(뮤테이션 40건)가 실측했다.</p><ul class="md-list"><li><code>api/workflows-admin.types.ts</code> 의 <code>.strict()</code> <b>4장 중 3장</b>(<code>createdStatusSchema</code> · <code>createdWorkflowSchema</code> · <code>transitionDefinitionSchema</code>)은 지워도 초록이다. 봉인 판정이 <code>statusSchema</code> 하나만 태우고, 나머지를 지나는 단언은 특정 필드 <b>값</b>만 읽기 때문이다.</li><li><code>hooks/use-workflows-admin.ts</code> 의 <code>onError: notifyWorkflowAdminError</code> <b>11곳 중 10곳</b>이 지워도 초록이다. 토스트 판정이 <code>useRemoveWorkflowStatus</code> 하나만 태운다.</li></ul><p><b>처방.</b> 봉인은 스키마별로 「모르는 필드를 넣으면 throw」 1건씩. 토스트는 훅 목록을 열거해 <code>it.each</code> 로 도는 표 하나 — 훅이 늘면 목록에 없다는 사실 자체가 red 가 되게.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 전환 종류를 고를 수 없어 전역 전환을 만들 방법이 없다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「어느 상태에서든 쓸 수 있는 전환」을 만들 수 있다고 코드에는 적혀 있는데, 화면에 그것을 고르는 자리가 없다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 그 기능이 있다고 믿고 찾다가 못 찾는다. 코드에는 처리 분기가 남아 있어 다음 사람이 「되는 기능」으로 읽고 그 위에 무언가를 쌓는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 전환 종류를 고를 수 없어 전역 전환을 만들 방법이 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>components/workflow/editor/TransitionFormDialog.tsx</code> 의 <code>kind</code> state 를 바꾸는 컨트롤이 없다. 생성은 항상 <code>NORMAL</code> 이고 수정은 기존 값을 보존한다. 결과로 <code>TransitionListPanel</code> 의 <code>GLOBAL</code> 배지 분기와 <code>needsFromState</code> 의 비-NORMAL 갈래가 <b>생성 경로로는 도달 불가</b>다(수정 경로로만 닿는다). 픽스처에도 <code>kind: &#39;GLOBAL&#39;</code> 이 0건이라 그 분기를 태우는 판정도 없다.</p><p><b>처방.</b> FR-WF-04 D6 의 범위는 「전환 이름 편집」이라 이 PR 에서는 범위 밖으로 뒀다. 로드맵 PR 9(다이어그램 편집기)가 전역 전환을 그려야 하므로 그때 함께 연다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 관리 메뉴에 어떤 항목이 있어야 하는지 검사하는 장치가, 목록에 적힌 것만 확인하고 실제 개수는 세지 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 새 메뉴가 늘어도 그 장치는 계속 초록이다. 링크가 잘못 붙거나 빠져도 아무도 모른다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>components/layout/__tests__/navigation-contract.test.tsx</code> 의 손 열거 6건에 2026-08-24 추가된 7번째 링크(<code>워크플로우 관리</code>)가 없다. 개수 단언 없이 <b>부분집합 루프</b>라 8 passed 로 통과한다. 8번째가 붙어도 마찬가지다.</p><p><b>처방.</b> <code>Sidebar.tsx</code> 의 <code>ADMIN_NAV_LINKS</code> 를 직접 import 해 개수와 내용을 함께 단언한다 — 손 열거를 유지하려면 최소한 <code>toHaveLength</code> 를 건다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 상태 순서 변경이 되돌아갔다 오고 표시 순서가 겹칠 수 있다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 상태를 끌어서 순서를 바꾸면 잠깐 원래 자리로 튀었다가 다시 제자리를 찾는다. 그리고 상태를 넣고 빼고를 반복하면 순서 번호가 겹친다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면이 덜컹거려 저장이 안 된 것처럼 보인다. 번호가 겹치면 어느 것이 앞인지 서버가 정하지 못한다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 상태 순서 변경이 되돌아갔다 오고 표시 순서가 겹칠 수 있다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b></p><ul class="md-list"><li><code>WorkflowEditorPage.tsx</code> 의 <code>useReorderWorkflowStatuses</code> 에 낙관적 업데이트가 없다. 드래그 직후 목록이 서버 값(옛 순서)으로 한 번 그려지고 refetch 뒤에야 새 순서가 온다.</li><li>같은 파일이 새 상태의 <code>displayOrder</code> 를 <code>states.length + 1</code> 로 준다. 둘을 넣고 먼저 넣은 것을 뺀 뒤 다시 넣으면 기존 값과 겹친다. <code>Math.max(...orders, 0) + 1</code> 이 맞다.</li></ul><p><b>처방.</b> <code>onMutate</code> 에서 상세 캐시를 새 순서로 미리 바꾸고 실패 시 롤백. displayOrder 는 최대값 기준으로.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — nav 라벨 정본이 선언만 있고 리터럴이 5벌 따로 박혀 있다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 메뉴 이름을 한곳에서 관리하겠다고 적어 놓고, 실제 화면과 테스트에는 그 이름을 손으로 따로 적어 두었다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 정본을 고쳐도 화면은 안 바뀌고 아무 검사도 빨간불이 아니다. 「한곳에서 관리한다」는 문장만 남고 실제로는 다섯 곳을 손으로 맞춰야 한다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — nav 라벨 정본이 선언만 있고 리터럴이 5벌 따로 박혀 있다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>i18n/workflow-editor-labels.ts:1</code> 이 「E2E 셀렉터 정본 — 단일 진입점」이라 선언하고 <code>nav.label</code> 에 「이 값은 &#39;워크플로우 관리&#39; 다」를 못박지만, 실제 리터럴은 <code>Sidebar.tsx</code> · <code>admin.index.tsx</code> · <code>Sidebar.test.tsx</code> · <code>e2e/workflow-editor.spec.ts</code> 에 <b>따로 5벌</b> 있다. <code>nav.label</code> 의 <b>소비처는 0</b> 이다 — 정본을 &#39;워크플로우&#39; 로 줄여도 화면이 안 바뀐다.</p><p><b>처방.</b> 소비처를 실제로 연결하거나(사이드바·허브가 라벨 모듈을 import), 정본 선언 문구를 사실에 맞게 낮춘다. 지금은 선언과 실체가 갈려 있다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 서버가 보낸 설명을 사용자에게 그대로 보여 줄지 말지를 코드가 목록으로 정해 두었는데, 그 목록이 늘어나도 아무 검사가 막지 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 내부 사정이 적힌 문구가 사용자 화면에 새어 나가도 모른다. 그 판단은 보안 정책인데 사람 기억에만 남는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
+      </details>
     </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">8건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1924,7 +1984,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — identity-access — permitAll 경로군 중 `/ws` 만 메서드 고정을 기계가 지킨다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p>확인하는 장치는 한 곳에만 있다.</p><p>들어가고, 아무도 그 순간을 모른다.</p><p><b>무엇 (PR #399 ceo 렌즈 C-3 권고 + 재리뷰 실측).</b> <code>SecurityConfig</code> 의 permitAll 배선은 5개소다.</p><table class="md-table"><thead><tr><th>위치</th><th>메서드 고정</th><th>기계 가드</th></tr></thead><tbody><tr><td><code>:203</code> 인증 전 경로 그룹</td><td>없음 (POST 가 필요한 경로들이라 정당)</td><td>없음</td></tr><tr><td><code>:209</code> <code>PUBLIC_DASHBOARDS_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:213</code> <code>ICAL_FEED_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:255</code> <code>WS_HANDSHAKE_PATH</code></td><td>GET 고정</td><td><code>WebSocketHandshakePathGuardTest</code></td></tr><tr><td><code>:262</code> <code>INBOUND_WEBHOOK_PATHS</code></td><td>목록이 메서드를 함께 가짐</td><td>없음</td></tr></tbody></table><p><code>:209</code>·<code>:213</code> 은 주석이 defense-in-depth 를 길게 설명하는데 <b>그 고정을 재는 테스트가 없다.</b> <code>/ws</code> 가드는 PR #399 가 신설했고, 그것마저 한때 주석으로 만족돼 공허했다(재리뷰 BLOCKER-N1). 설명은 다섯 곳에 있고 강제는 한 곳에만 있는 상태다.</p><p><b>처방.</b> permitAll 배선을 <b>도출</b>해 「메서드가 명시됐거나, 명시하지 않은 이유가 같은 자리에 적혀 있다」를 단언하는 판별식 하나. <code>/ws</code> 가드의 주석 스캐너를 그대로 재사용한다 — 소스 텍스트 가드는 주석을 걷어내지 않으면 공허해진다는 것을 이미 값을 치르고 배웠다. 목록 하드코딩은 하지 않는다(신규 permitAll 이 자동 편입돼야 한다).</p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">43건</span></h3>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">49건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)</span></div>
@@ -2358,6 +2418,66 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — 도구 — 줄수 래칫이 한 줄 욱여넣기를 수치로 보상한다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/routes/issues.$key.tsx:880</code> 이 141자 한 줄이다. <code>apps/web/.prettierrc</code> 의 <code>printWidth</code> 는 <b>100</b>. 같은 함수 안 <b>10줄 아래</b> 형제 호출(<code>handleResolutionConfirm</code>)은 다섯 줄로 펴져 있어 한 파일 안에서 형식이 갈린다. 880행을 같은 모양으로 펴면 4줄이 늘어 <code>lint-ratchet-baseline.ts</code> 의 <code>IssueDetailPage</code> 값이 <b>1013 → 1017</b> 로 오른다. 즉 <b>포맷 일관성을 지키면 래칫 수치가 나빠진다.</b></p><p><b>★prettier 는 어디에도 강제되지 않는다.</b> <code>apps/web</code> 의 <code>lint</code> 는 <code>eslint src</code> 뿐이고 루트 <code>verify</code> · <code>.lintstagedrc</code> · CI 어디에도 prettier 가 없다. PR #398 이 만진 3파일(<code>issues.$key.tsx</code> · <code>issue-handlers.ts</code> · <code>issue-transition.spec.ts</code>)은 <b>main 에서 이미 <code>prettier --check</code> 실패</b>다 — 그 PR 이 만든 이탈이 아니다.</p><p><b>★이것은 Maxi 확인 사항이다.</b> 갈림길이 셋이다 — ① prettier 를 강제하고 래칫 베이스라인을 포맷 후 값으로 재동결(대량 재포맷이 따라온다) ② 래칫을 raw 줄수 대신 <b>문장 수</b>로 재정의(판정 재작성) ③ 지금처럼 두고 이 충돌을 문서로만 남긴다. <b>어느 쪽이든 파급이 커서 자의로 정하지 않는다.</b></p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — <code>staticData.requireAuth</code> 가 소비처도 판별식도 없는 장식이다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 라우트마다 「로그인이 필요하다」는 표시를 달아 두는데, 그 표시를 실제로 읽어서 쓰는 코드가 하나도 없다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 다음 사람이 그 표시를 보안 증거로 읽는다. 표시가 빠진 라우트를 보고 「여긴 인증이 필요 없구나」로 오해하거나, 반대로 표시만 달고 진짜 가드를 안 걸 수 있다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 도구 — `staticData.requireAuth` 가 소비처도 판별식도 없는 장식이다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> PR #400 보안 리뷰가 전 저장소를 훑어 실측했다. <code>router.ts</code> 의 <code>staticData: { requireAuth: true }</code> 를 <b>런타임에 읽는 코드가 0건</b>이다 — 라우트 파일 KDoc 예시와 타입 증강 선언뿐이다. 실제 게이트는 <code>beforeLoad</code> 하나이고, <code>router.admin-guards.test.tsx</code> 의 관측 함수도 <code>options.beforeLoad</code> 만 읽는다. 즉 <b><code>staticData</code> 를 통째로 빼도 아무 테스트가 빨개지지 않는다.</b></p><p><b>처방.</b> 소비처를 만들거나(가드 판별식이 이 필드와 <code>beforeLoad</code> 의 정합을 대조), 필드를 걷어낸다. 지금처럼 두면 「있는데 아무 뜻도 없는」 상태다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — CHANGELOG 의 BC 진척 표를 어떤 판별식도 읽지 않는다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 완료 현황을 적는 표가 두 곳인데, 한 곳만 검사한다. 검사 안 하는 쪽은 옛 숫자가 남아 있어도 통과한다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 같은 저장소 안에서 두 문서가 서로 다른 완료 개수를 말한다. 어느 쪽이 맞는지 사람이 매번 대조해야 한다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 도구 — CHANGELOG 의 BC 진척 표를 어떤 판별식도 읽지 않는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/verify-master-plan.sh</code> 는 <code>fr-index</code>·<code>README</code>·헤더·<code>CLAUDE.md</code> 의 카운트 정합을 본다. <b><code>CHANGELOG.md</code> §BC 진척 표는 안 본다.</b> PR #400 리뷰 시점에 그 표가 「WF-04 미착수」인 채로 남아 있는데 같은 PR 의 <code>CLAUDE.md</code> 는 「WF-04 완료」였다 — 한 PR 안에서 원장이 스스로 모순됐다. 값은 그 PR 에서 고쳤지만 <b>다음에 또 어긋나도 아무도 안 본다.</b></p><p><b>처방.</b> <code>verify-master-plan.sh</code> 에 CHANGELOG BC 행의 완료 수 ⟺ <code>product/&lt;bc&gt;.md</code> D 마커 대조를 더한다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — <code>/admin/workflows/new</code> 매칭을 고정하는 단언이 없고 코드 주석의 근거가 틀렸다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 주소가 겹치는 두 화면 중 어느 쪽이 열리는지를 확인하는 검사가 없다. 그리고 코드에 적힌 설명이 실제 동작과 다르다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 라우터를 손대다 매칭이 뒤집혀도 아무 검사가 못 잡는다. 틀린 설명을 믿고 다음 사람이 잘못된 규칙을 따라 한다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 도구 — `/admin/workflows/new` 매칭을 고정하는 단언이 없고 코드 주석의 근거가 틀렸다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>router.ts</code> 의 주석은 「<code>/new</code> 를 <code>/$workflowKey</code> 보다 먼저 등록해야 <code>new</code> 가 키로 먹히지 않는다」고 적었다. PR #400 보안 리뷰가 <b>등록 순서를 뒤집어 반증했다</b> — TanStack Router 는 specificity 로 정렬해 정적 세그먼트가 항상 동적 세그먼트를 이긴다. 결과는 요구대로 옳지만 근거가 사실이 아니고, 「<code>new</code> 가 키로 안 먹힌다」를 <b>고정하는 단언이 어디에도 없다.</b> 가드 행렬은 라우트가 사라진 것만 잡지 매칭이 뒤집힌 것은 못 잡는다.</p><p><b>처방.</b> 주석을 실제 근거(specificity 정렬)로 고치고, <code>router.matchRoutes(&#39;/admin/workflows/new&#39;)</code> 가 <code>new</code> 라우트를 고르는지 단언 1줄을 건다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — 문서 인덱스 승격이 전부-아니면-전무라 문서 하나가 링크 9건을 지운다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 어떤 기능에 딸린 문서 목록을 자동으로 만드는데, 파일 이름에 그 기능 번호가 든 문서가 하나라도 생기면 나머지 문서들이 목록에서 통째로 사라진다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 문서를 늘렸는데 목록은 줄어든다. 사라진 것을 알려 주는 검사가 없어 아무도 모른 채 지나간다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 도구 — 문서 인덱스 승격이 전부-아니면-전무라 문서 하나가 링크 9건을 지운다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/doc-index/scan-docs.mjs</code> 의 「본문 언급 승격」이 <b>행 단위</b>다. 행에 주 문서(파일명에 FR ID)가 하나라도 생기면 <b>모든 열</b>의 승격이 꺼진다. 2026-08-24 실측 — FR-WF-04 에 파일명 FR ID 를 가진 plan 이 처음 추가되자 spec 2 + plan 3 + adr 4 = 9건이 사라지고 「+9 언급」이라는 숫자만 남았다.</p><p><b>★ 종류별로 가르는 수정은 순손해였다(실측·원복함).</b> 동일 코퍼스로 구/신 규칙을 격리 실행한 결과 <b>과승격 260건 / 67행</b>이 생겼고(141건은 문서 상단에 그 FR 선언이 없고 122건은 본문 언급 2회 이하), 정작 plan 3건은 그대로 잃었다. 예 — 다른 FR 의 spec 이 「합계 123→128」 한 줄 때문에 <code>FR-PJ-01</code> 의 <b>첫 번째 spec</b> 으로 올라갔다.</p><p><b>★★ 그 분기를 태우는 판정이 없다.</b> <code>scan-docs.test.mjs</code> 는 「한 열에 주 문서, 다른 열에 언급」이라는 유일한 분기 조합을 안 태워 <b>구/신 규칙 양쪽이 15/15 를 똑같이 통과</b>한다. <code>verify-master-plan.sh</code> 는 <code>INDEX-fr.md</code> 를 안 읽고 <code>doc-index-coverage.test.ts</code> 는 링크 대상 파일 존재만 본다 — <b>어느 열의 내용도 읽는 판별식이 없다.</b></p><p><b>처방.</b> 판정을 먼저 세운다(그 분기 조합 + 승격 총량 상한). 그 위에서 승격 기준을 「본문 아무 곳 언급」이 아니라 「문서 상단 선언(H1·<code>&gt; 관련 FR.</code>)」으로 좁힌다. PR #400 은 파일명에서 FR ID 를 빼는 우회로 지나갔다 — 그건 회피이지 해소가 아니다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — 권한 코드 판별식이 백엔드의 일부 형태·일부 핸들러만 읽는다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 서버가 보내는 오류 종류와 화면에 뜨는 한국어 문구가 서로 맞는지 검사하는데, 서버 쪽을 절반만 읽는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 서버에 새 오류가 생겨도 검사가 통과한다. 사용자는 「요청 처리 중 오류가 발생했습니다」만 보고 무엇을 고쳐야 할지 모른다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 도구 — 권한 코드 판별식이 백엔드의 일부 형태·일부 핸들러만 읽는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/hooks/__tests__/workflow-admin-error.test.ts</code> 는 백엔드 핸들러 <code>.kt</code> 를 직접 읽어 양방향 차집합을 본다(그 자체는 옳은 처방이다). 그런데 재리뷰가 원본 복사본에 새 코드를 6가지 형태로 주입해 실측한 결과 <b>5가지가 안 보인다</b> — 상수 참조 <code>= X.ERROR_CODE</code> · enum <code>.name</code> · 보간 <code>&quot;WORKFLOW_${ex.scope}_QUOTA&quot;</code> · <b>밑줄 없는 단어</b> · <code>code = ex.code</code>. 공유 상수 스캔은 <code>: String</code> 명시를 요구하고 캡처 문자군에 숫자가 빠져 핸들러 쪽과 비대칭이다.</p><p><b>★ 읽는 핸들러 목록도 손 열거 4개다.</b> 저장소 자신의 정본 열거 (<code>GlobalControllerAdviceSealTest.kt</code>)가 <code>AmbiguousTransitionExceptionHandler</code> 를 광역 advice 로 올려 두었고 그것은 프론트가 파싱하는 <b>같은 중첩 봉투</b>를 낸다. 목록에도 표에도 없다. 지금은 그 코드가 이 화면 경로로 도달 불가라 잠복이지만, 두 차집합이 모두 <b>「부분만 읽은 백엔드 목록」</b>과 비교되므로 <code>two-lists-never-check-each-other</code> 가 한 층 위에서 재현된다.</p><p><b>처방.</b> <code>HANDLER_FILES</code> 를 글롭으로 도출해 정본 열거와 교차 검증하고, <code>ErrorBody(code = X</code> 의 <code>X</code> 가 따옴표 리터럴이 아니면 <b>red</b> 로 만든다 — 침묵을 소음으로 바꾼다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 요청 DTO 의 검증 애노테이션이 <code>@Valid</code> 부재로 장식이다 (선재 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 서버가 받는 값에 「비어 있으면 안 된다」 같은 규칙을 붙여 놨는데, 그 규칙을 실제로 검사하라는 지시가 빠져 있어 아무 효과가 없다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 이상한 값이 그대로 저장된다. 주소에 쓰이는 키에 <code>../</code> 같은 문자가 들어가면 링크가 엉뚱한 곳을 가리킨다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>backend/modules/project-workflow/.../WorkflowController.kt</code> 와 <code>WorkflowStatusCompositionController.kt</code> 의 <code>@RequestBody</code> 에 <code>@Valid</code> 가 없고 클래스 레벨 <code>@Validated</code> 도 전역 <code>MethodValidationPostProcessor</code> 도 0건이다(보안 재리뷰 실측). 따라서 <code>CreateWorkflowRequest.key</code> 의 <code>@NotBlank @Size(max=100)</code> 이 아무도 안 읽는 장식이다. <code>@Pattern</code> 도 없고 도메인 <code>Workflow.of()</code> 에도 key 형식 검사가 없어 <b><code>key = &quot;../../users&quot;</code> 인 워크플로우를 만들어 저장할 수 있다.</b> PR #400 이 프론트에서 <code>encodeURIComponent</code> 로 막았지만 근본은 백엔드다. MEMORY <code>decorative-annotation-copied-from-sibling</code> 양식이다.</p><p><b>처방.</b> <code>@Valid</code> 를 붙이고 red 를 한 번 눈으로 본 뒤(안 그러면 또 장식이다), key 에 <code>@Pattern</code> 을 건다. 도메인 invariant 로 올리는 편이 더 낫다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">11건</span></h3>
         <p class="todo-cat-desc">코드를 검사하고 내보내는 기계 쪽 문제.</p>

@@ -65,6 +65,7 @@ const BASE_USER: WhoamiResponse = {
 
 /** 관리 nav 6링크 계약 — [라벨, href] */
 const ADMIN_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
+  ['워크플로우 관리', '/admin/workflows'],
   ['워크플로우 스킴', '/admin/workflow-schemes'],
   ['감사 로그', '/admin/audit-logs'],
   ['전역 권한', '/admin/global-permissions'],
@@ -133,7 +134,7 @@ describe('Sidebar', () => {
     ).toBeInTheDocument()
   })
 
-  it('isSystemAdmin=true이면 관리 메뉴 nav가 기본 펼침 상태로 6링크를 노출한다 (FR4)', () => {
+  it('isSystemAdmin=true이면 관리 메뉴 nav가 기본 펼침 상태로 7링크를 노출한다 (FR4)', () => {
     useAuthStore.setState({
       accessToken: 'test-token',
       user: { ...BASE_USER, isSystemAdmin: true },

@@ -106,7 +106,8 @@ export async function fetchWorkflows(): Promise<WorkflowView[]> {
  */
 export async function fetchWorkflow(key: string): Promise<WorkflowView> {
   const wrapped = await apiGet(
-    `/api/v1/workflows/${key}`,
+    // 경로 파라미터가 URL 에서 그대로 온다 — 인코딩 없이 박으면 `..%2F` 로 다른 자원에 닿는다
+    `/api/v1/workflows/${encodeURIComponent(key)}`,
     dataResponseSchema(workflowViewSchema),
   ).catch((err: unknown) => {
     if (err instanceof ApiError && err.status === 404) {
@@ -142,7 +143,7 @@ export async function planTransition(
   },
 ): Promise<TransitionPlan> {
   const wrapped = await apiPost(
-    `/api/v1/workflows/${key}/transitions/plan`,
+    `/api/v1/workflows/${encodeURIComponent(key)}/transitions/plan`,
     {
       issueKey: request.issueKey,
       fromStateKey: request.fromStateKey,

@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   Workflow,
+  Waypoints,
   ScrollText,
   ShieldCheck,
   Bell,
@@ -42,6 +43,13 @@ interface AdminHubLink {
  * 대상이 아니다, `docs/specs/2026-07-20-fr-ux-06-pr13-page-layout.md` S2).
  */
 const ADMIN_HUB_LINKS: readonly AdminHubLink[] = [
+  {
+    to: '/admin/workflows',
+    // ★ '워크플로우' 로 줄이면 아래 '워크플로우 스킴' 의 substring 이다 — Sidebar 와 같은 이유
+    label: '워크플로우 관리',
+    description: '워크플로우를 만들고 상태와 전환을 편집합니다',
+    Icon: Waypoints,
+  },
   {
     to: '/admin/workflow-schemes',
     label: '워크플로우 스킴',
