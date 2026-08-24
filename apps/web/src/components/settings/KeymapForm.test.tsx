@@ -186,10 +186,12 @@ describe('KeymapForm — 컨텍스트 단축키 예약 키 (FR-UX-10 F10)', () =
     })
   })
 
-  it('컨텍스트 키 5종 전부가 예약된다 (레지스트리 파생 — 하드코딩 아님)', async () => {
+  it('컨텍스트 키 전부가 예약된다 — 캡처 UI 가 바인딩할 수 있는 키에 한해 (레지스트리 파생)', async () => {
     // 정규식이 아니라 메시지 전문을 조립해 비교한다 — `[` 같은 키가 정규식 특수문자라
     // 이스케이프 실수가 나기 쉽고, 전문 비교가 표기 drift 도 함께 잡는다.
-    for (const { key, description } of CONTEXT_SHORTCUTS) {
+    for (const { key, description } of CONTEXT_SHORTCUTS.filter(
+      (s) => !UNBINDABLE_CAPTURE_KEYS.has(s.key),
+    )) {
       const { unmount } = renderForm()
       const input = await screen.findByLabelText('새 이슈 생성 단축키 입력')
 
@@ -265,6 +267,18 @@ const CANDIDATE_KEY_ALPHABET: readonly string[] = [
   ...'[].,;/-=`\'',
 ]
 
+/**
+ * 캡처 UI 가 **제어 키**로 소비해 사용자가 바인딩할 수 없는 키.
+ *
+ * - `LEADER_KEY` — 누르면 leader 대기로 들어가 draft 가 안 바뀐다.
+ * - `Escape` — `KeymapForm.handleKeyCapture` 가 leader 대기 취소로 소비한다(F24 로 레지스트리에
+ *   들어왔지만 바인딩 대상이 아니다).
+ *
+ * 🛑 여기에 키를 추가할 때는 「레지스트리에 있다」와 「캡처가 제어로 삼킨다」 **두 전제를 모두**
+ *    같은 테스트에서 단언해라. 그러지 않으면 이 집합이 예약 판정을 조용히 면제하는 뒷문이 된다.
+ */
+const UNBINDABLE_CAPTURE_KEYS = new Set<string>([LEADER_KEY, 'Escape'])
+
 describe('KeymapForm — F11 상세 액션 8종 예약 (FR-UX-10 F11 Task 7)', () => {
   it('★F11 8종이 레지스트리에 실재한다 (독립 목록이 낡았는지 먼저 잰다)', () => {
     const registryKeys = new Set(CONTEXT_SHORTCUTS.map((s) => s.key))
@@ -296,8 +310,17 @@ describe('KeymapForm — F11 상세 액션 8종 예약 (FR-UX-10 F11 Task 7)', (
     // 전제(leader 키는 컨텍스트 키가 아니다) 자체를 여기서 함께 잰다.
     expect(registryKeys.has(LEADER_KEY)).toBe(false)
 
+    // ★`Escape` 는 레지스트리에 **있고**(F24 드로어 닫기) 캡처 UI 는 그걸 **취소 키**로
+    //   소비한다(`KeymapForm.tsx` handleKeyCapture). 즉 사용자가 애초에 바인딩할 수 없으므로
+    //   예약될 수도 없다 — 차집합에서 빼되, 「레지스트리에 있다 + 바인딩 불가다」 두 전제를
+    //   여기서 함께 재서 조용한 면제가 되지 않게 한다.
+    expect(registryKeys.has('Escape')).toBe(true)
+
     const candidates = [...new Set([...CANDIDATE_KEY_ALPHABET, ...registryKeys])].filter(
-      (key) => key !== LEADER_KEY,
+      (key) => !UNBINDABLE_CAPTURE_KEYS.has(key),
+    )
+    const bindableRegistryKeys = new Set(
+      [...registryKeys].filter((key) => !UNBINDABLE_CAPTURE_KEYS.has(key)),
     )
 
     // 후보마다 재마운트하지 않는다 — 키 캡처는 draft 를 통째로 덮어쓰므로 한 폼으로
@@ -313,7 +336,7 @@ describe('KeymapForm — F11 상세 액션 8종 예약 (FR-UX-10 F11 Task 7)', (
       if (screen.queryAllByText(/예약된 키입니다/).length > 0) reserved.add(key)
     }
 
-    expect(reserved).toEqual(registryKeys)
+    expect(reserved).toEqual(bindableRegistryKeys)
   })
 })
 

@@ -7,7 +7,10 @@ import { useAuthStore } from '@/auth/authStore'
 import { useActiveProject } from '@/hooks/use-active-project'
 import type { WhoamiResponse } from '@/api/schemas'
 import { navLabels } from '@/i18n/nav-labels'
-import { dispatchContextAction } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import {
+  dispatchContextAction,
+  getRegisteredContexts,
+} from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { useSidebarDrawer, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
@@ -421,25 +424,21 @@ describe('ShellLayout', () => {
     renderShell()
 
     act(() => {
-      dispatchContextAction({ layer: 'app-shell', action: { kind: 'close-sidebar-drawer' } })
+      dispatchContextAction({ layer: 'sidebar-drawer', action: { kind: 'close-sidebar-drawer' } })
     })
 
     expect(useSidebarDrawer.getState().open).toBe(false)
   })
 
-  it('드로어가 닫혀 있으면 Escape 는 무동작이다 (다른 화면의 Escape 를 삼키지 않는다)', () => {
-    // Escape 는 다이얼로그 닫기 등 다른 곳에서도 눌린다. 드로어가 닫힌 상태에서
-    // 관측되는 변화가 없어야 이 등록이 남의 Escape 를 빼앗지 않는다.
+  it('★드로어가 닫혀 있으면 sidebar-drawer 레이어를 등록조차 하지 않는다 (Escape 를 빼앗지 않는다)', () => {
+    // 🛑 「핸들러가 무동작이다」로는 부족하다. 레이어가 등록돼 있으면 판별이 hit 이 되고,
+    //    파이프라인이 dispatch 전에 preventDefault 를 걸어 `usePaneEscapeClose` 가 죽는다.
+    //    등록 자체가 없어야 안전하다 — 그래서 무동작이 아니라 **미등록**을 잰다.
     useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
     useSidebarDrawer.setState({ open: false })
-    useSidebarCollapsed.setState({ collapsed: false })
     renderShell()
 
-    act(() => {
-      dispatchContextAction({ layer: 'app-shell', action: { kind: 'close-sidebar-drawer' } })
-    })
-
-    expect(useSidebarDrawer.getState().open).toBe(false)
-    expect(useSidebarCollapsed.getState().collapsed).toBe(false)
+    expect(getRegisteredContexts().has('sidebar-drawer')).toBe(false)
+    expect(getRegisteredContexts().has('app-shell')).toBe(true)
   })
 })

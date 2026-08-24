@@ -11,15 +11,37 @@ function read(rel: string): string {
 }
 
 /**
- * `to="/settings…"` 형태로 쓰인 목적지를 모두 뽑는다.
+ * 주석을 걷어낸 소스.
  *
- * 정규식이지만 대상이 좁다 — 이 판별식이 재는 것은 「어떤 컴포넌트가 설정 경로를 링크하는가」이고
- * 그 문법은 `to="/settings…"` 한 가지다. 허브 목록 쪽은 정규식이 아니라 [SETTINGS_HUB_LINKS]
- * **정본을 직접 import** 하므로, 두 목록 중 중요한 쪽은 소스 파싱에 기대지 않는다.
+ * 🛑 소스 텍스트 가드는 **주석에 적힌 예시**를 코드로 오인한다. 실측 — 이 파일의 백드롭 단언이
+ *    `ShellLayout.tsx` 의 주석에 든 `md:hidden` 을 맞춰, 백드롭을 `lg:hidden` 으로 바꿔도
+ *    초록이었다(뮤테이션 2건 모두 통과). 저장소가 반복해서 밟은 양식
+ *    (`invariant-satisfied-by-helptext-not-logic`)이라 여기서 한 번에 끊는다.
+ */
+function withoutComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '') // 블록 주석 · JSX 주석
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line)) // 줄 주석
+    .join('\n')
+}
+
+/**
+ * 설정 경로 목적지를 모두 뽑는다.
+ *
+ * 🛑 `to="…"` 한 가지만 보면 안 된다. JSX 는 `to={'…'}` · `to={"…"}` 도 같은 뜻이고,
+ * 이 저장소는 쌍따옴표 import(`components/ui/tabs.tsx`)를 실제로 쓰므로 따옴표 종류를
+ * 가정할 수 없다. 표기 하나만 보면 리팩터 한 번으로 이 가드가 조용히 눈이 먼다.
+ *
+ * 허브 목록 쪽은 정규식이 아니라 [SETTINGS_HUB_LINKS] **정본을 직접 import** 하므로,
+ * 두 목록 중 중요한 쪽은 소스 파싱에 기대지 않는다.
+ *
+ * ★남는 사각 — `to={SOME_CONST}` 처럼 상수로 뺀 형태는 못 잡는다. 그때는 아래
+ *  「계정 메뉴에서 설정 링크를 하나라도 찾았다」 단언이 먼저 red 가 되어 눈이 먼 것을 알린다.
  */
 function settingsLinksIn(source: string): Set<string> {
   const found = new Set<string>()
-  for (const m of source.matchAll(/to="(\/settings[^"]*)"/g)) {
+  for (const m of withoutComments(source).matchAll(/to=\{?['"](\/settings[^'"]*)['"]\}?/g)) {
     const dest = m[1]
     if (dest !== undefined) found.add(dest)
   }
@@ -29,7 +51,9 @@ function settingsLinksIn(source: string): Set<string> {
 /** 상단바의 `/settings` 링크가 좁은 폭에서 감춰져 있는지 — `max-md:hidden` 은 display:none 이다 */
 function topBarGearHiddenOnMobile(): boolean {
   const source = read('components/layout/TopBar.tsx')
-  const line = source.split('\n').find((l) => l.includes('to="/settings"'))
+  const line = withoutComments(source)
+    .split('\n')
+    .find((l) => l.includes('to="/settings"'))
   if (line === undefined) return true // 링크 자체가 없으면 모바일에서도 없는 것과 같다
   return line.includes('max-md:hidden')
 }
@@ -76,5 +100,14 @@ describe('설정 도달성 — 허브의 모든 항목이 모바일에서 UI 경
   it('허브 목록이 비어 있지 않다 (판별식이 공허하게 통과하는 것을 막는다)', () => {
     // 허브 목록이 0건이면 위 차집합은 항상 빈 배열이라 무엇을 지워도 초록이 된다.
     expect(SETTINGS_HUB_LINKS.length).toBeGreaterThan(0)
+  })
+
+  it('계정 메뉴 파싱이 설정 링크를 실제로 찾는다 (파서가 눈머는 것을 막는다)', () => {
+    // ★정규식이 표기를 못 따라가면 `settingsLinksIn` 이 조용히 빈 집합을 내고, 그러면 위
+    //   두 단언이 「톱니가 보인다」 분기로 빠지거나 차집합을 잘못 계산한다. 파서가 살아 있는지
+    //   여기서 먼저 잰다 — 링크를 상수로 빼는 리팩터가 오면 이 단언이 먼저 red 가 된다.
+    const links = settingsLinksIn(read('components/layout/AccountMenu.tsx'))
+    expect(links.size).toBeGreaterThan(0)
+    expect(links.has('/settings')).toBe(true)
   })
 })

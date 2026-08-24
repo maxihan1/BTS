@@ -10,6 +10,22 @@ function read(rel: string): string {
   return readFileSync(resolve(SRC, rel), 'utf-8')
 }
 
+/**
+ * 주석을 걷어낸 소스.
+ *
+ * 🛑 소스 텍스트 가드는 **주석에 적힌 예시**를 코드로 오인한다. 실측 — 이 파일의 백드롭 단언이
+ *    `ShellLayout.tsx` 의 주석에 든 `md:hidden` 을 맞춰, 백드롭을 `lg:hidden` 으로 바꿔도
+ *    초록이었다(뮤테이션 2건 모두 통과). 저장소가 반복해서 밟은 양식
+ *    (`invariant-satisfied-by-helptext-not-logic`)이라 여기서 한 번에 끊는다.
+ */
+function withoutComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '') // 블록 주석 · JSX 주석
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line)) // 줄 주석
+    .join('\n')
+}
+
 /** Tailwind 상한 변형(`max-<브레이크포인트>:`) — 이 중 우리가 쓰기로 한 경계는 하나뿐이다 */
 const MAX_VARIANT_RE = /\bmax-(sm|md|lg|xl|2xl):/g
 
@@ -40,7 +56,8 @@ function filesUsingMaxVariant(dir: string = SRC): string[] {
     }
     const rel = relative(SRC, abs)
     if (!isProductionSource(rel)) continue
-    if (new RegExp(MAX_VARIANT_RE.source).test(readFileSync(abs, 'utf-8'))) out.push(rel)
+    if (new RegExp(MAX_VARIANT_RE.source).test(withoutComments(readFileSync(abs, 'utf-8'))))
+      out.push(rel)
   }
   return out
 }
@@ -64,7 +81,9 @@ describe('사이드바 모바일 브레이크포인트 — JS 미디어쿼리와
     const offenders: string[] = []
     for (const rel of filesUsingMaxVariant()) {
       const used = new Set(
-        [...read(rel).matchAll(new RegExp(MAX_VARIANT_RE.source, 'g'))].map((m) => `max-${m[1]}`),
+        [...withoutComments(read(rel)).matchAll(new RegExp(MAX_VARIANT_RE.source, 'g'))].map(
+          (m) => `max-${m[1]}`,
+        ),
       )
       used.delete(MOBILE_TAILWIND_VARIANT)
       if (used.size > 0) offenders.push(`${rel} → ${[...used].join(' ')}`)
@@ -94,15 +113,26 @@ describe('사이드바 모바일 브레이크포인트 — JS 미디어쿼리와
   })
 
   it('Sidebar 는 max-md 오프캔버스 클래스를 실제로 싣는다 (판정만 있고 배치가 없는 공허 통과 차단)', () => {
-    const source = read('components/layout/Sidebar.tsx')
+    const source = withoutComments(read('components/layout/Sidebar.tsx'))
     expect(source).toContain(`${MOBILE_TAILWIND_VARIANT}:fixed`)
     expect(source).toContain(`${MOBILE_TAILWIND_VARIANT}:-translate-x-full`)
     // 닫힘에서 포커스가 화면 밖 링크로 새지 않도록 invisible 을 함께 건다.
     expect(source).toContain(`${MOBILE_TAILWIND_VARIANT}:invisible`)
   })
 
-  it('ShellLayout 백드롭은 데스크톱에서 렌더되지 않도록 md:hidden 을 단다', () => {
-    const source = read('components/layout/ShellLayout.tsx')
-    expect(source).toContain('md:hidden')
+  it('ShellLayout 백드롭의 데스크톱 차단 변형이 MOBILE_TAILWIND_VARIANT 와 짝을 이룬다', () => {
+    // 백드롭은 aside 와 **반대 방향**으로 같은 경계를 쓴다 — aside 는 `max-md:`(768 미만에서 켠다),
+    // 백드롭은 `md:hidden`(768 이상에서 끈다). 둘은 서로의 여집합이라 경계가 같아야 한다.
+    //
+    // 🛑 기대값을 리터럴 `'md:hidden'` 으로 적지 마라. 그러면 `MOBILE_TAILWIND_VARIANT` 를
+    //    `max-lg` 로 바꿨을 때 aside 단언 3개는 따라가는데 이 줄만 `md` 에 못박혀,
+    //    **경계가 갈라진 채로 초록**이 된다. 상수에서 파생시켜 둘이 함께 움직이게 한다.
+    const desktopVariant = MOBILE_TAILWIND_VARIANT.replace(/^max-/, '')
+    const source = withoutComments(read('components/layout/ShellLayout.tsx'))
+    expect(
+      source,
+      `백드롭이 \`${desktopVariant}:hidden\` 을 달지 않았다 — aside 의 ` +
+        `\`${MOBILE_TAILWIND_VARIANT}:\` 와 경계가 갈라진다.`,
+    ).toMatch(new RegExp(`(?<!max-)\\b${desktopVariant}:hidden`))
   })
 })

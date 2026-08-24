@@ -247,7 +247,7 @@ const F11_DISPATCH_CASES: readonly DispatchCase[] = [
   },
   {
     label: 'Escape → close-sidebar-drawer',
-    layer: 'app-shell',
+    layer: 'sidebar-drawer',
     action: { kind: 'close-sidebar-drawer' },
     withSpy: (spy) => ({ onCloseSidebarDrawer: spy }),
   },
@@ -287,6 +287,7 @@ describe('dispatchContextAction — F11 상세 액션 8종', () => {
     renderHook(() => useContextShortcuts('issue-detail', spies))
     renderHook(() => useContextShortcuts('issue-list', spies))
     renderHook(() => useContextShortcuts('app-shell', spies))
+    renderHook(() => useContextShortcuts('sidebar-drawer', spies))
 
     for (const shortcut of CONTEXT_SHORTCUTS) {
       const before = totalCalls()

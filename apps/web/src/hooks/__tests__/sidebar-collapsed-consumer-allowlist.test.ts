@@ -21,6 +21,38 @@ const SRC = resolve(__dirname, '../..')
  */
 const ALLOWED = new Set(['hooks/use-sidebar-collapsed.ts', 'hooks/use-sidebar-drawer.ts'])
 
+/**
+ * 이 모듈을 가리키는 **모든 표기**를 잡는다.
+ *
+ * 🛑 `from '...'` 만 보면 안 된다. 이 저장소에는 실제로
+ * 쌍따옴표 import(`components/ui/tabs.tsx` — `import * as React from "react"`)와
+ * 동적 import(`main.tsx` — `await import('./mocks/browser')`)가 **둘 다 존재한다.**
+ * 정적 `from` 만 매칭하면 그 두 표기로 우회가 가능하고, 그건 이 판별식이 막으려는 결함
+ * (「소비처 하나가 조용히 늘어난다」)이 다른 문법으로 재현되는 것일 뿐이다.
+ * 그래서 **모듈 지정자 문자열 자체**를 본다 — `from` · `import()` · `require()` 를 한 번에 덮는다.
+ *
+ * 대가는 주석 안에 `'…use-sidebar-collapsed'` 를 따옴표로 적으면 걸린다는 것이다.
+ * 가드는 **fail-closed** 가 맞으므로 그 오탐을 감수한다(백틱 표기는 걸리지 않는다).
+ */
+const MODULE_SPECIFIER_RE = /['"][^'"]*use-sidebar-collapsed['"]/
+
+/**
+ * 주석을 걷어낸 소스.
+ *
+ * 🛑 소스 텍스트 가드는 **주석에 적힌 예시**를 코드로 오인한다. 실측 — 이 파일의 백드롭 단언이
+ *    `ShellLayout.tsx` 의 주석에 든 `md:hidden` 을 맞춰, 백드롭을 `lg:hidden` 으로 바꿔도
+ *    초록이었다(뮤테이션 2건 모두 통과). 저장소가 반복해서 밟은 양식
+ *    (`invariant-satisfied-by-helptext-not-logic`)이라 여기서 한 번에 끊는다.
+ */
+function withoutComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '') // 블록 주석 · JSX 주석
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line)) // 줄 주석
+    .join('\n')
+}
+
+
 /** 테스트·스토리·목업은 대상이 아니다 — 스토어를 직접 세팅하는 것이 그쪽의 정당한 일이다 */
 function isProductionSource(rel: string): boolean {
   if (!/\.(ts|tsx)$/.test(rel)) return false
@@ -51,8 +83,7 @@ describe('use-sidebar-collapsed 직접 소비 허용목록', () => {
     const offenders: string[] = []
     for (const rel of productionSources()) {
       const source = readFileSync(resolve(SRC, rel), 'utf-8')
-      // 상대 경로(`../use-sidebar-collapsed`)와 별칭(`@/hooks/use-sidebar-collapsed`) 둘 다 잡는다
-      if (!/from '[^']*use-sidebar-collapsed'/.test(source)) continue
+      if (!MODULE_SPECIFIER_RE.test(withoutComments(source))) continue
       if (ALLOWED.has(rel.split(sep).join('/'))) continue
       offenders.push(rel)
     }
@@ -73,7 +104,8 @@ describe('use-sidebar-collapsed 직접 소비 허용목록', () => {
     for (const rel of ALLOWED) {
       const source = readFileSync(resolve(SRC, rel), 'utf-8')
       const consumesOrDefines =
-        /from '[^']*use-sidebar-collapsed'/.test(source) || rel.endsWith('use-sidebar-collapsed.ts')
+        MODULE_SPECIFIER_RE.test(withoutComments(source)) ||
+        rel.endsWith('use-sidebar-collapsed.ts')
       expect(consumesOrDefines, `허용목록 항목이 죽어 있다: ${rel}`).toBe(true)
     }
   })

@@ -32,12 +32,50 @@ describe('CONTEXT_SHORTCUTS 레지스트리', () => {
     ])
   })
 
+  it('★드로어가 닫혀 있으면 Escape 는 판별되지 않는다 (usePaneEscapeClose 생존 조건)', () => {
+    // 🛑 이 테스트가 이 PR 의 가장 비싼 교훈이다. Escape 를 `app-shell` 에 두었더니 인증된
+    //    모든 화면에서 hit 이 됐고, 파이프라인이 dispatch **전에** 거는 `preventDefault()` 가
+    //    후행 bubble 리스너(`routes/issues.$key.tsx` 의 `usePaneEscapeClose`)를 죽여
+    //    split view 우측 pane 이 Esc 로 안 닫혔다. 핸들러가 무동작인 것은 소용이 없다 —
+    //    **판별이 hit 이면 이미 늦다.**
+    //    e2e 704건이 이걸 통과한 이유는 「Esc 가 pane 을 닫는다」를 재는 스펙이 없어서다.
+    const registered = new Set<ShortcutContext>(['issue-detail', 'issue-list', 'app-shell'])
+    expect(resolveContextKeydown('Escape', 'issue-detail', registered)).toBeNull()
+    expect(resolveContextKeydown('Escape', 'app-shell', registered)).toBeNull()
+  })
+
+  it('드로어가 열려 레이어가 등록되면 Escape 가 드로어 닫기로 판별된다 (양성 대조군)', () => {
+    // 위 음성 단언만 두면 「Escape 를 레지스트리에서 통째로 지워도」 초록이다.
+    const registered = new Set<ShortcutContext>([
+      'sidebar-drawer',
+      'issue-detail',
+      'issue-list',
+      'app-shell',
+    ])
+    expect(resolveContextKeydown('Escape', 'sidebar-drawer', registered)).toEqual({
+      layer: 'sidebar-drawer',
+      action: { kind: 'close-sidebar-drawer' },
+    })
+  })
+
+  it('드로어가 열려 있어도 `[`·`j` 는 그대로 산다 (체인에서 넓은 레이어를 빼지 않았다)', () => {
+    const registered = new Set<ShortcutContext>([
+      'sidebar-drawer',
+      'issue-list',
+      'app-shell',
+    ])
+    expect(resolveContextKeydown('[', 'sidebar-drawer', registered)?.layer).toBe('app-shell')
+    expect(resolveContextKeydown('j', 'sidebar-drawer', registered)?.layer).toBe('issue-list')
+  })
+
   it('각 항목이 key·context·description·action 을 모두 채운다', () => {
     for (const shortcut of CONTEXT_SHORTCUTS) {
       expect(shortcut.key).toBeTruthy()
       expect(shortcut.description).toBeTruthy()
       expect(shortcut.action.kind).not.toBe('none')
-      expect(['issue-detail', 'issue-list', 'app-shell']).toContain(shortcut.context)
+      expect(['issue-detail', 'issue-list', 'app-shell', 'sidebar-drawer']).toContain(
+        shortcut.context,
+      )
     }
   })
 
