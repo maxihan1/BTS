@@ -48,14 +48,52 @@ function settingsLinksIn(source: string): Set<string> {
   return found
 }
 
+/** `/settings` **루트** 링크 한 개를 가리키는 표기. `.test`/`.search` 에 쓰므로 `g` 를 붙이지 않는다 */
+const SETTINGS_ROOT_LINK = /to=\{?['"]\/settings['"]\}?/
+
+/**
+ * [needle] 을 품은 JSX **여는 태그 전체**를 돌려준다. 없으면 undefined.
+ *
+ * 🛑 줄 단위로 찾으면 안 된다 — 실측. `TopBar.tsx` 의 그 줄은 106자이고 `apps/web/.prettierrc`
+ *    의 `printWidth` 는 100 이라 prettier 를 **한 번만 돌려도** 속성이 여러 줄로 갈라진다.
+ *    그러면 `to="/settings"` 가 든 줄에 `className` 이 없어 「감춰져 있지 않다」로 뒤집히고,
+ *    아래 도달성 단언 2개가 통째로 공허하게 초록이 된다(리뷰 C4). 포매터 한 번에 눈머는
+ *    가드는 가드가 아니다.
+ *
+ * 속성값의 따옴표와 중괄호 깊이를 세므로 `onClick={() => …}` 의 `>` 를 태그 끝으로 오인하지 않는다
+ * (화살표는 항상 중괄호 안이라 깊이가 0 이 아니다).
+ */
+function jsxOpeningTagContaining(source: string, needle: RegExp): string | undefined {
+  const clean = withoutComments(source)
+  const hit = clean.search(needle)
+  if (hit < 0) return undefined
+  const start = clean.lastIndexOf('<', hit)
+  if (start < 0) return undefined
+
+  let depth = 0
+  let quote: string | undefined
+  for (let i = start; i < clean.length; i += 1) {
+    const c = clean[i]
+    if (quote !== undefined) {
+      if (c === quote) quote = undefined
+    } else if (c === '"' || c === "'" || c === '`') {
+      quote = c
+    } else if (c === '{') {
+      depth += 1
+    } else if (c === '}') {
+      depth -= 1
+    } else if (c === '>' && depth === 0) {
+      return clean.slice(start, i + 1)
+    }
+  }
+  return undefined
+}
+
 /** 상단바의 `/settings` 링크가 좁은 폭에서 감춰져 있는지 — `max-md:hidden` 은 display:none 이다 */
 function topBarGearHiddenOnMobile(): boolean {
-  const source = read('components/layout/TopBar.tsx')
-  const line = withoutComments(source)
-    .split('\n')
-    .find((l) => l.includes('to="/settings"'))
-  if (line === undefined) return true // 링크 자체가 없으면 모바일에서도 없는 것과 같다
-  return line.includes('max-md:hidden')
+  const tag = jsxOpeningTagContaining(read('components/layout/TopBar.tsx'), SETTINGS_ROOT_LINK)
+  if (tag === undefined) return true // 링크 자체가 없으면 모바일에서도 없는 것과 같다
+  return tag.includes('max-md:hidden')
 }
 
 describe('설정 도달성 — 허브의 모든 항목이 모바일에서 UI 경로로 닿는다', () => {
@@ -93,7 +131,8 @@ describe('설정 도달성 — 허브의 모든 항목이 모바일에서 UI 경
       unreachable,
       `설정 허브 항목 ${unreachable.length}개가 모바일에서 도달 불가다:\n` +
         `${unreachable.join('\n')}\n` +
-        '허브 목록은 `routes/settings.index.tsx` 의 SETTINGS_HUB_LINKS 가 정본이다.',
+        '허브 목록은 `@/lib/settings-hub-links` 의 SETTINGS_HUB_LINKS 가 정본이다 ' +
+        '(`routes/settings.index.tsx` 는 그것을 import 하는 소비처다).',
     ).toEqual([])
   })
 
@@ -109,5 +148,38 @@ describe('설정 도달성 — 허브의 모든 항목이 모바일에서 UI 경
     const links = settingsLinksIn(read('components/layout/AccountMenu.tsx'))
     expect(links.size).toBeGreaterThan(0)
     expect(links.has('/settings')).toBe(true)
+  })
+
+  it('톱니 판정이 prettier 리플로우에 눈멀지 않는다 (줄 단위 파싱 금지)', () => {
+    // ★이 판별식이 존재하는 이유(실측). `topBarGearHiddenOnMobile` 은 한때 `to="/settings"` 가
+    //   **든 줄 하나**만 보고 그 줄에 `max-md:hidden` 이 있는지 물었다. 그런데 `TopBar.tsx` 의
+    //   그 줄은 106자이고 `.prettierrc` 의 printWidth 는 100 이다 — 포매터를 한 번 돌리면
+    //   속성이 갈라져 판정이 false 로 뒤집히고, 위 도달성 단언 2개가 통째로 공허해졌다.
+    //   백스톱이 우연이면 백스톱이 아니다. 갈라진 형태를 여기 못박는다.
+    const reflowed = [
+      '      <Link',
+      '        to="/settings"',
+      '        className="rounded-md p-1.5 hover:bg-accent max-md:hidden"',
+      '        aria-label="설정"',
+      '      >',
+    ].join('\n')
+
+    const tag = jsxOpeningTagContaining(reflowed, SETTINGS_ROOT_LINK)
+    expect(tag, '여러 줄로 갈라진 `<Link>` 여는 태그를 찾지 못했다 — 파서가 줄 단위로 돌아갔다.').toBeDefined()
+    expect(
+      tag?.includes('max-md:hidden'),
+      '갈라진 태그에서 `max-md:hidden` 을 놓쳤다. 이 상태에서는 톱니가 모바일에 보인다고 ' +
+        '오판해 도달성 단언 2개가 조용히 통과한다.',
+    ).toBe(true)
+  })
+
+  it('상단바 톱니 태그를 실제로 찾는다 (파서 비-공허)', () => {
+    // 갈라진 합성 소스만 재면 「실제 파일에서는 못 찾는다」를 놓친다. 실물도 함께 잰다.
+    const tag = jsxOpeningTagContaining(read('components/layout/TopBar.tsx'), SETTINGS_ROOT_LINK)
+    expect(
+      tag,
+      '`TopBar.tsx` 에서 `/settings` 링크 태그를 찾지 못했다. 톱니를 없앴다면 이 파일의 ' +
+        '도달성 계약을 다시 읽어라 — 계정 메뉴가 유일한 허브 진입로가 된다.',
+    ).toBeDefined()
   })
 })
