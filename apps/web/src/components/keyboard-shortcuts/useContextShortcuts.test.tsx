@@ -245,6 +245,12 @@ const F11_DISPATCH_CASES: readonly DispatchCase[] = [
     action: { kind: 'open-command-palette' },
     withSpy: (spy) => ({ onOpenCommandPalette: spy }),
   },
+  {
+    label: 'Escape → close-sidebar-drawer',
+    layer: 'app-shell',
+    action: { kind: 'close-sidebar-drawer' },
+    withSpy: (spy) => ({ onCloseSidebarDrawer: spy }),
+  },
 ]
 
 describe('dispatchContextAction — F11 상세 액션 8종', () => {
@@ -273,6 +279,7 @@ describe('dispatchContextAction — F11 상세 액션 8종', () => {
       onToggleFavorite: vi.fn(),
       onToggleWatch: vi.fn(),
       onOpenCommandPalette: vi.fn(),
+      onCloseSidebarDrawer: vi.fn(),
     } satisfies Required<ContextShortcutHandlers>
     const totalCalls = (): number =>
       Object.values(spies).reduce((sum, spy) => sum + spy.mock.calls.length, 0)

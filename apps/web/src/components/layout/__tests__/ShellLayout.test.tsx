@@ -411,4 +411,35 @@ describe('ShellLayout', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it('Escape 는 열린 드로어를 닫는다 (F24 · D7)', () => {
+    // 백드롭이 본문을 시각적으로 덮는 순간 이 UI 는 모달로 읽힌다 — 포인터로 빠져나갈 수
+    // 있으면 키보드로도 빠져나갈 수 있어야 한다. 새 전역 리스너를 달지 않고
+    // `CONTEXT_SHORTCUTS` 의 `app-shell` 항목으로 등록하는 것이 ADR D-2 의 정식 경로다.
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    useSidebarDrawer.setState({ open: true })
+    renderShell()
+
+    act(() => {
+      dispatchContextAction({ layer: 'app-shell', action: { kind: 'close-sidebar-drawer' } })
+    })
+
+    expect(useSidebarDrawer.getState().open).toBe(false)
+  })
+
+  it('드로어가 닫혀 있으면 Escape 는 무동작이다 (다른 화면의 Escape 를 삼키지 않는다)', () => {
+    // Escape 는 다이얼로그 닫기 등 다른 곳에서도 눌린다. 드로어가 닫힌 상태에서
+    // 관측되는 변화가 없어야 이 등록이 남의 Escape 를 빼앗지 않는다.
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    useSidebarDrawer.setState({ open: false })
+    useSidebarCollapsed.setState({ collapsed: false })
+    renderShell()
+
+    act(() => {
+      dispatchContextAction({ layer: 'app-shell', action: { kind: 'close-sidebar-drawer' } })
+    })
+
+    expect(useSidebarDrawer.getState().open).toBe(false)
+    expect(useSidebarCollapsed.getState().collapsed).toBe(false)
+  })
 })

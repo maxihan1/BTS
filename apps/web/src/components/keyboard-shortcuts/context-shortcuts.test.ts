@@ -12,8 +12,8 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CONTEXT_SHORTCUTS 레지스트리', () => {
-  it('13종(F10 목록·셸 5 + F11 상세 액션 8)이 순서대로 등록돼 있다', () => {
-    expect(CONTEXT_SHORTCUTS).toHaveLength(13)
+  it('14종(F10 목록·셸 5 + F11 상세 액션 8 + F24 드로어 닫기 1)이 순서대로 등록돼 있다', () => {
+    expect(CONTEXT_SHORTCUTS).toHaveLength(14)
     expect(CONTEXT_SHORTCUTS.map((s) => s.key)).toEqual([
       'j',
       'k',
@@ -28,6 +28,7 @@ describe('CONTEXT_SHORTCUTS 레지스트리', () => {
       's',
       'w',
       '.',
+      'Escape',
     ])
   })
 
