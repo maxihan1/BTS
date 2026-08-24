@@ -217,20 +217,64 @@ describe('전환 정의 CRUD', () => {
   })
 })
 
-describe('WorkflowAdminApiError — RFC 7807 code 보존', () => {
-  it('409 의 code 를 errorCode 로 남긴다', async () => {
+describe('경로 파라미터 인코딩 — confused deputy 차단', () => {
+  it('워크플로우 키의 슬래시가 경로 세그먼트를 뚫지 못한다', async () => {
+    // `workflowKey` 는 URL 경로에서 그대로 온다. 인코딩이 없으면 `../../users` 가
+    // 그대로 박히고 fetch 가 `..` 를 정규화해 **다른 자원**으로 요청이 나간다.
+    let hit = false
+    server.use(
+      http.put('/api/v1/workflows/:key', () => {
+        hit = true
+        return HttpResponse.json({ data: null })
+      }),
+      http.put('/api/users/:id', () => HttpResponse.json({ data: null })),
+    )
+    await updateWorkflow('../../users/victim', { name: 'x', description: null })
+    expect(hit).toBe(true)
+  })
+
+  it('상태 id 와 전환 id 도 인코딩된다', async () => {
+    let seen = ''
+    server.use(
+      http.delete('/api/v1/workflows/:key/statuses/:statusId', ({ params }) => {
+        seen = String(params['statusId'])
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    await removeWorkflowStatus('custom', '../evil')
+    expect(seen).toBe('../evil')
+  })
+})
+
+describe('WorkflowAdminApiError — 중첩 봉투 code 보존', () => {
+  it('409 의 error.code 를 errorCode 로, error.message 를 detail 로 남긴다', async () => {
+    // 백엔드 핸들러 4종은 전부 `ErrorResponse(error = ErrorBody(code, message))` 다.
+    // 평면 RFC 7807 은 **스킴** 핸들러 전용이고 필드명도 `errorCode` 로 다르다.
     server.use(
       http.delete('/api/v1/workflows/custom', () =>
-        HttpResponse.json({ code: 'WORKFLOW_IN_USE', detail: '스킴이 참조 중' }, { status: 409 }),
+        HttpResponse.json({ error: { code: 'WORKFLOW_IN_USE', message: '스킴이 참조 중' } }, { status: 409 }),
       ),
     )
     await expect(deleteWorkflow('custom')).rejects.toMatchObject({
       status: 409,
       errorCode: 'WORKFLOW_IN_USE',
+      detail: '스킴이 참조 중',
     })
   })
 
-  it('code 가 없는 응답은 UNKNOWN 으로 떨어진다', async () => {
+  it('평면 봉투를 주면 UNKNOWN 으로 떨어진다 — 파서가 형태를 실제로 가린다', async () => {
+    // 처음에 평면 파서를 쓰다 잡혔다. `z.object` 는 모르는 키를 버리고 `.default()` 가
+    // 빈 자리를 메우므로 **safeParse 가 성공한다** — 실패가 아니라 조용히 UNKNOWN 이 됐다.
+    // 이 단언이 그 방향(중첩 파서에 평면을 주면 UNKNOWN)을 고정한다.
+    server.use(
+      http.delete('/api/v1/workflows/custom', () =>
+        HttpResponse.json({ code: 'WORKFLOW_IN_USE', detail: '스킴이 참조 중' }, { status: 409 }),
+      ),
+    )
+    await expect(deleteWorkflow('custom')).rejects.toMatchObject({ errorCode: 'UNKNOWN' })
+  })
+
+  it('본문이 아예 없는 응답도 UNKNOWN 으로 떨어진다', async () => {
     server.use(http.delete('/api/v1/workflows/custom', () => new HttpResponse(null, { status: 500 })))
     await expect(deleteWorkflow('custom')).rejects.toBeInstanceOf(WorkflowAdminApiError)
   })

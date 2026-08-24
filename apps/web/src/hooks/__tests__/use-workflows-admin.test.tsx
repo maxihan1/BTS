@@ -99,12 +99,18 @@ describe('mutation 실패 — 사유별 토스트', () => {
   it('전환이 가리키는 상태를 빼려 하면 전환 때문이라고 알린다', async () => {
     server.use(
       http.delete(`/api/v1/workflows/custom/statuses/${STATUS_ID}`, () =>
-        HttpResponse.json({ code: 'WORKFLOW_STATUS_REFERENCED_BY_TRANSITION', detail: '' }, { status: 409 }),
+        // 백엔드와 같은 중첩 봉투. 평면으로 적으면 파서가 UNKNOWN 으로 떨어뜨린다.
+        HttpResponse.json(
+          { error: { code: 'WORKFLOW_STATUS_REFERENCED_BY_TRANSITION', message: '전환 「검토 요청」이 사용 중' } },
+          { status: 409 },
+        ),
       ),
     )
     const { result } = renderHook(() => useRemoveWorkflowStatus('custom'), { wrapper: wrapper(newClient()) })
     result.current.mutate(STATUS_ID)
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toContain('전환')
+    // 백엔드가 실어 보낸 「막은 전환 이름」을 버리지 않는다
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toContain('검토 요청')
   })
 })

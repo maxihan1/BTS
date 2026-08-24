@@ -10,9 +10,15 @@ import {
   nextTransitionId,
 } from './workflow-admin-fixtures'
 
-/** RFC 7807 형태로 실패를 돌려준다 — 프론트 `WorkflowAdminApiError` 가 `code` 를 읽는다. */
-function problem(status: number, code: string, detail: string): HttpResponse {
-  return HttpResponse.json({ code, detail }, { status })
+/**
+ * 백엔드와 **같은 중첩 봉투**로 실패를 돌려준다.
+ *
+ * ★ 종전에는 평면 `{ code, detail }` 이었다. 백엔드 핸들러 4종은 전부
+ * `ErrorResponse(error = ErrorBody(code, message))` 인데 목만 평면이라, 목·테스트·클라이언트
+ * 셋이 서로만 보고 **서버를 한 번도 안 보는** 상태였다. 그 어긋남은 프로덕션에서만 드러난다.
+ */
+function problem(status: number, code: string, message: string): HttpResponse {
+  return HttpResponse.json({ error: { code, message } }, { status })
 }
 
 /** 출발 상태가 없는 전환(GLOBAL·INITIAL)의 key — 백엔드 계산 규칙과 1:1 */
