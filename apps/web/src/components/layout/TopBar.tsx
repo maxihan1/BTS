@@ -3,7 +3,7 @@ import { useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen, Search, Plus, HelpCircle, Settings } from 'lucide-react'
 import { navLabels } from '@/i18n/nav-labels'
-import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarToggle, useSidebarShown } from '@/hooks/use-sidebar-drawer'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
 import { toast } from 'sonner'
 import { issueCreateStrings } from '@/i18n/ko'
@@ -44,7 +44,10 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   // FR-12 — 생성 모달을 제자리에서 연다 (URL 불변)
   const [createOpen, setCreateOpen] = useState(false)
   const navigate = useNavigate()
-  const { collapsed, toggle } = useSidebarCollapsed()
+  // 🛑 `useSidebarCollapsed().toggle` 직접 사용 금지 — 모바일에서 무동작 버튼이 된다.
+  //    폭에 따른 대상 선택·표시 방향은 `use-sidebar-drawer` 훅 두 개가 소유한다.
+  const toggle = useSidebarToggle()
+  const sidebarShown = useSidebarShown()
 
   // FR-UX-12 F13 — 상단바 전역 검색. 제출 시에만 이동하고 입력 자체는 네트워크를 부르지 않는다(NFR2).
   const [query, setQuery] = useState('')
@@ -78,20 +81,27 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         variant="ghost"
         size="icon-sm"
         className="rounded-md hover:bg-accent"
-        aria-label={collapsed ? navLabels.expandSidebar : navLabels.collapseSidebar}
+        aria-label={sidebarShown ? navLabels.collapseSidebar : navLabels.expandSidebar}
         onClick={toggle}
       >
-        {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+        {sidebarShown ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
       </Button>
 
+      {/* 모바일(max-md)에서는 워드마크 텍스트만 감춘다 — A 마크는 남겨 홈 링크를 잃지 않는다.
+          🛑 `Atlas` 를 DOM 에서 빼지 마라. `getByRole('link', { name: 'Atlas' })` 계약이 깨진다.
+             `sr-only` 는 접근가능 이름을 보존한 채 자리만 돌려준다. */}
       <Link to="/dashboards" className="ml-1 flex items-center gap-1.5 text-sm font-semibold text-foreground">
         <span className="flex size-6 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground">
           A
         </span>
-        Atlas
+        <span className="max-md:sr-only">Atlas</span>
       </Link>
 
-      <ProjectSwitcher />
+      {/* 프로젝트 전환기는 모바일에서 감춘다 — 390px 에 4개 컨트롤이 다 들어가지 않는다.
+          같은 전환 경로가 사이드바 드로어의 `ProjectTree` 에 있어 기능이 사라지지 않는다. */}
+      <div className="max-md:hidden">
+        <ProjectSwitcher />
+      </div>
 
       {/* 폭은 남는 공간을 먹되 상·하한을 둔다 (design 리뷰 G2/G4).
           - flex-1  : 남는 공간을 먹는다. ★헤더에서 **유일한** grow 요소여야 한다 (아래 참조)
@@ -138,11 +148,13 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         type="button"
         variant="default"
         size="default"
-        className="ml-auto gap-1 rounded-md px-3 hover:bg-primary/90"
+        className="ml-auto gap-1 rounded-md px-3 hover:bg-primary/90 max-md:px-2"
         onClick={() => { setCreateOpen(true) }}
       >
         <Plus className="size-4" />
-        {navLabels.create}
+        {/* 모바일은 아이콘만 — 컨트롤 종류(button)는 그대로라 §계약 「컨트롤 종류 불변」에 걸리지
+            않는다. `sr-only` 라 접근가능 이름 「만들기」도 폭과 무관하게 유지된다. */}
+        <span className="max-md:sr-only">{navLabels.create}</span>
       </Button>
 
       {/* 생성 모달 — 제자리에서 연다. 보드를 보던 사용자가 이슈 하나 만들려다
@@ -177,7 +189,13 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         </Button>
       )}
 
-      <Link to="/settings" className="rounded-md p-1.5 hover:bg-accent" aria-label="설정">
+      {/* 설정 톱니는 모바일에서 감춘다 — 같은 허브 진입점이 **계정 메뉴의 「모든 설정」**에 있다.
+          🛑 「사이드바에도 있다」고 적지 마라 — 거짓이다. 사이드바 관리 메뉴는 `isSystemAdmin`
+             전용이고 `/settings` 루트를 링크하지 않는다. 한때 그 거짓 근거로 이 톱니를 감췄다가
+             `password`·`sessions`·`notifications`·`account-links` 4개가 모바일에서 도달
+             불가가 됐다. 계정 메뉴의 그 항목을 지우면 이 `max-md:hidden` 도 함께 없애야 한다 —
+             짝 판별식 = `__tests__/settings-reachability.test.ts` 가 그 조합을 red 로 잡는다. */}
+      <Link to="/settings" className="rounded-md p-1.5 hover:bg-accent max-md:hidden" aria-label="설정">
         <Settings className="size-4" />
       </Link>
 

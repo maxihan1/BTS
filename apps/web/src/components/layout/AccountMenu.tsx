@@ -96,7 +96,10 @@ export function AccountMenu() {
                   </span>
                 )}
               </span>
-              <span>{accountLabel}</span>
+              {/* 모바일에서는 이름을 감춘다 — 아바타만으로 계정 메뉴임이 드러나고, 이 텍스트가
+                  390px 헤더에서 마지막 2px 를 넘겨 문서 전체에 가로 스크롤을 만든다(실측).
+                  이 span 은 `aria-hidden` 래퍼 안이라 접근가능 이름은 트리거의 aria-label 이 쥔다. */}
+              <span className="max-md:hidden">{accountLabel}</span>
               {oooActive && (
                 <span
                   title={oooReturnDate !== null ? `${oooLabels.headerBadgeReturnPrefix}: ${oooReturnDate}` : undefined}
@@ -111,6 +114,17 @@ export function AccountMenu() {
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => { setStatusOpen(true) }}>상태 설정</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => { setOooOpen(true) }}>{oooLabels.accountMenuItem}</DropdownMenuItem>
+          {/* 🛑 이 항목을 지우지 마라 — 모바일에서 설정 허브로 가는 **유일한** 길이다.
+              상단바 설정 톱니는 `max-md:hidden` 이고, 사이드바 관리 메뉴는 `isSystemAdmin`
+              전용이다. 아래 개별 링크는 허브 11개 중 7개만 덮으므로, 이 줄이 없으면
+              `notifications`·`sessions`·`password`·`account-links` 가 좁은 폭에서 도달
+              불가가 된다(비밀번호 변경·세션 종료는 보안 기능이다).
+              목록 맨 앞에 두는 것도 의도다 — 모바일에서는 이것이 4개 페이지의 유일한 경로라
+              발견 가능성이 관례보다 우선한다. 짝 판별식 = `settings-reachability.test.ts`. */}
+          <DropdownMenuItem asChild>
+            <Link to="/settings">모든 설정</Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link to="/settings/profile">프로필</Link>
           </DropdownMenuItem>
