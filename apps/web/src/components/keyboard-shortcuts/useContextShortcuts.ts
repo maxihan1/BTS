@@ -92,9 +92,11 @@ export const useContextShortcutsStore = create<ContextShortcutsState>((set) => (
  * 우선순위 밖으로 떨어져 영영 활성이 되지 않는다.
  */
 const CONTEXT_PRIORITY: Record<ShortcutContext, number> = {
-  'issue-detail': 0,
-  'issue-list': 1,
-  'app-shell': 2,
+  // 드로어가 열려 있으면 화면에서 가장 안쪽 표면이다 — 상세보다도 좁다.
+  'sidebar-drawer': 0,
+  'issue-detail': 1,
+  'issue-list': 2,
+  'app-shell': 3,
 }
 
 /** 좁은 순으로 정렬된 컨텍스트 목록 — 판정에서 앞에서부터 훑는다 */

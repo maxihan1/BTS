@@ -114,9 +114,6 @@ export function ShellLayout(): JSX.Element {
     'app-shell',
     {
       onToggleSidebar: toggleSidebar,
-      // F24 — 드로어가 닫혀 있으면 `setDrawerOpen(false)` 는 무동작이라, 다른 화면에서
-      // Escape 를 눌러도 관측되는 변화가 없다. 그래서 조건 분기를 두지 않는다.
-      onCloseSidebarDrawer: () => { setDrawerOpen(false) },
       // ★`.` 은 **여는 것만** 한다(토글이 아니다). 팔레트가 열리면 입력창이 포커스를
       // 가져가고 판별 파이프라인의 `shouldIgnoreEvent` 가 input 안의 키를 통과시키므로
       // `.` 로는 닫히지 않는다(E3) — 마침표를 검색어로 칠 수 있어야 한다. 닫기는 `Esc`.
@@ -124,6 +121,21 @@ export function ShellLayout(): JSX.Element {
       onOpenCommandPalette: () => setCommandPaletteOpen(true),
     },
     isAuthenticated,
+  )
+
+  // F24 — Escape 로 드로어 닫기. **드로어가 열려 있을 때만 등록한다.**
+  //
+  // 🛑 이 `enabled` 인자를 `isAuthenticated` 로 넓히지 마라. 판별 파이프라인은 hit 이면
+  //    dispatch **전에** 무조건 `preventDefault()` 를 걸고, 후행 bubble 리스너
+  //    (`routes/issues.$key.tsx` 의 `usePaneEscapeClose`)는 `defaultPrevented` 를 존중해
+  //    조용히 건너뛴다. 그래서 「핸들러가 무동작이니 괜찮다」가 성립하지 않는다 — 실제로
+  //    그렇게 두었다가 split view 우측 pane 이 Esc 로 안 닫히는 회귀를 만들었다(리뷰 B1).
+  //    **등록 자체가 게이트**다. 짝 판별식 = `context-shortcuts.test.ts` 의
+  //    「드로어가 닫혀 있으면 Escape 는 판별되지 않는다」.
+  useContextShortcuts(
+    'sidebar-drawer',
+    { onCloseSidebarDrawer: () => { setDrawerOpen(false) } },
+    isAuthenticated && drawerOpen,
   )
 
   if (!isAuthenticated) {

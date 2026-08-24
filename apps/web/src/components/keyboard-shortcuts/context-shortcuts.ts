@@ -15,8 +15,16 @@
  * - `issue-detail`: 이슈 상세 — 상세 액션(담당자·댓글·라벨 등)
  * - `issue-list`: 이슈 목록(`/issues`) — 목록 항법 `j`/`k`/`o`/`t`
  * - `app-shell`: 인증된 셸이 렌더된 모든 화면 — 사이드바 토글 `[`
+ * - `sidebar-drawer`: 모바일 드로어가 **열려 있는 동안만** — `Escape` 로 닫기
+ *
+ * ★`sidebar-drawer` 를 `app-shell` 과 나눈 이유(실측 회귀). `Escape` 를 `app-shell` 에 두면
+ *  인증된 모든 화면에서 Escape 가 hit 이 되고, 파이프라인이 dispatch **전에** 무조건
+ *  `preventDefault()` 를 건다. 그 결과 `defaultPrevented` 를 존중하는 후행 bubble 리스너
+ *  (`routes/issues.$key.tsx` 의 `usePaneEscapeClose`)가 죽어 split view 우측 pane 이
+ *  Esc 로 안 닫혔다. 핸들러가 무동작이어도 **판별이 hit 이면 이미 늦다** —
+ *  등록 자체를 게이트로 써야 한다.
  */
-export type ShortcutContext = 'issue-detail' | 'issue-list' | 'app-shell'
+export type ShortcutContext = 'issue-detail' | 'issue-list' | 'app-shell' | 'sidebar-drawer'
 
 /**
  * 컨텍스트 단축키가 발화했을 때 호출부가 실행할 동작 — 판별 유니온.
@@ -161,13 +169,15 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
     action: { kind: 'open-command-palette' },
   },
   // ★F24 — 모바일 드로어는 백드롭으로 본문을 덮으므로 포인터 사용자에게는 모달로 읽힌다.
-  //   키보드로도 같은 방식으로 빠져나갈 수 있어야 한다. 드로어가 닫혀 있으면 무동작이라
-  //   다른 화면에서 Escape 를 눌러도 관측되는 변화가 없다.
+  //   키보드로도 같은 방식으로 빠져나갈 수 있어야 한다.
+  //   🛑 이 항목을 `app-shell` 로 옮기지 마라 — 그러면 인증된 모든 화면의 Escape 가 hit 이 되고
+  //      파이프라인이 dispatch 전에 preventDefault 를 걸어 `usePaneEscapeClose` 가 죽는다(실측).
+  //      드로어가 열린 동안에만 이 레이어가 **등록**되는 것이 유일한 안전 장치다.
   //   🛑 이걸 위해 셸 컴포넌트에 전역 키 리스너를 새로 달지 마라 — ADR D-2 가 리스너 소유자를
   //      허용목록으로 봉인했고, 여기 **등록**하는 것이 그 ADR 이 지정한 유일한 정식 경로다.
   {
     key: 'Escape',
-    context: 'app-shell',
+    context: 'sidebar-drawer',
     description: '모바일 사이드바 드로어 닫기',
     action: { kind: 'close-sidebar-drawer' },
   },
@@ -180,6 +190,9 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
  * 반대로 `app-shell` 만 활성인 화면에서 `j` 는 발화하지 않는다(E12).
  */
 const CONTEXT_LAYERS: Record<ShortcutContext, readonly ShortcutContext[]> = {
+  // ★드로어가 열려 있어도 `[`·`j`/`k` 는 살아야 한다 — 체인에서 나머지를 빼면 드로어를 연
+  //   순간 셸·목록 항법이 통째로 죽는다. 등록되지 않은 레이어는 `registered` 가 걸러낸다.
+  'sidebar-drawer': ['sidebar-drawer', 'issue-detail', 'issue-list', 'app-shell'],
   // ★상세가 활성이어도 목록 항법이 살아 있어야 한다. 와이드 split view 는 목록과
   // 상세가 **동시 마운트**라(`issues.index.tsx` 우측 페인), 상세를 좁다는 이유로 단독
   // 활성으로 두면 F10 이 만든 `j`/`k` 가 그 화면에서만 죽는다(S9).
