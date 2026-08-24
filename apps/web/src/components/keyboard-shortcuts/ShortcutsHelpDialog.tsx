@@ -188,6 +188,11 @@ function buildHelpGroups(keymap: Keymap): readonly HelpGroup[] {
         })),
         PALETTE_HELP_ITEM,
         ...contextItems('app-shell'),
+        // ★`sidebar-drawer` 를 별도 그룹으로 빼지 않는다 — 모바일에서만 살아 있는 한 줄이라
+        //   전용 섹션을 두면 데스크톱 사용자에게 빈 그룹처럼 읽힌다. 전역 그룹에 함께 싣는다.
+        //   🛑 새 `ShortcutContext` 를 만들면 여기에도 실어야 한다 — 안 실으면 그 키가 도움말에서
+        //      조용히 사라진다. 짝 판별식 = 이 파일 테스트의 「모든 컨텍스트가 어느 그룹엔가 실린다」.
+        ...contextItems('sidebar-drawer'),
       ],
     },
     { id: 'issue-list', label: '이슈 목록에서', items: contextItems('issue-list') },

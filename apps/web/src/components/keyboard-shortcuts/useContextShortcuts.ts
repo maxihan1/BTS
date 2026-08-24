@@ -27,6 +27,8 @@ export interface ContextShortcutHandlers {
   readonly onToggleDetailPane?: () => void
   /** 사이드바 접기/펼치기 */
   readonly onToggleSidebar?: () => void
+  /** 모바일 사이드바 드로어 닫기 (F24 `Escape`) — 드로어가 닫혀 있으면 무동작 */
+  readonly onCloseSidebarDrawer?: () => void
   /** 담당자 선택 컨트롤로 포커스 이동 (F11 `a`) */
   readonly onFocusAssignee?: () => void
   /** 담당자를 나로 지정, 이미 나면 해제 (F11 `i`) */
@@ -90,9 +92,11 @@ export const useContextShortcutsStore = create<ContextShortcutsState>((set) => (
  * 우선순위 밖으로 떨어져 영영 활성이 되지 않는다.
  */
 const CONTEXT_PRIORITY: Record<ShortcutContext, number> = {
-  'issue-detail': 0,
-  'issue-list': 1,
-  'app-shell': 2,
+  // 드로어가 열려 있으면 화면에서 가장 안쪽 표면이다 — 상세보다도 좁다.
+  'sidebar-drawer': 0,
+  'issue-detail': 1,
+  'issue-list': 2,
+  'app-shell': 3,
 }
 
 /** 좁은 순으로 정렬된 컨텍스트 목록 — 판정에서 앞에서부터 훑는다 */
@@ -178,6 +182,9 @@ export function dispatchContextAction(hit: ContextShortcutHit): void {
     case 'toggle-sidebar':
       target?.onToggleSidebar?.()
       return
+    case 'close-sidebar-drawer':
+      target?.onCloseSidebarDrawer?.()
+      return
     case 'focus-assignee':
       target?.onFocusAssignee?.()
       return
@@ -249,6 +256,7 @@ function mirrorLatestHandlers(ref: {
     onToggleFavorite: () => ref.current.onToggleFavorite?.(),
     onToggleWatch: () => ref.current.onToggleWatch?.(),
     onOpenCommandPalette: () => ref.current.onOpenCommandPalette?.(),
+    onCloseSidebarDrawer: () => ref.current.onCloseSidebarDrawer?.(),
   }
 }
 

@@ -122,7 +122,9 @@ export function NotificationPolicyForm({
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-4">
+    // 🛑 items-end 금지 — 수신자 열만 셀렉트 아래 안내문 2줄을 달고 있어 아래를 맞추면
+    //    그 열의 라벨·셀렉트가 형제보다 20px 위로 솟아 계단이 된다. 위를 맞춘다.
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border bg-muted/30 p-4">
       {/* 이벤트 유형 select */}
       <div className="flex min-w-[180px] flex-col gap-1">
         <label
@@ -199,14 +201,20 @@ export function NotificationPolicyForm({
         </Select>
       </div>
 
-      {/* 추가 버튼 */}
-      <Button
-        type="button"
-        onClick={handleSubmit}
-        disabled={isSubmitting}
-      >
-        {notificationPolicyLabels.form.addButton}
-      </Button>
+      {/* 추가 버튼 — 옆 열들과 같은 「라벨 + gap + 컨트롤」 구조를 흉내 내 셀렉트 행에 맞춘다.
+          매직 넘버(mt-[20px]) 대신 빈 라벨을 두면 라벨 타이포가 바뀌어도 자동으로 따라간다. */}
+      <div className="flex flex-col gap-1">
+        <span aria-hidden="true" className="text-xs font-medium">
+          &nbsp;
+        </span>
+        <Button
+          type="button"
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {notificationPolicyLabels.form.addButton}
+        </Button>
+      </div>
 
       {/* submitError 메시지 — 부모가 전달할 때만 표시 */}
       {submitError !== undefined && (

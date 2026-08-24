@@ -136,7 +136,7 @@ function toFieldPermission(stored: StoredFieldPermission): FieldPermissionRespon
 
 /**
  * 프로젝트 필드 권한 규칙 목록 조회.
- * 성공 → 200 { data: FieldPermissionResponse[] }
+ * 성공 → 200 FieldPermissionResponse[] (맨 배열 — 실서버 계약)
  *
  * E2E 시나리오 토글 — X-MSW-Seed-FieldPermissions 헤더(encodeURIComponent JSON 배열)가 있으면
  * 해당 프로젝트의 fieldPermissionStore를 시드 데이터로 초기화한다.
@@ -186,7 +186,10 @@ const listFieldPermissionsHandler = http.get(
       .filter((fp) => fp.projectKey === projectKey)
       .map(toFieldPermission)
 
-    return HttpResponse.json({ data: items })
+    // 🛑 `{ data: items }` 로 되돌리지 마라 — 실서버(`FieldPermissionController.listRules`)는
+    //    맨 배열을 싣는다. mock 이 래퍼를 쓰면 클라이언트 스키마의 같은 실수를 덮어줘
+    //    단위 테스트는 전부 초록인데 프로덕션 화면만 항상 에러가 된다.
+    return HttpResponse.json(items)
   },
 )
 

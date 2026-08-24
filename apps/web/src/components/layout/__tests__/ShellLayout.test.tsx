@@ -7,8 +7,13 @@ import { useAuthStore } from '@/auth/authStore'
 import { useActiveProject } from '@/hooks/use-active-project'
 import type { WhoamiResponse } from '@/api/schemas'
 import { navLabels } from '@/i18n/nav-labels'
-import { dispatchContextAction } from '@/components/keyboard-shortcuts/useContextShortcuts'
+import {
+  dispatchContextAction,
+  getRegisteredContexts,
+} from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
+import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarDrawer, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
 import { ShellLayout } from '../ShellLayout'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +38,10 @@ vi.mock('@tanstack/react-router', () => ({
   // 같은 이유로 ProjectTree가 `useSearch({strict:false})`도 호출한다(FR-UX-08 FR7 —
   // `/issues?projectKey=` 검색 파라미터까지 활성 프로젝트 근거로 읽는다).
   useSearch: () => ({}),
+  // ShellLayout 이 라우트 이동 시 모바일 드로어를 닫으려고 pathname 을 구독한다(F24).
+  // selector 를 그대로 실행해 실제 훅과 같은 모양(select 콜백 적용 결과)을 돌려준다.
+  useRouterState: <T,>({ select }: { select: (state: { location: { pathname: string } }) => T }): T =>
+    select({ location: { pathname: '/' } }),
   Link: ({
     to,
     children,
@@ -368,5 +377,70 @@ describe('ShellLayout', () => {
     })
 
     expect(useCommandPaletteStore.getState().open).toBe(false)
+  })
+
+  it('모바일에서 `[` 는 드로어를 여닫는다 — collapsed 는 건드리지 않는다 (F24)', () => {
+    // 🛑 회귀 고정용이다. 토글 지점은 셋(상단바 버튼 · `[` 단축키 · 사이드바 하단 버튼)이고
+    //    폭에 따른 대상 선택은 `useSidebarToggle` 한 곳이 소유해야 한다. 여기(=`[` 경로)만
+    //    그 훅을 안 쓰고 판정을 인라인 복제하면 오늘은 동작이 같아 아무 테스트도 red 가
+    //    되지 않고, 훗날 훅만 고쳐질 때 이 경로가 조용히 썩는다.
+    //    구조 자체는 `hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts` 가 지고,
+    //    이 테스트는 그 구조가 만들어내는 **행동**을 고정한다. 둘은 짝이다.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    )
+    try {
+      // ★인증을 여기서 명시적으로 세운다 — `beforeEach` 가 `useAuthStore` 를 리셋하지 않아
+      //   직전 테스트의 `accessToken: null` 이 새고, 그러면 `app-shell` 레이어가 아예
+      //   등록되지 않아 dispatch 가 무동작이 된다(실측 — 이 단언이 그 이유로 한 번 red 였다).
+      useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+      useSidebarDrawer.setState({ open: false })
+      useSidebarCollapsed.setState({ collapsed: false })
+      renderShell()
+
+      act(() => {
+        dispatchContextAction({ layer: 'app-shell', action: { kind: 'toggle-sidebar' } })
+      })
+
+      expect(useSidebarDrawer.getState().open).toBe(true)
+      expect(useSidebarCollapsed.getState().collapsed).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('Escape 는 열린 드로어를 닫는다 (F24 · D7)', () => {
+    // 백드롭이 본문을 시각적으로 덮는 순간 이 UI 는 모달로 읽힌다 — 포인터로 빠져나갈 수
+    // 있으면 키보드로도 빠져나갈 수 있어야 한다. 새 전역 리스너를 달지 않고
+    // `CONTEXT_SHORTCUTS` 항목으로 등록하는 것이 ADR D-2 의 정식 경로다. 레이어는
+    // `sidebar-drawer` 다 — `app-shell` 에 두면 인증된 모든 화면에서 판별이 hit 이 되고
+    // 파이프라인의 선제 `preventDefault()` 가 split view pane 의 Esc 닫기를 죽인다(리뷰 B1).
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    useSidebarDrawer.setState({ open: true })
+    renderShell()
+
+    act(() => {
+      dispatchContextAction({ layer: 'sidebar-drawer', action: { kind: 'close-sidebar-drawer' } })
+    })
+
+    expect(useSidebarDrawer.getState().open).toBe(false)
+  })
+
+  it('★드로어가 닫혀 있으면 sidebar-drawer 레이어를 등록조차 하지 않는다 (Escape 를 빼앗지 않는다)', () => {
+    // 🛑 「핸들러가 무동작이다」로는 부족하다. 레이어가 등록돼 있으면 판별이 hit 이 되고,
+    //    파이프라인이 dispatch 전에 preventDefault 를 걸어 `usePaneEscapeClose` 가 죽는다.
+    //    등록 자체가 없어야 안전하다 — 그래서 무동작이 아니라 **미등록**을 잰다.
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    useSidebarDrawer.setState({ open: false })
+    renderShell()
+
+    expect(getRegisteredContexts().has('sidebar-drawer')).toBe(false)
+    expect(getRegisteredContexts().has('app-shell')).toBe(true)
   })
 })

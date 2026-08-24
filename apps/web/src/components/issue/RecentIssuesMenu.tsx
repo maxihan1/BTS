@@ -7,7 +7,7 @@ import type { IssueResponse } from '@/api/issues'
 import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { navLabels } from '@/i18n/nav-labels'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
-import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarRailCollapsed } from '@/hooks/use-sidebar-drawer'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스타일 — 사이드바 선례 (스펙 §8-A D-C)
@@ -54,21 +54,28 @@ const RECENT_LINK_CLASS =
  * 레이아웃이 튀고, 전부 403/404인 경우 빈 헤더만 남는다. `FavoritesMenu.FilterFavoritesGroup`이
  * 같은 이유로 같은 방식(`allSettled` 게이트)을 쓴다.
  *
- * **사이드바 접힘(64px 레일) 시 섹션 전체를 렌더하지 않는다**(§8-A D-B). E10의 "아이콘만 노출 +
- * 텍스트 `sr-only`"는 **단일 링크** 관례지 5개짜리 목록 관례가 아니다 — `ProjectTree`의 첫 글자
- * 뱃지를 쓰면 `ATLAS-12`·`ATLAS-13`이 둘 다 `A`라 구분이 불가능하다. 접힘 사용자가 최근 항목에
- * 접근할 수 없는 것은 **의도된 대가**이며 `TODOS.md`에 후속 과제로 등재돼 있다.
+ * **데스크톱 아이콘 레일(64px)에서는 섹션 전체를 렌더하지 않는다**(§8-A D-B). E10의 "아이콘만
+ * 노출 + 텍스트 `sr-only`"는 **단일 링크** 관례지 5개짜리 목록 관례가 아니다 — `ProjectTree`의
+ * 첫 글자 뱃지를 쓰면 `ATLAS-12`·`ATLAS-13`이 둘 다 `A`라 구분이 불가능하다. 레일 사용자가 최근
+ * 항목에 접근할 수 없는 것은 **의도된 대가**이며 `TODOS.md`에 후속 과제로 등재돼 있다.
+ *
+ * 🛑 그 판정에 `useSidebarCollapsed().collapsed` 를 **직접 읽지 마라.** 모바일 드로어는 264px
+ *    전체 폭으로 열리므로 위 근거(뱃지 구분 불가)가 성립하지 않는데, 저장된 `collapsed` 가 true
+ *    인 채로 폭만 좁아지면 **드로어 안에서 이 섹션만 통째로 사라진다**(F24 회귀, 실측). 폭까지
+ *    함께 보는 [useSidebarRailCollapsed] 가 유일한 정본이고, 형제 소비처(`Sidebar`·`ProjectTree`
+ *    ·`FavoritesMenu`)도 전부 그것을 쓴다. 짝 판별식 =
+ *    `hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`.
  *
  * 제목 조회는 `routes/issues.$key.tsx`와 **같은 `queryKey`**를 쓰므로 세션 중에는 캐시에
  * 적중한다(스펙 L2 완화).
  */
 export function RecentIssuesMenu(): JSX.Element | null {
   const recentIssueKeys = useRecentIssues((s) => s.recentIssueKeys)
-  const { collapsed } = useSidebarCollapsed()
+  const railCollapsed = useSidebarRailCollapsed()
 
   // 훅은 조건부로 호출할 수 없으므로 조회는 항상 배선하고, 렌더만 아래에서 가른다.
-  // 접힘 시에는 키 목록을 비워 실제 요청이 나가지 않게 한다.
-  const keysToResolve = collapsed ? [] : recentIssueKeys
+  // 레일일 때는 키 목록을 비워 실제 요청이 나가지 않게 한다.
+  const keysToResolve = railCollapsed ? [] : recentIssueKeys
 
   const queries = useQueries({
     queries: keysToResolve.map((key) => ({
@@ -79,7 +86,7 @@ export function RecentIssuesMenu(): JSX.Element | null {
     })),
   })
 
-  if (collapsed) return null
+  if (railCollapsed) return null
   if (recentIssueKeys.length === 0) return null
 
   const allSettled = queries.every((q) => q.status !== 'pending')

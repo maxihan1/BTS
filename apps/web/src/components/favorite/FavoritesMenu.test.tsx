@@ -1,5 +1,5 @@
 // FavoritesMenu 컴포넌트 단위 테스트 — 트리거 버튼, 타입별 그룹 렌더, 링크, 빈 상태 (FR-UX-02 Task-5)
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -392,8 +392,10 @@ describe('FavoritesMenu — S7 FILTER 404 처리', () => {
 
     await user.click(screen.getByRole('button', { name: favoriteLabels.dropdownTriggerAriaLabel }))
 
-    // 드롭다운이 열린 상태 확인 (제목 표시)
-    await screen.findByText(favoriteLabels.dropdownTitle)
+    // 드롭다운이 열린 상태 확인 (제목 표시).
+    // 🛑 screen 전역 findByText 금지 — 트리거 버튼도 사이드바 형제 nav 링크와 맞추느라
+    //    같은 「즐겨찾기」 라벨을 달고 있어 전역 조회는 2건이 잡힌다. menu 안으로 좁힌다.
+    await within(await screen.findByRole('menu')).findByText(favoriteLabels.dropdownTitle)
 
     // 쿼리 settle 후에도 "필터" 헤더가 없어야 함
     await waitFor(() => {

@@ -6,11 +6,21 @@ import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
 import { DEFAULT_KEYMAP, PALETTE_HELP_ITEM, SHORTCUTS } from './shortcuts'
 import { CONTEXT_SHORTCUTS, type ShortcutContext } from './context-shortcuts'
 
-/** 컨텍스트 레이어 → 그 항목이 실려야 할 도움말 그룹 라벨 */
+/**
+ * 컨텍스트 레이어 → 그 항목이 실려야 할 도움말 그룹 라벨.
+ *
+ * 🛑 `Record<ShortcutContext, string>` 이지만 **타입이 지켜주지 않는다** — `tsc --noEmit` 의
+ *    대상에 테스트 파일이 들어 있지 않아, 새 레이어를 여기 빠뜨려도 컴파일은 통과한다.
+ *    그 경우 `GROUP_LABEL_OF[context]` 가 `undefined` 가 되고 `getByRole(..., {name: undefined})`
+ *    가 **모든 region 에 매칭돼** 「Found multiple elements」라는 엉뚱한 메시지로 죽는다(실측).
+ *    새 `ShortcutContext` 를 만들면 여기와 `ShortcutsHelpDialog.tsx` 의 그룹 조립 **둘 다** 고쳐라.
+ */
 const GROUP_LABEL_OF: Record<ShortcutContext, string> = {
   'app-shell': '어디서나',
   'issue-list': '이슈 목록에서',
   'issue-detail': '이슈 상세에서',
+  // 모바일 전용 한 줄이라 전용 섹션을 두지 않고 전역 그룹에 함께 싣는다(컴포넌트 주석 참조).
+  'sidebar-drawer': '어디서나',
 }
 
 /**

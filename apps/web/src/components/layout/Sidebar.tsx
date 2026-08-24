@@ -14,8 +14,14 @@ import {
   UserCheck,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useAuthUser } from '@/auth/authStore'
-import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import {
+  useSidebarDrawer,
+  useSidebarRailCollapsed,
+  useSidebarToggle,
+  useSidebarShown,
+} from '@/hooks/use-sidebar-drawer'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { RecentIssuesMenu } from '@/components/issue/RecentIssuesMenu'
 import { navLabels } from '@/i18n/nav-labels'
@@ -97,17 +103,63 @@ const ADMIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIc
  */
 export function Sidebar(): JSX.Element {
   const user = useAuthUser()
-  const { collapsed, toggle } = useSidebarCollapsed()
+  const drawerOpen = useSidebarDrawer((state) => state.open)
+  const toggle = useSidebarToggle()
+  const sidebarShown = useSidebarShown()
+
+  // ── 드로어 포커스: 어디서 시작해 어디로 돌아가는지를 정의한다 (F24 · D7) ─────────────
+  // 🛑 백드롭이 본문을 **시각적으로** 덮는 순간 이 UI 는 모달로 읽힌다. 포인터 사용자에게는
+  //    모달인데 키보드 사용자에게는 아니면, 탭이 가려진 콘텐츠로 들어가 **보이지 않는 채로
+  //    포커스만 이동**한다 — 아래 `max-md:invisible` 이 닫힘 상태에서 막는 것과 같은 형태의
+  //    결함이다. 한쪽만 막으면 반쪽이다.
+  //    여기서 하는 것은 포커스의 **시작과 끝**을 정하는 것까지다. 완전한 포커스 트랩
+  //    (`aria-modal` + 뒤 콘텐츠 `inert`)은 셸 전역 동작을 바꾸므로 별건으로 뺐다(TODOS).
+  const asideRef = useRef<HTMLElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (drawerOpen) {
+      // 연 주체(상단바 토글 버튼 등)를 기억해 뒀다가 닫을 때 그리로 돌려준다.
+      returnFocusRef.current = document.activeElement as HTMLElement | null
+      asideRef.current?.focus()
+      return
+    }
+    // 닫힘 — 기억해 둔 곳으로 돌려준다. 그 요소가 사라졌으면(라우트 이동 등) 아무것도 하지
+    // 않는다. 억지로 body 로 옮기면 포커스가 문서 맨 앞으로 튀어 더 나빠진다.
+    const target = returnFocusRef.current
+    returnFocusRef.current = null
+    if (target !== null && document.contains(target)) target.focus()
+  }, [drawerOpen])
   const isAdmin = user?.isSystemAdmin === true
-  const widthClass = collapsed ? SIDEBAR_WIDTH_COLLAPSED_CLASS : SIDEBAR_WIDTH_EXPANDED_CLASS
+  // 🛑 모바일에서는 collapsed 를 쓰지 않는다 — 접힘은 **데스크톱 아이콘 레일**의 폭이고,
+  //    드로어는 열리면 264px 전체가 떠야 한다. 둘을 겹치면 드로어가 64px 레일로 열리고
+  //    라벨까지 `sr-only` 로 숨어 아이콘만 남은 드로어가 된다. 아래 `railCollapsed` 가 정본이다.
+  const railCollapsed = useSidebarRailCollapsed()
+  const widthClass = railCollapsed ? SIDEBAR_WIDTH_COLLAPSED_CLASS : SIDEBAR_WIDTH_EXPANDED_CLASS
   // `userId` 부재(PAT 인증 등)면 "내 작업"을 렌더하지 않는다 — 죽은 링크를 만들지 않는다(E9).
   // `useAuthUser()`는 zustand persist 스토어에서 **동기**로 읽으므로(authStore.ts) 비동기
   // 순서 문제가 없다 — 이것이 `projectKey`와 달리 링크에 직접 실을 수 있는 근거다(§1-A).
   const myWorkUserId = user?.userId
 
+  // 모바일 오프캔버스 드로어 — `max-md:` 구간에서만 적용된다. 데스크톱 클래스는 한 자도 바뀌지 않는다.
+  // 🛑 닫힘에 `invisible` 을 함께 건다. `-translate-x-full` 만 쓰면 화면 밖으로 밀렸을 뿐
+  //    포커스 순서와 스크린리더에는 그대로 남아, 탭을 누르면 보이지 않는 링크로 포커스가 사라진다.
+  // 🛑 `inset-y-0` 금지 — 드로어가 상단바까지 덮어 헤더 왼쪽 절반이 잘린 것처럼 보이고,
+  //    닫기 토글 버튼 자체가 가려져 백드롭/Esc 말고는 닫을 길이 없어진다.
+  //    `top-12` 는 `TopBar` 의 `h-12`(48px)와 짝이다 — 헤더 높이를 바꾸면 여기도 같이 바꾼다.
+  const mobileDrawerClass = [
+    'max-md:fixed max-md:top-12 max-md:bottom-0 max-md:left-0 max-md:z-50 max-md:shadow-xl',
+    'max-md:transition-transform max-md:duration-200 motion-reduce:max-md:transition-none',
+    drawerOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full max-md:invisible',
+  ].join(' ')
+
   return (
     <aside
-      className={`flex h-full flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground ${widthClass}`}
+      ref={asideRef}
+      // 🛑 `tabIndex={-1}` 은 프로그램적 포커스 전용이다 — 탭 순서에 끼어들지 않는다.
+      //    드로어가 열릴 때 포커스를 여기로 보내기 위한 최소 장치다.
+      tabIndex={-1}
+      className={`flex h-full flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground focus:outline-none ${widthClass} ${mobileDrawerClass}`}
     >
       <ProjectTree />
 
@@ -134,14 +186,14 @@ export function Sidebar(): JSX.Element {
             className={NAV_LINK_CLASS}
           >
             <UserCheck aria-hidden="true" className={NAV_ICON_CLASS} />
-            <span className={collapsed ? 'sr-only' : undefined}>{navLabels.myWork}</span>
+            <span className={railCollapsed ? 'sr-only' : undefined}>{navLabels.myWork}</span>
           </Link>
         )}
 
         {MAIN_NAV_LINKS.map(({ to, label, Icon }) => (
           <Link key={to} to={to} activeOptions={ISSUES_ACTIVE_OPTIONS[to]} className={NAV_LINK_CLASS}>
             <Icon aria-hidden="true" className={NAV_ICON_CLASS} />
-            <span className={collapsed ? 'sr-only' : undefined}>{label}</span>
+            <span className={railCollapsed ? 'sr-only' : undefined}>{label}</span>
           </Link>
         ))}
         <FavoritesMenu />
@@ -157,7 +209,7 @@ export function Sidebar(): JSX.Element {
 
       {isAdmin && (
         <nav aria-label={navLabels.adminNav} className="flex flex-col gap-1 p-2">
-          {!collapsed && (
+          {!railCollapsed && (
             <p className="px-2 pt-2 text-xs font-semibold uppercase text-sidebar-foreground/60">
               {navLabels.admin}
             </p>
@@ -165,21 +217,23 @@ export function Sidebar(): JSX.Element {
           {ADMIN_NAV_LINKS.map(({ to, label, Icon }) => (
             <Link key={to} to={to} className={NAV_LINK_CLASS}>
               <Icon aria-hidden="true" className={NAV_ICON_CLASS} />
-              <span className={collapsed ? 'sr-only' : undefined}>{label}</span>
+              <span className={railCollapsed ? 'sr-only' : undefined}>{label}</span>
             </Link>
           ))}
         </nav>
       )}
 
+      {/* 🛑 `useSidebarCollapsed().toggle` 을 직접 물리지 마라 — 모바일에서 무동작 버튼이 된다.
+          폭에 따른 대상 선택은 `useSidebarToggle` 한 곳이 소유한다(상단바 버튼·`[` 단축키와 동일). */}
       <Button
         type="button"
         variant="ghost"
         size="icon-sm"
         onClick={toggle}
-        aria-label={collapsed ? navLabels.expandSidebar : navLabels.collapseSidebar}
+        aria-label={sidebarShown ? navLabels.collapseSidebar : navLabels.expandSidebar}
         className="mt-auto rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       >
-        {collapsed ? '»' : '«'}
+        {sidebarShown ? '«' : '»'}
       </Button>
     </aside>
   )

@@ -3,7 +3,7 @@ import { useState, useEffect, type JSX } from 'react'
 import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useProjects } from '@/hooks/use-projects'
-import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarRailCollapsed } from '@/hooks/use-sidebar-drawer'
 import { useProjectTreeExpanded } from '@/hooks/use-project-tree-expanded'
 import { navLabels } from '@/i18n/nav-labels'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -373,7 +373,8 @@ export function ProjectTree(): JSX.Element | null {
     projectKey?: string
   }
   const { data: projects, isLoading, isError } = useProjects()
-  const { collapsed } = useSidebarCollapsed()
+  // 🛑 `collapsed` 직접 읽기 금지 — 모바일 드로어는 264px 로 열리므로 레일이 아니다.
+  const collapsed = useSidebarRailCollapsed()
   const { expandedKeys, toggle, expand } = useProjectTreeExpanded()
 
   /**

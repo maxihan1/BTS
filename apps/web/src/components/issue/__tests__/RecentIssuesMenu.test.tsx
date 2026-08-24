@@ -1,5 +1,5 @@
 // 사이드바 "최근 항목" 섹션 단위 테스트 — MRU 렌더·403/404 숨김·빈 목록/접힘 미렌더·플리커 방지 (FR-UX-08 PR-B Task 6, RED)
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -8,6 +8,7 @@ import { navLabels } from '@/i18n/nav-labels'
 import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
 import { RecentIssuesMenu } from '../RecentIssuesMenu'
 
 // TanStack Router Link 모킹 — 라우터 컨텍스트 없이 isolation 렌더 (Sidebar.test.tsx 동일 패턴)
@@ -70,10 +71,33 @@ function renderMenu() {
   )
 }
 
+/**
+ * 뷰포트를 모바일(`MOBILE_MEDIA_QUERY` 매칭)로 고정한다.
+ *
+ * 기본 jsdom 에는 `window.matchMedia` 자체가 없어 `useMediaQuery` 가 항상 false 를 준다
+ * (= 데스크톱). 그래서 **모바일 경로를 재려면 반드시 이 스텁을 설치해야 하고**, 설치하지 않은
+ * 기존 테스트들은 자동으로 데스크톱 경로를 계속 잰다 — 두 방향이 서로를 밀어내지 않는다.
+ */
+function stubMobileViewport(): void {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  )
+}
+
 beforeEach(() => {
   localStorage.clear()
   useRecentIssues.setState({ recentIssueKeys: [] })
   useSidebarCollapsed.setState({ collapsed: false })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('RecentIssuesMenu — 사이드바 "최근 항목" (FR-UX-08 PR-B FR13)', () => {
@@ -182,6 +206,27 @@ describe('RecentIssuesMenu — 사이드바 "최근 항목" (FR-UX-08 PR-B FR13)
     expect(screen.queryByRole('list', { name: navLabels.recent })).toBeNull()
     expect(screen.queryByText(navLabels.recent)).toBeNull()
     expect(screen.queryByRole('link', { name: /ATLAS-12/ })).toBeNull()
+  })
+
+  it('T-RM-10 (F24): 모바일 드로어에서는 collapsed 가 저장돼 있어도 목록이 보인다', async () => {
+    // 🛑 이 테스트는 바로 위 「접힘에서 미렌더」와 **짝**이다. 둘을 함께 읽어야 계약이 완성된다.
+    //    - 위 테스트 = 데스크톱 64px 레일에서 미렌더 (TODOS.md 「접힘 레일에서 최근 항목 접근 경로」
+    //      항목의 **의도된 제품 결정** — FR-UX-08 PR-B D-B, 2026-07-31 Maxi 확정). 되돌리면 안 된다.
+    //    - 이 테스트 = 모바일 드로어는 264px 전체 폭이라 그 결정의 **근거가 성립하지 않는다.**
+    //      근거였던 「첫 글자 뱃지가 ATLAS-12·ATLAS-13 둘 다 A 라 구분이 0」은 라벨을 통째로
+    //      그리는 드로어에서는 아예 일어나지 않는다.
+    //    한쪽만 남기면 「결정을 조용히 되돌렸다」와 「회귀를 못 잡는다」 중 하나가 된다.
+    stubMobileViewport()
+    // 데스크톱에서 접어 둔 상태가 localStorage 로 살아 넘어온 상황 — 이 회귀의 실제 재현 경로다.
+    useSidebarCollapsed.setState({ collapsed: true })
+    useRecentIssues.setState({ recentIssueKeys: ['ATLAS-12'] })
+    server.use(...issueTitleHandlers({ 'ATLAS-12': '로그인 버그' }))
+
+    renderMenu()
+
+    const list = await screen.findByRole('list', { name: navLabels.recent })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+    expect(await screen.findByRole('link', { name: /ATLAS-12/ })).toBeInTheDocument()
   })
 
   it('T-RM-8 (§8-A D-C): 하위 링크에 아이콘을 달지 않는다 (사이드바 하위항목 관례)', async () => {

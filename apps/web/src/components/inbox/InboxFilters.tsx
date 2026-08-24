@@ -143,6 +143,14 @@ export function InboxFilters({ filters, onFiltersChange }: InboxFiltersProps) {
         onSenderChange={handleSenderChange}
       />
 
+      {/*
+        기간 시작일·종료일 — 한 쌍으로 묶어 **함께** 줄바꿈시킨다.
+        🛑 둘을 형제로 풀어놓지 마라. 컨테이너가 614px(`max-w-3xl`)라 4필드가 한 줄에 못 들어가
+           시작일만 첫 줄 오른쪽 끝에 남고 종료일이 둘째 줄 맨 왼쪽으로 감겨 좌우 470px 갈라진다.
+           라벨을 가진 시작일이 첫 줄 높이를 키워 옆 「전체 읽음」 버튼이 입력 행보다 22px 뜨는
+           것도 같은 원인이다 — 묶으면 첫 줄이 라벨 없는 두 입력만 남아 버튼도 함께 맞는다.
+      */}
+      <div className="flex gap-2">
       {/* 기간 시작일 */}
       <div className="flex flex-col gap-1">
         <label
@@ -183,6 +191,7 @@ export function InboxFilters({ filters, onFiltersChange }: InboxFiltersProps) {
           )}
           data-testid="inbox-filter-to"
         />
+      </div>
       </div>
     </div>
   )

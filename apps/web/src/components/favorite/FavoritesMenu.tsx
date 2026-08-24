@@ -9,6 +9,7 @@ import { FAVORITE_TARGET_TYPES } from '@/api/favorites'
 import { fetchFilter, savedFiltersKey } from '@/api/saved-filters'
 import type { SavedFilterResponse } from '@/api/saved-filters'
 import { favoriteLabels } from '@/i18n/favorite-labels'
+import { useSidebarRailCollapsed } from '@/hooks/use-sidebar-drawer'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -179,6 +180,8 @@ const FilterFavoritesGroup = ({
  */
 export const FavoritesMenu = () => {
   const { data: items = [] } = useFavorites()
+  // 트리거 라벨 표시 여부만 쓴다 — 사이드바 형제 nav 링크와 같은 접힘 규칙.
+  const collapsed = useSidebarRailCollapsed()
   // null: FILTER 쿼리 미해소 | number: settle 후 표시 가능 개수
   const [filterVisibleCount, setFilterVisibleCount] = useState<number | null>(null)
   const handleFilterVisibleCountChange = useCallback((count: number) => {
@@ -200,14 +203,17 @@ export const FavoritesMenu = () => {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {/* PR22 — asChild 하위: Radix가 aria-expanded/data-state 를 주입하고 Button의 ...props 전개로 통과한다 */}
+        {/* 🛑 size="icon" 금지 — 유일한 소비처가 사이드바 「메인 메뉴」 nav 라 형제는 전부
+            아이콘+라벨 한 줄이다. 아이콘만 두면 별 하나가 라벨 없이 떠 있는 행이 된다.
+            접힘(64px)일 때만 라벨을 sr-only 로 감춘다 — 형제 nav 링크와 같은 규칙. */}
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="rounded-md"
+          className="h-auto w-full justify-start gap-2 rounded-md px-2 py-1.5 text-sm font-medium"
           aria-label={favoriteLabels.dropdownTriggerAriaLabel}
         >
-          <Star className="size-4" />
+          <Star className="size-4 shrink-0" />
+          <span className={collapsed ? 'sr-only' : undefined}>{favoriteLabels.dropdownTitle}</span>
         </Button>
       </DropdownMenuTrigger>
 

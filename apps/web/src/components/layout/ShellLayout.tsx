@@ -1,9 +1,10 @@
 // 인증 앱 영역의 pathless 레이아웃 셸 — 상단바(TopBar)+사이드바(Sidebar)+콘텐츠 크롬 조립 (FR-UX-06 PR11 Task 7)
-import { type JSX } from 'react'
-import { Outlet } from '@tanstack/react-router'
+import { type JSX, useEffect } from 'react'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { useIsAuthenticated } from '@/auth/authStore'
 import { useTrackActiveProject } from '@/hooks/use-track-active-project'
-import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarDrawer, useSidebarToggle, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
 import { TopBar } from './TopBar'
@@ -51,14 +52,51 @@ import { Sidebar } from './Sidebar'
  */
 export function ShellLayout(): JSX.Element {
   const isAuthenticated = useIsAuthenticated()
-  // ★selector 로 액션만 뽑는다. 구조분해(`const { toggle } = useSidebarCollapsed()`)는
-  // 스토어 전체를 구독해 `collapsed` 가 바뀔 때마다 이 컴포넌트가 재렌더되고, 여기엔
-  // `<Outlet/>` 이 있어 라우트 본문까지 재렌더 경로에 오른다. 사이드바 토글은 `[` 키와
-  // 버튼 양쪽에서 나므로 빈도도 낮지 않다. `toggle` 은 스토어 생성 시 한 번 만들어진
-  // 안정 참조라 이 구독은 재렌더를 유발하지 않는다(`useAuthStore((s) => s.clearSession)` 선례).
-  // 다른 소비처(TopBar·Sidebar·ProjectTree·RecentIssuesMenu)가 구조분해를 쓰는 것은
-  // 그쪽이 `collapsed` 값을 실제로 그려서다 — 재렌더가 목적이라 정당하다.
-  const toggleSidebar = useSidebarCollapsed((state) => state.toggle)
+  // ★selector 로 필요한 것만 뽑는다. 구조분해(`const { open, toggle } = useSidebarDrawer()`)는
+  // 스토어 전체를 구독해 값이 바뀔 때마다 이 컴포넌트가 재렌더되고, 여기엔 `<Outlet/>` 이
+  // 있어 라우트 본문까지 재렌더 경로에 오른다. 사이드바 토글은 `[` 키와 버튼 양쪽에서 나므로
+  // 빈도도 낮지 않다. 액션(`setOpen`)은 스토어 생성 시 한 번 만들어진 안정 참조라 그 구독은
+  // 재렌더를 유발하지 않는다(`useAuthStore((s) => s.clearSession)` 선례).
+  // 다른 소비처(TopBar·Sidebar·ProjectTree)가 구조분해나 파생 훅을 쓰는 것은 그쪽이 값을
+  // 실제로 그려서다 — 재렌더가 목적이라 정당하다.
+  //
+  // 모바일 드로어 — `collapsed` 와 **다른 상태**다(영속 없음, 기본 닫힘). 근거는 `use-sidebar-drawer.ts`.
+  const drawerOpen = useSidebarDrawer((state) => state.open)
+  const setDrawerOpen = useSidebarDrawer((state) => state.setOpen)
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+
+  // 🛑 라우트가 바뀌면 드로어를 닫는다. 안 닫으면 사이드바 링크를 누른 뒤에도 드로어가 화면을
+  //    덮은 채로 남아, 방금 연 화면이 보이지 않는다(모바일에서 가장 흔한 드로어 결함).
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [pathname, setDrawerOpen])
+
+  // 데스크톱으로 넓어지면 드로어 상태를 비운다 — 남아 있으면 다시 좁혔을 때 열린 채로 뜬다.
+  useEffect(() => {
+    if (!isMobile) setDrawerOpen(false)
+  }, [isMobile, setDrawerOpen])
+
+  // 🛑 Esc 로 드로어를 닫으려고 이 컴포넌트에 전역 키 리스너를 달지 마라.
+  //    ADR D-2 — 전역 키 리스너 소유자는 허용목록으로 봉인돼 있고(판별식
+  //    `useKeyboardShortcuts.test.tsx`), 컨텍스트 단축키는 새 리스너를 만드는 대신
+  //    `useKeyboardShortcuts` 파이프라인에 합류해야 한다. 실제로 달았다가 그 판별식에 걸렸다.
+  //    ★그 판별식은 **소스 텍스트**를 훑으므로 주석에 그 호출 문법을 예시로 적기만 해도 걸린다.
+  //    Esc 는 그 ADR 이 지정한 경로 그대로 `context-shortcuts.ts` 에 등록돼 있고, 아래
+  //    `onCloseSidebarDrawer` 가 그 핸들러다. ★레이어는 `sidebar-drawer` 다 — `app-shell`
+  //    이 아니다. 왜 그래야 하는지는 아래 등록 지점(`useContextShortcuts` 호출) 위 주석에
+  //    실측 회귀와 함께 적혀 있다. 그쪽을 읽지 않고 여기만 보고 `app-shell` 로 옮기면
+  //    split view pane 의 Esc 가 다시 죽는다.
+  //    드로어를 닫는 길은 넷이다 — Esc · 백드롭 클릭 · 드로어 하단 「접기」 버튼 ·
+  //    상단바 토글(드로어가 헤더 아래에서 시작해 항상 눌린다).
+
+  // 🛑 폭에 따른 토글 대상 선택을 **여기서 다시 계산하지 마라.** `useSidebarToggle` 한 곳이
+  //    소유한다 — 토글 지점이 상단바 버튼 · 이 `[` 단축키 · 사이드바 하단 버튼으로 셋이라,
+  //    판정을 각자 두면 훅만 고쳐졌을 때 이 경로가 조용히 썩는다(오늘은 동작이 같아 어떤
+  //    테스트도 red 가 되지 않는다는 것이 이 규칙이 필요한 이유다).
+  //    짝 판별식 = `hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`(구조) +
+  //    `__tests__/ShellLayout.test.tsx` 의 「모바일에서 `[` 는 드로어를 여닫는다」(행동).
+  const toggleSidebar = useSidebarToggle()
   // 같은 이유로 셀렉터다 — 팔레트 열림 값(`open`)은 여기서 그리지 않으므로 구독하지
   // 않는다. 액션만 뽑으면 팔레트를 여닫아도 `<Outlet/>` 이 재렌더되지 않는다.
   const setCommandPaletteOpen = useCommandPaletteStore((state) => state.setOpen)
@@ -88,6 +126,21 @@ export function ShellLayout(): JSX.Element {
     isAuthenticated,
   )
 
+  // F24 — Escape 로 드로어 닫기. **드로어가 열려 있을 때만 등록한다.**
+  //
+  // 🛑 이 `enabled` 인자를 `isAuthenticated` 로 넓히지 마라. 판별 파이프라인은 hit 이면
+  //    dispatch **전에** 무조건 `preventDefault()` 를 걸고, 후행 bubble 리스너
+  //    (`routes/issues.$key.tsx` 의 `usePaneEscapeClose`)는 `defaultPrevented` 를 존중해
+  //    조용히 건너뛴다. 그래서 「핸들러가 무동작이니 괜찮다」가 성립하지 않는다 — 실제로
+  //    그렇게 두었다가 split view 우측 pane 이 Esc 로 안 닫히는 회귀를 만들었다(리뷰 B1).
+  //    **등록 자체가 게이트**다. 짝 판별식 = `context-shortcuts.test.ts` 의
+  //    「드로어가 닫혀 있으면 Escape 는 판별되지 않는다」.
+  useContextShortcuts(
+    'sidebar-drawer',
+    { onCloseSidebarDrawer: () => { setDrawerOpen(false) } },
+    isAuthenticated && drawerOpen,
+  )
+
   if (!isAuthenticated) {
     return (
       <main>
@@ -101,6 +154,17 @@ export function ShellLayout(): JSX.Element {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
+        {/* 드로어 백드롭 — 모바일에서 드로어가 열렸을 때만. `md:hidden` 으로 데스크톱은 절대 렌더 밖.
+            🛑 `role`·이름을 주지 마라. 이건 닫기 편의용 오버레이일 뿐이고, 같은 닫기 동작을
+               **Esc**(`context-shortcuts.ts` 의 `sidebar-drawer` 항목)와 사이드바 하단 「접기」 버튼이
+               접근 가능한 경로로 제공한다 — 그 둘이 없으면 이 `aria-hidden` 은 정당화되지 않는다. */}
+        {drawerOpen && (
+          <div
+            aria-hidden="true"
+            className="fixed inset-x-0 bottom-0 top-12 z-40 bg-foreground/40 md:hidden"
+            onClick={() => { setDrawerOpen(false) }}
+          />
+        )}
         <main className="min-w-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
