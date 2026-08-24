@@ -4,6 +4,7 @@ package com.bts.app
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 
 /**
@@ -80,5 +81,38 @@ class WebSocketHandshakePermitAllTest : ProdAssemblyHttpTestBase() {
                 )
                 .isEqualTo(HttpStatus.UNAUTHORIZED)
         }
+    }
+
+    /**
+     * GET **고정**이 살아 있다는 행동 증명 — 소스 가드가 뚫려도 여기서 잡힌다.
+     *
+     * ## 왜 POST 가 아니라 HEAD 인가 (공허 회피)
+     * 위협 문구는 「POST·DELETE 까지 익명이 된다」지만 POST 로 물으면 **답이 공허하다.**
+     * CSRF 가 켜져 있고(CookieCsrfTokenRepository) `/ws` 는 CSRF-ignore 목록에 없어, 토큰 없는
+     * POST 는 permitAll 여부와 **무관하게** CsrfFilter 에서 걸린다. 익명 요청의 AccessDeniedException
+     * 은 ExceptionTranslationFilter 가 엔트리포인트로 넘겨 401 이 되므로 「인가에서 잘렸다」와
+     * 상태코드가 같아진다 — 이 파일 첫 테스트가 401 을 쓰지 않는 것과 같은 이유다.
+     *
+     * HEAD 는 CSRF 기본 안전 메서드 집합(GET·HEAD·TRACE·OPTIONS)에 들어 그 마스킹이 없다. 그리고
+     * `AntPathRequestMatcher` 는 메서드를 **정확히** 비교하므로 GET 고정이 살아 있는 한 HEAD 는
+     * permitAll 에 매칭되지 않는다. 즉 여기서의 401 은 「메서드가 고정돼 있다」의 양성 판별자다.
+     *
+     * ## 짝
+     * identity-access 의 `WebSocketHandshakePathGuardTest` 가 소스 텍스트로 같은 것을 고정한다.
+     * 그 가드는 한때 주석으로 만족돼 공허했다(재리뷰 BLOCKER-N1) — 소스 가드 하나에만 기대면
+     * 그런 실패 모드가 조용히 남는다. 이 테스트는 배선을 **행동으로** 재므로 함께 뚫리지 않는다.
+     */
+    @Test
+    fun `GET 이 아닌 메서드는 permitAll 대상이 아니라 401 이다 (메서드 고정의 행동 증명)`() {
+        val response = rest.exchange("/ws", HttpMethod.HEAD, null, String::class.java)
+
+        assertThat(response.statusCode)
+            .withFailMessage(
+                "HEAD /ws 가 %s 입니다. 401 이라야 permitAll 이 GET 으로 고정돼 있다는 뜻입니다. " +
+                    "고정이 빠지면 HEAD 가 필터를 통과해 WebSocket 핸들러에 닿고 405 가 납니다 — " +
+                    "그때는 POST·DELETE 까지 함께 익명입니다.",
+                response.statusCode,
+            )
+            .isEqualTo(HttpStatus.UNAUTHORIZED)
     }
 }
