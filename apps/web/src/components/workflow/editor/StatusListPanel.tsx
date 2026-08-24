@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
+import { reorderIds } from '@/lib/status-order'
 import type { WorkflowView } from '@/api/workflows'
 
 /** 목록 한 줄이 다루는 상태 — 카탈로그 id 를 붙여 둔다(편성 API 가 id 로 받는다) */
@@ -101,13 +102,10 @@ function StatusListPanel({
       return
     }
     const ids = statuses.map((s) => s.id)
-    const from = ids.indexOf(String(active.id))
-    const to = ids.indexOf(String(over.id))
-    if (from < 0 || to < 0) {
+    const next = reorderIds(ids, String(active.id), String(over.id))
+    if (next === ids) {
       return
     }
-    const next = [...ids]
-    next.splice(to, 0, next.splice(from, 1)[0]!)
     onReorder(next)
   }
 

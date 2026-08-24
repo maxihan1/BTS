@@ -46,13 +46,21 @@ interface WorkflowEditorPageProps {
 function joinStatusIds(
   states: WorkflowView['states'],
   catalog: { id: string; key: string }[],
-): PanelStatus[] {
-  return [...states]
-    .sort((a, b) => a.displayOrder - b.displayOrder)
-    .flatMap((state) => {
-      const entry = catalog.find((c) => c.key === state.key)
-      return entry === undefined ? [] : [{ id: entry.id, key: state.key, name: state.name, category: state.category }]
-    })
+): { joined: PanelStatus[]; droppedKeys: string[] } {
+  const joined: PanelStatus[] = []
+  const droppedKeys: string[] = []
+  for (const state of [...states].sort((a, b) => a.displayOrder - b.displayOrder)) {
+    const entry = catalog.find((c) => c.key === state.key)
+    if (entry === undefined) {
+      // ★ 조용히 버리면 안 된다. 버린 상태는 화면에서 사라지는데, 순서 변경은 그 워크플로우의
+      //   상태 **전부**를 보내야 하므로 부분 목록이 나가 백엔드가 400 을 던진다. 그 400 은
+      //   사유 넷이 공유하는 코드라 사용자에게 엉뚱한 안내가 뜬다. 드러내서 막는다.
+      droppedKeys.push(state.key)
+      continue
+    }
+    joined.push({ id: entry.id, key: state.key, name: state.name, category: state.category })
+  }
+  return { joined, droppedKeys }
 }
 
 /**
@@ -100,13 +108,22 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   if (detail.isPending || catalog.isPending) {
     return <Skeleton className="h-64 w-full" />
   }
+  // ★ 실패와 「없음」을 가른다. 종전에는 둘 다 목록 화면의 빈 상태 문구
+  //   (「워크플로우가 없습니다 / 첫 워크플로우를 만들어…」)를 상세 화면에 띄웠다.
+  if (detail.isError) {
+    return <EmptyState title={labels.editor.loadFailed} description={detail.error.message} />
+  }
   if (workflow === undefined) {
-    return <EmptyState title={labels.list.emptyTitle} description={labels.list.emptyDescription} />
+    return <EmptyState title={labels.editor.notFound} />
   }
 
   const catalogEntries = catalog.data ?? []
-  const panelStatuses = joinStatusIds(workflow.states, catalogEntries)
+  const { joined: panelStatuses, droppedKeys } = joinStatusIds(workflow.states, catalogEntries)
   const stateNames = Object.fromEntries(workflow.states.map((s) => [s.key, s.name]))
+  // 카탈로그가 실패하면 조인이 전부 비어 「편성된 상태가 없습니다」라는 **거짓말**이 뜬다.
+  // 상태가 있는데 못 그리는 것과 상태가 없는 것은 다른 사실이다.
+  const statusPanelBlocked = catalog.isError || droppedKeys.length > 0
+  const statusPanelNotice = catalog.isError ? labels.editor.catalogFailed : labels.editor.unknownStatuses
 
   return (
     <div className="flex flex-col gap-6">
@@ -157,12 +174,20 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         </TabsList>
 
         <TabsContent value="statuses">
+          {statusPanelBlocked ? (
+            <EmptyState
+              title={statusPanelNotice}
+              description={droppedKeys.length > 0 ? droppedKeys.join(', ') : undefined}
+            />
+          ) : null}
           <StatusListPanel
             statuses={panelStatuses}
             onAdd={() => setPickerOpen(true)}
             onRemove={setStatusToRemove}
             onReorder={(orderedIds) => reorderStatuses.mutate(orderedIds)}
-            disabled={addStatus.isPending || removeStatus.isPending || reorderStatuses.isPending}
+            disabled={
+              statusPanelBlocked || addStatus.isPending || removeStatus.isPending || reorderStatuses.isPending
+            }
           />
         </TabsContent>
 

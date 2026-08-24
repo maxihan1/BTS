@@ -4,7 +4,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { workflowEditorLabels as L } from '@/i18n/workflow-editor-labels'
-import { StatusListPanel, reorderIds } from '../StatusListPanel'
+import { reorderIds } from '@/lib/status-order'
+import { StatusListPanel } from '../StatusListPanel'
 import type { PanelStatus } from '../StatusListPanel'
 
 const STATUSES: PanelStatus[] = [
