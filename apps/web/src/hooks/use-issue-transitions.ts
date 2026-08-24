@@ -155,6 +155,12 @@ function notifyTransitionFailure(error: unknown, invalidate: () => void): void {
     const body = error.body as Record<string, unknown> | undefined
     const errorCode = typeof body?.['errorCode'] === 'string' ? body['errorCode'] : ''
     if (errorCode === 'TRANSITION_NOT_ALLOWED') {
+      // ★목록도 재조회한다. 화면이 가용전환을 받은 **뒤** 워크플로우가 바뀌면 우리가 실어 보낸
+      //   `transitionId` 가 후보에서 사라지고, backend `WorkflowEngine.resolveById` 가 그것을
+      //   `WorkflowNotFoundException` → 이 코드로 돌려준다. 재조회하지 않으면 드롭다운이 사라진
+      //   전환을 계속 내밀어 그 이슈는 **새로고침 전까지 상태를 못 바꾼다.**
+      //   아래 VERSION_CONFLICT 분기가 같은 이유로 이미 같은 것을 한다.
+      invalidate()
       toast.error(issueDetailStrings.transitionNotAllowedError)
       return
     }
