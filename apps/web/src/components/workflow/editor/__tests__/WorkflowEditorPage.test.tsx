@@ -166,6 +166,35 @@ describe('D6 — 상태 추가·제거', () => {
   })
 })
 
+describe('실패와 「없음」을 가른다', () => {
+  it('상세 조회가 실패하면 목록 화면의 빈 상태 문구를 띄우지 않는다', async () => {
+    // 종전에는 「워크플로우가 없습니다 / 첫 워크플로우를 만들어…」라는 **목록** 문구가
+    // 상세 화면에 떴다. 사용자가 「내가 만든 워크플로우가 사라졌다」로 읽는다.
+    server.use(
+      http.get('/api/v1/workflows/boom', () =>
+        HttpResponse.json({ error: { code: 'WORKFLOW_UNAVAILABLE', message: '' } }, { status: 503 }),
+      ),
+    )
+    renderEditor('boom')
+    expect(await screen.findByText(L.editor.loadFailed)).toBeInTheDocument()
+    expect(screen.queryByText(L.list.emptyTitle)).not.toBeInTheDocument()
+  })
+
+  it('카탈로그가 실패하면 「편성된 상태가 없습니다」라고 거짓말하지 않는다', async () => {
+    // 조인이 통째로 비어 상태가 0개로 보인다. 「상태가 없다」와 「못 그린다」는 다른 사실이다.
+    server.use(http.get('/api/v1/statuses', () => new HttpResponse(null, { status: 500 })))
+    renderEditor()
+    expect(await screen.findByText(L.editor.catalogFailed)).toBeInTheDocument()
+  })
+
+  it('카탈로그가 실패하면 순서 변경을 잠근다 — 부분 목록을 보내면 400 이다', async () => {
+    server.use(http.get('/api/v1/statuses', () => new HttpResponse(null, { status: 500 })))
+    renderEditor()
+    await screen.findByText(L.editor.catalogFailed)
+    expect(screen.getByRole('button', { name: L.statusPanel.add })).toBeDisabled()
+  })
+})
+
 describe('D6 — 전환 이름', () => {
   it('전환 탭에 전환 이름이 보인다', async () => {
     renderEditor()
@@ -183,10 +212,10 @@ describe('D6 — 전환 이름', () => {
 
     await userEvent.click(screen.getByRole('button', { name: `${L.transitionPanel.edit} Start Work` }))
     const dialog = await screen.findByRole('dialog', { name: L.dialog.transitionEdit })
-    const nameInput = within(dialog).getByRole('textbox', { name: L.transitionPanel.edit })
+    const nameInput = within(dialog).getByRole('textbox', { name: L.transitionForm.name })
     await userEvent.clear(nameInput)
     await userEvent.type(nameInput, '작업 시작하기')
-    await userEvent.click(within(dialog).getByRole('button', { name: L.dialog.confirm }))
+    await userEvent.click(within(dialog).getByRole('button', { name: L.transitionForm.submit }))
 
     await waitFor(() => {
       const list = screen.getByRole('list', { name: L.transitionPanel.list })

@@ -31,6 +31,8 @@ interface ComboboxProps {
   emptyText: string
   /** 값이 없을 때 트리거에 보여줄 문구 */
   triggerPlaceholder: string
+  /** 트리거 button 의 id — `<Label htmlFor>` 로 묶을 때 쓴다 */
+  id?: string
   /** 잠금 */
   disabled?: boolean
   /**
@@ -58,6 +60,7 @@ function Combobox({
   placeholder,
   emptyText,
   triggerPlaceholder,
+  id,
   disabled = false,
   container,
 }: ComboboxProps): React.JSX.Element {
@@ -70,6 +73,7 @@ function Combobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           type="button"
           variant="outline"
           role="combobox"

@@ -20,7 +20,13 @@ interface TransitionFormDialogProps {
   submitting?: boolean
 }
 
-/** 종류별 출발 상태 필요 여부 — 백엔드 규칙과 1:1 */
+/**
+ * 종류별 출발 상태 필요 여부 — 백엔드 규칙과 1:1.
+ *
+ * ★ **`kind` 를 고르는 컨트롤은 이 폼에 없다.** D6 의 범위가 「전환 이름 편집」이라 생성은
+ * 항상 `NORMAL` 이고, 수정은 기존 `kind` 를 그대로 보존한다. 즉 `GLOBAL` 전환을 **만드는**
+ * 경로는 아직 없다 — 부채로 등재했다. 그때까지 아래 분기는 수정 경로로만 도달한다.
+ */
 function needsFromState(kind: TransitionKind): boolean {
   return kind === 'NORMAL'
 }
@@ -69,15 +75,15 @@ function TransitionFormDialog({
       <DialogContent className="max-w-md" ref={setPortalHost}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{labels.transitionPanel.list}</DialogDescription>
+          <DialogDescription>{labels.transitionForm.description}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="transition-name">{labels.transitionPanel.edit}</Label>
+            <Label htmlFor="transition-name">{labels.transitionForm.name}</Label>
             <Input
               id="transition-name"
-              aria-label={labels.transitionPanel.edit}
+              aria-label={labels.transitionForm.name}
               placeholder={labels.transitionNamePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -86,12 +92,13 @@ function TransitionFormDialog({
 
           {needsFromState(kind) ? (
             <div className="flex flex-col gap-2">
-              <Label>{labels.transitionPanel.kindGlobal}</Label>
+              <Label htmlFor="transition-from">{labels.transitionForm.fromState}</Label>
               <Combobox
+                id="transition-from"
                 options={stateOptions}
                 value={fromKey}
                 onChange={setFromKey}
-                ariaLabel={`${labels.transitionPanel.list} ${labels.transitionPanel.kindGlobal}`}
+                ariaLabel={labels.transitionForm.fromState}
                 placeholder={labels.statusSearchPlaceholder}
                 emptyText={labels.statusPanel.empty}
                 triggerPlaceholder={labels.statusSearchPlaceholder}
@@ -101,12 +108,13 @@ function TransitionFormDialog({
           ) : null}
 
           <div className="flex flex-col gap-2">
-            <Label>{labels.transitionPanel.kindInitial}</Label>
+            <Label htmlFor="transition-to">{labels.transitionForm.toState}</Label>
             <Combobox
+              id="transition-to"
               options={stateOptions}
               value={toKey}
               onChange={setToKey}
-              ariaLabel={`${labels.transitionPanel.list} ${labels.transitionPanel.kindInitial}`}
+              ariaLabel={labels.transitionForm.toState}
               placeholder={labels.statusSearchPlaceholder}
               emptyText={labels.statusPanel.empty}
               triggerPlaceholder={labels.statusSearchPlaceholder}
@@ -134,7 +142,7 @@ function TransitionFormDialog({
               onOpenChange(false)
             }}
           >
-            {labels.dialog.confirm}
+            {labels.transitionForm.submit}
           </Button>
         </DialogFooter>
       </DialogContent>
