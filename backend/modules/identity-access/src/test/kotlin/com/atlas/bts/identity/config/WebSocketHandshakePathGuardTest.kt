@@ -65,13 +65,15 @@ class WebSocketHandshakePathGuardTest {
     }
 
     @Test
-    fun `ws permitAll 은 MVC 비의존 antMatcher 로 등록된다`() {
+    fun `ws permitAll 은 MVC 비의존 antMatcher 로 GET 고정 등록된다`() {
         assertThat(source)
             .withFailMessage(
                 "`/ws` permitAll 이 antMatcher 로 등록돼 있지 않습니다. 문자열 매처는 Spring MVC 가 있으면 " +
                     "MvcRequestMatcher 로 해석되는데 `/ws` 는 MVC 핸들러가 아니라 WebSocket 핸들러라 " +
-                    "매칭이 보장되지 않습니다(SamlSecurityConfig 가 같은 이유로 antMatcher 를 씁니다).",
+                    "매칭이 보장되지 않습니다(SamlSecurityConfig 가 같은 이유로 antMatcher 를 씁니다).\n" +
+                    "또한 메서드를 GET 으로 고정하지 않으면 POST·DELETE 까지 익명이 됩니다 — " +
+                    "형제 permitAll(PUBLIC_DASHBOARDS_PATH·ICAL_FEED_PATH)이 쓰는 defense-in-depth 입니다.",
             )
-            .contains("auth.requestMatchers(antMatcher(WS_HANDSHAKE_PATH)).permitAll()")
+            .contains("auth.requestMatchers(antMatcher(HttpMethod.GET, WS_HANDSHAKE_PATH)).permitAll()")
     }
 }

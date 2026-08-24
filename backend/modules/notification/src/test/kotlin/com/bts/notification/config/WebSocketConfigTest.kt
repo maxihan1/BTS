@@ -4,8 +4,10 @@ package com.bts.notification.config
 
 import io.mockk.every
 import io.mockk.mockk
+import org.assertj.core.api.Assertions.assertThat
 import io.mockk.verify
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry
 import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRegistration
@@ -32,6 +34,8 @@ class WebSocketConfigTest {
         verify { registration.setMessageSizeLimit(64 * 1024) }
         verify { registration.setSendTimeLimit(10 * 1000) }
         verify { registration.setSendBufferSizeLimit(512 * 1024) }
+        // 인증 전 소켓 수명 — permitAll 로 업그레이드가 성립하면서 CONNECT 전에 자원이 잡힌다.
+        verify { registration.setTimeToFirstMessage(30 * 1000) }
     }
 
     /**
@@ -54,5 +58,25 @@ class WebSocketConfigTest {
         config.registerStompEndpoints(registry)
 
         verify { registration.setAllowedOrigins(*allowedOrigins.toTypedArray()) }
+    }
+
+    /**
+     * 허용 출처에 `"*"` 가 들어오면 부팅을 실패시킨다.
+     *
+     * CorsConfig 는 `allowCredentials = true` 라 Spring 이 `"*"` 를 런타임에 시끄럽게 거절하는데,
+     * WebSocket 은 같은 값을 **조용히 전 출처 허용**으로 받는다. 같은 프로퍼티를 공유하면서
+     * 실패 모드가 비대칭이라, 주석이 아니라 코드가 막아야 한다.
+     */
+    @Test
+    fun `허용 출처에 와일드카드가 있으면 등록 단계에서 실패한다`() {
+        val config = WebSocketConfig(jwtDecoder, listOf("http://localhost:5173", "*"))
+        val registration = mockk<StompWebSocketEndpointRegistration>(relaxed = true)
+        val registry = mockk<StompEndpointRegistry>(relaxed = true)
+        every { registry.addEndpoint(*anyVararg()) } returns registration
+
+        val thrown =
+            assertThrows<IllegalArgumentException> { config.registerStompEndpoints(registry) }
+
+        assertThat(thrown).hasMessageContaining("전 출처")
     }
 }
