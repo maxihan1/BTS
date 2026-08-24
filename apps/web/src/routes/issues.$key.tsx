@@ -188,6 +188,20 @@ interface IssueDetailPageProps {
  *
  * 라우터 의존 없이 props로 issueKey를 받아 단위 테스트가 가능하다.
  */
+/**
+ * 전환 요청에 실을 1급 식별자 — 없으면 **미전달**로 떨어뜨린다.
+ *
+ * 값이 있으면 서버는 그 전환을 그대로 실행한다. 같은 상태쌍에 이름만 다른 전환이 둘 있어도
+ * 어느 쪽인지 이 값 하나로 지목되므로 되묻지 않는다(ADR 2026-08-18 §D3).
+ *
+ * 값이 없는 구 데이터면 서버가 `toStatusKey` 로 후보를 찾고, 둘 이상이면 409
+ * `AMBIGUOUS_TRANSITION` + 후보 목록으로 답한다 — `AmbiguousTransitionPrompt` 가 그 폴백이다.
+ * `issueTransitionSchema.transitionId` 가 `nullable().optional()` 인 것이 이 경우를 연다.
+ */
+function transitionIdOf(transition: IssueTransition): string | undefined {
+  return transition.transitionId ?? undefined
+}
+
 export function IssueDetailPage({
   issueKey,
   variant = 'page',
@@ -852,20 +866,18 @@ export function IssueDetailPage({
    * - toCategory === 'DONE': Resolution 모달을 오픈하고 전환을 대기한다.
    * - 그 외: 즉시 전환 실행 (resolutionId 없음).
    *
-   * IssueMetaPanel.onTransition 시그니처가 toStateKey만 넘기므로,
-   * transitions 배열에서 해당 전환 항목을 찾아 toCategory를 판단한다.
-   *
-   * @param toStateKey 목표 상태 키
+   * @param transition 셀렉터가 고른 전환 — `toStateKey` 로 목록을 되훑지 않는다
+   *   ({@link transitionIdOf} 가 식별 규칙의 정본). 되훑으면 같은 상태쌍의 첫 전환이 잡혀
+   *   사용자가 고른 것과 다른 전환의 `toCategory` 로 DONE 여부를 판단한다.
    */
-  function handleTransition(toStateKey: string) {
+  function handleTransition(transition: IssueTransition) {
     if (issue === undefined) return
-    const transition = transitions.find((t) => t.toStateKey === toStateKey)
-    if (transition?.toCategory === 'DONE') {
+    if (transition.toCategory === 'DONE') {
       // DONE 전환 → 모달 오픈 후 resolution 선택 대기
       setPendingDoneTransition(transition)
     } else {
       // 비DONE 전환 → 즉시 실행
-      transitionFlow.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
+      transitionFlow.mutate({ toStatusKey: transition.toStateKey, expectedVersion: issue.version, transitionId: transitionIdOf(transition) })
     }
   }
 
@@ -879,6 +891,7 @@ export function IssueDetailPage({
       toStatusKey: pendingDoneTransition.toStateKey,
       expectedVersion: issue.version,
       resolutionId,
+      transitionId: transitionIdOf(pendingDoneTransition),
     })
     setPendingDoneTransition(null)
   }

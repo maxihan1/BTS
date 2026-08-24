@@ -35,7 +35,7 @@ describe('IssueStateTransition', () => {
     expect(screen.getByRole('option', { name: 'Cancel' })).toBeInTheDocument()
   })
 
-  it('전환 선택 시 onSelectedValueChange와 onTransition이 toStateKey로 호출된다', async () => {
+  it('전환 선택 시 onSelectedValueChange 는 옵션 값으로, onTransition 은 고른 전환으로 호출된다', async () => {
     const onTransition = vi.fn()
     const onSelectedValueChange = vi.fn()
     render(
@@ -50,10 +50,11 @@ describe('IssueStateTransition', () => {
     )
     const user = userEvent.setup()
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, 'in_progress')
-    expect(onSelectedValueChange).toHaveBeenCalledWith('in_progress')
+    // 옵션 값은 `transitionId ?? key` 다. 이 픽스처는 `transitionId` 가 없어 `key` 로 떨어진다.
+    await user.selectOptions(select, 'open__in_progress')
+    expect(onSelectedValueChange).toHaveBeenCalledWith('open__in_progress')
     expect(onTransition).toHaveBeenCalledOnce()
-    expect(onTransition).toHaveBeenCalledWith('in_progress')
+    expect(onTransition).toHaveBeenCalledWith(transitionsFixture[0])
   })
 
   it('isTransitioning=true이면 셀렉터가 disabled된다', () => {
@@ -148,6 +149,53 @@ describe('IssueStateTransition — 같은 도착 상태 전환이 둘일 때 (T2
     )
     expect(screen.getByRole('option', { name: '조건부 승인' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '즉시 완료' })).toBeInTheDocument()
+  })
+
+  it('T21-C5: 도착 상태가 같은 두 전환 중 둘째를 고르면 그 전환이 onTransition 에 전달된다', async () => {
+    const onTransition = vi.fn()
+    const duplicated: IssueTransition[] = [
+      { key: 'open__done', name: '조건부 승인', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_ONE_ID },
+      { key: 'open__done', name: '즉시 완료', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_TWO_ID },
+    ]
+    render(
+      <IssueStateTransition
+        transitions={duplicated}
+        onTransition={onTransition}
+        isTransitioning={false}
+        unavailableReason={null}
+        selectedValue=""
+        onSelectedValueChange={vi.fn()}
+      />,
+    )
+    const user = userEvent.setup()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, screen.getByRole('option', { name: '즉시 완료' }))
+
+    // ★도착 상태(`done`)로는 두 전환을 가를 수 없다. 고른 전환 **자체**가 넘어와야
+    //   호출부가 `transitionId` 를 실어 보내고 409 왕복이 사라진다.
+    expect(onTransition).toHaveBeenCalledOnce()
+    expect(onTransition).toHaveBeenCalledWith(duplicated[1])
+  })
+
+  it('T21-C6: `transitionId` 가 없는 구 데이터도 고른 전환이 그대로 전달된다 (폴백)', async () => {
+    const onTransition = vi.fn()
+    const legacy: IssueTransition[] = [
+      { key: 'open__in_progress', name: '작업 시작', fromStateKey: 'open', toStateKey: 'in_progress' },
+    ]
+    render(
+      <IssueStateTransition
+        transitions={legacy}
+        onTransition={onTransition}
+        isTransitioning={false}
+        unavailableReason={null}
+        selectedValue=""
+        onSelectedValueChange={vi.fn()}
+      />,
+    )
+    const user = userEvent.setup()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, screen.getByRole('option', { name: '작업 시작' }))
+    expect(onTransition).toHaveBeenCalledWith(legacy[0])
   })
 })
 

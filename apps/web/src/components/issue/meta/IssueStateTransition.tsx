@@ -25,16 +25,40 @@ import { issueDetailStrings } from '@/i18n/ko'
 export interface IssueStateTransitionProps {
   /** 현재 상태에서 가용한 전환 목록 */
   transitions: IssueTransition[]
-  /** 전환 실행 콜백 — toStateKey 전달 */
-  onTransition: (toStateKey: string) => void
+  /**
+   * 전환 실행 콜백 — **고른 전환 자체**를 전달한다.
+   *
+   * `toStateKey` 만 넘기면 같은 상태쌍에 이름만 다른 전환이 둘 있을 때 호출부가 어느 쪽인지
+   * 되찾을 수 없다(ADR 2026-08-18 로 `UNIQUE(workflow_id, from, to)` 가 해제됐다).
+   * 그러면 서버가 409 `AMBIGUOUS_TRANSITION` 을 내고, 사용자는 **방금 이름으로 고른 것을
+   * 다시 고르게** 된다. 전환 객체를 통째로 넘겨 그 왕복을 없앤다.
+   */
+  onTransition: (transition: IssueTransition) => void
   /** 전환 진행 중 여부 — true 시 셀렉터 disabled (NFR3) */
   isTransitioning: boolean
   /** 전환 컨트롤을 노출할 수 없는 사유 (스펙 E5) */
   unavailableReason: TransitionUnavailableReason
-  /** 제어값 — 전환 시도 후 리셋에 사용 (C1 회귀 방지) */
+  /** 제어값 — `optionValueOf` 가 만든 옵션 값. 전환 시도 후 리셋에 쓴다 (C1 회귀 방지) */
   selectedValue: string
   /** 제어값 변경 콜백 */
   onSelectedValueChange: (value: string) => void
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 옵션 값
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `<option>` 의 값 — React key 와 **같은 규칙**을 쓴다.
+ *
+ * 규칙을 둘로 나누면 key 는 전환을 가르는데 value 는 못 가르는 상태가 생기고, 그때 화면은
+ * 두 옵션을 그리면서 어느 쪽을 골라도 같은 값을 보낸다. 한 함수로 묶어 그 자리를 없앤다.
+ *
+ * `transitionId` 가 null 인 구 데이터는 `key`(`from__to`)로 떨어진다 — 같은 상태쌍이면 값이
+ * 겹치므로 첫 전환이 선택되고 서버 409 후보 선택으로 이어진다. 그것이 폴백 경로다.
+ */
+function optionValueOf(transition: IssueTransition): string {
+  return transition.transitionId ?? transition.key
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +71,7 @@ export interface IssueStateTransitionProps {
  * - 가용전환 0건 + unavailableReason='no-workflow' → 미설정 안내 (스펙 E5 S5)
  * - 가용전환 0건 + unavailableReason='terminal'|null → "더 진행할 전환 없음" 안내 (스펙 E5 S6)
  * - 가용전환 있으면 네이티브 select — IssueTypeSelect 동일 패턴
- * - 첫 옵션은 placeholder(비선택 상태), 전환 선택 시 onTransition(toStateKey) 호출
+ * - 첫 옵션은 placeholder(비선택 상태), 전환 선택 시 onTransition(전환 객체) 호출
  * - isTransitioning=true → disabled (중복클릭 방지, NFR3)
  * - WCAG AA: min-h-[44px] 터치 타깃, aria-label
  */
@@ -76,11 +100,14 @@ export function IssueStateTransition({
   }
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const toStateKey = e.target.value
+    const optionValue = e.target.value
     // placeholder 옵션 선택 무시
-    if (toStateKey === '') return
-    onSelectedValueChange(toStateKey)
-    onTransition(toStateKey)
+    if (optionValue === '') return
+    const selected = transitions.find((t) => optionValueOf(t) === optionValue)
+    // 목록에 없는 값이면 아무것도 하지 않는다 — 제어값만 흘려보내면 호출부가 undefined 를 받는다
+    if (selected === undefined) return
+    onSelectedValueChange(optionValue)
+    onTransition(selected)
   }
 
   return (
@@ -95,10 +122,10 @@ export function IssueStateTransition({
         {issueDetailStrings.transitionSelectLabel}
       </option>
       {transitions.map((t) => (
-        // ★React key 는 `transitionId` 우선이다. `key`(`from__to`)는 같은 상태쌍의 전환 둘이
-        //   서로 **같은 값**이라(ADR 2026-08-18 로 UNIQUE 해제) key 중복이 나고 한쪽이
-        //   조용히 사라진다. `transitionId` 는 미계산(null)일 수 있어 폴백을 남긴다.
-        <option key={t.transitionId ?? t.key} value={t.toStateKey}>
+        // ★key 도 value 도 `optionValueOf` 하나를 쓴다. `key`(`from__to`)는 같은 상태쌍의
+        //   전환 둘이 서로 **같은 값**이라(ADR 2026-08-18 로 UNIQUE 해제) 중복이 나고,
+        //   value 가 `toStateKey` 이던 종전에는 어느 쪽을 골라도 같은 값이 나갔다.
+        <option key={optionValueOf(t)} value={optionValueOf(t)}>
           {t.name}
         </option>
       ))}

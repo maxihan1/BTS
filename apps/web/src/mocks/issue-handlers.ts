@@ -1329,6 +1329,24 @@ function getAvailableTransitions(currentStateKey: string): MockTransitionItem[] 
  */
 export const MOCK_AMBIGUOUS_ISSUE_KEY = 'ATLAS-AMBIG'
 
+/**
+ * 모호 전환 **폴백** 검증 전용 이슈 키 — 가용전환 응답에 `transitionId` 가 **없는** 이슈.
+ *
+ * ★왜 별도 키가 필요한가. 화면이 고른 전환의 `transitionId` 를 실어 보내기 시작한 뒤로,
+ *   `ATLAS-AMBIG` 는 더 이상 409 를 만들지 않는다(그것이 이 변경의 목적이다).
+ *   그런데 409 후보 선택 UI 는 지워선 안 된다 — 서버는 `transitionId` 가 오지 않으면
+ *   여전히 409 + 후보를 돌려주고(`WorkflowEngine.plan`), 그 응답을 화면이 못 다루면
+ *   사용자에게 「허용되지 않는 전환」이라는 거짓말이 뜬다.
+ *
+ *   `transitionId` 가 비는 경우는 계약에 이미 있다 — `issueTransitionSchema.transitionId` 가
+ *   `nullable().optional()` 이다. 그 자리를 목이 한 번도 만들지 않으면 후보 선택 UI 는
+ *   도달 불가가 되고, 그것을 지키는 테스트는 가짜 그린이 된다.
+ *
+ *   **GET 응답에서만** id 를 뺀다. POST 후보 산출은 원본을 쓴다 — 백엔드는 후보에 항상
+ *   전환 PK 를 싣기 때문이다(`AmbiguousTransitionException(TransitionCandidate(it.id, ...))`).
+ */
+export const MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY = 'ATLAS-AMBIG-LEGACY'
+
 /** 모호 전환 후보 중 픽스처에 없는 쪽의 이름 — E2E 가 이 버튼을 눌러 후보를 지목한다. */
 export const MOCK_AMBIGUOUS_TRANSITION_NAME = '긴급 착수'
 
@@ -1337,7 +1355,7 @@ export const MOCK_AMBIGUOUS_TRANSITION_NAME = '긴급 착수'
  * `workflow-fixtures.ts` 의 `fixtureTransitionId(워크플로우번호, 전환번호)` 와 같은 RFC4122 v4
  * 형식이되 워크플로우 번호 `00` 대역을 써서 픽스처 전환 id 와 겹치지 않는다.
  */
-const MOCK_AMBIGUOUS_TRANSITION_ID = '00000000-0000-4000-8000-000000000099'
+export const MOCK_AMBIGUOUS_TRANSITION_ID = '00000000-0000-4000-8000-000000000099'
 
 /**
  * 모호 전환 이슈 — open 에서 in_progress 로 가는 전환이 **2건**이라 도착 상태만으로는 못 가른다.
@@ -1350,9 +1368,20 @@ const ambiguousIssueFixture: IssueResponse = {
   summary: '같은 도착 상태로 가는 전환이 둘인 이슈 (409 후보 선택 검증용)',
 }
 
+/**
+ * 구-백엔드 모호 전환 이슈 — 전환 구성은 위와 같고 GET 응답에서 `transitionId` 만 빠진다.
+ */
+const legacyAmbiguousIssueFixture: IssueResponse = {
+  ...ambiguousIssueFixture,
+  key: MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY,
+  id: 'd4e5f6a7-b8c9-4d0e-8f1a-2b3c4d5e6f71',
+  summary: '가용전환에 전환 ID 가 없는 이슈 (409 후보 선택 폴백 검증용)',
+}
+
 /** 모호 전환 이슈 단건 조회용 맵 — resolveIssue 체인 맨 끝. */
 const ambiguousIssueMap: Record<string, IssueResponse> = {
   [MOCK_AMBIGUOUS_ISSUE_KEY]: ambiguousIssueFixture,
+  [MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY]: legacyAmbiguousIssueFixture,
 }
 
 /**
@@ -1371,7 +1400,8 @@ function getAvailableTransitionsForIssue(
   currentStateKey: string,
 ): MockTransitionItem[] {
   const base = getAvailableTransitions(currentStateKey)
-  if (key !== MOCK_AMBIGUOUS_ISSUE_KEY || currentStateKey !== 'open') return base
+  const isAmbiguous = key === MOCK_AMBIGUOUS_ISSUE_KEY || key === MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY
+  if (!isAmbiguous || currentStateKey !== 'open') return base
   return [
     ...base,
     {
@@ -1411,6 +1441,19 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
     )
   }
   const transitions = getAvailableTransitionsForIssue(key, found.currentStateKey)
+  // 구-백엔드 시뮬 — 가용전환 응답에서 `transitionId` 를 뺀다. 화면은 도착 상태만 들고
+  // 요청하게 되고, 서버(POST 핸들러)는 후보가 둘이라 409 + 후보 목록으로 답한다.
+  if (key === MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY) {
+    const withoutIds = transitions.map((t) => ({
+      key: t.key,
+      name: t.name,
+      fromStateKey: t.fromStateKey,
+      toStateKey: t.toStateKey,
+      toCategory: t.toCategory,
+      kind: t.kind,
+    }))
+    return HttpResponse.json({ data: { transitions: withoutIds } })
+  }
   return HttpResponse.json({ data: { transitions } })
 })
 
