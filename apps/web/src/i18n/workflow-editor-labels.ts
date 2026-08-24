@@ -111,7 +111,13 @@ export const workflowEditorLabels = {
     kindInitial: '이슈 생성 시',
   },
 
-  /** 다이얼로그 — 각 `aria-label` 은 화면 전체에서 고유해야 한다 (§2 즉사 계약) */
+  /**
+   * 다이얼로그 **제목**. 각 값은 화면 전체에서 고유해야 한다 (§2 즉사 계약).
+   *
+   * ★ 이 값들은 `aria-label` 이 아니라 `DialogTitle` 로 들어간다. Radix 가 제목을
+   * `aria-labelledby` 로 연결하고 그것이 `aria-label` 을 이기므로, 별도 aria-label 을
+   * 주면 지정한 이름과 실제 접근성 이름이 갈린다(실측).
+   */
   dialog: {
     /** 상태 선택 다이얼로그 */
     statusPicker: '워크플로우에 추가할 상태 선택',
