@@ -49,12 +49,11 @@ class WebSocketHandshakePathGuardTest {
 
     @Test
     fun `ws permitAll 경로 상수는 와일드카드 없는 단일 경로다`() {
-        val match = Regex("""const val WS_HANDSHAKE_PATH = "([^"]*)"""").find(source)
-        assertThat(match)
+        val path = handshakePathIn(source)
+        assertThat(path)
             .withFailMessage("SecurityConfig 에 WS_HANDSHAKE_PATH 상수가 없습니다.")
             .isNotNull()
 
-        val path = match?.groupValues?.get(1)
         assertThat(path)
             .withFailMessage(
                 "WS_HANDSHAKE_PATH 가 `/ws` 가 아닙니다(실제: %s). 하위를 덮는 와일드카드로 넓히면 " +
@@ -66,7 +65,7 @@ class WebSocketHandshakePathGuardTest {
 
     @Test
     fun `ws permitAll 은 MVC 비의존 antMatcher 로 GET 고정 등록된다`() {
-        assertThat(source)
+        assertThat(getFixedWiringPresentIn(source))
             .withFailMessage(
                 "`/ws` permitAll 이 antMatcher 로 등록돼 있지 않습니다. 문자열 매처는 Spring MVC 가 있으면 " +
                     "MvcRequestMatcher 로 해석되는데 `/ws` 는 MVC 핸들러가 아니라 WebSocket 핸들러라 " +
@@ -74,6 +73,168 @@ class WebSocketHandshakePathGuardTest {
                     "또한 메서드를 GET 으로 고정하지 않으면 POST·DELETE 까지 익명이 됩니다 — " +
                     "형제 permitAll(PUBLIC_DASHBOARDS_PATH·ICAL_FEED_PATH)이 쓰는 defense-in-depth 입니다.",
             )
-            .contains("auth.requestMatchers(antMatcher(HttpMethod.GET, WS_HANDSHAKE_PATH)).permitAll()")
+            .isTrue()
+    }
+
+    @Test
+    fun `배선을 주석으로만 남기고 메서드 고정을 빼면 red 가 된다`() {
+        val mutated = source.replace(GET_FIXED_WIRING, "// $GET_FIXED_WIRING\n                $METHODLESS_WIRING")
+        assertThat(mutated)
+            .withFailMessage("뮤테이션이 적용되지 않았습니다 — 원본에서 GET 고정 배선을 찾지 못했습니다.")
+            .isNotEqualTo(source)
+
+        assertThat(getFixedWiringPresentIn(mutated))
+            .withFailMessage(
+                "GET 고정 배선을 주석으로만 남기고 실제 등록을 antMatcher(WS_HANDSHAKE_PATH) 로 되돌렸는데도 " +
+                    "가드가 통과했습니다. 이 가드는 소스 텍스트를 읽으므로 주석을 걷어내지 않으면 " +
+                    "`POST /ws`·`DELETE /ws` 가 익명이 돼도 초록입니다.",
+            )
+            .isFalse()
+    }
+
+    @Test
+    fun `경로 상수를 주석으로만 남기고 와일드카드로 넓히면 red 가 된다`() {
+        val mutated =
+            source.replace(
+                PATH_CONSTANT_DECLARATION,
+                "// $PATH_CONSTANT_DECLARATION\n        const val WS_HANDSHAKE_PATH = \"/ws/**\"",
+            )
+        assertThat(mutated)
+            .withFailMessage("뮤테이션이 적용되지 않았습니다 — 원본에서 경로 상수 선언을 찾지 못했습니다.")
+            .isNotEqualTo(source)
+
+        assertThat(handshakePathIn(mutated))
+            .withFailMessage(
+                "경로 상수를 주석으로만 남기고 실제 값을 `/ws/**` 로 넓혔는데도 가드가 `/ws` 를 읽었습니다. " +
+                    "정규식이 주석 속 리터럴을 먼저 맞추면 상수가 넓어져도 조용히 통과합니다.",
+            )
+            .isNotEqualTo("/ws")
+    }
+
+    @Test
+    fun `주석 제거가 실제 배선까지 지우지는 않는다`() {
+        val stripped = withoutComments(source)
+
+        assertThat(stripped.length)
+            .withFailMessage("주석 제거가 아무것도 걷어내지 못했습니다 — withoutComments 가 항등 함수가 됐습니다.")
+            .isLessThan(source.length)
+
+        assertThat(stripped)
+            .withFailMessage("주석 제거가 과해 실제 배선까지 지웠습니다. 이 가드는 그 상태에서 공허해집니다.")
+            .contains(GET_FIXED_WIRING)
+            .contains(PATH_CONSTANT_DECLARATION)
+    }
+
+    private companion object {
+        const val GET_FIXED_WIRING = "auth.requestMatchers(antMatcher(HttpMethod.GET, WS_HANDSHAKE_PATH)).permitAll()"
+        const val METHODLESS_WIRING = "auth.requestMatchers(antMatcher(WS_HANDSHAKE_PATH)).permitAll()"
+        const val PATH_CONSTANT_DECLARATION = "const val WS_HANDSHAKE_PATH = \"/ws\""
+
+        val PATH_CONSTANT_RE = Regex("""const val WS_HANDSHAKE_PATH = "([^"]*)"""")
+
+        const val BLOCK_OPEN = "/*"
+        const val BLOCK_CLOSE = "*/"
+        const val LINE_COMMENT = "//"
+        const val QUOTE = '"'
+        const val ESCAPE = '\\'
+
+        /**
+         * Kotlin 주석을 걷어낸다 — 블록 주석과 KDoc, 그리고 줄 주석까지. 후행 줄 주석도 자른다.
+         *
+         * ## 왜 필요한가
+         * 이 가드는 소스 **텍스트**를 읽는다. 주석을 남겨 두면 실제 배선이 무엇이든 주석이 같은
+         * 문자열을 품고 있는 한 통과한다 — GET 고정을 주석으로만 남기고 등록에서 빼도 초록이었다.
+         * `SecurityConfig.kt` 는 KDoc·🛑 블록이 코드를 그대로 인용하는 스타일이 지배적이라
+         * 우연이 아니라 **관례**가 이 가드를 무력화한다.
+         *
+         * ## 왜 정규식 한 방이 아닌가 — 실측
+         * 블록 주석 여닫이를 정규식으로 비탐욕 매칭하면 **Ant 경로 패턴이 블록 주석 시작으로 읽힌다.**
+         * 액추에이터 경로 패턴(SecurityConfig.kt:174)의 슬래시-별표가 여는 표기로 잡혀 그 아래 KDoc 의
+         * 닫는 표기까지가 통째로 지워졌고, 지키려던 배선(:255)이 함께 사라져 가드가 오히려 공허해졌다.
+         * 이 저장소는 문자열 리터럴에 그 표기를 흔하게 쓴다(:264 · :359 · :370 · :434 · :436).
+         * 그래서 **문자열 리터럴 안을 건너뛰는** 스캐너여야 한다.
+         *
+         * 그 과다 제거를 잡아낸 것이 `주석 제거가 실제 배선까지 지우지는 않는다` 테스트다 —
+         * 비-공허 짝은 장식이 아니라 실제로 값을 치렀다.
+         */
+        fun withoutComments(source: String): String {
+            var inBlock = false
+            return source
+                .lineSequence()
+                .joinToString("\n") { line ->
+                    val (kept, stillInBlock) = stripCommentsFrom(line, inBlock)
+                    inBlock = stillInBlock
+                    kept
+                }
+        }
+
+        /**
+         * 한 줄에서 주석을 걷어낸다. 반환은 (남은 코드, 줄 끝에서도 블록 주석 안인가).
+         *
+         * 문자열 리터럴 안에 들어 있는 줄 주석 표기와 블록 주석 여는 표기는 주석이 아니다.
+         * 이스케이프된 따옴표도 문자열 안으로 센다. raw string 은 0건이라 그 표기는 다루지 않는다.
+         */
+        private fun stripCommentsFrom(
+            line: String,
+            blockOpen: Boolean,
+        ): Pair<String, Boolean> {
+            val kept = StringBuilder()
+            var inBlock = blockOpen
+            var lineCommentHit = false
+            var i = 0
+            while (i < line.length && !lineCommentHit) {
+                when {
+                    inBlock && line.startsWith(BLOCK_CLOSE, i) -> {
+                        inBlock = false
+                        i += BLOCK_CLOSE.length
+                    }
+                    inBlock -> i++
+                    line.startsWith(LINE_COMMENT, i) -> lineCommentHit = true
+                    line.startsWith(BLOCK_OPEN, i) -> {
+                        inBlock = true
+                        i += BLOCK_OPEN.length
+                    }
+                    line[i] == QUOTE -> i = copyStringLiteral(line, i, kept)
+                    else -> {
+                        kept.append(line[i])
+                        i++
+                    }
+                }
+            }
+            return kept.toString() to inBlock
+        }
+
+        /**
+         * 여는 따옴표부터 닫는 따옴표까지를 [kept] 에 그대로 옮기고 다음 위치를 돌려준다.
+         * 문자열이 그 줄에서 닫히지 않으면 줄 끝까지 옮긴다.
+         */
+        private fun copyStringLiteral(
+            line: String,
+            openAt: Int,
+            kept: StringBuilder,
+        ): Int {
+            kept.append(line[openAt])
+            var i = openAt + 1
+            var closed = false
+            while (i < line.length && !closed) {
+                val c = line[i]
+                kept.append(c)
+                if (c == ESCAPE && i + 1 < line.length) {
+                    kept.append(line[i + 1])
+                    i += 2
+                } else {
+                    closed = c == QUOTE
+                    i++
+                }
+            }
+            return i
+        }
+
+        fun getFixedWiringPresentIn(source: String): Boolean = withoutComments(source).contains(GET_FIXED_WIRING)
+
+        fun handshakePathIn(source: String): String? {
+            val match = PATH_CONSTANT_RE.find(withoutComments(source))
+            return match?.groupValues?.get(1)
+        }
     }
 }
