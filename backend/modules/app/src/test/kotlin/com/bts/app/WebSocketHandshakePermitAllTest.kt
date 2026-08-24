@@ -47,4 +47,38 @@ class WebSocketHandshakePermitAllTest : ProdAssemblyHttpTestBase() {
             )
             .isEqualTo(HttpStatus.BAD_REQUEST)
     }
+
+    /**
+     * permitAll 이 **정확히 한 경로만** 연다는 음성 증명.
+     *
+     * ## 왜 여기서는 401 이 공허하지 않은가
+     * 위 테스트가 401 을 쓰지 않는 이유는 「필터가 잘랐다」와 「permitAll 통과 후 핸들러 부재로
+     * `/error` 에서 났다」가 상태코드도 `WWW-Authenticate` 헤더도 같아 구분되지 않기 때문이다
+     * ([GitWebhookInboundPermitAllTest] KDoc 의 실측 기록). 그 모호함은 **permitAll 대상 경로**
+     * 에서만 생긴다 — 통과할 수 있어야 헷갈릴 여지가 있다.
+     *
+     * 아래 경로들은 permitAll 대상이 **아니므로** 통과 자체가 불가능하고, 따라서 여기서 나는
+     * 401 은 필터가 자른 401 하나뿐이다. 즉 이 단언은 공허하지 않다.
+     *
+     * ## 무엇을 막는가
+     * 상수를 하위 와일드카드로 넓히거나 매처를 접두사 매칭으로 바꾸면 이 경로들이 함께 열리고
+     * 이 테스트가 red 가 된다. 짝 = identity-access 의 `WebSocketHandshakePathGuardTest`
+     * (상수의 폭과 매처 종류를 소스 텍스트로 고정).
+     */
+    @Test
+    fun `인접 경로는 permitAll 대상이 아니라 401 이다 (한 경로만 열렸다는 음성 증명)`() {
+        for (path in listOf("/wsx", "/ws/anything", "/ws/info")) {
+            val response = rest.getForEntity(path, String::class.java)
+
+            assertThat(response.statusCode)
+                .withFailMessage(
+                    "GET %s 가 %s 입니다. 401 이라야 permitAll 이 그 경로를 열지 않았다는 뜻입니다. " +
+                        "WS_HANDSHAKE_PATH 를 하위 와일드카드로 넓혔거나 매처가 접두사 매칭으로 " +
+                        "바뀌면 여기가 뚫립니다 — 훗날 그 아래 매핑이 생겼을 때 조용히 익명 노출됩니다.",
+                    path,
+                    response.statusCode,
+                )
+                .isEqualTo(HttpStatus.UNAUTHORIZED)
+        }
+    }
 }

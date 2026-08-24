@@ -2,10 +2,13 @@
 
 package com.bts.notification.config
 
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.web.socket.config.annotation.StompEndpointRegistry
+import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRegistration
 import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration
 
 /**
@@ -16,7 +19,8 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
  */
 class WebSocketConfigTest {
     private val jwtDecoder = mockk<JwtDecoder>()
-    private val config = WebSocketConfig(jwtDecoder)
+    private val allowedOrigins = listOf("http://localhost:5173", "https://bts.example.com")
+    private val config = WebSocketConfig(jwtDecoder, allowedOrigins)
 
     @Suppress("MagicNumber") // 검증 대상이 곧 한도 값 자체 — 의미를 가리지 않게 직접 표기
     @Test
@@ -28,5 +32,27 @@ class WebSocketConfigTest {
         verify { registration.setMessageSizeLimit(64 * 1024) }
         verify { registration.setSendTimeLimit(10 * 1000) }
         verify { registration.setSendBufferSizeLimit(512 * 1024) }
+    }
+
+    /**
+     * 핸드셰이크 허용 출처를 **소스에 명시**하는지 검증한다.
+     *
+     * 이 호출이 없으면 Spring 기본값(동일 출처)에 의존한다 — 오늘은 안전하지만 그 안전이
+     * 우리가 적은 것이 아니라 프레임워크 기본값이라, 버전 업그레이드가 기본값을 바꾸면
+     * 조용히 달라진다. 중앙 SecurityConfig 가 이 경로를 permitAll 로 열어 HTTP 계층
+     * 방어선이 하나 줄었으므로, 남은 방어선을 암묵값으로 두지 않는다.
+     *
+     * 목록은 HTTP CORS 와 **같은 프로퍼티**(`bts.security.cors.allowed-origins`)를 읽는다.
+     * 두 목록을 따로 두면 한쪽만 바뀌었을 때 어느 테스트도 그 어긋남을 보지 못한다.
+     */
+    @Test
+    fun `registerStompEndpoints 는 허용 출처를 명시적으로 설정한다`() {
+        val registration = mockk<StompWebSocketEndpointRegistration>(relaxed = true)
+        val registry = mockk<StompEndpointRegistry>(relaxed = true)
+        every { registry.addEndpoint(*anyVararg()) } returns registration
+
+        config.registerStompEndpoints(registry)
+
+        verify { registration.setAllowedOrigins(*allowedOrigins.toTypedArray()) }
     }
 }

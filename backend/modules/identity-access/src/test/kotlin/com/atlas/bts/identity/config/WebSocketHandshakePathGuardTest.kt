@@ -10,6 +10,12 @@ import java.nio.file.Path
 /**
  * `/ws` permitAll 의 **폭**과 **매처 종류**를 지키는 가드.
  *
+ * ## 왜 이름에 `IntegrationTest` 가 없는가
+ * 이 파일은 Testcontainers 를 띄우는 통합 테스트가 아니라 **소스 텍스트를 읽는 가드**다
+ * (`Files.readString`). 저장소 관례상 `…IntegrationTest` 는 실제 컨테이너/HTTP 왕복을 뜻하므로
+ * 그 접미사를 달면 다음 사람이 「HTTP 로 permitAll 통과를 검증한다」고 오독한다 — 아래가 바로
+ * 그렇게 검증하면 **공허해지는** 이유를 적은 절이다.
+ *
  * ## 왜 HTTP 로 검증하지 않는가 (정직한 계약)
  * 이 모듈 컨텍스트에는 `/ws` **핸들러가 없다**(notification BC 소유). permitAll 이 걸리면 요청은
  * 통과한 뒤 핸들러 부재로 `sendError` → `/error` ERROR 디스패치로 가는데, `/error` 는
@@ -28,7 +34,7 @@ import java.nio.file.Path
  * [SecurityConfig] 의 companion object 는 `private` 이다. 테스트 편의로 프로덕션 가시성을 넓히는 것은
  * 보안 설정 파일에서 하지 않는다 — 대신 소스를 읽는다.
  */
-class WebSocketHandshakePermitAllIntegrationTest {
+class WebSocketHandshakePathGuardTest {
     private val source: String by lazy {
         val candidates =
             listOf(
