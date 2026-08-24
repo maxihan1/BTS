@@ -100,7 +100,7 @@ permitAll 로 HTTP 계층 방어선이 하나 줄었으므로, 남은 손잡이�
 
 | # | 위험 | 수용 근거 |
 |---|---|---|
-| R1 | 익명 클라이언트가 업그레이드에 성공해 **CONNECT 전까지** 커넥션·세션 엔트리를 잡는다 | `setTimeToFirstMessage` 30초로 창을 좁혔다. 다만 **동시 연결 수 상한은 여전히 없다**(`server.tomcat.max-connections` 미설정 = 기본값). 1,000명 사내 단일 호스트 규모에서 수용 |
+| R1 | 익명 클라이언트가 업그레이드에 성공해 **CONNECT 전까지** 커넥션·세션 엔트리를 잡는다 | ⚠️ **조건부 — 아직 완전 수용 아님.** ceo 렌즈(C-1)가 초판의 「사내 1,000명 규모에서 수용」을 **사실 오류**로 잡았다. `bts.maxihan.com` 은 **공개 도메인**이라 모집단이 사내로 묶이지 않는다. 실측 — 엣지 `infra/` 전체에 `limit_conn`·`limit_req` **0건**, Tomcat `max-connections`·`threads.max` **미설정**(기본값). 상한이 **어느 층에도 없다.** 이 변경 전에도 익명 요청은 커넥션을 잡았으나 필터가 401 로 끊어 밀리초였고 지금은 최대 30초다 — 요청당 커넥션·초가 세 자릿수 배 늘었다. **처방** = `nginx.conf` 의 `location /ws` 에 `limit_conn` 한 줄(정상 사용자는 탭당 소켓 1개라 실사용 무영향). **배포 전 필수** · `TODOS.md` 등재 |
 | R2 | `Origin` 헤더 **부재** 요청(비브라우저 클라이언트)은 `setAllowedOrigins` 를 통과한다 | 통과해도 CONNECT Bearer 가 없으면 아무 데이터도 못 받는다. 브라우저 CSWSH 방어가 목적이라 의도된 범위 |
 | R3 | 허용 출처가 HTTP CORS 와 한 프로퍼티를 공유한다 — 훗날 두 용도가 갈려야 하면 분리 비용이 든다 | 지금 두 출처 집합은 같은 SPA 하나다. 갈라 둘 때의 drift 위험이 더 크다고 판단 |
 | R4 | `notification` BC 프로덕션 코드를 `identity-access` PR 이 함께 건드렸다 (「한 PR = 한 BC」 이탈) | 같은 FR-NT-02 결함의 짝이라 분리하면 반쪽 수정이 된다. 게이트 1 D5-A 승인. **cross-BC `import` 는 0건** — 상호 참조는 KDoc 링크뿐이고 컴파일 의존이 아니다 |
@@ -113,12 +113,16 @@ permitAll 로 HTTP 계층 방어선이 하나 줄었으므로, 남은 손잡이�
 | 핸드셰이크 전용 단명 티켓 발급 | 엔드포인트 1개 + 저장소 1개 + 만료 정책이 새로 생긴다. CONNECT frame 인증이 이미 같은 보증을 주는데 표면만 늘린다 |
 | SockJS 도입 후 쿠키 인증 | `STATELESS` 를 깨고 세션을 되살린다. 폴백 경로(`/ws/info` 등)까지 열어야 해 permitAll 표면이 오히려 넓어진다 |
 | permitAll 없이 필터에서 CONNECT 를 검사 | HTTP 필터는 업그레이드 시점에 STOMP 프레임을 볼 수 없다. 순서상 불가능 |
+| **롱폴링 (`fetch` + `Authorization` 헤더)** | ★**이 예외 자체가 없어지는 유일한 안**이다 — `fetch` 는 `WebSocket`·`EventSource` 와 달리 임의 헤더를 실을 수 있다. 그럼에도 기각하는 이유는 (a) WebSocket 배선이 이미 완성돼 있고 (b) 지연·서버 부하가 롱폴링보다 낫기 때문이다. ceo 렌즈(C-2)가 「초판 기각 목록이 전부 WebSocket 을 전제한 변형뿐이라, 조직이 **예외를 안 받는 선택지**를 한 번도 저울에 올리지 않았다」고 지적해 명시적으로 올린다 |
 
 ## 승인 (Approval)
 
 - **게이트 1** — 2026-08-24 Maxi 승인. 결정 D5-A(`setAllowedOrigins` 명시) 포함.
 - **plan-eng-review** — `docs/plans/2026-08-24-prod-ui-defects-12-ws-permitall.md` `## 리뷰 결과` 렌즈 1.
 - **plan-ceo-review** — 같은 파일 렌즈 3. `DATA.md §1-5`(필터 체인 변경은 두 리뷰 필수)를 충족한다.
+  판정 **CONCERNS** — C-1(R1 수용 근거 사실 오류 → 위 표 정정) · C-2(기각 대안 누락 → 위 표 추가) ·
+  C-3(기계 게이트 없이 예외가 누적된다 — permitAll 경로군 메서드 고정 판별식을 다음 PR 첫 항목으로).
+  ★그 렌즈가 `type=ui` 분기 때문에 자동 발행되지 않았다 — 규칙은 `type` 이 아니라 **변경 대상**이 켠다.
 - **독립 코드 리뷰** — `code-reviewer` 서브에이전트가 이 ADR 부재를 BLOCKER B2 로 잡았고, 그 지적으로 이 문서가 생겼다.
 
 ## 후속 (본 ADR 범위 밖)
