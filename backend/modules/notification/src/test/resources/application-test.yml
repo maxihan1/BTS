@@ -1,0 +1,17 @@
+# notification 모듈이 단독으로 부팅하는 테스트(@ActiveProfiles("test"))에만 쓰는 설정
+#
+# ★왜 이 파일이 필요한가 (실측).
+#   `WebSocketConfig` 가 핸드셰이크 허용 출처를 `bts.security.cors.allowed-origins` 에서 읽는다.
+#   그 값은 **배포가 주는 것**이라 모듈 main 에 기본값을 박지 않는다 — 박으면 운영에서 프로퍼티가
+#   빠져도 조용히 개발용 오리진으로 뜬다. 대신 조립(`:modules:app`)의 `application.yml` 이
+#   `${BTS_CORS_ALLOWED_ORIGINS:http://localhost:5173}` 로 채운다.
+#   그래서 조립 테스트는 통과하는데 **이 모듈 단독 테스트만** 컨텍스트 로딩에서 죽었다
+#   (`Could not resolve placeholder` → `webSocketConfig` 빈 생성 실패 → 9개 클래스로 전파).
+#   identity-access 가 `application-test-integration.yml` 에서 같은 프로퍼티를 같은 이유로 준다.
+#
+# 🛑 값을 늘릴 때는 조립의 `application.yml` 과 갈라지지 않는지 보라. 두 곳이 갈리면
+#    「테스트는 통과하는데 운영만 다르게 동작한다」가 된다.
+bts:
+  security:
+    cors:
+      allowed-origins: "http://localhost:5173"
