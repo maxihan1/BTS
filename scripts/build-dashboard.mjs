@@ -297,6 +297,7 @@ export const AREA_CATEGORIES = Object.freeze({
   'apps/web': CATEGORIES.screen,
   'issue-tracking': CATEGORIES.feature,
   'search-export-import': CATEGORIES.feature,
+  'identity-access': CATEGORIES.feature,
   '도구': CATEGORIES.guard,
   '워크플로우': CATEGORIES.guard,
   '인프라': CATEGORIES.infra,

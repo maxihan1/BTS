@@ -42,7 +42,7 @@ class WebSocketConfig(
      *
      * ## 허용 출처를 명시하는 이유
      * `setAllowedOrigins` 를 부르지 않으면 Spring 기본값(동일 출처)이 적용된다. 오늘은
-     * 안전하지만 그 안전이 **우리가 적은 것이 아니라 프레임워크 기본값**이라, 버전
+     * 안전하지만 그것은 우리가 적은 값이 아니라 **프레임워크 기본값**이라, 버전
      * 업그레이드가 기본값을 바꾸면 조용히 달라진다. 중앙
      * [com.atlas.bts.identity.config.SecurityConfig] 가 이 경로를 permitAll 로 열어 HTTP
      * 계층 방어선이 하나 줄었으므로(FR-NT-02), 남은 방어선을 암묵값으로 두지 않는다.
