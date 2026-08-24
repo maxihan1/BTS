@@ -53,8 +53,8 @@ export interface IssueMetaPanelProps {
   onCloneClick: () => void
   /** 현재 상태에서 가용한 전환 목록 */
   transitions: IssueTransition[]
-  /** 전환 실행 핸들러 — 선택한 toStateKey를 전달 */
-  onTransition: (toStateKey: string) => void
+  /** 전환 실행 핸들러 — 선택한 **전환 자체**를 전달 (같은 상태쌍의 두 전환을 가르기 위함) */
+  onTransition: (transition: IssueTransition) => void
   /** 전환 진행 중 여부 — true 시 셀렉터 disabled (NFR3 중복클릭 방지) */
   isTransitioning: boolean
   /**
@@ -235,8 +235,8 @@ export function IssueMetaPanel({
    */
   const [selectedTransition, setSelectedTransition] = useState('')
 
-  function handleTransition(toStateKey: string) {
-    onTransition(toStateKey)
+  function handleTransition(transition: IssueTransition) {
+    onTransition(transition)
     // 전환 요청 직후 즉시 리셋 — 성공/실패 모두 placeholder로 복귀
     setSelectedTransition('')
   }

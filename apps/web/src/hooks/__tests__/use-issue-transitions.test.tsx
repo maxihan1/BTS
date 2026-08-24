@@ -483,4 +483,36 @@ describe('useIssueTransitionFlow', () => {
     expect(client.getQueryState(['issue', 'ATLAS-1'])?.isInvalidated).toBe(true)
     expect(client.getQueryState(['issue-transitions', 'ATLAS-1'])?.isInvalidated).toBe(true)
   })
+
+  it('T26-F6: 409 TRANSITION_NOT_ALLOWED 도 전환 목록을 무효화한다 (죽은 옵션 고착 방지)', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () =>
+        HttpResponse.json(
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '허용되지 않는 전환입니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const { client, wrapper } = createWrapper()
+    client.setQueryData(['issue', 'ATLAS-1'], { key: 'ATLAS-1', version: 1 })
+    client.setQueryData(['issue-transitions', 'ATLAS-1'], MOCK_TRANSITIONS)
+
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+
+    await act(async () => {
+      // 화면이 목록을 받은 **뒤** 다른 세션이 그 전환을 지우고 다른 id 로 갈아 끼운 상황.
+      result.current.mutate({
+        toStatusKey: 'done',
+        expectedVersion: 1,
+        transitionId: '00000000-0000-4000-8000-0000000000ff',
+      })
+    })
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+
+    // ★backend `WorkflowEngine.resolveById` 는 후보에 없는 id 를 `WorkflowNotFoundException`
+    //   으로 던지고 그것이 이 코드로 온다. 목록을 재조회하지 않으면 드롭다운이 사라진 전환을
+    //   계속 내밀어, 그 이슈는 **새로고침 전까지 상태를 못 바꾼다.**
+    expect(client.getQueryState(['issue-transitions', 'ATLAS-1'])?.isInvalidated).toBe(true)
+  })
 })

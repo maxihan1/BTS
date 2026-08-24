@@ -3,8 +3,11 @@ import { test, expect } from '@playwright/test'
 import { loginAsAlice, i18nLabels } from './fixtures/issue-fixtures'
 import {
   MOCK_AMBIGUOUS_ISSUE_KEY,
+  MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY,
   MOCK_AMBIGUOUS_TRANSITION_NAME,
+  MOCK_AMBIGUOUS_TRANSITION_ID,
 } from '../src/mocks/issue-handlers'
+import { softwareDefaultFixture } from '../src/mocks/workflow-fixtures'
 
 /**
  * 모호 전환 후보 선택 다이얼로그의 접근성 이름.
@@ -70,15 +73,20 @@ test.describe('FR-IS-01 이슈 상태 전환 (IssueMetaPanel)', () => {
     })
     await expect(transitionSelect).toBeVisible()
 
-    // Then. open 출발 전환 2건만 옵션으로 존재
-    await expect(transitionSelect.locator('option[value="in_progress"]')).toHaveCount(1)
-    await expect(transitionSelect.locator('option[value="in_progress"]')).toContainText('Start Work')
-    await expect(transitionSelect.locator('option[value="closed"]')).toHaveCount(1)
-    await expect(transitionSelect.locator('option[value="closed"]')).toContainText('Cancel')
-
-    // Then. 타 상태 출발 전환은 존재하지 않음
-    await expect(transitionSelect.locator('option[value="in_review"]')).toHaveCount(0)
-    await expect(transitionSelect.locator('option[value="done"]')).toHaveCount(0)
+    // Then. placeholder + open 출발 전환 전량이 **그 순서 그대로** 옵션이다.
+    //
+    //   ★옵션 **값**으로 세지 않는다. 값은 전환의 1급 식별자(`transitionId`)라 도착 상태가
+    //     아니고, 값으로 세면 같은 상태쌍의 전환 둘이 한 건으로 합산돼 이 필터가 눈이 먼다.
+    //   ★이름도 손으로 베끼지 않는다. 베낀 이름에 건 **부정** 단언(「Approve 는 없다」)은
+    //     픽스처가 그 이름을 바꾸는 순간 초록인 채로 아무것도 증명하지 않는다.
+    //     기대값을 픽스처에서 끌어오면 누락·추가·개명이 전부 red 가 된다.
+    const openTransitionNames = softwareDefaultFixture.transitions
+      .filter((t) => t.fromStateKey === 'open')
+      .map((t) => t.name)
+    await expect(transitionSelect.getByRole('option')).toHaveText([
+      i18nLabels.issueDetail.transitionSelectLabel,
+      ...openTransitionNames,
+    ])
   })
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -159,14 +167,18 @@ test.describe('FR-IS-01 이슈 상태 전환 (IssueMetaPanel)', () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Given   ATLAS-AMBIG(open 상태, open→in_progress 전환이 2건) 이슈 상세 진입
+   * Given   ATLAS-AMBIG-LEGACY(open 상태, open→in_progress 전환 2건, **전환 ID 없음**) 진입
    * When    전환 셀렉터에서 in_progress 도착 전환을 고름 → 409 후보 목록
    *         → 다이얼로그에서 후보 하나를 고름
    * Then    상태 배지가 in_progress 로 갱신되고 다이얼로그가 닫힘
+   *
+   * ★`ATLAS-AMBIG` 이 아니라 `-LEGACY` 다. 화면이 고른 전환의 `transitionId` 를 실어 보내는
+   *   지금, 409 는 그 값이 **응답에 없을 때만** 난다(`issueTransitionSchema.transitionId` 가
+   *   `nullable().optional()` 인 그 자리). 여기서 검사하는 것은 그 폴백 경로다.
    */
-  test('S7 모호 전환 — 409 후보 목록에서 고른 전환이 실행된다', async ({ page }) => {
-    // Given. 같은 도착 상태 전환이 2건인 이슈 상세 진입
-    await page.goto(`/issues/${MOCK_AMBIGUOUS_ISSUE_KEY}`)
+  test('S7 모호 전환 폴백 — 전환 ID 가 없으면 409 후보 목록에서 고른 전환이 실행된다', async ({ page }) => {
+    // Given. 같은 도착 상태 전환이 2건이고 전환 ID 가 없는 이슈 상세 진입
+    await page.goto(`/issues/${MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY}`)
     const badge = page.getByTestId('issue-state-badge')
     await expect(badge).toBeVisible()
     await expect(badge).toContainText('open')
@@ -176,7 +188,7 @@ test.describe('FR-IS-01 이슈 상태 전환 (IssueMetaPanel)', () => {
       name: i18nLabels.issueDetail.transitionSelectLabel,
     })
     await expect(transitionSelect).toBeVisible()
-    await transitionSelect.selectOption('in_progress')
+    await transitionSelect.selectOption({ label: 'Start Work' })
 
     // Then. 409 후보 목록이 다이얼로그로 노출된다 (조용히 아무거나 고르지 않는다)
     const dialog = page.getByRole('dialog', { name: AMBIGUOUS_DIALOG_TITLE })
@@ -198,13 +210,13 @@ test.describe('FR-IS-01 이슈 상태 전환 (IssueMetaPanel)', () => {
    * Then    다이얼로그가 닫히고 상태는 open 그대로 (전환 미실행)
    */
   test('S7-2 모호 전환 취소 — 상태가 바뀌지 않는다', async ({ page }) => {
-    await page.goto(`/issues/${MOCK_AMBIGUOUS_ISSUE_KEY}`)
+    await page.goto(`/issues/${MOCK_LEGACY_AMBIGUOUS_ISSUE_KEY}`)
     const badge = page.getByTestId('issue-state-badge')
     await expect(badge).toContainText('open')
 
     await page
       .getByRole('combobox', { name: i18nLabels.issueDetail.transitionSelectLabel })
-      .selectOption('in_progress')
+      .selectOption({ label: 'Start Work' })
 
     const dialog = page.getByRole('dialog', { name: AMBIGUOUS_DIALOG_TITLE })
     await expect(dialog).toBeVisible()
@@ -212,5 +224,76 @@ test.describe('FR-IS-01 이슈 상태 전환 (IssueMetaPanel)', () => {
 
     await expect(dialog).toHaveCount(0)
     await expect(badge).toContainText('open')
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // S8 (FR-WF-05 D7) 같은 쌍 두 전환이 각각 보이고 **각각 실행된다**
+  //   화면이 고른 전환의 `transitionId` 를 그대로 실어 보내므로 409 왕복이 없다.
+  //   종전에는 도착 상태(`toStateKey`)만 보내 어느 쪽을 골라도 같은 값이 나갔고,
+  //   서버가 409 로 되물어 **방금 이름으로 고른 것을 다시 고르게** 했다.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Given   ATLAS-AMBIG(open→in_progress 전환이 2건, 둘 다 전환 ID 보유) 상세 진입
+   * When    「긴급 착수」를 고름
+   * Then    그 전환의 ID 가 요청에 실리고, 후보 다이얼로그 없이 바로 실행된다
+   */
+  test('S8 두 전환이 각각 보이고, 고른 쪽의 전환 ID 로 다이얼로그 없이 실행된다', async ({ page }) => {
+    await page.goto(`/issues/${MOCK_AMBIGUOUS_ISSUE_KEY}`)
+    const badge = page.getByTestId('issue-state-badge')
+    await expect(badge).toContainText('open')
+
+    const transitionSelect = page.getByRole('combobox', {
+      name: i18nLabels.issueDetail.transitionSelectLabel,
+    })
+    await expect(transitionSelect).toBeVisible()
+
+    // Then. 도착 상태가 같아도 두 전환이 각각 보인다
+    await expect(transitionSelect.getByRole('option', { name: 'Start Work' })).toHaveCount(1)
+    await expect(
+      transitionSelect.getByRole('option', { name: MOCK_AMBIGUOUS_TRANSITION_NAME }),
+    ).toHaveCount(1)
+
+    // When. 한쪽을 고른다 — 요청을 가로채 무엇을 보냈는지 본다
+    const posted = page.waitForRequest(
+      (r) => r.method() === 'POST' && r.url().includes('/transition'),
+    )
+    await transitionSelect.selectOption({ label: MOCK_AMBIGUOUS_TRANSITION_NAME })
+
+    // Then. 고른 전환의 1급 식별자가 그대로 실린다
+    const body = (await posted).postDataJSON() as { transitionId?: string }
+    expect(body.transitionId).toBe(MOCK_AMBIGUOUS_TRANSITION_ID)
+
+    // Then. 후보 다이얼로그는 뜨지 않는다 — 같은 선택을 두 번 시키지 않는다
+    await expect(page.getByRole('dialog', { name: AMBIGUOUS_DIALOG_TITLE })).toHaveCount(0)
+    await expect(badge).toContainText('in_progress')
+  })
+
+  /**
+   * Given   같은 이슈
+   * When    다른 쪽(「Start Work」)을 고름
+   * Then    **다른** 전환 ID 가 실린다 — 두 옵션이 서로 다른 전환을 실행한다
+   */
+  test('S8-2 다른 쪽을 고르면 다른 전환 ID 가 실린다', async ({ page }) => {
+    await page.goto(`/issues/${MOCK_AMBIGUOUS_ISSUE_KEY}`)
+    const badge = page.getByTestId('issue-state-badge')
+    await expect(badge).toContainText('open')
+
+    const posted = page.waitForRequest(
+      (r) => r.method() === 'POST' && r.url().includes('/transition'),
+    )
+    await page
+      .getByRole('combobox', { name: i18nLabels.issueDetail.transitionSelectLabel })
+      .selectOption({ label: 'Start Work' })
+
+    // Then. 값이 있고, 옆 전환의 것이 아니다.
+    //   ★기대값을 리터럴로 적지 않는다 — 그 id 는 `softwareDefaultFixture` 소유이고
+    //   여기 베껴 두면 픽스처가 바뀔 때 둘이 갈라진다. 계약은 「서로 다르다」 하나다.
+    const body = (await posted).postDataJSON() as { transitionId?: string }
+    expect(body.transitionId).toBeTruthy()
+    expect(body.transitionId).not.toBe(MOCK_AMBIGUOUS_TRANSITION_ID)
+
+    await expect(page.getByRole('dialog', { name: AMBIGUOUS_DIALOG_TITLE })).toHaveCount(0)
+    await expect(badge).toContainText('in_progress')
   })
 })

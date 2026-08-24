@@ -109,8 +109,8 @@
 - [x] D3. 마이그레이션 — V207 UNIQUE 해제 · `from_status_id` NULL 허용 · `kind` 추가 · INITIAL 백필(현행 최소 displayOrder 동작 보존) (책임. db-engineer) (PR #395, 2026-08-20). *`to_status_id` NOT NULL 승격과 `ck_transition_kind_from` CHECK 는 `DATA.md §4-1` 3단 분할의 3단계(=`workflow_states` DROP 과 같은 PR)로 이연*
 - [x] D4. 백엔드 — 전환 CRUD + 엔진의 전역 전환 처리 + shared-kernel 계약 확장(nullable 추가로 기존 호출부 무변경) (책임. backend-engineer) (PR #395, 2026-08-20)
 - [x] D5. 백엔드 테스트 — 같은 쌍 다중 전환 · 전역 전환 후보 노출 · 모호 시 409 (책임. backend-engineer) (PR #395, 2026-08-20)
-- [ ] D6. 프론트 — 이슈 상태 드롭다운이 전환 이름을 구분해 표시 (책임. frontend-engineer)
-- [ ] D7. E2E — 같은 쌍 두 전환이 각각 보이고 각각 실행된다 (책임. qa-engineer)
+- [x] D6. 프론트 — 이슈 상태 드롭다운이 전환 이름을 구분해 표시 + **고른 전환을 그대로 실행**(`transitionId` 전달, 409 왕복 제거) (책임. frontend-engineer) (PR #398, 2026-08-24)
+- [x] D7. E2E — 같은 쌍 두 전환이 각각 보이고 각각 실행된다 (책임. qa-engineer) (PR #398, 2026-08-24)
 
 ### §2.6 FR-WF-06 — 전환 규칙(조건/검증기/후처리) 편집
 
@@ -159,7 +159,7 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ⬜ (로드맵 PR 8~10) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ⬜ · FR-WF-06~07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ⬜ (로드맵 PR 8~10) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06~07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
 - [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요

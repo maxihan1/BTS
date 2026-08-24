@@ -772,7 +772,10 @@ describe('IssueDetailPage — 상태전환', () => {
     )
 
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, 'in_progress')
+    // ★도착 상태 키가 아니라 **옵션 이름**으로 고른다. 옵션 값은 전환의 1급 식별자
+    //   (`transitionId ?? key`)라 도착 상태와 다르고, 같은 상태쌍에 전환이 둘이면
+    //   도착 상태로는 애초에 어느 쪽인지 지목할 수 없다.
+    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
 
     // onSuccess → 캐시 무효화 → GET re-fetch → 상태 배지 갱신
     await waitFor(() => {
@@ -809,7 +812,7 @@ describe('IssueDetailPage — 상태전환', () => {
     )
 
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, MOCK_CONFLICT_TRIGGER)
+    await user.selectOptions(select, screen.getByRole('option', { name: 'Trigger Conflict' }))
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
@@ -843,7 +846,7 @@ describe('IssueDetailPage — 상태전환', () => {
     )
 
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, 'in_progress')
+    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
@@ -880,7 +883,7 @@ describe('IssueDetailPage — 상태전환', () => {
     )
 
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, MOCK_NO_WORKFLOW_TRIGGER)
+    await user.selectOptions(select, screen.getByRole('option', { name: 'Trigger 422' }))
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
@@ -978,7 +981,7 @@ describe('IssueDetailPage — 상태전환', () => {
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
 
     // 1차 선택 — 실패
-    await user.selectOptions(select, 'in_progress')
+    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
     await waitFor(() => expect(postCallCount).toBe(1))
 
     // 실패 후 셀렉터가 placeholder로 리셋되어 있어야 함
@@ -987,7 +990,7 @@ describe('IssueDetailPage — 상태전환', () => {
     })
 
     // 2차 — 동일 옵션 재선택해도 onChange 발화 → POST 2회
-    await user.selectOptions(select, 'in_progress')
+    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
     await waitFor(() => expect(postCallCount).toBe(2))
   })
 

@@ -405,18 +405,22 @@ describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
   })
 
   /**
-   * IMP-13: 전환 선택 시 onTransition(toStateKey)이 호출된다.
+   * IMP-13: 전환 선택 시 onTransition 이 **고른 전환 자체**로 호출된다.
+   *
+   * `toStateKey` 만 통과시키면 같은 상태쌍의 두 전환을 호출부가 되찾을 수 없다
+   * (ADR 2026-08-18 로 `UNIQUE(workflow_id, from, to)` 해제).
    */
-  it('IMP-13: 전환 선택 시 onTransition(toStateKey)이 호출된다', async () => {
+  it('IMP-13: 전환 선택 시 onTransition 이 고른 전환으로 호출된다', async () => {
     const onTransition = vi.fn()
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, onTransition)
     const user = userEvent.setup()
 
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, 'in_progress')
+    // 옵션 값은 `transitionId ?? key` 다. 이 픽스처는 `transitionId` 가 없어 `key` 로 떨어진다.
+    await user.selectOptions(select, 'open__in_progress')
 
     expect(onTransition).toHaveBeenCalledOnce()
-    expect(onTransition).toHaveBeenCalledWith('in_progress')
+    expect(onTransition).toHaveBeenCalledWith(transitionsFixture[0])
   })
 
   /**
