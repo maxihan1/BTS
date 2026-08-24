@@ -257,7 +257,7 @@ learnings 2026-07-15 「permitAll 을 여는 PR 은 대상 경로의 본문 수�
 - 파일: `apps/web/src/hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`
 - 테스트: `apps/web/src/**` 를 훑어 `use-sidebar-collapsed` 를 import 하는 **프로덕션 파일** 집합을 뽑고, 허용목록과 **차집합이 0** 인지 단언한다
 - 허용목록 — `hooks/use-sidebar-collapsed.ts`(자신) · `hooks/use-sidebar-drawer.ts`(유일한 래퍼). 테스트 파일(`__tests__`·`*.test.*`)은 대상에서 제외한다
-- 실패 메시지 (예상): Task 1·2 이전이면 `RecentIssuesMenu.tsx`·`ShellLayout.tsx` 가 차집합에 남는다
+- 실패 메시지 (예상): Task 1·2 를 아직 안 했다면 `RecentIssuesMenu.tsx`·`ShellLayout.tsx` 가 차집합에 남는다
 
 **GREEN**.
 - Task 1·2 가 이미 닫는다. 이 task 는 판별식만 세운다
