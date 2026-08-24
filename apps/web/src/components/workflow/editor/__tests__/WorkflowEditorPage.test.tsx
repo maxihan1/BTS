@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { workflowAdminHandlers } from '@/mocks/workflow-admin-handlers'
@@ -83,6 +84,39 @@ describe('D6 — 상태 추가·제거', () => {
     const names = within(list).getAllByRole('listitem').map((li) => li.textContent ?? '')
     expect(names[0]).toContain('Open')
     expect(names[names.length - 1]).toContain('Closed')
+  })
+
+  it('states 배열 순서가 displayOrder 와 어긋나도 displayOrder 를 따른다', async () => {
+    // ★ 픽스처는 states 를 이미 displayOrder 순서로 담고 있어, 위 테스트만으로는 정렬을
+    // 지워도 red 가 안 난다(뮤테이션 M3 실측 — 가짜 그린이었다). 배열 순서를 일부러
+    // 뒤집은 응답을 태워야 판정이 **정렬 로직**을 본다.
+    server.use(
+      http.get('/api/v1/workflows/shuffled', () =>
+        HttpResponse.json({
+          data: {
+            key: 'shuffled',
+            name: '순서 뒤섞인 워크플로우',
+            description: '',
+            states: [
+              { key: 'closed', name: 'Closed', category: 'DONE', displayOrder: 3 },
+              { key: 'open', name: 'Open', category: 'TODO', displayOrder: 1 },
+              { key: 'done', name: 'Done', category: 'DONE', displayOrder: 2 },
+            ],
+            transitions: [],
+          },
+        }),
+      ),
+    )
+    renderEditor('shuffled')
+    await waitForLoaded()
+
+    const list = screen.getByRole('list', { name: L.statusPanel.list })
+    const order = within(list)
+      .getAllByRole('listitem')
+      .map((li) => li.textContent ?? '')
+    expect(order[0]).toContain('Open')
+    expect(order[1]).toContain('Done')
+    expect(order[2]).toContain('Closed')
   })
 
   it('상태를 추가하면 목록에 나타난다', async () => {
