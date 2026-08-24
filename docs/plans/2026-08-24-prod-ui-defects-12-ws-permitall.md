@@ -189,6 +189,249 @@ learnings 2026-07-15 「permitAll 을 여는 PR 은 대상 경로의 본문 수�
 **Maxi 결정 필요 2건** — ① F24 를 완주로 선언할지(수단이 로드맵 기술과 다름)
 ② `setAllowedOrigins` 를 명시할지. 둘 다 게이트 1 안건으로 올린다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **선행 완료 — task 로 만들지 않는다.** UI 결함 12건 수정 전량이 이미 구현·검증됐다
+> (프론트 tsc 0 · eslint 0 error · vitest 583 files / 9,680 tests · vite build 성공 ·
+> 백엔드 `:modules:identity-access:test`·`:modules:notification:test`·ktlintCheck·detekt 성공).
+> 아래 task 는 **[2] spec 이 사후에 드러낸 결함 D1~D7 + 문서 동기화 + 전량 재검증**이다.
+
+### Task 1. D6 — 드로어에서 「최근 이슈」가 사라지는 버그를 닫는다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/RecentIssuesMenu.tsx`, `apps/web/src/components/issue/__tests__/RecentIssuesMenu.test.tsx`]
+- depends-on: []
+
+**RED** (동반 테스트).
+- 파일: `apps/web/src/components/issue/__tests__/RecentIssuesMenu.test.tsx`
+- 테스트: `useSidebarCollapsed.setState({ collapsed: true })` + `matchMedia('(max-width: 767.98px)')` 를 모바일로 물린 상태에서 최근 이슈 목록이 **렌더된다**
+- 실패 메시지 (예상): `if (collapsed) return null` 때문에 컴포넌트가 null → 목록 조회 실패
+
+**GREEN**.
+- `useSidebarCollapsed` 직접 소비를 `useSidebarRailCollapsed` 로 교체 (형제 3곳과 동일)
+- 근거 — 형제 `Sidebar`·`ProjectTree`·`FavoritesMenu` 는 전부 이주했고 이것만 남았다.
+  `use-sidebar-drawer.ts:62` KDoc 이 「라벨을 감출지 정할 때 `collapsed` 를 직접 읽지 마라」를 이미 명시한다
+
+**REFACTOR**.
+- import 정리 · 이주 근거 한 줄 주석
+
+**검증**.
+- `pnpm --filter web test -- RecentIssuesMenu`
+- 기존 E2E: 좁은 폭을 쓰는 스펙 없음 (이 컴포넌트는 사이드바 전용) — 눈확인이 주 증인
+- 눈확인: 390px, 데스크톱에서 사이드바를 접은 뒤 좁혀 드로어를 열면 「최근 이슈」가 보인다 — 라이트/다크
+
+### Task 2. D5 — `ShellLayout` 이 토글 판정을 인라인 복제하지 않게 한다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/ShellLayout.tsx`, `apps/web/src/components/layout/__tests__/ShellLayout.test.tsx`]
+- depends-on: []
+
+**RED** (동반 테스트).
+- 파일: `apps/web/src/components/layout/__tests__/ShellLayout.test.tsx`
+- 테스트: 모바일 폭에서 `onToggleSidebar` 를 호출하면 `useSidebarDrawer.getState().open` 이 뒤집힌다 (데스크톱에서는 `collapsed` 가 뒤집힌다)
+- 실패 메시지 (예상): 지금은 동작이 같아 green 이다 → **판정 소유권 자체를 재는 Task 3 이 진짜 RED 를 진다.** 이 테스트는 회귀 고정용
+
+**GREEN**.
+- `ShellLayout.tsx:63,92` 의 `toggleCollapsed` 셀렉터 + `isMobile ? toggleDrawer : toggleCollapsed` 삭제
+- `useSidebarToggle()` 한 줄로 교체
+- 근거 — `use-sidebar-drawer.ts:81` KDoc 이 「토글 지점이 셋(상단바·`[` 단축키·사이드바 하단)이라 판정을 각자 두면 하나만 고쳐지고 나머지가 조용히 썩는다 — 여기 한 곳에서만 고른다」고 선언한다. 셋 중 `[` 단축키만 그 계약 밖에 있었다
+
+**REFACTOR**.
+- `useSidebarCollapsed`·`useMediaQuery` import 가 이 파일에서 더 필요 없으면 제거
+
+**검증**.
+- `pnpm --filter web test -- ShellLayout`
+- 기존 E2E: `apps/web/e2e/keyboard-shortcuts.spec.ts` · `apps/web/e2e/context-shortcuts.spec.ts` (`[` 단축키 경로)
+- 눈확인: 1440px 에서 `[` 로 레일 접기/펼치기 · 390px 에서 `[` 로 드로어 여닫기 — 라이트/다크
+
+### Task 3. D5·D6 재발 방지 — `useSidebarCollapsed` 직접 소비 허용목록 판별식
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`]
+- depends-on: [1, 2]
+
+**RED**.
+- 파일: `apps/web/src/hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`
+- 테스트: `apps/web/src/**` 를 훑어 `use-sidebar-collapsed` 를 import 하는 **프로덕션 파일** 집합을 뽑고, 허용목록과 **차집합이 0** 인지 단언한다
+- 허용목록 — `hooks/use-sidebar-collapsed.ts`(자신) · `hooks/use-sidebar-drawer.ts`(유일한 래퍼). 테스트 파일(`__tests__`·`*.test.*`)은 대상에서 제외한다
+- 실패 메시지 (예상): Task 1·2 이전이면 `RecentIssuesMenu.tsx`·`ShellLayout.tsx` 가 차집합에 남는다
+
+**GREEN**.
+- Task 1·2 가 이미 닫는다. 이 task 는 판별식만 세운다
+
+**REFACTOR**.
+- 실패 메시지에 「`useSidebarRailCollapsed`/`useSidebarToggle` 을 대신 쓰라」는 처방을 적는다
+
+**★ 비-공허 확인 (필수)**.
+- 허용목록에서 `use-sidebar-drawer.ts` 를 **일부러 빼서** red 1회를 눈으로 본 뒤 되돌린다
+- 근거 — 「가드 수정 시 표면을 없애면 판별자도 사라진다. 일부러 끊어 red 1회 확인」(`docs/rules/traps.md`)
+- ★뮤테이션 확인은 **GREEN 선커밋 뒤에** 한다 — 미커밋 원복은 소실이다
+
+**검증**: `pnpm --filter web test -- sidebar-collapsed-consumer-allowlist`
+
+### Task 4. D4 — Esc 모순 주석 2곳을 사실로 교정한다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/ShellLayout.tsx`, `apps/web/src/components/layout/Sidebar.tsx`]
+- depends-on: [2]
+
+**RED** (동반 테스트 없음 — 주석 교정).
+- 이 task 는 **문서 정합**이다. 판정은 Task 8 이 Esc 를 실제로 만들면 자동으로 참이 된다
+
+**GREEN**.
+- `ShellLayout.tsx` 백드롭 주석 — 「같은 닫기 동작을 접기 버튼과 **Esc** 가 제공한다」에서 Esc 를 뺀다 (Task 8 이 Esc 를 만들면 되살린다)
+- `Sidebar.tsx` `inset-y-0` 주석 — 「백드롭/**Esc** 말고는 닫을 길이 없어진다」를 실제 경로로 고친다
+- 근거 — 같은 파일 위쪽 주석이 「ADR D-2 판별식에 걸려 Esc 를 **포기했다**」고 적었다. `aria-hidden` 백드롭의 접근성 근거가 존재하지 않는 경로를 든 상태다
+
+**REFACTOR**.
+- 두 주석이 같은 사실을 가리키게 문구 통일
+
+**🛑 함정**: ADR D-2 판별식은 **소스 텍스트**를 훑는다 — 주석에 전역 keydown 호출 문법을 예시로 적기만 해도 걸린다
+
+**검증**.
+- `pnpm --filter web test -- useKeyboardShortcuts` (ADR D-2 판별식 통과 확인)
+- 눈확인: 없음 (주석)
+
+### Task 5. D3 — 소스 가드 테스트 파일명을 실체에 맞춘다
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/config/WebSocketHandshakePathGuardTest.kt`]
+- depends-on: []
+
+**RED**: 없음 — rename. 기존 테스트 2건이 그대로 통과해야 한다
+
+**GREEN**.
+- `WebSocketHandshakePermitAllIntegrationTest.kt` → `WebSocketHandshakePathGuardTest.kt`, 클래스명 동시 변경
+- 근거 — 내용이 `Files.readString` 으로 소스 텍스트를 읽는 가드다. `IntegrationTest` 접미사는 Testcontainers 통합 테스트를 뜻하는 저장소 관례와 어긋나 오독을 부른다
+
+**REFACTOR**: KDoc 첫 줄을 파일명과 일치시킨다
+
+**검증**: `./gradlew :modules:identity-access:test --tests '*WebSocketHandshakePathGuardTest'`
+
+### Task 6. D2 — 인접 경로 401 판별식을 실제로 세운다
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/WebSocketHandshakePermitAllTest.kt`]
+- depends-on: []
+
+**RED**.
+- 파일: `backend/modules/app/src/test/kotlin/com/bts/app/WebSocketHandshakePermitAllTest.kt`
+- 테스트: `GET /wsx` 와 `GET /ws/anything` 이 **401** 이다 — permitAll 이 정확히 `/ws` 한 경로만 연다는 증명
+- 실패 메시지 (예상): 지금은 그 케이스 자체가 없다(부재가 곧 결함)
+
+**GREEN**.
+- 두 케이스 추가. `WS_HANDSHAKE_PATH` 가 와일드카드로 넓어지면 이 단언이 red 가 된다
+
+**REFACTOR**.
+- KDoc 에 **왜 여기서는 401 이 공허하지 않은지**를 명시한다 — 인접 경로는 permitAll 대상이 아니라 필터가 자르는 401 만 가능하고, `/error` 경유 401 과 헷갈릴 여지가 없다. (`/ws` 자신에 대해서는 그 구분이 불가능해 400 을 양성 판별자로 쓴다는 기존 기록과 짝을 이룬다)
+
+**🛑 함정**: Kotlin 블록 주석은 중첩된다 — KDoc 안에 `/ws` + 별 두 개를 문자 그대로 쓰면 파일 끝까지 삼켜 컴파일이 깨진다
+
+**검증**: `./gradlew :modules:app:test --tests '*WebSocketHandshakePermitAllTest'`
+
+### Task 7. D1 — `SecurityConfig` 주석이 실재하는 짝을 가리키게 한다
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/SecurityConfig.kt`]
+- depends-on: [5, 6]
+
+**RED**: 없음 — 주석 교정. Task 6 이 만든 가드가 실재해야 이 주석이 참이 된다
+
+**GREEN**.
+- 「짝 판별식 = `WebSocketHandshakePermitAllIntegrationTest` (열림 1건 + 인접 경로 401 1건)」을
+  실제 두 짝으로 교체 — ① `identity-access` `WebSocketHandshakePathGuardTest`(폭·매처 종류, 소스 텍스트) ② `:modules:app` `WebSocketHandshakePermitAllTest`(열림 400 양성 증명 + 인접 경로 401)
+- 근거 — 현재 주석은 존재하지 않는 판별식을 있다고 선언한다(`invariant-satisfied-by-helptext-not-logic`)
+
+**REFACTOR**: `WS_HANDSHAKE_PATH` KDoc 의 같은 서술도 함께 맞춘다
+
+**🛑 함정**: Kotlin 블록 주석 중첩 (Task 6 과 동일)
+
+**검증**: `./gradlew :modules:identity-access:test :modules:app:test ktlintCheck detekt`
+
+### Task 8. D7 — 드로어를 키보드로도 닫을 수 있게 하고 포커스를 가둔다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/ShellLayout.tsx`, `apps/web/src/components/layout/Sidebar.tsx`, `apps/web/src/components/keyboard-shortcuts/context-shortcuts.ts`, `apps/web/src/components/keyboard-shortcuts/context-shortcuts.test.ts`]
+- depends-on: [4]
+
+**RED** (동반 테스트).
+- 드로어가 열린 상태에서 Esc 를 누르면 닫힌다
+- 드로어가 열린 상태에서 `<aside>` 가 `aria-modal="true"` 이고 뒤 콘텐츠가 `inert`(또는 동등 처리)다
+
+**GREEN**.
+- Esc 는 **새 전역 리스너를 만들지 않는다.** `ShortcutContext` 에 이미 `'app-shell'` 이 있으므로 `CONTEXT_SHORTCUTS` 에 항목으로 **등록**한다 — 이것이 ADR D-2 가 지정한 유일한 정식 경로이고, `ShellLayout.tsx` 주석이 스스로 지목한 길이다
+- 포커스 가둠 — 드로어가 열린 동안 `<aside aria-modal="true">` + 본문 비활성
+
+**REFACTOR**.
+- Task 4 에서 뺐던 「Esc」를 주석에 되살린다 — 이제 참이다
+
+**🛑 함정**: 즉사 계약 「단축키 레지스트리 동결」은 **`SHORTCUTS` 5종**에 대한 것이다. `CONTEXT_SHORTCUTS` 는 별도 레지스트리라 추가가 허용된다. `shortcuts.test.ts` 의 `toHaveLength(5)` 를 건드리지 말 것
+
+**검증**.
+- `pnpm --filter web test -- context-shortcuts ShellLayout Sidebar`
+- 기존 E2E: `apps/web/e2e/context-shortcuts.spec.ts` · `apps/web/e2e/keyboard-shortcuts.spec.ts`
+- 눈확인: 390px 에서 드로어를 열고 Esc · 탭 순회가 뒤 콘텐츠로 새지 않는지 — 라이트/다크
+
+### Task 9. 문서 전수 동기화
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`.claude/STATE.md`, `docs/design/jira-parity-roadmap.md`, `TODOS.md`, `docs/INDEX.md`, `docs/INDEX-fr.md`, `docs/INDEX-recent.md`]
+- depends-on: [8]
+
+**RED**: 없음 — 문서. 판정은 `node scripts/build-doc-index.mjs --check` 와 `bash scripts/verify-master-plan.sh`
+
+**GREEN**.
+- `.claude/STATE.md` — 「main 워킹트리에 다른 세션 미커밋 14+1 파일, 건드리지 말 것」 문단이 **STALE**. 이 PR 이 그 파일들의 주인임을 반영
+- `docs/design/jira-parity-roadmap.md:82` F24 행 — **게이트 1 결정 반영**. 로드맵은 수단을 「Sheet」로 적었는데 구현은 `max-md:` 오프캔버스다
+- `TODOS.md` — 이번 PR 에서 안 닫는 것 등재.
+  ① F21 전수 적용(컨테이너 관례 이원화 — `PageLayout` 5라우트 vs 좌측 `p-8` 다수)
+  ② `ProjectTree` 2단 들여쓰기 어긋남(depth1 리프 x=41 · depth1 그룹 x=61 · depth2 x=66 — 반쪽 수정 시 위계 악화)
+  ③ polish 5건 — `설정/환경설정` select 4개 폭 제각각(192/256/160/192) · `가져오기`·`프로필` 네이티브 file input 무스타일 · `컴포넌트/커스텀필드/이슈템플릿` H1 과 카드 제목 문구 중복 · `프로젝트 리드` 부제와 카드 설명 동일 문장
+  ④ **classify-task 오분류** — 제목에 「스키마」가 있으면 `type=migration`·`agent=db-engineer` 가 된다(그 단어만 빼면 `ui`/`frontend-engineer`). #387 이 닫았다는 부채 44·33·45 와 같은 양식
+- `node scripts/build-doc-index.mjs` 재실행
+
+**REFACTOR**: 없음
+
+**검증**: `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh`
+
+### Task 10. 전량 재검증 + 뮤테이션 + 즉사 계약 잔여 확인
+
+**메타**.
+- agent: `qa-engineer`
+- files: []
+- depends-on: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+**RED**: 없음 — 검증 전용
+
+**GREEN**.
+1. `pnpm verify` (lint + typecheck + test + build)
+2. `pnpm --filter web test:e2e` **전량** — 좁은 폭 3스펙만 돌았다. 관리 메뉴 4스펙(`notification-policies`·`audit-logs`·`global-permissions`·`webhook`)과 `settings-admin-hub.spec.ts` 가 미실행이다
+3. `./gradlew :modules:identity-access:test :modules:app:test :modules:notification:test ktlintCheck detekt`
+4. `pnpm test:workflow`
+5. **`/ws` permitAll 뮤테이션 재확인** — 그 줄을 끊으면 `:modules:app` 테스트가 red. **GREEN 선커밋 뒤에** 할 것
+6. **즉사 계약 「h1 단 하나」** — `BoardPage` 신규 h1 이 그 라우트에 h1 을 2개 만들지 않는지 실측
+
+**REFACTOR**: 없음
+
+**검증**: 위 6항목 전부 통과 + 결과를 게이트 2 요약에 그대로 싣는다
+
+## Plan 메타
+
+| 항목 | 값 |
+|---|---|
+| task 수 | 10 |
+| 예상 wave | 5 — ①`1·2·5·6` ②`3·4·7` ③`8` ④`9` ⑤`10` |
+| 구현 규율 | ui 시각 검증 트랙 (T2) — 프론트 task 는 동반 테스트 + 기존 E2E 목록 + 눈확인 필수. 백엔드 보안 task(6·7)는 정식 TDD red-first |
+| 추가 검증 | tsc · eslint · vitest · playwright(전량) · ktlintCheck · detekt · `pnpm test:workflow` · doc-index `--check` · verify-master-plan |
+| 게이트 1 결정 대기 | ① F24 를 완주로 선언할지(수단이 로드맵 기술과 다름) ② `setAllowedOrigins` 를 명시할지 ③ D7 을 이번 PR 에서 닫을지 TODOS 로 미룰지 |
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
