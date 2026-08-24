@@ -197,6 +197,33 @@ describe('IssueStateTransition — 같은 도착 상태 전환이 둘일 때 (T2
     await user.selectOptions(select, screen.getByRole('option', { name: '작업 시작' }))
     expect(onTransition).toHaveBeenCalledWith(legacy[0])
   })
+
+  it('T21-C7: `transitionId` 가 **둘 다** 없는 같은 상태쌍도 두 옵션이 살아남는다', () => {
+    // ★폴백의 최악 경우다. 옵션 값이 `key`(`from__to`)로 떨어지는데 같은 상태쌍이면 그 값이
+    //   겹치고, React key 도 함께 겹친다. 종전 주석이 `transitionId` 우선 key 를 정당화한
+    //   근거가 정확히 「한쪽이 조용히 사라진다」였으므로, 겹침을 되살린 이상 「둘 다 남는다」를
+    //   판정으로 세워 둔다. 산문으로만 적어 두면 다음 사람이 확인할 방법이 없다.
+    const bothNull: IssueTransition[] = [
+      { key: 'open__done', name: '조건부 승인', fromStateKey: 'open', toStateKey: 'done' },
+      { key: 'open__done', name: '즉시 완료', fromStateKey: 'open', toStateKey: 'done' },
+    ]
+    const props = {
+      transitions: bothNull,
+      onTransition: vi.fn(),
+      unavailableReason: null,
+      selectedValue: '',
+      onSelectedValueChange: vi.fn(),
+    }
+    const { rerender } = render(<IssueStateTransition {...props} isTransitioning={false} />)
+    expect(screen.getAllByRole('option')).toHaveLength(3) // placeholder + 전환 2
+
+    // 409 후보 선택 왕복 중 `isTransitioning` 이 토글하며 재렌더가 일어난다. 중복 key 의
+    // omission 은 재조정에서 나므로 그 시점을 지나서도 둘이 남는지 본다.
+    rerender(<IssueStateTransition {...props} isTransitioning={true} />)
+    expect(screen.getAllByRole('option')).toHaveLength(3)
+    expect(screen.getByRole('option', { name: '조건부 승인' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '즉시 완료' })).toBeInTheDocument()
+  })
 })
 
 describe('AmbiguousTransitionDialog', () => {

@@ -7,6 +7,7 @@ import {
   MOCK_AMBIGUOUS_TRANSITION_NAME,
   MOCK_AMBIGUOUS_TRANSITION_ID,
 } from '../src/mocks/issue-handlers'
+import { softwareDefaultFixture } from '../src/mocks/workflow-fixtures'
 
 /**
  * 모호 전환 후보 선택 다이얼로그의 접근성 이름.
@@ -72,15 +73,20 @@ test.describe('FR-IS-01 이슈 상태 전환 (IssueMetaPanel)', () => {
     })
     await expect(transitionSelect).toBeVisible()
 
-    // Then. open 출발 전환 2건만 옵션으로 존재
-    //   ★옵션 **이름**으로 센다. 값은 전환의 1급 식별자(`transitionId`)라 도착 상태가 아니고,
-    //   값으로 세면 같은 상태쌍의 전환 둘을 한 건으로 합산해 이 필터가 조용히 눈이 먼다.
-    await expect(transitionSelect.getByRole('option', { name: 'Start Work' })).toHaveCount(1)
-    await expect(transitionSelect.getByRole('option', { name: 'Cancel' })).toHaveCount(1)
-
-    // Then. 타 상태 출발 전환은 존재하지 않음
-    await expect(transitionSelect.getByRole('option', { name: 'Submit for Review' })).toHaveCount(0)
-    await expect(transitionSelect.getByRole('option', { name: 'Approve' })).toHaveCount(0)
+    // Then. placeholder + open 출발 전환 전량이 **그 순서 그대로** 옵션이다.
+    //
+    //   ★옵션 **값**으로 세지 않는다. 값은 전환의 1급 식별자(`transitionId`)라 도착 상태가
+    //     아니고, 값으로 세면 같은 상태쌍의 전환 둘이 한 건으로 합산돼 이 필터가 눈이 먼다.
+    //   ★이름도 손으로 베끼지 않는다. 베낀 이름에 건 **부정** 단언(「Approve 는 없다」)은
+    //     픽스처가 그 이름을 바꾸는 순간 초록인 채로 아무것도 증명하지 않는다.
+    //     기대값을 픽스처에서 끌어오면 누락·추가·개명이 전부 red 가 된다.
+    const openTransitionNames = softwareDefaultFixture.transitions
+      .filter((t) => t.fromStateKey === 'open')
+      .map((t) => t.name)
+    await expect(transitionSelect.getByRole('option')).toHaveText([
+      i18nLabels.issueDetail.transitionSelectLabel,
+      ...openTransitionNames,
+    ])
   })
 
   // ─────────────────────────────────────────────────────────────────────────

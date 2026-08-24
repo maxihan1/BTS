@@ -104,7 +104,9 @@ export function IssueStateTransition({
     // placeholder 옵션 선택 무시
     if (optionValue === '') return
     const selected = transitions.find((t) => optionValueOf(t) === optionValue)
-    // 목록에 없는 값이면 아무것도 하지 않는다 — 제어값만 흘려보내면 호출부가 undefined 를 받는다
+    // ★가드가 아니라 타입 좁히기다. 옵션은 같은 렌더의 같은 `transitions` 로 그려지므로
+    //   `find` 가 빗나갈 수 없다 — 이 분기를 겨냥한 테스트를 쓰려면 도달 불가 상태를
+    //   지어내야 하고, 그것이 곧 가짜 그린이다.
     if (selected === undefined) return
     onSelectedValueChange(optionValue)
     onTransition(selected)
