@@ -228,8 +228,15 @@ class SecurityConfig(
                 //   설정을 읽지 않아 유닛은 전부 초록이었다(저장소 지배 결함 양식).
                 //
                 // 🛑 하위 전체를 덮는 와일드카드로 넓히지 마라. 정확히 이 한 경로만 연다 — 훗날 이 아래
-                //    매핑이 생기면 조용히 익명 노출된다. 짝 판별식 =
-                //    WebSocketHandshakePermitAllIntegrationTest (열림 1건 + 인접 경로 401 1건).
+                //    매핑이 생기면 조용히 익명 노출된다. 짝 판별식은 **두 개**이고 역할이 다르다.
+                //    ① 같은 모듈 WebSocketHandshakePathGuardTest — 상수의 폭(와일드카드 없는 단일
+                //       경로)과 매처 종류(MVC 비의존)를 **소스 텍스트**로 고정한다. 이 모듈에는
+                //       핸들러가 없어 HTTP 로는 어떤 답도 공허하므로 소스를 읽는다.
+                //    ② :modules:app WebSocketHandshakePermitAllTest — 조립 컨텍스트에서 실 HTTP 로
+                //       열림을 **양성 증명**(400 = 필터를 지나 WebSocket 핸들러에 닿았다)하고,
+                //       인접 경로(/wsx · /ws/anything · /ws/info)가 401 인 것으로 **한 경로만
+                //       열렸음을 음성 증명**한다.
+                //    둘이 함께 있어야 「열렸다」와 「한 줄만 열었다」가 동시에 지켜진다.
                 //
                 // 🛑 문자열 매처(`requestMatchers("/ws")`) 를 쓰지 마라 — Spring MVC 가 있으면
                 //    MvcRequestMatcher 로 해석되는데 `/ws` 는 **MVC 핸들러가 아니라** WebSocket
@@ -364,6 +371,12 @@ class SecurityConfig(
          *
          * 브라우저 WebSocket API 가 업그레이드 요청에 임의 헤더를 실을 수 없어 생긴 구조적 제약이며,
          * Spring 의 STOMP + JWT 표준 배치다. 단일 경로 — 하위 와일드카드로 넓히지 않는다.
+         *
+         * ★이 permitAll 로 HTTP 계층 방어선이 하나 줄었으므로, 남은 방어선인 **핸드셰이크 허용
+         * 출처**는 프레임워크 기본값에 맡기지 않고 [com.bts.notification.config.WebSocketConfig]
+         * 가 `setAllowedOrigins` 로 명시한다. 그 목록은 [CorsConfig] 와 **같은 프로퍼티**
+         * (`bts.security.cors.allowed-origins`)를 읽는다 — 두 목록을 갈라 두면 한쪽만 바뀌었을 때
+         * 어느 테스트도 그 어긋남을 보지 못한다.
          */
         const val WS_HANDSHAKE_PATH = "/ws"
 
