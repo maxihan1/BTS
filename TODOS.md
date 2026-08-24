@@ -773,7 +773,69 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
+## ⬜ identity-access — permitAll 경로군 중 `/ws` 만 메서드 고정을 기계가 지킨다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 로그인 없이 열어 둔 주소가 여럿인데, 그 문이 「읽기 전용」으로 잠겨 있는지 자동으로
+확인하는 장치는 한 곳에만 있다.
+
+**방치하면.** 누군가 읽기 전용 고정을 떼어내도 CI 가 초록이다. 공개 주소로 쓰기 요청이 익명으로
+들어가고, 아무도 그 순간을 모른다.
+
+**무엇 (PR #399 ceo 렌즈 C-3 권고 + 재리뷰 실측).** `SecurityConfig` 의 permitAll 배선은 5개소다.
+
+| 위치 | 메서드 고정 | 기계 가드 |
+|---|---|---|
+| `:203` 인증 전 경로 그룹 | 없음 (POST 가 필요한 경로들이라 정당) | 없음 |
+| `:209` `PUBLIC_DASHBOARDS_PATH` | GET 고정 | **없음** |
+| `:213` `ICAL_FEED_PATH` | GET 고정 | **없음** |
+| `:255` `WS_HANDSHAKE_PATH` | GET 고정 | `WebSocketHandshakePathGuardTest` |
+| `:262` `INBOUND_WEBHOOK_PATHS` | 목록이 메서드를 함께 가짐 | 없음 |
+
+`:209`·`:213` 은 주석이 defense-in-depth 를 길게 설명하는데 **그 고정을 재는 테스트가 없다.**
+`/ws` 가드는 PR #399 가 신설했고, 그것마저 한때 주석으로 만족돼 공허했다(재리뷰 BLOCKER-N1).
+설명은 다섯 곳에 있고 강제는 한 곳에만 있는 상태다.
+
+**처방.** permitAll 배선을 **도출**해 「메서드가 명시됐거나, 명시하지 않은 이유가 같은 자리에
+적혀 있다」를 단언하는 판별식 하나. `/ws` 가드의 주석 스캐너를 그대로 재사용한다 —
+소스 텍스트 가드는 주석을 걷어내지 않으면 공허해진다는 것을 이미 값을 치르고 배웠다.
+목록 하드코딩은 하지 않는다(신규 permitAll 이 자동 편입돼야 한다).
+
+---
+
 # 개발 안전장치
+
+## ⬜ 워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 로컬 개발 주소(포트 5173)가 설정 파일 다섯 곳에 따로 적혀 있는데, 서로 같은지
+확인하는 검사는 그중 한 곳만 본다.
+
+**방치하면.** vite 포트를 바꾸면 검사에 안 걸린 네 곳이 조용히 낡는다. 로컬 개발과 테스트가
+「이유 없이」 죽고, 원인이 설정 파일이라는 것을 알아내는 데 시간이 든다. PR #399 에서 실제로
+그 형태로 죽었다 — notification 단독 테스트가 CORS 오리진 프로퍼티 부재로 9개 클래스에 전파됐다.
+
+**무엇 (재리뷰 C6 실측 — 5곳이다).**
+
+| 파일 | 프로퍼티 |
+|---|---|
+| `backend/modules/app/src/main/resources/application.yml:85` | `bts.security.cors.allowed-origins` (환경변수 기본값) |
+| `backend/modules/identity-access/src/main/resources/application-dev.yml:24` | 같음 (dev 고정값) |
+| `backend/modules/identity-access/src/main/resources/application.yml:82` | `bts.webauthn.origin` — **다른 프로퍼티인데 같은 값** |
+| `backend/modules/identity-access/src/test/resources/application-test-integration.yml:31` | 같음 (테스트 고정값) |
+| `backend/modules/notification/src/test/resources/application-test.yml:17` | 같음 (PR #399 가 추가) |
+
+`scripts/workflow/preview-cors-origin-alignment.test.ts:117` 의 정규식은 **첫 줄 하나만** 읽어
+vite 포트와 대조하고 나머지 넷은 안 본다. 저장소 지배 결함 양식
+`partial-column-parser-lets-unread-column-rot` 그대로다. 재리뷰는 4곳이라 셌는데 실측은 5곳이다 —
+WebAuthn 오리진은 프로퍼티가 달라 눈에 안 띄지만 포트가 바뀌면 똑같이 죽는다.
+
+**처방.** 도출식으로 바꾼다 — `backend/**/src/*/resources/application*.yml` 에서 dev 오리진을 쓰는
+줄을 **전부 뽑아** vite 포트와 대조하고, 뽑힌 목록이 비면 red(비-공허 짝). 신규 파일이 자동
+편입된다. 프로퍼티 이름으로 좁히지 말 것 — WebAuthn 항목이 그래서 빠졌다.
+
+**왜 지금이 아니라 부채인가.** 다섯 값이 현재 전부 같고, 폭발 반경이 로컬 dev·테스트다.
+운영값은 환경변수로 주입되므로 이 목록과 무관하다.
+
+---
 
 ## ⬜ 워크플로우 — 리뷰 렌즈 분기가 `type` 만 보고 **변경 대상**을 안 본다 (신규 · 미착수 · T2)
 
@@ -1968,8 +2030,12 @@ PR #398 이 만진 3파일(`issues.$key.tsx` · `issue-handlers.ts` · `issue-tr
 **기존 공격면의 단가가 세 자릿수 배 올랐다.** `bts.maxihan.com` 은 공개 도메인이라
 모집단이 사내로 묶이지 않는다 — ADR 초판이 「사내 1,000명 규모에서 수용」이라 적은 것은 사실 오류였고 정정했다.
 
-**처방.** `infra/prod/nginx.conf` 의 `location /ws` 에 `limit_conn` 한 줄. 정상 사용자는 탭당 소켓
-1개라 실사용을 막지 않는다. Tomcat 쪽 상한도 함께 검토.
+**처방.** nginx **두 곳**을 함께 고친다 — `http` 컨텍스트에 `limit_conn_zone` 선언, 그리고
+`location /ws` 에 `limit_conn`.
+★**「한 줄」이 아니다**(재리뷰 CONCERNS-N5 정정). `limit_conn` 은 zone 이 먼저 선언돼 있어야 하는데
+`infra/` 전체에 `limit_conn_zone` 도 **0건**이다 — location 만 고치면 nginx 가 아예 뜨지 않는다.
+「배포 전 필수」 항목의 처방이 그대로는 실행 불가한 형태였다.
+정상 사용자는 탭당 소켓 1개라 실사용을 막지 않는다. Tomcat 쪽 상한도 함께 검토.
 ★이 PR 에서 안 한 이유 — `infra/**` 는 선언 티어(T2) 밖 표면이라 실측 티어를 바꾼다. 배포가
 아직 안 됐으므로 **배포 전에 별건으로** 처리하는 것이 순서다.
 
