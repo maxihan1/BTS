@@ -17,7 +17,9 @@ import {
  * `ErrorResponse(error = ErrorBody(code, message))` 인데 목만 평면이라, 목·테스트·클라이언트
  * 셋이 서로만 보고 **서버를 한 번도 안 보는** 상태였다. 그 어긋남은 프로덕션에서만 드러난다.
  */
-function problem(status: number, code: string, message: string): HttpResponse {
+// 반환 타입은 추론에 맡긴다 — msw 의 HttpResponse 는 제네릭이고 DefaultBodyType 제약이
+// 있어 손으로 적으면 리졸버 시그니처와 어긋난다(실측).
+function problem(status: number, code: string, message: string) {
   return HttpResponse.json({ error: { code, message } }, { status })
 }
 

@@ -52,7 +52,7 @@ function StatusPickerDialog({
       <DialogContent className="max-w-md" ref={setPortalHost}>
         <DialogHeader>
           <DialogTitle>{labels.dialog.statusPicker}</DialogTitle>
-          <DialogDescription>{labels.nav.description}</DialogDescription>
+          <DialogDescription>{labels.dialog.statusPickerDescription}</DialogDescription>
         </DialogHeader>
         <Combobox
           options={candidates.map((s) => ({

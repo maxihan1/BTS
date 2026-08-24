@@ -64,7 +64,7 @@ function SortableStatusRow({
         <GripVerticalIcon aria-hidden="true" className="size-4" />
       </Button>
       <span className="flex-1 text-sm">{status.name}</span>
-      <Badge variant="secondary">{status.category}</Badge>
+      <Badge variant="neutral">{status.category}</Badge>
       <Button
         variant="ghost"
         size="sm"

@@ -28,8 +28,8 @@ function mockUuid(prefix: string, seq: number): string {
   return `${prefix}-0000-4000-8000-${`${seq}`.padStart(12, '0')}`
 }
 
-/** 상태 key → 결정적 id. 같은 key 는 언제나 같은 id 다. */
-function statusIdFor(key: string, seq: number): string {
+/** 일련번호 → 결정적 상태 id. 같은 순번은 언제나 같은 id 다. */
+function statusIdFor(seq: number): string {
   return mockUuid(`aaaa${`${seq}`.padStart(4, '0')}`, seq)
 }
 
@@ -72,7 +72,7 @@ export function resetWorkflowAdminStore(): void {
       seen.add(state.key)
       seq += 1
       statusCatalogStore.set(state.key, {
-        id: statusIdFor(state.key, seq),
+        id: statusIdFor(seq),
         key: state.key,
         name: state.name,
         description: null,
@@ -86,7 +86,7 @@ export function resetWorkflowAdminStore(): void {
   // 못 태우고, 그것을 지키는 테스트는 도달 불가 조합을 지키는 가짜 그린이 된다.
   seq += 1
   statusCatalogStore.set('blocked', {
-    id: statusIdFor('blocked', seq),
+    id: statusIdFor(seq),
     key: 'blocked',
     name: 'Blocked',
     description: '외부 요인으로 멈춘 상태',

@@ -1,5 +1,4 @@
 // 워크플로우 목록 모드 편집기 인수 테스트 — FR-WF-04 D6 (이름 수정 · 상태 추가/제거/순서 · 전환 이름)
-import React from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -182,16 +181,41 @@ describe('실패와 「없음」을 가른다', () => {
 
   it('카탈로그가 실패하면 「편성된 상태가 없습니다」라고 거짓말하지 않는다', async () => {
     // 조인이 통째로 비어 상태가 0개로 보인다. 「상태가 없다」와 「못 그린다」는 다른 사실이다.
+    //
+    // ★ 제목이 지목한 문자열의 **부재**를 반드시 본다. 처음엔 공지가 뜨는 것만 단언했는데,
+    //   그때 패널이 공지 바로 아래 함께 렌더돼 거짓 문구가 화면에 그대로 남아 있었다.
+    //   제목이 말하는 것을 단언이 안 보면 그 판정은 아무것도 증명하지 않는다.
     server.use(http.get('/api/v1/statuses', () => new HttpResponse(null, { status: 500 })))
     renderEditor()
     expect(await screen.findByText(L.editor.catalogFailed)).toBeInTheDocument()
+    expect(screen.queryByText(L.statusPanel.empty)).not.toBeInTheDocument()
   })
 
-  it('카탈로그가 실패하면 순서 변경을 잠근다 — 부분 목록을 보내면 400 이다', async () => {
+  it('카탈로그가 실패하면 상태 패널을 아예 그리지 않는다 — 부분 목록을 보내면 400 이다', async () => {
     server.use(http.get('/api/v1/statuses', () => new HttpResponse(null, { status: 500 })))
     renderEditor()
     await screen.findByText(L.editor.catalogFailed)
-    expect(screen.getByRole('button', { name: L.statusPanel.add })).toBeDisabled()
+    expect(screen.queryByRole('list', { name: L.statusPanel.list })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: L.statusPanel.add })).not.toBeInTheDocument()
+  })
+
+  it('없는 워크플로우는 404 전용 문구를 쓴다 — 「불러오지 못했습니다」와 구별된다', async () => {
+    server.use(
+      http.get('/api/v1/workflows/nope', () =>
+        HttpResponse.json({ error: { code: 'WORKFLOW_NOT_FOUND', message: '' } }, { status: 404 }),
+      ),
+    )
+    renderEditor('nope')
+    expect(await screen.findByText(L.editor.notFound)).toBeInTheDocument()
+    expect(screen.queryByText(L.editor.loadFailed)).not.toBeInTheDocument()
+  })
+
+  it('실패 화면에 내부 예외 문구를 그리지 않는다', async () => {
+    // `ApiError.message` 는 `API ${status}` 다. 그대로 그리면 「API 503」이 뜬다.
+    server.use(http.get('/api/v1/workflows/boom2', () => new HttpResponse(null, { status: 503 })))
+    renderEditor('boom2')
+    await screen.findByText(L.editor.loadFailed)
+    expect(screen.queryByText(/API 5\d\d/)).not.toBeInTheDocument()
   })
 })
 

@@ -76,12 +76,13 @@ export function WorkflowNewPage(): JSX.Element {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>{labels.statusPanel.add}</Label>
+        <Label htmlFor="workflow-initial-status">{labels.editor.initialStatusField}</Label>
         <Combobox
+          id="workflow-initial-status"
           options={entries.map((s) => ({ value: s.key, label: s.name }))}
           value={initialStatusKey}
           onChange={setInitialStatusKey}
-          ariaLabel={labels.statusPanel.add}
+          ariaLabel={labels.editor.initialStatusField}
           placeholder={labels.statusSearchPlaceholder}
           emptyText={labels.statusPanel.empty}
           triggerPlaceholder={labels.statusSearchPlaceholder}

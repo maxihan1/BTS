@@ -73,7 +73,7 @@ function TransitionListPanel({
                   ) : null}
                   {stateNames[transition.toStateKey] ?? transition.toStateKey}
                 </span>
-                {badge !== null ? <Badge variant="secondary">{badge}</Badge> : null}
+                {badge !== null ? <Badge variant="neutral">{badge}</Badge> : null}
                 <Button
                   variant="ghost"
                   size="sm"

@@ -1,6 +1,7 @@
 // 워크플로우 목록 모드 편집기 셸 — 이름·설명 폼 + 상태/전환 탭 (FR-WF-04 D6)
 import * as React from 'react'
 import { toast } from 'sonner'
+import { ApiError } from '@/api/client'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -108,10 +109,16 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   // ★ 실패와 「없음」을 가른다. 종전에는 둘 다 목록 화면의 빈 상태 문구
   //   (「워크플로우가 없습니다 / 첫 워크플로우를 만들어…」)를 상세 화면에 띄웠다.
   if (detail.isError) {
-    return <EmptyState title={labels.editor.loadFailed} description={detail.error.message} />
+    // ★ `detail.error.message` 를 그대로 그리면 안 된다. `ApiError` 의 message 는
+    //   `API ${status}` 라 화면에 「API 503」이 뜨고, Zod 실패면 이슈 JSON 덤프가 통째로
+    //   렌더된다 — 내부 예외 문구를 사용자 표면으로 흘리지 않는다(FR-PM-04 교훈).
+    // ★★ 404 를 여기서 가른다. 종전에는 `notFound` 라벨을 만들어 두고 그 아래 분기에
+    //   뒀는데, TanStack v5 는 실패를 `isError` 로 보내므로 그 분기가 **도달 불가**였다.
+    const notFound = detail.error instanceof ApiError && detail.error.status === 404
+    return <EmptyState title={notFound ? labels.editor.notFound : labels.editor.loadFailed} />
   }
   if (workflow === undefined) {
-    return <EmptyState title={labels.editor.notFound} />
+    return <EmptyState title={labels.editor.loadFailed} />
   }
 
   const catalogEntries = catalog.data ?? []
@@ -147,20 +154,22 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
 
         <TabsContent value="statuses">
           {statusPanelBlocked ? (
+            // ★ 막혔으면 패널을 **아예 안 그린다.** 공지만 덧붙이고 패널을 함께 그리면
+            //   조인이 비어 「편성된 상태가 없습니다」라는 거짓말이 공지 바로 아래 나란히
+            //   뜬다 — 그 문구를 없애려던 수정이 절반만 닿아 있던 자리다.
             <EmptyState
               title={statusPanelNotice}
               description={droppedKeys.length > 0 ? droppedKeys.join(', ') : undefined}
             />
-          ) : null}
+          ) : (
           <StatusListPanel
             statuses={panelStatuses}
             onAdd={() => setPickerOpen(true)}
             onRemove={setStatusToRemove}
             onReorder={(orderedIds) => reorderStatuses.mutate(orderedIds)}
-            disabled={
-              statusPanelBlocked || addStatus.isPending || removeStatus.isPending || reorderStatuses.isPending
-            }
+            disabled={addStatus.isPending || removeStatus.isPending || reorderStatuses.isPending}
           />
+          )}
         </TabsContent>
 
         <TabsContent value="transitions">

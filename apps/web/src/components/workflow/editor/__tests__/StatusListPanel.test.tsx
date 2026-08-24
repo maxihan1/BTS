@@ -86,6 +86,14 @@ describe('StatusListPanel', () => {
     expect(onRemove).toHaveBeenCalledWith(STATUSES[1])
   })
 
+  it('카테고리 배지에 실제 색 클래스가 붙는다', () => {
+    // ★ `variant` 오타는 타입 오류일 뿐 아니라 **화면에서 색이 통째로 사라진다** —
+    //   cva 는 모르는 키에 아무 클래스도 안 붙인다. textContent 만 보는 판정은 그걸 못 잡는다.
+    setup()
+    const badge = screen.getByText('IN_PROGRESS')
+    expect(badge.className).toContain('bg-(--bg-neutral)')
+  })
+
   it('비어 있으면 빈 상태를 보여주고 목록을 그리지 않는다', () => {
     setup({ statuses: [] })
     expect(screen.getByText(L.statusPanel.empty)).toBeInTheDocument()

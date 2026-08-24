@@ -77,6 +77,8 @@ export const workflowEditorLabels = {
     descriptionField: '워크플로우 설명',
     /** 목록으로 돌아가기 */
     backToList: '목록으로',
+    /** 생성 폼의 최초 상태 필드 — '상태 추가'(동작)를 빌려 쓰지 마라 */
+    initialStatusField: '최초 상태',
     /** 워크플로우를 못 불러왔을 때 — 목록 화면의 빈 상태 문구를 돌려 쓰지 마라 */
     loadFailed: '워크플로우를 불러오지 못했습니다',
     /** 없는 키로 들어왔을 때 */
@@ -150,14 +152,12 @@ export const workflowEditorLabels = {
   dialog: {
     /** 상태 선택 다이얼로그 */
     statusPicker: '워크플로우에 추가할 상태 선택',
-    /** 상태 선택 — 새 상태 만들기 토글 */
-    statusPickerCreate: '새 상태 만들기',
+    /** 상태 선택 다이얼로그 설명 — 관리 허브 카드 설명(`nav.description`)을 빌려 쓰지 마라 */
+    statusPickerDescription: '카탈로그에서 이 워크플로우에 넣을 상태를 고릅니다',
     /** 전환 폼 다이얼로그 — 생성 */
     transitionCreate: '전환 만들기',
     /** 전환 폼 다이얼로그 — 수정 */
     transitionEdit: '전환 수정',
-    /** 워크플로우 생성 다이얼로그 */
-    workflowCreate: '워크플로우 만들기 폼',
     /** 확인 다이얼로그 기본 확인 버튼 */
     confirm: '확인',
     /** 확인 다이얼로그 기본 취소 버튼 */
