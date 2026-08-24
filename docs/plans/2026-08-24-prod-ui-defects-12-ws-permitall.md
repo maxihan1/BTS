@@ -676,6 +676,96 @@ red 1회를 보는 절차 + 「GREEN 선커밋 뒤에」 조건까지 적혀 있
 **BLOCKER: 0 · P1: 3 · P2: 6**
 P1 3건(판별식 하드코딩 · Task 1 양방향 단언 · `ResponseEntity<*>`)은 모두 plan 수정으로 흡수 가능하다.
 
+### 🛑 게이트 2 요약 (2026-08-24 · Maxi 검토 대기)
+
+#### 티어 — 선언과 실측
+
+| | 값 | 근거 |
+|---|---|---|
+| **선언 티어** | **T2** | 착수 시점, `SecurityConfig` 경로 근거 |
+| **실측 티어** | **T2** | `detect-tier.ts` 가 51파일 diff 를 판정 — 선언과 **일치**, 승격 없음 |
+| 적중 표면 | `TEST` · **`SEC_BE`** · `GUARD_CI` · `SHELL` · `STYLE_COPY` · `DOC` · **`BE_MAIN`** · `FE_SRC` | |
+| **`UNMAPPED`** | **0건** | 미분류 경로 없음 |
+| 보안 렌즈 | **필수 (생략 불가)** — 수행함 | `securityLens: true` |
+
+★classify 원출력은 `T1` 이었다(제목만 보므로 경로를 못 본다). 선언 T2 가 실측과 맞았다.
+
+#### 건너뛴 단계 · 절차 이탈 (전량)
+
+| # | 이탈 | 승인·근거 |
+|---|---|---|
+| 1 | **단계 순서** — 구현 12건이 [2]~[5] 보다 먼저 끝났다. spec·plan 은 **사후 작성** | 불가피(작업이 이미 존재) · 사후 spec 이 결함 D1~D7 + BLOCKER 를 드러냈다 |
+| 2 | **티어 승격** — classify `T1` → 선언 `T2` | `/bts` 판정 5문 ①②. 실측이 T2 로 확인 |
+| 3 | **worktree 미사용** — `git switch -c` 로 브랜치만 팜 | **Maxi 승인(D2)**. 이송 0 · husky 훅 네이티브 동작(실제로 3회 차단해 줌) |
+| 4 | **slug 수동 지정** | 자동 생성 `ui-12-ws-permitall` 이 뜻을 잃음 |
+| 5 | **줄수 래칫 상향** `BoardPage` 367→372 | h1 추가 5줄. `projectFavoriteHeader` 가 7개 값을 클로저로 잡아 함수 분해가 props 7개 컴포넌트 추출이 되어 범위 초과. 선례 288→289 형식으로 baseline 에 근거 주석 |
+| 6 | **「한 PR = 한 BC」 이탈** — `notification` BC 프로덕션 코드 1파일 | **게이트 1 D5-A 승인**. `setAllowedOrigins` 는 같은 FR-NT-02 결함의 짝이라 분리하면 반쪽 수정이 된다. PR #395 선례와 같은 처리 |
+| 7 | **sub-agent dispatch 미사용** — `bts-impl` wave dispatch 대신 컨트롤러 인라인 실행 | 세션 상위 지침이 Agent 도구 사용을 제한. TDD 규율(`test:`→`fix:`)과 wave 순서는 그대로 지켰다 |
+| 8 | **리뷰 렌즈 발행 방식** — `/bts-review-plan` Step 3 은 2종을 한 응답에 발행하라고 하나 eng → design 순차 발행 | 실행은 어차피 순차라 결과 동일. 기록만 남긴다 |
+| 9 | **Task 4 를 Task 8 에 흡수** | Esc 를 실제로 만들면 Task 4 가 고칠 주석이 참이 된다. 두 번 고칠 이유가 없다 |
+
+#### 검증 — 전량, 종료 코드로 판정
+
+| 항목 | 결과 |
+|---|---|
+| `pnpm -r run lint` | **EXIT=0** (경고 8건은 이 PR 밖 파일 — `SlackResultBanner.tsx`·`WeekGrid.tsx`, 선재) |
+| `pnpm -r run typecheck` | **EXIT=0** |
+| `pnpm --filter web exec vitest run` (전량) | **EXIT=0** |
+| `pnpm -r run build` | **EXIT=0** · 5,216 modules · 10.9s |
+| `pnpm --filter web exec playwright test` (**전량**) | **EXIT=0** · **704 passed · 3 skipped** (12.8m) |
+| `./gradlew test ktlintCheck detekt` (**전 모듈**) | **EXIT=0** · BUILD SUCCESSFUL |
+| `pnpm test:workflow` (판별식) | **EXIT=0** · **412/412 pass** |
+| `node scripts/build-doc-index.mjs --check` | **EXIT=0** |
+| `bash scripts/verify-master-plan.sh` | **EXIT=0** · FR 143/143 |
+
+**뮤테이션 검증 4건 — 전부 red 확인 (GREEN 선커밋 뒤 실행 · 원복 완료)**
+
+| 뮤테이션 | 결과 |
+|---|---|
+| `/ws` permitAll 줄을 끊는다 | `:modules:app` **EXIT=1** — 400 양성 판별자가 red |
+| 허용목록에서 `use-sidebar-drawer` 제거 | **EXIT=1** |
+| `RecentIssuesMenu` 를 직접 소비로 되돌림 | **EXIT=1** — 그 파일을 지목해 red |
+| `Sidebar` 에 `max-lg:` 주입(경계 이원화) | **EXIT=1** — 그 파일을 지목해 red |
+
+**즉사 계약 8행** — `h1` 단 하나 포함 전량 통과(`board.tsx` h1 = 1개 실측).
+
+#### ★ 검증 과정에서 잡은 것 — 두 번 놓칠 뻔했다
+
+1. **`./gradlew … | tail -40` 로 돌려 종료 코드가 `tail` 의 것이 됐다.** 그래서 「백엔드 EXIT=0」을
+   한 번 **잘못 보고했다.** 실제로는 `notification` 단독 테스트가 컨텍스트 로딩에서 죽어 있었고
+   (`Could not resolve placeholder 'bts.security.cors.allowed-origins'` → 9개 클래스로 전파),
+   전량 재실행에서야 드러났다. `bts-impl` 이 문서로 경고해 둔 그 함정이다.
+2. **브레이크포인트 판별식의 하드코딩 목록이 양방향으로 틀려 있었다** — `max-md:` 를 안 쓰는
+   `ShellLayout` 을 넣어 두고 실제로 쓰는 `AccountMenu` 를 빠뜨렸다. 도출식으로 교체했다.
+
+#### 범위 밖으로 남긴 것 (전부 `TODOS.md` + 마스터 매핑 104~108 등재)
+
+| 항목 | 왜 안 했나 |
+|---|---|
+| F21 컨테이너 관례 전수 적용 | 48 라우트 규모 · 어느 쪽으로 모을지가 Maxi 결정 |
+| `ProjectTree` 2단 들여쓰기 | 반쪽 수정 시 depth2 와 5px 차이가 되어 **깊이 신호가 소멸**한다 |
+| 설정 화면 마감 5건 | 사용자를 막지 않는 시각 일관성 |
+| 드로어 **완전** 포커스 트랩(`aria-modal` + `inert`) | 게이트 1 D4-A — 셸 전역 포커스 동작 변경이라 별건 |
+| `FieldPermissionController` 의 `ResponseEntity<*>` + 응답 규약 이원화 | **프로덕션 장애의 근본 원인.** 수렴은 다른 소비처를 깨는 API 변경이라 별건 |
+| classify 오분류(「스키마」→`migration`) | 기존 항목에 실측만 추가 — 신규 등재 아님 |
+
+#### F24 판정
+
+**완주로 선언하지 않는다**(두 렌즈 일치). 로드맵 표의 수단 기술만 「Sheet」→「오프캔버스 + 백드롭」
+으로 고쳤다 — 계약 §4 재사용 자산에 `sheet` 항목이 없어 로드맵이 **없는 자산을 지목**하고 있었다.
+드로어 완전 포커스 트랩이 닫히면 그때 완주 처리한다.
+
+#### 배포
+
+★**#397 · #398 · 이 PR 모두 미배포다.** 머지가 배포를 트리거하지 않는다(워크플로우 4종이
+`workflow_dispatch` 전용). `/ws` 수정과 필드 권한 수정은 **배포돼야 실제로 낫는다** —
+`bash infra/deploy/bts-deploy.sh`(수십 분 · Docker).
+
+#### 눈확인 — 미완 (계약 §6)
+
+E2E 707건이 좁은 폭까지 덮었지만, 계약 §6 이 요구하는 **실브라우저 눈확인은 배포 후**로 남는다.
+확인 항목은 위 `### 시각 검증 기준` 6개다. 게이트 2 승인 시 그 항목을 배포 후 체크리스트로 넘긴다.
+
 ### 렌즈 2 — `/plan-design-review` (2026-08-24)
 
 > 절차 메모. Step 0.5 목업 생성을 **의도적으로 건너뛰었다.** 이 리뷰는 만들 UI 가 아니라
