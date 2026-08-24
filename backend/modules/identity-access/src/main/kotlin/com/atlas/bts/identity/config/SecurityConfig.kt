@@ -212,6 +212,10 @@ class SecurityConfig(
                 // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02·게이트1 승인). 상세는 ICAL_FEED_PATH KDoc.
                 auth.requestMatchers(HttpMethod.GET, ICAL_FEED_PATH).permitAll()
                 // FR-NT-02: STOMP over WebSocket 핸드셰이크 — **HTTP 계층에서만** 연다.
+                // DEVELOPMENT.md §1.4 정식 예외
+                // (ADR docs/decisions/2026-08-24-fr-nt-02-ws-handshake-permitall.md · 게이트1 승인).
+                // 형제 두 줄(PUBLIC_DASHBOARDS_PATH·ICAL_FEED_PATH)과 **같은 형식으로** 근거를 남긴다 —
+                // 셋 중 하나만 인용이 없으면 다음 사람이 그게 예외인지 사고인지 구분하지 못한다.
                 //
                 // ★ 왜 여는가. BTS 는 STATELESS + JWT Bearer 라 세션 쿠키가 없고, 브라우저 WebSocket API 는
                 //   업그레이드 요청에 임의 헤더를 실을 수 없다. 그래서 인증 지점을 한 단계 뒤인 STOMP
@@ -242,7 +246,13 @@ class SecurityConfig(
                 //    MvcRequestMatcher 로 해석되는데 `/ws` 는 **MVC 핸들러가 아니라** WebSocket
                 //    핸들러라 매칭되지 않고, permitAll 을 적어도 401 이 그대로 남는다(실측).
                 //    같은 이유로 SamlSecurityConfig 도 MVC 비의존 AntPathRequestMatcher 를 쓴다.
-                auth.requestMatchers(antMatcher(WS_HANDSHAKE_PATH)).permitAll()
+                // 🛑 메서드를 GET 으로 고정한다 — 형제 두 줄(PUBLIC_DASHBOARDS_PATH·ICAL_FEED_PATH)이
+                //    쓰는 defense-in-depth 를 이 줄만 안 따라가고 있었다(리뷰 C1). WebSocket
+                //    핸드셰이크는 스펙상 **항상 GET** 이라 기능 손실이 0 이고, 고정하지 않으면
+                //    `POST /ws`·`DELETE /ws` 까지 익명이 된다. 오늘 그 매핑이 없다는 것은
+                //    「하위 매핑이 생기면 조용히 노출된다」며 경로 폭을 봉인한 논리와 같은 이유로
+                //    근거가 되지 못한다.
+                auth.requestMatchers(antMatcher(HttpMethod.GET, WS_HANDSHAKE_PATH)).permitAll()
                 // FR-AT-07: 인바운드 웹훅 6경로 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
                 // 목록을 순회한다(PR-A DEC-16 · PR-C ADR §D4).
                 // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.

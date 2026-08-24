@@ -65,6 +65,15 @@ class WebSocketConfig(
      */
     @Suppress("SpreadOperator")
     override fun registerStompEndpoints(registry: StompEndpointRegistry) {
+        // 🛑 `"*"` fail-fast. CorsConfig 는 `allowCredentials = true` 라 `"*"` 를 넣으면 Spring 이
+        //    런타임에 IllegalArgumentException 으로 **시끄럽게** 거절한다. 그런데 여기서는 같은
+        //    값이 **조용히 전 출처 허용**이 된다 — 같은 프로퍼티를 공유하는데 실패 모드가
+        //    비대칭이라, 주석 한 줄로는 못 막는다(리뷰 C3).
+        require(WILDCARD_ORIGIN !in allowedOrigins) {
+            "bts.security.cors.allowed-origins 에 \"$WILDCARD_ORIGIN\" 를 두지 마라 — " +
+                "WebSocket 핸드셰이크는 CorsConfig 와 달리 조용히 전 출처를 허용한다. " +
+                "CONNECT frame Bearer 덕에 자격 도용은 막히지만 CSWSH 방어선을 스스로 없애는 셈이다."
+        }
         registry.addEndpoint(WS_ENDPOINT).setAllowedOrigins(*allowedOrigins.toTypedArray())
     }
 
@@ -91,6 +100,11 @@ class WebSocketConfig(
         registration.setMessageSizeLimit(MESSAGE_SIZE_LIMIT_BYTES)
         registration.setSendTimeLimit(SEND_TIME_LIMIT_MS)
         registration.setSendBufferSizeLimit(SEND_BUFFER_SIZE_LIMIT_BYTES)
+        // 🛑 인증 **전** 소켓의 수명. permitAll 이전에는 CONNECT 를 안 보내는 익명 클라이언트가
+        //    필터에서 401 로 끊겨 세션 자원을 한 톨도 잡지 못했다. 이제는 업그레이드가 성립해
+        //    CONNECT 전에 커넥션·세션 엔트리가 할당된다 — 위 세 한도와 **같은 이유로** 이 값도
+        //    프레임워크 기본값(60초)에 맡기지 않고 명시한다(리뷰 C2).
+        registration.setTimeToFirstMessage(TIME_TO_FIRST_MESSAGE_MS)
     }
 
     private companion object {
@@ -100,6 +114,18 @@ class WebSocketConfig(
 
         /** 수신 STOMP 메시지 최대 크기 (64KB) — 인앱 알림 프레임은 작아 충분. 초과 시 세션 종료. */
         const val MESSAGE_SIZE_LIMIT_BYTES = 64 * 1024
+
+        /** 핸드셰이크 허용 출처에 넣으면 안 되는 와일드카드 — [registerStompEndpoints] 가 거부한다. */
+        const val WILDCARD_ORIGIN = "*"
+
+        /**
+         * 업그레이드 후 첫 STOMP 메시지(CONNECT)까지 허용하는 시간 (30초).
+         *
+         * 클라이언트는 소켓이 열리자마자 CONNECT 를 보내므로 30초는 아주 느린 모바일 회선에도
+         * 여유가 있다. Spring 기본값 60초의 절반으로 잡아 **인증 전 유휴 소켓**이 자원을 붙들고
+         * 있는 창을 좁힌다 — 값 자체는 판단이고, 요점은 그 판단이 우리 코드에 적혀 있다는 것이다.
+         */
+        const val TIME_TO_FIRST_MESSAGE_MS = 30 * 1000
 
         /** 단건 메시지 송신 제한 시간 (10초) — 느린 클라이언트의 송신 스레드 점유 방지. */
         const val SEND_TIME_LIMIT_MS = 10 * 1000
