@@ -82,9 +82,10 @@ export function ShellLayout(): JSX.Element {
   //    `useKeyboardShortcuts.test.tsx`), 컨텍스트 단축키는 새 리스너를 만드는 대신
   //    `useKeyboardShortcuts` 파이프라인에 합류해야 한다. 실제로 달았다가 그 판별식에 걸렸다.
   //    ★그 판별식은 **소스 텍스트**를 훑으므로 주석에 그 호출 문법을 예시로 적기만 해도 걸린다.
-  //    드로어를 닫는 길은 이미 셋이다 — 백드롭 클릭 · 드로어 하단 「접기」 버튼 ·
-  //    상단바 토글(드로어가 헤더 아래에서 시작해 항상 눌린다). Esc 가 꼭 필요해지면
-  //    `context-shortcuts.ts` 에 `app-shell` 항목으로 **등록**하는 것이 맞는 경로다.
+  //    Esc 는 그 ADR 이 지정한 경로 그대로 `context-shortcuts.ts` 에 `app-shell` 항목으로
+  //    **등록**돼 있고, 아래 `onCloseSidebarDrawer` 가 그 핸들러다.
+  //    드로어를 닫는 길은 넷이다 — Esc · 백드롭 클릭 · 드로어 하단 「접기」 버튼 ·
+  //    상단바 토글(드로어가 헤더 아래에서 시작해 항상 눌린다).
 
   // 🛑 폭에 따른 토글 대상 선택을 **여기서 다시 계산하지 마라.** `useSidebarToggle` 한 곳이
   //    소유한다 — 토글 지점이 상단바 버튼 · 이 `[` 단축키 · 사이드바 하단 버튼으로 셋이라,
@@ -113,6 +114,9 @@ export function ShellLayout(): JSX.Element {
     'app-shell',
     {
       onToggleSidebar: toggleSidebar,
+      // F24 — 드로어가 닫혀 있으면 `setDrawerOpen(false)` 는 무동작이라, 다른 화면에서
+      // Escape 를 눌러도 관측되는 변화가 없다. 그래서 조건 분기를 두지 않는다.
+      onCloseSidebarDrawer: () => { setDrawerOpen(false) },
       // ★`.` 은 **여는 것만** 한다(토글이 아니다). 팔레트가 열리면 입력창이 포커스를
       // 가져가고 판별 파이프라인의 `shouldIgnoreEvent` 가 input 안의 키를 통과시키므로
       // `.` 로는 닫히지 않는다(E3) — 마침표를 검색어로 칠 수 있어야 한다. 닫기는 `Esc`.
@@ -137,7 +141,8 @@ export function ShellLayout(): JSX.Element {
         <Sidebar />
         {/* 드로어 백드롭 — 모바일에서 드로어가 열렸을 때만. `md:hidden` 으로 데스크톱은 절대 렌더 밖.
             🛑 `role`·이름을 주지 마라. 이건 닫기 편의용 오버레이일 뿐이고, 같은 닫기 동작을
-               사이드바 하단 「접기」 버튼과 Esc 가 이미 접근 가능한 경로로 제공한다. */}
+               **Esc**(`context-shortcuts.ts` 의 `app-shell` 항목)와 사이드바 하단 「접기」 버튼이
+               접근 가능한 경로로 제공한다 — 그 둘이 없으면 이 `aria-hidden` 은 정당화되지 않는다. */}
         {drawerOpen && (
           <div
             aria-hidden="true"

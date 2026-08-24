@@ -14,6 +14,7 @@ import {
   UserCheck,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useAuthUser } from '@/auth/authStore'
 import {
   useSidebarDrawer,
@@ -105,6 +106,30 @@ export function Sidebar(): JSX.Element {
   const drawerOpen = useSidebarDrawer((state) => state.open)
   const toggle = useSidebarToggle()
   const sidebarShown = useSidebarShown()
+
+  // ── 드로어 포커스: 어디서 시작해 어디로 돌아가는지를 정의한다 (F24 · D7) ─────────────
+  // 🛑 백드롭이 본문을 **시각적으로** 덮는 순간 이 UI 는 모달로 읽힌다. 포인터 사용자에게는
+  //    모달인데 키보드 사용자에게는 아니면, 탭이 가려진 콘텐츠로 들어가 **보이지 않는 채로
+  //    포커스만 이동**한다 — 아래 `max-md:invisible` 이 닫힘 상태에서 막는 것과 같은 형태의
+  //    결함이다. 한쪽만 막으면 반쪽이다.
+  //    여기서 하는 것은 포커스의 **시작과 끝**을 정하는 것까지다. 완전한 포커스 트랩
+  //    (`aria-modal` + 뒤 콘텐츠 `inert`)은 셸 전역 동작을 바꾸므로 별건으로 뺐다(TODOS).
+  const asideRef = useRef<HTMLElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (drawerOpen) {
+      // 연 주체(상단바 토글 버튼 등)를 기억해 뒀다가 닫을 때 그리로 돌려준다.
+      returnFocusRef.current = document.activeElement as HTMLElement | null
+      asideRef.current?.focus()
+      return
+    }
+    // 닫힘 — 기억해 둔 곳으로 돌려준다. 그 요소가 사라졌으면(라우트 이동 등) 아무것도 하지
+    // 않는다. 억지로 body 로 옮기면 포커스가 문서 맨 앞으로 튀어 더 나빠진다.
+    const target = returnFocusRef.current
+    returnFocusRef.current = null
+    if (target !== null && document.contains(target)) target.focus()
+  }, [drawerOpen])
   const isAdmin = user?.isSystemAdmin === true
   // 🛑 모바일에서는 collapsed 를 쓰지 않는다 — 접힘은 **데스크톱 아이콘 레일**의 폭이고,
   //    드로어는 열리면 264px 전체가 떠야 한다. 둘을 겹치면 드로어가 64px 레일로 열리고
@@ -130,7 +155,11 @@ export function Sidebar(): JSX.Element {
 
   return (
     <aside
-      className={`flex h-full flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground ${widthClass} ${mobileDrawerClass}`}
+      ref={asideRef}
+      // 🛑 `tabIndex={-1}` 은 프로그램적 포커스 전용이다 — 탭 순서에 끼어들지 않는다.
+      //    드로어가 열릴 때 포커스를 여기로 보내기 위한 최소 장치다.
+      tabIndex={-1}
+      className={`flex h-full flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground focus:outline-none ${widthClass} ${mobileDrawerClass}`}
     >
       <ProjectTree />
 

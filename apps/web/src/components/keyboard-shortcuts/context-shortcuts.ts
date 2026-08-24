@@ -36,6 +36,7 @@ export type ShortcutContext = 'issue-detail' | 'issue-list' | 'app-shell'
  * - `toggle-favorite`: 이 이슈 즐겨찾기 켜기/끄기(F11 `s`)
  * - `toggle-watch`: 이 이슈 관심(watch) 켜기/끄기(F11 `w`)
  * - `open-command-palette`: 명령 팔레트 열기(F11 `.`)
+ * - `close-sidebar-drawer`: 모바일 사이드바 드로어 닫기(F24 `Escape`)
  * - `none`: 처리할 단축키 없음(무동작)
  */
 export type ContextShortcutAction =
@@ -51,6 +52,7 @@ export type ContextShortcutAction =
   | { kind: 'toggle-favorite' }
   | { kind: 'toggle-watch' }
   | { kind: 'open-command-palette' }
+  | { kind: 'close-sidebar-drawer' }
   | { kind: 'none' }
 
 /** 컨텍스트 단축키 정의 — 훅 dispatch 와 도움말 모달이 함께 구동하는 단일 진실 출처 */
@@ -157,6 +159,17 @@ export const CONTEXT_SHORTCUTS: readonly ContextShortcutDef[] = [
     context: 'app-shell',
     description: '명령 팔레트 열기',
     action: { kind: 'open-command-palette' },
+  },
+  // ★F24 — 모바일 드로어는 백드롭으로 본문을 덮으므로 포인터 사용자에게는 모달로 읽힌다.
+  //   키보드로도 같은 방식으로 빠져나갈 수 있어야 한다. 드로어가 닫혀 있으면 무동작이라
+  //   다른 화면에서 Escape 를 눌러도 관측되는 변화가 없다.
+  //   🛑 이걸 위해 셸 컴포넌트에 전역 키 리스너를 새로 달지 마라 — ADR D-2 가 리스너 소유자를
+  //      허용목록으로 봉인했고, 여기 **등록**하는 것이 그 ADR 이 지정한 유일한 정식 경로다.
+  {
+    key: 'Escape',
+    context: 'app-shell',
+    description: '모바일 사이드바 드로어 닫기',
+    action: { kind: 'close-sidebar-drawer' },
   },
 ]
 

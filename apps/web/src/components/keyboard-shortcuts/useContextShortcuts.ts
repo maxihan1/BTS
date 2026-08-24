@@ -27,6 +27,8 @@ export interface ContextShortcutHandlers {
   readonly onToggleDetailPane?: () => void
   /** 사이드바 접기/펼치기 */
   readonly onToggleSidebar?: () => void
+  /** 모바일 사이드바 드로어 닫기 (F24 `Escape`) — 드로어가 닫혀 있으면 무동작 */
+  readonly onCloseSidebarDrawer?: () => void
   /** 담당자 선택 컨트롤로 포커스 이동 (F11 `a`) */
   readonly onFocusAssignee?: () => void
   /** 담당자를 나로 지정, 이미 나면 해제 (F11 `i`) */
@@ -178,6 +180,9 @@ export function dispatchContextAction(hit: ContextShortcutHit): void {
     case 'toggle-sidebar':
       target?.onToggleSidebar?.()
       return
+    case 'close-sidebar-drawer':
+      target?.onCloseSidebarDrawer?.()
+      return
     case 'focus-assignee':
       target?.onFocusAssignee?.()
       return
@@ -249,6 +254,7 @@ function mirrorLatestHandlers(ref: {
     onToggleFavorite: () => ref.current.onToggleFavorite?.(),
     onToggleWatch: () => ref.current.onToggleWatch?.(),
     onOpenCommandPalette: () => ref.current.onOpenCommandPalette?.(),
+    onCloseSidebarDrawer: () => ref.current.onCloseSidebarDrawer?.(),
   }
 }
 
