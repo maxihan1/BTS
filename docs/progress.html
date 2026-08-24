@@ -1654,11 +1654,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">76</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 154건</span>
+      <span class="big-pct" style="color:#9ca3af;">88</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 166건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 76건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">11건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 88건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">18건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 <b>의도된 대가</b> · 미착수 · T1)</span></div>
@@ -1772,7 +1772,77 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 전환 목록 스키마가 서버 계약보다 엄격해 응답 하나에 드롭다운이 통째로 사라진다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/api/issues.ts</code> 의 <code>issueTransitionSchema.key</code> 가 <code>z.string().min(1)</code> <b>필수</b>다. 백엔드 정본 <code>AvailableTransitionsResult.kt:96</code> 은 <code>val key: String? = null</code> 이고 「null 은 미계산 상태다」라고 적는다. Zod 는 배열 원소 하나가 스키마에 안 맞으면 <b>목록 전체</b>를 파싱 실패로 떨어뜨리므로, <code>key</code> 가 null 인 전환이 하나만 섞여도 전환 셀렉터가 통째로 사라진다.</p><p><b>★같은 파일이 이미 이 안티패턴을 금지해 뒀다.</b> 같은 스키마의 KDoc(<code>api/issues.ts:227-234</code>)이 <code>transitionId</code>·<code>kind</code> 에 대해 「<code>z.enum</code> 으로 좁히지 않는다 — backend 가 <code>String?</code> 로 보내므로 종류가 늘어난 순간 목록 전체가 파싱 실패로 사라진다」고 적고 그대로 <code>nullable().optional()</code> 을 걸었다. <b><code>key</code> 만 그 규칙 밖에 있다.</b> 형제 필드 셋 중 하나만 엄격한 비대칭이다.</p><p><b>★PR #398 이 이 값의 무게를 올렸다.</b> 옵션 값 규칙이 <code>transitionId ?? key</code> 가 되면서 <code>key</code> 는 렌더 디테일에서 <b>폴백의 유일한 지목 식별자</b>로 승격됐다. 결함 자체는 그 PR 이 만든 것이 아니지만 걸린 하중이 달라졌다.</p><p><b>처방.</b> <code>key</code> 를 <code>nullable().optional()</code> 로 완화하고, <code>optionValueOf</code> 의 폴백이 <code>key</code> 부재를 견디는지 판정을 세운다. 형제 셋의 계약이 갈리지 않도록 <b>셋을 한 자리에서 대조하는 판정</b>을 두는 편이 낫다 — 지금은 KDoc 산문만 있고 기계가 안 본다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">6건</span></h3>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 페이지 컨테이너 관례가 둘로 갈려 형제 탭끼리 236px 어긋난다 (F21 · 선재 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 같은 설정 화면인데 어떤 탭은 가운데 정렬이고 어떤 탭은 왼쪽 정렬이라, 탭을 옮길 때마다 본문이 옆으로 툭 튄다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면을 옮길 때마다 눈이 본문을 다시 찾는다. 개별 화면은 다 멀쩡해 보여서 아무도 버그로 신고하지 않고 계속 남는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 페이지 컨테이너 관례가 둘로 갈려 형제 탭끼리 236px 어긋난다 (F21 · 선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 컨테이너 관례가 두 벌이다 — <code>PageLayout</code>(중앙정렬) 5라우트 vs 좌측 <code>p-8</code> 다수. PR #399 는 <code>settings/details</code> <b>하나가</b> 형제 11개 탭과 236px 어긋난 것만 고쳤다(1개를 11개에 맞췄다). 전수 적용은 48 라우트 규모이고 12개를 함께 옮겨야 한다.</p><p><b>★어느 쪽으로 모을지가 먼저다.</b> 기계적으로 한쪽에 맞추면 넓은 표를 쓰는 화면이 좁아지거나 짧은 폼이 허전해진다. 계약 §2 의 「h1 이름 <b>글자 단위 verbatim 보존</b>」이 유일한 즉사 조건이라 문구는 절대 건드리지 않는다.</p><p><b>처방.</b> 방향을 먼저 정하고(Maxi), 그 다음 <code>PageLayout</code>/<code>PageHeader</code>/<code>Breadcrumb</code> 전수 적용. 착수 시 <code>docs/design/jira-parity-roadmap.md</code> F21 행과 <code>jira-parity-contract.md</code> §2 를 함께 읽을 것.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — <code>ProjectTree</code> 2단 들여쓰기가 깊이를 구분하지 못한다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 프로젝트 목록에서 하위 항목이 상위 항목보다 얼마나 안쪽인지 눈으로 구분이 안 된다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 트리인데 트리로 안 읽힌다. 항목이 늘수록 어디에 속한 것인지 헷갈린다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — `ProjectTree` 2단 들여쓰기가 깊이를 구분하지 못한다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇 (실측).</b> depth1 리프 라벨 x=41 · depth1 그룹 라벨 x=61 · depth2 x=66. 리프에는 셰브론(펼침 화살표) 자리가 없어 같은 depth 인데 20px 당겨져 있고, depth2 는 depth1 그룹과 <b>5px</b> 차이다.</p><p><b>★반쪽만 고치면 더 나빠진다.</b> 리프에 셰브론 자리를 주면 depth1 이 61 로 정렬되지만 depth2 와 5px 차이가 되어 <b>깊이 신호가 사실상 소멸</b>한다. 들여쓰기 단위를 함께 재설계해야 한다 — PR #399 가 이 항목을 손대지 않은 이유다.</p><p><b>처방.</b> 두 단계를 한 번에 재설계한다. 리프/그룹 정렬 + depth 당 들여쓰기 폭을 같이 정하고, 렌더된 x 좌표를 실측으로 잰다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 설정 화면 마감 5건 (신규 · 미착수 · T0)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 기능은 되는데 손이 덜 간 자리들이다. 같은 말이 두 번 나오거나, 나란한 입력창 폭이 제각각이다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 사용자를 막지는 않지만 「대충 만들었다」는 인상을 준다. 스캔을 방해해 읽는 속도가 느려진다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 설정 화면 마감 5건 (신규 · 미착수 · T0)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇 (PR #399 전수 순회 실측).</b></p><ul class="md-list"><li><code>설정/환경설정</code> — select 4개 폭이 제각각이다(192 / 256 / 160 / 192).</li><li><code>가져오기</code>·<code>프로필</code> — 네이티브 file input 이 무스타일이라 주변 컨트롤과 형제로 안 읽힌다.</li><li><code>컴포넌트</code>·<code>커스텀필드</code>·<code>이슈템플릿</code> — H1 과 카드 제목이 같은 문구를 두 번 말한다.</li><li><code>프로젝트 리드</code> — 부제와 카드 설명이 <b>완전히 같은 문장</b>이다.</li><li>위 3·4 는 같은 원인이다 — 페이지 제목을 카드가 한 번 더 반복한다.</li></ul><p><b>처방.</b> select 폭은 토큰으로 통일, file input 은 프리미티브로 감싼다. 중복 문구는 <b>카드 쪽을 지운다</b> — h1 문구는 계약 §2 즉사 조건이라 건드리지 않는다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 모바일 드로어에 완전한 포커스 트랩이 없다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 모바일에서 사이드바 서랍을 열면 화면이 어두워지는데, 탭 키를 계속 누르면 그 어두운 뒤쪽으로 커서가 넘어간다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 키보드·스크린리더 사용자는 보이지 않는 곳으로 포커스가 이동한다. 포인터 사용자에게는 모달인데 키보드 사용자에게는 아니다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 모바일 드로어에 완전한 포커스 트랩이 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> PR #399 가 Esc 닫기와 <b>포커스의 시작·끝</b>(열릴 때 <code>aside</code> 로 이동, 닫힐 때 연 주체로 복귀)까지는 넣었다. 남은 것은 <code>aria-modal=&quot;true&quot;</code> + 뒤 콘텐츠 <code>inert</code> 로 <b>탭 순회 자체를 가두는 것</b>이다.</p><p><b>왜 그 PR 에서 안 했나.</b> 게이트 1(D4-A) 결정 — 셸 전역 포커스 동작을 바꿔 e2e 파장이 크고, 그 PR 의 성격(레이아웃 결함 수정)을 넘는다. 시작·끝을 정의하는 것만으로 「어디로 갔는지 모른다」는 사라졌다.</p><p><b>처방.</b> <code>aria-modal</code> + <code>inert</code> 를 드로어 열림에 묶고, 탭 순회가 드로어 밖으로 나가지 않는지 재는 판정을 세운다. 향후 다른 오버레이(시트·패널)가 재사용할 패턴이므로 셸 공용으로 만드는 편이 낫다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 판별식의 주석 제거 헬퍼가 3벌 복제돼 있고 후행 주석을 못 지운다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「주석은 코드가 아니다」를 걸러 주는 함수가 세 파일에 똑같이 복사돼 있고, 셋 다</p>
+        <p class="todo-risk"><b>방치하면.</b> 한 곳을 고쳐도 나머지 둘이 조용히 낡는다. 그리고 후행 주석에 같은 글자를 적어</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 판별식의 주석 제거 헬퍼가 3벌 복제돼 있고 후행 주석을 못 지운다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>줄 <b>맨 앞</b>의 주석만 지운다. 코드 뒤에 붙은 주석은 그대로 남는다.</p><p>두면 판별식이 코드를 안 봐도 통과한다 — PR #399 의 BLOCKER-N1 이 정확히 그 실패였다(Kotlin 쪽).</p><p><b>무엇 (재리뷰 CONCERNS-N2 실측).</b> <code>withoutComments()</code> 가 바이트 동일하게 3벌 있다 — <code>components/layout/__tests__/settings-reachability.test.ts</code> · <code>components/layout/__tests__/sidebar-breakpoint-alignment.test.ts</code> · <code>hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts</code>. 셋 다 <code>/^\s<i>(\/\/|\</i>)/</code> 로 <b>줄 시작</b>만 본다. 실측 — <code>Sidebar.tsx</code> 에서 실제 클래스를 지우고 같은 토큰을 후행 <code>//</code> 주석에만 남기면 <b>6/6 초록</b>이다. 오늘 공허한 단언은 없다(스캔 대상 파일에 그런 후행 주석이 현재 0건). 그래서 부채다. 그 셋을 묶어 검사하는 판별식도 없다 — 저장소 지배 결함 양식 <code>two-lists-never-check-each-other</code>.</p><p><b>처방.</b> 헬퍼를 <code>apps/web/src/test/</code> 로 뽑고 후행 <code>//</code> 도 함께 제거한다. 문자열 리터럴 속 <code>//</code> 오탐은 <b>과다 제거 → red</b> 라 fail-closed 다. <code>identity-access</code> 의 <code>WebSocketHandshakePathGuardTest</code> 가 같은 문제를 문자열 인지 스캐너로 이미 풀었다 — 그 설계를 옮긴다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 소비처 판별식의 모듈 지정자 정규식이 확장자 표기를 놓친다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 어떤 파일이 특정 모듈을 쓰는지 찾는 검사가 파일 이름 뒤에 확장자를 붙여 쓴 표기를</p>
+        <p class="todo-risk"><b>방치하면.</b> 허용목록 밖에서 그 훅을 몰래 쓰는 코드가 검사를 통과한다. 허용목록의 존재 이유가</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 소비처 판별식의 모듈 지정자 정규식이 확장자 표기를 놓친다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>못 알아본다.</p><p>사라진다.</p><p><b>무엇 (재리뷰 CONCERNS-N4 실측).</b> <code>hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts:36</code> 의 <code>MODULE_SPECIFIER_RE = /[&#39;&quot;][^&#39;&quot;]*use-sidebar-collapsed[&#39;&quot;]/</code> 는 쌍따옴표·동적 <code>import()</code>· <code>import type</code> 을 모두 잡는다(전부 red 실측). 그런데 <code>&#39;…use-sidebar-collapsed.ts&#39;</code> 처럼 확장자를 붙이면 <b>EXIT=0 으로 통과</b>한다. ★같은 저장소에 이미 정답이 있다 — <code>components/issue/create/__tests__/permission-gate-loading-contract.test.ts:468</code> 은 <code>&#39;./create/use-issue-create-permission-gate.js&#39;</code> 표기를 명시적으로 못박는다. 이쪽만 안 따라왔다.</p><p><b>처방.</b> <code>[&#39;&quot;][^&#39;&quot;]*use-sidebar-collapsed(\.[a-z]+)?[&#39;&quot;]</code> 로 넓힌다. 저장소가 확장자 없는 표기를 관례로 쓰므로 즉시 위험은 낮다 — 그래서 부채다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 브레이크포인트 판별식의 스캔 범위가 앱 전역이라 무관한 파일을 막는다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 사이드바의 모바일 경계를 지키려는 검사가 앱 전체 파일을 뒤져서, 사이드바와 상관없는</p>
+        <p class="todo-risk"><b>방치하면.</b> 무관한 컴포넌트가 정당하게 두 번째 경계를 쓸 때 「모바일 경계가 둘로 갈렸다」는</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 브레이크포인트 판별식의 스캔 범위가 앱 전역이라 무관한 파일을 막는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>화면이 다른 화면 크기 규칙을 쓰면 사이드바 이야기를 하며 막는다.</p><p>오해 소지 있는 메시지로 red 가 난다. 고치는 사람이 엉뚱한 곳을 본다.</p><p><b>무엇 (재리뷰 CONCERNS-C5 실측).</b> <code>sidebar-breakpoint-alignment.test.ts</code> 의 <code>filesUsingMaxVariant()</code> 가 <code>apps/web/src</code> 프로덕션 <b>611 파일</b>을 훑어 상한 변형(<code>max-*</code>)을 쓰는 <b>4 파일</b>을 찾는다. 비용은 문제가 아니다(전체 초 단위). 쟁점은 <b>정책 범위</b>다 — 이 단언은 사실상 저장소 전역에서 <code>max-sm:</code>·<code>max-lg:</code>·<code>max-xl:</code> 를 금지한다.</p><p><b>왜 부채인가.</b> fail-closed 방향이다(잘못 열리는 게 아니라 잘못 막힌다). 진단이 위반 파일명을 찍어 주고, 실제로 두 번째 경계가 필요해지는 시점에 정책을 명시하면 되는 문제다.</p><p><b>처방.</b> 스캔 범위를 셸·사이드바 계열로 좁히거나, 「상한 변형은 <code>max-md</code> 하나」를 <b>셸 계열에만</b> 적용하고 그 밖은 허용목록으로 뺀다. 어느 쪽이든 범위 결정이 먼저다.</p></div>
+      </details>
+    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">8건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">issue-tracking — OpenAPI required 오표기 <b>잔여 26 프로퍼티</b> + 전수 판별식 부재 (선재 · 미착수 · T2)</span></div>
@@ -1834,9 +1904,49 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — issue-tracking — 같은 엔드포인트의 409 응답이 두 형식이다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>POST /api/v1/issues/{key}/transition</code> 이 돌려주는 409 가 두 종류다.</p><ul class="md-list"><li><code>VERSION_CONFLICT</code> · <code>TRANSITION_NOT_ALLOWED</code> → <code>IssueExceptionHandler</code> 가 RFC 7807 <code>ProblemDetail</code>(<code>type</code>/<code>title</code>/<code>status</code>/<code>detail</code> 필드)로 낸다.</li><li><code>AMBIGUOUS_TRANSITION</code> → <code>AmbiguousTransitionExceptionHandler</code> 가 <code>AmbiguousTransitionErrorResponse</code>(<code>{error:{code,message}, candidates:[...]}</code>)로 낸다.</li></ul><p><b>구분은 가능하다.</b> 본문 모양이 달라 클라이언트가 갈라 읽을 수는 있다. 결함은 <b>한 창구에 계약이 둘</b>이라는 것이다.</p><p><b>★같은 문제가 BC 경계를 넘어 재발한 모양이다.</b> PR #395 Task 14 가 project-workflow <b>안에서</b> 같은 이중 형식을 없앴다. 이번 것은 project-workflow 의 advice 가 issue-tracking 컨트롤러에 붙어서 생긴다 — 그 advice 가 <code>ProblemDetail</code> 을 안 쓰는 이유는 KDoc 에 적혀 있고(요청 URI 자동 채움 회피) <b>정당하다.</b> 그래서 처방은 「advice 를 되돌리는 것」이 아니다.</p><p><b>처방 후보.</b> ㉮ <code>candidates</code> 를 <code>ProblemDetail</code> 의 확장 속성으로 실어 형식을 하나로 모은다 — <code>instance</code> 는 명시적으로 URN 으로 채워 요청 URI 자동 채움을 막는다(<code>ProjectArchivedExceptionHandler</code> 선례). ㉯ 두 형식을 유지하되 OpenAPI 문서와 프론트 스키마에 둘 다 명시한다. <b>어느 쪽이든 지금은 어디에도 안 적혀 있다.</b></p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">41건</span></h3>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">identity-access — 응답 규약이 두 벌인데 한쪽이 <code>ResponseEntity&lt;*&gt;</code> 로 타입을 지운다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 서버가 답을 돌려주는 형식이 두 가지인데, 한 곳은 그 형식을 코드에 안 적어 둔다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 실제로 프로덕션 장애가 한 번 났다 — 필드 권한 화면이 <b>항상</b> 에러였는데</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — identity-access — 응답 규약이 두 벌인데 한쪽이 `ResponseEntity&lt;*&gt;` 로 타입을 지운다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>그래서 화면 쪽이 형식을 잘못 짐작해도 아무도 못 잡는다.</p><p>단위 테스트 9,668개는 전부 초록이었다. 같은 일이 다음 엔드포인트에서 반복된다.</p><p><b>무엇.</b> <code>FieldPermissionController.listRules</code> 가 <code>ResponseEntity&lt;<i>&gt;</code> 를 돌려주고 본문은 <b>맨 리스트</b>다. 형제들은 타입을 실어 나른다 — <code>ProjectQueryController.list</code> 는 <code>ResponseEntity&lt;DataResponse&lt;List&lt;ProjectResponse&gt;&gt;&gt;</code>, <code>SearchController.search</code> 는 <code>ResponseEntity&lt;AqlSearchPageResponse&lt;AqlSearchHit&gt;&gt;</code>. 즉 저장소에 응답 규약이 <b>두 벌</b>(<code>DataResponse&lt;T&gt;</code> envelope vs 맨 리스트)인데, <code>&lt;</i>&gt;</code> 라 컴파일러도 OpenAPI 도 어느 쪽인지 못 본다. 프론트가 envelope 을 가정한 것은 형제들을 보고 한 합리적 추론이었다.</p><p><b>★PR #399 는 클라이언트만 고쳤다.</b> 장애를 그날 푸는 것이 우선이었고, 백엔드 규약 수렴은 다른 소비처를 깨는 <b>API 변경</b>이라 별건이다. 그 PR 은 프론트 스키마를 맨 배열로 맞췄다.</p><p><b>처방 후보 (판정 필요).</b> ㉮ <code>listRules</code> 를 <code>DataResponse</code> 로 수렴 — 규약이 하나가 되지만 기존 소비처를 깬다(버저닝 필요). ㉯ <code>ResponseEntity&lt;*&gt;</code> 를 구체 타입으로 좁히기만 한다 — 규약은 둘로 남되 <b>형식이 코드에 보인다</b>. 싸다. ㉰ 프론트 Zod 스키마와 백엔드 반환 타입을 대조하는 판정을 세운다 — 근본 처방이지만 도구가 필요하다. ★ ㉯ 를 먼저 하고 ㉰ 를 검토하는 편이 순서로 맞다. <code>runHandler</code> 가 여러 반환 형태를 섞는 구조도 함께 본다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">identity-access — permitAll 경로군 중 <code>/ws</code> 만 메서드 고정을 기계가 지킨다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 로그인 없이 열어 둔 주소가 여럿인데, 그 문이 「읽기 전용」으로 잠겨 있는지 자동으로</p>
+        <p class="todo-risk"><b>방치하면.</b> 누군가 읽기 전용 고정을 떼어내도 CI 가 초록이다. 공개 주소로 쓰기 요청이 익명으로</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — identity-access — permitAll 경로군 중 `/ws` 만 메서드 고정을 기계가 지킨다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>확인하는 장치는 한 곳에만 있다.</p><p>들어가고, 아무도 그 순간을 모른다.</p><p><b>무엇 (PR #399 ceo 렌즈 C-3 권고 + 재리뷰 실측).</b> <code>SecurityConfig</code> 의 permitAll 배선은 5개소다.</p><table class="md-table"><thead><tr><th>위치</th><th>메서드 고정</th><th>기계 가드</th></tr></thead><tbody><tr><td><code>:203</code> 인증 전 경로 그룹</td><td>없음 (POST 가 필요한 경로들이라 정당)</td><td>없음</td></tr><tr><td><code>:209</code> <code>PUBLIC_DASHBOARDS_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:213</code> <code>ICAL_FEED_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:255</code> <code>WS_HANDSHAKE_PATH</code></td><td>GET 고정</td><td><code>WebSocketHandshakePathGuardTest</code></td></tr><tr><td><code>:262</code> <code>INBOUND_WEBHOOK_PATHS</code></td><td>목록이 메서드를 함께 가짐</td><td>없음</td></tr></tbody></table><p><code>:209</code>·<code>:213</code> 은 주석이 defense-in-depth 를 길게 설명하는데 <b>그 고정을 재는 테스트가 없다.</b> <code>/ws</code> 가드는 PR #399 가 신설했고, 그것마저 한때 주석으로 만족돼 공허했다(재리뷰 BLOCKER-N1). 설명은 다섯 곳에 있고 강제는 한 곳에만 있는 상태다.</p><p><b>처방.</b> permitAll 배선을 <b>도출</b>해 「메서드가 명시됐거나, 명시하지 않은 이유가 같은 자리에 적혀 있다」를 단언하는 판별식 하나. <code>/ws</code> 가드의 주석 스캐너를 그대로 재사용한다 — 소스 텍스트 가드는 주석을 걷어내지 않으면 공허해진다는 것을 이미 값을 치르고 배웠다. 목록 하드코딩은 하지 않는다(신규 permitAll 이 자동 편입돼야 한다).</p></div>
+      </details>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">43건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 로컬 개발 주소(포트 5173)가 설정 파일 다섯 곳에 따로 적혀 있는데, 서로 같은지</p>
+        <p class="todo-risk"><b>방치하면.</b> vite 포트를 바꾸면 검사에 안 걸린 네 곳이 조용히 낡는다. 로컬 개발과 테스트가</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>확인하는 검사는 그중 한 곳만 본다.</p><p>「이유 없이」 죽고, 원인이 설정 파일이라는 것을 알아내는 데 시간이 든다. PR #399 에서 실제로 그 형태로 죽었다 — notification 단독 테스트가 CORS 오리진 프로퍼티 부재로 9개 클래스에 전파됐다.</p><p><b>무엇 (재리뷰 C6 실측 — 5곳이다).</b></p><table class="md-table"><thead><tr><th>파일</th><th>프로퍼티</th></tr></thead><tbody><tr><td><code>backend/modules/app/src/main/resources/application.yml:85</code></td><td><code>bts.security.cors.allowed-origins</code> (환경변수 기본값)</td></tr><tr><td><code>backend/modules/identity-access/src/main/resources/application-dev.yml:24</code></td><td>같음 (dev 고정값)</td></tr><tr><td><code>backend/modules/identity-access/src/main/resources/application.yml:82</code></td><td><code>bts.webauthn.origin</code> — <b>다른 프로퍼티인데 같은 값</b></td></tr><tr><td><code>backend/modules/identity-access/src/test/resources/application-test-integration.yml:31</code></td><td>같음 (테스트 고정값)</td></tr><tr><td><code>backend/modules/notification/src/test/resources/application-test.yml:17</code></td><td>같음 (PR #399 가 추가)</td></tr></tbody></table><p><code>scripts/workflow/preview-cors-origin-alignment.test.ts:117</code> 의 정규식은 <b>첫 줄 하나만</b> 읽어 vite 포트와 대조하고 나머지 넷은 안 본다. 저장소 지배 결함 양식 <code>partial-column-parser-lets-unread-column-rot</code> 그대로다. 재리뷰는 4곳이라 셌는데 실측은 5곳이다 — WebAuthn 오리진은 프로퍼티가 달라 눈에 안 띄지만 포트가 바뀌면 똑같이 죽는다.</p><p><b>처방.</b> 도출식으로 바꾼다 — <code>backend/**/src/<i>/resources/application</i>.yml</code> 에서 dev 오리진을 쓰는 줄을 <b>전부 뽑아</b> vite 포트와 대조하고, 뽑힌 목록이 비면 red(비-공허 짝). 신규 파일이 자동 편입된다. 프로퍼티 이름으로 좁히지 말 것 — WebAuthn 항목이 그래서 빠졌다.</p><p><b>왜 지금이 아니라 부채인가.</b> 다섯 값이 현재 전부 같고, 폭발 반경이 로컬 dev·테스트다. 운영값은 환경변수로 주입되므로 이 목록과 무관하다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 리뷰 렌즈 분기가 <code>type</code> 만 보고 <b>변경 대상</b>을 안 본다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보안 설정을 바꿨는데 작업 제목이 「화면 수정」이라 보안 검토가 자동으로 안 붙었다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 규칙이 요구하는 검토가 조용히 빠진다. 사람이 눈치채야만 걸린다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 리뷰 렌즈 분기가 `type` 만 보고 **변경 대상**을 안 본다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇 (PR #399 실측).</b> <code>DATA.md §1-5</code> 는 「Spring Security 필터 체인 변경은 plan-eng-review + <b>plan-ceo-review</b> 필수」다. 그런데 <code>bts-review-plan</code> 의 렌즈 표는 <code>classify.type</code> 으로만 분기하고, 이 작업의 <code>type</code> 은 <code>ui</code> 였다 → ceo 렌즈가 <b>발행되지 않았다.</b> 독립 코드 리뷰가 BLOCKER 로 잡아 뒤늦게 채웠다.</p><p><b>★같은 양식이다.</b> <code>detect-tier.ts</code> 는 <b>경로</b>를 보고 <code>SEC_BE</code> 를 정확히 짚어 티어를 T2 로 올렸는데, 렌즈 표만 <code>type</code>(제목 파생)을 본다. 두 판정이 서로를 검사하지 않는다.</p><p><b>처방 후보.</b> 렌즈 분기에 <b>표면 조건</b>을 더한다 — <code>detect-tier</code> 가 <code>SEC_BE</code>·<code>SEC_FE</code> 를 짚으면 <code>type</code> 과 무관하게 ceo 렌즈를 강제. 판별식은 <code>skill-type-coverage.test.ts</code> 옆에 「보안 표면이면 ceo 렌즈가 기대 집합에 있다」를 더하는 형태.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — jOOQ 코드젠 미러가 마이그레이션과 갈라져도 4개 모듈은 아무도 안 본다 (선재 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 데이터베이스 구조를 바꾸는 파일과, 그 구조를 코드로 옮길 때 쓰는 사본 파일이 따로 있는데, 둘이 어긋나도 알려주는 장치가 네 모듈에는 없다.</p>
@@ -1947,7 +2057,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       </div>
       <details class="todo-item">
         <summary aria-label="기술 상세 — 워크플로우 — `classify-task` 가 타입 이름을 언급한 제목을 그 타입의 작업으로 읽는다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p><b>무엇.</b> 워크플로우 자체를 고치는 메타 작업은 제목에 타입 이름이 들어갈 수밖에 없는데, <code>classify-task</code> 가 그 <b>언급</b>을 <b>사용</b>으로 읽는다.</p><p><b>실측 (2026-08-17 · #388 착수).</b> 제목 「부채 34 — <code>bts-review-plan</code> 분기 표에 정의돼 있지 않은 <code>ui</code>@T2 · <code>chore</code>@T2 조합을 정의한다 …」 → <code>type=ui</code> · <code>agent=frontend-engineer</code>. <b>실제 작업은 <code>.claude/</b></code> + <code>scripts/<b></code> 하네스 chore 다.</b> <code>apps/web</code> 은 0파일이다. 사람이 <code>chore</code> 로 덮었다.</p><p><b>항목 <code>44</code>·<code>45</code>(#387)와 무엇이 다른가.</b> 그 둘은 <b>경계 문제</b>였다(<code>apps/web</code> 뒤 슬래시 · <code>argon2</code> 안의 부분문자열). 여기서 <code>ui</code> 는 어형도 부분문자열도 아닌 <b>정상적인 독립 토큰</b>이라 #387 의 처방(<code>BOUNDARY_ONLY</code> + CamelCase 험프)이 원리적으로 못 잡는다. <b>새 축이다.</b></p><p><b>얼마나 자주 오나.</b> 분기 표·티어 표·에이전트 라우팅을 다루는 부채는 앞으로도 제목에 타입 이름을 쓴다. 장부에 남은 워크플로우 항목만 봐도 재발이 예정돼 있다.</p><p><b>처방 후보 (판정 필요).</b> ㉮ 백틱 안 토큰(`<code> </code>ui<code> </code><code>)이나 </code>타입명@T숫자<code> 형태를 <b>인용으로 보고 type 신호에서 제외</b> — 좁고 싸다. ㉯ 경로 신호가 type 신호와 충돌하면 <b>경로를 이긴 것으로 삼는다</b> (경로는 사실, 제목은 퍼지 — 항목 </code>33<code> 처방과 같은 원칙). ㉰ 오버라이드를 1급으로 만든다 — </code>--type<code> 을 받아 캐시에 <b>사람이 덮었음</b>을 기록하고 게이트 2 요약에 자동으로 싣는다. ADR </code>2026-07-28-fr-ux-07<code> §D2 · </code>2026-07-30-fr-ux-08` §D6 이 같은 오버라이드를 이미 두 번 기록했다.</p></div>
+        <div class="todo-body"><p><b>무엇.</b> 워크플로우 자체를 고치는 메타 작업은 제목에 타입 이름이 들어갈 수밖에 없는데, <code>classify-task</code> 가 그 <b>언급</b>을 <b>사용</b>으로 읽는다.</p><p><b>실측 (2026-08-17 · #388 착수).</b> 제목 「부채 34 — <code>bts-review-plan</code> 분기 표에 정의돼 있지 않은 <code>ui</code>@T2 · <code>chore</code>@T2 조합을 정의한다 …」 → <code>type=ui</code> · <code>agent=frontend-engineer</code>. <b>실제 작업은 <code>.claude/</b></code> + <code>scripts/<b></code> 하네스 chore 다.</b> <code>apps/web</code> 은 0파일이다. 사람이 <code>chore</code> 로 덮었다.</p><p><b>★2026-08-24 추가 실측 (PR #399) — 트리거 축이 하나 더 있다.</b> 제목 「[fix] apps/web + identity-access — 프로덕션 UI 결함 12건 수정 + <code>/ws</code> 핸드셰이크 permitAll (F24 모바일 드로어 · 필드 권한 <b>스키마</b> · FR-NT-02)」 → <code>type=migration</code> · <code>agent=db-engineer</code>. 같은 제목에서 <b>「스키마」 한 단어만 빼면</b> <code>type=ui</code> · <code>agent=frontend-engineer</code> 가 된다. 여기서 반응한 것은 <b>타입 이름이 아니라 도메인 단어</b>다 — 이 항목의 원 서술(「타입 이름을 언급한 제목」)보다 넓다. 실제 변경은 <code>apps/web</code> 26파일 + <code>identity-access</code> 보안 설정 1파일이고 마이그레이션은 0이다. 사람이 <code>ui</code>/T2 로 덮었다. <b>처방 후보 ㉯(경로 신호가 type 신호를 이긴다)가 두 축을 모두 덮는다.</b></p><p><b>항목 <code>44</code>·<code>45</code>(#387)와 무엇이 다른가.</b> 그 둘은 <b>경계 문제</b>였다(<code>apps/web</code> 뒤 슬래시 · <code>argon2</code> 안의 부분문자열). 여기서 <code>ui</code> 는 어형도 부분문자열도 아닌 <b>정상적인 독립 토큰</b>이라 #387 의 처방(<code>BOUNDARY_ONLY</code> + CamelCase 험프)이 원리적으로 못 잡는다. <b>새 축이다.</b></p><p><b>얼마나 자주 오나.</b> 분기 표·티어 표·에이전트 라우팅을 다루는 부채는 앞으로도 제목에 타입 이름을 쓴다. 장부에 남은 워크플로우 항목만 봐도 재발이 예정돼 있다.</p><p><b>처방 후보 (판정 필요).</b> ㉮ 백틱 안 토큰(`<code> </code>ui<code> </code><code>)이나 </code>타입명@T숫자<code> 형태를 <b>인용으로 보고 type 신호에서 제외</b> — 좁고 싸다. ㉯ 경로 신호가 type 신호와 충돌하면 <b>경로를 이긴 것으로 삼는다</b> (경로는 사실, 제목은 퍼지 — 항목 </code>33<code> 처방과 같은 원칙). ㉰ 오버라이드를 1급으로 만든다 — </code>--type<code> 을 받아 캐시에 <b>사람이 덮었음</b>을 기록하고 게이트 2 요약에 자동으로 싣는다. ADR </code>2026-07-28-fr-ux-07<code> §D2 · </code>2026-07-30-fr-ux-08` §D6 이 같은 오버라이드를 이미 두 번 기록했다.</p></div>
       </details>
     </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">도구 — 픽스처 헬퍼가 BC 마다 복제된다 (미착수 · T3)</span></div>
@@ -2249,9 +2359,19 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — 도구 — 줄수 래칫이 한 줄 욱여넣기를 수치로 보상한다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/routes/issues.$key.tsx:880</code> 이 141자 한 줄이다. <code>apps/web/.prettierrc</code> 의 <code>printWidth</code> 는 <b>100</b>. 같은 함수 안 <b>10줄 아래</b> 형제 호출(<code>handleResolutionConfirm</code>)은 다섯 줄로 펴져 있어 한 파일 안에서 형식이 갈린다. 880행을 같은 모양으로 펴면 4줄이 늘어 <code>lint-ratchet-baseline.ts</code> 의 <code>IssueDetailPage</code> 값이 <b>1013 → 1017</b> 로 오른다. 즉 <b>포맷 일관성을 지키면 래칫 수치가 나빠진다.</b></p><p><b>★prettier 는 어디에도 강제되지 않는다.</b> <code>apps/web</code> 의 <code>lint</code> 는 <code>eslint src</code> 뿐이고 루트 <code>verify</code> · <code>.lintstagedrc</code> · CI 어디에도 prettier 가 없다. PR #398 이 만진 3파일(<code>issues.$key.tsx</code> · <code>issue-handlers.ts</code> · <code>issue-transition.spec.ts</code>)은 <b>main 에서 이미 <code>prettier --check</code> 실패</b>다 — 그 PR 이 만든 이탈이 아니다.</p><p><b>★이것은 Maxi 확인 사항이다.</b> 갈림길이 셋이다 — ① prettier 를 강제하고 래칫 베이스라인을 포맷 후 값으로 재동결(대량 재포맷이 따라온다) ② 래칫을 raw 줄수 대신 <b>문장 수</b>로 재정의(판정 재작성) ③ 지금처럼 두고 이 충돌을 문서로만 남긴다. <b>어느 쪽이든 파급이 커서 자의로 정하지 않는다.</b></p></div>
       </details>
-    </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">10건</span></h3>
+    </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">11건</span></h3>
         <p class="todo-cat-desc">코드를 검사하고 내보내는 기계 쪽 문제.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — <code>/ws</code> 가 공개 엔드포인트인데 동시 연결 상한이 어느 층에도 없다 (신규 · 미착수 · T2 · <b>배포 전 필수</b>)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 로그인하지 않은 아무나 실시간 연결을 열 수 있고, 한 번에 몇 개까지 열 수 있는지 막는 장치가 없다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 스크립트 하나로 연결 자리를 채워 정상 사용자가 못 들어온다. 데이터가 새는 것이 아니라 <b>서비스가 안 열린다</b>.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 인프라 — `/ws` 가 공개 엔드포인트인데 동시 연결 상한이 어느 층에도 없다 (신규 · 미착수 · T2 · **배포 전 필수**)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇 (PR #399 ceo 렌즈 C-1 실측).</b> <code>/ws</code> permitAll 로 익명 업그레이드가 성립한다.</p><table class="md-table"><thead><tr><th>층</th><th>상한</th></tr></thead><tbody><tr><td>엣지 nginx</td><td><b>없음</b> — <code>infra/</code> 전체에 <code>limit_conn</code>·<code>limit_req</code> 0건. <code>nginx.conf:80</code> 은 업그레이드 헤더만 붙여 그대로 프록시</td></tr><tr><td>앱 Tomcat</td><td><b>없음</b> — <code>max-connections</code>·<code>threads.max</code>·<code>accept-count</code> 미설정(프레임워크 기본값)</td></tr><tr><td>소켓 수명</td><td>30초 — <code>setTimeToFirstMessage</code>, 이번에 명시한 유일한 실질 상한</td></tr></tbody></table><p><b>★규모 산정은 정직하게.</b> 이 변경 <b>전에도</b> 익명 요청은 커넥션을 잡았다 — 다만 필터가 401 로 끊어 밀리초였다. 지금은 하나가 최대 30초를 붙든다. 새 공격면이 생긴 것이 아니라 <b>기존 공격면의 단가가 세 자릿수 배 올랐다.</b> <code>bts.maxihan.com</code> 은 공개 도메인이라 모집단이 사내로 묶이지 않는다 — ADR 초판이 「사내 1,000명 규모에서 수용」이라 적은 것은 사실 오류였고 정정했다.</p><p><b>처방.</b> nginx <b>두 곳</b>을 함께 고친다 — <code>http</code> 컨텍스트에 <code>limit_conn_zone</code> 선언, 그리고 <code>location /ws</code> 에 <code>limit_conn</code>. ★<b>「한 줄」이 아니다</b>(재리뷰 CONCERNS-N5 정정). <code>limit_conn</code> 은 zone 이 먼저 선언돼 있어야 하는데 <code>infra/</code> 전체에 <code>limit_conn_zone</code> 도 <b>0건</b>이다 — location 만 고치면 nginx 가 아예 뜨지 않는다. 「배포 전 필수」 항목의 처방이 그대로는 실행 불가한 형태였다. 정상 사용자는 탭당 소켓 1개라 실사용을 막지 않는다. Tomcat 쪽 상한도 함께 검토. ★이 PR 에서 안 한 이유 — <code>infra/<b></code> 는 선언 티어(T2) 밖 표면이라 실측 티어를 바꾼다. 배포가 아직 안 됐으므로 </b>배포 전에 별건으로** 처리하는 것이 순서다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">인프라 — 프로덕션 이미지·리버스 프록시 설정이 티어 표면 카탈로그에 없다 (신규 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 서버에 올라가는 컨테이너 이미지와 웹 서버 설정 파일이 「어느 등급인가」 목록에 빠져 있어, 그것만 고치는 작업은 가장 가벼운 절차로 통과한다.</p>
