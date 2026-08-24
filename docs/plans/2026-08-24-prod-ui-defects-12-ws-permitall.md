@@ -424,12 +424,125 @@ learnings 2026-07-15 「permitAll 을 여는 PR 은 대상 경로의 본문 수�
 
 **검증**: 위 6항목 전부 통과 + 결과를 게이트 2 요약에 그대로 싣는다
 
+### 🛑 게이트 1 결과 (2026-08-24 · Maxi 승인) — task 개정
+
+| 결정 | 답 | task 반영 |
+|---|---|---|
+| **D3** BLOCKER-D1 처방 | **A** — `AccountMenu` 에 「모든 설정」 1줄 추가 | **Task 11 신설** |
+| **D4** D7 범위 | **A** — Esc + 포커스 시작·복귀. 완전 트랩은 별건 | **Task 8 개정** |
+| **D5** `setAllowedOrigins` | **A** — 명시한다 | **Task 12 신설** |
+| **F24** 완주 선언 | 두 렌즈 일치 — **선언하지 않는다** | Task 9 에 로드맵 수단 기술 교정 추가 |
+
+#### 개정 1 — Task 1 (D6) 은 **양방향**을 단언한다
+
+`TODOS.md:69` 는 접힘 레일의 「최근 항목」 미노출을 **의도된 제품 결정**으로 등재하고
+「⚠️ 결함으로 오인해 조용히 되돌리지 말 것」을 명시한다. 수정은 그 결정을 되돌리는 것이 아니라
+**근거가 성립하는 구간(64px 레일)으로 적용 범위를 좁히는 것**이다.
+→ 동반 테스트는 반드시 둘 다 단언한다.
+① 데스크톱 접힘 → **여전히 미렌더**(결정 보존) ② 모바일 드로어 → **렌더**(회귀 수정)
+
+#### 개정 2 — Task 3 판별식은 파일 목록을 **도출**한다
+
+기존 설계는 `FILES_USING_MOBILE_VARIANT` 를 3개 하드코딩했는데, `apps/web/src` 의 실제
+`max-*:` 사용 프로덕션 파일은 **4개**다(`AccountMenu.tsx:102`, 이 PR 이 추가). 목록과 실제가
+서로를 검사하지 않는다 — 판별식이 스스로 방어한다고 선언한 양식에 자기가 걸렸다.
+→ `apps/web/src/**` 를 훑어 `max-*:` 사용 파일을 **도출**한 뒤 그 집합에 `max-md` 외 변형이
+없는지 단언한다. 신규 파일이 자동 편입된다.
+→ 같은 task 의 `useSidebarCollapsed` 허용목록 판별식도 같은 원칙으로 도출식을 유지한다.
+→ **Task 3 을 드롭하면 Task 2 도 함께 드롭한다** — Task 2 의 판정을 지는 것은 Task 3 뿐이다.
+
+#### 개정 3 — Task 8 (D7) 범위 확정
+
+| 이번 PR | 별건 (TODOS) |
+|---|---|
+| Esc 로 닫기 — `CONTEXT_SHORTCUTS` 에 `app-shell` 항목 **등록**(ADR D-2 정식 경로) | `aria-modal="true"` |
+| 드로어가 열릴 때 첫 포커스를 드로어로 이동 | 뒤 콘텐츠 `inert` (완전한 포커스 트랩) |
+| 드로어가 닫힐 때 포커스를 토글 버튼으로 복귀 | |
+
+🛑 즉사 계약 「단축키 레지스트리 동결」은 **`SHORTCUTS` 5종**에 대한 것이다.
+`CONTEXT_SHORTCUTS` 는 별도 레지스트리라 추가가 허용된다. `shortcuts.test.ts` 의
+`toHaveLength(5)` 를 건드리지 말 것.
+
+#### 개정 4 — Task 9 문서 동기화 정정
+
+- **`TODOS.md` ④ classify 오분류는 신규 항목으로 만들지 않는다.** `TODOS.md:1080`
+  「`classify-task` 가 타입 이름을 언급한 제목을 그 타입의 작업으로 읽는다」에 **실측을 붙인다** —
+  「스키마」→`type=migration`·`agent=db-engineer`(그 단어만 빼면 `ui`/`frontend-engineer`).
+  타입명이 아닌 **도메인 단어**라 트리거 축은 다르지만 그 항목의 처방 후보 ㉯(경로 신호가 type
+  신호를 이긴다)가 둘 다 덮는다.
+- **로드맵 `jira-parity-roadmap.md:82`** — F24 행의 수단 기술 「모바일 드로어 (Sheet)」를
+  **「모바일 드로어 (오프캔버스 + 백드롭)」**로 고친다. 완주 마킹은 하지 않는다.
+- **`TODOS.md` 신규 등재 2건 추가** — ① 드로어 완전 포커스 트랩(`aria-modal` + `inert`)
+  ② `FieldPermissionController.listRules` 의 `ResponseEntity<*>` 타입 소거 및 응답 규약 이원화
+  (`DataResponse<T>` envelope vs 맨 리스트) — 프로덕션 장애의 근본 원인이었다.
+
+### Task 11. BLOCKER-D1 — 모바일에서 「설정」 허브에 갈 길을 되살린다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/AccountMenu.tsx`, `apps/web/src/components/layout/__tests__/AccountMenu.test.tsx`]
+- depends-on: []
+
+**RED** (동반 테스트).
+- 계정 메뉴를 열면 `/settings` 로 가는 항목이 있다
+- ★**도달성 판별식을 함께 세운다** — `settings.index.tsx` 가 링크하는 하위 경로 집합과,
+  「계정 메뉴 항목 ∪ `/settings` 허브 링크」 집합의 **차집합이 0** 인지 단언한다.
+  이번 결함의 정체가 「두 목록이 서로를 검사하지 않는다」였으므로 수정만으로는 재발한다
+
+**GREEN**.
+- `AccountMenu` 의 설정 계열 그룹 맨 앞(또는 맨 뒤)에 `<Link to="/settings">모든 설정</Link>`
+  `DropdownMenuItem` 1줄 추가
+
+**REFACTOR**.
+- `TopBar.tsx:193` 의 `max-md:hidden` 주석을 사실로 교정 — 현재 「같은 진입점이 계정 메뉴와
+  사이드바에 있다」는 **거짓이었다**. 이제 계정 메뉴에 실재하므로 그 문장이 참이 되지만,
+  「사이드바에 있다」는 여전히 거짓이다(`ADMIN_NAV_LINKS` 는 `isAdmin` 전용) — 지운다
+
+**검증**.
+- `pnpm --filter web test -- AccountMenu`
+- 기존 E2E: `apps/web/e2e/settings-admin-hub.spec.ts` (기본 1280px — `banner` 안 톱니 단언 생존 확인)
+- 눈확인: 390px 에서 계정 메뉴 → 「모든 설정」 → `/settings/password` 도달 — 라이트/다크
+
+### Task 12. `/ws` 핸드셰이크에 허용 출처를 명시한다
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/config/WebSocketConfig.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/config/WebSocketConfigTest.kt`]
+- depends-on: []
+
+**RED**.
+- `registerStompEndpoints` 가 등록한 엔드포인트에 허용 출처가 **설정돼 있다**는 단언
+  (기본값 의존이 아니라 소스에 쓰인 값인지)
+- 실패 메시지 (예상): 현재는 `setAllowedOrigins` 호출 자체가 없다
+
+**GREEN**.
+- `registry.addEndpoint(WS_ENDPOINT).setAllowedOrigins(...)` — 오리진 목록은 **설정으로 뺀다**
+  (로컬 `http://localhost:5173` · prod 도메인). 하드코딩하지 말 것
+
+**REFACTOR**.
+- KDoc 에 근거 — permitAll 로 HTTP 계층 방어선이 하나 줄었으므로 남은 방어선을 프레임워크
+  기본값에 맡기지 않는다. CSWSH 자체는 CONNECT frame Bearer 라 지금도 비악용이지만,
+  Spring 버전 업그레이드가 기본값을 바꿔도 동작이 안 바뀌게 못박는다
+
+**🛑 이탈 — 「한 PR = 한 BC」.**
+이 task 는 `notification` BC 의 **프로덕션 코드**를 건드린다. 지금까지 이 PR 은 그 BC 를
+읽기만 했다(0줄). 같은 FR-NT-02 결함의 짝이라 분리하면 반쪽 수정이 되므로 여기서 닫되,
+**게이트 2 요약에 이탈로 싣는다**(PR #395 선례와 같은 처리).
+
+**🛑 함정**: 로컬 개발 오리진(5173)을 빼먹으면 로컬 WebSocket 이 조용히 죽는다. 설정 반영을
+로컬에서 실제로 확인할 것.
+
+**검증**.
+- `./gradlew :modules:notification:test --tests '*WebSocketConfigTest'`
+- `./gradlew :modules:notification:test :modules:app:test ktlintCheck detekt`
+- 로컬 `pnpm dev` 로 WebSocket 핸드셰이크가 여전히 붙는지 눈확인
+
 ## Plan 메타
 
 | 항목 | 값 |
 |---|---|
-| task 수 | 10 |
-| 예상 wave | 5 — ①`1·2·5·6` ②`3·4·7` ③`8` ④`9` ⑤`10` |
+| task 수 | **12** (게이트 1 에서 11·12 신설) |
+| 예상 wave | 5 — ①`1·2·5·6·11·12` ②`3·4·7` ③`8` ④`9` ⑤`10` |
 | 구현 규율 | ui 시각 검증 트랙 (T2) — 프론트 task 는 동반 테스트 + 기존 E2E 목록 + 눈확인 필수. 백엔드 보안 task(6·7)는 정식 TDD red-first |
 | 추가 검증 | tsc · eslint · vitest · playwright(전량) · ktlintCheck · detekt · `pnpm test:workflow` · doc-index `--check` · verify-master-plan |
 | 게이트 1 결정 대기 | ① F24 를 완주로 선언할지(수단이 로드맵 기술과 다름) ② `setAllowedOrigins` 를 명시할지 ③ D7 을 이번 PR 에서 닫을지 TODOS 로 미룰지 |
