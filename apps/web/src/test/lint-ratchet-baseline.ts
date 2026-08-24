@@ -35,6 +35,15 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 332,
   "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1013,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 367,
+  // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
+  //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다
+  //   (형제 뷰 `백로그`·`타임라인` 은 같은 자리에 h1 을 갖는다). 제목을 넣는 최소 형태가
+  //   래퍼 `<div>` + `<h1>` + 사유 주석 = 5줄이다.
+  //   ⚠️ 함수를 쪼개 상환하는 쪽을 택하지 않았다 — `projectFavoriteHeader` 는 `projectKey`·
+  //      `canCreate`·`createIssueOpen`/`setCreateIssueOpen`·`queryClient`·`currentBoardId`·
+  //      `navigate` 7개를 닫아 잡고 있어 추출하면 props 7개짜리 컴포넌트가 되고, 이 PR 의
+  //      범위(레이아웃 결함 수정)를 넘는 리팩터가 된다. 게이트 2 요약에 이탈로 싣는다.
+  //   상환 후보로는 이 항목이 그대로 남는다 — 부채 매핑에 함께 읽을 것.
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 372,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }

@@ -419,7 +419,12 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   //    보드가 없거나 로딩 중일 때 사라진다. 이 변수는 **모든 분기가 공유**한다.
   const projectFavoriteHeader = (
     <div className="flex items-center justify-between px-6 pt-4 pb-0">
-      <FavoriteButton targetType="PROJECT" targetId={projectKey} />
+      {/* 🛑 제목 없이 별 아이콘만 두지 마라 — 형제 뷰(백로그·타임라인)는 같은 자리에 h1 이 있어
+          보드만 헤더가 비어 보이고, 문서당 h1 이 0개가 된다(랜드마크·스크린리더 계약). */}
+      <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-semibold">{boardLabels.page.title}</h1>
+        <FavoriteButton targetType="PROJECT" targetId={projectKey} />
+      </div>
       {/* 🛑 컬럼별이 아니라 보드 1곳이다 — 생성 계약에 상태(stateKey)가 없어
           컬럼별 버튼은 「여기서 만들면 여기에 생긴다」는 지키지 못할 약속이 된다.
           근거 = ADR docs/decisions/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md D-3.

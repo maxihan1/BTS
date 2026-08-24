@@ -33,6 +33,10 @@ vi.mock('@tanstack/react-router', () => ({
   // 같은 이유로 ProjectTree가 `useSearch({strict:false})`도 호출한다(FR-UX-08 FR7 —
   // `/issues?projectKey=` 검색 파라미터까지 활성 프로젝트 근거로 읽는다).
   useSearch: () => ({}),
+  // ShellLayout 이 라우트 이동 시 모바일 드로어를 닫으려고 pathname 을 구독한다(F24).
+  // selector 를 그대로 실행해 실제 훅과 같은 모양(select 콜백 적용 결과)을 돌려준다.
+  useRouterState: <T,>({ select }: { select: (state: { location: { pathname: string } }) => T }): T =>
+    select({ location: { pathname: '/' } }),
   Link: ({
     to,
     children,

@@ -135,8 +135,10 @@ export function FilterBar<T extends BoardCardFilterParams>({
     }
   }
 
+  // 🛑 items-end 금지 — 섹션 높이가 제각각(상태 212 · 담당자 112 · 라벨 52 · 컴포넌트 62)이라
+  //    아래를 맞추면 라벨 top 이 145/245/305/295 로 벌어져 계단이 된다. 위를 맞춰야 한 줄로 읽힌다.
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-4">
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border bg-muted/30 p-4">
       {activeCount > 0 && (
         <span className="w-full text-xs text-muted-foreground">
           {filterBarLabels.count.applied(activeCount)}

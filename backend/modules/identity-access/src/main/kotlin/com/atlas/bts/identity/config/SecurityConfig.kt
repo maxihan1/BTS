@@ -211,6 +211,31 @@ class SecurityConfig(
                 // PUBLIC_DASHBOARDS_PATH 와 동일 defense-in-depth(GET 고정·단일 세그먼트). 404 수렴은 IcalFeedController.
                 // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02·게이트1 승인). 상세는 ICAL_FEED_PATH KDoc.
                 auth.requestMatchers(HttpMethod.GET, ICAL_FEED_PATH).permitAll()
+                // FR-NT-02: STOMP over WebSocket 핸드셰이크 — **HTTP 계층에서만** 연다.
+                //
+                // ★ 왜 여는가. BTS 는 STATELESS + JWT Bearer 라 세션 쿠키가 없고, 브라우저 WebSocket API 는
+                //   업그레이드 요청에 임의 헤더를 실을 수 없다. 그래서 인증 지점을 한 단계 뒤인 STOMP
+                //   `CONNECT` frame 의 native header `Authorization: Bearer <accessToken>` 로 미룬다.
+                //   그 검증은 `notification` BC 의 StompAuthChannelInterceptor 가 **단독으로** 진다 —
+                //   헤더 부재·형식 오류·decode 실패·subject 부재·PAT 사용은 전부 CONNECT 를 거부하고,
+                //   클라이언트발 SEND 도 거부한다(push-only). 즉 소켓은 CONNECT 성공 전까지 아무 데이터도
+                //   나르지 못한다. 핸드셰이크만 열리고 인증은 그대로다.
+                //
+                // ★ 이 줄이 없으면 어떻게 되는가(실측). 아래 anyRequest().authenticated() 가 먼저 잡아
+                //   업그레이드 요청이 401 로 끊기고, 브라우저는 CONNECT 를 보내볼 기회조차 없이
+                //   `WebSocket connection to 'wss://…/ws' failed: HTTP Authentication failed` 만 남긴다.
+                //   프로덕션 전 화면에서 실시간 인앱 알림이 죽어 있었고, 두 모듈 어느 테스트도 상대
+                //   설정을 읽지 않아 유닛은 전부 초록이었다(저장소 지배 결함 양식).
+                //
+                // 🛑 하위 전체를 덮는 와일드카드로 넓히지 마라. 정확히 이 한 경로만 연다 — 훗날 이 아래
+                //    매핑이 생기면 조용히 익명 노출된다. 짝 판별식 =
+                //    WebSocketHandshakePermitAllIntegrationTest (열림 1건 + 인접 경로 401 1건).
+                //
+                // 🛑 문자열 매처(`requestMatchers("/ws")`) 를 쓰지 마라 — Spring MVC 가 있으면
+                //    MvcRequestMatcher 로 해석되는데 `/ws` 는 **MVC 핸들러가 아니라** WebSocket
+                //    핸들러라 매칭되지 않고, permitAll 을 적어도 401 이 그대로 남는다(실측).
+                //    같은 이유로 SamlSecurityConfig 도 MVC 비의존 AntPathRequestMatcher 를 쓴다.
+                auth.requestMatchers(antMatcher(WS_HANDSHAKE_PATH)).permitAll()
                 // FR-AT-07: 인바운드 웹훅 6경로 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
                 // 목록을 순회한다(PR-A DEC-16 · PR-C ADR §D4).
                 // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.
@@ -326,6 +351,21 @@ class SecurityConfig(
          * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02-ical-export·게이트1 승인).
          */
         const val ICAL_FEED_PATH = "/ical/feed/*"
+
+        /**
+         * STOMP over WebSocket 핸드셰이크 경로 (FR-NT-02,
+         * [com.bts.notification.config.WebSocketConfig] 가 등록한다).
+         *
+         * **HTTP 계층만** 여는 permitAll 이다. 실제 인증은 한 단계 뒤인 STOMP `CONNECT` frame 의
+         * native header `Authorization: Bearer <accessToken>` 에서 이뤄지고, 그 검증은
+         * [com.bts.notification.config.StompAuthChannelInterceptor] 가 단독으로 진다 —
+         * 헤더 부재·형식 오류·decode 실패·subject 부재·PAT 사용을 모두 거부하며 클라이언트발 SEND 도
+         * 막는다(push-only). 따라서 CONNECT 성공 전의 소켓은 어떤 데이터도 나르지 못한다.
+         *
+         * 브라우저 WebSocket API 가 업그레이드 요청에 임의 헤더를 실을 수 없어 생긴 구조적 제약이며,
+         * Spring 의 STOMP + JWT 표준 배치다. 단일 경로 — 하위 와일드카드로 넓히지 않는다.
+         */
+        const val WS_HANDSHAKE_PATH = "/ws"
 
         /**
          * 외부 시스템이 자격증명 없이 직접 호출하는 인바운드 웹훅 6경로 — slack 4 (FR-SL-01/03/04/05) ·

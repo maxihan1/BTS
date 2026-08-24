@@ -85,7 +85,7 @@ function resetStore(): void {
 
 const listHandler = http.get(BASE_URL, () => {
   const items = Array.from(permissionStore.values())
-  return HttpResponse.json({ data: items })
+  return HttpResponse.json(items)
 })
 
 const createHandler = http.post(BASE_URL, async ({ request }) => {
@@ -215,7 +215,7 @@ describe('useFieldPermissions', () => {
     server.use(
       http.get(BASE_URL, async () => {
         await new Promise((resolve) => setTimeout(resolve, 200))
-        return HttpResponse.json({ data: [] })
+        return HttpResponse.json([])
       }),
     )
 
@@ -230,7 +230,7 @@ describe('useFieldPermissions', () => {
     server.use(
       http.get(BASE_URL, () => {
         fetchSpy()
-        return HttpResponse.json({ data: [] })
+        return HttpResponse.json([])
       }),
     )
 

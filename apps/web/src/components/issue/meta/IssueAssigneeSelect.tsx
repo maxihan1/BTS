@@ -78,7 +78,18 @@ export function IssueAssigneeSelect({
     <div className="flex flex-col gap-1.5">
       {/* 현재 담당자 표시 — currentAssignee prop 기반 (C1 수정: users 검색결과 의존 제거) */}
       <div className="flex items-center justify-between gap-1">
-        <span className="text-sm font-medium truncate" data-testid="assignee-current-name">
+        {/* 🛑 미할당일 때 `font-medium` + 기본 글자색을 쓰지 마라 — 이슈 생성 모달
+            (`IssueCreateAssignmentFields`)은 「담당자」 라벨이 같은 `text-sm font-medium` 이라
+            바로 아래 붙는 「미지정」이 라벨과 구분되지 않고 라벨이 두 줄인 것처럼 보인다.
+            빈 상태는 자리표시자이므로 muted + 보통 굵기로 낮춘다. 실제 담당자 이름은 그대로 강조. */}
+        <span
+          className={
+            currentAssignee !== null
+              ? 'text-sm font-medium truncate'
+              : 'text-sm font-normal truncate text-muted-foreground'
+          }
+          data-testid="assignee-current-name"
+        >
           {currentAssignee !== null
             ? getDisplayName(currentAssignee)
             : issueDetailStrings.assigneeUnassigned}

@@ -39,8 +39,14 @@ vi.mock('@tanstack/react-router', () => ({
 // 사이드바 접힘 상태 훅 모킹 — 테스트별로 collapsed/toggle을 자유롭게 제어
 const mockToggle = vi.fn()
 const mockUseSidebarCollapsed = vi.fn(() => ({ collapsed: false, toggle: mockToggle }))
+// 🛑 셀렉터 인자를 흘리지 마라 — 실물은 zustand 스토어라 `useSidebarCollapsed((s) => s.toggle)`
+//    처럼 셀렉터를 받는 소비처가 있다(`use-sidebar-drawer` 의 토글 라우팅). 셀렉터를 무시하고
+//    상태 객체를 통째로 돌려주면 `toggle` 자리에 객체가 실려 onClick 이 조용히 죽는다.
 vi.mock('@/hooks/use-sidebar-collapsed', () => ({
-  useSidebarCollapsed: () => mockUseSidebarCollapsed(),
+  useSidebarCollapsed: (selector?: (state: unknown) => unknown) => {
+    const state: unknown = mockUseSidebarCollapsed()
+    return selector === undefined ? state : selector(state)
+  },
 }))
 
 // Avatar 컴포넌트 mock — jsdom URL.createObjectURL 미구현 회피(Header.test.tsx 동일 패턴)

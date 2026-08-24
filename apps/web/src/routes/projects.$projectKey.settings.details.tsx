@@ -2,8 +2,6 @@
 import type { JSX, FormEvent } from 'react'
 import { useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import { PageLayout } from '@/components/layout/PageLayout'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +17,17 @@ import { ProjectDangerZone } from '@/components/project/ProjectDangerZone'
 // ─────────────────────────────────────────────────────────────────────────────
 // 라벨 상수 (로컬)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 설정 탭 공통 컨테이너 클래스.
+ *
+ * 🛑 `PageLayout`(=`mx-auto`) 으로 되돌리지 마라. 형제 설정 탭 11개(automation·components·
+ * custom-fields·field-permissions·import·issue-templates·members·project-lead·slack-channels·
+ * versions·workflow-scheme)가 전부 이 좌측 정렬 컨테이너를 쓴다. 이 탭만 중앙 정렬이면
+ * 탭을 오갈 때 콘텐츠가 좌우로 236px 점프한다(실측). 전 라우트를 `PageLayout` 으로 모으는
+ * 정리는 로드맵 F21 의 별건이며, 그때는 **12개를 함께** 옮겨야 한다.
+ */
+const SETTINGS_PAGE_CLASS = 'p-8 space-y-6 max-w-2xl'
 
 const detailsLabels = {
   page: {
@@ -101,20 +110,23 @@ export function ProjectDetailsSettingsPage({
   // project가 계속 undefined라 아래 isLoading 삼항이 영구 로딩으로 낙하한다.
   if (isError) {
     return (
-      <PageLayout maxWidth="2xl">
+      <div className={SETTINGS_PAGE_CLASS}>
         <div role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
           {detailsLabels.page.loadError}
         </div>
-      </PageLayout>
+      </div>
     )
   }
 
   return (
-    <PageLayout maxWidth="2xl">
-      <PageHeader
-        title={project?.name ?? detailsLabels.page.fallbackHeading}
-        description={detailsLabels.page.description}
-      />
+    <div className={SETTINGS_PAGE_CLASS}>
+      {/* h1 문구는 한 글자도 바꾸지 않는다 — 컨테이너 정렬만 형제 탭에 맞춘다(F21 성공 조건). */}
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold">
+          {project?.name ?? detailsLabels.page.fallbackHeading}
+        </h1>
+        <p className="text-muted-foreground text-sm">{detailsLabels.page.description}</p>
+      </header>
       {isLoading || project === undefined ? (
         <p className="text-sm text-muted-foreground">{detailsLabels.page.loading}</p>
       ) : (
@@ -125,7 +137,7 @@ export function ProjectDetailsSettingsPage({
           canManage={canManage}
         />
       )}
-    </PageLayout>
+    </div>
   )
 }
 

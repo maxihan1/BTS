@@ -132,7 +132,7 @@ describe('fetchFieldPermissions', () => {
     server.use(
       http.get(FIELD_PERMISSIONS_ENDPOINT, ({ request }) => {
         capturedUrl = request.url
-        return HttpResponse.json({ data: [fieldPermissionFixture] })
+        return HttpResponse.json([fieldPermissionFixture])
       }),
     )
 
@@ -145,7 +145,7 @@ describe('fetchFieldPermissions', () => {
   it('T-FP-3b: 응답을 FieldPermissionResponse[] 로 파싱해 반환한다', async () => {
     server.use(
       http.get(FIELD_PERMISSIONS_ENDPOINT, () =>
-        HttpResponse.json({ data: [fieldPermissionFixture] }),
+        HttpResponse.json([fieldPermissionFixture]),
       ),
     )
 
@@ -156,10 +156,33 @@ describe('fetchFieldPermissions', () => {
     expect(result[0]?.fieldKind).toBe('CORE')
   })
 
+  // 🛑 INVARIANT — 실서버 계약은 **맨 배열**이다(`{ data: [...] }` 래퍼가 없다).
+  //    정본: `FieldPermissionController.listRules` 가 `ResponseEntity.ok(rules)` 로 List 를 그대로
+  //    반환하고, `FieldPermissionControllerTest.listRulesBody` 도 `as List<Map<*,*>>` 로 디코딩한다.
+  //    이 케이스가 없던 동안 MSW mock 과 클라이언트 스키마가 **둘 다** 래퍼를 가정해 서로를 통과시켰고
+  //    (`two-lists-never-check-each-other`), 프로덕션 필드 권한 화면은 규칙이 0개든 N개든 항상
+  //    「요청을 처리하지 못했습니다.」만 그렸다. mock 을 고치려면 이 단언부터 red 를 봐라.
+  it('T-FP-3b2: 실서버 계약(맨 배열)을 FieldPermissionResponse[] 로 파싱한다', async () => {
+    server.use(
+      http.get(FIELD_PERMISSIONS_ENDPOINT, () => HttpResponse.json([fieldPermissionFixture])),
+    )
+
+    const result = await fetchFieldPermissions(PROJECT_KEY)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.id).toBe(PERMISSION_ID)
+  })
+
+  it('T-FP-3b3: 규칙이 없으면 빈 배열 응답을 빈 배열로 파싱한다 (에러 아님)', async () => {
+    server.use(http.get(FIELD_PERMISSIONS_ENDPOINT, () => HttpResponse.json([])))
+
+    await expect(fetchFieldPermissions(PROJECT_KEY)).resolves.toEqual([])
+  })
+
   it('T-FP-3c: 응답 필드 누락 시 ZodError를 throw한다', async () => {
     server.use(
       http.get(FIELD_PERMISSIONS_ENDPOINT, () =>
-        HttpResponse.json({ data: [{ id: PERMISSION_ID }] }),
+        HttpResponse.json([{ id: PERMISSION_ID }]),
       ),
     )
 
@@ -171,7 +194,7 @@ describe('fetchFieldPermissions', () => {
     server.use(
       http.get(FIELD_PERMISSIONS_ENDPOINT, ({ request }) => {
         xsrfHeader = request.headers.get('x-xsrf-token')
-        return HttpResponse.json({ data: [] })
+        return HttpResponse.json([])
       }),
     )
 
@@ -194,7 +217,7 @@ describe('fetchFieldPermissions', () => {
   it('T-FP-3f: 타입 컴파일 가드 — 반환값이 FieldPermissionResponse[] 에 할당 가능하다', async () => {
     server.use(
       http.get(FIELD_PERMISSIONS_ENDPOINT, () =>
-        HttpResponse.json({ data: [fieldPermissionFixture] }),
+        HttpResponse.json([fieldPermissionFixture]),
       ),
     )
 

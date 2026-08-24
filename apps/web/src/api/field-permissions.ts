@@ -15,8 +15,15 @@ export type { FieldPermissionResponse, FieldKind, AccessLevel, CreateFieldPermis
 // 내부 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 필드 권한 규칙 목록 응답 래퍼 스키마 — `{ data: [...] }` */
-const fieldPermissionListDataSchema = z.object({ data: z.array(fieldPermissionResponseSchema) })
+/**
+ * 필드 권한 규칙 목록 응답 스키마 — **맨 배열**.
+ *
+ * 🛑 `{ data: [...] }` 래퍼로 되돌리지 마라. 정본은 백엔드
+ * `FieldPermissionController.listRules` 로, `ResponseEntity.ok(rules)` 가 List 를 그대로 싣는다.
+ * 래퍼를 가정하면 200 응답이 매번 ZodError 로 떨어져 화면이 항상 「요청을 처리하지 못했습니다.」가
+ * 된다 — MSW mock 도 같은 래퍼를 쓰고 있어 단위 테스트는 전부 초록이었다.
+ */
+const fieldPermissionListSchema = z.array(fieldPermissionResponseSchema)
 
 /** 기본 경로 헬퍼 */
 function basePath(projectKey: string): string {
@@ -30,7 +37,7 @@ function basePath(projectKey: string): string {
 /**
  * 프로젝트 필드 권한 규칙 목록을 조회한다.
  *
- * GET /api/v1/projects/{projectKey}/field-permissions → `{ data: [...] }` 언래핑 후 반환.
+ * GET /api/v1/projects/{projectKey}/field-permissions → 맨 배열 그대로 반환.
  *
  * @param projectKey 프로젝트 키 (예: "ATLAS")
  * @returns FieldPermissionResponse 배열 — 규칙이 없으면 빈 배열
@@ -38,8 +45,7 @@ function basePath(projectKey: string): string {
  * @throws ApiError(403) 권한 없음 시
  */
 export async function fetchFieldPermissions(projectKey: string): Promise<FieldPermissionResponse[]> {
-  const wrapped = await apiGet(basePath(projectKey), fieldPermissionListDataSchema)
-  return wrapped.data
+  return apiGet(basePath(projectKey), fieldPermissionListSchema)
 }
 
 /**

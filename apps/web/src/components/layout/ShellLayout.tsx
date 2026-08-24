@@ -1,9 +1,11 @@
 // 인증 앱 영역의 pathless 레이아웃 셸 — 상단바(TopBar)+사이드바(Sidebar)+콘텐츠 크롬 조립 (FR-UX-06 PR11 Task 7)
-import { type JSX } from 'react'
-import { Outlet } from '@tanstack/react-router'
+import { type JSX, useEffect } from 'react'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { useIsAuthenticated } from '@/auth/authStore'
 import { useTrackActiveProject } from '@/hooks/use-track-active-project'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarDrawer, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
 import { TopBar } from './TopBar'
@@ -58,7 +60,36 @@ export function ShellLayout(): JSX.Element {
   // 안정 참조라 이 구독은 재렌더를 유발하지 않는다(`useAuthStore((s) => s.clearSession)` 선례).
   // 다른 소비처(TopBar·Sidebar·ProjectTree·RecentIssuesMenu)가 구조분해를 쓰는 것은
   // 그쪽이 `collapsed` 값을 실제로 그려서다 — 재렌더가 목적이라 정당하다.
-  const toggleSidebar = useSidebarCollapsed((state) => state.toggle)
+  const toggleCollapsed = useSidebarCollapsed((state) => state.toggle)
+  // 모바일 드로어 — `collapsed` 와 **다른 상태**다(영속 없음, 기본 닫힘). 근거는 `use-sidebar-drawer.ts`.
+  const drawerOpen = useSidebarDrawer((state) => state.open)
+  const toggleDrawer = useSidebarDrawer((state) => state.toggle)
+  const setDrawerOpen = useSidebarDrawer((state) => state.setOpen)
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+
+  // 🛑 라우트가 바뀌면 드로어를 닫는다. 안 닫으면 사이드바 링크를 누른 뒤에도 드로어가 화면을
+  //    덮은 채로 남아, 방금 연 화면이 보이지 않는다(모바일에서 가장 흔한 드로어 결함).
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [pathname, setDrawerOpen])
+
+  // 데스크톱으로 넓어지면 드로어 상태를 비운다 — 남아 있으면 다시 좁혔을 때 열린 채로 뜬다.
+  useEffect(() => {
+    if (!isMobile) setDrawerOpen(false)
+  }, [isMobile, setDrawerOpen])
+
+  // 🛑 Esc 로 드로어를 닫으려고 이 컴포넌트에 전역 키 리스너를 달지 마라.
+  //    ADR D-2 — 전역 키 리스너 소유자는 허용목록으로 봉인돼 있고(판별식
+  //    `useKeyboardShortcuts.test.tsx`), 컨텍스트 단축키는 새 리스너를 만드는 대신
+  //    `useKeyboardShortcuts` 파이프라인에 합류해야 한다. 실제로 달았다가 그 판별식에 걸렸다.
+  //    ★그 판별식은 **소스 텍스트**를 훑으므로 주석에 그 호출 문법을 예시로 적기만 해도 걸린다.
+  //    드로어를 닫는 길은 이미 셋이다 — 백드롭 클릭 · 드로어 하단 「접기」 버튼 ·
+  //    상단바 토글(드로어가 헤더 아래에서 시작해 항상 눌린다). Esc 가 꼭 필요해지면
+  //    `context-shortcuts.ts` 에 `app-shell` 항목으로 **등록**하는 것이 맞는 경로다.
+
+  // 토글 하나가 폭에 따라 다른 상태를 건드린다 — 모바일은 드로어, 데스크톱은 아이콘 레일.
+  const toggleSidebar = isMobile ? toggleDrawer : toggleCollapsed
   // 같은 이유로 셀렉터다 — 팔레트 열림 값(`open`)은 여기서 그리지 않으므로 구독하지
   // 않는다. 액션만 뽑으면 팔레트를 여닫아도 `<Outlet/>` 이 재렌더되지 않는다.
   const setCommandPaletteOpen = useCommandPaletteStore((state) => state.setOpen)
@@ -101,6 +132,16 @@ export function ShellLayout(): JSX.Element {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
+        {/* 드로어 백드롭 — 모바일에서 드로어가 열렸을 때만. `md:hidden` 으로 데스크톱은 절대 렌더 밖.
+            🛑 `role`·이름을 주지 마라. 이건 닫기 편의용 오버레이일 뿐이고, 같은 닫기 동작을
+               사이드바 하단 「접기」 버튼과 Esc 가 이미 접근 가능한 경로로 제공한다. */}
+        {drawerOpen && (
+          <div
+            aria-hidden="true"
+            className="fixed inset-x-0 bottom-0 top-12 z-40 bg-foreground/40 md:hidden"
+            onClick={() => { setDrawerOpen(false) }}
+          />
+        )}
         <main className="min-w-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>

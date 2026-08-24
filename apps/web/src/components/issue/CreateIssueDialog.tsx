@@ -94,8 +94,17 @@ export function CreateIssueDialog({
           <DialogTitle>{issueCreateStrings.dialogTitle}</DialogTitle>
         </DialogHeader>
 
-        {/* 본문만 스크롤한다 — 푸터는 이 영역 밖이라 버튼이 늘 보인다 */}
-        <div data-testid="create-issue-scroll" className="flex-1 overflow-y-auto pr-1">
+        {/* 본문만 스크롤한다 — 푸터는 이 영역 밖이라 버튼이 늘 보인다.
+            🛑 `pr-1` 만 두지 마라 — `overflow-y-auto` 는 CSS 규칙상 overflow-x 까지 auto 로
+               올려 **가로도 잘린다**. 입력 포커스 링은 `ring-3`(3px) box-shadow 라 요소 박스
+               **바깥**에 그려지는데, 좌측 패딩이 0 이면 그 링이 통째로 잘려 「인풋 왼쪽이
+               잘린」 것처럼 보인다. 좌우 6px 을 주고 음수 마진으로 되돌려 본문 정렬은 유지한다.
+            🛑 스크롤바는 기본값이 15px 라 다크모드에서 밝은 트랙이 본문만큼 도드라진다.
+               `scrollbar-width:thin` + 토큰 색으로 낮춘다(토큰이라 라이트/다크 자동 대응). */}
+        <div
+          data-testid="create-issue-scroll"
+          className="flex-1 overflow-y-auto -mx-1.5 px-1.5 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
+        >
           <IssueCreateForm
             formId={CREATE_ISSUE_FORM_ID}
             initialSummary={initialSummary}

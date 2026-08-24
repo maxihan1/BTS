@@ -152,7 +152,9 @@ export function AuditLogFilters({ params, onFilterChange }: AuditLogFiltersProps
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-4">
+    // 🛑 items-end 금지 — 이벤트 유형만 Select(32px)라 날짜·사용자 input(38px)보다 낮아
+    //    아래를 맞추면 그 열 라벨이 형제보다 6px 내려가 계단이 된다. 위를 맞춘다.
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border bg-muted/30 p-4">
       {/* 이벤트 유형 Select */}
       <div className="flex min-w-[180px] flex-col gap-1">
         <label className="text-xs font-medium text-muted-foreground">
@@ -221,15 +223,20 @@ export function AuditLogFilters({ params, onFilterChange }: AuditLogFiltersProps
         />
       </div>
 
-      {/* 초기화 버튼 */}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={handleReset}
-      >
-        {auditLogLabels.filter.reset}
-      </Button>
+      {/* 초기화 버튼 — 옆 열들과 같은 「라벨 + gap + 컨트롤」 구조를 흉내 내 입력 행에 맞춘다. */}
+      <div className="flex flex-col gap-1">
+        <span aria-hidden="true" className="text-xs font-medium">
+          &nbsp;
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleReset}
+        >
+          {auditLogLabels.filter.reset}
+        </Button>
+      </div>
     </div>
   )
 }

@@ -207,5 +207,12 @@ export function WorkflowSchemeNewRouteAdapter(): JSX.Element {
     void navigate({ to: '/admin/workflow-schemes/$schemeKey', params: { schemeKey } })
   }
 
-  return <WorkflowSchemeNewForm onSuccess={handleSuccess} />
+  // 🛑 폼을 맨몸으로 반환하지 마라 — 셸의 `<main>` 은 패딩이 0 이라 폼이 사이드바 경계(2px)·
+  //    헤더 하단(3px)·뷰포트 우측 끝(2px)에 그대로 붙고 입력칸이 1173px 로 늘어난다.
+  //    같은 성격의 관리 생성 폼 `admin.users.new.tsx` 와 동일한 컨테이너를 쓴다.
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <WorkflowSchemeNewForm onSuccess={handleSuccess} />
+    </div>
+  )
 }
