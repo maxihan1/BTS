@@ -82,8 +82,11 @@ export function ShellLayout(): JSX.Element {
   //    `useKeyboardShortcuts.test.tsx`), 컨텍스트 단축키는 새 리스너를 만드는 대신
   //    `useKeyboardShortcuts` 파이프라인에 합류해야 한다. 실제로 달았다가 그 판별식에 걸렸다.
   //    ★그 판별식은 **소스 텍스트**를 훑으므로 주석에 그 호출 문법을 예시로 적기만 해도 걸린다.
-  //    Esc 는 그 ADR 이 지정한 경로 그대로 `context-shortcuts.ts` 에 `app-shell` 항목으로
-  //    **등록**돼 있고, 아래 `onCloseSidebarDrawer` 가 그 핸들러다.
+  //    Esc 는 그 ADR 이 지정한 경로 그대로 `context-shortcuts.ts` 에 등록돼 있고, 아래
+  //    `onCloseSidebarDrawer` 가 그 핸들러다. ★레이어는 `sidebar-drawer` 다 — `app-shell`
+  //    이 아니다. 왜 그래야 하는지는 아래 등록 지점(`useContextShortcuts` 호출) 위 주석에
+  //    실측 회귀와 함께 적혀 있다. 그쪽을 읽지 않고 여기만 보고 `app-shell` 로 옮기면
+  //    split view pane 의 Esc 가 다시 죽는다.
   //    드로어를 닫는 길은 넷이다 — Esc · 백드롭 클릭 · 드로어 하단 「접기」 버튼 ·
   //    상단바 토글(드로어가 헤더 아래에서 시작해 항상 눌린다).
 
@@ -153,7 +156,7 @@ export function ShellLayout(): JSX.Element {
         <Sidebar />
         {/* 드로어 백드롭 — 모바일에서 드로어가 열렸을 때만. `md:hidden` 으로 데스크톱은 절대 렌더 밖.
             🛑 `role`·이름을 주지 마라. 이건 닫기 편의용 오버레이일 뿐이고, 같은 닫기 동작을
-               **Esc**(`context-shortcuts.ts` 의 `app-shell` 항목)와 사이드바 하단 「접기」 버튼이
+               **Esc**(`context-shortcuts.ts` 의 `sidebar-drawer` 항목)와 사이드바 하단 「접기」 버튼이
                접근 가능한 경로로 제공한다 — 그 둘이 없으면 이 `aria-hidden` 은 정당화되지 않는다. */}
         {drawerOpen && (
           <div

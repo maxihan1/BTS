@@ -418,7 +418,9 @@ describe('ShellLayout', () => {
   it('Escape 는 열린 드로어를 닫는다 (F24 · D7)', () => {
     // 백드롭이 본문을 시각적으로 덮는 순간 이 UI 는 모달로 읽힌다 — 포인터로 빠져나갈 수
     // 있으면 키보드로도 빠져나갈 수 있어야 한다. 새 전역 리스너를 달지 않고
-    // `CONTEXT_SHORTCUTS` 의 `app-shell` 항목으로 등록하는 것이 ADR D-2 의 정식 경로다.
+    // `CONTEXT_SHORTCUTS` 항목으로 등록하는 것이 ADR D-2 의 정식 경로다. 레이어는
+    // `sidebar-drawer` 다 — `app-shell` 에 두면 인증된 모든 화면에서 판별이 hit 이 되고
+    // 파이프라인의 선제 `preventDefault()` 가 split view pane 의 Esc 닫기를 죽인다(리뷰 B1).
     useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
     useSidebarDrawer.setState({ open: true })
     renderShell()
