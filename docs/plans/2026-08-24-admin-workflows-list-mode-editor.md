@@ -1,10 +1,17 @@
 # 워크플로우 관리 목록 + 목록 모드 편집기 (FR-WF-04 D6·D7)
 
 > 티어: T2
-> slug: fr-wf-04-d6-admin-workflows-editor
+> slug: admin-workflows-list-mode-editor
 > type: ui
 > agent: frontend-engineer
 > 생성: 2026-08-24
+
+> **파일명에 FR ID 를 넣지 않는다.** `scripts/doc-index/scan-docs.mjs` 의 「본문 언급 승격」이
+> **행 단위 전부-아니면-전무**라, 파일명에 `fr-wf-04` 가 든 문서가 하나 생기는 순간 FR-WF-04
+> 행의 **모든 열**에서 승격이 꺼져 spec 2 + plan 3 + adr 4 = 9건이 사라진다(2026-08-24 실측).
+> 승격을 종류별로 가르는 수정도 해 봤으나 **과승격 260건**을 만들고 정작 plan 3건은 그대로
+> 잃어 순손해였다 — 되돌렸다. 생성기의 진짜 결함은 부채 123 으로 등재했다.
+> 본문에 FR ID 를 적는 것은 문서 규칙대로 지킨다(아래 전체).
 
 ## Brief
 
