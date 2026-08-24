@@ -37,6 +37,9 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     '/_shell/admin/workflow-schemes',
     '/_shell/admin/workflow-schemes/new',
     '/_shell/admin/workflow-schemes/$schemeKey',
+    '/_shell/admin/workflows',
+    '/_shell/admin/workflows/new',
+    '/_shell/admin/workflows/$workflowKey',
   ),
   ...cls(
     'PROTECTED_3',
@@ -261,8 +264,8 @@ describe('라우트 가드 행렬 — ADMIN_4', () => {
   beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }))
   afterEach(() => useAuthStore.setState({ accessToken: null, user: null }))
 
-  it('ADMIN_4 클래스가 11개다 (/admin/slack 편입 확인)', () => {
-    expect(idsOf('ADMIN_4')).toHaveLength(11)
+  it('ADMIN_4 클래스가 14개다 (/admin/workflows 3라우트 편입, FR-WF-04 D6)', () => {
+    expect(idsOf('ADMIN_4')).toHaveLength(14)
   })
 
   it.each(idsOf('ADMIN_4'))('%s — 관측 서명이 ADMIN_4 기대와 정확히 일치', (id) => {

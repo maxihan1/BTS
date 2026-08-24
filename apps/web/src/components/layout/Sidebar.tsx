@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Calendar,
   Workflow,
+  Waypoints,
   ScrollText,
   ShieldCheck,
   Bell,
@@ -75,6 +76,11 @@ const ISSUES_ACTIVE_OPTIONS: Record<string, { exact: boolean } | undefined> = {
 
 /** 관리 nav 링크 6종 — `Header.tsx` `ADMIN_LINKS` 정본 그대로(FR4). T7에서 Header 삭제로 중복 해소 */
 const ADMIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIcon }> = [
+  // ★ 라벨을 '워크플로우' 로 줄이지 마라 — 아래 '워크플로우 스킴' 의 substring 이 되어
+  // Playwright `getByRole(name:)` 부분일치가 둘을 함께 잡아 strict mode 로 죽는다.
+  // `i18n/__tests__/nav-labels.test.ts` FR15 substring 판별식은 `navLabels` 키만 훑으므로
+  // 이 리터럴을 잡아 주지 않는다(§2 즉사 계약의 `검색`/`전역 검색` 과 같은 양식).
+  { to: '/admin/workflows', label: '워크플로우 관리', Icon: Waypoints },
   { to: '/admin/workflow-schemes', label: '워크플로우 스킴', Icon: Workflow },
   { to: '/admin/audit-logs', label: '감사 로그', Icon: ScrollText },
   { to: '/admin/global-permissions', label: '전역 권한', Icon: ShieldCheck },

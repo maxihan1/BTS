@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 57개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 60개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -18,6 +18,9 @@ import { IssueDetailRouteAdapter } from './routes/issues.$key'
 import { AdminWorkflowSchemesRouteAdapter } from './routes/admin.workflow-schemes'
 import { WorkflowSchemeNewRouteAdapter } from './routes/admin.workflow-schemes.new'
 import { WorkflowSchemeDetailRouteAdapter } from './routes/admin.workflow-schemes.$schemeKey'
+import { AdminWorkflowsRouteAdapter } from './routes/admin.workflows'
+import { WorkflowNewRouteAdapter } from './routes/admin.workflows.new'
+import { WorkflowEditorRouteAdapter } from './routes/admin.workflows.$workflowKey'
 import { ProjectListRouteAdapter } from './routes/projects.index'
 import { ProjectCreateRouteAdapter } from './routes/projects.new'
 import { ProjectDetailsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.details'
@@ -209,6 +212,33 @@ const adminWorkflowSchemesDetailRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes/$schemeKey',
   component: WorkflowSchemeDetailRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireSystemAdminFull,
+})
+
+/** 워크플로우 관리 목록 라우트 — /admin/workflows, 다른 admin 라우트와 동일 4-가드 `requireSystemAdminFull` (FR-WF-04 D6) */
+const adminWorkflowsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/admin/workflows',
+  component: AdminWorkflowsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireSystemAdminFull,
+})
+
+/** 워크플로우 생성 라우트 — /admin/workflows/new, 동일 4-가드. ★`/$workflowKey` 보다 먼저 등록해야 `new` 가 키로 먹히지 않는다 (FR-WF-04 D6) */
+const adminWorkflowsNewRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/admin/workflows/new',
+  component: WorkflowNewRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireSystemAdminFull,
+})
+
+/** 워크플로우 편집기 라우트 — /admin/workflows/$workflowKey, 동일 4-가드 (FR-WF-04 D6) */
+const adminWorkflowsDetailRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/admin/workflows/$workflowKey',
+  component: WorkflowEditorRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireSystemAdminFull,
 })
@@ -772,8 +802,9 @@ const calendarRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 57개 라우트(파일 상단 헤더 분해 기준): / · /login · /settings · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 60개 라우트(파일 상단 헤더 분해 기준): / · /login · /settings · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
+ *   · /admin/workflows · /admin/workflows/new · /admin/workflows/:workflowKey (FR-WF-04 D6)
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack · /admin
  *   · /inbox · /dashboards · /dashboards/:dashboardId · /dashboards/shared/:token · /search
@@ -811,6 +842,10 @@ export const routeTree = rootRoute.addChildren([
     adminWorkflowSchemesRoute,
     adminWorkflowSchemesNewRoute,
     adminWorkflowSchemesDetailRoute,
+    // project-workflow BC — 워크플로우 정의 관리 (/admin/workflows/new은 /$workflowKey보다 먼저 등록)
+    adminWorkflowsRoute,
+    adminWorkflowsNewRoute,
+    adminWorkflowsDetailRoute,
     // identity-access BC — 감사 로그 관리자 조회
     adminAuditLogsRoute,
     // identity-access BC — 전역 권한 부여/회수 관리자 (FR-PM-10 D6 Task 6)

@@ -21,8 +21,9 @@ import { makeWhoami } from '@/mocks/auth-fixtures'
 // 않는 경로로의 죽은 링크 방지).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 관리 허브가 가리켜야 하는 실재 하위 라우트 7개 — ADMIN_HUB_LINKS와 동일 출처를 별도로 단언 */
+/** 관리 허브가 가리켜야 하는 실재 하위 라우트 8개 — ADMIN_HUB_LINKS와 동일 출처를 별도로 단언 */
 const EXPECTED_ADMIN_CHILD_PATHS = [
+  '/admin/workflows',
   '/admin/workflow-schemes',
   '/admin/audit-logs',
   '/admin/global-permissions',

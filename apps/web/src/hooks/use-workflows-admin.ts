@@ -119,11 +119,16 @@ export function useDeleteWorkflow() {
   })
 }
 
-/** 상태 편성·전환까지 복제한다. */
-export function useDuplicateWorkflow(sourceKey: string) {
+/**
+ * 상태 편성·전환까지 복제한다.
+ *
+ * 원본 키를 **mutate 시점에** 받는다. 훅 생성 시점에 묶으면 행마다 원본이 다른 목록
+ * 화면에서 쓸 수 없다 — 한 훅 인스턴스가 한 원본에만 매이기 때문이다.
+ */
+export function useDuplicateWorkflow() {
   const client = useQueryClient()
-  return useMutation<CreatedWorkflow, unknown, DuplicateWorkflowInput>({
-    mutationFn: (input) => duplicateWorkflow(sourceKey, input),
+  return useMutation<CreatedWorkflow, unknown, DuplicateWorkflowInput & { sourceKey: string }>({
+    mutationFn: ({ sourceKey, ...input }) => duplicateWorkflow(sourceKey, input),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: WORKFLOW_ADMIN_KEYS.list })
     },
