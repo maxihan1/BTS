@@ -46,9 +46,15 @@ test('E2E-1 목록 → 편집기 진입 → 이름 수정이 저장된다 (D7)',
   await expect(page.getByRole('heading', { level: 1, name: '이름을 고친 워크플로우' })).toBeVisible()
 })
 
-test('E2E-2 상태를 추가하면 목록에 남고 뒤로 갔다 와도 살아 있다 (D7 재기동 생존)', async ({ page }) => {
+test('E2E-2 상태를 추가하면 화면을 나갔다 와도 살아 있다 (D7 · 목 stateful refetch)', async ({ page }) => {
   await loginAsSystemAdmin(page)
-  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await navigateToWorkflowList(page)
+  await page
+    .getByRole('table', { name: '워크플로우 목록' })
+    .getByRole('row')
+    .filter({ hasText: TARGET_NAME })
+    .getByRole('button', { name: `편집 ${TARGET_NAME}` })
+    .click()
   await expect(page.getByRole('heading', { level: 1, name: TARGET_NAME })).toBeVisible()
 
   const statusList = page.getByRole('list', { name: '편성된 상태 목록' })
@@ -65,15 +71,27 @@ test('E2E-2 상태를 추가하면 목록에 남고 뒤로 갔다 와도 살아 
   await expect(statusList.getByRole('listitem')).toHaveCount(before + 1)
   await expect(statusList).toContainText('Blocked')
 
-  // ── 목록으로 나갔다 다시 들어와도 살아 있다 (stateful 목이 refetch 를 견딘다) ──
+  // ── 목록으로 나갔다 **클라이언트 사이드로** 다시 들어와도 살아 있다 ──
+  //
+  // ★ `page.goto()` 로 돌아오면 안 된다. full navigation 이라 MSW 핸들러 모듈이 재평가되고
+  //   `workflow-admin-fixtures.ts` 의 모듈 스코프 `resetWorkflowAdminStore()` 가 다시 돌아
+  //   방금 넣은 Blocked 가 사라진다. 처음에 그렇게 썼다가 red 였다 — 목이 브라우저 메모리에
+  //   사는 이상 「재기동 생존」은 프론트 E2E 로 검증할 수 있는 계약이 아니다.
+  //   서버 재기동 생존은 백엔드 D5(`YamlSeedService` 부트스트랩 전환)가 이미 덮는다.
   await page.getByRole('button', { name: '목록으로' }).click()
   await expect(page.getByRole('heading', { level: 1, name: '워크플로우 관리' })).toBeVisible()
-  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await page
+    .getByRole('table', { name: '워크플로우 목록' })
+    .getByRole('row')
+    .filter({ hasText: TARGET_NAME })
+    .getByRole('button', { name: `편집 ${TARGET_NAME}` })
+    .click()
   await expect(page.getByRole('list', { name: '편성된 상태 목록' })).toContainText('Blocked')
 })
 
 test('E2E-3 전환 이름을 고치면 목록이 새 이름을 보여준다 (D7)', async ({ page }) => {
   await loginAsSystemAdmin(page)
+  // 여기서는 `goto` 가 무해하다 — 진입 직후 픽스처 상태에서 시작하고, 그 뒤로 재진입하지 않는다.
   await page.goto(`/admin/workflows/${TARGET_KEY}`)
   await page.getByRole('tab', { name: '전환' }).click()
 
