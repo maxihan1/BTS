@@ -33,6 +33,12 @@ interface ComboboxProps {
   triggerPlaceholder: string
   /** 잠금 */
   disabled?: boolean
+  /**
+   * popover 를 그릴 컨테이너. **다이얼로그 안에서 쓸 때 반드시 준다** — 생략하면
+   * `document.body` 에 그려지고 열린 다이얼로그가 그것을 `aria-hidden` 으로 덮어
+   * 옵션이 접근성 트리에서 사라진다.
+   */
+  container?: HTMLElement | null
 }
 
 /**
@@ -53,9 +59,12 @@ function Combobox({
   emptyText,
   triggerPlaceholder,
   disabled = false,
+  container,
 }: ComboboxProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const selected = options.find((o) => o.value === value)
+  // 설명 요소 id 접두 — 한 화면에 combobox 가 여럿이어도 id 가 겹치지 않게 인스턴스마다 다르다
+  const descPrefix = `${React.useId()}-desc-`
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -75,7 +84,7 @@ function Combobox({
           <ChevronsUpDownIcon aria-hidden="true" className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-(--radix-popover-trigger-width) p-0">
+      <PopoverContent container={container} className="w-(--radix-popover-trigger-width) p-0">
         <Command>
           <CommandInput placeholder={placeholder} />
           <CommandList>
@@ -85,6 +94,13 @@ function Combobox({
                 <CommandItem
                   key={option.value}
                   value={option.label}
+                  // ★ 접근성 이름을 **라벨로 고정한다.** 그냥 두면 이름이 「라벨 + 설명」으로
+                  // 합쳐져 설명이 있는 항목만 셀렉터가 어긋난다 — 설명 없는 항목은 통과하고
+                  // 있는 항목만 못 찾는 것을 실측했다. E2E 가 이름으로 항목을 집으므로
+                  // 이름은 예측 가능해야 한다(§2 즉사 계약). 설명은 `aria-describedby` 로
+                  // 남겨 스크린리더가 여전히 읽는다.
+                  aria-label={option.label}
+                  aria-describedby={option.description !== undefined ? `${descPrefix}${option.value}` : undefined}
                   onSelect={() => {
                     onChange(option.value)
                     setOpen(false)
@@ -97,7 +113,9 @@ function Combobox({
                   <span className="flex flex-col">
                     <span>{option.label}</span>
                     {option.description !== undefined ? (
-                      <span className="text-xs text-(--text-subtle)">{option.description}</span>
+                      <span id={`${descPrefix}${option.value}`} className="text-xs text-(--text-subtle)">
+                        {option.description}
+                      </span>
                     ) : null}
                   </span>
                 </CommandItem>

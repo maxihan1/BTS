@@ -10,6 +10,7 @@ import {
 import { server } from './server'
 import { resetIssueStateWithEpic } from '@/mocks/issue-handlers'
 import { resetFavoriteStore } from '@/mocks/favorite-handlers'
+import { resetWorkflowAdminStore } from '@/mocks/workflow-admin-fixtures'
 
 // mutation 추적을 켠다. 모듈 로드 시점이라 어떤 테스트보다 먼저 설치된다.
 installPendingMutationTracker()
@@ -63,6 +64,8 @@ afterEach(() => {
   resetIssueStateWithEpic()
   // favorite-handlers 모듈-스코프 store (userId → Favorite[] Map) 격리 — 테스트 간 leak 방지
   resetFavoriteStore()
+  // workflow-admin-fixtures 저장소 격리 — 편집 결과가 다음 테스트로 새지 않게 한다
+  resetWorkflowAdminStore()
 
   /**
    * ★반드시 `expect.soft` 여야 한다.

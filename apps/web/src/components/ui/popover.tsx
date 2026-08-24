@@ -30,15 +30,27 @@ function PopoverAnchor({
   return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
 }
 
-/** Popover 콘텐츠 — 트리거 클릭 시 Portal로 렌더, focus-visible은 `--border-focus` 토큰을 사용한다. */
+/**
+ * Popover 콘텐츠 — 트리거 클릭 시 Portal로 렌더, focus-visible은 `--border-focus` 토큰을 사용한다.
+ *
+ * ★ `container` 는 **다이얼로그 안에서 쓸 때 필요하다.** Portal 은 기본으로
+ * `document.body` 에 그리는데, 열린 Radix Dialog 는 body 의 형제 노드를
+ * `aria-hidden="true"` 로 덮는다. 그러면 popover 안의 옵션이 접근성 트리에서 사라져
+ * 스크린리더 사용자가 **고를 수 없다**(실측 — `getByRole('option')` 이 못 찾는다).
+ * 다이얼로그 안쪽 요소를 container 로 주면 그 덮개 밖으로 나가지 않는다.
+ */
 function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  container,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+}: React.ComponentProps<typeof PopoverPrimitive.Content> & {
+  /** Portal 대상. 생략하면 `document.body` (Radix 기본) */
+  container?: HTMLElement | null
+}) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={container ?? undefined}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}
