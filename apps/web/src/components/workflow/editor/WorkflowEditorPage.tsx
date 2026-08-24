@@ -2,10 +2,6 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -23,6 +19,7 @@ import {
 } from '@/hooks/use-workflows-admin'
 import type { WorkflowView } from '@/api/workflows'
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
+import { WorkflowMetaForm } from './WorkflowMetaForm'
 import { StatusListPanel } from './StatusListPanel'
 import type { PanelStatus } from './StatusListPanel'
 import { StatusPickerDialog } from './StatusPickerDialog'
@@ -127,45 +124,20 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">{workflow.name}</h1>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="workflow-name">{labels.editor.nameField}</Label>
-          <Input
-            id="workflow-name"
-            aria-label={labels.editor.nameField}
-            placeholder={labels.namePlaceholder}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="workflow-description">{labels.editor.descriptionField}</Label>
-          <Textarea
-            id="workflow-description"
-            aria-label={labels.editor.descriptionField}
-            placeholder={labels.descriptionPlaceholder}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            disabled={name.trim().length === 0 || updateWorkflow.isPending}
-            onClick={() => {
-              updateWorkflow.mutate(
-                { name: name.trim(), description: description.trim().length > 0 ? description.trim() : null },
-                { onSuccess: () => toast.success(labels.editor.saved) },
-              )
-            }}
-          >
-            {labels.editor.save}
-          </Button>
-        </div>
-      </header>
+      <WorkflowMetaForm
+        heading={workflow.name}
+        name={name}
+        description={description}
+        onNameChange={setName}
+        onDescriptionChange={setDescription}
+        saving={updateWorkflow.isPending}
+        onSave={() => {
+          updateWorkflow.mutate(
+            { name: name.trim(), description: description.trim().length > 0 ? description.trim() : null },
+            { onSuccess: () => toast.success(labels.editor.saved) },
+          )
+        }}
+      />
 
       <Tabs defaultValue="statuses">
         <TabsList aria-label={labels.editor.tabs}>
