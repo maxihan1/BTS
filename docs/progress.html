@@ -205,16 +205,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="14.576989912656654"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="7.288494956328327"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">98%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">99%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">140 / 143</div>
+        <div class="big-num">141 / 143</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>140</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>141</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>2</b></div>
         </div>
@@ -228,9 +228,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
-      <div class="bc-card-stats">4 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:57%"></div></div>
-      <div class="bc-card-pct">57%</div>
+      <div class="bc-card-stats">5 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
+      <div class="bc-card-pct">71%</div>
     </div><div class="bc-card" data-nav="bc-automation">
       <div class="bc-card-head">🤖 자동화 규칙</div>
       <div class="bc-card-stats">7 / 7 완료</div>
@@ -777,12 +777,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔄 워크플로우</h1>
     <p class="bc-desc">이슈가 어떤 상태를 거쳐 가는지 규칙을 정하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">57%</div>
-      <div>4 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:57%"></div></div>
+      <div class="big-pct">71%</div>
+      <div>5 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 4</div>
-        <div>🔄 진행중 1</div>
+        <div>✅ 완료 5</div>
+        <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 2</div>
       </div>
@@ -809,13 +809,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 전환 validator/Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span> 런타임 결선</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — validator 적용 단계(phase) 구분 AVAILABILITY/EXECUTION, 결선 범위 확정</li><li><span class="step-icon">✅</span> D2 — 명세 — factory/repo/seed 결선 + test-assembled 검증. 확정 D8=A(phase 구분)/D9=A(Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span> 계산만, GAP-2)/D10=B(test-assembled 검증)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — Default<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>ValidatorFactory/Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span>Factory + DefaultWorkflowDefinitionRepository(<span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">jOOQ</span>, workflowKey로 transition_id 해석) + WorkflowEn<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eConfig(<span class="term" data-def="&quot;문장 성분 분해 트리 / 자동 조건 판독기&quot; &quot;10만 원 이상이면 팀장 승인&quot; 같은 복잡한 조건을 컴퓨터가 이해하도록 주어/동사로 쪼개고(AST), 스스로 계산해 주는(SpEL) 기술입니다.">Spel</span>Evaluator·ExecutorService @Bean) + YamlSeedService validators/post_actions 시드(시드 시점 type fail-fast) + WorkflowValidator.phase</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> 8 <span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">task</span>(red→green→refactor) + test-assembled @ContextConfiguration 통합검증(B2 cross-<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span> 격리, validator plan 거부/availableTransitions 포함, Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span> plan 누적)</li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-WF-04</span>
         <span class="fr-desc"><span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> CRUD + 전역 상태 카탈로그</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `statuses` 전역 카탈로그 · `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>_statuses` N:M · 키 불변 원칙 · 표준 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 편집 허용 범위</li><li><span class="step-icon">✅</span> D2 — 명세 — 읽기 API 응답 형태 불변 계약(`GET /<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s/{key}` 는 states[]/transitions[] 유지) · 권한 모델</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — V203 카탈로그 생성 · V204 백필(키당 name/category 유일성 가드) · V205 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s 컬럼(<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>/ori<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>/deleted_at/is_locked) · **V206 소프트삭제 부분 유니크 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span>**(#393 — 지운 key 재사용 차단 해소)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span>·상태 CRUD + `YamlSeedService` 부트스트랩 전환 + `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>Cache` 무효화 결선</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red-first · 마이그레이션 체인 검증 · 재기동 후 편집분 생존 · 캐시 무효화 누락 감지</li><li><span class="step-icon">⬜</span> D6 — 프론트 — `/admin/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s` 목록 + 목록 모드 편집기(상태 추가·제거·순서)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이름 수정 · 상태 추가 · 재기동 생존</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `statuses` 전역 카탈로그 · `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>_statuses` N:M · 키 불변 원칙 · 표준 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 편집 허용 범위</li><li><span class="step-icon">✅</span> D2 — 명세 — 읽기 API 응답 형태 불변 계약(`GET /<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s/{key}` 는 states[]/transitions[] 유지) · 권한 모델</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — V203 카탈로그 생성 · V204 백필(키당 name/category 유일성 가드) · V205 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s 컬럼(<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>/ori<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>/deleted_at/is_locked) · **V206 소프트삭제 부분 유니크 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span>**(#393 — 지운 key 재사용 차단 해소)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span>·상태 CRUD + `YamlSeedService` 부트스트랩 전환 + `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>Cache` 무효화 결선</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red-first · 마이그레이션 체인 검증 · 재기동 후 편집분 생존 · 캐시 무효화 누락 감지</li><li><span class="step-icon">✅</span> D6 — 프론트 — `/admin/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s` 목록 + 목록 모드 편집기(상태 추가·제거·순서)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이름 수정 · 상태 추가 · 재기동 생존 (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #400, 2026-08-24). *스펙 4시나리오를 작성했고 **실행은 하지 않았다** — Maxi 지시. 실행 미확인분은 <span class="term" data-def="Gate. 전환에 걸린 조건 (권한/필드/검증)">게이트</span> 2 요약에 명시한다*</li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
