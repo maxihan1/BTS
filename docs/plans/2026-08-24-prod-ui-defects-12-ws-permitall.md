@@ -920,20 +920,31 @@ ADR 의 기각 목록은 「왜 이 방식인가」의 기록인데, 가장 근�
 | 7 | **sub-agent dispatch 미사용** — `bts-impl` wave dispatch 대신 컨트롤러 인라인 실행 | 세션 상위 지침이 Agent 도구 사용을 제한. TDD 규율(`test:`→`fix:`)과 wave 순서는 그대로 지켰다 |
 | 8 | **리뷰 렌즈 발행 방식** — `/bts-review-plan` Step 3 은 2종을 한 응답에 발행하라고 하나 eng → design 순차 발행 | 실행은 어차피 순차라 결과 동일. 기록만 남긴다 |
 | 9 | **Task 4 를 Task 8 에 흡수** | Esc 를 실제로 만들면 Task 4 가 고칠 주석이 참이 된다. 두 번 고칠 이유가 없다 |
+| 10 | **ceo 렌즈 미발행** — `DATA.md §1-5` 가 요구하는 렌즈가 [4] 에서 자동 발행되지 않았다 | **해소함** — 독립 코드 리뷰의 BLOCKER B2 로 드러나 커밋 `7b40d7933` 에서 사후 수행, 판정 **CONCERNS**. 원인은 렌즈 분기가 `classify.type` 만 보고 변경 대상을 안 보는 것(`detect-tier` 는 경로로 `SEC_BE` 를 정확히 짚었다) — **부채 110** 등재 |
 
-#### 검증 — 전량, 종료 코드로 판정
+#### 검증 — 전량, 종료 코드로 판정 (**라운드 2** — 리뷰 수정 반영 후 재실행)
 
-| 항목 | 결과 |
-|---|---|
-| `pnpm -r run lint` | **EXIT=0** (경고 8건은 이 PR 밖 파일 — `SlackResultBanner.tsx`·`WeekGrid.tsx`, 선재) |
-| `pnpm -r run typecheck` | **EXIT=0** |
-| `pnpm --filter web exec vitest run` (전량) | **EXIT=0** |
-| `pnpm -r run build` | **EXIT=0** · 5,216 modules · 10.9s |
-| `pnpm --filter web exec playwright test` (**전량**) | **EXIT=0** · **704 passed · 3 skipped** (12.8m) |
-| `./gradlew test ktlintCheck detekt` (**전 모듈**) | **EXIT=0** · BUILD SUCCESSFUL |
-| `pnpm test:workflow` (판별식) | **EXIT=0** · **412/412 pass** |
-| `node scripts/build-doc-index.mjs --check` | **EXIT=0** |
-| `bash scripts/verify-master-plan.sh` | **EXIT=0** · FR 143/143 |
+리뷰 BLOCKER 4 + CONCERNS 를 고친 커밋 `18cf27a5f`~`7b40d7933` **뒤에** 다시 돌린 값이다.
+라운드 1 수치는 그 커밋들보다 앞서 있어 폐기했다. 전 항목이 `EXIT=` 줄을 남긴다 — 파이프 없음.
+
+| 항목 | 결과 | 로그 |
+|---|---|---|
+| `pnpm -r run lint` | **`LINT_EXIT=0`** (경고 8건은 이 PR 밖 파일 — `SlackResultBanner.tsx`·`WeekGrid.tsx`, 선재) | `/tmp/lint-f3.log` |
+| `pnpm -r run typecheck` | **`TC_EXIT=0`** | `/tmp/tc-f3.log` |
+| `pnpm --filter web exec vitest run` (전량) | **`VITEST_EXIT=0`** · **585 files / 9,696 tests** | `/tmp/vt3.log` |
+| `pnpm -r run build` | **`BUILD_EXIT=0`** | `/tmp/build-f3.log` |
+| `pnpm --filter web exec playwright test` (**전량**) | **`E2E_EXIT=0`** · **704 passed · 3 skipped** (13.2m) | `/tmp/e2e-f2.log` |
+| `./gradlew test ktlintCheck detekt` (**전 모듈**) | **`GRADLE_EXIT=0`** · BUILD SUCCESSFUL · `FAILED` **0건** | `/tmp/gradle-f3.log` |
+| `pnpm test:workflow` (판별식) | **`WF_EXIT=0`** · **412 / 412 pass · fail 0** | `/tmp/wf-f3.log` |
+| `node scripts/build-doc-index.mjs --check` | **`DOCIDX_EXIT=0`** | `/tmp/di-f3.log` |
+| `bash scripts/verify-master-plan.sh` | **`VMP_EXIT=0`** · FR 143/143 | `/tmp/vmp-f3.log` |
+
+★**gradle 은 라운드 2 에서 한 번 red 였다.** 첫 실행(`/tmp/gradle-f2.log`)이 `GRADLE_EXIT=1` 로
+끝났고 `FAILED` 는 `:modules:notification:ktlintTestSourceSetCheck` **단 하나** —
+`WebSocketConfigTest.kt:5` 의 import 사전순 위반이다(C1~C3 수정 때 `assertThat` 을 잘못 끼웠다).
+커밋 `9c40b48b6` 으로 고쳤다. 테스트 태스크는 그 실행에서 10개 모듈 전부 `FAILED` 없이 통과했고,
+재실행에서 `:modules:notification:test` 가 `UP-TO-DATE` 인 것은 import 재배열이 **바이트 동일한
+클래스**를 내기 때문이다. 고친 내용에 대한 ktlint·detekt 는 `/tmp/ktl.log` 에서 실제로 실행돼 통과했다.
 
 **뮤테이션 검증 4건 — 전부 red 확인 (GREEN 선커밋 뒤 실행 · 원복 완료)**
 
@@ -954,6 +965,11 @@ ADR 의 기각 목록은 「왜 이 방식인가」의 기록인데, 가장 근�
    전량 재실행에서야 드러났다. `bts-impl` 이 문서로 경고해 둔 그 함정이다.
 2. **브레이크포인트 판별식의 하드코딩 목록이 양방향으로 틀려 있었다** — `max-md:` 를 안 쓰는
    `ShellLayout` 을 넣어 두고 실제로 쓰는 `AccountMenu` 를 빠뜨렸다. 도출식으로 교체했다.
+3. **종료 코드 마커가 없는 로그를 「초록」으로 옮겨 적을 뻔했다.** 라운드 1 의 `lint`·`typecheck`·
+   `build` 로그에는 `EXIT=` 줄이 아예 없었다 — 화면 꼬리만 보고 0 이라 적은 것이다. 1번과 같은
+   결함의 변주다. 라운드 2 는 전 항목에 `echo "…_EXIT=$?"` 를 붙여 다시 돌렸다. 같은 신선도
+   감사에서 `verify-master-plan` 이 ADR 문서 커밋(`7b40d7933`)보다 **앞선 실행**이었음도 드러나
+   함께 재실행했다. **표에 적는 값은 그 커밋보다 뒤에 돌았는지까지 확인한다.**
 
 #### 범위 밖으로 남긴 것 (전부 `TODOS.md` + 마스터 매핑 104~108 등재)
 
