@@ -3,8 +3,7 @@ import { type JSX, useEffect } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { useIsAuthenticated } from '@/auth/authStore'
 import { useTrackActiveProject } from '@/hooks/use-track-active-project'
-import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
-import { useSidebarDrawer, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
+import { useSidebarDrawer, useSidebarToggle, MOBILE_MEDIA_QUERY } from '@/hooks/use-sidebar-drawer'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
@@ -53,17 +52,16 @@ import { Sidebar } from './Sidebar'
  */
 export function ShellLayout(): JSX.Element {
   const isAuthenticated = useIsAuthenticated()
-  // ★selector 로 액션만 뽑는다. 구조분해(`const { toggle } = useSidebarCollapsed()`)는
-  // 스토어 전체를 구독해 `collapsed` 가 바뀔 때마다 이 컴포넌트가 재렌더되고, 여기엔
-  // `<Outlet/>` 이 있어 라우트 본문까지 재렌더 경로에 오른다. 사이드바 토글은 `[` 키와
-  // 버튼 양쪽에서 나므로 빈도도 낮지 않다. `toggle` 은 스토어 생성 시 한 번 만들어진
-  // 안정 참조라 이 구독은 재렌더를 유발하지 않는다(`useAuthStore((s) => s.clearSession)` 선례).
-  // 다른 소비처(TopBar·Sidebar·ProjectTree·RecentIssuesMenu)가 구조분해를 쓰는 것은
-  // 그쪽이 `collapsed` 값을 실제로 그려서다 — 재렌더가 목적이라 정당하다.
-  const toggleCollapsed = useSidebarCollapsed((state) => state.toggle)
+  // ★selector 로 필요한 것만 뽑는다. 구조분해(`const { open, toggle } = useSidebarDrawer()`)는
+  // 스토어 전체를 구독해 값이 바뀔 때마다 이 컴포넌트가 재렌더되고, 여기엔 `<Outlet/>` 이
+  // 있어 라우트 본문까지 재렌더 경로에 오른다. 사이드바 토글은 `[` 키와 버튼 양쪽에서 나므로
+  // 빈도도 낮지 않다. 액션(`setOpen`)은 스토어 생성 시 한 번 만들어진 안정 참조라 그 구독은
+  // 재렌더를 유발하지 않는다(`useAuthStore((s) => s.clearSession)` 선례).
+  // 다른 소비처(TopBar·Sidebar·ProjectTree)가 구조분해나 파생 훅을 쓰는 것은 그쪽이 값을
+  // 실제로 그려서다 — 재렌더가 목적이라 정당하다.
+  //
   // 모바일 드로어 — `collapsed` 와 **다른 상태**다(영속 없음, 기본 닫힘). 근거는 `use-sidebar-drawer.ts`.
   const drawerOpen = useSidebarDrawer((state) => state.open)
-  const toggleDrawer = useSidebarDrawer((state) => state.toggle)
   const setDrawerOpen = useSidebarDrawer((state) => state.setOpen)
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
@@ -88,8 +86,13 @@ export function ShellLayout(): JSX.Element {
   //    상단바 토글(드로어가 헤더 아래에서 시작해 항상 눌린다). Esc 가 꼭 필요해지면
   //    `context-shortcuts.ts` 에 `app-shell` 항목으로 **등록**하는 것이 맞는 경로다.
 
-  // 토글 하나가 폭에 따라 다른 상태를 건드린다 — 모바일은 드로어, 데스크톱은 아이콘 레일.
-  const toggleSidebar = isMobile ? toggleDrawer : toggleCollapsed
+  // 🛑 폭에 따른 토글 대상 선택을 **여기서 다시 계산하지 마라.** `useSidebarToggle` 한 곳이
+  //    소유한다 — 토글 지점이 상단바 버튼 · 이 `[` 단축키 · 사이드바 하단 버튼으로 셋이라,
+  //    판정을 각자 두면 훅만 고쳐졌을 때 이 경로가 조용히 썩는다(오늘은 동작이 같아 어떤
+  //    테스트도 red 가 되지 않는다는 것이 이 규칙이 필요한 이유다).
+  //    짝 판별식 = `hooks/__tests__/sidebar-collapsed-consumer-allowlist.test.ts`(구조) +
+  //    `__tests__/ShellLayout.test.tsx` 의 「모바일에서 `[` 는 드로어를 여닫는다」(행동).
+  const toggleSidebar = useSidebarToggle()
   // 같은 이유로 셀렉터다 — 팔레트 열림 값(`open`)은 여기서 그리지 않으므로 구독하지
   // 않는다. 액션만 뽑으면 팔레트를 여닫아도 `<Outlet/>` 이 재렌더되지 않는다.
   const setCommandPaletteOpen = useCommandPaletteStore((state) => state.setOpen)
