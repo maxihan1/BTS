@@ -228,12 +228,33 @@ Then 403 이고, 워크플로우·전환이 실재하는지 **알아낼 수 없�
 `transitionKey` — UUID 로 파싱되면 `workflow_transitions.id`(1급). 아니면 `fromStateKey__toStateKey`
 합성 키로 해석하고 **2건 이상 걸리면 404**(어느 전환인지 특정 불가 · V207 이 UNIQUE 를 풀었다).
 
-`ValidatorResponse` = `{id, type, config, displayOrder}`.
+`ValidatorResponse` 필드.
 
-> **`phase` 는 이번에 노출하지 않는다.** `ValidatorPhase`(AVAILABILITY/EXECUTION)는 구현체 속성이라
-> 응답에 실으려면 읽기 시점에 팩토리로 인스턴스를 만들어야 하고, DB 에 손으로 넣은 깨진 config 행
-> 하나가 **목록 전체를 500 으로 만든다**. 필드 추가는 하위호환이므로 D6 가 실제로 필요할 때 넣는다.
-> ★**D6 는 프론트에 `type → phase` 표를 만들지 말 것** — 그 순간 팩토리와 갈리는 두 번째 목록이 된다.
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `id` | UUID | validator 식별자 |
+| `type` | string | validator 타입 식별자. 정본은 팩토리의 `when` 분기 |
+| `config` | object | 타입별 설정 Map |
+| `displayOrder` | int | UI 표시 순서 |
+| `phase` | string \| null | 평가 시점 — `"AVAILABILITY"` / `"EXECUTION"` / `null` (아래) |
+
+> **`phase` 는 노출한다** (Task 14 · 게이트 2 반영). 이 값은 **규칙이 전환 버튼을 감추는지
+> (AVAILABILITY) 눌렀을 때 막는지(EXECUTION)** 를 가른다. 4종 중 `RequiredFieldValidator` 만
+> EXECUTION 을 명시 override 하고 나머지 3종은 SPI 기본값 AVAILABILITY 를 상속하므로
+> **`type` 문자열만으로는 판별할 수 없다.** 값의 출처는 팩토리가 만든 **인스턴스의 속성** 하나다.
+>
+> **`null` 이 언제 나오나.** 그 행으로 인스턴스를 만들 수 없을 때다 — 손으로 넣은 깨진 config ·
+> 팩토리에서 사라진 type · config 키 변경. 「phase 가 없다」가 아니라 **「알 수 없다」**는 뜻이다.
+> 실패는 `ValidatorController.phaseOf` 의 행 단위 `catch (IllegalArgumentException)` 안에 갇힌다 —
+> **그 행만 `null` 이고 목록 전체는 200** 이다. (`runCatching` 은 `Error` 까지 삼켜 쓰지 않는다.)
+>
+> ★**프론트(D6)에 `type → phase` 표를 만들지 마라 — 응답이 준다.** 표를 만들면 팩토리의 `when`
+> 분기와 각 구현체의 `override val phase` 에 이은 **세 번째 사본**이 되고, 세 목록은 서로를
+> 검사하지 않으므로 갈린 사실이 드러나지 않는다.
+>
+> (초판이 적은 제외 근거 「깨진 config 행 하나가 목록 전체를 500 으로 만든다」는 **틀렸다** —
+> `engine/WorkflowEngine.kt` 의 availableTransitions 가 같은 행들에 대해 같은 `create` 를
+> try/catch 없이 이미 부른다. 그 근거는 두 경로를 가르지 못한다.)
 
 **에러 계약.**
 
