@@ -970,103 +970,54 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
-## ⬜ identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · 미착수 · T1)
 
-**쉬운 말.** 서식 검사기가 「바뀐 파일」만 본다. 안 건드린 파일의 위반은 초록 뒤에 숨어 있다가,
-그 파일을 한 줄만 고치는 순간 수십~수백 건이 한꺼번에 쏟아진다.
+## ⬜ identity-access — 클래스마다 `@DynamicPropertySource` 를 가져 context 를 하나도 공유하지 못한다 (선재 · 미착수 · T2)
 
-**방치하면.** 그 파일을 건드리는 다음 사람이 남의 부채를 자기 diff 로 떠안는다. 무관한 포매팅
-변경이 리뷰에 섞여 진짜 변경이 안 보이고, 「내가 뭘 잘못했나」를 찾는 데 시간이 든다.
-
-**무엇 (PR #402 확대 작업 실측).** 테스트 62개를 기계 변환하자 ktlint 128건이 났는데, 그중
-104건이 **한 파일**에 몰려 있었고 변환이 건드리지 않은 줄들이었다. 최소 실험으로 갈랐다 —
-`ProjectMembershipRepositoryIntegrationTest.kt` 를 두고.
-
-| 파일 상태 | ktlint 위반 |
-|---|---|
-| 원본 그대로 | **0건** |
-| `import` **한 줄만 추가** | **150건** |
-| `import` 한 줄만 제거 | 148건 |
-
-즉 원래 ~150건이 있었고 ktlint 가 바뀐 파일만 보기 때문에 안 보였을 뿐이다. 영향 파일 7개다.
-
-| 파일 | 위반 |
-|---|---|
-| `ProjectMembershipRepositoryIntegrationTest.kt` | 104 |
-| `PatAndConcurrencyIntegrationTest.kt` | 10 |
-| `UserRepositoryTest.kt` | 3 |
-| `RefreshTokenRepositoryTest.kt` | 2 |
-| `SessionRepositoryTest.kt` · `KeymapControllerIntegrationTest.kt` · `JdbcProjectDirectoryIntegrationTest.kt` | 각 1 |
-
-유형은 `argument-list-wrapping`(46) · `wrapping`(37) · `multiline-expression-wrapping`(26) ·
-`trailing-comma-on-call-site`(10) · `no-empty-first-line-in-class-body`(7) ·
-`no-consecutive-comments`(2). **자동 수정 불가 0건** — 전부 기계가 고칠 수 있다.
-
-PR #402 는 이 7개 파일을 변환에서 **되돌려** 뺐다. 남의 부채를 그 PR 의 diff 로 끌어들이지
-않기 위해서다(`DEVELOPMENT.md` §수술적 변경 · `.claude/skills/review/checklist.md:26` 이
-모듈 전체 `ktlintFormat` 을 금지한다).
-
-**처방.** 이 7개 파일만 대상으로 서식을 한 번에 정리하고, **같은 PR 에서 fixture 변환도 함께**
-적용한다. 두 변경이 어차피 같은 파일을 건드리므로 나누면 diff 만 두 배가 된다.
-다만 「바뀐 파일만 본다」는 성질 자체는 이 항목의 범위가 아니다 — 다른 모듈에도 같은 잠복
-부채가 있을 수 있고, 그 전수 확인은 별건이다.
-
----
-
-## ⬜ identity-access — Spring context 가 67 시그니처로 쪼개져 부팅이 오버헤드의 대부분이다 (선재 · 미착수 · T2)
-
-**쉬운 말.** 테스트마다 애플리케이션을 새로 켠다. 설정이 한 글자만 달라도 Spring 은 「다른 앱」으로
-보고 처음부터 다시 켜는데, 그런 조합이 67가지나 된다.
+**쉬운 말.** 테스트마다 접속 정보를 자기가 직접 넣는다. Spring 은 그걸 「다른 앱」으로 보고
+테스트 클래스 수만큼 애플리케이션을 새로 켠다.
 
 **방치하면.** 이 모듈 테스트가 계속 6분대에 머문다. 이 모듈을 건드리는 작업마다 푸시 훅에서
 그 시간을 그대로 기다린다.
 
-**무엇 (PR #401·#402 실측).** `:modules:identity-access:test` 벽시계 370초 중 JUnit 이 재는
-testsuite time 은 59초뿐이고 **311초(84%)가 fixture** 다. PR #402 가 컨테이너 기동과 마이그레이션
-재적용을 걷어내 420초 → 370초로 줄였지만, 남은 311초의 대부분은 **Spring context 부팅**이다.
+**무엇 (2026-08-25 실측 — 앞선 두 가설을 실험이 기각했다).** 한 번 실행에 Spring context 가
+**97개** 부팅된다(결과 XML 의 `HikariPool-N - Starting` 최대 번호로 셈).
 
-**어디서 쪼개지나 (2026-08-25 전수 분해).** 부팅 테스트 127파일 · 구분 시그니처 79종이다.
+기각된 가설 ①. 「캐시 상한 32 < 시그니처 79 라 축출 재부팅이 있다」 —
+`cache.maxSize=96` + `maxHeapSize=3072m` 으로 부팅 97 → **96**. 안 줄었고 벽시계는 17% 늘었다.
 
-| 종류 | 파일 | 구분 시그니처 | 비고 |
-|---|---|---|---|
-| `@SpringBootTest` | 53 | **5종** | 이미 잘 뭉쳐 있다. `(env, 프로퍼티키집합)` 조합은 5가지뿐 |
-| `@JdbcTest` | 45 | **33종** | 27종이 1파일씩 — 각자 자기 리포지토리를 `@Import` |
-| `@WebMvcTest` | 29 | **29종** | **전부 1파일씩** — 각자 자기 컨트롤러 + `SecurityConfig` 를 `@Import` |
+기각된 가설 ②. 「`@JdbcTest` 45개가 각자 `@Import` 를 달리 써서 쪼갠다」 — 32개 클래스를
+공용 설정으로 모아 45개가 그것 하나만 `@Import` 하게 했다. 부팅 97 → **97**. 변화 0이었다.
+(슬라이스에 안 쓰는 빈만 늘어 되돌렸다.)
 
-**★`@MockBean` 은 주범이 아니다.** 시그니처는 `@MockBean` 을 포함하면 79종, 빼면 76종이다 —
-**3종만 더 쪼갠다.** 종전 감사가 「308회가 캐시 키를 쪼갠다」고 적었으나 실측은 그렇지 않다.
-`@SpringBootTest` 의 `properties` 다양성도 주범이 아니다(키 집합 조합 5종).
+**진짜 원인.** `@DynamicPropertySource` 를 **클래스마다** 갖는다.
 
-**파편화는 슬라이스 테스트의 `@Import` 에서 온다.** 79종 중 62종이 `@JdbcTest`/`@WebMvcTest` 다.
-슬라이스 테스트가 「검사 대상만 올린다」는 설계 그대로 동작한 결과라 **의도치 않은 실수가 아니다.**
+| | 개수 |
+|---|---|
+| 부팅 테스트 파일 | 127 |
+| 그중 `@DynamicPropertySource` 보유 | **93** |
+| 실측 context 부팅 | **97** |
 
-**처방 (미검증 — 착수 전 §측정 참조).** 슬라이스별로 공용 context 를 만든다.
-① `@JdbcTest` 45개 — 리포지토리를 한 공용 설정에 모아 `@Import` 를 통일. 33종 → 소수.
-② `@WebMvcTest` 29개 — 컨트롤러를 한 공용 설정에 모음. 29종 → 1~3종.
-③ `@SpringBootTest` 53개는 이미 5종이라 **건드리지 않는다.**
+`@DynamicPropertySource` 는 클래스별 `ContextCustomizer` 를 만들고 그것이 **context 캐시 키의
+일부**다. 선언한 클래스는 무조건 자기 context 를 갖는다 — `@Import` 나 `@MockBean` 을 아무리
+통일해도 소용이 없다.
 
-**★이 처방에는 실질 위험이 있다.** `@WebMvcTest(X::class)` 는 어느 컨트롤러가 MockMvc 라우팅에
-올라오는지를 정한다. 전부 한 context 에 모으면 **라우팅과 빈 구성이 바뀐다** — 지금 404 를
-기대하는 단언이 200 이 될 수 있다. 통합은 「빠르게 하는 변경」이 아니라 **테스트 의미를 바꾸는
-변경**이므로 슬라이스 하나씩, 재현 테스트를 먼저 세우고 간다.
+**★그리고 이건 `SharedPostgres` 설계와 정면으로 맞물린다.** PR #402 가 넣은 fixture 는 클래스마다
+**전용 데이터베이스**를 준다(템플릿 복제). URL 이 클래스마다 다르므로 `@DynamicPropertySource` 도
+클래스마다 필요하고, 따라서 context 도 클래스마다 생긴다. **클래스별 DB 격리와 context 공유는
+동시에 성립하지 않는다.**
 
-**★이미 기각된 처방 — 캐시 상한 상향은 듣지 않는다.** 2026-08-25 실측.
-「시그니처 79종 > 캐시 상한 32 이니 축출 재부팅이 있을 것」이라는 가정으로
-`spring.test.context.cache.maxSize=96` + `maxHeapSize=3072m` 을 걸어 봤다.
+**처방 — 둘 중 하나를 고르는 문제다. 기술이 아니라 선택이다.**
+① **격리 유지** (현행). context 97개를 받아들인다. 부팅당 3초대이므로 이 모듈은 6분대에 머문다.
+② **DB 공유**. 전 클래스가 한 DB 를 쓰고 접속 정보를 클래스 밖에서 한 번만 주입한다
+   (`ApplicationContextInitializer` 등). `@DynamicPropertySource` 를 걷어내면 context 가 크게
+   합쳐진다. 대신 격리를 테스트 간 정리로 지켜야 하는데, 이 저장소는 공용 DB 에 이미
+   데인 적이 있다(`shared-dev-db-preexisting-rows-fake-green`).
 
-| | 벽시계 | context 부팅 |
-|---|---|---|
-| 상한 32 (기본) | **370초** | 97회 |
-| 상한 96 + heap 3072m | **433초** | 96회 |
+**②를 고른다면 재현 테스트를 먼저 세운다.** 「A 가 넣은 행이 B 에서 보이면 red」를 만들고
+시작해야 한다. 없으면 격리가 깨진 것을 초록이 가린다.
 
-**부팅 수가 안 줄었다.** 97회는 축출 재부팅이 아니라 **시그니처 수 그 자체**였다. 캐시를
-키운 만큼 context 를 메모리에 이고 있느라 오히려 17% 느려졌다. 되돌렸다.
-⇒ **부팅 횟수를 줄이는 유일한 길은 시그니처 수를 줄이는 것이다.** 설정으로 우회할 수 없다.
-
-**측정 없이 착수하지 말 것.** 시그니처를 줄인 만큼 벽시계가 주는지는 여전히 가정이다 —
-`--profile` 과 Hikari 풀 번호(`HikariPool-N - Starting` 의 최대값 = 부팅 횟수)로 대조군을
-먼저 고정한다. PR #401 에서 「병렬을 켜면 빨라진다」가, 여기서 「캐시를 키우면 빨라진다」가
-각각 실측으로 뒤집혔다.
+**측정은 벽시계가 아니라 부팅 횟수로 한다.** 이 머신의 벽시계는 같은 코드에서 370초~708초로
+흔들려(2026-08-25 5회 측정) 10~20% 차이를 귀속시킬 수 없다. 부팅 횟수는 결정적이다.
 
 ---
 
@@ -3044,6 +2995,50 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 
 # 해소된 것
 
+## ✅ identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · **해소** · T1)
+
+**쉬운 말.** 서식 검사기가 「바뀐 파일」만 본다. 안 건드린 파일의 위반은 초록 뒤에 숨어 있다가,
+그 파일을 한 줄만 고치는 순간 수십~수백 건이 한꺼번에 쏟아진다.
+
+**방치하면.** 그 파일을 건드리는 다음 사람이 남의 부채를 자기 diff 로 떠안는다. 무관한 포매팅
+변경이 리뷰에 섞여 진짜 변경이 안 보이고, 「내가 뭘 잘못했나」를 찾는 데 시간이 든다.
+
+**무엇 (PR #402 확대 작업 실측).** 테스트 62개를 기계 변환하자 ktlint 128건이 났는데, 그중
+104건이 **한 파일**에 몰려 있었고 변환이 건드리지 않은 줄들이었다. 최소 실험으로 갈랐다 —
+`ProjectMembershipRepositoryIntegrationTest.kt` 를 두고.
+
+| 파일 상태 | ktlint 위반 |
+|---|---|
+| 원본 그대로 | **0건** |
+| `import` **한 줄만 추가** | **150건** |
+| `import` 한 줄만 제거 | 148건 |
+
+즉 원래 ~150건이 있었고 ktlint 가 바뀐 파일만 보기 때문에 안 보였을 뿐이다. 영향 파일 7개다.
+
+| 파일 | 위반 |
+|---|---|
+| `ProjectMembershipRepositoryIntegrationTest.kt` | 104 |
+| `PatAndConcurrencyIntegrationTest.kt` | 10 |
+| `UserRepositoryTest.kt` | 3 |
+| `RefreshTokenRepositoryTest.kt` | 2 |
+| `SessionRepositoryTest.kt` · `KeymapControllerIntegrationTest.kt` · `JdbcProjectDirectoryIntegrationTest.kt` | 각 1 |
+
+유형은 `argument-list-wrapping`(46) · `wrapping`(37) · `multiline-expression-wrapping`(26) ·
+`trailing-comma-on-call-site`(10) · `no-empty-first-line-in-class-body`(7) ·
+`no-consecutive-comments`(2). **자동 수정 불가 0건** — 전부 기계가 고칠 수 있다.
+
+**해소 (2026-08-25, PR #402).** 7개 파일의 서식을 정리하고 fixture 변환을 같은 커밋에 함께
+넣었다. 두 변경이 어차피 같은 파일을 건드려 나누면 diff 만 두 배가 된다. 7클래스 89테스트
+실패 0 · ktlint 0 위반.
+
+포맷은 모듈 전체 `ktlintFormat` 을 돌린 뒤 **이 7개 외 부수 변경 26건을 전부 버리는** 방식으로
+파일 단위 효과만 남겼다 — `checklist.md:26` 의 금지 이유가 「의도 안 한 부수 변경」이므로
+그 결과를 만들지 않았다.
+
+**남는 것.** 「ktlint 가 바뀐 파일만 본다」는 성질 자체는 이 항목의 범위가 아니다 —
+**다른 모듈에도 같은 잠복 부채가 있을 수 있고** 그 전수 확인은 별건이다.
+
+---
 ## ✅ 인프라 — 전체 스위트 동시 실행 시 flaky (2026-07-27 해소)
 
 **해소.** 근본 원인은 **느림이 아니라 메시지 도둑질**이었다. 타임아웃을 늘려도 절대 안 고쳐지는 종류다.
