@@ -970,6 +970,80 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
+## ⬜ identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · 미착수 · T1)
+
+**쉬운 말.** 서식 검사기가 「바뀐 파일」만 본다. 안 건드린 파일의 위반은 초록 뒤에 숨어 있다가,
+그 파일을 한 줄만 고치는 순간 수십~수백 건이 한꺼번에 쏟아진다.
+
+**방치하면.** 그 파일을 건드리는 다음 사람이 남의 부채를 자기 diff 로 떠안는다. 무관한 포매팅
+변경이 리뷰에 섞여 진짜 변경이 안 보이고, 「내가 뭘 잘못했나」를 찾는 데 시간이 든다.
+
+**무엇 (PR #402 확대 작업 실측).** 테스트 62개를 기계 변환하자 ktlint 128건이 났는데, 그중
+104건이 **한 파일**에 몰려 있었고 변환이 건드리지 않은 줄들이었다. 최소 실험으로 갈랐다 —
+`ProjectMembershipRepositoryIntegrationTest.kt` 를 두고.
+
+| 파일 상태 | ktlint 위반 |
+|---|---|
+| 원본 그대로 | **0건** |
+| `import` **한 줄만 추가** | **150건** |
+| `import` 한 줄만 제거 | 148건 |
+
+즉 원래 ~150건이 있었고 ktlint 가 바뀐 파일만 보기 때문에 안 보였을 뿐이다. 영향 파일 7개다.
+
+| 파일 | 위반 |
+|---|---|
+| `ProjectMembershipRepositoryIntegrationTest.kt` | 104 |
+| `PatAndConcurrencyIntegrationTest.kt` | 10 |
+| `UserRepositoryTest.kt` | 3 |
+| `RefreshTokenRepositoryTest.kt` | 2 |
+| `SessionRepositoryTest.kt` · `KeymapControllerIntegrationTest.kt` · `JdbcProjectDirectoryIntegrationTest.kt` | 각 1 |
+
+유형은 `argument-list-wrapping`(46) · `wrapping`(37) · `multiline-expression-wrapping`(26) ·
+`trailing-comma-on-call-site`(10) · `no-empty-first-line-in-class-body`(7) ·
+`no-consecutive-comments`(2). **자동 수정 불가 0건** — 전부 기계가 고칠 수 있다.
+
+PR #402 는 이 7개 파일을 변환에서 **되돌려** 뺐다. 남의 부채를 그 PR 의 diff 로 끌어들이지
+않기 위해서다(`DEVELOPMENT.md` §수술적 변경 · `.claude/skills/review/checklist.md:26` 이
+모듈 전체 `ktlintFormat` 을 금지한다).
+
+**처방.** 이 7개 파일만 대상으로 서식을 한 번에 정리하고, **같은 PR 에서 fixture 변환도 함께**
+적용한다. 두 변경이 어차피 같은 파일을 건드리므로 나누면 diff 만 두 배가 된다.
+다만 「바뀐 파일만 본다」는 성질 자체는 이 항목의 범위가 아니다 — 다른 모듈에도 같은 잠복
+부채가 있을 수 있고, 그 전수 확인은 별건이다.
+
+---
+
+## ⬜ identity-access — Spring context 가 67 시그니처로 쪼개져 부팅이 오버헤드의 대부분이다 (선재 · 미착수 · T2)
+
+**쉬운 말.** 테스트마다 애플리케이션을 새로 켠다. 설정이 한 글자만 달라도 Spring 은 「다른 앱」으로
+보고 처음부터 다시 켜는데, 그런 조합이 67가지나 된다.
+
+**방치하면.** 이 모듈 테스트가 계속 6분대에 머문다. 이 모듈을 건드리는 작업마다 푸시 훅에서
+그 시간을 그대로 기다린다.
+
+**무엇 (PR #401·#402 실측).** `:modules:identity-access:test` 벽시계 370초 중 JUnit 이 재는
+testsuite time 은 59초뿐이고 **311초(84%)가 fixture** 다. PR #402 가 컨테이너 기동과 마이그레이션
+재적용을 걷어내 420초 → 370초로 줄였지만, 남은 311초의 대부분은 **Spring context 부팅**이다.
+
+- `@SpringBootTest` 포함 파일 **114개**, 구분되는 context 시그니처 **67종**
+- 그중 **52종이 파일 1개씩만** 쓴다 — 컨텍스트 1벌을 부팅해 테스트 클래스 하나만 돌리고 버린다
+- `@MockBean` **308회 / 54파일** — `@MockBean` 조합은 **context 캐시 키의 일부**라 하나만 달라도
+  새로 부팅한다. 상위는 `AuthControllerTest`(15) · `IdentityAccessWorkflowSchemePermissionResolverBootTest`(9) ·
+  `LocalAuthFlowIntegrationTest`(8) 로 이 모듈에 집중돼 있다
+- Spring 의 context 캐시 기본 상한은 32개다 — 시그니처가 그보다 많으면 **부팅한 것을 버리고 다시 부팅**한다
+
+**처방.** 시그니처를 상한 아래로 모은다. ① `@MockBean` 을 테스트별 스텁 대신 공용 테스트 설정
+클래스로 올려 조합을 고정 ② `webEnvironment`·`properties`·`@ActiveProfiles` 가 사실상 같은
+그룹을 공용 base 로 합침 ③ 단일 사용 시그니처 52종을 먼저 훑어 왜 혼자인지 확인.
+`app` 모듈의 `ProdAssemblyHttpTestBase.kt:37-43` 이 같은 함정(`webEnvironment` 가 캐시 키)을
+이미 문서화해 두었으니 그 관례를 따른다.
+
+**측정 없이 착수하지 말 것.** 시그니처를 줄인 만큼 벽시계가 주는지는 가정이다 —
+`--profile` 로 대조군을 먼저 고정한다. PR #401 에서 「병렬을 켜면 빨라진다」가 실측으로
+뒤집힌 전례가 있다.
+
+---
+
 # 개발 안전장치
 
 ## ⬜ 워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)
