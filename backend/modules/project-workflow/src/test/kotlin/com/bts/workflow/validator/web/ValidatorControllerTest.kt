@@ -13,6 +13,8 @@ import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.validator.ValidatorAdminService
 import com.bts.workflow.validator.ValidatorNotFoundException
 import com.bts.workflow.validator.ValidatorRow
+import com.bts.workflow.validator.ValidatorTypeNotEditableException
+import com.bts.workflow.validator.ValidatorValidationException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -53,6 +55,9 @@ import java.util.UUID
  * - 실재하는 전환과 실재하지 않는 전환의 403 응답이 **구별되지 않는다** (존재 probe 차단).
  * - 403 본문에 actorId·permission·scope 가 실리지 않는다.
  * - POST 성공 201 + `{data:...}` 봉투 · DELETE 성공 204 무본문.
+ * - GET 성공 200 목록 봉투 · PUT 성공 200 수정 행 · 응답에 `transitionId` 키가 아예 없다.
+ * - POST 요청 바디의 `config`·`displayOrder` 가 서비스 인자로 **그대로** 간다.
+ * - 에러 계약 4행 전부 — 403 밖의 3행(400 INVALID · 400 TYPE_NOT_EDITABLE · 404 NOT_FOUND).
  * - GET 목록의 각 행이 `phase` 를 함께 준다 — 소비자가 `type → phase` 표를 만들 이유를 없앤다.
  * - 인스턴스화가 실패하는 행은 `phase = null` 이고 **목록 전체는 200** 이다.
  *
@@ -236,7 +241,122 @@ class ValidatorControllerTest {
         assertThat(body).doesNotContain("Global")
     }
 
+    // ── 에러 계약 — 4행 중 403 을 뺀 나머지 3행 ────────────────────────────────
+    //
+    // 이 3행은 **권한을 허용해야 비로소 도달한다.** 거부 상태에서는 403 이 먼저 나가고
+    // 서비스 stub 은 한 번도 실행되지 않는다 — 위 Guard 테스트들이 정확히 그 상태다.
+    //
+    // 코드는 상수를 import 하지 않고 **문자열을 직접** 쓴다. 상수를 참조하면 상수가 바뀔 때
+    // 테스트가 따라 바뀌어 계약이 아니라 코드를 검사하게 된다. 서비스 테스트가 Kotlin 예외
+    // 타입만 단언하므로 status·코드 계약은 여기 말고는 아무도 보지 않는다.
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `검증 실패는 400 WORKFLOW_VALIDATOR_INVALID`() {
+        allowPermission()
+        every {
+            service.create(workflowKey, existingTransitionKey, "RequiredField", mapOf("field" to "resolution"), 0)
+        } throws ValidatorValidationException("필수 config 키 누락: 'field'")
+
+        mockMvc.perform(
+            post(basePath(existingTransitionKey))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody())),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_VALIDATOR_INVALID"))
+    }
+
+    /**
+     * 편집 불가 type 을 **PUT** 으로 검증한다 — 기존 행의 type 을 바꿔 넣는 경로가 더 놓치기 쉽고
+     * (plan C1), 같은 핸들러에 다른 엔드포인트로 닿는 것도 함께 확인된다.
+     */
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `편집 불가 타입은 400 WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE`() {
+        allowPermission()
+        val body =
+            mapOf(
+                "type" to "CustomExpression",
+                "config" to mapOf("expression" to "issue.priority == 'HIGH'"),
+                "displayOrder" to 0,
+            )
+        every {
+            service.update(
+                workflowKey,
+                existingTransitionKey,
+                validatorId,
+                "CustomExpression",
+                mapOf("expression" to "issue.priority == 'HIGH'"),
+                0,
+            )
+        } throws ValidatorTypeNotEditableException("CustomExpression")
+
+        mockMvc.perform(
+            put("${basePath(existingTransitionKey)}/$validatorId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE"))
+    }
+
+    /**
+     * 미존재 404 — 「있긴 한데 네 것이 아니다」까지 묶는 IDOR 차단 표면이다.
+     *
+     * 매핑이 400 이나 200 으로 바뀌면 화면은 「없음」과 「잘못 보냄」을 구별하지 못한다.
+     */
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `미존재는 404 WORKFLOW_VALIDATOR_NOT_FOUND`() {
+        allowPermission()
+        stubTransitionExistence()
+
+        mockMvc.perform(get(basePath(missingTransitionKey)))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_VALIDATOR_NOT_FOUND"))
+    }
+
     // ── 성공 경로 ─────────────────────────────────────────────────────────────
+
+    /**
+     * GET 200 의 봉투·행 모양과 `transitionId` **미노출**을 함께 지킨다.
+     *
+     * 부재 판정에 `doesNotExist()` 를 쓰지 않는다 — 그 매처는 값이 `null` 이어도 통과하므로
+     * 「키 없음」과 「값이 null」을 구별하지 못한다. `transitionId: null` 도 필드 노출이다.
+     * `path()` 는 없는 키에 MissingNode 를 주므로 트리를 직접 보면 둘이 갈린다
+     * (같은 이유로 phase 테스트도 트리를 본다).
+     *
+     * phase 는 행마다 다른 값을 쓴다 — 두 행이 같으면 응답이 상수 하나를 실어도 통과한다.
+     */
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `GET 200 은 목록 봉투와 transitionId 미노출을 지킨다`() {
+        allowPermission()
+        every { service.listForTransition(workflowKey, existingTransitionKey) } returns
+            listOf(sampleRow(), permissionCheckRow())
+
+        val body =
+            mockMvc.perform(get(basePath(existingTransitionKey)))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .contentAsString
+
+        val data = mapper.readTree(body).path("data")
+        assertThat(data.isArray).isTrue()
+        assertThat(data.size()).isEqualTo(2)
+        assertThat(data.path(0).path("transitionId").isMissingNode).isTrue()
+        assertThat(data.path(1).path("transitionId").isMissingNode).isTrue()
+        assertThat(data.path(0).path("id").asText()).isEqualTo(validatorId.toString())
+        assertThat(data.path(0).path("type").asText()).isEqualTo("RequiredField")
+        assertThat(data.path(0).path("config").path("field").asText()).isEqualTo("resolution")
+        assertThat(data.path(0).path("phase").asText()).isEqualTo("EXECUTION")
+        assertThat(data.path(1).path("id").asText()).isEqualTo(permissionValidatorId.toString())
+        // displayOrder 는 0 이 아닌 행으로 잰다 — MissingNode 의 asInt() 도 0 이라 0 은 공허하다.
+        assertThat(data.path(1).path("displayOrder").asInt()).isEqualTo(1)
+        assertThat(data.path(1).path("phase").asText()).isEqualTo("AVAILABILITY")
+    }
 
     @Test
     @WithMockUser(username = ALLOWED_ACTOR)
@@ -257,6 +377,69 @@ class ValidatorControllerTest {
             .andExpect(jsonPath("$.data.config.field").value("resolution"))
             .andExpect(jsonPath("$.data.displayOrder").value(0))
             .andExpect(jsonPath("$.data.transitionId").doesNotExist())
+    }
+
+    /**
+     * 요청 바디가 서비스 인자로 **그대로** 가는지를 인자 쪽에서 직접 읽는다.
+     *
+     * 응답 단언만으로는 증명되지 않는다 — `$.data.config` 는 요청이 아니라 **stub 반환값**에서
+     * 나오므로 컨트롤러가 `request.config` 대신 `emptyMap()` 을 넘겨도 초록이다. 그래서 stub 을
+     * `any()` 가 아니라 실제 맵으로 못박고 [verify] 로 인자를 다시 읽는다.
+     *
+     * `displayOrder` 는 DTO 기본값 0 과 **다른** 7 을 보낸다 — 0 이면 Jackson 바인딩이 끊겨
+     * 기본값이 들어가도 매처가 맞아 버린다.
+     */
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `POST 는 요청 바디의 config 와 displayOrder 를 그대로 서비스에 넘긴다`() {
+        allowPermission()
+        every {
+            service.create(workflowKey, existingTransitionKey, "RequiredField", mapOf("field" to "resolution"), 7)
+        } returns sampleRow().copy(displayOrder = 7)
+
+        mockMvc.perform(
+            post(basePath(existingTransitionKey))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody(displayOrder = 7))),
+        )
+            .andExpect(status().isCreated)
+
+        verify(exactly = 1) {
+            service.create(workflowKey, existingTransitionKey, "RequiredField", mapOf("field" to "resolution"), 7)
+        }
+    }
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `PUT 200 은 수정된 행을 DataEnvelope 로 준다`() {
+        allowPermission()
+        val body =
+            mapOf(
+                "type" to "RequiredField",
+                "config" to mapOf("field" to "fixVersion"),
+                "displayOrder" to 3,
+            )
+        every {
+            service.update(
+                workflowKey,
+                existingTransitionKey,
+                validatorId,
+                "RequiredField",
+                mapOf("field" to "fixVersion"),
+                3,
+            )
+        } returns sampleRow().copy(config = mapOf("field" to "fixVersion"), displayOrder = 3)
+
+        mockMvc.perform(
+            put("${basePath(existingTransitionKey)}/$validatorId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.id").value(validatorId.toString()))
+            .andExpect(jsonPath("$.data.config.field").value("fixVersion"))
+            .andExpect(jsonPath("$.data.displayOrder").value(3))
+            .andExpect(jsonPath("$.data.phase").value("EXECUTION"))
     }
 
     @Test
@@ -324,11 +507,17 @@ class ValidatorControllerTest {
     private fun basePath(transitionKey: String): String =
         "/api/v1/workflows/$workflowKey/transitions/$transitionKey/validators"
 
-    private fun requestBody(): Map<String, Any> =
+    /**
+     * 생성/수정 요청 바디.
+     *
+     * @param displayOrder 보낼 표시 순서. 기본 0 은 [ValidatorRequest] 기본값과 같으므로,
+     *   바인딩이 끊긴 것을 잡아야 하는 자리에서는 **0 이 아닌 값**을 넘겨야 한다.
+     */
+    private fun requestBody(displayOrder: Int = 0): Map<String, Any> =
         mapOf(
             "type" to "RequiredField",
             "config" to mapOf("field" to "resolution"),
-            "displayOrder" to 0,
+            "displayOrder" to displayOrder,
         )
 
     private fun sampleRow(): ValidatorRow =
