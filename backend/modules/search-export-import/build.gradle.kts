@@ -2,6 +2,7 @@
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.api.tasks.PathSensitivity
 
 plugins {
     kotlin("jvm")
@@ -200,6 +201,25 @@ tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn("generateJooq")
 }
 
+// ── generateJooq 를 up-to-date / 캐시 가능하게 만든다 ─────────────────────────
+// 2026-08-25 실측. 무변경 재실행에도 `1 actionable task: 1 executed` 였다. 사유는
+// `Task.upToDateWhen is false` — nu.studer 9.0 이 allInputsDeclared 가 꺼져 있으면
+// 스킵을 금지한다. DB 스키마라는 **선언되지 않은 입력**이 있다고 보기 때문이다.
+//
+// 이 모듈의 코드젠 입력은 DB 가 아니라 구조 미러 `init_codegen.sql` 하나다(jdbc URL 의
+// TC_INITSCRIPT 가 그것만 적용한다). 그 파일을 입력으로 선언하고 플러그인에 그 사실을 알린다.
+// 태스크는 이미 @CacheableTask 라 이것만으로 빌드 캐시까지 열린다.
+//
+// ★미러와 마이그레이션의 drift 는 CodegenMirrorParityTest 가 막는다. 그 계약이 없으면
+//   이 선언은 stale 생성물을 조용히 통과시킨다.
+tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
+    inputs
+        .files(file("src/main/resources/db/codegen/init_codegen.sql"))
+        .withPropertyName("codegenMirror")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    allInputsDeclared.set(true)
+}
+
 // ── KotlinCompile 옵션 ────────────────────────────────────────────────────────
 tasks.withType<KotlinCompile> {
     compilerOptions {
@@ -218,19 +238,26 @@ tasks.withType<Test> {
     // Docker Desktop은 /var/run/docker.sock에 정상 응답하지 않으므로 (Status 400 빈 응답),
     // 활성 context의 소켓 경로를 DOCKER_HOST 환경변수 + jvmArgs 시스템 프로퍼티 두 경로로 전달.
     // CI 환경에서 DOCKER_HOST가 이미 설정된 경우는 Gradle 상위 환경에서 상속되므로 별도 처리 불필요.
-    val dockerSocketPath =
-        runCatching {
-            val contextOutput =
-                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-                    .start().inputStream.bufferedReader().readLine() ?: ""
-            // "unix:///path" → "/path"
-            contextOutput.removePrefix("unix://")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    // ★2026-08-25 — ProcessBuilder 직접 호출을 providers.exec 로 바꿨다.
+    //   종전 코드는 **configuration 시점에** docker 를 실행했고, Gradle 이 그것을
+    //   "external process started ... during configuration time is unsupported" 로 거부해
+    //   configuration cache 를 저장하지 못했다. providers.exec 는 값을 요구받을 때까지
+    //   실행을 미루므로 doFirst 에서 소비하면 실행 시점 호출이 된다. 주입 값은 그대로다.
+    val dockerHost =
+        providers.exec {
+            commandLine("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
-    if (dockerSocketPath != null) {
-        environment("DOCKER_HOST", "unix://$dockerSocketPath")
-        // TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: JVM 시스템 프로퍼티로도 전달 (환경변수 누락 방어)
-        jvmArgs("-DDOCKER_HOST=unix://$dockerSocketPath")
+    doFirst {
+        // docker 미설치·context 미설정이면 빈 문자열이거나 예외다. 둘 다 주입하지 않고 넘어간다
+        // (CI 는 상위 환경의 DOCKER_HOST 를 상속하므로 주입이 없어도 동작한다).
+        val host = runCatching { dockerHost.orNull }.getOrNull()?.takeIf { it.startsWith("unix://") }
+        if (host != null) {
+            this@withType.environment("DOCKER_HOST", host)
+            // TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: JVM 시스템 프로퍼티로도 전달 (환경변수 누락 방어)
+            this@withType.jvmArgs("-DDOCKER_HOST=$host")
+        }
     }
 }
 

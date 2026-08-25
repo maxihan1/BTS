@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.testcontainers.containers.PostgreSQLContainer
 import java.io.File
 import java.sql.DriverManager
+import org.gradle.api.tasks.PathSensitivity
 
 // ── buildscript — generateJooq doFirst 훅에서 사용할 Testcontainers + PostgreSQL driver ──────────
 // 설계 이유.
@@ -277,28 +278,29 @@ jooq {
 //   3. JooqGenerate.jooqConfiguration.jdbc (private 필드) 를 reflection 으로 실제 URL 로 교체
 // generateJooq 완료 후 (doLast): 컨테이너 종료 — 리소스 반환
 afterEvaluate {
-    val dockerSocketPath =
-        runCatching {
-            val contextOutput =
-                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-                    .start().inputStream.bufferedReader().readLine() ?: ""
-            contextOutput.removePrefix("unix://")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    // ★2026-08-25 — providers.exec 로 교체. 종전은 configuration 시점에 docker 를 실행하고
+    //   그 자리에서 System.setProperty 까지 했다. 앞의 것이 configuration cache 를 막았고,
+    //   뒤의 것은 아래 doFirst 가 같은 일을 다시 하므로 중복이었다. 값 소비를 doFirst 로 미룬다.
+    val dockerHost =
+        providers.exec {
+            commandLine("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
-    if (dockerSocketPath != null) {
-        System.setProperty("DOCKER_HOST", "unix://$dockerSocketPath")
-        // Testcontainers 가 DOCKER_HOST 환경변수를 읽으므로 시스템 프로퍼티와 함께 전달.
-    }
+    // 코드젠 입력 경로를 configuration 시점에 확정한다. 아래 doFirst 가 이 값을 캡처하므로
+    // 실행 시점에 project 를 건드리지 않는다.
+    val codegenMirrorFile = project.file("src/main/resources/db/codegen/init_codegen.sql")
 
     tasks.named<JooqGenerate>("generateJooq") {
         // 컨테이너 참조를 doFirst/doLast 사이에서 공유하기 위한 상태 컨테이너
         val containerHolder = arrayOfNulls<PostgreSQLContainer<*>>(1)
 
         doFirst {
-            // Docker 소켓 경로를 시스템 프로퍼티로 주입 (Testcontainers 인식용)
-            if (dockerSocketPath != null) {
-                System.setProperty("DOCKER_HOST", "unix://$dockerSocketPath")
-            }
+            // Docker 소켓 경로를 시스템 프로퍼티로 주입 (Testcontainers 인식용).
+            // 컨테이너를 여기서 직접 띄우므로 start() 전에 반드시 세팅돼야 한다.
+            runCatching { dockerHost.orNull }.getOrNull()
+                ?.takeIf { it.startsWith("unix://") }
+                ?.let { System.setProperty("DOCKER_HOST", it) }
 
             // quay.io/tembo/pg16-pgmq:latest — pgmq 확장 사전 설치 이미지 (ADR 2026-05-22-pgmq-postgres-image).
             // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
@@ -319,9 +321,10 @@ afterEvaluate {
             // Flyway Community Edition 은 PostgreSQL 16.x 미지원 (Commercial 전용).
             // db/codegen/init_codegen.sql 에 V001 + V002 통합 — 단일 JDBC execute.
             Class.forName("org.postgresql.Driver")
-            val initSql =
-                File("${project.projectDir}/src/main/resources/db/codegen/init_codegen.sql")
-                    .readText()
+            // ★configuration cache — 실행 시점의 `project` 접근은 금지다("invocation of
+            //   'Task.project' at execution time is unsupported"). 경로를 configuration
+            //   시점에 잡아 둔 codegenMirrorFile 로 읽는다.
+            val initSql = codegenMirrorFile.readText()
             DriverManager.getConnection(container.jdbcUrl, container.username, container.password)
                 .use { conn ->
                     conn.createStatement().use { stmt ->
@@ -358,6 +361,25 @@ tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn("generateJooq")
 }
 
+// ── generateJooq 를 up-to-date / 캐시 가능하게 만든다 ─────────────────────────
+// 2026-08-25 실측. 무변경 재실행에도 `1 actionable task: 1 executed` 였다. 사유는
+// `Task.upToDateWhen is false` — nu.studer 9.0 이 allInputsDeclared 가 꺼져 있으면
+// 스킵을 금지한다. DB 스키마라는 **선언되지 않은 입력**이 있다고 보기 때문이다.
+//
+// 이 모듈의 코드젠 입력은 DB 가 아니라 구조 미러 `init_codegen.sql` 하나다(jdbc URL 의
+// TC_INITSCRIPT 가 그것만 적용한다). 그 파일을 입력으로 선언하고 플러그인에 그 사실을 알린다.
+// 태스크는 이미 @CacheableTask 라 이것만으로 빌드 캐시까지 열린다.
+//
+// ★미러와 마이그레이션의 drift 는 CodegenMirrorParityTest 가 막는다. 그 계약이 없으면
+//   이 선언은 stale 생성물을 조용히 통과시킨다.
+tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
+    inputs
+        .files(file("src/main/resources/db/codegen/init_codegen.sql"))
+        .withPropertyName("codegenMirror")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    allInputsDeclared.set(true)
+}
+
 // ── KotlinCompile 옵션 ────────────────────────────────────────────────────────
 tasks.withType<KotlinCompile> {
     compilerOptions {
@@ -373,18 +395,20 @@ tasks.withType<Test> {
     maxParallelForks = 1
 
     // Testcontainers — Docker Desktop(macOS)에서 현재 활성 context의 소켓 경로를 명시적으로 주입.
-    val dockerSocketPath =
-        runCatching {
-            val contextOutput =
-                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-                    .start().inputStream.bufferedReader().readLine() ?: ""
-            // "unix:///path" → "/path"
-            contextOutput.removePrefix("unix://")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    // ★2026-08-25 — providers.exec 로 교체. configuration 시점 외부 프로세스 실행이
+    //   configuration cache 저장을 막았다. 주입 값은 그대로다.
+    val dockerHost =
+        providers.exec {
+            commandLine("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
-    if (dockerSocketPath != null) {
-        environment("DOCKER_HOST", "unix://$dockerSocketPath")
-        jvmArgs("-DDOCKER_HOST=unix://$dockerSocketPath")
+    doFirst {
+        val host = runCatching { dockerHost.orNull }.getOrNull()?.takeIf { it.startsWith("unix://") }
+        if (host != null) {
+            this@withType.environment("DOCKER_HOST", host)
+            this@withType.jvmArgs("-DDOCKER_HOST=$host")
+        }
     }
 }
 

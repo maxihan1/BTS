@@ -81,8 +81,9 @@ wave 내 모든 task 가 PASS 면 다음 wave 로.
 **아래 명령을 종료 코드로 판정한다.** 사고 배경 · `pnpm install` 금지 · 인덱스 재생성 절차 전문. [worktree-commands.md](worktree-commands.md)
 
 ```bash
-./gradlew test ktlintCheck detekt   # 백엔드
-pnpm typecheck lint test            # 프론트엔드
+./gradlew test                                  # 백엔드 테스트
+./gradlew ktlintCheck detekt --rerun-tasks      # ★린트는 --rerun-tasks 필수
+pnpm typecheck && pnpm lint && pnpm test        # 프론트엔드 (pnpm 은 스크립트를 하나만 받는다)
 pnpm test:e2e                       # (qa-engineer 추가 시)
 pnpm test:workflow                  # ★ 워크플로우 판별식 — CI 와 같은 목록
 ```
