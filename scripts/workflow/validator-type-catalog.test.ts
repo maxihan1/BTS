@@ -76,7 +76,8 @@ function maskStringLiterals(source: string): string {
   for (let i = 0; i < out.length; i += 1) {
     const ch = out[i]
     if (inString && ch === '\\') {
-      out[i + 1] = '_'
+      // 이스케이프된 다음 글자도 함께 덮는다. 끝을 넘겨 쓰면 길이가 늘어 인덱스 보존이 깨지므로 막는다.
+      if (i + 1 < out.length) out[i + 1] = '_'
       i += 1
       continue
     }
@@ -224,7 +225,7 @@ describe('SDD §7.3·§7.4 표의 type 집합 = 워크플로우 팩토리의 whe
     for (const [label, values, source] of probes) {
       assert.ok(
         values.length > 0,
-        `${label} 에서 type 을 **0건** 뽑았다 — 파서가 죽었고 위 차집합 단언은 공허하다.\n` +
+        `${label}에서 type 을 **0건** 뽑았다 — 파서가 죽었고 위 차집합 단언은 공허하다.\n` +
           `  읽은 파일. ${path.relative(REPO_ROOT, source)}\n` +
           `  표는 '${TYPE_COLUMN_PREFIX}' 으로 시작하는 제목의 열이, 팩토리는 '${WHEN_HEAD}' 블록이 있어야 한다.`,
       )
