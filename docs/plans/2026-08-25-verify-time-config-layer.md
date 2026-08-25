@@ -91,7 +91,24 @@ Maxi 원문 — 「작업할때마다 검증 테스트 실측 등 너무 많은 
 - **Testcontainers 회귀.** `providers.exec` 전환 뒤 실제로 컨테이너를 띄우는 3개 모듈
   **1,722건 통과 · 0 실패** (project-workflow 731 · agile-planning 504 · slack-integration 487).
   결과 XML 갱신 시각으로 신선도까지 대조했다.
-- **판별식 전량** 420건.
+- **판별식 전량** 420건 · 14초 · 0 실패.
+- **백엔드 전량** `./gradlew test` **793초(13분 12초) · EXIT=0**. 종전 실측은 55분
+  (`.husky/pre-push` 주석) · 33분 (`backend-ci.yml:9-14`, 2026-07-27).
+  결과 XML 전수 집계 **1,032 클래스 / 10,411 tests / failures 0 / errors 0**.
+  ★단 이 실행은 `5 executed, 54 up-to-date` 였다 — 초록을 「전부 돌았다」로 읽으면 안 된다
+  ([[gradle-batched-task-partial-test-run]]). XML 갱신 시각으로 실제 실행을 대조하고,
+  안 돈 모듈은 `--rerun-tasks` 로 강제 실행했다. **최종 — 10개 모듈 11개 test 태스크가
+  전부 configuration cache 를 켠 상태에서 실행됐고 클래스 1,034 · tests 10,419 ·
+  failures 0 · errors 0.**
+- **★그 강제 실행이 잠복 회귀를 잡았다.** `app:test --rerun-tasks` 에서
+  `Task ':modules:issue-tracking:generateJooq': invocation of 'Task.project' at execution
+  time is unsupported` 가 터졌다. `doFirst` 안에서 `project.projectDir` 로 코드젠 입력
+  파일을 읽고 있었다. **configuration cache 의 실행시점 위반은 그 태스크가 실제로 돌 때만
+  드러난다** — generateJooq 는 위 2. 적용 후 거의 항상 스킵되므로 특히 잘 숨는다. 경로를
+  configuration 시점에 `project.file(...)` 로 잡아 캡처하도록 고쳤다.
+  ([[config-cache-violation-hides-behind-uptodate]])
+- **린트 캐시 우회 확인.** `--rerun-tasks` 없이는 `3 up-to-date`, 붙이면 `3 executed`.
+  캐시가 실제로 걸리고 우회도 실제로 듣는다.
 
 ## 하지 않은 것 — 이유와 함께
 

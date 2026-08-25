@@ -287,6 +287,10 @@ afterEvaluate {
             isIgnoreExitValue = true
         }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
+    // 코드젠 입력 경로를 configuration 시점에 확정한다. 아래 doFirst 가 이 값을 캡처하므로
+    // 실행 시점에 project 를 건드리지 않는다.
+    val codegenMirrorFile = project.file("src/main/resources/db/codegen/init_codegen.sql")
+
     tasks.named<JooqGenerate>("generateJooq") {
         // 컨테이너 참조를 doFirst/doLast 사이에서 공유하기 위한 상태 컨테이너
         val containerHolder = arrayOfNulls<PostgreSQLContainer<*>>(1)
@@ -317,9 +321,10 @@ afterEvaluate {
             // Flyway Community Edition 은 PostgreSQL 16.x 미지원 (Commercial 전용).
             // db/codegen/init_codegen.sql 에 V001 + V002 통합 — 단일 JDBC execute.
             Class.forName("org.postgresql.Driver")
-            val initSql =
-                File("${project.projectDir}/src/main/resources/db/codegen/init_codegen.sql")
-                    .readText()
+            // ★configuration cache — 실행 시점의 `project` 접근은 금지다("invocation of
+            //   'Task.project' at execution time is unsupported"). 경로를 configuration
+            //   시점에 잡아 둔 codegenMirrorFile 로 읽는다.
+            val initSql = codegenMirrorFile.readText()
             DriverManager.getConnection(container.jdbcUrl, container.username, container.password)
                 .use { conn ->
                     conn.createStatement().use { stmt ->
