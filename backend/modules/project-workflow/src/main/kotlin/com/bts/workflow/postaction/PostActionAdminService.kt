@@ -20,8 +20,8 @@ import java.util.UUID
  * (ADR 2026-08-18 §D1). 아니면 종전 `fromStateKey__toStateKey` 합성 키로 읽는다. 새 라우트를
  * 만들지 않으므로 이미 나가 있는 키 경로가 그대로 산다.
  *
- * **캐시 무효화 불필요**: post-action 은 전환 실행 시
- * `DefaultWorkflowDefinitionRepository.findPostActions` 가 DB 직접 조회(WorkflowEngine.kt:302 경유)한다.
+ * **캐시 무효화 불필요**: post-action 은 전환 실행 시 `WorkflowEngine` 의 post-action 실행 경로가
+ * `DefaultWorkflowDefinitionRepository.findPostActions` 로 DB 를 직접 조회한다.
  * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 것은 `Workflow` aggregate(= states · transitions)
  * 뿐이고 post-action 필드가 없으므로 별도 캐시 무효화가 불필요하다. **validator 도 같은 이유로 비캐시**다
  * — 두 컬렉션 다 전환 실행 시 DB 를 직접 친다.
