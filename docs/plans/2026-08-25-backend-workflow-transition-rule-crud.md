@@ -459,7 +459,7 @@ class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminExceptions.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorAdminServiceTest.kt`]
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminExceptions.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/transition/TransitionKeyResolver.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorAdminServiceTest.kt`]
 - depends-on: [1, 3]
 
 **RED**:
@@ -495,6 +495,13 @@ class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
 - **`evaluate` 를 부르지 않는다** (스펙 §제약 4). 생성까지가 dry-run 이다
 
 **REFACTOR**: 예외 3종을 `ValidatorAdminExceptions.kt` 로 분리 · KDoc 에 검증 순서 명시.
+
+> **Task 1 이 여기로 미뤄 둔 KDoc 1건을 함께 닫는다.**
+> `transition/TransitionKeyResolver.kt:94` 가 「몇 건인지를 보고 404 로 바꿀지 결정하는 것은
+> 호출자([PostActionAdminService])의 몫이다」라고 적는다. Task 1 의 개명으로 패키지가 갈려 KDoc
+> 링크가 이미 끊겼고, **이 task 가 `ValidatorAdminService` 를 두 번째 호출자로 만들면 문장 자체가
+> 부정확해진다.** 호출자를 하나로 지목하지 말고 「호출자」로 일반화한다. 이 1줄이 `files` 에
+> `TransitionKeyResolver.kt` 가 들어간 유일한 이유다 — 그 파일의 로직은 건드리지 않는다.
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*ValidatorAdminServiceTest'`
 
