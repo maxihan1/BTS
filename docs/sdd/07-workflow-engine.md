@@ -32,12 +32,12 @@ Atlas의 워크플로우 엔진은 FSM(유한 상태 기계) 기반. Jira의 Wor
 
 ## 7.3 Validator 표준
 
-| 타입 식별자 | 구현 클래스 | 용도 |
-|---|---|---|
-| `RequiredField` | `RequiredFieldValidator` | 특정 필드 입력 필수 |
-| `permission-check` | `PermissionValidator` | 권한 보유 검증 |
-| `not-status-category` | `NotStatusCategoryValidator` | 특정 카테고리 진입 불가 |
-| `CustomExpression` | `CustomExpressionValidator` | SpEL 표현식 |
+| 타입 식별자 | 구현 클래스 | 필수 config 키 | 용도 |
+|---|---|---|---|
+| `RequiredField` | `RequiredFieldValidator` | `field` | 특정 필드 입력 필수 |
+| `permission-check` | `PermissionValidator` | `permission` · `scope`(선택) | 권한 보유 검증 |
+| `not-status-category` | `NotStatusCategoryValidator` | `category` | 특정 카테고리 진입 불가 |
+| `CustomExpression` | `CustomExpressionValidator` | `expression` | SpEL 표현식 |
 
 > **타입 식별자 열이 정본이다** — `DefaultWorkflowValidatorFactory.create(type, config)` 가 받는
 > 문자열 그대로이고, 다른 값을 쓰면 `지원하지 않는 validator type` 예외가 난다. 표기가 섞여 있는
@@ -45,20 +45,33 @@ Atlas의 워크플로우 엔진은 FSM(유한 상태 기계) 기반. Jira의 Wor
 > 각주. ADR [validator-terminology](../adr/2026-05-21-workflow-validator-terminology.md) 가 정한 것은
 > **구현 클래스 이름**이지 런타임 `type` 문자열이 아니므로, 이 표의 2026-08-25 정정은 그 ADR 과
 > 충돌하지 않는다(클래스 이름은 그대로 병기한다).
-> 표와 팩토리 `when` 분기의 일치는 `scripts/workflow/validator-type-catalog.test.ts` 가 강제한다.
+
+> **`필수 config 키` 열 표기.** 키만 적혀 있으면 **필수**다 — 없으면 팩토리가
+> `IllegalArgumentException` 을 던지고 CRUD API 는 400 을 준다. 뒤에 `(선택)` 이 붙으면 기본값이
+> 있거나(`scope` → `ISSUE`) 검증 없이 그대로 꺼내 쓰는 키다. 여러 개는 `·` 로 잇는다.
+> **이 열이 편집 화면 입력 폼의 계약이다.** 화면이 타입별 키를 자기 코드에 들면 그것이 팩토리와
+> 갈리는 두 번째 목록이 되고, 갈린 사실은 저장 시점 400 으로만 드러난다.
+
+> **이 표의 세 열은 기계가 지킨다.** `scripts/workflow/validator-type-catalog.test.ts` 가
+> ① `타입 식별자` 열 ↔ 팩토리 `when (type)` 분기 ② `필수 config 키` 열 ↔ `create*` 함수의
+> config 읽기(`requireConfigString` = 필수 · `requireConfigEnumOrDefault` 와 `config["키"]` 직접
+> 읽기 = 선택) ③ `구현 클래스` 열 ↔ `override val type` 을 선언한 실제 `.kt` 를 양방향 차집합 0 으로
+> 대조하고, 덤으로 ④ 팩토리 분기 ↔ 구현체 `override val type` 까지 맞춘다.
+> 판별식은 KDoc 을 읽지 않는다 — 주석을 지운 뒤 `when` 분기 본문과 `create*` 본문만 본다.
 
 ## 7.4 Post-function 표준
 
-| 타입 식별자 | 구현 클래스 | 용도 |
-|---|---|---|
-| `SET_FIELD` | `SetFieldPostAction` | 필드 자동 설정 (예: resolution=fixed) |
-| `NOTIFY` | `NotifyPostAction` | 알림 발송 |
-| `ADD_WATCHER` | `AddWatcherPostAction` | Watcher 자동 추가 |
-| `RUN_AUTOMATION` | `RunAutomationPostAction` | 자동화 규칙 실행 |
-| `CALL_WEBHOOK` | `CallWebhookPostAction` | 외부 시스템 통지 |
+| 타입 식별자 | 구현 클래스 | 필수 config 키 | 용도 |
+|---|---|---|---|
+| `SET_FIELD` | `SetFieldPostAction` | `field` · `value`(선택) | 필드 자동 설정 (예: resolution=fixed) |
+| `NOTIFY` | `NotifyPostAction` | `channel` · `recipients` | 알림 발송 |
+| `ADD_WATCHER` | `AddWatcherPostAction` | `watcher` | Watcher 자동 추가 |
+| `RUN_AUTOMATION` | `RunAutomationPostAction` | `automationKey` | 자동화 규칙 실행 |
+| `CALL_WEBHOOK` | `CallWebhookPostAction` | `url` · `method` | 외부 시스템 통지 |
 
-> 타입 식별자 열이 정본인 것은 §7.3 각주와 같다 — `DefaultWorkflowPostActionFactory.create(type, config)`
-> 가 받는 문자열 그대로다(이쪽은 전부 SCREAMING_SNAKE_CASE). 행 순서도 팩토리 `when` 분기 순서다.
+> 타입 식별자 열이 정본인 것도, `필수 config 키` 열의 표기와 기계 강제도 §7.3 각주와 같다 —
+> `DefaultWorkflowPostActionFactory.create(type, config)` 가 받는 문자열 그대로다(이쪽은 전부
+> SCREAMING_SNAKE_CASE). 행 순서도 팩토리 `when` 분기 순서다.
 
 ## 7.5 편집 가능 워크플로우 — FR-WF-04~07 (2026-08-18 결정 · 미구현)
 
