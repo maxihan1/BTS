@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 /**
- * [ValidatorAdminService] 단위 테스트 — 9건. 스펙 §엣지 케이스와 1:1 이다.
+ * [ValidatorAdminService] 단위 테스트 — 14건. 스펙 §엣지 케이스와 1:1 이다.
  *
  * ### 팩토리만 실물이다 (mock 이 아니다)
  * 형제 `PostActionAdminServiceTest` 는 팩토리까지 mock 으로 두지만 여기서는
@@ -125,6 +125,21 @@ class ValidatorAdminServiceTest {
         verify(exactly = 1) { repository.insert(transitionId, "permission-check", config, 0) }
     }
 
+    @Test
+    fun `config 에 여분 키가 섞여도 통과한다`() {
+        // E5 — 팩토리는 필요한 키만 읽는다. 여분 키 거절은 요구에 없다.
+        // 통과만 재면 config 를 도중에 깎아도 초록이라, 넘어간 Map 이 그대로인지까지 본다.
+        val config = mapOf<String, Any?>("field" to "resolution", "note" to "관리자 메모")
+        every {
+            repository.insert(transitionId, "RequiredField", config, 0)
+        } returns ValidatorRow(validatorId, transitionId, "RequiredField", config, 0)
+
+        val result = service.create(workflowKey, transitionKey, "RequiredField", config, 0)
+
+        assertThat(result.config).containsEntry("note", "관리자 메모")
+        verify(exactly = 1) { repository.insert(transitionId, "RequiredField", config, 0) }
+    }
+
     // ── 편집 불가 타입 (FR-6 · E8) ────────────────────────────────────────────
 
     @Test
@@ -170,7 +185,28 @@ class ValidatorAdminServiceTest {
         verify(exactly = 1) { repository.deleteById(validatorId) }
     }
 
-    // ── 전환 해석 · IDOR (E1 · E4) ────────────────────────────────────────────
+    // ── update 성공 경로 (FR-3) ──────────────────────────────────────────────
+
+    @Test
+    fun `update 성공은 repository 에 같은 인자를 그대로 넘긴다`() {
+        // FR-3 — update 를 부르는 나머지 테스트는 전부 예외 경로(`verify(exactly = 0)`)라
+        // 인자 전달을 재는 단언이 한 건도 없었다. 그러면 인자 순서를 뒤바꿔도 초록이다.
+        // create 쪽은 이미 `verify(exactly = 1) { insert(...) }` 로 고정돼 있어 두 경로가 비대칭이었다.
+        // displayOrder 는 기본값 0 이 아닌 7 을 쓴다 — 그 자리에 상수를 박는 구현을 통과시키지 않는다.
+        val existing = ValidatorRow(validatorId, transitionId, "RequiredField", mapOf("field" to "resolution"), 0)
+        every { repository.findByTransitionId(transitionId) } returns listOf(existing)
+        val config = mapOf<String, Any?>("permission" to "TRANSITION_ISSUE")
+        every {
+            repository.update(validatorId, "permission-check", config, 7)
+        } returns ValidatorRow(validatorId, transitionId, "permission-check", config, 7)
+
+        val result = service.update(workflowKey, transitionKey, validatorId, "permission-check", config, 7)
+
+        assertThat(result.displayOrder).isEqualTo(7)
+        verify(exactly = 1) { repository.update(validatorId, "permission-check", config, 7) }
+    }
+
+    // ── 전환 해석 · IDOR (E1 · E3 · E4) ───────────────────────────────────────
 
     @Test
     fun `합성 키가 2건에 걸리면 ValidatorNotFoundException`() {
@@ -198,5 +234,48 @@ class ValidatorAdminServiceTest {
         }.isInstanceOf(ValidatorNotFoundException::class.java)
 
         verify(exactly = 0) { repository.update(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `남의 전환에 속한 id 로 삭제하면 ValidatorNotFoundException`() {
+        // E4 의 나머지 절반 — delete 의 소속 확인. 이 확인을 통째로 지워도 다른 테스트는
+        // 전부 「소속이 맞는」 케이스라 아무 단언이 깨지지 않는다. 여기만 그것을 잡는다.
+        val foreignId = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000099")
+        val mine = ValidatorRow(validatorId, transitionId, "RequiredField", mapOf("field" to "resolution"), 0)
+        every { repository.findByTransitionId(transitionId) } returns listOf(mine)
+
+        assertThatThrownBy {
+            service.delete(workflowKey, transitionKey, foreignId)
+        }.isInstanceOf(ValidatorNotFoundException::class.java)
+
+        // 404 를 던지고도 지웠으면 IDOR 은 그대로다. 삭제가 아예 일어나지 않아야 한다.
+        verify(exactly = 0) { repository.deleteById(any()) }
+    }
+
+    @Test
+    fun `UUID 가 그 워크플로우의 전환이 아니면 ValidatorNotFoundException`() {
+        // E3 — cross-workflow IDOR. 경로가 UUID 면 소속 확인은 `resolveById` 의 null 판정 하나뿐이라,
+        // 그것을 버리면 남의 워크플로우 전환에 규칙을 붙일 수 있다. 형제
+        // `PostActionAdminServiceTest` 의 같은 테스트와 픽스처를 맞춘다.
+        every { transitionResolver.resolveById(workflowKey, transitionId) } returns null
+
+        assertThatThrownBy {
+            service.listForTransition(workflowKey, transitionId.toString())
+        }.isInstanceOf(ValidatorNotFoundException::class.java)
+
+        // 합성 키 분해를 시도하면 UUID 의 '-' 를 상태 키로 오해한다 — 그 경로로 새지 않는지 본다.
+        verify(exactly = 0) { transitionResolver.resolveTransitionIds(any(), any(), any()) }
+    }
+
+    @Test
+    fun `transitionKey 에 __ 가 없으면 ValidatorNotFoundException`() {
+        // 합성 키 갈래의 형식 오류. config 는 유효하다 — 404 의 원인이 형식 판정 하나뿐이어야 한다.
+        val config = mapOf<String, Any?>("field" to "resolution")
+
+        assertThatThrownBy {
+            service.create(workflowKey, "open-in_progress", "RequiredField", config, 0)
+        }.isInstanceOf(ValidatorNotFoundException::class.java)
+
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
     }
 }
