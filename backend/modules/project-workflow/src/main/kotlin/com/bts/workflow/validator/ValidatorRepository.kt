@@ -47,7 +47,7 @@ class ValidatorRepository(
         WORKFLOW_VALIDATORS.DISPLAY_ORDER,
     ) {
     /**
-     * 전환 ID 에 속한 validator 목록을 display_order ASC 순으로 반환한다.
+     * 전환 ID 에 속한 validator 목록을 display_order ASC · 동률은 id ASC 순으로 반환한다.
      *
      * @param transitionId 조회할 전환의 UUID.
      * @return [ValidatorRow] 목록. 없으면 빈 리스트.
