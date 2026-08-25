@@ -49,6 +49,8 @@ import java.util.UUID
  * - 실재하는 전환과 실재하지 않는 전환의 403 응답이 **구별되지 않는다** (존재 probe 차단).
  * - 403 본문에 actorId·permission·scope 가 실리지 않는다.
  * - POST 성공 201 + `{data:...}` 봉투 · DELETE 성공 204 무본문.
+ * - GET 목록의 각 행이 `phase` 를 함께 준다 — 소비자가 `type → phase` 표를 만들 이유를 없앤다.
+ * - 인스턴스화가 실패하는 행은 `phase = null` 이고 **목록 전체는 200** 이다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ValidatorControllerTest.TestMvcConfig::class])
@@ -100,6 +102,9 @@ class ValidatorControllerTest {
     private val existingTransitionKey = "in_progress__done"
     private val missingTransitionKey = "in_progress__nowhere"
     private val validatorId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000001")
+    private val permissionValidatorId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000002")
+    private val brokenConfigId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000003")
+    private val unknownTypeId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000004")
     private val transitionId: UUID = UUID.fromString("ffffffff-0000-0000-0000-000000000001")
 
     @BeforeEach
@@ -238,6 +243,50 @@ class ValidatorControllerTest {
         verify(exactly = 1) { service.delete(workflowKey, existingTransitionKey, validatorId) }
     }
 
+    // ── phase — 응답이 진실 출처다 (소비자가 `type → phase` 표를 만들 이유를 없앤다) ──
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `GET 200 은 각 행의 phase 를 함께 준다`() {
+        allowPermission()
+        every { service.listForTransition(workflowKey, existingTransitionKey) } returns
+            listOf(sampleRow(), permissionCheckRow())
+
+        // 두 행의 phase 가 서로 **달라야** 성립한다 — 같은 값이면 상수를 박아도 초록이 된다.
+        mockMvc.perform(get(basePath(existingTransitionKey)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.length()").value(2))
+            .andExpect(jsonPath("$.data[0].type").value("RequiredField"))
+            .andExpect(jsonPath("$.data[0].phase").value("EXECUTION"))
+            .andExpect(jsonPath("$.data[1].type").value("permission-check"))
+            .andExpect(jsonPath("$.data[1].phase").value("AVAILABILITY"))
+    }
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `인스턴스화가 실패하는 행은 phase 가 null 이고 목록은 200 이다`() {
+        allowPermission()
+        every { service.listForTransition(workflowKey, existingTransitionKey) } returns
+            listOf(brokenConfigRow(), unknownTypeRow(), sampleRow())
+
+        val body =
+            mockMvc.perform(get(basePath(existingTransitionKey)))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .contentAsString
+
+        // `doesNotExist()` 는 「키 없음」과 「값이 null」을 구별하지 못한다 — 트리를 직접 본다.
+        // `path()` 는 없는 키에 MissingNode(isNull=false) 를 주므로 둘이 갈린다.
+        val data = mapper.readTree(body).path("data")
+        assertThat(data.size()).isEqualTo(3)
+        assertThat(data.path(0).path("type").asText()).isEqualTo("RequiredField")
+        assertThat(data.path(0).path("phase").isNull).isTrue()
+        assertThat(data.path(1).path("type").asText()).isEqualTo("NoSuchValidator")
+        assertThat(data.path(1).path("phase").isNull).isTrue()
+        assertThat(data.path(2).path("phase").asText()).isEqualTo("EXECUTION")
+    }
+
     // ── fixture ───────────────────────────────────────────────────────────────
 
     private fun basePath(transitionKey: String): String =
@@ -257,6 +306,41 @@ class ValidatorControllerTest {
             type = "RequiredField",
             config = mapOf("field" to "resolution"),
             displayOrder = 0,
+        )
+
+    /**
+     * AVAILABILITY 페이즈 행 — [sampleRow] (EXECUTION) 와 짝이 되어 phase 가 상수가 아님을 가른다.
+     *
+     * 4종 중 `RequiredField` 만 EXECUTION 을 override 하고 나머지는 SPI 기본값 AVAILABILITY 를
+     * 상속한다. 즉 **type 문자열만으로는 phase 를 알 수 없다** — 그것이 이 짝의 근거다.
+     */
+    private fun permissionCheckRow(): ValidatorRow =
+        ValidatorRow(
+            id = permissionValidatorId,
+            transitionId = transitionId,
+            type = "permission-check",
+            config = mapOf("permission" to "TRANSITION_ISSUE"),
+            displayOrder = 1,
+        )
+
+    /** 손으로 넣은 깨진 config 행 — `RequiredField` 인데 필수 키 `field` 가 없다. */
+    private fun brokenConfigRow(): ValidatorRow =
+        ValidatorRow(
+            id = brokenConfigId,
+            transitionId = transitionId,
+            type = "RequiredField",
+            config = emptyMap(),
+            displayOrder = 2,
+        )
+
+    /** 팩토리 분기에서 사라진 type 행 — 두 번째 실패 모드다. */
+    private fun unknownTypeRow(): ValidatorRow =
+        ValidatorRow(
+            id = unknownTypeId,
+            transitionId = transitionId,
+            type = "NoSuchValidator",
+            config = emptyMap(),
+            displayOrder = 3,
         )
 
     private fun denyPermission() {
