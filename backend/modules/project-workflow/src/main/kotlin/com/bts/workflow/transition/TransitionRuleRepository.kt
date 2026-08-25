@@ -9,7 +9,6 @@ import org.jooq.JSONB
 import org.jooq.Table
 import org.jooq.TableField
 import org.slf4j.LoggerFactory
-import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -28,9 +27,14 @@ import java.util.UUID
  *
  * config 는 JSONB 컬럼으로, [ObjectMapper] 로 직렬화/역직렬화한다.
  *
- * CRUD 4종을 `open` 으로 여는 이유. kotlin-spring(all-open) 은 `@Repository` 가 붙은 **그 클래스**의 멤버만 열고
- * 상위 클래스까지 거슬러 열지 않는다. 기반 클래스 메서드가 final 이면 Spring CGLIB 프록시가 재정의하지 못해
- * `@Transactional` 이 조용히 무력화된다 (이행 전 `javap` 로 non-final 임을 실측해 대조).
+ * **트랜잭션 경계는 여기가 아니라 구체 `@Repository` 클래스가 갖는다.** 기반 클래스는 구현만 갖는다.
+ * ArchUnit 룰 1(`@Transactional` 메서드를 가진 구체 클래스는 Spring stereotype 필수)은 interface 만 예외로 두므로,
+ * 빈이 아닌 추상 클래스에 `@Transactional` 을 두면 룰 위반이고 여기에 `@Repository` 를 다는 것은 장식일 뿐이다.
+ *
+ * 그럼에도 CRUD 4종이 `open` 인 이유. 하위 클래스가 `override` 로 경계를 얹으려면 열려 있어야 하고,
+ * kotlin-spring(all-open) 은 `@Repository` 가 붙은 **그 클래스**의 멤버만 열 뿐 상위 클래스까지 거슬러 열지 않는다.
+ * 기반 메서드가 final 이면 `override` 자체가 불가능하고, 상속만 했다면 Spring CGLIB 프록시가 재정의하지 못해
+ * `@Transactional` 이 조용히 무력화된다 (`javap -p` 로 non-final 임을 실측해 대조한다).
  *
  * @param dsl jOOQ DSLContext. SQL 안전 바인딩(?-파라미터)에 사용.
  * @param objectMapper config Map ↔ JSON 변환용 Jackson ObjectMapper.
@@ -72,7 +76,6 @@ abstract class TransitionRuleRepository(
      * @param transitionId 조회할 전환의 UUID.
      * @return [TransitionRuleRow] 목록. 없으면 빈 리스트.
      */
-    @Transactional(readOnly = true)
     open fun findByTransitionId(transitionId: UUID): List<TransitionRuleRow> {
         log.debug("{}.findByTransitionId transitionId={}", repositoryName, transitionId)
         return dsl
@@ -116,7 +119,6 @@ abstract class TransitionRuleRepository(
      * @param displayOrder UI 표시 순서.
      * @return 삽입된 [TransitionRuleRow].
      */
-    @Transactional
     open fun insert(
         transitionId: UUID,
         type: String,
@@ -155,7 +157,6 @@ abstract class TransitionRuleRepository(
      * @return 수정된 [TransitionRuleRow].
      * @throws IllegalStateException 해당 id 가 존재하지 않을 때.
      */
-    @Transactional
     open fun update(
         id: UUID,
         type: String,
@@ -192,7 +193,6 @@ abstract class TransitionRuleRepository(
      *
      * @param id 삭제할 전환 규칙 UUID.
      */
-    @Transactional
     open fun deleteById(id: UUID) {
         log.debug("{}.deleteById id={}", repositoryName, id)
         dsl.deleteFrom(table)
