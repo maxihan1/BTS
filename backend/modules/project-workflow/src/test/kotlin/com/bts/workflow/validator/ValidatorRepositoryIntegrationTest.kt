@@ -150,8 +150,16 @@ class ValidatorRepositoryIntegrationTest {
                 }
             }
 
-        private fun connection(): Connection =
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+        /**
+         * 컨테이너에 새 JDBC 커넥션 1개.
+         *
+         * 식(`=`) 본문으로 접으면 한 줄이 120자를 넘어 detekt `MaxLineLength` 에 걸린다.
+         * 반대로 두 줄로 펼치면 ktlint 가 「본문이 시그니처와 같은 줄에 들어간다」로 되돌리라 한다.
+         * 두 규칙이 서로 반대를 요구하므로 블록 본문이 유일한 교집합이다.
+         */
+        private fun connection(): Connection {
+            return DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+        }
     }
 
     @Test
