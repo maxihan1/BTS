@@ -6,6 +6,7 @@ import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.support.SharedPostgres
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -22,9 +23,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 
@@ -254,16 +252,16 @@ class ChangePasswordServiceTest {
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(StoredPasswordCredentialRepository::class)
-@Testcontainers
 class ChangePasswordServiceMustChangeIntegrationTest {
     companion object {
-        @Container
+        /**
+         * 공용 컨테이너의 템플릿 DB 를 복제한 전용 데이터베이스.
+         *
+         * 격리는 그대로이고 컨테이너 기동과 마이그레이션 재적용만 사라진다.
+         * 근거와 주의점은 [com.atlas.bts.identity.support.SharedPostgres] 헤더.
+         */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -271,7 +269,11 @@ class ChangePasswordServiceMustChangeIntegrationTest {
             r.add("spring.datasource.url") { postgres.jdbcUrl }
             r.add("spring.datasource.username") { postgres.username }
             r.add("spring.datasource.password") { postgres.password }
-            r.add("spring.flyway.enabled") { "true" }
+            // 템플릿 DB 에서 이미 적용됐다 — 여기서 다시 돌리면 이 최적화가 무의미해진다
+            r.add("spring.flyway.enabled") { "false" }
+            // 공용 컨테이너라 커넥션 한도도 공유한다. context 캐시가 쌓이면 기본 풀(10)로는
+            // max_connections 를 넘긴다 — SharedPostgres 헤더 참조.
+            r.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
         }
     }
 
