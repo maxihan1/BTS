@@ -423,18 +423,37 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 > `transition_id` 는 `workflow_transitions` 로 향하는 FK(ON DELETE CASCADE)다. **전환 행 픽스처를
 > 먼저 넣어야** INSERT 가 성립한다(리뷰 C3).
 
-**GREEN**: 8줄이면 끝난다 — 기반이 이미 있다.
+**GREEN**: `PostActionRepository` 와 **같은 모양**으로 만든다 — 기반 클래스 + `override` 4종.
+
 ```kotlin
 typealias ValidatorRow = TransitionRuleRow
 
 @Repository
 class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
-    TransitionRuleRepository(dsl, objectMapper, WORKFLOW_VALIDATORS, ID, TRANSITION_ID, TYPE, CONFIG, DISPLAY_ORDER)
+    TransitionRuleRepository(dsl, objectMapper, WORKFLOW_VALIDATORS, ID, TRANSITION_ID, TYPE, CONFIG, DISPLAY_ORDER) {
+
+    @Transactional(readOnly = true)
+    override fun findByTransitionId(transitionId: UUID) = super.findByTransitionId(transitionId)
+    // insert · update · deleteById 도 같은 형태로 @Transactional + override + super 위임
+}
 ```
+
+> ★**`@Transactional` 은 반드시 이 구체 클래스에 둔다. 기반 클래스에 두면 안 된다** (Task 2 실측).
+> 근거 2겹. ① `ProjectWorkflowArchitectureTest` 룰 1 이 `@Transactional` 메서드를 가진 **비-interface
+> 클래스**에 stereotype 을 요구한다 — 추상 기반에 두면 즉시 red 다(Task 2 가 실제로 밟았다)
+> ② kotlin-spring(all-open)은 `@Repository` 가 붙은 **그 클래스**의 멤버만 열고 상위를 거슬러 열지
+> 않는다. 기반 메서드가 `final` 이면 CGLIB 가 재정의를 못 해 트랜잭션이 **무음 실패**한다 —
+> 그래서 기반은 `open`, 경계는 구체 클래스다
+> (메모리 `kotlin-allopen-skips-superclass-transactional`)
 
 **REFACTOR**: L1 주석 · KDoc.
 
-**검증**: `./gradlew :modules:project-workflow:test --tests '*ValidatorRepositoryIntegrationTest'`
+**검증**.
+- `./gradlew :modules:project-workflow:test --tests '*ValidatorRepositoryIntegrationTest'` → EXIT 0
+- ★**모듈 전량 1회** `./gradlew :modules:project-workflow:test` → EXIT 0.
+  `--tests '<패턴>'` 필터는 **ArchUnit·의존성 가드를 패턴 밖으로 흘려보낸다** — 코드 전체를 스캔하는
+  테스트라 기능 패턴에 절대 안 걸린다. Task 2 가 정확히 이것 때문에 DRIFT 판정을 받았다.
+  순수 리팩터라도 모듈 전량이 마지막 관문이다
 
 ### Task 4. `ValidatorAdminService` — 전환 해석 + type/config 검증 + 편집 불가 타입
 
