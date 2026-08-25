@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (486건, 최신순)
+# 시간 축 인덱스 (487건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-08-25 | backend-workflow-transition-rule-crud | — | ✔ | — | — | FR-WF-04 FR-WF-05 FR-WF-06 |
 | 2026-08-25 | verify-time-config-layer | — | ✔ | — | — | — |
 | 2026-08-24 | admin-workflows-list-mode-editor | — | ✔ | — | — | FR-WF-02 FR-WF-04 FR-WF-05 FR-WF-06 |
 | 2026-08-24 | fr-nt-02-ws-handshake-permitall | — | — | ✔ | — | FR-NT-02 |
