@@ -703,7 +703,7 @@ class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
 
 **★ 한 건은 권고와 다르게 간다.** api-contract 는 `phase`·config 키를 **카탈로그 엔드포인트 신설**로
 풀라고 했으나, 그것은 FR-WF-06 D4 의 선언 범위를 넘는 **새 API 표면**이라 스펙 deviation 전수 동기화가
-다시 붙는다. 대신 **① `ValidatorResponse` 에 `phase` 추가(행 단위 `runCatching` 방어) ② SDD 표에
+다시 붙는다. 대신 **① `ValidatorResponse` 에 `phase` 추가(행 단위 `catch (IllegalArgumentException)` 방어) ② SDD 표에
 `필수 config 키` 열 추가 ③ 판별식이 그 열까지 읽게 확장** 으로 간다. 같은 두 문제를 닫으면서
 **기계 강제**가 붙고, 판별식이 자기 결함을 옆 열에서 재생산했다는 지적(maintainability I14)도 함께
 사라진다. 카탈로그 엔드포인트는 D6 착수 시 재검토 대상으로 남긴다.
@@ -756,7 +756,7 @@ API 에 되돌려 쓸 때 400)
 - files: [`.../validator/web/ValidatorDtos.kt`, `.../validator/web/ValidatorController.kt`, `.../validator/ValidatorAdminService.kt`, `.../test/.../validator/web/ValidatorControllerTest.kt`]
 - depends-on: [12]
 
-`ValidatorResponse` 에 `phase` 추가. **행 단위 `runCatching`** 으로 인스턴스화 실패 행은 `phase=null`.
+`ValidatorResponse` 에 `phase` 추가. **행 단위 `catch (IllegalArgumentException)`** 으로 인스턴스화 실패 행은 `phase=null`.
 > 내가 스펙에 적은 제외 근거는 **틀렸다**. 「깨진 config 행이 목록 전체를 500」이라 했으나
 > `WorkflowEngine.kt:511` 이 **이미 같은 행으로 같은 호출을 try/catch 없이** 한다. 두 경로를 가르지 못한다.
 
