@@ -26,9 +26,12 @@
 //
 // ## 표의 어느 열을 읽나
 //
-// 표는 3열(`타입 식별자` · `구현 클래스` · `용도`)이고 파서는 **`타입 식별자` 열만** 읽는다.
-// 열을 위치(0번째)가 아니라 **제목 문자열로** 찾는다 — 판별식과 표가 같은 열에서 만난다는 계약을
-// 기계가 들고 있게 하려는 것이다. 제목이 바뀌면 추출이 0건이 되고, 아래 비-공허 짝이 그걸 잡는다.
+// 표는 3열(`타입 식별자` · `구현 클래스` · `용도`)이고 파서는 **런타임 식별자 열만** 읽는다.
+// 그 열은 위치(0번째)가 아니라 **제목이 `타입` 으로 시작하는 열**로 찾는다 — 판별식과 표가
+// 같은 열에서 만난다는 계약을 기계가 들고 있게 하려는 것이다. 위치로 찾으면 열을 하나 끼워 넣는
+// 순간 엉뚱한 열을 읽고, 제목 전체를 못박으면 제목을 다듬는 순간 추출이 0건이 되어
+// 「표가 틀렸다」가 아니라 「표를 못 읽었다」는 덜 쓸모 있는 red 로 바뀐다.
+// 제목에서 `타입` 이 사라지면 추출이 0건이 되고, 그건 아래 비-공허 짝이 잡는다.
 //
 // ## 비-공허 짝이 왜 별도 테스트인가
 //
@@ -50,8 +53,13 @@ const ENGINE_DIR = path.join(
 const VALIDATOR_FACTORY = path.join(ENGINE_DIR, 'DefaultWorkflowValidatorFactory.kt')
 const POST_ACTION_FACTORY = path.join(ENGINE_DIR, 'DefaultWorkflowPostActionFactory.kt')
 
-/** SDD 표에서 런타임 식별자가 실린 열의 제목. 판별식과 표가 이 문자열 하나로 만난다. */
-const TYPE_COLUMN_HEADER = '타입 식별자'
+/**
+ * SDD 표에서 런타임 식별자가 실린 열을 찾는 제목 접두사. 판별식과 표가 이 문자열 하나로 만난다.
+ *
+ * 접두사인 이유는 위 「표의 어느 열을 읽나」 참조 — `타입` 도 `타입 식별자` 도 같은 열로 본다.
+ * 나머지 열(`구현 클래스` · `용도`)은 걸리지 않는다.
+ */
+const TYPE_COLUMN_PREFIX = '타입'
 
 /** 팩토리에서 분기를 찾을 진입 표지. 두 팩토리 모두 `create(type, config)` 안에 이 형태로 있다. */
 const WHEN_HEAD = 'when (type) {'
@@ -138,15 +146,15 @@ function tableCells(row: string): string[] {
 }
 
 /**
- * 절 본문의 표에서 `타입 식별자` 열만 뽑는다.
+ * 절 본문의 표에서 런타임 식별자 열만 뽑는다.
  *
- * 열을 제목으로 찾는다 — 열 순서가 바뀌어도 같은 열을 읽고, 제목이 사라지면 0건이 되어
+ * 열을 제목으로 찾는다 — 열 순서가 바뀌어도 같은 열을 읽고, 제목에서 `타입` 이 사라지면 0건이 되어
  * 비-공허 짝이 red 를 낸다. 백틱은 벗긴다(표는 `` `SET_FIELD` `` 로 적는다).
  */
 function sddTypes(section: string): string[] {
   const rows = section.split('\n').filter((line) => line.trimStart().startsWith('|'))
   if (rows.length === 0) return []
-  const column = tableCells(rows[0]).indexOf(TYPE_COLUMN_HEADER)
+  const column = tableCells(rows[0]).findIndex((cell) => cell.startsWith(TYPE_COLUMN_PREFIX))
   if (column < 0) return []
   return rows
     .slice(1)
@@ -190,7 +198,7 @@ describe('SDD §7.3·§7.4 표의 type 집합 = 워크플로우 팩토리의 whe
       `${label} 표가 ${factory} 의 when 분기와 어긋난다 — **코드가 정본**이니 표를 고쳐라.\n` +
         `  SDD 표에만 있는 type. ${docOnly.join(', ') || '(없음)'}\n` +
         `  팩토리에만 있는 type. ${codeOnly.join(', ') || '(없음)'}\n` +
-        `  표 '${TYPE_COLUMN_HEADER}' 열 전체. ${documented.join(', ')}\n` +
+        `  표의 런타임 식별자 열 전체. ${documented.join(', ')}\n` +
         `  팩토리 when 분기 전체. ${implemented.join(', ')}\n` +
         `  (표에 적은 값이 런타임에 그대로 들어온다. 어긋나면 "지원하지 않는 type" 예외가 난다.)`,
     )
@@ -218,7 +226,7 @@ describe('SDD §7.3·§7.4 표의 type 집합 = 워크플로우 팩토리의 whe
         values.length > 0,
         `${label} 에서 type 을 **0건** 뽑았다 — 파서가 죽었고 위 차집합 단언은 공허하다.\n` +
           `  읽은 파일. ${path.relative(REPO_ROOT, source)}\n` +
-          `  표는 '${TYPE_COLUMN_HEADER}' 열이, 팩토리는 '${WHEN_HEAD}' 블록이 있어야 한다.`,
+          `  표는 '${TYPE_COLUMN_PREFIX}' 으로 시작하는 제목의 열이, 팩토리는 '${WHEN_HEAD}' 블록이 있어야 한다.`,
       )
     }
   })
