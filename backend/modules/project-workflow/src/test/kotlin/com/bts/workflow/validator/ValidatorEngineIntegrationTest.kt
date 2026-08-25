@@ -38,6 +38,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
+import java.sql.DriverManager
 import java.util.UUID
 import java.util.concurrent.Executors
 
@@ -103,15 +104,7 @@ class ValidatorEngineIntegrationTest {
 
             // V201+ 가 issue_types 를 FK 참조한다. 그 스텁을 사이에 끼우려 마이그레이션을 2단계로 나눈다.
             flyway().target("200").load().migrate()
-            dsl.execute(
-                """
-                CREATE TABLE IF NOT EXISTS issue_types (
-                    id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE,
-                    name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)
-                """.trimIndent(),
-            )
+            createIssueTypesStub()
             flyway().load().migrate()
             val validatorFactory =
                 DefaultWorkflowValidatorFactory(AlwaysAllowPermissionResolver(), SpelEvaluator(spelExecutor))
@@ -140,6 +133,24 @@ class ValidatorEngineIntegrationTest {
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration/issue-tracking", "classpath:db/migration/project-workflow")
+
+        /**
+         * issue_types 스텁 — V201+ FK 통과용. `DATA.md §5` 가 SQL 문자열을 jOOQ 에 넘기는 형태를
+         * 이름으로 지목해 금지하므로, 형제 `ValidatorRepositoryIntegrationTest` 와 같이 JDBC 로 친다.
+         */
+        private fun createIssueTypesStub() {
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    """
+                    CREATE TABLE IF NOT EXISTS issue_types (
+                        id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE,
+                        name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)
+                    """.trimIndent(),
+                ).use { it.execute() }
+            }
+        }
 
         /** 상태 3개 · 전환 2개. **전환에 규칙을 달지 않는다** — 규칙은 전부 서비스가 걸어야 한다. */
         private fun seedWorkflow(
