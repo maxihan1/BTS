@@ -12,11 +12,11 @@ package com.atlas.bts.identity.integration
 
 import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
-import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.atlas.bts.identity.session.RefreshTokenService
+import com.atlas.bts.identity.support.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -35,9 +35,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.security.MessageDigest
 import java.sql.Timestamp
 import java.time.Instant
@@ -78,17 +75,16 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 class PatAndConcurrencyIntegrationTest {
-
     companion object {
-        @Container
+        /**
+         * 공용 컨테이너의 템플릿 DB 를 복제한 전용 데이터베이스.
+         *
+         * 격리는 그대로이고 컨테이너 기동과 마이그레이션 재적용만 사라진다.
+         * 근거와 주의점은 [com.atlas.bts.identity.support.SharedPostgres] 헤더.
+         */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -96,7 +92,11 @@ class PatAndConcurrencyIntegrationTest {
             r.add("spring.datasource.url") { postgres.jdbcUrl }
             r.add("spring.datasource.username") { postgres.username }
             r.add("spring.datasource.password") { postgres.password }
-            r.add("spring.flyway.enabled") { "true" }
+            // 템플릿 DB 에서 이미 적용됐다 — 여기서 다시 돌리면 이 최적화가 무의미해진다
+            r.add("spring.flyway.enabled") { "false" }
+            // 공용 컨테이너라 커넥션 한도도 공유한다. context 캐시가 쌓이면 기본 풀(10)로는
+            // max_connections 를 넘긴다 — SharedPostgres 헤더 참조.
+            r.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
 
             // CorsConfig Bean이 @Value로 이 프로퍼티를 필수 주입받는다 (Task 25).
             // 통합 테스트 환경에서 localhost 허용 출처를 명시한다.
@@ -188,12 +188,13 @@ class PatAndConcurrencyIntegrationTest {
         insertActivePat(tokenHash = tokenHash, expiresAt = null, revokedAt = null)
 
         val headers = HttpHeaders().apply { setBearerAuth(rawPat) }
-        val resp = restTemplate.exchange(
-            "/api/v1/users/me/whoami",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            Map::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "/api/v1/users/me/whoami",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                Map::class.java,
+            )
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
         assertThat(resp.body?.get("authMethod")).isEqualTo("pat")
@@ -219,12 +220,13 @@ class PatAndConcurrencyIntegrationTest {
         )
 
         val headers = HttpHeaders().apply { setBearerAuth(rawPat) }
-        val resp = restTemplate.exchange(
-            "/api/v1/users/me/whoami",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            String::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "/api/v1/users/me/whoami",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                String::class.java,
+            )
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
     }
@@ -247,12 +249,13 @@ class PatAndConcurrencyIntegrationTest {
         )
 
         val headers = HttpHeaders().apply { setBearerAuth(rawPat) }
-        val resp = restTemplate.exchange(
-            "/api/v1/users/me/whoami",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            String::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "/api/v1/users/me/whoami",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                String::class.java,
+            )
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
     }
@@ -324,16 +327,17 @@ class PatAndConcurrencyIntegrationTest {
         val executor = Executors.newFixedThreadPool(2)
 
         // 두 스레드 모두 latch를 기다렸다가 동시에 rotate() 호출
-        val futures = (1..2).map {
-            executor.submit {
-                latch.await()
-                val result = refreshTokenService.rotate(tokenHash)
-                when (result) {
-                    is RefreshTokenService.RotateResult.Success -> successCount.incrementAndGet()
-                    is RefreshTokenService.RotateResult.Failure -> failureCount.incrementAndGet()
+        val futures =
+            (1..2).map {
+                executor.submit {
+                    latch.await()
+                    val result = refreshTokenService.rotate(tokenHash)
+                    when (result) {
+                        is RefreshTokenService.RotateResult.Success -> successCount.incrementAndGet()
+                        is RefreshTokenService.RotateResult.Failure -> failureCount.incrementAndGet()
+                    }
                 }
             }
-        }
 
         // 동시 출발
         latch.countDown()
@@ -345,10 +349,11 @@ class PatAndConcurrencyIntegrationTest {
         assertThat(failureCount.get()).isEqualTo(1)
 
         // loser 로 인해 세션이 REFRESH_REPLAY 로 revoke되어 있어야 한다
-        val sessionRow = jdbc.queryForMap(
-            "SELECT revoked_at, revoke_reason FROM sessions WHERE id = :id",
-            mapOf("id" to sessionId),
-        )
+        val sessionRow =
+            jdbc.queryForMap(
+                "SELECT revoked_at, revoke_reason FROM sessions WHERE id = :id",
+                mapOf("id" to sessionId),
+            )
         assertThat(sessionRow["revoked_at"]).isNotNull()
         assertThat(sessionRow["revoke_reason"]).isEqualTo("REFRESH_REPLAY")
     }
@@ -372,12 +377,13 @@ class PatAndConcurrencyIntegrationTest {
         val body = """{"username":"nobody","password":"wrong","provider":"local"}"""
 
         // Void 응답 타입 — body 파싱 없이 상태 코드만 수신. JDK HttpURLConnection의 401 IOException 회피.
-        val resp = restTemplate.exchange(
-            "/api/v1/auth/login",
-            HttpMethod.POST,
-            HttpEntity(body, headers),
-            Void::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "/api/v1/auth/login",
+                HttpMethod.POST,
+                HttpEntity(body, headers),
+                Void::class.java,
+            )
 
         // CSRF가 활성화된 일반 엔드포인트라면 403이 먼저 온다.
         // login은 CSRF skip이므로 403이 와서는 안 된다. (401 또는 400이 정상)
@@ -404,12 +410,13 @@ class PatAndConcurrencyIntegrationTest {
     fun `CSRF-B 미인증 PATCH — 접근 거부 (401 또는 403)`() {
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
 
-        val resp = restTemplate.exchange(
-            "/api/v1/users/me/preferences",
-            HttpMethod.PATCH,
-            HttpEntity("{}", headers),
-            String::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "/api/v1/users/me/preferences",
+                HttpMethod.PATCH,
+                HttpEntity("{}", headers),
+                String::class.java,
+            )
 
         // STATELESS 환경: 인증 필터가 CSRF 필터보다 먼저 실행 → 401
         // 세션 기반 환경: CSRF 필터가 먼저 → 403
@@ -442,20 +449,22 @@ class PatAndConcurrencyIntegrationTest {
         // 일치하면 CSRF 검증을 통과시킨다.
         val csrfToken = UUID.randomUUID().toString()
 
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            // Cookie: XSRF-TOKEN 을 서버가 발급한 것처럼 설정
-            set("Cookie", "XSRF-TOKEN=$csrfToken")
-            // X-XSRF-TOKEN: SPA가 Cookie를 읽어 헤더로 전달하는 방식 재현
-            set("X-XSRF-TOKEN", csrfToken)
-        }
+        val headers =
+            HttpHeaders().apply {
+                contentType = MediaType.APPLICATION_JSON
+                // Cookie: XSRF-TOKEN 을 서버가 발급한 것처럼 설정
+                set("Cookie", "XSRF-TOKEN=$csrfToken")
+                // X-XSRF-TOKEN: SPA가 Cookie를 읽어 헤더로 전달하는 방식 재현
+                set("X-XSRF-TOKEN", csrfToken)
+            }
 
-        val resp = restTemplate.exchange(
-            "/api/v1/users/me/preferences",
-            HttpMethod.PATCH,
-            HttpEntity("{}", headers),
-            Void::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "/api/v1/users/me/preferences",
+                HttpMethod.PATCH,
+                HttpEntity("{}", headers),
+                Void::class.java,
+            )
 
         // CSRF 검증 통과 — Cookie 값 == X-XSRF-TOKEN 헤더 값이므로 403이 아님
         // STATELESS + 미인증이므로 최종 응답은 401

@@ -7,6 +7,7 @@ import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
@@ -46,7 +47,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.util.LinkedMultiValueMap
 import org.testcontainers.containers.MinIOContainer
-import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.nio.file.Files
@@ -89,7 +89,13 @@ import java.util.UUID
  *
  * @see com.atlas.bts.identity.web.UserProfileController
  * @see com.atlas.bts.identity.profile.UserProfileService
+ *
+ * ## ★`@Testcontainers` 를 남겨 둔 이유
+ * postgres 는 [com.atlas.bts.identity.support.SharedPostgres] 로 옮겼지만 이 파일에는
+ * MinIO `@Container` 가 남아 있다. 그 컨테이너의 수명은 여전히 JUnit 이 관리해야 한다 —
+ * 어노테이션을 떼면 `Mapped port can only be obtained after the container is started` 가 난다.
  */
+@Testcontainers
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
@@ -99,17 +105,16 @@ import java.util.UUID
 )
 @AutoConfigureMockMvc
 @ActiveProfiles("prod")
-@Testcontainers
 class UserProfileFlowIntegrationTest {
     companion object {
-        /** Testcontainers PostgreSQL 16 — Flyway V001(users)/V004(sessions)/V027(user_profiles) 등 자동 마이그레이션. */
-        @Container
+        /**
+         * 공용 컨테이너의 템플릿 DB 를 복제한 전용 데이터베이스.
+         *
+         * 격리는 그대로이고 컨테이너 기동과 마이그레이션 재적용만 사라진다.
+         * 근거와 주의점은 [com.atlas.bts.identity.support.SharedPostgres] 헤더.
+         */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         /** JVM 단위 singleton MinIO — 아바타 바이너리 put/get/delete 실 스토리지. */
         @Container
@@ -129,7 +134,11 @@ class UserProfileFlowIntegrationTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
-            registry.add("spring.flyway.enabled") { "true" }
+            // 템플릿 DB 에서 이미 적용됐다 — 여기서 다시 돌리면 이 최적화가 무의미해진다
+            registry.add("spring.flyway.enabled") { "false" }
+            // 공용 컨테이너라 커넥션 한도도 공유한다. context 캐시가 쌓이면
+            // 기본 풀(10)로는 max_connections 를 넘긴다 — SharedPostgres 헤더 참조.
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }

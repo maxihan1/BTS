@@ -9,6 +9,7 @@ import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldPermissionResolver
 import com.bts.shared.permission.FieldRef
@@ -24,9 +25,6 @@ import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.nio.file.Files
 import java.security.KeyPairGenerator
 import java.security.Security
@@ -60,16 +58,16 @@ import java.util.UUID
     ],
 )
 @ActiveProfiles("prod")
-@Testcontainers
 class IdentityAccessFieldPermissionResolverTest {
     companion object {
-        @Container
+        /**
+         * 공용 컨테이너의 템플릿 DB 를 복제한 전용 데이터베이스.
+         *
+         * 격리는 그대로이고 컨테이너 기동과 마이그레이션 재적용만 사라진다.
+         * 근거와 주의점은 [com.atlas.bts.identity.support.SharedPostgres] 헤더.
+         */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -77,7 +75,11 @@ class IdentityAccessFieldPermissionResolverTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
-            registry.add("spring.flyway.enabled") { "true" }
+            // 템플릿 DB 에서 이미 적용됐다 — 여기서 다시 돌리면 이 최적화가 무의미해진다
+            registry.add("spring.flyway.enabled") { "false" }
+            // 공용 컨테이너라 커넥션 한도도 공유한다. context 캐시가 쌓이면
+            // 기본 풀(10)로는 max_connections 를 넘긴다 — SharedPostgres 헤더 참조.
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }

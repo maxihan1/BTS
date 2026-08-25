@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.project
 
+import com.atlas.bts.identity.support.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -14,9 +15,6 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
 /**
@@ -44,17 +42,16 @@ import java.util.UUID
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JdbcProjectMembershipRepository::class)
-@Testcontainers
 class ProjectMembershipRepositoryIntegrationTest {
-
     companion object {
-        @Container
+        /**
+         * 공용 컨테이너의 템플릿 DB 를 복제한 전용 데이터베이스.
+         *
+         * 격리는 그대로이고 컨테이너 기동과 마이그레이션 재적용만 사라진다.
+         * 근거와 주의점은 [com.atlas.bts.identity.support.SharedPostgres] 헤더.
+         */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -62,7 +59,11 @@ class ProjectMembershipRepositoryIntegrationTest {
             r.add("spring.datasource.url") { postgres.jdbcUrl }
             r.add("spring.datasource.username") { postgres.username }
             r.add("spring.datasource.password") { postgres.password }
-            r.add("spring.flyway.enabled") { "true" }
+            // 템플릿 DB 에서 이미 적용됐다 — 여기서 다시 돌리면 이 최적화가 무의미해진다
+            r.add("spring.flyway.enabled") { "false" }
+            // 공용 컨테이너라 커넥션 한도도 공유한다. context 캐시가 쌓이면 기본 풀(10)로는
+            // max_connections 를 넘긴다 — SharedPostgres 헤더 참조.
+            r.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
         }
     }
 
@@ -108,13 +109,14 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `save — 신규 멤버십 삽입 후 projectId, userId, role이 반환된다`() {
-        val membership = ProjectMembership(
-            projectId = projectId,
-            userId = userId1,
-            role = ProjectRole.MEMBER,
-            createdAt = java.time.Instant.now(),
-            updatedAt = java.time.Instant.now(),
-        )
+        val membership =
+            ProjectMembership(
+                projectId = projectId,
+                userId = userId1,
+                role = ProjectRole.MEMBER,
+                createdAt = java.time.Instant.now(),
+                updatedAt = java.time.Instant.now(),
+            )
 
         val saved = repo.save(membership)
 
@@ -127,22 +129,24 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `save — UNIQUE(project_id,user_id) 위반 시 DataIntegrityViolationException 발생`() {
-        val membership = ProjectMembership(
-            projectId = projectId,
-            userId = userId1,
-            role = ProjectRole.MEMBER,
-            createdAt = java.time.Instant.now(),
-            updatedAt = java.time.Instant.now(),
-        )
+        val membership =
+            ProjectMembership(
+                projectId = projectId,
+                userId = userId1,
+                role = ProjectRole.MEMBER,
+                createdAt = java.time.Instant.now(),
+                updatedAt = java.time.Instant.now(),
+            )
         repo.save(membership)
 
-        val duplicate = ProjectMembership(
-            projectId = projectId,
-            userId = userId1,
-            role = ProjectRole.PROJECT_ADMIN,
-            createdAt = java.time.Instant.now(),
-            updatedAt = java.time.Instant.now(),
-        )
+        val duplicate =
+            ProjectMembership(
+                projectId = projectId,
+                userId = userId1,
+                role = ProjectRole.PROJECT_ADMIN,
+                createdAt = java.time.Instant.now(),
+                updatedAt = java.time.Instant.now(),
+            )
 
         assertThatThrownBy { repo.save(duplicate) }
             .isInstanceOf(DataIntegrityViolationException::class.java)
@@ -152,13 +156,14 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `findByProjectAndUser — 존재하는 멤버십 조회 시 ProjectMembership 반환`() {
-        val membership = ProjectMembership(
-            projectId = projectId,
-            userId = userId1,
-            role = ProjectRole.PROJECT_ADMIN,
-            createdAt = java.time.Instant.now(),
-            updatedAt = java.time.Instant.now(),
-        )
+        val membership =
+            ProjectMembership(
+                projectId = projectId,
+                userId = userId1,
+                role = ProjectRole.PROJECT_ADMIN,
+                createdAt = java.time.Instant.now(),
+                updatedAt = java.time.Instant.now(),
+            )
         repo.save(membership)
 
         val found = repo.findByProjectAndUser(projectId, userId1)
@@ -180,10 +185,24 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `listByProject — 프로젝트 멤버 전체 목록을 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
-            java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.PROJECT_ADMIN,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId2,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         val list = repo.listByProject(projectId)
 
@@ -202,10 +221,24 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `countByProject — 프로젝트 전체 멤버 수를 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
-            java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.PROJECT_ADMIN,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId2,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         assertThat(repo.countByProject(projectId)).isEqualTo(2)
     }
@@ -219,18 +252,39 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `countAdminsByProject — PROJECT_ADMIN 역할 수만 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
-            java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.PROJECT_ADMIN,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId2,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         assertThat(repo.countAdminsByProject(projectId)).isEqualTo(1)
     }
 
     @Test
     fun `countAdminsByProject — 어드민이 없으면 0을 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         assertThat(repo.countAdminsByProject(projectId)).isEqualTo(0)
     }
@@ -239,8 +293,15 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `updateRole — 역할 변경 시 변경된 ProjectMembership을 반환하고 updated_at이 갱신된다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
         val originalUpdatedAt = repo.findByProjectAndUser(projectId, userId1)!!.updatedAt
 
         // updated_at 비교를 위해 10ms 대기 — DB TIMESTAMPTZ는 µs 단위이므로 충분한 간격 확보
@@ -263,8 +324,15 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `deleteByProjectAndUser — 존재하는 멤버십 삭제 시 true 반환`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         val deleted = repo.deleteByProjectAndUser(projectId, userId1)
 
@@ -283,10 +351,24 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `listMemberViewsByProject — users JOIN으로 displayName과 username을 포함한 뷰 목록을 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
-            java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.PROJECT_ADMIN,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId2,
+                ProjectRole.MEMBER,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         val views = repo.listMemberViewsByProject(projectId)
 
@@ -325,8 +407,15 @@ class ProjectMembershipRepositoryIntegrationTest {
         jdbc.jdbcTemplate.execute("SET session_replication_role = DEFAULT")
 
         // 정상 사용자 멤버십도 함께 삽입해 INNER JOIN 방어 검증 (정상 행은 non-null이어야 함)
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.PROJECT_ADMIN,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         val views = repo.listMemberViewsByProject(projectId)
 
@@ -344,8 +433,15 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `findMemberView — 존재하는 멤버십 조회 시 displayName과 username을 포함한 뷰를 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
-            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(
+            ProjectMembership(
+                projectId,
+                userId1,
+                ProjectRole.PROJECT_ADMIN,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+            ),
+        )
 
         val view = repo.findMemberView(projectId, userId1)
 

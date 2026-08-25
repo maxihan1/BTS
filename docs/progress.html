@@ -183,7 +183,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-08-24 갱신</div>
+      <div class="updated">2026-08-25 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1654,10 +1654,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">100</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 178건</span>
+      <span class="big-pct" style="color:#9ca3af;">101</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 79건 · 전체 180건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 100건</h2>
+    <h2>⬜ 아직 안 한 것 — 101건</h2>
     <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1902,7 +1902,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">8건</span></h3>
+    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">9건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">issue-tracking — OpenAPI required 오표기 <b>잔여 26 프로퍼티</b> + 전수 판별식 부재 (선재 · 미착수 · T2)</span></div>
@@ -1983,6 +1983,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — identity-access — permitAll 경로군 중 `/ws` 만 메서드 고정을 기계가 지킨다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p>확인하는 장치는 한 곳에만 있다.</p><p>들어가고, 아무도 그 순간을 모른다.</p><p><b>무엇 (PR #399 ceo 렌즈 C-3 권고 + 재리뷰 실측).</b> <code>SecurityConfig</code> 의 permitAll 배선은 5개소다.</p><table class="md-table"><thead><tr><th>위치</th><th>메서드 고정</th><th>기계 가드</th></tr></thead><tbody><tr><td><code>:203</code> 인증 전 경로 그룹</td><td>없음 (POST 가 필요한 경로들이라 정당)</td><td>없음</td></tr><tr><td><code>:209</code> <code>PUBLIC_DASHBOARDS_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:213</code> <code>ICAL_FEED_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:255</code> <code>WS_HANDSHAKE_PATH</code></td><td>GET 고정</td><td><code>WebSocketHandshakePathGuardTest</code></td></tr><tr><td><code>:262</code> <code>INBOUND_WEBHOOK_PATHS</code></td><td>목록이 메서드를 함께 가짐</td><td>없음</td></tr></tbody></table><p><code>:209</code>·<code>:213</code> 은 주석이 defense-in-depth 를 길게 설명하는데 <b>그 고정을 재는 테스트가 없다.</b> <code>/ws</code> 가드는 PR #399 가 신설했고, 그것마저 한때 주석으로 만족돼 공허했다(재리뷰 BLOCKER-N1). 설명은 다섯 곳에 있고 강제는 한 곳에만 있는 상태다.</p><p><b>처방.</b> permitAll 배선을 <b>도출</b>해 「메서드가 명시됐거나, 명시하지 않은 이유가 같은 자리에 적혀 있다」를 단언하는 판별식 하나. <code>/ws</code> 가드의 주석 스캐너를 그대로 재사용한다 — 소스 텍스트 가드는 주석을 걷어내지 않으면 공허해진다는 것을 이미 값을 치르고 배웠다. 목록 하드코딩은 하지 않는다(신규 permitAll 이 자동 편입돼야 한다).</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">identity-access — 클래스마다 <code>@DynamicPropertySource</code> 를 가져 context 를 하나도 공유하지 못한다 (선재 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 테스트마다 접속 정보를 자기가 직접 넣는다. Spring 은 그걸 「다른 앱」으로 보고</p>
+        <p class="todo-risk"><b>방치하면.</b> 이 모듈 테스트가 계속 6분대에 머문다. 이 모듈을 건드리는 작업마다 푸시 훅에서</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — identity-access — 클래스마다 `@DynamicPropertySource` 를 가져 context 를 하나도 공유하지 못한다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>테스트 클래스 수만큼 애플리케이션을 새로 켠다.</p><p>그 시간을 그대로 기다린다.</p><p><b>무엇 (2026-08-25 실측 — 앞선 두 가설을 실험이 기각했다).</b> 한 번 실행에 Spring context 가 <b>97개</b> 부팅된다(결과 XML 의 <code>HikariPool-N - Starting</code> 최대 번호로 셈).</p><p>기각된 가설 ①. 「캐시 상한 32 &lt; 시그니처 79 라 축출 재부팅이 있다」 — <code>cache.maxSize=96</code> + <code>maxHeapSize=3072m</code> 으로 부팅 97 → <b>96</b>. 안 줄었고 벽시계는 17% 늘었다.</p><p>기각된 가설 ②. 「<code>@JdbcTest</code> 45개가 각자 <code>@Import</code> 를 달리 써서 쪼갠다」 — 32개 클래스를 공용 설정으로 모아 45개가 그것 하나만 <code>@Import</code> 하게 했다. 부팅 97 → <b>97</b>. 변화 0이었다. (슬라이스에 안 쓰는 빈만 늘어 되돌렸다.)</p><p><b>진짜 원인.</b> <code>@DynamicPropertySource</code> 를 <b>클래스마다</b> 갖는다.</p><table class="md-table"><thead><tr><th></th><th>개수</th></tr></thead><tbody><tr><td>부팅 테스트 파일</td><td>127</td></tr><tr><td>그중 <code>@DynamicPropertySource</code> 보유</td><td><b>93</b></td></tr><tr><td>실측 context 부팅</td><td><b>97</b></td></tr></tbody></table><p><code>@DynamicPropertySource</code> 는 클래스별 <code>ContextCustomizer</code> 를 만들고 그것이 <b>context 캐시 키의 일부</b>다. 선언한 클래스는 무조건 자기 context 를 갖는다 — <code>@Import</code> 나 <code>@MockBean</code> 을 아무리 통일해도 소용이 없다.</p><p><b>★그리고 이건 <code>SharedPostgres</code> 설계와 정면으로 맞물린다.</b> PR #402 가 넣은 fixture 는 클래스마다 <b>전용 데이터베이스</b>를 준다(템플릿 복제). URL 이 클래스마다 다르므로 <code>@DynamicPropertySource</code> 도 클래스마다 필요하고, 따라서 context 도 클래스마다 생긴다. <b>클래스별 DB 격리와 context 공유는 동시에 성립하지 않는다.</b></p><p><b>처방 — 둘 중 하나를 고르는 문제다. 기술이 아니라 선택이다.</b> ① <b>격리 유지</b> (현행). context 97개를 받아들인다. 부팅당 3초대이므로 이 모듈은 6분대에 머문다. ② <b>DB 공유</b>. 전 클래스가 한 DB 를 쓰고 접속 정보를 클래스 밖에서 한 번만 주입한다 (<code>ApplicationContextInitializer</code> 등). <code>@DynamicPropertySource</code> 를 걷어내면 context 가 크게 합쳐진다. 대신 격리를 테스트 간 정리로 지켜야 하는데, 이 저장소는 공용 DB 에 이미 데인 적이 있다(<code>shared-dev-db-preexisting-rows-fake-green</code>).</p><p><b>②를 고른다면 재현 테스트를 먼저 세운다.</b> 「A 가 넣은 행이 B 에서 보이면 red」를 만들고 시작해야 한다. 없으면 격리가 깨진 것을 초록이 가린다.</p><p><b>측정은 벽시계가 아니라 부팅 횟수로 한다.</b> 이 머신의 벽시계는 같은 코드에서 370초~708초로 흔들려(2026-08-25 5회 측정) 10~20% 차이를 귀속시킬 수 없다. 부팅 횟수는 결정적이다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">49건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
@@ -2680,8 +2690,18 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
         <div class="todo-body"><p><b>무엇.</b> <code>~/.claude/plans/cozy-hatching-otter.md</code> §PR 분해 의 10행 표는 PR 8~10 을 전부 <code>/admin/workflows</code>(워크플로우 관리 화면) 쪽에 배정한다. 그런데 <code>docs/plan/product/project-workflow.md</code> §2.5 의 <b>FR-WF-05 D6·D7</b>(이슈 상세 상태 드롭다운)은 그 세 PR 어디에도 없다. 같은 로드맵 §검증 「전체 완료 기준 눈확인」 8번이 그 화면을 문장으로 언급하지만 <b>PR 칸이 없어</b> 어느 PR 의 범위도 되지 못했다.</p><p><b>★이 항목을 만든 PR 이 그 마커를 닫았다.</b> 배정이 없어 「다음 큰 덩어리」를 고르는 자리에서 매번 건너뛰어졌고, 백엔드(#395)가 열린 뒤 화면만 없는 채로 남아 있었다. 드러난 계기도 로드맵 대조가 아니라 <b>손으로 두 문서를 나란히 편 것</b>이다.</p><p><b>★지배 결함 양식이다.</b> 두 목록이 서로를 검사하지 않는다. 처방도 그 양식 그대로다 — ① 로드맵 PR 표가 덮는 FR·D 마커 합집합과 <code>docs/plan/product/*.md</code> 의 D 마커 전량 사이 <b>차집합 판별식</b> ② 비-공허 짝(마커 하나를 빼면 red) ③ 판별식 CI 등재.</p><p><b>★먼저 정할 것이 있다.</b> 로드맵 정본이 저장소 <b>밖</b>(<code>~/.claude/plans/</code>)이라 판별식이 읽을 수 없다. 저장소 안으로 옮길지, 옮긴다면 <code>docs/plans/</code> 인지 별도 자리인지가 선행 결정이다. <b>자의로 정하지 않는다.</b></p></div>
       </details>
     </div></div>
-    <h2>✅ 해소된 것 — 78건</h2>
+    <h2>✅ 해소된 것 — 79건</h2>
     <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 서식 검사기가 「바뀐 파일」만 본다. 안 건드린 파일의 위반은 초록 뒤에 숨어 있다가,</p>
+        <p class="todo-risk"><b>방치하면.</b> 그 파일을 건드리는 다음 사람이 남의 부채를 자기 diff 로 떠안는다. 무관한 포매팅</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>그 파일을 한 줄만 고치는 순간 수십~수백 건이 한꺼번에 쏟아진다.</p><p>변경이 리뷰에 섞여 진짜 변경이 안 보이고, 「내가 뭘 잘못했나」를 찾는 데 시간이 든다.</p><p><b>무엇 (PR #402 확대 작업 실측).</b> 테스트 62개를 기계 변환하자 ktlint 128건이 났는데, 그중 104건이 <b>한 파일</b>에 몰려 있었고 변환이 건드리지 않은 줄들이었다. 최소 실험으로 갈랐다 — <code>ProjectMembershipRepositoryIntegrationTest.kt</code> 를 두고.</p><table class="md-table"><thead><tr><th>파일 상태</th><th>ktlint 위반</th></tr></thead><tbody><tr><td>원본 그대로</td><td><b>0건</b></td></tr><tr><td><code>import</code> <b>한 줄만 추가</b></td><td><b>150건</b></td></tr><tr><td><code>import</code> 한 줄만 제거</td><td>148건</td></tr></tbody></table><p>즉 원래 ~150건이 있었고 ktlint 가 바뀐 파일만 보기 때문에 안 보였을 뿐이다. 영향 파일 7개다.</p><table class="md-table"><thead><tr><th>파일</th><th>위반</th></tr></thead><tbody><tr><td><code>ProjectMembershipRepositoryIntegrationTest.kt</code></td><td>104</td></tr><tr><td><code>PatAndConcurrencyIntegrationTest.kt</code></td><td>10</td></tr><tr><td><code>UserRepositoryTest.kt</code></td><td>3</td></tr><tr><td><code>RefreshTokenRepositoryTest.kt</code></td><td>2</td></tr><tr><td><code>SessionRepositoryTest.kt</code> · <code>KeymapControllerIntegrationTest.kt</code> · <code>JdbcProjectDirectoryIntegrationTest.kt</code></td><td>각 1</td></tr></tbody></table><p>유형은 <code>argument-list-wrapping</code>(46) · <code>wrapping</code>(37) · <code>multiline-expression-wrapping</code>(26) · <code>trailing-comma-on-call-site</code>(10) · <code>no-empty-first-line-in-class-body</code>(7) · <code>no-consecutive-comments</code>(2). <b>자동 수정 불가 0건</b> — 전부 기계가 고칠 수 있다.</p><p><b>해소 (2026-08-25, PR #402).</b> 7개 파일의 서식을 정리하고 fixture 변환을 같은 커밋에 함께 넣었다. 두 변경이 어차피 같은 파일을 건드려 나누면 diff 만 두 배가 된다. 7클래스 89테스트 실패 0 · ktlint 0 위반.</p><p>포맷은 모듈 전체 <code>ktlintFormat</code> 을 돌린 뒤 <b>이 7개 외 부수 변경 26건을 전부 버리는</b> 방식으로 파일 단위 효과만 남겼다 — <code>checklist.md:26</code> 의 금지 이유가 「의도 안 한 부수 변경」이므로 그 결과를 만들지 않았다.</p><p><b>남는 것.</b> 「ktlint 가 바뀐 파일만 본다」는 성질 자체는 이 항목의 범위가 아니다 — <b>다른 모듈에도 같은 잠복 부채가 있을 수 있고</b> 그 전수 확인은 별건이다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">인프라 — 전체 스위트 동시 실행 시 flaky (2026-07-27 해소)</span></div>
       
       <details class="todo-item">
