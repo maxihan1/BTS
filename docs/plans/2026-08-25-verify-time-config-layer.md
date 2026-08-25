@@ -55,6 +55,42 @@ Maxi 원문 — 「작업할때마다 검증 테스트 실측 등 너무 많은 
 | 5 | 린트 호출을 분리하고 `--rerun-tasks` 부착 | `.claude/skills/bts-impl/SKILL.md` |
 | 6 | 공허한 가드 2건 수리 | `bts-impl/SKILL.md` · `.husky/pre-push` |
 
+### ★`parallel=true` 는 실측으로 되돌렸다
+
+원안은 `parallel=true` 였고 실제로 켰다가 껐다. 전량 `test --rerun-tasks` A/B —
+
+| | 벽시계 | 실행 태스크 | 결과 |
+|---|---|---|---|
+| `parallel=true` | 762초 | **52/59 — 중단** | ❌ `:modules:notification:test` 실패 |
+| `parallel=false` | **928초** | **59/59** | ✅ BUILD SUCCESSFUL |
+
+재실행하면 실패 대상이 바뀐다(SUB-2 → SUB-1). **결함이 아니라 흔들림**이다. 깨지는 쪽은
+`NotificationWorkerSubscriptionFilterTest` 처럼 `Awaitility` + `poll-interval 50ms` +
+`Thread.sleep(2_000)` 로 **구조적으로 시간에 민감한** 워커 테스트다. CPU 를 뺏기면 진다.
+`parallel=true` 가 그 민감성을 만든 게 아니라 **드러냈다.**
+
+그리고 이득이 작다. 프로파일상 `parallel=true` 의 태스크 합계가 **28.5분**이었다 — 경합으로
+각 태스크가 2배 느려진 것을 병렬로 겨우 되돌린 것뿐이라 실질 이득은 **~18%**다. 게다가 일상
+루프(pre-push 는 바뀐 모듈 1~3개만)는 모듈 간 병렬을 거의 안 쓴다. **흔들림과 바꿀 값이 아니다.**
+
+되살리려면 **먼저 그 테스트들의 시간 민감성을 없애라.** 순서가 반대면 가짜 초록이 된다.
+판별식 `gradle-perf-contract.test.ts` 의 `DELIBERATELY_OFF` 가 이 값을 잡고 근거를 띄운다.
+
+### 모듈별 test 벽시계 (parallel=true 프로파일, fixture 표적 선정용)
+
+| 모듈 | 벽시계 | 컨테이너 선언 파일 | 공용 base |
+|---|---|---|---|
+| **issue-tracking** | **10분 9초** | 67 | 58 상속 |
+| **identity-access** | **9분 48초** | 110 | **없음** |
+| project-workflow | 3분 19초 | 30 | — |
+| notification | 1분 42초 | 11 | 7 |
+| automation | 1분 40초 | 2 | 0 |
+| agile-planning | 57초 | 3 | — |
+| app | 53초 | 2 | — |
+
+**상위 2개가 태스크 합계 28.5분 중 20분(70%).** `identity-access` 는 110파일이 각자 컨테이너를
+띄우는데 공용 postgres base 가 아예 없다 — fixture 공사의 1순위 표적이다.
+
 **16GB 머신이라 heap 을 원안(6144m/4096m)에서 낮췄다.** Testcontainers 가 Docker 쪽 메모리를
 따로 먹어 여유를 남기지 않으면 병렬 테스트에서 컨테이너와 JVM 이 서로를 굶긴다.
 
@@ -77,6 +113,7 @@ Maxi 원문 — 「작업할때마다 검증 테스트 실측 등 너무 많은 
 | 지표 | 전 | 후 |
 |---|---|---|
 | **no-op gradle 빌드** | 12초 | **0.65~0.98초** |
+| **백엔드 전량 (`test --rerun-tasks`, 59/59 강제)** | 33분(2026-07-27) · 55분(훅 주석) | **15분 27초** |
 | `generateJooq` 무변경 재실행 (1모듈) | 11초 (매번 `1 executed`) | **3초** (`1 up-to-date`) |
 | 원복 후 재실행 | 11초 | **2초** (`FROM-CACHE`) |
 | jOOQ 5개 모듈 무변경 재실행 | 55초 상당 | **3초** (`5 up-to-date`) |

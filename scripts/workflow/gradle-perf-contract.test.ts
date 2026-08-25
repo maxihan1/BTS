@@ -30,11 +30,35 @@ import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
-/** 켜져 있어야 하는 Gradle 성능 스위치. 값까지 대조한다. */
+/**
+ * 켜져 있어야 하는 Gradle 성능 스위치. 값까지 대조한다.
+ *
+ * ★`org.gradle.parallel` 은 여기 없다. **일부러 꺼 둔다** — 아래 DELIBERATELY_OFF 참조.
+ */
 const REQUIRED_SWITCHES: ReadonlyArray<readonly [string, string]> = [
   ['org.gradle.daemon', 'true'],
-  ['org.gradle.parallel', 'true'],
   ['org.gradle.caching', 'true'],
+  ['org.gradle.configuration-cache', 'true'],
+]
+
+/**
+ * **일부러 꺼 둔 스위치.** 켜는 것이 이득처럼 보이지만 실측이 아니라고 말한 것들이다.
+ * 값이 바뀌면 red 가 나고, 바꾸려는 사람이 아래 근거를 마주친다.
+ */
+const DELIBERATELY_OFF: ReadonlyArray<readonly [string, string, string]> = [
+  [
+    'org.gradle.parallel',
+    'false',
+    '2026-08-25 실측. 전량 test 를 --rerun-tasks 로 돌린 A/B —\n' +
+      '  parallel=true  762초에 :modules:notification:test 실패로 중단(52/59). 다시 돌리면\n' +
+      '                 실패 대상이 바뀐다(SUB-2 → SUB-1) = 흔들림이지 결함이 아니다.\n' +
+      '  parallel=false 928초 · 59/59 전량 실행 · BUILD SUCCESSFUL.\n' +
+      '  이득은 ~18% 뿐이다 — 프로파일상 parallel=true 는 경합으로 각 태스크를 2배 느리게\n' +
+      '  만들고(태스크 합계 28.5분) 병렬로 그걸 겨우 되돌린다.\n' +
+      '  깨지는 쪽은 NotificationWorkerSubscriptionFilterTest 처럼 Awaitility +\n' +
+      '  poll-interval 50ms 로 시간에 민감한 워커 테스트다. CPU 를 뺏기면 진다.\n' +
+      '  ⇒ 되살리려면 먼저 그 테스트들의 시간 민감성을 없애라. 순서가 반대면 가짜 초록이 된다.',
+  ],
 ]
 
 /**
@@ -81,7 +105,19 @@ describe('gradle 성능 스위치', () => {
         props.get(key),
         expected,
         `backend/gradle.properties 의 ${key} 가 ${expected} 가 아니다 (현재: ${props.get(key) ?? '미설정'}).\n` +
-          '  이 세 스위치가 꺼져 있으면 no-op 빌드마다 JVM 콜드 스타트 비용을 다시 낸다.',
+          '  이 스위치들이 꺼져 있으면 no-op 빌드마다 JVM 콜드 스타트와 전체 configuration 비용을\n' +
+          '  다시 낸다 — 2026-08-25 실측으로 12초 대 0.83초다.',
+      )
+    })
+  }
+
+  for (const [key, expected, reason] of DELIBERATELY_OFF) {
+    test(`${key} 는 ${expected} 로 남는다 (일부러)`, () => {
+      assert.equal(
+        props.get(key),
+        expected,
+        `backend/gradle.properties 의 ${key} 가 ${expected} 가 아니다 (현재: ${props.get(key) ?? '미설정'}).\n` +
+          `  이건 성능을 놓친 게 아니라 **일부러 꺼 둔 것**이다.\n${reason}`,
       )
     })
   }
