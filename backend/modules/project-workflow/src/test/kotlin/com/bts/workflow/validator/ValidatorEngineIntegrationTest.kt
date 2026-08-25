@@ -61,6 +61,12 @@ import java.util.concurrent.Executors
  * 실행·열거 시 [DefaultWorkflowDefinitionRepository] 가 DB 를 직접 친다. 여기서 `invalidate` 를
  * 부르면 캐시 때문에 안 보이던 결함까지 가려 버린다.
  *
+ * ### 한 테스트 안에서 왕복시킨다 (create → 차단 단언 → delete → 통과 단언)
+ * 「걸면 막힌다」와 「지우면 풀린다」를 다른 테스트로 나누면, 후자의 최종 단언이 **규칙이 애초에
+ * 그 전환에 붙지 않았어도 참**이 된다 — 규칙 없는 기본 상태에서 이미 성립하는 값이라
+ * 「delete 가 동작했다」와 「create 가 엉뚱한 전환에 붙었다」를 구별하지 못한다. 왕복으로 접으면
+ * create 와 delete 중 어느 쪽이 죽어도 그 자리에서 red 다.
+ *
  * ### 픽스처 격리
  * 전환 2개를 [BeforeAll] 에 심고 phase 별로 하나씩 쓴다. 시나리오마다 새 전환을 만들면 캐시된
  * `Workflow` 에 그 전환이 없어 열거·실행이 빗나간다. 건 규칙은 [clearRules] 가 매번 되푼다.
@@ -210,67 +216,49 @@ class ValidatorEngineIntegrationTest {
 
     /**
      * Given `open → done` 전환에 규칙이 하나도 없다.
-     * When  `RequiredField("resolution")` 을 서비스로 걸고 resolution 없이 그 전환을 **실행**한다.
-     * Then  [WorkflowValidatorFailureException] 으로 차단된다.
+     * When  `RequiredField("resolution")` 을 서비스로 걸었다가 다시 서비스로 지우고, 그 사이사이
+     *       resolution 없이 그 전환을 **실행**한다.
+     * Then  걸린 동안은 [WorkflowValidatorFailureException] 으로 차단되고, 지운 뒤에는 계획이 나온다.
      */
     @Test
-    fun `RequiredField 를 걸면 전환 실행이 차단된다`() {
-        applyRule(executionTransitionKey, "RequiredField", mapOf("field" to "resolution"))
+    fun `RequiredField 를 걸면 실행이 차단되고 지우면 통과한다`() {
+        val ruleId = applyRule(executionTransitionKey, "RequiredField", mapOf("field" to "resolution"))
 
         assertThatThrownBy { txTemplate.execute { engine.plan(executionRequest()) } }
             .isInstanceOf(WorkflowValidatorFailureException::class.java)
             .hasFieldOrPropertyWithValue("validatorType", "RequiredField")
             .hasFieldOrPropertyWithValue("field", "resolution")
-    }
 
-    /**
-     * Given 같은 전환에 `RequiredField("resolution")` 이 걸려 있다.
-     * When  그 규칙을 서비스로 삭제하고 resolution 없이 같은 전환을 **실행**한다.
-     * Then  전환 계획이 나온다 — 차단이 풀렸다.
-     */
-    @Test
-    fun `그 규칙을 지우면 같은 전환 실행이 통과한다`() {
-        val ruleId = applyRule(executionTransitionKey, "RequiredField", mapOf("field" to "resolution"))
         service.delete(WF_KEY, executionTransitionKey, ruleId)
 
         val plan = txTemplate.execute { engine.plan(executionRequest()) }!!
-
         assertThat(plan.toStateKey).isEqualTo(EXECUTION_TO_STATE)
     }
 
     /**
      * Given `open → closed` 전환에 규칙이 하나도 없다.
-     * When  출발 카테고리(`TODO`)를 막는 `not-status-category` 를 걸고 전환 **목록**을 조회한다.
-     * Then  그 전환만 목록에서 빠진다. 다른 전환이 그대로 남는 것까지 함께 확인해 공허한 초록을 막는다.
+     * When  출발 카테고리(`TODO`)를 막는 `not-status-category` 를 걸었다가 다시 지우고, 그 사이사이
+     *       전환 **목록**을 조회한다.
+     * Then  걸린 동안은 그 전환만 목록에서 빠지고, 지운 뒤에는 다시 나온다. 다른 전환이 내내 남는
+     *       것까지 함께 확인해 「목록이 통째로 비었다」가 초록으로 통과하는 것을 막는다.
      */
     @Test
-    fun `not-status-category 를 걸면 전환 목록에서 사라진다`() {
-        applyRule(availabilityTransitionKey, "not-status-category", mapOf("category" to FROM_CATEGORY))
-
-        val available = availableToStateKeys()
-
-        assertThat(available).contains(EXECUTION_TO_STATE).doesNotContain(AVAILABILITY_TO_STATE)
-    }
-
-    /**
-     * Given 같은 전환에 `not-status-category` 가 걸려 있다.
-     * When  그 규칙을 서비스로 삭제하고 전환 **목록**을 다시 조회한다.
-     * Then  그 전환이 목록에 다시 나온다.
-     */
-    @Test
-    fun `그 규칙을 지우면 목록에 다시 나온다`() {
+    fun `not-status-category 를 걸면 목록에서 사라지고 지우면 다시 나온다`() {
         val ruleId =
             applyRule(availabilityTransitionKey, "not-status-category", mapOf("category" to FROM_CATEGORY))
+
+        assertThat(availableToStateKeys())
+            .contains(EXECUTION_TO_STATE)
+            .doesNotContain(AVAILABILITY_TO_STATE)
+
         service.delete(WF_KEY, availabilityTransitionKey, ruleId)
 
-        val available = availableToStateKeys()
-
-        assertThat(available).contains(AVAILABILITY_TO_STATE)
+        assertThat(availableToStateKeys()).contains(EXECUTION_TO_STATE, AVAILABILITY_TO_STATE)
     }
 
     /**
-     * 규칙 하나를 **서비스 경유**로 건다. 네 시나리오의 유일한 규칙 생성 지점이라, 아래 `create`
-     * 한 줄을 죽이면 넷 다 「규칙 없음」으로 떨어져 red 가 된다.
+     * 규칙 하나를 **서비스 경유**로 건다. 두 시나리오의 유일한 규칙 생성 지점이라, 아래 `create`
+     * 한 줄을 죽이면 둘 다 「규칙 없음」으로 떨어져 red 가 된다.
      */
     private fun applyRule(
         transitionKey: String,
