@@ -24,9 +24,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * - [ValidatorNotFoundException]              → 404 + `WORKFLOW_VALIDATOR_NOT_FOUND`
  *
  * ### 응답 타입은 새로 만들지 않는다
- * 봉투는 `com.bts.workflow.web` 의 [ErrorResponse]/[ErrorBody] 를 그대로 쓴다. 형제
- * `PostActionErrorResponse` 가 이미 같은 `{error:{code,message}}` 의 사본 1벌이라, 여기서 또 만들면
- * 같은 모양이 3벌이 되고 세 벌은 서로를 검사하지 않는다 (게이트 1 결정, 2026-08-25).
+ * 봉투는 `com.bts.workflow.web` 의 [ErrorResponse]/[ErrorBody] 를 그대로 쓴다. 같은
+ * `{error:{code,message}}` 를 패키지마다 새로 만들면 그 벌들은 서로를 검사하지 않는다
+ * (게이트 1 결정, 2026-08-25). 형제 post-action 핸들러도 자기 사본을 지우고 이쪽으로 왔다.
  *
  * ### `@Order` 를 붙이지 않는다
  * [basePackages] 를 `com.bts.workflow.validator` 로 한정하는 것으로 충분하다.

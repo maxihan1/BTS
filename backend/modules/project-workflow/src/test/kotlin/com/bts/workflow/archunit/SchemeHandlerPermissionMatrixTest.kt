@@ -146,9 +146,14 @@ class SchemeHandlerPermissionMatrixTest {
          *
          * "도달"의 정의는 두 가지 — 직접 호출([callsRequirePermissionDirectly]) 또는 같은 클래스의
          * private 헬퍼를 거쳐 1단계만 호출([callsRequirePermissionViaPrivateHelper]).
-         * [com.bts.workflow.postaction.web.PostActionController.requireManageScheme] 이 이미
-         * private 헬퍼 경유 패턴을 쓰고 있어(BC 관례), 직접 호출만 인정하면 향후
-         * `WorkflowSchemeController` 7벌 중복을 헬퍼로 DRY 리팩토링하는 것 자체가 금지된다.
+         * 직접 호출만 인정하면 `WorkflowSchemeController` 7벌 중복을 헬퍼로 DRY 리팩토링하는 것
+         * 자체가 금지되므로 1단계 경유를 함께 인정한다.
+         *
+         * ⚠ **이 룰의 범위를 규칙 컨트롤러(`validator.web` · `postaction.web`)까지 넓히려면
+         * 판정을 먼저 손봐야 한다.** 그 둘은 2026-08-25 부터 모듈 공용 최상위 확장
+         * `com.bts.workflow.web.requireManageScheme` 을 부르는데, 여기 판정은 「같은 클래스의
+         * private 1단계」만 인정하므로 8개 핸들러가 전부 위반으로 잡힌다. 넓힐 때
+         * [reachesRequirePermission] 에 「모듈 공용 최상위 가드 호출」 갈래를 함께 넣어라.
          */
         private fun reachesRequirePermission(method: JavaMethod): Boolean =
             callsRequirePermissionDirectly(method) || callsRequirePermissionViaPrivateHelper(method)
