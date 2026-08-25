@@ -29,6 +29,10 @@ import java.util.UUID
  * 경로: `GET/POST /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions`
  *       `PUT/DELETE .../post-actions/{id}`
  *
+ * 형제인 `ValidatorController` 와 세그먼트 규칙이 같다. `transitionKey` 는 **전환 id(UUID)** 이거나
+ * 종전 `fromStateKey__toStateKey` 합성 키다 — id 가 전환의 1급 식별자이고(ADR 2026-08-18 §D1),
+ * 해석은 [PostActionAdminService] 가 맡는다.
+ *
  * ### 권한 Guard
  * 모든 엔드포인트(GET 포함) 는 컨트롤러 진입 직후 [WorkflowSchemePermissionResolver.requirePermission]
  * 으로 MANAGE_SCHEME + Global 권한을 검증한다. 리소스 조회 이전에 호출해 존재 probe 를 방지한다.
@@ -63,7 +67,7 @@ class PostActionController(
      * 전환에 속한 post-action 목록을 반환한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey `fromStateKey__toStateKey` 형식의 전환 자연키.
+     * @param transitionKey 전환 id(UUID) 또는 종전 `fromStateKey__toStateKey` 합성 키.
      * @return 200 OK + [PostActionResponse] 목록.
      */
     @GetMapping
@@ -81,7 +85,7 @@ class PostActionController(
      * post-action 을 생성한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey 전환 자연키.
+     * @param transitionKey 전환 id(UUID) 또는 종전 합성 키.
      * @param request 생성 요청 바디.
      * @return 201 Created + 생성된 [PostActionResponse].
      */
@@ -106,7 +110,7 @@ class PostActionController(
      * post-action 을 수정한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey 전환 자연키.
+     * @param transitionKey 전환 id(UUID) 또는 종전 합성 키.
      * @param id 수정할 post-action UUID.
      * @param request 수정 요청 바디.
      * @return 200 OK + 수정된 [PostActionResponse].
@@ -134,7 +138,7 @@ class PostActionController(
      * post-action 을 삭제한다.
      *
      * @param workflowKey 워크플로우 식별 키.
-     * @param transitionKey 전환 자연키.
+     * @param transitionKey 전환 id(UUID) 또는 종전 합성 키.
      * @param id 삭제할 post-action UUID.
      */
     @DeleteMapping("/{id}")
