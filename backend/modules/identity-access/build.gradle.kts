@@ -144,18 +144,25 @@ tasks.withType<Test> {
     // Docker Desktop은 /var/run/docker.sock에 정상 응답하지 않으므로 (Status 400 빈 응답),
     // 활성 context의 소켓 경로를 DOCKER_HOST 환경변수 + jvmArgs 시스템 프로퍼티 두 경로로 전달.
     // CI 환경에서 DOCKER_HOST가 이미 설정된 경우는 Gradle 상위 환경에서 상속되므로 별도 처리 불필요.
-    val dockerSocketPath =
-        runCatching {
-            val contextOutput =
-                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-                    .start().inputStream.bufferedReader().readLine() ?: ""
-            // "unix:///path" → "/path"
-            contextOutput.removePrefix("unix://")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    // ★2026-08-25 — ProcessBuilder 직접 호출을 providers.exec 로 바꿨다.
+    //   종전 코드는 **configuration 시점에** docker 를 실행했고, Gradle 이 그것을
+    //   "external process started ... during configuration time is unsupported" 로 거부해
+    //   configuration cache 를 저장하지 못했다. providers.exec 는 값을 요구받을 때까지
+    //   실행을 미루므로 doFirst 에서 소비하면 실행 시점 호출이 된다. 주입 값은 그대로다.
+    val dockerHost =
+        providers.exec {
+            commandLine("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
-    if (dockerSocketPath != null) {
-        environment("DOCKER_HOST", "unix://$dockerSocketPath")
-        // TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: JVM 시스템 프로퍼티로도 전달 (환경변수 누락 방어)
-        jvmArgs("-DDOCKER_HOST=unix://$dockerSocketPath")
+    doFirst {
+        // docker 미설치·context 미설정이면 빈 문자열이거나 예외다. 둘 다 주입하지 않고 넘어간다
+        // (CI 는 상위 환경의 DOCKER_HOST 를 상속하므로 주입이 없어도 동작한다).
+        val host = runCatching { dockerHost.orNull }.getOrNull()?.takeIf { it.startsWith("unix://") }
+        if (host != null) {
+            this@withType.environment("DOCKER_HOST", host)
+            // TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: JVM 시스템 프로퍼티로도 전달 (환경변수 누락 방어)
+            this@withType.jvmArgs("-DDOCKER_HOST=$host")
+        }
     }
 }

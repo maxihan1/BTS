@@ -278,28 +278,25 @@ jooq {
 //   3. JooqGenerate.jooqConfiguration.jdbc (private 필드) 를 reflection 으로 실제 URL 로 교체
 // generateJooq 완료 후 (doLast): 컨테이너 종료 — 리소스 반환
 afterEvaluate {
-    val dockerSocketPath =
-        runCatching {
-            val contextOutput =
-                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-                    .start().inputStream.bufferedReader().readLine() ?: ""
-            contextOutput.removePrefix("unix://")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-
-    if (dockerSocketPath != null) {
-        System.setProperty("DOCKER_HOST", "unix://$dockerSocketPath")
-        // Testcontainers 가 DOCKER_HOST 환경변수를 읽으므로 시스템 프로퍼티와 함께 전달.
-    }
+    // ★2026-08-25 — providers.exec 로 교체. 종전은 configuration 시점에 docker 를 실행하고
+    //   그 자리에서 System.setProperty 까지 했다. 앞의 것이 configuration cache 를 막았고,
+    //   뒤의 것은 아래 doFirst 가 같은 일을 다시 하므로 중복이었다. 값 소비를 doFirst 로 미룬다.
+    val dockerHost =
+        providers.exec {
+            commandLine("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
     tasks.named<JooqGenerate>("generateJooq") {
         // 컨테이너 참조를 doFirst/doLast 사이에서 공유하기 위한 상태 컨테이너
         val containerHolder = arrayOfNulls<PostgreSQLContainer<*>>(1)
 
         doFirst {
-            // Docker 소켓 경로를 시스템 프로퍼티로 주입 (Testcontainers 인식용)
-            if (dockerSocketPath != null) {
-                System.setProperty("DOCKER_HOST", "unix://$dockerSocketPath")
-            }
+            // Docker 소켓 경로를 시스템 프로퍼티로 주입 (Testcontainers 인식용).
+            // 컨테이너를 여기서 직접 띄우므로 start() 전에 반드시 세팅돼야 한다.
+            runCatching { dockerHost.orNull }.getOrNull()
+                ?.takeIf { it.startsWith("unix://") }
+                ?.let { System.setProperty("DOCKER_HOST", it) }
 
             // quay.io/tembo/pg16-pgmq:latest — pgmq 확장 사전 설치 이미지 (ADR 2026-05-22-pgmq-postgres-image).
             // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
@@ -393,18 +390,20 @@ tasks.withType<Test> {
     maxParallelForks = 1
 
     // Testcontainers — Docker Desktop(macOS)에서 현재 활성 context의 소켓 경로를 명시적으로 주입.
-    val dockerSocketPath =
-        runCatching {
-            val contextOutput =
-                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-                    .start().inputStream.bufferedReader().readLine() ?: ""
-            // "unix:///path" → "/path"
-            contextOutput.removePrefix("unix://")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+    // ★2026-08-25 — providers.exec 로 교체. configuration 시점 외부 프로세스 실행이
+    //   configuration cache 저장을 막았다. 주입 값은 그대로다.
+    val dockerHost =
+        providers.exec {
+            commandLine("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim().lines().firstOrNull().orEmpty() }
 
-    if (dockerSocketPath != null) {
-        environment("DOCKER_HOST", "unix://$dockerSocketPath")
-        jvmArgs("-DDOCKER_HOST=unix://$dockerSocketPath")
+    doFirst {
+        val host = runCatching { dockerHost.orNull }.getOrNull()?.takeIf { it.startsWith("unix://") }
+        if (host != null) {
+            this@withType.environment("DOCKER_HOST", host)
+            this@withType.jvmArgs("-DDOCKER_HOST=$host")
+        }
     }
 }
 
