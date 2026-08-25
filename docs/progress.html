@@ -183,7 +183,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-08-24 갱신</div>
+      <div class="updated">2026-08-25 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1654,10 +1654,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">100</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 178건</span>
+      <span class="big-pct" style="color:#9ca3af;">102</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 78건 · 전체 180건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 100건</h2>
+    <h2>⬜ 아직 안 한 것 — 102건</h2>
     <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1902,7 +1902,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">8건</span></h3>
+    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">10건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">issue-tracking — OpenAPI required 오표기 <b>잔여 26 프로퍼티</b> + 전수 판별식 부재 (선재 · 미착수 · T2)</span></div>
@@ -1983,6 +1983,26 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — identity-access — permitAll 경로군 중 `/ws` 만 메서드 고정을 기계가 지킨다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p>확인하는 장치는 한 곳에만 있다.</p><p>들어가고, 아무도 그 순간을 모른다.</p><p><b>무엇 (PR #399 ceo 렌즈 C-3 권고 + 재리뷰 실측).</b> <code>SecurityConfig</code> 의 permitAll 배선은 5개소다.</p><table class="md-table"><thead><tr><th>위치</th><th>메서드 고정</th><th>기계 가드</th></tr></thead><tbody><tr><td><code>:203</code> 인증 전 경로 그룹</td><td>없음 (POST 가 필요한 경로들이라 정당)</td><td>없음</td></tr><tr><td><code>:209</code> <code>PUBLIC_DASHBOARDS_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:213</code> <code>ICAL_FEED_PATH</code></td><td>GET 고정</td><td><b>없음</b></td></tr><tr><td><code>:255</code> <code>WS_HANDSHAKE_PATH</code></td><td>GET 고정</td><td><code>WebSocketHandshakePathGuardTest</code></td></tr><tr><td><code>:262</code> <code>INBOUND_WEBHOOK_PATHS</code></td><td>목록이 메서드를 함께 가짐</td><td>없음</td></tr></tbody></table><p><code>:209</code>·<code>:213</code> 은 주석이 defense-in-depth 를 길게 설명하는데 <b>그 고정을 재는 테스트가 없다.</b> <code>/ws</code> 가드는 PR #399 가 신설했고, 그것마저 한때 주석으로 만족돼 공허했다(재리뷰 BLOCKER-N1). 설명은 다섯 곳에 있고 강제는 한 곳에만 있는 상태다.</p><p><b>처방.</b> permitAll 배선을 <b>도출</b>해 「메서드가 명시됐거나, 명시하지 않은 이유가 같은 자리에 적혀 있다」를 단언하는 판별식 하나. <code>/ws</code> 가드의 주석 스캐너를 그대로 재사용한다 — 소스 텍스트 가드는 주석을 걷어내지 않으면 공허해진다는 것을 이미 값을 치르고 배웠다. 목록 하드코딩은 하지 않는다(신규 permitAll 이 자동 편입돼야 한다).</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 서식 검사기가 「바뀐 파일」만 본다. 안 건드린 파일의 위반은 초록 뒤에 숨어 있다가,</p>
+        <p class="todo-risk"><b>방치하면.</b> 그 파일을 건드리는 다음 사람이 남의 부채를 자기 diff 로 떠안는다. 무관한 포매팅</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>그 파일을 한 줄만 고치는 순간 수십~수백 건이 한꺼번에 쏟아진다.</p><p>변경이 리뷰에 섞여 진짜 변경이 안 보이고, 「내가 뭘 잘못했나」를 찾는 데 시간이 든다.</p><p><b>무엇 (PR #402 확대 작업 실측).</b> 테스트 62개를 기계 변환하자 ktlint 128건이 났는데, 그중 104건이 <b>한 파일</b>에 몰려 있었고 변환이 건드리지 않은 줄들이었다. 최소 실험으로 갈랐다 — <code>ProjectMembershipRepositoryIntegrationTest.kt</code> 를 두고.</p><table class="md-table"><thead><tr><th>파일 상태</th><th>ktlint 위반</th></tr></thead><tbody><tr><td>원본 그대로</td><td><b>0건</b></td></tr><tr><td><code>import</code> <b>한 줄만 추가</b></td><td><b>150건</b></td></tr><tr><td><code>import</code> 한 줄만 제거</td><td>148건</td></tr></tbody></table><p>즉 원래 ~150건이 있었고 ktlint 가 바뀐 파일만 보기 때문에 안 보였을 뿐이다. 영향 파일 7개다.</p><table class="md-table"><thead><tr><th>파일</th><th>위반</th></tr></thead><tbody><tr><td><code>ProjectMembershipRepositoryIntegrationTest.kt</code></td><td>104</td></tr><tr><td><code>PatAndConcurrencyIntegrationTest.kt</code></td><td>10</td></tr><tr><td><code>UserRepositoryTest.kt</code></td><td>3</td></tr><tr><td><code>RefreshTokenRepositoryTest.kt</code></td><td>2</td></tr><tr><td><code>SessionRepositoryTest.kt</code> · <code>KeymapControllerIntegrationTest.kt</code> · <code>JdbcProjectDirectoryIntegrationTest.kt</code></td><td>각 1</td></tr></tbody></table><p>유형은 <code>argument-list-wrapping</code>(46) · <code>wrapping</code>(37) · <code>multiline-expression-wrapping</code>(26) · <code>trailing-comma-on-call-site</code>(10) · <code>no-empty-first-line-in-class-body</code>(7) · <code>no-consecutive-comments</code>(2). <b>자동 수정 불가 0건</b> — 전부 기계가 고칠 수 있다.</p><p>PR #402 는 이 7개 파일을 변환에서 <b>되돌려</b> 뺐다. 남의 부채를 그 PR 의 diff 로 끌어들이지 않기 위해서다(<code>DEVELOPMENT.md</code> §수술적 변경 · <code>.claude/skills/review/checklist.md:26</code> 이 모듈 전체 <code>ktlintFormat</code> 을 금지한다).</p><p><b>처방.</b> 이 7개 파일만 대상으로 서식을 한 번에 정리하고, <b>같은 PR 에서 fixture 변환도 함께</b> 적용한다. 두 변경이 어차피 같은 파일을 건드리므로 나누면 diff 만 두 배가 된다. 다만 「바뀐 파일만 본다」는 성질 자체는 이 항목의 범위가 아니다 — 다른 모듈에도 같은 잠복 부채가 있을 수 있고, 그 전수 확인은 별건이다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">identity-access — Spring context 가 67 시그니처로 쪼개져 부팅이 오버헤드의 대부분이다 (선재 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 테스트마다 애플리케이션을 새로 켠다. 설정이 한 글자만 달라도 Spring 은 「다른 앱」으로</p>
+        <p class="todo-risk"><b>방치하면.</b> 이 모듈 테스트가 계속 6분대에 머문다. 이 모듈을 건드리는 작업마다 푸시 훅에서</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — identity-access — Spring context 가 67 시그니처로 쪼개져 부팅이 오버헤드의 대부분이다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>보고 처음부터 다시 켜는데, 그런 조합이 67가지나 된다.</p><p>그 시간을 그대로 기다린다.</p><p><b>무엇 (PR #401·#402 실측).</b> <code>:modules:identity-access:test</code> 벽시계 370초 중 JUnit 이 재는 testsuite time 은 59초뿐이고 <b>311초(84%)가 fixture</b> 다. PR #402 가 컨테이너 기동과 마이그레이션 재적용을 걷어내 420초 → 370초로 줄였지만, 남은 311초의 대부분은 <b>Spring context 부팅</b>이다.</p><ul class="md-list"><li><code>@SpringBootTest</code> 포함 파일 <b>114개</b>, 구분되는 context 시그니처 <b>67종</b></li><li>그중 <b>52종이 파일 1개씩만</b> 쓴다 — 컨텍스트 1벌을 부팅해 테스트 클래스 하나만 돌리고 버린다</li><li><code>@MockBean</code> <b>308회 / 54파일</b> — <code>@MockBean</code> 조합은 <b>context 캐시 키의 일부</b>라 하나만 달라도 새로 부팅한다. 상위는 <code>AuthControllerTest</code>(15) · <code>IdentityAccessWorkflowSchemePermissionResolverBootTest</code>(9) · <code>LocalAuthFlowIntegrationTest</code>(8) 로 이 모듈에 집중돼 있다</li><li>Spring 의 context 캐시 기본 상한은 32개다 — 시그니처가 그보다 많으면 <b>부팅한 것을 버리고 다시 부팅</b>한다</li></ul><p><b>처방.</b> 시그니처를 상한 아래로 모은다. ① <code>@MockBean</code> 을 테스트별 스텁 대신 공용 테스트 설정 클래스로 올려 조합을 고정 ② <code>webEnvironment</code>·<code>properties</code>·<code>@ActiveProfiles</code> 가 사실상 같은 그룹을 공용 base 로 합침 ③ 단일 사용 시그니처 52종을 먼저 훑어 왜 혼자인지 확인. <code>app</code> 모듈의 <code>ProdAssemblyHttpTestBase.kt:37-43</code> 이 같은 함정(<code>webEnvironment</code> 가 캐시 키)을 이미 문서화해 두었으니 그 관례를 따른다.</p><p><b>측정 없이 착수하지 말 것.</b> 시그니처를 줄인 만큼 벽시계가 주는지는 가정이다 — <code>--profile</code> 로 대조군을 먼저 고정한다. PR #401 에서 「병렬을 켜면 빨라진다」가 실측으로 뒤집힌 전례가 있다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">49건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
