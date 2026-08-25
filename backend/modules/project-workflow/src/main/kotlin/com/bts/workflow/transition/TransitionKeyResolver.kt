@@ -91,7 +91,7 @@ class TransitionKeyResolver(
      *
      * ★ 단건을 가정하지 않는다. 같은 (from,to) 구간에 전환이 여럿일 수 있고, GLOBAL 은 조건이
      * `kind = 'GLOBAL'` + 도착 상태뿐이라 같은 도착지를 향한 2건이면 그것만으로 다건이 된다.
-     * 몇 건인지를 보고 404 로 바꿀지 결정하는 것은 호출자([PostActionAdminService])의 몫이다.
+     * 몇 건인지를 보고 404 로 바꿀지 결정하는 것은 호출자의 몫이다 — 규칙 종류마다 호출자가 다르다.
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param fromStateKey 출발 상태 키. GLOBAL·INITIAL 전환은 상태 키 대신 종류 이름이 온다.
