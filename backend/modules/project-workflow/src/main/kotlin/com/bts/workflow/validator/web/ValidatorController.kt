@@ -5,9 +5,11 @@ package com.bts.workflow.validator.web
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.web.DataEnvelope
 import com.bts.workflow.validator.ValidatorAdminService
+import com.bts.workflow.validator.ValidatorRow
 import com.bts.workflow.web.CurrentActor
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -45,15 +47,25 @@ import java.util.UUID
  *
  * ### 트랜잭션
  * 컨트롤러는 경계를 열지 않는다. `@Transactional` 은 [ValidatorAdminService] 쪽에만 있다.
+ * [phaseOf] 가 부르는 팩토리도 인스턴스를 만들 뿐 `validate` 를 부르지 않으므로 DB 접근도
+ * 권한 조회도 SpEL 평가도 일어나지 않는다 ([ValidatorAdminService] dry-run 과 같은 계약).
+ *
+ * ### `phase` 는 인스턴스에서 읽는다 — 표를 만들지 않는다
+ * 응답의 `phase` 는 [WorkflowValidatorFactory] 가 만든 인스턴스의 속성에서 온다. 여기에
+ * `type → phase` 표를 두면 팩토리의 `when` 분기와 각 구현체의 `override val phase` 에 이은
+ * **세 번째 사본**이 되고, 세 목록은 서로를 검사하지 않으므로 갈린 사실이 드러나지 않는다.
+ * 응답이 이 값을 실어야 소비자(화면) 쪽에도 같은 표가 생기지 않는다.
  *
  * @param service validator 관리 서비스.
  * @param permissionResolver MANAGE_SCHEME 권한 평가 outbound port.
+ * @param validatorFactory validator 인스턴스 팩토리. `phase` 의 진실 출처다.
  */
 @RestController
 @RequestMapping("/api/v1/workflows/{workflowKey}/transitions/{transitionKey}/validators")
 class ValidatorController(
     private val service: ValidatorAdminService,
     private val permissionResolver: WorkflowSchemePermissionResolver,
+    private val validatorFactory: WorkflowValidatorFactory,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -73,7 +85,7 @@ class ValidatorController(
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param transitionKey 전환 id(UUID) 또는 종전 `fromStateKey__toStateKey` 합성 키.
-     * @return 200 OK + [ValidatorResponse] 목록 (displayOrder ASC).
+     * @return 200 OK + [ValidatorResponse] 목록 (displayOrder ASC). 각 행에 `phase` 가 실린다.
      */
     @GetMapping
     fun list(
@@ -83,7 +95,7 @@ class ValidatorController(
         requireManageScheme()
         log.debug("ValidatorController.list workflowKey={} transitionKey={}", workflowKey, transitionKey)
         val rows = service.listForTransition(workflowKey, transitionKey)
-        return ResponseEntity.ok(DataEnvelope(rows.map { ValidatorResponse.from(it) }))
+        return ResponseEntity.ok(DataEnvelope(rows.map { toResponse(it) }))
     }
 
     /**
@@ -108,7 +120,7 @@ class ValidatorController(
             request.type,
         )
         val row = service.create(workflowKey, transitionKey, request.type, request.config, request.displayOrder)
-        return ResponseEntity.status(HttpStatus.CREATED).body(DataEnvelope(ValidatorResponse.from(row)))
+        return ResponseEntity.status(HttpStatus.CREATED).body(DataEnvelope(toResponse(row)))
     }
 
     /**
@@ -136,7 +148,7 @@ class ValidatorController(
             request.type,
         )
         val row = service.update(workflowKey, transitionKey, id, request.type, request.config, request.displayOrder)
-        return ResponseEntity.ok(DataEnvelope(ValidatorResponse.from(row)))
+        return ResponseEntity.ok(DataEnvelope(toResponse(row)))
     }
 
     /**
@@ -161,5 +173,41 @@ class ValidatorController(
             id,
         )
         service.delete(workflowKey, transitionKey, id)
+    }
+
+    /**
+     * 행을 응답 DTO 로 옮기면서 `phase` 를 인스턴스에서 읽어 붙인다.
+     *
+     * @param row validator 행.
+     * @return `phase` 가 채워진(판정 불가 시 `null` 인) 응답 DTO.
+     */
+    private fun toResponse(row: ValidatorRow): ValidatorResponse = ValidatorResponse.from(row, phaseOf(row))
+
+    /**
+     * 행 하나의 평가 시점을 판정한다. **실패를 행 단위로 가둔다** — 한 행이 인스턴스화되지 않아도
+     * 목록 전체가 500 이 되지 않고 그 행만 `null` 이 된다.
+     *
+     * ### `runCatching` 을 쓰지 않는 이유
+     * `runCatching` 은 [Throwable] 을 잡아 `Error`(OOM · StackOverflow) 까지 삼키고, 치명적 상황을
+     * 「phase 를 모른다」로 위장한다. 여기서 가두려는 것은 [WorkflowValidatorFactory.create] 가
+     * 계약상 던지는 [IllegalArgumentException] 하나다 — 미지원 type · 필수 config 키 누락 ·
+     * config 타입 불일치 · 알 수 없는 enum 이 전부 그 타입으로 온다. 그 밖의 예외가 올라오면
+     * 팩토리 쪽 결함이므로 `null` 로 감추지 않고 500 으로 드러나야 한다.
+     *
+     * @param row validator 행.
+     * @return `"AVAILABILITY"` 또는 `"EXECUTION"`. 인스턴스화 실패 시 `null`.
+     */
+    private fun phaseOf(row: ValidatorRow): String? {
+        return try {
+            validatorFactory.create(row.type, row.config).phase.name
+        } catch (ex: IllegalArgumentException) {
+            log.debug(
+                "ValidatorController: phase 판정 불가 id={} type={} reason='{}'",
+                row.id,
+                row.type,
+                ex.message,
+            )
+            null
+        }
     }
 }

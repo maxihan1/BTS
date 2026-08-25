@@ -6,6 +6,10 @@ import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
+import com.bts.workflow.engine.WorkflowValidatorFactory
+import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.validator.ValidatorAdminService
 import com.bts.workflow.validator.ValidatorNotFoundException
 import com.bts.workflow.validator.ValidatorRow
@@ -51,6 +55,12 @@ import java.util.UUID
  * - POST 성공 201 + `{data:...}` 봉투 · DELETE 성공 204 무본문.
  * - GET 목록의 각 행이 `phase` 를 함께 준다 — 소비자가 `type → phase` 표를 만들 이유를 없앤다.
  * - 인스턴스화가 실패하는 행은 `phase = null` 이고 **목록 전체는 200** 이다.
+ *
+ * ### 팩토리만 실물이다 (mock 이 아니다)
+ * `phase` 의 진실 출처는 각 구현체의 `override val phase` 이고 팩토리가 그 인스턴스를 만든다.
+ * 팩토리를 mock 으로 두면 phase 가 「던지라고 시킨 값」이 되어 두 테스트가 공허해진다.
+ * [DefaultWorkflowValidatorFactory] 실물을 쓰고 그 의존 2개(권한 resolver · SpEL 평가기)만 mock 이다
+ * — `ValidatorAdminServiceTest` 와 같은 관례다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ValidatorControllerTest.TestMvcConfig::class])
@@ -68,17 +78,39 @@ class ValidatorControllerTest {
         @Bean
         open fun permissionResolver(): WorkflowSchemePermissionResolver = mockk(relaxed = true)
 
+        /** SpEL 평가기 — strict mock. 인스턴스 생성만 하고 평가하지 않는다는 계약의 감시자다. */
+        @Bean
+        open fun spelEvaluator(): SpelEvaluator = mockk()
+
+        /** 워크플로우 권한 resolver — `permission-check` 인스턴스에 주입될 뿐 호출되지 않는다. */
+        @Bean
+        open fun workflowPermissionResolver(): PermissionResolver = mockk()
+
+        /**
+         * 실물 validator 팩토리 — `phase` 가 구현체에서 오는지를 이 테스트가 실제로 확인하게 한다.
+         *
+         * @param resolver 권한 평가 outbound port mock.
+         * @param evaluator SpEL 평가기 mock.
+         */
+        @Bean
+        open fun validatorFactory(
+            resolver: PermissionResolver,
+            evaluator: SpelEvaluator,
+        ): WorkflowValidatorFactory = DefaultWorkflowValidatorFactory(resolver, evaluator)
+
         /**
          * 테스트 대상 컨트롤러.
          *
          * @param svc validator 관리 서비스 mock.
          * @param resolver 권한 평가 포트 mock.
+         * @param factory 실물 validator 팩토리.
          */
         @Bean
         open fun validatorController(
             svc: ValidatorAdminService,
             resolver: WorkflowSchemePermissionResolver,
-        ): ValidatorController = ValidatorController(svc, resolver)
+            factory: WorkflowValidatorFactory,
+        ): ValidatorController = ValidatorController(svc, resolver, factory)
 
         /** validator 패키지 전용 예외 핸들러. */
         @Bean
