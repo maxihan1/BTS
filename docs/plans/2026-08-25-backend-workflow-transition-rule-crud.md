@@ -675,10 +675,102 @@ class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
   기준선 **106 클래스 · tests 756 · failures 0** 유지 (증감 0 이어야 한다 — 순수 리팩터다)
 - 린트 3종 각각 `--rerun` → EXIT 0
 
+### Task 10~17 — 게이트 2 지적 전량 반영 (Maxi 결정 2026-08-25)
+
+> 리뷰 5종이 **26건**을 냈고 Maxi 가 「지적 전부 고치고 재리뷰」를 선택했다. 아래 8 task 가 그 전량이다.
+> 렌즈별 원문은 `## 리뷰 결과 (PR 단위)` 참조.
+
+**★ 한 건은 권고와 다르게 간다.** api-contract 는 `phase`·config 키를 **카탈로그 엔드포인트 신설**로
+풀라고 했으나, 그것은 FR-WF-06 D4 의 선언 범위를 넘는 **새 API 표면**이라 스펙 deviation 전수 동기화가
+다시 붙는다. 대신 **① `ValidatorResponse` 에 `phase` 추가(행 단위 `runCatching` 방어) ② SDD 표에
+`필수 config 키` 열 추가 ③ 판별식이 그 열까지 읽게 확장** 으로 간다. 같은 두 문제를 닫으면서
+**기계 강제**가 붙고, 판별식이 자기 결함을 옆 열에서 재생산했다는 지적(maintainability I14)도 함께
+사라진다. 카탈로그 엔드포인트는 D6 착수 시 재검토 대상으로 남긴다.
+
+### Task 10. 하드 삭제 ADR + `DATA.md §3` 등재  [BLOCKER 해소]
+
+- files: [`docs/adr/2026-08-25-workflow-transition-rule-hard-delete.md`, `DATA.md`]
+- depends-on: []
+
+`workflow_validators`·`workflow_post_actions` 는 `deleted_at` 이 없고 `deleteById` 가 물리 삭제다.
+`DATA.md §3` 허용 목록 9줄에 없고 인가 ADR 0건이다. `DATA.md §1` 이 「위반 시 즉시 PR BLOCKER」로 못박았다.
+**형제 post-action 도 `origin/main` 에서 이미 미등재** — 같은 줄로 함께 정리해 사본을 안 만든다.
+
+### Task 11. FR 전수 동기화  [필수 누락 해소]
+
+- files: [`docs/plan/product/project-workflow.md`, `docs/plan/README.md`]
+- depends-on: []
+
+D1·D2·D4·D5 `[x]` · D3 「비해당 **확정**」 · §2 진척에 `FR-WF-06 D1·D2·D4·D5 ✅ #404 / D6~D7 ⬜` ·
+README §1 진척 열 동반 갱신(룰 H 양방향 정합 유지).
+> `verify-master-plan.sh` 는 EXIT 0 이었다 — **양쪽이 똑같이 낡으면 공허하게 통과**한다. 사람만 잡는다.
+
+### Task 12. main 코드 소소한 수정 5건 + 낡은 주석 4건
+
+- files: [`.../validator/ValidatorAdminService.kt`, `.../transition/TransitionRuleRepository.kt`, `.../transition/TransitionKeyResolver.kt`, `.../validator/web/ValidatorExceptionHandler.kt`, `.../validator/ValidatorAdminExceptions.kt`, `.../domain/spi/WorkflowValidator.kt`, `.../engine/DefaultWorkflowValidatorFactory.kt`, `.../engine/DefaultWorkflowPostActionFactory.kt`, `.../postaction/web/PostActionController.kt`]
+- depends-on: []
+
+① **편집 불가 판정을 denylist → allowlist** (security I1). 새 validator 가 코드 변경 0 으로 편집
+가능해지는 경로를 막는다 — 「불명은 거부」 ② `orderBy(displayOrder, id)` 동률 확정(api I3) ③
+`protected val dsl` → `private`(maint I15) ④ `TRANSITION_ID_PATTERN` → `private`(maint I16) ⑤ 에러
+코드 3종을 예외 companion 상수로(maint I7) ⑥ `WorkflowValidator.kt:41` 의 `field-required`(실재 0건)
+정정 ⑦ 두 팩토리 KDoc 의 type 나열 사본 2벌 제거 ⑧ `PostActionController` `@param transitionKey` 4곳
+동기화.
+
+### Task 13. 판별식 축 3개 추가 + ArchUnit 룰 1개
+
+- files: [`scripts/workflow/validator-type-catalog.test.ts`, `docs/sdd/07-workflow-engine.md`, `.../test/.../archunit/ProjectWorkflowArchitectureTest.kt`]
+- depends-on: []
+
+① SDD 표에 **`필수 config 키` 열** 추가 + 판별식이 그 열 ↔ 팩토리 `requireConfigString` 호출 대조
+② **`구현 클래스` 열** ↔ 실제 클래스 파일 집합 대조(I14 — 안 읽는 열은 썩는다)
+③ 팩토리 `when` 분기 ↔ 구현체 `override val type` 양방향 차집합(I12 — 갈리면 엔진이 보고한 type 을
+API 에 되돌려 쓸 때 400)
+④ ArchUnit — `TransitionRuleRepository` 상속 클래스는 CRUD 4종을 `override` + `@Transactional` 해야
+한다(I13 — 지금은 빠뜨려도 전부 초록)
+**넷 다 비-공허 짝 필수. 일부러 끊어 red 를 눈으로 본 뒤 되돌린다.**
+
+### Task 14. `phase` 노출 + 계약 문서화
+
+- files: [`.../validator/web/ValidatorDtos.kt`, `.../validator/web/ValidatorController.kt`, `.../validator/ValidatorAdminService.kt`, `.../test/.../validator/web/ValidatorControllerTest.kt`]
+- depends-on: [12]
+
+`ValidatorResponse` 에 `phase` 추가. **행 단위 `runCatching`** 으로 인스턴스화 실패 행은 `phase=null`.
+> 내가 스펙에 적은 제외 근거는 **틀렸다**. 「깨진 config 행이 목록 전체를 500」이라 했으나
+> `WorkflowEngine.kt:511` 이 **이미 같은 행으로 같은 호출을 try/catch 없이** 한다. 두 경로를 가르지 못한다.
+
+### Task 15. 남은 사본 3종 공통화
+
+- files: [`.../transition/TransitionKeyResolver.kt`, `.../validator/ValidatorAdminService.kt`, `.../postaction/PostActionAdminService.kt`, `.../validator/web/ValidatorController.kt`, `.../postaction/web/PostActionController.kt`, `.../postaction/web/PostActionExceptionHandler.kt`]
+- depends-on: [12, 14]
+
+① `resolveOrThrow`/`resolveByCompositeKey`/`ensureBelongsToTransition` 3함수(maint I9 — **어려운 절반**이
+아직 두 벌) ② `requireManageScheme()`(I18 — 보안 계약이 사본 위에 서 있다) ③ `PostActionErrorResponse`
+/`Body` 를 공용 `ErrorResponse` 로(I10 — wire 계약 무변).
+
+### Task 16. 컨트롤러 테스트 보강
+
+- files: [`.../test/.../validator/web/ValidatorControllerTest.kt`]
+- depends-on: [14, 15]
+
+에러 계약 **4행 중 3행이 무검증**이다(testing T2 · maint I7 교차확인). `400 INVALID` · `400
+TYPE_NOT_EDITABLE` · `404 NOT_FOUND` 각각 status + `$.error.code` 단언 · GET 200 목록 봉투 ·
+PUT 200 · POST 요청→서비스 인자 `verify(exactly = 1)`(현재 `any()` 가 삼킨다).
+
+### Task 17. 서비스·엔진 테스트 보강
+
+- files: [`.../test/.../validator/ValidatorAdminServiceTest.kt`, `.../test/.../validator/ValidatorEngineIntegrationTest.kt`]
+- depends-on: [14, 15]
+
+**보안 가드 2개가 지워져도 초록인 상태를 닫는다.** ① E3 — `resolveById` null 분기(cross-workflow
+IDOR) ② E4 — `delete` 의 소속 확인 ③ `update` 성공 경로(FR-3 이 통째로 무검증) ④ 합성 키 형식 오류
+⑤ E5 여분 키 ⑥ 엔진 테스트를 **한 테스트 안에서 create → 차단 단언 → delete → 통과 단언** 왕복으로
+접는다(현재는 삭제 **전** 상태를 안 재서 create 가 엉뚱한 전환에 붙어도 초록).
+
 ## Plan 메타
 
-- **task 수**. 9 (Task 9 는 구현 중 발견으로 게이트 1 이후 추가)
-- **예상 wave**. 5
+- **task 수**. 17 (Task 9 는 구현 중 발견 · Task 10~17 은 게이트 2 지적 반영)
+- **예상 wave**. 9
   - wave 1 — Task 1 · 2 · 7 (`depends-on: []`, `files` 교집합 0)
   - wave 2 — Task 3 (2) · Task 8 (1 · `PostActionAdminService.kt` 파일 겹침으로 자동 직렬)
   - wave 3 — Task 4 (1, 3)
