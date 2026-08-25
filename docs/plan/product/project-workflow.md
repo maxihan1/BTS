@@ -118,14 +118,14 @@
 
 > 엔진은 이미 규칙을 DB(`workflow_validators`/`workflow_post_actions`, `type` + `config` JSONB)에서 읽고 Jira 의 조건/검증기 구분도 `ValidatorPhase` 로 표현돼 있다. 없는 것은 **편집 수단**뿐이라 CRUD API 와 화면만 얹는다.
 
-- [ ] D1. 도메인 — validator type 4종의 config 스키마 확정 (책임. backend-engineer)
-- [ ] D2. 명세 — 알 수 없는 type·잘못된 config 의 400 계약 · post-action 경로를 transitionId 로 정렬(구 경로 유지) (책임. backend-engineer)
-- [ ] D4. 백엔드 — validator CRUD API (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전환에서 동작(엔진 통합) (책임. backend-engineer)
+- [x] D1. 도메인 — validator type 4종의 config 스키마 확정 (책임. backend-engineer) (PR #404, 2026-08-25). *확정하며 SDD §7.3·§7.4 의 「타입」 열이 팩토리 `when` 분기의 실제 `type` 문자열과 어긋나 있던 것을 바로잡았다(`permission-check`·`not-status-category` 등). 표↔팩토리 일치는 `scripts/workflow/validator-type-catalog.test.ts` 가 강제한다*
+- [x] D2. 명세 — 알 수 없는 type·잘못된 config 의 400 계약 · post-action 경로를 transitionId 로 정렬(구 경로 유지) (책임. backend-engineer) (PR #404, 2026-08-25)
+- [x] D4. 백엔드 — validator CRUD API (책임. backend-engineer) (PR #404, 2026-08-25). *`ValidatorController` 4 엔드포인트 · `ValidatorAdminService` · `ValidatorRepository` · validator/post-action 공용 기반 `TransitionRuleRepository`*
+- [x] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전환에서 동작(엔진 통합) (책임. backend-engineer) (PR #404, 2026-08-25). *테스트 +25건*
 - [ ] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer)
 - [ ] D7. E2E — 규칙을 걸면 전환이 막히고, 풀면 통과한다 (책임. qa-engineer)
 
-> **D3 비해당 예정**. `workflow_validators`/`workflow_post_actions` 는 V200 기존 테이블이고 스키마 변경 없이 CRUD 만 얹는다. 착수 시 재확인한다.
+> **D3 비해당 확정** (PR #404, 2026-08-25). 착수 시 재확인한 결과 예정대로였다 — `workflow_validators`/`workflow_post_actions` 는 V200 기존 테이블이라 이 PR 의 **마이그레이션은 0건**이고, 스키마 변경 없이 CRUD 만 얹었다.
 
 ### §2.7 FR-WF-07 — 워크플로우 초안·발행 + 상태 이관 마법사
 
@@ -159,7 +159,7 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06~07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ⬜ · FR-WF-07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
 - [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요
