@@ -52,7 +52,7 @@ import java.util.UUID
     "UnnecessaryAbstractClass",
 )
 abstract class TransitionRuleRepository(
-    protected val dsl: DSLContext,
+    private val dsl: DSLContext,
     private val objectMapper: ObjectMapper,
     private val table: Table<*>,
     private val idField: TableField<*, UUID?>,
@@ -73,6 +73,10 @@ abstract class TransitionRuleRepository(
     /**
      * 전환 ID 에 속한 전환 규칙 목록을 display_order ASC 순으로 반환한다.
      *
+     * **동률은 id ASC 로 확정한다.** `display_order` 는 기본값이 0 이라 요청이 값을 생략하면 한 전환의
+     * 모든 행이 0 이 되는데, 그때 단일 키 정렬은 전순서가 아니고 PostgreSQL 은 동률 순서를 보장하지
+     * 않는다. 2차 키가 없으면 쓰기 한 번이 관리자 화면의 행 순서를 뒤섞는다.
+     *
      * @param transitionId 조회할 전환의 UUID.
      * @return [TransitionRuleRow] 목록. 없으면 빈 리스트.
      */
@@ -88,7 +92,7 @@ abstract class TransitionRuleRepository(
             )
             .from(table)
             .where(transitionIdField.eq(transitionId))
-            .orderBy(displayOrderField.asc())
+            .orderBy(displayOrderField.asc(), idField.asc())
             .fetch()
             .map { record ->
                 val id =

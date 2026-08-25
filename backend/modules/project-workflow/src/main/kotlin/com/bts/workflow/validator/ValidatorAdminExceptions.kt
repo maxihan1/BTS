@@ -16,7 +16,12 @@ package com.bts.workflow.validator
 class ValidatorValidationException(
     val reason: String,
     cause: Throwable? = null,
-) : RuntimeException("validator 검증 실패: $reason", cause)
+) : RuntimeException("validator 검증 실패: $reason", cause) {
+    companion object {
+        /** validator 검증 실패 에러 코드 상수. `web/ValidatorExceptionHandler` 와 공유한다. */
+        const val ERROR_CODE: String = "WORKFLOW_VALIDATOR_INVALID"
+    }
+}
 
 /**
  * 화면에서 편집할 수 없는 validator type 을 생성·수정하려 할 때 던지는 예외
@@ -29,7 +34,12 @@ class ValidatorValidationException(
  */
 class ValidatorTypeNotEditableException(
     val type: String,
-) : RuntimeException("화면에서 편집할 수 없는 validator type 입니다: '$type'")
+) : RuntimeException("화면에서 편집할 수 없는 validator type 입니다: '$type'") {
+    companion object {
+        /** 편집 불가 type 에러 코드 상수. `web/ValidatorExceptionHandler` 와 공유한다. */
+        const val ERROR_CODE: String = "WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE"
+    }
+}
 
 /**
  * validator 또는 전환이 존재하지 않을 때 던지는 예외 (HTTP 404 · `WORKFLOW_VALIDATOR_NOT_FOUND`).
@@ -42,4 +52,9 @@ class ValidatorTypeNotEditableException(
  */
 class ValidatorNotFoundException(
     val detail: String,
-) : RuntimeException("validator 또는 전환을 찾을 수 없습니다: $detail")
+) : RuntimeException("validator 또는 전환을 찾을 수 없습니다: $detail") {
+    companion object {
+        /** validator·전환 미존재 에러 코드 상수. `web/ValidatorExceptionHandler` 와 공유한다. */
+        const val ERROR_CODE: String = "WORKFLOW_VALIDATOR_NOT_FOUND"
+    }
+}

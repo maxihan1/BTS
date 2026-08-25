@@ -78,7 +78,7 @@ class ValidatorExceptionHandler {
             ErrorResponse(
                 error =
                     ErrorBody(
-                        code = "WORKFLOW_VALIDATOR_INVALID",
+                        code = ValidatorValidationException.ERROR_CODE,
                         message = "validator 설정이 유효하지 않습니다.",
                     ),
             ),
@@ -101,7 +101,7 @@ class ValidatorExceptionHandler {
             ErrorResponse(
                 error =
                     ErrorBody(
-                        code = "WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE",
+                        code = ValidatorTypeNotEditableException.ERROR_CODE,
                         message = "이 validator 유형은 화면에서 편집할 수 없습니다.",
                     ),
             ),
@@ -123,7 +123,7 @@ class ValidatorExceptionHandler {
             ErrorResponse(
                 error =
                     ErrorBody(
-                        code = "WORKFLOW_VALIDATOR_NOT_FOUND",
+                        code = ValidatorNotFoundException.ERROR_CODE,
                         message = "validator 또는 전환을 찾을 수 없습니다.",
                     ),
             ),

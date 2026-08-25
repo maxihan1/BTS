@@ -207,7 +207,7 @@ class TransitionKeyResolver(
  * `UUID.fromString` 을 그대로 쓰지 않는 이유는 그것이 `1-1-1-1-1` 같은 헐거운 표기도 받아들여
  * 갈래 판정이 예외 발생 여부에 매달리기 때문이다. 갈래는 예외가 아니라 형태로 가른다.
  */
-internal val TRANSITION_ID_PATTERN =
+private val TRANSITION_ID_PATTERN =
     Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 /**
