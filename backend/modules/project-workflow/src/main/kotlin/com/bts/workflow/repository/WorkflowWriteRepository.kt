@@ -324,7 +324,7 @@ class WorkflowWriteRepository(
      *
      * ### 복제본의 구형 `workflow_states` 를 가리키는 것은 지금 아무것도 없다
      * [copyTransitions] 가 복제본 전환에 **신 컬럼만** 채우므로 구 컬럼은 NULL 이다. 구 테이블을
-     * 보는 두 경로 — `WorkflowRepository` 의 읽기 폴백과 `PostActionTransitionResolver` 의 해석 —
+     * 보는 두 경로 — `WorkflowRepository` 의 읽기 폴백과 `TransitionKeyResolver` 의 해석 —
      * 은 **둘 다 신 컬럼이 정본이고 구 컬럼은 신 컬럼이 NULL 인 행에서만 탄다**. 복제본은 신 컬럼이
      * 차 있으므로 어느 쪽도 이 복사된 행에 닿지 않는다.
      *

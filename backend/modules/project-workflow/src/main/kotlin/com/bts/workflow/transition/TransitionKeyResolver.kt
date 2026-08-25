@@ -1,6 +1,6 @@
 // 워크플로우 전환 키 → transition_id UUID 해석 컴포넌트
 
-package com.bts.workflow.postaction
+package com.bts.workflow.transition
 
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowTransition
@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * post-action 경로가 받은 전환 지목값을 `workflow_transitions.id` 로 되돌리는 컴포넌트.
+ * 규칙 경로가 받은 전환 지목값을 `workflow_transitions.id` 로 되돌리는 컴포넌트.
  *
  * ### 1급 식별자는 id 다 (ADR 2026-08-18 §D1)
  * 경로 세그먼트가 UUID 로 파싱되면 [resolveById] 로 간다. 그쪽이 정본이다 —
@@ -48,7 +48,7 @@ import java.util.UUID
  * @param dsl jOOQ DSLContext.
  */
 @Component
-class PostActionTransitionResolver(
+class TransitionKeyResolver(
     private val dsl: DSLContext,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -78,7 +78,7 @@ class PostActionTransitionResolver(
                 .fetchOne(WORKFLOW_TRANSITIONS.ID)
         if (found == null) {
             log.debug(
-                "PostActionTransitionResolver: 전환 id 미존재 workflowKey={} transitionId={}",
+                "TransitionKeyResolver: 전환 id 미존재 workflowKey={} transitionId={}",
                 workflowKey,
                 transitionId,
             )
@@ -123,7 +123,7 @@ class PostActionTransitionResolver(
         detail: String,
     ): List<UUID> {
         log.debug(
-            "PostActionTransitionResolver: {} 미존재 workflowKey={} value={}",
+            "TransitionKeyResolver: {} 미존재 workflowKey={} value={}",
             stage,
             workflowKey,
             detail,

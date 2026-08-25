@@ -3,6 +3,7 @@
 package com.bts.workflow.postaction
 
 import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.transition.TransitionKeyResolver
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -38,7 +39,7 @@ import java.util.UUID
 class PostActionAdminService(
     private val repository: PostActionRepository,
     private val factory: WorkflowPostActionFactory,
-    private val transitionResolver: PostActionTransitionResolver,
+    private val transitionResolver: TransitionKeyResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
