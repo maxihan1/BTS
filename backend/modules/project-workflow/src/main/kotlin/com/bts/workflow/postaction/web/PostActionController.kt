@@ -2,13 +2,10 @@
 
 package com.bts.workflow.postaction.web
 
-import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
-import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.postaction.PostActionAdminService
 import com.bts.workflow.scheme.web.DataEnvelope
-import com.bts.workflow.web.CurrentActor
+import com.bts.workflow.web.requireManageScheme
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -34,9 +31,12 @@ import java.util.UUID
  * 해석은 [PostActionAdminService] 가 맡는다.
  *
  * ### 권한 Guard
- * 모든 엔드포인트(GET 포함) 는 컨트롤러 진입 직후 [WorkflowSchemePermissionResolver.requirePermission]
- * 으로 MANAGE_SCHEME + Global 권한을 검증한다. 리소스 조회 이전에 호출해 존재 probe 를 방지한다.
+ * 모든 엔드포인트(GET 포함) 는 컨트롤러 진입 직후 공용 [requireManageScheme] 로 MANAGE_SCHEME +
+ * Global 권한을 검증한다. 리소스 조회 이전에 호출해 존재 probe 를 방지한다.
  * (메모리 auth-extraction-before-resource-lookup 준수)
+ *
+ * 가드 구현은 형제 `ValidatorController` 와 **한 벌을 공유한다** — 사본이면 스코프를 좁히는 날
+ * 한쪽만 고쳐지고, 두 컨트롤러 테스트가 각자 자기 사본만 지켜 그 사실이 red 로 드러나지 않는다.
  *
  * ### 권한 예외 누출 방지
  * [WorkflowSchemeAccessDeniedException] 메시지에 actorId/permission/scope 등 내부 정보가
@@ -54,15 +54,6 @@ class PostActionController(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private fun requireManageScheme() {
-        val actor = CurrentActor.current()
-        permissionResolver.requirePermission(
-            actor.toUuid(),
-            WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
-        )
-    }
-
     /**
      * 전환에 속한 post-action 목록을 반환한다.
      *
@@ -75,7 +66,7 @@ class PostActionController(
         @PathVariable workflowKey: String,
         @PathVariable transitionKey: String,
     ): ResponseEntity<DataEnvelope<List<PostActionResponse>>> {
-        requireManageScheme()
+        permissionResolver.requireManageScheme()
         log.debug("PostActionController.list workflowKey={} transitionKey={}", workflowKey, transitionKey)
         val rows = service.listForTransition(workflowKey, transitionKey)
         return ResponseEntity.ok(DataEnvelope(rows.map { PostActionResponse.from(it) }))
@@ -95,7 +86,7 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        requireManageScheme()
+        permissionResolver.requireManageScheme()
         log.info(
             "PostActionController.create workflowKey={} transitionKey={} type={}",
             workflowKey,
@@ -122,7 +113,7 @@ class PostActionController(
         @PathVariable id: UUID,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        requireManageScheme()
+        permissionResolver.requireManageScheme()
         log.info(
             "PostActionController.update workflowKey={} transitionKey={} id={} type={}",
             workflowKey,
@@ -148,7 +139,7 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @PathVariable id: UUID,
     ) {
-        requireManageScheme()
+        permissionResolver.requireManageScheme()
         log.info(
             "PostActionController.delete workflowKey={} transitionKey={} id={}",
             workflowKey,
