@@ -25,10 +25,11 @@ import org.springframework.stereotype.Component
  * - `"not-status-category"` — [NotStatusCategoryValidator]. config["category"] 필수 ([StateCategory] 이름).
  * - `"CustomExpression"` — [CustomExpressionValidator]. config["expression"] 필수.
  *
- * ## prod 프로파일 주의
- * prod 프로파일은 [PermissionResolver] 빈 부재(AlwaysAllowPermissionResolver 는 @Profile("!prod") 전용).
- * FR-PM-04 에서 IdentityAccessPermissionResolver(@Profile("prod")) 구현 필요.
- * 현 단계 검증은 test-assembled(!prod) 환경 기준이다.
+ * ## 권한 resolver 는 profile 로 갈린다 — 어느 쪽이든 빈은 있다
+ * [PermissionResolver] 구현 2종이 프로파일로 상호 배타 선택된다.
+ * - prod — [com.bts.workflow.adapter.DelegatingPermissionResolver] (`@Profile("prod")`).
+ *   shared-kernel 권한 포트에 위임하고, 카탈로그에 없는 권한 문자열은 거부한다(fail-closed).
+ * - !prod — [com.bts.workflow.adapter.AlwaysAllowPermissionResolver] (`@Profile("!prod")`). 항상 허용.
  *
  * @param permissionResolver 권한 평가 outbound port.
  *   !prod 환경에서 [com.bts.workflow.adapter.AlwaysAllowPermissionResolver] 가 주입된다.

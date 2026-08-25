@@ -22,8 +22,9 @@ import java.util.UUID
  *
  * **캐시 무효화 불필요**: post-action 은 전환 실행 시
  * `DefaultWorkflowDefinitionRepository.findPostActions` 가 DB 직접 조회(WorkflowEngine.kt:302 경유)한다.
- * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 `Workflow` aggregate 에는 post-action 필드가 없으므로
- * 별도 캐시 무효화가 불필요하다(WorkflowCache 는 states/transitions/validator 만 캐싱, post-action 비캐시).
+ * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 것은 `Workflow` aggregate(= states · transitions)
+ * 뿐이고 post-action 필드가 없으므로 별도 캐시 무효화가 불필요하다. **validator 도 같은 이유로 비캐시**다
+ * — 두 컬렉션 다 전환 실행 시 DB 를 직접 친다.
  *
  * ### 검증 순서 (create/update)
  * 1. transitionKey 해석 → 형식 오류·미존재 시 [PostActionNotFoundException].
