@@ -72,6 +72,8 @@ display_order · created_at · updated_at`. **스키마 변경 0 → D3 비해�
 | `WorkflowEngine` | 무변경 | 규칙 평가 주체 |
 | `WorkflowCache` | **무접촉** | 아래 「캐시」 참조 |
 | `PostActionTransitionResolver` | **개명 후 재사용** | 아래 「전환 해석기」 참조 |
+| `PostActionRepository` | **공통 기반으로 이행** | 게이트 1 결정 ⓑ. 두 테이블 컬럼이 같아 `TransitionRuleRepository` 를 뽑고 둘 다 얹는다 |
+| `web/ErrorResponse`·`ErrorBody` | **재사용** | 게이트 1 결정 ⓐ. 사본을 3벌로 늘리지 않는다 |
 
 **캐시 — 무효화 불필요, 근거는 실측이다.**
 `Workflow` aggregate 는 `key · name · description · states · transitions` 5필드뿐이고 validator 를 담지
@@ -288,7 +290,8 @@ Then 403 이고, 워크플로우·전환이 실재하는지 **알아낼 수 없�
 > `workflow_dispatch` 전용이라 자동 실행이 없다. `.husky/pre-push` 가 `scripts/**/*.test.{ts,mjs}`
 > **전량을 무조건** 돌리므로 새 판별식을 그 아래 두는 것만으로 배선이 끝난다 — CI `paths` 를
 > 고칠 자리가 없다. (2026-08-25 실측 판별식 412건 · 21.0초)
-| C8 | `PostActionAdminService.kt:25` 의 오기 정정 | 문자열 grep |
+| C8 | 낡은 주석 2건 정정 — `PostActionAdminService.kt:25` 캐시 오기 · `DefaultWorkflowValidatorFactory.kt:26-31` prod 경고 | 문자열 grep 각 0건 |
+| C9 | **post-action 회귀 0** — 공통 기반 이행 전후 `*PostAction*` 테스트 같은 결과 | 이행 전 초록 확인 → 이행 → 재실행 대조 |
 
 ## Sanity Check
 
@@ -331,29 +334,80 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionTransitionResolver.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/transition/TransitionKeyResolver.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowWriteRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionAdminServiceTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionE2EIntegrationTest.kt`]
 - depends-on: []
 
-**RED**: 없음 — **순수 리팩터**다. 동작을 바꾸지 않으므로 새 실패 테스트를 만들지 않는다.
-안전망은 **기존 post-action 테스트 전량**이다. 개명 전 초록을 먼저 확인하고, 개명 후 같은 명령이
-같은 결과를 내야 한다.
+**RED**: 없음 — **순수 리팩터**다. 안전망은 **기존 post-action 테스트 전량**이고, 개명 **전** 초록을 먼저 본 뒤 개명 **후** 같은 결과여야 한다.
 
 **GREEN**:
 - `postaction/PostActionTransitionResolver.kt` → `transition/TransitionKeyResolver.kt` (`git mv`)
-- 클래스명·패키지 선언·L1 주석 갱신. **본문 로직은 한 줄도 바꾸지 않는다**
+- 클래스명·패키지 선언·L1 주석만 갱신. **본문 로직은 한 줄도 바꾸지 않는다**
 - 참조 4파일의 import·타입만 치환
 
-**REFACTOR**: KDoc 의 「post-action 경로가 받은」을 「규칙 경로가 받은」으로. 내용은 그대로.
+**REFACTOR**: KDoc 의 「post-action 경로가 받은」을 「규칙 경로가 받은」으로. 내용 동일.
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*PostAction*'` — **개명 전후 같은 결과**.
 `grep -rn 'PostActionTransitionResolver' backend/` 가 0건.
 
-> ⚠ **이 task 는 분리 가능하다.** 게이트 1 에서 Maxi 가 빼면 Task 3 이
-> `PostActionTransitionResolver` 를 그대로 주입받는 것으로 대체하고 나머지 task 는 무영향이다.
+### Task 2. `TransitionRuleRepository` 공통 기반 추출 + `PostActionRepository` 이행
 
-### Task 2. `ValidatorRepository` — `workflow_validators` jOOQ CRUD
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/transition/TransitionRuleRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionRepositoryIntegrationTest.kt`]
+- depends-on: []
+
+> **게이트 1 결정 ⓑ 로 들어온 task 다.** 이미 운영에 나가 있는 코드를 옮기므로 **회귀 표면**이다.
+
+**RED**: 없음 — **순수 리팩터**다. 안전망은 기존 `PostActionRepositoryIntegrationTest` 이고,
+이행 **전** 초록을 먼저 본 뒤 이행 **후** 같은 결과여야 한다. red 가 나면 그것이 회귀 신호다.
+
+**GREEN**:
+- `transition/TransitionRuleRepository.kt` 신규. 두 테이블의 컬럼이 **완전히 같다**는 실측이 근거다 —
+  `id · transition_id · type · config JSONB · display_order · created_at · updated_at`
+  ```kotlin
+  data class TransitionRuleRow(
+      val id: UUID, val transitionId: UUID, val type: String,
+      val config: Map<String, Any?>, val displayOrder: Int,
+  )
+
+  abstract class TransitionRuleRepository(
+      protected val dsl: DSLContext,
+      private val objectMapper: ObjectMapper,
+      private val table: Table<*>,
+      private val idField: TableField<*, UUID?>,
+      private val transitionIdField: TableField<*, UUID?>,
+      private val typeField: TableField<*, String?>,
+      private val configField: TableField<*, JSONB?>,
+      private val displayOrderField: TableField<*, Int?>,
+  ) {
+      fun findByTransitionId(transitionId: UUID): List<TransitionRuleRow>
+      fun insert(transitionId: UUID, type: String, config: Map<String, Any?>, displayOrder: Int): TransitionRuleRow
+      fun update(id: UUID, type: String, config: Map<String, Any?>, displayOrder: Int): TransitionRuleRow
+      fun deleteById(id: UUID)
+  }
+  ```
+- `PostActionRepository` 는 그 위에 얹는다.
+  ```kotlin
+  typealias PostActionRow = TransitionRuleRow   // ★ 호출부 무변경 방어
+
+  @Repository
+  class PostActionRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
+      TransitionRuleRepository(dsl, objectMapper, WORKFLOW_POST_ACTIONS, ID, TRANSITION_ID, TYPE, CONFIG, DISPLAY_ORDER)
+  ```
+- ★**`typealias` 가 이 task 의 핵심 방어다.** `PostActionRow` 는 서비스 KDoc 1곳과 **테스트 3파일**에서
+  같은 5인자 생성자로 호출된다(실측 — `PostActionAdminServiceTest` 5회 · `PostActionControllerTest` 3회).
+  필드 이름·순서·타입이 그대로라 typealias 만으로 **호출부가 한 줄도 안 바뀐다.**
+  이름을 바꾸거나 필드를 재배치하면 그 순간 회귀 표면이 8곳으로 벌어진다
+
+**REFACTOR**: 기반 클래스에 KDoc — 두 테이블이 같은 모양인 이유(전환 규칙 2종)와 `typealias` 근거.
+
+**검증**:
+- `./gradlew :modules:project-workflow:test --tests '*PostAction*'` — **이행 전후 같은 결과** (회귀 대조)
+- `git diff --stat` 에서 `PostActionAdminService.kt`·`PostActionController*`·테스트 3파일이 **무변경**
+
+### Task 3. `ValidatorRepository` — 공통 기반 위에 얹는다
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorRepositoryIntegrationTest.kt`]
-- depends-on: []
+- depends-on: [2]
 
 **RED**:
 - 파일. `BE_TEST/validator/ValidatorRepositoryIntegrationTest.kt` (Testcontainers)
@@ -362,40 +416,46 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   @Test fun `findByTransitionId 는 display_order ASC 로 돌려준다`()
   @Test fun `insert 한 행을 config JSONB 그대로 읽는다`()
   @Test fun `update 가 type · config · displayOrder 를 바꾼다`()
-  @Test fun `delete 후 findByTransitionId 가 그 행을 빼고 돌려준다`()
+  @Test fun `deleteById 후 findByTransitionId 가 그 행을 빼고 돌려준다`()
   ```
 - 실패 메시지 (예상). `ValidatorRepository` 클래스 없음
 
 > `transition_id` 는 `workflow_transitions` 로 향하는 FK(ON DELETE CASCADE)다. **전환 행 픽스처를
 > 먼저 넣어야** INSERT 가 성립한다(리뷰 C3).
 
-**GREEN**: `PostActionRepository` 와 같은 형태로 `WORKFLOW_VALIDATORS` 를 친다.
-`ValidatorRow(id, transitionId, type, config, displayOrder)` 를 같은 파일 하단에 둔다.
+**GREEN**: 8줄이면 끝난다 — 기반이 이미 있다.
+```kotlin
+typealias ValidatorRow = TransitionRuleRow
 
-**REFACTOR**: `parseJsonb` 헬퍼 · KDoc.
+@Repository
+class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
+    TransitionRuleRepository(dsl, objectMapper, WORKFLOW_VALIDATORS, ID, TRANSITION_ID, TYPE, CONFIG, DISPLAY_ORDER)
+```
+
+**REFACTOR**: L1 주석 · KDoc.
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*ValidatorRepositoryIntegrationTest'`
 
-### Task 3. `ValidatorAdminService` — 전환 해석 + type/config 검증 + 편집 불가 타입
+### Task 4. `ValidatorAdminService` — 전환 해석 + type/config 검증 + 편집 불가 타입
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminExceptions.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorAdminServiceTest.kt`]
-- depends-on: [1, 2]
+- depends-on: [1, 3]
 
 **RED**:
 - 파일. `BE_TEST/validator/ValidatorAdminServiceTest.kt`
-- 테스트 8건 — 스펙 §엣지 케이스와 1:1.
+- 테스트 9건 — 스펙 §엣지 케이스와 1:1.
   ```kotlin
-  @Test fun `미지원 type 은 ValidatorValidationException`()               // E: FR-5
+  @Test fun `미지원 type 은 ValidatorValidationException`()                  // FR-5
   @Test fun `RequiredField 에 field 키가 없으면 ValidatorValidationException`()
-  @Test fun `not-status-category 의 category 가 알 수 없는 값이면 400`()   // E6
-  @Test fun `permission-check 는 scope 를 생략해도 통과한다`()             // E7
-  @Test fun `CustomExpression 생성은 ValidatorTypeNotEditableException`()  // FR-6
-  @Test fun `기존 행의 type 을 CustomExpression 으로 수정해도 400`()        // FR-6 · 리뷰 C1
-  @Test fun `CustomExpression 행도 목록에 나오고 삭제된다`()               // E8
-  @Test fun `합성 키가 2건에 걸리면 ValidatorNotFoundException`()          // E1
-  @Test fun `남의 전환에 속한 id 로 수정하면 ValidatorNotFoundException`() // E4 · IDOR
+  @Test fun `not-status-category 의 category 가 알 수 없는 값이면 400`()      // E6
+  @Test fun `permission-check 는 scope 를 생략해도 통과한다`()                // E7
+  @Test fun `CustomExpression 생성은 ValidatorTypeNotEditableException`()     // FR-6
+  @Test fun `기존 행의 type 을 CustomExpression 으로 수정해도 400`()          // FR-6 · 리뷰 C1
+  @Test fun `CustomExpression 행도 목록에 나오고 삭제된다`()                  // E8
+  @Test fun `합성 키가 2건에 걸리면 ValidatorNotFoundException`()             // E1
+  @Test fun `남의 전환에 속한 id 로 수정하면 ValidatorNotFoundException`()    // E4 · IDOR
   ```
 - 실패 메시지 (예상). `ValidatorAdminService` 클래스 없음
 
@@ -412,29 +472,30 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   문자열 `"CustomExpression"` 을 이 파일에 적지 않는다 — 적는 순간 팩토리 분기와
   `CustomExpressionValidator.type` 에 이은 **세 번째 사본**이 된다
   (근거. 메모리 `two-lists-never-check-each-other`)
+- **`create` 와 `update` 가 같은 `validateConfig` 를 탄다.** 한쪽만 태우면 리뷰 C1 이 다시 열린다
 - **`evaluate` 를 부르지 않는다** (스펙 §제약 4). 생성까지가 dry-run 이다
 
 **REFACTOR**: 예외 3종을 `ValidatorAdminExceptions.kt` 로 분리 · KDoc 에 검증 순서 명시.
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*ValidatorAdminServiceTest'`
 
-### Task 4. `ValidatorController` + DTO + 예외 핸들러
+### Task 5. `ValidatorController` + DTO + 예외 핸들러
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/web/ValidatorController.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/web/ValidatorDtos.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/web/ValidatorExceptionHandler.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/web/ValidatorControllerTest.kt`]
-- depends-on: [3]
+- depends-on: [4]
 
 **RED**:
 - 파일. `BE_TEST/validator/web/ValidatorControllerTest.kt`
-- 테스트 7건.
+- 테스트 8건.
   ```kotlin
-  @Test fun `실재하는 전환에 권한 없이 GET 하면 403`()                          // S5
-  @Test fun `실재하지 않는 전환에 권한 없이 GET 해도 같은 403 본문`()           // S5 · 리뷰 C2
+  @Test fun `실재하는 전환에 권한 없이 GET 하면 403`()                        // S5
+  @Test fun `실재하지 않는 전환에 권한 없이 GET 해도 같은 403 본문`()         // S5 · 리뷰 C2
   @Test fun `POST 는 권한 없으면 403`()
   @Test fun `PUT 은 권한 없으면 403`()
   @Test fun `DELETE 는 권한 없으면 403`()
-  @Test fun `403 본문에 actorId · permission · scope 가 없다`()                // NFR
+  @Test fun `403 본문에 actorId · permission · scope 가 없다`()               // NFR
   @Test fun `POST 성공은 201 과 DataEnvelope 를 준다`()
   @Test fun `DELETE 성공은 204 무본문`()
   ```
@@ -444,28 +505,31 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 - `PostActionController` 와 같은 배치. **`requireManageScheme()` 을 리소스 조회보다 먼저** 부른다
   (근거. 메모리 `permission-assert-before-existence-makes-403-lie` — 순서가 뒤집히면 403 이
   거짓말을 하고 존재 probe 가 열린다)
+- ★**에러 응답은 기존 `com.bts.workflow.web.ErrorResponse` / `ErrorBody` 를 재사용한다**
+  (게이트 1 결정 ⓐ). `ValidatorErrorResponse` 를 새로 만들지 않는다 — 같은
+  `{error:{code,message}}` 가 이미 `WorkflowExceptionHandler.kt:247` 에 있고
+  `PostActionErrorResponse` 가 이미 사본 1벌이다
 - ★**비공개는 한 케이스로 증명되지 않는다**(리뷰 C2). 실재 전환과 미실재 전환이 **둘 다 403 이고
   본문이 같아야** 성립한다 — 한쪽만 재면 순서가 뒤집혀도 초록이다
 - ★**`@Order` 를 붙이지 않는다**(리뷰 A1). `AmbiguousTransitionExceptionHandler.kt:51` 이
   `@Order(HIGHEST_PRECEDENCE)` 를 쓰는 이유는 **issue-tracking 의 catch-all** 때문이고, 이 경로에는
   해당하지 않는다. `TransitionConflictExceptionHandler.kt:29-33` 이 같은 판단으로 일부러 뺐다 —
   「필요 없는 전역 우선권은 다른 advice 의 매핑을 빼앗아 응답 형식을 조용히 바꾼다」
-- `@RestControllerAdvice(basePackages = ["com.bts.workflow.validator"])` — post-action 핸들러가
-  이 예외를 잡지 않도록 범위를 좁힌다
+- `@RestControllerAdvice(basePackages = ["com.bts.workflow.validator"])` 로 범위를 좁힌다
 - 에러 코드 4종은 스펙 §에러 계약 표 그대로
 
-**REFACTOR**: KDoc 에 경로·가드·누출 방지 근거.
+**REFACTOR**: KDoc 에 경로·가드 순서·누출 방지 근거.
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*ValidatorControllerTest'`
 + `grep -c '@\(Get\|Post\|Put\|Delete\)Mapping' .../ValidatorController.kt` 가 **4** (기준 C1 — 파일
 존재가 아니라 매핑 수를 센다. 근거. learnings 2026-07-17 「REST 노출이 없으면 기능이 없다」)
 
-### Task 5. 엔진 통합 — 규칙을 걸면 막히고, 풀면 통과한다
+### Task 6. 엔진 통합 — 규칙을 걸면 막히고, 풀면 통과한다
 
 **메타**.
 - agent: `qa-engineer`
 - files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorEngineIntegrationTest.kt`]
-- depends-on: [3]
+- depends-on: [4]
 
 **RED**:
 - 파일. `BE_TEST/validator/ValidatorEngineIntegrationTest.kt` (Testcontainers)
@@ -486,14 +550,14 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 > (근거. 메모리 `unreachable-state-fixture-is-fake-green`).
 > **RequiredField 는 실행 경로로, not-status-category 는 목록 경로로** 각각 검증한다.
 
-**GREEN**: 구현 없음 — Task 3·4 가 만든 경로를 태운다. red 가 나면 그것이 배선 결함이다.
+**GREEN**: 구현 없음 — Task 4·5 가 만든 경로를 태운다. red 가 나면 그것이 배선 결함이다.
 
-**REFACTOR**: 픽스처를 `@BeforeEach` 로 정리 · 규칙 생성은 서비스 경유(리포지토리 직접 INSERT 금지 —
-그러면 CRUD 경로를 안 태운다).
+**REFACTOR**: 픽스처를 `@BeforeEach` 로 정리 · 규칙 생성은 **서비스 경유**(리포지토리 직접 INSERT 금지 —
+그러면 CRUD 경로를 안 태우고 통과한다).
 
 **검증**: `./gradlew :modules:project-workflow:test --tests '*ValidatorEngineIntegrationTest'`
 
-### Task 6. SDD §7.3·§7.4 표 정정 + 표↔팩토리 대조 판별식
+### Task 7. SDD §7.3·§7.4 표 정정 + 표↔팩토리 대조 판별식
 
 **메타**.
 - agent: `backend-engineer`
@@ -508,8 +572,11 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   test('SDD §7.4 표의 type 집합 = DefaultWorkflowPostActionFactory when 분기 집합', …)
   test('두 집합이 비어 있지 않다', …)   // 비-공허 — 파서가 0건을 뱉으면 차집합은 공허하게 0
   ```
-- 실패 메시지 (예상). 현재 SDD 표가 `Permission` · `NotStatusCategory` · `SetField` 외 4종을 적어
+- 실패 메시지 (예상). 현재 SDD 표가 `Permission` · `NotStatusCategory` 외 5종을 다르게 적어
   차집합 **7건** → red. **이 red 가 이 task 의 출발점이다**
+
+> 파서가 읽을 실물은 실측했다. 두 팩토리 모두 `return when (type) {` + `"리터럴" -> createX(config)`
+> 형태이고(`DefaultWorkflowPostActionFactory.kt:46-51`), SDD 표는 `| \`type\` | 용도 |` 서식이다.
 
 **GREEN**: `docs/sdd/07-workflow-engine.md` §7.3·§7.4 표를 **런타임 `type` 식별자** 정본으로 고치고
 구현 클래스명을 병기한다 (스펙 §제약 5 — ADR 이 정한 **클래스 명명은 안 건드린다**).
@@ -523,33 +590,41 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   `invariant-satisfied-by-helptext-not-logic`). **GREEN 선커밋 뒤에 한다** — 미커밋 원복은 소실이다
 - 배선. `.husky/pre-push` 가 `scripts/**/*.test.ts` 전량을 무조건 돌리므로 파일을 두는 것으로 끝난다
 
-### Task 7. `PostActionAdminService` 의 캐시 오기 1줄 정정
+### Task 8. 낡은 주석 2건 정정 — 캐시 오기 + prod 권한 경고
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminService.kt`]
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/DefaultWorkflowValidatorFactory.kt`]
 - depends-on: [1]
 
-**RED**: 없음 — 주석 1줄이다. 검증은 grep.
+**RED**: 없음 — 주석이다. 검증은 grep.
 
-**GREEN**: `PostActionAdminService.kt:25` 의 「WorkflowCache 는 states/transitions/**validator** 만
-캐싱」에서 validator 를 뺀다. `Workflow` aggregate 는 `states` · `transitions` 만 담는다
-(`domain/Workflow.kt:18-23` · `repository/WorkflowRepository.kt:28`).
+**GREEN**. 둘 다 「이 PR 의 구현자가 읽고 잘못 판단할 자리」라 같은 PR 에서 고친다.
+1. `PostActionAdminService.kt:25` — 「WorkflowCache 는 states/transitions/**validator** 만 캐싱」에서
+   validator 를 뺀다. `Workflow` aggregate 는 `states`·`transitions` 만 담는다
+   (`domain/Workflow.kt:18-23` · `repository/WorkflowRepository.kt:28`)
+2. `DefaultWorkflowValidatorFactory.kt:26-31` — 「prod 프로파일은 `PermissionResolver` 빈 부재」를
+   정정한다. `adapter/DelegatingPermissionResolver.kt:1` 이 「prod 권한 어댑터 — fail-closed」로
+   실재한다 (게이트 1 결정 ⓐ · 리뷰 A3)
 
 **REFACTOR**: 없음.
 
-**검증**: `grep -n 'validator' .../PostActionAdminService.kt` 에 캐시 문장이 없다 (기준 C8).
+**검증**: `grep -n 'validator' .../PostActionAdminService.kt` 에 캐시 문장이 없다 ·
+`grep -n '빈 부재' .../DefaultWorkflowValidatorFactory.kt` 가 0건 (기준 C8) ·
 `./gradlew :modules:project-workflow:test --tests '*PostActionAdminServiceTest'` 초록 유지.
 
 ## Plan 메타
 
-- **task 수**. 7
-- **예상 wave**. 3
-  - wave 1 — Task 1 · 2 · 6 (`depends-on: []`, `files` 교집합 0)
-  - wave 2 — Task 3 (1,2) · Task 7 (1 · `PostActionAdminService.kt` 파일 겹침으로 자동 직렬)
-  - wave 3 — Task 4 (3) · Task 5 (3)
-- **구현 규율**. TDD red-first. 예외 2건을 명시한다 — Task 1(순수 리팩터, 기존 테스트가 안전망) ·
-  Task 7(주석 1줄, grep 검증). 나머지 5건은 red 를 먼저 본다
+- **task 수**. 8
+- **예상 wave**. 4
+  - wave 1 — Task 1 · 2 · 7 (`depends-on: []`, `files` 교집합 0)
+  - wave 2 — Task 3 (2) · Task 8 (1 · `PostActionAdminService.kt` 파일 겹침으로 자동 직렬)
+  - wave 3 — Task 4 (1, 3)
+  - wave 4 — Task 5 (4) · Task 6 (4)
+- **구현 규율**. TDD red-first. 예외 3건을 명시한다 — Task 1·2(순수 리팩터, **기존 테스트가 안전망이자
+  회귀 판정자**) · Task 8(주석, grep 검증). 나머지 5건은 red 를 먼저 본다
+- **회귀 표면 1곳**. Task 2 가 운영 중인 `PostActionRepository` 를 옮긴다. 방어는 `typealias` 로
+  호출부 무변경 + 이행 전후 post-action 테스트 전량 대조
 - **추가 검증**. `./gradlew :modules:project-workflow:test ktlintCheck detekt` ·
   `node --experimental-strip-types --test 'scripts/**/*.test.ts'` (pre-push 가 전량 무조건 실행) ·
   `node scripts/build-doc-index.mjs --check` (pre-commit)
@@ -596,6 +671,22 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 - ⓐ **Task 7 에 합친다** — Task 7 이 이미 「낡은 주석 정정」이고 같은 종류다. 한 문장으로 설명되는 커밋이 유지된다
 - ⓑ 부채로 등재하고 안 건드린다
 - **추천 ⓐ**
+
+### 게이트 1 결정 (Maxi · 2026-08-25)
+
+| 건 | 결정 | 추천과 |
+|---|---|---|
+| 주의 1 `ErrorResponse` | **ⓐ 기존 `com.bts.workflow.web.ErrorResponse` 재사용.** 사본을 3벌로 늘리지 않는다 | 일치 |
+| 주의 2 리포지토리 복제 | **ⓑ 공통 기반 `TransitionRuleRepository` 로 뽑고 post-action·validator 둘 다 갈아탄다** | **다름** — 나는 ⓐ(복제+부채)를 추천했다 |
+| 주의 3 팩토리 낡은 주석 | **ⓐ Task 8 에 합친다** (구 Task 7) | 일치 |
+| Task 1 해석기 개명 | **한다** | 일치 |
+
+> **주의 2 가 범위를 넓혔다 — 무엇이 달라지나.**
+> 이미 운영에 나가 있는 `PostActionRepository` 를 새 기반 위로 옮긴다. 순수 리팩터지만 **회귀 표면**이
+> 생겼다. 방어 2겹을 건다. ① `PostActionRow` 를 `typealias PostActionRow = TransitionRuleRow` 로 두어
+> **호출부 3개 테스트 파일과 서비스가 한 줄도 안 바뀐다** ② 이행 전후로 post-action 테스트 전량을
+> 돌려 **같은 결과**임을 대조한다. 이행이 red 를 내면 그것이 곧 회귀 신호다.
+> task 는 7건에서 **8건**이 됐고 wave 는 3에서 **4**가 됐다.
 
 ### NOT in scope — 고려했고 명시적으로 미룬 것
 
