@@ -2,6 +2,7 @@
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.api.tasks.PathSensitivity
 
 plugins {
     kotlin("jvm")
@@ -191,6 +192,25 @@ jooq {
 // 반드시 먼저 실행되도록 Gradle 태스크 의존을 명시한다 (Gradle 8.10 implicit dependency 오류 해소).
 tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn("generateJooq")
+}
+
+// ── generateJooq 를 up-to-date / 캐시 가능하게 만든다 ─────────────────────────
+// 2026-08-25 실측. 무변경 재실행에도 `1 actionable task: 1 executed` 였다. 사유는
+// `Task.upToDateWhen is false` — nu.studer 9.0 이 allInputsDeclared 가 꺼져 있으면
+// 스킵을 금지한다. DB 스키마라는 **선언되지 않은 입력**이 있다고 보기 때문이다.
+//
+// 이 모듈의 코드젠 입력은 DB 가 아니라 구조 미러 `init_codegen.sql` 하나다(jdbc URL 의
+// TC_INITSCRIPT 가 그것만 적용한다). 그 파일을 입력으로 선언하고 플러그인에 그 사실을 알린다.
+// 태스크는 이미 @CacheableTask 라 이것만으로 빌드 캐시까지 열린다.
+//
+// ★미러와 마이그레이션의 drift 는 CodegenMirrorParityTest 가 막는다. 그 계약이 없으면
+//   이 선언은 stale 생성물을 조용히 통과시킨다.
+tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
+    inputs
+        .files(file("src/main/resources/db/codegen/init_codegen.sql"))
+        .withPropertyName("codegenMirror")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    allInputsDeclared.set(true)
 }
 
 // ── KotlinCompile 옵션 ────────────────────────────────────────────────────────
