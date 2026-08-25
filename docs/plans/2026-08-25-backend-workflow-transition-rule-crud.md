@@ -366,6 +366,9 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   ```
 - 실패 메시지 (예상). `ValidatorRepository` 클래스 없음
 
+> `transition_id` 는 `workflow_transitions` 로 향하는 FK(ON DELETE CASCADE)다. **전환 행 픽스처를
+> 먼저 넣어야** INSERT 가 성립한다(리뷰 C3).
+
 **GREEN**: `PostActionRepository` 와 같은 형태로 `WORKFLOW_VALIDATORS` 를 친다.
 `ValidatorRow(id, transitionId, type, config, displayOrder)` 를 같은 파일 하단에 둔다.
 
@@ -389,6 +392,7 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   @Test fun `not-status-category 의 category 가 알 수 없는 값이면 400`()   // E6
   @Test fun `permission-check 는 scope 를 생략해도 통과한다`()             // E7
   @Test fun `CustomExpression 생성은 ValidatorTypeNotEditableException`()  // FR-6
+  @Test fun `기존 행의 type 을 CustomExpression 으로 수정해도 400`()        // FR-6 · 리뷰 C1
   @Test fun `CustomExpression 행도 목록에 나오고 삭제된다`()               // E8
   @Test fun `합성 키가 2건에 걸리면 ValidatorNotFoundException`()          // E1
   @Test fun `남의 전환에 속한 id 로 수정하면 ValidatorNotFoundException`() // E4 · IDOR
@@ -425,7 +429,8 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 - 파일. `BE_TEST/validator/web/ValidatorControllerTest.kt`
 - 테스트 7건.
   ```kotlin
-  @Test fun `GET 은 권한 없으면 403 이고 전환 존재 여부를 알려주지 않는다`()   // S5
+  @Test fun `실재하는 전환에 권한 없이 GET 하면 403`()                          // S5
+  @Test fun `실재하지 않는 전환에 권한 없이 GET 해도 같은 403 본문`()           // S5 · 리뷰 C2
   @Test fun `POST 는 권한 없으면 403`()
   @Test fun `PUT 은 권한 없으면 403`()
   @Test fun `DELETE 는 권한 없으면 403`()
@@ -439,6 +444,12 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
 - `PostActionController` 와 같은 배치. **`requireManageScheme()` 을 리소스 조회보다 먼저** 부른다
   (근거. 메모리 `permission-assert-before-existence-makes-403-lie` — 순서가 뒤집히면 403 이
   거짓말을 하고 존재 probe 가 열린다)
+- ★**비공개는 한 케이스로 증명되지 않는다**(리뷰 C2). 실재 전환과 미실재 전환이 **둘 다 403 이고
+  본문이 같아야** 성립한다 — 한쪽만 재면 순서가 뒤집혀도 초록이다
+- ★**`@Order` 를 붙이지 않는다**(리뷰 A1). `AmbiguousTransitionExceptionHandler.kt:51` 이
+  `@Order(HIGHEST_PRECEDENCE)` 를 쓰는 이유는 **issue-tracking 의 catch-all** 때문이고, 이 경로에는
+  해당하지 않는다. `TransitionConflictExceptionHandler.kt:29-33` 이 같은 판단으로 일부러 뺐다 —
+  「필요 없는 전역 우선권은 다른 advice 의 매핑을 빼앗아 응답 형식을 조용히 바꾼다」
 - `@RestControllerAdvice(basePackages = ["com.bts.workflow.validator"])` — post-action 핸들러가
   이 예외를 잡지 않도록 범위를 좁힌다
 - 에러 코드 4종은 스펙 §에러 계약 표 그대로
@@ -544,4 +555,85 @@ Maxi 결정(2026-08-25)으로 `CustomExpression` 을 편집 대상에서 제외.
   `node scripts/build-doc-index.mjs --check` (pre-commit)
 - **프론트 무변경**. `apps/web` 을 건드리지 않는다 — D6 는 후속 PR
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈**. `plan-eng-review` 1종 (`type == api` 분기). 2026-08-25.
+**BLOCKER 0 · P1 1건(반영 완료) · P2 4건 · P3 2건 · INFO 1건.**
+
+### 그 자리에서 교정한 것 4건 — 결정이 필요 없는 누락
+
+| # | 지적 | 반영 |
+|---|---|---|
+| C1 [P1] | FR-6 은 생성·**수정** 둘 다 400 인데 Task 3 테스트가 생성만 덮었다. PUT 은 기존 `RequiredField` 행의 type 을 `CustomExpression` 으로 **바꿔 넣는** 경로라 더 놓치기 쉽다 | Task 3 에 `기존 행의 type 을 CustomExpression 으로 수정해도 400` 추가 |
+| C2 [P2] | 403 비공개를 **한 케이스로 증명할 수 없다**. 실재/미실재 전환이 둘 다 403 이고 본문이 같아야 성립한다 — 한쪽만 재면 검사 순서가 뒤집혀도 초록이다 | Task 4 테스트를 2건으로 쪼개고 GREEN 절에 근거 명시 |
+| C3 [P3] | `ValidatorRepositoryIntegrationTest` 가 `transition_id` FK 를 만족할 전환 픽스처를 안 적었다 | Task 2 에 픽스처 선행 조건 명시 |
+| A1 [P2] | `ValidatorExceptionHandler` 에 `@Order` 를 붙이면 **다른 advice 의 매핑을 빼앗는다** | Task 4 에 금지 + 근거(`TransitionConflictExceptionHandler.kt:29-33`) 명시 |
+
+> **A1 은 내가 처음 세운 가설을 접은 자리다.** 「전역 catch-all 이 403 을 삼켜 500 이 된다」를 의심했으나
+> `WorkflowExceptionHandler` 에 `Exception::class` 핸들러는 **없다** — grep 에 걸린 건 KDoc 문장이었다.
+> 실물을 열어 확인하고 지적을 철회했다.
+
+### 게이트 1 에서 Maxi 가 정할 것 3건
+
+**주의 1 — `ErrorResponse` 세 번째 사본 [P2 · 신뢰 9/10]**
+`web/WorkflowExceptionHandler.kt:247` 에 표준 `ErrorResponse(error: ErrorBody)` 가 있고
+`PostActionErrorResponse`/`PostActionErrorBody` 가 이미 사본 1개다. 셋 다 `{error:{code,message}}` 로 같다.
+- ⓐ **기존 `com.bts.workflow.web.ErrorResponse` 를 재사용** — 사본이 안 늘어난다. 같은 모듈 안이라 결합 비용 0
+- ⓑ post-action 관례대로 `ValidatorErrorResponse` 를 새로 만든다 — 형제 두 패키지가 대칭이 된다
+- **추천 ⓐ.** 「DRY · 사본을 늘리지 않는다」가 이 저장소의 지배 결함 양식 대응과 같은 방향이다
+
+**주의 2 — `ValidatorRepository` 가 `PostActionRepository` 195줄의 거의 완전 복제 [P2 · 9/10]**
+두 테이블 컬럼이 완전히 같다(`id · transition_id · type · config · display_order · created_at · updated_at`).
+- ⓐ **복제한다 + 부채로 등재** — 위험 0. post-action 을 안 건드린다. 195줄이 두 벌
+- ⓑ 공통 `TransitionRuleRepository` 로 뽑고 둘 다 갈아탄다 — 사본 0. 대신 **이미 배포된 post-action 편집기**를 건드린다
+- ⓒ validator 만 새 기반을 쓴다 — **비대칭이 남는다.** 반쪽 이행은 둘 중 어느 쪽보다도 나쁘다
+- **추천 ⓐ.** 이 PR 의 선언 범위는 CRUD 추가지 기존 리포지토리 이행이 아니다. ⓑ 는 D6 이 끝난 뒤 별도 PR 이 맞다
+
+**주의 3 — `DefaultWorkflowValidatorFactory.kt:26-31` 의 prod 경고가 낡았다 [INFO · 8/10]**
+「prod 프로파일은 `PermissionResolver` 빈 부재」라고 적혀 있으나 `adapter/DelegatingPermissionResolver.kt:1`
+이 「prod 권한 어댑터 — fail-closed」로 실재한다. **Task 3 이 이 팩토리를 주입받으므로** 구현자가
+이 문장을 읽고 「prod 에서 안 뜬다」고 잘못 판단할 자리다.
+- ⓐ **Task 7 에 합친다** — Task 7 이 이미 「낡은 주석 정정」이고 같은 종류다. 한 문장으로 설명되는 커밋이 유지된다
+- ⓑ 부채로 등재하고 안 건드린다
+- **추천 ⓐ**
+
+### NOT in scope — 고려했고 명시적으로 미룬 것
+
+| 항목 | 근거 |
+|---|---|
+| D6 전환 규칙 편집 UI · D7 E2E | Maxi 결정(2026-08-25) — FR-WF-04·05 분할 관례. 후속 PR |
+| `CustomExpression` 편집 허용 | Jira Cloud 내장 9종에 자유 표현식 입력칸이 없다. `SpelEvaluator` 절대 계약도 유지된다 |
+| Jira `Regular Expression Check` 대응 규칙 신설 | 후속 FR 후보. 자유 표현식 대신 목적 특화 규칙이 Atlassian 의 처방 |
+| validator 종류 확충 (Jira 9종 ↔ BTS 4종) | 별도 FR |
+| `TransitionRuleRepository` 공통화 | 주의 2 ⓑ. D6 이후 별도 PR |
+| Jira 새 편집기의 사이드 패널 · Rules 4그룹 | D6 PR 에서 Maxi 결정 — post-action UI 도 함께 옮겨야 한다 |
+| `workflow_validators` 스키마 변경 | 불필요. V200 기존 테이블 그대로 |
+
+### What already exists — 다시 만들지 않는 것
+
+| 자산 | 이 PR 에서 |
+|---|---|
+| `DefaultWorkflowValidatorFactory` | **재사용.** 지원 type 의 정본이자 config 검증기 |
+| `PostActionTransitionResolver` (240줄) | **개명 후 재사용**(Task 1). 사본 금지 |
+| `PostActionController`/`Service`/`Repository` | **형태만 차용.** 배치·가드 순서·KDoc 관례를 그대로 따른다 |
+| `WorkflowSchemePermissionResolver` + `MANAGE_SCHEME`/Global | 그대로 사용. 새 권한 코드 없음 |
+| `idx_workflow_validators_transition` | 그대로 사용. 신규 인덱스 없음 |
+| `DelegatingPermissionResolver` (prod) | 이미 있다. 새로 만들 필요 없음 |
+| `.husky/pre-push` 판별식 전량 무조건 실행 | 새 판별식 배선 끝. CI `paths` 고칠 자리 없음 |
+
+### 실패 모드 — 새 경로별 1건씩
+
+| 경로 | 프로덕션 실패 | 테스트 | 에러 처리 | 사용자에게 보이나 |
+|---|---|---|---|---|
+| `POST/PUT` config 검증 | 팩토리가 새 type 을 알지만 SDD 표는 모르는 상태로 갈림 | Task 6 판별식 | — | ✅ 판별식이 push 를 막는다 |
+| `PUT` type 교체 | `RequiredField` → `CustomExpression` 로 몰래 바뀜 | **C1 로 보강** | 400 | ✅ |
+| 권한 거부 | 검사 순서가 뒤집혀 404/403 이 존재를 누설 | **C2 로 보강** | 403 고정 본문 | ✅ |
+| 규칙 저장 후 미반영 | 엔진이 낡은 값을 본다 | Task 5 | — | ✅ 통합 테스트가 실행 경로를 태운다 |
+| `RequiredField` 목록 미차단 | phase 를 착각해 가짜 그린 | Task 5 (두 phase 분리) | — | ⚠ **테스트 설계로만 막힌다** — Task 5 경고문이 그 방어다 |
+
+**침묵 실패(무테스트 + 무처리) 0건.**
+
+### 병렬화 — worktree 전략
+
+같은 모듈·같은 BC 안이고 wave 2·3 이 wave 1 산출물에 직접 의존한다. **순차 구현. 병렬 worktree 이득 없음.**
+wave 안의 동시성은 `bts-impl` 의 dispatch 로 충분하다.
