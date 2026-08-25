@@ -4,6 +4,7 @@ package com.bts.workflow.validator
 
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.transition.TransitionKeyResolver
+import com.bts.workflow.transition.toTransitionIdOrNull
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -276,25 +277,4 @@ class ValidatorAdminService(
             throw ValidatorTypeNotEditableException(type)
         }
     }
-}
-
-/**
- * RFC 4122 표기(8-4-4-4-12 16진)만 전환 id 로 인정하는 패턴. 갈래는 예외가 아니라 형태로 가른다 —
- * `UUID.fromString` 은 `1-1-1-1-1` 같은 헐거운 표기도 받아 판정이 예외 발생 여부에 매달린다.
- *
- * 형제 `postaction/PostActionAdminService.kt` 에 같은 파일-private 짝이 있다. 공용 자리로 빼려면
- * `transition` 패키지를 건드려야 해 이번 범위 밖이다 — 옮길 때 두 곳을 함께 지운다.
- */
-private val TRANSITION_ID_PATTERN =
-    Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-
-/**
- * 경로 세그먼트가 전환 id 면 그 UUID, 아니면 null (= 종전 합성 키로 읽으라는 뜻).
- * 합성 키는 반드시 `__` 를 품으므로 두 갈래가 겹치지 않는다.
- */
-private fun String.toTransitionIdOrNull(): UUID? {
-    if (!TRANSITION_ID_PATTERN.matches(this)) {
-        return null
-    }
-    return UUID.fromString(this)
 }

@@ -202,6 +202,34 @@ class TransitionKeyResolver(
 }
 
 /**
+ * RFC 4122 표기(8-4-4-4-12 16진)만 전환 id 로 인정하는 패턴.
+ *
+ * `UUID.fromString` 을 그대로 쓰지 않는 이유는 그것이 `1-1-1-1-1` 같은 헐거운 표기도 받아들여
+ * 갈래 판정이 예외 발생 여부에 매달리기 때문이다. 갈래는 예외가 아니라 형태로 가른다.
+ */
+internal val TRANSITION_ID_PATTERN =
+    Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+/**
+ * 경로 세그먼트가 전환 id 면 그 UUID, 아니면 null (= 종전 합성 키로 읽으라는 뜻).
+ *
+ * 합성 키는 반드시 `__` 를 품으므로 두 갈래가 겹치지 않는다.
+ *
+ * ★ **전환 규칙 2종(post-action · validator)의 관리 서비스가 같은 판정을 쓴다.** 각 서비스에
+ * 파일-private 사본을 두면 형태 판정이 두 벌로 갈리는데, 두 사본은 서로를 검사하지 않으므로
+ * 한쪽만 고쳐진 사실이 드러나지 않는다. 전환 지목값 해석은 이 파일이 정본이므로 판정도 여기 둔다.
+ * 가시성이 `internal` 인 것은 그 두 호출자가 다른 패키지에 있기 때문이고, 모듈 밖으로는 새지 않는다.
+ *
+ * @return 전환 id 면 그 UUID, 합성 키로 읽어야 하면 null.
+ */
+internal fun String.toTransitionIdOrNull(): UUID? {
+    if (!TRANSITION_ID_PATTERN.matches(this)) {
+        return null
+    }
+    return UUID.fromString(this)
+}
+
+/**
  * 출발 상태가 없는 전환 종류의 예약 토큰. `GLOBAL`·`INITIAL` 은 상태 키가 아니라 종류 이름이다.
  *
  * [TransitionKind] 에서 파생시킨다 — 손으로 적으면 종류가 늘어날 때 이 목록만 남아 썩는다.
