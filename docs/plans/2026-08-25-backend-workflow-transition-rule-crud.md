@@ -639,14 +639,51 @@ class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
 `grep -n '빈 부재' .../DefaultWorkflowValidatorFactory.kt` 가 0건 (기준 C8) ·
 `./gradlew :modules:project-workflow:test --tests '*PostActionAdminServiceTest'` 초록 유지.
 
+### Task 9. 이번 PR 이 만든 사본 정리 + 거짓 config 키 주석
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/transition/TransitionKeyResolver.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/NotStatusCategoryValidator.kt`]
+- depends-on: [4, 5, 6]
+
+> **구현 중 발견으로 추가된 task 다.** 게이트 1 이후 열렸고, 둘 다 **이번 PR 이 만들었거나 이번 PR 의
+> 다음 독자(D6 프론트)를 속이는** 결함이라 머지 전에 닫는다.
+
+**RED**: 없음 — 사본 제거는 순수 리팩터, 주석은 문서다. 안전망은 기존 두 서비스 테스트 전량이다.
+
+**GREEN**.
+
+1. **`TRANSITION_ID_PATTERN` + `String.toTransitionIdOrNull()` 사본 2벌을 하나로.**
+   Task 4 가 보고했다 — `postaction/PostActionAdminService.kt` 와 `validator/ValidatorAdminService.kt` 에
+   각 15줄로 같은 짝이 있다. **이번 PR 이 두 번째 사본을 만들었다.**
+   `transition/TransitionKeyResolver.kt` 로 옮겨 `internal` 로 공유한다 — 그 파일이 이미 전환 지목값
+   해석의 공용 자리이고 두 서비스가 모두 그것을 주입받는다.
+   > 근거. 메모리 `two-lists-never-check-each-other` — 이 저장소의 **지배 결함 양식**이다.
+   > 사본은 「한쪽만 고쳐지는」 미래를 만든다. 만든 PR 에서 닫는 것이 가장 싸다.
+
+2. **`NotStatusCategoryValidator.kt:14-15` KDoc 의 config 키가 거짓이다.**
+   Task 6 이 발견했다 — KDoc 은 `config.forbidden` 이라 적는데 팩토리
+   (`DefaultWorkflowValidatorFactory.kt:80`)는 `config["category"]` 를 읽는다. **코드가 정본**이다.
+   > 왜 이번에 닫나. **FR-WF-06 D6 이 이 config 스키마로 설정 폼을 만든다.** 거짓 키를 읽으면 화면이
+   > 저장 불가능한 config 를 만들어 400 을 맞는다. 이 PR 이 그 문서의 다음 독자를 만든 장본인이다.
+
+**REFACTOR**: 없음.
+
+**검증**.
+- `grep -rc 'TRANSITION_ID_PATTERN' <두 서비스>` 가 각 **0**, `TransitionKeyResolver.kt` 가 **1**
+- `./gradlew :modules:project-workflow:test --rerun` 모듈 전량 → EXIT 0.
+  기준선 **106 클래스 · tests 756 · failures 0** 유지 (증감 0 이어야 한다 — 순수 리팩터다)
+- 린트 3종 각각 `--rerun` → EXIT 0
+
 ## Plan 메타
 
-- **task 수**. 8
-- **예상 wave**. 4
+- **task 수**. 9 (Task 9 는 구현 중 발견으로 게이트 1 이후 추가)
+- **예상 wave**. 5
   - wave 1 — Task 1 · 2 · 7 (`depends-on: []`, `files` 교집합 0)
   - wave 2 — Task 3 (2) · Task 8 (1 · `PostActionAdminService.kt` 파일 겹침으로 자동 직렬)
   - wave 3 — Task 4 (1, 3)
   - wave 4 — Task 5 (4) · Task 6 (4)
+  - wave 5 — Task 9 (4, 5, 6) · 구현 중 발견분 정리
 - **구현 규율**. TDD red-first. 예외 3건을 명시한다 — Task 1·2(순수 리팩터, **기존 테스트가 안전망이자
   회귀 판정자**) · Task 8(주석, grep 검증). 나머지 5건은 red 를 먼저 본다
 - **회귀 표면 1곳**. Task 2 가 운영 중인 `PostActionRepository` 를 옮긴다. 방어는 `typealias` 로
