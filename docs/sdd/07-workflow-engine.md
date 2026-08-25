@@ -32,22 +32,33 @@ Atlas의 워크플로우 엔진은 FSM(유한 상태 기계) 기반. Jira의 Wor
 
 ## 7.3 Validator 표준
 
-| 타입 | 용도 |
-|---|---|
-| `RequiredField` | 특정 필드 입력 필수 |
-| `Permission` | 권한 보유 검증 |
-| `NotStatusCategory` | 특정 카테고리 진입 불가 |
-| `CustomExpression` | SpEL 표현식 |
+| 타입 식별자 | 구현 클래스 | 용도 |
+|---|---|---|
+| `RequiredField` | `RequiredFieldValidator` | 특정 필드 입력 필수 |
+| `permission-check` | `PermissionValidator` | 권한 보유 검증 |
+| `not-status-category` | `NotStatusCategoryValidator` | 특정 카테고리 진입 불가 |
+| `CustomExpression` | `CustomExpressionValidator` | SpEL 표현식 |
+
+> **타입 식별자 열이 정본이다** — `DefaultWorkflowValidatorFactory.create(type, config)` 가 받는
+> 문자열 그대로이고, 다른 값을 쓰면 `지원하지 않는 validator type` 예외가 난다. 표기가 섞여 있는
+> 것(`RequiredField` 와 `permission-check`)은 구현 순서가 남긴 역사적 사실이며 **코드가 정본**이다.
+> 각주. ADR [validator-terminology](../adr/2026-05-21-workflow-validator-terminology.md) 가 정한 것은
+> **구현 클래스 이름**이지 런타임 `type` 문자열이 아니므로, 이 표의 2026-08-25 정정은 그 ADR 과
+> 충돌하지 않는다(클래스 이름은 그대로 병기한다).
+> 표와 팩토리 `when` 분기의 일치는 `scripts/workflow/validator-type-catalog.test.ts` 가 강제한다.
 
 ## 7.4 Post-function 표준
 
-| 타입 | 용도 |
-|---|---|
-| `SetField` | 필드 자동 설정 (예: resolution=fixed) |
-| `AddWatcher` | Watcher 자동 추가 |
-| `Notify` | 알림 발송 |
-| `CallWebhook` | 외부 시스템 통지 |
-| `RunAutomation` | 자동화 규칙 실행 |
+| 타입 식별자 | 구현 클래스 | 용도 |
+|---|---|---|
+| `SET_FIELD` | `SetFieldPostAction` | 필드 자동 설정 (예: resolution=fixed) |
+| `NOTIFY` | `NotifyPostAction` | 알림 발송 |
+| `ADD_WATCHER` | `AddWatcherPostAction` | Watcher 자동 추가 |
+| `RUN_AUTOMATION` | `RunAutomationPostAction` | 자동화 규칙 실행 |
+| `CALL_WEBHOOK` | `CallWebhookPostAction` | 외부 시스템 통지 |
+
+> 타입 식별자 열이 정본인 것은 §7.3 각주와 같다 — `DefaultWorkflowPostActionFactory.create(type, config)`
+> 가 받는 문자열 그대로다(이쪽은 전부 SCREAMING_SNAKE_CASE). 행 순서도 팩토리 `when` 분기 순서다.
 
 ## 7.5 편집 가능 워크플로우 — FR-WF-04~07 (2026-08-18 결정 · 미구현)
 
