@@ -7,7 +7,7 @@
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-08-26 | debt-404-residual-six | — | ✔ | — | — | — |
-| 2026-08-26 | workflow-transition-rule-editor | — | ✔ | — | — | FR-WF-04 FR-WF-06 |
+| 2026-08-26 | workflow-transition-rule-editor | — | ✔ | — | — | FR-NT-05 FR-WF-04 FR-WF-06 |
 | 2026-08-25 | backend-workflow-transition-rule-crud | — | ✔ | — | — | FR-WF-04 FR-WF-05 FR-WF-06 |
 | 2026-08-25 | verify-time-config-layer | — | ✔ | — | — | — |
 | 2026-08-25 | workflow-transition-rule-hard-delete | — | — | — | ✔ | FR-NT-05 FR-PF-03 FR-PM-10 FR-UX-02 FR-WF-05 FR-WF-06 FR-WF-07 |

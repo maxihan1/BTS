@@ -41,7 +41,12 @@ Maxi 원문 — 「FR-WF-06 D6·D7(전환 규칙 편집 UI + E2E) 진행해줘�
   · `GET` list · `POST` create · `PUT /{id}` · `DELETE /{id}`. (「파일 존재 ≠ 기능 존재」 교훈에 따라
   HTTP 매핑을 세어서 판정했다 — learnings 2026-07-17 / PR #279)
 - 형제 `PostActionController` 가 같은 경로 규약으로 이미 존재한다 — 부채 1 은 **양쪽**에 건다.
-- 프론트에 validator/post-action 편집 UI 는 **0건**. #400 이 편집기 탭 셸을 남겼다.
+- ~~프론트에 validator/post-action 편집 UI 는 0건~~ → **오실측이었다. 게이트 1 리뷰가 정정했다.**
+  `--include` 옵션 오류로 grep 이 실행되지 않은 상태에서 내린 판단이었고, 실제로는 **형제
+  post-action 편집 UI 가 전부 구현돼 있다** — `components/workflow/PostActionFormDialog.tsx` ·
+  `PostActionConfigSection.tsx` · `api/post-actions.ts` · `hooks/use-post-actions.ts` ·
+  `i18n/post-action-labels.ts` · `mocks/post-action-handlers.ts` · `e2e/workflow-post-action.spec.ts`
+  (FR-NT-05). validator 편집 UI 만 없다. **이 PR 은 새 설계가 아니라 형제 대칭 구현이다.**
 
 ### 착수 시 반영한 함정·교훈
 
@@ -126,7 +131,7 @@ Jira Cloud 내장 validator 9종에 자유 표현식 입력칸이 없다는 실�
 - When 저장을 누른다
 - Then 백엔드 400 `WORKFLOW_VALIDATOR_INVALID` 의 메시지가 다이얼로그 안에 뜨고 다이얼로그는 닫히지 않는다
 
-**S7. 규칙이 이슈 화면에 반영된다 (D7 화면 계약).**
+**S7. 규칙이 이슈 화면에 반영된다 (D7 화면 계약).** *(규칙을 거는 화면은 `/workflows/$key`)*
 - Given `not-status-category`(AVAILABILITY) 규칙이 어떤 전환에 걸려 있다
 - When 그 워크플로우를 쓰는 이슈의 상태 드롭다운을 연다
 - Then 그 전환이 후보 목록에 없다. 규칙을 풀면 다시 나온다
@@ -162,9 +167,29 @@ AVAILABILITY 를 상속한다. 화면이 탭을 흉내내면 **사용자가 고�
 | 관리 메뉴 기본 펼침 | 건드리지 않는다 |
 | 나머지 6종 | 이 PR 의 표면 밖 |
 
-**④ 재사용 자산(§4).** 새로 만들지 않는다 — `components/ui/dialog.tsx` · `button.tsx` ·
-`select.tsx` · `input.tsx` · `EmptyState` · `badge.tsx`. 다이얼로그 골격은 형제
-`TransitionFormDialog.tsx` 의 구조(로컬 state + `DialogFooter` 액션 + portalHost)를 따른다.
+**④ 재사용 자산(§4) — 형제 post-action UI 를 그대로 승계한다.** 프리미티브(`dialog`·`button`·
+`select`·`input`·`badge`·`EmptyState`)뿐 아니라 **구조 전체**가 이미 있다.
+
+| validator 쪽 신규 | 승계할 형제 (FR-NT-05) | 승계하는 것 |
+|---|---|---|
+| `ValidatorConfigSection.tsx` | `PostActionConfigSection.tsx` | `isSystemAdmin` 게이팅(아니면 `null` 반환) · 전환 `<select>` · 표 레이아웃 · 행별 `aria-label` 패턴 |
+| `ValidatorFormDialog.tsx` | `PostActionFormDialog.tsx` | 다이얼로그 골격 · 프리필 · 에러 표시 |
+| `api/validators.ts` | `api/post-actions.ts` | zod 계약 · `dataOf` · **`nestedErrorBodySchema`**(`{error:{code,message}}` 파서) |
+| `hooks/use-validators.ts` | `use-post-actions.ts` | `*_KEYS.list(workflowKey, transitionKey)` 팩토리 · **invalidate-only**(플리커 회피) |
+| `i18n/validator-labels.ts` | `post-action-labels.ts` | `dialog`·`form`·`section`·`list`·`error` 5키 구조 |
+| `mocks/validator-handlers.ts` | `post-action-handlers.ts` | stateful 인메모리 관례 |
+| `e2e/workflow-validator.spec.ts` | `workflow-post-action.spec.ts` | T1 노출 · T2 CRUD 전체 · T3 비admin 미노출 · **T4 2행 프리필 격리** |
+
+**★ 진입점도 형제 옆이다** (Maxi 결정, 게이트 1). `routes/workflows.$key.tsx`(워크플로우 상세)에
+`PostActionConfigSection` 과 나란히 둔다 — 「전환 규칙」이 한 화면에 모이고, 관리자가 검증기와
+후처리를 같은 맥락에서 본다. `/admin/workflows/$workflowKey` 편집기(#400)에는 붙이지 않는다.
+
+**★ 형제가 안 가진 것 3가지** — `phase` 배지 · `editable`(형제는 하드코딩) · 편집 가능 type 3종 선택
+(형제는 `CALL_WEBHOOK` 하나만).
+
+**★ zod 관례가 두 벌로 갈려 있다.** `api/post-actions.ts` 는 `.strict()` 를 안 걸고
+`workflows-admin.types.ts` 는 base 에 건다. validator 는 **후자**를 따른다 — 백엔드가 필드를 더해도
+계약 갭이 런타임에 드러난다. 형제를 그 관례로 옮기는 것은 이 PR 범위 밖이다.
 
 ### 기능 요구사항 (FR)
 
@@ -277,9 +302,18 @@ jOOQ 재생성도 불필요하다.
   **type 별 config 폼 스키마는 프론트가 가질 수밖에 없다**(폼을 그려야 하므로). SDD §7.3 이 이미
   경고한 자리다 — 「이 열이 편집 화면 입력 폼의 계약이다. 화면이 타입별 키를 자기 코드에 들면 그것이
   팩토리와 갈리는 두 번째 목록이 되고, 갈린 사실은 저장 시점 400 으로만 드러난다」.
+  **★ 그 사본은 이미 프로덕션에 있다.** `PostActionConfigSection.tsx` 가 `CALL_WEBHOOK` 의
+  `url`/`method` 를 손으로 들고 있고, 편집 가능 판정까지
+  `action.type === 'CALL_WEBHOOK' && extractWebhookValues(action.config) !== null` 로 하드코딩한다 —
+  **부채 2 가 막으려는 것의 post-action 판본**이다. 판별식 파일 머리 주석이 이것을 이미 결함으로
+  적어 뒀다(「팩토리가 키를 하나 바꾸면 화면만 조용히 틀려진다」).
   **처방.** ① 모르는 type 은 폼을 추측하지 않고 읽기 전용으로 degrade 한다(낡아도 거짓말하지 않는다)
-  ② `scripts/workflow/validator-type-catalog.test.ts` 에 **프론트 폼 스키마 ↔ SDD §7.3 표** 축을
-  추가해 사본이 갈리면 CI 가 이름으로 지목하게 한다.
+  ② `scripts/workflow/validator-type-catalog.test.ts` 에 **프론트 폼 스키마 ↔ SDD 표** 축을
+  **양쪽 표면(validator §7.3 · post-action §7.4)** 으로 추가한다 (Maxi 결정, 게이트 1) — validator 만
+  대조하면 새 축이 알려진 결함을 한 표면 남긴 채 초록이 되고, 그것이 `partial-column-parser-lets-unread-column-rot`
+  양식의 재생산이다. **post-action 쪽 하드코딩 자체를 고치는 것은 범위 밖**이고, 축이 그것을 red 로
+  드러내면 그 red 를 부채로 등재한다(축은 표↔스키마 일치를 보므로 형제도 지금 상태로 통과할 수 있다 —
+  Task 7 이 착수 시 실측한다).
 - **C2.** 다이얼로그는 `h1` 을 만들지 않는다.
 - **C3.** MSW 핸들러에 **validator 평가 로직을 만들지 않는다** — 백엔드 엔진의 두 번째 사본이 되고
   아무도 대조하지 않는다. AVAILABILITY 효과는 `/transitions/plan` **응답 픽스처**로 표현한다
@@ -435,108 +469,114 @@ degrade + `validator-type-catalog.test.ts` 에 프론트 축 추가)을 완료 �
 - `pnpm test:workflow` — `validator-type-catalog.test.ts` 가 여전히 GREEN (표 파싱을 안 깼다)
 - `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh`
 
-### Task 4. 프론트 API 계층 — zod 스키마 + fetch 4종
+### Task 4. 프론트 API 계층 — 형제 `api/post-actions.ts` 대칭
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/workflows-admin.types.ts`, `apps/web/src/api/workflows-admin.ts`, `apps/web/src/api/__tests__/workflows-admin.test.ts`]
+- files: [`apps/web/src/api/validators.ts`, `apps/web/src/api/__tests__/validators.test.ts`]
 - depends-on: [1]   # `editable` 필드 계약이 먼저 서야 한다
 
 **RED**:
-- 파일. `apps/web/src/api/__tests__/workflows-admin.test.ts`
+- 파일. `apps/web/src/api/__tests__/validators.test.ts` (형제 `post-actions.test.ts` 구조 승계)
 - 테스트.
   ```ts
-  it('validatorSchema 가 백엔드 6필드를 그대로 받는다', …)      // id·type·config·displayOrder·phase·editable
-  it('editable 이 빠진 응답을 거부한다', …)                      // 계약 갭이 런타임에 드러나게
-  it('phase=null 을 받아들인다', …)                              // 인스턴스화 실패 행
-  it('알 수 없는 필드가 오면 거부한다', …)                        // .strict() 봉인
+  it('validatorResponseSchema 가 백엔드 6필드를 받는다', …)   // id·type·config·displayOrder·phase·editable
+  it('editable 이 빠진 응답을 거부한다', …)                    // 계약 갭이 런타임에 드러나게
+  it('phase=null 을 받아들인다', …)                            // 인스턴스화 실패 행
+  it('알 수 없는 필드가 오면 거부한다', …)                      // .strict() 봉인
+  it('400 본문의 error.code 를 뽑아낸다', …)                    // nestedErrorBodySchema 승계
   ```
-- 실패 메시지 (예상). `validatorSchema` 미정의 → import 실패.
+- 실패 메시지 (예상). `apps/web/src/api/validators.ts` 부재 → import 실패.
 
 **GREEN**:
-- `workflows-admin.types.ts` — `validatorSchema`(`.strict()` 를 **base 에** 건다 · `dataOf` 로 감싼다) ·
-  `ValidatorInput`(type·config·displayOrder).
-- **type 별 config 폼 스키마**를 여기 둔다 — 제약 C1 의 불가피한 사본이다. 스키마는 SDD §7.3
-  「필수 config 키」 열과 1:1 이고, **Task 7 의 판별식이 이 사본을 표와 대조한다**.
-- `config` 는 `z.record(z.unknown())` 로 받되(타입별 키가 다르다) 폼 단계에서 type 별 스키마로 좁힌다.
-- `workflows-admin.ts` — `fetchValidators` · `createValidator` · `updateValidator` · `deleteValidator`.
-  경로 세그먼트는 **전환 id(UUID)** 만 싣는다(제약 C4).
+- 형제 `api/post-actions.ts` 를 **구조 그대로** 옮긴다 — `basePath(workflowKey, transitionKey)` ·
+  `dataOf` · **`nestedErrorBodySchema`**(`{error:{code,message}}` 파서, 부채 1 이 넓히는 그 봉투다).
+- ★ **`.strict()` 는 건다** — 형제는 안 걸지만 `workflows-admin.types.ts` 관례를 따른다(스펙 §Jira 대조 ④).
+- **type 별 config 폼 스키마**를 여기 둔다 — 제약 C1 의 불가피한 사본이고 Task 7 이 SDD §7.3 과 대조한다.
+- 경로 세그먼트는 **전환 id(UUID)** 만 싣는다 (제약 C4 · 형제 주석이 같은 이유를 이미 적었다).
 
-**REFACTOR**: 기존 `parseData`/`expectNoContent`/`seg` 헬퍼를 그대로 쓴다 — 새로 만들지 않는다.
+**REFACTOR**: 형제와 겹치는 헬퍼가 3개를 넘으면 공용으로 뽑되, **형제 파일을 이 PR 에서 고치지 않는다**
+(범위 밖 · 형제 테스트를 인질로 잡는다).
 
 **검증**:
-- `pnpm --filter web test -- workflows-admin`
-- ★ zod 스키마를 `ValidatorDtos.kt` 실물과 **눈으로 대조**한다. MSW·유닛·E2E 3겹이 동시에 가짜그린일
-  수 있다 (learnings 2026-06-25 / PR #187 — `<input type="date">` 계약 갭이 세 겹을 통과했다).
+- `pnpm --filter web test -- validators`
+- ★ zod 스키마를 `ValidatorDtos.kt` 실물과 **눈으로 대조**한다 (learnings 2026-06-25 / PR #187 —
+  MSW·유닛·E2E 3겹이 동시에 가짜그린일 수 있다).
 
-### Task 5. MSW stateful 핸들러 + react-query 훅
+### Task 5. 훅 + MSW 핸들러 — 형제 대칭
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/mocks/workflow-admin-handlers.ts`, `apps/web/src/mocks/workflow-admin-fixtures.ts`, `apps/web/src/hooks/use-workflows-admin.ts`, `apps/web/src/mocks/workflow-admin-handlers.test.ts`, `apps/web/src/hooks/__tests__/use-workflows-admin.test.tsx`]
+- files: [`apps/web/src/hooks/use-validators.ts`, `apps/web/src/mocks/validator-handlers.ts`, `apps/web/src/mocks/handlers.ts`, `apps/web/src/hooks/__tests__/use-validators.test.tsx`]
 - depends-on: [4]
 
 **RED**:
 - 테스트.
-  ```ts
-  it('validator 를 만들면 목록에 남는다 (stateful)', …)
-  it('삭제하면 목록에서 사라진다', …)
-  it('mutation 성공 후 그 전환의 규칙 쿼리가 무효화된다', …)
+  ```tsx
+  it('전환을 고르면 그 전환의 목록을 가져온다', …)
+  it('추가 성공 후 목록 쿼리가 무효화된다', …)          // invalidate-only (플리커 회피 — 형제 관례)
+  it('삭제 성공 후 목록에서 사라진다', …)
   ```
-- 실패 메시지 (예상). `/validators` 경로 핸들러 부재 → MSW `onUnhandledRequest` 경고 후 네트워크 실패.
+- 실패 메시지 (예상). `use-validators` 부재 → import 실패. MSW `/validators` 경로 미등록 → 요청 실패.
 
 **GREEN**:
-- `workflow-admin-handlers.ts` 에 4 경로. 기존 인메모리 stateful 관례를 따른다.
-- 픽스처에 **편집 가능 3종 각각 · `CustomExpression` 1행 · 깨진 config 1행**을 둔다 — S4·S5 가
-  화면에서 재현되려면 목이 그 행을 실제로 갖고 있어야 한다.
-- `use-workflows-admin.ts` — `WORKFLOW_ADMIN_KEYS.transitionRules(workflowKey, transitionId)` 추가 +
-  mutation `onSuccess` 에서 그 키 무효화.
-- ★ **평가 로직을 만들지 않는다** (제약 C3). 핸들러는 저장·조회만 한다.
+- `use-validators.ts` — `VALIDATOR_KEYS.list(workflowKey, transitionKey)` 팩토리 + `useValidators` ·
+  `useAddValidator` · `useUpdateValidator` · `useDeleteValidator`. **invalidate-only** (형제와 같은 이유).
+- `validator-handlers.ts` — 4 경로. `handlers.ts` 에 등록한다(**등록을 빠뜨리면 핸들러가 있어도 안 탄다**).
+- 픽스처에 **편집 가능 3종 각각 · `CustomExpression` 1행 · 깨진 config 1행**을 둔다 — S4·S5 가 화면에서
+  재현되려면 목이 그 행을 실제로 갖고 있어야 한다.
+- ★ **평가 로직을 만들지 않는다** (제약 C3). 저장·조회만 한다.
 
 **REFACTOR**: 픽스처의 type 문자열을 한 곳에서 정의해 스펙 간 오타를 막는다.
 
-**검증**: `pnpm --filter web test -- workflow-admin use-workflows-admin`
+**검증**: `pnpm --filter web test -- use-validators validator-handlers`
 
-### Task 6. 전환 규칙 편집 다이얼로그 (D6 본체)
+### Task 6. `ValidatorConfigSection` + `ValidatorFormDialog` (D6 본체)
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/workflow/editor/TransitionRuleDialog.tsx`, `apps/web/src/components/workflow/editor/TransitionListPanel.tsx`, `apps/web/src/i18n/workflow-editor-labels.ts`, `apps/web/src/components/workflow/editor/__tests__/TransitionRuleDialog.test.tsx`]
+- files: [`apps/web/src/components/workflow/ValidatorConfigSection.tsx`, `apps/web/src/components/workflow/ValidatorFormDialog.tsx`, `apps/web/src/i18n/validator-labels.ts`, `apps/web/src/routes/workflows.$key.tsx`, `apps/web/src/components/workflow/__tests__/ValidatorConfigSection.test.tsx`, `apps/web/src/components/workflow/__tests__/ValidatorFormDialog.test.tsx`]
 - depends-on: [5]
 
 **RED** (동반 테스트 명세 — ui 시각 트랙):
 - 테스트.
   ```tsx
-  it('전환 행의 규칙 버튼이 다이얼로그를 연다', …)
-  it('편집 불가 행이 목록에 보이고 편집이 비활성이며 이유가 뜬다', …)     // S4 · editable 소비
-  it('추가 폼의 type 선택지에 CustomExpression 이 없다', …)              // editable=true 만
-  it('phase=null 행은 판정 불가 배지 + 편집 비활성이다', …)               // S5
-  it('모르는 type 은 폼을 그리지 않고 읽기 전용으로 보여준다', …)          // 제약 C1 degrade
-  it('저장 400 이 다이얼로그 안에 뜨고 다이얼로그가 닫히지 않는다', …)      // S6
-  it('삭제는 되돌릴 수 없음을 확인받는다', …)                            // ADR hard-delete
+  it('isSystemAdmin 이 아니면 렌더하지 않는다', …)                        // 형제 게이팅 승계
+  it('전환을 고르면 규칙 목록이 뜬다', …)
+  it('편집 불가 행이 목록에 보이고 편집이 비활성이며 이유가 뜬다', …)      // S4 · editable 소비
+  it('추가 폼의 type 선택지에 CustomExpression 이 없다', …)               // editable=true 만
+  it('phase 배지가 텍스트로 병기된다 (색만으로 뜻을 전하지 않는다)', …)     // 접근성
+  it('phase=null 행은 판정 불가 배지 + 편집 비활성이다', …)                // S5
+  it('모르는 type 은 폼을 그리지 않고 읽기 전용으로 보여준다', …)           // 제약 C1 degrade
+  it('저장 400 이 다이얼로그 안에 뜨고 다이얼로그가 닫히지 않는다', …)       // S6
+  it('삭제는 되돌릴 수 없음을 확인받는다', …)                             // ADR hard-delete
+  it('2행 중 A 를 편집하면 A 값이 프리필되고 B 값이 새지 않는다', …)         // ★ 형제 E2E T4 가 잡은 회귀
   ```
-- 실패 메시지 (예상). `TransitionRuleDialog` 부재 → 렌더 실패.
+- 실패 메시지 (예상). `ValidatorConfigSection` 부재 → 렌더 실패.
 
 **GREEN**:
-- `TransitionRuleDialog.tsx` — 형제 `TransitionFormDialog` 의 구조(로컬 state + `DialogFooter` +
-  portalHost)를 따른다. **고유 `aria-label`** 을 준다(즉사 계약 — 편집기에 다이얼로그가 셋이 된다).
-  `h1` 을 만들지 않는다(제약 C2).
-- 행 배지는 `phase` 를 텍스트로 병기한다 — 색만으로 뜻을 전하지 않는다(NFR 접근성).
-- 수정 시 **로드한 `config` 를 baseline 으로 들고 아는 키만 덮어써서 전체를 보낸다** (제약 C6) —
-  PUT 이 표현 전체 교체라 폼이 아는 키만 보내면 모르는 키가 조용히 지워진다.
-- `displayOrder` 입력칸을 만들지 않는다. 새 규칙은 최대값+1, 기존 행은 로드값 그대로 (제약 C7).
-- `TransitionListPanel` 에 「규칙」 진입점. 라벨은 `workflow-editor-labels.ts` 에 둔다.
+- **형제 `PostActionConfigSection` 구조를 그대로 따른다** — `user?.isSystemAdmin !== true` 면 `null`,
+  전환 `<select>`(값은 전환 id UUID), 표, 행별 `aria-label`.
+- `ValidatorFormDialog` 는 형제 다이얼로그 골격 + **고유 `aria-label`**(즉사 계약).
+  `h1` 을 만들지 않는다 (제약 C2).
+- 행 배지는 `phase` 를 **텍스트로 병기**한다 — `실행 시 차단`(EXECUTION) / `후보에서 감춤`(AVAILABILITY) /
+  `판정 불가`(null).
+- 수정 시 **로드한 `config` 를 baseline 으로 들고 아는 키만 덮어써서 전체를 보낸다** (제약 C6).
+  ★ 형제는 `config: { url, method }` 로 전체 교체해 미지 키를 지운다 — **그 동작을 복제하지 않는다.**
+- `displayOrder` 입력칸을 만들지 않는다. 새 규칙은 최대값+1 (제약 C7).
+- `routes/workflows.$key.tsx` 에 `PostActionConfigSection` 과 **나란히** 배치한다.
 
 **REFACTOR**: type 별 config 폼을 한 컴포넌트의 분기로 두고 스키마는 Task 4 의 것을 소비한다 —
 폼이 자기 키 목록을 따로 들지 않게 한다.
 
 **검증**:
-- `pnpm --filter web test -- TransitionRuleDialog` · `pnpm verify`
-- 기존 E2E: `apps/web/e2e/workflow-editor.spec.ts` **동반 실행** (계약 §5 사전 grep 결과 — 편집기
-  라우트를 건드리는 유일한 spec 이다). 유닛만 초록이고 e2e 가 빨간 것은 mock 이 삼킨 prop 서명이다.
-- 눈확인: 규칙 다이얼로그 — 기본 · 빈(규칙 0건) · 에러(400) 3상태 × 라이트/다크
+- `pnpm --filter web test -- ValidatorConfigSection ValidatorFormDialog` · `pnpm verify`
+- 기존 E2E **동반 실행**: `apps/web/e2e/workflow-post-action.spec.ts` (**같은 라우트를 공유한다** —
+  §5 사전 grep 결과. 형제 섹션이 밀리거나 셀렉터가 충돌하면 여기서 red 가 난다) ·
+  `apps/web/e2e/workflow-editor.spec.ts`
+- 눈확인: 규칙 섹션 — 기본 · 빈(규칙 0건) · 에러(400) 3상태 × 라이트/다크
 
-### Task 7. 프론트 폼 스키마 ↔ SDD §7.3 표 대조 축을 판별식에 더한다 (제약 C1 처방)
+### Task 7. 폼 스키마 ↔ SDD 표 대조 축 — **양쪽 표면** (제약 C1 처방)
 
 **메타**.
 - agent: `qa-engineer`
@@ -549,41 +589,53 @@ degrade + `validator-type-catalog.test.ts` 에 프론트 축 추가)을 완료 �
 - 실패 메시지 (예상). 처음엔 축이 없어 GREEN — 그래서 **비-공허 확인이 이 task 의 본체**다.
 
 **GREEN**:
-- 기존 축의 파서 구조를 그대로 쓴다 — SDD 표 파싱(`extractTable`)은 이미 있고, 프론트 스키마 쪽
-  파서만 더한다. **양방향 차집합 0** 으로 대조한다(표에만 있는 키 · 스키마에만 있는 키 둘 다).
-- 「필수/선택」 구분도 함께 본다 — 표의 `(선택)` 접미와 스키마의 optional 이 맞아야 한다.
+- 축을 **양쪽 표면**으로 세운다 (Maxi 결정, 게이트 1) — validator 폼 스키마 ↔ SDD §7.3,
+  post-action 폼 스키마 ↔ SDD §7.4. validator 만 대조하면 판별식 주석이 이미 결함으로 적어 둔
+  `PostActionConfigSection` 의 `url`/`method` 하드코딩을 새 축이 빠뜨린다.
+- 기존 축의 파서 구조를 그대로 쓴다 — SDD 표 파싱은 이미 있고 프론트 스키마 쪽 파서만 더한다.
+  **양방향 차집합 0**(표에만 있는 키 · 스키마에만 있는 키 둘 다) + 「필수/선택」 구분(표의 `(선택)` 접미 ↔
+  스키마 optional).
+- ★ **비-공허 짝(line 688 부근)에 새 파서를 등록한다.** 기존 테스트가 「뽑아낸 집합이 하나도 비어
+  있지 않다」로 파서 death 를 잡는데, 새 파서를 거기 넣지 않으면 그것이 0건을 뱉어도 아무도 모른다 —
+  판별식이 자기가 잡으려는 결함을 스스로 재생산하는 자리다.
+- ★ post-action 축이 착수 즉시 red 를 내면 **그 red 는 이 PR 이 고치지 않는다**(범위 밖). 부채로
+  등재하고 축은 그 상태를 드러낸 채 둔다 — 통과시키려고 축을 약하게 만들지 않는다.
 
-**REFACTOR**: 축 번호·설명을 파일 머리 주석의 「축 4개」 목록에 반영한다 — **개수 문구를 그대로
-두면 거짓이 된다**.
+**REFACTOR**: 파일 머리 주석의 「축 4개」 표에 새 축을 반영한다 — **개수 문구를 그대로 두면 거짓이 된다**.
 
 **검증**:
 - `pnpm test:workflow`
 - **비-공허 (GREEN 선커밋 뒤)**. ① 프론트 스키마에서 키 1개 제거 → red · 그 키가 메시지에 이름으로
-  나오는지 확인 ② SDD 표에서 행 1개 제거 → red. 둘 다 확인 후 되돌린다.
+  나오는지 ② SDD 표에서 행 1개 제거 → red ③ 새 파서가 0건을 뱉게 만들어 → **비-공허 짝이 잡는지**.
+  셋 다 확인 후 되돌린다.
 
-### Task 8. D7 E2E — 화면 계약 + 응답 픽스처
+### Task 8. D7 E2E — 형제 `workflow-post-action.spec.ts` 구조 승계
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/workflow-transition-rules.spec.ts`, `apps/web/src/mocks/workflow-handlers.ts`]
+- files: [`apps/web/e2e/workflow-validator.spec.ts`, `apps/web/src/mocks/workflow-handlers.ts`]
 - depends-on: [6]
 
 **RED**:
-- 시나리오. 스펙의 S1(규칙을 건다) · S3(푼다) · S4(편집 불가 행) · S7(이슈 드롭다운 반영).
-- 실패 메시지 (예상). 「규칙」 버튼을 못 찾는다 → Task 6 이전에는 red.
+- 시나리오. 형제 spec 의 T1~T4 골격에 validator 고유분을 얹는다.
+  T1 섹션이 SYSTEM_ADMIN 에게 노출 · T2 추가→목록→수정→삭제 전체 CRUD(S1·S3) ·
+  T3 비admin 미노출 · T4 **2행 프리필 격리**(형제가 실제로 잡은 회귀) ·
+  T5 `CustomExpression` 행은 편집 비활성(S4) · T6 AVAILABILITY 규칙이 이슈 드롭다운에서 전환을 감춤(S7).
+- 실패 메시지 (예상). 규칙 섹션을 못 찾는다 → Task 6 이전에는 red.
 
 **GREEN**:
-- 신규 spec 1개. 기존 `workflow-editor.spec.ts` 의 진입 헬퍼(`navigateToWorkflowList`)와 픽스처
-  (`loginAsSystemAdmin`)를 재사용한다.
-- S7 은 `workflow-handlers.ts` 의 `/transitions/plan` **응답 픽스처**로 표현한다 — AVAILABILITY 규칙이
-  걸린 전환을 후보에서 뺀 응답을 준다. **평가 로직이 아니다** (제약 C3 · Maxi 승인 범위).
+- 로그인 헬퍼는 형제와 같은 공용 정본(`auth-fixtures.ts`)을 쓴다. `isSystemAdmin` 토글도 형제 방식
+  (`addInitScript` 로 localStorage 플래그 선설정)을 그대로 따른다.
+- T6 은 `workflow-handlers.ts` 의 `/transitions/plan` **응답 픽스처**로 표현한다 — 평가 로직이 아니다
+  (제약 C3 · Maxi 승인 범위).
 - ★ `serviceWorkers:'block'` 금지 (메모리 `e2e-msw-serviceworker-block`).
-- ★ 라벨 substring 주의 — 「워크플로우」는 「워크플로우 스킴」의 substring 이다. `exact: true` 로 집는다.
+- ★ 라벨 substring 주의 — 형제 spec 이 같은 라우트를 쓰므로 셀렉터가 겹치지 않게 `exact: true` 로 집는다.
 
-**REFACTOR**: 공용 헬퍼가 3회 이상 반복되면 fixtures 로 뽑는다.
+**REFACTOR**: 형제 spec 과 공용 헬퍼가 3회 이상 반복되면 `fixtures/` 로 뽑는다.
 
 **검증**:
-- `pnpm --filter web test:e2e -- workflow-transition-rules workflow-editor` (**기존 spec 동반**)
+- `pnpm --filter web test:e2e -- workflow-validator workflow-post-action workflow-editor`
+  (**형제 spec 동반 필수** — 같은 라우트를 공유한다)
 - 눈확인 결과와 함께 게이트 2 요약에 싣는다
 
 ## Plan 메타
@@ -595,7 +647,52 @@ degrade + `validator-type-catalog.test.ts` 에 프론트 축 추가)을 완료 �
 | 구현 규율 | TDD red-first (백엔드 Task 1·2) + ui 시각 검증 트랙 (Task 4~6) + 판별식 비-공허 (Task 7) |
 | 추가 검증 | `./gradlew :modules:project-workflow:test ktlintCheck detekt` · `pnpm verify` · `pnpm test:workflow` · `pnpm --filter web test:e2e` · `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh` |
 | 마이그레이션 | **0건** — jOOQ 재생성 불필요 |
-| 뮤테이션 지점 | Task 1(판정 뒤집기 — 양쪽 red 확인) · Task 7(스키마 키 제거 · SDD 행 제거) |
+| 뮤테이션 지점 | Task 1(판정 뒤집기 — 양쪽 red 확인) · Task 7(스키마 키 제거 · SDD 행 제거 · 파서 0건) |
 | 눈확인 | Task 6 — 기본·빈·에러 3상태 × 라이트/다크 |
+| ★ 형제 동반 실행 | `workflow-post-action.spec.ts` — validator 섹션이 **같은 라우트**(`/workflows/$key`)에 들어가므로 형제가 깨지는지 매 단계 본다 |
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈 2종** (`type == "ui"` · T2) — `plan-design-review` + `plan-eng-review`, 한 응답 병렬 발행.
+gstack 부가 절차(telemetry·proactive·routing 주입·mockup 생성·codex outside voice)는 **돌리지 않았다** —
+특히 `CLAUDE.md` 에 gstack routing 규칙을 주입하는 단계는 이 저장소의 헌법 파일을 오염시킨다.
+두 렌즈의 **판정 내용**만 수행했고, 주장은 코드 실측으로 대조했다.
+
+### 판정 — BLOCKER 4건 (전부 해소 후 진행)
+
+| # | 렌즈 | 판정 | 처리 |
+|---|---|---|---|
+| B1 | eng | **BLOCKER** — plan 의 재사용 자산 조사가 **틀렸다**. 「프론트 편집 UI 0건」은 `--include` 옵션 오류로 grep 이 **실행되지 않은** 상태에서 내린 판단이었고, 실제로는 형제 post-action UI 가 전부 있다 | ✅ Brief·스펙 §Jira 대조 ④ 정정 · Task 4~8 을 **형제 대칭 구현**으로 전면 재작성 |
+| B2 | design | **BLOCKER** — 진입점이 형제와 갈린다. 형제는 `/workflows/$key`(상세), plan 은 `/admin/workflows/$workflowKey`(편집기). 「전환 규칙」이 두 화면으로 흩어진다 | ✅ **Maxi 결정 — 형제 옆 `/workflows/$key`**. 편집기에는 붙이지 않는다 |
+| B3 | eng | **BLOCKER** — Task 7 축이 validator 만 대조하면, 판별식 주석이 **이미 결함으로 적어 둔** post-action 의 `url`/`method` 하드코딩을 새 축이 빠뜨린다. `partial-column-parser-lets-unread-column-rot` 의 재생산 | ✅ **Maxi 결정 — 양쪽 표면**(§7.3 + §7.4). 비-공허 짝에 새 파서 등록도 명시 |
+| B4 | eng | **BLOCKER(전제 오류)** — 「post-action 예외 3종은 소비 화면이 없다」가 거짓. `api/post-actions.ts` 의 `nestedErrorBodySchema` 가 그 봉투를 **이미 파싱**한다 | ✅ 부채 1 의 정당성이 강해졌다 — 가정 문구를 스펙에서 제거 |
+
+### 실측으로 **해소**된 의심 3건
+
+| # | 의심 | 실측 결과 |
+|---|---|---|
+| R1 | 부채 1 의 401 을 `@RestControllerAdvice(basePackages)` 가 잡을 수 있는가 — 못 잡으면 처방 자체가 성립하지 않는다 | **잡는다.** `WorkflowSchemeAccessDeniedException` 은 shared-kernel `com.bts.shared.permission` 에서 던져지는데 `basePackages=["com.bts.workflow.validator"]` advice 가 그것을 403 으로 내고 테스트가 통과 중이다 — `basePackages` 는 예외 선언 위치가 아니라 **요청을 처리한 컨트롤러** 기준임이 이 저장소에서 실증돼 있다 |
+| R2 | D7 범위 축소의 위임 대상이 실제로 그 행동을 덮는가 | **덮는다.** `ValidatorEngineIntegrationTest` 가 `engine.plan` throw → 삭제 후 `toStateKey` 반환(EXECUTION) · `availableToStateKeys()` 에서 사라짐 → 삭제 후 `contains`(AVAILABILITY). Testcontainers 실 엔진이고 **FR D7 문구를 문자 그대로** 덮는다 |
+| R3 | 마이그레이션 0건 주장 | **맞다.** `workflow_validators` 는 V200 기존 테이블, `editable` 은 응답 계산 필드라 컬럼이 아니다 |
+
+### 주의 (BLOCKER 아님 — 진행하되 기록)
+
+1. **`editable` 이 validator 에만 생긴다.** 형제 post-action 은 `type === 'CALL_WEBHOOK' && extractWebhookValues(...) !== null`
+   하드코딩으로 남아 두 표면의 편집 가능 판정 방식이 갈린다. **범위 밖**이고 Task 7 축이 그 상태를
+   드러낸다 — 드러난 red 는 부채로 등재한다.
+2. **`config` 전체 교체 동작이 형제와 다르다.** 형제는 `config: { url, method }` 로 미지 키를 지운다.
+   validator 는 제약 C6(baseline 병합)으로 보존한다 — **의도한 비대칭**이고 이유를 C6 에 적었다.
+   형제를 고치는 것은 부채 4(장부가 「D6 이후」로 미룸) 와 함께 볼 일이다.
+3. **zod `.strict()` 관례가 두 벌이다.** `api/post-actions.ts` 는 안 걸고 `workflows-admin.types.ts` 는 건다.
+   validator 는 후자를 따르되 형제를 옮기지 않는다(형제 테스트를 인질로 잡는다).
+4. **wave 5 는 유지한다.** 형제 승계로 Task 4·5 의 실질 작업량이 줄어 직렬 비용이 낮아졌다. Task 4→5→6 은
+   계약 의존이라 쪼개도 순서가 그대로다.
+5. **스펙 deviation 은 전수 동기화 대상이다.** D7 이 FR 문구의 「막힌다/통과한다」를 E2E 로 직접 덮지 않고
+   백엔드 D5 에 위임한다 — `docs/rules/fr-sync-checklist.md` 에 따라 `docs/plan/product/project-workflow.md`
+   §2.6 D7 항목에 위임 사실을 같은 PR 에서 적는다 (게이트 2 요약에도 싣는다).
+
+### 결과
+
+**BLOCKER 4건 전부 해소 · 주의 5건 기록.** plan 을 고쳐 반영했다 — Brief 오실측 정정 ·
+스펙 §Jira 대조 ④ 재사용 자산 표 신설 · 제약 C1 갱신 · Task 4~8 전면 재작성 · Plan 메타에 형제 동반
+실행 행 추가. **게이트 1 로 넘긴다.**
