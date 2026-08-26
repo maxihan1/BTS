@@ -1,8 +1,8 @@
 // notification 모듈 빌드 스크립트 (Flyway V400~V499 + jOOQ codegen — project-workflow 템플릿)
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.gradle.api.tasks.PathSensitivity
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm")

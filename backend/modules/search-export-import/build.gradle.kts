@@ -1,8 +1,8 @@
 // search-export-import 모듈 빌드 스크립트 (AQL 텍스트 쿼리 + Flyway V600~V699 + jOOQ codegen — FR-SR-03 영속성 도입)
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.gradle.api.tasks.PathSensitivity
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm")
