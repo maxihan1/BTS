@@ -855,8 +855,20 @@ function onlyIn(left: string[], right: string[]): string[] {
 /** 이 판별식 파일 자신. 축 8 만 자기 소스를 읽는다. */
 const SELF_FILE = fileURLToPath(import.meta.url)
 
+/**
+ * 머리 축 표의 **시작** — `// | 축 | 목록 ① | …`.
+ *
+ * ★범위를 여기서 연다. 종전에는 [HEADER_AXIS_ROW] 로 **파일 전체**를 훑어서, 컬럼 0 에서
+ * 시작하는 `// | <숫자>` 주석 표라면 어디에 있든 축 행으로 읽었다. 이 파일은 컬럼 0 주석 표가
+ * 집 스타일이라(구획 배너마다 하나씩 늘어난다) 다음 문서 편집이 평범하게 red 를 냈을 것이다.
+ */
+const HEADER_AXIS_TABLE_START = /^\/\/ \| 축 \|/
+
 /** 머리 축 표의 행 — `// | 5 읽기 형태 봉인 | … |`. 번호만 읽는다. */
 const HEADER_AXIS_ROW = /^\/\/ \|\s*(\d+)\s/
+
+/** 표가 이어지는 동안의 줄. 이 형태가 아니면 표가 끝난 것이다. */
+const HEADER_TABLE_LINE = /^\/\/ \|/
 
 /**
  * 축 정의 마커 — `축 5 — …`.
@@ -869,18 +881,74 @@ const AXIS_DEFINITION = /축 (\d+) —/
 /** 축 정의 마커에 이어져야 하는 판정 함수. 이 결속이 축 8 을 주석만으로 만족시키지 못하게 한다. */
 const AXIS_ASSERT_FUNCTION = /^\s*function assert\w+\(/
 
+/**
+ * 마커와 판정 함수 사이에 **허용되는** 줄 — 주석 연속행과 빈 줄뿐이다.
+ *
+ * ★이 좁힘이 축 8 의 핵심이다. 종전에는 마커 뒤로 **다음 마커 전까지** 훑어 아무 곳에나 있는 첫
+ * `function assert…` 를 잡았고, 그래서 축 번호를 설명 안에서 **언급만** 한 자리(예: 이 파일의
+ * [AXIS_DEFINITION] KDoc 이 예시로 적은 「축 5 — …」)가 멀리 있는 공용 헬퍼 `assertSameSet` 을
+ * 자기 판정 함수로 주워 왔다. 그 결과 축 5 는 판정 함수를 지워도·개명해도 GREEN 이었다
+ * (2026-08-26 리뷰가 뮤테이션으로 적발 · 부채 137 을 낳은 바로 그 축이다).
+ *
+ * 「바로 뒤」로 좁히면 축 8 자신의 구획 배너도 함께 무해해진다 — 배너 뒤에 오는 것은 주석이
+ * 아니라 `const` 선언이라 거기서 끊긴다. **전 축에 같은 규칙이 걸린다는 것**이 이 처방의 요점이고,
+ * 텍스트만 고치면(예시 문구를 `축 N —` 으로 바꾸는 식) 결함이 축 8 로 옮겨 갈 뿐이다.
+ *
+ * ### 이 좁힘이 만드는 제약 두 가지 (둘 다 red 는 시끄러운 쪽이라 조용히 썩지 않는다)
+ * - **마커와 판정 함수 사이에 코드를 두지 마라.** 타입 별칭 한 줄(`type X = …`)만 끼워도 그 축이
+ *   「표에만 있음」으로 red 다. 필요하면 그 선언을 KDoc 위로 올려라.
+ * - **축 픽스처는 배열 + `join('\n')` 으로 적어라.** 백틱 템플릿 리터럴에 담으면 그 안의
+ *   ` * 축 9 —` · `function assert…` 가 소스로 그대로 읽혀 「코드에만 있음」 red 가 난다.
+ *   이 파일의 다른 픽스처(`TYPE_FIRST` 등)가 백틱을 쓰므로 헷갈리기 쉬운 자리다.
+ */
+const AXIS_MARKER_GAP = /^\s*(\/\/|\/?\*)/
+
+/**
+ * `at` 줄의 마커가 **자기 주석 블록의 첫 축 마커**인가.
+ *
+ * 뒤로 훑어 주석 줄이 이어지는 동안 앞선 `축 N —` 이 있으면, `at` 은 축의 **정의**가 아니라
+ * 그 블록이 다른 축을 **상호참조**한 것이다.
+ *
+ * ★이 조건이 없으면 결속이 「마커 뒤 첫 판정 함수」이지 「**이 축의** 판정 함수」가 아니게 된다.
+ * 2026-08-26 재리뷰 실측 — 축 7 KDoc 의 실제 한 줄에서 「축 5 **가** 팩토리 쪽에서 하는 일과
+ * 같다」를 「축 5 **—** …」로 **한 글자** 고치자, 축 5 판정 함수가 없는데도 GREEN 이 됐다.
+ * 이 파일의 KDoc 은 다른 축을 끊임없이 상호참조하고 em-dash 가 기본 문장부호라 실제 문장과
+ * 종이 한 장 차이다.
+ */
+function isFirstMarkerInCommentBlock(lines: readonly string[], at: number): boolean {
+  for (let k = at - 1; k >= 0; k -= 1) {
+    const line = lines[k] ?? ''
+    // 주석이 아니면 블록이 거기서 끝난다 — `at` 이 이 블록의 첫 마커다.
+    if (!AXIS_MARKER_GAP.test(line)) return true
+    if (AXIS_DEFINITION.test(line)) return false
+  }
+  return true
+}
+
 /** 축 번호를 숫자 순으로. 문자열 정렬이면 축이 10 을 넘는 날 `10` 이 `2` 앞에 선다. */
 function sortedAxisNumbers(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((left, right) => Number(left) - Number(right))
 }
 
-/** 머리 축 표가 선언한 축 번호. */
+/**
+ * 머리 축 표가 선언한 축 번호.
+ *
+ * 표의 **머리를 찾고 그 표가 끝날 때까지만** 읽는다. 파일 전체를 훑으면 다른 주석 표의 행이
+ * 축으로 읽힌다 — [HEADER_AXIS_TABLE_START] 참조.
+ *
+ * 표를 못 찾으면 빈 배열이고, 그것은 비-공허 짝이 red 로 만든다(조용히 통과하지 않는다).
+ */
 function documentedAxes(source: string): string[] {
-  const rows = source
-    .split('\n')
-    .map((line) => HEADER_AXIS_ROW.exec(line))
-    .filter((match): match is RegExpExecArray => match !== null)
-    .map((match) => match[1] as string)
+  const lines = source.split('\n')
+  const start = lines.findIndex((line) => HEADER_AXIS_TABLE_START.test(line))
+  if (start < 0) return []
+  const rows: string[] = []
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? ''
+    if (!HEADER_TABLE_LINE.test(line)) break
+    const match = HEADER_AXIS_ROW.exec(line)
+    if (match !== null) rows.push(match[1] as string)
+  }
   return sortedAxisNumbers(rows)
 }
 
@@ -891,8 +959,8 @@ function documentedAxes(source: string): string[] {
  * (`invariant-satisfied-by-helptext-not-logic`). 판정 함수를 지웠는데 KDoc 만 남은 자리가
  * 초록이 되면, 표는 없는 검사를 있다고 말한 채 그대로 남는다.
  *
- * 다음 마커를 만나면 멈춘다 — 한 마커가 멀리 떨어진 남의 판정 함수를 자기 것으로 주워 오면
- * 「축을 지웠는데 옆 축 덕분에 초록」이 된다.
+ * 마커 뒤 **첫 코드 줄**이 판정 함수여야 한다. 사이에는 주석 연속행과 빈 줄만 허용한다
+ * ([AXIS_MARKER_GAP]) — 그 밖의 것이 오면 그 마커는 축의 정의가 아니라 **언급**이다.
  */
 function implementedAxes(source: string): string[] {
   const lines = source.split('\n')
@@ -900,13 +968,17 @@ function implementedAxes(source: string): string[] {
   for (let i = 0; i < lines.length; i += 1) {
     const marker = AXIS_DEFINITION.exec(lines[i] ?? '')
     if (marker === null) continue
+    // 한 주석 블록의 뒤엣 마커는 상호참조다 — 그 블록에 달린 함수를 자기 것으로 주워 오면 안 된다.
+    if (!isFirstMarkerInCommentBlock(lines, i)) continue
     for (let j = i + 1; j < lines.length; j += 1) {
       const line = lines[j] ?? ''
-      if (AXIS_DEFINITION.test(line)) break
       if (AXIS_ASSERT_FUNCTION.test(line)) {
         found.push(marker[1] as string)
         break
       }
+      // 주석·빈 줄은 마커와 함수 사이에 정상적으로 놓인다(KDoc 본문·닫는 `*/`).
+      if (line.trim() === '' || AXIS_MARKER_GAP.test(line)) continue
+      break
     }
   }
   return sortedAxisNumbers(found)
@@ -1393,5 +1465,134 @@ describe('축 6 의 post-action 파서 — 선언의 키 순서에 무관하다'
       ]
     `
     assert.deepEqual(literalConfigPayloads(SIBLING).declarations, [])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 축 8 의 헬퍼 계약 — 파일 전체가 아니라 **함수**를 직접 잰다
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 축 8 자신은 이 파일을 읽어 「표 ↔ 코드」를 대조하므로, 그 판정이 틀렸을 때 red 를 내려면
+// **파일을 뮤테이션해야** 한다. 그건 리뷰에서만 돌아가는 검사다 — 2026-08-26 리뷰가 실제로
+// 그렇게 해서 결함을 찾았고, 그 전까지 축 8 은 자기 결함을 스스로 못 봤다.
+//
+// 그래서 두 헬퍼의 계약을 픽스처 문자열로 직접 잰다. 이 판정들은 파일이 어떻게 생겼든 성립한다.
+
+describe('축 8 헬퍼 — 마커와 판정 함수의 결속', () => {
+  /**
+   * ★이 픽스처가 리뷰가 찾은 결함 그 자체다.
+   *
+   * `AXIS_DEFINITION` 상수의 KDoc 이 예시로 「축 5 — …」를 적고 있어 **자기 정규식에 매치**된다.
+   * 종전 구현은 그 마커 뒤로 훑어 첫 `function assert…` 를 잡았는데, 그것이 축 5 의 판정 함수가
+   * 아니라 모든 축이 공유하는 헬퍼 `assertSameSet` 이었다. 결과는 이렇다.
+   * - 축 5 판정 함수를 **지워도** GREEN
+   * - 축 5 판정 함수를 **개명해도** GREEN
+   * - 축 5 를 정상적으로 전량 제거하면 **거짓 red**
+   *
+   * 축 5(읽기 형태 봉인)는 **부채 137 을 낳은 바로 그 축**이다 — 이 판별식이 막겠다고 만들어진
+   * 단 하나의 실제 회귀가, 이 판별식이 감지 못 하는 유일한 케이스였다.
+   */
+  const KDOC_MENTION_THEN_SHARED_HELPER = [
+    '/**',
+    ' * 축 정의 마커 — `축 5 — …`.',
+    ' *',
+    ' * 설명이 이어진다.',
+    ' */',
+    'const AXIS_DEFINITION = /축 (\\d+) —/',
+    '',
+    'function assertSameSet(): void {}',
+  ].join('\n')
+
+  test('마커 뒤 첫 코드가 판정 함수가 아니면 축으로 세지 않는다', () => {
+    assert.deepEqual(
+      implementedAxes(KDOC_MENTION_THEN_SHARED_HELPER),
+      [],
+      '설명 안에서 축 번호를 **언급만** 한 자리가 축으로 세어졌다 — ' +
+        '멀리 있는 남의 판정 함수를 자기 것으로 주워 온 것이다.',
+    )
+  })
+
+  test('구획 배너도 축으로 세지 않는다 — 뒤에 오는 것이 선언이다', () => {
+    const banner = [
+      '// ───────────────────────────',
+      '// 축 8 — 이 파일 머리의 축 표 ↔ 이 파일이 실제로 가진 축',
+      '// ───────────────────────────',
+      '',
+      'const SELF_FILE = "x"',
+      '',
+      'function assertSameSet(): void {}',
+    ].join('\n')
+    assert.deepEqual(implementedAxes(banner), [])
+  })
+
+  // 양성 짝 — 위 두 판정이 「항상 빈 배열」로 만족되지 않음을 본다.
+  test('마커 바로 뒤에 판정 함수가 오면 축으로 센다', () => {
+    const bound = ['/** 축 1 — 표의 타입 식별자 열 ↔ 팩토리 분기. */', 'function assertTypeCatalog(): void {}'].join('\n')
+    assert.deepEqual(implementedAxes(bound), ['1'])
+  })
+
+  test('여러 줄 KDoc 을 사이에 두어도 축으로 센다 — 주석과 빈 줄은 건너뛴다', () => {
+    const multiline = [
+      '  /**',
+      '   * 축 5 — `create*` 가 축 2 의 해석 범위 안에서만 config 를 읽는지.',
+      '   *',
+      '   * 긴 설명이 이어진다.',
+      '   */',
+      '  function assertNoUnreadableReaders(): void {}',
+    ].join('\n')
+    assert.deepEqual(implementedAxes(multiline), ['5'])
+  })
+
+  test('머리 표 밖의 주석 표는 축 행으로 읽지 않는다', () => {
+    // 이 파일은 컬럼 0 주석 표가 집 스타일이라 구획 배너 아래에도 표가 생길 수 있다.
+    const twoTables = [
+      '// | 축 | 목록 ① | 목록 ② | 갈리면 무슨 일이 나나 |',
+      '// |---|---|---|---|',
+      '// | 1 타입 | 표 열 | 팩토리 분기 | 예외 |',
+      '// | 2 config 키 | 표 열 | 팩토리 읽기 | 400 |',
+      '',
+      '// ## 다른 절',
+      '',
+      '// | 케이스 | 기대 |',
+      '// |---|---|',
+      '// | 9 순서 뒤집힘 | 읽는다 |',
+    ].join('\n')
+    assert.deepEqual(
+      documentedAxes(twoTables),
+      ['1', '2'],
+      '머리 축 표 **밖**의 주석 표 행이 축으로 읽혔다 — 문서를 평범하게 편집하면 red 가 난다.',
+    )
+  })
+
+  test('머리 축 표가 없으면 빈 배열이다 — 비-공허 짝이 그것을 red 로 만든다', () => {
+    assert.deepEqual(documentedAxes('// 표가 없는 파일\nconst x = 1\n'), [])
+  })
+
+  /**
+   * ★한 주석 블록에 마커가 둘일 때 — **뒤엣것은 언급이다.**
+   *
+   * 이 파일의 KDoc 은 다른 축을 끊임없이 상호참조하고(「축 2 가 같은 이유로…」 ·
+   * 「축 5 가 팩토리 쪽에서 하는 일과 같다」) em-dash 는 기본 문장부호다. 그래서 실제 문장에서
+   * **조사 하나만 바꿔도** 그 KDoc 이 달린 함수가 남의 축을 되살린다.
+   *
+   * 2026-08-26 재리뷰 실측 — 축 7 KDoc 의 실제 한 줄을 「축 5 가 …」 → 「축 5 — …」로 고치자
+   * 축 5 판정 함수가 없는데도 GREEN 이 됐다. 방향이 나쁜 쪽(거짓 GREEN · 침묵)이다.
+   */
+  const MENTION_INSIDE_ANOTHER_AXIS_KDOC = [
+    '  /**',
+    '   * 축 7 — 편집 화면이 축 6 의 해석 범위 안에서만 config 키를 선언하는지.',
+    '   *',
+    '   * 이 설명은 다른 축을 상호참조한다 — 축 5 — 팩토리 쪽에서 하는 일과 같다.',
+    '   */',
+    '  function assertFrontDeclarationsReadable(): void {}',
+  ].join('\n')
+
+  test('다른 축 KDoc 본문 안의 언급은 축으로 세지 않는다', () => {
+    assert.deepEqual(
+      implementedAxes(MENTION_INSIDE_ANOTHER_AXIS_KDOC),
+      ['7'],
+      '한 주석 블록의 **뒤엣** 마커가 그 블록에 달린 함수를 자기 판정 함수로 주워 왔다 — ' +
+        '상호참조 문장에서 조사 하나만 바꿔도 남의 축이 되살아난다.',
+    )
   })
 })
