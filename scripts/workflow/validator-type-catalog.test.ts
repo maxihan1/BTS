@@ -685,15 +685,40 @@ const TYPE_LITERAL = /\btype\s*:\s*['"]([^'"]*)['"]/g
 const CONFIG_PROPERTY = /^config\s*:\s*/
 
 /**
+ * `at` 을 직접 감싸는 객체 리터럴의 여는 `{` 위치. 객체가 아니면(배열·인자 목록) `null`.
+ *
+ * 뒤로 훑으며 닫는 괄호를 만나면 깊이를 올리고, 깊이 0 에서 여는 괄호를 만나면 그것이 경계다.
+ */
+function enclosingObjectStart(masked: string, at: number): number | null {
+  let depth = 0
+  for (let i = at - 1; i >= 0; i -= 1) {
+    const ch = masked[i]
+    if (ch === '}' || ch === ']' || ch === ')') depth += 1
+    else if (ch === '{' || ch === '[' || ch === '(') {
+      if (depth === 0) return ch === '{' ? i : null
+      depth -= 1
+    }
+  }
+  return null
+}
+
+/**
  * `type: '리터럴'` 과 **같은 객체 리터럴**에 있는 `config:` 값의 시작 위치.
  *
- * 깊이 0 을 유지한 채 앞으로만 훑고, 감싸는 객체가 닫히면 멈춘다 — 옆 객체의 `config` 를
- * 이 type 의 것으로 잘못 붙이지 않기 위해서다. 못 찾으면 `null` 이고 그 `type:` 은 건너뛴다
+ * `type:` 의 **감싸는 객체 경계를 먼저 찾고** 그 안을 처음부터 훑는다 — 그래서 `config` 가
+ * `type` 앞에 오든 뒤에 오든 같은 선언을 읽는다. 깊이 0 을 유지하므로 중첩된 객체나 옆 객체의
+ * `config` 는 이 type 의 것으로 붙지 않는다. 못 찾으면 `null` 이고 그 `type:` 은 건너뛴다
  * (요청 바디가 아니라 그냥 `type` 이라는 이름의 프로퍼티였다는 뜻이다).
+ *
+ * ★ 종전에는 `type:` **뒤로만** 훑어서 `{ config: {…}, type: 'X' }` 가 조용히 사라졌다.
+ * 「전량 소실」은 비-공허 짝이 잡지만 「부분 소실」은 아무것도 잡지 못했다 — 그 자리를
+ * 위 「선언의 키 순서에 무관하다」 describe 가 잠근다.
  */
-function siblingConfigValue(masked: string, from: number): number | null {
+function siblingConfigValue(masked: string, typeAt: number): number | null {
+  const start = enclosingObjectStart(masked, typeAt)
+  if (start === null) return null
   let depth = 0
-  for (let i = from; i < masked.length; i += 1) {
+  for (let i = start + 1; i < masked.length; i += 1) {
     const ch = masked[i]
     if (ch === '{' || ch === '[' || ch === '(') depth += 1
     else if (ch === '}' || ch === ']' || ch === ')') {
@@ -719,7 +744,7 @@ function literalConfigPayloads(source: string): FrontParseResult {
   const declarations: FrontDeclaration[] = []
   for (const match of source.matchAll(TYPE_LITERAL)) {
     if (masked[match.index] === '_') continue
-    const value = siblingConfigValue(masked, match.index + match[0].length)
+    const value = siblingConfigValue(masked, match.index)
     if (value === null) continue
     if (masked[value] !== '{') {
       const fragment = collapse(source.slice(value, value + 80))
@@ -1199,5 +1224,71 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
           `type/config 리터럴 짝이 있어야 한다.`,
       )
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 축 6 의 post-action 파서 계약 — 선언의 키 순서에 의존하지 않는다
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 축 6·7 은 **파일 전체가 읽히지 않을 때**만 red 를 낸다(비-공허 짝이 「집합이 통째로 비었는가」를
+// 본다). 파서가 선언 **하나**를 놓치면 그 type 만 대조에서 조용히 빠지고, 갈린 사실은 사용자가
+// 저장을 눌러 400 을 받을 때 드러난다. 그래서 파서 자신의 계약을 여기서 직접 잰다.
+//
+// 픽스처는 `PostActionConfigSection.tsx` 의 실제 뮤테이션 호출부 모양을 그대로 쓴다 — 실물과
+// 다른 모양을 재면 「엉뚱한 걸 잠갔다」가 된다.
+
+describe('축 6 의 post-action 파서 — 선언의 키 순서에 무관하다', () => {
+  const TYPE_FIRST = `
+    addMutation.mutate({
+      type: 'CALL_WEBHOOK',
+      config: { url: values.url, method: values.method },
+      displayOrder: nextDisplayOrder,
+    })
+  `
+
+  /** 같은 선언에서 `config` 만 `type` 앞으로 옮긴 것. 화면이 언제든 이렇게 쓸 수 있다. */
+  const CONFIG_FIRST = `
+    addMutation.mutate({
+      config: { url: values.url, method: values.method },
+      type: 'CALL_WEBHOOK',
+      displayOrder: nextDisplayOrder,
+    })
+  `
+
+  test('정방향 선언을 실제로 읽는다 (비-공허 짝)', () => {
+    // 이 짝이 없으면 아래 순서 무관 단언이 「양쪽 다 0건」으로 공허하게 통과한다.
+    assert.deepEqual(literalConfigPayloads(TYPE_FIRST).declarations, [
+      { type: 'CALL_WEBHOOK', keys: ['method', 'url'], unreadable: [] },
+    ])
+  })
+
+  test('type 이 config 보다 뒤에 와도 같은 선언을 읽는다', () => {
+    assert.deepEqual(
+      literalConfigPayloads(CONFIG_FIRST).declarations,
+      literalConfigPayloads(TYPE_FIRST).declarations,
+      '같은 객체 리터럴인데 키 순서만 다른 두 선언을 파서가 다르게 읽는다 — ' +
+        '순서가 뒤집힌 쪽이 조용히 사라지면 그 type 은 축 6 의 대조에서 빠진 채 초록이 된다.',
+    )
+  })
+
+  test('config 가 없는 `type` 프로퍼티는 여전히 건너뛴다 — 요청 바디가 아니다', () => {
+    // 순서 무관으로 넓히면서 「그냥 type 이라는 이름의 프로퍼티」까지 주워 담으면 안 된다.
+    assert.deepEqual(
+      literalConfigPayloads(`const column = { type: 'text', label: postActionLabels.name }`)
+        .declarations,
+      [],
+    )
+  })
+
+  test('옆 객체의 config 를 이 type 의 것으로 붙이지 않는다', () => {
+    // 경계를 넓힌 뒤에도 감싸는 객체 밖은 보지 않아야 한다.
+    const SIBLING = `
+      const payloads = [
+        { type: 'CALL_WEBHOOK' },
+        { config: { url: values.url } },
+      ]
+    `
+    assert.deepEqual(literalConfigPayloads(SIBLING).declarations, [])
   })
 })
