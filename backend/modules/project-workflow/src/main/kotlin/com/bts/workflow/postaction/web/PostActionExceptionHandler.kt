@@ -33,6 +33,10 @@ import org.springframework.web.server.ResponseStatusException
  * `com.bts.workflow.web` 의 [ErrorResponse]/[ErrorBody] 를 쓴다. 같은 `{error:{code,message}}` 를
  * 패키지마다 따로 선언하면 사본이 늘어나는데, 사본들은 서로를 검사하지 않아 한쪽만 바뀐 사실이
  * 드러나지 않는다. 형제 `ValidatorExceptionHandler` 도 같은 봉투를 쓴다 (게이트 1 결정, 2026-08-25).
+ *
+ * 프레임워크 예외 3종의 에러 코드·메시지도 같은 이유로 [TransitionRuleFrameworkErrors] 한 벌을 형제와
+ * 공유한다. 그 선언이 validator 패키지에 사는 것은 부수적이고, 중요한 것은 두 표면이 **같은 한 벌**을
+ * 본다는 사실이다 — 표면마다 코드를 따로 적으면 화면이 표면별로 분기해야 한다.
  */
 @RestControllerAdvice(basePackages = ["com.bts.workflow.postaction"])
 class PostActionExceptionHandler {
@@ -93,12 +97,7 @@ class PostActionExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException::class)
     fun handleTypeMismatch(ex: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_400 type_mismatch param='{}'", ex.name)
-        val errorBody =
-            ErrorBody(
-                code = TransitionRuleFrameworkErrors.INVALID_REQUEST,
-                message = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
-            )
-        return ResponseEntity.badRequest().body(ErrorResponse(errorBody))
+        return TransitionRuleFrameworkErrors.typeMismatch()
     }
 
     /**
@@ -112,12 +111,7 @@ class PostActionExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleUnreadableBody(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_400 message_not_readable cause='{}'", ex.mostSpecificCause.javaClass.simpleName)
-        val errorBody =
-            ErrorBody(
-                code = TransitionRuleFrameworkErrors.INVALID_REQUEST,
-                message = "요청 본문을 읽을 수 없습니다.",
-            )
-        return ResponseEntity.badRequest().body(ErrorResponse(errorBody))
+        return TransitionRuleFrameworkErrors.unreadableBody()
     }
 
     /**
@@ -132,19 +126,6 @@ class PostActionExceptionHandler {
     @ExceptionHandler(ResponseStatusException::class)
     fun handleResponseStatus(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_{} response_status reason='{}'", ex.statusCode.value(), ex.reason)
-        val unauthenticated = ex.statusCode == HttpStatus.UNAUTHORIZED
-        val errorBody =
-            if (unauthenticated) {
-                ErrorBody(
-                    code = TransitionRuleFrameworkErrors.UNAUTHENTICATED,
-                    message = "인증이 필요합니다. 다시 로그인해 주세요.",
-                )
-            } else {
-                ErrorBody(
-                    code = TransitionRuleFrameworkErrors.REQUEST_REJECTED,
-                    message = "요청을 처리할 수 없습니다.",
-                )
-            }
-        return ResponseEntity.status(ex.statusCode).body(ErrorResponse(errorBody))
+        return TransitionRuleFrameworkErrors.responseStatus(ex)
     }
 }

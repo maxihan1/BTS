@@ -149,15 +149,7 @@ class ValidatorExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException::class)
     fun handleTypeMismatch(ex: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
         log.info("VALIDATOR_400 type_mismatch param='{}'", ex.name)
-        return ResponseEntity.badRequest().body(
-            ErrorResponse(
-                error =
-                    ErrorBody(
-                        code = TransitionRuleFrameworkErrors.INVALID_REQUEST,
-                        message = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
-                    ),
-            ),
-        )
+        return TransitionRuleFrameworkErrors.typeMismatch()
     }
 
     /**
@@ -172,15 +164,7 @@ class ValidatorExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleUnreadableBody(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
         log.info("VALIDATOR_400 message_not_readable cause='{}'", ex.mostSpecificCause.javaClass.simpleName)
-        return ResponseEntity.badRequest().body(
-            ErrorResponse(
-                error =
-                    ErrorBody(
-                        code = TransitionRuleFrameworkErrors.INVALID_REQUEST,
-                        message = "요청 본문을 읽을 수 없습니다.",
-                    ),
-            ),
-        )
+        return TransitionRuleFrameworkErrors.unreadableBody()
     }
 
     /**
@@ -199,24 +183,12 @@ class ValidatorExceptionHandler {
     @ExceptionHandler(ResponseStatusException::class)
     fun handleResponseStatus(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
         log.info("VALIDATOR_{} response_status reason='{}'", ex.statusCode.value(), ex.reason)
-        val errorBody =
-            if (ex.statusCode == HttpStatus.UNAUTHORIZED) {
-                ErrorBody(
-                    code = TransitionRuleFrameworkErrors.UNAUTHENTICATED,
-                    message = "인증이 필요합니다. 다시 로그인해 주세요.",
-                )
-            } else {
-                ErrorBody(
-                    code = TransitionRuleFrameworkErrors.REQUEST_REJECTED,
-                    message = "요청을 처리할 수 없습니다.",
-                )
-            }
-        return ResponseEntity.status(ex.statusCode).body(ErrorResponse(error = errorBody))
+        return TransitionRuleFrameworkErrors.responseStatus(ex)
     }
 }
 
 /**
- * 전환 규칙 관리 두 표면(validator · post-action)이 공유하는 **프레임워크 층** 에러 코드.
+ * 전환 규칙 관리 두 표면(validator · post-action)이 공유하는 **프레임워크 층** 에러 코드와 응답 봉투.
  *
  * 이 셋은 도메인 실패가 아니라 요청이 컨트롤러 본문에 닿기도 전에(또는 인증을 확인하는 자리에서)
  * 깨진 경우다. 표면에 따라 코드가 갈리면 화면이 「validator 인지 post-action 인지」로 한 번 더
@@ -237,4 +209,45 @@ internal object TransitionRuleFrameworkErrors {
 
     /** 401 이 아닌 [ResponseStatusException] — 상태는 예외가 지정한 것을 그대로 싣는다. */
     const val REQUEST_REJECTED: String = "WORKFLOW_REQUEST_REJECTED"
+
+    private const val TYPE_MISMATCH_MESSAGE = "요청 경로 또는 파라미터 형식이 올바르지 않습니다."
+    private const val UNREADABLE_BODY_MESSAGE = "요청 본문을 읽을 수 없습니다."
+    private const val UNAUTHENTICATED_MESSAGE = "인증이 필요합니다. 다시 로그인해 주세요."
+    private const val REQUEST_REJECTED_MESSAGE = "요청을 처리할 수 없습니다."
+
+    /**
+     * 경로 변수·요청 파라미터 형식 오류 응답 — 400.
+     *
+     * @return [INVALID_REQUEST] 봉투를 실은 400 응답.
+     */
+    fun typeMismatch(): ResponseEntity<ErrorResponse> = badRequest(TYPE_MISMATCH_MESSAGE)
+
+    /**
+     * 요청 본문 파싱 실패 응답 — 400.
+     *
+     * @return [INVALID_REQUEST] 봉투를 실은 400 응답.
+     */
+    fun unreadableBody(): ResponseEntity<ErrorResponse> = badRequest(UNREADABLE_BODY_MESSAGE)
+
+    /**
+     * [ResponseStatusException] 응답 — 상태는 **예외가 지정한 것을 그대로** 싣는다.
+     *
+     * 401 로 못박지 않는 이유는 두 패키지에 다른 상태의 예외가 생기는 날 상태가 조용히 401 로
+     * 둔갑하기 때문이다.
+     *
+     * @param ex 상태 코드를 지정한 예외.
+     * @return 예외의 상태 + 401 이면 [UNAUTHENTICATED], 아니면 [REQUEST_REJECTED] 봉투.
+     */
+    fun responseStatus(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        val errorBody =
+            if (ex.statusCode == HttpStatus.UNAUTHORIZED) {
+                ErrorBody(code = UNAUTHENTICATED, message = UNAUTHENTICATED_MESSAGE)
+            } else {
+                ErrorBody(code = REQUEST_REJECTED, message = REQUEST_REJECTED_MESSAGE)
+            }
+        return ResponseEntity.status(ex.statusCode).body(ErrorResponse(error = errorBody))
+    }
+
+    private fun badRequest(message: String): ResponseEntity<ErrorResponse> =
+        ResponseEntity.badRequest().body(ErrorResponse(error = ErrorBody(code = INVALID_REQUEST, message = message)))
 }
