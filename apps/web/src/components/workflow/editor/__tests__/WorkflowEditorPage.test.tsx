@@ -9,6 +9,7 @@ import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { workflowAdminHandlers } from '@/mocks/workflow-admin-handlers'
 import { resetWorkflowAdminStore } from '@/mocks/workflow-admin-fixtures'
 import { workflowEditorLabels as L } from '@/i18n/workflow-editor-labels'
+import { toast } from 'sonner'
 import { WorkflowEditorPage } from '../WorkflowEditorPage'
 
 // jsdom 은 scrollIntoView 를 구현하지 않는다 — cmdk 가 부른다 (`ui/command.test.tsx:16` 처방)
@@ -199,6 +200,10 @@ describe('D6 — 상태 추가·제거', () => {
     const stillOpen = screen.getByRole('dialog', { name: `${L.statusPanel.remove} Blocked` })
     expect(stillOpen).toBeInTheDocument()
 
+    // ★사유는 toast 가 알린다(훅의 `notifyWorkflowAdminError`) — 그래서 이 화면은 `error` prop 을
+    //   쓰지 않는다. 그 설계 근거를 주석으로만 두지 않고 잰다.
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+
     // ★목록은 지금 볼 수 없다 — 모달이 열려 있으면 Radix 가 배경에 `aria-hidden` 을 걸어
     //   접근성 트리에서 사라진다. 실패 뒤 사용자가 실제로 하는 행동(취소로 닫기)을 태운 뒤에 본다.
     await userEvent.click(within(stillOpen).getByRole('button', { name: L.dialog.cancel }))
@@ -366,5 +371,61 @@ describe('D6 — 전환 이름', () => {
     await userEvent.click(screen.getByRole('tab', { name: L.editor.transitionTab }))
     const list = await screen.findByRole('list', { name: L.transitionPanel.list })
     expect(within(list).getByText(L.transitionPanel.kindInitial)).toBeInTheDocument()
+  })
+
+  /** 전환 탭을 열고 `Start Work` 의 삭제 확인 창을 띄운다. */
+  async function openTransitionDeleteConfirm(): Promise<HTMLElement> {
+    renderEditor()
+    await waitForLoaded()
+    await userEvent.click(screen.getByRole('tab', { name: L.editor.transitionTab }))
+    await screen.findByRole('list', { name: L.transitionPanel.list })
+    await userEvent.click(
+      screen.getByRole('button', { name: `${L.transitionPanel.remove} Start Work` }),
+    )
+    return screen.findByRole('dialog', { name: `${L.transitionPanel.remove} Start Work` })
+  }
+
+  /**
+   * 전환 삭제의 확인 창 짝.
+   *
+   * ★이 두 판정이 없던 동안 `WorkflowEditorPage.tsx` 의 전환 삭제 `onSuccess` 를 통째로 지워도
+   * **전량 599 파일 9896 테스트가 초록**이었다(2026-08-26 리뷰 실측). 그 화면의 확인 창이 영영
+   * 안 닫히는데 아무도 몰랐다는 뜻이다. e2e 도 이 경로를 만지지 않는다.
+   *
+   * 짝이어야 하는 이유는 상태 제거 쪽과 같다 — 「성공하면 닫힌다」만 재면 항상 닫는 구현이,
+   * 「실패하면 남는다」만 재면 아무 때도 안 닫는 구현이 통과한다.
+   */
+  it('전환 삭제에 성공하면 확인 창이 닫힌다', async () => {
+    const confirm = await openTransitionDeleteConfirm()
+    await userEvent.click(
+      within(confirm).getByRole('button', { name: L.transitionPanel.remove }),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: `${L.transitionPanel.remove} Start Work` }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('전환 삭제에 실패하면 확인 창이 열린 채 남는다', async () => {
+    server.use(
+      http.delete(
+        '/api/v1/workflows/:key/transitions/:transitionId',
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    )
+
+    const confirm = await openTransitionDeleteConfirm()
+    const confirmButton = within(confirm).getByRole('button', { name: L.transitionPanel.remove })
+    await userEvent.click(confirmButton)
+
+    // 실패가 확정될 때까지 기다린다 — 버튼이 다시 눌리는 상태로 돌아오는 것이 그 신호다.
+    await waitFor(() => expect(confirmButton).not.toBeDisabled())
+
+    expect(
+      screen.getByRole('dialog', { name: `${L.transitionPanel.remove} Start Work` }),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
   })
 })

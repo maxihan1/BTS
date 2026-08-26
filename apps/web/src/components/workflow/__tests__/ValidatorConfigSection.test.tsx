@@ -435,7 +435,14 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
   })
 
-  it('T6-16: 삭제가 실패하면 화면에 남는 안내가 뜬다', async () => {
+  /**
+   * T6-16. 삭제가 실패하면 **확인 창 안에** 사유가 뜬다.
+   *
+   * ★스코프가 있어야 한다. 종전 제목은 「화면에 남는 안내」였고 판정도 `screen.findByText` 라
+   * 「창 안」과 「페이지 위 배너」를 구분하지 못했다 — 부채 139 를 닫으면서 그 구분이 load-bearing
+   * 이 됐다(배너는 지웠고 사유는 창 안으로 옮겼다). 스코프 없는 판정은 배너가 되살아나도 초록이다.
+   */
+  it('T6-16: 삭제가 실패하면 확인 창 안에 사유가 뜬다', async () => {
     server.use(
       http.delete(`${BASE_PATH}/:id`, () =>
         HttpResponse.json(
@@ -455,8 +462,9 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
     const confirm = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
     fireEvent.click(within(confirm).getByRole('button', { name: validatorLabels.dialog.deleteConfirmButton }))
 
+    const stillOpen = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
     expect(
-      await screen.findByText(validatorErrorMessage('WORKFLOW_SCHEME_ACCESS_DENIED')),
+      within(stillOpen).getByText(validatorErrorMessage('WORKFLOW_SCHEME_ACCESS_DENIED')),
     ).toBeInTheDocument()
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
   })

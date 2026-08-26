@@ -54,6 +54,39 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('button', { name: '빼기' })).toBeDisabled()
   })
 
+  // ★처리 중에는 **아무 경로로도** 닫히지 않는다. 확인 버튼만 잠그면 그 사이 창을 닫을 수 있고,
+  //   뒤늦게 도착한 실패는 보여줄 창이 없어 조용히 사라진다 — 소비자가 배너나 toast 를 따로
+  //   두지 않았다면 사용자는 실패한 사실을 통보받지 못한다.
+  it('confirming 중에는 취소 버튼도 비활성이다', () => {
+    setup({ confirming: true })
+    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
+  })
+
+  it('confirming 중에는 Esc 로 닫히지 않는다', async () => {
+    const { onOpenChange } = setup({ confirming: true })
+    await userEvent.keyboard('{Escape}')
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  // 음성 짝 — 위 두 판정이 「항상 잠긴다」로 만족되지 않음을 본다.
+  it('confirming 이 아니면 Esc 로 닫힌다', async () => {
+    const { onOpenChange } = setup()
+    await userEvent.keyboard('{Escape}')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('error 를 주면 창 안에 alert 로 뜬다', () => {
+    setup({ error: '삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.' })
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    )
+  })
+
+  it('error 가 없으면 alert 가 없다 — 판정이 항상 참이 아님을 본다', () => {
+    setup()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   // ★위 판정은 `confirming` 을 **직접 넘겨** 재므로 prop 계약만 본다. 그 상태에 실제로
   //   도달하는지는 소비자 테스트가 잰다(`ValidatorConfigSection` · `WorkflowEditorPage` ·
   //   `admin.workflows`). 종전에는 프리미티브가 확인 직후 닫아 **도달 자체가 불가능**했고,

@@ -384,7 +384,10 @@ function ValidatorConfigSectionContent({
             onRetry={() => { void refetch() }}
             onAddClick={handleAddClick}
             onEditClick={handleEditClick}
-            onDeleteClick={setDeleteTarget}
+            // ★여는 시점에도 지운다. 프리미티브가 처리 중 닫힘을 막으므로 지난 실패가 남을
+            //   경로는 없지만, 이 방어는 닫힘 경로와 무관하게 성립한다 — 다른 규칙을 지우려고
+            //   연 창에 앞 규칙의 실패 문구가 뜨는 일이 구조적으로 불가능해진다.
+            onDeleteClick={(validator) => { setDeleteError(undefined); setDeleteTarget(validator) }}
             isDeleting={deleteMutation.isPending}
           />
         </div>

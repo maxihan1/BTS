@@ -8,6 +8,7 @@ import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { workflowAdminHandlers } from '@/mocks/workflow-admin-handlers'
 import { resetWorkflowAdminStore } from '@/mocks/workflow-admin-fixtures'
 import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
+import { toast } from 'sonner'
 import { AdminWorkflowsPage } from '../admin.workflows'
 
 const navigate = vi.fn()
@@ -31,21 +32,31 @@ function renderPage() {
   )
 }
 
+/**
+ * 삭제 버튼과 확인 창의 접근성 이름 접두 — 둘 다 `${remove} ${워크플로우 이름}` 이다.
+ *
+ * role 이 달라(button ↔ dialog) 같은 이름이어도 부딪히지 않는다. `g` 플래그가 없으므로
+ * `lastIndex` 가 남지 않아 재사용해도 안전하다.
+ */
+const REMOVE_PREFIX = new RegExp(`^${labels.list.remove} `)
+
 /** 목록이 도착해 삭제 버튼이 그려질 때까지 기다린 뒤 첫 행의 삭제 버튼을 돌려준다. */
 async function firstDeleteButton(): Promise<HTMLElement> {
-  const pattern = new RegExp(`^${labels.list.remove} `)
-  return (await screen.findAllByRole('button', { name: pattern }))[0] as HTMLElement
+  const buttons = await screen.findAllByRole('button', { name: REMOVE_PREFIX })
+  const first = buttons[0]
+  // `noUncheckedIndexedAccess` 를 `as` 로 덮지 않는다 — 픽스처가 비면 그 사실이 여기서 드러나야
+  // 한다. `findAllByRole` 이 0건에 throw 하므로 실제로는 도달하지 않는 갈래다.
+  if (first === undefined) throw new Error('워크플로우 목록에 삭제 버튼이 하나도 없다')
+  return first
 }
 
-/** 열려 있는 삭제 확인 창. 이름은 `${remove} ${워크플로우 이름}` 이라 접두로 찾는다. */
+/** 열려 있는 삭제 확인 창. */
 function openConfirm(): HTMLElement {
-  const pattern = new RegExp(`^${labels.list.remove} `)
-  return screen.getByRole('dialog', { name: pattern })
+  return screen.getByRole('dialog', { name: REMOVE_PREFIX })
 }
 
 function queryConfirm(): HTMLElement | null {
-  const pattern = new RegExp(`^${labels.list.remove} `)
-  return screen.queryByRole('dialog', { name: pattern })
+  return screen.queryByRole('dialog', { name: REMOVE_PREFIX })
 }
 
 /**
@@ -90,8 +101,13 @@ describe('AdminWorkflowsPage — 삭제 확인 창', () => {
     })
     expect(queryConfirm()).toBeInTheDocument()
 
-    // 사유는 이 화면이 toast 로 알린다(훅의 `notifyWorkflowAdminError`). toast 는 모달
-    // 오버레이 **위**에 뜨므로 창이 열려 있어도 읽힌다 — 그래서 `error` prop 을 쓰지 않는다.
+    // ★사유는 이 화면이 toast 로 알린다(훅의 `notifyWorkflowAdminError`). toast 는 모달
+    //   오버레이 **위**에 뜨므로 창이 열려 있어도 읽힌다 — 그래서 `error` prop 을 쓰지 않는다.
+    //   그 판단이 이 PR 의 설계 근거이므로 **주석으로만 두지 않고 잰다.** 재지 않으면 훅에서
+    //   `onError` 가 사라지는 날 「사유가 어디에도 없는」 화면이 조용히 생긴다.
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+    })
   })
 
   it('삭제 처리 중에는 확인 버튼이 잠긴다 (도달 가능해진 상태)', async () => {

@@ -36,7 +36,16 @@ interface ConfirmDialogProps {
    * 취소는 여전히 이 프리미티브가 닫는다. 취소에는 「진행 중」도 「실패」도 없다.
    */
   onConfirm: () => void
-  /** 처리 중 — 확인 버튼을 잠가 이중 제출을 막는다 */
+  /**
+   * 처리 중 — 이중 제출을 막고 **닫힘 경로를 전부 잠근다.**
+   *
+   * ★ 확인 버튼만 잠그면 취소·Esc·오버레이·X 로 창을 닫을 수 있고, 그 뒤 도착한 실패는
+   * **보여줄 창이 없다.** 소비자가 배너나 toast 를 따로 두지 않았다면 사용자는 실패한 사실을
+   * 통보받지 못하고, 다음에 연 창에 지난 실패가 되살아난다.
+   *
+   * 처리 중에 못 닫게 하면 실패가 갈 곳이 **구조적으로 보장**된다 — 창은 성공했을 때만 닫히고,
+   * 실패하면 그 자리에 [error] 가 뜬다. 파괴적 조작이고 이미 확인을 누른 뒤라 기다림은 짧다.
+   */
   confirming?: boolean
   /**
    * 실패 사유 — 창 **안**에 싣는다.
@@ -63,6 +72,10 @@ interface ConfirmDialogProps {
  * 실패해도 확인 맥락이 사라져 사용자가 무엇이 안 됐는지 창 밖에서 찾아야 했다.
  *
  * 소비자는 성공했을 때만 닫는다 — `mutate(vars, { onSuccess: () => setTarget(null) })`.
+ *
+ * ### 처리 중에는 아무 경로로도 닫히지 않는다
+ * [confirming] 이 참인 동안 취소·Esc·오버레이·X 가 모두 잠긴다. 확인 버튼만 잠그면 그 사이
+ * 창을 닫을 수 있고, 뒤늦게 도착한 실패는 **보여줄 창이 없어 조용히 사라진다.**
  */
 function ConfirmDialog({
   open,
@@ -76,8 +89,20 @@ function ConfirmDialog({
   error,
   destructive = false,
 }: ConfirmDialogProps): React.JSX.Element {
+  /**
+   * 처리 중이면 닫힘 요청을 삼킨다.
+   *
+   * Radix 는 Esc · 오버레이 클릭 · 우상단 X 를 모두 이 한 콜백으로 보내므로, 여기서 막으면
+   * 네 경로가 함께 잠긴다(취소 버튼은 아래에서 따로 `disabled` 다 — 눌리지 않는다는 사실이
+   * 화면에 보여야 한다).
+   */
+  const handleOpenChange = (next: boolean): void => {
+    if (confirming && !next) return
+    onOpenChange(next)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -92,7 +117,7 @@ function ConfirmDialog({
           </div>
         ) : null}
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" disabled={confirming} onClick={() => onOpenChange(false)}>
             {cancelLabel}
           </Button>
           <Button
