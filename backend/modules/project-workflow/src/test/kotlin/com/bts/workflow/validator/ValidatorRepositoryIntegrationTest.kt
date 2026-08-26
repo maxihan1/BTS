@@ -28,6 +28,7 @@ import java.util.UUID
  *
  * 검증 범위.
  * - findByTransitionId: display_order ASC 정렬
+ * - findByTransitionId: display_order 동률이면 id ASC 로 확정 (2차 키)
  * - insert → findByTransitionId: config JSONB 왕복
  * - update: type / config / displayOrder 갱신 반영
  * - deleteById: 그 행만 빠지고 나머지는 남는다
@@ -160,6 +161,36 @@ class ValidatorRepositoryIntegrationTest {
         private fun connection(): Connection {
             return DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
         }
+
+        /**
+         * `id` 를 **명시 지정**해 validator 행 1건을 심는다. `display_order` 는 0 고정이다.
+         *
+         * [ValidatorRepository.insert] 를 쓰지 않는 이유. 그쪽은 id 를 `gen_random_uuid()` 에 맡기므로
+         * 삽입 순서와 id 순서의 관계가 실행마다 달라진다. 2차 키 단언은 **삽입 순서와 id 오름차순이
+         * 어긋난 상태**를 재현해야 뜻이 있고, 어긋남이 우연에 달려 있으면 그 단언은 「가끔 red」가 된다.
+         * 그래서 id 를 테스트가 쥔다.
+         *
+         * @param transitionId 소속 전환 UUID.
+         * @param id 심을 행의 UUID. 호출자가 정한다.
+         * @param type 규칙 타입 식별자.
+         */
+        fun insertValidatorWithId(
+            transitionId: UUID,
+            id: UUID,
+            type: String,
+        ) {
+            connection().use { conn ->
+                conn.prepareStatement(
+                    "INSERT INTO workflow_validators (id, transition_id, type, display_order)" +
+                        " VALUES (?, ?, ?, 0)",
+                ).use { stmt ->
+                    stmt.setObject(1, id)
+                    stmt.setObject(2, transitionId)
+                    stmt.setString(3, type)
+                    stmt.executeUpdate()
+                }
+            }
+        }
     }
 
     @Test
@@ -174,6 +205,33 @@ class ValidatorRepositoryIntegrationTest {
         assertThat(result.map { it.displayOrder }).containsExactly(10, 20, 30)
         assertThat(result.map { it.type })
             .containsExactly("RequiredField", "permission-check", "not-status-category")
+    }
+
+    /**
+     * display_order 동률의 확정 순서 계약.
+     *
+     * 형제인 위 테스트는 10·20·30 을 써 **동률 경로를 한 번도 타지 않는다.** 그런데 `display_order` 는
+     * `NOT NULL DEFAULT 0` 이라 요청이 값을 생략하면 한 전환의 모든 행이 0 이 되고, 그때 단일 키 정렬은
+     * 전순서가 아니라 PostgreSQL 이 순서를 보장하지 않는다 — 쓰기 한 번이 관리자 화면의 행 순서를 뒤섞는다.
+     * `TransitionRuleRepository.findByTransitionId` 의 2차 키 `id ASC` 가 그 확정 장치이고 이 테스트가
+     * 그것을 지키는 유일한 자리다.
+     *
+     * ★ **삽입 순서를 id 오름차순과 일부러 어긋나게** 넣는다(3 → 1 → 2). 같은 순서로 넣으면 2차 키를
+     * 지워도 「삽입 순서대로 나왔을 뿐」이 그대로 통과해 아무것도 못 지킨다.
+     */
+    @Test
+    fun `findByTransitionId 는 display_order 동률을 id ASC 로 확정한다`() {
+        val transitionId = newTransition("동률 확정 전환")
+        insertValidatorWithId(transitionId, TIE_ID_ASC_3, "not-status-category")
+        insertValidatorWithId(transitionId, TIE_ID_ASC_1, "RequiredField")
+        insertValidatorWithId(transitionId, TIE_ID_ASC_2, "permission-check")
+
+        val result = repository.findByTransitionId(transitionId)
+
+        assertThat(result.map { it.displayOrder }).containsExactly(0, 0, 0)
+        assertThat(result.map { it.id })
+            .containsExactly(TIE_ID_ASC_1, TIE_ID_ASC_2, TIE_ID_ASC_3)
+            .isSorted()
     }
 
     @Test
@@ -227,3 +285,18 @@ class ValidatorRepositoryIntegrationTest {
         assertThat(result.map { it.id }).containsExactly(survivor.id)
     }
 }
+
+/**
+ * 동률 확정 검증용 고정 id 3개. **이름의 숫자가 곧 오름차순 자리**다.
+ *
+ * 마지막 한 바이트만 `01` · `02` · `03` 으로 다르다. 그래서 PostgreSQL 의 바이트열 비교와
+ * [UUID.compareTo] 가 같은 순서를 주고, 단언의 `isSorted()` 가 기대값 리터럴이 정말 오름차순인지까지
+ * 함께 검사한다 — 누가 세 리터럴의 자리를 바꾸면 그 자리에서 red 다.
+ */
+private val TIE_ID_ASC_1: UUID = UUID.fromString("00000000-0000-4000-8000-000000000001")
+
+/** [TIE_ID_ASC_1] 의 둘째 자리. */
+private val TIE_ID_ASC_2: UUID = UUID.fromString("00000000-0000-4000-8000-000000000002")
+
+/** [TIE_ID_ASC_1] 의 셋째 자리. */
+private val TIE_ID_ASC_3: UUID = UUID.fromString("00000000-0000-4000-8000-000000000003")
