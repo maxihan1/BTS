@@ -33,6 +33,14 @@ ADR 2건 대체 — `2026-05-21-workflow-yaml-vs-db-storage`(YAML 정본 → DB 
 > `ValidatorEngineIntegrationTest`(Testcontainers 실 엔진)와 #398 의 `issue-transition.spec.ts` S8 에
 > 명시적으로 위임했고, 근거는 `docs/plan/product/project-workflow.md` §2.6 각주에 있다.
 
+> **2026-08-26 3차 갱신 (초안·발행 PR).** **FR-WF-07 이 착수됐다** — 로드맵 PR 6(project-workflow)
+> 범위가 들어왔다. V208(`workflow_drafts` JSONB 초안 + `workflow_publications` append-only 발행 이력) ·
+> 초안 CRUD · 발행 · `base_version` 낙관적 락 409 · 「기본값으로 복원」 · 이관 필요 판정.
+> §2.7 의 **D8(xyflow 다이어그램 편집기)을 신설**했다 — 로드맵 PR 9 가 진척표에는 「FR-WF-07 소관」으로
+> 적혀 있었는데 D 마커에 자리가 없어 어느 쪽에서도 미완으로 세어지지 않던 것을 등재한 것이다.
+> **D3 의 번호를 V207 → V208 로 정정**했다(계획이 예약한 V207 을 FR-WF-05 가 먼저 가져갔다).
+> 남은 것은 이슈 이관 실행(issue-tracking BC)과 편집기 UI 다.
+
 **2026-08-18 용어 정본 교체**. Transition 의 한국어 표기를 「전이」에서 **「전환」**으로 통일했다
 (Maxi 결정 — Jira 한국어 화면 표기에 맞춤). 저장소 전수 3,253곳 / 541파일. **동작 변경 0** —
 바뀐 것은 한국어 문자열·주석·문서뿐이고 식별자·API·에러코드는 그대로다. 사용자에게 보이는

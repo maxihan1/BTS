@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component
  *
  * ### 규칙을 전환마다 따로 읽는다
  * `Workflow` aggregate 는 상태와 전환만 담고 규칙은 담지 않는다. 전환 수가 워크플로우당 수십 개
- * 수준이라 N+1 이 문제 되는 규모가 아니고, 규칙까지 aggregate 에 얹으면 런타임 전이 계산 경로가
+ * 수준이라 N+1 이 문제 되는 규모가 아니고, 규칙까지 aggregate 에 얹으면 런타임 전환 계산 경로가
  * 매번 쓰지도 않는 config JSONB 를 함께 읽게 된다.
  */
 @Component
