@@ -2195,8 +2195,19 @@ red 가 나는지 재는 짝을 세운다 — 정직하지만 자식 수만큼 �
 (`INITIAL 전환에 post-action 을 붙인다` — 201 → 200 왕복 단언) ·
 `apps/web/src/components/workflow/__tests__/PostActionConfigSection.test.tsx:868`
 (`PACS-K4: INITIAL·GLOBAL option 은 disabled 가 아니다`).
-`PostActionTransitionResolver` 의 `KIND_TOKENS` KDoc 은 「규칙을 붙일 수 있는 대상이다 — 막으면 그 경로가
-UI 에서 도달 불가가 된다」고 적는데 **실제로는 붙여도 도달 불가**다.
+뒤쪽 KDoc(`:864-866`)이 근거를 「… 두 종류를 전환 id 로 해석하므로 규칙을 붙일 수 있는 대상이다 —
+막으면 그 경로가 UI 에서 도달 불가가 된다」로 적는다. 거기 말하는 해석 장치는 지금
+`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/transition/TransitionKeyResolver.kt` 의
+`KIND_TOKENS` 이고, 그 상수와 클래스 KDoc 「출발 상태가 없는 전환 (GLOBAL·INITIAL)」 절을 보면
+`TransitionKind.entries.filterNot { it == NORMAL }` 로 **`GLOBAL` 과 `INITIAL` 을 나란히** 예약 토큰에 넣는다.
+**붙이는 길은 두 종류에 똑같이 열려 있는데 실제로는 붙여도 도달 불가**다.
+
+**★ 2026-08-26 정정 — 인용의 출처가 틀려 있었다.** 위 문장은 원래 백엔드 `KIND_TOKENS` **KDoc 인용**으로
+적혀 있었는데 그 KDoc 에 그런 문장은 **없다**(개명 전 판본에도 없다 — 인용이 아니라 요약이었다).
+실제 출처는 위 프론트 테스트의 PACS-K4 KDoc 이다. 겸해서 PR #404 가 그 백엔드 클래스를
+`transition/TransitionKeyResolver.kt` 로 개명·이동했으므로 클래스 이름·경로도 현재 것으로 고쳤다.
+**결함 자체의 판단은 그대로다.** 다만 그 프론트 KDoc 본문(`:865`)은 아직 개명 전 클래스 이름을 부른다 —
+이 TODO 를 닫을 때 같이 고칠 자리다.
 
 **현재 피해는 0이다.** 시드 YAML 4개의 INITIAL 전환에 `validators`·`postActions` 가 한 건도 안 붙어
 있음을 확인했다. **GLOBAL 은 실제로 실행되고 INITIAL 만 안 된다** — 둘을 나란히 「붙일 수 있다」로
