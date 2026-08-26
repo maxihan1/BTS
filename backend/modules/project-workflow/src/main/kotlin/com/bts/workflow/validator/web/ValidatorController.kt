@@ -77,7 +77,7 @@ class ValidatorController(
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param transitionKey 전환 id(UUID) 또는 종전 `fromStateKey__toStateKey` 합성 키.
-     * @return 200 OK + [ValidatorResponse] 목록 (displayOrder ASC). 각 행에 `phase` 가 실린다.
+     * @return 200 OK + [ValidatorResponse] 목록 (displayOrder ASC). 각 행에 `phase` 와 `editable` 이 함께 실린다.
      */
     @GetMapping
     fun list(

@@ -460,4 +460,39 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
   })
+
+  /**
+   * T6-17. 봉투 없는 삭제 실패는 **삭제 전용 문구**를 쓰고 확인 다이얼로그를 닫지 않는다.
+   *
+   * `validatorErrorMessage` 는 코드를 못 읽으면 `error.unknown`(「규칙을 **저장**하지 못했습니다.
+   * **값을 확인하고** 다시 시도해 주세요.」)으로 떨어진다 — 삭제 경로에는 고칠 값이 없어
+   * 사용자가 무엇을 하라는 말인지 알 수 없다. 500 · 프록시 502 · 빈 본문이 그 갈래다.
+   *
+   * ★ 「removeFailed 가 뜬다」만 재면 공허하다 — 둘 다 띄우는 구현도 통과한다. 그래서
+   * **`unknown` 문구가 뜨지 않는 것**을 함께 단언한다.
+   */
+  it('T6-17: 봉투 없는 삭제 실패는 삭제 전용 문구를 쓰고 확인 창을 닫지 않는다', async () => {
+    server.use(http.delete(`${BASE_PATH}/:id`, () => new HttpResponse(null, { status: 500 })))
+
+    renderSection()
+    selectTransition(TX_ID)
+    await waitForSeedRows()
+
+    fireEvent.click(
+      screen.getByLabelText(validatorDeleteButtonLabel(VALIDATOR_TYPES.customExpression, CUSTOM_EXPRESSION_ROW)),
+    )
+    const confirm = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
+    fireEvent.click(within(confirm).getByRole('button', { name: validatorLabels.dialog.deleteConfirmButton }))
+
+    expect(await screen.findByText(validatorLabels.error.removeFailed)).toBeInTheDocument()
+    expect(screen.queryByText(validatorLabels.error.unknown)).not.toBeInTheDocument()
+
+    // 삭제가 실패했으므로 행은 목록에 남는다.
+    expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
+
+    // ★ 「확인 창이 열린 채 남는다」는 재지 않는다 — 공용 `ConfirmDialog` 가 `onConfirm()` 직후
+    //   스스로 `onOpenChange(false)` 를 부르므로(`confirm-dialog.tsx:55-56`) 어떤 소비자도 그렇게
+    //   만들 수 없다. 같은 이유로 그 프리미티브의 `confirming` prop 은 설계상 도달 불가다.
+    //   프리미티브를 고치는 것은 이 PR 범위 밖이라 부채로 등재했다.
+  })
 })

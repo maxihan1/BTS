@@ -159,10 +159,23 @@ export type ValidatorLabels = typeof validatorLabels
  *
  * 코드 값의 정본은 backend `ValidatorExceptionHandler` 다.
  *
+ * ### 모르는 코드가 두 형태로 온다
+ * 봉투를 아예 못 읽으면 `null` 이고, 봉투는 읽었으나 `code` 가 없으면 `api/validators.ts` 의
+ * `z.string().default('UNKNOWN')` 때문에 `'UNKNOWN'` 이 온다. 둘 다 「모르는 코드」이므로 같은
+ * default 로 떨어진다 — 호출부가 `'UNKNOWN'` 을 문자열로 비교하지 않게 하려는 것이다.
+ *
+ * `fallback` 은 그 default 를 조작별로 갈아 끼우는 자리다. 삭제 경로에서 기본 문구를 쓰면
+ * 「규칙을 **저장**하지 못했습니다. **값을 확인하고**」가 떠서, 고칠 값이 없는 조작에 대해
+ * 사용자가 무엇을 하라는 말인지 알 수 없다.
+ *
  * @param errorCode `ValidatorApiError.errorCode`. 봉투를 못 읽었으면 `null`.
- * @return 사용자에게 보여줄 한국어 문구. 모르는 코드면 기본 문구.
+ * @param fallback 모르는 코드일 때 쓸 문구. 생략하면 저장 기준 기본 문구.
+ * @return 사용자에게 보여줄 한국어 문구.
  */
-export function validatorErrorMessage(errorCode: string | null): string {
+export function validatorErrorMessage(
+  errorCode: string | null,
+  fallback: string = validatorLabels.error.unknown,
+): string {
   switch (errorCode) {
     case 'WORKFLOW_VALIDATOR_INVALID':
       return '규칙 값이 이 규칙 종류의 요구와 맞지 않습니다. 값을 확인해 주세요.'
@@ -177,7 +190,7 @@ export function validatorErrorMessage(errorCode: string | null): string {
     case 'WORKFLOW_UNAUTHENTICATED':
       return '로그인이 필요합니다. 다시 로그인해 주세요.'
     default:
-      return validatorLabels.error.unknown
+      return fallback
   }
 }
 

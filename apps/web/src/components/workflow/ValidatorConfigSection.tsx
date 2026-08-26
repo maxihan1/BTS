@@ -311,8 +311,19 @@ function ValidatorConfigSectionContent({
     if (deleteTarget === null) return
     setDeleteError(undefined)
     deleteMutation.mutate(deleteTarget.id, {
-      onError: (error: unknown) => setDeleteError(validatorErrorMessage(errorCodeOf(error))),
+      // 모르는 코드일 때 기본 문구는 「규칙을 **저장**하지 못했습니다. **값을 확인하고**」다 —
+      // 삭제에는 고칠 값이 없어 사용자가 무엇을 하라는 말인지 알 수 없다. 삭제 전용 문구로 갈아 끼운다.
+      // ★ 봉투를 못 읽으면 `null`, 봉투는 읽었는데 code 가 없으면 `'UNKNOWN'` 이 온다 —
+      //   둘 다 fallback 으로 떨어지므로 호출부가 그 문자열을 비교하지 않는다.
+      onError: (error: unknown) =>
+        setDeleteError(
+          validatorErrorMessage(errorCodeOf(error), validatorLabels.error.removeFailed),
+        ),
     })
+    // ★ 공용 `ConfirmDialog` 가 `onConfirm()` 직후 스스로 `onOpenChange(false)` 를 부른다
+    //   (`confirm-dialog.tsx:55-56`). 그래서 여기서 닫는 것은 그 호출과 같은 커밋에 들어가고,
+    //   `onSuccess` 로 옮겨도 다이얼로그는 이미 닫힌 뒤다 — 실패 시 확인 맥락을 남기려면
+    //   프리미티브를 고쳐야 하고 그것은 이 PR 범위 밖이다(부채 등재).
     setDeleteTarget(null)
   }
 

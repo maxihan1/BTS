@@ -3,7 +3,11 @@
 // ## 이 목이 하지 않는 일 — 평가 (제약 C3)
 // validator 가 전환을 막는지 판단하는 코드를 여기 넣지 않는다. 넣는 순간 백엔드 엔진의 두 번째
 // 사본이 되고 아무도 두 벌을 대조하지 않는다. AVAILABILITY 규칙이 전환 후보를 감추는 효과는
-// `/transitions/plan` **응답 픽스처**로 표현한다.
+// 이 목도 E2E 도 재지 않고 **백엔드에 위임**한다 — 계산의 정본은
+// `ValidatorEngineIntegrationTest`(Testcontainers 실 엔진)이고, 화면이 받은 목록을 그대로 그리는
+// 것은 #398 의 `apps/web/e2e/issue-transition.spec.ts` S8 이 덮는다.
+// (착수 시엔 `/transitions/plan` 응답 픽스처로 표현할 계획이었으나 **화면이 그 엔드포인트를 한 번도
+//  부르지 않음**이 실측돼 취소됐다. 근거는 `docs/plan/product/project-workflow.md` §2.6 각주.)
 //
 // ## 이 목이 하는 일 — 계약 감시
 // 돌려주는 행은 backend `ValidatorDtos.kt` 의 6필드 전부다. `api/validators.ts` 의 응답 스키마가
@@ -123,9 +127,9 @@ const SEED_ROWS: readonly ValidatorResponse[] = [
     type: VALIDATOR_TYPES.requiredField,
     config: {},
     displayOrder: 4,
-  phase: null,
-  editable: false,
-},
+    phase: null,
+    editable: false,
+  },
 ]
 
 /**
