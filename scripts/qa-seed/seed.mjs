@@ -250,7 +250,7 @@ async function createSprints(api, project, issues, manifest) {
     log(`  · ${b.sprint.name} 이슈 ${ok.length}/${b.items.length}${failed.length ? ` (실패 ${failed.length})` : ''}`);
   }
 
-  // 상태 전이는 할당 뒤에 한다 — COMPLETED 스프린트에는 이슈를 넣을 수 없다.
+  // 상태 전환은 할당 뒤에 한다 — COMPLETED 스프린트에는 이슈를 넣을 수 없다.
   // 409 를 허용하는 이유는 재실행 때 이미 그 상태이기 때문이다.
   for (const s of created) {
     if (s.plan.state === 'active' || s.plan.state === 'completed') {

@@ -90,6 +90,6 @@ node scripts/qa-seed/rollback.mjs --base-url=https://bts.maxihan.com --yes
 ## 검증
 
 `scripts/qa-seed/` 는 목 서버로 전 경로를 실증한 뒤 커밋했다 — 이슈 450건 · 전환 699회 ·
-댓글 395건 · 첨부 78건 · 스프린트 상태 전이 · 대시보드 가젯 검증 · 롤백 461건 삭제까지
+댓글 395건 · 첨부 78건 · 스프린트 상태 전환 · 대시보드 가젯 검증 · 롤백 461건 삭제까지
 실패 0. 목은 실제 컨트롤러의 응답 봉투(특히 `GET /users` 가 **맨 배열**인 점)와
 `software-default` 전환 그래프, 가젯 config 규칙을 그대로 흉내낸다.
