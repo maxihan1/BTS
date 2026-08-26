@@ -84,7 +84,11 @@ backend/gradlew -p backend :modules:project-workflow:ktlintCheck
 (`lint-fails-first-leaves-stale-test-xml`).
 
 **뮤테이션 (GREEN 선커밋 뒤).** `TransitionRuleFrameworkErrors` 의 메시지 자리에 `ex.message` 를
-꽂아 **두 표면 6건이 함께 red** 인지 본다. 미커밋 원복은 소실이므로 반드시 커밋 뒤에 한다.
+꽂아 **두 표면의 프레임워크 예외 판정이 함께 red** 인지 본다. 미커밋 원복은 소실이므로 반드시
+커밋 뒤에 한다.
+
+★개수를 적지 않는다. 판정 수는 이 문서가 쓰인 뒤에도 늘어난다(실제로 「본문의 타입 불일치」가
+추가되며 6 → 8 이 됐다). 「N건」을 적으면 그것이 실측과 어긋나는 **세 번째 목록**이 된다.
 
 ## 범위 밖
 

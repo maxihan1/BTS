@@ -55,6 +55,7 @@ import java.util.UUID
  * - 4개 엔드포인트(GET/POST/PUT/DELETE) 가 권한 없으면 **리소스 조회 전에** 403 을 낸다.
  * - 실재하는 전환과 실재하지 않는 전환의 403 응답이 **구별되지 않는다** (존재 probe 차단).
  * - 403 본문에 actorId·permission·scope 가 실리지 않는다.
+ * - 프레임워크 예외 경로가 `error.message` **정확 일치** + 요청 값 **누수 카나리**를 함께 건다.
  * - POST 성공 201 + `{data:...}` 봉투 · DELETE 성공 204 무본문.
  * - GET 성공 200 목록 봉투 · PUT 성공 200 수정 행 · 응답에 `transitionId` 키가 아예 없다.
  * - POST 요청 바디의 `config`·`displayOrder` 가 서비스 인자로 **그대로** 간다.
@@ -595,7 +596,7 @@ class ValidatorControllerTest {
     // (`ProblemDetail` 이식·`detail` 필드 추가). 응답 본문 **전체**를 보므로 새 칸이 생겨도 함께 잡는다.
     //
     // ★★카나리는 **값이 실제로 새는 경로에만** 둔다. 2026-08-26 실측 — 깨진 JSON 의 `ex.message` 는
-    // `"JSON parse error: Unexpected end-of-input in VALUE_STRING"` 이고 본문 조각이 없다
+    // `"JSON parse error: Unexpected end-of-input within/between Object entries"` 이고 본문 조각이 없다
     // (Spring Boot 가 Jackson 의 `INCLUDE_SOURCE_IN_LOCATION` 을 꺼 둔다). 거기 카나리를 두면 어떤
     // 뮤테이션으로도 red 를 못 내는 공허한 판정이 되므로, 값이 실제로 실리는 **본문 타입 불일치**
     // (`displayOrder` 에 문자열 → `InvalidFormatException`) 로 옮겼다. 뮤테이션으로 확인했다 —
@@ -605,14 +606,22 @@ class ValidatorControllerTest {
     // 가 **같은 리터럴**을 적고 있고, 「두 표면이 같은 값을 쓴다」는 계약을 지키는 것은 그 대칭뿐이다
     // — 양쪽이 구현 상수를 import 하면 상수 한 벌이 갈려도 둘 다 초록이 된다.
     //
-    // 400 두 건에 권한 stub 이 없는 것은 실수가 아니다. 두 예외는 **인자 해석 단계**에서 나므로
-    // 컨트롤러 본문(=권한 가드)보다 앞선다. stub 을 깔면 검사되지 않는 죽은 셋업이 된다.
+    // 400 을 재는 것들에 권한 stub 이 없는 것은 실수가 아니다. 그 예외들은 **인자 해석 단계**에서
+    // 나므로 컨트롤러 본문(=권한 가드)보다 앞선다. stub 을 깔면 검사되지 않는 죽은 셋업이 된다.
+    //
+    // ★개수를 적지 않는다. 「두 건」이라 박아 뒀다가 「본문의 타입 불일치」를 더하면서 실측과
+    //   어긋났다 — 주석의 개수는 늘 뒤처지고, 그것이 이 PR 이 잡으려는 결함(주석과 리뷰로만
+    //   지켜지는 계약)과 같은 계열이다.
 
+    /**
+     * 비-UUID `{id}` — **경로 변수에 카나리를 심는다.**
+     *
+     * `MethodArgumentTypeMismatchException` 메시지에는 들어온 값이 그대로 실리므로, 그 메시지를
+     * 응답에 옮기면 카나리가 응답에 나타난다. 즉 이 판정은 비-공허하다.
+     */
     @Test
     @WithMockUser(username = ALLOWED_ACTOR)
     fun `비-UUID id 는 400 과 error 봉투로 나가고 요청 값이 응답에 실리지 않는다`() {
-        // 경로 변수에 카나리를 심는다. `MethodArgumentTypeMismatchException` 메시지에는 이 값이
-        // 그대로 들어가므로, 그 메시지를 응답에 실으면 카나리가 응답에 나타난다.
         val body =
             mockMvc.perform(delete("${basePath(existingTransitionKey)}/$LEAK_CANARY-not-a-uuid"))
                 .andExpect(status().isBadRequest)
@@ -630,8 +639,8 @@ class ValidatorControllerTest {
     /**
      * 깨진 JSON — **카나리를 심지 않는다.**
      *
-     * 2026-08-26 실측 — 이 경로의 `ex.message` 는 `"JSON parse error: Unexpected end-of-input in
-     * VALUE_STRING"` 이고 **본문 조각이 들어 있지 않다**(Spring Boot 가 Jackson 의
+     * 2026-08-26 실측 — 이 경로의 `ex.message` 는 `"JSON parse error: Unexpected end-of-input
+     * within/between Object entries"` 이고 **본문 조각이 들어 있지 않다**(Spring Boot 가 Jackson 의
      * `INCLUDE_SOURCE_IN_LOCATION` 을 꺼 둔다). 여기에 카나리를 두면 어떤 뮤테이션으로도 red 를
      * 낼 수 없는 **공허한 판정**이 된다 — 이 저장소가 이름 붙인
      * `unreachable-state-fixture-is-fake-green` 그대로다.
