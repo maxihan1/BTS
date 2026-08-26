@@ -108,7 +108,8 @@ class WorkflowStatusInUseException(
 class WorkflowInvalidRequestException(
     val workflowKey: String,
     val reason: String,
-) : RuntimeException("Invalid workflow request for '$workflowKey': $reason")
+    cause: Throwable? = null,
+) : RuntimeException("Invalid workflow request for '$workflowKey': $reason", cause)
 
 /**
  * 모호 전환 후보 1건.

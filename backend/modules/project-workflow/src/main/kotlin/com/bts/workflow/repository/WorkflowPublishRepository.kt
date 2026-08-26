@@ -41,12 +41,18 @@ class WorkflowPublishRepository(
      * id 는 옛 것이고 버전은 새 것인 조합이 나온다.
      */
     fun findLiveByKey(key: String): WorkflowVersionRow? =
-        dsl.select(WORKFLOWS.ID, WORKFLOWS.VERSION)
+        dsl.select(WORKFLOWS.ID, WORKFLOWS.VERSION, WORKFLOWS.ORIGIN)
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(key))
             .and(WORKFLOWS.DELETED_AT.isNull)
             .fetchOne()
-            ?.let { WorkflowVersionRow(it[WORKFLOWS.ID]!!, it[WORKFLOWS.VERSION] ?: 0) }
+            ?.let {
+                WorkflowVersionRow(
+                    id = it[WORKFLOWS.ID]!!,
+                    version = it[WORKFLOWS.VERSION] ?: 0,
+                    origin = it[WORKFLOWS.ORIGIN] ?: "CUSTOM",
+                )
+            }
 
     /**
      * 버전이 [expectedVersion] 과 같을 때만 bump 한다.
@@ -164,12 +170,15 @@ class WorkflowPublishRepository(
 }
 
 /**
- * 워크플로우의 식별자와 낙관적 락 버전.
+ * 워크플로우의 식별자와 낙관적 락 버전, 그리고 출처.
  *
  * @property id `workflows.id`.
  * @property version `workflows.version`. 발행 요청의 `baseVersion` 과 대조하는 값이다.
+ * @property origin `SEED` 면 YAML 기본값이 있어 「기본값으로 복원」이 가능하다. 사용자 생성분은 `CUSTOM`
+ *   이고 되돌릴 기준이 없다 (ADR 2026-08-18-workflow-db-as-source-of-truth §D3).
  */
 data class WorkflowVersionRow(
     val id: UUID,
     val version: Long,
+    val origin: String,
 )
