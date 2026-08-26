@@ -2,11 +2,10 @@
 // Kotlin 버전. 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
 
 import nu.studer.gradle.jooq.JooqGenerate
+import org.gradle.api.tasks.PathSensitivity
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.testcontainers.containers.PostgreSQLContainer
-import java.io.File
 import java.sql.DriverManager
-import org.gradle.api.tasks.PathSensitivity
 
 // ── buildscript — generateJooq doFirst 훅에서 사용할 Testcontainers + PostgreSQL driver ──────────
 // 설계 이유.

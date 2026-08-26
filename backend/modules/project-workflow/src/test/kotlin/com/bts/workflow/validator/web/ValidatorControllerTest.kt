@@ -504,8 +504,9 @@ class ValidatorControllerTest {
 
     // ── fixture ───────────────────────────────────────────────────────────────
 
-    private fun basePath(transitionKey: String): String =
-        "/api/v1/workflows/$workflowKey/transitions/$transitionKey/validators"
+    private fun basePath(transitionKey: String): String {
+        return "/api/v1/workflows/$workflowKey/transitions/$transitionKey/validators"
+    }
 
     /**
      * 생성/수정 요청 바디.
