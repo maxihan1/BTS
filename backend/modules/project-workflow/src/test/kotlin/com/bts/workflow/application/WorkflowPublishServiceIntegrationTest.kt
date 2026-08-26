@@ -2,6 +2,9 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
@@ -122,6 +125,7 @@ class WorkflowPublishServiceIntegrationTest {
     private val publicationRepository = WorkflowPublicationRepository(dsl, objectMapper)
     private val cache = WorkflowCache(WorkflowRepository(dsl), dsl)
     private val issueUsage = StubIssueStatusUsage()
+    private val permissions = SwitchableWorkflowPermissions()
 
     private val service =
         WorkflowPublishService(
@@ -134,6 +138,7 @@ class WorkflowPublishServiceIntegrationTest {
                     PostActionRepository(dsl, objectMapper),
                 ),
             issueStatusUsagePort = issueUsage,
+            permissionResolver = permissions,
             cache = cache,
         )
 
@@ -258,7 +263,7 @@ class WorkflowPublishServiceIntegrationTest {
         val key = seedWorkflow()
         draftRepository.upsert(workflowId(key), draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
 
-        service.publish(key, baseVersion = 0, publishedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
 
         val published = cache.findByKey(key)!!
         assertThat(published.name).isEqualTo("이름만 바꿨다")
@@ -272,7 +277,7 @@ class WorkflowPublishServiceIntegrationTest {
         assertThat(cache.findByKey(key)!!.name).isEqualTo("발행 테스트")
         draftRepository.upsert(workflowId(key), draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
 
-        service.publish(key, baseVersion = 0, publishedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
 
         assertThat(cache.findByKey(key)!!.name).isEqualTo("이름만 바꿨다")
     }
@@ -282,7 +287,7 @@ class WorkflowPublishServiceIntegrationTest {
         val key = seedWorkflow()
         draftRepository.upsert(workflowId(key), draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
 
-        service.publish(key, baseVersion = 0, publishedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
 
         assertThat(draftRepository.findByWorkflowId(workflowId(key))).isNull()
     }
@@ -294,7 +299,7 @@ class WorkflowPublishServiceIntegrationTest {
         val key = seedWorkflow()
         draftRepository.upsert(workflowId(key), draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
 
-        service.publish(key, baseVersion = 0, publishedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
 
         val validators =
             dsl.fetchCount(
@@ -315,10 +320,10 @@ class WorkflowPublishServiceIntegrationTest {
         val id = workflowId(key)
 
         draftRepository.upsert(id, draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
-        val first = service.publish(key, baseVersion = 0, publishedBy = null)
+        val first = service.publish(ACTOR, key, baseVersion = 0)
 
         draftRepository.upsert(id, draftKeepingBoth(key), baseVersion = 1, updatedBy = null)
-        val second = service.publish(key, baseVersion = 1, publishedBy = null)
+        val second = service.publish(ACTOR, key, baseVersion = 1)
 
         assertThat(first).isEqualTo(1)
         assertThat(second).isEqualTo(2)
@@ -332,12 +337,12 @@ class WorkflowPublishServiceIntegrationTest {
         val key = seedWorkflow()
         val id = workflowId(key)
         draftRepository.upsert(id, draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
-        service.publish(key, baseVersion = 0, publishedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
 
         // 두 번째 세션은 아직 옛 버전(0)을 들고 있다.
         draftRepository.upsert(id, draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
 
-        assertThatThrownBy { service.publish(key, baseVersion = 0, publishedBy = null) }
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
             .isInstanceOf(WorkflowVersionConflictException::class.java)
     }
 
@@ -349,7 +354,7 @@ class WorkflowPublishServiceIntegrationTest {
         issueUsage.counts["done"] = 3
         draftRepository.upsert(workflowId(key), draftWithoutDone(key), baseVersion = 0, updatedBy = null)
 
-        assertThatThrownBy { service.publish(key, baseVersion = 0, publishedBy = null) }
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
             .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
             .extracting { (it as WorkflowPublishMappingRequiredException).pending }
             .isEqualTo(mapOf("done" to 3L))
@@ -362,7 +367,7 @@ class WorkflowPublishServiceIntegrationTest {
         val key = seedWorkflow()
         draftRepository.upsert(workflowId(key), draftWithoutDone(key), baseVersion = 0, updatedBy = null)
 
-        service.publish(key, baseVersion = 0, publishedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
 
         assertThat(cache.findByKey(key)!!.states.map { it.key }).containsExactly("open")
     }
@@ -375,7 +380,7 @@ class WorkflowPublishServiceIntegrationTest {
         issueUsage.counts["done"] = 2
         draftRepository.upsert(workflowId(key), draftWithoutDone(key), baseVersion = 0, updatedBy = null)
 
-        val preview = service.preview(key)
+        val preview = service.preview(ACTOR, key)
 
         assertThat(preview.removedStatusKeys).containsExactly("done")
         assertThat(preview.pendingIssueCounts).isEqualTo(mapOf("done" to 2L))
@@ -391,14 +396,29 @@ class WorkflowPublishServiceIntegrationTest {
 
     @Test
     fun `초안이 없으면 발행할 수 없다`() {
-        assertThatThrownBy { service.publish(seedWorkflow(), baseVersion = 0, publishedBy = null) }
+        assertThatThrownBy { service.publish(ACTOR, seedWorkflow(), baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
     @Test
     fun `없는 워크플로우는 404 다`() {
-        assertThatThrownBy { service.publish("wf-없음", baseVersion = 0, publishedBy = null) }
+        assertThatThrownBy { service.publish(ACTOR, "wf-없음", baseVersion = 0) }
             .isInstanceOf(WorkflowNotFoundException::class.java)
+    }
+
+    @Test
+    fun `발행 권한이 없으면 막힌다`() {
+        // 보안 표면이라 가드가 실제로 막는지 본다 — 붙였다는 사실만으로는 증명되지 않는다.
+        val key = seedWorkflow()
+        draftRepository.upsert(workflowId(key), draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
+        permissions.allow = false
+
+        try {
+            assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+                .isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
+        } finally {
+            permissions.allow = true
+        }
     }
 
     @Test
@@ -415,8 +435,23 @@ class WorkflowPublishServiceIntegrationTest {
             )
         draftRepository.upsert(workflowId(key), definition, baseVersion = 0, updatedBy = null)
 
-        assertThatThrownBy { service.publish(key, baseVersion = 0, publishedBy = null) }
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
             .hasMessageContaining("없는상태")
     }
 }
+
+/** 판정을 뒤집을 수 있는 권한 리졸버. 거부는 운영 리졸버와 같은 예외로 낸다. */
+class SwitchableWorkflowPermissions : WorkflowDefinitionPermissionResolver {
+    var allow: Boolean = true
+
+    override fun requirePermission(
+        actorId: UUID,
+        permission: WorkflowDefinitionPermission,
+    ) {
+        if (!allow) throw WorkflowDefinitionAccessDeniedException(actorId, permission)
+    }
+}
+
+/** 테스트 행위자. 권한 판정과 published_by 에 함께 쓰인다. */
+val ACTOR: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000aa")

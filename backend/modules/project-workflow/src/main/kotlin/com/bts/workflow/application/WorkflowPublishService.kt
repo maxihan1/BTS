@@ -2,6 +2,8 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.WorkflowDraftDefinition
@@ -35,7 +37,15 @@ import java.util.UUID
  * 지금은 **막고, 무엇이 막는지 알린다** — [WorkflowPublishMappingRequiredException.pending] 이
  * 상태별 잔여 건수를 담아 화면이 이관 모달을 그릴 재료가 된다. 매핑 수용과 이관 실행은 로드맵
  * **PR 7** 이 한 몸으로 채운다.
+ *
+ * ### `LongParameterList` 억제 사유
+ * 발행은 초안·정의·이력·규칙·이슈사용량·권한·캐시 일곱 가지를 한 트랜잭션에서 조율하는
+ * 오케스트레이션이고, 협력자 수가 곧 그 일의 크기다(detekt 임계는 7 **이상**에서 발동).
+ * 규칙 재삽입은 이미 [DraftRuleWriter] 로 떼어 냈다 — 남은 일곱은 각자 다른 이유로 존재해
+ * 더 묶으면 「발행 저장소」 같은 이름뿐인 묶음이 생기고 응집도가 오히려 나빠진다.
+ * 전역 임계값은 건드리지 않는다.
  */
+@Suppress("LongParameterList")
 @Service
 class WorkflowPublishService(
     private val draftRepository: WorkflowDraftRepository,
@@ -43,6 +53,7 @@ class WorkflowPublishService(
     private val publicationRepository: WorkflowPublicationRepository,
     private val ruleWriter: DraftRuleWriter,
     private val issueStatusUsagePort: IssueStatusUsagePort,
+    private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val cache: WorkflowCache,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -54,7 +65,11 @@ class WorkflowPublishService(
      * 것보다 낫다.
      */
     @Transactional(readOnly = true)
-    fun preview(key: String): PublishPreview {
+    fun preview(
+        actorId: UUID,
+        key: String,
+    ): PublishPreview {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
         val draft = requireDraft(key, workflow.id)
         val definition = draft.definition
@@ -72,8 +87,8 @@ class WorkflowPublishService(
     /**
      * 초안을 발행한다.
      *
+     * @param actorId 발행자. 권한 판정과 이력의 `published_by` 에 함께 쓴다.
      * @param baseVersion 클라이언트가 들고 있던 버전. 지금 DB 값과 다르면 409.
-     * @param publishedBy 발행자 user id.
      * @return 이번 발행의 회차.
      * @throws WorkflowNotFoundException 워크플로우가 없거나 소프트 삭제됐을 때
      * @throws WorkflowInvalidRequestException 초안이 없거나 상태가 카탈로그에 없을 때
@@ -82,10 +97,11 @@ class WorkflowPublishService(
      */
     @Transactional
     fun publish(
+        actorId: UUID,
         key: String,
         baseVersion: Long,
-        publishedBy: UUID?,
     ): Int {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
         val workflowId = requireLive(key).id
         val definition = requireDraft(key, workflowId).definition
         definition.toWorkflow()
@@ -105,7 +121,7 @@ class WorkflowPublishService(
             ruleWriter.writeAll(definition, transitionIds)
 
             versionNo = publicationRepository.nextVersionNo(workflowId)
-            publicationRepository.insert(workflowId, versionNo, definition, publishedBy)
+            publicationRepository.insert(workflowId, versionNo, definition, actorId)
             draftRepository.deleteByWorkflowId(workflowId)
         }
 

@@ -36,6 +36,11 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   WORKFLOW_STATUS_REFERENCED_BY_TRANSITION: '이 상태를 가리키는 전환이 있어 뺄 수 없습니다',
   // TransitionConflictExceptionHandler
   WORKFLOW_TRANSITION_CONFLICT: '같은 조건의 전환이 이미 있습니다',
+  // WorkflowPublishExceptionHandler
+  //   ★ 두 코드는 사용자가 할 일이 다르다. 버전 충돌은 「다시 불러오기」, 이관 필요는
+  //     「옮길 상태 고르기」다 — 문구를 합치면 어느 쪽도 안내가 되지 않는다.
+  WORKFLOW_VERSION_CONFLICT: '다른 사용자가 먼저 발행했습니다. 다시 불러온 뒤 시도하세요',
+  WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
   // StatusExceptionHandler
   STATUS_KEY_CONFLICT: '이미 사용 중인 상태 키입니다',
   STATUS_NAME_CONFLICT: '이미 사용 중인 상태 이름입니다',

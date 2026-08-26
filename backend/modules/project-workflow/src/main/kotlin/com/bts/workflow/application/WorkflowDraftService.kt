@@ -2,6 +2,8 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
@@ -36,6 +38,7 @@ class WorkflowDraftService(
     private val publishRepository: WorkflowPublishRepository,
     private val currentDefinitionReader: CurrentDefinitionReader,
     private val standardDefaults: StandardWorkflowDefaults,
+    private val permissionResolver: WorkflowDefinitionPermissionResolver,
 ) {
     /**
      * 초안을 돌려준다. 없으면 지금 발행된 정의를 초안 형태로 돌려준다(저장하지는 않는다).
@@ -43,7 +46,11 @@ class WorkflowDraftService(
      * @throws WorkflowNotFoundException 워크플로우가 없거나 소프트 삭제됐을 때
      */
     @Transactional(readOnly = true)
-    fun get(key: String): DraftView {
+    fun get(
+        actorId: UUID,
+        key: String,
+    ): DraftView {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
         val stored = draftRepository.findByWorkflowId(workflow.id)
         if (stored != null) {
@@ -63,16 +70,17 @@ class WorkflowDraftService(
      */
     @Transactional
     fun save(
+        actorId: UUID,
         key: String,
         definition: WorkflowDraftDefinition,
-        updatedBy: UUID?,
     ) {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
         validate(key, definition)
 
         // 이미 있는 초안의 base_version 은 유지한다 — 갱신하면 그 사이 남이 한 발행을 덮어쓰게 된다.
         val baseVersion = draftRepository.findByWorkflowId(workflow.id)?.baseVersion ?: workflow.version
-        draftRepository.upsert(workflow.id, definition, baseVersion, updatedBy)
+        draftRepository.upsert(workflow.id, definition, baseVersion, actorId)
     }
 
     /**
@@ -81,7 +89,13 @@ class WorkflowDraftService(
      * @return 지운 초안이 있었으면 true. 호출부가 204 와 404 를 가른다.
      */
     @Transactional
-    fun discard(key: String): Boolean = draftRepository.deleteByWorkflowId(requireLive(key).id)
+    fun discard(
+        actorId: UUID,
+        key: String,
+    ): Boolean {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        return draftRepository.deleteByWorkflowId(requireLive(key).id)
+    }
 
     /**
      * YAML 기본값을 초안으로 불러온다. **정규 테이블은 건드리지 않는다.**
@@ -94,9 +108,10 @@ class WorkflowDraftService(
      */
     @Transactional
     fun resetToDefault(
+        actorId: UUID,
         key: String,
-        updatedBy: UUID?,
     ): WorkflowDraftDefinition {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
         if (workflow.origin != SEED_ORIGIN) {
             throw WorkflowInvalidRequestException(key, "사용자가 만든 워크플로우에는 되돌릴 기본값이 없다")
@@ -110,7 +125,7 @@ class WorkflowDraftService(
         validate(key, definition)
         // 복원도 편집의 일종이라 base_version 규칙이 같다 — 처음 만들 때만 기록한다.
         val baseVersion = draftRepository.findByWorkflowId(workflow.id)?.baseVersion ?: workflow.version
-        draftRepository.upsert(workflow.id, definition, baseVersion, updatedBy)
+        draftRepository.upsert(workflow.id, definition, baseVersion, actorId)
         return definition
     }
 

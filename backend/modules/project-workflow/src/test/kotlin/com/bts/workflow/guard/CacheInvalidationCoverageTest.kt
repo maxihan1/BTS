@@ -35,13 +35,27 @@ class CacheInvalidationCoverageTest {
     private val cacheType = "Workflow" + "Cache"
 
     /**
-     * 무효화 경로를 탔다고 볼 신호.
+     * 무효화 경로를 탔다고 볼 신호 **2종**.
      *
      * `invalidate(` 로 좁히면 **거짓 양성**이 난다 — `invalidateWorkflowsUsing(id)` 처럼
      * 여러 워크플로우를 도는 private 헬퍼를 거치는 경우가 있다(실제로 한 번 잡혔다).
      * 주석 줄은 세지 않으므로 「주석에만 적어 두고 안 부르는」 우회는 막힌다.
+     *
+     * ### `withWriteLock` 도 무효화다 (FR-WF-07 에서 추가)
+     * `WorkflowCache.withWriteLock(key) { ... }` 은 block 실행 **직후 반드시** `invalidate(key)` 를
+     * 부른다 — 성공 경로 두 갈래(첫 시도 획득 · 재시도 획득) 모두에서 그렇다. 직접 호출보다
+     * 오히려 강한 보장이다(advisory lock 으로 동시 쓰기까지 막는다).
+     *
+     * 이것을 신호로 인정하지 않으면 발행 경로가 「무효화를 빠뜨렸다」로 **거짓 양성**이 나고,
+     * 그 오탐을 허용목록으로 덮으면 그 줄이 미래의 진짜 누락까지 함께 통과시킨다.
+     * 허용목록은 「무효화가 **불필요한** 함수」의 자리이지 「다른 방식으로 무효화하는 함수」의
+     * 자리가 아니다.
      */
-    private val invalidateCall = "invalid" + "ate"
+    private val invalidateSignals =
+        listOf(
+            "invalid" + "ate",
+            "with" + "WriteLock",
+        )
 
     /**
      * 무효화를 부르지 않아도 되는 쓰기 함수.
@@ -105,9 +119,11 @@ class CacheInvalidationCoverageTest {
     private fun writeFunctionsWithoutInvalidation(): List<String> =
         cacheHoldingServices().flatMap { file ->
             val className = file.fileName.toString().removeSuffix(".kt")
-            writeFunctionBodies(file).filterNot { (_, body) -> stripComments(body).contains(invalidateCall) }.map {
-                "$className.${it.first}"
-            }
+            writeFunctionBodies(file)
+                .filterNot { (_, body) ->
+                    val code = stripComments(body)
+                    invalidateSignals.any { signal -> code.contains(signal) }
+                }.map { "$className.${it.first}" }
         }
 
     private fun writeFunctionsOf(file: Path): List<String> {

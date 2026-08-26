@@ -2,6 +2,7 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
@@ -117,6 +118,7 @@ class WorkflowDraftServiceIntegrationTest {
     private val publishRepository = WorkflowPublishRepository(dsl)
     private val cache = WorkflowCache(WorkflowRepository(dsl), dsl)
     private val defaults = StubDefaults()
+    private val permissions = SwitchableWorkflowPermissions()
 
     private val service =
         WorkflowDraftService(
@@ -129,6 +131,7 @@ class WorkflowDraftServiceIntegrationTest {
                     PostActionRepository(dsl, objectMapper),
                 ),
             standardDefaults = defaults,
+            permissionResolver = permissions,
         )
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -189,7 +192,7 @@ class WorkflowDraftServiceIntegrationTest {
         // 열어만 보고 닫은 워크플로우에 초안이 남으면 「편집 중」 표시가 거짓이 된다.
         val key = seedWorkflow()
 
-        val view = service.get(key)
+        val view = service.get(ACTOR, key)
 
         assertThat(view.exists).isFalse()
         assertThat(view.definition.name).isEqualTo("초안 서비스 테스트")
@@ -201,8 +204,8 @@ class WorkflowDraftServiceIntegrationTest {
     fun `저장하면 그 초안이 조회된다`() {
         val key = seedWorkflow()
 
-        service.save(key, validDraft(key), updatedBy = null)
-        val view = service.get(key)
+        service.save(ACTOR, key, validDraft(key))
+        val view = service.get(ACTOR, key)
 
         assertThat(view.exists).isTrue()
         assertThat(view.definition.name).isEqualTo("고친 이름")
@@ -214,7 +217,7 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow()
         val broken = WorkflowDraftDefinition(key = key, name = "상태 없는 초안")
 
-        assertThatThrownBy { service.save(key, broken, updatedBy = null) }
+        assertThatThrownBy { service.save(ACTOR, key, broken) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
@@ -224,11 +227,11 @@ class WorkflowDraftServiceIntegrationTest {
     fun `두 번째 저장이 base_version 을 갱신하지 않는다`() {
         // 갱신하면 그 사이 남이 한 발행을 조용히 덮어쓰게 된다 — 낙관적 락이 무력해지는 지점이다.
         val key = seedWorkflow(version = 5)
-        service.save(key, validDraft(key, "첫 저장"), updatedBy = null)
+        service.save(ACTOR, key, validDraft(key, "첫 저장"))
 
         // 그 사이 다른 세션이 발행해 버전이 올라갔다.
         dsl.execute("UPDATE workflows SET version = 9 WHERE key = ?", key)
-        service.save(key, validDraft(key, "두 번째 저장"), updatedBy = null)
+        service.save(ACTOR, key, validDraft(key, "두 번째 저장"))
 
         val stored = draftRepository.findByWorkflowId(workflowId(key))!!
         assertThat(stored.definition.name).isEqualTo("두 번째 저장")
@@ -240,15 +243,15 @@ class WorkflowDraftServiceIntegrationTest {
     @Test
     fun `폐기하면 true 를 돌려주고 초안이 사라진다`() {
         val key = seedWorkflow()
-        service.save(key, validDraft(key), updatedBy = null)
+        service.save(ACTOR, key, validDraft(key))
 
-        assertThat(service.discard(key)).isTrue()
+        assertThat(service.discard(ACTOR, key)).isTrue()
         assertThat(draftRepository.findByWorkflowId(workflowId(key))).isNull()
     }
 
     @Test
     fun `없는 초안을 폐기하면 false 다`() {
-        assertThat(service.discard(seedWorkflow())).isFalse()
+        assertThat(service.discard(ACTOR, seedWorkflow())).isFalse()
     }
 
     // ── 기본값 복원 ───────────────────────────────────────────────────────────
@@ -264,7 +267,7 @@ class WorkflowDraftServiceIntegrationTest {
                 transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
             )
 
-        val restored = service.resetToDefault(key, updatedBy = null)
+        val restored = service.resetToDefault(ACTOR, key)
 
         assertThat(restored.name).isEqualTo("YAML 원본 이름")
         assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.name).isEqualTo("YAML 원본 이름")
@@ -277,7 +280,7 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow(origin = "CUSTOM")
         defaults.yaml = WorkflowYamlDto(key = key, name = "쓰이면 안 되는 값")
 
-        assertThatThrownBy { service.resetToDefault(key, updatedBy = null) }
+        assertThatThrownBy { service.resetToDefault(ACTOR, key) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
@@ -286,13 +289,26 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow(origin = "SEED")
         defaults.yaml = null
 
-        assertThatThrownBy { service.resetToDefault(key, updatedBy = null) }
+        assertThatThrownBy { service.resetToDefault(ACTOR, key) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
     @Test
+    fun `편집 권한이 없으면 초안을 저장할 수 없다`() {
+        val key = seedWorkflow()
+        permissions.allow = false
+
+        try {
+            assertThatThrownBy { service.save(ACTOR, key, validDraft(key)) }
+                .isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
+        } finally {
+            permissions.allow = true
+        }
+    }
+
+    @Test
     fun `없는 워크플로우는 404 다`() {
-        assertThatThrownBy { service.get("wf-없음") }
+        assertThatThrownBy { service.get(ACTOR, "wf-없음") }
             .isInstanceOf(WorkflowNotFoundException::class.java)
     }
 }
