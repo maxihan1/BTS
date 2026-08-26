@@ -327,6 +327,275 @@ jOOQ 재생성도 불필요하다.
 메모리 `two-lists-never-check-each-other` 의 지배 결함 양식 그대로다. 처방(모르는 type 은 읽기 전용
 degrade + `validator-type-catalog.test.ts` 에 프론트 축 추가)을 완료 기준 7번으로 세웠다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **순서의 근거.** 부채 장부가 `editable` 을 「D6 착수 시 첫 task」로 지정했다. 프론트가 그것 없이
+> 시작하면 편집 가능 타입 목록을 자기 코드에 베끼게 되고, 그 사본이 이 PR 이 막으려는 결함이다.
+> Task 1 이 계약을 세운 뒤에야 프론트가 그 계약을 소비할 수 있다.
+
+### Task 1. `editable` 판정을 한 벌로 세우고 응답에 싣는다 (부채 2)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorEditability.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/web/ValidatorDtos.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/web/ValidatorController.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorAdminServiceTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/web/ValidatorControllerTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일. `ValidatorControllerTest.kt` · `ValidatorAdminServiceTest.kt`
+- 테스트.
+  ```kotlin
+  // ValidatorControllerTest — 응답 쪽
+  @Test fun `목록 응답이 편집 가능 3종에 editable=true 를 싣는다`()
+  @Test fun `CustomExpression 행은 editable=false 로 나온다`()
+  @Test fun `인스턴스화가 실패하는 행은 phase=null 과 editable=false 가 짝을 이룬다`()
+  // ValidatorAdminServiceTest — 거부 쪽이 같은 판정을 부르는지
+  @Test fun `거부 판정과 응답 판정이 같은 함수를 부른다`()  // 아래 뮤테이션이 본단언
+  ```
+- 실패 메시지 (예상). `ValidatorResponse` 에 `editable` 프로퍼티 없음 → 컴파일 실패.
+  `ValidatorEditability.kt` 부재 → `Unresolved reference: isEditable`.
+
+**GREEN**:
+- 신규 `ValidatorEditability.kt` — `internal fun isEditable(validator: WorkflowValidator): Boolean`.
+  **인자는 `type`/`config` 가 아니라 이미 만들어진 인스턴스다.** `ValidatorController.phaseOf` 가
+  행마다 `factory.create` 를 이미 한 번 부르고 있으므로 그 인스턴스를 재사용한다 — 부채 장부의
+  「값은 이미 공짜다」가 실제로 공짜가 되는 자리다. 판정은 `is` 검사이고 문자열 비교가 아니다
+  (#404 결정 — 문자열을 적으면 팩토리 분기·`override val type` 에 이은 세 번째 사본이 된다).
+- `ValidatorAdminService` 의 거부 경로가 dry-run 인스턴스를 **같은 함수**에 넘기도록 고친다.
+- `ValidatorDtos` 에 `editable: Boolean` 추가. `from(row, phase)` → `from(row, phase, editable)`.
+- `ValidatorController.toResponse` 가 인스턴스를 한 번 만들어 `phase` 와 `editable` 을 함께 뽑는다.
+
+**REFACTOR**:
+- `phaseOf` 를 「인스턴스 1회 생성 → (phase, editable) 한 쌍 반환」으로 정리. `IllegalArgumentException`
+  만 잡는 기존 계약(`runCatching` 금지 이유가 KDoc 에 있다)을 그대로 지킨다.
+
+**검증**:
+- `./gradlew :modules:project-workflow:test --tests '*Validator*'`
+- **뮤테이션 (GREEN 선커밋 뒤)**. `isEditable` 의 반환을 뒤집는다 → **400 테스트와 응답 테스트가
+  함께 red** 여야 한다. **한쪽만 red 면 두 벌이 남아 있다는 뜻**이므로 그 자리에서 되돌리고 원인을
+  찾는다. 미커밋 상태로 뮤테이션하지 않는다 — 원복이 곧 소실이다.
+
+### Task 2. 프레임워크 예외 3종을 도메인 에러 봉투에 담는다 (부채 1)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/web/ValidatorExceptionHandler.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/web/PostActionExceptionHandler.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/web/ValidatorControllerTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/web/PostActionControllerTest.kt`]
+- depends-on: [1]   # ValidatorControllerTest.kt 를 Task 1 과 공유한다 (파일 겹침 → 직렬)
+
+**RED**:
+- 파일. `ValidatorControllerTest.kt` · `PostActionControllerTest.kt` — **양쪽 대칭**
+- 테스트. 두 표면 각각에 세 가지를 전수로 둔다.
+  ```kotlin
+  @Test fun `비-UUID id 는 400 과 error 봉투로 나간다`()          // MethodArgumentTypeMismatchException
+  @Test fun `깨진 JSON 본문은 400 과 error 봉투로 나간다`()        // HttpMessageNotReadableException
+  @Test fun `미인증 요청은 401 과 error 봉투로 나간다`()           // ResponseStatusException
+  ```
+- 실패 메시지 (예상). 응답 본문에 `$.error.code` 가 없다 — 스프링 기본 형식(`timestamp`/`path`)이
+  나온다. 401 은 `CurrentActor.current()` 가 **컨트롤러 실행 중**에 던지므로 advice 로 잡히지만
+  현재 핸들러가 없어 기본 형식으로 샌다(스펙 §API ✅ G3 실측).
+
+**GREEN**:
+- 양쪽 advice 에 `@ExceptionHandler` 3종 추가. 봉투는 `com.bts.workflow.web.ErrorResponse`/`ErrorBody`
+  **한 벌 그대로**.
+- ★ `search-export-import` 의 `ProblemDetail`(RFC 7807) 을 **이식하지 않는다** — 봉투가 달라
+  이식하면 이 BC 계약이 깨진다.
+- 에러 코드는 기존 명명(`WORKFLOW_VALIDATOR_*` / post-action 대응)과 같은 계열로 둔다.
+
+**REFACTOR**:
+- 두 핸들러의 3종이 문자열까지 같아지면 공용 헬퍼로 접는다. **다만 advice 자체는 합치지 않는다** —
+  `basePackages` 가 다르고 합치면 다른 컨트롤러의 매핑까지 가져간다.
+
+**검증**:
+- `./gradlew :modules:project-workflow:test --tests '*ValidatorControllerTest' --tests '*PostActionControllerTest'`
+- 계약 문서 에러 표에 401 행과 「본문 형식 오류」 400 행이 추가돼야 한다 (Task 3 이 함께 본다)
+
+### Task 3. 「허용 목록은 `editable` 분기가 정본」을 계약 문서에 못박는다 (부채 3)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/sdd/07-workflow-engine.md`, `docs/plans/2026-08-25-backend-workflow-transition-rule-crud.md`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/ValidatorAdminService.kt`]
+- depends-on: [1]
+
+**RED**:
+- 이 task 의 red 는 테스트가 아니라 **문서↔코드 차집합**이다. `validator-type-catalog.test.ts` 를
+  먼저 돌려 현재 GREEN 임을 확인하고(이 task 는 표를 깨지 않아야 한다), 그 다음 R3-11 이 지목한
+  서술을 실제로 찾아 인용한다 — 「편집 불가 = `type=CustomExpression`」로 적힌 자리 전수.
+- 실패 조건. 문서가 **한 값**(`CustomExpression`)을 말하고 코드는 **허용 목록**(3종)을 쓴다.
+  지금은 type 이 4종이라 두 문장이 우연히 같은 뜻이고, 다섯 번째가 생기는 날 문서가 거짓이 된다.
+
+**GREEN**:
+- 세 자리를 같은 문장으로 맞춘다 — 「편집 가능 여부의 정본은 `isEditable` 분기다. 목록에 없는
+  type 은 **모르는 것이므로 거부**된다(새 type 이 자동으로 편집 불가가 된다)」.
+- `ValidatorAdminService` KDoc 의 허용 목록 사본을 지우고 `isEditable` 을 가리킨다.
+- SDD §7.3 에 `editable` 열 또는 각주를 더한다 — **판별식이 읽는 세 열(`타입 식별자`·`구현 클래스`·
+  `필수 config 키`)의 파싱을 깨지 않는 형태**여야 한다.
+
+**REFACTOR**: 없음 (문서 정합 task).
+
+**검증**:
+- `pnpm test:workflow` — `validator-type-catalog.test.ts` 가 여전히 GREEN (표 파싱을 안 깼다)
+- `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh`
+
+### Task 4. 프론트 API 계층 — zod 스키마 + fetch 4종
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/workflows-admin.types.ts`, `apps/web/src/api/workflows-admin.ts`, `apps/web/src/api/__tests__/workflows-admin.test.ts`]
+- depends-on: [1]   # `editable` 필드 계약이 먼저 서야 한다
+
+**RED**:
+- 파일. `apps/web/src/api/__tests__/workflows-admin.test.ts`
+- 테스트.
+  ```ts
+  it('validatorSchema 가 백엔드 6필드를 그대로 받는다', …)      // id·type·config·displayOrder·phase·editable
+  it('editable 이 빠진 응답을 거부한다', …)                      // 계약 갭이 런타임에 드러나게
+  it('phase=null 을 받아들인다', …)                              // 인스턴스화 실패 행
+  it('알 수 없는 필드가 오면 거부한다', …)                        // .strict() 봉인
+  ```
+- 실패 메시지 (예상). `validatorSchema` 미정의 → import 실패.
+
+**GREEN**:
+- `workflows-admin.types.ts` — `validatorSchema`(`.strict()` 를 **base 에** 건다 · `dataOf` 로 감싼다) ·
+  `ValidatorInput`(type·config·displayOrder).
+- **type 별 config 폼 스키마**를 여기 둔다 — 제약 C1 의 불가피한 사본이다. 스키마는 SDD §7.3
+  「필수 config 키」 열과 1:1 이고, **Task 7 의 판별식이 이 사본을 표와 대조한다**.
+- `config` 는 `z.record(z.unknown())` 로 받되(타입별 키가 다르다) 폼 단계에서 type 별 스키마로 좁힌다.
+- `workflows-admin.ts` — `fetchValidators` · `createValidator` · `updateValidator` · `deleteValidator`.
+  경로 세그먼트는 **전환 id(UUID)** 만 싣는다(제약 C4).
+
+**REFACTOR**: 기존 `parseData`/`expectNoContent`/`seg` 헬퍼를 그대로 쓴다 — 새로 만들지 않는다.
+
+**검증**:
+- `pnpm --filter web test -- workflows-admin`
+- ★ zod 스키마를 `ValidatorDtos.kt` 실물과 **눈으로 대조**한다. MSW·유닛·E2E 3겹이 동시에 가짜그린일
+  수 있다 (learnings 2026-06-25 / PR #187 — `<input type="date">` 계약 갭이 세 겹을 통과했다).
+
+### Task 5. MSW stateful 핸들러 + react-query 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/workflow-admin-handlers.ts`, `apps/web/src/mocks/workflow-admin-fixtures.ts`, `apps/web/src/hooks/use-workflows-admin.ts`, `apps/web/src/mocks/workflow-admin-handlers.test.ts`, `apps/web/src/hooks/__tests__/use-workflows-admin.test.tsx`]
+- depends-on: [4]
+
+**RED**:
+- 테스트.
+  ```ts
+  it('validator 를 만들면 목록에 남는다 (stateful)', …)
+  it('삭제하면 목록에서 사라진다', …)
+  it('mutation 성공 후 그 전환의 규칙 쿼리가 무효화된다', …)
+  ```
+- 실패 메시지 (예상). `/validators` 경로 핸들러 부재 → MSW `onUnhandledRequest` 경고 후 네트워크 실패.
+
+**GREEN**:
+- `workflow-admin-handlers.ts` 에 4 경로. 기존 인메모리 stateful 관례를 따른다.
+- 픽스처에 **편집 가능 3종 각각 · `CustomExpression` 1행 · 깨진 config 1행**을 둔다 — S4·S5 가
+  화면에서 재현되려면 목이 그 행을 실제로 갖고 있어야 한다.
+- `use-workflows-admin.ts` — `WORKFLOW_ADMIN_KEYS.transitionRules(workflowKey, transitionId)` 추가 +
+  mutation `onSuccess` 에서 그 키 무효화.
+- ★ **평가 로직을 만들지 않는다** (제약 C3). 핸들러는 저장·조회만 한다.
+
+**REFACTOR**: 픽스처의 type 문자열을 한 곳에서 정의해 스펙 간 오타를 막는다.
+
+**검증**: `pnpm --filter web test -- workflow-admin use-workflows-admin`
+
+### Task 6. 전환 규칙 편집 다이얼로그 (D6 본체)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/workflow/editor/TransitionRuleDialog.tsx`, `apps/web/src/components/workflow/editor/TransitionListPanel.tsx`, `apps/web/src/i18n/workflow-editor-labels.ts`, `apps/web/src/components/workflow/editor/__tests__/TransitionRuleDialog.test.tsx`]
+- depends-on: [5]
+
+**RED** (동반 테스트 명세 — ui 시각 트랙):
+- 테스트.
+  ```tsx
+  it('전환 행의 규칙 버튼이 다이얼로그를 연다', …)
+  it('편집 불가 행이 목록에 보이고 편집이 비활성이며 이유가 뜬다', …)     // S4 · editable 소비
+  it('추가 폼의 type 선택지에 CustomExpression 이 없다', …)              // editable=true 만
+  it('phase=null 행은 판정 불가 배지 + 편집 비활성이다', …)               // S5
+  it('모르는 type 은 폼을 그리지 않고 읽기 전용으로 보여준다', …)          // 제약 C1 degrade
+  it('저장 400 이 다이얼로그 안에 뜨고 다이얼로그가 닫히지 않는다', …)      // S6
+  it('삭제는 되돌릴 수 없음을 확인받는다', …)                            // ADR hard-delete
+  ```
+- 실패 메시지 (예상). `TransitionRuleDialog` 부재 → 렌더 실패.
+
+**GREEN**:
+- `TransitionRuleDialog.tsx` — 형제 `TransitionFormDialog` 의 구조(로컬 state + `DialogFooter` +
+  portalHost)를 따른다. **고유 `aria-label`** 을 준다(즉사 계약 — 편집기에 다이얼로그가 셋이 된다).
+  `h1` 을 만들지 않는다(제약 C2).
+- 행 배지는 `phase` 를 텍스트로 병기한다 — 색만으로 뜻을 전하지 않는다(NFR 접근성).
+- 수정 시 **로드한 `config` 를 baseline 으로 들고 아는 키만 덮어써서 전체를 보낸다** (제약 C6) —
+  PUT 이 표현 전체 교체라 폼이 아는 키만 보내면 모르는 키가 조용히 지워진다.
+- `displayOrder` 입력칸을 만들지 않는다. 새 규칙은 최대값+1, 기존 행은 로드값 그대로 (제약 C7).
+- `TransitionListPanel` 에 「규칙」 진입점. 라벨은 `workflow-editor-labels.ts` 에 둔다.
+
+**REFACTOR**: type 별 config 폼을 한 컴포넌트의 분기로 두고 스키마는 Task 4 의 것을 소비한다 —
+폼이 자기 키 목록을 따로 들지 않게 한다.
+
+**검증**:
+- `pnpm --filter web test -- TransitionRuleDialog` · `pnpm verify`
+- 기존 E2E: `apps/web/e2e/workflow-editor.spec.ts` **동반 실행** (계약 §5 사전 grep 결과 — 편집기
+  라우트를 건드리는 유일한 spec 이다). 유닛만 초록이고 e2e 가 빨간 것은 mock 이 삼킨 prop 서명이다.
+- 눈확인: 규칙 다이얼로그 — 기본 · 빈(규칙 0건) · 에러(400) 3상태 × 라이트/다크
+
+### Task 7. 프론트 폼 스키마 ↔ SDD §7.3 표 대조 축을 판별식에 더한다 (제약 C1 처방)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`scripts/workflow/validator-type-catalog.test.ts`]
+- depends-on: [6]
+
+**RED**:
+- 새 축을 먼저 쓰고 **일부러 끊어** red 를 본다. 프론트 config 폼 스키마에서 키 하나를 지우면
+  판별식이 **그 키를 이름으로 지목**해야 한다. 「개수가 다르다」로만 나오면 판정이 약한 것이다.
+- 실패 메시지 (예상). 처음엔 축이 없어 GREEN — 그래서 **비-공허 확인이 이 task 의 본체**다.
+
+**GREEN**:
+- 기존 축의 파서 구조를 그대로 쓴다 — SDD 표 파싱(`extractTable`)은 이미 있고, 프론트 스키마 쪽
+  파서만 더한다. **양방향 차집합 0** 으로 대조한다(표에만 있는 키 · 스키마에만 있는 키 둘 다).
+- 「필수/선택」 구분도 함께 본다 — 표의 `(선택)` 접미와 스키마의 optional 이 맞아야 한다.
+
+**REFACTOR**: 축 번호·설명을 파일 머리 주석의 「축 4개」 목록에 반영한다 — **개수 문구를 그대로
+두면 거짓이 된다**.
+
+**검증**:
+- `pnpm test:workflow`
+- **비-공허 (GREEN 선커밋 뒤)**. ① 프론트 스키마에서 키 1개 제거 → red · 그 키가 메시지에 이름으로
+  나오는지 확인 ② SDD 표에서 행 1개 제거 → red. 둘 다 확인 후 되돌린다.
+
+### Task 8. D7 E2E — 화면 계약 + 응답 픽스처
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/workflow-transition-rules.spec.ts`, `apps/web/src/mocks/workflow-handlers.ts`]
+- depends-on: [6]
+
+**RED**:
+- 시나리오. 스펙의 S1(규칙을 건다) · S3(푼다) · S4(편집 불가 행) · S7(이슈 드롭다운 반영).
+- 실패 메시지 (예상). 「규칙」 버튼을 못 찾는다 → Task 6 이전에는 red.
+
+**GREEN**:
+- 신규 spec 1개. 기존 `workflow-editor.spec.ts` 의 진입 헬퍼(`navigateToWorkflowList`)와 픽스처
+  (`loginAsSystemAdmin`)를 재사용한다.
+- S7 은 `workflow-handlers.ts` 의 `/transitions/plan` **응답 픽스처**로 표현한다 — AVAILABILITY 규칙이
+  걸린 전환을 후보에서 뺀 응답을 준다. **평가 로직이 아니다** (제약 C3 · Maxi 승인 범위).
+- ★ `serviceWorkers:'block'` 금지 (메모리 `e2e-msw-serviceworker-block`).
+- ★ 라벨 substring 주의 — 「워크플로우」는 「워크플로우 스킴」의 substring 이다. `exact: true` 로 집는다.
+
+**REFACTOR**: 공용 헬퍼가 3회 이상 반복되면 fixtures 로 뽑는다.
+
+**검증**:
+- `pnpm --filter web test:e2e -- workflow-transition-rules workflow-editor` (**기존 spec 동반**)
+- 눈확인 결과와 함께 게이트 2 요약에 싣는다
+
+## Plan 메타
+
+| 항목 | 값 |
+|---|---|
+| task 수 | 8 |
+| 예상 wave | 5 — ①1 ②2·3·4 ③5 ④6 ⑤7·8 (의존 그래프 무순환 확인) |
+| 구현 규율 | TDD red-first (백엔드 Task 1·2) + ui 시각 검증 트랙 (Task 4~6) + 판별식 비-공허 (Task 7) |
+| 추가 검증 | `./gradlew :modules:project-workflow:test ktlintCheck detekt` · `pnpm verify` · `pnpm test:workflow` · `pnpm --filter web test:e2e` · `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh` |
+| 마이그레이션 | **0건** — jOOQ 재생성 불필요 |
+| 뮤테이션 지점 | Task 1(판정 뒤집기 — 양쪽 red 확인) · Task 7(스키마 키 제거 · SDD 행 제거) |
+| 눈확인 | Task 6 — 기본·빈·에러 3상태 × 라이트/다크 |
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
