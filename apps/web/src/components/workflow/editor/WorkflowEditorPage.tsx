@@ -222,7 +222,8 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         destructive
         onConfirm={() => {
           if (statusToRemove !== null) {
-            removeStatus.mutate(statusToRemove.id)
+            // ★닫는 책임은 소비자에게 있다 — 근거는 `confirm-dialog.tsx` 의 `onConfirm` KDoc.
+            removeStatus.mutate(statusToRemove.id, { onSuccess: () => setStatusToRemove(null) })
           }
         }}
       />
@@ -241,7 +242,9 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         destructive
         onConfirm={() => {
           if (transitionToRemove !== null) {
-            deleteTransition.mutate(transitionToRemove.id)
+            deleteTransition.mutate(transitionToRemove.id, {
+              onSuccess: () => setTransitionToRemove(null),
+            })
           }
         }}
       />

@@ -30,13 +30,18 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('dialog', { name: '상태를 뺄까요?' })).toBeInTheDocument()
   })
 
-  it('확인을 누르면 onConfirm 이 불리고 닫힌다', async () => {
+  // ★확인은 **스스로 닫지 않는다.** 닫는 책임이 소비자에게 있어야 `confirming` 이 관측되고
+  //   실패 시 확인 맥락이 남는다. 종전에는 `onConfirm()` 직후 `onOpenChange(false)` 를 불러
+  //   그 둘이 **구조적으로 불가능**했다 — 소비자가 무엇을 해도 창은 이미 닫힌 뒤였다.
+  it('확인을 누르면 onConfirm 만 부르고 스스로 닫지 않는다', async () => {
     const { onConfirm, onOpenChange } = setup()
     await userEvent.click(screen.getByRole('button', { name: '빼기' }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  // 취소는 여전히 프리미티브가 닫는다. 취소에는 「진행 중」도 「실패」도 없어서 소비자에게
+  // 넘길 이유가 없고, 넘기면 소비처마다 같은 한 줄이 복제된다.
   it('취소는 onConfirm 을 부르지 않고 닫는다', async () => {
     const { onConfirm, onOpenChange } = setup()
     await userEvent.click(screen.getByRole('button', { name: '취소' }))
@@ -48,6 +53,12 @@ describe('ConfirmDialog', () => {
     setup({ confirming: true })
     expect(screen.getByRole('button', { name: '빼기' })).toBeDisabled()
   })
+
+  // ★위 판정은 `confirming` 을 **직접 넘겨** 재므로 prop 계약만 본다. 그 상태에 실제로
+  //   도달하는지는 소비자 테스트가 잰다(`ValidatorConfigSection` · `WorkflowEditorPage` ·
+  //   `admin.workflows`). 종전에는 프리미티브가 확인 직후 닫아 **도달 자체가 불가능**했고,
+  //   그래서 이 판정만으로는 도달 불가 조합을 지키는 가짜 그린이었다
+  //   (`unreachable-state-fixture-is-fake-green`).
 
   // `destructive` 만으로 판정하면 안 된다 — button 의 **base** 클래스가 이미
   // `aria-invalid:...destructive/20` 을 달고 있어 어떤 변형이든 참이 된다(실측).

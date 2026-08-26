@@ -26,10 +26,26 @@ interface ConfirmDialogProps {
   confirmLabel: string
   /** 취소 버튼 문구 */
   cancelLabel: string
-  /** 확인을 눌렀을 때 */
+  /**
+   * 확인을 눌렀을 때.
+   *
+   * ★ **닫는 책임은 소비자에게 있다.** 이 프리미티브는 확인 뒤 스스로 닫지 않는다 —
+   * 종전에는 `onConfirm()` 직후 `onOpenChange(false)` 를 불러서 [confirming] 이 **구조적으로
+   * 도달 불가**였고 실패해도 확인 맥락이 남지 않았다. 소비자는 성공했을 때만 닫는다.
+   *
+   * 취소는 여전히 이 프리미티브가 닫는다. 취소에는 「진행 중」도 「실패」도 없다.
+   */
   onConfirm: () => void
   /** 처리 중 — 확인 버튼을 잠가 이중 제출을 막는다 */
   confirming?: boolean
+  /**
+   * 실패 사유 — 창 **안**에 싣는다.
+   *
+   * ★ 소비자가 자기 화면에 배너로 그리면 모달 오버레이가 그것을 가린다. 확인 창이 열린 채
+   * 실패하는 것이 이제 정상 경로이므로, 사유도 그 창 안에 있어야 사용자가 읽는다.
+   * toast 로 알리는 소비자는 이 prop 이 필요 없다 — toast 는 오버레이 위에 뜬다.
+   */
+  error?: string
   /** 파괴적 조작이면 확인 버튼을 경고 색으로 */
   destructive?: boolean
 }
@@ -37,8 +53,16 @@ interface ConfirmDialogProps {
 /**
  * 되돌리기 어려운 조작을 한 번 묻는다.
  *
- * 화면마다 제각각 만들던 것을 하나로 모은 것이다 — 문구만 주입하고 구조·포커스·닫힘
- * 동작은 이 프리미티브가 고정한다.
+ * 화면마다 제각각 만들던 것을 하나로 모은 것이다 — 문구만 주입하고 구조·포커스는 이
+ * 프리미티브가 고정한다.
+ *
+ * ### 확인 뒤 닫는 것은 소비자다
+ * 취소·바깥 클릭·Esc 는 이 프리미티브가 [onOpenChange] 로 닫지만, **확인은 닫지 않는다.**
+ * 종전에는 `onConfirm()` 직후 스스로 닫아서 두 가지가 구조적으로 불가능했다 —
+ * [confirming] 을 아무도 볼 수 없었고(도달 불가 조합을 지키는 판정이 되었다),
+ * 실패해도 확인 맥락이 사라져 사용자가 무엇이 안 됐는지 창 밖에서 찾아야 했다.
+ *
+ * 소비자는 성공했을 때만 닫는다 — `mutate(vars, { onSuccess: () => setTarget(null) })`.
  */
 function ConfirmDialog({
   open,
@@ -49,13 +73,9 @@ function ConfirmDialog({
   cancelLabel,
   onConfirm,
   confirming = false,
+  error,
   destructive = false,
 }: ConfirmDialogProps): React.JSX.Element {
-  const handleConfirm = (): void => {
-    onConfirm()
-    onOpenChange(false)
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -63,6 +83,14 @@ function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           {description !== undefined ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
+        {error !== undefined ? (
+          <div
+            role="alert"
+            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive ring-1 ring-foreground/10"
+          >
+            {error}
+          </div>
+        ) : null}
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {cancelLabel}
@@ -70,7 +98,7 @@ function ConfirmDialog({
           <Button
             variant={destructive ? 'destructive' : 'default'}
             disabled={confirming}
-            onClick={handleConfirm}
+            onClick={onConfirm}
           >
             {confirmLabel}
           </Button>

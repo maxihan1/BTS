@@ -115,7 +115,9 @@ export function AdminWorkflowsPage(): JSX.Element {
         destructive
         onConfirm={() => {
           if (toDelete !== null) {
-            deleteWorkflow.mutate(toDelete.key)
+            // ★닫는 책임은 소비자에게 있다(`confirm-dialog.tsx`). 성공했을 때만 닫아야
+            //   진행 중에는 `confirming` 이 보이고, 실패하면 확인 맥락이 남는다.
+            deleteWorkflow.mutate(toDelete.key, { onSuccess: () => setToDelete(null) })
           }
         }}
       />
