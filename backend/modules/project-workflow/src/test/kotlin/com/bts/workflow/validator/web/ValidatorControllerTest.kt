@@ -584,10 +584,16 @@ class ValidatorControllerTest {
     //
     // 상태 코드만 재면 공허하다. 스프링 기본 응답도 같은 상태를 내면서 본문은 `timestamp`/`path`/
     // `status` 형식이라, 화면이 `error.code` 로 분기하려는 자리가 비고 「알 수 없는 오류」로 뭉개진다.
-    // 그래서 셋 다 **상태 + `error.code` 값 + `error.message` 존재**를 함께 단언한다.
+    // 그래서 셋 다 **상태 + `error.code` 값 + `error.message` 값**을 함께 단언한다.
     //
-    // 코드 문자열은 리터럴로 적는다. 형제 [com.bts.workflow.postaction.web.PostActionControllerTest]
-    // 가 **같은 리터럴**을 적고 있고, 「두 표면이 같은 코드를 쓴다」는 계약을 지키는 것은 그 대칭뿐이다
+    // ★`error.message` 를 「존재(isString)」로만 재던 자리를 **정확 일치 + 누수 카나리** 로 바꿨다
+    // (부채 136). 존재만 재면 누가 `ex.message` 를 그 자리에 꽂아도 여전히 통과한다 — 그리고 그
+    // 메시지에는 파라미터 이름·타입·요청 본문 조각이 들어 있어 응답이 곧 내부 구조의 설명서가 된다.
+    // 두 판정은 서로를 대신하지 못한다. 정확 일치는 `message` 칸이 바뀌는 것을 잡고, 카나리는
+    // **다른 칸으로 새는 것**까지 잡는다.
+    //
+    // 코드·메시지 문자열은 리터럴로 적는다. 형제 [com.bts.workflow.postaction.web.PostActionControllerTest]
+    // 가 **같은 리터럴**을 적고 있고, 「두 표면이 같은 값을 쓴다」는 계약을 지키는 것은 그 대칭뿐이다
     // — 양쪽이 구현 상수를 import 하면 상수 한 벌이 갈려도 둘 다 초록이 된다.
     //
     // 400 두 건에 권한 stub 이 없는 것은 실수가 아니다. 두 예외는 **인자 해석 단계**에서 나므로
@@ -595,26 +601,41 @@ class ValidatorControllerTest {
 
     @Test
     @WithMockUser(username = ALLOWED_ACTOR)
-    fun `비-UUID id 는 400 과 error 봉투로 나간다`() {
-        mockMvc.perform(delete("${basePath(existingTransitionKey)}/not-a-uuid"))
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
-            .andExpect(jsonPath("$.error.message").isString)
+    fun `비-UUID id 는 400 과 error 봉투로 나가고 요청 값이 응답에 실리지 않는다`() {
+        // 경로 변수에 카나리를 심는다. `MethodArgumentTypeMismatchException` 메시지에는 이 값이
+        // 그대로 들어가므로, 그 메시지를 응답에 실으면 카나리가 응답에 나타난다.
+        val body =
+            mockMvc.perform(delete("${basePath(existingTransitionKey)}/$LEAK_CANARY-not-a-uuid"))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+                .andExpect(jsonPath("$.error.message").value("요청 경로 또는 파라미터 형식이 올바르지 않습니다."))
+                .andReturn()
+                .response
+                .contentAsString
+
+        assertThat(body).doesNotContain(LEAK_CANARY)
 
         verify(exactly = 0) { service.delete(any(), any(), any()) }
     }
 
     @Test
     @WithMockUser(username = ALLOWED_ACTOR)
-    fun `깨진 JSON 본문은 400 과 error 봉투로 나간다`() {
-        mockMvc.perform(
-            post(basePath(existingTransitionKey))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"type": """),
-        )
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
-            .andExpect(jsonPath("$.error.message").isString)
+    fun `깨진 JSON 본문은 400 과 error 봉투로 나가고 본문 조각이 응답에 실리지 않는다`() {
+        // 문자열이 닫히지 않은 JSON. 카나리는 그 열린 문자열 안에 있다.
+        val body =
+            mockMvc.perform(
+                post(basePath(existingTransitionKey))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"type\": \"$LEAK_CANARY"),
+            )
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+                .andExpect(jsonPath("$.error.message").value("요청 본문을 읽을 수 없습니다."))
+                .andReturn()
+                .response
+                .contentAsString
+
+        assertThat(body).doesNotContain(LEAK_CANARY)
 
         verify(exactly = 0) { service.create(any(), any(), any(), any(), any()) }
     }
@@ -625,13 +646,16 @@ class ValidatorControllerTest {
      * 이 401 은 Spring Security 필터가 아니라 `CurrentActor.current()` 가 컨트롤러 실행 중에 던진다
      * (`ManageSchemeGuard.requireManageScheme` → `CurrentActor`). 필터 체인에서 났다면
      * DispatcherServlet 앞이라 advice 가 잡을 수 없다.
+     *
+     * 이 건에는 카나리를 심을 자리가 없다 — 예외를 우리 코드가 던지므로 요청 값이 메시지에 들어가지
+     * 않는다. 그래서 메시지 정확 일치 하나로 잠근다.
      */
     @Test
     fun `미인증 요청은 401 과 error 봉투로 나간다`() {
         mockMvc.perform(get(basePath(existingTransitionKey)))
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error.code").value("WORKFLOW_UNAUTHENTICATED"))
-            .andExpect(jsonPath("$.error.message").isString)
+            .andExpect(jsonPath("$.error.message").value("인증이 필요합니다. 다시 로그인해 주세요."))
 
         verify(exactly = 0) { service.listForTransition(any(), any()) }
     }
@@ -777,5 +801,19 @@ class ValidatorControllerTest {
     private companion object {
         const val DENIED_ACTOR = "22222222-2222-2222-2222-222222222222"
         const val ALLOWED_ACTOR = "11111111-1111-1111-1111-111111111111"
+
+        /**
+         * 누수 카나리 — **요청에 심어 응답에 없음을 재는** 고유 토큰.
+         *
+         * 프레임워크 예외 메시지에는 요청 값이 그대로 들어간다(파라미터 이름·타입·본문 조각).
+         * 그것을 응답에 실으면 응답이 곧 내부 구조의 설명서가 된다 — 이 저장소에 그 사고 이력이
+         * 있다(`fr-pm-04-guard-exception-message-http-leak`).
+         *
+         * ★ 「허용된 메시지 집합」을 여기 들고 오지 않는 이유가 이것이다. 집합을 참조하면 그것이
+         * 또 하나의 목록이 되고 두 목록은 서로를 검사하지 않는다. 요청에 심은 토큰이 응답에
+         * **없음**만 재면 집합을 알 필요가 없다. 위 `403 본문에 actorId · permission · scope 가
+         * 없다` 가 쓰는 것과 같은 형태다.
+         */
+        const val LEAK_CANARY = "canary9f3a"
     }
 }
