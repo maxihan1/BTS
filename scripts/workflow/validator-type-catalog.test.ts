@@ -408,6 +408,26 @@ function sddConfigKeys(table: SddTable): Record<string, string[]> {
   return keys
 }
 
+/**
+ * 표의 타입 열과 **구현 클래스 열**을 같은 행에서 짝지어 읽는다.
+ *
+ * 집합이 아니라 행 단위로 대조해야 「클래스를 옆 행에 적어 둔」 어긋남까지 잡힌다 —
+ * [sddConfigKeys] 와 같은 이유다. 집합만 보면 두 행의 클래스를 **맞바꿔도** 양쪽 집합이
+ * 그대로라 초록이고, 그때 표는 각 type 을 엉뚱한 클래스에 매핑한 채 남는다.
+ */
+function sddClassByType(table: SddTable): Record<string, string> {
+  const typeColumn = table.header.findIndex((cell) => cell.startsWith(TYPE_COLUMN_PREFIX))
+  const implColumn = table.header.findIndex((cell) => cell.startsWith(IMPL_COLUMN_PREFIX))
+  if (typeColumn < 0 || implColumn < 0) return {}
+  const byType: Record<string, string> = {}
+  for (const row of table.rows) {
+    const type = (row[typeColumn] ?? '').replaceAll('`', '').trim()
+    if (type.length === 0) continue
+    byType[type] = (row[implColumn] ?? '').replaceAll('`', '').trim()
+  }
+  return byType
+}
+
 /** `left` 에만 있고 `right` 에는 없는 값. */
 function onlyIn(left: string[], right: string[]): string[] {
   const other = new Set(right)
@@ -429,8 +449,10 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
       implDir,
       documented: sddColumn(table, TYPE_COLUMN_PREFIX),
       implemented: factoryTypes(factory),
-      documentedClasses: sddColumn(table, IMPL_COLUMN_PREFIX),
-      implementedClasses: implementations.map((impl) => impl.className).sort(),
+      documentedClassByType: sddClassByType(table),
+      implementedClassByType: Object.fromEntries(
+        implementations.map((impl) => [impl.type, impl.className]),
+      ),
       documentedConfigKeys: sddConfigKeys(table),
       implementedConfigKeys: factoryConfigKeys(factory),
       instanceTypes: implementations.map((impl) => impl.type).sort(),
@@ -481,23 +503,50 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
     )
   }
 
-  test('SDD §7.3 표의 구현 클래스 열 = validator 패키지 구현체 클래스 집합', () => {
+  test('SDD §7.3 표의 구현 클래스 열 = validator 구현체 — type 별 짝', () => {
     assertClassCatalog(catalogs.validator)
   })
 
-  test('SDD §7.4 표의 구현 클래스 열 = postaction 패키지 구현체 클래스 집합', () => {
+  test('SDD §7.4 표의 구현 클래스 열 = postaction 구현체 — type 별 짝', () => {
     assertClassCatalog(catalogs.postAction)
   })
 
-  /** 축 3 — 표의 구현 클래스 열 ↔ `override val type` 을 선언한 실제 클래스. */
+  /**
+   * 축 3 — 표의 구현 클래스 열 ↔ `override val type` 을 선언한 실제 클래스. **행 단위로 대조한다.**
+   *
+   * 집합 대조였을 때 두 행의 클래스를 맞바꾸면 양쪽 집합이 그대로라 초록이었다(2026-08-26 게이트 2
+   * 라운드 3 실측 — `RequiredFieldValidator` ↔ `PermissionValidator` 스왑에 9/9 통과). 그러면 표는
+   * 각 type 을 엉뚱한 클래스에 매핑한 채 남고, 표를 읽어 구현을 찾는 사람이 잘못된 파일을 연다.
+   * 축 2 가 같은 이유로 이미 행 단위였는데 이 축만 집합이었다 — 파일 자신이 아는 규율을 한 축에만
+   * 적용한 자리다.
+   */
   function assertClassCatalog(catalog: Catalog): void {
-    assertSameSet(
-      { label: `${catalog.label} 표의 구현 클래스 열`, values: catalog.documentedClasses },
-      {
-        label: `${path.relative(REPO_ROOT, catalog.implDir)} 의 구현체 클래스`,
-        values: catalog.implementedClasses,
-      },
-      '구현체는 `override val type` 을 선언한 클래스로 센다. 개명·삭제했다면 표도 함께 고쳐라.',
+    const { label, implDir, documentedClassByType, implementedClassByType } = catalog
+    const types = [
+      ...new Set([
+        ...Object.keys(documentedClassByType),
+        ...Object.keys(implementedClassByType),
+      ]),
+    ].sort()
+    const show = (name: string | undefined): string =>
+      name === undefined ? '(그 type 의 행/구현체가 없음)' : name || '(칸이 비었음)'
+    const diverged = types.filter(
+      (type) => documentedClassByType[type] !== implementedClassByType[type],
+    )
+    assert.deepEqual(
+      documentedClassByType,
+      implementedClassByType,
+      `${label} 표의 '${IMPL_COLUMN_PREFIX} …' 열이 ` +
+        `${path.relative(REPO_ROOT, implDir)} 의 구현체와 어긋난다 — **코드가 정본**이니 표를 고쳐라.\n` +
+        diverged
+          .map(
+            (type) =>
+              `  ${type} — 표. ${show(documentedClassByType[type])}` +
+              ` / 코드. ${show(implementedClassByType[type])}`,
+          )
+          .join('\n') +
+        '\n  (구현체는 `override val type` 을 선언한 클래스로 센다. 같은 행의 type 과 클래스가 ' +
+        '짝이어야 하므로, 클래스를 옆 행에 적으면 집합이 같아도 red 다.)',
     )
   }
 
@@ -567,13 +616,13 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
       [`${catalogs.validator.label} 표의 타입 식별자 열`, catalogs.validator.documented, SDD_FILE],
       [`${catalogs.postAction.label} 표의 타입 식별자 열`, catalogs.postAction.documented, SDD_FILE],
       [
-        `${catalogs.validator.label} 표의 구현 클래스 열`,
-        catalogs.validator.documentedClasses,
+        `${catalogs.validator.label} 표의 type→구현 클래스 짝`,
+        Object.keys(catalogs.validator.documentedClassByType),
         SDD_FILE,
       ],
       [
-        `${catalogs.postAction.label} 표의 구현 클래스 열`,
-        catalogs.postAction.documentedClasses,
+        `${catalogs.postAction.label} 표의 type→구현 클래스 짝`,
+        Object.keys(catalogs.postAction.documentedClassByType),
         SDD_FILE,
       ],
       [
@@ -606,8 +655,16 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
         Object.values(catalogs.postAction.implementedConfigKeys).flat(),
         POST_ACTION_FACTORY,
       ],
-      ['validator 패키지 구현체 클래스', catalogs.validator.implementedClasses, VALIDATOR_DIR],
-      ['postaction 패키지 구현체 클래스', catalogs.postAction.implementedClasses, POST_ACTION_DIR],
+      [
+        'validator 구현체의 type→클래스 짝',
+        Object.keys(catalogs.validator.implementedClassByType),
+        VALIDATOR_DIR,
+      ],
+      [
+        'postaction 구현체의 type→클래스 짝',
+        Object.keys(catalogs.postAction.implementedClassByType),
+        POST_ACTION_DIR,
+      ],
       ['validator 구현체의 override val type', catalogs.validator.instanceTypes, VALIDATOR_DIR],
       ['postaction 구현체의 override val type', catalogs.postAction.instanceTypes, POST_ACTION_DIR],
     ]
