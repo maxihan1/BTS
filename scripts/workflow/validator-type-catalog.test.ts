@@ -12,7 +12,10 @@
 // 이 저장소가 이름 붙인 지배 결함 양식 `two-lists-never-check-each-other` 이다.
 // 이 판별식이 아래 축마다 두 목록의 차집합을 **양방향으로** 0 으로 강제한다.
 //
-// ## 무엇을 대조하나 — 축 7개
+// ## 무엇을 대조하나
+//
+// ★개수를 적지 않는다. 여기에 「축 N개」를 적으면 그것이 아래 표·코드에 이은 **세 번째 목록**이
+// 되고, 축 8 은 그 셋째를 보지 않는다. 종전에 「축 7개」라고 적혀 있었다.
 //
 // | 축 | 목록 ① | 목록 ② | 갈리면 무슨 일이 나나 |
 // |---|---|---|---|
@@ -23,6 +26,7 @@
 // | 5 읽기 형태 봉인 | 축 2 가 아는 config 읽기 헬퍼 | 팩토리가 실제로 부른 callee | 축 2 가 못 본 키는 문서화를 요구받지 못한다 |
 // | 6 폼 스키마 | 표 `필수 config 키` 열 | 편집 화면의 type 별 config 선언 | 갈린 사실이 저장 시점 400 으로만 드러난다 |
 // | 7 선언 형태 봉인 | 축 6 이 아는 선언 형태 | 편집 화면이 실제로 쓴 형태 | 축 6 이 못 본 키가 조용히 샌다 |
+// | 8 머리 표 봉인 | 이 표 | `축 N —` 마커에 붙은 판정 함수 | 이 표가 없는 검사를 있다고 말한다 |
 //
 // **config 키 축이 필요한 이유.** 요청·응답의 `config` 는 `Map<String, Any?>` 로 그대로 왕복해서
 // 타입별 필수 키가 계약 어디에도 없었다. 화면은 폼을 그리려고 그 키를 손으로 드는데, 틀리면 400 이다.
@@ -844,8 +848,74 @@ function onlyIn(left: string[], right: string[]): string[] {
   return left.filter((value) => !other.has(value))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 축 8 — 이 파일 머리의 축 표 ↔ 이 파일이 실제로 가진 축
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 이 판별식 파일 자신. 축 8 만 자기 소스를 읽는다. */
+const SELF_FILE = fileURLToPath(import.meta.url)
+
+/** 머리 축 표의 행 — `// | 5 읽기 형태 봉인 | … |`. 번호만 읽는다. */
+const HEADER_AXIS_ROW = /^\/\/ \|\s*(\d+)\s/
+
+/**
+ * 축 정의 마커 — `축 5 — …`.
+ *
+ * 파서 구획 주석 `축 6·7 —` 은 숫자 뒤가 `·` 라 매치되지 않는다. 한 축의 정의는 그 축을 실제로
+ * 재는 판정 함수에 붙은 것 하나뿐이어야 한다.
+ */
+const AXIS_DEFINITION = /축 (\d+) —/
+
+/** 축 정의 마커에 이어져야 하는 판정 함수. 이 결속이 축 8 을 주석만으로 만족시키지 못하게 한다. */
+const AXIS_ASSERT_FUNCTION = /^\s*function assert\w+\(/
+
+/** 축 번호를 숫자 순으로. 문자열 정렬이면 축이 10 을 넘는 날 `10` 이 `2` 앞에 선다. */
+function sortedAxisNumbers(values: Iterable<string>): string[] {
+  return [...new Set(values)].sort((left, right) => Number(left) - Number(right))
+}
+
+/** 머리 축 표가 선언한 축 번호. */
+function documentedAxes(source: string): string[] {
+  const rows = source
+    .split('\n')
+    .map((line) => HEADER_AXIS_ROW.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => match[1] as string)
+  return sortedAxisNumbers(rows)
+}
+
+/**
+ * 이 파일이 실제로 가진 축 번호 — `축 N —` 마커 **뒤에 판정 함수가 오는** 것만 센다.
+ *
+ * ★ 마커만으로 세면 이 축은 도움말 텍스트로 만족된다
+ * (`invariant-satisfied-by-helptext-not-logic`). 판정 함수를 지웠는데 KDoc 만 남은 자리가
+ * 초록이 되면, 표는 없는 검사를 있다고 말한 채 그대로 남는다.
+ *
+ * 다음 마커를 만나면 멈춘다 — 한 마커가 멀리 떨어진 남의 판정 함수를 자기 것으로 주워 오면
+ * 「축을 지웠는데 옆 축 덕분에 초록」이 된다.
+ */
+function implementedAxes(source: string): string[] {
+  const lines = source.split('\n')
+  const found: string[] = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const marker = AXIS_DEFINITION.exec(lines[i] ?? '')
+    if (marker === null) continue
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j] ?? ''
+      if (AXIS_DEFINITION.test(line)) break
+      if (AXIS_ASSERT_FUNCTION.test(line)) {
+        found.push(marker[1] as string)
+        break
+      }
+    }
+  }
+  return sortedAxisNumbers(found)
+}
+
 describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 정합', () => {
   const sdd = fs.readFileSync(SDD_FILE, 'utf-8')
+  /** 축 8 이 대조하는 두 목록은 둘 다 이 파일 안에 있다. */
+  const self = fs.readFileSync(SELF_FILE, 'utf-8')
 
   /** 한 규칙 종류(validator · post-action)에 대해 네 축이 읽어 온 값 전부. */
   function catalogOf(heading: string, label: string, factoryFile: string, implDir: string) {
@@ -1133,6 +1203,37 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
     )
   }
 
+  test('이 파일 머리의 축 표 = 이 파일이 실제로 가진 축', () => {
+    assertSelfAxisTable(self)
+  })
+
+  /**
+   * 축 8 — 머리의 축 표 ↔ `축 N —` 마커에 판정 함수가 붙은 축.
+   *
+   * 2026-08-26 실측 — 이 파일 머리의 표가 「축 4개」라고 적고 있는 동안 **코드에는 이미
+   * 축 5(읽기 형태 봉인)가 있었다.** 표를 읽고 「이건 이미 검사되고 있구나」라고 믿은 사람이
+   * 없는 검사를 전제로 코드를 짜고, 반대로 있는 검사를 표가 빠뜨리면 다음 사람이 그것을 다시
+   * 만든다. 이 파일이 스스로 이름 붙인 지배 결함 양식(`two-lists-never-check-each-other`)을
+   * 자기 문서에서 재생산한 자리였다.
+   *
+   * ★ 축 **이름**은 대조하지 않는다. 표의 어휘와 테스트 제목의 어휘가 일관되지 않아서다 —
+   * 축 1 은 표에서 「타입」인데 제목은 `type` 이고, 축 3 「구현 클래스」·축 6 「폼 스키마」는
+   * 제목에 그대로 있다. 지금 이름을 대조하면 false red 가 난다. 번호가 정본이고, 이름 대조는
+   * 어휘를 먼저 통일한 뒤의 일이다.
+   *
+   * ★★ 개수를 적지 않는다. 머리 주석이 「축 N개」를 적으면 그것이 표·코드에 이은 **세 번째
+   * 목록**이 되고, 이 축은 그 셋째를 보지 않는다.
+   */
+  function assertSelfAxisTable(source: string): void {
+    assertSameSet(
+      { label: '이 파일 머리의 축 표', values: documentedAxes(source) },
+      { label: '`축 N —` 마커에 판정 함수가 붙은 축', values: implementedAxes(source) },
+      '표가 축을 빠뜨리면 다음 사람이 있는 검사를 다시 만들고, 표가 없는 축을 적으면 없는 ' +
+        '검사를 전제로 코드를 짠다. 축을 늘렸으면 표에 행을 더하고, 표에서 지웠으면 판정 함수도 ' +
+        '지워라.',
+    )
+  }
+
   test('뽑아낸 집합이 하나도 비어 있지 않다 (비-공허 짝)', () => {
     // 파서가 0건을 뱉으면 위 차집합 단언들이 공허하게 0 이 되어 아무것도 안 지키면서 초록이 된다.
     const probes: readonly (readonly [string, readonly unknown[], string | readonly string[]])[] = [
@@ -1210,6 +1311,8 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
         Object.values(fronts.postAction.configKeys).flat(),
         POST_ACTION_FORM_FILES,
       ],
+      ['이 파일 머리의 축 표', documentedAxes(self), SELF_FILE],
+      ['`축 N —` 마커에 판정 함수가 붙은 축', implementedAxes(self), SELF_FILE],
     ]
 
     for (const [label, values, source] of probes) {
