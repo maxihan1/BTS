@@ -580,6 +580,62 @@ class ValidatorControllerTest {
         assertThat(editableOf(data.path(2))).isTrue()
     }
 
+    // ── 프레임워크 예외 3종 — 도메인 봉투 밖으로 새지 않는다 (부채 1 · FR-10) ────────
+    //
+    // 상태 코드만 재면 공허하다. 스프링 기본 응답도 같은 상태를 내면서 본문은 `timestamp`/`path`/
+    // `status` 형식이라, 화면이 `error.code` 로 분기하려는 자리가 비고 「알 수 없는 오류」로 뭉개진다.
+    // 그래서 셋 다 **상태 + `error.code` 값 + `error.message` 존재**를 함께 단언한다.
+    //
+    // 코드 문자열은 리터럴로 적는다. 형제 [com.bts.workflow.postaction.web.PostActionControllerTest]
+    // 가 **같은 리터럴**을 적고 있고, 「두 표면이 같은 코드를 쓴다」는 계약을 지키는 것은 그 대칭뿐이다
+    // — 양쪽이 구현 상수를 import 하면 상수 한 벌이 갈려도 둘 다 초록이 된다.
+    //
+    // 400 두 건에 권한 stub 이 없는 것은 실수가 아니다. 두 예외는 **인자 해석 단계**에서 나므로
+    // 컨트롤러 본문(=권한 가드)보다 앞선다. stub 을 깔면 검사되지 않는 죽은 셋업이 된다.
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `비-UUID id 는 400 과 error 봉투로 나간다`() {
+        mockMvc.perform(delete("${basePath(existingTransitionKey)}/not-a-uuid"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.message").isString)
+
+        verify(exactly = 0) { service.delete(any(), any(), any()) }
+    }
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `깨진 JSON 본문은 400 과 error 봉투로 나간다`() {
+        mockMvc.perform(
+            post(basePath(existingTransitionKey))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"type": """),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.message").isString)
+
+        verify(exactly = 0) { service.create(any(), any(), any(), any(), any()) }
+    }
+
+    /**
+     * 미인증 — `@WithMockUser` 를 **일부러 붙이지 않는다**.
+     *
+     * 이 401 은 Spring Security 필터가 아니라 `CurrentActor.current()` 가 컨트롤러 실행 중에 던진다
+     * (`ManageSchemeGuard.requireManageScheme` → `CurrentActor`). 필터 체인에서 났다면
+     * DispatcherServlet 앞이라 advice 가 잡을 수 없다.
+     */
+    @Test
+    fun `미인증 요청은 401 과 error 봉투로 나간다`() {
+        mockMvc.perform(get(basePath(existingTransitionKey)))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_UNAUTHENTICATED"))
+            .andExpect(jsonPath("$.error.message").isString)
+
+        verify(exactly = 0) { service.listForTransition(any(), any()) }
+    }
+
     // ── fixture ───────────────────────────────────────────────────────────────
 
     private fun basePath(transitionKey: String): String {
