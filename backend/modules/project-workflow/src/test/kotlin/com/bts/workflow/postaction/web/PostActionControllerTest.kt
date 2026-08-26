@@ -49,7 +49,7 @@ import java.util.UUID
  * - POST   .../post-actions → 201 + 생성된 행
  * - PUT    .../post-actions/{id} → 200 + 수정된 행
  * - DELETE .../post-actions/{id} → 204
- * - 권한 없음 → 403 (Guard 가 service 호출 전에 동작)
+ * - 권한 없음 → 403 (GET/POST/PUT/DELETE 4개 전부 · Guard 가 service 호출 전에 동작)
  * - 전환 미존재 → 404
  * - 검증 실패 → 400
  */
@@ -285,6 +285,57 @@ class PostActionControllerTest {
             .andExpect(status().isForbidden)
 
         verify(exactly = 0) { service.listForTransition(any(), any()) }
+    }
+
+    @Test
+    @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
+    fun `권한 없음 - PUT 도 403`() {
+        every {
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowSchemeScope.Global,
+            )
+
+        val requestBody = mapOf("type" to "CALL_WEBHOOK", "config" to emptyMap<String, Any>(), "displayOrder" to 0)
+
+        mockMvc.perform(
+            put("$basePath/$postActionId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody)),
+        )
+            .andExpect(status().isForbidden)
+
+        // 403 만 재면 「가드는 없는데 우연히 403」과 구별되지 않는다. 수정 대상 조회 이전에 끊겼음을 못박는다.
+        verify(exactly = 0) { service.update(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
+    fun `권한 없음 - DELETE 도 403`() {
+        every {
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowSchemeScope.Global,
+            )
+
+        mockMvc.perform(delete("$basePath/$postActionId"))
+            .andExpect(status().isForbidden)
+
+        verify(exactly = 0) { service.delete(any(), any(), any()) }
     }
 
     // ── 404 전환 미존재 ────────────────────────────────────────────────────────
