@@ -828,17 +828,106 @@ IDOR) ② E4 — `delete` 의 소속 확인 ③ `update` 성공 경로(FR-3 이 
 **결함 자체의 판단은 그대로다** — GLOBAL·INITIAL 이 나란히 예약 토큰인데 INITIAL 만 도달 불가라는 것.
 
 
+### Task 20~24 — 게이트 2 라운드 3 반영 (Maxi 결정 2026-08-26)
+
+> 렌즈 5종이 냈고 Maxi 가 「차단 2 + 권장 3 전부」를 선택했다. 아래 5 task 가 그 전량이다.
+> 렌즈별 원문은 `## 리뷰 결과 (PR 단위)` 라운드 3 절에 있다.
+
+### Task 20. 하드 삭제 인가 확정  [BLOCKER 해소]
+
+- files: [`docs/adr/2026-08-25-workflow-transition-rule-hard-delete.md`, `DATA.md`]
+- depends-on: [10]
+
+`DATA.md §1` 원칙 2 는 「하드 삭제는 ADR **+ Maxi 확인** 필수」다. Task 10 이 ADR 을 세웠으나
+**ADR 자신이 상태를 「제안(Proposed) — Maxi 확정 대기」로 열어 두고** 게이트 2 승인을 조건으로 걸었고,
+`DATA.md §3` 등재 꼬리도 같은 이유로 홀로 「Maxi 확정 대기」였다(나머지 8건은 「Maxi 확정」).
+2026-08-26 게이트 2 에서 인가가 나와 **두 줄을 함께** 뒤집는다. 한쪽만 올리면 「승인 대기」로 읽히는
+예외 한 줄이 main 에 남는데, ADR 잔여 위험 4 가 적었듯 **허용 목록 ↔ 실제 `deleteFrom` 집합을 대조하는
+판별식이 없어** 사람 말고는 아무도 안 본다. 표기는 저장소 관례인 「채택 (Active)」를 쓰고, ADR 이
+예고한 「Accepted」와 다르다는 사실을 같은 줄에 적는다.
+
+### Task 21. `CHANGELOG.md` 동기화  [BLOCKER 해소]
+
+- files: [`CHANGELOG.md`]
+- depends-on: []
+
+`CHANGELOG.md` BC 표가 FR-WF-06 을 **「미착수」**로 적고, 같은 저장소의 `CLAUDE.md` 와
+`docs/plan/product/project-workflow.md` 는 「#404 로 D1·D2·D4·D5 완료」로 적었다. 어느 쪽이 낡았는지
+문서 안에 근거가 없다.
+> **Task 11 이 「전수」를 자칭했으나 `fr-sync-checklist.md` 9개 항목 중 2개만 담았다.** 9번
+> (`CHANGELOG.md`)이 통째로 빠진 자리다. 그리고 **두 자동 게이트 다 이걸 못 본다** —
+> `verify-master-plan.sh` PASS · `build-doc-index --check` drift 0. Task 11 이 스스로 적은
+> 「양쪽이 똑같이 낡으면 공허하게 통과한다」가 한 칸 옆에서 재발했다.
+
+선례가 per-PR 단계로 못박는다 — #398(`a648e5dee`) · #400(`19cd87f31`) **둘 다** 같은 커밋에서
+`CHANGELOG.md` 를 고쳤다. 2026-08-18 문단은 시점 기록이라 원문을 두고 갱신을 덧붙인다.
+
+### Task 22. 판별식 축 3 을 행 단위 대조로  [fake green 해소]
+
+- files: [`scripts/workflow/validator-type-catalog.test.ts`]
+- depends-on: [13]
+
+축 3(표의 구현 클래스 열 ↔ 실제 클래스)이 **집합**으로 대조하고 있었다. SDD §7.3 에서
+`RequiredFieldValidator` 와 `PermissionValidator` 를 두 행 사이에 맞바꾸면 집합은 그대로라
+**9/9 통과**였다(2026-08-26 실측). 표는 각 type 을 엉뚱한 클래스에 매핑한 채 초록이고, 표를 읽어
+구현을 찾는 사람이 잘못된 파일을 연다.
+**같은 파일 축 2 는 이미 행 단위였고 그 KDoc 이 이유까지 적어 뒀다** — 「집합이 아니라 행 단위로
+대조해야 키를 옆 행에 적어 둔 어긋남까지 잡힌다」. 파일 자신이 아는 규율을 한 축에만 적용한 자리다.
+`sddClassByType` 으로 표의 type↔클래스를 같은 행에서 짝짓고 구현체 쪽도 `override val type` 을 키로
+`Record` 를 만들어 `deepEqual` 한다. 비-공허 짝도 짝의 키 개수 기준으로 옮긴다.
+**red 확인 필수** — 같은 스왑에 fail 1 이고 어긋난 두 행을 이름으로 지목해야 한다. 테스트 제목의
+「집합」도 함께 고친다(제목이 판정을 잘못 설명하면 이 축을 집합으로 되돌려도 아무도 못 본다).
+
+### Task 23. 축 2 가 못 읽는 config 형태를 축 5 로 봉인  [무음 통과 해소]
+
+- files: [`scripts/workflow/validator-type-catalog.test.ts`]
+- depends-on: [22]
+
+축 2 는 차집합이라 양방향 어긋남을 잡지만, 코드가 **축 2 가 모르는 형태**로 키를 읽으면 그 키는
+애초에 코드 쪽 집합에 안 들어가 차집합이 0 이 된다. 차집합이 못 보는 자리다. 구멍은 둘인데 원인이
+하나다 — **callee 이름이 허용 집합 밖**.
+
+① **네 번째 헬퍼**. `requireConfigInt(config, "maxLength")` 는 정규식 3종에 안 걸려 표가 그 키를
+   요구하지 않는다(축 5 이전 실측 9/9 통과).
+② **한 단계 위임**. `requireConfigString` 을 private helper 로 빼고 `fieldOf(config)` 로 부르면 축 2 가
+   키를 0건으로 보고 「**코드가 정본이니 표를 고쳐라**」로 red 를 낸다. 그 지시를 따르면 아직 필요한
+   키를 문서에서 지우고 초록이 된다 — **실패 메시지가 잘못된 처방을 유도한다.**
+
+`create*` 본문에서 `config` 를 넘기는 호출의 callee 를 전부 모아 허용 집합 밖이면 red 를 낸다.
+**red 확인 필수** — ①에 fail 1 · ②에 fail 2 이고, ②에서는 축 2 의 오도 메시지와 축 5 의
+「표를 고쳐서 지우지 마라. 헬퍼 패턴을 등재해라」가 **같은 화면에 함께** 떠야 한다.
+
+### Task 24. 문서 정합 3곳
+
+- files: [`docs/sdd/07-workflow-engine.md`, `docs/plans/2026-08-25-backend-workflow-transition-rule-crud.md`]
+- depends-on: [7]
+
+① **SDD §7.5** 헤더가 아직 `FR-WF-04~07 … 미구현` 이고 본문이 「코드는 아직 §7.1~§7.4 그대로다」라고
+   적는다 — **이 PR 이 §7.3·§7.4 를 다시 쓴 바로 그 파일이다.** 읽는 사람은 워크플로우 편집이 아직
+   코드에 없다고 결론 낸다. 선재 drift 지만 이번 PR 이 그 파일을 열었으므로 여기가 닫을 자리다.
+② **`NOT in scope` 표**가 `TransitionRuleRepository` 공통화를 「D6 이후 별도 PR」로 적는데, 같은
+   문서의 게이트 1 결정이 ⓑ 로 뒤집었고 Task 2 가 이미 했다. 「미룬 것」으로 읽으면 D6 계획이 이미
+   머지된 작업을 다시 세우거나 두 번째 기반 클래스를 뽑는다.
+③ **실패 모드 표의 task 번호 3곳**이 7→8 재번호를 안 따라갔다(판별식 → Task 7 · 엔진 통합 → Task 6).
+   실패 모드 표는 「실패 모드 → 그것을 덮는 테스트」 지도라 포인터가 어긋나면 커버리지 감사가 엉뚱한
+   task 에 착지한다.
+④ 덤으로 **개수 2곳을 지운다** — 「예상 wave. 9」인데 열거는 5개, 「나머지 5건」인데 9 − 3 = 6.
+   저장소가 이미 이름 붙인 함정(「N건」은 눈가리개)이 자기 plan 안에서 재발했다.
+
+
 ## Plan 메타
 
-- **task 수**. 19 (Task 9 는 구현 중 발견 · Task 10~17 은 게이트 2 라운드 1 · Task 18·19 는 라운드 2)
-- **예상 wave**. 9
+- **task 수**. 24 (Task 9 는 구현 중 발견 · Task 10~17 은 게이트 2 라운드 1 · Task 18·19 는 라운드 2 · Task 20~24 는 라운드 3)
+- **예상 wave**. 아래 열거가 전부다 (Task 10~19 는 게이트 2 라운드에서 붙어 wave 배정이 없다)
   - wave 1 — Task 1 · 2 · 7 (`depends-on: []`, `files` 교집합 0)
   - wave 2 — Task 3 (2) · Task 8 (1 · `PostActionAdminService.kt` 파일 겹침으로 자동 직렬)
   - wave 3 — Task 4 (1, 3)
   - wave 4 — Task 5 (4) · Task 6 (4)
   - wave 5 — Task 9 (4, 5, 6) · 구현 중 발견분 정리
 - **구현 규율**. TDD red-first. 예외 3건을 명시한다 — Task 1·2(순수 리팩터, **기존 테스트가 안전망이자
-  회귀 판정자**) · Task 8(주석, grep 검증). 나머지 5건은 red 를 먼저 본다
+  회귀 판정자**) · Task 8(주석, grep 검증). **나머지는 전부** red 를 먼저 본다
+  > 개수를 적지 않는다. 원래 「나머지 5건」이라 적혀 있었으나 9 − 3 = 6 이라 처음부터 틀렸고, 
+  > `docs/rules/traps.md` 가 이미 이름 붙인 함정(「N건」은 눈가리개)이 자기 plan 안에서 재발한 자리다.
 - **회귀 표면 1곳**. Task 2 가 운영 중인 `PostActionRepository` 를 옮긴다. 방어는 `typealias` 로
   호출부 무변경 + 이행 전후 post-action 테스트 전량 대조
 - **추가 검증**. `./gradlew :modules:project-workflow:test ktlintCheck detekt` ·
@@ -912,7 +1001,7 @@ IDOR) ② E4 — `delete` 의 소속 확인 ③ `update` 성공 경로(FR-3 이 
 | `CustomExpression` 편집 허용 | Jira Cloud 내장 9종에 자유 표현식 입력칸이 없다. `SpelEvaluator` 절대 계약도 유지된다 |
 | Jira `Regular Expression Check` 대응 규칙 신설 | 후속 FR 후보. 자유 표현식 대신 목적 특화 규칙이 Atlassian 의 처방 |
 | validator 종류 확충 (Jira 9종 ↔ BTS 4종) | 별도 FR |
-| `TransitionRuleRepository` 공통화 | 주의 2 ⓑ. D6 이후 별도 PR |
+| ~~`TransitionRuleRepository` 공통화~~ | **범위 안으로 들어왔다** — 게이트 1 이 주의 2 를 ⓑ 로 정해 Task 2 가 이 PR 에서 했다. 「미룬 것」으로 읽으면 D6 계획이 이미 머지된 작업을 다시 세우거나 두 번째 기반 클래스를 뽑는다 |
 | Jira 새 편집기의 사이드 패널 · Rules 4그룹 | D6 PR 에서 Maxi 결정 — post-action UI 도 함께 옮겨야 한다 |
 | `workflow_validators` 스키마 변경 | 불필요. V200 기존 테이블 그대로 |
 
@@ -932,11 +1021,11 @@ IDOR) ② E4 — `delete` 의 소속 확인 ③ `update` 성공 경로(FR-3 이 
 
 | 경로 | 프로덕션 실패 | 테스트 | 에러 처리 | 사용자에게 보이나 |
 |---|---|---|---|---|
-| `POST/PUT` config 검증 | 팩토리가 새 type 을 알지만 SDD 표는 모르는 상태로 갈림 | Task 6 판별식 | — | ✅ 판별식이 push 를 막는다 |
+| `POST/PUT` config 검증 | 팩토리가 새 type 을 알지만 SDD 표는 모르는 상태로 갈림 | Task 7 판별식 | — | ✅ 판별식이 push 를 막는다 |
 | `PUT` type 교체 | `RequiredField` → `CustomExpression` 로 몰래 바뀜 | **C1 로 보강** | 400 | ✅ |
 | 권한 거부 | 검사 순서가 뒤집혀 404/403 이 존재를 누설 | **C2 로 보강** | 403 고정 본문 | ✅ |
-| 규칙 저장 후 미반영 | 엔진이 낡은 값을 본다 | Task 5 | — | ✅ 통합 테스트가 실행 경로를 태운다 |
-| `RequiredField` 목록 미차단 | phase 를 착각해 가짜 그린 | Task 5 (두 phase 분리) | — | ⚠ **테스트 설계로만 막힌다** — Task 5 경고문이 그 방어다 |
+| 규칙 저장 후 미반영 | 엔진이 낡은 값을 본다 | Task 6 | — | ✅ 통합 테스트가 실행 경로를 태운다 |
+| `RequiredField` 목록 미차단 | phase 를 착각해 가짜 그린 | Task 6 (두 phase 분리) | — | ⚠ **테스트 설계로만 막힌다** — Task 6 경고문이 그 방어다 |
 
 **침묵 실패(무테스트 + 무처리) 0건.**
 
@@ -953,7 +1042,7 @@ wave 안의 동시성은 `bts-impl` 의 dispatch 로 충분하다.
 |---|---|---|---|
 | 1 | 2026-08-25 | Task 10~17 | 지적 26건 전량 반영 (Maxi 결정 — 「전부 고치고 재리뷰」) |
 | 2 | 2026-08-26 | Task 18·19 | 반영 완료 |
-| 3 | — | — | 미실시 |
+| 3 | 2026-08-26 | Task 20~24 | 렌즈 5종 · **코드 결함 0** · BLOCKER 2 전부 문서 · 전량 반영 |
 
 ### ★ 렌즈별 원문이 보존되지 않았다
 
@@ -970,3 +1059,41 @@ wave 안의 동시성은 `bts-impl` 의 dispatch 로 충분하다.
 
 **후속 규율.** 이 PR 이후 게이트 2 는 라운드마다 렌즈별 원문을 이 절에 **먼저 붙이고** task 등재로
 넘어간다. 반영·기각을 같은 표에 적어 기각 사유를 남긴다.
+
+### 라운드 3 원문 (2026-08-26) — 이번 라운드부터 보존한다
+
+**렌즈 5종.** `code-reviewer`(절대 규칙 정합) · `/review` 가 발행한 4 specialist —
+`security` · `api-contract` · `testing` · `maintainability`.
+**Pass 0.** detekt `--rerun-tasks` BUILD SUCCESSFUL(캐시가 가린 위반 없음) · 미커밋 잔여물 0 ·
+마이그레이션 0건이라 `init_codegen` 미러·Flyway V번호 항목 비해당.
+
+| # | 렌즈 | 지적 | 판정 | 반영 |
+|---|---|---|---|---|
+| R3-1 | code-reviewer | 하드 삭제 ADR 이 `제안` · `DATA.md` 꼬리가 `Maxi 확정 대기` | **BLOCKER** | Task 20 |
+| R3-2 | code-reviewer | `CHANGELOG.md` 가 FR-WF-06 을 「미착수」로 적어 이 PR 을 부정 | **BLOCKER** | Task 21 |
+| R3-3 | testing | 판별식 축 3 이 집합 대조라 행 스왑에 초록 (뮤테이션 실증) | CONCERNS | Task 22 |
+| R3-4 | code-reviewer · testing | 축 2 가 네 번째 헬퍼 형태와 한 단계 위임을 무음 통과 | CONCERNS | Task 23 |
+| R3-5 | code-reviewer · maintainability | SDD §7.5 「미구현」 잔존 (2렌즈 독립 지적) | CONCERNS | Task 24 ① |
+| R3-6 | code-reviewer · maintainability | `NOT in scope` 표가 게이트 1 뒤집힘을 안 따라감 (2렌즈) | CONCERNS | Task 24 ② |
+| R3-7 | code-reviewer | 실패 모드 표 task 번호 3곳이 7→8 재번호 미반영 | CONCERNS | Task 24 ③ |
+| R3-8 | code-reviewer · maintainability | 「예상 wave 9」·「나머지 5건」 개수 오류 (2렌즈) | CONCERNS | Task 24 ④ |
+
+**기각·미반영 — 사유를 남긴다.**
+
+| # | 렌즈 | 지적 | 기각 사유 |
+|---|---|---|---|
+| R3-9 | api-contract | 프레임워크 예외 3종(비-UUID `{id}` · 깨진 JSON · 미인증 401)이 에러 봉투 밖 | **PRE_EXISTING.** `project-workflow` 모듈 전체에 그 3종 advice 가 0건이고 형제 `PostActionExceptionHandler` 도 `main` 에서 3종만 다룬다 — 이 PR 이 만든 구멍이 아니다. 체크리스트 Pass 0 이 「표기만, 차단 금지」로 규정. 덧붙여 제시된 `search-export-import` 선례는 `ProblemDetail`(RFC 7807) 반환이라 그대로 이식하면 이 BC 의 `ErrorResponse` 계약이 깨진다. **후속 부채로 남긴다** |
+| R3-10 | api-contract | `ValidatorResponse` 에 `editable` 플래그 추가 | 설계 제안이고 D6 착수 시 재검토가 낫다. Task 14 의 `phase` 논거와 대칭이라는 지적은 타당하나, 지금 넣으면 D6 없이 계약만 넓어진다 |
+| R3-11 | api-contract | 편집 불가 조건이 계약 문서엔 `type=CustomExpression`, 코드는 allowlist | 유효하나 **현재 동작은 정확**하다(팩토리 분기가 4개라 두 표현이 일치). 5번째 type 이 생기는 시점의 부채로 남긴다 |
+| R3-12 | api-contract | 정렬 2차 키가 컨트롤러 KDoc·FR-1 에 없음 | 리포지토리 계약·테스트·기반 클래스 KDoc 에 있고 동작은 확정적이다. 경미 |
+| R3-13 | security | `config` JSONB 크기·키 무제한 | MANAGE_SCHEME/Global(운영에선 시스템 관리자) 뒤라 권한 상승 경로가 아니다. 저장·가용성 관심사로 후속 |
+| R3-14 | security | 변경 로그에 행위자(actor) 미기록 | 형제 `PostActionAdminService` 와 같은 상태. MDC 필터가 모듈 전체에 없어 이 PR 범위를 넘는다 |
+| R3-15 | maintainability | `PostActionControllerTest` 의 403 스텁 4벌 · 허용 목록 KDoc 3벌 · 403 응답 본문 2벌 · 팩토리 헤더 `4종/5종` 표기 · `transitionId` 섀도잉 | 전부 타당한 정리이나 **동작 영향 0**이고 이 라운드의 차단·fake green 을 닫는 것이 우선이다. 후속 정리 대상 |
+
+> **`security` 렌즈는 핵심 6항목을 전부 clean 으로 확인했다** — 가드 fail-closed(`CurrentActor` 401 ·
+> `ActorId` UUID 검사 · prod 리졸버 deny-by-default · 스텁은 `@Profile("!prod")`) · cross-workflow IDOR
+> 없음(`resolveById` 가 `WORKFLOWS.KEY` 와 `DELETED_AT IS NULL` 을 같은 쿼리에 걸고 `update`/`delete` 가
+> 소속 확인을 같은 트랜잭션 안에서 선행) · 403/404 존재 누출 없음 · `ValidatorExceptionHandler` 가 형제
+> advice 매핑을 안 뺏음(`@Order` 없음 · basePackages 한정) · SpEL 도달 불가 · `@Transactional` 전 경로.
+
+**남은 부채.** R3-9 · R3-10 · R3-11 · R3-13 · R3-14 · R3-15 는 `TODOS.md` 등재 대상이다 (머지 후 배치).
