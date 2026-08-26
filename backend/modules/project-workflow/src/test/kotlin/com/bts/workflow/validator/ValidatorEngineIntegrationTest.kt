@@ -92,12 +92,14 @@ class ValidatorEngineIntegrationTest {
 
         // `not-status-category` 는 **출발** 상태 카테고리를 본다.
         private const val FROM_CATEGORY = "TODO"
+
         // `CustomExpression` 은 이 경로에서 쓰지 않지만 팩토리가 SpelEvaluator 를 요구한다.
         private val spelExecutor = Executors.newCachedThreadPool()
 
         lateinit var service: ValidatorAdminService
         lateinit var engine: WorkflowEngine
         lateinit var txTemplate: TransactionTemplate
+
         /** phase 별 전용 전환. 값은 경로 세그먼트와 같은 전환 id 문자열이다. */
         lateinit var executionTransitionKey: String
         lateinit var availabilityTransitionKey: String
