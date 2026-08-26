@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { server } from '@/test/server'
+import { handlers } from '@/mocks/handlers'
 import { ValidatorApiError } from '@/api/validators'
 import {
   SEEDED_VALIDATOR_TRANSITION_ID,
@@ -48,6 +49,11 @@ function wrapperOf(client: QueryClient) {
 }
 
 beforeEach(() => {
+  // ★ 개별 핸들러가 아니라 **통합 배열**을 켠다. `src/test/server` 의 기본 목록에는 refresh 하나뿐이라
+  //   유닛 테스트는 쓸 핸들러를 직접 켜야 하는데, 여기서 `validatorHandlers` 를 직접 spread 하면
+  //   `mocks/handlers.ts` 등록을 빠뜨려도 초록이 된다 — 그러면 화면(Task 6·8)만 요청이 안 잡힌다.
+  //   통합 배열을 켜면 등록 누락이 이 파일에서 red 로 드러난다.
+  server.use(...handlers)
   // 목 store 는 모듈 스코프다 — 만든 행이 다음 테스트로 새지 않게 시드 상태로 되돌린다.
   resetValidatorStore()
 })

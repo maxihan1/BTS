@@ -52,6 +52,7 @@ import { statusHandlers } from './status-handlers'
 import { oooHandlers } from './ooo-handlers'
 import { trustedDevicesHandlers } from './trusted-devices-handlers'
 import { userHandlers } from './user-handlers'
+import { validatorHandlers } from './validator-handlers'
 import { versionHandlers } from './version-handlers'
 import { webauthnHandlers } from './webauthn-handlers'
 import { webhookHandlers } from './webhook-handlers'
@@ -139,6 +140,9 @@ export const handlers = [
   ...oooHandlers,
   ...trustedDevicesHandlers,
   ...userHandlers,
+  // 전환 규칙 CRUD. 경로 세그먼트 수가 workflow/workflowAdmin 목과 달라 순서에 영향받지 않는다
+  // (`…/transitions/:id` 5세그먼트 vs `…/transitions/:id/validators` 6세그먼트).
+  ...validatorHandlers,
   ...versionHandlers,
   ...webauthnHandlers,
   ...webhookHandlers,
