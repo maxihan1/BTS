@@ -277,6 +277,10 @@ describe('TODOS.md — 비개발자 계약', () => {
       // 2026-08-24 추가 — identity-access 영역 부채가 처음 등재됐다(장부 108, 응답 규약 이원화).
       // 인증/권한 BC 이지만 사용자에게는 「기능이 되느냐」로 나타나므로 `기능 동작` 이다.
       'identity-access': CATEGORIES.feature.name,
+      // 2026-08-26 추가 — project-workflow 영역 부채가 처음 등재됐다(장부 130~135, PR #404 잔여).
+      // 워크플로우 **BC** 다. 접두 `워크플로우` 는 판별식·스킬 체인을 뜻하므로 그쪽과 다르고,
+      // 사용자에게는 「전환 규칙이 되느냐」로 나타나므로 `기능 동작` 이다(identity-access 와 같은 논리).
+      'project-workflow': CATEGORIES.feature.name,
       'search-export-import': CATEGORIES.feature.name,
       '도구': CATEGORIES.guard.name,
       '워크플로우': CATEGORIES.guard.name,
