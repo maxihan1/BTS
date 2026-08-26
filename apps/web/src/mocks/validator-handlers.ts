@@ -76,7 +76,7 @@ export const SEEDED_VALIDATOR_TRANSITION_ID: string = seededTransition.id
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 시드 행 전수를 새로 만든다.
+ * 시드 행 전수의 **원본**. 이 상수를 직접 쓰지 말고 [seedRows] 로 복제해 쓴다.
  *
  * `phase` 는 backend 가 **인스턴스에서 읽는 값**이라 목이 아무 값이나 주면 화면이 거짓을 배운다.
  * 4종 중 `RequiredFieldValidator` 만 `override val phase = EXECUTION` 이고 나머지 셋은 SPI 기본값
@@ -84,52 +84,60 @@ export const SEEDED_VALIDATOR_TRANSITION_ID: string = seededTransition.id
  *
  * 마지막 행은 **손으로 깨뜨린 행**이다 — `type = RequiredField` 인데 `config` 에 `field` 가 없어
  * 팩토리가 인스턴스를 만들지 못한다. 그 행은 `phase = null` 과 `editable = false` 가 짝을 이룬다.
+ */
+const SEED_ROWS: readonly ValidatorResponse[] = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    type: VALIDATOR_TYPES.requiredField,
+    config: { field: 'resolution' },
+    displayOrder: 0,
+    phase: 'EXECUTION',
+    editable: true,
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222222',
+    type: VALIDATOR_TYPES.permissionCheck,
+    config: { permission: 'TRANSITION_ISSUE', scope: 'ISSUE' },
+    displayOrder: 1,
+    phase: 'AVAILABILITY',
+    editable: true,
+  },
+  {
+    id: '33333333-3333-4333-8333-333333333333',
+    type: VALIDATOR_TYPES.notStatusCategory,
+    config: { category: 'DONE' },
+    displayOrder: 2,
+    phase: 'AVAILABILITY',
+    editable: true,
+  },
+  {
+    id: '44444444-4444-4444-8444-444444444444',
+    type: VALIDATOR_TYPES.customExpression,
+    config: { expression: 'issue.assignee != null' },
+    displayOrder: 3,
+    phase: 'AVAILABILITY',
+    editable: false,
+  },
+  {
+    id: '55555555-5555-4555-8555-555555555555',
+    type: VALIDATOR_TYPES.requiredField,
+    config: {},
+    displayOrder: 4,
+  phase: null,
+  editable: false,
+},
+]
+
+/**
+ * 시드 행 전수를 **새 객체로** 만든다.
+ *
+ * [SEED_ROWS] 를 그대로 돌려주면 한 테스트가 `config` 를 변형했을 때 그 변형이 다음 테스트로 샌다 —
+ * `resetValidatorStore` 가 「원래대로」를 보장하지 못하게 된다. 그래서 행과 `config` 를 함께 복제한다.
  *
  * @return 시드 행 배열 (displayOrder 오름차순).
  */
 function seedRows(): ValidatorResponse[] {
-  return [
-    {
-      id: '11111111-1111-4111-8111-111111111111',
-      type: VALIDATOR_TYPES.requiredField,
-      config: { field: 'resolution' },
-      displayOrder: 0,
-      phase: 'EXECUTION',
-      editable: true,
-    },
-    {
-      id: '22222222-2222-4222-8222-222222222222',
-      type: VALIDATOR_TYPES.permissionCheck,
-      config: { permission: 'TRANSITION_ISSUE', scope: 'ISSUE' },
-      displayOrder: 1,
-      phase: 'AVAILABILITY',
-      editable: true,
-    },
-    {
-      id: '33333333-3333-4333-8333-333333333333',
-      type: VALIDATOR_TYPES.notStatusCategory,
-      config: { category: 'DONE' },
-      displayOrder: 2,
-      phase: 'AVAILABILITY',
-      editable: true,
-    },
-    {
-      id: '44444444-4444-4444-8444-444444444444',
-      type: VALIDATOR_TYPES.customExpression,
-      config: { expression: 'issue.assignee != null' },
-      displayOrder: 3,
-      phase: 'AVAILABILITY',
-      editable: false,
-    },
-    {
-      id: '55555555-5555-4555-8555-555555555555',
-      type: VALIDATOR_TYPES.requiredField,
-      config: {},
-      displayOrder: 4,
-      phase: null,
-      editable: false,
-    },
-  ]
+  return SEED_ROWS.map((row) => ({ ...row, config: { ...row.config } }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
