@@ -184,6 +184,16 @@ When `type=CustomExpression` 으로 생성을 시도한다
 Then 400 `WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE` 이다.
 그러나 **YAML seed 로 들어간 기존 CustomExpression 행은 목록에 보이고 삭제도 된다.**
 
+> **2026-08-26 정정 (FR-WF-06 D6 PR).** 이 시나리오가 지목한 `CustomExpression` 은 거부되는
+> **한 값**이 아니라 거부되는 여러 타입 중 하나다. 편집 가능 판정의 정본은
+> `validator/ValidatorEditability.kt` 의 `isEditable` 분기이고, 그 **허용 목록에 명시 등재된
+> 타입만** 편집 가능하다. 등재되지 않은 타입은 모르는 것이므로 거부된다(fail-closed) — 새 validator
+> 가 생기면 자동으로 편집 불가가 되고, 편집 가능하게 하려면 `isEditable` 에 한 줄을 더해야 한다.
+> 이 PR 시점엔 타입이 4종이라 「`CustomExpression` 만 거부」와 「허용 목록 밖 전부 거부」가 우연히
+> 같은 뜻이었다 — 그것이 게이트 2 라운드 3 의 `R3-11` 이 남긴 부채이고 이 정정이 그것을 닫는다.
+> 목록에 보이고 삭제되는 것도 `CustomExpression` 만의 성질이 아니라 **편집 불가 행 전체**의
+> 계약이다. 아래 FR-6 · 에러 계약 표도 같은 이유로 정정한다.
+
 **S5. 권한 없는 사용자.**
 Given `MANAGE_SCHEME`/Global 이 없는 사용자
 When 목록 조회를 포함한 **어떤 요청이든** 보낸다
@@ -202,6 +212,10 @@ Then 403 이고, 워크플로우·전환이 실재하는지 **알아낼 수 없�
 | FR-7 | 전환 지목은 `transitionId`(UUID) 1급 · 구 합성 키 `from__to` 하위호환 |
 | FR-8 | 저장한 규칙이 **실제 전환에서 동작**한다 (엔진 통합) |
 | FR-9 | SDD §7.3·§7.4 표를 코드 실측 `type` 에 맞추고, **표↔팩토리 대조 판별식**을 건다 |
+
+> **2026-08-26 정정 (FR-WF-06 D6 PR).** FR-6 의 조건은 `CustomExpression` 한 값이 아니라
+> **편집 허용 목록 밖의 모든 type** 이다. 정본은 `isEditable` 분기다 — §사용자 시나리오 S4 의
+> 같은 날짜 정정을 함께 읽는다.
 
 ### 비기능 요구사항 (NFR)
 
@@ -264,6 +278,10 @@ Then 403 이고, 워크플로우·전환이 실재하는지 **알아낼 수 없�
 | `WORKFLOW_VALIDATOR_INVALID` | 400 | 미지원 type · 필수 config 키 누락 · config 타입 불일치 |
 | `WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE` | 400 | `type=CustomExpression` 으로 생성·수정 시도 |
 | `WORKFLOW_VALIDATOR_NOT_FOUND` | 404 | 전환 미존재 · 키 형식 오류 · 키가 유일하지 않음 · id 가 그 전환 소속 아님 |
+
+> **2026-08-26 정정 (FR-WF-06 D6 PR).** `WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE` 의 조건은
+> `type=CustomExpression` 한 값이 아니라 **편집 허용 목록 밖의 type 으로 생성·수정 시도** 다.
+> 정본은 `isEditable` 분기다 — §사용자 시나리오 S4 의 같은 날짜 정정을 함께 읽는다.
 
 ### 데이터 모델 변경
 
