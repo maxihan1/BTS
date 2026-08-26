@@ -131,10 +131,25 @@ Jira Cloud 내장 validator 9종에 자유 표현식 입력칸이 없다는 실�
 - When 저장을 누른다
 - Then 백엔드 400 `WORKFLOW_VALIDATOR_INVALID` 의 메시지가 다이얼로그 안에 뜨고 다이얼로그는 닫히지 않는다
 
-**S7. 규칙이 이슈 화면에 반영된다 (D7 화면 계약).** *(규칙을 거는 화면은 `/workflows/$key`)*
+**S7. 규칙이 이슈 화면에 반영된다.** ~~(D7 화면 계약)~~ → **E2E 범위 밖 · 명시적 위임**
+(Maxi 결정, 2026-08-26 · 구현 중 실측으로 표현 수단이 무너졌다)
 - Given `not-status-category`(AVAILABILITY) 규칙이 어떤 전환에 걸려 있다
 - When 그 워크플로우를 쓰는 이슈의 상태 드롭다운을 연다
 - Then 그 전환이 후보 목록에 없다. 규칙을 풀면 다시 나온다
+
+> **★ 왜 E2E 가 이것을 재지 않는가.** 착수 시 이 시나리오를 `/transitions/plan` 응답 픽스처로 표현하기로
+> 했으나(제약 C3), Task 8 이 **그 엔드포인트를 화면이 한 번도 부르지 않는다**는 것을 실측했다 —
+> `planTransition` 호출부는 API 정의와 자기 단위 테스트 밖에 **0건**이고, 이슈 상태 드롭다운의 실제
+> 출처는 `useIssueTransitions` → `GET /api/v1/issues/{key}/transitions` 다. 소비자 0건인 픽스처 위에
+> 시나리오를 세우면 드롭다운에 대해 **아무것도 증명하지 못하는 가짜 그린**이 된다.
+>
+> **대신 두 곳이 이미 덮는다.** ① 「규칙이 후보를 감추는 계산」 —
+> `ValidatorEngineIntegrationTest` 의 `not-status-category 를 걸면 목록에서 사라지고 지우면 다시 나온다`
+> (Testcontainers 실 DB + 실 엔진) ② 「화면이 받은 목록을 그대로 그린다」 — #398 이 만든
+> `apps/web/e2e/issue-transition.spec.ts` S8(FR-WF-05 D7). 새 E2E 는 ②의 중복이 된다.
+>
+> `mocks/issue-handlers.ts` 의 `getTransitionsHandler` 에 시나리오 플래그를 넣는 길도 있었으나,
+> **그 핸들러를 쓰는 E2E 가 7개**라 영향 범위가 넓고 새로 증명되는 것이 ②와 겹쳐 택하지 않았다.
 
 ### Jira 대조
 
@@ -316,8 +331,9 @@ jOOQ 재생성도 불필요하다.
   Task 7 이 착수 시 실측한다).
 - **C2.** 다이얼로그는 `h1` 을 만들지 않는다.
 - **C3.** MSW 핸들러에 **validator 평가 로직을 만들지 않는다** — 백엔드 엔진의 두 번째 사본이 되고
-  아무도 대조하지 않는다. AVAILABILITY 효과는 `/transitions/plan` **응답 픽스처**로 표현한다
-  (Maxi 승인, D7 범위).
+  아무도 대조하지 않는다. ~~AVAILABILITY 효과는 `/transitions/plan` 응답 픽스처로 표현한다~~
+  → **그 표현 수단은 성립하지 않았다**(위 S7 각주). AVAILABILITY 효과는 E2E 가 재지 않고 백엔드에
+  위임한다. **평가 로직 금지는 그대로 유효하고, 실제로 spec·MSW 모두에 0줄이다.**
 - **C4.** 화면은 `transitionKey` 자리에 **전환 id(UUID) 만** 싣는다. 종전 합성 키는 구 경로 호환용이라
   새 소비자가 쓰면 「유일하지 않음 → 404」 경로를 새로 연다.
 - **C6.** **수정 폼은 로드한 `config` 를 baseline 으로 들고 아는 키만 덮어써서 전체를 보낸다.**
@@ -337,7 +353,7 @@ jOOQ 재생성도 불필요하다.
 | 3 | 프레임워크 예외 3종이 봉투를 탄다 | `ValidatorControllerTest` + `PostActionControllerTest` 양쪽에 3종 × 2 = 6 단언 |
 | 4 | 규칙 CRUD 가 화면에서 동작한다 | 유닛(RTL) — 추가·수정·삭제 후 목록 갱신 |
 | 5 | `editable=false` 가 화면에 반영된다 | 유닛 — 편집 비활성 + 추가 선택지에서 제외 |
-| 6 | E2E 화면 계약 | `apps/web/e2e/` — S1·S3·S4·S7 |
+| 6 | E2E 화면 계약 | `apps/web/e2e/workflow-validator.spec.ts` — S1·S2·S3·S4 + 프리필 격리. **S7 은 위임**(위 각주) |
 | 7 | 프론트 폼 스키마가 SDD 표와 일치한다 | `validator-type-catalog.test.ts` 새 축 — 한쪽만 고치면 red |
 | 8 | 브라우저 눈확인 | 라이트/다크 × (기본 · 빈 · 에러) 상태. 결과를 게이트 2 요약에 |
 | 9 | 회귀 0 | `./gradlew :modules:project-workflow:test` · `pnpm verify` · `pnpm test:workflow` · 기존 `workflow-editor.spec.ts` 동반 실행 |
@@ -620,14 +636,14 @@ degrade + `validator-type-catalog.test.ts` 에 프론트 축 추가)을 완료 �
 - 시나리오. 형제 spec 의 T1~T4 골격에 validator 고유분을 얹는다.
   T1 섹션이 SYSTEM_ADMIN 에게 노출 · T2 추가→목록→수정→삭제 전체 CRUD(S1·S3) ·
   T3 비admin 미노출 · T4 **2행 프리필 격리**(형제가 실제로 잡은 회귀) ·
-  T5 `CustomExpression` 행은 편집 비활성(S4) · T6 AVAILABILITY 규칙이 이슈 드롭다운에서 전환을 감춤(S7).
+  T5 `CustomExpression` 행은 편집 비활성(S4). ~~T6 AVAILABILITY…(S7)~~ → **미작성 · 위임**(S7 각주 참조).
 - 실패 메시지 (예상). 규칙 섹션을 못 찾는다 → Task 6 이전에는 red.
 
 **GREEN**:
 - 로그인 헬퍼는 형제와 같은 공용 정본(`auth-fixtures.ts`)을 쓴다. `isSystemAdmin` 토글도 형제 방식
   (`addInitScript` 로 localStorage 플래그 선설정)을 그대로 따른다.
-- T6 은 `workflow-handlers.ts` 의 `/transitions/plan` **응답 픽스처**로 표현한다 — 평가 로직이 아니다
-  (제약 C3 · Maxi 승인 범위).
+- ~~T6 은 `workflow-handlers.ts` 의 `/transitions/plan` 응답 픽스처로 표현한다~~ → **취소.** 그 엔드포인트에
+  화면 소비자가 0건임이 실측됐다(S7 각주). `workflow-handlers.ts` 는 **무변경**이다.
 - ★ `serviceWorkers:'block'` 금지 (메모리 `e2e-msw-serviceworker-block`).
 - ★ 라벨 substring 주의 — 형제 spec 이 같은 라우트를 쓰므로 셀렉터가 겹치지 않게 `exact: true` 로 집는다.
 
