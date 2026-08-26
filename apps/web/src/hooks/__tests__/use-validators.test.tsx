@@ -153,6 +153,7 @@ describe('useAddValidator', () => {
 
     const listHook = renderHook(() => useValidators(WF_KEY, TX_ID), { wrapper })
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
+    // ★ 이 줄은 기준값을 재는 동시에 `data` 구독을 건다 — 지우면 아래 단언이 낡은 값을 본다(T5-3e 주석).
     const before = listHook.result.current.data?.length ?? 0
 
     const { result } = renderHook(() => useAddValidator(WF_KEY, TX_ID), { wrapper })
@@ -166,9 +167,40 @@ describe('useAddValidator', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     await waitFor(() => expect(listHook.result.current.data).toHaveLength(before + 1))
+
+    const created = listHook.result.current.data?.find((row) => row.config['field'] === 'assignee')
+    expect(created).toBeDefined()
+    // 만든 행의 평가 시점도 backend 와 같아야 한다 — `RequiredField` 만 EXECUTION 을 override 한다.
+    expect(created?.phase).toBe('EXECUTION')
+    expect(created?.editable).toBe(true)
+  })
+
+  it('T5-3e: 만든 not-status-category 행은 AVAILABILITY 를 상속한다', async () => {
+    const client = createClient()
+    const wrapper = wrapperOf(client)
+
+    const listHook = renderHook(() => useValidators(WF_KEY, TX_ID), { wrapper })
+    await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
+    // ★ mutation 전에 `data` 를 한 번 읽어야 한다. TanStack Query 의 tracked properties 는 **읽은
+    //   속성만** 구독하므로, `isSuccess` 만 읽고 `data` 를 안 읽으면 캐시가 갱신돼도 이 훅이
+    //   re-render 되지 않아 `result.current.data` 가 낡은 채로 남는다(캐시는 이미 새 값이다).
+    //   실제 컴포넌트는 렌더 본문에서 `data` 를 읽으므로 이 문제가 없다 — 테스트에서만 나는 함정이다.
+    const before = listHook.result.current.data?.length ?? 0
+
+    const { result } = renderHook(() => useAddValidator(WF_KEY, TX_ID), { wrapper })
+    act(() => {
+      result.current.mutate({
+        type: VALIDATOR_TYPES.notStatusCategory,
+        config: { category: 'IN_PROGRESS' },
+        displayOrder: 9,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(listHook.result.current.data).toHaveLength(before + 1))
     expect(
-      listHook.result.current.data?.some((row) => row.config['field'] === 'assignee'),
-    ).toBe(true)
+      listHook.result.current.data?.find((row) => row.config['category'] === 'IN_PROGRESS')?.phase,
+    ).toBe('AVAILABILITY')
   })
 
   it('T5-3b: 추가 성공 후 목록 쿼리가 무효화된다 (invalidate-only)', async () => {
@@ -200,6 +232,9 @@ describe('useAddValidator', () => {
 
     const listHook = renderHook(() => useValidators(WF_KEY, TX_ID), { wrapper })
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
+    // mutation 전에 `data` 를 읽어 구독을 건다 — 안 읽으면 캐시가 바뀌어도 re-render 가 없어
+    // 아래 마지막 단언이 낡은 값을 보고 무엇이든 통과한다(T5-3e 주석 참조).
+    expect(listHook.result.current.data).toEqual([])
     const prevFetchCount = listFetchCount
 
     const { result } = renderHook(() => useAddValidator(WF_KEY, TX_ID), { wrapper })
