@@ -57,10 +57,22 @@ class WorkflowDraftRepositoryIntegrationTest {
                 .withUsername("bts")
                 .withPassword("bts_test")
 
+        /**
+         * ★ 순서가 load-bearing 이다. `issue_types` 를 먼저 만들면 public 스키마가 비어 있지 않은
+         * 상태가 되고, Flyway 가 schema history 없는 non-empty 스키마를 만나 통째로 거부한다
+         * (`Found non-empty schema(s) "public" but no schema history table`). V200 까지 먼저 돌려
+         * 히스토리를 세운 뒤 cross-BC FK 대상을 만든다 — V207MigrationTest 와 같은 순서다.
+         */
         @BeforeAll
         @JvmStatic
         fun applyMigrations() {
+            flyway().target("200").load().migrate()
             createIssueTypes()
+            flyway().load().migrate()
+        }
+
+        @JvmStatic
+        private fun flyway() =
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
@@ -68,9 +80,6 @@ class WorkflowDraftRepositoryIntegrationTest {
                     "classpath:db/migration/issue-tracking",
                     "classpath:db/migration/project-workflow",
                 )
-                .load()
-                .migrate()
-        }
 
         /** V201 의 cross-BC FK 대상. issue-tracking 마이그레이션이 만들지 않는 경로라 테스트가 직접 만든다. */
         @JvmStatic
@@ -131,8 +140,14 @@ class WorkflowDraftRepositoryIntegrationTest {
                         from = "open",
                         to = "done",
                         name = "완료",
-                        validators = listOf(DraftRuleDto(type = "RequiredField", config = mapOf("field" to "resolution"))),
-                        postActions = listOf(DraftRuleDto(type = "CALL_WEBHOOK", config = mapOf("url" to "https://x"))),
+                        validators =
+                            listOf(
+                                DraftRuleDto(type = "RequiredField", config = mapOf("field" to "resolution")),
+                            ),
+                        postActions =
+                            listOf(
+                                DraftRuleDto(type = "CALL_WEBHOOK", config = mapOf("url" to "https://x")),
+                            ),
                     ),
                 ),
         )
