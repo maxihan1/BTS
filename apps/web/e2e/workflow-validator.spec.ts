@@ -260,12 +260,16 @@ test.describe('FR-WF-06 전환 규칙 설정 (SYSTEM_ADMIN)', () => {
    * T4 (형제 T4 승계 — 형제가 **실제로 잡은 회귀**다)
    *
    * Given 같은 전환에 같은 type 의 규칙 2행이 서로 다른 값으로 걸려 있다
-   * When  A 행의 편집을 연다
-   * Then  A 의 값이 프리필되고 B 의 값이 새지 않는다
+   * When  B 행의 편집을 열어 닫은 **뒤** A 행의 편집을 연다
+   * Then  A 의 값이 프리필되고 직전에 열었던 B 의 값이 새지 않는다
    *
-   * 다이얼로그를 재마운트하지 않으면 직전에 연 행의 값이 남는다 — 그 자리를 지킨다.
+   * ★ **여는 순서가 이 시나리오의 전부다.** 다이얼로그는 열 때마다 재마운트돼야 하는데,
+   *   재마운트하지 않는 결함 구현이라도 **첫 개방**의 초기값은 그 행에서 온다 — A 를 먼저
+   *   열면 결함 구현도 그냥 통과한다. 누수는 **서로 다른 행을 연속으로 열 때만** 드러나므로
+   *   B → 취소 → A 순서여야 「매번 재마운트」와 「직전 행 값 잔류」가 구분된다.
+   *   형제 `workflow-post-action.spec.ts` T4 와 Task 6 유닛 T6-12 가 같은 순서다.
    */
-  test('T4 2행 중 A 를 편집하면 A 값이 프리필되고 B 값이 새지 않는다', async ({ page }) => {
+  test('T4 B 를 연 뒤 A 를 편집하면 A 값이 프리필되고 B 값이 새지 않는다', async ({ page }) => {
     // Given. 전환 선택
     await page.goto(`/workflows/${BLANK_WORKFLOW.key}`)
     await expect(page.getByRole('heading', { level: 1 })).toContainText(BLANK_WORKFLOW.name)
@@ -295,7 +299,24 @@ test.describe('FR-WF-06 전환 규칙 설정 (SYSTEM_ADMIN)', () => {
       ).toBeVisible()
     }
 
-    // When. A(1행) 의 편집을 연다 — 행 버튼 이름의 순번이 A 와 B 를 가른다
+    const edit = editDialog(page)
+
+    // ── When 1. **B(2행)** 의 편집을 먼저 연다 — 이 개방이 A 개방의 「직전 상태」를 만든다.
+    //   행 버튼 이름의 순번이 A 와 B 를 가른다.
+    await page
+      .getByRole('button', {
+        name: validatorEditButtonLabel(VALIDATOR_TYPES.requiredField, 2),
+        exact: true,
+      })
+      .click()
+    await expect(edit).toBeVisible()
+    await expect(edit.getByLabel(REQUIRED_FIELD_CONFIG_KEY, { exact: true })).toHaveValue(valueB)
+
+    // ── When 2. 저장하지 않고 닫는다 — 데이터는 그대로 두고 「직전에 연 행」만 남긴다
+    await edit.getByRole('button', { name: validatorLabels.dialog.cancelButton, exact: true }).click()
+    await expect(edit).toBeHidden()
+
+    // ── When 3. 이어서 **A(1행)** 의 편집을 연다
     await page
       .getByRole('button', {
         name: validatorEditButtonLabel(VALIDATOR_TYPES.requiredField, 1),
@@ -303,14 +324,16 @@ test.describe('FR-WF-06 전환 규칙 설정 (SYSTEM_ADMIN)', () => {
       })
       .click()
 
-    // Then. A 의 값이 프리필된다 (B 의 값이 새지 않는다)
-    const edit = editDialog(page)
+    // Then. A 의 값이 프리필된다 — 직전에 연 B 의 값이 남아 있으면 여기서 red 다
     await expect(edit).toBeVisible()
     await expect(edit.getByLabel(REQUIRED_FIELD_CONFIG_KEY, { exact: true })).toHaveValue(valueA)
 
-    // 정리 — 다음 단언이 없어도 다이얼로그를 닫아 두어 상태를 남기지 않는다
+    // 정리 — 취소로 닫는다. 취소는 저장이 아니므로 B 행은 목록에 그대로 살아 있어야 한다
     await edit.getByRole('button', { name: validatorLabels.dialog.cancelButton, exact: true }).click()
     await expect(edit).toBeHidden()
+    await expect(
+      page.getByText(`${REQUIRED_FIELD_CONFIG_KEY}=${valueB}`, { exact: true }),
+    ).toBeVisible()
   })
 
   /**
