@@ -4,9 +4,11 @@ package com.bts.workflow.validator.web
 
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.workflow.engine.WorkflowValidatorFactory
+import com.bts.workflow.domain.spi.WorkflowValidator
 import com.bts.workflow.scheme.web.DataEnvelope
 import com.bts.workflow.validator.ValidatorAdminService
 import com.bts.workflow.validator.ValidatorRow
+import com.bts.workflow.validator.isEditable
 import com.bts.workflow.web.requireManageScheme
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -47,7 +49,7 @@ import java.util.UUID
  *
  * ### 트랜잭션
  * 컨트롤러는 경계를 열지 않는다. `@Transactional` 은 [ValidatorAdminService] 쪽에만 있다.
- * [phaseOf] 가 부르는 팩토리도 인스턴스를 만들 뿐 `validate` 를 부르지 않으므로 DB 접근도
+ * [instantiateOrNull] 이 부르는 팩토리도 인스턴스를 만들 뿐 `validate` 를 부르지 않으므로 DB 접근도
  * 권한 조회도 SpEL 평가도 일어나지 않는다 ([ValidatorAdminService] dry-run 과 같은 계약).
  *
  * ### `phase` 는 인스턴스에서 읽는다 — 표를 만들지 않는다
@@ -167,33 +169,43 @@ class ValidatorController(
     }
 
     /**
-     * 행을 응답 DTO 로 옮기면서 `phase` 를 인스턴스에서 읽어 붙인다.
+     * 행을 응답 DTO 로 옮기면서 `phase` 와 `editable` 을 **한 인스턴스에서** 읽어 붙인다.
+     *
+     * 인스턴스를 두 번 만들지 않는다 — 두 값이 서로 다른 인스턴스에서 나오면 그 사이에 팩토리
+     * 동작이 갈릴 때 「phase 는 있는데 editable 은 판정 불가」 같은 어긋난 짝이 응답에 실린다.
      *
      * @param row validator 행.
-     * @return `phase` 가 채워진(판정 불가 시 `null` 인) 응답 DTO.
+     * @return `phase` 와 `editable` 이 채워진(판정 불가 시 `null` · false 인) 응답 DTO.
      */
-    private fun toResponse(row: ValidatorRow): ValidatorResponse = ValidatorResponse.from(row, phaseOf(row))
+    private fun toResponse(row: ValidatorRow): ValidatorResponse {
+        val instance = instantiateOrNull(row)
+        return ValidatorResponse.from(
+            row = row,
+            phase = instance?.phase?.name,
+            editable = instance != null && isEditable(instance),
+        )
+    }
 
     /**
-     * 행 하나의 평가 시점을 판정한다. **실패를 행 단위로 가둔다** — 한 행이 인스턴스화되지 않아도
-     * 목록 전체가 500 이 되지 않고 그 행만 `null` 이 된다.
+     * 행 하나로 validator 인스턴스를 만든다. **실패를 행 단위로 가둔다** — 한 행이 인스턴스화되지
+     * 않아도 목록 전체가 500 이 되지 않고 그 행만 `null` 이 된다.
      *
      * ### `runCatching` 을 쓰지 않는 이유
      * `runCatching` 은 [Throwable] 을 잡아 `Error`(OOM · StackOverflow) 까지 삼키고, 치명적 상황을
-     * 「phase 를 모른다」로 위장한다. 여기서 가두려는 것은 [WorkflowValidatorFactory.create] 가
+     * 「판정할 수 없다」로 위장한다. 여기서 가두려는 것은 [WorkflowValidatorFactory.create] 가
      * 계약상 던지는 [IllegalArgumentException] 하나다 — 미지원 type · 필수 config 키 누락 ·
      * config 타입 불일치 · 알 수 없는 enum 이 전부 그 타입으로 온다. 그 밖의 예외가 올라오면
      * 팩토리 쪽 결함이므로 `null` 로 감추지 않고 500 으로 드러나야 한다.
      *
      * @param row validator 행.
-     * @return `"AVAILABILITY"` 또는 `"EXECUTION"`. 인스턴스화 실패 시 `null`.
+     * @return 만들어진 인스턴스. 인스턴스화 실패 시 `null`.
      */
-    private fun phaseOf(row: ValidatorRow): String? {
+    private fun instantiateOrNull(row: ValidatorRow): WorkflowValidator? {
         return try {
-            validatorFactory.create(row.type, row.config).phase.name
+            validatorFactory.create(row.type, row.config)
         } catch (ex: IllegalArgumentException) {
             log.debug(
-                "ValidatorController: phase 판정 불가 id={} type={} reason='{}'",
+                "ValidatorController: phase·editable 판정 불가 id={} type={} reason='{}'",
                 row.id,
                 row.type,
                 ex.message,

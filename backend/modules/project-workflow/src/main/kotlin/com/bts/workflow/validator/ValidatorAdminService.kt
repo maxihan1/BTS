@@ -247,11 +247,7 @@ class ValidatorAdminService(
             } catch (ex: IllegalArgumentException) {
                 throw ValidatorValidationException(ex.message ?: "검증 실패", ex)
             }
-        val editable =
-            instance is RequiredFieldValidator ||
-                instance is PermissionValidator ||
-                instance is NotStatusCategoryValidator
-        if (!editable) {
+        if (!isEditable(instance)) {
             log.info("ValidatorAdminService: 편집 불가 validator type 거절 type={}", type)
             throw ValidatorTypeNotEditableException(type)
         }
