@@ -39,7 +39,7 @@ const requiredFieldFixture = {
 const customExpressionFixture = {
   id: 'b2c3d4e5-f6a7-4901-bcde-f01234567891',
   type: 'CustomExpression',
-  config: { expression: "issue.assignee != null" },
+  config: { expression: 'issue.assignee != null' },
   displayOrder: 1,
   phase: 'AVAILABILITY',
   editable: false,

@@ -1,4 +1,10 @@
 // 전환 규칙(validator) CRUD API 클라이언트 — zod 계약 + 에러 봉투 파서 + type 별 config 폼 스키마
+//
+// ### 형제 `post-actions.ts` 와 겹치는 세 벌은 지금 사본인 것이 옳다
+// `nestedErrorBodySchema` · `throw*ApiError` · `basePath` 가 형제와 구조까지 같다. 공용으로
+// 뽑으려면 형제도 그 공용을 부르도록 **함께** 고쳐야 하는데 그 파일은 이 PR 의 범위 밖이고,
+// 고치면 형제 테스트를 인질로 잡는다. 한쪽만 공용을 쓰면 「공용 한 벌 + 형제 사본」이 되어
+// 갈려도 아무도 대조하지 않는 목록이 하나 더 생긴다 — 뽑는다면 두 파일을 같은 PR 에서 볼 때다.
 import { z } from 'zod'
 import { apiFetch } from './client'
 import { dataOf } from './workflow-schemes.types'
