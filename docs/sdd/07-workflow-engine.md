@@ -32,27 +32,57 @@ Atlas의 워크플로우 엔진은 FSM(유한 상태 기계) 기반. Jira의 Wor
 
 ## 7.3 Validator 표준
 
-| 타입 | 용도 |
-|---|---|
-| `RequiredField` | 특정 필드 입력 필수 |
-| `Permission` | 권한 보유 검증 |
-| `NotStatusCategory` | 특정 카테고리 진입 불가 |
-| `CustomExpression` | SpEL 표현식 |
+| 타입 식별자 | 구현 클래스 | 필수 config 키 | 용도 |
+|---|---|---|---|
+| `RequiredField` | `RequiredFieldValidator` | `field` | 특정 필드 입력 필수 |
+| `permission-check` | `PermissionValidator` | `permission` · `scope`(선택) | 권한 보유 검증 |
+| `not-status-category` | `NotStatusCategoryValidator` | `category` | 특정 카테고리 진입 불가 |
+| `CustomExpression` | `CustomExpressionValidator` | `expression` | SpEL 표현식 |
+
+> **타입 식별자 열이 정본이다** — `DefaultWorkflowValidatorFactory.create(type, config)` 가 받는
+> 문자열 그대로이고, 다른 값을 쓰면 `지원하지 않는 validator type` 예외가 난다. 표기가 섞여 있는
+> 것(`RequiredField` 와 `permission-check`)은 구현 순서가 남긴 역사적 사실이며 **코드가 정본**이다.
+> 각주. ADR [validator-terminology](../adr/2026-05-21-workflow-validator-terminology.md) 가 정한 것은
+> **구현 클래스 이름**이지 런타임 `type` 문자열이 아니므로, 이 표의 2026-08-25 정정은 그 ADR 과
+> 충돌하지 않는다(클래스 이름은 그대로 병기한다).
+
+> **`필수 config 키` 열 표기.** 키만 적혀 있으면 **필수**다 — 없으면 팩토리가
+> `IllegalArgumentException` 을 던지고 CRUD API 는 400 을 준다. 뒤에 `(선택)` 이 붙으면 기본값이
+> 있거나(`scope` → `ISSUE`) 검증 없이 그대로 꺼내 쓰는 키다. 여러 개는 `·` 로 잇는다.
+> **이 열이 편집 화면 입력 폼의 계약이다.** 화면이 타입별 키를 자기 코드에 들면 그것이 팩토리와
+> 갈리는 두 번째 목록이 되고, 갈린 사실은 저장 시점 400 으로만 드러난다.
+
+> **이 표의 세 열은 기계가 지킨다.** `scripts/workflow/validator-type-catalog.test.ts` 가
+> ① `타입 식별자` 열 ↔ 팩토리 `when (type)` 분기 ② `필수 config 키` 열 ↔ `create*` 함수의
+> config 읽기(`requireConfigString` = 필수 · `requireConfigEnumOrDefault` 와 `config["키"]` 직접
+> 읽기 = 선택) ③ `구현 클래스` 열 ↔ `override val type` 을 선언한 실제 `.kt` 를 양방향 차집합 0 으로
+> 대조하고, 덤으로 ④ 팩토리 분기 ↔ 구현체 `override val type` 까지 맞춘다.
+> 판별식은 KDoc 을 읽지 않는다 — 주석을 지운 뒤 `when` 분기 본문과 `create*` 본문만 본다.
 
 ## 7.4 Post-function 표준
 
-| 타입 | 용도 |
-|---|---|
-| `SetField` | 필드 자동 설정 (예: resolution=fixed) |
-| `AddWatcher` | Watcher 자동 추가 |
-| `Notify` | 알림 발송 |
-| `CallWebhook` | 외부 시스템 통지 |
-| `RunAutomation` | 자동화 규칙 실행 |
+| 타입 식별자 | 구현 클래스 | 필수 config 키 | 용도 |
+|---|---|---|---|
+| `SET_FIELD` | `SetFieldPostAction` | `field` · `value`(선택) | 필드 자동 설정 (예: resolution=fixed) |
+| `NOTIFY` | `NotifyPostAction` | `channel` · `recipients` | 알림 발송 |
+| `ADD_WATCHER` | `AddWatcherPostAction` | `watcher` | Watcher 자동 추가 |
+| `RUN_AUTOMATION` | `RunAutomationPostAction` | `automationKey` | 자동화 규칙 실행 |
+| `CALL_WEBHOOK` | `CallWebhookPostAction` | `url` · `method` | 외부 시스템 통지 |
 
-## 7.5 편집 가능 워크플로우 — FR-WF-04~07 (2026-08-18 결정 · 미구현)
+> 타입 식별자 열이 정본인 것도, `필수 config 키` 열의 표기와 기계 강제도 §7.3 각주와 같다 —
+> `DefaultWorkflowPostActionFactory.create(type, config)` 가 받는 문자열 그대로다(이쪽은 전부
+> SCREAMING_SNAKE_CASE). 행 순서도 팩토리 `when` 분기 순서다.
 
-**이 절은 결정만 적는다. 코드는 아직 §7.1~§7.4 그대로다.** 워크플로우를 화면에서 만들고 고칠 방법이
-없다는 구조적 부재를 닫기로 했고, 그 과정에서 §7.1 의 두 항목이 뒤집혔다.
+## 7.5 편집 가능 워크플로우 — FR-WF-04~07 (2026-08-18 결정 · 구현 진행 중)
+
+**이 절은 결정만 적는다.** 워크플로우를 화면에서 만들고 고칠 방법이 없다는 구조적 부재를 닫기로
+했고, 그 과정에서 §7.1 의 두 항목이 뒤집혔다.
+
+> **2026-08-26 갱신.** 결정 당시엔 「코드는 아직 §7.1~§7.4 그대로」였으나 지금은 아니다 —
+> FR-WF-05 는 #398, FR-WF-04 는 #400 으로 완주했고 **FR-WF-06 은 백엔드(D1·D2·D4·D5)가 #404 로
+> 들어왔다**(바로 위 §7.3·§7.4 표를 코드 실측에 맞춰 다시 쓴 것이 그 PR 이다). 남은 것은
+> FR-WF-06 D6~D7(편집 UI·E2E) 과 FR-WF-07 이다. 진척 정본은
+> `docs/plan/product/project-workflow.md §2.4~§2.7` 이며, 이 절의 서술과 갈리면 그쪽이 맞다.
 
 | §7.1 이 적은 것 | 새 결정 | 근거 ADR | 담당 FR |
 |---|---|---|---|

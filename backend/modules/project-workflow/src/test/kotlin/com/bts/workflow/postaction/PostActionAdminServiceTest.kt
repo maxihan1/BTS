@@ -3,6 +3,7 @@
 package com.bts.workflow.postaction
 
 import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.transition.TransitionKeyResolver
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -35,7 +36,7 @@ import java.util.UUID
 class PostActionAdminServiceTest {
     private lateinit var repository: PostActionRepository
     private lateinit var factory: WorkflowPostActionFactory
-    private lateinit var transitionResolver: PostActionTransitionResolver
+    private lateinit var transitionResolver: TransitionKeyResolver
     private lateinit var service: PostActionAdminService
 
     private val workflowKey = "test-wf"

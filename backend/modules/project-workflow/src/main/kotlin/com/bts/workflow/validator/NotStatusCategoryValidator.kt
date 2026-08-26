@@ -11,8 +11,14 @@ import com.bts.workflow.domain.spi.WorkflowValidator
  * [TransitionContext.fromState] 의 카테고리가 [forbidden] 과 같으면 전환을 차단하는 Validator.
  *
  * 예를 들어 `forbidden = StateCategory.DONE` 으로 설정하면 완료(DONE) 상태에서는
- * 더 이상 전환할 수 없다. YAML 워크플로우 정의에서 `validators[].type: not-status-category`
- * 로 등록하고 `config.forbidden` 에 카테고리 이름을 지정한다.
+ * 더 이상 전환할 수 없다.
+ *
+ * ### config 키는 `category` 다 (생성자 파라미터 이름과 다르다)
+ * YAML 워크플로우 정의와 전환 규칙 CRUD API 는 `validators[].type: not-status-category` 로
+ * 등록하고 **`config.category`** 에 [StateCategory] 이름을 지정한다. 그 값을
+ * `engine/DefaultWorkflowValidatorFactory.createNotStatusCategory` 가 읽어
+ * 이 클래스의 생성자 파라미터 [forbidden] 으로 넘긴다 — 두 이름이 다르므로 생성자 쪽 이름을
+ * config 키로 그대로 옮겨 적으면 「필수 키 'category' 가 없습니다」로 400 이다.
  *
  * @param forbidden 이 카테고리에서 출발하는 전환을 차단한다.
  */

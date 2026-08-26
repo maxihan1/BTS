@@ -18,12 +18,9 @@ import org.springframework.stereotype.Component
  * 이 팩토리는 인스턴스 생성(계획 수립)만 담당하며, PostAction 의 실제 적용(필드 저장, 이벤트 발행)은
  * 호출자 BC 가 수행한다 — GAP-2 제약에 따름.
  *
- * ## 지원 type
- * - `"SET_FIELD"` — [SetFieldPostAction]. config["field"] 필수, config["value"] 선택(null 허용).
- * - `"NOTIFY"` — [NotifyPostAction]. config["channel"], config["recipients"] 필수.
- * - `"ADD_WATCHER"` — [AddWatcherPostAction]. config["watcher"] 필수.
- * - `"RUN_AUTOMATION"` — [RunAutomationPostAction]. config["automationKey"] 필수.
- * - `"CALL_WEBHOOK"` — [CallWebhookPostAction]. config["url"], config["method"] 필수.
+ * ## 지원 type 은 아래 `when` 분기가 정본이다
+ * 여기에 목록을 옮겨 적으면 분기와 갈리는데, **두 목록은 서로를 검사하지 않으므로** 갈린 사실이
+ * 드러나지 않는다. 타입별 필수 config 키는 각 `create*` 함수 KDoc 에 있다.
  */
 @Component
 class DefaultWorkflowPostActionFactory : WorkflowPostActionFactory {
@@ -33,7 +30,7 @@ class DefaultWorkflowPostActionFactory : WorkflowPostActionFactory {
      * type 과 config 를 받아 [WorkflowPostAction] 인스턴스를 반환한다.
      *
      * @param type YAML 워크플로우 정의의 `post_actions[].type` 값 (SCREAMING_SNAKE_CASE).
-     *   지원 값: "SET_FIELD", "NOTIFY", "ADD_WATCHER", "RUN_AUTOMATION", "CALL_WEBHOOK".
+     *   지원 값은 아래 `when` 분기가 정본이다.
      * @param config YAML 워크플로우 정의의 `post_actions[].config` 값.
      * @return 생성된 [WorkflowPostAction] 인스턴스.
      * @throws IllegalArgumentException 지원하지 않는 type 이거나 필수 config 키가 누락된 경우.
@@ -53,6 +50,7 @@ class DefaultWorkflowPostActionFactory : WorkflowPostActionFactory {
         }
     }
 
+    /** [SetFieldPostAction] 을 만든다. config["field"] 필수, config["value"] 선택(null 허용). */
     private fun createSetField(config: Map<String, Any?>): SetFieldPostAction {
         val field = requireConfigString(config, "field")
         // "value" 키가 없거나 명시적으로 null 인 경우 모두 null 로 전달 — SetFieldPostAction 설계 의도.
@@ -60,22 +58,26 @@ class DefaultWorkflowPostActionFactory : WorkflowPostActionFactory {
         return SetFieldPostAction(field = field, value = value)
     }
 
+    /** [NotifyPostAction] 을 만든다. config["channel"] · config["recipients"] 필수. */
     private fun createNotify(config: Map<String, Any?>): NotifyPostAction {
         val channel = requireConfigString(config, "channel")
         val recipients = requireConfigString(config, "recipients")
         return NotifyPostAction(channel = channel, recipients = recipients)
     }
 
+    /** [AddWatcherPostAction] 을 만든다. config["watcher"] 필수. */
     private fun createAddWatcher(config: Map<String, Any?>): AddWatcherPostAction {
         val watcher = requireConfigString(config, "watcher")
         return AddWatcherPostAction(watcher = watcher)
     }
 
+    /** [RunAutomationPostAction] 을 만든다. config["automationKey"] 필수. */
     private fun createRunAutomation(config: Map<String, Any?>): RunAutomationPostAction {
         val automationKey = requireConfigString(config, "automationKey")
         return RunAutomationPostAction(automationKey = automationKey)
     }
 
+    /** [CallWebhookPostAction] 을 만든다. config["url"] · config["method"] 필수. */
     private fun createCallWebhook(config: Map<String, Any?>): CallWebhookPostAction {
         val url = requireConfigString(config, "url")
         val method = requireConfigString(config, "method")

@@ -105,7 +105,7 @@ identity-access  ─┐
 |---|---|---|---|---|
 | identity-access | [product/identity-access.md](product/identity-access.md) | 25 (AU 10 + MF 5 + PM 10) | AuthN Provider + Keycloak | ☑ D단계 |
 | issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 37 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☑ D단계 |
-| project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☐ D단계 (WF-04, 06~07) |
+| project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☐ D단계 (WF-06~07) |
 | agile-planning | [product/agile-planning.md](product/agile-planning.md) | 14 (BD 3 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☑ D단계 |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
@@ -135,7 +135,14 @@ identity-access  ─┐
 > 목록 모드 편집기). 미착수는 **2건(WF-06 · WF-07)** 이다. D7 의 E2E 4시나리오는 처음엔
 > 작성만 했으나(Maxi 지시), 독립 리뷰가 그중 1건이 **돌리면 red** 임을 실행으로 밝혀
 > 재설계 뒤 Maxi 승인으로 실행했다 — **4/4 통과**.
-> 위 두 문단은 각자의 시점 기록이라 그대로 둔다.
+>
+> 2026-08-25 갱신 — **FR-WF-06 의 D1·D2·D4·D5 가 닫혔다**(PR #404 — validator CRUD 4 엔드포인트 +
+> 엔진 통합 테스트). D3 은 `workflow_validators`/`workflow_post_actions` 가 V200 기존 테이블이라
+> **비해당으로 확정**했다 — 이 PR 의 마이그레이션은 0건이다. 남은 D6·D7(편집 UI · E2E)은 후속 PR 이라
+> 미착수 FR 은 여전히 **2건(WF-06 · WF-07)** 이다. 같은 갱신에서 §1 진척 열 괄호의 **WF-04 를 뺐다** —
+> 괄호는 「원인 FR」인데 PR #400 이 그 FR 의 마지막 D 마커를 닫고도 괄호를 좁히지 않아
+> 표가 바로 위 문단과 어긋나 있었다.
+> 위 문단들은 각자의 시점 기록이라 그대로 둔다.
 > **FR-UX-14 가 마지막이었다** — B2(PR #346)가 D1·D3·D4·D5 를, F14(PR #349)가 나머지
 > D2(디자인 스펙) · D6(프론트 UI) · D7(E2E)를 닫았다.
 > D2 는 응답 필드 계약 분이 B2 에서 먼저 끝났으나 **D 마커는 완주 단위**라 F14 의 카드 밀도

@@ -3,6 +3,9 @@
 package com.bts.workflow.postaction
 
 import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.transition.TransitionKeyResolver
+import com.bts.workflow.transition.requireContains
+import com.bts.workflow.transition.resolveTransitionOrThrow
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -19,10 +22,11 @@ import java.util.UUID
  * (ADR 2026-08-18 §D1). 아니면 종전 `fromStateKey__toStateKey` 합성 키로 읽는다. 새 라우트를
  * 만들지 않으므로 이미 나가 있는 키 경로가 그대로 산다.
  *
- * **캐시 무효화 불필요**: post-action 은 전환 실행 시
- * `DefaultWorkflowDefinitionRepository.findPostActions` 가 DB 직접 조회(WorkflowEngine.kt:302 경유)한다.
- * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 `Workflow` aggregate 에는 post-action 필드가 없으므로
- * 별도 캐시 무효화가 불필요하다(WorkflowCache 는 states/transitions/validator 만 캐싱, post-action 비캐시).
+ * **캐시 무효화 불필요**: post-action 은 전환 실행 시 `WorkflowEngine` 의 post-action 실행 경로가
+ * `DefaultWorkflowDefinitionRepository.findPostActions` 로 DB 를 직접 조회한다.
+ * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 것은 `Workflow` aggregate(= states · transitions)
+ * 뿐이고 post-action 필드가 없으므로 별도 캐시 무효화가 불필요하다. **validator 도 같은 이유로 비캐시**다
+ * — 두 컬렉션 다 전환 실행 시 DB 를 직접 친다.
  *
  * ### 검증 순서 (create/update)
  * 1. transitionKey 해석 → 형식 오류·미존재 시 [PostActionNotFoundException].
@@ -38,7 +42,7 @@ import java.util.UUID
 class PostActionAdminService(
     private val repository: PostActionRepository,
     private val factory: WorkflowPostActionFactory,
-    private val transitionResolver: PostActionTransitionResolver,
+    private val transitionResolver: TransitionKeyResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -157,51 +161,21 @@ class PostActionAdminService(
     // ── private ──────────────────────────────────────────────────────────────
 
     /**
-     * 경로 세그먼트를 전환 id 로 해석한다. UUID 로 파싱되면 id 로, 아니면 합성 키로 읽는다.
+     * 경로 세그먼트를 전환 id 로 해석한다. UUID 로 파싱되면 id 로, 아니면 종전 합성 키로 읽는다.
      *
-     * @throws PostActionNotFoundException 형식 오류 · 전환 미존재 시.
+     * 판정 자체는 [resolveTransitionOrThrow] 하나뿐이고 — 형식 오류 · 미존재 · 합성 키가 2건
+     * 이상이면 특정 불가 — 여기서는 그 실패를 post-action 의 404 예외로 옮기기만 한다. 형제인
+     * `ValidatorAdminService` 가 **같은 구현**을 부르므로 모호성 정책이 두 벌로 갈리지 않는다.
+     *
+     * @throws PostActionNotFoundException 형식 오류 · 전환 미존재 · 키가 유일하지 않을 때.
      */
     private fun resolveOrThrow(
         workflowKey: String,
         transitionKey: String,
-    ): UUID {
-        val transitionId =
-            transitionKey.toTransitionIdOrNull()
-                ?: return resolveByCompositeKey(workflowKey, transitionKey)
-        return transitionResolver.resolveById(workflowKey, transitionId)
-            ?: throw PostActionNotFoundException(
-                "전환 미존재 — workflowKey='$workflowKey' transitionId='$transitionId'",
-            )
-    }
-
-    /**
-     * 종전 `fromStateKey__toStateKey` 합성 키로 전환을 찾는다 (하위호환 경로).
-     *
-     * ★ 이 키는 유일하지 않다. V207 ① 이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를
-     * 풀어 같은 구간에 전환을 여럿 둘 수 있게 됐기 때문이다. 2건 이상이면 **그 이름으로는 대상을
-     * 특정할 수 없으므로** 404 로 거절한다 — 아무 쪽이나 골라 주면 규칙이 엉뚱한 전환에 붙고
-     * 그 오배치는 화면에서 보이지 않는다. 호출자는 전환 id 로 다시 부르면 되고 화면은 이미 그렇게 한다.
-     *
-     * @throws PostActionNotFoundException 형식 오류 · 전환 미존재 · 키가 유일하지 않을 때.
-     */
-    private fun resolveByCompositeKey(
-        workflowKey: String,
-        transitionKey: String,
-    ): UUID {
-        val parts = transitionKey.split("__")
-        if (parts.size != 2) {
-            throw PostActionNotFoundException(
-                "transitionKey 형식 오류 — '__' 구분자 필요: '$transitionKey'",
-            )
+    ): UUID =
+        transitionResolver.resolveTransitionOrThrow(workflowKey, transitionKey) {
+            throw PostActionNotFoundException(it)
         }
-        val (fromStateKey, toStateKey) = parts
-        val ids = transitionResolver.resolveTransitionIds(workflowKey, fromStateKey, toStateKey)
-        return ids.singleOrNull()
-            ?: throw PostActionNotFoundException(
-                "전환을 특정할 수 없다(${ids.size}건) — workflowKey='$workflowKey' " +
-                    "transitionKey='$transitionKey'. 2건 이상이면 전환 id 로 지목해야 한다",
-            )
-    }
 
     /**
      * post-action id 가 해당 transitionId 에 속하는지 확인한다.
@@ -212,11 +186,8 @@ class PostActionAdminService(
         id: UUID,
         transitionId: UUID,
     ) {
-        val exists = repository.findByTransitionId(transitionId).any { it.id == id }
-        if (!exists) {
-            throw PostActionNotFoundException(
-                "post-action 미존재 — id='$id' transitionId='$transitionId'",
-            )
+        repository.findByTransitionId(transitionId).requireContains(id, transitionId, "post-action") {
+            throw PostActionNotFoundException(it)
         }
     }
 
@@ -247,25 +218,4 @@ class PostActionAdminService(
             throw PostActionValidationException(ex.message ?: "검증 실패", ex)
         }
     }
-}
-
-/**
- * RFC 4122 표기(8-4-4-4-12 16진)만 전환 id 로 인정하는 패턴.
- *
- * `UUID.fromString` 을 그대로 쓰지 않는 이유는 그것이 `1-1-1-1-1` 같은 헐거운 표기도 받아들여
- * 갈래 판정이 예외 발생 여부에 매달리기 때문이다. 갈래는 예외가 아니라 형태로 가른다.
- */
-private val TRANSITION_ID_PATTERN =
-    Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-
-/**
- * 경로 세그먼트가 전환 id 면 그 UUID, 아니면 null (= 종전 합성 키로 읽으라는 뜻).
- *
- * 합성 키는 반드시 `__` 를 품으므로 두 갈래가 겹치지 않는다.
- */
-private fun String.toTransitionIdOrNull(): UUID? {
-    if (!TRANSITION_ID_PATTERN.matches(this)) {
-        return null
-    }
-    return UUID.fromString(this)
 }

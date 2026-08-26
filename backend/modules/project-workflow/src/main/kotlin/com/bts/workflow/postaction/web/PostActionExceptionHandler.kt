@@ -5,6 +5,8 @@ package com.bts.workflow.postaction.web
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.workflow.postaction.PostActionNotFoundException
 import com.bts.workflow.postaction.PostActionValidationException
+import com.bts.workflow.web.ErrorBody
+import com.bts.workflow.web.ErrorResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -19,6 +21,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 매핑 규칙.
  * - [PostActionValidationException] → 400 Bad Request + WORKFLOW_POST_ACTION_INVALID
  * - [PostActionNotFoundException]   → 404 Not Found  + WORKFLOW_POST_ACTION_NOT_FOUND
+ *
+ * ### 응답 봉투는 모듈 공용 한 벌이다
+ * `com.bts.workflow.web` 의 [ErrorResponse]/[ErrorBody] 를 쓴다. 같은 `{error:{code,message}}` 를
+ * 패키지마다 따로 선언하면 사본이 늘어나는데, 사본들은 서로를 검사하지 않아 한쪽만 바뀐 사실이
+ * 드러나지 않는다. 형제 `ValidatorExceptionHandler` 도 같은 봉투를 쓴다 (게이트 1 결정, 2026-08-25).
  */
 @RestControllerAdvice(basePackages = ["com.bts.workflow.postaction"])
 class PostActionExceptionHandler {
@@ -33,10 +40,14 @@ class PostActionExceptionHandler {
      * @param ex 거부된 행위자·권한·범위 정보를 담은 예외.
      */
     @ExceptionHandler(WorkflowSchemeAccessDeniedException::class)
-    fun handleAccessDenied(ex: WorkflowSchemeAccessDeniedException): ResponseEntity<PostActionErrorResponse> {
+    fun handleAccessDenied(ex: WorkflowSchemeAccessDeniedException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_403 access_denied detail='{}'", ex.message)
-        val errorBody = PostActionErrorBody(code = "WORKFLOW_SCHEME_ACCESS_DENIED", message = "이 작업을 수행할 권한이 없습니다.")
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(PostActionErrorResponse(errorBody))
+        val errorBody =
+            ErrorBody(
+                code = WorkflowSchemeAccessDeniedException.WORKFLOW_SCHEME_ACCESS_DENIED,
+                message = "이 작업을 수행할 권한이 없습니다.",
+            )
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(errorBody))
     }
 
     /**
@@ -45,11 +56,11 @@ class PostActionExceptionHandler {
      * @param ex 검증 실패 사유를 담은 예외.
      */
     @ExceptionHandler(PostActionValidationException::class)
-    fun handleValidation(ex: PostActionValidationException): ResponseEntity<PostActionErrorResponse> {
+    fun handleValidation(ex: PostActionValidationException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_400 reason='{}'", ex.reason)
         val errorBody =
-            PostActionErrorBody(code = "WORKFLOW_POST_ACTION_INVALID", message = "post-action 설정이 유효하지 않습니다.")
-        return ResponseEntity.badRequest().body(PostActionErrorResponse(errorBody))
+            ErrorBody(code = "WORKFLOW_POST_ACTION_INVALID", message = "post-action 설정이 유효하지 않습니다.")
+        return ResponseEntity.badRequest().body(ErrorResponse(errorBody))
     }
 
     /**
@@ -58,25 +69,10 @@ class PostActionExceptionHandler {
      * @param ex 조회를 시도한 대상 상세 정보를 담은 예외.
      */
     @ExceptionHandler(PostActionNotFoundException::class)
-    fun handleNotFound(ex: PostActionNotFoundException): ResponseEntity<PostActionErrorResponse> {
+    fun handleNotFound(ex: PostActionNotFoundException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_404 detail='{}'", ex.detail)
         val errorBody =
-            PostActionErrorBody(code = "WORKFLOW_POST_ACTION_NOT_FOUND", message = "post-action 또는 전환을 찾을 수 없습니다.")
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(PostActionErrorResponse(errorBody))
+            ErrorBody(code = "WORKFLOW_POST_ACTION_NOT_FOUND", message = "post-action 또는 전환을 찾을 수 없습니다.")
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(errorBody))
     }
 }
-
-/**
- * post-action API 에러 응답 래퍼.
- *
- * @property error 에러 상세 정보.
- */
-data class PostActionErrorResponse(val error: PostActionErrorBody)
-
-/**
- * post-action API 에러 상세 정보.
- *
- * @property code WORKFLOW_ 접두사로 시작하는 에러 코드.
- * @property message 사람이 읽을 수 있는 에러 설명 (내부 식별자 미포함).
- */
-data class PostActionErrorBody(val code: String, val message: String)

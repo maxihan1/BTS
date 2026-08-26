@@ -38,7 +38,7 @@ enum class ValidatorPhase {
  */
 interface WorkflowValidator {
     /**
-     * 이 Validator 의 고유 식별자. 예: "field-required", "permission-check".
+     * 이 Validator 의 고유 식별자. 예: "RequiredField", "permission-check".
      * YAML 워크플로우 정의의 `validators[].type` 값과 매칭된다.
      */
     val type: String

@@ -1,6 +1,6 @@
-// 워크플로우 전환 키 → transition_id UUID 해석 컴포넌트
+// 워크플로우 전환 키 → transition_id UUID 해석 컴포넌트 + 전환 규칙 2종이 공유하는 해석·소속 판정
 
-package com.bts.workflow.postaction
+package com.bts.workflow.transition
 
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowTransition
@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * post-action 경로가 받은 전환 지목값을 `workflow_transitions.id` 로 되돌리는 컴포넌트.
+ * 규칙 경로가 받은 전환 지목값을 `workflow_transitions.id` 로 되돌리는 컴포넌트.
  *
  * ### 1급 식별자는 id 다 (ADR 2026-08-18 §D1)
  * 경로 세그먼트가 UUID 로 파싱되면 [resolveById] 로 간다. 그쪽이 정본이다 —
@@ -48,7 +48,7 @@ import java.util.UUID
  * @param dsl jOOQ DSLContext.
  */
 @Component
-class PostActionTransitionResolver(
+class TransitionKeyResolver(
     private val dsl: DSLContext,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -78,7 +78,7 @@ class PostActionTransitionResolver(
                 .fetchOne(WORKFLOW_TRANSITIONS.ID)
         if (found == null) {
             log.debug(
-                "PostActionTransitionResolver: 전환 id 미존재 workflowKey={} transitionId={}",
+                "TransitionKeyResolver: 전환 id 미존재 workflowKey={} transitionId={}",
                 workflowKey,
                 transitionId,
             )
@@ -91,7 +91,7 @@ class PostActionTransitionResolver(
      *
      * ★ 단건을 가정하지 않는다. 같은 (from,to) 구간에 전환이 여럿일 수 있고, GLOBAL 은 조건이
      * `kind = 'GLOBAL'` + 도착 상태뿐이라 같은 도착지를 향한 2건이면 그것만으로 다건이 된다.
-     * 몇 건인지를 보고 404 로 바꿀지 결정하는 것은 호출자([PostActionAdminService])의 몫이다.
+     * 몇 건인지를 보고 404 로 바꿀지 결정하는 것은 호출자의 몫이다 — 규칙 종류마다 호출자가 다르다.
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param fromStateKey 출발 상태 키. GLOBAL·INITIAL 전환은 상태 키 대신 종류 이름이 온다.
@@ -123,7 +123,7 @@ class PostActionTransitionResolver(
         detail: String,
     ): List<UUID> {
         log.debug(
-            "PostActionTransitionResolver: {} 미존재 workflowKey={} value={}",
+            "TransitionKeyResolver: {} 미존재 workflowKey={} value={}",
             stage,
             workflowKey,
             detail,
@@ -199,6 +199,119 @@ class PostActionTransitionResolver(
             .from(WORKFLOW_STATES)
             .where(WORKFLOW_STATES.WORKFLOW_ID.eq(workflowId).and(WORKFLOW_STATES.KEY.eq(stateKey)))
             .fetchOne(WORKFLOW_STATES.ID)
+}
+
+/**
+ * RFC 4122 표기(8-4-4-4-12 16진)만 전환 id 로 인정하는 패턴.
+ *
+ * `UUID.fromString` 을 그대로 쓰지 않는 이유는 그것이 `1-1-1-1-1` 같은 헐거운 표기도 받아들여
+ * 갈래 판정이 예외 발생 여부에 매달리기 때문이다. 갈래는 예외가 아니라 형태로 가른다.
+ */
+private val TRANSITION_ID_PATTERN =
+    Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+/**
+ * 경로 세그먼트가 전환 id 면 그 UUID, 아니면 null (= 종전 합성 키로 읽으라는 뜻).
+ *
+ * 합성 키는 반드시 `__` 를 품으므로 두 갈래가 겹치지 않는다.
+ *
+ * ★ **전환 규칙 2종(post-action · validator)의 관리 서비스가 같은 판정을 쓴다.** 각 서비스에
+ * 파일-private 사본을 두면 형태 판정이 두 벌로 갈리는데, 두 사본은 서로를 검사하지 않으므로
+ * 한쪽만 고쳐진 사실이 드러나지 않는다. 전환 지목값 해석은 이 파일이 정본이므로 판정도 여기 둔다.
+ * 가시성이 `internal` 인 것은 그 두 호출자가 다른 패키지에 있기 때문이고, 모듈 밖으로는 새지 않는다.
+ *
+ * @return 전환 id 면 그 UUID, 합성 키로 읽어야 하면 null.
+ */
+internal fun String.toTransitionIdOrNull(): UUID? {
+    if (!TRANSITION_ID_PATTERN.matches(this)) {
+        return null
+    }
+    return UUID.fromString(this)
+}
+
+/** 종전 합성 키 `fromStateKey__toStateKey` 의 구분자. 형식 판정과 실패 메시지가 같은 값을 본다. */
+private const val TRANSITION_KEY_SEPARATOR = "__"
+
+/**
+ * 경로 세그먼트를 전환 id 로 해석한다. UUID 로 파싱되면 id 로, 아니면 종전 합성 키로 읽는다.
+ *
+ * ★ **전환 규칙 2종(post-action · validator)의 관리 서비스가 같은 해석을 쓴다.** 서비스마다 사본을
+ * 두면 「합성 키가 2건 이상이면 특정 불가라 404」 같은 모호성 정책이 두 벌로 갈리는데, 두 사본은
+ * 서로를 검사하지 않으므로 한쪽만 고쳐진 사실이 드러나지 않는다. 규칙마다 다른 것은 **예외 종류**뿐이라
+ * 호출자가 [notFound] 로 자기 예외를 넘긴다.
+ *
+ * 멤버가 아니라 확장 함수인 것은 [TransitionKeyResolver] 빈의 **프록시를 그대로 통과**하기 위해서다.
+ * 멤버로 두면 안쪽 [TransitionKeyResolver.resolveById] 호출이 self-invocation 이 되어 그쪽
+ * `@Transactional` 이 조용히 무력화된다.
+ *
+ * @param workflowKey 워크플로우 식별 키.
+ * @param transitionKey 전환 지목값 — 전환 id(UUID) 또는 종전 `fromStateKey__toStateKey` 합성 키.
+ * @param notFound 해석 실패 시 규칙별 404 예외를 던지는 람다. 인자는 실패 상세 문자열이다.
+ * @return 해석된 전환 UUID.
+ */
+internal fun TransitionKeyResolver.resolveTransitionOrThrow(
+    workflowKey: String,
+    transitionKey: String,
+    notFound: (String) -> Nothing,
+): UUID {
+    val transitionId =
+        transitionKey.toTransitionIdOrNull()
+            ?: return resolveByCompositeKey(workflowKey, transitionKey, notFound)
+    return resolveById(workflowKey, transitionId)
+        ?: notFound("전환 미존재 — workflowKey='$workflowKey' transitionId='$transitionId'")
+}
+
+/**
+ * 종전 `fromStateKey__toStateKey` 합성 키로 전환을 찾는다 (하위호환 경로).
+ *
+ * ★ 이 키는 유일하지 않다. V207 ① 이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를
+ * 풀어 같은 구간에 전환을 여럿 둘 수 있게 됐기 때문이다. 2건 이상이면 **그 이름으로는 대상을
+ * 특정할 수 없으므로** 404 로 거절한다 — 아무 쪽이나 골라 주면 규칙이 엉뚱한 전환에 붙고
+ * 그 오배치는 화면에서 보이지 않는다. 호출자는 전환 id 로 다시 부르면 된다.
+ *
+ * @param workflowKey 워크플로우 식별 키.
+ * @param transitionKey 종전 합성 키.
+ * @param notFound 형식 오류 · 미존재 · 유일하지 않음에서 규칙별 404 예외를 던지는 람다.
+ * @return 유일하게 걸린 전환 UUID.
+ */
+private fun TransitionKeyResolver.resolveByCompositeKey(
+    workflowKey: String,
+    transitionKey: String,
+    notFound: (String) -> Nothing,
+): UUID {
+    val parts = transitionKey.split(TRANSITION_KEY_SEPARATOR)
+    if (parts.size != 2) {
+        notFound("transitionKey 형식 오류 — '$TRANSITION_KEY_SEPARATOR' 구분자 필요: '$transitionKey'")
+    }
+    val (fromStateKey, toStateKey) = parts
+    val ids = resolveTransitionIds(workflowKey, fromStateKey, toStateKey)
+    return ids.singleOrNull()
+        ?: notFound(
+            "전환을 특정할 수 없다(${ids.size}건) — workflowKey='$workflowKey' " +
+                "transitionKey='$transitionKey'. 2건 이상이면 전환 id 로 지목해야 한다",
+        )
+}
+
+/**
+ * 전환 규칙 id 가 그 전환에 실제로 속하는지 확인한다 (IDOR 차단).
+ *
+ * 「있긴 한데 네 것이 아니다」까지 404 로 묶는 판정이라 규칙 2종이 같은 구현을 봐야 한다.
+ * 규칙마다 다른 것은 예외 종류와 [ruleLabel] 뿐이다.
+ *
+ * @param id 확인할 전환 규칙 UUID.
+ * @param transitionId 소속이어야 할 전환 UUID.
+ * @param ruleLabel 실패 상세에 쓸 규칙 이름 (`validator` · `post-action`).
+ * @param notFound 소속이 아니거나 미존재일 때 규칙별 404 예외를 던지는 람다.
+ */
+internal fun List<TransitionRuleRow>.requireContains(
+    id: UUID,
+    transitionId: UUID,
+    ruleLabel: String,
+    notFound: (String) -> Nothing,
+) {
+    if (none { it.id == id }) {
+        notFound("$ruleLabel 미존재 — id='$id' transitionId='$transitionId'")
+    }
 }
 
 /**

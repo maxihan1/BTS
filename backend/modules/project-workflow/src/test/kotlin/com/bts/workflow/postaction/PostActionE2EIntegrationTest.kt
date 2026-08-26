@@ -10,6 +10,7 @@ import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.bts.workflow.testsupport.insertWorkflowStatus
+import com.bts.workflow.transition.TransitionKeyResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
@@ -235,7 +236,7 @@ class PostActionE2EIntegrationTest {
 
             val postActionRepository = PostActionRepository(dsl, objectMapper)
             val factory = DefaultWorkflowPostActionFactory()
-            val resolver = PostActionTransitionResolver(dsl)
+            val resolver = TransitionKeyResolver(dsl)
 
             val service = PostActionAdminService(postActionRepository, factory, resolver)
 
