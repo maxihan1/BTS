@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 /**
- * [ValidatorAdminService] 단위 테스트 — 14건. 스펙 §엣지 케이스와 1:1 이다.
+ * [ValidatorAdminService] 단위 테스트 — 15건. 스펙 §엣지 케이스와 1:1 이다.
  *
  * ### 팩토리만 실물이다 (mock 이 아니다)
  * 형제 `PostActionAdminServiceTest` 는 팩토리까지 mock 으로 두지만 여기서는
@@ -57,6 +57,14 @@ class ValidatorAdminServiceTest {
     private val customExpressionType =
         CustomExpressionValidator(evaluator = spelEvaluator, expression = "true").type
 
+    /**
+     * 실물 validator 팩토리 — **서비스가 쓰는 것과 같은 인스턴스**다.
+     *
+     * 테스트가 자기 팩토리를 따로 만들면 판정 대상 인스턴스가 서비스가 만든 것과 달라지고,
+     * 「같은 한 벌」 주장의 대조 대상이 흐려진다.
+     */
+    private val factory = DefaultWorkflowValidatorFactory(permissionResolver, spelEvaluator)
+
     private val workflowKey = "test-wf"
     private val transitionKey = "open__in_progress"
     private val transitionId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001")
@@ -69,7 +77,7 @@ class ValidatorAdminServiceTest {
         service =
             ValidatorAdminService(
                 repository = repository,
-                factory = DefaultWorkflowValidatorFactory(permissionResolver, spelEvaluator),
+                factory = factory,
                 transitionResolver = transitionResolver,
             )
 
@@ -204,6 +212,58 @@ class ValidatorAdminServiceTest {
 
         assertThat(result.displayOrder).isEqualTo(7)
         verify(exactly = 1) { repository.update(validatorId, "permission-check", config, 7) }
+    }
+
+    // ── 편집 가능 판정은 한 벌이다 (부채 2 · FR-8) ────────────────────────────
+
+    /**
+     * 거부 경로(400)와 응답이 싣는 `editable` 이 **같은 판정**을 쓴다.
+     *
+     * 기대값은 **리터럴로 적는다** — `isEditable` 로 기대를 만들면 그 함수를 뒤집었을 때 기대도 같이
+     * 뒤집혀 항진명제가 되고 뮤테이션이 red 를 못 낸다. 팩토리가 아는 4종을 전수로 돌아
+     * ① 판정 함수의 값 ② 서비스가 실제로 거절하는지 를 **둘 다** 그 리터럴과 맞춘다.
+     * 한쪽만 고치면 여기서 red 다.
+     *
+     * 「같은 함수를 부른다」의 본단언은 뮤테이션이다 — `isEditable` 을 뒤집으면 이 테스트와
+     * `ValidatorControllerTest` 의 응답 테스트가 **함께** red 여야 하고, 한쪽만 red 면 사본이
+     * 남아 있다는 뜻이다.
+     */
+    @Test
+    fun `거부 판정과 응답 판정이 같은 함수를 부른다`() {
+        val expectations =
+            listOf(
+                Triple("RequiredField", mapOf<String, Any?>("field" to "resolution"), true),
+                Triple("permission-check", mapOf<String, Any?>("permission" to "TRANSITION_ISSUE"), true),
+                Triple("not-status-category", mapOf<String, Any?>("category" to "DONE"), true),
+                Triple(customExpressionType, mapOf<String, Any?>("expression" to "true"), false),
+            )
+
+        expectations.forEach { (type, config, expectedEditable) ->
+            val instance = factory.create(type, config)
+
+            assertThat(isEditable(instance))
+                .describedAs("isEditable(%s)", type)
+                .isEqualTo(expectedEditable)
+
+            if (expectedEditable) {
+                every {
+                    repository.insert(transitionId, type, config, 0)
+                } returns ValidatorRow(validatorId, transitionId, type, config, 0)
+
+                service.create(workflowKey, transitionKey, type, config, 0)
+
+                verify(exactly = 1) { repository.insert(transitionId, type, config, 0) }
+            } else {
+                assertThatThrownBy {
+                    service.create(workflowKey, transitionKey, type, config, 0)
+                }
+                    .describedAs("create(%s)", type)
+                    .isInstanceOf(ValidatorTypeNotEditableException::class.java)
+            }
+        }
+
+        // dry-run 은 인스턴스 생성까지다 — 4종을 전부 만들었는데도 표현식은 평가되지 않는다.
+        verify(exactly = 0) { spelEvaluator.evaluate(any(), any()) }
     }
 
     // ── 전환 해석 · IDOR (E1 · E3 · E4) ───────────────────────────────────────

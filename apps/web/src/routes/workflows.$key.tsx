@@ -1,10 +1,11 @@
-// 워크플로우 상세 페이지 (FR-WF-01 read-only 다이어그램 + FR-NT-05 post-action 설정)
+// 워크플로우 상세 페이지 (FR-WF-01 read-only 다이어그램 + FR-WF-06 전환 규칙 + FR-NT-05 post-action 설정)
 import type { JSX } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { WorkflowDiagram } from '@/components/workflow/WorkflowDiagram'
 import { fetchWorkflow } from '@/api/workflows'
 import { PostActionConfigSection } from '@/components/workflow/PostActionConfigSection'
+import { ValidatorConfigSection } from '@/components/workflow/ValidatorConfigSection'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -81,6 +82,15 @@ export function WorkflowDetailPage({ workflowKey }: WorkflowDetailPageProps): JS
 
       {/* 워크플로우 FSM 다이어그램 (FR-WF-01 read-only, spec S1) */}
       <WorkflowDiagram workflow={data} />
+
+      {/*
+        전환 규칙(validator) 설정 섹션 (FR-WF-06) — isSystemAdmin 게이팅은 ValidatorConfigSection 내부에서 수행.
+
+        post-action 섹션보다 **앞에** 둔다. 검증기는 전환을 막거나 후보에서 감추는 것이고
+        post-action 은 전환이 끝난 뒤 실행되는 것이라, 위에서 아래로 읽는 순서가 곧 전환이
+        일어나는 시간 순서가 된다.
+      */}
+      <ValidatorConfigSection workflowKey={workflowKey} transitions={data.transitions} />
 
       {/* post-action 설정 섹션 (FR-NT-05) — isSystemAdmin 게이팅은 PostActionConfigSection 내부에서 수행 */}
       <PostActionConfigSection workflowKey={workflowKey} transitions={data.transitions} />

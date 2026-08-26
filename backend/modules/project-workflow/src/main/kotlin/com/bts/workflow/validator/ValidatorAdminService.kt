@@ -27,19 +27,20 @@ import java.util.UUID
  * 뿐이다. 목록을 사본으로 들면 팩토리의 `when` 분기와 갈리는데 **두 목록은 서로를 검사하지 않으므로**
  * 갈린 사실이 드러나지 않는다.
  *
- * ### 편집 가능 타입은 허용 목록이고, 문자열이 아니라 타입으로 가른다
- * 이 API 로 만들거나 바꿀 수 있는 것은 [RequiredFieldValidator] · [PermissionValidator] ·
- * [NotStatusCategoryValidator] **셋뿐**이고 나머지는 전부 거절이다. 근거는 `validateConfig` KDoc 에 있다.
- * 그래서 `CustomExpression` 도 들어오지 못한다 — `expression/SpelEvaluator` 가
- * 「일반 사용자가 API 를 통해 임의 표현식을 전달하는 경로를 절대로 만들지 않는다」고 못 박았고,
- * Jira Cloud 내장 validator 9종에도 자유 표현식 입력칸이 없다.
+ * ### 편집 가능 여부의 정본은 [isEditable] 하나다
+ * 이 서비스는 편집 가능 타입 목록도 들지 않는다. 판정은 [isEditable] 이 하고 여기서는 그것이
+ * false 를 주면 [ValidatorTypeNotEditableException] 으로 옮길 뿐이다. 목록을 사본으로 들면 위
+ * 「지원 type」과 똑같은 자리에서 두 목록이 갈리고, 갈린 사실은 아무도 검사하지 않는다.
  *
- * 판정은 팩토리가 만든 인스턴스의 **타입**으로 한다 — 여기에 type 문자열을 적으면 팩토리 분기와
- * 각 구현체의 `override val type` 에 이은 세 번째 사본이 되고, `is` 와 달리 컴파일러가 그 사본을
- * 지켜 주지 않는다. dry-run 은 인스턴스 생성까지라 `validate` 를 부르지 않는다 — 표현식 평가도
- * 권한 조회도 일어나지 않는다.
+ * 그 판정은 **허용 목록**이다 — 명시 등재된 타입만 편집 가능하고 등재되지 않은 타입은 모르는
+ * 것이므로 거부된다(fail-closed). 새 validator 가 생기면 자동으로 편집 불가가 되고, 편집 가능하게
+ * 하려면 [isEditable] 에 한 줄을 더해야 한다. 어떤 타입이 왜 빠졌는지도 그 함수 KDoc 이 든다.
  *
- * 이미 들어간 `CustomExpression` 행은 **목록에 보이고 삭제도 된다** — 반쪽 목록은 관리자를 속인다.
+ * 판정 인자는 팩토리가 만든 **인스턴스**이고 type 문자열이 아니다. dry-run 은 인스턴스 생성까지라
+ * `validate` 를 부르지 않는다 — 표현식 평가도 권한 조회도 일어나지 않는다.
+ *
+ * 편집할 수 없는 타입의 행이 이미 들어가 있어도 **목록에 보이고 삭제도 된다** — 반쪽 목록은
+ * 관리자를 속인다.
  *
  * ### 캐시 무효화 불필요
  * validator 는 캐싱되지 않는다. `cache/WorkflowCache` 가 담는 것은 `Workflow` aggregate
@@ -225,12 +226,12 @@ class ValidatorAdminService(
      * 1. [WorkflowValidatorFactory.create] dry-run — 미지원 type · 필수 config 키 누락 ·
      *    config 타입 불일치 · 알 수 없는 enum 을 전부 [IllegalArgumentException] 으로 받아
      *    [ValidatorValidationException] 으로 옮긴다. 지원 목록을 여기서 다시 세지 않는다.
-     * 2. 만들어진 인스턴스가 **허용 목록**에 없으면 편집 불가다. 허용은 [RequiredFieldValidator] ·
-     *    [PermissionValidator] · [NotStatusCategoryValidator] 셋뿐이다. 새 validator 를 편집 가능하게
-     *    하려면 아래 `editable` 조건에 **명시 등재**해야 한다 — 빠뜨리면 400 이지 조용한 허용이 아니다.
-     *    거절 목록이었다면 팩토리에 표현식·스크립트·템플릿·URL 을 받는 분기가 하나 늘어나는 것만으로
-     *    그 타입이 **코드 변경 0 으로** 이 API 를 통해 쓰기 가능해진다(fail-open). type 문자열 비교가
-     *    아니라 **타입 검사**이므로 클래스가 사라지거나 이름이 바뀌면 컴파일이 먼저 깨진다.
+     * 2. 만들어진 인스턴스를 [isEditable] 에 넘겨 편집 가능 여부를 묻는다. 허용 목록의 정본은 그
+     *    함수 하나이므로 여기에 타입을 옮겨 적지 않는다 — 사본을 두면 둘이 갈려도 아무도 검사하지
+     *    않는다. **명시 등재된 타입만** 통과하고 등재되지 않은 타입은 모르는 것이므로 거부된다
+     *    (fail-closed). 그래서 새 validator 는 자동으로 편집 불가이고, 편집 가능하게 하려면
+     *    [isEditable] 에 한 줄을 더해야 한다 — 빠뜨리면 400 이지 조용한 허용이 아니다.
+     *    허용 목록을 쓰는 이유와 각 타입의 제외 근거는 [isEditable] KDoc 이 든다.
      *
      * 인스턴스를 만들 뿐 `validate` 를 부르지 않는다 — SpEL 평가도 권한 조회도 일어나지 않는다.
      *
@@ -247,11 +248,7 @@ class ValidatorAdminService(
             } catch (ex: IllegalArgumentException) {
                 throw ValidatorValidationException(ex.message ?: "검증 실패", ex)
             }
-        val editable =
-            instance is RequiredFieldValidator ||
-                instance is PermissionValidator ||
-                instance is NotStatusCategoryValidator
-        if (!editable) {
+        if (!isEditable(instance)) {
             log.info("ValidatorAdminService: 편집 불가 validator type 거절 type={}", type)
             throw ValidatorTypeNotEditableException(type)
         }

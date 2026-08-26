@@ -210,11 +210,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">99%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">141 / 143</div>
+        <div class="big-num">142 / 143</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>141</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>142</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>1</b></div>
         </div>
@@ -228,9 +228,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
-      <div class="bc-card-stats">5 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
-      <div class="bc-card-pct">71%</div>
+      <div class="bc-card-stats">6 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:86%"></div></div>
+      <div class="bc-card-pct">86%</div>
     </div><div class="bc-card" data-nav="bc-automation">
       <div class="bc-card-head">🤖 자동화 규칙</div>
       <div class="bc-card-stats">7 / 7 완료</div>
@@ -777,12 +777,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔄 워크플로우</h1>
     <p class="bc-desc">이슈가 어떤 상태를 거쳐 가는지 규칙을 정하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">71%</div>
-      <div>5 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
+      <div class="big-pct">86%</div>
+      <div>6 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:86%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 5</div>
-        <div>🔄 진행중 1</div>
+        <div>✅ 완료 6</div>
+        <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 1</div>
       </div>
@@ -823,13 +823,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> ID 식별자 (다중 전환 + 전역/최초 전환)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>.of()` invariant 재정의((from,to) 중복 금지 제거 · kind 규칙)</li><li><span class="step-icon">✅</span> D2 — 명세 — 하위호환 계약(`transitionId` 우선 · `toStatusKey` 는 유일 해석 가능할 때만 · 모호하면 409)</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — V207 UNIQUE 해제 · `from_status_id` NULL 허용 · `kind` 추가 · INITIAL 백필(현행 최소 di<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>layOrder 동작 보존) (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (PR #395, 2026-08-20). *`to_status_id` NOT NULL 승격과 `ck_transition_kind_from` CHECK 는 `DATA.md §4-1` 3단 분할의 3단계(=`<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>_states` DROP 과 같은 PR)로 이연*</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> CRUD + 엔진의 전역 전환 처리 + shared-kernel 계약 확장(nullable 추가로 기존 호출부 무변경)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 같은 쌍 다중 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> · 전역 전환 후보 노출 · 모호 시 409</li><li><span class="step-icon">✅</span> D6 — 프론트 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 상태 드롭다운이 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> 이름을 구분해 표시 + **고른 전환을 그대로 실행**(`transitionId` 전달, 409 왕복 제거)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 같은 쌍 두 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span>이 각각 보이고 각각 실행된다</li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-WF-06</span>
         <span class="fr-desc"><span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> 규칙(조건/검증기/후처리) 편집</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — validator type 4종의 config <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> 확정 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #404, 2026-08-25). *확정하며 SDD §7.3·§7.4 의 「타입」 열이 팩토리 `when` 분기의 실제 `type` 문자열과 어긋나 있던 것을 바로잡았다(`permission-check`·`not-status-category` 등). 표↔팩토리 일치는 `scripts/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>/validator-type-catalog.test.ts` 가 강제한다*</li><li><span class="step-icon">✅</span> D2 — 명세 — 알 수 없는 type·잘못된 config 의 400 계약 · post-<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span> 경로를 transitionId 로 정렬(구 경로 유지)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — validator CRUD API (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #404, 2026-08-25). *`ValidatorController` 4 엔드포인트 · `ValidatorAdminService` · `ValidatorRepository` · validator/post-<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span> 공용 기반 `TransitionRuleRepository`*</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span>에서 동작(엔진 통합) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #404, 2026-08-25). *테스트 +25건*</li><li><span class="step-icon">⬜</span> D6 — 프론트 — <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> 규칙 편집 다이얼로그</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 규칙을 걸면 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span>이 막히고, 풀면 통과한다</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — validator type 4종의 config <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> 확정 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #404, 2026-08-25). *확정하며 SDD §7.3·§7.4 의 「타입」 열이 팩토리 `when` 분기의 실제 `type` 문자열과 어긋나 있던 것을 바로잡았다(`permission-check`·`not-status-category` 등). 표↔팩토리 일치는 `scripts/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>/validator-type-catalog.test.ts` 가 강제한다*</li><li><span class="step-icon">✅</span> D2 — 명세 — 알 수 없는 type·잘못된 config 의 400 계약 · post-<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span> 경로를 transitionId 로 정렬(구 경로 유지)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — validator CRUD API (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #404, 2026-08-25). *`ValidatorController` 4 엔드포인트 · `ValidatorAdminService` · `ValidatorRepository` · validator/post-<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span> 공용 기반 `TransitionRuleRepository`*</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span>에서 동작(엔진 통합) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #404, 2026-08-25). *테스트 +25건*</li><li><span class="step-icon">✅</span> D6 — 프론트 — <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> 규칙 편집 다이얼로그 (책임. frontend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #407, 2026-08-26). *형제 post-<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span> <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>(FR-NT-05)의 대칭 구현 — `/<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s/{key}` 상세에 `ValidatorConfigSection` 을 나란히 뒀다. **응답의 `editable` 을 그대로 소비**하고 편집 가능 type 목록을 화면에 베끼지 않는다*</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — ~~규칙을 걸면 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span>이 막히고, 풀면 통과한다~~ → **화면 계약 + 편집 불가 행**으로 축소 (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #407, 2026-08-26). **스펙 deviation — 아래 각주**</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
@@ -1654,13 +1654,23 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">107</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 79건 · 전체 186건</span>
+      <span class="big-pct" style="color:#9ca3af;">108</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 82건 · 전체 190건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 107건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 108건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">25건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 공용 <code>ConfirmDialog</code> 의 <code>confirming</code> prop 이 설계상 도달 불가 (선재 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「정말 지울까요?」 확인 창에 「처리 중…」을 표시하는 스위치가 달려 있는데, 그 창이</p>
+        <p class="todo-risk"><b>방치하면.</b> 소비자가 <code>confirming</code> 을 넘기며 진행 표시가 되는 줄 알고 쓴다. 실제로는 아무 일도</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 공용 `ConfirmDialog` 의 `confirming` prop 이 설계상 도달 불가 (선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>확인을 누르는 즉시 닫혀서 그 표시를 <b>아무도 볼 수 없다.</b></p><p>일어나지 않는다. 더 나쁜 것은 <b>그 prop 에 단언을 붙이는 순간 그것이 도달 불가 조합을 지키는 가짜 그린</b>이 된다는 점이다(<code>unreachable-state-fixture-is-fake-green</code>). 실제로 PR #407 리뷰가 그 자리를 지적했고, 처방을 실행하다 원인이 소비자가 아니라 프리미티브임이 드러났다.</p><p><b>무엇.</b> <code>apps/web/src/components/ui/confirm-dialog.tsx:55-56</code> 이 확인 핸들러에서 <code>onConfirm()</code> 을 부른 <b>직후</b> 스스로 <code>onOpenChange(false)</code> 를 부른다. 그래서 소비자가 <code>setX(null)</code> 을 <code>onSuccess</code> 로 옮겨도 다이얼로그는 이미 닫힌 뒤다 — <b>소비자 쪽에서는 고칠 수 없다.</b> 같은 이유로 「실패하면 확인 맥락을 남긴다」도 불가능하고, 사용자는 무엇이 안 됐는지 창 밖에서 찾아야 한다.</p><p><b>처방.</b> <code>onOpenChange(false)</code> 를 컴포넌트에서 빼고 <b>닫는 책임을 소비자에게</b> 넘긴다. 그러면 <code>confirming</code> 이 실제로 관측되고 실패 시 맥락도 남는다. ★ 공용 프리미티브라 <b>소비처 전수를 함께 고쳐야 한다</b> — <code>grep -rn &quot;ConfirmDialog&quot; apps/web/src</code> 로 먼저 세고, 각 소비자가 성공 시 닫도록 바꾼 뒤에 프리미티브를 바꾼다(순서를 뒤집으면 그 사이 커밋에서 창이 안 닫힌다).</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 PR #407 이 만든 것이 아니다. 공용 프리미티브의 소비처 전수를 건드리는 변경이라 전환 규칙 편집 PR 에 섞으면 폭발 반경이 그 PR 의 주제를 넘는다. 현재 사용자 영향은 「진행 표시가 안 보인다」와 「실패 안내가 창 밖에 뜬다」 둘이고, 후자는 #407 이 목록 위 배너로 보이게 해 두었다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 <b>의도된 대가</b> · 미착수 · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 사이드바를 접으면 「최근 항목」으로 가는 길이 화면에서 사라진다.</p>
@@ -1995,36 +2005,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="todo-body"><p>테스트 클래스 수만큼 애플리케이션을 새로 켠다.</p><p>그 시간을 그대로 기다린다.</p><p><b>무엇 (2026-08-25 실측 — 앞선 두 가설을 실험이 기각했다).</b> 한 번 실행에 Spring context 가 <b>97개</b> 부팅된다(결과 XML 의 <code>HikariPool-N - Starting</code> 최대 번호로 셈).</p><p>기각된 가설 ①. 「캐시 상한 32 &lt; 시그니처 79 라 축출 재부팅이 있다」 — <code>cache.maxSize=96</code> + <code>maxHeapSize=3072m</code> 으로 부팅 97 → <b>96</b>. 안 줄었고 벽시계는 17% 늘었다.</p><p>기각된 가설 ②. 「<code>@JdbcTest</code> 45개가 각자 <code>@Import</code> 를 달리 써서 쪼갠다」 — 32개 클래스를 공용 설정으로 모아 45개가 그것 하나만 <code>@Import</code> 하게 했다. 부팅 97 → <b>97</b>. 변화 0이었다. (슬라이스에 안 쓰는 빈만 늘어 되돌렸다.)</p><p><b>진짜 원인.</b> <code>@DynamicPropertySource</code> 를 <b>클래스마다</b> 갖는다.</p><table class="md-table"><thead><tr><th></th><th>개수</th></tr></thead><tbody><tr><td>부팅 테스트 파일</td><td>127</td></tr><tr><td>그중 <code>@DynamicPropertySource</code> 보유</td><td><b>93</b></td></tr><tr><td>실측 context 부팅</td><td><b>97</b></td></tr></tbody></table><p><code>@DynamicPropertySource</code> 는 클래스별 <code>ContextCustomizer</code> 를 만들고 그것이 <b>context 캐시 키의 일부</b>다. 선언한 클래스는 무조건 자기 context 를 갖는다 — <code>@Import</code> 나 <code>@MockBean</code> 을 아무리 통일해도 소용이 없다.</p><p><b>★그리고 이건 <code>SharedPostgres</code> 설계와 정면으로 맞물린다.</b> PR #402 가 넣은 fixture 는 클래스마다 <b>전용 데이터베이스</b>를 준다(템플릿 복제). URL 이 클래스마다 다르므로 <code>@DynamicPropertySource</code> 도 클래스마다 필요하고, 따라서 context 도 클래스마다 생긴다. <b>클래스별 DB 격리와 context 공유는 동시에 성립하지 않는다.</b></p><p><b>처방 — 둘 중 하나를 고르는 문제다. 기술이 아니라 선택이다.</b> ① <b>격리 유지</b> (현행). context 97개를 받아들인다. 부팅당 3초대이므로 이 모듈은 6분대에 머문다. ② <b>DB 공유</b>. 전 클래스가 한 DB 를 쓰고 접속 정보를 클래스 밖에서 한 번만 주입한다 (<code>ApplicationContextInitializer</code> 등). <code>@DynamicPropertySource</code> 를 걷어내면 context 가 크게 합쳐진다. 대신 격리를 테스트 간 정리로 지켜야 하는데, 이 저장소는 공용 DB 에 이미 데인 적이 있다(<code>shared-dev-db-preexisting-rows-fake-green</code>).</p><p><b>②를 고른다면 재현 테스트를 먼저 세운다.</b> 「A 가 넣은 행이 B 에서 보이면 red」를 만들고 시작해야 한다. 없으면 격리가 깨진 것을 초록이 가린다.</p><p><b>측정은 벽시계가 아니라 부팅 횟수로 한다.</b> 이 머신의 벽시계는 같은 코드에서 370초~708초로 흔들려(2026-08-25 5회 측정) 10~20% 차이를 귀속시킬 수 없다. 부팅 횟수는 결정적이다.</p></div>
       </details>
     </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 (선재 · 미착수 · T2)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 주소에 잘못된 값을 넣거나 요청 본문이 깨졌거나 로그인이 안 된 상태로 부르면, 응답이</p>
-        <p class="todo-risk"><b>방치하면.</b> 화면이 오류 코드로 분기하려는데 그 자리가 비어 있어 「알 수 없는 오류」로 뭉개진다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>이 모듈이 약속한 형태를 벗어나 스프링 기본 형식으로 나간다.</p><p>사용자는 무엇이 잘못됐는지 못 듣고, 개발자는 로그를 봐야 안다. PR #400 이 같은 형태로 한국어 메시지 15개를 전부 프로덕션에 못 띄운 적이 있다.</p><p><b>무엇.</b> <code>MethodArgumentTypeMismatchException</code>(비-UUID <code>{id}</code>) · <code>HttpMessageNotReadableException</code> (깨진 JSON 본문 — <code>type</code> 누락 같은 흔한 경우 포함) · <code>ResponseStatusException</code> 401(미인증)이 <code>{error:{code,message}}</code> 봉투를 안 탄다. <code>project-workflow</code> <b>모듈 전체에 그 3종을 다루는 advice 가 0건</b>이고 <code>spring.mvc.problemdetails.enabled</code> 도 안 켜져 있다.</p><p><b>PR #404 가 만든 것이 아니다.</b> 형제 <code>PostActionExceptionHandler</code> 도 <code>origin/main</code> 에서 도메인 예외 3종만 다룬다 — 모듈의 기존 상태다. 다만 #404 가 새 엔드포인트 4개를 그 관례 위에 얹어 노출 범위가 넓어졌고, D6 편집 UI 가 그 위에 올라간다.</p><p><b>처방.</b> <code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> 양쪽에 3종 <code>@ExceptionHandler</code> 를 같은 <code>ErrorResponse</code> 봉투로 추가하고, 계약 문서의 에러 표에 401 행과 「본문 형식 오류」 400 행을 넣는다. <b><code>search-export-import</code> 선례를 그대로 베끼지 말 것</b> — 그쪽은 <code>ProblemDetail</code>(RFC 7807) 을 돌려주므로 봉투가 다르다. 이식하면 이 BC 의 계약이 깨진다.</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 D6 이 아직 없어 지금 이 경로를 타는 클라이언트가 없다. D6 착수와 같은 PR 에서 닫는 것이 자연스럽다.</p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — <code>ValidatorResponse</code> 에 편집 가능 여부가 없어 D6 가 목록을 손으로 든다 (신규 · 미착수 · T2)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 규칙 목록은 「이 API 로는 못 고치는」 규칙까지 함께 돌려주는데, 응답 어디에도 그 사실이</p>
-        <p class="todo-risk"><b>방치하면.</b> 편집 화면을 만드는 쪽이 「어떤 종류가 편집 가능한지」를 자기 코드에 손으로 베껴 넣게</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — project-workflow — `ValidatorResponse` 에 편집 가능 여부가 없어 D6 가 목록을 손으로 든다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>적혀 있지 않다.</p><p>된다. 백엔드가 네 번째 종류를 허용하는 날 그 사본은 조용히 낡고, 사용자는 고칠 수 있는 규칙을 회색으로 보거나 못 고치는 규칙을 눌렀다가 400 을 받는다.</p><p><b>무엇.</b> 목록이 편집 불가 타입 행도 숨기지 않는 것은 <b>의도</b>다(반쪽 목록은 관리자를 속인다). 그런데 허용 목록은 <code>ValidatorAdminService.validateConfig</code> 의 <code>is</code> 검사 한 줄에만 있고 응답 필드에도, SDD 표 열에도, 판별식 축에도 없다. 값은 이미 공짜다 — <code>phase</code> 를 채우느라 그 행의 인스턴스를 이미 만들고 있다.</p><p><b>처방.</b> <code>ValidatorResponse</code> 에 <code>editable: Boolean</code> 을 넣는다. 허용 목록 판정을 함수 하나로 뽑아 서비스의 거부 경로와 응답 변환이 <b>같은 한 벌</b>을 부르게 한다 — 그러면 400 과 응답이 어긋날 수 없다. config 인스턴스화가 실패한 행은 <code>phase = null</code> 과 짝을 맞춰 <code>editable = false</code> 로 둔다.</p><p><b>왜 지금이 아니라 부채인가.</b> 소비자가 D6 이고 그 화면이 아직 없다. 지금 넣으면 계약만 넓어지고 쓰는 쪽이 없어 검증도 안 된다. <b>D6 착수 시 첫 task 로 세우는 것이 맞다.</b></p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 편집 불가 조건이 코드는 허용 목록, 계약 문서는 <code>CustomExpression</code> 한 값 (신규 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 코드는 「정해진 세 종류만 편집 가능」으로 동작하는데, 문서는 「<code>CustomExpression</code> 만</p>
-        <p class="todo-risk"><b>방치하면.</b> 다섯 번째 종류가 생기는 순간 문서가 거짓이 된다. 코드는 그 종류를 자동으로 편집 불가로</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — project-workflow — 편집 불가 조건이 코드는 허용 목록, 계약 문서는 `CustomExpression` 한 값 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>편집 불가」라고 적는다. 지금은 종류가 넷뿐이라 두 문장이 우연히 같은 뜻이다.</p><p>막는데(모르는 것은 거부), 문서를 읽은 클라이언트는 만들 수 있다고 기대하고 400 을 받는다.</p><p><b>무엇.</b> PR #404 Task 12 가 편집 판정을 denylist 에서 <b>allowlist</b> 로 뒤집었다. 그 방향이 옳다 — 새 validator 가 코드 변경 0 으로 편집 가능해지는 경로를 막는다. 그런데 계약 문서 3곳이 안 따라갔다. <code>docs/plans/2026-08-25-backend-workflow-transition-rule-crud.md</code> 의 에러 계약 표 · 기능 요구사항 FR-6 · 사용자 시나리오 S4 가 전부 <code>type=CustomExpression</code> 으로 적는다.</p><p><b>처방.</b> 세 곳의 조건을 「편집 허용 목록 밖의 type 으로 생성·수정 시도」로 고치고, 허용 목록이 fail-closed 라 새 종류가 기본적으로 편집 불가라는 점을 한 줄 덧붙인다. <b>문서만 고치는 일이라 프로덕션 코드 변경은 0이다.</b></p><p><b>왜 지금이 아니라 부채인가.</b> 현재 동작은 정확하고 사용자 영향이 0이다. 다만 <b>다섯 번째 validator 종류를 추가하는 작업이 생기면 그 PR 안에서 반드시 함께 닫아야 한다</b> — 그때가 거짓이 되는 순간이다.</p></div>
-      </details>
-    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — <code>config</code> JSONB 가 크기·키 제한 없이 저장된다 (신규 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 규칙 설정을 담는 칸에 아무 크기, 아무 이름의 값이나 넣어도 그대로 저장되고 그대로</p>
@@ -2045,6 +2025,36 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="todo-body"><p>넘길 수 있는가」를 막는 문이고, 그 문을 <b>떼는 것</b>도 이 API 로 가능하다. 문이 사라진 뒤 누가 뗐는지 알 방법이 없다.</p><p><b>무엇.</b> <code>ValidatorAdminService</code> 의 생성·수정·삭제 로그가 <code>id</code> · <code>workflowKey</code> · <code>transitionKey</code> 는 적지만 행위자를 안 적는다. 행위자는 두 프레임 위에서 <code>ManageSchemeGuard.requireManageScheme()</code> 가 방금 해석했는데 서비스로 넘어오지 않는다. 모듈 전체에 MDC 필터가 없어 로그 줄이 주변에서 채워지지도 않는다. 형제 <code>PostActionAdminService</code> 도 같은 상태다.</p><p><b>처방.</b> 세 로그 줄에 해석된 행위자 UUID 를 싣는다. 또는 모듈에 MDC 필터를 한 벌 두어 모든 로그가 행위자를 달고 나가게 한다(그쪽이 사본을 안 만든다). 앱 로그가 아니라 <b>지속되는 감사 흔적</b>이 필요하다는 판단이 서면 <code>DATA.md</code> 가 이미 정한 append-only <code>audit_logs</code> 가 그 자리다.</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 형제 표면과 같다. 한쪽만 고치면 두 표면이 갈리므로 둘을 함께 볼 수 있는 시점 — MDC 필터를 도입하거나 감사 로그를 확장하는 작업 — 에 묶는 것이 맞다.</p></div>
       </details>
     </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 에러 응답에 내부 정보가 새지 않는지 지키는 판별식이 없다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 오류 응답에 「무엇이 잘못됐는지」만 담고 내부 사정은 담지 않기로 했는데, 그 약속을</p>
+        <p class="todo-risk"><b>방치하면.</b> 누군가 디버깅하기 편하라고 예외 메시지를 응답에 그대로 실으면 아무도 못 잡는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 에러 응답에 내부 정보가 새지 않는지 지키는 판별식이 없다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>기계가 지키지 않는다. 사람이 리뷰에서 보는 것이 전부다.</p><p>그 메시지에는 파라미터 이름·타입·요청 본문 조각·권한 모델이 들어 있어, 응답이 곧 내부 구조의 설명서가 된다. 이 저장소에 그 사고 이력이 있다(메모리 <code>fr-pm-04-guard-exception-message-http-leak</code> — 가드 예외 메시지의 actorId·permission·scope 가 HTTP 로 샜다).</p><p><b>무엇.</b> PR #407 이 <code>TransitionRuleFrameworkErrors</code> 로 응답 메시지를 상수 4개로 고정하고 상세는 로그로만 보내도록 했다. 그런데 그것을 재는 테스트는 <code>jsonPath(&quot;$.error.message&quot;).isString</code> 뿐이라, 누가 <code>ex.message</code> 를 그 자리에 꽂아도 <b>여전히 통과</b>한다. 계약이 주석과 리뷰로만 지켜진다.</p><p><b>처방.</b> 응답 메시지가 <b>허용된 상수 집합에 속하는지</b>를 재는 판별식을 둔다. 상수 목록을 판별식에 베끼지 말고 <code>TransitionRuleFrameworkErrors</code> 에서 런타임에 읽어 대조한다 — 베끼면 그것이 또 하나의 목록이 된다. 컨트롤러 테스트에서 예외 메시지에 고유 토큰을 심고 그 토큰이 응답에 <b>없음</b>을 재는 방식도 같은 값을 한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 현재 구현은 정확하고 응답에 새는 것이 없다. 판별식은 「나중에 누가 깨뜨리는 것」을 막는 장치라 지금 없다고 사용자 영향이 생기지 않는다. 다만 이 표면은 앞으로 <code>ProblemDetail</code> 이식 유혹(형제 BC 선례)과 디버깅 편의 요구를 계속 받는 자리다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 판별식 머리의 축 표와 실제 축을 대조하는 장치가 없다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 검사기 파일 맨 위에 「이 파일이 무엇을 대조하는지」를 표로 적어 두는데, 그 표가 실제</p>
+        <p class="todo-risk"><b>방치하면.</b> 표를 읽고 「이건 이미 검사되고 있구나」라고 믿은 사람이 실제로는 없는 검사를 전제로</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 판별식 머리의 축 표와 실제 축을 대조하는 장치가 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>검사 항목과 맞는지는 아무도 확인하지 않는다.</p><p>코드를 짠다. 반대로 있는 검사를 표가 빠뜨리면 다음 사람이 그것을 다시 만든다.</p><p><b>무엇.</b> PR #407 착수 시점에 <code>scripts/workflow/validator-type-catalog.test.ts</code> 머리의 표가 「축 4개」라고 적고 있었는데, <b>코드에는 이미 축 5(읽기 형태 봉인)가 있었다.</b> 표가 그것을 빠뜨린 채 오래 초록이었다. 같은 파일에 「<code>PostActionFormDialog.tsx</code> 가 url/method 를 손으로 든다」는 서술도 있었으나 실제 위치는 <code>PostActionConfigSection.tsx</code> 였다. 둘 다 #407 이 바로잡았지만 <b>다음에 축이 늘면 같은 방식으로 또 썩는다.</b></p><p>★ <b>이것은 그 파일이 스스로 이름 붙인 결함 양식의 재현이다</b> — 서로를 검사하지 않는 두 목록 (<code>two-lists-never-check-each-other</code>). 판별식이 자기가 잡으려는 결함을 자기 문서에서 재생산했다.</p><p><b>처방.</b> 머리 표의 축 행 수와 파일의 <code>test(</code> 블록(또는 축 함수) 수를 대조하는 판별식을 둔다. 축 번호를 상수로 적지 말고 양쪽을 런타임에 세어 비교한다. 표에 축 이름을 적었다면 그 이름이 실제 테스트 제목에 있는지까지 보면 더 강하다.</p><p><b>왜 지금이 아니라 부채인가.</b> #407 이 표를 실제 축과 맞춰 놨으므로 지금은 일치한다. 그리고 이 처방은 판별식 파일 자체의 구조에 의존해 다른 판별식으로 일반화할지 판단이 필요하다 — 같은 양식의 머리 표를 가진 파일이 더 있는지 먼저 세어야 한다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 폼 스키마 파서의 <b>부분</b> death 가 무음이다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 화면의 입력 폼과 명세 표를 대조하는 검사기가 있는데, 그 검사기가 <b>전부</b> 못 읽으면</p>
+        <p class="todo-risk"><b>방치하면.</b> 폼 선언 하나가 검사기가 모르는 형태로 바뀌면 그 type 만 대조에서 빠진다. 화면과 표가</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 폼 스키마 파서의 **부분** death 가 무음이다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>경보가 울리지만 <b>일부만</b> 못 읽으면 조용하다.</p><p>갈려도 초록이고, 갈린 사실은 사용자가 저장을 눌러 400 을 받을 때 드러난다.</p><p><b>무엇.</b> <code>validator-type-catalog.test.ts</code> 축 6 의 post-action 파서(<code>siblingConfigValue</code>)는 <code>type:</code> 뒤로만 훑으므로 <code>{ config: {…}, type: &#39;X&#39; }</code> 처럼 <b>키 순서가 뒤집히면</b> 그 선언이 조용히 사라진다. 비-공허 짝은 「집합이 통째로 비었는가」만 보므로 <b>전량 소실은 잡고 부분 소실은 못 잡는다.</b> 오늘은 그 표면에 편집 폼이 있는 type 이 <code>CALL_WEBHOOK</code> 하나뿐이라 부분 = 전량이고, 그래서 무해하다.</p><p><b>처방.</b> 파서가 「읽은 선언 수」와 「파일에 있는 <code>type:</code> 리터럴 수」를 함께 세어 <b>불일치를 축 7(봉인)에 싣는다.</b> 지금 축 7 이 잡는 여섯 형태와 같은 자리다. 또는 <code>siblingConfigValue</code> 를 순서 무관으로 고쳐 같은 객체 리터럴 안의 <code>type</code> 과 <code>config</code> 를 함께 찾게 한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 그 표면에 폼이 있는 type 이 하나뿐인 동안은 부분 소실이 성립하지 않는다. <b>두 번째 type 에 편집 폼이 붙는 시점이 이 부채의 만기</b>다 — 그때 함께 닫는 것이 자연스럽다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 전환 규칙 표면에 남은 사본 5종 (신규 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 같은 내용이 여러 군데에 베껴져 있다. 한 곳을 고쳐도 나머지는 그대로 남는다.</p>
@@ -2052,7 +2062,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       </div>
       <details class="todo-item">
         <summary aria-label="기술 상세 — project-workflow — 전환 규칙 표면에 남은 사본 5종 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>어느 쪽이 정본인지 모른 채 낡은 쪽을 읽는다. 이 저장소가 이름 붙인 지배 결함 양식 그대로다.</p><p><b>무엇 (전수).</b></p><table class="md-table"><thead><tr><th>#</th><th>사본</th><th>자리</th></tr></thead><tbody><tr><td>1</td><td>403 스텁 4벌</td><td><code>PostActionControllerTest</code> — 형제 <code>ValidatorControllerTest</code> 는 같은 PR 에서 <code>denyPermission()</code> 헬퍼로 접었는데, 확장한 쪽에는 적용 안 됐다</td></tr><tr><td>2</td><td>편집 허용 목록 3벌</td><td><code>ValidatorAdminService</code> 의 클래스 KDoc · <code>validateConfig</code> KDoc · <code>editable</code> 식</td></tr><tr><td>3</td><td>403 응답 본문 2벌</td><td><code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> — 같은 예외·같은 코드·같은 메시지, 로그 태그만 다르다</td></tr><tr><td>4</td><td>팩토리 헤더의 분기 개수</td><td>두 팩토리 파일 머리 주석이 종류 수를 적는다. 같은 PR 이 KDoc 에서는 「<code>when</code> 분기가 정본」이라며 목록을 지웠는데 헤더의 <b>개수</b>는 남았다</td></tr><tr><td>5</td><td>파라미터 섀도잉</td><td><code>TransitionRuleRepository.findByTransitionId</code> 의 람다 지역변수가 함수 파라미터 <code>transitionId</code> 를 가린다. 한 줄 위 예외 메시지는 파라미터를 읽어 두 바인딩을 한 줄 간격으로 읽게 된다</td></tr></tbody></table><p><b>처방.</b> 1·3 은 공용 헬퍼로 접는다. 2 는 「허용 목록은 <code>editable</code> 분기가 정본」이라 적고 KDoc 사본을 지운다(같은 PR 이 팩토리 KDoc 에 이미 쓴 문구다). 4 는 개수를 지운다. 5 는 지역변수를 개명한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 다섯 건 다 <b>동작 영향 0</b>이다. PR #404 게이트 2 라운드 3 은 머지를 막는 차단 2건과 판별식 fake green 2건을 닫는 것이 우선이라 여기까지 오지 않았다.</p></div>
+        <div class="todo-body"><p>어느 쪽이 정본인지 모른 채 낡은 쪽을 읽는다. 이 저장소가 이름 붙인 지배 결함 양식 그대로다.</p><p><b>무엇 (전수).</b></p><table class="md-table"><thead><tr><th>#</th><th>사본</th><th>자리</th></tr></thead><tbody><tr><td>1</td><td>403 스텁 4벌</td><td><code>PostActionControllerTest</code> — 형제 <code>ValidatorControllerTest</code> 는 같은 PR 에서 <code>denyPermission()</code> 헬퍼로 접었는데, 확장한 쪽에는 적용 안 됐다</td></tr><tr><td>2</td><td>편집 허용 목록 3벌</td><td><code>ValidatorAdminService</code> 의 클래스 KDoc · <code>validateConfig</code> KDoc · <code>editable</code> 식</td></tr><tr><td>3</td><td>403 응답 본문 2벌</td><td><code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> — 같은 예외·같은 코드·같은 메시지, 로그 태그만 다르다</td></tr><tr><td>4</td><td>팩토리 헤더의 분기 개수</td><td>두 팩토리 파일 머리 주석이 종류 수를 적는다. 같은 PR 이 KDoc 에서는 「<code>when</code> 분기가 정본」이라며 목록을 지웠는데 헤더의 <b>개수</b>는 남았다</td></tr><tr><td>5</td><td>파라미터 섀도잉</td><td><code>TransitionRuleRepository.findByTransitionId</code> 의 람다 지역변수가 함수 파라미터 <code>transitionId</code> 를 가린다. 한 줄 위 예외 메시지는 파라미터를 읽어 두 바인딩을 한 줄 간격으로 읽게 된다</td></tr></tbody></table><p><b>처방.</b> 1·3 은 공용 헬퍼로 접는다. 2 는 「허용 목록은 <code>editable</code> 분기가 정본」이라 적고 KDoc 사본을 지운다(같은 PR 이 팩토리 KDoc 에 이미 쓴 문구다). 4 는 개수를 지운다. 5 는 지역변수를 개명한다.</p><p><b>★ ② 는 해소됐다</b> (PR #407, 2026-08-26). 「편집 허용 목록이 한 파일 안에 KDoc 2곳 + 코드 1곳」 중 <b>KDoc 2곳</b>을 지웠다 — 부채 132 를 닫으면서 <code>validateConfig</code> KDoc 의 허용 목록 사본을 <code>isEditable</code> 포인터로 바꿨고, 그러자 클래스 KDoc 의 「근거는 <code>validateConfig</code> KDoc 에 있다」가 dangling pointer 가 되어 함께 고쳤다. 코드 1곳은 이제 <code>ValidatorEditability.kt</code> 의 <code>isEditable</code> 한 벌뿐이다. <b>나머지 ①③④⑤ 는 미해소.</b></p><p><b>왜 지금이 아니라 부채인가.</b> 다섯 건 다 <b>동작 영향 0</b>이다. PR #404 게이트 2 라운드 3 은 머지를 막는 차단 2건과 판별식 fake green 2건을 닫는 것이 우선이라 여기까지 오지 않았다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">49건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
@@ -2750,8 +2760,38 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
         <div class="todo-body"><p><b>무엇.</b> <code>~/.claude/plans/cozy-hatching-otter.md</code> §PR 분해 의 10행 표는 PR 8~10 을 전부 <code>/admin/workflows</code>(워크플로우 관리 화면) 쪽에 배정한다. 그런데 <code>docs/plan/product/project-workflow.md</code> §2.5 의 <b>FR-WF-05 D6·D7</b>(이슈 상세 상태 드롭다운)은 그 세 PR 어디에도 없다. 같은 로드맵 §검증 「전체 완료 기준 눈확인」 8번이 그 화면을 문장으로 언급하지만 <b>PR 칸이 없어</b> 어느 PR 의 범위도 되지 못했다.</p><p><b>★이 항목을 만든 PR 이 그 마커를 닫았다.</b> 배정이 없어 「다음 큰 덩어리」를 고르는 자리에서 매번 건너뛰어졌고, 백엔드(#395)가 열린 뒤 화면만 없는 채로 남아 있었다. 드러난 계기도 로드맵 대조가 아니라 <b>손으로 두 문서를 나란히 편 것</b>이다.</p><p><b>★지배 결함 양식이다.</b> 두 목록이 서로를 검사하지 않는다. 처방도 그 양식 그대로다 — ① 로드맵 PR 표가 덮는 FR·D 마커 합집합과 <code>docs/plan/product/*.md</code> 의 D 마커 전량 사이 <b>차집합 판별식</b> ② 비-공허 짝(마커 하나를 빼면 red) ③ 판별식 CI 등재.</p><p><b>★먼저 정할 것이 있다.</b> 로드맵 정본이 저장소 <b>밖</b>(<code>~/.claude/plans/</code>)이라 판별식이 읽을 수 없다. 저장소 안으로 옮길지, 옮긴다면 <code>docs/plans/</code> 인지 별도 자리인지가 선행 결정이다. <b>자의로 정하지 않는다.</b></p></div>
       </details>
     </div></div>
-    <h2>✅ 해소된 것 — 79건</h2>
+    <h2>✅ 해소된 것 — 82건</h2>
     <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 (선재 · <b>해소</b> · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 주소에 잘못된 값을 넣거나 요청 본문이 깨졌거나 로그인이 안 된 상태로 부르면, 응답이</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면이 오류 코드로 분기하려는데 그 자리가 비어 있어 「알 수 없는 오류」로 뭉개진다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 (선재 · **해소** · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>이 모듈이 약속한 형태를 벗어나 스프링 기본 형식으로 나간다.</p><p>사용자는 무엇이 잘못됐는지 못 듣고, 개발자는 로그를 봐야 안다. PR #400 이 같은 형태로 한국어 메시지 15개를 전부 프로덕션에 못 띄운 적이 있다.</p><p><b>무엇.</b> <code>MethodArgumentTypeMismatchException</code>(비-UUID <code>{id}</code>) · <code>HttpMessageNotReadableException</code> (깨진 JSON 본문 — <code>type</code> 누락 같은 흔한 경우 포함) · <code>ResponseStatusException</code> 401(미인증)이 <code>{error:{code,message}}</code> 봉투를 안 탄다. <code>project-workflow</code> <b>모듈 전체에 그 3종을 다루는 advice 가 0건</b>이고 <code>spring.mvc.problemdetails.enabled</code> 도 안 켜져 있다.</p><p><b>PR #404 가 만든 것이 아니다.</b> 형제 <code>PostActionExceptionHandler</code> 도 <code>origin/main</code> 에서 도메인 예외 3종만 다룬다 — 모듈의 기존 상태다. 다만 #404 가 새 엔드포인트 4개를 그 관례 위에 얹어 노출 범위가 넓어졌고, D6 편집 UI 가 그 위에 올라간다.</p><p><b>처방.</b> <code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> 양쪽에 3종 <code>@ExceptionHandler</code> 를 같은 <code>ErrorResponse</code> 봉투로 추가하고, 계약 문서의 에러 표에 401 행과 「본문 형식 오류」 400 행을 넣는다. <b><code>search-export-import</code> 선례를 그대로 베끼지 말 것</b> — 그쪽은 <code>ProblemDetail</code>(RFC 7807) 을 돌려주므로 봉투가 다르다. 이식하면 이 BC 의 계약이 깨진다.</p><p><b>해소.</b> PR #407 (2026-08-26). <code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> <b>양쪽</b>에 3종을 같은 <code>{error:{code,message}}</code> 봉투로 추가했다. 코드 값은 비-UUID <code>{id}</code> 와 깨진 본문이 함께 <code>WORKFLOW_INVALID_REQUEST</code>(400 · 모듈 기존 값 재사용), 미인증이 <code>WORKFLOW_UNAUTHENTICATED</code>(401) 다. ★ <b>코드·메시지·봉투 조립을 <code>internal object TransitionRuleFrameworkErrors</code> 한 벌</b>로 두고 형제가 <code>import</code> 해서 쓴다 — 두 파일에 문자열을 각각 적으면 그것이 다시 두 벌이 되고, 화면이 표면별로 분기해야 한다. REFACTOR 후 두 advice 에 남은 문자열 사본은 0 이다. ★ <code>ResponseStatusException</code> 은 상태를 401 로 못박지 않고 <code>ex.statusCode</code> 를 에코한다(형제 <code>BacklogExceptionHandler</code> 와 같은 판단). 401 이 아닌 갈래는 현재 도달 불가라 테스트를 붙이지 않았다 (<code>unreachable-state-fixture-is-fake-green</code>). 테스트는 양쪽 표면 3종 × 2 = 6단언이고, <b>상태 코드만이 아니라 <code>$.error.code</code> 를 리터럴로</b> 잰다 — 상태만 봤다면 스프링 기본 응답도 같은 400/401 이라 처음부터 초록이었다.</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 D6 이 아직 없어 지금 이 경로를 타는 클라이언트가 없다. D6 착수와 같은 PR 에서 닫는 것이 자연스럽다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — <code>ValidatorResponse</code> 에 편집 가능 여부가 없어 D6 가 목록을 손으로 든다 (신규 · <b>해소</b> · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 규칙 목록은 「이 API 로는 못 고치는」 규칙까지 함께 돌려주는데, 응답 어디에도 그 사실이</p>
+        <p class="todo-risk"><b>방치하면.</b> 편집 화면을 만드는 쪽이 「어떤 종류가 편집 가능한지」를 자기 코드에 손으로 베껴 넣게</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — `ValidatorResponse` 에 편집 가능 여부가 없어 D6 가 목록을 손으로 든다 (신규 · **해소** · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>적혀 있지 않다.</p><p>된다. 백엔드가 네 번째 종류를 허용하는 날 그 사본은 조용히 낡고, 사용자는 고칠 수 있는 규칙을 회색으로 보거나 못 고치는 규칙을 눌렀다가 400 을 받는다.</p><p><b>무엇.</b> 목록이 편집 불가 타입 행도 숨기지 않는 것은 <b>의도</b>다(반쪽 목록은 관리자를 속인다). 그런데 허용 목록은 <code>ValidatorAdminService.validateConfig</code> 의 <code>is</code> 검사 한 줄에만 있고 응답 필드에도, SDD 표 열에도, 판별식 축에도 없다. 값은 이미 공짜다 — <code>phase</code> 를 채우느라 그 행의 인스턴스를 이미 만들고 있다.</p><p><b>처방.</b> <code>ValidatorResponse</code> 에 <code>editable: Boolean</code> 을 넣는다. 허용 목록 판정을 함수 하나로 뽑아 서비스의 거부 경로와 응답 변환이 <b>같은 한 벌</b>을 부르게 한다 — 그러면 400 과 응답이 어긋날 수 없다. config 인스턴스화가 실패한 행은 <code>phase = null</code> 과 짝을 맞춰 <code>editable = false</code> 로 둔다.</p><p><b>해소.</b> PR #407 (2026-08-26). <code>ValidatorResponse.editable: Boolean</code> 을 실었다. ★ 판정 함수 <code>isEditable</code> 의 인자가 <code>type</code>/<code>config</code> 가 아니라 <b>이미 만들어진 인스턴스</b>다 — <code>ValidatorController</code> 가 행마다 <code>factory.create</code> 를 이미 부르므로 그 인스턴스를 재사용해 <code>phase</code> 와 <code>editable</code> 을 <b>한 쌍(<code>ValidatorTraits</code>)으로</b> 뽑는다. 그래서 「phase 는 있는데 editable 은 판정 불가」 같은 어긋난 짝이 만들어질 자리가 없고, 인스턴스화가 실패한 행은 <code>phase=null</code> · <code>editable=false</code> 가 자동으로 짝을 이룬다. 판정은 <code>is</code> 검사이고 문자열 비교가 아니다(문자열을 적으면 팩토리 분기와 구현체 <code>override val type</code> 에 이은 세 번째 사본이 된다). ★ <b>「한 벌」의 증거는 뮤테이션이다.</b> <code>isEditable</code> 반환을 뒤집으면 거부 경로(400) 6건 · 응답 3건 · 엔진 통합 2건 = <b>11건이 함께 red</b> 다. 한쪽만 red 였다면 사본이 남았다는 뜻이다. 소비 화면도 같은 PR 에서 붙었다(D6) — 화면은 <code>type === &#39;CustomExpression&#39;</code> 같은 판정을 갖지 않고 응답의 <code>editable</code> 을 그대로 쓰며, 그것을 <b>어긋난 응답</b>(<code>CustomExpression</code> 인데 <code>editable: true</code>)으로 재는 테스트가 지킨다.</p><p><b>왜 지금이 아니라 부채인가.</b> 소비자가 D6 이고 그 화면이 아직 없다. 지금 넣으면 계약만 넓어지고 쓰는 쪽이 없어 검증도 안 된다. <b>D6 착수 시 첫 task 로 세우는 것이 맞다.</b></p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — 편집 불가 조건이 코드는 허용 목록, 계약 문서는 <code>CustomExpression</code> 한 값 (신규 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 코드는 「정해진 세 종류만 편집 가능」으로 동작하는데, 문서는 「<code>CustomExpression</code> 만</p>
+        <p class="todo-risk"><b>방치하면.</b> 다섯 번째 종류가 생기는 순간 문서가 거짓이 된다. 코드는 그 종류를 자동으로 편집 불가로</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 편집 불가 조건이 코드는 허용 목록, 계약 문서는 `CustomExpression` 한 값 (신규 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>편집 불가」라고 적는다. 지금은 종류가 넷뿐이라 두 문장이 우연히 같은 뜻이다.</p><p>막는데(모르는 것은 거부), 문서를 읽은 클라이언트는 만들 수 있다고 기대하고 400 을 받는다.</p><p><b>무엇.</b> PR #404 Task 12 가 편집 판정을 denylist 에서 <b>allowlist</b> 로 뒤집었다. 그 방향이 옳다 — 새 validator 가 코드 변경 0 으로 편집 가능해지는 경로를 막는다. 그런데 계약 문서 3곳이 안 따라갔다. <code>docs/plans/2026-08-25-backend-workflow-transition-rule-crud.md</code> 의 에러 계약 표 · 기능 요구사항 FR-6 · 사용자 시나리오 S4 가 전부 <code>type=CustomExpression</code> 으로 적는다.</p><p><b>처방.</b> 세 곳의 조건을 「편집 허용 목록 밖의 type 으로 생성·수정 시도」로 고치고, 허용 목록이 fail-closed 라 새 종류가 기본적으로 편집 불가라는 점을 한 줄 덧붙인다. <b>문서만 고치는 일이라 프로덕션 코드 변경은 0이다.</b></p><p><b>해소.</b> PR #407 (2026-08-26). 「편집 불가 = <code>CustomExpression</code>」로 적힌 자리를 <b>전수 열거해</b> 고쳤다 (#404 plan 의 S4 시나리오 · FR-6 행 · 에러 계약 표 · <code>ValidatorAdminService</code> 의 <code>validateConfig</code> KDoc 과 클래스 KDoc). 전부 「정본은 <code>isEditable</code> 분기다. 허용 목록에 명시 등재된 타입만 편집 가능하고 등재되지 않은 타입은 <b>모르는 것이므로 거부</b>된다(fail-closed)」로 통일했다. ★ <b>머지된 #404 문서는 원문을 보존하고 날짜 정정 주석으로 이었다</b> — 이력을 조용히 다시 쓰면 무엇이 언제 결정됐는지 추적이 끊긴다. ★ SDD §7.3 은 표에 <b>열을 더하지 않고 각주</b>로 적었다. 판별식 파서가 절 안의 <code>|</code> 시작 줄을 전부 표 행으로 삼아, 각주에 그런 줄이 하나라도 있으면 표 집합이 오염되기 때문이다. 착수 전/후 판별식 EXIT 를 <b>둘 다 0</b> 으로 기록해 표 파싱을 안 깼음을 증명했다.</p><p><b>왜 지금이 아니라 부채인가.</b> 현재 동작은 정확하고 사용자 영향이 0이다. 다만 <b>다섯 번째 validator 종류를 추가하는 작업이 생기면 그 PR 안에서 반드시 함께 닫아야 한다</b> — 그때가 거짓이 되는 순간이다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">identity-access — 테스트 소스에 ktlint 위반 128건이 잠복해 있다 (선재 · <b>해소</b> · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 서식 검사기가 「바뀐 파일」만 본다. 안 건드린 파일의 위반은 초록 뒤에 숨어 있다가,</p>

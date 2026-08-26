@@ -1,10 +1,11 @@
 // workflows.$key 라우트 통합 테스트 — 다이어그램 렌더 + PostActionConfigSection 게이팅
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { softwareDefaultFixture } from '@/mocks/workflow-fixtures'
+import { postActionLabels } from '@/i18n/post-action-labels'
 import { useAuthStore } from '@/auth/authStore'
 import { WorkflowDetailPage } from '@/routes/workflows.$key'
 
@@ -144,8 +145,12 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
       expect(screen.getByText('소프트웨어 개발 기본 워크플로우')).toBeInTheDocument(),
     )
 
-    // PostActionConfigSection 내부의 전환 선택 combobox가 있어야 함
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    // PostActionConfigSection 내부의 전환 선택 combobox가 있어야 함.
+    // ★ 이 페이지에는 FR-WF-06 이 더한 validator 섹션의 select 도 있다 — `combobox` 역할만으로는
+    //   둘이 함께 잡히므로 형제 라벨로 지목한다. 라벨 문자열을 여기 베끼지 않고 정본을 import 한다.
+    expect(
+      screen.getByLabelText(postActionLabels.section.transitionSelectLabel),
+    ).toBeInTheDocument()
   })
 
   /**
@@ -184,11 +189,16 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
     expect(initial).toBeDefined()
     expect(initial?.fromStateKey).toBeNull()
 
-    const option = await screen.findByRole('option', { name: '이슈 생성' })
+    // ★ validator 섹션(FR-WF-06)의 select 도 같은 전환 목록을 그리므로 option 조회를
+    //   post-action select 안으로 한정한다. 한정하지 않으면 두 벌이 섞여 아래 toEqual 이 깨진다.
+    const select = await screen.findByLabelText(postActionLabels.section.transitionSelectLabel)
+    const option = within(select).getByRole('option', { name: '이슈 생성' })
     expect((option as HTMLOptionElement).value).toBe(initial?.id)
 
     // 응답을 그대로 쓴다 = option value 전량이 (placeholder + 응답 전환 id 목록) 과 같다
-    const values = screen.getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
+    const values = within(select)
+      .getAllByRole('option')
+      .map((o) => (o as HTMLOptionElement).value)
     expect(values).toEqual(['', ...softwareDefaultFixture.transitions.map((t) => t.id)])
   })
 

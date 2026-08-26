@@ -11,8 +11,11 @@ import com.bts.workflow.web.ErrorResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.server.ResponseStatusException
 
 /**
  * validator 관리 API 도메인 예외를 HTTP 응답으로 변환하는 핸들러.
@@ -22,6 +25,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * - [ValidatorValidationException]            → 400 + `WORKFLOW_VALIDATOR_INVALID`
  * - [ValidatorTypeNotEditableException]       → 400 + `WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE`
  * - [ValidatorNotFoundException]              → 404 + `WORKFLOW_VALIDATOR_NOT_FOUND`
+ * - [MethodArgumentTypeMismatchException]     → 400 + `WORKFLOW_INVALID_REQUEST`
+ * - [HttpMessageNotReadableException]         → 400 + `WORKFLOW_INVALID_REQUEST`
+ * - [ResponseStatusException]                 → 예외가 지정한 상태 + `WORKFLOW_UNAUTHENTICATED` 등
  *
  * ### 응답 타입은 새로 만들지 않는다
  * 봉투는 `com.bts.workflow.web` 의 [ErrorResponse]/[ErrorBody] 를 그대로 쓴다. 같은
@@ -129,4 +135,119 @@ class ValidatorExceptionHandler {
             ),
         )
     }
+
+    /**
+     * 경로 변수 타입 불일치(비-UUID `{id}` 등) — 400.
+     *
+     * 예외 메시지에는 파라미터 이름·타입·들어온 값이 실려 있다. 그대로 흘리면 응답이 곧 바인딩
+     * 규칙의 설명서가 되므로 상세는 로그에만 남기고 응답에는 일반 메시지를 싣는다
+     * — 위 [handleAccessDenied] 와 같은 규율이다.
+     *
+     * @param ex 변환에 실패한 파라미터 정보를 담은 예외.
+     * @return 400 Bad Request + `WORKFLOW_INVALID_REQUEST`.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleTypeMismatch(ex: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
+        log.info("VALIDATOR_400 type_mismatch param='{}'", ex.name)
+        return TransitionRuleFrameworkErrors.typeMismatch()
+    }
+
+    /**
+     * 요청 본문 파싱 실패(깨진 JSON · 필수 필드 누락) — 400.
+     *
+     * 로그에도 본문 조각을 남기지 않는다. 깨진 본문에는 사용자가 입력한 값이 그대로 들어 있을 수
+     * 있으므로 **원인 예외의 타입 이름만** 남긴다 — 파서 실패인지 매핑 실패인지는 그것으로 갈린다.
+     *
+     * @param ex 본문을 읽지 못한 원인을 담은 예외.
+     * @return 400 Bad Request + `WORKFLOW_INVALID_REQUEST`.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
+        log.info("VALIDATOR_400 message_not_readable cause='{}'", ex.mostSpecificCause.javaClass.simpleName)
+        return TransitionRuleFrameworkErrors.unreadableBody()
+    }
+
+    /**
+     * [ResponseStatusException] — 미인증(401) 이 대표 경로다.
+     *
+     * 이 401 은 Spring Security 필터가 아니라 `CurrentActor.current()` 가 **컨트롤러 실행 중**에
+     * 던진다(`ManageSchemeGuard.requireManageScheme` → `CurrentActor`). 필터 체인에서 났다면
+     * DispatcherServlet 앞이라 이 advice 가 잡을 수 없다.
+     *
+     * 상태는 **예외가 지정한 것을 그대로** 싣는다. 401 로 못박으면 이 패키지에 다른 상태의
+     * [ResponseStatusException] 이 생기는 날 상태가 조용히 401 로 둔갑한다.
+     *
+     * @param ex 상태 코드와 사유를 지정한 예외.
+     * @return 예외가 지정한 상태 + `WORKFLOW_UNAUTHENTICATED`(401) 또는 `WORKFLOW_REQUEST_REJECTED`.
+     */
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatus(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        log.info("VALIDATOR_{} response_status reason='{}'", ex.statusCode.value(), ex.reason)
+        return TransitionRuleFrameworkErrors.responseStatus(ex)
+    }
+}
+
+/**
+ * 전환 규칙 관리 두 표면(validator · post-action)이 공유하는 **프레임워크 층** 에러 코드와 응답 봉투.
+ *
+ * 이 셋은 도메인 실패가 아니라 요청이 컨트롤러 본문에 닿기도 전에(또는 인증을 확인하는 자리에서)
+ * 깨진 경우다. 표면에 따라 코드가 갈리면 화면이 「validator 인지 post-action 인지」로 한 번 더
+ * 분기해야 하므로 **양쪽이 같은 값**을 쓴다. 코드 문자열을 두 핸들러에 각각 적으면 그 순간 두 벌이
+ * 되고, 두 벌은 서로를 검사하지 않는다.
+ *
+ * ### 위치
+ * 봉투([ErrorResponse])가 사는 `com.bts.workflow.web` 이 더 중립적인 자리지만, 중요한 것은 패키지가
+ * 아니라 **선언이 한 벌**이라는 사실이다. `internal` 이라 모듈 안 어디서든 보이고 형제
+ * `PostActionExceptionHandler` 가 이 선언을 그대로 참조한다.
+ */
+internal object TransitionRuleFrameworkErrors {
+    /** 경로 변수·요청 본문이 형식부터 잘못된 경우 — 400. 모듈 기존 명명을 그대로 재사용한다. */
+    const val INVALID_REQUEST: String = "WORKFLOW_INVALID_REQUEST"
+
+    /** 인증 주체를 확인할 수 없는 경우 — 401. */
+    const val UNAUTHENTICATED: String = "WORKFLOW_UNAUTHENTICATED"
+
+    /** 401 이 아닌 [ResponseStatusException] — 상태는 예외가 지정한 것을 그대로 싣는다. */
+    const val REQUEST_REJECTED: String = "WORKFLOW_REQUEST_REJECTED"
+
+    private const val TYPE_MISMATCH_MESSAGE = "요청 경로 또는 파라미터 형식이 올바르지 않습니다."
+    private const val UNREADABLE_BODY_MESSAGE = "요청 본문을 읽을 수 없습니다."
+    private const val UNAUTHENTICATED_MESSAGE = "인증이 필요합니다. 다시 로그인해 주세요."
+    private const val REQUEST_REJECTED_MESSAGE = "요청을 처리할 수 없습니다."
+
+    /**
+     * 경로 변수·요청 파라미터 형식 오류 응답 — 400.
+     *
+     * @return [INVALID_REQUEST] 봉투를 실은 400 응답.
+     */
+    fun typeMismatch(): ResponseEntity<ErrorResponse> = badRequest(TYPE_MISMATCH_MESSAGE)
+
+    /**
+     * 요청 본문 파싱 실패 응답 — 400.
+     *
+     * @return [INVALID_REQUEST] 봉투를 실은 400 응답.
+     */
+    fun unreadableBody(): ResponseEntity<ErrorResponse> = badRequest(UNREADABLE_BODY_MESSAGE)
+
+    /**
+     * [ResponseStatusException] 응답 — 상태는 **예외가 지정한 것을 그대로** 싣는다.
+     *
+     * 401 로 못박지 않는 이유는 두 패키지에 다른 상태의 예외가 생기는 날 상태가 조용히 401 로
+     * 둔갑하기 때문이다.
+     *
+     * @param ex 상태 코드를 지정한 예외.
+     * @return 예외의 상태 + 401 이면 [UNAUTHENTICATED], 아니면 [REQUEST_REJECTED] 봉투.
+     */
+    fun responseStatus(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        val errorBody =
+            if (ex.statusCode == HttpStatus.UNAUTHORIZED) {
+                ErrorBody(code = UNAUTHENTICATED, message = UNAUTHENTICATED_MESSAGE)
+            } else {
+                ErrorBody(code = REQUEST_REJECTED, message = REQUEST_REJECTED_MESSAGE)
+            }
+        return ResponseEntity.status(ex.statusCode).body(ErrorResponse(error = errorBody))
+    }
+
+    private fun badRequest(message: String): ResponseEntity<ErrorResponse> =
+        ResponseEntity.badRequest().body(ErrorResponse(error = ErrorBody(code = INVALID_REQUEST, message = message)))
 }

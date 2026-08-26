@@ -15,6 +15,7 @@ import com.bts.workflow.validator.ValidatorNotFoundException
 import com.bts.workflow.validator.ValidatorRow
 import com.bts.workflow.validator.ValidatorTypeNotEditableException
 import com.bts.workflow.validator.ValidatorValidationException
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -60,6 +61,8 @@ import java.util.UUID
  * - 에러 계약 4행 전부 — 403 밖의 3행(400 INVALID · 400 TYPE_NOT_EDITABLE · 404 NOT_FOUND).
  * - GET 목록의 각 행이 `phase` 를 함께 준다 — 소비자가 `type → phase` 표를 만들 이유를 없앤다.
  * - 인스턴스화가 실패하는 행은 `phase = null` 이고 **목록 전체는 200** 이다.
+ * - 각 행이 `editable` 을 함께 준다 — 화면이 편집 가능한 type 목록을 자기 코드에 베끼지 않는다.
+ * - `editable` 은 `phase != null` 의 사본이 아니다 — `CustomExpression` 은 phase 가 있고 편집은 불가다.
  *
  * ### 팩토리만 실물이다 (mock 이 아니다)
  * `phase` 의 진실 출처는 각 구현체의 `override val phase` 이고 팩토리가 그 인스턴스를 만든다.
@@ -142,6 +145,8 @@ class ValidatorControllerTest {
     private val permissionValidatorId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000002")
     private val brokenConfigId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000003")
     private val unknownTypeId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000004")
+    private val notStatusCategoryId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000005")
+    private val customExpressionId: UUID = UUID.fromString("eeeeeeee-0000-0000-0000-000000000006")
     private val transitionId: UUID = UUID.fromString("ffffffff-0000-0000-0000-000000000001")
 
     @BeforeEach
@@ -502,6 +507,135 @@ class ValidatorControllerTest {
         assertThat(data.path(2).path("phase").asText()).isEqualTo("EXECUTION")
     }
 
+    // ── editable — 편집 가능 여부도 같은 인스턴스에서 나온다 (부채 2 · FR-8 · FR-9) ──
+    //
+    // 응답이 이 값을 실어야 화면이 「고칠 수 있는 type」 목록을 자기 코드에 베끼지 않는다.
+    // 베낀 사본은 백엔드가 네 번째 종류를 허용하는 날 조용히 낡고, 사용자는 고칠 수 있는 규칙을
+    // 회색으로 보거나 못 고치는 규칙을 눌렀다가 400 을 받는다.
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `목록 응답이 편집 가능 3종에 editable=true 를 싣는다`() {
+        allowPermission()
+        every { service.listForTransition(workflowKey, existingTransitionKey) } returns
+            listOf(sampleRow(), permissionCheckRow(), notStatusCategoryRow())
+
+        // 3종을 전수로 둔다 — 한 종류만 재면 「항상 true」 구현도 통과한다.
+        mockMvc.perform(get(basePath(existingTransitionKey)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.length()").value(3))
+            .andExpect(jsonPath("$.data[0].type").value("RequiredField"))
+            .andExpect(jsonPath("$.data[0].editable").value(true))
+            .andExpect(jsonPath("$.data[1].type").value("permission-check"))
+            .andExpect(jsonPath("$.data[1].editable").value(true))
+            .andExpect(jsonPath("$.data[2].type").value("not-status-category"))
+            .andExpect(jsonPath("$.data[2].editable").value(true))
+    }
+
+    /**
+     * `CustomExpression` 은 **phase 가 정상값인데 편집만 불가**다.
+     *
+     * 그래서 이 행이 `editable` 을 `phase != null` 의 사본으로 구현하는 것을 가른다 — 그 사본이면
+     * 여기서 true 가 나온다. 같은 목록에 편집 가능 행을 하나 섞어 「항상 false」 구현도 배제한다.
+     */
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `CustomExpression 행은 editable=false 로 나온다`() {
+        allowPermission()
+        every { service.listForTransition(workflowKey, existingTransitionKey) } returns
+            listOf(customExpressionRow(), sampleRow())
+
+        mockMvc.perform(get(basePath(existingTransitionKey)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].type").value("CustomExpression"))
+            .andExpect(jsonPath("$.data[0].phase").value("AVAILABILITY"))
+            .andExpect(jsonPath("$.data[0].editable").value(false))
+            .andExpect(jsonPath("$.data[1].type").value("RequiredField"))
+            .andExpect(jsonPath("$.data[1].editable").value(true))
+    }
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `인스턴스화가 실패하는 행은 phase=null 과 editable=false 가 짝을 이룬다`() {
+        allowPermission()
+        every { service.listForTransition(workflowKey, existingTransitionKey) } returns
+            listOf(brokenConfigRow(), unknownTypeRow(), sampleRow())
+
+        val body =
+            mockMvc.perform(get(basePath(existingTransitionKey)))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .contentAsString
+
+        // 인스턴스가 없으면 phase 도 editable 도 판정할 근거가 없다 — 두 값이 함께 간다.
+        // 마지막 행은 정상 행이라 「항상 (null, false)」 구현을 배제한다.
+        val data = mapper.readTree(body).path("data")
+        assertThat(data.size()).isEqualTo(3)
+        assertThat(data.path(0).path("phase").isNull).isTrue()
+        assertThat(editableOf(data.path(0))).isFalse()
+        assertThat(data.path(1).path("phase").isNull).isTrue()
+        assertThat(editableOf(data.path(1))).isFalse()
+        assertThat(data.path(2).path("phase").asText()).isEqualTo("EXECUTION")
+        assertThat(editableOf(data.path(2))).isTrue()
+    }
+
+    // ── 프레임워크 예외 3종 — 도메인 봉투 밖으로 새지 않는다 (부채 1 · FR-10) ────────
+    //
+    // 상태 코드만 재면 공허하다. 스프링 기본 응답도 같은 상태를 내면서 본문은 `timestamp`/`path`/
+    // `status` 형식이라, 화면이 `error.code` 로 분기하려는 자리가 비고 「알 수 없는 오류」로 뭉개진다.
+    // 그래서 셋 다 **상태 + `error.code` 값 + `error.message` 존재**를 함께 단언한다.
+    //
+    // 코드 문자열은 리터럴로 적는다. 형제 [com.bts.workflow.postaction.web.PostActionControllerTest]
+    // 가 **같은 리터럴**을 적고 있고, 「두 표면이 같은 코드를 쓴다」는 계약을 지키는 것은 그 대칭뿐이다
+    // — 양쪽이 구현 상수를 import 하면 상수 한 벌이 갈려도 둘 다 초록이 된다.
+    //
+    // 400 두 건에 권한 stub 이 없는 것은 실수가 아니다. 두 예외는 **인자 해석 단계**에서 나므로
+    // 컨트롤러 본문(=권한 가드)보다 앞선다. stub 을 깔면 검사되지 않는 죽은 셋업이 된다.
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `비-UUID id 는 400 과 error 봉투로 나간다`() {
+        mockMvc.perform(delete("${basePath(existingTransitionKey)}/not-a-uuid"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.message").isString)
+
+        verify(exactly = 0) { service.delete(any(), any(), any()) }
+    }
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `깨진 JSON 본문은 400 과 error 봉투로 나간다`() {
+        mockMvc.perform(
+            post(basePath(existingTransitionKey))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"type": """),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.message").isString)
+
+        verify(exactly = 0) { service.create(any(), any(), any(), any(), any()) }
+    }
+
+    /**
+     * 미인증 — `@WithMockUser` 를 **일부러 붙이지 않는다**.
+     *
+     * 이 401 은 Spring Security 필터가 아니라 `CurrentActor.current()` 가 컨트롤러 실행 중에 던진다
+     * (`ManageSchemeGuard.requireManageScheme` → `CurrentActor`). 필터 체인에서 났다면
+     * DispatcherServlet 앞이라 advice 가 잡을 수 없다.
+     */
+    @Test
+    fun `미인증 요청은 401 과 error 봉투로 나간다`() {
+        mockMvc.perform(get(basePath(existingTransitionKey)))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_UNAUTHENTICATED"))
+            .andExpect(jsonPath("$.error.message").isString)
+
+        verify(exactly = 0) { service.listForTransition(any(), any()) }
+    }
+
     // ── fixture ───────────────────────────────────────────────────────────────
 
     private fun basePath(transitionKey: String): String {
@@ -564,6 +698,45 @@ class ValidatorControllerTest {
             config = emptyMap(),
             displayOrder = 3,
         )
+
+    /** 편집 가능 3종의 나머지 하나 — 허용 목록이 두 종류만 담고 있어도 초록이 되지 않게 한다. */
+    private fun notStatusCategoryRow(): ValidatorRow =
+        ValidatorRow(
+            id = notStatusCategoryId,
+            transitionId = transitionId,
+            type = "not-status-category",
+            config = mapOf("category" to "DONE"),
+            displayOrder = 4,
+        )
+
+    /**
+     * 편집 불가 행 — seed 로 들어간 기존 행이다. 목록에서 숨기지 않는다.
+     *
+     * SpEL 평가기는 strict mock 이라 이 인스턴스를 만들면서 표현식을 평가하면 그 자리에서 실패한다
+     * — dry-run 계약(생성까지)의 감시자가 응답 경로에도 그대로 걸린다.
+     */
+    private fun customExpressionRow(): ValidatorRow =
+        ValidatorRow(
+            id = customExpressionId,
+            transitionId = transitionId,
+            type = "CustomExpression",
+            config = mapOf("expression" to "issue.priority == 'HIGH'"),
+            displayOrder = 5,
+        )
+
+    /**
+     * 행의 `editable` 을 **키 존재까지 확인하고** 읽는다.
+     *
+     * `asBoolean()` 만 보면 공허하다 — MissingNode 의 `asBoolean()` 도 false 라 필드를 통째로
+     * 빠뜨린 응답이 「editable=false」와 구별되지 않는다.
+     *
+     * @param row 응답 배열의 행 노드.
+     * @return `editable` 값.
+     */
+    private fun editableOf(row: JsonNode): Boolean {
+        assertThat(row.path("editable").isBoolean).isTrue()
+        return row.path("editable").asBoolean()
+    }
 
     private fun denyPermission() {
         every {

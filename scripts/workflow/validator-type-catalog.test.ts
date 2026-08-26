@@ -12,18 +12,20 @@
 // 이 저장소가 이름 붙인 지배 결함 양식 `two-lists-never-check-each-other` 이다.
 // 이 판별식이 아래 축마다 두 목록의 차집합을 **양방향으로** 0 으로 강제한다.
 //
-// ## 무엇을 대조하나 — 축 4개
+// ## 무엇을 대조하나 — 축 7개
 //
 // | 축 | 목록 ① | 목록 ② | 갈리면 무슨 일이 나나 |
 // |---|---|---|---|
-// | 타입 | 표 `타입 식별자` 열 | 팩토리 `when (type)` 분기 | 표대로 쓰면 「지원하지 않는 type」 예외 |
-// | config 키 | 표 `필수 config 키` 열 | 팩토리 `create*` 의 config 읽기 | 화면이 키를 손으로 들고, 틀리면 400 |
-// | 구현 클래스 | 표 `구현 클래스` 열 | `override val type` 을 선언한 `.kt` | 개명·삭제해도 표는 초록으로 남는다 |
-// | 인스턴스 type | 팩토리 `when (type)` 분기 | 구현체 `override val type` | 아래 「인스턴스 type 축」 참조 |
+// | 1 타입 | 표 `타입 식별자` 열 | 팩토리 `when (type)` 분기 | 표대로 쓰면 「지원하지 않는 type」 예외 |
+// | 2 config 키 | 표 `필수 config 키` 열 | 팩토리 `create*` 의 config 읽기 | 화면이 키를 손으로 들고, 틀리면 400 |
+// | 3 구현 클래스 | 표 `구현 클래스` 열 | `override val type` 을 선언한 `.kt` | 개명·삭제해도 표는 초록으로 남는다 |
+// | 4 인스턴스 type | 팩토리 `when (type)` 분기 | 구현체 `override val type` | 아래 「인스턴스 type 축」 참조 |
+// | 5 읽기 형태 봉인 | 축 2 가 아는 config 읽기 헬퍼 | 팩토리가 실제로 부른 callee | 축 2 가 못 본 키는 문서화를 요구받지 못한다 |
+// | 6 폼 스키마 | 표 `필수 config 키` 열 | 편집 화면의 type 별 config 선언 | 갈린 사실이 저장 시점 400 으로만 드러난다 |
+// | 7 선언 형태 봉인 | 축 6 이 아는 선언 형태 | 편집 화면이 실제로 쓴 형태 | 축 6 이 못 본 키가 조용히 샌다 |
 //
 // **config 키 축이 필요한 이유.** 요청·응답의 `config` 는 `Map<String, Any?>` 로 그대로 왕복해서
-// 타입별 필수 키가 계약 어디에도 없었다. 실제로 `PostActionFormDialog.tsx` 가 `CALL_WEBHOOK` 의
-// `url`/`method` 를 프론트에서 손으로 들고 있다 — 팩토리가 키를 하나 바꾸면 화면만 조용히 틀려진다.
+// 타입별 필수 키가 계약 어디에도 없었다. 화면은 폼을 그리려고 그 키를 손으로 드는데, 틀리면 400 이다.
 //
 // **구현 클래스 축이 필요한 이유.** 표에 `구현 클래스` 열을 넣고 그 열을 **읽지 않으면** 열이 조용히
 // 썩는다. 이 저장소가 `partial-column-parser-lets-unread-column-rot` 로 이름 붙인 양식이고,
@@ -34,18 +36,43 @@
 // 팩토리 분기 문자열이 아니라 **인스턴스 쪽 `override val type`** 이다. 두 벌이 갈리면 엔진은
 // 전환 실패에서 type X 를 보고하는데 그 X 를 validator CRUD API 에 되돌려 쓰면 400 이다.
 //
+// **폼 스키마 축(6·7)이 필요한 이유.** 화면은 폼을 그리려면 타입별 키를 알아야 해서 표와 갈리는
+// **두 번째 목록**을 가질 수밖에 없다. SDD §7.3 이 D6 을 향해 「이 열이 편집 화면 입력 폼의
+// 계약이다」라고 미리 적어 둔 자리다. 종전의 이 주석은 `PostActionConfigSection.tsx` 가
+// `CALL_WEBHOOK` 의 `url`/`method` 를 손으로 든 사실을 **결함으로 적어만 두고 재지 않았다** —
+// 판별식이 자기가 이름 붙인 결함을 옆 표면에서 재생산한 자리였고, 축 6·7 이 그 자리를 닫는다.
+//
+// 두 표면의 선언 형태가 달라 파서는 두 벌이지만 축은 하나다. 한 표면에 둘 다 돌린 합집합을 쓴다.
+// - **validator** — `apps/web/src/api/validators.ts` 의 `VALIDATOR_CONFIG_FORM_SCHEMAS` 객체 리터럴.
+//   키 = 타입 식별자, `z.object({…})` 의 프로퍼티 = config 키, `.optional()` = 표의 `(선택)`.
+// - **post-action** — 선언적 스키마가 **없다**. 뮤테이션 호출부의 `type: '리터럴'` 과 같은 객체
+//   리터럴에 실린 `config: { … }` 를 읽는다. 그것이 백엔드로 나가는 실제 계약이기 때문이다.
+//   이 표면은 `(선택)` 을 표현할 자리가 없어 파서가 전부 필수로 읽는다 — 표가 그 표면의 키를
+//   `(선택)` 으로 적는 날 축 6 이 red 를 내고, 처방은 표가 아니라 **화면을 선언적 스키마로**
+//   바꾸는 것이다.
+//
+// **축 6 만 정본 방향이 반대다.** 표는 축 1·2 로 이미 팩토리와 같음이 강제돼 있으므로, 화면이
+// 표를 따라야 한다. 그래서 축 6 의 실패 메시지만 「화면을 고쳐라」로 적는다.
+//
+// **표 전량 ↔ 폼 전량 양방향 차집합은 성립하지 않는다.** 표의 모든 타입에 폼이 있는 것이 아니다
+// (`CustomExpression` 은 편집 불가라 폼이 없고, post-action 은 `CALL_WEBHOOK` 만 폼이 있다).
+// 그래서 축 6 은 **폼이 있는 타입으로 도메인을 좁혀** 그 타입의 키 집합만 표와 양방향으로 잰다.
+//
 // ## 왜 목록을 상수로 적지 않나
 //
 // 「있어야 할 type 목록」을 여기 적으면 그것이 **또 하나의 목록**이 되고, 판별식이 자기가 잡으려는
 // 결함 양식을 스스로 재생산한다. 모든 집합을 런타임에 파일에서 읽는다 —
 // 표는 `docs/sdd/07-workflow-engine.md`, 분기와 config 키는 팩토리 `.kt` 원문,
-// 구현 클래스와 인스턴스 type 은 `validator/`·`postaction/` 패키지 `.kt` 원문이다.
+// 구현 클래스와 인스턴스 type 은 `validator/`·`postaction/` 패키지 `.kt` 원문이고,
+// 폼 스키마는 `apps/web/src` 편집 화면 원문이다.
 // 사람이 손으로 유지하는 type·키·클래스 목록은 이 파일에 **하나도 없다**.
 //
 // ## 어느 쪽이 정본인가
 //
 // **코드다** (Maxi 결정, 2026-08-25). 팩토리 `when` 분기가 런타임 계약이고 표는 그 서술이다.
-// 그래서 실패 메시지는 항상 「표를 코드에 맞춰라」로 적는다.
+// 그래서 실패 메시지는 「표를 코드에 맞춰라」로 적는다. **축 6 만 예외**다 — 그 축의 목록 ① 인
+// 표는 축 1·2 로 이미 팩토리와 같음이 강제돼 있으므로, 화면이 표를 따르는 것이 곧 코드를 따르는
+// 것이다. 그 축의 메시지만 「화면을 고쳐라」로 적는다.
 //
 // ## 표의 어느 열을 읽나
 //
@@ -61,6 +88,8 @@
 // 옆 함수의 KDoc 이 이 함수의 키로 새어 들어온다. 그래서 원문에서 주석을 먼저 지우고
 // (`stripComments` — 길이를 보존한다) `when` 분기 본문과 `create*` 함수 본문만 본다.
 // KDoc 은 사람 손으로 유지되는 목록이라 **파서가 읽는 대상이 되어서는 안 된다**.
+// 축 6·7 이 읽는 TS/TSX 도 같은 이유로 주석을 먼저 지운다 — JSDoc 이 `config['url']` 같은 토큰을
+// 서술로 적으면 그 서술이 화면의 키로 새어 들어온다.
 //
 // ## 비-공허 짝이 왜 별도 테스트인가
 //
@@ -119,28 +148,37 @@ const CONFIG_KEY_TOKEN = /^[A-Za-z_][A-Za-z0-9_]*(?:\(선택\))?$/
 /** 팩토리에서 분기를 찾을 진입 표지. 두 팩토리 모두 `create(type, config)` 안에 이 형태로 있다. */
 const WHEN_HEAD = 'when (type) {'
 
+/** Kotlin 원문에서 문자열로 인정할 따옴표. 문자 리터럴(`'x'`)은 문자열이 아니므로 넣지 않는다. */
+const KOTLIN_QUOTES: readonly string[] = ['"']
+
 /**
  * 문자열 리터럴 **내부**를 같은 길이의 `_` 로 덮는다.
  *
  * 중괄호 짝을 셀 때 문자열 안의 `{` `}`(예: `"${'$'}{foo}"`)에 속지 않기 위한 것이다.
  * 길이를 보존하므로 여기서 얻은 인덱스를 **원문에 그대로** 쓸 수 있다.
+ *
+ * @param quotes 문자열로 볼 따옴표. 언어마다 다르므로 호출자가 준다.
  */
-function maskStringLiterals(source: string): string {
+function maskStringLiterals(source: string, quotes: readonly string[] = KOTLIN_QUOTES): string {
   const out = source.split('')
-  let inString = false
+  let open = ''
   for (let i = 0; i < out.length; i += 1) {
     const ch = out[i]
-    if (inString && ch === '\\') {
+    if (open !== '' && ch === '\\') {
       // 이스케이프된 다음 글자도 함께 덮는다. 끝을 넘겨 쓰면 길이가 늘어 인덱스 보존이 깨지므로 막는다.
       if (i + 1 < out.length) out[i + 1] = '_'
       i += 1
       continue
     }
-    if (ch === '"') {
-      inString = !inString
+    if (open === '' && quotes.includes(ch)) {
+      open = ch
       continue
     }
-    if (inString && ch !== '\n') out[i] = '_'
+    if (open === ch) {
+      open = ''
+      continue
+    }
+    if (open !== '' && ch !== '\n') out[i] = '_'
   }
   return out.join('')
 }
@@ -150,16 +188,19 @@ function maskStringLiterals(source: string): string {
  *
  * KDoc 이 본문과 같은 토큰(`config["field"]`)을 적기 때문에 파서가 주석을 읽으면 옆 함수의 문서가
  * 이 함수의 키로 새어 들어온다. 문자열 리터럴 안의 `//` 는 주석이 아니므로 문자열 상태를 함께 센다.
+ *
+ * @param quotes 문자열로 볼 따옴표. TS/TSX 는 작은따옴표와 백틱도 문자열이다.
  */
-function stripComments(source: string): string {
+function stripComments(source: string, quotes: readonly string[] = KOTLIN_QUOTES): string {
   const out = source.split('')
   let state: 'code' | 'string' | 'line' | 'block' = 'code'
+  let open = ''
   for (let i = 0; i < source.length; i += 1) {
     const ch = source[i]
     const next = source[i + 1]
     if (state === 'string') {
       if (ch === '\\') i += 1
-      else if (ch === '"') state = 'code'
+      else if (ch === open) state = 'code'
       continue
     }
     if (state === 'line') {
@@ -178,8 +219,9 @@ function stripComments(source: string): string {
       }
       continue
     }
-    if (ch === '"') {
+    if (quotes.includes(ch)) {
       state = 'string'
+      open = ch
     } else if (ch === '/' && (next === '/' || next === '*')) {
       state = next === '/' ? 'line' : 'block'
       out[i] = ' '
@@ -201,10 +243,14 @@ function readKotlin(filePath: string): string {
  * [from] 지점부터만 마스킹한다 — 앞쪽에 홀수 개의 따옴표가 있어도 영향을 안 받는다.
  * 짝이 맞는 닫는 중괄호를 못 찾으면 빈 문자열을 돌려주고, 비-공허 짝이 그것을 red 로 만든다.
  */
-function balancedBlock(source: string, from: number): string {
+function balancedBlock(
+  source: string,
+  from: number,
+  quotes: readonly string[] = KOTLIN_QUOTES,
+): string {
   if (from < 0) return ''
   const tail = source.slice(from)
-  const masked = maskStringLiterals(tail)
+  const masked = maskStringLiterals(tail, quotes)
   const open = masked.indexOf('{')
   if (open < 0) return ''
   let depth = 0
@@ -468,6 +514,305 @@ function sddClassByType(table: SddTable): Record<string, string> {
   return byType
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 축 6·7 — 편집 화면의 type 별 config 폼 선언
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 프론트 소스 루트. 아래 표면 목록은 **파일 경로**일 뿐 type·키 목록이 아니다. */
+const WEB_SRC = path.join(REPO_ROOT, 'apps/web/src')
+
+/**
+ * validator 편집 표면의 파일들. 선언이 이 밖으로 옮겨 가면 파서가 0건을 뽑고 비-공허 짝이 잡는다.
+ */
+const VALIDATOR_FORM_FILES: readonly string[] = [
+  path.join(WEB_SRC, 'api/validators.ts'),
+  path.join(WEB_SRC, 'components/workflow/ValidatorFormDialog.tsx'),
+  path.join(WEB_SRC, 'components/workflow/ValidatorConfigSection.tsx'),
+]
+
+/** post-action 편집 표면의 파일들. */
+const POST_ACTION_FORM_FILES: readonly string[] = [
+  path.join(WEB_SRC, 'api/post-actions.ts'),
+  path.join(WEB_SRC, 'components/workflow/PostActionFormDialog.tsx'),
+  path.join(WEB_SRC, 'components/workflow/PostActionConfigSection.tsx'),
+]
+
+/**
+ * TS/TSX 에서 문자열로 인정할 따옴표.
+ *
+ * 백틱을 넣어야 템플릿 리터럴 본문이 통째로 덮이고, 그 안의 `${…}` 중괄호에 짝 세기가 안 속는다.
+ */
+const TS_QUOTES: readonly string[] = ['"', "'", '`']
+
+/** TS/TSX 원문을 읽어 주석을 지운 결과. 파서는 이것만 본다 — Kotlin 쪽과 같은 이유다. */
+function readTypeScript(filePath: string): string {
+  return stripComments(fs.readFileSync(filePath, 'utf-8'), TS_QUOTES)
+}
+
+/** 객체 리터럴 한 요소의 머리(`키:`). 키는 따옴표가 있어도 없어도 같은 키로 본다. */
+const ENTRY_HEAD = /^(?:['"]([^'"]*)['"]|([A-Za-z_$][\w$]*))\s*:\s*/
+
+/** 축약 프로퍼티(`{ url, method }`). 값이 없으므로 선택성 표기는 읽히지 않는다. */
+const SHORTHAND_ENTRY = /^[A-Za-z_$][\w$]*$/
+
+/** 실패 메시지에 실을 조각을 한 줄로 줄인다. */
+function collapse(fragment: string): string {
+  const line = fragment.replace(/\s+/g, ' ').trim()
+  return line.length > 60 ? `${line.slice(0, 60)}…` : line
+}
+
+/** 객체 리터럴 본문을 요소로 쪼갠 결과. 못 읽은 조각은 버리지 않고 따로 들고 나온다. */
+interface ObjectLiteral {
+  entries: { key: string; value: string }[]
+  unreadable: string[]
+}
+
+/**
+ * 객체 리터럴 **본문 원문**을 `키 → 값 원문` 으로 쪼갠다.
+ *
+ * 깊이 0 의 쉼표로만 자르므로 중첩 객체·호출 인자의 쉼표에 속지 않는다. 전개(`...base`)나
+ * 계산된 키(`[k]:`)처럼 키를 이름으로 못 읽는 요소는 [ObjectLiteral.unreadable] 로 나가고,
+ * 축 7 이 그것을 red 로 만든다 — 조용히 버리면 키가 무음으로 사라진다.
+ */
+function objectLiteralEntries(body: string): ObjectLiteral {
+  const masked = maskStringLiterals(body, TS_QUOTES)
+  const segments: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < masked.length; i += 1) {
+    const ch = masked[i]
+    if (ch === '{' || ch === '[' || ch === '(') depth += 1
+    else if (ch === '}' || ch === ']' || ch === ')') depth -= 1
+    else if (ch === ',' && depth === 0) {
+      segments.push(body.slice(start, i))
+      start = i + 1
+    }
+  }
+  segments.push(body.slice(start))
+  return splitEntries(segments)
+}
+
+/** 쪼갠 조각을 `키: 값` · 축약 · 못 읽음으로 가른다. */
+function splitEntries(segments: readonly string[]): ObjectLiteral {
+  const entries: { key: string; value: string }[] = []
+  const unreadable: string[] = []
+  for (const raw of segments) {
+    const segment = raw.trim()
+    if (segment.length === 0) continue
+    const head = ENTRY_HEAD.exec(segment)
+    if (head !== null) {
+      entries.push({ key: head[1] ?? head[2], value: segment.slice(head[0].length).trim() })
+    } else if (SHORTHAND_ENTRY.test(segment)) {
+      entries.push({ key: segment, value: '' })
+    } else {
+      unreadable.push(collapse(segment))
+    }
+  }
+  return { entries, unreadable }
+}
+
+/** 화면이 한 자리에서 선언한 「이 type 은 이 키들을 쓴다」 한 벌. */
+interface FrontDeclaration {
+  type: string
+  /** 정규화된 키. 선택 키는 뒤에 [OPTIONAL_SUFFIX] 가 붙는다 — 표와 같은 표기다. */
+  keys: string[]
+  /** 그 선언에서 파서가 이름으로 못 읽은 조각. */
+  unreadable: string[]
+}
+
+/** 한 파일에서 뽑은 선언들과, 어느 선언에도 귀속되지 않는 못 읽은 조각. */
+interface FrontParseResult {
+  declarations: FrontDeclaration[]
+  notes: string[]
+}
+
+/** 선언적 폼 스키마 객체를 찾는 표지. 이름이 아니라 **접미사**로 찾는다. */
+const FORM_SCHEMA_DECLARATION = /\bconst\s+\w*CONFIG_FORM_SCHEMAS\b[^=\n]*=/g
+
+/** 폼 스키마 한 벌로 인정하는 형태. 이 밖은 축 6 이 키를 못 읽으므로 축 7 이 잡는다. */
+const ZOD_OBJECT_HEAD = /^z\s*\.\s*object\s*\(\s*\{/
+
+/** 파서가 아는 선택성 표기. 표의 `(선택)` 과 짝이다. */
+const OPTIONAL_MARKER = '.optional()'
+
+/**
+ * zod 에서 `isOptional()` 을 참으로 만들지만 **파서는 모르는** 표기.
+ *
+ * 화면은 `field.isOptional()` 로 필수/선택을 정하는데 파서는 [OPTIONAL_MARKER] 만 읽는다.
+ * 이 표기를 쓰면 화면은 선택으로 그리고 파서는 필수로 읽어 축 6 이 **틀린 초록**을 낼 수 있다.
+ * 그래서 등재 없이 쓰면 축 7 이 먼저 red 를 낸다 — 축 5 가 새 헬퍼를 막는 것과 같은 자리다.
+ */
+const HIDDEN_OPTIONALITY_MARKERS: readonly string[] = ['.default(', '.nullish(', '.catch(']
+
+/**
+ * 선언적 폼 스키마 객체(`*CONFIG_FORM_SCHEMAS`)에서 type 별 config 키를 뽑는다.
+ *
+ * 키 = 타입 식별자, `z.object({…})` 의 프로퍼티 = config 키, `.optional()` = 표의 `(선택)`.
+ */
+function declarativeFormSchemas(source: string): FrontParseResult {
+  const declarations: FrontDeclaration[] = []
+  const notes: string[] = []
+  for (const declaration of source.matchAll(FORM_SCHEMA_DECLARATION)) {
+    const outer = objectLiteralEntries(balancedBlock(source, declaration.index, TS_QUOTES))
+    notes.push(...outer.unreadable.map((fragment) => `스키마 객체 최상위. ${fragment}`))
+    declarations.push(...outer.entries.map((entry) => zodObjectShape(entry.key, entry.value)))
+  }
+  return { declarations, notes }
+}
+
+/** `z.object({ … })` 한 벌을 [FrontDeclaration] 으로 읽는다. */
+function zodObjectShape(type: string, value: string): FrontDeclaration {
+  if (!ZOD_OBJECT_HEAD.test(value)) {
+    return { type, keys: [], unreadable: [`z.object({…}) 리터럴이 아니다. ${collapse(value)}`] }
+  }
+  const shape = objectLiteralEntries(balancedBlock(value, 0, TS_QUOTES))
+  const hidden = shape.entries.flatMap((field) =>
+    HIDDEN_OPTIONALITY_MARKERS.filter((marker) => field.value.includes(marker)).map(
+      (marker) => `${field.key} — 파서가 모르는 선택성 표기 ${marker}`,
+    ),
+  )
+  const keys = shape.entries.map((field) =>
+    field.value.includes(OPTIONAL_MARKER) ? `${field.key}${OPTIONAL_SUFFIX}` : field.key,
+  )
+  return { type, keys: keys.sort(), unreadable: [...shape.unreadable, ...hidden] }
+}
+
+/** 요청 바디의 `type: '리터럴'`. 이 자리가 백엔드로 나가는 실제 계약이다. */
+const TYPE_LITERAL = /\btype\s*:\s*['"]([^'"]*)['"]/g
+
+/** 같은 객체 리터럴 안의 `config:` 프로퍼티. */
+const CONFIG_PROPERTY = /^config\s*:\s*/
+
+/**
+ * `type: '리터럴'` 과 **같은 객체 리터럴**에 있는 `config:` 값의 시작 위치.
+ *
+ * 깊이 0 을 유지한 채 앞으로만 훑고, 감싸는 객체가 닫히면 멈춘다 — 옆 객체의 `config` 를
+ * 이 type 의 것으로 잘못 붙이지 않기 위해서다. 못 찾으면 `null` 이고 그 `type:` 은 건너뛴다
+ * (요청 바디가 아니라 그냥 `type` 이라는 이름의 프로퍼티였다는 뜻이다).
+ */
+function siblingConfigValue(masked: string, from: number): number | null {
+  let depth = 0
+  for (let i = from; i < masked.length; i += 1) {
+    const ch = masked[i]
+    if (ch === '{' || ch === '[' || ch === '(') depth += 1
+    else if (ch === '}' || ch === ']' || ch === ')') {
+      if (depth === 0) return null
+      depth -= 1
+    } else if (depth === 0 && masked.startsWith('config', i) && !/[\w$.]/.test(masked[i - 1] ?? '')) {
+      const head = CONFIG_PROPERTY.exec(masked.slice(i))
+      if (head !== null) return i + head[0].length
+    }
+  }
+  return null
+}
+
+/**
+ * 뮤테이션 호출부의 `type: '리터럴'` + `config: { … }` 짝에서 type 별 config 키를 뽑는다.
+ *
+ * post-action 표면에는 선언적 스키마가 없어 이 형태가 화면이 가진 유일한 기계 판독 계약이다.
+ * **이 표면은 `(선택)` 을 표현할 자리가 없다** — 객체 리터럴에 무조건 실리는 키뿐이라 파서는
+ * 전부 필수로 읽는다. 조건부로 실리는 키는 요소를 이름으로 못 읽어 축 7 이 red 를 낸다.
+ */
+function literalConfigPayloads(source: string): FrontParseResult {
+  const masked = maskStringLiterals(source, TS_QUOTES)
+  const declarations: FrontDeclaration[] = []
+  for (const match of source.matchAll(TYPE_LITERAL)) {
+    if (masked[match.index] === '_') continue
+    const value = siblingConfigValue(masked, match.index + match[0].length)
+    if (value === null) continue
+    if (masked[value] !== '{') {
+      const fragment = collapse(source.slice(value, value + 80))
+      declarations.push({
+        type: match[1],
+        keys: [],
+        unreadable: [`config 값이 객체 리터럴이 아니다. ${fragment}`],
+      })
+      continue
+    }
+    const literal = objectLiteralEntries(balancedBlock(source, value, TS_QUOTES))
+    const keys = literal.entries.map((entry) => entry.key).sort()
+    declarations.push({ type: match[1], keys, unreadable: literal.unreadable })
+  }
+  return { declarations, notes: [] }
+}
+
+/** 화면이 `config['키']` 로 **직접 이름을 대고** 읽는 자리. 변수 인덱싱은 걸리지 않는다. */
+const CONFIG_LITERAL_READ = /\bconfig\s*\[\s*['"]([^'"]*)['"]\s*\]/g
+
+/** 선언 집합 밖의 `config['키']` 읽기를 모아 두는 축 7 의 자리표. */
+const STRAY_READ_LABEL = "config['키'] 직접 읽기"
+
+/** 한 편집 표면이 들고 있는 type 별 config 폼 선언 전부. */
+interface FrontFormCatalog {
+  label: string
+  files: readonly string[]
+  /** 폼이 있는 type → 정규화된 config 키. 폼이 없는 type 은 아예 없다. */
+  configKeys: Record<string, string[]>
+  /** 축 7 이 red 로 만드는, 파서가 이름으로 못 읽은 것들. */
+  unreadable: Record<string, string[]>
+}
+
+/**
+ * 한 편집 표면의 파일들에 **두 파서를 모두** 돌려 합친 목록.
+ *
+ * 표면마다 선언 형태가 달라 파서가 두 벌이지만 축은 하나다. post-action 이 나중에 validator 처럼
+ * 선언적 스키마를 갖게 되면 이 함수도 축도 그대로 두고 파일 목록만 남는다.
+ */
+function frontFormCatalog(label: string, files: readonly string[]): FrontFormCatalog {
+  const declarations: FrontDeclaration[] = []
+  const unreadable: Record<string, string[]> = {}
+  const notes: string[] = []
+  const reads: string[] = []
+  for (const file of files) {
+    const source = readTypeScript(file)
+    for (const parsed of [declarativeFormSchemas(source), literalConfigPayloads(source)]) {
+      declarations.push(...parsed.declarations)
+      notes.push(...parsed.notes)
+    }
+    reads.push(...captureAll(source, CONFIG_LITERAL_READ))
+  }
+  const configKeys = mergeDeclarations(declarations, unreadable)
+  if (notes.length > 0) unreadable['선언 자체를 못 읽음'] = notes
+  const stray = strayReads(reads, configKeys)
+  if (stray.length > 0) unreadable[STRAY_READ_LABEL] = stray
+  return { label, files, configKeys, unreadable }
+}
+
+/**
+ * 같은 type 의 선언을 합친다. 여러 자리가 **서로 다른 키**를 들면 그것 자체가 어긋남이다.
+ *
+ * 추가 경로와 수정 경로가 갈리는 자리가 여기다 — 한쪽만 키를 더하면 추가는 되는데 수정은
+ * 그 키를 지운다. 합집합으로 축 6 에 넘기고, 갈렸다는 사실은 축 7 이 이름으로 지목한다.
+ */
+function mergeDeclarations(
+  declarations: readonly FrontDeclaration[],
+  unreadable: Record<string, string[]>,
+): Record<string, string[]> {
+  const configKeys: Record<string, string[]> = {}
+  for (const type of [...new Set(declarations.map((declaration) => declaration.type))].sort()) {
+    const mine = declarations.filter((declaration) => declaration.type === type)
+    configKeys[type] = [...new Set(mine.flatMap((declaration) => declaration.keys))].sort()
+    const variants = [...new Set(mine.map((declaration) => declaration.keys.join(' · ')))]
+    const found = mine.flatMap((declaration) => declaration.unreadable)
+    if (variants.length > 1) {
+      found.push(`선언 ${mine.length} 곳이 서로 다른 키를 든다. ${variants.join(' / ')}`)
+    }
+    if (found.length > 0) unreadable[type] = found
+  }
+  return configKeys
+}
+
+/** 어느 선언에도 없는 키를 `config['키']` 로 읽는 자리. 그 키는 표에 문서화를 요구받지 못한다. */
+function strayReads(reads: readonly string[], configKeys: Record<string, string[]>): string[] {
+  const declared = new Set(
+    Object.values(configKeys)
+      .flat()
+      .map((key) => key.replace(OPTIONAL_SUFFIX, '')),
+  )
+  return [...new Set(reads)].filter((key) => !declared.has(key)).sort()
+}
+
 /** `left` 에만 있고 `right` 에는 없는 값. */
 function onlyIn(left: string[], right: string[]): string[] {
   const other = new Set(right)
@@ -506,6 +851,12 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
   } as const
 
   type Catalog = (typeof catalogs)[keyof typeof catalogs]
+
+  /** 축 6·7 이 보는 편집 화면 쪽 목록. 파서가 두 벌이라 팩토리 카탈로그와 따로 둔다. */
+  const fronts = {
+    validator: frontFormCatalog('validator 편집 화면', VALIDATOR_FORM_FILES),
+    postAction: frontFormCatalog('post-action 편집 화면', POST_ACTION_FORM_FILES),
+  } as const
 
   /** 어느 쪽이 무엇을 빠뜨렸는지 이름으로 말하는 양방향 차집합 단언. */
   function assertSameSet(
@@ -685,9 +1036,81 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
     )
   }
 
+  test('SDD §7.3 표의 필수 config 키 열 = validator 편집 화면의 폼 스키마', () => {
+    assertFrontFormSchema(catalogs.validator, fronts.validator)
+  })
+
+  test('SDD §7.4 표의 필수 config 키 열 = post-action 편집 화면의 폼 선언', () => {
+    assertFrontFormSchema(catalogs.postAction, fronts.postAction)
+  })
+
+  /**
+   * 축 6 — 표의 config 키 열 ↔ 편집 화면이 그 type 에 그리는 폼의 키. **행 단위로 대조한다.**
+   *
+   * 도메인은 **폼이 있는 type** 으로 좁힌다. 표의 모든 타입에 폼이 있는 것이 아니라
+   * (`CustomExpression` 은 편집 불가라 폼이 없고 post-action 은 `CALL_WEBHOOK` 만 폼이 있다)
+   * 「표 전량 ↔ 폼 전량」 양방향 차집합은 성립하지 않는다. 대신 폼이 표에 없는 타입을 그리면
+   * 표 쪽이 `(표에 행이 없음)` 으로 잡히므로 「폼 ⊆ 표」는 이 한 단언이 함께 지킨다.
+   */
+  function assertFrontFormSchema(catalog: Catalog, front: FrontFormCatalog): void {
+    const types = Object.keys(front.configKeys).sort()
+    const documented = Object.fromEntries(types.map((type) => [type, catalog.documentedConfigKeys[type]]))
+    const drawn = Object.fromEntries(types.map((type) => [type, front.configKeys[type]]))
+    const show = (keys: string[] | undefined): string =>
+      keys === undefined ? '(표에 행이 없음)' : keys.join(' · ') || '(없음)'
+    const diverged = types.filter(
+      (type) => JSON.stringify(documented[type]) !== JSON.stringify(drawn[type]),
+    )
+    assert.deepEqual(
+      drawn,
+      documented,
+      `${front.label}의 폼 선언이 ${catalog.label} 표의 '${CONFIG_COLUMN_PREFIX} …' 열과 어긋난다 — ` +
+        '이 축만 **표가 정본**이다(표는 축 1·2 로 이미 팩토리와 같음이 강제돼 있다). 화면을 고쳐라.\n' +
+        diverged
+          .map((type) => `  ${type} — 표. ${show(documented[type])} / 화면. ${show(drawn[type])}`)
+          .join('\n') +
+        '\n  (도메인은 **폼이 있는 type** 뿐이다. 표에 행이 있어도 폼이 없으면 재지 않는다 — ' +
+        'CustomExpression 처럼 편집 불가인 것이 정상이다.)\n' +
+        `  (표기 규칙은 축 2 와 같다. 선택 키는 뒤에 ${OPTIONAL_SUFFIX} 를 붙인다.)\n` +
+        `  (읽은 파일. ${front.files.map((file) => path.relative(REPO_ROOT, file)).join(' · ')})`,
+    )
+  }
+
+  test('validator 편집 화면이 축 6 이 못 읽는 형태로 config 키를 들지 않는다', () => {
+    assertFrontDeclarationsReadable(fronts.validator)
+  })
+
+  test('post-action 편집 화면이 축 6 이 못 읽는 형태로 config 키를 들지 않는다', () => {
+    assertFrontDeclarationsReadable(fronts.postAction)
+  })
+
+  /**
+   * 축 7 — 편집 화면이 축 6 의 해석 범위 **안에서만** config 키를 선언하는지.
+   *
+   * 축 6 은 차집합이라 「표에 있는데 폼에 없다」와 「폼에 있는데 표에 없다」를 잡는다. 그런데
+   * 화면이 **축 6 이 모르는 형태**로 키를 들면 그 키는 애초에 화면 쪽 집합에 안 들어가서 차집합이
+   * 0 이 되고, 문서화되지 않은 키가 초록인 채로 남는다. 축 5 가 팩토리 쪽에서 하는 일과 같다.
+   */
+  function assertFrontDeclarationsReadable(front: FrontFormCatalog): void {
+    assert.deepEqual(
+      front.unreadable,
+      {},
+      `${front.label}이 축 6 으로 해석되지 않는 형태로 config 키를 든다 — ` +
+        '그 키는 SDD 표에 문서화를 요구받지 못하고 조용히 샌다.\n' +
+        Object.entries(front.unreadable)
+          .map(([where, found]) => `  ${where} — ${found.join(' · ')}`)
+          .join('\n') +
+        '\n  (축 6 이 읽는 형태는 둘뿐이다. ① *CONFIG_FORM_SCHEMAS 객체의 ' +
+        '「타입: z.object({ 키: … })」 ② 요청 바디의 「type: 리터럴」 과 같은 객체에 있는 ' +
+        '「config: { 키: … }」.)\n' +
+        '  **표를 고쳐서 지우지 마라.** 새 형태로 키를 들려면 그 형태를 읽는 파서를 이 파일에 ' +
+        '함께 등재하라. 등재 없이 쓰면 표가 키를 빠뜨린 채 초록이 된다.',
+    )
+  }
+
   test('뽑아낸 집합이 하나도 비어 있지 않다 (비-공허 짝)', () => {
     // 파서가 0건을 뱉으면 위 차집합 단언들이 공허하게 0 이 되어 아무것도 안 지키면서 초록이 된다.
-    const probes: readonly (readonly [string, readonly unknown[], string])[] = [
+    const probes: readonly (readonly [string, readonly unknown[], string | readonly string[]])[] = [
       [`${catalogs.validator.label} 표의 타입 식별자 열`, catalogs.validator.documented, SDD_FILE],
       [`${catalogs.postAction.label} 표의 타입 식별자 열`, catalogs.postAction.documented, SDD_FILE],
       [
@@ -742,16 +1165,38 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
       ],
       ['validator 구현체의 override val type', catalogs.validator.instanceTypes, VALIDATOR_DIR],
       ['postaction 구현체의 override val type', catalogs.postAction.instanceTypes, POST_ACTION_DIR],
+      [
+        `${fronts.validator.label}의 폼 type 목록`,
+        Object.keys(fronts.validator.configKeys),
+        VALIDATOR_FORM_FILES,
+      ],
+      [
+        `${fronts.validator.label}의 폼 config 키`,
+        Object.values(fronts.validator.configKeys).flat(),
+        VALIDATOR_FORM_FILES,
+      ],
+      [
+        `${fronts.postAction.label}의 폼 type 목록`,
+        Object.keys(fronts.postAction.configKeys),
+        POST_ACTION_FORM_FILES,
+      ],
+      [
+        `${fronts.postAction.label}의 폼 config 키`,
+        Object.values(fronts.postAction.configKeys).flat(),
+        POST_ACTION_FORM_FILES,
+      ],
     ]
 
     for (const [label, values, source] of probes) {
+      const files = typeof source === 'string' ? [source] : source
       assert.ok(
         values.length > 0,
         `${label}에서 **0건**을 뽑았다 — 파서가 죽었고 위 차집합 단언은 공허하다.\n` +
-          `  읽은 파일. ${path.relative(REPO_ROOT, source)}\n` +
+          `  읽은 파일. ${files.map((file) => path.relative(REPO_ROOT, file)).join(' · ')}\n` +
           `  표는 '${TYPE_COLUMN_PREFIX}' · '${IMPL_COLUMN_PREFIX}' · '${CONFIG_COLUMN_PREFIX}' 로 ` +
           `시작하는 제목의 열이, 팩토리는 '${WHEN_HEAD}' 블록이, 구현체는 ` +
-          `'override val type' 선언이 있어야 한다.`,
+          `'override val type' 선언이, 편집 화면은 *CONFIG_FORM_SCHEMAS 객체나 ` +
+          `type/config 리터럴 짝이 있어야 한다.`,
       )
     }
   })

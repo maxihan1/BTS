@@ -7,6 +7,7 @@ import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.scheme.web.DataEnvelope
 import com.bts.workflow.validator.ValidatorAdminService
 import com.bts.workflow.validator.ValidatorRow
+import com.bts.workflow.validator.isEditable
 import com.bts.workflow.web.requireManageScheme
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -47,7 +48,7 @@ import java.util.UUID
  *
  * ### 트랜잭션
  * 컨트롤러는 경계를 열지 않는다. `@Transactional` 은 [ValidatorAdminService] 쪽에만 있다.
- * [phaseOf] 가 부르는 팩토리도 인스턴스를 만들 뿐 `validate` 를 부르지 않으므로 DB 접근도
+ * [traitsOf] 가 부르는 팩토리도 인스턴스를 만들 뿐 `validate` 를 부르지 않으므로 DB 접근도
  * 권한 조회도 SpEL 평가도 일어나지 않는다 ([ValidatorAdminService] dry-run 과 같은 계약).
  *
  * ### `phase` 는 인스턴스에서 읽는다 — 표를 만들지 않는다
@@ -76,7 +77,7 @@ class ValidatorController(
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param transitionKey 전환 id(UUID) 또는 종전 `fromStateKey__toStateKey` 합성 키.
-     * @return 200 OK + [ValidatorResponse] 목록 (displayOrder ASC). 각 행에 `phase` 가 실린다.
+     * @return 200 OK + [ValidatorResponse] 목록 (displayOrder ASC). 각 행에 `phase` 와 `editable` 이 함께 실린다.
      */
     @GetMapping
     fun list(
@@ -167,38 +168,60 @@ class ValidatorController(
     }
 
     /**
-     * 행을 응답 DTO 로 옮기면서 `phase` 를 인스턴스에서 읽어 붙인다.
+     * 행을 응답 DTO 로 옮긴다. `phase` 와 `editable` 은 [traitsOf] 가 한 쌍으로 준다.
      *
      * @param row validator 행.
-     * @return `phase` 가 채워진(판정 불가 시 `null` 인) 응답 DTO.
+     * @return `phase` 와 `editable` 이 채워진(판정 불가 시 `null` · false 인) 응답 DTO.
      */
-    private fun toResponse(row: ValidatorRow): ValidatorResponse = ValidatorResponse.from(row, phaseOf(row))
+    private fun toResponse(row: ValidatorRow): ValidatorResponse {
+        val (phase, editable) = traitsOf(row)
+        return ValidatorResponse.from(row = row, phase = phase, editable = editable)
+    }
 
     /**
-     * 행 하나의 평가 시점을 판정한다. **실패를 행 단위로 가둔다** — 한 행이 인스턴스화되지 않아도
-     * 목록 전체가 500 이 되지 않고 그 행만 `null` 이 된다.
+     * 인스턴스를 **한 번** 만들어 `phase` 와 `editable` 을 함께 판정한다.
+     *
+     * 두 값을 한 함수가 함께 돌려주므로 「phase 는 있는데 editable 은 판정 불가」 같은 어긋난 짝이
+     * 만들어질 자리가 없다 — 판정 근거가 그 인스턴스 하나뿐이고, 없으면 두 값이 함께 「모른다」로
+     * 간다. `editable` 의 정본은 [isEditable] 이며 생성/수정의 400 도 같은 함수를 탄다.
+     *
+     * **실패를 행 단위로 가둔다** — 한 행이 인스턴스화되지 않아도 목록 전체가 500 이 되지 않고
+     * 그 행만 판정 불가가 된다.
      *
      * ### `runCatching` 을 쓰지 않는 이유
      * `runCatching` 은 [Throwable] 을 잡아 `Error`(OOM · StackOverflow) 까지 삼키고, 치명적 상황을
-     * 「phase 를 모른다」로 위장한다. 여기서 가두려는 것은 [WorkflowValidatorFactory.create] 가
+     * 「판정할 수 없다」로 위장한다. 여기서 가두려는 것은 [WorkflowValidatorFactory.create] 가
      * 계약상 던지는 [IllegalArgumentException] 하나다 — 미지원 type · 필수 config 키 누락 ·
      * config 타입 불일치 · 알 수 없는 enum 이 전부 그 타입으로 온다. 그 밖의 예외가 올라오면
-     * 팩토리 쪽 결함이므로 `null` 로 감추지 않고 500 으로 드러나야 한다.
+     * 팩토리 쪽 결함이므로 판정 불가로 감추지 않고 500 으로 드러나야 한다.
      *
      * @param row validator 행.
-     * @return `"AVAILABILITY"` 또는 `"EXECUTION"`. 인스턴스화 실패 시 `null`.
+     * @return 평가 시점 이름과 편집 가능 여부의 쌍. 인스턴스화 실패 시 `(null, false)`.
      */
-    private fun phaseOf(row: ValidatorRow): String? {
-        return try {
-            validatorFactory.create(row.type, row.config).phase.name
-        } catch (ex: IllegalArgumentException) {
-            log.debug(
-                "ValidatorController: phase 판정 불가 id={} type={} reason='{}'",
-                row.id,
-                row.type,
-                ex.message,
-            )
-            null
-        }
+    private fun traitsOf(row: ValidatorRow): ValidatorTraits {
+        val instance =
+            try {
+                validatorFactory.create(row.type, row.config)
+            } catch (ex: IllegalArgumentException) {
+                log.debug(
+                    "ValidatorController: phase·editable 판정 불가 id={} type={} reason='{}'",
+                    row.id,
+                    row.type,
+                    ex.message,
+                )
+                return ValidatorTraits(phase = null, editable = false)
+            }
+        return ValidatorTraits(phase = instance.phase.name, editable = isEditable(instance))
     }
+
+    /**
+     * 한 인스턴스에서 함께 나오는 두 값의 쌍. 둘을 따로 계산하지 못하게 묶어 둔다.
+     *
+     * @property phase 평가 시점 이름. 판정 불가 시 `null`.
+     * @property editable 편집 가능 여부. 판정 불가 시 false.
+     */
+    private data class ValidatorTraits(
+        val phase: String?,
+        val editable: Boolean,
+    )
 }

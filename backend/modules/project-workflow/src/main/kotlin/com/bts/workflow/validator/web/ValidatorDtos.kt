@@ -38,11 +38,21 @@ data class ValidatorRequest(
  * 이다 — 손으로 넣은 깨진 config · 팩토리에서 사라진 type · config 키 변경. 실패는 행 단위로
  * 갇히므로 그 행만 `null` 이고 목록 전체는 200 이다.
  *
+ * ### `editable` 도 같은 인스턴스에서 나온다
+ * 이 API 로 만들고 고칠 수 있는 type 인지다. 화면이 이 값을 안 받으면 편집 가능한 type 목록을
+ * 자기 코드에 베끼게 되고, 그 사본은 백엔드가 네 번째 종류를 허용하는 날 조용히 낡는다 —
+ * 사용자는 고칠 수 있는 규칙을 회색으로 보거나 못 고치는 규칙을 눌렀다가 400 을 받는다.
+ * 판정의 정본은 [com.bts.workflow.validator.isEditable] 하나이고 생성/수정의 400 도 같은 함수를 탄다.
+ *
+ * **`phase = null` 이면 항상 `editable = false`** 다 — 인스턴스를 만들 수 없는 행은 편집 가능
+ * 여부를 판정할 근거도 없다. 두 값은 같은 인스턴스에서 나오므로 짝이 어긋날 수 없다.
+ *
  * @property id validator UUID.
  * @property type validator 타입 식별자.
  * @property config 타입별 설정 Map.
  * @property displayOrder UI 표시 순서.
  * @property phase 평가 시점 — `"AVAILABILITY"` 또는 `"EXECUTION"`. 인스턴스화 실패 시 `null`.
+ * @property editable 이 API 로 편집할 수 있는 type 이면 true. `phase` 가 `null` 이면 항상 false.
  */
 data class ValidatorResponse(
     val id: UUID,
@@ -50,21 +60,25 @@ data class ValidatorResponse(
     val config: Map<String, Any?>,
     val displayOrder: Int,
     val phase: String?,
+    val editable: Boolean,
 ) {
     companion object {
         /**
          * [ValidatorRow] 를 [ValidatorResponse] 로 변환한다.
          *
-         * `phase` 를 여기서 계산하지 않고 **받는다** — 인스턴스화 실패를 행 단위로 가두는 책임은
-         * 호출자(`ValidatorController.phaseOf`)에 있고, DTO 는 팩토리를 알지 않는다.
+         * `phase` 와 `editable` 을 여기서 계산하지 않고 **받는다** — 인스턴스를 한 번만 만들고
+         * 그 실패를 행 단위로 가두는 책임은 호출자(`ValidatorController`)에 있고, DTO 는 팩토리를
+         * 알지 않는다.
          *
          * @param row 도메인 행 객체.
          * @param phase 팩토리 인스턴스에서 읽은 평가 시점 이름. 인스턴스화 실패 시 `null`.
+         * @param editable 같은 인스턴스로 판정한 편집 가능 여부. `phase` 가 `null` 이면 false 다.
          * @return 응답 DTO.
          */
         fun from(
             row: ValidatorRow,
             phase: String?,
+            editable: Boolean,
         ): ValidatorResponse =
             ValidatorResponse(
                 id = row.id,
@@ -72,6 +86,7 @@ data class ValidatorResponse(
                 config = row.config,
                 displayOrder = row.displayOrder,
                 phase = phase,
+                editable = editable,
             )
     }
 }

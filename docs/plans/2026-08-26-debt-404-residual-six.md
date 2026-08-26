@@ -20,12 +20,12 @@
 
 | 번호 | 제목 | 라운드 3 판정 |
 |---|---|---|
-| **130** | project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 | PRE_EXISTING (모듈 전체) |
-| **131** | project-workflow — `ValidatorResponse` 에 편집 가능 여부가 없어 D6 가 목록을 손으로 든다 | D6 착수 시 재검토 |
-| **132** | project-workflow — 편집 불가 조건이 코드는 허용 목록, 계약 문서는 `CustomExpression` 한 값 | 현재 동작은 정확 |
+| **130** ✅ | project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 | PRE_EXISTING (모듈 전체) |
+| **131** ✅ | project-workflow — `ValidatorResponse` 에 편집 가능 여부가 없어 D6 가 목록을 손으로 든다 | D6 착수 시 재검토 |
+| **132** ✅ | project-workflow — 편집 불가 조건이 코드는 허용 목록, 계약 문서는 `CustomExpression` 한 값 | 현재 동작은 정확 |
 | **133** | project-workflow — `config` JSONB 가 크기·키 제한 없이 저장된다 | 권한 뒤라 상승 경로 아님 |
 | **134** | project-workflow — 전환 규칙 변경 로그에 행위자가 없다 | 형제와 같은 상태 · MDC 부재 |
-| **135** | project-workflow — 전환 규칙 표면에 남은 사본 5종 | 동작 영향 0 |
+| **135** ◑ | project-workflow — 전환 규칙 표면에 남은 사본 5종 | 동작 영향 0 |
 
 ## 도메인 정리
 
