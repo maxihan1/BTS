@@ -311,6 +311,10 @@ function ValidatorConfigSectionContent({
     if (deleteTarget === null) return
     setDeleteError(undefined)
     deleteMutation.mutate(deleteTarget.id, {
+      // ★ 닫는 책임은 소비자에게 있다(`confirm-dialog.tsx`). 성공했을 때만 닫으므로
+      //   진행 중에는 `confirming` 이 실제로 보이고, 실패하면 확인 맥락이 남은 채
+      //   아래 `deleteError` 가 그 창 안에서 사유를 말한다.
+      onSuccess: () => setDeleteTarget(null),
       // 모르는 코드일 때 기본 문구는 「규칙을 **저장**하지 못했습니다. **값을 확인하고**」다 —
       // 삭제에는 고칠 값이 없어 사용자가 무엇을 하라는 말인지 알 수 없다. 삭제 전용 문구로 갈아 끼운다.
       // ★ 봉투를 못 읽으면 `null`, 봉투는 읽었는데 code 가 없으면 `'UNKNOWN'` 이 온다 —
@@ -320,11 +324,6 @@ function ValidatorConfigSectionContent({
           validatorErrorMessage(errorCodeOf(error), validatorLabels.error.removeFailed),
         ),
     })
-    // ★ 공용 `ConfirmDialog` 가 `onConfirm()` 직후 스스로 `onOpenChange(false)` 를 부른다
-    //   (`confirm-dialog.tsx:55-56`). 그래서 여기서 닫는 것은 그 호출과 같은 커밋에 들어가고,
-    //   `onSuccess` 로 옮겨도 다이얼로그는 이미 닫힌 뒤다 — 실패 시 확인 맥락을 남기려면
-    //   프리미티브를 고쳐야 하고 그것은 이 PR 범위 밖이다(부채 등재).
-    setDeleteTarget(null)
   }
 
   const isSubmitting = addMutation.isPending || updateMutation.isPending
@@ -376,12 +375,6 @@ function ValidatorConfigSectionContent({
         </select>
       </div>
 
-      {deleteError !== undefined && (
-        <div role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive ring-1 ring-foreground/10">
-          {deleteError}
-        </div>
-      )}
-
       {selectedTxId !== '' && (
         <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
           <ValidatorListArea
@@ -391,7 +384,10 @@ function ValidatorConfigSectionContent({
             onRetry={() => { void refetch() }}
             onAddClick={handleAddClick}
             onEditClick={handleEditClick}
-            onDeleteClick={setDeleteTarget}
+            // ★여는 시점에도 지운다. 프리미티브가 처리 중 닫힘을 막으므로 지난 실패가 남을
+            //   경로는 없지만, 이 방어는 닫힘 경로와 무관하게 성립한다 — 다른 규칙을 지우려고
+            //   연 창에 앞 규칙의 실패 문구가 뜨는 일이 구조적으로 불가능해진다.
+            onDeleteClick={(validator) => { setDeleteError(undefined); setDeleteTarget(validator) }}
             isDeleting={deleteMutation.isPending}
           />
         </div>
@@ -411,13 +407,18 @@ function ValidatorConfigSectionContent({
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        onOpenChange={(next) => { if (!next) setDeleteTarget(null) }}
+        // 취소·Esc 로 닫을 때 실패 사유도 함께 지운다 — 안 지우면 다음에 다른 규칙을 지우려고
+        // 열었을 때 지난 실패가 그 창에 남는다.
+        onOpenChange={(next) => { if (!next) { setDeleteTarget(null); setDeleteError(undefined) } }}
         title={validatorLabels.dialog.deleteTitle}
         description={validatorLabels.dialog.deleteDescription}
         confirmLabel={validatorLabels.dialog.deleteConfirmButton}
         cancelLabel={validatorLabels.dialog.deleteCancelButton}
         onConfirm={handleDeleteConfirm}
         confirming={deleteMutation.isPending}
+        // ★사유를 창 **안**에 싣는다. 확인 창이 열린 채 실패하는 것이 이제 정상 경로이고,
+        //   소비자 화면에 배너로 그리면 모달 오버레이가 그것을 가린다.
+        error={deleteError}
         destructive
       />
     </section>

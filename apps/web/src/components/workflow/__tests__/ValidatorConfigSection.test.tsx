@@ -435,7 +435,14 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
   })
 
-  it('T6-16: 삭제가 실패하면 화면에 남는 안내가 뜬다', async () => {
+  /**
+   * T6-16. 삭제가 실패하면 **확인 창 안에** 사유가 뜬다.
+   *
+   * ★스코프가 있어야 한다. 종전 제목은 「화면에 남는 안내」였고 판정도 `screen.findByText` 라
+   * 「창 안」과 「페이지 위 배너」를 구분하지 못했다 — 부채 139 를 닫으면서 그 구분이 load-bearing
+   * 이 됐다(배너는 지웠고 사유는 창 안으로 옮겼다). 스코프 없는 판정은 배너가 되살아나도 초록이다.
+   */
+  it('T6-16: 삭제가 실패하면 확인 창 안에 사유가 뜬다', async () => {
     server.use(
       http.delete(`${BASE_PATH}/:id`, () =>
         HttpResponse.json(
@@ -455,8 +462,9 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
     const confirm = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
     fireEvent.click(within(confirm).getByRole('button', { name: validatorLabels.dialog.deleteConfirmButton }))
 
+    const stillOpen = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
     expect(
-      await screen.findByText(validatorErrorMessage('WORKFLOW_SCHEME_ACCESS_DENIED')),
+      within(stillOpen).getByText(validatorErrorMessage('WORKFLOW_SCHEME_ACCESS_DENIED')),
     ).toBeInTheDocument()
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
   })
@@ -490,9 +498,81 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
     // 삭제가 실패했으므로 행은 목록에 남는다.
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
 
-    // ★ 「확인 창이 열린 채 남는다」는 재지 않는다 — 공용 `ConfirmDialog` 가 `onConfirm()` 직후
-    //   스스로 `onOpenChange(false)` 를 부르므로(`confirm-dialog.tsx:55-56`) 어떤 소비자도 그렇게
-    //   만들 수 없다. 같은 이유로 그 프리미티브의 `confirming` prop 은 설계상 도달 불가다.
-    //   프리미티브를 고치는 것은 이 PR 범위 밖이라 부채로 등재했다.
+    // ★확인 창이 **열린 채 남고**, 사유가 **그 창 안**에 있다.
+    //   종전에는 공용 `ConfirmDialog` 가 `onConfirm()` 직후 스스로 닫아 둘 다 불가능했고,
+    //   이 자리의 주석이 「재지 않는다」고 적혀 있었다 — 제목은 「닫지 않는다」인데 판정이
+    //   없는 상태였다. 부채 139 를 닫으면서 그 판정을 실제로 넣는다.
+    const stillOpen = screen.getByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
+    expect(stillOpen).toBeInTheDocument()
+    expect(within(stillOpen).getByText(validatorLabels.error.removeFailed)).toBeInTheDocument()
+  })
+
+  /**
+   * T6-18. 삭제에 성공하면 확인 창이 닫힌다.
+   *
+   * T6-17 의 거울상이다. 「실패하면 남는다」만 재면 **아무 때도 안 닫는** 구현이 통과한다.
+   */
+  it('T6-18: 삭제에 성공하면 확인 창이 닫힌다', async () => {
+    renderSection()
+    selectTransition(TX_ID)
+    await waitForSeedRows()
+
+    fireEvent.click(
+      screen.getByLabelText(validatorDeleteButtonLabel(VALIDATOR_TYPES.customExpression, CUSTOM_EXPRESSION_ROW)),
+    )
+    const confirm = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
+    fireEvent.click(within(confirm).getByRole('button', { name: validatorLabels.dialog.deleteConfirmButton }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: validatorLabels.dialog.deleteTitle }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T6-19. 처리 중에는 확인 버튼이 잠긴다 — **실제 경로로** 잰다.
+   *
+   * `confirm-dialog.test.tsx` 는 `confirming` 을 **직접 넘겨** 재므로 prop 계약만 본다.
+   * 종전에는 프리미티브가 확인 직후 닫아 그 상태에 **도달 자체가 불가능**했고, 그래서 그
+   * 판정만으로는 도달 불가 조합을 지키는 가짜 그린이었다
+   * (`unreachable-state-fixture-is-fake-green`). 여기서 응답을 붙잡아 실제로 그 상태를 만든다.
+   */
+  it('T6-19: 삭제 처리 중에는 확인 버튼이 잠긴다 (도달 가능해진 상태)', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.delete(`${BASE_PATH}/:id`, async () => {
+        await held
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    renderSection()
+    selectTransition(TX_ID)
+    await waitForSeedRows()
+
+    fireEvent.click(
+      screen.getByLabelText(validatorDeleteButtonLabel(VALIDATOR_TYPES.customExpression, CUSTOM_EXPRESSION_ROW)),
+    )
+    const confirm = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
+    const confirmButton = within(confirm).getByRole('button', {
+      name: validatorLabels.dialog.deleteConfirmButton,
+    })
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => {
+      expect(confirmButton).toBeDisabled()
+    })
+
+    release?.()
+    // 응답을 풀어 준 뒤 창이 닫히는 것까지 본다 — 잠긴 채 영원히 남지 않는다.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: validatorLabels.dialog.deleteTitle }),
+      ).not.toBeInTheDocument()
+    })
   })
 })
