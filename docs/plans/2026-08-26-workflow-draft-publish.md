@@ -1,6 +1,14 @@
 # 워크플로우 초안·발행 + 기본값 복원 (FR-WF-07 로드맵 PR 6)
 
+> 티어: T3
+> slug: workflow-draft-publish
+> type: migration
+> agent: backend-engineer
+> 생성: 2026-08-26
+
 ## Brief
+
+Maxi 원문 — 「fr-wf-07 진행하자」.
 
 FR-WF-07(워크플로우 초안·발행 + 상태 이관 마법사)의 **project-workflow BC 몫**을 낸다.
 로드맵(`~/.claude/plans/cozy-hatching-otter.md`) 10 PR 중 **PR 6** 이다.
