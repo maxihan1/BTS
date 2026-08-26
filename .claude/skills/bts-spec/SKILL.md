@@ -64,7 +64,7 @@ T2 는 plan 파일의 `## 스펙` 절에 직접 쓴다(별도 파일 없음). T3
    조회했고 대응이 없었다는 기록과 애초에 안 본 것은 다르다.
 
 서식 정본은 `docs/specs/2026-08-04-fr-ux-12-f4-command-palette-search.md` 의 같은 절.
-`scripts/workflow/jira-research-guard.test.ts` 가 출처 URL 유무를 CI 에서 대조한다.
+`scripts/workflow/jira-research-guard.test.ts` 가 출처 URL 유무를 **푸시 훅**에서 대조한다 (CI 자동 실행은 `eca4a9c7f` 로 꺼져 있다).
 
 ## §3. Sanity check (내재화 — 외부 스킬 호출 없음)
 
