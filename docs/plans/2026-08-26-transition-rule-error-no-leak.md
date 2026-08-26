@@ -37,24 +37,34 @@
 토큰이 응답에 **없음**을 재는 방식이다. 이 방식은 허용 메시지 집합을 참조도 복사도 하지 않으므로
 `two-lists-never-check-each-other` 를 구조적으로 회피하면서 기존 리터럴 대칭 계약도 안 건드린다.
 
-### 두 판정을 함께 둔다 (서로를 대신하지 못한다)
+### 두 판정의 역할이 다르다
 
-| 판정 | 무엇을 잡나 | 놓치는 것 |
+| 판정 | 무엇을 잡나 | 지금의 위치 |
 |---|---|---|
-| `error.message` **정확 일치** | `message` 칸의 값이 바뀌는 것 전부 | 다른 칸(`code`·신규 필드)으로 새는 것 |
-| **누수 카나리** (`doesNotContain`) | 응답 본문 **어디로든** 요청 값이 실리는 것 | 요청 값과 무관한 내부 정보(스택·클래스명) |
+| `error.message` **정확 일치** | `message` 칸의 값이 바뀌는 것 전부 | **실질 방어선** — 봉투가 `{code,message}` 뿐이라 새는 통로가 하나다 |
+| **누수 카나리** (`doesNotContain`) | 응답 본문 **전체**에 요청 값이 실리는 것 | 통로가 늘어나는 날을 위한 것 (`ProblemDetail` 이식·`detail` 필드) |
 
 정확 일치만 두면 누가 `error.detail` 같은 칸을 새로 만들어 `ex.message` 를 실었을 때 통과한다.
-카나리만 두면 메시지를 「오류가 발생했습니다」로 바꿔도 통과한다. 둘 다 필요하다.
+카나리만 두면 메시지를 「오류가 발생했습니다」로 바꿔도 통과한다. 둘 다 둔다.
 
-### 카나리를 심는 자리
+### ★카나리는 값이 실제로 새는 경로에만 둔다
 
-- **비-UUID `{id}`** — 경로 변수에 `canary9f3a-not-a-uuid`. `MethodArgumentTypeMismatchException`
-  메시지에는 이 값이 그대로 들어간다.
-- **깨진 JSON 본문** — 문자열이 닫히지 않은 `{"type": "canary9f3a`.
-- **미인증 401** — **심을 자리가 없다.** 이 예외는 우리 코드가 던지므로 요청 값이 메시지에 들어가지
-  않는다. 메시지 정확 일치 하나로 잠근다. 그 사실을 KDoc 에 적는다 — 안 적으면 다음 사람이
-  「왜 여기만 카나리가 없나」를 다시 조사한다.
+착수 시 「깨진 JSON 본문」에 카나리를 심었는데, **뮤테이션으로 공허함이 드러났다.**
+
+| 경로 | `ex.message` 실측 | 카나리 |
+|---|---|---|
+| 비-UUID `{id}` | `… for value 'canary9f3a-not-a-uuid'` | **심는다** — 값이 실린다 |
+| 본문 타입 불일치 (`displayOrder` 에 문자열) | `Cannot deserialize value of type 'int' from String "canary9f3a"` | **심는다** — 값이 실린다 |
+| 깨진 JSON (닫히지 않은 문자열) | `JSON parse error: Unexpected end-of-input in VALUE_STRING` | **심지 않는다** — 본문 조각이 없다 |
+| 미인증 401 | 우리 코드가 던진다 | **심을 자리가 없다** |
+
+Spring Boot 가 Jackson 의 `INCLUDE_SOURCE_IN_LOCATION` 을 꺼 두기 때문에 깨진 JSON 경로에는 본문이
+실리지 않는다. 거기 카나리를 두면 **어떤 뮤테이션으로도 red 를 못 내는 판정**이 된다 —
+`unreachable-state-fixture-is-fake-green` 그대로다.
+
+그래서 같은 `HttpMessageNotReadableException` 핸들러를 타면서 값이 실제로 실리는 **본문 타입 불일치**
+경로를 테스트로 추가하고 카나리를 그리로 옮겼다. 깨진 JSON 은 정확 일치만 남기고, **왜 여기만
+카나리가 없는지**를 KDoc 에 적었다 — 안 적으면 다음 사람이 같은 조사를 다시 한다. 미인증 401 도 같다.
 
 ### 카나리 상수는 양쪽에 리터럴로 적는다
 

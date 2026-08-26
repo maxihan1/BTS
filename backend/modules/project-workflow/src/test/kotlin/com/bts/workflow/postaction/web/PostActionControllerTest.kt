@@ -393,9 +393,18 @@ class PostActionControllerTest {
     //
     // ★`error.message` 를 「존재(isString)」로만 재던 자리를 **정확 일치 + 누수 카나리** 로 바꿨다
     // (부채 136). 존재만 재면 누가 `ex.message` 를 그 자리에 꽂아도 여전히 통과한다 — 그리고 그
-    // 메시지에는 파라미터 이름·타입·요청 본문 조각이 들어 있어 응답이 곧 내부 구조의 설명서가 된다.
-    // 두 판정은 서로를 대신하지 못한다. 정확 일치는 `message` 칸이 바뀌는 것을 잡고, 카나리는
-    // **다른 칸으로 새는 것**까지 잡는다.
+    // 메시지에는 파라미터 이름·타입·요청 본문 값이 들어 있어 응답이 곧 내부 구조의 설명서가 된다.
+    //
+    // 두 판정의 역할이 다르다. **정확 일치**가 지금의 실질 방어선이다 — 봉투가 `{code,message}`
+    // 뿐이라 새는 통로가 `message` 하나다. **카나리**는 그 통로가 늘어나는 날을 위한 것이다
+    // (`ProblemDetail` 이식·`detail` 필드 추가). 응답 본문 **전체**를 보므로 새 칸이 생겨도 함께 잡는다.
+    //
+    // ★★카나리는 **값이 실제로 새는 경로에만** 둔다. 2026-08-26 실측 — 깨진 JSON 의 `ex.message` 는
+    // `"JSON parse error: Unexpected end-of-input in VALUE_STRING"` 이고 본문 조각이 없다
+    // (Spring Boot 가 Jackson 의 `INCLUDE_SOURCE_IN_LOCATION` 을 꺼 둔다). 거기 카나리를 두면 어떤
+    // 뮤테이션으로도 red 를 못 내는 공허한 판정이 되므로, 값이 실제로 실리는 **본문 타입 불일치**
+    // (`displayOrder` 에 문자열 → `InvalidFormatException`) 로 옮겼다. 뮤테이션으로 확인했다 —
+    // 그 경로의 메시지는 `Cannot deserialize value of type 'int' from String "…"` 이다.
     //
     // 코드·메시지 문자열은 리터럴로 적는다. 형제 [com.bts.workflow.validator.web.ValidatorControllerTest]
     // 가 **같은 리터럴**을 적고 있고, 「두 표면이 같은 값을 쓴다」는 계약을 지키는 것은 그 대칭뿐이다
@@ -423,15 +432,47 @@ class PostActionControllerTest {
         verify(exactly = 0) { service.delete(any(), any(), any()) }
     }
 
+    /**
+     * 깨진 JSON — **카나리를 심지 않는다.**
+     *
+     * 2026-08-26 실측 — 이 경로의 `ex.message` 는 `"JSON parse error: Unexpected end-of-input in
+     * VALUE_STRING"` 이고 **본문 조각이 들어 있지 않다**(Spring Boot 가 Jackson 의
+     * `INCLUDE_SOURCE_IN_LOCATION` 을 꺼 둔다). 여기에 카나리를 두면 어떤 뮤테이션으로도 red 를
+     * 낼 수 없는 **공허한 판정**이 된다 — 이 저장소가 이름 붙인
+     * `unreachable-state-fixture-is-fake-green` 그대로다.
+     *
+     * 값이 실제로 새는 경로는 아래 「본문의 타입 불일치」다. 카나리는 거기에 있다.
+     */
     @Test
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
-    fun `깨진 JSON 본문은 400 과 error 봉투로 나가고 본문 조각이 응답에 실리지 않는다`() {
-        // 문자열이 닫히지 않은 JSON. 카나리는 그 열린 문자열 안에 있다.
+    fun `깨진 JSON 본문은 400 과 error 봉투로 나간다`() {
+        mockMvc.perform(
+            post(basePath)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"type": """),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.message").value("요청 본문을 읽을 수 없습니다."))
+
+        verify(exactly = 0) { service.create(any(), any(), any(), any(), any()) }
+    }
+
+    /**
+     * 본문의 타입 불일치 — **여기가 값이 실제로 새는 자리다.**
+     *
+     * `displayOrder` 는 `Int` 인데 문자열을 보내면 Jackson `InvalidFormatException` 이 나고, 그
+     * 메시지에는 **들어온 값이 그대로** 실린다. 위 「깨진 JSON」과 같은
+     * `HttpMessageNotReadableException` 핸들러를 타므로 같은 자리를 지키면서 카나리가 비-공허해진다.
+     */
+    @Test
+    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
+    fun `본문의 타입 불일치 값이 응답에 실리지 않는다`() {
         val body =
             mockMvc.perform(
                 post(basePath)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"type\": \"$LEAK_CANARY"),
+                    .content("""{"type": "CALL_WEBHOOK", "displayOrder": "$LEAK_CANARY"}"""),
             )
                 .andExpect(status().isBadRequest)
                 .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
