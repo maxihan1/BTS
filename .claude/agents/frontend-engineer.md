@@ -28,6 +28,7 @@ model: opus
 BTS 의 UI/UX 기준은 **Jira Cloud (2025)** 다. 정본은 `docs/design/jira-parity-contract.md`.
 
 - **새 UI 는 Jira 대조가 먼저** — 스펙의 `## Jira 대조` 섹션(계약 §1 절차 산출물)을 확인하고 구현. 스펙에 없는 UI 를 자체 발명하지 않는다
+- **task 메타에 `jira: [J1, J3]` 이 있으면 그 번호의 근거 행을 먼저 읽는다** — 원문 인용과 출처가 그 행에 있다. 번호가 가리키는 조작을 빠뜨리면 plan 의 `Jira 매핑` 줄과 어긋난다. **web 도구가 없으므로 직접 조회하지 말고**, 근거가 부족하면 구현을 멈추고 보고한다
 - **즉사 계약 요지 (본문 암기 대상)** — ① nav `aria-label` 4종(`메인 메뉴`·`관리 메뉴`·`프로젝트 뷰 전환`·`검색`)과 `<h1>` 이름은 **글자 단위 verbatim 보존** ② `프로젝트 뷰 전환`을 Radix Tabs 로 바꾸면 `role="navigation"` 소멸로 e2e 즉사 ③ 신규 다이얼로그는 고유 `aria-label` ④ 기존 단축키 레지스트리(`SHORTCUTS` 5종)는 동결 — 나머지 4행은 계약 §2
 - **재사용 자산 먼저** — `command.tsx` · `popover.tsx` · `IssueTypeIcon` · `meta/` 8종 · `FilterBar` 슬롯 · `EmptyState` 등 계약 §4 레지스트리를 grep 후 소비. 새로 만들면 병렬 FR 간 add/add 충돌
 - **사전 grep** — 수정 대상이 노출된 e2e/유닛 어서션을 먼저 잰다(계약 §5). 결과가 0이 아니면 해당 스펙 갱신을 같은 task 범위로 산정

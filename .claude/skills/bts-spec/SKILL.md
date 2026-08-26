@@ -14,7 +14,7 @@ T0/T1 은 이 단계에 진입하지 않는다 — 1줄 요약은 게이트 2 �
 2. `/Users/maxi.moff/Maxi_wiki/BTS/domain/<bc>.md` — `classify.primary_bc` 가 가리키는 BC 노트
 3. `docs/decisions/` — 영향받을 ADR 을 키워드 grep. **0건이면 그대로 진행**하고 plan 의 `## 도메인 정리` 에 "관련 ADR: 없음" 을 명시한다
 4. `docs/plans/<date>-<slug>.md` — Step 1 이 채울 대상
-5. (ui/design) `docs/design/jira-parity-contract.md` — Jira Cloud 대조 절차(§1) + 즉사 계약(§2) + 재사용 자산(§4)
+5. **(전 타입 필수)** `docs/design/jira-parity-contract.md` — Jira Cloud **실물 조회** 절차(§1) + 즉사 계약(§2) + 재사용 자산(§4). ui/design 은 §2·§4 까지, 비-UI 는 §1 만 읽으면 된다
 
 ## §1. BC 식별 (구 `/bts-domain`)
 
@@ -41,7 +41,7 @@ T2 는 plan 파일의 `## 스펙` 절에 직접 쓴다(별도 파일 없음). T3
 
 ```markdown
 ## 사용자 시나리오 (Given-When-Then)
-## Jira 대조 (ui/design 타입 필수)
+## Jira 대조 (전 타입 필수)
 ## 기능 요구사항 (FR)
 ## 비기능 요구사항 (NFR)
 ## API 인터페이스 (REST)
@@ -51,9 +51,20 @@ T2 는 plan 파일의 `## 스펙` 절에 직접 쓴다(별도 파일 없음). T3
 ## 측정 가능한 완료 기준
 ```
 
-**`## Jira 대조` 작성법**(ui/design — `jira-parity-contract.md` §1 절차의 산출물).
-Jira Cloud 의 대응 화면 → 조작감 갭 목록 → 즉사 계약(§2)·재사용 자산(§4)과의 교차 결과.
-대응 화면이 없으면 "Jira 대응 없음, ADS 준용" 을 명시. 비-UI 타입은 이 섹션을 생략한다.
+**`## Jira 대조` 작성법** — `jira-parity-contract.md` §1 5단계의 산출물이다. **타입과 무관하게 쓴다.**
+
+1. **§1-0 재사용 grep 먼저.** `grep -rln "## Jira 대조" docs/specs/ docs/plans/ | xargs grep -ln "<표면>"` —
+   기존 행은 출처 URL·조회일 그대로 승계하고 **이번에 새로 건드리는 조작만** 조회한다.
+2. **실물 조회.** §1 표의 5개 도메인만 근거다. `WebFetch`·`WebSearch` 는 이 컨트롤러 단계에서 돈다 —
+   구현 sub-agent 에는 web 도구가 없어 여기서 못 하면 아무도 못 한다.
+3. **근거 표.** 행마다 `J1`·`J2` 번호 + **원문 인용 + 출처 URL + 조회일 + Cloud/DC 구분**.
+   ui/design 은 조작감 갭을, 비-UI 는 기능 스펙(전환 규칙·권한 스킴·JQL 의미론)을 잰다.
+4. **의도적 편차**는 `X1`·`X2` 로 번호를 붙여 근거와 함께 따로 적는다.
+5. 대응 개념이 없으면 「**대응 없음** — ADS `<패턴>` **준용**」 + 사유. **절을 통째로 지우지 않는다** —
+   조회했고 대응이 없었다는 기록과 애초에 안 본 것은 다르다.
+
+서식 정본은 `docs/specs/2026-08-04-fr-ux-12-f4-command-palette-search.md` 의 같은 절.
+`scripts/workflow/jira-research-guard.test.ts` 가 출처 URL 유무를 CI 에서 대조한다.
 
 ## §3. Sanity check (내재화 — 외부 스킬 호출 없음)
 

@@ -60,6 +60,7 @@
 | 10 | 보안 경로 최소 T2 | 판별식 상수 + 이 파일 §1 표면 표 | **판별식 ①a/b** | **차단(CI)** |
 | 11 | 스냅샷 baseline 무단 갱신 금지 | 이 파일 §4 | **판별식 ②** `snapshot-baseline-guard.test.ts` | **차단(CI)** |
 | 12 | 파일럿 중단 기준 | `.claude/MIGRATION.md` + 이 파일 §4 | 사람 판정 | 지침 |
+| 14 | Jira Cloud **실물 조회** 선행 | `jira-parity-contract.md` §1 + `bts-spec`·`bts-plan`·`bts` 3곳 배선 | **판별식** `jira-research-guard.test.ts` — 발효일(2026-08-27) 이후 plan/spec 의 `## Jira 대조` 출처 URL 대조 + 배선 문구 계약. **T1 3줄은 저장소에 흔적이 없어 강제 불가** | **차단(CI)** · T1 경량 경로만 지침 |
 | 13 | 머지 전 CI 초록 확인 | `bts-merge` Step 1 `gh pr checks --watch` 1행 | 실행 자체는 강제 불가 · **문구 존재는 `merged-pr-run-cleanup.test.ts` 계약이 강제** | 지침 + 문구 계약 |
 
 **3회에서 멈춘다** — `bts-impl` · `bts-codereview` 와 같은 관용 임계다. 새 숫자를 만들면 네 번째 숫자가 생긴다.

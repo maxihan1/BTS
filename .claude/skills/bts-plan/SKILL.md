@@ -22,6 +22,10 @@ description: Called by /bts step 3 — decomposes the written spec into TDD task
 4. 관련 learnings 발췌를 각 task 의 **근거로 첨부**한다 — 회귀 사고가 있던 표면은 그 사고를 재현하는 테스트가 RED 가 된다.
 5. **형식이 어긋나면 재호출하지 않고 그 자리에서 교정한다.** 재검증 루프를 돌리면 왕복만 늘고 결과가 같다.
 6. Task 예시·서식 정본. [plan-format.md](plan-format.md)
+7. **Jira 채택 항목 ↔ task 차집합 0.** 스펙 `## Jira 대조` 에서 **채택**으로 판정한 `J*` 번호는
+   전부 최소 1개 task 에 물려야 한다. 물리지 않은 번호가 있으면 task 를 추가하거나 **이번 PR
+   범위 밖임을 사유와 함께 plan 에 명시**한다. 스펙의 채택 목록과 task 목록은 서로를 검사하지
+   않으므로, 분해가 조용히 삼킨 조작은 구현·리뷰·머지 어디서도 드러나지 않는다.
 
 ## §2. 메타 계약
 
@@ -31,6 +35,7 @@ description: Called by /bts step 3 — decomposes the written spec into TDD task
 | `files` | 이 task 가 **신규 작성 + 수정**하는 모든 파일(RED/GREEN/REFACTOR 합본). repo 루트 기준 상대 경로 |
 | `depends-on` | 선행 task 번호 배열. **코드 의존성만**(커밋 순서 의존성은 아니다). 없으면 `[]` |
 | 파일 겹침 | 두 task 의 `files` 교집합이 있으면 `depends-on` 미선언이어도 **자동 직렬화**된다 |
+| `jira` | 생략 가능. 이 task 가 구현하는 스펙 `## Jira 대조` 의 근거 번호 배열(`[J1, J3]`). 스펙에 채택 항목이 있으면 §1-7 차집합 0 을 이 필드로 센다 |
 | ui 시각 트랙 | `**검증**:` 필드에 ① 관련 기존 E2E spec 목록(계약 §5 사전 grep 결과) ② 브라우저 눈확인 항목(라이트/다크)을 필수 기재. RED 라벨은 "동반 테스트" 명세로 읽는다 — red-first 순서 강제 없음 |
 
 ## §3. task 수 기록
@@ -59,6 +64,9 @@ node -e '
 ## §4. plan 파일 갱신
 
 `## Plan` 을 위 서식으로 채우고, 이어서 `## Plan 메타` 에 task 수 · 예상 wave 수 · 구현 규율(TDD | ui 시각 검증 트랙) · 추가 검증(typecheck · ktlint · detekt · vitest · playwright)을 적는다.
+
+스펙에 `## Jira 대조` 채택 항목이 있으면 **`Jira 매핑` 한 줄을 함께 적는다** — `J1→T2 · J2→T3 · J4 범위 밖(사유)`.
+이 줄이 §1-7 의 차집합을 눈으로 대조하는 자리다. 채택 항목이 0건이면 `Jira 매핑: 채택 0` 이라 적는다.
 
 ## 체이닝 · 출력 · 엣지
 

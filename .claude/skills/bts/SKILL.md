@@ -72,6 +72,10 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 게이트 2 요약에는 **선언 티어 · 실측 티어 · `UNMAPPED` 줄 · 건너뛴 단계**를 반드시 싣는다. 우회 사실을 Maxi 가 보고 승인하게 하는 것이 이 요약의 목적이다.
 
+**T0/T1 에서 UI 를 건드렸으면 `Jira 대응 3줄`도 같이 싣는다** — `Jira 대응`(화면 + 출처 URL + 조회일) ·
+`채택` · `편차`. T1 은 plan 파일이 0개라 이 3줄이 Jira 패리티 판단의 **유일한 기록**이고,
+저장소에 안 남으므로 판별식이 못 잡는다. 절차는 `docs/design/jira-parity-contract.md` §1 「T1 UI 경량 경로」.
+
 ## 선행 읽기
 
 - `/Users/maxi.moff/Maxi_wiki/BTS/_index.md` · 같은 폴더 `history.md` 마지막 50줄을 Read.
