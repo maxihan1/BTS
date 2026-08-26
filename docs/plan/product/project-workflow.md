@@ -122,8 +122,20 @@
 - [x] D2. 명세 — 알 수 없는 type·잘못된 config 의 400 계약 · post-action 경로를 transitionId 로 정렬(구 경로 유지) (책임. backend-engineer) (PR #404, 2026-08-25)
 - [x] D4. 백엔드 — validator CRUD API (책임. backend-engineer) (PR #404, 2026-08-25). *`ValidatorController` 4 엔드포인트 · `ValidatorAdminService` · `ValidatorRepository` · validator/post-action 공용 기반 `TransitionRuleRepository`*
 - [x] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전환에서 동작(엔진 통합) (책임. backend-engineer) (PR #404, 2026-08-25). *테스트 +25건*
-- [ ] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer)
-- [ ] D7. E2E — 규칙을 걸면 전환이 막히고, 풀면 통과한다 (책임. qa-engineer)
+- [x] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer) (PR #407, 2026-08-26). *형제 post-action UI(FR-NT-05)의 대칭 구현 — `/workflows/{key}` 상세에 `ValidatorConfigSection` 을 나란히 뒀다. **응답의 `editable` 을 그대로 소비**하고 편집 가능 type 목록을 화면에 베끼지 않는다*
+- [x] D7. E2E — ~~규칙을 걸면 전환이 막히고, 풀면 통과한다~~ → **화면 계약 + 편집 불가 행**으로 축소 (책임. qa-engineer) (PR #407, 2026-08-26). **스펙 deviation — 아래 각주**
+
+> **★ D7 스펙 deviation** (Maxi 결정, PR #407). `apps/web/e2e/workflow-validator.spec.ts` 는 규칙 CRUD ·
+> 편집 불가 행 · 비admin 게이팅 · 프리필 격리를 덮고, **「규칙을 걸면 전환이 막힌다」는 재지 않는다.**
+> 착수 시 그것을 `/transitions/plan` 응답 픽스처로 표현하려 했으나 **화면이 그 엔드포인트를 한 번도
+> 부르지 않음**이 실측됐다(`planTransition` 호출부가 API 정의와 자기 단위 테스트 밖에 0건 · 이슈 상태
+> 드롭다운의 실제 출처는 `useIssueTransitions` → `GET /api/v1/issues/{key}/transitions`). 소비자 0건인
+> 픽스처 위에 세우면 가짜 그린이 된다.
+> **대신 두 곳이 이미 덮는다.** ① 규칙이 후보를 감추는 계산 — `ValidatorEngineIntegrationTest` 의
+> `not-status-category 를 걸면 목록에서 사라지고 지우면 다시 나온다`(Testcontainers 실 DB + 실 엔진)
+> ② 화면이 받은 목록을 그대로 그리는 것 — #398 이 만든 `apps/web/e2e/issue-transition.spec.ts` S8.
+> `mocks/issue-handlers.ts` 에 시나리오 플래그를 넣는 길은 **그 핸들러를 쓰는 E2E 가 7개**라 영향이 넓고
+> 새로 증명되는 것이 ②와 겹쳐 택하지 않았다.
 
 > **D3 비해당 확정** (PR #404, 2026-08-25). 착수 시 재확인한 결과 예정대로였다 — `workflow_validators`/`workflow_post_actions` 는 V200 기존 테이블이라 이 PR 의 **마이그레이션은 0건**이고, 스키마 변경 없이 CRUD 만 얹었다.
 
@@ -159,9 +171,12 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ⬜ · FR-WF-07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
-- [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다
+- [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
+  **2026-08-26 재실측(PR #407 시점) — 미완은 §2.7 FR-WF-07 의 D1~D7 뿐이다.** WF-04·05·06 이 전부 닫혔다.
+  개수 대신 전수로 적는다 — 「N건」은 눈가리개이고, 실제로 `grep '^- \[ \] D'` 는 §1.2 의
+  「**D**ATA.md … 숙지」 줄을 D 마커로 오탐한다
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요
 - [x] pgmq ADR (§A.3 #1) 발행 완료 — 2026-07-27 실측: `docs/adr/2026-05-22-pgmq-postgres-image.md` 실재 (일자 2026-05-22). `docs/decisions/` 에는 없음
 - [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` §[Unreleased] BC 요약 표에 `project-workflow | 3 (WF 3) | 2026-05-22 ~ 07-11 | 9 (#10~#66 외)` 행 존재

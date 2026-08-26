@@ -273,9 +273,16 @@ DELETE /api/v1/workflows/{workflowKey}/transitions/{transitionKey}/validators/{i
 | config·type 부적합 | 400 | `WORKFLOW_VALIDATOR_INVALID` |
 | 편집 불가 type | 400 | `WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE` |
 | 전환·규칙 미존재 | 404 | `WORKFLOW_VALIDATOR_NOT_FOUND` |
-| **비-UUID `{id}`** | **400** | **신규 — `MethodArgumentTypeMismatchException`** |
-| **본문 형식 오류(깨진 JSON · `type` 누락)** | **400** | **신규 — `HttpMessageNotReadableException`** |
-| **미인증** | **401** | **신규 — `ResponseStatusException`** (아래 ✅) |
+| **비-UUID `{id}`** | **400** | **`WORKFLOW_INVALID_REQUEST`** — `MethodArgumentTypeMismatchException` |
+| **본문 형식 오류(깨진 JSON · `type` 누락)** | **400** | **`WORKFLOW_INVALID_REQUEST`** — `HttpMessageNotReadableException` |
+| **미인증** | **401** | **`WORKFLOW_UNAUTHENTICATED`** — `ResponseStatusException` (아래 ✅) |
+
+★ **두 400 은 같은 코드다.** 모듈에 이미 있던 `WORKFLOW_INVALID_REQUEST` 를 재사용했다 — 둘 다
+「보낸 요청 자체가 형식부터 틀렸다」는 같은 뜻이고 화면이 갈라 분기할 일이 없다. 메시지만 다르다.
+★ 코드·메시지·봉투 조립은 `internal object TransitionRuleFrameworkErrors` **한 벌**이고 형제
+handler 가 `import` 해서 쓴다 — 두 파일에 문자열을 각각 적으면 그것이 다시 두 벌이 된다.
+★ 401 이 아닌 `ResponseStatusException` 은 `ex.statusCode` 를 에코하고 `WORKFLOW_REQUEST_REJECTED` 를
+싣는다. **현재 도달 불가**라 테스트를 붙이지 않았다(`unreachable-state-fixture-is-fake-green`).
 
 **✅ 확인 (G3) — 401 은 advice 에 도달한다.** 이 401 은 Spring Security 필터가 아니라
 `CurrentActor.current()` 가 **컨트롤러 메서드 실행 중**에 던진다(`ManageSchemeGuard.requireManageScheme`
