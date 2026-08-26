@@ -305,6 +305,46 @@ function factoryConfigKeys(source: string): Record<string, string[]> {
   return keys
 }
 
+/**
+ * `create*` 본문에서 `config` 를 **인자로 넘기는** 호출의 callee 이름.
+ *
+ * [REQUIRED_CONFIG_CALL] · [OPTIONAL_CONFIG_CALL] 이 헬퍼 이름을 박아 두고 있어, 그 둘 밖의 형태로
+ * 키를 읽으면 [factoryConfigKeys] 가 **못 본다**. 못 본 키는 표에 문서화를 요구받지 않는다.
+ */
+const CONFIG_CONSUMER_CALL = /(\w+)\s*\(\s*config\s*[,)]/g
+
+/** 축 2 가 키를 읽어낼 수 있는 호출 형태. 이 집합 밖은 키가 무음으로 사라진다. */
+const KNOWN_CONFIG_READERS: readonly string[] = [
+  'requireConfigString',
+  'requireConfigEnumOrDefault',
+]
+
+/**
+ * 팩토리 `create*` 본문에서 **축 2 가 해석하지 못하는** config 읽기 형태를 type 별로 모은다.
+ *
+ * 두 가지를 한꺼번에 잡는다.
+ * 1. **네 번째 헬퍼** — `requireConfigInt(config, "maxLength")` 처럼 새 형태로 읽는 필수 키는
+ *    축 2 의 정규식 3종에 안 걸려 표에 요구되지 않고 샌다.
+ * 2. **한 단계 위임** — `requireConfigString` 을 같은 파일 private helper 로 빼고
+ *    `fieldOf(config)` 로 부르면 축 2 는 키를 0건으로 보고, 그때 뜨는 실패 메시지
+ *    「코드가 정본이니 표를 고쳐라」를 그대로 따르면 **아직 필요한 키를 문서에서 지우고** 초록이 된다.
+ *
+ * 둘 다 callee 이름이 허용 집합 밖이라는 하나의 사실로 드러난다.
+ */
+function unreadableConfigReaders(source: string): Record<string, string[]> {
+  const unknown: Record<string, string[]> = {}
+  for (const line of whenTypeBlock(source).split('\n')) {
+    const branch = WHEN_BRANCH_TARGET.exec(line)
+    if (branch === null) continue
+    const [, type, functionName] = branch
+    const callees = [...new Set(captureAll(functionBody(source, functionName), CONFIG_CONSUMER_CALL))]
+      .filter((callee) => !KNOWN_CONFIG_READERS.includes(callee))
+      .sort()
+    if (callees.length > 0) unknown[type] = callees
+  }
+  return unknown
+}
+
 /** `override val type: String = "…"` 한 줄. 구현체가 인스턴스 쪽 type 을 선언하는 자리다. */
 const OVERRIDE_TYPE = /^\s*override\s+val\s+type\s*:\s*String\s*=\s*"([^"]+)"/
 
@@ -455,6 +495,7 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
       ),
       documentedConfigKeys: sddConfigKeys(table),
       implementedConfigKeys: factoryConfigKeys(factory),
+      unreadableReaders: unreadableConfigReaders(factory),
       instanceTypes: implementations.map((impl) => impl.type).sort(),
     }
   }
@@ -607,6 +648,40 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
         `${OPTIONAL_SUFFIX} 를 붙인다. 여러 개면 '${CONFIG_KEY_SEPARATOR}' 로 잇는다.)\n` +
         '  (코드 쪽 근거. `requireConfigString` = 필수 · `requireConfigEnumOrDefault` 와 ' +
         '`config["키"]` 직접 읽기 = 선택.)',
+    )
+  }
+
+  test('DefaultWorkflowValidatorFactory 가 축 2 로 안 읽히는 형태로 config 를 읽지 않는다', () => {
+    assertNoUnreadableReaders(catalogs.validator)
+  })
+
+  test('DefaultWorkflowPostActionFactory 가 축 2 로 안 읽히는 형태로 config 를 읽지 않는다', () => {
+    assertNoUnreadableReaders(catalogs.postAction)
+  })
+
+  /**
+   * 축 5 — `create*` 가 축 2 의 해석 범위 **안에서만** config 를 읽는지.
+   *
+   * 축 2 는 차집합이라 「표에 있는데 코드에 없다」와 「코드에 있는데 표에 없다」를 잡는다. 그런데
+   * 코드가 **축 2 가 모르는 형태**로 키를 읽으면 그 키는 애초에 코드 쪽 집합에 안 들어가서
+   * 차집합이 0 이 되고, 문서화되지 않은 필수 키가 초록인 채로 남는다. 차집합이 못 보는 자리를
+   * 이 축이 지킨다.
+   */
+  function assertNoUnreadableReaders(catalog: Catalog): void {
+    const { label, factoryName, unreadableReaders } = catalog
+    assert.deepEqual(
+      unreadableReaders,
+      {},
+      `${factoryName} 의 create* 가 축 2 로 해석되지 않는 형태로 config 를 읽는다 — ` +
+        `그 키는 ${label} 표에 문서화를 요구받지 못하고 조용히 샌다.\n` +
+        Object.entries(unreadableReaders)
+          .map(([type, callees]) => `  ${type} — ${callees.join(' · ')}`)
+          .join('\n') +
+        `\n  (축 2 가 읽는 형태는 ${KNOWN_CONFIG_READERS.join(' · ')} 와 ` +
+        'config["키"] 직접 인덱싱뿐이다.)\n' +
+        '  **표를 고쳐서 지우지 마라.** 새 헬퍼를 쓰려면 그 헬퍼의 패턴을 이 파일의 ' +
+        'REQUIRED_CONFIG_CALL / OPTIONAL_CONFIG_CALL 옆에 함께 등재하고 ' +
+        'KNOWN_CONFIG_READERS 에 이름을 넣어라. 등재 없이 쓰면 표가 키를 빠뜨린 채 초록이 된다.',
     )
   }
 
