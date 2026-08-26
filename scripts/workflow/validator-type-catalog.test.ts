@@ -842,6 +842,41 @@ function strayReads(reads: readonly string[], configKeys: Record<string, string[
   return [...new Set(reads)].filter((key) => !declared.has(key)).sort()
 }
 
+/**
+ * 비-공허 짝이 0건을 만났을 때 **그 목록의 출처를 가리키는** 안내.
+ *
+ * ★종전에는 모든 목록에 같은 보일러플레이트를 붙였다 — 「표는 … 팩토리는 … 구현체는 …
+ * 편집 화면은 …」. 축 8 의 두 목록(이 파일 자신)에는 **하나도 해당하지 않아** 0건이 났을 때
+ * 읽는 사람을 엉뚱한 파일로 보냈다(2026-08-26 재리뷰 지적).
+ *
+ * 출처에서 도출하므로 probe 마다 힌트를 손으로 적지 않는다 — 적으면 그것이 probe 목록과 갈리는
+ * 두 번째 목록이 된다.
+ *
+ * @param source 그 목록을 뽑아낸 파일 또는 디렉터리.
+ * @returns 무엇이 있어야 하는지 한 문장.
+ */
+function nonEmptyHintFor(source: string | readonly string[]): string {
+  if (source === SELF_FILE) {
+    return (
+      `이 파일 머리에 '// | 축 |' 로 시작하는 축 표가 있어야 하고, 각 축에는 ` +
+      `'축 N —' 마커가 **바로 뒤에 판정 함수를 달고** 있어야 한다.`
+    )
+  }
+  if (source === SDD_FILE) {
+    return (
+      `표에 '${TYPE_COLUMN_PREFIX}' · '${IMPL_COLUMN_PREFIX}' · '${CONFIG_COLUMN_PREFIX}' 로 ` +
+      `시작하는 제목의 열이 있어야 한다.`
+    )
+  }
+  if (source === VALIDATOR_FACTORY || source === POST_ACTION_FACTORY) {
+    return `팩토리에 '${WHEN_HEAD}' 블록이 있어야 한다.`
+  }
+  if (source === VALIDATOR_DIR || source === POST_ACTION_DIR) {
+    return `구현체에 'override val type' 선언이 있어야 한다.`
+  }
+  return `편집 화면에 *CONFIG_FORM_SCHEMAS 객체나 type/config 리터럴 짝이 있어야 한다.`
+}
+
 /** `left` 에만 있고 `right` 에는 없는 값. */
 function onlyIn(left: string[], right: string[]): string[] {
   const other = new Set(right)
@@ -1393,10 +1428,7 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
         values.length > 0,
         `${label}에서 **0건**을 뽑았다 — 파서가 죽었고 위 차집합 단언은 공허하다.\n` +
           `  읽은 파일. ${files.map((file) => path.relative(REPO_ROOT, file)).join(' · ')}\n` +
-          `  표는 '${TYPE_COLUMN_PREFIX}' · '${IMPL_COLUMN_PREFIX}' · '${CONFIG_COLUMN_PREFIX}' 로 ` +
-          `시작하는 제목의 열이, 팩토리는 '${WHEN_HEAD}' 블록이, 구현체는 ` +
-          `'override val type' 선언이, 편집 화면은 *CONFIG_FORM_SCHEMAS 객체나 ` +
-          `type/config 리터럴 짝이 있어야 한다.`,
+          `  ${nonEmptyHintFor(source)}`,
       )
     }
   })
@@ -1414,6 +1446,21 @@ describe('SDD §7.3·§7.4 표 ↔ 팩토리 when 분기 ↔ 규칙 구현체 �
 // 다른 모양을 재면 「엉뚱한 걸 잠갔다」가 된다.
 
 describe('축 6 의 post-action 파서 — 선언의 키 순서에 무관하다', () => {
+  /**
+   * 픽스처를 **프로덕션과 같은 파이프라인**에 태운다.
+   *
+   * 실제 소비자는 항상 `readTypeScript` = `stripComments(…, TS_QUOTES)` 를 거친 뒤에야 파서에
+   * 닿는다([frontFormCatalog]). 픽스처만 날 문자열로 먹이면 **모양은 같고 파이프라인은 다른**
+   * 계약을 재게 된다 — 다음 사람이 이 판정들을 날 소스 기준으로 믿으면 틀린다
+   * (2026-08-26 재리뷰 지적).
+   *
+   * 차이는 실재한다. 주석 안에 `}` 가 남아 있으면 `enclosingObjectStart` 의 역방향 깊이 계산이
+   * 어긋나 그 선언이 통째로 사라진다 — 아래 마지막 판정이 그 자리를 잠근다.
+   */
+  function parseFrontLiterals(source: string): FrontParseResult {
+    return literalConfigPayloads(stripComments(source, TS_QUOTES))
+  }
+
   const TYPE_FIRST = `
     addMutation.mutate({
       type: 'CALL_WEBHOOK',
@@ -1433,15 +1480,15 @@ describe('축 6 의 post-action 파서 — 선언의 키 순서에 무관하다'
 
   test('정방향 선언을 실제로 읽는다 (비-공허 짝)', () => {
     // 이 짝이 없으면 아래 순서 무관 단언이 「양쪽 다 0건」으로 공허하게 통과한다.
-    assert.deepEqual(literalConfigPayloads(TYPE_FIRST).declarations, [
+    assert.deepEqual(parseFrontLiterals(TYPE_FIRST).declarations, [
       { type: 'CALL_WEBHOOK', keys: ['method', 'url'], unreadable: [] },
     ])
   })
 
   test('type 이 config 보다 뒤에 와도 같은 선언을 읽는다', () => {
     assert.deepEqual(
-      literalConfigPayloads(CONFIG_FIRST).declarations,
-      literalConfigPayloads(TYPE_FIRST).declarations,
+      parseFrontLiterals(CONFIG_FIRST).declarations,
+      parseFrontLiterals(TYPE_FIRST).declarations,
       '같은 객체 리터럴인데 키 순서만 다른 두 선언을 파서가 다르게 읽는다 — ' +
         '순서가 뒤집힌 쪽이 조용히 사라지면 그 type 은 축 6 의 대조에서 빠진 채 초록이 된다.',
     )
@@ -1450,7 +1497,7 @@ describe('축 6 의 post-action 파서 — 선언의 키 순서에 무관하다'
   test('config 가 없는 `type` 프로퍼티는 여전히 건너뛴다 — 요청 바디가 아니다', () => {
     // 순서 무관으로 넓히면서 「그냥 type 이라는 이름의 프로퍼티」까지 주워 담으면 안 된다.
     assert.deepEqual(
-      literalConfigPayloads(`const column = { type: 'text', label: postActionLabels.name }`)
+      parseFrontLiterals(`const column = { type: 'text', label: postActionLabels.name }`)
         .declarations,
       [],
     )
@@ -1464,7 +1511,31 @@ describe('축 6 의 post-action 파서 — 선언의 키 순서에 무관하다'
         { config: { url: values.url } },
       ]
     `
-    assert.deepEqual(literalConfigPayloads(SIBLING).declarations, [])
+    assert.deepEqual(parseFrontLiterals(SIBLING).declarations, [])
+  })
+
+  /**
+   * 주석 안의 중괄호가 선언을 삼키지 않는다.
+   *
+   * ★`enclosingObjectStart` 는 뒤로 훑으며 `}` 를 만나면 깊이를 올린다. 주석 안의 `}` 가 남아
+   * 있으면 깊이가 어긋나 감싸는 경계를 `(` 로 오판하고 그 선언이 통째로 사라진다.
+   *
+   * 프로덕션에서는 도달 불가다 — `readTypeScript` 가 `stripComments` 를 먼저 태운다. 그런데 위
+   * 판정들은 **날 문자열**을 파서에 직접 먹여 그 단계를 건너뛰고 있었다(2026-08-26 재리뷰 지적).
+   * 「실제 호출부 모양을 그대로 쓴다」고 적어 놓고 **모양만 같고 파이프라인은 달랐다** — 다음 사람이
+   * 이 계약을 날 소스 기준으로 믿으면 틀린다.
+   */
+  test('주석 안의 중괄호가 선언을 삼키지 않는다 — 프로덕션 경로를 그대로 태운다', () => {
+    const WITH_COMMENT = [
+      '    addMutation.mutate({',
+      '      // 옛 형태 } 를 지웠다',
+      "      type: 'CALL_WEBHOOK',",
+      '      config: { url: values.url },',
+      '    })',
+    ].join('\n')
+    assert.deepEqual(parseFrontLiterals(WITH_COMMENT).declarations, [
+      { type: 'CALL_WEBHOOK', keys: ['url'], unreadable: [] },
+    ])
   })
 })
 
@@ -1594,5 +1665,25 @@ describe('축 8 헬퍼 — 마커와 판정 함수의 결속', () => {
       '한 주석 블록의 **뒤엣** 마커가 그 블록에 달린 함수를 자기 판정 함수로 주워 왔다 — ' +
         '상호참조 문장에서 조사 하나만 바꿔도 남의 축이 되살아난다.',
     )
+  })
+
+  /**
+   * 비-공허 짝의 안내가 **그 목록의 출처**를 가리킨다.
+   *
+   * 종전에는 모든 목록에 같은 보일러플레이트가 붙어, 축 8 의 두 목록(이 파일 자신)이 0건일 때
+   * 「팩토리는 `when` 블록이, 구현체는 `override val type` 이…」라고 말했다 — 하나도 해당하지
+   * 않는 안내라 읽는 사람을 엉뚱한 파일로 보냈다.
+   */
+  test('비-공허 짝 안내가 목록마다 다르고 자기 출처를 가리킨다', () => {
+    const selfHint = nonEmptyHintFor(SELF_FILE)
+    assert.match(selfHint, /축 표/)
+    assert.doesNotMatch(selfHint, /override val type/)
+
+    const implHint = nonEmptyHintFor(VALIDATOR_DIR)
+    assert.match(implHint, /override val type/)
+    assert.doesNotMatch(implHint, /축 표/)
+
+    // 짝 — 「항상 같은 문자열」이면 위 두 단언이 동시에 성립할 수 없다.
+    assert.notDeepEqual(selfHint, implHint)
   })
 })
