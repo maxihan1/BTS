@@ -699,7 +699,7 @@ class ValidatorRepository(dsl: DSLContext, objectMapper: ObjectMapper) :
 ### Task 10~17 — 게이트 2 지적 전량 반영 (Maxi 결정 2026-08-25)
 
 > 리뷰 5종이 **26건**을 냈고 Maxi 가 「지적 전부 고치고 재리뷰」를 선택했다. 아래 8 task 가 그 전량이다.
-> 렌즈별 원문은 `## 리뷰 결과 (PR 단위)` 참조.
+> 라운드별 기록은 `## 리뷰 결과 (PR 단위)` 참조 — **렌즈별 원문은 보존되지 않았다**(같은 절에 사유).
 
 **★ 한 건은 권고와 다르게 간다.** api-contract 는 `phase`·config 키를 **카탈로그 엔드포인트 신설**로
 풀라고 했으나, 그것은 FR-WF-06 D4 의 선언 범위를 넘는 **새 API 표면**이라 스펙 deviation 전수 동기화가
@@ -788,9 +788,49 @@ IDOR) ② E4 — `delete` 의 소속 확인 ③ `update` 성공 경로(FR-3 이 
 ⑤ E5 여분 키 ⑥ 엔진 테스트를 **한 테스트 안에서 create → 차단 단언 → delete → 통과 단언** 왕복으로
 접는다(현재는 삭제 **전** 상태를 안 재서 create 가 엉뚱한 전환에 붙어도 초록).
 
+### Task 18. 가드 봉인의 구멍 2곳 — 형제 컨트롤러 · 룰 범위
+
+- files: [`.../test/.../postaction/web/PostActionControllerTest.kt`, `.../test/.../archunit/SchemeHandlerPermissionMatrixTest.kt`]
+- depends-on: [16]
+
+① 형제 `PostActionControllerTest` 는 4개 핸들러 중 POST·GET 둘만 403 을 쟀다. `update`·`delete` 의
+`requireManageScheme()` 을 **둘 다 지워도 모듈 전량이 초록**이라 무가드가 무음으로 통과한다. 403 만
+재면 「가드는 없는데 우연히 403」과 갈리지 않으므로 `verify(exactly = 0)` 으로 **리소스 조회 이전
+차단**까지 못박는다.
+
+② 봉인 룰(`SchemeHandlerPermissionMatrixTest`)의 범위가 `scheme.web` 한정이라, 규칙 컨트롤러 8개
+핸들러를 지키는 것은 **손으로 유지하는 MockMvc 목록**뿐이었다 — 9번째 핸들러가 늘면 같은 구멍이
+다시 생긴다. **판정 확장과 범위 확장은 한 쌍이다**. 두 컨트롤러가 모듈 공용 최상위 확장
+`com.bts.workflow.web.requireManageScheme` 을 부르므로 범위만 넓히면 8개가 전부 위반이 된다. 그래서
+`reachesRequirePermission` 에 공용 가드 갈래를 **먼저** 넣되, 호출 대상 이름만 보지 않고 **가드 본문이
+`requirePermission` 을 직접 부르는지**까지 확인하고 해석 실패는 `false` 로 수렴시킨다 — 이름만 보면
+가드가 본문을 잃는 날 8개 핸들러가 전부 무가드인 채 초록이 되어 봉인이 장식이 된다.
+
+축 2(`HANDLER_CLASSIFICATION` 등록부)는 `scheme.web` 한정으로 남긴다. 런타임 대조가 의존 관계로 뽑은
+집합과 `isEqualTo` 로 맞물려 있어 규칙 컨트롤러를 밀어 넣으면 그쪽이 깨진다 — 규칙 컨트롤러는 스코프가
+한 종류뿐이라 등록부가 아니라 축 1 이 지킨다.
+**범위가 조용히 줄어드는 것은 실패가 아니라 부재**라, 패키지마다 핸들러 1건 이상을 요구하는 비-공허
+단언을 함께 둔다.
+
+### Task 19. 정렬 2차 키 계약 + 살아 있는 TODO 의 인용 출처 정정
+
+- files: [`.../test/.../validator/ValidatorRepositoryIntegrationTest.kt`, `TODOS.md`]
+- depends-on: [12]
+
+① Task 12 가 `orderBy(displayOrder, id)` 로 동률을 확정했으나 **리포지토리 계약으로는 안 재고 있었다.**
+2차 키 단언은 **삽입 순서와 id 오름차순이 어긋난 상태**를 재현해야 뜻이 있는데 `ValidatorRepository.insert`
+는 id 를 `gen_random_uuid()` 에 맡겨 그 어긋남이 실행마다 달라진다 — 우연에 달린 단언은 「가끔 red」다.
+그래서 id 를 테스트가 쥐는 `insertValidatorWithId` 헬퍼를 두고 심는다.
+
+② `TODOS.md` 의 살아 있는 TODO 가 **없는 KDoc 문장을 인용**하고 있었다 — 개명 전 판본에도 그런 문장은
+없다(인용이 아니라 요약이었다). 실제 출처는 프론트 `PostActionConfigSection.test.tsx` 의 PACS-K4 KDoc
+이다. 겸해서 이 PR 이 개명·이동한 `transition/TransitionKeyResolver.kt` 로 클래스 이름·경로도 맞춘다.
+**결함 자체의 판단은 그대로다** — GLOBAL·INITIAL 이 나란히 예약 토큰인데 INITIAL 만 도달 불가라는 것.
+
+
 ## Plan 메타
 
-- **task 수**. 17 (Task 9 는 구현 중 발견 · Task 10~17 은 게이트 2 지적 반영)
+- **task 수**. 19 (Task 9 는 구현 중 발견 · Task 10~17 은 게이트 2 라운드 1 · Task 18·19 는 라운드 2)
 - **예상 wave**. 9
   - wave 1 — Task 1 · 2 · 7 (`depends-on: []`, `files` 교집합 0)
   - wave 2 — Task 3 (2) · Task 8 (1 · `PostActionAdminService.kt` 파일 겹침으로 자동 직렬)
@@ -904,3 +944,29 @@ IDOR) ② E4 — `delete` 의 소속 확인 ③ `update` 성공 경로(FR-3 이 
 
 같은 모듈·같은 BC 안이고 wave 2·3 이 wave 1 산출물에 직접 의존한다. **순차 구현. 병렬 worktree 이득 없음.**
 wave 안의 동시성은 `bts-impl` 의 dispatch 로 충분하다.
+
+## 리뷰 결과 (PR 단위)
+
+게이트 2 는 **두 라운드**를 돌았다. 아래는 라운드별 반영 기록이다.
+
+| 라운드 | 일자 | 반영 task | 상태 |
+|---|---|---|---|
+| 1 | 2026-08-25 | Task 10~17 | 지적 26건 전량 반영 (Maxi 결정 — 「전부 고치고 재리뷰」) |
+| 2 | 2026-08-26 | Task 18·19 | 반영 완료 |
+| 3 | — | — | 미실시 |
+
+### ★ 렌즈별 원문이 보존되지 않았다
+
+라운드 1·2 모두 **리뷰 산출 원문을 파일로 남기지 않았다.** 지금 남아 있는 것은 두 갈래뿐이다.
+
+- **Task 10~17 서술 안에 인용된 지적 ID** — `security I1` · `api I3` ·
+  `maint I7 · I12 · I13 · I14 · I15 · I16` · `testing T2`. 렌즈 이름은 그 접두사로만 역추적된다.
+- **커밋 메시지 본문** — 라운드 2 의 근거는 `f3b588a5f` · `d521af0f9` · `c1b123b2d` · `9c7a0b100`
+  네 커밋의 본문에 적혀 있다. 라운드 2 는 **지적 건수가 어디에도 기록되지 않았다.**
+
+**왜 문제인가.** 라운드 3 이 같은 지적을 다시 내면 「이미 판단하고 기각한 것」인지 「새로 생긴 것」인지
+가릴 근거가 없다. 반영한 것만 보이고 **기각한 것은 흔적이 없다** — 기각 사유가 사라진 자리는 다음
+라운드가 같은 논쟁을 처음부터 되풀이한다.
+
+**후속 규율.** 이 PR 이후 게이트 2 는 라운드마다 렌즈별 원문을 이 절에 **먼저 붙이고** task 등재로
+넘어간다. 반영·기각을 같은 표에 적어 기각 사유를 남긴다.
