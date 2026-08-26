@@ -97,7 +97,7 @@ function stringValuesOf(config: Record<string, unknown>): Record<string, string>
 /**
  * baseline 위에 폼이 아는 키만 덮어써서 **전체** config 를 만든다 (제약 C6).
  *
- * PUT 은 표현 전체 교체라 폼이 아는 키만 담아 보내면 손으로 넣은 값이나 나중 버전이 더한 키가
+ * PUT 은 표현 전체 교체라 폼이 아는 키만 담아 보내면 손으로 넣은 값이나 나중 판올림에서 더한 키가
  * 편집 한 번에 조용히 사라진다. 그래서 baseline 을 버리지 않고 그 위에 덮어쓴다.
  * 선택 입력을 비운 것은 「지우겠다」는 뜻이므로 그 키만 뺀다.
  *
