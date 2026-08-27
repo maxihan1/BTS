@@ -468,6 +468,41 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     /**
+     * ★ 이관 필요 판정의 근거는 **DB** 여야 한다 — 인메모리 캐시가 아니다.
+     *
+     * `WorkflowCache` 는 무효화를 **커밋 전**에 하고 읽기 경로는 락을 잡지 않는다. 무효화와
+     * 커밋 사이에 들어온 리더가 옛 정의를 다시 캐시에 올리면 그 값이 다음 발행까지 남는다.
+     * 그 스테일 값을 게이트의 입력으로 쓰면 「빠지는 상태」 집합이 실제보다 작아지고,
+     * **이슈가 남은 상태가 그 차집합에서 빠져** 409 없이 발행이 성사된다 —
+     * `WorkflowPublishMappingRequiredException` KDoc 이 「FR-WF-07 이 닫으려는 결함이 정확히
+     * 그것」이라 적은 상태로 이슈가 떨어진다.
+     *
+     * 여기서는 그 창을 직접 만든다 — 캐시를 채운 뒤 편성에 상태를 하나 더하고 무효화하지 않는다.
+     */
+    @Test
+    fun `이관 필요 판정은 스테일 캐시가 아니라 DB 편성을 본다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+
+        // 캐시를 {open, done} 로 채운다.
+        cache.findByKey(key)
+
+        // 편성에 review 가 늘었는데 무효화가 없다 — 커밋 전 무효화가 만드는 창의 결과다.
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            insertWorkflowStatus(conn, id, "review", "검토 $key", "IN_PROGRESS", 2)
+        }
+        issueUsage.counts["review"] = 5
+
+        // 초안은 open 만 남긴다 — done 과 review 가 함께 빠지고, review 에는 이슈 5건이 있다.
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
+            .extracting { (it as WorkflowPublishMappingRequiredException).pending }
+            .isEqualTo(mapOf("review" to 5L))
+    }
+
+    /**
      * 오타 하나가 같은 결함의 다른 얼굴이다 — 저장 200 · 발행 200 뒤, 그 전환을 처음 시도한
      * 이슈에서야 터진다. 관리자는 발행이 성공했으므로 원인을 알 방법이 없다.
      */
