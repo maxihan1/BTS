@@ -86,6 +86,26 @@ class WorkflowPublishRepository(
     }
 
     /**
+     * 지금 이 워크플로우에 편성된 상태 키 전량.
+     *
+     * ### 왜 캐시가 아니라 여기서 읽나
+     * 이관 필요 판정의 근거다 — 「빠지는 상태」는 **현재 편성 − 초안** 이고, 그 좌변이 실제보다
+     * 작으면 이슈가 남은 상태가 차집합에서 빠져 발행이 그냥 통과한다.
+     * [com.bts.workflow.cache.WorkflowCache] 는 무효화를 **커밋 전**에 하고 읽기 경로가 락을
+     * 잡지 않아, 무효화와 커밋 사이에 들어온 리더가 옛 정의를 다시 올려 놓을 수 있다.
+     * 판정의 근거는 그 창의 영향을 받지 않는 DB 여야 한다.
+     */
+    fun findComposedStatusKeys(workflowId: UUID): Set<String> =
+        dsl.select(STATUSES.KEY)
+            .from(WORKFLOW_STATUSES)
+            .join(STATUSES).on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID))
+            .where(WORKFLOW_STATUSES.WORKFLOW_ID.eq(workflowId))
+            .and(STATUSES.DELETED_AT.isNull)
+            .fetch()
+            .mapNotNull { it[STATUSES.KEY] }
+            .toSet()
+
+    /**
      * 워크플로우의 이름·설명과 상태·전환 구성을 초안대로 갈아 끼운다.
      *
      * 규칙(validator·post-action)은 전환에 매달린 FK `ON DELETE CASCADE` 라 전환을 지울 때 함께

@@ -75,7 +75,7 @@ class WorkflowPublishService(
         val definition = draft.definition
         validateDefinition(key, definition)
 
-        val removed = removedStatusKeys(key, definition)
+        val removed = removedStatusKeys(workflow.id, definition)
         return PublishPreview(
             baseVersion = draft.baseVersion,
             currentVersion = workflow.version,
@@ -120,7 +120,7 @@ class WorkflowPublishService(
         }
 
         val statusIds = requireStatusCatalog(key, definition)
-        requireNoPendingIssues(key, definition)
+        requireNoPendingIssues(key, workflowId, definition)
 
         var versionNo = 0
         cache.withWriteLock(key) {
@@ -202,12 +202,23 @@ class WorkflowPublishService(
         return found
     }
 
-    /** 발행하면 이 워크플로우에서 빠지는 상태 키. 현재 편성에는 있고 초안에는 없는 것들이다. */
+    /**
+     * 발행하면 이 워크플로우에서 빠지는 상태 키. 현재 편성에는 있고 초안에는 없는 것들이다.
+     *
+     * ### 근거는 DB 다 — 캐시가 아니고, 못 읽으면 빈 집합도 아니다
+     * 종전에는 `cache.findByKey(key)?.states … ?: emptySet()` 이었다. 두 가지가 틀렸다.
+     *
+     * 1. **캐시는 스테일할 수 있다.** [com.bts.workflow.cache.WorkflowCache] 가 무효화를 커밋
+     *    전에 하고 읽기 경로는 락을 잡지 않아, 그 창에 들어온 리더가 옛 정의를 다시 올려 놓는다.
+     *    좌변이 실제보다 작아지면 **이슈가 남은 상태가 차집합에서 빠져** 발행이 그냥 통과한다.
+     * 2. **`?: emptySet()` 은 fail-open 이다.** 판정 근거를 못 읽었으면 「빠지는 것 없음」이
+     *    아니라 거부여야 한다. 판정이 사라지는데 예외도 로그도 없는 것이 가장 나쁜 형태다.
+     */
     private fun removedStatusKeys(
-        key: String,
+        workflowId: UUID,
         definition: WorkflowDraftDefinition,
     ): Set<String> {
-        val current = cache.findByKey(key)?.states?.map { it.key }?.toSet() ?: emptySet()
+        val current = publishRepository.findComposedStatusKeys(workflowId)
         return current - definition.states.map { it.key }.toSet()
     }
 
@@ -218,9 +229,10 @@ class WorkflowPublishService(
 
     private fun requireNoPendingIssues(
         key: String,
+        workflowId: UUID,
         definition: WorkflowDraftDefinition,
     ) {
-        val pending = pendingIssueCounts(removedStatusKeys(key, definition))
+        val pending = pendingIssueCounts(removedStatusKeys(workflowId, definition))
         if (pending.isNotEmpty()) {
             throw WorkflowPublishMappingRequiredException(key, pending)
         }
