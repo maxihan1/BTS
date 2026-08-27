@@ -25,6 +25,7 @@ import java.util.UUID
  * 검증 범위.
  * - 접수 검증: 빈 issueKeys, 1000 초과, operationType↔payload 불일치, payload 범위 위반
  * - 정상 접수: dedup, repo.insert 호출, enqueuePublisher.enqueue 호출, UUID 반환
+ * - STATUS_MIGRATION 접수 거부: 이 공개 엔드포인트로는 상태 이관을 큐잉할 수 없다
  *
  * 단위 테스트 — repo / enqueuePublisher 는 MockK 모의 객체 사용.
  * @Transactional 경계는 Task 4 범위 밖 (통합 테스트 PR2에서 검증).
@@ -438,6 +439,106 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                     sut.submit(actor, req)
                     verify(exactly = 1) { repo.insert(any()) }
                 }
+            }
+        }
+    }
+
+    // ── STATUS_MIGRATION 접수 거부 ─────────────────────────────────────────────
+    //
+    // STATUS_MIGRATION 은 워크플로우 상태 이관 어댑터(IssueStatusMigrationPort 구현)만
+    // 큐잉할 수 있다. 이 공개 엔드포인트는 워크플로우 정의의 PUBLISH 권한을 검사하지 않으므로,
+    // operationType 만 바꾼 위조 요청이 통과하면 이관 신뢰 모델이 통째로 무너진다.
+
+    describe("공개 일괄작업 엔드포인트의 STATUS_MIGRATION 접수 거부") {
+
+        val rejectionMessage = "STATUS_MIGRATION is not accepted by this endpoint"
+
+        describe("payload 를 하나도 싣지 않은 STATUS_MIGRATION 요청일 때") {
+            it("거부 메시지와 함께 IllegalArgumentException 을 던진다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.STATUS_MIGRATION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = null,
+                    )
+                val ex = shouldThrow<IllegalArgumentException> { sut.submit(actor, req) }
+                ex.message shouldBe rejectionMessage
+            }
+        }
+
+        describe("정상 형태의 editPayload 를 실어 위조 접수를 시도할 때") {
+            it("payload 가 유효해도 같은 거부 메시지로 거부한다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.STATUS_MIGRATION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 3, impact = 1),
+                        transitionPayload = null,
+                    )
+                val ex = shouldThrow<IllegalArgumentException> { sut.submit(actor, req) }
+                ex.message shouldBe rejectionMessage
+            }
+        }
+
+        describe("정상 형태의 transitionPayload 를 실어 위조 접수를 시도할 때") {
+            it("payload 가 유효해도 같은 거부 메시지로 거부한다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.STATUS_MIGRATION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
+                    )
+                val ex = shouldThrow<IllegalArgumentException> { sut.submit(actor, req) }
+                ex.message shouldBe rejectionMessage
+            }
+        }
+
+        describe("거부된 STATUS_MIGRATION 요청의 부수효과") {
+            it("영속도 enqueue 도 일어나지 않는다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.STATUS_MIGRATION,
+                        issueKeys = listOf("ATLAS-1", "ATLAS-2"),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
+                        transitionPayload = null,
+                    )
+                shouldThrow<IllegalArgumentException> { sut.submit(actor, req) }
+
+                verify(exactly = 0) { repo.insert(any()) }
+                verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
+            }
+        }
+
+        // 비-공허 짝 — 「모든 요청이 거부되는 상태」와 구별한다.
+        describe("같은 픽스처에서 operationType 만 바꿨을 때") {
+            it("BULK_EDIT 는 여전히 정상 접수된다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 3, impact = 1),
+                        transitionPayload = null,
+                    )
+                sut.submit(actor, req)
+
+                verify(exactly = 1) { repo.insert(any()) }
+                verify(exactly = 1) { enqueuePublisher.enqueue(any()) }
+            }
+
+            it("BULK_TRANSITION 는 여전히 정상 접수된다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
+                    )
+                sut.submit(actor, req)
+
+                verify(exactly = 1) { repo.insert(any()) }
+                verify(exactly = 1) { enqueuePublisher.enqueue(any()) }
             }
         }
     }
