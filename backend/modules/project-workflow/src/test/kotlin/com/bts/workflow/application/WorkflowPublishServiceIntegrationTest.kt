@@ -239,6 +239,36 @@ class WorkflowPublishServiceIntegrationTest {
                 ),
         )
 
+    /**
+     * `open`·`done` 을 그대로 두고 `완료하기` 전환에 **주어진 규칙만** 매단 초안.
+     *
+     * 규칙 관문 테스트가 쓴다 — 통과/거부의 차이가 규칙 하나에서만 오도록 나머지를 고정한다.
+     */
+    private fun draftWithRules(
+        key: String,
+        validators: List<DraftRuleDto> = emptyList(),
+        postActions: List<DraftRuleDto> = emptyList(),
+    ) = WorkflowDraftDefinition(
+        key = key,
+        name = "규칙 관문 테스트",
+        states =
+            listOf(
+                DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0),
+                DraftStateDto(key = "done", name = "완료", category = "DONE", displayOrder = 1),
+            ),
+        transitions =
+            listOf(
+                DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL"),
+                DraftTransitionDto(
+                    from = "open",
+                    to = "done",
+                    name = "완료하기",
+                    validators = validators,
+                    postActions = postActions,
+                ),
+            ),
+    )
+
     // ── ★ 이 FR 의 심장 ───────────────────────────────────────────────────────
 
     @Test
@@ -364,6 +394,67 @@ class WorkflowPublishServiceIntegrationTest {
         // 화면이 「다시 불러온」 값 1 을 실어 보낸다 — 초안 내용은 여전히 버전 0 을 보고 만든 것이다.
         assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 1) }
             .isInstanceOf(WorkflowVersionConflictException::class.java)
+    }
+
+    // ── ★ 규칙 관문 — 발행은 편집 API 와 같은 문을 지난다 ─────────────────────
+    //
+    // 발행은 `workflow_validators` · `workflow_post_actions` 에 쓰는 **두 번째 경로**다.
+    // 전용 편집 API 가 세운 관문(팩토리 dry-run · 웹훅 스킴 · 편집 가능 허용목록)을 지나지 않으면
+    // 「초안 저장 → 발행」 두 번으로 그 관문이 통째로 우회된다.
+
+    /**
+     * `CustomExpression` 이 편집 허용목록에서 빠진 근거는 `expression/SpelEvaluator` 의
+     * 「일반 사용자가 API 를 통해 임의 표현식을 전달하는 경로를 **절대로 만들지 않는다**」이다.
+     * 발행이 그 경로를 열면 그 결정이 무효가 된다.
+     */
+    @Test
+    fun `편집 API 가 막는 validator 타입은 발행으로도 들어가지 못한다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(
+            workflowId(key),
+            draftWithRules(key, validators = listOf(DraftRuleDto("CustomExpression", mapOf("expression" to "1 == 1")))),
+            baseVersion = 0,
+            updatedBy = null,
+        )
+
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    /** 웹훅 url 스킴 제한은 전용 API 에만 있었다. 발행이 그것을 건너뛰면 SSRF 표면이 열린다. */
+    @Test
+    fun `임의 스킴 웹훅 url 은 발행이 거부한다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(
+            workflowId(key),
+            draftWithRules(
+                key,
+                postActions = listOf(DraftRuleDto("CALL_WEBHOOK", mapOf("url" to "file:///etc/passwd"))),
+            ),
+            baseVersion = 0,
+            updatedBy = null,
+        )
+
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    /**
+     * 오타 하나가 같은 결함의 다른 얼굴이다 — 저장 200 · 발행 200 뒤, 그 전환을 처음 시도한
+     * 이슈에서야 터진다. 관리자는 발행이 성공했으므로 원인을 알 방법이 없다.
+     */
+    @Test
+    fun `미지원 규칙 타입은 발행이 거부한다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(
+            workflowId(key),
+            draftWithRules(key, validators = listOf(DraftRuleDto("RequiredFeild", mapOf("field" to "resolution")))),
+            baseVersion = 0,
+            updatedBy = null,
+        )
+
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
     // ── 이관 필요 판정 (Jira 방식의 앞 절반) ──────────────────────────────────
