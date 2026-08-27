@@ -40,7 +40,9 @@ class V038MigrationIntegrationTest {
     companion object {
         private const val CONSTRAINT_NAME = "chk_bulk_operations_operation_type"
         private const val MIRROR_RESOURCE = "/db/codegen/init_codegen.sql"
-        private val QUOTED_LITERAL = Regex("""'([^']*)'""")
+
+        // CHECK 정의 문자열 안의 작은따옴표 리터럴 = 허용값.
+        private val QUOTED = Regex("""'([^']*)'""")
 
         // quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
         // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
@@ -223,5 +225,5 @@ class V038MigrationIntegrationTest {
     }
 
     // 작은따옴표 리터럴만 뽑는다. 허용값에 따옴표가 들어가는 날이 오면 이 파서를 다시 봐야 한다.
-    private fun quotedLiterals(text: String): Set<String> = QUOTED_LITERAL.findAll(text).map { it.groupValues[1] }.toSet()
+    private fun quotedLiterals(text: String): Set<String> = QUOTED.findAll(text).map { it.groupValues[1] }.toSet()
 }
