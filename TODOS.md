@@ -1701,6 +1701,30 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 
 **선행.** 없음.
 
+## ⬜ 워크플로우 — 발행 이력 append-only 트리거가 `TRUNCATE` 에 뚫려 있다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 발행 기록은 지울 수 없게 잠가 뒀는데, 표를 통째로 비우는 명령 하나에는 그 잠금이 걸리지 않는다.
+
+**방치하면.** 누군가 테스트 정리 헬퍼나 운영 스크립트에 그 한 줄을 넣는 순간, 「누가 언제 무엇을 발행했나」가 오류 하나 없이 통째로 사라진다. 되돌리기의 원본도 함께 사라진다.
+
+**무엇.** `V208__workflow_drafts_and_publications.sql` 의 `trg_workflow_publications_append_only` 는 `FOR EACH ROW` 행 트리거인데, PostgreSQL 의 행 트리거는 `TRUNCATE` 에 **발동하지 않는다**. PostgreSQL 17 에서 같은 DDL 로 실측했다 — `TRUNCATE workflow_publications` 는 0행을 남기고 예외를 내지 않았고, `TRUNCATE workflows CASCADE` 도 `NOTICE: truncate cascades to table "workflow_publications"` 만 내고 같은 결과였다. 그 마이그레이션이 스스로 「약속이 아니라 제약으로」라고 적은 자리에서 기계가 못 보는 유일한 삭제 경로다.
+
+**지금 위험은 낮다.** 저장소에 SQL `TRUNCATE` 호출자가 0건이다(전수 grep — 히트는 전부 프론트 CSS `truncate`). 지금 터지는 결함이 아니라 **강제 장치의 구멍**이다.
+
+**처방.** 같은 마이그레이션에 문장 트리거를 한 벌 더 단다 — `BEFORE TRUNCATE ON workflow_publications FOR EACH STATEMENT EXECUTE FUNCTION reject_workflow_publication_mutation()`. 기존 함수가 이미 depth>1 DELETE 가 아닌 `TG_OP` 를 전부 거부하므로 함수 변경은 필요 없다. 부모 `workflows` 에도 함께 단다. `V208MigrationTest` 에 「TRUNCATE 가 거부된다」 케이스를 red-first 로 붙인다.
+
+## ⬜ 워크플로우 — 캐시 무효화가 **커밋 전**에 일어난다 (선재 · 미착수 · T2)
+
+**쉬운 말.** 새 정의를 저장하기 직전에 캐시를 비우는데, 그 찰나에 다른 요청이 들어오면 **옛 정의를 다시 캐시에 채워 넣는다.**
+
+**방치하면.** 발행이 성공했는데 화면과 엔진은 계속 옛 워크플로우를 쓴다. 다음 발행이나 재기동 전까지 아무도 눈치채지 못한다.
+
+**무엇.** `WorkflowCache.withWriteLock` 이 `block()` 직후 `invalidate(key)` 를 부르는데, 그 전체가 호출부의 `@Transactional` 안이라 **커밋 전**에 실행된다. 읽기 경로(`findByKey`)는 어떤 락도 잡지 않으므로, 무효화와 커밋 사이에 들어온 리더가 READ COMMITTED 로 **발행 전 정의**를 읽어 `putIfAbsent` 로 되돌려 놓는다. `project-workflow` 전체에 `afterCommit`·`TransactionSynchronization` 이 0건이라 이후 재무효화도 없다.
+
+**지금 막아 둔 것.** PR #411 이 이관 필요 판정의 근거를 캐시가 아니라 DB(`findComposedStatusKeys`)로 바꿔, 이 창이 **게이트를 무력화하는 경로**는 닫았다. 남은 것은 「발행했는데 옛 정의가 계속 보인다」 뿐이다.
+
+**처방.** `invalidate` 를 `TransactionSynchronizationManager.registerSynchronization { afterCommit { ... } }` 로 옮긴다. `pg_try_advisory_xact_lock` 은 커밋까지 유지되므로 쓰기끼리의 직렬화는 그대로다. 아울러 `CacheInvalidationCoverageTest` 의 「`withWriteLock` 이 직접 호출보다 오히려 강한 보장이다」 문구를 좁힌다 — 커밋 순서 축에서는 사실이 아니다.
+
 ## ⬜ 워크플로우 — 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 (미착수 · T3)
 
 **쉬운 말.** 상태를 담는 옛 표와 새 표가 동시에 살아 있어서, 어느 쪽이 진짜인지 헷갈릴 여지가 남아 있다.
@@ -2988,6 +3012,16 @@ Testcontainers 의 Ryuk 컨테이너를 **공유**한다. 실측 2종이다.
 ---
 
 # 문서·규칙
+
+## ⬜ 문서 — `DATA.md §4.1` 마이그레이션 번호 표가 8행 중 6행 stale (선재 · 미착수 · T1)
+
+**쉬운 말.** 「어느 번호까지 썼나」를 적어 둔 표가 실제 파일과 어긋나 있어서, 그걸 믿고 다음 번호를 고르면 이미 있는 파일과 부딪힌다.
+
+**방치하면.** 표를 읽고 `V402` 를 골랐는데 `V402__notifications.sql` 이 이미 있다. Flyway 가 `Found more than one migration with version` 으로 부팅을 통째로 거부한다 — 그 절이 막으려고 쓰인 바로 그 실패다.
+
+**무엇.** 표가 주장하는 값과 실제 파일이 다르다 — identity-access V001~V006(실제 V036) · issue-tracking V001~V003(실제 V037) · notification V400,V401(실제 V410) · agile-planning V500(실제 V504) · search-export-import V600~V603(실제 V608) · slack-integration V700~V703(실제 V705). 현재 값인 것은 project-workflow(PR #411 이 갱신)와 automation 둘뿐이다. 표와 파일 시스템이 서로를 검사하지 않아 각 BC 가 마이그레이션을 낼 때마다 한 행씩 썩는다.
+
+**처방.** 손으로 유지하지 않는다. `scripts/verify-master-plan.sh` 또는 별도 판별식이 `backend/modules/*/src/main/resources/db/migration/*/V*.sql` 을 훑어 BC 별 사용 범위를 뽑고 표와 대조해 불일치를 실패로 만든다. 현재 stale 한 표에 대해 red 를 먼저 확인한 뒤 6행을 고친다.
 
 ## ⬜ 문서 — PR 제목 규칙이 실제 관행과 어긋나고 그것을 보는 판정이 없다 (신규 · 미착수 · T0)
 

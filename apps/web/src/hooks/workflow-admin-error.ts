@@ -5,7 +5,9 @@ import { WorkflowAdminApiError } from '@/api/workflows-admin'
 /**
  * 백엔드 errorCode → 한국어 사용자 메시지.
  *
- * ★ **이 표는 백엔드 핸들러 4종이 내는 코드 전량과 차집합 0 이어야 한다.**
+ * ★ **이 표는 `HANDLER_FILES` 에 등재된 핸들러가 내는 코드 전량과 차집합 0 이어야 한다.**
+ * (개수를 문장에 박지 않는다 — 판별식이 그 숫자를 읽지 않으므로 핸들러가 늘 때마다 조용히 썩는다.
+ * 실제로 이 PR 이 5번째 핸들러를 더하면서 「4종」이 어긋났다.)
  * `__tests__/workflow-admin-error.test.ts` 가 그 핸들러 `.kt` 파일을 **직접 읽어** 코드를
  * 뽑고 양방향으로 대조한다. 종전에는 프론트에 손으로 적은 배열과 비교해서
  * 「양쪽 다 프론트」인 채로 초록이었다 — `two-lists-never-check-each-other` 그대로였고,

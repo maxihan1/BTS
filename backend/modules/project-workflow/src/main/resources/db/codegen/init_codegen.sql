@@ -14,10 +14,16 @@
 -- workflow_drafts / workflow_publications DDL 은 V208__workflow_drafts_and_publications.sql 과
 -- 동일하게 유지한다. 단 그 파일의 append-only 트리거는 미러하지 않는다 (파일 끝 사유 참고).
 --
--- ★ **이 사본을 지키는 판별식은 현재 없다.** 종전 주석은 `CodegenMirrorParityTest` 가 실 PostgreSQL
---   두 곳에 적용해 information_schema 로 대조한다고 적었으나, 그 테스트는 저장소에 실재하지 않는다
---   (2026-08-26 전 모듈 grep — 이름이 나오는 곳은 주석 5건뿐). 미러 누락은 지금 아무도 잡지 않으므로
---   마이그레이션을 추가하는 사람이 **같은 커밋에서** 손으로 지켜야 한다. 판별식 신설은 부채로 등재됐다.
+-- ★ **이 사본은 판별식이 지킨다** — `V203ToV206MigrationTest` 의
+--   「codegen 미러가 마이그레이션 스키마와 일치한다」와 「제약과 인덱스까지 일치한다」 두 건이다.
+--   미러 SQL 과 마이그레이션을 **각각 실 PostgreSQL 에 적용해** information_schema 로 대조하며,
+--   루프가 미러에 있는 **모든 테이블**을 돌기 때문에 여기 더한 workflow_drafts ·
+--   workflow_publications 도 자동으로 대상이 된다.
+--
+--   ※ 이름 주의. `build.gradle.kts` 와 TODOS.md 는 그 판별식을 `CodegenMirrorParityTest` ·
+--   `V203ToV205MigrationTest` 라 부르는데 **둘 다 옛 이름**이다(V206 이 붙으면서 파일명이 바뀌었고
+--   그 문서들이 안 따라왔다). 클래스 이름으로 grep 하면 0건이 나와 「판별식이 없다」로 오판하게 된다 —
+--   실제로 이 PR 이 그 오판을 한 번 했다. **이름이 아니라 동작으로 찾을 것.**
 
 -- ── workflows ─────────────────────────────────────────────────────────────────
 CREATE TABLE workflows (
