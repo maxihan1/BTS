@@ -2,6 +2,8 @@
 
 package com.bts.workflow.postaction
 
+import com.bts.workflow.application.TransitionRuleGuard
+import com.bts.workflow.application.TransitionRuleRejected
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.transition.TransitionKeyResolver
 import com.bts.workflow.transition.requireContains
@@ -35,13 +37,14 @@ import java.util.UUID
  * 4. [WorkflowPostActionFactory.create] dry-run → [IllegalArgumentException] → [PostActionValidationException].
  *
  * @param repository post-action CRUD jOOQ 리포지토리.
- * @param factory post-action type 검증용 팩토리.
+ * @param guard 전환 규칙 관문. 발행 경로([com.bts.workflow.application.DraftRuleWriter])와 **같은
+ *   한 벌**이다 — 사본을 두면 관문이 하나 늘 때 한쪽만 늘어 그 경로가 우회로가 된다.
  * @param transitionResolver transitionKey → transition_id UUID 해석기.
  */
 @Service
 class PostActionAdminService(
     private val repository: PostActionRepository,
-    private val factory: WorkflowPostActionFactory,
+    private val guard: TransitionRuleGuard,
     private val transitionResolver: TransitionKeyResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -204,17 +207,10 @@ class PostActionAdminService(
         type: String,
         config: Map<String, Any?>,
     ) {
-        if (type == "CALL_WEBHOOK") {
-            val url = config["url"] as? String ?: ""
-            if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
-                throw PostActionValidationException(
-                    "CALL_WEBHOOK url 은 http:// 또는 https:// 로 시작해야 합니다: '$url'",
-                )
-            }
-        }
         try {
-            factory.create(type, config)
-        } catch (ex: IllegalArgumentException) {
+            guard.checkPostAction(type, config)
+        } catch (ex: TransitionRuleRejected) {
+            // 판정은 관문 한 벌이 하고, 이 API 의 에러 코드 계약만 여기서 입힌다.
             throw PostActionValidationException(ex.message ?: "검증 실패", ex)
         }
     }

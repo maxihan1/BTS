@@ -2,6 +2,7 @@
 
 package com.bts.workflow.validator
 
+import com.bts.workflow.application.TransitionRuleGuard
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.port.outbound.PermissionResolver
@@ -77,7 +78,7 @@ class ValidatorAdminServiceTest {
         service =
             ValidatorAdminService(
                 repository = repository,
-                factory = factory,
+                guard = TransitionRuleGuard(factory, mockk()),
                 transitionResolver = transitionResolver,
             )
 

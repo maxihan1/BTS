@@ -2,6 +2,8 @@
 
 package com.bts.workflow.validator
 
+import com.bts.workflow.application.TransitionRuleGuard
+import com.bts.workflow.application.TransitionRuleRejected
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.transition.TransitionKeyResolver
 import com.bts.workflow.transition.requireContains
@@ -55,13 +57,14 @@ import java.util.UUID
  * 4. 생성된 인스턴스가 편집 허용 목록 밖이면 [ValidatorTypeNotEditableException].
  *
  * @param repository validator CRUD jOOQ 리포지토리.
- * @param factory validator type·config 검증용 팩토리. 지원 type 의 정본이다.
+ * @param guard 전환 규칙 관문. 발행 경로([com.bts.workflow.application.DraftRuleWriter])와 **같은
+ *   한 벌**이다 — 사본을 두면 관문이 하나 늘 때 한쪽만 늘어 그 경로가 우회로가 된다.
  * @param transitionResolver transitionKey → transition_id UUID 해석기.
  */
 @Service
 class ValidatorAdminService(
     private val repository: ValidatorRepository,
-    private val factory: WorkflowValidatorFactory,
+    private val guard: TransitionRuleGuard,
     private val transitionResolver: TransitionKeyResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -242,15 +245,20 @@ class ValidatorAdminService(
         type: String,
         config: Map<String, Any?>,
     ) {
-        val instance =
-            try {
-                factory.create(type, config)
-            } catch (ex: IllegalArgumentException) {
-                throw ValidatorValidationException(ex.message ?: "검증 실패", ex)
+        try {
+            guard.checkValidator(type, config)
+        } catch (ex: TransitionRuleRejected) {
+            // 판정은 관문 한 벌이 하고, 이 API 의 **에러 코드 계약**만 여기서 입힌다.
+            // 화면이 「미지원」과 「편집 불가」에 다른 안내를 주므로 둘을 합치지 않는다.
+            when (ex.reason) {
+                TransitionRuleRejected.Reason.NOT_EDITABLE -> {
+                    log.info("ValidatorAdminService: 편집 불가 validator type 거절 type={}", type)
+                    throw ValidatorTypeNotEditableException(type)
+                }
+
+                TransitionRuleRejected.Reason.UNSUPPORTED ->
+                    throw ValidatorValidationException(ex.message ?: "검증 실패", ex)
             }
-        if (!isEditable(instance)) {
-            log.info("ValidatorAdminService: 편집 불가 validator type 거절 type={}", type)
-            throw ValidatorTypeNotEditableException(type)
         }
     }
 }

@@ -15,6 +15,12 @@ import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
 import com.bts.workflow.domain.exception.WorkflowVersionConflictException
+import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
+import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
+import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.port.outbound.PermissionResolver
+import com.bts.workflow.port.outbound.Scope
 import com.bts.workflow.postaction.PostActionRepository
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublicationRepository
@@ -37,6 +43,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
+import java.util.concurrent.Executors
 
 /**
  * [WorkflowPublishService] Testcontainers 통합 테스트.
@@ -127,6 +134,26 @@ class WorkflowPublishServiceIntegrationTest {
     private val issueUsage = StubIssueStatusUsage()
     private val permissions = SwitchableWorkflowPermissions()
 
+    /**
+     * ★ **실물 팩토리**로 조립한다. 스텁을 쓰면 「지원 type 의 정본은 팩토리」라는 계약이
+     * 이 테스트에서만 성립하지 않게 되고, `CustomExpression` 이 실제로 만들어지는지를
+     * 확인하지 못해 `isEditable` 관문이 공허해진다.
+     */
+    private val ruleGuard =
+        TransitionRuleGuard(
+            DefaultWorkflowValidatorFactory(
+                object : PermissionResolver {
+                    override fun hasPermission(
+                        actorId: ActorId,
+                        permission: String,
+                        scope: Scope,
+                    ): Boolean = true
+                },
+                SpelEvaluator(Executors.newSingleThreadExecutor()),
+            ),
+            DefaultWorkflowPostActionFactory(),
+        )
+
     private val service =
         WorkflowPublishService(
             draftRepository = draftRepository,
@@ -136,6 +163,7 @@ class WorkflowPublishServiceIntegrationTest {
                 DraftRuleWriter(
                     ValidatorRepository(dsl, objectMapper),
                     PostActionRepository(dsl, objectMapper),
+                    ruleGuard,
                 ),
             issueStatusUsagePort = issueUsage,
             permissionResolver = permissions,

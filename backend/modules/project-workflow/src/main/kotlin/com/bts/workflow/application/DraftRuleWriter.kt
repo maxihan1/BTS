@@ -23,13 +23,19 @@ import java.util.UUID
 class DraftRuleWriter(
     private val validatorRepository: ValidatorRepository,
     private val postActionRepository: PostActionRepository,
+    private val guard: TransitionRuleGuard,
 ) {
     /**
-     * 초안의 모든 전환 규칙을 심는다.
+     * 초안의 모든 전환 규칙을 심는다. **심기 직전에 관문을 지난다.**
+     *
+     * 관문을 호출부에만 두면 이 메서드가 관문 없는 두 번째 쓰기 경로로 남는다 — PR #411 리뷰가
+     * BLOCKER 로 잡은 것이 정확히 그 형태다. 여기서 거절하면 발행 트랜잭션 전체가 되돌아가므로
+     * 부분 반영이 남지 않는다.
      *
      * @param definition 발행 대상 초안 정의.
      * @param transitionIds 초안의 전환 순번 → 새로 생긴 `workflow_transitions.id`.
      *   순번이 맵에 없으면 그 전환은 건너뛴다 — 재작성이 만들지 않은 전환에는 매달 곳이 없다.
+     * @throws TransitionRuleRejected 규칙 하나라도 관문을 못 지날 때
      */
     fun writeAll(
         definition: WorkflowDraftDefinition,
@@ -38,11 +44,28 @@ class DraftRuleWriter(
         definition.transitions.forEachIndexed { index, transition ->
             val transitionId = transitionIds[index] ?: return@forEachIndexed
             transition.validators.forEachIndexed { order, rule ->
+                guard.checkValidator(rule.type, rule.config)
                 validatorRepository.insert(transitionId, rule.type, rule.config, order)
             }
             transition.postActions.forEachIndexed { order, rule ->
+                guard.checkPostAction(rule.type, rule.config)
                 postActionRepository.insert(transitionId, rule.type, rule.config, order)
             }
+        }
+    }
+
+    /**
+     * 심지 않고 관문만 태운다. 초안 저장 시점에 같은 판정을 주기 위한 것이다.
+     *
+     * 저장에서 통과한 것이 발행에서 터지면 관리자는 고칠 방법을 모르는 막다른 길에 놓인다 —
+     * 이 PR 이 상태·전환 invariant 에 대해 `Workflow.of()` 를 두 경로에 함께 태운 이유와 같다.
+     *
+     * @throws TransitionRuleRejected 규칙 하나라도 관문을 못 지날 때
+     */
+    fun checkAll(definition: WorkflowDraftDefinition) {
+        definition.transitions.forEach { transition ->
+            transition.validators.forEach { guard.checkValidator(it.type, it.config) }
+            transition.postActions.forEach { guard.checkPostAction(it.type, it.config) }
         }
     }
 }

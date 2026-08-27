@@ -73,7 +73,7 @@ class WorkflowPublishService(
         val workflow = requireLive(key)
         val draft = requireDraft(key, workflow.id)
         val definition = draft.definition
-        definition.toWorkflow()
+        validateDefinition(key, definition)
 
         val removed = removedStatusKeys(key, definition)
         return PublishPreview(
@@ -111,7 +111,7 @@ class WorkflowPublishService(
         val workflowId = requireLive(key).id
         val draft = requireDraft(key, workflowId)
         val definition = draft.definition
-        definition.toWorkflow()
+        validateDefinition(key, definition)
 
         if (draft.baseVersion != baseVersion) {
             // 화면이 든 버전과 초안이 매인 버전이 다르다. 초안 내용은 저 앵커를 보고 만들어진 것이므로
@@ -154,6 +154,31 @@ class WorkflowPublishService(
         workflowId: UUID,
     ) = draftRepository.findByWorkflowId(workflowId)
         ?: throw WorkflowInvalidRequestException(key, "발행할 초안이 없다. 먼저 초안을 저장할 것")
+
+    /**
+     * 초안이 발행 가능한 상태인지 본다 — 상태·전환 invariant 와 규칙 관문을 한 자리에서 태운다.
+     *
+     * ### 왜 감싸는가
+     * `toWorkflow()` 는 `IllegalArgumentException` 을, 관문은 [TransitionRuleRejected] 를 던지는데
+     * 이 BC 의 advice 중 그 둘을 잡는 것이 없다. 맨몸으로 두면 **400 이어야 할 것이 500 으로**
+     * 나가고, 화면은 재시도 말고 할 게 없으며 관리자는 무엇이 잘못됐는지 못 본다.
+     * 저장 경로(`WorkflowDraftService.validate`)가 이미 같은 형태로 감싸고 있다.
+     */
+    private fun validateDefinition(
+        key: String,
+        definition: WorkflowDraftDefinition,
+    ) {
+        try {
+            definition.toWorkflow()
+        } catch (ex: IllegalArgumentException) {
+            throw WorkflowInvalidRequestException(key, ex.message ?: "초안 정의가 규칙을 어겼다", ex)
+        }
+        try {
+            ruleWriter.checkAll(definition)
+        } catch (ex: TransitionRuleRejected) {
+            throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙이 관문을 지나지 못했다", ex)
+        }
+    }
 
     /**
      * 초안의 상태 키가 전부 전역 카탈로그에 있는지 본다.
