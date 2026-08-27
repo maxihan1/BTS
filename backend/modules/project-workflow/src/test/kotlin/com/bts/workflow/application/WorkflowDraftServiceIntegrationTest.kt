@@ -204,7 +204,7 @@ class WorkflowDraftServiceIntegrationTest {
     fun `저장하면 그 초안이 조회된다`() {
         val key = seedWorkflow()
 
-        service.save(ACTOR, key, validDraft(key))
+        service.save(ACTOR, key, validDraft(key), baseVersion = 0)
         val view = service.get(ACTOR, key)
 
         assertThat(view.exists).isTrue()
@@ -217,7 +217,7 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow()
         val broken = WorkflowDraftDefinition(key = key, name = "상태 없는 초안")
 
-        assertThatThrownBy { service.save(ACTOR, key, broken) }
+        assertThatThrownBy { service.save(ACTOR, key, broken, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
@@ -232,11 +232,11 @@ class WorkflowDraftServiceIntegrationTest {
     fun `두 번째 저장이 base_version 을 갱신하지 않는다`() {
         // 갱신하면 그 사이 남이 한 발행을 조용히 덮어쓰게 된다 — 낙관적 락이 무력해지는 지점이다.
         val key = seedWorkflow(version = 5)
-        service.save(ACTOR, key, validDraft(key, "첫 저장"))
+        service.save(ACTOR, key, validDraft(key, "첫 저장"), baseVersion = 5)
 
         // 그 사이 다른 세션이 발행해 버전이 올라갔다.
         dsl.execute("UPDATE workflows SET version = 9 WHERE key = ?", key)
-        service.save(ACTOR, key, validDraft(key, "두 번째 저장"))
+        service.save(ACTOR, key, validDraft(key, "두 번째 저장"), baseVersion = 5)
 
         val stored = draftRepository.findByWorkflowId(workflowId(key))!!
         assertThat(stored.definition.name).isEqualTo("두 번째 저장")
@@ -255,14 +255,14 @@ class WorkflowDraftServiceIntegrationTest {
     @Test
     fun `발행이 초안을 지운 뒤 옛 화면이 저장해도 base 는 발행 전 버전이다`() {
         val key = seedWorkflow(version = 5)
-        service.save(ACTOR, key, validDraft(key, "첫 저장"))
+        service.save(ACTOR, key, validDraft(key, "첫 저장"), baseVersion = 5)
 
         // 남이 발행했다 — 버전이 오르고 초안 행이 사라진다. 두 가지가 함께 일어나는 것이 핵심이다.
         dsl.execute("UPDATE workflows SET version = 6 WHERE key = ?", key)
         draftRepository.deleteByWorkflowId(workflowId(key))
 
         // A 의 자동 저장. A 의 화면은 여전히 버전 5 를 보고 있다.
-        service.save(ACTOR, key, validDraft(key, "옛 화면의 저장"))
+        service.save(ACTOR, key, validDraft(key, "옛 화면의 저장"), baseVersion = 5)
 
         assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.baseVersion).isEqualTo(5)
     }
@@ -272,7 +272,7 @@ class WorkflowDraftServiceIntegrationTest {
     @Test
     fun `폐기하면 true 를 돌려주고 초안이 사라진다`() {
         val key = seedWorkflow()
-        service.save(ACTOR, key, validDraft(key))
+        service.save(ACTOR, key, validDraft(key), baseVersion = 0)
 
         assertThat(service.discard(ACTOR, key)).isTrue()
         assertThat(draftRepository.findByWorkflowId(workflowId(key))).isNull()
@@ -296,9 +296,9 @@ class WorkflowDraftServiceIntegrationTest {
                 transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
             )
 
-        val restored = service.resetToDefault(ACTOR, key)
+        val restored = service.resetToDefault(ACTOR, key, baseVersion = 0)
 
-        assertThat(restored.name).isEqualTo("YAML 원본 이름")
+        assertThat(restored.definition.name).isEqualTo("YAML 원본 이름")
         assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.name).isEqualTo("YAML 원본 이름")
         // 정규 테이블은 아직 옛 이름이다 — 발행해야 운영에 나간다.
         assertThat(cache.findByKey(key)!!.name).isEqualTo("초안 서비스 테스트")
@@ -309,7 +309,7 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow(origin = "CUSTOM")
         defaults.yaml = WorkflowYamlDto(key = key, name = "쓰이면 안 되는 값")
 
-        assertThatThrownBy { service.resetToDefault(ACTOR, key) }
+        assertThatThrownBy { service.resetToDefault(ACTOR, key, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
@@ -318,7 +318,7 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow(origin = "SEED")
         defaults.yaml = null
 
-        assertThatThrownBy { service.resetToDefault(ACTOR, key) }
+        assertThatThrownBy { service.resetToDefault(ACTOR, key, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
@@ -328,7 +328,7 @@ class WorkflowDraftServiceIntegrationTest {
         permissions.allow = false
 
         try {
-            assertThatThrownBy { service.save(ACTOR, key, validDraft(key)) }
+            assertThatThrownBy { service.save(ACTOR, key, validDraft(key), baseVersion = 0) }
                 .isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
         } finally {
             permissions.allow = true

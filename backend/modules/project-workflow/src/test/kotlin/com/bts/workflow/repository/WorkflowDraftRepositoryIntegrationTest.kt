@@ -193,8 +193,15 @@ class WorkflowDraftRepositoryIntegrationTest {
 
     // ── 초안은 워크플로우당 1개 ───────────────────────────────────────────────
 
+    /**
+     * ★ 정의는 덮어쓰지만 `base_version` 은 **INSERT 가 넣은 값이 남는다.**
+     *
+     * 낙관적 락의 기준값이라 한 번 정해지면 바뀌면 안 된다. 그것을 「호출부가 옛 값을 다시 넣어
+     * 준다」로 지키면 호출부 하나가 규칙을 어기는 순간 조용히 무너지므로, `DO UPDATE` 절에서
+     * 이 컬럼을 아예 빼 **갱신 경로 자체를 없앴다.** 여기서 7 이 나오면 그 절이 되살아난 것이다.
+     */
     @Test
-    fun `두 번 저장하면 덮어쓴다 — 초안은 하나다`() {
+    fun `두 번 저장하면 정의만 덮어쓰고 base_version 은 첫 값이 남는다`() {
         val workflowId = newWorkflow()
 
         repository.upsert(workflowId, sampleDefinition("첫 번째"), baseVersion = 0, updatedBy = null)
@@ -202,7 +209,7 @@ class WorkflowDraftRepositoryIntegrationTest {
 
         val found = repository.findByWorkflowId(workflowId)!!
         assertThat(found.definition.name).isEqualTo("두 번째")
-        assertThat(found.baseVersion).isEqualTo(7)
+        assertThat(found.baseVersion).isEqualTo(0)
     }
 
     // ── 폐기 ──────────────────────────────────────────────────────────────────

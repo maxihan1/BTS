@@ -4,13 +4,14 @@ package com.bts.workflow.web
 
 import com.bts.workflow.application.WorkflowDraftService
 import com.bts.workflow.application.WorkflowPublishService
-import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.DraftResponse
 import com.bts.workflow.web.dto.PublishPreviewResponse
 import com.bts.workflow.web.dto.PublishRequest
 import com.bts.workflow.web.dto.PublishResponse
+import com.bts.workflow.web.dto.ResetToDefaultRequest
+import com.bts.workflow.web.dto.SaveDraftRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -58,16 +59,27 @@ class WorkflowDraftController(
         )
     }
 
-    /** 초안을 저장한다(자동 저장 포함). 발행에서 터질 정의는 여기서 먼저 400 으로 막는다. */
+    /**
+     * 초안을 저장한다(자동 저장 포함). 발행에서 터질 정의는 여기서 먼저 400 으로 막는다.
+     *
+     * 본문이 `baseVersion` 을 함께 싣는다 — 낙관적 락의 기준은 「**편집기가 무엇을 보고 있었는가**」이고
+     * 서버는 그것을 재구성할 수 없다. 서버가 저장 시점에 현재 버전을 다시 읽으면, 남이 방금 발행해
+     * 초안 행이 사라진 직후의 자동 저장 한 번으로 락이 풀린다.
+     */
     @PutMapping("/draft")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun saveDraft(
         @PathVariable key: String,
-        @RequestBody definition: WorkflowDraftDefinition,
+        @RequestBody request: SaveDraftRequest,
     ) {
         val actor = CurrentActor.current()
-        log.info("WorkflowDraftController.saveDraft workflow={} states={}", key, definition.states.size)
-        draftService.save(actor.toUuid(), key, definition)
+        log.info(
+            "WorkflowDraftController.saveDraft workflow={} states={} baseVersion={}",
+            key,
+            request.definition.states.size,
+            request.baseVersion,
+        )
+        draftService.save(actor.toUuid(), key, request.definition, request.baseVersion)
     }
 
     /**
@@ -136,13 +148,15 @@ class WorkflowDraftController(
     @PostMapping("/reset-to-default")
     fun resetToDefault(
         @PathVariable key: String,
+        @RequestBody request: ResetToDefaultRequest,
     ): DataResponse<DraftResponse> {
         val actor = CurrentActor.current()
-        log.info("WorkflowDraftController.resetToDefault workflow={}", key)
-        val definition = draftService.resetToDefault(actor.toUuid(), key)
-        val view = draftService.get(actor.toUuid(), key)
+        log.info("WorkflowDraftController.resetToDefault workflow={} baseVersion={}", key, request.baseVersion)
+        // 한 트랜잭션이 정의와 앵커를 함께 돌려준다 — 두 번 부르면 그 사이 폐기된 초안을
+        // 「있음」으로 보고하게 된다.
+        val view = draftService.resetToDefault(actor.toUuid(), key, request.baseVersion)
         return DataResponse(
-            DraftResponse(definition = definition, baseVersion = view.baseVersion, exists = true),
+            DraftResponse(definition = view.definition, baseVersion = view.baseVersion, exists = view.exists),
         )
     }
 }

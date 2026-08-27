@@ -32,11 +32,17 @@ class WorkflowDraftRepository(
     private val objectMapper: ObjectMapper,
 ) {
     /**
-     * 초안을 저장한다. 이미 있으면 덮어쓴다.
+     * 초안을 저장한다. 이미 있으면 정의만 덮어쓴다.
+     *
+     * ### `base_version` 은 INSERT 만 쓴다 — 갱신 경로가 없다
+     * 낙관적 락의 기준값이라 한 번 정해지면 바뀌면 안 된다. 그것을 「호출부가 옛 값을 다시
+     * 넣어 준다」로 지키면 읽기와 쓰기가 두 문장으로 갈려 그 사이가 열리고, 무엇보다 **호출부
+     * 하나가 규칙을 어기면 조용히 무너진다.** `DO UPDATE` 절에서 이 컬럼을 아예 빼면 갱신
+     * 경로 자체가 없어져 「처음 한 번만 기록」이 SQL 로 강제된다.
      *
      * @param workflowId 초안을 붙일 워크플로우.
      * @param definition 초안 정의 전체.
-     * @param baseVersion 초안을 뜬 시점의 `workflows.version`. 발행 시 충돌 판정의 기준이다.
+     * @param baseVersion 편집기가 보고 있던 `workflows.version`. **행이 새로 생길 때만** 쓰인다.
      * @param updatedBy 편집자 user id. 없으면 null.
      */
     fun upsert(
@@ -57,7 +63,6 @@ class WorkflowDraftRepository(
             .onConflict(WORKFLOW_DRAFTS.WORKFLOW_ID)
             .doUpdate()
             .set(WORKFLOW_DRAFTS.DEFINITION, json)
-            .set(WORKFLOW_DRAFTS.BASE_VERSION, baseVersion)
             .set(WORKFLOW_DRAFTS.UPDATED_AT, now)
             .set(WORKFLOW_DRAFTS.UPDATED_BY, updatedBy)
             .execute()

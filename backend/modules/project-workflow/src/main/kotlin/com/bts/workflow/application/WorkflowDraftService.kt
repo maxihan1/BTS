@@ -27,10 +27,16 @@ import java.util.UUID
  * 이때 **DB 에 초안을 만들지는 않는다** — 열어만 보고 닫은 워크플로우에 초안이 남으면 「편집 중」
  * 표시가 거짓이 된다. 실제 행은 첫 저장에서 생긴다.
  *
- * ### base_version 은 처음 한 번만 기록한다
- * 저장할 때마다 현재 버전으로 갱신하면 낙관적 락이 무력해진다. A 가 초안을 뜨고 → B 가 발행하고 →
- * A 가 초안을 한 번 더 저장하면 base 가 새 버전으로 올라가 A 의 발행이 **B 의 변경을 조용히
- * 덮어쓴다.** 그래서 이미 초안이 있으면 그 값을 그대로 유지한다.
+ * ### base_version 은 편집기가 실어 보낸다 — 서버가 다시 읽지 않는다
+ * 낙관적 락의 기준은 「**편집기가 무엇을 보고 있었는가**」이고, 서버는 그것을 재구성할 수 없다.
+ * 저장 시점에 현재 버전을 다시 읽어 앵커로 삼으면 A 가 초안을 뜨고 → B 가 발행하고 → A 가 저장하는
+ * 순서에서 base 가 새 버전으로 올라가 A 의 발행이 **B 의 변경을 조용히 덮어쓴다.**
+ *
+ * 「이미 초안이 있으면 그 값을 유지한다」만으로는 부족하다 — **발행이 초안 행을 지우기 때문에**
+ * 「초안 없음」은 편집 시작 직후뿐 아니라 남이 방금 발행한 직후에도 성립하고, 정확히 그 자리가
+ * 위 사고가 나는 자리다. 그래서 요청이 앵커를 싣고, 유지는
+ * [com.bts.workflow.repository.WorkflowDraftRepository.upsert] 가 `DO UPDATE` 에서 그 컬럼을
+ * 빼는 것으로 SQL 이 강제한다.
  */
 @Service
 class WorkflowDraftService(
@@ -66,20 +72,23 @@ class WorkflowDraftService(
     /**
      * 초안을 저장한다. 발행 시 터질 정의는 여기서 먼저 막는다.
      *
-     * @throws WorkflowInvalidRequestException 정의가 invariant 를 어겼을 때
+     * @param baseVersion 편집기가 이 정의를 만들 때 보고 있던 `workflows.version`.
+     *   초안 행이 새로 생길 때만 앵커로 기록된다(이미 있으면 그 행의 값이 그대로 남는다).
+     * @throws WorkflowInvalidRequestException 정의가 invariant 를 어겼을 때, 또는 편집기가 아직
+     *   존재하지 않는 미래 버전을 앵커로 주장할 때
      */
     @Transactional
     fun save(
         actorId: UUID,
         key: String,
         definition: WorkflowDraftDefinition,
+        baseVersion: Long,
     ) {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
         validate(key, definition)
+        requireAnchorNotAhead(key, baseVersion, workflow.version)
 
-        // 이미 있는 초안의 base_version 은 유지한다 — 갱신하면 그 사이 남이 한 발행을 덮어쓰게 된다.
-        val baseVersion = draftRepository.findByWorkflowId(workflow.id)?.baseVersion ?: workflow.version
         draftRepository.upsert(workflow.id, definition, baseVersion, actorId)
     }
 
@@ -110,7 +119,8 @@ class WorkflowDraftService(
     fun resetToDefault(
         actorId: UUID,
         key: String,
-    ): WorkflowDraftDefinition {
+        baseVersion: Long,
+    ): DraftView {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
         if (workflow.origin != SEED_ORIGIN) {
@@ -123,10 +133,16 @@ class WorkflowDraftService(
 
         val definition = yaml.toDraftDefinition()
         validate(key, definition)
-        // 복원도 편집의 일종이라 base_version 규칙이 같다 — 처음 만들 때만 기록한다.
-        val baseVersion = draftRepository.findByWorkflowId(workflow.id)?.baseVersion ?: workflow.version
+        // 복원도 편집의 일종이라 앵커 규칙이 같다 — 요청이 실어 온 값을 그대로 넘긴다.
+        requireAnchorNotAhead(key, baseVersion, workflow.version)
         draftRepository.upsert(workflow.id, definition, baseVersion, actorId)
-        return definition
+
+        // 저장된 행을 다시 읽어 응답을 만든다 — 두 번째 트랜잭션으로 나가면 그 사이 폐기된 초안을
+        // 「있음」으로 보고하게 된다.
+        val stored =
+            draftRepository.findByWorkflowId(workflow.id)
+                ?: error("방금 upsert 한 초안이 같은 트랜잭션에서 읽히지 않는다")
+        return DraftView(definition = stored.definition, baseVersion = stored.baseVersion, exists = true)
     }
 
     // ── 내부 ──────────────────────────────────────────────────────────────────
@@ -134,6 +150,26 @@ class WorkflowDraftService(
     private fun requireLive(key: String): WorkflowVersionRow {
         val row = publishRepository.findLiveByKey(key)
         return row ?: throw WorkflowNotFoundException(key)
+    }
+
+    /**
+     * 편집기가 아직 존재하지 않는 버전을 봤다고 주장하면 거절한다.
+     *
+     * 앵커는 클라이언트가 정하므로 그 자체로는 신뢰 대상이 아니다. 다만 **미래 버전**은 어떤
+     * 정상 흐름으로도 나올 수 없어 기계로 가를 수 있고, 이 한 줄이 「큰 수를 실어 보내 락을 넘긴다」는
+     * 가장 싼 우회를 닫는다. 과거 버전은 정상이다 — 그 초안은 발행에서 409 로 막힌다.
+     */
+    private fun requireAnchorNotAhead(
+        key: String,
+        baseVersion: Long,
+        currentVersion: Long,
+    ) {
+        if (baseVersion > currentVersion) {
+            throw WorkflowInvalidRequestException(
+                key,
+                "편집 기준 버전 $baseVersion 은 아직 존재하지 않는다 (현재 $currentVersion). 화면을 다시 불러올 것",
+            )
+        }
     }
 
     /**

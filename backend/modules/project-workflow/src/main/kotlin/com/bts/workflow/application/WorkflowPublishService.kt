@@ -87,8 +87,14 @@ class WorkflowPublishService(
     /**
      * 초안을 발행한다.
      *
+     * ### 충돌 판정의 기준은 **저장된 초안의 `base_version`** 이다
+     * 요청 본문 값이 아니다. 요청 값을 그대로 CAS 인자로 쓰면 화면이
+     * [preview] 의 `currentVersion` 을 되실어 보내는 것만으로 락이 풀린다 — 게다가 409 응답 문구가
+     * 「다시 불러온 뒤 시도하라」이므로 **그 안내를 따르는 것이 곧 우회 경로**가 된다.
+     * 요청 값은 「화면이 무엇을 보고 있다고 믿는가」의 대조용으로만 쓰고, 저장된 값과 다르면 거절한다.
+     *
      * @param actorId 발행자. 권한 판정과 이력의 `published_by` 에 함께 쓴다.
-     * @param baseVersion 클라이언트가 들고 있던 버전. 지금 DB 값과 다르면 409.
+     * @param baseVersion 화면이 들고 있던 버전. 저장된 초안의 앵커와 다르면 409.
      * @return 이번 발행의 회차.
      * @throws WorkflowNotFoundException 워크플로우가 없거나 소프트 삭제됐을 때
      * @throws WorkflowInvalidRequestException 초안이 없거나 상태가 카탈로그에 없을 때
@@ -103,18 +109,25 @@ class WorkflowPublishService(
     ): Int {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
         val workflowId = requireLive(key).id
-        val definition = requireDraft(key, workflowId).definition
+        val draft = requireDraft(key, workflowId)
+        val definition = draft.definition
         definition.toWorkflow()
+
+        if (draft.baseVersion != baseVersion) {
+            // 화면이 든 버전과 초안이 매인 버전이 다르다. 초안 내용은 저 앵커를 보고 만들어진 것이므로
+            // 「화면이 새 버전을 봤다」고 해서 그 내용이 새 버전 위에서 옳아지지 않는다.
+            throw WorkflowVersionConflictException(key, baseVersion, draft.baseVersion)
+        }
 
         val statusIds = requireStatusCatalog(key, definition)
         requireNoPendingIssues(key, definition)
 
         var versionNo = 0
         cache.withWriteLock(key) {
-            if (!publishRepository.bumpVersionIfMatches(workflowId, baseVersion)) {
+            if (!publishRepository.bumpVersionIfMatches(workflowId, draft.baseVersion)) {
                 // affected 0 은 「없음」과 「충돌」 둘 다를 뜻한다. 재조회로 404 와 409 를 가른다.
                 val actual = requireLive(key).version
-                throw WorkflowVersionConflictException(key, baseVersion, actual)
+                throw WorkflowVersionConflictException(key, draft.baseVersion, actual)
             }
 
             val transitionIds = publishRepository.replaceDefinition(workflowId, definition, statusIds)
