@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (492건, 최신순)
+# 시간 축 인덱스 (493건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-08-27 | issue-tracking-status-migration | — | ✔ | — | — | FR-WF-07 |
 | 2026-08-26 | debt-404-residual-six | — | ✔ | — | — | — |
 | 2026-08-26 | transition-rule-error-no-leak | — | ✔ | — | — | — |
 | 2026-08-26 | workflow-draft-publish | — | ✔ | — | — | FR-WF-02 FR-WF-07 |
