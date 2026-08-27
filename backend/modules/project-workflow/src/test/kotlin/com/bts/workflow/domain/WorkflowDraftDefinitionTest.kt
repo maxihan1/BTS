@@ -61,16 +61,48 @@ class WorkflowDraftDefinitionTest {
 
     @Test
     fun `전환에 임시 id 가 붙는다 — 초안은 아직 DB 행이 아니다`() {
+        // 시작 전환은 정확히 1개여야 하므로(toWorkflow 의 쓰기 경계 규칙) INITIAL 로 둔다 —
+        // 이 테스트가 보는 것은 kind 가 아니라 임시 id 가 붙는가다.
         val definition =
             draft(
                 states = listOf(state("open")),
-                transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "전역", kind = "GLOBAL")),
+                transitions =
+                    listOf(DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")),
             )
 
         val transitions = definition.toWorkflow().transitions
 
         // 실제 identity 는 발행 시 DB 가 정한다. 여기서는 두 전환이 서로 구분되기만 하면 된다.
         assertThat(transitions.single().id).isNotNull()
+    }
+
+    // ── 시작 전환은 정확히 1개 (쓰기 경계 규칙) ───────────────────────────────
+
+    /**
+     * `Workflow.of` 는 `initialCount <= 1` 이라 0개를 통과시킨다. 그 함수는 **읽기 경로**도 쓰므로
+     * 거기서 조이면 INITIAL 0개인 기존 행이 그 워크플로우 조회 전체를 죽인다.
+     * 그래서 쓰기 경계인 이 변환에서만 조인다.
+     */
+    @Test
+    fun `시작 전환이 없으면 거부한다`() {
+        val definition =
+            draft(
+                states = listOf(state("open")),
+                transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "전역", kind = "GLOBAL")),
+            )
+
+        assertThatThrownBy { definition.toWorkflow() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("시작 전환이 정확히 1개")
+    }
+
+    /** 더 근본적인 위반이 이 메시지에 가려지면 관리자가 없는 전환을 찾아 헤맨다. */
+    @Test
+    fun `상태가 없으면 시작 전환 메시지가 그것을 가리지 않는다`() {
+        val definition = draft(states = emptyList(), transitions = emptyList())
+
+        assertThatThrownBy { definition.toWorkflow() }
+            .hasMessageContaining("states must not be empty")
     }
 
     // ── Workflow.of 의 invariant 에 실제로 도달하는가 ─────────────────────────
