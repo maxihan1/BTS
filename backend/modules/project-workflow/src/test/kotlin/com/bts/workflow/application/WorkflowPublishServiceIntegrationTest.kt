@@ -503,6 +503,32 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     /**
+     * ★ 저장 경계만 막으면 초안이 저장소로 직접 심어지는 경로가 남는다 — 발행도 함께 막는다.
+     *
+     * 발행되면 `WorkflowKeyResolverImpl` 이 `?:` 로 `displayOrder` 최소 상태를 시작 상태로 쓰고,
+     * 그 값은 클라이언트가 정한다. 「완료」에 0 을 주면 그 워크플로우를 쓰는 **모든 프로젝트의
+     * 신규 이슈가 완료 상태로 생성된다.**
+     */
+    @Test
+    fun `INITIAL 전환이 없는 초안은 발행도 막는다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(
+            workflowId(key),
+            WorkflowDraftDefinition(
+                key = key,
+                name = "시작 전환이 없는 초안",
+                states = listOf(DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+                transitions = emptyList(),
+            ),
+            baseVersion = 0,
+            updatedBy = null,
+        )
+
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    /**
      * 오타 하나가 같은 결함의 다른 얼굴이다 — 저장 200 · 발행 200 뒤, 그 전환을 처음 시도한
      * 이슈에서야 터진다. 관리자는 발행이 성공했으므로 원인을 알 방법이 없다.
      */

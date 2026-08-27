@@ -221,6 +221,36 @@ class WorkflowDraftServiceIntegrationTest {
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
+    /**
+     * ★ `Workflow.of` 의 invariant 는 `initialCount <= 1` 이라 **0개도 통과**시킨다.
+     *
+     * 전용 API `WorkflowCommandService.deleteTransition` 은 같은 결과를 「최초 전환은 삭제할 수
+     * 없습니다. 이슈가 처음 놓일 상태가 사라지면 이슈를 만들 수 없게 됩니다」로 명시 거부하는데,
+     * 초안 경로에는 그 가드가 없어 **발행이 그 규칙을 우회하는 두 번째 경로**가 된다.
+     *
+     * 발행되면 `WorkflowKeyResolverImpl` 이 `?:` 로 `displayOrder` 최소 상태를 대신 쓴다.
+     * 그 값도 클라이언트가 정하므로, 「완료」에 `displayOrder = 0` 을 주면 그 워크플로우를 쓰는
+     * **모든 프로젝트의 신규 이슈가 완료 상태로 생성된다.** 오류도 경고도 없다.
+     *
+     * 공용 `Workflow.of` 를 `== 1` 로 바꾸지 않는 이유 — 그 invariant 는 `WorkflowRepository` 의
+     * **읽기 경로**가 쓴다. INITIAL 0개인 기존 행이 하나라도 있으면 그 워크플로우 조회 전체가
+     * 죽는다. 그래서 쓰기 경계(초안 저장·발행)에서만 막는다.
+     */
+    @Test
+    fun `INITIAL 전환이 없는 초안은 저장 단계에서 막힌다`() {
+        val key = seedWorkflow()
+        val noInitial =
+            WorkflowDraftDefinition(
+                key = key,
+                name = "시작 전환이 없는 초안",
+                states = listOf(DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+                transitions = emptyList(),
+            )
+
+        assertThatThrownBy { service.save(ACTOR, key, noInitial, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
     // ── ★ base_version 고정 ───────────────────────────────────────────────────
 
     /**
