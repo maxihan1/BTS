@@ -223,6 +223,11 @@ class WorkflowDraftServiceIntegrationTest {
 
     // ── ★ base_version 고정 ───────────────────────────────────────────────────
 
+    /**
+     * ★ 이 픽스처는 **초안 행이 남아 있는** 갈래만 덮는다. 실제 발행은 버전을 올리면서 초안 행을
+     * **지우므로**, 그 뒤의 저장은 아래 테스트가 여는 다른 갈래를 탄다. 둘을 함께 두어야 낙관적
+     * 락이 양쪽에서 성립한다.
+     */
     @Test
     fun `두 번째 저장이 base_version 을 갱신하지 않는다`() {
         // 갱신하면 그 사이 남이 한 발행을 조용히 덮어쓰게 된다 — 낙관적 락이 무력해지는 지점이다.
@@ -236,6 +241,30 @@ class WorkflowDraftServiceIntegrationTest {
         val stored = draftRepository.findByWorkflowId(workflowId(key))!!
         assertThat(stored.definition.name).isEqualTo("두 번째 저장")
         assertThat(stored.baseVersion).isEqualTo(5)
+    }
+
+    /**
+     * 발행은 **버전을 올리면서 초안 행을 지운다**(`WorkflowPublishService`). 그래서 「초안 없음」은
+     * 편집 시작 직후뿐 아니라 **남이 방금 발행한 직후**에도 성립한다. 그 자리에서 서버가 현재
+     * 버전을 다시 읽어 앵커로 삼으면, 옛 화면의 자동 저장 한 번으로 낙관적 락이 풀리고 A 의
+     * 발행이 B 의 변경을 조용히 덮어쓴다 — 이 서비스 KDoc 이 막겠다고 적은 바로 그 사고다.
+     *
+     * 앵커는 **화면이 무엇을 보고 있었는지**이고 서버는 그것을 재구성할 수 없다. 그래서 저장
+     * 요청이 함께 싣는다.
+     */
+    @Test
+    fun `발행이 초안을 지운 뒤 옛 화면이 저장해도 base 는 발행 전 버전이다`() {
+        val key = seedWorkflow(version = 5)
+        service.save(ACTOR, key, validDraft(key, "첫 저장"))
+
+        // 남이 발행했다 — 버전이 오르고 초안 행이 사라진다. 두 가지가 함께 일어나는 것이 핵심이다.
+        dsl.execute("UPDATE workflows SET version = 6 WHERE key = ?", key)
+        draftRepository.deleteByWorkflowId(workflowId(key))
+
+        // A 의 자동 저장. A 의 화면은 여전히 버전 5 를 보고 있다.
+        service.save(ACTOR, key, validDraft(key, "옛 화면의 저장"))
+
+        assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.baseVersion).isEqualTo(5)
     }
 
     // ── 폐기 ──────────────────────────────────────────────────────────────────

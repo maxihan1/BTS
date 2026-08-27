@@ -346,6 +346,26 @@ class WorkflowPublishServiceIntegrationTest {
             .isInstanceOf(WorkflowVersionConflictException::class.java)
     }
 
+    /**
+     * 위 테스트는 요청 값과 저장된 값이 **둘 다 0** 이라 두 값이 갈리는 갈래를 밟지 않는다.
+     * 여기서 그 갈래를 연다 — 낙관적 락의 기준은 **서버가 저장해 둔 초안의 base_version** 이고
+     * 요청 본문 값이 아니다. 요청 값을 기준으로 삼으면 화면이 `preview` 의 `currentVersion` 을
+     * 그대로 되실어 보내는 것만으로 락이 풀린다.
+     */
+    @Test
+    fun `요청이 저장된 초안의 base_version 과 다르면 발행이 막힌다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        draftRepository.upsert(id, draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
+
+        // 남이 이름만 바꿔 version 이 올랐다. 초안 행은 그대로라 base_version 은 여전히 0 이다.
+        dsl.execute("UPDATE workflows SET version = 1 WHERE key = ?", key)
+
+        // 화면이 「다시 불러온」 값 1 을 실어 보낸다 — 초안 내용은 여전히 버전 0 을 보고 만든 것이다.
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 1) }
+            .isInstanceOf(WorkflowVersionConflictException::class.java)
+    }
+
     // ── 이관 필요 판정 (Jira 방식의 앞 절반) ──────────────────────────────────
 
     @Test
