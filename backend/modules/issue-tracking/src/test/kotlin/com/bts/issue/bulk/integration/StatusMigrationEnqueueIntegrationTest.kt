@@ -1,4 +1,5 @@
 // 상태 이관 큐잉 통합 테스트 — 어댑터가 범위 안에서만 큐잉하고 구조가 틀린 요청을 거부한다 (FR-WF-07 D2·D4)
+@file:Suppress("MaxLineLength")
 
 package com.bts.issue.bulk.integration
 
@@ -87,16 +88,13 @@ class StatusMigrationEnqueueIntegrationTest {
         }
 
         @Bean
-        open fun dataSource(): DriverManagerDataSource =
-            DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
         @Bean
-        open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
-            DataSourceTransactionManager(dataSource)
+        open fun transactionManager(ds: DriverManagerDataSource): PlatformTransactionManager = DataSourceTransactionManager(ds)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(ds: DriverManagerDataSource): DSLContext = DSL.using(ds, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -115,8 +113,7 @@ class StatusMigrationEnqueueIntegrationTest {
         ): BulkOperationRepository = BulkOperationRepository(dsl, objectMapper, clock)
 
         @Bean
-        open fun bulkOperationEnqueuePublisher(dsl: DSLContext): BulkOperationEnqueuePublisher =
-            BulkOperationEnqueuePublisher(dsl)
+        open fun bulkOperationEnqueuePublisher(dsl: DSLContext): BulkOperationEnqueuePublisher = BulkOperationEnqueuePublisher(dsl)
 
         @Bean
         open fun workflowStatusMigrationAdapter(
@@ -363,8 +360,7 @@ class StatusMigrationEnqueueIntegrationTest {
                 StatusMigrationMapping("in_review", "in_progress"),
                 StatusMigrationMapping("blocked", "todo"),
             ),
-    ): StatusMigrationCommand =
-        StatusMigrationCommand(actorUserId = ACTOR_ID, projectKeys = projectKeys, mappings = mappings)
+    ): StatusMigrationCommand = StatusMigrationCommand(actorUserId = ACTOR_ID, projectKeys = projectKeys, mappings = mappings)
 
     /**
      * 거부 시나리오 공통 단언 — 예외 메시지로 **어느 가드가 발동했는지** 구분하고,
