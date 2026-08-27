@@ -53,7 +53,9 @@ data class BulkOperationItemResponse(
  * (learnings: jOOQ-cartesian-product).
  *
  * @property id 작업 UUID.
- * @property operationType 작업 유형 문자열 (BULK_EDIT / BULK_TRANSITION).
+ * @property operationType 작업 유형 문자열 (BULK_EDIT / BULK_TRANSITION / STATUS_MIGRATION).
+ *   STATUS_MIGRATION 은 POST /api/v1/issues/bulk-update 로 접수되지 않는다 — 워크플로우 상태 이관
+ *   어댑터만 큐잉할 수 있으므로 이 값은 조회 응답에서만 관측된다.
  * @property status 현재 작업 상태 문자열.
  * @property payload 접수 시 요청한 파라미터. 사용자가 자신이 요청한 내용을 조회로 확인 가능.
  * @property totalCount 총 이슈 수.
