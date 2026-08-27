@@ -310,6 +310,74 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         assertThat(found!!.payload).isEqualTo(BulkOperationPayload.Transition(toStateKey = "DONE"))
     }
 
+    @Test
+    fun `insert 후 findById 에서 STATUS_MIGRATION payload 가 동일한 매핑으로 복원된다`() {
+        val payload =
+            BulkOperationPayload.StatusMigration(
+                mappings = mapOf("in_review" to "in_progress", "blocked" to "todo"),
+                projectKeys = setOf("TPRJ"),
+            )
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = listOf(BulkOperationItem(issueKey = IssueKey("TPRJ-1"), status = ItemStatus.PENDING)),
+                payload = payload,
+            )
+        bulkRepo.insert(op)
+
+        val found = bulkRepo.findById(op.id)
+        assertThat(found).isNotNull
+        assertThat(found?.payload).isEqualTo(payload)
+    }
+
+    @Test
+    fun `STATUS_MIGRATION 인데 payload 가 비면 빈 매핑으로 복원된다`() {
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = listOf(BulkOperationItem(issueKey = IssueKey("TPRJ-2"), status = ItemStatus.PENDING)),
+                payload =
+                    BulkOperationPayload.StatusMigration(
+                        mappings = mapOf("blocked" to "todo"),
+                        projectKeys = setOf("TPRJ"),
+                    ),
+            )
+        bulkRepo.insert(op)
+
+        // payload 컬럼이 NOT NULL 이라 빈 JSON 으로 덮어 toPayload 의 빈 payload 가지를 태운다
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("UPDATE bulk_operations SET payload = '{}'::jsonb WHERE id = ?").use { ps ->
+                ps.setObject(1, op.id.value)
+                assertThat(ps.executeUpdate()).isEqualTo(1)
+            }
+        }
+
+        val found = bulkRepo.findById(op.id)
+        assertThat(found?.payload)
+            .isEqualTo(BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectKeys = emptySet()))
+    }
+
+    // ── 진단 가능한 실패 사유 (완료기준 14 · C-4) ───────────────
+
+    @Test
+    fun `매핑에 없는 상태와 아카이브 프로젝트는 UNKNOWN 이 아닌 고유 코드로 기록된다`() {
+        val op = makeOperation(keys = listOf("SM-1", "SM-2"))
+        bulkRepo.insert(op)
+
+        bulkRepo.updateItemResult(op.id, IssueKey("SM-1"), ItemStatus.FAILED, FailureReasonCode.STATE_NOT_IN_MAPPING)
+        bulkRepo.updateItemResult(op.id, IssueKey("SM-2"), ItemStatus.FAILED, FailureReasonCode.PROJECT_ARCHIVED)
+
+        val byKey = bulkRepo.findItemsByOperationId(op.id).associateBy { it.issueKey.value }
+        assertThat(byKey.getValue("SM-1").failureReasonCode).isEqualTo(FailureReasonCode.STATE_NOT_IN_MAPPING)
+        assertThat(byKey.getValue("SM-1").failureReasonCode).isNotEqualTo(FailureReasonCode.UNKNOWN)
+        assertThat(byKey.getValue("SM-2").failureReasonCode).isEqualTo(FailureReasonCode.PROJECT_ARCHIVED)
+        assertThat(byKey.getValue("SM-2").failureReasonCode).isNotEqualTo(FailureReasonCode.UNKNOWN)
+    }
+
     // ── Clock 주입 ─────────────────────────────────────────────────────────
 
     @Test
