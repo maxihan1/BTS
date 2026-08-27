@@ -1,4 +1,4 @@
-// BulkItemApplier 의 STATUS_MIGRATION 가지 단위 테스트 — 매핑·전량 재작성·엔진 우회·해결책 보존·OCC
+// BulkItemApplier 의 STATUS_MIGRATION 가지 단위 테스트 — 매핑·전량 재작성·엔진 우회·해결책 보존·아카이브 가드·OCC
 
 package com.bts.issue.bulk.application
 
@@ -8,16 +8,20 @@ import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
+import com.bts.issue.bulk.domain.StateNotInMigrationMappingException
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import java.time.Instant
@@ -31,8 +35,16 @@ import java.util.UUID
  * - 완료기준 2 — 대상이 전량 새 상태로 재작성되고 아무도 남지 않는다.
  * - 완료기준 4 · J8 · F8 — 엔진(`transitionIssue`)을 타지 않아 `TRANSITION_NOT_ALLOWED` 가 0건이다.
  * - 완료기준 6 · G6 · F10 — 기존 `resolutionId` 가 보존된다.
- * - E8 · F7 — 처리 시점 현재 상태가 매핑에 없으면 그 건만 FAILED. 임의 대상으로 밀지 않는다.
+ * - E8 · F7 — 처리 시점 현재 상태가 매핑에 없으면 밀지 않고 [StateNotInMigrationMappingException] 을 던진다.
+ * - E14 · D3 ② — 아카이브된 프로젝트의 이슈는 [ProjectArchiveGuard] 가 막아 상태가 재작성되지 않는다.
  * - E10 · F9 — `applyTransition` 이 0행(OCC 충돌)이면 SUCCEEDED 로 기록하지 않는다.
+ *
+ * **실패 기록은 이 클래스의 책임이 아니다.** 매핑 부재·아카이브 모두 예외로 올리고
+ * [BulkItemExecutor] 가 `FailureReasonCode` 로 번역해 FAILED 를 적는다. 여기서 직접 적으면 executor 의
+ * 성공 로그(`bulk_op_item_succeeded`)가 FAILED 장부와 어긋난다 — 그 매핑은 `BulkItemExecutorTest` 가 덮는다.
+ *
+ * **가드는 실제로 주입한다.** `projectArchiveGuard` 는 nullable(`?`) 이라 null 픽스처면 `?.` 가 조용히
+ * 통과해 「가드를 검사하는 테스트」가 공허해진다. 그래서 모의 Bean 을 주입하고 호출 자체를 verify 한다.
  *
  * **OCC 0행이 도달 불가 픽스처가 아닌 근거.** `IssueRepositoryTest` 의 `T5 - applyTransition stale`
  * 이 실제 DB 에서 version 불일치 시 0 이 반환되는 것을 증명한다. 이 단위 테스트의 `returns 0` 은
@@ -48,7 +60,8 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val issueService = mockk<IssueApplicationService>()
     val bulkRepo = mockk<BulkOperationRepository>()
     val issueRepository = mockk<IssueRepository>()
-    val sut = BulkItemApplier(issueService, bulkRepo, issueRepository)
+    val archiveGuard = mockk<ProjectArchiveGuard>()
+    val sut = BulkItemApplier(issueService, bulkRepo, issueRepository, archiveGuard)
 
     val actor = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     val operationId = BulkOperationId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
@@ -88,7 +101,11 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
         )
 
     beforeEach {
-        clearMocks(issueService, bulkRepo, issueRepository)
+        clearMocks(issueService, bulkRepo, issueRepository, archiveGuard)
+        // 기본은 「아카이브 아님」. IssueKey 는 value class 라 any() 매처를 못 쓰므로 키를 명시한다.
+        listOf(inReviewKey, blockedKey, otherInReviewKey).forEach { key ->
+            justRun { archiveGuard.checkByIssue(key) }
+        }
     }
 
     describe("applyAndRecordSuccess — StatusMigration 가지") {
@@ -179,25 +196,46 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             }
         }
 
-        it("현재 상태가 매핑에 없으면 그 건만 STATE_NOT_IN_MAPPING 으로 FAILED 된다 (E8 · F7)") {
+        it("현재 상태가 매핑에 없으면 밀지 않고 예외를 던진다 — 장부는 executor 가 적는다 (E8 · F7)") {
             // 큐잉·적재 이후 누가 done 으로 옮겨 놓았다 — 매핑에 done 이 없다.
             every { issueService.findByKey(actor, inReviewKey) } returns
                 issueResponse(inReviewKey, "done", version = 5L)
             every { issueRepository.applyTransition(inReviewKey, any(), any(), any()) } returns 1
             every { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) } returns 1
 
-            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+            shouldThrow<StateNotInMigrationMappingException> {
+                sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+            }
 
             verify(exactly = 0) { issueRepository.applyTransition(inReviewKey, any(), any(), any()) }
-            verify(exactly = 0) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
-            verify(exactly = 1) {
-                bulkRepo.updateItemResult(
-                    operationId,
-                    inReviewKey,
-                    ItemStatus.FAILED,
-                    FailureReasonCode.STATE_NOT_IN_MAPPING,
-                )
+            // 성공도 실패도 이 트랜잭션에서 적지 않는다 — 적으면 executor 가 성공 로그를 찍어 장부와 어긋난다.
+            verify(exactly = 0) { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) }
+        }
+
+        it("아카이브된 프로젝트의 이슈는 가드가 막아 상태가 재작성되지 않는다 (E14 · D3 ②)") {
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) } returns 1
+
+            // ① 아카이브 프로젝트 — 가드가 409 도메인 예외를 던진다.
+            every { archiveGuard.checkByIssue(inReviewKey) } throws ProjectArchivedException(inReviewKey.value)
+
+            shouldThrow<ProjectArchivedException> {
+                sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
             }
+
+            verify(exactly = 1) { archiveGuard.checkByIssue(inReviewKey) }
+            verify(exactly = 0) { issueRepository.applyTransition(inReviewKey, any(), any(), any()) }
+            verify(exactly = 0) { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) }
+
+            // ② 비-공허 짝 — 아카이브가 아니면 여전히 정상 이관된다. 「항상 거부」 구현을 배제한다.
+            justRun { archiveGuard.checkByIssue(inReviewKey) }
+
+            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+
+            verify(exactly = 1) { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) }
+            verify(exactly = 1) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
         }
 
         it("applyTransition 이 0행(OCC 충돌)이면 SUCCEEDED 로 기록하지 않는다 — 1행이면 기록된다 (E10 · F9)") {
