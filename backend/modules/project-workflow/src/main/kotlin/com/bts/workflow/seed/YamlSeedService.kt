@@ -159,6 +159,12 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * 빈 DB 최초 부팅용 `workflow_scheme_issue_type_mappings` 기본 매핑 보강은 [seedAll] 말미의
  * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 가 계속 담당한다.
  *
+ * ### `TooManyFunctions` 억제 사유
+ * FR-WF-07 이 「기본값으로 복원」의 읽기 창구([loadStandardYaml])를 얹어 함수 수가 detekt 한도(11)를
+ * 넘었다. 근본 해결은 이 클래스를 「부팅 시딩」과 「YAML 읽기」로 쪼개는 것이고, 그것은 시딩 로직
+ * 전체를 재배치하는 별도 작업이다 — 이 PR 의 범위(초안·발행)와 섞으면 두 변경의 회귀 원인이
+ * 구분되지 않는다. 전역 임계값은 건드리지 않는다(`WorkflowWriteRepository` 와 같은 판단).
+ *
  * @param dsl jOOQ DSLContext. 전환/상태/validator/postAction 직접 INSERT 에 사용한다.
  * @param resourceLoader classpath YAML 파일 접근용 Spring ResourceLoader.
  * @param yamlMapper YAML 파일 역직렬화용 Jackson ObjectMapper (YAMLFactory 기반).
@@ -168,6 +174,8 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  *   Spring 컨텍스트에서는 등록된 Bean 이 주입된다. 손수 생성한 인스턴스는 `@Repository` 프록시 밖이라
  *   향후 `@Transactional` 우회를 잠복시킬 수 있어 기본값을 두지 않고 필수 주입으로 강제한다.
  */
+
+@Suppress("TooManyFunctions")
 @Service
 class YamlSeedService(
     private val dsl: DSLContext,
@@ -175,7 +183,7 @@ class YamlSeedService(
     private val validatorFactory: WorkflowValidatorFactory,
     private val postActionFactory: WorkflowPostActionFactory,
     private val mappingRepository: SchemeIssueTypeMappingRepository,
-) {
+) : StandardWorkflowDefaults {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** 시드가 적재한 워크플로우의 출처 표기. `workflows.origin` CHECK(SEED|CUSTOM) 과 V205 의 UPDATE 대상이 같은 값이다. */
@@ -663,6 +671,30 @@ class YamlSeedService(
     fun seedSingle(dto: WorkflowYamlDto) {
         dryRunValidatorAndPostActionTypes(dto)
         insertIfAbsent(dto)
+    }
+
+    /**
+     * 표준 워크플로우의 YAML 원본을 읽어 **검증된** DTO 로 돌려준다. DB 에는 아무것도 쓰지 않는다.
+     *
+     * 「기본값으로 복원」(FR-WF-07 · ADR `2026-08-18-workflow-db-as-source-of-truth` §D4)이 쓴다.
+     * ADR 이 YAML 을 지우지 않고 남긴 이유가 둘인데 — 새 환경의 부트스트랩 소스와 **복원 기준** —
+     * 이 메서드가 뒤쪽이다.
+     *
+     * 파싱을 여기서 내주는 것은 복원 경로가 YAML 파서를 한 벌 더 갖지 않게 하기 위해서다.
+     * 두 벌이 되면 Konform 검증과 validator/post-action type dry-run 이 한쪽에만 붙는 날이 온다.
+     *
+     * @param key 워크플로우 키. 표준 4종이 아니면 null 을 돌려준다 — 복원할 기본값이 없다는 뜻이다.
+     * @throws IllegalStateException YAML 이 있는데 파싱·검증에 실패했을 때. 조용히 null 로 접지 않는다
+     */
+    override fun loadStandardYaml(key: String): WorkflowYamlDto? {
+        val resource =
+            if (key in standardWorkflowKeys) {
+                resourceLoader.getResource("classpath:workflows/$key.yaml").takeIf { it.exists() }
+            } else {
+                null
+            }
+
+        return resource?.let { parseAndValidate(key, it.inputStream.use { stream -> stream.readBytes() }) }
     }
 }
 

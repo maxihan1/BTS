@@ -29,6 +29,19 @@ class WorkflowNotFoundException(
 ) : RuntimeException("Workflow not found: '$workflowKey'")
 
 /**
+ * 워크플로우는 있으나 그 **초안**이 없다 — 404.
+ *
+ * [WorkflowInvalidRequestException] 으로 접으면 400 이 나가고 프론트 표가 그것을 「요청 내용이
+ * 올바르지 않습니다」라는 범용 문구로 옮긴다 — 「초안이 없다」가 「요청이 잘못됐다」로 보이고,
+ * 404 를 기대해 분기하는 클라이언트는 그 분기에 영영 닿지 못한다.
+ *
+ * @property workflowKey 초안이 없는 워크플로우 키.
+ */
+class WorkflowDraftNotFoundException(
+    val workflowKey: String,
+) : RuntimeException("Draft not found for workflow '$workflowKey'")
+
+/**
  * SpEL(Spring Expression Language) 표현식 평가가 제한 시간 내에 완료되지 않을 때 던지는 예외.
  *
  * @param expression 평가에 실패한 SpEL 표현식 문자열.
@@ -108,7 +121,8 @@ class WorkflowStatusInUseException(
 class WorkflowInvalidRequestException(
     val workflowKey: String,
     val reason: String,
-) : RuntimeException("Invalid workflow request for '$workflowKey': $reason")
+    cause: Throwable? = null,
+) : RuntimeException("Invalid workflow request for '$workflowKey': $reason", cause)
 
 /**
  * 모호 전환 후보 1건.
@@ -170,3 +184,43 @@ class TransitionConflictException(
     val workflowKey: String,
     val reason: String,
 ) : RuntimeException("Transition conflict in workflow '$workflowKey': $reason")
+
+/**
+ * 초안을 뜬 뒤 다른 세션이 먼저 발행해 `base_version` 이 어긋났을 때 던진다. → 409
+ *
+ * ### 왜 덮어쓰지 않는가
+ * 초안은 「그 시점의 정의」를 기준으로 편집된 것이다. 그 사이 남이 상태를 지웠다면 지금 초안을
+ * 그대로 발행하는 것은 남의 편집을 말없이 되돌리는 일이 된다. 관리자에게 다시 뜨게 하는 편이
+ * 잃는 것이 적다.
+ *
+ * @property workflowKey 대상 워크플로우 키.
+ * @property expected 초안이 들고 있던 버전.
+ * @property actual 지금 DB 의 버전.
+ */
+class WorkflowVersionConflictException(
+    val workflowKey: String,
+    val expected: Long,
+    val actual: Long,
+) : RuntimeException("Workflow '$workflowKey' version conflict: expected $expected but was $actual")
+
+/**
+ * 발행으로 빠지는 상태에 이슈가 남아 있는데 이관 매핑이 오지 않았을 때 던진다. → 409
+ *
+ * ### Jira Cloud 와 같은 방식이다
+ * Jira 는 발행을 막지 않는다 — 발행 요청이 `statusMappings` 를 **함께 받고**, 매핑이 필요한데
+ * 없으면 화면이 모달로 묻는다(「In the modal that shows up, choose new statuses in the New status
+ * column」 · support.atlassian.com, 2026-08-26 조회). 이 예외의 [pending] 이 그 모달을 그릴 재료다.
+ *
+ * 매핑이 없는 채로 발행을 허용하면 이슈가 「워크플로우에 없는 상태」를 가리키게 되고, 그 이슈는
+ * 이후 어떤 전환도 계산할 수 없다. FR-WF-07 이 닫으려는 결함이 정확히 그것이다.
+ *
+ * @property workflowKey 대상 워크플로우 키.
+ * @property pending 이관 대상 — 상태 키별 남은 이슈 수.
+ */
+class WorkflowPublishMappingRequiredException(
+    val workflowKey: String,
+    val pending: Map<String, Long>,
+) : RuntimeException(
+        "Workflow '$workflowKey' publish needs status mappings for: " +
+            pending.entries.joinToString(", ") { "${it.key}(${it.value})" },
+    )

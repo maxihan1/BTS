@@ -31,6 +31,7 @@ const HANDLER_FILES = [
   `${PW}/web/WorkflowExceptionHandler.kt`,
   `${PW}/web/WorkflowStatusCompositionExceptionHandler.kt`,
   `${PW}/web/TransitionConflictExceptionHandler.kt`,
+  `${PW}/web/WorkflowPublishExceptionHandler.kt`,
   `${PW}/status/web/StatusExceptionHandler.kt`,
 ]
 

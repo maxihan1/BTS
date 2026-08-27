@@ -5,7 +5,9 @@ import { WorkflowAdminApiError } from '@/api/workflows-admin'
 /**
  * 백엔드 errorCode → 한국어 사용자 메시지.
  *
- * ★ **이 표는 백엔드 핸들러 4종이 내는 코드 전량과 차집합 0 이어야 한다.**
+ * ★ **이 표는 `HANDLER_FILES` 에 등재된 핸들러가 내는 코드 전량과 차집합 0 이어야 한다.**
+ * (개수를 문장에 박지 않는다 — 판별식이 그 숫자를 읽지 않으므로 핸들러가 늘 때마다 조용히 썩는다.
+ * 실제로 이 PR 이 5번째 핸들러를 더하면서 「4종」이 어긋났다.)
  * `__tests__/workflow-admin-error.test.ts` 가 그 핸들러 `.kt` 파일을 **직접 읽어** 코드를
  * 뽑고 양방향으로 대조한다. 종전에는 프론트에 손으로 적은 배열과 비교해서
  * 「양쪽 다 프론트」인 채로 초록이었다 — `two-lists-never-check-each-other` 그대로였고,
@@ -36,6 +38,15 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   WORKFLOW_STATUS_REFERENCED_BY_TRANSITION: '이 상태를 가리키는 전환이 있어 뺄 수 없습니다',
   // TransitionConflictExceptionHandler
   WORKFLOW_TRANSITION_CONFLICT: '같은 조건의 전환이 이미 있습니다',
+  // WorkflowPublishExceptionHandler
+  //   ★ 두 코드는 사용자가 할 일이 다르다. 버전 충돌은 「다시 불러오기」, 이관 필요는
+  //     「옮길 상태 고르기」다 — 문구를 합치면 어느 쪽도 안내가 되지 않는다.
+  //   ★ 「다시 불러오세요」로 끝내면 안 된다 — 초안의 기준 버전은 저장으로 바뀌지 않아
+  //     다시 불러와 발행해도 같은 409 가 반복된다. 출구는 초안 폐기뿐이다.
+  WORKFLOW_VERSION_CONFLICT: '다른 사용자가 먼저 발행했습니다. 초안을 폐기하고 다시 편집하세요',
+  WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
+  //   ★ 「초안이 없다」를 범용 400 문구로 접으면 「요청이 잘못됐다」로 보인다 — 관리자가 할 일이 다르다.
+  WORKFLOW_DRAFT_NOT_FOUND: '편집 중인 초안이 없습니다',
   // StatusExceptionHandler
   STATUS_KEY_CONFLICT: '이미 사용 중인 상태 키입니다',
   STATUS_NAME_CONFLICT: '이미 사용 중인 상태 이름입니다',

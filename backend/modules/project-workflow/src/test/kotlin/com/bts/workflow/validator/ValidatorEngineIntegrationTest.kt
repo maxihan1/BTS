@@ -6,6 +6,7 @@ import com.bts.shared.workflow.AvailableTransitionsRequest
 import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.adapter.AlwaysAllowPermissionResolver
+import com.bts.workflow.application.TransitionRuleGuard
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
@@ -128,7 +129,7 @@ class ValidatorEngineIntegrationTest {
             service =
                 ValidatorAdminService(
                     ValidatorRepository(dsl, ObjectMapper()),
-                    validatorFactory,
+                    TransitionRuleGuard(validatorFactory, DefaultWorkflowPostActionFactory()),
                     TransitionKeyResolver(dsl),
                 )
             seedWorkflow(dsl, validatorFactory)

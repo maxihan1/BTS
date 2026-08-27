@@ -2,6 +2,7 @@
 
 package com.bts.workflow.postaction
 
+import com.bts.workflow.application.TransitionRuleGuard
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.transition.TransitionKeyResolver
 import io.mockk.every
@@ -49,7 +50,7 @@ class PostActionAdminServiceTest {
         repository = mockk()
         factory = mockk()
         transitionResolver = mockk()
-        service = PostActionAdminService(repository, factory, transitionResolver)
+        service = PostActionAdminService(repository, TransitionRuleGuard(mockk(), factory), transitionResolver)
 
         // 기본 stub: 합성 키 해석 성공 (단건)
         every {

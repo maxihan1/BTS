@@ -8,7 +8,7 @@
 Kotlin/Spring + React 19 · Naver Cloud 단일 호스트 · Maxi 1인 + Claude Code.
 backend 10 Gradle 모듈 = 9 BC(identity-access issue-tracking project-workflow shared-kernel agile-planning
 notification search-export-import slack-integration automation) + 배포 조립 `app` · 프론트 `apps/web` SPA.
-**진척** — 143 FR 중 142 의 D 단계 완료 · FR-WF-04 완료(#400) · FR-WF-05 완료(#398) · FR-WF-06 완료(백엔드 #404 · UI #407) · FR-WF-07 미착수. 정본 `docs/plan/README.md`.
+**진척** — 143 FR 중 142 의 D 단계 완료 · FR-WF-04 완료(#400) · FR-WF-05 완료(#398) · FR-WF-06 완료(백엔드 #404 · UI #407) · FR-WF-07 진행중(초안·발행 백엔드 완료 · 이관 실행과 UI 는 후속). 정본 `docs/plan/README.md`.
 
 ## 작업 티어 — 바꾼 경로가 절차를 정한다
 

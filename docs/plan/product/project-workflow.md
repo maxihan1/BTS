@@ -145,13 +145,33 @@
 
 > 사용 중인 워크플로우를 직접 고치면 편집 중간 상태가 운영에 샌다. 초안(JSONB)을 따로 두고 발행할 때만 정규 테이블에 반영한다. 발행 시 빠지는 상태에 이슈가 남아 있으면 **어디로 옮길지 묻는 마법사**를 띄운다 — 지금은 FK 가 없어 상태를 지우면 이슈가 유령 상태를 가리키고 그 이슈는 이후 어떤 전환도 계산할 수 없다.
 
-- [ ] D1. 도메인 — 초안 표현(JSONB) · 발행 이력 append-only · 기본값 복원의 의미 (책임. backend-engineer + Maxi)
+- [x] D1. 도메인 — 초안 표현(JSONB) · 발행 이력 append-only · 기본값 복원의 의미 (책임. backend-engineer + Maxi)
 - [ ] D2. 명세 — 낙관적 락(base_version) 충돌 409 · 이관 대상 산출 규칙 · cross-BC 포트 계약 (책임. backend-engineer)
-- [ ] D3. 마이그레이션 — V207 `workflow_drafts` · `workflow_publications` (책임. db-engineer)
+- [x] D3. 마이그레이션 — V208 `workflow_drafts` · `workflow_publications` (책임. db-engineer)
 - [ ] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · `IssueStatusUsagePort`(shared-kernel) (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 이슈 상태 전량 이동 (책임. backend-engineer)
 - [ ] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer)
 - [ ] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer)
+- [ ] D8. 프론트 — `@xyflow/react` 다이어그램 편집기 (책임. frontend-engineer)
+
+> **D3 의 번호를 V207 → V208 로 정정했다** (2026-08-26). 계획 당시 예약해 둔 V207 을 FR-WF-05
+> (전환 identity, #395)가 먼저 가져갔다. 착수 시점 실측으로 확인해 다음 가용 번호로 바꿨다 —
+> 계획서의 번호를 그대로 믿고 파일을 만들었으면 Flyway 가 중복 버전으로 부팅을 막았을 것이다.
+
+> **D8 은 2026-08-26 에 신설했다.** 로드맵(`~/.claude/plans/cozy-hatching-otter.md`) PR 9(xyflow
+> 다이어그램 편집기)가 §2 진척표에는 「FR-WF-07 소관」으로 적혀 있는데 D 마커 어디에도 자리가
+> 없었다. 두 기록이 서로를 검사하지 않아 그 작업이 어느 쪽에서도 미완으로 세어지지 않는
+> 상태였다(`[[two-lists-never-check-each-other]]` 양식). Maxi 확인 후 D 마커로 등재해 진척 계산에
+> 들어오게 했다.
+
+> **D1·D3 완료 · D2·D4·D5 는 부분 완료** (PR #411, 2026-08-26). 이 PR 이 낸 것은 로드맵 PR 6
+> (project-workflow) 범위다 — V208 스키마 · 초안 CRUD · 발행 · 낙관적 락 409 · 기본값 복원 ·
+> 이관 필요 판정(상태별 잔여 건수 응답). **미완으로 남긴 것은 전부 issue-tracking BC 소관**이라
+> 「한 PR = 한 BC」 규칙상 같은 PR 에 넣을 수 없다.
+> - D2 잔여 — cross-BC 포트 계약(이관 큐잉). 읽기 포트 `IssueStatusUsagePort` 는 #400 이 이미
+>   만들어 뒀고 이 PR 이 발행 판정에 재사용했다. 쓰기(큐잉) 포트가 로드맵 PR 7 의 몫이다
+> - D4 잔여 — 이관 큐잉 호출. 지금은 이슈가 남아 있으면 409 로 **막고** 상태별 건수를 응답에 싣는다
+> - D5 잔여 — 「이관 후 이슈 상태 전량 이동」. 이관 실행이 PR 7 이라 그 테스트도 그쪽이다
 
 > **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환이 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 
@@ -171,10 +191,13 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 ⬜ 미착수 (2026-08-18 신설)** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ / D2·D4·D5 부분 (로드맵 PR 6 범위 완료 · 잔여는 issue-tracking 소관) / D6~D8 ⬜** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
 - [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
   **2026-08-26 재실측(PR #407 시점) — 미완은 §2.7 FR-WF-07 의 D1~D7 뿐이다.** WF-04·05·06 이 전부 닫혔다.
+  **같은 날 재실측(초안·발행 PR 시점)** — §2.7 에 D8(xyflow 다이어그램)이 신설돼 마커가 8개가 됐고,
+  그중 D1·D3 가 닫혔다. 미완은 **D2·D4·D5·D6·D7·D8** 여섯이며 D2·D4·D5 는 부분 완료다(잔여가 전부
+  issue-tracking BC 소관이라 「한 PR = 한 BC」 규칙상 분리됐다). 전수는 §2.7 각주에 적었다.
   개수 대신 전수로 적는다 — 「N건」은 눈가리개이고, 실제로 `grep '^- \[ \] D'` 는 §1.2 의
   「**D**ATA.md … 숙지」 줄을 D 마커로 오탐한다
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요
