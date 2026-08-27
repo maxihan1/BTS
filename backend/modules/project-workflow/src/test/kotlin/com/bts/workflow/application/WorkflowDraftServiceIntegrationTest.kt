@@ -251,6 +251,48 @@ class WorkflowDraftServiceIntegrationTest {
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
+    // ── ★ 받아 놓고 버리지 않는다 (절대 규칙 16) ──────────────────────────────
+    //
+    // 초안이 담는 상태 `name`·`category` 와 워크플로우 `key` 는 발행에서 **쓰이지 않는다** —
+    // 편성 INSERT 는 workflow_id·status_id·display_order 만 쓰고, 이름·카테고리는 전역 카탈로그에서
+    // 온다. key 도 replaceDefinition 이 건드리지 않는다.
+    //
+    // 그런데 그 값이 workflow_publications.definition 스냅샷에는 **그대로 기록된다.**
+    // 즉 append-only 감사 기록이 「실제로 일어나지 않은 변경」을 발행됐다고 증언한다.
+    // 받아서 버릴 바에는 거절해야 한다.
+
+    @Test
+    fun `상태 이름을 카탈로그와 다르게 보낸 초안은 거부한다`() {
+        val key = seedWorkflow() // 카탈로그의 이름은 "열림 $key" 다
+        val base = validDraft(key)
+        val renamed = base.copy(states = base.states.map { it.copy(name = "내가 정한 이름") })
+
+        assertThatThrownBy { service.save(ACTOR, key, renamed, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    @Test
+    fun `상태 카테고리를 카탈로그와 다르게 보낸 초안은 거부한다`() {
+        val key = seedWorkflow() // 카탈로그의 카테고리는 TODO 다
+        val base = validDraft(key)
+        val recategorised = base.copy(states = base.states.map { it.copy(category = "DONE") })
+
+        assertThatThrownBy { service.save(ACTOR, key, recategorised, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    /**
+     * 형제 `UpdateWorkflowRequest` 는 「이슈·자동화·검색이 문자열로 참조하는 식별자라 바뀌면 조용히
+     * 끊긴다」는 이유로 `key` 필드를 **아예 없앴다.** 초안 API 가 그 구멍을 다시 열어서는 안 된다.
+     */
+    @Test
+    fun `경로와 다른 key 를 담은 초안은 거부한다`() {
+        val key = seedWorkflow()
+
+        assertThatThrownBy { service.save(ACTOR, key, validDraft(key).copy(key = "남의-워크플로우"), baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
     // ── ★ base_version 고정 ───────────────────────────────────────────────────
 
     /**
