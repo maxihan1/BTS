@@ -307,12 +307,29 @@ class BulkOperationRepository(
     // ── private helpers ────────────────────────────────────────────────────────
 
     /**
-     * 항목 목록을 배치 INSERT 한다.
+     * 항목 목록을 배치 INSERT 한다. 항목이 0건이면 아무것도 실행하지 않는다.
      *
      * jOOQ batch 를 이용해 단일 PreparedStatement 로 N건을 한 번에 전송하여
      * 1건씩 INSERT 하는 것 대비 DB 왕복(round-trip)을 최소화한다.
+     *
+     * ### 빈 배치 가드가 왜 필요한가 — 방어 코드가 아니다
+     * jOOQ `BatchSingle.execute()` 는 바인딩이 0개일 때 no-op 이 아니다.
+     * `BatchSingle:171` 이 `BatchMultiple:160` 으로 위임하면서 **템플릿 쿼리를 NULL 바인딩 그대로 1회 실행**한다.
+     * 즉 items 0건은 실질적으로 `insert into bulk_operation_items values (null, null, null, null)` 이 되어
+     * NOT NULL 제약에 걸린다. 실측 예외 원문 —
+     * `IntegrityConstraintViolationException: null value in column "id" of relation
+     * "bulk_operation_items" violates not-null constraint`.
+     *
+     * ### items 0건이 정상인 경로
+     * [BulkOperationType.STATUS_MIGRATION] 은 **큐잉 시점에 items 가 0건인 것이 정상**이다.
+     * 이관 대상은 워커가 실행 시점에 다시 긁는다 (F15 — 「세고 나서 옮긴다」가 아니라 「옮기면서 센다」).
+     * [BulkOperationType.BULK_EDIT] · [BulkOperationType.BULK_TRANSITION] 은 큐잉 시점에 항목이
+     * 1건 이상임이 도메인에서 보장되므로 이 가드에 걸리지 않는다.
+     * 따라서 이 한 줄은 불필요한 방어가 아니라 STATUS_MIGRATION 큐잉 경로의 정상 분기다. 지우지 말 것.
      */
     private fun insertItemsBatch(operation: BulkOperation) {
+        if (operation.items.isEmpty()) return
+
         val batch =
             dsl.batch(
                 dsl.insertInto(
