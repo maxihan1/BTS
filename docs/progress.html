@@ -183,7 +183,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-08-26 갱신</div>
+      <div class="updated">2026-08-27 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1655,22 +1655,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     </p>
     <div class="bc-detail-stats">
       <span class="big-pct" style="color:#9ca3af;">108</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 82건 · 전체 190건</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 86건 · 전체 194건</span>
     </div>
     <h2>⬜ 아직 안 한 것 — 108건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">25건</span></h3>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 공용 <code>ConfirmDialog</code> 의 <code>confirming</code> prop 이 설계상 도달 불가 (선재 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 「정말 지울까요?」 확인 창에 「처리 중…」을 표시하는 스위치가 달려 있는데, 그 창이</p>
-        <p class="todo-risk"><b>방치하면.</b> 소비자가 <code>confirming</code> 을 넘기며 진행 표시가 되는 줄 알고 쓴다. 실제로는 아무 일도</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — apps/web — 공용 `ConfirmDialog` 의 `confirming` prop 이 설계상 도달 불가 (선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>확인을 누르는 즉시 닫혀서 그 표시를 <b>아무도 볼 수 없다.</b></p><p>일어나지 않는다. 더 나쁜 것은 <b>그 prop 에 단언을 붙이는 순간 그것이 도달 불가 조합을 지키는 가짜 그린</b>이 된다는 점이다(<code>unreachable-state-fixture-is-fake-green</code>). 실제로 PR #407 리뷰가 그 자리를 지적했고, 처방을 실행하다 원인이 소비자가 아니라 프리미티브임이 드러났다.</p><p><b>무엇.</b> <code>apps/web/src/components/ui/confirm-dialog.tsx:55-56</code> 이 확인 핸들러에서 <code>onConfirm()</code> 을 부른 <b>직후</b> 스스로 <code>onOpenChange(false)</code> 를 부른다. 그래서 소비자가 <code>setX(null)</code> 을 <code>onSuccess</code> 로 옮겨도 다이얼로그는 이미 닫힌 뒤다 — <b>소비자 쪽에서는 고칠 수 없다.</b> 같은 이유로 「실패하면 확인 맥락을 남긴다」도 불가능하고, 사용자는 무엇이 안 됐는지 창 밖에서 찾아야 한다.</p><p><b>처방.</b> <code>onOpenChange(false)</code> 를 컴포넌트에서 빼고 <b>닫는 책임을 소비자에게</b> 넘긴다. 그러면 <code>confirming</code> 이 실제로 관측되고 실패 시 맥락도 남는다. ★ 공용 프리미티브라 <b>소비처 전수를 함께 고쳐야 한다</b> — <code>grep -rn &quot;ConfirmDialog&quot; apps/web/src</code> 로 먼저 세고, 각 소비자가 성공 시 닫도록 바꾼 뒤에 프리미티브를 바꾼다(순서를 뒤집으면 그 사이 커밋에서 창이 안 닫힌다).</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 PR #407 이 만든 것이 아니다. 공용 프리미티브의 소비처 전수를 건드리는 변경이라 전환 규칙 편집 PR 에 섞으면 폭발 반경이 그 PR 의 주제를 넘는다. 현재 사용자 영향은 「진행 표시가 안 보인다」와 「실패 안내가 창 밖에 뜬다」 둘이고, 후자는 #407 이 목록 위 배너로 보이게 해 두었다.</p></div>
-      </details>
-    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 <b>의도된 대가</b> · 미착수 · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 사이드바를 접으면 「최근 항목」으로 가는 길이 화면에서 사라진다.</p>
@@ -1912,7 +1902,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">15건</span></h3>
+    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">12건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">issue-tracking — OpenAPI required 오표기 <b>잔여 26 프로퍼티</b> + 전수 판별식 부재 (선재 · 미착수 · T2)</span></div>
@@ -2025,36 +2015,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="todo-body"><p>넘길 수 있는가」를 막는 문이고, 그 문을 <b>떼는 것</b>도 이 API 로 가능하다. 문이 사라진 뒤 누가 뗐는지 알 방법이 없다.</p><p><b>무엇.</b> <code>ValidatorAdminService</code> 의 생성·수정·삭제 로그가 <code>id</code> · <code>workflowKey</code> · <code>transitionKey</code> 는 적지만 행위자를 안 적는다. 행위자는 두 프레임 위에서 <code>ManageSchemeGuard.requireManageScheme()</code> 가 방금 해석했는데 서비스로 넘어오지 않는다. 모듈 전체에 MDC 필터가 없어 로그 줄이 주변에서 채워지지도 않는다. 형제 <code>PostActionAdminService</code> 도 같은 상태다.</p><p><b>처방.</b> 세 로그 줄에 해석된 행위자 UUID 를 싣는다. 또는 모듈에 MDC 필터를 한 벌 두어 모든 로그가 행위자를 달고 나가게 한다(그쪽이 사본을 안 만든다). 앱 로그가 아니라 <b>지속되는 감사 흔적</b>이 필요하다는 판단이 서면 <code>DATA.md</code> 가 이미 정한 append-only <code>audit_logs</code> 가 그 자리다.</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 형제 표면과 같다. 한쪽만 고치면 두 표면이 갈리므로 둘을 함께 볼 수 있는 시점 — MDC 필터를 도입하거나 감사 로그를 확장하는 작업 — 에 묶는 것이 맞다.</p></div>
       </details>
     </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 에러 응답에 내부 정보가 새지 않는지 지키는 판별식이 없다 (신규 · 미착수 · T2)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 오류 응답에 「무엇이 잘못됐는지」만 담고 내부 사정은 담지 않기로 했는데, 그 약속을</p>
-        <p class="todo-risk"><b>방치하면.</b> 누군가 디버깅하기 편하라고 예외 메시지를 응답에 그대로 실으면 아무도 못 잡는다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — project-workflow — 에러 응답에 내부 정보가 새지 않는지 지키는 판별식이 없다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>기계가 지키지 않는다. 사람이 리뷰에서 보는 것이 전부다.</p><p>그 메시지에는 파라미터 이름·타입·요청 본문 조각·권한 모델이 들어 있어, 응답이 곧 내부 구조의 설명서가 된다. 이 저장소에 그 사고 이력이 있다(메모리 <code>fr-pm-04-guard-exception-message-http-leak</code> — 가드 예외 메시지의 actorId·permission·scope 가 HTTP 로 샜다).</p><p><b>무엇.</b> PR #407 이 <code>TransitionRuleFrameworkErrors</code> 로 응답 메시지를 상수 4개로 고정하고 상세는 로그로만 보내도록 했다. 그런데 그것을 재는 테스트는 <code>jsonPath(&quot;$.error.message&quot;).isString</code> 뿐이라, 누가 <code>ex.message</code> 를 그 자리에 꽂아도 <b>여전히 통과</b>한다. 계약이 주석과 리뷰로만 지켜진다.</p><p><b>처방.</b> 응답 메시지가 <b>허용된 상수 집합에 속하는지</b>를 재는 판별식을 둔다. 상수 목록을 판별식에 베끼지 말고 <code>TransitionRuleFrameworkErrors</code> 에서 런타임에 읽어 대조한다 — 베끼면 그것이 또 하나의 목록이 된다. 컨트롤러 테스트에서 예외 메시지에 고유 토큰을 심고 그 토큰이 응답에 <b>없음</b>을 재는 방식도 같은 값을 한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 현재 구현은 정확하고 응답에 새는 것이 없다. 판별식은 「나중에 누가 깨뜨리는 것」을 막는 장치라 지금 없다고 사용자 영향이 생기지 않는다. 다만 이 표면은 앞으로 <code>ProblemDetail</code> 이식 유혹(형제 BC 선례)과 디버깅 편의 요구를 계속 받는 자리다.</p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 판별식 머리의 축 표와 실제 축을 대조하는 장치가 없다 (신규 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 검사기 파일 맨 위에 「이 파일이 무엇을 대조하는지」를 표로 적어 두는데, 그 표가 실제</p>
-        <p class="todo-risk"><b>방치하면.</b> 표를 읽고 「이건 이미 검사되고 있구나」라고 믿은 사람이 실제로는 없는 검사를 전제로</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — project-workflow — 판별식 머리의 축 표와 실제 축을 대조하는 장치가 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>검사 항목과 맞는지는 아무도 확인하지 않는다.</p><p>코드를 짠다. 반대로 있는 검사를 표가 빠뜨리면 다음 사람이 그것을 다시 만든다.</p><p><b>무엇.</b> PR #407 착수 시점에 <code>scripts/workflow/validator-type-catalog.test.ts</code> 머리의 표가 「축 4개」라고 적고 있었는데, <b>코드에는 이미 축 5(읽기 형태 봉인)가 있었다.</b> 표가 그것을 빠뜨린 채 오래 초록이었다. 같은 파일에 「<code>PostActionFormDialog.tsx</code> 가 url/method 를 손으로 든다」는 서술도 있었으나 실제 위치는 <code>PostActionConfigSection.tsx</code> 였다. 둘 다 #407 이 바로잡았지만 <b>다음에 축이 늘면 같은 방식으로 또 썩는다.</b></p><p>★ <b>이것은 그 파일이 스스로 이름 붙인 결함 양식의 재현이다</b> — 서로를 검사하지 않는 두 목록 (<code>two-lists-never-check-each-other</code>). 판별식이 자기가 잡으려는 결함을 자기 문서에서 재생산했다.</p><p><b>처방.</b> 머리 표의 축 행 수와 파일의 <code>test(</code> 블록(또는 축 함수) 수를 대조하는 판별식을 둔다. 축 번호를 상수로 적지 말고 양쪽을 런타임에 세어 비교한다. 표에 축 이름을 적었다면 그 이름이 실제 테스트 제목에 있는지까지 보면 더 강하다.</p><p><b>왜 지금이 아니라 부채인가.</b> #407 이 표를 실제 축과 맞춰 놨으므로 지금은 일치한다. 그리고 이 처방은 판별식 파일 자체의 구조에 의존해 다른 판별식으로 일반화할지 판단이 필요하다 — 같은 양식의 머리 표를 가진 파일이 더 있는지 먼저 세어야 한다.</p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 폼 스키마 파서의 <b>부분</b> death 가 무음이다 (신규 · 미착수 · T2)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 화면의 입력 폼과 명세 표를 대조하는 검사기가 있는데, 그 검사기가 <b>전부</b> 못 읽으면</p>
-        <p class="todo-risk"><b>방치하면.</b> 폼 선언 하나가 검사기가 모르는 형태로 바뀌면 그 type 만 대조에서 빠진다. 화면과 표가</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — project-workflow — 폼 스키마 파서의 **부분** death 가 무음이다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p>경보가 울리지만 <b>일부만</b> 못 읽으면 조용하다.</p><p>갈려도 초록이고, 갈린 사실은 사용자가 저장을 눌러 400 을 받을 때 드러난다.</p><p><b>무엇.</b> <code>validator-type-catalog.test.ts</code> 축 6 의 post-action 파서(<code>siblingConfigValue</code>)는 <code>type:</code> 뒤로만 훑으므로 <code>{ config: {…}, type: &#39;X&#39; }</code> 처럼 <b>키 순서가 뒤집히면</b> 그 선언이 조용히 사라진다. 비-공허 짝은 「집합이 통째로 비었는가」만 보므로 <b>전량 소실은 잡고 부분 소실은 못 잡는다.</b> 오늘은 그 표면에 편집 폼이 있는 type 이 <code>CALL_WEBHOOK</code> 하나뿐이라 부분 = 전량이고, 그래서 무해하다.</p><p><b>처방.</b> 파서가 「읽은 선언 수」와 「파일에 있는 <code>type:</code> 리터럴 수」를 함께 세어 <b>불일치를 축 7(봉인)에 싣는다.</b> 지금 축 7 이 잡는 여섯 형태와 같은 자리다. 또는 <code>siblingConfigValue</code> 를 순서 무관으로 고쳐 같은 객체 리터럴 안의 <code>type</code> 과 <code>config</code> 를 함께 찾게 한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 그 표면에 폼이 있는 type 이 하나뿐인 동안은 부분 소실이 성립하지 않는다. <b>두 번째 type 에 편집 폼이 붙는 시점이 이 부채의 만기</b>다 — 그때 함께 닫는 것이 자연스럽다.</p></div>
-      </details>
-    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">project-workflow — 전환 규칙 표면에 남은 사본 5종 (신규 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 같은 내용이 여러 군데에 베껴져 있다. 한 곳을 고쳐도 나머지는 그대로 남는다.</p>
@@ -2064,7 +2024,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — project-workflow — 전환 규칙 표면에 남은 사본 5종 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p>어느 쪽이 정본인지 모른 채 낡은 쪽을 읽는다. 이 저장소가 이름 붙인 지배 결함 양식 그대로다.</p><p><b>무엇 (전수).</b></p><table class="md-table"><thead><tr><th>#</th><th>사본</th><th>자리</th></tr></thead><tbody><tr><td>1</td><td>403 스텁 4벌</td><td><code>PostActionControllerTest</code> — 형제 <code>ValidatorControllerTest</code> 는 같은 PR 에서 <code>denyPermission()</code> 헬퍼로 접었는데, 확장한 쪽에는 적용 안 됐다</td></tr><tr><td>2</td><td>편집 허용 목록 3벌</td><td><code>ValidatorAdminService</code> 의 클래스 KDoc · <code>validateConfig</code> KDoc · <code>editable</code> 식</td></tr><tr><td>3</td><td>403 응답 본문 2벌</td><td><code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> — 같은 예외·같은 코드·같은 메시지, 로그 태그만 다르다</td></tr><tr><td>4</td><td>팩토리 헤더의 분기 개수</td><td>두 팩토리 파일 머리 주석이 종류 수를 적는다. 같은 PR 이 KDoc 에서는 「<code>when</code> 분기가 정본」이라며 목록을 지웠는데 헤더의 <b>개수</b>는 남았다</td></tr><tr><td>5</td><td>파라미터 섀도잉</td><td><code>TransitionRuleRepository.findByTransitionId</code> 의 람다 지역변수가 함수 파라미터 <code>transitionId</code> 를 가린다. 한 줄 위 예외 메시지는 파라미터를 읽어 두 바인딩을 한 줄 간격으로 읽게 된다</td></tr></tbody></table><p><b>처방.</b> 1·3 은 공용 헬퍼로 접는다. 2 는 「허용 목록은 <code>editable</code> 분기가 정본」이라 적고 KDoc 사본을 지운다(같은 PR 이 팩토리 KDoc 에 이미 쓴 문구다). 4 는 개수를 지운다. 5 는 지역변수를 개명한다.</p><p><b>★ ② 는 해소됐다</b> (PR #407, 2026-08-26). 「편집 허용 목록이 한 파일 안에 KDoc 2곳 + 코드 1곳」 중 <b>KDoc 2곳</b>을 지웠다 — 부채 132 를 닫으면서 <code>validateConfig</code> KDoc 의 허용 목록 사본을 <code>isEditable</code> 포인터로 바꿨고, 그러자 클래스 KDoc 의 「근거는 <code>validateConfig</code> KDoc 에 있다」가 dangling pointer 가 되어 함께 고쳤다. 코드 1곳은 이제 <code>ValidatorEditability.kt</code> 의 <code>isEditable</code> 한 벌뿐이다. <b>나머지 ①③④⑤ 는 미해소.</b></p><p><b>왜 지금이 아니라 부채인가.</b> 다섯 건 다 <b>동작 영향 0</b>이다. PR #404 게이트 2 라운드 3 은 머지를 막는 차단 2건과 판별식 fake green 2건을 닫는 것이 우선이라 여기까지 오지 않았다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">49건</span></h3>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">52건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)</span></div>
@@ -2208,6 +2168,36 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — 도구 — 픽스처 헬퍼가 BC 마다 복제된다 (미착수 · T3)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>WorkflowStatusFixture.kt</code> 가 <code>project-workflow</code> 와 <code>issue-tracking</code> 두 BC 의 테스트 소스셋에 각각 있다. 이 저장소에는 <code>java-test-fixtures</code> 소스셋 관례가 없고(실측 — <code>build.gradle.kts</code> 전체에 0건), BC 격리 규칙상 한쪽이 다른 쪽 테스트 코드를 import 할 수도 없다.</p><p><b>지금 막아 둔 것.</b> <code>WorkflowStatusFixtureParityTest</code> 가 두 파일의 <b>본문 동일성</b>(<code>package</code> 줄만 예외)을 단언한다. 한쪽만 고치면 즉시 red 다. 뮤테이션으로 확인했다 — 한쪽 헬퍼의 <code>display_order</code> 를 <code>+1</code> 로 바꾸자 red.</p><p><b>근본 해소.</b> <code>shared-kernel</code> 에 <code>java-test-fixtures</code> 소스셋을 도입하고 두 BC 가 그것을 의존한다. <b>모듈 토폴로지 변경이라 T3</b> 이고, 기존 테스트의 의존 재배선이 따라온다. PR #393(FR-WF-04) 범위를 넘어 별도 PR 로 뺐다.</p><p><b>선행.</b> 없음.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 이관 필요 판정과 실제 교체 사이에 이슈가 끼어들 수 있다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「이 상태에 남은 이슈가 없다」를 확인한 <b>뒤</b>, 실제로 상태를 빼기 <b>전</b> 사이에 누가 이슈를 그 상태로 옮기면, 그 이슈는 워크플로우에 없는 상태에 남는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 그 이슈는 이후 어떤 전환도 계산할 수 없다 — 보드에서 움직이지 않고, 오류도 로그도 없다. FR-WF-07 이 닫으려던 결함이 정확히 그 상태다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 이관 필요 판정과 실제 교체 사이에 이슈가 끼어들 수 있다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>WorkflowPublishService.requireNoPendingIssues</code> 가 <code>IssueStatusUsagePort.countIssuesInStatus</code> 로 세고, 그 뒤 <code>replaceDefinition</code> 이 편성을 지운다. READ COMMITTED 라 세는 시점의 스냅샷 밖에서 커밋된 전환은 보이지 않는다. 그 사이 런타임은 아직 옛 정의를 보므로 그 전환은 <b>정당하다</b>.</p><p><b>왜 이 PR 에서 안 닫았나.</b> <code>issues</code> 는 issue-tracking BC 소유라 이 BC 가 잠글 수 없고, 다중 BC 트랜잭션은 금지다(<code>DATA.md §6</code>). 형제 <code>WorkflowStatusCompositionService.removeStatus</code> 도 같은 형태라 선례가 있다. 다만 발행은 정의 전체를 갈아 끼우므로 폭이 훨씬 넓다.</p><p><b>처방.</b> 로드맵 <b>PR 7</b>(이관 실행)이 이 창을 한 몸으로 다뤄야 한다 — 매핑을 받아 이슈를 옮기는 경로가 생기면 「세고 나서 옮긴다」가 아니라 「옮기면서 센다」가 된다. 그 전까지는 잔여 위험으로 둔다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 발행 이력 append-only 트리거가 <code>TRUNCATE</code> 에 뚫려 있다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 발행 기록은 지울 수 없게 잠가 뒀는데, 표를 통째로 비우는 명령 하나에는 그 잠금이 걸리지 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 누군가 테스트 정리 헬퍼나 운영 스크립트에 그 한 줄을 넣는 순간, 「누가 언제 무엇을 발행했나」가 오류 하나 없이 통째로 사라진다. 되돌리기의 원본도 함께 사라진다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 발행 이력 append-only 트리거가 `TRUNCATE` 에 뚫려 있다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>V208__workflow_drafts_and_publications.sql</code> 의 <code>trg_workflow_publications_append_only</code> 는 <code>FOR EACH ROW</code> 행 트리거인데, PostgreSQL 의 행 트리거는 <code>TRUNCATE</code> 에 <b>발동하지 않는다</b>. PostgreSQL 17 에서 같은 DDL 로 실측했다 — <code>TRUNCATE workflow_publications</code> 는 0행을 남기고 예외를 내지 않았고, <code>TRUNCATE workflows CASCADE</code> 도 <code>NOTICE: truncate cascades to table &quot;workflow_publications&quot;</code> 만 내고 같은 결과였다. 그 마이그레이션이 스스로 「약속이 아니라 제약으로」라고 적은 자리에서 기계가 못 보는 유일한 삭제 경로다.</p><p><b>지금 위험은 낮다.</b> 저장소에 SQL <code>TRUNCATE</code> 호출자가 0건이다(전수 grep — 히트는 전부 프론트 CSS <code>truncate</code>). 지금 터지는 결함이 아니라 <b>강제 장치의 구멍</b>이다.</p><p><b>처방.</b> 같은 마이그레이션에 문장 트리거를 한 벌 더 단다 — <code>BEFORE TRUNCATE ON workflow_publications FOR EACH STATEMENT EXECUTE FUNCTION reject_workflow_publication_mutation()</code>. 기존 함수가 이미 depth&gt;1 DELETE 가 아닌 <code>TG_OP</code> 를 전부 거부하므로 함수 변경은 필요 없다. 부모 <code>workflows</code> 에도 함께 단다. <code>V208MigrationTest</code> 에 「TRUNCATE 가 거부된다」 케이스를 red-first 로 붙인다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 캐시 무효화가 <b>커밋 전</b>에 일어난다 (선재 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 새 정의를 저장하기 직전에 캐시를 비우는데, 그 찰나에 다른 요청이 들어오면 <b>옛 정의를 다시 캐시에 채워 넣는다.</b></p>
+        <p class="todo-risk"><b>방치하면.</b> 발행이 성공했는데 화면과 엔진은 계속 옛 워크플로우를 쓴다. 다음 발행이나 재기동 전까지 아무도 눈치채지 못한다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 캐시 무효화가 **커밋 전**에 일어난다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>WorkflowCache.withWriteLock</code> 이 <code>block()</code> 직후 <code>invalidate(key)</code> 를 부르는데, 그 전체가 호출부의 <code>@Transactional</code> 안이라 <b>커밋 전</b>에 실행된다. 읽기 경로(<code>findByKey</code>)는 어떤 락도 잡지 않으므로, 무효화와 커밋 사이에 들어온 리더가 READ COMMITTED 로 <b>발행 전 정의</b>를 읽어 <code>putIfAbsent</code> 로 되돌려 놓는다. <code>project-workflow</code> 전체에 <code>afterCommit</code>·<code>TransactionSynchronization</code> 이 0건이라 이후 재무효화도 없다.</p><p><b>지금 막아 둔 것.</b> PR #411 이 이관 필요 판정의 근거를 캐시가 아니라 DB(<code>findComposedStatusKeys</code>)로 바꿔, 이 창이 <b>게이트를 무력화하는 경로</b>는 닫았다. 남은 것은 「발행했는데 옛 정의가 계속 보인다」 뿐이다.</p><p><b>처방.</b> <code>invalidate</code> 를 <code>TransactionSynchronizationManager.registerSynchronization { afterCommit { ... } }</code> 로 옮긴다. <code>pg_try_advisory_xact_lock</code> 은 커밋까지 유지되므로 쓰기끼리의 직렬화는 그대로다. 아울러 <code>CacheInvalidationCoverageTest</code> 의 「<code>withWriteLock</code> 이 직접 호출보다 오히려 강한 보장이다」 문구를 좁힌다 — 커밋 순서 축에서는 사실이 아니다.</p></div>
       </details>
     </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 구형 <code>workflow_states</code> 가 신형 카탈로그와 나란히 살아 있다 (미착수 · T3)</span></div>
@@ -2677,9 +2667,19 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
         <summary aria-label="기술 상세 — 인프라 — 병렬 작업이 Gradle 결과 디렉터리를 공유해 서로의 검사 결과를 지운다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> 한 worktree 에서 sub-agent 여럿이 동시에 <code>./gradlew</code> 를 부르면 <code>build/test-results/</code> 와 Testcontainers 의 Ryuk 컨테이너를 <b>공유</b>한다. 실측 2종이다.</p><ul class="md-list"><li><code>Could not write XML test results ...</code> — 다른 실행이 같은 디렉터리를 지우거나 갈아 끼운 뒤다.</li><li><code>Could not connect to Ryuk</code> — Testcontainers 정리 컨테이너 연결 실패.</li></ul><p><b>★오독하기 쉬운 서명.</b> 둘 다 <code>EXIT=1</code> 인데 <b>개별 FAILED 는 0건</b>이다. 종료 코드만 보면 테스트 실패와 구분되지 않는다. 「통과 건수와 종료 코드를 함께 적는다」는 규율(<code>worktree-commands.md §3</code>)이 이 경우에는 <b>둘 다 적어도</b> 판별이 안 된다 — 실패 0 · EXIT 1 이 정상 서명이기 때문이다.</p><p><b>★부채 <code>59</code>(리눅스 러너 자원 고갈 판정 미동작)와 함께 본다.</b> 성격이 겹친다 — 둘 다 「자원 경합이 코드 결함으로 보이는 실패」이고, 러너 자원 판정이 살아 있어야 이쪽 오진도 줄어든다. 항목 <code>4</code>(CI 벽시계) 축 A, 항목 <code>57</code>(러너 프리플라이트 시점 갭)도 같은 계열이라 처방을 따로 세우면 네 곳에 흩어진다.</p><p><b>처방 후보.</b> ① 병렬 실행마다 <code>--project-cache-dir</code>·<code>GRADLE_USER_HOME</code> 또는 결과 디렉터리를 분리한다. ② <code>/bts-impl</code> 이 같은 worktree 에서 백엔드 wave 를 <b>직렬화</b>한다 — 지금은 그 규율이 문서에 없다. ③ 「FAILED 0 인데 EXIT≠0」을 자원 경합으로 분류해 표출한다. <b>③은 오진 시간만 줄이고 원인을 안 없앤다.</b></p></div>
       </details>
-    </div></div><h3 class="todo-cat">문서·규칙 <span class="todo-cat-count">8건</span></h3>
+    </div></div><h3 class="todo-cat">문서·규칙 <span class="todo-cat-count">9건</span></h3>
         <p class="todo-cat-desc">적혀 있는 것과 실제가 다른 곳.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">문서 — <code>DATA.md §4.1</code> 마이그레이션 번호 표가 8행 중 6행 stale (선재 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「어느 번호까지 썼나」를 적어 둔 표가 실제 파일과 어긋나 있어서, 그걸 믿고 다음 번호를 고르면 이미 있는 파일과 부딪힌다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 표를 읽고 <code>V402</code> 를 골랐는데 <code>V402__notifications.sql</code> 이 이미 있다. Flyway 가 <code>Found more than one migration with version</code> 으로 부팅을 통째로 거부한다 — 그 절이 막으려고 쓰인 바로 그 실패다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 문서 — `DATA.md §4.1` 마이그레이션 번호 표가 8행 중 6행 stale (선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> 표가 주장하는 값과 실제 파일이 다르다 — identity-access V001~V006(실제 V036) · issue-tracking V001~V003(실제 V037) · notification V400,V401(실제 V410) · agile-planning V500(실제 V504) · search-export-import V600~V603(실제 V608) · slack-integration V700~V703(실제 V705). 현재 값인 것은 project-workflow(PR #411 이 갱신)와 automation 둘뿐이다. 표와 파일 시스템이 서로를 검사하지 않아 각 BC 가 마이그레이션을 낼 때마다 한 행씩 썩는다.</p><p><b>처방.</b> 손으로 유지하지 않는다. <code>scripts/verify-master-plan.sh</code> 또는 별도 판별식이 <code>backend/modules/<i>/src/main/resources/db/migration/</i>/V*.sql</code> 을 훑어 BC 별 사용 범위를 뽑고 표와 대조해 불일치를 실패로 만든다. 현재 stale 한 표에 대해 red 를 먼저 확인한 뒤 6행을 고친다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">문서 — PR 제목 규칙이 실제 관행과 어긋나고 그것을 보는 판정이 없다 (신규 · 미착수 · T0)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 「PR 제목은 첫 커밋 제목과 같게 쓴다」는 규칙이 문서에 있는데, 실제 PR 은 전부 다른 모양으로 달려 있고 아무도 대조하지 않는다.</p>
@@ -2760,8 +2760,48 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
         <div class="todo-body"><p><b>무엇.</b> <code>~/.claude/plans/cozy-hatching-otter.md</code> §PR 분해 의 10행 표는 PR 8~10 을 전부 <code>/admin/workflows</code>(워크플로우 관리 화면) 쪽에 배정한다. 그런데 <code>docs/plan/product/project-workflow.md</code> §2.5 의 <b>FR-WF-05 D6·D7</b>(이슈 상세 상태 드롭다운)은 그 세 PR 어디에도 없다. 같은 로드맵 §검증 「전체 완료 기준 눈확인」 8번이 그 화면을 문장으로 언급하지만 <b>PR 칸이 없어</b> 어느 PR 의 범위도 되지 못했다.</p><p><b>★이 항목을 만든 PR 이 그 마커를 닫았다.</b> 배정이 없어 「다음 큰 덩어리」를 고르는 자리에서 매번 건너뛰어졌고, 백엔드(#395)가 열린 뒤 화면만 없는 채로 남아 있었다. 드러난 계기도 로드맵 대조가 아니라 <b>손으로 두 문서를 나란히 편 것</b>이다.</p><p><b>★지배 결함 양식이다.</b> 두 목록이 서로를 검사하지 않는다. 처방도 그 양식 그대로다 — ① 로드맵 PR 표가 덮는 FR·D 마커 합집합과 <code>docs/plan/product/*.md</code> 의 D 마커 전량 사이 <b>차집합 판별식</b> ② 비-공허 짝(마커 하나를 빼면 red) ③ 판별식 CI 등재.</p><p><b>★먼저 정할 것이 있다.</b> 로드맵 정본이 저장소 <b>밖</b>(<code>~/.claude/plans/</code>)이라 판별식이 읽을 수 없다. 저장소 안으로 옮길지, 옮긴다면 <code>docs/plans/</code> 인지 별도 자리인지가 선행 결정이다. <b>자의로 정하지 않는다.</b></p></div>
       </details>
     </div></div>
-    <h2>✅ 해소된 것 — 82건</h2>
+    <h2>✅ 해소된 것 — 86건</h2>
     <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 공용 <code>ConfirmDialog</code> 의 <code>confirming</code> prop 이 설계상 도달 불가 (선재 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 「정말 지울까요?」 확인 창에 「처리 중…」을 표시하는 스위치가 달려 있는데, 그 창이</p>
+        <p class="todo-risk"><b>방치하면.</b> 소비자가 <code>confirming</code> 을 넘기며 진행 표시가 되는 줄 알고 쓴다. 실제로는 아무 일도</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 공용 `ConfirmDialog` 의 `confirming` prop 이 설계상 도달 불가 (선재 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>확인을 누르는 즉시 닫혀서 그 표시를 <b>아무도 볼 수 없다.</b></p><p>일어나지 않는다. 더 나쁜 것은 <b>그 prop 에 단언을 붙이는 순간 그것이 도달 불가 조합을 지키는 가짜 그린</b>이 된다는 점이다(<code>unreachable-state-fixture-is-fake-green</code>). 실제로 PR #407 리뷰가 그 자리를 지적했고, 처방을 실행하다 원인이 소비자가 아니라 프리미티브임이 드러났다.</p><p><b>무엇.</b> <code>apps/web/src/components/ui/confirm-dialog.tsx:55-56</code> 이 확인 핸들러에서 <code>onConfirm()</code> 을 부른 <b>직후</b> 스스로 <code>onOpenChange(false)</code> 를 부른다. 그래서 소비자가 <code>setX(null)</code> 을 <code>onSuccess</code> 로 옮겨도 다이얼로그는 이미 닫힌 뒤다 — <b>소비자 쪽에서는 고칠 수 없다.</b> 같은 이유로 「실패하면 확인 맥락을 남긴다」도 불가능하고, 사용자는 무엇이 안 됐는지 창 밖에서 찾아야 한다.</p><p><b>처방.</b> <code>onOpenChange(false)</code> 를 컴포넌트에서 빼고 <b>닫는 책임을 소비자에게</b> 넘긴다. 그러면 <code>confirming</code> 이 실제로 관측되고 실패 시 맥락도 남는다. ★ 공용 프리미티브라 <b>소비처 전수를 함께 고쳐야 한다</b> — <code>grep -rn &quot;ConfirmDialog&quot; apps/web/src</code> 로 먼저 세고, 각 소비자가 성공 시 닫도록 바꾼 뒤에 프리미티브를 바꾼다(순서를 뒤집으면 그 사이 커밋에서 창이 안 닫힌다).</p><p><b>왜 지금이 아니라 부채인가.</b> 선재 상태이고 PR #407 이 만든 것이 아니다. 공용 프리미티브의 소비처 전수를 건드리는 변경이라 전환 규칙 편집 PR 에 섞으면 폭발 반경이 그 PR 의 주제를 넘는다. 현재 사용자 영향은 「진행 표시가 안 보인다」와 「실패 안내가 창 밖에 뜬다」 둘이고, 후자는 #407 이 목록 위 배너로 보이게 해 두었다.</p><p><b>해소.</b> PR #410 (2026-08-26). 처방대로 순서를 지켰다 — 소비처 <b>4파일 5군데</b>를 먼저 고치고 프리미티브를 나중에 바꿨다. 취소·Esc·바깥 클릭은 여전히 프리미티브가 닫는다(거기엔 「진행 중」도 「실패」도 없고, 넘기면 소비처마다 같은 한 줄이 복제된다).</p><p>★ <b>착수 중 회귀 하나를 발견해 함께 고쳤다.</b> 창이 열린 채 실패하는 것이 이제 정상 경로인데, <code>ValidatorConfigSection</code> 은 사유를 <b>목록 위 배너</b>로 그렸다 — 모달 오버레이가 그것을 가려 <b>종전보다 나빠진다</b>(종전엔 창이 닫혀서 배너가 보였다). 프리미티브에 <code>error</code> prop 을 두어 사유를 창 <b>안</b>에 싣고 배너를 지웠다. 나머지 두 소비처는 훅이 toast 로 알리고 toast 는 오버레이 위에 뜨므로 그대로 뒀다.</p><p>★★ <b>판정이 거짓말하던 자리 둘을 함께 닫았다.</b> ① <code>ValidatorConfigSection.test.tsx</code> <b>T6-17</b> 은 제목이 「확인 창을 닫지 않는다」인데 <b>그 판정이 없었다</b> — 주석이 「재지 않는다, 프리미티브가 못 하게 막는다」고 적혀 있었다. ② <code>confirming</code> 판정은 prop 을 직접 넘겨 재는 <b>도달 불가 조합</b>이었다. 응답을 붙잡아 실제로 그 상태를 만드는 판정을 두 소비처에 넣었다.</p><p><b><code>admin.workflows.test.tsx</code> 를 새로 만들었다</b> — 그 라우트에는 판정이 하나도 없었다(생성 페이지만 있었다). 성공 닫힘 · 실패 유지 · 처리 중 잠김 3건이 한 벌이다. 「성공하면 닫힌다」만 재면 항상 닫는 구현이, 「실패하면 남는다」만 재면 아무 때도 안 닫는 구현이 통과한다.</p><p><b>뮤테이션 2건.</b> 프리미티브가 다시 스스로 닫도록 되돌리면 <b>5건 red</b>(프리미티브 1 + 세 소비처 전부) · <code>disabled={confirming}</code> 을 죽이면 <b>3건 red</b>(프리미티브 1 + 실제 경로 2). 두 번째가 이 부채가 닫혔다는 핵심 증거다 — <code>confirming</code> 이 이제 실제로 도달 가능하다.</p><p>검증. 프론트 전량 599 파일 / 9896 테스트 통과 · eslint 0 · typecheck EXIT=0 · 판별식 전량 441 pass / 0 fail · pre-commit·pre-push 훅 정상 통과.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — 에러 응답에 내부 정보가 새지 않는지 지키는 판별식이 없다 (신규 · <b>해소</b> · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 오류 응답에 「무엇이 잘못됐는지」만 담고 내부 사정은 담지 않기로 했는데, 그 약속을</p>
+        <p class="todo-risk"><b>방치하면.</b> 누군가 디버깅하기 편하라고 예외 메시지를 응답에 그대로 실으면 아무도 못 잡는다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 에러 응답에 내부 정보가 새지 않는지 지키는 판별식이 없다 (신규 · **해소** · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>기계가 지키지 않는다. 사람이 리뷰에서 보는 것이 전부다.</p><p>그 메시지에는 파라미터 이름·타입·요청 본문 조각·권한 모델이 들어 있어, 응답이 곧 내부 구조의 설명서가 된다. 이 저장소에 그 사고 이력이 있다(메모리 <code>fr-pm-04-guard-exception-message-http-leak</code> — 가드 예외 메시지의 actorId·permission·scope 가 HTTP 로 샜다).</p><p><b>무엇.</b> PR #407 이 <code>TransitionRuleFrameworkErrors</code> 로 응답 메시지를 상수 4개로 고정하고 상세는 로그로만 보내도록 했다. 그런데 그것을 재는 테스트는 <code>jsonPath(&quot;$.error.message&quot;).isString</code> 뿐이라, 누가 <code>ex.message</code> 를 그 자리에 꽂아도 <b>여전히 통과</b>한다. 계약이 주석과 리뷰로만 지켜진다.</p><p><b>처방.</b> 응답 메시지가 <b>허용된 상수 집합에 속하는지</b>를 재는 판별식을 둔다. 상수 목록을 판별식에 베끼지 말고 <code>TransitionRuleFrameworkErrors</code> 에서 런타임에 읽어 대조한다 — 베끼면 그것이 또 하나의 목록이 된다. 컨트롤러 테스트에서 예외 메시지에 고유 토큰을 심고 그 토큰이 응답에 <b>없음</b>을 재는 방식도 같은 값을 한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 현재 구현은 정확하고 응답에 새는 것이 없다. 판별식은 「나중에 누가 깨뜨리는 것」을 막는 장치라 지금 없다고 사용자 영향이 생기지 않는다. 다만 이 표면은 앞으로 <code>ProblemDetail</code> 이식 유혹(형제 BC 선례)과 디버깅 편의 요구를 계속 받는 자리다.</p><p><b>해소.</b> PR #409 (2026-08-26). 처방 두 갈래 중 <b>카나리</b> 쪽을 골랐다. 프로덕션 Kotlin 0줄.</p><p>★ <b>첫 갈래(상수 런타임 대조)를 쓰지 않은 이유.</b> 그 자리의 기존 계약이 정반대를 못박아 뒀다 — 「코드 문자열은 리터럴로 적는다. 양쪽이 구현 상수를 import 하면 상수 한 벌이 갈려도 둘 다 초록이 된다」. 카나리는 허용 메시지 집합을 참조도 복사도 하지 않으므로 <code>two-lists-never-check-each-other</code> 를 구조적으로 회피하면서 그 대칭 계약도 안 건드린다.</p><p><b>두 판정을 함께 뒀다.</b> <code>error.message</code> <b>정확 일치</b>가 지금의 실질 방어선이다(봉투가 code·message 뿐이라 새는 통로가 하나다). <b>카나리</b>는 통로가 늘어나는 날(<code>ProblemDetail</code> 이식·<code>detail</code> 필드)을 위한 것이고, 응답 본문 <b>전체</b>를 보므로 새 칸이 생겨도 함께 잡는다.</p><p>★★ <b>착수 중 공허한 판정을 하나 만들었다가 뮤테이션으로 잡았다.</b> 처음에 「깨진 JSON 본문」에 카나리를 심었는데, 그 경로의 <code>ex.message</code> 는 <code>&quot;JSON parse error: Unexpected end-of-input in VALUE_STRING&quot;</code> 이고 <b>본문 조각이 없다</b>(Spring Boot 가 Jackson 의 <code>INCLUDE_SOURCE_IN_LOCATION</code> 을 꺼 둔다). 어떤 뮤테이션으로도 red 를 못 내는 판정이었다 (<code>unreachable-state-fixture-is-fake-green</code>). 같은 핸들러를 타면서 값이 실제로 실리는 <b>본문 타입 불일치</b>(<code>displayOrder</code> 에 문자열 → <code>InvalidFormatException</code>) 경로를 테스트로 추가하고 카나리를 그리로 옮겼다. 깨진 JSON 과 미인증 401 은 정확 일치만 남기고 <b>왜 여기만 카나리가 없는지</b>를 KDoc 에 적었다.</p><p><b>뮤테이션.</b> 메시지 상수 3개를 바꾸니 두 표면 <b>8건이 함께 red</b>. 카나리 단독 검증도 따로 돌려 옮긴 경로에서 <code>canary9f3a</code> 가 응답에 실제로 나타나는 것을 확인했다.</p><p>검증. ValidatorControllerTest 23 / 0 (착수 전 22) · PostActionControllerTest 14 / 0 (착수 전 13) · ktlintCheck BUILD SUCCESSFUL · 판별식 전량 441 pass / 0 fail · pre-push 모듈 전체 테스트 2m37s.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — 판별식 머리의 축 표와 실제 축을 대조하는 장치가 없다 (신규 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 검사기 파일 맨 위에 「이 파일이 무엇을 대조하는지」를 표로 적어 두는데, 그 표가 실제</p>
+        <p class="todo-risk"><b>방치하면.</b> 표를 읽고 「이건 이미 검사되고 있구나」라고 믿은 사람이 실제로는 없는 검사를 전제로</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 판별식 머리의 축 표와 실제 축을 대조하는 장치가 없다 (신규 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>검사 항목과 맞는지는 아무도 확인하지 않는다.</p><p>코드를 짠다. 반대로 있는 검사를 표가 빠뜨리면 다음 사람이 그것을 다시 만든다.</p><p><b>무엇.</b> PR #407 착수 시점에 <code>scripts/workflow/validator-type-catalog.test.ts</code> 머리의 표가 「축 4개」라고 적고 있었는데, <b>코드에는 이미 축 5(읽기 형태 봉인)가 있었다.</b> 표가 그것을 빠뜨린 채 오래 초록이었다. 같은 파일에 「<code>PostActionFormDialog.tsx</code> 가 url/method 를 손으로 든다」는 서술도 있었으나 실제 위치는 <code>PostActionConfigSection.tsx</code> 였다. 둘 다 #407 이 바로잡았지만 <b>다음에 축이 늘면 같은 방식으로 또 썩는다.</b></p><p>★ <b>이것은 그 파일이 스스로 이름 붙인 결함 양식의 재현이다</b> — 서로를 검사하지 않는 두 목록 (<code>two-lists-never-check-each-other</code>). 판별식이 자기가 잡으려는 결함을 자기 문서에서 재생산했다.</p><p><b>처방.</b> 머리 표의 축 행 수와 파일의 <code>test(</code> 블록(또는 축 함수) 수를 대조하는 판별식을 둔다. 축 번호를 상수로 적지 말고 양쪽을 런타임에 세어 비교한다. 표에 축 이름을 적었다면 그 이름이 실제 테스트 제목에 있는지까지 보면 더 강하다.</p><p><b>왜 지금이 아니라 부채인가.</b> #407 이 표를 실제 축과 맞춰 놨으므로 지금은 일치한다. 그리고 이 처방은 판별식 파일 자체의 구조에 의존해 다른 판별식으로 일반화할지 판단이 필요하다 — 같은 양식의 머리 표를 가진 파일이 더 있는지 먼저 세어야 한다.</p><p><b>해소.</b> PR #408 (2026-08-26). <b>축 8</b> 을 두 목록의 양방향 차집합으로 뒀다 — ① 머리 축 표의 행 번호 (<code>// | N 이름 | … |</code>) ② <code>축 N —</code> 마커 <b>뒤에 판정 함수가 오는</b> 번호.</p><p>★ <b>마커만으로 세지 않는다.</b> 그러면 이 축은 주석으로 만족된다 (<code>invariant-satisfied-by-helptext-not-logic</code>) — 판정 함수를 지웠는데 KDoc 만 남은 자리가 초록이 되면 표는 없는 검사를 있다고 말한 채 남는다. 다음 마커를 만나면 멈추므로 한 마커가 멀리 있는 남의 판정 함수를 자기 것으로 주워 오지도 않는다.</p><p>★ <b>축 이름은 대조하지 않았다.</b> 부채가 「이름까지 보면 더 강하다」를 적었지만 실측이 반박했다 — 표의 어휘와 테스트 제목의 어휘가 일관되지 않는다(축 1 은 표에서 「타입」인데 제목은 <code>type</code>, 축 3·6 은 제목에 그대로 있다). 지금 이름을 대조하면 false red 다. 번호가 정본이고 이름 대조는 어휘를 통일한 뒤의 일이다. 그 이유를 판별식 KDoc 에 적어 뒀다.</p><p>★ <b>머리 주석의 「축 7개」를 지웠다.</b> 개수를 적으면 그것이 표·코드에 이은 <b>세 번째 목록</b>이 되고 축 8 은 그 셋째를 보지 않는다.</p><p><b>일반화하지 않았다.</b> 부채가 요구한 「같은 양식의 머리 표를 가진 파일이 더 있는지 먼저 세어야 한다」를 실행했고, 답은 <b>하나뿐</b>이었다 — 판별식 32개 중 축 표 양식은 이 파일뿐이다(<code>debt-ledger-mapping</code> · <code>select-backend-modules</code> 는 표는 있으나 축 열이 아니다). 그래서 그 파일 안의 국소 축으로 뒀다.</p><p><b>뮤테이션 2건.</b> ① 표에서 축 5 행 삭제 → 정확히 <code>5</code> 를 지목하며 red(#407 이 겪은 상황 재현) ② 판정 함수 없이 <code>축 9 —</code> 마커만 추가 → <code>표에만 있음. 9</code> red. 판별식 전량 446 pass / 0 fail.</p><p>★★ <b>#408 은 이 부채를 절반만 닫았다 — PR #412 가 마저 닫았다.</b> #408 의 독립 리뷰가 뮤테이션으로 적발했다. 도입한 축 8 이 <b>축 5 에 대해 도움말 텍스트로 만족</b>되고 있었다 — <code>AXIS_DEFINITION</code> 상수의 KDoc 이 예시로 「축 5 — …」를 적어 자기 정규식에 매치됐고, 그 마커가 멀리 있는 공용 헬퍼 <code>assertSameSet</code> 을 자기 판정 함수로 주워 왔다. 축 5 판정 함수를 지워도·개명해도 GREEN 이었고, 정상 제거하면 거짓 red 였다.</p><p><b>하필 축 5(읽기 형태 봉인)가 이 부채를 낳은 바로 그 축이다</b> — 이 판별식이 막겠다고 만들어진 단 하나의 실제 회귀가, 이 판별식이 감지 못 하는 유일한 케이스였다. <code>source-text-guard-matches-its-own-comment</code> 를 그 양식을 막겠다고 만든 축이 재생산한 것이다.</p><p><b>위 뮤테이션 2건이 왜 놓쳤나.</b> ①은 진짜 축 5 와 그 KDoc <b>언급</b>을 구별하지 못한다(축 5 를 통째로 지운 상태에서도 red 다). ②는 축 <b>9</b>(신규 번호)라 사정거리 밖이었다. 둘 다 통과했지만 둘 다 결함이 사는 자리를 비껴갔다. <b>뮤테이션이 통과했다는 사실은 그 뮤테이션이 결함 지점을 지났을 때만 증거가 된다.</b></p><p>#412 의 처방은 텍스트가 아니라 <b>구조</b>다 — 마커 뒤 첫 코드 줄이 판정 함수여야 하고 사이에는 주석· 빈 줄만 허용한다. 텍스트만 고치면 결함이 축 8 자신(구획 배너)으로 옮겨 간다. 그리고 판정을 파일이 아니라 <b>헬퍼 함수 계약</b>에 걸어, 이 결함이 리뷰 없이도 red 로 드러나게 했다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — 폼 스키마 파서의 <b>부분</b> death 가 무음이다 (신규 · <b>해소</b> · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 화면의 입력 폼과 명세 표를 대조하는 검사기가 있는데, 그 검사기가 <b>전부</b> 못 읽으면</p>
+        <p class="todo-risk"><b>방치하면.</b> 폼 선언 하나가 검사기가 모르는 형태로 바뀌면 그 type 만 대조에서 빠진다. 화면과 표가</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — project-workflow — 폼 스키마 파서의 **부분** death 가 무음이다 (신규 · **해소** · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>경보가 울리지만 <b>일부만</b> 못 읽으면 조용하다.</p><p>갈려도 초록이고, 갈린 사실은 사용자가 저장을 눌러 400 을 받을 때 드러난다.</p><p><b>무엇.</b> <code>validator-type-catalog.test.ts</code> 축 6 의 post-action 파서(<code>siblingConfigValue</code>)는 <code>type:</code> 뒤로만 훑으므로 <code>{ config: {…}, type: &#39;X&#39; }</code> 처럼 <b>키 순서가 뒤집히면</b> 그 선언이 조용히 사라진다. 비-공허 짝은 「집합이 통째로 비었는가」만 보므로 <b>전량 소실은 잡고 부분 소실은 못 잡는다.</b> 오늘은 그 표면에 편집 폼이 있는 type 이 <code>CALL_WEBHOOK</code> 하나뿐이라 부분 = 전량이고, 그래서 무해하다.</p><p><b>처방.</b> 파서가 「읽은 선언 수」와 「파일에 있는 <code>type:</code> 리터럴 수」를 함께 세어 <b>불일치를 축 7(봉인)에 싣는다.</b> 지금 축 7 이 잡는 여섯 형태와 같은 자리다. 또는 <code>siblingConfigValue</code> 를 순서 무관으로 고쳐 같은 객체 리터럴 안의 <code>type</code> 과 <code>config</code> 를 함께 찾게 한다.</p><p><b>왜 지금이 아니라 부채인가.</b> 그 표면에 폼이 있는 type 이 하나뿐인 동안은 부분 소실이 성립하지 않는다. <b>두 번째 type 에 편집 폼이 붙는 시점이 이 부채의 만기</b>다 — 그때 함께 닫는 것이 자연스럽다.</p><p><b>해소.</b> PR #408 (2026-08-26). 처방 두 갈래 중 <b>파서 수정</b> 쪽을 골랐다. <code>type:</code> 의 감싸는 객체 리터럴 경계를 먼저 찾고(<code>enclosingObjectStart</code>) 그 안을 처음부터 훑도록 고쳐 키 순서와 무관해졌다.</p><p>★ <b>개수 대조 갈래는 쓰지 않았다.</b> 파서의 <code>continue</code> 는 「요청 바디가 아니라 그냥 <code>type</code> 이라는 이름의 프로퍼티」라는 <b>정당한 경우</b>도 건너뛴다. 「읽은 선언 수 ↔ <code>type:</code> 리터럴 수」를 그대로 비교하면 false red 가 난다. 파서를 고치면 정당·결함 구분이 자동으로 된다.</p><p>파서 계약을 직접 재는 describe 4건을 함께 뒀다 — 정방향 비-공허 짝(없으면 순서 무관 단언이 「양쪽 다 0건」으로 공허해진다) · 순서 무관 · 정당한 스킵 보존 · 경계 보존(옆 객체의 <code>config</code> 를 붙이지 않음).</p><p><b>만기를 앞당긴 이유.</b> 종전 항목은 「두 번째 type 에 편집 폼이 붙는 시점이 만기」로 적었다. 그 만기를 사람이 기억하는 장치로 두는 대신, 축 8(부채 137)로 어차피 여는 파일이라 같은 PR 에서 닫았다. 두 번째 폼을 붙이는 PR 이 이 부채를 모른 채 지나갈 위험이 사라졌다(Maxi 결정, 2026-08-26).</p><p><b>red 실측.</b> 수정 전 「type 이 config 보다 뒤에」가 <code>[]</code> vs 기대값으로 not ok, 나머지 3건 ok.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">project-workflow — 프레임워크 예외 3종이 도메인 에러 봉투 밖으로 샌다 (선재 · <b>해소</b> · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 주소에 잘못된 값을 넣거나 요청 본문이 깨졌거나 로그인이 안 된 상태로 부르면, 응답이</p>
