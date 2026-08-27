@@ -333,7 +333,8 @@ class BulkOperationIntegrationTest {
         open fun bulkItemApplier(
             issueService: IssueApplicationService,
             bulkRepo: BulkOperationRepository,
-        ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo)
+            issueRepository: IssueRepository,
+        ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo, issueRepository)
 
         @Bean
         open fun bulkItemFailureRecorder(bulkRepo: BulkOperationRepository): BulkItemFailureRecorder = BulkItemFailureRecorder(bulkRepo)

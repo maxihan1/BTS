@@ -11,6 +11,7 @@ import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.repository.IssueRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
@@ -29,11 +30,13 @@ import org.springframework.transaction.annotation.Transactional
  *
  * @param issueService 이슈 변경 유스케이스.
  * @param bulkRepo 항목 상태 기록 Repository.
+ * @param issueRepository STATUS_MIGRATION 이 워크플로우 엔진을 우회해 상태를 쓰는 Repository.
  */
 @Component
 class BulkItemApplier(
     private val issueService: IssueApplicationService,
     private val bulkRepo: BulkOperationRepository,
+    private val issueRepository: IssueRepository,
 ) {
     /**
      * 이슈 변경과 SUCCEEDED 상태 기록을 단일 REQUIRES_NEW 트랜잭션으로 수행한다.
@@ -87,6 +90,14 @@ class BulkItemApplier(
                         expectedVersion = existing.version,
                         resolutionId = payload.resolutionId,
                     ),
+                )
+            }
+            is BulkOperationPayload.StatusMigration -> {
+                issueRepository.applyTransition(
+                    key = issueKey,
+                    toState = payload.mappings.values.first(),
+                    expectedVersion = existing.version,
+                    resolutionId = existing.resolutionId,
                 )
             }
         }

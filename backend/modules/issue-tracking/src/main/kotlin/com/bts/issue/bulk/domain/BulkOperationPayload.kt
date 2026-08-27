@@ -9,6 +9,7 @@ import java.util.UUID
  *
  * - [Edit]: BULK_EDIT 작업의 필드 변경 파라미터.
  * - [Transition]: BULK_TRANSITION 작업의 전환 대상 상태 키.
+ * - [StatusMigration]: STATUS_MIGRATION 작업의 상태 매핑과 프로젝트 범위.
  *
  * Repository 는 이 값을 JSONB 컬럼에 직렬화하여 저장하고, 조회 시 복원한다.
  * PR2 워커는 이 payload 를 읽어 실제 이슈 갱신을 수행한다.
@@ -40,5 +41,21 @@ sealed class BulkOperationPayload {
     data class Transition(
         val toStateKey: String,
         val resolutionId: UUID? = null,
+    ) : BulkOperationPayload()
+
+    /**
+     * STATUS_MIGRATION 작업 파라미터.
+     *
+     * 워크플로우에서 빠지는 상태에 남은 이슈를 어디로 옮길지 정의한다.
+     * 대상 이슈 목록은 큐잉 시점에 확정되지 않는다 — 워커가 실행 시점에
+     * [mappings] 의 출발 상태와 [projectKeys] 로 이슈를 다시 조회한다.
+     *
+     * @property mappings 출발 상태 키 → 대상 상태 키. 항목의 현재 상태로 조회해 대상을 정한다.
+     * @property projectKeys 이관 대상 프로젝트 키 범위. 상태 키는 전역이라 이 범위가 없으면
+     *   다른 프로젝트의 이슈까지 함께 옮겨진다.
+     */
+    data class StatusMigration(
+        val mappings: Map<String, String>,
+        val projectKeys: Set<String>,
     ) : BulkOperationPayload()
 }

@@ -343,7 +343,8 @@ class BulkTransitionResolutionTest {
         open fun bulkItemApplier(
             issueService: IssueApplicationService,
             bulkRepo: BulkOperationRepository,
-        ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo)
+            issueRepository: IssueRepository,
+        ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo, issueRepository)
 
         @Bean
         @Suppress("MaxLineLength")

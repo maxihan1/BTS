@@ -366,6 +366,8 @@ class BulkOperationRepository(
             return when (type) {
                 BulkOperationType.BULK_EDIT -> BulkOperationPayload.Edit(priority = null, impact = null)
                 BulkOperationType.BULK_TRANSITION -> BulkOperationPayload.Transition(toStateKey = "")
+                BulkOperationType.STATUS_MIGRATION ->
+                    BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectKeys = emptySet())
             }
         }
         return when (type) {
@@ -373,6 +375,8 @@ class BulkOperationRepository(
                 objectMapper.readValue(json, BulkOperationPayload.Edit::class.java)
             BulkOperationType.BULK_TRANSITION ->
                 objectMapper.readValue(json, BulkOperationPayload.Transition::class.java)
+            BulkOperationType.STATUS_MIGRATION ->
+                objectMapper.readValue(json, BulkOperationPayload.StatusMigration::class.java)
         }
     }
 

@@ -7,8 +7,10 @@ package com.bts.issue.bulk.domain
  *
  * - [BULK_EDIT]: 여러 이슈의 필드(담당자, 우선순위 등)를 한 번에 수정한다.
  * - [BULK_TRANSITION]: 여러 이슈의 워크플로우 상태를 한 번에 전환한다.
+ * - [STATUS_MIGRATION]: 워크플로우에서 빠지는 상태의 이슈를 지정한 대체 상태로 옮긴다.
  */
 enum class BulkOperationType {
     BULK_EDIT,
     BULK_TRANSITION,
+    STATUS_MIGRATION,
 }

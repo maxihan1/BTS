@@ -63,7 +63,7 @@ class BulkOperationApplicationService(
      * @param request 접수 요청 커맨드.
      * @return 생성된 [BulkOperationId].
      * @throws IllegalArgumentException issueKeys 가 비어있거나 [BULK_OPERATION_MAX_SIZE] 초과,
-     *   operationType ↔ payload 불일치, payload 필드 범위 위반 시.
+     *   operationType ↔ payload 불일치, payload 필드 범위 위반, STATUS_MIGRATION 접수 시도 시.
      */
     @Transactional
     fun submit(
@@ -115,6 +115,7 @@ class BulkOperationApplicationService(
      * - operationType ↔ payload 정합성 (반대편 payload 는 null 이어야 한다)
      * - BULK_EDIT: editPayload non-null, transitionPayload null, 변경 필드 1개 이상, priority/impact 범위
      * - BULK_TRANSITION: transitionPayload non-null, editPayload null, toStateKey 비어있지 않음
+ * - STATUS_MIGRATION: 접수 불가 — 이 엔드포인트가 아니라 워크플로우 상태 이관 어댑터가 큐잉한다
      *
      * @throws IllegalArgumentException 검증 위반 시.
      * @return 검증된 도메인 [BulkOperationPayload].
@@ -140,6 +141,10 @@ class BulkOperationApplicationService(
                 }
                 validateTransitionPayload(request.transitionPayload)
             }
+            BulkOperationType.STATUS_MIGRATION ->
+                throw IllegalArgumentException(
+                    "STATUS_MIGRATION is not accepted by this endpoint",
+                )
         }
     }
 
