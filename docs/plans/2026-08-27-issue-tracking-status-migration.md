@@ -158,6 +158,215 @@ REST 단일 페이지가 커서 `WebFetch` 가 truncate 돼 원문을 못 얻었
 
 G4·G6 은 그대로 뒀으면 **데이터 손상**이었다. 둘 다 red 테스트(5·6번)와 뮤테이션 짝을 붙였다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. V038 — `operation_type` CHECK 에 `STATUS_MIGRATION` 을 더한다
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V038__bulk_operations_status_migration.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/db/V038MigrationIntegrationTest.kt`]
+- depends-on: []
+- jira: []
+
+**RED**.
+- 파일 `…/bulk/db/V038MigrationIntegrationTest.kt` (`V008MigrationIntegrationTest` 서식 복제)
+- 테스트 3건
+  - `operation_type='STATUS_MIGRATION'` INSERT 가 **성공**한다
+  - `operation_type='NONSENSE'` INSERT 는 여전히 **거부**된다 (CHECK 가 살아 있다는 비-공허 짝)
+  - 기존 `BULK_EDIT`·`BULK_TRANSITION` INSERT 가 여전히 성공한다 (회귀)
+- 실패 메시지 (예상). `new row for relation "bulk_operations" violates check constraint "chk_bulk_operations_operation_type"`
+
+**GREEN**. `DROP CONSTRAINT` → `ADD CONSTRAINT` 로 3값 허용 + `COMMENT ON COLUMN` 갱신.
+
+**REFACTOR**. 파일 머리에 한 줄 주석(마이그레이션 목적) · `DATA.md` §4 제약 이름 명시 규칙 확인.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*V038MigrationIntegrationTest' --rerun-tasks`
+
+> ★**제약 이름을 그대로 재사용한다.** 이름을 바꾸면 다음 사람이 「어느 쪽이 진짜인가」를 못 푼다.
+> `V008:16` 의 `chk_bulk_operations_operation_type` 을 그대로 쓴다.
+
+---
+
+### Task 2. shared-kernel 이관 큐잉 포트 계약을 신설한다 (fail-closed)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueStatusMigrationPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/IssueStatusMigrationPortContractTest.kt`]
+- depends-on: []
+- jira: [J7]
+
+**RED**.
+- 파일 `shared-kernel/src/test/.../IssueStatusMigrationPortContractTest.kt`
+- 테스트 3건
+  - 인터페이스에 **default 구현이 0개**다 (fail-closed — 리플렉션으로 `isDefault` 를 센다)
+  - 커맨드가 **매핑 목록**을 갖는다 (J7 — 단일 쌍이 아니다)
+  - 커맨드가 **`projectKeys` 를 갖는다** (범위 없이 못 부른다)
+- 실패 메시지 (예상). `IssueStatusMigrationPort` 클래스 없음
+
+**GREEN**. `IssueStatusMigrationPort` + `StatusMigrationCommand(actorUserId, projectKeys, mappings)` +
+`StatusMigrationMapping(fromStatusKey, toStatusKey)`. 계약 타입은 `String`·`UUID`·`Set`·`List` 뿐이고
+반환은 `UUID` 다.
+
+**REFACTOR**. KDoc — 의존 방향 다이어그램 · 「어댑터는 per-issue 전환 권한을 검사하지 않는다.
+위조 차단은 호출자의 발행 권한 책임」(편차 X4) · fail-closed 사유. `IssueMutationPort` KDoc 을 준거로 한다.
+
+**검증**. `./gradlew :modules:shared-kernel:test --tests '*IssueStatusMigrationPortContractTest' --rerun-tasks`
++ ArchUnit BC 격리 룰 통과
+
+> **근거 learnings** — 「@Service / @Repository 의 KDoc 책임 분리 선언과 메서드 구현이 일치하는지
+> 확인」(#8 ExternalAccountRepository 책임 침범). 포트 KDoc 이 약속한 신뢰 모델과 어댑터 구현이
+> 어긋나면 그게 곧 보안 구멍이다.
+
+---
+
+### Task 3. `STATUS_MIGRATION` 타입과 `StatusMigration` payload 변형을 더한다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperationType.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperationPayload.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/repository/BulkOperationRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/repository/BulkOperationRepositoryTest.kt`]
+- depends-on: [1]
+- jira: [J7]
+
+**RED**.
+- 파일 `…/bulk/repository/BulkOperationRepositoryTest.kt`
+- 테스트 2건
+  - `StatusMigration(mappings = mapOf("in_review" to "in_progress", "blocked" to "todo"))` 를 저장했다가
+    읽으면 **같은 매핑**으로 복원된다 (JSONB 왕복)
+  - `operation_type=STATUS_MIGRATION` 인데 payload 가 비면 빈 매핑으로 복원된다 (`toPayload` 의 null 가지)
+- 실패 메시지 (예상). `Unresolved reference: STATUS_MIGRATION`
+
+**GREEN**.
+- `BulkOperationType` 에 `STATUS_MIGRATION` 추가
+- `BulkOperationPayload` 에 `data class StatusMigration(val mappings: Map<String, String>)` 추가
+- `BulkOperationRepository.toPayload` 의 `when (type)` **2곳**(`:367` null 가지 · `:372` 역직렬화 가지) 확장
+- `BulkItemApplier.when (payload)` 에 `StatusMigration` 가지 추가 — 이 task 에서는 **`applyTransition` 을
+  대상 상태로 부르는 최소 구현**만 둔다. 매핑 조회·보존 규칙은 Task 4
+
+**REFACTOR**. `BulkOperationPayload` 머리 주석의 「BULK_EDIT(Edit) / BULK_TRANSITION(Transition)」을
+3값으로 갱신 — 주석이 옛 목록을 남기면 그것이 두 번째 목록이 된다.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*BulkOperationRepositoryTest' --rerun-tasks`
+
+> ★**이 task 의 본질은 컴파일러를 일하게 만드는 것이다.** `BulkItemApplier` 는 payload 로 분기하므로
+> enum 만 늘리면 **컴파일러가 아무 말도 안 하고 옛 가지를 탄다.** sealed 변형을 더해야 `when` 이
+> 깨지고 분기 누락이 구조적으로 불가능해진다 (D2). `when (type)` 2곳도 같은 원리로 강제된다.
+
+---
+
+### Task 4. 엔진을 우회하되 매핑·OCC·해결책은 지킨다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkItemApplierStatusMigrationTest.kt`]
+- depends-on: [3]
+- jira: [J7, J8]
+
+**RED**.
+- 파일 `…/bulk/application/BulkItemApplierStatusMigrationTest.kt` (신규)
+- 테스트 5건 — spec §측정 가능한 완료 기준 1·2·4·6 + E8·E10
+  - 매핑 2개일 때 각 이슈가 **자기 출발 상태의 대상**으로 간다 (완료기준 1 · J7)
+  - 이관 후 `current_state_key` 가 **전량** 새 상태다 (완료기준 2)
+  - 유효 전환이 0인 상태에서도 `TRANSITION_NOT_ALLOWED` **0건** — 엔진을 안 탄다 (완료기준 4 · J8)
+  - 이관 후 `resolution_id` 가 **보존**된다 (완료기준 6 · G6)
+  - 처리 시점 현재 상태가 매핑에 없으면 그 건만 FAILED — 임의 대상으로 밀지 않는다 (E8)
+- 실패 메시지 (예상). Task 3 의 최소 구현이 매핑을 안 보므로 첫 테스트가 잘못된 대상으로 이동
+
+**GREEN**. `StatusMigration` 가지를 완성한다.
+- `existing.currentStateKey` 로 `mappings` 를 조회해 대상 결정 (없으면 예외 → 상위가 FAILED 기록)
+- `repo.applyTransition(key, target, existing.version, existing.resolutionId)` — **기존 해결책을 그대로 실어 보낸다**
+- `issueService.transitionIssue` 는 **부르지 않는다**
+
+**REFACTOR**. 가지에 KDoc — 「무엇을 우회하고 무엇을 지키는가」 8단계 표를 요약하고 spec §D3 을 링크.
+E12(큐잉 이후 들어온 이슈는 이관되지 않는다 · 부채 143)를 **KDoc 에 명시**한다.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*BulkItemApplierStatusMigrationTest' --rerun-tasks`
+
+> **뮤테이션 짝 (GREEN 선커밋 뒤)** — ① `applyTransition` 의 `resolutionId` 인자를 `null` 로 바꾸면
+> **해결책 보존 테스트만** red ② 매핑 조회를 첫 항목 고정으로 바꾸면 **매핑 테스트만** red.
+> 저장소 규율대로 **커밋 후**에 흔든다.
+
+---
+
+### Task 5. 어댑터가 범위 안에서만 큐잉하고 잘못된 요청을 거부한다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/workflow/WorkflowStatusMigrationAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/integration/StatusMigrationEnqueueIntegrationTest.kt`]
+- depends-on: [2, 3]
+- jira: [J1, J6, J7]
+
+**RED**.
+- 파일 `…/bulk/integration/StatusMigrationEnqueueIntegrationTest.kt` (신규 · Testcontainers)
+- 테스트 7건
+  - **범위 밖 프로젝트의 같은 상태 이슈가 무변경**이다 (완료기준 5 · S6 · G4)
+  - 큐잉하면 `bulk_operations` 1건(`STATUS_MIGRATION`·`PENDING`) + `items` N건 + pgmq 메시지가 생긴다 (J1)
+  - 거부 — `from == to` (E1)
+  - 거부 — `toStatusKey` 가 상태 카탈로그에 없음 (E2)
+  - 거부 — 대상 0건 (E3) · 매핑 비어 있음 (E5)
+  - 거부 — 상한 초과 (E4 · J6)
+  - 거부 — 같은 `fromStatusKey` 가 두 번 (E7)
+- 실패 메시지 (예상). `WorkflowStatusMigrationAdapter` 클래스 없음
+
+**GREEN**. `AutomationIssueMutationAdapter` 를 준거로 어댑터를 만든다.
+- `projectKeys` 로 **대상 이슈를 좁혀** 스냅샷을 뜬다
+- 검증 6종을 통과한 요청만 `bulk_operations` + `items` 생성 후 pgmq enqueue
+- `actorUserId` 를 그대로 `actor_id` 에 넣는다 (per-issue 권한 검사 없음 — 편차 X4)
+
+**REFACTOR**. KDoc — 범위 필터가 없으면 남의 프로젝트 이슈가 함께 옮겨진다는 사유(G4)를 적는다.
+`E6`(같은 대상으로 여러 출발이 몰리는 것)은 **허용**임을 명시 — 막지 않는 것도 결정이다.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*StatusMigrationEnqueueIntegrationTest' --rerun-tasks`
+
+> **뮤테이션 짝** — `projectKeys` 필터를 지우면 **범위 테스트만** red 여야 한다.
+> **근거 learnings** — 「영속 볼륨. 「마이그레이션이 안 넣음」≠「데이터 없음」」. 공용 dev DB 의
+> 선재 행이 범위 테스트를 가짜 그린으로 만들 수 있으므로 **픽스처가 자기 프로젝트를 직접 만든다.**
+
+---
+
+### Task 6. 이관도 이벤트와 이력을 남긴다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkItemApplierStatusMigrationTest.kt`]
+- depends-on: [4]
+- jira: [J8]
+
+**RED**.
+- 파일 Task 4 와 같은 테스트 파일에 2건 추가
+  - 이관 성공 시 `IssueTransitioned` 가 발행된다 (F11 · G2)
+  - 이관 성공 시 `issue_change_item` 에 상태 변경이 남는다 (F12)
+- 실패 메시지 (예상). 발행 0건 · 이력 0건
+
+**GREEN**. `StatusMigration` 가지에서 `eventPublisher.publish(IssueTransitioned(...))` +
+`IssueHistoryRecorder` 호출을 더한다. `plan.emitEvents`(후처리)는 **부르지 않는다** — plan 이 없다 (J8).
+
+**REFACTOR**. KDoc 에 「무엇을 발행하고 무엇을 안 하는가」를 적는다 — Jira J8 의
+"Perform actions rules won't automatically do anything" 과 결과가 같음을 인용한다.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*BulkItemApplierStatusMigrationTest' --rerun-tasks`
+
+> ★**이벤트를 끄는 쪽이 더 위험하다.** `IssueTransitioned` 를 구독하는 검색 색인·보드·자동화가
+> 옮겨간 이슈를 모른 채 썩는다 — DB 는 맞는데 화면이 틀리는 상태가 된다 (G2).
+
+## Plan 메타
+
+- **task 수** 6 · **예상 wave 4**
+  - wave 1 — T1(마이그레이션) · T2(포트 계약) *병렬*
+  - wave 2 — T3(enum + payload + repository) *T1 의존*
+  - wave 3 — T4(엔진 우회) · T5(어댑터 큐잉) *병렬 · 파일 교집합 0*
+  - wave 4 — T6(이벤트·이력) *T4 와 `BulkItemApplier.kt` 겹침 → 자동 직렬화*
+- **구현 규율** TDD red-first (T3 = 정식 TDD + 마이그레이션 검증). `test:` → `feat:`/`fix:` 순서가
+  커밋 그래프에서 대조되어야 한다
+- **추가 검증** `ktlintCheck` · `detekt` (둘 다 `--rerun-tasks` — worktree 가 gradle 설정 캐시를
+  어긋나게 해 `UP-TO-DATE` 로 조용히 건너뛴다) · 판별식 전량 · `verify-master-plan.sh` · doc-index drift 0
+- **뮤테이션 검증 4건** (전부 **GREEN 선커밋 뒤**) — ①`StatusMigration` 가지를 `Transition` 본문으로
+  바꾸면 완료기준 1·2·4 만 red ②`resolutionId` 를 `null` 로 바꾸면 완료기준 6 만 red
+  ③`projectKeys` 필터를 지우면 완료기준 5 만 red ④V038 을 되돌리면 큐잉 통합 테스트만 red
+- **Jira 매핑** — `J1→T5` · `J6→T5` · `J7→T2·T3·T4·T5` · `J8→T4·T6` ·
+  `J3→범위 밖(PR 6 이 이미 충족 — 상태별 잔여 건수를 발행 응답에 실었다)` ·
+  `J5→범위 밖(#395 가 이미 충족 — 이 PR 은 전환 API 경로를 건드리지 않는다)` ·
+  `J4·J9→기각(편차 X1)`. **채택 항목 차집합 0.**
+- **범위 밖 재확인** — project-workflow 결선 · 부채 143 · `countIssuesInStatus` 읽기 스코프는
+  **PR 7b**. 이 PR 만으로는 사용자에게 보이는 변화가 0 이며 게이트 2 요약에 그대로 싣는다
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
