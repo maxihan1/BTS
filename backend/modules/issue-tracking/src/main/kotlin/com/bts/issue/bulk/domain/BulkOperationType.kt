@@ -1,4 +1,4 @@
-// 일괄 작업 유형 enum — BULK_EDIT(필드 수정), BULK_TRANSITION(상태 전환)
+// 일괄 작업 유형 enum — BULK_EDIT(필드 수정), BULK_TRANSITION(상태 전환), STATUS_MIGRATION(상태 이관)
 
 package com.bts.issue.bulk.domain
 

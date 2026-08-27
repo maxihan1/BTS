@@ -1,4 +1,5 @@
-// 일괄 작업 payload sealed class — BULK_EDIT(Edit) / BULK_TRANSITION(Transition) 타입별 파라미터를 안전하게 표현
+// 일괄 작업 payload sealed class — BULK_EDIT(Edit) / BULK_TRANSITION(Transition) /
+// STATUS_MIGRATION(StatusMigration) 타입별 파라미터를 안전하게 표현
 
 package com.bts.issue.bulk.domain
 

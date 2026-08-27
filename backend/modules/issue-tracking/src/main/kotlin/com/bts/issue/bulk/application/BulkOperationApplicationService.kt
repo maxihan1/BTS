@@ -115,7 +115,7 @@ class BulkOperationApplicationService(
      * - operationType ↔ payload 정합성 (반대편 payload 는 null 이어야 한다)
      * - BULK_EDIT: editPayload non-null, transitionPayload null, 변경 필드 1개 이상, priority/impact 범위
      * - BULK_TRANSITION: transitionPayload non-null, editPayload null, toStateKey 비어있지 않음
- * - STATUS_MIGRATION: 접수 불가 — 이 엔드포인트가 아니라 워크플로우 상태 이관 어댑터가 큐잉한다
+     * - STATUS_MIGRATION: 접수 불가 — 이 엔드포인트가 아니라 워크플로우 상태 이관 어댑터가 큐잉한다
      *
      * @throws IllegalArgumentException 검증 위반 시.
      * @return 검증된 도메인 [BulkOperationPayload].
