@@ -9,6 +9,7 @@ import {
 } from '../src/i18n/validator-labels'
 import { E2E_IS_SYSTEM_ADMIN_KEY } from '../src/mocks/auth-handlers'
 import {
+  E2E_DELETE_FAILS_KEY,
   SEEDED_VALIDATOR_TRANSITION_ID,
   SEEDED_VALIDATOR_WORKFLOW_KEY,
   VALIDATOR_TYPES,
@@ -384,6 +385,59 @@ test.describe('FR-WF-06 전환 규칙 설정 (SYSTEM_ADMIN)', () => {
     await expect(
       typeSelect.getByRole('option', { name: VALIDATOR_TYPES.customExpression, exact: true }),
     ).toHaveCount(0)
+  })
+
+  /**
+   * T6 (부채 139) — 삭제가 실패하면 확인 창이 **열린 채** 남고 사유가 **그 창 안**에 뜬다.
+   *
+   * Given 삭제가 봉투 없는 500 을 돌려준다 (`E2E_DELETE_FAILS_KEY`)
+   * When  확인 창에서 규칙 삭제를 누른다
+   * Then  창이 닫히지 않고, 삭제 전용 fallback 문구가 그 창 안의 `alert` 로 뜬다
+   * And   처리 중에는 확인·취소가 **둘 다** 잠긴다 — 그 사이 닫으면 실패가 갈 곳이 없다
+   *
+   * ★ 유닛(T6-16·T6-17)이 같은 계약을 jsdom + MSW 로 재지만, 이 화면의 모달은 Radix portal 이라
+   *   실제 브라우저에서만 드러나는 자리가 있다(오버레이가 배경을 가리는 것 · 포커스 이동).
+   *   `jira-parity-contract` §5 가 UI PR 에 e2e 동반 실행을 요구하는 이유다.
+   *
+   * ★★ 토글이 필요한 이유. Playwright `page.route` 로는 이 실패를 만들 수 없다 — MSW worker 가
+   *   요청을 페이지 컨텍스트에서 처리해 네트워크로 나가지 않는다(실측). worker 도 전역에 노출돼
+   *   있지 않아 `worker.use()` 를 부를 수 없다.
+   */
+  test('T6 삭제 실패는 확인 창을 닫지 않고 그 안에 사유를 남긴다', async ({ page }) => {
+    await page.addInitScript((key) => {
+      localStorage.setItem(key, 'true')
+    }, E2E_DELETE_FAILS_KEY)
+
+    await page.goto(`/workflows/${SEEDED_VALIDATOR_WORKFLOW_KEY}`)
+    await expect(sectionHeading(page)).toBeVisible()
+    await transitionSelect(page).selectOption(SEEDED_VALIDATOR_TRANSITION_ID)
+    await expect(page.getByText(VALIDATOR_TYPES.customExpression, { exact: true })).toBeVisible()
+
+    await page
+      .getByRole('button', {
+        name: anyRowNumber(validatorDeleteButtonLabel(VALIDATOR_TYPES.customExpression, 1)),
+      })
+      .click()
+
+    const confirm = page.getByRole('dialog', {
+      name: validatorLabels.dialog.deleteTitle,
+      exact: true,
+    })
+    await expect(confirm).toBeVisible()
+    await confirm
+      .getByRole('button', { name: validatorLabels.dialog.deleteConfirmButton, exact: true })
+      .click()
+
+    // Then. 창이 남고 사유가 그 안에 있다.
+    await expect(confirm).toBeVisible()
+    await expect(confirm.getByRole('alert')).toContainText(validatorLabels.error.removeFailed)
+
+    // And. 행도 목록에 남는다 — 실패했으므로 지워지지 않았다.
+    await confirm
+      .getByRole('button', { name: validatorLabels.dialog.deleteCancelButton, exact: true })
+      .click()
+    await expect(confirm).toBeHidden()
+    await expect(page.getByText(VALIDATOR_TYPES.customExpression, { exact: true })).toBeVisible()
   })
 })
 

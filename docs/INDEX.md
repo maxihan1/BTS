@@ -19,4 +19,4 @@ head -20 docs/INDEX-recent.md            # 최근 작업 12건
 grep " fr-ux-08" docs/INDEX-recent.md    # slug 로 찾기
 ```
 
-> 집계. spec 274 · plan 347 · decision 135 · adr 42
+> 집계. spec 274 · plan 348 · decision 135 · adr 42

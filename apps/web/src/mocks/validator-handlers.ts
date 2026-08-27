@@ -48,6 +48,14 @@ const ERROR_CODES = {
   notFound: 'WORKFLOW_VALIDATOR_NOT_FOUND',
 } as const
 
+/**
+ * E2E 시나리오 토글 — `'true'` 면 validator DELETE 가 봉투 없는 500 을 돌려준다.
+ *
+ * 확인 창이 **열린 채 실패한** 화면(부채 139)을 실제 브라우저에서 확인하려면 이 토글이 필요하다.
+ * 형제 `E2E_IS_SYSTEM_ADMIN_KEY` 와 같은 관례다(메모리 `e2e-msw-scenario-toggle-localstorage-flag`).
+ */
+export const E2E_DELETE_FAILS_KEY = '__bts_e2e_validator_delete_fails'
+
 /** UUID 형식 판정 — backend 는 `{id}` 세그먼트를 UUID 로 파싱하고 실패하면 400 을 낸다. */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -355,6 +363,19 @@ export const validatorHandlers = [
    * 편집 불가 행도 삭제된다 — backend 가 막지 않으므로 목도 막지 않는다.
    */
   http.delete(ITEM_PATH, ({ params }) => {
+    // E2E 시나리오 토글 — 삭제 실패 화면을 실제 브라우저에서 확인하기 위한 것이다.
+    //
+    // ★Playwright 의 `page.route` 로는 이 실패를 만들 수 없다. MSW worker 가 요청을 페이지
+    //  컨텍스트에서 처리해 네트워크로 나가지 않으므로 route 가 걸리지 않는다(실측). worker 도
+    //  전역에 노출돼 있지 않아 `worker.use()` 를 부를 수도 없다. 그래서 형제
+    //  `E2E_IS_SYSTEM_ADMIN_KEY` 가 세운 localStorage 토글 관례를 그대로 쓴다.
+    //
+    // ★★봉투 **없는** 500 이다. 확인 창의 fallback 문구(삭제 전용)가 뜨는 갈래를 재현한다 —
+    //  유닛 T6-17 이 재는 것과 같은 상태다.
+    if (globalThis.localStorage?.getItem(E2E_DELETE_FAILS_KEY) === 'true') {
+      return new HttpResponse(null, { status: 500 })
+    }
+
     const id = pathParam(params, 'id')
     if (!UUID_PATTERN.test(id)) {
       return errorResponse(400, ERROR_CODES.invalidRequest, `id 가 UUID 가 아닙니다: '${id}'`)
