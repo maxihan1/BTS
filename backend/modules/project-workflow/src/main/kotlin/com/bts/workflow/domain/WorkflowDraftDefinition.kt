@@ -44,40 +44,28 @@ data class WorkflowDraftDefinition(
      * dry-run 해야 알 수 있고 [Workflow.of] 의 관심사가 아니다 —
      * [com.bts.workflow.application.TransitionRuleGuard] 가 저장·발행 양쪽에서 그것을 본다.
      *
-     * ### 시작 전환은 여기서 「정확히 1개」다
-     * [Workflow.of] 의 invariant 는 `initialCount <= 1` 이라 **0개도 통과**시킨다. 그 함수는
-     * `WorkflowRepository` 의 **읽기 경로**도 쓰므로 거기서 `== 1` 로 조이면 INITIAL 0개인 기존
-     * 행 하나가 그 워크플로우 조회 전체를 죽인다. 그래서 **쓰기 경계인 이 변환에서만** 조인다.
+     * ### 시작 전환 개수는 여기서 보지 않는다
+     * 「정확히 1개」는 **발행** 경계의 규칙이고([initialTransitionCount] 를 `WorkflowPublishService`
+     * 가 쓴다), 저장 경계의 규칙이 아니다.
      *
-     * 막지 않으면 발행이 `WorkflowCommandService.deleteTransition` 의 「최초 전환은 삭제할 수
-     * 없습니다」를 우회하는 두 번째 경로가 된다. 그 뒤 `WorkflowKeyResolverImpl` 이 `?:` 로
-     * `displayOrder` 최소 상태를 시작 상태로 쓰는데 그 값도 클라이언트가 정한다 — 「완료」에 0 을
-     * 주면 그 워크플로우를 쓰는 모든 프로젝트의 신규 이슈가 완료 상태로 생성된다.
+     * 저장까지 막으면 새로 만든 워크플로우가 초안 편집기에서 **처음부터 못 쓰인다** —
+     * `WorkflowCommandService.create` 는 상태만 심고 전환을 하나도 만들지 않으므로, 편집기가
+     * `GET /draft` 로 받은 본문을 그대로 `PUT` 해도 400 이 된다. 초안은 원래 불완전한 중간 상태이고,
+     * 그것을 담아 두는 것이 초안이 존재하는 이유다.
      *
-     * @throws IllegalArgumentException [Workflow.of] 의 invariant 위반, 또는 INITIAL 전환이
-     *   정확히 1개가 아닐 때
+     * @throws IllegalArgumentException [Workflow.of] 의 invariant 를 위반할 때
      */
-    fun toWorkflow(): Workflow {
-        // ★ 순서가 load-bearing 이다 — Workflow.of 를 **먼저** 태운다. 시작 전환 검사를 앞에 두면
-        //   「상태가 하나도 없다」 같은 더 근본적인 위반이 이 메시지에 가려져, 관리자가 진짜 원인을
-        //   못 보고 없는 전환을 찾아 헤맨다.
-        val workflow =
-            Workflow.of(
-                key = key,
-                name = name,
-                description = description,
-                states = states.map { it.toDomain() },
-                transitions = transitions.map { it.toDomain() },
-            )
+    fun toWorkflow(): Workflow =
+        Workflow.of(
+            key = key,
+            name = name,
+            description = description,
+            states = states.map { it.toDomain() },
+            transitions = transitions.map { it.toDomain() },
+        )
 
-        val initialCount = transitions.count { it.kind == INITIAL_KIND }
-        require(initialCount == 1) {
-            "워크플로우 '$key': 이슈가 처음 놓일 상태를 정하는 시작 전환이 정확히 1개여야 한다 " +
-                "(현재 ${initialCount}개). 없으면 이 워크플로우로 이슈를 만들 수 없다"
-        }
-
-        return workflow
-    }
+    /** 이 정의가 담은 시작 전환의 개수. 발행 경계가 「정확히 1개」를 요구할 때 쓴다. */
+    fun initialTransitionCount(): Int = transitions.count { it.kind == INITIAL_KIND }
 
     private companion object {
         /** `DraftTransitionDto.kind` 의 시작 전환 표기. `TransitionKind.INITIAL` 과 같은 값이다. */

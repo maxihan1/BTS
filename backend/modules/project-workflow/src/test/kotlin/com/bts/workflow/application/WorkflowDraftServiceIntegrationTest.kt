@@ -4,11 +4,18 @@ package com.bts.workflow.application
 
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
+import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
+import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
+import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.port.outbound.PermissionResolver
+import com.bts.workflow.port.outbound.Scope
 import com.bts.workflow.postaction.PostActionRepository
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
@@ -34,6 +41,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
+import java.util.concurrent.Executors
 
 /**
  * [WorkflowDraftService] Testcontainers 통합 테스트.
@@ -120,6 +128,22 @@ class WorkflowDraftServiceIntegrationTest {
     private val defaults = StubDefaults()
     private val permissions = SwitchableWorkflowPermissions()
 
+    /** 실물 팩토리로 조립한다 — 「지원 type 의 정본은 팩토리」 계약이 이 테스트에서도 성립해야 한다. */
+    private val ruleGuard =
+        TransitionRuleGuard(
+            DefaultWorkflowValidatorFactory(
+                object : PermissionResolver {
+                    override fun hasPermission(
+                        actorId: ActorId,
+                        permission: String,
+                        scope: Scope,
+                    ): Boolean = true
+                },
+                SpelEvaluator(Executors.newSingleThreadExecutor()),
+            ),
+            DefaultWorkflowPostActionFactory(),
+        )
+
     private val service =
         WorkflowDraftService(
             draftRepository = draftRepository,
@@ -132,6 +156,12 @@ class WorkflowDraftServiceIntegrationTest {
                 ),
             standardDefaults = defaults,
             permissionResolver = permissions,
+            ruleWriter =
+                DraftRuleWriter(
+                    ValidatorRepository(dsl, objectMapper),
+                    PostActionRepository(dsl, objectMapper),
+                    ruleGuard,
+                ),
         )
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -222,32 +252,53 @@ class WorkflowDraftServiceIntegrationTest {
     }
 
     /**
-     * ★ `Workflow.of` 의 invariant 는 `initialCount <= 1` 이라 **0개도 통과**시킨다.
+     * ★ **저장은 통과해야 한다.** 시작 전환 「정확히 1개」는 발행 경계의 규칙이다.
      *
-     * 전용 API `WorkflowCommandService.deleteTransition` 은 같은 결과를 「최초 전환은 삭제할 수
-     * 없습니다. 이슈가 처음 놓일 상태가 사라지면 이슈를 만들 수 없게 됩니다」로 명시 거부하는데,
-     * 초안 경로에는 그 가드가 없어 **발행이 그 규칙을 우회하는 두 번째 경로**가 된다.
+     * 저장까지 막으면 새로 만든 워크플로우가 초안 편집기에서 처음부터 못 쓰인다 —
+     * `WorkflowCommandService.create` 는 상태만 심고 전환을 하나도 만들지 않으므로, 편집기가
+     * `GET /draft` 로 받은 본문을 **그대로** `PUT` 해도 400 이 된다. 그러면 그 편집기로는 요구되는
+     * 시작 전환을 추가할 방법 자체가 없다.
      *
-     * 발행되면 `WorkflowKeyResolverImpl` 이 `?:` 로 `displayOrder` 최소 상태를 대신 쓴다.
-     * 그 값도 클라이언트가 정하므로, 「완료」에 `displayOrder = 0` 을 주면 그 워크플로우를 쓰는
-     * **모든 프로젝트의 신규 이슈가 완료 상태로 생성된다.** 오류도 경고도 없다.
-     *
-     * 공용 `Workflow.of` 를 `== 1` 로 바꾸지 않는 이유 — 그 invariant 는 `WorkflowRepository` 의
-     * **읽기 경로**가 쓴다. INITIAL 0개인 기존 행이 하나라도 있으면 그 워크플로우 조회 전체가
-     * 죽는다. 그래서 쓰기 경계(초안 저장·발행)에서만 막는다.
+     * 초안은 원래 불완전한 중간 상태이고, 그것을 담아 두는 것이 초안이 존재하는 이유다.
+     * 완전해야 하는 순간은 운영에 나가는 때 하나뿐이다.
      */
     @Test
-    fun `INITIAL 전환이 없는 초안은 저장 단계에서 막힌다`() {
+    fun `전환이 하나도 없는 초안도 저장은 된다 — 편집 중간 상태다`() {
         val key = seedWorkflow()
-        val noInitial =
+        val noTransitions =
             WorkflowDraftDefinition(
                 key = key,
-                name = "시작 전환이 없는 초안",
+                name = "편집을 막 시작한 초안",
                 states = listOf(DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
                 transitions = emptyList(),
             )
 
-        assertThatThrownBy { service.save(ACTOR, key, noInitial, baseVersion = 0) }
+        service.save(ACTOR, key, noTransitions, baseVersion = 0)
+
+        assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.transitions).isEmpty()
+    }
+
+    /**
+     * ★ 규칙 관문은 **저장에서도** 돈다 — 발행에서만 돌면 「저장 204 · 발행 400」이 된다.
+     *
+     * 재리뷰가 잡은 것이다. `WorkflowDraftDefinition` · `DraftRuleWriter` · 이 서비스의 KDoc
+     * 세 곳이 「저장 시점에 같은 판정을 태운다」고 적었는데 실제로는 `checkAll` 의 호출자가
+     * 발행뿐이었다 — 1차 리뷰가 BLOCKER 2 로 잡은 「검증이 없는데 문서가 있다고 적음」과
+     * **같은 양식**이다. 문서를 고치는 대신 코드를 문서에 맞춘다.
+     */
+    @Test
+    fun `편집 API 가 막는 validator 타입은 저장 단계에서 막힌다`() {
+        val key = seedWorkflow()
+        val base = validDraft(key)
+        val withCustomExpression =
+            base.copy(
+                transitions =
+                    base.transitions.map {
+                        it.copy(validators = listOf(DraftRuleDto("CustomExpression", mapOf("expression" to "1 == 1"))))
+                    },
+            )
+
+        assertThatThrownBy { service.save(ACTOR, key, withCustomExpression, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
@@ -374,6 +425,34 @@ class WorkflowDraftServiceIntegrationTest {
         assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.name).isEqualTo("YAML 원본 이름")
         // 정규 테이블은 아직 옛 이름이다 — 발행해야 운영에 나간다.
         assertThat(cache.findByKey(key)!!.name).isEqualTo("초안 서비스 테스트")
+    }
+
+    /**
+     * ★ 기본값 복원이 **막다른 길**을 만들면 안 된다.
+     *
+     * 시드는 YAML 의 이름을 그대로 카탈로그에 심지만, 그 뒤 관리자가 상태 API 로 이름을 바꾸면
+     * 둘이 갈린다. 그때 복원이 YAML 의 옛 이름을 그대로 초안에 실으면 저장은 되고 **발행에서만**
+     * 카탈로그 대조에 걸린다 — 관리자는 자기가 만들지도 않은 값 때문에 발행이 막히고 고칠 방법을
+     * 모른다. 이 서비스 KDoc 이 「초안은 저장됐는데 발행에서 터지는 막다른 길」이라 부르는 것이다.
+     *
+     * 상태 이름·카테고리의 정본은 **카탈로그**다. YAML 의 권위는 워크플로우의 **구조**
+     * (어떤 상태를 쓰고 어떤 전환이 있는가)이지 표시 이름이 아니다.
+     */
+    @Test
+    fun `기본값 복원은 상태 이름을 카탈로그에서 가져온다`() {
+        val key = seedWorkflow(origin = "SEED")
+        defaults.yaml =
+            WorkflowYamlDto(
+                key = key,
+                name = "YAML 원본 이름",
+                // YAML 은 옛 이름을 들고 있다. 카탈로그는 seedWorkflow 가 심은 "열림 $key" 다.
+                states = listOf(StateYamlDto(key = "open", name = "Open", category = "TODO", displayOrder = 0)),
+                transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
+            )
+
+        val restored = service.resetToDefault(ACTOR, key, baseVersion = 0)
+
+        assertThat(restored.definition.states.single().name).isEqualTo("열림 $key")
     }
 
     @Test

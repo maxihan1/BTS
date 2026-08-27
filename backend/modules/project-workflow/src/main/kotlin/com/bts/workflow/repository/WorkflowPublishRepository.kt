@@ -127,7 +127,7 @@ class WorkflowPublishRepository(
      * 로 처리한다 — 규칙 INSERT 는 이미 `TransitionRuleRepository` 한 구현이 담당하고 있고,
      * 같은 SQL 을 여기 한 벌 더 두면 config JSONB 직렬화 규칙이 두 곳으로 갈린다.
      *
-     * @param statusIds 초안의 상태 키 → 전역 카탈로그 id. 호출부가 [findStatusIdsByKeys] 로 미리 채운다.
+     * @param statusIds 초안의 상태 키 → 전역 카탈로그 id. 호출부가 [findCatalogStatuses] 로 미리 채운다.
      * @return 초안의 전환 순번 → 새로 생긴 `workflow_transitions.id`. 규칙 삽입이 이 맵을 쓴다.
      */
     @Transactional

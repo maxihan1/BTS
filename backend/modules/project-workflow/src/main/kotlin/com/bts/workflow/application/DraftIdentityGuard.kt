@@ -34,6 +34,32 @@ internal fun requireKeyMatchesPath(
 }
 
 /**
+ * 상태의 **표시 이름·카테고리를 카탈로그 값으로 갈아 끼운** 사본을 돌려준다.
+ *
+ * 「기본값으로 복원」이 쓴다. 시드 YAML 은 심을 당시의 이름을 들고 있는데, 그 뒤 관리자가 상태
+ * API 로 이름을 바꾸면 둘이 갈린다. 그때 YAML 값을 그대로 초안에 실으면 저장은 되고
+ * [requireStatesMatchCatalog] 가 **발행에서만** 막아, 관리자가 만들지도 않은 값 때문에 발행이
+ * 불가능해지고 고칠 방법도 없다 — 이 저장소가 「막다른 길」이라 부르는 상태다.
+ *
+ * YAML 의 권위는 워크플로우의 **구조**(어떤 상태를 쓰고 어떤 전환이 있는가)다. 표시 이름의 정본은
+ * 전역 카탈로그 하나이므로, 구조는 YAML 에서 이름은 카탈로그에서 가져온다.
+ *
+ * 카탈로그에 없는 키는 그대로 둔다 — 그쪽은 발행의 「상태를 만들지 않는다」 판정이 400 으로 막는다.
+ */
+internal fun WorkflowDraftDefinition.withCatalogStateLabels(
+    repository: com.bts.workflow.repository.WorkflowPublishRepository,
+): WorkflowDraftDefinition {
+    val catalog = repository.findCatalogStatuses(states.map { it.key })
+    return copy(
+        states =
+            states.map { state ->
+                val row = catalog[state.key] ?: return@map state
+                state.copy(name = row.name, category = row.category)
+            },
+    )
+}
+
+/**
  * 초안의 상태 **이름·카테고리**가 전역 카탈로그와 같은지 본다.
  *
  * ### 왜 받아만 두면 안 되나

@@ -76,33 +76,35 @@ class WorkflowDraftDefinitionTest {
         assertThat(transitions.single().id).isNotNull()
     }
 
-    // ── 시작 전환은 정확히 1개 (쓰기 경계 규칙) ───────────────────────────────
+    // ── 시작 전환 개수는 세기만 한다 (판정은 발행 경계가 한다) ────────────────
 
     /**
-     * `Workflow.of` 는 `initialCount <= 1` 이라 0개를 통과시킨다. 그 함수는 **읽기 경로**도 쓰므로
-     * 거기서 조이면 INITIAL 0개인 기존 행이 그 워크플로우 조회 전체를 죽인다.
-     * 그래서 쓰기 경계인 이 변환에서만 조인다.
+     * `toWorkflow()` 는 개수를 **보지 않는다.** 「정확히 1개」는 `WorkflowPublishService` 의 규칙이다.
+     *
+     * 저장까지 막으면 `WorkflowCommandService.create` 가 만든(전환 0개) 워크플로우가 초안 편집기에서
+     * 처음부터 못 쓰인다 — 편집기가 `GET /draft` 로 받은 본문을 그대로 `PUT` 해도 400 이 된다.
      */
     @Test
-    fun `시작 전환이 없으면 거부한다`() {
+    fun `전환이 하나도 없어도 도메인 변환은 통과한다`() {
+        val definition = draft(states = listOf(state("open")), transitions = emptyList())
+
+        assertThat(definition.toWorkflow().transitions).isEmpty()
+        assertThat(definition.initialTransitionCount()).isEqualTo(0)
+    }
+
+    @Test
+    fun `시작 전환 개수를 센다`() {
         val definition =
             draft(
                 states = listOf(state("open")),
-                transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "전역", kind = "GLOBAL")),
+                transitions =
+                    listOf(
+                        DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL"),
+                        DraftTransitionDto(from = null, to = "open", name = "전역", kind = "GLOBAL"),
+                    ),
             )
 
-        assertThatThrownBy { definition.toWorkflow() }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("시작 전환이 정확히 1개")
-    }
-
-    /** 더 근본적인 위반이 이 메시지에 가려지면 관리자가 없는 전환을 찾아 헤맨다. */
-    @Test
-    fun `상태가 없으면 시작 전환 메시지가 그것을 가리지 않는다`() {
-        val definition = draft(states = emptyList(), transitions = emptyList())
-
-        assertThatThrownBy { definition.toWorkflow() }
-            .hasMessageContaining("states must not be empty")
+        assertThat(definition.initialTransitionCount()).isEqualTo(1)
     }
 
     // ── Workflow.of 의 invariant 에 실제로 도달하는가 ─────────────────────────

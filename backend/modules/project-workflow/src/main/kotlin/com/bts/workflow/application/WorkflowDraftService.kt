@@ -45,6 +45,7 @@ class WorkflowDraftService(
     private val currentDefinitionReader: CurrentDefinitionReader,
     private val standardDefaults: StandardWorkflowDefaults,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
+    private val ruleWriter: DraftRuleWriter,
 ) {
     /**
      * 초안을 돌려준다. 없으면 지금 발행된 정의를 초안 형태로 돌려준다(저장하지는 않는다).
@@ -140,7 +141,15 @@ class WorkflowDraftService(
             standardDefaults.loadStandardYaml(key)
                 ?: throw WorkflowInvalidRequestException(key, "기본값 YAML 을 찾을 수 없다")
 
-        val definition = yaml.toDraftDefinition()
+        // ★ 상태 이름·카테고리는 **카탈로그**에서 가져온다 — YAML 의 값이 아니다.
+        //
+        // 시드는 YAML 의 이름을 그대로 카탈로그에 심지만, 그 뒤 관리자가 상태 API 로 이름을 바꾸면
+        // 둘이 갈린다. 그때 YAML 의 옛 이름을 그대로 초안에 실으면 저장은 되고 **발행에서만**
+        // 카탈로그 대조에 걸려, 관리자가 만들지도 않은 값 때문에 막히고 고칠 방법을 모른다.
+        //
+        // YAML 의 권위는 워크플로우의 **구조**(어떤 상태를 쓰고 어떤 전환이 있는가)이지 표시
+        // 이름이 아니다. 이름의 정본은 전역 카탈로그 하나다.
+        val definition = yaml.toDraftDefinition().withCatalogStateLabels(publishRepository)
         validate(key, definition)
         // 복원도 편집의 일종이라 앵커 규칙이 같다 — 요청이 실어 온 값을 그대로 넘긴다.
         requireAnchorNotAhead(key, baseVersion, workflow.version)
@@ -196,6 +205,13 @@ class WorkflowDraftService(
         } catch (ex: IllegalArgumentException) {
             // 원인을 cause 로 넘긴다 — 400 응답에는 사람 말만 싣고 스택은 로그에 남는다.
             throw WorkflowInvalidRequestException(key, ex.message ?: "초안 정의가 규칙을 어겼다", ex)
+        }
+        // ★ 규칙 관문도 여기서 태운다. 발행 경로만 태우면 「저장은 204 인데 발행에서 400」이 되고,
+        //   그것이 바로 이 KDoc 이 없애겠다고 적은 막다른 길이다 — 문서가 앞서 가면 안 된다.
+        try {
+            ruleWriter.checkAll(definition)
+        } catch (ex: TransitionRuleRejected) {
+            throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙이 관문을 지나지 못했다", ex)
         }
     }
 

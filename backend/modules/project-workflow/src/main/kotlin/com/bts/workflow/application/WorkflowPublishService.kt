@@ -179,6 +179,39 @@ class WorkflowPublishService(
         } catch (ex: TransitionRuleRejected) {
             throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙이 관문을 지나지 못했다", ex)
         }
+        requireExactlyOneInitial(key, definition)
+    }
+
+    /**
+     * 발행하는 정의에는 시작 전환이 **정확히 1개** 있어야 한다.
+     *
+     * ### 왜 저장이 아니라 발행인가
+     * 저장까지 막으면 새로 만든 워크플로우가 초안 편집기에서 처음부터 못 쓰인다 —
+     * `WorkflowCommandService.create` 는 상태만 심고 전환을 하나도 만들지 않으므로, 편집기가
+     * `GET /draft` 로 받은 본문을 그대로 `PUT` 해도 400 이 된다. 초안은 원래 불완전한 중간 상태다.
+     * 운영에 나가는 순간에만 완전해야 하고, 그 순간이 발행이다.
+     *
+     * ### 왜 공용 `Workflow.of` 가 아닌가
+     * 그 invariant 는 `initialCount <= 1` 이라 0개를 통과시키는데, `WorkflowRepository` 의 **읽기
+     * 경로**도 그 함수를 쓴다. 거기서 `== 1` 로 조이면 INITIAL 0개인 기존 행 하나가 그 워크플로우
+     * 조회 전체를 죽인다.
+     *
+     * 막지 않으면 발행이 `WorkflowCommandService.deleteTransition` 의 「최초 전환은 삭제할 수
+     * 없습니다」를 우회하는 두 번째 경로가 된다. 그 뒤 `WorkflowKeyResolverImpl` 이 `?:` 로
+     * `displayOrder` 최소 상태를 시작 상태로 쓰는데 그 값도 클라이언트가 정한다 — 「완료」에 0 을
+     * 주면 그 워크플로우를 쓰는 모든 프로젝트의 신규 이슈가 완료 상태로 생성된다.
+     */
+    private fun requireExactlyOneInitial(
+        key: String,
+        definition: WorkflowDraftDefinition,
+    ) {
+        val count = definition.initialTransitionCount()
+        if (count != 1) {
+            throw WorkflowInvalidRequestException(
+                key,
+                "이슈가 처음 놓일 상태를 정하는 시작 전환이 정확히 1개여야 발행할 수 있다 (현재 ${count}개)",
+            )
+        }
     }
 
     /**

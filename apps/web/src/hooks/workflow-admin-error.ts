@@ -41,7 +41,9 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // WorkflowPublishExceptionHandler
   //   ★ 두 코드는 사용자가 할 일이 다르다. 버전 충돌은 「다시 불러오기」, 이관 필요는
   //     「옮길 상태 고르기」다 — 문구를 합치면 어느 쪽도 안내가 되지 않는다.
-  WORKFLOW_VERSION_CONFLICT: '다른 사용자가 먼저 발행했습니다. 다시 불러온 뒤 시도하세요',
+  //   ★ 「다시 불러오세요」로 끝내면 안 된다 — 초안의 기준 버전은 저장으로 바뀌지 않아
+  //     다시 불러와 발행해도 같은 409 가 반복된다. 출구는 초안 폐기뿐이다.
+  WORKFLOW_VERSION_CONFLICT: '다른 사용자가 먼저 발행했습니다. 초안을 폐기하고 다시 편집하세요',
   WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
   //   ★ 「초안이 없다」를 범용 400 문구로 접으면 「요청이 잘못됐다」로 보인다 — 관리자가 할 일이 다르다.
   WORKFLOW_DRAFT_NOT_FOUND: '편집 중인 초안이 없습니다',
