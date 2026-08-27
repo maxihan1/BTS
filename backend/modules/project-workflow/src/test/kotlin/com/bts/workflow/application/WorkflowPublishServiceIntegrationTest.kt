@@ -241,7 +241,7 @@ class WorkflowPublishServiceIntegrationTest {
         WorkflowDraftDefinition(
             key = key,
             name = "이름을 바꿨다",
-            states = listOf(DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+            states = listOf(DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
             transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")),
         )
 
@@ -251,8 +251,8 @@ class WorkflowPublishServiceIntegrationTest {
             name = "이름만 바꿨다",
             states =
                 listOf(
-                    DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0),
-                    DraftStateDto(key = "done", name = "완료", category = "DONE", displayOrder = 1),
+                    DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0),
+                    DraftStateDto(key = "done", name = "완료 $key", category = "DONE", displayOrder = 1),
                 ),
             transitions =
                 listOf(
@@ -281,8 +281,8 @@ class WorkflowPublishServiceIntegrationTest {
         name = "규칙 관문 테스트",
         states =
             listOf(
-                DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0),
-                DraftStateDto(key = "done", name = "완료", category = "DONE", displayOrder = 1),
+                DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0),
+                DraftStateDto(key = "done", name = "완료 $key", category = "DONE", displayOrder = 1),
             ),
         transitions =
             listOf(
@@ -542,7 +542,7 @@ class WorkflowPublishServiceIntegrationTest {
             WorkflowDraftDefinition(
                 key = key,
                 name = "시작 전환이 없는 초안",
-                states = listOf(DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+                states = listOf(DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
                 transitions = emptyList(),
             ),
             baseVersion = 0,

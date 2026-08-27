@@ -179,7 +179,7 @@ class WorkflowDraftServiceIntegrationTest {
     ) = WorkflowDraftDefinition(
         key = key,
         name = name,
-        states = listOf(DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+        states = listOf(DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
         transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")),
     )
 
@@ -243,7 +243,7 @@ class WorkflowDraftServiceIntegrationTest {
             WorkflowDraftDefinition(
                 key = key,
                 name = "시작 전환이 없는 초안",
-                states = listOf(DraftStateDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+                states = listOf(DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
                 transitions = emptyList(),
             )
 
@@ -364,7 +364,7 @@ class WorkflowDraftServiceIntegrationTest {
             WorkflowYamlDto(
                 key = key,
                 name = "YAML 원본 이름",
-                states = listOf(StateYamlDto(key = "open", name = "열림", category = "TODO", displayOrder = 0)),
+                states = listOf(StateYamlDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
                 transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
             )
 

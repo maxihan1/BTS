@@ -112,6 +112,7 @@ class WorkflowPublishService(
         val draft = requireDraft(key, workflowId)
         val definition = draft.definition
         validateDefinition(key, definition)
+        requireKeyMatchesPath(key, definition)
 
         if (draft.baseVersion != baseVersion) {
             // 화면이 든 버전과 초안이 매인 버전이 다르다. 초안 내용은 저 앵커를 보고 만들어진 것이므로
@@ -191,7 +192,7 @@ class WorkflowPublishService(
         definition: WorkflowDraftDefinition,
     ): Map<String, UUID> {
         val keys = definition.states.map { it.key }
-        val found = publishRepository.findStatusIdsByKeys(keys)
+        val found = publishRepository.findCatalogStatuses(keys)
         val missing = keys.filterNot { found.containsKey(it) }
         if (missing.isNotEmpty()) {
             throw WorkflowInvalidRequestException(
@@ -199,7 +200,9 @@ class WorkflowPublishService(
                 "상태 ${missing.joinToString(" · ")} 가 전역 카탈로그에 없다. 상태를 먼저 만들 것",
             )
         }
-        return found
+        // 받아 놓고 버리지 않는다 — 초안의 이름·카테고리가 카탈로그와 다르면 거절한다(절대 규칙 16).
+        requireStatesMatchCatalog(key, definition, found)
+        return found.mapValues { it.value.id }
     }
 
     /**

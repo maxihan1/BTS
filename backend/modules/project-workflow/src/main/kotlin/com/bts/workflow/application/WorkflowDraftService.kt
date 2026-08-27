@@ -89,7 +89,16 @@ class WorkflowDraftService(
         validate(key, definition)
         requireAnchorNotAhead(key, baseVersion, workflow.version)
 
-        draftRepository.upsert(workflow.id, definition, baseVersion, actorId)
+        // 발행에서 버려질 값은 저장 단계에서 막는다 — 저장 200 뒤 발행에서 터지면 관리자가 고칠
+        // 방법을 모르는 막다른 길이 되고, 그대로 스냅샷에 실리면 감사 기록이 거짓이 된다.
+        requireKeyMatchesPath(key, definition)
+        requireStatesMatchCatalog(
+            key,
+            definition,
+            publishRepository.findCatalogStatuses(definition.states.map { it.key }),
+        )
+
+        draftRepository.upsert(workflow.id, definition.copy(key = key), baseVersion, actorId)
     }
 
     /**

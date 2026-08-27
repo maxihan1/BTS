@@ -75,15 +75,28 @@ class WorkflowPublishRepository(
             .and(WORKFLOWS.DELETED_AT.isNull)
             .execute() > 0
 
-    /** 살아 있는 전역 카탈로그의 상태 키 → id. 초안이 가리키는 키가 실재하는지 여기서 본다. */
-    fun findStatusIdsByKeys(keys: Collection<String>): Map<String, UUID> {
+    /**
+     * 살아 있는 전역 카탈로그의 상태 키 → id·이름·카테고리.
+     *
+     * id 만이 아니라 **이름과 카테고리도 함께** 읽는다. 초안이 그 둘을 담고 있는데 발행은 쓰지
+     * 않으므로(편성 INSERT 는 id 와 순서만 쓴다), 대조하지 않으면 관리자가 초안에서 고친 이름이
+     * 발행에서 조용히 버려지고 **감사 스냅샷에만 남는다.** 대조하려면 카탈로그 값이 필요하다.
+     */
+    fun findCatalogStatuses(keys: Collection<String>): Map<String, CatalogStatus> {
         if (keys.isEmpty()) return emptyMap()
-        return dsl.select(STATUSES.KEY, STATUSES.ID)
+        return dsl.select(STATUSES.KEY, STATUSES.ID, STATUSES.NAME, STATUSES.CATEGORY)
             .from(STATUSES)
             .where(STATUSES.KEY.`in`(keys))
             .and(STATUSES.DELETED_AT.isNull)
             .fetch()
-            .associate { it[STATUSES.KEY]!! to it[STATUSES.ID]!! }
+            .associate {
+                it[STATUSES.KEY]!! to
+                    CatalogStatus(
+                        id = it[STATUSES.ID]!!,
+                        name = it[STATUSES.NAME] ?: "",
+                        category = it[STATUSES.CATEGORY] ?: "",
+                    )
+            }
     }
 
     /**
@@ -203,4 +216,17 @@ data class WorkflowVersionRow(
     val id: UUID,
     val version: Long,
     val origin: String,
+)
+
+/**
+ * 전역 카탈로그(`statuses`)의 한 행 중 발행이 필요로 하는 것.
+ *
+ * @property id 편성 INSERT 가 가리킬 `statuses.id`.
+ * @property name 카탈로그가 정한 이름. 초안이 다른 값을 담으면 발행이 거절한다.
+ * @property category 카탈로그가 정한 카테고리. 위와 같다.
+ */
+data class CatalogStatus(
+    val id: UUID,
+    val name: String,
+    val category: String,
 )
