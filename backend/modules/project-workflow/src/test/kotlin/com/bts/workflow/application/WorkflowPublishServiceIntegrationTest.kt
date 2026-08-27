@@ -468,6 +468,31 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     /**
+     * ★ 발행은 `PUBLISH` 를 요구한다 — 편집 권한(`UPDATE`)만으로는 안 된다.
+     *
+     * 「권한이 아예 없으면 막힌다」만 걸어 두면 두 권한의 **분리**가 검증되지 않는다. 실제로
+     * `WorkflowPublishService` 의 `PUBLISH` 를 `UPDATE` 로 바꿔도 전 테스트가 초록이었고,
+     * 그러면 초안만 고칠 수 있는 사용자가 운영에 발행할 수 있게 된다.
+     * 컨트롤러 KDoc 이 이 분리를 명시적 계약으로 선언해 둔 자리다.
+     */
+    @Test
+    fun `편집 권한만 있고 발행 권한이 없으면 발행이 막힌다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(workflowId(key), draftKeepingBoth(key), baseVersion = 0, updatedBy = null)
+        permissions.deny += WorkflowDefinitionPermission.PUBLISH
+
+        try {
+            assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+                .isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
+
+            // 같은 행위자가 미리보기(UPDATE)는 여전히 할 수 있어야 한다 — 분리가 실재한다는 증거다.
+            assertThat(service.preview(ACTOR, key).baseVersion).isEqualTo(0)
+        } finally {
+            permissions.deny.clear()
+        }
+    }
+
+    /**
      * ★ 이관 필요 판정의 근거는 **DB** 여야 한다 — 인메모리 캐시가 아니다.
      *
      * `WorkflowCache` 는 무효화를 **커밋 전**에 하고 읽기 경로는 락을 잡지 않는다. 무효화와
@@ -643,13 +668,24 @@ class WorkflowPublishServiceIntegrationTest {
 
 /** 판정을 뒤집을 수 있는 권한 리졸버. 거부는 운영 리졸버와 같은 예외로 낸다. */
 class SwitchableWorkflowPermissions : WorkflowDefinitionPermissionResolver {
+    /** 전부 거부. 「권한이 아예 없는 행위자」를 재현한다. */
     var allow: Boolean = true
+
+    /**
+     * ★ **개별 거부.** 이것이 없으면 `permission` 인자를 아무도 읽지 않아
+     * 「UPDATE 면 되는데 PUBLISH 를 요구한다」와 그 반대가 테스트에서 구별되지 않는다.
+     * 실제로 `WorkflowPublishService` 의 `PUBLISH` 를 `UPDATE` 로 바꿔도 전 테스트가 초록이었다 —
+     * 컨트롤러 KDoc 이 두 권한의 분리를 명시적 계약으로 선언해 놓은 자리라 가짜 그린이다.
+     */
+    val deny: MutableSet<WorkflowDefinitionPermission> = mutableSetOf()
 
     override fun requirePermission(
         actorId: UUID,
         permission: WorkflowDefinitionPermission,
     ) {
-        if (!allow) throw WorkflowDefinitionAccessDeniedException(actorId, permission)
+        if (!allow || permission in deny) {
+            throw WorkflowDefinitionAccessDeniedException(actorId, permission)
+        }
     }
 }
 
