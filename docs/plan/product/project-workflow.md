@@ -146,10 +146,10 @@
 > 사용 중인 워크플로우를 직접 고치면 편집 중간 상태가 운영에 샌다. 초안(JSONB)을 따로 두고 발행할 때만 정규 테이블에 반영한다. 발행 시 빠지는 상태에 이슈가 남아 있으면 **어디로 옮길지 묻는 마법사**를 띄운다 — 지금은 FK 가 없어 상태를 지우면 이슈가 유령 상태를 가리키고 그 이슈는 이후 어떤 전환도 계산할 수 없다.
 
 - [x] D1. 도메인 — 초안 표현(JSONB) · 발행 이력 append-only · 기본값 복원의 의미 (책임. backend-engineer + Maxi)
-- [ ] D2. 명세 — 낙관적 락(base_version) 충돌 409 · 이관 대상 산출 규칙 · cross-BC 포트 계약 (책임. backend-engineer)
+- [x] D2. 명세 — 낙관적 락(base_version) 충돌 409 · 이관 대상 산출 규칙 · cross-BC 포트 계약 (책임. backend-engineer)
 - [x] D3. 마이그레이션 — V208 `workflow_drafts` · `workflow_publications` (책임. db-engineer)
-- [ ] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · `IssueStatusUsagePort`(shared-kernel) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 이슈 상태 전량 이동 (책임. backend-engineer)
+- [ ] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · 이관 포트(읽기 `IssueStatusUsagePort` = project-workflow 로컬 · 쓰기 `IssueStatusMigrationPort` = shared-kernel) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 이슈 상태 전량 이동 (책임. backend-engineer)
 - [ ] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer)
 - [ ] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer)
 - [ ] D8. 프론트 — `@xyflow/react` 다이어그램 편집기 (책임. frontend-engineer)
@@ -173,6 +173,40 @@
 > - D4 잔여 — 이관 큐잉 호출. 지금은 이슈가 남아 있으면 409 로 **막고** 상태별 건수를 응답에 싣는다
 > - D5 잔여 — 「이관 후 이슈 상태 전량 이동」. 이관 실행이 PR 7 이라 그 테스트도 그쪽이다
 
+> **D2·D5 완료 · D4 는 결선만 남았다** (로드맵 PR 7 — 이관 실행, 2026-08-27). 위 #411 각주가 「PR 7 의
+> 몫」으로 넘긴 것을 이 PR 이 받았다. 「한 PR = 한 BC」 규칙대로 이번 범위는 전부 issue-tracking BC 다.
+> - **D2 완료** — 쓰기 포트 계약 `shared-kernel com.bts.shared.issue.IssueStatusMigrationPort`
+>   (fail-closed · default 구현 0)와 이관 대상 산출 규칙(매핑 키 ∩ `projectKeys` · **실행 시점 재조회**)이
+>   확정됐다. ★**읽기 포트와 다른 물건이다** — 읽기 `IssueStatusUsagePort` 는
+>   `project-workflow/.../application/port/` 에 **BC 로컬**로 실재하고 shared-kernel 에 있지 않다.
+>   「읽기 전용 스칼라 count」라서 받았던 면제가 쓰기에는 넘어오지 않아 쓰기만 shared-kernel 로 올렸다
+> - **D5 완료** — 「이관 후 이슈 상태 전량 이동」을 이관 실행 경로에서 단언한다. 큐잉 이후 그 상태로
+>   들어온 이슈도 옮겨지는가(「옮기면서 센다」) · 범위 밖 프로젝트가 무변경인가 · 실패 건이
+>   `bulk_operation_items` 에 FAILED 로 남는가가 함께 걸렸다
+> - **D4 잔여는 결선뿐** — `WorkflowPublishService` 가 실제로 포트를 호출하는 자리다. 이 PR 에는
+>   **호출자가 없어 사용자에게 보이는 변화가 0** 이다. 의도된 분할이고, 발행 루프가 필요한 뒤쪽
+>   TOCTOU 창과 함께 **로드맵 PR 7b** 로 간다
+> - ★**로드맵 정본도 같은 날 정정했다** — `~/.claude/plans/cozy-hatching-otter.md` PR 7 절이
+>   `transitionId` 수용 · `toStatusKey` 모호 시 409 · `GET /transitions` 응답의 `transitionId` 를 아직
+>   「할 일」로 적고 있었다. 셋 다 **#395(커밋 `727207a01`)가 이미 구현했다.** 그 절을 안 고치면 다음
+>   사람이 범위를 두 배로 잡는다 — 착수 세션이 실제로 그렇게 잡았다. 같은 정정으로 PR 7b 절도 신설했다
+
+> **로드맵 PR 7b 착수 조건 (전수 열거 · 이 각주가 정본)**. `TODOS.md` 의 「워크플로우 — 이관 필요 판정과
+> 실제 교체 사이에 이슈가 끼어들 수 있다」 항목이 여기를 가리킨다. 저장소에 안 남는 약속은 약속이 아니다.
+> - **결선** — `WorkflowPublishService` → `IssueStatusMigrationPort` 호출
+> - **뒤쪽 TOCTOU 창** — 이관 완료 → 정의 교체 사이. 「센다 → 옮긴다 → 다시 센다 → 남으면 다시 옮긴다」
+>   발행 루프가 필요하다. 앞쪽 창(큐잉 → 실행)은 PR 7 이 닫았다
+> - **`countIssuesInStatus` 프로젝트 스코프** — 프로젝트 → 스킴 → 워크플로우 3단으로 좁힌다. 지금은 상태
+>   키가 전역이라 다른 워크플로우를 쓰는 이슈까지 세어 과하게 막는다. 권한을 넓히기 전 선행이다
+> - **배포 순서·롤백** — 구버전 워커가 새 `bulk_operations.operation_type` 값을 `enumValueOf` 로 풀다
+>   죽는다. PR 7 은 호출자가 없어 그 값의 행이 안 생기므로 지금은 안전하지만 **결선 즉시 실재한다**
+> - **권한 검사 순서 계약** — 발행 경로가 `WorkflowDefinitionPermission.PUBLISH` 를 검사한 **뒤에만**
+>   포트를 부르는지 판정을 붙인다. 포트 KDoc 이 「위조 차단은 호출자의 발행 권한 책임」이라 약속했는데
+>   PR 7 엔 호출자가 없어 그 약속을 검사할 장치가 없다
+> - **`cause` 결선·검증** — 이관 이벤트의 `cause = "STATUS_MIGRATION"` 을 사외 웹훅
+>   (`search-export-import/.../WebhookDispatchWorker.kt`)과 알림이 **실제로 거르는지**. PR 7 은 표시만
+>   싣는다. 이관 N 건이 되돌릴 수 없는 웹훅 N 건이 되는 자리라 표시만 두고 끝내면 절반이다
+
 > **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환이 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 
 ## §NFR project-workflow BC 완료 게이트
@@ -191,13 +225,17 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ / D2·D4·D5 부분 (로드맵 PR 6 범위 완료 · 잔여는 issue-tracking 소관) / D6~D8 ⬜** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ (로드맵 PR 6) / D2·D5 ✅ (로드맵 PR 7 — 이관 실행) / D4 부분 (결선 한 자리만 남음 — 로드맵 PR 7b) / D6~D8 ⬜** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
 - [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
   **2026-08-26 재실측(PR #407 시점) — 미완은 §2.7 FR-WF-07 의 D1~D7 뿐이다.** WF-04·05·06 이 전부 닫혔다.
   **같은 날 재실측(초안·발행 PR 시점)** — §2.7 에 D8(xyflow 다이어그램)이 신설돼 마커가 8개가 됐고,
   그중 D1·D3 가 닫혔다. 미완은 **D2·D4·D5·D6·D7·D8** 여섯이며 D2·D4·D5 는 부분 완료다(잔여가 전부
   issue-tracking BC 소관이라 「한 PR = 한 BC」 규칙상 분리됐다). 전수는 §2.7 각주에 적었다.
+  **2026-08-27 재실측(이관 실행 PR 시점)** — 로드맵 PR 7 이 D2(쓰기 포트 계약 + 이관 대상 산출
+  규칙)와 D5(이관 후 전량 이동)를 닫았다. 미완은 **D4·D6·D7·D8** 이고, 그중 D4 는 결선 한 자리만
+  남은 부분 완료다 — 발행 경로가 이관 포트를 실제로 부르는 것은 **로드맵 PR 7b** 다. 전수는 §2.7
+  각주에 적었다.
   개수 대신 전수로 적는다 — 「N건」은 눈가리개이고, 실제로 `grep '^- \[ \] D'` 는 §1.2 의
   「**D**ATA.md … 숙지」 줄을 D 마커로 오탐한다
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요
