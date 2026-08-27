@@ -176,9 +176,13 @@ G4·G6 은 그대로 뒀으면 **데이터 손상**이었다. 둘 다 red 테스
   - 기존 `BULK_EDIT`·`BULK_TRANSITION` INSERT 가 여전히 성공한다 (회귀)
 - 실패 메시지 (예상). `new row for relation "bulk_operations" violates check constraint "chk_bulk_operations_operation_type"`
 
-**GREEN**. `DROP CONSTRAINT` → `ADD CONSTRAINT` 로 3값 허용 + `COMMENT ON COLUMN` 갱신.
+**GREEN**. `DROP CONSTRAINT` → `ADD CONSTRAINT … NOT VALID` → `VALIDATE CONSTRAINT` **2단계**로
+3값 허용 + `COMMENT ON COLUMN` 갱신. ★게이트 1 C-6 — `ADD CONSTRAINT CHECK` 한 방은 전체 스캔 +
+`ACCESS EXCLUSIVE` 락이다.
 
-**REFACTOR**. 파일 머리에 한 줄 주석(마이그레이션 목적) · `DATA.md` §4 제약 이름 명시 규칙 확인.
+**REFACTOR**. 파일 머리 한 줄 주석 + ★**롤백 절차**(C-6) — 되돌리려면 `STATUS_MIGRATION` 행이
+0건이어야 하고, 아니면 되돌리지 말고 앞으로 고친다(행을 지우면 감사 기록이 사라진다).
+`DATA.md` §4 제약 이름 명시 규칙 확인. `DATA.md` 에 CHECK 무중단 규칙이 0건이라 이 파일이 선례가 된다.
 
 **검증**. `./gradlew :modules:issue-tracking:test --tests '*V038MigrationIntegrationTest' --rerun-tasks`
 
@@ -223,9 +227,14 @@ G4·G6 은 그대로 뒀으면 **데이터 손상**이었다. 둘 다 red 테스
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperationType.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperationPayload.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/repository/BulkOperationRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/repository/BulkOperationRepositoryTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperationType.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/BulkOperationPayload.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/domain/FailureReasonCode.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/repository/BulkOperationRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/repository/BulkOperationRepositoryTest.kt`]
 - depends-on: [1]
 - jira: [J7]
+
+> ★**게이트 1 추가분 (C-4).** `FailureReasonCode` 에 `STATE_NOT_IN_MAPPING` · `PROJECT_ARCHIVED`
+> 2값을 함께 더한다. 둘 다 **예상된** 조건인데 지금은 `UNKNOWN` 으로 떨어지고, 그 KDoc 은
+> 「예상치 **못한** 내부 오류」라 적혀 있다. 진단 가능한 실패에 이름을 준다. spec F21.
+> RED 에 「매핑에 없는 상태가 `UNKNOWN` 이 아니다」 1건을 더한다 (완료기준 14).
 
 **RED**.
 - 파일 `…/bulk/repository/BulkOperationRepositoryTest.kt`
@@ -305,10 +314,13 @@ E12(큐잉 이후 들어온 이슈는 이관되지 않는다 · 부채 143)를 *
   - 거부 — `toStatusKey` 가 상태 카탈로그에 없음 (E2)
   - 거부 — 매핑이 비어 있음 (E5)
   - 거부 — 같은 `fromStatusKey` 가 두 번 (E7)
+  - ★거부 — **`projectKeys` 가 비어 있음** (완료기준 11 · E5b · C-1)
 - 실패 메시지 (예상). `WorkflowStatusMigrationAdapter` 클래스 없음
 
 **GREEN**. `AutomationIssueMutationAdapter` 를 준거로 어댑터를 만든다.
-- **구조 검증 4종**(E1·E2·E5·E7)만 큐잉 시점에 한다 — 대상 건수·상한은 알 수 없다
+- **구조 검증 5종**(E1·E2·E5·**E5b**·E7)만 큐잉 시점에 한다 — 대상 건수·상한은 알 수 없다
+  - ★E5b 는 게이트 1 추가분(C-1)이다. 빈 범위를 통과시키면 실행 시점 0건 → `COMPLETED` 라
+    운영자가 「이관 완료」를 보고 상태를 지운다. **아무것도 안 옮겼는데 성공으로 보인다**
 - `bulk_operations` 만 만들고 pgmq enqueue. **items 는 만들지 않는다**
 - `actorUserId` 를 그대로 `actor_id` 에 넣는다 (per-issue 권한 검사 없음 — 편차 X4)
 
@@ -340,9 +352,16 @@ E12(큐잉 이후 들어온 이슈는 이관되지 않는다 · 부채 143)를 *
   - **범위 밖 프로젝트의 같은 상태 이슈는 무변경**이다 (완료기준 5 · S6 · G4).
     필터가 여기로 옮겨졌으므로 판정도 여기서 한다
   - 실행 시점 대상이 0건이면 `COMPLETED` · `total_count=0` 이다. **실패가 아니다** (완료기준 8 · E3)
-  - 실행 시점 대상이 상한 초과면 `FAILED` + 사유다. **조용히 자르지 않는다** (E4 · J6)
+  - 실행 시점 대상이 상한 초과면 `FAILED` + 사유이고, ★그 사유에 **분할 재시도 안내**가 들어 있다.
+    **조용히 자르지 않는다** (완료기준 12 · E4 · J6 · **게이트 1 C-2**)
   - 워커가 items 를 채우다 재시작해도 **중복 항목이 0** 이다 (완료기준 9 · E16 · F16)
+  - ★`failed_count > 0` 으로 끝나면 **로그·메트릭에 드러난다** (완료기준 13 · **게이트 1 C-3**)
 - 실패 메시지 (예상). items 0건이라 `process()` 가 아무것도 처리하지 않고 끝난다
+
+> ★**테스트가 워커를 수동으로 트리거한다** (게이트 1 **C-5**). 「큐잉 → claim 사이에 이슈 1건 추가」는
+> 워커가 자동 폴링으로 즉시 claim 하면 순서가 뒤집혀 **flaky** 해진다. 픽스처가 폴링을 끄고
+> 삽입 → 트리거 순서를 직접 통제한다. 이 테스트는 이 PR 의 존재 이유를 재현하는 자리라
+> 흔들리면 안 된다.
 
 **GREEN**.
 - `BulkOperationRepository` 에 **공개** 항목 적재 경로를 연다 — 지금 `insertItemsBatch` 는
@@ -370,31 +389,79 @@ E15(이관 완료 → 정의 교체 사이 창은 PR 7b)도 함께 남긴다 —
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkItemApplierStatusMigrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueDomainEvent.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkItemApplierStatusMigrationTest.kt`]
 - depends-on: [4]
 - jira: [J8]
 
 **RED**.
-- 파일 Task 4 와 같은 테스트 파일에 2건 추가
+- 파일 Task 4 와 같은 테스트 파일에 3건 추가
   - 이관 성공 시 `IssueTransitioned` 가 발행된다 (F11 · G2)
+  - ★그 이벤트에 **`cause = "STATUS_MIGRATION"`** 이 실린다. 일반 전환은 `cause` 가 `null` 이다
+    (완료기준 10 · **게이트 1 C-B1** · F11·F17)
   - 이관 성공 시 `issue_change_item` 에 상태 변경이 남는다 (F12)
-- 실패 메시지 (예상). 발행 0건 · 이력 0건
+- 실패 메시지 (예상). 발행 0건 · `cause` 필드 없음 · 이력 0건
 
-**GREEN**. `StatusMigration` 가지에서 `eventPublisher.publish(IssueTransitioned(...))` +
-`IssueHistoryRecorder` 호출을 더한다. `plan.emitEvents`(후처리)는 **부르지 않는다** — plan 이 없다 (J8).
+**GREEN**.
+- `IssueDomainEvent.kt` 의 `IssueTransitioned` 에 **nullable `cause` 를 더한다**. 기존 발행 경로는
+  `null` 을 싣고 **기존 소비자는 무변경**이다 (F17 — 하위호환)
+- `StatusMigration` 가지에서 `eventPublisher.publish(IssueTransitioned(…, cause = "STATUS_MIGRATION"))`
+  + `IssueHistoryRecorder` 호출을 더한다
+- `plan.emitEvents`(후처리)는 **부르지 않는다** — plan 이 없다 (J8)
 
-**REFACTOR**. KDoc 에 「무엇을 발행하고 무엇을 안 하는가」를 적는다 — Jira J8 의
-"Perform actions rules won't automatically do anything" 과 결과가 같음을 인용한다.
+**REFACTOR**. KDoc 에 「무엇을 발행하고 무엇을 안 하는가」 + ★**`cause` 가 존재하는 이유**를 적는다 —
+`IssueTransitioned` 소비자에 **사외 웹훅**(`search-export-import/.../WebhookDispatchWorker.kt`)이 있어
+이관 N건이 웹훅 N건이 되고 **되돌릴 수 없다**. 끄지 않고 **거르는 선택권을 소비자에게** 준 것이다.
+Jira J8 의 "Perform actions rules won't automatically do anything" 과 결과가 같음도 인용한다.
+
+> ★**이 표시를 소비자가 실제로 거르는지는 이 PR 이 검증하지 못한다** — 웹훅·알림 결선은 PR 7b 다.
+> 그 사실을 KDoc 과 `TODOS.md`(Task 8)에 남긴다. 표시만 두고 끝내면 절반이다.
 
 **검증**. `./gradlew :modules:issue-tracking:test --tests '*BulkItemApplierStatusMigrationTest' --rerun-tasks`
 
 > ★**이벤트를 끄는 쪽이 더 위험하다.** `IssueTransitioned` 를 구독하는 검색 색인·보드·자동화가
 > 옮겨간 이슈를 모른 채 썩는다 — DB 는 맞는데 화면이 틀리는 상태가 된다 (G2).
 
+---
+
+### Task 8. 로드맵 정본과 장부를 실제와 맞춘다 (게이트 1 C-7·C-9)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`TODOS.md`, `docs/plan/product/project-workflow.md`]
+- depends-on: []
+- jira: []
+
+**RED**. 기계 판정이 없는 문서 동기화라 red 를 만들 수 없다. 대신 **판정 기준을 여기 고정**한다 —
+아래 4가지가 문서에서 눈으로 확인되면 통과다. 판별식이 못 잡는 항목임을 숨기지 않고 적는다.
+
+**GREEN**.
+
+1. **로드맵 PR 7 절 정정** (`~/.claude/plans/cozy-hatching-otter.md:314` · 저장소 밖) — 4항목 중 3개
+   (`transitionId` 수용 · `toStatusKey` 모호 시 409 · `GET /transitions` 응답의 `transitionId`)를
+   **#395 가 이미 구현**했다고 적고 남은 것은 이관 실행뿐임을 명시한다.
+   ★**이걸 안 고치면 다음 사람이 또 속는다** — 이번 세션이 정확히 그렇게 범위를 두 배로 잡았다
+2. **`TODOS.md:1613` 처방 정정** — 「로드맵 PR 7 이 이 창을 **한 몸으로** 다뤄야 한다」를
+   실제 분할대로 고친다. 큐잉 → 실행 창은 **이 PR 이 닫고**(Task 7), 이관 완료 → 정의 교체 창은
+   발행 루프가 필요해 **PR 7b** 다
+3. **`TODOS.md` 에 PR 7b 항목 신설** — 결선(`WorkflowPublishService` 가 포트 호출) ·
+   부채 143 나머지 절반 · `countIssuesInStatus` 프로젝트 스코프 · **C-8**(구버전 워커가 새 enum
+   값에 죽는다 — 배포 순서·롤백) · **C-10**(호출자가 `PUBLISH` 를 검사한 뒤에만 포트를 부른다) ·
+   **웹훅·알림 소비자가 `cause="STATUS_MIGRATION"` 을 실제로 거르는지 결선·검증**
+4. `docs/plan/product/project-workflow.md` §2.7 의 D2·D4·D5 진척 표기를 이 PR 범위대로 갱신
+
+**REFACTOR**. 없음. 문서 동기화다.
+
+**검증**. `node scripts/build-doc-index.mjs --check` drift 0 · `bash scripts/verify-master-plan.sh` PASS.
+FR 수는 **불변 143** 이어야 한다 — 이 task 는 FR 을 만들지도 지우지도 않는다.
+
+> ★**이 task 가 없으면 나머지 7개가 반쪽이다.** C-7 을 미루면 로드맵이 계속 거짓말하고,
+> C-9 를 미루면 「PR 7b 가 온다」는 약속이 이 대화에만 남는다. 저장소에 안 남는 약속은 약속이 아니다.
+> `docs/rules/fr-sync-checklist.md` 의 「명세/범위 변경은 같은 PR 에서 전수 동기화」가 이 자리다.
+
 ## Plan 메타
 
-- **task 수 7** · **예상 wave 4** (리뷰 BLOCKER 로 T7 신설)
-  - wave 1 — T1(마이그레이션) · T2(포트 계약) *병렬*
+- **task 수 8** · **예상 wave 4** (eng BLOCKER 로 T7 · ceo/게이트 1 로 T8 신설)
+  - wave 1 — T1(마이그레이션) · T2(포트 계약) · T8(로드맵·장부 동기화) *병렬 · 파일 교집합 0*
   - wave 2 — T3(enum + payload + repository) *T1 의존*
   - wave 3 — T4(엔진 우회) · T5(어댑터 큐잉) *병렬 · 파일 교집합 0*
   - wave 4 — T6(이벤트·이력) · T7(실행 시점 재해석) *병렬 · 파일 교집합 0*
@@ -499,9 +566,13 @@ E15(이관 완료 → 정의 교체 사이 창은 PR 7b)도 함께 남긴다 —
 | `plan-ceo-review` (HOLD SCOPE) | 🛑 BLOCKER | BLOCKER 1 · MAJOR 8 · MINOR 2 · 기각 2 |
 | Outside Voice (codex) | ⏭ 생략 | `codex` CLI 부재 |
 
-**VERDICT — 🛑 게이트 1 정지.** eng 렌즈 BLOCKER 는 닫혔으나 ceo 렌즈가 **C-B1(사외 웹훅 폭발
-반경 미판정)** 을 새로 냈다. `type=migration` 이라 무시 옵션이 없다. Maxi 결정 필요.
+**VERDICT — ✅ 게이트 1 반영 완료 · 재상신.** 두 렌즈의 BLOCKER 2건이 모두 닫혔다.
 
-**UNRESOLVED DECISIONS:**
-- C-B1 처방 선택 — ①이벤트에 이관 표시 ②전용 이벤트 타입 ③소비자 측 무시(PR 7b)
-- MAJOR 8건 중 이번 PR 에서 닫을 것과 PR 7b 로 넘길 것의 경계
+| 결정 | Maxi 답 | 반영 |
+|---|---|---|
+| **C-B1** 처방 | **①이벤트에 `cause="STATUS_MIGRATION"` 표시** | F11·F17 개정 · Task 6 확장 · red 10 |
+| **MAJOR 경계** | **전부 이번 PR** (C-8·C-10 만 PR 7b 착수 조건) | C-1→F18·Task 5 · C-2→F19·Task 7 · C-3→F20·Task 7 · C-4→F21·Task 3 · C-5→Task 7 수동 트리거 · C-6→Task 1 `NOT VALID` 2단계 · C-7·C-9→**Task 8 신설** |
+
+task 7 → **8** · 완료기준 9 → **15** · wave 4 유지(T8 은 wave 1 병렬).
+
+NO UNRESOLVED DECISIONS

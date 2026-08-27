@@ -123,7 +123,12 @@ FR-WF-07 의 D2·D4·D5 중 **issue-tracking + shared-kernel 몫**이다.
 | F8 | 전환 검증(조건·검증기)과 후처리를 우회한다 | Jira **J8** 과 동일. 이관 대상은 유효한 전환이 없다 |
 | F9 | 상태 쓰기는 **`IssueRepository.applyTransition` 을 그대로 재사용**한다. 직접 SQL 을 쓰지 않는다 | 그 메서드가 이미 OCC(`expectedVersion` · 0 row → 충돌)를 품고 있다. 엔진은 그 **위** 단계에만 있다 |
 | F10 | `applyTransition` 에 **기존 `resolution_id` 를 그대로 실어** 보존한다 | `null` 을 넘기면 해결책이 **지워진다**(비DONE 재전환 clear 시맨틱). S4 |
-| F11 | `IssueTransitioned` 이벤트를 발행한다 | 끄면 검색 색인·보드·감사가 옮겨간 이슈를 모른 채 썩는다 |
+| F11 | `IssueTransitioned` 이벤트를 발행하되 **`cause = "STATUS_MIGRATION"` 을 함께 싣는다** | ★ceo BLOCKER(C-B1). 끄면 검색 색인·보드가 썩고, 그냥 켜면 **사외 웹훅**(`search-export-import/.../WebhookDispatchWorker.kt`)이 이관 건수만큼 나간다 — 웹훅은 되돌릴 수 없다. 표시를 실어 **거르는 선택권을 소비자에게** 준다 |
+| F17 | `cause` 는 **nullable 신규 필드**다. 기존 발행 경로는 `null` 을 싣고 기존 소비자는 무변경이다 | 하위호환. issue-tracking 안에서 끝나 cross-BC 추가가 0 이다 |
+| F18 | 큐잉 시점에 **빈 `projectKeys` 를 거부**한다 | ★C-1. 빈 범위는 실행 시점 0건 → `COMPLETED` 가 되어, 운영자가 「이관 완료」를 보고 상태를 지운다. 아무것도 안 옮겼는데 성공으로 보인다 |
+| F19 | 실행 시점 상한 초과로 `FAILED` 될 때 **「범위를 나눠 다시 시도하라」를 사유에 싣는다** | ★C-2. 재시도해도 같은 결과라 그대로면 그 상태를 영영 못 뺀다. 막다른 길임을 알리지 않는 것이 결함이다 |
+| F20 | `failed_count > 0` 으로 끝난 `STATUS_MIGRATION` 을 **로그와 메트릭으로 드러낸다** | ★C-3. 그 이슈들은 옛 상태에 남아 유령이 되는데 작업은 `COMPLETED` 로 보인다. 조용한 실패를 금지하는 것이 이 기능의 존재 이유다 |
+| F21 | `FailureReasonCode` 에 **`STATE_NOT_IN_MAPPING` · `PROJECT_ARCHIVED` 2값을 더한다**. F13 의 「새 코드 금지」를 이 둘로 한정 해제한다 | ★C-4. 둘 다 **예상된** 조건인데 `UNKNOWN` 으로 떨어진다 — 그 KDoc 은 「예상치 **못한** 내부 오류」다. 진단 가능한 실패에 이름을 준다 |
 | F12 | `IssueHistoryRecorder` 로 상태 변경 이력을 남긴다 | 엔진을 건너뛴다고 이력까지 건너뛰면 감사 추적이 끊긴다 |
 | F13 | 실패 항목은 기존 `BulkItemFailureRecorder` + `FailureReasonCode` 경로를 그대로 탄다 | best-effort 계약 무변경. 새 실패 코드를 만들지 않는다 |
 | F14 | V038 으로 `chk_bulk_operations_operation_type` CHECK 에 `STATUS_MIGRATION` 을 더하고 `COMMENT` 를 갱신한다 | `V008:17` 의 CHECK 가 실재해 enum 만 늘리면 INSERT 가 거부된다 |
@@ -227,11 +232,20 @@ data class StatusMigrationMapping(
 **`V038__bulk_operations_status_migration.sql`** (issue-tracking · 마지막 번호 V037 확인)
 
 ```sql
+-- ★C-6. ADD CONSTRAINT CHECK 는 전체 스캔 + ACCESS EXCLUSIVE 락이다.
+--       NOT VALID → VALIDATE 2단계로 락 구간을 짧게 끊는다.
 ALTER TABLE bulk_operations DROP CONSTRAINT chk_bulk_operations_operation_type;
 ALTER TABLE bulk_operations ADD  CONSTRAINT chk_bulk_operations_operation_type
-    CHECK (operation_type IN ('BULK_EDIT', 'BULK_TRANSITION', 'STATUS_MIGRATION'));
+    CHECK (operation_type IN ('BULK_EDIT', 'BULK_TRANSITION', 'STATUS_MIGRATION')) NOT VALID;
+ALTER TABLE bulk_operations VALIDATE CONSTRAINT chk_bulk_operations_operation_type;
 COMMENT ON COLUMN bulk_operations.operation_type IS '… 허용값: BULK_EDIT, BULK_TRANSITION, STATUS_MIGRATION …';
 ```
+
+**★롤백 절차를 파일 주석에 적는다 (C-6).** 되돌리려면 `STATUS_MIGRATION` 행이 **0건**이어야 한다 —
+한 건이라도 있으면 좁힌 CHECK 가 그 행에서 실패해 되돌릴 수 없다. 절차는
+① `SELECT count(*) FROM bulk_operations WHERE operation_type='STATUS_MIGRATION'` 이 0인지 확인
+② 0이 아니면 **롤백하지 말고 앞으로 고친다**(행을 지우면 감사 기록이 사라진다).
+`DATA.md` 에 CHECK 무중단·롤백 규칙이 **0건**이라 이 PR 이 선례가 된다 — 규칙 승격은 별건.
 
 - 새 테이블 **0** · 새 컬럼 **0** · 백필 **0**. CHECK 확장 하나뿐이다
 - `bulk_operation_items` 는 무변경 — `FAILED` + `failure_reason` 계약을 그대로 쓴다
@@ -257,8 +271,9 @@ data class StatusMigration(
 | E1 | 매핑에 `from == to` 가 섞임 | 큐잉 거부. 옮길 것이 없는데 작업만 남는다 |
 | E2 | `toStatusKey` 가 상태 카탈로그에 없음 | 큐잉 거부. 유령 상태를 만드는 것이 이 기능이 막으려던 그 사고다 |
 | E3 | 큐잉 시점에 대상 이슈 **0건** | **거부하지 않는다.** 실행 전에 들어올 수 있다 — 그것을 잡는 것이 F15 의 목적이다. 실행 시점에도 0건이면 즉시 `COMPLETED`(`total_count=0`). 실패가 아니라 「할 일 없었다」로 기록된다 |
-| E4 | 실행 시점 대상이 상한(`BULK_OPERATION_MAX_SIZE`) 초과 | 작업을 `FAILED` 로 두고 사유를 남긴다 (J6). **조용히 자르지 않는다** — 잘린 나머지가 유령 상태가 되는데 화면은 「완료」로 보인다 |
+| E4 | 실행 시점 대상이 상한(`BULK_OPERATION_MAX_SIZE`) 초과 | 작업을 `FAILED` 로 두고 사유에 **「범위를 나눠 다시 시도하라」를 함께 싣는다** (J6 · ★C-2 · F19). **조용히 자르지 않는다** — 잘린 나머지가 유령이 되는데 화면은 「완료」로 보인다. 안내가 없으면 재시도해도 같은 결과라 그 상태를 영영 못 뺀다 |
 | E5 | 매핑 목록이 **비어 있음** | 큐잉 거부 |
+| E5b | **`projectKeys` 가 비어 있음** | 큐잉 거부 (★C-1 · F18). 그냥 두면 실행 시점 0건 → `COMPLETED` 라 「이관 완료」로 보이는데 아무것도 안 옮겼다 |
 | E6 | 같은 `toStatusKey` 로 여러 `from` 이 몰림 | **허용**. 지라도 막지 않는다 (J7 은 대상 유일성을 요구하지 않는다) |
 | E7 | 같은 `fromStatusKey` 가 매핑에 **두 번** 나옴 | 큐잉 거부. 어느 대상인지 정할 수 없다 |
 | E8 | 처리 시점에 이슈의 현재 상태가 **매핑에 없음** (그 사이 누가 옮김) | 그 건만 FAILED. 임의 대상으로 밀어 넣지 않는다 (F7) |
@@ -303,6 +318,17 @@ data class StatusMigration(
 8. 실행 시점 대상이 0건이면 `COMPLETED`(`total_count=0`)다. 실패가 아니다 (E3)
 9. 워커가 items 를 채우다 재시작해도 **중복 항목이 생기지 않는다** (E16 · F16)
 
+**추가 red (`plan-ceo-review` 가 찾은 것 · 게이트 1 에서 전부 이번 PR 로 확정)**
+
+10. ★이관으로 발행된 `IssueTransitioned` 에 **`cause = "STATUS_MIGRATION"` 이 실린다**.
+    일반 전환으로 발행된 것은 `cause` 가 `null` 이다 (C-B1 · F11 · F17)
+11. **빈 `projectKeys` 큐잉이 거부**된다 (C-1 · E5b · F18)
+12. 상한 초과 `FAILED` 사유에 **분할 재시도 안내**가 들어 있다 (C-2 · E4 · F19)
+13. `failed_count > 0` 으로 끝나면 **로그·메트릭에 드러난다** (C-3 · F20)
+14. 매핑에 없는 상태는 `STATE_NOT_IN_MAPPING`, 아카이브 프로젝트는 `PROJECT_ARCHIVED` 로
+    기록된다 — **`UNKNOWN` 이 아니다** (C-4 · F21)
+15. V038 이 `NOT VALID` → `VALIDATE` 2단계이고 롤백 절차가 파일 주석에 있다 (C-6)
+
 **뮤테이션 짝 (비-공허 확인)**
 
 - `BulkItemApplier` 의 `StatusMigration` 가지를 지우면 → **컴파일 실패**여야 한다(sealed 강제)
@@ -343,5 +369,26 @@ J7(상태별 대상 선택). D3(우회 경계)은 Jira **J8** 원문이 근거�
 **자체 점검이 왜 못 잡았나.** G1~G6 은 전부 「우회가 무엇을 삼키는가」축이었다. G7 은 **시점**
 축이라 그 렌즈에 안 걸렸다. 장부를 교차 확인한 것이 잡았다 — `TODOS.md` 를 Step 0 에서 읽는
 절차가 실제로 값을 했다.
+
+### ★`plan-ceo-review` BLOCKER 1건 + MAJOR 8건 — 게이트 1 에서 전부 이번 PR 로 확정
+
+| # | 지적 | 처리 |
+|---|---|---|
+| **C-B1** | `IssueTransitioned` 소비자에 **사외 웹훅**(`WebhookDispatchWorker`)이 있다. 이관 1,000건 = 웹훅 1,000건이고 되돌릴 수 없다. F11 은 검색 색인만 근거로 발행 유지를 정했다 | **F11·F17 개정** — `cause="STATUS_MIGRATION"` 을 실어 소비자가 거른다. red 10 |
+| C-1 | 빈 `projectKeys` 가 조용히 「완료」가 된다 | **F18 · E5b** · red 11 |
+| C-2 | 상한 초과가 막다른 길이다 | **F19 · E4 개정** · red 12 |
+| C-3 | 실패가 관측되지 않는다 | **F20** · red 13 |
+| C-4 | 예상된 실패가 `UNKNOWN` 으로 뭉개진다 | **F21** — `STATE_NOT_IN_MAPPING`·`PROJECT_ARCHIVED` 2값 · red 14 |
+| C-5 | T7 핵심 테스트가 타이밍 의존이라 flaky | plan Task 7 — 워커 **수동 트리거**로 순서를 통제 |
+| C-6 | CHECK 락·롤백 절차 부재 | **`NOT VALID` 2단계 + 롤백 주석** · red 15 |
+| C-7 | 로드맵 정본이 여전히 틀린 채다 | plan Task 8 — 로드맵 PR 7 절 정정 |
+| C-9 | 「PR 7b 가 온다」가 기계로 안 남는다 | plan Task 8 — `TODOS.md` 등재 + `:1613` 정정 |
+
+**PR 7b 착수 조건으로 넘긴 2건** — C-8(구버전 워커가 새 enum 값에 죽는다 · 이 PR 은 호출자가
+없어 행이 안 생기므로 지금은 안전) · C-10(포트 KDoc 의 「호출자가 `PUBLISH` 를 검사한다」 약속을
+검사할 장치).
+
+**자체 점검이 왜 C-B1 을 못 잡았나.** G1~G6 은 「우회」축, G7 은 「시점」축이었다. C-B1 은
+**폭발 반경**축이라 둘 다에 안 걸렸다 — 소비자를 **세어 본 것**이 잡았다. 렌즈 2종 강제가 값을 했다.
 
 **✅ 통과** — 남은 미확정은 「조회 실패 1건」뿐이고 그것은 이 PR 의 설계를 가르지 않는다.
