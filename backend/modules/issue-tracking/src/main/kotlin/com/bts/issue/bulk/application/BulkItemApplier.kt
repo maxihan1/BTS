@@ -7,10 +7,12 @@ import com.bts.issue.application.TransitionIssueRequest
 import com.bts.issue.application.UpdateIssueRequest
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationPayload
+import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.repository.IssueRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
@@ -93,12 +95,26 @@ class BulkItemApplier(
                 )
             }
             is BulkOperationPayload.StatusMigration -> {
-                issueRepository.applyTransition(
-                    key = issueKey,
-                    toState = payload.mappings.values.first(),
-                    expectedVersion = existing.version,
-                    resolutionId = existing.resolutionId,
-                )
+                val target = payload.mappings[existing.currentStateKey]
+                if (target == null) {
+                    bulkRepo.updateItemResult(
+                        operationId,
+                        issueKey,
+                        ItemStatus.FAILED,
+                        FailureReasonCode.STATE_NOT_IN_MAPPING,
+                    )
+                    return
+                }
+                val updatedRows =
+                    issueRepository.applyTransition(
+                        key = issueKey,
+                        toState = target,
+                        expectedVersion = existing.version,
+                        resolutionId = existing.resolutionId,
+                    )
+                if (updatedRows == 0) {
+                    throw IssueVersionConflictException(issueKey, existing.version)
+                }
             }
         }
 
