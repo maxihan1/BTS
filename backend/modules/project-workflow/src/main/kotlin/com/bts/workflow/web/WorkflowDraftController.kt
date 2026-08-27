@@ -4,7 +4,7 @@ package com.bts.workflow.web
 
 import com.bts.workflow.application.WorkflowDraftService
 import com.bts.workflow.application.WorkflowPublishService
-import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowDraftNotFoundException
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.DraftResponse
 import com.bts.workflow.web.dto.PublishPreviewResponse
@@ -96,7 +96,7 @@ class WorkflowDraftController(
         val actor = CurrentActor.current()
         log.info("WorkflowDraftController.discardDraft workflow={}", key)
         if (!draftService.discard(actor.toUuid(), key)) {
-            throw WorkflowInvalidRequestException(key, "폐기할 초안이 없다")
+            throw WorkflowDraftNotFoundException(key)
         }
     }
 

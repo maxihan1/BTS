@@ -29,6 +29,19 @@ class WorkflowNotFoundException(
 ) : RuntimeException("Workflow not found: '$workflowKey'")
 
 /**
+ * 워크플로우는 있으나 그 **초안**이 없다 — 404.
+ *
+ * [WorkflowInvalidRequestException] 으로 접으면 400 이 나가고 프론트 표가 그것을 「요청 내용이
+ * 올바르지 않습니다」라는 범용 문구로 옮긴다 — 「초안이 없다」가 「요청이 잘못됐다」로 보이고,
+ * 404 를 기대해 분기하는 클라이언트는 그 분기에 영영 닿지 못한다.
+ *
+ * @property workflowKey 초안이 없는 워크플로우 키.
+ */
+class WorkflowDraftNotFoundException(
+    val workflowKey: String,
+) : RuntimeException("Draft not found for workflow '$workflowKey'")
+
+/**
  * SpEL(Spring Expression Language) 표현식 평가가 제한 시간 내에 완료되지 않을 때 던지는 예외.
  *
  * @param expression 평가에 실패한 SpEL 표현식 문자열.

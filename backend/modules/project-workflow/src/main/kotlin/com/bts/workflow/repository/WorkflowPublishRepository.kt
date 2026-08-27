@@ -9,6 +9,7 @@ import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.DSLContext
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -116,6 +117,7 @@ class WorkflowPublishRepository(
      * @param statusIds 초안의 상태 키 → 전역 카탈로그 id. 호출부가 [findStatusIdsByKeys] 로 미리 채운다.
      * @return 초안의 전환 순번 → 새로 생긴 `workflow_transitions.id`. 규칙 삽입이 이 맵을 쓴다.
      */
+    @Transactional
     fun replaceDefinition(
         workflowId: UUID,
         definition: WorkflowDraftDefinition,

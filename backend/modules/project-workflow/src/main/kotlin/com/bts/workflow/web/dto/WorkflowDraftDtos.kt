@@ -3,6 +3,7 @@
 package com.bts.workflow.web.dto
 
 import com.bts.workflow.domain.WorkflowDraftDefinition
+import com.fasterxml.jackson.annotation.JsonProperty
 
 /**
  * 초안 조회 응답.
@@ -33,8 +34,8 @@ data class DraftResponse(
  * @property baseVersion `GET /draft` 가 돌려준 값. 초안 행이 새로 생길 때만 앵커로 기록된다.
  */
 data class SaveDraftRequest(
-    val definition: WorkflowDraftDefinition,
-    val baseVersion: Long,
+    @JsonProperty(required = true) val definition: WorkflowDraftDefinition,
+    @JsonProperty(required = true) val baseVersion: Long,
 )
 
 /**
@@ -46,7 +47,7 @@ data class SaveDraftRequest(
  * @property baseVersion `GET /draft` 가 돌려준 값.
  */
 data class ResetToDefaultRequest(
-    val baseVersion: Long,
+    @JsonProperty(required = true) val baseVersion: Long,
 )
 
 /**
@@ -58,12 +59,18 @@ data class ResetToDefaultRequest(
  * 받아 놓고 무시하면 화면은 이관을 지시했다고 믿는데 아무 일도 일어나지 않는다.
  * 이관이 필요하면 발행이 409 로 막히고 응답이 상태별 잔여 건수를 알려준다. 매핑 수용은 로드맵 PR 7.
  *
+ * ### `required = true` 인 이유
+ * Kotlin 의 non-null `Long` 은 JVM primitive 라, 본문에서 **빠지면 Jackson 이 조용히 0 으로 채운다**
+ * (Kotlin 모듈이 있어도 그렇다 — 값이 Kotlin 생성자에 닿기 전에 primitive 기본값이 들어간다).
+ * 0 은 「새 워크플로우의 첫 발행」에서 실제로 나오는 그럴듯한 앵커라, 필드를 빠뜨린 요청이 400 이
+ * 아니라 **잘못된 버전으로 발행을 시도**하게 된다. `required = true` 가 그 자리를 400 으로 되돌린다.
+ *
  * @property baseVersion 초안 조회 때 받은 값. **저장된 초안의 앵커**와 다르면 409 다 — 지금 DB
  *   버전과 대조하지 않는다. 그렇게 하면 화면이 미리보기의 `currentVersion` 을 되실어 보내는 것만으로
  *   락이 풀린다.
  */
 data class PublishRequest(
-    val baseVersion: Long,
+    @JsonProperty(required = true) val baseVersion: Long,
 )
 
 /**

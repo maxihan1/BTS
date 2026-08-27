@@ -25,6 +25,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -44,6 +46,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
 /** 테스트 행위자. `CurrentActor` 가 UUID 형식을 요구하므로 실제 UUID 를 쓴다. */
 private const val ACTOR_ID = "11111111-2222-3333-4444-555555555555"
@@ -73,12 +76,25 @@ private val publishService: WorkflowPublishService = mockk()
 @ContextConfiguration(classes = [WorkflowDraftControllerMvcTest.TestMvcConfig::class])
 @WebAppConfiguration
 class WorkflowDraftControllerMvcTest {
-    /** 테스트 전용 Spring MVC + Security 최소 컨텍스트. */
+    /**
+     * 테스트 전용 Spring MVC + Security 최소 컨텍스트.
+     *
+     * ### Jackson Kotlin 모듈을 손수 등록한다
+     * `@EnableWebMvc` 의 기본 컨버터는 `KotlinModule` 을 모른다. 그러면 `PublishRequest.baseVersion`
+     * 처럼 **기본값 없는 non-null `Long`** 이 빠진 본문에서 조용히 0 으로 채워져, 슬라이스가
+     * 운영과 다른 계약을 말한다(운영은 Boot 가 그 모듈을 자동 등록한다).
+     * 이 테스트가 보는 것이 경계의 계약이므로 컨버터도 운영과 같아야 한다.
+     */
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
     @EnableMethodSecurity
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters.removeIf { it is MappingJackson2HttpMessageConverter }
+            converters.add(0, MappingJackson2HttpMessageConverter(ObjectMapper().registerKotlinModule()))
+        }
+
         @Bean
         open fun workflowDraftService(): WorkflowDraftService = draftService
 
@@ -95,8 +111,7 @@ class WorkflowDraftControllerMvcTest {
         open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()
 
         @Bean
-        open fun workflowPublishExceptionHandler(): WorkflowPublishExceptionHandler =
-            WorkflowPublishExceptionHandler()
+        open fun publishExceptionHandler(): WorkflowPublishExceptionHandler = WorkflowPublishExceptionHandler()
 
         @Bean
         open fun testSecurityFilterChain(http: HttpSecurity): SecurityFilterChain =

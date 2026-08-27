@@ -41,6 +41,8 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   //     「옮길 상태 고르기」다 — 문구를 합치면 어느 쪽도 안내가 되지 않는다.
   WORKFLOW_VERSION_CONFLICT: '다른 사용자가 먼저 발행했습니다. 다시 불러온 뒤 시도하세요',
   WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
+  //   ★ 「초안이 없다」를 범용 400 문구로 접으면 「요청이 잘못됐다」로 보인다 — 관리자가 할 일이 다르다.
+  WORKFLOW_DRAFT_NOT_FOUND: '편집 중인 초안이 없습니다',
   // StatusExceptionHandler
   STATUS_KEY_CONFLICT: '이미 사용 중인 상태 키입니다',
   STATUS_NAME_CONFLICT: '이미 사용 중인 상태 이름입니다',

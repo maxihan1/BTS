@@ -2,11 +2,14 @@
 
 package com.bts.workflow.web
 
+import com.bts.workflow.domain.exception.WorkflowDraftNotFoundException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
 import com.bts.workflow.domain.exception.WorkflowVersionConflictException
+import com.bts.workflow.validator.web.TransitionRuleFrameworkErrors
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
@@ -31,7 +34,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 여기 코드가 통째로 안 보여 **차집합이 조용히 0 으로 통과한다.** 실제로 그 사고가 한 번 있었고
  * (테스트 KDoc :21), 그래서 이 PR 은 파일 생성과 배열 등재를 같은 커밋에 둔다.
  */
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = [WorkflowDraftController::class])
 class WorkflowPublishExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -87,6 +90,44 @@ class WorkflowPublishExceptionHandler {
                 pendingIssueCounts = ex.pending,
             ),
         )
+    }
+
+    /**
+     * 초안 부재 — 404.
+     *
+     * `WorkflowInvalidRequestException` 으로 접으면 400 이 나가고 프론트 표가 그것을 「요청 내용이
+     * 올바르지 않습니다」라는 범용 문구로 옮긴다. 「초안이 없다」와 「요청이 잘못됐다」는 관리자가
+     * 할 일이 다르므로 코드를 가른다.
+     */
+    @ExceptionHandler(WorkflowDraftNotFoundException::class)
+    fun handleDraftNotFound(ex: WorkflowDraftNotFoundException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_DRAFT_404 key='{}'", ex.workflowKey)
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_DRAFT_NOT_FOUND",
+                        message = "폐기할 초안이 없습니다.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 요청 본문을 읽지 못했다 — 400.
+     *
+     * `PublishRequest.baseVersion` 은 기본값 없는 non-null 이라 빠뜨리면 Jackson 이 이 예외를
+     * 던진다. 잡지 않으면 응답이 이 BC 표준 봉투가 아니라 Boot 기본 오류 본문으로 나가고,
+     * 프론트 파서가 실패해 한국어 매핑이 **도달 불가**가 된다. 형제
+     * `ValidatorExceptionHandler`·`PostActionExceptionHandler` 가 정확히 이 이유로 같은 처방을 쓴다.
+     *
+     * 봉투 조립은 [TransitionRuleFrameworkErrors] 한 벌을 그대로 재사용한다 — 문자열을 여기 다시
+     * 적으면 프레임워크 층 코드가 세 곳으로 갈린다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_400 message_not_readable cause='{}'", ex.mostSpecificCause.javaClass.simpleName)
+        return TransitionRuleFrameworkErrors.unreadableBody()
     }
 }
 
