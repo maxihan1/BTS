@@ -24,6 +24,8 @@ import java.sql.SQLException
  *     위반 메시지의 제약 이름이 V008 의 chk_bulk_operations_operation_type 그대로인지도 함께 본다.
  *     이름을 바꾸면 다음 사람이 「어느 쪽이 진짜인가」를 못 푼다
  * (c) 기존 BULK_EDIT · BULK_TRANSITION INSERT 가 여전히 성공 — 회귀 방어
+ * (d) jOOQ 코드젠 입력 `db/codegen/init_codegen.sql` 의 같은 CHECK 가 DB 와 같은 값 집합을 선언 —
+ *     두 스키마 정의가 서로를 검사하지 않으면 다음 CHECK 변경 때 같은 자리에서 또 갈린다
  *
  * 이미지 선택 이유.
  * V002 마이그레이션이 pgmq 확장을 요구하므로 postgres:16-alpine 사용 불가.
@@ -36,6 +38,10 @@ import java.sql.SQLException
 @Testcontainers
 class V038MigrationIntegrationTest {
     companion object {
+        private const val CONSTRAINT_NAME = "chk_bulk_operations_operation_type"
+        private const val MIRROR_RESOURCE = "/db/codegen/init_codegen.sql"
+        private val QUOTED_LITERAL = Regex("""'([^']*)'""")
+
         // quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
         // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
         private val temboImage: DockerImageName =
@@ -142,4 +148,80 @@ class V038MigrationIntegrationTest {
             .describedAs("V038 이 기존 BULK_TRANSITION 을 깨뜨리지 않아야 한다")
             .isEqualTo("BULK_TRANSITION")
     }
+
+    // ── (d) 코드젠 미러 차집합 가드 ──────────────────────────────────────────
+    //
+    // `init_codegen.sql` 은 jOOQ 코드 생성의 **유일한 입력**이자 손으로 유지하는 사본이다
+    // (build.gradle.kts 의 codegenMirrorFile). Flyway 가 세우는 스키마와 별개 파일이라,
+    // 마이그레이션만 고치고 미러를 잊으면 두 정의가 조용히 갈라진다 —
+    // 이 저장소가 반복해 물린 「두 목록이 서로를 검사하지 않는다」 양식이다.
+    // 지금 당장 안 터지더라도 다음 CHECK 변경이 같은 자리에서 또 갈린다.
+    //
+    // 한쪽 방향만 보면 반대쪽이 커지는 드리프트를 놓치므로 **양방향 차집합**을 각각 단언한다.
+
+    @Test
+    fun `codegen 미러의 operation_type CHECK 가 마이그레이션과 같은 값 집합을 선언한다`() {
+        val migrated = migratedAllowedValues()
+        val mirrored = mirrorAllowedValues()
+
+        assertThat(migrated)
+            .describedAs("DB 제약 정의 파싱 결과가 비었다 — 드리프트가 아니라 파서가 깨진 것이다")
+            .isNotEmpty()
+
+        assertThat(mirrored - migrated)
+            .describedAs("미러에만 있는 값 — 코드젠은 아는데 마이그레이션이 거부한다")
+            .isEmpty()
+
+        assertThat(migrated - mirrored)
+            .describedAs("마이그레이션에만 있는 값 — CHECK 를 넓히고 %s 미러를 안 고쳤다", MIRROR_RESOURCE)
+            .isEmpty()
+    }
+
+    /**
+     * 마이그레이션 체인이 적용된 DB 의 [CONSTRAINT_NAME] 이 실제로 허용하는 값 집합.
+     *
+     * PostgreSQL 은 `IN (...)` 을 `= ANY (ARRAY[...])` 로 정규화해 돌려주므로 `IN` 문자열을 찾으면 안 된다.
+     * 정의 문자열 안의 작은따옴표 리터럴이 곧 허용값 전부다.
+     */
+    @Suppress("NestedBlockDepth")
+    private fun migratedAllowedValues(): Set<String> =
+        conn().use { c ->
+            c.prepareStatement(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = ? AND conrelid = 'bulk_operations'::regclass
+                """.trimIndent(),
+            ).use { stmt ->
+                stmt.setString(1, CONSTRAINT_NAME)
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "bulk_operations 에 제약 $CONSTRAINT_NAME 이 없다" }
+                    quotedLiterals(rs.getString(1))
+                }
+            }
+        }
+
+    /**
+     * 코드젠 미러 파일이 선언한 허용값 집합.
+     *
+     * 제약 선언을 앵커로 잡고 **그 제약 블록 안에서만** `IN (...)` 을 읽는다.
+     * 창을 안 좁히면 미러가 이 CHECK 를 통째로 잃었을 때 아래쪽 다른 제약의 목록을 잘못 집어
+     * 판별식이 공허해진다.
+     */
+    private fun mirrorAllowedValues(): Set<String> {
+        val sql =
+            javaClass.getResource(MIRROR_RESOURCE)?.readText()
+                ?: error("$MIRROR_RESOURCE 이 클래스패스에 없다 — jOOQ 코드젠 입력이 사라졌다")
+        val anchor =
+            Regex("""CONSTRAINT\s+$CONSTRAINT_NAME\b""").find(sql)
+                ?: error("$MIRROR_RESOURCE 에 $CONSTRAINT_NAME 선언이 없다 — 미러가 CHECK 를 잃었다")
+        val block = sql.substring(anchor.range.last + 1).substringBefore("CONSTRAINT")
+        val inList =
+            Regex("""IN\s*\(([^)]*)\)""").find(block)
+                ?: error("$MIRROR_RESOURCE 의 $CONSTRAINT_NAME 에 IN 목록이 없다 — 표기를 바꿨다면 이 판별식도 고쳐라")
+        return quotedLiterals(inList.groupValues[1])
+    }
+
+    // 작은따옴표 리터럴만 뽑는다. 허용값에 따옴표가 들어가는 날이 오면 이 파서를 다시 봐야 한다.
+    private fun quotedLiterals(text: String): Set<String> = QUOTED_LITERAL.findAll(text).map { it.groupValues[1] }.toSet()
 }
