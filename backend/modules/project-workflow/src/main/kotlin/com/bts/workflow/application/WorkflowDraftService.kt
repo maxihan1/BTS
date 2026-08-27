@@ -2,6 +2,7 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.domain.DraftRuleDto
@@ -105,6 +106,16 @@ class WorkflowDraftService(
     /**
      * 초안을 폐기한다.
      *
+     * ### 권한이 `UPDATE` **또는** `PUBLISH` 인 이유
+     * 앵커는 write-once 다([WorkflowDraftRepository.upsert] 의 `DO UPDATE` 가 그 컬럼을 뺀다).
+     * 그래서 `UPDATE` 만 가진 행위자가 옛 버전을 앵커로 초안을 만들면 그 워크플로우의 발행은
+     * **영구 409** 가 되고, 그 상태의 유일한 출구가 초안 폐기다. 폐기에 `UPDATE` 만 요구하면
+     * **발행 운영자는 스스로 빠져나올 수 없다** — 악의가 필요 없고, 이전 세션의 앵커를 들고 있는
+     * 편집기 탭 하나면 만들어진다.
+     *
+     * 「발행할 수 있는 사람은 발행을 막고 있는 초안도 치울 수 있다」가 읽기로도 자연스럽다.
+     * 둘 다 없으면 거절이다 — 넓힌 것이지 연 것이 아니다.
+     *
      * @return 지운 초안이 있었으면 true. 호출부가 204 와 404 를 가른다.
      */
     @Transactional
@@ -112,7 +123,7 @@ class WorkflowDraftService(
         actorId: UUID,
         key: String,
     ): Boolean {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        requireAnyPermission(actorId, WorkflowDefinitionPermission.UPDATE, WorkflowDefinitionPermission.PUBLISH)
         return draftRepository.deleteByWorkflowId(requireLive(key).id)
     }
 
@@ -168,6 +179,29 @@ class WorkflowDraftService(
     private fun requireLive(key: String): WorkflowVersionRow {
         val row = publishRepository.findLiveByKey(key)
         return row ?: throw WorkflowNotFoundException(key)
+    }
+
+    /**
+     * 후보 권한 중 **하나라도** 있으면 통과한다.
+     *
+     * 포트가 단일 권한만 받으므로(`WorkflowDefinitionPermissionResolver.requirePermission`) 여기서
+     * 조합한다. 전부 실패했을 때는 **첫 번째 후보**의 거절을 그대로 올린다 — 그것이 「원래 요구되는」
+     * 권한이고, 마지막 시도의 예외를 올리면 응답이 부차적인 권한 이름을 가리켜 안내가 어긋난다.
+     */
+    private fun requireAnyPermission(
+        actorId: UUID,
+        vararg candidates: WorkflowDefinitionPermission,
+    ) {
+        var first: RuntimeException? = null
+        for (candidate in candidates) {
+            try {
+                permissionResolver.requirePermission(actorId, candidate)
+                return
+            } catch (ex: WorkflowDefinitionAccessDeniedException) {
+                if (first == null) first = ex
+            }
+        }
+        throw first ?: error("권한 후보가 비어 있다 — 호출부가 최소 하나를 넘겨야 한다")
     }
 
     /**

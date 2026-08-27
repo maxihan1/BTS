@@ -3,6 +3,7 @@
 package com.bts.workflow.application
 
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
+import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
@@ -399,6 +400,44 @@ class WorkflowDraftServiceIntegrationTest {
 
         assertThat(service.discard(ACTOR, key)).isTrue()
         assertThat(draftRepository.findByWorkflowId(workflowId(key))).isNull()
+    }
+
+    /**
+     * ★ 발행 권한만 가진 운영자도 초안을 폐기할 수 있어야 한다 — 그것이 유일한 탈출구다.
+     *
+     * 앵커는 write-once 다(`upsert` 의 `DO UPDATE` 가 그 컬럼을 뺀다). 그래서 `UPDATE` 만 가진
+     * 행위자가 `baseVersion=0` 으로 초안을 만들면 그 워크플로우의 발행은 **영구 409** 가 되고,
+     * 409 문구가 가리키는 출구는 초안 폐기 하나다. 그 폐기에 `UPDATE` 를 요구하면 **발행 운영자는
+     * 스스로 빠져나올 수 없다.**
+     *
+     * 「발행할 수 있는 사람은 발행을 막는 초안도 치울 수 있다」가 읽기로도 자연스럽다.
+     */
+    @Test
+    fun `발행 권한만 있어도 초안을 폐기할 수 있다`() {
+        val key = seedWorkflow()
+        service.save(ACTOR, key, validDraft(key), baseVersion = 0)
+        permissions.deny += WorkflowDefinitionPermission.UPDATE
+
+        try {
+            assertThat(service.discard(ACTOR, key)).isTrue()
+            assertThat(draftRepository.findByWorkflowId(workflowId(key))).isNull()
+        } finally {
+            permissions.deny.clear()
+        }
+    }
+
+    @Test
+    fun `편집 권한도 발행 권한도 없으면 폐기할 수 없다`() {
+        val key = seedWorkflow()
+        service.save(ACTOR, key, validDraft(key), baseVersion = 0)
+        permissions.allow = false
+
+        try {
+            assertThatThrownBy { service.discard(ACTOR, key) }
+                .isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
+        } finally {
+            permissions.allow = true
+        }
     }
 
     @Test
