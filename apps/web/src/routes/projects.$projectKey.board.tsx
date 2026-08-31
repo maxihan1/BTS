@@ -1,6 +1,7 @@
 // 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6 + FR-UX-01 Task 9)
 import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, Plus } from 'lucide-react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -25,12 +26,22 @@ import { boardLabels } from '@/i18n/board-labels'
 import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch } from '@/lib/board-filter'
 import type { BoardFilterSearch } from '@/lib/board-filter'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
@@ -200,31 +211,99 @@ function buildBoardSearch(
 // 내부 서브컴포넌트 — 재사용이 아닌 가독성 분리
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 보드 선택 드롭다운 props */
+/** 보드 스위처 props */
 interface BoardSelectorProps {
+  /** 이 프로젝트의 보드 전량 — 1개여도 스위처는 렌더된다 */
   boards: BoardSummary[]
+  /** 현재 보고 있는 보드 UUID */
   currentBoardId: string | undefined
+  /** 보드가 속한 프로젝트 키 — 생성 폼과 권한 조회에 쓴다 */
   projectKey: string
+  /** 다른 보드를 고를 때의 콜백 */
   onSelect: (id: string) => void
 }
 
-/** 보드 2+개일 때 렌더하는 선택 드롭다운 서브컴포넌트 */
-function BoardSelectorDropdown({ boards, currentBoardId, onSelect }: BoardSelectorProps): JSX.Element {
+/**
+ * 보드 스위처 — 보드가 1개여도 상시 노출되는 전환 드롭다운 (FR-BD-01-2c).
+ *
+ * - 트리거는 현재 보드 이름. 목록은 `DropdownMenuRadioGroup`(=`role="menuitemradio"`)이라
+ *   「지금 어느 보드인가」가 선택 표시로 드러난다.
+ * - CREATE 권한이 있을 때만 구분선 + 「새 보드」 항목을 **렌더한다**. 비활성이 아니라 부재다
+ *   (Jira 근거 J5 · FR-BD-01-2d). 권한 조회가 아직 안 끝났으면 `=== true` 가 false 라 fail-closed 다.
+ * - 권한을 prop 으로 받지 않고 여기서 직접 조회한다 — `useProjectPermissions` 는 캐시 키가 같아
+ *   부모의 호출과 합쳐지므로 왕복이 늘지 않고, 「메뉴 항목을 가리는 조건」이 그 항목 옆에 남는다.
+ */
+function BoardSelectorDropdown({
+  boards,
+  currentBoardId,
+  projectKey,
+  onSelect,
+}: BoardSelectorProps): JSX.Element {
+  const [createOpen, setCreateOpen] = useState(false)
+  const { data: projectPermissions } = useProjectPermissions(projectKey)
+  const canCreate: boolean = projectPermissions?.permissions.CREATE === true
+
+  const currentName: string =
+    boards.find((b: BoardSummary) => b.boardId === currentBoardId)?.name ??
+    boardLabels.boardSelectPlaceholder
+
+  // `CreateBoardForm` 은 성공 콜백을 노출하지 않고 navigate 만 한다 — 생성이 성공하면
+  // 목록 캐시가 무효화돼 보드 수가 늘어나므로, 그 증가를 닫힘 신호로 삼는다.
+  // 실패하면 수가 그대로라 다이얼로그가 열린 채 폼 안의 실패 사유가 남는다.
+  const boardCount = boards.length
+  useEffect(() => {
+    setCreateOpen(false)
+  }, [boardCount])
+
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm font-medium">보드</span>
-      <Select value={currentBoardId ?? ''} onValueChange={onSelect}>
-        <SelectTrigger className="w-64">
-          <SelectValue placeholder={boardLabels.boardSelectPlaceholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {boards.map((b: BoardSummary) => (
-            <SelectItem key={b.boardId} value={b.boardId}>
-              {b.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-64 justify-between"
+            aria-label={boardLabels.switcher.triggerAriaLabel(currentName)}
+          >
+            <span className="truncate">{currentName}</span>
+            <ChevronDown aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        {/* 폭은 프리미티브가 트리거 폭(`--radix-dropdown-menu-trigger-width`)에 맞춘다 — 따로 주지 않는다 */}
+        <DropdownMenuContent align="start">
+          <DropdownMenuLabel>{boardLabels.switcher.groupLabel}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={currentBoardId ?? ''} onValueChange={onSelect}>
+            {boards.map((b: BoardSummary) => (
+              <DropdownMenuRadioItem key={b.boardId} value={b.boardId}>
+                <span className="truncate">{b.name}</span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          {canCreate && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  setCreateOpen(true)
+                }}
+              >
+                <Plus aria-hidden="true" />
+                {boardLabels.switcher.createItem}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* 생성 다이얼로그 — 빈 상태와 같은 `CreateBoardForm` 을 그대로 쓴다(신규 폼 없음) */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{boardLabels.switcher.createDialogTitle}</DialogTitle>
+          </DialogHeader>
+          <CreateBoardForm projectKey={projectKey} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -514,11 +593,11 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {/* 뷰 전환 nav — 백로그·타임라인 (ProjectNavTabs 공유 컴포넌트, FR-UX-06 PR12 Task 4) */}
       <ProjectNavTabs projectKey={projectKey} links={BOARD_VIEW_NAV_LINKS} />
 
-      {/* 헤더 행 — 보드 선택 드롭다운 + 스윔레인 셀렉터 */}
-      {(boards !== undefined && boards.length >= 2) || (boardDetail !== undefined && canCreate) ? (
+      {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터 */}
+      {(boards !== undefined && boards.length >= 1) || (boardDetail !== undefined && canCreate) ? (
         <div className="flex items-center gap-4 flex-wrap">
-          {/* 보드 2+개 선택 드롭다운 */}
-          {boards !== undefined && boards.length >= 2 && (
+          {/* 보드 스위처 — 1개여도 상시 노출한다. N개 모델임을 드러내는 자리다 (J1) */}
+          {boards !== undefined && boards.length >= 1 && (
             <BoardSelectorDropdown
               boards={boards}
               currentBoardId={currentBoardId}

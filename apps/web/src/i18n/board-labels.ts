@@ -3,7 +3,7 @@
 /**
  * 칸반 보드 컬럼 헤더가 노출하는 한국어 라벨/텍스트.
  *
- * 그룹 — placeholder(최상위) / page / wip / column / swimlane
+ * 그룹 — placeholder(최상위) / page / switcher / wip / column / swimlane
  *
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  */
@@ -11,7 +11,7 @@ export const boardLabels = {
   /** 보드 생성 폼(`board/CreateBoardForm.tsx`) 이름 input 의 예시 placeholder */
   createFormNamePlaceholder: '스프린트 보드',
 
-  /** 보드 페이지 상단 보드 전환 Select 의 미선택 placeholder */
+  /** 보드 페이지 상단 보드 스위처가 현재 보드를 못 찾았을 때의 대체 표기 */
   boardSelectPlaceholder: '보드 선택',
 
   /** 보드 페이지 — 헤더 및 뷰 전환 링크 */
@@ -38,6 +38,42 @@ export const boardLabels = {
      * 상단바 `만들기` · 모달 제출 `이슈 생성` 을 부분 문자열로 포함하면 기존 e2e 가 깨진다.
      */
     createIssue: '이슈 추가',
+  },
+
+  /**
+   * 보드 스위처 — 보드가 1개여도 상시 노출되는 전환 드롭다운 (FR-BD-01-2c · Jira 근거 J1·J2).
+   *
+   * Jira Cloud company-managed 는 프로젝트당 보드를 N개 갖고 생성 진입점을 보드 존재 여부와
+   * 무관하게 제공한다. BTS 에는 전역 Boards 디렉터리도 사이드바 hover `+` 도 없어
+   * 진입점 2곳을 이 드롭다운 하나로 접었다 (plan 의 의도적 편차 X1).
+   */
+  switcher: {
+    /**
+     * 스위처 트리거의 aria-label.
+     *
+     * 트리거의 보이는 텍스트는 현재 보드 **이름**이라 프로젝트마다 접근성 이름이 달라진다.
+     * 역할을 앞에 고정해 「이 버튼이 무엇인가」를 이름만으로 알 수 있게 하고, 현재 값도 함께 읽힌다.
+     *
+     * @param currentName 현재 선택된 보드 이름
+     * @returns "보드 선택, 현재 {currentName}"
+     */
+    triggerAriaLabel: (currentName: string): string => `보드 선택, 현재 ${currentName}`,
+
+    /** 드롭다운 안 보드 라디오 그룹의 섹션 라벨 */
+    groupLabel: '보드',
+
+    /**
+     * 보드 생성 진입 메뉴 항목.
+     *
+     * 🛑 「보드 만들기」로 쓰지 마라 — `CreateBoardForm` 제출 버튼이 그 문자열이고
+     *    `e2e/board-kanban.spec.ts` 가 `exact: true` 로 그것을 잡는다. 이 항목이 열어 주는
+     *    다이얼로그 안에 바로 그 버튼이 들어가므로, 같은 문구를 쓰면 「어느 쪽을 눌렀는가」가
+     *    화면에서도 테스트에서도 흐려진다.
+     */
+    createItem: '새 보드',
+
+    /** 보드 생성 다이얼로그 제목 — Radix 가 이 값을 다이얼로그 접근성 이름으로 쓴다 */
+    createDialogTitle: '새 보드',
   },
 
   /** WIP(Work In Progress) 제한 관련 라벨 */
