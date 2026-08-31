@@ -10,6 +10,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardTransitionCommand
@@ -56,6 +57,11 @@ data class BoardPlacementResult(
  * ## 보드 조회
  * boards/board_columns 로드 → [BoardIssueLookupPort.listVisibleIssuesByProject] 로 카드 조회 →
  * [BoardCardPlacement.placeCards] 로 배치.
+ *
+ * ## 보드 이름 변경 / 삭제 (FR-BD-01-2)
+ * [updateName] 은 기존 보드를 [Board.copy] 로 재구성해 도메인 불변 계약(name 비공백)에 검증을 맡긴다.
+ * [softDelete] 는 boards.deleted_at 만 채우고 이슈는 남긴다. 둘 다 repository 의 null/false 를
+ * [BoardNotFoundException](404)으로 승격한다. 권한 판정은 컨트롤러 책임이다.
  *
  * ## 카드 이동
  * toColumnId → 컬럼의 state_key 도출 → [IssueTransitionPort.transition] 위임.
@@ -286,6 +292,54 @@ class BoardApplicationService(
                 HttpStatus.NOT_FOUND,
                 "AGILE_BOARD_NOT_FOUND: 보드를 찾을 수 없습니다: boardId=$boardId",
             )
+    }
+
+    /**
+     * 보드 이름을 변경하고 갱신된 보드를 반환한다.
+     *
+     * 공백 이름 거부는 [Board] 애그리게이트의 불변 계약이다. 서비스가 같은 검사를 복제하면 도메인의
+     * `require` 가 dead code 가 되므로, 기존 보드를 [Board.copy] 로 재구성해 판정을 도메인에 맡긴다
+     * (PATCH 가 도메인 검증을 우회하는 회귀 차단).
+     *
+     * 권한 판정은 이 서비스가 하지 않는다 — 보드는 컨트롤러의 `loadBoardWithCreate` 가
+     * actor 추출(401) → 메타 조회(404) → CREATE(403) 순서를 담당한다.
+     *
+     * @param boardId 이름을 변경할 보드 UUID.
+     * @param name 새로운 보드 이름. 공백만으로 이루어질 수 없다.
+     * @return 갱신된 보드 도메인 객체.
+     * @throws IllegalArgumentException [name] 이 비어 있거나 공백뿐일 때 — [Board] 불변 계약 위반.
+     * @throws BoardNotFoundException 404 — 보드 미존재 또는 soft-deleted.
+     */
+    @Transactional
+    fun updateName(
+        boardId: UUID,
+        name: String,
+    ): Board {
+        val existing = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        val renamed = existing.copy(name = name)
+
+        log.debug("보드 이름 갱신 — boardId={}", boardId)
+        // 조회와 갱신 사이에 다른 트랜잭션이 soft-delete 하면 null 이 돌아온다(TOCTOU).
+        return boardRepository.updateName(boardId, renamed.name) ?: throw BoardNotFoundException()
+    }
+
+    /**
+     * 보드를 소프트 삭제한다 — boards.deleted_at 만 채우고 이슈는 남긴다.
+     *
+     * [BoardRepository.softDelete] 가 false 를 반환하면 보드가 없거나 이미 삭제된 상태이므로 404 로
+     * 승격한다. 존재 판정과 삭제가 한 UPDATE 안에서 끝나므로 선행 조회를 두지 않는다.
+     *
+     * 권한 판정은 [updateName] 과 마찬가지로 컨트롤러 책임이다.
+     *
+     * @param boardId 소프트 삭제할 보드 UUID.
+     * @throws BoardNotFoundException 404 — 보드 미존재 또는 이미 soft-deleted.
+     */
+    @Transactional
+    fun softDelete(boardId: UUID) {
+        log.debug("보드 소프트 삭제 — boardId={}", boardId)
+        if (!boardRepository.softDelete(boardId)) {
+            throw BoardNotFoundException()
+        }
     }
 
     /**
