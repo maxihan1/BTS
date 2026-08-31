@@ -7,6 +7,7 @@ import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boa
 import type { UserSummary } from '@/api/users'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { ApiError } from '@/api/client'
+import { boardLabels } from '@/i18n/board-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router, use-boards, @/api/users, KanbanBoard, FavoriteButton
@@ -366,9 +367,37 @@ describe('BoardPage', () => {
   })
 
   /**
-   * T-BD7-R-4. 보드 2+개 — 선택 드롭다운이 렌더된다.
+   * T-BD7-R-4. 보드 **1개**여도 스위처가 렌더된다 (FR-BD-01-2c).
+   *
+   * 이전 계약은 `>= 2` 였다 — 보드가 1개인 프로젝트에서는 스위처가 통째로 없어서
+   * 「보드는 N개 가질 수 있다」(Jira 근거 J1)가 화면에 드러나지 않았고 생성 진입점도 사라졌다.
    */
-  it('T-BD7-R-4: 보드 2개 이상이면 선택 드롭다운이 렌더된다', async () => {
+  it('T-BD7-R-4: 보드가 1개여도 보드 스위처가 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    const trigger = await screen.findByRole('button', { name: /보드 선택/ })
+    expect(trigger).toBeInTheDocument()
+    // 트리거는 현재 보드 이름을 보여 준다 — 「무엇을 보고 있는가」가 접힌 상태에서도 읽힌다
+    expect(trigger).toHaveTextContent(BOARD_A.name)
+  })
+
+  /**
+   * T-BD7-R-4b. 스위처를 열면 보드 목록이 `role="menuitemradio"` 로 나오고
+   * 현재 보드만 `aria-checked=true` 다.
+   *
+   * ★ 이 단언이 role 계약 자체다 — Radix Select 에서 DropdownMenu 로 갈아탔으므로
+   *   `role="combobox"` 는 더 이상 나오지 않는다. 그 소멸을 여기서 대체한다.
+   */
+  it('T-BD7-R-4b: 스위처를 열면 보드가 menuitemradio 로 나온다', async () => {
+    const user = userEvent.setup()
     mockUseBoards.mockReturnValue({
       data: [BOARD_A, BOARD_B],
       isLoading: false,
@@ -379,9 +408,77 @@ describe('BoardPage', () => {
 
     await renderBoardPage()
 
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+
+    const itemA = await screen.findByRole('menuitemradio', { name: BOARD_A.name })
+    const itemB = await screen.findByRole('menuitemradio', { name: BOARD_B.name })
+    expect(itemA).toHaveAttribute('aria-checked', 'true')
+    expect(itemB).toHaveAttribute('aria-checked', 'false')
+  })
+
+  /**
+   * T-BD7-R-4c. CREATE 권한이 있으면 「새 보드」 항목이 나오고, 고르면 생성 폼이 뜬다.
+   *
+   * ★ T-BD7-R-4d(권한 없음)의 **비-공허 짝**이다. 이 테스트가 없으면 라벨을 오타 내도
+   *   `queryByRole(...).toBeNull()` 이 그대로 통과한다.
+   */
+  it('T-BD7-R-4c: CREATE 권한이 있으면 「새 보드」 항목으로 생성 폼을 연다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A],
+      isLoading: false,
+      error: null,
+      isError: false,
     })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+
+    expect(await screen.findByTestId('create-board-form')).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD7-R-4d. CREATE 권한이 없으면 「새 보드」 항목이 **DOM 에 없다** — 비활성이 아니다
+   * (Jira 근거 J5 · FR-BD-01-2d). 스위처 자체는 그대로 보인다.
+   */
+  it('T-BD7-R-4d: CREATE 권한이 없으면 「새 보드」 항목이 DOM 에 없다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A, BOARD_B],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: false,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+
+    // 보드 목록은 그대로 나온다 — 「메뉴가 안 열려서 없다」와 구별하는 앵커
+    expect(await screen.findByRole('menuitemradio', { name: BOARD_A.name })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    ).toBeNull()
   })
 
   /**
@@ -494,10 +591,13 @@ describe('BoardPage', () => {
   })
 
   /**
-   * T-BD7-R-8. 보드 2+개이며 드롭다운의 hidden select value 변경 시 navigate가 ?board=id로 호출된다.
-   * Radix Select는 jsdom에서 포인터 이벤트가 불완전하므로 native hidden select를 직접 조작한다.
+   * T-BD7-R-8. 스위처에서 다른 보드를 고르면 navigate가 `?board=<id>` 로 호출된다 (S2).
+   *
+   * 🛑 **조건부 후퇴를 두지 마라.** 이전 판은 `if (mockNavigate.mock.calls.length > 0)` 로 감싸고
+   *    else 분기에서 렌더만 확인했다 — navigate 가 한 번도 안 불려도 초록이 되는 가짜 그린이었다.
+   *    이제 항목 클릭이 실제로 전환을 일으키는지를 **무조건** 단언한다.
    */
-  it('T-BD7-R-8: 드롭다운 값 변경 시 navigate가 ?board=로 호출된다', async () => {
+  it('T-BD7-R-8: 스위처 항목을 고르면 navigate가 ?board=로 호출된다', async () => {
     const user = userEvent.setup()
     mockUseBoards.mockReturnValue({
       data: [BOARD_A, BOARD_B],
@@ -509,31 +609,16 @@ describe('BoardPage', () => {
 
     await renderBoardPage()
 
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
-    })
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(await screen.findByRole('menuitemradio', { name: BOARD_B.name }))
 
-    // Radix Select의 aria-hidden native select를 통해 값 변경 시뮬레이션
-    const nativeSelect = document.querySelector('select[aria-hidden="true"]')
-    if (nativeSelect instanceof HTMLSelectElement) {
-      await user.selectOptions(nativeSelect, BOARD_B.boardId)
-    }
-
-    // navigate가 호출됐다면 search 업데이터가 board id를 포함하는지 확인
-    if (mockNavigate.mock.calls.length > 0) {
-      const callArg = mockNavigate.mock.calls[0]?.[0] as {
-        search?: ((prev: Record<string, unknown>) => Record<string, unknown>) | Record<string, unknown>
-      }
-      if (callArg?.search !== undefined && typeof callArg.search === 'function') {
-        const result = callArg.search({})
-        expect(result).toMatchObject({ board: BOARD_B.boardId })
-      } else if (callArg?.search !== undefined) {
-        expect(callArg.search).toMatchObject({ board: BOARD_B.boardId })
-      }
-    } else {
-      // jsdom에서 Radix Select 인터랙션이 불완전한 경우 드롭다운 렌더만 확인
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
-    }
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '/projects/$projectKey/board',
+        params: { projectKey: 'ATLAS' },
+        search: { board: BOARD_B.boardId },
+      }),
+    )
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
