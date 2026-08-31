@@ -630,7 +630,8 @@ cache.withWriteLock(key) {
 3. **부채 144 를 「결선 완료 · 잔여 이월」로 갱신**
 4. **PR 10 의 명시적 선행 3건 신규 등재** — X8(`cause` 필터 3 BC) · X9(VIEW 오진) · X10(PR 7 잔여 7건)
 5. **신규 등재** — E7 의 아카이브 유령(C5) · 「`checkJiraSection` 이 절 안의 HTML 주석까지 본문으로 세어 면제가 오발동한다」
-6. `docs/plan/product/project-workflow.md` §2.7 의 **D4 를 `[x]` 로** · §집계 문장 갱신
+6. `docs/plan/product/project-workflow.md` §2.7 에 **착수 각주**를 신설한다 — 이 PR 이 착수 조건 6줄 중 무엇을 닫고 무엇을 C6·C7·C5 로 남기는지.
+   **★D4 는 `[ ]` 그대로 둔다.** 구현이 끝나기 전에 체크하면 장부가 사실보다 앞서간다 — 체크는 **머지 시점에 controller 가** 한다. §집계 문장도 그때 함께 고친다.
 
 **REFACTOR**: 없음
 
