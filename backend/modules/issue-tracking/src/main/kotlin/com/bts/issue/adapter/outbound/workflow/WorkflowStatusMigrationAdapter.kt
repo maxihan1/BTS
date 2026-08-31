@@ -44,15 +44,31 @@ import java.util.UUID
  * 놓친다(E15). 그 창은 발행 경로가 「이관 → 재확인 → 교체」 루프를 돌아야 닫히고 그 루프는
  * project-workflow 소관이라 PR 7b 다.
  *
- * ### 큐잉 시점 검증은 구조 5종뿐이다
+ * ### 큐잉 시점 검증 — 커맨드가 앞뒤가 맞는지 · 가리키는 것이 실재하는지
  *
- * 대상 건수도 상한 초과 여부도 이 시점에는 알 수 없다(위 문단). 그러므로 **커맨드 자체가
- * 앞뒤가 맞는지**만 본다 — E5(빈 매핑) · E5b(빈 범위) · E7(같은 출발 중복) · E1(출발 == 대상) ·
- * E2(대상이 상태 카탈로그에 없음). 상한 초과 판정은 실행 시점 몫이다(E4).
+ * 대상 건수도 상한 초과 여부도 이 시점에는 알 수 없다(위 문단). 그러므로 두 가지만 본다.
+ *
+ * **구조** — E5(빈 매핑) · E5b(빈 범위) · E7(같은 출발 중복) · E1(출발 == 대상) · E17(연쇄 매핑).
+ * **실재** — E2(대상이 상태 카탈로그에 없음) · E18(범위 프로젝트가 없거나 소프트 삭제됨).
+ *
+ * 상한 초과 판정은 실행 시점 몫이다(E4). 각 가드는 **서로 다른 메시지**를 던진다.
  *
  * **E6 은 허용한다** — 여러 출발이 같은 대상으로 몰리는 것은 막지 않는다. 지라도 막지 않고(J7 은
  * 대상 유일성을 요구하지 않는다), 「사라지는 상태 3개를 전부 `todo` 로」가 정상적인 운영 요청이다.
  * 막지 않는 것도 결정이므로 여기 적는다 — 중복 판정을 「매핑 키 전부 유일」로 넓히면 이 요청이 깨진다.
+ *
+ * ### ★연쇄 매핑은 거부한다 — E6 과 헷갈리면 안 된다 (E17)
+ *
+ * E6(`{a→x, b→x}`)은 허용이고 **연쇄**(`{a→b, b→c}`)는 거부다. 차이는 대상이 겹치느냐가 아니라
+ * **대상 집합과 출발 집합이 겹치느냐**다.
+ *
+ * 연쇄를 두면 워커가 `current_state_key IN ('a','b')` 로 긁어 `a` 이슈를 `b` 로 옮기고 그 항목을
+ * `SUCCEEDED` 로 찍어 **다시 처리하지 않는다.** 그런데 `b` 도 사라지는 상태다 — 작업은 `COMPLETED`
+ * 인데 유령 상태가 남는다. 게다가 스캔 시점에 이미 `b` 에 있던 이슈만 `c` 로 가므로 **결과가 순서에
+ * 의존**한다.
+ *
+ * **전이적으로 해소하지 않는다**(`{a→b, b→c}` 를 `{a→c, b→c}` 로 고쳐 주지 않는다). 순환
+ * (`{a→b, b→a}`)이면 종료하지 않고, 조용히 대상을 바꾸면 운영자의 실수를 감춘다. 거부가 옳다.
  *
  * ### 상태 카탈로그 조회 — 동적 참조 (BC 격리)
  *
@@ -63,6 +79,26 @@ import java.util.UUID
  *
  * 대상 상태가 **새 워크플로우 정의에** 실제로 있는지는 확인하지 않는다 — issue-tracking 은
  * 워크플로우 정의를 모르고, 그 보증은 호출자 책임이다. 여기서 막는 것은 카탈로그에 아예 없는 키다.
+ *
+ * ### 범위 프로젝트 조회 — 여기도 동적 참조지만 **사유가 다르다** (E18)
+ *
+ * `projects` 는 **issue-tracking 소유**라 jOOQ codegen 범위 **안**이다. 그런데도 [DSL.table] 동적
+ * 참조를 쓴다 — 바로 위 `statuses` 와 이유가 같지 않으니 한 묶음으로 읽으면 안 된다.
+ *
+ * - `statuses` — 타입 참조가 **없다**. project-workflow 소유라 codegen 밖이고, 동적 참조 말고는 방법이 없다.
+ * - `projects` — 타입 참조가 **있다**. 그런데 ArchUnit 룰 2 가 `com.bts.issue.jooq..` 를 repository
+ *   레이어로 한정하고 이 어댑터는 repository 가 아니다. 쓸 수 있는데 안 쓰는 것이다.
+ *
+ * 제대로 된 자리는 repository 레이어다 — `ProjectLookupRepository` 가 같은 판정
+ * (`key = ? AND deleted_at IS NULL`)을 타입 참조로 이미 한다. 키 **집합**을 한 번에 받는 조회를
+ * 거기 두고 주입으로 바꾸는 것이 후속 정리이고, 그때 이 동적 참조는 사라진다.
+ *
+ * 여기서도 `deleted_at IS NULL` 은 직접 붙인다(DATA.md §3 — 소프트 삭제에 자동 필터가 없다).
+ *
+ * 범위 키가 비었는지만 보고 실재를 안 보면 오타 하나가 조용히 「이관 완료」가 된다 — 워커가 0건을
+ * 긁어 `total_count=0` 으로 `COMPLETED` 가 되고, 운영자는 그것을 보고 상태를 지운다. 실행 시점에는
+ * 정상 0건(E3)과 오타 0건이 구분되지 않으므로 **큐잉 시점**이 막을 수 있는 유일한 자리다. E5b(빈
+ * 범위)가 막으려던 실패 양식과 같은 것이고 트리거만 다르다.
  *
  * ### 이 타입을 만드는 경로는 이 어댑터 하나뿐이다
  *
@@ -83,7 +119,7 @@ import java.util.UUID
  * 작업 행이 커밋됐는데 메시지가 없거나 그 반대인 상태를 만들지 않기 위해 이 메서드가 경계를 연다
  * (DATA.md §7.2).
  *
- * @param dsl 상태 카탈로그(`statuses`) 존재 확인용 jOOQ [DSLContext].
+ * @param dsl 상태 카탈로그(`statuses`)와 범위 프로젝트(`projects`) 존재 확인용 jOOQ [DSLContext].
  * @param repo `bulk_operations` 영속 대상.
  * @param enqueuePublisher pgmq `q_bulk_operations` enqueue 어댑터.
  */
@@ -95,20 +131,24 @@ class WorkflowStatusMigrationAdapter(
 ) : IssueStatusMigrationPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // project-workflow 테이블 — jOOQ codegen 범위 밖이라 동적 참조. 클래스 KDoc §상태 카탈로그 조회 참조.
+    // 동적 참조. 두 표가 각각 다른 사유로 그렇다 — 클래스 KDoc §상태 카탈로그 조회 · §범위 프로젝트 조회.
     private val statusesTable = DSL.table("statuses")
-    private val statusKeyField = DSL.field("key", String::class.java)
-    private val statusDeletedAtField = DSL.field("deleted_at")
+    private val projectsTable = DSL.table("projects")
+
+    // 두 조회 모두 FROM 이 단일 표라 비수식 `key`·`deleted_at` 이 그 표의 컬럼으로 해석된다.
+    private val keyField = DSL.field("key", String::class.java)
+    private val deletedAtField = DSL.field("deleted_at")
 
     /**
      * 상태 이관을 큐잉하고 일괄작업 id 를 돌려준다.
      *
-     * 구조 검증 5종을 통과하면 `bulk_operations` 1건(PENDING · `total_count=0`)을 만들고 pgmq 에
+     * 구조·실재 검증을 통과하면 `bulk_operations` 1건(PENDING · `total_count=0`)을 만들고 pgmq 에
      * 넣는다. **항목은 만들지 않는다** — 사유는 클래스 KDoc.
      *
      * @param cmd 이관 커맨드. actor · 대상 프로젝트 범위 · 상태별 매핑 목록.
      * @return 생성된 일괄작업 id.
-     * @throws IllegalArgumentException 구조 검증 5종 중 하나라도 위반일 때. 메시지가 어느 가드인지 밝힌다.
+     * @throws IllegalArgumentException 검증(E5 · E5b · E7 · E1 · E17 · E2 · E18) 중 하나라도 위반일 때.
+     *   메시지가 어느 가드인지 밝힌다.
      */
     @Transactional
     override fun enqueueStatusMigration(cmd: StatusMigrationCommand): UUID {
@@ -140,19 +180,32 @@ class WorkflowStatusMigrationAdapter(
     // ── private helpers ────────────────────────────────────────────────────────
 
     /**
-     * 커맨드의 구조 검증 5종을 수행하고 payload 에 실을 `출발 → 대상` 매핑을 만든다.
+     * 커맨드의 구조·실재 검증을 수행하고 payload 에 실을 `출발 → 대상` 매핑을 만든다.
      *
      * 각 가드는 **서로 다른 메시지**를 던진다 — 메시지가 같으면 어느 조건이 발동했는지 운영자도
      * 테스트도 구분하지 못한다.
      *
-     * @throws IllegalArgumentException E5 · E5b · E7 · E1 · E2 중 하나 위반 시.
+     * 순수 판정(구조)을 먼저 다 끝내고 DB 를 읽는다(실재). 커맨드가 앞뒤가 안 맞으면 조회할 것도 없다.
+     *
+     * @throws IllegalArgumentException E5 · E5b · E7 · E1 · E17 · E2 · E18 중 하나 위반 시.
      */
     private fun validateAndBuildMappings(cmd: StatusMigrationCommand): Map<String, String> {
+        requireSoundStructure(cmd)
+        requireReferencedKeysExist(cmd)
+        return cmd.mappings.associate { it.fromStatusKey to it.toStatusKey }
+    }
+
+    /**
+     * DB 를 읽지 않는 구조 판정 — E5 · E5b · E7 · E1 · E17.
+     *
+     * @throws IllegalArgumentException 다섯 중 하나 위반 시. 각각 다른 메시지다.
+     */
+    private fun requireSoundStructure(cmd: StatusMigrationCommand) {
         require(cmd.mappings.isNotEmpty()) { "statusMigration mappings must not be empty" }
         require(cmd.projectKeys.isNotEmpty()) { "statusMigration projectKeys must not be empty" }
 
-        val duplicated =
-            cmd.mappings.groupingBy { it.fromStatusKey }.eachCount().filterValues { it > 1 }.keys
+        val sources = cmd.mappings.map { it.fromStatusKey }
+        val duplicated = sources.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
         require(duplicated.isEmpty()) {
             "statusMigration mappings have duplicate fromStatusKey: $duplicated"
         }
@@ -162,13 +215,32 @@ class WorkflowStatusMigrationAdapter(
             "statusMigration fromStatusKey must differ from toStatusKey: $selfMapped"
         }
 
+        // E17 — 자기매핑(E1)은 한 쌍 안만 본다. 쌍을 가로지르는 연쇄는 여기서만 걸린다. 사유는 클래스 KDoc.
+        val chained = cmd.mappings.map { it.toStatusKey }.toSet() intersect sources.toSet()
+        require(chained.isEmpty()) {
+            "statusMigration has a chained mapping - these keys are both a source and a target: $chained"
+        }
+    }
+
+    /**
+     * DB 를 읽는 실재 판정 — E2(대상 상태) · E18(범위 프로젝트).
+     *
+     * 둘은 **대칭**이다. 커맨드가 가리키는 것 중 이 BC 가 확인할 수 있는 것은 전부 확인한다.
+     * 출발 상태만 예외이며 그 사유는 [findKnownStatusKeys] 에 적었다.
+     *
+     * @throws IllegalArgumentException 둘 중 하나 위반 시. 각각 다른 메시지다.
+     */
+    private fun requireReferencedKeysExist(cmd: StatusMigrationCommand) {
         val targets = cmd.mappings.map { it.toStatusKey }.toSet()
-        val missing = targets - findKnownStatusKeys(targets)
-        require(missing.isEmpty()) {
-            "statusMigration toStatusKey not found in status catalog: $missing"
+        val missingTargets = targets - findKnownStatusKeys(targets)
+        require(missingTargets.isEmpty()) {
+            "statusMigration toStatusKey not found in status catalog: $missingTargets"
         }
 
-        return cmd.mappings.associate { it.fromStatusKey to it.toStatusKey }
+        val missingProjects = cmd.projectKeys - findKnownProjectKeys(cmd.projectKeys)
+        require(missingProjects.isEmpty()) {
+            "statusMigration projectKeys not found or deleted: $missingProjects"
+        }
     }
 
     /**
@@ -178,9 +250,22 @@ class WorkflowStatusMigrationAdapter(
      * 정의에서 빠지는 중이라 카탈로그에서 이미 소프트 삭제됐을 수 있고, 그것이 정상 경로다.
      */
     private fun findKnownStatusKeys(keys: Set<String>): Set<String> =
-        dsl.select(statusKeyField)
+        dsl.select(keyField)
             .from(statusesTable)
-            .where(statusKeyField.`in`(keys))
-            .and(statusDeletedAtField.isNull)
-            .fetchSet(statusKeyField)
+            .where(keyField.`in`(keys))
+            .and(deletedAtField.isNull)
+            .fetchSet(keyField)
+
+    /**
+     * [keys] 중 살아 있는 프로젝트 키만 돌려준다.
+     *
+     * 소프트 삭제된 프로젝트는 **없는 것으로 본다** — 지워진 프로젝트를 범위로 통과시키면 워커가
+     * 거기서 0건을 긁어 또 「이관 완료」가 된다. `deleted_at IS NULL` 은 직접 붙인다(DATA.md §3).
+     */
+    private fun findKnownProjectKeys(keys: Set<String>): Set<String> =
+        dsl.select(keyField)
+            .from(projectsTable)
+            .where(keyField.`in`(keys))
+            .and(deletedAtField.isNull)
+            .fetchSet(keyField)
 }
