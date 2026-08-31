@@ -13,6 +13,17 @@ import java.time.Instant
 import java.util.UUID
 
 /**
+ * 워크플로우에 연결된 프로젝트 한 건의 참조.
+ *
+ * @property id projects.id (UUID).
+ * @property key projects.key — 이슈 키 접두사 (예: "BTS").
+ */
+data class ProjectRef(
+    val id: UUID,
+    val key: String,
+)
+
+/**
  * `project_workflow_scheme_assignments` 테이블 전용 Repository.
  *
  * ## 책임 범위
@@ -129,6 +140,41 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
         dsl.deleteFrom(TABLE)
             .where(PROJECT_ID.eq(projectId))
             .execute()
+    }
+
+    /**
+     * 워크플로우를 참조하는 스킴에 할당된 활성 프로젝트를 조회한다.
+     *
+     * @param workflowId 조회할 워크플로우 UUID.
+     * @return 활성 프로젝트 참조 목록. 연결된 프로젝트가 없으면 빈 목록.
+     */
+    @Transactional(readOnly = true)
+    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
+        val MAPPINGS = DSL.table("workflow_scheme_issue_type_mappings")
+        val PROJECTS = DSL.table("projects")
+        val M_SCHEME_ID = DSL.field("workflow_scheme_issue_type_mappings.scheme_id", Long::class.java)
+        val M_WORKFLOW_ID = DSL.field("workflow_scheme_issue_type_mappings.workflow_id", UUID::class.java)
+        val A_SCHEME_ID = DSL.field("project_workflow_scheme_assignments.workflow_scheme_id", Long::class.java)
+        val A_PROJECT_ID = DSL.field("project_workflow_scheme_assignments.project_id", UUID::class.java)
+        val P_ID = DSL.field("projects.id", UUID::class.java)
+        val P_KEY = DSL.field("projects.key", String::class.java)
+        val P_DELETED_AT = DSL.field("projects.deleted_at", java.time.OffsetDateTime::class.java)
+        val P_ARCHIVED_AT = DSL.field("projects.archived_at", java.time.OffsetDateTime::class.java)
+
+        return dsl
+            .selectDistinct(P_ID, P_KEY)
+            .from(MAPPINGS)
+            .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
+            .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
+            .where(M_WORKFLOW_ID.eq(workflowId))
+            .and(P_DELETED_AT.isNull)
+            .and(P_ARCHIVED_AT.isNull)
+            .fetch { record ->
+                ProjectRef(
+                    id = record.get(P_ID) ?: error("projects.id is null — PK 제약 위반"),
+                    key = record.get(P_KEY) ?: error("projects.key is null — NOT NULL 제약 위반"),
+                )
+            }
     }
 
     // ── 내부 변환 ─────────────────────────────────────────────────────────────
