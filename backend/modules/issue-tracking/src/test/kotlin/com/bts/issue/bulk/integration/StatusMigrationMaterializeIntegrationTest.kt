@@ -17,6 +17,7 @@ import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationStatus
+import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.event.BulkOperationEventPublisher
@@ -406,6 +407,9 @@ class StatusMigrationMaterializeIntegrationTest {
         /** 이관 범위 **밖** 프로젝트 — 같은 상태의 이슈를 두고 무변경을 확인한다(M2). */
         private const val OUT_OF_SCOPE_KEY = "MIGB"
 
+        /** 범위 **안**이지만 **아카이브된** 프로젝트 — 가드가 결선돼 있는지 본다(M7). */
+        private const val ARCHIVED_KEY = "MIGC"
+
         private var bootstrapped = false
     }
 
@@ -432,8 +436,14 @@ class StatusMigrationMaterializeIntegrationTest {
                 stmt.execute("SELECT pgmq.purge_queue('${BulkOperationEventPublisher.QUEUE_NAME}')")
                 stmt.execute("DELETE FROM bulk_operation_items")
                 stmt.execute("DELETE FROM bulk_operations")
-                stmt.execute("DELETE FROM issues WHERE key LIKE '$SCOPE_KEY-%' OR key LIKE '$OUT_OF_SCOPE_KEY-%'")
-                stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key IN ('$SCOPE_KEY', '$OUT_OF_SCOPE_KEY')")
+                stmt.execute(
+                    "DELETE FROM issues WHERE key LIKE '$SCOPE_KEY-%' OR key LIKE '$OUT_OF_SCOPE_KEY-%' " +
+                        "OR key LIKE '$ARCHIVED_KEY-%'",
+                )
+                stmt.execute(
+                    "UPDATE projects SET key_sequence = 0 " +
+                        "WHERE key IN ('$SCOPE_KEY', '$OUT_OF_SCOPE_KEY', '$ARCHIVED_KEY')",
+                )
             }
         }
     }
@@ -615,6 +625,49 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(alert).containsIgnoringCase("status_migration")
     }
 
+    // ── M7. 아카이브 잠금은 이관에도 걸린다 — 가드가 **결선**되어 있는가 ────────
+
+    /**
+     * M7 (E14 · D3 ② · 게이트 2 리뷰 ①②) — 아카이브된 프로젝트의 이슈는 이관되지 않고
+     * `PROJECT_ARCHIVED` 로 FAILED 된다.
+     *
+     * ## 단위 테스트가 못 보는 것
+     * `BulkItemApplierStatusMigrationTest` 는 「가드가 **호출된다**」를 mockk 로 본다. 그러나
+     * 「가드가 **주입된다**」는 아무도 안 봤다. 실제로 이 PR 의 통합 컨텍스트 3곳이 가드를 생략한 채
+     * 이관 경로를 돌렸고, 그때 nullable 기본값의 `?.` 가 검사를 **조용히 건너뛰었다**(fail-open).
+     * 이 테스트는 그 결선 자체를 판정한다 — 가드 빈을 빼면 여기가 red 다.
+     *
+     * ## 비-공허 짝
+     * 같은 실행에서 아카이브가 아닌 프로젝트의 이슈는 **정상 이관**된다. 「전부 실패」 구현이나
+     * 「이관 자체가 안 도는」 픽스처를 배제한다.
+     */
+    @Test
+    fun `M7 - 아카이브된 프로젝트의 이슈는 이관되지 않고 PROJECT_ARCHIVED 로 FAILED 된다`() {
+        val archived = insertIssue(ARCHIVED_KEY, "in_review")
+        val active = insertIssue(SCOPE_KEY, "in_review")
+
+        val operationId = enqueue(projectKeys = setOf(SCOPE_KEY, ARCHIVED_KEY))
+        worker.pollAndProcess()
+
+        // ① 아카이브 프로젝트의 이슈는 옛 상태 그대로다 — 다른 모든 쓰기가 거부하는 일을 이관만 해내면 안 된다.
+        assertThat(stateOf(archived))
+            .describedAs("아카이브된 프로젝트의 이슈는 이관되지 않아야 한다 (가드 미결선이면 in_progress 가 된다)")
+            .isEqualTo("in_review")
+        // ② 비-공허 짝 — 아카이브가 아닌 프로젝트는 같은 실행에서 정상 이관된다.
+        assertThat(stateOf(active)).isEqualTo("in_progress")
+
+        val operation = requireNotNull(bulkRepo.findById(BulkOperationId(operationId))) { "작업을 찾을 수 없음" }
+        assertThat(operation.totalCount).isEqualTo(2)
+        assertThat(operation.succeededCount).isEqualTo(1)
+        assertThat(operation.failedCount).isEqualTo(1)
+
+        val failed =
+            bulkRepo.findItemsByOperationId(BulkOperationId(operationId))
+                .single { it.issueKey.value == archived }
+        assertThat(failed.status).isEqualTo(ItemStatus.FAILED)
+        assertThat(failed.failureReasonCode).isEqualTo(FailureReasonCode.PROJECT_ARCHIVED)
+    }
+
     // ── private helpers ────────────────────────────────────────────────────────
 
     /** 기준 커맨드로 이관을 큐잉한다. 매핑은 2개 — 범위와 시점만 테스트마다 흔든다. */
@@ -736,6 +789,17 @@ class StatusMigrationMaterializeIntegrationTest {
                         stmt.executeUpdate()
                     }
                 }
+
+            // 아카이브된 프로젝트(M7) — `archived_at IS NOT NULL` 단독이 가드의 판정 술어다.
+            // `deleted_at` 은 건드리지 않는다. 두 축은 직교하며 섞으면 M9 의 판별력이 사라진다.
+            conn.prepareStatement(
+                "INSERT INTO projects (key, name, archived_at) VALUES (?, ?, NOW()) " +
+                    "ON CONFLICT (key) DO UPDATE SET archived_at = NOW()",
+            ).use { stmt ->
+                stmt.setString(1, ARCHIVED_KEY)
+                stmt.setString(2, "Status Migration Archived Scope")
+                stmt.executeUpdate()
+            }
 
             val workflowId: UUID =
                 conn.prepareStatement(
