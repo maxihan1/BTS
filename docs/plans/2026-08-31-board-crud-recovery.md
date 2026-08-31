@@ -165,6 +165,11 @@ FR-BD-01 의 미회수 조항(**FR-BD-01-2** 「수정/삭제는 후속」)을 �
 - 삭제·이름변경 후 `boardKeys` **invalidate-only**. **`setQueryData` 로 덮지 않는다**
   (learnings 2026-05-30 「메타 mutation setQueryData 부분응답이 본문을 placeholder 로 덮는 플리커」)
 - 기존 성능 목표(보드 200건 p95 1.5s)에 영향 없음 — 목록 쿼리 불변
+- ⚠️ **`canDelete` 는 보드 상세 조회의 권한 판정을 1회에서 2회로 늘린다** (plan 리뷰 발견).
+  `getBoard` 는 현재 `loadBoardWithBrowse(id)`(`BoardController.kt:137`)로 **BROWSE 1회**만 부르는데,
+  `canDelete` 는 `SOFT_DELETE` 라 그 호출을 재사용할 수 없다. 목록(`BoardSummaryResponse`)에는
+  싣지 않으므로 증가는 **상세 조회 1건당 1회**로 한정된다. 착수 시 `IssuePermissionResolver` 가
+  요청 단위 캐시를 갖는지 확인하고, 없으면 부채로 등재한다
 
 ### API 인터페이스 (REST)
 
@@ -261,15 +266,23 @@ BC 를 넘고 보안 표면을 건드린다. 보드 응답에 실으면 **한 PR
 
 **결과가 0이 아니다. 아래 3곳은 이번 범위에 포함한다.**
 
-| 좌표 | 어서션 | 위험 |
+| 좌표 | 어서션 | 실제 위험 (리뷰 실측으로 교정) |
 |---|---|---|
-| `projects.board.test.tsx:383` | `getByRole('combobox')` | **이름 없는 단수 셀렉터** |
-| `projects.board.test.tsx:513` | `getByRole('combobox')` | 〃 |
-| `projects.board.test.tsx:535` | `getByRole('combobox')` | 〃 |
+| `projects.board.test.tsx:383` | `getByRole('combobox')` | **role 소멸 → 0매치** |
+| `projects.board.test.tsx:513` | `getByRole('combobox')` | 〃 (`:535` 와 **한 테스트**) |
+| `projects.board.test.tsx:535` | `getByRole('combobox')` | 〃 + **조건부 후퇴 = 가짜 그린** |
 
-`getByRole('combobox')` 는 **단수형**이라 화면에 combobox 가 2개 이상이면 다중 매치로 즉사한다.
-스위처 노출 조건을 `>= 2` 에서 `>= 1` 로 완화하면 **보드 1개인 픽스처에서도 스위처가 렌더**되므로,
-그 테스트들이 지금까지 세던 combobox 가 무엇이었는지 확인하고 **이름 있는 셀렉터로 좁힌다.**
+★ **plan 리뷰가 진단을 뒤집었다.** 애초 서술은 「combobox 가 2개가 되어 다중 매치로 즉사」였으나
+세 단언이 세는 대상은 **보드 스위처 자신 하나뿐**이다 — `:517` 이
+`document.querySelector('select[aria-hidden="true"]')` 로 값을 바꾸는데 이것이 **Radix Select** 의
+숨은 네이티브 select 다. `>= 1` 로 완화해도 combobox 는 1개라 다중 매치는 일어나지 않는다.
+
+**진짜 위험은 role 소멸이다.** 스위처를 `DropdownMenu` 로 교체하면 Radix DropdownMenu 는
+`role="combobox"` 를 내지 않아 **3개 단언이 전부 0매치 red** 가 된다. 계약 §2 의
+「`프로젝트 뷰 전환`을 Radix Tabs 로 바꾸면 `role="navigation"` 소멸로 e2e 즉사」와 **동형**이다.
+
+**폭발 반경 — E2E 0건.** `grep -rn "combobox" apps/web/e2e/` 에 보드 관련 의존이 없다
+(이슈 유형 · 로그인 provider · 워크플로우 스킴 · 커맨드 팔레트뿐). 유닛 3개 단언으로 한정된다.
 
 **재사용 자산(계약 §4) — 새로 만들지 않는다.**
 `components/ui/dropdown-menu.tsx` · `components/ui/confirm-dialog.tsx` · `CreateBoardForm` ·
@@ -384,7 +397,7 @@ gap 4항목(누락 요구사항 · 모호 표현 · 가정 누락 · 엣지 미�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardRequests.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
 - depends-on: [2]
 - jira: [J3, J4, J5]
 
@@ -464,11 +477,30 @@ MSW 핸들러도 같은 Task 에서 추가한다.
 - 항목을 고르면 `navigate` 가 `?board=<id>` 로 호출된다 ← `:535` 의 조건부 후퇴를 제거하고 무조건 단언
 - `canCreate=false` 면 「보드 만들기」 항목이 **DOM 에 없다** (`queryBy...toBeNull`)
 
-🛑 **즉사 계약 봉합 (§5 사전 grep 결과 — 이 Task 범위)**.
-`:383` · `:513` · `:535` 세 곳이 전부 `expect(screen.getByRole('combobox')).toBeInTheDocument()` 이다.
-`getByRole` 은 **단수형**이라 화면에 combobox 가 2개 이상이면 다중 매치로 즉사한다.
-스위처를 `>= 1` 로 완화하면 보드 1개 픽스처에서도 스위처가 렌더되므로,
-**그 3곳이 지금 무엇을 세고 있었는지 먼저 확인하고 이름 있는 셀렉터로 좁힌다.**
+🛑 **즉사 계약 봉합 (§5 사전 grep + plan 리뷰 실측 — 이 Task 범위)**.
+
+★ **리뷰가 진단 방향을 뒤집었다.** 애초 서술은 「combobox 가 2개가 되어 다중 매치로 즉사」였으나
+실측 결과 **반대**다.
+
+- `:383` · `:513` · `:535` 의 `getByRole('combobox')` 단언 **3개**가 세는 대상은
+  **보드 스위처 자신 하나뿐**이다. 근거 — `:517` 이
+  `document.querySelector('select[aria-hidden="true"]')` 로 값을 바꾼다.
+  이것은 **Radix Select** 의 숨은 네이티브 select 다. 즉 `>= 1` 로 완화해도 combobox 는
+  여전히 1개이고 **다중 매치는 일어나지 않는다.**
+- 진짜 위험은 **role 소멸**이다. 이 Task 의 GREEN 이 스위처를 `DropdownMenu` 로 교체하는데,
+  Radix DropdownMenu 는 `role="combobox"` 를 내지 않는다 → **3개 단언이 전부 0매치 red**.
+  `:517` 의 네이티브 select 조작 코드도 함께 못 쓰게 된다.
+- 계약 §2 에 **동형 선례**가 이미 있다 — 「`프로젝트 뷰 전환`을 Radix Tabs 로 바꾸면
+  `role="navigation"` 소멸로 e2e 즉사」. 같은 양식이 보드 스위처에서 재현되려던 것이다.
+
+**폭발 반경 실측 — E2E 는 안전하다.** `grep -rn "combobox" apps/web/e2e/` 결과에
+보드 관련은 **0건**이다(이슈 유형 · 로그인 provider · 워크플로우 스킴 · 커맨드 팔레트뿐).
+따라서 재작성 대상은 **유닛 3개 단언**으로 한정된다.
+
+⚠️ **`:513`~`:535` 는 별개의 두 곳이 아니라 한 테스트다.** 그 안에
+`if (mockNavigate.mock.calls.length > 0) { …단언… } else { …combobox 렌더만 확인… }`
+조건부 후퇴가 있어 **navigate 가 한 번도 안 불려도 통과한다** — 가짜 그린이다.
+재작성 시 이 `else` 분기를 **제거하고 무조건 단언**한다.
 
 **GREEN**.
 - **실측 좌표** — `boards.length >= 2` 조건은 `:518` 이다(선행 플랜의 `:520` 은 어긋난다).
@@ -530,4 +562,185 @@ MSW 핸들러도 같은 Task 에서 추가한다.
 - **추가 검증** typecheck · ktlint · detekt · vitest · playwright
 - **마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0 · BC 1개(agile-planning)**
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈 1종 — `plan-eng-review`** (`type=api` → `/bts-review-plan` §Step 2 표가 정한 종수).
+**외부 모델(Outside Voice)은 돌리지 않았다** — 이 저장소가 2026-08-18 커밋 `592077896` 에서
+「외부 모델 리뷰 상시 중단」을 확정했다. 렌즈 부재가 아니라 **결정에 따른 생략**이다.
+
+### 발견 4건 · BLOCKER 0
+
+신뢰도는 pre-emit 검증 게이트를 통과한 값이다 — 근거 라인을 인용하지 못한 발견은 올리지 않았다.
+
+#### [P1] (confidence 10/10) `BoardRequests.kt` 는 존재하지 않는다 — Task 3 의 `files` 오류
+
+**근거.** `ls backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/` →
+`BacklogResponses.kt` `BoardResponses.kt` `BurndownResponse.kt` `QuickFilterDto.kt`
+`SprintRequests.kt` `SprintResponses.kt` `TimelineResponses.kt` `VelocityResponse.kt`.
+요청 DTO 는 **전부 `BoardResponses.kt` 안에** 산다 —
+`:34 data class CreateBoardRequest` · `:291 UpdateColumnWipLimitRequest` · `:304 UpdateBoardSwimlaneRequest`.
+파일명과 내용이 어긋난 기존 관례다.
+
+**영향.** 그대로 두면 구현이 `BoardRequests.kt` 를 새로 만들고, 같은 BC 안에서 요청 DTO 가
+두 파일로 갈린다 — 기존 3개는 남고 `UpdateBoardRequest` 만 새 파일로 간다.
+
+**처방 (적용 완료).** Task 3 `files` 에서 `BoardRequests.kt` 를 제거했다.
+DTO 분리를 원하면 기존 3개를 함께 옮기는 **별도 리팩터 task** 로 — 이번 PR 범위를 넓히지 않는다.
+
+#### [P1] (confidence 10/10) 즉사 계약의 진단 방향이 반대였다 — 다중 매치가 아니라 role 소멸
+
+**근거.** `projects.board.test.tsx:517` —
+`document.querySelector('select[aria-hidden="true"]')`. 이것은 **Radix Select** 의 숨은
+네이티브 select 다. 즉 `:383` · `:513` · `:535` 의 `getByRole('combobox')` 가 세는 대상은
+**보드 스위처 자신 하나뿐**이고, `>= 1` 완화로 combobox 가 2개가 되지 않는다.
+
+진짜 위험은 Task 5 GREEN 이 스위처를 `DropdownMenu` 로 교체한다는 데 있다 —
+Radix DropdownMenu 는 `role="combobox"` 를 내지 않으므로 **3개 단언이 전부 0매치 red** 가 된다.
+`docs/design/jira-parity-contract.md` §2 의 「`프로젝트 뷰 전환`을 Radix Tabs 로 바꾸면
+`role="navigation"` 소멸로 e2e 즉사」와 **동형 양식**이다.
+
+**폭발 반경 (실측).** `grep -rn "combobox" apps/web/e2e/` 에 보드 관련 의존 **0건**
+(이슈 유형 · 로그인 provider · 워크플로우 스킴 · 커맨드 팔레트뿐). **유닛 3개 단언으로 한정된다.**
+
+**처방 (적용 완료).** 스펙 §즉사 계약 표와 Task 5 RED 서술을 교정했다.
+
+#### [P2] (confidence 9/10) `canDelete` 가 보드 상세 조회의 권한 판정을 1회에서 2회로 늘린다
+
+**근거.** `BoardController.kt:137` — `val (actor, board) = loadBoardWithBrowse(id)`.
+현재 `getBoard` 는 **BROWSE 1회**만 부른다. `canDelete` 는 `SOFT_DELETE` 라 그 호출을 재사용할 수 없다.
+plan NFR 은 「추가 API 왕복이 없다」만 적고 이 비용을 적지 않았다.
+
+**처방 (적용 완료).** NFR 에 명시했다. 목록(`BoardSummaryResponse`)에는 싣지 않으므로 증가는
+상세 조회 1건당 1회로 한정된다. 착수 시 `IssuePermissionResolver` 의 요청 단위 캐시 유무를 확인하고
+없으면 부채로 등재한다.
+
+#### [P2] (confidence 8/10) `confirming` 이 닫힘을 전부 잠그는데 mutation 타임아웃 근거가 없다
+
+**근거.** `apps/web/src/components/ui/confirm-dialog.tsx` `confirming` KDoc —
+*"처리 중에 못 닫게 하면 실패가 갈 곳이 구조적으로 보장된다 … 파괴적 조작이고 이미 확인을
+누른 뒤라 **기다림은 짧다**."* 설계가 「기다림은 짧다」를 **전제**한다.
+
+네트워크가 끊겨 mutation 이 pending 에 머물면 취소·Esc·오버레이·X 가 전부 잠긴 채
+사용자가 창에 갇힌다. Task 6 RED 에 E7(잠김 확인)은 있으나 **잠김이 풀리지 않는 경로**는 없다.
+
+**판정 — 이번 PR 범위 밖으로 둔다.** 이것은 `ConfirmDialog` 프리미티브 소관이고
+이 PR 이 만든 문제가 아니다(#410 이 세운 계약이다). 아래 「NOT in scope」에 사유와 함께 남긴다.
+
+### What already exists — 재사용이 옳게 잡혀 있다
+
+| 이미 있는 것 | plan 의 처리 |
+|---|---|
+| `PATCH /api/v1/boards/{id}` (`BoardController.kt:222`) | **확장**한다. 새 엔드포인트를 만들지 않는다 ✅ |
+| `boards.deleted_at` (`V500`) + `findById`/`findAllByProjectKey` 필터 | 그대로 쓴다. **마이그레이션 0** ✅ |
+| `IssuePermissionResolver` 주입 (`BoardController.kt:79`) | `canDelete` 산출에 재사용 ✅ |
+| `loadBoardWithCreate` private helper (`:302`) | `loadBoardWithSoftDelete` 를 **동형으로** 신설 ✅ |
+| `updateSwimlaneField` (`BoardRepository.kt:149-166`) | Task 1 이 미러링 ✅ |
+| `JsonNullable` 3-state (`web/dto/SprintRequests.kt:52-58`) + `JacksonNullableConfiguration` Bean | 선례를 따른다. **신규 의존성 0** ✅ |
+| `dropdown-menu.tsx` · `confirm-dialog.tsx` · `CreateBoardForm` | 전부 재사용. **신규 프리미티브 0** ✅ |
+
+불필요한 재구축은 **0건**이다.
+
+### NOT in scope — 고려했고 미룬 것
+
+| 항목 | 사유 |
+|---|---|
+| `ConfirmDialog` 의 pending 무한 대기 탈출구 | 프리미티브 소관이고 #410 이 세운 계약이다. 이 PR 이 만든 문제가 아니다 |
+| 요청 DTO 를 `BoardRequests.kt` 로 분리 | 기존 3개를 함께 옮겨야 해 범위가 넓어진다. 별도 리팩터 |
+| `BoardSummaryResponse` 에 `canDelete` | `⋯` 메뉴는 현재 보드에만 붙는다. 목록에 실을 소비처가 없다 |
+| per-board 관리자 모델 | `created_by` 마이그레이션 + shared-kernel 포트 = **T3**. 로드맵 D |
+| 저장 필터 기반 보드 (J6) | `project_key` 문자열 고정 + AQL·search BC 결선. 패리티 포기 후보 |
+| 스프린트 편집·삭제 (A2) | 「한 PR = 한 관심사」. 로드맵 A2 |
+
+### 권한·응답 흐름 (Task 3 이 만드는 것)
+
+```
+DELETE /api/v1/boards/{id}
+   │
+   ├─ actor 추출 ──────────────── 없음 → 401
+   │
+   ├─ loadBoardWithSoftDelete(id)
+   │     ├─ findById(id)  (deleted_at IS NULL 필터) ── 없음 → 404
+   │     └─ hasPermission(actor, SOFT_DELETE, Project(key)) ── 거부 → 403
+   │
+   └─ service.softDelete(id) ──▶ deleted_at = now() ──▶ 204
+
+★ 순서가 뒤집히면 403 이 「존재하지 않음」을 누설한다.
+  로컬은 항상 허용이라 이 뒤집힘이 보이지 않는다.
+
+GET /api/v1/boards/{id}
+   │
+   ├─ loadBoardWithBrowse(id) ─── hasPermission(BROWSE)   ← 기존 1회
+   └─ canDelete 산출 ──────────── hasPermission(SOFT_DELETE) ← 신규 1회 (P2)
+```
+
+이 다이어그램을 `BoardController` 의 DELETE 핸들러 KDoc 에 인라인으로 넣기를 권한다 —
+권한 순서 역전은 코드만 보고는 눈에 안 띄는 종류의 결함이다.
+
+### 실패 모드 — critical gap 0
+
+| 새 코드경로 | 실패 시나리오 | 테스트 | 에러 처리 | 사용자에게 보이나 |
+|---|---|---|---|---|
+| `PATCH` present-null | `{"name":null}` 이 NPE 500 | ✅ Task 3 RED | ✅ 400 | ✅ |
+| `PATCH` 빈 바디 | `{}` 가 조용히 200 | ✅ Task 3 RED (앵커) | ✅ 400 | ✅ |
+| `DELETE` 권한 순서 역전 | 403 이 존재를 누설 | ✅ Task 3 RED (401 probe 차단) | ✅ | ✅ |
+| `canDelete` Zod 파싱 | 백엔드 미전송 시 보드 화면 전체 사망 | ⚠️ 파싱 성공만 검사 | ❌ | ✅ (화면이 죽어 보인다) |
+| 삭제 실패 (403/404) | 창이 닫혀 실패를 못 본다 | ✅ Task 6 RED S7 | ✅ `error` prop | ✅ |
+| 삭제 중 pending 무한 | 창에 갇힌다 | ❌ | ❌ | ⚠️ 보이지만 탈출구 없음 |
+
+**critical gap 0.** 마지막 행이 유일하게 「테스트 없음 + 에러 처리 없음」이지만
+**silent 가 아니다**(사용자가 잠긴 창을 본다). critical gap 의 세 조건을 동시에 만족하지 않는다.
+`canDelete` Zod 행은 Task 4 가 MSW fixture 동시 추가로 이미 방어한다.
+
+### 워크트리 병렬화
+
+**Sequential implementation, no parallelization opportunity.**
+`depends-on` 이 T1→T2→T3→T4→T5→T6 사슬이고, T5·T6 이
+`board.tsx` · `projects.board.test.tsx` · `board-labels.ts` 를 공유해 파일 겹침으로도 직렬화된다.
+
+### 복잡도 체크 — 트리거됐으나 과설계 아님
+
+plan 이 만지는 파일은 **17개**로 8개 기준을 넘는다. 내역 —
+프로덕션 11(백엔드 4 · 프론트 7) + 테스트 6.
+그러나 백엔드 3계층(repository → service → controller) + DTO + 프론트 3계층(api → hook → route)
++ MSW 2 + i18n + E2E 는 이 저장소의 **CRUD 표준 형태**이고, 신규 클래스는 `UpdateBoardRequest`
+DTO 1개 + private helper 1개뿐이라 「2개 이상의 새 클래스/서비스」 기준에는 걸리지 않는다.
+**줄일 자리를 찾지 못했다** — 신규 프리미티브 0 · 신규 API 2(요구사항 자체) · 마이그레이션 0.
+
+### TODOS 등재 후보 3건 (게이트 1 에서 Maxi 판정)
+
+전부 **이번 PR 범위 밖**이고 별건이다. 등재 여부는 Maxi 가 정한다.
+
+1. **`jira-research-guard` 가 헤딩이 아닌 본문 인용을 첫 매치로 잡는다.**
+   `checkJiraSection` 이 `body.indexOf('## Jira 대조')` 를 쓴다. 문서가 그 절 이름을 **인용만 해도**
+   엉뚱한 구간을 검사해 「출처 URL 이 하나도 없다」로 오판한다. 이 PR 에서 실물로 재현했고
+   인용 표현을 바꿔 우회했다. 처방은 헤딩 앵커 정규식(`/^## Jira 대조/m`).
+   *Depends on* 없음. *Why* 판정이 문서 본문 표현에 좌우되면 강제 수단이 아니다.
+2. **`classify-task` 가 부정 문맥을 못 읽는다.**
+   제목의 「마이그레이션 **0**」이 `type=migration` · `agent=db-engineer` · `primary_bc=null` 을 냈고,
+   동시에 `tier=T1` 을 반환해 CLAUDE.md 티어표(migration=T3)와 **자기모순**이었다.
+   *Why* 오분류가 잘못된 sub-agent 로 dispatch 되면 T3 작업이 T1 절차로 흐른다.
+3. **`ConfirmDialog` 의 pending 무한 대기 탈출구.**
+   `confirming` 이 닫힘 경로를 전부 잠그는데 그 설계는 KDoc 이 밝히듯 「기다림은 짧다」를
+   전제한다. 네트워크 장애로 전제가 깨지면 사용자가 창에 갇힌다.
+   *Depends on* mutation 계층의 타임아웃 정책 결정.
+
+## GSTACK REVIEW REPORT
+
+| 항목 | 값 |
+|---|---|
+| Runs | `plan-eng-review` 1회 (`type=api` → 1종) |
+| Outside Voice | **생략 — 저장소 결정** (커밋 `592077896` 「외부 모델 리뷰 상시 중단」) |
+| Status | 완료 |
+| Findings | **4건** — P1 2 · P2 2 · **BLOCKER 0** |
+| 적용 완료 | P1 2건 + P2(권한 비용) 1건 → plan 수정 반영 |
+| 이월 | P2(pending 무한) 1건 → NOT in scope + TODOS 후보 |
+| critical gap | **0** |
+| 복잡도 체크 | 17파일로 트리거 · **과설계 아님**으로 판정 |
+| 병렬화 | Sequential — 기회 없음 |
+
+**VERDICT — 통과.** BLOCKER 0. 발견 4건 중 3건은 plan 에 반영을 마쳤고,
+나머지 1건은 이 PR 이 만든 문제가 아니라 범위 밖으로 명시했다.
+계약 완화 방지 앵커(`{} → 400`)와 즉사 계약 봉합이 task 에 물려 있어 착수 조건은 갖춰졌다.
+
+**UNRESOLVED DECISIONS:**
+- TODOS 등재 후보 3건의 등재 여부 (게이트 1 에서 Maxi 판정)
