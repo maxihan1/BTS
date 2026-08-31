@@ -224,9 +224,10 @@ ALTER TABLE issues ADD COLUMN assignee_id UUID NULL;
 
 CREATE TABLE bulk_operations (
     id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- V038 chk_bulk_operations_operation_type 확장 반영 — STATUS_MIGRATION 포함 3값 (FR-WF-07, jooq-init_codegen-mirror).
     operation_type   TEXT         NOT NULL
                          CONSTRAINT chk_bulk_operations_operation_type
-                             CHECK (operation_type IN ('BULK_EDIT', 'BULK_TRANSITION')),
+                             CHECK (operation_type IN ('BULK_EDIT', 'BULK_TRANSITION', 'STATUS_MIGRATION')),
     status           TEXT         NOT NULL
                          CONSTRAINT chk_bulk_operations_status
                              CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')),

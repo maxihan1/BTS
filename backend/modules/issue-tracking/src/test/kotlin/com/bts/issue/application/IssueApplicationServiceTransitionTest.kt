@@ -179,11 +179,16 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 result.currentStateKey shouldBe "IN_PROGRESS"
             }
 
-            it("IssueTransitioned 이벤트가 fromState, toState 포함해 발행된다") {
+            it("IssueTransitioned 이벤트가 fromState, toState 포함해 발행된다 — cause 는 null 이다") {
                 sut.transitionIssue(actor, issueKey, request)
                 verify {
                     eventPublisher.publish(
-                        match { it is IssueTransitioned && it.fromState == "open" && it.toState == "IN_PROGRESS" },
+                        // cause 는 이관(STATUS_MIGRATION) 표시 전용이다. 일반 전환이 이것을 싣기 시작하면
+                        // 웹훅·알림 소비자가 정상 전환을 이관으로 오인한다.
+                        match {
+                            it is IssueTransitioned && it.fromState == "open" && it.toState == "IN_PROGRESS" &&
+                                it.cause == null
+                        },
                     )
                 }
             }

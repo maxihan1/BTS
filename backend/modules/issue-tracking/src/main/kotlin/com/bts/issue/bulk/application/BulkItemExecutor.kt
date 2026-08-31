@@ -5,12 +5,14 @@ package com.bts.issue.bulk.application
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationItem
 import com.bts.issue.bulk.domain.FailureReasonCode
+import com.bts.issue.bulk.domain.StateNotInMigrationMappingException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.project.archive.ProjectArchivedException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
@@ -77,8 +79,20 @@ class BulkItemExecutor(
     /**
      * 예외를 [FailureReasonCode] 로 매핑한다.
      *
+     * 매핑 목록.
+     * - [IssueNotFoundException] → [FailureReasonCode.NOT_FOUND]
+     * - [IssueAccessDeniedException] → [FailureReasonCode.FORBIDDEN]
+     * - [IssueTransitionNotAllowedException] → [FailureReasonCode.TRANSITION_NOT_ALLOWED]
+     * - [IssueVersionConflictException] → [FailureReasonCode.VERSION_CONFLICT]
+     * - [IssueWorkflowNotConfiguredException] → [FailureReasonCode.WORKFLOW_NOT_CONFIGURED]
+     * - [ProjectArchivedException] → [FailureReasonCode.PROJECT_ARCHIVED] (STATUS_MIGRATION · spec E14)
+     * - [StateNotInMigrationMappingException] → [FailureReasonCode.STATE_NOT_IN_MAPPING]
+     *   (STATUS_MIGRATION · spec E8)
+     *
      * 매핑되지 않는 예외는 [FailureReasonCode.UNKNOWN] 으로 기록하여 오진단을 방지한다.
      * NOT_FOUND 로 오기록하면 실제 이슈가 없는 경우와 구분할 수 없으므로 별도 코드를 사용한다.
+     * **새 실패 사유를 더할 때는 이 목록과 `when` 을 함께 고친다** — 한쪽만 고치면 목록이 코드를
+     * 거짓 설명하는 두 번째 장부가 된다.
      * 빈 catch 금지 원칙(DEVELOPMENT.md §절대규칙) — 모든 예외는 로깅+처리.
      */
     private fun mapToReasonCode(e: Exception): FailureReasonCode =
@@ -88,6 +102,8 @@ class BulkItemExecutor(
             is IssueTransitionNotAllowedException -> FailureReasonCode.TRANSITION_NOT_ALLOWED
             is IssueVersionConflictException -> FailureReasonCode.VERSION_CONFLICT
             is IssueWorkflowNotConfiguredException -> FailureReasonCode.WORKFLOW_NOT_CONFIGURED
+            is ProjectArchivedException -> FailureReasonCode.PROJECT_ARCHIVED
+            is StateNotInMigrationMappingException -> FailureReasonCode.STATE_NOT_IN_MAPPING
             else -> {
                 log.warn(
                     "bulk_op_item_unexpected_exception type={} message={}",

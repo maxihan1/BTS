@@ -72,11 +72,29 @@ data class IssueUpdated(
 /**
  * 이슈 상태가 전환(FSM transition)되었을 때 발행되는 이벤트.
  *
+ * ## [cause] — 소비자에게 준 「거를 선택권」 (FR-WF-07 · spec F11·F17)
+ * 일반 전환은 이 값을 싣지 않아 `null` 이다. 현재 유일한 non-null 값은
+ * [com.bts.issue.bulk.application.BulkItemApplier.CAUSE_STATUS_MIGRATION] (`"STATUS_MIGRATION"`)
+ * 으로, 워크플로우에서 빠지는 상태에 남은 이슈를 관리자 조작 1회로 옮길 때 실린다.
+ *
+ * 그 1회가 이 이벤트를 **대상 건수만큼** 만든다. 소비자에 사외 아웃바운드 웹훅
+ * (`search-export-import` 의 `WebhookDispatchWorker`)이 있어 이관 N건이 곧 외부 호출 N건이고,
+ * 한 번 나간 웹훅은 되돌릴 수 없다. 그렇다고 발행을 끄면 이 이벤트를 구독하는 검색 색인·보드·
+ * 자동화가 옮겨간 이슈를 모른 채 남아 **DB 는 맞는데 화면이 틀린** 상태가 된다(spec G2).
+ * 그래서 끄지 않고 **표시만 실어** 거를지 말지를 소비자가 정하게 했다.
+ *
+ * ## 하위호환 (F17)
+ * `cause` 는 nullable 신규 필드이고 기본값이 `null` 이라 기존 발행부는 호출을 바꾸지 않는다.
+ * 큐를 지나는 소비자는 전원 `ObjectMapper.readTree` 로 [com.fasterxml.jackson.databind.JsonNode]
+ * 를 읽으므로 새 필드가 붙어도 깨지지 않고, `cause` 없는 옛 메시지는 `null` 로 복원된다
+ * (`BulkItemApplierStatusMigrationTest` 의 왕복 테스트가 양방향을 고정한다).
+ *
  * @property issueKey 전환된 이슈의 키.
  * @property fromState 전환 전 상태 이름. 예: `"open"`
  * @property toState 전환 후 상태 이름. 예: `"in_progress"`
  * @property actorId 전환을 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
  * @property occurredAt 이벤트 발생 시각 (UTC).
+ * @property cause 이 전환을 일으킨 특수 경로 표시. 일반 전환은 `null` 이다.
  */
 @JsonTypeName("issue.transitioned")
 data class IssueTransitioned(
@@ -85,6 +103,7 @@ data class IssueTransitioned(
     val toState: String,
     val actorId: ActorId,
     val occurredAt: Instant,
+    val cause: String? = null,
 ) : IssueDomainEvent
 
 /**

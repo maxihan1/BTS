@@ -1,0 +1,410 @@
+# issue-tracking 상태 이관 실행 (FR-WF-07 D2·D4·D5 · 로드맵 PR 7)
+
+> 티어 T3 · slug `issue-tracking-status-migration` · type `migration` · 생성 2026-08-27
+> plan `docs/plans/2026-08-27-issue-tracking-status-migration.md`
+
+## 범위 정정 — 로드맵 PR 7 의 절반은 이미 끝나 있었다
+
+착수 실측에서 로드맵 PR 7 절(`~/.claude/plans/cozy-hatching-otter.md:314`)의 4항목 중 **3항목이
+이미 구현돼 있었다.** PR #395(FR-WF-05 전환 ID)가 「cross-BC 확대(재판정 승인)」로 issue-tracking
+쪽까지 함께 했고, 그 사실이 로드맵 PR 7 절에 반영되지 않았다.
+
+| 로드맵 PR 7 항목 | 실물 | 상태 |
+|---|---|---|
+| `POST /issues/{key}/transition` 의 `transitionId` 수용 | `TransitionIssueRequest.kt:35` `val transitionId: UUID? = null` | **이미 완료** |
+| `toStatusKey` 모호 시 409 | `AmbiguousTransitionExceptionHandler.kt`(project-workflow) · `IssueController.kt:426` | **이미 완료** |
+| `GET /issues/{key}/transitions` 응답에 `transitionId` | `AvailableTransitionsResponse.kt:74` `val transitionId: UUID?` | **이미 완료** |
+| 이관 큐잉 포트 + `STATUS_MIGRATION` + 이관 실행 | 없음 | **이 PR** |
+
+판정 방법은 learnings 「도메인·서비스·repo가 다 있어도 REST 노출이 없으면 기능이 없는 것이다」의
+처방 그대로다 — **컨트롤러를 직접 열어 매핑을 세고**, 어긋나면 출처 PR 을 추적했다. 그 교훈의
+역방향 사례다. 대장이 「할 일」이라 적은 것이 이미 있었다.
+
+**따라서 이 PR 의 실질은 「이관 실행」 하나다.**
+
+## 사용자 시나리오 (Given-When-Then)
+
+**S1. 빠지는 상태마다 옮길 곳을 따로 고른다** (Maxi 지시 · Jira J7)
+- Given 워크플로우에서 `in_review`(12건)와 `blocked`(3건) 두 상태를 뺀다
+- When 관리자가 `in_review → in_progress` · `blocked → todo` 로 **각각** 지정한다
+- Then 이관 작업 **1건**이 큐잉되고, 12건은 `in_progress` 로 3건은 `todo` 로 간다.
+  두 상태를 한 대상으로 몰아넣도록 강요하지 않는다
+
+**S2. 워크플로우 엔진을 타지 않는다** (Jira J8 과 동일)
+- Given 이관 대상 이슈는 이미 워크플로우에서 빠진 상태에 있어 **유효한 전환이 하나도 없다**
+- When 이관이 실행된다
+- Then 전환 검증(조건·검증기)과 후처리를 거치지 않고 상태가 재작성되며,
+  `TRANSITION_NOT_ALLOWED` 는 **0건**이다
+
+**S3. 실패한 건이 개별로 남는다**
+- Given 15건 중 1건이 이관 도중 소프트 삭제됐다
+- When 이관이 실행된다
+- Then 그 1건만 `bulk_operation_items.status='FAILED'` + `failure_reason='NOT_FOUND'` 이고
+  나머지 14건은 `SUCCEEDED` 다 (best-effort — 기존 계약 그대로)
+
+**S4. 이력이 남고 해결책이 보존된다**
+- Given `BTS-42` 가 `완료 / 해결책=수정함` 이다
+- When 이관된다
+- Then 상태 변경이 `issue_change_item` 으로 보이고, **`resolution_id` 는 그대로다**
+
+**S5. 기존 일괄 전환은 그대로다**
+- Given `BULK_TRANSITION` 작업
+- When 처리된다
+- Then 종전과 동일하게 엔진(`IssueApplicationService.transitionIssue`)을 탄다. 회귀 0
+
+**S6. 남의 프로젝트 이슈는 건드리지 않는다**
+- Given 상태 키 `in_review` 를 A팀·B팀이 함께 쓰고 있다
+- When A팀 워크플로우에서만 `in_review` 를 뺀다
+- Then A팀 프로젝트의 이슈만 옮겨지고 **B팀 이슈는 무변경**이다
+
+## Jira 대조 (전 타입 필수)
+
+§1-0 재사용 grep 으로 **직전 형제 PR 6**(`docs/plans/2026-08-26-workflow-draft-publish.md:40`)에서
+J1·J3·J4 를 **출처 URL·조회일 그대로 승계**했다. 이번에 새로 건드리는 조작 4건
+(상태별 대상 선택 · 규칙 우회 범위 · 전환 충돌 상태 코드 · 일괄 상한)만 §1-1 실물 조회했다.
+
+| # | Jira Cloud 동작 | 원문 인용 | 출처 · 조회일 · 구분 |
+|---|---|---|---|
+| J1 | 이관은 상태 제거 즉시가 아니라 **발행(저장) 시점**에 시작 | "The moving process won't begin as soon as you remove a status from a workflow, but after you update the workflow to save it." | https://support.atlassian.com/jira-software-cloud/docs/move-issues-to-new-statuses-while-updating-your-workflow/ · 2026-08-26 · **Cloud** (PR 6 승계) |
+| J3 | 삭제 대상 상태의 이슈를 **볼 수 있어야** 한다 | "If you need to see what work items are in the statuses you're deleting, try searching for work items and filtering by their statuses." | 위와 동일 · 2026-08-26 · **Cloud** (PR 6 승계) |
+| J4 | 발행 요청이 **`statusMappings` 를 함께 받는다** | "the draft workflow includes new workflow statuses for an issue type, and mappings are provided to update issues with the original workflow status to the new workflow status" | https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-workflow-scheme-drafts/ · 2026-08-26 · **Cloud** (PR 6 승계) |
+| **J7** | **빠지는 상태마다 옮길 곳을 「New status」 열에서 각각 고른다** | "In the modal that shows up, choose new statuses in the **New status** column." | https://support.atlassian.com/jira-software-cloud/docs/move-issues-to-new-statuses-while-updating-your-workflow/ · **2026-08-27** · **Cloud** |
+| **J8** | **이관은 워크플로우 규칙을 통째로 타지 않는다** | "Regardless of what statuses you choose, workflow rules won't be triggered. This means that _Restrict transition_ and _Validate details_ rules won't stop any transitions, and _Perform actions_ rules won't automatically do anything." | 위와 동일 · **2026-08-27** · **Cloud** |
+| **J9** | 공간·작업유형별 **예외 매핑**을 더 얹을 수 있다 | "If you want to move some work items to other statuses, select **Move work items in certain spaces / work types to other statuses** and choose new statuses. Select **Add exception** to move more work items to other statuses." | 위와 동일 · **2026-08-27** · **Cloud** |
+| J5 | 전환 **충돌**의 상태 코드를 400 에서 **409 로 옮겼다** | "Currently, if multiple issue transitions are requested at the same time, only one of those transitions will succeed, and the rest of those requests will return a 400 error code." / "we will soon be replacing the 400 (Bad Request) status code with 409 (Conflict)" / "the latter more accurately describes the reason for the API request failing" | https://developer.atlassian.com/cloud/jira/platform/change-notice-update-in-simultaneous-transitions-issue-api/ · **2026-08-27** · **Cloud** |
+| J6 | 일괄 변경에 **건수 상한**이 있다 | "You can only edit 1000 work items at once." | https://support.atlassian.com/jira-software-cloud/docs/edit-multiple-issues-at-the-same-time/ · **2026-08-27** · **Cloud** |
+
+### 채택 판정
+
+- **J7 채택 (Maxi 지시).** 커맨드가 **상태별 매핑 목록**을 받는다. 빠지는 상태가 여러 개면 각각
+  다른 대상으로 갈 수 있고, 이관 작업은 **1건**으로 묶인다 — 지라도 모달 1개·태스크 1개다.
+- **J8 채택.** 규칙 우회 범위의 **직접 근거**다. 지라도 조건(`Restrict transition`)·
+  검증기(`Validate details`)·후처리(`Perform actions`)를 전부 건너뛴다. BTS 의 엔진 우회는
+  발명이 아니라 패리티다. ★D3 결정의 근거가 이 행이다.
+- **J1 채택 (이 PR 이 닫는 행).** PR 6 이 「이관 실행은 PR 7 소관」으로 넘긴 그것이다.
+- **J3 이미 충족.** PR 6 이 상태별 잔여 건수를 발행 응답에 실었다. 추가 작업 없음.
+- **J5 채택 (무변경으로).** BTS 는 이미 모호 전환을 409 로 돌려준다(#395). 이 PR 은 깨지 않는다.
+- **J6 채택.** 기존 `BULK_OPERATION_MAX_SIZE` 상한을 이관에도 그대로 적용한다.
+- **J9 기각** → X1.
+- **J4 부분 채택** → X1.
+
+### 의도적 편차
+
+| # | 편차 | 근거 |
+|---|---|---|
+| X1 | 지라는 **공간·작업유형별 예외 매핑**(J9)과 `issueTypeId` 축(J4)을 갖는다. BTS 는 **상태 단위 매핑만** | PR 6 X1 승계. 워크플로우가 전역이고 유형별 배정은 스킴(FR-WF-02)이 담당한다 — 두 축을 이관에 섞으면 스킴과 겹친다. 예외 축은 후속 과제로 남긴다 |
+| X2 | **발행은 동기 · 이관만 비동기** | PR 6 X2 승계. 이 PR 의 설계 전제다 |
+| X3 | 지라는 이관을 **발행 흐름 안**에서 시작한다. BTS 는 **큐잉만** 하고 워커가 나중에 돈다 | 다중 BC 트랜잭션 금지. 결선은 PR 7b 소관이라 이 PR 은 큐잉 능력만 만든다 |
+| X4 | 지라 문서는 **권한**에 대해 말하지 않는다. BTS 는 **per-issue TRANSITION 권한을 우회**하고 호출자의 발행 권한에 위임한다 | 「지라 클라우드가 그렇게 한다」고 주장하지 않는다 — 근거는 BTS 내부 선례(`IssueMutationPort` 의 호출자 신뢰 모델)와 ★D3 의 유령 상태 논증이다. 계약 §1-4 가 이 구분을 적으라고 요구한다 |
+
+### 조회를 시도했으나 원문을 확보하지 못한 것 1건
+
+`POST /rest/api/3/issue/{issueIdOrKey}/transitions` 의 **요청 본문에서 전환을 id 로 지목하는 형태**는
+`developer.atlassian.com` REST 단일 페이지가 커서 `WebFetch` 가 truncate 돼 원문 인용을 얻지 못했다.
+**생략이 아니라 조회 실패다** — 계약 §1 이 「생략」과 「조회했고 대응이 없었다」를 다른 기록으로
+남기라 하므로 셋째 상태를 그대로 적는다. 이 항목은 **이 PR 의 설계를 가르지 않는다** — 해당
+계약은 #395 가 이미 확정했고 이 PR 은 건드리지 않는다.
+
+## 기능 요구사항 (FR)
+
+FR-WF-07 의 D2·D4·D5 중 **issue-tracking + shared-kernel 몫**이다.
+
+| # | 요구사항 | 근거 |
+|---|---|---|
+| F1 | shared-kernel 에 쓰기 포트 `com.bts.shared.issue.IssueStatusMigrationPort` 를 신설한다. **default 구현을 두지 않는다**(fail-closed) | `IssueMutationPort` KDoc §fail-closed. adapter 미결선이면 부팅이 실패해야 한다 |
+| F2 | 커맨드는 **상태별 매핑 목록**을 받는다 (J7). 계약 타입은 `String`·`UUID` 뿐이고 반환은 `UUID` | shared-kernel 은 순수 계약 모듈이라 `BulkOperationId` 같은 BC 내부 타입을 노출하지 않는다 |
+| F3 | 커맨드는 **대상 프로젝트 범위를 명시로** 받는다 | ★상태 키가 전역이라 범위 없이 긁으면 다른 프로젝트 이슈까지 옮긴다 (S6). 과다 집계는 안전하지만 **과다 이동은 데이터 손상**이다 |
+| F4 | issue-tracking 어댑터가 `bulk_operations` 1건(`STATUS_MIGRATION`)을 만들고 pgmq `q_bulk_operations` 에 넣는다. **`bulk_operation_items` 는 이 시점에 만들지 않는다** | ★리뷰 반영. 큐잉 시점 스냅샷이 곧 「세고 나서 옮긴다」다 (`TODOS.md:1613`) |
+| F5 | `BulkOperationType` 에 `STATUS_MIGRATION` 을 추가한다 | `BulkOperationRepository.toPayload` 의 `when (type)` **2곳**이 컴파일로 강제된다 |
+| F6 | `BulkOperationPayload` 에 **새 변형** `StatusMigration(mappings, projectKeys)` 을 추가한다 | ★D2 결정. sealed class 라 `BulkItemApplier.when(payload)` 가 **컴파일 타임에 깨진다**. `projectKeys` 를 payload 에 두는 이유는 실행 시점 재해석(F15)이 그 값을 필요로 하기 때문이다 |
+| F15 | 워커가 **claim 시점에** 매핑 키 ∩ `projectKeys` 로 `issues` 를 다시 긁어 `bulk_operation_items` 를 채우고 `total_count` 를 확정한다 | ★리뷰 BLOCKER 반영. 큐잉 → 실행 사이에 그 상태로 들어온 이슈도 대상이 된다. 「옮기면서 센다」의 실체 |
+| F16 | 항목 적재는 `UNIQUE (bulk_operation_id, issue_key)` 에 기대 **멱등**이다. 워커 재시작 시 다시 긁어도 중복이 생기지 않는다 | `V008` 이 이미 그 제약을 갖고 있다. 재시작 안전성을 새 코드로 만들지 않는다 |
+| F7 | 항목 처리 시 이슈의 **현재 상태로 매핑을 조회**해 대상을 정한다. 매핑에 없으면 그 건만 FAILED | 매핑이 여러 개라 대상은 항목마다 다르다 (S1) |
+| F8 | 전환 검증(조건·검증기)과 후처리를 우회한다 | Jira **J8** 과 동일. 이관 대상은 유효한 전환이 없다 |
+| F9 | 상태 쓰기는 **`IssueRepository.applyTransition` 을 그대로 재사용**한다. 직접 SQL 을 쓰지 않는다 | 그 메서드가 이미 OCC(`expectedVersion` · 0 row → 충돌)를 품고 있다. 엔진은 그 **위** 단계에만 있다 |
+| F10 | `applyTransition` 에 **기존 `resolution_id` 를 그대로 실어** 보존한다 | `null` 을 넘기면 해결책이 **지워진다**(비DONE 재전환 clear 시맨틱). S4 |
+| F11 | `IssueTransitioned` 이벤트를 발행하되 **`cause = "STATUS_MIGRATION"` 을 함께 싣는다** | ★ceo BLOCKER(C-B1). 끄면 검색 색인·보드가 썩고, 그냥 켜면 **사외 웹훅**(`search-export-import/.../WebhookDispatchWorker.kt`)이 이관 건수만큼 나간다 — 웹훅은 되돌릴 수 없다. 표시를 실어 **거르는 선택권을 소비자에게** 준다 |
+| F17 | `cause` 는 **nullable 신규 필드**다. 기존 발행 경로는 `null` 을 싣고 기존 소비자는 무변경이다 | 하위호환. issue-tracking 안에서 끝나 cross-BC 추가가 0 이다 |
+| F18 | 큐잉 시점에 **빈 `projectKeys` 를 거부**한다 | ★C-1. 빈 범위는 실행 시점 0건 → `COMPLETED` 가 되어, 운영자가 「이관 완료」를 보고 상태를 지운다. 아무것도 안 옮겼는데 성공으로 보인다 |
+| F19 | 실행 시점 상한 초과로 `FAILED` 될 때 **「범위를 나눠 다시 시도하라」를 사유에 싣는다**. ★**deviation (게이트 2 리뷰)** — 여기서 말하는 「사유」는 **로그뿐이다**(`BulkOperationProcessor.failOverLimit` 의 `log.error(… reason={})`). `bulk_operations` 에 **사유 컬럼이 없고**(V008 · V038 확인) `BulkOperationResponse` 에도 필드가 없어, 운영자가 `GET /api/v1/bulk-operations/{id}` 로 보는 것은 **이유 없는 `FAILED`** 다. 영속·노출 경로는 **PR 7b** 소관이고 장부에 등재했다. 문구의 앞머리는 **두 갈래**다 — 0건 이관 / 부분 이관 (`overLimitFailureReason`) | ★C-2. 재시도해도 같은 결과라 그대로면 그 상태를 영영 못 뺀다. 막다른 길임을 알리지 않는 것이 결함이다. 갈래를 나눈 이유는 다음 행동이 다르기 때문이다 — 부분 이관 뒤에 「아무것도 안 옮겼다」를 주장하면 운영자가 잔여 확인을 건너뛴다 |
+| F20 | `failed_count > 0` 으로 끝난 `STATUS_MIGRATION` 을 **로그와 메트릭으로 드러낸다** | ★C-3. 그 이슈들은 옛 상태에 남아 유령이 되는데 작업은 `COMPLETED` 로 보인다. 조용한 실패를 금지하는 것이 이 기능의 존재 이유다 |
+| F21 | `FailureReasonCode` 에 **`STATE_NOT_IN_MAPPING` · `PROJECT_ARCHIVED` 2값을 더한다**. F13 의 「새 코드 금지」를 이 둘로 한정 해제한다 | ★C-4. 둘 다 **예상된** 조건인데 `UNKNOWN` 으로 떨어진다 — 그 KDoc 은 「예상치 **못한** 내부 오류」다. 진단 가능한 실패에 이름을 준다 |
+| F12 | `IssueHistoryRecorder` 로 상태 변경 이력을 남긴다 | 엔진을 건너뛴다고 이력까지 건너뛰면 감사 추적이 끊긴다 |
+| F13 | 실패 항목은 기존 `BulkItemFailureRecorder` + `FailureReasonCode` 경로를 그대로 탄다 | best-effort 계약 무변경. 새 실패 코드를 만들지 않는다 |
+| F14 | V038 으로 `chk_bulk_operations_operation_type` CHECK 에 `STATUS_MIGRATION` 을 더하고 `COMMENT` 를 갱신한다 | `V008:17` 의 CHECK 가 실재해 enum 만 늘리면 INSERT 가 거부된다 |
+
+### ★D3 확정 — 우회 경계
+
+`transitionIssue` 의 8단계 중 이관이 지나는 것과 건너뛰는 것을 **명시로** 고정한다.
+맨 위 ⓪ 은 그 8단계 밖이지만 이관이 실제로 통과하는 권한 검사라 **함께 적는다** — 표가 8단계만 담으면 그 검사가 없는 것처럼 읽힌다.
+
+| 단계 | 이관 | 근거 |
+|---|---|---|
+| ⓪ `BulkItemApplier.findByKey` → `assertViewIssueOrNotFound` (VIEW · 지라의 BROWSE 축) | **유지** | ★게이트 2 리뷰. `transitionIssue` 8단계 **밖**이지만 이관도 이 검사를 탄다 — `BulkItemApplier.applyAndRecordSuccess` 가 payload 종류와 무관하게 `issueService.findByKey(actor, issueKey)` 를 먼저 부르고(`existing.version` 을 얻는 단일 진입), 그 안에서 VIEW 권한을 검사하기 때문이다. 이 PR 은 그 배선을 바꾸지 않는다 — 남는 한계는 표 아래에 적는다 |
+| ① `assertPermission(TRANSITION, Issue)` | **우회** | 남기면 관리자가 못 건드리는 이슈가 사라진 상태를 가리킨 채 남는다 — 이 기능이 막으려던 유령 상태를 이 기능이 만든다. 위조 차단은 호출자(PR 7b 발행 경로)의 `PUBLISH` 권한 책임 (`IssueMutationPort` 신뢰 모델). **편차 X4 로 기록** |
+| ② `projectArchiveGuard` | **유지** | 아카이브 프로젝트는 쓰기 초크포인트가 이미 막는다. 이관만 예외를 둘 이유가 없다 |
+| ③ `findByKeyForUpdate` (비관락) | **유지** | 동시 편집과의 경합을 그대로 막는다 |
+| ④ `WorkflowKeyResolver` | **불필요** | 워크플로우를 찾을 필요가 없다 |
+| ⑤ `workflowPort.plan()` (엔진) | **우회** | 유효한 전환이 없다. Jira **J8** 과 동일 |
+| ⑥ `repo.applyTransition` | **유지** | OCC 포함. F9·F10 |
+| ⑦ `IssueTransitioned` 발행 | **유지** | F11 |
+| ⑧ `plan.emitEvents` | **N/A** | plan 자체가 없다. Jira J8 의 "Perform actions rules won't automatically do anything" 과 결과가 같다 |
+
+**★⓪ 이 남긴 한계 — 게이트 2 리뷰 렌즈 3종이 독립으로 집었다. 이 PR 은 코드로 닫지 않는다.**
+
+- **X4 의 논증이 VIEW 축에서 그대로 재현된다.** ①을 우회한 근거는 「관리자가 못 건드리는 이슈가 사라진 상태를 가리킨 채 남는다」였다. 그런데 발행자가 대상 이슈에 VIEW 가 없으면 ⓪ 이 그 건을 `FAILED` 로 떨구고, 그 이슈는 똑같이 **사라지는 상태에 그대로 머무른다**. 우회 경계를 TRANSITION 축에서만 그은 것이 이 구멍이다.
+- **그 실패가 `NOT_FOUND` 로 기록된다.** `assertViewIssueOrNotFound` 는 존재 숨김을 위해 `IssueNotFoundException` 을 던지고, `BulkItemExecutor` 가 그것을 `FailureReasonCode.NOT_FOUND` 로 매핑한다. **실재하는 이슈를 장부가 「없다」고 적는다** — F21 이 `UNKNOWN` 뭉개기를 없애며 세운 「진단 가능한 실패에 이름을 준다」가 여기서 깨진다.
+
+**왜 이 PR 이 고치지 않나.** 둘 다 권한 구조 변경이라 이 PR 의 범위(D2·D4·D5) 밖이다. ⓪ 을 우회하려면 `BulkItemApplier` 가 payload 별로 조회 경로를 갈라야 하고(지금은 단일 진입이 세 가지를 다 먹이며 `BULK_EDIT`·`BULK_TRANSITION` 이 그 검사에 의존한다), 오진을 없애려면 `FailureReasonCode` 에 값이 또 필요하다 — 그러면 타 모듈 카운트 가드까지 따라온다. 결선이 없어 지금 실제로 밟힐 경로도 없다.
+
+**PR 7b 가 판정할 것.** VIEW 미보유 이슈의 잔여 유령을 **셀 수 있게** 별도 실패 코드를 줄지, 아니면 이관 경로가 VIEW 도 우회할지. 장부 등재는 `TODOS.md` 「워크플로우 — 상태 이관 기능이 만들어졌지만 부르는 곳이 없어 아무도 쓸 수 없다」 항목에 있다.
+
+### 이 PR 이 하지 **않는** 것 (사유 명시)
+
+| 항목 | 사유 |
+|---|---|
+| project-workflow 결선 (`WorkflowPublishService` 가 포트를 부르는 자리) | ★D1 결정 = issue-tracking + shared-kernel 만. 「한 PR = 한 BC」. **PR 7b** 소관 |
+| 부채 **143** 의 **나머지 절반** — 이관 완료 → 정의 교체 사이 | ★리뷰 반영으로 **큐잉 → 실행 창은 이 PR 이 닫는다**(F15). 남은 것은 발행 경로의 「이관 → 재확인 → 교체」 루프이고 그것은 project-workflow 소관이라 **PR 7b**. 장부 `TODOS.md:1613` 의 처방 문장을 이 PR 에서 그 구분대로 정정한다 (명세 동기화 규칙) |
+| `countIssuesInStatus` 의 프로젝트 스코프(읽기 과다 집계) | 같은 이유. **쓰기 쪽 범위는 F3 이 이 PR 에서 막는다** — 과다 집계는 안전하고 과다 이동은 아니다 |
+| 공간·작업유형별 예외 매핑 (Jira J9) | X1 |
+| 이관 마법사 UI · 발행 다이얼로그 | 로드맵 PR 10 |
+| `transitionId` 수용 · 모호 시 409 · 응답의 `transitionId` | **#395 가 이미 했다**(§범위 정정) |
+
+## 비기능 요구사항 (NFR)
+
+| # | 요구사항 | 판정 방법 |
+|---|---|---|
+| N1 | `BULK_TRANSITION` 회귀 **0**. 엔진 경로는 한 줄도 바뀌지 않는다 | 기존 일괄 전환 테스트 전량 green + diff 에서 `Transition` 가지 무변경 확인 |
+| N2 | 새 REST 엔드포인트 **0건**. 이 PR 은 포트로만 들어온다 | `IssueController`·`BulkOperationController` 의 매핑 수 불변 |
+| N3 | 멱등 — 워커 재실행 시 종단(SUCCEEDED/FAILED) 항목은 스킵 | 기존 `BulkOperation.isTerminal` 경로 재사용 |
+| N4 | actor 는 커맨드로 전달받고 어댑터는 `SecurityContext` 를 읽지 않는다 | pgmq 워커에는 `SecurityContext` 가 없다. `IssueMutationPort` 선례와 동형 |
+| N5 | 상한은 기존 `BULK_OPERATION_MAX_SIZE` 를 따른다 (J6) | 상한 초과 시 큐잉이 거부된다 |
+| N6 | cross-BC 프로덕션 코드 **0줄**. shared-kernel 은 BC 가 아니라 계약 모듈이다 | ArchUnit BC 격리 룰 통과 |
+
+## API 인터페이스 (REST)
+
+**신규 REST 엔드포인트 0건.** 이 PR 의 진입점은 REST 가 아니라 cross-BC 포트다.
+
+```
+project-workflow ──(port)──▶ shared-kernel ◀──(impl)── issue-tracking
+                          IssueStatusMigrationPort
+```
+
+```kotlin
+// shared-kernel — com.bts.shared.issue
+interface IssueStatusMigrationPort {
+    /**
+     * 이관을 큐잉하고 일괄작업 id 를 돌려준다. 실패는 예외로 던진다.
+     *
+     * 대상 이슈는 **이 시점에 확정되지 않는다** — 워커가 실행 시점에 매핑·범위로 다시 긁는다(F15).
+     * 어댑터는 per-issue 전환 권한을 검사하지 않는다 — 호출자가 발행 권한으로 이미 검사했다고 신뢰한다.
+     */
+    fun enqueueStatusMigration(cmd: StatusMigrationCommand): UUID
+}
+
+data class StatusMigrationCommand(
+    val actorUserId: UUID,
+    /** 대상 프로젝트 범위. 상태 키가 전역이라 이것이 없으면 남의 프로젝트 이슈가 함께 옮겨진다. */
+    val projectKeys: Set<String>,
+    /** 빠지는 상태마다 옮길 곳. Jira 의 「New status」 열과 같다(J7). */
+    val mappings: List<StatusMigrationMapping>,
+)
+
+data class StatusMigrationMapping(
+    val fromStatusKey: String,
+    val toStatusKey: String,
+)
+```
+
+`fun` 1개로 좁게 연다. 진행률 조회는 기존 `GET /api/v1/bulk-operations/{id}` 가 이미 하므로
+포트에 조회 메서드를 만들지 않는다 — 두 번째 경로를 만들면 둘이 서로를 검사하지 않는다.
+
+### ★리뷰 반영 — 대상은 실행 시점에 정해진다
+
+`plan-eng-review` 가 BLOCKER 로 잡았다. 장부(`TODOS.md:1613`)가 이 PR 을 이름으로 지목해
+「**세고 나서 옮긴다**가 아니라 **옮기면서 센다**가 된다」를 처방해 뒀는데, 초안은 큐잉 시점
+스냅샷이라 정확히 그 반대였다.
+
+```
+[큐잉]  bulk_operations 1건 (payload = 매핑 + projectKeys) · items 0건 · total_count 0
+   ↓        ← 이 구간에 그 상태로 들어온 이슈도 대상이 된다 (초안은 버렸다)
+[claim] 워커가 매핑 키 ∩ projectKeys 로 issues 를 다시 긁어 items 를 채우고 total_count 확정
+   ↓
+[실행]  항목별 REQUIRES_NEW 로 이관 · best-effort
+```
+
+**닫히는 창과 남는 창을 구분해 적는다.**
+- **닫힌다** — 큐잉 → 실행 사이. 이 PR 이 닫는다
+- **남는다** — 이관 완료 → 정의 교체 사이. 발행 경로가 「이관 후 재확인」 루프를 돌아야 닫히고,
+  그 루프는 project-workflow 소관이라 **PR 7b** 다. 부채 143 은 그때 완전히 닫힌다
+
+## 데이터 모델 변경
+
+**`V038__bulk_operations_status_migration.sql`** (issue-tracking · 마지막 번호 V037 확인)
+
+```sql
+-- ★C-6. ADD CONSTRAINT CHECK 는 전체 스캔 + ACCESS EXCLUSIVE 락이다.
+--       NOT VALID → VALIDATE 2단계로 락 구간을 짧게 끊는다.
+ALTER TABLE bulk_operations DROP CONSTRAINT chk_bulk_operations_operation_type;
+ALTER TABLE bulk_operations ADD  CONSTRAINT chk_bulk_operations_operation_type
+    CHECK (operation_type IN ('BULK_EDIT', 'BULK_TRANSITION', 'STATUS_MIGRATION')) NOT VALID;
+ALTER TABLE bulk_operations VALIDATE CONSTRAINT chk_bulk_operations_operation_type;
+COMMENT ON COLUMN bulk_operations.operation_type IS '… 허용값: BULK_EDIT, BULK_TRANSITION, STATUS_MIGRATION …';
+```
+
+**★롤백 절차를 파일 주석에 적는다 (C-6).** 되돌리려면 `STATUS_MIGRATION` 행이 **0건**이어야 한다 —
+한 건이라도 있으면 좁힌 CHECK 가 그 행에서 실패해 되돌릴 수 없다. 절차는
+① `SELECT count(*) FROM bulk_operations WHERE operation_type='STATUS_MIGRATION'` 이 0인지 확인
+② 0이 아니면 **롤백하지 말고 앞으로 고친다**(행을 지우면 감사 기록이 사라진다).
+`DATA.md` 에 CHECK 무중단·롤백 규칙이 **0건**이라 이 PR 이 선례가 된다 — 규칙 승격은 별건.
+
+- 새 테이블 **0** · 새 컬럼 **0** · 백필 **0**. CHECK 확장 하나뿐이다
+- `bulk_operation_items` 는 무변경 — `FAILED` + `failure_reason` 계약을 그대로 쓴다
+- `payload` 는 JSONB 라 스키마 변경 없이 매핑 목록을 담는다. 형태 강제는 Kotlin sealed class 가 한다
+
+```kotlin
+data class StatusMigration(
+    /** fromStatusKey → toStatusKey. 항목의 현재 상태로 조회해 대상을 정한다(F7). */
+    val mappings: Map<String, String>,
+    /** 대상 프로젝트 범위. 워커가 실행 시점에 다시 긁을 때 쓴다(F15) — 그래서 payload 에 산다. */
+    val projectKeys: Set<String>,
+) : BulkOperationPayload()
+```
+
+**`bulk_operation_items` 는 큐잉 시점에 0건이다.** 워커가 claim 후 채운다(F15). 기존 두 타입은
+생성 시점에 항목이 박히므로 **이 타입만 시점이 다르다** — `BulkOperationProcessor` 에 그 분기를
+두고 KDoc 에 사유를 적는다. `total_count` 도 그때 확정된다.
+
+## 엣지 케이스
+
+| # | 상황 | 기대 |
+|---|---|---|
+| E1 | 매핑에 `from == to` 가 섞임 | 큐잉 거부. 옮길 것이 없는데 작업만 남는다 |
+| E2 | `toStatusKey` 가 상태 카탈로그에 없음 | 큐잉 거부. 유령 상태를 만드는 것이 이 기능이 막으려던 그 사고다 |
+| E3 | 큐잉 시점에 대상 이슈 **0건** | **거부하지 않는다.** 실행 전에 들어올 수 있다 — 그것을 잡는 것이 F15 의 목적이다. 실행 시점에도 0건이면 즉시 `COMPLETED`(`total_count=0`). 실패가 아니라 「할 일 없었다」로 기록된다 |
+| E4 | 실행 시점 대상이 상한(`BULK_OPERATION_MAX_SIZE`) 초과 | 작업을 `FAILED` 로 두고 사유에 **「범위를 나눠 다시 시도하라」를 함께 싣는다** (J6 · ★C-2 · F19). **조용히 자르지 않는다** — 잘린 나머지가 유령이 되는데 화면은 「완료」로 보인다. 안내가 없으면 재시도해도 같은 결과라 그 상태를 영영 못 뺀다. 사유는 정산된 `succeeded_count` 에서 유도해 **0건 이관 / 부분 이관 두 갈래**로 갈린다. ★**deviation** — 그 사유가 닿는 곳은 **로그뿐이다**(F19 의 deviation 참조) |
+| E5 | 매핑 목록이 **비어 있음** | 큐잉 거부 |
+| E5b | **`projectKeys` 가 비어 있음** | 큐잉 거부 (★C-1 · F18). 그냥 두면 실행 시점 0건 → `COMPLETED` 라 「이관 완료」로 보이는데 아무것도 안 옮겼다 |
+| E6 | 같은 `toStatusKey` 로 여러 `from` 이 몰림 | **허용**. 지라도 막지 않는다 (J7 은 대상 유일성을 요구하지 않는다) |
+| E7 | 같은 `fromStatusKey` 가 매핑에 **두 번** 나옴 | 큐잉 거부. 어느 대상인지 정할 수 없다 |
+| E17 | 한 매핑의 `toStatusKey` 가 **다른 매핑의 `fromStatusKey`** 임 (`{a→b, b→c}` 연쇄) | 큐잉 거부 (★게이트 2 리뷰). **E6 과 헷갈리면 안 된다** — E6 은 대상끼리 겹치는 것이라 **허용**이고, 이것은 **대상 집합이 출발 집합과 겹치는** 것이라 거부다. 그대로 두면 워커가 `a` 이슈를 `b` 로 옮기고 그 항목을 `SUCCEEDED` 로 찍어 다시 처리하지 않는데 `b` 도 사라지는 상태다 — 작업은 `COMPLETED` 인데 유령 상태가 남는다. 스캔 시점에 이미 `b` 에 있던 이슈만 `c` 로 가므로 **순서 의존**이기도 하다. **전이적으로 고쳐 주지 않는다** — 순환(`{a→b, b→a}`)이면 종료하지 않고, 조용히 대상을 바꾸면 운영자의 실수를 감춘다 |
+| E18 | `projectKeys` 에 **실재하지 않는** 키가 섞임 (오타 · 발행 사이에 소프트 삭제된 프로젝트) | 큐잉 거부 (★게이트 2 리뷰). E5b 와 **같은 실패 양식**이고 트리거만 다르다 — 워커가 0건을 긁어 `total_count=0` → `COMPLETED` 라 「이관 완료」로 보이는데 아무것도 안 옮겼다. 실행 시점에는 정상 0건(E3)과 오타 0건이 구분되지 않으므로 **큐잉 시점**이 막을 수 있는 유일한 자리다. E2 와 대칭으로 `projects` 를 조회하며 `deleted_at IS NULL` 은 직접 붙인다(DATA.md §3) |
+| E8 | 처리 시점에 이슈의 현재 상태가 **매핑에 없음** (그 사이 누가 옮김) | 그 건만 FAILED. 임의 대상으로 밀어 넣지 않는다 (F7) |
+| E9 | 이관 도중 이슈가 소프트 삭제됨 | 그 건만 `FAILED`/`NOT_FOUND`. 나머지 계속 (S3) |
+| E10 | 이관 도중 다른 사용자가 그 이슈를 수정 | `applyTransition` 이 0 row → `VERSION_CONFLICT` 로 FAILED. 덮어쓰지 않는다 |
+| E11 | 워커가 중간에 죽고 재시작 | 종단 항목 스킵, 미처리분만 이어서 (N3) |
+| E12 | 큐잉 이후 그 상태로 **새 이슈가 들어옴** | **이관된다.** 워커가 claim 시점에 다시 긁으므로 그때까지 들어온 것이 전부 대상이다 (F15). ★리뷰 BLOCKER 로 초안의 스냅샷 설계를 뒤집은 자리다 |
+| E15 | **이관 완료 이후** 정의 교체 전에 또 들어옴 | **여전히 남는 창이다.** 발행 경로가 「이관 → 재확인 → 교체」 루프를 돌아야 닫히고 그 루프는 project-workflow 소관이라 **PR 7b** 다. 부채 **143** 은 그때 완전히 닫힌다. 숨기지 않고 KDoc 에 적는다 |
+| E16 | 워커가 items 를 채우다 죽고 재시작 | `UNIQUE (bulk_operation_id, issue_key)` 로 재적재가 멱등이다 (F16). 중복 항목이 생기지 않는다 |
+| E13 | 어댑터가 결선되지 않은 채 부팅 | **부팅 실패** (F1 fail-closed). silent-drop 보다 낫다 |
+| E14 | 아카이브된 프로젝트의 이슈가 대상에 섞임 | `projectArchiveGuard` 가 막아 그 건만 FAILED (D3 ②) |
+
+## 제약 조건
+
+- **한 PR = 한 BC.** 프로덕션 변경은 issue-tracking 뿐이고 shared-kernel 은 계약 모듈이다
+- **BC 격리.** issue-tracking 은 project-workflow 를 import 하지 않는다. 의존 방향은 포트가 정한다
+- **다중 BC 트랜잭션 금지.** 그래서 동기 UPDATE 가 아니라 `bulk_operations` 큐잉이다
+- **`DATA.md` §4** — 마이그레이션 규칙(제약 이름 명시 · 시각 컬럼 `TIMESTAMPTZ`)을 따른다
+- **대상 상태가 새 워크플로우에 실제로 있는지는 호출자가 보증한다.** issue-tracking 은 워크플로우
+  정의를 모른다 — 이 PR 은 상태 카탈로그 존재만 방어적으로 확인한다(E2)
+- **이 PR 만으로는 사용자에게 보이는 변화가 0 이다** (결선이 PR 7b). 의도된 상태이며 게이트 2
+  요약에 그대로 싣는다 — 「기능이 반쪽」이 아니라 「두 BC 로 나눈 절반」이다
+
+## 측정 가능한 완료 기준
+
+**red-first 4건**
+
+1. 매핑이 여러 개일 때 각 이슈가 **자기 출발 상태의 대상**으로 간다 (S1 · F7)
+2. 이관 후 대상 이슈의 `issues.current_state_key` 가 **전량** 새 상태다
+3. 이관 중 실패한 건이 `bulk_operation_items` 에 `FAILED` + `failure_reason` 으로 남는다
+4. 이관 경로가 **엔진을 타지 않는다** — 유효 전환이 0인 상태에서도 `TRANSITION_NOT_ALLOWED` 0건
+
+**추가 red (자체 sanity check 가 찾은 것)**
+
+5. 범위 밖 프로젝트의 같은 상태 이슈가 **무변경**이다 (S6 · F3)
+6. 이관 후 `resolution_id` 가 **보존**된다 (S4 · F10)
+
+**추가 red (`plan-eng-review` BLOCKER 가 찾은 것)**
+
+7. **큐잉 이후 그 상태로 들어온 이슈도 이관된다** (E12 · F15). 큐잉 → claim 사이에 이슈를 1건
+   더 넣고, 그것까지 옮겨졌는지 본다 — 초안 설계에서는 red 였을 테스트다
+8. 실행 시점 대상이 0건이면 `COMPLETED`(`total_count=0`)다. 실패가 아니다 (E3)
+9. 워커가 items 를 채우다 재시작해도 **중복 항목이 생기지 않는다** (E16 · F16)
+
+**추가 red (`plan-ceo-review` 가 찾은 것 · 게이트 1 에서 전부 이번 PR 로 확정)**
+
+10. ★이관으로 발행된 `IssueTransitioned` 에 **`cause = "STATUS_MIGRATION"` 이 실린다**.
+    일반 전환으로 발행된 것은 `cause` 가 `null` 이다 (C-B1 · F11 · F17)
+11. **빈 `projectKeys` 큐잉이 거부**된다 (C-1 · E5b · F18)
+12. 상한 초과 `FAILED` 사유에 **분할 재시도 안내**가 들어 있다 (C-2 · E4 · F19).
+    판정 대상은 `BulkOperationProcessor.overLimitFailureReason` 의 반환 문자열이고 **두 갈래를 각각** 잰다 —
+    0건 이관과 부분 이관. ★**deviation** — REST 응답으로는 판정할 수 없다. 사유가 `bulk_operations` 에도
+    `BulkOperationResponse` 에도 없기 때문이다 (F19 의 deviation)
+13. `failed_count > 0` 으로 끝나면 **로그·메트릭에 드러난다** (C-3 · F20)
+14. 매핑에 없는 상태는 `STATE_NOT_IN_MAPPING`, 아카이브 프로젝트는 `PROJECT_ARCHIVED` 로
+    기록된다 — **`UNKNOWN` 이 아니다** (C-4 · F21)
+15. V038 이 `NOT VALID` → `VALIDATE` 2단계이고 롤백 절차가 파일 주석에 있다 (C-6)
+
+**뮤테이션 짝 (비-공허 확인)**
+
+- `BulkItemApplier` 의 `StatusMigration` 가지를 지우면 → **컴파일 실패**여야 한다(sealed 강제)
+- 가지를 `Transition` 과 같은 본문으로 바꾸면 → **정확히 4번만** red 여야 한다
+- `applyTransition` 의 `resolutionId` 인자를 `null` 로 바꾸면 → **정확히 6번만** red
+- `projectKeys` 필터를 지우면 → **정확히 5번만** red
+- V038 의 CHECK 확장을 되돌리면 → 큐잉 통합 테스트가 DB 제약 위반으로 red
+
+**게이트**
+
+- `./gradlew :modules:issue-tracking:test :modules:shared-kernel:test ktlintCheck detekt --rerun-tasks`
+- 판별식 전량 (`pnpm test:workflow`)
+- `bash scripts/verify-master-plan.sh` PASS · doc-index drift 0
+- FR 수 **불변 143** · 신규 API **0** · 신규 의존성 **0** · cross-BC 프로덕션 **0줄**
+
+## Sanity Check
+
+**❓ 발견 6건 — 전부 보강 완료 (1회)**
+
+| # | gap | 처리 |
+|---|---|---|
+| G1 | 엔진 우회가 **권한 검사까지** 삼키는지 불명 | ★D3 표로 8단계를 명시 고정. ①만 우회하고 편차 X4 로 기록 |
+| G2 | 우회하면 `IssueTransitioned` 이벤트가 사라져 **검색 색인·보드가 썩는다** | F11 로 발행 유지를 못박음 |
+| G3 | 우회하면 **낙관적 잠금**이 빠질 수 있다 | F9 — `applyTransition` 재사용으로 OCC 가 그대로 따라온다. 직접 SQL 금지 |
+| G4 | 상태 키가 전역이라 **남의 프로젝트 이슈까지 옮겨진다** | F3 — 커맨드가 `projectKeys` 를 명시로 받는다. red 5번 |
+| G5 | 「직접 재작성」이 모호 — 어느 seam 인가 | F9 가 `IssueRepository.applyTransition` 으로 확정 |
+| G6 | `applyTransition(…, resolutionId=null)` 이 **해결책을 지운다** | F10 — 기존값 보존. red 6번 |
+
+**Maxi 결정 반영 3건** — D1(BC 범위 = issue-tracking + shared-kernel) · D2(payload 변형 신설) ·
+J7(상태별 대상 선택). D3(우회 경계)은 Jira **J8** 원문이 근거를 주어 A안으로 확정했다.
+
+### ★`plan-eng-review` BLOCKER 1건 — 자체 점검이 못 잡은 것
+
+| # | 지적 | 처리 |
+|---|---|---|
+| G7 | 초안은 큐잉 시점 스냅샷이라 그 뒤 그 상태로 들어온 이슈를 **버렸다**. 장부(`TODOS.md:1603-1613`)가 이 PR 을 이름으로 지목해 「세고 나서 옮긴다가 아니라 **옮기면서 센다**」를 처방해 뒀는데 정확히 그 반대였다 | **D4 = 실행 시점 재해석**으로 뒤집었다. F15·F16 신설 · E3·E4·E12 개정 · E15·E16 추가 · red 7·8·9 추가 |
+
+**자체 점검이 왜 못 잡았나.** G1~G6 은 전부 「우회가 무엇을 삼키는가」축이었다. G7 은 **시점**
+축이라 그 렌즈에 안 걸렸다. 장부를 교차 확인한 것이 잡았다 — `TODOS.md` 를 Step 0 에서 읽는
+절차가 실제로 값을 했다.
+
+### ★`plan-ceo-review` BLOCKER 1건 + MAJOR 8건 — 게이트 1 에서 전부 이번 PR 로 확정
+
+| # | 지적 | 처리 |
+|---|---|---|
+| **C-B1** | `IssueTransitioned` 소비자에 **사외 웹훅**(`WebhookDispatchWorker`)이 있다. 이관 1,000건 = 웹훅 1,000건이고 되돌릴 수 없다. F11 은 검색 색인만 근거로 발행 유지를 정했다 | **F11·F17 개정** — `cause="STATUS_MIGRATION"` 을 실어 소비자가 거른다. red 10 |
+| C-1 | 빈 `projectKeys` 가 조용히 「완료」가 된다 | **F18 · E5b** · red 11 |
+| C-2 | 상한 초과가 막다른 길이다 | **F19 · E4 개정** · red 12 |
+| C-3 | 실패가 관측되지 않는다 | **F20** · red 13 |
+| C-4 | 예상된 실패가 `UNKNOWN` 으로 뭉개진다 | **F21** — `STATE_NOT_IN_MAPPING`·`PROJECT_ARCHIVED` 2값 · red 14 |
+| C-5 | T7 핵심 테스트가 타이밍 의존이라 flaky | plan Task 7 — 워커 **수동 트리거**로 순서를 통제 |
+| C-6 | CHECK 락·롤백 절차 부재 | **`NOT VALID` 2단계 + 롤백 주석** · red 15 |
+| C-7 | 로드맵 정본이 여전히 틀린 채다 | plan Task 8 — 로드맵 PR 7 절 정정 |
+| C-9 | 「PR 7b 가 온다」가 기계로 안 남는다 | plan Task 8 — `TODOS.md` 등재 + `:1613` 정정 |
+
+**PR 7b 착수 조건으로 넘긴 2건** — C-8(구버전 워커가 새 enum 값에 죽는다 · 이 PR 은 호출자가
+없어 행이 안 생기므로 지금은 안전) · C-10(포트 KDoc 의 「호출자가 `PUBLISH` 를 검사한다」 약속을
+검사할 장치).
+
+**자체 점검이 왜 C-B1 을 못 잡았나.** G1~G6 은 「우회」축, G7 은 「시점」축이었다. C-B1 은
+**폭발 반경**축이라 둘 다에 안 걸렸다 — 소비자를 **세어 본 것**이 잡았다. 렌즈 2종 강제가 값을 했다.
+
+**✅ 통과** — 남은 미확정은 「조회 실패 1건」뿐이고 그것은 이 PR 의 설계를 가르지 않는다.
