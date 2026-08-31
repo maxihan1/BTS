@@ -1,8 +1,8 @@
 {
   "_주석": "「전이」(Transition 의 구 표기)가 살아남아야 하는 자리의 동결 목록. 갱신은 의도적으로만 한다.",
   "_기준": "git ls-files. 빌드 산출물·생성 코드는 세지 않는다 — 그것들은 gradle 이 도는 동안 수치가 움직인다.",
-  "총건수": 384,
-  "파일수": 159,
+  "총건수": 387,
+  "파일수": 162,
   "낱말별": {
     "전이": 111,
     "버전이": 112,
@@ -14,7 +14,7 @@
     "전이다": 6,
     "전이어도": 6,
     "이전이": 5,
-    "전이적으로": 5,
+    "전이적으로": 8,
     "이전이다": 4,
     "구버전이": 3,
     "기전이다": 3,
@@ -211,6 +211,9 @@
     "scripts/workflow/transition-term-baseline.json": 48,
     "scripts/workflow/transition-term-guard.test.ts": 20,
     "backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt": 1,
-    "backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkItemApplierStatusMigrationTest.kt": 2
+    "backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkItemApplierStatusMigrationTest.kt": 2,
+    "backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/workflow/WorkflowStatusMigrationAdapter.kt": 1,
+    "backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/integration/StatusMigrationEnqueueIntegrationTest.kt": 1,
+    "docs/specs/2026-08-27-issue-tracking-status-migration.md": 1
   }
 }
