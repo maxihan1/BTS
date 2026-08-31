@@ -1,9 +1,8 @@
-// 구독 필터 통합 테스트 전용 — cross-BC 포트 stub 빈 설정 (watcher=[USER_A, USER_B])
+// 구독 필터 통합 테스트 전용 — cross-BC 포트 stub 빈 설정 (watcher = 테스트의 RECIPIENTS)
 
 package com.bts.notification.worker
 
-import com.bts.notification.worker.NotificationWorkerSubscriptionFilterTest.Companion.USER_A
-import com.bts.notification.worker.NotificationWorkerSubscriptionFilterTest.Companion.USER_B
+import com.bts.notification.worker.NotificationWorkerSubscriptionFilterTest.Companion.RECIPIENTS
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
@@ -17,8 +16,10 @@ import java.util.UUID
  * [NotificationWorkerSubscriptionFilterTest] 전용 포트 빈 설정.
  *
  * ## IssueRecipientLookupPort
- * 모든 이슈에 대해 watcher=[USER_A, USER_B] 를 반환한다.
- * 두 명 모두 visibility 필터를 통과하므로, 구독 필터만이 발송 여부를 결정한다.
+ * 모든 이슈에 대해 테스트가 선언한 [RECIPIENTS] 를 watcher 로 반환한다.
+ * ★목록을 여기 다시 적지 않는다 — 두 벌이 되면 서로를 검사하지 못하고, 한쪽만 늘어나면
+ * 기대 건수와 실제가 어긋나 대기가 타임아웃으로 죽는다.
+ * 전원 visibility 필터를 통과하므로, 구독 필터만이 발송 여부를 결정한다.
  *
  * ## IssueVisibilityPort
  * allow-all 구현 — 구독 필터 단독 검증이 목적이므로 visibility 제외 없이 전원 통과.
@@ -32,7 +33,7 @@ import java.util.UUID
 @TestConfiguration
 class SubscriptionFilterTestPortsConfig {
     /**
-     * 모든 이슈에 대해 watcher=[USER_A, USER_B] 를 반환하는 이슈 포트 빈.
+     * 모든 이슈에 대해 [RECIPIENTS] 를 watcher 로 반환하는 이슈 포트 빈.
      */
     @Bean
     fun issueRecipientLookupPort(): IssueRecipientLookupPort =
@@ -41,14 +42,14 @@ class SubscriptionFilterTestPortsConfig {
                 IssueRecipients(
                     reporterId = null,
                     assigneeId = null,
-                    watcherIds = listOf(USER_A, USER_B),
+                    watcherIds = RECIPIENTS,
                     componentLeadIds = emptyList(),
                     previousAssigneeId = null,
                 )
         }
 
     /**
-     * allow-all IssueVisibilityPort — USER_A, USER_B 모두 통과.
+     * allow-all IssueVisibilityPort — [RECIPIENTS] 전원 통과.
      *
      * 구독 필터(user_notification_subs)만 검증하기 위해 visibility 차단은 없다.
      */
