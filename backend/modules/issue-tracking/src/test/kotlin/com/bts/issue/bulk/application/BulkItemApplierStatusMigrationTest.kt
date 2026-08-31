@@ -1,4 +1,4 @@
-// BulkItemApplier 의 STATUS_MIGRATION 가지 단위 테스트 — 매핑·전량 재작성·엔진 우회·해결책 보존·아카이브 가드·OCC
+// BulkItemApplier 의 STATUS_MIGRATION 가지 단위 테스트 — 매핑·재작성·엔진 우회·해결책·가드·OCC·이벤트·이력
 
 package com.bts.issue.bulk.application
 
@@ -11,14 +11,27 @@ import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.domain.StateNotInMigrationMappingException
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
+import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.event.IssueDomainEvent
+import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueTransitioned
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.issue.IssueTypeId
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
@@ -28,7 +41,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * FR-WF-07 Task 4 — `BulkItemApplier` STATUS_MIGRATION 가지 단위 테스트.
+ * FR-WF-07 Task 4·6 — `BulkItemApplier` STATUS_MIGRATION 가지 단위 테스트.
  *
  * 검증 범위 (spec `docs/specs/2026-08-27-issue-tracking-status-migration.md`).
  * - 완료기준 1 · J7 · F7 — 매핑이 여러 개면 항목마다 **자기 출발 상태의 대상**으로 간다.
@@ -38,6 +51,13 @@ import java.util.UUID
  * - E8 · F7 — 처리 시점 현재 상태가 매핑에 없으면 밀지 않고 [StateNotInMigrationMappingException] 을 던진다.
  * - E14 · D3 ② — 아카이브된 프로젝트의 이슈는 [ProjectArchiveGuard] 가 막아 상태가 재작성되지 않는다.
  * - E10 · F9 — `applyTransition` 이 0행(OCC 충돌)이면 SUCCEEDED 로 기록하지 않는다.
+ * - 완료기준 10 · C-B1 · F11 · F17 — 이관 성공 시 [IssueTransitioned] 를 발행하고 그 이벤트에만
+ *   `cause = "STATUS_MIGRATION"` 이 실린다. 일반 전환 발행부가 만드는 이벤트는 `cause` 가 `null` 이다.
+ * - F12 — 이관 성공 시 [IssueHistoryRecorder] 로 상태 변경 이력을 남긴다.
+ *
+ * **`cause` 하위호환을 왜 여기서 왕복 검증하는가.** `cause` 는 이 task 가 더한 필드이고
+ * [IssueTransitioned] 는 pgmq 로 JSON 이 흐르는 타입이다. 배포 순서상 **`cause` 없는 옛 메시지를
+ * 신버전이 읽는** 구간이 반드시 생기므로, 필드를 더한 자리에서 그 왕복을 함께 못박는다.
  *
  * **실패 기록은 이 클래스의 책임이 아니다.** 매핑 부재·아카이브 모두 예외로 올리고
  * [BulkItemExecutor] 가 `FailureReasonCode` 로 번역해 FAILED 를 적는다. 여기서 직접 적으면 executor 의
@@ -61,7 +81,17 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val bulkRepo = mockk<BulkOperationRepository>()
     val issueRepository = mockk<IssueRepository>()
     val archiveGuard = mockk<ProjectArchiveGuard>()
-    val sut = BulkItemApplier(issueService, bulkRepo, issueRepository, archiveGuard)
+    val eventPublisher = mockk<IssueEventPublisher>()
+    val historyRecorder = mockk<IssueHistoryRecorder>()
+    val sut =
+        BulkItemApplier(
+            issueService,
+            bulkRepo,
+            issueRepository,
+            eventPublisher,
+            historyRecorder,
+            archiveGuard,
+        )
 
     val actor = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     val operationId = BulkOperationId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
@@ -70,6 +100,9 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val inReviewKey = IssueKey("ATLAS-1")
     val blockedKey = IssueKey("ATLAS-2")
     val otherInReviewKey = IssueKey("ATLAS-3")
+
+    /** 이력 기록의 `projectId` 인자 출처. 이관 대상 3건은 모두 같은 프로젝트다. */
+    val projectId = UUID.fromString("00000000-0000-0000-0000-0000000000b0")
 
     /** 매핑 2개. `mapOf` 는 삽입 순서를 보존하므로 「첫 항목 고정」 구현은 blocked 를 in_progress 로 민다. */
     val payload =
@@ -100,12 +133,42 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             resolutionId = resolutionId,
         )
 
+    /**
+     * 이력 `before` 스냅샷의 출처. [IssueHistoryRecorder.record] 는 REST DTO 가 아니라 도메인
+     * [Issue] 를 받으므로(그리고 `projectId` 는 DTO 에 없다) 이관 가지가 별도로 읽어야 한다.
+     */
+    fun issueEntity(
+        key: IssueKey,
+        currentStateKey: String,
+        version: Long,
+    ): Issue =
+        Issue(
+            id = IssueId(UUID.randomUUID()),
+            key = key,
+            projectId = projectId,
+            summary = "이관 대상 이슈",
+            reporterId = actor,
+            currentStateKey = currentStateKey,
+            version = version,
+            deletedAt = null,
+            createdAt = Instant.parse("2026-08-27T00:00:00Z"),
+            updatedAt = Instant.parse("2026-08-27T00:00:00Z"),
+            typeId = IssueTypeId(1L),
+        )
+
     beforeEach {
-        clearMocks(issueService, bulkRepo, issueRepository, archiveGuard)
+        clearMocks(issueService, bulkRepo, issueRepository, archiveGuard, eventPublisher, historyRecorder)
         // 기본은 「아카이브 아님」. IssueKey 는 value class 라 any() 매처를 못 쓰므로 키를 명시한다.
         listOf(inReviewKey, blockedKey, otherInReviewKey).forEach { key ->
             justRun { archiveGuard.checkByIssue(key) }
         }
+        // 이력 before 스냅샷 기본 stub — 키별 출발 상태·버전은 기존 테스트 픽스처와 같은 값이다.
+        every { issueRepository.findByKey(inReviewKey) } returns issueEntity(inReviewKey, "in_review", 5L)
+        every { issueRepository.findByKey(blockedKey) } returns issueEntity(blockedKey, "blocked", 7L)
+        every { issueRepository.findByKey(otherInReviewKey) } returns
+            issueEntity(otherInReviewKey, "in_review", 9L)
+        justRun { eventPublisher.publish(any()) }
+        justRun { historyRecorder.record(any(), any(), any(), any()) }
     }
 
     describe("applyAndRecordSuccess — StatusMigration 가지") {
@@ -258,6 +321,147 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
 
             verify(exactly = 1) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
+        }
+
+        it("이관 성공 시 IssueTransitioned 가 발행된다 — 실패한 건은 발행하지 않는다 (F11 · G2)") {
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) } returns 1
+            val published = mutableListOf<IssueDomainEvent>()
+            justRun { eventPublisher.publish(capture(published)) }
+
+            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+
+            published.size shouldBe 1
+            val event = published.single().shouldBeInstanceOf<IssueTransitioned>()
+            event.issueKey shouldBe inReviewKey
+            event.fromState shouldBe "in_review"
+            event.toState shouldBe "in_progress"
+            event.actorId shouldBe actor
+
+            // 비-공허 짝 — 매핑에 없어 실패한 건은 발행되지 않는다. 「무조건 발행」 구현을 배제한다.
+            every { issueService.findByKey(actor, blockedKey) } returns
+                issueResponse(blockedKey, "done", version = 7L)
+
+            shouldThrow<StateNotInMigrationMappingException> {
+                sut.applyAndRecordSuccess(actor, operationId, blockedKey, payload)
+            }
+
+            published.size shouldBe 1
+        }
+
+        it("이관 이벤트에만 cause=STATUS_MIGRATION 이 실린다 — 일반 전환은 null 이다 (완료기준 10 · C-B1 · F17)") {
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) } returns 1
+            val published = mutableListOf<IssueDomainEvent>()
+            justRun { eventPublisher.publish(capture(published)) }
+
+            // ① 이관 경로 — 표시가 실린다.
+            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+
+            published.single().shouldBeInstanceOf<IssueTransitioned>().cause shouldBe "STATUS_MIGRATION"
+
+            // ② 같은 applier 의 일반 전환 가지는 스스로 발행하지 않는다 — 표시가 번지지 않는다.
+            //    (일반 전환의 발행은 IssueApplicationService.transitionIssue 가 한다.)
+            every { issueService.findByKey(actor, blockedKey) } returns
+                issueResponse(blockedKey, "blocked", version = 7L)
+            every { issueService.transitionIssue(actor, blockedKey, any()) } returns
+                issueResponse(blockedKey, "done", version = 8L)
+            every { bulkRepo.updateItemResult(operationId, blockedKey, ItemStatus.SUCCEEDED, null) } returns 1
+
+            sut.applyAndRecordSuccess(
+                actor,
+                operationId,
+                blockedKey,
+                BulkOperationPayload.Transition(toStateKey = "done", resolutionId = null),
+            )
+
+            published.size shouldBe 1
+
+            // ③ 일반 전환 발행부(IssueApplicationService.transitionIssue)와 **같은 인자 목록**으로 만든
+            //    이벤트는 cause 가 null 이다 — 기본값을 non-null 로 바꾸면 여기가 red 다 (F17 하위호환).
+            IssueTransitioned(
+                issueKey = blockedKey,
+                fromState = "blocked",
+                toState = "done",
+                actorId = actor,
+                occurredAt = Instant.parse("2026-08-27T00:00:00Z"),
+            ).cause shouldBe null
+        }
+
+        it("이관 성공 시 상태 변경 이력이 기록된다 — 실패한 건은 기록되지 않는다 (F12)") {
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) } returns 1
+
+            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+
+            verify(exactly = 1) {
+                historyRecorder.record(
+                    before = match { it?.key == inReviewKey && it.currentStateKey == "in_review" },
+                    after = match { it?.key == inReviewKey && it.currentStateKey == "in_progress" },
+                    actor = actor,
+                    projectId = projectId,
+                )
+            }
+
+            // 비-공허 짝 — 매핑에 없어 실패한 건은 이력을 남기지 않는다(총 호출은 여전히 1회).
+            every { issueService.findByKey(actor, blockedKey) } returns
+                issueResponse(blockedKey, "done", version = 7L)
+
+            shouldThrow<StateNotInMigrationMappingException> {
+                sut.applyAndRecordSuccess(actor, operationId, blockedKey, payload)
+            }
+
+            verify(exactly = 1) { historyRecorder.record(any(), any(), any(), any()) }
+        }
+    }
+
+    describe("IssueTransitioned.cause 하위호환 (F17)") {
+
+        val mapper =
+            ObjectMapper()
+                .registerKotlinModule()
+                .registerModule(JavaTimeModule())
+
+        it("cause 없는 옛 큐 메시지가 cause=null 로 복원된다") {
+            // 이 PR 이전 발행부가 실제로 쏘던 형태 그대로다 — cause 키 자체가 없다.
+            val legacyJson =
+                """
+                {
+                  "type": "issue.transitioned",
+                  "issueKey": "ATLAS-1",
+                  "fromState": "in_review",
+                  "toState": "in_progress",
+                  "actorId": {"value": "00000000-0000-0000-0000-000000000001"},
+                  "occurredAt": "2026-08-27T00:00:00Z"
+                }
+                """.trimIndent()
+
+            val restored = mapper.readValue(legacyJson, IssueDomainEvent::class.java)
+
+            restored.shouldBeInstanceOf<IssueTransitioned>().cause shouldBe null
+        }
+
+        it("cause 를 실은 새 메시지는 왕복해도 값이 보존된다") {
+            val event =
+                IssueTransitioned(
+                    issueKey = inReviewKey,
+                    fromState = "in_review",
+                    toState = "in_progress",
+                    actorId = actor,
+                    occurredAt = Instant.parse("2026-08-27T00:00:00Z"),
+                    cause = "STATUS_MIGRATION",
+                )
+
+            val json = mapper.writeValueAsString(event)
+
+            json shouldContain "\"cause\":\"STATUS_MIGRATION\""
+            mapper.readValue(json, IssueDomainEvent::class.java) shouldBe event
         }
     }
 })
