@@ -43,6 +43,15 @@ export interface CreateBoardFormProps {
    * 기존 빈 상태 소비처는 호출을 바꿀 필요가 없다.
    */
   showEmptyStateIntro?: boolean
+  /**
+   * 생성이 **성공**했을 때 1회 호출. 기본 없음(no-op).
+   *
+   * 다이얼로그 소비처가 「이제 닫아도 된다」를 아는 유일한 신호다. 이 신호가 없으면 소비처는
+   * 보드 개수 증가로 성공을 추론하게 되는데, 개수는 생성 말고도 변한다 — 목록 refetch 로
+   * 남이 만든 보드가 들어오면 입력 중이던 창이 닫히고 사용자는 그것을 「만들어졌다」로 읽는다.
+   * 선택적이라 빈 상태 소비처는 호출을 바꿀 필요가 없다(`showEmptyStateIntro` 와 같은 관례).
+   */
+  onCreated?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,10 +68,12 @@ export interface CreateBoardFormProps {
  *
  * @param projectKey 보드를 추가할 프로젝트 식별 키
  * @param showEmptyStateIntro 「보드가 없습니다」 인트로 노출 여부 (기본 true)
+ * @param onCreated 생성 성공 신호 — 다이얼로그 소비처가 창을 닫는 근거
  */
 export function CreateBoardForm({
   projectKey,
   showEmptyStateIntro = true,
+  onCreated,
 }: CreateBoardFormProps): JSX.Element {
   const navigate = useNavigate()
   const [name, setName] = useState('')
@@ -81,6 +92,8 @@ export function CreateBoardForm({
       { name: trimmed },
       {
         onSuccess: (data: BoardCreated) => {
+          // 이동보다 먼저 알린다 — 창이 열린 채 뒤에서 화면이 바뀌는 순간을 남기지 않는다.
+          onCreated?.()
           void navigate({
             to: '/projects/$projectKey/board',
             params: { projectKey },

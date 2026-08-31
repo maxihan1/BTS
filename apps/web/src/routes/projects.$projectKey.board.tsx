@@ -251,14 +251,6 @@ function BoardSelectorDropdown({
     boards.find((b: BoardSummary) => b.boardId === currentBoardId)?.name ??
     boardLabels.boardSelectPlaceholder
 
-  // `CreateBoardForm` 은 성공 콜백을 노출하지 않고 navigate 만 한다 — 생성이 성공하면
-  // 목록 캐시가 무효화돼 보드 수가 늘어나므로, 그 증가를 닫힘 신호로 삼는다.
-  // 실패하면 수가 그대로라 다이얼로그가 열린 채 폼 안의 실패 사유가 남는다.
-  const boardCount = boards.length
-  useEffect(() => {
-    setCreateOpen(false)
-  }, [boardCount])
-
   return (
     <div className="flex items-center gap-3">
       <DropdownMenu>
@@ -307,7 +299,16 @@ function BoardSelectorDropdown({
           </DialogHeader>
           {/* 🛑 인트로를 끈다 — 그 2줄은 「보드가 없습니다」로 시작한다. 스위처에서 열었다는
               것은 보드가 이미 있다는 뜻이라 그 문장이 사실이 아니게 된다 (C1). */}
-          <CreateBoardForm projectKey={projectKey} showEmptyStateIntro={false} />
+          {/* 🛑 닫힘은 `onCreated` 로만 온다 — 보드 **개수 변화**로 성공을 추론하면 목록 refetch 로
+              남이 만든 보드가 들어올 때 입력 중이던 창이 닫혀 「만들어졌다」로 오독된다.
+              실패하면 신호가 안 와 창이 열린 채 폼 안의 사유가 남는다. */}
+          <CreateBoardForm
+            projectKey={projectKey}
+            showEmptyStateIntro={false}
+            onCreated={() => {
+              setCreateOpen(false)
+            }}
+          />
         </DialogContent>
       </Dialog>
     </div>
