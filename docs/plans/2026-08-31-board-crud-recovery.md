@@ -397,6 +397,24 @@ gap 4항목(누락 요구사항 · 모호 표현 · 가정 누락 · 엣지 미�
 
 **검증**. `./gradlew :modules:agile-planning:test --tests '*BoardApplicationServiceTest'`
 
+> **★ 게이트 2 후속 정정 (리뷰 지적 1 · Maxi 판정).**
+> 위 서술의 `updateName` / `updateSwimlaneField` **public 메서드 2개는 더 이상 없다.**
+> 하나의 `@Transactional fun updateBoard(boardId, name: String?, swimlaneField: String?): Board` 로 합쳤다.
+>
+> **이유.** 둘을 각각 `@Transactional` 로 두고 컨트롤러가 순차 호출하면 트랜잭션이 갈린다 —
+> `{"name":"새 이름","swimlaneField":"BOGUS"}` 가 **이름을 커밋한 뒤** 400 을 낸다. 클라이언트는
+> 실패를 받는데 DB 의 이름은 이미 바뀌어 있다. 리뷰가 이 인터리브를 잡았고, `PATCH-N5` 는 두 서비스를
+> 모두 성공으로 스텁한 **행복 경로만** 재고 있어서 테스트 밖이었다.
+>
+> **남긴 것도 지운 이유.** `updateName`/`updateSwimlaneField` 를 public 으로 남기면
+> `updateBoard` 가 같은 클래스에서 그것들을 부르게 되고 그 순간 **Spring 프록시가 우회**된다
+> (self-invocation — `@Transactional` 이 안 걸리는 회귀 양식). 게다가 테스트 말고는 호출자가 없다.
+>
+> **검증 방식도 남긴다.** 신규 API 부재로 나는 **컴파일 red 만으로는 결함 실재가 증명되지 않아서**,
+> GREEN 선커밋 뒤 **옛 두-트랜잭션 구조를 뮤테이션으로 재현**해 행동 red 를 따로 확보했다 —
+> `expected: "원래 이름" but was: "새 이름"`. 중간 단계(파싱만 뒤로, `@Transactional` 유지)에서
+> 그 테스트가 **통과한 것**이 롤백이 실제로 걸린다는 별도 증거다.
+
 ### Task 3. BoardController — PATCH 부분 갱신 + DELETE + 권한 게이트
 
 **메타**.
@@ -886,6 +904,48 @@ DTO 1개 + private helper 1개뿐이라 「2개 이상의 새 클래스/서비�
 **`ConfirmDialog` pending 무한 대기**는 등재도 프리미티브 수정도 아닌 **제3의 길**로 처리했다 —
 Task 6 안에서 **소비자 mutation 타임아웃**으로 푼다. #410 계약을 건드리지 않으므로 소비처 전수
 영향이 없고, 타임아웃 실패가 이미 설계된 S7 경로로 합류해 새 UI 상태가 늘지 않는다.
+
+### 🛑 게이트 2 — 독립 리뷰 2종 + Maxi 판정 (2026-08-31)
+
+**렌즈 2종.** `code-reviewer` **CONCERNS**(지적 5) · `/review` **CRITICAL 0**.
+**축소 1건** — `/review` 의 스페셜리스트 7종 · red team · codex 패스는 **돌리지 않았다.**
+task 단위 비-공허 확인을 전수 거쳤고 `code-reviewer` 렌즈가 병렬로 돌았기 때문이다. 종수를 조용히
+줄이지 않고 여기 적는다.
+
+**`code-reviewer` 기계 대조 결과.** 절대 규칙 19개 **위반 0** · `DATA.md` 5원칙 **위반 0** ·
+하네스 고정 2줄(`verify-master-plan.sh` · `classify-task.ts --cache` 호출문) **그대로 있음**.
+
+**`/review` BTS 고유 CRITICAL 6항목.** `init_codegen` 미러 · Flyway V번호 → **비해당**(마이그레이션 0).
+jOOQ cartesian → **비해당**(단일 테이블 UPDATE). 도메인 예외 핸들러 스코프 · 직렬화↔Zod 정합 ·
+권한 fail-open → **안전**.
+예외 핸들러가 세 겹으로 막혀 있었다 — ① `assignableTypes` 가 Board 컨트롤러 2종 한정
+② `BoardQuickFilterController:178` 이 `IllegalArgumentException` 을 **자기가 먼저 잡아** 401 로 변환
+③ `IllegalArgumentException` 을 **상속하는 도메인 예외 0건**. 로그 PII 도 확인했다 —
+`Board.init` 의 require 메시지가 고정 문자열이라 사용자 입력이 실리지 않는다.
+
+**Maxi 판정 — 지적 5건 전부 이번 PR 에서 처리.**
+
+| # | 지적 | 처리 |
+|---|---|---|
+| 1 | **PATCH 원자성** — 두 서비스가 각자 트랜잭션이라 `{"name":"X","swimlaneField":"BOGUS"}` 가 이름을 커밋한 뒤 400 을 낸다 | **수정** — 서비스에 합친 `@Transactional updateBoard`. Task 2 절 정정 참조 |
+| 2 | **부채 장부 번호 중복** — 25~28 이 기존 행과 충돌 | **수정** — 표 끝 144~147 로 이동. 아래 ★ |
+| 3 | **예외 매핑 범위** — `IllegalArgumentException` 전체를 400 으로 삼킨다 | **수정** — `BoardNameInvalidException` 신설 후 그 타입으로 좁힘 |
+| 4 | **`DEL-1` 가짜 그린** — 자기가 세운 목을 재확인하는 3줄 | **삭제** — 204 + 권한코드 + `verify` 만 남김 |
+| 5 | **다이얼로그 닫힘이 보드 개수 변화에 매달림** — `refetchOnWindowFocus` 로 입력 중 창이 닫힌다 | **수정** — `CreateBoardForm` 에 `onCreated` 콜백(선택적, 기본 미전달) |
+
+**★ 지적 2 가 초록을 통과한 이유가 더 중요하다.**
+`debt-ledger-mapping.test.ts:92-97` 이 `cells[2]`(상태)·`cells[3]`(항목)·`cells[4]`(PR)만 읽고
+**`cells[1]`(`#` 열)은 아무도 읽지 않는다.** 464/464 초록이 그래서 중복을 통과시켰다 —
+[[partial-column-parser-lets-unread-column-rot]] 의 예측된 양식이고, 같은 장부의 항목 **51**
+(「집계 표의 건수·항목 번호 열을 아무 판별식도 안 읽는다」)이 **이미 등재해 둔** 결함이다.
+`#` 열 판별식 신설은 그 항목의 몫으로 두고 이 PR 범위 밖으로 남긴다 — 넣는다면 일부러 중복을 만들어
+red 1회를 봐야 해서 별건이다.
+
+**리뷰가 남긴 범위 판정 (하네스 2건 동봉).**
+타당하나 **근거의 강도가 두 건 사이에 다르다.** Task 7 은 이 PR 이 추가하는 plan 문서 자신이 그 가드의
+스캔 대상이라 결합이 실재한다. **Task 8 은 결합이 약하다** — 오분류는 `bts-start` 시점에 이미 지나갔고
+보드 코드 의존이 0 이라 단독 PR 로 뗄 수 있었다. **대가는 롤백 단위가 섞인 것**이다.
+다음에 같은 상황이 오면 하네스만 담은 선행 PR 로 뗀다.
 
 ## GSTACK REVIEW REPORT
 
