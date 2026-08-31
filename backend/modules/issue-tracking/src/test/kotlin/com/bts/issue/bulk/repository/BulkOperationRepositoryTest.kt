@@ -263,6 +263,43 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         assertThat(second).isFalse()
     }
 
+    // ── markFailed CAS ─────────────────────────────────────────────────────────
+
+    /**
+     * markFailed 의 CAS 계약 (게이트 2 리뷰 ⑦) — markCompleted 와 **같은 형태**다.
+     *
+     * `WHERE status='RUNNING'` 을 지워도 전 스위트가 초록이었다. 유일한 호출부
+     * ([com.bts.issue.bulk.application.BulkOperationProcessor] 의 상한 초과 분기)가 반환값을 버려
+     * 런타임에도 드러나지 않는다 — 「내가 claim 한 작업만 내가 끝낸다」가 무테스트였다.
+     *
+     * ② 가 비-공허 짝이다. ① 만 있으면 조건을 지워도 통과한다.
+     */
+    @Test
+    fun `markFailed 는 RUNNING 작업만 FAILED 로 전환한다 — 이미 종단이면 false 이고 상태가 안 바뀐다`() {
+        // ① RUNNING → FAILED · completed_at 기록
+        val running = makeOperation()
+        bulkRepo.insert(running)
+        bulkRepo.claimForRun(running.id)
+
+        assertThat(bulkRepo.markFailed(running.id)).isTrue()
+        assertThat(requireNotNull(bulkRepo.findById(running.id)).status).isEqualTo(BulkOperationStatus.FAILED)
+        // completed_at 을 함께 찍는다 — TTL cleanup 이 그 값으로 종단 작업을 고른다(성공·실패 공통).
+        assertThat(bulkRepo.findCompletedBefore(Instant.now().plusSeconds(1)).map { it.id })
+            .describedAs("markFailed 도 completed_at 을 찍어야 TTL 이 이 작업을 집는다")
+            .contains(running.id)
+
+        // ② 이미 종단인 작업은 못 건드린다 — CAS 조건이 지키는 계약이다.
+        val completed = makeOperation()
+        bulkRepo.insert(completed)
+        bulkRepo.claimForRun(completed.id)
+        bulkRepo.markCompleted(completed.id)
+
+        assertThat(bulkRepo.markFailed(completed.id))
+            .describedAs("이미 COMPLETED 인 작업을 FAILED 로 되돌리면 안 된다 (CAS WHERE status='RUNNING')")
+            .isFalse()
+        assertThat(requireNotNull(bulkRepo.findById(completed.id)).status).isEqualTo(BulkOperationStatus.COMPLETED)
+    }
+
     // ── findCompletedBefore TTL ────────────────────────────────────────────────
 
     @Test
