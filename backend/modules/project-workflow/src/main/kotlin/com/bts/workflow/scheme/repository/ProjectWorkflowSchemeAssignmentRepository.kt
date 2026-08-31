@@ -55,6 +55,21 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     private val ASSIGNED_AT = DSL.field("assigned_at", java.time.OffsetDateTime::class.java)
     private val ASSIGNED_BY = DSL.field("assigned_by", UUID::class.java)
 
+    // ── 역방향 조회(findProjectRefsByWorkflowId) 전용 3단 JOIN 컬럼 ──────────────
+    // 위 상수와 달리 테이블 한정자를 붙인다. JOIN 하면 id 가 매핑 표와 projects 양쪽에 있어
+    // ambiguous 가 되고, 할당 표와 매핑 표는 스킴 FK 컬럼명이 서로 다르기 때문이다
+    // (할당 표 = workflow_scheme_id · 매핑 표 = scheme_id).
+    private val MAPPINGS = DSL.table("workflow_scheme_issue_type_mappings")
+    private val PROJECTS = DSL.table("projects")
+    private val M_SCHEME_ID = DSL.field("workflow_scheme_issue_type_mappings.scheme_id", Long::class.java)
+    private val M_WORKFLOW_ID = DSL.field("workflow_scheme_issue_type_mappings.workflow_id", UUID::class.java)
+    private val A_SCHEME_ID = DSL.field("project_workflow_scheme_assignments.workflow_scheme_id", Long::class.java)
+    private val A_PROJECT_ID = DSL.field("project_workflow_scheme_assignments.project_id", UUID::class.java)
+    private val P_ID = DSL.field("projects.id", UUID::class.java)
+    private val P_KEY = DSL.field("projects.key", String::class.java)
+    private val P_DELETED_AT = DSL.field("projects.deleted_at", java.time.OffsetDateTime::class.java)
+    private val P_ARCHIVED_AT = DSL.field("projects.archived_at", java.time.OffsetDateTime::class.java)
+
     /**
      * 프로젝트에 워크플로우 스킴을 할당하거나 기존 할당을 교체한다.
      *
@@ -145,23 +160,28 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     /**
      * 워크플로우를 참조하는 스킴에 할당된 활성 프로젝트를 조회한다.
      *
+     * ## 왜 정방향 조회로는 안 되는가
+     * 이 BC 가 이미 가진 조회는 전부 **프로젝트에서 출발한다** — [findByProjectId] 는 프로젝트가
+     * 어느 스킴에 붙어 있는지 묻고, `ProjectLookupPort.findIdByKey` 는 키로 프로젝트 id 를 찾는다.
+     * 그런데 워크플로우 발행 경로가 채워야 하는
+     * `IssueStatusMigrationPort.StatusMigrationCommand.projectKeys` 는 **워크플로우에서 출발한다**.
+     * 정방향 조회로 이 값을 얻으려면 전체 프로젝트를 훑으며 한 건씩 스킴을 되묻는 N+1 이 되고,
+     * 그마저도 스킴이 이슈 타입별로 여러 워크플로우를 가리키는 구조를 다시 풀어야 한다.
+     * 그래서 매핑 표에서 거슬러 올라가는 3단 JOIN 을 한 번에 던진다.
+     *
+     * ## DISTINCT 가 필요한 이유
+     * 한 스킴이 default 매핑과 이슈 타입별 매핑으로 **같은 워크플로우를 여러 번** 가리킬 수 있다.
+     * 그러면 프로젝트 한 건이 매핑 수만큼 중복돼 나오므로 DISTINCT 로 접는다.
+     *
+     * 소프트 삭제(`deleted_at`)·아카이브(`archived_at`) 된 프로젝트는 제외한다. 이관 대상이 아닌
+     * 프로젝트를 실으면 죽은 프로젝트의 이슈까지 상태가 옮겨진다.
+     *
      * @param workflowId 조회할 워크플로우 UUID.
      * @return 활성 프로젝트 참조 목록. 연결된 프로젝트가 없으면 빈 목록.
      */
     @Transactional(readOnly = true)
-    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
-        val MAPPINGS = DSL.table("workflow_scheme_issue_type_mappings")
-        val PROJECTS = DSL.table("projects")
-        val M_SCHEME_ID = DSL.field("workflow_scheme_issue_type_mappings.scheme_id", Long::class.java)
-        val M_WORKFLOW_ID = DSL.field("workflow_scheme_issue_type_mappings.workflow_id", UUID::class.java)
-        val A_SCHEME_ID = DSL.field("project_workflow_scheme_assignments.workflow_scheme_id", Long::class.java)
-        val A_PROJECT_ID = DSL.field("project_workflow_scheme_assignments.project_id", UUID::class.java)
-        val P_ID = DSL.field("projects.id", UUID::class.java)
-        val P_KEY = DSL.field("projects.key", String::class.java)
-        val P_DELETED_AT = DSL.field("projects.deleted_at", java.time.OffsetDateTime::class.java)
-        val P_ARCHIVED_AT = DSL.field("projects.archived_at", java.time.OffsetDateTime::class.java)
-
-        return dsl
+    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> =
+        dsl
             .selectDistinct(P_ID, P_KEY)
             .from(MAPPINGS)
             .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
@@ -175,7 +195,6 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
                     key = record.get(P_KEY) ?: error("projects.key is null — NOT NULL 제약 위반"),
                 )
             }
-    }
 
     // ── 내부 변환 ─────────────────────────────────────────────────────────────
 
