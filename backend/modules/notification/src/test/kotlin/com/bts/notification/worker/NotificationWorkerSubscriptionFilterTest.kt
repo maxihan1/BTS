@@ -70,12 +70,36 @@ class NotificationWorkerSubscriptionFilterTest {
     @Autowired
     lateinit var userSubscriptionRepository: UserSubscriptionRepository
 
+    /**
+     * 이 테스트가 심은 정책의 (eventType, channel) 집합 — [seedPolicy] 가 기록한다.
+     *
+     * 기대 알림 건수는 이 집합에서 유도한다. 숫자를 상수로 박으면 시드를 바꿔도 기대값이
+     * 따라오지 않는 두 번째 목록이 된다.
+     */
+    private val seededPolicies = mutableSetOf<Pair<String, String>>()
+
+    /** 이 테스트가 심은 opt-out 구독 — [seedSubscription] 이 기록하고 기대 알림에서 빠진다. */
+    private val seededOptOuts = mutableSetOf<DeliveryKey>()
+
+    /** 알림 1건에 대응하는 (수신자, 이벤트 유형, 채널) 키. */
+    private data class DeliveryKey(
+        val userId: UUID,
+        val eventType: String,
+        val channel: String,
+    )
+
     companion object {
         /** pgmq 큐 이름 — NotificationWorker.QUEUE_NAME 과 동일 */
         const val QUEUE_NAME = "q_issue_events"
 
         /** 테스트 전용 프로젝트 키 */
         const val PROJECT_KEY = "SUBF"
+
+        /**
+         * [seedPolicy] 가 심고 [publishTransitionedEvent] 가 발행하는 이벤트 유형.
+         * 정책 시드와 발행 이벤트가 같은 값을 쓰도록 한 곳에서 정의한다.
+         */
+        const val TRANSITIONED_EVENT_TYPE = "issue.transitioned"
 
         /**
          * 수신자 A — (issue.transitioned, EMAIL) enabled=false 행을 가진 사용자.
@@ -93,6 +117,12 @@ class NotificationWorkerSubscriptionFilterTest {
          * 이벤트 발화자 — actor 자기 제외로 notifications 에 미기록.
          */
         val ACTOR: UUID = UUID.fromString("a0a00004-0006-a0a0-a0a0-a0a0a0a0a0a0")
+
+        /**
+         * 정책 1건이 매칭될 때 알림을 받는 수신자 목록.
+         * [SubscriptionFilterTestPortsConfig] 의 watcher stub 과 같아야 하며, 기대 건수 유도의 기준이다.
+         */
+        val RECIPIENTS: List<UUID> = listOf(USER_A, USER_B)
     }
 
     @AfterEach
@@ -101,6 +131,8 @@ class NotificationWorkerSubscriptionFilterTest {
         dsl.execute("DELETE FROM user_notification_subs")
         dsl.execute("DELETE FROM notification_policies WHERE project_key = ?", PROJECT_KEY)
         runCatching { dsl.execute("SELECT pgmq.purge_queue(?)", QUEUE_NAME) }
+        seededPolicies.clear()
+        seededOptOuts.clear()
     }
 
     // ── SUB-1: A EMAIL opt-out → EMAIL 미생성, IN_APP 정상 생성 ───────────────
@@ -126,22 +158,13 @@ class NotificationWorkerSubscriptionFilterTest {
         seedPolicy(PROJECT_KEY, "EMAIL")
 
         // USER_A 의 EMAIL opt-out 구독 행 삽입
-        seedSubscription(USER_A, "issue.transitioned", "EMAIL", enabled = false)
+        seedSubscription(USER_A, TRANSITIONED_EVENT_TYPE, "EMAIL", enabled = false)
 
         // 이벤트 발행
         publishTransitionedEvent(issueKey, occurredAt)
 
-        // notifications 기록 대기 (B 에게 발송되면 총 건수 > 0)
-        await()
-            .atMost(15, TimeUnit.SECONDS)
-            .untilAsserted {
-                val count =
-                    dsl.fetchOne(
-                        "SELECT COUNT(*) FROM notifications WHERE issue_key = ?",
-                        issueKey,
-                    )!!.get(0, Long::class.java)
-                assertThat(count).isGreaterThan(0L)
-            }
+        // 전원 발송 완료 대기 — 기대 행: USER_A IN_APP + USER_B EMAIL + USER_B IN_APP
+        awaitAllNotificationsWritten(issueKey)
 
         // 핵심 단언 — USER_A 의 EMAIL 미생성
         val userAEmailCount =
@@ -209,16 +232,8 @@ class NotificationWorkerSubscriptionFilterTest {
 
         publishTransitionedEvent(issueKey, occurredAt)
 
-        await()
-            .atMost(15, TimeUnit.SECONDS)
-            .untilAsserted {
-                val count =
-                    dsl.fetchOne(
-                        "SELECT COUNT(*) FROM notifications WHERE issue_key = ?",
-                        issueKey,
-                    )!!.get(0, Long::class.java)
-                assertThat(count).isGreaterThan(0L)
-            }
+        // 전원 발송 완료 대기 — 기대 행: USER_A IN_APP + USER_B IN_APP
+        awaitAllNotificationsWritten(issueKey)
 
         // USER_A, USER_B 모두 IN_APP 기록
         val userACount =
@@ -271,15 +286,10 @@ class NotificationWorkerSubscriptionFilterTest {
 
         publishSprintStartedEvent(issueKey, occurredAt)
 
-        // 충분한 대기 후에도 notifications 가 없어야 함
-        Thread.sleep(2_000)
+        // 워커가 이벤트를 처리할 때까지 대기 — 처리가 끝난 뒤에도 알림이 없어야 한다
+        awaitEventConsumed()
 
-        val count =
-            dsl.fetchOne(
-                "SELECT COUNT(*) FROM notifications WHERE issue_key = ?",
-                issueKey,
-            )!!.get(0, Long::class.java)
-        assertThat(count)
+        assertThat(countNotifications(issueKey))
             .describedAs(
                 "관리자 정책이 없으면 사용자 opt-in 이 있어도 알림이 생성되지 않아야 한다 " +
                     "(AND 결합: PolicyEvaluator match 0 → recipient 0 → 구독 필터 무관)",
@@ -290,7 +300,65 @@ class NotificationWorkerSubscriptionFilterTest {
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
-     * issue.transitioned × WATCHER × [channel] 정책을 [projectKey] 범위로 삽입한다.
+     * 시드에서 유도한 기대 알림이 **전부** 기록될 때까지 기다린다.
+     *
+     * "1건이라도 생기면 통과" 로 기다리면, 워커가 수신자를 한 명씩 커밋하는 사이에 대기가 풀려
+     * 아직 안 쓰인 수신자의 단언이 실패한다(선재 경합). 전원 발송 완료를 대기 조건으로 삼는다.
+     *
+     * @param issueKey 대상 이슈 키
+     */
+    private fun awaitAllNotificationsWritten(issueKey: String) {
+        val expected = expectedNotificationCount()
+        await()
+            .atMost(15, TimeUnit.SECONDS)
+            .untilAsserted {
+                assertThat(countNotifications(issueKey))
+                    .describedAs("시드한 정책과 수신자에서 유도한 기대 알림 %d 건이 모두 기록되어야 한다", expected)
+                    .isEqualTo(expected)
+            }
+    }
+
+    /**
+     * 워커가 발행된 이벤트를 처리해 pgmq 메시지를 삭제할 때까지 기다린다.
+     *
+     * 0건 기대 시나리오는 "기대 건수 도달" 로 기다릴 수 없다(시작부터 0). 대신 워커의 처리 완료를
+     * 큐 길이로 관측한다 — 알림 INSERT 는 pgmq delete 보다 먼저이므로, 큐가 비면 0건 판정이 확정된다.
+     */
+    private fun awaitEventConsumed() {
+        await()
+            .atMost(15, TimeUnit.SECONDS)
+            .untilAsserted {
+                assertThat(pgmqQueueLength())
+                    .describedAs("워커가 이벤트를 처리하고 pgmq 메시지를 삭제해야 한다")
+                    .isEqualTo(0L)
+            }
+    }
+
+    /**
+     * 시드한 정책 × 수신자에서 기대 알림 건수를 유도한다 (opt-out 수신자는 제외).
+     *
+     * 시드를 바꾸면 기대 건수가 함께 바뀐다 — 상수를 박지 않는 이유다.
+     */
+    private fun expectedNotificationCount(): Long =
+        seededPolicies
+            .sumOf { (eventType, channel) ->
+                RECIPIENTS.count { DeliveryKey(it, eventType, channel) !in seededOptOuts }
+            }.toLong()
+
+    /** [issueKey] 로 기록된 notifications 행 수를 조회한다. */
+    private fun countNotifications(issueKey: String): Long =
+        dsl.fetchOne(
+            "SELECT COUNT(*) FROM notifications WHERE issue_key = ?",
+            issueKey,
+        )!!.get(0, Long::class.java)
+
+    /** [QUEUE_NAME] 큐의 길이(가시+비가시 메시지 총합)를 조회한다. */
+    private fun pgmqQueueLength(): Long =
+        dsl.fetchOne("SELECT queue_length FROM pgmq.metrics(?)", QUEUE_NAME)!!
+            .get(0, Long::class.java)
+
+    /**
+     * [TRANSITIONED_EVENT_TYPE] × WATCHER × [channel] 정책을 [projectKey] 범위로 삽입한다.
      *
      * @param projectKey 프로젝트 키
      * @param channel 채널 이름 문자열 ("IN_APP" / "EMAIL")
@@ -302,13 +370,15 @@ class NotificationWorkerSubscriptionFilterTest {
         dsl.execute(
             """
             INSERT INTO notification_policies (event_type, recipient_role, channel, enabled, project_key, created_by)
-            VALUES ('issue.transitioned', 'WATCHER', ?, TRUE, ?, ?)
+            VALUES (?, 'WATCHER', ?, TRUE, ?, ?)
             ON CONFLICT ON CONSTRAINT uq_notification_policy DO NOTHING
             """.trimIndent(),
+            TRANSITIONED_EVENT_TYPE,
             channel,
             projectKey,
             UUID.randomUUID(),
         )
+        seededPolicies += TRANSITIONED_EVENT_TYPE to channel
     }
 
     /**
@@ -346,6 +416,9 @@ class NotificationWorkerSubscriptionFilterTest {
                 updatedAt = now,
             )
         userSubscriptionRepository.upsert(sub)
+        if (!enabled) {
+            seededOptOuts += DeliveryKey(userId, eventType, channelName)
+        }
     }
 
     /**
@@ -364,7 +437,7 @@ class NotificationWorkerSubscriptionFilterTest {
         val payload =
             """
             {
-              "type": "issue.transitioned",
+              "type": "$TRANSITIONED_EVENT_TYPE",
               "issueKey": "$issueKey",
               "projectKey": "$PROJECT_KEY",
               "actorId": { "value": "$ACTOR" },
