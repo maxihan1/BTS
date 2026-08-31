@@ -798,7 +798,7 @@ class StatusMigrationMaterializeIntegrationTest {
         val notProcessed = "$SCOPE_KEY-1"
 
         val operationId = enqueue(projectKeys = setOf(SCOPE_KEY))
-        // 크래시 재현 — 항목 3건이 적재됐고 2건은 SUCCEEDED 인데 재집계 전이라 장부는 아직 0 이다.
+        // 크래시 재현 — 항목 3건이 적재됐고 2건은 SUCCEEDED 인데 아직 재집계를 안 해 장부는 0 이다.
         alreadyMigrated.forEach { insertItem(operationId, it, ItemStatus.SUCCEEDED) }
         insertItem(operationId, notProcessed, ItemStatus.PENDING)
         setTotalCount(operationId, 3)
