@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|---|
 | 2026-09-01 | board-type-and-active-sprint | — | — | — | ✔ | FR-BD-01 FR-BD-04 FR-BL-01 |
 | 2026-08-31 | board-crud-recovery | — | ✔ | — | — | FR-BD-01 FR-WF-07 |
-| 2026-08-31 | workflow-status-migration-wiring | — | ✔ | — | — | FR-WF-07 |
+| 2026-08-31 | workflow-status-migration-wiring | — | ✔ | — | — | FR-WF-02 FR-WF-07 |
 | 2026-08-27 | issue-tracking-status-migration | ✔ | ✔ | — | — | FR-WF-02 FR-WF-05 FR-WF-07 |
 | 2026-08-26 | debt-404-residual-six | — | ✔ | — | — | — |
 | 2026-08-26 | transition-rule-error-no-leak | — | ✔ | — | — | — |
