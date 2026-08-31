@@ -1645,6 +1645,17 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 - **권한 검사 순서 계약.** 이관 포트 KDoc 이 「위조 차단은 호출자의 발행 권한 책임」이라 약속하는데 PR 7 엔 호출자가 없어 그 약속을 검사할 장치가 없다. 결선이 `WorkflowDefinitionPermission.PUBLISH` 를 검사한 **뒤에만** 포트를 부르는지 판정을 붙인다.
 - **`cause` 를 소비자가 실제로 거르는가.** PR 7 은 이관 이벤트에 `cause = "STATUS_MIGRATION"` 을 **싣기만** 한다. 사외 웹훅(`search-export-import/.../WebhookDispatchWorker.kt`)과 알림이 그 표시를 보고 실제로 거르는지 확인한다. 이관 N 건이 되돌릴 수 없는 웹훅 N 건이 되는 자리라 **표시만 두고 끝내면 절반이다.**
 
+**PR 7 의 게이트 2 리뷰가 미룬 것 — 전수 열거.** 아래는 결선 과제가 아니라 **PR 7 이 남긴 것**이다. PR 7 자체가 사용자에게 보이는 변화 0 이라 지금 터지지 않을 뿐이고, 결선(위 첫 항목) 이후에는 전부 실재한다.
+
+- **실패 사유의 영속·노출 경로.** 상한 초과 `FAILED` 의 사유는 지금 `BulkOperationProcessor.failOverLimit` 의 `log.error(… reason={})` **로그뿐이다**. `bulk_operations` 에 사유 컬럼이 없고(V008·V038) `BulkOperationResponse` 에도 필드가 없어, 운영자가 `GET /api/v1/bulk-operations/{id}` 로 보는 것은 **이유 없는 `FAILED`** 다. 사유 컬럼 마이그레이션 + `db/codegen/init_codegen.sql` 미러 + `BulkOperationResponse` 필드 + 그것을 보여 줄 화면까지가 한 벌이다. spec 의 F19·E4·완료 기준 12 에 deviation 으로 적어 뒀다.
+- **작업 레벨 `FAILED` 의 알림 경로.** `failOverLimit` 이 `markFailed` 로 종단시키면, 뒤따르는 `BulkOperationCompleter.completeAndPublish` 의 `markCompleted` CAS 가 `WHERE status='RUNNING'` 에 걸려 false 를 돌려준다 — 그래서 `q_bulk_operation_events` 에 **아무것도 실리지 않는다**. 상한 초과 실패가 큐로도 API 로도 안 나가고 로그에만 남는다. 종단 사유를 실은 이벤트를 실을지, 큐를 안 쓸지부터 정해야 한다.
+- **`BulkOperationRepository` 분할.** 지금 598줄로 `DEVELOPMENT.md §2.1` 의 파일 300줄 상한을 넘는다. 착수 전부터 넘어 있었고 **PR 7 이 더 키웠다**. PR 7 이 만든 seam 이 그대로 경계다 — `materializeStatusMigrationItems` · `statusMigrationTargets` · `insertMigrationItemsBatch` 를 이관 전용 Repository 로 뗀다.
+- **`FOR UPDATE` 가 실제로 대기시키는지 실측.** 저장소 전체에 그것을 재는 테스트가 **0건**이다 — `IssueRepositoryTest` 의 T3 도 「비관락으로 조회하면 같은 key 가 반환된다」만 본다. 잠금이 아예 안 걸려도 초록이다. PR 7 이 만든 공백은 아니지만, 이관이 `findByKeyForUpdate` 에 새로 기대게 되면서 노출이 늘었다. 두 커넥션으로 경합을 걸어 뒤 트랜잭션이 실제로 대기하는지 재는 Testcontainers 판정이 필요하다.
+- **어댑터의 `projects` 동적 참조를 타입 참조로.** `WorkflowStatusMigrationAdapter` 가 `DSL.table("projects")` · `DSL.field("key")` 로 표를 문자열로 가리킨다. ArchUnit 룰 `jooqGeneratedMustOnlyBeUsedInRepositoryLayer` 가 어댑터 패키지에서 jOOQ 생성 클래스를 막기 때문인데, 표·컬럼 이름이 바뀌어도 컴파일이 안 깨진다. 범위 키 집합 조회를 기존 `ProjectLookupRepository` 로 옮기고 어댑터가 그것을 주입받으면 룰을 어기지 않고 타입 참조가 된다.
+- **VIEW 미보유 이슈가 `NOT_FOUND` 로 오진된다.** `BulkItemApplier.applyAndRecordSuccess` 가 payload 종류와 무관하게 `issueService.findByKey(actor, issueKey)` 를 먼저 부르고, 그 안의 `assertViewIssueOrNotFound` 가 존재 숨김으로 `IssueNotFoundException` 을 던진다 → `FailureReasonCode.NOT_FOUND`. **실재하는 이슈를 장부가 「없다」고 적는다.** 게다가 그 이슈는 사라지는 상태에 그대로 남아, PR 7 이 TRANSITION 권한을 우회한 근거가 VIEW 축에서 재현된다. 잔여 유령을 **셀 수 있게** 별도 실패 코드를 줄지, 이관 경로가 VIEW 도 우회할지를 판정한다 — 실패 코드를 늘리면 타 모듈 카운트 가드도 함께 고쳐야 한다. 근거는 spec 의 ★D3 표 ⓪ 행과 그 아래 한계.
+- **`docs/INDEX-fr.md` 가 이 spec 을 FR-WF-05 의 spec 으로도 싣는다.** `docs/specs/2026-08-27-issue-tracking-status-migration.md` 본문이 §범위 정정에서 `FR-WF-05` 를 언급해 생성기가 그것을 긁었다. 인덱스가 FR↔spec 을 **거짓으로 잇는다** — 그 FR 의 명세를 찾는 사람이 남의 문서를 연다. 본문 표기를 고칠지 생성기가 언급과 소유를 가르게 할지를 정한다.
+- **`BulkOperationController` 가 `SYSTEM_ACTOR_UUID` 상수를 actor 로 쓴다.** `SecurityContext` 를 읽지 않는 선재 스텁이고 형제 `CustomFieldController` 도 같다(FR-PM-03 이전 placeholder). 이관은 감사 추적을 `IssueHistoryRecorder` 로 남기는데 그 actor 가 이 배선에 기댄다 — 결선 뒤 「누가 옮겼나」가 전부 같은 UUID 로 찍힌다.
+
 **선행.** 로드맵 PR 7(이관 실행). 포트·어댑터·워커·`cause` 표시가 그 PR 로 들어와 있다.
 
 ## ⬜ 워크플로우 — 발행 이력 append-only 트리거가 `TRUNCATE` 에 뚫려 있다 (신규 · 미착수 · T2)
