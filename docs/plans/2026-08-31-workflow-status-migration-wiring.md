@@ -256,11 +256,80 @@ WHERE m.workflow_id = ?
 
 - **C1** `한 PR = 한 BC`. 쓰기는 `shared-kernel` 포트를 통해서만 나간다. `com.bts.issue..` 직접 import 금지(`ProjectWorkflowArchitectureTest` 룰 3 — 허용 목록이 빈 집합).
 - **C2** `DATA.md §6` — 다중 BC 트랜잭션 금지. F4 가 이 제약을 만나지 않는 이유를 설명한다.
-- **C3 배포 순서.** 결선 이후 `bulk_operations` 에 `operation_type='STATUS_MIGRATION'` 행이 처음 생긴다. 구버전 워커는 `BulkOperationRepository.kt:531-533` 의 `enumValueOf` 에서 죽는다. **워커가 새 enum 을 아는 버전으로 먼저 올라간 뒤** 결선을 배포한다. `FailureReasonCode` 의 `STATE_NOT_IN_MAPPING`·`PROJECT_ARCHIVED` 도 `:205` 에서 같은 `enumValueOf` 를 타므로 같은 순서 제약을 공유한다.
+- **C3 배포 순서·롤백 (★단일 호스트 실측으로 개정 — Task 7).** 아래 소절이 정본이다.
 - **C4 남는 것 — 잔여 창.** 재카운트 → COMMIT 구간은 닫히지 않는다. 그 사이 커밋된 전환은 아직 옛 정의를 보므로 정당하고, 완전히 닫으려면 전환 핫패스가 워크플로우 정의 행을 잠가야 한다(issue-tracking BC). `TODOS.md` 부채 143 을 **「축소」로 갱신**하고 닫았다고 쓰지 않는다.
 - **C5 남는 것 — 아카이브 유령.** E7 의 한계. 다만 `PROJECT_ARCHIVED` 항목으로 **셀 수 있다**. 별건 등재.
 - **C6 남는 것 — 다중 워크플로우 스킴 미지원.** F11 이 fail-closed 로 막는다. 이관 커맨드에 이슈 타입 축이 없는 한 열 수 없다. 여는 것은 `StatusMigrationCommand` 확장 + 워커 쿼리 수정이라 **shared-kernel + issue-tracking 두 BC** 를 건드리는 T3 별건이다. `TODOS.md` 등재(Task 7).
 - **C7 남는 것 — migrate↔publish 사이 초안 변경.** F15 가 중복 큐잉은 막지만 초안 편집 자체는 못 막는다. **유령은 안 생긴다** — 되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 이 막는다. 남는 것은 「원하지 않은 1회 대량 이동」이고 관리자가 되돌릴 수 있다. 등재.
+
+#### C3 상세 — 배포 절차와 롤백 절차
+
+**무엇이 처음 생기나.** 결선 이후 `bulk_operations` 에 `operation_type='STATUS_MIGRATION'` 행이
+**처음** 생긴다. 그 값을 모르는 코드가 그 행을 읽으면 `enumValueOf` 가
+`IllegalArgumentException` 을 던진다. 그 값이 없는 코드란 **#414 이전 이미지**다 —
+`BulkOperationType.STATUS_MIGRATION` 과 `FailureReasonCode` 2값이 전부 #414(로드맵 PR 7)에서
+들어왔다(`git log -- .../domain/FailureReasonCode.kt` 실측).
+
+**죽는 지점은 둘이다 (★C-8 원문은 ①만 적었다).**
+
+| # | 좌표 | 무엇을 푸나 | 노출 경로 |
+|---|---|---|---|
+| ① | `BulkOperationRepository.kt:531-533` | `toOperation()` 의 `enumValueOf(operationType)` 2회 + `payload.toPayload(enumValueOf(operationType))` | `findById`(`:186`) → `GET /api/v1/bulk-operations/{id}` · `findCompletedBefore`(`:424`) → `BulkOperationCleanupWorker` |
+| ② | `BulkOperationRepository.kt:205` | `findItemsByOperationId` 의 `enumValueOf<FailureReasonCode>(record.failureReason)` | 같은 조회 API 의 항목 목록 |
+
+②는 **C-8 원문이 빠뜨린 표면**이다. `FailureReasonCode.STATE_NOT_IN_MAPPING` 은 이관 전용이라
+결선 전에는 행이 안 생기고, `PROJECT_ARCHIVED` 는 지금까지 「큐잉↔실행 사이 아카이브」 경합으로만
+날 수 있었는데 **E7 판정으로 이 PR 이 실제 생산자를 붙인다** — 즉 ②도 결선과 함께 실재하게 된다.
+
+**★「워커를 먼저 올린다」는 이 저장소에서 성립하지 않는다 (실측).** C-8 원문의 순서 제약은
+**롤링 배포 + 워커 별도 배포물**을 전제하는데 둘 다 없다.
+
+- 배포 경로가 `infra/deploy/bts-deploy.sh` 하나뿐이고 `:203-204` 가 원격 호스트에서
+  `docker compose -f infra/docker-compose.prod.yml … build && … up -d` 를 돈다. 롤링도 blue-green 도 없다.
+- `infra/docker-compose.prod.yml:92-98` 의 `bts-backend` 는 `container_name` 이 박혀 있어
+  **복제본을 늘릴 수 없다**. 서비스 1개 · 컨테이너 1개다.
+- 워커가 별도 배포물이 아니다. `BulkOperationWorker` 는 같은 Spring 컨텍스트 안의
+  `@Scheduled(fixedDelayString = …)` 폴러다(`BulkOperationWorker.kt:85`). **API 와 워커는 항상 같은
+  버전**이다 — 「구버전 워커가 신버전 코드의 행을 본다」는 조합이 원리적으로 안 생긴다.
+
+따라서 **앞으로 가는 축(구→신)에는 순서 제약이 없다.** 남는 축은 **롤백(신→구)** 하나다.
+`CLAUDE.md` 의 「Naver Cloud 단일 호스트」와 위 실측이 같은 것을 말한다.
+
+> **★한계 — 위 실측은 저장소 안의 것이다.** `bts-deploy.sh:2` 는 스스로를 「스캐폴드」라 적고
+> 운영 호스트의 실제 기동 방식(수동 `docker run` · 외부 오케스트레이터 등)을 이 저장소가
+> 증명하지는 못한다. **운영이 언젠가 복제본을 2 이상으로 늘리거나 워커를 따로 떼면 C-8 원문의
+> 순서 제약이 그대로 되살아난다** — 그때는 「신 enum 을 아는 이미지를 먼저」가 다시 정답이다.
+> 지금 그 절차를 부풀려 적지 않는 이유는 오늘 도달 불가한 절차를 적으면 아무도 검증하지
+> 않은 채 굳기 때문이다.
+
+**배포 절차 (구→신).** 추가 단계 0. `pnpm`·마이그레이션·순서 제약 어느 것도 없다.
+N2 대로 스키마 변경이 0건이므로 `bts-deploy.sh` 를 평소대로 돌린다. 근거는 위 세 실측이다.
+
+**롤백 절차 (신→구) — 여기가 유일한 위험 축이다.**
+
+1. **롤백 하한은 #414 다.** 결선 커밋만 되돌리는 롤백(#414 ≤ 대상)은 **안전하다** — 그 이미지가
+   이미 `STATUS_MIGRATION` 과 `FailureReasonCode` 2값을 안다. 실무상 이것으로 끝난다.
+2. **#414 미만으로 내려가야 하면 행을 먼저 치운다.** 안 치우면 아래 3의 피해가 난다.
+   ```sql
+   DELETE FROM bulk_operation_items
+    WHERE bulk_operation_id IN (SELECT id FROM bulk_operations WHERE operation_type = 'STATUS_MIGRATION');
+   DELETE FROM bulk_operations WHERE operation_type = 'STATUS_MIGRATION';
+   ```
+   큐에 남은 메시지도 함께 비운다. ★`pgmq.purge_queue('q_bulk_operations')` 는 **다른 종류의 일괄
+   작업 메시지까지 같이 지운다** — 이관 메시지만 골라 `pgmq.archive` 하는 편이 좁다.
+   `bulk_operations` 에는 `workflow_publications` 같은 append-only 트리거가 없어 DELETE 가 막히지 않는다.
+   **이관 이력이 사라지는 대가**를 치르는 것이므로, 지우기 전에 덤프를 남긴다
+   (`bts-deploy.sh:171` 이 배포마다 뜨는 `pg_dump -Fc` 가 그 자리다).
+3. **안 치우고 내려가면 무엇이 나나 — 폭발 반경이 그 행 하나가 아니다.**
+   - `GET /api/v1/bulk-operations/{id}` 가 그 작업에 대해 500. **경계된 피해**다.
+   - 큐에 남은 STATUS_MIGRATION 메시지는 `processMessage` 의 catch 가 삼켜 재전달되고
+     `MAX_RECEIVE_COUNT` 초과 시 dead-letter 로 archive 된다. **경계된 피해**다.
+   - ★`BulkOperationCleanupWorker.cleanupExpired` 는 `findCompletedBefore` 가 돌려주는
+     **배치 전체**를 `toOperation()` 으로 매핑한다(`:419-424`). 그 배치에 STATUS_MIGRATION 행이
+     한 건이라도 섞이면 **정리 작업 전체가 매일 밤 실패**하고 `bulk_operations` 가 무한히 쌓인다.
+     로그만 남고 알림은 없다 — **경계되지 않는 유일한 피해**이고, 그래서 2의 DELETE 가 필요하다.
+     보존 기간(`CLEANUP_RETENTION_DAYS = 30`)이 지나야 그 행이 배치에 들어오므로 **롤백 직후가 아니라
+     한 달 뒤** 조용히 시작된다는 것이 이 항목의 고약한 부분이다.
 
 ### 의도적 편차 (게이트 1 추가)
 

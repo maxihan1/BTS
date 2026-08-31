@@ -1650,6 +1650,12 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 - **권한 검사 순서 계약.** 이관 포트 KDoc 이 「위조 차단은 호출자의 발행 권한 책임」이라 약속하는데 PR 7 엔 호출자가 없어 그 약속을 검사할 장치가 없다. 발행 경로가 `WorkflowDefinitionPermission.PUBLISH` 를 검사한 **뒤에만** 포트를 부르는지 판정을 붙인다.
 - **`cause` 를 소비자가 실제로 거르는가.** PR 7 은 이관 이벤트에 `cause = "STATUS_MIGRATION"` 을 **싣기만** 한다. 사외 웹훅(`search-export-import/.../WebhookDispatchWorker.kt`)과 알림이 그 표시를 보고 실제로 거르는지는 결선·검증이 돼야 끝난다. 이관 N 건이 되돌릴 수 없는 웹훅 N 건이 되는 자리라 **표시만 두고 끝내면 절반이다.**
 
+**★2026-08-31 갱신 — 뒤쪽 창은 「축소」다. 닫히지 않았다.** 로드맵 PR 7b(`docs/plans/2026-08-31-workflow-status-migration-wiring.md`)가 F10 으로 **`replaceDefinition` 직후 같은 트랜잭션에서 재카운트**하고, 잔여가 있으면 던져 **롤백**한다. 교체 전에 계산한 `removed` 집합을 그대로 재사용한다 — 재계산하면 교체 뒤 편성이 새 것이라 차집합이 항상 비어 **판정이 있는데 아무것도 안 세는** 형태가 된다.
+
+- **줄어든 것.** 종전 창은 「1차 카운트 → `replaceDefinition`」 전 구간이었다. 이제 「재카운트 → COMMIT」 구간만 남는다.
+- **남는 것 (이 항목이 계속 열려 있는 이유).** 재카운트와 COMMIT 사이에 커밋된 전환은 여전히 안 보인다. 그 전환은 런타임이 아직 옛 정의를 보고 한 것이라 **정당하고**, 그래서 이 창은 「막아야 할 잘못」이 아니라 「두 정의가 겹치는 순간」이다.
+- **완전 폐쇄에 필요한 것.** 전환 핫패스가 워크플로우 정의 행을 잠가야 한다. 전환 경로는 **issue-tracking BC** 소유라 이 BC 가 잠글 수 없고, 다중 BC 트랜잭션은 금지다(`DATA.md §6`) — 위 「왜 이 PR 에서 안 닫았나」의 근거가 그대로 유효하다. 즉 **닫는 주체가 project-workflow 가 아니다.**
+
 ## ⬜ 워크플로우 — 상태 이관 기능이 만들어졌지만 부르는 곳이 없어 아무도 쓸 수 없다 (신규 · 미착수 · T2)
 
 **쉬운 말.** 워크플로우에서 상태를 뺄 때 그 상태에 남아 있는 이슈를 다른 상태로 옮겨 주는 장치를 만들어 뒀는데, **그 장치를 부르는 코드가 없다.** 그래서 관리자가 이관을 시작할 방법이 아직 없다.
@@ -1665,7 +1671,7 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 - **결선.** `WorkflowPublishService` 가 실제로 `IssueStatusMigrationPort` 를 호출한다. 이것이 없으면 PR 7 이 만든 이관 경로는 **사용자에게 보이지 않는다.**
 - **뒤쪽 창.** 이관 완료 → 정의 교체 사이. 닫으려면 「센다 → 옮긴다 → 다시 센다 → 남아 있으면 다시 옮긴다」의 **발행 루프**가 필요하다. 이 창의 근거는 장부의 「워크플로우 — 이관 필요 판정과 실제 교체 사이에 이슈가 끼어들 수 있다」 항목에 있다 — 앞쪽 창(큐잉 → 실행)은 PR 7 이 「옮기면서 센다」로 이미 닫았다.
 - **`countIssuesInStatus` 의 프로젝트 스코프.** 지금은 상태 키가 전역이라 다른 프로젝트·다른 워크플로우를 쓰는 이슈까지 세어 발행을 과하게 막는다. 프로젝트 → 스킴 → 워크플로우 3단으로 좁힌다 — 권한을 넓히기 전 선행이다.
-- **배포 순서·롤백.** 구버전 워커가 새 `operation_type` 값을 `enumValueOf` 로 풀다 죽는다(`BulkOperationRepository.kt:345` 의 `payload.toPayload(enumValueOf(operationType))`). PR 7 은 호출자가 없어 그 값의 행이 생기지 않으므로 **지금은 안전하지만 결선 즉시 실재한다** — 결선과 워커 배포 순서를 함께 정한다.
+- **배포 순서·롤백.** 구버전 코드가 새 `operation_type` 값을 `enumValueOf` 로 풀다 죽는다(`BulkOperationRepository.kt:531-533` 의 `payload.toPayload(enumValueOf(operationType))` — **좌표 정정 2026-08-31.** 종전 `:345` 는 stale 이었다. 같은 파일 `:205` 의 `enumValueOf<FailureReasonCode>` 도 같은 표면이다). PR 7 은 호출자가 없어 그 값의 행이 생기지 않으므로 **지금은 안전하지만 결선 즉시 실재한다** — 결선과 워커 배포 순서를 함께 정한다.
 - **권한 검사 순서 계약.** 이관 포트 KDoc 이 「위조 차단은 호출자의 발행 권한 책임」이라 약속하는데 PR 7 엔 호출자가 없어 그 약속을 검사할 장치가 없다. 결선이 `WorkflowDefinitionPermission.PUBLISH` 를 검사한 **뒤에만** 포트를 부르는지 판정을 붙인다.
 - **`cause` 를 소비자가 실제로 거르는가.** PR 7 은 이관 이벤트에 `cause = "STATUS_MIGRATION"` 을 **싣기만** 한다. 사외 웹훅(`search-export-import/.../WebhookDispatchWorker.kt`)과 알림이 그 표시를 보고 실제로 거르는지 확인한다. 이관 N 건이 되돌릴 수 없는 웹훅 N 건이 되는 자리라 **표시만 두고 끝내면 절반이다.**
 
@@ -1679,6 +1685,21 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 - **VIEW 미보유 이슈가 `NOT_FOUND` 로 오진된다.** `BulkItemApplier.applyAndRecordSuccess` 가 payload 종류와 무관하게 `issueService.findByKey(actor, issueKey)` 를 먼저 부르고, 그 안의 `assertViewIssueOrNotFound` 가 존재 숨김으로 `IssueNotFoundException` 을 던진다 → `FailureReasonCode.NOT_FOUND`. **실재하는 이슈를 장부가 「없다」고 적는다.** 게다가 그 이슈는 사라지는 상태에 그대로 남아, PR 7 이 TRANSITION 권한을 우회한 근거가 VIEW 축에서 재현된다. 잔여 유령을 **셀 수 있게** 별도 실패 코드를 줄지, 이관 경로가 VIEW 도 우회할지를 판정한다 — 실패 코드를 늘리면 타 모듈 카운트 가드도 함께 고쳐야 한다. 근거는 spec 의 ★D3 표 ⓪ 행과 그 아래 한계.
 - **`docs/INDEX-fr.md` 가 이 spec 을 FR-WF-05 의 spec 으로도 싣는다.** `docs/specs/2026-08-27-issue-tracking-status-migration.md` 본문이 §범위 정정에서 `FR-WF-05` 를 언급해 생성기가 그것을 긁었다. 인덱스가 FR↔spec 을 **거짓으로 잇는다** — 그 FR 의 명세를 찾는 사람이 남의 문서를 연다. 본문 표기를 고칠지 생성기가 언급과 소유를 가르게 할지를 정한다.
 - **`BulkOperationController` 가 `SYSTEM_ACTOR_UUID` 상수를 actor 로 쓴다.** `SecurityContext` 를 읽지 않는 선재 스텁이고 형제 `CustomFieldController` 도 같다(FR-PM-03 이전 placeholder). 이관은 감사 추적을 `IssueHistoryRecorder` 로 남기는데 그 actor 가 이 배선에 기댄다 — 결선 뒤 「누가 옮겼나」가 전부 같은 UUID 로 찍힌다.
+
+**★2026-08-31 갱신 — 결선 완료 · 잔여 이월.** 로드맵 PR 7b(`docs/plans/2026-08-31-workflow-status-migration-wiring.md`)가 착수했다. 위 「처방 — 전수 열거」의 여섯 중 다섯이 그 PR 안에서 닫히고, 하나는 다른 BC 라 이월된다. 이 항목이 열려 있는 이유는 **이월분과 아래 「PR 7 의 게이트 2 리뷰가 미룬 것」이 남아서**다.
+
+- **닫힌 것 — 결선.** `POST /api/v1/workflows/{key}/publish/migrate` 가 `IssueStatusMigrationPort.enqueueStatusMigration` 을 실제로 부른다. 발행(`POST …/publish`)은 의미 불변이고 이관만 별도 엔드포인트로 나눴다.
+- **닫힌 것 — 뒤쪽 창(축소).** F10 재카운트 + 롤백. 잔여 창의 서술은 장부의 「워크플로우 — 이관 필요 판정과 실제 교체 사이에 이슈가 끼어들 수 있다」 항목이 갖는다.
+- **닫힌 것 — 프로젝트 스코프.** `countIssuesInStatus(statusKey, projectIds)` 로 넓히고, `projectIds` 를 워크플로우 → 스킴 → 프로젝트 3단 JOIN 으로 좁혔다.
+- **닫힌 것 — 배포 순서·롤백.** 위 좌표 정정과 함께 절차를 문서화했다. **결론이 바뀌었다** — 단일 호스트·단일 컨테이너·in-process 워커라 「워커를 먼저 올린다」는 순서 축이 **성립하지 않고**, 남는 축은 롤백(신→구)뿐이다. 절차 정본은 위 plan 의 `#### C3 상세`.
+- **닫힌 것 — 권한 검사 순서 계약.** 권한 없는 actor 의 `migrate` 에서 **포트 호출 0회**를 스파이로 단언한다. 403 만 재면 「포트를 먼저 부르고 나중에 던지는」 순서를 못 잡는다.
+- **이월 — `cause` 소비자 필터.** issue-tracking 밖 BC 소관이라 「한 PR = 한 BC」에 걸린다. **PR 10 의 명시적 선행**으로 아래에 따로 적는다.
+
+**★PR 10(이관 마법사 UI)의 명시적 선행 — 이 절이 그 승격 기록이다 (2026-08-31).** 아래 항목들은 결선 전까지 「지금은 안 터진다」였는데, 결선으로 **실사용 유입구가 열리므로** UI 를 붙이기 전에 판정이 필요하다. 별도 장부 항목으로 뗄지는 마스터 계획 §전수 매핑에 행을 추가할 때 함께 정한다.
+
+- **승격 — `cause="STATUS_MIGRATION"` 소비자 필터.** 소비자가 `search-export-import`(사외 웹훅) · `notification` · `slack-integration` **3 BC** 라 「한 PR = 한 BC」로 **별건 셋**이다. **실측(2026-08-31)** — 그 문자열이 issue-tracking 밖 전 BC 통틀어 **0건**이고, 웹훅의 `parseIssueTransitioned` 는 4필드 화이트리스트라 `cause` 를 **파싱조차 하지 않는다**. 즉 지금 필터는 「느슨하다」가 아니라 **없다**. 이관 N 건이 되돌릴 수 없는 사외 웹훅 N 건이 되는 자리다.
+- **승격 — VIEW 미보유 이슈가 `NOT_FOUND` 로 오진된다.** 아래 「PR 7 의 게이트 2 리뷰가 미룬 것」에 이미 있는 항목이다. 결선 뒤에는 마법사가 보여 줄 실패 목록이 **실재하는 이슈를 「없다」고 적는다** — UI 가 그 거짓말을 그대로 화면에 싣게 되므로 PR 10 선행으로 올린다.
+- **승격 — PR 7 잔여 전부.** 아래 목록 전건이 PR 10 선행이다. 특히 **`BulkOperationController` 의 `SYSTEM_ACTOR_UUID`** 는 결선 뒤 「누가 옮겼나」를 전부 같은 UUID 로 찍는다 — 마법사가 감사 추적을 보여 주는 순간 그 값이 화면에 나온다. **실패 사유의 영속·노출 경로**도 같다. 마법사는 진행률·실패 목록을 보여 주는데 사유 컬럼이 없어 **이유 없는 `FAILED`** 만 나온다.
 
 **선행.** 로드맵 PR 7(이관 실행). 포트·어댑터·워커·`cause` 표시가 그 PR 로 들어와 있다.
 
