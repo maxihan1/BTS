@@ -319,7 +319,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             verify(exactly = 1) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
         }
 
-        it("쓰기 전에 비관락을 잡는다 — findByKeyForUpdate 가 applyTransition 앞에 정확히 1회 (spec §D3 ③)") {
+        it("D-ORDER — 권한 → 아카이브 가드 → 비관락 → 쓰기 순서를 지킨다 (spec §D3 ②③ · 게이트 2 리뷰 ③)") {
             every { issueService.findByKey(actor, inReviewKey) } returns
                 issueResponse(inReviewKey, "in_review", version = 5L)
             every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
@@ -327,11 +327,18 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
 
             sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
 
-            // 순서가 핵심이다 — 쓴 뒤에 잠그면 동시 편집과의 경합을 하나도 막지 못한다.
+            // [migrateStatus] KDoc 이 이 순서를 계약으로 선언한다. 단언이 없으면 계약이 문장으로만 남는다.
+            // - findByKey 를 다른 가지로 옮기면 이관 가지의 유일한 권한 검사(BROWSE)가 사라진다.
+            // - 가드와 락을 맞바꾸면 미인가 actor 가 행을 잠글 수 있게 된다.
+            // - 쓴 뒤에 잠그면 동시 편집과의 경합을 하나도 막지 못한다.
             verifyOrder {
+                issueService.findByKey(actor, inReviewKey)
+                archiveGuard.checkByIssue(inReviewKey)
                 issueRepository.findByKeyForUpdate(inReviewKey)
                 issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null)
             }
+            verify(exactly = 1) { issueService.findByKey(actor, inReviewKey) }
+            verify(exactly = 1) { archiveGuard.checkByIssue(inReviewKey) }
             verify(exactly = 1) { issueRepository.findByKeyForUpdate(inReviewKey) }
             // 잠그지 않는 읽기로 되돌아가면 여기가 red 다 (beforeEach 가 그 읽기도 무장해 두었다).
             verify(exactly = 0) { issueRepository.findByKey(inReviewKey) }
