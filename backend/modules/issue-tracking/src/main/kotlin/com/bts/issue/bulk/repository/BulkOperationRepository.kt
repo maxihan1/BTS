@@ -2,6 +2,7 @@
 
 package com.bts.issue.bulk.repository
 
+import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
@@ -14,7 +15,10 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.jooq.tables.records.BulkOperationsRecord
 import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
+import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.PROJECTS
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.JSONB
 import org.slf4j.LoggerFactory
@@ -80,6 +84,85 @@ class BulkOperationRepository(
             .execute()
 
         insertItemsBatch(operation)
+    }
+
+    /**
+     * [BulkOperationType.STATUS_MIGRATION] 의 대상을 **실행 시점에 다시 긁어** 항목으로 적재하고
+     * `total_count` 를 확정한다.
+     *
+     * 대상은 `current_state_key` ∈ [BulkOperationPayload.StatusMigration.mappings] 의 출발 상태 ∩
+     * 프로젝트 ∈ [BulkOperationPayload.StatusMigration.projectKeys] 다. 상태 키는 사이트 전역이라
+     * 범위가 없으면 남의 프로젝트 이슈까지 함께 옮겨진다.
+     *
+     * ### 왜 큐잉이 아니라 여기인가 (F15)
+     * 큐잉 시점에 대상을 굳히면 큐잉 → 실행 사이에 그 상태로 들어온 이슈를 통째로 버린다.
+     * 「세고 나서 옮긴다」가 아니라 **「옮기면서 센다」** 가 이 메서드의 존재 이유다.
+     *
+     * ### 멱등 — 새 중복 방지 코드를 만들지 않는다 (F16)
+     * 워커가 적재 도중 죽고 재시작해도 같은 대상을 다시 긁는다. 중복은 V008 의
+     * `UNIQUE (bulk_operation_id, issue_key)` 가 흡수한다 — `ON CONFLICT DO NOTHING` 은 그 제약에
+     * 기대는 선언일 뿐 별도의 중복 판정 로직이 아니다.
+     *
+     * ### 상한 판정과 적재 대상은 **한 번의 읽기**에서 나온다
+     * 세는 질의와 담는 질의를 나누면 그 사이가 TOCTOU 창이 된다. 그래서 상한+1 건까지만 읽어
+     * 그 결과로 초과 여부와 적재 대상을 동시에 정한다. 초과일 때만 정확한 대상 수를 다시 센다 —
+     * 운영자가 「어떻게 나눌지」를 정하려면 근사치가 아니라 진짜 수가 필요하기 때문이다.
+     *
+     * ### 소프트 삭제는 수동 필터다 (DATA.md §3)
+     * 자동 필터가 없으므로 `issues` 와 `projects` 양쪽에 `deleted_at IS NULL` 을 직접 붙인다.
+     * 빠뜨리면 삭제된 이슈가 이관 대상이 되고, 삭제된 프로젝트가 범위로 되살아난다.
+     *
+     * @param operationId 항목을 채울 작업 식별자.
+     * @param payload 대상 조건. 출발 상태 매핑과 프로젝트 범위.
+     * @return 적재 후 이 작업의 **항목 총수**(= 확정된 `total_count`). 다만 대상이
+     *   [BULK_OPERATION_MAX_SIZE] 를 넘으면 **아무것도 적재하지 않고 실제 대상 수**를 돌려준다 —
+     *   호출자가 상한과 비교해 초과를 판정하고 작업을 [markFailed] 한다. 조용히 자르지 않는다(E4).
+     */
+    @Transactional
+    fun materializeStatusMigrationItems(
+        operationId: BulkOperationId,
+        payload: BulkOperationPayload.StatusMigration,
+    ): Int {
+        val targets = statusMigrationTargets(payload)
+        val targetKeys =
+            dsl.select(ISSUES.KEY)
+                .from(ISSUES)
+                .where(targets)
+                .orderBy(ISSUES.KEY)
+                .limit(BULK_OPERATION_MAX_SIZE + 1)
+                .fetch(ISSUES.KEY)
+                .filterNotNull()
+
+        if (targetKeys.size > BULK_OPERATION_MAX_SIZE) {
+            val exactCount = dsl.fetchCount(ISSUES, targets)
+            log.warn(
+                "status_migration_targets_over_limit id={} targetCount={} maxSize={}",
+                operationId.value,
+                exactCount,
+                BULK_OPERATION_MAX_SIZE,
+            )
+            return exactCount
+        }
+
+        insertMigrationItemsBatch(operationId, targetKeys)
+
+        val totalCount =
+            dsl.fetchCount(
+                BULK_OPERATION_ITEMS,
+                BULK_OPERATION_ITEMS.BULK_OPERATION_ID.eq(operationId.value),
+            )
+        dsl.update(BULK_OPERATIONS)
+            .set(BULK_OPERATIONS.TOTAL_COUNT, totalCount)
+            .where(BULK_OPERATIONS.ID.eq(operationId.value))
+            .execute()
+
+        log.info(
+            "status_migration_items_materialized id={} targets={} totalCount={}",
+            operationId.value,
+            targetKeys.size,
+            totalCount,
+        )
+        return totalCount
     }
 
     /**
@@ -277,16 +360,47 @@ class BulkOperationRepository(
     }
 
     /**
+     * RUNNING 상태 작업을 FAILED 로 전환한다 (CAS — 1회 종료 보장).
+     *
+     * `WHERE id=? AND status='RUNNING'` 조건이라 이미 종단인 작업은 0 row 를 돌려준다.
+     * [markCompleted] 와 같은 형태다 — 「내가 claim 한 작업만 내가 끝낸다」를 DB 가 보장한다.
+     *
+     * ### 언제 쓰나 — 항목 실패와 다르다
+     * 항목 1건의 실패는 [updateItemResult] 로 남고 작업은 그대로 COMPLETED 로 끝난다(best-effort).
+     * 이 메서드는 **항목을 하나도 시작할 수 없는** 작업 전체의 실패용이다. 현재 유일한 호출 경로는
+     * [BulkOperationType.STATUS_MIGRATION] 의 실행 시점 상한 초과다(E4) — 대상을 조용히 자르면
+     * 잘린 나머지가 옛 상태에 남아 유령이 되는데 화면은 「완료」로 보인다.
+     *
+     * `completed_at` 을 함께 찍는다. V008 의 컬럼 주석이 「완료(성공 또는 실패)된 시각」이고,
+     * TTL cleanup([findCompletedBefore])도 그 값으로 대상을 고른다.
+     *
+     * @param id 실패로 종료할 작업 식별자.
+     * @return 전환 성공이면 true, 이미 종단이면 false.
+     */
+    @Transactional
+    fun markFailed(id: BulkOperationId): Boolean {
+        log.debug("markFailed id={}", id.value)
+        val affected =
+            dsl.update(BULK_OPERATIONS)
+                .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.FAILED.name)
+                .set(BULK_OPERATIONS.COMPLETED_AT, OffsetDateTime.now(clock))
+                .where(BULK_OPERATIONS.ID.eq(id.value))
+                .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.RUNNING.name))
+                .execute()
+        return affected == 1
+    }
+
+    /**
      * 지정 시각 이전에 completed_at 이 설정된 작업 목록을 반환한다.
      *
      * TTL 기반 cleanup 용 — [com.bts.issue.bulk.worker.BulkOperationCleanupWorker] 가 소비한다.
      * 항목은 포함하지 않는다 (필요 시 [findItemsByOperationId] 로 별도 조회).
      *
-     * ### 설계 노트 — operation-level FAILED 현황
-     * 현재 코드에서 BulkOperation 전체를 FAILED 로 set 하는 경로가 없다.
-     * (항목 개별 실패는 BulkOperationItem.status=FAILED 로 기록, 작업 전체는 COMPLETED 로 종료.)
-     * 따라서 cleanup 대상은 사실상 COMPLETED 작업뿐이다.
-     * 향후 작업레벨 FAILED 가 도입되면 completed_at 대신 별도 종단시각 컬럼 또는
+     * ### 설계 노트 — operation-level FAILED
+     * 항목 개별 실패는 BulkOperationItem.status=FAILED 로 기록하고 작업 전체는 COMPLETED 로 끝난다.
+     * 작업 전체를 FAILED 로 두는 경로는 [markFailed] 하나뿐이며 그것도 `completed_at` 을 찍으므로
+     * 이 질의가 COMPLETED 와 FAILED 를 모두 집는다 — 종단 작업은 어느 쪽이든 TTL 로 정리된다.
+     * 종단 시각을 상태별로 나눠야 할 필요가 생기면 별도 컬럼 또는
      * `status IN (COMPLETED, FAILED) AND updated_at < before` 쿼리로 전환한다.
      *
      * ### LIMIT 추가 이유
@@ -342,6 +456,56 @@ class BulkOperationRepository(
             )
         operation.items.forEach { item ->
             batch.bind(UUID.randomUUID(), operation.id.value, item.issueKey.value, item.status.name)
+        }
+        batch.execute()
+    }
+
+    /**
+     * 이관 대상 조건 — 출발 상태 ∩ 프로젝트 범위 ∩ 살아 있는 행.
+     *
+     * `(project_id, current_state_key)` 부분 인덱스(V029)와 같은 모양이라 전역 스캔으로 흐르지 않는다.
+     * 프로젝트는 키로 받으므로 서브쿼리로 id 를 좁힌다 — JOIN 이 아니라 서브쿼리인 이유는 이슈 1행이
+     * 프로젝트 1행에 대응해도 조인 결과를 세는 순간 실수하기 쉽기 때문이다(learnings: jOOQ-cartesian-product).
+     */
+    private fun statusMigrationTargets(payload: BulkOperationPayload.StatusMigration): Condition =
+        ISSUES.CURRENT_STATE_KEY.`in`(payload.mappings.keys)
+            .and(ISSUES.DELETED_AT.isNull)
+            .and(
+                ISSUES.PROJECT_ID.`in`(
+                    dsl.select(PROJECTS.ID)
+                        .from(PROJECTS)
+                        .where(PROJECTS.KEY.`in`(payload.projectKeys))
+                        .and(PROJECTS.DELETED_AT.isNull),
+                ),
+            )
+
+    /**
+     * 이관 대상 키를 PENDING 항목으로 배치 INSERT 한다. 이미 있는 키는 건너뛴다.
+     *
+     * [insertItemsBatch] 와 나눠 둔 이유는 **충돌 처리가 반대**이기 때문이다. 접수 경로의 중복 키는
+     * 요청이 잘못 만들어졌다는 뜻이라 그대로 터져야 하고, 이 경로의 중복 키는 재시작이 정상 동작했다는
+     * 뜻이라 흡수해야 한다(F16). 한 함수에 플래그로 합치면 그 차이가 호출부에서 안 보인다.
+     */
+    private fun insertMigrationItemsBatch(
+        operationId: BulkOperationId,
+        issueKeys: List<String>,
+    ) {
+        if (issueKeys.isEmpty()) return
+
+        val batch =
+            dsl.batch(
+                dsl.insertInto(
+                    BULK_OPERATION_ITEMS,
+                    BULK_OPERATION_ITEMS.ID,
+                    BULK_OPERATION_ITEMS.BULK_OPERATION_ID,
+                    BULK_OPERATION_ITEMS.ISSUE_KEY,
+                    BULK_OPERATION_ITEMS.STATUS,
+                ).values(null as UUID?, null, null, null)
+                    .onConflict(BULK_OPERATION_ITEMS.BULK_OPERATION_ID, BULK_OPERATION_ITEMS.ISSUE_KEY)
+                    .doNothing(),
+            )
+        issueKeys.forEach { issueKey ->
+            batch.bind(UUID.randomUUID(), operationId.value, issueKey, ItemStatus.PENDING.name)
         }
         batch.execute()
     }
