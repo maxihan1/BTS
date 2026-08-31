@@ -37,6 +37,7 @@ import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import java.time.Instant
 import java.util.UUID
 
@@ -54,6 +55,8 @@ import java.util.UUID
  * - 완료기준 10 · C-B1 · F11 · F17 — 이관 성공 시 [IssueTransitioned] 를 발행하고 그 이벤트에만
  *   `cause = "STATUS_MIGRATION"` 이 실린다. 일반 전환 발행부가 만드는 이벤트는 `cause` 가 `null` 이다.
  * - F12 — 이관 성공 시 [IssueHistoryRecorder] 로 상태 변경 이력을 남긴다.
+ * - spec §D3 ③ — 쓰기 전에 [IssueRepository.findByKeyForUpdate] 로 비관락을 잡고, 대상 상태·버전·해결책을
+ *   **락 뒤 재조회**가 정한다. 락을 잡고도 락 밖에서 읽은 값으로 판단하면 TOCTOU 로 락이 무력해진다.
  *
  * **`cause` 하위호환을 왜 여기서 왕복 검증하는가.** `cause` 는 이 task 가 더한 필드이고
  * [IssueTransitioned] 는 pgmq 로 JSON 이 흐르는 타입이다. 배포 순서상 **`cause` 없는 옛 메시지를
@@ -141,6 +144,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
         key: IssueKey,
         currentStateKey: String,
         version: Long,
+        resolutionId: UUID? = null,
     ): Issue =
         Issue(
             id = IssueId(UUID.randomUUID()),
@@ -154,6 +158,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             createdAt = Instant.parse("2026-08-27T00:00:00Z"),
             updatedAt = Instant.parse("2026-08-27T00:00:00Z"),
             typeId = IssueTypeId(1L),
+            resolutionId = resolutionId,
         )
 
     beforeEach {
@@ -162,7 +167,15 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
         listOf(inReviewKey, blockedKey, otherInReviewKey).forEach { key ->
             justRun { archiveGuard.checkByIssue(key) }
         }
-        // 이력 before 스냅샷 기본 stub — 키별 출발 상태·버전은 기존 테스트 픽스처와 같은 값이다.
+        // 락 뒤 재조회 기본 stub — 이관 가지의 상태·버전·해결책과 이력 before 스냅샷이 모두 이 읽기에서 나온다.
+        every { issueRepository.findByKeyForUpdate(inReviewKey) } returns
+            issueEntity(inReviewKey, "in_review", 5L)
+        every { issueRepository.findByKeyForUpdate(blockedKey) } returns
+            issueEntity(blockedKey, "blocked", 7L)
+        every { issueRepository.findByKeyForUpdate(otherInReviewKey) } returns
+            issueEntity(otherInReviewKey, "in_review", 9L)
+        // 잠그지 않는 읽기도 같은 값으로 무장해 둔다 — 구현이 그리로 되돌아가면 MockK 「answer 없음」 예외가
+        // 아니라 「락을 안 잡았다」는 단언 실패로 드러나야 진단이 산다.
         every { issueRepository.findByKey(inReviewKey) } returns issueEntity(inReviewKey, "in_review", 5L)
         every { issueRepository.findByKey(blockedKey) } returns issueEntity(blockedKey, "blocked", 7L)
         every { issueRepository.findByKey(otherInReviewKey) } returns
@@ -249,6 +262,8 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             val resolutionId = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
             every { issueService.findByKey(actor, inReviewKey) } returns
                 issueResponse(inReviewKey, "in_review", version = 5L, resolutionId = resolutionId)
+            every { issueRepository.findByKeyForUpdate(inReviewKey) } returns
+                issueEntity(inReviewKey, "in_review", 5L, resolutionId = resolutionId)
             every { issueRepository.applyTransition(inReviewKey, any(), any(), any()) } returns 1
             every { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) } returns 1
 
@@ -261,8 +276,11 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
 
         it("현재 상태가 매핑에 없으면 밀지 않고 예외를 던진다 — 장부는 executor 가 적는다 (E8 · F7)") {
             // 큐잉·적재 이후 누가 done 으로 옮겨 놓았다 — 매핑에 done 이 없다.
+            // 같은 행을 두 번 읽는 것이므로 락 뒤 재조회도 done 이다(픽스처 정합).
             every { issueService.findByKey(actor, inReviewKey) } returns
                 issueResponse(inReviewKey, "done", version = 5L)
+            every { issueRepository.findByKeyForUpdate(inReviewKey) } returns
+                issueEntity(inReviewKey, "done", 5L)
             every { issueRepository.applyTransition(inReviewKey, any(), any(), any()) } returns 1
             every { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) } returns 1
 
@@ -299,6 +317,63 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
 
             verify(exactly = 1) { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) }
             verify(exactly = 1) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
+        }
+
+        it("쓰기 전에 비관락을 잡는다 — findByKeyForUpdate 가 applyTransition 앞에 정확히 1회 (spec §D3 ③)") {
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) } returns 1
+
+            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+
+            // 순서가 핵심이다 — 쓴 뒤에 잠그면 동시 편집과의 경합을 하나도 막지 못한다.
+            verifyOrder {
+                issueRepository.findByKeyForUpdate(inReviewKey)
+                issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null)
+            }
+            verify(exactly = 1) { issueRepository.findByKeyForUpdate(inReviewKey) }
+            // 잠그지 않는 읽기로 되돌아가면 여기가 red 다 (beforeEach 가 그 읽기도 무장해 두었다).
+            verify(exactly = 0) { issueRepository.findByKey(inReviewKey) }
+        }
+
+        it("잠그기 전 읽은 버전이 낡아도 락 뒤 버전으로 써서 이관이 성공한다 (spec §D3 ③ · TOCTOU)") {
+            // 잠그기 전 읽기(v5) 와 락 획득 사이에 다른 트랜잭션이 상태 아닌 필드를 고쳐 v6 이 됐다.
+            // 락은 그 커밋을 기다린 뒤 진행해야 한다 — 낡은 v5 로 쓰면 그 건이 통째로 실패한다.
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.findByKeyForUpdate(inReviewKey) } returns
+                issueEntity(inReviewKey, "in_review", 6L)
+            // 낡은 버전으로 쓰면 DB 는 0행이다 — IssueRepositoryTest 의 `T5 - applyTransition stale` 이 실측한 계약.
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 0
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", 6L, null) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) } returns 1
+
+            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+
+            verify(exactly = 1) { issueRepository.applyTransition(inReviewKey, "in_progress", 6L, null) }
+            verify(exactly = 1) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
+        }
+
+        it("잠그기 전 읽은 상태가 낡았으면 락 뒤 상태가 대상을 정한다 — 밀지 않는다 (E8 · TOCTOU)") {
+            // 잠그기 전에는 in_review 로 보였지만 락을 잡고 다시 읽으니 누가 done 으로 옮겨 놓았다.
+            every { issueService.findByKey(actor, inReviewKey) } returns
+                issueResponse(inReviewKey, "in_review", version = 5L)
+            every { issueRepository.findByKeyForUpdate(inReviewKey) } returns
+                issueEntity(inReviewKey, "done", 6L)
+            // 낡은 상태로 계산한 대상을 일부러 무장해 둔다 — 「그리로 가지 않는다」를 단언하기 위해서다.
+            every { issueRepository.applyTransition(inReviewKey, "in_progress", any(), any()) } returns 1
+            every { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) } returns 1
+
+            val thrown =
+                shouldThrow<StateNotInMigrationMappingException> {
+                    sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
+                }
+
+            // 보고되는 상태도 락 뒤 값이어야 한다 — 낡은 값을 보고하면 운영자가 엉뚱한 상태를 쫓는다.
+            thrown.currentStateKey shouldBe "done"
+            verify(exactly = 0) { issueRepository.applyTransition(inReviewKey, any(), any(), any()) }
+            verify(exactly = 0) { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) }
         }
 
         it("applyTransition 이 0행(OCC 충돌)이면 SUCCEEDED 로 기록하지 않는다 — 1행이면 기록된다 (E10 · F9)") {
@@ -343,6 +418,8 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             // 비-공허 짝 — 매핑에 없어 실패한 건은 발행되지 않는다. 「무조건 발행」 구현을 배제한다.
             every { issueService.findByKey(actor, blockedKey) } returns
                 issueResponse(blockedKey, "done", version = 7L)
+            every { issueRepository.findByKeyForUpdate(blockedKey) } returns
+                issueEntity(blockedKey, "done", 7L)
 
             shouldThrow<StateNotInMigrationMappingException> {
                 sut.applyAndRecordSuccess(actor, operationId, blockedKey, payload)
@@ -412,6 +489,8 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             // 비-공허 짝 — 매핑에 없어 실패한 건은 이력을 남기지 않는다(총 호출은 여전히 1회).
             every { issueService.findByKey(actor, blockedKey) } returns
                 issueResponse(blockedKey, "done", version = 7L)
+            every { issueRepository.findByKeyForUpdate(blockedKey) } returns
+                issueEntity(blockedKey, "done", 7L)
 
             shouldThrow<StateNotInMigrationMappingException> {
                 sut.applyAndRecordSuccess(actor, operationId, blockedKey, payload)
