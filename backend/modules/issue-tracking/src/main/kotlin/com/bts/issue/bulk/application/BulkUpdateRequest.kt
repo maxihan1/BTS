@@ -1,4 +1,4 @@
-// 일괄 작업 접수 커맨드 DTO — BULK_EDIT/BULK_TRANSITION 공통 요청 구조
+// 일괄 작업 접수 커맨드 DTO — BULK_EDIT/BULK_TRANSITION 공통 요청 구조 (STATUS_MIGRATION 은 접수 불가)
 
 package com.bts.issue.bulk.application
 
@@ -13,6 +13,9 @@ import java.util.UUID
  * ### 페이로드 규칙
  * - [BulkOperationType.BULK_EDIT]: [editPayload] non-null 필수. [transitionPayload] null.
  * - [BulkOperationType.BULK_TRANSITION]: [transitionPayload] non-null 필수. [editPayload] null.
+ * - [BulkOperationType.STATUS_MIGRATION]: **이 엔드포인트로 접수되지 않는다.**
+ *   워크플로우 상태 이관 어댑터만 큐잉하며, 여기로 오면 [BulkOperationApplicationService.submit] 이 거부한다.
+ *   위조 차단이 호출자의 발행 권한 책임이라(편차 X4) 공개 접수 경로를 열면 그 신뢰 모델이 무너진다.
  * operationType ↔ payload 불일치 시 [BulkOperationApplicationService.submit] 에서 [IllegalArgumentException].
  *
  * @property operationType 작업 유형.
