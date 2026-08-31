@@ -57,7 +57,9 @@ import java.time.Instant
  *   nullable 기본값은 「불명 = 허용」이다. Spring 의 Kotlin optional 파라미터 해석은 해결하지 못한
  *   인자를 **부팅 실패가 아니라 생략**으로 처리하므로, 결선이 끊겨도 아무도 모른 채 fail-open 이 된다.
  *   실제로 이 PR 의 통합 컨텍스트 3곳이 가드를 생략한 채 이관을 돌렸다. 불명은 **거부**가 기본이다.
- * @param clock 이벤트 `occurredAt` 의 시각원.
+ * @param clock 이벤트 `occurredAt` 의 시각원. [IssueApplicationService] 의 동명 파라미터와 같은
+ *   fallback 형태다 — `Instant.now()` 직접 호출은 주입한 시각원을 우회해, 같은 BC 안에서
+ *   시각을 고정한 테스트와 형제 발행부([IssueApplicationService] `Instant.now(clock)`)가 갈린다.
  */
 @Component
 class BulkItemApplier(
@@ -268,7 +270,7 @@ class BulkItemApplier(
                 fromState = before.currentStateKey,
                 toState = target,
                 actorId = actor,
-                occurredAt = Instant.now(),
+                occurredAt = Instant.now(clock),
                 cause = CAUSE_STATUS_MIGRATION,
             ),
         )
