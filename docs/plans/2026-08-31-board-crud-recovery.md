@@ -539,7 +539,7 @@ MSW 핸들러도 같은 Task 에서 추가한다.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/src/i18n/board-labels.ts`]
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/hooks/use-boards.ts`, `apps/web/src/hooks/use-boards.test.tsx`]
 - depends-on: [5]
 - jira: [J3, J4, J5]
 
@@ -550,6 +550,14 @@ MSW 핸들러도 같은 Task 에서 추가한다.
 - 유닛 **E7**. `confirming` 중에는 취소·Esc·오버레이로 창이 닫히지 않는다
 - E2E 신규 `board-manage.spec.ts`. S1 두번째 보드 생성 → S2 전환 → S3 이름변경 → S4 삭제 →
   S5 빈 상태 복귀
+- ★ **훅 단위 (Task 4 가 남긴 미검증 축 — `use-boards.test.tsx`)**
+  - `useUpdateBoardName 성공 시 boardKeys 를 invalidate 한다`
+  - `useDeleteBoard 성공 시 목록 키만 invalidate 한다` — 상세 키를 무효화하면 아직 마운트된
+    `useBoard(boardId)` 관찰자가 즉시 404 를 재조회한다
+  - `타임아웃이 지나면 isPending 이 풀리고 에러가 전달된다`
+  ⚠️ **Task 4 가 이 축을 red 로 만들지 못했다** — invalidate 를 통째로 지워도 초록이었다.
+  단언이 갈 파일(`use-boards.test.tsx`)이 **어느 task 의 `files` 에도 없어서** 신규 훅 2개가
+  무테스트로 남았기 때문이다. 그 소유를 이 task 로 옮겼다
 
 **GREEN**.
 - 보드 이름 옆 `⋯` — `DropdownMenu` 재사용. 항목 2개, **권한별 조건부 렌더**(disabled 아님)
@@ -565,6 +573,11 @@ MSW 핸들러도 같은 Task 에서 추가한다.
   - `description` 에 **"이슈는 삭제되지 않습니다"** · `destructive`
 - 삭제 노출 판정 = `boardDetail.canDelete` (Task 3 이 추가한 필드). 이름 변경 노출 = 기존 `canCreate`.
   **`useProjectPermissions` 는 손대지 않는다** — BC 경계 무접촉
+- ★ **`canDelete` 는 Zod `.optional()` 이라 `undefined` 가 올 수 있다** (Task 4 판단).
+  `.default(false)` 를 쓰면 `z.infer` 출력에서 필수가 되어 선언 files 밖 픽스처가 전부 타입 에러를 낸다.
+  → 소비자는 **`boardDetail.canDelete === true` 로만** 삭제 항목을 렌더한다. `undefined` 는 **fail-closed** 다.
+  MSW 기본값은 `true`(mock 로그인 사용자 alice 가 `SOFT_DELETE` 보유)이므로, 권한 없는 화면을 시드하려면
+  `StoredBoardDetail.canDelete: false` 를 명시한다
 - ★ **pending 무한 대기 탈출구 (Maxi 게이트 1 지시 · 소비자 쪽에서 푼다).**
   `confirming` 이 취소·Esc·오버레이·X 를 **전부 잠그는데**, 그 설계는 `confirm-dialog.tsx` KDoc 이
   밝히듯 *"파괴적 조작이고 이미 확인을 누른 뒤라 **기다림은 짧다**"* 를 전제한다. 네트워크가
