@@ -105,9 +105,11 @@ vi.mock('@/components/board/CreateBoardForm', () => ({
   CreateBoardForm: ({
     projectKey,
     showEmptyStateIntro,
+    onCreated,
   }: {
     projectKey: string
     showEmptyStateIntro?: boolean
+    onCreated?: () => void
   }) => (
     <div
       data-testid="create-board-form"
@@ -115,6 +117,17 @@ vi.mock('@/components/board/CreateBoardForm', () => ({
       data-empty-intro={String(showEmptyStateIntro ?? true)}
     >
       CreateBoardForm
+      {/* 실제 폼의 mutation onSuccess 자리 — 성공 신호를 테스트가 직접 쏜다.
+          onCreated 를 안 넘기면 눌러도 아무 일도 없어 C5-2 가 red 가 된다. */}
+      <button
+        type="button"
+        data-testid="create-board-form-fire-created"
+        onClick={() => {
+          onCreated?.()
+        }}
+      >
+        생성 성공 신호
+      </button>
     </div>
   ),
 }))
@@ -1401,6 +1414,84 @@ describe('BoardPage', () => {
       'data-empty-intro',
       'true',
     )
+  })
+
+  /**
+   * T-BD6M-11 (회귀 앵커). 보드 목록이 **밖에서** 늘어나도 열려 있는 「새 보드」 창은 닫히지 않는다.
+   *
+   * 닫힘을 「보드 개수가 늘었다」로 추론하면, 창을 열고 이름을 입력하던 중 탭을 떠났다 돌아올 때
+   * (`refetchOnWindowFocus` 기본값) 다른 사람이 만든 보드가 목록에 반영되며 창이 닫힌다.
+   * 사용자에게는 「만들어졌다」로 읽히지만 실제로는 아무것도 만들어지지 않았다.
+   *
+   * 헬퍼를 안 쓰고 직접 render 하는 이유는 rerender 가 필요해서다 — 목록이 바뀌는 순간을
+   * 재현하려면 부모를 다시 그려야 한다. 매번 **새 엘리먼트**를 넘긴다(같은 참조는 React 가
+   * props 동일로 보고 재렌더를 건너뛴다).
+   */
+  it('T-BD6M-11: 보드 목록이 밖에서 늘어나도 열려 있는 「새 보드」 창이 닫히지 않는다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    const { BoardPage } = await import('@/routes/projects.$projectKey.board')
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <BoardPage projectKey="ATLAS" selectedBoardId={undefined} filter={undefined} />
+      </QueryClientProvider>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+    expect(await screen.findByTestId('create-board-form')).toBeInTheDocument()
+
+    // When. 이 창의 제출과 무관하게 목록만 갱신된다 — 남이 만든 보드가 refetch 로 들어온 상황
+    const callsBeforeRefetch = mockUseBoards.mock.calls.length
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A, BOARD_B],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    rerender(
+      <QueryClientProvider client={client}>
+        <BoardPage projectKey="ATLAS" selectedBoardId={undefined} filter={undefined} />
+      </QueryClientProvider>,
+    )
+
+    // 앵커. 재렌더가 실제로 일어나 새 목록을 읽었다 — 없으면 「아무 일도 안 해서 통과」다
+    expect(mockUseBoards.mock.calls.length).toBeGreaterThan(callsBeforeRefetch)
+
+    // Then. 입력 중이던 창은 그대로 열려 있다
+    expect(screen.getByTestId('create-board-form')).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD6M-12 (T-BD6M-11 의 비-공허 짝). 생성 **성공 신호**가 오면 그때 창이 닫힌다.
+   *
+   * 이것이 없으면 T-BD6M-11 은 「창이 영원히 안 닫힌다」로도 통과한다.
+   */
+  it('T-BD6M-12: 생성에 성공하면 「새 보드」 창이 닫힌다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+    expect(await screen.findByTestId('create-board-form')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('create-board-form-fire-created'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-board-form')).toBeNull()
+    })
   })
 })
 
