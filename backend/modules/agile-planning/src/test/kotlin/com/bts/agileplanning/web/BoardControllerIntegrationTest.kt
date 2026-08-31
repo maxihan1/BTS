@@ -25,10 +25,13 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -36,6 +39,7 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -45,6 +49,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
 
@@ -85,6 +90,17 @@ import java.util.UUID
  * - WIP-E5. 미존재 boardId로 두 PATCH → 404.
  * - WIP-E6. CREATE 권한 미충족 → 403 (실제 403 단언, vacuous 금지).
  * - WIP-E7. 미인증 → 401.
+ * - PATCH-N1. PATCH /boards/{id} {name:"버그 보드"} → swimlaneField 없이 200 + name echo.
+ * - PATCH-N2. {name:"   "} → 400. 컨트롤러가 아니라 도메인 Board.init require 가 거부한다
+ *   (서비스 호출까지 도달했는지 verify 로 못박는다 — 컨트롤러 선차단 우회 금지).
+ * - PATCH-N3. {name:null} → 400 (present-null). 서비스 미호출.
+ * - PATCH-N4. {} → 400. 최소 1필드 규칙 — 계약 완화 방지 앵커.
+ * - PATCH-N5. {name, swimlaneField} 동시 전송 → 200 + 두 변경 모두 반영.
+ * - DEL-1. DELETE /boards/{id} → 204 + SOFT_DELETE 권한 판정 + 서비스 위임.
+ * - DEL-2. DELETE SOFT_DELETE 미보유 → 403 + 서비스 미호출.
+ * - DEL-3. DELETE 미존재 보드 → 404. 권한 판정에 도달하지 않는다(존재 검사가 먼저).
+ * - DEL-4. DELETE 미인증 → 401 + 보드 조회 자체가 없다(존재 probe 차단).
+ * - CANDEL-1. GET /boards/{id} 응답 canDelete 가 SOFT_DELETE 보유/미보유로 갈린다.
  * - NULL-1. 카드 nullable 필드(originalEstimateSeconds/epicKey/rank)가 null 이어도
  *   응답 키 자체는 존재한다(프론트 Zod `.nullable()` 계약 가드, FR-UX-14 F14 후속).
  */
@@ -101,7 +117,7 @@ class BoardControllerIntegrationTest {
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
         @Bean
         open fun boardApplicationService(): BoardApplicationService = mockk(relaxed = true)
 
@@ -120,6 +136,15 @@ class BoardControllerIntegrationTest {
 
         @Bean
         open fun boardExceptionHandler(): BoardExceptionHandler = BoardExceptionHandler()
+
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            // @EnableWebMvc 슬라이스는 Boot 자동 구성을 우회하므로 JacksonNullableConfiguration Bean 이
+            // ObjectMapper 에 반영되지 않는다. 등록하지 않으면 JsonNullable 의 부재와 명시 null 이
+            // 같은 값으로 역직렬화돼 3-state 가 무너진다(SprintControllerTest 동일 패턴).
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper.registerModule(JsonNullableModule()) }
+        }
     }
 
     /**
@@ -133,6 +158,14 @@ class BoardControllerIntegrationTest {
         /** false 면 모든 권한 판정을 거부한다. */
         var allowAll: Boolean = true
 
+        /**
+         * 여기에 담긴 권한코드만 골라서 거부한다.
+         *
+         * 한 요청이 서로 다른 권한을 2회 판정하는 경로(GET 상세 = BROWSE + SOFT_DELETE)가 생기면서
+         * [allowAll] 단일 토글로는 "BROWSE 는 되고 SOFT_DELETE 는 안 되는" 상태를 표현할 수 없게 됐다.
+         */
+        val denied: MutableSet<IssuePermission> = mutableSetOf()
+
         /** [hasPermission] 호출마다 전달된 (actorId, permission, scope) 를 순서대로 기록한다. */
         val calls: MutableList<Triple<UUID, IssuePermission, IssueScope>> = mutableListOf()
 
@@ -142,7 +175,7 @@ class BoardControllerIntegrationTest {
             scope: IssueScope,
         ): Boolean {
             calls.add(Triple(actorId, permission, scope))
-            return allowAll
+            return allowAll && permission !in denied
         }
     }
 
@@ -169,6 +202,7 @@ class BoardControllerIntegrationTest {
         // 컨텍스트 캐시로 MockK mock 이 테스트 간 공유되므로 호출 기록을 리셋해 verify 누적을 끊는다.
         clearMocks(boardApplicationService, boardRepository)
         permissionGate.allowAll = true
+        permissionGate.denied.clear()
         permissionGate.calls.clear()
         val auth =
             UsernamePasswordAuthenticationToken(
@@ -346,9 +380,13 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.truncated").value(false))
             .andExpect(jsonPath("$.data.unplacedCount").value(0))
 
-        // 권한 게이트가 BROWSE + Project(보드 projectKey) 로 판정됐는지 검증 (sec P2)
+        // 권한 게이트가 BROWSE + Project(보드 projectKey) 로 판정됐는지 검증 (sec P2).
+        // canDelete 산출(FR-BD-01-2b)로 SOFT_DELETE 판정이 1회 뒤따른다 — 순서까지 못박는다.
         assertThat(permissionGate.calls)
-            .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
+            .containsExactly(
+                Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")),
+                Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project("BTS")),
+            )
     }
 
     @Test
@@ -1156,5 +1194,249 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.columns[0].cards[0].originalEstimateSeconds").hasJsonPath())
             .andExpect(jsonPath("$.data.columns[0].cards[0].epicKey").hasJsonPath())
             .andExpect(jsonPath("$.data.columns[0].cards[0].rank").hasJsonPath())
+    }
+
+    // ── PATCH-N1~N6. PATCH /{id} 부분 갱신 (FR-BD-01-2a) ──────────────────────
+
+    @Test
+    fun `PATCH-N1 name 만 보내면 swimlaneField 없이 200 이고 이름이 갱신된다`() {
+        val board = sampleBoard()
+        val renamed = board.copy(name = "버그 보드")
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.updateName(board.id, "버그 보드") } returns renamed
+
+        val body = mapOf("name" to "버그 보드")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
+            .andExpect(jsonPath("$.data.name").value("버그 보드"))
+
+        // swimlaneField 는 미전송이므로 건드리지 않는다(부분 갱신의 정의).
+        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
+    }
+
+    /**
+     * 공백 이름 거부는 [com.bts.agileplanning.domain.Board] 의 init require 가 지는 책임이다.
+     *
+     * 컨트롤러가 공백을 미리 막으면 상태 코드는 같아도 도메인 불변식이 dead code 가 되고
+     * 「도달 불가 조건을 지키는 테스트 = 가짜 그린」 양식이 된다. 그래서 상태 코드뿐 아니라
+     * **요청이 서비스까지 도달했는지**를 함께 못박는다 — 선차단 우회를 이 verify 가 금지한다.
+     * 서비스가 실제로 [IllegalArgumentException] 을 던진다는 계약은 `BoardApplicationServiceTest`
+     * 의 `updateName 이 공백 이름을 IllegalArgumentException 으로 거부한다` 가 따로 고정하고 있다.
+     */
+    @Test
+    fun `PATCH-N2 name 이 공백뿐이면 400 이고 도메인 검증까지 도달한다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.updateName(board.id, "   ") } throws
+            IllegalArgumentException("보드 이름은 비어 있을 수 없습니다.")
+
+        val body = mapOf("name" to "   ")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+
+        verify(exactly = 1) { boardApplicationService.updateName(board.id, "   ") }
+    }
+
+    @Test
+    fun `PATCH-N3 name 이 명시 null 이면 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        // present-null. presence 만 보고 통과시키면 null 이 그대로 흘러 500 이 된다.
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":null}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+
+        verify(exactly = 0) { boardApplicationService.updateName(any(), any()) }
+    }
+
+    /**
+     * 빈 바디 `{}` 는 400 이다 — 계약 완화 방지 앵커.
+     *
+     * 부분 갱신으로 넓히면서 `@NotBlank` 가 사라지므로, 「최소 1필드」 규칙이 없으면
+     * 아무것도 바꾸지 않는 요청이 조용히 200 을 받게 된다. 기존 400 을 그 규칙으로 승계한다.
+     */
+    @Test
+    fun `PATCH-N4 바디가 빈 객체면 400 이고 어떤 갱신도 일어나지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+
+        verify(exactly = 0) { boardApplicationService.updateName(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+    }
+
+    @Test
+    fun `PATCH-N5 name 과 swimlaneField 를 함께 보내면 200 이고 둘 다 반영된다`() {
+        val board = sampleBoard()
+        val renamed = board.copy(name = "버그 보드")
+        val both = renamed.copy(swimlaneField = com.bts.agileplanning.domain.SwimlaneField.ASSIGNEE)
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.updateName(board.id, "버그 보드") } returns renamed
+        every { boardApplicationService.updateSwimlaneField(board.id, "ASSIGNEE") } returns both
+
+        val body = mapOf("name" to "버그 보드", "swimlaneField" to "ASSIGNEE")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("버그 보드"))
+            .andExpect(jsonPath("$.data.swimlaneField").value("ASSIGNEE"))
+
+        verify(exactly = 1) { boardApplicationService.updateName(board.id, "버그 보드") }
+        verify(exactly = 1) { boardApplicationService.updateSwimlaneField(board.id, "ASSIGNEE") }
+    }
+
+    @Test
+    fun `PATCH-N6 swimlaneField 가 명시 null 이면 400 이다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"swimlaneField":null}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+
+        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+    }
+
+    // ── DEL-1~4. DELETE /{id} 소프트 삭제 (FR-BD-01-2b) ───────────────────────
+
+    @Test
+    fun `DEL-1 DELETE 는 204 이고 이후 목록에서 사라진다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(delete("/api/v1/boards/${board.id}"))
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { boardApplicationService.softDelete(board.id) }
+        // 권한코드가 CREATE 가 아니라 SOFT_DELETE 여야 한다(plan 의 의도적 편차 X3).
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project("BTS")))
+
+        // 목록에서 사라지는 근거는 boards.deleted_at 필터다. 이 슬라이스는 서비스가 mock 이라
+        // 필터 자체는 BoardRepository 통합 테스트가 고정하고, 여기서는 삭제 뒤 목록 응답 형태만 본다.
+        every { boardApplicationService.listBoards("BTS") } returns emptyList()
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.length()").value(0))
+    }
+
+    @Test
+    fun `DEL-2 DELETE 는 SOFT_DELETE 미보유 시 403 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        permissionGate.denied.add(IssuePermission.SOFT_DELETE)
+
+        mockMvc.perform(delete("/api/v1/boards/${board.id}"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
+
+        verify(exactly = 0) { boardApplicationService.softDelete(any()) }
+    }
+
+    /**
+     * 미존재 보드는 404 이며 권한 판정에는 도달하지 않는다.
+     *
+     * `permissionGate.calls` 가 비어 있다는 단언이 **존재 검사 → 권한 판정** 순서를 못박는 장치다.
+     * 순서가 뒤집히면 권한 미보유자에게 403 이 돌아가 「그 보드는 존재한다」를 누설하는데,
+     * 로컬 개발자는 항상 권한을 가지므로 이 뒤집힘이 눈에 보이지 않는다.
+     */
+    @Test
+    fun `DEL-3 DELETE 는 미존재 보드에 404 이고 권한 판정에 도달하지 않는다`() {
+        val boardId = UUID.randomUUID()
+        every { boardRepository.findById(boardId) } returns null
+
+        mockMvc.perform(delete("/api/v1/boards/$boardId"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_NOT_FOUND"))
+
+        assertThat(permissionGate.calls).isEmpty()
+        verify(exactly = 0) { boardApplicationService.softDelete(any()) }
+    }
+
+    @Test
+    fun `DEL-4 DELETE 는 미인증이면 401 이고 보드 존재 여부를 노출하지 않는다`() {
+        SecurityContextHolder.clearContext()
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(delete("/api/v1/boards/${board.id}"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_UNAUTHENTICATED"))
+
+        // 존재하는 보드를 넘겨도 조회 자체가 없어야 한다 — 미인증자의 존재 probe 차단.
+        verify(exactly = 0) { boardRepository.findById(any()) }
+        verify(exactly = 0) { boardApplicationService.softDelete(any()) }
+    }
+
+    // ── CANDEL-1. GET /{id} 응답의 canDelete (FR-BD-01-2d) ────────────────────
+
+    @Test
+    fun `CANDEL-1 GET 응답 canDelete 는 SOFT_DELETE 보유자에게 true 다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns = board.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.canDelete").value(true))
+    }
+
+    @Test
+    fun `CANDEL-1 GET 응답 canDelete 는 SOFT_DELETE 미보유자에게 false 다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns = board.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+            )
+        // BROWSE 는 통과시키고 SOFT_DELETE 만 거부한다 — 조회는 되고 삭제만 막히는 상태.
+        permissionGate.denied.add(IssuePermission.SOFT_DELETE)
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.canDelete").value(false))
     }
 }
