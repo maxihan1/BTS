@@ -6,6 +6,7 @@ import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
@@ -52,7 +53,8 @@ import java.util.UUID
  * - (f) E8: 보드-이슈 프로젝트 정합 위반 → 거부
  * - (g) 보드 조회 시 BoardQuickFilterRepository 결과가 quickFilters 로 포함(FR-UX-01 Task 7)
  * - (h) BoardCardResponse 가 BoardIssueView.rank 를 그대로 노출(FR-UX-06 PR21 Task 1)
- * - (i) updateName / softDelete 의 공백 이름 거부 + 미존재 보드 404 승격(FR-BD-01-2 Task 2)
+ * - (i) updateBoard / softDelete 의 공백 이름 거부 + 미존재 보드 404 승격(FR-BD-01-2 Task 2)
+ * - (j) PATCH 원자성 — 이름 유효 + swimlaneField 무효면 400 이고 이름이 옛 값으로 남는다(리뷰 지적 1)
  */
 @SpringBootTest(
     classes = [AgilePlanningTestBootApplication::class],
@@ -62,6 +64,15 @@ import java.util.UUID
 class BoardApplicationServiceTest {
     @Autowired
     private lateinit var boardRepository: BoardRepository
+
+    /**
+     * Spring 이 프록시한 [BoardApplicationService] 빈.
+     *
+     * [serviceWith] 가 만드는 인스턴스는 생성자 직접 호출이라 `@Transactional` AOP 가 걸리지 않는다.
+     * 트랜잭션 경계가 걸린 상태의 동작을 봐야 하는 테스트만 이 빈을 쓴다.
+     */
+    @Autowired
+    private lateinit var transactionalBoardService: BoardApplicationService
 
     companion object {
         /** 테스트용 상태 목록 — 3개 컬럼(TODO·IN_PROGRESS·DONE). */
@@ -473,10 +484,10 @@ class BoardApplicationServiceTest {
         assertThat(boards.map { it.name }).contains("목록 보드 1", "목록 보드 2")
     }
 
-    // ── updateSwimlaneField / updateColumnWipLimit 단위 테스트 (mockk repo) ─────
+    // ── updateBoard / updateColumnWipLimit 단위 테스트 (mockk repo) ────────────
 
     @Test
-    fun `updateSwimlaneField ASSIGNEE 유효값이면 repo 가 SwimlaneField_ASSIGNEE 로 호출되고 갱신된 보드를 반환한다`() {
+    fun `updateBoard 가 swimlaneField 만 받으면 repo 가 SwimlaneField_ASSIGNEE 로 호출된다`() {
         val boardId = UUID.randomUUID()
         val expectedBoard =
             Board(
@@ -489,16 +500,19 @@ class BoardApplicationServiceTest {
                 swimlaneField = SwimlaneField.ASSIGNEE,
             )
         val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
         every { repo.updateSwimlaneField(boardId, SwimlaneField.ASSIGNEE) } returns expectedBoard
 
-        val result = serviceWith(repo = repo).updateSwimlaneField(boardId, "ASSIGNEE")
+        val result = serviceWith(repo = repo).updateBoard(boardId, name = null, swimlaneField = "ASSIGNEE")
 
         assertThat(result).isEqualTo(expectedBoard)
         verify(exactly = 1) { repo.updateSwimlaneField(boardId, SwimlaneField.ASSIGNEE) }
+        // name 미전송이므로 이름 갱신은 일어나지 않는다(부분 갱신의 정의).
+        verify(exactly = 0) { repo.updateName(any(), any()) }
     }
 
     @Test
-    fun `updateSwimlaneField EPIC 은 유효값이므로 repo 가 SwimlaneField_EPIC 으로 호출된다 (FR-EP-01 활성화)`() {
+    fun `updateBoard 의 swimlaneField EPIC 은 유효값이므로 repo 가 SwimlaneField_EPIC 으로 호출된다 (FR-EP-01)`() {
         val boardId = UUID.randomUUID()
         val expectedBoard =
             Board(
@@ -511,35 +525,41 @@ class BoardApplicationServiceTest {
                 swimlaneField = SwimlaneField.EPIC,
             )
         val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
         every { repo.updateSwimlaneField(boardId, SwimlaneField.EPIC) } returns expectedBoard
 
-        val result = serviceWith(repo = repo).updateSwimlaneField(boardId, "EPIC")
+        val result = serviceWith(repo = repo).updateBoard(boardId, name = null, swimlaneField = "EPIC")
 
         assertThat(result).isEqualTo(expectedBoard)
         verify(exactly = 1) { repo.updateSwimlaneField(boardId, SwimlaneField.EPIC) }
     }
 
     @Test
-    fun `updateSwimlaneField 알 수 없는 값 foo 는 400 을 던지고 repo 를 호출하지 않는다`() {
+    fun `updateBoard 가 알 수 없는 swimlaneField 값을 받으면 400 이고 어떤 쓰기도 하지 않는다`() {
+        val boardId = UUID.randomUUID()
         val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
 
-        assertThatThrownBy { serviceWith(repo = repo).updateSwimlaneField(UUID.randomUUID(), "foo") }
+        assertThatThrownBy { serviceWith(repo = repo).updateBoard(boardId, name = "새 이름", swimlaneField = "foo") }
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")
             .isEqualTo(400)
 
+        // 이름이 함께 왔어도 쓰기는 0건이어야 한다 — 검증이 모든 쓰기보다 앞선다(원자성).
         verify(exactly = 0) { repo.updateSwimlaneField(any(), any()) }
+        verify(exactly = 0) { repo.updateName(any(), any()) }
     }
 
     @Test
-    fun `updateSwimlaneField repo 가 null 반환하면 404 를 던진다`() {
+    fun `updateBoard 의 swimlaneField 갱신이 0행이면 BoardNotFoundException 을 던진다`() {
+        val boardId = UUID.randomUUID()
         val repo = mockk<BoardRepository>()
-        every { repo.updateSwimlaneField(any(), any()) } returns null
+        every { repo.findById(boardId) } returns activeBoard(boardId)
+        // 조회와 갱신 사이에 다른 트랜잭션이 soft-delete 한 경우 repo 가 null 을 돌려준다(TOCTOU).
+        every { repo.updateSwimlaneField(boardId, any()) } returns null
 
-        assertThatThrownBy { serviceWith(repo = repo).updateSwimlaneField(UUID.randomUUID(), "NONE") }
-            .isInstanceOf(ResponseStatusException::class.java)
-            .extracting("statusCode.value")
-            .isEqualTo(404)
+        assertThatThrownBy { serviceWith(repo = repo).updateBoard(boardId, name = null, swimlaneField = "NONE") }
+            .isInstanceOf(BoardNotFoundException::class.java)
     }
 
     @Test
@@ -576,9 +596,9 @@ class BoardApplicationServiceTest {
             .isEqualTo(404)
     }
 
-    // ── (i) updateName / softDelete (FR-BD-01-2 Task 2) ────────────────────────
+    // ── (i) updateBoard / softDelete (FR-BD-01-2 Task 2) ───────────────────────
 
-    /** updateName / softDelete 단위 테스트용 활성 보드 픽스처. */
+    /** updateBoard / softDelete 단위 테스트용 활성 보드 픽스처. */
     private fun activeBoard(boardId: UUID): Board =
         Board(
             id = boardId,
@@ -590,53 +610,79 @@ class BoardApplicationServiceTest {
         )
 
     @Test
-    fun `updateName 이 공백 이름을 IllegalArgumentException 으로 거부한다`() {
+    fun `updateBoard 가 공백 이름을 BoardNameInvalidException 으로 거부한다`() {
         val boardId = UUID.randomUUID()
         val repo = mockk<BoardRepository>()
         every { repo.findById(boardId) } returns activeBoard(boardId)
 
-        assertThatThrownBy { serviceWith(repo = repo).updateName(boardId, "   ") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+        // 이름 있는 도메인 예외여야 한다. 맨 IllegalArgumentException 이면 핸들러가 계층 전체를
+        // 400 으로 삼키게 되어(리뷰 지적 3) 내부 require 버그가 5xx 경보에서 사라진다.
+        assertThatThrownBy { serviceWith(repo = repo).updateBoard(boardId, name = "   ", swimlaneField = null) }
+            .isInstanceOf(BoardNameInvalidException::class.java)
 
         // 공백 이름이 DB 까지 내려가지 않는다 — 도메인 불변식이 쓰기보다 앞선다.
         verify(exactly = 0) { repo.updateName(any(), any()) }
     }
 
     @Test
-    fun `updateName 이 미존재 보드에 BoardNotFoundException 을 던진다`() {
+    fun `updateBoard 가 미존재 보드에 BoardNotFoundException 을 던진다`() {
         val repo = mockk<BoardRepository>()
         every { repo.findById(any()) } returns null
 
-        assertThatThrownBy { serviceWith(repo = repo).updateName(UUID.randomUUID(), "새 보드 이름") }
+        assertThatThrownBy { serviceWith(repo = repo).updateBoard(UUID.randomUUID(), "새 보드 이름", null) }
             .isInstanceOf(BoardNotFoundException::class.java)
 
         verify(exactly = 0) { repo.updateName(any(), any()) }
     }
 
     @Test
-    fun `updateName 이 유효한 이름이면 repo 갱신 결과를 그대로 반환한다`() {
+    fun `updateBoard 가 name 만 받으면 repo 갱신 결과를 그대로 반환한다`() {
         val boardId = UUID.randomUUID()
         val renamed = activeBoard(boardId).copy(name = "새 보드 이름")
         val repo = mockk<BoardRepository>()
         every { repo.findById(boardId) } returns activeBoard(boardId)
         every { repo.updateName(boardId, "새 보드 이름") } returns renamed
 
-        val result = serviceWith(repo = repo).updateName(boardId, "새 보드 이름")
+        val result = serviceWith(repo = repo).updateBoard(boardId, name = "새 보드 이름", swimlaneField = null)
 
         assertThat(result).isEqualTo(renamed)
         verify(exactly = 1) { repo.updateName(boardId, "새 보드 이름") }
+        verify(exactly = 0) { repo.updateSwimlaneField(any(), any()) }
     }
 
     @Test
-    fun `updateName 은 조회 후 갱신 전에 보드가 사라지면 BoardNotFoundException 을 던진다`() {
+    fun `updateBoard 는 조회 후 갱신 전에 보드가 사라지면 BoardNotFoundException 을 던진다`() {
         val boardId = UUID.randomUUID()
         val repo = mockk<BoardRepository>()
         every { repo.findById(boardId) } returns activeBoard(boardId)
         // 다른 트랜잭션이 그 사이에 soft-delete 한 경우 repo 가 null 을 돌려준다.
         every { repo.updateName(boardId, any()) } returns null
 
-        assertThatThrownBy { serviceWith(repo = repo).updateName(boardId, "새 보드 이름") }
+        assertThatThrownBy { serviceWith(repo = repo).updateBoard(boardId, "새 보드 이름", null) }
             .isInstanceOf(BoardNotFoundException::class.java)
+    }
+
+    /**
+     * 두 필드를 함께 받으면 한 호출 안에서 이름 → 스윔레인 순으로 쓰고 마지막 결과를 돌려준다.
+     *
+     * 두 쓰기가 한 메서드(= 한 트랜잭션) 안에 있다는 것이 원자성의 구조적 근거다.
+     * 컨트롤러가 서비스를 두 번 부르던 이전 구조에서는 이 단언이 성립할 수 없었다.
+     */
+    @Test
+    fun `updateBoard 가 두 필드를 함께 받으면 한 호출에서 이름과 스윔레인을 모두 갱신한다`() {
+        val boardId = UUID.randomUUID()
+        val renamed = activeBoard(boardId).copy(name = "새 보드 이름")
+        val both = renamed.copy(swimlaneField = SwimlaneField.ASSIGNEE)
+        val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
+        every { repo.updateName(boardId, "새 보드 이름") } returns renamed
+        every { repo.updateSwimlaneField(boardId, SwimlaneField.ASSIGNEE) } returns both
+
+        val result = serviceWith(repo = repo).updateBoard(boardId, "새 보드 이름", "ASSIGNEE")
+
+        assertThat(result).isEqualTo(both)
+        verify(exactly = 1) { repo.updateName(boardId, "새 보드 이름") }
+        verify(exactly = 1) { repo.updateSwimlaneField(boardId, SwimlaneField.ASSIGNEE) }
     }
 
     @Test
@@ -696,5 +742,39 @@ class BoardApplicationServiceTest {
         val response = BoardCardResponse.from(view)
 
         assertThat(response.rank).isNull()
+    }
+
+    // ── (j) PATCH 원자성 — 두 필드 갱신은 한 트랜잭션이다 (리뷰 지적 1) ──────────
+
+    /**
+     * 이름이 유효해도 스윔레인 값이 무효면 400 이고 `boards.name` 은 옛 값 그대로여야 한다.
+     *
+     * 이전 구조는 컨트롤러가 `updateName` → `updateSwimlaneField` 를 순차 호출했고 각각이
+     * `@Transactional` 이라 두 트랜잭션으로 갈렸다. 그래서 앞의 이름 갱신이 **커밋된 뒤** 뒤쪽이
+     * 400 을 던져, 클라이언트는 400 을 받는데 보드 이름은 이미 바뀌어 있는 상태가 남았다.
+     *
+     * 실물 DB 로 재조회해 「옛 이름」을 확인하는 것이 이 테스트의 판별자다. mock repo 로는
+     * 커밋 여부를 볼 수 없어 같은 결함이 초록으로 지나간다.
+     */
+    @Test
+    fun `updateBoard 는 swimlaneField 가 무효면 400 이고 이름을 옛 값으로 남긴다`() {
+        val saved =
+            boardRepository.insert(
+                Board(
+                    id = UUID.randomUUID(),
+                    projectKey = "ATOMIC",
+                    name = "원래 이름",
+                    columns = emptyList(),
+                    createdAt = Instant.now(),
+                    updatedAt = Instant.now(),
+                ),
+            )
+
+        assertThatThrownBy { transactionalBoardService.updateBoard(saved.id, "새 이름", "BOGUS") }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        assertThat(boardRepository.findById(saved.id)?.name).isEqualTo("원래 이름")
     }
 }

@@ -6,6 +6,7 @@ import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.repository.BoardRepository
@@ -96,6 +97,8 @@ import java.util.UUID
  * - PATCH-N3. {name:null} → 400 (present-null). 서비스 미호출.
  * - PATCH-N4. {} → 400. 최소 1필드 규칙 — 계약 완화 방지 앵커.
  * - PATCH-N5. {name, swimlaneField} 동시 전송 → 200 + 두 변경 모두 반영.
+ * - PATCH-N7. {name 유효, swimlaneField 무효} → 400 + 서비스 위임 1회(원자성 — 두 트랜잭션 분할 금지).
+ * - ERR-1. 이름 불변식과 무관한 IllegalArgumentException 하위(NumberFormatException) → 500.
  * - DEL-1. DELETE /boards/{id} → 204 + SOFT_DELETE 권한 판정 + 서비스 위임.
  * - DEL-2. DELETE SOFT_DELETE 미보유 → 403 + 서비스 미호출.
  * - DEL-3. DELETE 미존재 보드 → 404. 권한 판정에 도달하지 않는다(존재 검사가 먼저).
@@ -906,7 +909,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateSwimlaneField(board.id, "ASSIGNEE")
+            boardApplicationService.updateBoard(board.id, null, "ASSIGNEE")
         } returns updatedBoard
 
         val body = mapOf("swimlaneField" to "ASSIGNEE")
@@ -966,7 +969,7 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateSwimlaneField(board.id, "EPIC")
+            boardApplicationService.updateBoard(board.id, null, "EPIC")
         } throws ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "알 수 없는 swimlaneField")
 
         val body = mapOf("swimlaneField" to "EPIC")
@@ -984,7 +987,7 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateSwimlaneField(board.id, "foo")
+            boardApplicationService.updateBoard(board.id, null, "foo")
         } throws ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "알 수 없는 swimlaneField")
 
         val body = mapOf("swimlaneField" to "foo")
@@ -1097,7 +1100,7 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
 
-        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateBoard(any(), any(), any()) }
     }
 
     // ── WIP-E7. 미인증 → 401 ─────────────────────────────────────────────────
@@ -1203,7 +1206,7 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         val renamed = board.copy(name = "버그 보드")
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.updateName(board.id, "버그 보드") } returns renamed
+        every { boardApplicationService.updateBoard(board.id, "버그 보드", null) } returns renamed
 
         val body = mapOf("name" to "버그 보드")
 
@@ -1216,8 +1219,8 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
             .andExpect(jsonPath("$.data.name").value("버그 보드"))
 
-        // swimlaneField 는 미전송이므로 건드리지 않는다(부분 갱신의 정의).
-        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+        // swimlaneField 는 미전송이므로 null 로 전달돼 건드려지지 않는다(부분 갱신의 정의).
+        verify(exactly = 1) { boardApplicationService.updateBoard(board.id, "버그 보드", null) }
         assertThat(permissionGate.calls)
             .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
     }
@@ -1235,8 +1238,8 @@ class BoardControllerIntegrationTest {
     fun `PATCH-N2 name 이 공백뿐이면 400 이고 도메인 검증까지 도달한다`() {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.updateName(board.id, "   ") } throws
-            IllegalArgumentException("보드 이름은 비어 있을 수 없습니다.")
+        every { boardApplicationService.updateBoard(board.id, "   ", null) } throws
+            BoardNameInvalidException()
 
         val body = mapOf("name" to "   ")
 
@@ -1248,7 +1251,7 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
 
-        verify(exactly = 1) { boardApplicationService.updateName(board.id, "   ") }
+        verify(exactly = 1) { boardApplicationService.updateBoard(board.id, "   ", null) }
     }
 
     @Test
@@ -1265,7 +1268,7 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
 
-        verify(exactly = 0) { boardApplicationService.updateName(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateBoard(any(), any(), any()) }
     }
 
     /**
@@ -1287,8 +1290,7 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
 
-        verify(exactly = 0) { boardApplicationService.updateName(any(), any()) }
-        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateBoard(any(), any(), any()) }
     }
 
     @Test
@@ -1297,8 +1299,7 @@ class BoardControllerIntegrationTest {
         val renamed = board.copy(name = "버그 보드")
         val both = renamed.copy(swimlaneField = com.bts.agileplanning.domain.SwimlaneField.ASSIGNEE)
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.updateName(board.id, "버그 보드") } returns renamed
-        every { boardApplicationService.updateSwimlaneField(board.id, "ASSIGNEE") } returns both
+        every { boardApplicationService.updateBoard(board.id, "버그 보드", "ASSIGNEE") } returns both
 
         val body = mapOf("name" to "버그 보드", "swimlaneField" to "ASSIGNEE")
 
@@ -1311,8 +1312,7 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.name").value("버그 보드"))
             .andExpect(jsonPath("$.data.swimlaneField").value("ASSIGNEE"))
 
-        verify(exactly = 1) { boardApplicationService.updateName(board.id, "버그 보드") }
-        verify(exactly = 1) { boardApplicationService.updateSwimlaneField(board.id, "ASSIGNEE") }
+        verify(exactly = 1) { boardApplicationService.updateBoard(board.id, "버그 보드", "ASSIGNEE") }
     }
 
     @Test
@@ -1328,13 +1328,69 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
 
-        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateBoard(any(), any(), any()) }
+    }
+
+    /**
+     * 두 필드 동시 전송은 **서비스 한 번**으로 위임돼야 한다 — 원자성의 컨트롤러측 계약.
+     *
+     * 이전 구현은 `updateName` 을 호출해 커밋한 뒤 `updateSwimlaneField` 를 불렀고 둘 다 각자
+     * `@Transactional` 이라 두 트랜잭션으로 갈렸다. 그래서 뒤쪽이 400 을 던지면 클라이언트는 400 을
+     * 받는데 `boards.name` 은 이미 새 이름으로 바뀌어 있었다. 위임이 1회라는 이 단언이 그 분할을
+     * 금지한다 — 실제로 이름이 옛 값으로 남는지는 `BoardApplicationServiceTest` 가 실물 DB 로 확인한다.
+     */
+    @Test
+    fun `PATCH-N7 무효 swimlaneField 와 함께 온 이름 변경은 400 이고 서비스 위임은 1회다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.updateBoard(board.id, "새 이름", "BOGUS") } throws
+            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "알 수 없는 swimlaneField")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"새 이름","swimlaneField":"BOGUS"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+
+        verify(exactly = 1) { boardApplicationService.updateBoard(board.id, "새 이름", "BOGUS") }
+    }
+
+    // ── ERR-1. IllegalArgumentException 400 매핑 범위 가드 ─────────────────────
+
+    /**
+     * 보드 이름 불변식과 무관한 [IllegalArgumentException] 하위는 400 이 아니라 500 이어야 한다.
+     *
+     * 핸들러가 [IllegalArgumentException] 전체를 400 으로 매핑하면 두 컨트롤러 호출 사슬 어디에서
+     * 터지든 내부 `require`/`check` 버그가 400 으로 나가 5xx 경보에서 사라진다.
+     * [NumberFormatException] 은 그 하위 타입 중 가장 흔한 대표라 범위 축소의 판별자로 쓴다 —
+     * 이 단언이 400 으로 되돌아가면 매핑이 다시 넓어졌다는 뜻이다.
+     */
+    @Test
+    fun `ERR-1 이름 불변식과 무관한 IllegalArgumentException 하위는 500 이다`() {
+        every { boardApplicationService.listBoards("BTS") } throws
+            NumberFormatException("For input string: \"보드\"")
+
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_INTERNAL_ERROR"))
     }
 
     // ── DEL-1~4. DELETE /{id} 소프트 삭제 (FR-BD-01-2b) ───────────────────────
 
+    /**
+     * 삭제 계약은 204 · 권한코드 · 서비스 위임 세 가지다.
+     *
+     * 「목록에서 사라진다」를 이 슬라이스에서 재려던 단언은 지웠다 — 서비스가 mock 이라
+     * 직전에 세운 `listBoards → emptyList()` 를 되읽는 자기 확인이었고, 지워도 잃는 것이 없었다.
+     * 그 계약은 `BoardRepositoryTest` 의
+     * `softDelete 가 deleted_at 을 채우고 이후 findById 가 null 이다` 가 실물 DB 로 고정한다.
+     */
     @Test
-    fun `DEL-1 DELETE 는 204 이고 이후 목록에서 사라진다`() {
+    fun `DEL-1 DELETE 는 204 이고 SOFT_DELETE 권한으로 서비스에 위임한다`() {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
 
@@ -1345,15 +1401,6 @@ class BoardControllerIntegrationTest {
         // 권한코드가 CREATE 가 아니라 SOFT_DELETE 여야 한다(plan 의 의도적 편차 X3).
         assertThat(permissionGate.calls)
             .containsExactly(Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project("BTS")))
-
-        // 목록에서 사라지는 근거는 boards.deleted_at 필터다. 이 슬라이스는 서비스가 mock 이라
-        // 필터 자체는 BoardRepository 통합 테스트가 고정하고, 여기서는 삭제 뒤 목록 응답 형태만 본다.
-        every { boardApplicationService.listBoards("BTS") } returns emptyList()
-        mockMvc.perform(
-            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.length()").value(0))
     }
 
     @Test
