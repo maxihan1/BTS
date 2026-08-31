@@ -10,6 +10,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.agileplanning.web.dto.BoardCardResponse
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
@@ -51,6 +52,7 @@ import java.util.UUID
  * - (f) E8: 보드-이슈 프로젝트 정합 위반 → 거부
  * - (g) 보드 조회 시 BoardQuickFilterRepository 결과가 quickFilters 로 포함(FR-UX-01 Task 7)
  * - (h) BoardCardResponse 가 BoardIssueView.rank 를 그대로 노출(FR-UX-06 PR21 Task 1)
+ * - (i) updateName / softDelete 의 공백 이름 거부 + 미존재 보드 404 승격(FR-BD-01-2 Task 2)
  */
 @SpringBootTest(
     classes = [AgilePlanningTestBootApplication::class],
@@ -572,6 +574,89 @@ class BoardApplicationServiceTest {
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")
             .isEqualTo(404)
+    }
+
+    // ── (i) updateName / softDelete (FR-BD-01-2 Task 2) ────────────────────────
+
+    /** updateName / softDelete 단위 테스트용 활성 보드 픽스처. */
+    private fun activeBoard(boardId: UUID): Board =
+        Board(
+            id = boardId,
+            projectKey = "BDCRUD",
+            name = "기존 보드 이름",
+            columns = emptyList(),
+            createdAt = Instant.now(),
+            updatedAt = Instant.now(),
+        )
+
+    @Test
+    fun `updateName 이 공백 이름을 IllegalArgumentException 으로 거부한다`() {
+        val boardId = UUID.randomUUID()
+        val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
+
+        assertThatThrownBy { serviceWith(repo = repo).updateName(boardId, "   ") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+
+        // 공백 이름이 DB 까지 내려가지 않는다 — 도메인 불변식이 쓰기보다 앞선다.
+        verify(exactly = 0) { repo.updateName(any(), any()) }
+    }
+
+    @Test
+    fun `updateName 이 미존재 보드에 BoardNotFoundException 을 던진다`() {
+        val repo = mockk<BoardRepository>()
+        every { repo.findById(any()) } returns null
+
+        assertThatThrownBy { serviceWith(repo = repo).updateName(UUID.randomUUID(), "새 보드 이름") }
+            .isInstanceOf(BoardNotFoundException::class.java)
+
+        verify(exactly = 0) { repo.updateName(any(), any()) }
+    }
+
+    @Test
+    fun `updateName 이 유효한 이름이면 repo 갱신 결과를 그대로 반환한다`() {
+        val boardId = UUID.randomUUID()
+        val renamed = activeBoard(boardId).copy(name = "새 보드 이름")
+        val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
+        every { repo.updateName(boardId, "새 보드 이름") } returns renamed
+
+        val result = serviceWith(repo = repo).updateName(boardId, "새 보드 이름")
+
+        assertThat(result).isEqualTo(renamed)
+        verify(exactly = 1) { repo.updateName(boardId, "새 보드 이름") }
+    }
+
+    @Test
+    fun `updateName 은 조회 후 갱신 전에 보드가 사라지면 BoardNotFoundException 을 던진다`() {
+        val boardId = UUID.randomUUID()
+        val repo = mockk<BoardRepository>()
+        every { repo.findById(boardId) } returns activeBoard(boardId)
+        // 다른 트랜잭션이 그 사이에 soft-delete 한 경우 repo 가 null 을 돌려준다.
+        every { repo.updateName(boardId, any()) } returns null
+
+        assertThatThrownBy { serviceWith(repo = repo).updateName(boardId, "새 보드 이름") }
+            .isInstanceOf(BoardNotFoundException::class.java)
+    }
+
+    @Test
+    fun `softDelete 가 미존재 보드에 BoardNotFoundException 을 던진다`() {
+        val repo = mockk<BoardRepository>()
+        every { repo.softDelete(any()) } returns false
+
+        assertThatThrownBy { serviceWith(repo = repo).softDelete(UUID.randomUUID()) }
+            .isInstanceOf(BoardNotFoundException::class.java)
+    }
+
+    @Test
+    fun `softDelete 가 활성 보드를 삭제하면 예외 없이 repo softDelete 를 호출한다`() {
+        val boardId = UUID.randomUUID()
+        val repo = mockk<BoardRepository>()
+        every { repo.softDelete(boardId) } returns true
+
+        serviceWith(repo = repo).softDelete(boardId)
+
+        verify(exactly = 1) { repo.softDelete(boardId) }
     }
 
     // ── (h) BoardCardResponse.rank 노출 (FR-UX-06 PR21 Task 1) ──────────────────
