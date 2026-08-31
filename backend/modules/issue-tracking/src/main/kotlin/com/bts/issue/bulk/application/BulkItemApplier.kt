@@ -163,6 +163,25 @@ class BulkItemApplier(
      * 장부를 이 자리에서 직접 적지 않는 이유 — 정상 반환하면 [BulkItemExecutor] 가 성공 로그
      * (`bulk_op_item_succeeded`)를 찍어 FAILED 장부와 어긋난다. 실패 기록은 executor 한 곳이 맡는다.
      *
+     * ## 무엇을 발행하고 무엇을 안 하는가 (F11 · F12 · J8)
+     * - **발행한다** — [IssueTransitioned]. `cause = `[CAUSE_STATUS_MIGRATION] 을 실어 이관임을 알린다.
+     * - **기록한다** — [IssueHistoryRecorder.record] 로 `issue_change_item` 상태 변경 1건.
+     *   엔진을 건너뛴다고 감사 추적까지 끊지 않는다.
+     * - **하지 않는다** — 후처리(`plan.emitEvents`). 엔진을 안 타서 `plan` 자체가 없다.
+     *   Jira 도 이관에서 "_Perform actions_ rules won't automatically do anything" 이라 결과가 같다(J8).
+     *
+     * ## 왜 `cause` 를 실었나 — 끄는 쪽이 더 위험했다 (ceo BLOCKER C-B1)
+     * [IssueTransitioned] 소비자에 **사외 아웃바운드 웹훅**(`search-export-import` 의
+     * `WebhookDispatchWorker`)이 있다. 이관 N건은 웹훅 N건이고 **나간 웹훅은 되돌릴 수 없다.**
+     * 그렇다고 이 가지에서 발행을 끄면 같은 이벤트를 구독하는 검색 색인·보드·자동화가 옮겨간
+     * 이슈를 모른 채 남아 **DB 는 맞는데 화면이 틀린** 상태가 된다(G2). 둘 다 나쁘므로 발행은
+     * 유지하고 **표시만 실어** 거를지 말지를 소비자가 정하게 했다.
+     *
+     * ★**이 표시를 소비자가 실제로 거르는지는 이 PR 이 검증하지 못한다.** 현재
+     * `WebhookDispatchWorker` 는 `issueKey`/`projectKey`/`fromState`/`toState` 만 허용목록으로
+     * 뽑아 보내므로 `cause` 를 보지도, 그것으로 거르지도 않는다. 웹훅·알림 소비자 결선과 그 검증은
+     * **PR 7b** 다 — 표시를 두는 것과 실제로 걸러지는 것은 다르다.
+     *
      * ## 아직 열려 있는 창 (E15 · 부채 143)
      * 큐잉 → 실행 사이에 그 상태로 들어온 이슈(E12)는 워커가 실행 시점에 다시 긁어 담으므로 이관된다(F15).
      * 그러나 **이관 완료 이후** 워크플로우 정의 교체 전에 또 들어오면 이 경로는 그것을 모른다.
