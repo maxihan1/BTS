@@ -15,8 +15,11 @@ import {
   createBoard,
   moveCard,
   updateBoardSwimlane,
+  updateBoardName,
+  deleteBoard,
   type BoardCardFilterParams,
 } from './boards'
+import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 — Zod v4 RFC4122 UUID 형식 필수
@@ -783,5 +786,169 @@ describe('updateBoardSwimlane', () => {
     )
 
     await expect(updateBoardSwimlane(BOARD_ID, 'ASSIGNEE')).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// boardDetailSchema — canDelete 파싱 (FR-BD-01-2d)
+//
+// 백엔드 BoardDetailResponse.canDelete = IssuePermission.SOFT_DELETE 판정 결과.
+// 목록(BoardSummaryResponse)에는 없고 단건 조회 응답에만 실린다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardDetailSchema — canDelete 파싱 (FR-BD-01-2d)', () => {
+  it('T-BD-15a: canDelete=true 를 파싱한다', () => {
+    const result = boardDetailSchema.safeParse({ ...boardDetailFixture, canDelete: true })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.canDelete).toBe(true)
+  })
+
+  it('T-BD-15b: canDelete=false 를 파싱한다', () => {
+    const result = boardDetailSchema.safeParse({ ...boardDetailFixture, canDelete: false })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.canDelete).toBe(false)
+  })
+
+  it('T-BD-15c: canDelete 가 없어도 파싱에 성공하고 삭제 불가로 읽힌다 (fail-closed · 보드 화면이 죽지 않는다)', () => {
+    const result = boardDetailSchema.safeParse(boardDetailFixture)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.canDelete ?? false).toBe(false)
+  })
+
+  it('T-BD-15d: canDelete 가 boolean 이 아니면 파싱을 거부한다', () => {
+    const result = boardDetailSchema.safeParse({ ...boardDetailFixture, canDelete: 'yes' })
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-15e: fetchBoard 가 응답의 canDelete 를 그대로 돌려준다', async () => {
+    server.use(
+      http.get('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json({ data: { ...boardDetailFixture, canDelete: true } })
+      }),
+    )
+
+    const result = await fetchBoard(BOARD_ID)
+    expect(result.canDelete).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateBoardName — PATCH /api/v1/boards/{id} (FR-BD-01-2a)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('updateBoardName — PATCH /api/v1/boards/{id}', () => {
+  const NEW_NAME = '버그 보드'
+  const renamedMetaFixture = {
+    boardId: BOARD_ID,
+    projectKey: PROJECT_KEY,
+    name: NEW_NAME,
+    swimlaneField: 'NONE' as const,
+  }
+
+  it('T-BD-16a: PATCH 로 { name } 만 보낸다 — swimlaneField 를 함께 보내지 않는다', async () => {
+    let capturedMethod: string | null = null
+    let capturedBoardId: string | null = null
+    let capturedBody: Record<string, unknown> = {}
+
+    server.use(
+      http.patch('/api/v1/boards/:boardId', async ({ request, params }) => {
+        capturedMethod = request.method
+        capturedBoardId = params['boardId'] as string
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ data: renamedMetaFixture })
+      }),
+    )
+
+    const result = await updateBoardName(BOARD_ID, NEW_NAME)
+
+    expect(capturedMethod).toBe('PATCH')
+    expect(capturedBoardId).toBe(BOARD_ID)
+    // 부분 갱신 계약 — 이름만 바꾸려는 요청에 swimlaneField 가 섞이면 백엔드가 두 필드를 모두 갱신한다.
+    expect(Object.keys(capturedBody)).toEqual(['name'])
+    expect(capturedBody).toEqual({ name: NEW_NAME })
+    expect(result.name).toBe(NEW_NAME)
+    expect(result.boardId).toBe(BOARD_ID)
+  })
+
+  it('T-BD-16b: 404 는 ApiError(status 404) 로 온다', async () => {
+    server.use(
+      http.patch('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_BOARD_NOT_FOUND', message: '보드를 찾을 수 없습니다' },
+          { status: 404 },
+        )
+      }),
+    )
+
+    await expect(updateBoardName(BOARD_ID, NEW_NAME)).rejects.toBeInstanceOf(ApiError)
+    await expect(updateBoardName(BOARD_ID, NEW_NAME)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('T-BD-16c: 403 은 ApiError(status 403) 로 온다', async () => {
+    server.use(
+      http.patch('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_ACCESS_DENIED', message: '권한이 없습니다' },
+          { status: 403 },
+        )
+      }),
+    )
+
+    await expect(updateBoardName(BOARD_ID, NEW_NAME)).rejects.toBeInstanceOf(ApiError)
+    await expect(updateBoardName(BOARD_ID, NEW_NAME)).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deleteBoard — DELETE /api/v1/boards/{id} (FR-BD-01-2b)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('deleteBoard — DELETE /api/v1/boards/{id}', () => {
+  it('T-BD-17a: 204 No Content 를 처리한다 — 본문 없는 응답을 파싱하려 들지 않는다', async () => {
+    let capturedMethod: string | null = null
+    let capturedBoardId: string | null = null
+
+    server.use(
+      http.delete('/api/v1/boards/:boardId', ({ request, params }) => {
+        capturedMethod = request.method
+        capturedBoardId = params['boardId'] as string
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    await expect(deleteBoard(BOARD_ID)).resolves.toBeUndefined()
+    expect(capturedMethod).toBe('DELETE')
+    expect(capturedBoardId).toBe(BOARD_ID)
+  })
+
+  it('T-BD-17b: 404 는 ApiError(status 404) 로 온다', async () => {
+    server.use(
+      http.delete('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_BOARD_NOT_FOUND', message: '보드를 찾을 수 없습니다' },
+          { status: 404 },
+        )
+      }),
+    )
+
+    await expect(deleteBoard(BOARD_ID)).rejects.toBeInstanceOf(ApiError)
+    await expect(deleteBoard(BOARD_ID)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('T-BD-17c: 403 은 ApiError(status 403) 로 온다', async () => {
+    server.use(
+      http.delete('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_ACCESS_DENIED', message: '권한이 없습니다' },
+          { status: 403 },
+        )
+      }),
+    )
+
+    await expect(deleteBoard(BOARD_ID)).rejects.toBeInstanceOf(ApiError)
+    await expect(deleteBoard(BOARD_ID)).rejects.toMatchObject({ status: 403 })
   })
 })
