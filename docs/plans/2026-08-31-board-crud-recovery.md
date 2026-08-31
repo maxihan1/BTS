@@ -527,6 +527,26 @@ MSW 핸들러도 같은 Task 에서 추가한다.
   `DropdownMenuSeparator` + `DropdownMenuItem`(「보드 만들기」, `canCreate` 일 때만)
 - 「보드 만들기」 → 다이얼로그로 기존 `CreateBoardForm` **재사용**. 신규 폼을 만들지 않는다
 
+**★ Task 5 가 넘긴 concern 2건 (이 task 가 닫는다).**
+
+**C1 — 생성 다이얼로그가 「보드가 없습니다」를 띄운다 (시각 결함 · 실물 재현됨).**
+`CreateBoardForm` 이 빈 상태 전용 인트로 2줄을 본문에 갖고 있다
+(`CreateBoardForm.tsx:94-97` — 「보드가 없습니다」 / 「이 프로젝트에 보드를 만들어…」).
+Task 5 가 그 폼을 「새 보드」 다이얼로그에 재사용하면서, **보드가 있는 상태에서 열면 뒤에 칸반이
+그려진 채 「보드가 없습니다」가 뜬다.** 라이트·다크 양쪽에서 재현됐다.
+→ 처방은 **선택적 prop 1개**(`showEmptyStateIntro?: boolean`, **기본 `true`**)를 더해 다이얼로그에서만 끄는 것이다.
+기본값을 `true` 로 두어 기존 소비처(빈 상태 경로)는 **diff 0** 으로 유지한다.
+
+**C2 — `BoardPage` 줄수 래칫이 엄격 일치다.**
+`apps/web/src/test/lint-ratchet-baseline.ts:47` 이
+`"src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 372` 로 동결돼 있고,
+그 파일 헤더가 **「늘린 것뿐 아니라 줄이고 여기를 안 낮춘 것도 red」** 라고 못박은 **엄격 일치** 래칫이다.
+Task 5 는 `canCreate` 를 prop 으로 내리지 않고 드롭다운이 `useProjectPermissions` 를 직접 부르게 해
+372 를 유지했으나, **이 task 가 `⋯` 메뉴를 `BoardPage` 본문에 한 줄이라도 더하면 즉시 red 다.**
+→ 늘어난 실측값으로 baseline 을 **함께 갱신**한다. 줄이는 데 성공하면 그때도 낮춰 적는다.
+⚠️ **값을 손대기 전에 red 를 한 번 본다** — 래칫이 실제로 무는지 확인하지 않고 숫자만 맞추면
+그 래칫은 그 뒤로 아무것도 지키지 않는다.
+
 **REFACTOR**. 라벨은 `i18n/board-labels.ts` 에. 하드코딩 금지.
 
 **검증**.
@@ -539,7 +559,7 @@ MSW 핸들러도 같은 Task 에서 추가한다.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/hooks/use-boards.ts`, `apps/web/src/hooks/use-boards.test.tsx`]
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/hooks/use-boards.ts`, `apps/web/src/hooks/use-boards.test.tsx`, `apps/web/src/components/board/CreateBoardForm.tsx`, `apps/web/src/test/lint-ratchet-baseline.ts`]
 - depends-on: [5]
 - jira: [J3, J4, J5]
 
