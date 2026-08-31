@@ -23,6 +23,7 @@ import com.bts.issue.repository.IssueRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Instant
 
 /**
@@ -56,6 +57,7 @@ import java.time.Instant
  *   nullable 기본값은 「불명 = 허용」이다. Spring 의 Kotlin optional 파라미터 해석은 해결하지 못한
  *   인자를 **부팅 실패가 아니라 생략**으로 처리하므로, 결선이 끊겨도 아무도 모른 채 fail-open 이 된다.
  *   실제로 이 PR 의 통합 컨텍스트 3곳이 가드를 생략한 채 이관을 돌렸다. 불명은 **거부**가 기본이다.
+ * @param clock 이벤트 `occurredAt` 의 시각원.
  */
 @Component
 class BulkItemApplier(
@@ -67,6 +69,7 @@ class BulkItemApplier(
     // STATUS_MIGRATION 은 issueService 쓰기 초크포인트를 우회하므로 이 가지가 직접 가드를 부른다.
     // Edit/Transition 가지는 issueService 안에서 이미 통과하므로 여기서 중복 호출하지 않는다.
     private val projectArchiveGuard: ProjectArchiveGuard,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
      * 이슈 변경과 SUCCEEDED 상태 기록을 단일 REQUIRES_NEW 트랜잭션으로 수행한다.

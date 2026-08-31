@@ -38,7 +38,9 @@ import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -86,6 +88,11 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val archiveGuard = mockk<ProjectArchiveGuard>()
     val eventPublisher = mockk<IssueEventPublisher>()
     val historyRecorder = mockk<IssueHistoryRecorder>()
+    /**
+     * 고정 시각원. 이벤트 `occurredAt` 이 **주입 시각원**을 쓰는지 보려면 시각이 고정돼야 한다.
+     * `Instant.now()` 직접 호출은 주입을 우회하므로 벽시계와 이 값이 갈린다.
+     */
+    val fixedInstant: Instant = Instant.parse("2026-08-27T09:30:00Z")
     val sut =
         BulkItemApplier(
             issueService,
@@ -94,6 +101,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             eventPublisher,
             historyRecorder,
             archiveGuard,
+            Clock.fixed(fixedInstant, ZoneOffset.UTC),
         )
 
     val actor = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
@@ -421,6 +429,10 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             event.fromState shouldBe "in_review"
             event.toState shouldBe "in_progress"
             event.actorId shouldBe actor
+            // occurredAt 은 주입 시각원에서 나온다 (게이트 2 리뷰 ⑨). `Instant.now()` 직접 호출은
+            // 형제 발행부(IssueApplicationService.transitionIssue 의 `Instant.now(clock)`)와 어긋나
+            // 같은 트랜잭션이 만든 이벤트들의 시각이 갈린다.
+            event.occurredAt shouldBe fixedInstant
 
             // 비-공허 짝 — 매핑에 없어 실패한 건은 발행되지 않는다. 「무조건 발행」 구현을 배제한다.
             every { issueService.findByKey(actor, blockedKey) } returns
