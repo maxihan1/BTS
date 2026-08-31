@@ -485,3 +485,65 @@ describe('classify — 「전환」은 도메인 구절로만 잡는다 (Transit
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// Task 8 — 부정 문맥을 신호로 친다 (이 PR 이 실물로 밟았다)
+// ─────────────────────────────────────────────────────────
+
+describe('classify — 부정 꼬리는 migration 신호가 아니다 (Task 8)', () => {
+  // 이 PR 의 plan 메타 한 줄(「마이그레이션 0 · 신규 의존성 0 …」)이 `type=migration` ·
+  // `agent=db-engineer` 를 냈다. 「마이그레이션 0(건)」·「마이그레이션 없음」은 이 저장소의
+  // 커밋 메시지와 plan 메타에 **반복 등장하는 상용 표현**이라 재발이 확실하다.
+  // ★비용은 dispatch 다. 마이그레이션이 **아니라고 명시한** 작업이 db-engineer 로 간다 —
+  //   그 에이전트는 스키마를 건드리지 않는 작업 앞에서 할 일이 없다.
+  // ★`tier` 는 여기서 다루지 않는다. `type` 은 제목에서, `tier` 는 변경 경로에서 나오는
+  //   **독립 축**이라(`classify` 의 `input.tier ?? DEFAULT_TIER`) `migration`+`T1` 은 설계된 조합이다.
+
+  test('「마이그레이션 0」은 migration 이 아니다', () => {
+    for (const title of [
+      '마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0 · BC 1개(agile-planning)',
+      'FR 불변 143 · 백엔드 0줄 · 마이그레이션 0건',
+    ]) {
+      assert.notEqual(classify({ title }).type, 'migration', title);
+      assert.notEqual(classify({ title }).agent, 'db-engineer', title);
+    }
+  });
+
+  test('「마이그레이션 없음」은 migration 이 아니다', () => {
+    const title = 'D3 데이터 모델 — 마이그레이션 없음 확정';
+    assert.notEqual(classify({ title }).type, 'migration');
+    assert.notEqual(classify({ title }).agent, 'db-engineer');
+  });
+
+  test('「마이그레이션 없이」는 migration 이 아니다', () => {
+    assert.notEqual(classify({ title: '마이그레이션 없이 보드 CRUD 복구' }).type, 'migration');
+  });
+
+  // ★부정 꼬리 목록의 **나머지 항목**도 각각 단언을 가진다 — 한 항목을 지우면 대응 단언
+  //   하나가 red 여야 목록이 항목별로 비-공허하다(`BOUNDARY_ONLY` 와 같은 규율).
+  test('「마이그레이션 없다」·「마이그레이션 불필요」도 migration 이 아니다', () => {
+    for (const title of [
+      '보드 삭제는 마이그레이션 없다',
+      '마이그레이션 불필요 — V500 이 이미 보유',
+    ]) {
+      assert.notEqual(classify({ title }).type, 'migration', title);
+    }
+  });
+
+  // ★★회귀 앵커. 부정 제외가 **긍정까지 삼키면** 진짜 스키마 작업이 db-engineer 를 잃는다 —
+  //   신호 유실이 아니라 조용한 오배정이다(migration 은 primary_bc 도 null 로 떨군다).
+  test('「Flyway 마이그레이션 추가」는 여전히 migration 이다', () => {
+    for (const title of ['Flyway 마이그레이션 추가', 'DB 마이그레이션 — 코멘트 인덱스']) {
+      assert.equal(classify({ title }).type, 'migration', title);
+      assert.equal(classify({ title }).agent, 'db-engineer', title);
+    }
+  });
+
+  // ★★경로 축 회귀 앵커. 부정 검사는 **키워드 축에만** 건다 — 경로에는 문맥이 없어
+  //   부정할 대상이 없고, 파일명이 존재한다는 것은 추측이 아니라 사실이다.
+  test('「V500__boards.sql」 경로는 여전히 migration 이다', () => {
+    assert.equal(classify({ title: 'V500__boards.sql 컬럼 추가' }).type, 'migration');
+    // 같은 제목 안에 부정 꼬리가 있어도 경로 축은 흔들리지 않는다.
+    assert.equal(classify({ title: 'V500__boards.sql — 다른 마이그레이션 없음' }).type, 'migration');
+  });
+});
