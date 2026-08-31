@@ -21,16 +21,39 @@ import org.springframework.stereotype.Component
  * HTTP SecurityContext 없이 DB에 저장된 actorId 로 행위자를 복원하여 이슈 변경을 처리한다.
  *
  * ### 처리 흐름
+ * 0. **[BulkOperationType.STATUS_MIGRATION] 이면 항목을 지금 적재한다**
+ *    ([BulkOperationRepository.materializeStatusMigrationItems]). 이 타입만 항목 생성 시점이 다르며
+ *    사유는 아래 §「이 타입만 항목 생성 시점이 다르다」. 실행 시점 대상이 [BULK_OPERATION_MAX_SIZE] 를
+ *    넘으면 여기서 작업을 FAILED 로 끝내고 **나머지 단계를 밟지 않는다** (E4 — 조용히 자르지 않는다)
  * 1. [BulkOperationRepository.findById] + [BulkOperationRepository.findItemsByOperationId] 로 작업·항목 로드
  * 2. 이미 종단(SUCCEEDED/FAILED) 항목은 멱등 스킵
  * 3. 항목을 [BULK_OPERATION_CHUNK_SIZE] 단위 청크로 나눠 처리
  * 4. 각 항목에 대해 [IssueApplicationService.findByKey] → version 추출 → payload 적용
  *    - [BulkOperationPayload.Edit] → [IssueApplicationService.updateIssue]
  *    - [BulkOperationPayload.Transition] → [IssueApplicationService.transitionIssue]
+ *    - [BulkOperationPayload.StatusMigration] → 엔진을 우회한 직접 재작성 ([BulkItemApplier] KDoc 이 정본)
  * 5. 이슈 변경과 항목 상태 기록([BulkOperationRepository.updateItemResult])을 같은 트랜잭션에서 수행
  *    — C1 부분실패 창 제거(이슈 변경 커밋 후 항목 상태 기록 전 크래시로 PENDING 잔존 방지)
  * 6. 예외 발생 시 [FailureReasonCode] 로 매핑하여 FAILED 기록, 나머지 항목은 계속 처리(best-effort)
  * 7. 모든 항목 처리 완료 후 [BulkOperationRepository.recomputeAndPersistCounts] 로 카운트 재집계
+ * 8. 이관이 **실패 항목을 남긴 채** 끝났으면 로그로 드러낸다 (F20 — 조용한 실패 금지)
+ *
+ * ### ★이 타입만 항목 생성 시점이 다르다 (F15)
+ * [BulkOperationType.BULK_EDIT] · [BulkOperationType.BULK_TRANSITION] 은 접수 시점에 호출자가 이슈 키를
+ * 직접 주므로 항목이 그때 박힌다. [BulkOperationType.STATUS_MIGRATION] 의 대상은 **상태와 프로젝트
+ * 범위로만 기술**되고, 그 조건을 만족하는 이슈 집합은 시간에 따라 변한다.
+ *
+ * 큐잉 시점에 그 집합을 굳히면 큐잉 → 실행 사이에 그 상태로 들어온 이슈를 통째로 버린다. 버려진
+ * 이슈들은 워크플로우 정의가 교체된 뒤 **사라진 상태를 가리키는 유령**이 되는데 작업은 `COMPLETED`
+ * 로 보인다. 장부 `TODOS.md` 부채 143(이관 판정과 교체 사이 TOCTOU)의 처방 문구가 정확히 그것이다 —
+ * 「**세고 나서 옮긴다가 아니라 옮기면서 센다**」. 그래서 이 클래스가 0단계를 갖는다.
+ *
+ * ### 닫힌 창과 남은 창 — 구분해서 적는다
+ * - **닫혔다** — 큐잉 → claim 사이의 유입(E12). 0단계가 claim 뒤에 다시 긁으므로 그때까지 들어온
+ *   것이 전부 대상이 된다. 부채 143 의 절반이 여기서 닫힌다.
+ * - **남았다** — **이관 완료 → 정의 교체** 사이의 유입(E15). 이 경로는 그것을 모른다. 발행 경로가
+ *   「이관 → 재확인 → 교체」 루프를 돌아야 닫히고 그 루프는 project-workflow 소관이라 **PR 7b** 다.
+ *   반쪽임을 숨기지 않는다 — 숨기면 다음 사람이 「이미 닫힌 창」으로 읽는다.
  *
  * ### best-effort 예외 → FailureReasonCode 매핑
  * - [IssueNotFoundException] → [FailureReasonCode.NOT_FOUND]
@@ -119,17 +142,18 @@ class BulkOperationProcessor(
         if (payload !is BulkOperationPayload.StatusMigration) return true
 
         val targetCount = bulkRepo.materializeStatusMigrationItems(operation.id, payload)
-        if (targetCount <= BULK_OPERATION_MAX_SIZE) return true
-
-        bulkRepo.markFailed(operation.id)
-        log.error(
-            "status_migration_over_limit id={} targetCount={} maxSize={} reason={}",
-            operation.id.value,
-            targetCount,
-            BULK_OPERATION_MAX_SIZE,
-            OVER_LIMIT_FAILURE_REASON,
-        )
-        return false
+        val overLimit = targetCount > BULK_OPERATION_MAX_SIZE
+        if (overLimit) {
+            bulkRepo.markFailed(operation.id)
+            log.error(
+                "status_migration_over_limit id={} targetCount={} maxSize={} reason={}",
+                operation.id.value,
+                targetCount,
+                BULK_OPERATION_MAX_SIZE,
+                OVER_LIMIT_FAILURE_REASON,
+            )
+        }
+        return !overLimit
     }
 
     /**
@@ -144,8 +168,8 @@ class BulkOperationProcessor(
      */
     private fun reportStatusMigrationFailures(operation: BulkOperation) {
         if (operation.type != BulkOperationType.STATUS_MIGRATION) return
-        val settled = bulkRepo.findById(operation.id) ?: return
-        if (settled.failedCount == 0) return
+        val settled = bulkRepo.findById(operation.id)
+        if (settled == null || settled.failedCount == 0) return
 
         log.warn(
             "status_migration_items_failed id={} total={} succeeded={} failed={}",
