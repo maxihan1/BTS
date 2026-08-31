@@ -595,6 +595,22 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(reason).containsIgnoringCase("retry")
         assertThat(reason).contains("${BULK_OPERATION_MAX_SIZE + 1}")
         assertThat(reason).contains("$BULK_OPERATION_MAX_SIZE")
+
+        // ★0건 갈래를 여기서 못박는다. 위 네 단언은 두 갈래의 공통 꼬리라
+        // `overLimitFailureReason` 의 분기를 통째로 지워도 통과한다 — M10 이 부분 이관 쪽만
+        // 지키므로 이것이 없으면 spec 완료 기준 12 의 「두 갈래를 각각 잰다」가 절반만 참이 된다.
+        assertThat(reason)
+            .describedAs("한 건도 안 옮겼으면 사유가 그렇게 말해야 한다 — 부분 이관 문구가 나가면 거짓이다")
+            .containsIgnoringCase("nothing was migrated")
+        assertThat(reason)
+            .describedAs("정산값이 0 임을 사유가 드러내야 한다 (M10 의 migrated=2 와 짝)")
+            .contains("migrated=0")
+        assertThat(reason)
+            .describedAs("남은 PENDING 이 0 임을 사유가 드러내야 한다 (M10 의 leftPending=1 과 짝)")
+            .contains("leftPending=0")
+        assertThat(reason)
+            .describedAs("0건 이관에 부분 이관 문구가 섞이면 안 된다")
+            .doesNotContain("already migrated")
     }
 
     // ── M5. 적재 도중 재시작해도 중복이 없다 ───────────────────────────────────
