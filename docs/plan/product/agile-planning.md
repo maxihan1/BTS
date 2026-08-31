@@ -53,6 +53,29 @@
 - [x] D2. 명세 — 컬럼=상태 매핑 (책임. backend-engineer)
 - [x] D3. 데이터 모델 — `boards`, `board_columns(state_key)` (책임. db-engineer)
 - [x] D4. 백엔드 — `GET /api/v1/boards/{id}` + 보드 CRUD + 카드 이동(전환 위임) API (책임. backend-engineer)
+
+> **★ D4 서술 정정 (2026-08-31 · PR 「보드 CRUD 회수」).**
+> 위 D4 의 「보드 CRUD」는 **생성(C)·조회(R) 만 덮고 있었다.** 갱신(U)·삭제(D)는 없었는데
+> 「CRUD」라는 한 단어가 그 부재를 가려 `[x]` 로 닫혀 있었다. 이번 PR 이 그 U·D 를 만든다 —
+> `PATCH /api/v1/boards/{id}` 를 부분 갱신으로 확장(`JsonNullable` 3-state)하고
+> `DELETE /api/v1/boards/{id}` 를 소프트 삭제로 신설했다.
+> **신규 FR 이 아니다 · FR 총수 불변 143** (PR #175 「범위 확장이나 FR 총수 불변」 선례와 동형).
+> 프론트 쪽으로는 보드 스위처 상시 노출(보드 1개여도 렌더) · 「새 보드」 진입점 ·
+> 보드 `⋯` 메뉴(이름 변경 · 삭제)가 함께 들어갔다.
+>
+> **deviation 2건 (명시 기록).**
+> - **D-1 삭제 권한.** Jira 는 Board admin 또는 Project admin 이다. BTS 에는 per-board 관리자
+>   개념이 없고 도입하려면 `created_by` 마이그레이션 + shared-kernel 포트라 **T3 승격**이 된다.
+>   1단계는 `IssuePermission.SOFT_DELETE` 로 근사한다.
+>   ⚠️ **같은 BC 안에 비대칭이 생긴다** — `SprintApplicationService.softDelete` 는 `CREATE` 를 쓴다.
+>   보드만 한 단계 높은 이유는 「보드 = 여러 사람이 공유하는 뷰」이기 때문이다.
+>   보드 관리자 모델이 들어올 때 스프린트 쪽과 함께 재정렬한다.
+> - **D-2 삭제 위치.** Jira 는 Boards 디렉터리 행의 `⋯` 에서 지운다. BTS 는 디렉터리 화면이 없어
+>   보드 헤더의 `⋯` 메뉴에 뒀다.
+>
+> **삭제 판정은 fail-closed 다.** 응답의 `canDelete` 가 Zod `.optional()` 이라 `undefined` 가 올 수
+> 있고, 프론트는 **`=== true` 일 때만** 삭제 항목을 렌더한다. 권한 미보유 시 항목은 비활성이 아니라
+> **DOM 에서 빠진다**.
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
 - [x] D6. 프론트 UI — @dnd-kit 컬럼/카드 (책임. frontend-engineer) (PR #169)
 - [x] D7. E2E + NFR (책임. qa-engineer) (PR #169)
