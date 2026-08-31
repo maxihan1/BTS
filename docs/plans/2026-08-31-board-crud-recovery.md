@@ -331,6 +331,203 @@ BC 를 넘고 보안 표면을 건드린다. 보드 응답에 실으면 **한 PR
 gap 4항목(누락 요구사항 · 모호 표현 · 가정 누락 · 엣지 미커버) 중 **엣지 미커버 1건**을
 `ConfirmDialog` 계약 변경으로 발견해 **1회 보강**했다. Maxi 결정이 필요한 항목은 없다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**Jira 매핑 (§1-7 차집합 0).**
+`J1→T5 · J2→T5 · J3→T1·T2·T3·T6 · J4→T1·T2·T3·T6 · J5→T3·T6 · J6 범위 밖(BC 격리상 project_key 문자열 고정 + AQL·search BC 결선 — 패리티 포기 후보)`
+
+### Task 1. BoardRepository — updateName · softDelete
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/repository/BoardRepositoryTest.kt`]
+- depends-on: []
+- jira: [J3, J4]
+
+**RED**. `BoardRepositoryTest` 에 추가한다.
+- `updateName 이 이름을 갱신하고 updated_at 을 올린다`
+- `updateName 이 soft-deleted 보드에는 null 을 반환한다`
+- `softDelete 가 deleted_at 을 채우고 이후 findById 가 null 이다`
+- `softDelete 가 이미 삭제된 보드에 false 를 반환한다`
+- 실패 예상. `updateName` / `softDelete` 미존재 컴파일 실패
+
+**GREEN**. `updateSwimlaneField`(**실측 `:149-166`**)를 **그대로 미러링**한다 —
+`.and(BOARDS.DELETED_AT.isNull)` 조건과 `affected == 0 → null` 관례를 동일하게.
+`softDelete` 는 `Boolean` 반환.
+
+**REFACTOR**. KDoc — soft-deleted 제외 조건을 명시.
+
+**검증**. `./gradlew :modules:agile-planning:test --tests '*BoardRepositoryTest'`
+
+### Task 2. BoardApplicationService — updateName · softDelete + 권한
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`]
+- depends-on: [1]
+- jira: [J3, J4]
+
+**RED**.
+- `updateName 이 공백 이름을 IllegalArgumentException 으로 거부한다`
+- `updateName 이 미존재 보드에 BoardNotFoundException 을 던진다`
+- `softDelete 가 미존재 보드에 BoardNotFoundException 을 던진다`
+
+**GREEN**. `SprintApplicationService.update` 의 3-state 머지 구조를 참고하되 보드는 OCC(version)가
+없으므로 단순 머지. **권한 판정은 컨트롤러가 담당**한다 — 보드의 기존 구조가 그렇다
+(`loadBoardWithCreate` 가 컨트롤러 private helper 다). 스프린트와 배치가 다르니 옮기지 않는다.
+
+**REFACTOR**. KDoc — `@throws` 전수.
+
+**검증**. `./gradlew :modules:agile-planning:test --tests '*BoardApplicationServiceTest'`
+
+### Task 3. BoardController — PATCH 부분 갱신 + DELETE + 권한 게이트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardRequests.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- depends-on: [2]
+- jira: [J3, J4, J5]
+
+**RED**. `BoardControllerIntegrationTest` — **기존 400 승계를 먼저 고정**한다.
+- `PATCH {} 는 400 이다` ← 🛑 **계약 완화 방지 앵커. 이 테스트를 가장 먼저 쓴다**
+- `PATCH {"name":"버그 보드"} 는 swimlaneField 없이 200 이다`
+- `PATCH {"name":"   "} 는 400 이다`
+- `PATCH {"name":null} 은 400 이다` ← present-null 경로
+- `PATCH {"swimlaneField":"ASSIGNEE"} 는 기존대로 200 이다` ← 회귀 앵커
+- `PATCH {"swimlaneField":null} 은 400 이다` ← 기존 동작 유지
+- `PATCH {"swimlaneField":"foo"} 는 400 이다` ← 기존 동작 유지
+- `DELETE 는 204 이고 이후 GET 목록에서 사라진다`
+- `DELETE 는 SOFT_DELETE 미보유 시 403 이다`
+- `DELETE 는 미존재 보드에 404 이다`
+- `DELETE 는 미인증 시 401 이며 보드 존재 여부를 노출하지 않는다`
+- `GET /{id} 응답의 canDelete 가 SOFT_DELETE 보유자에게 true, 미보유자에게 false 다`
+
+**GREEN**.
+- **현재 상태 실측** — `PATCH /{id}` 는 `BoardController.kt:222` 에 이미 있고
+  `UpdateBoardSwimlaneRequest` 를 받아 `request.swimlaneField ?: throw ResponseStatusException(BAD_REQUEST)`
+  로 null 을 막는다. 이것을 부분 갱신으로 확장한다.
+- `UpdateBoardSwimlaneRequest` → `UpdateBoardRequest(name: JsonNullable<String>, swimlaneField: JsonNullable<String>)`.
+  선례 실측 — `web/dto/SprintRequests.kt:52-58` 의 `UpdateSprintRequest` 가 같은 3-state 를 쓰고
+  `JacksonNullableConfiguration.kt` 가 `JsonNullableModule` 을 Bean 으로 이미 등록해 뒀다.
+- `@field:NotBlank` 제거 — 대신 컨트롤러에서 **둘 다 absent 면 400**
+- ⚠️ **`JsonNullable` present-null 주의.** `name.isPresent && name.get().isNullOrBlank()` → 400.
+  presence 만 보고 통과시키면 `{"name":null}` 이 NPE 로 **500** 이 된다
+  (메모리 `decorative-annotation-copied-from-sibling` — **복사 전에 red 를 본다**)
+- `DELETE` 는 새 private helper `loadBoardWithSoftDelete(id)` — 기존 `loadBoardWithCreate` 와 동형.
+  **순서 고정** actor(401) → 존재(404) → 권한(403). 뒤집으면 403/404 의미가 바뀌고 로컬은 항상
+  허용이라 안 보인다 (메모리 `permission-assert-before-existence-makes-403-lie`)
+- `BoardDetailResponse` 에 `canDelete: Boolean` 추가. `getBoard` 핸들러가
+  `permissionResolver.hasPermission(actor, SOFT_DELETE, IssueScope.Project(board.projectKey))` 를 전달.
+  **`BoardSummaryResponse`(목록)에는 넣지 않는다** — `⋯` 메뉴는 현재 보드에만 붙는다
+
+**REFACTOR**. 컨트롤러 클래스 KDoc 의 엔드포인트 목록에 DELETE 추가 + 권한 표기 갱신.
+
+**검증**. `./gradlew :modules:agile-planning:test --tests '*BoardControllerIntegrationTest'`
+
+### Task 4. 프론트 API · 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/boards.ts`, `apps/web/src/hooks/use-boards.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/board-fixtures.ts`, `apps/web/src/api/boards.test.ts`]
+- depends-on: [3]
+- jira: [J3, J4]
+
+**RED**. `boards.test.ts` —
+- `updateBoardName 이 PATCH 로 {name} 만 보낸다`
+- `deleteBoard 가 204 를 처리한다`
+- `404·403 이 ApiError 로 온다`
+- `BoardDetail Zod 스키마가 canDelete 를 파싱한다`
+
+⚠️ `canDelete` 를 Zod 에 **필수**로 넣으면 백엔드가 안 보낼 때 파싱이 통째로 실패해 보드 화면이
+죽는다. Task 3 과 같은 PR 이라 순서 문제는 없지만 **MSW fixture 에도 같은 Task 에서** 필드를
+추가해야 한다 (learnings 2026-05-30 「Zod 응답 스키마 강화가 산재한 인라인 mock 을 깬다」).
+
+**GREEN**. **실측 정정** — 미러링 대상 함수명은 `updateSwimlane` 이 아니라
+**`updateBoardSwimlane`(`api/boards.ts:409`)** 이다. 훅은 그 mutation 패턴을 따른다.
+**성공 시 `boardKeys` invalidate-only** — `setQueryData` 금지 (NFR ·
+learnings 2026-05-30 「메타 mutation setQueryData 부분응답이 본문을 placeholder 로 덮는 플리커」).
+MSW 핸들러도 같은 Task 에서 추가한다.
+
+**검증**. `pnpm --filter web test -- boards`
+
+### Task 5. 보드 스위처 — 상시 노출 + DropdownMenu 교체 + 「보드 만들기」
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/src/i18n/board-labels.ts`]
+- depends-on: [4]
+- jira: [J1, J2]
+
+**RED (동반 테스트)**. `projects.board.test.tsx` — **`:383` · `:513` · `:535` 를 재작성**한다.
+- 보드 1개여도 스위처가 렌더된다 ← 신규
+- 스위처를 열면 보드 목록이 `role="menuitemradio"` 로 나온다
+- 항목을 고르면 `navigate` 가 `?board=<id>` 로 호출된다 ← `:535` 의 조건부 후퇴를 제거하고 무조건 단언
+- `canCreate=false` 면 「보드 만들기」 항목이 **DOM 에 없다** (`queryBy...toBeNull`)
+
+🛑 **즉사 계약 봉합 (§5 사전 grep 결과 — 이 Task 범위)**.
+`:383` · `:513` · `:535` 세 곳이 전부 `expect(screen.getByRole('combobox')).toBeInTheDocument()` 이다.
+`getByRole` 은 **단수형**이라 화면에 combobox 가 2개 이상이면 다중 매치로 즉사한다.
+스위처를 `>= 1` 로 완화하면 보드 1개 픽스처에서도 스위처가 렌더되므로,
+**그 3곳이 지금 무엇을 세고 있었는지 먼저 확인하고 이름 있는 셀렉터로 좁힌다.**
+
+**GREEN**.
+- **실측 좌표** — `boards.length >= 2` 조건은 `:518` 이다(선행 플랜의 `:520` 은 어긋난다).
+  이것을 `>= 1` 로 바꾼다. 빈 상태 분기 `:498` 은 건드리지 않는다
+- `BoardSelectorDropdown` 을 `components/ui/dropdown-menu.tsx` 로 교체 —
+  `DropdownMenuTrigger`(현재 보드 이름) + `DropdownMenuRadioGroup`(보드 목록) +
+  `DropdownMenuSeparator` + `DropdownMenuItem`(「보드 만들기」, `canCreate` 일 때만)
+- 「보드 만들기」 → 다이얼로그로 기존 `CreateBoardForm` **재사용**. 신규 폼을 만들지 않는다
+
+**REFACTOR**. 라벨은 `i18n/board-labels.ts` 에. 하드코딩 금지.
+
+**검증**.
+- 기존 E2E 전수(실측 확인 7개) — `board-kanban.spec.ts` · `board-filter.spec.ts` ·
+  `board-reorder.spec.ts` · `board-wip-swimlane.spec.ts` · `board-swimlane-field-change.spec.ts` ·
+  `board-epic-swimlane.spec.ts` · `quick-filter.spec.ts`
+- 눈확인. 보드 **1개 / 2개** 상태의 스위처 — 라이트·다크 양쪽
+
+### Task 6. 보드 `⋯` 메뉴 — 이름 변경 · 삭제 + E2E
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/src/i18n/board-labels.ts`]
+- depends-on: [5]
+- jira: [J3, J4, J5]
+
+**RED (동반 테스트)**.
+- 유닛. `canCreate=false` → 「이름 변경」 부재 · `canDelete=false` → 「보드 삭제」 부재 (**disabled 아님**)
+- 유닛. 삭제 확인 후 `deleteBoard` 호출 + 남은 보드로 navigate (E2)
+- 유닛 **S7**. 삭제가 403/404 로 실패하면 **다이얼로그가 열린 채** `error` 가 창 안에 뜬다
+- 유닛 **E7**. `confirming` 중에는 취소·Esc·오버레이로 창이 닫히지 않는다
+- E2E 신규 `board-manage.spec.ts`. S1 두번째 보드 생성 → S2 전환 → S3 이름변경 → S4 삭제 →
+  S5 빈 상태 복귀
+
+**GREEN**.
+- 보드 이름 옆 `⋯` — `DropdownMenu` 재사용. 항목 2개, **권한별 조건부 렌더**(disabled 아님)
+- 삭제 확인 = `components/ui/confirm-dialog.tsx` 재사용.
+  ★ **PR #410 계약으로 사용법이 바뀌었다 — 선행 플랜의 옛 사용법을 쓰지 않는다.**
+  - `open` / `onOpenChange` 로 **소비자가 상태를 쥔다**
+  - **`onConfirm` 이 창을 닫지 않는다.** 소비자가 **성공했을 때만** `onOpenChange(false)` 를 부른다
+  - `confirming` 을 mutation `isPending` 에 물린다 — 확인 버튼만이 아니라
+    **취소·Esc·오버레이·X 까지 전부 잠긴다**. 실패가 갈 곳을 구조적으로 보장하기 위해서다
+  - 실패 사유는 `error` prop 으로 **창 안에** 싣는다. 소비자 화면의 배너는 모달 오버레이가 가린다
+  - `title="보드 삭제"` — **화면 내 고유**여야 한다. 중복이면 Playwright
+    `getByRole('dialog', { name })` 가 strict mode 로 즉사한다
+  - `description` 에 **"이슈는 삭제되지 않습니다"** · `destructive`
+- 삭제 노출 판정 = `boardDetail.canDelete` (Task 3 이 추가한 필드). 이름 변경 노출 = 기존 `canCreate`.
+  **`useProjectPermissions` 는 손대지 않는다** — BC 경계 무접촉
+
+**검증**.
+- `pnpm --filter web test` · `pnpm --filter web test:e2e`
+- 눈확인. `⋯` 메뉴 열림 · 삭제 확인 다이얼로그 · **삭제 실패 상태(창 안 error)** — 라이트·다크
+
+## Plan 메타
+
+- **task 수** 6 · **예상 wave** 6 (T1→T2→T3→T4→T5→T6 전부 직렬 — `depends-on` 이 사슬이고
+  T5·T6 이 `board.tsx`·`projects.board.test.tsx`·`board-labels.ts` 를 공유해 파일 겹침으로도 직렬화된다)
+- **구현 규율** TDD red-first (T2). `test:` 커밋 → `feat:` 커밋 순서가 로그에서 대조된다.
+  T5·T6 은 ui 시각 검증 트랙이라 RED 라벨을 「동반 테스트」 명세로 읽는다 — red-first 순서 강제 없음
+- **추가 검증** typecheck · ktlint · detekt · vitest · playwright
+- **마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0 · BC 1개(agile-planning)**
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
