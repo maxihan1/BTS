@@ -52,6 +52,26 @@ const MIGRATION_PATH_PATTERNS = [
   /V\d+__/,
 ];
 
+/**
+ * **부정 꼬리** — 매치된 migration 키워드 **바로 뒤**에 오면 그 매치를 신호로 치지 않는다.
+ *
+ * ★배경. 「마이그레이션 0」·「마이그레이션 0건」·「마이그레이션 없음」은 이 저장소의 커밋 메시지와
+ *   plan 메타에 반복 등장하는 **상용 표현**이다 — 「이 작업은 마이그레이션이 아니다」를 선언하는
+ *   관용구다. 그런데 종전 판정은 `'마이그레이션'` 이 나타났다는 사실만 보고 `type=migration` ·
+ *   `agent=db-engineer` 를 냈다. 스키마를 안 건드리겠다고 **명시한** 작업이 db-engineer 로
+ *   dispatch 된다는 뜻이고, 실제로 이 규칙을 도입시킨 PR 의 plan 메타 한 줄이 그렇게 걸렸다.
+ *
+ * ★★**적용 범위는 `MIGRATION_KEYWORDS` 뿐이다. 다른 키워드군으로 넓히지 마라.**
+ *   특히 `AUTH_STRONG`·`AUTH_KEYWORDS` 는 부정문의 의미가 정반대다 — 「인증 없음」·「권한 검사 없다」는
+ *   작업의 부재 선언이 아니라 **결함 보고**이고, 그건 auth 작업 그 자체다. 여기에 부정 꼬리를 걸면
+ *   가장 위험한 제목이 `security-engineer` 를 잃는다. 「일관성」은 확대 적용의 근거가 되지 못한다 —
+ *   축마다 오분류의 비용이 다르고, 이 검사는 그 비대칭을 근거로만 정당화된다.
+ *
+ * ★경로 축(`MIGRATION_PATH_PATTERNS`)에도 걸지 않는다. 경로에는 문맥이 없어 부정할 대상이 없고,
+ *   제목에 `V500__boards.sql` 이 있다는 것은 퍼지 신호가 아니라 사실이다.
+ */
+const NEGATION_TAILS = ['0', '없음', '없이', '없다', '불필요'] as const;
+
 const DESIGN_KEYWORDS = [
   '디자인', '목업', '시안', '와이어프레임',
   'mockup', 'wireframe',
@@ -251,6 +271,9 @@ const isAsciiLower = (ch: string | undefined): boolean =>
 const isAsciiUpper = (ch: string | undefined): boolean =>
   ch !== undefined && ch >= 'A' && ch <= 'Z';
 
+/** 공백 1자 판정 — 부정 꼬리는 키워드와 공백 하나로 떨어져 있는 것이 보통이다 */
+const isSpace = (ch: string | undefined): boolean => ch === ' ' || ch === '\t';
+
 /**
  * 뒤 경계로 인정하는 영어 어형 접미.
  *
@@ -287,7 +310,12 @@ const BOUNDARY_ONLY = new Set([
 ]);
 
 /**
- * 키워드 1개가 문자열에 **경계를 지켜** 나타나는지.
+ * 키워드 1개가 문자열에 **경계를 지켜** 나타나는 자리를 앞에서부터 **전부** 낸다(값은 매치의 끝 인덱스).
+ *
+ * ★왜 `boolean` 이 아니라 위치인가. 부정 꼬리 검사(`hasNegationTail`)가 매치 **바로 뒤**를 봐야 해서다.
+ *   「있다/없다」만 돌려주면 「첫 매치는 부정 문맥이지만 두 번째는 진짜」인 제목을 구별할 수 없다.
+ *   경계 판정은 여기 한 곳에 남고, 그 위의 두 소비자가 각각 「하나라도 있으면」(`includesWithBoundary`)과
+ *   「부정 아닌 게 하나라도 있으면」(`hasAnyUnnegated`)을 정한다.
  *
  * ★왜 단순 `includes` 가 아닌가. 한국어는 단어 사이에 공백 보장이 없어 접미사 오탐이 난다 —
  * 실측 사례로 "댓글 리액션 추가" 가 automation 으로 갔다. '리**액션**' 이 automation 키워드
@@ -307,7 +335,7 @@ const BOUNDARY_ONLY = new Set([
  * ★분기 순서 — 한글 판정이 **먼저**다. ASCII 분기를 앞에 두면 한글 키워드가 앞 경계 보호를
  *   잃어 `리액션` 오라우팅이 되살아난다.
  */
-const includesWithBoundary = (
+function* boundaryMatchEnds(
   haystack: string,
   keyword: string,
   /**
@@ -316,9 +344,9 @@ const includesWithBoundary = (
    *   그때 인덱스 정렬이 깨진다. 길이 일치를 확인하고 쓰는 것이 이 인자의 계약이다.
    */
   original?: string,
-): boolean => {
+): Generator<number> {
   const kw = keyword.toLowerCase();
-  if (kw.length === 0) return false;
+  if (kw.length === 0) return;
   const cased = original !== undefined && original.length === haystack.length ? original : undefined;
 
   /** `i` 위치가 소문자→대문자 험프인가. 연속 대문자(`PATCH` 의 `TC`)는 험프가 아니다. */
@@ -328,14 +356,14 @@ const includesWithBoundary = (
   let from = 0;
   for (;;) {
     const at = haystack.indexOf(kw, from);
-    if (at === -1) return false;
+    if (at === -1) return;
 
     if (isHangulSyllable(kw[0])) {
       // 한글 키워드는 앞 경계만 본다.
-      if (!isHangulSyllable(haystack[at - 1])) return true;
+      if (!isHangulSyllable(haystack[at - 1])) yield at + kw.length;
     } else if (!BOUNDARY_ONLY.has(kw)) {
       // 목록 밖 ASCII 키워드는 종전 부분일치 그대로.
-      return true;
+      yield at + kw.length;
     } else {
       // ★경계 문자류는 `[a-z]` 만이고 **숫자는 경계로 친다** — `api2`·`board2` 처럼
       //   목록 안 키워드에 숫자가 붙는 형태를 매치로 남기기 위해서다.
@@ -358,15 +386,48 @@ const includesWithBoundary = (
       //   안 가고(`PatTokenModal`), springdoc 작업이 `frontend-engineer` 로 간다(`OpenApiConfig`).
       const frontOk = !isAsciiLower(haystack[at - 1]) || isHump(at);
       const backOk = !isAsciiLower(haystack[end]) || isHump(end);
-      if (frontOk && backOk) return true;
+      if (frontOk && backOk) yield end;
     }
     from = at + 1;
   }
+}
+
+/** 키워드가 경계를 지켜 **한 번이라도** 나타나는지. 판정 규칙 전문은 `boundaryMatchEnds`. */
+const includesWithBoundary = (haystack: string, keyword: string, original?: string): boolean =>
+  // 첫 매치만 있으면 된다 — 제너레이터라 나머지 자리는 계산조차 하지 않는다.
+  !boundaryMatchEnds(haystack, keyword, original).next().done;
+
+/**
+ * `end`(매치 바로 뒤)에서 공백만 건너뛴 자리가 부정 꼬리로 시작하는가.
+ *
+ * ★조사도 수식어도 건너뛰지 않는다. 「마이그레이션은 필요 없다」처럼 사이에 낱말이 끼면 신호로 남긴다 —
+ *   문장을 해석하기 시작하면 부정의 사정거리가 어디서 끝나는지 정할 근거가 없어지고, 그 애매함은
+ *   그대로 오탐이 된다. 상용 표현(「… 0」·「… 없음」)만 정확히 집는 것이 이 검사의 전부다.
+ */
+const hasNegationTail = (haystack: string, end: number): boolean => {
+  let i = end;
+  while (isSpace(haystack[i])) i++;
+  return NEGATION_TAILS.some((tail) => haystack.startsWith(tail, i));
 };
 
 // 키워드 매치 (case-insensitive + 한글 접두사 경계 검사)
 const hasAny = (lower: string, keywords: string[], original?: string): boolean =>
   keywords.some((kw) => includesWithBoundary(lower, kw, original));
+
+/**
+ * `hasAny` 와 같되 **부정 문맥으로 쓰인 매치는 세지 않는다.**
+ *
+ * ★소비자는 `detectType` 의 migration 축 하나뿐이다. 새 소비자를 붙이기 전에 `NEGATION_TAILS` 의
+ *   적용 범위 주석을 먼저 읽을 것 — 이 함수의 확대 적용은 기본값이 아니라 별도 근거가 필요한 결정이다.
+ */
+const hasAnyUnnegated = (lower: string, keywords: string[], original?: string): boolean =>
+  keywords.some((kw) => {
+    // 같은 키워드가 여러 번 나오면 **하나라도** 부정 밖이면 신호다 — 「마이그레이션 0. 마이그레이션 추가」.
+    for (const end of boundaryMatchEnds(lower, kw, original)) {
+      if (!hasNegationTail(lower, end)) return true;
+    }
+    return false;
+  });
 
 const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
   patterns.some((p) => p.test(raw));
@@ -412,7 +473,12 @@ const detectType = (raw: string): TaskType => {
   if (hasAny(stripped, AUTH_STRONG, strippedRaw)) return 'auth';
 
   // ② migration 키워드 / 경로
-  if (hasAny(stripped, MIGRATION_KEYWORDS, strippedRaw) || hasPathPattern(raw, MIGRATION_PATH_PATTERNS)) {
+  // ★키워드 축에만 부정 꼬리 검사를 건다(`hasAnyUnnegated`) — 「마이그레이션 0」은 신호가 아니다.
+  //   경로 축은 종전 `hasAny` 계열 그대로다. 두 축을 갈라 둔 근거는 `NEGATION_TAILS` 주석.
+  if (
+    hasAnyUnnegated(stripped, MIGRATION_KEYWORDS, strippedRaw) ||
+    hasPathPattern(raw, MIGRATION_PATH_PATTERNS)
+  ) {
     return 'migration';
   }
 
