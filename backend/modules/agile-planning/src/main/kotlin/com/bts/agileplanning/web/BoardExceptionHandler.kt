@@ -6,6 +6,7 @@ import com.bts.agileplanning.application.QuickFilterEmptyQueryException
 import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
+import com.bts.agileplanning.domain.BoardNameInvalidException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -52,6 +53,9 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * ### 매핑 규칙
  * - [MethodArgumentNotValidException]/[HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException]
  *   → 400 + AGILE_VALIDATION_FAILED
+ * - [BoardNameInvalidException] → 400 + AGILE_VALIDATION_FAILED (도메인 이름 불변식 위반, FR-BD-01-2a).
+ *   맨 [IllegalArgumentException] 이 아니라 이 한 타입만 잡는다 — 넓히면 두 컨트롤러 호출 사슬의
+ *   내부 `require`/`check` 버그와 [NumberFormatException] 까지 400 으로 나가 5xx 경보에서 사라진다.
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
  * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
  * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
@@ -129,6 +133,39 @@ class BoardExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * 보드 이름 불변식 위반 — 400.
+     *
+     * [com.bts.agileplanning.domain.Board] init 블록이 공백 이름에 던지는
+     * [BoardNameInvalidException] 을 400 으로 매핑한다. 이 핸들러가 없으면 catch-all [Exception] 이 삼켜
+     * 공백 이름 PATCH 가 500 AGILE_INTERNAL_ERROR 로 나간다 — 같은 매핑이 [SprintExceptionHandler] 에
+     * 있으나 그쪽 `assignableTypes` 는 스프린트 컨트롤러라 보드 요청에는 오지 않는다.
+     *
+     * 컨트롤러가 공백을 미리 막는 우회 대신 이 매핑을 두는 이유는, 선차단하면 도메인 불변식이
+     * dead code 가 되고 그 불변식을 지키는 테스트가 도달 불가 조건을 지키게 되기 때문이다.
+     *
+     * ### 왜 [IllegalArgumentException] 이 아니라 이 타입인가
+     * 상위 타입으로 잡으면 [BoardController]·[BoardQuickFilterController] 호출 사슬 전체의
+     * `require`/`check` 실패와 [NumberFormatException] 같은 하위 타입까지 400 이 된다. 그러면 서버
+     * 버그가 클라이언트 입력 오류로 위장돼 5xx 경보에서 사라진다. 분류되지 않은 나머지는 catch-all
+     * [Exception] 핸들러가 500 으로 보낸다(`ERR-1` 테스트가 그 경계를 고정한다).
+     *
+     * 보안 — 도메인 내부 메시지를 응답에 노출하지 않고 일반 메시지만 반환한다. 원인은 로그에만 기록한다.
+     *
+     * @param ex 보드 이름 불변식 위반 예외.
+     */
+    @ExceptionHandler(BoardNameInvalidException::class)
+    fun handleBoardNameInvalid(ex: BoardNameInvalidException): ProblemDetail {
+        log.info("AGILE_400 board_name_invalid cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = "요청 값 검증에 실패했습니다.",
         )
     }
 

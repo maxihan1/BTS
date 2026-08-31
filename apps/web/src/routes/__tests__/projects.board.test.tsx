@@ -7,6 +7,7 @@ import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boa
 import type { UserSummary } from '@/api/users'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { ApiError } from '@/api/client'
+import { boardLabels, boardManageErrorMessage } from '@/i18n/board-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router, use-boards, @/api/users, KanbanBoard, FavoriteButton
@@ -98,10 +99,35 @@ vi.mock('@/components/board/BoardFilterBar', () => ({
 }))
 
 // CreateBoardForm mock
+// showEmptyStateIntro 를 DOM 에 노출한다 — 「보드가 없습니다」 인트로가 다이얼로그에서만 꺼지는지
+// (C1) 를 여기서 잰다. mock 이 prop 을 삼키면 유닛은 초록인데 화면에는 그대로 뜬다.
 vi.mock('@/components/board/CreateBoardForm', () => ({
-  CreateBoardForm: ({ projectKey }: { projectKey: string }) => (
-    <div data-testid="create-board-form" data-project-key={projectKey}>
+  CreateBoardForm: ({
+    projectKey,
+    showEmptyStateIntro,
+    onCreated,
+  }: {
+    projectKey: string
+    showEmptyStateIntro?: boolean
+    onCreated?: () => void
+  }) => (
+    <div
+      data-testid="create-board-form"
+      data-project-key={projectKey}
+      data-empty-intro={String(showEmptyStateIntro ?? true)}
+    >
       CreateBoardForm
+      {/* 실제 폼의 mutation onSuccess 자리 — 성공 신호를 테스트가 직접 쏜다.
+          onCreated 를 안 넘기면 눌러도 아무 일도 없어 C5-2 가 red 가 된다. */}
+      <button
+        type="button"
+        data-testid="create-board-form-fire-created"
+        onClick={() => {
+          onCreated?.()
+        }}
+      >
+        생성 성공 신호
+      </button>
     </div>
   ),
 }))
@@ -112,14 +138,26 @@ const mockUseBoards = vi.fn()
 const mockUseBoard = vi.fn()
 const mockUseBoardCalls: Array<[string | undefined, BoardCardFilterParams | undefined]> = []
 
-vi.mock('@/hooks/use-boards', () => ({
-  useBoards: (projectKey: string) => mockUseBoards(projectKey),
-  useBoard: (boardId: string | undefined, filter?: BoardCardFilterParams) => {
-    mockUseBoardCalls.push([boardId, filter])
-    return mockUseBoard(boardId, filter)
-  },
-  useCreateBoard: () => ({ mutate: vi.fn(), isPending: false }),
-}))
+const mockUseUpdateBoardName = vi.fn()
+const mockUseDeleteBoard = vi.fn()
+
+// ★factory 를 통째로 쓰지 않고 실제 모듈을 펼쳐 덮는다 — boardKeys 같은 비-훅 export 를
+//   빠뜨리면 「mock 에 그 export 가 없다」로 죽고, 그 실패는 배선이 아니라 mock 의 결함이다.
+vi.mock('@/hooks/use-boards', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/use-boards')>()
+  return {
+    ...actual,
+    useBoards: (projectKey: string) => mockUseBoards(projectKey),
+    useBoard: (boardId: string | undefined, filter?: BoardCardFilterParams) => {
+      mockUseBoardCalls.push([boardId, filter])
+      return mockUseBoard(boardId, filter)
+    },
+    useCreateBoard: () => ({ mutate: vi.fn(), isPending: false }),
+    useUpdateBoardName: (projectKey: string, boardId: string) =>
+      mockUseUpdateBoardName(projectKey, boardId),
+    useDeleteBoard: (projectKey: string) => mockUseDeleteBoard(projectKey),
+  }
+})
 
 // @/api/users mock
 const mockFetchUsers = vi.fn()
@@ -133,6 +171,11 @@ const mockUseUpdateSwimlane = vi.fn()
 vi.mock('@/hooks/use-update-swimlane', () => ({
   useUpdateSwimlane: (boardId: string) => mockUseUpdateSwimlane(boardId),
 }))
+
+/** 이름 변경 mutation 스파이 — 각 테스트가 mockImplementation 으로 콜백 흐름을 정한다 */
+const mockRenameMutate = vi.fn()
+/** 삭제 mutation 스파이 — 성공/실패 콜백을 테스트가 직접 태운다 */
+const mockDeleteMutate = vi.fn()
 
 // use-project-permissions mock
 const mockUseProjectPermissions = vi.fn()
@@ -212,6 +255,23 @@ const BOARD_DETAIL: BoardDetail = {
   unplacedCount: 0,
   swimlaneField: 'NONE',
   quickFilters: [],
+}
+
+/**
+ * 삭제 가능한 보드 상세 — `canDelete: true` 를 **명시**한다.
+ *
+ * `BOARD_DETAIL` 은 이 필드를 담지 않는다(= `undefined`). Zod 가 `.optional()` 이라
+ * 백엔드가 안 실어 줄 수 있고, 그 경우는 fail-closed 다 — 두 픽스처가 그 갈림을 잰다.
+ */
+const BOARD_DETAIL_DELETABLE: BoardDetail = {
+  ...BOARD_DETAIL,
+  canDelete: true,
+}
+
+/** 삭제 권한이 없는 보드 상세 — `canDelete: false` 를 명시한다 */
+const BOARD_DETAIL_NOT_DELETABLE: BoardDetail = {
+  ...BOARD_DETAIL,
+  canDelete: false,
 }
 
 const BOARD_DETAIL_TRUNCATED: BoardDetail = {
@@ -301,6 +361,10 @@ describe('BoardPage', () => {
     mockFetchUsers.mockResolvedValue(USERS)
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
     mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
+    mockRenameMutate.mockReset()
+    mockDeleteMutate.mockReset()
+    mockUseUpdateBoardName.mockReturnValue({ mutate: mockRenameMutate, isPending: false })
+    mockUseDeleteBoard.mockReturnValue({ mutate: mockDeleteMutate, isPending: false })
     mockUseProjectPermissions.mockReturnValue({
       data: { projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false, MANAGE_FIELD_PERMISSIONS: false, MANAGE_TEMPLATES: false } },
       isLoading: false,
@@ -366,9 +430,37 @@ describe('BoardPage', () => {
   })
 
   /**
-   * T-BD7-R-4. 보드 2+개 — 선택 드롭다운이 렌더된다.
+   * T-BD7-R-4. 보드 **1개**여도 스위처가 렌더된다 (FR-BD-01-2c).
+   *
+   * 이전 계약은 `>= 2` 였다 — 보드가 1개인 프로젝트에서는 스위처가 통째로 없어서
+   * 「보드는 N개 가질 수 있다」(Jira 근거 J1)가 화면에 드러나지 않았고 생성 진입점도 사라졌다.
    */
-  it('T-BD7-R-4: 보드 2개 이상이면 선택 드롭다운이 렌더된다', async () => {
+  it('T-BD7-R-4: 보드가 1개여도 보드 스위처가 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    const trigger = await screen.findByRole('button', { name: /보드 선택/ })
+    expect(trigger).toBeInTheDocument()
+    // 트리거는 현재 보드 이름을 보여 준다 — 「무엇을 보고 있는가」가 접힌 상태에서도 읽힌다
+    expect(trigger).toHaveTextContent(BOARD_A.name)
+  })
+
+  /**
+   * T-BD7-R-4b. 스위처를 열면 보드 목록이 `role="menuitemradio"` 로 나오고
+   * 현재 보드만 `aria-checked=true` 다.
+   *
+   * ★ 이 단언이 role 계약 자체다 — Radix Select 에서 DropdownMenu 로 갈아탔으므로
+   *   `role="combobox"` 는 더 이상 나오지 않는다. 그 소멸을 여기서 대체한다.
+   */
+  it('T-BD7-R-4b: 스위처를 열면 보드가 menuitemradio 로 나온다', async () => {
+    const user = userEvent.setup()
     mockUseBoards.mockReturnValue({
       data: [BOARD_A, BOARD_B],
       isLoading: false,
@@ -379,9 +471,77 @@ describe('BoardPage', () => {
 
     await renderBoardPage()
 
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+
+    const itemA = await screen.findByRole('menuitemradio', { name: BOARD_A.name })
+    const itemB = await screen.findByRole('menuitemradio', { name: BOARD_B.name })
+    expect(itemA).toHaveAttribute('aria-checked', 'true')
+    expect(itemB).toHaveAttribute('aria-checked', 'false')
+  })
+
+  /**
+   * T-BD7-R-4c. CREATE 권한이 있으면 「새 보드」 항목이 나오고, 고르면 생성 폼이 뜬다.
+   *
+   * ★ T-BD7-R-4d(권한 없음)의 **비-공허 짝**이다. 이 테스트가 없으면 라벨을 오타 내도
+   *   `queryByRole(...).toBeNull()` 이 그대로 통과한다.
+   */
+  it('T-BD7-R-4c: CREATE 권한이 있으면 「새 보드」 항목으로 생성 폼을 연다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A],
+      isLoading: false,
+      error: null,
+      isError: false,
     })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+
+    expect(await screen.findByTestId('create-board-form')).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD7-R-4d. CREATE 권한이 없으면 「새 보드」 항목이 **DOM 에 없다** — 비활성이 아니다
+   * (Jira 근거 J5 · FR-BD-01-2d). 스위처 자체는 그대로 보인다.
+   */
+  it('T-BD7-R-4d: CREATE 권한이 없으면 「새 보드」 항목이 DOM 에 없다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A, BOARD_B],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: false,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+
+    // 보드 목록은 그대로 나온다 — 「메뉴가 안 열려서 없다」와 구별하는 앵커
+    expect(await screen.findByRole('menuitemradio', { name: BOARD_A.name })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    ).toBeNull()
   })
 
   /**
@@ -494,10 +654,13 @@ describe('BoardPage', () => {
   })
 
   /**
-   * T-BD7-R-8. 보드 2+개이며 드롭다운의 hidden select value 변경 시 navigate가 ?board=id로 호출된다.
-   * Radix Select는 jsdom에서 포인터 이벤트가 불완전하므로 native hidden select를 직접 조작한다.
+   * T-BD7-R-8. 스위처에서 다른 보드를 고르면 navigate가 `?board=<id>` 로 호출된다 (S2).
+   *
+   * 🛑 **조건부 후퇴를 두지 마라.** 이전 판은 `if (mockNavigate.mock.calls.length > 0)` 로 감싸고
+   *    else 분기에서 렌더만 확인했다 — navigate 가 한 번도 안 불려도 초록이 되는 가짜 그린이었다.
+   *    이제 항목 클릭이 실제로 전환을 일으키는지를 **무조건** 단언한다.
    */
-  it('T-BD7-R-8: 드롭다운 값 변경 시 navigate가 ?board=로 호출된다', async () => {
+  it('T-BD7-R-8: 스위처 항목을 고르면 navigate가 ?board=로 호출된다', async () => {
     const user = userEvent.setup()
     mockUseBoards.mockReturnValue({
       data: [BOARD_A, BOARD_B],
@@ -509,31 +672,16 @@ describe('BoardPage', () => {
 
     await renderBoardPage()
 
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
-    })
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(await screen.findByRole('menuitemradio', { name: BOARD_B.name }))
 
-    // Radix Select의 aria-hidden native select를 통해 값 변경 시뮬레이션
-    const nativeSelect = document.querySelector('select[aria-hidden="true"]')
-    if (nativeSelect instanceof HTMLSelectElement) {
-      await user.selectOptions(nativeSelect, BOARD_B.boardId)
-    }
-
-    // navigate가 호출됐다면 search 업데이터가 board id를 포함하는지 확인
-    if (mockNavigate.mock.calls.length > 0) {
-      const callArg = mockNavigate.mock.calls[0]?.[0] as {
-        search?: ((prev: Record<string, unknown>) => Record<string, unknown>) | Record<string, unknown>
-      }
-      if (callArg?.search !== undefined && typeof callArg.search === 'function') {
-        const result = callArg.search({})
-        expect(result).toMatchObject({ board: BOARD_B.boardId })
-      } else if (callArg?.search !== undefined) {
-        expect(callArg.search).toMatchObject({ board: BOARD_B.boardId })
-      }
-    } else {
-      // jsdom에서 Radix Select 인터랙션이 불완전한 경우 드롭다운 렌더만 확인
-      expect(screen.getByRole('combobox')).toBeInTheDocument()
-    }
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '/projects/$projectKey/board',
+        params: { projectKey: 'ATLAS' },
+        search: { board: BOARD_B.boardId },
+      }),
+    )
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -967,6 +1115,383 @@ describe('BoardPage', () => {
     options?.onError?.()
 
     expect(toast.error).toHaveBeenCalled()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 보드 `⋯` 관리 메뉴 — 이름 변경 · 삭제 (FR-BD-01-2a/2b/2d · Jira 근거 J3·J4·J5)
+  //
+  // 권한 판정은 전부 **DOM 부재**로 잰다. `toBeDisabled()` 로 재면 「비활성으로 보이지만
+  // 마크업에는 있는」 상태를 통과시키게 되고, 그건 J5 가 말하는 Jira 동작이 아니다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** 보드 관리 `⋯` 트리거를 눌러 메뉴를 편다 */
+  async function openBoardActionsMenu(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<void> {
+    await user.click(await screen.findByRole('button', { name: /보드 관리/ }))
+  }
+
+  /**
+   * 삭제 확인 다이얼로그까지 연다 — `⋯` → 「보드 삭제」.
+   * 다이얼로그가 열린 것까지 확인하고 그 element 를 돌려준다.
+   */
+  async function openDeleteDialog(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<HTMLElement> {
+    await openBoardActionsMenu(user)
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.deleteItem }),
+    )
+    return await screen.findByRole('dialog', { name: boardLabels.actions.deleteDialogTitle })
+  }
+
+  /**
+   * T-BD6M-1. 두 권한이 다 있으면 항목 2개가 나온다.
+   *
+   * ★아래 부재 단언 3종의 **비-공허 짝**이다. 이게 없으면 라벨을 오타 내거나 메뉴를 통째로
+   *   지워도 `queryBy...toBeNull()` 이 전부 그대로 통과한다.
+   */
+  it('T-BD6M-1: 권한이 둘 다 있으면 「이름 변경」·「보드 삭제」가 나온다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+
+    await renderBoardPage()
+    await openBoardActionsMenu(user)
+
+    expect(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.renameItem }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.deleteItem }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD6M-2. CREATE 권한이 없으면 「이름 변경」이 **DOM 에 없다** (FR-BD-01-2d).
+   * 삭제 항목은 남아 있으므로 「메뉴가 안 열려서 없다」와 구별된다.
+   */
+  it('T-BD6M-2: canCreate=false 면 「이름 변경」이 DOM 에 없다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: false,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+    await openBoardActionsMenu(user)
+
+    // 메뉴가 열려 있다는 앵커 — 삭제 항목은 그대로 나온다
+    expect(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.deleteItem }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: boardLabels.actions.renameItem }),
+    ).toBeNull()
+  })
+
+  /**
+   * T-BD6M-3. `canDelete === false` 면 「보드 삭제」가 **DOM 에 없다**.
+   */
+  it('T-BD6M-3: canDelete 가 false 면 「보드 삭제」가 DOM 에 없다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_NOT_DELETABLE, isLoading: false })
+
+    await renderBoardPage()
+    await openBoardActionsMenu(user)
+
+    expect(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.renameItem }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: boardLabels.actions.deleteItem }),
+    ).toBeNull()
+  })
+
+  /**
+   * T-BD6M-4. ★fail-closed 앵커. `canDelete` 가 **undefined** 여도 「보드 삭제」는 없다.
+   *
+   * 응답 스키마가 `.optional()` 이라 백엔드가 그 필드를 안 실어 주는 경로가 실재한다
+   * (구버전 서버 · 부분 응답). `!== false` 같은 느슨한 판정을 쓰면 그때 삭제가 열린다.
+   */
+  it('T-BD6M-4: canDelete 가 undefined 면 「보드 삭제」가 DOM 에 없다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    // BOARD_DETAIL 은 canDelete 를 아예 담지 않는다
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+    await openBoardActionsMenu(user)
+
+    expect(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.renameItem }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: boardLabels.actions.deleteItem }),
+    ).toBeNull()
+  })
+
+  /**
+   * T-BD6M-5. 삭제를 확인하면 mutation 이 그 보드 id 로 불리고, 성공하면 **남은 보드로**
+   * 이동한다 (E2). 남은 보드가 없으면 board 없는 URL 로 가서 빈 상태(E1)로 떨어진다.
+   */
+  it('T-BD6M-5: 삭제 확인 후 deleteBoard 를 부르고 남은 보드로 navigate 한다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A, BOARD_B],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+    mockDeleteMutate.mockImplementation(
+      (_vars: { boardId: string }, opts?: { onSuccess?: () => void }) => {
+        opts?.onSuccess?.()
+      },
+    )
+
+    await renderBoardPage()
+    const dialog = await openDeleteDialog(user)
+    await user.click(
+      within(dialog).getByRole('button', { name: boardLabels.actions.deleteConfirm }),
+    )
+
+    expect(mockDeleteMutate).toHaveBeenCalledWith(
+      { boardId: BOARD_A.boardId },
+      expect.anything(),
+    )
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: { board: BOARD_B.boardId } }),
+    )
+  })
+
+  /**
+   * T-BD6M-6 (S7). 삭제가 실패하면 다이얼로그는 **열린 채**로 그 안에 사유가 뜬다.
+   *
+   * 화면 배너나 toast 로만 알리면 모달 오버레이가 그것을 가리거나, 창이 닫힌 뒤 도착한 실패가
+   * 갈 곳을 잃는다 — `confirm-dialog.tsx` 가 error prop 을 둔 이유가 그것이다.
+   */
+  it('T-BD6M-6: 삭제가 실패하면 다이얼로그가 열린 채 사유가 창 안에 뜬다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+    mockDeleteMutate.mockImplementation(
+      (_vars: { boardId: string }, opts?: { onError?: (err: unknown) => void }) => {
+        opts?.onError?.(new ApiError(403, { errorCode: 'AGILE_ACCESS_DENIED' }))
+      },
+    )
+
+    await renderBoardPage()
+    const dialog = await openDeleteDialog(user)
+    await user.click(
+      within(dialog).getByRole('button', { name: boardLabels.actions.deleteConfirm }),
+    )
+
+    // 창이 그대로 열려 있다
+    expect(
+      screen.getByRole('dialog', { name: boardLabels.actions.deleteDialogTitle }),
+    ).toBeInTheDocument()
+
+    const alert = within(dialog).getByRole('alert')
+    expect(alert).toHaveTextContent(
+      boardManageErrorMessage('AGILE_ACCESS_DENIED', boardLabels.actions.deleteFailed),
+    )
+    // raw 코드가 그대로 새면 매핑이 없는 것이다 (PR #106 의 가짜 그린)
+    expect(alert).not.toHaveTextContent('AGILE_ACCESS_DENIED')
+  })
+
+  /**
+   * T-BD6M-7 (E7). `confirming` 중에는 취소·Esc 로 창이 닫히지 않는다.
+   *
+   * Radix 는 Esc · 오버레이 클릭 · 우상단 X 를 **한 콜백**(`onOpenChange`)으로 보내므로,
+   * Esc 가 막히면 나머지 둘도 같은 자리에서 막힌다. 취소 버튼만 별도로 `disabled` 다.
+   */
+  it('T-BD6M-7: confirming 중에는 취소·Esc 로 창이 닫히지 않는다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+    // 삭제 요청이 아직 진행 중인 상태
+    mockUseDeleteBoard.mockReturnValue({ mutate: mockDeleteMutate, isPending: true })
+
+    await renderBoardPage()
+    const dialog = await openDeleteDialog(user)
+
+    const cancel = within(dialog).getByRole('button', { name: boardLabels.actions.deleteCancel })
+    expect(cancel).toBeDisabled()
+    await user.click(cancel)
+    expect(
+      screen.getByRole('dialog', { name: boardLabels.actions.deleteDialogTitle }),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.getByRole('dialog', { name: boardLabels.actions.deleteDialogTitle }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD6M-8. 이름 변경 — 새 이름을 제출하면 mutation 이 그 이름으로 불리고, 성공하면 닫힌다.
+   */
+  it('T-BD6M-8: 이름 변경 제출 시 새 이름으로 mutate 하고 성공하면 창이 닫힌다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+    mockRenameMutate.mockImplementation(
+      (_vars: { name: string }, opts?: { onSuccess?: () => void }) => {
+        opts?.onSuccess?.()
+      },
+    )
+
+    await renderBoardPage()
+    await openBoardActionsMenu(user)
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.renameItem }),
+    )
+
+    const dialog = await screen.findByRole('dialog', {
+      name: boardLabels.actions.renameDialogTitle,
+    })
+    const input = within(dialog).getByLabelText(boardLabels.actions.renameNameLabel)
+    await user.clear(input)
+    await user.type(input, '새 이름')
+    await user.click(
+      within(dialog).getByRole('button', { name: boardLabels.actions.renameSubmit }),
+    )
+
+    expect(mockRenameMutate).toHaveBeenCalledWith({ name: '새 이름' }, expect.anything())
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: boardLabels.actions.renameDialogTitle }),
+      ).toBeNull()
+    })
+  })
+
+  /**
+   * T-BD6M-9 (C1). 「새 보드」 다이얼로그의 생성 폼은 빈 상태 인트로를 **끄고** 쓴다.
+   *
+   * 그 인트로는 「보드가 없습니다」로 시작한다 — 보드가 있는데 스위처에서 폼을 열면 그 문장이
+   * 사실이 아니게 된다(라이트·다크 양쪽 재현).
+   */
+  it('T-BD6M-9: 「새 보드」 다이얼로그의 생성 폼은 빈 상태 인트로를 끈다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_DELETABLE, isLoading: false })
+
+    await renderBoardPage()
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+
+    expect(await screen.findByTestId('create-board-form')).toHaveAttribute(
+      'data-empty-intro',
+      'false',
+    )
+  })
+
+  /**
+   * T-BD6M-10 (C1 비-공허 짝). 보드가 0개인 빈 상태에서는 인트로가 **그대로 켜져** 있다.
+   */
+  it('T-BD6M-10: 보드 0개 빈 상태의 생성 폼은 인트로를 켠 채 쓴다', async () => {
+    mockUseBoards.mockReturnValue({ data: [], isLoading: false, error: null, isError: false })
+
+    await renderBoardPage()
+
+    expect(await screen.findByTestId('create-board-form')).toHaveAttribute(
+      'data-empty-intro',
+      'true',
+    )
+  })
+
+  /**
+   * T-BD6M-11 (회귀 앵커). 보드 목록이 **밖에서** 늘어나도 열려 있는 「새 보드」 창은 닫히지 않는다.
+   *
+   * 닫힘을 「보드 개수가 늘었다」로 추론하면, 창을 열고 이름을 입력하던 중 탭을 떠났다 돌아올 때
+   * (`refetchOnWindowFocus` 기본값) 다른 사람이 만든 보드가 목록에 반영되며 창이 닫힌다.
+   * 사용자에게는 「만들어졌다」로 읽히지만 실제로는 아무것도 만들어지지 않았다.
+   *
+   * 헬퍼를 안 쓰고 직접 render 하는 이유는 rerender 가 필요해서다 — 목록이 바뀌는 순간을
+   * 재현하려면 부모를 다시 그려야 한다. 매번 **새 엘리먼트**를 넘긴다(같은 참조는 React 가
+   * props 동일로 보고 재렌더를 건너뛴다).
+   */
+  it('T-BD6M-11: 보드 목록이 밖에서 늘어나도 열려 있는 「새 보드」 창이 닫히지 않는다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    const { BoardPage } = await import('@/routes/projects.$projectKey.board')
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <BoardPage projectKey="ATLAS" selectedBoardId={undefined} filter={undefined} />
+      </QueryClientProvider>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+    expect(await screen.findByTestId('create-board-form')).toBeInTheDocument()
+
+    // When. 이 창의 제출과 무관하게 목록만 갱신된다 — 남이 만든 보드가 refetch 로 들어온 상황
+    const callsBeforeRefetch = mockUseBoards.mock.calls.length
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A, BOARD_B],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    rerender(
+      <QueryClientProvider client={client}>
+        <BoardPage projectKey="ATLAS" selectedBoardId={undefined} filter={undefined} />
+      </QueryClientProvider>,
+    )
+
+    // 앵커. 재렌더가 실제로 일어나 새 목록을 읽었다 — 없으면 「아무 일도 안 해서 통과」다
+    expect(mockUseBoards.mock.calls.length).toBeGreaterThan(callsBeforeRefetch)
+
+    // Then. 입력 중이던 창은 그대로 열려 있다
+    expect(screen.getByTestId('create-board-form')).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD6M-12 (T-BD6M-11 의 비-공허 짝). 생성 **성공 신호**가 오면 그때 창이 닫힌다.
+   *
+   * 이것이 없으면 T-BD6M-11 은 「창이 영원히 안 닫힌다」로도 통과한다.
+   */
+  it('T-BD6M-12: 생성에 성공하면 「새 보드」 창이 닫힌다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await user.click(await screen.findByRole('button', { name: /보드 선택/ }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    )
+    expect(await screen.findByTestId('create-board-form')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('create-board-form-fire-created'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-board-form')).toBeNull()
+    })
   })
 })
 

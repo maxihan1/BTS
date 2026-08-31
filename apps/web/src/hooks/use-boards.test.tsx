@@ -12,9 +12,26 @@ import {
   fetchBoards,
   fetchBoard,
   createBoard,
+  updateBoardName,
+  deleteBoard,
 } from '@/api/boards'
-import type { BoardSummary, BoardDetail, BoardCreated, BoardCardFilterParams } from '@/api/boards'
-import { useBoards, useBoard, useCreateBoard, boardKeys } from './use-boards'
+import type {
+  BoardSummary,
+  BoardDetail,
+  BoardCreated,
+  BoardCardFilterParams,
+  BoardMeta,
+} from '@/api/boards'
+import {
+  useBoards,
+  useBoard,
+  useCreateBoard,
+  useUpdateBoardName,
+  useDeleteBoard,
+  boardKeys,
+  BoardDeleteTimeoutError,
+  DELETE_BOARD_TIMEOUT_MS,
+} from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -368,5 +385,139 @@ describe('useCreateBoard', () => {
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['boards', projectKey] }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useUpdateBoardName — 보드 이름 변경 (FR-BD-01-2a)
+//
+// ★이 축은 Task 4 가 훅을 만들고도 단언을 남기지 못한 자리다 — invalidate 를 통째로 지워도
+//   초록이었다. 아래 두 describe 가 그 공백을 닫는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 이름 변경 대상 보드 UUID — 상세 키 단언에 그대로 쓰인다 */
+const RENAME_BOARD_ID = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+
+const MOCK_BOARD_META: BoardMeta = {
+  boardId: RENAME_BOARD_ID,
+  projectKey: 'ATLAS',
+  name: '바뀐 보드',
+  swimlaneField: 'NONE',
+}
+
+describe('useUpdateBoardName', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    vi.mocked(updateBoardName).mockResolvedValue(MOCK_BOARD_META)
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-BD-RENAME-1: 성공 시 목록 키와 상세 키를 모두 invalidate 한다', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useUpdateBoardName('ATLAS', RENAME_BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ name: '바뀐 보드' })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(updateBoardName).toHaveBeenCalledWith(RENAME_BOARD_ID, '바뀐 보드')
+    // 목록 — 스위처의 이름 표기가 갱신되는 근거
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['boards', 'ATLAS'] }),
+    )
+    // 상세 — 헤더의 이름 표기가 갱신되는 근거. 2요소 키는 필터가 걸린 3요소 변종의 접두다
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['board', RENAME_BOARD_ID] }),
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useDeleteBoard — 보드 소프트 삭제 (FR-BD-01-2b)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useDeleteBoard', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    vi.mocked(deleteBoard).mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-BD-DELETE-1: 성공 시 목록 키만 invalidate 한다 — 상세 키는 건드리지 않는다', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useDeleteBoard('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ boardId: RENAME_BOARD_ID })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(deleteBoard).toHaveBeenCalledWith(RENAME_BOARD_ID)
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['boards', 'ATLAS'] }),
+    )
+    // ★상세 키를 무효화하면 아직 마운트된 useBoard(boardId) 관찰자가 곧바로 재조회를 걸어
+    //   방금 지운 보드에 404 를 받는다. 「지웠는데 화면이 에러로 바뀌는」 경로가 그것이다.
+    expect(invalidateSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['board', RENAME_BOARD_ID] }),
+    )
+  })
+
+  it('T-BD-DELETE-2: 타임아웃이 지나면 isPending 이 풀리고 에러가 전달된다', async () => {
+    // 응답이 영원히 오지 않는 요청 — 네트워크가 끊긴 채 pending 에 머무는 상태를 재현한다.
+    // 이 상태에서 isPending 이 계속 참이면 ConfirmDialog 의 confirming 이 닫힘 경로를 전부
+    // 잠근 채 풀리지 않아 사용자가 창에 갇힌다(게이트 1 지시).
+    vi.mocked(deleteBoard).mockReturnValue(new Promise<void>(() => {}))
+    vi.useFakeTimers()
+
+    try {
+      const { result } = renderHook(() => useDeleteBoard('ATLAS'), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      act(() => {
+        result.current.mutate({ boardId: RENAME_BOARD_ID })
+      })
+
+      // 타임아웃 직전까지는 계속 기다린다 — 판정이 「항상 참」이 아님을 여기서 본다.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELETE_BOARD_TIMEOUT_MS - 1)
+      })
+      expect(result.current.isPending).toBe(true)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2)
+      })
+
+      expect(result.current.isPending).toBe(false)
+      expect(result.current.error).toBeInstanceOf(BoardDeleteTimeoutError)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

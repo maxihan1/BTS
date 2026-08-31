@@ -31,6 +31,10 @@ import java.util.UUID
  * - [updateColumnWipLimit]: board_columns.wip_limit 단일 컬럼 갱신 + 재조회 반환.
  *   affected 행이 0 이면 null 반환(404 신호) — 타 보드 소속 또는 미존재 columnId.
  *
+ * ## FR-BD-01-2 확장 (Task 1)
+ * - [updateName]: boards.name 갱신 + updated_at bump. soft-deleted 보드 제외(affected 0 → null).
+ * - [softDelete]: boards.deleted_at 세팅. 이미 삭제된 보드는 재삭제하지 않고 false.
+ *
  * @param dsl jOOQ DSLContext
  */
 @Repository
@@ -163,6 +167,63 @@ class BoardRepository(
 
         if (affected == 0) return null
         return findById(boardId)
+    }
+
+    /**
+     * 보드 이름을 갱신하고 갱신된 보드를 반환한다.
+     *
+     * soft-deleted 보드(deleted_at IS NOT NULL)는 갱신 대상에서 제외한다 —
+     * WHERE 절의 `deleted_at IS NULL` 조건이 [updateSwimlaneField] 와 동일하게 적용된다.
+     * affected 행이 0 이면(존재하지 않거나 soft-deleted) null 을 반환한다(404 신호).
+     *
+     * @param boardId 갱신할 보드 UUID
+     * @param name 새로운 보드 이름. 공백 검증은 상위 계층(도메인/서비스) 책임이다
+     * @return 갱신된 보드, 존재하지 않거나 soft-deleted 이면 null
+     */
+    @Transactional
+    fun updateName(
+        boardId: UUID,
+        name: String,
+    ): Board? {
+        log.debug("보드 이름 갱신 — boardId={}", boardId)
+
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val affected =
+            dsl.update(BOARDS)
+                .set(BOARDS.NAME, name)
+                .set(BOARDS.UPDATED_AT, now)
+                .where(BOARDS.ID.eq(boardId))
+                .and(BOARDS.DELETED_AT.isNull)
+                .execute()
+
+        if (affected == 0) return null
+        return findById(boardId)
+    }
+
+    /**
+     * 보드를 소프트 삭제한다 — deleted_at 을 채우고 행은 보존한다(DATA.md §1.2).
+     *
+     * 이미 soft-deleted 인 보드(deleted_at IS NOT NULL)는 갱신 대상에서 제외하므로
+     * 삭제 시각이 덮어써지지 않고 false 를 반환한다(멱등 재삭제 신호).
+     * board_columns 는 삭제하지 않는다 — 보드가 조회에서 제외되면 컬럼도 함께 사라진다.
+     *
+     * @param boardId 소프트 삭제할 보드 UUID
+     * @return 이번 호출이 실제로 삭제했으면 true, 존재하지 않거나 이미 삭제됐으면 false
+     */
+    @Transactional
+    fun softDelete(boardId: UUID): Boolean {
+        log.debug("보드 소프트 삭제 — boardId={}", boardId)
+
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val affected =
+            dsl.update(BOARDS)
+                .set(BOARDS.DELETED_AT, now)
+                .set(BOARDS.UPDATED_AT, now)
+                .where(BOARDS.ID.eq(boardId))
+                .and(BOARDS.DELETED_AT.isNull)
+                .execute()
+
+        return affected > 0
     }
 
     /**

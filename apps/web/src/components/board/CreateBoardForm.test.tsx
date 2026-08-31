@@ -39,7 +39,13 @@ vi.mock('@/hooks/use-boards', () => ({
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function renderForm(projectKey = 'ATLAS') {
+/**
+ * 폼을 렌더한다.
+ *
+ * `onCreated` 는 **넘기지 않는 것이 기본**이다 — 그래야 기존 호출 6건이 그대로 남고,
+ * 「빈 상태 소비처는 이 prop 을 모른다」는 계약이 헬퍼 기본값으로 드러난다.
+ */
+async function renderForm(projectKey = 'ATLAS', onCreated?: () => void) {
   const { CreateBoardForm } = await import('@/components/board/CreateBoardForm')
   const client = new QueryClient({
     defaultOptions: {
@@ -49,8 +55,17 @@ async function renderForm(projectKey = 'ATLAS') {
   })
   return render(
     <QueryClientProvider client={client}>
-      <CreateBoardForm projectKey={projectKey} />
+      <CreateBoardForm projectKey={projectKey} onCreated={onCreated} />
     </QueryClientProvider>,
+  )
+}
+
+/** mutate 를 성공으로 태우는 구현 — onSuccess 에 boardId 를 실어 부른다 */
+function mutateSucceedsWith(boardId: string): void {
+  mockMutate.mockImplementation(
+    (_vars: unknown, options: { onSuccess?: (data: { boardId: string }) => void }) => {
+      options.onSuccess?.({ boardId })
+    },
   )
 }
 
@@ -181,5 +196,76 @@ describe('CreateBoardForm', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalled()
     })
+  })
+
+  /**
+   * T-BD7-7. 생성에 성공하면 `onCreated` 를 부른다.
+   *
+   * 다이얼로그 소비처가 창을 닫는 **유일한 신호**다. 이 배선을 재는 판별자가 e2e 하나뿐이면
+   * 그 spec 이 다른 이유로 skip 되는 순간 배선이 조용히 죽는다 — 여기서 문다.
+   */
+  it('T-BD7-7: 생성에 성공하면 onCreated 를 부른다', async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    mutateSucceedsWith('a1b2c3d4-e5f6-4890-abcd-ef1234567891')
+
+    await renderForm('ATLAS', onCreated)
+
+    await user.type(screen.getByRole('textbox'), '새 보드')
+    await user.click(screen.getByRole('button', { name: /보드 만들기/i }))
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * T-BD7-8. `onCreated` 를 **넘기지 않아도** 생성이 성공한다.
+   *
+   * prop 이 선택적이라는 계약이자, 빈 상태 소비처(보드 0개 경로)가 diff 0 인 근거다.
+   * 옵셔널 호출을 지우고 무조건 호출로 바꾸면 여기서 TypeError 로 떨어진다.
+   */
+  it('T-BD7-8: onCreated 를 넘기지 않아도 생성이 성공한다', async () => {
+    const user = userEvent.setup()
+    const newBoardId = 'b2c3d4e5-f6a7-4890-abcd-ef1234567892'
+    mutateSucceedsWith(newBoardId)
+
+    await renderForm()
+
+    await user.type(screen.getByRole('textbox'), '새 보드')
+    await user.click(screen.getByRole('button', { name: /보드 만들기/i }))
+
+    // 성공 경로가 끝까지 갔다는 관찰 지점 — navigate 가 그 자리다
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * T-BD7-9. 실패 경로에서는 `onCreated` 를 **부르지 않는다**.
+   *
+   * 성공 신호가 성공에만 붙는다는 판정이다. 이게 없으면 신호를 `onSettled` 로 옮겨도 통과하고,
+   * 그러면 실패한 창이 사유를 남기지 못한 채 닫힌다.
+   */
+  it('T-BD7-9: 생성에 실패하면 onCreated 를 부르지 않는다', async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+
+    mockMutate.mockImplementation(
+      (_vars: unknown, options: { onError?: (err: unknown) => void }) => {
+        options.onError?.(new ApiError(422, { errorCode: 'AGILE_UNPROCESSABLE' }))
+      },
+    )
+
+    await renderForm('ATLAS', onCreated)
+
+    await user.type(screen.getByRole('textbox'), '새 보드')
+    await user.click(screen.getByRole('button', { name: /보드 만들기/i }))
+
+    // 실패가 화면에 닿은 뒤에 판정한다 — 아직 아무 일도 안 일어난 시점의 not.toHaveBeenCalled 는 공허하다
+    await waitFor(() => {
+      expect(screen.getByText(/워크플로우 스킴이 할당되지 않아/i)).toBeInTheDocument()
+    })
+    expect(onCreated).not.toHaveBeenCalled()
   })
 })

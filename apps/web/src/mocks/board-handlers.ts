@@ -15,6 +15,7 @@ import {
   boardStore,
   projectBoardIndex,
   createBoardInStore,
+  deleteBoardFromStore,
   generateUUID,
   LS_KEY_BOARD_CONFLICT,
   seedBoardWithMeta,
@@ -199,6 +200,9 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
       return { ...col, cards: [...cards].sort(byRankNullsLast) }
     }),
     quickFilters: stored.quickFilters ?? [],
+    // 백엔드는 단건 조회 응답에 canDelete를 항상 싣는다(FR-BD-01-2d). mock도 항상 실어
+    // 「응답에 있다」를 전제로 한 소비자가 mock 위에서만 통과하는 일이 없게 한다.
+    canDelete: stored.canDelete ?? true,
   }
 }
 
@@ -485,26 +489,39 @@ const moveCardHandler = http.post(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/v1/boards/:id — 스윔레인 기준 변경 (FR-BD-03 D6)
+// PATCH /api/v1/boards/:id — 이름 · 스윔레인 기준 부분 갱신 (FR-BD-03 D6, FR-BD-01-2a)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 허용된 SwimlaneField 값 목록 — 타입가드용 */
 const VALID_SWIMLANE_FIELDS: ReadonlyArray<SwimlaneField> = ['NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC']
 
 /**
- * PATCH /api/v1/boards/{boardId} — 보드 스윔레인 기준 변경.
+ * PATCH 요청 body — 백엔드 `UpdateBoardRequest`(JsonNullable 3-state) 미러.
+ * 두 필드 모두 optional 이고, 값 검증은 핸들러가 직접 한다(명시 null도 400이라 unknown으로 받는다).
+ */
+interface UpdateBoardBody {
+  name?: unknown
+  swimlaneField?: unknown
+}
+
+/**
+ * PATCH /api/v1/boards/{boardId} — 보드 이름·스윔레인 기준 부분 갱신.
  *
- * 요청 body: { swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY' }
+ * 요청 body(3-state): 보내지 않은 필드는 건드리지 않는다.
+ *   { name: string }                         → 이름만 변경
+ *   { swimlaneField: 'NONE' | ... }          → 스윔레인 기준만 변경
+ *   { name, swimlaneField }                  → 둘 다 변경
  *
  * stateful 동작 (msw-mutation-stateful-refetch 교훈).
- *   - boardStore의 해당 보드 swimlaneField를 변이한다.
- *   - 이후 GET 상세에서 변경된 swimlaneField가 반영됨을 보장한다.
+ *   - boardStore의 해당 보드를 변이한다.
+ *   - 이후 GET 상세/목록에 변경이 즉시 반영됨을 보장한다.
  *
  * 성공 → 200 { data: BoardMeta } (boardId, projectKey, name, swimlaneField)
  * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
+ * 빈 바디 · 명시 null · 공백 이름 → 400 ProblemDetail { errorCode: 'AGILE_VALIDATION_FAILED' }
  * 잘못된 swimlaneField → 400 ProblemDetail { errorCode: 'INVALID_SWIMLANE_FIELD' }
  */
-const updateSwimlaneHandler = http.patch(
+const updateBoardHandler = http.patch(
   '/api/v1/boards/:id',
   async ({ params, request }) => {
     const boardId = params['id'] as string
@@ -522,14 +539,9 @@ const updateSwimlaneHandler = http.patch(
     }
 
     // 요청 body 파싱
-    let swimlaneField: SwimlaneField | undefined
-
+    let body: UpdateBoardBody
     try {
-      const body = (await request.json()) as { swimlaneField?: unknown }
-      const raw = body.swimlaneField
-      if (typeof raw === 'string' && (VALID_SWIMLANE_FIELDS as string[]).includes(raw)) {
-        swimlaneField = raw as SwimlaneField
-      }
+      body = (await request.json()) as UpdateBoardBody
     } catch {
       return HttpResponse.json(
         { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
@@ -537,21 +549,51 @@ const updateSwimlaneHandler = http.patch(
       )
     }
 
-    if (swimlaneField === undefined) {
+    // 3-state 판정 — 키 존재 여부가 「전송함」이다. 값이 null이어도 전송한 것으로 친다.
+    const nameSent = Object.hasOwn(body, 'name')
+    const swimlaneSent = Object.hasOwn(body, 'swimlaneField')
+
+    // 최소 1필드 규칙 — 아무것도 바꾸지 않는 요청이 조용히 200을 받지 않게 한다.
+    if (!nameSent && !swimlaneSent) {
       return HttpResponse.json(
         {
-          errorCode: 'INVALID_SWIMLANE_FIELD',
-          message: `swimlaneField는 NONE, ASSIGNEE, PRIORITY, EPIC 중 하나여야 합니다`,
+          errorCode: 'AGILE_VALIDATION_FAILED',
+          message: 'name 또는 swimlaneField 중 하나는 전송해야 합니다.',
         },
         { status: 400 },
       )
     }
 
-    // store 변이 — 이후 GET 상세에서 새 swimlaneField가 반영됨 (msw-mutation-stateful-refetch)
-    board.swimlaneField = swimlaneField
+    if (nameSent) {
+      const rawName = body.name
+      // 명시 null · 공백 이름 모두 400 — 보드 이름은 「해제」 의미가 없다.
+      if (typeof rawName !== 'string' || rawName.trim() === '') {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_VALIDATION_FAILED', message: '보드 이름은 비어 있을 수 없습니다.' },
+          { status: 400 },
+        )
+      }
+      board.name = rawName
+    }
+
+    if (swimlaneSent) {
+      const rawField = body.swimlaneField
+      if (typeof rawField !== 'string' || !(VALID_SWIMLANE_FIELDS as string[]).includes(rawField)) {
+        return HttpResponse.json(
+          {
+            errorCode: 'INVALID_SWIMLANE_FIELD',
+            message: `swimlaneField는 NONE, ASSIGNEE, PRIORITY, EPIC 중 하나여야 합니다`,
+          },
+          { status: 400 },
+        )
+      }
+      board.swimlaneField = rawField as SwimlaneField
+    }
+
+    // store 변이 — 이후 GET 상세에서 새 값이 반영됨 (msw-mutation-stateful-refetch)
     boardStore.set(boardId, board)
 
-    // BoardMeta 응답 반환 (boards.ts updateBoardSwimlane 계약)
+    // BoardMeta 응답 반환 (boards.ts updateBoardSwimlane / updateBoardName 공통 계약)
     return HttpResponse.json({
       data: {
         boardId: board.boardId,
@@ -562,6 +604,35 @@ const updateSwimlaneHandler = http.patch(
     })
   },
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/v1/boards/:id — 보드 소프트 삭제 (FR-BD-01-2b)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * DELETE /api/v1/boards/{boardId} — 보드 소프트 삭제. 보드의 이슈는 남는다.
+ *
+ * stateful 동작 — boardStore와 projectBoardIndex에서 함께 제거해 이후 목록·상세 조회에서
+ * 즉시 사라지게 한다 (msw-mutation-stateful-refetch).
+ *
+ * 성공 → 204 No Content (본문 없음)
+ * 미존재·이미 삭제됨 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
+ */
+const deleteBoardHandler = http.delete('/api/v1/boards/:id', ({ params }) => {
+  const boardId = params['id'] as string
+
+  if (!deleteBoardFromStore(boardId)) {
+    return HttpResponse.json(
+      {
+        errorCode: 'AGILE_BOARD_NOT_FOUND',
+        message: `보드를 찾을 수 없습니다: ${boardId}`,
+      },
+      { status: 404 },
+    )
+  }
+
+  return new HttpResponse(null, { status: 204 })
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/boards/:id/quick-filters — 퀵필터 생성 (FR-UX-01)
@@ -853,7 +924,8 @@ if (import.meta.env.MODE !== 'test') {
  *
  * handlers.ts에서 boardHandlers를 spread해 등록한다.
  * GET /api/v1/boards?projectKey= 와 GET /api/v1/boards/:id 모두 포함.
- * PATCH /api/v1/boards/:id (스윔레인 기준 변경) 포함.
+ * PATCH /api/v1/boards/:id (이름·스윔레인 기준 부분 갱신) 포함.
+ * DELETE /api/v1/boards/:id (보드 소프트 삭제, FR-BD-01-2b) 포함.
  * POST/PATCH/DELETE /api/v1/boards/:id/quick-filters[/:filterId] (퀵필터 CRUD, FR-UX-01) 포함.
  */
 export const boardHandlers = [
@@ -861,7 +933,8 @@ export const boardHandlers = [
   getBoardHandler,
   createBoardHandler,
   moveCardHandler,
-  updateSwimlaneHandler,
+  updateBoardHandler,
+  deleteBoardHandler,
   createQuickFilterHandler,
   updateQuickFilterHandler,
   deleteQuickFilterHandler,

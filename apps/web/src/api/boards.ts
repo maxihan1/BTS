@@ -141,6 +141,19 @@ export const boardDetailSchema = z.object({
    * (백엔드 @JsonInclude 대비 .default — memory: FR-EP-01 epicKey 선례 동일 패턴).
    */
   quickFilters: z.array(quickFilterSchema).default([]),
+  /**
+   * 이 보드를 삭제할 수 있는지 여부 (FR-BD-01-2d).
+   * 백엔드 `BoardDetailResponse.canDelete` — `IssuePermission.SOFT_DELETE` 판정 결과다.
+   * 목록 응답(`BoardSummaryResponse`)에는 없고 단건 조회에만 실린다.
+   *
+   * `.optional()` 인 이유 두 가지.
+   * 1. 필수로 두면 필드를 생략하는 응답 하나에 파싱이 통째로 실패해 보드 화면 전체가 죽는다.
+   * 2. `.default(false)` 로 두면 출력 타입에서 필수가 되어 `BoardDetail` 로 선언된 기존
+   *    인라인 픽스처가 전부 타입 에러가 된다 (quickFilters `.default([])` 가 그 전례다).
+   *
+   * 소비자는 `canDelete === true` 로만 삭제 UI 를 연다 — undefined 는 fail-closed 다.
+   */
+  canDelete: z.boolean().optional(),
 })
 
 /**
@@ -418,4 +431,53 @@ export async function updateBoardSwimlane(boardId: string, swimlaneField: Swimla
   const data: unknown = await res.json()
   const wrapped = dataResponseSchema(boardMetaSchema).parse(data)
   return wrapped.data
+}
+
+/**
+ * 보드 이름을 변경한다 (FR-BD-01-2a).
+ *
+ * PATCH /api/v1/boards/{boardId} body `{ name }` → `{ data: BoardMeta }` 언랩.
+ *
+ * 백엔드 `UpdateBoardRequest` 는 `JsonNullable` 3-state 라 **보내지 않은 필드는 건드리지 않는다.**
+ * 그래서 body 에 `swimlaneField` 를 얹지 않는다 — 얹으면 이름만 바꾸려는 요청이 스윔레인까지
+ * 덮어쓴다. 공백 이름·명시 null·빈 바디는 백엔드가 400 으로 막는다.
+ *
+ * @param boardId 보드 UUID
+ * @param name 새 보드 이름
+ * @returns BoardMeta — 변경된 보드 메타 정보
+ * @throws ApiError 비-2xx 응답 시 (400 검증 실패 · 403 CREATE 권한 없음 · 404 미존재)
+ * @throws ZodError 응답 스키마 불일치 시
+ */
+export async function updateBoardName(boardId: string, name: string): Promise<BoardMeta> {
+  const res = await apiFetch(`/api/v1/boards/${boardId}`, {
+    method: 'PATCH',
+    body: { name },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  const wrapped = dataResponseSchema(boardMetaSchema).parse(data)
+  return wrapped.data
+}
+
+/**
+ * 보드를 소프트 삭제한다 (FR-BD-01-2b). 보드에 있던 이슈는 삭제되지 않는다.
+ *
+ * DELETE /api/v1/boards/{boardId} → **204 No Content**.
+ * 본문이 없으므로 응답을 파싱하지 않는다 — `res.json()` 을 부르면 즉시 터진다.
+ * 같은 BC 의 `deleteQuickFilter`(board-quick-filters.ts) 와 동일한 관례다.
+ *
+ * @param boardId 보드 UUID
+ * @throws ApiError 비-2xx 응답 시 (403 SOFT_DELETE 권한 없음 · 404 미존재/이미 삭제됨)
+ */
+export async function deleteBoard(boardId: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/boards/${boardId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
 }

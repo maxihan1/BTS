@@ -44,6 +44,14 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //      `navigate` 7개를 닫아 잡고 있어 추출하면 props 7개짜리 컴포넌트가 되고, 이 PR 의
   //      범위(레이아웃 결함 수정)를 넘는 리팩터가 된다. 게이트 2 요약에 이탈로 싣는다.
   //   상환 후보로는 이 항목이 그대로 남는다 — 부채 매핑에 함께 읽을 것.
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 372,
+  //   ★2026-08-31 (FR-BD-01-2) 372 → 393. **의도적으로 올린 항목**이다(위 두 선례와 같은 성격).
+  //   보드 `⋯` 관리 메뉴(이름 변경·삭제)를 헤더 행에 다는 최소 형태가 21줄이다 — 메뉴 본체와
+  //   두 다이얼로그는 이미 이 함수 **밖**(`BoardActionsMenu`·`RenameBoardDialog`)에 있고,
+  //   여기 남은 것은 렌더 조건 + props 6개 + 삭제 후 이동(E2) 콜백뿐이다.
+  //   ⚠️ 갱신 전에 래칫이 실제로 무는지 red 를 한 번 봤다(393 을 요구하는 실패 출력).
+  //      숫자만 맞추면 그 래칫은 그 뒤로 아무것도 지키지 않는다.
+  //   상환 후보로 이 항목은 그대로 남는다 — 위 2026-08-24 주석의 `projectFavoriteHeader`
+  //   추출 논의와 함께 읽을 것.
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 393,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }

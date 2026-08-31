@@ -89,16 +89,33 @@ function datedDocs(dir: string): { file: string; date: string }[] {
     .filter((d) => d.date !== '');
 }
 
+/** 검사 대상 절의 제목. 아래 앵커의 유일한 출처다. */
+const JIRA_HEADING = '## Jira 대조';
+
+/**
+ * 절 시작을 찾는 **줄 시작 앵커**.
+ *
+ * `indexOf` 로 찾으면 안 된다 — 본문이 절 이름을 **인용만 해도** 첫 매치가 그 인용 지점이 되고,
+ * 인용문부터 다음 `\n## ` 까지가 섹션으로 오인돼 URL 이 든 진짜 절은 스캔 구역 밖으로 밀려난다.
+ * 그러면 문서는 판정을 고치는 대신 **인용 표현을 바꿔 우회**하게 되고, 가드는 문서를 검사하는
+ * 물건에서 문서가 피해 다니는 장애물로 바뀐다. 아래 픽스처 2건이 그 양쪽을 못박는다.
+ *
+ * 제목 리터럴에서 만든다 — 사본을 두면 한쪽만 바뀐다(`[[two-lists-never-check-each-other]]`).
+ * 리터럴에 정규식 특수문자가 없으므로 이스케이프는 불필요하다.
+ */
+const JIRA_HEADING_ANCHOR = new RegExp(`^${JIRA_HEADING}`, 'm');
+
 /**
  * `## Jira 대조` 절 판정. 위반 사유를 돌려주고, 통과면 `null`.
  *
  * 순수 함수로 뺀 이유 — 아래 뮤테이션 짝이 픽스처로 직접 흔들 수 있어야 한다.
  */
 export function checkJiraSection(body: string, hosts: Set<string>): string | null {
-  const start = body.indexOf('## Jira 대조');
-  if (start < 0) return '`## Jira 대조` 절이 없다';
+  const heading = JIRA_HEADING_ANCHOR.exec(body);
+  if (heading === null) return '`## Jira 대조` 절이 없다';
 
-  const rest = body.slice(start + '## Jira 대조'.length);
+  // `### ` 하위 헤딩은 섹션을 끊지 않는다 — 대조 표 아래에 소절을 두는 문서가 있다.
+  const rest = body.slice(heading.index + JIRA_HEADING.length);
   const end = rest.search(/\n## /);
   const section = end >= 0 ? rest.slice(0, end) : rest;
 
@@ -172,6 +189,60 @@ describe('Jira Cloud 리서치 선행 규칙', () => {
       checkJiraSection('## Jira 대조\n대응 없음\n', hosts) ?? '',
       /출처 URL/,
       '사유 없는 「대응 없음」을 통과시켰다 — 면제가 만능 우회로가 된다.',
+    );
+  });
+
+  // ── 헤딩 앵커 ─────────────────────────────────────────────────────────────
+  //
+  // `indexOf('## Jira 대조')` 는 **첫 매치**를 잡는다. 그래서 문서가 절 이름을 본문에서
+  // **인용만 해도** 그 인용 지점이 절 시작으로 오인되고, 인용문부터 다음 `\n## ` 까지가
+  // 섹션이 된다 — URL 이 든 진짜 절은 스캔 구역 밖으로 밀려난다.
+  //
+  // 실물로 밟았다. `docs/plans/2026-08-31-board-crud-recovery.md` 가 Brief 에서 절 이름을
+  // 인용했다가 「출처 URL 이 하나도 없다」로 red 가 났고, 그때의 처방은 **인용 표현을 바꾸는
+  // 우회**였다. 문서가 판정을 피해 문장을 고르기 시작하면 그 가드는 더 이상 문서를 검사하지
+  // 않고 문서가 가드를 피한다 — 우회가 반복되면 red 는 「근거 없음」이 아니라 「표현 실수」의
+  // 신호로 학습되고, 진짜 위반도 같은 방식으로 지워진다.
+  test('본문이 절 이름을 인용해도 헤딩의 URL 을 찾는다', () => {
+    const hosts = new Set(['support.atlassian.com', 'atlassian.design']);
+    const body = [
+      '## Brief',
+      '착수 시 반영할 실측 — `## Jira 대조` 절 **안에** 허용 도메인 출처 URL 이 있어야 한다.',
+      '',
+      '## Jira 대조',
+      '| J1 | 보드는 프로젝트당 N개 | https://support.atlassian.com/x | 2026-08-25 |',
+      '',
+      '## 다음 절',
+      '',
+    ].join('\n');
+
+    assert.equal(
+      checkJiraSection(body, hosts),
+      null,
+      '절 이름을 인용했다는 이유로 진짜 헤딩을 못 봤다 — 문서가 표현을 바꿔 우회하게 된다.',
+    );
+  });
+
+  // 회귀 앵커. 위 픽스처만 있으면 「본문 전체에서 URL 을 찾는다」는 **틀린 처방**으로도 초록이
+  // 되는데, 그러면 `## Jira 대조` 절이 아예 없는 문서가 무관한 자리의 Atlassian 링크 하나로
+  // 통과한다. 그래서 이 픽스처는 허용 도메인 URL 을 **절 밖에** 일부러 둔다 — 처방이
+  // 「줄 시작 헤딩」으로 좁혀졌을 때만 통과한다.
+  test('헤딩이 아예 없고 인용만 있으면 여전히 실패한다', () => {
+    const hosts = new Set(['support.atlassian.com', 'atlassian.design']);
+    const body = [
+      '## Brief',
+      '이 문서는 `## Jira 대조` 절 규칙을 설명만 한다.',
+      '참고 https://support.atlassian.com/x — 절 밖의 인용이다.',
+      '',
+      '## 다음 절',
+      '본문뿐',
+      '',
+    ].join('\n');
+
+    assert.equal(
+      checkJiraSection(body, hosts),
+      '`## Jira 대조` 절이 없다',
+      '절이 없는 문서를 인용문 + 절 밖 URL 만으로 통과시켰다 — 규칙이 통째로 우회된다.',
     );
   });
 
