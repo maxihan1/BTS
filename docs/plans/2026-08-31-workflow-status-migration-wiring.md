@@ -543,4 +543,142 @@ F1·F2·F3·F4→T3 · F5→T5 · F6→T1·T3 · F7·F8→T4 · F9→T2 · F10�
 E1→T1·T2 · E2·E3·E4→T4 · E5→T1 · E6→T2 · E7→T1·T2 · E8·E9→T6.
 C3·C4·C5 및 X8·X9·X10→T7.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈** — `plan-eng-review` 1종(`TYPE == "api"` 행) + 보안 렌즈 주입(신규 API · X4 권한 위임).
+**Outside Voice** — `codex` CLI 부재로 Claude subagent 대체(PR 7 과 같은 공백).
+
+**판정 — BLOCKER 4 · 주의 6 · 정보 2. 게이트 1 정지.**
+
+### 🛑 BLOCKER
+
+**B1 [P1] (10/10) 이관이 이슈 타입 축을 통째로 무시해 과다 이동한다 — 데이터 손상**
+
+스킴은 `(scheme_id, issue_type_id) → workflow_id` 다(`V201__workflow_schemes.sql:78-86` ·
+`WorkflowResolverImpl` 은 「프로젝트 키 + 이슈 타입 키」로 워크플로우를 정한다). 계획의 3단 JOIN 은
+`SELECT DISTINCT p.id, p.key` 로 **`issue_type_id` 를 읽고 버린다**.
+
+카운트에서는 과다 집계라 안전하지만 **쓰기가 같은 좌표를 쓴다.** 이미 머지된 워커의
+`BulkOperationRepository.kt:477-487` `statusMigrationTargets` 는 실측으로
+
+```kotlin
+ISSUES.CURRENT_STATE_KEY.`in`(payload.mappings.keys)
+    .and(ISSUES.DELETED_AT.isNull)
+    .and(ISSUES.PROJECT_ID.`in`( … PROJECTS.KEY.`in`(payload.projectKeys) … ))
+```
+
+이고 **이슈 타입 조건이 없다**. 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면, WF1 발행 시
+**WF2 에서 멀쩡히 살아 있는 상태의 Task 이슈까지 WF1 의 매핑대로 옮겨진다.**
+`IssueStatusMigrationPort` KDoc 이 스스로 적은 「과다 이동은 데이터 손상」이 그대로 발생한다.
+
+X1(「유형별 배정은 스킴이 담당한다」)이 이 축을 치웠는데 **정확히 그 스킴이 축을 만든다.**
+완료 기준 4(「같은 상태 키를 쓰는 **타 프로젝트** 이슈는 세지 않는다」)는 **잘못된 축을 지키는
+테스트**라 이 결함에 전부 초록이다.
+
+★포트 시그니처(`StatusMigrationCommand`)에 이슈 타입 축이 없다 — N3(포트 불변)과 정면 충돌이라
+**이 PR 안에서 fail-open 을 못 고친다.** Maxi 판정이 필요하다.
+
+**B2 [P1] (9/10) 어댑터의 `require` 위반이 400 이 아니라 500 으로 나간다**
+
+어댑터는 실패를 `IllegalArgumentException` 으로 던지는데(`WorkflowStatusMigrationAdapter`),
+`WorkflowPublishExceptionHandler` 에 IAE 핸들러가 없고 `WorkflowExceptionHandler:168` 은
+「★`IllegalArgumentException` 을 잡지 **않는다**」라고 명시한다. 형제 BC 는 전부 잡는다.
+
+도달 경로 2개가 실재한다. ① Task 3 의 공통 전처리에 **`requireStatusCatalog` 가 빠져 있다** —
+초안에는 있는데 카탈로그에 없는 상태를 `to` 로 실으면 F8 통과 → 어댑터에서 500.
+② `projectKeys` 빈 집합 — E1(스킴 미할당)·E7(전 프로젝트 아카이브) 어느 쪽이든 어댑터의
+`require(projectKeys.isNotEmpty())` 로 500. 계획은 빈 집합을 **카운트 0** 으로만 다루고
+migrate 를 막는 가드가 없다. API 표에 500 이 없고 판정도 없다.
+
+**B3 [P1] (9/10) migrate 와 publish 사이에 초안이 잠기지 않는다**
+
+F4 가 「migrate 는 읽기만 한다」고 못박아 migrate 는 락도 플래그도 버전 증가도 안 남긴다.
+그런데 `PUT /draft` 는 계속 열려 있고, 핸들러 주석이 「초안의 앵커는 저장으로 바뀌지 않는다
+(upsert 의 DO UPDATE 가 그 컬럼을 뺀다)」고 적는다 — 즉 **baseVersion CAS 는 초안 내용 변경을
+감지하지 못한다.** 202 를 받은 관리자가 초안을 고쳐 `done` 을 되살려도 큐잉된 작업은 옛 매핑으로
+이슈를 옮기고 재발행은 CAS 를 통과한다. migrate 를 두 번 불러 **모순되는 작업 2건**을 큐잉하는
+것도 막는 것이 없다. S4 는 「이슈 유입」만 다루고 계획 전체에 「migrate–publish 사이 초안 변경」이
+0건이다. F10 재카운트는 교체 직후에 돌아 이 창을 못 본다.
+
+**B4 [P1] (10/10) 1000건 상한 초과 = 출구 없는 막다른 길**
+
+`BULK_OPERATION_MAX_SIZE = 1000`. `BulkOperationRepository.kt:141-149` 는 대상이 1000 을 넘으면
+**아무것도 적재하지 않고** 실제 개수만 돌려주고 작업은 FAILED 로 끝난다(실측 확인).
+이슈는 한 건도 안 옮겨졌는데 발행은 계속 409 다. 범위가 사용자 입력이 아니라 F6 대로 **호출자가
+유도**하므로 관리자가 쪼갤 손잡이가 없다 — 「1000건 넘는 상태를 뺀 워크플로우는 영원히 발행 불가」.
+계획에 `MAX_SIZE`·상한 문자열이 0건이다. E9 가 「실패가 남으면 계속 막히는 것이 의도된 동작」이라
+적었지만 **부분 실패와 전량 실패는 관리자가 할 수 있는 일이 다르다.**
+
+### ⚠️ 주의
+
+**W1 [P1] (9/10) `toStatusKey` 가 초안에만 있는 신규 상태면 이관이 발행 전에 유령을 만든다.**
+F8 이 `definition.states`(초안)만 검사하는데 이관은 발행보다 **먼저** 돈다. 지라는 매핑과 발행이
+한 조작(J4·J10)이라 이 위험이 없다 — **X5 분할이 만든 부작용**이다.
+처방. `toStatusKey ∈ (초안 상태 ∩ 현재 live 편성)`.
+
+**W2 [P2] (9/10) Task 5 의 publish 스파이 테스트가 도달 불가 조합을 지킨다.**
+D2 로 `POST /publish` 는 포트를 **어떤 경로로도** 부르지 않으므로 「publish 도 포트를 부르지
+않는다」는 어떤 뮤테이션으로도 red 가 안 된다. 완료 기준 8 의 뮤테이션 짝도 절반이 공허하다.
+`[[unreachable-state-fixture-is-fake-green]]` 양식. 처방. publish 축 단언을 지우고 migrate 축만 남긴다.
+
+**W3 [P2] (8/10) F6 의 MockMvc 대체안이 슬라이스에서만 참인 계약을 잰다.**
+`WorkflowDraftControllerMvcTest:96-97` 이 맨 `ObjectMapper()` 를 꽂아 `FAIL_ON_UNKNOWN_PROPERTIES`
+가 **true** 인데 운영은 Boot 자동설정이라 **false** 다. 운영은 `projectKeys` 를 실어도 조용히
+무시하고 202 를 준다. 같은 파일 KDoc 이 「컨버터도 운영과 같아야 한다」고 적어 두어, 누가 그
+지시를 따르는 순간 이 테스트가 엉뚱한 이유로 깨진다.
+
+**W4 [P2] (9/10) 결선의 인자 전달에 판정이 0건이다.**
+서비스 레벨 스텁이 `projectIds` 를 버릴 것이므로, Task 1 의 JOIN 이 빈 집합을 돌려주든 남의
+프로젝트를 돌려주든 서비스 테스트는 전부 초록이다. 완료 기준 4·5·6 은 어댑터 테스트에서만
+성립하고 **「서비스가 JOIN 결과를 포트에 실제로 넘기는가」**는 어느 판정도 안 잰다.
+이 PR 의 이름이 「결선」인데 결선 자체에 판정이 없다.
+
+**W5 [P2] (8/10) F4 의 「`DATA.md §6` 을 만나지 않는다」가 과한 주장이다.**
+§6 의 허용 패턴은 「**이벤트만 발행**(pgmq enqueue)」인데 migrate 는 거기에 더해 `bulk_operations`
+행을 INSERT 한다. 안 만나는 게 아니라 만나되, 포트가 PR 7 에서 이미 동기 UUID 반환 쓰기로
+정해져 이 PR 이 승계하는 것이다. **편차 X11 로 기록**해야 한다.
+
+**W6 [P2] (7/10) Task 5 GREEN 의 「일시 이동 후 되돌림」은 증거가 안 남는다.**
+RED 출력을 커밋 본문에 인용하는 것이 검증 가능한 형태다.
+
+### ℹ️ 정보
+
+**I1 [P2] (8/10) E7 에 제3의 길이 있다.** 아카이브 프로젝트를 **카운트에서는 빼되 `projectKeys`
+에는 넣으면** 발행이 안 막히고 그 이슈들은 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로
+**셀 수 있게** 남는다. 유령이 조용해지지 않고 `PROJECT_ARCHIVED` 도 경합 말고 실제 생산자를 얻는다.
+단 B1 이 미해결이면 이 경로도 과다 이동을 탄다.
+
+**I2 wave 계산 정정.** Plan 메타의 「4 wave」가 틀렸다. `bts-impl:49` 가 파일 겹침 task 를 같은
+wave 에 넣지 않으므로 실제는 **6 wave** 이고 wave 1 이후는 완전 순차다. 병렬 이점이 사실상 없다.
+
+### 교차 모델 긴장 1건 (Maxi 판정 필요)
+
+Outside Voice 가 **D2(별도 migrate 엔드포인트)를 재검토하라**고 주장한다. 근거 —
+① 「발행 API 가 발행하지 않고 202 를 돌려주는 상태」는 `POST /publish` 가 `statusMappings` 를
+받아 **잔여가 있으면 409 + `bulkOperationId`** 를 돌려주면 생기지 않는다(지금도 409 +
+`pendingIssueCounts` 를 돌려주고 있어 필드 하나가 늘 뿐이다). 지라의 조작 1회(J4·J10)와도 같아진다.
+② 트랜잭션 축에서 분할이 얻는 것은 W5 대로 없다.
+③ 분할이 만든 3-hop 상태 기계의 중간 상태가 어디에도 저장되지 않는 것이 **B3 와 B4 의 공통 원인**이다.
+
+이것은 Maxi 가 이미 결정한 항목(D2)이므로 조용히 뒤집지 않는다. 게이트 1 에 그대로 올린다.
+
+### NOT in scope
+
+X8(`cause` 필터 3 BC) · X9(VIEW 오진) · X10(PR 7 잔여 7건) — 전부 다른 BC 라 「한 PR = 한 BC」.
+PR 10 의 명시적 선행으로 장부 등재(Task 7). B1 의 이슈 타입 축은 **범위 밖이 아니라 미해결**이다.
+
+### What already exists
+
+- **재사용** — `bulk_operations` 인프라(V008 + 워커 + 진행률 API) · `IssueStatusMigrationPort` ·
+  `WorkflowStatusMigrationAdapter` · `IssueStatusUsagePort` · `ProjectLookupPort` · 발행 CAS·캐시 락.
+- **새로 만드는 것** — `findProjectRefsByWorkflowId`(역방향 조회가 저장소에 없었다) ·
+  `IssueStatusUsageAdapterIntegrationTest`(그 어댑터에 테스트가 0건이었다) · migrate 엔드포인트.
+- **불필요하게 다시 만드는 것 0건.**
+
+### 실패 모드 — 치명적 공백 3건
+
+| 경로 | 실패 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| 이관 실행 | 타 워크플로우 이슈 과다 이동(B1) | ❌ | ❌ | **조용함 — 되돌릴 수 없다** |
+| migrate 접수 | 카탈로그 밖 상태·빈 projectKeys(B2) | ❌ | ❌ | **500** |
+| 이관 실행 | 1000건 초과(B4) | ❌ | 로그만 | **이유 없는 FAILED · 영구 차단** |
