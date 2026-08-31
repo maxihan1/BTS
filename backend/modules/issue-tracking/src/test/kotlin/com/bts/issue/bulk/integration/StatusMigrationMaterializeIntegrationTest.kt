@@ -58,6 +58,8 @@ import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -76,7 +78,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
-import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -88,6 +89,7 @@ import java.sql.DriverManager
 import java.time.Clock
 import java.time.OffsetDateTime
 import java.util.UUID
+import javax.sql.DataSource
 
 /**
  * 상태 이관(STATUS_MIGRATION) **실행 시점 재해석** 통합 테스트 — plan Task 7.
@@ -139,14 +141,28 @@ class StatusMigrationMaterializeIntegrationTest {
                     .apply { start() }
         }
 
-        @Bean
-        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        /**
+         * ★**풀링 DataSource** — `DriverManagerDataSource` 가 아니다.
+         *
+         * 그쪽은 트랜잭션 밖 질의마다 물리 커넥션을 새로 연다. 항목 1건이 REQUIRES_NEW 트랜잭션
+         * 하나를 쓰는 이 경로에서는 그 비용이 항목 수에 그대로 곱해져, 상한 경계(M11)의 1,000건이
+         * 커넥션 수립만으로 80초를 넘겼다. 이 클래스가 보려는 것은 커넥션 비용이 아니다.
+         */
+        @Bean(destroyMethod = "close")
+        open fun dataSource(): DataSource =
+            HikariDataSource(
+                HikariConfig().apply {
+                    jdbcUrl = postgres.jdbcUrl
+                    username = postgres.username
+                    password = postgres.password
+                },
+            )
 
         @Bean
-        open fun transactionManager(ds: DriverManagerDataSource): PlatformTransactionManager = DataSourceTransactionManager(ds)
+        open fun transactionManager(ds: DataSource): PlatformTransactionManager = DataSourceTransactionManager(ds)
 
         @Bean
-        open fun dslContext(ds: DriverManagerDataSource): DSLContext = DSL.using(ds, SQLDialect.POSTGRES)
+        open fun dslContext(ds: DataSource): DSLContext = DSL.using(ds, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -822,6 +838,34 @@ class StatusMigrationMaterializeIntegrationTest {
         // 막다른 길 안내는 그대로 남는다 — 사유가 바뀌어도 분할 재시도는 여전히 유일한 탈출구다.
         assertThat(reason).containsIgnoringCase("split")
         assertThat(reason).containsIgnoringCase("retry")
+    }
+
+    // ── M11. 상한 경계 — M4 의 비-공허 짝 ─────────────────────────────────────
+
+    /**
+     * M11 (게이트 2 리뷰 ⑥) — **대상이 정확히 [BULK_OPERATION_MAX_SIZE] 면 실패가 아니라 전량 이관된다**.
+     *
+     * M4 는 상한 **초과**만 본다. 그래서 판정의 `>` 를 `>=` 로 바꾸면 정확히 상한인 이관이 전부
+     * FAILED 로 죽는데 전 스위트가 초록이었다 — 「N건은 되고 N+1건은 안 된다」에서 N 을 못 박는 쪽이
+     * 없었다. 이 테스트가 그 짝이다. 판정은 두 곳(적재 쿼리·처리기 분기)에 있고 어느 쪽을 바꿔도
+     * `COMPLETED` 또는 `total_count` 중 하나가 무너진다.
+     */
+    @Test
+    fun `M11 - 대상이 정확히 상한이면 FAILED 가 아니라 전량 이관된다`() {
+        insertIssuesBulk(SCOPE_KEY, "in_review", BULK_OPERATION_MAX_SIZE)
+
+        val operationId = enqueue(projectKeys = setOf(SCOPE_KEY))
+        worker.pollAndProcess()
+
+        val operation = requireNotNull(bulkRepo.findById(BulkOperationId(operationId))) { "작업을 찾을 수 없음" }
+        assertThat(operation.status)
+            .describedAs("정확히 상한인 대상은 초과가 아니다 — FAILED 면 경계 판정이 `>=` 로 밀린 것이다")
+            .isEqualTo(BulkOperationStatus.COMPLETED)
+        assertThat(operation.totalCount).isEqualTo(BULK_OPERATION_MAX_SIZE)
+        assertThat(operation.succeededCount).isEqualTo(BULK_OPERATION_MAX_SIZE)
+        assertThat(operation.failedCount).isEqualTo(0)
+        assertThat(countIssuesInState(SCOPE_KEY, "in_review")).isEqualTo(0)
+        assertThat(countIssuesInState(SCOPE_KEY, "in_progress")).isEqualTo(BULK_OPERATION_MAX_SIZE)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
