@@ -397,14 +397,14 @@ gap 4항목(누락 요구사항 · 모호 표현 · 가정 누락 · 엣지 미�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
 - depends-on: [2]
 - jira: [J3, J4, J5]
 
 **RED**. `BoardControllerIntegrationTest` — **기존 400 승계를 먼저 고정**한다.
 - `PATCH {} 는 400 이다` ← 🛑 **계약 완화 방지 앵커. 이 테스트를 가장 먼저 쓴다**
 - `PATCH {"name":"버그 보드"} 는 swimlaneField 없이 200 이다`
-- `PATCH {"name":"   "} 는 400 이다`
+- `PATCH {"name":"   "} 는 400 이다` ← 🛑 **현재 구조로는 500 이 난다. 아래 ★ 참조**
 - `PATCH {"name":null} 은 400 이다` ← present-null 경로
 - `PATCH {"swimlaneField":"ASSIGNEE"} 는 기존대로 200 이다` ← 회귀 앵커
 - `PATCH {"swimlaneField":null} 은 400 이다` ← 기존 동작 유지
@@ -432,6 +432,19 @@ gap 4항목(누락 요구사항 · 모호 표현 · 가정 누락 · 엣지 미�
 - `BoardDetailResponse` 에 `canDelete: Boolean` 추가. `getBoard` 핸들러가
   `permissionResolver.hasPermission(actor, SOFT_DELETE, IssueScope.Project(board.projectKey))` 를 전달.
   **`BoardSummaryResponse`(목록)에는 넣지 않는다** — `⋯` 메뉴는 현재 보드에만 붙는다
+- ★ **`BoardExceptionHandler` 에 `IllegalArgumentException` → 400 매핑을 신설한다** (Task 2 가 넘긴 발견).
+  **실측** — `BoardExceptionHandler` 는 `@RestControllerAdvice(assignableTypes = [BoardController, BoardQuickFilterController])`(`:69`)
+  로 좁혀져 있고 그 안에 `IllegalArgumentException` 핸들러가 **없다.** `:320` 의 catch-all
+  `@ExceptionHandler(Exception::class)` 가 삼켜 **500 `AGILE_INTERNAL_ERROR`** 가 된다.
+  같은 매핑이 `SprintExceptionHandler.kt:150` 에 있으나 그쪽 `assignableTypes` 가 Sprint 컨트롤러 3종이라
+  **Board 에는 오지 않는다.**
+  → 공백 이름이 400 이 되려면 이 핸들러가 필요하다. `SprintExceptionHandler` 의 매핑을
+  **400 + `AGILE_VALIDATION_FAILED`** 로 동형 복제한다.
+  ⚠️ **컨트롤러가 공백을 미리 막는 우회를 택하지 않는다** — 그러면 도메인 `Board.init` 의
+  `require(name.isNotBlank())` 가 dead code 가 되고, 「도달 불가 조건을 지키는 테스트 = 가짜 그린」
+  양식이 된다 (메모리 `unreachable-state-fixture-is-fake-green`).
+  ⚠️ `BoardExceptionHandler.kt:41-44` 주석이 「새 컨트롤러는 이 목록에 포함되어야 한다(리뷰 BLOCKER-B/C)」를
+  이미 적고 있다 — 같은 종류 사고의 재발 자리다
 
 **REFACTOR**. 컨트롤러 클래스 KDoc 의 엔드포인트 목록에 DELETE 추가 + 권한 표기 갱신.
 
