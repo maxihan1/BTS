@@ -334,7 +334,17 @@ class BulkOperationIntegrationTest {
             issueService: IssueApplicationService,
             bulkRepo: BulkOperationRepository,
             issueRepository: IssueRepository,
-        ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo, issueRepository)
+            eventPublisher: IssueEventPublisher,
+        ): BulkItemApplier =
+            BulkItemApplier(
+                issueService = issueService,
+                bulkRepo = bulkRepo,
+                issueRepository = issueRepository,
+                eventPublisher = eventPublisher,
+                // 이 컨텍스트에는 IssueHistoryRecorder 빈이 없다 — issueApplicationService 빈도 같은
+                // 이유로 relaxed mockk 를 쓴다. 이 테스트들이 보는 것은 이력이 아니라 전환 결과다.
+                historyRecorder = io.mockk.mockk(relaxed = true),
+            )
 
         @Bean
         open fun bulkItemFailureRecorder(bulkRepo: BulkOperationRepository): BulkItemFailureRecorder = BulkItemFailureRecorder(bulkRepo)

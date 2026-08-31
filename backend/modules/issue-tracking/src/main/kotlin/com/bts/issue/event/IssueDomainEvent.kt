@@ -77,6 +77,7 @@ data class IssueUpdated(
  * @property toState 전환 후 상태 이름. 예: `"in_progress"`
  * @property actorId 전환을 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
  * @property occurredAt 이벤트 발생 시각 (UTC).
+ * @property cause 이 전환을 일으킨 특수 경로 표시. 기본값 `null`.
  */
 @JsonTypeName("issue.transitioned")
 data class IssueTransitioned(
@@ -85,6 +86,7 @@ data class IssueTransitioned(
     val toState: String,
     val actorId: ActorId,
     val occurredAt: Instant,
+    val cause: String? = null,
 ) : IssueDomainEvent
 
 /**

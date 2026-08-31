@@ -14,12 +14,17 @@ import com.bts.issue.bulk.domain.StateNotInMigrationMappingException
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueTransitioned
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 
 /**
  * 이슈 변경 + SUCCEEDED 상태 기록을 단일 REQUIRES_NEW 트랜잭션으로 수행하는 컴포넌트.
@@ -36,6 +41,10 @@ import org.springframework.transaction.annotation.Transactional
  * @param issueService 이슈 변경 유스케이스.
  * @param bulkRepo 항목 상태 기록 Repository.
  * @param issueRepository STATUS_MIGRATION 이 워크플로우 엔진을 우회해 상태를 쓰는 Repository.
+ * @param eventPublisher STATUS_MIGRATION 이 [IssueTransitioned] 를 발행하는 아웃바운드 어댑터.
+ *   Edit/Transition 가지는 [IssueApplicationService] 안에서 이미 발행하므로 여기서 쓰지 않는다.
+ * @param historyRecorder STATUS_MIGRATION 이 상태 변경 이력을 남기는 facade. 위와 같은 이유로
+ *   Edit/Transition 가지에서는 쓰지 않는다.
  * @param projectArchiveGuard 아카이브 프로젝트 쓰기 잠금 가드. null 이면 검사를 skip 한다
  *   (기존 단위 테스트 호환용 fallback — [IssueApplicationService] 의 동명 파라미터와 같은 형태).
  *   Spring 컨텍스트에서는 ProjectArchiveGuard(@Component) Bean 이 주입된다.
@@ -45,6 +54,8 @@ class BulkItemApplier(
     private val issueService: IssueApplicationService,
     private val bulkRepo: BulkOperationRepository,
     private val issueRepository: IssueRepository,
+    private val eventPublisher: IssueEventPublisher,
+    private val historyRecorder: IssueHistoryRecorder,
     // STATUS_MIGRATION 은 issueService 쓰기 초크포인트를 우회하므로 이 가지가 직접 가드를 부른다.
     // Edit/Transition 가지는 issueService 안에서 이미 통과하므로 여기서 중복 호출하지 않는다.
     private val projectArchiveGuard: ProjectArchiveGuard? = null,
@@ -107,7 +118,7 @@ class BulkItemApplier(
                 )
             }
             is BulkOperationPayload.StatusMigration -> {
-                migrateStatus(issueKey, existing, payload.mappings)
+                migrateStatus(actor, issueKey, existing, payload.mappings)
             }
         }
 
@@ -122,9 +133,8 @@ class BulkItemApplier(
      * - **우회** — ① per-issue TRANSITION 권한(위조 차단은 호출자의 발행 권한 책임 · 편차 X4) ·
      *   ⑤ 워크플로우 엔진 `plan()`(이관 대상은 유효한 전환이 0이다 · Jira J8) ·
      *   ⑧ 후처리(`plan.emitEvents`)는 plan 자체가 없어 N/A.
-     * - **유지** — ② 아카이브 가드([ProjectArchiveGuard.checkByIssue]) · ③ 비관락 ·
-     *   ⑥ [IssueRepository.applyTransition] 의 OCC 와 해결책.
-     *   ⑦ `IssueTransitioned` 발행은 Task 6 이 이 자리에 붙인다.
+     * - **유지** — ② 아카이브 가드([ProjectArchiveGuard.checkByIssue]) ·
+     *   ⑥ [IssueRepository.applyTransition] 의 OCC 와 해결책 · ⑦ [IssueTransitioned] 발행.
      *
      * ## 대상은 항목마다 다르다 (F7 · J7)
      * 매핑은 「빠지는 상태 → 새 상태」 목록이라 이슈의 **현재 상태로 조회**해야 대상이 정해진다.
@@ -158,14 +168,24 @@ class BulkItemApplier(
      * 그러나 **이관 완료 이후** 워크플로우 정의 교체 전에 또 들어오면 이 경로는 그것을 모른다.
      * 발행 경로가 「이관 → 재확인 → 교체」 루프를 돌아야 닫히고 그것은 project-workflow 소관이라 PR 7b 다.
      *
+     * @param actor 이관을 수행한 행위자. 이벤트와 이력에 그대로 실린다.
      * @param issueKey 이관 대상 이슈 키.
      * @param existing 처리 시점에 읽은 이슈. 현재 상태·버전·해결책의 출처다.
      * @param mappings 출발 상태 키 → 대상 상태 키.
      * @throws com.bts.issue.project.archive.ProjectArchivedException 이슈의 프로젝트가 아카이브 상태일 때.
      * @throws StateNotInMigrationMappingException 현재 상태가 [mappings] 에 없을 때.
+     * @throws IssueNotFoundException 이력 스냅샷 조회 시점에 이슈가 사라졌을 때.
      * @throws IssueVersionConflictException OCC 충돌로 0행이 갱신됐을 때.
+     *
+     * `ThrowsCount` 억제 이유. 세 예외는 각각 **다른 실패 코드**로 번역된다 —
+     * `PROJECT_ARCHIVED` · `STATE_NOT_IN_MAPPING` · `VERSION_CONFLICT`. 하나로 합치면
+     * [BulkItemExecutor] 가 구분할 수단을 잃고 F21 이 되살리려던 `UNKNOWN` 뭉갬으로 되돌아간다.
+     * [IssueApplicationService.transitionIssue] 가 같은 사유로 같은 국소 억제를 쓴다 —
+     * 전역 detekt 임계값이나 `detekt-baseline.xml` 은 건드리지 않는다.
      */
+    @Suppress("ThrowsCount")
     private fun migrateStatus(
+        actor: ActorId,
         issueKey: IssueKey,
         existing: IssueResponse,
         mappings: Map<String, String>,
@@ -175,6 +195,9 @@ class BulkItemApplier(
         val target =
             mappings[existing.currentStateKey]
                 ?: throw StateNotInMigrationMappingException(issueKey, existing.currentStateKey)
+        // 이력은 REST DTO 가 아니라 도메인 Issue 를 받는다(projectId 가 DTO 에 없다). 상태를 덮어쓰기
+        // **전에** 읽어 두어야 before 스냅샷이 옛 상태를 가리킨다.
+        val before = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
         val updatedRows =
             issueRepository.applyTransition(
                 key = issueKey,
@@ -185,5 +208,26 @@ class BulkItemApplier(
         if (updatedRows == 0) {
             throw IssueVersionConflictException(issueKey, existing.version)
         }
+        eventPublisher.publish(
+            IssueTransitioned(
+                issueKey = issueKey,
+                fromState = existing.currentStateKey,
+                toState = target,
+                actorId = actor,
+                occurredAt = Instant.now(),
+                cause = CAUSE_STATUS_MIGRATION,
+            ),
+        )
+        historyRecorder.record(
+            before = before,
+            after = before.copy(currentStateKey = target),
+            actor = actor,
+            projectId = before.projectId,
+        )
+    }
+
+    companion object {
+        /** [IssueTransitioned.cause] 에 싣는 이관 표시. 일반 전환은 이 값을 싣지 않는다(=`null`). */
+        const val CAUSE_STATUS_MIGRATION = "STATUS_MIGRATION"
     }
 }
