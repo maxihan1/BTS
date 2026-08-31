@@ -25,6 +25,7 @@ import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.bulk.worker.BulkOperationCompleter
 import com.bts.issue.bulk.worker.BulkOperationWorker
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.PROJECTS
@@ -753,6 +754,76 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(operation.succeededCount).isEqualTo(1)
     }
 
+    // ── M10. 상한 초과 + 크래시 재시작 — 장부가 거짓말하지 않는다 ──────────────
+
+    /**
+     * M10 (게이트 2 리뷰 ⑤) — **상한 초과로 끝나도 이미 옮긴 건이 장부와 사유에 반영된다**.
+     *
+     * ## 재현하는 사고
+     * ① 워커가 항목을 적재하고 일부를 적용하다 죽는다. `recomputeAndPersistCounts` 는 [BulkOperationProcessor.process]
+     * 맨 끝에만 있으므로 `succeeded_count` 는 **0인 채** 남는다. ② 재전달 사이에 유입이 늘어 재스캔이
+     * 상한을 넘는다. ③ 초과 분기가 적재 전에 return 하면서 `markFailed` 만 부르고 `process()` 도
+     * 재집계 **앞에서** return 한다. 결과 — `status=FAILED · succeeded_count=0` 인데 실제로는 옮겨진
+     * 이슈가 있고, 사유 문구는 문자 그대로 `nothing was migrated` 라 **거짓말**이다.
+     *
+     * ## 무엇을 단언하나
+     * - 장부가 실제와 맞는다 (`succeeded_count` = 실제로 옮겨진 수).
+     * - 사유가 **정산된 카운트에서 유도**된다. 이미 옮긴 것이 있으면 0건을 주장하지 않는다 —
+     *   운영자가 부분 이관과 0건 이관을 구분할 수 있어야 한다(M4 가 0건 쪽 짝이다).
+     * - 남은 PENDING 항목은 **남기되 그 수를 로그로 드러낸다**. 근거는 [BulkOperationProcessor] KDoc.
+     */
+    @Test
+    fun `M10 - 상한 초과로 끝나도 이미 옮긴 건이 장부와 사유에 반영된다`() {
+        // 재전달 사이에 유입이 늘어 재스캔이 상한을 넘는다.
+        insertIssuesBulk(SCOPE_KEY, "in_review", BULK_OPERATION_MAX_SIZE + 1)
+        // 1차 실행이 이미 옮긴 2건 — 지금은 대상 상태가 아니다.
+        val alreadyMigrated = (1..2).map { insertIssue(SCOPE_KEY, "in_progress") }
+        // 1차 실행이 적재했지만 처리하지 못한 1건.
+        val notProcessed = "$SCOPE_KEY-1"
+
+        val operationId = enqueue(projectKeys = setOf(SCOPE_KEY))
+        // 크래시 재현 — 항목 3건이 적재됐고 2건은 SUCCEEDED 인데 재집계 전이라 장부는 아직 0 이다.
+        alreadyMigrated.forEach { insertItem(operationId, it, ItemStatus.SUCCEEDED) }
+        insertItem(operationId, notProcessed, ItemStatus.PENDING)
+        setTotalCount(operationId, 3)
+
+        val logs = captureProcessorLogs { worker.pollAndProcess() }
+
+        val operation = requireNotNull(bulkRepo.findById(BulkOperationId(operationId))) { "작업을 찾을 수 없음" }
+        assertThat(operation.status).isEqualTo(BulkOperationStatus.FAILED)
+        assertThat(operation.succeededCount)
+            .describedAs("이미 옮겨진 2건이 장부에 반영돼야 한다 — 재집계를 markFailed 앞에서 하지 않으면 0 이다")
+            .isEqualTo(2)
+        assertThat(operation.processedCount).isEqualTo(2)
+        assertThat(operation.totalCount).isEqualTo(3)
+
+        // 아무것도 새로 옮기지 않았다 — 초과 분기는 적재도 적용도 하지 않는다.
+        assertThat(countIssuesInState(SCOPE_KEY, "in_review")).isEqualTo(BULK_OPERATION_MAX_SIZE + 1)
+        alreadyMigrated.forEach { assertThat(stateOf(it)).isEqualTo("in_progress") }
+
+        // 남은 PENDING 은 남긴다 — 지우거나 없던 실패로 꾸미지 않는다(명시된 선택, KDoc 참조).
+        val leftPending =
+            bulkRepo.findItemsByOperationId(BulkOperationId(operationId))
+                .filter { it.status == ItemStatus.PENDING }
+        assertThat(leftPending.map { it.issueKey.value }).containsExactly(notProcessed)
+
+        val reason =
+            logs.filter { it.level.isGreaterOrEqual(Level.WARN) }
+                .map { it.formattedMessage }
+                .filter { it.contains(operationId.toString()) }
+                .joinToString("\n")
+        assertThat(reason).isNotBlank()
+        assertThat(reason)
+            .describedAs("이미 옮긴 것이 있는데 「아무것도 안 옮겼다」고 적으면 운영자가 DB 를 잘못 읽는다")
+            .doesNotContain("nothing was migrated")
+        assertThat(reason).containsIgnoringCase("already migrated")
+        assertThat(reason).contains("migrated=2")
+        assertThat(reason).contains("leftPending=1")
+        // 막다른 길 안내는 그대로 남는다 — 사유가 바뀌어도 분할 재시도는 여전히 유일한 탈출구다.
+        assertThat(reason).containsIgnoringCase("split")
+        assertThat(reason).containsIgnoringCase("retry")
+    }
+
     // ── private helpers ────────────────────────────────────────────────────────
 
     /** 기준 커맨드로 이관을 큐잉한다. 매핑은 2개 — 범위와 시점만 테스트마다 흔든다. */
@@ -803,12 +874,30 @@ class StatusMigrationMaterializeIntegrationTest {
     private fun insertPendingItem(
         operationId: UUID,
         issueKey: String,
+    ) = insertItem(operationId, issueKey, ItemStatus.PENDING)
+
+    /** 크래시 시점의 항목 1건을 원하는 상태로 심는다 — 「적재는 됐고 일부는 이미 끝났다」를 만든다(M10). */
+    private fun insertItem(
+        operationId: UUID,
+        issueKey: String,
+        status: ItemStatus,
     ) {
         dsl.insertInto(BULK_OPERATION_ITEMS)
             .set(BULK_OPERATION_ITEMS.ID, UUID.randomUUID())
             .set(BULK_OPERATION_ITEMS.BULK_OPERATION_ID, operationId)
             .set(BULK_OPERATION_ITEMS.ISSUE_KEY, issueKey)
-            .set(BULK_OPERATION_ITEMS.STATUS, ItemStatus.PENDING.name)
+            .set(BULK_OPERATION_ITEMS.STATUS, status.name)
+            .execute()
+    }
+
+    /** 1차 실행이 확정해 둔 `total_count` 를 재현한다 — 재집계는 이 값을 건드리지 않는다(M10). */
+    private fun setTotalCount(
+        operationId: UUID,
+        totalCount: Int,
+    ) {
+        dsl.update(BULK_OPERATIONS)
+            .set(BULK_OPERATIONS.TOTAL_COUNT, totalCount)
+            .where(BULK_OPERATIONS.ID.eq(operationId))
             .execute()
     }
 
