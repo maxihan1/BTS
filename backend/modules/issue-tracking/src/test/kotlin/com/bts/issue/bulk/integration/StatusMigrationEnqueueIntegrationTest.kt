@@ -62,6 +62,8 @@ import java.util.UUID
  * - T8. E6(같은 대상으로 여러 출발이 몰림)은 **허용**이다. E7 가드가 "키 전부 유일"로 과잉 구현되면 red 가 된다
  * - T9~T11. [BulkOperation.create] 의 빈 items 규칙 — STATUS_MIGRATION 만 허용이고
  *   BULK_EDIT / BULK_TRANSITION 은 **여전히 거부**된다 (비-공허 짝)
+ * - T12~T14. 게이트 2 리뷰로 더한 거부 2종 — E17(연쇄 매핑) · E18(범위 키가 실재하지 않음 ·
+ *   소프트 삭제 포함). 비-공허 짝은 T8(연쇄가 아닌 다중 매핑)과 T1(실재하는 범위 키)이다
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [StatusMigrationEnqueueIntegrationTest.TestConfig::class])
@@ -140,6 +142,12 @@ class StatusMigrationEnqueueIntegrationTest {
         private val ACTOR_ID: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000a5")
         private const val PROJECT_KEY = "MIG"
         private const val OTHER_PROJECT_KEY = "OTHER"
+
+        /** 어디에도 심지 않는 프로젝트 키 — 발행 요청의 오타를 흉내낸다 (E18). */
+        private const val UNKNOWN_PROJECT_KEY = "NOPE"
+
+        /** 심되 `deleted_at` 을 채워 두는 프로젝트 키 — 소프트 삭제가 「없음」으로 읽히는지 본다 (E18). */
+        private const val DELETED_PROJECT_KEY = "GONE"
         private var bootstrapped = false
     }
 
@@ -150,6 +158,7 @@ class StatusMigrationEnqueueIntegrationTest {
         if (!bootstrapped) {
             applyMigrations()
             seedStatusCatalog()
+            seedProjects()
             bootstrapped = true
         }
     }
@@ -278,7 +287,8 @@ class StatusMigrationEnqueueIntegrationTest {
     /**
      * T8 (E6) — 여러 출발이 **같은 대상**으로 몰리는 것은 허용한다. 지라도 막지 않는다(J7).
      *
-     * T7 의 비-공허 짝이다. 중복 판정을 「매핑 키가 전부 유일」로 과잉 구현하면 이 테스트가 red 가 된다.
+     * T7 **과 T12** 의 비-공허 짝이다. 중복 판정을 「매핑 키가 전부 유일」로 과잉 구현하거나,
+     * T12 의 연쇄 판정을 「대상이 둘 이상이면 거부」로 과잉 구현하면 이 테스트가 red 가 된다.
      */
     @Test
     fun `T8 - 여러 fromStatusKey 가 같은 toStatusKey 로 몰리는 것은 허용된다`() {
@@ -294,6 +304,66 @@ class StatusMigrationEnqueueIntegrationTest {
             )
 
         assertThat(bulkRepo.findById(BulkOperationId(operationId))).isNotNull
+    }
+
+    // ── T12~T14. 게이트 2 리뷰 — 연쇄 매핑 · 범위 키 실재 ──────────────────────
+
+    /**
+     * T12 (E17) — 한 매핑의 **대상**이 다른 매핑의 **출발**이면 거부한다.
+     *
+     * `{in_review→blocked, blocked→todo}` 는 기존 가드를 전부 통과한다. 자기매핑 판정이 한 쌍
+     * 안에서만 보기 때문이다. 그대로 두면 워커가 `current_state_key IN ('in_review','blocked')` 로
+     * 긁어 `in_review` 이슈를 `blocked` 로 옮기고 그 항목을 `SUCCEEDED` 로 찍어 **다시 처리하지
+     * 않는다.** 그런데 `blocked` 도 사라지는 상태다 — 작업은 `COMPLETED` 인데 유령 상태가 남는다.
+     * 게다가 스캔 시점에 이미 `blocked` 에 있던 이슈만 `todo` 로 가므로 **결과가 순서에 의존**한다.
+     *
+     * 전이적으로 풀어 주지 않는다. 순환(`{a→b, b→a}`)이면 종료하지 않고, 조용히 대상을 바꾸면
+     * 운영자의 실수를 감춘다. 거부가 옳다.
+     */
+    @Test
+    fun `T12 - 거부 - 한 매핑의 대상이 다른 매핑의 출발이면 큐잉하지 않는다`() {
+        assertRejected(
+            command(
+                mappings =
+                    listOf(
+                        StatusMigrationMapping("in_review", "blocked"),
+                        StatusMigrationMapping("blocked", "todo"),
+                    ),
+            ),
+            expectedMessagePart = "chained mapping",
+        )
+    }
+
+    /**
+     * T13 (E18) — 상태 카탈로그 확인과 **대칭**으로 범위 프로젝트 키의 실재도 확인한다.
+     *
+     * 오타 하나면 워커가 0건을 긁고 `total_count=0` 으로 즉시 `COMPLETED` 가 된다. 운영자는
+     * 「이관 완료」를 보고 상태를 지운다 — E5b(빈 범위)가 막으려던 그 실패 양식이고 트리거만 다르다.
+     * 실행 시점에는 정상 0건(E3)과 오타 0건이 구분되지 않으므로 **큐잉 시점**이 유일한 자리다.
+     *
+     * 살아 있는 키를 하나 섞어 둔다 — 「전부 모르는 키일 때만 거부」로 좁게 구현되면 red 가 된다.
+     */
+    @Test
+    fun `T13 - 거부 - projectKeys 에 실재하지 않는 키가 섞이면 큐잉하지 않는다`() {
+        assertRejected(
+            command(projectKeys = setOf(PROJECT_KEY, UNKNOWN_PROJECT_KEY)),
+            expectedMessagePart = "projectKeys not found",
+        )
+    }
+
+    /**
+     * T14 (E18) — 소프트 삭제된 프로젝트는 「없다」로 본다.
+     *
+     * 소프트 삭제에는 자동 필터가 없다(DATA.md §3). 조회에서 `deleted_at IS NULL` 을 빼면 지워진
+     * 프로젝트가 범위로 통과하고 워커는 거기서 0건을 긁어 또 「이관 완료」가 된다. 이 테스트가
+     * 그 한 줄의 판별식이다 — T13 만 있으면 그 줄을 지워도 초록이다.
+     */
+    @Test
+    fun `T14 - 거부 - 소프트 삭제된 프로젝트 키는 실재하지 않는 것으로 본다`() {
+        assertRejected(
+            command(projectKeys = setOf(DELETED_PROJECT_KEY)),
+            expectedMessagePart = "projectKeys not found",
+        )
     }
 
     // ── T9~T11. BulkOperation.create 의 빈 items 규칙 (비-공허 짝) ──────────────
@@ -370,7 +440,11 @@ class StatusMigrationEnqueueIntegrationTest {
         cmd: StatusMigrationCommand,
         expectedMessagePart: String,
     ) {
-        assertThatThrownBy { port.enqueueStatusMigration(cmd) }
+        // assertThatThrownBy 는 「안 던졌다」를 자기 안에서 터뜨려 describedAs 가 붙지 않는다.
+        // 거부 자체가 사라지는 회귀에서 red 가 어느 가드를 기대했는지 말하게 하려고 runCatching 으로 받는다.
+        val thrown: Throwable? = runCatching { port.enqueueStatusMigration(cmd) }.exceptionOrNull()
+        assertThat(thrown)
+            .describedAs("큐잉이 거부되고 예외 메시지에 \"%s\" 가 담겨야 한다", expectedMessagePart)
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining(expectedMessagePart)
 
@@ -431,6 +505,38 @@ class StatusMigrationEnqueueIntegrationTest {
             insertWorkflowStatus(conn, workflowId, "in_progress", "In Progress", "IN_PROGRESS", 1)
             insertWorkflowStatus(conn, workflowId, "in_review", "In Review", "IN_PROGRESS", 2)
             insertWorkflowStatus(conn, workflowId, "blocked", "Blocked", "IN_PROGRESS", 3)
+            conn.commit()
+        }
+    }
+
+    /**
+     * 프로젝트 픽스처 — 범위 키 실재 판정(E18)의 대조군이다.
+     *
+     * 살아 있는 [PROJECT_KEY]·[OTHER_PROJECT_KEY] 와 소프트 삭제된 [DELETED_PROJECT_KEY] 를 함께
+     * 심는다. 살아 있는 쪽이 없으면 T1·T2·T8 이 통과할 수 없고(비-공허 짝이 사라진다), 삭제된 쪽이
+     * 없으면 `deleted_at IS NULL` 을 지워도 red 가 되는 테스트가 없다.
+     */
+    private fun seedProjects() {
+        DriverManager.getConnection(
+            TestConfig.postgres.jdbcUrl,
+            TestConfig.postgres.username,
+            TestConfig.postgres.password,
+        ).use { conn ->
+            conn.autoCommit = false
+            listOf(
+                Triple(PROJECT_KEY, "Status Migration Scope", false),
+                Triple(OTHER_PROJECT_KEY, "Status Migration Other Scope", false),
+                Triple(DELETED_PROJECT_KEY, "Status Migration Deleted Scope", true),
+            ).forEach { (key, name, deleted) ->
+                val deletedAt = if (deleted) "NOW()" else "NULL"
+                conn.prepareStatement(
+                    "INSERT INTO projects (key, name, deleted_at) VALUES (?, ?, $deletedAt) ON CONFLICT (key) DO NOTHING",
+                ).use { stmt ->
+                    stmt.setString(1, key)
+                    stmt.setString(2, name)
+                    stmt.executeUpdate()
+                }
+            }
             conn.commit()
         }
     }
