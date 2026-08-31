@@ -108,6 +108,12 @@ class BulkOperationRepository(
      * 그 결과로 초과 여부와 적재 대상을 동시에 정한다. 초과일 때만 정확한 대상 수를 다시 센다 —
      * 운영자가 「어떻게 나눌지」를 정하려면 근사치가 아니라 진짜 수가 필요하기 때문이다.
      *
+     * ### 정렬은 걸지 않는다
+     * 결과는 **집합과 개수**로만 쓰이고(항목 배치 INSERT · 상한 비교) 초과 분기는 읽은 것을 통째로
+     * 버린다. `issues.key` 는 UNIQUE 라 그 열로 정렬하면 플래너가 [statusMigrationTargets] 의 조건에
+     * 맞는 인덱스 대신 그 유니크 인덱스를 걷는 쪽을 고를 여지가 생긴다 — 결과에 필요하지 않은 정렬이
+     * 접근 경로를 바꾸는 것은 손해뿐이다.
+     *
      * ### 소프트 삭제는 수동 필터다 (DATA.md §3)
      * 자동 필터가 없으므로 `issues` 와 `projects` 양쪽에 `deleted_at IS NULL` 을 직접 붙인다.
      * 빠뜨리면 삭제된 이슈가 이관 대상이 되고, 삭제된 프로젝트가 범위로 되살아난다.
@@ -128,7 +134,6 @@ class BulkOperationRepository(
             dsl.select(ISSUES.KEY)
                 .from(ISSUES)
                 .where(targets)
-                .orderBy(ISSUES.KEY)
                 .limit(BULK_OPERATION_MAX_SIZE + 1)
                 .fetch(ISSUES.KEY)
                 .filterNotNull()
@@ -463,7 +468,9 @@ class BulkOperationRepository(
     /**
      * 이관 대상 조건 — 출발 상태 ∩ 프로젝트 범위 ∩ 살아 있는 행.
      *
-     * `(project_id, current_state_key)` 부분 인덱스(V029)와 같은 모양이라 전역 스캔으로 흐르지 않는다.
+     * V029 에 `idx_issues_project_state_active (project_id, current_state_key) WHERE deleted_at IS NULL`
+     * 이 있고 이 조건은 그 세 열을 그대로 쓴다. **실행 계획을 이 PR 이 EXPLAIN 으로 확인하지는 않았다** —
+     * 대응 인덱스가 있다는 사실 진술이지 「전역 스캔으로 흐르지 않는다」는 보장이 아니다.
      * 프로젝트는 키로 받으므로 서브쿼리로 id 를 좁힌다 — JOIN 이 아니라 서브쿼리인 이유는 이슈 1행이
      * 프로젝트 1행에 대응해도 조인 결과를 세는 순간 실수하기 쉽기 때문이다(learnings: jOOQ-cartesian-product).
      */
