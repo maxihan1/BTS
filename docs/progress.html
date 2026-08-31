@@ -1654,11 +1654,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">109</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 86건 · 전체 195건</span>
+      <span class="big-pct" style="color:#9ca3af;">113</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 86건 · 전체 199건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 109건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 113건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">27건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 <b>의도된 대가</b> · 미착수 · T1)</span></div>
@@ -1902,6 +1902,36 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
       </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드를 지우겠다고 확인을 누른 뒤 서버 응답이 늦으면, 그동안은 취소도 Esc 도 먹지 않고 창이 잠긴다. 지금은 10초가 지나면 자동으로 풀린다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 보드 삭제 경로는 10초 상한이 있어 갇히지 않는다. 다만 <code>ConfirmDialog</code> 를 쓰는 <b>다른 소비처는 상한이 없어</b> 응답이 영영 안 오면 창에서 못 빠져나온다. 오늘 실제 피해 보고는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/components/ui/confirm-dialog.tsx</code> 의 <code>confirming</code> 은 확인 버튼만이 아니라 취소·Esc·오버레이·X 를 <b>전부</b> 잠근다. 실패가 갈 곳을 구조적으로 보장하려는 설계이고, KDoc 이 <i>&quot;파괴적 조작이고 이미 확인을 누른 뒤라 기다림은 짧다&quot;</i> 를 <b>전제</b>로 명시한다. 네트워크 장애로 그 전제가 깨지면 탈출구가 없다. 보드 삭제는 <code>useDeleteBoard</code> 의 <code>DELETE_BOARD_TIMEOUT_MS</code> 로 소비자 쪽에서 상한을 걸어 풀었으나(PR 「보드 CRUD 회수」), 프리미티브 자체는 그대로다. 프리미티브에 상한을 넣을지, 소비처마다 걸지가 결정 대상이다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 삭제 타임아웃이 이미 나간 요청을 취소하지 않는다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드 삭제가 10초를 넘기면 화면은 실패로 보이지만, 서버로 간 삭제 요청은 그대로 살아 있어 실제로는 지워질 수 있다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면에는 「실패」가 뜨는데 보드는 사라진다. 목록을 다시 불러오면 상태가 맞춰지므로 데이터가 깨지지는 않지만, 그 사이 사용자가 다시 시도하면 이미 없는 보드에 404 를 본다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 삭제 타임아웃이 이미 나간 요청을 취소하지 않는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/hooks/use-boards.ts</code> 의 <code>withDeleteTimeout</code> 이 <code>Promise.race</code> 로만 끊는다. <code>apps/web/src/api/boards.ts</code> 의 <code>apiFetch</code> 에 <code>AbortSignal</code> 배선이 없어 요청 자체를 취소할 수단이 없기 때문이다. abort 를 도입하려면 <code>apiFetch</code> 전면 변경이라 소비처 전수 영향이 있다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 「새 보드」 다이얼로그가 빈 상태용 여백을 그대로 쓴다 (신규 · 미착수 · T0)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드를 새로 만드는 창의 위아래 공백이 필요 이상으로 넓다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 보기에만 어색하고 동작에는 문제가 없다. 오늘 실제 피해는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 「새 보드」 다이얼로그가 빈 상태용 여백을 그대로 쓴다 (신규 · 미착수 · T0)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/components/board/CreateBoardForm.tsx</code> 가 빈 상태 화면용 <code>min-h-48 p-8</code> 래퍼를 갖고 있고, 다이얼로그가 그 폼을 재사용한다. PR 「보드 CRUD 회수」는 <code>showEmptyStateIntro</code> prop 으로 <b>문구만</b> 껐고 레이아웃은 손대지 않았다 — 그 PR 의 C1 범위가 인트로 제거뿐이었기 때문이다.</p></div>
+      </details>
     </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">12건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -2024,7 +2054,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — project-workflow — 전환 규칙 표면에 남은 사본 5종 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p>어느 쪽이 정본인지 모른 채 낡은 쪽을 읽는다. 이 저장소가 이름 붙인 지배 결함 양식 그대로다.</p><p><b>무엇 (전수).</b></p><table class="md-table"><thead><tr><th>#</th><th>사본</th><th>자리</th></tr></thead><tbody><tr><td>1</td><td>403 스텁 4벌</td><td><code>PostActionControllerTest</code> — 형제 <code>ValidatorControllerTest</code> 는 같은 PR 에서 <code>denyPermission()</code> 헬퍼로 접었는데, 확장한 쪽에는 적용 안 됐다</td></tr><tr><td>2</td><td>편집 허용 목록 3벌</td><td><code>ValidatorAdminService</code> 의 클래스 KDoc · <code>validateConfig</code> KDoc · <code>editable</code> 식</td></tr><tr><td>3</td><td>403 응답 본문 2벌</td><td><code>ValidatorExceptionHandler</code> · <code>PostActionExceptionHandler</code> — 같은 예외·같은 코드·같은 메시지, 로그 태그만 다르다</td></tr><tr><td>4</td><td>팩토리 헤더의 분기 개수</td><td>두 팩토리 파일 머리 주석이 종류 수를 적는다. 같은 PR 이 KDoc 에서는 「<code>when</code> 분기가 정본」이라며 목록을 지웠는데 헤더의 <b>개수</b>는 남았다</td></tr><tr><td>5</td><td>파라미터 섀도잉</td><td><code>TransitionRuleRepository.findByTransitionId</code> 의 람다 지역변수가 함수 파라미터 <code>transitionId</code> 를 가린다. 한 줄 위 예외 메시지는 파라미터를 읽어 두 바인딩을 한 줄 간격으로 읽게 된다</td></tr></tbody></table><p><b>처방.</b> 1·3 은 공용 헬퍼로 접는다. 2 는 「허용 목록은 <code>editable</code> 분기가 정본」이라 적고 KDoc 사본을 지운다(같은 PR 이 팩토리 KDoc 에 이미 쓴 문구다). 4 는 개수를 지운다. 5 는 지역변수를 개명한다.</p><p><b>★ ② 는 해소됐다</b> (PR #407, 2026-08-26). 「편집 허용 목록이 한 파일 안에 KDoc 2곳 + 코드 1곳」 중 <b>KDoc 2곳</b>을 지웠다 — 부채 132 를 닫으면서 <code>validateConfig</code> KDoc 의 허용 목록 사본을 <code>isEditable</code> 포인터로 바꿨고, 그러자 클래스 KDoc 의 「근거는 <code>validateConfig</code> KDoc 에 있다」가 dangling pointer 가 되어 함께 고쳤다. 코드 1곳은 이제 <code>ValidatorEditability.kt</code> 의 <code>isEditable</code> 한 벌뿐이다. <b>나머지 ①③④⑤ 는 미해소.</b></p><p><b>왜 지금이 아니라 부채인가.</b> 다섯 건 다 <b>동작 영향 0</b>이다. PR #404 게이트 2 라운드 3 은 머지를 막는 차단 2건과 판별식 fake green 2건을 닫는 것이 우선이라 여기까지 오지 않았다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">53건</span></h3>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">54건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)</span></div>
@@ -2558,6 +2588,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — 워크플로우 — 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (선재 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>backend/modules/project-workflow/.../WorkflowController.kt</code> 와 <code>WorkflowStatusCompositionController.kt</code> 의 <code>@RequestBody</code> 에 <code>@Valid</code> 가 없고 클래스 레벨 <code>@Validated</code> 도 전역 <code>MethodValidationPostProcessor</code> 도 0건이다(보안 재리뷰 실측). 따라서 <code>CreateWorkflowRequest.key</code> 의 <code>@NotBlank @Size(max=100)</code> 이 아무도 안 읽는 장식이다. <code>@Pattern</code> 도 없고 도메인 <code>Workflow.of()</code> 에도 key 형식 검사가 없어 <b><code>key = &quot;../../users&quot;</code> 인 워크플로우를 만들어 저장할 수 있다.</b> PR #400 이 프론트에서 <code>encodeURIComponent</code> 로 막았지만 근본은 백엔드다. MEMORY <code>decorative-annotation-copied-from-sibling</code> 양식이다.</p><p><b>처방.</b> <code>@Valid</code> 를 붙이고 red 를 한 번 눈으로 본 뒤(안 그러면 또 장식이다), key 에 <code>@Pattern</code> 을 건다. 도메인 invariant 로 올리는 편이 더 낫다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — classify-task 의 detectType 에 쓰이지 않는 지역 변수가 있다 (선재 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 작업 종류를 판정하는 코드 안에 만들어 놓고 한 번도 쓰지 않는 변수가 하나 있다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 동작에는 영향이 없다. 다만 다음 사람이 그 변수를 「무언가를 하는 것」으로 오해해 조건을 잘못 얹을 수 있다. 오늘 실제 피해는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — classify-task 의 detectType 에 쓰이지 않는 지역 변수가 있다 (선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/classify-task.ts</code> 의 <code>detectType</code> 안에 <code>const lower = raw.toLowerCase()</code> 가 있는데 함수 본문은 전부 <code>stripped</code> 를 쓴다. PR 「보드 CRUD 회수」의 Task 8 이 같은 함수를 고치다 발견했고, 선재 dead code 라 그 PR 범위 밖으로 두고 보고만 했다.</p></div>
       </details>
     </div></div><h3 class="todo-cat">빌드·배포 환경 <span class="todo-cat-count">11건</span></h3>
         <p class="todo-cat-desc">코드를 검사하고 내보내는 기계 쪽 문제.</p>
