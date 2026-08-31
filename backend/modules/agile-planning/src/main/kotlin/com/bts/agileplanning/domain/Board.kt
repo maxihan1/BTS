@@ -6,6 +6,18 @@ import java.time.Instant
 import java.util.UUID
 
 /**
+ * 보드 이름 불변 계약 위반 예외.
+ *
+ * [Board] 의 init 블록이 공백 이름을 만났을 때 던진다. 검증 소유권은 도메인에 남기되 예외에 이름을
+ * 붙여, HTTP 매핑이 [IllegalArgumentException] 계층 **전체**를 400 으로 삼키지 않게 한다. 맨
+ * [IllegalArgumentException] 을 400 으로 매핑하면 호출 사슬 어디에서 터지든(예: [NumberFormatException])
+ * 내부 버그가 400 으로 나가 5xx 경보에서 사라진다.
+ *
+ * [IllegalArgumentException] 을 상속해 `require` 계열과 같은 의미 범주를 유지한다.
+ */
+class BoardNameInvalidException : IllegalArgumentException("Board.name must not be blank.")
+
+/**
  * 칸반 보드 애그리게이트 루트.
  *
  * 프로젝트 이슈를 컬럼별로 시각화하는 작업 현황판.
@@ -18,7 +30,7 @@ import java.util.UUID
  * ### 불변 계약
  * - [id] 는 생성 후 변경 불가.
  * - [projectKey] 는 비어 있으면 안 된다.
- * - [name] 은 비어 있거나 공백만 있으면 안 된다.
+ * - [name] 은 비어 있거나 공백만 있으면 안 된다 — 위반 시 [BoardNameInvalidException].
  * - [swimlaneField] 기본값은 [SwimlaneField.NONE]. 미지정 시 스윔레인을 사용하지 않는다.
  *
  * @property id 보드 UUID (PK).
@@ -42,6 +54,7 @@ data class Board(
 ) {
     init {
         require(projectKey.isNotBlank()) { "Board.projectKey must not be blank." }
-        require(name.isNotBlank()) { "Board.name must not be blank." }
+        // 이름 불변식만 이름 있는 예외로 던진다 — HTTP 400 매핑을 이 한 조건으로 좁히기 위해서다.
+        if (name.isBlank()) throw BoardNameInvalidException()
     }
 }

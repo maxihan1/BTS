@@ -20,6 +20,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import jakarta.validation.Valid
+import org.openapitools.jackson.nullable.JsonNullable
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -227,24 +228,30 @@ class BoardController(
      *
      * 권한: [IssuePermission.CREATE] on 보드의 프로젝트.
      *
-     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 필드별 서비스 위임.
+     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 서비스 **1회** 위임.
      *
      * ### 바디 규칙 (3-state)
      * - 미전송 필드는 건드리지 않는다.
      * - **둘 다 미전송이면 400.** 아무것도 바꾸지 않는 요청이 조용히 200 을 받지 않게 한다 — 이 규칙이
      *   `@NotBlank` 시절의 400 을 승계한다.
      * - 명시 null 은 400. 보드는 이름도 스윔레인도 「해제」 의미가 없다.
-     * - 공백 이름은 컨트롤러가 막지 않는다. 도메인 [com.bts.agileplanning.domain.Board] 의 init require 가
-     *   [IllegalArgumentException] 을 던지고 [BoardExceptionHandler.handleIllegalArgument] 가 400 으로 바꾼다.
-     *   컨트롤러가 선차단하면 그 불변식이 dead code 가 된다.
+     * - 공백 이름은 컨트롤러가 막지 않는다. 도메인 [com.bts.agileplanning.domain.Board] 의 init 이
+     *   [com.bts.agileplanning.domain.BoardNameInvalidException] 을 던지고
+     *   [BoardExceptionHandler.handleBoardNameInvalid] 가 400 으로 바꾼다. 컨트롤러가 선차단하면
+     *   그 불변식이 dead code 가 된다.
+     *
+     * ### 원자성
+     * 두 필드가 함께 와도 [BoardApplicationService.updateBoard] 에 **한 번만** 위임한다. 필드별로 나눠
+     * 호출하면 서비스 메서드마다 트랜잭션이 열려, 뒤쪽이 400 을 던져도 앞선 이름 갱신은 이미 커밋된
+     * 상태가 남는다(리뷰 지적 1). 컨트롤러는 트랜잭션 경계를 갖지 않으므로 분할을 되돌릴 수 없다.
      *
      * @param id path variable 보드 UUID.
      * @param request 부분 갱신 요청 바디(name·swimlaneField, 둘 다 선택).
-     * @return 200 OK + [BoardMetaResponse]. 마지막 갱신 결과가 두 변경을 모두 반영한다.
+     * @return 200 OK + [BoardMetaResponse]. 갱신 결과가 두 변경을 모두 반영한다.
      * @throws BoardNotFoundException 보드 미존재 → 404.
      * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
      * @throws ResponseStatusException 400 — 갱신 필드 부재, 명시 null, 알 수 없는 swimlaneField 값.
-     * @throws IllegalArgumentException 400 — 공백 이름(도메인 불변식 위반).
+     * @throws com.bts.agileplanning.domain.BoardNameInvalidException 400 — 공백 이름(도메인 불변식 위반).
      */
     @PatchMapping("/{id}")
     fun updateBoard(
@@ -260,28 +267,16 @@ class BoardController(
 
         loadBoardWithCreate(id)
 
-        val renamed =
-            if (request.name.isPresent) {
-                service.updateName(id, requirePresentValue(request.name.get(), "name"))
-            } else {
-                null
-            }
-        val swimlaneUpdated =
-            if (request.swimlaneField.isPresent) {
-                service.updateSwimlaneField(id, requirePresentValue(request.swimlaneField.get(), "swimlaneField"))
-            } else {
-                null
-            }
+        val name = presentValueOrNull(request.name, "name")
+        val swimlaneField = presentValueOrNull(request.swimlaneField, "swimlaneField")
+        if (name == null && swimlaneField == null) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "name 또는 swimlaneField 중 하나는 전송해야 합니다.",
+            )
+        }
 
-        // 두 갱신은 각각 별도 트랜잭션으로 커밋되므로 나중 결과가 앞선 변경까지 반영한다.
-        // 둘 다 미전송이면 여기서 400 — 최소 1필드 규칙이 이 elvis 사슬의 끝에 있다.
-        val updated =
-            swimlaneUpdated
-                ?: renamed
-                ?: throw ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "name 또는 swimlaneField 중 하나는 전송해야 합니다.",
-                )
+        val updated = service.updateBoard(id, name, swimlaneField)
         return ResponseEntity.ok(DataResponse(BoardMetaResponse.from(updated)))
     }
 
@@ -412,20 +407,25 @@ class BoardController(
     }
 
     /**
-     * [org.openapitools.jackson.nullable.JsonNullable] 이 present 로 전달한 값이 null 이 아님을 보장한다.
+     * [JsonNullable] 의 3-state 를 「미전송 → null · 전송 → 비-null 값」 2-state 로 좁힌다.
      *
      * presence 만 보고 통과시키면 명시 null(`{"name":null}`)이 그대로 흘러 500 이 된다.
-     * 보드에는 「필드 해제」 의미가 없으므로 present-null 은 400 으로 거부한다.
+     * 보드에는 「필드 해제」 의미가 없으므로 present-null 은 400 으로 거부한다. 그 결과 반환 null 은
+     * 오직 「미전송」만 뜻하므로, 호출부가 부분 갱신 여부를 한 번의 서비스 위임으로 표현할 수 있다.
      *
-     * @param value present 로 꺼낸 값. null 이면 명시 null 이 전송된 것이다.
-     * @param field 응답 사유에 쓸 필드 이름.
-     * @return null 이 아닌 값.
-     * @throws ResponseStatusException 400 — 값이 null 일 때.
+     * @param field 요청 바디의 [JsonNullable] 필드.
+     * @param fieldName 응답 사유에 쓸 필드 이름.
+     * @return 전송된 비-null 값. 미전송이면 null.
+     * @throws ResponseStatusException 400 — 명시 null 이 전송됐을 때.
      */
-    private fun requirePresentValue(
-        value: String?,
-        field: String,
-    ): String = value ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "$field 는 null 일 수 없습니다.")
+    private fun presentValueOrNull(
+        field: JsonNullable<String?>,
+        fieldName: String,
+    ): String? {
+        if (!field.isPresent) return null
+        return field.get()
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "$fieldName 는 null 일 수 없습니다.")
+    }
 
     /**
      * 권한을 판정하고 미충족 시 [BoardAccessDeniedException](403)을 던진다.

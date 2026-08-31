@@ -5,6 +5,7 @@ package com.bts.agileplanning.application
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardCardPlacement
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
@@ -58,8 +59,9 @@ data class BoardPlacementResult(
  * boards/board_columns 로드 → [BoardIssueLookupPort.listVisibleIssuesByProject] 로 카드 조회 →
  * [BoardCardPlacement.placeCards] 로 배치.
  *
- * ## 보드 이름 변경 / 삭제 (FR-BD-01-2)
- * [updateName] 은 기존 보드를 [Board.copy] 로 재구성해 도메인 불변 계약(name 비공백)에 검증을 맡긴다.
+ * ## 보드 부분 갱신 / 삭제 (FR-BD-01-2)
+ * [updateBoard] 는 이름과 스윔레인 기준 필드를 **한 트랜잭션**에서 갱신한다. 기존 보드를 [Board.copy] 로
+ * 재구성해 도메인 불변 계약(name 비공백)에 검증을 맡기고, 스윔레인 문자열 파싱도 같은 경계 안에서 한다.
  * [softDelete] 는 boards.deleted_at 만 채우고 이슈는 남긴다. 둘 다 repository 의 null/false 를
  * [BoardNotFoundException](404)으로 승격한다. 권한 판정은 컨트롤러 책임이다.
  *
@@ -264,64 +266,84 @@ class BoardApplicationService(
     }
 
     /**
-     * 보드의 스윔레인 기준 필드를 갱신하고 갱신된 보드를 반환한다.
+     * 보드의 이름과 스윔레인 기준 필드를 **한 트랜잭션**에서 부분 갱신한다.
      *
-     * [swimlaneFieldRaw] 를 [SwimlaneField] enum 으로 파싱한다. 알 수 없는 값이면 400 을 던진다.
-     * [boardRepository.updateSwimlaneField] 가 null 을 반환하면 보드가 존재하지 않으므로 404 를 던진다.
+     * [name] / [swimlaneField] 는 각각 null 이면 「미전송」이라 건드리지 않는다. 두 필드가 함께 오면
+     * 한 번의 호출 = 한 트랜잭션이므로 뒤쪽 갱신이 실패해도 앞선 이름 갱신이 남지 않는다. 컨트롤러가
+     * 두 서비스 메서드를 순차 호출하던 이전 구조는 각 메서드가 자기 트랜잭션을 열어, 응답은 400 인데
+     * `boards.name` 만 새 값으로 커밋된 상태를 남겼다(리뷰 지적 1).
      *
-     * @param boardId 갱신 대상 보드 UUID.
-     * @param swimlaneFieldRaw 스윔레인 기준 필드 이름 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
-     * @return 갱신된 보드 도메인 객체.
-     * @throws ResponseStatusException 400 — 알 수 없는 [swimlaneFieldRaw] 값.
-     * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
-     */
-    @Transactional
-    fun updateSwimlaneField(
-        boardId: UUID,
-        swimlaneFieldRaw: String,
-    ): Board {
-        log.debug("스윔레인 필드 갱신 — boardId={}, swimlaneField={}", boardId, swimlaneFieldRaw)
-        val swimlaneField =
-            SwimlaneField.entries.firstOrNull { it.name == swimlaneFieldRaw }
-                ?: throw ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "AGILE_VALIDATION_FAILED: 알 수 없는 swimlaneField 값입니다: $swimlaneFieldRaw",
-                )
-        return boardRepository.updateSwimlaneField(boardId, swimlaneField)
-            ?: throw ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "AGILE_BOARD_NOT_FOUND: 보드를 찾을 수 없습니다: boardId=$boardId",
-            )
-    }
-
-    /**
-     * 보드 이름을 변경하고 갱신된 보드를 반환한다.
+     * 검증은 모든 쓰기보다 앞선다. 기존 보드를 [Board.copy] 로 재구성해 이름 불변 계약의 판정을
+     * 도메인에 맡기고([BoardNameInvalidException]), 스윔레인 문자열도 쓰기 전에 enum 으로 파싱한다 —
+     * 서비스가 같은 검사를 복제하면 도메인 init 이 dead code 가 된다.
      *
-     * 공백 이름 거부는 [Board] 애그리게이트의 불변 계약이다. 서비스가 같은 검사를 복제하면 도메인의
-     * `require` 가 dead code 가 되므로, 기존 보드를 [Board.copy] 로 재구성해 판정을 도메인에 맡긴다
-     * (PATCH 가 도메인 검증을 우회하는 회귀 차단).
-     *
-     * 권한 판정은 이 서비스가 하지 않는다 — 보드는 컨트롤러의 `loadBoardWithCreate` 가
+     * 권한 판정은 이 서비스가 하지 않는다 — 컨트롤러의 `loadBoardWithCreate` 가
      * actor 추출(401) → 메타 조회(404) → CREATE(403) 순서를 담당한다.
      *
-     * @param boardId 이름을 변경할 보드 UUID.
-     * @param name 새로운 보드 이름. 공백만으로 이루어질 수 없다.
-     * @return 갱신된 보드 도메인 객체.
-     * @throws IllegalArgumentException [name] 이 비어 있거나 공백뿐일 때 — [Board] 불변 계약 위반.
+     * @param boardId 갱신할 보드 UUID.
+     * @param name 새 보드 이름. null 이면 이름을 건드리지 않는다. 공백만으로 이루어질 수 없다.
+     * @param swimlaneField 새 스윔레인 기준 필드 이름. null 이면 건드리지 않는다. 예: `"ASSIGNEE"`.
+     * @return 갱신된 보드. 두 필드를 함께 갱신하면 마지막 갱신 결과가 두 변경을 모두 반영한다.
+     * @throws BoardNameInvalidException 400 — [name] 이 공백뿐일 때(도메인 불변 계약 위반).
+     * @throws ResponseStatusException 400 — 알 수 없는 [swimlaneField] 값.
      * @throws BoardNotFoundException 404 — 보드 미존재 또는 soft-deleted.
      */
     @Transactional
-    fun updateName(
+    fun updateBoard(
         boardId: UUID,
-        name: String,
+        name: String?,
+        swimlaneField: String?,
     ): Board {
-        val existing = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
-        val renamed = existing.copy(name = name)
+        log.debug("보드 부분 갱신 — boardId={}, name={}, swimlaneField={}", boardId, name, swimlaneField)
 
-        log.debug("보드 이름 갱신 — boardId={}", boardId)
-        // 조회와 갱신 사이에 다른 트랜잭션이 soft-delete 하면 null 이 돌아온다(TOCTOU).
-        return boardRepository.updateName(boardId, renamed.name) ?: throw BoardNotFoundException()
+        val existing = boardOrNotFound(boardRepository.findById(boardId))
+        // 도메인 정규화 — copy 가 init 불변식을 다시 돌린다(PATCH 의 애그리게이트 우회 차단).
+        val desired =
+            existing.copy(
+                name = name ?: existing.name,
+                swimlaneField = swimlaneField?.let(::parseSwimlaneField) ?: existing.swimlaneField,
+            )
+
+        val renamed =
+            if (name == null) {
+                existing
+            } else {
+                boardOrNotFound(boardRepository.updateName(boardId, desired.name))
+            }
+        return if (swimlaneField == null) {
+            renamed
+        } else {
+            boardOrNotFound(boardRepository.updateSwimlaneField(boardId, desired.swimlaneField))
+        }
     }
+
+    /**
+     * boards repository 의 조회/갱신 결과 null 을 404 로 승격한다.
+     *
+     * boards 의 모든 읽기·쓰기가 `deleted_at IS NULL` 을 걸므로 null 은 「없음 또는 이미 삭제됨」이다.
+     * 조회와 갱신 사이에 다른 트랜잭션이 soft-delete 한 경우(TOCTOU)도 같은 경로로 들어온다.
+     *
+     * @param board repository 결과. null 이면 보드가 없거나 이미 삭제됐다.
+     * @return null 이 아닌 보드.
+     * @throws BoardNotFoundException 404 — [board] 가 null 일 때.
+     */
+    private fun boardOrNotFound(board: Board?): Board = board ?: throw BoardNotFoundException()
+
+    /**
+     * 스윔레인 기준 필드 문자열을 [SwimlaneField] enum 으로 파싱한다.
+     *
+     * 쓰기보다 먼저 호출돼야 한다 — 파싱 실패가 첫 쓰기 뒤에 나면 롤백에만 의존하게 된다.
+     *
+     * @param raw 스윔레인 기준 필드 이름 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+     * @return 대응하는 [SwimlaneField] 값.
+     * @throws ResponseStatusException 400 — 알 수 없는 값.
+     */
+    private fun parseSwimlaneField(raw: String): SwimlaneField =
+        SwimlaneField.entries.firstOrNull { it.name == raw }
+            ?: throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "AGILE_VALIDATION_FAILED: 알 수 없는 swimlaneField 값입니다: $raw",
+            )
 
     /**
      * 보드를 소프트 삭제한다 — boards.deleted_at 만 채우고 이슈는 남긴다.
@@ -329,7 +351,7 @@ class BoardApplicationService(
      * [BoardRepository.softDelete] 가 false 를 반환하면 보드가 없거나 이미 삭제된 상태이므로 404 로
      * 승격한다. 존재 판정과 삭제가 한 UPDATE 안에서 끝나므로 선행 조회를 두지 않는다.
      *
-     * 권한 판정은 [updateName] 과 마찬가지로 컨트롤러 책임이다.
+     * 권한 판정은 [updateBoard] 와 마찬가지로 컨트롤러 책임이다.
      *
      * @param boardId 소프트 삭제할 보드 UUID.
      * @throws BoardNotFoundException 404 — 보드 미존재 또는 이미 soft-deleted.
