@@ -144,10 +144,9 @@ class BulkOperationProcessor(
         if (payload !is BulkOperationPayload.StatusMigration) return true
 
         val targetCount = bulkRepo.materializeStatusMigrationItems(operation.id, payload)
-        if (targetCount <= BULK_OPERATION_MAX_SIZE) return true
-
-        failOverLimit(operation, targetCount)
-        return false
+        val overLimit = targetCount > BULK_OPERATION_MAX_SIZE
+        if (overLimit) failOverLimit(operation, targetCount)
+        return !overLimit
     }
 
     /**

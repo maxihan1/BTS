@@ -88,6 +88,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val archiveGuard = mockk<ProjectArchiveGuard>()
     val eventPublisher = mockk<IssueEventPublisher>()
     val historyRecorder = mockk<IssueHistoryRecorder>()
+
     /**
      * 고정 시각원. 이벤트 `occurredAt` 이 **주입 시각원**을 쓰는지 보려면 시각이 고정돼야 한다.
      * `Instant.now()` 직접 호출은 주입을 우회하므로 벽시계와 이 값이 갈린다.

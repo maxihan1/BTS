@@ -60,7 +60,14 @@ import java.time.Instant
  * @param clock 이벤트 `occurredAt` 의 시각원. [IssueApplicationService] 의 동명 파라미터와 같은
  *   fallback 형태다 — `Instant.now()` 직접 호출은 주입한 시각원을 우회해, 같은 BC 안에서
  *   시각을 고정한 테스트와 형제 발행부([IssueApplicationService] `Instant.now(clock)`)가 갈린다.
+ *
+ * `LongParameterList` 억제 이유. 협력자 7개는 전부 이 클래스가 **직접 부르는** 대상이고 묶을 축이 없다 —
+ * 쓰기 3종(`issueService`·`issueRepository`·`bulkRepo`)과 부수효과 2종(`eventPublisher`·`historyRecorder`)은
+ * 서로 다른 트랜잭션 의미를 가지며, `projectArchiveGuard` 는 non-null 이어야 하고(위 §), `clock` 은 기본값
+ * fallback 이다. [IssueApplicationService] 가 같은 사유로 같은 국소 억제를 쓴다 — 전역 detekt 임계값이나
+ * `detekt-baseline.xml` 은 건드리지 않는다.
  */
+@Suppress("LongParameterList")
 @Component
 class BulkItemApplier(
     private val issueService: IssueApplicationService,
