@@ -324,12 +324,11 @@ N2 대로 스키마 변경이 0건이므로 `bts-deploy.sh` 를 평소대로 돌
    - `GET /api/v1/bulk-operations/{id}` 가 그 작업에 대해 500. **경계된 피해**다.
    - 큐에 남은 STATUS_MIGRATION 메시지는 `processMessage` 의 catch 가 삼켜 재전달되고
      `MAX_RECEIVE_COUNT` 초과 시 dead-letter 로 archive 된다. **경계된 피해**다.
-   - ★`BulkOperationCleanupWorker.cleanupExpired` 는 `findCompletedBefore` 가 돌려주는
-     **배치 전체**를 `toOperation()` 으로 매핑한다(`:419-424`). 그 배치에 STATUS_MIGRATION 행이
-     한 건이라도 섞이면 **정리 작업 전체가 매일 밤 실패**하고 `bulk_operations` 가 무한히 쌓인다.
-     로그만 남고 알림은 없다 — **경계되지 않는 유일한 피해**이고, 그래서 2의 DELETE 가 필요하다.
-     보존 기간(`CLEANUP_RETENTION_DAYS = 30`)이 지나야 그 행이 배치에 들어오므로 **롤백 직후가 아니라
-     한 달 뒤** 조용히 시작된다는 것이 이 항목의 고약한 부분이다.
+   - ★**일괄 작업 정리(cleanup)가 통째로 멈춘다.** 한 행이 배치 전체를 끄는 구조이고
+     보존 기간이 지난 **한 달 뒤에 조용히** 시작된다 — **경계되지 않는 유일한 피해**이고,
+     그래서 2의 DELETE 가 필요하다. 이것은 이관에 국한된 결함이 아니라 **issue-tracking BC 의
+     구조 결함**이므로 이 절이 아니라 `TODOS.md` 의 「issue-tracking — 읽을 수 없는 작업 행 하나가
+     일괄 작업 정리를 통째로 멈춘다」 항목이 정본이다(장부 등재 `151`).
 
 ### 의도적 편차 (게이트 1 추가)
 
