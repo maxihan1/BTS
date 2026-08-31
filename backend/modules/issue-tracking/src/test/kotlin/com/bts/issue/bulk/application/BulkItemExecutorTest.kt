@@ -10,6 +10,7 @@ import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
+import com.bts.issue.bulk.domain.StateNotInMigrationMappingException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
@@ -17,6 +18,7 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
 import io.kotest.core.spec.style.DescribeSpec
@@ -34,6 +36,7 @@ import java.util.UUID
  * 검증 범위.
  * - 성공 경로: applier.applyAndRecordSuccess 호출 및 failureRecorder 미호출
  * - 예외→FailureReasonCode 매핑: 각 도메인 예외가 올바른 reasonCode 로 매핑
+ *   (STATUS_MIGRATION 의 두 실패 — 아카이브 잠금·매핑 부재 — 포함. UNKNOWN 으로 뭉개지면 안 된다)
  * - best-effort 격리: applier 예외가 이 메서드 밖으로 전파되지 않음
  * - 알 수 없는 예외의 fallback: NOT_FOUND 로 안전하게 처리
  *
@@ -205,6 +208,46 @@ class BulkItemExecutorTest : DescribeSpec({
                         issueKey,
                         FailureReasonCode.WORKFLOW_NOT_CONFIGURED,
                     )
+                }
+            }
+
+            it("ProjectArchivedException → PROJECT_ARCHIVED 로 failureRecorder 호출") {
+                val payload =
+                    BulkOperationPayload.StatusMigration(
+                        mappings = mapOf("in_review" to "in_progress"),
+                        projectKeys = setOf("ATLAS"),
+                    )
+                val operation = makeOperation(payload)
+                val item = pendingItem()
+                every {
+                    applier.applyAndRecordSuccess(actorId, operationId, issueKey, payload)
+                } throws ProjectArchivedException(issueKey.value)
+                justRun { failureRecorder.recordFailure(operationId, issueKey, any()) }
+
+                sut.executeItem(actorId, operation, item)
+
+                verify(exactly = 1) {
+                    failureRecorder.recordFailure(operationId, issueKey, FailureReasonCode.PROJECT_ARCHIVED)
+                }
+            }
+
+            it("StateNotInMigrationMappingException → STATE_NOT_IN_MAPPING 으로 failureRecorder 호출") {
+                val payload =
+                    BulkOperationPayload.StatusMigration(
+                        mappings = mapOf("in_review" to "in_progress"),
+                        projectKeys = setOf("ATLAS"),
+                    )
+                val operation = makeOperation(payload)
+                val item = pendingItem()
+                every {
+                    applier.applyAndRecordSuccess(actorId, operationId, issueKey, payload)
+                } throws StateNotInMigrationMappingException(issueKey, "done")
+                justRun { failureRecorder.recordFailure(operationId, issueKey, any()) }
+
+                sut.executeItem(actorId, operation, item)
+
+                verify(exactly = 1) {
+                    failureRecorder.recordFailure(operationId, issueKey, FailureReasonCode.STATE_NOT_IN_MAPPING)
                 }
             }
 

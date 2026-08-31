@@ -24,6 +24,8 @@ import com.bts.issue.bulk.worker.BulkOperationCompleter
 import com.bts.issue.bulk.worker.BulkOperationWorker
 import com.bts.issue.domain.ActorId
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -333,7 +335,22 @@ class BulkOperationIntegrationTest {
         open fun bulkItemApplier(
             issueService: IssueApplicationService,
             bulkRepo: BulkOperationRepository,
-        ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo)
+            issueRepository: IssueRepository,
+            eventPublisher: IssueEventPublisher,
+            dsl: DSLContext,
+        ): BulkItemApplier =
+            BulkItemApplier(
+                issueService = issueService,
+                bulkRepo = bulkRepo,
+                issueRepository = issueRepository,
+                eventPublisher = eventPublisher,
+                // 이 컨텍스트에는 IssueHistoryRecorder 빈이 없다 — issueApplicationService 빈도 같은
+                // 이유로 relaxed mockk 를 쓴다. 이 테스트들이 보는 것은 이력이 아니라 전환 결과다.
+                historyRecorder = io.mockk.mockk(relaxed = true),
+                // 가드는 non-null 필수다. 이 클래스는 STATUS_MIGRATION 을 돌리지 않지만 모의를 넘겨
+                // 「검사가 생략됐다」를 만들 이유도 없다 — 실물이 dsl 하나로 조립된다.
+                projectArchiveGuard = ProjectArchiveGuard(ProjectArchiveStateRepository(dsl)),
+            )
 
         @Bean
         open fun bulkItemFailureRecorder(bulkRepo: BulkOperationRepository): BulkItemFailureRecorder = BulkItemFailureRecorder(bulkRepo)

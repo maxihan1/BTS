@@ -34,6 +34,7 @@ value class BulkOperationId(val value: UUID)
  *
  * invariant.
  * - [items] 는 생성 시 1개 이상, [BULK_OPERATION_MAX_SIZE] 이하.
+ *   단 [BulkOperationType.STATUS_MIGRATION] 만 **빈 목록을 허용**한다 — 사유는 [create] KDoc.
  * - [processedCount] = succeededCount + failedCount (recomputeCounts 후 항상 성립).
  *
  * @property id 일괄 작업 내부 식별자.
@@ -41,7 +42,8 @@ value class BulkOperationId(val value: UUID)
  * @property type 작업 유형.
  * @property status 현재 상태.
  * @property payload 타입별 파라미터. BULK_EDIT → [BulkOperationPayload.Edit],
- *   BULK_TRANSITION → [BulkOperationPayload.Transition].
+ *   BULK_TRANSITION → [BulkOperationPayload.Transition],
+ *   STATUS_MIGRATION → [BulkOperationPayload.StatusMigration].
  * @property items 처리 대상 이슈 항목 목록.
  * @property totalCount 총 항목 수. 생성 후 불변.
  * @property processedCount 처리 완료(성공+실패) 항목 수. recomputeCounts 로 갱신.
@@ -68,14 +70,33 @@ data class BulkOperation(
         /**
          * 새 일괄 작업을 생성한다.
          *
+         * ### 빈 [items] 는 [BulkOperationType.STATUS_MIGRATION] 만 허용한다
+         *
+         * 나머지 두 타입은 접수 시점에 대상 이슈 키를 호출자가 직접 준다 — 목록이 비었다면
+         * 그것은 「할 일이 없는 작업」이 아니라 **요청이 잘못 만들어진 것**이므로 계속 거부한다.
+         *
+         * `STATUS_MIGRATION` 만 다른 이유는 **대상이 큐잉 시점에 확정되지 않기 때문**이다.
+         * 워커가 실행(claim) 시점에 매핑의 출발 상태 ∩ `projectKeys` 로 이슈를 다시 긁어
+         * 항목을 채우고 `totalCount` 를 확정한다(FR-WF-07 F15 — 「세고 나서 옮긴다」가 아니라
+         * **「옮기면서 센다」**). 큐잉 시점에 목록을 떠 두면 큐잉 → 실행 사이에 그 상태로 들어온
+         * 이슈를 통째로 버리게 되고, 그것이 부채 143(이관 판정과 교체 사이 TOCTOU)의 실체다.
+         *
+         * 즉 여기서의 빈 목록은 **누락이 아니라 아직 세지 않았다는 뜻**이다. 이 문단이 없으면
+         * 다음 사람이 「빼먹은 검증」으로 읽고 되돌린다.
+         *
+         * [BULK_OPERATION_MAX_SIZE] 상한은 세 타입 모두에 그대로 걸린다 — 빈 목록도 만족한다.
+         *
          * @param id 내부 식별자.
          * @param actorId 작업 요청자 UUID.
          * @param type 작업 유형.
-         * @param items 처리 대상 항목 목록. 1개 이상, [BULK_OPERATION_MAX_SIZE] 이하.
+         * @param items 처리 대상 항목 목록. [BULK_OPERATION_MAX_SIZE] 이하.
+         *   [BulkOperationType.STATUS_MIGRATION] 이 아니면 1개 이상이어야 한다.
          * @param payload 타입별 파라미터. BULK_EDIT → [BulkOperationPayload.Edit],
-         *   BULK_TRANSITION → [BulkOperationPayload.Transition].
+         *   BULK_TRANSITION → [BulkOperationPayload.Transition],
+         *   STATUS_MIGRATION → [BulkOperationPayload.StatusMigration].
          * @return PENDING 상태의 새 [BulkOperation] 인스턴스.
-         * @throws IllegalArgumentException 항목 수 불변식 위반 시.
+         * @throws IllegalArgumentException 항목 수 불변식 위반 시 — [BulkOperationType.STATUS_MIGRATION]
+         *   이 아닌데 [items] 가 비었거나, [items] 가 [BULK_OPERATION_MAX_SIZE] 를 넘을 때.
          */
         fun create(
             id: BulkOperationId,
@@ -84,7 +105,9 @@ data class BulkOperation(
             items: List<BulkOperationItem>,
             payload: BulkOperationPayload,
         ): BulkOperation {
-            require(items.isNotEmpty()) { "items must not be empty" }
+            require(items.isNotEmpty() || type == BulkOperationType.STATUS_MIGRATION) {
+                "items must not be empty for $type"
+            }
             require(items.size <= BULK_OPERATION_MAX_SIZE) {
                 "items must not exceed $BULK_OPERATION_MAX_SIZE, but was ${items.size}"
             }
