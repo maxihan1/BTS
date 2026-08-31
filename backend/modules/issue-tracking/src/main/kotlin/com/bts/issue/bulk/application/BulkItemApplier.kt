@@ -2,7 +2,6 @@
 
 package com.bts.issue.bulk.application
 
-import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.TransitionIssueRequest
 import com.bts.issue.application.UpdateIssueRequest
@@ -118,7 +117,8 @@ class BulkItemApplier(
                 )
             }
             is BulkOperationPayload.StatusMigration -> {
-                migrateStatus(actor, issueKey, existing, payload.mappings)
+                // existing 을 넘기지 않는다 — 이관은 비관락을 잡은 뒤의 재조회가 정본이다([migrateStatus]).
+                migrateStatus(actor, issueKey, payload.mappings)
             }
         }
 
@@ -134,15 +134,39 @@ class BulkItemApplier(
      *   ⑤ 워크플로우 엔진 `plan()`(이관 대상은 유효한 전환이 0이다 · Jira J8) ·
      *   ⑧ 후처리(`plan.emitEvents`)는 plan 자체가 없어 N/A.
      * - **유지** — ② 아카이브 가드([ProjectArchiveGuard.checkByIssue]) ·
+     *   ③ [IssueRepository.findByKeyForUpdate] 의 비관락 ·
      *   ⑥ [IssueRepository.applyTransition] 의 OCC 와 해결책 · ⑦ [IssueTransitioned] 발행.
      *
      * ## 대상은 항목마다 다르다 (F7 · J7)
      * 매핑은 「빠지는 상태 → 새 상태」 목록이라 이슈의 **현재 상태로 조회**해야 대상이 정해진다.
      * 첫 항목으로 고정하면 다른 출발 상태의 이슈가 남의 대상으로 밀려간다.
      *
+     * ## 비관락을 잡고, 잡은 뒤 다시 읽는다 (D3 ③)
+     * 쓰기 전에 [IssueRepository.findByKeyForUpdate] 로 행을 잠근다 — 동시 편집과의 경합을 그대로 막는
+     * 것이 spec §D3 ③ 이다. 락은 이 메서드를 감싸는 [applyAndRecordSuccess] 의 REQUIRES_NEW 트랜잭션이
+     * 커밋될 때 풀린다.
+     *
+     * **락을 잡았어도 락 밖에서 읽은 값으로 판단하면 락이 무력해진다.** 그래서 상태·버전·해결책을 전부
+     * 락 뒤 재조회 결과에서 취한다. [applyAndRecordSuccess] 가 먼저 읽는 `existing`(BROWSE 권한 검증 겸
+     * Edit/Transition 가지의 입력)은 잠그지 않은 읽기라 이 가지에서는 쓰지 않는다.
+     *
+     * ## `expectedVersion` 은 락 뒤 버전이다 — 그리고 그 이유
+     * 락 밖에서 읽은 버전을 쓰면 락이 장식이 된다. 앞선 편집이 커밋되기를 기다렸다가, 기다린 보람 없이
+     * 낡은 버전으로 써서 그 건이 [IssueVersionConflictException] 으로 **실패**하기 때문이다. 이관은
+     * 사용자가 낸 요청이 아니라 「이 상태에 남은 것을 전부 옮겨라」는 일괄 지시이므로, 지켜야 할 선행조건은
+     * 「내가 조금 전에 본 버전 그대로인가」가 아니라 **「지금 이 이슈가 매핑된 상태에 있는가」** 다.
+     * 그 선행조건은 락 뒤 상태로 매핑을 다시 찾는 것으로 검사한다 — 그 사이 누가 옮겼다면
+     * [StateNotInMigrationMappingException] 이 되어 `VERSION_CONFLICT` 보다 정확한 진단이 남는다.
+     * 상태를 안 건드린 편집(우선순위·담당자 등)은 이제 실패하지 않고 이관된다.
+     *
+     * 그 결과 [IssueRepository.applyTransition] 의 0행은 락을 쥔 동안에는 사실상 나오지 않는다. 그래도
+     * 유지하는 이유는 두 가지다 — spec §D3 ⑥ 이 OCC 유지를 못박았고, **락이 사라지는 회귀**(이 PR 이
+     * 실제로 한 번 겪었다)에서 그것이 마지막 방어선이기 때문이다.
+     *
      * ## 해결책은 그대로 실어 보낸다 (F10)
      * [IssueRepository.applyTransition] 은 `resolutionId=null` 을 받으면 `resolution_id` 를 **지운다**
      * (비DONE 재전환 clear 시맨틱). 이관은 상태만 옮기는 것이므로 기존 값을 그대로 넘긴다.
+     * 그 값도 락 뒤 재조회에서 취한다 — 락 밖에서 읽은 값을 되쓰면 그 사이의 해결책 변경을 되돌린다.
      *
      * ## 0행을 성공으로 적지 않는다 (F9 · E10)
      * 0행은 다른 트랜잭션이 먼저 버전을 올렸다는 뜻이다. 그대로 SUCCEEDED 를 찍으면 이슈는 옛 상태에
@@ -154,7 +178,8 @@ class BulkItemApplier(
      * 이 가지는 [IssueApplicationService] 의 쓰기 초크포인트를 우회하므로 가드가 함께 빠진다.
      * 그래서 여기서 직접 [ProjectArchiveGuard.checkByIssue] 를 부른다 — 다른 모든 쓰기가 거부하는 일을
      * 이관만 조용히 해내면 아카이브가 잠금이 아니게 된다. 호출 순서는 D-ORDER 를 지켜
-     * `findByKey`(BROWSE 권한 검증) 뒤에 온다.
+     * `findByKey`(BROWSE 권한 검증) 뒤 · 비관락 획득 **앞**에 온다 — 권한보다 락이 앞서면 미인가
+     * 사용자가 행을 잠글 수 있다.
      *
      * ## 매핑에 없는 상태는 밀지 않는다 (E8 · F21)
      * 항목 적재 이후 누군가 그 이슈를 옮겼다는 뜻이다. 임의 대상으로 밀어 넣지 않고
@@ -189,11 +214,10 @@ class BulkItemApplier(
      *
      * @param actor 이관을 수행한 행위자. 이벤트와 이력에 그대로 실린다.
      * @param issueKey 이관 대상 이슈 키.
-     * @param existing 처리 시점에 읽은 이슈. 현재 상태·버전·해결책의 출처다.
      * @param mappings 출발 상태 키 → 대상 상태 키.
      * @throws com.bts.issue.project.archive.ProjectArchivedException 이슈의 프로젝트가 아카이브 상태일 때.
      * @throws StateNotInMigrationMappingException 현재 상태가 [mappings] 에 없을 때.
-     * @throws IssueNotFoundException 이력 스냅샷 조회 시점에 이슈가 사라졌을 때.
+     * @throws IssueNotFoundException 비관락 획득 시점에 이슈가 없거나 소프트 삭제됐을 때.
      * @throws IssueVersionConflictException OCC 충돌로 0행이 갱신됐을 때.
      *
      * `ThrowsCount` 억제 이유. 세 예외는 각각 **다른 실패 코드**로 번역된다 —
@@ -206,31 +230,30 @@ class BulkItemApplier(
     private fun migrateStatus(
         actor: ActorId,
         issueKey: IssueKey,
-        existing: IssueResponse,
         mappings: Map<String, String>,
     ) {
         projectArchiveGuard?.checkByIssue(issueKey)
 
+        // 비관락 + 락 뒤 재조회. 이 한 번의 읽기가 상태·버전·해결책과 이력 before 스냅샷의 단일 출처다.
+        // 이력이 도메인 Issue 를 받는 것(projectId 가 REST DTO 에 없다)도 같은 읽기로 함께 해결된다.
+        val before = issueRepository.findByKeyForUpdate(issueKey) ?: throw IssueNotFoundException(issueKey)
         val target =
-            mappings[existing.currentStateKey]
-                ?: throw StateNotInMigrationMappingException(issueKey, existing.currentStateKey)
-        // 이력은 REST DTO 가 아니라 도메인 Issue 를 받는다(projectId 가 DTO 에 없다). 상태를 덮어쓰기
-        // **전에** 읽어 두어야 before 스냅샷이 옛 상태를 가리킨다.
-        val before = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+            mappings[before.currentStateKey]
+                ?: throw StateNotInMigrationMappingException(issueKey, before.currentStateKey)
         val updatedRows =
             issueRepository.applyTransition(
                 key = issueKey,
                 toState = target,
-                expectedVersion = existing.version,
-                resolutionId = existing.resolutionId,
+                expectedVersion = before.version,
+                resolutionId = before.resolutionId,
             )
         if (updatedRows == 0) {
-            throw IssueVersionConflictException(issueKey, existing.version)
+            throw IssueVersionConflictException(issueKey, before.version)
         }
         eventPublisher.publish(
             IssueTransitioned(
                 issueKey = issueKey,
-                fromState = existing.currentStateKey,
+                fromState = before.currentStateKey,
                 toState = target,
                 actorId = actor,
                 occurredAt = Instant.now(),
