@@ -44,9 +44,18 @@ import java.time.Instant
  *   Edit/Transition 가지는 [IssueApplicationService] 안에서 이미 발행하므로 여기서 쓰지 않는다.
  * @param historyRecorder STATUS_MIGRATION 이 상태 변경 이력을 남기는 facade. 위와 같은 이유로
  *   Edit/Transition 가지에서는 쓰지 않는다.
- * @param projectArchiveGuard 아카이브 프로젝트 쓰기 잠금 가드. null 이면 검사를 skip 한다
- *   (기존 단위 테스트 호환용 fallback — [IssueApplicationService] 의 동명 파라미터와 같은 형태).
- *   Spring 컨텍스트에서는 ProjectArchiveGuard(@Component) Bean 이 주입된다.
+ * @param projectArchiveGuard 아카이브 프로젝트 쓰기 잠금 가드. **non-null 필수**다.
+ *
+ *   ## 왜 형제와 다른가 (게이트 2 리뷰 ①)
+ *   [IssueApplicationService] 의 동명 파라미터는 nullable 이다. 그쪽은 가드가 없어도 쓰기 9종이
+ *   **각각 자기 진입부에서** 가드를 부르는 구조라 한 곳이 비어도 나머지가 남는다. 여기는 다르다 —
+ *   STATUS_MIGRATION 은 `issueService` 쓰기 초크포인트 **밖**에서 상태를 재작성하는 유일한 경로이고,
+ *   그 경로에서 아카이브 잠금을 거는 자리는 [migrateStatus] 의 이 한 줄뿐이다. 의존도가 다르므로
+ *   기본값도 다르다.
+ *
+ *   nullable 기본값은 「불명 = 허용」이다. Spring 의 Kotlin optional 파라미터 해석은 해결하지 못한
+ *   인자를 **부팅 실패가 아니라 생략**으로 처리하므로, 결선이 끊겨도 아무도 모른 채 fail-open 이 된다.
+ *   실제로 이 PR 의 통합 컨텍스트 3곳이 가드를 생략한 채 이관을 돌렸다. 불명은 **거부**가 기본이다.
  */
 @Component
 class BulkItemApplier(
@@ -57,7 +66,7 @@ class BulkItemApplier(
     private val historyRecorder: IssueHistoryRecorder,
     // STATUS_MIGRATION 은 issueService 쓰기 초크포인트를 우회하므로 이 가지가 직접 가드를 부른다.
     // Edit/Transition 가지는 issueService 안에서 이미 통과하므로 여기서 중복 호출하지 않는다.
-    private val projectArchiveGuard: ProjectArchiveGuard? = null,
+    private val projectArchiveGuard: ProjectArchiveGuard,
 ) {
     /**
      * 이슈 변경과 SUCCEEDED 상태 기록을 단일 REQUIRES_NEW 트랜잭션으로 수행한다.
@@ -232,7 +241,7 @@ class BulkItemApplier(
         issueKey: IssueKey,
         mappings: Map<String, String>,
     ) {
-        projectArchiveGuard?.checkByIssue(issueKey)
+        projectArchiveGuard.checkByIssue(issueKey)
 
         // 비관락 + 락 뒤 재조회. 이 한 번의 읽기가 상태·버전·해결책과 이력 before 스냅샷의 단일 출처다.
         // 이력이 도메인 Issue 를 받는 것(projectId 가 REST DTO 에 없다)도 같은 읽기로 함께 해결된다.

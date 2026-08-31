@@ -27,6 +27,8 @@ import com.bts.issue.bulk.worker.BulkOperationWorker
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -335,12 +337,22 @@ class StatusMigrationMaterializeIntegrationTest {
             enqueuePublisher: BulkOperationEnqueuePublisher,
         ): WorkflowStatusMigrationAdapter = WorkflowStatusMigrationAdapter(dsl, repo, enqueuePublisher)
 
+        /**
+         * ★실물 [ProjectArchiveGuard] — 모의가 아니다 (M7).
+         *
+         * 이 빈이 없으면 이관은 아카이브 잠금을 통과한다. 「가드가 주입된다」를 판정하려면
+         * 판정 술어(`archived_at IS NOT NULL`)가 실 DB 를 읽어야 한다.
+         */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard = ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun bulkItemApplier(
             issueService: IssueApplicationService,
             bulkRepo: BulkOperationRepository,
             issueRepository: IssueRepository,
             eventPublisher: IssueEventPublisher,
+            projectArchiveGuard: ProjectArchiveGuard,
         ): BulkItemApplier =
             BulkItemApplier(
                 issueService = issueService,
@@ -350,6 +362,7 @@ class StatusMigrationMaterializeIntegrationTest {
                 // 이 컨텍스트에는 IssueHistoryRecorder 빈이 없다 — 이 테스트가 보는 것은 이력이 아니라
                 // 「무엇이 대상이 되었는가」다. 이력·이벤트 검증은 Task 6 의 단위 테스트가 맡는다.
                 historyRecorder = mockk(relaxed = true),
+                projectArchiveGuard = projectArchiveGuard,
             )
 
         @Bean
