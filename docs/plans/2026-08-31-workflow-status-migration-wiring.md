@@ -160,13 +160,29 @@ Then 잔여 1건이 보여 409 로 **롤백**된다. 정의는 바뀌지 않고 
 - **F1 결선.** `WorkflowPublishService` 가 `IssueStatusMigrationPort.enqueueStatusMigration` 을 실제로 호출한다. 이것이 없으면 PR 7 이 만든 경로는 사용자에게 보이지 않는다.
 - **F2 매핑 접수.** `POST /api/v1/workflows/{key}/publish/migrate` 가 `mappings: [{fromStatusKey, toStatusKey}]` 를 받는다. 빠지는 상태마다 다른 대상을 지정할 수 있고 이관 작업은 **1건**으로 묶인다.
 - **F3 진행 조회.** 응답은 `bulkOperationId` 만 돌려준다. 진행률은 기존 `GET /api/v1/bulk-operations/{id}` 가 담당한다 — 새 조회 API 를 만들지 않는다.
-- **F4 트랜잭션 경계.** `migrate` 는 `@Transactional` 이며 project-workflow 를 **읽기만** 하고 `bulk_operations` 에만 쓴다. 어댑터의 `BulkOperationEnqueuePublisher` 가 `Propagation.MANDATORY` 라 경계가 필요하고, 두 BC 에 **쓰지** 않으므로 `DATA.md §6`(다중 BC 트랜잭션 금지)을 만나지 않는다. `publish` 는 project-workflow 에만 쓴다.
+- **F4 트랜잭션 경계.** `migrate` 는 `@Transactional` 이며 project-workflow 를 **읽기만** 하고 `bulk_operations` 에만 쓴다. 어댑터의 `BulkOperationEnqueuePublisher` 가 `Propagation.MANDATORY` 라 경계가 필요하다. **두 BC 에 동시에 쓰지는 않는다** — 그것이 이 분할이 얻는 것이다. 다만 `DATA.md §6` 을 **안 만나는 것은 아니다**(→ X11).
 - **F5 권한 순서.** `requirePermission(actorId, PUBLISH)` 가 `migrate` 와 `publish` 양쪽에서 **첫 줄**이며, 그 뒤에만 포트를 부른다. X4 가 위임한 「위조 차단은 호출자 책임」의 이행 지점이다.
 - **F6 범위 자가 조회.** `StatusMigrationCommand.projectKeys` 는 **요청에서 받지 않고** 호출자가 직접 조회해 채운다. 요청 DTO 에 그 필드를 두지 않는다.
 - **F7 매핑 출발지 제한.** `mappings` 의 `fromStatusKey` 집합이 이번 발행이 제거하는 상태 집합의 **부분집합**이 아니면 거부한다.
 - **F8 매핑 도착지 제한.** `toStatusKey` 가 초안의 상태 집합에 없으면 거부한다 — 사라질 상태로 옮기는 것을 막는다.
 - **F9 프로젝트 스코프.** `countIssuesInStatus(statusKey, projectIds)` 로 확장하고, `projectIds` 는 그 워크플로우를 쓰는 프로젝트로 한정한다. 상태 키가 전역이라 스코프가 없으면 남의 프로젝트 이슈까지 세어 발행을 과하게 막는다.
 - **F10 뒤쪽 창 축소.** `replaceDefinition` 직후 같은 트랜잭션에서 재카운트하고, 잔여가 있으면 던져 롤백한다.
+
+**게이트 1 이 추가시킨 요구사항 5건 (BLOCKER 처방 · Maxi 승인 2026-08-31)**
+
+- **F11 단일 워크플로우 스킴만 허용 (B1 fail-closed).** `migrate` 는 대상 프로젝트들의 스킴이 **이 워크플로우 하나만** 쓸 때에만 허용한다. 한 프로젝트의 스킴이 이 워크플로우와 다른 워크플로우를 함께 매핑하고 있으면 **거부**한다(400).
+  **근거.** 워커의 `statusMigrationTargets`(`BulkOperationRepository.kt:477-487`)가 `current_state_key` · `deleted_at` · `project_id` 만 걸고 **이슈 타입 조건이 없다**(실측). 스킴이 `(scheme_id, issue_type_id) → workflow_id` 이므로 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 WF1 발행이 **WF2 의 이슈까지 옮긴다** — 포트 KDoc 이 적은 「과다 이동은 데이터 손상」이다. 축을 넣으려면 `StatusMigrationCommand` 를 고쳐야 해 N3 과 충돌하므로, **이 PR 은 위험 조합을 열지 않는 쪽**을 택한다.
+  **한계.** 다중 워크플로우 스킴 프로젝트는 이관을 못 쓴다. 장부 등재(Task 7).
+- **F12 카탈로그 검증 선행 (B2).** `migrate` 의 전처리에 **`requireStatusCatalog` 를 포함**한다. 초안에는 있는데 상태 카탈로그에 없는 상태를 `to` 로 실으면 어댑터가 `IllegalArgumentException` 을 던지는데 `WorkflowPublishExceptionHandler` 에 IAE 핸들러가 없어 **500 이 나간다**(`WorkflowExceptionHandler:168` 이 「IAE 를 잡지 않는다」고 명시).
+- **F13 빈 범위 거부 (B2).** `projectKeys` 가 비면 **포트를 부르기 전에** 400 으로 거부한다. 어댑터의 `require(projectKeys.isNotEmpty())` 에 도달하면 500 이다. E1(스킴 미할당)·E7(전 프로젝트 아카이브) 두 경로가 여기로 온다.
+  추가로 **`WorkflowPublishExceptionHandler` 에 IAE → 500 방지 백스톱**을 둔다 — 형제 BC(`BulkOperationExceptionHandler` · `SprintExceptionHandler`)가 모두 잡는 선례를 따른다.
+- **F14 상한 초과 선제 거부 (B4).** 이관 대상 총 건수가 `BULK_OPERATION_MAX_SIZE`(1000)를 넘으면 **migrate 를 400 으로 거부하고 실제 건수를 응답에 싣는다.**
+  **근거.** `BulkOperationRepository.kt:141-149` 는 대상이 1000 을 넘으면 **아무것도 적재하지 않고** 개수만 돌려주고 작업은 FAILED 로 끝난다(실측). 이슈는 한 건도 안 옮겨졌는데 발행은 계속 409 라 **관리자가 할 수 있는 일이 없다**. 잔여 건수는 이미 `pendingIssueCounts` 로 계산하므로 추가 조회 없이 막을 수 있다.
+- **F15 in-flight 이관 중복 거부 (B3).** 같은 워크플로우에 대해 아직 끝나지 않은 `STATUS_MIGRATION` 작업이 있으면 `migrate` 를 거부한다(409).
+  **근거.** migrate 는 F4 대로 project-workflow 에 아무 흔적도 안 남겨 초안 변경을 막지 못한다. 다만 **유령은 생기지 않는다** — 초안을 고쳐 그 상태를 되살리면 발행 시 다시 `removed` 에 들어가 F10 재카운트가 막는다. 남는 피해는 **모순되는 작업 2건을 큐잉해 원하지 않은 대량 이동**이 나는 것이고, 그것을 이 가드가 막는다.
+  **구현.** `IssueStatusUsagePort` 와 같은 **BC 로컬 읽기 전용** 어댑터로 `bulk_operations` 를 스칼라 조회한다 — shared-kernel 포트를 늘리지 않는다(N3 유지).
+
+- **F16 도착지는 초안과 live 양쪽에 있어야 한다 (W1).** `toStatusKey ∈ (초안 상태 ∩ 현재 live 편성)`. 이관은 발행보다 **먼저** 돌므로, 초안에만 있는 신규 상태로 옮기면 발행 전까지 그 이슈가 유령이 되고 관리자가 이탈하면 영구화된다. 지라는 매핑과 발행이 한 조작(J4·J10)이라 이 위험이 없다 — **X5 분할의 부작용**이다.
 
 ### 비기능 요구사항 (NFR)
 
@@ -219,14 +235,20 @@ WHERE m.workflow_id = ?
 - **E4 중복 `fromStatusKey`** — 같은 출발지가 두 번 오면 거부한다. 어느 쪽이 이기는지가 순서 의존이 된다.
 - **E5 소프트 삭제 프로젝트** — JOIN 에서 제외한다. 그 프로젝트 이슈는 세지도 옮기지도 않는다.
 - **E6 소프트 삭제 이슈** — 기존 어댑터가 이미 `deleted_at IS NULL` 로 제외한다. 불변.
-- **E7 아카이브 프로젝트 (★판정)** — **카운트·이관 범위에서 뺀다.**
+- **E7 아카이브 프로젝트 (★판정 · 게이트 1 에서 개정)** — **카운트에서는 빼고 `projectKeys` 에는 넣는다.**
   근거. `BulkItemApplier:256` 이 `projectArchiveGuard.checkByIssue` 로 아카이브 프로젝트 이슈의
-  변경을 거부한다(→ `PROJECT_ARCHIVED`). 포함하면 그 이슈는 **영원히 옮겨지지 않는데 카운트에는
-  계속 잡혀** 발행이 관리자가 풀 수 없는 상태로 막힌다. 빼면 그 이슈는 사라진 상태에 남지만,
-  아카이브 프로젝트는 이미 쓰기 잠금 상태라 아무도 전환시키지 않아 **정지 상태로 무해**하다.
+  변경을 거부한다(→ `PROJECT_ARCHIVED`). 카운트에 넣으면 그 이슈는 **영원히 옮겨지지 않는데
+  카운트에는 계속 잡혀** 발행이 관리자가 풀 수 없는 상태로 막힌다 — 그래서 카운트에서는 뺀다.
+  **그런데 범위에서까지 빼면 그 이슈가 조용히 사라진다.** `projectKeys` 에 넣어 두면 워커가
+  시도했다가 `bulk_operation_items` 에 **`PROJECT_ARCHIVED` 로 남겨** 관리자가 「몇 건이 왜 안
+  옮겨졌는지」를 셀 수 있다. 유령을 없애지는 못해도 **조용하지 않게** 만든다.
+  부수 효과로 `PROJECT_ARCHIVED` 가 경합(큐잉↔실행 사이 아카이브) 말고 **실제 생산자**를 얻는다.
   **한계.** 프로젝트를 다시 활성화하면 그 이슈들이 워크플로우에 없는 상태에 남아 있다.
-  이것을 숨기지 않고 아래 「제약 조건」과 `TODOS.md` 에 남긴다.
-  `PROJECT_ARCHIVED` 는 생산자를 잃지 않는다 — 큐잉과 워커 실행 **사이**에 아카이브되는 경합이 남는다.
+  숨기지 않고 「제약 조건」과 `TODOS.md` 에 남긴다.
+- **E10 다중 워크플로우 스킴 (F11)** — 대상 프로젝트의 스킴이 이 워크플로우 외의 워크플로우도 매핑하면 `migrate` 를 400 으로 거부한다. 카운트는 막지 않는다(과다 집계는 안전하다).
+- **E11 카탈로그 밖 도착지 (F12)** — 초안에는 있으나 상태 카탈로그에 없는 `toStatusKey` 는 400. 어댑터까지 가면 500 이다.
+- **E12 상한 초과 (F14)** — 총 대상이 1000 을 넘으면 400 + 실제 건수. 큐잉하면 전량 실패로 끝나 관리자가 할 수 있는 일이 없어진다.
+- **E13 in-flight 중복 (F15)** — 끝나지 않은 이관이 있는 워크플로우에 `migrate` 를 다시 부르면 409.
 - **E8 뒤쪽 창 유입** — S4. 재카운트가 잡아 롤백한다.
 - **E9 이관 실패분이 남은 채 재발행** — `bulk_operation_items` 에 FAILED 가 남고 이슈는 원래 상태 그대로다. 재카운트가 그것을 세므로 발행은 계속 막힌다 — **의도된 동작**이다.
 
@@ -236,7 +258,15 @@ WHERE m.workflow_id = ?
 - **C2** `DATA.md §6` — 다중 BC 트랜잭션 금지. F4 가 이 제약을 만나지 않는 이유를 설명한다.
 - **C3 배포 순서.** 결선 이후 `bulk_operations` 에 `operation_type='STATUS_MIGRATION'` 행이 처음 생긴다. 구버전 워커는 `BulkOperationRepository.kt:531-533` 의 `enumValueOf` 에서 죽는다. **워커가 새 enum 을 아는 버전으로 먼저 올라간 뒤** 결선을 배포한다. `FailureReasonCode` 의 `STATE_NOT_IN_MAPPING`·`PROJECT_ARCHIVED` 도 `:205` 에서 같은 `enumValueOf` 를 타므로 같은 순서 제약을 공유한다.
 - **C4 남는 것 — 잔여 창.** 재카운트 → COMMIT 구간은 닫히지 않는다. 그 사이 커밋된 전환은 아직 옛 정의를 보므로 정당하고, 완전히 닫으려면 전환 핫패스가 워크플로우 정의 행을 잠가야 한다(issue-tracking BC). `TODOS.md` 부채 143 을 **「축소」로 갱신**하고 닫았다고 쓰지 않는다.
-- **C5 남는 것 — 아카이브 유령.** E7 의 한계. 별건 등재.
+- **C5 남는 것 — 아카이브 유령.** E7 의 한계. 다만 `PROJECT_ARCHIVED` 항목으로 **셀 수 있다**. 별건 등재.
+- **C6 남는 것 — 다중 워크플로우 스킴 미지원.** F11 이 fail-closed 로 막는다. 이관 커맨드에 이슈 타입 축이 없는 한 열 수 없다. 여는 것은 `StatusMigrationCommand` 확장 + 워커 쿼리 수정이라 **shared-kernel + issue-tracking 두 BC** 를 건드리는 T3 별건이다. `TODOS.md` 등재(Task 7).
+- **C7 남는 것 — migrate↔publish 사이 초안 변경.** F15 가 중복 큐잉은 막지만 초안 편집 자체는 못 막는다. **유령은 안 생긴다** — 되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 이 막는다. 남는 것은 「원하지 않은 1회 대량 이동」이고 관리자가 되돌릴 수 있다. 등재.
+
+### 의도적 편차 (게이트 1 추가)
+
+| # | 편차 | 근거 |
+|---|---|---|
+| X11 | `DATA.md §6` 의 허용 패턴은 「**이벤트만 발행**(pgmq enqueue)」인데 `migrate` 는 거기에 더해 `bulk_operations` **행을 INSERT** 한다 | 규칙을 안 만나는 것이 아니라 **만나되 승계한다**. `IssueStatusMigrationPort.enqueueStatusMigration(cmd): UUID` 가 PR 7 에서 이미 **동기 UUID 반환 쓰기**로 정해졌고 N3 이 그것을 고정한다. 순수 이벤트 발행으로 바꾸면 `bulkOperationId` 를 동기 반환할 수 없어 F3(진행 조회)이 성립하지 않는다. 쓰는 것은 **명령 1행 + 큐 1건**으로 한정되고 워커가 실제 이슈 UPDATE 를 자기 트랜잭션에서 한다 — §6 이 막으려던 「대량 쓰기가 BC 를 넘는 것」은 일어나지 않는다 |
 
 ### 범위 밖 (deviation 기록)
 
@@ -341,6 +371,14 @@ WHERE m.workflow_id = ?
 - 호출처 2곳이 Task 1 의 `findProjectRefsByWorkflowId` 결과에서 `id` 집합을 넘긴다
 - `WorkflowPublishService.pendingIssueCounts` 는 조회를 **상태마다 반복하지 않고 1회**만 한다(N1)
 
+**★게이트 1 추가 — 결선의 인자 전달에 판정을 붙인다 (W4).** 기존 스텁은 `projectIds` 를 버릴
+것이므로, Task 1 의 JOIN 이 빈 집합을 돌려주든 남의 프로젝트를 돌려주든 서비스 테스트가 전부
+초록이다. **스텁이 받은 `projectIds` 를 기록**하게 하고 서비스가 JOIN 결과를 그대로 넘겼는지
+단언한다 — 이 PR 의 이름이 「결선」인데 결선 자체에 판정이 없으면 안 된다.
+```kotlin
+@Test fun `서비스가 그 워크플로우의 프로젝트 id 집합을 포트에 그대로 넘긴다`()
+```
+
 **REFACTOR**:
 - 포트 KDoc 에서 「프로젝트 스코프는 로드맵 PR 7 소관」 문장을 **삭제**한다 — 이 task 가 그것이다. 남겨 두면 다음 사람이 또 미룬다
 
@@ -375,6 +413,7 @@ WHERE m.workflow_id = ?
 - `MigrateRequest(baseVersion: Long, mappings: List<StatusMappingDto>)` · `MigrateResponse(bulkOperationId: UUID)`
 - `WorkflowPublishService.migrate(actorId, key, baseVersion, mappings): UUID` — `@Transactional`
 - 검증 순서는 스펙 `## 스펙 → F5` 그대로. `projectKeys` 는 Task 1 조회 결과에서만 채운다
+- **★게이트 1 추가 — 공통 전처리에 `requireStatusCatalog` 를 포함한다(F12).** 빠지면 초안에는 있으나 카탈로그에 없는 상태가 어댑터까지 가서 **500** 이 된다
 - 컨트롤러 `@PostMapping("/publish/migrate")` → 202
 
 **REFACTOR**:
@@ -399,6 +438,12 @@ WHERE m.workflow_id = ?
   @Test fun `toStatusKey 가 초안 상태 집합에 없으면 거부한다`()            // F8 · E3 연쇄 차단
   @Test fun `mappings 가 비면 거부한다`()                                  // E2
   @Test fun `같은 fromStatusKey 가 두 번 오면 거부한다`()                  // E4
+  // ★게이트 1 추가 — BLOCKER 처방
+  @Test fun `toStatusKey 가 live 편성에 없으면 거부한다`()                 // F16 · W1
+  @Test fun `스킴이 다른 워크플로우도 매핑하면 거부한다`()                 // F11 · B1 fail-closed
+  @Test fun `카탈로그에 없는 toStatusKey 는 500 이 아니라 400 이다`()      // F12 · B2
+  @Test fun `projectKeys 가 비면 포트를 부르기 전에 400 이다`()            // F13 · B2
+  @Test fun `대상이 1000 을 넘으면 400 과 실제 건수를 돌려준다`()          // F14 · B4
   ```
 
 **GREEN**:
@@ -435,9 +480,13 @@ WHERE m.workflow_id = ?
 - 테스트 2개
   ```kotlin
   @Test fun `권한 없는 actor 의 migrate 는 포트를 부르지 않는다`()   // F5
-  @Test fun `권한 없는 actor 의 publish 도 포트를 부르지 않는다`()   // F5
   ```
 - **스파이 포트**로 `enqueueStatusMigration` **호출 횟수 0** 을 단언한다
+
+**★게이트 1 정정 (W2) — publish 축 단언을 뺐다.** D2 로 `POST /publish` 는 포트를 **어떤
+경로로도** 부르지 않으므로 「publish 도 포트를 부르지 않는다」는 **어떤 뮤테이션으로도 red 가
+안 된다** — 권한 검사를 지워도 맨 아래로 옮겨도 호출 횟수는 0 이다.
+`[[unreachable-state-fixture-is-fake-green]]` 양식이라 그 자리에서 제거했다.
 
 **★403 만 단언하면 안 된다.** 포트를 먼저 부르고 나중에 던져도 403 이다 — 그 테스트는 순서를
 재지 못한다. 호출 횟수가 이 계약의 유일한 관찰 가능한 신호다.
@@ -521,13 +570,44 @@ cache.withWriteLock(key) {
 - `node scripts/build-doc-index.mjs && node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` — 456 전건
 - `bash scripts/verify-master-plan.sh` (EXIT 4 차단) · **FR 143 불변**
 
+---
+
+### Task 8. in-flight 이관 중복 거부 (F15 · B3)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/port/MigrationInFlightPort.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/adapter/outbound/MigrationInFlightAdapter.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowPublishService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/adapter/outbound/MigrationInFlightAdapterIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowPublishServiceIntegrationTest.kt`]
+- depends-on: [3]
+- jira: []
+
+migrate 는 F4 대로 project-workflow 에 흔적을 안 남겨 초안 편집을 막지 못한다. **유령은 안
+생긴다** — 되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 이 막는다. 남는 피해는 **모순되는
+작업 2건을 큐잉해 나는 원치 않은 대량 이동**이고, 이 가드가 그것을 막는다.
+
+**RED**:
+```kotlin
+@Test fun `끝나지 않은 이관이 있으면 migrate 를 409 로 거부한다`()        // E13
+@Test fun `COMPLETED 된 이관만 있으면 migrate 가 통과한다`()
+```
+
+**GREEN**:
+- `MigrationInFlightPort.hasInFlightMigration(projectIds: Set<UUID>): Boolean`
+- 어댑터는 `bulk_operations` 를 **읽기 전용 스칼라**로 조회한다 — `IssueStatusUsageAdapter` 와 같은 BC 로컬 동적 참조 선례를 따르고 **shared-kernel 포트를 늘리지 않는다**(N3 유지)
+- `migrate` 가 권한 검사 뒤·포트 호출 전에 검사
+
+**REFACTOR**: 어댑터 KDoc 에 「왜 shared-kernel 이 아니라 BC 로컬인가」(읽기 전용 면제) 1문단
+
+**검증**: `cd backend && ./gradlew :modules:project-workflow:test --rerun-tasks`
+
+**뮤테이션 짝**: in-flight 검사를 지우면 E13 테스트만 red.
+
 ## Plan 메타
 
-- **task 수**: 7 · **예상 wave**: 4
+- **task 수**: 8 · **wave**: 7 (게이트 1 에서 정정)
   - wave 1 — Task 1 · Task 7 (병렬. 파일 교집합 0)
-  - wave 2 — Task 2
-  - wave 3 — Task 3
-  - wave 4 — Task 4 · Task 5 · Task 6 (★`WorkflowPublishService.kt` 교집합으로 **자동 직렬화**된다. 병렬로 보이지만 순차로 돈다)
+  - wave 2 — Task 2 / wave 3 — Task 3 / wave 4 — Task 4 / wave 5 — Task 5 / wave 6 — Task 6 / wave 7 — Task 8
+- **★정정 (I2).** 종전 「4 wave · Task 4·5·6 이 같은 wave 에서 자동 직렬화」는 **틀렸다.** `bts-impl` Step 1 이 「파일 겹침이 있는 task 는 **같은 wave 에 넣지 않는다**」라 각각 다른 wave 가 된다. `WorkflowPublishService.kt` 를 Task 3·4·6·8 이, 그 통합 테스트를 Task 2·3·4·5·6·8 이 공유하므로 **wave 1 이후는 완전 순차**다. 병렬 이점은 사실상 없다 — 정확성이 이유이므로 그대로 둔다.
+- **★REFACTOR 순서 (C2).** Task 3 의 공통 전처리 헬퍼 추출과 Task 6 의 `requireNoPending` 좁히기가 같은 함수군을 건드린다. **Task 3 → Task 6 순서를 지킨다**(wave 가 이미 그렇게 잡혀 있다). 뒤집으면 뒤 task 가 앞 task 의 정리를 덮는다.
 - **★병렬 gradle 금지.** 파일 교집합이 0 이어도 `build/` · `src/generated/jooq` 는 공유한다. PR #414 에서 `NoClassDefFoundError`·`Unresolved reference` 가 났고 마지막 wave 를 순차로 돌려 풀었다. **wave 안에서도 gradle 은 한 번에 하나만** 돈다.
 - **구현 규율**: TDD red-first (T2 티어). ui 시각 검증 트랙 **비대상** — `apps/web` 변경은 i18n 문구 1줄뿐이고 화면 변화가 없다.
 - **추가 검증**: ktlintCheck · detekt (`--rerun-tasks`) · `node --experimental-strip-types --test` 판별식 456 · doc-index `--check` · `verify-master-plan.sh`
@@ -538,10 +618,12 @@ cache.withWriteLock(key) {
 **Jira 매핑**: J1→T3 · J6→T3 · J7→T3·T4 · J8→T3(PR 7 이 구현한 규칙 우회를 이 PR 이 호출한다) ·
 J4→X5 편차 · J10→X5 편차. **채택 판정 전건이 task 에 물렸다 — 차집합 0.**
 
-**FR·E 커버리지 (차집합 0 확인)**:
-F1·F2·F3·F4→T3 · F5→T5 · F6→T1·T3 · F7·F8→T4 · F9→T2 · F10→T6.
-E1→T1·T2 · E2·E3·E4→T4 · E5→T1 · E6→T2 · E7→T1·T2 · E8·E9→T6.
-C3·C4·C5 및 X8·X9·X10→T7.
+**FR·E 커버리지 (차집합 0 확인 · 게이트 1 반영)**:
+F1·F2·F3·F4→T3 · F5→T5 · F6→T1·T3 · F7·F8→T4 · F9→T2 · F10→T6 ·
+**F11·F12·F13·F14·F16→T4** · **F15→T8**.
+E1→T1·T2 · E2·E3·E4→T4 · E5→T1 · E6→T2 · E7→T1·T2 · E8·E9→T6 ·
+**E10·E11·E12→T4** · **E13→T8**.
+C3·C4·C5·**C6·C7** 및 X8·X9·X10·**X11**→T7.
 
 ## 리뷰 결과
 
@@ -682,3 +764,29 @@ PR 10 의 명시적 선행으로 장부 등재(Task 7). B1 의 이슈 타입 축
 | 이관 실행 | 타 워크플로우 이슈 과다 이동(B1) | ❌ | ❌ | **조용함 — 되돌릴 수 없다** |
 | migrate 접수 | 카탈로그 밖 상태·빈 projectKeys(B2) | ❌ | ❌ | **500** |
 | 이관 실행 | 1000건 초과(B4) | ❌ | 로그만 | **이유 없는 FAILED · 영구 차단** |
+
+### 🛑 게이트 1 판정 (Maxi · 2026-08-31)
+
+**선택 — fail-closed 가드 + 3건 수정.** BLOCKER 4건을 이 PR 안에서 닫되 포트는 안 고친다.
+
+| BLOCKER | 처방 | 결과 |
+|---|---|---|
+| B1 이슈 타입 축 무시 | **F11 fail-closed** — 스킴이 이 워크플로우 하나만 쓸 때만 migrate 허용 | 과다 이동이 구조적으로 불가능. 다중 워크플로우 스킴은 기능 미개방(C6 등재) |
+| B2 IAE → 500 | **F12** 전처리에 `requireStatusCatalog` · **F13** 빈 범위 400 + IAE 백스톱 | 500 경로 제거 |
+| B3 초안 변경 창 | **F15** in-flight 중복 큐잉 거부 | 원치 않은 대량 이동 차단. 초안 편집 자체는 C7 로 남김 |
+| B4 1000건 막다른 길 | **F14** 선제 400 + 실제 건수 | 관리자에게 손잡이가 생김 |
+
+**★B3 처방을 게이트 1 제시안에서 바꿨다.** 「초안 스냅샷 해시 기록」은 `workflow_drafts` 에
+여분 컬럼이 없어 마이그레이션(T3 승격)을 강제한다. 그런데 **유령은 애초에 안 생긴다** —
+되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 재카운트가 막는다. 실제로 남는 피해는
+「모순되는 작업 2건을 큐잉해 나는 원치 않은 대량 이동」이고 그것은 F15 로 닫힌다.
+**같은 안전성을 T2 안에서 얻는다.**
+
+**주의 6건도 전부 반영했다** — W1→F16 · W2 도달 불가 단언 제거 · W3 컨버터 주의를 Task 3 에 ·
+W4 결선 인자 판정을 Task 2 에 · W5→X11 편차 · W6 RED 출력을 커밋 본문에.
+**정보 2건** — I1(E7 제3의 길) 채택 · I2(wave 7) 정정.
+
+**교차 모델 긴장(D2 재검토)은 기각.** Maxi 가 A 를 골라 D2 를 유지한다. 근거였던 B3·B4 는
+F15·F14 로 각각 닫혔으므로 「분할이 그 둘의 공통 원인」이라는 논거가 해소됐다.
+
+**재상신** — task 7 → **8** · wave 4 → **7** · FR 10 → **16** · 엣지 9 → **13**.
