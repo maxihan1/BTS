@@ -63,6 +63,13 @@ export interface StoredBoardDetail {
    * 기존 fixture를 강제로 갱신하지 않기 위함. 미정의 시 `toResponseDetail`이 빈 배열로 방어한다.
    */
   quickFilters?: QuickFilter[]
+  /**
+   * 삭제 권한 보유 여부 (FR-BD-01-2d). 백엔드는 IssuePermission.SOFT_DELETE 판정 결과를 싣는다.
+   * optional — 미정의 시 `toResponseDetail`이 true로 응답한다. mock 기본 로그인 사용자 alice가
+   * SOFT_DELETE를 보유하기 때문이다(issue-permission-fixtures.ts adminPermissionsFixture).
+   * 권한 없는 화면을 시드하려면 명시적으로 false를 준다.
+   */
+  canDelete?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,6 +244,8 @@ export function createBoardInStore(
     truncated: false,
     unplacedCount: 0,
     quickFilters: [],
+    // 보드를 만들 수 있는 사용자는 삭제도 할 수 있다는 mock 전제 (FR-BD-01-2d).
+    canDelete: true,
   }
 
   const created: BoardCreated = {
@@ -249,6 +258,31 @@ export function createBoardInStore(
   seedBoardWithMeta(detail)
 
   return { created, detail }
+}
+
+/**
+ * 보드를 store에서 소프트 삭제한다 (FR-BD-01-2b).
+ * DELETE /api/v1/boards/{id} 핸들러가 내부적으로 호출한다.
+ *
+ * boardStore와 projectBoardIndex를 함께 정리한다. 한쪽만 지우면 목록 조회가 유령 ID를 읽어
+ * 보드가 사라지지 않은 것처럼 보인다(msw-mutation-stateful-refetch).
+ * 백엔드가 soft delete라 실물 행은 남지만, mock은 조회 경로에서 사라지는 것만 재현하면 된다.
+ *
+ * @param boardId 삭제할 보드 UUID
+ * @returns 실제로 지웠으면 true, 애초에 없었으면 false (핸들러가 404 판정에 쓴다)
+ */
+export function deleteBoardFromStore(boardId: string): boolean {
+  const board = boardStore.get(boardId)
+  if (board === undefined) {
+    return false
+  }
+
+  boardStore.delete(boardId)
+
+  const remaining = (projectBoardIndex.get(board.projectKey) ?? []).filter((id) => id !== boardId)
+  projectBoardIndex.set(board.projectKey, remaining)
+
+  return true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,6 +300,8 @@ export const DEFAULT_BOARD: BoardDetail = {
   projectKey: 'ATLAS',
   name: 'ATLAS 보드',
   swimlaneField: 'NONE',
+  // alice가 ATLAS에서 SOFT_DELETE를 보유하므로 true (FR-BD-01-2d).
+  canDelete: true,
   columns: [
     {
       columnId: '20000000-0000-4000-8000-000000000001',
