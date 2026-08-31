@@ -19,6 +19,10 @@ BC = agile-planning 단독. 마이그레이션 0.
 **FR.** FR-BD-01 의 미회수 조항(**FR-BD-01-2** 「수정/삭제는 후속」)을 닫는다.
 **신규 FR 아님 · FR 총수 불변 143** (PR #175 「범위 확장이나 FR 총수 불변」 선례와 동형).
 
+> ⚠️ **아래 `FR-BD-01-2*` 는 정본 FR ID 가 아니라 이 plan 의 내부 식별자다.**
+> 저장소 전수 grep 결과 그 번호는 이 문서에만 있고 `fr-index.md` 는 `FR-BD-01` 만 등재한다.
+> 하위 번호 체계를 새로 만들지 않는 이유는 Task 9 에 적었다.
+
 - **FR-BD-01-2a** 보드 이름 변경. `PATCH /api/v1/boards/{id}` 부분 갱신. 권한 CREATE
 - **FR-BD-01-2b** 보드 소프트 삭제. `DELETE /api/v1/boards/{id}`. 권한 SOFT_DELETE
 - **FR-BD-01-2c** 보드 생성 진입점을 보드 존재 여부와 무관하게 제공
@@ -634,9 +638,48 @@ MSW 핸들러도 같은 Task 에서 추가한다.
 
 **검증**. `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts`
 
+### Task 9. 문서 동기화 — 정본 정정 + deviation 등재
+
+**메타**.
+- agent: (controller 직접 — plan 파일 경합을 피한다)
+- files: [`docs/plan/product/agile-planning.md`, `docs/plans/2026-08-31-board-crud-recovery.md`, `TODOS.md`]
+- depends-on: [3, 6]
+- jira: []
+
+**★ 착수 중 발견 — 이 task 는 원래 plan 에 없었다 (Maxi 지적으로 신설).**
+
+**(가) 정본이 이미 거짓을 담고 있다.**
+`docs/plan/product/agile-planning.md` §2.1 의 D4 가
+*"백엔드 — `GET /api/v1/boards/{id}` + **보드 CRUD** + 카드 이동(전환 위임) API"* 를 **`[x]` 완료**로
+표기하는데, 실측하면 **update·delete 가 없었다.** 「CRUD」라는 단어가 C·R 만 있는 상태를 덮고 있었다.
+이 PR 이 그 U·D 를 만든다 → **D4 서술을 정정하고 회수 사실을 기록한다.**
+
+**(나) `FR-BD-01-2` 는 정본에 존재하지 않는다.**
+저장소 전수 grep 결과 그 번호의 유일한 등장처가 **이 plan 파일 하나뿐**이다.
+`docs/plan/fr-index.md:119` 는 `FR-BD-01` 만 등재하고 하위 번호 체계가 없다.
+선행 플랜(2026-08-25)이 만든 번호를 이 plan 이 검증 없이 승계했다.
+
+→ **정본에 등재하지 않는다.** 사유 —
+① `fr-index.md` 에 하위 번호 체계가 없어 새로 도입하면 **그것을 검사하는 판별식이 없다**
+   (`verify-master-plan.sh` 는 `FR-XX-NN` 패턴만 세고 하위 번호를 보지 않는다 — EXIT=0 으로 실측 확인)
+② 검사받지 않는 목록은 조용히 썩는다 ([[two-lists-never-check-each-other]])
+③ FR 총수 불변이 목표인데 하위 번호는 총수 계산을 모호하게 만든다
+→ 대신 **plan 내부 식별자**임을 이 문서에 명시하고, 정본에는 **서술**로 남긴다.
+
+**할 일**
+1. `agile-planning.md` §2.1 — D4 서술 정정(「보드 CRUD」가 실제로 덮던 범위) + 이번 PR 회수 내역 + **deviation 2건**(D-1 `SOFT_DELETE` 권한 근사 · D-2 `⋯` 메뉴 위치) 등재
+2. 이 plan 의 `FR-BD-01-2a~d` 가 **정본 FR ID 가 아니라 plan 내부 식별자**임을 Brief 에 명시
+3. `TODOS.md` — 남은 부채를 **「화면에서 보이는 것」 절이 아니라 성격에 맞는 절**에 등재
+   (`BoardRepository.kt` 308줄 · `ConfirmDialog` pending 무한 · `classify-task` dead code `const lower`)
+4. `node scripts/build-doc-index.mjs` 재생성
+5. `bash scripts/verify-master-plan.sh` **EXIT=0** 확인
+
+**현황판(`docs/progress.html`)은 이 task 대상이 아니다** — 머지 시 post-merge 훅이 자동 재생성한다
+(main 이력의 `[chore] dashboard regen [skip ci]` 가 그 산출물). 이 task 는 **대시보드가 읽어가는 원본**을 고친다.
+
 ## Plan 메타
 
-- **task 수** 8 · **예상 wave** 6
+- **task 수** 9 · **예상 wave** 7 (T9 문서 동기화는 T3·T6 이 끝난 뒤 controller 가 직접 수행)
   - T1→T2→T3→T4→T5→T6 은 전부 직렬이다 — `depends-on` 이 사슬이고 T5·T6 이
     `board.tsx`·`projects.board.test.tsx`·`board-labels.ts` 를 공유해 파일 겹침으로도 직렬화된다
   - **T7·T8 은 보드 사슬과 완전히 독립**이다(`scripts/workflow/` 단독, 파일 교집합 0).
