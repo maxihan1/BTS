@@ -126,7 +126,7 @@ FR-WF-07 의 D2·D4·D5 중 **issue-tracking + shared-kernel 몫**이다.
 | F11 | `IssueTransitioned` 이벤트를 발행하되 **`cause = "STATUS_MIGRATION"` 을 함께 싣는다** | ★ceo BLOCKER(C-B1). 끄면 검색 색인·보드가 썩고, 그냥 켜면 **사외 웹훅**(`search-export-import/.../WebhookDispatchWorker.kt`)이 이관 건수만큼 나간다 — 웹훅은 되돌릴 수 없다. 표시를 실어 **거르는 선택권을 소비자에게** 준다 |
 | F17 | `cause` 는 **nullable 신규 필드**다. 기존 발행 경로는 `null` 을 싣고 기존 소비자는 무변경이다 | 하위호환. issue-tracking 안에서 끝나 cross-BC 추가가 0 이다 |
 | F18 | 큐잉 시점에 **빈 `projectKeys` 를 거부**한다 | ★C-1. 빈 범위는 실행 시점 0건 → `COMPLETED` 가 되어, 운영자가 「이관 완료」를 보고 상태를 지운다. 아무것도 안 옮겼는데 성공으로 보인다 |
-| F19 | 실행 시점 상한 초과로 `FAILED` 될 때 **「범위를 나눠 다시 시도하라」를 사유에 싣는다** | ★C-2. 재시도해도 같은 결과라 그대로면 그 상태를 영영 못 뺀다. 막다른 길임을 알리지 않는 것이 결함이다 |
+| F19 | 실행 시점 상한 초과로 `FAILED` 될 때 **「범위를 나눠 다시 시도하라」를 사유에 싣는다**. ★**deviation (게이트 2 리뷰)** — 여기서 말하는 「사유」는 **로그뿐이다**(`BulkOperationProcessor.failOverLimit` 의 `log.error(… reason={})`). `bulk_operations` 에 **사유 컬럼이 없고**(V008 · V038 확인) `BulkOperationResponse` 에도 필드가 없어, 운영자가 `GET /api/v1/bulk-operations/{id}` 로 보는 것은 **이유 없는 `FAILED`** 다. 영속·노출 경로는 **PR 7b** 소관이고 장부에 등재했다. 문구의 앞머리는 **두 갈래**다 — 0건 이관 / 부분 이관 (`overLimitFailureReason`) | ★C-2. 재시도해도 같은 결과라 그대로면 그 상태를 영영 못 뺀다. 막다른 길임을 알리지 않는 것이 결함이다. 갈래를 나눈 이유는 다음 행동이 다르기 때문이다 — 부분 이관 뒤에 「아무것도 안 옮겼다」를 주장하면 운영자가 잔여 확인을 건너뛴다 |
 | F20 | `failed_count > 0` 으로 끝난 `STATUS_MIGRATION` 을 **로그와 메트릭으로 드러낸다** | ★C-3. 그 이슈들은 옛 상태에 남아 유령이 되는데 작업은 `COMPLETED` 로 보인다. 조용한 실패를 금지하는 것이 이 기능의 존재 이유다 |
 | F21 | `FailureReasonCode` 에 **`STATE_NOT_IN_MAPPING` · `PROJECT_ARCHIVED` 2값을 더한다**. F13 의 「새 코드 금지」를 이 둘로 한정 해제한다 | ★C-4. 둘 다 **예상된** 조건인데 `UNKNOWN` 으로 떨어진다 — 그 KDoc 은 「예상치 **못한** 내부 오류」다. 진단 가능한 실패에 이름을 준다 |
 | F12 | `IssueHistoryRecorder` 로 상태 변경 이력을 남긴다 | 엔진을 건너뛴다고 이력까지 건너뛰면 감사 추적이 끊긴다 |
@@ -136,9 +136,11 @@ FR-WF-07 의 D2·D4·D5 중 **issue-tracking + shared-kernel 몫**이다.
 ### ★D3 확정 — 우회 경계
 
 `transitionIssue` 의 8단계 중 이관이 지나는 것과 건너뛰는 것을 **명시로** 고정한다.
+맨 위 ⓪ 은 그 8단계 밖이지만 이관이 실제로 통과하는 권한 검사라 **함께 적는다** — 표가 8단계만 담으면 그 검사가 없는 것처럼 읽힌다.
 
 | 단계 | 이관 | 근거 |
 |---|---|---|
+| ⓪ `BulkItemApplier.findByKey` → `assertViewIssueOrNotFound` (VIEW · 지라의 BROWSE 축) | **유지** | ★게이트 2 리뷰. `transitionIssue` 8단계 **밖**이지만 이관도 이 검사를 탄다 — `BulkItemApplier.applyAndRecordSuccess` 가 payload 종류와 무관하게 `issueService.findByKey(actor, issueKey)` 를 먼저 부르고(`existing.version` 을 얻는 단일 진입), 그 안에서 VIEW 권한을 검사하기 때문이다. 이 PR 은 그 배선을 바꾸지 않는다 — 남는 한계는 표 아래에 적는다 |
 | ① `assertPermission(TRANSITION, Issue)` | **우회** | 남기면 관리자가 못 건드리는 이슈가 사라진 상태를 가리킨 채 남는다 — 이 기능이 막으려던 유령 상태를 이 기능이 만든다. 위조 차단은 호출자(PR 7b 발행 경로)의 `PUBLISH` 권한 책임 (`IssueMutationPort` 신뢰 모델). **편차 X4 로 기록** |
 | ② `projectArchiveGuard` | **유지** | 아카이브 프로젝트는 쓰기 초크포인트가 이미 막는다. 이관만 예외를 둘 이유가 없다 |
 | ③ `findByKeyForUpdate` (비관락) | **유지** | 동시 편집과의 경합을 그대로 막는다 |
@@ -147,6 +149,15 @@ FR-WF-07 의 D2·D4·D5 중 **issue-tracking + shared-kernel 몫**이다.
 | ⑥ `repo.applyTransition` | **유지** | OCC 포함. F9·F10 |
 | ⑦ `IssueTransitioned` 발행 | **유지** | F11 |
 | ⑧ `plan.emitEvents` | **N/A** | plan 자체가 없다. Jira J8 의 "Perform actions rules won't automatically do anything" 과 결과가 같다 |
+
+**★⓪ 이 남긴 한계 — 게이트 2 리뷰 렌즈 3종이 독립으로 집었다. 이 PR 은 코드로 닫지 않는다.**
+
+- **X4 의 논증이 VIEW 축에서 그대로 재현된다.** ①을 우회한 근거는 「관리자가 못 건드리는 이슈가 사라진 상태를 가리킨 채 남는다」였다. 그런데 발행자가 대상 이슈에 VIEW 가 없으면 ⓪ 이 그 건을 `FAILED` 로 떨구고, 그 이슈는 똑같이 **사라지는 상태에 그대로 머무른다**. 우회 경계를 TRANSITION 축에서만 그은 것이 이 구멍이다.
+- **그 실패가 `NOT_FOUND` 로 기록된다.** `assertViewIssueOrNotFound` 는 존재 숨김을 위해 `IssueNotFoundException` 을 던지고, `BulkItemExecutor` 가 그것을 `FailureReasonCode.NOT_FOUND` 로 매핑한다. **실재하는 이슈를 장부가 「없다」고 적는다** — F21 이 `UNKNOWN` 뭉개기를 없애며 세운 「진단 가능한 실패에 이름을 준다」가 여기서 깨진다.
+
+**왜 이 PR 이 고치지 않나.** 둘 다 권한 구조 변경이라 이 PR 의 범위(D2·D4·D5) 밖이다. ⓪ 을 우회하려면 `BulkItemApplier` 가 payload 별로 조회 경로를 갈라야 하고(지금은 단일 진입이 세 가지를 다 먹이며 `BULK_EDIT`·`BULK_TRANSITION` 이 그 검사에 의존한다), 오진을 없애려면 `FailureReasonCode` 에 값이 또 필요하다 — 그러면 타 모듈 카운트 가드까지 따라온다. 결선이 없어 지금 실제로 밟힐 경로도 없다.
+
+**PR 7b 가 판정할 것.** VIEW 미보유 이슈의 잔여 유령을 **셀 수 있게** 별도 실패 코드를 줄지, 아니면 이관 경로가 VIEW 도 우회할지. 장부 등재는 `TODOS.md` 「워크플로우 — 상태 이관 기능이 만들어졌지만 부르는 곳이 없어 아무도 쓸 수 없다」 항목에 있다.
 
 ### 이 PR 이 하지 **않는** 것 (사유 명시)
 
@@ -271,7 +282,7 @@ data class StatusMigration(
 | E1 | 매핑에 `from == to` 가 섞임 | 큐잉 거부. 옮길 것이 없는데 작업만 남는다 |
 | E2 | `toStatusKey` 가 상태 카탈로그에 없음 | 큐잉 거부. 유령 상태를 만드는 것이 이 기능이 막으려던 그 사고다 |
 | E3 | 큐잉 시점에 대상 이슈 **0건** | **거부하지 않는다.** 실행 전에 들어올 수 있다 — 그것을 잡는 것이 F15 의 목적이다. 실행 시점에도 0건이면 즉시 `COMPLETED`(`total_count=0`). 실패가 아니라 「할 일 없었다」로 기록된다 |
-| E4 | 실행 시점 대상이 상한(`BULK_OPERATION_MAX_SIZE`) 초과 | 작업을 `FAILED` 로 두고 사유에 **「범위를 나눠 다시 시도하라」를 함께 싣는다** (J6 · ★C-2 · F19). **조용히 자르지 않는다** — 잘린 나머지가 유령이 되는데 화면은 「완료」로 보인다. 안내가 없으면 재시도해도 같은 결과라 그 상태를 영영 못 뺀다 |
+| E4 | 실행 시점 대상이 상한(`BULK_OPERATION_MAX_SIZE`) 초과 | 작업을 `FAILED` 로 두고 사유에 **「범위를 나눠 다시 시도하라」를 함께 싣는다** (J6 · ★C-2 · F19). **조용히 자르지 않는다** — 잘린 나머지가 유령이 되는데 화면은 「완료」로 보인다. 안내가 없으면 재시도해도 같은 결과라 그 상태를 영영 못 뺀다. 사유는 정산된 `succeeded_count` 에서 유도해 **0건 이관 / 부분 이관 두 갈래**로 갈린다. ★**deviation** — 그 사유가 닿는 곳은 **로그뿐이다**(F19 의 deviation 참조) |
 | E5 | 매핑 목록이 **비어 있음** | 큐잉 거부 |
 | E5b | **`projectKeys` 가 비어 있음** | 큐잉 거부 (★C-1 · F18). 그냥 두면 실행 시점 0건 → `COMPLETED` 라 「이관 완료」로 보이는데 아무것도 안 옮겼다 |
 | E6 | 같은 `toStatusKey` 로 여러 `from` 이 몰림 | **허용**. 지라도 막지 않는다 (J7 은 대상 유일성을 요구하지 않는다) |
@@ -325,7 +336,10 @@ data class StatusMigration(
 10. ★이관으로 발행된 `IssueTransitioned` 에 **`cause = "STATUS_MIGRATION"` 이 실린다**.
     일반 전환으로 발행된 것은 `cause` 가 `null` 이다 (C-B1 · F11 · F17)
 11. **빈 `projectKeys` 큐잉이 거부**된다 (C-1 · E5b · F18)
-12. 상한 초과 `FAILED` 사유에 **분할 재시도 안내**가 들어 있다 (C-2 · E4 · F19)
+12. 상한 초과 `FAILED` 사유에 **분할 재시도 안내**가 들어 있다 (C-2 · E4 · F19).
+    판정 대상은 `BulkOperationProcessor.overLimitFailureReason` 의 반환 문자열이고 **두 갈래를 각각** 잰다 —
+    0건 이관과 부분 이관. ★**deviation** — REST 응답으로는 판정할 수 없다. 사유가 `bulk_operations` 에도
+    `BulkOperationResponse` 에도 없기 때문이다 (F19 의 deviation)
 13. `failed_count > 0` 으로 끝나면 **로그·메트릭에 드러난다** (C-3 · F20)
 14. 매핑에 없는 상태는 `STATE_NOT_IN_MAPPING`, 아카이브 프로젝트는 `PROJECT_ARCHIVED` 로
     기록된다 — **`UNKNOWN` 이 아니다** (C-4 · F21)
