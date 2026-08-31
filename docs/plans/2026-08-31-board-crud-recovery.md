@@ -548,19 +548,93 @@ MSW 핸들러도 같은 Task 에서 추가한다.
   - `description` 에 **"이슈는 삭제되지 않습니다"** · `destructive`
 - 삭제 노출 판정 = `boardDetail.canDelete` (Task 3 이 추가한 필드). 이름 변경 노출 = 기존 `canCreate`.
   **`useProjectPermissions` 는 손대지 않는다** — BC 경계 무접촉
+- ★ **pending 무한 대기 탈출구 (Maxi 게이트 1 지시 · 소비자 쪽에서 푼다).**
+  `confirming` 이 취소·Esc·오버레이·X 를 **전부 잠그는데**, 그 설계는 `confirm-dialog.tsx` KDoc 이
+  밝히듯 *"파괴적 조작이고 이미 확인을 누른 뒤라 **기다림은 짧다**"* 를 전제한다. 네트워크가
+  끊겨 mutation 이 pending 에 머물면 전제가 깨지고 사용자가 창에 갇힌다.
+  → **프리미티브를 고치지 않는다.** #410 이 세운 계약이고 손대면 소비처 전수에 영향이 간다.
+  대신 **이 소비자의 delete mutation 에 타임아웃**을 걸어 일정 시간 뒤 reject 시킨다.
+  그러면 `isPending` 이 풀려 `confirming` 이 내려가고, 실패 사유가 `error` prop 으로 창 안에 뜬다 —
+  **이미 설계된 실패 경로(S7)로 합류**하므로 새 UI 상태가 늘지 않는다.
+  RED 에 `타임아웃이 지나면 confirming 이 풀리고 error 가 창 안에 뜬다` 를 추가한다.
 
 **검증**.
 - `pnpm --filter web test` · `pnpm --filter web test:e2e`
 - 눈확인. `⋯` 메뉴 열림 · 삭제 확인 다이얼로그 · **삭제 실패 상태(창 안 error)** — 라이트·다크
 
+### Task 7. `jira-research-guard` — 헤딩 앵커로 좁힌다 (게이트 1 추가 지시)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/jira-research-guard.test.ts`]
+- depends-on: []
+- jira: []
+
+**배경 — 이 PR 이 실물로 밟았다.** `checkJiraSection` 이 `body.indexOf('## Jira 대조')` 로
+**첫 매치**를 찾는다. 문서 본문이 그 절 이름을 **인용만 해도** 인용 지점부터 다음 `\n## ` 까지를
+섹션으로 오인해, URL 이 있는 진짜 절을 못 보고 「출처 URL 이 하나도 없다」로 판정한다.
+이 PR 의 plan 이 Brief 에서 절 이름을 인용했다가 red 가 됐고, 인용 표현을 바꿔 우회했다.
+
+**RED**. 픽스처 2개를 추가한다.
+- `본문이 절 이름을 인용해도 헤딩의 URL 을 찾는다` — 인용 1줄 + 진짜 헤딩(URL 포함) → **통과여야 한다**
+- `헤딩이 아예 없고 인용만 있으면 여전히 실패한다` — 회귀 앵커. 우회로 뚫리지 않게 막는다
+
+**GREEN**. `indexOf('## Jira 대조')` → 줄 시작 앵커 정규식(`/^## Jira 대조/m`)의 `match.index`.
+`### ` 하위 헤딩이 섹션을 끊지 않는 현재 동작(`/\n## /`)은 그대로 둔다.
+
+⚠️ **비-공허 확인.** 가드를 고치면 판별자가 사라질 수 있다 (CLAUDE.md §함정 4행).
+고친 뒤 **일부러 URL 을 지운 픽스처로 red 1회를 눈으로 본다.**
+
+**검증**. `node --experimental-strip-types --test scripts/workflow/jira-research-guard.test.ts`
+
+### Task 8. `classify-task` — 부정 문맥을 신호로 치지 않는다 (게이트 1 추가 지시)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`scripts/workflow/classify-task.ts`, `scripts/workflow/classify-task.test.ts`]
+- depends-on: []
+- jira: []
+
+**배경 — 이 PR 이 실물로 밟았다.** 제목에 「마이그레이션 **0**」이 들어가자
+`MIGRATION_KEYWORDS` 의 `'마이그레이션'` 이 매치돼 `type=migration` · `agent=db-engineer` ·
+`primary_bc=null` 이 나왔다. 「마이그레이션 0」·「마이그레이션 없음」은 이 저장소 커밋 메시지의
+**상용 표현**이라(`history.md` 에 반복 등장) 재발이 확실하다.
+
+★ **범위 한정.** 같은 실행이 `tier=T1` 을 낸 것은 **결함이 아니다** — `:516-517` 이
+`const tier = input.tier ?? DEFAULT_TIER` 이고 주석이 *"실측 티어는 머지 전에 `detect-tier.ts` 가
+변경 경로에서 따로 낸다"* 고 밝힌다. `type` 은 제목에서, `tier` 는 경로에서 나오는 **독립 축**이다
+(`/bts-review-plan` §Step 2 가 같은 말을 한다). **이 Task 는 `type` 만 고친다.**
+
+**RED**. `classify-task.test.ts` 에 추가한다.
+- `「마이그레이션 0」은 migration 이 아니다`
+- `「마이그레이션 없음」은 migration 이 아니다`
+- `「마이그레이션 없이」는 migration 이 아니다`
+- `「Flyway 마이그레이션 추가」는 여전히 migration 이다` ← **회귀 앵커. 부정 제외가 긍정까지 삼키지 않게**
+- `「V500__boards.sql」 경로는 여전히 migration 이다` ← 경로 축 회귀 앵커
+
+**GREEN**. 키워드 매치 직후 **부정 꼬리 검사**를 한 겹 얹는다 — 매치된 키워드 바로 뒤가
+`0` · `없음` · `없이` · `없다` · `불필요` 중 하나면 그 매치를 신호로 치지 않는다.
+`AUTH_STRONG` 등 다른 키워드군에는 **적용하지 않는다** — 보안 축은 위험 반경이 커서
+「인증 없음」이 오히려 auth 작업일 수 있다. 적용 범위를 `MIGRATION_KEYWORDS` 로 한정하고 그 사유를 주석에 남긴다.
+
+⚠️ **비-공허 확인.** 부정 꼬리 목록을 일부러 비워 회귀 앵커가 red 되는 것을 1회 확인한다.
+
+**검증**. `node --experimental-strip-types --test scripts/workflow/classify-task.test.ts`
+
 ## Plan 메타
 
-- **task 수** 6 · **예상 wave** 6 (T1→T2→T3→T4→T5→T6 전부 직렬 — `depends-on` 이 사슬이고
-  T5·T6 이 `board.tsx`·`projects.board.test.tsx`·`board-labels.ts` 를 공유해 파일 겹침으로도 직렬화된다)
+- **task 수** 8 · **예상 wave** 6
+  - T1→T2→T3→T4→T5→T6 은 전부 직렬이다 — `depends-on` 이 사슬이고 T5·T6 이
+    `board.tsx`·`projects.board.test.tsx`·`board-labels.ts` 를 공유해 파일 겹침으로도 직렬화된다
+  - **T7·T8 은 보드 사슬과 완전히 독립**이다(`scripts/workflow/` 단독, 파일 교집합 0).
+    wave 1 에 T1 과 함께 실려 병렬로 돈다 — 그래서 task 가 2개 늘어도 wave 는 6 그대로다
 - **구현 규율** TDD red-first (T2). `test:` 커밋 → `feat:` 커밋 순서가 로그에서 대조된다.
   T5·T6 은 ui 시각 검증 트랙이라 RED 라벨을 「동반 테스트」 명세로 읽는다 — red-first 순서 강제 없음
 - **추가 검증** typecheck · ktlint · detekt · vitest · playwright
 - **마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0 · BC 1개(agile-planning)**
+- **범위 확장 1건 (Maxi 게이트 1 지시).** T7·T8 은 보드 CRUD 와 무관한 하네스 결함 2건이다.
+  「한 PR = 한 관심사」에서 벗어나지만, 둘 다 **이 PR 이 실물로 밟아 재현한 결함**이고
+  처방이 명확해 장부에 미루지 않고 같은 PR 에서 닫는다. 표면은 `GUARD_CI` 라 **티어는 T2 그대로**다
 
 ## 리뷰 결과
 
@@ -706,23 +780,23 @@ plan 이 만지는 파일은 **17개**로 8개 기준을 넘는다. 내역 —
 DTO 1개 + private helper 1개뿐이라 「2개 이상의 새 클래스/서비스」 기준에는 걸리지 않는다.
 **줄일 자리를 찾지 못했다** — 신규 프리미티브 0 · 신규 API 2(요구사항 자체) · 마이그레이션 0.
 
-### TODOS 등재 후보 3건 (게이트 1 에서 Maxi 판정)
+### 하네스 결함 — 게이트 1 판정 결과 + ★ 리뷰 자체의 오진 2건 정정
 
-전부 **이번 PR 범위 밖**이고 별건이다. 등재 여부는 Maxi 가 정한다.
+**Maxi 판정 (게이트 1).** 「이번 PR 에 같이 수정」. 등재가 아니라 수정으로 처리한다.
 
-1. **`jira-research-guard` 가 헤딩이 아닌 본문 인용을 첫 매치로 잡는다.**
-   `checkJiraSection` 이 `body.indexOf('## Jira 대조')` 를 쓴다. 문서가 그 절 이름을 **인용만 해도**
-   엉뚱한 구간을 검사해 「출처 URL 이 하나도 없다」로 오판한다. 이 PR 에서 실물로 재현했고
-   인용 표현을 바꿔 우회했다. 처방은 헤딩 앵커 정규식(`/^## Jira 대조/m`).
-   *Depends on* 없음. *Why* 판정이 문서 본문 표현에 좌우되면 강제 수단이 아니다.
-2. **`classify-task` 가 부정 문맥을 못 읽는다.**
-   제목의 「마이그레이션 **0**」이 `type=migration` · `agent=db-engineer` · `primary_bc=null` 을 냈고,
-   동시에 `tier=T1` 을 반환해 CLAUDE.md 티어표(migration=T3)와 **자기모순**이었다.
-   *Why* 오분류가 잘못된 sub-agent 로 dispatch 되면 T3 작업이 T1 절차로 흐른다.
-3. **`ConfirmDialog` 의 pending 무한 대기 탈출구.**
-   `confirming` 이 닫힘 경로를 전부 잠그는데 그 설계는 KDoc 이 밝히듯 「기다림은 짧다」를
-   전제한다. 네트워크 장애로 전제가 깨지면 사용자가 창에 갇힌다.
-   *Depends on* mutation 계층의 타임아웃 정책 결정.
+**★ 그런데 착수 직전 재실측에서 후보 4건 중 2건이 이 리뷰의 오진으로 드러났다.**
+자기 발견을 스스로 철회한 기록을 남긴다 — 판정을 지우면 다음 사람이 같은 오진을 반복한다.
+
+| 후보 | 판정 | 근거 |
+|---|---|---|
+| `jira-research-guard` 헤딩 오인식 | **결함 확정 → Task 7** | `checkJiraSection` 이 `indexOf` 로 첫 매치를 잡는다. 이 PR 이 실물로 재현했다 |
+| `classify-task` 부정 문맥 (`type`) | **결함 확정 → Task 8** | 「마이그레이션 0」이 `type=migration` 을 냈다. 이 표현은 `history.md` 의 상용 표현이라 재발이 확실하다 |
+| ~~`classify-task` 의 `tier` 자기모순~~ | **오진 — 철회** | `:516-517` 이 `tier = input.tier ?? DEFAULT_TIER` 이고 주석이 *"실측 티어는 머지 전에 `detect-tier.ts` 가 변경 경로에서 따로 낸다"* 고 밝힌다. `type` 은 제목에서, `tier` 는 경로에서 나오는 **독립 축**이라 `migration`+`T1` 은 설계된 조합이다 |
+| ~~구 표기 판별식 거짓 양성~~ | **오진 — 철회** | `transition-term-guard.test.ts:8` 이 **「다른 낱말의 부분문자열」을 ① 번 예외 유형으로 이미 명시**하고 예시까지 들어 둔다. 그런 자리는 동결 목록으로 관리하도록 설계돼 있고, 실패 메시지 자체가 「동결 파일을 갱신하라」고 안내한다. 설계된 동작이지 결함이 아니다 |
+
+**`ConfirmDialog` pending 무한 대기**는 등재도 프리미티브 수정도 아닌 **제3의 길**로 처리했다 —
+Task 6 안에서 **소비자 mutation 타임아웃**으로 푼다. #410 계약을 건드리지 않으므로 소비처 전수
+영향이 없고, 타임아웃 실패가 이미 설계된 S7 경로로 합류해 새 UI 상태가 늘지 않는다.
 
 ## GSTACK REVIEW REPORT
 
@@ -733,14 +807,17 @@ DTO 1개 + private helper 1개뿐이라 「2개 이상의 새 클래스/서비�
 | Status | 완료 |
 | Findings | **4건** — P1 2 · P2 2 · **BLOCKER 0** |
 | 적용 완료 | P1 2건 + P2(권한 비용) 1건 → plan 수정 반영 |
-| 이월 | P2(pending 무한) 1건 → NOT in scope + TODOS 후보 |
+| 이월 | 0건 — P2(pending 무한)는 게이트 1 지시로 Task 6 에 흡수 |
+| ★ 자기 철회 | **2건** — 하네스 결함 후보 4건 중 `tier` 자기모순 · 구 표기 판별식 거짓 양성은 **이 리뷰의 오진**이었다 |
+| 범위 확장 | Task 7·8 신설 (Maxi 게이트 1 지시 — 하네스 결함 2건을 같은 PR 에서 닫는다) |
 | critical gap | **0** |
 | 복잡도 체크 | 17파일로 트리거 · **과설계 아님**으로 판정 |
 | 병렬화 | Sequential — 기회 없음 |
 
-**VERDICT — 통과.** BLOCKER 0. 발견 4건 중 3건은 plan 에 반영을 마쳤고,
-나머지 1건은 이 PR 이 만든 문제가 아니라 범위 밖으로 명시했다.
+**VERDICT — 통과 (게이트 1 승인 반영).** BLOCKER 0.
+보드 발견 3건은 plan 에 반영을 마쳤고, pending 무한 1건은 Maxi 지시로 Task 6 에 흡수했다.
+하네스 결함은 후보 4건 중 **2건만 실재**했고(Task 7·8), 나머지 2건은 착수 직전 재실측에서
+**이 리뷰 자신의 오진**으로 드러나 철회했다 — 그 판정 근거를 §리뷰 결과에 남겼다.
 계약 완화 방지 앵커(`{} → 400`)와 즉사 계약 봉합이 task 에 물려 있어 착수 조건은 갖춰졌다.
 
-**UNRESOLVED DECISIONS:**
-- TODOS 등재 후보 3건의 등재 여부 (게이트 1 에서 Maxi 판정)
+NO UNRESOLVED DECISIONS
