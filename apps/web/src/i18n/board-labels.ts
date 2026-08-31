@@ -76,6 +76,86 @@ export const boardLabels = {
     createDialogTitle: '새 보드',
   },
 
+  /**
+   * 보드 관리 `⋯` 메뉴 — 이름 변경 · 삭제 (FR-BD-01-2a/2b · Jira 근거 J3·J4).
+   *
+   * Jira Cloud 는 이름 변경을 **보드 설정 화면**의 연필로, 삭제를 **Boards 디렉터리**의 행 `⋯`
+   * 로 한다. BTS 에는 그 두 화면이 없어 plan 의 의도적 편차 X2 대로 조작을 보드 헤더의 `⋯`
+   * 하나로 모았다. 권한이 없으면 항목을 **렌더하지 않는다**(비활성이 아니다 · J5).
+   */
+  actions: {
+    /**
+     * `⋯` 트리거의 aria-label.
+     *
+     * 보이는 것은 점 세 개뿐이라 이름이 없으면 「메뉴」로만 읽힌다. 무엇에 대한 메뉴인지와
+     * 대상 보드를 함께 싣는다 — 스위처 트리거와 나란히 있어 구별이 필요하다.
+     *
+     * @param boardName 현재 보드 이름
+     * @returns "보드 관리, {boardName}"
+     */
+    triggerAriaLabel: (boardName: string): string => `보드 관리, ${boardName}`,
+
+    /** 이름 변경 메뉴 항목 */
+    renameItem: '이름 변경',
+
+    /** 삭제 메뉴 항목 */
+    deleteItem: '보드 삭제',
+
+    /** 이름 변경 다이얼로그 제목 — Radix 가 접근성 이름으로 쓴다 */
+    renameDialogTitle: '보드 이름 변경',
+
+    /** 이름 변경 입력 라벨 */
+    renameNameLabel: '보드 이름',
+
+    /** 이름 변경 제출 버튼 */
+    renameSubmit: '저장',
+
+    /** 이름 변경 취소 버튼 */
+    renameCancel: '취소',
+
+    /** 이름 변경 실패 — 모르는 코드일 때의 기본 문구 */
+    renameFailed: '보드 이름을 바꾸지 못했습니다.',
+
+    /**
+     * 삭제 확인 다이얼로그 제목.
+     *
+     * 🛑 **화면 안에서 고유해야 한다** — 같은 이름의 dialog 가 둘이면 Playwright
+     * `getByRole('dialog', { name })` 가 strict mode 로 즉사한다 (계약 §2).
+     */
+    deleteDialogTitle: '보드 삭제',
+
+    /**
+     * 삭제 확인 설명.
+     *
+     * 「이슈는 삭제되지 않습니다」가 **소프트 삭제의 유일한 고지**다(J4). 이 문장이 빠지면
+     * 사용자는 보드를 지우면 이슈도 사라진다고 읽는다.
+     *
+     * 이름은 따옴표로 감싼다 — 「ATLAS 보드 보드를 지웁니다」처럼 이름 끝의 「보드」가 겹쳐 읽히는
+     * 것을 실제 화면에서 확인하고 고쳤다. 조사는 이름의 받침에 따라 갈리므로 `을(를)` 형태를 쓴다.
+     *
+     * @param boardName 지울 보드 이름
+     */
+    deleteDialogDescription: (boardName: string): string =>
+      `「${boardName}」을(를) 지웁니다. 이 보드의 이슈는 삭제되지 않습니다.`,
+
+    /** 삭제 확인 버튼 */
+    deleteConfirm: '삭제',
+
+    /** 삭제 취소 버튼 */
+    deleteCancel: '취소',
+
+    /** 삭제 실패 — 모르는 코드일 때의 기본 문구 */
+    deleteFailed: '보드를 지우지 못했습니다.',
+
+    /**
+     * 상태 코드조차 없는 실패 — 연결이 끊겼거나 응답이 상한 안에 오지 않았다.
+     *
+     * `useDeleteBoard` 의 타임아웃도 여기로 온다. 사용자가 할 다음 행동이 같기 때문에
+     * 두 경우를 한 문구로 묶는다 (`lib/move-error-message.ts` 가 세운 세 갈래와 같은 규칙).
+     */
+    noResponse: '서버 응답이 없습니다. 연결을 확인하고 다시 시도해 주세요.',
+  },
+
   /** WIP(Work In Progress) 제한 관련 라벨 */
   wip: {
     /**
@@ -144,3 +224,34 @@ export const boardLabels = {
 
 /** boardLabels const 추론 타입 */
 export type BoardLabels = typeof boardLabels
+
+/**
+ * agile-planning 의 backend errorCode 를 보드 관리 조작의 사용자 문구로 바꾼다.
+ *
+ * ### 왜 화면이 아니라 여기인가
+ * 화면마다 인라인 매핑을 만들면 키가 갈려 raw 코드가 그대로 노출되는 「가짜 그린」이 난다
+ * (PR #106). 형제 `validatorErrorMessage` · `componentErrorMessage` 가 세운 관례를 따른다.
+ *
+ * 코드 값의 정본은 backend `BoardController` 의 예외 매핑이다.
+ *
+ * `fallback` 은 조작별로 기본 문구를 갈아 끼우는 자리다 — 「지우지 못했습니다」와
+ * 「이름을 바꾸지 못했습니다」는 같은 코드에서도 서로 다른 다음 행동을 뜻한다.
+ *
+ * @param errorCode 응답 body 에서 꺼낸 errorCode. 못 읽었으면 `null`.
+ * @param fallback 모르는 코드일 때 쓸 문구.
+ * @returns 사용자에게 보여줄 한국어 문구.
+ */
+export function boardManageErrorMessage(errorCode: string | null, fallback: string): string {
+  switch (errorCode) {
+    case 'AGILE_ACCESS_DENIED':
+      return '이 보드를 관리할 권한이 없습니다.'
+    case 'AGILE_BOARD_NOT_FOUND':
+      return '보드를 찾을 수 없습니다. 이미 지워졌을 수 있습니다.'
+    case 'AGILE_VALIDATION_FAILED':
+      return '보드 이름을 확인해 주세요. 비어 있을 수 없습니다.'
+    case 'AGILE_UNAUTHENTICATED':
+      return '로그인이 필요합니다. 다시 로그인해 주세요.'
+    default:
+      return fallback
+  }
+}

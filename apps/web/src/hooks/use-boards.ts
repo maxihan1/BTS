@@ -186,6 +186,60 @@ export interface DeleteBoardInput {
 }
 
 /**
+ * 삭제 요청을 스스로 끊는 상한 (밀리초).
+ *
+ * **왜 훅에 타임아웃이 필요한가.** 삭제 확인 창(`components/ui/confirm-dialog.tsx`)은
+ * `confirming` 인 동안 취소·Esc·오버레이·X 를 **전부** 잠근다. 그 설계는 KDoc 이 밝히듯
+ * 「파괴적 조작이고 이미 확인을 누른 뒤라 **기다림은 짧다**」를 전제한다. 네트워크가 끊겨
+ * 요청이 pending 에 머물면 그 전제가 깨지고 사용자가 창에 갇힌다.
+ *
+ * 프리미티브를 고치지 않고 여기서 끊는다 — 프리미티브는 소비처가 여럿이고, 여기서 reject 하면
+ * `isPending` 이 풀려 창이 다시 조작 가능해지며 사유는 **이미 설계된 실패 경로**(창 안 `error`)로
+ * 흐른다. 새 UI 상태가 늘지 않는다.
+ *
+ * 값의 근거. 정상 204 응답은 수백 ms 다. 10초는 느린 회선의 정상 응답을 성급히 자르지 않으면서,
+ * 사람이 「멈췄다」고 느껴 창을 강제로 벗어나려 하기 전에 조작권을 돌려주는 상한이다.
+ */
+export const DELETE_BOARD_TIMEOUT_MS = 10_000
+
+/**
+ * 응답을 기다리다 [DELETE_BOARD_TIMEOUT_MS] 를 넘겨 스스로 끊은 실패.
+ *
+ * 서버가 준 실패(`ApiError`)와 구별되는 별도 타입이다 — 소비자는 상태 코드가 없는 실패로 묶어
+ * 「응답이 없다」는 안내를 고른다.
+ */
+export class BoardDeleteTimeoutError extends Error {
+  constructor() {
+    super(`보드 삭제 응답이 ${DELETE_BOARD_TIMEOUT_MS}ms 안에 오지 않았습니다`)
+    this.name = 'BoardDeleteTimeoutError'
+  }
+}
+
+/**
+ * 삭제 요청에 [DELETE_BOARD_TIMEOUT_MS] 상한을 씌운다.
+ *
+ * 요청 자체를 취소하지는 않는다 — `api/boards.ts` 에 abort 배선이 없다. 서버는 지웠는데 화면만
+ * 실패로 보이는 경우가 남지만, 목록을 다시 그리면 그 어긋남은 수렴한다. 창에 갇히는 쪽이 나쁘다.
+ *
+ * @param request 진행 중인 삭제 요청
+ * @throws BoardDeleteTimeoutError 상한을 넘겼을 때
+ */
+async function withDeleteTimeout(request: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new BoardDeleteTimeoutError())
+    }, DELETE_BOARD_TIMEOUT_MS)
+  })
+
+  try {
+    await Promise.race([request, expiry])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * 보드를 소프트 삭제한다. 보드에 있던 이슈는 남는다.
  *
  * DELETE /api/v1/boards/{boardId} → 204 No Content
@@ -195,13 +249,16 @@ export interface DeleteBoardInput {
  * 404 를 받는다. 호출부는 삭제 성공 직후 남은 보드로 이동하므로(E2) 그 캐시는 관찰자가 사라진 뒤
  * 가비지 컬렉션으로 정리된다.
  *
+ * 요청에는 [DELETE_BOARD_TIMEOUT_MS] 상한이 걸려 있다 — 확인 창이 `isPending` 에 묶여 닫히지
+ * 못하는 상태를 끊기 위해서다. 사유는 [BoardDeleteTimeoutError] 로 소비자에게 전달된다.
+ *
  * @param projectKey 보드가 속한 프로젝트 키 — 목록 캐시 무효화 대상
  */
 export function useDeleteBoard(projectKey: string) {
   const queryClient = useQueryClient()
 
   return useMutation<void, unknown, DeleteBoardInput>({
-    mutationFn: ({ boardId }) => deleteBoard(boardId),
+    mutationFn: ({ boardId }) => withDeleteTimeout(deleteBoard(boardId)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boardKeys.list(projectKey) })
     },

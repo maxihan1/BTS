@@ -1,7 +1,7 @@
 // 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6 + FR-UX-01 Task 9)
-import type { JSX } from 'react'
+import type { FormEvent, JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Plus } from 'lucide-react'
+import { ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -11,7 +11,7 @@ import { fetchUsers } from '@/api/users'
 import { buildBoardFilterQuery } from '@/api/boards'
 import type { BoardSummary, BoardDetail, BoardCardFilterParams, SwimlaneField } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
-import { useBoards, useBoard, boardKeys } from '@/hooks/use-boards'
+import { useBoards, useBoard, useUpdateBoardName, useDeleteBoard, boardKeys } from '@/hooks/use-boards'
 import { useUpdateSwimlane } from '@/hooks/use-update-swimlane'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
@@ -22,7 +22,7 @@ import { BoardFilterBar } from '@/components/board/BoardFilterBar'
 import { QuickFilterChips } from '@/components/board/QuickFilterChips'
 import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
-import { boardLabels } from '@/i18n/board-labels'
+import { boardLabels, boardManageErrorMessage } from '@/i18n/board-labels'
 import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch } from '@/lib/board-filter'
 import type { BoardFilterSearch } from '@/lib/board-filter'
 import {
@@ -38,10 +38,14 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
@@ -301,10 +305,268 @@ function BoardSelectorDropdown({
           <DialogHeader>
             <DialogTitle>{boardLabels.switcher.createDialogTitle}</DialogTitle>
           </DialogHeader>
-          <CreateBoardForm projectKey={projectKey} />
+          {/* 🛑 인트로를 끈다 — 그 2줄은 「보드가 없습니다」로 시작한다. 스위처에서 열었다는
+              것은 보드가 이미 있다는 뜻이라 그 문장이 사실이 아니게 된다 (C1). */}
+          <CreateBoardForm projectKey={projectKey} showEmptyStateIntro={false} />
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 보드 관리 `⋯` — 이름 변경 · 삭제 (FR-BD-01-2a/2b · Jira 근거 J3·J4·J5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 보드 관리 mutation 실패를 확인 창 안에 실을 문구로 옮긴다.
+ *
+ * 상태 코드조차 없는 실패(연결 끊김 · `useDeleteBoard` 타임아웃)는 errorCode 가 없어
+ * 「응답 없음」으로 간다 — 그 경우 사용자가 할 다음 행동은 재시도이지 값 수정이 아니다
+ * (`lib/move-error-message.ts` 가 세운 세 갈래와 같은 규칙).
+ *
+ * 코드→문구 표 자체는 `i18n/board-labels.ts` 의 공유 util 하나뿐이다. 화면마다 인라인으로
+ * 만들면 키가 갈려 raw 코드가 노출된다 (PR #106).
+ */
+function resolveBoardActionError(err: unknown, fallback: string): string {
+  if (!(err instanceof ApiError)) return boardLabels.actions.noResponse
+  return boardManageErrorMessage(extractErrorCode(err.body) ?? null, fallback)
+}
+
+/**
+ * 지운 보드를 뺀 나머지 중 첫 보드 (E2).
+ *
+ * 남는 보드가 없으면 undefined 다 — 호출부는 `board` 없는 URL 로 이동하고 화면은 기존 빈 상태
+ * (E1)로 떨어진다. 그 경로에 새 코드가 없다는 것이 이 헬퍼의 요점이다.
+ */
+function pickNextBoardId(boards: readonly BoardSummary[], deletedBoardId: string): string | undefined {
+  return boards.find((b: BoardSummary) => b.boardId !== deletedBoardId)?.boardId
+}
+
+/** 보드 이름 변경 다이얼로그 props */
+interface RenameBoardDialogProps {
+  /** 열림 상태 — 소비자가 쥔다 */
+  open: boolean
+  /** 열림 상태 변경 요청 */
+  onOpenChange: (open: boolean) => void
+  /** 보드가 속한 프로젝트 키 — 목록 캐시 무효화 대상 */
+  projectKey: string
+  /** 이름을 바꿀 보드 UUID */
+  boardId: string
+  /** 현재 이름 — 입력 초기값 */
+  currentName: string
+}
+
+/**
+ * 보드 이름 변경 다이얼로그 (J3).
+ *
+ * Jira 는 보드 **설정 화면**의 연필로 이름을 바꾸지만 BTS 에는 그 화면이 없어 `⋯` 메뉴에서
+ * 연다 (plan 의 의도적 편차 X2).
+ *
+ * 실패는 창 **안**에 남기고 성공했을 때만 닫는다 — 모달 오버레이가 화면 배너를 가리므로
+ * `ConfirmDialog` 가 세운 것과 같은 규칙을 쓴다. 입력 초기값을 props 로 잡으므로 부모가
+ * `key` 로 재마운트해 지난 값이 남지 않게 한다.
+ */
+function RenameBoardDialog({
+  open,
+  onOpenChange,
+  projectKey,
+  boardId,
+  currentName,
+}: RenameBoardDialogProps): JSX.Element {
+  const [name, setName] = useState(currentName)
+  const [error, setError] = useState<string | undefined>(undefined)
+  const { mutate, isPending } = useUpdateBoardName(projectKey, boardId)
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>): void {
+    e.preventDefault()
+    const trimmed = name.trim()
+    // 공백 이름은 백엔드가 400 으로 막는다 — 왕복하지 않고 여기서 멈춘다.
+    if (trimmed === '') return
+
+    setError(undefined)
+    mutate(
+      { name: trimmed },
+      {
+        onSuccess: () => { onOpenChange(false) },
+        onError: (err: unknown) => {
+          setError(resolveBoardActionError(err, boardLabels.actions.renameFailed))
+        },
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent aria-describedby={undefined} className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{boardLabels.actions.renameDialogTitle}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="board-rename-name">{boardLabels.actions.renameNameLabel}</Label>
+            <Input
+              id="board-rename-name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setError(undefined)
+              }}
+              disabled={isPending}
+              aria-describedby={error !== undefined ? 'board-rename-error' : undefined}
+            />
+          </div>
+          {error !== undefined && (
+            <p
+              id="board-rename-error"
+              role="alert"
+              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive ring-1 ring-foreground/10"
+            >
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isPending}
+              onClick={() => { onOpenChange(false) }}
+            >
+              {boardLabels.actions.renameCancel}
+            </Button>
+            <Button type="submit" disabled={isPending || name.trim() === ''}>
+              {boardLabels.actions.renameSubmit}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** 보드 관리 메뉴 props */
+interface BoardActionsMenuProps {
+  /** 보드가 속한 프로젝트 키 */
+  projectKey: string
+  /** 현재 보고 있는 보드 UUID */
+  boardId: string
+  /** 현재 보드 이름 — 트리거 이름과 삭제 확인 문구에 쓴다 */
+  boardName: string
+  /** 이름 변경 항목 노출 여부 — 프로젝트 CREATE 권한 */
+  canRename: boolean
+  /** 삭제 항목 노출 여부 — 보드 응답의 `canDelete` 가 참일 때만 */
+  canDelete: boolean
+  /** 삭제가 성공한 뒤 호출 — 부모가 남은 보드로 이동한다 (E2) */
+  onDeleted: () => void
+}
+
+/**
+ * 보드 헤더의 `⋯` 관리 메뉴 — 이름 변경 · 삭제.
+ *
+ * - 권한이 없는 항목은 **렌더하지 않는다**. 비활성으로 두면 「눌러도 되는 것처럼 보이는 것」이
+ *   남고, 그건 J5 가 적은 Jira 동작이 아니다 (FR-BD-01-2d).
+ * - 삭제 확인은 `components/ui/confirm-dialog.tsx` 를 쓴다. 그 프리미티브는 확인 뒤 **스스로
+ *   닫지 않으므로** 성공했을 때만 여기서 닫고, 실패는 `error` prop 으로 창 안에 남긴다(S7).
+ * - `confirming` 은 mutation 의 `isPending` 이다 — 그 동안 취소·Esc·오버레이·X 가 전부 잠긴다.
+ *   갇히지 않는 근거는 `useDeleteBoard` 의 타임아웃이다.
+ */
+function BoardActionsMenu({
+  projectKey,
+  boardId,
+  boardName,
+  canRename,
+  canDelete,
+  onDeleted,
+}: BoardActionsMenuProps): JSX.Element | null {
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | undefined>(undefined)
+  const deleteMutation = useDeleteBoard(projectKey)
+
+  function handleDeleteConfirm(): void {
+    setDeleteError(undefined)
+    deleteMutation.mutate(
+      { boardId },
+      {
+        onSuccess: () => {
+          setDeleteOpen(false)
+          onDeleted()
+        },
+        onError: (err: unknown) => {
+          setDeleteError(resolveBoardActionError(err, boardLabels.actions.deleteFailed))
+        },
+      },
+    )
+  }
+
+  // 항목이 하나도 없으면 트리거 자체를 내린다 — 열면 비는 메뉴는 「권한이 없다」가 아니라
+  // 「고장났다」로 읽힌다.
+  if (!canRename && !canDelete) return null
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={boardLabels.actions.triggerAriaLabel(boardName)}
+          >
+            <MoreHorizontal aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {canRename && (
+            <DropdownMenuItem onSelect={() => { setRenameOpen(true) }}>
+              <Pencil aria-hidden="true" />
+              {boardLabels.actions.renameItem}
+            </DropdownMenuItem>
+          )}
+          {canDelete && (
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => {
+                // 여는 시점에 지난 실패를 지운다 — 다른 보드를 지우려고 연 창에 앞 실패가
+                // 되살아나는 자리를 없앤다.
+                setDeleteError(undefined)
+                setDeleteOpen(true)
+              }}
+            >
+              <Trash2 aria-hidden="true" />
+              {boardLabels.actions.deleteItem}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* 이름이 바뀌면 입력 초기값도 새로 잡아야 한다 — props 로 state 를 초기화하는
+          컴포넌트는 key 로 재마운트해야 stale 값이 남지 않는다. */}
+      <RenameBoardDialog
+        key={`${boardId}:${boardName}`}
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        projectKey={projectKey}
+        boardId={boardId}
+        currentName={boardName}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={(next: boolean) => {
+          setDeleteOpen(next)
+          if (!next) setDeleteError(undefined)
+        }}
+        title={boardLabels.actions.deleteDialogTitle}
+        description={boardLabels.actions.deleteDialogDescription(boardName)}
+        confirmLabel={boardLabels.actions.deleteConfirm}
+        cancelLabel={boardLabels.actions.deleteCancel}
+        onConfirm={handleDeleteConfirm}
+        confirming={deleteMutation.isPending}
+        error={deleteError}
+        destructive
+      />
+    </>
   )
 }
 
@@ -607,6 +869,27 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
                   to: '/projects/$projectKey/board',
                   params: { projectKey },
                   search: { board: id },
+                })
+              }}
+            />
+          )}
+
+          {/* 보드 `⋯` 관리 메뉴 — 이름 옆에 붙는다. 항목은 권한별로 렌더 여부가 갈린다 */}
+          {boardDetail !== undefined && currentBoardId !== undefined && (
+            <BoardActionsMenu
+              key={currentBoardId}
+              projectKey={projectKey}
+              boardId={currentBoardId}
+              boardName={boardDetail.name}
+              canRename={canCreate}
+              // ★`canDelete` 는 Zod `.optional()` 이라 undefined 가 온다. `=== true` 로만 연다 —
+              //   `!== false` 로 무르면 필드가 없는 응답에서 삭제가 열린다 (fail-closed).
+              canDelete={boardDetail.canDelete === true}
+              onDeleted={() => {
+                void navigate({
+                  to: '/projects/$projectKey/board',
+                  params: { projectKey },
+                  search: buildBoardSearch(pickNextBoardId(boards ?? [], currentBoardId)),
                 })
               }}
             />

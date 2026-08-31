@@ -34,6 +34,15 @@ function extractErrorCode(body: unknown): string | undefined {
 export interface CreateBoardFormProps {
   /** 보드를 추가할 프로젝트 키 */
   projectKey: string
+  /**
+   * 「보드가 없습니다」 인트로 2줄을 함께 그릴지 여부. 기본 `true`.
+   *
+   * 이 폼은 빈 상태 전용으로 태어나 인트로를 본문에 갖고 있었는데, 보드가 **있는** 화면의
+   * 「새 보드」 다이얼로그가 같은 폼을 재사용하면서 사실이 아닌 문장이 뜨게 됐다.
+   * 다이얼로그 쪽에서만 이 값을 `false` 로 내려 인트로를 끈다 — 기본값이 `true` 라
+   * 기존 빈 상태 소비처는 호출을 바꿀 필요가 없다.
+   */
+  showEmptyStateIntro?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,8 +58,12 @@ export interface CreateBoardFormProps {
  * - 그 외 에러 → toast.error.
  *
  * @param projectKey 보드를 추가할 프로젝트 식별 키
+ * @param showEmptyStateIntro 「보드가 없습니다」 인트로 노출 여부 (기본 true)
  */
-export function CreateBoardForm({ projectKey }: CreateBoardFormProps): JSX.Element {
+export function CreateBoardForm({
+  projectKey,
+  showEmptyStateIntro = true,
+}: CreateBoardFormProps): JSX.Element {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [unprocessableError, setUnprocessableError] = useState(false)
@@ -90,12 +103,14 @@ export function CreateBoardForm({ projectKey }: CreateBoardFormProps): JSX.Eleme
 
   return (
     <div className="flex flex-col items-center justify-center min-h-48 gap-6 p-8">
-      <div className="text-center space-y-2 max-w-sm">
-        <p className="text-lg font-medium">보드가 없습니다</p>
-        <p className="text-sm text-muted-foreground">
-          이 프로젝트에 보드를 만들어 이슈를 칸반 방식으로 관리해 보세요.
-        </p>
-      </div>
+      {showEmptyStateIntro && (
+        <div className="text-center space-y-2 max-w-sm">
+          <p className="text-lg font-medium">보드가 없습니다</p>
+          <p className="text-sm text-muted-foreground">
+            이 프로젝트에 보드를 만들어 이슈를 칸반 방식으로 관리해 보세요.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-3">
         <div className="space-y-1">
