@@ -14,7 +14,7 @@ import com.bts.agileplanning.web.dto.CreateBoardRequest
 import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
-import com.bts.agileplanning.web.dto.UpdateBoardSwimlaneRequest
+import com.bts.agileplanning.web.dto.UpdateBoardRequest
 import com.bts.agileplanning.web.dto.UpdateColumnWipLimitRequest
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -25,6 +25,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -46,13 +47,16 @@ import java.util.UUID
  * - GET  `/api/v1/boards?projectKey=` — 프로젝트별 보드 목록. 권한 [IssuePermission.BROWSE].
  * - POST `/api/v1/boards/{id}/cards/{issueKey}/move` — 카드 이동. 보드 접근 [IssuePermission.BROWSE] +
  *   이동 자체는 [com.bts.shared.board.IssueTransitionPort] 가 TRANSITION 을 강제한다.
- * - PATCH `/api/v1/boards/{id}` — 보드 스윔레인 기준 변경. 권한 [IssuePermission.CREATE].
+ * - PATCH `/api/v1/boards/{id}` — 보드 이름·스윔레인 기준 부분 갱신. 권한 [IssuePermission.CREATE].
+ * - DELETE `/api/v1/boards/{id}` — 보드 소프트 삭제(이슈는 남는다).
+ *   권한 [IssuePermission.SOFT_DELETE] on [IssueScope.Project].
  * - PATCH `/api/v1/boards/{id}/columns/{columnId}` — 컬럼 WIP 제한 설정/해제.
  *   권한 [IssuePermission.CREATE] on [IssueScope.Project].
  *
  * ### 권한 2단 게이트 (FR-BD-01-6)
  * - 조회/이동의 보드 접근 = BROWSE(목록 자격). 카드 노출 보안수준은 행 단위 보안필터(T4)가 별도 적용.
- * - 생성 = CREATE(이슈 생성 동급, Maxi 게이트1 확정).
+ * - 생성·수정 = CREATE(이슈 생성 동급, Maxi 게이트1 확정).
+ * - 삭제 = SOFT_DELETE. BTS 에 per-board 관리자 개념이 없어 프로젝트 스코프 권한으로 근사한다(FR-BD-01-2b).
  * - 권한 판정은 shared-kernel [IssuePermissionResolver] 재사용. non-null 주입(fail-closed, 빈 부재=부팅실패).
  *
  * ### 처리 순서 (존재 probe 차단, sec CONCERN-4)
@@ -67,10 +71,15 @@ import java.util.UUID
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다. 트랜잭션은 [BoardApplicationService] 가 개시한다.
  *
+ * TooManyFunctions: 보드 REST 표면 7개 + 권한 게이트 helper 로 함수 수가 임계치를 넘는다. helper 를 합치면
+ * 권한코드별 게이트(BROWSE/CREATE/SOFT_DELETE)가 한 함수에 섞여 순서·권한코드 실수를 막는 응집이 깨지므로
+ * 클래스 단위로 억제한다.
+ *
  * @param service 보드 유스케이스 서비스.
  * @param boardRepository 보드 메타(projectKey) 조회용. 권한 scope 산출과 404 판정에 사용한다.
  * @param permissionResolver cross-BC 권한 판정 포트(fail-closed, non-null 주입).
  */
+@Suppress("TooManyFunctions")
 @RestController
 @RequestMapping("/api/v1/boards")
 class BoardController(
@@ -116,11 +125,15 @@ class BoardController(
      * UUID 형식 오류 시 400 — [BoardExceptionHandler.handleResponseStatus] 가 처리한다.
      * 응답에는 보드에 저장된 퀵필터 목록(created_at ASC)도 함께 포함한다(FR-UX-01 Task 7).
      *
+     * 응답의 `canDelete` 는 [IssuePermission.SOFT_DELETE] 판정 결과다(FR-BD-01-2d). BROWSE 와 권한코드가
+     * 달라 [loadBoardWithBrowse] 의 판정을 재사용할 수 없으므로 상세 조회 1건당 권한 판정이 1회 늘어난다.
+     * 목록 응답에는 싣지 않으므로 증가분은 상세 조회에 한정된다.
+     *
      * @param id path variable 보드 UUID.
      * @param assignee 담당자 필터 파라미터 목록. UUID 또는 "unassigned" 센티널.
      * @param label 라벨 필터 파라미터 목록. 문자열 그대로 사용.
      * @param component 컴포넌트 필터 파라미터 목록. UUID.
-     * @return 200 OK + [BoardDetailResponse](quickFilters 포함).
+     * @return 200 OK + [BoardDetailResponse](quickFilters·canDelete 포함).
      * @throws BoardNotFoundException 보드 미존재 또는 soft-deleted → 404.
      * @throws BoardAccessDeniedException BROWSE 권한 미충족 → 403.
      * @throws ResponseStatusException 400 — 필터 파라미터 UUID 형식 오류.
@@ -138,7 +151,11 @@ class BoardController(
 
         val filter = BoardFilterQueryParser.parse(assignee, label, component)
         val result = service.getBoard(id, actor, filter)
-        return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, result, result.quickFilters)))
+        val canDelete =
+            permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(board.projectKey))
+        return ResponseEntity.ok(
+            DataResponse(BoardDetailResponse.of(board, result, result.quickFilters, canDelete)),
+        )
     }
 
     /**
@@ -206,32 +223,100 @@ class BoardController(
     }
 
     /**
-     * 보드의 스윔레인 기준 필드를 변경한다.
+     * 보드의 이름과 스윔레인 기준 필드를 부분 갱신한다(FR-BD-01-2a).
      *
      * 권한: [IssuePermission.CREATE] on 보드의 프로젝트.
      *
-     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 서비스 위임.
+     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 필드별 서비스 위임.
+     *
+     * ### 바디 규칙 (3-state)
+     * - 미전송 필드는 건드리지 않는다.
+     * - **둘 다 미전송이면 400.** 아무것도 바꾸지 않는 요청이 조용히 200 을 받지 않게 한다 — 이 규칙이
+     *   `@NotBlank` 시절의 400 을 승계한다.
+     * - 명시 null 은 400. 보드는 이름도 스윔레인도 「해제」 의미가 없다.
+     * - 공백 이름은 컨트롤러가 막지 않는다. 도메인 [com.bts.agileplanning.domain.Board] 의 init require 가
+     *   [IllegalArgumentException] 을 던지고 [BoardExceptionHandler.handleIllegalArgument] 가 400 으로 바꾼다.
+     *   컨트롤러가 선차단하면 그 불변식이 dead code 가 된다.
      *
      * @param id path variable 보드 UUID.
-     * @param request 스윔레인 변경 요청 바디(swimlaneField 이름 문자열).
-     * @return 200 OK + [BoardMetaResponse].
+     * @param request 부분 갱신 요청 바디(name·swimlaneField, 둘 다 선택).
+     * @return 200 OK + [BoardMetaResponse]. 마지막 갱신 결과가 두 변경을 모두 반영한다.
      * @throws BoardNotFoundException 보드 미존재 → 404.
      * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
-     * @throws ResponseStatusException 400 — 알 수 없는 swimlaneField 값.
+     * @throws ResponseStatusException 400 — 갱신 필드 부재, 명시 null, 알 수 없는 swimlaneField 값.
+     * @throws IllegalArgumentException 400 — 공백 이름(도메인 불변식 위반).
      */
     @PatchMapping("/{id}")
-    fun updateSwimlaneField(
+    fun updateBoard(
         @PathVariable id: UUID,
-        @Valid @RequestBody request: UpdateBoardSwimlaneRequest,
+        @Valid @RequestBody request: UpdateBoardRequest,
     ): ResponseEntity<DataResponse<BoardMetaResponse>> {
-        log.info("BoardController.updateSwimlaneField id={} swimlaneField={}", id, request.swimlaneField)
+        log.info(
+            "BoardController.updateBoard id={} namePresent={} swimlaneFieldPresent={}",
+            id,
+            request.name.isPresent,
+            request.swimlaneField.isPresent,
+        )
 
         loadBoardWithCreate(id)
-        val raw =
-            request.swimlaneField
-                ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "swimlaneField 는 null 일 수 없습니다.")
-        val updated = service.updateSwimlaneField(id, raw)
+
+        val renamed =
+            if (request.name.isPresent) {
+                service.updateName(id, requirePresentValue(request.name.get(), "name"))
+            } else {
+                null
+            }
+        val swimlaneUpdated =
+            if (request.swimlaneField.isPresent) {
+                service.updateSwimlaneField(id, requirePresentValue(request.swimlaneField.get(), "swimlaneField"))
+            } else {
+                null
+            }
+
+        // 두 갱신은 각각 별도 트랜잭션으로 커밋되므로 나중 결과가 앞선 변경까지 반영한다.
+        // 둘 다 미전송이면 여기서 400 — 최소 1필드 규칙이 이 elvis 사슬의 끝에 있다.
+        val updated =
+            swimlaneUpdated
+                ?: renamed
+                ?: throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "name 또는 swimlaneField 중 하나는 전송해야 합니다.",
+                )
         return ResponseEntity.ok(DataResponse(BoardMetaResponse.from(updated)))
+    }
+
+    /**
+     * 보드를 소프트 삭제한다(FR-BD-01-2b). 이슈는 남는다.
+     *
+     * 권한: [IssuePermission.SOFT_DELETE] on 보드의 프로젝트.
+     *
+     * ```
+     * DELETE /api/v1/boards/{id}
+     *   ├─ actor 추출 ─────────────────────────── 없음 → 401
+     *   ├─ loadBoardWithSoftDelete(id)
+     *   │    ├─ findById (deleted_at IS NULL) ─── 없음 → 404
+     *   │    └─ hasPermission(SOFT_DELETE) ────── 거부 → 403
+     *   └─ service.softDelete(id) ─────────────── deleted_at = now() → 204
+     * ```
+     *
+     * 순서가 뒤집히면 403 이 「그 보드는 존재한다」를 누설한다. 로컬 개발자는 항상 권한을 가지므로
+     * 그 뒤집힘이 눈에 보이지 않는다 — 순서는 [loadBoardWithSoftDelete] 한 곳에 응집해 둔다.
+     *
+     * @param id path variable 보드 UUID.
+     * @return 204 No Content.
+     * @throws BoardNotFoundException 보드 미존재 또는 이미 soft-deleted → 404.
+     * @throws BoardAccessDeniedException SOFT_DELETE 권한 미충족 → 403.
+     * @throws ResponseStatusException 401 — 미인증.
+     */
+    @DeleteMapping("/{id}")
+    fun deleteBoard(
+        @PathVariable id: UUID,
+    ): ResponseEntity<Void> {
+        log.info("BoardController.deleteBoard id={}", id)
+
+        loadBoardWithSoftDelete(id)
+        service.softDelete(id)
+        return ResponseEntity.noContent().build()
     }
 
     /**
@@ -305,6 +390,42 @@ class BoardController(
         requirePermission(actor, IssuePermission.CREATE, IssueScope.Project(board.projectKey))
         return actor to board
     }
+
+    /**
+     * actor 추출 → 보드 메타 조회(404) → SOFT_DELETE 권한 판정을 한 순서로 수행한다.
+     *
+     * 삭제 전용 게이트다. [loadBoardWithCreate] 와 동형이며 권한코드만 다르다 — 수정 권한으로 삭제까지
+     * 열리지 않게 코드를 분리한다. 존재 검사가 권한 판정보다 **먼저**여야 미보유자에게 돌아가는 403 이
+     * 보드 존재를 누설하지 않는다.
+     *
+     * @param boardId 삭제할 보드 UUID.
+     * @return 인증 주체 UUID 와 보드 메타의 쌍.
+     * @throws ResponseStatusException 401 — 미인증.
+     * @throws BoardNotFoundException 404 — 보드 미존재 또는 soft-deleted.
+     * @throws BoardAccessDeniedException 403 — SOFT_DELETE 권한 미충족.
+     */
+    private fun loadBoardWithSoftDelete(boardId: UUID): Pair<UUID, Board> {
+        val actor = currentActorId()
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        requirePermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(board.projectKey))
+        return actor to board
+    }
+
+    /**
+     * [org.openapitools.jackson.nullable.JsonNullable] 이 present 로 전달한 값이 null 이 아님을 보장한다.
+     *
+     * presence 만 보고 통과시키면 명시 null(`{"name":null}`)이 그대로 흘러 500 이 된다.
+     * 보드에는 「필드 해제」 의미가 없으므로 present-null 은 400 으로 거부한다.
+     *
+     * @param value present 로 꺼낸 값. null 이면 명시 null 이 전송된 것이다.
+     * @param field 응답 사유에 쓸 필드 이름.
+     * @return null 이 아닌 값.
+     * @throws ResponseStatusException 400 — 값이 null 일 때.
+     */
+    private fun requirePresentValue(
+        value: String?,
+        field: String,
+    ): String = value ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "$field 는 null 일 수 없습니다.")
 
     /**
      * 권한을 판정하고 미충족 시 [BoardAccessDeniedException](403)을 던진다.

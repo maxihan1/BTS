@@ -12,6 +12,7 @@ import com.bts.shared.board.BoardTransitionResult
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.PositiveOrZero
+import org.openapitools.jackson.nullable.JsonNullable
 import java.util.UUID
 
 /**
@@ -242,6 +243,10 @@ data class BoardColumnWithCardsResponse(
  *   클라이언트가 스윔레인 UI 활성 여부 및 그룹화 기준을 판단하는 데 사용한다.
  * @property quickFilters 보드에 저장된 퀵필터 목록(created_at ASC, FR-UX-01 Task 7). 보드를 보는 모든
  *   사용자가 공유하는 사전 정의 필터 칩이다. 퀵필터가 없으면 빈 목록.
+ * @property canDelete 이 보드를 삭제할 수 있는지 여부(FR-BD-01-2d). 클라이언트는 false 이면 삭제 항목을
+ *   **렌더하지 않는다**(비활성이 아니다). 실제 판정은 프로젝트 스코프의
+ *   [com.bts.shared.permission.IssuePermission.SOFT_DELETE] 라 같은 프로젝트의 보드끼리 값이 같다 —
+ *   per-board 관리자 모델이 들어오기 전까지의 의미론적 근사다. 목록 응답에는 싣지 않는다.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
@@ -252,6 +257,7 @@ data class BoardDetailResponse(
     val unplacedCount: Int,
     val swimlaneField: String,
     val quickFilters: List<QuickFilterResponse>,
+    val canDelete: Boolean,
 ) {
     companion object {
         /**
@@ -260,11 +266,14 @@ data class BoardDetailResponse(
          * @param board 보드 메타(boardId/projectKey/name/swimlaneField 출처).
          * @param result 카드 배치 + 신호 필드(truncated/unplacedCount) 결과.
          * @param quickFilters 보드에 저장된 퀵필터 도메인 목록(created_at ASC). 기본값은 빈 목록.
+         * @param canDelete 삭제 권한 보유 여부. 기본값 false 는 fail-closed — 권한을 넘기지 않은
+         *   호출부가 삭제 UI 를 열어버리는 쪽으로 기울지 않게 한다.
          */
         fun of(
             board: Board,
             result: BoardPlacementResult,
             quickFilters: List<QuickFilter> = emptyList(),
+            canDelete: Boolean = false,
         ): BoardDetailResponse =
             BoardDetailResponse(
                 boardId = board.id,
@@ -275,6 +284,7 @@ data class BoardDetailResponse(
                 unplacedCount = result.unplacedCount,
                 swimlaneField = board.swimlaneField.name,
                 quickFilters = quickFilters.map(QuickFilterResponse::from),
+                canDelete = canDelete,
             )
     }
 }
@@ -293,17 +303,27 @@ data class UpdateColumnWipLimitRequest(
 )
 
 /**
- * 보드 스윔레인 기준 변경 요청 바디.
+ * 보드 부분 갱신 요청 바디 — partial update (3-state).
  *
- * [swimlaneField] 는 [com.bts.agileplanning.domain.SwimlaneField] enum 이름 문자열이어야 한다.
- * 빈 문자열은 400 으로 거부된다 — [NotBlank] 검증.
- * 알 수 없는 값(예: "EPIC", "foo")은 서비스 계층에서 enum 파싱 실패 시 400 으로 거부된다.
+ * [JsonNullable] presence 로 3-state 를 구분한다(`UpdateSprintRequest` 와 같은 관용구).
+ * - 필드 부재(undefined, 미전송) = 무변경
+ * - 명시 null = 400. 보드는 이름도 스윔레인 기준도 「해제」할 수 없으므로 클리어 의미가 없다
+ * - 값 전송 = 해당 값으로 설정
  *
+ * 두 필드가 모두 부재이면 400 이다 — 빈 바디 `{}` 가 조용히 200 을 받지 않게 하는 최소 1필드 규칙이다.
+ * 이 규칙이 [NotBlank] 시절의 400 을 승계한다.
+ *
+ * 타입 인자를 `String?` 로 둔 것은 의도적이다. `JsonNullable<String>` 로 두면 `get()` 이 플랫폼 타입이라
+ * 명시 null 이 컴파일러 검사 없이 흘러 들어가 500 이 된다 — null 이 도착할 수 있다는 사실을 타입에 남긴다.
+ *
+ * @property name 새 보드 이름. 미전송=무변경. 전송 시 공백 불가 — 판정은 도메인
+ *   [com.bts.agileplanning.domain.Board] 의 init require 가 하고 400 으로 변환된다.
  * @property swimlaneField 스윔레인 기준 필드 이름. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+ *   미전송=무변경. 알 수 없는 값(예: "EPIC", "foo")은 서비스의 enum 파싱 실패로 400 이 된다.
  */
-data class UpdateBoardSwimlaneRequest(
-    @field:NotBlank
-    val swimlaneField: String?,
+data class UpdateBoardRequest(
+    val name: JsonNullable<String?> = JsonNullable.undefined(),
+    val swimlaneField: JsonNullable<String?> = JsonNullable.undefined(),
 )
 
 /**

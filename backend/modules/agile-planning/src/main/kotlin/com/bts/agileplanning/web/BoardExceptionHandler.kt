@@ -52,6 +52,7 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * ### 매핑 규칙
  * - [MethodArgumentNotValidException]/[HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException]
  *   → 400 + AGILE_VALIDATION_FAILED
+ * - [IllegalArgumentException] → 400 + AGILE_VALIDATION_FAILED (도메인 require 위반, FR-BD-01-2a)
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
  * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
  * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
@@ -129,6 +130,33 @@ class BoardExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * 도메인 require 위반(잘못된 입력값) — 400.
+     *
+     * [com.bts.agileplanning.domain.Board] init 블록의 `require(name.isNotBlank())` 가 실패할 때 던지는
+     * [IllegalArgumentException] 을 400 으로 매핑한다. 이 핸들러가 없으면 catch-all [Exception] 이 삼켜
+     * 공백 이름 PATCH 가 500 AGILE_INTERNAL_ERROR 로 나간다 — 같은 매핑이 [SprintExceptionHandler] 에
+     * 있으나 그쪽 `assignableTypes` 는 스프린트 컨트롤러라 보드 요청에는 오지 않는다.
+     *
+     * 컨트롤러가 공백을 미리 막는 우회 대신 이 매핑을 두는 이유는, 선차단하면 도메인 불변식이
+     * dead code 가 되고 그 불변식을 지키는 테스트가 도달 불가 조건을 지키게 되기 때문이다.
+     *
+     * 보안 — 도메인 내부 메시지를 응답에 노출하지 않고 일반 메시지만 반환한다. 원인은 로그에만 기록한다.
+     *
+     * @param ex 도메인 require 위반 예외.
+     */
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail {
+        log.info("AGILE_400 board_illegal_argument cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = "요청 값 검증에 실패했습니다.",
         )
     }
 
