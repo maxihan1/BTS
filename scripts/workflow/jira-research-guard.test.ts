@@ -89,16 +89,33 @@ function datedDocs(dir: string): { file: string; date: string }[] {
     .filter((d) => d.date !== '');
 }
 
+/** 검사 대상 절의 제목. 아래 앵커의 유일한 출처다. */
+const JIRA_HEADING = '## Jira 대조';
+
+/**
+ * 절 시작을 찾는 **줄 시작 앵커**.
+ *
+ * `indexOf` 로 찾으면 안 된다 — 본문이 절 이름을 **인용만 해도** 첫 매치가 그 인용 지점이 되고,
+ * 인용문부터 다음 `\n## ` 까지가 섹션으로 오인돼 URL 이 든 진짜 절은 스캔 구역 밖으로 밀려난다.
+ * 그러면 문서는 판정을 고치는 대신 **인용 표현을 바꿔 우회**하게 되고, 가드는 문서를 검사하는
+ * 물건에서 문서가 피해 다니는 장애물로 바뀐다. 아래 픽스처 2건이 그 양쪽을 못박는다.
+ *
+ * 제목 리터럴에서 만든다 — 사본을 두면 한쪽만 바뀐다(`[[two-lists-never-check-each-other]]`).
+ * 리터럴에 정규식 특수문자가 없으므로 이스케이프는 불필요하다.
+ */
+const JIRA_HEADING_ANCHOR = new RegExp(`^${JIRA_HEADING}`, 'm');
+
 /**
  * `## Jira 대조` 절 판정. 위반 사유를 돌려주고, 통과면 `null`.
  *
  * 순수 함수로 뺀 이유 — 아래 뮤테이션 짝이 픽스처로 직접 흔들 수 있어야 한다.
  */
 export function checkJiraSection(body: string, hosts: Set<string>): string | null {
-  const start = body.indexOf('## Jira 대조');
-  if (start < 0) return '`## Jira 대조` 절이 없다';
+  const heading = JIRA_HEADING_ANCHOR.exec(body);
+  if (heading === null) return '`## Jira 대조` 절이 없다';
 
-  const rest = body.slice(start + '## Jira 대조'.length);
+  // `### ` 하위 헤딩은 섹션을 끊지 않는다 — 대조 표 아래에 소절을 두는 문서가 있다.
+  const rest = body.slice(heading.index + JIRA_HEADING.length);
   const end = rest.search(/\n## /);
   const section = end >= 0 ? rest.slice(0, end) : rest;
 
