@@ -45,6 +45,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Clock
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -148,6 +149,14 @@ class StatusMigrationEnqueueIntegrationTest {
 
         /** 심되 `deleted_at` 을 채워 두는 프로젝트 키 — 소프트 삭제가 「없음」으로 읽히는지 본다 (E18). */
         private const val DELETED_PROJECT_KEY = "GONE"
+
+        /**
+         * 카탈로그에 **행은 있는** 상태 키. T15 가 이 키만 잠깐 소프트 삭제했다가 되돌린다.
+         *
+         * T4 의 `ghost_status` 는 애초에 심은 적이 없어 `deleted_at IS NULL` 을 지워도 통과한다 —
+         * 「존재한 적 없는 키」와 「지워진 키」는 다른 경로다. 둘이 짝이 되어야 그 한 줄이 지켜진다.
+         */
+        private const val RETIRED_STATUS_KEY = "retired_review"
         private var bootstrapped = false
     }
 
@@ -366,6 +375,37 @@ class StatusMigrationEnqueueIntegrationTest {
         )
     }
 
+    /**
+     * T15 (E2 · 게이트 2 리뷰 ④-3) — **소프트 삭제된 상태로는 옮길 수 없다**.
+     *
+     * 상태 카탈로그 조회의 `deleted_at IS NULL` 을 지키는 판별식이다. T4 는 애초에 심은 적 없는
+     * 키(`ghost_status`)를 쓰므로 그 한 줄을 지워도 초록이다 — 행이 없으면 조건과 무관하게 안 잡힌다.
+     * 「행은 있는데 지워진」 키라야 그 줄만이 판정을 만든다.
+     *
+     * 지워진 상태로 옮기면 이 기능이 막으려던 유령 상태를 이 기능이 만든다 — T4 와 **같은 사유**이므로
+     * 거부 메시지도 같아야 한다.
+     *
+     * 비-공허 짝 — `deleted_at` 을 되돌리면 같은 커맨드가 통과한다. 「이 키는 늘 거부」 구현을 배제하고,
+     * 원복이 실제로 됐음을 같은 테스트가 증명한다.
+     */
+    @Test
+    fun `T15 - 거부 - 소프트 삭제된 상태 키는 카탈로그에 없는 것으로 본다`() {
+        val cmd = command(mappings = listOf(StatusMigrationMapping("in_review", RETIRED_STATUS_KEY)))
+
+        setStatusDeleted(RETIRED_STATUS_KEY, deleted = true)
+        try {
+            assertRejected(cmd, expectedMessagePart = "toStatusKey not found in status catalog")
+        } finally {
+            setStatusDeleted(RETIRED_STATUS_KEY, deleted = false)
+        }
+
+        // 비-공허 짝 — 살아 있으면 같은 커맨드가 큐잉된다.
+        val operationId = port.enqueueStatusMigration(cmd)
+        assertThat(bulkRepo.findById(BulkOperationId(operationId)))
+            .describedAs("deleted_at 을 되돌리면 같은 대상 상태가 다시 받아들여져야 한다")
+            .isNotNull
+    }
+
     // ── T9~T11. BulkOperation.create 의 빈 items 규칙 (비-공허 짝) ──────────────
 
     /**
@@ -452,6 +492,29 @@ class StatusMigrationEnqueueIntegrationTest {
         assertThat(readQueueMessages()).isEmpty()
     }
 
+    /**
+     * 전역 상태 카탈로그(`statuses`) 1행의 `deleted_at` 을 켜고 끈다 (T15 전용).
+     *
+     * `statuses` 는 project-workflow 소유라 issue-tracking 의 jOOQ 생성 대상이 아니다.
+     * [WorkflowStatusMigrationAdapter] 가 그 테이블을 읽는 방식과 같이 [DSL.table]/[DSL.field] 로
+     * 참조한다 — SQL 문자열 결합을 만들지 않는다(DATA.md §5).
+     */
+    private fun setStatusDeleted(
+        statusKey: String,
+        deleted: Boolean,
+    ) {
+        val statuses = DSL.table("statuses")
+        val key = DSL.field("key", String::class.java)
+        val deletedAt = DSL.field("deleted_at", OffsetDateTime::class.java)
+        val affected =
+            if (deleted) {
+                dsl.update(statuses).set(deletedAt, OffsetDateTime.now()).where(key.eq(statusKey)).execute()
+            } else {
+                dsl.update(statuses).setNull(deletedAt).where(key.eq(statusKey)).execute()
+            }
+        check(affected == 1) { "상태 픽스처 갱신 실패: $statusKey (affected=$affected)" }
+    }
+
     /** pgmq `q_bulk_operations` 큐의 메시지 본문 목록. */
     private fun readQueueMessages(): List<String> =
         dsl.fetch(
@@ -505,6 +568,8 @@ class StatusMigrationEnqueueIntegrationTest {
             insertWorkflowStatus(conn, workflowId, "in_progress", "In Progress", "IN_PROGRESS", 1)
             insertWorkflowStatus(conn, workflowId, "in_review", "In Review", "IN_PROGRESS", 2)
             insertWorkflowStatus(conn, workflowId, "blocked", "Blocked", "IN_PROGRESS", 3)
+            // T15 전용 — 살아 있는 채로 심고 그 테스트만 잠깐 소프트 삭제한다.
+            insertWorkflowStatus(conn, workflowId, RETIRED_STATUS_KEY, "Retired Review", "IN_PROGRESS", 4)
             conn.commit()
         }
     }

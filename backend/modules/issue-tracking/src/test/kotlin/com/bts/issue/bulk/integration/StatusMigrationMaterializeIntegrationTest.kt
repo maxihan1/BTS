@@ -27,6 +27,7 @@ import com.bts.issue.bulk.worker.BulkOperationWorker
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
@@ -84,6 +85,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Clock
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -423,6 +425,9 @@ class StatusMigrationMaterializeIntegrationTest {
         /** 범위 **안**이지만 **아카이브된** 프로젝트 — 가드가 결선돼 있는지 본다(M7). */
         private const val ARCHIVED_KEY = "MIGC"
 
+        /** 큐잉 뒤 **소프트 삭제**되는 프로젝트 — 범위가 지워진 프로젝트로 되살아나는지 본다(M9). */
+        private const val DELETED_SCOPE_KEY = "MIGD"
+
         private var bootstrapped = false
     }
 
@@ -451,12 +456,14 @@ class StatusMigrationMaterializeIntegrationTest {
                 stmt.execute("DELETE FROM bulk_operations")
                 stmt.execute(
                     "DELETE FROM issues WHERE key LIKE '$SCOPE_KEY-%' OR key LIKE '$OUT_OF_SCOPE_KEY-%' " +
-                        "OR key LIKE '$ARCHIVED_KEY-%'",
+                        "OR key LIKE '$ARCHIVED_KEY-%' OR key LIKE '$DELETED_SCOPE_KEY-%'",
                 )
                 stmt.execute(
                     "UPDATE projects SET key_sequence = 0 " +
-                        "WHERE key IN ('$SCOPE_KEY', '$OUT_OF_SCOPE_KEY', '$ARCHIVED_KEY')",
+                        "WHERE key IN ('$SCOPE_KEY', '$OUT_OF_SCOPE_KEY', '$ARCHIVED_KEY', '$DELETED_SCOPE_KEY')",
                 )
+                // M9 가 소프트 삭제한 프로젝트를 되돌린다 — 픽스처가 다음 테스트로 새면 가짜 그린이 된다.
+                stmt.execute("UPDATE projects SET deleted_at = NULL WHERE key = '$DELETED_SCOPE_KEY'")
             }
         }
     }
@@ -681,6 +688,71 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(failed.failureReasonCode).isEqualTo(FailureReasonCode.PROJECT_ARCHIVED)
     }
 
+    // ── M8 · M9. 소프트 삭제 필터는 수동이다 (DATA.md §3) ──────────────────────
+
+    /**
+     * M8 (게이트 2 리뷰 ④-1) — **소프트 삭제된 이슈는 이관 대상이 아니다**.
+     *
+     * `deleted_at IS NULL` 에는 자동 필터가 없다(DATA.md §3). 대상 조회에서 그 한 줄을 지우면
+     * 지워진 이슈가 항목으로 적재된다. 그러면 장부의 `total_count` 가 살아 있는 이슈 수를 넘고,
+     * 항목은 `NOT_FOUND` 로 실패해 「실패한 이관」으로 보인다 — 지워진 이슈 때문에.
+     *
+     * 비-공허 짝 — 같은 프로젝트의 살아 있는 이슈는 정상 이관된다.
+     */
+    @Test
+    fun `M8 - 소프트 삭제된 이슈는 이관 대상이 되지 않는다`() {
+        val alive = insertIssue(SCOPE_KEY, "in_review")
+        val deleted = insertIssue(SCOPE_KEY, "in_review").also { softDeleteIssue(it) }
+
+        val operationId = enqueue(projectKeys = setOf(SCOPE_KEY))
+        worker.pollAndProcess()
+
+        assertThat(itemKeys(operationId))
+            .describedAs("소프트 삭제된 이슈는 항목으로 적재되면 안 된다")
+            .containsExactly(alive)
+
+        val operation = requireNotNull(bulkRepo.findById(BulkOperationId(operationId))) { "작업을 찾을 수 없음" }
+        assertThat(operation.totalCount).isEqualTo(1)
+        assertThat(operation.succeededCount).isEqualTo(1)
+        assertThat(operation.failedCount).isEqualTo(0)
+        assertThat(stateOf(alive)).isEqualTo("in_progress")
+        assertThat(stateOf(deleted)).isEqualTo("in_review")
+    }
+
+    /**
+     * M9 (게이트 2 리뷰 ④-2) — **큐잉 뒤 소프트 삭제된 프로젝트는 범위에서 빠진다**.
+     *
+     * 큐잉 시점 가드(T14)는 그때 살아 있던 키만 본다. 큐잉 → 실행 사이에 프로젝트가 지워지면
+     * 그 가드는 아무것도 못 한다 — 실행 시점 조회의 `projects.deleted_at IS NULL` 만 남는다.
+     * 그 한 줄을 지우면 지워진 프로젝트의 이슈가 범위로 되살아나 조용히 옮겨진다.
+     *
+     * 비-공허 짝 — 살아 있는 프로젝트의 이슈는 같은 실행에서 정상 이관된다.
+     */
+    @Test
+    fun `M9 - 큐잉 뒤 소프트 삭제된 프로젝트의 이슈는 범위에서 빠진다`() {
+        val alive = insertIssue(SCOPE_KEY, "in_review")
+        val inDeletedProject = insertIssue(DELETED_SCOPE_KEY, "in_review")
+
+        val operationId = enqueue(projectKeys = setOf(SCOPE_KEY, DELETED_SCOPE_KEY))
+        // 큐잉 가드를 통과한 뒤 프로젝트가 지워졌다 — 이제 실행 시점 조회만 남았다.
+        softDeleteProject(DELETED_SCOPE_KEY)
+        try {
+            worker.pollAndProcess()
+        } finally {
+            restoreProject(DELETED_SCOPE_KEY)
+        }
+
+        assertThat(itemKeys(operationId))
+            .describedAs("소프트 삭제된 프로젝트의 이슈는 범위 밖이어야 한다")
+            .containsExactly(alive)
+        assertThat(stateOf(inDeletedProject)).isEqualTo("in_review")
+        assertThat(stateOf(alive)).isEqualTo("in_progress")
+
+        val operation = requireNotNull(bulkRepo.findById(BulkOperationId(operationId))) { "작업을 찾을 수 없음" }
+        assertThat(operation.totalCount).isEqualTo(1)
+        assertThat(operation.succeededCount).isEqualTo(1)
+    }
+
     // ── private helpers ────────────────────────────────────────────────────────
 
     /** 기준 커맨드로 이관을 큐잉한다. 매핑은 2개 — 범위와 시점만 테스트마다 흔든다. */
@@ -751,6 +823,30 @@ class StatusMigrationMaterializeIntegrationTest {
             .execute()
     }
 
+    /** 이슈 1건을 소프트 삭제한다 (M8). 물리 삭제가 아니므로 행은 남고 `deleted_at` 만 채워진다. */
+    private fun softDeleteIssue(issueKey: String) {
+        dsl.update(ISSUES)
+            .set(ISSUES.DELETED_AT, OffsetDateTime.now())
+            .where(ISSUES.KEY.eq(issueKey))
+            .execute()
+    }
+
+    /** 프로젝트 1건을 소프트 삭제한다 (M9). 큐잉 뒤 삭제를 재현한다. */
+    private fun softDeleteProject(projectKey: String) {
+        dsl.update(PROJECTS)
+            .set(PROJECTS.DELETED_AT, OffsetDateTime.now())
+            .where(PROJECTS.KEY.eq(projectKey))
+            .execute()
+    }
+
+    /** [softDeleteProject] 를 되돌린다 — 픽스처가 다음 테스트로 새지 않게 한다. */
+    private fun restoreProject(projectKey: String) {
+        dsl.update(PROJECTS)
+            .setNull(PROJECTS.DELETED_AT)
+            .where(PROJECTS.KEY.eq(projectKey))
+            .execute()
+    }
+
     /** [BulkOperationProcessor] 로거에 [ListAppender] 를 붙인 채 [block] 을 실행하고 로그를 돌려준다. */
     private fun captureProcessorLogs(block: () -> Unit): List<ILoggingEvent> {
         val logger = LoggerFactory.getLogger(BulkOperationProcessor::class.java) as Logger
@@ -794,7 +890,11 @@ class StatusMigrationMaterializeIntegrationTest {
             TestConfig.postgres.password,
         ).use { conn ->
             conn.autoCommit = false
-            listOf(SCOPE_KEY to "Status Migration In Scope", OUT_OF_SCOPE_KEY to "Status Migration Out Of Scope")
+            listOf(
+                SCOPE_KEY to "Status Migration In Scope",
+                OUT_OF_SCOPE_KEY to "Status Migration Out Of Scope",
+                DELETED_SCOPE_KEY to "Status Migration Soft Deleted Scope",
+            )
                 .forEach { (key, name) ->
                     conn.prepareStatement("INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING").use { stmt ->
                         stmt.setString(1, key)
