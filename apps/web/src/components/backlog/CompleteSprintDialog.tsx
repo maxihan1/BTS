@@ -175,26 +175,43 @@ function buildView(issues: readonly BacklogIssue[], map: StateCategoryMap): Comp
 }
 
 /**
+ * {@link useSprintCompletion} 입력.
+ *
+ * 위치 인자로 두지 않는 이유는 `projectKey` 와 `boardId` 가 **둘 다 문자열**이라는 것 하나다 —
+ * 순서를 바꿔 넘겨도 컴파일이 통과하고, 그러면 「ATLAS 보드의 백로그」를 묻는 요청이
+ * 조용히 만들어진다. 이름이 붙으면 그 실수가 불가능해진다.
+ */
+interface SprintCompletionParams {
+  /** 백로그 queryKey 대상 프로젝트 키 */
+  readonly projectKey: string
+  /** 보고 있는 보드 UUID (`?board=` 미지정이면 undefined). 재검증 스코프다 */
+  readonly boardId: string | undefined
+  /** 완료할 스프린트 + 이슈 */
+  readonly sprint: SprintWithIssues
+  /** 상태 키 → 카테고리 집합 사상 (FR-7) */
+  readonly categoryMap: StateCategoryMap
+  /** 다이얼로그 열림 여부. 닫히면 회차 상태를 비운다 */
+  readonly open: boolean
+  /** 완료가 성공했을 때 호출된다 */
+  readonly onCompleted: () => void
+}
+
+/**
  * 이관 → 재검증 → 완료 흐름의 상태와 실행을 한곳에 모은다.
  *
  * 요청을 **다이얼로그가 직접** 낸다. 콜백 props 로 밀어내면 「요청 순서·호출 수」를
  * 단위 테스트에서 잴 수 없게 된다.
  *
- * @param projectKey 백로그 queryKey 대상 프로젝트 키
- * @param boardId 보고 있는 보드 UUID (`?board=` 미지정이면 undefined). 재검증 스코프다
- * @param sprint 완료할 스프린트 + 이슈
- * @param categoryMap 상태 키 → 카테고리 집합 사상 (FR-7)
- * @param open 다이얼로그 열림 여부. 닫히면 회차 상태를 비운다
- * @param onCompleted 완료가 성공했을 때 호출된다
+ * @param params 프로젝트·보드 스코프 + 대상 스프린트 + 열림 상태 ({@link SprintCompletionParams})
  */
-function useSprintCompletion(
-  projectKey: string,
-  boardId: string | undefined,
-  sprint: SprintWithIssues,
-  categoryMap: StateCategoryMap,
-  open: boolean,
-  onCompleted: () => void,
-) {
+function useSprintCompletion({
+  projectKey,
+  boardId,
+  sprint,
+  categoryMap,
+  open,
+  onCompleted,
+}: SprintCompletionParams) {
   const queryClient = useQueryClient()
   const completeSprint = useCompleteSprint(projectKey)
   const sourceSprintId = sprint.sprint.sprintId
@@ -437,9 +454,14 @@ export function CompleteSprintDialog({
   const workflows = useWorkflows()
   const categoryMap = useMemo(() => buildStateCategoryMap(workflows.data), [workflows.data])
   const [moveTarget, setMoveTarget] = useState<string>(BACKLOG_TARGET_VALUE)
-  const flow = useSprintCompletion(projectKey, boardId, sprint, categoryMap, open, () =>
-    onOpenChange(false),
-  )
+  const flow = useSprintCompletion({
+    projectKey,
+    boardId,
+    sprint,
+    categoryMap,
+    open,
+    onCompleted: () => onOpenChange(false),
+  })
 
   const moveTargets = buildMoveTargets(allSprints, sprint.sprint.sprintId)
   const blockedByTruncation = isSubmitBlockedByTruncation(truncated)
