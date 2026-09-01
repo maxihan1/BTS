@@ -26,6 +26,8 @@ const INITIAL_BOARD: BoardDetail = {
   boardId: BOARD_ID,
   projectKey: 'ATLAS',
   name: '기본 보드',
+  boardType: 'KANBAN',
+  activeSprint: null,
   truncated: false,
   unplacedCount: 0,
   swimlaneField: 'NONE',

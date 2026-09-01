@@ -41,12 +41,15 @@ const MOCK_BOARD_SUMMARY: BoardSummary = {
   boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
   projectKey: 'ATLAS',
   name: '기본 보드',
+  boardType: 'KANBAN',
 }
 
 const MOCK_BOARD_DETAIL: BoardDetail = {
   boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
   projectKey: 'ATLAS',
   name: '기본 보드',
+  boardType: 'KANBAN',
+  activeSprint: null,
   columns: [],
   truncated: false,
   unplacedCount: 0,
@@ -273,6 +276,8 @@ describe('useBoard (filter-aware)', () => {
     boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
     projectKey: 'ATLAS',
     name: '기본 보드',
+    boardType: 'KANBAN',
+    activeSprint: null,
     columns: [],
     truncated: false,
     unplacedCount: 0,
