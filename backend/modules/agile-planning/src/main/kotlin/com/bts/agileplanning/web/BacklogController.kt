@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -48,19 +49,26 @@ class BacklogController(
      *
      * actor 추출 후 service 에 위임한다. service 내부에서 BROWSE 권한을 판정한다.
      *
+     * `board` 는 [UUID] 로 바인딩한다 — 형식 계약을 타입으로 못박으면 잘못된 형식이
+     * 서비스에 닿기 전에 Spring 이 400 으로 막는다(learnings 2026-06-25). 폴백·존재 판정은
+     * 컨트롤러가 하지 않는다. 미지정이면 null 을 그대로 넘기고 service 가 기본 보드를 정한다.
+     *
      * @param projectKey path variable 프로젝트 키.
+     * @param board 스코프할 보드 UUID. 선택 — 미지정이면 service 가 기본 보드로 폴백한다.
      * @return 200 OK + [BacklogResponse] 봉투.
      * @throws ResponseStatusException 401 — 미인증.
      * @throws ResponseStatusException 403 — BROWSE 권한 미충족.
+     * @throws ResponseStatusException 404 — [board] 가 이 프로젝트의 보드가 아닐 때.
      */
     @GetMapping
     fun getBacklog(
         @PathVariable projectKey: String,
+        @RequestParam(name = "board", required = false) board: UUID?,
     ): ResponseEntity<DataResponse<BacklogResponse>> {
-        log.info("BacklogController.getBacklog projectKey={}", projectKey)
+        log.info("BacklogController.getBacklog projectKey={}, board={}", projectKey, board)
 
         val actor = currentActorId()
-        val result = service.getBacklog(actorId = actor, projectKey = projectKey)
+        val result = service.getBacklog(actorId = actor, projectKey = projectKey, boardId = board)
 
         val response =
             BacklogResponse(

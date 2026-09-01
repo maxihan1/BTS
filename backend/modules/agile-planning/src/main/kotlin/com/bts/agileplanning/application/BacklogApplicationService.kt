@@ -4,6 +4,7 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.dto.BacklogIssueResponse
 import com.bts.agileplanning.web.dto.SprintMetaResponse
@@ -52,11 +53,17 @@ data class BacklogResult(
  *
  * ## 처리 순서
  * 1. BROWSE 권한 판정 — 거부 시 403.
- * 2. [BoardIssueLookupPort.listVisibleIssuesByProject] 로 가시 이슈 목록 조회.
- * 3. [SprintRepository.findIssueKeysByProject] 로 전체 스프린트의 이슈 키를 단일 쿼리로 조회(N+1 차단).
- * 4. 가시 이슈 중 어느 스프린트에도 없는 것 → backlog.
+ * 2. 보드 스코프 해석 — 지정 보드가 이 프로젝트 소속이 아니면 404.
+ * 3. [BoardIssueLookupPort.listVisibleIssuesByProject] 로 가시 이슈 목록 조회.
+ * 4. [SprintRepository.findIssueKeysByProject] 로 전체 스프린트의 이슈 키를 단일 쿼리로 조회(N+1 차단).
+ * 5. 가시 이슈 중 **그 보드의** 어느 스프린트에도 없는 것 → backlog.
  *    스프린트에 있는 것(단, 가시 이슈 중에서만) → 해당 스프린트.
- * 5. 정렬 적용.
+ * 6. 정렬 적용.
+ *
+ * ## 보드 스코프 (FR-BD-04 · ADR 2026-09-01 D2)
+ * 스프린트와 백로그는 **보드**에 속한다. 스프린트 목록은 지정 보드의 것만 내보내고,
+ * 백로그 칸은 「**그 보드의** 스프린트에 없는 가시 이슈」로 계산한다 — 다른 보드 스프린트의
+ * 이슈까지 빼면 그 이슈가 스프린트에도 백로그에도 없어 화면에서 증발한다.
  *
  * ## 정렬 규칙
  * - 이슈(백로그/각 스프린트 내): rank ASC NULLS LAST → key ASC.
@@ -69,6 +76,7 @@ data class BacklogResult(
  * @param permissionResolver cross-BC 권한 판정 포트(fail-closed, non-null 주입)
  * @param sprintRepository sprints / sprint_issues jOOQ repository
  * @param boardIssueLookupPort 프로젝트 이슈 목록 조회 포트(issue-tracking 구현)
+ * @param boardRepository boards jOOQ repository — 보드 스코프 해석에만 쓴다
  */
 @Service
 @Transactional(readOnly = true)
@@ -76,6 +84,7 @@ class BacklogApplicationService(
     private val permissionResolver: IssuePermissionResolver,
     private val sprintRepository: SprintRepository,
     private val boardIssueLookupPort: BoardIssueLookupPort,
+    private val boardRepository: BoardRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -96,47 +105,53 @@ class BacklogApplicationService(
      *
      * @param actorId 조회 행위자 UUID.
      * @param projectKey 조회할 프로젝트 키.
+     * @param boardId 스코프할 보드 UUID. null 이면 기본 보드로 폴백한다.
      * @return [BacklogResult] — 그룹핑·정렬된 이슈 목록 + truncated.
      * @throws ResponseStatusException 403 — BROWSE 권한 미충족.
+     * @throws ResponseStatusException 404 — [boardId] 가 이 프로젝트의 활성 보드가 아닐 때.
      */
     @Transactional(readOnly = true)
     fun getBacklog(
         actorId: UUID,
         projectKey: String,
+        boardId: UUID?,
     ): BacklogResult {
-        log.debug("백로그 조회 시작 — projectKey={}, actorId={}", projectKey, actorId)
+        log.debug("백로그 조회 시작 — projectKey={}, boardId={}, actorId={}", projectKey, boardId, actorId)
 
         if (!permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "접근 권한이 없습니다.")
         }
 
-        // 1. 가시 이슈 전체 조회
+        // 1. 보드 스코프 해석 — 권한(403) 다음, 조회 앞이다.
+        val scopedBoardId: UUID? = resolveBoardScope(projectKey, boardId)
+
+        // 2. 가시 이슈 전체 조회
         val page = boardIssueLookupPort.listVisibleIssuesByProject(projectKey, actorId)
         val visibleIssues: List<BoardIssueView> = page.issues
         val visibleKeys: Set<String> = visibleIssues.map { it.key }.toHashSet()
 
-        // 2. 프로젝트 전체 스프린트 + 스프린트별 이슈 키 일괄 조회(N+1 차단, C4)
-        val sprints = sprintRepository.findByProject(projectKey)
+        // 3. 이 보드의 스프린트 + 스프린트별 이슈 키 일괄 조회(N+1 차단, C4)
+        //    보드 필터는 Kotlin 레벨이다 — SQL 술어로 밀어넣으면 백로그(차집합) 계산이 반대로 돈다.
+        val projectSprints = sprintRepository.findByProject(projectKey)
+        val sprints = projectSprints.filter { scopedBoardId == null || it.boardId == scopedBoardId }
         val sprintIssueKeys: Map<UUID, List<String>> = sprintRepository.findIssueKeysByProject(projectKey)
 
-        // 3. 스프린트에 할당된 이슈 키(가시 이슈 교집합만) → Set
+        // 4. **이 보드의** 스프린트에 할당된 이슈 키(가시 이슈 교집합만) → Set
+        //    다른 보드 스프린트의 이슈는 여기 안 들어가므로 아래 차집합에서 백로그 칸에 남는다(E12).
         val assignedKeys: Set<String> =
-            sprintIssueKeys.values
-                .flatten()
-                .filter { it in visibleKeys }
-                .toHashSet()
+            sprints.flatMap { sprintIssueKeys[it.id].orEmpty() }.filter { it in visibleKeys }.toHashSet()
 
-        // 4. 이슈 Map(key → view) 생성
+        // 5. 이슈 Map(key → view) 생성
         val issueByKey: Map<String, BoardIssueView> = visibleIssues.associateBy { it.key }
 
-        // 5. 미할당 이슈 = 가시 이슈 − 할당된 이슈, rank 정렬
+        // 6. 미할당 이슈 = 가시 이슈 − 할당된 이슈, rank 정렬
         val backlog =
             visibleIssues
                 .filter { it.key !in assignedKeys }
                 .sortedWith(issueComparator())
                 .map { BacklogIssueResponse.from(it) }
 
-        // 6. 스프린트별 그룹핑 + 정렬
+        // 7. 스프린트별 그룹핑 + 정렬
         val sprintWithIssuesList =
             sprints
                 .sortedWith(sprintComparator())
@@ -164,8 +179,9 @@ class BacklogApplicationService(
                 }
 
         log.debug(
-            "백로그 조회 완료 — projectKey={}, backlog={}, sprints={}, truncated={}",
+            "백로그 조회 완료 — projectKey={}, boardId={}, backlog={}, sprints={}, truncated={}",
             projectKey,
+            scopedBoardId,
             backlog.size,
             sprintWithIssuesList.size,
             page.truncated,
@@ -179,6 +195,37 @@ class BacklogApplicationService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * 백로그를 볼 보드를 정한다.
+     *
+     * - [boardId] 지정 — **경로 프로젝트의 활성 보드 중에서만** 찾는다. 없으면 404 다.
+     *   다른 프로젝트의 보드도 여기서 404 가 되어 「그 UUID 는 존재한다」가 새어 나가지 않는다(E8).
+     *   지정이 틀렸을 때 기본 보드로 조용히 대체하지 않는다 — 사용자가 다른 보드를 보면서
+     *   그 사실을 모르게 된다(E7).
+     * - [boardId] 미지정 — 기본 보드로 폴백한다.
+     *   [BoardRepository.findScrumBoardIdByProject] 의 기존 판단(`created_at ASC LIMIT 1`)을
+     *   그대로 쓴다. 새 규칙을 만들지 않는다.
+     * - 기본 보드조차 없으면 null — 보드 축 없이 프로젝트 전체 스프린트를 본다.
+     *   스프린트는 보드 없이 생길 수 없으므로(`ensureScrumBoard`) 이 경우 스프린트도 없는 것이
+     *   정상이고, 여기서 빈 목록으로 못박으면 보드를 소프트 삭제한 프로젝트의 스프린트가 증발한다.
+     *
+     * @param projectKey 경로 프로젝트 키.
+     * @param boardId 요청이 지정한 보드 UUID. null 이면 폴백.
+     * @return 스코프할 보드 UUID. 스코프할 보드가 없으면 null.
+     * @throws ResponseStatusException 404 — 지정 보드가 이 프로젝트의 활성 보드가 아닐 때.
+     */
+    private fun resolveBoardScope(
+        projectKey: String,
+        boardId: UUID?,
+    ): UUID? {
+        if (boardId == null) return boardRepository.findScrumBoardIdByProject(projectKey)
+        return boardRepository
+            .findAllByProjectKey(projectKey)
+            .firstOrNull { it.id == boardId }
+            ?.id
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다.")
+    }
 
     /**
      * 이슈 정렬 비교자 — rank ASC NULLS LAST → key ASC.
