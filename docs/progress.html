@@ -214,9 +214,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>142</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>1</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>0</b></div>
         </div>
       </div>
     </div>
@@ -912,9 +912,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:93%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 14</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 1</div>
+        <div>⬜ 대기 0</div>
       </div>
     </div>
     <h2>세부 기능 (15개)</h2>
@@ -967,13 +967,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">WIP 제한 + 스윔레인</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — SwimlaneField enum + BoardColumn.wipLimit + Board.swimlaneField (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #172)</li><li><span class="step-icon">✅</span> D2 — 명세 — WIP 초과 시 시각 경고만(이동 차단 없음, <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 결정 1) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #172)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `board_columns.wip_limit`(CHECK &gt;0), `boards.swimlane_field`(NONE/<span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">ASSIGNEE</span>/<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span>IORITY) V501 (PR #172)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — wipLimit/wipExceeded 신호 + <span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH 2종(권한 CREATE) + swimlaneField echo (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #172)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 도메인/Repository/DTO/Controller통합/Service단위 (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #172)</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 컬럼 헤더 경고 + 스윔레인 그룹(컬럼 내부 레인, 세로) + 스윔레인 셀렉터(서버 저장, CREATE 게이팅)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — WIP 경고/스윔레인 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span>/권한 게이팅</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-BD-04</span>
         <span class="fr-desc">보드 종류(스크럼/칸반) + 활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 보드</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — `BoardType`(SCRUM/KANBAN) · 보드↔<span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 소속 관계</li><li><span class="step-icon">⬜</span> D2 — 명세 — 생성 플로우(종류→이름) · 활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 보드당 1개 · <span class="term" data-def="미할당 이슈 목록">백로그</span> 보드 스코프</li><li><span class="step-icon">⬜</span> D3 — 마이그레이션 — `boards.board_type` · `<span class="term" data-def="애자일 작업 기간 (1~4주)">s<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>int</span>s.board_id` + 백필(<span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 보유 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>마다 스크럼 보드 신설)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 생성 API 종류 인자 · 스크럼 보드 카드 배치(활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 필터) · `start` 활성 1개 가드</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 종류별 배치 분기 · 활성 2개 시도 409 · 백필 검증</li><li><span class="step-icon">⬜</span> D6 — 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 없으면 빈 상태) · <span class="term" data-def="미할당 이슈 목록">백로그</span> `?board=` 스코프</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 스크럼 보드 생성 → <span class="term" data-def="미할당 이슈 목록">백로그</span>에서 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 시작 → 보드에 그 스프린트만</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `BoardType`(SCRUM/KANBAN) · 보드↔<span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 소속 관계</li><li><span class="step-icon">✅</span> D2 — 명세 — 생성 플로우(종류→이름) · 활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 보드당 1개 · <span class="term" data-def="미할당 이슈 목록">백로그</span> 보드 스코프</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — `boards.board_type` · `<span class="term" data-def="애자일 작업 기간 (1~4주)">s<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>int</span>s.board_id` + 백필(<span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 보유 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>마다 스크럼 보드 신설)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 생성 API 종류 인자 · 스크럼 보드 카드 배치(활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 필터) · `start` 활성 1개 가드</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 종류별 배치 분기 · 활성 2개 시도 409 · 백필 검증</li><li><span class="step-icon">⬜</span> D6 — 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 없으면 빈 상태) · <span class="term" data-def="미할당 이슈 목록">백로그</span> `?board=` 스코프</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 스크럼 보드 생성 → <span class="term" data-def="미할당 이슈 목록">백로그</span>에서 <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 시작 → 보드에 그 스프린트만</li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
