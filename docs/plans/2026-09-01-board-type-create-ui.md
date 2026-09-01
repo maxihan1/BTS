@@ -294,6 +294,11 @@ DOM 에 노출한다. 판정의 실체는 `CreateBoardForm.test.tsx`(실물 렌�
 - ④ **E3** — 이름을 치고 「뒤로」 → 종류를 바꾸고 「다음」 → **이름이 남아 있다**
 - ⑤ **E5** — `isPending` 중에는 「뒤로」가 비활성
 - ⑥ **E4** — 422 `AGILE_UNPROCESSABLE` 안내가 **2단계에** 뜬다
+- ⑦ **E6**(← Eng 렌즈 E1) — 언마운트 후 다시 마운트하면 **1단계로 돌아온다**.
+  Radix `Dialog` 가 닫힐 때 `DialogContent` 를 언마운트하는 것에 기대는 전제라, 누군가
+  `forceMount` 를 붙이면 조용히 깨진다. 이 테스트가 그 회귀 가드다.
+- ⑧ **E2**(← Eng 렌즈 E2) — 2단계에서 **공백 이름**을 제출해도 mutate 가 호출되지 않는다.
+  제출 버튼이 2단계로 옮겨 가면서 `trimmed === ''` early return 이 빠져도 지금은 아무것도 안 깨진다.
 - 실패 메시지(예상). 라디오가 없어 ①②③ 전부 red
 
 **GREEN**:
@@ -302,7 +307,12 @@ DOM 에 노출한다. 판정의 실체는 `CreateBoardForm.test.tsx`(실물 렌�
 - 종류 선택은 `components/ui/radio-group.tsx` **재사용**(선례 `AddAccountDialog.tsx` ·
   `GlobalPermissionFormDialog.tsx`). **신규 프리미티브 0.**
 - `showEmptyStateIntro` 인트로는 **1단계에만** 붙인다 — 「보드가 없습니다」가 이름 입력 단계까지
-  따라다니면 C1 계약의 의미가 흐려진다.
+  따라다니면 C1 계약의 의미가 흐려진다. **의도된 동작이다**(Design 렌즈 D3) — 인트로는
+  「보드를 만들자」는 진입 유도이고 2단계는 이미 만드는 중이다.
+- **D1(Design 렌즈)** — 2단계 머리에 **고른 종류를 표시**한다(예. 「스크럼 보드」).
+  이 선택은 생성 후 되돌릴 수 없는데(편차 X3) 확정 직전 화면에 그 사실이 안 보이면 안 된다.
+- **D2(Design 렌즈)** — 「다음」을 누르면 **이름 input 으로 포커스를 옮긴다**. 안 옮기면 포커스가
+  사라진 버튼에 남아 키보드·스크린리더 사용자가 단계 전환을 감지하지 못한다.
 - **E6** — 소비처가 언마운트/재마운트하므로 `useState` 초기값이 곧 1단계 복귀다. 별도 리셋 불필요.
   ★ 다이얼로그가 **언마운트되지 않는 구조면** 이것이 성립하지 않는다 —
   `projects.$projectKey.board.tsx:294-310` 을 읽어 확인하고, 유지형이면 `key` 를 물려 강제한다.
@@ -384,4 +394,64 @@ Task 4 가 머지되는 순간 `:113` `:114` `:161` 이 실패한다 — 1단계
   `node scripts/build-doc-index.mjs --check`
 - **백엔드 0줄 · 마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0**
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+`type=ui` → 렌즈 2종(`plan-design-review` + `plan-eng-review`)을 한 응답에 병렬 발행했다.
+**BLOCKER 0 · 지적 6건.** 넷은 plan 에 반영했고, 하나는 실측으로 무해를 확인했고, 하나는 등재만 했다.
+
+> **시각 목업 미생성.** 이 PR 의 UI 는 기존 폼에 라디오 2개와 단계 축 하나를 더하는 것이라
+> 새 시각 언어가 없다. `jira-parity-contract.md` §2~§6(즉사 계약 · 시각 정본 · 사전 grep · 눈확인)로
+> 갈음한다 — PR #418 의 Design Review 가 세운 선례와 같다.
+
+### Design 렌즈 — ✅ CLEAR (지적 3건)
+
+| # | 지적 | 심각도 | 처리 |
+|---|---|---|---|
+| **D1** | **2단계에서 무엇을 골랐는지 화면에 없다.** 「뒤로」 버튼만 있고 선택한 종류가 안 보인다. 이름을 고민하는 사이에 사용자는 자기가 스크럼을 골랐는지 잊는다 — 그리고 이 선택은 **생성 후 되돌릴 수 없다**(편차 X3). 되돌릴 수 없는 선택을 확인 없이 확정시키는 화면이다 | **HIGH** | **반영** — Task 4 GREEN 에 2단계 선택 표시 추가 |
+| **D2** | **단계 전환 시 포커스 이동이 없다.** 「다음」을 누르면 포커스가 사라진 버튼에 남는다. 키보드·스크린리더 사용자는 화면이 바뀐 것을 모르고, 마우스 사용자도 이름 칸을 다시 클릭해야 한다 | **MEDIUM** | **반영** — Task 4 GREEN 에 이름 input 포커스 이동 추가 |
+| **D3** | 「보드가 없습니다」 인트로가 2단계에서 사라진다. 빈 상태 사용자는 맥락이 한 번 끊긴다 | **LOW** | **의도된 동작으로 확정** — 인트로는 「보드를 만들자」는 진입 유도이고 2단계는 이미 만드는 중이다. plan 에 의도임을 명시 |
+
+### Eng 렌즈 — ⚠️ CONCERNS (지적 3건 · BLOCKER 0)
+
+| # | 지적 | 심각도 | 처리 |
+|---|---|---|---|
+| **E1** | **E6(재오픈 시 1단계 복귀)에 테스트가 없다.** plan 은 「소비처가 언마운트하니 `useState` 초기값이 곧 복귀」라고 적었는데, 그것이 **참인지 확인하지 않은 채 전제로 삼았다** | **MEDIUM** | **실측 확인 + 테스트 추가** — `projects.$projectKey.board.tsx:295` 의 Radix `Dialog` 는 `forceMount` 없이 `open` 으로만 제어해 닫힐 때 `DialogContent` 를 언마운트한다. **전제는 참이다.** 다만 누군가 `forceMount` 를 붙이면 조용히 깨지므로 Task 4 시나리오에 ⑦로 추가 |
+| **E2** | **E2(공백 이름 제출)에 테스트가 없다.** 「기존 동작 유지」라고 적었지만 그 제출 버튼이 **2단계로 옮겨 간다** — 옮기는 과정에서 `trimmed === ''` early return 이 빠져도 아무 테스트가 안 깨진다 | **MEDIUM** | **반영** — Task 4 시나리오에 ⑧로 추가 |
+| **E3** | Task 3(i18n)에 자체 RED 가 없다. TDD 형식상 사이클이 아니다 | **LOW** | **허용** — 상수 추가라 행위가 없다. 판정을 Task 4 가 진다는 것이 plan 에 이미 명시돼 있다 |
+
+### 렌즈가 확인하고 통과시킨 것
+
+- **필수 필드 전환이 안전한가** — `useCreateBoard` 의 소비처는 `CreateBoardForm.tsx:82` **하나뿐**이다
+  (나머지 3건은 테스트의 `vi.mock`). `CreateBoardInput.boardType` 을 필수로 올려도 프로덕션 호출자는
+  한 곳이라 컴파일이 전수를 잡는다.
+- **신규 프리미티브 0 이 실제로 성립하는가** — `components/ui/radio-group.tsx` 는 Radix
+  `RadioGroupPrimitive` 래퍼라 키보드 탐색·`role="radiogroup"`·화살표 이동이 이미 있다.
+  접근성을 직접 구현할 필요가 없다.
+- **범위가 과한가** — 6 task · 8파일 · 신규 클래스 0. 복잡도 게이트(8파일 초과 또는 신규 클래스 2개
+  초과) 미발동. 백엔드 0줄이라 blast radius 가 프론트 생성 플로우 하나로 닫힌다.
+
+### 반영 결과 — Task 4 갱신
+
+**GREEN 에 2건 추가.**
+- **D1** — 2단계 머리에 선택한 종류를 표시한다(예. 「스크럼 보드」). 되돌릴 수 없는 선택을
+  확정 직전에 한 번 더 보여주는 자리다.
+- **D2** — 「다음」을 누르면 이름 input 으로 포커스를 옮긴다.
+
+**동반 테스트에 2건 추가.**
+- **⑦ E6** — 언마운트 후 재마운트하면 1단계로 돌아온다(Radix Dialog 언마운트 전제의 회귀 가드)
+- **⑧ E2** — 2단계에서 공백 이름을 제출해도 mutate 가 호출되지 않는다
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | not run | `type=ui` 라 라우팅 대상 아님(`bts-review-plan` Step 2 표) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ✅ CLEAR | 3건 — D1 HIGH 반영 · D2 MEDIUM 반영 · D3 LOW 의도 확정. 시각 목업은 패리티 계약 §2~§6 으로 갈음(#418 선례) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ⚠️ CONCERNS | 3건 — E1·E2 MEDIUM 반영(테스트 2개 추가) · E3 LOW 허용. **BLOCKER 0** |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | skipped | 중첩 codex 토큰 비용으로 미실행 — 생략 사실을 여기 남긴다 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | 라우팅 대상 아님 |
+
+- **VERDICT:** DESIGN CLEARED · ENG CONCERNS(전량 반영 완료) — **BLOCKER 0 · 게이트 1 진입 가능.**
+  선언 T2 · 실측 T1. 반영으로 Task 4 의 동반 테스트가 6개 → **8개**가 됐다.
+
+NO UNRESOLVED DECISIONS
