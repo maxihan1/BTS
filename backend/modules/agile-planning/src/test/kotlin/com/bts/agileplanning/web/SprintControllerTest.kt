@@ -407,6 +407,24 @@ class SprintControllerTest {
             .andExpect(jsonPath("$.errorCode").value("AGILE_CONFLICT"))
     }
 
+    // ── START-3. POST start 보드에 활성 스프린트 존재 → 409 전용 코드 ────────
+    //
+    // ★ 이 테스트가 잡는 것은 「409 가 나는가」가 아니라 「구별되는 코드가 나는가」다.
+    // 일반 ResponseStatusException(CONFLICT) 은 SprintExceptionHandler 의 상태 전파 핸들러가
+    // 무조건 AGILE_CONFLICT 로 덮어쓴다 — SprintCompletedAssignException 등 기존 409 3형제가
+    // 실제로 그렇게 뭉뚱그려져 있다. 전용 @ExceptionHandler 없이는 이 단언이 통과할 수 없다.
+
+    @Test
+    fun `POST sprints id start 보드에 활성 스프린트가 있으면 409 AGILE_SPRINT_ALREADY_ACTIVE를 반환한다`() {
+        every {
+            sprintApplicationService.start(actorId, sprintId)
+        } throws ResponseStatusException(HttpStatus.CONFLICT, "이미 활성 스프린트가 있습니다.")
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_ALREADY_ACTIVE"))
+    }
+
     // ── COMPLETE-1. POST complete 정상 → 200 ─────────────────────────────────
 
     @Test
