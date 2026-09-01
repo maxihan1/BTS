@@ -173,6 +173,10 @@ export const boardCreatedColumnSchema = z.object({
   displayOrder: z.number().int(),
 })
 
+/**
+ * 보드 종류 enum 스키마.
+ * 백엔드 `BoardType` enum(SCRUM/KANBAN) 대응 — 값이 늘면 백엔드가 먼저 늘고 여기가 따라간다.
+ */
 const boardTypeSchema = z.enum(['SCRUM', 'KANBAN'])
 
 /**
