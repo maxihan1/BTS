@@ -94,14 +94,43 @@ class WorkflowCache(
     fun withWriteLock(
         key: String,
         block: () -> Unit,
-    ) {
+    ) = withKeyLock(key) {
+        block()
+        invalidate(key)
+    }
+
+    /**
+     * 같은 키의 쓰기를 직렬화하되 **캐시는 건드리지 않는다.**
+     *
+     * ### 왜 [withWriteLock] 과 나뉘는가
+     * 정의를 바꾸지 않는 쓰기가 있다 — 상태 이관 큐잉(`WorkflowPublishService.migrate`)은
+     * project-workflow 를 읽기만 하고 `bulk_operations` 에만 쓴다. 그런데도 **직렬화는 필요하다**.
+     * 「진행 중 이관이 있는가」를 보고 큐잉하는 사이가 열려 있으면 동시 요청 둘이 서로의 미커밋
+     * INSERT 를 못 봐 모순되는 작업 2건이 나란히 돌고, 워커 실행 순서가 결과를 정한다.
+     *
+     * 그 자리에 [withWriteLock] 을 쓰면 **바꾸지도 않은 정의의 캐시를 버린다.** 다음 읽기가 전부
+     * DB 재적재이고, `CacheInvalidationCoverageTest` 가 「migrate 는 무효화 대상이 아니다」를
+     * 명시적 예외로 등재한 근거와도 어긋난다. 그래서 락만 잡는 진입점을 따로 둔다.
+     *
+     * 락 획득 로직은 이 함수 하나에만 있다 — [withWriteLock] 이 여기에 무효화를 얹는 형태라
+     * 재시도·타임아웃 규칙이 두 벌로 갈라지지 않는다.
+     *
+     * @param key 직렬화 기준 워크플로우 키. [withWriteLock] 과 **같은 키 공간**이라 발행↔이관
+     *   사이의 경합도 함께 막힌다.
+     * @param block 락 보호 하에 실행할 로직.
+     * @return [block] 의 반환값.
+     * @throws WorkflowCacheLockTimeoutException 200ms 내 lock 획득 실패 시
+     */
+    @Transactional
+    fun <T> withKeyLock(
+        key: String,
+        block: () -> T,
+    ): T {
         val lockKey = key.hashCode().toLong()
 
         if (tryAcquireLock(lockKey)) {
             log.debug("WorkflowCache advisory lock acquired on first try: key={}", key)
-            block()
-            invalidate(key)
-            return
+            return block()
         }
 
         val deadline = System.currentTimeMillis() + LOCK_TIMEOUT_MS
@@ -109,9 +138,7 @@ class WorkflowCache(
             Thread.sleep(LOCK_RETRY_INTERVAL_MS)
             if (tryAcquireLock(lockKey)) {
                 log.debug("WorkflowCache advisory lock acquired after retry: key={}", key)
-                block()
-                invalidate(key)
-                return
+                return block()
             }
         }
 

@@ -198,21 +198,27 @@ class WorkflowPublishService(
         // 편성 조회는 한 번만 한다 — `removed` 와 F16 의 도착지 판정이 같은 집합을 근거로 삼는다.
         val live = publishRepository.findComposedStatusKeys(workflowId)
         val removed = live - definition.states.map { it.key }.toSet()
-        val projects = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId)
-        val projectKeys = projects.map { it.key }.toSet()
 
-        requireSoundMappings(key, workflowId, definition, live, removed, projects.map { it.id }.toSet(), mappings)
+        // ★이관 범위는 **아카이브를 포함**한다 — 발행 차단 카운트(findProjectRefsByWorkflowId)와
+        //   일부러 다른 집합이다. 범위에서 빼면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이
+        //   사라지고, 넣어 두면 bulk_operation_items 에 PROJECT_ARCHIVED 로 남아 셀 수 있다(E7).
+        val scope = schemeAssignmentRepository.findMigrationScopeRefsByWorkflowId(workflowId)
+        val projectKeys = scope.map { it.key }.toSet()
 
-        // F15 — 끝나지 않은 이관이 있으면 모순되는 작업 2건이 나란히 돌고 워커 실행 순서가 결과를
-        //       정한다. 유효성(400)을 먼저 태우고 상태 충돌(409)을 뒤에 본다.
-        if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
-            throw WorkflowMigrationInFlightException(key)
-        }
+        requireSoundMappings(key, workflowId, definition, live, removed, scope.map { it.id }.toSet(), mappings)
 
+        // ★F15 는 검사-후-사용이라 직렬화 없이는 동시 요청 둘이 모두 통과한다. 발행과 **같은 키
+        //   공간**의 advisory lock 을 잡아 발행↔이관 경합까지 함께 닫는다. 캐시는 건드리지 않는다 —
+        //   이관은 정의를 바꾸지 않으므로 무효화할 항목이 없다.
         val bulkOperationId =
-            issueStatusMigrationPort.enqueueStatusMigration(
-                StatusMigrationCommand(actorUserId = actorId, projectKeys = projectKeys, mappings = mappings),
-            )
+            cache.withKeyLock(key) {
+                if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
+                    throw WorkflowMigrationInFlightException(key)
+                }
+                issueStatusMigrationPort.enqueueStatusMigration(
+                    StatusMigrationCommand(actorUserId = actorId, projectKeys = projectKeys, mappings = mappings),
+                )
+            }
 
         log.info(
             "상태 이관 큐잉. key={} bulkOperationId={} removed={} projects={} mappings={}",
@@ -499,7 +505,9 @@ class WorkflowPublishService(
 
         // F13 — 범위가 비면 어댑터의 `require` 가 터지고, 이 BC 에 IAE advice 가 없어 500 이 된다.
         if (projectIds.isEmpty()) {
-            reject("이 워크플로우를 쓰는 프로젝트가 없다. 스킴에 먼저 연결할 것")
+            // 범위는 아카이브를 포함하므로(E7) 여기 오는 것은 「스킴 미연결」이거나 「전부 소프트
+            // 삭제」다. 둘 다 관리자가 스킴·프로젝트 상태를 봐야 풀린다.
+            reject("이 워크플로우를 쓰는 프로젝트가 없다. 스킴 연결과 프로젝트 삭제 여부를 확인할 것")
         }
 
         // F11 — 이관 워커가 이슈 타입 축을 안 본다(장부 145). 형제가 있으면 그 워크플로우의 이슈까지

@@ -75,6 +75,10 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     private val S_SCHEME_ID = DSL.field("sibling.scheme_id", Long::class.java)
     private val S_WORKFLOW_ID = DSL.field("sibling.workflow_id", UUID::class.java)
 
+    private val SCHEMES = DSL.table("workflow_schemes")
+    private val SC_ID = DSL.field("workflow_schemes.id", Long::class.java)
+    private val SC_DELETED_AT = DSL.field("workflow_schemes.deleted_at", java.time.OffsetDateTime::class.java)
+
     /**
      * 프로젝트에 워크플로우 스킴을 할당하거나 기존 할당을 교체한다.
      *
@@ -185,7 +189,46 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * @return 활성 프로젝트 참조 목록. 연결된 프로젝트가 없으면 빈 목록.
      */
     @Transactional(readOnly = true)
-    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> =
+    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
+        // 발행 차단 카운트용 — 아카이브 이슈는 영원히 안 옮겨지므로 세지 않는다.
+        return projectRefs(workflowId, excludeArchived = true)
+    }
+
+    /**
+     * 이관이 대상으로 삼을 프로젝트. [findProjectRefsByWorkflowId] 와 달리 **아카이브를 포함**한다.
+     *
+     * ## 왜 카운트와 다른 집합인가 (spec E7 · 게이트 1 I1)
+     * 아카이브 프로젝트의 이슈는 워커의 아카이브 가드가 변경을 거부하므로 **영원히 안 옮겨진다.**
+     * 그렇다고 이관 범위에서까지 빼면 워커가 그 프로젝트를 아예 안 보고, 그 이슈들은 **흔적 없이
+     * 사라진다** — 관리자가 「몇 건이 왜 안 옮겨졌는지」를 셀 수단이 0 이 된다.
+     *
+     * 범위에 넣어 두면 `BulkItemApplier` 가 `ProjectArchivedException` 을 던지고
+     * `BulkItemExecutor` 가 그것을 `FailureReasonCode.PROJECT_ARCHIVED` 로 번역해
+     * `bulk_operation_items` 에 **행으로 남긴다.** 그것이 셀 수 있는 형태다.
+     *
+     * 반대로 **발행 차단 카운트에는 넣지 않는다**([findProjectRefsByWorkflowId] 가 계속 제외한다).
+     * 넣으면 영원히 안 옮겨지는 이슈가 카운트에 계속 잡혀 발행이 **관리자가 풀 수 없는 상태로**
+     * 막힌다. 두 조회가 다른 집합인 것은 실수가 아니라 이 판정의 핵심이다.
+     *
+     * ## 워커와 같은 축으로 거른다
+     * 소프트 삭제만 제외하는 것은 워커의 대상 조회(`BulkOperationRepository.statusMigrationTargets`)
+     * 가 `projects.deleted_at` 만 거는 것과 **일부러 맞춘 것**이다. 여기서 더 좁히면 서비스가 센
+     * 상한과 워커가 실제로 담는 건수가 갈라진다.
+     *
+     * @param workflowId 이관할 워크플로우 UUID.
+     * @return 소프트 삭제되지 않은 프로젝트 참조 목록(아카이브 포함). 연결이 없으면 빈 목록.
+     */
+    @Transactional(readOnly = true)
+    fun findMigrationScopeRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
+        // 이관 범위용 — 아카이브를 넣어야 워커가 PROJECT_ARCHIVED 로 흔적을 남긴다.
+        return projectRefs(workflowId, excludeArchived = false)
+    }
+
+    /** 두 공개 조회의 공통 본문. 아카이브 축 하나만 다르므로 3단 JOIN 을 복제하지 않는다. */
+    private fun projectRefs(
+        workflowId: UUID,
+        excludeArchived: Boolean,
+    ): List<ProjectRef> =
         dsl
             .selectDistinct(P_ID, P_KEY)
             .from(MAPPINGS)
@@ -193,7 +236,7 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
             .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
             .where(M_WORKFLOW_ID.eq(workflowId))
             .and(P_DELETED_AT.isNull)
-            .and(P_ARCHIVED_AT.isNull)
+            .and(if (excludeArchived) P_ARCHIVED_AT.isNull else DSL.noCondition())
             .fetch { record ->
                 ProjectRef(
                     id = record.get(P_ID) ?: error("projects.id is null — PK 제약 위반"),
@@ -217,6 +260,15 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * 같은 표를 자기 자신과 대조하므로 별칭 없이 쓰면 서브쿼리 조건이 바깥 조건과 한 테이블로
      * 접혀 **항상 거짓**이 된다(`workflow_id = X AND workflow_id <> X`).
      *
+     * ## ★대상 스킴을 「살아 있고 실제로 쓰이는 것」으로 좁힌다
+     * 「이 워크플로우를 매핑한 모든 스킴」을 보면 예전에 만들었다 지운 스킴 하나가 이관을
+     * **영구히 400 으로** 막는다. `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만 세우고
+     * 매핑 행은 남기며(V201 의 CASCADE 는 하드 삭제에만 걸린다), 관리자가 손댈 수 있는 활성
+     * 스킴에는 형제가 없어 **화면에서 원인을 찾을 방법이 없다.**
+     *
+     * 좁혀도 안전성은 줄지 않는다. 이관이 옮기는 것은 **범위 프로젝트의 이슈**이고, 그 프로젝트가
+     * 붙은 스킴에서만 형제 워크플로우와 섞일 수 있다. 할당이 없는 스킴은 그 이슈가 0건이다.
+     *
      * @param workflowId 이관하려는 워크플로우 UUID.
      * @return 같은 스킴에 다른 워크플로우 매핑이 하나라도 있으면 true. 스킴에 안 붙어 있으면 false.
      */
@@ -228,7 +280,13 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
                 .from(SIBLING)
                 .where(
                     S_SCHEME_ID.`in`(
-                        DSL.select(M_SCHEME_ID).from(MAPPINGS).where(M_WORKFLOW_ID.eq(workflowId)),
+                        DSL
+                            .selectDistinct(M_SCHEME_ID)
+                            .from(MAPPINGS)
+                            .join(SCHEMES).on(SC_ID.eq(M_SCHEME_ID))
+                            .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
+                            .where(M_WORKFLOW_ID.eq(workflowId))
+                            .and(SC_DELETED_AT.isNull),
                     ),
                 ).and(S_WORKFLOW_ID.ne(workflowId)),
         )
