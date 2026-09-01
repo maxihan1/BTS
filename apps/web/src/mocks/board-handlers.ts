@@ -6,7 +6,7 @@
 //   - e2e-msw-scenario-toggle-localstorage-flag: 409 토글은 localStorage 플래그로 분기
 //
 import { http, HttpResponse } from 'msw'
-import type { BoardDetail, BoardCard, BoardCardFilterParams, SwimlaneField } from '@/api/boards'
+import type { BoardDetail, BoardCard, BoardCardFilterParams, SwimlaneField, BoardType } from '@/api/boards'
 import { buildBoardFilterQuery } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
 import { queryStringToSearch, searchToFilter } from '@/lib/board-filter'
@@ -315,21 +315,27 @@ const getBoardHandler = http.get('/api/v1/boards/:id', ({ params, request }) => 
 // POST /api/v1/boards
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** boardType을 생략한 요청에 적용하는 기본 보드 종류 (FR-BD-04). */
+const DEFAULT_BOARD_TYPE: BoardType = 'KANBAN'
+
 /**
  * POST /api/v1/boards — 새 보드 생성.
  *
- * 요청 body: { projectKey: string, name: string }
+ * 요청 body: { projectKey: string, name: string, boardType?: 'SCRUM' | 'KANBAN' }
  * 초기 컬럼 3개(TODO/IN_PROGRESS/DONE)를 자동 생성해 store에 추가한다.
+ * boardType은 store에 저장되어 이후 GET 상세 응답에도 실린다 (FR-BD-04 D6).
  * 성공 → 201 { data: BoardCreated }
  */
 const createBoardHandler = http.post('/api/v1/boards', async ({ request }) => {
   let projectKey = ''
   let name = ''
+  let boardType: BoardType = DEFAULT_BOARD_TYPE
 
   try {
-    const body = (await request.json()) as { projectKey?: string; name?: string }
+    const body = (await request.json()) as { projectKey?: string; name?: string; boardType?: BoardType }
     projectKey = body.projectKey ?? ''
     name = body.name ?? ''
+    boardType = body.boardType ?? DEFAULT_BOARD_TYPE
   } catch {
     return HttpResponse.json(
       { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
@@ -337,7 +343,7 @@ const createBoardHandler = http.post('/api/v1/boards', async ({ request }) => {
     )
   }
 
-  const { created } = createBoardInStore(projectKey, name)
+  const { created } = createBoardInStore(projectKey, name, boardType)
 
   return HttpResponse.json({ data: created }, { status: 201 })
 })
