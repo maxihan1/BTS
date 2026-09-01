@@ -7,9 +7,12 @@ type FailureReasonCode = z.infer<typeof failureReasonCodeSchema>
 
 /**
  * 일괄 작업 개별 이슈 실패사유 코드 한국어 라벨 맵.
- * backend FailureReasonCode enum 7종과 1:1 대응한다.
+ * backend FailureReasonCode enum 9종과 1:1 대응한다.
  *
  * - 라벨 변경 시 이 파일만 수정하면 컴포넌트와 E2E 셀렉터가 자동 반영된다.
+ * - `Record<FailureReasonCode, string>` 이라 enum 이 늘면 여기 추가가 **타입으로 강제**된다.
+ *   다만 그 강제는 한 방향뿐이라(enum → 라벨), enum 자체가 백엔드보다 뒤처지는 축은
+ *   `api/__tests__/bulk-operation-enum-parity.test.ts` 가 본다.
  */
 export const failureReasonLabels: Record<FailureReasonCode, string> = {
   NOT_FOUND: '이슈를 찾을 수 없음',
@@ -18,6 +21,10 @@ export const failureReasonLabels: Record<FailureReasonCode, string> = {
   VERSION_CONFLICT: '다른 요청이 먼저 수정함',
   WORKFLOW_NOT_CONFIGURED: '워크플로우 미구성',
   TYPE_NOT_FOUND: '이슈 유형 없음',
+  /** 상태 이관에서 이 이슈의 현재 상태가 매핑 목록에 없다 — 옮길 곳이 지정되지 않았다 */
+  STATE_NOT_IN_MAPPING: '옮길 곳이 지정되지 않은 상태',
+  /** 아카이브된 프로젝트의 이슈. 이관 범위에는 들어가되 옮겨지지 않고 여기 남는다 */
+  PROJECT_ARCHIVED: '보관된 프로젝트의 이슈',
   UNKNOWN: '알 수 없는 오류',
 } as const
 

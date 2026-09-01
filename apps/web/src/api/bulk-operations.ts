@@ -10,15 +10,16 @@ import { apiGet, apiPost } from './client'
 /** 일괄 작업 처리 상태 enum — PENDING|RUNNING|COMPLETED|FAILED */
 export const bulkOperationStatusSchema = z.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED'])
 
-/** 일괄 작업 유형 enum — BULK_EDIT|BULK_TRANSITION */
-export const bulkOperationTypeSchema = z.enum(['BULK_EDIT', 'BULK_TRANSITION'])
+/** 일괄 작업 유형 enum — BULK_EDIT|BULK_TRANSITION|STATUS_MIGRATION */
+export const bulkOperationTypeSchema = z.enum(['BULK_EDIT', 'BULK_TRANSITION', 'STATUS_MIGRATION'])
 
 /** 개별 이슈 처리 상태 enum — PENDING|SUCCEEDED|FAILED */
 export const bulkOperationItemStatusSchema = z.enum(['PENDING', 'SUCCEEDED', 'FAILED'])
 
 /**
- * 개별 이슈 처리 실패 사유 코드 enum 7종.
- * backend BulkOperationItemStatus.failureReasonCode 값과 1:1 대응.
+ * 개별 이슈 처리 실패 사유 코드 enum 9종.
+ * backend `FailureReasonCode` 와 1:1 대응하며 `__tests__/bulk-operation-enum-parity.test.ts`
+ * 가 그 .kt 를 직접 읽어 차집합 0 을 지킨다 — 손으로 맞추지 마라.
  */
 export const failureReasonCodeSchema = z.enum([
   'NOT_FOUND',
@@ -27,6 +28,8 @@ export const failureReasonCodeSchema = z.enum([
   'VERSION_CONFLICT',
   'WORKFLOW_NOT_CONFIGURED',
   'TYPE_NOT_FOUND',
+  'STATE_NOT_IN_MAPPING',
+  'PROJECT_ARCHIVED',
   'UNKNOWN',
 ])
 
@@ -44,13 +47,31 @@ export const bulkTransitionPayloadSchema = z.object({
 })
 
 /**
+ * STATUS_MIGRATION payload — 상태 매핑과 프로젝트 범위.
+ *
+ * 백엔드 `BulkOperationPayload.StatusMigration(mappings: Map, projectKeys: Set)` 과 1:1.
+ * `projectKeys` 가 Set 이지만 JSON 에는 배열로 실린다.
+ */
+export const statusMigrationPayloadSchema = z.object({
+  /** 출발 상태 키 → 도착 상태 키 */
+  mappings: z.record(z.string(), z.string()),
+  /** 이관 대상 프로젝트 범위. 상태 키가 전역이라 이 범위가 없으면 남의 이슈까지 옮겨진다 */
+  projectKeys: z.array(z.string()),
+})
+
+/**
  * 일괄 작업 payload union.
  * 백엔드 응답에 discriminator 필드가 없으므로 operationType으로 판별한다.
  * Zod union은 첫 번째 매칭 스키마를 사용한다.
+ *
+ * ★ `statusMigrationPayloadSchema` 는 **맨 뒤**다. 앞 둘은 필수 키(`priority`·`impact` 는
+ * `.nullable()` 이지 `.optional()` 이 아니고, `toStateKey` 도 필수)라 이관 payload 를 먼저
+ * 걸러 낸다. 순서를 뒤집으면 느슨한 쪽이 앞에서 다른 payload 를 삼킬 수 있다.
  */
 export const bulkOperationPayloadSchema = z.union([
   bulkEditPayloadSchema,
   bulkTransitionPayloadSchema,
+  statusMigrationPayloadSchema,
 ])
 
 /** 일괄 작업 개별 이슈 처리 결과 항목 스키마 */
