@@ -58,6 +58,9 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
 
         lateinit var repository: ProjectWorkflowSchemeAssignmentRepository
 
+        /** 비-공허 짝이 매핑 행을 직접 넣고 뺄 때 쓴다. */
+        lateinit var dsl: org.jooq.DSLContext
+
         // 테스트에서 공유하는 scheme_id fixture — workflow_schemes 테이블에 사전 삽입
         var schemeId1: Long = 0L
         var schemeId2: Long = 0L
@@ -91,6 +94,12 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         val reverseProjectDeleted: UUID = UUID.fromString("00000000-0000-0000-0008-000000001008")
         val reverseProjectArchived: UUID = UUID.fromString("00000000-0000-0000-0009-000000001009")
 
+        /** 소프트 삭제된 스킴. 매핑 행은 그대로 남는다 — CASCADE 는 하드 삭제에만 걸린다. */
+        var reverseSchemeDeleted: Long = 0
+
+        /** 활성이지만 어느 프로젝트에도 할당되지 않은 스킴. */
+        var reverseSchemeUnassigned: Long = 0
+
         @BeforeAll
         @JvmStatic
         fun setup() {
@@ -110,7 +119,8 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
                     postgres.username,
                     postgres.password,
                 )
-            repository = ProjectWorkflowSchemeAssignmentRepository(DSL.using(dataSource, SQLDialect.POSTGRES))
+            dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+            repository = ProjectWorkflowSchemeAssignmentRepository(dsl)
         }
 
         /** 2단계 Flyway 마이그레이션 적용. target=200 → cross-BC 스텁 → LATEST. */
@@ -231,6 +241,15 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         private fun insertReverseSchemes(conn: java.sql.Connection) {
             reverseSchemeA = insertScheme(conn, "reverse-lookup-a", "역방향 스킴 A")
             reverseSchemeB = insertScheme(conn, "reverse-lookup-b", "역방향 스킴 B")
+
+            // 형제 판정이 「매핑이 있는 모든 스킴」을 보면 이 둘이 workflowA 의 이관을 영구히 막는다.
+            // 둘 다 프로젝트에 붙이지 않으므로 역방향 프로젝트 조회 결과는 달라지지 않는다.
+            reverseSchemeDeleted = insertScheme(conn, "reverse-lookup-del", "삭제된 스킴")
+            reverseSchemeUnassigned = insertScheme(conn, "reverse-lookup-unassigned", "미할당 스킴")
+            conn.prepareStatement("UPDATE workflow_schemes SET deleted_at = NOW() WHERE id = ?").use { ps ->
+                ps.setLong(1, reverseSchemeDeleted)
+                ps.executeUpdate()
+            }
         }
 
         /** workflow_schemes 1건 INSERT 후 발급된 id 를 돌려준다. */
@@ -273,6 +292,11 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
                     Triple(reverseSchemeA, null, reverseWorkflowA),
                     Triple(reverseSchemeA, issueTypeId, reverseWorkflowA),
                     Triple(reverseSchemeB, null, reverseWorkflowB),
+                    // 삭제된 스킴 · 미할당 스킴이 각각 workflowA 와 **형제**를 함께 매핑한다.
+                    Triple(reverseSchemeDeleted, null, reverseWorkflowA),
+                    Triple(reverseSchemeDeleted, issueTypeId, reverseWorkflowB),
+                    Triple(reverseSchemeUnassigned, null, reverseWorkflowA),
+                    Triple(reverseSchemeUnassigned, issueTypeId, reverseWorkflowB),
                 ).forEach { (schemeId, typeId, workflowId) ->
                     ps.setLong(1, schemeId)
                     if (typeId == null) {
@@ -506,5 +530,119 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
 
         // Epsilon 은 스킴 A 에 할당돼 있지만 archived_at 이 채워져 있다 (스펙 E7).
         assertThat(refs.map { it.id }).doesNotContain(reverseProjectArchived)
+    }
+
+    // ── 이관 범위 조회 (E7 제3의 길) ────────────────────────────────────────────
+
+    /**
+     * ★ 이관 **범위**는 아카이브를 포함한다 — 카운트와 다른 집합이다 (spec E7 · 게이트 1 I1).
+     *
+     * ### 왜 범위에는 넣는가
+     * 범위에서까지 빼면 워커가 그 프로젝트를 아예 안 보고, 그 이슈들은 **흔적 없이 사라진다.**
+     * 넣어 두면 워커의 `BulkItemApplier` 가 아카이브 가드에 걸려 `bulk_operation_items` 에
+     * `PROJECT_ARCHIVED` 로 남기므로(`BulkItemExecutor` 의 `ProjectArchivedException` 매핑)
+     * 관리자가 「몇 건이 왜 안 옮겨졌는지」를 셀 수 있다.
+     *
+     * ### 왜 카운트에는 안 넣는가
+     * 아카이브 이슈는 영원히 안 옮겨진다. 발행 차단 카운트에 넣으면 발행이 **관리자가 풀 수 없는
+     * 상태로** 막힌다. 그래서 [ProjectWorkflowSchemeAssignmentRepository.findProjectRefsByWorkflowId]
+     * 는 지금처럼 아카이브를 계속 제외한다 — 두 조회는 일부러 다른 집합이다.
+     */
+    @Test
+    fun `이관 범위 조회는 아카이브된 프로젝트를 포함한다`() {
+        val refs = repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA)
+
+        assertThat(refs.map { it.id })
+            .describedAs("범위에서 빠지면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이 사라진다")
+            .contains(reverseProjectArchived)
+        assertThat(refs.map { it.id }).contains(reverseProjectAlpha, reverseProjectBeta)
+    }
+
+    /** 소프트 삭제는 범위에서도 뺀다 — 죽은 프로젝트의 이슈를 옮길 이유가 없다. */
+    @Test
+    fun `이관 범위 조회도 소프트 삭제된 프로젝트는 제외한다`() {
+        val refs = repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA)
+
+        assertThat(refs.map { it.id }).doesNotContain(reverseProjectDeleted)
+    }
+
+    /** 다른 스킴만 쓰는 프로젝트는 범위에도 안 들어간다 — 스코프 판정이 공허해지지 않게 한다. */
+    @Test
+    fun `이관 범위 조회도 다른 스킴에만 있는 프로젝트는 안 나온다`() {
+        val refs = repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA)
+
+        assertThat(refs.map { it.id }).doesNotContain(reverseProjectOtherScheme)
+    }
+
+    // ── 형제 워크플로우 판정 범위 (F11 과차단 방지) ────────────────────────────
+
+    /**
+     * ★ 형제 판정은 **살아 있고 실제로 쓰이는 스킴**만 본다.
+     *
+     * 이 판정이 「매핑이 있는 모든 스킴」을 보면, 예전에 만들었다 지운 스킴 하나가 그 워크플로우의
+     * 이관을 **영구히 400 으로** 막는다. `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만
+     * 세우고 매핑 행은 남기며(V201 의 CASCADE 는 하드 삭제에만 걸린다), 관리자가 손댈 수 있는
+     * 활성 스킴에는 형제가 없어 **화면에서 원인을 찾을 방법이 없다.**
+     *
+     * 안전성은 줄지 않는다 — 이관이 옮기는 것은 **범위 프로젝트의 이슈**이고, 그 프로젝트가 붙은
+     * 스킴에서만 형제 워크플로우와 섞일 수 있다.
+     */
+    @Test
+    fun `소프트 삭제된 스킴의 잔존 매핑은 형제로 세지 않는다`() {
+        assertThat(repository.hasSiblingWorkflowInAssignedSchemes(reverseWorkflowA))
+            .describedAs("지운 스킴 하나가 이관을 영구히 막으면 출구가 없다")
+            .isFalse()
+    }
+
+    /**
+     * ★ 프로젝트에 할당되지 않은 스킴도 형제로 세지 않는다.
+     *
+     * 할당이 없으면 그 스킴을 쓰는 이슈가 하나도 없다 — 이관이 그 워크플로우의 이슈를 건드릴
+     * 경로 자체가 없으므로 막을 이유가 없다.
+     *
+     * 이 판정과 위 판정은 **다른 축**이다(활성 여부 · 할당 여부). 하나만 두면 다른 쪽 구멍이
+     * 조용히 남는다.
+     */
+    @Test
+    fun `프로젝트에 할당되지 않은 스킴의 매핑은 형제로 세지 않는다`() {
+        assertThat(repository.hasSiblingWorkflowInAssignedSchemes(reverseWorkflowA)).isFalse()
+    }
+
+    /**
+     * ★비-공허 짝 — 좁히기가 판정을 통째로 죽이지 않았는지 반대 방향으로 확인한다.
+     *
+     * 이것이 없으면 `hasSiblingWorkflowInAssignedSchemes` 가 **항상 false** 를 돌려줘도 위 두
+     * 테스트가 초록이다. F11 fail-closed 가 통째로 사라지는데 아무도 모르는 형태가 된다.
+     */
+    @Test
+    fun `할당된 활성 스킴에 형제가 있으면 참이다`() {
+        // Gamma 가 붙은 스킴 B 에 형제를 끼운다 — B 는 활성이고 할당도 있다.
+        //
+        // ★`issue_type_id` 를 NULL 로 넣으면 안 된다. `ix_scheme_default_mapping` partial UNIQUE 가
+        //   스킴당 default 를 1건으로 막아 INSERT 가 조용히 무시되고, 형제가 안 들어간 채 판정만
+        //   false 가 된다 — 실제로 이 픽스처가 그렇게 한 번 헛돌았고 비-공허 짝이 그것을 잡았다.
+        val siblingTypeId =
+            dsl
+                .fetchOne("SELECT id FROM issue_types ORDER BY id LIMIT 1")
+                ?.get("id", Long::class.java)
+                ?: error("issue_types 가 비어 있다 — 형제 픽스처를 심을 수 없다")
+        dsl.execute(
+            "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)" +
+                " VALUES (?, ?, ?)",
+            reverseSchemeB,
+            siblingTypeId,
+            reverseWorkflowOrphan,
+        )
+        try {
+            assertThat(repository.hasSiblingWorkflowInAssignedSchemes(reverseWorkflowB))
+                .describedAs("좁히기가 과해 판정이 통째로 죽으면 F11 fail-closed 가 사라진다")
+                .isTrue()
+        } finally {
+            dsl.execute(
+                "DELETE FROM workflow_scheme_issue_type_mappings WHERE scheme_id = ? AND workflow_id = ?",
+                reverseSchemeB,
+                reverseWorkflowOrphan,
+            )
+        }
     }
 }

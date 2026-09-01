@@ -227,6 +227,30 @@ class WorkflowPublishServiceIntegrationTest {
         }
     }
 
+    /**
+     * `withKeyLock` 호출을 세는 캐시. 락을 **잡았는가**만 잰다.
+     *
+     * ### 왜 「직렬화되는가」를 못 재는가
+     * 이 클래스는 `@SpringBootTest` 없이 조립하므로 `@Transactional` 이 프록시 없이 불린다
+     * (클래스 KDoc). `pg_try_advisory_xact_lock` 은 트랜잭션 밖이면 즉시 해제되므로 두 스레드를
+     * 띄워도 실제 경합이 재현되지 않는다. 직렬화 자체는 운영의 트랜잭션 경계가 보장하고,
+     * 여기서는 **그 경계 안에 들어갔는지**를 잠근다 — 락 호출이 사라지면 이 판정이 red 다.
+     */
+    private class LockCountingCache(
+        repo: WorkflowRepository,
+        dsl: DSLContext,
+    ) : WorkflowCache(repo, dsl) {
+        var keyLockCount = 0
+
+        override fun <T> withKeyLock(
+            key: String,
+            block: () -> T,
+        ): T {
+            keyLockCount++
+            return super.withKeyLock(key, block)
+        }
+    }
+
     private val dsl =
         DSL.using(
             DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password),
@@ -236,7 +260,7 @@ class WorkflowPublishServiceIntegrationTest {
     private val draftRepository = WorkflowDraftRepository(dsl, objectMapper)
     private val publishRepository = WorkflowPublishRepository(dsl)
     private val publicationRepository = WorkflowPublicationRepository(dsl, objectMapper)
-    private val cache = WorkflowCache(WorkflowRepository(dsl), dsl)
+    private val cache = LockCountingCache(WorkflowRepository(dsl), dsl)
     private val issueUsage = StubIssueStatusUsage()
     private val migrationPort = SpyStatusMigrationPort(publishRepository)
     private val schemeAssignments = CountingSchemeAssignments(dsl)
@@ -521,6 +545,27 @@ class WorkflowPublishServiceIntegrationTest {
             schemeId,
             ACTOR,
         )
+    }
+
+    /**
+     * 이 워크플로우가 이미 붙어 있는 스킴에 **아카이브된** 프로젝트를 하나 더 단다.
+     *
+     * E7 판정용이다 — 이관 범위에는 들어가고(워커가 `PROJECT_ARCHIVED` 로 남길 수 있게)
+     * 발행 차단 카운트에서는 빠져야 한다(영원히 안 옮겨질 이슈가 발행을 영구히 막지 않게).
+     */
+    private fun attachArchivedProject(workflowId: UUID): UUID {
+        val schemeId =
+            dsl
+                .fetchOne(
+                    "SELECT scheme_id FROM workflow_scheme_issue_type_mappings" +
+                        " WHERE workflow_id = ? LIMIT 1",
+                    workflowId,
+                )?.get("scheme_id", Long::class.java)
+                ?: error("이 워크플로우를 가리키는 스킴 매핑이 없다 — attachTwoProjects 를 먼저 부를 것")
+        val project = insertProject()
+        insertAssignment(project, schemeId)
+        dsl.execute("UPDATE projects SET archived_at = NOW() WHERE id = ?", project)
+        return project
     }
 
     /** 미끼 스킴이 가리킬 워크플로우. 상태도 전환도 없이 FK 만 만족시키면 된다. */
@@ -1130,6 +1175,99 @@ class WorkflowPublishServiceIntegrationTest {
         assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
             .describedAs("큐잉은 약속일 뿐이다 — 워커가 실패하면 이슈는 그대로 남는다")
             .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
+    }
+
+    // ── 아카이브 범위 (E7 제3의 길 · 게이트 2 BLOCKER 처방) ────────────────────
+
+    /**
+     * ★ 아카이브 프로젝트는 **이관 범위에는 들어간다.**
+     *
+     * 범위에서까지 빼면 워커가 그 프로젝트를 아예 안 보고 그 이슈들은 **흔적 없이 사라진다** —
+     * 관리자가 「몇 건이 왜 안 옮겨졌는지」를 셀 수단이 0 이 된다. 범위에 넣어 두면 워커의
+     * 아카이브 가드가 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로 **행을 남긴다.**
+     *
+     * 게이트 1 이 채택한 I1/E7 이 이것이고, 같은 PR 의 장부 151 과 제품 문서도 이 계약을 적는다.
+     * 코드가 반대로 가면 다음 사람이 **없는 행을 세게 된다.**
+     */
+    @Test
+    fun `아카이브된 프로젝트도 이관 범위에 실린다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (alpha, beta) = attachTwoProjects(id)
+        val archived = attachArchivedProject(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+
+        assertThat(migrationPort.received.single().projectKeys)
+            .describedAs("범위에서 빠지면 그 프로젝트 이슈가 흔적 없이 사라진다")
+            .containsExactlyInAnyOrder(projectKey(alpha), projectKey(beta), projectKey(archived))
+    }
+
+    /**
+     * ★ 같은 아카이브 프로젝트가 **발행 차단 카운트에서는 빠진다** — 두 집합은 일부러 다르다.
+     *
+     * 카운트에 넣으면 영원히 안 옮겨지는 이슈가 계속 잡혀 발행이 **관리자가 풀 수 없는 상태로**
+     * 막힌다. 이 판정이 없으면 「범위에 넣자」는 처방이 카운트까지 넓어져도 아무도 모른다.
+     */
+    @Test
+    fun `아카이브된 프로젝트 이슈는 발행 차단 카운트에서 빠진다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        val archived = attachArchivedProject(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.publish(ACTOR, key, baseVersion = 0)
+
+        assertThat(issueUsage.receivedProjectIds.flatten())
+            .describedAs("아카이브를 카운트에 넣으면 발행이 영영 막힌다")
+            .doesNotContain(archived)
+    }
+
+    /**
+     * ★ 상한 판정도 **이관 범위**로 센다 — 워커와 같은 집합이어야 한다.
+     *
+     * 워커의 대상 조회(`BulkOperationRepository.statusMigrationTargets`)는 `projects.deleted_at`
+     * 만 걸고 **아카이브는 안 건다.** 서비스가 활성만 세면 상한 판정이 워커가 실제로 담는 건수와
+     * 갈라지고, `StatusMigrationMaxTargetsContractTest` 는 **숫자만 대조하므로 그 갈라짐을 못 본다.**
+     */
+    @Test
+    fun `상한 세기는 이관 범위 기준이라 아카이브 프로젝트도 묻는다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        val archived = attachArchivedProject(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+
+        assertThat(issueUsage.receivedProjectIds.flatten())
+            .describedAs("서비스가 활성만 세면 워커가 담는 건수와 상한 판정이 갈라진다")
+            .contains(archived)
+    }
+
+    /**
+     * ★ F15 는 검사-후-사용이라 **직렬화가 없으면 동시 요청 둘이 모두 통과한다.**
+     *
+     * 발행과 같은 키 공간의 advisory lock 안에서 검사와 큐잉을 함께 해야 그 창이 닫힌다.
+     * 이 판정은 「락을 잡았는가」만 잰다 — 실제 직렬화는 운영의 트랜잭션 경계가 보장하고,
+     * 이 클래스는 프록시 없이 조립돼 경합을 재현할 수 없다([LockCountingCache] KDoc).
+     */
+    @Test
+    fun `migrate 는 워크플로우 키 락 안에서 큐잉한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        val before = cache.keyLockCount
+
+        service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+
+        assertThat(cache.keyLockCount - before)
+            .describedAs("락 밖에서 큐잉하면 동시 요청 둘이 모순되는 작업 2건을 나란히 넣는다")
+            .isEqualTo(1)
+        assertThat(migrationPort.received).hasSize(1)
     }
 
     // ── in-flight 중복 거부 (Task 8 · F15 · E13) ──────────────────────────────
