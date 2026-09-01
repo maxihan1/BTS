@@ -49,6 +49,7 @@ ADR 이 PR ② 를 **T2** 로 지정했다(ADR §「결정된 것」 3분할 표
 | 소스 선택(J4) · 생성 후 종류 변경 | ADR 의도적 편차 X1 · X3 |
 | 칸반 백로그(kanplan) | ADR 의도적 편차 X4 |
 | E-6(두 번째 스크럼 보드 빈 보드 고정) · 스크럼 × `truncated` | 「PR ③ 전에 닫는다」로 기한이 박힌 부채. 백로그·보드 조회를 건드릴 때 닿는다 — 이 PR 은 생성 플로우만 만진다 |
+| **`StoredBoardDetail.boardType`·`activeSprint` 를 optional 로 둔 것** (코드 리뷰 C3) | **mock 이 서버보다 느슨하다.** 백엔드 `BoardDetailResponse.boardType` 은 non-null 인데 MSW 시드 보드는 그 필드 없이 응답한다. 지금은 가짜 그린이 **아니다** — 관련 단언 3건이 전부 뮤테이션에 red 로 반응했고 소비처(`boardDetailSchema`)가 아직 안 읽는다. 필수로 올리면 소비처 없는 fixture 5종이 지금 깨지므로 이 PR 에서는 optional 이 옳다(선례 `quickFilters?`·`canDelete?`). **미룬 청구서다** — PR ③ 이 `boardDetailSchema` 에 `boardType`·`activeSprint` 를 올리는 순간 시드 fixture 전수가 **한꺼번에** ZodError 를 낸다. **그 PR 의 예상 blast radius 에 미리 넣는다** |
 
 ## Jira 대조 (전 타입 필수)
 
@@ -364,12 +365,18 @@ DOM 에 노출한다. 판정의 실체는 `CreateBoardForm.test.tsx`(실물 렌�
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/board-manage.spec.ts`, `apps/web/e2e/board-kanban.spec.ts`]
+- files: [`apps/web/e2e/board-manage.spec.ts`, `apps/web/e2e/board-kanban.spec.ts`, `apps/web/e2e/fixtures/board-helpers.ts`]
 - depends-on: [4, 5]
 - jira: [J1, J2]
 
-> **`files` 를 2개로 넓혔다 (2026-09-01 구현 중).** Task 4 실측으로 `board-kanban.spec.ts` S5
-> (`:314` `:317` `:320`)도 같은 문자열을 빈 상태에서 잡아 red 임이 드러났다. 위 §사전 grep 절 참조.
+> **`files` 를 3개로 넓혔다 (2026-09-01 구현 중 · 2회).**
+> ① `board-kanban.spec.ts` — Task 4 실측으로 S5(`:314` `:317` `:320`)도 같은 문자열을 빈 상태에서
+> 잡아 red 임이 드러났다. 위 §사전 grep 절 참조.
+> ② `e2e/fixtures/board-helpers.ts` — **신규 파일 1건.** 아래 REFACTOR 가 지시한
+> `selectBoardType(page, kind)` 헬퍼의 실체다. 선례 `e2e/fixtures/workflow-helpers.ts` 를 따랐고,
+> spec 파일에 두고 서로 import 하면 **Playwright 가 그 파일의 `test()` 를 두 번 등록**하므로
+> 공용 모듈이 물리적으로 필요하다. 범위 이탈이 아니라 **`files` 열거 누락**이었다 —
+> 코드 리뷰 C1 지적으로 등재한다(`two-lists-never-check-each-other` 양식을 이 PR 안에서 두 번 밟았다).
 
 **RED**(동반 테스트): 이 task 는 **기존 스펙이 red 인 것을 green 으로 되돌린다**.
 Task 4 가 머지되는 순간 `:113` `:114` `:161` 이 실패한다 — 1단계엔 이름 필드도

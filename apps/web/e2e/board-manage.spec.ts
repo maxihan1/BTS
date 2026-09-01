@@ -118,7 +118,17 @@ test.describe('보드 관리 — 생성·전환·이름 변경·삭제 (FR-BD-01
 
     // 2단계 — 이름 입력
     await createDialog.getByLabel('보드 이름').fill(SECOND_BOARD_NAME)
+
+    // ★ 고른 종류를 **선 위에서** 잰다. 라디오의 `toBeChecked` 만으로는 부족하다 —
+    // 만들어진 보드의 종류는 화면 어디에도 안 보이므로(스크럼 보드 화면은 PR ③ 소관),
+    // 폼이 `boardType` 을 요청에서 흘려도 이 spec 은 초록이 된다. 요청 바디가 유일한 관측점이다.
+    const createRequest = page.waitForRequest(
+      (req) => req.url().endsWith('/api/v1/boards') && req.method() === 'POST',
+    )
     await createDialog.getByRole('button', { name: '보드 만들기', exact: true }).click()
+    expect(JSON.parse((await createRequest).postData() ?? '{}')).toMatchObject({
+      boardType: 'SCRUM',
+    })
 
     // Then. 생성된 보드로 이동하고 스위처에 두 보드가 모두 있다
     await expect(boardSwitcherTrigger(page)).toContainText(SECOND_BOARD_NAME)
