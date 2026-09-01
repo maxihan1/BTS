@@ -126,12 +126,15 @@ class SprintApplicationServiceTest {
         verify(exactly = 0) { repo.insert(any()) }
     }
 
-    // ── create 의 실제 프로덕션 경로 (FR-BD-04) ────────────────────────────────
+    // ── create 의 하위 호환 경로 (FR-BD-04) ────────────────────────────────────
     //
-    // ★ SprintController.create 는 boardId 를 넘기지 않는다 — CreateSprintRequest 에 그 필드가 없다.
-    // 따라서 실서비스의 **모든** 스프린트 생성이 아래 `boardId = null` 경로를 탄다. 위 create 테스트들이
-    // 전부 boardId 를 명시하는 바람에 이 분기가 한 번도 실행되지 않았고, `ensureScrumBoard` 를
-    // `error("x")` 로 바꿔도 전 스위트가 초록이었다(리뷰 지적 C1).
+    // ★ 2026-09-02 갱신 — 위 두 문장이 이제 사실이 아니다. PR ③ 이 `CreateSprintRequest.boardId` 를
+    // 넣고 `SprintController` 를 결선해 **백로그 화면은 항상 boardId 를 명시**한다.
+    // 그래도 이 테스트는 남는다 — `boardId` 가 **선택 필드**라 미지정 요청이 여전히 유효하고,
+    // 그 경로가 `ensureScrumBoard` 폴백을 탄다. 이 분기를 지우면 하위 호환이 조용히 깨진다.
+    //
+    // 원래 사유(보존) — 위 create 테스트들이 전부 boardId 를 명시하는 바람에 이 분기가 한 번도
+    // 실행되지 않았고, `ensureScrumBoard` 를 `error("x")` 로 바꿔도 전 스위트가 초록이었다(리뷰 지적 C1).
 
     @Test
     fun `create boardId 를 안 주면 그 프로젝트의 스크럼 보드에 붙는다`() {
