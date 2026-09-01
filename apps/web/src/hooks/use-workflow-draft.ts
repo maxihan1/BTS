@@ -111,6 +111,24 @@ export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
   /** 지금 보내는 중인 revision. flush 와 타이머가 겹칠 때 중복을 막는다. */
   const inFlightRevision = React.useRef<number | null>(null)
 
+  /**
+   * ★ 리듀서가 revision 을 0 으로 되돌리면 이 ref 도 따라 되돌린다.
+   *
+   * `loadFromServer`·`resetToDefault` 는 편집 이력을 버리므로 revision 이 0 부터 다시 센다.
+   * 그런데 `savedRevision` 은 ref 라 그 리셋을 모른다 — 되돌리지 않으면 **복원 뒤의 편집이
+   * 옛 값에 도달하는 순간 「보낼 것이 없다」로 판정돼 조용히 저장이 스킵된다.**
+   * 사용자는 저장됐다고 믿고 나가고, 그 편집은 사라진다.
+   *
+   * 디바운스가 여러 편집을 합칠 때 특히 잘 걸린다 — 중간 저장이 안 끼므로 `savedRevision` 이
+   * 한 칸씩 따라오지 못하고 합쳐진 결과가 옛 값과 정면으로 같아진다.
+   */
+  React.useEffect(() => {
+    if (state.revision === 0) {
+      savedRevision.current = 0
+      inFlightRevision.current = null
+    }
+  }, [state.revision])
+
   /** 실제 저장. 보낼 것이 없으면 아무 일도 하지 않는다. */
   const persist = React.useCallback(async (): Promise<void> => {
     const current = latest.current

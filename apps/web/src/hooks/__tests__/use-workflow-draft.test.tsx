@@ -227,6 +227,52 @@ describe('flush', () => {
   })
 })
 
+describe('revision 리셋', () => {
+  it('★ 복원으로 revision 이 0 이 된 뒤 같은 횟수를 편집해도 저장된다', async () => {
+    // ★ `savedRevision` 은 ref 라 리듀서의 revision 리셋을 따라가지 않는다. 되돌리지 않으면
+    //   복원 뒤 편집이 옛 savedRevision 에 도달하는 순간 「보낼 것이 없다」로 판정돼
+    //   **조용히 저장이 스킵**된다 — 사용자는 저장됐다고 믿고 나간다.
+    const { result } = await renderLoaded()
+
+    // 편집 2회 — savedRevision 이 2 까지 오른다.
+    for (const value of ['a', 'b']) {
+      act(() => {
+        result.current.dispatch({ type: 'setName', value })
+      })
+      await act(async () => {
+        await result.current.flush()
+      })
+    }
+    expect(savedBodies).toHaveLength(2)
+
+    // 복원 — revision 이 0 으로 돌아간다.
+    act(() => {
+      result.current.dispatch({
+        type: 'resetToDefault',
+        definition: DEFINITION,
+        baseVersion: 4,
+        canResetToDefault: true,
+      })
+    })
+
+    // ★ 디바운스로 **합쳐서** 2회 편집한다. 중간에 저장이 안 끼므로 savedRevision 이
+    //   따라오지 못하고, 합쳐진 결과의 revision 이 옛 savedRevision(2)과 같아진다.
+    act(() => {
+      result.current.dispatch({ type: 'setName', value: 'c' })
+      result.current.dispatch({ type: 'setName', value: 'd' })
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(DRAFT_AUTOSAVE_DELAY_MS + 50)
+    })
+
+    // 복원 뒤 편집이 저장돼야 한다. 스킵되면 2 에 머문다.
+    await waitFor(() => {
+      expect(savedBodies).toHaveLength(3)
+    })
+    expect(savedBodies[2]).toMatchObject({ definition: { name: 'd' } })
+  })
+})
+
 describe('저장 뒤 캐시', () => {
   it('★ 재마운트해도 방금 저장한 편집이 남아 있다', async () => {
     // ★ 초안 쿼리는 `staleTime: Infinity` 라 재진입해도 서버를 다시 안 읽는다. 저장 성공 시
