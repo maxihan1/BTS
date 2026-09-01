@@ -11,11 +11,14 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * `issues.current_state_key` 로 사용량을 센다.
+ * `issues.current_state_key` 로 사용량을 센다. 범위는 `issues.project_id` 로 좁힌다.
  *
  * issue-tracking 의 테이블이지만 **읽기 전용 스칼라 count** 만 한다 —
  * `IssueTypeUsageAdapter` 와 같은 동적 참조 패턴이라 BC 격리를 깨지 않는다.
  * 소프트 삭제된 이슈는 세지 않는다.
+ *
+ * 프로젝트 스코프에 JOIN 이 없는 이유는 `issues.project_id` 가 이미 UUID 이고
+ * (`V001__issues_initial.sql`), 부르는 쪽이 그 id 집합을 완성해 넘겨주기 때문이다.
  */
 @Component
 class IssueStatusUsageAdapter(
