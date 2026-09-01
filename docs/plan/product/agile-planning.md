@@ -120,11 +120,11 @@ Jira Cloud 는 보드를 만들 때 **스크럼/칸반을 먼저 고르고**, �
 **스프린트를 시작해도 보드가 바뀌지 않는다.** 스프린트·백로그가 보드가 아니라 프로젝트에 매달려 있어
 보드를 여러 개 만들어도 계획 단위가 늘지 않는다. 이 FR 이 그 갭을 닫는다.
 
-- [ ] D1. 도메인 — `BoardType`(SCRUM/KANBAN) · 보드↔스프린트 소속 관계 (책임. backend-engineer)
-- [ ] D2. 명세 — 생성 플로우(종류→이름) · 활성 스프린트 보드당 1개 · 백로그 보드 스코프 (책임. backend-engineer)
-- [ ] D3. 마이그레이션 — `boards.board_type` · `sprints.board_id` + 백필(스프린트 보유 프로젝트마다 스크럼 보드 신설) (책임. db-engineer)
-- [ ] D4. 백엔드 — 생성 API 종류 인자 · 스크럼 보드 카드 배치(활성 스프린트 필터) · `start` 활성 1개 가드 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 종류별 배치 분기 · 활성 2개 시도 409 · 백필 검증 (책임. backend-engineer)
+- [x] D1. 도메인 — `BoardType`(SCRUM/KANBAN) · 보드↔스프린트 소속 관계 (책임. backend-engineer)
+- [x] D2. 명세 — 생성 플로우(종류→이름) · 활성 스프린트 보드당 1개 · 백로그 보드 스코프 (책임. backend-engineer)
+- [x] D3. 마이그레이션 — `boards.board_type` · `sprints.board_id` + 백필(스프린트 보유 프로젝트마다 스크럼 보드 신설) (책임. db-engineer)
+- [x] D4. 백엔드 — 생성 API 종류 인자 · 스크럼 보드 카드 배치(활성 스프린트 필터) · `start` 활성 1개 가드 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 종류별 배치 분기 · 활성 2개 시도 409 · 백필 검증 (책임. backend-engineer)
 - [ ] D6. 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 스프린트 없으면 빈 상태) · 백로그 `?board=` 스코프 (책임. frontend-engineer)
 - [ ] D7. E2E — 스크럼 보드 생성 → 백로그에서 스프린트 시작 → 보드에 그 스프린트만 (책임. qa-engineer)
 
@@ -163,7 +163,7 @@ Jira Cloud 는 보드를 만들 때 **스크럼/칸반을 먼저 고르고**, �
 
 > **Deviation(PR #183 — FR-BL-01/02 D6/D7 통합)**. ① 백로그 조회 API = **agile-planning 소유** `GET /api/v1/projects/{key}/backlog`(백로그+스프린트별, rank 정렬, truncated). `BoardIssueLookupPort.BoardIssueView.rank` 확장(issue-tracking adapter SELECT, default null fail-safe). ② 드래그 변경은 기존 API 재사용(rank PATCH #179, sprint 할당/해제 #182) — 신규 백엔드는 조회만, 마이그레이션 0. ③ @dnd-kit/core만(sortable 미추가)·가상스크롤 미도입(board truncated 패턴)·invalidate-only. ④ 권한 게이팅 정밀화 — 이슈 UPDATE 권한을 MyProjectPermission 요약에 노출(identity-access), 스프린트=CREATE/이슈 재정렬·할당=UPDATE 분리. ⑤ 드래그 재정렬 결선 — 카드 droppable+cardFirstCollision로 dropIndex 산출(코드리뷰가 가짜그린 적발→수정). ⑥ 스프린트↔스프린트(S4) E2E는 충돌 핸들러 미구현으로 의도적 SKIP. ADR `2026-06-24-fr-bl-d6-d7-backlog-query-port-rank.md`.
 
-> **Deviation(PR #182)**. ① 관계 모델 = **`sprint_issues(sprint_id, issue_key)` 조인**(agile-planning 단독, issues 무변경) — product 원안 `issues.sprint_id`(모델 A)는 BC 격리·회귀위험(FR-BL-01 rank 254 파급류)으로 기각(ADR 2026-06-24). ② 식별자 **issue_key**(board가 issueKey 중심, 백로그 계산 일관). ③ 권한 **할당/해제=UPDATE**·CRUD/전환=CREATE·조회=BROWSE. ④ 할당 가시성 **단건 포트 isVisibleIssue**(issue-tracking adapter read 1메서드, truncated 오거부/probe 차단). ⑤ 동시 ACTIVE **다중 허용**. ⑥ update PATCH **partial(JsonNullable 3-state)**. ⑦ 백로그 조회 API·D6/D7(프론트·E2E)은 **FR-BL-01 D6/D7과 통합 이연**(rank 정렬이 포트 확장 유발).
+> **Deviation(PR #182)**. ① 관계 모델 = **`sprint_issues(sprint_id, issue_key)` 조인**(agile-planning 단독, issues 무변경) — product 원안 `issues.sprint_id`(모델 A)는 BC 격리·회귀위험(FR-BL-01 rank 254 파급류)으로 기각(ADR 2026-06-24). ② 식별자 **issue_key**(board가 issueKey 중심, 백로그 계산 일관). ③ 권한 **할당/해제=UPDATE**·CRUD/전환=CREATE·조회=BROWSE. ④ 할당 가시성 **단건 포트 isVisibleIssue**(issue-tracking adapter read 1메서드, truncated 오거부/probe 차단). ⑤ 동시 ACTIVE **다중 허용** — 🛑 **2026-09-01 무효화됨**(§2.4 FR-BD-04 · [ADR](../../adr/2026-09-01-board-type-and-active-sprint.md) D5). 보드당 1개가 기본이다. 기존 다중 활성 행은 유지하고 가드는 `start` 시점에만 건다. ⑥ update PATCH **partial(JsonNullable 3-state)**. ⑦ 백로그 조회 API·D6/D7(프론트·E2E)은 **FR-BL-01 D6/D7과 통합 이연**(rank 정렬이 포트 확장 유발).
 
 ## §4 타임라인 (FR-TL, 3개)
 
