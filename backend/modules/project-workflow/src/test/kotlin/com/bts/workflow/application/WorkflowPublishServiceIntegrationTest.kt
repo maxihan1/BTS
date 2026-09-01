@@ -9,12 +9,14 @@ import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.port.IssueStatusUsagePort
+import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowMigrationInFlightException
 import com.bts.workflow.domain.exception.WorkflowMigrationInvalidMappingException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
@@ -187,6 +189,26 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     /**
+     * 진행 중인 이관 유무를 테스트가 정하는 스텁. 실제 어댑터는 `bulk_operations` 를 읽지만
+     * 그 테이블은 issue-tracking 소유라 이 모듈의 컨테이너에 없다.
+     *
+     * ### ★받은 범위를 기록한다
+     * 인자를 무시하면 서비스가 빈 집합을 넘기든 남의 프로젝트를 넘기든 전 테스트가 초록이다 —
+     * 「이 워크플로우의 프로젝트에 대해 물었는가」가 이 가드의 절반이다.
+     */
+    private class StubMigrationInFlight : MigrationInFlightPort {
+        var inFlight = false
+
+        /** 호출마다 받은 프로젝트 키 범위. 호출 순서대로 쌓인다. */
+        val receivedProjectKeys = mutableListOf<Set<String>>()
+
+        override fun hasInFlightMigration(projectKeys: Set<String>): Boolean {
+            receivedProjectKeys += projectKeys
+            return inFlight
+        }
+    }
+
+    /**
      * 역방향 조회 횟수를 세는 저장소. NFR N1 「조회는 상태마다 반복하지 말고 1회만」을 잴 수 있게 한다.
      *
      * 세지 않으면 `removed.associateWith { … }` 안으로 조회가 들어가도(상태 수만큼 3단 JOIN) 결과가
@@ -214,6 +236,7 @@ class WorkflowPublishServiceIntegrationTest {
     private val issueUsage = StubIssueStatusUsage()
     private val migrationPort = SpyStatusMigrationPort(publishRepository)
     private val schemeAssignments = CountingSchemeAssignments(dsl)
+    private val inFlight = StubMigrationInFlight()
     private val permissions = SwitchableWorkflowPermissions()
 
     /**
@@ -258,6 +281,7 @@ class WorkflowPublishServiceIntegrationTest {
                 ),
             issueStatusUsagePort = issueUsage,
             issueStatusMigrationPort = migrationPort,
+            migrationInFlightPort = inFlight,
             schemeAssignmentRepository = schemeAssignments,
             permissionResolver = permissions,
             cache = cache,
@@ -1102,6 +1126,66 @@ class WorkflowPublishServiceIntegrationTest {
         assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
             .describedAs("큐잉은 약속일 뿐이다 — 워커가 실패하면 이슈는 그대로 남는다")
             .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
+    }
+
+    // ── in-flight 중복 거부 (Task 8 · F15 · E13) ──────────────────────────────
+
+    /**
+     * ★ 끝나지 않은 이관이 있는데 또 큐잉하면 **모순되는 작업 2건**이 나란히 돈다 (F15 · E13).
+     *
+     * ### 막는 것은 유령이 아니다
+     * `migrate` 는 F4 대로 project-workflow 에 흔적을 남기지 않아 그 사이 초안 편집을 막지 못한다.
+     * 그래도 **유령은 안 생긴다** — 되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 이 막는다.
+     * 남는 실제 피해는 「done→open」과 「done→closed」가 동시에 큐잉돼 **워커 실행 순서가 결과를
+     * 정하는** 것이고, 이 가드가 그것을 막는다.
+     *
+     * ### 왜 초안 스냅샷 해시가 아닌가
+     * 계획 리뷰의 B3 처방은 초안 해시를 저장해 대조하는 것이었다. 그런데 `workflow_drafts` 에 여분
+     * 컬럼이 없어 마이그레이션이 필요하고, 그것은 T3 승격이다. 실제 피해만 놓고 보면 이 가드가
+     * **같은 안전성을 T2 안에서** 준다.
+     */
+    @Test
+    fun `끝나지 않은 이관이 있으면 migrate 를 409 로 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (alpha, beta) = attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        inFlight.inFlight = true
+
+        try {
+            assertThatThrownBy {
+                service.migrate(
+                    ACTOR,
+                    key,
+                    baseVersion = 0,
+                    mappings = listOf(StatusMigrationMapping("done", "open")),
+                )
+            }.isInstanceOf(WorkflowMigrationInFlightException::class.java)
+
+            assertThat(migrationPort.received)
+                .describedAs("큐잉까지 갔으면 모순되는 작업 2건이 이미 큐에 있다 — 롤백해도 늦다")
+                .isEmpty()
+            assertThat(inFlight.receivedProjectKeys.single())
+                .describedAs("전역으로 물으면 남의 프로젝트 이관이 이 발행을 막는다")
+                .containsExactlyInAnyOrder(projectKey(alpha), projectKey(beta))
+        } finally {
+            inFlight.inFlight = false
+        }
+    }
+
+    /** 끝난 이관은 막을 이유가 없다 — 막으면 한 번 이관한 워크플로우가 영영 다시 이관하지 못한다. */
+    @Test
+    fun `끝난 이관만 있으면 migrate 가 통과한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        inFlight.inFlight = false
+
+        val bulkOperationId =
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+
+        assertThat(bulkOperationId).isEqualTo(BULK_OPERATION_ID)
     }
 
     // ── 매핑 가드 (Task 4 · F7·F8·F11·F13·F14·F16 · E2·E4) ────────────────────
