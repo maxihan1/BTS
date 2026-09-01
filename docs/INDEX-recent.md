@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-02 | scrum-board-screen | — | ✔ | — | — | FR-BD-04 |
+| 2026-09-02 | scrum-board-screen | — | ✔ | — | — | FR-BD-04 FR-UX-07 |
 | 2026-09-01 | board-scrum-schema | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-01 | board-type-and-active-sprint | — | — | — | ✔ | FR-BD-01 FR-BD-04 FR-BL-01 |
 | 2026-09-01 | board-type-create-ui | — | ✔ | — | — | FR-BD-04 FR-BL-02 |
