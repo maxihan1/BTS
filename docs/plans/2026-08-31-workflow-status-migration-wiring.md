@@ -90,7 +90,7 @@ PR 7(`docs/specs/2026-08-27-issue-tracking-status-migration.md`)에서 J1·J4·J
 | X4 | 지라 문서는 권한을 말하지 않는다. BTS 는 per-issue TRANSITION 권한을 우회하고 **호출자의 발행 권한**에 위임한다 | PR 7 X4 승계. 이 PR 이 그 위임의 수신자를 만든다 — 그래서 **F5 판정**이 이 편차의 값을 처음으로 지불한다 |
 | **X5** | 지라는 `statusMappings` 를 **발행 요청에 실어** 조작 1회로 끝낸다(J4·J10). BTS 는 **`POST …/publish/migrate` 와 `POST …/publish` 두 호출**로 나눈다 | 한 호출로 묶으면 발행 API 가 「발행하지 않고 202 를 돌려주는」 상태를 갖게 된다. 나누면 각 엔드포인트의 의미가 하나로 유지되고, 부수적으로 **트랜잭션이 BC 를 안 넘는다**(F4 참조) — `DATA.md §6` 을 만나지 않는 것은 이 분할의 결과다. 화면 흐름은 지라와 같다(빠지는 상태 확인 → 대상 지정 → 진행률 → 발행 확정) |
 | **X6** | 지라는 이관 대상 범위를 문서화하지 않는다. BTS 는 **그 워크플로우를 쓰는 프로젝트로 명시 한정**한다 | 아래 「조회했으나 문서에 없던 것」 ① 참조. 근거가 지라에 없으므로 「지라가 그렇게 한다」고 주장하지 않는다 — BTS 내부 근거는 상태 키가 전역이라 스코프가 없으면 남의 프로젝트 이슈까지 세어 발행을 과하게 막는다는 것이다 |
-| **X7** | **아카이브 프로젝트는 카운트·이관 범위에서 뺀다** | 아래 「조회했으나 문서에 없던 것」 ② 참조. 근거는 E7 |
+| **X7** | **아카이브 프로젝트는 카운트에서만 뺀다 — 이관 범위에는 넣는다** | 아래 「조회했으나 문서에 없던 것」 ② 참조. 근거는 E7. **게이트 1 I1 에서 개정됐고 이 행이 그때 함께 안 움직여 게이트 2 BLOCKER 가 됐다** — 구현 편차 X16 |
 
 ### 조회했으나 문서에 없던 것 2건 (생략이 아니다)
 
@@ -174,7 +174,7 @@ Then 잔여 1건이 보여 409 로 **롤백**된다. 정의는 바뀌지 않고 
   **근거.** 워커의 `statusMigrationTargets`(`BulkOperationRepository.kt:477-487`)가 `current_state_key` · `deleted_at` · `project_id` 만 걸고 **이슈 타입 조건이 없다**(실측). 스킴이 `(scheme_id, issue_type_id) → workflow_id` 이므로 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 WF1 발행이 **WF2 의 이슈까지 옮긴다** — 포트 KDoc 이 적은 「과다 이동은 데이터 손상」이다. 축을 넣으려면 `StatusMigrationCommand` 를 고쳐야 해 N3 과 충돌하므로, **이 PR 은 위험 조합을 열지 않는 쪽**을 택한다.
   **한계.** 다중 워크플로우 스킴 프로젝트는 이관을 못 쓴다. 장부 등재(Task 7).
 - **F12 카탈로그 검증 선행 (B2).** `migrate` 의 전처리에 **`requireStatusCatalog` 를 포함**한다. 초안에는 있는데 상태 카탈로그에 없는 상태를 `to` 로 실으면 어댑터가 `IllegalArgumentException` 을 던지는데 `WorkflowPublishExceptionHandler` 에 IAE 핸들러가 없어 **500 이 나간다**(`WorkflowExceptionHandler:168` 이 「IAE 를 잡지 않는다」고 명시).
-- **F13 빈 범위 거부 (B2).** `projectKeys` 가 비면 **포트를 부르기 전에** 400 으로 거부한다. 어댑터의 `require(projectKeys.isNotEmpty())` 에 도달하면 500 이다. E1(스킴 미할당)·E7(전 프로젝트 아카이브) 두 경로가 여기로 온다.
+- **F13 빈 범위 거부 (B2).** `projectKeys` 가 비면 **포트를 부르기 전에** 400 으로 거부한다. 어댑터의 `require(projectKeys.isNotEmpty())` 에 도달하면 500 이다. E1(스킴 미할당)·전 프로젝트 소프트 삭제 두 경로가 여기로 온다. **E7 개정 뒤 「전 프로젝트 아카이브」는 더 이상 여기로 오지 않는다** — 이관 범위가 아카이브를 포함하므로 범위가 비지 않는다(구현 편차 X16).
   추가로 **`WorkflowPublishExceptionHandler` 에 IAE → 500 방지 백스톱**을 둔다 — 형제 BC(`BulkOperationExceptionHandler` · `SprintExceptionHandler`)가 모두 잡는 선례를 따른다.
 - **F14 상한 초과 선제 거부 (B4).** 이관 대상 총 건수가 `BULK_OPERATION_MAX_SIZE`(1000)를 넘으면 **migrate 를 400 으로 거부하고 실제 건수를 응답에 싣는다.**
   **근거.** `BulkOperationRepository.kt:141-149` 는 대상이 1000 을 넘으면 **아무것도 적재하지 않고** 개수만 돌려주고 작업은 FAILED 로 끝난다(실측). 이슈는 한 건도 안 옮겨졌는데 발행은 계속 409 라 **관리자가 할 수 있는 일이 없다**. 잔여 건수는 이미 `pendingIssueCounts` 로 계산하므로 추가 조회 없이 막을 수 있다.
@@ -925,3 +925,43 @@ KDoc 이 「`WorkflowCache.withWriteLock` 은 `@Transactional` 이지만 **프�
 - **전역 `statuses` 카탈로그에 흔한 키를 고정으로 쓰면 시드와 어긋난다.** F16 픽스처가 `review`
   를 `TODO` 로 심으려 했으나 이미 `IN_PROGRESS` 로 있어 `requireStatesMatchCatalog` 가 먼저
   400 을 던졌고 **F16 판정에 도달조차 못 했다.** 컨테이너 전역 표에는 고유 키를 쓴다.
+
+### X16. 게이트 2 BLOCKER — E7 「제3의 길」을 실제로 구현했다 (2026-09-01)
+
+게이트 2 의 `code-reviewer` 렌즈가 잡았다. 게이트 1 이 채택한 I1/E7 은 「아카이브 프로젝트는
+**카운트에서만 빼고 이관 범위에는 넣는다**」인데, 구현은 `findProjectRefsByWorkflowId` **하나**에서
+두 축을 다 만들어 **범위에서도 뺐다.** 같은 PR 이 넣는 `TODOS.md` 장부 151 과
+`docs/plan/product/project-workflow.md` C5 각주는 「범위에는 넣는다 → `PROJECT_ARCHIVED` 로 남아
+셀 수 있다」고 적어, **문서가 코드를 거짓 설명하는** 상태였다. 다음 사람이 장부를 믿고 그 항목을
+세면 없는 행을 센다.
+
+**처방 — 조회를 가른다.**
+- `findProjectRefsByWorkflowId` — 발행 차단 카운트용. 아카이브 **제외**(현행 유지). 넣으면 영원히
+  안 옮겨지는 이슈가 카운트에 잡혀 발행이 관리자가 풀 수 없는 상태로 막힌다.
+- `findMigrationScopeRefsByWorkflowId` — 이관 범위용. 아카이브 **포함**, 소프트 삭제만 제외.
+  워커의 `statusMigrationTargets` 가 `projects.deleted_at` 만 거는 것과 일부러 맞췄다.
+- **F14 상한 세기도 이관 범위로 옮겼다.** 워커가 아카이브를 포함해 담으므로 서비스가 활성만 세면
+  상한 판정이 갈라지는데, `StatusMigrationMaxTargetsContractTest` 는 **숫자만 대조하므로 그
+  갈라짐을 못 본다.**
+
+**부수 효과.** F13 의 「전 프로젝트 아카이브」 경로가 사라졌다 — 범위가 아카이브를 포함하므로
+그 상황에서 범위가 비지 않는다. 그래서 「스킴에 먼저 연결할 것」이라는 고칠 수 없는 안내도 함께
+없어졌다(게이트 2 CONCERNS 1).
+
+**함께 고친 것.**
+- `X7` 행과 F13 항목이 옛 판정을 들고 있어 정정했다. 게이트 1 이 E7 을 개정할 때 이 둘이 함께 안
+  움직인 것이 이번 BLOCKER 의 원인이다 — **판정을 바꿀 때 그 판정을 인용한 자리를 전수로 훑어야
+  한다**(`docs/rules/fr-sync-checklist.md`).
+- `hasSiblingWorkflowInAssignedSchemes` 가 이름과 달리 **할당·스킴 소프트삭제를 안 봤다**(게이트 2
+  CONCERNS 2). 지운 스킴의 잔존 매핑 하나가 이관을 영구히 400 으로 막고 관리자가 화면에서 원인을
+  찾을 수 없다. 활성 스킴 + 할당 존재로 좁혔고, 좁히기가 과해 판정이 통째로 죽지 않았는지
+  **비-공허 짝**으로 반대 방향을 함께 잠갔다.
+- **F15 가 검사-후-사용이라 동시 요청 둘이 모두 통과했다**(게이트 2 CONCERNS 3 · `/review` 렌즈와
+  교차 일치). `WorkflowCache.withKeyLock` 을 추출해 검사와 큐잉을 한 advisory lock 안에 넣었다.
+  `withWriteLock` 은 그것에 무효화를 얹는 형태로 재구성해 락 로직이 두 벌로 갈라지지 않는다.
+  **캐시는 건드리지 않는다** — 이관은 정의를 바꾸지 않으므로 무효화할 항목이 없고,
+  `CacheInvalidationCoverageTest` 가 그 예외를 이미 등재했다.
+
+**실측 함정 1건.** 비-공허 픽스처를 `issue_type_id = NULL` 로 심으려다 `ix_scheme_default_mapping`
+partial UNIQUE 에 걸렸는데 `ON CONFLICT DO NOTHING` 이 **조용히 삼켰다.** 형제가 안 들어간 채
+판정만 false 가 됐고, 비-공허 짝이 그것을 잡았다. 픽스처의 `ON CONFLICT` 는 판정을 무력화할 수 있다.
