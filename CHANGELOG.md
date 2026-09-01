@@ -14,7 +14,7 @@ Atlas Issues (BTS) 의 변경 이력. **바운디드 컨텍스트(BC — 책임 
 
 ## [Unreleased] — Phase 1
 
-**범위**. 143 FR / 9 BC. **2026-05-20 ~ 2026-08-06**, PR 335건, 커밋 693건
+**범위**. 144 FR / 9 BC. **2026-05-20 ~ 2026-08-06**, PR 335건, 커밋 693건
 (2026-08-06 실측 — `git log main --oneline | grep -cE '\(#[0-9]+\)$'` · `git rev-list --count main`.
 FR-UX-13 F16 PR #344 머지 직전 기준).
 
@@ -27,7 +27,8 @@ ADR 2건 대체 — `2026-05-21-workflow-yaml-vs-db-storage`(YAML 정본 → DB 
 > **2026-08-26 갱신.** 위 「전량 미착수」는 2026-08-18 시점의 기록이며 지금은 참이 아니다 — FR-WF-05 는 #398, FR-WF-04 는 #400 으로 완주했고, **FR-WF-06 은 #404 로 백엔드(D1·D2·D4·D5)만 닫혔다**(D3 은 V200 기존 테이블이라 비해당 확정 · D6~D7 편집 UI·E2E 는 후속 PR). 남은 미착수는 FR-WF-06 D6~D7 과 FR-WF-07 이다. 숫자만 올리면 시점 기록이 거짓이 되므로 원문은 두고 갱신을 덧붙인다 (`docs/plan/README.md §1` 이 쓰는 방식과 같다).
 
 > **2026-08-26 재갱신 (PR #407).** **FR-WF-06 이 완주했다** — D6(전환 규칙 편집 UI)·D7(E2E)이 닫히면서
-> 143 FR 중 **142** 의 D 단계가 완료됐다. 남은 미착수는 **FR-WF-07 하나**다. 같은 PR 이 #404 잔여 부채
+> 144 FR 중 **142** 의 D 단계가 완료됐다. 남은 미착수는 **FR-WF-07 · FR-BD-04 둘**이다
+> (FR-BD-04 는 2026-09-01 신설 — 그 시점 문장은 「WF-07 하나」였다). 같은 PR 이 #404 잔여 부채
 > 3건(130 프레임워크 예외 봉투 · 131 `ValidatorResponse.editable` · 132 편집 불가 조건 문서↔코드)을 닫고
 > 신규 3건(136~138)을 등재했다. **D7 은 스펙 deviation** 이다 — 「규칙을 걸면 전환이 막힌다」의 행동 증명은
 > `ValidatorEngineIntegrationTest`(Testcontainers 실 엔진)와 #398 의 `issue-transition.spec.ts` S8 에
@@ -123,7 +124,7 @@ BC "완료 선언" 은 별개 절차다 — 각 BC 의 §NFR 측정표 · 이 �
 | identity-access | 25 (AU 10 · MF 5 · PM 10) | 2026-05-20 ~ 07-18 | 42 (#8~#134 외) | 플러그형 AuthN Provider · LDAP/SAML/OIDC SSO · TOTP/백업코드/WebAuthn MFA · 권한 스킴 · 감사 로그 |
 | issue-tracking | 37 (IS 10 · CM 4 · VR 4 · PJ 4 · AC 2 · MN 2 · CO 2 · LK 2 · HS 2 · TM 2 · MV 2 · WT 1) | 2026-05-22 ~ 07-27 | 67 (#17~#316) | 이슈 CRUD/일괄편집/클론 · JSONB 커스텀 필드 · MinIO 첨부 · flexmark 멘션 · 이슈 이동+키 리다이렉트 · 프로젝트 CRUD · 댓글 |
 | project-workflow | 5 완료 / 7 등록 (WF 3 + WF-04·05 완료 · **WF-06 백엔드만 완료** · WF-06 D6~D7 과 WF-07 미착수) | 2026-05-22 ~ 08-26 | 13 (#10~#404 외) | YAML FSM 워크플로우 · 워크플로우/권한 스킴 · 스킴 배정 · **전역 상태 카탈로그 + 워크플로우 CRUD(#392·#393)** · **전환 ID 다중/전역 전환(#395·#398)** · **`/admin/workflows` 목록 + 목록 모드 편집기(#400)** · **전환 규칙(validator) CRUD API(#404)** |
-| agile-planning | 14 (BD 3 · TL 3 · BL 2 · EP 2 · TT 2 · PL 2) | 2026-06-19 ~ 06-29 | 15 (#168~#202) | @dnd-kit 칸반 · LexoRank 백로그 · 에픽 링크 · Gantt(자체 SVG) · 워크로그 |
+| agile-planning | 15 (BD 4 · TL 3 · BL 2 · EP 2 · TT 2 · PL 2) | 2026-06-19 ~ 06-29 | 15 (#168~#202) | @dnd-kit 칸반 · LexoRank 백로그 · 에픽 링크 · Gantt(자체 SVG) · 워크로그 |
 | notification-dashboard | 14 (NT 5 · RP 4 · DB 3 · UX 2) | 2026-06-11 ~ 07-03 | 28 (#118~#231) | STOMP WebSocket 알림 · Inbox 멱등 · 대시보드 가젯 · 공유 토큰 · 번다운/CFD/사이클타임 |
 | search-export-import | 12 (SR 4 · API 4 · EX 2 · IM 2) | 2026-06-23 ~ 07-04 | 15 (#180~#226) | AQL 손수 파서 + `pg_trgm` · 한글 FTS(simple) · CSV/XLSX Export(수식 인젝션 방어) · pgmq+MinIO Import |
 | personalization | 20 완료 / 21 등록 (PR 4 · UX 11 · PF 3 · CA 2 완료 + UX-14 1 잔여) | 2026-07-05 ~ 08-06 | 3 (#239~#344 외) | 프로필/환경설정 · 퀵 필터 · 캘린더 · FR-UX-06 Jira Cloud 방식 재설계(22 PR 체인) · FR-UX-07 활성 프로젝트 컨텍스트 · FR-UX-08 프로젝트 전환/최근 항목 · **FR-UX-09 이슈 생성 흐름(모달 + 진입점 5곳)** · **FR-UX-11 인라인 편집(상세 제목/본문 + 목록 셀 3종)** · **FR-UX-13 백로그 사용성(세로 스택 + 스프린트 다이얼로그 + 필터바/에픽 패널)** · **FR-UX-14 B2 카드 응답 필드 확장(유형·라벨·추정)** |

@@ -20,7 +20,7 @@ SDD (docs/sdd/, v0.5.0 봉인)                           ← 설계 명세 26개
    │
 docs/plan/  ← 이 디렉토리                              ← 기능 구현 진척 (이 문서)
    ├ README.md       (이 파일 — 인덱스 + NFR 게이트 + 변경 이력)
-   ├ fr-index.md     (143 FR 역인덱스 + BC 매핑)
+   ├ fr-index.md     (144 FR 역인덱스 + BC 매핑)
    └ product/        (9개 BC 파일 — 각 BC가 자기 FR을 완전 추적)
    │
 docs/poc/   (dependencies.md, checklist.md, context-notes.md)  ← 의존성 도입 순서
@@ -70,7 +70,7 @@ Maxi_wiki/BTS/   (Obsidian 미러)                       ← 외부 단방향 �
 bash scripts/verify-master-plan.sh
 # exit 0이어야 통과
 # 내부 동작.
-#   SDD 02-requirements.md에서 FR ID 143개 추출
+#   SDD 02-requirements.md에서 FR ID 144개 추출
 #   docs/plan/product/*.md + fr-index.md에서 FR ID 추출
 #   diff 0이어야 통과
 ```
@@ -106,7 +106,7 @@ identity-access  ─┐
 | identity-access | [product/identity-access.md](product/identity-access.md) | 25 (AU 10 + MF 5 + PM 10) | AuthN Provider + Keycloak | ☑ D단계 |
 | issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 37 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☑ D단계 |
 | project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☐ D단계 (WF-07) |
-| agile-planning | [product/agile-planning.md](product/agile-planning.md) | 14 (BD 3 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☑ D단계 |
+| agile-planning | [product/agile-planning.md](product/agile-planning.md) | 15 (BD 4 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☐ D단계 (BD-04) |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☑ D단계 |
@@ -114,7 +114,7 @@ identity-access  ─┐
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☑ D단계 |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 143 FR.
+**합계**. 144 FR.
 
 > **진척 열 판독**. `☑ D단계` = 그 BC 에 속한 FR 전량이 D1~D7 을 마쳤다는 뜻이고,
 > **BC 완료 선언과는 다르다**. 선언은 §NFR 측정표 통과 + `CHANGELOG.md` 정리 +
@@ -124,9 +124,13 @@ identity-access  ─┐
 > 2026-08-07 재실측 — `grep -rhoE '^- \[x\] D[0-9]+\.' product/*.md | wc -l` → **965**,
 > `[ ]` **0** · `[~]` **0** · `[!]` **0**. 즉 **그 시점 정본 전량이 D1~D7 을 마쳤다.**
 >
-> 2026-08-18 갱신 — FR-WF-04~07 신설로 정본은 **143 FR** 이고, 그중 **4건(WF-04~07)이 D 미착수**다.
+> 2026-08-18 갱신 — FR-WF-04~07 신설로 정본이 **139 → 143** 으로 늘었고, 그 시점 **4건(WF-04~07)이 D 미착수**였다.
 > 위 「전량 완료」 문장은 2026-08-07 시점의 기록이며 지금은 참이 아니다 — 숫자만 올리면
 > 거짓 진술이 되므로 시점을 명시해 남긴다. project-workflow 진척 열이 `☐` 로 내려간 이유가 이것이다.
+>
+> 2026-09-01 갱신 — FR-BD-04 신설로 정본은 **144 FR** 이다. D 미착수는 **2건(FR-WF-07 · FR-BD-04)**.
+> agile-planning 진척 열이 `☐` 로 내려간 이유가 이것이다 — 보드가 스프린트를 모르는 구조적 갭을
+> 닫는 FR 이고 설계 정본은 `docs/adr/2026-09-01-board-type-and-active-sprint.md` 다.
 >
 > 2026-08-24 갱신 — **FR-WF-05 의 D6·D7 이 닫혔다**(PR #398 — 이슈 상태 드롭다운이 고른 전환을
 > `transitionId` 로 실행). 미착수는 **3건(WF-04 · WF-06 · WF-07)** 이고 진척 열도 그만큼 좁혔다.
@@ -169,7 +173,7 @@ identity-access  ─┐
 
 ## §A. 부록
 
-→ [fr-index.md](fr-index.md) — 143 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
+→ [fr-index.md](fr-index.md) — 144 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
 
 ## §6. NFR 검증 3중 게이트
 
@@ -215,3 +219,4 @@ SDD `02-requirements.md §2.3` 임계를 강제. 3중 게이트로 PR 단위 회
 - 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). §1 BC 테이블 두 행 갱신(identity-access 24→25, issue-tracking 31→35). 합계 123→128.
 - 2026-07-28. **FR-UX-07 신설**(personalization 13→14). Jira 인터랙션 패리티. 합계 131→132.
 - 2026-07-29. **FR-UX-07 분할 — FR-UX-08~14 신설**(personalization 14→21). 27 PR 로드맵 전체를 한 FR 로 묶어 D1 이 "절반 완료" 가 되던 상태를 해소. FR-UX-07 은 활성 프로젝트 컨텍스트(PR #320)로 좁혀 D1~D7 완료, 나머지는 기능 단위 7개 FR 로 등록만. 백엔드 B1·B2 는 chore → FR-UX-09/14 의 D4 로 승격(2026-07-28 결정 정정). 합계 132→139.
+- 2026-09-01. **FR-BD-04 신설**(agile-planning 14→15). 보드 종류(스크럼/칸반) + 활성 스프린트 보드. 합계 143→144. §1 agile-planning 진척 열이 `☑` → `☐ D단계 (BD-04)` 로 내려갔다 — 신설 FR 의 D1~D7 이 전량 미착수다. 계기는 Maxi 의 게이트 1 지적이고, 실측으로 **보드가 스프린트를 모른다**는 구조적 갭이 확인됐다. 설계 정본 `docs/adr/2026-09-01-board-type-and-active-sprint.md`(채택). 구현은 3개 PR 로 나눈다 — ① 스키마·백엔드 ② 보드 생성 플로우 UI ③ 활성 스프린트 보드 화면.

@@ -1,11 +1,11 @@
-<!-- 143개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 144개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (143개 전수)
+## §A.1 FR 역인덱스 (144개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 143개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 144개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -112,13 +112,14 @@
 | FR-MV-01 | 프로젝트 간 이슈 이동 | 필수 | issue-tracking | §6.1.1 |
 | FR-MV-02 | 이동 시 히스토리 보존 + 링크 유지 | 필수 | issue-tracking | §6.1.2 |
 
-### 보드 / 백로그 / 타임라인 (FR-BD, FR-BL, FR-TL, 8개)
+### 보드 / 백로그 / 타임라인 (FR-BD, FR-BL, FR-TL, 9개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
 | FR-BD-01 | 칸반 보드 (컬럼 표시, 드래그앤드롭) | 필수 | agile-planning | §2.1 |
 | FR-BD-02 | 보드 필터 (담당자/라벨/컴포넌트) | 필수 | agile-planning | §2.2 |
 | FR-BD-03 | WIP 제한 + 스윔레인 | 높음 | agile-planning | §2.3 |
+| FR-BD-04 | 보드 종류(스크럼/칸반) + 활성 스프린트 보드 | 필수 | agile-planning | §2.4 |
 | FR-BL-01 | 백로그 우선순위 정렬 (LexoRank) | 필수 | agile-planning | §3.1 |
 | FR-BL-02 | 백로그 → 스프린트 드래그 이동 | 필수 | agile-planning | §3.2 |
 | FR-TL-01 | 타임라인/로드맵 뷰 (Gantt) | 필수 | agile-planning | §4.1 |
@@ -252,13 +253,13 @@
 | identity-access | 25 | AU(10) + MF(5) + PM(10) |
 | issue-tracking | 37 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + CO(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) + PJ(4) |
 | project-workflow | 7 | WF(7) |
-| agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
+| agile-planning | 15 | BD(4) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
 | notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
 | personalization | 21 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06,07~14(12) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **143** | |
+| **합계** | **144** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -295,3 +296,4 @@
 - 2026-07-29. **B1·B2 백엔드 작업을 chore → D4로 승격**(2026-07-28 Maxi 결정 #3 정정, 조용한 변경 아님). 원 결정은 "B1/B2는 기존 FR 결손 봉합이라 chore"였다. 분할 후에는 B1(이슈 생성 시 담당자·우선순위·라벨)이 FR-UX-09의 D4, B2(보드/백로그 카드 필드)가 FR-UX-14의 D4가 된다. "백엔드 없음"으로 비던 칸이 실제 내용으로 채워지는 쪽이 정확하다.
 - 2026-07-29. **§A.3 Open Questions 전수 재실측 — 8건 중 5건이 낡아 있었다.** 계기는 `issue-tracking 29 FR`(#8) 드리프트 1건이었으나, 알려진 1건만 고치지 않고 표 전체를 대조하니 **BC 가 완료돼 질문 자체가 소멸했는데도 상태가 그대로인 항목이 4건 더** 나왔다(#1 pgmq — ADR `2026-05-22-pgmq-postgres-image.md` 로 이미 해소된 것을 "보류"로 방치 / #3 9 BC 진입 순서 / #6 identity-access 우선순위 / #8 issue-tracking 진입 순서). **표와 BC 진척이 서로를 보지 않았다** — 지배적 결함 양식 그대로다. 실제 미해결은 2건뿐이다 — #4 `verify-master-plan.sh` CI 미통합(`.github/workflows/*` 실측 0건, 로컬·훅에서만 동작) · #7 TipTap PoC(Wiki v0.5+ 대상이라 Phase 1 범위 밖, 정당하게 열림). #8 의 `29 FR` 은 실측 **37** 로 정정했다. 표 머리말도 실측에 맞췄다 — 규칙은 *"ADR 발행 시 표에서 제거"* 였으나 실제 운용은 `✅ 해소` 마킹이었고(#2 선례), 지우면 "왜 그렇게 정했나" 의 추적선이 끊기므로 마킹 쪽을 정본으로 확정했다. **BC 완료 게이트를 닫을 때 이 표를 함께 훑는다**를 머리말에 못박았다.
 - 2026-08-18. **FR-WF-04~07 신설**(project-workflow, +4). 합계 139→143. 워크플로우가 **읽기 전용**이라는 구조적 부재를 닫는다 — 표준 4종이 YAML 에 하드코딩돼 있고 `YamlSeedService` 가 기동마다 DB 를 YAML 로 되돌리며, 워크플로우·상태·전환·검증기를 만들거나 고치는 API 가 하나도 없었다. FR-WF-02 가 구현한 것은 **기존 워크플로우를 이슈 타입에 배정하는 스킴 매핑**이지 워크플로우 자체의 편집이 아니다. Jira Cloud 패리티 기준으로 넷으로 쪼갠다 — WF-04(워크플로우 CRUD + 전역 상태 카탈로그) · WF-05(전환 ID 식별자 — 같은 상태쌍 다중 전환·전역·최초 전환) · WF-06(전환 규칙 편집) · WF-07(초안·발행 + 상태 이관 마법사). **D 단계는 완주 단위**라는 FR-UX-07 분할의 선례를 따라 기능 축으로 나눴다 — 넷은 각각 마이그레이션·API·화면이 따로 필요하고 하나의 D1~D7 로 묶으면 체크박스가 섞인다. 기존 ADR 2건을 대체한다(`2026-05-21-workflow-yaml-vs-db-storage` → DB 정본 · `2026-05-28-workflow-transition-identity-policy` → 전환 ID). 로드맵 정본 `~/.claude/plans/cozy-hatching-otter.md`(10 PR).
+- 2026-09-01. **FR-BD-04 신설**(agile-planning, +1). 합계 143→144. Maxi 가 게이트 1 에서 *"지라 클라우드에서는 ... 스프린트를 시작하면 보드로 표현 되는데 지금 BTS에서는 다르게 동작하는거 같네"* 를 지적했고 실측이 그것을 확인했다 — BTS 보드는 **종류가 없고**(`V500__boards.sql` 에 type 컬럼 부재) 보드 경로 4파일(`BoardCardPlacement`·`BoardApplicationService`·`BoardRepository`·`BoardController`)이 `sprint` 를 **한 번도 참조하지 않는다**. 스프린트·백로그가 `project_key` 에 매달려 있어 보드를 N개 만들어도 계획 단위가 늘지 않았다. **이 갭은 보드 로드맵 A~D 어디에도 없었다** — 선행 플랜의 조작감 갭 표가 한 줄 적어 뒀으나 PR 범위에 들어가지 않아 담당자가 없었다([[two-lists-never-check-each-other]] 양식). 설계 정본 `docs/adr/2026-09-01-board-type-and-active-sprint.md`. FR-BL-02 의 Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」을 무효화한다(Jira 기본 1개).
