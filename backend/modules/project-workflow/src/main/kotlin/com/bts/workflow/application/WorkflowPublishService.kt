@@ -126,7 +126,10 @@ class WorkflowPublishService(
         val prepared = prepareDraft(key, baseVersion)
         val workflowId = prepared.workflowId
         val definition = prepared.definition
-        requireNoPendingIssues(key, workflowId, definition)
+        // ★교체 **전에** 한 번만 계산한다. 교체 뒤에는 이 집합을 다시 만들 수 없다 —
+        //   findComposedStatusKeys 가 새 편성을 돌려주므로 차집합이 항상 빈 집합이 된다.
+        val removed = removedStatusKeys(workflowId, definition)
+        requireNoPending(key, workflowId, removed)
 
         var versionNo = 0
         cache.withWriteLock(key) {
@@ -138,6 +141,10 @@ class WorkflowPublishService(
 
             val transitionIds = publishRepository.replaceDefinition(workflowId, definition, prepared.statusIds)
             ruleWriter.writeAll(definition, transitionIds)
+
+            // ★재카운트 — 첫 검사와 교체 사이에 그 상태로 들어온 이슈를 잡는다(F10).
+            //   **같은 집합**으로 센다. 다시 계산하면 아무것도 안 세는 판정이 된다.
+            requireNoPending(key, workflowId, removed)
 
             versionNo = publicationRepository.nextVersionNo(workflowId)
             publicationRepository.insert(workflowId, versionNo, definition, actorId)
@@ -389,12 +396,29 @@ class WorkflowPublishService(
             .filterValues { it > 0 }
     }
 
-    private fun requireNoPendingIssues(
+    /**
+     * 빠지는 상태에 남은 이슈가 있으면 발행을 막는다.
+     *
+     * ### ★[removed] 를 인자로 받는다 — 안에서 다시 계산하지 않는다
+     * 종전 시그니처는 `definition` 을 받아 `removedStatusKeys` 를 **안에서** 계산했다. 그 형태로는
+     * `replaceDefinition` 뒤에 재호출해도 `findComposedStatusKeys` 가 **새 편성**을 돌려주므로
+     * 차집합이 항상 빈 집합이 되어 **아무것도 세지 않고 통과**한다. 판정이 있는데 재는 것이 없는
+     * 형태이고, 호출부만 보면 재카운트가 도는 것처럼 보여 더 나쁘다.
+     *
+     * 그래서 재계산 경로를 **구조적으로 없앴다**. 집합을 밖에서 한 번 만들어 넘기게 하면 교체 전후
+     * 두 호출이 같은 근거를 쓴다는 것이 시그니처에 드러나고, 다음 사람이 같은 실수를 할 수 없다.
+     *
+     * ### 잔여 창 — 이 판정이 닫지 못하는 것
+     * 재카운트와 COMMIT 사이에 들어온 이슈는 여전히 잡히지 않는다. 완전히 닫으려면 전환 핫패스가
+     * 워크플로우 정의 행을 잠가야 하는데 그 경로는 issue-tracking BC 소유라 이 PR 이 건드릴 수
+     * 없다. 창을 **좁힌** 것이고 닫은 것이 아니다 — 부채 143 이 그 잔여를 들고 있다.
+     */
+    private fun requireNoPending(
         key: String,
         workflowId: UUID,
-        definition: WorkflowDraftDefinition,
+        removed: Set<String>,
     ) {
-        val pending = pendingIssueCounts(workflowId, removedStatusKeys(workflowId, definition))
+        val pending = pendingIssueCounts(workflowId, removed)
         if (pending.isNotEmpty()) {
             throw WorkflowPublishMappingRequiredException(key, pending)
         }
