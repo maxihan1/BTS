@@ -3,6 +3,7 @@ import type {
   BoardCard,
   BoardDetail,
   BoardCreated,
+  BoardType,
 } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
 // FR-UX-06 PR21 Task 8 — 셀 내 순서변경(useReorderCard) E2E 지원.
@@ -70,6 +71,12 @@ export interface StoredBoardDetail {
    * 권한 없는 화면을 시드하려면 명시적으로 false를 준다.
    */
   canDelete?: boolean
+  /**
+   * 보드 종류 (FR-BD-04). 생성 경로(`createBoardInStore`)가 채우고 GET 상세 응답에 그대로 실린다.
+   * optional — quickFilters/canDelete와 같은 이유다. 필수로 두면 종류 개념 이전에 만들어진
+   * 기존 fixture 전부와 `seedBoard(BoardDetail)` 경로가 한꺼번에 타입 에러가 된다.
+   */
+  boardType?: BoardType
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,11 +207,14 @@ export function seedBoardWithMeta(board: StoredBoardDetail): void {
  *
  * @param projectKey 프로젝트 키
  * @param name 보드 이름
+ * @param boardType 보드 종류 (FR-BD-04). 호출자가 기본값을 정해 넘긴다 — 여기서 다시 기본값을
+ *   두면 기본값 정의가 두 곳으로 갈라진다.
  * @returns 생성된 BoardCreated 응답 + 내부 저장용 StoredBoardDetail
  */
 export function createBoardInStore(
   projectKey: string,
   name: string,
+  boardType: BoardType,
 ): { created: BoardCreated; detail: StoredBoardDetail } {
   const boardId = generateUUID()
   const todoColumnId = generateUUID()
@@ -239,6 +249,7 @@ export function createBoardInStore(
     boardId,
     projectKey,
     name,
+    boardType,
     swimlaneField: 'NONE',
     columns: createdColumns.map((col) => ({ ...col, wipLimit: null, wipExceeded: false, cards: [] })),
     truncated: false,
@@ -252,6 +263,7 @@ export function createBoardInStore(
     boardId,
     projectKey,
     name,
+    boardType,
     columns: createdColumns,
   }
 

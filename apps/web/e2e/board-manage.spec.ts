@@ -1,7 +1,7 @@
 // FR-BD-01-2 E2E — 보드 관리 한 바퀴 (생성 → 전환 → 이름 변경 → 삭제 → 빈 상태 복귀)
 //
 // 시나리오 개요 (plan `2026-08-31-board-crud-recovery.md` S1~S5).
-//   S1. 두 번째 보드 생성 — 스위처 「새 보드」 → 이름 입력 → 생성된 보드로 이동
+//   S1. 두 번째 보드 생성 — 스위처 「새 보드」 → 종류 선택(스크럼) → 이름 입력 → 생성된 보드로 이동
 //   S2. 보드 전환       — 스위처에서 첫 보드를 다시 고르면 그 보드의 카드가 보인다
 //   S3. 이름 변경       — `⋯` → 「이름 변경」 → 새 이름 제출 → 스위처 표기가 갱신된다
 //   S4. 삭제           — `⋯` → 「보드 삭제」 → 확인 → 남은 보드로 이동. **이슈는 남는다**
@@ -19,6 +19,7 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { goToBoardNameStep, selectBoardType } from './fixtures/board-helpers'
 import { boardLabels } from '../src/i18n/board-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,8 +111,24 @@ test.describe('보드 관리 — 생성·전환·이름 변경·삭제 (FR-BD-01
     // C1 — 보드가 있는데 「보드가 없습니다」가 뜨면 안 된다 (다이얼로그에서는 인트로를 끈다)
     await expect(createDialog).not.toContainText('보드가 없습니다')
 
+    // 1단계 — 종류를 먼저 묻는다 (FR-BD-04 D6 · J1). 기본 선택이 칸반이라 그냥 넘기면 종류
+    // 선택이 실화면에서 한 번도 밟히지 않는다 — 여기서 **스크럼을 명시적으로 고른다**.
+    await selectBoardType(createDialog, 'SCRUM')
+    await goToBoardNameStep(createDialog)
+
+    // 2단계 — 이름 입력
     await createDialog.getByLabel('보드 이름').fill(SECOND_BOARD_NAME)
+
+    // ★ 고른 종류를 **선 위에서** 잰다. 라디오의 `toBeChecked` 만으로는 부족하다 —
+    // 만들어진 보드의 종류는 화면 어디에도 안 보이므로(스크럼 보드 화면은 PR ③ 소관),
+    // 폼이 `boardType` 을 요청에서 흘려도 이 spec 은 초록이 된다. 요청 바디가 유일한 관측점이다.
+    const createRequest = page.waitForRequest(
+      (req) => req.url().endsWith('/api/v1/boards') && req.method() === 'POST',
+    )
     await createDialog.getByRole('button', { name: '보드 만들기', exact: true }).click()
+    expect(JSON.parse((await createRequest).postData() ?? '{}')).toMatchObject({
+      boardType: 'SCRUM',
+    })
 
     // Then. 생성된 보드로 이동하고 스위처에 두 보드가 모두 있다
     await expect(boardSwitcherTrigger(page)).toContainText(SECOND_BOARD_NAME)
@@ -158,7 +175,11 @@ test.describe('보드 관리 — 생성·전환·이름 변경·삭제 (FR-BD-01
     await deleteCurrentBoard(page)
 
     await expect(page.getByText('보드가 없습니다', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: '보드 만들기', exact: true })).toBeVisible()
+    // 빈 상태도 생성 폼 **1단계**로 시작한다 — 그 화면의 진행 버튼은 「다음」이고
+    // 「보드 만들기」는 종류를 고른 뒤 2단계에서야 나온다 (FR-BD-04 D6)
+    await expect(
+      page.getByRole('button', { name: boardLabels.createForm.next, exact: true }),
+    ).toBeVisible()
     await expect(boardSwitcherTrigger(page)).toHaveCount(0)
   })
 })

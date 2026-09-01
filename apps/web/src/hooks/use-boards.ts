@@ -1,7 +1,7 @@
 // 칸반 보드 조회·생성 TanStack Query 훅 (FR-BD-01/02)
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchBoards, fetchBoard, createBoard, updateBoardName, deleteBoard } from '@/api/boards'
-import type { BoardCreated, BoardMeta, BoardCardFilterParams } from '@/api/boards'
+import type { BoardCreated, BoardMeta, BoardCardFilterParams, BoardType } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — queryKey 정규화
@@ -116,6 +116,15 @@ export function useBoard(boardId: string | undefined, filter?: BoardCardFilterPa
 export interface CreateBoardInput {
   /** 생성할 보드 이름 */
   name: string
+  /**
+   * 생성할 보드의 종류 (FR-BD-04). **생략 불가 — 화면의 선택이 곧 계약이다.**
+   *
+   * `boardType?:` 로 두면 안 되는 이유. 백엔드 `BoardCreateRequest.boardType` 은 선택 인자라
+   * 생략하면 KANBAN 으로 채워 **201 로 성공한다**(#421). 즉 호출부가 종류를 빠뜨려도 요청은
+   * 통과하고, 스크럼을 고른 사용자만 칸반 보드를 받는다 — 실패가 아니라 **조용한 오생성**이다.
+   * 필수로 두면 그 누락을 컴파일이 잡는다.
+   */
+  boardType: BoardType
 }
 
 /**
@@ -131,7 +140,7 @@ export function useCreateBoard(projectKey: string) {
   const queryClient = useQueryClient()
 
   return useMutation<BoardCreated, unknown, CreateBoardInput>({
-    mutationFn: ({ name }) => createBoard(projectKey, name),
+    mutationFn: ({ name, boardType }) => createBoard(projectKey, name, boardType),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boardKeys.list(projectKey) })
     },
