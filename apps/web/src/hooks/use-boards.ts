@@ -1,7 +1,7 @@
 // 칸반 보드 조회·생성 TanStack Query 훅 (FR-BD-01/02)
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchBoards, fetchBoard, createBoard, updateBoardName, deleteBoard } from '@/api/boards'
-import type { BoardCreated, BoardMeta, BoardCardFilterParams } from '@/api/boards'
+import type { BoardCreated, BoardMeta, BoardCardFilterParams, BoardType } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — queryKey 정규화
@@ -116,6 +116,8 @@ export function useBoard(boardId: string | undefined, filter?: BoardCardFilterPa
 export interface CreateBoardInput {
   /** 생성할 보드 이름 */
   name: string
+  /** 생성할 보드의 종류 (FR-BD-04) */
+  boardType: BoardType
 }
 
 /**
@@ -131,7 +133,7 @@ export function useCreateBoard(projectKey: string) {
   const queryClient = useQueryClient()
 
   return useMutation<BoardCreated, unknown, CreateBoardInput>({
-    mutationFn: ({ name }) => createBoard(projectKey, name),
+    mutationFn: ({ name, boardType }) => createBoard(projectKey, name, boardType),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boardKeys.list(projectKey) })
     },
