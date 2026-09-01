@@ -224,7 +224,16 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
         return projectRefs(workflowId, excludeArchived = false)
     }
 
-    /** 두 공개 조회의 공통 본문. 아카이브 축 하나만 다르므로 3단 JOIN 을 복제하지 않는다. */
+    /**
+     * 두 공개 조회의 공통 본문. 아카이브 축 하나만 다르므로 JOIN 을 복제하지 않는다.
+     *
+     * ### 스킴 소프트 삭제를 본다
+     * `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만 세우고 매핑·할당 행을 남긴다
+     * (V201 의 CASCADE 는 하드 삭제에만 걸린다). 그것을 안 보면 **지운 스킴에 붙어 있던 프로젝트가
+     * 계속 잡혀** 발행 차단 카운트가 과다 집계되고, 이관도 그 프로젝트를 범위에 싣는다.
+     * 세 조회(`findProjectRefsByWorkflowId` · `findMigrationScopeRefsByWorkflowId` ·
+     * [hasSiblingWorkflowInAssignedSchemes])가 **같은 규칙**을 써야 어느 하나만 조용히 어긋나지 않는다.
+     */
     private fun projectRefs(
         workflowId: UUID,
         excludeArchived: Boolean,
@@ -232,9 +241,11 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
         dsl
             .selectDistinct(P_ID, P_KEY)
             .from(MAPPINGS)
+            .join(SCHEMES).on(SC_ID.eq(M_SCHEME_ID))
             .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
             .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
             .where(M_WORKFLOW_ID.eq(workflowId))
+            .and(SC_DELETED_AT.isNull)
             .and(P_DELETED_AT.isNull)
             .and(if (excludeArchived) P_ARCHIVED_AT.isNull else DSL.noCondition())
             .fetch { record ->

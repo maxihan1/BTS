@@ -100,6 +100,15 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         /** 활성이지만 어느 프로젝트에도 할당되지 않은 스킴. */
         var reverseSchemeUnassigned: Long = 0
 
+        /**
+         * 삭제된 스킴에 **할당된** 프로젝트.
+         *
+         * ★이것이 없으면 삭제 축을 한 번도 재지 못한다 — 할당이 없는 스킴은 `join(assignments)`
+         * 가 먼저 걸러 버려, `deleted_at` 조건을 지워도 전 테스트가 초록이다(뮤테이션 실측).
+         * 두 조건을 동시에 만족하는 픽스처는 어느 쪽이 잡는지 구별해 주지 않는다.
+         */
+        val reverseProjectOnDeletedScheme: UUID = UUID.fromString("00000000-0000-0000-000d-00000000100d")
+
         @BeforeAll
         @JvmStatic
         fun setup() {
@@ -323,6 +332,7 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
                     ReverseProjectFixture(reverseProjectOtherScheme, "R003", "역방향 Gamma", null, null),
                     ReverseProjectFixture(reverseProjectDeleted, "R004", "역방향 Delta", now, null),
                     ReverseProjectFixture(reverseProjectArchived, "R005", "역방향 Epsilon", null, now),
+                    ReverseProjectFixture(reverseProjectOnDeletedScheme, "R006", "역방향 Zeta", null, null),
                 ).forEach { fixture ->
                     ps.setObject(1, fixture.id)
                     ps.setString(2, fixture.key)
@@ -342,6 +352,7 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
                     " (project_id, workflow_scheme_id, assigned_by) VALUES (?, ?, ?)",
             ).use { ps ->
                 listOf(
+                    reverseProjectOnDeletedScheme to reverseSchemeDeleted,
                     reverseProjectAlpha to reverseSchemeA,
                     reverseProjectBeta to reverseSchemeA,
                     reverseProjectOtherScheme to reverseSchemeB,
@@ -556,6 +567,22 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
             .describedAs("범위에서 빠지면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이 사라진다")
             .contains(reverseProjectArchived)
         assertThat(refs.map { it.id }).contains(reverseProjectAlpha, reverseProjectBeta)
+    }
+
+    /**
+     * ★ 소프트 삭제된 **스킴**에 붙어 있던 프로젝트는 어느 조회에도 안 나온다.
+     *
+     * `softDelete` 는 `deleted_at` 만 세우고 할당·매핑 행을 남긴다. 그것을 안 보면 지운 스킴의
+     * 프로젝트가 계속 잡혀 **발행 차단 카운트가 과다 집계**되고(그 프로젝트는 이 워크플로우를
+     * 더 이상 쓰지 않는다) 이관도 남의 프로젝트를 범위에 싣는다.
+     */
+    @Test
+    fun `소프트 삭제된 스킴에 할당된 프로젝트는 카운트에도 범위에도 안 나온다`() {
+        assertThat(repository.findProjectRefsByWorkflowId(reverseWorkflowA).map { it.id })
+            .doesNotContain(reverseProjectOnDeletedScheme)
+        assertThat(repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA).map { it.id })
+            .describedAs("지운 스킴의 프로젝트를 범위에 실으면 남의 이슈를 옮긴다")
+            .doesNotContain(reverseProjectOnDeletedScheme)
     }
 
     /** 소프트 삭제는 범위에서도 뺀다 — 죽은 프로젝트의 이슈를 옮길 이유가 없다. */
