@@ -116,7 +116,14 @@ export function useBoard(boardId: string | undefined, filter?: BoardCardFilterPa
 export interface CreateBoardInput {
   /** 생성할 보드 이름 */
   name: string
-  /** 생성할 보드의 종류 (FR-BD-04) */
+  /**
+   * 생성할 보드의 종류 (FR-BD-04). **생략 불가 — 화면의 선택이 곧 계약이다.**
+   *
+   * `boardType?:` 로 두면 안 되는 이유. 백엔드 `BoardCreateRequest.boardType` 은 선택 인자라
+   * 생략하면 KANBAN 으로 채워 **201 로 성공한다**(#421). 즉 호출부가 종류를 빠뜨려도 요청은
+   * 통과하고, 스크럼을 고른 사용자만 칸반 보드를 받는다 — 실패가 아니라 **조용한 오생성**이다.
+   * 필수로 두면 그 누락을 컴파일이 잡는다.
+   */
   boardType: BoardType
 }
 
