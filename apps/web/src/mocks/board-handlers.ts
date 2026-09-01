@@ -315,7 +315,13 @@ const getBoardHandler = http.get('/api/v1/boards/:id', ({ params, request }) => 
 // POST /api/v1/boards
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** boardType을 생략한 요청에 적용하는 기본 보드 종류 (FR-BD-04). */
+/**
+ * boardType을 생략한 요청에 적용하는 기본 보드 종류 (FR-BD-04).
+ *
+ * 백엔드 `BoardCreateRequest.boardType`이 선택 인자라 같은 기본값을 둔다
+ * (`BoardResponses.kt:46` — null이면 `BoardType.from`이 KANBAN을 돌려준다).
+ * 다른 값을 두면 종류를 생략한 요청이 mock 위에서만 다른 보드를 만든다.
+ */
 const DEFAULT_BOARD_TYPE: BoardType = 'KANBAN'
 
 /**
