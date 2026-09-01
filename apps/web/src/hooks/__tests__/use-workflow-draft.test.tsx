@@ -227,6 +227,41 @@ describe('flush', () => {
   })
 })
 
+describe('저장 뒤 캐시', () => {
+  it('★ 재마운트해도 방금 저장한 편집이 남아 있다', async () => {
+    // ★ 초안 쿼리는 `staleTime: Infinity` 라 재진입해도 서버를 다시 안 읽는다. 저장 성공 시
+    //   캐시를 갱신하지 않으면 「목록으로 나갔다 돌아오면 편집이 사라지는」 자리가 생긴다 —
+    //   서버에는 저장돼 있는데 화면만 옛 응답을 그리므로 **저장이 실패한 것처럼 보인다**.
+    //   E2E 가 먼저 잡은 결함이고, 여기서 유닛으로도 못박는다.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+
+    const first = renderHook(() => useWorkflowDraft(KEY), { wrapper })
+    await waitFor(() => {
+      expect(first.result.current.state.draft.states).toHaveLength(2)
+    })
+    act(() => {
+      first.result.current.dispatch({ type: 'setName', value: '재진입해도 남을 이름' })
+    })
+    await act(async () => {
+      await first.result.current.flush()
+    })
+    first.unmount()
+
+    // 같은 QueryClient 로 다시 마운트 — 화면을 나갔다 돌아온 것과 같다.
+    const second = renderHook(() => useWorkflowDraft(KEY), { wrapper })
+    await waitFor(() => {
+      expect(second.result.current.state.draft.name).toBe('재진입해도 남을 이름')
+    })
+    // 앵커도 그대로여야 한다 — 캐시 갱신이 앵커를 흔들면 락이 풀린다.
+    expect(second.result.current.state.baseVersion).toBe(4)
+  })
+})
+
 describe('언마운트', () => {
   it('미저장 편집을 flush 한다', async () => {
     // ★ 「목록으로」를 눌러 나가면 디바운스가 아직 안 돌았을 수 있다. 그대로 두면 방금 한

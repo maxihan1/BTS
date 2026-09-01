@@ -1,6 +1,6 @@
 // 초안 로드·로컬 편집·디바운스 자동저장 훅 — 낙관적 락 앵커를 고정해 들고 있는다
 import * as React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getDraft, saveDraft } from '@/api/workflows-draft'
 import { WorkflowAdminApiError } from '@/api/workflows-admin.http'
 import type { DraftResponse } from '@/api/workflows-draft.types'
@@ -62,6 +62,7 @@ export interface UseWorkflowDraftResult {
  */
 export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
   const [state, dispatch] = React.useReducer(draftReducer, initialDraftState)
+  const client = useQueryClient()
   const [saveState, setSaveState] = React.useState<DraftSaveState>('idle')
   const [saveError, setSaveError] = React.useState<string | null>(null)
 
@@ -123,8 +124,23 @@ export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
     setSaveState('saving')
     try {
       // ★ 앵커는 state 의 값을 그대로 싣는다 — 응답으로 갱신하지 않는다.
-      await saveDraft(key, toWireDefinition(current.draft), current.baseVersion)
+      const wire = toWireDefinition(current.draft)
+      await saveDraft(key, wire, current.baseVersion)
       savedRevision.current = current.revision
+      // ★ 캐시를 저장한 내용으로 갱신한다.
+      //
+      // 이 쿼리는 `staleTime: Infinity` 라 재진입해도 다시 안 읽는다. 갱신하지 않으면
+      // 「목록으로 나갔다 다시 들어오면 방금 한 편집이 사라지는」 자리가 생긴다 — 서버에는
+      // 저장돼 있는데 화면만 옛 응답을 그리므로 **저장이 실패한 것처럼 보인다**(E2E 가 잡았다).
+      //
+      // 앵커는 **우리가 보낸 값**을 그대로 싣는다. 서버를 다시 읽어 채우면 그 사이 남이
+      // 발행했을 때 앵커가 새 버전으로 올라가 락이 풀린다.
+      client.setQueryData(WORKFLOW_DRAFT_KEY(key), {
+        definition: wire,
+        baseVersion: current.baseVersion,
+        exists: true,
+        canResetToDefault: current.canResetToDefault,
+      })
       setSaveState('saved')
       setSaveError(null)
     } catch (error) {
@@ -135,7 +151,7 @@ export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
     } finally {
       inFlightRevision.current = null
     }
-  }, [key])
+  }, [key, client])
 
   // 편집이 생기면 디바운스 뒤 저장한다.
   React.useEffect(() => {
