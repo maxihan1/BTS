@@ -12,6 +12,7 @@ import com.bts.workflow.domain.exception.WorkflowStatusInUseException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.status.domain.exception.StatusNotFoundException
 import com.bts.workflow.status.repository.StatusRepository
 import org.slf4j.LoggerFactory
@@ -41,6 +42,7 @@ class WorkflowStatusCompositionService(
     private val workflowRepository: WorkflowRepository,
     private val statusRepository: StatusRepository,
     private val issueStatusUsagePort: IssueStatusUsagePort,
+    private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
     private val workflowCache: WorkflowCache,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
 ) {
@@ -119,7 +121,13 @@ class WorkflowStatusCompositionService(
         log.info("상태 순서 변경 workflow={} count={}", workflowKey, orderedStatusIds.size)
     }
 
-    /** 뺄 수 있는 상태인지 확인한다. 막히는 원인 셋을 각각 다른 예외로 알린다. */
+    /**
+     * 뺄 수 있는 상태인지 확인한다. 막히는 원인 셋을 각각 다른 예외로 알린다.
+     *
+     * ### 이슈 수는 이 워크플로우를 쓰는 프로젝트 안에서만 센다
+     * 상태 키는 전역이라 키만으로 세면 다른 워크플로우를 쓰는 이슈까지 잡혀 **뺄 수 있는 상태가
+     * 영영 못 빠진다**. 스킴 할당을 거슬러 얻은 프로젝트 id 로 범위를 좁힌다.
+     */
     private fun requireRemovable(
         workflowKey: String,
         workflowId: UUID,
@@ -132,7 +140,8 @@ class WorkflowStatusCompositionService(
                 "마지막 남은 상태는 뺄 수 없다 — 상태가 0개면 워크플로우를 조회할 수 없게 된다",
             )
         }
-        val issueCount = issueStatusUsagePort.countIssuesInStatus(statusKey)
+        val projectIds = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.id }.toSet()
+        val issueCount = issueStatusUsagePort.countIssuesInStatus(statusKey, projectIds)
         if (issueCount > 0) {
             throw WorkflowStatusInUseException(workflowKey, statusKey, issueCount)
         }

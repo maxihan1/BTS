@@ -148,7 +148,7 @@
 - [x] D1. 도메인 — 초안 표현(JSONB) · 발행 이력 append-only · 기본값 복원의 의미 (책임. backend-engineer + Maxi)
 - [x] D2. 명세 — 낙관적 락(base_version) 충돌 409 · 이관 대상 산출 규칙 · cross-BC 포트 계약 (책임. backend-engineer)
 - [x] D3. 마이그레이션 — V208 `workflow_drafts` · `workflow_publications` (책임. db-engineer)
-- [ ] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · 이관 포트(읽기 `IssueStatusUsagePort` = project-workflow 로컬 · 쓰기 `IssueStatusMigrationPort` = shared-kernel) (책임. backend-engineer)
+- [x] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · 이관 포트(읽기 `IssueStatusUsagePort` = project-workflow 로컬 · 쓰기 `IssueStatusMigrationPort` = shared-kernel) (책임. backend-engineer) (PR #411 초안·발행 · PR #414 이관 실행 경로 · **PR #417 결선**, 2026-09-01)
 - [x] D5. 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 이슈 상태 전량 이동 (책임. backend-engineer)
 - [ ] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer)
 - [ ] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer)
@@ -172,6 +172,23 @@
 >   만들어 뒀고 이 PR 이 발행 판정에 재사용했다. 쓰기(큐잉) 포트가 로드맵 PR 7 의 몫이다
 > - D4 잔여 — 이관 큐잉 호출. 지금은 이슈가 남아 있으면 409 로 **막고** 상태별 건수를 응답에 싣는다
 > - D5 잔여 — 「이관 후 이슈 상태 전량 이동」. 이관 실행이 PR 7 이라 그 테스트도 그쪽이다
+
+> **D4 완료** (PR #417, 2026-09-01 · 로드맵 PR 7b). 위 「D4 잔여 — 이관 큐잉 호출」이 채워졌다.
+> `POST /api/v1/workflows/{key}/publish/migrate` 가 이관을 큐잉하고, `POST /publish` 는 의미가
+> 그대로다(결정 D2 — 「발행하지 않고 202」인 상태를 만들지 않는다).
+> - **매핑 가드 8종** — 빠지지 않는 출발지 · 초안에 없는 도착지 · 발행 전 도착지(F16) · 빈 목록 ·
+>   중복 출발지 · 범위 없음 · 형제 워크플로우(F11 fail-closed) · 상한 초과(F14). 전부 포트에
+>   닿기 전에 막는다 — 큐잉이 pgmq 에 닿으면 되감아도 메시지가 남는 경로가 있다
+> - **교체 직후 재카운트**(F10) — 첫 검사와 정의 교체 사이에 들어온 이슈를 잡는다. 부채 143 을
+>   **축소**한 것이지 닫은 것이 아니다. 재카운트→COMMIT 잔여 창은 전환 핫패스가 정의 행을 잠가야
+>   닫히고 그 경로는 issue-tracking BC 소관이다
+> - **in-flight 중복 거부**(F15) — 끝나지 않은 이관이 있으면 409. 발행과 같은 키 공간의 advisory
+>   lock 안에서 검사·큐잉하므로 동시 요청도 직렬화된다
+> - **아카이브 프로젝트**(E7) — 이관 범위에는 **넣고** 발행 차단 카운트에서만 뺀다. 범위에서까지
+>   빼면 그 이슈가 흔적 없이 사라지고, 넣어 두면 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로
+>   남아 「몇 건이 왜 안 옮겨졌는지」를 셀 수 있다
+>
+> **D6·D7·D8 은 그대로 남는다** — 관리자가 이관을 시작할 화면이 아직 없다. API 만 열린 상태다.
 
 > **D2·D5 완료 · D4 는 결선만 남았다** (로드맵 PR 7 — 이관 실행, 2026-08-27). 위 #411 각주가 「PR 7 의
 > 몫」으로 넘긴 것을 이 PR 이 받았다. 「한 PR = 한 BC」 규칙대로 이번 범위는 전부 issue-tracking BC 다.
@@ -206,6 +223,46 @@
 > - **`cause` 결선·검증** — 이관 이벤트의 `cause = "STATUS_MIGRATION"` 을 사외 웹훅
 >   (`search-export-import/.../WebhookDispatchWorker.kt`)과 알림이 **실제로 거르는지**. PR 7 은 표시만
 >   싣는다. 이관 N 건이 되돌릴 수 없는 웹훅 N 건이 되는 자리라 표시만 두고 끝내면 절반이다
+
+> **로드맵 PR 7b 착수 (2026-08-31 · plan `docs/plans/2026-08-31-workflow-status-migration-wiring.md`)**.
+> 위 착수 조건 각주가 정본이고, 이 각주는 **그 여섯 줄이 어떻게 처리되는지**를 적는다.
+> ★**D4 는 아직 `[ ]` 다** — 착수했을 뿐 구현이 끝나지 않았다. 체크는 머지 시점에 한다.
+> - **결선** — 닫는다. `POST /api/v1/workflows/{key}/publish/migrate` 를 새로 두고 그것이
+>   `IssueStatusMigrationPort.enqueueStatusMigration` 을 부른다. `POST …/publish` 는 **의미 불변**이다 —
+>   한 호출로 묶으면 발행 API 가 「발행하지 않고 202」를 돌려주는 상태를 갖게 되고, 나누면 부수적으로
+>   트랜잭션이 BC 를 안 넘는다. 지라는 조작 1회(**Update workflow**)라 이것이 **의도적 편차**다
+> - **뒤쪽 TOCTOU 창** — **축소**다. 닫혔다고 적지 않는다. `replaceDefinition` 직후 같은 트랜잭션에서
+>   교체 전 `removed` 집합으로 재카운트하고 잔여가 있으면 롤백한다. 「재카운트 → COMMIT」 구간은 남고,
+>   완전 폐쇄는 전환 핫패스가 정의 행을 잠가야 해서 **issue-tracking BC** 소관이다
+> - **`countIssuesInStatus` 프로젝트 스코프** — 닫는다. 포트를 `(statusKey, projectIds)` 로 넓히고
+>   `projectIds` 를 워크플로우 → 스킴 → 프로젝트 3단 JOIN 으로 채운다. 요청에서 받지 않는다
+> - **배포 순서·롤백** — 닫되 **결론이 바뀌었다.** 「구버전 워커가 먼저 올라가야 한다」는 롤링 배포와
+>   워커 별도 배포물을 전제하는데 **둘 다 없다**(실측 — `bts-deploy.sh` 가 단일 호스트에서
+>   `docker compose up -d` · `bts-backend` 는 `container_name` 이 박혀 복제 불가 · 워커는 같은 프로세스의
+>   `@Scheduled` 폴러). 순서 축이 성립하지 않고 남는 축은 **롤백(신→구)** 뿐이다. 절차 정본은 plan 의
+>   `#### C3 상세`. 죽는 지점도 하나가 아니라 **둘**이다 — `BulkOperationRepository.kt:531-533` 과
+>   `FailureReasonCode` 를 푸는 `:205`
+> - **권한 검사 순서 계약** — 닫는다. 권한 없는 actor 의 `migrate` 에서 **포트 호출 0회**를 스파이로
+>   단언한다. 403 만 재면 「포트를 먼저 부르고 나중에 던지는」 순서를 못 잡는다
+> - **`cause` 결선·검증** — **이월.** 소비자가 `search-export-import` · `notification` ·
+>   `slack-integration` 3 BC 라 「한 PR = 한 BC」에 걸린다. 실측(2026-08-31) — 그 문자열이
+>   issue-tracking 밖 전 BC 통틀어 **0건**이고 `parseIssueTransitioned` 는 `issueKey`·`projectKey`·
+>   `fromState`·`toState` 4필드 화이트리스트라 `cause` 를 **파싱조차 하지 않는다**. `TODOS.md` 에
+>   **PR 10 의 명시적 선행**으로 승격했다
+>
+> **PR 7b 가 새로 남기는 것 (전수 열거 — 착수 조건에 없던 항목이다)**. 게이트 1 이 BLOCKER 처방으로
+> fail-closed 가드를 넣으면서 생긴 한계이고, 숨기지 않고 `TODOS.md` 에 등재한다.
+> - **C6 다중 워크플로우 스킴 미지원** — 대상 프로젝트의 스킴이 이 워크플로우 **하나만** 쓸 때에만
+>   `migrate` 를 허용한다(400 fail-closed). 워커의 이관 대상 쿼리에 **이슈 타입 조건이 없어서**,
+>   스킴이 `(scheme_id, issue_type_id) → workflow_id` 인데 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면
+>   WF1 발행이 **WF2 이슈까지 옮긴다**. 여는 것은 이관 커맨드 확장 + 워커 쿼리 수정이라
+>   **shared-kernel + issue-tracking 두 BC** 를 건드리는 T3 별건이다
+> - **C7 migrate↔publish 사이 초안 변경 창** — in-flight 중복 큐잉은 막지만 초안 편집 자체는 못 막는다.
+>   **유령은 안 생긴다**(되살린 상태는 발행 시 다시 빠지는 상태로 들어가 재카운트가 막는다). 남는 것은
+>   「원하지 않은 1회 대량 이동」이고 관리자가 되돌릴 수 있다
+> - **C5 아카이브 유령** — 아카이브 프로젝트 이슈는 **카운트에서 빼되 이관 범위에는 넣는다**. 넣지
+>   않으면 조용히 사라지고, 넣으면 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로 남아 **셀 수 있다**.
+>   프로젝트를 다시 활성화하면 그 이슈들이 워크플로우에 없는 상태에 남아 있는 것이 한계다
 
 > **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환이 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 

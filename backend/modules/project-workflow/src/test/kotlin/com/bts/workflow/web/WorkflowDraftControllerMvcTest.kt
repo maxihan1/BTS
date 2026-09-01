@@ -1,7 +1,8 @@
-// WorkflowDraftController MockMvc 슬라이스 테스트 — 6 엔드포인트의 상태 코드와 응답 본문
+// WorkflowDraftController MockMvc 슬라이스 테스트 — 엔드포인트별 상태 코드와 응답 본문
 
 package com.bts.workflow.web
 
+import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.workflow.application.DraftView
 import com.bts.workflow.application.PublishPreview
 import com.bts.workflow.application.WorkflowDraftService
@@ -47,6 +48,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
+import java.util.UUID
 
 /** 테스트 행위자. `CurrentActor` 가 UUID 형식을 요구하므로 실제 UUID 를 쓴다. */
 private const val ACTOR_ID = "11111111-2222-3333-4444-555555555555"
@@ -313,6 +315,45 @@ class WorkflowDraftControllerMvcTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").exists())
+    }
+
+    // ── 상태 이관 큐잉 ────────────────────────────────────────────────────────
+
+    /**
+     * ★ 202 다 — 200 이 아니다. 이 응답이 뜻하는 것은 「이관을 접수했다」이고 「이관이 끝났다」가
+     * 아니다. 실제 이관은 issue-tracking 의 pgmq 워커가 나중에 하고, 진행률은
+     * `GET /api/v1/bulk-operations/{id}` 가 돌려준다 — 그래서 본문에 그 id 만 싣는다.
+     */
+    @Test
+    @WithMockUser(username = ACTOR_ID)
+    fun `POST publish migrate — 202 이고 bulkOperationId 를 돌려준다`() {
+        val bulkOperationId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        every {
+            publishService.migrate(any(), KEY, 3, listOf(StatusMigrationMapping("done", "closed")))
+        } returns bulkOperationId
+
+        mockMvc.perform(
+            post("/api/v1/workflows/$KEY/publish/migrate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"baseVersion":3,"mappings":[{"fromStatusKey":"done","toStatusKey":"closed"}]}"""),
+        )
+            .andExpect(status().isAccepted)
+            .andExpect(jsonPath("$.data.bulkOperationId").value(bulkOperationId.toString()))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_ID)
+    fun `POST publish migrate — 버전 충돌은 409 이고 전용 코드를 쓴다`() {
+        every { publishService.migrate(any(), KEY, any(), any()) } throws
+            WorkflowVersionConflictException(KEY, 3, 4)
+
+        mockMvc.perform(
+            post("/api/v1/workflows/$KEY/publish/migrate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"baseVersion":3,"mappings":[{"fromStatusKey":"done","toStatusKey":"closed"}]}"""),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_VERSION_CONFLICT"))
     }
 
     // ── 기본값 복원 ───────────────────────────────────────────────────────────
