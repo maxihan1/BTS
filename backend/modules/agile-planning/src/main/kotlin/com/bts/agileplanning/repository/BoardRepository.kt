@@ -210,6 +210,7 @@ class BoardRepository(
      * @param projectKey 대상 프로젝트 키.
      * @return 스크럼 보드 UUID. 없으면 `null`.
      */
+    @Transactional(readOnly = true)
     fun findScrumBoardIdByProject(projectKey: String): UUID? =
         dsl.select(BOARDS.ID)
             .from(BOARDS)
