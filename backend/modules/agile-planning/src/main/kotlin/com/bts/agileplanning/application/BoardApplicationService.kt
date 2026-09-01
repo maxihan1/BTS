@@ -9,9 +9,11 @@ import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
+import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
@@ -38,12 +40,16 @@ import java.util.UUID
  * @property truncated BOARD_CARD_FETCH_LIMIT 초과로 이슈 일부가 누락됐으면 true.
  * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수 (E2 상황).
  * @property quickFilters 보드에 저장된 퀵필터 도메인 목록(created_at ASC, FR-UX-01 Task 7). 기본값은 빈 목록.
+ * @property activeSprint 스크럼 보드의 활성 스프린트. **칸반 보드는 항상 `null`** 이고, 스크럼이라도
+ *   시작된 스프린트가 없으면 `null` 이다. 클라이언트는 `null` 이면 「스프린트를 시작하세요」 빈 상태를
+ *   그린다(FR-BD-04 D6, PR ③).
  */
 data class BoardPlacementResult(
     val columns: List<PlacedColumn>,
     val truncated: Boolean,
     val unplacedCount: Int,
     val quickFilters: List<QuickFilter> = emptyList(),
+    val activeSprint: Sprint? = null,
 )
 
 /**
@@ -77,6 +83,9 @@ data class BoardPlacementResult(
  * @param issueTransitionPort 전환 위임 포트 — fail-closed (issue-tracking 구현)
  * @param boardRepository boards/board_columns jOOQ repository
  * @param boardQuickFilterRepository board_quick_filters jOOQ repository (FR-UX-01 Task 7)
+ * @param sprintRepository sprints/sprint_issues jOOQ repository — 스크럼 보드 카드 필터용 (FR-BD-04 D4).
+ *   같은 BC 이므로 포트를 거치지 않는다. [BoardIssueLookupPort] 는 shared-kernel 이라 스프린트를 모르고,
+ *   거기에 스프린트를 알리면 토폴로지 변경(T3)이 된다 — 재료가 이 BC 안에 이미 있어 그럴 이유가 없다.
  */
 @Service
 class BoardApplicationService(
@@ -85,6 +94,7 @@ class BoardApplicationService(
     private val issueTransitionPort: IssueTransitionPort,
     private val boardRepository: BoardRepository,
     private val boardQuickFilterRepository: BoardQuickFilterRepository,
+    private val sprintRepository: SprintRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -191,18 +201,37 @@ class BoardApplicationService(
      * @param boardId 조회할 보드 UUID.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
      * @param filter 보드 카드 필터 조건. 기본값 [BoardCardFilter.EMPTY] 이면 무필터와 동일.
-     * @return [BoardPlacementResult] — 배치 결과 + truncated + unplacedCount + quickFilters.
+     * ## 스크럼 보드 분기 (FR-BD-04 D4)
+     * [BoardType.SCRUM] 이면 그 보드의 **활성 스프린트에 할당된 이슈만** 남겨 배치한다. 활성 스프린트가
+     * 없으면 카드가 0건이다(빈 보드). [BoardType.KANBAN] 은 **지금과 완전히 같다** — 분기 앞에서
+     * 스프린트를 조회하지 않으므로 쿼리도 늘지 않는다(NFR-1).
+     *
+     * 필터는 [BoardCardPlacement.placeCards] **호출 전**에 건다. [BoardCardPlacement] 는 I/O 없는
+     * 순수 함수라는 계약(NFR-2)이 있어 스프린트를 알게 하지 않는다.
+     *
+     * ## 컬럼 0개 보드 자가 치유
+     * V506 백필이 복제할 칸반 보드를 못 찾았거나 [ensureScrumBoard] 가 암묵 생성한 보드는 컬럼이 없다.
+     * 조회 시 워크플로우 카탈로그에서 시드해 **영속**한다 — 매번 즉석 생성하면 컬럼 UUID 가 흔들려
+     * 카드 이동(`toColumnId`)이 깨진다. 시드할 수 없으면(스킴 미할당 등) **빈 보드 그대로 둔다**.
+     * 새 오류 경로를 만들지 않는다 — 조회를 지금보다 나쁘게 만들지 않는 것이 우선이다.
+     *
+     * ★ [Transactional] 에 `readOnly` 를 두지 않는 이유가 자가 치유다. readOnly 트랜잭션은 JDBC 커넥션을
+     * read-only 로 잡아 시드 INSERT 가 실패한다. jOOQ 라 더티체킹 flush 비용이 없어 제거 비용은 없다.
+     *
+     * @return [BoardPlacementResult] — 배치 결과 + truncated + unplacedCount + quickFilters + activeSprint.
      * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     fun getBoard(
         boardId: UUID,
         viewerUserId: UUID,
         filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): BoardPlacementResult {
         val board =
-            boardRepository.findById(boardId)
-                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다: boardId=$boardId")
+            healColumnsIfEmpty(
+                boardRepository.findById(boardId)
+                    ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다: boardId=$boardId"),
+            )
 
         val page =
             boardIssueLookupPort.listVisibleIssuesByProject(
@@ -210,14 +239,46 @@ class BoardApplicationService(
                 viewerUserId = viewerUserId,
                 filter = filter,
             )
-        val placed = BoardCardPlacement.placeCards(board.columns, page.issues)
+
+        // ★ 칸반은 여기서 끝난다 — 스프린트를 조회하지 않는다(NFR-1).
+        val activeSprint =
+            if (board.boardType == BoardType.SCRUM) sprintRepository.findActiveByBoard(boardId) else null
+        val issues =
+            if (board.boardType == BoardType.SCRUM) {
+                val sprintIssueKeys = activeSprint?.let { sprintRepository.findIssueKeys(it.id) }?.toSet() ?: emptySet()
+                page.issues.filter { it.key in sprintIssueKeys }
+            } else {
+                page.issues
+            }
+
+        val placed = BoardCardPlacement.placeCards(board.columns, issues)
         val quickFilters = boardQuickFilterRepository.findByBoardId(boardId)
         return BoardPlacementResult(
             columns = placed.columns,
             truncated = page.truncated,
             unplacedCount = placed.unplacedCount,
             quickFilters = quickFilters,
+            activeSprint = activeSprint,
         )
+    }
+
+    /**
+     * 컬럼이 0개인 보드를 워크플로우 카탈로그로 채우고 다시 읽는다. 채울 수 없으면 받은 보드를 그대로 준다.
+     *
+     * [ensureScrumBoard] 와 같은 이유로 `ProjectKey` 규격을 **먼저 확인**한다 — 그 정규식이
+     * `sprints.project_key`(VARCHAR(64), 무검증)보다 좁아, 규격 밖 키로 만들어진 보드를 조회할 때
+     * [ProjectKey.of] 가 던지면 **읽기만 하던 요청이 500 으로 죽는다**.
+     */
+    private fun healColumnsIfEmpty(board: Board): Board {
+        if (board.columns.isNotEmpty()) return board
+        if (!ProjectKey.REGEX.matches(board.projectKey)) return board
+
+        val states = workflowStateCatalog.listStates(ProjectKey.of(board.projectKey), null)
+        if (states.isEmpty()) return board
+
+        boardRepository.seedColumns(board.id, BoardCardPlacement.seedColumns(states))
+        log.debug("컬럼 0개 보드 자가 치유 — boardId={}", board.id)
+        return boardRepository.findById(board.id) ?: board
     }
 
     /**

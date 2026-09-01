@@ -98,6 +98,63 @@ class BoardRepository(
         return findById(board.id) ?: error("보드 INSERT 후 조회 실패 — id=${board.id}")
     }
 
+    // ── seedColumns ───────────────────────────────────────────────────────────
+
+    /**
+     * 기존 보드에 컬럼을 채운다 (FR-BD-04 자가 치유). **이미 있는 상태 키는 건드리지 않는다.**
+     *
+     * ### 왜 필요한가
+     * V506 백필은 복제할 칸반 보드를 못 찾은 프로젝트에 **컬럼 0개 보드**를 남긴다
+     * ([BoardApplicationService.ensureScrumBoard] 도 같은 상태를 만든다). 그 보드는 조회 시
+     * 스스로 컬럼을 채워야 영원히 빈 보드로 남지 않는다.
+     *
+     * ### 왜 `ON CONFLICT DO NOTHING` 인가
+     * 호출자가 「컬럼이 비었나」를 읽고 쓰는 사이에 다른 요청이 먼저 채울 수 있다. 그때 늦은 쪽이
+     * 컬럼을 두 벌 만들면 카드가 갈린다. `V500__boards.sql:39` 의 `UNIQUE (board_id, state_key)` 에
+     * 판정을 맡기면 늦은 쪽은 **0행을 쓰고 조용히 물러난다** — 애플리케이션이 판정을 흉내 내지 않는다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @param columns 시드할 컬럼 목록. 비었으면 아무것도 하지 않는다.
+     * @return 실제로 INSERT 된 행 수. 경쟁에서 진 호출은 0.
+     */
+    @Transactional
+    fun seedColumns(
+        boardId: UUID,
+        columns: List<BoardColumn>,
+    ): Int {
+        if (columns.isEmpty()) return 0
+
+        val insertStep =
+            dsl.insertInto(
+                BOARD_COLUMNS,
+                BOARD_COLUMNS.ID,
+                BOARD_COLUMNS.BOARD_ID,
+                BOARD_COLUMNS.STATE_KEY,
+                BOARD_COLUMNS.NAME,
+                BOARD_COLUMNS.CATEGORY,
+                BOARD_COLUMNS.DISPLAY_ORDER,
+                BOARD_COLUMNS.WIP_LIMIT,
+            )
+        columns.forEach { col ->
+            insertStep.values(
+                col.id,
+                boardId,
+                col.stateKey,
+                col.name,
+                col.category,
+                col.displayOrder,
+                col.wipLimit,
+            )
+        }
+        val inserted =
+            insertStep
+                .onConflict(BOARD_COLUMNS.BOARD_ID, BOARD_COLUMNS.STATE_KEY)
+                .doNothing()
+                .execute()
+        log.debug("컬럼 자가 치유 — boardId={}, inserted={}", boardId, inserted)
+        return inserted
+    }
+
     /**
      * 보드 단건을 컬럼과 함께 조회한다.
      *

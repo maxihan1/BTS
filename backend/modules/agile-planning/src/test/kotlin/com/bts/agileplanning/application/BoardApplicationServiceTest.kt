@@ -111,6 +111,7 @@ class BoardApplicationServiceTest {
         transition: IssueTransitionPort = mockk(relaxed = true),
         repo: BoardRepository = boardRepository,
         quickFilterRepo: BoardQuickFilterRepository = mockk(relaxed = true),
+        sprintRepo: SprintRepository = sprintRepository,
     ): BoardApplicationService =
         BoardApplicationService(
             workflowStateCatalog = catalog,
@@ -118,6 +119,7 @@ class BoardApplicationServiceTest {
             issueTransitionPort = transition,
             boardRepository = repo,
             boardQuickFilterRepository = quickFilterRepo,
+            sprintRepository = sprintRepo,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
@@ -289,6 +291,50 @@ class BoardApplicationServiceTest {
                 .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
 
         assertThat(result.columns.sumOf { it.cards.size }).isEqualTo(8)
+    }
+
+    @Test
+    fun `스크럼 보드에 활성 스프린트가 없으면 카드가 0건이고 activeSprint 가 null 이다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("NOSP"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("NOSP", "빈 스크럼 보드", BoardType.SCRUM)
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookupOf(eightIssues("NOSP")))
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.activeSprint).isNull()
+        assertThat(result.columns).hasSize(3)
+        assertThat(result.columns.sumOf { it.cards.size }).isEqualTo(0)
+    }
+
+    @Test
+    fun `스크럼 보드 응답의 activeSprint 는 그 보드의 활성 스프린트다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("ACTS"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("ACTS", "스크럼 보드", BoardType.SCRUM)
+        val sprint = seedActiveSprint(board.id, "ACTS", listOf("ACTS-1"))
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookupOf(eightIssues("ACTS")))
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.activeSprint?.id).isEqualTo(sprint.id)
+        assertThat(result.activeSprint?.name).isEqualTo("Sprint 1")
+    }
+
+    @Test
+    fun `칸반 보드는 활성 스프린트가 있어도 activeSprint 가 null 이다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("KBNU"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("KBNU", "칸반 보드")
+        seedActiveSprint(board.id, "KBNU", listOf("KBNU-1"))
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookupOf(eightIssues("KBNU")))
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.activeSprint).isNull()
     }
 
     @Test
