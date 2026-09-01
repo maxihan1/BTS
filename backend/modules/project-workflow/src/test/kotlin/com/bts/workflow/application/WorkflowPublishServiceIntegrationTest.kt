@@ -1236,6 +1236,49 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     // ── 거절 경로 ─────────────────────────────────────────────────────────────
+    /**
+     * ★ C-10 — 권한 검사가 **첫 줄**이라는 계약을 판정으로 잠근다 (F5).
+     *
+     * ### 왜 403 만 재면 안 되는가
+     * 포트를 먼저 부르고 **나중에** 던져도 응답은 똑같이 403 이다. 그 구현에서는 권한 없는 행위자의
+     * 요청이 이미 일괄작업을 큐잉한 뒤이고, 트랜잭션을 되감아도 pgmq 메시지는 남는 경로가 있다.
+     * 그러니 상태 코드는 이 계약을 **전혀 재지 못한다** — 포트 호출 횟수가 유일하게 관찰 가능한 신호다.
+     *
+     * ### 왜 publish 축은 안 재는가
+     * D2 로 `POST /publish` 는 포트를 **어떤 경로로도** 부르지 않는다. 「publish 도 포트를 부르지
+     * 않는다」는 권한 검사를 지우든 맨 아래로 옮기든 항상 참이라 **어떤 뮤테이션으로도 red 가 되지
+     * 않는다** — `[[unreachable-state-fixture-is-fake-green]]` 양식이라 계획 단계에서 제거했다.
+     *
+     * ### 왜 `prepareDraft` 안에 권한 검사를 넣지 않았는가
+     * 넣으면 이 계약이 **헬퍼 호출 순서에 숨어** 호출부만 보고는 확인할 수 없게 된다.
+     * 호출자마다 첫 줄에 두는 것이 그것을 눈에 보이게 하는 유일한 방법이다.
+     */
+    @Test
+    fun `권한 없는 actor 의 migrate 는 포트를 부르지 않는다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        permissions.deny += WorkflowDefinitionPermission.PUBLISH
+
+        try {
+            assertThatThrownBy {
+                service.migrate(
+                    ACTOR,
+                    key,
+                    baseVersion = 0,
+                    mappings = listOf(StatusMigrationMapping("done", "open")),
+                )
+            }.isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
+
+            assertThat(migrationPort.received)
+                .describedAs("포트를 먼저 부르고 나중에 던져도 403 이다 — 호출 횟수만이 순서를 잰다")
+                .isEmpty()
+        } finally {
+            permissions.deny.clear()
+        }
+    }
+
 
     @Test
     fun `초안이 없으면 발행할 수 없다`() {
