@@ -26,12 +26,15 @@ import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublicationRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.repository.ProjectRef
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.ValidatorRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
+import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -114,11 +117,41 @@ class WorkflowPublishServiceIntegrationTest {
         }
     }
 
-    /** 상태별 이슈 수를 테스트가 정하는 스텁. 실제 어댑터는 issues 를 읽지만 그 테이블은 여기 없다. */
+    /**
+     * 상태별 이슈 수를 테스트가 정하는 스텁. 실제 어댑터는 issues 를 읽지만 그 테이블은 여기 없다.
+     *
+     * ### ★받은 `projectIds` 를 버리지 않고 기록한다
+     * 인자를 그냥 무시하면 서비스가 빈 집합을 넘기든 남의 프로젝트를 넘기든 전 테스트가 초록이다.
+     * 그러면 이 PR 의 이름이 「결선」인데 **결선의 인자 전달에 판정이 하나도 없게** 된다.
+     */
     private class StubIssueStatusUsage : IssueStatusUsagePort {
         val counts = mutableMapOf<String, Long>()
 
-        override fun countIssuesInStatus(statusKey: String): Long = counts[statusKey] ?: 0
+        /** 호출마다 받은 프로젝트 스코프. 호출 순서대로 쌓인다. */
+        val receivedProjectIds = mutableListOf<Set<UUID>>()
+
+        override fun countIssuesInStatus(
+            statusKey: String,
+            projectIds: Set<UUID>,
+        ): Long {
+            receivedProjectIds += projectIds
+            return counts[statusKey] ?: 0
+        }
+    }
+
+    /**
+     * 역방향 조회 횟수를 세는 저장소. NFR N1 「조회는 상태마다 반복하지 말고 1회만」을 잴 수 있게 한다.
+     *
+     * 세지 않으면 `removed.associateWith { … }` 안으로 조회가 들어가도(상태 수만큼 3단 JOIN) 결과가
+     * 같아서 전 테스트가 초록이다 — N+1 은 값이 아니라 횟수로만 드러난다.
+     */
+    private class CountingSchemeAssignments(dsl: DSLContext) : ProjectWorkflowSchemeAssignmentRepository(dsl) {
+        var lookupCount = 0
+
+        override fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
+            lookupCount++
+            return super.findProjectRefsByWorkflowId(workflowId)
+        }
     }
 
     private val dsl =
@@ -132,6 +165,7 @@ class WorkflowPublishServiceIntegrationTest {
     private val publicationRepository = WorkflowPublicationRepository(dsl, objectMapper)
     private val cache = WorkflowCache(WorkflowRepository(dsl), dsl)
     private val issueUsage = StubIssueStatusUsage()
+    private val schemeAssignments = CountingSchemeAssignments(dsl)
     private val permissions = SwitchableWorkflowPermissions()
 
     /**
@@ -166,6 +200,7 @@ class WorkflowPublishServiceIntegrationTest {
                     ruleGuard,
                 ),
             issueStatusUsagePort = issueUsage,
+            schemeAssignmentRepository = schemeAssignments,
             permissionResolver = permissions,
             cache = cache,
         )
@@ -296,6 +331,82 @@ class WorkflowPublishServiceIntegrationTest {
                 ),
             ),
     )
+
+    // ── 스킴 결선 픽스처 ──────────────────────────────────────────────────────
+
+    /**
+     * 이 워크플로우를 default 매핑으로 가리키는 스킴을 만들고 활성 프로젝트 2건을 붙인다.
+     *
+     * ### ★미끼를 함께 심는다
+     * 다른 워크플로우를 가리키는 스킴에 프로젝트 1건을 붙여 두지 않으면 「저장소가 전체 프로젝트를
+     * 돌려준다」와 「그 워크플로우의 프로젝트만 돌려준다」가 같은 결과가 되어 스코프 단언이 공허해진다.
+     *
+     * @return 이 워크플로우에 붙은 두 프로젝트의 id.
+     */
+    private fun attachTwoProjects(workflowId: UUID): Pair<UUID, UUID> {
+        val scheme = insertScheme()
+        insertDefaultMapping(scheme, workflowId)
+        val alpha = insertProject()
+        val beta = insertProject()
+        insertAssignment(alpha, scheme)
+        insertAssignment(beta, scheme)
+
+        val decoyScheme = insertScheme()
+        insertDefaultMapping(decoyScheme, insertBareWorkflow())
+        insertAssignment(insertProject(), decoyScheme)
+
+        return alpha to beta
+    }
+
+    private fun insertScheme(): Long {
+        val key = "pub-scope-${UUID.randomUUID().toString().take(8)}"
+        dsl.execute("INSERT INTO workflow_schemes (key, name) VALUES (?, ?)", key, "발행 스코프 $key")
+        return dsl.fetchOne("SELECT id FROM workflow_schemes WHERE key = ?", key)
+            ?.get("id", Long::class.java)
+            ?: error("workflow_schemes INSERT 실패")
+    }
+
+    /** `issue_type_id` NULL = 그 스킴의 default 워크플로우. 타입별 매핑까지 심을 이유가 없다. */
+    private fun insertDefaultMapping(
+        schemeId: Long,
+        workflowId: UUID,
+    ) {
+        dsl.execute(
+            "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)" +
+                " VALUES (?, NULL, ?)",
+            schemeId,
+            workflowId,
+        )
+    }
+
+    private fun insertProject(): UUID {
+        val id = UUID.randomUUID()
+        // projects.key 는 ^[A-Z][A-Z0-9]{1,9}$ 를 요구한다 — 앞자리를 문자로 고정한다.
+        val key = "P" + UUID.randomUUID().toString().replace("-", "").take(8).uppercase()
+        dsl.execute("INSERT INTO projects (id, key, name) VALUES (?, ?, ?)", id, key, "발행 스코프 $key")
+        return id
+    }
+
+    private fun insertAssignment(
+        projectId: UUID,
+        schemeId: Long,
+    ) {
+        dsl.execute(
+            "INSERT INTO project_workflow_scheme_assignments" +
+                " (project_id, workflow_scheme_id, assigned_by) VALUES (?, ?, ?)",
+            projectId,
+            schemeId,
+            ACTOR,
+        )
+    }
+
+    /** 미끼 스킴이 가리킬 워크플로우. 상태도 전환도 없이 FK 만 만족시키면 된다. */
+    private fun insertBareWorkflow(): UUID {
+        val id = UUID.randomUUID()
+        val key = "wf-decoy-${id.toString().take(8)}"
+        dsl.execute("INSERT INTO workflows (id, key, name) VALUES (?, ?, ?)", id, key, "미끼 워크플로우")
+        return id
+    }
 
     // ── ★ 이 FR 의 심장 ───────────────────────────────────────────────────────
 
@@ -615,6 +726,50 @@ class WorkflowPublishServiceIntegrationTest {
         assertThat(cache.findByKey(key)!!.states).hasSize(2)
 
         issueUsage.counts.clear()
+    }
+
+    // ── ★ 결선 인자 판정 — 스코프가 실제로 포트까지 가는가 ────────────────────
+    //
+    // 어댑터에 `project_id IN (…)` 을 넣어도 **서비스가 그 집합을 안 넘기면** 아무것도 달라지지
+    // 않는다. 빈 집합이면 어댑터가 0 을 돌려주어 발행이 그냥 통과하고(fail-open), 남의 프로젝트가
+    // 섞이면 종전처럼 과하게 막힌다. 둘 다 값이 아니라 **인자**에서만 드러난다.
+
+    @Test
+    fun `서비스가 그 워크플로우의 프로젝트 id 집합을 포트에 그대로 넘긴다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (alpha, beta) = attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.preview(ACTOR, key)
+
+        // 빠지는 상태는 done 하나 — 호출도 한 번이다.
+        assertThat(issueUsage.receivedProjectIds)
+            .describedAs("빠지는 상태가 있으면 포트가 반드시 불린다 — 0회면 판정 자체가 없다")
+            .hasSize(1)
+        assertThat(issueUsage.receivedProjectIds.single())
+            .describedAs("「비어 있지 않다」로 약하게 재면 남의 프로젝트가 섞여도 통과한다")
+            .containsExactlyInAnyOrder(alpha, beta)
+    }
+
+    @Test
+    fun `프로젝트 조회는 빠지는 상태 수와 무관하게 한 번만 한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            insertWorkflowStatus(conn, id, "review", "검토 $key", "IN_PROGRESS", 2)
+        }
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.preview(ACTOR, key)
+
+        assertThat(issueUsage.receivedProjectIds)
+            .describedAs("done·review 가 함께 빠진다 — 포트는 상태마다 불린다")
+            .hasSize(2)
+        assertThat(schemeAssignments.lookupCount)
+            .describedAs("associateWith 안에서 조회하면 상태 수만큼 3단 JOIN 이 돈다 (NFR N1)")
+            .isEqualTo(1)
     }
 
     // ── 거절 경로 ─────────────────────────────────────────────────────────────
