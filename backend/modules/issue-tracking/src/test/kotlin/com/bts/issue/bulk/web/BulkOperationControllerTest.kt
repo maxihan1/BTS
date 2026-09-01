@@ -1,4 +1,4 @@
-// BulkOperationController MockMvc 슬라이스 테스트 — POST 접수 202 / GET 조회 200·403·404 / POST 가용 전환 200·400
+// BulkOperationController MockMvc 슬라이스 테스트 — 인증 주체 actor 결선 / POST 접수 202 / GET 조회 200·403·404·401 / POST 가용 전환 200·400
 
 package com.bts.issue.bulk.web
 
@@ -14,12 +14,17 @@ import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
+import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.workflow.AvailableTransitionView
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -27,6 +32,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -47,7 +54,7 @@ import java.util.UUID
  * `@SpringBootApplication` 없이 `@ContextConfiguration` 으로 최소 컨텍스트를 직접 구성한다.
  * [BulkOperationApplicationService], [BulkOperationRepository], [BulkAvailableTransitionsService] 는 MockK stub 으로 대체한다.
  *
- * 테스트 케이스 12건.
+ * 테스트 케이스 18건.
  * - P-1. POST 정상(BULK_EDIT) → 202 + {bulkOperationId, status:"PENDING", totalCount}
  * - P-2. POST issueKeys 빈 목록 → service가 IllegalArgumentException → 400
  * - P-3. POST issueKeys 1000 초과 → service가 IllegalArgumentException → 400
@@ -61,6 +68,11 @@ import java.util.UUID
  * - AT-3. POST bulk-transitions/available issueKeys 빈 배열 → 400 + ISSUE_BULK_VALIDATION_FAILED
  * - AT-4. POST bulk-transitions/available issueKeys 1000 초과 → 400 + ISSUE_BULK_VALIDATION_FAILED
  * - AT-5. POST bulk-transitions/available 응답 항목이 transitionId·kind 를 싣는다 (ADR 2026-08-18 §D3)
+ * - A2. GET 컨트롤러 밖에서 발행자 UUID 로 큐잉된 STATUS_MIGRATION 작업도 본인이면 200
+ * - A3. GET 미인증 → 401 이고 저장소를 조회하지 않는다 (존재 probe 차단)
+ * - A4. POST 접수 actor 가 인증 주체 UUID 다
+ * - A5. POST 가용 전환 조회 actor 가 인증 주체 UUID 다
+ * - A6. GET 미인증 401 이 catch-all 로 500 이 되지 않는다
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BulkOperationControllerTest.TestMvcConfig::class])
@@ -111,8 +123,13 @@ class BulkOperationControllerTest {
 
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
 
-    /** 테스트에서 공통으로 사용하는 작업 actor UUID (SYSTEM_ACTOR_UUID와 동일). */
-    private val actorUuid: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    /**
+     * 테스트에서 공통으로 사용하는 인증 주체 겸 작업 owner UUID.
+     *
+     * 과거 컨트롤러 sentinel(`00000000-…-0001`) 을 **일부러 쓰지 않는다** — sentinel 을 그대로 두면
+     * actor 를 하드코딩한 구현에서도 우연히 일치해 소유자 판정이 초록으로 보인다.
+     */
+    private val actorUuid: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
 
     /** 다른 actor UUID — GET 403 검증용. */
     private val otherActorUuid: UUID = UUID.fromString("00000000-0000-0000-0000-000000000099")
@@ -123,6 +140,20 @@ class BulkOperationControllerTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // 이 슬라이스에는 Security 필터 체인이 없다 — CurrentActor 가 읽을 인증 주체를 직접 넣는다
+        // (형제 IssueControllerTest 와 같은 방식).
+        authenticateAs(actorUuid)
+    }
+
+    @AfterEach
+    fun tearDown() {
+        SecurityContextHolder.clearContext()
+    }
+
+    /** [SecurityContextHolder] 에 [uuid] 를 주체 이름으로 갖는 인증을 넣는다. */
+    private fun authenticateAs(uuid: UUID) {
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(uuid.toString(), null, emptyList())
     }
 
     // ── P-1: POST 정상 → 202 + {bulkOperationId, status, totalCount} ──────────
@@ -286,7 +317,7 @@ class BulkOperationControllerTest {
     @Test
     fun `GET bulk-operations 작업 id — 타인 actor이면 403`() {
         val fixedNow = Instant.parse("2026-06-02T00:00:00Z")
-        // operation.actorId 는 otherActorUuid — SYSTEM_ACTOR_UUID(actorUuid) 와 다름.
+        // operation.actorId 는 otherActorUuid — 인증 주체(actorUuid) 와 다름.
         val operation =
             BulkOperation(
                 id = BulkOperationId(operationUuid),
@@ -450,5 +481,130 @@ class BulkOperationControllerTest {
             // GLOBAL 은 `KIND__to` 규칙이라 "GLOBAL__done" 이다 — 엔진이 fromStateKey 에 채워 넣은
             // 현재 상태(open)로 재조립하면 같은 전환을 두 이름으로 부르게 된다.
             .andExpect(jsonPath("$.data.transitions[0].key").value("GLOBAL__done"))
+    }
+
+    // ── A2: GET 컨트롤러 밖에서 큐잉된 STATUS_MIGRATION — 발행자 본인이면 200 ─────────────
+
+    @Test
+    fun `GET bulk-operations 작업 id — 컨트롤러 밖에서 발행자 UUID 로 큐잉된 이관 작업도 본인이면 200`() {
+        val fixedNow = Instant.parse("2026-06-02T00:00:00Z")
+        // WorkflowStatusMigrationAdapter.enqueueStatusMigration 이 만드는 모양 —
+        // actorId 가 컨트롤러 sentinel 이 아니라 **실제 발행자 UUID** 이고 items 는 비어 있다.
+        // 이 한 건이 「이관 진행률 폴링이 100% 403」의 재현이다.
+        val operation =
+            BulkOperation(
+                id = BulkOperationId(operationUuid),
+                actorId = actorUuid,
+                type = BulkOperationType.STATUS_MIGRATION,
+                status = BulkOperationStatus.PENDING,
+                payload =
+                    BulkOperationPayload.StatusMigration(
+                        mappings = mapOf("legacy_open" to "open"),
+                        projectKeys = setOf("ATLAS"),
+                    ),
+                items = emptyList(),
+                totalCount = 0,
+                processedCount = 0,
+                succeededCount = 0,
+                failedCount = 0,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
+
+        every { bulkOperationRepository.findById(BulkOperationId(operationUuid)) } returns operation
+        every { bulkOperationRepository.findItemsByOperationId(BulkOperationId(operationUuid)) } returns emptyList()
+
+        mockMvc.perform(
+            get("/api/v1/bulk-operations/$operationUuid"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.operationType").value("STATUS_MIGRATION"))
+    }
+
+    // ── A3: GET 미인증 → 401 이고 저장소 조회보다 먼저 ───────────────────────────────────
+
+    @Test
+    fun `GET bulk-operations 작업 id — 미인증이면 401 이고 저장소를 조회하지 않는다`() {
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(
+            get("/api/v1/bulk-operations/$operationUuid"),
+        )
+            .andExpect(status().isUnauthorized)
+
+        // 인증 판정이 조회보다 앞서야 미인증자가 404·403 차이로 작업 존재를 probe 하지 못한다.
+        verify(exactly = 0) { bulkOperationRepository.findById(any()) }
+    }
+
+    // ── A4: POST 접수 actor 가 인증 주체다 ──────────────────────────────────────────────
+
+    @Test
+    fun `POST bulk-update — 접수 actor 가 인증 주체 UUID 다`() {
+        val actorSlot = slot<ActorId>()
+        every {
+            bulkOperationApplicationService.submit(capture(actorSlot), any<BulkUpdateRequest>())
+        } returns BulkOperationId(operationUuid)
+
+        val body =
+            mapOf(
+                "operationType" to "BULK_EDIT",
+                "issueKeys" to listOf("ATLAS-1"),
+                "editPayload" to mapOf("priority" to 3),
+                "transitionPayload" to null,
+            )
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-update")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isAccepted)
+
+        // 고정 sentinel 로 접수하면 감사 추적이 거짓이 되고, 이후 누구나 남의 작업을 조회하게 된다.
+        assertThat(actorSlot.captured).isEqualTo(ActorId(actorUuid))
+    }
+
+    // ── A5: 가용 전환 조회 actor 가 인증 주체다 ─────────────────────────────────────────
+
+    @Test
+    fun `POST bulk-transitions available — 조회 actor 가 인증 주체 UUID 다`() {
+        val actorSlot = slot<ActorId>()
+        every {
+            bulkAvailableTransitionsService.availableCommonTransitions(capture(actorSlot), any())
+        } returns
+            BulkAvailableTransitionsResult(
+                transitions = emptyList(),
+                unresolvedIssueKeys = emptyList(),
+            )
+
+        val body = mapOf("issueKeys" to listOf("ATLAS-1"))
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-transitions/available")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+
+        // 고정 sentinel 은 권한 필터를 무조건 통과해 호출자에게 허용되지 않은 전환까지 실어 보낸다.
+        assertThat(actorSlot.captured).isEqualTo(ActorId(actorUuid))
+    }
+
+    // ── A6: 401 이 catch-all 로 500 이 되지 않는다 ──────────────────────────────────────
+
+    @Test
+    fun `GET bulk-operations 작업 id — 미인증 401 이 catch-all 500 으로 변질되지 않는다`() {
+        SecurityContextHolder.clearContext()
+
+        // BulkOperationExceptionHandler 는 @ExceptionHandler(Exception::class) catch-all 을 갖는다.
+        // @RestControllerAdvice 가 Spring 의 ResponseStatusExceptionResolver 보다 먼저 실행되므로
+        // ResponseStatusException 전용 핸들러가 없으면 401 이 500 으로 바뀐다 (IssueExceptionHandler B1 과 같은 결함).
+        mockMvc.perform(
+            get("/api/v1/bulk-operations/$operationUuid"),
+        )
+            .andExpect(status().isUnauthorized)
+            // 상수가 아니라 문자열 리터럴로 대조한다 — 아직 없는 상수를 참조하면 파일이 컴파일되지 않아
+            // 「컴파일 red」가 「행위 red」를 가린다. 리터럴이면 코드 이름이 바뀌어도 여기서 걸린다.
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_BULK_UNAUTHENTICATED"))
     }
 }
