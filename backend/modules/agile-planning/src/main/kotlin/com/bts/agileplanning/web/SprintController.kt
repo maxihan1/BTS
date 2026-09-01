@@ -87,6 +87,7 @@ class SprintController(
                 goal = request.goal,
                 startDate = request.startDate,
                 endDate = request.endDate,
+                boardId = request.boardId,
             )
         val location = URI.create("/api/v1/sprints/${sprint.id}")
         return ResponseEntity.created(location).body(DataResponse(SprintResponse.from(sprint)))

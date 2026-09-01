@@ -5,6 +5,7 @@ package com.bts.agileplanning.web.dto
 import jakarta.validation.constraints.NotBlank
 import org.openapitools.jackson.nullable.JsonNullable
 import java.time.LocalDate
+import java.util.UUID
 
 /**
  * 스프린트 생성 요청 바디.
@@ -16,6 +17,7 @@ import java.time.LocalDate
  * @property goal 스프린트 목표 설명. null 허용.
  * @property startDate 스프린트 시작일. null 이면 미지정.
  * @property endDate 스프린트 종료일. null 이면 미지정.
+ * @property boardId 스프린트를 붙일 보드 UUID. null 이면 서비스가 그 프로젝트의 스크럼 보드로 폴백한다.
  */
 data class CreateSprintRequest(
     @field:NotBlank
@@ -25,6 +27,7 @@ data class CreateSprintRequest(
     val goal: String? = null,
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
+    val boardId: UUID? = null,
 )
 
 /**
