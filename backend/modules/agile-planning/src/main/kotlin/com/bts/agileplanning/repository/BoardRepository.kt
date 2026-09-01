@@ -39,6 +39,8 @@ import java.util.UUID
  * @param dsl jOOQ DSLContext
  */
 @Repository
+// boards/board_columns 한 Aggregate 의 영속 연산 묶음이라 쪼개면 두 리포지토리가 같은 테이블을 나눠 갖는다.
+@Suppress("TooManyFunctions")
 class BoardRepository(
     private val dsl: DSLContext,
 ) {

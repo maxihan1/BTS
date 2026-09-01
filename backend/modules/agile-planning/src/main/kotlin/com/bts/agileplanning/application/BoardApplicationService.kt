@@ -88,6 +88,9 @@ data class BoardPlacementResult(
  *   거기에 스프린트를 알리면 토폴로지 변경(T3)이 된다 — 재료가 이 BC 안에 이미 있어 그럴 이유가 없다.
  */
 @Service
+// 보드 CRUD(생성·조회·목록·갱신·삭제) + 카드 이동 + WIP + 스크럼 분기가 한 Aggregate 의 유스케이스라
+// 쪼개면 트랜잭션 경계가 갈린다. 형제 BoardController 도 같은 이유로 억제한다.
+@Suppress("TooManyFunctions")
 class BoardApplicationService(
     private val workflowStateCatalog: WorkflowStateCatalog,
     private val boardIssueLookupPort: BoardIssueLookupPort,
@@ -270,15 +273,17 @@ class BoardApplicationService(
      * [ProjectKey.of] 가 던지면 **읽기만 하던 요청이 500 으로 죽는다**.
      */
     private fun healColumnsIfEmpty(board: Board): Board {
-        if (board.columns.isNotEmpty()) return board
-        if (!ProjectKey.REGEX.matches(board.projectKey)) return board
+        // 규격 확인이 여기 붙어 있는 이유는 위 KDoc 참조 — 규격 밖 키로 만들어진 보드의 조회를 죽이지 않는다.
+        if (board.columns.isNotEmpty() || !ProjectKey.REGEX.matches(board.projectKey)) return board
 
         val states = workflowStateCatalog.listStates(ProjectKey.of(board.projectKey), null)
-        if (states.isEmpty()) return board
-
-        boardRepository.seedColumns(board.id, BoardCardPlacement.seedColumns(states))
-        log.debug("컬럼 0개 보드 자가 치유 — boardId={}", board.id)
-        return boardRepository.findById(board.id) ?: board
+        return if (states.isEmpty()) {
+            board
+        } else {
+            boardRepository.seedColumns(board.id, BoardCardPlacement.seedColumns(states))
+            log.debug("컬럼 0개 보드 자가 치유 — boardId={}", board.id)
+            boardRepository.findById(board.id) ?: board
+        }
     }
 
     /**

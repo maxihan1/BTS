@@ -78,7 +78,8 @@ class SprintSchemaMigrationTest {
                 "created_at",
                 "updated_at",
                 "deleted_at",
-                "board_id",  // V506 — 소속 보드(NOT NULL + FK)
+                // V506 — 소속 보드(NOT NULL + FK)
+                "board_id",
             )
 
         // sprint_issues 가 V503 에서 보유해야 하는 3개 컬럼.

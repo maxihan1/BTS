@@ -73,10 +73,11 @@ class SprintApplicationServiceTest {
         resolver: IssuePermissionResolver = allowAllResolver(),
         repo: SprintRepository = mockk(relaxed = true),
         lookupPort: BoardIssueLookupPort = mockk(relaxed = true),
-        boardService: BoardApplicationService = mockk(relaxed = true) {
-            // 보드를 안 준 create 요청이 붙을 자리. 실제 해소는 BoardApplicationService 의 책임이다.
-            every { ensureScrumBoard(any()) } returns boardId
-        },
+        boardService: BoardApplicationService =
+            mockk(relaxed = true) {
+                // 보드를 안 준 create 요청이 붙을 자리. 실제 해소는 BoardApplicationService 의 책임이다.
+                every { ensureScrumBoard(any()) } returns boardId
+            },
     ): SprintApplicationService = SprintApplicationService(resolver, repo, lookupPort, boardService)
 
     // ── create ────────────────────────────────────────────────────────────────

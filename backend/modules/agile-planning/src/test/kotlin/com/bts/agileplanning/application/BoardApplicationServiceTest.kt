@@ -66,6 +66,8 @@ import java.util.UUID
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
 @Import(AgilePlanningTestcontainersConfig::class)
+// 서비스 전 시나리오를 단일 클래스로 커버한다 — 형제 SprintApplicationServiceTest 와 같은 결정.
+@Suppress("LargeClass")
 class BoardApplicationServiceTest {
     @Autowired
     private lateinit var boardRepository: BoardRepository
@@ -105,6 +107,7 @@ class BoardApplicationServiceTest {
      * [BoardRepository] 는 Testcontainers DB 에 실제로 접근하는 Spring Bean 을 공유하여
      * DB 영속 동작을 검증한다.
      */
+    @Suppress("LongParameterList") // 서비스 생성자 의존 수와 1:1 — 줄이면 어느 포트를 바꿨는지 흐려진다
     private fun serviceWith(
         catalog: WorkflowStateCatalog = mockk(relaxed = true),
         lookup: BoardIssueLookupPort = mockk(relaxed = true),

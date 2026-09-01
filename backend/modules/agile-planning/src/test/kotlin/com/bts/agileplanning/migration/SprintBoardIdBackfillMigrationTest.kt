@@ -103,10 +103,10 @@ class SprintBoardIdBackfillMigrationTest {
             conn().use { c ->
                 c.autoCommit = false
                 seedKanbanBoardWithColumns(c)
-                seedSprint(c, activeSprintId, "BKFL", "Sprint 1", status = "ACTIVE", deleted = false)
-                seedSprint(c, deletedSprintId, "BKFL", "Sprint 0", status = "COMPLETED", deleted = true)
-                seedSprint(c, orphanSprintId, "NOBD", "Sprint 1", status = "PLANNED", deleted = false)
-                seedSprint(c, allDeletedSprintId, "ALLDEL", "Sprint 1", status = "COMPLETED", deleted = true)
+                seedSprint(c, activeSprintId, "BKFL", status = "ACTIVE", deleted = false)
+                seedSprint(c, deletedSprintId, "BKFL", status = "COMPLETED", deleted = true)
+                seedSprint(c, orphanSprintId, "NOBD", status = "PLANNED", deleted = false)
+                seedSprint(c, allDeletedSprintId, "ALLDEL", status = "COMPLETED", deleted = true)
                 c.commit()
             }
 
@@ -115,7 +115,11 @@ class SprintBoardIdBackfillMigrationTest {
         }
 
         private fun conn(): Connection =
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+            DriverManager.getConnection(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
 
         private fun seedKanbanBoardWithColumns(c: Connection) {
             c.prepareStatement("INSERT INTO boards (id, project_key, name) VALUES (?, ?, ?)").use { stmt ->
@@ -140,11 +144,11 @@ class SprintBoardIdBackfillMigrationTest {
             }
         }
 
+        /** 이름은 어느 단언도 보지 않으므로 id 에서 파생한다. */
         private fun seedSprint(
             c: Connection,
             id: UUID,
             projectKey: String,
-            name: String,
             status: String,
             deleted: Boolean,
         ) {
@@ -154,7 +158,7 @@ class SprintBoardIdBackfillMigrationTest {
             ).use { stmt ->
                 stmt.setObject(1, id)
                 stmt.setString(2, projectKey)
-                stmt.setString(3, name)
+                stmt.setString(3, "Sprint ${id.toString().take(4)}")
                 stmt.setString(4, status)
                 stmt.execute()
             }
@@ -163,29 +167,35 @@ class SprintBoardIdBackfillMigrationTest {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
+    // 커넥션을 닫으면 statement 와 result set 도 함께 닫힌다 — 중첩 use 를 쌓지 않는다.
     private fun <T> queryOne(
         sql: String,
         vararg params: Any?,
         read: (java.sql.ResultSet) -> T,
-    ): T? =
+    ): T? {
         conn().use { c ->
-            c.prepareStatement(sql).use { stmt ->
-                params.forEachIndexed { i, p -> stmt.setObject(i + 1, p) }
-                stmt.executeQuery().use { rs -> if (rs.next()) read(rs) else null }
-            }
+            val rs = prepared(c, sql, params).executeQuery()
+            return if (rs.next()) read(rs) else null
         }
+    }
 
     private fun queryStrings(
         sql: String,
         vararg params: Any?,
-    ): List<String> =
+    ): List<String> {
         conn().use { c ->
-            c.prepareStatement(sql).use { stmt ->
-                params.forEachIndexed { i, p -> stmt.setObject(i + 1, p) }
-                stmt.executeQuery().use { rs ->
-                    generateSequence { if (rs.next()) rs.getString(1) else null }.toList()
-                }
-            }
+            val rs = prepared(c, sql, params).executeQuery()
+            return generateSequence { if (rs.next()) rs.getString(1) else null }.toList()
+        }
+    }
+
+    private fun prepared(
+        c: Connection,
+        sql: String,
+        params: Array<out Any?>,
+    ): java.sql.PreparedStatement =
+        c.prepareStatement(sql).also { stmt ->
+            params.forEachIndexed { i, p -> stmt.setObject(i + 1, p) }
         }
 
     private fun boardIdOf(sprintId: UUID): UUID? =
