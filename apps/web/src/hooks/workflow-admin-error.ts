@@ -45,6 +45,8 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   //     다시 불러와 발행해도 같은 409 가 반복된다. 출구는 초안 폐기뿐이다.
   WORKFLOW_VERSION_CONFLICT: '다른 사용자가 먼저 발행했습니다. 초안을 폐기하고 다시 편집하세요',
   WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
+  // 축은 여덟이지만 코드는 하나다 — 무엇을 고쳐야 하는지는 서버 메시지가 싣는다.
+  WORKFLOW_MIGRATION_INVALID_MAPPING: '옮길 상태 지정이 올바르지 않습니다',
   //   ★ 「초안이 없다」를 범용 400 문구로 접으면 「요청이 잘못됐다」로 보인다 — 관리자가 할 일이 다르다.
   WORKFLOW_DRAFT_NOT_FOUND: '편집 중인 초안이 없습니다',
   // StatusExceptionHandler

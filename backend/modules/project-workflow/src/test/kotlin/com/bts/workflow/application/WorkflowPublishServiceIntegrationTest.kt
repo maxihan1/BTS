@@ -498,28 +498,35 @@ class WorkflowPublishServiceIntegrationTest {
      *
      * F16 픽스처다. 카탈로그에 없으면 `requireStatusCatalog` 가 먼저 잡아 F16 판정까지 오지도
      * 못하므로, 「카탈로그에는 있고 live 편성에는 없다」는 상태를 일부러 만든다.
+     *
+     * ### ★키는 호출자가 유일하게 만들어 넘긴다
+     * 카탈로그는 **컨테이너 전체가 공유하는 전역 표**다. `review` 같은 흔한 키를 고정으로 쓰면
+     * 시드나 다른 테스트가 먼저 심어 둔 카테고리와 어긋나고, 그 순간 `requireStatesMatchCatalog`
+     * 가 먼저 400 을 던져 **F16 판정에 도달조차 못 한다**(실측: `review` 는 `IN_PROGRESS` 였다).
+     * 그래서 `ON CONFLICT` 로 덮지 않는다 — 덮으면 남의 상태를 조용히 바꾼다.
      */
-    private fun insertCatalogOnlyStatus(key: String) {
-        dsl.execute(
-            "INSERT INTO statuses (key, name, category) VALUES (?, ?, 'TODO')" +
-                " ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name",
-            key,
-            "검토",
-        )
+    private fun insertCatalogOnlyStatus(
+        statusKey: String,
+        name: String,
+    ) {
+        dsl.execute("INSERT INTO statuses (key, name, category) VALUES (?, ?, 'TODO')", statusKey, name)
     }
 
-    /** `done` 을 빼면서 **초안에만 있는** 신규 상태 `review` 를 더하는 초안. */
-    private fun draftAddingReview(key: String) =
-        WorkflowDraftDefinition(
-            key = key,
-            name = "신규 상태를 더한 초안",
-            states =
-                listOf(
-                    DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0),
-                    DraftStateDto(key = "review", name = "검토", category = "TODO", displayOrder = 1),
-                ),
-            transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")),
-        )
+    /** `done` 을 빼면서 **초안에만 있는** 신규 상태를 더하는 초안. 카테고리는 카탈로그와 맞춘다. */
+    private fun draftAddingStatus(
+        key: String,
+        statusKey: String,
+        statusName: String,
+    ) = WorkflowDraftDefinition(
+        key = key,
+        name = "신규 상태를 더한 초안",
+        states =
+            listOf(
+                DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0),
+                DraftStateDto(key = statusKey, name = statusName, category = "TODO", displayOrder = 1),
+            ),
+        transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")),
+    )
 
     /**
      * 이 워크플로우를 default 로 가리키면서 **형제 워크플로우도** 이슈 타입별로 가리키는 스킴.
@@ -1136,14 +1143,16 @@ class WorkflowPublishServiceIntegrationTest {
         val key = seedWorkflow()
         val id = workflowId(key)
         attachTwoProjects(id)
-        insertCatalogOnlyStatus("review")
-        draftRepository.upsert(id, draftAddingReview(key), baseVersion = 0, updatedBy = null)
+        // 카탈로그는 컨테이너 전역이라 흔한 키를 고정으로 쓰면 남이 심은 카테고리와 어긋난다.
+        val pending = "migr-pending-${UUID.randomUUID().toString().take(8)}"
+        insertCatalogOnlyStatus(pending, "검토 대기")
+        draftRepository.upsert(id, draftAddingStatus(key, pending, "검토 대기"), baseVersion = 0, updatedBy = null)
 
         assertThatThrownBy {
-            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "review")))
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", pending)))
         }
             .isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
-            .hasMessageContaining("review")
+            .hasMessageContaining(pending)
 
         assertThat(migrationPort.received)
             .describedAs("발행 전에 큐잉되면 이슈가 live 에 없는 상태로 옮겨진다")

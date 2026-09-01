@@ -125,6 +125,29 @@ class WorkflowInvalidRequestException(
 ) : RuntimeException("Invalid workflow request for '$workflowKey': $reason", cause)
 
 /**
+ * 상태 이관 요청의 매핑이 규칙을 어겼을 때 던진다. → 400 `WORKFLOW_MIGRATION_INVALID_MAPPING`
+ *
+ * ### 왜 코드를 하나로 모으는가
+ * 위반 축은 여럿이다 — 빠지지 않는 출발지 · 초안에 없는 도착지 · live 편성에 없는 도착지 ·
+ * 빈 목록 · 중복 출발지 · 범위 없음 · 형제 워크플로우 · 상한 초과. 축마다 코드를 따로 내면
+ * 프론트의 **양방향 차집합 가드**(`workflow-admin-error.test.ts`)가 축 수만큼 행을 요구하고,
+ * 축이 하나 늘 때마다 프론트가 red 로 막힌다. 어느 축인지는 [reason] 이 싣는다 — 사람이 읽을
+ * 곳은 메시지지 코드가 아니다.
+ *
+ * ### 왜 [WorkflowInvalidRequestException] 을 재사용하지 않는가
+ * 그쪽은 **초안 자체**가 틀렸다는 뜻이라 화면이 편집기로 돌려보낸다. 이 예외는 초안은 멀쩡하고
+ * **이관 매핑만** 틀린 것이라 화면이 이관 모달에 머물러야 한다. 둘을 한 코드로 묶으면 화면이
+ * 어디로 보낼지 고를 수 없다.
+ *
+ * @property workflowKey 이관을 요청받은 워크플로우 키.
+ * @property reason 어느 축이 왜 막혔는지. 응답 `detail` 로 그대로 나간다.
+ */
+class WorkflowMigrationInvalidMappingException(
+    val workflowKey: String,
+    val reason: String,
+) : RuntimeException("Invalid status migration mapping for '$workflowKey': $reason")
+
+/**
  * 모호 전환 후보 1건.
  *
  * 예외와 409 응답이 함께 쓰는 최소 식별 정보다. 호출자는 [transitionId] 를 다시 실어 재요청하고,

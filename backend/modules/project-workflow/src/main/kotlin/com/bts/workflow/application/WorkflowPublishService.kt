@@ -11,6 +11,7 @@ import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowMigrationInvalidMappingException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
 import com.bts.workflow.domain.exception.WorkflowVersionConflictException
@@ -184,8 +185,14 @@ class WorkflowPublishService(
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
         val (workflowId, definition) = prepareDraft(key, baseVersion)
 
-        val removed = removedStatusKeys(workflowId, definition)
-        val projectKeys = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.key }.toSet()
+        // 편성 조회는 한 번만 한다 — `removed` 와 F16 의 도착지 판정이 같은 집합을 근거로 삼는다.
+        val live = publishRepository.findComposedStatusKeys(workflowId)
+        val removed = live - definition.states.map { it.key }.toSet()
+        val projects = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId)
+        val projectKeys = projects.map { it.key }.toSet()
+
+        requireSoundMappings(key, workflowId, definition, live, removed, projects.map { it.id }.toSet(), mappings)
+
         val bulkOperationId =
             issueStatusMigrationPort.enqueueStatusMigration(
                 StatusMigrationCommand(actorUserId = actorId, projectKeys = projectKeys, mappings = mappings),
@@ -392,7 +399,111 @@ class WorkflowPublishService(
             throw WorkflowPublishMappingRequiredException(key, pending)
         }
     }
+
+    /**
+     * 이관 매핑이 안전한지 판정한다. **포트를 부르기 전에** 전부 끝난다.
+     *
+     * ### 왜 큐잉 뒤에 검사하면 안 되는가
+     * 어댑터의 큐잉은 pgmq 에 메시지를 넣는다. 예외로 트랜잭션을 되감아도 그 메시지가 남는
+     * 경로가 있어(같은 이유로 `migrate` 의 CAS 판정도 포트 미호출을 단언한다) 「던졌으니 안전」이
+     * 성립하지 않는다. 그래서 이 함수가 통과하기 전에는 포트에 아무것도 닿지 않는다.
+     *
+     * ### 순서가 load-bearing 이다
+     * 값싼 판정(목록 모양)을 먼저 태우고 DB 를 읽는 것(F11 형제 조회 · F14 건수)을 뒤에 둔다.
+     * 뒤집으면 빈 목록 하나에도 3단 JOIN 과 상태별 COUNT 가 나간다.
+     *
+     * @param live 지금 편성에 있는 상태 키. 도착지가 발행 전에도 실재하는지 재는 근거다.
+     * @param removed 이 초안이 빼는 상태 키. 출발지로 허용되는 유일한 집합이다.
+     * @param projectIds 이관 범위. 비면 어댑터의 `require` 가 500 으로 나가므로 여기서 400 을 낸다.
+     * @throws WorkflowMigrationInvalidMappingException 어느 축이든 어겼을 때. 축은 메시지가 싣는다.
+     */
+    private fun requireSoundMappings(
+        key: String,
+        workflowId: UUID,
+        definition: WorkflowDraftDefinition,
+        live: Set<String>,
+        removed: Set<String>,
+        projectIds: Set<UUID>,
+        mappings: List<StatusMigrationMapping>,
+    ) {
+        fun reject(reason: String): Nothing = throw WorkflowMigrationInvalidMappingException(key, reason)
+
+        // E2 — 빈 목록은 「아무것도 안 옮기는 일괄작업」을 만든다. 관리자는 202 를 받고도 발행이
+        //      계속 409 인 이유를 알 수 없다.
+        if (mappings.isEmpty()) {
+            reject("옮길 매핑이 없다. 빠지는 상태마다 옮길 곳을 정할 것")
+        }
+
+        // E4 — 같은 출발지가 두 번 오면 어느 도착지가 이기는지 목록 순서가 정한다.
+        val duplicated = mappings.groupingBy { it.fromStatusKey }.eachCount().filterValues { it > 1 }.keys
+        if (duplicated.isNotEmpty()) {
+            reject("출발 상태 ${duplicated.joinToString(" · ")} 가 여러 번 왔다. 상태마다 한 번만 정할 것")
+        }
+
+        // F7 — 빠지지도 않는 상태를 출발지로 실으면 멀쩡한 이슈가 통째로 옮겨진다.
+        val notRemoved = mappings.map { it.fromStatusKey }.filterNot { it in removed }
+        if (notRemoved.isNotEmpty()) {
+            reject("상태 ${notRemoved.joinToString(" · ")} 는 이 초안에서 빠지지 않는다. 옮길 대상이 아니다")
+        }
+
+        // F8 — 도착지가 초안에 없으면 발행 직후 그 이슈들이 다시 「빠지는 상태에 남은 이슈」가 되어
+        //      발행이 영원히 막힌다.
+        val draftKeys = definition.states.map { it.key }.toSet()
+        val notInDraft = mappings.map { it.toStatusKey }.filterNot { it in draftKeys }
+        if (notInDraft.isNotEmpty()) {
+            reject("도착 상태 ${notInDraft.joinToString(" · ")} 가 초안에 없다")
+        }
+
+        // F16 — 이관은 발행보다 먼저 실행된다(D2 로 둘을 쪼갠 부작용). 도착지가 아직 편성에 없으면
+        //       그 사이 이슈들이 이 워크플로우가 모르는 상태에 놓인다.
+        val notLive = mappings.map { it.toStatusKey }.filterNot { it in live }
+        if (notLive.isNotEmpty()) {
+            reject(
+                "도착 상태 ${notLive.joinToString(" · ")} 는 아직 발행되지 않았다. " +
+                    "초안에만 있는 상태로는 옮길 수 없다",
+            )
+        }
+
+        // F13 — 범위가 비면 어댑터의 `require` 가 터지고, 이 BC 에 IAE advice 가 없어 500 이 된다.
+        if (projectIds.isEmpty()) {
+            reject("이 워크플로우를 쓰는 프로젝트가 없다. 스킴에 먼저 연결할 것")
+        }
+
+        // F11 — 이관 워커가 이슈 타입 축을 안 본다(장부 145). 형제가 있으면 그 워크플로우의 이슈까지
+        //       옮겨지므로 조합 자체를 열지 않는다. fail-closed.
+        if (schemeAssignmentRepository.hasSiblingWorkflowInAssignedSchemes(workflowId)) {
+            reject(
+                "이 워크플로우를 쓰는 스킴이 다른 워크플로우도 함께 쓴다. " +
+                    "이관이 그 워크플로우의 이슈까지 옮기므로 허용하지 않는다",
+            )
+        }
+
+        // F14 — 상한 초과는 출구 없는 막다른 길이다. 워커가 아무것도 적재하지 않고 FAILED 로 끝나
+        //       이슈는 한 건도 안 옮겨졌는데 발행은 계속 409 다.
+        val targets = mappings.sumOf { issueStatusUsagePort.countIssuesInStatus(it.fromStatusKey, projectIds) }
+        if (targets > STATUS_MIGRATION_MAX_TARGETS) {
+            reject(
+                "옮길 이슈가 $targets 건으로 한 번에 처리할 수 있는 $STATUS_MIGRATION_MAX_TARGETS 건을 넘는다. " +
+                    "범위를 나눠 요청할 것",
+            )
+        }
+    }
 }
+
+/**
+ * 한 번의 이관이 담을 수 있는 이슈 수의 상한.
+ *
+ * ### 왜 issue-tracking 의 상수를 직접 쓰지 않는가
+ * 그 값(`com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE`)은 **다른 BC** 소유다. 직접 import 하면
+ * BC 격리가 깨지고, 포트에 조회를 더하는 것은 `IssueStatusMigrationPort` KDoc 이 「조회 메서드를
+ * 만들지 않는다」로 막았다(shared-kernel 은 T3 표면이기도 하다).
+ *
+ * ### 그럼 두 값이 갈라지지 않는가
+ * 갈라진다 — 그것이 `[[two-lists-never-check-each-other]]` 양식이다. 그래서 원본을 읽어 대조하는
+ * 판별식을 짝으로 둔다(`StatusMigrationMaxTargetsContractTest`). 값을 복제하는 것 자체는 막을 수
+ * 없으므로, **갈라진 것을 CI 가 즉시 잡게** 하는 쪽으로 닫았다.
+ */
+const val STATUS_MIGRATION_MAX_TARGETS: Long = 1000
 
 /**
  * 전처리를 통과한 초안. [WorkflowPublishService.prepareDraft] 의 결과다.

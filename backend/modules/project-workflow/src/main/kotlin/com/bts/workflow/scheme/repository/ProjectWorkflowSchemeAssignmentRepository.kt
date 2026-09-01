@@ -70,6 +70,11 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     private val P_DELETED_AT = DSL.field("projects.deleted_at", java.time.OffsetDateTime::class.java)
     private val P_ARCHIVED_AT = DSL.field("projects.archived_at", java.time.OffsetDateTime::class.java)
 
+    /** 형제 매핑을 자기 참조로 훑기 위한 별칭. 별칭이 없으면 서브쿼리와 바깥이 같은 테이블로 접힌다. */
+    private val SIBLING = DSL.table("workflow_scheme_issue_type_mappings").`as`("sibling")
+    private val S_SCHEME_ID = DSL.field("sibling.scheme_id", Long::class.java)
+    private val S_WORKFLOW_ID = DSL.field("sibling.workflow_id", UUID::class.java)
+
     /**
      * 프로젝트에 워크플로우 스킴을 할당하거나 기존 할당을 교체한다.
      *
@@ -195,6 +200,38 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
                     key = record.get(P_KEY) ?: error("projects.key is null — NOT NULL 제약 위반"),
                 )
             }
+
+    /**
+     * 이 워크플로우가 실린 스킴이 **다른 워크플로우도** 가리키는지 판정한다.
+     *
+     * ## 왜 이 판정이 필요한가 — 이관 워커가 이슈 타입 축을 안 본다
+     * 스킴은 `(scheme_id, issue_type_id) → workflow_id` 인데 이관 대상 조회
+     * (`BulkOperationRepository.statusMigrationTargets`)는 `current_state_key`·`deleted_at`·
+     * `project_id` 만 건다. 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 **WF1 이관이 WF2 이슈까지
+     * 옮긴다.** 과다 집계(읽기)는 안전하지만 과다 이동은 데이터 손상이다.
+     *
+     * 그 축을 포트에 더하는 것은 이 PR 의 범위 밖이라(shared-kernel 은 T3 표면) **조합 자체를
+     * 열지 않는다** — 형제가 있으면 이관을 거부한다. 장부 145 가 해소되면 이 가드를 걷는다.
+     *
+     * ## 왜 별칭이 필요한가
+     * 같은 표를 자기 자신과 대조하므로 별칭 없이 쓰면 서브쿼리 조건이 바깥 조건과 한 테이블로
+     * 접혀 **항상 거짓**이 된다(`workflow_id = X AND workflow_id <> X`).
+     *
+     * @param workflowId 이관하려는 워크플로우 UUID.
+     * @return 같은 스킴에 다른 워크플로우 매핑이 하나라도 있으면 true. 스킴에 안 붙어 있으면 false.
+     */
+    @Transactional(readOnly = true)
+    fun hasSiblingWorkflowInAssignedSchemes(workflowId: UUID): Boolean =
+        dsl.fetchExists(
+            DSL
+                .selectOne()
+                .from(SIBLING)
+                .where(
+                    S_SCHEME_ID.`in`(
+                        DSL.select(M_SCHEME_ID).from(MAPPINGS).where(M_WORKFLOW_ID.eq(workflowId)),
+                    ),
+                ).and(S_WORKFLOW_ID.ne(workflowId)),
+        )
 
     // ── 내부 변환 ─────────────────────────────────────────────────────────────
 
