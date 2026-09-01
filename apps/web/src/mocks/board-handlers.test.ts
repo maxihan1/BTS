@@ -2,6 +2,12 @@
 import { server } from '@/test/server'
 import { afterEach, describe, expect, it } from 'vitest'
 import { boardHandlers } from './board-handlers'
+// FR-BD-04 D6 Task 5 — 보드 생성 응답을 실제 API 함수로 파싱해 검증한다.
+// 이 파일의 다른 테스트처럼 핸들러 JSON 만 직접 읽으면 boardCreatedSchema 를 타지 않아
+// 응답에서 필드가 통째로 빠져도 런타임 테스트가 하나도 깨지지 않는다(Task 1 실측).
+// audit-log-handlers.test.ts(fetchAuditLogs) · workflow-admin-handlers.test.ts(fetchWorkflows)가
+// 같은 관례로 API 함수를 직접 호출한다.
+import { createBoard, boardCreatedSchema } from '@/api/boards'
 import {
   resetBoardStore,
   seedBoard,
@@ -72,6 +78,8 @@ interface BoardCreated {
   boardId: string
   projectKey: string
   name: string
+  /** 보드 종류. 백엔드 `BoardCreatedResponse.boardType` 은 non-null 이다 (FR-BD-04 D6). */
+  boardType: 'SCRUM' | 'KANBAN'
   columns: Array<Omit<BoardColumn, 'cards'>>
 }
 
@@ -224,6 +232,39 @@ describe('POST /api/v1/boards', () => {
     const body = (await res.json()) as DataResponse<BoardSummary[]>
     expect(body.data).toHaveLength(1)
     expect(body.data[0]?.name).toBe('새 보드')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/boards — 보드 종류 (FR-BD-04 D6)
+//
+// 이 describe 만이 `createBoard()` 를 거쳐 boardCreatedSchema 파싱을 실제로 통과한다.
+// 위 describe 들처럼 핸들러 JSON 만 직접 읽으면 응답에서 필드가 빠져도 런타임이 조용히 초록이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/v1/boards — 보드 종류 (FR-BD-04 D6)', () => {
+  it('boardType=SCRUM 요청 → 응답이 SCRUM 을 되싣는다 (boardCreatedSchema 파싱 경유)', async () => {
+    const created = await createBoard('ATLAS', '스크럼 보드', 'SCRUM')
+    expect(created.boardType).toBe('SCRUM')
+  })
+
+  it('boardType 미전송 → KANBAN (백엔드 BoardCreateRequest.boardType 이 선택 인자라 같은 기본값)', async () => {
+    const res = await postBoard({ projectKey: 'ATLAS', name: '기본 보드' })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as DataResponse<unknown>
+    // 스키마로 파싱해 「필드가 아예 없음」과 「KANBAN 임」을 한 단언으로 가른다.
+    expect(boardCreatedSchema.parse(body.data).boardType).toBe('KANBAN')
+  })
+
+  it('고른 종류가 store 에 남아 GET 상세에 실린다 (stateful)', async () => {
+    const created = await createBoard('ATLAS', '스크럼 보드', 'SCRUM')
+
+    const res = await getBoard(created.boardId)
+    expect(res.status).toBe(200)
+    // 백엔드 BoardDetailResponse.boardType(BoardResponses.kt:274)도 non-null 이다.
+    // 프론트 boardDetailSchema 가 이 필드를 소비하는 것은 PR ③ 소관이라 JSON 으로만 확인한다.
+    const body = (await res.json()) as DataResponse<{ boardType?: string }>
+    expect(body.data.boardType).toBe('SCRUM')
   })
 })
 
