@@ -39,9 +39,9 @@ export interface StoredSprint {
 export interface StoredBacklogProject {
   /** 프로젝트 키. 예: "ATLAS" */
   projectKey: string
-  /** 스프린트 미할당 이슈 (rank 순) */
+  /** 스프린트 미할당 이슈 (rank 순). **보드 축이 없다** — 백로그 칸은 보드별로 계산된다(E12) */
   backlog: BacklogIssue[]
-  /** 스프린트별 이슈 묶음 */
+  /** 스프린트별 이슈 묶음. 보드 축은 {@link StoredSprint.boardId} 에 있다 */
   sprints: StoredSprint[]
   /** 카드 수 cap 초과 여부 */
   truncated: boolean
@@ -115,6 +115,17 @@ export function computeRank(previousRank: string | null, nextRank: string | null
 /**
  * 백로그 store — projectKey → StoredBacklogProject.
  * mutation 핸들러가 변이하고, GET 핸들러가 읽어 응답을 구성한다.
+ *
+ * ### ★ 왜 스프린트에 `boardId` 가 붙었나 (FR-BD-04 · PR ③)
+ * 이 store 는 **projectKey 하나로만 인덱싱**돼 있었다. 즉 자료구조에 **board 축이 아예 없어서**
+ * `GET /backlog?board={uuid}` 를 재현할 방법이 없었다 — 핸들러가 파라미터를 읽어도 무엇을
+ * 걸러야 하는지 알 수 없으니, 무엇을 보내든 같은 응답이 돌아오는 목만 만들 수 있었다.
+ * 그 상태에서 화면에 보드 축을 배선하면 **유닛도 E2E 도 전부 초록**이 된다.
+ *
+ * 그래서 키를 `projectKey|boardId` 로 바꾸는 대신 **{@link StoredSprint} 에 축을 하나 더했다**.
+ * 백엔드도 같은 모양이다 — `sprints.board_id` 컬럼이 있고 백로그(미할당 이슈)는 여전히
+ * 프로젝트 단위이며, 보드별 백로그 칸은 **차집합으로 계산**된다(E12). store 를 보드로 쪼개면
+ * 그 차집합을 다시 합쳐야 해서 백엔드와 다른 계산이 된다.
  */
 export let backlogStore: Map<string, StoredBacklogProject> = new Map()
 
