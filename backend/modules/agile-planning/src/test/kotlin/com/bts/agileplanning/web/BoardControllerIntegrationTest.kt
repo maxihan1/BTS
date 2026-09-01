@@ -79,6 +79,7 @@ import java.util.UUID
  * - GET-QF2. GET /api/v1/boards/{id} 퀵필터 없음 → quickFilters 빈 배열
  * - LIST-1. GET /api/v1/boards?projectKey= 정상 → 200 + 배열
  * - LIST-2. GET 목록 BROWSE 권한 미충족 → 403
+ * - LIST-3. GET 목록 각 항목에 boardType — SCRUM/KANBAN 이 각각 판정을 진다 (FR-BD-04 D6)
  * - MOVE-1. POST move 정상 → 200 + 전환 결과 + columnId echo
  * - MOVE-2. POST move 보드 미존재 → 404
  * - MOVE-3. POST move 버전 충돌(서비스 409) → 409
@@ -594,6 +595,26 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isForbidden)
 
         verify(exactly = 0) { boardApplicationService.listBoards(any()) }
+    }
+
+    // ── LIST-3. GET 목록 각 항목에 boardType (FR-BD-04 · FR-5) ────────────────
+
+    @Test
+    fun `GET boards 목록의 각 항목에 보드 종류가 실린다`() {
+        val scrumBoard = sampleBoard(projectKey = "BTS", boardType = BoardType.SCRUM)
+        val kanbanBoard = sampleBoard(projectKey = "BTS", boardType = BoardType.KANBAN)
+        every { boardApplicationService.listBoards("BTS") } returns listOf(scrumBoard, kanbanBoard)
+
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            // 두 종류가 각각 판정을 진다 — 한쪽만 단언하면 상수 하드코딩이 통과한다.
+            // boardId 를 함께 못박아 어느 보드의 종류인지가 뒤바뀌어도 드러나게 한다.
+            .andExpect(jsonPath("$.data[0].boardId").value(scrumBoard.id.toString()))
+            .andExpect(jsonPath("$.data[0].boardType").value("SCRUM"))
+            .andExpect(jsonPath("$.data[1].boardId").value(kanbanBoard.id.toString()))
+            .andExpect(jsonPath("$.data[1].boardType").value("KANBAN"))
     }
 
     // ── MOVE-1. POST move 정상 → 200 + columnId echo ──────────────────────────
