@@ -79,23 +79,57 @@ export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
 
   const loaded = query.data
 
-  // 서버 응답이 오면 한 번만 싣는다. 의존성을 객체가 아니라 원시값으로 좁혀 refetch 동일성
-  // 변화로 편집이 덮이지 않게 한다.
+  /**
+   * 서버 응답을 리듀서에 싣는 조건.
+   *
+   * ★ **`key` 만 보면 안 된다.** 한 편집 세션에서 key 는 절대 안 바뀌므로, 발행이
+   * `workflows.version` 을 올리고 초안 행을 지운 뒤 재조회가 새 판을 받아도 리듀서가
+   * **죽은 앵커를 계속 들고 있다.** 그 상태의 다음 편집은 과거 앵커로 초안을 만들고
+   * (`requireAnchorNotAhead` 는 미래만 막는다) 그 발행은 서버 CAS
+   * (`bumpVersionIfMatches` 의 `WHERE VERSION = ?`)에 0 rows 로 걸려 **영구 409** 다.
+   * 화면을 떠났다 와야만 낫는다 — 「초안 폐기」라는 문서화된 출구까지 같은 이유로 막힌다.
+   *
+   * ★★ 그렇다고 응답이 올 때마다 실으면 편집 중 재조회가 편집을 통째로 덮는다. 그래서
+   * **서버에 안 보낸 편집이 없을 때만** 싣는다.
+   *
+   * 판정에 `revision` 을 쓰면 안 된다 — 발행 직후에도 그 값은 0 이 아니라서(편집을 했으니까)
+   * 가드가 영영 닫힌 채로 남는다. `saveState` 가 그 사실을 정확히 든다.
+   * `saved`·`idle` 은 「보낼 것이 없다」이고 `dirty`·`saving`·`error` 는 「아직 있다」다.
+   */
   const loadedKey = loaded?.definition.key
+  const loadedAnchor = loaded?.baseVersion
+  const loadedExists = loaded?.exists
+  const hasPendingEdits = saveState === 'dirty' || saveState === 'saving' || saveState === 'error'
+
+  /**
+   * 마지막으로 리듀서에 실은 서버 상태.
+   *
+   * ★ 자동저장이 성공하면 캐시를 자기가 쓴 내용으로 갱신하는데(아래 `persist`), 그 쓰기가
+   * 이 effect 를 다시 태우면 방금 「저장됨」이던 상태가 `idle` 로 되돌아간다. 같은 상태를
+   * 두 번 싣지 않게 기록해 두고 비교한다 — 서버가 정말 다른 판을 줄 때만 다시 싣는다.
+   */
+  const appliedRef = React.useRef<string | null>(null)
+
   React.useEffect(() => {
-    if (loaded !== undefined) {
-      dispatch({
-        type: 'loadFromServer',
-        definition: loaded.definition,
-        baseVersion: loaded.baseVersion,
-        exists: loaded.exists,
-        canResetToDefault: loaded.canResetToDefault,
-      })
-      setSaveState('idle')
-      setSaveError(null)
+    if (loaded === undefined || hasPendingEdits) {
+      return
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 최초 로드 1회만. loaded 를 넣으면 refetch 마다 편집이 덮인다
-  }, [loadedKey])
+    const signature = `${loadedKey ?? ''}:${String(loadedAnchor)}:${String(loadedExists)}`
+    if (appliedRef.current === signature) {
+      return
+    }
+    appliedRef.current = signature
+    dispatch({
+      type: 'loadFromServer',
+      definition: loaded.definition,
+      baseVersion: loaded.baseVersion,
+      exists: loaded.exists,
+      canResetToDefault: loaded.canResetToDefault,
+    })
+    setSaveState('idle')
+    setSaveError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 원시값으로 좁힌다. loaded 객체를 넣으면 refetch 동일성 변화마다 돈다
+  }, [loadedKey, loadedAnchor, loadedExists, hasPendingEdits])
 
   /**
    * 최신 상태의 거울.

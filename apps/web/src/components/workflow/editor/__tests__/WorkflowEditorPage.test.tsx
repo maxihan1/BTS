@@ -247,6 +247,64 @@ describe('발행 흐름', () => {
     })
   })
 
+  it('★ 화면을 떠나지 않고 연속 두 번 발행할 수 있다', async () => {
+    // ★ 발행은 `workflows.version` 을 올리고 초안 행을 지운다. 편집기가 그 새 판을 안 받으면
+    //   다음 편집이 **죽은 앵커**로 초안을 만들고, 그 발행은 서버 CAS(`bumpVersionIfMatches`)에
+    //   0 rows 로 걸려 영구 409 다 — 화면을 떠났다 와야만 낫는다.
+    renderEditor()
+    await waitForLoaded()
+
+    const publishOnce = async (name: string) => {
+      await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
+      await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), name)
+      await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
+      const dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
+      await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: P.publish.dialogTitle })).not.toBeInTheDocument()
+      })
+    }
+
+    await publishOnce('첫 번째 발행')
+    await publishOnce('두 번째 발행')
+
+    // 충돌 배너가 뜨면 두 번째가 막힌 것이다.
+    expect(screen.queryByRole('alert', { name: P.conflict.banner })).not.toBeInTheDocument()
+    expect((await fetchWorkflow('software-default')).name).toBe('두 번째 발행')
+  })
+
+  it('★ 초안 폐기가 앵커를 되살려 다시 발행할 수 있게 한다', async () => {
+    // 충돌 배너가 약속하는 유일한 출구다. 폐기 뒤에도 리듀서가 죽은 앵커를 들고 있으면
+    // 「초안을 버리고 다시 편집하기」가 새로고침 전까지 거짓말이 된다.
+    renderEditor()
+    await waitForLoaded()
+
+    await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
+    await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '발행할 이름')
+    await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
+    let dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
+    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: P.publish.dialogTitle })).not.toBeInTheDocument()
+    })
+
+    // 발행이 초안 행을 지웠으므로 폐기 버튼은 사라져야 한다 — 누르면 404 다.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: P.draft.discard })).not.toBeInTheDocument()
+    })
+
+    // 그리고 이어서 편집·발행이 된다.
+    await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
+    await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '이어서 발행')
+    await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
+    dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
+    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
+
+    await waitFor(async () => {
+      expect((await fetchWorkflow('software-default')).name).toBe('이어서 발행')
+    })
+  })
+
   it('앵커 충돌은 배너로 남고 폐기만 준다', async () => {
     server.use(
       http.post('/api/v1/workflows/:key/publish', () =>

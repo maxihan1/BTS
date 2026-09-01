@@ -210,6 +210,14 @@ export const workflowDraftHandlers = [
     if (body.baseVersion !== stored.baseVersion) {
       return problem(409, 'WORKFLOW_VERSION_CONFLICT', '다른 사용자가 먼저 발행했습니다')
     }
+    // ★★ 서버는 여기서 한 번 **더** 본다 — `bumpVersionIfMatches` 의 `WHERE VERSION = ?` 는
+    //    저장된 앵커를 **살아 있는 판**과 대조하고, 0 rows 면 409 다
+    //    (`WorkflowPublishRepository.kt`). 초안 저장은 과거 앵커를 받아 주므로
+    //    (`requireAnchorNotAhead` 는 미래만 막는다) 죽은 앵커로 만들어진 초안이 실재할 수 있고,
+    //    그 발행이 서버에서는 막히는데 목에서만 통과하면 **목이 서버보다 관대해진다.**
+    if (stored.baseVersion !== versionOf(key)) {
+      return problem(409, 'WORKFLOW_VERSION_CONFLICT', '초안의 기준 판이 이미 지났습니다')
+    }
 
     const removed = removedKeys(key, stored.definition)
     const pending = pendingFor(removed)
