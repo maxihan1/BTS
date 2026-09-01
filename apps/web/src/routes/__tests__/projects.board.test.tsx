@@ -3,11 +3,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boards'
+import type {
+  ActiveSprint,
+  BoardColumn,
+  BoardSummary,
+  BoardDetail,
+  BoardCardFilterParams,
+} from '@/api/boards'
 import type { UserSummary } from '@/api/users'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { ApiError } from '@/api/client'
 import { boardLabels, boardManageErrorMessage } from '@/i18n/board-labels'
+import { scrumEmptyStateLabels } from '@/components/board/ScrumSprintEmptyState'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router, use-boards, @/api/users, KanbanBoard, FavoriteButton
@@ -234,16 +241,20 @@ vi.mock('@/components/board/SwimlaneSelector', () => ({
 // fixture
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ★ 기존 픽스처는 전부 **칸반**이다 — 이 파일의 기존 시나리오가 재는 것은 칸반 동작이고,
+//   FR-BD-04 이후에도 그 동작이 한 줄도 안 바뀐다는 것이 E3 의 내용이다.
 const BOARD_A: BoardSummary = {
   boardId: 'a1b2c3d4-e5f6-4890-abcd-ef1234567891',
   projectKey: 'ATLAS',
   name: '스프린트 보드 A',
+  boardType: 'KANBAN',
 }
 
 const BOARD_B: BoardSummary = {
   boardId: 'b2c3d4e5-f6a7-4890-abcd-ef1234567892',
   projectKey: 'ATLAS',
   name: '스프린트 보드 B',
+  boardType: 'KANBAN',
 }
 
 const BOARD_DETAIL: BoardDetail = {
@@ -255,6 +266,9 @@ const BOARD_DETAIL: BoardDetail = {
   unplacedCount: 0,
   swimlaneField: 'NONE',
   quickFilters: [],
+  boardType: 'KANBAN',
+  // 칸반은 스프린트라는 개념이 없어 서버가 항상 null 을 준다 (`activeSprintSchema` KDoc)
+  activeSprint: null,
 }
 
 /**
@@ -298,6 +312,8 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   projectKey: 'ATLAS',
   name: '스프린트 보드 A',
   swimlaneField: 'NONE',
+  boardType: 'KANBAN',
+  activeSprint: null,
   columns: [
     {
       columnId: 'col-1',
@@ -320,6 +336,63 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   truncated: false,
   unplacedCount: 0,
   quickFilters: [],
+}
+
+// ── FR-BD-04 — 스크럼 보드 픽스처 ────────────────────────────────────────────
+
+/** 서버 `ActiveSprintResponse` 4필드 그대로 (`goal`·`status` 없음) */
+const ACTIVE_SPRINT: ActiveSprint = {
+  sprintId: 'e5f6a7b8-c9d0-4890-abcd-ef1234567895',
+  name: 'Sprint 3',
+  startDate: '2026-09-01',
+  endDate: '2026-09-15',
+}
+
+/** 카드가 0건인 컬럼 — 「컬럼은 있는데 이슈가 없다」를 만드는 최소 조각 */
+const EMPTY_TODO_COLUMN: BoardColumn = {
+  columnId: 'col-1',
+  stateKey: 'todo',
+  name: '할 일',
+  category: 'TODO',
+  displayOrder: 1,
+  wipLimit: null,
+  wipExceeded: false,
+  cards: [],
+}
+
+/**
+ * 스크럼 · 활성 스프린트 없음 (E1).
+ *
+ * `canDelete: true` 를 명시한다 — 빈 상태에서도 `⋯` 관리 메뉴가 **남아 있는지**가
+ * 이 PR 의 핵심 회귀 가드이고, 삭제 항목이 그 메뉴가 살아 있다는 가장 강한 신호다.
+ */
+const SCRUM_BOARD_NO_SPRINT: BoardDetail = {
+  ...BOARD_DETAIL,
+  boardType: 'SCRUM',
+  activeSprint: null,
+  canDelete: true,
+  columns: [EMPTY_TODO_COLUMN],
+}
+
+/** 스크럼 · 활성 스프린트 있고 카드도 있음 (FR-2) */
+const SCRUM_BOARD_WITH_SPRINT: BoardDetail = {
+  ...BOARD_DETAIL_WITH_ASSIGNEES,
+  boardType: 'SCRUM',
+  activeSprint: ACTIVE_SPRINT,
+}
+
+/** 스크럼 · 활성 스프린트는 있는데 그 스프린트에 이슈가 0건 (E2) */
+const SCRUM_BOARD_EMPTY_SPRINT: BoardDetail = {
+  ...BOARD_DETAIL,
+  boardType: 'SCRUM',
+  activeSprint: ACTIVE_SPRINT,
+  columns: [EMPTY_TODO_COLUMN],
+}
+
+/** 칸반 · 카드 0건 (E3) — 같은 「카드 0건」이어도 칸반은 빈 상태로 갈리지 않는다 */
+const KANBAN_BOARD_NO_CARDS: BoardDetail = {
+  ...BOARD_DETAIL,
+  columns: [EMPTY_TODO_COLUMN],
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1492,6 +1565,124 @@ describe('BoardPage', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('create-board-form')).toBeNull()
     })
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // FR-BD-04 — 스크럼 보드 화면 (FR-1 · FR-2 · E1·E2·E3)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-BD04-1 (E1). 스크럼 보드에 활성 스프린트가 없으면 빈 상태 + 백로그 링크가 뜨고
+   * KanbanBoard 는 그 자리에서 물러난다 (FR-1).
+   */
+  it('T-BD04-1: 스크럼 · 활성 스프린트 없음이면 빈 상태와 백로그 링크가 뜬다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: SCRUM_BOARD_NO_SPRINT, isLoading: false })
+
+    await renderBoardPage()
+
+    expect(
+      await screen.findByText(scrumEmptyStateLabels.noActiveSprint.description),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: scrumEmptyStateLabels.backlogLink }),
+    ).toHaveAttribute('href', '/projects/ATLAS/backlog')
+    expect(screen.queryByTestId(`kanban-board-${BOARD_A.boardId}`)).not.toBeInTheDocument()
+  })
+
+  /**
+   * T-BD04-2 (★ 회귀 가드). 빈 상태여도 **헤더·보드 스위처·`⋯` 관리 메뉴·필터바가 남아 있다**.
+   *
+   * 🛑 이 단언이 이 task 의 핵심이다 — 빈 상태를 early-return 으로 만들면 전부 사라지고,
+   *    `e2e/board-manage.spec.ts` S4·S5(스크럼 보드로 전환 → `⋯` 로 삭제)가 죽는다.
+   *    「빈 상태가 뜬다」만 재면 그 회귀가 초록으로 통과한다.
+   */
+  it('T-BD04-2: 스크럼 빈 상태에서도 헤더·스위처·⋯ 관리 메뉴·필터바가 남는다', async () => {
+    const user = userEvent.setup()
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: SCRUM_BOARD_NO_SPRINT, isLoading: false })
+
+    await renderBoardPage()
+
+    // 빈 상태가 실제로 떠 있는 상태에서 재야 한다 — 조건을 못 밟으면 공허한 통과다
+    expect(
+      await screen.findByText(scrumEmptyStateLabels.noActiveSprint.title),
+    ).toBeInTheDocument()
+
+    expect(screen.getByRole('heading', { name: boardLabels.page.title })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /보드 선택/ })).toBeInTheDocument()
+    expect(screen.getByTestId('board-filter-bar')).toBeInTheDocument()
+
+    const actionsTrigger = screen.getByRole('button', {
+      name: boardLabels.actions.triggerAriaLabel(SCRUM_BOARD_NO_SPRINT.name),
+    })
+    expect(actionsTrigger).toBeInTheDocument()
+
+    // 메뉴가 트리거만 남고 속이 빈 것이 아니라 실제로 열려 삭제까지 갈 수 있다
+    await user.click(actionsTrigger)
+    expect(
+      await screen.findByRole('menuitem', { name: boardLabels.actions.deleteItem }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD04-3 (FR-2). 활성 스프린트가 있으면 헤더에 이름과 기간이 뜨고 카드는 그대로 렌더된다.
+   */
+  it('T-BD04-3: 활성 스프린트가 있으면 헤더에 이름과 기간이 뜬다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: SCRUM_BOARD_WITH_SPRINT, isLoading: false })
+
+    await renderBoardPage()
+
+    const summary = await screen.findByTestId('active-sprint-summary')
+    expect(summary).toHaveTextContent(ACTIVE_SPRINT.name)
+    expect(summary).toHaveTextContent('2026-09-01 ~ 2026-09-15')
+
+    // 카드가 있으므로 빈 상태가 아니다 — 보드는 평소대로 그려진다
+    expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    expect(
+      screen.queryByText(scrumEmptyStateLabels.noActiveSprint.title),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * T-BD04-4 (E2). 활성 스프린트는 있는데 이슈가 0건이면 **①과 다른 문장**이 뜬다.
+   * 사용자가 할 일이 다르다 — 전자는 백로그로 가서 시작해야 하고 후자는 이슈를 넣어야 한다.
+   */
+  it('T-BD04-4: 활성 스프린트가 있는데 카드가 0건이면 ①과 다른 문장이 뜬다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: SCRUM_BOARD_EMPTY_SPRINT, isLoading: false })
+
+    await renderBoardPage()
+
+    expect(await screen.findByText(scrumEmptyStateLabels.emptySprint.title)).toBeInTheDocument()
+    expect(
+      screen.queryByText(scrumEmptyStateLabels.noActiveSprint.title),
+    ).not.toBeInTheDocument()
+    // 스프린트 헤더는 그대로 있다 — 「어느 스프린트가 비었는가」를 알아야 한다
+    expect(await screen.findByTestId('active-sprint-summary')).toHaveTextContent(
+      ACTIVE_SPRINT.name,
+    )
+  })
+
+  /**
+   * T-BD04-5 (E3). 칸반 보드는 **완전 무변경**이다.
+   * 같은 「카드 0건」이어도 칸반은 빈 상태로 갈리지 않고 스프린트 헤더도 없다.
+   */
+  it('T-BD04-5: 칸반 보드는 카드가 0건이어도 스크럼 빈 상태로 갈리지 않는다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: KANBAN_BOARD_NO_CARDS, isLoading: false })
+
+    await renderBoardPage()
+
+    expect(
+      await screen.findByTestId(`kanban-board-${BOARD_A.boardId}`),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(scrumEmptyStateLabels.noActiveSprint.title),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(scrumEmptyStateLabels.emptySprint.title)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('active-sprint-summary')).not.toBeInTheDocument()
   })
 })
 
