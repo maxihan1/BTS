@@ -173,6 +173,8 @@ export const boardCreatedColumnSchema = z.object({
   displayOrder: z.number().int(),
 })
 
+const boardTypeSchema = z.enum(['SCRUM', 'KANBAN'])
+
 /**
  * 보드 생성 응답 스키마.
  * 백엔드 `BoardCreatedResponse` DTO 대응.
@@ -184,6 +186,14 @@ export const boardCreatedSchema = z.object({
   projectKey: z.string(),
   /** 보드 이름 */
   name: z.string(),
+  /**
+   * 생성된 보드의 종류. 생성 직후 클라이언트가 종류를 되읽는 유일한 자리다 (FR-BD-04).
+   *
+   * `.optional()`/`.default()` 로 두지 않는다 — 백엔드 `BoardCreatedResponse.boardType` 은
+   * non-null String 이라(`BoardResponses.kt:110`) 필드가 비면 그것이 곧 결함이다.
+   * 기본값으로 때우면 화면이 고른 종류가 증발해도 파싱이 조용히 통과한다.
+   */
+  boardType: boardTypeSchema,
   /** 초기 컬럼 목록 */
   columns: z.array(boardCreatedColumnSchema),
 })
@@ -221,6 +231,9 @@ export type SwimlaneField = z.infer<typeof swimlaneFieldSchema>
 
 /** 보드 상세 타입 */
 export type BoardDetail = z.infer<typeof boardDetailSchema>
+
+/** 보드 종류 타입. SCRUM=스프린트로 일하는 보드, KANBAN=흐름으로 일하는 보드 */
+export type BoardType = z.infer<typeof boardTypeSchema>
 
 /** 보드 생성 응답용 컬럼 타입 */
 export type BoardCreatedColumn = z.infer<typeof boardCreatedColumnSchema>
@@ -363,14 +376,20 @@ export async function fetchBoard(boardId: string, filter?: BoardCardFilterParams
  *
  * @param projectKey 프로젝트 키
  * @param name 보드 이름
+ * @param boardType 보드 종류. **선택 인자가 아니다** — 백엔드가 생략 시 KANBAN 으로 채우므로
+ *   (`BoardResponses.kt:46`) 옵셔널로 두면 화면의 선택이 조용히 무시돼도 아무도 모른다.
  * @returns BoardCreated — 생성된 보드 (초기 컬럼 포함)
  * @throws ApiError 비-2xx 응답 시
  * @throws ZodError 응답 스키마 불일치 시
  */
-export async function createBoard(projectKey: string, name: string): Promise<BoardCreated> {
+export async function createBoard(
+  projectKey: string,
+  name: string,
+  boardType: BoardType,
+): Promise<BoardCreated> {
   const wrapped = await apiPost(
     '/api/v1/boards',
-    { projectKey, name },
+    { projectKey, name, boardType },
     dataResponseSchema(boardCreatedSchema),
   )
   return wrapped.data
