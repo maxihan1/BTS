@@ -40,6 +40,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -140,11 +141,20 @@ class WorkflowPublishServiceIntegrationTest {
         /** 호출마다 받은 프로젝트 스코프. 호출 순서대로 쌓인다. */
         val receivedProjectIds = mutableListOf<Set<UUID>>()
 
+        /**
+         * 상태별 **호출 순서** 응답. 앞에서부터 소비하고 바닥나면 [counts] 로 떨어진다.
+         *
+         * 교체 직후 유입(F10)을 흉내내는 유일한 방법이다 — 같은 상태를 두 번 세는데 두 번째만
+         * 0 이 아니어야 「교체 전에는 비었고 그 사이 들어왔다」가 재현된다.
+         */
+        val queued = mutableMapOf<String, ArrayDeque<Long>>()
+
         override fun countIssuesInStatus(
             statusKey: String,
             projectIds: Set<UUID>,
         ): Long {
             receivedProjectIds += projectIds
+            queued[statusKey]?.removeFirstOrNull()?.let { return it }
             return counts[statusKey] ?: 0
         }
     }
@@ -1024,6 +1034,74 @@ class WorkflowPublishServiceIntegrationTest {
         assertThat(migrationPort.received)
             .describedAs("포트에 닿았다면 400 이 아니라 어댑터의 IAE 가 응답을 정한 것이다")
             .isEmpty()
+    }
+
+    // ── 뒤쪽 창 재카운트 (Task 6 · F10 · E8 · E9) ──────────────────────────────
+
+    /**
+     * ★ 교체와 카운트 사이에 들어온 이슈를 잡는다 (F10 · E8).
+     *
+     * 첫 검사가 0 을 봤어도 `replaceDefinition` 이 끝날 때까지 그 상태로 이슈가 들어올 수 있다.
+     * 재카운트가 없으면 그 이슈들은 **어느 워크플로우도 모르는 상태**에 남는다.
+     *
+     * ### 이 판정이 재는 진짜 대상은 「같은 집합으로 다시 세는가」다
+     * `requireNoPendingIssues(key, workflowId, definition)` 를 그냥 재호출하면 그 함수가
+     * `removedStatusKeys` 를 **다시 계산**하는데, `replaceDefinition` 뒤에는
+     * `findComposedStatusKeys` 가 새 편성을 돌려주므로 차집합이 **항상 빈 집합**이 된다.
+     * 그러면 예외 자체가 안 난다 — 판정이 있는데 아무것도 안 세는 형태
+     * (`[[invariant-satisfied-by-helptext-not-logic]]` 과 같은 양식)다.
+     *
+     * 그래서 예외가 나는 것만이 아니라 **그 안에 `done` 이 담겼는지**를 함께 본다. 담겼다면
+     * 교체 전 집합을 재사용했다는 증거다.
+     *
+     * ### 롤백은 여기서 재지 않는다 — 잴 수 없어서다
+     * 이 클래스는 `@SpringBootTest` 없이 손으로 조립하므로 `@Transactional` 이 프록시 없이
+     * 호출된다(클래스 KDoc). 트랜잭션 경계가 없으니 예외가 나도 이미 쓴 것이 되돌아가지 않는다.
+     * 롤백은 Spring 이 경계에서 보장하는 것이고 그 경계의 실재는 `ProjectWorkflowContextBootTest`
+     * 가 컨텍스트로 검증한다. 여기서 「정의가 그대로다」를 단언하면 **코드가 옳아도 red** 다.
+     */
+    @Test
+    fun `교체 직후 유입이 있으면 발행이 막히고 교체 전 집합으로 센다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        // 1회차 0 — 교체 전 검사는 통과한다. 2회차 1 — 그 사이 한 건이 들어왔다.
+        issueUsage.queued["done"] = ArrayDeque(listOf(0L, 1L))
+
+        // ★한 번만 부른다 — queued 는 호출 순서로 소비되므로 두 번 부르면 두 번째는 바닥나 0 이 된다.
+        val thrown = catchThrowable { service.publish(ACTOR, key, baseVersion = 0) }
+
+        assertThat(thrown)
+            .describedAs("재카운트가 없으면 교체가 그대로 커밋되고 그 이슈는 어느 워크플로우도 모르는 상태에 남는다")
+            .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
+        assertThat((thrown as WorkflowPublishMappingRequiredException).pending)
+            .describedAs("교체 뒤 집합을 다시 계산했다면 차집합이 비어 done 이 담기지 않는다")
+            .containsKey("done")
+    }
+
+    /**
+     * ★ 이관을 큐잉했다고 발행이 열리지 않는다 (E9).
+     *
+     * `migrate` 는 일괄작업을 **큐잉만** 한다. 워커가 아직 안 돌았거나 일부가 FAILED 로 끝나면
+     * 이슈는 그대로 남아 있고, 그 상태에서 발행하면 그 이슈들이 사라진 상태에 갇힌다.
+     * 그러니 이관 요청을 보냈다는 사실 자체는 발행 조건이 아니다 — **실제 잔여 건수**만이 조건이다.
+     */
+    @Test
+    fun `이관을 큐잉했어도 이슈가 남아 있으면 재발행이 막힌다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        issueUsage.counts["done"] = 3
+
+        val bulkOperationId =
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+        assertThat(bulkOperationId).isEqualTo(BULK_OPERATION_ID)
+
+        assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
+            .describedAs("큐잉은 약속일 뿐이다 — 워커가 실패하면 이슈는 그대로 남는다")
+            .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
     }
 
     // ── 매핑 가드 (Task 4 · F7·F8·F11·F13·F14·F16 · E2·E4) ────────────────────
