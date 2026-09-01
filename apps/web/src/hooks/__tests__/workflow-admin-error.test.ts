@@ -141,6 +141,25 @@ describe('mapWorkflowAdminError', () => {
   it('덧붙임 대상이 아닌 코드에는 서버 문구를 안 붙인다', () => {
     expect(mapWorkflowAdminError('WORKFLOW_NOT_FOUND', '내부 상세')).not.toContain('내부 상세')
   })
+
+  it('이관 매핑 거절은 어느 축이 막았는지를 버리지 않는다', () => {
+    // ★ 이 코드 하나가 여덟 축을 덮는다 — 빠지지 않는 출발지 · 초안에 없는 도착지 ·
+    //   발행 전 도착지 · 빈 목록 · 중복 출발지 · 범위 없음 · 형제 워크플로우 · 상한 초과.
+    //   그중 형제 워크플로우와 범위 없음은 **화면이 알 수 없는** 사실이라 서버 문장이
+    //   유일한 안내다. 고정 문구만 띄우면 관리자는 무엇을 고쳐야 할지 모른다.
+    const shown = mapWorkflowAdminError(
+      'WORKFLOW_MIGRATION_INVALID_MAPPING',
+      '이 워크플로우를 쓰는 스킴이 다른 워크플로우도 함께 쓴다',
+    )
+    expect(shown).toContain('스킴')
+  })
+
+  it('요청 거절도 서버 문장을 살린다', () => {
+    // WORKFLOW_INVALID_REQUEST 역시 여러 사유가 공유한다 — 「발행할 초안이 없다」 ·
+    // 「시작 전환은 정확히 하나여야」 · 「상태 이름은 카탈로그가 정한다」가 전부 이 코드다.
+    const shown = mapWorkflowAdminError('WORKFLOW_INVALID_REQUEST', '발행할 초안이 없다')
+    expect(shown).toContain('초안이 없다')
+  })
 })
 
 describe('notifyWorkflowAdminError', () => {

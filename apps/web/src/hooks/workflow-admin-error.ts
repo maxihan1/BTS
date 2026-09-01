@@ -73,6 +73,17 @@ const APPEND_SERVER_MESSAGE = new Set([
   'WORKFLOW_STATUS_IN_USE',
   'WORKFLOW_STATUS_REFERENCED_BY_TRANSITION',
   'WORKFLOW_VALIDATION_FAILED',
+  // ★ 이 코드 하나가 **여덟 축**을 덮는다 — 빠지지 않는 출발지 · 초안에 없는 도착지 ·
+  //   발행 전 도착지 · 빈 목록 · 중복 출발지 · 범위 없음 · 형제 워크플로우 · 상한 초과
+  //   (`WorkflowPublishService.requireSoundMappings`). 그중 형제 워크플로우와 범위 없음은
+  //   **화면이 알 수 없는 사실**이라 서버 문장이 유일한 안내다. 위 표의 주석이 「축은
+  //   여덟이지만 코드는 하나다 — 무엇을 고쳐야 하는지는 서버 메시지가 싣는다」고 적어 놓고
+  //   정작 이 집합에 넣지 않아, 주석이 코드에 대해 거짓말을 하고 있었다.
+  'WORKFLOW_MIGRATION_INVALID_MAPPING',
+  // 같은 이유. 「발행할 초안이 없다」 · 「시작 전환은 정확히 하나여야」 · 「상태 이름은
+  // 카탈로그가 정한다」가 전부 이 한 코드로 온다. 고정 문구 「요청 내용이 올바르지
+  // 않습니다」만 띄우면 관리자가 고칠 방법을 모른다.
+  'WORKFLOW_INVALID_REQUEST',
 ])
 
 /**
