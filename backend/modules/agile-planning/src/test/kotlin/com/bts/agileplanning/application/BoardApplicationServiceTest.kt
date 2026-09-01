@@ -41,6 +41,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.Executors
 
 /**
  * [BoardApplicationService] 통합 테스트 — Testcontainers PostgreSQL 사용.
@@ -356,6 +357,47 @@ class BoardApplicationServiceTest {
         // ★ 영속이 핵심이다. 매 조회마다 다시 시드하면 컬럼 UUID 가 흔들려 카드 이동(toColumnId)이 깨진다.
         assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
             .containsExactly("open", "in-progress", "closed")
+    }
+
+    @Test
+    fun `ensureScrumBoard 는 두 번 불러도 같은 보드를 준다`() {
+        // ★ 재사용 조기반환(findScrumBoardIdByProject?.let { return it })을 지우면 스프린트를 만들 때마다
+        // 스크럼 보드가 하나씩 쌓여 보드 스위처(#416 으로 상시 노출)에 유령 보드가 늘어난다.
+        // 그 조기반환을 지켜 주는 유일한 테스트다(리뷰 지적 C1).
+        val service = serviceWith()
+
+        val first = service.ensureScrumBoard("IDEM")
+        val second = service.ensureScrumBoard("IDEM")
+
+        assertThat(second).isEqualTo(first)
+        assertThat(boardRepository.findAllByProjectKey("IDEM")).hasSize(1)
+    }
+
+    @Test
+    fun `동시 ensureScrumBoard 후에도 프로젝트의 스크럼 보드는 1개다`() {
+        // ★ V506 ④ 가 「(project_key, SCRUM) 이 유일하다」는 전제 위에 서 있는데, 마이그레이션 이후
+        // 그 유일성을 지키는 것은 이 메서드뿐이다. read-then-insert 라 잠금이 없으면 동시 요청 2건이
+        // 보드를 2개 만들고, 이후 조회는 created_at 오래된 쪽만 집어 늦은 보드의 스프린트가 갈린다.
+        // UNIQUE 인덱스로 막지 않는 이유 — ADR D6 이 다수 보드를 지원하므로 스키마로 1개를 못박을 수 없다.
+        // ★ 프록시된 빈이어야 한다. advisory lock 은 트랜잭션 종료 시 풀리므로 트랜잭션 없이는 무의미하다.
+        val executor = Executors.newFixedThreadPool(2)
+        val futures =
+            (1..2).map {
+                executor.submit<Result<UUID>> { runCatching { transactionalBoardService.ensureScrumBoard("RACE") } }
+            }
+        executor.shutdown()
+        val results = futures.map { it.get() }
+
+        assertThat(results.count { it.isSuccess })
+            .`as`("둘 다 실패했다 — 동시 요청에서 스크럼 보드가 만들어지지 않았다")
+            .isGreaterThanOrEqualTo(1)
+
+        assertThat(boardRepository.findAllByProjectKey("RACE"))
+            .`as`("동시 ensureScrumBoard 후 보드가 %d 개다 — 프로젝트당 스크럼 보드는 1개여야 한다")
+            .hasSize(1)
+        assertThat(results.mapNotNull { it.getOrNull() }.distinct())
+            .`as`("두 호출이 서로 다른 보드 id 를 받았다 — 늦은 쪽 스프린트가 갈린다")
+            .hasSize(1)
     }
 
     @Test

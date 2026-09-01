@@ -126,6 +126,59 @@ class SprintApplicationServiceTest {
         verify(exactly = 0) { repo.insert(any()) }
     }
 
+    // ── create 의 실제 프로덕션 경로 (FR-BD-04) ────────────────────────────────
+    //
+    // ★ SprintController.create 는 boardId 를 넘기지 않는다 — CreateSprintRequest 에 그 필드가 없다.
+    // 따라서 실서비스의 **모든** 스프린트 생성이 아래 `boardId = null` 경로를 탄다. 위 create 테스트들이
+    // 전부 boardId 를 명시하는 바람에 이 분기가 한 번도 실행되지 않았고, `ensureScrumBoard` 를
+    // `error("x")` 로 바꿔도 전 스위트가 초록이었다(리뷰 지적 C1).
+
+    @Test
+    fun `create boardId 를 안 주면 그 프로젝트의 스크럼 보드에 붙는다`() {
+        val repo = mockk<SprintRepository>()
+        every { repo.insert(any()) } answers { firstArg() }
+        val boardService =
+            mockk<BoardApplicationService>(relaxed = true).also {
+                every { it.ensureScrumBoard(projectKey) } returns boardId
+            }
+
+        val result =
+            makeService(repo = repo, boardService = boardService).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                name = "Sprint 1",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+
+        assertThat(result.boardId).isEqualTo(boardId)
+        verify(exactly = 1) { boardService.ensureScrumBoard(projectKey) }
+    }
+
+    @Test
+    fun `create boardId 를 주면 스크럼 보드를 찾지 않는다`() {
+        val explicitBoardId = UUID.randomUUID()
+        val repo = mockk<SprintRepository>()
+        every { repo.insert(any()) } answers { firstArg() }
+        val boardService = mockk<BoardApplicationService>(relaxed = true)
+
+        val result =
+            makeService(repo = repo, boardService = boardService).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                boardId = explicitBoardId,
+                name = "Sprint 1",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+
+        assertThat(result.boardId).isEqualTo(explicitBoardId)
+        // PR ③ 이 백로그에서 boardId 를 명시로 넘기기 시작하면 이 경로가 기본이 된다.
+        verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
+    }
+
     // ── update ────────────────────────────────────────────────────────────────
 
     @Test
