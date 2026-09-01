@@ -81,6 +81,10 @@ import java.util.concurrent.Executors
  * 참조. FR-WF-07 D5 · ADR 2026-08-18-workflow-db-as-source-of-truth
  */
 @Testcontainers
+// LargeClass 억제 — 발행·이관 두 경로의 전 시나리오(가드 8종·권한 순서·재카운트·in-flight)가
+// 같은 Testcontainers 픽스처와 스텁 포트 4종을 공유한다. 쪼개면 그 조립이 파일마다 복제되고,
+// 복제된 픽스처는 서로 어긋나도 아무도 모른다.
+@Suppress("LargeClass")
 class WorkflowPublishServiceIntegrationTest {
     companion object {
         private val temboImage: DockerImageName =
@@ -1192,7 +1196,7 @@ class WorkflowPublishServiceIntegrationTest {
     //
     // 여기 있는 판정은 전부 **포트에 닿기 전에** 막혀야 한다. 큐잉까지 갔다가 트랜잭션을
     // 되감아도 pgmq 메시지는 남을 수 있어(`migrate 도 저장된 초안의 base_version …` 이 같은
-    // 이유로 포트 미호출을 단언한다) 「예외가 났다」만으로는 안전이 증명되지 않는다.
+    // 이유로 포트 미호출을 단언한다) 「예외가 났다」만으로는 안전하다고 말할 수 없다.
 
     /**
      * ★ 빠지지도 않는 상태를 출발지로 실으면 **멀쩡한 이슈가 통째로 옮겨진다.**
@@ -1398,6 +1402,7 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     // ── 거절 경로 ─────────────────────────────────────────────────────────────
+
     /**
      * ★ C-10 — 권한 검사가 **첫 줄**이라는 계약을 판정으로 잠근다 (F5).
      *
@@ -1440,7 +1445,6 @@ class WorkflowPublishServiceIntegrationTest {
             permissions.deny.clear()
         }
     }
-
 
     @Test
     fun `초안이 없으면 발행할 수 없다`() {

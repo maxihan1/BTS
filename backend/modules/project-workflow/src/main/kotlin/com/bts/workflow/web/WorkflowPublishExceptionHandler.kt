@@ -150,12 +150,32 @@ class WorkflowPublishExceptionHandler {
      * @return 400 + `WORKFLOW_MIGRATION_INVALID_MAPPING`. 어느 축인지는 메시지가 싣는다.
      */
     @ExceptionHandler(WorkflowMigrationInvalidMappingException::class)
-    fun handleMigrationInvalidMapping(
-        ex: WorkflowMigrationInvalidMappingException,
-    ): ResponseEntity<ErrorResponse> {
+    fun handleMigrationInvalidMapping(ex: WorkflowMigrationInvalidMappingException): ResponseEntity<ErrorResponse> {
         log.info("WORKFLOW_400_MIGRATION_INVALID_MAPPING key='{}' reason='{}'", ex.workflowKey, ex.reason)
         return ResponseEntity.badRequest().body(
             ErrorResponse(error = ErrorBody(code = "WORKFLOW_MIGRATION_INVALID_MAPPING", message = ex.reason)),
+        )
+    }
+
+    /**
+     * 끝나지 않은 이관이 이미 있다 — 409.
+     *
+     * 요청은 멀쩡하고 지금 상태와 부딪힐 뿐이다. 앞선 이관이 끝나면 같은 요청이 통과하므로
+     * 화면이 안내할 것은 「고쳐라」가 아니라 「기다렸다 다시」다.
+     *
+     * @return 409 + `WORKFLOW_MIGRATION_IN_FLIGHT`.
+     */
+    @ExceptionHandler(WorkflowMigrationInFlightException::class)
+    fun handleMigrationInFlight(ex: WorkflowMigrationInFlightException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_409_MIGRATION_IN_FLIGHT key='{}'", ex.workflowKey)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_MIGRATION_IN_FLIGHT",
+                        message = "이미 진행 중인 상태 이관이 있습니다. 끝난 뒤 다시 시도하세요.",
+                    ),
+            ),
         )
     }
 
@@ -179,28 +199,6 @@ class WorkflowPublishExceptionHandler {
      * `assignableTypes = [WorkflowDraftController::class]` 로 **스코프가 있어서** 안전한 것이지,
      * IAE 를 400 으로 접는 것 자체가 안전한 것이 아니다.
      */
-    /**
-     * 끝나지 않은 이관이 이미 있다 — 409.
-     *
-     * 요청은 멀쩡하고 지금 상태와 부딪힐 뿐이다. 앞선 이관이 끝나면 같은 요청이 통과하므로
-     * 화면이 안내할 것은 「고쳐라」가 아니라 「기다렸다 다시」다.
-     *
-     * @return 409 + `WORKFLOW_MIGRATION_IN_FLIGHT`.
-     */
-    @ExceptionHandler(WorkflowMigrationInFlightException::class)
-    fun handleMigrationInFlight(ex: WorkflowMigrationInFlightException): ResponseEntity<ErrorResponse> {
-        log.info("WORKFLOW_409_MIGRATION_IN_FLIGHT key='{}'", ex.workflowKey)
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(
-            ErrorResponse(
-                error =
-                    ErrorBody(
-                        code = "WORKFLOW_MIGRATION_IN_FLIGHT",
-                        message = "이미 진행 중인 상태 이관이 있습니다. 끝난 뒤 다시 시도하세요.",
-                    ),
-            ),
-        )
-    }
-
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleAdapterRequireViolation(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
         log.warn("WORKFLOW_400_ADAPTER_REQUIRE 선제 가드를 뚫었다 — 가드와 어댑터 판정이 갈라졌다", ex)
