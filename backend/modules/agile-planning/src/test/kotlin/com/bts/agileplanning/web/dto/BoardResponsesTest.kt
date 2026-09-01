@@ -5,14 +5,18 @@ package com.bts.agileplanning.web.dto
 import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
+import com.bts.agileplanning.domain.Sprint
+import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.shared.board.BoardIssueView
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -63,29 +67,119 @@ class BoardResponsesTest {
         cardCount: Int = 0,
     ): PlacedColumn = PlacedColumn(column = column(wipLimit), cards = cards(cardCount))
 
-    private fun board(swimlaneField: SwimlaneField = SwimlaneField.NONE) =
-        Board(
-            id = UUID.randomUUID(),
-            projectKey = "PROJ",
-            name = "테스트 보드",
-            columns = emptyList(),
-            createdAt = Instant.now(),
-            updatedAt = Instant.now(),
-            swimlaneField = swimlaneField,
-        )
+    private fun board(
+        swimlaneField: SwimlaneField = SwimlaneField.NONE,
+        boardType: BoardType = BoardType.KANBAN,
+    ) = Board(
+        id = UUID.randomUUID(),
+        projectKey = "PROJ",
+        name = "테스트 보드",
+        columns = emptyList(),
+        createdAt = Instant.now(),
+        updatedAt = Instant.now(),
+        swimlaneField = swimlaneField,
+        boardType = boardType,
+    )
 
-    private fun placementResult(columns: List<PlacedColumn> = emptyList()) =
-        BoardPlacementResult(
-            columns = columns,
-            truncated = false,
-            unplacedCount = 0,
-        )
+    private fun placementResult(
+        columns: List<PlacedColumn> = emptyList(),
+        activeSprint: Sprint? = null,
+    ) = BoardPlacementResult(
+        columns = columns,
+        truncated = false,
+        unplacedCount = 0,
+        activeSprint = activeSprint,
+    )
+
+    /** 날짜 두 필드를 서로 다르게 둔다 — 매핑이 뒤바뀌면 드러나야 한다. */
+    private fun sprint(
+        name: String = "Sprint 3",
+        startDate: LocalDate? = LocalDate.of(2026, 9, 1),
+        endDate: LocalDate? = LocalDate.of(2026, 9, 14),
+    ) = Sprint(
+        id = UUID.randomUUID(),
+        projectKey = "PROJ",
+        boardId = UUID.randomUUID(),
+        name = name,
+        goal = null,
+        status = SprintStatus.ACTIVE,
+        startDate = startDate,
+        endDate = endDate,
+        version = 0L,
+    )
 
     private fun quickFilter(
         name: String = "내 버그",
         query: String = "label=bug",
         boardId: UUID = UUID.randomUUID(),
     ) = QuickFilter(id = UUID.randomUUID(), boardId = boardId, name = name, query = query)
+
+    // --- (g) FR-BD-04 신규 필드 — boardType · activeSprint ---
+    //
+    // ★ 이 절이 없을 때는 ActiveSprintResponse.from 에서 startDate 와 endDate 를 서로 바꿔 넣어도,
+    // BoardDetailResponse 의 boardType 을 "KANBAN" 으로 하드코딩해도 전 스위트가 초록이었다(리뷰 지적).
+
+    @Nested
+    inner class BoardTypeExposure {
+        @Test
+        fun `board 가 SCRUM 이면 응답 boardType 은 문자열 SCRUM 이다`() {
+            val response = BoardDetailResponse.of(board(boardType = BoardType.SCRUM), placementResult())
+            assertThat(response.boardType).isEqualTo("SCRUM")
+        }
+
+        @Test
+        fun `board 가 KANBAN 이면 응답 boardType 은 문자열 KANBAN 이다`() {
+            val response = BoardDetailResponse.of(board(boardType = BoardType.KANBAN), placementResult())
+            assertThat(response.boardType).isEqualTo("KANBAN")
+        }
+
+        @Test
+        fun `생성 응답도 board 의 종류를 그대로 노출한다`() {
+            assertThat(BoardResponse.from(board(boardType = BoardType.SCRUM)).boardType).isEqualTo("SCRUM")
+            assertThat(BoardResponse.from(board(boardType = BoardType.KANBAN)).boardType).isEqualTo("KANBAN")
+        }
+    }
+
+    @Nested
+    inner class ActiveSprintExposure {
+        @Test
+        fun `활성 스프린트가 있으면 id 이름 시작일 종료일이 그대로 실린다`() {
+            val active = sprint(name = "Sprint 3")
+
+            val response =
+                BoardDetailResponse.of(
+                    board(boardType = BoardType.SCRUM),
+                    placementResult(activeSprint = active),
+                )
+
+            assertThat(response.activeSprint).isNotNull()
+            assertThat(response.activeSprint!!.sprintId).isEqualTo(active.id)
+            assertThat(response.activeSprint!!.name).isEqualTo("Sprint 3")
+            // ★ 두 날짜를 각각 단언한다 — 하나만 보면 매핑이 뒤바뀌어도 통과한다.
+            assertThat(response.activeSprint!!.startDate).isEqualTo(LocalDate.of(2026, 9, 1))
+            assertThat(response.activeSprint!!.endDate).isEqualTo(LocalDate.of(2026, 9, 14))
+        }
+
+        @Test
+        fun `기간 미설정 스프린트는 두 날짜가 모두 null 이다`() {
+            val active = sprint(startDate = null, endDate = null)
+
+            val response =
+                BoardDetailResponse.of(
+                    board(boardType = BoardType.SCRUM),
+                    placementResult(activeSprint = active),
+                )
+
+            assertThat(response.activeSprint!!.startDate).isNull()
+            assertThat(response.activeSprint!!.endDate).isNull()
+        }
+
+        @Test
+        fun `활성 스프린트가 없으면 activeSprint 는 null 이다`() {
+            val response = BoardDetailResponse.of(board(boardType = BoardType.SCRUM), placementResult())
+            assertThat(response.activeSprint).isNull()
+        }
+    }
 
     // --- (a) wipLimit echo ---
 

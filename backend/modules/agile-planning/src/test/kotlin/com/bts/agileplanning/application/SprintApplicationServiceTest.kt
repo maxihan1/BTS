@@ -34,11 +34,13 @@ class SprintApplicationServiceTest {
     private val actorId: UUID = UUID.randomUUID()
     private val sprintId: UUID = UUID.randomUUID()
     private val projectKey = "ATLAS"
+    private val boardId: UUID = UUID.randomUUID()
 
     private val plannedSprint =
         Sprint(
             id = sprintId,
             projectKey = projectKey,
+            boardId = boardId,
             name = "Sprint 1",
             goal = null,
             status = SprintStatus.PLANNED,
@@ -71,7 +73,12 @@ class SprintApplicationServiceTest {
         resolver: IssuePermissionResolver = allowAllResolver(),
         repo: SprintRepository = mockk(relaxed = true),
         lookupPort: BoardIssueLookupPort = mockk(relaxed = true),
-    ): SprintApplicationService = SprintApplicationService(resolver, repo, lookupPort)
+        boardService: BoardApplicationService =
+            mockk(relaxed = true) {
+                // 보드를 안 준 create 요청이 붙을 자리. 실제 해소는 BoardApplicationService 의 책임이다.
+                every { ensureScrumBoard(any()) } returns boardId
+            },
+    ): SprintApplicationService = SprintApplicationService(resolver, repo, lookupPort, boardService)
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -84,6 +91,7 @@ class SprintApplicationServiceTest {
             makeService(repo = repo).create(
                 actorId = actorId,
                 projectKey = projectKey,
+                boardId = boardId,
                 name = "Sprint 1",
                 goal = null,
                 startDate = null,
@@ -105,6 +113,7 @@ class SprintApplicationServiceTest {
             makeService(resolver = resolver, repo = repo).create(
                 actorId = actorId,
                 projectKey = projectKey,
+                boardId = boardId,
                 name = "Sprint X",
                 goal = null,
                 startDate = null,
@@ -115,6 +124,59 @@ class SprintApplicationServiceTest {
             .isEqualTo(403)
 
         verify(exactly = 0) { repo.insert(any()) }
+    }
+
+    // ── create 의 실제 프로덕션 경로 (FR-BD-04) ────────────────────────────────
+    //
+    // ★ SprintController.create 는 boardId 를 넘기지 않는다 — CreateSprintRequest 에 그 필드가 없다.
+    // 따라서 실서비스의 **모든** 스프린트 생성이 아래 `boardId = null` 경로를 탄다. 위 create 테스트들이
+    // 전부 boardId 를 명시하는 바람에 이 분기가 한 번도 실행되지 않았고, `ensureScrumBoard` 를
+    // `error("x")` 로 바꿔도 전 스위트가 초록이었다(리뷰 지적 C1).
+
+    @Test
+    fun `create boardId 를 안 주면 그 프로젝트의 스크럼 보드에 붙는다`() {
+        val repo = mockk<SprintRepository>()
+        every { repo.insert(any()) } answers { firstArg() }
+        val boardService =
+            mockk<BoardApplicationService>(relaxed = true).also {
+                every { it.ensureScrumBoard(projectKey) } returns boardId
+            }
+
+        val result =
+            makeService(repo = repo, boardService = boardService).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                name = "Sprint 1",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+
+        assertThat(result.boardId).isEqualTo(boardId)
+        verify(exactly = 1) { boardService.ensureScrumBoard(projectKey) }
+    }
+
+    @Test
+    fun `create boardId 를 주면 스크럼 보드를 찾지 않는다`() {
+        val explicitBoardId = UUID.randomUUID()
+        val repo = mockk<SprintRepository>()
+        every { repo.insert(any()) } answers { firstArg() }
+        val boardService = mockk<BoardApplicationService>(relaxed = true)
+
+        val result =
+            makeService(repo = repo, boardService = boardService).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                boardId = explicitBoardId,
+                name = "Sprint 1",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+
+        assertThat(result.boardId).isEqualTo(explicitBoardId)
+        // PR ③ 이 백로그에서 boardId 를 명시로 넘기기 시작하면 이 경로가 기본이 된다.
+        verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
     }
 
     // ── update ────────────────────────────────────────────────────────────────
@@ -542,6 +604,8 @@ class SprintApplicationServiceTest {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns plannedSprint
+                // FR-BD-04 보드당 활성 1개 가드 — 이 보드에 활성이 없는 정상 경로다.
+                every { it.findActiveByBoard(boardId) } returns null
                 every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
             }
 
@@ -600,6 +664,60 @@ class SprintApplicationServiceTest {
         assertThatThrownBy {
             makeService(repo = repo).start(actorId, sprintId)
         }.isInstanceOf(InvalidSprintTransitionException::class.java)
+    }
+
+    // ── start 활성 1개 가드 (FR-BD-04 D4) ────────────────────────────────────
+    //
+    // 선행 결정 무효화. agile-planning.md §3.2 Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」을
+    // 뒤집는다. Jira Cloud 기본이 보드당 1개다. 기존 다중 활성 행은 깨지 않는다 — 가드는 start 시점만.
+
+    @Test
+    fun `start 같은 보드에 이미 ACTIVE 스프린트가 있으면 409를 던지고 상태를 바꾸지 않는다`() {
+        val otherActive = plannedSprint.copy(id = UUID.randomUUID(), status = SprintStatus.ACTIVE)
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+                every { it.findActiveByBoard(boardId) } returns otherActive
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).start(actorId, sprintId)
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(409)
+
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
+    @Test
+    fun `start 는 그 스프린트가 속한 보드로만 활성 여부를 묻는다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+                every { it.findActiveByBoard(boardId) } returns null
+                every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
+            }
+
+        makeService(repo = repo).start(actorId, sprintId)
+
+        // 프로젝트 전역이 아니라 보드 스코프다 — 다른 보드의 활성 스프린트는 막지 않는다.
+        verify(exactly = 1) { repo.findActiveByBoard(boardId) }
+    }
+
+    @Test
+    fun `start FSM 위반은 보드 가드보다 먼저 판정된다`() {
+        // ACTIVE 스프린트를 다시 start 하면 「이미 활성이 있다」가 아니라 「전환 불가」여야 한다.
+        // 가드를 sprint.start() 앞에 두면 이 구분이 사라진다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns activeSprint
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).start(actorId, sprintId)
+        }.isInstanceOf(InvalidSprintTransitionException::class.java)
+
+        verify(exactly = 0) { repo.findActiveByBoard(any()) }
     }
 
     // ── complete ──────────────────────────────────────────────────────────────
@@ -837,6 +955,7 @@ class SprintApplicationServiceTest {
         makeService(resolver = resolver, repo = repo).create(
             actorId = actorId,
             projectKey = projectKey,
+            boardId = boardId,
             name = "Sprint 1",
             goal = null,
             startDate = null,

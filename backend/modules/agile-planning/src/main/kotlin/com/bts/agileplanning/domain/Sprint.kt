@@ -40,6 +40,14 @@ class InvalidSprintTransitionException(message: String) : IllegalStateException(
 data class Sprint(
     val id: UUID,
     val projectKey: String,
+    /**
+     * 소속 보드. Jira 에서 스프린트는 보드(origin board)에 매달린다.
+     *
+     * **기본값을 두지 않는다** — DB 가 `NOT NULL` 이라 도메인에 nullable 이나 기본값을 두면
+     * 「보드 없는 스프린트」라는 두 번째 상태가 생겨 조회가 조용히 갈린다
+     * (`docs/adr/2026-09-01-board-type-and-active-sprint.md` D2).
+     */
+    val boardId: UUID,
     val name: String,
     val goal: String?,
     val status: SprintStatus,

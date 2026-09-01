@@ -4,6 +4,7 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.web.dto.BoardDetailResponse
 import com.bts.agileplanning.web.dto.BoardMetaResponse
@@ -95,19 +96,22 @@ class BoardController(
      *
      * 권한: [IssuePermission.CREATE] on [IssueScope.Project] (요청 projectKey 기준).
      *
-     * @param request 보드 생성 요청 바디(projectKey, name).
+     * @param request 보드 생성 요청 바디(projectKey, name, 선택 boardType).
      * @return 201 Created + [BoardResponse](컬럼 포함) + `Location` 헤더.
      */
     @PostMapping
     fun create(
         @Valid @RequestBody request: CreateBoardRequest,
     ): ResponseEntity<DataResponse<BoardResponse>> {
-        log.info("BoardController.create projectKey={}", request.projectKey)
+        log.info("BoardController.create projectKey={} boardType={}", request.projectKey, request.boardType)
 
         val actor = currentActorId()
         requirePermission(actor, IssuePermission.CREATE, IssueScope.Project(request.projectKey))
 
-        val board = service.createBoard(request.projectKey, request.name)
+        // 권한 판정 뒤에 파싱한다 — 앞에 두면 권한 없는 호출자가 허용값 밖 요청으로 400/403 을
+        // 구분해 프로젝트 존재를 떠볼 수 있다(probe). 미지정은 KANBAN 이다.
+        val boardType = BoardType.from(request.boardType)
+        val board = service.createBoard(request.projectKey, request.name, boardType)
         val location = URI.create("/api/v1/boards/${board.id}")
         return ResponseEntity.created(location).body(DataResponse(BoardResponse.from(board)))
     }

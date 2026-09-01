@@ -61,6 +61,7 @@ class BacklogApplicationServiceTest {
         Sprint(
             id = id,
             projectKey = projectKey,
+            boardId = UUID.randomUUID(),
             name = "Sprint",
             goal = null,
             status = status,

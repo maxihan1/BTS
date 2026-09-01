@@ -41,6 +41,7 @@ class BoardNameInvalidException : IllegalArgumentException("Board.name must not 
  * @property updatedAt 보드 최종 수정 시각.
  * @property deletedAt soft-delete 시각. null 이면 활성 보드.
  * @property swimlaneField 스윔레인 기준 필드. 기본값 [SwimlaneField.NONE] 은 스윔레인 비활성.
+ * @property boardType 보드 종류. 기본값 [BoardType.KANBAN] 이 **기존 보드 전량을 무변경으로 보존**한다.
  */
 data class Board(
     val id: UUID,
@@ -51,6 +52,7 @@ data class Board(
     val updatedAt: Instant,
     val deletedAt: Instant? = null,
     val swimlaneField: SwimlaneField = SwimlaneField.NONE,
+    val boardType: BoardType = BoardType.KANBAN,
 ) {
     init {
         require(projectKey.isNotBlank()) { "Board.projectKey must not be blank." }

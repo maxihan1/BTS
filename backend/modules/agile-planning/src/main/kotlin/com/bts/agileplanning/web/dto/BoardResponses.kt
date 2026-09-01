@@ -7,12 +7,14 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
+import com.bts.agileplanning.domain.Sprint
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionResult
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.PositiveOrZero
 import org.openapitools.jackson.nullable.JsonNullable
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -31,12 +33,17 @@ data class DataResponse<T>(val data: T)
  *
  * @property projectKey 보드를 생성할 프로젝트 키. 예: `"BTS"`. 공백 불가.
  * @property name 보드 표시 이름. 공백 불가.
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). **선택** — 생략하면 `KANBAN` 이다.
+ *   Bean Validation 으로 값 집합을 강제하지 않는다. 파싱을
+ *   [com.bts.agileplanning.domain.BoardType.from] 한 곳에 모아 허용값이 늘 때 두 자리를 고치지
+ *   않게 하고, 위반은 named exception 으로 400 이 된다.
  */
 data class CreateBoardRequest(
     @field:NotBlank
     val projectKey: String,
     @field:NotBlank
     val name: String,
+    val boardType: String? = null,
 )
 
 /**
@@ -93,12 +100,14 @@ data class BoardColumnResponse(
  * @property projectKey 소속 프로젝트 키.
  * @property name 보드 표시 이름.
  * @property columns 시드된 컬럼 목록(카드 미포함).
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). 생성 직후 클라이언트가 종류를 되읽는 유일한 자리다.
  */
 data class BoardResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
     val columns: List<BoardColumnResponse>,
+    val boardType: String,
 ) {
     companion object {
         /** 도메인 [Board] 를 [BoardResponse](컬럼 포함, 카드 미포함) 로 변환한다. */
@@ -108,6 +117,7 @@ data class BoardResponse(
                 projectKey = board.projectKey,
                 name = board.name,
                 columns = board.columns.map(BoardColumnResponse::from),
+                boardType = board.boardType.name,
             )
     }
 }
@@ -247,6 +257,9 @@ data class BoardColumnWithCardsResponse(
  *   **렌더하지 않는다**(비활성이 아니다). 실제 판정은 프로젝트 스코프의
  *   [com.bts.shared.permission.IssuePermission.SOFT_DELETE] 라 같은 프로젝트의 보드끼리 값이 같다 —
  *   per-board 관리자 모델이 들어오기 전까지의 의미론적 근사다. 목록 응답에는 싣지 않는다.
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). 클라이언트가 화면 의미를 가르는 축이다(FR-BD-04).
+ * @property activeSprint 스크럼 보드의 활성 스프린트. **칸반은 항상 `null`** 이고, 스크럼이라도 시작된
+ *   스프린트가 없으면 `null` 이다. `null` 이면 「스프린트를 시작하세요」 빈 상태를 그린다.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
@@ -258,6 +271,8 @@ data class BoardDetailResponse(
     val swimlaneField: String,
     val quickFilters: List<QuickFilterResponse>,
     val canDelete: Boolean,
+    val boardType: String,
+    val activeSprint: ActiveSprintResponse?,
 ) {
     companion object {
         /**
@@ -285,6 +300,37 @@ data class BoardDetailResponse(
                 swimlaneField = board.swimlaneField.name,
                 quickFilters = quickFilters.map(QuickFilterResponse::from),
                 canDelete = canDelete,
+                boardType = board.boardType.name,
+                activeSprint = result.activeSprint?.let(ActiveSprintResponse::from),
+            )
+    }
+}
+
+/**
+ * 스크럼 보드의 활성 스프린트 요약 (FR-BD-04).
+ *
+ * 보드 헤더가 「어느 스프린트를 보고 있는지」와 남은 기간을 보여주는 데 필요한 최소 필드만 싣는다.
+ * 스프린트 상세(목표·이슈 목록)는 스프린트 API 소관이라 여기서 중복하지 않는다.
+ *
+ * @property sprintId 활성 스프린트 UUID.
+ * @property name 스프린트 표시 이름. 예: `"Sprint 3"`.
+ * @property startDate 시작일. 미설정이면 null.
+ * @property endDate 종료일. 미설정이면 null.
+ */
+data class ActiveSprintResponse(
+    val sprintId: UUID,
+    val name: String,
+    val startDate: LocalDate?,
+    val endDate: LocalDate?,
+) {
+    companion object {
+        /** 도메인 [Sprint] 를 보드 헤더용 요약으로 변환한다. */
+        fun from(sprint: Sprint): ActiveSprintResponse =
+            ActiveSprintResponse(
+                sprintId = sprint.id,
+                name = sprint.name,
+                startDate = sprint.startDate,
+                endDate = sprint.endDate,
             )
     }
 }

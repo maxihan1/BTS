@@ -32,6 +32,7 @@ class SprintTest {
     ) = Sprint(
         id = baseId,
         projectKey = "PROJ",
+        boardId = UUID.randomUUID(),
         name = name,
         goal = goal,
         status = SprintStatus.PLANNED,

@@ -7,6 +7,7 @@ import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
 import com.bts.agileplanning.domain.BoardNameInvalidException
+import com.bts.agileplanning.domain.BoardTypeInvalidException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -166,6 +167,37 @@ class BoardExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "요청 값 검증에 실패했습니다.",
+        )
+    }
+
+    /**
+     * 보드 종류가 허용값 밖 — 400 (FR-BD-04 D4).
+     *
+     * [BoardController.create] 가 `boardType` 을 [com.bts.agileplanning.domain.BoardType.from] 으로
+     * 읽을 때 던지는 [BoardTypeInvalidException] 을 매핑한다.
+     *
+     * ### 왜 [AGILE_VALIDATION_FAILED] 를 재사용하지 않는가
+     * 클라이언트가 「어느 필드가 왜 틀렸는지」를 상태코드만으로는 못 가린다. 보드 생성은 필수 필드
+     * 누락(400 `AGILE_VALIDATION_FAILED`)과 종류 오타가 둘 다 400 이라, 코드를 나눠야 UI 가
+     * 종류 선택으로 되돌릴지 폼 전체를 되짚을지 정할 수 있다.
+     *
+     * ### 왜 [IllegalArgumentException] 이 아니라 이 타입인가
+     * [handleBoardNameInvalid] KDoc 과 같은 이유다 — 상위 타입으로 잡으면 호출 사슬 전체의
+     * `require`/`check` 실패까지 400 이 되어 서버 버그가 클라이언트 입력 오류로 위장한다.
+     *
+     * 보안 — 도메인 메시지(입력 원문 포함)를 응답에 싣지 않는다. 원인은 로그에만 남긴다.
+     *
+     * @param ex 보드 종류 허용값 위반 예외.
+     */
+    @ExceptionHandler(BoardTypeInvalidException::class)
+    fun handleBoardTypeInvalid(ex: BoardTypeInvalidException): ProblemDetail {
+        log.info("AGILE_400 board_type_invalid cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-board-type-invalid",
+            title = "Invalid Board Type",
+            errorCode = AGILE_BOARD_TYPE_INVALID,
+            detail = "보드 종류는 SCRUM 또는 KANBAN 이어야 합니다.",
         )
     }
 
@@ -402,6 +434,7 @@ class BoardExceptionHandler {
         const val AGILE_UNAUTHENTICATED = "AGILE_UNAUTHENTICATED"
         const val AGILE_ACCESS_DENIED = "AGILE_ACCESS_DENIED"
         const val AGILE_BOARD_NOT_FOUND = "AGILE_BOARD_NOT_FOUND"
+        const val AGILE_BOARD_TYPE_INVALID = "AGILE_BOARD_TYPE_INVALID"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
         const val AGILE_QUICK_FILTER_NAME_CONFLICT = "AGILE_QUICK_FILTER_NAME_CONFLICT"
         const val AGILE_QUICK_FILTER_LIMIT_EXCEEDED = "AGILE_QUICK_FILTER_LIMIT_EXCEEDED"

@@ -82,6 +82,7 @@ class SprintRepository(
         dsl.insertInto(SPRINTS)
             .set(SPRINTS.ID, sprint.id)
             .set(SPRINTS.PROJECT_KEY, sprint.projectKey)
+            .set(SPRINTS.BOARD_ID, sprint.boardId)
             .set(SPRINTS.NAME, sprint.name)
             .set(SPRINTS.GOAL, sprint.goal)
             .set(SPRINTS.STATUS, sprint.status.name)
@@ -94,6 +95,37 @@ class SprintRepository(
 
         return findById(sprint.id) ?: error("스프린트 INSERT 후 조회 실패 — id=${sprint.id}")
     }
+
+    // ── findActiveByBoard ─────────────────────────────────────────────────────
+
+    /**
+     * 그 보드의 **ACTIVE 스프린트**를 반환한다. 없으면 `null`.
+     *
+     * Jira Cloud 는 활성 스프린트를 기본 1개로 제한한다
+     * (*"If you want to have more than one active sprint at a time, you'll need to enable parallel
+     * sprints"* · 2026-09-01 조회). BTS 도 [SprintApplicationService.start] 에서 같은 제약을 건다.
+     *
+     * ★ 다만 **기존 데이터에는 다중 ACTIVE 가 실재할 수 있다** — PR #182 Deviation ⑤ 가 명시적으로
+     * 허용했고 V506 마이그레이션이 그 행을 깨지 않는다. 그래서 이 함수는 `created_at` 오름차순
+     * `LIMIT 1` 로 **하나만** 집어 온다. 여러 건일 때 예외를 던지면 선재 데이터가 보드 조회를 통째로
+     * 막는다. 정렬을 두는 이유는 여러 건일 때 **어느 것을 집는지가 호출마다 흔들리지 않게** 하기 위함이다.
+     *
+     * 조건 순서는 부분 인덱스 `idx_sprints_board_active (board_id) WHERE deleted_at IS NULL AND
+     * status = 'ACTIVE'` 를 타도록 맞춘다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @return ACTIVE 스프린트. 없으면 `null`.
+     */
+    @Transactional(readOnly = true)
+    fun findActiveByBoard(boardId: UUID): Sprint? =
+        dsl.selectFrom(SPRINTS)
+            .where(SPRINTS.BOARD_ID.eq(boardId))
+            .and(SPRINTS.DELETED_AT.isNull)
+            .and(SPRINTS.STATUS.eq(SprintStatus.ACTIVE.name))
+            .orderBy(SPRINTS.CREATED_AT.asc())
+            .limit(1)
+            .fetchOne()
+            ?.let(::toDomain)
 
     // ── findById ──────────────────────────────────────────────────────────────
 
@@ -410,6 +442,7 @@ class SprintRepository(
         return Sprint(
             id = id,
             projectKey = record.projectKey,
+            boardId = record.boardId,
             name = record.name,
             goal = record.goal,
             status = status,

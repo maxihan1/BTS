@@ -78,6 +78,8 @@ class SprintSchemaMigrationTest {
                 "created_at",
                 "updated_at",
                 "deleted_at",
+                // V506 — 소속 보드(NOT NULL + FK)
+                "board_id",
             )
 
         // sprint_issues 가 V503 에서 보유해야 하는 3개 컬럼.
@@ -269,15 +271,34 @@ class SprintSchemaMigrationTest {
             }
         }
 
+    // boards 한 행 INSERT — V506 이후 sprints.board_id 가 NOT NULL + FK 라 부모 보드가 먼저 있어야 한다.
+    @Suppress("NestedBlockDepth")
+    private fun insertBoard(projectKey: String): UUID =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO boards (id, project_key, name, board_type) " +
+                    "VALUES (gen_random_uuid(), ?, ?, 'SCRUM') RETURNING id",
+            ).use { stmt ->
+                stmt.setString(1, projectKey)
+                stmt.setString(2, "$projectKey 스크럼 보드")
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1, UUID::class.java)
+                }
+            }
+        }
+
     // sprints 한 행 INSERT — 자식 sprint_issues FK/UNIQUE 검증의 부모 행 준비용. 생성된 sprint id 반환.
     @Suppress("NestedBlockDepth")
     private fun insertSprint(projectKey: String): UUID =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
-                "INSERT INTO sprints (id, project_key, name) VALUES (gen_random_uuid(), ?, ?) RETURNING id",
+                "INSERT INTO sprints (id, project_key, name, board_id) " +
+                    "VALUES (gen_random_uuid(), ?, ?, ?) RETURNING id",
             ).use { stmt ->
                 stmt.setString(1, projectKey)
                 stmt.setString(2, "스프린트 1")
+                stmt.setObject(3, insertBoard(projectKey))
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getObject(1, UUID::class.java)
@@ -308,11 +329,13 @@ class SprintSchemaMigrationTest {
     ) {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
-                "INSERT INTO sprints (id, project_key, name, status) VALUES (gen_random_uuid(), ?, ?, ?)",
+                "INSERT INTO sprints (id, project_key, name, status, board_id) " +
+                    "VALUES (gen_random_uuid(), ?, ?, ?, ?)",
             ).use { stmt ->
                 stmt.setString(1, projectKey)
                 stmt.setString(2, "스프린트")
                 stmt.setString(3, status)
+                stmt.setObject(4, insertBoard(projectKey))
                 stmt.executeUpdate()
             }
         }
@@ -326,7 +349,7 @@ class SprintSchemaMigrationTest {
     }
 
     @Test
-    fun `V503 sprints 11개 컬럼 존재`() {
+    fun `V503+V506 sprints 12개 컬럼 존재`() {
         assertThat(columnsOf("sprints"))
             .containsExactlyInAnyOrderElementsOf(SPRINTS_COLUMNS)
     }

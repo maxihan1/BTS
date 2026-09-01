@@ -49,6 +49,7 @@ class SprintVelocityServiceTest {
         return Sprint(
             id = UUID.randomUUID(),
             projectKey = projectKey,
+            boardId = UUID.randomUUID(),
             name = "Sprint $index",
             goal = null,
             status = SprintStatus.COMPLETED,

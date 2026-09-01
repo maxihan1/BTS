@@ -54,6 +54,7 @@ class SprintApplicationService(
     private val permissionResolver: IssuePermissionResolver,
     private val sprintRepository: SprintRepository,
     private val boardIssueLookupPort: BoardIssueLookupPort,
+    private val boardApplicationService: BoardApplicationService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -87,14 +88,20 @@ class SprintApplicationService(
         goal: String?,
         startDate: LocalDate?,
         endDate: LocalDate?,
+        boardId: UUID? = null,
     ): Sprint {
         log.debug("스프린트 생성 시작 — projectKey={}, name={}", projectKey, name)
         requirePermission(actorId, IssuePermission.CREATE, IssueScope.Project(projectKey))
+
+        // 보드를 안 준 요청은 그 프로젝트의 스크럼 보드에 붙인다(없으면 만든다).
+        // 백로그 화면은 아직 보드를 지정하지 않으므로 이 경로가 기본이다 — PR ③ 에서 명시 지정이 붙는다.
+        val targetBoardId = boardId ?: boardApplicationService.ensureScrumBoard(projectKey)
 
         val sprint =
             Sprint(
                 id = UUID.randomUUID(),
                 projectKey = projectKey,
+                boardId = targetBoardId,
                 name = name,
                 goal = goal,
                 status = SprintStatus.PLANNED,
@@ -154,6 +161,7 @@ class SprintApplicationService(
         Sprint(
             id = existing.id,
             projectKey = existing.projectKey,
+            boardId = existing.boardId,
             name = mergedName,
             goal = mergedGoal,
             status = existing.status,
@@ -241,13 +249,23 @@ class SprintApplicationService(
     /**
      * 스프린트를 시작(PLANNED -> ACTIVE)한다.
      *
-     * 도메인 Sprint.start() 에 전환 유효성을 위임한다.
-     * 다중 ACTIVE 스프린트를 허용한다 (기존 ACTIVE 조회/차단 없음).
+     * 도메인 Sprint.start() 에 전환 유효성을 위임한 뒤, **보드당 활성 스프린트 1개**를 강제한다.
+     *
+     * ### 판정 순서 — FSM 이 보드 가드보다 앞이다
+     * ACTIVE 스프린트를 다시 start 하면 [findActiveByBoard] 가 **자기 자신**을 찾는다. 가드를
+     * [Sprint.start] 앞에 두면 「전환 불가」가 「이미 활성이 있다」로 뒤바뀌어 원인이 흐려진다.
+     * 그래서 FSM 을 먼저 통과시킨다 — 여기 도달한 스프린트는 PLANNED 였음이 보장된다.
+     *
+     * ### 선행 결정 무효화 (2026-09-01)
+     * `docs/plan/product/agile-planning.md §3.2` 의 Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」을
+     * 뒤집는다. Jira Cloud 기본이 보드당 1개다(`docs/adr/2026-09-01-board-type-and-active-sprint.md` D5).
+     * **기존 다중 활성 행은 깨지 않는다** — 가드는 이 시점에만 걸고 V506 인덱스도 UNIQUE 가 아니다.
      *
      * @param actorId 행위자 UUID.
      * @param sprintId 시작할 스프린트 UUID.
      * @return ACTIVE 상태의 갱신된 스프린트.
      * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintAlreadyActiveException 409 — 같은 보드에 이미 ACTIVE 스프린트가 있음.
      * @throws SprintVersionConflictException 409 — OCC 버전 충돌.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전환.
@@ -259,6 +277,9 @@ class SprintApplicationService(
     ): Sprint {
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
         val started = sprint.start()
+        if (sprintRepository.findActiveByBoard(sprint.boardId) != null) {
+            throw SprintAlreadyActiveException()
+        }
         return sprintRepository.updateStatus(sprintId, started.status, sprint.version)
             ?: resolveOccNull(sprintId, sprint)
     }

@@ -84,6 +84,8 @@ class BoardSchemaMigrationTest {
                 "updated_at",
                 "deleted_at",
                 "swimlane_field",
+                // V505 — 보드 종류(SCRUM/KANBAN)
+                "board_type",
             )
 
         // board_quick_filters 가 보유해야 하는 6개 컬럼 (V504 FR-UX-01 퀵 필터).

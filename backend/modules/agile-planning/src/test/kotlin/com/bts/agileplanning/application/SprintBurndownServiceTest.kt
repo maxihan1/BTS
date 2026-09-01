@@ -42,6 +42,7 @@ class SprintBurndownServiceTest {
         Sprint(
             id = sprintId,
             projectKey = projectKey,
+            boardId = UUID.randomUUID(),
             name = "Sprint 1",
             goal = null,
             status = SprintStatus.ACTIVE,
