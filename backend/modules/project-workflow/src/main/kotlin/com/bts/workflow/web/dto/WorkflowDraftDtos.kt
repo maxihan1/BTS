@@ -57,9 +57,10 @@ data class ResetToDefaultRequest(
  *
  * ### `statusMappings` 가 없는 이유
  * Jira Cloud 는 이 요청에 `statusMappings` 를 함께 받아 이슈를 옮긴다. BTS 는 그 UPDATE 가
- * issue-tracking BC 소유라 아직 실행할 수 없어(다중 BC 트랜잭션 금지) **필드를 두지 않는다** —
- * 받아 놓고 무시하면 화면은 이관을 지시했다고 믿는데 아무 일도 일어나지 않는다.
- * 이관이 필요하면 발행이 409 로 막히고 응답이 상태별 잔여 건수를 알려준다. 매핑 수용은 로드맵 PR 7.
+ * issue-tracking BC 소유라 같은 트랜잭션에 담을 수 없어(다중 BC 트랜잭션 금지) **필드를 두지
+ * 않는다** — 받아 놓고 무시하면 화면은 이관을 지시했다고 믿는데 아무 일도 일어나지 않는다.
+ * 매핑은 [MigrateRequest] 가 받고, 이관이 필요한데 안 끝났으면 발행이 409 로 막히면서 응답이
+ * 상태별 잔여 건수를 알려준다.
  *
  * ### `required = true` 인 이유
  * Kotlin 의 non-null `Long` 은 JVM primitive 라, 본문에서 **빠지면 Jackson 이 조용히 0 으로 채운다**

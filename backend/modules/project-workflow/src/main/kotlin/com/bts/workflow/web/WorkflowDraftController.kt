@@ -1,4 +1,4 @@
-// 워크플로우 초안·발행 REST 컨트롤러 — 초안 CRUD · 발행 · 미리보기 · 기본값 복원
+// 워크플로우 초안·발행 REST 컨트롤러 — 초안 CRUD · 발행 · 미리보기 · 이관 큐잉 · 기본값 복원
 
 package com.bts.workflow.web
 

@@ -1,4 +1,4 @@
-// 워크플로우 발행 — 초안 검증 · 이관 필요 판정 · 정규 테이블 교체 · 이력 적재 · 캐시 무효화
+// 워크플로우 발행 — 초안 검증 · 이관 필요 판정 · 이관 큐잉 · 정규 테이블 교체 · 이력 적재 · 캐시 무효화
 
 package com.bts.workflow.application
 
@@ -32,24 +32,32 @@ import java.util.UUID
  * (`WorkflowRepository` · `WorkflowCache`)는 그 테이블을 **아예 조회하지 않는다**. 「샐 수 있는데
  * 안 새도록 조심한다」가 아니라 「샐 경로가 없다」가 초안을 JSONB 로 둔 이유다.
  *
- * ### 이관 매핑을 아직 받지 않는다 — Jira 방식의 앞 절반
- * Jira Cloud 는 발행 요청이 `statusMappings` 를 함께 받아 **실제로 이슈를 옮긴다**
+ * ### 이관은 발행과 **다른 요청**이다 — Jira 방식을 둘로 쪼갠 이유
+ * Jira Cloud 는 발행 요청이 `statusMappings` 를 함께 받아 한 번에 이슈까지 옮긴다
  * (support.atlassian.com · developer.atlassian.com, 2026-08-26 조회). 그런데 이슈 UPDATE 는
- * issue-tracking BC 소유라 이 BC 가 실행할 수 없다(다중 BC 트랜잭션 금지 · `DATA.md §6`).
+ * issue-tracking BC 소유라 같은 트랜잭션에 담을 수 없다(다중 BC 트랜잭션 금지 · `DATA.md §6`).
  *
- * 받지도 못할 파라미터를 미리 뚫는 것은 미완성 코드다(`DEVELOPMENT.md` 절대 규칙 16). 그래서
- * 지금은 **막고, 무엇이 막는지 알린다** — [WorkflowPublishMappingRequiredException.pending] 이
- * 상태별 잔여 건수를 담아 화면이 이관 모달을 그릴 재료가 된다. 매핑 수용과 이관 실행은 로드맵
- * **PR 7** 이 한 몸으로 채운다.
+ * 그래서 [migrate] 가 이관을 **큐잉만** 하고, 관리자가 그 일괄작업이 끝난 뒤 [publish] 를 다시
+ * 부른다. 발행이 「발행하지 않고 202」를 돌려주는 상태를 만들지 않고, 한 트랜잭션이 두 BC 에
+ * 쓰지도 않는다. 아직 이슈가 남은 채로 발행하면 [publish] 가 409 로 막고
+ * [WorkflowPublishMappingRequiredException.pending] 이 상태별 잔여 건수를 알려준다.
  *
  * ### `LongParameterList` 억제 사유
- * 발행은 초안·정의·이력·규칙·이슈사용량·권한·캐시 일곱 가지를 한 트랜잭션에서 조율하는
+ * 발행은 초안·정의·이력·규칙·이슈사용량·이관큐잉·권한·캐시를 한 트랜잭션에서 조율하는
  * 오케스트레이션이고, 협력자 수가 곧 그 일의 크기다(detekt 임계는 7 **이상**에서 발동).
- * 규칙 재삽입은 이미 [DraftRuleWriter] 로 떼어 냈다 — 남은 일곱은 각자 다른 이유로 존재해
+ * 규칙 재삽입은 이미 [DraftRuleWriter] 로 떼어 냈다 — 남은 것들은 각자 다른 이유로 존재해
  * 더 묶으면 「발행 저장소」 같은 이름뿐인 묶음이 생기고 응집도가 오히려 나빠진다.
  * 전역 임계값은 건드리지 않는다.
+ *
+ * ### `TooManyFunctions` 억제 사유
+ * public 진입점은 셋([preview] · [publish] · [migrate])뿐이고 나머지 아홉은 전부 private 관문이다
+ * (한도 11, 현재 12). 줄이는 길은 둘인데 둘 다 더 나쁘다 — 관문을 합치면 어느 검사가 왜 있는지가
+ * 이름에서 사라지고, 클래스를 쪼개면 **같은 초안을 근거로 삼는 세 경로의 전처리가 갈라진다**.
+ * 갈라진 관문은 한쪽에만 붙은 검사가 다른 쪽에서 통째로 우회되는 형태이며, 그것이 이 PR 이
+ * [prepareDraft] 로 되레 **묶은** 이유다. 클래스 분리는 별건으로 다룬다.
+ * 전역 임계값은 건드리지 않고, 형제 `WorkflowController` 가 같은 처방을 쓴다.
  */
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "TooManyFunctions")
 @Service
 class WorkflowPublishService(
     private val draftRepository: WorkflowDraftRepository,
@@ -114,30 +122,20 @@ class WorkflowPublishService(
         baseVersion: Long,
     ): Int {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
-        val workflowId = requireLive(key).id
-        val draft = requireDraft(key, workflowId)
-        val definition = draft.definition
-        validateDefinition(key, definition)
-        requireKeyMatchesPath(key, definition)
-
-        if (draft.baseVersion != baseVersion) {
-            // 화면이 든 버전과 초안이 매인 버전이 다르다. 초안 내용은 저 앵커를 보고 만들어진 것이므로
-            // 「화면이 새 버전을 봤다」고 해서 그 내용이 새 버전 위에서 옳아지지 않는다.
-            throw WorkflowVersionConflictException(key, baseVersion, draft.baseVersion)
-        }
-
-        val statusIds = requireStatusCatalog(key, definition)
+        val prepared = prepareDraft(key, baseVersion)
+        val workflowId = prepared.workflowId
+        val definition = prepared.definition
         requireNoPendingIssues(key, workflowId, definition)
 
         var versionNo = 0
         cache.withWriteLock(key) {
-            if (!publishRepository.bumpVersionIfMatches(workflowId, draft.baseVersion)) {
+            if (!publishRepository.bumpVersionIfMatches(workflowId, prepared.draftBaseVersion)) {
                 // affected 0 은 「없음」과 「충돌」 둘 다를 뜻한다. 재조회로 404 와 409 를 가른다.
                 val actual = requireLive(key).version
-                throw WorkflowVersionConflictException(key, draft.baseVersion, actual)
+                throw WorkflowVersionConflictException(key, prepared.draftBaseVersion, actual)
             }
 
-            val transitionIds = publishRepository.replaceDefinition(workflowId, definition, statusIds)
+            val transitionIds = publishRepository.replaceDefinition(workflowId, definition, prepared.statusIds)
             ruleWriter.writeAll(definition, transitionIds)
 
             versionNo = publicationRepository.nextVersionNo(workflowId)
@@ -184,19 +182,7 @@ class WorkflowPublishService(
         mappings: List<StatusMigrationMapping>,
     ): UUID {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
-        val workflowId = requireLive(key).id
-        val draft = requireDraft(key, workflowId)
-        val definition = draft.definition
-        validateDefinition(key, definition)
-        requireKeyMatchesPath(key, definition)
-
-        if (draft.baseVersion != baseVersion) {
-            throw WorkflowVersionConflictException(key, baseVersion, draft.baseVersion)
-        }
-
-        // ★빠뜨리면 초안에는 있으나 카탈로그에 없는 상태가 어댑터까지 가고, 어댑터의
-        //   IllegalArgumentException 을 잡는 advice 가 이 BC 에 없어 400 이어야 할 것이 500 이 된다.
-        requireStatusCatalog(key, definition)
+        val (workflowId, definition) = prepareDraft(key, baseVersion)
 
         val removed = removedStatusKeys(workflowId, definition)
         val projectKeys = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.key }.toSet()
@@ -217,6 +203,50 @@ class WorkflowPublishService(
     }
 
     // ── 내부 ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 발행과 이관이 **똑같이** 지나야 하는 전처리. 존재 확인 → 초안 확인 → 정의 검증 → 키 대조 →
+     * 낙관적 락 → 상태 카탈로그 대조를 이 순서로 태운다.
+     *
+     * ### 왜 묶는가
+     * 두 경로가 같은 초안을 근거로 삼는데 관문이 갈라지면, 한쪽에만 붙은 검사가 **다른 쪽에서
+     * 통째로 우회**된다. 실제로 [migrate] 에서 `requireStatusCatalog` 하나만 빠져도 초안에는 있고
+     * 카탈로그에는 없는 상태가 어댑터까지 가고, 어댑터의 `IllegalArgumentException` 을 잡는
+     * advice 가 이 BC 에 없어 400 이어야 할 것이 **500** 으로 나간다.
+     *
+     * ### ★권한 검사는 여기 넣지 않는다
+     * 「PUBLISH 가 첫 줄」이 [IssueStatusMigrationPort] 가 위임한 위조 차단의 이행 지점인데,
+     * 이 헬퍼 안으로 넣으면 그 계약이 **헬퍼 호출 순서에 숨어** 호출부만 보고는 확인할 수 없게 된다.
+     * 호출자마다 첫 줄에 두는 것이 그 계약을 눈에 보이게 하는 유일한 방법이다.
+     *
+     * @param baseVersion 화면이 들고 있던 버전. 판정 기준은 **저장된 초안의 앵커**다.
+     * @throws WorkflowNotFoundException 워크플로우가 없거나 소프트 삭제됐을 때
+     * @throws WorkflowInvalidRequestException 초안이 없거나 정의가 규칙을 어겼거나 상태가 카탈로그에 없을 때
+     * @throws WorkflowVersionConflictException 저장된 앵커와 [baseVersion] 이 다를 때
+     */
+    private fun prepareDraft(
+        key: String,
+        baseVersion: Long,
+    ): PreparedDraft {
+        val workflowId = requireLive(key).id
+        val draft = requireDraft(key, workflowId)
+        val definition = draft.definition
+        validateDefinition(key, definition)
+        requireKeyMatchesPath(key, definition)
+
+        if (draft.baseVersion != baseVersion) {
+            // 화면이 든 버전과 초안이 매인 버전이 다르다. 초안 내용은 저 앵커를 보고 만들어진 것이므로
+            // 「화면이 새 버전을 봤다」고 해서 그 내용이 새 버전 위에서 옳아지지 않는다.
+            throw WorkflowVersionConflictException(key, baseVersion, draft.baseVersion)
+        }
+
+        return PreparedDraft(
+            workflowId = workflowId,
+            definition = definition,
+            draftBaseVersion = draft.baseVersion,
+            statusIds = requireStatusCatalog(key, definition),
+        )
+    }
 
     private fun requireLive(key: String): WorkflowVersionRow {
         val row = publishRepository.findLiveByKey(key)
@@ -363,6 +393,22 @@ class WorkflowPublishService(
         }
     }
 }
+
+/**
+ * 전처리를 통과한 초안. [WorkflowPublishService.prepareDraft] 의 결과다.
+ *
+ * @property workflowId 살아 있는 워크플로우의 id.
+ * @property definition 검증을 통과한 초안 정의.
+ * @property draftBaseVersion **저장된** 초안의 앵커. 요청 값이 아니라 이것이 CAS 인자다 —
+ *   요청 값을 쓰면 화면이 미리보기의 `currentVersion` 을 되실어 보내는 것만으로 락이 풀린다.
+ * @property statusIds 초안 상태 키 → 전역 카탈로그의 `statuses.id`.
+ */
+private data class PreparedDraft(
+    val workflowId: UUID,
+    val definition: WorkflowDraftDefinition,
+    val draftBaseVersion: Long,
+    val statusIds: Map<String, UUID>,
+)
 
 /**
  * 발행 전 미리보기 결과.
