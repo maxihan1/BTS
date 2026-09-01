@@ -58,6 +58,7 @@ import { webauthnHandlers } from './webauthn-handlers'
 import { webhookHandlers } from './webhook-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { workflowAdminHandlers } from './workflow-admin-handlers'
+import { workflowDraftHandlers } from './workflow-draft-handlers'
 import { worklogHandlers } from './worklog-handlers'
 import { commentHandlers } from './comment-handlers'
 import { worklogAggregateHandlers } from './worklog-aggregate-handlers'
@@ -156,6 +157,7 @@ export const handlers = [
   // 관리 쓰기 경로. GET 과 메서드·경로가 겹치지 않아 순서에 영향받지 않는다
   // (`/transitions` 와 `/transitions/plan` 은 세그먼트 수가 달라 서로 안 걸린다).
   ...workflowAdminHandlers,
+  ...workflowDraftHandlers,
   ...calendarHandlers,
   ...calendarFeedHandlers,
   ...automationRuleHandlers,
