@@ -7,10 +7,14 @@ import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.QuickFilter
+import com.bts.agileplanning.domain.Sprint
+import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.agileplanning.web.dto.BoardCardResponse
 import com.bts.shared.board.BoardCardFilter
@@ -35,6 +39,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -64,6 +69,10 @@ import java.util.UUID
 class BoardApplicationServiceTest {
     @Autowired
     private lateinit var boardRepository: BoardRepository
+
+    /** 스크럼 보드 분기 검증용 — 활성 스프린트와 이슈 할당을 실제 DB 에 심는다(FR-BD-04 D4). */
+    @Autowired
+    private lateinit var sprintRepository: SprintRepository
 
     /**
      * Spring 이 프록시한 [BoardApplicationService] 빈.
@@ -195,6 +204,109 @@ class BoardApplicationServiceTest {
         val inProgressPlaced = result.columns.first { it.column.stateKey == "in-progress" }
         assertThat(inProgressPlaced.cards).hasSize(1)
         assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
+    }
+
+    // ── 스크럼 보드 분기 (FR-BD-04 D4) ──────────────────────────────────────────
+
+    /** 보드 카드용 최소 이슈 뷰. */
+    private fun issueView(
+        key: String,
+        stateKey: String,
+    ): BoardIssueView =
+        BoardIssueView(
+            key = key,
+            summary = "$key 요약",
+            currentStateKey = stateKey,
+            assigneeId = null,
+            priority = 2,
+            version = 1L,
+            typeKey = "task",
+        )
+
+    /** 그 보드에 ACTIVE 스프린트를 심고 이슈를 할당한다. */
+    private fun seedActiveSprint(
+        boardId: UUID,
+        projectKey: String,
+        issueKeys: List<String>,
+    ): Sprint {
+        val sprint =
+            sprintRepository.insert(
+                Sprint(
+                    id = UUID.randomUUID(),
+                    projectKey = projectKey,
+                    boardId = boardId,
+                    name = "Sprint 1",
+                    goal = null,
+                    status = SprintStatus.ACTIVE,
+                    startDate = LocalDate.of(2026, 9, 1),
+                    endDate = LocalDate.of(2026, 9, 14),
+                    version = 0L,
+                ),
+            )
+        issueKeys.forEach { sprintRepository.assignIssue(sprint.id, it) }
+        return sprint
+    }
+
+    /** 스프린트 안 3건 + 밖 5건 = 8건. 앞 3건이 스프린트 소속이다. */
+    private fun eightIssues(projectKey: String): List<BoardIssueView> =
+        (1..8).map { n -> issueView("$projectKey-$n", if (n <= 3) "open" else "in-progress") }
+
+    private fun lookupOf(issues: List<BoardIssueView>): BoardIssueLookupPort =
+        object : BoardIssueLookupPort {
+            override fun listVisibleIssuesByProject(
+                projectKey: String,
+                viewerUserId: UUID,
+                filter: BoardCardFilter,
+            ): BoardIssuePage = BoardIssuePage(issues = issues, truncated = false)
+        }
+
+    @Test
+    fun `스크럼 보드는 활성 스프린트에 속한 이슈만 배치한다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("SCRM"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("SCRM", "스크럼 보드", BoardType.SCRUM)
+        seedActiveSprint(board.id, "SCRM", listOf("SCRM-1", "SCRM-2", "SCRM-3"))
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookupOf(eightIssues("SCRM")))
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.columns.sumOf { it.cards.size }).isEqualTo(3)
+        assertThat(result.columns.flatMap { it.cards }.map { it.key })
+            .containsExactlyInAnyOrder("SCRM-1", "SCRM-2", "SCRM-3")
+    }
+
+    @Test
+    fun `칸반 보드는 같은 보드에 활성 스프린트가 있어도 이슈 전량을 배치한다`() {
+        // NFR-1 회귀 0. 칸반의 의미는 「프로젝트 이슈 전량」이고 이 PR 이 그것을 바꾸지 않는다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("KNBN"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("KNBN", "칸반 보드")
+        seedActiveSprint(board.id, "KNBN", listOf("KNBN-1"))
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookupOf(eightIssues("KNBN")))
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.columns.sumOf { it.cards.size }).isEqualTo(8)
+    }
+
+    @Test
+    fun `컬럼이 0개인 보드는 조회 시 컬럼이 시드되고 영속된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("HEAL"), null) } returns DEFAULT_STATES
+        // ensureScrumBoard 는 일부러 컬럼 0개로 만든다. V506 백필도 복제할 보드가 없으면 같은 상태를 남긴다.
+        val boardId = serviceWith(catalog = catalog).ensureScrumBoard("HEAL")
+        assertThat(boardRepository.findById(boardId)!!.columns).isEmpty()
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookupOf(emptyList()))
+                .getBoard(boardId = boardId, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.columns).hasSize(3)
+        // ★ 영속이 핵심이다. 매 조회마다 다시 시드하면 컬럼 UUID 가 흔들려 카드 이동(toColumnId)이 깨진다.
+        assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
+            .containsExactly("open", "in-progress", "closed")
     }
 
     @Test
