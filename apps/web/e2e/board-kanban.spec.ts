@@ -22,6 +22,8 @@
 //     필요한 상수(boardId, LS키)를 인라인으로 동기화 정의.
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { goToBoardNameStep } from './fixtures/board-helpers'
+import { boardLabels } from '../src/i18n/board-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — board-fixtures.ts에서 import하지 않고 인라인 정의
@@ -298,8 +300,8 @@ test.describe('FR-BD-01 칸반 보드 (보드 조회/카드 이동/resolution/�
   //
   // Given  alice 로그인
   //        boardStore에 'NEWPROJ' 보드 없음 (DEFAULT_BOARD는 ATLAS만)
-  // When   /projects/NEWPROJ/board 진입 → CreateBoardForm 표시
-  //        보드 이름 입력 → "보드 만들기" 클릭
+  // When   /projects/NEWPROJ/board 진입 → CreateBoardForm 1단계(종류 선택) 표시
+  //        기본 선택(칸반) 그대로 "다음" → 보드 이름 입력 → "보드 만들기" 클릭
   // Then   KanbanBoard 렌더 — TODO / IN PROGRESS / DONE 컬럼 표시
   // ───────────────────────────────────────────────────────────────────────────
   test('S5 보드 생성 — 빈 프로젝트 진입 → 생성 폼 → 보드 생성 → 컬럼 표시', async ({ page }) => {
@@ -309,9 +311,16 @@ test.describe('FR-BD-01 칸반 보드 (보드 조회/카드 이동/resolution/�
     // When. NEWPROJ 보드 페이지 진입 — boardStore에 없으므로 CreateBoardForm 표시
     await page.goto('/projects/NEWPROJ/board')
 
-    // Then. CreateBoardForm 표시 확인
+    // Then. CreateBoardForm 1단계 표시 확인 — 종류를 먼저 묻는다 (FR-BD-04 D6).
+    // 1단계의 진행 버튼은 「다음」이고 「보드 만들기」는 2단계에서야 나온다.
     await expect(page.getByText('보드가 없습니다')).toBeVisible()
-    await expect(page.getByRole('button', { name: '보드 만들기', exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: boardLabels.createForm.next, exact: true }),
+    ).toBeVisible()
+
+    // When. 2단계로 — 기본 선택(칸반)을 그대로 쓴다. 이 spec 은 칸반 보드 계약이라
+    // 여기서 스크럼을 고르면 아래 컬럼 단언의 의미가 바뀐다 (종류 선택 자체는 board-manage S1 소관).
+    await goToBoardNameStep(page)
 
     // When. 보드 이름 입력
     await page.getByLabel('보드 이름').fill('신규 보드')
