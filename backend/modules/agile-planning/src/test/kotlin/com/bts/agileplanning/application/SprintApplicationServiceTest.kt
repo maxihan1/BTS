@@ -550,6 +550,8 @@ class SprintApplicationServiceTest {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns plannedSprint
+                // FR-BD-04 보드당 활성 1개 가드 — 이 보드에 활성이 없는 정상 경로다.
+                every { it.findActiveByBoard(boardId) } returns null
                 every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
             }
 

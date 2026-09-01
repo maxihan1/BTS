@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.SprintAlreadyActiveException
 import com.bts.agileplanning.application.SprintDatesRequiredException
 import com.bts.agileplanning.application.SprintNotFoundException
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
@@ -205,6 +206,32 @@ class SprintExceptionHandler {
         )
     }
 
+    /**
+     * [SprintAlreadyActiveException] — 보드에 이미 ACTIVE 스프린트가 있음 — 409 (FR-BD-04 D4).
+     *
+     * ### 왜 전용 핸들러가 필요한가
+     * 이 예외는 [ResponseStatusException] 을 상속하므로 핸들러가 없으면 아래 상태 전파 핸들러
+     * ([handleResponseStatus]) 가 잡아 `CONFLICT -> AGILE_CONFLICT` 로 **errorCode 를 덮어쓴다**.
+     * 형제 [com.bts.agileplanning.application.SprintCompletedAssignException] 등 409 3형제가 실제로
+     * 그렇게 뭉뚱그려져 있다. 클라이언트가 「전환 불가」와 「이미 활성 있음」을 가려야 UI 가
+     * 「완료 후 다시 시작」으로 안내할 수 있으므로 코드를 나눈다.
+     *
+     * 보안 — 충돌한 스프린트의 식별자·이름을 detail 에 노출하지 않는다. 로그에만 기록한다.
+     *
+     * @param ex 활성 스프린트 중복 예외.
+     */
+    @ExceptionHandler(SprintAlreadyActiveException::class)
+    fun handleSprintAlreadyActive(ex: SprintAlreadyActiveException): ProblemDetail {
+        log.info("AGILE_409 sprint_already_active reason='{}'", ex.message)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-sprint-already-active",
+            title = "Sprint Already Active",
+            errorCode = AGILE_SPRINT_ALREADY_ACTIVE,
+            detail = "이 보드에는 이미 시작된 스프린트가 있습니다.",
+        )
+    }
+
     // ── 422 SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01) ─────────────
 
     /**
@@ -322,6 +349,7 @@ class SprintExceptionHandler {
         const val AGILE_ACCESS_DENIED = "AGILE_ACCESS_DENIED"
         const val AGILE_SPRINT_NOT_FOUND = "AGILE_SPRINT_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
+        const val AGILE_SPRINT_ALREADY_ACTIVE = "AGILE_SPRINT_ALREADY_ACTIVE"
         const val AGILE_SPRINT_DATES_REQUIRED = "AGILE_SPRINT_DATES_REQUIRED"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }

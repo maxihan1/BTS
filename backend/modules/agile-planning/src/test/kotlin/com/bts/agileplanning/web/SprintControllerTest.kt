@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.SprintAlreadyActiveException
 import com.bts.agileplanning.application.SprintApplicationService
 import com.bts.agileplanning.application.SprintIssueConflictException
 import com.bts.agileplanning.application.SprintNotFoundException
@@ -418,7 +419,7 @@ class SprintControllerTest {
     fun `POST sprints id start 보드에 활성 스프린트가 있으면 409 AGILE_SPRINT_ALREADY_ACTIVE를 반환한다`() {
         every {
             sprintApplicationService.start(actorId, sprintId)
-        } throws ResponseStatusException(HttpStatus.CONFLICT, "이미 활성 스프린트가 있습니다.")
+        } throws SprintAlreadyActiveException()
 
         mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
             .andExpect(status().isConflict)
