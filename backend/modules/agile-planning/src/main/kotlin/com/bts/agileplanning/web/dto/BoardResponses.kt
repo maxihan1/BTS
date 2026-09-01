@@ -128,11 +128,13 @@ data class BoardResponse(
  * @property boardId 보드 UUID.
  * @property projectKey 소속 프로젝트 키.
  * @property name 보드 표시 이름.
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`).
  */
 data class BoardSummaryResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
+    val boardType: String,
 ) {
     companion object {
         /** 도메인 [Board] 를 [BoardSummaryResponse](메타만) 로 변환한다. */
@@ -141,6 +143,7 @@ data class BoardSummaryResponse(
                 boardId = board.id,
                 projectKey = board.projectKey,
                 name = board.name,
+                boardType = board.boardType.name,
             )
     }
 }
