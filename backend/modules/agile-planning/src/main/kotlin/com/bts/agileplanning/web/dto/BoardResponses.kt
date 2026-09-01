@@ -31,12 +31,17 @@ data class DataResponse<T>(val data: T)
  *
  * @property projectKey 보드를 생성할 프로젝트 키. 예: `"BTS"`. 공백 불가.
  * @property name 보드 표시 이름. 공백 불가.
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). **선택** — 생략하면 `KANBAN` 이다.
+ *   Bean Validation 으로 값 집합을 강제하지 않는다. 파싱을
+ *   [com.bts.agileplanning.domain.BoardType.from] 한 곳에 모아 허용값이 늘 때 두 자리를 고치지
+ *   않게 하고, 위반은 named exception 으로 400 이 된다.
  */
 data class CreateBoardRequest(
     @field:NotBlank
     val projectKey: String,
     @field:NotBlank
     val name: String,
+    val boardType: String? = null,
 )
 
 /**
@@ -93,12 +98,14 @@ data class BoardColumnResponse(
  * @property projectKey 소속 프로젝트 키.
  * @property name 보드 표시 이름.
  * @property columns 시드된 컬럼 목록(카드 미포함).
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). 생성 직후 클라이언트가 종류를 되읽는 유일한 자리다.
  */
 data class BoardResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
     val columns: List<BoardColumnResponse>,
+    val boardType: String,
 ) {
     companion object {
         /** 도메인 [Board] 를 [BoardResponse](컬럼 포함, 카드 미포함) 로 변환한다. */
@@ -108,6 +115,7 @@ data class BoardResponse(
                 projectKey = board.projectKey,
                 name = board.name,
                 columns = board.columns.map(BoardColumnResponse::from),
+                boardType = board.boardType.name,
             )
     }
 }

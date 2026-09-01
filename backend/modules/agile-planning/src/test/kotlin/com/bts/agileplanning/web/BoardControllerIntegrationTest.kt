@@ -245,7 +245,7 @@ class BoardControllerIntegrationTest {
     @Test
     fun `POST boards 정상 입력이면 201 + DataResponse 봉투에 컬럼 포함`() {
         val board = sampleBoard()
-        every { boardApplicationService.createBoard("BTS", "BTS 개발 보드") } returns board
+        every { boardApplicationService.createBoard("BTS", "BTS 개발 보드", BoardType.KANBAN) } returns board
 
         val body = mapOf("projectKey" to "BTS", "name" to "BTS 개발 보드")
 
@@ -281,7 +281,7 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
 
         // 권한 거부 시 보드 생성 서비스가 호출되지 않아야 한다
-        verify(exactly = 0) { boardApplicationService.createBoard(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.createBoard(any(), any(), any()) }
     }
 
     // ── CREATE-3. POST projectKey 누락 → 400 ──────────────────────────────────
@@ -303,7 +303,7 @@ class BoardControllerIntegrationTest {
 
     @Test
     fun `POST boards 워크플로우 미할당이면 422`() {
-        every { boardApplicationService.createBoard("BTS", "보드") } throws
+        every { boardApplicationService.createBoard("BTS", "보드", BoardType.KANBAN) } throws
             ResponseStatusException(
                 org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                 "AGILE_BOARD_WORKFLOW_NOT_ASSIGNED",
@@ -725,7 +725,7 @@ class BoardControllerIntegrationTest {
         )
             .andExpect(status().isForbidden)
 
-        verify(exactly = 0) { boardApplicationService.createBoard(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.createBoard(any(), any(), any()) }
     }
 
     // ── SCOPE-1. 권한 게이트가 올바른 permission/scope 로만 판정됨 (가짜그린 차단) ───
@@ -740,7 +740,7 @@ class BoardControllerIntegrationTest {
     @Test
     fun `보드 생성 권한 판정은 BROWSE 나 Issue scope 가 아니라 CREATE + Project scope 여야 한다`() {
         val board = sampleBoard()
-        every { boardApplicationService.createBoard("BTS", "보드") } returns board
+        every { boardApplicationService.createBoard("BTS", "보드", BoardType.KANBAN) } returns board
         val body = mapOf("projectKey" to "BTS", "name" to "보드")
 
         mockMvc.perform(
