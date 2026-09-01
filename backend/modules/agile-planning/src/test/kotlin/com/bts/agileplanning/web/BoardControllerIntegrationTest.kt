@@ -7,6 +7,7 @@ import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.repository.BoardRepository
@@ -67,6 +68,9 @@ import java.util.UUID
  * - CREATE-3. POST projectKey 누락 → 400 VALIDATION_FAILED
  * - CREATE-4. POST 워크플로우 미할당(서비스 422) → 422
  * - CREATE-5. POST 비인증 → 401
+ * - CREATE-6. POST boardType=SCRUM → 201 + 응답 boardType=SCRUM (FR-BD-04 D4)
+ * - CREATE-7. POST boardType 미지정 → KANBAN (기존 호출자 무변경)
+ * - CREATE-8. POST boardType 허용값 밖 → 400 AGILE_BOARD_TYPE_INVALID
  * - GET-1. GET /api/v1/boards/{id} 정상 → 200 + 컬럼+카드
  * - GET-2. GET BROWSE 권한 미충족 → 403
  * - GET-3. GET 보드 미존재 → 404
@@ -219,11 +223,13 @@ class BoardControllerIntegrationTest {
     private fun sampleBoard(
         boardId: UUID = UUID.randomUUID(),
         projectKey: String = "BTS",
+        boardType: BoardType = BoardType.KANBAN,
     ): Board =
         Board(
             id = boardId,
             projectKey = projectKey,
             name = "BTS 개발 보드",
+            boardType = boardType,
             columns =
                 listOf(
                     BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0),
@@ -327,6 +333,65 @@ class BoardControllerIntegrationTest {
         )
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value("AGILE_UNAUTHENTICATED"))
+    }
+
+    // ── CREATE-6. POST boardType=SCRUM → 201 + 응답 boardType ────────────────
+
+    @Test
+    fun `POST boards boardType 이 SCRUM 이면 그대로 전달되고 응답에 SCRUM 이 실린다`() {
+        val board = sampleBoard(boardType = BoardType.SCRUM)
+        every { boardApplicationService.createBoard("BTS", "스크럼 보드", BoardType.SCRUM) } returns board
+
+        val body = mapOf("projectKey" to "BTS", "name" to "스크럼 보드", "boardType" to "SCRUM")
+
+        mockMvc.perform(
+            post("/api/v1/boards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.boardType").value("SCRUM"))
+
+        verify(exactly = 1) { boardApplicationService.createBoard("BTS", "스크럼 보드", BoardType.SCRUM) }
+    }
+
+    // ── CREATE-7. POST boardType 미지정 → KANBAN (기존 호출자 무변경) ─────────
+
+    @Test
+    fun `POST boards boardType 을 안 보내면 KANBAN 으로 생성된다`() {
+        val board = sampleBoard(boardType = BoardType.KANBAN)
+        every { boardApplicationService.createBoard("BTS", "보드", BoardType.KANBAN) } returns board
+
+        // 기존 E2E board-manage.spec.ts S1 이 이 형태로 부른다 — 필드가 늘어도 깨지면 안 된다.
+        val body = mapOf("projectKey" to "BTS", "name" to "보드")
+
+        mockMvc.perform(
+            post("/api/v1/boards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.boardType").value("KANBAN"))
+
+        verify(exactly = 1) { boardApplicationService.createBoard("BTS", "보드", BoardType.KANBAN) }
+    }
+
+    // ── CREATE-8. POST boardType 허용값 밖 → 400 ─────────────────────────────
+
+    @Test
+    fun `POST boards boardType 이 허용값 밖이면 400 AGILE_BOARD_TYPE_INVALID`() {
+        val body = mapOf("projectKey" to "BTS", "name" to "보드", "boardType" to "GANTT")
+
+        mockMvc.perform(
+            post("/api/v1/boards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_TYPE_INVALID"))
+
+        // 허용값 밖은 서비스에 닿기 전에 걸러야 한다 — 보드가 만들어지면 안 된다.
+        verify(exactly = 0) { boardApplicationService.createBoard(any(), any(), any()) }
     }
 
     // ── GET-1. GET /{id} 정상 → 200 + 컬럼+카드 ───────────────────────────────
