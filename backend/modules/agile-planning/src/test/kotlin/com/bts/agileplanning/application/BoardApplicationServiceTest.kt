@@ -356,6 +356,26 @@ class BoardApplicationServiceTest {
     }
 
     @Test
+    fun `자가 치유는 실제 트랜잭션 경계 안에서도 성공한다`() {
+        // ★ 이 테스트만이 getBoard 의 @Transactional 이 readOnly 가 아님을 지킨다.
+        // serviceWith 인스턴스는 생성자 직접 호출이라 AOP 가 없어, readOnly 가 되살아나도
+        // 다른 자가 치유 테스트는 전부 통과한다(가짜 그린). 여기서는 프록시된 빈을 써서
+        // 진짜 read-only 커넥션 위에서 시드 INSERT 를 시도한다.
+        AgilePlanningTestcontainersConfig.EmptyWorkflowStateCatalogStub.states = DEFAULT_STATES
+        try {
+            val boardId = transactionalBoardService.ensureScrumBoard("TXHEAL")
+            assertThat(boardRepository.findById(boardId)!!.columns).isEmpty()
+
+            transactionalBoardService.getBoard(boardId = boardId, viewerUserId = UUID.randomUUID())
+
+            assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
+                .containsExactly("open", "in-progress", "closed")
+        } finally {
+            AgilePlanningTestcontainersConfig.EmptyWorkflowStateCatalogStub.states = emptyList()
+        }
+    }
+
+    @Test
     fun `보드 조회 시 LIMIT 초과면 truncated=true 가 반환된다`() {
         val catalog = mockk<WorkflowStateCatalog>()
         every { catalog.listStates(ProjectKey.of("TRNC"), null) } returns DEFAULT_STATES

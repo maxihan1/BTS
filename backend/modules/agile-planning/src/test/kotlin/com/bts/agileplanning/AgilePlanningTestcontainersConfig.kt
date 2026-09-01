@@ -151,7 +151,21 @@ class AgilePlanningTestcontainersConfig {
         override fun listStates(
             projectKey: ProjectKey,
             issueTypeKey: IssueTypeKey?,
-        ): List<WorkflowStateView> = emptyList()
+        ): List<WorkflowStateView> = states
+
+        /**
+         * 응답 상태 목록. **기본은 빈 목록**이라 이 값을 건드리지 않는 테스트의 동작은 바뀌지 않는다.
+         *
+         * ### 왜 companion(정적) 인가
+         * 이 빈은 `@Transactional(MANDATORY)` 때문에 CGLIB 프록시로 감싸진다. 프록시는 타깃과 **다른
+         * 인스턴스**라 주입받은 참조에 인스턴스 필드를 써도 타깃이 읽는 값은 안 바뀐다. 정적 홀더는
+         * 그 간극을 타지 않는다.
+         *
+         * 컨텍스트가 캐시돼 테스트 간 공유되므로 **쓴 테스트가 `try/finally` 로 되돌린다.**
+         */
+        companion object {
+            var states: List<WorkflowStateView> = emptyList()
+        }
     }
 
     /**
