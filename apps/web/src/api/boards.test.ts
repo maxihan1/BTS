@@ -96,6 +96,7 @@ const boardCreatedFixture = {
   boardId: BOARD_ID,
   projectKey: PROJECT_KEY,
   name: '새 보드',
+  boardType: 'KANBAN' as const,
   columns: [
     {
       columnId: COLUMN_ID_TODO,
@@ -220,6 +221,23 @@ describe('boardCreatedSchema — 유효 픽스처 파싱', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-BD-18. boardCreatedSchema — boardType 필수 계약 (FR-BD-04 D6)
+//
+// 백엔드 `BoardCreatedResponse.boardType` 은 non-null String 이다(BoardResponses.kt:110).
+// `.optional()`/`.default()` 로 때우면 백엔드가 필드를 빠뜨리는 결함이 파싱에서 안 잡히고,
+// 화면이 고른 종류가 조용히 증발해도 아무도 모른다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardCreatedSchema — boardType 필수 계약 (FR-BD-04 D6)', () => {
+  it('T-BD-18a: boardType 이 없으면 파싱을 거부한다', () => {
+    const withoutBoardType: Record<string, unknown> = { ...boardCreatedFixture }
+    delete withoutBoardType['boardType']
+    const result = boardCreatedSchema.safeParse(withoutBoardType)
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-BD-5. moveCardResultSchema — 유효 픽스처 파싱
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -301,11 +319,28 @@ describe('createBoard — POST /api/v1/boards', () => {
         return HttpResponse.json({ data: boardCreatedFixture }, { status: 201 })
       }),
     )
-    const result = await createBoard(PROJECT_KEY, '새 보드')
+    const result = await createBoard(PROJECT_KEY, '새 보드', 'KANBAN')
     expect(result.boardId).toBe(BOARD_ID)
     expect(result.name).toBe('새 보드')
     expect((capturedBody as Record<string, unknown>)['projectKey']).toBe(PROJECT_KEY)
     expect((capturedBody as Record<string, unknown>)['name']).toBe('새 보드')
+  })
+
+  it('T-BD-8b: boardType 을 요청 바디에 싣고 응답의 boardType 을 되읽는다 (FR-BD-04 D6)', async () => {
+    // 생략하면 백엔드가 KANBAN 으로 채운다(BoardResponses.kt:46) — 화면의 선택이 조용히 증발한다.
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/boards', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(
+          { data: { ...boardCreatedFixture, boardType: 'SCRUM' } },
+          { status: 201 },
+        )
+      }),
+    )
+    const result = await createBoard(PROJECT_KEY, '스크럼 보드', 'SCRUM')
+    expect((capturedBody as Record<string, unknown>)['boardType']).toBe('SCRUM')
+    expect(result.boardType).toBe('SCRUM')
   })
 })
 
