@@ -26,6 +26,8 @@ const ISSUE_KEY_1 = 'ATLAS-1'
 const ISSUE_KEY_2 = 'ATLAS-2'
 const SPRINT_ID = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
 const ASSIGNEE_UUID = 'd4e5f6a7-b8c9-4123-8def-a12345678903'
+/** 백로그를 스코프할 보드 UUID (FR-BD-04) */
+const BOARD_ID = 'b0b1b2b3-c4d5-4e6f-8a9b-0c1d2e3f4a5b'
 
 const backlogIssueFixture = {
   key: ISSUE_KEY_1,
@@ -285,7 +287,7 @@ describe('fetchBacklog — GET /api/v1/projects/{projectKey}/backlog', () => {
         return HttpResponse.json({ data: backlogViewFixture })
       }),
     )
-    const result = await fetchBacklog(PROJECT_KEY)
+    const result = await fetchBacklog(PROJECT_KEY, undefined)
     expect(result.backlog).toHaveLength(1)
     expect(result.backlog[0]?.key).toBe(ISSUE_KEY_1)
     expect(result.sprints).toHaveLength(1)
@@ -299,7 +301,7 @@ describe('fetchBacklog — GET /api/v1/projects/{projectKey}/backlog', () => {
         return HttpResponse.json({ data: { backlog: [], sprints: [], truncated: false } })
       }),
     )
-    const result = await fetchBacklog(PROJECT_KEY)
+    const result = await fetchBacklog(PROJECT_KEY, undefined)
     expect(result.backlog).toHaveLength(0)
     expect(result.sprints).toHaveLength(0)
   })
@@ -312,8 +314,40 @@ describe('fetchBacklog — GET /api/v1/projects/{projectKey}/backlog', () => {
         return HttpResponse.json({ data: { backlog: [], sprints: [], truncated: false } })
       }),
     )
-    await fetchBacklog('MY PROJECT')
+    await fetchBacklog('MY PROJECT', undefined)
     expect(capturedUrl).toContain('MY%20PROJECT')
+  })
+
+  it('T-BL-5d: boardId를 주면 ?board= 쿼리 파라미터로 실어 보낸다 (FR-BD-04)', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/projects/:projectKey/backlog', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: { backlog: [], sprints: [], truncated: false } })
+      }),
+    )
+
+    await fetchBacklog(PROJECT_KEY, BOARD_ID)
+
+    // 문자열 포함이 아니라 **파라미터로** 잰다 — 경로 어딘가에 UUID가 섞여도 통과하면 안 된다
+    const params = new URL(capturedUrl ?? '', 'http://localhost').searchParams
+    expect(params.get('board')).toBe(BOARD_ID)
+  })
+
+  it('T-BL-5e: boardId가 undefined면 board 파라미터를 아예 붙이지 않는다 (기본 보드 폴백)', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/projects/:projectKey/backlog', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: { backlog: [], sprints: [], truncated: false } })
+      }),
+    )
+
+    await fetchBacklog(PROJECT_KEY, undefined)
+
+    // ★ 빈 `?board=` 를 붙이면 서버가 「잘못된 보드」로 읽어 404다 (E7). 폴백은 **키 부재**로만 성립한다
+    const params = new URL(capturedUrl ?? '', 'http://localhost').searchParams
+    expect(params.has('board')).toBe(false)
   })
 })
 
@@ -466,6 +500,22 @@ describe('createSprint — POST /api/v1/sprints', () => {
     expect(Object.prototype.hasOwnProperty.call(capturedBody, 'goal')).toBe(false)
     expect(Object.prototype.hasOwnProperty.call(capturedBody, 'startDate')).toBe(false)
     expect(Object.prototype.hasOwnProperty.call(capturedBody, 'endDate')).toBe(false)
+    // 미지정이면 백엔드가 첫 스크럼 보드로 폴백한다(하위 호환) — 빈 값을 보내면 그 폴백이 깨진다
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'boardId')).toBe(false)
+  })
+
+  it('T-BL-9c: boardId를 주면 body에 실려 그 보드에 스프린트가 붙는다 (FR-BD-04 · 부채 E-6)', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/sprints', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ data: sprintMetaFixture }, { status: 201 })
+      }),
+    )
+
+    await createSprint({ projectKey: PROJECT_KEY, name: '보드 지정 스프린트', boardId: BOARD_ID })
+
+    expect((capturedBody as Record<string, unknown>)['boardId']).toBe(BOARD_ID)
   })
 })
 

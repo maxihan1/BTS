@@ -37,6 +37,11 @@ import {
 
 const SPRINT_ID = 'a0000000-0000-4000-8000-000000000001'
 
+/** `?board=` 로 지정된 보드 (FR-BD-04) */
+const BOARD_A = 'b0000000-0000-4000-8000-00000000000a'
+/** 같은 프로젝트의 **다른** 보드 — 캐시가 갈리는지 재는 짝 */
+const BOARD_B = 'b0000000-0000-4000-8000-00000000000b'
+
 const MOCK_SPRINT_META: SprintMeta = {
   sprintId: SPRINT_ID,
   name: '스프린트 1',
@@ -122,18 +127,18 @@ describe('useBacklog', () => {
   })
 
   it('T-BL-QUERY-1: projectKey가 있으면 fetchBacklog를 호출하고 BacklogView를 반환한다', async () => {
-    const { result } = renderHook(() => useBacklog('ATLAS'), {
+    const { result } = renderHook(() => useBacklog('ATLAS', BOARD_A), {
       wrapper: createWrapper(queryClient),
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(fetchBacklog).toHaveBeenCalledWith('ATLAS')
+    expect(fetchBacklog).toHaveBeenCalledWith('ATLAS', BOARD_A)
     expect(result.current.data).toEqual(MOCK_BACKLOG_VIEW)
   })
 
   it('T-BL-QUERY-2: projectKey가 빈 문자열이면 enabled=false로 fetchBacklog를 호출하지 않는다', async () => {
-    const { result } = renderHook(() => useBacklog(''), {
+    const { result } = renderHook(() => useBacklog('', undefined), {
       wrapper: createWrapper(queryClient),
     })
 
@@ -142,6 +147,34 @@ describe('useBacklog', () => {
     expect(result.current.fetchStatus).toBe('idle')
     expect(fetchBacklog).not.toHaveBeenCalled()
   })
+
+  it('T-BL-QUERY-3: boardId 미지정(`?board=` 없는 진입)은 undefined 그대로 흘려 서버 폴백에 맡긴다', async () => {
+    const { result } = renderHook(() => useBacklog('ATLAS', undefined), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // 프론트가 기본 보드를 **골라주지 않는다** — 기본 보드 판단은 서버 한 곳뿐이어야 한다(E4)
+    expect(fetchBacklog).toHaveBeenCalledWith('ATLAS', undefined)
+  })
+
+  it('T-BL-QUERY-4: 같은 프로젝트라도 보드가 다르면 캐시가 갈려 각각 조회한다 (FR-BD-04)', async () => {
+    const { result: a } = renderHook(() => useBacklog('ATLAS', BOARD_A), {
+      wrapper: createWrapper(queryClient),
+    })
+    await waitFor(() => expect(a.current.isSuccess).toBe(true))
+
+    const { result: b } = renderHook(() => useBacklog('ATLAS', BOARD_B), {
+      wrapper: createWrapper(queryClient),
+    })
+    await waitFor(() => expect(b.current.isSuccess).toBe(true))
+
+    // 키가 갈리지 않으면 두 번째는 캐시 히트로 끝나 **다른 보드의 백로그를 그대로 보여준다**
+    expect(fetchBacklog).toHaveBeenCalledTimes(2)
+    expect(fetchBacklog).toHaveBeenNthCalledWith(1, 'ATLAS', BOARD_A)
+    expect(fetchBacklog).toHaveBeenNthCalledWith(2, 'ATLAS', BOARD_B)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,13 +182,25 @@ describe('useBacklog', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('backlogKeys', () => {
-  it('T-BL-KEYS-1: backlogKeys.detail이 projectKey를 포함한 tuple을 반환한다', () => {
-    const key = backlogKeys.detail('ATLAS')
-    expect(key).toEqual(['backlog', 'ATLAS'])
+  it('T-BL-KEYS-1: backlogKeys.detail이 projectKey와 boardId를 포함한 tuple을 반환한다', () => {
+    const key = backlogKeys.detail('ATLAS', BOARD_A)
+    expect(key).toEqual(['backlog', 'ATLAS', BOARD_A])
   })
 
   it('T-BL-KEYS-2: 다른 projectKey는 다른 tuple을 반환한다', () => {
-    expect(backlogKeys.detail('ATLAS')).not.toEqual(backlogKeys.detail('BETA'))
+    expect(backlogKeys.detail('ATLAS', BOARD_A)).not.toEqual(backlogKeys.detail('BETA', BOARD_A))
+  })
+
+  it('T-BL-KEYS-3: 같은 프로젝트라도 보드가 다르면 다른 tuple이다 (FR-BD-04)', () => {
+    expect(backlogKeys.detail('ATLAS', BOARD_A)).not.toEqual(backlogKeys.detail('ATLAS', BOARD_B))
+  })
+
+  it('T-BL-KEYS-4: boardId 미지정(기본 보드)도 고유한 키를 갖는다 — 지정 보드와 섞이지 않는다', () => {
+    expect(backlogKeys.detail('ATLAS', undefined)).not.toEqual(backlogKeys.detail('ATLAS', BOARD_A))
+  })
+
+  it('T-BL-KEYS-5: backlogKeys.project는 boardId 없는 접두 키다 — 무효화가 전 보드를 덮는다', () => {
+    expect(backlogKeys.project('ATLAS')).toEqual(['backlog', 'ATLAS'])
   })
 })
 
@@ -196,7 +241,7 @@ describe('useRerankIssue', () => {
 
     expect(rerankIssue).toHaveBeenCalledWith('ATLAS-1', { previousIssueKey: 'ATLAS-2' })
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 
@@ -215,6 +260,24 @@ describe('useRerankIssue', () => {
     })
 
     expect(setQueryDataSpy).not.toHaveBeenCalled()
+  })
+
+  it('T-BL-RERANK-3: 무효화가 **보드 스코프 캐시까지** 덮는다 (접두 매칭)', async () => {
+    // 한 보드의 변경이 다른 보드의 백로그 칸을 바꾼다 — 스프린트에서 뺀 이슈는 **모든** 보드의
+    // 백로그 칸에 나타난다(E12). 그래서 무효화는 보드 단위가 아니라 프로젝트 단위다.
+    queryClient.setQueryData(backlogKeys.detail('ATLAS', BOARD_A), MOCK_BACKLOG_VIEW)
+    queryClient.setQueryData(backlogKeys.detail('ATLAS', BOARD_B), MOCK_BACKLOG_VIEW)
+
+    const { result } = renderHook(() => useRerankIssue('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ issueKey: 'ATLAS-1', body: { nextIssueKey: 'ATLAS-2' } })
+    })
+
+    expect(queryClient.getQueryState(backlogKeys.detail('ATLAS', BOARD_A))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(backlogKeys.detail('ATLAS', BOARD_B))?.isInvalidated).toBe(true)
   })
 })
 
@@ -252,7 +315,7 @@ describe('useAssignToSprint', () => {
 
     expect(assignToSprint).toHaveBeenCalledWith(SPRINT_ID, 'ATLAS-1')
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 })
@@ -291,7 +354,7 @@ describe('useUnassignFromSprint', () => {
 
     expect(unassignFromSprint).toHaveBeenCalledWith(SPRINT_ID, 'ATLAS-1')
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 })
@@ -338,7 +401,7 @@ describe('useCreateSprint', () => {
       goal: '두 번째 목표',
     })
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 })
@@ -377,7 +440,7 @@ describe('useStartSprint', () => {
 
     expect(startSprint).toHaveBeenCalledWith(SPRINT_ID)
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 })
@@ -420,7 +483,7 @@ describe('useCompleteSprint', () => {
 
     expect(completeSprint).toHaveBeenCalledWith(SPRINT_ID)
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 })
@@ -466,7 +529,7 @@ describe('useUpdateSprint', () => {
 
     expect(updateSprint).toHaveBeenCalledWith(SPRINT_ID, { endDate: '2026-07-20', version: 0 })
     expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: backlogKeys.detail('ATLAS') }),
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
 
