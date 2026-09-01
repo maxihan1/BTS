@@ -155,13 +155,26 @@ class WorkflowDraftControllerMvcTest {
     @WithMockUser(username = ACTOR_ID)
     fun `GET draft — 200 이고 baseVersion 과 exists 를 함께 싣는다`() {
         every { draftService.get(any(), KEY) } returns
-            DraftView(definition = definition(), baseVersion = 7, exists = true)
+            DraftView(definition = definition(), baseVersion = 7, exists = true, canResetToDefault = true)
 
         mockMvc.perform(get("/api/v1/workflows/$KEY/draft").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.baseVersion").value(7))
             .andExpect(jsonPath("$.data.exists").value(true))
             .andExpect(jsonPath("$.data.definition.states[0].key").value("open"))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_ID)
+    fun `GET draft — 복원 가능 여부를 그대로 실어 보낸다`() {
+        // 화면이 「기본값으로 복원」을 띄울지 정하는 유일한 근거다. 서비스가 false 를 냈는데
+        // 응답에서 빠지거나 뒤집히면 사용자는 눌러 보고 400 을 받아야 그 사실을 안다.
+        every { draftService.get(any(), KEY) } returns
+            DraftView(definition = definition(), baseVersion = 7, exists = true, canResetToDefault = false)
+
+        mockMvc.perform(get("/api/v1/workflows/$KEY/draft").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.canResetToDefault").value(false))
     }
 
     @Test
@@ -362,7 +375,7 @@ class WorkflowDraftControllerMvcTest {
     @WithMockUser(username = ACTOR_ID)
     fun `POST reset-to-default — 한 번의 호출이 정의와 앵커를 함께 돌려준다`() {
         every { draftService.resetToDefault(any(), KEY, 1) } returns
-            DraftView(definition = definition(), baseVersion = 1, exists = true)
+            DraftView(definition = definition(), baseVersion = 1, exists = true, canResetToDefault = true)
 
         mockMvc.perform(
             post("/api/v1/workflows/$KEY/reset-to-default")
@@ -372,5 +385,7 @@ class WorkflowDraftControllerMvcTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.exists").value(true))
             .andExpect(jsonPath("$.data.baseVersion").value(1))
+            // 복원 응답으로 화면 상태를 갱신하므로 여기서 빠지면 방금 쓴 버튼이 사라진다.
+            .andExpect(jsonPath("$.data.canResetToDefault").value(true))
     }
 }
