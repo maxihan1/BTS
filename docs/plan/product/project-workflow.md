@@ -148,7 +148,7 @@
 - [x] D1. 도메인 — 초안 표현(JSONB) · 발행 이력 append-only · 기본값 복원의 의미 (책임. backend-engineer + Maxi)
 - [x] D2. 명세 — 낙관적 락(base_version) 충돌 409 · 이관 대상 산출 규칙 · cross-BC 포트 계약 (책임. backend-engineer)
 - [x] D3. 마이그레이션 — V208 `workflow_drafts` · `workflow_publications` (책임. db-engineer)
-- [ ] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · 이관 포트(읽기 `IssueStatusUsagePort` = project-workflow 로컬 · 쓰기 `IssueStatusMigrationPort` = shared-kernel) (책임. backend-engineer)
+- [x] D4. 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · 이관 포트(읽기 `IssueStatusUsagePort` = project-workflow 로컬 · 쓰기 `IssueStatusMigrationPort` = shared-kernel) (책임. backend-engineer) (PR #411 초안·발행 · PR #414 이관 실행 경로 · **PR #417 결선**, 2026-09-01)
 - [x] D5. 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 이슈 상태 전량 이동 (책임. backend-engineer)
 - [ ] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer)
 - [ ] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer)
@@ -172,6 +172,23 @@
 >   만들어 뒀고 이 PR 이 발행 판정에 재사용했다. 쓰기(큐잉) 포트가 로드맵 PR 7 의 몫이다
 > - D4 잔여 — 이관 큐잉 호출. 지금은 이슈가 남아 있으면 409 로 **막고** 상태별 건수를 응답에 싣는다
 > - D5 잔여 — 「이관 후 이슈 상태 전량 이동」. 이관 실행이 PR 7 이라 그 테스트도 그쪽이다
+
+> **D4 완료** (PR #417, 2026-09-01 · 로드맵 PR 7b). 위 「D4 잔여 — 이관 큐잉 호출」이 채워졌다.
+> `POST /api/v1/workflows/{key}/publish/migrate` 가 이관을 큐잉하고, `POST /publish` 는 의미가
+> 그대로다(결정 D2 — 「발행하지 않고 202」인 상태를 만들지 않는다).
+> - **매핑 가드 8종** — 빠지지 않는 출발지 · 초안에 없는 도착지 · 발행 전 도착지(F16) · 빈 목록 ·
+>   중복 출발지 · 범위 없음 · 형제 워크플로우(F11 fail-closed) · 상한 초과(F14). 전부 포트에
+>   닿기 전에 막는다 — 큐잉이 pgmq 에 닿으면 되감아도 메시지가 남는 경로가 있다
+> - **교체 직후 재카운트**(F10) — 첫 검사와 정의 교체 사이에 들어온 이슈를 잡는다. 부채 143 을
+>   **축소**한 것이지 닫은 것이 아니다. 재카운트→COMMIT 잔여 창은 전환 핫패스가 정의 행을 잠가야
+>   닫히고 그 경로는 issue-tracking BC 소관이다
+> - **in-flight 중복 거부**(F15) — 끝나지 않은 이관이 있으면 409. 발행과 같은 키 공간의 advisory
+>   lock 안에서 검사·큐잉하므로 동시 요청도 직렬화된다
+> - **아카이브 프로젝트**(E7) — 이관 범위에는 **넣고** 발행 차단 카운트에서만 뺀다. 범위에서까지
+>   빼면 그 이슈가 흔적 없이 사라지고, 넣어 두면 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로
+>   남아 「몇 건이 왜 안 옮겨졌는지」를 셀 수 있다
+>
+> **D6·D7·D8 은 그대로 남는다** — 관리자가 이관을 시작할 화면이 아직 없다. API 만 열린 상태다.
 
 > **D2·D5 완료 · D4 는 결선만 남았다** (로드맵 PR 7 — 이관 실행, 2026-08-27). 위 #411 각주가 「PR 7 의
 > 몫」으로 넘긴 것을 이 PR 이 받았다. 「한 PR = 한 BC」 규칙대로 이번 범위는 전부 issue-tracking BC 다.
