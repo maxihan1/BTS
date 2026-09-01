@@ -62,6 +62,8 @@ import java.util.UUID
  * - CREATE-2. POST projectKey 미가시(권한 거부) → 403
  * - CREATE-3. POST name 빈 문자열 → 400 AGILE_VALIDATION_FAILED
  * - CREATE-4. POST 비인증 → 401
+ * - CREATE-5. POST boardId 지정 → 그 보드로 위임 (FR-BD-04 · 부채 E-6 재현)
+ * - CREATE-6. POST boardId 미지정 → null 위임으로 서비스 폴백 유지 (하위 호환)
  * - GET-1. GET /api/v1/sprints/{id} 정상 → 200 + DataResponse 봉투
  * - GET-2. GET 미존재 → 404
  * - LIST-1. GET /api/v1/sprints?projectKey= 정상 → 200 + 배열
@@ -127,6 +129,9 @@ class SprintControllerTest {
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
     private val actorId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val sprintId: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
+
+    /** 같은 프로젝트의 두 번째 스크럼 보드 — `ensureScrumBoard` 폴백(`created_at ASC LIMIT 1`)이 절대 고르지 않는 보드. */
+    private val secondScrumBoardId: UUID = UUID.fromString("33333333-3333-3333-3333-333333333333")
 
     @BeforeEach
     fun setUp() {
@@ -239,6 +244,75 @@ class SprintControllerTest {
             .andExpect(status().isUnauthorized)
 
         verify(exactly = 0) { sprintApplicationService.create(any(), any(), any(), any(), any(), any()) }
+    }
+
+    // ── CREATE-5. POST boardId 지정 → 그 보드로 위임 (FR-BD-04 · 부채 E-6) ────
+
+    @Test
+    fun `POST sprints 에 boardId 를 실으면 그 보드로 스프린트가 생성된다`() {
+        every {
+            sprintApplicationService.create(any(), any(), any(), any(), any(), any(), any())
+        } returns sampleSprint()
+
+        val body =
+            mapOf(
+                "projectKey" to "BTS",
+                "name" to "Sprint 2",
+                "boardId" to secondScrumBoardId.toString(),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/sprints")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+
+        // 저장되는 sprints.board_id 를 정하는 축은 service.create 의 boardId 인자다
+        // (SprintApplicationService: `targetBoardId = boardId ?: ensureScrumBoard(projectKey)`).
+        // 응답 코드만 보면 인자가 null 로 흘러도 201 이라 통과해 버린다 — 그래서 인자를 직접 검증한다.
+        verify(exactly = 1) {
+            sprintApplicationService.create(
+                actorId = actorId,
+                projectKey = "BTS",
+                name = "Sprint 2",
+                goal = null,
+                startDate = null,
+                endDate = null,
+                boardId = secondScrumBoardId,
+            )
+        }
+    }
+
+    // ── CREATE-6. POST boardId 미지정 → 서비스 폴백 유지 (하위 호환) ──────────
+
+    @Test
+    fun `POST sprints 에 boardId 를 안 실으면 null 을 넘겨 서비스 폴백을 유지한다`() {
+        every {
+            sprintApplicationService.create(any(), any(), any(), any(), any(), any(), any())
+        } returns sampleSprint()
+
+        val body = mapOf("projectKey" to "BTS", "name" to "Sprint 1")
+
+        mockMvc.perform(
+            post("/api/v1/sprints")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+
+        // boardId 를 안 보낸 기존 클라이언트는 그대로 `ensureScrumBoard` 폴백 경로를 타야 한다.
+        verify(exactly = 1) {
+            sprintApplicationService.create(
+                actorId = actorId,
+                projectKey = "BTS",
+                name = "Sprint 1",
+                goal = null,
+                startDate = null,
+                endDate = null,
+                boardId = null,
+            )
+        }
     }
 
     // ── GET-1. GET 단건 정상 → 200 ────────────────────────────────────────────
