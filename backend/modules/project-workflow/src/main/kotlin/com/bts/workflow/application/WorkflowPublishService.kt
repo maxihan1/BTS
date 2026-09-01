@@ -15,6 +15,7 @@ import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublicationRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowVersionRow
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -53,6 +54,7 @@ class WorkflowPublishService(
     private val publicationRepository: WorkflowPublicationRepository,
     private val ruleWriter: DraftRuleWriter,
     private val issueStatusUsagePort: IssueStatusUsagePort,
+    private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val cache: WorkflowCache,
 ) {
@@ -80,7 +82,7 @@ class WorkflowPublishService(
             baseVersion = draft.baseVersion,
             currentVersion = workflow.version,
             removedStatusKeys = removed.toList(),
-            pendingIssueCounts = pendingIssueCounts(removed),
+            pendingIssueCounts = pendingIssueCounts(workflow.id, removed),
         )
     }
 
@@ -258,17 +260,33 @@ class WorkflowPublishService(
         return current - definition.states.map { it.key }.toSet()
     }
 
-    /** 빠지는 상태별 잔여 이슈 수. 0건인 상태는 담지 않는다 — 막을 이유가 없다. */
-    private fun pendingIssueCounts(removed: Set<String>): Map<String, Long> =
-        removed.associateWith { issueStatusUsagePort.countIssuesInStatus(it) }
+    /**
+     * 빠지는 상태별 잔여 이슈 수. 0건인 상태는 담지 않는다 — 막을 이유가 없다.
+     *
+     * ### 세는 범위는 이 워크플로우를 쓰는 프로젝트로 좁힌다
+     * 상태 키는 전역이라 키만으로 세면 **다른 워크플로우를 쓰는 이슈까지** 잡혀 발행이 과하게
+     * 막힌다. 스킴 할당을 거슬러 프로젝트 id 를 얻어 그 범위 안에서만 센다.
+     *
+     * ### 조회는 한 번뿐이다 (NFR N1)
+     * 아래 `associateWith` 는 빠지는 상태 수만큼 돈다. 그 안에서 프로젝트를 되물으면 상태마다
+     * 3단 JOIN 이 한 번씩 나간다 — 스코프는 상태와 무관하므로 루프 **밖에서** 한 번만 읽는다.
+     */
+    private fun pendingIssueCounts(
+        workflowId: UUID,
+        removed: Set<String>,
+    ): Map<String, Long> {
+        val projectIds = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.id }.toSet()
+        return removed
+            .associateWith { issueStatusUsagePort.countIssuesInStatus(it, projectIds) }
             .filterValues { it > 0 }
+    }
 
     private fun requireNoPendingIssues(
         key: String,
         workflowId: UUID,
         definition: WorkflowDraftDefinition,
     ) {
-        val pending = pendingIssueCounts(removedStatusKeys(workflowId, definition))
+        val pending = pendingIssueCounts(workflowId, removedStatusKeys(workflowId, definition))
         if (pending.isNotEmpty()) {
             throw WorkflowPublishMappingRequiredException(key, pending)
         }

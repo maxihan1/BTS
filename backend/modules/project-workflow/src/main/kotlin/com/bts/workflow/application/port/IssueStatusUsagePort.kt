@@ -2,6 +2,8 @@
 
 package com.bts.workflow.application.port
 
+import java.util.UUID
+
 /**
  * 상태 키를 쓰고 있는 이슈 수를 센다.
  *
@@ -16,6 +18,15 @@ package com.bts.workflow.application.port
  * 그때까지는 과하게 막는 쪽을 택한다 — 덜 막아서 이슈가 「없는 상태」에 남는 것보다 낫다.
  */
 interface IssueStatusUsagePort {
-    /** 이 상태 키를 현재 값으로 갖는 이슈 수. */
-    fun countIssuesInStatus(statusKey: String): Long
+    /**
+     * 이 상태 키를 현재 값으로 갖는 이슈 수. [projectIds] 안의 프로젝트만 센다.
+     *
+     * @param statusKey 셀 상태 키.
+     * @param projectIds 셀 범위가 되는 프로젝트 id 집합. **비어 있으면 0** 이다 — 「전체」가 아니다.
+     * @return 살아 있는(소프트 삭제되지 않은) 이슈 수.
+     */
+    fun countIssuesInStatus(
+        statusKey: String,
+        projectIds: Set<UUID>,
+    ): Long
 }
