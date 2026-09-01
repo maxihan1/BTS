@@ -12,6 +12,8 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.Timestamp
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -57,8 +59,23 @@ class SprintBoardIdBackfillMigrationTest {
                 .withUsername("bts")
                 .withPassword("bts_test")
 
-        /** 컬럼을 복제할 소스가 되는 기존 보드의 id. */
+        /** 컬럼을 복제할 소스가 되는 기존 보드의 id — **가장 오래된 활성 칸반**이라 ③ 이 이걸 골라야 한다. */
         private val kanbanBoardId: UUID = UUID.randomUUID()
+
+        /**
+         * 더 **최근**에 만들어진 두 번째 칸반 보드. 컬럼 구성이 소스와 다르다.
+         *
+         * ③ 의 `ORDER BY b.created_at, b.id LIMIT 1` 을 DESC 로 뒤집으면 이 보드가 복제되므로 red 가 난다.
+         * 이 픽스처가 없으면 정렬을 통째로 지워도 6개 테스트가 전부 초록이었다(리뷰 지적).
+         */
+        private val newerKanbanBoardId: UUID = UUID.randomUUID()
+
+        /**
+         * **soft-deleted** 칸반 보드 — 가장 오래됐지만 삭제됐으므로 복제 소스가 되면 안 된다.
+         *
+         * ③ 의 `AND b.deleted_at IS NULL` 을 지우면 이 보드가 선택돼 red 가 난다.
+         */
+        private val deletedKanbanBoardId: UUID = UUID.randomUUID()
 
         /** `BKFL` 의 ACTIVE 스프린트. */
         private val activeSprintId: UUID = UUID.randomUUID()
@@ -78,12 +95,8 @@ class SprintBoardIdBackfillMigrationTest {
          */
         private val allDeletedSprintId: UUID = UUID.randomUUID()
 
-        private val SOURCE_COLUMNS =
-            listOf(
-                Triple("open", "열림", "TODO"),
-                Triple("in-progress", "진행 중", "IN_PROGRESS"),
-                Triple("closed", "완료", "DONE"),
-            )
+        /** 소스 칸반 보드의 컬럼 — 신설 스크럼 보드가 이것을 그대로 복제해야 한다. */
+        private val SOURCE_STATE_KEYS = listOf("open", "in-progress", "closed")
 
         private fun flyway(target: String?) =
             Flyway.configure()
@@ -102,7 +115,11 @@ class SprintBoardIdBackfillMigrationTest {
             // 2단계 — 마이그레이션이 마주칠 「기존 데이터」를 심는다.
             conn().use { c ->
                 c.autoCommit = false
-                seedKanbanBoardWithColumns(c)
+                // ★ 세 보드의 created_at 을 명시로 벌린다 — ③ 의 「가장 오래된 활성」 규칙을 구별하려면
+                // 삭제된 것이 가장 오래되고, 소스가 그다음, 더 최근 것이 마지막이어야 한다.
+                seedKanban(c, KanbanSeed(deletedKanbanBoardId, "BKFL 삭제된 보드", 30, true, listOf("gone")))
+                seedKanban(c, KanbanSeed(kanbanBoardId, "BKFL 개발 보드", 20, false, SOURCE_STATE_KEYS))
+                seedKanban(c, KanbanSeed(newerKanbanBoardId, "BKFL 새 보드", 10, false, listOf("newer")))
                 seedSprint(c, activeSprintId, "BKFL", status = "ACTIVE", deleted = false)
                 seedSprint(c, deletedSprintId, "BKFL", status = "COMPLETED", deleted = true)
                 seedSprint(c, orphanSprintId, "NOBD", status = "PLANNED", deleted = false)
@@ -121,23 +138,46 @@ class SprintBoardIdBackfillMigrationTest {
                 postgres.password,
             )
 
-        private fun seedKanbanBoardWithColumns(c: Connection) {
-            c.prepareStatement("INSERT INTO boards (id, project_key, name) VALUES (?, ?, ?)").use { stmt ->
-                stmt.setObject(1, kanbanBoardId)
+        /** 칸반 보드 하나의 시드 명세. `daysAgo` 가 클수록 오래된 보드다. */
+        private data class KanbanSeed(
+            val boardId: UUID,
+            val name: String,
+            val daysAgo: Int,
+            val deleted: Boolean,
+            val states: List<String>,
+        )
+
+        /**
+         * 칸반이 될 보드 1개와 그 컬럼을 심는다.
+         *
+         * `created_at` 을 명시로 벌려 ③ 의 `ORDER BY b.created_at` 규칙이 결정적으로 판정되게 한다.
+         * 기본값 `now()` 로 세 보드를 심으면 같은 트랜잭션 안이라 시각이 동일해 정렬이 무의미해진다.
+         */
+        private fun seedKanban(
+            c: Connection,
+            seed: KanbanSeed,
+        ) {
+            c.prepareStatement(
+                "INSERT INTO boards (id, project_key, name, created_at, deleted_at)" +
+                    " VALUES (?, ?, ?, now() - make_interval(days => ?), ?)",
+            ).use { stmt ->
+                stmt.setObject(1, seed.boardId)
                 stmt.setString(2, "BKFL")
-                stmt.setString(3, "BKFL 개발 보드")
+                stmt.setString(3, seed.name)
+                stmt.setInt(4, seed.daysAgo)
+                stmt.setObject(5, if (seed.deleted) Timestamp.from(Instant.now()) else null)
                 stmt.execute()
             }
-            SOURCE_COLUMNS.forEachIndexed { order, (stateKey, name, category) ->
+            seed.states.forEachIndexed { order, stateKey ->
                 c.prepareStatement(
                     "INSERT INTO board_columns (id, board_id, state_key, name, category, display_order)" +
                         " VALUES (?, ?, ?, ?, ?, ?)",
                 ).use { stmt ->
                     stmt.setObject(1, UUID.randomUUID())
-                    stmt.setObject(2, kanbanBoardId)
+                    stmt.setObject(2, seed.boardId)
                     stmt.setString(3, stateKey)
-                    stmt.setString(4, name)
-                    stmt.setString(5, category)
+                    stmt.setString(4, "컬럼 $stateKey")
+                    stmt.setString(5, "TODO")
                     stmt.setInt(6, order)
                     stmt.execute()
                 }
@@ -201,11 +241,19 @@ class SprintBoardIdBackfillMigrationTest {
     private fun boardIdOf(sprintId: UUID): UUID? =
         queryOne("SELECT board_id FROM sprints WHERE id = ?", sprintId) { it.getObject(1) as UUID? }
 
+    // ORDER BY 를 둔다 — 중복 스크럼 보드가 생기는 회귀가 「실행마다 결과가 흔들리는 플레이키」가
+    // 아니라 아래 scrumBoardCountOf 단언의 red 로 드러나게 한다.
     private fun scrumBoardIdOf(projectKey: String): UUID? =
         queryOne(
-            "SELECT id FROM boards WHERE project_key = ? AND board_type = 'SCRUM'",
+            "SELECT id FROM boards WHERE project_key = ? AND board_type = 'SCRUM' ORDER BY created_at, id",
             projectKey,
         ) { it.getObject(1) as UUID }
+
+    private fun scrumBoardCountOf(projectKey: String): Int =
+        queryOne(
+            "SELECT COUNT(*) FROM boards WHERE project_key = ? AND board_type = 'SCRUM'",
+            projectKey,
+        ) { it.getInt(1) } ?: 0
 
     // ── ① 전량이 board_id 를 갖는다 (soft-deleted 포함) ────────────────────────
 
@@ -270,6 +318,16 @@ class SprintBoardIdBackfillMigrationTest {
         // 스프린트 전량이 신설 보드에 붙는다.
         assertThat(boardIdOf(activeSprintId)).isEqualTo(scrumBoardId)
         assertThat(boardIdOf(deletedSprintId)).isEqualTo(scrumBoardId)
+
+        // ★ V506 ④ 가 「(project_key, SCRUM) 이 유일하다」는 전제 위에 선다. ② 의 DISTINCT 를 지우면
+        // BKFL 은 스프린트 2건이라 보드가 2개 생기는데, ④ 의 UPDATE 는 임의 행을 골라 **조용히 성공**한다.
+        // 이 단언이 없으면 그 위반이 red 가 아니라 비결정적 플레이키로만 드러난다.
+        assertThat(scrumBoardCountOf("BKFL")).isEqualTo(1)
+        assertThat(scrumBoardCountOf("NOBD")).isEqualTo(1)
+        assertThat(scrumBoardCountOf("ALLDEL")).isEqualTo(1)
+
+        // ★ 복제 소스는 **가장 오래된 활성** 칸반이다. 더 최근 보드("newer")도, soft-deleted 보드("gone")도 아니다.
+        assertThat(columns).doesNotContain("newer", "gone")
     }
 
     // ── ④ E-1. 보드가 하나도 없던 프로젝트 ────────────────────────────────────
