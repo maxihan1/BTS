@@ -46,12 +46,17 @@ function isSameSearch(a: BacklogFilterSearch, b: BacklogFilterSearch): boolean {
 
 /**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
- * useParams로 URL의 $projectKey param을, useSearch로 필터 3축(q·assignee·epic)을 추출해
- * BacklogPage에 전달한다 (F16-9 — 보드 어댑터 `projects.$projectKey.board.tsx:100` 선례).
+ * useParams로 URL의 $projectKey param을, useSearch로 보드 스코프(board)와 필터 3축(q·assignee·epic)을
+ * 추출해 BacklogPage에 전달한다 (F16-9 · FR-BD-04 — 보드 어댑터 `projects.$projectKey.board.tsx:100` 선례).
+ *
+ * `board`는 **읽기만** 한다. 없으면 `undefined`를 그대로 흘려 서버 폴백(기본 보드)에 맡긴다 —
+ * 프론트가 URL에 `?board=`를 자동으로 채워 넣으면 nav 링크·공유 링크의 형태가 바뀐다(편차 X6).
  */
 export function BacklogRouteAdapter(): JSX.Element {
   const { projectKey } = useParams({ strict: false })
-  const search = useSearch({ strict: false }) as BacklogFilterSearch
+  // 필터 3축과 board는 축의 성격이 다르다 — board는 **서버 쿼리**이고 나머지는 클라이언트 필터라
+  // `BacklogFilterSearch`에 넣지 않고 교차 타입으로 읽는다 (fr-ux-13-f16 결정 존중).
+  const search = useSearch({ strict: false }) as BacklogFilterSearch & { board?: string }
 
   // searchToFilter는 매 렌더마다 새 객체를 반환하므로 실제 search 값이 바뀔 때만 재계산한다.
   // 축을 직접 나열해 react-hooks/exhaustive-deps를 만족시킨다 (보드 어댑터 :109 선례).
@@ -60,7 +65,7 @@ export function BacklogRouteAdapter(): JSX.Element {
   const epic = search.epic
   const filter = useMemo(() => searchToFilter({ q, assignee, epic }), [q, assignee, epic])
 
-  return <BacklogPage projectKey={projectKey ?? ''} filter={filter} />
+  return <BacklogPage projectKey={projectKey ?? ''} boardId={search.board} filter={filter} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +76,14 @@ export function BacklogRouteAdapter(): JSX.Element {
 export interface BacklogPageProps {
   /** URL params에서 추출한 프로젝트 식별 키 */
   readonly projectKey: string
+  /**
+   * URL search의 `?board=`에서 읽은 보드 UUID. 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 백로그는 프로젝트가 아니라 **보드**에 속한다(J14). 다만 사용자가 boardId를 타이핑하지는
+   * 않으므로(J17) 미지정 진입은 정상 경로이고, 그때 기본 보드를 고르는 것은 **서버**다 —
+   * 프론트가 같이 고르면 판단이 두 곳으로 갈려 화면과 서버가 다른 보드를 말하게 된다.
+   */
+  readonly boardId: string | undefined
   /**
    * URL search에서 복원한 현재 필터 (F16-9).
    *
@@ -95,9 +108,10 @@ export interface BacklogPageProps {
  *   undefined이면 false-safe — 로딩 중에는 모든 관리 기능 비활성.
  *
  * @param projectKey 프로젝트 식별 키
+ * @param boardId URL search의 `?board=`에서 읽은 보드 UUID (미지정이면 undefined)
  * @param filter URL search에서 복원한 현재 필터
  */
-export function BacklogPage({ projectKey, filter }: BacklogPageProps): JSX.Element {
+export function BacklogPage({ projectKey, boardId, filter }: BacklogPageProps): JSX.Element {
   const { data: projectPermissions } = useProjectPermissions(projectKey)
   const navigate = useNavigate()
 
@@ -150,6 +164,7 @@ export function BacklogPage({ projectKey, filter }: BacklogPageProps): JSX.Eleme
 
       <BacklogBoard
         projectKey={projectKey}
+        boardId={boardId}
         filter={filter}
         onFilterChange={handleFilterChange}
         canManageSprint={canManageSprint}

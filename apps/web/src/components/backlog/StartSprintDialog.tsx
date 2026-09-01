@@ -337,6 +337,15 @@ export interface StartSprintDialogProps {
    * (`SprintColumn`·`CreateSprintForm`·`CreateIssueDialog` 모두 명시 전달).
    */
   projectKey: string
+  /**
+   * 화면이 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 🛑 **선택 prop 이 아니다.** 409 복구가 백로그 캐시를 **완전 일치 키로** 읽으므로
+   * (`replaceBaselineFromCache`) 보드를 빠뜨리면 `getQueryData` 가 에러 없이 `undefined` 를
+   * 돌려주고 기준값 교체가 **무음으로 멈춘다** — 재시도가 낡은 `version` 으로 나가 409 를
+   * 되풀이한다. 값이 없을 수는 있어도 **말하지 않을 수는 없다**.
+   */
+  boardId: string | undefined
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -365,6 +374,7 @@ export function StartSprintDialog({
   onOpenChange,
   sprint,
   projectKey,
+  boardId,
 }: StartSprintDialogProps): JSX.Element {
   const queryClient = useQueryClient()
   const updateSprint = useUpdateSprint(projectKey)
@@ -398,9 +408,14 @@ export function StartSprintDialog({
     setEdited((prev) => (prev.has(field) ? prev : new Set(prev).add(field)))
   }
 
-  /** 백로그를 새로 받는다. 두 mutation 훅도 성공 시 같은 일을 하지만 실패 경로에는 없다 */
+  /**
+   * 백로그를 새로 받는다. 두 mutation 훅도 성공 시 같은 일을 하지만 실패 경로에는 없다.
+   *
+   * 무효화는 **프로젝트 접두 키**다 — 스프린트 시작은 그 보드뿐 아니라 이 프로젝트의 모든
+   * 보드 백로그 칸에 영향을 준다(E12). 읽기(`replaceBaselineFromCache`)만 보드 단위다.
+   */
   async function invalidateBacklog(): Promise<void> {
-    await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+    await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
   }
 
   /**
@@ -410,10 +425,14 @@ export function StartSprintDialog({
    *   그 필드를 안 보내 **남의 값으로 스프린트가 시작된다**), 미편집 필드의 표시는
    *   기준값에서 파생되므로 이 한 줄만으로 자동으로 최신이 된다
    *   ({@link resolveDisplayValues}) — 맞춰 줄 사본이 없다.
+   *
+   * ★ 캐시는 **보고 있는 보드의** 키로 읽는다(FR-BD-04). 보드를 빼고 읽으면 어느 캐시와도
+   *   완전 일치하지 않아 `undefined` 가 오고, 그러면 이 함수가 **아무 일도 하지 않은 채**
+   *   조용히 끝난다 — 실패가 아니라서 화면에도, 로그에도 흔적이 남지 않는다.
    */
   async function replaceBaselineFromCache(): Promise<void> {
     await invalidateBacklog()
-    const view = queryClient.getQueryData<BacklogView>(backlogKeys.detail(projectKey))
+    const view = queryClient.getQueryData<BacklogView>(backlogKeys.detail(projectKey, boardId))
     const fresh = view?.sprints.find((entry) => entry.sprint.sprintId === sprint.sprintId)?.sprint
     if (fresh !== undefined) setBaseline(fresh)
   }

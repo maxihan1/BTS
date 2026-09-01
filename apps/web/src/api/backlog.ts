@@ -175,6 +175,14 @@ const UPDATE_SPRINT_PATCHABLE_FIELDS = ['name', 'goal', 'startDate', 'endDate'] 
 export interface CreateSprintParams {
   /** 스프린트를 생성할 프로젝트 키 */
   projectKey: string
+  /**
+   * 스프린트가 붙을 보드 UUID (FR-BD-04).
+   *
+   * 미전송이면 백엔드가 **첫 스크럼 보드**로 폴백한다(하위 호환). 그 폴백 때문에 두 번째
+   * 스크럼 보드에서 만든 스프린트가 첫 보드에 붙던 것이 부채 E-6 이고, 백로그 화면은
+   * 보고 있는 보드를 알므로 **항상 명시**한다.
+   */
+  boardId?: string
   /** 스프린트 이름 */
   name: string
   /** 스프린트 목표 설명. 미전송 시 null */
@@ -202,16 +210,29 @@ const SPRINTS_BASE = '/api/v1/sprints'
 /**
  * 프로젝트 백로그 전체 뷰를 조회한다.
  *
- * GET /api/v1/projects/{projectKey}/backlog → `{ data: BacklogView }` 언랩.
+ * GET /api/v1/projects/{projectKey}/backlog[?board={uuid}] → `{ data: BacklogView }` 언랩.
+ *
+ * ### `boardId` 가 **선택 인자가 아닌** 이유 (FR-BD-04)
+ * 백로그는 프로젝트가 아니라 **보드**에 속한다(J14). 그런데 미지정도 정상 경로라
+ * (`?board=` 없이 들어오면 서버가 기본 보드로 폴백한다 · E4) 옵셔널로 두고 싶어진다 —
+ * 그러면 **board 축을 잊은 호출이 타입 에러 없이 통과**하고 조용히 남의 보드를 본다.
+ * 그래서 값은 `undefined` 를 허용하되 **인자는 필수**로 둔다. 호출부가 「이 화면은 어느
+ * 보드인가」를 매번 말하게 하는 것이 목적이다.
  *
  * @param projectKey 프로젝트 키. 예: "ATLAS"
+ * @param boardId 스코프할 보드 UUID. `undefined` 면 파라미터를 **아예 붙이지 않아**
+ *   서버 폴백을 탄다 — 빈 `?board=` 는 「잘못된 보드」로 읽혀 404 다(E7)
  * @returns BacklogView — 미할당 backlog 목록 + 스프린트별 이슈 + truncated 여부
- * @throws ApiError 비-2xx 응답 시
+ * @throws ApiError 비-2xx 응답 시 (404 = 없는 보드·타 프로젝트 보드)
  * @throws ZodError 응답 스키마 불일치 시
  */
-export async function fetchBacklog(projectKey: string): Promise<BacklogView> {
+export async function fetchBacklog(
+  projectKey: string,
+  boardId: string | undefined,
+): Promise<BacklogView> {
+  const query = boardId === undefined ? '' : `?board=${encodeURIComponent(boardId)}`
   const wrapped = await apiGet(
-    `/api/v1/projects/${encodeURIComponent(projectKey)}/backlog`,
+    `/api/v1/projects/${encodeURIComponent(projectKey)}/backlog${query}`,
     dataResponseSchema(backlogViewSchema),
   )
   return wrapped.data
@@ -295,18 +316,20 @@ export async function unassignFromSprint(sprintId: string, issueKey: string): Pr
  * 새 스프린트를 생성한다.
  *
  * POST /api/v1/sprints → `{ data: SprintMeta }` 언랩.
- * goal·startDate·endDate는 undefined이면 body에서 제외한다.
+ * boardId·goal·startDate·endDate는 undefined이면 body에서 제외한다.
+ * `boardId` 를 빈 값으로라도 보내면 백엔드의 하위 호환 폴백(첫 스크럼 보드)이 깨진다.
  *
- * @param params 생성 파라미터 (projectKey·name 필수, goal·startDate·endDate 선택)
+ * @param params 생성 파라미터 (projectKey·name 필수, boardId·goal·startDate·endDate 선택)
  * @returns SprintMeta — 생성된 스프린트 정보
  * @throws ApiError 비-2xx 응답 시
  * @throws ZodError 응답 스키마 불일치 시
  */
 export async function createSprint(params: CreateSprintParams): Promise<SprintMeta> {
-  const { projectKey, name, goal, startDate, endDate } = params
+  const { projectKey, boardId, name, goal, startDate, endDate } = params
   const requestBody = {
     projectKey,
     name,
+    ...(boardId !== undefined ? { boardId } : {}),
     ...(goal !== undefined ? { goal } : {}),
     ...(startDate !== undefined ? { startDate } : {}),
     ...(endDate !== undefined ? { endDate } : {}),

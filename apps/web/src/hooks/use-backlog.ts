@@ -28,14 +28,41 @@ import type {
  *
  * 모든 mutation의 onSuccess에서 이 키를 통해 invalidate하므로
  * 드래그 순서 변경·스프린트 이동·스프린트 상태 전환 후 단일 재조회로 정합이 보장된다.
+ *
+ * ### 읽기는 {@link detail}, 무효화는 {@link project} 다 (FR-BD-04)
+ * 백로그가 보드 단위로 갈리면서(J14) 키에 board 축이 붙었다. 두 갈래를 나눈 이유가 다르다.
+ * - **읽기**(`useQuery`·`getQueryData`·`fetchQuery`)는 **완전 일치**라 보드를 빠뜨리면 안 된다.
+ * - **무효화**는 접두 매칭이고, **일부러 프로젝트 전체를 덮는다** — 스프린트에서 뺀 이슈는
+ *   그 보드뿐 아니라 **모든** 보드의 백로그 칸에 나타나므로(E12 · J20) 한 보드의 변경이
+ *   다른 보드의 화면을 바꾼다.
  */
 export const backlogKeys = {
   /**
-   * 프로젝트 백로그 전체 뷰 queryKey.
+   * 보드 스코프 백로그 뷰 queryKey — **읽기용**.
+   *
+   * ### `boardId` 를 필수 인자로 둔 이유
+   * 옵셔널이면 board 축을 빠뜨린 호출이 **타입 에러 없이** 통과한다. 그 결과가 조용하다는
+   * 것이 문제다 — `getQueryData` 는 키가 어긋나면 에러 대신 **`undefined`** 를 돌려주고
+   * (`StartSprintDialog` 의 409 복구가 무음으로 멈춘다), `fetchQuery` 는 캐시 미스로 보고
+   * **기본 보드에 네트워크를 태운다**(`CompleteSprintDialog` 가 다른 보드 기준으로 완료를
+   * 판정한다). 둘 다 실패가 아니라 오판이라 어떤 가드에도 안 걸린다.
+   * 그래서 값은 `undefined`(= 서버 기본 보드 폴백)를 허용하되 **인자는 필수**로 둔다.
+   *
+   * @param projectKey 프로젝트 식별 키. 예: "ATLAS"
+   * @param boardId 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined`
+   */
+  detail: (projectKey: string, boardId: string | undefined) =>
+    ['backlog', projectKey, boardId] as const,
+
+  /**
+   * 프로젝트의 **모든 보드** 백로그를 덮는 접두 키 — **무효화 전용**.
+   *
+   * 🛑 조회에 쓰지 마라. 이 키로 `getQueryData` 를 부르면 어느 보드의 캐시와도 완전 일치하지
+   * 않아 항상 `undefined` 다.
    *
    * @param projectKey 프로젝트 식별 키. 예: "ATLAS"
    */
-  detail: (projectKey: string) => ['backlog', projectKey] as const,
+  project: (projectKey: string) => ['backlog', projectKey] as const,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,15 +72,20 @@ export const backlogKeys = {
 /**
  * 프로젝트 백로그 전체 뷰를 조회한다.
  *
- * GET /api/v1/projects/{projectKey}/backlog → BacklogView (미할당 이슈 + 스프린트별 이슈)
+ * GET /api/v1/projects/{projectKey}/backlog[?board=] → BacklogView (미할당 이슈 + 스프린트별 이슈)
  * staleTime 30초 — 빈번한 재조회를 방지한다.
  *
+ * 보드가 다르면 **캐시가 갈린다**({@link backlogKeys.detail}). 갈리지 않으면 보드를 바꿔도
+ * 캐시 히트로 끝나 **다른 보드의 백로그가 그대로 남는다**.
+ *
  * @param projectKey 프로젝트 키. 빈 문자열이면 쿼리가 비활성화된다.
+ * @param boardId 보고 있는 보드 UUID. `undefined` 면 서버가 기본 보드로 폴백한다 —
+ *   프론트가 기본 보드를 골라주지 않는다(판단이 두 곳으로 갈리면 화면과 서버가 어긋난다)
  */
-export function useBacklog(projectKey: string) {
+export function useBacklog(projectKey: string, boardId: string | undefined) {
   return useQuery<BacklogView>({
-    queryKey: backlogKeys.detail(projectKey),
-    queryFn: () => fetchBacklog(projectKey),
+    queryKey: backlogKeys.detail(projectKey, boardId),
+    queryFn: () => fetchBacklog(projectKey, boardId),
     staleTime: 30_000,
     enabled: projectKey.length > 0,
   })
@@ -87,7 +119,7 @@ export function useRerankIssue(projectKey: string) {
   return useMutation<IssueRankResult, unknown, RerankIssueInput>({
     mutationFn: ({ issueKey, body }) => rerankIssue(issueKey, body),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
@@ -119,7 +151,7 @@ export function useAssignToSprint(projectKey: string) {
   return useMutation<void, unknown, AssignToSprintInput>({
     mutationFn: ({ sprintId, issueKey }) => assignToSprint(sprintId, issueKey),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
@@ -151,7 +183,7 @@ export function useUnassignFromSprint(projectKey: string) {
   return useMutation<void, unknown, UnassignFromSprintInput>({
     mutationFn: ({ sprintId, issueKey }) => unassignFromSprint(sprintId, issueKey),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
@@ -176,7 +208,7 @@ export function useCreateSprint(projectKey: string) {
   return useMutation<SprintMeta, unknown, CreateSprintParams>({
     mutationFn: (params) => createSprint(params),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
@@ -214,7 +246,7 @@ export function useUpdateSprint(projectKey: string) {
   return useMutation<SprintMeta, unknown, UpdateSprintInput>({
     mutationFn: ({ sprintId, body }) => updateSprint(sprintId, body),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
@@ -238,7 +270,7 @@ export function useStartSprint(projectKey: string) {
   return useMutation<SprintMeta, unknown, string>({
     mutationFn: (sprintId) => startSprint(sprintId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
@@ -272,7 +304,7 @@ export function useCompleteSprint(projectKey: string) {
   return useMutation<SprintMeta, unknown, string>({
     mutationFn: (sprintId) => completeSprint(sprintId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     },
   })
 }
