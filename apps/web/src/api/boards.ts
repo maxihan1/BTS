@@ -131,8 +131,13 @@ export const boardColumnSchema = z.object({
 export const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC'])
 
 /**
- * 활성 스프린트 요약 스키마.
- * 백엔드 `ActiveSprintResponse` DTO 대응.
+ * 활성 스프린트 요약 스키마 (FR-BD-04).
+ * 백엔드 `ActiveSprintResponse` DTO 대응 — **정확히 4필드다**(`goal`·`status`·`version` 없음).
+ * 스프린트 상세는 스프린트 API 소관이라 보드 응답이 중복해 싣지 않는다.
+ *
+ * **칸반 보드는 이 값이 항상 null 이다** — 스프린트라는 개념 자체가 없다.
+ * 그래서 소비자는 `boardType` 이 아니라 `activeSprint` 유무로 스프린트 헤더를 분기해도 안전하다.
+ * 서버가 필드를 늘리면 여기가 따라 늘리되, 추측으로 미리 채우지 않는다.
  */
 export const activeSprintSchema = z.object({
   /** 활성 스프린트 UUID */
