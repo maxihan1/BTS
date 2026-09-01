@@ -61,9 +61,16 @@ data class BacklogResult(
  * 6. 정렬 적용.
  *
  * ## 보드 스코프 (FR-BD-04 · ADR 2026-09-01 D2)
- * 스프린트와 백로그는 **보드**에 속한다. 스프린트 목록은 지정 보드의 것만 내보내고,
+ * 스프린트와 백로그는 **보드**에 속한다(J14 · J19). 스프린트 목록은 지정 보드의 것만 내보내고,
  * 백로그 칸은 「**그 보드의** 스프린트에 없는 가시 이슈」로 계산한다 — 다른 보드 스프린트의
- * 이슈까지 빼면 그 이슈가 스프린트에도 백로그에도 없어 화면에서 증발한다.
+ * 이슈까지 빼면 그 이슈가 스프린트에도 백로그에도 없어 화면에서 증발한다(E12).
+ *
+ * 근거 J20 — *"Jira will show in a Scrum board any sprint that contains an issue that is within the
+ * scope of the board's filter … in each board, the sprint content shown will be **only the issues in
+ * the sprint that match the board's filter**."* Jira 의 원리는 「필터에 걸리면 보인다」이고 BTS 보드는
+ * `project_key` 고정이라 **모든 보드의 필터가 사실상 같다** → 다른 보드 스프린트의 이슈도 이 보드의
+ * 필터에 걸리므로 백로그 칸에 남아야 한다. 중복 노출은 정상이다.
+ * 보드 스코프 해석 규칙은 [resolveBoardScope] 가 정본이다.
  *
  * ## 정렬 규칙
  * - 이슈(백로그/각 스프린트 내): rank ASC NULLS LAST → key ASC.
@@ -198,6 +205,14 @@ class BacklogApplicationService(
 
     /**
      * 백로그를 볼 보드를 정한다.
+     *
+     * 백로그는 프로젝트가 아니라 **보드**에 속한다 —
+     * J14: *"Company-managed projects are less tightly tied to boards than team-managed projects,
+     * and **backlogs are part of the board, not the project**."*
+     * 그런데 사용자는 boardId 를 타이핑하지 않는다 —
+     * J17: *"Select the **Backlog** tab from your space navigation of your scrum space."*
+     * 그래서 **지정이 없을 때만** 기본 보드로 폴백한다. 폴백은 깨진 링크를 만들지 않기 위한 것이지
+     * 잘못된 지정을 덮기 위한 것이 아니다(편차 X5).
      *
      * - [boardId] 지정 — **경로 프로젝트의 활성 보드 중에서만** 찾는다. 없으면 404 다.
      *   다른 프로젝트의 보드도 여기서 404 가 되어 「그 UUID 는 존재한다」가 새어 나가지 않는다(E8).
