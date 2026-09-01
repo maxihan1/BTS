@@ -166,6 +166,20 @@ CREATE INDEX idx_sprints_board_active ON sprints (board_id) WHERE deleted_at IS 
   ★ 그래도 CASCADE 를 두는 이유를 주석에 적는다 — 하드 삭제 경로가 생기면 고아를 남기지 않기 위함.
 - **E-5.** 칸반 보드에 `sprints.board_id` 가 붙은 경우. 스키마가 막지 않는다.
   조회는 종류로 분기하므로 **무해**하지만, 백필은 스크럼 보드에만 붙인다.
+- **E-6.** **한 프로젝트에 스크럼 보드가 여럿일 때 스프린트는 가장 오래된 것에만 붙는다** (PR ① 리뷰 발견).
+  이 PR 이 `POST /api/v1/boards` 에 `boardType=SCRUM` 을 열어 생긴 새 경로다. 백로그가 아직 보드를
+  지정하지 않으므로(`CreateSprintRequest` 에 `boardId` 없음) 스프린트 생성은 전부
+  `ensureScrumBoard` → `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`) 로 간다.
+  → 사용자가 두 번째 스크럼 보드를 만들면 **카드 0건 · `activeSprint` null 인 빈 보드로 고정**된다.
+
+  **한시 규칙으로 둔다.** `ADR D6` 이 다수 보드를 지원하므로 스키마 UNIQUE 로 두 번째 생성을 막지
+  않는다. 「어느 보드에 붙일지」는 **PR ③ 이 백로그에서 `boardId` 를 명시로 넘기면** 사라진다.
+  그때까지 「가장 오래된 것」이 규칙이며, `SprintApplicationServiceTest` 의
+  `create boardId 를 주면 스크럼 보드를 찾지 않는다` 가 그 이행 경로를 미리 고정한다.
+
+  ★ 암묵 생성의 **경쟁**은 별개이며 이미 막았다 —
+  `BoardRepository.acquireProjectScrumBoardLock`(advisory lock). E-6 은 사용자가 **의도적으로** 만든
+  두 번째 보드에 관한 것이다.
 
 ## 제약 조건
 
