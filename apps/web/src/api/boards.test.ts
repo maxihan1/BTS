@@ -84,12 +84,16 @@ const boardDetailFixture = {
   truncated: false,
   unplacedCount: 0,
   swimlaneField: 'NONE' as const,
+  // FR-BD-04 — 기본 픽스처는 칸반이라 activeSprint 가 항상 null 이다.
+  boardType: 'KANBAN' as const,
+  activeSprint: null,
 }
 
 const boardSummaryFixture = {
   boardId: BOARD_ID,
   projectKey: PROJECT_KEY,
   name: 'ATLAS 보드',
+  boardType: 'KANBAN' as const,
 }
 
 const boardCreatedFixture = {
@@ -985,5 +989,126 @@ describe('deleteBoard — DELETE /api/v1/boards/{id}', () => {
 
     await expect(deleteBoard(BOARD_ID)).rejects.toBeInstanceOf(ApiError)
     await expect(deleteBoard(BOARD_ID)).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-19. boardDetailSchema — boardType / activeSprint (FR-BD-04 · J5 · J15)
+//
+// J15 "A scrum board is always made up of two parts - the backlog and the active-sprint board."
+// J5  "the board displays only the work items added to the sprint you started"
+// → 화면이 스크럼/칸반을 갈라 그리려면 상세 응답이 종류와 활성 스프린트를 실어야 한다.
+//
+// boardType 은 서버 `BoardDetailResponse.boardType` 이 non-null String 이라 필수로 둔다
+// (Maxi 확정 2026-09-02). `.optional()`/`.default()` 로 때우면 백엔드가 필드를 빠뜨려도
+// 파싱이 조용히 통과해 칸반으로 오인된 스크럼 보드가 화면에 그려진다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SPRINT_ID = 'f6a7b8c9-d0e1-4456-9abc-456789012346'
+
+const activeSprintFixture = {
+  sprintId: SPRINT_ID,
+  name: 'Sprint 3',
+  startDate: '2026-09-01',
+  endDate: '2026-09-14',
+}
+
+describe('boardDetailSchema — boardType 필수 계약 (FR-BD-04)', () => {
+  it('T-BD-19a: boardType 이 없으면 파싱을 거부한다', () => {
+    const withoutBoardType: Record<string, unknown> = { ...boardDetailFixture }
+    delete withoutBoardType['boardType']
+    const result = boardDetailSchema.safeParse(withoutBoardType)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-19b: boardType=SCRUM 보드를 파싱한다', () => {
+    const result = boardDetailSchema.safeParse({
+      ...boardDetailFixture,
+      boardType: 'SCRUM',
+      activeSprint: activeSprintFixture,
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.boardType).toBe('SCRUM')
+  })
+
+  it('T-BD-19c: 허용되지 않는 boardType(SCRUMBAN)이면 파싱을 거부한다', () => {
+    const result = boardDetailSchema.safeParse({ ...boardDetailFixture, boardType: 'SCRUMBAN' })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('boardDetailSchema — activeSprint 파싱 (FR-BD-04 · J15)', () => {
+  it('T-BD-19d: 칸반 보드는 activeSprint=null 로 파싱된다', () => {
+    const result = boardDetailSchema.safeParse(boardDetailFixture)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.activeSprint).toBeNull()
+  })
+
+  it('T-BD-19e: 스크럼 보드의 activeSprint 4필드를 파싱한다', () => {
+    const result = boardDetailSchema.safeParse({
+      ...boardDetailFixture,
+      boardType: 'SCRUM',
+      activeSprint: activeSprintFixture,
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.activeSprint?.sprintId).toBe(SPRINT_ID)
+    expect(result.data.activeSprint?.name).toBe('Sprint 3')
+    expect(result.data.activeSprint?.startDate).toBe('2026-09-01')
+    expect(result.data.activeSprint?.endDate).toBe('2026-09-14')
+  })
+
+  it('T-BD-19f: 기간 미설정 스프린트는 startDate/endDate 가 null 로 파싱된다', () => {
+    const result = boardDetailSchema.safeParse({
+      ...boardDetailFixture,
+      boardType: 'SCRUM',
+      activeSprint: { ...activeSprintFixture, startDate: null, endDate: null },
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.activeSprint?.startDate).toBeNull()
+    expect(result.data.activeSprint?.endDate).toBeNull()
+  })
+
+  it('T-BD-19g: activeSprint 키 자체가 없으면 파싱을 거부한다', () => {
+    // agile-planning 모듈은 @JsonInclude(NON_NULL) 이 없어 칸반에서도 키가 null 로 살아 온다
+    // (boardCardSchema.originalEstimateSeconds 와 같은 근거). 키가 사라졌다면 그것이 곧 결함이다.
+    const withoutActiveSprint: Record<string, unknown> = { ...boardDetailFixture }
+    delete withoutActiveSprint['activeSprint']
+    const result = boardDetailSchema.safeParse(withoutActiveSprint)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-19h: activeSprint.sprintId 가 UUID 가 아니면 파싱을 거부한다', () => {
+    const result = boardDetailSchema.safeParse({
+      ...boardDetailFixture,
+      boardType: 'SCRUM',
+      activeSprint: { ...activeSprintFixture, sprintId: 'sprint-3' },
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-20. boardSummarySchema — boardType (FR-BD-04)
+//
+// 보드 선택 드롭다운이 목록만 보고 스크럼/칸반을 구분해야 하므로 요약에도 종류가 실린다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardSummarySchema — boardType (FR-BD-04)', () => {
+  it('T-BD-20a: 목록 요약의 boardType 을 파싱한다', () => {
+    const result = boardSummarySchema.safeParse({ ...boardSummaryFixture, boardType: 'SCRUM' })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.boardType).toBe('SCRUM')
+  })
+
+  it('T-BD-20b: boardType 이 없으면 파싱을 거부한다', () => {
+    const withoutBoardType: Record<string, unknown> = { ...boardSummaryFixture }
+    delete withoutBoardType['boardType']
+    const result = boardSummarySchema.safeParse(withoutBoardType)
+    expect(result.success).toBe(false)
   })
 })
