@@ -54,10 +54,13 @@ const MOCK_BOARD_DETAIL: BoardDetail = {
   quickFilters: [],
 }
 
+// 응답 픽스처의 종류는 KANBAN 으로 고정한다 — 아래 SCRUM 단언이 응답을 되읽어 통과하는
+// 가짜 그린을 막는다. SCRUM 이 관찰되는 경로는 mutate 입력뿐이어야 한다.
 const MOCK_BOARD_CREATED: BoardCreated = {
   boardId: 'c2b3d4e5-f6a7-4b8c-9d0e-f1a2b3c4d5e6',
   projectKey: 'ATLAS',
   name: '새 보드',
+  boardType: 'KANBAN',
   columns: [],
 }
 
@@ -373,18 +376,36 @@ describe('useCreateBoard', () => {
     })
 
     await act(async () => {
-      await result.current.mutateAsync({ name: '새 보드' })
+      await result.current.mutateAsync({ name: '새 보드', boardType: 'KANBAN' })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(createBoard).toHaveBeenCalledWith(projectKey, '새 보드')
+    expect(createBoard).toHaveBeenCalledWith(projectKey, '새 보드', 'KANBAN')
     expect(result.current.data).toEqual(MOCK_BOARD_CREATED)
 
     // invalidateQueries가 boards 목록 queryKey로 호출되어야 한다
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['boards', projectKey] }),
     )
+  })
+
+  it('T-BD-CREATE-2: 입력의 boardType 을 createBoard 세 번째 인자로 그대로 넘긴다 (FR-BD-04)', async () => {
+    const projectKey = 'ATLAS'
+
+    const { result } = renderHook(() => useCreateBoard(projectKey), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ name: '새 보드', boardType: 'SCRUM' })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // ★훅이 종류를 흘리면 화면에서 고른 스크럼이 KANBAN 으로 조용히 생성된다 —
+    //   백엔드가 미전송 시 KANBAN 을 채우므로(#421) 요청은 성공하고 아무도 모른다.
+    expect(createBoard).toHaveBeenCalledWith(projectKey, '새 보드', 'SCRUM')
   })
 })
 
