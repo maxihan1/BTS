@@ -5,14 +5,7 @@
       "Write",
       "Edit"
     ],
-    "deny": [
-      "Bash(rm:*)",
-      "Bash(sudo:*)",
-      "Bash(curl:*)",
-      "Bash(wget:*)",
-      "Bash(chmod:*)",
-      "Bash(mv:*)"
-    ]
+    "deny": []
   },
   "enabledPlugins": {
     "superpowers@superpowers-marketplace": false
