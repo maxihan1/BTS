@@ -64,11 +64,19 @@ class CacheInvalidationCoverageTest {
      * |---|---|
      * | `StatusCommandService.create` | 갓 만든 상태는 **아직 어느 워크플로우에도 편성되지 않았다**. 무효화할 캐시 항목이 존재하지 않는다 |
      * | `StatusCommandService.delete` | 편성된 상태는 애초에 지울 수 없다(`StatusInUseException`). 지울 수 있는 것은 편성 0건뿐이다 |
+     * | `WorkflowPublishService.migrate` | 아래 소절 |
+     *
+     * ### `migrate` 가 예외인 이유
+     * 이관 큐잉은 **워크플로우 정의를 바꾸지 않는다** — project-workflow 는 읽기만 하고
+     * 쓰기는 `bulk_operations` 한 곳뿐이다(FR-WF-07 F4). 캐시가 담는 것이 정의이고 그 내용이
+     * 그대로이므로 무효화할 항목이 없다. 실제 이슈 이동은 워커가 **자기 트랜잭션에서** 하고,
+     * 정의 교체는 `publish` 가 `withWriteLock` 안에서 한다 — 둘 다 이 함수 밖이다.
      */
     private val allowed =
         setOf(
             "StatusCommandService.create",
             "StatusCommandService.delete",
+            "WorkflowPublishService.migrate",
         )
 
     @Test
