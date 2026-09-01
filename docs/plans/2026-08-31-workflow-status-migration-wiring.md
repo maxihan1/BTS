@@ -859,3 +859,69 @@ W4 결선 인자 판정을 Task 2 에 · W5→X11 편차 · W6 RED 출력을 커
 F15·F14 로 각각 닫혔으므로 「분할이 그 둘의 공통 원인」이라는 논거가 해소됐다.
 
 **재상신** — task 7 → **8** · wave 4 → **7** · FR 10 → **16** · 엣지 9 → **13**.
+
+## 구현 편차 (wave 3~7 · 2026-09-01)
+
+계획대로 안 된 것을 실측 근거와 함께 남긴다. 코드 리뷰가 「계획과 다르다」를 결함으로 읽지
+않도록, 그리고 **다음 사람이 같은 벽을 다시 만나도록** 하기 위해서다.
+
+### X12. Task 6 의 롤백 단언을 뺐다 — 그 테스트 클래스가 잴 수 없다
+
+계획은 「교체 직후 유입이 있으면 발행이 **롤백되고 정의가 그대로다**」를 요구했다. 그런데
+`WorkflowPublishServiceIntegrationTest` 는 `@SpringBootTest` 없이 손으로 조립하고, 그 클래스
+KDoc 이 「`WorkflowCache.withWriteLock` 은 `@Transactional` 이지만 **프록시 없이 직접 호출**된다」
+고 이미 명시해 두었다. 트랜잭션 경계가 없으니 예외가 나도 쓴 것이 되돌아가지 않는다 —
+그 단언을 그대로 쓰면 **코드가 옳아도 red** 다.
+
+**대신 무엇을 재는가.** 재카운트가 `removedStatusKeys` 를 다시 계산하면 교체 뒤에는 차집합이
+항상 비어 **예외 자체가 안 난다.** 그러니 「예외가 나고 그 `pending` 에 `done` 이 담겼다」가
+교체 전 집합을 재사용했다는 증거다. 이 PR 이 막으려는 결함에 롤백보다 오히려 더 가깝다.
+
+롤백은 Spring 이 경계에서 보장하고 그 경계의 실재는 `ProjectWorkflowContextBootTest` 가
+컨텍스트로 검증한다. 한계는 테스트 KDoc 에 적었다.
+
+### X13. `MigrationInFlightPort` 가 `Set<UUID>` 가 아니라 `Set<String>` 이다
+
+계획은 `hasInFlightMigration(projectIds: Set<UUID>)` 였다. 그런데 `bulk_operations` 에는
+**`project_id` 컬럼이 없다**(`V008__bulk_operations.sql`). 이관의 범위는 `payload` JSONB 의
+`projectKeys` **문자열 배열**로만 존재한다. 없는 축으로 포트를 열면 어댑터가 그 자리에서 막히므로
+커맨드가 싣는 것과 같은 축(프로젝트 키)으로 묻는다.
+
+같은 이유로 어댑터가 형제(`IssueStatusUsageAdapter`)와 달리 **raw SQL** 을 쓴다 — 범위가 JSONB
+배열 안이라 `jsonb_array_elements_text` 를 거쳐야 하고, 동적 필드 참조로는 그 함수 호출과 그
+결과에 건 조건을 표현할 수 없다. 테이블·컬럼 이름은 여전히 문자열이라 격리 성격은 같고,
+바인딩은 `= ANY(?)` 파라미터 하나로만 넘겨 키 개수가 달라도 같은 문장이 나간다.
+
+### X14. F14 상한은 **복제하고 대조**한다 — 포트로 묻지 않는다
+
+상한의 주인은 issue-tracking(`BULK_OPERATION_MAX_SIZE`)이고 알아내는 길은 셋인데 둘이 막혀 있다.
+
+1. **직접 import** — BC 격리 위반
+2. **포트에 조회 추가** — `IssueStatusMigrationPort` KDoc 이 「조회 메서드를 만들지 않는다 —
+   두 번째 경로를 만들면 둘이 서로를 검사하지 않는다」로 막았고, `shared-kernel` 모듈 전체가
+   **T3 표면**이라 이 PR(T2)이 건드릴 수 없다
+3. **복제 + 대조** ← 남은 길
+
+복제 자체는 막을 수 없으므로 **갈라진 것을 CI 가 즉시 잡게** 했다 —
+`StatusMigrationMaxTargetsContractTest` 가 원본 파일을 읽어 값을 뽑고 대조하며, 경로나 정규식이
+틀렸을 때 조용히 통과하지 않도록 **비-공허 판정**을 짝으로 둔다.
+`[[two-lists-never-check-each-other]]` 의 표준 처방이다.
+
+### X15. `MigrationInFlightAdapterIntegrationTest` 를 계획보다 두껍게 썼다
+
+서비스 판정은 스텁 포트로 재므로 어댑터의 원시 SQL 은 **한 번도 실행되지 않는다**. 문법도 배열
+바인딩도 결과 추출도 미검증인 채로 첫 운영 호출이 첫 실행이 될 뻔했다. 8종을 넣었고 그중 둘이
+판정의 뼈대다 — 「여러 키를 실은 이관은 그중 하나만 물어도 걸린다」(배열을 안 펼치면 첫 항목만
+걸린다)와 「남의 프로젝트 이관은 이 범위를 막지 않는다」(이 축이 없으면 범위를 무시하고 전역으로
+묻는 구현이 전부 초록이다).
+
+### 실측으로 밟은 함정 3건 (장부 후보)
+
+- **KDoc 안의 글로브 `` `shared-kernel/**` `` 가 Kotlin 중첩 블록 주석을 연다.** `/*` 로 파싱돼
+  파일 끝까지 주석이 되고 「Unclosed comment」가 난다. 경로 글로브를 KDoc 에 쓰면 밟는다.
+- **`gradle … | tail -N` 은 tail 의 종료 코드를 돌려준다.** BUILD FAILED 가 EXIT 0 으로 보이고,
+  그 상태로 `build/test-results` 를 읽으면 **직전 실행의 stale XML 이 초록으로 나온다.**
+  `[[lint-fails-first-leaves-stale-test-xml]]` 과 같은 양식이며 신선도(mtime)로만 갈린다.
+- **전역 `statuses` 카탈로그에 흔한 키를 고정으로 쓰면 시드와 어긋난다.** F16 픽스처가 `review`
+  를 `TODO` 로 심으려 했으나 이미 `IN_PROGRESS` 로 있어 `requireStatesMatchCatalog` 가 먼저
+  400 을 던졌고 **F16 판정에 도달조차 못 했다.** 컨테이너 전역 표에는 고유 키를 쓴다.
