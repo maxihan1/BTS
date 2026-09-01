@@ -4,6 +4,7 @@ package com.bts.agileplanning.repository
 
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.jooq.tables.records.BoardColumnsRecord
 import com.bts.agileplanning.jooq.tables.records.BoardsRecord
@@ -63,6 +64,7 @@ class BoardRepository(
             .set(BOARDS.PROJECT_KEY, board.projectKey)
             .set(BOARDS.NAME, board.name)
             .set(BOARDS.SWIMLANE_FIELD, board.swimlaneField.name)
+            .set(BOARDS.BOARD_TYPE, board.boardType.name)
             .set(BOARDS.CREATED_AT, now)
             .set(BOARDS.UPDATED_AT, now)
             .execute()
@@ -139,6 +141,25 @@ class BoardRepository(
             .fetch()
             .map { toDomain(it, emptyList()) }
     }
+
+    /**
+     * 그 프로젝트의 **가장 오래된 활성 스크럼 보드 id** 를 반환한다. 없으면 `null`.
+     *
+     * 스프린트는 보드에 매달리므로(`ADR 2026-09-01` D2) 보드를 지정하지 않은 스프린트 생성 요청이
+     * 붙을 자리를 찾는 데 쓴다. 컬럼까지 로드할 필요가 없어 id 만 집는다.
+     *
+     * @param projectKey 대상 프로젝트 키.
+     * @return 스크럼 보드 UUID. 없으면 `null`.
+     */
+    fun findScrumBoardIdByProject(projectKey: String): UUID? =
+        dsl.select(BOARDS.ID)
+            .from(BOARDS)
+            .where(BOARDS.PROJECT_KEY.eq(projectKey))
+            .and(BOARDS.DELETED_AT.isNull)
+            .and(BOARDS.BOARD_TYPE.eq(BoardType.SCRUM.name))
+            .orderBy(BOARDS.CREATED_AT.asc())
+            .limit(1)
+            .fetchOne(BOARDS.ID)
 
     /**
      * 보드의 스윔레인 기준 필드를 갱신하고 갱신된 보드를 반환한다.
@@ -276,6 +297,11 @@ class BoardRepository(
         val swimlaneField =
             boardRecord.swimlaneField?.let { SwimlaneField.valueOf(it) }
                 ?: error("boards.swimlane_field 가 null — id=$id")
+        // CHECK 제약이 허용값을 DB 에서 이미 막으므로 여기 도달한 값은 유효하다.
+        // 그래도 valueOf 대신 from 을 쓰는 이유는 예외 종류를 하나로 모으기 위함이다.
+        val boardType =
+            boardRecord.boardType?.let { BoardType.from(it) }
+                ?: error("boards.board_type 이 null — id=$id")
 
         return Board(
             id = id,
@@ -286,6 +312,7 @@ class BoardRepository(
             updatedAt = updatedAt,
             deletedAt = boardRecord.deletedAt?.toInstant(),
             swimlaneField = swimlaneField,
+            boardType = boardType,
         )
     }
 

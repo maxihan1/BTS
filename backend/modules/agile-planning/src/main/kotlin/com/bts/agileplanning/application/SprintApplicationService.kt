@@ -54,6 +54,7 @@ class SprintApplicationService(
     private val permissionResolver: IssuePermissionResolver,
     private val sprintRepository: SprintRepository,
     private val boardIssueLookupPort: BoardIssueLookupPort,
+    private val boardApplicationService: BoardApplicationService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -87,14 +88,20 @@ class SprintApplicationService(
         goal: String?,
         startDate: LocalDate?,
         endDate: LocalDate?,
+        boardId: UUID? = null,
     ): Sprint {
         log.debug("스프린트 생성 시작 — projectKey={}, name={}", projectKey, name)
         requirePermission(actorId, IssuePermission.CREATE, IssueScope.Project(projectKey))
+
+        // 보드를 안 준 요청은 그 프로젝트의 스크럼 보드에 붙인다(없으면 만든다).
+        // 백로그 화면은 아직 보드를 지정하지 않으므로 이 경로가 기본이다 — PR ③ 에서 명시 지정이 붙는다.
+        val targetBoardId = boardId ?: boardApplicationService.ensureScrumBoard(projectKey)
 
         val sprint =
             Sprint(
                 id = UUID.randomUUID(),
                 projectKey = projectKey,
+                boardId = targetBoardId,
                 name = name,
                 goal = goal,
                 status = SprintStatus.PLANNED,
@@ -154,6 +161,7 @@ class SprintApplicationService(
         Sprint(
             id = existing.id,
             projectKey = existing.projectKey,
+            boardId = existing.boardId,
             name = mergedName,
             goal = mergedGoal,
             status = existing.status,

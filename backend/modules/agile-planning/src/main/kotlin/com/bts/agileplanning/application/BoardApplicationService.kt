@@ -6,6 +6,7 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardCardPlacement
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
@@ -101,6 +102,7 @@ class BoardApplicationService(
     fun createBoard(
         projectKey: String,
         name: String,
+        boardType: BoardType = BoardType.KANBAN,
     ): Board {
         log.debug("보드 생성 시작 — projectKey={}, name={}", projectKey, name)
 
@@ -118,6 +120,7 @@ class BoardApplicationService(
                 id = UUID.randomUUID(),
                 projectKey = projectKey,
                 name = name,
+                boardType = boardType,
                 columns = columns,
                 createdAt = java.time.Instant.now(),
                 updatedAt = java.time.Instant.now(),
@@ -126,6 +129,29 @@ class BoardApplicationService(
         val saved = boardRepository.insert(board)
         log.debug("보드 생성 완료 — boardId={}, columns={}", saved.id, saved.columns.size)
         return saved
+    }
+
+    /**
+     * 그 프로젝트의 스크럼 보드 id 를 반환하고, **없으면 만든다.**
+     *
+     * ### 왜 필요한가
+     * 스프린트는 이제 보드에 매달린다(`ADR 2026-09-01` D2). 그런데 백로그 화면은 아직 보드를
+     * 지정하지 않고 스프린트를 만든다(PR ③ 에서 붙는다). 그 사이에도 스프린트 생성이 동작해야
+     * 하므로, 보드를 안 준 요청은 여기서 붙을 자리를 찾는다.
+     *
+     * V506 백필이 **스프린트를 이미 가진 프로젝트**마다 스크럼 보드를 만들어 뒀다. 여기서 새로
+     * 만드는 경우는 **마이그레이션 이후 첫 스프린트를 만드는 프로젝트**뿐이다.
+     *
+     * @param projectKey 대상 프로젝트 키.
+     * @return 스크럼 보드 UUID.
+     * @throws ResponseStatusException 422 — 워크플로우 스킴 미할당이라 컬럼을 시드할 수 없을 때
+     *   ([createBoard] 의 기존 경로를 그대로 쓴다. 새 오류 경로를 만들지 않는다).
+     */
+    @Transactional
+    fun ensureScrumBoard(projectKey: String): UUID {
+        boardRepository.findScrumBoardIdByProject(projectKey)?.let { return it }
+        log.debug("스크럼 보드 부재 — 신설한다. projectKey={}", projectKey)
+        return createBoard(projectKey, "$projectKey 스크럼 보드", BoardType.SCRUM).id
     }
 
     /**

@@ -4,6 +4,8 @@ package com.bts.agileplanning.repository
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import org.assertj.core.api.Assertions.assertThat
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -43,7 +46,34 @@ class SprintRepositoryTest {
     @Autowired
     private lateinit var sprintRepository: SprintRepository
 
+    @Autowired
+    private lateinit var boardRepository: BoardRepository
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+    /** 프로젝트별 FK 대상 보드 캐시. V506 이후 `sprints.board_id` 는 NOT NULL + FK 라 실제 행이 필요하다. */
+    private val boardIdCache = mutableMapOf<String, UUID>()
+
+    /**
+     * 그 프로젝트의 보드를 만들어 id 를 돌려준다(같은 테스트 안에서는 재사용).
+     *
+     * 스프린트는 보드에 매달리므로 도메인 객체만으로는 INSERT 가 FK 위반으로 죽는다.
+     */
+    private fun boardIdFor(projectKey: String): UUID =
+        boardIdCache.getOrPut(projectKey) {
+            boardRepository
+                .insert(
+                    Board(
+                        id = UUID.randomUUID(),
+                        projectKey = projectKey,
+                        name = "$projectKey 스크럼 보드",
+                        columns = emptyList(),
+                        createdAt = Instant.now(),
+                        updatedAt = Instant.now(),
+                        boardType = BoardType.SCRUM,
+                    ),
+                ).id
+        }
 
     /** 기본 PLANNED 스프린트 도메인 객체를 생성한다(DB 미반영). */
     private fun buildSprint(
@@ -55,6 +85,7 @@ class SprintRepositoryTest {
         Sprint(
             id = UUID.randomUUID(),
             projectKey = projectKey,
+            boardId = boardIdFor(projectKey),
             name = "스프린트 ${UUID.randomUUID()}",
             goal = null,
             status = status,

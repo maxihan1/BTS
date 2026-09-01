@@ -34,11 +34,13 @@ class SprintApplicationServiceTest {
     private val actorId: UUID = UUID.randomUUID()
     private val sprintId: UUID = UUID.randomUUID()
     private val projectKey = "ATLAS"
+    private val boardId: UUID = UUID.randomUUID()
 
     private val plannedSprint =
         Sprint(
             id = sprintId,
             projectKey = projectKey,
+            boardId = boardId,
             name = "Sprint 1",
             goal = null,
             status = SprintStatus.PLANNED,
@@ -71,7 +73,11 @@ class SprintApplicationServiceTest {
         resolver: IssuePermissionResolver = allowAllResolver(),
         repo: SprintRepository = mockk(relaxed = true),
         lookupPort: BoardIssueLookupPort = mockk(relaxed = true),
-    ): SprintApplicationService = SprintApplicationService(resolver, repo, lookupPort)
+        boardService: BoardApplicationService = mockk(relaxed = true) {
+            // 보드를 안 준 create 요청이 붙을 자리. 실제 해소는 BoardApplicationService 의 책임이다.
+            every { ensureScrumBoard(any()) } returns boardId
+        },
+    ): SprintApplicationService = SprintApplicationService(resolver, repo, lookupPort, boardService)
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -84,6 +90,7 @@ class SprintApplicationServiceTest {
             makeService(repo = repo).create(
                 actorId = actorId,
                 projectKey = projectKey,
+                boardId = boardId,
                 name = "Sprint 1",
                 goal = null,
                 startDate = null,
@@ -105,6 +112,7 @@ class SprintApplicationServiceTest {
             makeService(resolver = resolver, repo = repo).create(
                 actorId = actorId,
                 projectKey = projectKey,
+                boardId = boardId,
                 name = "Sprint X",
                 goal = null,
                 startDate = null,
@@ -837,6 +845,7 @@ class SprintApplicationServiceTest {
         makeService(resolver = resolver, repo = repo).create(
             actorId = actorId,
             projectKey = projectKey,
+            boardId = boardId,
             name = "Sprint 1",
             goal = null,
             startDate = null,

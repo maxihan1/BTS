@@ -150,6 +150,7 @@ class SprintControllerTest {
         Sprint(
             id = id,
             projectKey = projectKey,
+            boardId = UUID.randomUUID(),
             name = "Sprint 1",
             goal = "스프린트 목표",
             status = status,
