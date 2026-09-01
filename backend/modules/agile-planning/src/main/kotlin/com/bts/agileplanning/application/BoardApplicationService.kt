@@ -25,6 +25,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -151,7 +152,30 @@ class BoardApplicationService(
     fun ensureScrumBoard(projectKey: String): UUID {
         boardRepository.findScrumBoardIdByProject(projectKey)?.let { return it }
         log.debug("스크럼 보드 부재 — 신설한다. projectKey={}", projectKey)
-        return createBoard(projectKey, "$projectKey 스크럼 보드", BoardType.SCRUM).id
+
+        // ★ [createBoard] 를 재사용하지 않고 **컬럼 0개**로 만든다. 이유가 둘이다.
+        //
+        // ① [createBoard] 는 워크플로우 스킴이 없으면 422 를 던진다. 사용자가 **명시적으로** 보드를
+        //    만들 때는 그것이 옳다(왜 안 되는지 알려야 한다). 그러나 여기는 **스프린트를 만들다가
+        //    딸려 오는** 암묵 생성이라, 같은 422 를 내면 스킴 없는 프로젝트에서 스프린트 생성이
+        //    막힌다 — 이 PR 이전에는 되던 동작이므로 명백한 회귀다.
+        // ② 컬럼 시드는 `ProjectKey.of(projectKey)` 를 거치는데 그 정규식(`^[A-Z][A-Z0-9]{1,9}$`)이
+        //    `sprints.project_key`(VARCHAR(64), 검증 없음)보다 **좁다**. 카탈로그를 여기서 부르면
+        //    스프린트 생성 경로에 **없던 검증**이 끼어들어 기존 데이터·요청이 400 으로 죽는다.
+        //
+        // 컬럼은 조회 시 자가 치유가 채운다 — V506 백필도 같은 전제 위에 서 있다.
+        val now = Instant.now()
+        val board =
+            Board(
+                id = UUID.randomUUID(),
+                projectKey = projectKey,
+                name = "$projectKey 스크럼 보드",
+                boardType = BoardType.SCRUM,
+                columns = emptyList(),
+                createdAt = now,
+                updatedAt = now,
+            )
+        return boardRepository.insert(board).id
     }
 
     /**
