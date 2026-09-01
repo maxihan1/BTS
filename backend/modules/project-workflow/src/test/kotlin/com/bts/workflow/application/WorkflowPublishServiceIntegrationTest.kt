@@ -33,8 +33,10 @@ import com.bts.workflow.scheme.repository.ProjectRef
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.ValidatorRepository
+import com.bts.workflow.web.WorkflowDraftController
 import com.bts.workflow.web.dto.MigrateRequest
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -45,6 +47,8 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -247,6 +251,28 @@ class WorkflowPublishServiceIntegrationTest {
             permissionResolver = permissions,
             cache = cache,
         )
+
+    /**
+     * 위조 차단 판정 전용 — 요청 본문이 **실제로 흐르는 경로**를 재현한다.
+     *
+     * 초안 서비스는 이 경로에 쓰이지 않으므로 목으로 둔다. 컨트롤러를 끼우는 이유는 하나다 —
+     * 서비스만 직접 부르면 「본문의 `projectKeys` 를 컨트롤러가 실어 보낸다」는 회귀를 못 잡는다.
+     */
+    private val controller = WorkflowDraftController(mockk(relaxed = true), service)
+
+    /** [CurrentActor] 가 SecurityContext 를 읽으므로 컨트롤러를 부르는 동안만 채워 둔다. */
+    private fun <T> withActor(
+        actor: UUID,
+        block: () -> T,
+    ): T {
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(actor.toString(), null, emptyList())
+        return try {
+            block()
+        } finally {
+            SecurityContextHolder.clearContext()
+        }
+    }
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
 
@@ -865,6 +891,12 @@ class WorkflowPublishServiceIntegrationTest {
      * `FAIL_ON_UNKNOWN_PROPERTIES` 를 꺼 두므로 운영은 모르는 필드를 조용히 버리고 202 를 준다.
      * 슬라이스에서만 참인 계약을 재면 위조 요청이 실제로 어디까지 가는지는 아무도 안 본다.
      * 그래서 운영과 같은 빌더로 본문을 읽은 뒤 **포트가 실제로 받은 범위**를 잰다.
+     *
+     * ### ★서비스를 직접 부르지 않고 **컨트롤러를 지난다**
+     * 뮤테이션으로 실측했다. 서비스만 부르면 「`projectKeys` 를 선택 파라미터로 열고 조회 결과에
+     * 합친다」는 형태를 **한 건도 잡지 못한다** — 테스트가 그 인자를 안 넘기니 기본값이 적용돼
+     * 전 테스트가 초록이고, 운영에서는 컨트롤러가 본문 값을 실어 `HACKED` 가 그대로 포트까지 간다.
+     * 본문이 실제로 흐르는 경로에서 재야 판정이 된다.
      */
     @Test
     fun `요청에 projectKeys 를 실어도 포트는 조회로 얻은 집합만 받는다`() {
@@ -876,9 +908,10 @@ class WorkflowPublishServiceIntegrationTest {
         val body =
             """{"baseVersion":0,"mappings":[{"fromStatusKey":"done","toStatusKey":"open"}],""" +
                 """"projectKeys":["HACKED"]}"""
-        val request = webMapper.readValue(body, MigrateRequest::class.java)
 
-        service.migrate(ACTOR, key, request.baseVersion, request.mappings.map { it.toMapping() })
+        withActor(ACTOR) {
+            controller.migrate(key, webMapper.readValue(body, MigrateRequest::class.java))
+        }
 
         assertThat(migrationPort.received.single().projectKeys)
             .describedAs("「HACKED 가 없다」로 약하게 재면 조회 결과가 통째로 비어도 통과한다")
