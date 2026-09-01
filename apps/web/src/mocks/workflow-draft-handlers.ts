@@ -144,7 +144,7 @@ export const workflowDraftHandlers = [
 
     // 편집기가 아직 존재하지 않는 버전을 앵커로 주장하면 거절한다.
     if (body.baseVersion > versionOf(key)) {
-      return problem(400, 'WORKFLOW_INVALID_REQUEST', '편집 기준 버전이 아직 존재하지 않습니다')
+      return problem(400, 'WORKFLOW_INVALID_REQUEST', '편집 기준 판이 아직 존재하지 않습니다')
     }
     // 상태 이름·카테고리의 정본은 카탈로그다 — 다른 값을 담은 초안은 저장 단계에서 막힌다.
     for (const state of body.definition.states) {
@@ -205,7 +205,7 @@ export const workflowDraftHandlers = [
     }
     const body = (await request.json()) as { baseVersion: number }
 
-    // ★ 대조 대상은 **저장된 초안의 앵커**다. 지금 DB 버전이 아니다 — 그렇게 하면 화면이
+    // ★ 대조 대상은 **저장된 초안의 앵커**다. 지금 DB 쪽 판이 아니다 — 그렇게 하면 화면이
     //   미리보기의 currentVersion 을 되실어 보내는 것만으로 락이 풀린다.
     if (body.baseVersion !== stored.baseVersion) {
       return problem(409, 'WORKFLOW_VERSION_CONFLICT', '다른 사용자가 먼저 발행했습니다')

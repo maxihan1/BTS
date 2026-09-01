@@ -166,10 +166,10 @@ describe('★ 앵커 고정 (낙관적 락)', () => {
     expect(result.current.state.baseVersion).toBe(4)
   })
 
-  it('그 사이 서버 버전이 올라가도 앵커를 따라가지 않는다', async () => {
+  it('그 사이 서버 쪽 판이 올라가도 앵커를 따라가지 않는다', async () => {
     const { result } = await renderLoaded()
 
-    // 남이 발행해 서버 버전이 올랐다. 재조회가 일어나도 앵커는 편집 시작 시점 값이어야 한다.
+    // 남이 발행해 서버 쪽 판이 올랐다. 재조회가 일어나도 앵커는 편집 시작 시점 값이어야 한다.
     serverVersion = 9
 
     act(() => {
