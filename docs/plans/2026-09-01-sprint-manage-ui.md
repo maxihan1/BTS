@@ -18,12 +18,23 @@
 **classify 결과.** `type=ui` · `agent=frontend-engineer` · `primary_bc=agile-planning` · `tier=T2`(선언).
 frontend-engineer 가 기본 담당이지만 **백엔드 task 가 1개 있다** — 그 task 만 backend-engineer 로 지정한다.
 
-**FR.** `FR-BL-02`(백로그 → 스프린트) 의 **D6 프론트 범위 회수**. 신규 FR 없음 → **총수 불변 143**.
+**FR.** `FR-BL-02`(백로그 → 스프린트) 의 **D6 프론트 범위 회수**. 신규 FR 없음 → **이 PR 은 총수 불변**.
 로드맵 `~/.claude/plans/playful-cooking-minsky.md` §FR 동기화 표가 A 를 「FR-BD-01-2 회수 +
 FR-BL-02 D6 범위 회수 · 불변 143」으로 적었고, 앞의 것은 PR #416 이 회수했다.
 
+> 🛑 **기준값이 143 에서 144 로 바뀌었다 (2026-09-01 갱신).** 이 plan 이 처음 쓰일 때의 정본은
+> 143 이었으나 **PR #419 가 FR-BD-04(보드 종류 + 활성 스프린트 보드)를 신설**해 정본은 **144** 다
+> (`docs/plan/README.md:131` · `docs/plan/fr-index.md:122`). 위 로드맵 인용문의 「불변 143」은
+> **당시 기록이라 원문 그대로 둔다** — 이 PR 이 주장하는 것은 「총수를 바꾸지 않는다」이고
+> 그 기준선이 144 로 옮겨간 것뿐이다. 검증에서 확인할 값은 **144** 다.
+
 **범위 밖.** WIP 제한 편집(로드맵 B) · 보드 설정 화면(B) · P0 판별식(FR-WF-07 D6 대기) ·
-PR #417(다른 세션 소관).
+PR #417(다른 세션 소관) · **FR-BD-04 D6 전량**(보드 종류 선택 UI = PR ② · 스크럼 보드 화면과
+백로그 `?board=` 스코프 = PR ③).
+
+**선행 제약 (2026-09-01 추가).** 이 PR 은 **D6 PR ③ 이 머지된 뒤에** 재개한다.
+D6 이 백로그를 `?board=` 스코프로 바꾸므로 Task 8 의 `sprint-manage.spec.ts` 를 먼저 쓰면
+D6 에서 다시 써야 한다.
 
 ## Jira 대조 (전 타입 필수)
 
@@ -241,6 +252,16 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - depends-on: []
 - jira: [J1]
 
+> 🛑 **앵커가 이동했다 (2026-09-01 갱신 · PR #421).** 이 task 의 대상 3파일을 #421 이 먼저 고쳤다.
+> 착수 전에 **현재 파일을 다시 읽고** 삽입 지점을 잡는다.
+> - `SprintApplicationService.create()` — 생성자에 `boardApplicationService` 가 붙고
+>   `boardId: UUID? = null` 파라미터와 `ensureScrumBoard` 폴백이 생겼다.
+> - `SprintApplicationService.update()` — 복사 생성자에 `boardId = existing.boardId` 행이 추가됐다.
+>   **이 task 의 날짜 잠금 판정은 그 복사보다 앞**에 들어간다.
+> - `SprintApplicationService.start()` — `findActiveByBoard` 활성 1개 가드가 이미 있다.
+> - `SprintExceptions.kt` · `SprintExceptionHandler.kt` — `SprintAlreadyActiveException`(409)과
+>   그 핸들러가 이미 들어와 있다. 아래 GREEN 의 「전용 핸들러 필수」에 **코드 선례가 생겼다**.
+
 **RED**:
 - COMPLETED 스프린트에 `endDate` 를 실어 `update` 하면 **400** 이어야 하는데 지금은 **200 이고 날짜가 바뀐다**.
 - ★ **컴파일 red 로 끝내지 않는다** — 새 예외 클래스가 없어서 나는 컴파일 실패는
@@ -254,6 +275,10 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
   「보내지 않음」과 「null 로 지움」을 뭉개면 이름만 고치는 요청까지 막힌다.
 - 핸들러에 `SprintDateLockedException` → 400 매핑 추가. ★ `IllegalArgumentException` 을
   통째로 매핑하지 않는다 (PR #416 리뷰 지적 3 과 같은 자리).
+  ★★ **전용 핸들러는 선택이 아니다.** #421 의 `SprintAlreadyActiveException` KDoc 이 그 이유를
+  명문화했다 — *"이 타입이 `ResponseStatusException` 을 상속하므로 핸들러가 없으면 상태 전파
+  핸들러가 잡아 errorCode 를 `AGILE_CONFLICT` 로 덮어쓴다."* 같은 자리에 같은 함정이 있다.
+  그 예외·핸들러 쌍을 **형식 선례로 그대로 따른다**.
 
 **REFACTOR**: 판정을 private 함수로 빼고 KDoc 에 J1 원문 인용을 남긴다.
 
@@ -430,6 +455,10 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - depends-on: [5]
 - jira: [J2, J4]
 
+> 🛑 **이 task 가 이 PR 전체의 홀드 사유다 (2026-09-01 2차).** FR-BD-04 D6(PR ③)이 백로그를
+> `?board=<id>` 스코프로 바꾼다 — 이 스펙이 그 화면 위에서 돈다. **D6 보다 먼저 쓰면 두 번 쓴다.**
+> ADR 「깨질 수 있는 것」 목록에 `backlog.spec.ts` 가 명시돼 있고, 이 스펙도 같은 진입 경로다.
+
 **RED**(동반 테스트):
 - 편집 → 이름이 헤더에서 바뀐다.
 - 삭제 → 스프린트 칸이 사라지고 **그 이슈가 백로그에 나타난다**(FR-4 · X1).
@@ -453,7 +482,8 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - 장부 **145~148 을 `⬜` → `✅`** 로 바꾸고 `TODOS.md` 의 같은 항목도 닫는다.
   ★ **번호는 표 맨 끝을 직접 확인해서** 붙인다 — `debt-ledger-mapping.test.ts:92-97` 이
   `cells[1]`(번호)을 안 읽어 충돌해도 초록이다(장부 51번 · `partial-column-parser-lets-unread-column-rot`).
-- **미등재 2건 신규 등재** — ① `sprint_issues` 고아 행 위생 ② `BoardRepository.kt` 308줄.
+- **미등재 2건 신규 등재** — ① `sprint_issues` 고아 행 위생 ② `BoardRepository.kt` **439줄**
+  (착수 시 실측으로 다시 센다 — 이 plan 작성 시점엔 308줄이었고 **PR #421 이 +131 했다**).
   ②를 등재하려면 `scripts/build-dashboard.mjs` 의 `AREA_CATEGORIES`(:296)에
   **`agile-planning` 영역이 없다** — 한 줄 추가한다.
 - `docs/plan/product/agile-planning.md` §3.2 **FR-BL-02 D6 에 각주** — 「D6 이 `[x]` 였으나
@@ -462,7 +492,7 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - `node scripts/build-doc-index.mjs` 재실행.
 
 **검증**: `node --experimental-strip-types --test scripts/**/*.test.ts` (장부 판별식 포함)
-· `bash scripts/verify-master-plan.sh` EXIT=0 · FR 총수 **143 불변** 확인
+· `bash scripts/verify-master-plan.sh` EXIT=0 · FR 총수 **144 불변** 확인
 
 ---
 
@@ -614,8 +644,35 @@ Maxi 의 두 번째 질문(「프로젝트에 다수 보드가 존재할 수 있
 
 ### 다음 작업
 
-**보드 모델 ADR** — `board_type`(Scrum/Kanban)과 활성 스프린트 보드. 마이그레이션이 필요한 **T3**.
-로드맵 PR C(컬럼 M:N)보다 **앞선다** — 보드가 무엇을 담는지가 정해져야 컬럼 매핑 설계가 성립한다.
+~~**보드 모델 ADR**~~ — **완료됐다.** `docs/adr/2026-09-01-board-type-and-active-sprint.md`(PR #419 채택)
++ FR-BD-04 신설. 스키마·백엔드(D1~D5)는 **PR #421 머지**(`cfa7c920c`).
+
+---
+
+## 홀드 사유 갱신 (2026-09-01 · 2차)
+
+**기다리던 것이 왔고, 다른 것을 기다리게 됐다.**
+
+원래 대기 대상이던 보드 모델 ADR(#419)과 스키마·백엔드(#421)는 둘 다 머지됐다.
+그런데 그 ADR 이 **FR-BD-04 D6** 에서 백로그 화면의 의미를 바꾼다 —
+`/projects/$projectKey/backlog` 가 **프로젝트 단위에서 보드 단위(`?board=<id>`)로** 스코프된다
+(ADR §D2 · 「결과」 절). 그리고 ADR 「깨질 수 있는 것」 목록에 **`backlog.spec.ts` 가 명시**돼 있다.
+
+이 PR 의 **Task 5**(`SprintColumnHeader` `⋯` 메뉴)와 **Task 8**(`sprint-manage.spec.ts`)이
+바로 그 백로그 화면 위에서 돈다. 지금 넣으면 **T8 E2E 를 D6 에서 다시 써야 한다.**
+
+**따라서 대기 대상을 바꾼다 — 보드 모델 설계(완료) → FR-BD-04 D6 (PR ③ 백로그 `?board=` 스코프).**
+
+- **D6 PR ②**(보드 생성 종류 선택 UI)는 백로그를 안 건드리므로 이 PR 과 무관하다.
+- **D6 PR ③**(스크럼 보드 화면 + 백로그 `?board=` 스코프)이 머지되면 그 위에서 재개한다.
+- 재개 시 **`git rebase origin/main` 을 한 번만** 한다. 지금 안 하는 이유는 D6 두 PR 이
+  들어오면 어차피 다시 밀리기 때문이다. 충돌은 자동 생성 INDEX 3종뿐이고
+  **병합하지 않고 `node scripts/build-doc-index.mjs` 재생성으로 덮는다**(자동 생성 파일 규율).
+
+**재확인한 것 (origin/main 실측 · 2026-09-01).** 프론트 Task 2~8 은 **재작성 불필요**하다 —
+`StartSprintDialog.tsx` 534줄 · `SprintColumnHeader.tsx` 162줄 · `withDeleteTimeout` @ `use-boards.ts:227`
+· `api/client.ts:82` 의 `signal` 부재(E1 미해결 유효) · `backlogKeys` 의 `detail` 단일 키.
+전부 이 plan 이 기록한 그대로다. #421 은 `apps/web/` 아래를 **한 파일도 건드리지 않았다.**
 
 ## GSTACK REVIEW REPORT
 
@@ -629,6 +686,8 @@ Maxi 의 두 번째 질문(「프로젝트에 다수 보드가 존재할 수 있
 
 - **VERDICT:** DESIGN CLEARED · ENG CONCERNS (E1 결정 대기) — 게이트 1 에서 E1 을 정하면 구현 착수 가능. BLOCKER 0.
 
-- **GATE 1:** 🛑 보류 — 보드 모델 설계 선행(Maxi 판정 2026-09-01). E1 은 `apiFetch` 확장으로 확정 해소.
+- **GATE 1:** 🛑 보류 — **FR-BD-04 D6 선행**(2026-09-01 2차 갱신). 1차 대기 대상이던 보드 모델 설계는
+  ADR #419 채택 · 스키마 백엔드 #421 머지로 **해소됐고**, 그 ADR 이 백로그를 `?board=` 스코프로
+  바꾸므로 **D6 PR ③ 뒤로** 미룬다(T8 E2E 이중 작성 회피). E1 은 `apiFetch` 확장으로 확정 해소.
 
 NO UNRESOLVED DECISIONS
