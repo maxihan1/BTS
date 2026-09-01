@@ -15,6 +15,7 @@ import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowMigrationInvalidMappingException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
 import com.bts.workflow.domain.exception.WorkflowVersionConflictException
@@ -492,6 +493,61 @@ class WorkflowPublishServiceIntegrationTest {
         return id
     }
 
+    /**
+     * 전역 카탈로그(`statuses`)에만 상태를 심는다 — 이 워크플로우의 편성에는 **넣지 않는다.**
+     *
+     * F16 픽스처다. 카탈로그에 없으면 `requireStatusCatalog` 가 먼저 잡아 F16 판정까지 오지도
+     * 못하므로, 「카탈로그에는 있고 live 편성에는 없다」는 상태를 일부러 만든다.
+     */
+    private fun insertCatalogOnlyStatus(key: String) {
+        dsl.execute(
+            "INSERT INTO statuses (key, name, category) VALUES (?, ?, 'TODO')" +
+                " ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name",
+            key,
+            "검토",
+        )
+    }
+
+    /** `done` 을 빼면서 **초안에만 있는** 신규 상태 `review` 를 더하는 초안. */
+    private fun draftAddingReview(key: String) =
+        WorkflowDraftDefinition(
+            key = key,
+            name = "신규 상태를 더한 초안",
+            states =
+                listOf(
+                    DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0),
+                    DraftStateDto(key = "review", name = "검토", category = "TODO", displayOrder = 1),
+                ),
+            transitions = listOf(DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")),
+        )
+
+    /**
+     * 이 워크플로우를 default 로 가리키면서 **형제 워크플로우도** 이슈 타입별로 가리키는 스킴.
+     *
+     * F11 이 막아야 하는 조합 그 자체다 — 이관 워커가 이슈 타입 축을 안 보므로 이 스킴에서
+     * 이관을 허용하면 형제 워크플로우를 쓰는 이슈까지 함께 옮겨진다.
+     */
+    private fun attachSchemeWithSibling(workflowId: UUID) {
+        val scheme = insertScheme()
+        insertDefaultMapping(scheme, workflowId)
+
+        val typeKey = "BUG-${UUID.randomUUID().toString().take(6)}"
+        dsl.execute("INSERT INTO issue_types (key, name) VALUES (?, ?)", typeKey, "버그")
+        val issueTypeId =
+            dsl.fetchOne("SELECT id FROM issue_types WHERE key = ?", typeKey)
+                ?.get("id", Long::class.java)
+                ?: error("issue_types INSERT 실패")
+
+        dsl.execute(
+            "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)" +
+                " VALUES (?, ?, ?)",
+            scheme,
+            issueTypeId,
+            insertBareWorkflow(),
+        )
+        insertAssignment(insertProject(), scheme)
+    }
+
     // ── ★ 이 FR 의 심장 ───────────────────────────────────────────────────────
 
     @Test
@@ -960,6 +1016,213 @@ class WorkflowPublishServiceIntegrationTest {
 
         assertThat(migrationPort.received)
             .describedAs("포트에 닿았다면 400 이 아니라 어댑터의 IAE 가 응답을 정한 것이다")
+            .isEmpty()
+    }
+
+    // ── 매핑 가드 (Task 4 · F7·F8·F11·F13·F14·F16 · E2·E4) ────────────────────
+    //
+    // 여기 있는 판정은 전부 **포트에 닿기 전에** 막혀야 한다. 큐잉까지 갔다가 트랜잭션을
+    // 되감아도 pgmq 메시지는 남을 수 있어(`migrate 도 저장된 초안의 base_version …` 이 같은
+    // 이유로 포트 미호출을 단언한다) 「예외가 났다」만으로는 안전이 증명되지 않는다.
+
+    /**
+     * ★ 빠지지도 않는 상태를 출발지로 실으면 **멀쩡한 이슈가 통째로 옮겨진다.**
+     *
+     * 워커는 `fromStatusKey` 를 그대로 믿고 긁는다. 이 가드가 없으면 `open` 을 실은 요청 하나가
+     * 살아 있는 상태의 이슈 전량을 이동시킨다 — 되돌릴 방법은 역방향 일괄작업뿐이다.
+     */
+    @Test
+    fun `제거되지 않는 상태를 fromStatusKey 로 실으면 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            // `done` 만 빠진다. `open` 은 남는 상태다.
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("open", "open")))
+        }
+            .isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+            .hasMessageContaining("open")
+
+        assertThat(migrationPort.received)
+            .describedAs("포트에 닿았으면 롤백해도 pgmq 메시지는 남을 수 있다")
+            .isEmpty()
+    }
+
+    /**
+     * ★ 도착지가 초안에 없으면 이관 뒤 이슈가 **어느 상태에도 속하지 않는다.**
+     *
+     * `done` 은 이 초안이 빼는 상태다. 거기로 옮기면 발행 직후 그 이슈들이 다시 「빠지는 상태에
+     * 남은 이슈」가 되어 발행이 영원히 막힌다(E3 연쇄).
+     */
+    @Test
+    fun `toStatusKey 가 초안 상태 집합에 없으면 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "done")))
+        }
+            .isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+            .hasMessageContaining("done")
+
+        assertThat(migrationPort.received).isEmpty()
+    }
+
+    /**
+     * ★ 빈 매핑은 「아무것도 안 옮기는 일괄작업」을 만든다.
+     *
+     * 관리자는 202 와 id 를 받고 진행률을 보러 가지만 옮겨진 것이 없다. 그 뒤 발행은 여전히 409 라
+     * **무엇이 잘못됐는지 알 방법이 없다.** 화면이 매핑을 안 실어 보낸 버그가 이 형태로 새어 나간다.
+     */
+    @Test
+    fun `mappings 가 비면 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = emptyList())
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+
+        assertThat(migrationPort.received).isEmpty()
+    }
+
+    /**
+     * ★ 같은 출발지가 두 번 오면 **어느 도착지가 이기는지 워커만 안다.**
+     *
+     * 목록 순서에 의존하는 조용한 승자는 재현이 안 되는 데이터 이동을 만든다. 화면이 매핑 행을
+     * 복제하는 버그가 여기서 걸리지 않으면 운영에서만 드러난다.
+     */
+    @Test
+    fun `같은 fromStatusKey 가 두 번 오면 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(
+                ACTOR,
+                key,
+                baseVersion = 0,
+                mappings =
+                    listOf(
+                        StatusMigrationMapping("done", "open"),
+                        StatusMigrationMapping("done", "open"),
+                    ),
+            )
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+
+        assertThat(migrationPort.received).isEmpty()
+    }
+
+    /**
+     * ★ F16 — 초안에만 있는 신규 상태로 옮기면 **발행 전에 유령이 생긴다.**
+     *
+     * 이관은 발행보다 먼저 실행되므로(D2 로 둘을 쪼갠 부작용), 도착지가 아직 live 편성에 없으면
+     * 그 사이 이슈들은 이 워크플로우가 모르는 상태에 놓인다. 지라는 매핑과 발행이 한 조작이라
+     * 이 위험이 없다 — X5 분할이 새로 연 창이므로 여기서 닫는다.
+     *
+     * `review` 는 전역 카탈로그에는 있고(그래야 `requireStatusCatalog` 를 지나 이 판정까지 온다)
+     * 이 워크플로우의 편성에는 없다.
+     */
+    @Test
+    fun `toStatusKey 가 live 편성에 없으면 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        insertCatalogOnlyStatus("review")
+        draftRepository.upsert(id, draftAddingReview(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "review")))
+        }
+            .isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+            .hasMessageContaining("review")
+
+        assertThat(migrationPort.received)
+            .describedAs("발행 전에 큐잉되면 이슈가 live 에 없는 상태로 옮겨진다")
+            .isEmpty()
+    }
+
+    /**
+     * ★ F11 fail-closed — 스킴은 `(scheme_id, issue_type_id) → workflow_id` 인데 이관 워커는
+     * **이슈 타입 축을 통째로 무시한다**(`BulkOperationRepository.statusMigrationTargets` 가
+     * `current_state_key`·`deleted_at`·`project_id` 만 건다. 장부 145).
+     *
+     * 그래서 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 **WF1 이관이 WF2 이슈까지 옮긴다** —
+     * 과다 이동은 데이터 손상이다. 포트에 그 축이 없어(N3 충돌) 이 PR 에서 고칠 수 없으므로
+     * **조합 자체를 안 연다**. 스킴이 이 워크플로우 하나만 쓸 때만 이관을 허용한다.
+     */
+    @Test
+    fun `스킴이 다른 워크플로우도 매핑하면 거부한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachSchemeWithSibling(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+
+        assertThat(migrationPort.received)
+            .describedAs("이슈 타입 축이 없는 채로 큐잉하면 형제 워크플로우의 이슈까지 옮겨진다")
+            .isEmpty()
+    }
+
+    /**
+     * ★ F13 — 범위가 비면 어댑터의 `require` 가 터지고 그것이 **500** 으로 나간다.
+     *
+     * 이 BC 에는 `IllegalArgumentException` 을 잡는 advice 가 없다(`WorkflowExceptionHandler:168`
+     * 이 「IAE 를 잡지 않는다」고 명시). 스킴에 안 붙은 워크플로우를 이관하려는 것은 관리자의
+     * 입력 오류이므로 400 이어야 하고, 그 판정은 포트를 부르기 **전에** 나야 한다.
+     */
+    @Test
+    fun `projectKeys 가 비면 포트를 부르기 전에 400 이다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        // attachTwoProjects 를 부르지 않는다 — 이 워크플로우는 어느 스킴에도 안 붙어 있다.
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+
+        assertThat(migrationPort.received)
+            .describedAs("포트에 닿으면 어댑터 IAE 가 응답을 정해 400 이 아니라 500 이 된다")
+            .isEmpty()
+    }
+
+    /**
+     * ★ F14 — 상한 초과는 **출구 없는 막다른 길**이다.
+     *
+     * `BulkOperationRepository:141-149` 는 상한을 넘으면 **아무것도 적재하지 않고** 개수만 돌려주고
+     * 작업은 FAILED 로 끝난다. 이슈는 한 건도 안 옮겨졌는데 발행은 계속 409 라, 관리자는 같은
+     * 요청을 반복하는 것 말고 할 수 있는 일이 없다. 그래서 큐잉 전에 미리 세어 막고 **실제 건수**를
+     * 알려 준다 — 「너무 많다」만으로는 얼마나 줄여야 하는지 모른다.
+     */
+    @Test
+    fun `대상이 1000 을 넘으면 400 과 실제 건수를 돌려준다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        issueUsage.counts["done"] = 1001
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+        }
+            .isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+            .describedAs("「너무 많다」만 알려 주면 얼마나 줄여야 하는지 모른다")
+            .hasMessageContaining("1001")
+
+        assertThat(migrationPort.received)
+            .describedAs("큐잉되면 워커가 아무것도 적재 않고 FAILED 로 끝나 출구가 없다")
             .isEmpty()
     }
 
