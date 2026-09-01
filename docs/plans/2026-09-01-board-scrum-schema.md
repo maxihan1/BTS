@@ -343,6 +343,14 @@ FR-BD-04 의 D6·D7 이 정본에서 추적하므로(진척 열 `☐`) **조용�
 - **C2.** `ensureScrumBoard` read-then-insert 경쟁 → advisory lock. `06e3b24d5`.
   UNIQUE 인덱스를 쓰지 않은 이유는 ADR D6(다수 보드 지원)과 충돌하기 때문 — 막아야 할 것은
   사용자의 두 번째 보드가 아니라 암묵 생성의 경쟁이다.
+
+  **`dsl.execute` 예외 인용 — ADR `2026-05-26-jooq-execute-advisory-lock-exception.md` 3항목 명시.**
+  1. **함수·jOOQ 미지원 근거.** `pg_advisory_xact_lock(bigint)` · `hashtextextended(text, int8)`.
+     둘 다 jOOQ DSL 에 대응 API 가 없는 PostgreSQL 고유 함수다.
+  2. **바인딩 개수.** `?` **1개** — `"scrum-board:$projectKey"`(String). 나머지는 전부 리터럴이다.
+  3. **사용자 입력의 검증 레이어 통과 여부 — 통과하지 않는다.** `projectKey` 는 `sprints.project_key`
+     (VARCHAR(64), 무검증)에서 오는 원문이며 `ProjectKey` 정규식을 거치지 않는다.
+     주입은 **바인딩으로 차단**되고 값은 해시 입력으로만 쓰여 SQL 구조에 영향을 주지 않는다.
 - **커버리지.** 신규 응답 필드(`boardType`·`activeSprint`) 0건 · 백필 픽스처가 V506 ③ 의
   두 판정(가장 오래된 · 활성)을 구별 못 함. 뮤테이션으로 각각 red 확인. `8e0c4150e`.
 
@@ -354,7 +362,7 @@ FR-BD-04 의 D6·D7 이 정본에서 추적하므로(진척 열 `☐`) **조용�
 | 커밋 | 문제 |
 |---|---|
 | `60ef92af6` `feat: V505` | 선행 `test:` 없음 — 스키마 단언은 `ff1c3430b` 로 사후 유입 |
-| `b4230c996` `feat: V506` | 선행 `test:` 없음 — 백필 검증은 11 커밋 뒤 `45e119096` |
+| `b4230c996` `feat: V506` | 선행 `test:` 없음 — 백필 검증은 10 커밋 뒤 `45e119096` |
 | `85c8d47c8` `feat: 도메인·리포지토리` | 신규 테스트를 같은 커밋에 묶음 |
 | `ff1c3430b` `fix: … 스키마 테스트 갱신` | 스키마 테스트를 `fix:` 로 사후 갱신 |
 

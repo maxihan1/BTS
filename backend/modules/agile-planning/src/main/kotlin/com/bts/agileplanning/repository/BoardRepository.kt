@@ -13,6 +13,7 @@ import com.bts.agileplanning.jooq.tables.references.BOARD_COLUMNS
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -122,16 +123,23 @@ class BoardRepository(
      * 무력화된다(memory `advisory-lock-bigint-toctou`). 호출자는 같은 트랜잭션 안에서
      * 락 → 재조회 → 삽입 순서를 지켜야 한다.
      *
+     * ★ 그래서 전파가 `MANDATORY` 다. `REQUIRED` 로 두면 트랜잭션 **없이** 불렸을 때 자기 트랜잭션을
+     * 열고 즉시 커밋해 **락이 그 자리에서 풀리는데 예외 없이 조용히 성공한다** — 계약 위반이 침묵한다.
+     * `MANDATORY` 는 그 배치를 런타임에 거부한다(선례 `WorkflowStateCatalog.listStates` ·
+     * `ImportJobEnqueuePublisher`). KDoc 이 아니라 프레임워크가 순서를 지킨다.
+     *
      * `hashtextextended(text, int8)` 가 bigint 를 반환해 `pg_advisory_xact_lock(bigint)` 단일 시그니처와
      * 정합한다(`(bigint, bigint)` 시그니처는 없다 — 같은 메모리). 해시 충돌은 무관한 두 프로젝트가
      * 잠깐 직렬화될 뿐이라 안전하다.
      *
      * @param projectKey 대상 프로젝트 키.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     fun acquireProjectScrumBoardLock(projectKey: String) {
         // pg_advisory_xact_lock 은 void 를 반환한다 — 결과 행은 소비만 하고 버린다.
-        dsl.fetch("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", projectKey)
+        // 잠금 공간에 접두를 붙여 형제 락(BacklogRankService 의 projectId 해시)과 공간을 가른다
+        // — 선례 IssueRepository 의 "project:$projectKey" 와 같은 형태.
+        dsl.fetch("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "scrum-board:$projectKey")
     }
 
     // ── seedColumns ───────────────────────────────────────────────────────────
@@ -251,7 +259,9 @@ class BoardRepository(
             .where(BOARDS.PROJECT_KEY.eq(projectKey))
             .and(BOARDS.DELETED_AT.isNull)
             .and(BOARDS.BOARD_TYPE.eq(BoardType.SCRUM.name))
-            .orderBy(BOARDS.CREATED_AT.asc())
+            // created_at 동점이면 id 로 가른다 — V506 ③ 과 백필 테스트 헬퍼가 이미 (created_at, id) 다.
+            // 여기만 빠져 있으면 동점 시 「가장 오래된 것」이 실행마다 갈려 스펙 E-6 의 한시 규칙이 규칙이 아니게 된다.
+            .orderBy(BOARDS.CREATED_AT.asc(), BOARDS.ID.asc())
             .limit(1)
             .fetchOne(BOARDS.ID)
 

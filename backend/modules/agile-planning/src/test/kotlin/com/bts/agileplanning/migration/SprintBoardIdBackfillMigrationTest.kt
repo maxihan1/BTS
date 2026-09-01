@@ -95,8 +95,13 @@ class SprintBoardIdBackfillMigrationTest {
          */
         private val allDeletedSprintId: UUID = UUID.randomUUID()
 
-        /** 소스 칸반 보드의 컬럼 — 신설 스크럼 보드가 이것을 그대로 복제해야 한다. */
-        private val SOURCE_STATE_KEYS = listOf("open", "in-progress", "closed")
+        /**
+         * 소스 칸반 보드의 컬럼 — 신설 스크럼 보드가 이것을 그대로 복제해야 한다.
+         *
+         * ★ category 를 셋 다 다르게 둔다. 전부 같은 값이면 V506 ③ 의 `c.category` 를 리터럴로 바꾸는
+         * 뮤테이션이 초록으로 통과한다 — 복제 **소스 선택**만 지키고 복제 **내용**은 안 지키게 된다.
+         */
+        private val SOURCE_COLUMNS = listOf("open" to "TODO", "in-progress" to "IN_PROGRESS", "closed" to "DONE")
 
         private fun flyway(target: String?) =
             Flyway.configure()
@@ -117,9 +122,9 @@ class SprintBoardIdBackfillMigrationTest {
                 c.autoCommit = false
                 // ★ 세 보드의 created_at 을 명시로 벌린다 — ③ 의 「가장 오래된 활성」 규칙을 구별하려면
                 // 삭제된 것이 가장 오래되고, 소스가 그다음, 더 최근 것이 마지막이어야 한다.
-                seedKanban(c, KanbanSeed(deletedKanbanBoardId, "BKFL 삭제된 보드", 30, true, listOf("gone")))
-                seedKanban(c, KanbanSeed(kanbanBoardId, "BKFL 개발 보드", 20, false, SOURCE_STATE_KEYS))
-                seedKanban(c, KanbanSeed(newerKanbanBoardId, "BKFL 새 보드", 10, false, listOf("newer")))
+                seedKanban(c, KanbanSeed(deletedKanbanBoardId, "BKFL 삭제된 보드", 30, true, listOf("gone" to "DONE")))
+                seedKanban(c, KanbanSeed(kanbanBoardId, "BKFL 개발 보드", 20, false, SOURCE_COLUMNS))
+                seedKanban(c, KanbanSeed(newerKanbanBoardId, "BKFL 새 보드", 10, false, listOf("newer" to "IN_PROGRESS")))
                 seedSprint(c, activeSprintId, "BKFL", status = "ACTIVE", deleted = false)
                 seedSprint(c, deletedSprintId, "BKFL", status = "COMPLETED", deleted = true)
                 seedSprint(c, orphanSprintId, "NOBD", status = "PLANNED", deleted = false)
@@ -144,7 +149,7 @@ class SprintBoardIdBackfillMigrationTest {
             val name: String,
             val daysAgo: Int,
             val deleted: Boolean,
-            val states: List<String>,
+            val columns: List<Pair<String, String>>,
         )
 
         /**
@@ -168,7 +173,7 @@ class SprintBoardIdBackfillMigrationTest {
                 stmt.setObject(5, if (seed.deleted) Timestamp.from(Instant.now()) else null)
                 stmt.execute()
             }
-            seed.states.forEachIndexed { order, stateKey ->
+            seed.columns.forEachIndexed { order, (stateKey, category) ->
                 c.prepareStatement(
                     "INSERT INTO board_columns (id, board_id, state_key, name, category, display_order)" +
                         " VALUES (?, ?, ?, ?, ?, ?)",
@@ -177,7 +182,7 @@ class SprintBoardIdBackfillMigrationTest {
                     stmt.setObject(2, seed.boardId)
                     stmt.setString(3, stateKey)
                     stmt.setString(4, "컬럼 $stateKey")
-                    stmt.setString(5, "TODO")
+                    stmt.setString(5, category)
                     stmt.setInt(6, order)
                     stmt.execute()
                 }
@@ -328,6 +333,15 @@ class SprintBoardIdBackfillMigrationTest {
 
         // ★ 복제 소스는 **가장 오래된 활성** 칸반이다. 더 최근 보드("newer")도, soft-deleted 보드("gone")도 아니다.
         assertThat(columns).doesNotContain("newer", "gone")
+
+        // ★ 소스 선택뿐 아니라 **복제 내용**도 지킨다. category 를 안 보면 V506 ③ 의 `c.category` 를
+        // 리터럴로 바꾸는 뮤테이션이 초록으로 통과한다 — 세 값이 서로 달라야 그 구멍이 닫힌다.
+        assertThat(
+            queryStrings(
+                "SELECT category FROM board_columns WHERE board_id = ? ORDER BY display_order",
+                scrumBoardId,
+            ),
+        ).containsExactlyElementsOf(SOURCE_COLUMNS.map { it.second })
     }
 
     // ── ④ E-1. 보드가 하나도 없던 프로젝트 ────────────────────────────────────

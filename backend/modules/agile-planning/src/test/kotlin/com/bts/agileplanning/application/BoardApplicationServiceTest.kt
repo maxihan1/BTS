@@ -41,7 +41,9 @@ import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * [BoardApplicationService] 통합 테스트 — Testcontainers PostgreSQL 사용.
@@ -345,8 +347,21 @@ class BoardApplicationServiceTest {
     fun `컬럼이 0개인 보드는 조회 시 컬럼이 시드되고 영속된다`() {
         val catalog = mockk<WorkflowStateCatalog>()
         every { catalog.listStates(ProjectKey.of("HEAL"), null) } returns DEFAULT_STATES
-        // ensureScrumBoard 는 일부러 컬럼 0개로 만든다. V506 백필도 복제할 보드가 없으면 같은 상태를 남긴다.
-        val boardId = serviceWith(catalog = catalog).ensureScrumBoard("HEAL")
+        // 컬럼 0개 보드를 직접 심는다. V506 백필이 복제할 칸반을 못 찾았을 때와 같은 상태다.
+        // ★ ensureScrumBoard 로 만들지 않는 이유 — 그쪽은 advisory lock(MANDATORY)이 필요해 트랜잭션
+        // 경계를 끌고 오는데, 이 테스트의 관심사는 락이 아니라 **치유**다. 픽스처를 분리해 둘을 섞지 않는다.
+        val boardId = UUID.randomUUID()
+        boardRepository.insert(
+            Board(
+                id = boardId,
+                projectKey = "HEAL",
+                name = "HEAL 스크럼 보드",
+                boardType = BoardType.SCRUM,
+                columns = emptyList(),
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+            ),
+        )
         assertThat(boardRepository.findById(boardId)!!.columns).isEmpty()
 
         val result =
@@ -364,10 +379,10 @@ class BoardApplicationServiceTest {
         // ★ 재사용 조기반환(findScrumBoardIdByProject?.let { return it })을 지우면 스프린트를 만들 때마다
         // 스크럼 보드가 하나씩 쌓여 보드 스위처(#416 으로 상시 노출)에 유령 보드가 늘어난다.
         // 그 조기반환을 지켜 주는 유일한 테스트다(리뷰 지적 C1).
-        val service = serviceWith()
-
-        val first = service.ensureScrumBoard("IDEM")
-        val second = service.ensureScrumBoard("IDEM")
+        // ★ 프록시된 빈이어야 한다. acquireProjectScrumBoardLock 이 MANDATORY 라 트랜잭션 없이는 거부된다 —
+        // serviceWith() 인스턴스로는 애초에 실행되지 않는다(그 배치가 조용히 통과하던 것이 리뷰 지적이었다).
+        val first = transactionalBoardService.ensureScrumBoard("IDEM")
+        val second = transactionalBoardService.ensureScrumBoard("IDEM")
 
         assertThat(second).isEqualTo(first)
         assertThat(boardRepository.findAllByProjectKey("IDEM")).hasSize(1)
@@ -380,20 +395,35 @@ class BoardApplicationServiceTest {
         // 보드를 2개 만들고, 이후 조회는 created_at 오래된 쪽만 집어 늦은 보드의 스프린트가 갈린다.
         // UNIQUE 인덱스로 막지 않는 이유 — ADR D6 이 다수 보드를 지원하므로 스키마로 1개를 못박을 수 없다.
         // ★ 프록시된 빈이어야 한다. advisory lock 은 트랜잭션 종료 시 풀리므로 트랜잭션 없이는 무의미하다.
+        // ★ 정렬 장치가 없으면 두 작업이 겹칠 보장이 없다 — 순차 실행돼도 통과해 「락이 동작한다」와
+        // 「애초에 안 겹쳤다」를 구별하지 못한다(리뷰 지적). 두 스레드가 진입한 것을 확인한 뒤 동시에 푼다.
+        val entered = CountDownLatch(2)
+        val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
         val futures =
             (1..2).map {
-                executor.submit<Result<UUID>> { runCatching { transactionalBoardService.ensureScrumBoard("RACE") } }
+                executor.submit<Result<UUID>> {
+                    entered.countDown()
+                    start.await()
+                    runCatching { transactionalBoardService.ensureScrumBoard("RACE") }
+                }
             }
+        assertThat(entered.await(10, TimeUnit.SECONDS))
+            .`as`("두 스레드가 시작하지 못했다 — 경쟁이 재현되지 않았다")
+            .isTrue()
+        start.countDown()
         executor.shutdown()
         val results = futures.map { it.get() }
 
+        // ★ 「1건 이상」이 아니라 **둘 다** 성공해야 한다. 늦은 쪽이 예외로 죽으면 사용자는 500 을 본다 —
+        // 느슨한 단언은 그 회귀를 눈감는다.
         assertThat(results.count { it.isSuccess })
-            .`as`("둘 다 실패했다 — 동시 요청에서 스크럼 보드가 만들어지지 않았다")
-            .isGreaterThanOrEqualTo(1)
+            .`as`("두 호출 중 실패가 있다 — 늦은 요청이 500 을 받는다")
+            .isEqualTo(2)
 
-        assertThat(boardRepository.findAllByProjectKey("RACE"))
-            .`as`("동시 ensureScrumBoard 후 보드가 %d 개다 — 프로젝트당 스크럼 보드는 1개여야 한다")
+        val boards = boardRepository.findAllByProjectKey("RACE")
+        assertThat(boards)
+            .`as`("동시 ensureScrumBoard 후 보드가 %d 개다 — 프로젝트당 스크럼 보드는 1개여야 한다", boards.size)
             .hasSize(1)
         assertThat(results.mapNotNull { it.getOrNull() }.distinct())
             .`as`("두 호출이 서로 다른 보드 id 를 받았다 — 늦은 쪽 스프린트가 갈린다")
