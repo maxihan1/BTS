@@ -412,7 +412,7 @@ N2 대로 스키마 변경이 0건이므로 `bts-deploy.sh` 를 평소대로 돌
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/port/IssueStatusUsagePort.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/adapter/outbound/IssueStatusUsageAdapter.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowPublishService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowStatusCompositionService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/adapter/outbound/IssueStatusUsageAdapterIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowPublishServiceIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowStatusCompositionIntegrationTest.kt`]
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/port/IssueStatusUsagePort.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/adapter/outbound/IssueStatusUsageAdapter.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowPublishService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowStatusCompositionService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/adapter/outbound/IssueStatusUsageAdapterIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowPublishServiceIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowStatusCompositionIntegrationTest.kt`]
 - depends-on: [1]
 - jira: []
 
