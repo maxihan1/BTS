@@ -3,6 +3,8 @@
 package com.bts.workflow.web
 
 import com.bts.workflow.domain.exception.WorkflowDraftNotFoundException
+import com.bts.workflow.domain.exception.WorkflowMigrationInFlightException
+import com.bts.workflow.domain.exception.WorkflowMigrationInvalidMappingException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
 import com.bts.workflow.domain.exception.WorkflowVersionConflictException
 import com.bts.workflow.validator.web.TransitionRuleFrameworkErrors
@@ -134,6 +136,81 @@ class WorkflowPublishExceptionHandler {
     fun handleUnreadableBody(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
         log.info("WORKFLOW_400 message_not_readable cause='{}'", ex.mostSpecificCause.javaClass.simpleName)
         return TransitionRuleFrameworkErrors.unreadableBody()
+    }
+
+    /**
+     * 이관 매핑이 규칙을 어겼다 — 400.
+     *
+     * ### 왜 축마다 코드를 가르지 않는가
+     * 위반 축은 여덟이다(빠지지 않는 출발지 · 초안에 없는 도착지 · 발행 전 도착지 · 빈 목록 ·
+     * 중복 출발지 · 범위 없음 · 형제 워크플로우 · 상한 초과). 축마다 코드를 내면 프론트의
+     * **양방향 차집합 가드**가 축 수만큼 행을 요구하고, 축이 하나 늘 때마다 프론트가 red 로 막힌다.
+     * 관리자가 읽을 것은 「무엇을 고쳐야 하는가」이고 그것은 코드가 아니라 문장이 싣는다.
+     *
+     * @return 400 + `WORKFLOW_MIGRATION_INVALID_MAPPING`. 어느 축인지는 메시지가 싣는다.
+     */
+    @ExceptionHandler(WorkflowMigrationInvalidMappingException::class)
+    fun handleMigrationInvalidMapping(ex: WorkflowMigrationInvalidMappingException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_400_MIGRATION_INVALID_MAPPING key='{}' reason='{}'", ex.workflowKey, ex.reason)
+        return ResponseEntity.badRequest().body(
+            ErrorResponse(error = ErrorBody(code = "WORKFLOW_MIGRATION_INVALID_MAPPING", message = ex.reason)),
+        )
+    }
+
+    /**
+     * 끝나지 않은 이관이 이미 있다 — 409.
+     *
+     * 요청은 멀쩡하고 지금 상태와 부딪힐 뿐이다. 앞선 이관이 끝나면 같은 요청이 통과하므로
+     * 화면이 안내할 것은 「고쳐라」가 아니라 「기다렸다 다시」다.
+     *
+     * @return 409 + `WORKFLOW_MIGRATION_IN_FLIGHT`.
+     */
+    @ExceptionHandler(WorkflowMigrationInFlightException::class)
+    fun handleMigrationInFlight(ex: WorkflowMigrationInFlightException): ResponseEntity<ErrorResponse> {
+        log.info("WORKFLOW_409_MIGRATION_IN_FLIGHT key='{}'", ex.workflowKey)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_MIGRATION_IN_FLIGHT",
+                        message = "이미 진행 중인 상태 이관이 있습니다. 끝난 뒤 다시 시도하세요.",
+                    ),
+            ),
+        )
+    }
+
+    /**
+     * 어댑터가 던진 `IllegalArgumentException` 백스톱 — 400.
+     *
+     * ### 왜 필요한가
+     * 이관 어댑터(`WorkflowStatusMigrationAdapter`)는 도착 상태와 프로젝트 범위를 `require` 로
+     * 검사한다. 그 예외를 잡는 advice 가 이 BC 에 하나도 없어(`WorkflowExceptionHandler:168` 이
+     * 「IAE 를 잡지 않는다」고 명시) 400 이어야 할 것이 **500** 으로 나갔다. 관리자는 무엇이
+     * 잘못됐는지 못 보고 재시도 말고 할 게 없다.
+     *
+     * ### ★이것은 백스톱이지 1차 판정이 아니다
+     * 정상 경로에서는 [WorkflowPublishService] 의 선제 가드가 먼저 막으므로 여기까지 오지 않는다.
+     * 그 가드를 뚫고 온 것은 **가드와 어댑터의 판정이 갈라졌다는 신호**이므로 `warn` 으로 남긴다 —
+     * `info` 로 묻으면 갈라짐이 조용히 누적된다.
+     *
+     * ### 왜 전역 advice 에 두면 안 되는가
+     * `IllegalArgumentException` 은 어느 BC 의 도메인 invariant 도 던진다. 전역으로 잡으면 500
+     * 이어야 할 서버 결함이 400 으로 둔갑해 장애 대응이 엉뚱한 곳을 판다. 이 advice 가
+     * `assignableTypes = [WorkflowDraftController::class]` 로 **스코프가 있어서** 안전한 것이지,
+     * IAE 를 400 으로 접는 것 자체가 안전한 것이 아니다.
+     */
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleAdapterRequireViolation(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
+        log.warn("WORKFLOW_400_ADAPTER_REQUIRE 선제 가드를 뚫었다 — 가드와 어댑터 판정이 갈라졌다", ex)
+        return ResponseEntity.badRequest().body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_MIGRATION_INVALID_MAPPING",
+                        message = ex.message ?: "이관 요청을 처리할 수 없습니다.",
+                    ),
+            ),
+        )
     }
 }
 

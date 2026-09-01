@@ -2,8 +2,10 @@
 
 package com.bts.workflow.web.dto
 
+import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.fasterxml.jackson.annotation.JsonProperty
+import java.util.UUID
 
 /**
  * 초안 조회 응답.
@@ -55,9 +57,10 @@ data class ResetToDefaultRequest(
  *
  * ### `statusMappings` 가 없는 이유
  * Jira Cloud 는 이 요청에 `statusMappings` 를 함께 받아 이슈를 옮긴다. BTS 는 그 UPDATE 가
- * issue-tracking BC 소유라 아직 실행할 수 없어(다중 BC 트랜잭션 금지) **필드를 두지 않는다** —
- * 받아 놓고 무시하면 화면은 이관을 지시했다고 믿는데 아무 일도 일어나지 않는다.
- * 이관이 필요하면 발행이 409 로 막히고 응답이 상태별 잔여 건수를 알려준다. 매핑 수용은 로드맵 PR 7.
+ * issue-tracking BC 소유라 같은 트랜잭션에 담을 수 없어(다중 BC 트랜잭션 금지) **필드를 두지
+ * 않는다** — 받아 놓고 무시하면 화면은 이관을 지시했다고 믿는데 아무 일도 일어나지 않는다.
+ * 매핑은 [MigrateRequest] 가 받고, 이관이 필요한데 안 끝났으면 발행이 409 로 막히면서 응답이
+ * 상태별 잔여 건수를 알려준다.
  *
  * ### `required = true` 인 이유
  * Kotlin 의 non-null `Long` 은 JVM primitive 라, 본문에서 **빠지면 Jackson 이 조용히 0 으로 채운다**
@@ -80,6 +83,58 @@ data class PublishRequest(
  */
 data class PublishResponse(
     val versionNo: Int,
+)
+
+/**
+ * 상태 이관 큐잉 요청.
+ *
+ * ### ★`projectKeys` 필드를 두지 않는다
+ * `IssueStatusMigrationPort` KDoc 이 「[com.bts.shared.issue.StatusMigrationCommand.projectKeys] 는
+ * 발행 대상 워크플로우에 연결된 프로젝트여야 한다 — 사용자 입력을 그대로 실으면 안 되고, 호출자가
+ * 자기 발행 트랜잭션 안에서 직접 조회해 채운다」고 계약한다. 상태 키는 전역이라 범위를 요청이
+ * 정하게 두면, 워크플로우 하나에 발행 권한을 가진 사람이 **남의 프로젝트 이슈를 통째로 옮길** 수
+ * 있다 — 과다 집계(읽기)와 달리 과다 이동은 데이터 손상이다. 필드가 없는 것이 그 유일한 방어다.
+ *
+ * ### `required = true` 인 이유
+ * [PublishRequest] 와 같다 — non-null `Long` 은 JVM primitive 라 본문에서 빠지면 Jackson 이 조용히
+ * 0 으로 채우고, 0 은 「첫 발행」에서 실제로 나오는 그럴듯한 앵커다.
+ *
+ * @property baseVersion 초안 조회 때 받은 값. **저장된 초안의 앵커**와 다르면 409 다.
+ * @property mappings 빠지는 상태마다 옮길 곳. 한 번의 발행에서 여러 상태가 동시에 빠질 수 있고
+ *   그 각각의 대상이 다르므로 단일 쌍이 아니라 목록이다.
+ */
+data class MigrateRequest(
+    @JsonProperty(required = true) val baseVersion: Long,
+    @JsonProperty(required = true) val mappings: List<StatusMappingDto>,
+)
+
+/**
+ * 상태 1개의 이관 대상 매핑.
+ *
+ * shared-kernel 의 [StatusMigrationMapping] 과 필드가 같지만 웹 DTO 를 따로 둔다 — 포트 계약 타입을
+ * 그대로 본문 스키마로 쓰면 계약을 고칠 때마다 외부 API 가 함께 흔들린다.
+ *
+ * @property fromStatusKey 이번 발행에서 사라지는 상태 키. 이 상태에 남은 이슈가 이관 대상이다.
+ * @property toStatusKey 옮겨 갈 상태 키.
+ */
+data class StatusMappingDto(
+    @JsonProperty(required = true) val fromStatusKey: String,
+    @JsonProperty(required = true) val toStatusKey: String,
+) {
+    /** 포트 계약 타입으로 옮긴다. 변환을 한 곳에만 두어 컨트롤러와 테스트가 같은 경로를 지난다. */
+    fun toMapping(): StatusMigrationMapping = StatusMigrationMapping(fromStatusKey, toStatusKey)
+}
+
+/**
+ * 이관 큐잉 접수 응답.
+ *
+ * 진행률은 담지 않는다 — 기존 `GET /api/v1/bulk-operations/{id}` 가 이미 그 일을 한다. 두 번째
+ * 조회 경로를 만들면 둘이 서로를 검사하지 않는다.
+ *
+ * @property bulkOperationId 큐잉된 일괄작업 id. 화면은 이 id 로 진행률을 폴링한다.
+ */
+data class MigrateResponse(
+    val bulkOperationId: UUID,
 )
 
 /**

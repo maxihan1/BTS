@@ -17,6 +17,7 @@ import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANS
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.status.repository.StatusRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -124,6 +125,7 @@ class WorkflowStatusCompositionIntegrationTest {
                     repository,
                     statusRepository,
                     IssueStatusUsageStub,
+                    ProjectWorkflowSchemeAssignmentRepository(dsl),
                     cache,
                     allowAll,
                 )
@@ -164,7 +166,21 @@ class WorkflowStatusCompositionIntegrationTest {
     object IssueStatusUsageStub : com.bts.workflow.application.port.IssueStatusUsagePort {
         val usedKeys: MutableSet<String> = mutableSetOf()
 
-        override fun countIssuesInStatus(statusKey: String): Long = if (statusKey in usedKeys) 1L else 0L
+        /**
+         * 마지막 호출이 받은 프로젝트 스코프.
+         *
+         * 인자를 버리면 서비스가 `emptySet()` 을 넘겨도 전 테스트가 초록이다 — 그러면 운영에서
+         * 어댑터가 늘 0 을 돌려주어 「이슈가 쓰는 상태는 못 뺀다」 가드가 조용히 fail-open 이 된다.
+         */
+        var lastProjectIds: Set<UUID> = emptySet()
+
+        override fun countIssuesInStatus(
+            statusKey: String,
+            projectIds: Set<UUID>,
+        ): Long {
+            lastProjectIds = projectIds
+            return if (statusKey in usedKeys) 1L else 0L
+        }
     }
 
     private val actor = UUID.randomUUID()
@@ -300,6 +316,26 @@ class WorkflowStatusCompositionIntegrationTest {
         }
     }
 
+    /**
+     * ★ 제거 가드도 **프로젝트 스코프를 실제로 넘겨야** 한다.
+     *
+     * 서비스가 `emptySet()` 을 넘기면 어댑터가 늘 0 을 돌려주어 위 「이슈가 쓰고 있는 상태는 뺄 수
+     * 없다」가 운영에서 조용히 fail-open 이 된다. 스텁은 값을 테스트가 정하므로 그 사고를 못 잡는다 —
+     * 잡히는 자리는 **인자**뿐이다.
+     */
+    @Test
+    fun `서비스가 그 워크플로우의 프로젝트 id 집합을 포트에 그대로 넘긴다`() {
+        val workflowId = makeWorkflow("compose-scope", "sc1", "sc2")
+        val attached = attachProjects(workflowId)
+        IssueStatusUsageStub.lastProjectIds = emptySet()
+
+        service.removeStatus(actor, "compose-scope", statusIdOf("sc2"))
+
+        assertThat(IssueStatusUsageStub.lastProjectIds)
+            .describedAs("미끼 프로젝트가 섞이거나 빈 집합이 되면 제거 가드의 근거가 바뀐다")
+            .containsExactlyInAnyOrderElementsOf(attached)
+    }
+
     // ── 제거 가드 · 전환 CASCADE (V207 ③) ─────────────────────────────────────
 
     @Test
@@ -374,6 +410,77 @@ class WorkflowStatusCompositionIntegrationTest {
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
+
+    /**
+     * 이 워크플로우를 default 매핑으로 가리키는 스킴에 활성 프로젝트 2건을 붙인다.
+     *
+     * 다른 워크플로우를 가리키는 미끼 스킴·프로젝트도 함께 심는다 — 없으면 「전체 프로젝트」와
+     * 「그 워크플로우의 프로젝트」가 같은 결과가 되어 스코프 단언이 공허해진다.
+     *
+     * @return 이 워크플로우에 붙은 프로젝트 id 목록.
+     */
+    private fun attachProjects(workflowId: UUID): List<UUID> {
+        val scheme = insertScheme()
+        insertDefaultMapping(scheme, workflowId)
+        val attached = listOf(insertProject(), insertProject())
+        attached.forEach { insertAssignment(it, scheme) }
+
+        val decoyScheme = insertScheme()
+        insertDefaultMapping(decoyScheme, insertBareWorkflow())
+        insertAssignment(insertProject(), decoyScheme)
+
+        return attached
+    }
+
+    private fun insertScheme(): Long {
+        val key = "compose-scope-${UUID.randomUUID().toString().take(8)}"
+        dsl.execute("INSERT INTO workflow_schemes (key, name) VALUES (?, ?)", key, "편성 스코프 $key")
+        return dsl.fetchOne("SELECT id FROM workflow_schemes WHERE key = ?", key)
+            ?.get("id", Long::class.java)
+            ?: error("workflow_schemes INSERT 실패")
+    }
+
+    /** `issue_type_id` NULL = 그 스킴의 default 워크플로우. */
+    private fun insertDefaultMapping(
+        schemeId: Long,
+        workflowId: UUID,
+    ) {
+        dsl.execute(
+            "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)" +
+                " VALUES (?, NULL, ?)",
+            schemeId,
+            workflowId,
+        )
+    }
+
+    private fun insertProject(): UUID {
+        val id = UUID.randomUUID()
+        // projects.key 는 ^[A-Z][A-Z0-9]{1,9}$ 를 요구한다 — 앞자리를 문자로 고정한다.
+        val key = "C" + UUID.randomUUID().toString().replace("-", "").take(8).uppercase()
+        dsl.execute("INSERT INTO projects (id, key, name) VALUES (?, ?, ?)", id, key, "편성 스코프 $key")
+        return id
+    }
+
+    private fun insertAssignment(
+        projectId: UUID,
+        schemeId: Long,
+    ) {
+        dsl.execute(
+            "INSERT INTO project_workflow_scheme_assignments" +
+                " (project_id, workflow_scheme_id, assigned_by) VALUES (?, ?, ?)",
+            projectId,
+            schemeId,
+            actor,
+        )
+    }
+
+    /** 미끼 스킴이 가리킬 워크플로우. FK 만 만족시키면 된다. */
+    private fun insertBareWorkflow(): UUID {
+        val id = UUID.randomUUID()
+        val key = "wf-decoy-${id.toString().take(8)}"
+        dsl.execute("INSERT INTO workflows (id, key, name) VALUES (?, ?, ?)", id, key, "미끼 워크플로우")
+        return id
+    }
 
     /**
      * 그 워크플로우에 남아 있는 전환 행 수.
