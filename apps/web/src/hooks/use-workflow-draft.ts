@@ -27,6 +27,17 @@ export type DraftSaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
 /** 초안 쿼리 키. 편집 중에는 자동 재조회를 막는다(앵커가 흔들린다). */
 export const WORKFLOW_DRAFT_KEY = (key: string) => ['workflows', 'draft', key] as const
 
+/**
+ * 「이 서버 상태를 이미 리듀서에 실었는가」를 가리는 서명.
+ *
+ * 한 곳에 두는 이유 — 로드 경로와 자기 저장 경로가 **같은 규칙**으로 계산해야 한다.
+ * 두 곳에서 따로 만들면 자기 저장이 쓴 캐시를 로드 경로가 「새 상태」로 오인해 다시 싣고,
+ * 방금 「저장됨」이던 표시가 곧바로 사라진다.
+ */
+function signatureOf(key: string, anchor: number | undefined, exists: boolean | undefined): string {
+  return `${key}:${String(anchor)}:${String(exists)}`
+}
+
 export interface UseWorkflowDraftResult {
   /** 리듀서 상태 — 정의·앵커·revision */
   state: DraftEditorState
@@ -114,7 +125,7 @@ export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
     if (loaded === undefined || hasPendingEdits) {
       return
     }
-    const signature = `${loadedKey ?? ''}:${String(loadedAnchor)}:${String(loadedExists)}`
+    const signature = signatureOf(loadedKey ?? '', loadedAnchor, loadedExists)
     if (appliedRef.current === signature) {
       return
     }
@@ -187,6 +198,10 @@ export function useWorkflowDraft(key: string): UseWorkflowDraftResult {
       //
       // 앵커는 **우리가 보낸 값**을 그대로 싣는다. 서버를 다시 읽어 채우면 그 사이 남이
       // 발행했을 때 앵커가 새 버전으로 올라가 락이 풀린다.
+      // ★ 서명도 함께 갱신한다. 이 쓰기는 **자기 저장**이라 리듀서에 다시 실을 이유가 없는데,
+      //   `exists` 가 false→true 로 바뀌면 서명이 달라져 위 effect 가 다시 돌고 방금
+      //   「저장됨」이던 상태를 `idle` 로 되돌린다. 화면에는 저장 표시가 한 순간 떴다 사라진다.
+      appliedRef.current = signatureOf(key, current.baseVersion, true)
       client.setQueryData(WORKFLOW_DRAFT_KEY(key), {
         definition: wire,
         baseVersion: current.baseVersion,

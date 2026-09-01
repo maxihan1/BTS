@@ -140,6 +140,30 @@ describe('자동저장 디바운스', () => {
       expect(result.current.saveState).toBe('saved')
     })
   })
+
+  it('★ 저장 뒤 「저장됨」이 유지된다 — 자기 저장이 상태를 되돌리지 않는다', async () => {
+    // ★ 저장 성공은 캐시를 자기 내용으로 갱신하는데, 그 쓰기가 로드 effect 를 다시 태우면
+    //   방금 「저장됨」이던 표시가 `idle` 로 돌아간다. 사용자에게는 저장 표시가 한 순간
+    //   떴다 사라지는 것으로 보인다(E2E 가 잡았다 — `saved` 를 한 번 거치기만 하는 판정은
+    //   그 뒤 되돌아가는 것을 못 본다).
+    const { result } = await renderLoaded()
+
+    act(() => {
+      result.current.dispatch({ type: 'setName', value: '고친 이름' })
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(DRAFT_AUTOSAVE_DELAY_MS + 50)
+    })
+    await waitFor(() => {
+      expect(result.current.saveState).toBe('saved')
+    })
+
+    // 캐시 갱신이 유발할 수 있는 재실행이 끝난 뒤에도 그대로여야 한다.
+    await act(async () => {
+      vi.advanceTimersByTime(DRAFT_AUTOSAVE_DELAY_MS * 2)
+    })
+    expect(result.current.saveState).toBe('saved')
+  })
 })
 
 describe('★ 앵커 고정 (낙관적 락)', () => {
