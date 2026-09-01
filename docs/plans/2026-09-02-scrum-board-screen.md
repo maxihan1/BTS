@@ -273,6 +273,323 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 2026-09-02 에 이미 받았다.
 
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 🛑 **티어 재판정 — 선언 T2 · 실측 T3.** Task 4(FR-6)가
+> `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt` 를
+> 건드린다. **`SHARED_KERNEL` 은 T3 표면**이다(`CLAUDE.md` §작업 티어).
+> `/bts` 판정 5문 ⑤에 따라 **자동 승격하지 않고 게이트 1·2 에서 사람이 결정**한다.
+> T3 이면 리뷰가 **2종 + ceo** 이고 마이그레이션 검증이 붙는데, 이 PR 은 마이그레이션 0 이라
+> 실질 추가분은 **ceo 렌즈 1종**이다.
+>
+> **회피 가능성을 먼저 쟀다.** 스프린트 스코프를 포트 밖에서 거르면
+> 「1,000건을 먼저 자른 뒤 스프린트로 거른다」는 순서가 그대로라 **부채가 안 닫힌다**(FR-6 무의미).
+> 포트를 건드리지 않고 부채를 갚는 길은 없다.
+
+### Task 1. 백엔드 — 보드 목록에 종류를 싣는다 (FR-5)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- depends-on: []
+- jira: [J14]
+
+**RED**: `GET /api/v1/boards?projectKey=` 응답의 각 항목에 `boardType` 이 있고, 스크럼으로 만든
+보드는 `"SCRUM"` 이다. 지금은 필드가 없어 실패한다.
+
+**GREEN**: `BoardSummaryResponse` 에 `val boardType: String` 추가 + `from(board)` 에서
+`board.boardType.name` 매핑. **3필드 → 4필드.**
+🛑 `BoardDetailResponse` 는 **건드리지 마라** — `boardType`·`activeSprint` 가 이미 있다(`:274-275`).
+
+**REFACTOR**: KDoc 에 「스위처가 종류를 표시하는 유일한 출처」 1줄.
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardControllerIntegrationTest*'`
+
+---
+
+### Task 2. 백엔드 — 스프린트 생성에 boardId 결선 (FR-4 · 부채 E-6 해소)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/SprintRequests.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/SprintController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/SprintControllerTest.kt`]
+- depends-on: []
+- jira: [J15]
+
+**RED**: `POST /api/v1/sprints` 에 `boardId` 를 실어 보내면 **그 보드에** 스프린트가 붙는다.
+지금은 DTO 에 필드가 없어 무시되고 `ensureScrumBoard` 폴백이 돌아 **첫 스크럼 보드**에 붙는다 —
+이것이 **E-6 의 재현 테스트**다(두 번째 스크럼 보드가 빈 보드로 고정되는 원인).
+
+**GREEN**:
+- `CreateSprintRequest` 에 `val boardId: UUID? = null` **선택** 필드 추가(하위 호환 — 미지정 시 현행 폴백)
+- `SprintController` 가 `service.create(…, boardId = request.boardId)` 로 넘긴다
+- ★ **서비스는 이미 준비돼 있다** — `SprintApplicationService.create` 에 `boardId: UUID? = null`
+  파라미터가 있고 주석이 「PR ③ 에서 명시 지정이 붙는다」고 적어 뒤 있다. **2곳만 결선.**
+
+**REFACTOR**: `boardId` KDoc — 「미지정은 하위 호환 경로. 백로그 화면은 항상 명시한다」
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*SprintControllerTest*'`
++ **비-공허** — GREEN 선커밋 뒤 결선을 끊어 red 1회 확인
+
+---
+
+### Task 3. 백엔드 — 백로그 `?board=` 스코프 (FR-3)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BacklogController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BacklogApplicationService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BacklogApplicationServiceTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BacklogControllerIntegrationTest.kt`]
+- depends-on: []
+- jira: [J14, J16]
+
+**RED** — 4축.
+- ① `?board={A}` 를 주면 **A 보드의 스프린트만** 돌아온다(B 보드 스프린트는 안 온다)
+- ② `?board=` **없으면** 기본 보드(그 프로젝트 스크럼 보드 중 `created_at ASC` 첫 것)로 폴백
+- ③ **E7** — 존재하지 않는 UUID → **404**. 기본 보드로 조용히 폴백하지 **않는다**
+- ④ **E8** — 다른 프로젝트의 보드 UUID → **404**(403 아님). 존재 probe 차단
+  (memory `permission-assert-before-existence-makes-403-lie`)
+
+**GREEN**:
+- `BacklogController.getBacklog(@PathVariable projectKey, @RequestParam(required=false) board: UUID?)`
+  ★ **`UUID` 타입 바인딩**이라 잘못된 형식은 Spring 이 400 으로 막는다 —
+  learnings 2026-06-25(`?from=` bare date 400)가 「형식 계약을 타입으로 못박아라」를 남긴 자리다
+- `BacklogApplicationService.getBacklog(actorId, projectKey, boardId: UUID?)` — 3파라미터
+- 기본 보드 해석은 **기존 판단을 재사용** — `boardRepository.findScrumBoardIdByProject`
+  (`created_at ASC LIMIT 1`). 새 규칙을 만들지 않는다
+
+**REFACTOR**: 폴백 규칙을 private 함수로 빼고 KDoc 에 J14·J17 인용
+(*"backlogs are part of the board, not the project"* / *"Select the Backlog tab"*).
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*Backlog*'`
+
+---
+
+### Task 4. 🛑 백엔드 — `truncated` 부채 (FR-6 · **BC 격리 예외 · T3 표면**)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BacklogApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueRepositoryTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`]
+- depends-on: [3]   # BacklogApplicationService 파일 겹침
+- jira: [J5, J6]
+
+**RED** — ★ **이 테스트가 이 PR 에서 가장 중요하다.**
+프로젝트에 이슈 1,000건을 넘게 만들고, **활성 스프린트에 「가장 오래된」 이슈**를 넣는다.
+지금은 `created_at DESC` 로 1,000건을 먼저 자르므로 그 이슈가 **경고 없이 사라진다** —
+스크럼 보드가 **빈 보드로 보이는데 `truncated` 배너 하나뿐**이다.
+단언 2축 — ① 그 이슈가 보드에 **있다** ② 스프린트 이슈는 상한과 무관하게 전량 온다.
+
+**GREEN**:
+- `BoardIssueLookupPort` 에 **스프린트 키 스코프를 받는 오버로드**를 더한다
+  (기존 시그니처는 **그대로 둔다** — 다른 소비처를 깨지 않는다)
+- `IssueRepository` 구현이 그 키 집합을 **SQL 술어(`WHERE issue_key IN (…)`)로 밀어넣어**
+  `LIMIT` **전에** 거른다. 순서가 뒤집히는 것이 이 task 의 전부다
+- `BoardApplicationService.getBoard` 가 SCRUM 이면 그 오버로드를 쓴다
+- `BacklogApplicationService` 도 보드 스코프를 받으면 같은 경로
+
+🛑 **BC 격리 예외** — `issue-tracking` + `shared-kernel` 을 건드린다. Maxi 확정(2026-09-02).
+**이 task 밖에서 두 모듈을 건드리지 마라.**
+🛑 **`BoardCardPlacement` 순수성 유지** — 필터는 `placeCards` **호출 전**(#421 계약).
+
+**REFACTOR**: 새 포트 메서드 KDoc 에 「왜 오버로드인가 — 기존 소비처 무변경」 + 부채 이력 링크.
+
+**검증**: `./gradlew :modules:issue-tracking:test :modules:agile-planning:test`(Testcontainers)
++ **비-공허** — GREEN 선커밋 뒤 SQL 술어를 지워 red 1회 확인
+
+---
+
+### Task 5. 프론트 — `boardDetailSchema` 에 종류·활성 스프린트 (Maxi 확정 ②)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/boards.ts`, `apps/web/src/api/boards.test.ts`]
+- depends-on: []
+- jira: [J5, J15]
+
+**RED**: ① `boardDetailSchema` 가 `boardType` 없는 응답을 **거부**한다
+② `activeSprint` 는 **null 을 받아들이고**(칸반) 객체도 받아들인다(스크럼)
+③ `boardSummarySchema` 에 `boardType` 이 실린다.
+
+**GREEN**:
+- `boardDetailSchema.boardType: boardTypeSchema` **필수**(Maxi 확정 — 서버가 non-null)
+- `activeSprintSchema = z.object({ sprintId: z.string().uuid(), name: z.string(), startDate: z.string().nullable(), endDate: z.string().nullable() })` — **4필드**(`goal`·`status`·`version` 없음)
+- `boardDetailSchema.activeSprint: activeSprintSchema.nullable()`
+- `boardSummarySchema.boardType: boardTypeSchema`
+
+**★ 예상되는 전수 red — 이것이 Task 6 의 입력이다.**
+`canDelete` 가 `.optional()` 인 사유가 `boards.ts:123` 에 이미 적혀 있고 **이번엔 그 길을 안 간다**.
+필수로 올리면 MSW 시드 7개 + 인라인 `BoardDetail` 리터럴 다수가 깨진다. **전수를 열거해 넘겨라**
+(개수 요약 금지).
+
+**REFACTOR**: `activeSprintSchema` KDoc — 「칸반은 항상 null. 서버 `ActiveSprintResponse` 4필드 대응」
+
+**검증**: `cd apps/web && node_modules/.bin/vitest run src/api/boards.test.ts` · **EXIT 로 판정**
+
+---
+
+### Task 6. MSW — 시드·핸들러·store 에 board 축 (전수 red 소진)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/board-fixtures.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/backlog-fixtures.ts`, `apps/web/src/mocks/backlog-handlers.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/backlog-handlers.test.ts`]
+- depends-on: [5]
+- jira: [J14, J16]
+
+**RED**: `GET /backlog?board={A}` 가 **A 보드 스프린트만** 돌려준다.
+지금은 **핸들러가 `searchParams` 를 아예 안 읽어** 무엇을 보내도 같은 응답이 온다.
+
+**GREEN** — 3갈래.
+1. **보드 상세** — `toResponseDetail`(`board-handlers.ts:162`)에 `boardType`(기본 `'KANBAN'`)·
+   `activeSprint`(기본 `null`) 추가. 시드 **7개** `boardType` 명시 —
+   `board-fixtures.ts` 의 6개 + ★**`board-handlers.ts:873` `QUICK_FILTER_PERM_SEED`**
+   (**픽스처 파일 밖이라 놓치기 쉽다**)
+2. **백로그 스코프** — `getBacklogHandler` 가 `request` 를 받아 `searchParams.get('board')` 를 읽는다.
+   ★ **`backlogStore` 가 `projectKey` 키 Map 이라 board 축이 자료구조에 없다** — store 구조를 넓힌다.
+   ★ **lexical 비교 금지**(learnings 2026-06-25). UUID 는 `===` 완전 일치
+3. **스프린트 생성** — `createSprintHandler` 가 body 의 `boardId` 를 읽어 저장. 지금은 조용히 버린다
+
+★ **Task 5 가 만든 전수 red 를 여기서 받는다.** 인라인 `BoardDetail` 리터럴이 있는 단위 테스트
+(`board-drop.test.ts` · `KanbanBoard.test.tsx` · `use-boards.test.tsx` · `use-change-card-field.test.tsx` ·
+`use-reorder-card.test.tsx` · `use-move-card.test.tsx` · `routes/__tests__/projects.board.test.tsx`)는
+**그 파일들의 소유 task 가 아니므로** 여기서 고칠 수 없다 — controller 에 **전수 열거로 보고**하고
+controller 가 별도 dispatch 를 정한다.
+
+**REFACTOR**: store 구조 변경 사유를 KDoc 에 — 「board 축이 없어 `?board=` 를 재현할 수 없었다」
+
+**검증**: `cd apps/web && node_modules/.bin/vitest run src/mocks` · 이어서 **전체 1회**로 남은 red 전수 열거
+
+---
+
+### Task 7. 프론트 — 스크럼 보드 화면 (FR-1 · FR-2)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.test.tsx`]
+- depends-on: [5, 6]
+- jira: [J5, J6, J15, J18]
+
+**RED**(동반 테스트) — 4시나리오.
+- ① 스크럼 · `activeSprint === null` → 빈 상태 + 「백로그에서 스프린트를 시작하세요」 + 백로그 링크
+- ② 스크럼 · `activeSprint` 있음 → 헤더에 스프린트 이름(+기간), 카드 정상 렌더
+- ③ **E2** — 스크럼 · 활성 스프린트 있는데 카드 0건 → **①과 다른 문장**(「이 스프린트에 이슈가 없습니다」)
+- ④ **E3** — 칸반은 완전 무변경
+
+**GREEN**:
+- 🛑 **early-return 을 만들지 마라.** 선례는 `board.tsx:961` 의 `isFilteredEmpty` —
+  헤더·`⋯` 메뉴·필터바를 **유지한 채 KanbanBoard 자리만** 대체하는 **인라인** 분기다.
+  early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전환 → `⋯` 메뉴 삭제)이 **죽는다**
+- 판정은 `boardDetail.boardType === 'SCRUM' && boardDetail.activeSprint === null`
+- 빈 상태 컴포넌트는 **기존 `FilteredEmptyState` 패턴**을 따른다(신규 프리미티브 0)
+- 헤더의 스프린트 표시는 `boardDetail.activeSprint.name`
+
+**REFACTOR**: 빈 상태 2종(①·③)의 분기 조건을 순수 함수로 빼고 J5·J6 원문 인용.
+
+**검증**:
+- `cd apps/web && node_modules/.bin/vitest run src/routes/__tests__/projects.board.test.tsx src/components/board`
+- 기존 E2E: `board-manage.spec.ts` · `board-kanban.spec.ts` · `board-reorder.spec.ts` · `board-filter.spec.ts` · `quick-filter.spec.ts` · `board-swimlane-field-change.spec.ts` · `board-wip-swimlane.spec.ts` · `board-epic-swimlane.spec.ts` · `card-density.spec.ts` · `active-project.spec.ts` · `project-tree.spec.ts`
+- 눈확인: 스크럼 빈 상태에 **헤더·`⋯` 메뉴가 남아 있는지** — 라이트/다크
+
+---
+
+### Task 8. 프론트 — 백로그 `?board=` 배선 (FR-3 프론트)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/router.ts`, `apps/web/src/api/backlog.ts`, `apps/web/src/hooks/use-backlog.ts`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/api/backlog.test.ts`, `apps/web/src/hooks/use-backlog.test.tsx`]
+- depends-on: [3, 6]
+- jira: [J14, J16, J17]
+
+**RED**:
+- ① `fetchBacklog(projectKey, boardId)` 가 `?board=` 를 요청 URL 에 싣는다
+- ② `backlogKeys` 가 board 축을 갖는다 — 보드가 다르면 **캐시가 갈린다**
+- ③ `createSprint` 가 `boardId` 를 body 에 싣는다(E-6 프론트 측)
+
+**GREEN**:
+- `router.ts` backlog 라우트 `validateSearch` 에 `board` 추가 —
+  ★ **board 라우트 `:317` 한 줄을 그대로 복사**한다(같은 규약)
+- `fetchBacklog(projectKey: string, boardId?: string)` — `boardId` 있으면 `?board=` 부착
+- `backlogKeys.detail(projectKey, boardId?)` → `['backlog', projectKey, boardId]`.
+  ★ **mutation 훅 7곳**(`useRerankIssue`·`useAssignToSprint`·`useUnassignFromSprint`·`useCreateSprint`·
+  `useUpdateSprint`·`useStartSprint`·`useCompleteSprint`)이 전부 `backlogKeys.detail(projectKey)` 를
+  부른다 — **접두 매칭**이 되도록 배열 끝에 붙인다(`use-boards.ts:51-57` 선례)
+- `CreateSprintParams` 에 `boardId?` 추가
+
+🛑 **nav 링크·redirect 를 건드리지 마라**(편차 X6). `?board=` 는 **스위처가 붙일 때만** URL 에 온다.
+
+**REFACTOR**: `backlogKeys` KDoc 에 「접두 매칭이라 mutation 7곳이 board 무관하게 무효화된다」
+
+**검증**: `cd apps/web && node_modules/.bin/vitest run src/api/backlog.test.ts src/hooks/use-backlog.test.tsx`
+
+---
+
+### Task 9. 프론트 — 백로그 보드 스위처 + 필터 보존 (E5 · E6 · E9)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`]
+- depends-on: [8]
+- jira: [J14, J17]
+
+**RED**(동반 테스트) — 3시나리오. **전부 과거 사고의 재현 테스트다.**
+- ① **E5** — 필터를 바꿔도 `?board=` 가 **URL 에 남는다**. 지금 `handleFilterChange` 는
+  `nextSearch = filterToSearch(next)` 로 **통째 교체**해 board 를 증발시킨다.
+  보드 라우트가 같은 문제를 `buildBoardSearch(currentBoardId, filterToSearch(next))`(`board.tsx:709`)로
+  이미 풀었다 — **그 선례를 복사한다**
+- ② **E6** — 보드를 바꿔도 필터 3축이 **유지**된다(담당자·에픽은 보드와 독립 축)
+- ③ **E9** — 보드를 바꾼 뒤 필터바가 **튕기지 않는다**. `BacklogBoard.tsx:601` 의
+  `filterBarKey` 재마운트 열쇠와 URL 변경이 맞물리는 자리다
+
+**GREEN**: 백로그 헤더에 보드 스위처(보드 라우트의 스위처 **재사용** — 신규 프리미티브 0).
+선택 시 `navigate({ search: { ...현재필터, board: newId } })`.
+
+**REFACTOR**: `buildBacklogSearch` 헬퍼로 빼고 `board.tsx:709` 선례를 KDoc 에 링크.
+
+**검증**:
+- `cd apps/web && node_modules/.bin/vitest run src/components/backlog`
+- 기존 E2E: `backlog.spec.ts` · `sprint-burndown.spec.ts` · `issue-create-entry-points.spec.ts` · `timeline.spec.ts` · `timeline-zoom.spec.ts` · `project-velocity.spec.ts` · `project-cfd.spec.ts` · `project-cycle-time.spec.ts` · `card-density.spec.ts`
+- 🛑 **눈확인 필수** — `fr-ux-13-f16` 이 이 자리를 **「유닛 전부 초록인 채 살아 있던」** 결함으로
+  기록했고 **브라우저 눈확인이 처음 잡았다**. 보드 전환 후 필터바 상태를 눈으로 본다(라이트/다크)
+
+---
+
+### Task 10. E2E — D7 신규 + 기존 회귀 (D7)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/scrum-board.spec.ts`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/e2e/backlog.spec.ts`, `apps/web/e2e/fixtures/board-helpers.ts`]
+- depends-on: [7, 9]
+- jira: [J5, J18]
+
+**RED**(동반 테스트) — **D7 시나리오**(FR 정본 `agile-planning.md:129` 원문).
+「스크럼 보드 생성 → 백로그에서 스프린트 시작 → **보드에 그 스프린트만**」.
+J18 이 그 흐름을 확인한다 — *"select **Start sprint**, and the stories will move into the
+**Active sprints** view."*
+
+**GREEN**:
+- `apps/web/e2e/scrum-board.spec.ts` 신규 — 위 한 줄기를 끝까지 태운다.
+  ★ 시작 **전**에 빈 상태를, 시작 **후**에 그 스프린트 이슈만 보이는 것을 **둘 다** 단언한다.
+  전자가 없으면 「원래 그렇게 보였을 뿐」과 구별되지 않는다
+- 기존 spec 수정은 **Task 6~9 가 못 살린 것만**. `board-helpers.ts` 에 헬퍼 추가로 공유
+- 🛑 **`.skip`/`.only` 금지.** 지워서 통과시키지 말고 새 흐름에 맞게 고친다
+
+**REFACTOR**: 스프린트 시작 흐름을 `startSprintFromBacklog(page, name)` 헬퍼로.
+
+**검증**:
+- `cd apps/web && node_modules/.bin/playwright test` **전량 1회** — 19개 파일이 걸려 있어 부분 실행은 근거가 안 된다
+- 눈확인: D7 흐름을 브라우저에서 1회(스프린트 시작 전/후 보드 대비)
+
+## Plan 메타
+
+- **task 수**: 10 · **예상 wave**: 5
+  (w1 = T1·T2·T3·T5 / w2 = T4·T6 / w3 = T7·T8 / w4 = T9 / w5 = T10)
+- **구현 규율**: **정식 TDD red-first**(T2/T3) — 백엔드 4 task 는 전부 TDD.
+  프론트 화면 task(T7·T9)는 **ui 시각 검증 트랙**(동반 테스트 + 기존 E2E + 눈확인)
+- **Jira 매핑**: `J5→T4·T5·T7·T10` · `J6→T4·T7` · `J7→` **범위 밖**(백로그 칸 순서는 현행 유지 · 이 PR 이 안 건드림) ·
+  `J10→` **범위 밖**(Start sprint 다이얼로그는 기존 `StartSprintDialog` 무변경) ·
+  `J12→` **미채택**(편차 X4 kanplan) · `J14→T1·T3·T6·T8·T9` · `J15→T2·T5·T7` ·
+  `J16→T3·T6·T8` · `J17→T3·T8·T9` · `J18→T7·T10`.
+  **채택 J5·J6·J14·J15·J16·J17·J18 차집합 0.**
+- **추가 검증**: `./gradlew test ktlintCheck detekt --rerun-tasks` · `pnpm verify` ·
+  `pnpm test:workflow`(478 유지) · `node scripts/build-doc-index.mjs --check` ·
+  `bash scripts/verify-master-plan.sh`(FR 144/144 · **D6·D7 을 `[x]` 로 바꾸므로 이 검증이 실질적으로 돈다**)
+- **마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0**
+- 🛑 **선언 T2 · 실측 T3**(Task 4 의 `shared-kernel`). 게이트 1 에서 사람이 결정한다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
