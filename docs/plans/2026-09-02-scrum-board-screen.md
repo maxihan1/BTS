@@ -49,6 +49,8 @@ ADR 3분할 표가 ③ 을 **T2** 로 지정했고, ②와 달리 **백엔드 `m
 | **J15** | *"A scrum board is always made up of **two parts** - the backlog and the active-sprint board."* | 〃 | 2026-09-02 |
 | **J16** | REST 경로가 boardId 를 담는다 — `POST /rest/agile/1.0/backlog/{boardId}/issue` · `/rest/software/1.0/board/{boardId}/backlog` | [rest api-group-backlog](https://developer.atlassian.com/cloud/jira/software/rest/api-group-backlog/) | 2026-09-02 |
 | **J17** | 화면 진입은 **탭 하나** — *"Select the **Backlog** tab from your space navigation of your scrum space."* | [use-your-scrum-backlog](https://support.atlassian.com/jira-software-cloud/docs/use-your-scrum-backlog/) | 2026-09-02 |
+| **J19** | *"**Backlogs and Sprints are board-specific, not project-specific** — defined by how boards are set up and their filters, rather than being tied directly to the projects themselves."* | [community — sprint is part of project or board](https://community.atlassian.com/forums/Jira-questions/Sprint-is-part-of-project-or-board/qaq-p/2837937) | 2026-09-02 |
+| **J20** | *"Jira will show in a Scrum board **any sprint that contains an issue that is within the scope of the board's filter**. … in each board, the sprint content shown will be **only the issues in the sprint that match the board's filter**."* | [KB — issues not appearing in boards](https://support.atlassian.com/jira/kb/issues-are-not-appearing-in-boards-including-agile-reports/) | 2026-09-02 |
 | **J18** | *"The **backlog** of a Scrum board shows the work items for your space grouped into a backlog and sprints."* · *"When you're happy with the work items for the sprint, select **Start sprint**, and the stories will move into the **Active sprints** view."* | 〃 | 2026-09-02 |
 
 > **★ J14~J18 은 이 PR 에서 새로 조회했다** (2026-09-02 · Maxi 지시).
@@ -61,6 +63,12 @@ ADR 3분할 표가 ③ 을 **T2** 로 지정했고, ②와 달리 **백엔드 `m
 - **J17 — 진입은 탭 하나다.** 사용자가 URL 에 boardId 를 타이핑하지 않는다.
   **그래서 nav 「백로그」 링크를 바꾸지 않는다** — 보드 컨텍스트는 폴백과 스위처가 정한다.
 - **J18 — 백로그 화면에서 스프린트를 시작하면 활성 스프린트 뷰로 넘어간다.** D7 E2E 의 시나리오다.
+- **J19·J20 — 「보드 A 백로그」의 백로그 칸 문제를 이것이 푼다** (2026-09-02 추가 조회).
+  Jira 의 원리는 **「필터에 걸리면 보인다」**이고 같은 스프린트가 **두 보드에 동시에 보이는 것을
+  정상으로 취급**한다. BTS 보드는 저장 필터가 아니라 `project_key` 고정이라(편차 X1)
+  **모든 보드의 필터가 사실상 같다** — 그러면 보드 B 스프린트의 이슈도 A 의 필터에 걸리므로
+  **A 에서 보여야 한다.** → **백로그 칸은 「그 보드의 스프린트에 없는 이슈」로 계산한다**(아래 E12).
+  이슈가 증발하는 대안은 Jira 와도 어긋난다.
 - **J5·J6 — 스크럼 보드는 활성 스프린트의 이슈만 보여준다.** 백엔드는 #421 이 이미 그렇게 배치한다
   (`placeCards` 호출 **전** 필터). 이 PR 은 **화면이 그 의미를 드러내게** 한다 —
   활성 스프린트가 없으면 빈 상태이고, 그것이 「아직 시작 안 함」임을 사용자가 알아야 한다.
@@ -74,6 +82,7 @@ ADR 3분할 표가 ③ 을 **T2** 로 지정했고, ②와 달리 **백엔드 `m
 | **X4** | 칸반 백로그(kanplan · J12) | **미채택** | ADR 의도적 편차 X4. **칸반 보드는 백로그 탭 없이 간다** |
 | **X5** | 백로그 진입 시 보드 미지정 | **기본 보드로 폴백** | ADR 「결과」 절. **깨진 링크를 만들지 않는 것이 패리티보다 앞선다.** J17 이 「진입은 탭 하나」라 Jira 도 사용자에게 boardId 를 요구하지 않는다 — 폴백은 그 사용자 경험의 BTS 판이다 |
 | **X6** | URL 경로를 `/boards/{id}/backlog` 로 (J16 의 REST 계층을 화면 URL 에도) | **미채택 — 기존 `?board=` 규약 유지** | ADR 이 **「새 URL 체계를 만들지 않는다」**를 명시했다. 경로를 바꾸면 nav 링크·기존 공유 링크·`project-tree.spec.ts:39`(href 완전 일치) 가 전부 깨지고 ADR 수정이 선행돼야 한다. **모델은 옮기되 URL 체계는 안 건드린다** |
+| **X8** | 스프린트가 **두 보드에 동시에** 보이는 것(J20) | **미채택 — BTS 는 `board_id` 로 못박는다** | Jira 는 보드가 저장 필터라 같은 스프린트가 여러 보드에 걸린다. BTS 는 #421 이 `sprints.board_id` 를 넣어 **스프린트를 한 보드에 귀속**시켰다(ADR §D2). 그 결정을 뒤집지 않는다 — **다만 백로그 칸 계산은 J20 의 원리를 따른다**(E12) |
 | **X7** | 보드 탭과 백로그 탭의 board 공유 | **미채택 — 각 탭이 자기 `?board=` 를 든다** | Jira 는 보드를 고르면 백로그·활성 스프린트가 한 쌍으로 따라온다(J15). BTS 도 그렇게 하려면 공유 상태(활성 프로젝트 컨텍스트 FR-UX-07 과의 관계 정리)가 필요해 범위가 넘친다. **두 탭이 어긋날 수 있다는 것을 알려진 한계로 남긴다**(Maxi 확정 2026-09-02) |
 
 ## 도메인 정리
@@ -225,6 +234,7 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 | **E8** | 다른 프로젝트의 보드 UUID | 404(403 아님). 존재 probe 차단 — `permission-assert-before-existence-makes-403-lie` |
 | **E9** | ★ 보드를 바꾼 뒤 필터바 | `BacklogBoard.tsx:601` 의 `filterBarKey` 재마운트 열쇠가 URL 변경과 맞물린다. `fr-ux-13-f16` 이 **「유닛 전부 초록인 채 살아 있던」** 결함으로 기록했고 **브라우저 눈확인이 처음 잡았다** — 이 자리는 눈확인이 필수다 |
 | **E10** | 스크럼 보드 2개 (E-6 부채) | 두 번째 보드에 스프린트를 만들면 그 보드에 붙는다. FR-4 의 `boardId` 명시 전달이 이것을 닫는다 |
+| **E12** | ★ 보드 A 백로그에서, 보드 B 스프린트에 할당된 이슈 | **A 의 백로그 칸에 보인다.** 백로그 칸 = 「**그 보드의** 스프린트에 없는 이슈」로 계산한다(`assignedKeys` 를 보드 A 스코프로 좁힌다). 근거 J20 — Jira 도 「필터에 걸리면 보인다」이고 BTS 는 보드 필터가 사실상 같다. **대안(프로젝트 전체 스프린트를 제외)은 그 이슈를 A 의 스프린트에도 백로그에도 없게 만들어 화면에서 증발시킨다** — 사용자가 이슈를 잃는다. 중복 노출은 Jira 에서도 정상(J20) |
 | **E11** | `truncated` + 활성 스프린트 | FR-6 이후 스프린트 이슈가 상한에 안 걸린다. 그래도 `truncated` 면 배너를 **유지**한다(백로그 전체는 여전히 잘릴 수 있다) |
 
 ### 제약 조건
@@ -275,16 +285,44 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 
 ## Plan
 
-> 🛑 **티어 재판정 — 선언 T2 · 실측 T3.** Task 4(FR-6)가
-> `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt` 를
-> 건드린다. **`SHARED_KERNEL` 은 T3 표면**이다(`CLAUDE.md` §작업 티어).
-> `/bts` 판정 5문 ⑤에 따라 **자동 승격하지 않고 게이트 1·2 에서 사람이 결정**한다.
-> T3 이면 리뷰가 **2종 + ceo** 이고 마이그레이션 검증이 붙는데, 이 PR 은 마이그레이션 0 이라
-> 실질 추가분은 **ceo 렌즈 1종**이다.
+> ✅ **티어 — 선언 T2 = 실측 T2 (2026-09-02 재판정).**
+> 최초 분해에서 Task 4(FR-6 `truncated` 부채)가 `shared-kernel` 을 건드려 실측 T3 이었다.
+> **plan 리뷰가 그 전제를 무너뜨렸다** — ① ADR 전문 grep 결과 **PR ③ 범위에 `truncated` 가 없다**
+> (`truncated`·`1000`·`부채` **0 hit**) ② 스프린트 필터는 #421 이 이미 머지해 **부채는 오늘 main 에
+> 있다** — 빼도 이 PR 이 만드는 새 결함이 **0** 이다.
+> **FR-6 을 PR ④ 로 분리했다**(Maxi 확정 2026-09-02). 그 결과 `shared-kernel` 0 · `issue-tracking` 0 ·
+> **BC 격리 예외도 사라졌다.** 남은 최고 표면은 `router.ts` 의 **SEC_FE**(T2)와 API·BE_MAIN 이다.
 >
-> **회피 가능성을 먼저 쟀다.** 스프린트 스코프를 포트 밖에서 거르면
-> 「1,000건을 먼저 자른 뒤 스프린트로 거른다」는 순서가 그대로라 **부채가 안 닫힌다**(FR-6 무의미).
-> 포트를 건드리지 않고 부채를 갚는 길은 없다.
+> 🛑 **보안 렌즈 필수** — `apps/web/src/router.ts` 는 `surfaces.ts:76` 에서 **`SEC_FE`(`lens: 'security'`)**
+> 다. 「T2+ 에서 이 렌즈는 생략 불가」가 그 파일 주석의 못이다. Task 7 이 그 파일을 만진다.
+> 실제 변경은 `validateSearch` 에 `board?: string` 한 줄이라 렌즈는 짧게 끝나지만 **빠뜨리면 안 된다.**
+
+### 🔜 PR ④ 로 분리한 것 — `truncated` 부채 (FR-6 이었던 것)
+
+**무엇** — `IssueRepository.kt:813-825` 가 `created_at DESC` 로 **1,000건을 먼저 자르고**
+스프린트 필터가 **그 뒤**에 온다(`BoardApplicationService.getBoard:252-268`). 활성 스프린트 이슈가
+오래됐으면 **경고 없이 증발**한다.
+
+**왜 이 PR 이 아닌가** — ADR 범위 밖이고, 부채가 이미 main 에 있어 **빼는 대가가 0** 이며,
+포트를 건드리면 이 PR 이 T3 + BC 격리 예외가 된다. **혼자 서고 혼자 revert 되는 PR** 이 옳다.
+
+**PR ④ 착수 시 반드시 물려받을 것** (plan 리뷰가 실측한 함정 3건 — 다시 재지 말고 이걸 써라)
+1. **회피 불가는 참이다.** 새 포트 메서드 → `BoardIssueLookupPort.kt`(shared-kernel) ·
+   `BoardCardFilter` 확장 → **그것도 shared-kernel** · agile-planning 이 issue-tracking 직접 import →
+   `AgilePlanningBcArchTest.kt:58` ArchUnit 이 막음 · pgmq → 보드 GET 은 **동기 읽기**라 대체 불가.
+2. 🛑 **`BacklogApplicationService` 에 같은 술어를 넣으면 백로그 칸이 전멸한다.**
+   백로그는 **차집합**(`:135` `visibleIssues.filter { it.key !in assignedKeys }`)이라 스프린트 술어가
+   반대로 작용한다. **부채 해소 범위를 `getBoard` 하나로 못박아라.**
+3. 🛑 **새 포트 메서드에 default 구현을 주지 마라.** 주면 `BoardIssueLookupAdapter` 가 override 를
+   빠뜨려도 **두 테스트 다 초록**이다 — `IssueRepositoryTest` 는 repo 를 직접 부르고
+   `BoardApplicationServiceTest` 는 포트를 **MockK 로 교체**한다. `abstract` 로 선언하면
+   구현자(adapter 1 + stub 3)가 컴파일 에러로 전수 드러난다. `BoardIssueLookupPort.kt:77-82` 의
+   **CONCERN-1 이 같은 함정을 이미 기록**해 뒀다.
+4. **RED 비용** — `BOARD_CARD_FETCH_LIMIT = 1000` 이 **`const val`(컴파일 타임 인라인)**이라
+   테스트에서 낮출 수 없다. jOOQ `batchInsert` 로 1,001행을 넣거나 `internal val` 로 바꿔라.
+
+**ADR·부채 장부 동기화** — ADR 3분할 표에 **④ 행 추가**가 필요하다. `fr-sync-checklist.md` 대상이므로
+**Task 9(문서 동기화)가 같은 PR 에서** 처리한다.
 
 ### Task 1. 백엔드 — 보드 목록에 종류를 싣는다 (FR-5)
 
@@ -362,40 +400,7 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 
 ---
 
-### Task 4. 🛑 백엔드 — `truncated` 부채 (FR-6 · **BC 격리 예외 · T3 표면**)
-
-**메타**.
-- agent: `backend-engineer`
-- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BacklogApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueRepositoryTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`]
-- depends-on: [3]   # BacklogApplicationService 파일 겹침
-- jira: [J5, J6]
-
-**RED** — ★ **이 테스트가 이 PR 에서 가장 중요하다.**
-프로젝트에 이슈 1,000건을 넘게 만들고, **활성 스프린트에 「가장 오래된」 이슈**를 넣는다.
-지금은 `created_at DESC` 로 1,000건을 먼저 자르므로 그 이슈가 **경고 없이 사라진다** —
-스크럼 보드가 **빈 보드로 보이는데 `truncated` 배너 하나뿐**이다.
-단언 2축 — ① 그 이슈가 보드에 **있다** ② 스프린트 이슈는 상한과 무관하게 전량 온다.
-
-**GREEN**:
-- `BoardIssueLookupPort` 에 **스프린트 키 스코프를 받는 오버로드**를 더한다
-  (기존 시그니처는 **그대로 둔다** — 다른 소비처를 깨지 않는다)
-- `IssueRepository` 구현이 그 키 집합을 **SQL 술어(`WHERE issue_key IN (…)`)로 밀어넣어**
-  `LIMIT` **전에** 거른다. 순서가 뒤집히는 것이 이 task 의 전부다
-- `BoardApplicationService.getBoard` 가 SCRUM 이면 그 오버로드를 쓴다
-- `BacklogApplicationService` 도 보드 스코프를 받으면 같은 경로
-
-🛑 **BC 격리 예외** — `issue-tracking` + `shared-kernel` 을 건드린다. Maxi 확정(2026-09-02).
-**이 task 밖에서 두 모듈을 건드리지 마라.**
-🛑 **`BoardCardPlacement` 순수성 유지** — 필터는 `placeCards` **호출 전**(#421 계약).
-
-**REFACTOR**: 새 포트 메서드 KDoc 에 「왜 오버로드인가 — 기존 소비처 무변경」 + 부채 이력 링크.
-
-**검증**: `./gradlew :modules:issue-tracking:test :modules:agile-planning:test`(Testcontainers)
-+ **비-공허** — GREEN 선커밋 뒤 SQL 술어를 지워 red 1회 확인
-
----
-
-### Task 5. 프론트 — `boardDetailSchema` 에 종류·활성 스프린트 (Maxi 확정 ②)
+### Task 4. 프론트 — `boardDetailSchema` 에 종류·활성 스프린트 (Maxi 확정 ②)
 
 **메타**.
 - agent: `frontend-engineer`
@@ -408,6 +413,9 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 ③ `boardSummarySchema` 에 `boardType` 이 실린다.
 
 **GREEN**:
+- 🛑 **`boardTypeSchema` 선언을 파일 위로 먼저 옮겨라.** 지금 `:180` 에 있는데
+  `boardSummarySchema` 는 `:22` · `boardDetailSchema` 는 `:123` 으로 **둘 다 앞**이다.
+  그대로 참조하면 `const` TDZ 때문에 **TS2448 + 런타임 `ReferenceError`** 다(plan 리뷰 C8).
 - `boardDetailSchema.boardType: boardTypeSchema` **필수**(Maxi 확정 — 서버가 non-null)
 - `activeSprintSchema = z.object({ sprintId: z.string().uuid(), name: z.string(), startDate: z.string().nullable(), endDate: z.string().nullable() })` — **4필드**(`goal`·`status`·`version` 없음)
 - `boardDetailSchema.activeSprint: activeSprintSchema.nullable()`
@@ -424,12 +432,12 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 
 ---
 
-### Task 6. MSW — 시드·핸들러·store 에 board 축 (전수 red 소진)
+### Task 5. MSW — 시드·핸들러·store 에 board 축 (전수 red 소진)
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/mocks/board-fixtures.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/backlog-fixtures.ts`, `apps/web/src/mocks/backlog-handlers.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/backlog-handlers.test.ts`]
-- depends-on: [5]
+- files: [`apps/web/src/mocks/board-fixtures.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/backlog-fixtures.ts`, `apps/web/src/mocks/backlog-handlers.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/backlog-handlers.test.ts`, `apps/web/src/mocks/create-issue-backlog-sync.test.ts`]
+- depends-on: [4]
 - jira: [J14, J16]
 
 **RED**: `GET /backlog?board={A}` 가 **A 보드 스프린트만** 돌려준다.
@@ -457,12 +465,12 @@ controller 가 별도 dispatch 를 정한다.
 
 ---
 
-### Task 7. 프론트 — 스크럼 보드 화면 (FR-1 · FR-2)
+### Task 6. 프론트 — 스크럼 보드 화면 (FR-1 · FR-2)
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.test.tsx`]
-- depends-on: [5, 6]
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.test.tsx`, `apps/web/src/components/board/BoardSelectorDropdown.tsx`, `apps/web/src/components/board/BoardSelectorDropdown.test.tsx`]
+- depends-on: [4, 5]
 - jira: [J5, J6, J15, J18]
 
 **RED**(동반 테스트) — 4시나리오.
@@ -479,6 +487,13 @@ controller 가 별도 dispatch 를 정한다.
 - 빈 상태 컴포넌트는 **기존 `FilteredEmptyState` 패턴**을 따른다(신규 프리미티브 0)
 - 헤더의 스프린트 표시는 `boardDetail.activeSprint.name`
 
+- 🛑 **보드 스위처를 컴포넌트로 추출한다**(plan 리뷰 C5). `BoardSelectorDropdown` 은 지금
+  `board.tsx:240` 의 **비-export 로컬**이고 안에 **보드 생성 다이얼로그**(`:295-312`)와 자체
+  `useProjectPermissions`(`:237-238`)가 붙어 있다. Task 8(백로그 스위처)이 재사용하려면
+  **이 task 가 추출**해야 한다 — 그 파일은 Task 8 의 `files` 가 아니다.
+  생성 항목은 **`showCreate` prop 으로 가른다**(백로그 헤더에 「새 보드 만들기」가 딸려 오면 안 된다).
+  추출하지 않으려면 Task 8 에서 **「신규 프리미티브 0」 주장을 철회**해야 한다 — 둘 중 하나여야 한다.
+
 **REFACTOR**: 빈 상태 2종(①·③)의 분기 조건을 순수 함수로 빼고 J5·J6 원문 인용.
 
 **검증**:
@@ -488,12 +503,12 @@ controller 가 별도 dispatch 를 정한다.
 
 ---
 
-### Task 8. 프론트 — 백로그 `?board=` 배선 (FR-3 프론트)
+### Task 7. 프론트 — 백로그 `?board=` 배선 (FR-3 프론트)
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/router.ts`, `apps/web/src/api/backlog.ts`, `apps/web/src/hooks/use-backlog.ts`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/api/backlog.test.ts`, `apps/web/src/hooks/use-backlog.test.tsx`]
-- depends-on: [3, 6]
+- files: [`apps/web/src/router.ts`, `apps/web/src/api/backlog.ts`, `apps/web/src/hooks/use-backlog.ts`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/components/backlog/StartSprintDialog.tsx`, `apps/web/src/components/backlog/CompleteSprintDialog.tsx`, `apps/web/src/components/backlog/use-backlog-create-issue.ts`, `apps/web/src/api/backlog.test.ts`, `apps/web/src/hooks/use-backlog.test.tsx`, `apps/web/src/components/backlog/StartSprintDialog.test.tsx`, `apps/web/src/components/backlog/CompleteSprintDialog.test.tsx`]
+- depends-on: [3, 5]
 - jira: [J14, J16, J17]
 
 **RED**:
@@ -505,10 +520,26 @@ controller 가 별도 dispatch 를 정한다.
 - `router.ts` backlog 라우트 `validateSearch` 에 `board` 추가 —
   ★ **board 라우트 `:317` 한 줄을 그대로 복사**한다(같은 규약)
 - `fetchBacklog(projectKey: string, boardId?: string)` — `boardId` 있으면 `?board=` 부착
-- `backlogKeys.detail(projectKey, boardId?)` → `['backlog', projectKey, boardId]`.
-  ★ **mutation 훅 7곳**(`useRerankIssue`·`useAssignToSprint`·`useUnassignFromSprint`·`useCreateSprint`·
-  `useUpdateSprint`·`useStartSprint`·`useCompleteSprint`)이 전부 `backlogKeys.detail(projectKey)` 를
-  부른다 — **접두 매칭**이 되도록 배열 끝에 붙인다(`use-boards.ts:51-57` 선례)
+- 🛑🛑 **`backlogKeys.detail(projectKey, boardId)` 의 `boardId` 를 필수로 만든다** —
+  **plan 리뷰 BLOCKER-1 의 처방이다.** 최초 plan 은 「mutation 훅 **7곳**」이라 세고 접두 매칭으로
+  풀려 했는데, 실측하니 소비처가 `use-backlog.ts` **밖에 3파일 더** 있었고 **2곳은 접두 매칭이
+  아니라 완전 일치**다.
+  - `StartSprintDialog.tsx:416` `getQueryData(backlogKeys.detail(projectKey))` — **완전 일치.**
+    키가 어긋나면 **에러 없이 `undefined` 를 반환**해 409 충돌 복구의 baseline 갱신이 **무음으로
+    멈춘다.** 그 함수 KDoc(`:409-412`)이 *"남의 값으로 스프린트가 시작된다"* 고 경고한 자리다.
+  - `CompleteSprintDialog.tsx:265-267` `fetchQuery({ queryKey: …detail(projectKey), queryFn: () => fetchBacklog(projectKey) })`
+    — **완전 일치 + boardId 미전달.** 캐시 미스 시 **실제 네트워크를 기본 보드로** 태워
+    「완료해도 되는가」를 **다른 보드 기준으로 오판**한다(`revalidate()` KDoc `:258` 이 경고한 자리).
+  - `use-backlog-create-issue.ts:95` · `CompleteSprintDialog.tsx:304,330` 은 `invalidateQueries` 라 안전.
+  **`boardId` 를 필수로 만들면 3파일이 전부 컴파일 에러로 드러난다** — 이것이 「조용함」을 없애는
+  유일한 처방이다. **`fetchBacklog(projectKey, boardId)` 의 `boardId` 도 필수로** 만들어
+  `CompleteSprintDialog:267` 을 컴파일이 잡게 한다.
+  ★ **왜 놓쳤나** — plan 이 「7곳」이라는 **개수를 셌다.** `CLAUDE.md` §함정
+  「지시문에 개수를 쓰지 마라 — 「N건」은 눈가리개. 전수 열거만 시킨다」 그대로다.
+  ★ **가짜 그린 주의** — `StartSprintDialog.test.tsx:171` 이 `setQueryData(backlogKeys.detail(PROJECT_KEY), …)`
+    로 **같은 (틀린) 키로 심고 같은 키로 읽는다.** 키를 안 고치면 그 테스트는 계속 초록이다
+    (`two-lists-never-check-each-other`). **RED 에 「`?board=B` 진입 상태에서 409 복구가 baseline 을
+    갱신한다」와 「completeSprint revalidate 가 `?board=B` 로 요청한다」 2축을 넣어라.**
 - `CreateSprintParams` 에 `boardId?` 추가
 
 🛑 **nav 링크·redirect 를 건드리지 마라**(편차 X6). `?board=` 는 **스위처가 붙일 때만** URL 에 온다.
@@ -519,12 +550,12 @@ controller 가 별도 dispatch 를 정한다.
 
 ---
 
-### Task 9. 프론트 — 백로그 보드 스위처 + 필터 보존 (E5 · E6 · E9)
+### Task 8. 프론트 — 백로그 보드 스위처 + 필터 보존 (E5 · E6 · E9)
 
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/BacklogBoard.test.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`]
-- depends-on: [8]
+- depends-on: [7]
 - jira: [J14, J17]
 
 **RED**(동반 테스트) — 3시나리오. **전부 과거 사고의 재현 테스트다.**
@@ -536,7 +567,7 @@ controller 가 별도 dispatch 를 정한다.
 - ③ **E9** — 보드를 바꾼 뒤 필터바가 **튕기지 않는다**. `BacklogBoard.tsx:601` 의
   `filterBarKey` 재마운트 열쇠와 URL 변경이 맞물리는 자리다
 
-**GREEN**: 백로그 헤더에 보드 스위처(보드 라우트의 스위처 **재사용** — 신규 프리미티브 0).
+**GREEN**: 백로그 헤더에 보드 스위처 — **Task 6 이 추출한 `BoardSelectorDropdown` 을 `showCreate={false}` 로 import** 한다(신규 프리미티브 0 · plan 리뷰 C5).
 선택 시 `navigate({ search: { ...현재필터, board: newId } })`.
 
 **REFACTOR**: `buildBacklogSearch` 헬퍼로 빼고 `board.tsx:709` 선례를 KDoc 에 링크.
@@ -549,12 +580,16 @@ controller 가 별도 dispatch 를 정한다.
 
 ---
 
-### Task 10. E2E — D7 신규 + 기존 회귀 (D7)
+### Task 9. E2E — D7 신규 + 기존 회귀 (D7)
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/scrum-board.spec.ts`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/e2e/backlog.spec.ts`, `apps/web/e2e/fixtures/board-helpers.ts`]
-- depends-on: [7, 9]
+- files: [`apps/web/e2e/**`]
+  ★ **글로브로 넓혔다**(plan 리뷰 C6). 위 B·C 표가 **19개 spec** 을 「걸린다」로 열거했는데
+  최초 plan 은 3+1개만 소유했다 — **한 줄이라도 고쳐야 하면 담당자가 없었다.**
+  특히 `board-reorder.spec.ts` 는 `seedBacklog` 를 직접 부르므로 Task 5 가 `backlogStore` 구조를
+  넓히면 그 호출부가 깨질 수 있다. `TEST` 표면이라 **티어에 영향 없다.**
+- depends-on: [6, 8]
 - jira: [J5, J18]
 
 **RED**(동반 테스트) — **D7 시나리오**(FR 정본 `agile-planning.md:129` 원문).
@@ -577,19 +612,65 @@ J18 이 그 흐름을 확인한다 — *"select **Start sprint**, and the storie
 
 ## Plan 메타
 
-- **task 수**: 10 · **예상 wave**: 5
-  (w1 = T1·T2·T3·T5 / w2 = T4·T6 / w3 = T7·T8 / w4 = T9 / w5 = T10)
-- **구현 규율**: **정식 TDD red-first**(T2/T3) — 백엔드 4 task 는 전부 TDD.
-  프론트 화면 task(T7·T9)는 **ui 시각 검증 트랙**(동반 테스트 + 기존 E2E + 눈확인)
-- **Jira 매핑**: `J5→T4·T5·T7·T10` · `J6→T4·T7` · `J7→` **범위 밖**(백로그 칸 순서는 현행 유지 · 이 PR 이 안 건드림) ·
-  `J10→` **범위 밖**(Start sprint 다이얼로그는 기존 `StartSprintDialog` 무변경) ·
-  `J12→` **미채택**(편차 X4 kanplan) · `J14→T1·T3·T6·T8·T9` · `J15→T2·T5·T7` ·
-  `J16→T3·T6·T8` · `J17→T3·T8·T9` · `J18→T7·T10`.
-  **채택 J5·J6·J14·J15·J16·J17·J18 차집합 0.**
+- **task 수**: 9 · **예상 wave**: 5
+  (w1 = T1·T2·T3·T4 / w2 = T5 / w3 = T6·T7 / w4 = T8 / w5 = T9)
+- **구현 규율**: **정식 TDD red-first**(T2) — 백엔드 3 task 는 전부 TDD.
+  프론트 화면 task(T6·T8)는 **ui 시각 검증 트랙**(동반 테스트 + 기존 E2E + 눈확인)
+- 🛑 **보안 렌즈 필수** — Task 7 이 `router.ts`(`SEC_FE` · `surfaces.ts:76`)를 만진다. 생략 불가.
+- **Jira 매핑**: `J5→T4·T6·T9` · `J6→T6` · `J7→` **범위 밖**(백로그 칸 순서 현행 유지) ·
+  `J10→` **범위 밖**(`StartSprintDialog` 무변경) · `J12→` **미채택**(X4 kanplan) ·
+  `J14→T1·T3·T5·T7·T8` · `J15→T2·T4·T6` · `J16→T3·T5·T7` · `J17→T3·T7·T8` ·
+  `J18→T6·T9` · `J19·J20→T3`(E12 백로그 칸 계산의 근거).
+  **채택 J5·J6·J14·J15·J16·J17·J18·J19·J20 차집합 0.**
 - **추가 검증**: `./gradlew test ktlintCheck detekt --rerun-tasks` · `pnpm verify` ·
   `pnpm test:workflow`(478 유지) · `node scripts/build-doc-index.mjs --check` ·
-  `bash scripts/verify-master-plan.sh`(FR 144/144 · **D6·D7 을 `[x]` 로 바꾸므로 이 검증이 실질적으로 돈다**)
-- **마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0**
-- 🛑 **선언 T2 · 실측 T3**(Task 4 의 `shared-kernel`). 게이트 1 에서 사람이 결정한다.
+  `bash scripts/verify-master-plan.sh`(FR 144/144 · **D6·D7 을 `[x]` 로 바꾸므로 실질적으로 돈다**)
+- **마이그레이션 0 · 신규 의존성 0 · 신규 프리미티브 0** · **shared-kernel 0 · issue-tracking 0**
+- ✅ **선언 T2 = 실측 T2.** BC 격리 예외 **없음**(FR-6 을 PR ④ 로 분리한 결과).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+`type=feature` → `plan-eng-review` 1종이 라우팅 대상(Step 2 표). 실측 T3 우려 때문에 ceo 관점도
+필요했으나 **분리로 T2 가 되며 그 필요가 사라졌다**.
+
+> **gstack 대화형 렌즈 절차는 생략했다** — 배경 잡에서 비용이 크다. 대신 **독립 서브에이전트**가
+> plan 을 코드와 대조해 검증했고(표본 8개 주장 전수 확인 + ADR 전문 grep), 그 결과가 아래다.
+> `plan-ceo-review` 는 **미발행**(`type=feature` 라 라우팅 대상 아님 + T2 확정).
+
+### Eng 렌즈 — 🛑 **BLOCKER 1건** → **전량 반영 완료**
+
+**표본 8개 주장 중 8개가 참으로 확인됐다.** 그럼에도 plan 이 **못 본 자리**에서 결함이 나왔다.
+
+| # | 지적 | 심각도 | 처리 |
+|---|---|---|---|
+| **B1** | **`backlogKeys` 소비처를 「7곳」이라 세다 3파일을 놓쳤다.** `StartSprintDialog.tsx:416`(`getQueryData`)·`CompleteSprintDialog.tsx:265-267`(`fetchQuery`)은 **접두 매칭이 아니라 완전 일치**. board 축을 붙이면 `getQueryData` 가 **에러 없이 `undefined` 를 반환**해 409 복구가 무음으로 멈추고, `fetchQuery` 는 **기본 보드로 네트워크를 태워** 완료 판정을 오판한다. **세 파일 다 어느 task 의 `files` 에도 없었다** | **BLOCKER** | **반영** — Task 7 `files` 에 3파일 추가 + **`backlogKeys.detail`·`fetchBacklog` 의 `boardId` 를 필수로** 만들어 컴파일이 전수를 잡게 했다. RED 2축 추가 |
+| **티어** | ADR 전문 grep 결과 **PR ③ 범위에 `truncated` 가 없다**(0 hit). 부채는 **이미 main 에 있어** 빼는 대가가 0. FR-6 을 빼면 **정확히 T2** | **판정** | **반영** — **FR-6 을 PR ④ 로 분리**(Maxi 확정). shared-kernel 0 · BC 격리 예외 소멸 |
+| **C1** | `BacklogApplicationService` 에 스프린트 술어를 넣으면 **백로그 칸이 전멸**한다(백로그는 차집합이라 술어가 반대로 작용) | HIGH | **PR ④ 인계** — 「부채 해소 범위를 `getBoard` 하나로 못박아라」로 등재 |
+| **C2** | 「보드 A 백로그」에서 보드 B 스프린트 이슈의 자리가 plan 에 없다 | HIGH | **Jira 재조회로 확정**(J19·J20) — **E12** 신설. `assignedKeys` 를 보드 스코프로 좁힌다 |
+| **C3** | 새 포트 오버로드에 default 를 주면 adapter 미override 를 **두 테스트 다 못 잡는다**(하나는 repo 직접 호출 · 하나는 MockK 교체) | HIGH | **PR ④ 인계** — `abstract` 선언 지침으로 등재 |
+| **C4** | `BOARD_CARD_FETCH_LIMIT` 이 **`const val`(컴파일 타임 인라인)**이라 테스트에서 못 낮춘다. RED 가 1,001회 단건 insert | MEDIUM | **PR ④ 인계** — `batchInsert` 또는 `internal val` 지침으로 등재 |
+| **C5** | `BoardSelectorDropdown` 은 `board.tsx:240` 의 **비-export 로컬**이고 생성 다이얼로그가 붙어 있다 — 「신규 프리미티브 0」이 성립하지 않는다 | MEDIUM | **반영** — Task 6 이 `showCreate` prop 과 함께 **추출**하고 Task 8 이 import 한다 |
+| **C6** | 19개 spec 을 열거해 놓고 **3개만 소유**했다 | MEDIUM | **반영** — Task 9 `files` 를 `apps/web/e2e/**` 글로브로 |
+| **C7** | `mocks/create-issue-backlog-sync.test.ts` 가 무주공산(돌기는 하는데 고칠 수 없다) | LOW | **반영** — Task 5 `files` 에 추가 |
+| **C8** | `boardTypeSchema`(`:180`)가 `boardSummarySchema`(`:22`)·`boardDetailSchema`(`:123`)보다 **뒤**라 TDZ 로 TS2448 | LOW | **반영** — Task 4 GREEN 에 「선언을 위로 옮겨라」 명시 |
+| **보안** | `router.ts` 는 `SEC_FE`(`surfaces.ts:76`)인데 plan 에 보안 렌즈 언급이 없다 | MEDIUM | **반영** — Plan 메타에 「보안 렌즈 필수」 명시 |
+
+### 리뷰어가 검증한 plan 의 주장 — 8/8 참
+
+`BoardDetailResponse` 완비(`:274-275`) · `SprintApplicationService.create` 의 `boardId` 와 「PR ③」 주석 ·
+`board.tsx:961` 인라인 분기와 `board-manage.spec.ts:162-171` 사망 경로 · `board.tsx:709` `buildBoardSearch` 선례 ·
+MSW 백로그 핸들러 `searchParams` **0 hit** · `backlogStore` 의 `projectKey` Map ·
+`QUICK_FILTER_PERM_SEED` 의 `board-handlers.ts:873` 위치 · URL 자동 주입 금지 3줄.
+**사전 grep 실측이 전부 사실로 확인됐다.**
+
+### 이 리뷰가 남긴 교훈
+
+**plan 이 스스로 「개수를 쓰지 마라 · 전수 열거」를 Task 4 규율로 적어 놓고, 정작 Task 7 에서
+「7곳」이라 세다 3파일을 놓쳤다.** `CLAUDE.md` §함정의 「「N건」은 눈가리개」가 **같은 문서 안에서**
+재발한 것이다. 처방은 개수가 아니라 **컴파일이 세게 만드는 것**(필수 인자화)이었다.
+
+### VERDICT
+
+**BLOCKER 0(반영 완료) · CONCERNS 전량 처리 · 게이트 1 진입 가능.**
+선언 T2 = 실측 T2 · BC 격리 예외 없음 · task 9 · wave 5.
+PR ④ 인계 4건(C1·C3·C4 + 회피 불가 근거)은 위 「PR ④ 로 분리한 것」 절에 등재했다.
