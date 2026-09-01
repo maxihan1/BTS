@@ -19,6 +19,17 @@ import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 export interface StoredSprint {
   sprint: SprintMeta
   issues: BacklogIssue[]
+  /**
+   * 이 스프린트가 소속된 보드 UUID (FR-BD-04). 소속 보드를 모르면 null.
+   *
+   * ★왜 응답 DTO 가 아니라 store 에만 있나. 백엔드 `SprintMetaResponse` 는 boardId 를 싣지
+   * 않는다 — 보드 축은 **응답에 나타나지 않고 `?board=` 로 걸러진 결과에만 드러난다**.
+   * 그래서 이 필드를 응답에 얹으면 실제 API 에 없는 필드를 화면이 읽게 되는 가짜 그린이 된다.
+   *
+   * **필수 필드다**(`| null` 이지 `?` 가 아니다). optional 로 두면 새 시드가 보드 축을 조용히
+   * 빠뜨리고, 스코프 조회에서 그 스프린트만 이유 없이 사라진다 — 컴파일러가 잡게 못박는다.
+   */
+  boardId: string | null
 }
 
 /**
@@ -225,6 +236,8 @@ function removeIssueFromProject(
  * @param goal 스프린트 목표 (선택)
  * @param startDate 시작일 ISO 문자열 (선택)
  * @param endDate 종료일 ISO 문자열 (선택)
+ * @param boardId 소속 보드 UUID (FR-BD-04). 미지정이면 null — 백엔드 `CreateSprintRequest.boardId`
+ *   가 선택 필드라 같은 하위 호환 경로를 둔다. 백로그 화면은 항상 명시한다.
  */
 export function createSprintInStore(
   projectKey: string,
@@ -232,6 +245,7 @@ export function createSprintInStore(
   goal?: string,
   startDate?: string,
   endDate?: string,
+  boardId: string | null = null,
 ): SprintMeta {
   const sprint: SprintMeta = {
     sprintId: generateUUID(),
@@ -245,13 +259,13 @@ export function createSprintInStore(
 
   const project = backlogStore.get(projectKey)
   if (project !== undefined) {
-    project.sprints.push({ sprint, issues: [] })
+    project.sprints.push({ sprint, issues: [], boardId })
   } else {
     // 프로젝트가 없으면 새로 생성
     backlogStore.set(projectKey, {
       projectKey,
       backlog: [],
-      sprints: [{ sprint, issues: [] }],
+      sprints: [{ sprint, issues: [], boardId }],
       truncated: false,
     })
   }
@@ -333,6 +347,18 @@ export const BACKLOG_EPIC_FIXTURES: readonly BacklogEpicFixture[] = [BACKLOG_EPI
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * ATLAS 기본 보드 UUID — `board-fixtures.ts` 의 `DEFAULT_BOARD.boardId` 정본 (FR-BD-04).
+ *
+ * ★왜 보드 상수가 **백로그** 픽스처에 있나.
+ * `DEFAULT_BACKLOG` 의 스프린트가 이 보드에 귀속돼야 `?board=` 스코프와 폴백 경로가 **같은
+ * 데이터**를 보여 준다. 그런데 import 방향은 `board-fixtures → backlog-fixtures` **한 방향뿐**이다
+ * — 뒤집으면 board-fixtures 가 모듈 로드 중에 `seedBacklog` 를 호출하는 시점에 `backlogStore`
+ * (`let`)가 아직 TDZ 라 `ReferenceError` 로 목 전체가 죽는다. 그래서 상수를 이쪽에 두고
+ * board-fixtures 가 읽어 간다. 값을 복사해 두면 한쪽만 바뀌어도 조용히 어긋난다.
+ */
+export const ATLAS_DEFAULT_BOARD_ID = '10000000-0000-4000-8000-000000000001'
+
+/**
  * 기본 백로그 픽스처 — ATLAS 프로젝트, backlog 이슈 2개, 스프린트 **3개**(ACTIVE·PLANNED·COMPLETED).
  *
  * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
@@ -353,6 +379,12 @@ export const BACKLOG_EPIC_FIXTURES: readonly BacklogEpicFixture[] = [BACKLOG_EPI
  * 사라진다」가, 한 섹션에 몰면 「모든 섹션에 동시 적용」이, 미지정을 0건으로 만들면
  * 「에픽 없음」축이 각각 재지 못하는 상태가 된다. `e2e/backlog.spec.ts` 의
  * 「F16 에픽 픽스처」 tripwire 가 세 조건을 전부 지킨다.
+ *
+ * ### ★ 스프린트 3개는 모두 {@link ATLAS_DEFAULT_BOARD_ID} 소속이다 (FR-BD-04)
+ * ATLAS 의 유일한 보드가 그것이라 「보드 A 의 스프린트」와 「프로젝트의 스프린트」가 같다.
+ * 그 보드는 종류가 KANBAN 이라 기본 보드 폴백(첫 **스크럼** 보드)이 집지 못하고, 그때는 스코프가
+ * 없는 것으로 취급돼 전량이 내려온다 — 백엔드 `resolveBoardScope` 가 기본 보드조차 없을 때
+ * null 을 돌려주는 것과 같다. 그래서 `?board=` 를 명시해도, 안 해도 이 픽스처는 같은 화면이다.
  *
  * ### 배열 순서 = 백엔드 정렬 순서
  * `ACTIVE → PLANNED → COMPLETED` 로 둔다. 백엔드 `sprintComparator`
@@ -410,6 +442,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
         endDate: '2026-06-14',
         version: 1,
       },
+      boardId: ATLAS_DEFAULT_BOARD_ID,
       issues: [
         {
           key: 'ATLAS-5',
@@ -450,6 +483,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
         endDate: null,
         version: 0,
       },
+      boardId: ATLAS_DEFAULT_BOARD_ID,
       issues: [
         {
           key: 'ATLAS-3',
@@ -495,6 +529,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
         endDate: '2026-05-14',
         version: 2,
       },
+      boardId: ATLAS_DEFAULT_BOARD_ID,
       issues: [
         {
           key: 'ATLAS-7',

@@ -1,5 +1,6 @@
 // 칸반 보드 MSW 픽스처 — 기본 시드 데이터 + store 관리 함수 (FR-BD-01 D6, FR-BD-02 D6, FR-UX-01)
 import type {
+  ActiveSprint,
   BoardCard,
   BoardDetail,
   BoardCreated,
@@ -12,7 +13,7 @@ import type { QuickFilter } from '@/api/board-quick-filters'
 // 반환한다 — 즉 보드 카드가 reorder되려면 같은 issueKey가 backlogStore에도 있어야 한다
 // (board-fixtures.ts 자체 시드만으로는 rerank가 항상 404로 실패해 낙관적 업데이트가 롤백된다).
 // seedBacklog는 backlog-fixtures.ts의 공개 API이므로 그 파일을 수정하지 않고 호출만 한다.
-import { seedBacklog } from './backlog-fixtures'
+import { seedBacklog, ATLAS_DEFAULT_BOARD_ID } from './backlog-fixtures'
 import type { StoredBacklogProject } from './backlog-fixtures'
 // FILTER_BOARD 담당자 UUID — 정본은 auth-fixtures.ts.
 // 예전에는 "board-fixtures 가 import.meta.env.MODE 를 참조해 E2E 에서 import 불가" 라는 이유로
@@ -75,8 +76,19 @@ export interface StoredBoardDetail {
    * 보드 종류 (FR-BD-04). 생성 경로(`createBoardInStore`)가 채우고 GET 상세 응답에 그대로 실린다.
    * optional — quickFilters/canDelete와 같은 이유다. 필수로 두면 종류 개념 이전에 만들어진
    * 기존 fixture 전부와 `seedBoard(BoardDetail)` 경로가 한꺼번에 타입 에러가 된다.
+   *
+   * ⚠️ optional 이라 **컴파일러가 시드의 누락을 잡지 못한다**. 「시드 전량이 boardType 을
+   * 명시한다」는 `board-handlers.test.ts` 의 SEEDED_BOARDS 표가 대신 잰다 — 시드를 늘리면
+   * 그 표에도 추가한다.
    */
   boardType?: BoardType
+  /**
+   * 활성 스프린트 (FR-BD-04). 칸반 보드는 항상 null 이고, 미정의도 응답에서 null 로 내려간다.
+   *
+   * 스키마(`boardDetailSchema.activeSprint`)는 **키 자체가 필수**라 `toResponseDetail` 이
+   * 반드시 채운다 — store 가 값을 안 들고 있으면 `undefined` 가 새어 나가 파싱이 통째로 실패한다.
+   */
+  activeSprint?: ActiveSprint | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,10 +320,17 @@ export function deleteBoardFromStore(boardId: string): boolean {
  * alice(userId=00000000-0000-4000-8000-000000000001)가 ATLAS 프로젝트 BROWSE 가능 전제.
  */
 export const DEFAULT_BOARD: BoardDetail = {
-  boardId: '10000000-0000-4000-8000-000000000001',
+  // 값의 정본은 backlog-fixtures.ts 다 — DEFAULT_BACKLOG 의 스프린트가 이 보드에 귀속된다.
+  // import 방향이 board-fixtures → backlog-fixtures 한 방향뿐이라 상수가 그쪽에 산다.
+  boardId: ATLAS_DEFAULT_BOARD_ID,
   projectKey: 'ATLAS',
   name: 'ATLAS 보드',
   swimlaneField: 'NONE',
+  // 기존 보드 E2E 전량이 칸반 동작을 전제한다 — 스크럼으로 바꾸면 활성 스프린트 분기를 타
+  // 카드가 사라진다 (FR-BD-04).
+  boardType: 'KANBAN',
+  // 칸반 보드는 스프린트 개념이 없다. 스키마가 키를 필수로 요구하므로 명시한다.
+  activeSprint: null,
   // alice가 ATLAS에서 SOFT_DELETE를 보유하므로 true (FR-BD-01-2d).
   canDelete: true,
   columns: [
@@ -442,6 +461,8 @@ const COMPONENT_C2_ID = '40000000-0000-4000-8000-000000000002'
 
 export const FILTER_BOARD: StoredBoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000002',
+  // 칸반 동작 전제 시드 — 종류를 바꾸면 이 보드를 쓰는 E2E 가 활성 스프린트 분기를 탄다 (FR-BD-04).
+  boardType: 'KANBAN',
   projectKey: 'FILTER',
   name: 'FILTER 보드',
   swimlaneField: 'NONE',
@@ -525,6 +546,8 @@ export const FILTER_BOARD: StoredBoardDetail = {
  */
 export const WIP_BOARD: StoredBoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000003',
+  // 칸반 동작 전제 시드 — 종류를 바꾸면 이 보드를 쓰는 E2E 가 활성 스프린트 분기를 탄다 (FR-BD-04).
+  boardType: 'KANBAN',
   projectKey: 'WIPTEST',
   name: 'WIP 테스트 보드',
   swimlaneField: 'NONE',
@@ -630,6 +653,8 @@ export const WIP_BOARD: StoredBoardDetail = {
  */
 export const SWIMLANE_BOARD: StoredBoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000004',
+  // 칸반 동작 전제 시드 — 종류를 바꾸면 이 보드를 쓰는 E2E 가 활성 스프린트 분기를 탄다 (FR-BD-04).
+  boardType: 'KANBAN',
   projectKey: 'SWIMTEST',
   name: '스윔레인 테스트 보드',
   swimlaneField: 'NONE',
@@ -706,6 +731,8 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
  */
 export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000005',
+  // 칸반 동작 전제 시드 — 종류를 바꾸면 이 보드를 쓰는 E2E 가 활성 스프린트 분기를 탄다 (FR-BD-04).
+  boardType: 'KANBAN',
   projectKey: 'EPICTEST',
   name: 'EPIC 스윔레인 테스트 보드',
   swimlaneField: 'NONE',
@@ -807,6 +834,8 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
  */
 export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000007',
+  // 칸반 동작 전제 시드 — 종류를 바꾸면 이 보드를 쓰는 E2E 가 활성 스프린트 분기를 탄다 (FR-BD-04).
+  boardType: 'KANBAN',
   projectKey: 'REORDERTEST',
   name: '순서변경 테스트 보드',
   swimlaneField: 'NONE',

@@ -203,6 +203,12 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
     // 백엔드는 단건 조회 응답에 canDelete를 항상 싣는다(FR-BD-01-2d). mock도 항상 실어
     // 「응답에 있다」를 전제로 한 소비자가 mock 위에서만 통과하는 일이 없게 한다.
     canDelete: stored.canDelete ?? true,
+    // ★`...stored` 만으로는 두 필드가 `undefined` 로 새어 나간다 — StoredBoardDetail 에서
+    //   둘 다 optional 이기 때문이다(BoardDetail 과 별개 타입이라 컴파일러가 안 잡는다).
+    //   boardDetailSchema 는 둘을 **필수 키**로 요구하므로 여기서 반드시 값을 채운다.
+    boardType: stored.boardType ?? DEFAULT_BOARD_TYPE,
+    // 칸반은 항상 null. 스크럼 시드가 값을 들고 있으면 그대로 흘린다.
+    activeSprint: stored.activeSprint ?? null,
   }
 }
 
@@ -271,7 +277,14 @@ const getBoardsHandler = http.get('/api/v1/boards', ({ request }) => {
   const summaries = boardIds
     .map((boardId) => boardStore.get(boardId))
     .filter((b): b is NonNullable<typeof b> => b !== undefined)
-    .map(({ boardId, projectKey: pk, name }) => ({ boardId, projectKey: pk, name }))
+    // boardType 은 상세와 **다른 조립부**다 — 상세만 고치면 보드 스위처가 목록 파싱에서 죽는다
+    // (boardSummarySchema.boardType 필수 · FR-BD-04).
+    .map(({ boardId, projectKey: pk, name, boardType }) => ({
+      boardId,
+      projectKey: pk,
+      name,
+      boardType: boardType ?? DEFAULT_BOARD_TYPE,
+    }))
 
   return HttpResponse.json({ data: summaries })
 })
@@ -879,6 +892,8 @@ export const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
   projectKey: QUICK_FILTER_PERM_PROJECT_KEY,
   name: '퀵필터 권한 게이팅 테스트 보드',
   swimlaneField: 'NONE',
+  // 칸반 동작 전제 시드 — 종류를 바꾸면 quick-filter.spec.ts S7 이 활성 스프린트 분기를 탄다.
+  boardType: 'KANBAN',
   columns: [
     {
       columnId: '80000000-0000-4000-8000-000000000001',
