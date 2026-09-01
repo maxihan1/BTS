@@ -558,6 +558,65 @@ PR #416 의 보드 `⋯` 메뉴는 `dropdown-menu.tsx` 를 썼다(같은 조작 
 **BLOCKER 0건.** E1 은 BLOCKER 가 아니라 **선택**이다 — 세 경로 모두 성립하고,
 어느 것이든 이 PR 이 진행된다. 그래서 중단이 아니라 게이트 1 로 올린다.
 
+## 게이트 1 결과 — 🛑 보류 (2026-09-01)
+
+**Maxi 판정. 「멈추고 보드 설계부터」.**
+
+### 왜 멈췄나 — 리뷰가 못 잡은 것을 Maxi 가 잡았다
+
+게이트 1 에서 Maxi 가 물었다. *"지라 클라우드에서는 스크럼으로 스프린트를 표현하고 있고 백로그에
+있는걸 스프린트로 넘길수 있고 스프린트를 시작하면 보드로 표현 되는데 지금 BTS에서는 다르게
+동작하는거 같네."* **실측 결과 그 말이 맞다.**
+
+| 축 | Jira Cloud | BTS 실측 |
+|---|---|---|
+| 보드 종류 | 생성 시 **Scrum / Kanban 선택** | **종류 없음** — `V500__boards.sql` 에 type 컬럼 부재, 주석이 "칸반 보드 Aggregate" |
+| 활성 스프린트 | 스크럼 보드는 **시작된 스프린트 것만** 표시 | 보드가 스프린트를 **모른다** |
+| 보드 그리는 코드 | 카드 조건에 `is in an active sprint (for Scrum boards)` 포함 | `BoardCardPlacement`·`BoardApplicationService`·`BoardRepository`·`BoardController` **4파일 전부 `sprint` 언급 0건** |
+| 보드의 정체 | **저장된 필터의 뷰** (JQL) | `project_key` 문자열 고정 |
+
+**Jira 원문(2026-09-01 조회 · Cloud).**
+- *"Your board only displays work items once you've started the sprint, and the board displays
+  only the work items added to the sprint you started."*
+  — https://support.atlassian.com/jira-software-cloud/docs/plan-a-sprint/
+- 카드가 활성 스프린트 보드에 뜨는 조건 3개 중 하나가 *"is in an active sprint (for Scrum boards)"*.
+  *"Active sprints are only available on Scrum boards."*
+  — https://support.atlassian.com/jira-software-cloud/docs/use-active-sprints/
+- 보드 생성 시 *"Create a Scrum board"* 또는 *"Create a Kanban board"* 를 고른다.
+  — https://support.atlassian.com/jira-software-cloud/docs/create-a-board-based-on-filters/
+
+→ **BTS 는 「칸반 보드」와 「스프린트 백로그」가 서로를 모르는 두 기능이다.** Jira 는 한 흐름이다.
+이 갭은 로드맵 A~D **어디에도 없었다.** 선행 플랜의 조작감 갭 표가 「Scrum/Kanban 타입 부재 → 3단계」로
+한 줄 적어 뒀으나 **PR C·D 의 실제 범위에 들어가지 않아 담당자가 없는 상태**였다
+([[two-lists-never-check-each-other]] 의 양식).
+
+### 함께 확인한 것 — 다수 보드는 이미 된다 ✅
+
+Maxi 의 두 번째 질문(「프로젝트에 다수 보드가 존재할 수 있는 구조여야 한다」)은 **충족돼 있다.**
+- `V500__boards.sql` 주석 — *"한 프로젝트에 여러 보드를 둘 수 있다(명시적 CRUD)"*.
+  `boards.project_key` 에 UNIQUE 없음, 부분 인덱스만.
+- `BoardApplicationService.createBoard(:101)` 에 개수 제한 가드 없음(워크플로우 스킴 미할당만 422).
+- **E2E 로 검증돼 있다** — `apps/web/e2e/board-manage.spec.ts` S1 「두 번째 보드 생성 → 전환」,
+  S4 「두 번째 보드 삭제」 (PR #416 산출물).
+
+### 확정된 결정 1건 (다음 착수 시 그대로 쓴다)
+
+**E1 해소 — 「요청을 진짜로 끊는다」.** `ApiFetchOptions`(`api/client.ts:82`)에 선택 필드
+`signal` 을 더하고 `fetchOptions` 에 넘긴다. 선택 필드라 **기존 호출자 전량 무변경**이고,
+부채 145(창 잠금 상한)·146(요청 미취소)이 **한 기전으로 닫힌다**.
+
+### 이 PR 의 상태
+
+**보류. worktree 와 Draft PR #418 은 유지한다.** 스펙·Jira 대조·task 9개·리뷰 6건은
+보드 설계가 끝난 뒤 **그대로 재사용한다** — 스프린트 편집·삭제 조작 자체는 Jira 도 백로그 화면에서
+하므로(J2·J4) **보드 종류와 무관하게 유효**하다. 다시 쓸 때 바뀔 수 있는 것은
+「스프린트가 어디에 그려지는가」뿐이고 그것이 곧 보드 설계의 산출물이다.
+
+### 다음 작업
+
+**보드 모델 ADR** — `board_type`(Scrum/Kanban)과 활성 스프린트 보드. 마이그레이션이 필요한 **T3**.
+로드맵 PR C(컬럼 M:N)보다 **앞선다** — 보드가 무엇을 담는지가 정해져야 컬럼 매핑 설계가 성립한다.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
@@ -570,5 +629,6 @@ PR #416 의 보드 `⋯` 메뉴는 `dropdown-menu.tsx` 를 썼다(같은 조작 
 
 - **VERDICT:** DESIGN CLEARED · ENG CONCERNS (E1 결정 대기) — 게이트 1 에서 E1 을 정하면 구현 착수 가능. BLOCKER 0.
 
-**UNRESOLVED DECISIONS:**
-- E1 — 삭제 타임아웃의 실제 취소를 어떻게 배선할 것인가 (`apiFetch` 확장 / 타임아웃 제거 / 부채 145·146 이연)
+- **GATE 1:** 🛑 보류 — 보드 모델 설계 선행(Maxi 판정 2026-09-01). E1 은 `apiFetch` 확장으로 확정 해소.
+
+NO UNRESOLVED DECISIONS
