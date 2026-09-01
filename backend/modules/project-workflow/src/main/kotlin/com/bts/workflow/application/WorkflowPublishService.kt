@@ -8,9 +8,11 @@ import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.port.IssueStatusUsagePort
+import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowMigrationInFlightException
 import com.bts.workflow.domain.exception.WorkflowMigrationInvalidMappingException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowPublishMappingRequiredException
@@ -67,6 +69,7 @@ class WorkflowPublishService(
     private val ruleWriter: DraftRuleWriter,
     private val issueStatusUsagePort: IssueStatusUsagePort,
     private val issueStatusMigrationPort: IssueStatusMigrationPort,
+    private val migrationInFlightPort: MigrationInFlightPort,
     private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val cache: WorkflowCache,
@@ -199,6 +202,12 @@ class WorkflowPublishService(
         val projectKeys = projects.map { it.key }.toSet()
 
         requireSoundMappings(key, workflowId, definition, live, removed, projects.map { it.id }.toSet(), mappings)
+
+        // F15 — 끝나지 않은 이관이 있으면 모순되는 작업 2건이 나란히 돌고 워커 실행 순서가 결과를
+        //       정한다. 유효성(400)을 먼저 태우고 상태 충돌(409)을 뒤에 본다.
+        if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
+            throw WorkflowMigrationInFlightException(key)
+        }
 
         val bulkOperationId =
             issueStatusMigrationPort.enqueueStatusMigration(

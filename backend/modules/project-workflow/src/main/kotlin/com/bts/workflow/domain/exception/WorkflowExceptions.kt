@@ -148,6 +148,24 @@ class WorkflowMigrationInvalidMappingException(
 ) : RuntimeException("Invalid status migration mapping for '$workflowKey': $reason")
 
 /**
+ * 끝나지 않은 상태 이관이 이미 있는데 또 이관을 요청했을 때 던진다. → 409
+ *
+ * ### 왜 400 이 아니라 409 인가
+ * 요청 자체는 멀쩡하다. **지금 상태와 부딪힐 뿐**이고, 앞선 이관이 끝나면 같은 요청이 그대로
+ * 통과한다. 400 으로 내면 화면이 「고쳐서 다시 보내라」로 안내하는데 고칠 것이 없다.
+ *
+ * ### 무엇을 막는가
+ * 유령 상태가 아니다 — 되살린 상태는 발행 시 다시 `removed` 에 들어가 재카운트가 막는다.
+ * 막는 것은 **모순되는 작업 2건이 나란히 도는 것**이다. `done→open` 과 `done→closed` 가 함께
+ * 큐에 있으면 워커 실행 순서가 결과를 정하고, 그 결과는 재현되지 않는다.
+ *
+ * @property workflowKey 이관을 요청받은 워크플로우 키.
+ */
+class WorkflowMigrationInFlightException(
+    val workflowKey: String,
+) : RuntimeException("Status migration already in flight for '$workflowKey'")
+
+/**
  * 모호 전환 후보 1건.
  *
  * 예외와 409 응답이 함께 쓰는 최소 식별 정보다. 호출자는 [transitionId] 를 다시 실어 재요청하고,

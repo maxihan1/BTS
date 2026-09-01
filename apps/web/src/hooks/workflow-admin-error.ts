@@ -47,6 +47,7 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
   // 축은 여덟이지만 코드는 하나다 — 무엇을 고쳐야 하는지는 서버 메시지가 싣는다.
   WORKFLOW_MIGRATION_INVALID_MAPPING: '옮길 상태 지정이 올바르지 않습니다',
+  WORKFLOW_MIGRATION_IN_FLIGHT: '이미 진행 중인 상태 이관이 있습니다. 끝난 뒤 다시 시도하세요',
   //   ★ 「초안이 없다」를 범용 400 문구로 접으면 「요청이 잘못됐다」로 보인다 — 관리자가 할 일이 다르다.
   WORKFLOW_DRAFT_NOT_FOUND: '편집 중인 초안이 없습니다',
   // StatusExceptionHandler
