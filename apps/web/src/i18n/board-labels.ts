@@ -3,7 +3,7 @@
 /**
  * 칸반 보드 컬럼 헤더가 노출하는 한국어 라벨/텍스트.
  *
- * 그룹 — placeholder(최상위) / page / switcher / wip / column / swimlane
+ * 그룹 — placeholder(최상위) / createForm / page / switcher / actions / wip / column / swimlane
  *
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  */
@@ -13,6 +13,70 @@ export const boardLabels = {
 
   /** 보드 페이지 상단 보드 스위처가 현재 보드를 못 찾았을 때의 대체 표기 */
   boardSelectPlaceholder: '보드 선택',
+
+  /**
+   * 보드 생성 폼(`board/CreateBoardForm.tsx`) 2단계 wizard 문구 (FR-BD-04 D6).
+   *
+   * 정본은 ADR `docs/adr/2026-09-01-board-type-and-active-sprint.md` **§D4**,
+   * Jira 근거는 **J1**(보드 생성 모달에서 *"Create a Scrum board"* 또는
+   * *"Create a Kanban board"* 를 고른다)와 **J2**(*"enter a board name"*)다.
+   * 순서가 계약이다 — **종류를 먼저 묻고**(1단계) 그 다음 이름을 받는다(2단계).
+   *
+   * 🛑 **「보드 만들기」를 이 그룹에 담지 않는다.** 그 문자열은 2단계 제출 버튼 전용이고
+   *    `e2e/board-manage.spec.ts` 가 `exact: true` 로 그것을 잡는다. 1단계 진행 버튼에
+   *    같은 문구를 쓰면 한 흐름 안에 같은 이름의 버튼이 둘이 돼 어느 쪽을 눌렀는지가
+   *    화면에서도 테스트에서도 흐려진다 — `switcher.createItem` 이 「새 보드」인 것과 같은 계약.
+   *
+   * ⚠️ `createFormNamePlaceholder` 는 최상위에 그대로 둔다. 여기로 옮기면 이 변경의 범위
+   *    밖인 `CreateBoardForm.tsx` 의 참조가 깨진다 — 통합은 그 파일을 만지는 작업이 한다.
+   */
+  createForm: {
+    /**
+     * 1단계 — 종류 선택 (ADR §D4 「1단계. 종류 선택」 · J1).
+     *
+     * 라벨과 설명 네 문자열은 §D4 다이어그램의 원문을 그대로 옮긴 것이다.
+     * 「○ 스크럼 보드 — 스프린트로 일하는 팀」 · 「○ 칸반 보드 — 흐름으로 일하는 팀」.
+     */
+    typeStep: {
+      /**
+       * 종류 선택 라디오 그룹의 레이블 — ADR §D4 「종류 선택」.
+       *
+       * `role="radiogroup"` 의 접근성 이름이 된다. 라디오 두 개만으로는 스크린리더가
+       * 「무엇을 고르는 중인가」를 읽어 줄 수 없다.
+       */
+      groupLabel: '보드 종류',
+
+      /** 스크럼 라디오 라벨 — ADR §D4 「스크럼 보드」 (J1 *"Create a Scrum board"*) */
+      scrumLabel: '스크럼 보드',
+
+      /**
+       * 스크럼 라디오 보조 설명 — ADR §D4 「스프린트로 일하는 팀」.
+       *
+       * 종류 이름만으로는 스크럼/칸반을 아는 사람에게만 선택이 가능하다. 「스프린트」·「흐름」이
+       * 두 라디오를 가르는 유일한 판단 근거이므로 라벨과 함께 반드시 노출한다.
+       */
+      scrumDescription: '스프린트로 일하는 팀',
+
+      /** 칸반 라디오 라벨 — ADR §D4 「칸반 보드」 (J1 *"Create a Kanban board"*) */
+      kanbanLabel: '칸반 보드',
+
+      /** 칸반 라디오 보조 설명 — ADR §D4 「흐름으로 일하는 팀」 (`scrumDescription` 과 같은 이유) */
+      kanbanDescription: '흐름으로 일하는 팀',
+    },
+
+    /**
+     * 1단계 → 2단계 진행 버튼.
+     *
+     * 두 문구를 단계 그룹 안이 아니라 여기 나란히 두는 이유 — 이 둘은 wizard 의 **이동 축**
+     * 한 쌍이라 한쪽만 바뀌면 흐름이 어긋난다. 붙여 두면 그 짝이 눈에 보인다.
+     *
+     * 🛑 「보드 만들기」가 아니다 (위 그룹 주석의 즉사 계약).
+     */
+    next: '다음',
+
+    /** 2단계 → 1단계 복귀 버튼 — 고른 종류를 확정 전에 되돌릴 수 있는 유일한 자리다 */
+    back: '뒤로',
+  },
 
   /** 보드 페이지 — 헤더 및 뷰 전환 링크 */
   page: {
