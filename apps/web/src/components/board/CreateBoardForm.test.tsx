@@ -495,6 +495,23 @@ describe('CreateBoardForm', () => {
   })
 
   /**
+   * T-BD7-20. 「보드가 없습니다」 인트로는 **1단계에만** 붙는다 (plan Design 렌즈 D3).
+   *
+   * 인트로는 「보드를 만들자」는 진입 유도이고 2단계는 이미 만드는 중이다 — **의도된 동작**이라
+   * 여기서 못박는다. 판정이 없으면 「사라진 게 버그 아닌가」로 다음 사람이 되돌려 놓는다.
+   */
+  it('T-BD7-20: 인트로는 1단계에만 보인다', async () => {
+    const user = userEvent.setup()
+    await renderForm()
+
+    expect(screen.getByText('보드가 없습니다')).toBeInTheDocument()
+
+    await goToNameStep(user)
+
+    expect(screen.queryByText('보드가 없습니다')).not.toBeInTheDocument()
+  })
+
+  /**
    * T-BD7-19. **E2** — 2단계에서 공백뿐인 이름을 제출해도 mutate 가 호출되지 않는다.
    *
    * 제출 버튼이 2단계로 옮겨 가면서 `trimmed === ''` early return 이 빠져도 다른 테스트는
