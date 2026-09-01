@@ -2,6 +2,9 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.issue.IssueStatusMigrationPort
+import com.bts.shared.issue.StatusMigrationCommand
+import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
@@ -30,6 +33,7 @@ import com.bts.workflow.scheme.repository.ProjectRef
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.ValidatorRepository
+import com.bts.workflow.web.dto.MigrateRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -39,6 +43,7 @@ import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
@@ -140,6 +145,33 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     /**
+     * 이관 큐잉을 가로채 커맨드를 기록하는 스파이. 실물 어댑터는 issue-tracking 소유라 이 모듈에 없다.
+     *
+     * ### ★도착 상태를 카탈로그와 대조한다 — 실물 어댑터와 같은 축
+     * `WorkflowStatusMigrationAdapter.requireReferencedKeysExist` 가 하는 일이다. 기록만 하는 스파이로
+     * 두면 서비스에서 `requireStatusCatalog` 를 지워도 전 테스트가 초록이라 F12 판정이 공허해진다 —
+     * 운영에서는 그 상태가 어댑터까지 가서 `IllegalArgumentException` 이 되고, 이 BC 의 advice 중
+     * 그것을 잡는 것이 없어(`WorkflowExceptionHandler:168` 이 명시) **500** 이 나간다.
+     *
+     * 기록을 검증보다 **먼저** 한다 — 거부된 호출도 「포트에 닿았다」는 사실 자체가 판정 대상이다.
+     */
+    private class SpyStatusMigrationPort(
+        private val publishRepository: WorkflowPublishRepository,
+    ) : IssueStatusMigrationPort {
+        /** 호출마다 받은 커맨드. 호출 순서대로 쌓인다. */
+        val received = mutableListOf<StatusMigrationCommand>()
+
+        override fun enqueueStatusMigration(cmd: StatusMigrationCommand): UUID {
+            received += cmd
+            val targets = cmd.mappings.map { it.toStatusKey }
+            val known = publishRepository.findCatalogStatuses(targets).keys
+            val missing = targets.filterNot { it in known }
+            require(missing.isEmpty()) { "statusMigration target status keys not found: $missing" }
+            return BULK_OPERATION_ID
+        }
+    }
+
+    /**
      * 역방향 조회 횟수를 세는 저장소. NFR N1 「조회는 상태마다 반복하지 말고 1회만」을 잴 수 있게 한다.
      *
      * 세지 않으면 `removed.associateWith { … }` 안으로 조회가 들어가도(상태 수만큼 3단 JOIN) 결과가
@@ -165,8 +197,18 @@ class WorkflowPublishServiceIntegrationTest {
     private val publicationRepository = WorkflowPublicationRepository(dsl, objectMapper)
     private val cache = WorkflowCache(WorkflowRepository(dsl), dsl)
     private val issueUsage = StubIssueStatusUsage()
+    private val migrationPort = SpyStatusMigrationPort(publishRepository)
     private val schemeAssignments = CountingSchemeAssignments(dsl)
     private val permissions = SwitchableWorkflowPermissions()
+
+    /**
+     * 운영과 **같은 설정**의 웹 매퍼. Boot 의 `JacksonAutoConfiguration` 이 쓰는 빌더 그대로다.
+     *
+     * 손으로 만든 `ObjectMapper()` 는 `FAIL_ON_UNKNOWN_PROPERTIES` 가 켜져 있어 모르는 필드를 400 으로
+     * 거절하지만, 이 빌더는 그것을 **끈다** — 운영은 모르는 필드를 조용히 버린다. 위조 차단 판정이
+     * 그 차이 위에 서면 안 되므로 빌더를 직접 쓴다.
+     */
+    private val webMapper: ObjectMapper = Jackson2ObjectMapperBuilder.json().build()
 
     /**
      * ★ **실물 팩토리**로 조립한다. 스텁을 쓰면 「지원 type 의 정본은 팩토리」라는 계약이
@@ -200,6 +242,7 @@ class WorkflowPublishServiceIntegrationTest {
                     ruleGuard,
                 ),
             issueStatusUsagePort = issueUsage,
+            issueStatusMigrationPort = migrationPort,
             schemeAssignmentRepository = schemeAssignments,
             permissionResolver = permissions,
             cache = cache,
@@ -332,6 +375,15 @@ class WorkflowPublishServiceIntegrationTest {
             ),
     )
 
+    /** 상태 키 하나가 전역 카탈로그에 없는 초안. 이관의 도착지가 카탈로그 밖일 때를 만든다. */
+    private fun draftWithUnknownStatus(key: String) =
+        WorkflowDraftDefinition(
+            key = key,
+            name = "카탈로그 밖 상태를 쓰는 초안",
+            states = listOf(DraftStateDto(key = "없는상태", name = "미등록", category = "TODO", displayOrder = 0)),
+            transitions = listOf(DraftTransitionDto(from = null, to = "없는상태", name = "생성", kind = "INITIAL")),
+        )
+
     // ── 스킴 결선 픽스처 ──────────────────────────────────────────────────────
 
     /**
@@ -386,6 +438,12 @@ class WorkflowPublishServiceIntegrationTest {
         dsl.execute("INSERT INTO projects (id, key, name) VALUES (?, ?, ?)", id, key, "발행 스코프 $key")
         return id
     }
+
+    /** 이관 커맨드가 싣는 것은 id 가 아니라 `projects.key` 다 — 픽스처가 무작위로 만들므로 되읽는다. */
+    private fun projectKey(projectId: UUID): String =
+        dsl.fetchOne("SELECT key FROM projects WHERE id = ?", projectId)
+            ?.get("key", String::class.java)
+            ?: error("projects 조회 실패 id=$projectId")
 
     private fun insertAssignment(
         projectId: UUID,
@@ -772,6 +830,106 @@ class WorkflowPublishServiceIntegrationTest {
             .isEqualTo(1)
     }
 
+    // ── ★ 상태 이관 큐잉 (F1·F2·F3·F6·F12) ───────────────────────────────────
+    //
+    // 포트도 어댑터도 워커도 이미 있는데 **부르는 코드가 없어** 관리자가 이관을 시작할 방법이 없었다.
+    // 여기 있는 것이 그 호출자의 계약이다.
+
+    @Test
+    fun `정상 매핑이 큐잉되고 bulkOperationId 를 돌려준다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        val bulkOperationId =
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+
+        assertThat(bulkOperationId).isEqualTo(BULK_OPERATION_ID)
+        assertThat(migrationPort.received.single().actorUserId)
+            .describedAs("워커에는 SecurityContext 가 없다 — actor 는 커맨드가 실어 나른다")
+            .isEqualTo(ACTOR)
+        assertThat(migrationPort.received.single().mappings)
+            .containsExactly(StatusMigrationMapping("done", "open"))
+        // F4 — migrate 는 project-workflow 를 읽기만 한다. 발행까지 해 버리면 초안이 사라진다.
+        assertThat(draftRepository.findByWorkflowId(id)).isNotNull
+    }
+
+    /**
+     * ★ `projectKeys` 는 요청에서 오지 않는다 — 포트 KDoc 이 「사용자 입력 금지, 호출자가 자기 발행
+     * 트랜잭션 안에서 직접 조회해 채운다」로 계약한 자리다. 위조 요청이 남의 프로젝트 이슈를 옮기는
+     * 것을 막는 **유일한** 장치이므로 판정이 없으면 계약이 없는 것과 같다.
+     *
+     * ### 왜 「알 수 없는 필드가 400 인가」로 재지 않는가
+     * 그 계약은 **운영에서 거짓**이다. Boot 의 [Jackson2ObjectMapperBuilder] 가
+     * `FAIL_ON_UNKNOWN_PROPERTIES` 를 꺼 두므로 운영은 모르는 필드를 조용히 버리고 202 를 준다.
+     * 슬라이스에서만 참인 계약을 재면 위조 요청이 실제로 어디까지 가는지는 아무도 안 본다.
+     * 그래서 운영과 같은 빌더로 본문을 읽은 뒤 **포트가 실제로 받은 범위**를 잰다.
+     */
+    @Test
+    fun `요청에 projectKeys 를 실어도 포트는 조회로 얻은 집합만 받는다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (alpha, beta) = attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        val body =
+            """{"baseVersion":0,"mappings":[{"fromStatusKey":"done","toStatusKey":"open"}],""" +
+                """"projectKeys":["HACKED"]}"""
+        val request = webMapper.readValue(body, MigrateRequest::class.java)
+
+        service.migrate(ACTOR, key, request.baseVersion, request.mappings.map { it.toMapping() })
+
+        assertThat(migrationPort.received.single().projectKeys)
+            .describedAs("「HACKED 가 없다」로 약하게 재면 조회 결과가 통째로 비어도 통과한다")
+            .containsExactlyInAnyOrder(projectKey(alpha), projectKey(beta))
+    }
+
+    @Test
+    fun `migrate 도 저장된 초안의 base_version 과 다르면 막힌다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+        // 남이 이름만 바꿔 version 이 올랐다. 초안 행은 그대로라 base_version 은 여전히 0 이다.
+        dsl.execute("UPDATE workflows SET version = 1 WHERE key = ?", key)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 1, mappings = listOf(StatusMigrationMapping("done", "open")))
+        }.isInstanceOf(WorkflowVersionConflictException::class.java)
+
+        assertThat(migrationPort.received)
+            .describedAs("거절된 요청이 큐잉까지 갔으면 롤백해도 pgmq 메시지는 남을 수 있다")
+            .isEmpty()
+    }
+
+    /**
+     * ★ 400 이어야 한다 — 500 이 아니다.
+     *
+     * 초안에는 있는데 전역 카탈로그에 없는 상태를 도착지로 실으면, 전처리에 `requireStatusCatalog`
+     * 가 없을 때 그 키가 어댑터까지 간다. 어댑터는 `IllegalArgumentException` 을 던지는데 이 BC 의
+     * advice 중 그것을 잡는 것이 없어(`WorkflowExceptionHandler:168` 이 「IAE 를 잡지 않는다」고
+     * 명시) 응답이 **500** 이 된다. 관리자는 무엇이 잘못됐는지 못 보고 재시도 말고 할 게 없다.
+     */
+    @Test
+    fun `카탈로그에 없는 상태가 초안에 있으면 400 이고 500 이 아니다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        attachTwoProjects(id)
+        draftRepository.upsert(id, draftWithUnknownStatus(key), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "없는상태")))
+        }
+            .describedAs("IllegalArgumentException 이면 이 BC 에 IAE advice 가 없어 500 으로 나간다")
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+            .hasMessageContaining("없는상태")
+
+        assertThat(migrationPort.received)
+            .describedAs("포트에 닿았다면 400 이 아니라 어댑터의 IAE 가 응답을 정한 것이다")
+            .isEmpty()
+    }
+
     // ── 거절 경로 ─────────────────────────────────────────────────────────────
 
     @Test
@@ -846,3 +1004,6 @@ class SwitchableWorkflowPermissions : WorkflowDefinitionPermissionResolver {
 
 /** 테스트 행위자. 권한 판정과 published_by 에 함께 쓰인다. */
 val ACTOR: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
+
+/** 스파이 포트가 돌려주는 일괄작업 id. 고정값이라야 「그 값이 그대로 나왔는가」를 잴 수 있다. */
+val BULK_OPERATION_ID: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000b0")
