@@ -1,6 +1,6 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# FR 축 인덱스 (143 FR)
+# FR 축 인덱스 (144 FR)
 
 > 이 FR 을 작업할 때 읽을 문서. 라우터. [INDEX.md](INDEX.md)
 
@@ -32,6 +32,7 @@
 | FR-BD-01 | [2026-06-20](/docs/specs/2026-06-20-fr-bd-01-kanban-board.md) [2026-06-21](/docs/specs/2026-06-21-fr-bd-01-d6-d7-ui-dnd-kit-e2e.md) | [2026-06-20](/docs/plans/2026-06-20-fr-bd-01-kanban-board.md) [2026-06-21](/docs/plans/2026-06-21-fr-bd-01-d6-d7-ui-dnd-kit-e2e.md) | [2026-06-20](/docs/decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md) | [[fr-bd-01-d6-d7-board-ui-done]] [[fr-bd-01-kanban-board-backend-done]] <sub>+22 언급</sub> |
 | FR-BD-02 | [2026-06-20](/docs/specs/2026-06-20-fr-bd-02-board-filter.md) [2026-06-21](/docs/specs/2026-06-21-fr-bd-02-d6-d7-ui-e2e.md) | [2026-06-20](/docs/plans/2026-06-20-fr-bd-02-board-filter.md) [2026-06-21](/docs/plans/2026-06-21-fr-bd-02-d6-d7-ui-e2e.md) | — | [[fr-bd-02-board-filter-done]] <sub>+15 언급</sub> |
 | FR-BD-03 | [2026-06-22](/docs/specs/2026-06-22-fr-bd-03-d6-d7-wip-ui-e2e.md) [2026-06-22](/docs/specs/2026-06-22-fr-bd-03-wip-swimlane.md) | [2026-06-22](/docs/plans/2026-06-22-fr-bd-03-d6-d7-wip-ui-e2e.md) [2026-06-22](/docs/plans/2026-06-22-fr-bd-03-wip-swimlane.md) | [2026-06-22](/docs/decisions/2026-06-22-fr-bd-03-wip-swimlane.md) | [[fr-bd-03-d6-d7-done]] [[fr-bd-03-wip-swimlane-done]] <sub>+6 언급</sub> |
+| FR-BD-04 | — | — | [2026-09-01](/docs/adr/2026-09-01-board-type-and-active-sprint.md) | — |
 | FR-BL-01 | [2026-06-24](/docs/specs/2026-06-24-fr-bl-01-02-d6-d7-backlog-sprint-ui-e2e.md) | [2026-06-24](/docs/plans/2026-06-24-fr-bl-01-02-d6-d7-backlog-sprint-ui-e2e.md) | [2026-06-23](/docs/decisions/2026-06-23-fr-bl-01-lexorank-backlog-ordering.md) | [[fr-bl-01-lexorank-done]] <sub>+15 언급</sub> |
 | FR-BL-02 | [2026-06-24](/docs/specs/2026-06-24-fr-bl-02-sprint-backend.md) | [2026-06-24](/docs/plans/2026-06-24-fr-bl-02-sprint-backend.md) | [2026-06-24](/docs/decisions/2026-06-24-fr-bl-02-sprint-issue-association.md) | [[fr-bl-02-sprint-backend-done]] <sub>+6 언급</sub> |
 | FR-CA-01 | [2026-07-08](/docs/specs/2026-07-08-fr-ca-01-calendar.md) | [2026-07-08](/docs/plans/2026-07-08-fr-ca-01-calendar.md) | [2026-07-08](/docs/decisions/2026-07-08-fr-ca-01-calendar.md) | [[fr-ca-01-calendar-done]] <sub>+6 언급</sub> |

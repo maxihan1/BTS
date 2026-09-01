@@ -1,8 +1,8 @@
-<!-- agile-planning BC — 보드/백로그/타임라인/Worklog/에픽/일정 14 FR + LexoRank + @dnd-kit + Gantt PoC -->
+<!-- agile-planning BC — 보드/백로그/타임라인/Worklog/에픽/일정 15 FR + LexoRank + @dnd-kit + Gantt PoC -->
 
 # agile-planning BC
 
-**소속 FR**. 14개 (BD 3 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2).
+**소속 FR**. 15개 (BD 4 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2).
 **책임**. 스프린트/보드/백로그/타임라인/에픽/Worklog/일정.
 **SDD 참조**. 13장 (보드/백로그/타임라인), 05.13 (에픽), 05.14 (Worklog).
 **다른 BC와의 경계**. issue-tracking BC의 이슈를 보드/백로그에 표시. project-workflow의 상태를 컬럼으로 매핑. notification-dashboard로 지연 알림 이벤트 발행.
@@ -43,7 +43,7 @@
 
 > **Deviation(PR #194)**. 실측 프로토타입 비교(자체 SVG/Recharts/성능 측정)는 생략하고 ADR 정성 분석으로 직접 **자체 SVG/CSS** 결정 — 1K·≤500 이슈 규모에서 div 좌표 단순 기하로 충분, 신규 의존성 환각위험 회피(learnings 정신). 성능 임계(500건 2s)는 §4.1 NFR 표에서 실측 추적.
 
-## §2 보드 (FR-BD, 3개)
+## §2 보드 (FR-BD, 4개)
 
 ### §2.1 FR-BD-01 — 칸반 보드 (컬럼 표시, 드래그앤드롭)
 
@@ -109,6 +109,29 @@
 - [x] D7. E2E — WIP 경고/스윔레인 전환/권한 게이팅 (책임. qa-engineer) (PR #173)
 
 > **Deviation(PR #173)**. ① PRIORITY 스윔레인 그룹화 근거로 `BoardCardResponse.priority`를 재노출(D5 NIT-1 결정 되돌림, same-BC view-layer patch, Maxi 확정). ② 스윔레인 레이아웃은 컬럼 내부 레인 그룹(세로) 채택 — droppable column id 보존으로 드래그 이동(FR-BD-01) 회귀 0. ③ WIP 제한 '편집' UI는 후속 이연(이번엔 표시/경고 + 스윔레인 셀렉터까지).
+
+### §2.4 FR-BD-04 — 보드 종류(스크럼/칸반) + 활성 스프린트 보드
+
+**우선순위**. 필수 · **티어 T3** (마이그레이션 2개 + 기존 화면 의미 변경).
+**설계 정본**. [ADR 2026-09-01 board-type-and-active-sprint](../../adr/2026-09-01-board-type-and-active-sprint.md)
+
+Jira Cloud 는 보드를 만들 때 **스크럼/칸반을 먼저 고르고**, 스크럼 보드는 **시작된 스프린트의
+이슈만** 보여준다. BTS 는 보드에 종류가 없고 보드 경로 4파일이 `sprint` 를 한 번도 참조하지 않아
+**스프린트를 시작해도 보드가 바뀌지 않는다.** 스프린트·백로그가 보드가 아니라 프로젝트에 매달려 있어
+보드를 여러 개 만들어도 계획 단위가 늘지 않는다. 이 FR 이 그 갭을 닫는다.
+
+- [ ] D1. 도메인 — `BoardType`(SCRUM/KANBAN) · 보드↔스프린트 소속 관계 (책임. backend-engineer)
+- [ ] D2. 명세 — 생성 플로우(종류→이름) · 활성 스프린트 보드당 1개 · 백로그 보드 스코프 (책임. backend-engineer)
+- [ ] D3. 마이그레이션 — `boards.board_type` · `sprints.board_id` + 백필(스프린트 보유 프로젝트마다 스크럼 보드 신설) (책임. db-engineer)
+- [ ] D4. 백엔드 — 생성 API 종류 인자 · 스크럼 보드 카드 배치(활성 스프린트 필터) · `start` 활성 1개 가드 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 종류별 배치 분기 · 활성 2개 시도 409 · 백필 검증 (책임. backend-engineer)
+- [ ] D6. 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 스프린트 없으면 빈 상태) · 백로그 `?board=` 스코프 (책임. frontend-engineer)
+- [ ] D7. E2E — 스크럼 보드 생성 → 백로그에서 스프린트 시작 → 보드에 그 스프린트만 (책임. qa-engineer)
+
+> **선행 결정 무효화 (2026-09-01).** `§3.2 FR-BL-02` 의 **Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」**
+> 을 이 FR 이 뒤집는다. Jira Cloud 는 *"If you want to have more than one active sprint at a time,
+> you'll need to enable parallel sprints"* 로 **기본 1개**를 못박는다(2026-09-01 조회 · Cloud).
+> 조용히 바꾸지 않고 여기 남긴다 — parallel sprints 옵션은 이번 범위 밖이다.
 
 ## §3 백로그 (FR-BL, 2개)
 
@@ -291,7 +314,9 @@
 
 ### BC 완료 조건
 
-- [x] §2~§7 (14 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: §2~§7 구간 FR 헤더 14개, D단계 `[x]` 98 / 미완(`[ ]`·`[~]`·`[!]`) 0
+- [ ] §2~§7 (15 FR) 모두 `[x]` 마킹 — **2026-09-01 재개방.** 보드 종류·활성 스프린트 보드가 §2.4 로 신설되며 D1~D7 전량이 새로 열렸다.
+  직전 기록(2026-07-27 실측 — 구간 헤더 14, D단계 `[x]` 98, 미완 0)은 그 시점의 참이며 지금은 아니다. 숫자만 올리면 거짓 진술이 되므로 시점을 남긴다. project-workflow 가 워크플로우 편집 신설로 같은 게이트를 재개방한 선례를 따른다.
+  ⚠️ 이 줄에 `FR-<접두>` 토큰과 `N개` 를 함께 쓰지 말 것 — `verify-master-plan.sh` 의 헤더 카운트 규칙이 **헤더가 아닌 산문 줄도 스캔**해 그것을 선언으로 읽는다 (2026-09-01 실측 · 오탐 1회)
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정표 8행의 "실측 (p95)" 칸이 전부 `___`. 보드 200건·타임라인 500건·1K 드래그 FPS·LexoRank 지연·카드 이동 응답·Epic 집계·LCP·axe 를 실측해 기입해야 한다
 - [x] Gantt ADR (§A.3 #2) 발행 완료 — 2026-07-27 실측: `docs/adr/2026-06-26-gantt-rendering-self-svg.md` 실재(상태 채택, §A.3 #2 해소 명시). `docs/decisions/` 에는 동명 파일 없음
 - [x] CHANGELOG.md 정리 — 2026-07-27 실측: 루트 `CHANGELOG.md` §BC 요약에 agile-planning 행 존재(14 FR · 2026-06-19~06-29 · PR 15건 #168~#202 · 대표 산출 5종)
