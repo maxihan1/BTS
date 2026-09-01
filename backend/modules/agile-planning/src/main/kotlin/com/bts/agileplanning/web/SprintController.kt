@@ -67,6 +67,9 @@ class SprintController(
      *
      * actor 추출 후 service 에 위임한다. service 내부에서 projectKey 로 권한을 판정한다.
      *
+     * `boardId` 는 그대로 넘긴다 — 어느 보드에 붙일지의 판단(미지정 시 스크럼 보드 폴백)은
+     * [SprintApplicationService.create] 가 갖는다. 컨트롤러가 폴백을 대신 계산하지 않는다.
+     *
      * @param request 스프린트 생성 요청 바디.
      * @return 201 Created + [SprintResponse] + Location 헤더.
      * @throws ResponseStatusException 401 — 미인증.

@@ -17,7 +17,10 @@ import java.util.UUID
  * @property goal 스프린트 목표 설명. null 허용.
  * @property startDate 스프린트 시작일. null 이면 미지정.
  * @property endDate 스프린트 종료일. null 이면 미지정.
- * @property boardId 스프린트를 붙일 보드 UUID. null 이면 서비스가 그 프로젝트의 스크럼 보드로 폴백한다.
+ * @property boardId 스프린트를 붙일 보드 UUID.
+ *   **미지정(null)은 하위 호환 경로**다 — 서비스가 그 프로젝트의 스크럼 보드(`created_at` 최선두)로 폴백하므로
+ *   스크럼 보드가 둘 이상이면 두 번째 보드에는 스프린트가 절대 붙지 않는다.
+ *   **백로그 화면은 보고 있는 보드를 항상 명시한다.**
  */
 data class CreateSprintRequest(
     @field:NotBlank
