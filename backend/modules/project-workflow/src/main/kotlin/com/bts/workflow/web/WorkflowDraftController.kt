@@ -7,6 +7,8 @@ import com.bts.workflow.application.WorkflowPublishService
 import com.bts.workflow.domain.exception.WorkflowDraftNotFoundException
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.DraftResponse
+import com.bts.workflow.web.dto.MigrateRequest
+import com.bts.workflow.web.dto.MigrateResponse
 import com.bts.workflow.web.dto.PublishPreviewResponse
 import com.bts.workflow.web.dto.PublishRequest
 import com.bts.workflow.web.dto.PublishResponse
@@ -137,6 +139,37 @@ class WorkflowDraftController(
         log.info("WorkflowDraftController.publish workflow={} baseVersion={}", key, request.baseVersion)
         val versionNo = publishService.publish(actor.toUuid(), key, request.baseVersion)
         return DataResponse(PublishResponse(versionNo))
+    }
+
+    /**
+     * 빠지는 상태에 남은 이슈를 옮길 일괄작업을 큐잉한다. **발행하지는 않는다.**
+     *
+     * ### 왜 202 인가
+     * 접수했다는 뜻이지 끝났다는 뜻이 아니다. 실제 이관은 issue-tracking 의 pgmq 워커가 나중에
+     * 하고, 진행률은 기존 `GET /api/v1/bulk-operations/{id}` 가 돌려준다 — 그래서 본문에는 그 id
+     * 하나만 싣는다.
+     *
+     * ### 왜 `POST /publish` 에 얹지 않았나
+     * 발행 API 가 「발행하지 않고 202 를 준다」는 상태를 만들지 않기 위해서다. 경로를 나눈 덕에
+     * 한 트랜잭션이 두 BC 에 쓰는 일도 생기지 않는다.
+     */
+    @PostMapping("/publish/migrate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun migrate(
+        @PathVariable key: String,
+        @RequestBody request: MigrateRequest,
+    ): DataResponse<MigrateResponse> {
+        val actor = CurrentActor.current()
+        log.info(
+            "WorkflowDraftController.migrate workflow={} baseVersion={} mappings={}",
+            key,
+            request.baseVersion,
+            request.mappings.size,
+        )
+        // 범위(projectKeys)는 여기서 넘기지 않는다 — 서비스가 스킴 할당을 거슬러 직접 조회한다.
+        val bulkOperationId =
+            publishService.migrate(actor.toUuid(), key, request.baseVersion, request.mappings.map { it.toMapping() })
+        return DataResponse(MigrateResponse(bulkOperationId))
     }
 
     /**

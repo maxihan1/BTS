@@ -2,6 +2,9 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.issue.IssueStatusMigrationPort
+import com.bts.shared.issue.StatusMigrationCommand
+import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.port.IssueStatusUsagePort
@@ -54,6 +57,7 @@ class WorkflowPublishService(
     private val publicationRepository: WorkflowPublicationRepository,
     private val ruleWriter: DraftRuleWriter,
     private val issueStatusUsagePort: IssueStatusUsagePort,
+    private val issueStatusMigrationPort: IssueStatusMigrationPort,
     private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val cache: WorkflowCache,
@@ -143,6 +147,73 @@ class WorkflowPublishService(
 
         log.info("워크플로우 발행 완료. key={} versionNo={} baseVersion={}", key, versionNo, baseVersion)
         return versionNo
+    }
+
+    /**
+     * 빠지는 상태에 남은 이슈를 옮길 일괄작업을 큐잉한다. **발행하지는 않는다.**
+     *
+     * ### 왜 발행과 한 요청이 아닌가
+     * Jira Cloud 는 발행 요청이 `statusMappings` 를 함께 받아 이슈까지 옮기지만, 이슈 UPDATE 는
+     * issue-tracking BC 소유라 한 트랜잭션에 담을 수 없다(다중 BC 트랜잭션 금지 · `DATA.md §6`).
+     * 그래서 이 메서드는 **project-workflow 를 읽기만 하고** `bulk_operations` 에만 쓴다. 관리자는
+     * 202 로 받은 id 로 진행률을 보고, 끝난 뒤 [publish] 를 다시 부른다.
+     *
+     * ### ★[StatusMigrationCommand.projectKeys] 는 요청에서 받지 않는다
+     * 이 메서드가 스킴 할당을 거슬러 **직접 조회해** 채운다. 범위를 요청이 정하게 두면 워크플로우
+     * 하나에 발행 권한을 가진 사람이 남의 프로젝트 이슈를 통째로 옮길 수 있다 —
+     * [IssueStatusMigrationPort] KDoc 이 「호출자의 범위 의무」로 못박은 계약이다.
+     *
+     * ### ★`@Transactional` 이 없으면 터진다
+     * 어댑터의 `BulkOperationEnqueuePublisher` 가 `Propagation.MANDATORY` 라 경계 없이는 큐잉이
+     * 예외로 끝난다. 「붙여도 그만」이 아니라 동작 조건이다.
+     *
+     * @param actorId 이관을 지시한 관리자. 권한 판정과 커맨드의 `actorUserId` 에 함께 쓴다 —
+     *   워커에는 SecurityContext 가 없어 actor 를 커맨드가 실어 날라야 한다.
+     * @param baseVersion 화면이 들고 있던 버전. 저장된 초안의 앵커와 다르면 409.
+     * @param mappings 빠지는 상태마다 옮길 곳.
+     * @return 큐잉된 일괄작업 id. 진행률은 `GET /api/v1/bulk-operations/{id}` 가 돌려준다.
+     * @throws WorkflowNotFoundException 워크플로우가 없거나 소프트 삭제됐을 때
+     * @throws WorkflowInvalidRequestException 초안이 없거나 상태가 카탈로그에 없을 때
+     * @throws WorkflowVersionConflictException 그 사이 다른 세션이 먼저 발행했을 때
+     */
+    @Transactional
+    fun migrate(
+        actorId: UUID,
+        key: String,
+        baseVersion: Long,
+        mappings: List<StatusMigrationMapping>,
+    ): UUID {
+        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
+        val workflowId = requireLive(key).id
+        val draft = requireDraft(key, workflowId)
+        val definition = draft.definition
+        validateDefinition(key, definition)
+        requireKeyMatchesPath(key, definition)
+
+        if (draft.baseVersion != baseVersion) {
+            throw WorkflowVersionConflictException(key, baseVersion, draft.baseVersion)
+        }
+
+        // ★빠뜨리면 초안에는 있으나 카탈로그에 없는 상태가 어댑터까지 가고, 어댑터의
+        //   IllegalArgumentException 을 잡는 advice 가 이 BC 에 없어 400 이어야 할 것이 500 이 된다.
+        requireStatusCatalog(key, definition)
+
+        val removed = removedStatusKeys(workflowId, definition)
+        val projectKeys = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.key }.toSet()
+        val bulkOperationId =
+            issueStatusMigrationPort.enqueueStatusMigration(
+                StatusMigrationCommand(actorUserId = actorId, projectKeys = projectKeys, mappings = mappings),
+            )
+
+        log.info(
+            "상태 이관 큐잉. key={} bulkOperationId={} removed={} projects={} mappings={}",
+            key,
+            bulkOperationId,
+            removed,
+            projectKeys.size,
+            mappings.size,
+        )
+        return bulkOperationId
     }
 
     // ── 내부 ──────────────────────────────────────────────────────────────────
