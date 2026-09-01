@@ -100,6 +100,40 @@ class BoardRepository(
         return findById(board.id) ?: error("보드 INSERT 후 조회 실패 — id=${board.id}")
     }
 
+    // ── acquireProjectScrumBoardLock ──────────────────────────────────────────
+
+    /**
+     * 그 프로젝트의 **스크럼 보드 신설**을 직렬화하는 advisory lock 을 잡는다 (FR-BD-04).
+     *
+     * ### 왜 필요한가
+     * `V506__sprint_board_id.sql` ④ 가 「(project_key, SCRUM) 이 유일하다」는 전제 위에 서 있는데,
+     * 마이그레이션 이후 그 유일성을 지키는 것은 [BoardApplicationService.ensureScrumBoard] 하나뿐이다.
+     * 그 메서드는 read-then-insert 라 동시 요청 2건이면 보드를 2개 만들고, 이후 조회는
+     * [findScrumBoardIdByProject] 가 `created_at` 오래된 쪽만 집으므로 **늦은 보드에 붙은 스프린트가
+     * 백로그에서 조용히 갈린다.**
+     *
+     * ### 왜 UNIQUE 인덱스가 아닌가
+     * `docs/adr/2026-09-01-board-type-and-active-sprint.md` D6 이 **다수 보드를 지원**한다.
+     * 스키마로 「프로젝트당 스크럼 보드 1개」를 못박으면 Jira 패리티(보드를 여럿 두는 것)를 잃는다.
+     * 막아야 하는 것은 「사용자가 의도적으로 만든 두 번째 보드」가 아니라 **암묵 생성의 경쟁**이다.
+     *
+     * ### 계약 — 반드시 읽기 **전에** 부른다
+     * `pg_advisory_xact_lock` 은 트랜잭션 종료 시 풀린다. 락 **밖에서** 읽은 값으로 판단하면 락이
+     * 무력화된다(memory `advisory-lock-bigint-toctou`). 호출자는 같은 트랜잭션 안에서
+     * 락 → 재조회 → 삽입 순서를 지켜야 한다.
+     *
+     * `hashtextextended(text, int8)` 가 bigint 를 반환해 `pg_advisory_xact_lock(bigint)` 단일 시그니처와
+     * 정합한다(`(bigint, bigint)` 시그니처는 없다 — 같은 메모리). 해시 충돌은 무관한 두 프로젝트가
+     * 잠깐 직렬화될 뿐이라 안전하다.
+     *
+     * @param projectKey 대상 프로젝트 키.
+     */
+    @Transactional
+    fun acquireProjectScrumBoardLock(projectKey: String) {
+        // pg_advisory_xact_lock 은 void 를 반환한다 — 결과 행은 소비만 하고 버린다.
+        dsl.fetch("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", projectKey)
+    }
+
     // ── seedColumns ───────────────────────────────────────────────────────────
 
     /**

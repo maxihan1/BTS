@@ -154,7 +154,18 @@ class BoardApplicationService(
      * 하므로, 보드를 안 준 요청은 여기서 붙을 자리를 찾는다.
      *
      * V506 백필이 **스프린트를 이미 가진 프로젝트**마다 스크럼 보드를 만들어 뒀다. 여기서 새로
-     * 만드는 경우는 **마이그레이션 이후 첫 스프린트를 만드는 프로젝트**뿐이다.
+     * 만드는 경우는 **마이그레이션 이후 첫 스프린트를 만드는 프로젝트**, 또는 **스크럼 보드를
+     * 소프트 삭제한 프로젝트**다([findScrumBoardIdByProject] 가 `deleted_at IS NULL` 로 거른다).
+     *
+     * ### 경쟁 — 락을 먼저 잡는다
+     * read-then-insert 라 잠금이 없으면 동시 요청 2건이 보드를 2개 만든다. 그러면 조회가
+     * `created_at` 오래된 쪽만 집어 **늦은 보드에 붙은 스프린트가 백로그에서 갈린다**. 그래서
+     * [BoardRepository.acquireProjectScrumBoardLock] 을 **조회보다 먼저** 잡는다 — 락 밖에서 읽은 값으로
+     * 판단하면 락이 무력화된다(memory `advisory-lock-bigint-toctou`).
+     *
+     * ★ 이 메서드는 「프로젝트당 스크럼 보드 1개」를 **강제하지 않는다.** ADR D6 이 다수 보드를
+     * 지원하므로 사용자가 두 번째 스크럼 보드를 직접 만들 수 있다. 그때 스프린트가 어디에 붙는지는
+     * 스펙 엣지 케이스 **E-6** 이 다룬다 — 여기서 막는 것은 암묵 생성의 경쟁뿐이다.
      *
      * @param projectKey 대상 프로젝트 키.
      * @return 스크럼 보드 UUID.
@@ -163,6 +174,8 @@ class BoardApplicationService(
      */
     @Transactional
     fun ensureScrumBoard(projectKey: String): UUID {
+        // ★ 순서가 계약이다 — 락 → 조회 → 삽입. 조회를 먼저 하면 락이 아무것도 막지 못한다.
+        boardRepository.acquireProjectScrumBoardLock(projectKey)
         boardRepository.findScrumBoardIdByProject(projectKey)?.let { return it }
         log.debug("스크럼 보드 부재 — 신설한다. projectKey={}", projectKey)
 
