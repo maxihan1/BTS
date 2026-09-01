@@ -119,6 +119,13 @@ agile-planning 소유 `POST /api/v1/boards` 하나다.
 | 대상 | 명령 | 결과 |
 |---|---|---|
 | E2E 계약 문자열 | `grep -rn "보드 만들기\|새 보드\|보드 이름" apps/web/e2e/` | **`board-manage.spec.ts` 3곳** — `:113` `:114` `:161` |
+
+> 🛑 **이 표가 한 파일을 놓쳤다 (2026-09-01 구현 중 정정).** Task 4 가 구현 후 같은 grep 을 다시 돌려
+> **`board-kanban.spec.ts` S5 도 red** 임을 실측했다 — `:314` `:317` `:320` 이 똑같이
+> 「보드 만들기」 버튼과 「보드 이름」 필드를 빈 상태에서 잡는다. 이 표는 그 파일을 「회귀 확인」
+> 대상으로만 분류했는데 **실제로는 갱신 대상**이었다.
+> **Task 6 의 `files` 를 2개로 넓혔다.** 사전 grep 은 「돌렸다」가 아니라 **「결과를 전수로 읽었다」**
+> 여야 한다는 것이 이 정정의 교훈이다.
 | 유닛 어서션 | `grep -rln "createBoard\|CreateBoardForm" apps/web/src --include="*.test.*"` | **4파일** — `CreateBoardForm.test.tsx` · `use-boards.test.tsx` · `api/boards.test.ts` · `routes/__tests__/projects.board.test.tsx` |
 | 소비처 | `grep -rn "CreateBoardForm" apps/web/src` | **2곳** — `projects.$projectKey.board.tsx:305`(다이얼로그) · `:844`(빈 상태) |
 
@@ -357,9 +364,12 @@ DOM 에 노출한다. 판정의 실체는 `CreateBoardForm.test.tsx`(실물 렌�
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/board-manage.spec.ts`]
+- files: [`apps/web/e2e/board-manage.spec.ts`, `apps/web/e2e/board-kanban.spec.ts`]
 - depends-on: [4, 5]
 - jira: [J1, J2]
+
+> **`files` 를 2개로 넓혔다 (2026-09-01 구현 중).** Task 4 실측으로 `board-kanban.spec.ts` S5
+> (`:314` `:317` `:320`)도 같은 문자열을 빈 상태에서 잡아 red 임이 드러났다. 위 §사전 grep 절 참조.
 
 **RED**(동반 테스트): 이 task 는 **기존 스펙이 red 인 것을 green 으로 되돌린다**.
 Task 4 가 머지되는 순간 `:113` `:114` `:161` 이 실패한다 — 1단계엔 이름 필드도
