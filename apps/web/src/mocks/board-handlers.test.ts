@@ -1,13 +1,13 @@
 // 칸반 보드 MSW 핸들러 stateful 동작 검증 테스트 (FR-BD-01 D6, FR-BD-02 D6)
 import { server } from '@/test/server'
 import { afterEach, describe, expect, it } from 'vitest'
-import { boardHandlers } from './board-handlers'
+import { boardHandlers, QUICK_FILTER_PERM_SEED } from './board-handlers'
 // FR-BD-04 D6 Task 5 — 보드 생성 응답을 실제 API 함수로 파싱해 검증한다.
 // 이 파일의 다른 테스트처럼 핸들러 JSON 만 직접 읽으면 boardCreatedSchema 를 타지 않아
 // 응답에서 필드가 통째로 빠져도 런타임 테스트가 하나도 깨지지 않는다(Task 1 실측).
 // audit-log-handlers.test.ts(fetchAuditLogs) · workflow-admin-handlers.test.ts(fetchWorkflows)가
 // 같은 관례로 API 함수를 직접 호출한다.
-import { createBoard, boardCreatedSchema } from '@/api/boards'
+import { createBoard, boardCreatedSchema, fetchBoard, fetchBoards } from '@/api/boards'
 import {
   resetBoardStore,
   seedBoard,
@@ -16,6 +16,9 @@ import {
   DEFAULT_BOARD,
   FILTER_BOARD,
   SWIMLANE_BOARD,
+  WIP_BOARD,
+  EPIC_SWIMLANE_BOARD,
+  REORDER_SWIMLANE_BOARD,
 } from './board-fixtures'
 // FR-UX-06 PR21b Task 6 — 필드변경(담당자/우선순위/에픽) MSW stateful 반영 검증.
 // issue-tracking BC 핸들러(changeAssignee/updateIssue/connectEpicChild)를 실제로 호출해
@@ -256,15 +259,81 @@ describe('POST /api/v1/boards — 보드 종류 (FR-BD-04 D6)', () => {
     expect(boardCreatedSchema.parse(body.data).boardType).toBe('KANBAN')
   })
 
-  it('고른 종류가 store 에 남아 GET 상세에 실린다 (stateful)', async () => {
+  it('고른 종류가 store 에 남아 GET 상세에 실린다 (stateful · boardDetailSchema 파싱 경유)', async () => {
     const created = await createBoard('ATLAS', '스크럼 보드', 'SCRUM')
 
-    const res = await getBoard(created.boardId)
-    expect(res.status).toBe(200)
-    // 백엔드 BoardDetailResponse.boardType(BoardResponses.kt:274)도 non-null 이다.
-    // 프론트 boardDetailSchema 가 이 필드를 소비하는 것은 PR ③ 소관이라 JSON 으로만 확인한다.
-    const body = (await res.json()) as DataResponse<{ boardType?: string }>
-    expect(body.data.boardType).toBe('SCRUM')
+    // PR ② 에서는 JSON 으로만 확인했다(그때 boardDetailSchema 에 필드가 없었다). PR ③ 이
+    // 필드를 필수로 올렸으므로 화면이 쓰는 경로(fetchBoard → z.parse)로 되읽는다 —
+    // 응답 기본값 'KANBAN' 이 고른 종류를 삼키지 않는지가 여기서 갈린다.
+    const detail = await fetchBoard(created.boardId)
+    expect(detail.boardType).toBe('SCRUM')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/boards — 보드 종류·활성 스프린트 응답 계약 (FR-BD-04 · PR ③)
+//
+// ★왜 스키마 파싱 경유로 재는가.
+// 이 파일의 대부분은 핸들러 JSON 을 그대로 읽어 단언한다. 그러면 `boardDetailSchema` 가
+// 필수로 올린 필드가 응답에서 통째로 빠져도 유닛이 하나도 안 깨진다. 게다가 시드 6개는
+// `StoredBoardDetail`(= `BoardDetail` 과 **별개 타입**) 이라 컴파일러도 못 잡는다 —
+// 컴파일러와 테스트가 **둘 다 침묵**하는 자리다. 화면이 실제로 밟는 경로로 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 모듈 로드 시 자동 시드되는 보드 전량 (board-fixtures.ts 6개 + board-handlers.ts 1개).
+ *
+ * ★`QUICK_FILTER_PERM_SEED` 는 **픽스처 파일 밖**에 있다 — board-fixtures.ts 만 보고 세면
+ * 이 한 건이 빠지고 quick-filter.spec.ts S7 만 죽는다. 목록을 여기 한 곳에 모아 둔다.
+ */
+const SEEDED_BOARDS: [string, Parameters<typeof seedBoard>[0]][] = [
+  ['DEFAULT_BOARD', DEFAULT_BOARD],
+  ['FILTER_BOARD', FILTER_BOARD],
+  ['WIP_BOARD', WIP_BOARD],
+  ['SWIMLANE_BOARD', SWIMLANE_BOARD],
+  ['EPIC_SWIMLANE_BOARD', EPIC_SWIMLANE_BOARD],
+  ['REORDER_SWIMLANE_BOARD', REORDER_SWIMLANE_BOARD],
+  ['QUICK_FILTER_PERM_SEED', QUICK_FILTER_PERM_SEED],
+]
+
+describe('시드 전량 — 보드 종류 계약 (FR-BD-04)', () => {
+  it.each(SEEDED_BOARDS)(
+    '%s 가 boardType 을 명시한다 (응답 기본값이 가리지 못하도록 시드에서 직접 잰다)',
+    (_name, board) => {
+      // 응답만 재면 `toResponseDetail` 의 `?? 'KANBAN'` 이 미설정 시드를 덮어 공허해진다.
+      // 시드 자체를 재는 단언만이 「7개를 전부 고쳤는가」를 잰다.
+      expect(board.boardType).toBe('KANBAN')
+    },
+  )
+
+  it.each(SEEDED_BOARDS)(
+    '%s 의 GET 상세 응답이 boardDetailSchema 를 통과한다 (activeSprint 는 null)',
+    async (_name, board) => {
+      seedBoard(board)
+      const detail = await fetchBoard(board.boardId)
+      expect(detail.boardType).toBe('KANBAN')
+      // 칸반 보드는 활성 스프린트 개념이 없다 — 키가 빠지면 스키마가 거부한다.
+      expect(detail.activeSprint).toBeNull()
+    },
+  )
+
+  it('boardType 이 없는 레거시 stored 는 KANBAN 으로 응답한다 (toResponseDetail 기본값)', async () => {
+    // 위 단언의 짝 — 기본값이 실제로 존재하는지를 「미설정 시드」로만 잴 수 있다.
+    const legacy = { ...SWIMLANE_BOARD, boardId: '10000000-0000-4000-8000-0000000000f1' }
+    delete legacy.boardType
+    seedBoardWithMeta(legacy)
+
+    const detail = await fetchBoard(legacy.boardId)
+    expect(detail.boardType).toBe('KANBAN')
+    expect(detail.activeSprint).toBeNull()
+  })
+
+  it('보드 목록 응답이 boardSummarySchema 를 통과하고 boardType 을 싣는다', async () => {
+    seedBoard(DEFAULT_BOARD)
+    // 목록은 상세와 다른 조립부다 — 상세만 고치면 스위처가 목록 파싱에서 죽는다.
+    const summaries = await fetchBoards('ATLAS')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.boardType).toBe('KANBAN')
   })
 })
 

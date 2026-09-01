@@ -869,8 +869,12 @@ const QUICK_FILTER_PERM_PROJECT_KEY = 'QFPERM'
  * S7 시나리오 전용 보드 — 퀵필터 1건("버그만", query=`label=bug`) 사전 시드.
  * QFPERM-1(bug 라벨)만 통과, QFPERM-2(feature 라벨)는 제외되어 칩 클릭 시
  * 2개→1개로 감소하는 실제 필터링을 검증할 수 있다.
+ *
+ * export 인 이유 (FR-BD-04 PR ③). 이 시드는 **픽스처 파일 밖**에 홀로 있어
+ * `board-fixtures.ts` 만 훑는 점검에서 매번 빠진다. `board-handlers.test.ts` 의
+ * 「시드 전량」 표에 실어 그 누락을 유닛이 잡게 한다 — E2E(quick-filter S7)만 죽는 것을 막는다.
  */
-const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
+export const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
   boardId: QUICK_FILTER_PERM_BOARD_ID,
   projectKey: QUICK_FILTER_PERM_PROJECT_KEY,
   name: '퀵필터 권한 게이팅 테스트 보드',
