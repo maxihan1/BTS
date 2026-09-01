@@ -49,7 +49,7 @@ ADR `2026-09-01-board-type-and-active-sprint.md`(**채택**)의 3분할 중 **PR
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V505__board_type.sql`]
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V505__board_type.sql`, `backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`]
 - depends-on: []
 - jira: [J1]
 
@@ -65,6 +65,11 @@ ALTER TABLE boards ADD COLUMN board_type VARCHAR(16) NOT NULL DEFAULT 'KANBAN'
 
 **REFACTOR**: 되돌리기 주석 — `DROP COLUMN` 으로 원복 가능.
 
+🔴 **`init_codegen.sql` 을 같은 커밋에서 고친다.** jOOQ 코드 생성은 **Flyway 마이그레이션을 읽지 않는다** —
+`build.gradle.kts:146-149` 가 `TC_INITSCRIPT=file:src/main/resources/db/codegen/init_codegen.sql` 로
+**손관리 미러**를 적용한다. 그 파일 헤더가 *"미러 누락 시 jOOQ 상수 미생성"* 이라 스스로 경고한다.
+빠뜨리면 `BOARDS.BOARD_TYPE` 상수가 안 생겨 Task 4 가 **컴파일되지 않는다**(리뷰 E2).
+
 **검증**: `./gradlew :modules:agile-planning:test --tests '*Migration*'`
 
 ---
@@ -73,14 +78,19 @@ ALTER TABLE boards ADD COLUMN board_type VARCHAR(16) NOT NULL DEFAULT 'KANBAN'
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V506__sprint_board_id.sql`]
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V506__sprint_board_id.sql`, `backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`]
 - depends-on: [1]
 
 **RED**: 마이그레이션 전 스프린트를 가진 프로젝트를 심어 두고, 적용 후
 ① 그 스프린트가 **스크럼 보드**에 붙고 ② **기존 칸반 보드의 이름·컬럼이 무변경**인지 단언한다.
 
-**GREEN**: 컬럼 추가 → 스프린트 보유 프로젝트마다 스크럼 보드 신설 → 연결 → `NOT NULL` 승격
-→ 활성 부분 인덱스.
+**GREEN**: 컬럼 추가 → 스프린트 보유 프로젝트마다 스크럼 보드 신설 → **그 프로젝트 기존 보드의
+`board_columns` 를 복제** → 연결 → `NOT NULL` 승격 → 활성 부분 인덱스.
+
+🔴 **「첫 조회에서 시드된다」는 거짓이었다.** `BoardApplicationService` KDoc(`:58-61`)이 조회 경로를
+*"boards/board_columns 로드 → listVisibleIssuesByProject → placeCards"* 로 못박는다 — **시드가 없다.**
+복제할 보드가 없는 프로젝트(스프린트는 있는데 보드가 0개)는 **영원히 빈 보드**가 된다.
+→ Task 6 에 **자가 치유**를 넣는다(리뷰 E1).
 
 ★ **기존 보드를 승격하지 않는다.** 승격하면 그 보드 카드가 활성 스프린트 것만 남아
 **사용자가 보던 것이 사라진다**(ADR 기각 대안 A-3).
@@ -167,6 +177,10 @@ PR #416 리뷰가 이 착각을 잡았다.
 **GREEN**: `board.boardType == SCRUM` 일 때만 활성 스프린트를 조회해 이슈를 거른 뒤
 기존 `placeCards` 에 넘긴다.
 
+★ **컬럼 0개 보드 자가 치유(리뷰 E1).** 조회 시 컬럼이 비어 있으면 `createBoard` 와 같은 경로로
+워크플로우 카탈로그에서 시드해 영속한다. 백필이 복제할 보드를 못 찾은 프로젝트를 구제한다.
+상태 목록도 비면 기존 「스킴 미할당」 처리를 그대로 따른다 — **새 오류 경로를 만들지 않는다.**
+
 ★ **`BoardCardPlacement` 를 건드리지 않는다**(NFR-2) — 순수 함수로 남기고 기존 단위 테스트를 산 채로 둔다.
 ★ **칸반은 쿼리가 늘지 않는다**(NFR-1) — 분기 전에 스프린트를 조회하지 않는다.
 
@@ -237,3 +251,69 @@ FR 총수 **144 불변** — 신규 FR 이 없으므로 fr-index·README·CLAUDE
 - **추가 검증**: ktlint · detekt · Testcontainers · `verify-master-plan.sh` · 판별식
 - **Jira 매핑**: J1→T1·T3·T5 · J5→T6 · J6→T6 · J11→T7. **차집합 0.**
 - **프론트 변경 0파일** — 응답 필드가 늘지만 Zod 가 미지 키를 버려 무해하다(실측).
+
+
+## 리뷰 결과
+
+렌즈 2종(`type=migration` → eng + ceo). **지적 4건 · 2건 plan 반영 · 1건 게이트 1 · 1건 수용.**
+모든 지적이 pre-emit 검증 게이트를 통과했다 — 근거 줄을 인용하지 못한 지적은 올리지 않았다.
+
+### E1 [P1] (confidence 10/10) · `BoardApplicationService.kt:58-61` — ✅ 반영
+
+> *"## 보드 조회 — boards/board_columns 로드 → [BoardIssueLookupPort.listVisibleIssuesByProject] 로
+> 카드 조회 → [BoardCardPlacement.placeCards] 로 배치."*
+
+조회 경로에 **시드가 없다.** plan Task 2 가 「보드가 없으면 컬럼 없이 만들고 **첫 조회에서 시드**」라
+적었는데 그런 경로는 존재하지 않는다. 백필이 만든 컬럼 0개 보드는 **영원히 빈 보드**로 남는다.
+→ Task 2 는 기존 보드의 컬럼을 **복제**하고, Task 6 에 **자가 치유**를 넣었다.
+
+### E2 [P1] (confidence 10/10) · `build.gradle.kts:146-149` + `init_codegen.sql:1-4` — ✅ 반영
+
+```
+url = "jdbc:tc:postgresql:16-alpine:///bts_codegen" +
+    "?TC_INITSCRIPT=file:src/main/resources/db/codegen/init_codegen.sql"
+```
+> *"-- jOOQ 코드 생성용 초기화 SQL (agile-planning BC) — V500~V504 테이블 구조 미러"*
+> *"... 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성)."*
+
+**jOOQ 는 Flyway 마이그레이션을 읽지 않는다.** V505·V506 만 추가하면 `BOARDS.BOARD_TYPE` 상수가
+생성되지 않아 Task 4 가 **컴파일되지 않는다**. plan 의 `files` 에 `init_codegen.sql` 이 빠져 있었다.
+→ Task 1·2 의 `files` 에 추가했다.
+
+### E3 [P2] (confidence 9/10) · 미러와 마이그레이션이 서로를 검사하지 않는다 — 🛑 게이트 1
+
+`init_codegen.sql` 이 마이그레이션과 같은지 확인하는 장치가 **자연어 주석뿐**이다.
+`docs/rules/behavior-rules.md §3` 이 *"자연어 지시는 강제가 아니다"* 를 이미 판정했고,
+이것이 이 저장소의 **지배 결함 양식**(`two-lists-never-check-each-other`)이다.
+E2 가 그 양식에 실제로 걸린 첫 사례다 — 내가 놓칠 뻔했다.
+
+→ **차집합 판별식을 이 PR 에 넣을지 결정이 필요하다.** 아래 게이트 1.
+
+### C1 [P2] (CEO 렌즈) — ⚠️ 수용
+
+이 PR 은 **사용자에게 보이는 변화가 0**이다. 의도된 분할이지만 PR ②③ 이 오지 않으면 스키마만 남는다.
+FR-BD-04 의 D6·D7 이 정본에서 추적하므로(진척 열 `☐`) **조용히 사라지지 않는다.** 수용.
+
+### 렌즈별 판정
+
+| 렌즈 | 결과 | BLOCKER |
+|---|---|---|
+| plan-eng-review | ⚠️ 주의 — E1·E2 반영 · E3 미결(게이트 1) | **0** |
+| plan-ceo-review | ✅ 통과 — C1 수용 | **0** |
+
+**BLOCKER 0건.** E3 는 선택이며 어느 쪽이든 이 PR 이 진행된다.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | ✅ CLEAR | 1 issue (C1 수용) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | skipped | 중첩 codex 토큰 비용으로 미실행 — 생략 사실을 남긴다 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ⚠️ CONCERNS | 3 issues, 0 critical gaps (E3 미결) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | not run | 프론트 0파일 — 라우팅 대상 아님 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | 라우팅 대상 아님 |
+
+- **VERDICT:** CEO CLEARED · ENG CONCERNS (E3 결정 대기) — 게이트 1 에서 E3 을 정하면 구현 착수 가능. BLOCKER 0.
+
+**UNRESOLVED DECISIONS:**
+- E3 — `init_codegen.sql` ↔ 마이그레이션 차집합 판별식을 이 PR 에 넣을 것인가
