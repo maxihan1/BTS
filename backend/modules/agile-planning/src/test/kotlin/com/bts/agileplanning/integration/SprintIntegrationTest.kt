@@ -348,6 +348,25 @@ class SprintIntegrationTest {
             .hasSize(1)
     }
 
+    /**
+     * 스프린트 응답이 **소속 보드**를 노출한다 (FR-BD-04 PR ⑤-3).
+     *
+     * `Sprint.boardId` 는 도메인에 있는데 어느 응답 DTO 에도 없었다. 그래서 클라이언트가 스프린트의
+     * 소속 보드를 알 방법이 없고, E2E 는 **요청 바디**를 관측점으로 삼을 수밖에 없었다
+     * (`e2e/scrum-board.spec.ts` S5 주석이 그 사유를 적는다) — 응답을 못 보므로 서버가 boardId 를
+     * 흘려도 화면은 멀쩡하다. 관측점을 응답으로 옮기는 것이 이 필드의 목적이다.
+     */
+    @Test
+    fun `S4b start 응답은 스프린트의 소속 보드를 노출한다`() {
+        val projectKey = uniqueProjectKey()
+        val sprintId = createSprintAndGetId(projectKey)
+        val boardId = sprintRepository.findById(UUID.fromString(sprintId))?.boardId
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.boardId").value(boardId.toString()))
+    }
+
     // ── S5. complete (ACTIVE → COMPLETED 200) ────────────────────────────────
 
     @Test
