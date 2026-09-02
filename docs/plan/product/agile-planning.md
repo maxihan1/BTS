@@ -161,6 +161,27 @@ Jira Cloud 는 보드를 만들 때 **스크럼/칸반을 먼저 고르고**, �
 - [x] D6. 프론트 UI — @dnd-kit/core 백로그 ↔ 스프린트 보드(드래그 5시나리오 + 라이프사이클 + 권한 게이팅) (책임. frontend-engineer) (PR #183)
 - [x] D7. E2E (책임. qa-engineer) (PR #183)
 
+> **D6 회수 (2026-09-02 · PR #418 `sprint-manage-ui`).** D6 이 `[x]` 였으나 **D4 가 낸 스프린트 API
+> 두 개에 소비처가 없었다.** 없던 것을 그대로 적는다.
+> ① `DELETE /api/v1/sprints/{id}` — `apps/web/src/api/backlog.ts` 에 `deleteSprint` 자체가 없었다.
+> 만든 스프린트를 화면에서 지울 방법이 0 이었다.
+> ② `PATCH /api/v1/sprints/{id}` — `updateSprint` 는 있었으나 **소비처가 `StartSprintDialog` 하나**였다.
+> 즉 이름·목표·기간은 「스프린트를 시작하는 순간」에만 고칠 수 있었고, PLANNED 로 둔 채 또는 이미 ACTIVE 인
+> 스프린트를 고치는 경로는 없었다.
+> 온 것도 그 둘이다 — `SprintForm`(생성·편집 공용 폼) · `EditSprintDialog` · `SprintActionsMenu`
+> (`⋯` → 편집 · 삭제, 권한 없으면 항목 부재) · `deleteSprint` / `useDeleteSprint`.
+> 「D6 전량 완료」처럼 **집합 약어로 덮지 않는다** — 없던 것은 편집 · 삭제 **두 조작**이고 회수한 것도 그 둘이다.
+> 드래그 · 할당/해제 · start · complete 는 PR #183 이 한 그대로다.
+
+> **T5 이탈 (2026-09-02 · PR #418).** 위 회수 작업의 Task 5 가 자기 허용 파일 밖인
+> `apps/web/src/components/backlog/BacklogBoard.tsx` 를 **+13줄** 고쳤다. 조용히 넘기지 않고 여기 남긴다.
+> **사유** — 삭제/편집이 무효화할 `boardId`(`?board=` 스코프)의 출처가 T5 의 허용 5파일 안에 없었다.
+> 대안 둘은 실측으로 배제했다. ① `SprintColumn` 이 `useSearch` 를 직접 읽으면
+> `BacklogBoard.test.tsx:23` 의 라우터 모킹이 그 파일을 통째로 깨뜨린다. ② 선택 prop + `undefined` 기본값은
+> 409 복구를 **조용히** 깨뜨린다(기본값이 스코프를 지워 무효화가 빗나가도 초록이다).
+> **근본 원인은 계획 쪽이다** — T5 의 `files` 메타가 #424(백로그 보드 스코프) 머지 **전에** 쓰여
+> `boardId` 의 출처를 알 수 없었다. 다음 plan 에서 `files` 를 확정할 때 선행 PR 머지 시점을 함께 잰다.
+
 > **Deviation(PR #183 — FR-BL-01/02 D6/D7 통합)**. ① 백로그 조회 API = **agile-planning 소유** `GET /api/v1/projects/{key}/backlog`(백로그+스프린트별, rank 정렬, truncated). `BoardIssueLookupPort.BoardIssueView.rank` 확장(issue-tracking adapter SELECT, default null fail-safe). ② 드래그 변경은 기존 API 재사용(rank PATCH #179, sprint 할당/해제 #182) — 신규 백엔드는 조회만, 마이그레이션 0. ③ @dnd-kit/core만(sortable 미추가)·가상스크롤 미도입(board truncated 패턴)·invalidate-only. ④ 권한 게이팅 정밀화 — 이슈 UPDATE 권한을 MyProjectPermission 요약에 노출(identity-access), 스프린트=CREATE/이슈 재정렬·할당=UPDATE 분리. ⑤ 드래그 재정렬 결선 — 카드 droppable+cardFirstCollision로 dropIndex 산출(코드리뷰가 가짜그린 적발→수정). ⑥ 스프린트↔스프린트(S4) E2E는 충돌 핸들러 미구현으로 의도적 SKIP. ADR `2026-06-24-fr-bl-d6-d7-backlog-query-port-rank.md`.
 
 > **Deviation(PR #182)**. ① 관계 모델 = **`sprint_issues(sprint_id, issue_key)` 조인**(agile-planning 단독, issues 무변경) — product 원안 `issues.sprint_id`(모델 A)는 BC 격리·회귀위험(FR-BL-01 rank 254 파급류)으로 기각(ADR 2026-06-24). ② 식별자 **issue_key**(board가 issueKey 중심, 백로그 계산 일관). ③ 권한 **할당/해제=UPDATE**·CRUD/전환=CREATE·조회=BROWSE. ④ 할당 가시성 **단건 포트 isVisibleIssue**(issue-tracking adapter read 1메서드, truncated 오거부/probe 차단). ⑤ 동시 ACTIVE **다중 허용** — 🛑 **2026-09-01 무효화됨**(§2.4 FR-BD-04 · [ADR](../../adr/2026-09-01-board-type-and-active-sprint.md) D5). 보드당 1개가 기본이다. 기존 다중 활성 행은 유지하고 가드는 `start` 시점에만 건다. ⑥ update PATCH **partial(JsonNullable 3-state)**. ⑦ 백로그 조회 API·D6/D7(프론트·E2E)은 **FR-BL-01 D6/D7과 통합 이연**(rank 정렬이 포트 확장 유발).

@@ -281,6 +281,10 @@ describe('TODOS.md — 비개발자 계약', () => {
       // 워크플로우 **BC** 다. 접두 `워크플로우` 는 판별식·스킬 체인을 뜻하므로 그쪽과 다르고,
       // 사용자에게는 「전환 규칙이 되느냐」로 나타나므로 `기능 동작` 이다(identity-access 와 같은 논리).
       'project-workflow': CATEGORIES.feature.name,
+      // 2026-09-02 추가 — agile-planning 영역 부채가 처음 등재됐다(장부 156·157, PR #418 잔여).
+      // 애자일 계획 **BC** 다. 사용자에게는 「스프린트·보드가 되느냐」로 나타나므로 `기능 동작` 이다
+      // (identity-access · project-workflow 와 같은 논리).
+      'agile-planning': CATEGORIES.feature.name,
       'search-export-import': CATEGORIES.feature.name,
       '도구': CATEGORIES.guard.name,
       '워크플로우': CATEGORIES.guard.name,
