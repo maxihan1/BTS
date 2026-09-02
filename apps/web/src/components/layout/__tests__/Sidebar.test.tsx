@@ -10,6 +10,7 @@ import type { WhoamiResponse } from '@/api/schemas'
 import { favoriteLabels } from '@/i18n/favorite-labels'
 import { navLabels } from '@/i18n/nav-labels'
 import { projectListHandlers } from '@/mocks/project-list-handlers'
+import { ADMIN_HUB_LINKS } from '@/lib/admin-hub-links'
 import { Sidebar } from '../Sidebar'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,8 +36,7 @@ vi.mock('@tanstack/react-router', () => ({
     children: React.ReactNode
     className?: string
   }) => {
-    const query =
-      search === undefined ? '' : `?${new URLSearchParams(search).toString()}`
+    const query = search === undefined ? '' : `?${new URLSearchParams(search).toString()}`
     return (
       <a href={`${to}${query}`} className={className}>
         {children}
@@ -64,21 +64,14 @@ const BASE_USER: WhoamiResponse = {
 }
 
 /**
- * 관리 링크 계약 — [라벨, href].
+ * 사이드바에 **없어야 할** 관리 링크 라벨 — 정본에서 파생한다(J9).
  *
- * ★J9 이후 이 목록은 **사이드바에 없어야 할 것**의 목록이다. 정본은
- * `routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 이고, 여기 사본을 두는 이유는
- * 「사이드바에 하나라도 되살아나면 red」를 재기 위함이다 — 진입점이 둘로 갈리는 것을 막는다.
+ * 🛑 손으로 나열하지 마라. 사본을 두면 「9번째 링크를 허브에 넣으면서 사이드바에도
+ *    되살리는」 조합을 아무도 못 본다 — 사본은 그 이름을 모르기 때문이다. 실제로 J9 이전
+ *    두 목록은 한 칸 어긋나 있었다(`/admin/users/new` 가 허브에만). 정본에서 파생하면
+ *    이후 추가되는 모든 허브 링크가 자동으로 이 부재 단언의 대상이 된다.
  */
-const ADMIN_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
-  ['워크플로우 관리', '/admin/workflows'],
-  ['워크플로우 스킴', '/admin/workflow-schemes'],
-  ['감사 로그', '/admin/audit-logs'],
-  ['전역 권한', '/admin/global-permissions'],
-  ['알림 정책', '/admin/notification-policies'],
-  ['Webhook', '/admin/webhooks'],
-  ['Slack 연결', '/admin/slack'],
-]
+const ADMIN_LINK_LABELS: readonly string[] = ADMIN_HUB_LINKS.map((link) => link.label)
 
 function makeWrapper() {
   const qc = new QueryClient({
@@ -100,9 +93,7 @@ beforeEach(() => {
   // 누출되지 않도록 매 테스트 펼침(기본값)으로 리셋한다(테스트 간 격리)
   useSidebarCollapsed.setState({ collapsed: false })
   // FavoritesMenu(useFavorites)가 조회하는 엔드포인트 — 빈 목록으로 응답
-  server.use(
-    http.get('/api/v1/favorites', () => HttpResponse.json({ data: { items: [] } })),
-  )
+  server.use(http.get('/api/v1/favorites', () => HttpResponse.json({ data: { items: [] } })))
   // ProjectTree(useProjects)가 조회하는 엔드포인트 — mocks/handlers.ts 전역 등록에 더해 명시
   // 등록한다(use-projects.test.tsx·ProjectTree.test.tsx와 동일 관례)
   server.use(...projectListHandlers)
@@ -150,7 +141,7 @@ describe('Sidebar', () => {
     renderSidebar()
 
     expect(screen.queryByRole('navigation', { name: navLabels.adminNav })).not.toBeInTheDocument()
-    for (const [label] of ADMIN_LINK_CONTRACT) {
+    for (const label of ADMIN_LINK_LABELS) {
       expect(
         screen.queryByRole('link', { name: label }),
         `사이드바에 관리 링크 「${label}」 가 남아 있다 — 진입점이 둘로 갈렸다`,
@@ -162,9 +153,16 @@ describe('Sidebar', () => {
     renderSidebar()
 
     expect(screen.queryByRole('navigation', { name: navLabels.adminNav })).not.toBeInTheDocument()
-    for (const [label] of ADMIN_LINK_CONTRACT) {
+    for (const label of ADMIN_LINK_LABELS) {
       expect(screen.queryByRole('link', { name: label })).not.toBeInTheDocument()
     }
+  })
+
+  it('관리 링크 라벨 파생이 비어 있지 않다 (0건 순회로 통과하는 것을 막는다)', () => {
+    // ★`ADMIN_HUB_LINKS` 가 비거나 import 가 깨지면 위 두 루프가 **한 번도 돌지 않고** 통과한다.
+    //   사본을 없앤 대가로 생긴 새 구멍이라 여기서 막는다.
+    expect(ADMIN_LINK_LABELS.length).toBeGreaterThan(5)
+    expect(ADMIN_LINK_LABELS).toContain('감사 로그')
   })
 
   it('사이드바에 <h1>이 없다', () => {
@@ -198,7 +196,9 @@ describe('Sidebar', () => {
 
     const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
     expect(
-      within(mainNav).getByRole('link', { name: navLabels.issues }).querySelector('svg[aria-hidden="true"]'),
+      within(mainNav)
+        .getByRole('link', { name: navLabels.issues })
+        .querySelector('svg[aria-hidden="true"]'),
     ).not.toBeNull()
     expect(
       within(mainNav)
@@ -206,7 +206,9 @@ describe('Sidebar', () => {
         .querySelector('svg[aria-hidden="true"]'),
     ).not.toBeNull()
     expect(
-      within(mainNav).getByRole('link', { name: navLabels.calendar }).querySelector('svg[aria-hidden="true"]'),
+      within(mainNav)
+        .getByRole('link', { name: navLabels.calendar })
+        .querySelector('svg[aria-hidden="true"]'),
     ).not.toBeNull()
   })
 
@@ -299,9 +301,7 @@ describe('Sidebar', () => {
       // e2e `getByRole('navigation')` 계약이 동시에 깨진다.
       renderSidebar()
 
-      const navNames = screen
-        .getAllByRole('navigation')
-        .map((el) => el.getAttribute('aria-label'))
+      const navNames = screen.getAllByRole('navigation').map((el) => el.getAttribute('aria-label'))
 
       expect(navNames).toEqual([navLabels.projectNav, navLabels.mainNav])
     })
