@@ -4,6 +4,13 @@ import type { EditableDraft } from '@/lib/workflow-draft'
 import { migrationTargets, removedStatusKeys, toMappingInputs } from '@/lib/workflow-draft'
 
 /**
+ * 마법사가 화면에서 고른 선택 — 사라지는 상태 키(removedKey) → 옮겨 갈 상태 키(targetKey).
+ *
+ * 아직 고르지 않은 사라지는 상태는 이 객체에 키가 없다(값을 `undefined` 로 넣지 않는다).
+ */
+export type MigrationSelection = Record<string, string>
+
+/**
  * 이관을 시작할 수 있는지 판정한다 — 빠지는 상태마다 도착지를 **각각** 골라야 한다(Jira J7).
  *
  * 사라지는 상태가 하나라도 선택되지 않았거나, 고른 도착지가 [migrationTargets] 후보 밖이면
@@ -11,7 +18,7 @@ import { migrationTargets, removedStatusKeys, toMappingInputs } from '@/lib/work
  * 않은) 상태를 골라 보내면 서버가 400 을 준다.
  */
 export function canStartMigration(
-  selection: Record<string, string>,
+  selection: MigrationSelection,
   draft: EditableDraft,
   published: DraftDefinition,
 ): boolean {
@@ -25,6 +32,6 @@ export function canStartMigration(
 }
 
 /** 선택 상태를 서버 이관 요청 형태로 옮긴다 — [toMappingInputs] 위임. */
-export function toMigrationRequest(selection: Record<string, string>): StatusMappingInput[] {
+export function toMigrationRequest(selection: MigrationSelection): StatusMappingInput[] {
   return toMappingInputs(selection)
 }
