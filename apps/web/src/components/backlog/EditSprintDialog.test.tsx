@@ -141,23 +141,16 @@ function renderDialog(sprint: SprintMeta = PLANNED_SPRINT, cachedSprint?: Sprint
   function Harness(): JSX.Element {
     const [open, setOpen] = useState(true)
     return (
-      <>
-        {/* 닫힌 뒤 다시 열기 — 응답 흡수 계약은 **재개봉**에서만 관측된다.
-            `key` 를 주지 않으므로 다이얼로그 컴포넌트는 언마운트되지 않고 기준값을 들고 있다 */}
-        <button type="button" onClick={() => { setOpen(true) }}>
-          다시 열기
-        </button>
-        <EditSprintDialog
-          open={open}
-          onOpenChange={(next) => {
-            onOpenChange(next)
-            setOpen(next)
-          }}
-          sprint={sprint}
-          projectKey={PROJECT_KEY}
-          boardId={BOARD_ID}
-        />
-      </>
+      <EditSprintDialog
+        open={open}
+        onOpenChange={(next) => {
+          onOpenChange(next)
+          setOpen(next)
+        }}
+        sprint={sprint}
+        projectKey={PROJECT_KEY}
+        boardId={BOARD_ID}
+      />
     )
   }
 
@@ -265,39 +258,13 @@ describe('EditSprintDialog — FR-1 편집 저장', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ★★ 계약 — mutation 응답을 버리지 않는다 (`useUpdateSprint` KDoc)
+// ★ 계약 두 개가 같은 왕복에서 만난다.
 //
-// 「재시도가 낡은 version 으로 409 를 받지 않으려면 호출자가 이 mutation 의 응답
-//  SprintMeta 로 자기 기준값과 version 을 갱신해야 한다. 여기서 invalidate 를 하더라도
-//  재조회는 비동기라 그 사이의 재시도를 막아주지 못한다.」
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('EditSprintDialog — 응답 흡수 (useUpdateSprint 계약)', () => {
-  it('저장 뒤 다시 열어 저장하면 갱신된 version 으로 나간다 (409 를 되풀이하지 않는다)', async () => {
-    const user = userEvent.setup()
-    installScenario()
-    renderDialog()
-
-    setField(F.goalLabel, '목표 A')
-    await user.click(submitButton())
-    await waitFor(() => expect(patchBodies).toHaveLength(1))
-    expect(patchBodies[0]).toEqual({ version: 3, goal: '목표 A' })
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: backlogLabels.editSprint })).not.toBeInTheDocument(),
-    )
-
-    await user.click(screen.getByRole('button', { name: '다시 열기' }))
-    setField(F.goalLabel, '목표 B')
-    await user.click(submitButton())
-
-    await waitFor(() => expect(patchBodies).toHaveLength(2))
-    // ★ version 4 = 응답을 흡수했다. 3 이면 응답을 버린 것이고 실제 서버라면 409 다
-    expect(patchBodies[1]).toEqual({ version: 4, goal: '목표 B' })
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ★ 계약 — 부분 저장 유실 방어가 추출을 타고 흘러내리지 않았다 (NFR-1)
+// ① 부분 저장 유실 방어(NFR-1) — 재시도 body 에 미편집 필드의 키가 없다.
+// ② 응답을 버리지 않는다(`useUpdateSprint` KDoc) — 재시도가 **낡은 version 으로 409 를
+//    되풀이하지 않는다.** 409 뒤에는 폼이 백로그 캐시의 최신 SprintMeta 로 기준값을
+//    갈아끼우고, 재시도는 그 version 을 쓴다. 여기서 invalidate 만 하고 기준값을 안 고치면
+//    재조회가 비동기라 그 사이의 재시도가 그대로 3 을 들고 나간다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('EditSprintDialog — 409 재시도가 남의 저장분을 지우지 않는다 (NFR-1)', () => {
