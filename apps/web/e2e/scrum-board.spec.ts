@@ -7,7 +7,8 @@
 //   S4. 그 보드로 스코프 — 스위처로 고르면 `?board=` 가 붙고, 칸반 보드 소속 스프린트는 안 보인다
 //   S5. 스프린트 생성 — 요청 바디에 `boardId` 가 실린다 (부채 E-6 의 관측점)
 //   S6. 그 스프린트에 이슈를 넣고 **시작**한다
-//   S7. **시작 후** — 보드 헤더에 스프린트 이름, 보드에 **그 스프린트의 이슈만**
+//   S7. **시작 후** — 그 보드 상세가 **다시 요청되고**, 보드 헤더에 스프린트 이름,
+//       보드에 **그 스프린트의 이슈만**
 //
 // 설계 결정.
 //   - ★**「시작 전」과 「시작 후」를 한 test 안에서 둘 다 잰다.** 전자가 없으면 「원래 그렇게
@@ -23,7 +24,7 @@
 //     시작 전/후 화면이 **한 픽셀도 다르지 않고**, 그것이 이 spec 이 잡는 결함이다
 //     (`msw-derived-behavior-shared-store-e2e`).
 import { test, expect } from '@playwright/test'
-import type { Locator, Page } from '@playwright/test'
+import type { Locator, Page, Request } from '@playwright/test'
 import { loginAsAlice } from './fixtures/auth-fixtures'
 import {
   backlogSprintColumn,
@@ -129,6 +130,22 @@ function currentBoardParam(page: Page): string | null {
   return new URL(page.url()).searchParams.get('board')
 }
 
+/**
+ * 그 보드의 **상세 재조회** GET 인지 본다 — S7 재요청 관측의 판정식.
+ *
+ * `pathname` 을 통째로 맞춘다. `includes('/api/v1/boards/')` 로 느슨하게 잡으면 **다른 보드**의
+ * 조회(S7 은 `?board=` 없이 보드 화면에 들어가므로 기본 보드를 먼저 부른다)와 하위 자원
+ * (`/api/v1/boards/{id}/cards/...`)까지 걸려, 「그 보드가 다시 조회됐다」가 아닌 것이 가드를
+ * 만족시킨다. 카드 필터 query string 은 붙었다 떨어졌다 하므로 경로만 본다.
+ *
+ * @param req 관측된 요청
+ * @param boardId 재조회를 기대하는 보드 UUID
+ * @returns 그 보드 상세 GET 이면 true
+ */
+function isBoardDetailGet(req: Request, boardId: string): boolean {
+  return req.method() === 'GET' && new URL(req.url()).pathname === `/api/v1/boards/${boardId}`
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 시나리오
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,6 +180,10 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await expect.poll(() => currentBoardParam(page)).not.toBe(KANBAN_BOARD_ID)
     const scrumBoardId = currentBoardParam(page)
     expect(scrumBoardId).not.toBeNull()
+    // ★타입을 좁힌다 — `expect(...).not.toBeNull()` 은 런타임 단언일 뿐 TS 를 좁히지 않는다.
+    //   `!` 는 절대 규칙 금지고 `?? ''` 폴백을 쓰면 S7 의 재요청 판정식이 보드 스코프를 잃는다.
+    //   위 단언이 이미 통과했으므로 여기서 던지는 일은 없다.
+    if (scrumBoardId === null) throw new Error('S1: 보드 생성 후 URL 에 ?board= 가 없다')
 
     // ── S2. **시작 전** — 빈 상태이고 헤더·`⋯` 메뉴는 남아 있다 (E1 · FR-1) ──
     await expect(page.getByText(SCRUM_EMPTY.title, { exact: true })).toBeVisible()
@@ -219,12 +240,27 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await expect(issueDialog).toBeHidden()
     await expect(sprintColumn.getByText(SPRINT_ISSUE_SUMMARY)).toBeVisible()
 
+    // ★S7 의 재요청 관측을 **시작 전에** 무장한다.
+    //
+    //   시작은 `use-backlog.ts` 의 `invalidateAfterSprintTransition` 에서 `boardKeys.all` 을
+    //   무효화한다. 그 무효화를 「화면이 바뀌었다」로만 재면 가드가 **벽시계에 결합**된다 —
+    //   무효화를 지워도 S2 의 보드 상세 조회와 S7 렌더 사이가 `useBoard` 의 `staleTime` 30초를
+    //   넘기는 순간 React Query 가 스스로 refetch 해 같은 화면이 나온다. 그 사이에는 S3~S6 의
+    //   UI 조작이 십수 회 들어가므로 스위트가 느려질수록 가드가 조용히 동어반복으로 퇴화한다.
+    //   그래서 **재요청 자체**를 별도 축으로 관측한다 (렌더 단언은 그대로 둔다 — 다른 축이다).
+    const scrumBoardRefetch = page.waitForRequest((req) => isBoardDetailGet(req, scrumBoardId))
+
     await startSprintFromBacklog(page, SPRINT_NAME)
 
     // ── S7. **시작 후** — 보드가 그 스프린트를 보여준다 (J5 · J18) ───────────
     await viewNavLink(page, backlogLabels.page.boardLink).click()
     await switchToBoard(page, SCRUM_BOARD_NAME)
     await expect(boardSwitcherTrigger(page)).toContainText(SCRUM_BOARD_NAME)
+
+    // Then. 무효화가 **실제로 재요청을 냈다**. 무효화가 빠지면 이 보드 상세는 S2 에서 받은
+    // 캐시가 아직 fresh 라 요청이 아예 안 나가고 여기서 타임아웃으로 죽는다 — 아래 렌더
+    // 단언들이 벽시계 덕에 우연히 통과하는 날에도 이 줄은 red 다.
+    await scrumBoardRefetch
 
     // Then. 헤더에 활성 스프린트 이름 — S2 에서 0개였던 그 자리다 (FR-2)
     await expect(page.getByTestId('active-sprint-summary')).toContainText(SPRINT_NAME)
