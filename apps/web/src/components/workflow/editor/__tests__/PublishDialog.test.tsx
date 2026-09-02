@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 import { PublishDialog } from '../PublishDialog'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import type { PublishPreview } from '@/api/workflows-draft.types'
+import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
+import type { EditableDraft } from '@/lib/workflow-draft'
 
 const NAMES = { done: '완료', open: '열림' }
 
@@ -93,5 +95,64 @@ describe('발행 다이얼로그', () => {
     renderDialog({ publishing: true })
 
     expect(screen.getByRole('button', { name: labels.publish.confirm })).toBeDisabled()
+  })
+})
+
+/**
+ * 폴링 실패 분기 전용 목(mock).
+ *
+ * `published` 를 채워야 마법사 본체 경로로 들어간다 — null 이면 스켈레톤/로드실패에서 끝난다.
+ */
+function migrationMock(over: Partial<UseMigrationWizardResult> = {}): UseMigrationWizardResult {
+  return {
+    published: { states: [], transitions: [] } as unknown as UseMigrationWizardResult['published'],
+    publishedFailed: false,
+    selection: {},
+    onSelectionChange: vi.fn(),
+    onStartMigration: vi.fn(),
+    starting: false,
+    startError: null,
+    operation: null,
+    pollFailed: false,
+    pollRetryable: false,
+    retryPoll: vi.fn(),
+    discardDisabled: false,
+    ...over,
+  }
+}
+
+const MIGRATION_DRAFT = { states: [], transitions: [] } as unknown as EditableDraft
+
+describe('발행 다이얼로그 — 폴링 실패 재시도 (T6 concern 2)', () => {
+  it('5xx·네트워크로 멈췄으면 재시도 문구와 「다시 시도」 버튼을 준다', () => {
+    renderDialog({
+      preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+      draft: MIGRATION_DRAFT,
+      migration: migrationMock({ pollFailed: true, pollRetryable: true }),
+    })
+
+    expect(screen.getByText(labels.migration.pollFailedRetryable)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: labels.migration.retryPoll })).toBeInTheDocument()
+  })
+
+  it('4xx 로 멈췄으면 재시도 버튼을 주지 않는다 — 다시 불러도 같은 답이라 거짓 희망이 된다', () => {
+    renderDialog({
+      preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+      draft: MIGRATION_DRAFT,
+      migration: migrationMock({ pollFailed: true, pollRetryable: false }),
+    })
+
+    expect(screen.queryByRole('button', { name: labels.migration.retryPoll })).not.toBeInTheDocument()
+    expect(screen.queryByText(labels.migration.pollFailedRetryable)).not.toBeInTheDocument()
+  })
+
+  it('폴링이 멀쩡하면 재시도 자리 자체가 없다', () => {
+    renderDialog({
+      preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+      draft: MIGRATION_DRAFT,
+      migration: migrationMock(),
+    })
+
+    expect(screen.queryByRole('button', { name: labels.migration.retryPoll })).not.toBeInTheDocument()
   })
 })

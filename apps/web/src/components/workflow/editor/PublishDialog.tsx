@@ -71,9 +71,23 @@ function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSec
   return (
     <div className="flex flex-col gap-2">
       {migration.pollFailed ? (
-        <p role="alert" className="text-destructive text-sm">
-          {DEFAULT_WORKFLOW_ADMIN_ERROR_MESSAGE}
-        </p>
+        <div role="alert" className="flex flex-col items-start gap-2">
+          <p className="text-destructive text-sm">
+            {migration.pollRetryable
+              ? labels.migration.pollFailedRetryable
+              : DEFAULT_WORKFLOW_ADMIN_ERROR_MESSAGE}
+          </p>
+          {/*
+            ★재시도는 `pollRetryable` 일 때만 준다. 4xx(403·404)는 재시도해도 서버가 같은 답을
+            주므로, 버튼을 띄우면 「기다리면 될 것」이라는 거짓말이 된다. 5xx·네트워크만 재시도가
+            의미 있는 일시 장애다 — 판정은 `useMigrationWizard` 가 한다.
+          */}
+          {migration.pollRetryable ? (
+            <Button type="button" variant="outline" size="sm" onClick={migration.retryPoll}>
+              {labels.migration.retryPoll}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       {migration.startError !== null ? (
         <p role="alert" className="text-destructive text-sm">
