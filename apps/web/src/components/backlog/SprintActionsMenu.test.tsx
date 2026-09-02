@@ -162,10 +162,15 @@ describe('SprintActionsMenu — M1 권한 게이팅 (FR-5)', () => {
    *
    * `toBeDisabled()` 로 재면 「비활성으로 보이지만 마크업에는 있는」 상태를 통과시키게 되고,
    * 그건 FR-5 가 말하는 동작이 아니다 (보드 PR #416 과 같은 규율).
+   *
+   * ★`queryByRole('menuitem')` **만으로는 판별력이 없다** — 닫힌 메뉴의 항목도 DOM 에 없어
+   *   권한 분기를 통째로 지워도 통과한다(권한 분기를 항상 참으로 바꿔 실측 확인).
+   *   그래서 「아무것도 렌더하지 않는다」를 함께 잰다.
    */
-  it('M1-2: 권한이 없으면 편집·삭제 항목이 DOM 에 없다', () => {
-    renderMenu({ canManage: false })
+  it('M1-2: 권한이 없으면 아무것도 렌더하지 않는다 (편집·삭제 항목 부재)', () => {
+    const { container } = renderMenu({ canManage: false })
 
+    expect(container).toBeEmptyDOMElement()
     expect(screen.queryByRole('menuitem', { name: backlogLabels.editSprint })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: backlogLabels.deleteSprint })).toBeNull()
   })
