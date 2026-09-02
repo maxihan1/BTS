@@ -15,6 +15,28 @@
 **FR.** `FR-BD-04` D4·D5 잔여. 신규 FR 없음 → 총수 **144 불변**. **마이그레이션 0 · 신규 의존성 0.**
 **BC.** `agile-planning` 단독(+ 그 응답을 읽는 `apps/web` 스키마 동기화).
 
+## Jira 대조
+
+계약 §1-0 **재사용 승계.** 이 PR 은 새 화면 조작을 만들지 않는다 — 근거는
+[ADR 2026-09-01](../adr/2026-09-01-board-type-and-active-sprint.md) 이 실물 조회로 확정한 표에서
+**출처·조회일을 그대로 승계**한다(조회일 2026-09-01 · 전 행 Jira Cloud company-managed).
+**추가 조회 0건.**
+
+| # | 원문 인용 | 출처 | 이 PR 의 어디 |
+|---|---|---|---|
+| **J6** | *"**Active sprints are only available on Scrum boards.**"* | [use-active-sprints](https://support.atlassian.com/jira-software-cloud/docs/use-active-sprints/) | ⑤-1 — 스프린트는 스크럼 보드에만 붙는다 |
+| **J11** | *"If you want to have more than one active sprint at a time, you'll need to **enable parallel sprints**"* → 기본 활성 **1개** | [plan-a-sprint](https://support.atlassian.com/jira-software-cloud/docs/plan-a-sprint/) | ⑤-2 — 그 1개를 동시 요청에서도 지킨다 |
+
+**⑤-3(응답 계약)은 Jira 대응 없음 — ADS 준용 대상도 아니다.** 화면이 아니라 **서버 응답 DTO 필드**
+이고, Jira 는 자기 REST 응답 형태를 사용자 문서로 약속하지 않는다. 준용할 패턴이 없으므로
+근거는 **BTS 자체 일관성**이다 — 같은 개념(보드 종류·소속 보드)을 노출하는 형제 DTO 가 이미 있고
+그중 일부만 빠져 있었다.
+
+**조회했으나 원문을 확보하지 못한 것.** 칸반 보드에 스프린트를 **만들려고 시도**했을 때 Jira 가
+무엇을 돌려주는지(거부인지, 애초에 UI 가 없어 도달 불가인지). `use-active-sprints` 는 「활성
+스프린트는 스크럼 전용」까지만 적고 거부 동작을 다루지 않았다. → BTS 는 **404** 로 두되
+그 선택이 원문 근거가 아니라 형제 경로(`resolveBoardScope` 편차 E8)와의 일관성임을 적는다.
+
 ## 무엇을 고치나
 
 ### ⑤-1. 칸반 보드에 스프린트가 매달린다
