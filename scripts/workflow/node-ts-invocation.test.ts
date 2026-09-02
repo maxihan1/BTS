@@ -34,6 +34,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -285,18 +286,18 @@ interface Invocation {
  * 훑기를 공유 헬퍼로 뽑지 않은 것은 의도다(2026-08-14 Maxi 결정) — 형제 판별식이 전부
  * 자기 훑기를 갖고 있고, **강제 장치끼리 결합하면 공유 모듈 버그 1개가 전장을 눈멀게 한다.**
  */
-function scanTargets(dir: string = REPO_ROOT, acc: string[] = []): string[] {
+function scanTargets(dir: string = REPO_ROOT, acc: string[] = [], root: string = REPO_ROOT): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (EXCLUDE_DIRS.has(entry.name)) continue
     const full = path.join(dir, entry.name)
     // worktree 는 node_modules 등을 심볼릭으로 갖는다. 따라가면 main 트리를 두 번 세거나 순환한다.
     if (entry.isSymbolicLink()) continue
     if (entry.isDirectory()) {
-      scanTargets(full, acc)
+      scanTargets(full, acc, root)
       continue
     }
     if (!SCAN_EXTENSIONS.has(path.extname(entry.name))) continue
-    const rel = path.relative(REPO_ROOT, full)
+    const rel = path.relative(root, full)
     if (EXCLUDE_PREFIXES.some((p) => rel.startsWith(p))) continue
     acc.push(rel)
   }
@@ -582,6 +583,54 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
       `이미 봉인된 호출문(대조군)이 0건이다 — FLAG 문자열이 바뀌었거나 세그먼트가 짧게 끊긴다.\n` +
         `대조군이 0 이면 '플래그 있음' 판정이 한 번도 참이 된 적 없다는 뜻이다.`,
     )
+  })
+
+  /**
+   * ★링크된 worktree 안은 훑지 않는다 — 위치 규약과 무관하게.
+   *
+   * 2026-09-02 실측. main 체크아웃에서 `git push` 가 막혔다. 위반 78건이 전부
+   * `.claude/worktrees/<name>/docs/plans/` 안의 **옛 기록**이었고 main 트리에는 0건이었다.
+   * [EXCLUDE_DIRS] 는 `.worktrees` 라는 **이름**만 알고, `EnterWorktree` 가 쓰는
+   * `.claude/worktrees/` 는 모른다. [EXCLUDE_PREFIXES] 의 `docs/plans/` 면제도 worktree
+   * 경로가 앞에 붙어 안 걸린다. 규약이 둘인데 목록이 하나라 생긴
+   * two-lists-never-check-each-other 다.
+   *
+   * 그래서 **이름을 세지 않는다.** 링크된 worktree 는 `.git` 을 디렉터리가 아니라
+   * **파일**로 갖는다 — 그 성질로 거르면 규약이 몇 개가 되든 함께 걷힌다.
+   *
+   * 비-공허 짝 — 같은 트리의 일반 파일이 결과에 실제로 담기는지 함께 센다. 훑기가 통째로
+   * 0건이면 「worktree 가 없다」도 공허하게 참이 된다.
+   */
+  test('★링크된 worktree 안은 훑지 않는다 (이름이 아니라 .git 파일로 판별)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-scan-'))
+    try {
+      // 규약 둘을 모두 재현한다 — 이름을 세는 처방이면 둘 중 하나는 반드시 샌다.
+      for (const wt of ['.worktrees/old-style', '.claude/worktrees/new-style']) {
+        fs.mkdirSync(path.join(tmp, wt, 'docs/plans'), { recursive: true })
+        // worktree 의 서명 — `.git` 이 파일이다.
+        fs.writeFileSync(path.join(tmp, wt, '.git'), 'gitdir: /somewhere/.git/worktrees/x\n')
+        fs.writeFileSync(path.join(tmp, wt, 'docs/plans/old-record.md'), 'node --test scripts/a.test.ts\n')
+      }
+      // 대조군 — 일반 파일. 이것이 안 담기면 위 단언이 공허하다.
+      fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true })
+      fs.writeFileSync(path.join(tmp, 'scripts/live.md'), 'node --test scripts/b.test.ts\n')
+
+      const scanned = scanTargets(tmp, [], tmp)
+
+      assert.ok(
+        scanned.includes(path.join('scripts', 'live.md')),
+        `대조군을 못 담았다 — 훑기가 고장났다. scanned=${JSON.stringify(scanned)}`,
+      )
+      const leaked = scanned.filter((f) => f.includes('worktrees'))
+      assert.deepEqual(
+        leaked,
+        [],
+        `worktree 안의 파일이 훑기에 실렸다. 그 안의 옛 기록이 위반으로 잡혀 main 에서 push 가 막힌다.\n` +
+          leaked.join('\n'),
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
   })
 
   /**
