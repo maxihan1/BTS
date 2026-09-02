@@ -46,13 +46,11 @@ export class DeleteTimeoutError extends Error {
  * @returns 요청이 상한 안에 끝났을 때의 결과
  * @throws DeleteTimeoutError 상한을 넘겨 요청을 끊었을 때
  */
-export async function withDeleteTimeout<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export async function withDeleteTimeout<T>(
+  request: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController()
-  let timedOut = false
-  const timer = setTimeout(() => {
-    timedOut = true
-    controller.abort()
-  }, DELETE_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), DELETE_TIMEOUT_MS)
 
   try {
     return await request(controller.signal)
@@ -60,7 +58,10 @@ export async function withDeleteTimeout<T>(request: (signal: AbortSignal) => Pro
     // 상한이 끊은 요청은 플랫폼의 AbortError 로 실패한다. 그 원문을 그대로 흘리면 소비자가
     // 「서버가 준 실패」와 구별할 수 없으므로 사유를 이 헬퍼의 타입으로 옮긴다.
     // 상한을 넘기지 않았다면 요청 자신의 실패이므로 덮지 않는다.
-    if (timedOut) {
+    //
+    // 판정 근거는 signal 하나다. 이 controller 는 여기서만 만들고 여기서만 abort 하므로
+    // `aborted` 가 곧 「상한이 끊었다」이고, 별도 플래그를 두면 같은 사실의 장부가 둘이 된다.
+    if (controller.signal.aborted) {
       throw new DeleteTimeoutError()
     }
     throw cause

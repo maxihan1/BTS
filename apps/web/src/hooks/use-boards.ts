@@ -218,7 +218,10 @@ export interface DeleteBoardInput {
  * 값도 클래스도 **같은 것**이라 `instanceof BoardDeleteTimeoutError` 는 스프린트 삭제가 던진
  * 실패도 그대로 잡는다. 사본을 두면 두 상한이 갈리므로 별칭만 남긴다.
  */
-export { DELETE_TIMEOUT_MS as DELETE_BOARD_TIMEOUT_MS, DeleteTimeoutError as BoardDeleteTimeoutError } from '@/lib/delete-timeout'
+export {
+  DELETE_TIMEOUT_MS as DELETE_BOARD_TIMEOUT_MS,
+  DeleteTimeoutError as BoardDeleteTimeoutError,
+} from '@/lib/delete-timeout'
 
 /**
  * 보드를 소프트 삭제한다. 보드에 있던 이슈는 남는다.

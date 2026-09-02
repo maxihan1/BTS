@@ -21,26 +21,35 @@ function abortableRequest(signal: AbortSignal): Promise<string> {
 }
 
 /** reject 를 값으로 바꿔 부유 rejection 없이 결과를 단언하게 한다 */
-function settle<T>(promise: Promise<T>): Promise<T | unknown> {
+function settle(promise: Promise<unknown>): Promise<unknown> {
   return promise.catch((error: unknown) => error)
+}
+
+/**
+ * 상한이 걸린 삭제 요청 하나를 띄운다.
+ *
+ * @returns 요청이 받은 signal 목록(비어 있으면 signal 자체가 안 넘어온 것)과 최종 결과
+ */
+function startTimedDelete(): { signals: AbortSignal[]; settled: Promise<unknown> } {
+  const signals: AbortSignal[] = []
+  const settled = settle(
+    withDeleteTimeout((signal) => {
+      signals.push(signal)
+      return abortableRequest(signal)
+    }),
+  )
+  return { signals, settled }
 }
 
 describe('withDeleteTimeout', () => {
   it('T-DT-1: 상한 전에는 요청을 끊지 않는다 — 판정이 「항상 참」이 아님을 여기서 본다', async () => {
     vi.useFakeTimers()
     try {
-      const signals: AbortSignal[] = []
-      const settled = settle(
-        withDeleteTimeout((signal) => {
-          signals.push(signal)
-          return abortableRequest(signal)
-        }),
-      )
+      const { signals } = startTimedDelete()
 
       await vi.advanceTimersByTimeAsync(DELETE_TIMEOUT_MS - 1)
 
       expect(signals[0]?.aborted).toBe(false)
-      void settled
     } finally {
       vi.useRealTimers()
     }
@@ -49,13 +58,7 @@ describe('withDeleteTimeout', () => {
   it('T-DT-2: 상한을 넘기면 요청에 넘긴 signal 이 abort 된다 — 요청이 살아남지 않는다', async () => {
     vi.useFakeTimers()
     try {
-      const signals: AbortSignal[] = []
-      const settled = settle(
-        withDeleteTimeout((signal) => {
-          signals.push(signal)
-          return abortableRequest(signal)
-        }),
-      )
+      const { signals, settled } = startTimedDelete()
 
       await vi.advanceTimersByTimeAsync(DELETE_TIMEOUT_MS + 1)
 
