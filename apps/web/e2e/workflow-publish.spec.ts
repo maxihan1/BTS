@@ -146,8 +146,8 @@ test('D7 정본 — 상태를 빼고 발행하면 마법사가 뜨고 이관 후
   await expect(dialog.getByRole('progressbar', { name: labels.migration.progressLabel })).toBeVisible()
   await expect(dialog.getByText(labels.migration.completed)).toBeVisible()
 
-  // ★ G-1 — 이관 완료가 발행을 자동으로 부르지 않는다. 완료 직후에도 여전히 없다가,
-  // 사용자가 다시 눌러야 나타난다.
+  // ★ G-1 — 이관 완료(COMPLETED · 실패 0)면 발행 버튼은 자동으로 다시 나타난다. 자동으로
+  // 나가지 않는 것은 발행 요청 자체다 — 사용자가 다시 눌러야 발행이 호출된다.
   const publishButton = dialog.getByRole('button', { name: labels.publish.confirm })
   await expect(publishButton).toBeVisible()
 

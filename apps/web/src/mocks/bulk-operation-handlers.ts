@@ -9,8 +9,8 @@ import type { BulkUpdateInput } from '@/api/bulk-operations'
 /** 에러 시나리오 강제 플래그. 'validation' | 'forbidden' | null */
 const LS_KEY_BULK_REJECT = '__bts_e2e_bulk_reject'
 
-/** partial-fail 시나리오 강제 플래그. 'true' | null */
-const LS_KEY_BULK_PARTIAL_FAIL = '__bts_e2e_bulk_partial_fail'
+/** partial-fail 시나리오 강제 플래그. 'true' | null — 테스트에서도 이 상수를 써서 리터럴 표류를 막는다. */
+export const LS_KEY_BULK_PARTIAL_FAIL = '__bts_e2e_bulk_partial_fail'
 
 /**
  * 부분 실패 시나리오가 켜져 있나.

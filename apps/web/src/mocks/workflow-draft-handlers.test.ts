@@ -16,7 +16,7 @@ import { WorkflowPublishMappingRequiredError } from '@/api/workflows-admin.http'
 import { workflowHandlers } from './workflow-handlers'
 import { resetWorkflowAdminStore } from './workflow-admin-fixtures'
 import { workflowDraftHandlers } from './workflow-draft-handlers'
-import { bulkOperationHandlers } from './bulk-operation-handlers'
+import { bulkOperationHandlers, LS_KEY_BULK_PARTIAL_FAIL } from './bulk-operation-handlers'
 import { pendingIssueStore, resetWorkflowDraftStore } from './workflow-draft-fixtures'
 
 const KEY = 'software-default'
@@ -285,7 +285,7 @@ describe('★ 부분 실패 — 목이 서버보다 관대하면 E1 이 프로�
   // 일괄 편집과 같은 플래그 하나로 켠다(`isPartialFailEnabled`). 켜 두고 나가면 다음 테스트가
   // 이유 없이 실패하므로 파일 안에서 반드시 끈다.
   beforeEach(() => {
-    globalThis.localStorage?.setItem('__bts_e2e_bulk_partial_fail', 'true')
+    globalThis.localStorage?.setItem(LS_KEY_BULK_PARTIAL_FAIL, 'true')
   })
   afterEach(() => {
     globalThis.localStorage?.clear?.()
