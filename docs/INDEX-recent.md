@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (500건, 최신순)
+# 시간 축 인덱스 (501건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-09-02 | fr-wf-07-d6b-pr-10b | — | ✔ | — | — | FR-WF-07 |
 | 2026-09-02 | scrum-board-screen | — | ✔ | — | — | FR-BD-04 FR-UX-07 |
 | 2026-09-01 | board-scrum-schema | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-01 | board-type-and-active-sprint | — | — | — | ✔ | FR-BD-01 FR-BD-04 FR-BL-01 |
@@ -44,7 +45,7 @@
 | 2026-08-13 | harness-task-tier-by-change-surface | — | — | — | ✔ | — |
 | 2026-08-12 | backend-ci-module-selection | — | ✔ | — | — | — |
 | 2026-08-12 | debt24-decisions | — | ✔ | — | — | — |
-| 2026-08-12 | debt24-master | — | ✔ | — | — | FR-UX-08 |
+| 2026-08-12 | debt24-master | — | ✔ | — | — | FR-UX-08 FR-WF-07 |
 | 2026-08-12 | debt24-move-dialog | — | ✔ | — | — | FR-MV-01 |
 | 2026-08-12 | debt24-msw-migration | — | ✔ | — | — | — |
 | 2026-08-12 | debt24-runner-reclaim | — | ✔ | — | — | — |

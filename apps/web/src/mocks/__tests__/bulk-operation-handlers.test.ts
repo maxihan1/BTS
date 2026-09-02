@@ -1,7 +1,11 @@
 // 일괄 작업 MSW 핸들러 단위 테스트 — POST 접수 + GET 폴링 stateful 진행 검증
 import { server } from '@/test/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { bulkOperationHandlers, resetBulkOperationState } from '../bulk-operation-handlers'
+import {
+  bulkOperationHandlers,
+  resetBulkOperationState,
+  LS_KEY_BULK_PARTIAL_FAIL,
+} from '../bulk-operation-handlers'
 import {
   bulkAcceptedSchema,
   bulkOperationResponseSchema,
@@ -137,9 +141,9 @@ describe('POST 후 GET 연속 폴링 — RUNNING→COMPLETED 진행', () => {
 // partial-fail 시나리오 — 마지막 issueKey FAILED
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('partial-fail — localStorage __bts_e2e_bulk_partial_fail=true', () => {
+describe(`partial-fail — localStorage ${LS_KEY_BULK_PARTIAL_FAIL}=true`, () => {
   beforeEach(() => {
-    globalThis.localStorage?.setItem('__bts_e2e_bulk_partial_fail', 'true')
+    globalThis.localStorage?.setItem(LS_KEY_BULK_PARTIAL_FAIL, 'true')
   })
 
   it('마지막 key FAILED(VERSION_CONFLICT), 나머지 SUCCEEDED, failedCount=1', async () => {
