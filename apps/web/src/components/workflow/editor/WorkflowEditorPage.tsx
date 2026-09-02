@@ -8,7 +8,7 @@ import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
 import { useStatusCatalog } from '@/hooks/use-workflows-admin'
 import { useWorkflowDraft } from '@/hooks/use-workflow-draft'
 import { useWorkflowPublish } from '@/hooks/use-workflow-publish'
-import { usePublishFlow } from '@/hooks/use-publish-flow'
+import { usePublishFlow, useMigrationWizard } from '@/hooks/use-publish-flow'
 import { publishBlockReason } from '@/lib/workflow-draft'
 import type { TransitionInput } from '@/lib/workflow-draft'
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
@@ -62,6 +62,9 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   const catalog = useStatusCatalog()
   const publish = useWorkflowPublish(workflowKey)
   const flow = usePublishFlow(draft, publish)
+  // 이관 마법사는 여기서 쥔다 — `WorkflowEditorDialogs` 는 조립만 한다는 계약을 지키면서,
+  // `discardDisabled`(G-3)를 아래 `DraftStatusBar` 까지 끌어올릴 수 있는 유일한 자리다.
+  const migration = useMigrationWizard(workflowKey, flow.preview)
 
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [statusToRemove, setStatusToRemove] = React.useState<PanelStatus | null>(null)
@@ -160,7 +163,11 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         onPublish={flow.startPublish}
         onReset={flow.openReset}
         onDiscard={flow.openDiscard}
-        busy={flow.busy}
+        // ★ 폴링 중에는 초안 폐기도 잠근다(G-3) — `DraftStatusBar` 에 별도 prop 을 낼 자리가
+        //   없어 기존 `busy` 를 빌린다. Reset·상단 발행 버튼도 함께 잠기지만, 그동안은 이관
+        //   마법사가 발행 다이얼로그를 모달로 덮고 있어(`flowDialog === 'publish'`) 실질적으로
+        //   닿지 않는 자리다.
+        busy={flow.busy || migration.discardDisabled}
       />
 
       {draft.state.lastRejection !== null ? (
@@ -218,6 +225,7 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         onConfirmReset={flow.confirmReset}
         onConfirmDiscard={flow.confirmDiscard}
         busy={flow.busy}
+        migration={migration}
       />
     </div>
   )

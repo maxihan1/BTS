@@ -1,6 +1,8 @@
 // 발행 흐름 상태기계 — 저장 flush → 미리보기 → 발행 · 복원 · 폐기의 순서와 실패를 한 곳에 둔다
 import * as React from 'react'
 import { toast } from 'sonner'
+import { ZodError } from 'zod'
+import { ApiError } from '@/api/client'
 import { WorkflowAdminApiError, WorkflowPublishMappingRequiredError } from '@/api/workflows-admin.http'
 import { migrateStatuses } from '@/api/workflows-draft'
 import type { PublishPreview, DraftDefinition, StatusMappingInput } from '@/api/workflows-draft.types'
@@ -182,11 +184,86 @@ export interface UseMigrationWizardResult {
   operation: BulkOperationResponse | null
   /** 폴링이 에러로 멈췄는가 — 정지 조건 자체는 `useBulkOperationPolling` 이 갖고 있다 */
   pollFailed: boolean
+  /**
+   * `pollFailed` 인 상태에서, 다시 시도가 의미 있는 에러인가(concern 2).
+   *
+   * 4xx·`ZodError` 는 다시 불러도 같은 응답이 온다 — 그때 재시도 버튼을 주면 거짓 희망이다.
+   * 5xx·네트워크로 `MAX_ERROR_RETRIES` 를 넘겨 멈췄을 때만 `true` 다.
+   */
+  pollRetryable: boolean
+  /** `pollRetryable` 일 때만 의미 있는 재시도 — 폴링을 한 번 더 부른다 */
+  retryPoll: () => void
+  /**
+   * 폴링 중이라 초안 폐기를 막아야 하는가(G-3).
+   *
+   * 폐기하면 이어지는 발행이 404 이고 이미 옮겨진 이슈는 되돌아오지 않는다(E5). 이관을
+   * 시작하지 않았거나(`operationId` 없음) 종료 상태(`COMPLETED`·`FAILED`)에 도달하면 `false`다.
+   */
+  discardDisabled: boolean
 }
 
 /** `WorkflowView` 를 이관 후보 셀렉터(`lib/workflow-draft.ts`)가 받는 형태로 좁힌다. */
 function toPublishedDefinition(view: WorkflowView): DraftDefinition {
   return { key: view.key, name: view.name, description: view.description, states: view.states, transitions: [] }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 이관 진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행률이 살아남는다
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** URL 쿼리 키. 상수 하나로 묶어 읽기·쓰기가 오탈자로 어긋나는 것을 막는다. */
+const MIGRATION_QUERY_KEY = 'migration'
+
+/**
+ * URL 쿼리에서 이관 작업 id 를 읽는다.
+ *
+ * TanStack Router 의 `useSearch`/`useNavigate` 대신 raw `window.location`/`history` 를 쓴다 —
+ * 이 훅은 라우터 컨텍스트 없이 렌더하는 테스트(`WorkflowEditorPage.test.tsx`)에서도 그대로
+ * 동작해야 한다. `routes/login.tsx:18` 이 같은 이유로 같은 패턴(`window.location.search` 직접
+ * 파싱)을 쓴다. `@tanstack/history` 는 `window.history.pushState/replaceState` 를 몽키패치해
+ * 두므로, 여기서 raw 로 호출해도 실제 라우터가 떠 있을 때는 그 내부 상태와 어긋나지 않는다.
+ */
+function readMigrationIdFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get(MIGRATION_QUERY_KEY)
+}
+
+/**
+ * URL 쿼리의 이관 작업 id 를 갈아 끼운다. 다른 쿼리 키는 건드리지 않는다.
+ *
+ * `replaceState` 를 쓴다 — 접수·종료마다 히스토리를 쌓으면 뒤로가기 한 번으로 편집기를 못
+ * 벗어난다(`routes/issues.index.tsx` 의 `moveCursorTo` 가 같은 이유로 같은 선택을 했다).
+ *
+ * @param id 새 이관 작업 id. null 이면 쿼리에서 제거한다(종료 상태 정리)
+ */
+function writeMigrationIdToUrl(id: string | null): void {
+  const params = new URLSearchParams(window.location.search)
+  if (id === null) {
+    params.delete(MIGRATION_QUERY_KEY)
+  } else {
+    params.set(MIGRATION_QUERY_KEY, id)
+  }
+  const query = params.toString()
+  const url = `${window.location.pathname}${query.length > 0 ? `?${query}` : ''}`
+  window.history.replaceState(null, '', url)
+}
+
+/** 이관이 끝난 상태인가 — `useBulkOperationPolling` 의 정지 조건(TERMINAL_STATUSES)과 같다. */
+function isMigrationSettled(status: BulkOperationResponse['status'] | undefined): boolean {
+  return status === 'COMPLETED' || status === 'FAILED'
+}
+
+/**
+ * 폴링이 재시도 상한을 넘겨 멈췄을 때, 다시 시도가 의미 있는 에러인가(concern 2).
+ *
+ * 4xx·`ZodError` 는 다시 불러도 같은 응답이 온다(`useBulkOperationPolling.computeRefetchInterval`
+ * 의 정지 조건과 같은 판단) — 그때 재시도 버튼을 주면 거짓 희망이다. 5xx·네트워크만 재시도할
+ * 가치가 있다.
+ */
+function isRetryablePollError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.status < 400 || error.status >= 500
+  }
+  return !(error instanceof ZodError)
 }
 
 /** 이관 접수 하나를 감싼다 — 성공·실패 콜백으로 나눠 훅 쪽 setState 를 그대로 잇는다. */
@@ -222,29 +299,59 @@ async function submitMigration(
  * 일부 실패가 섞이면 이어지는 발행이 반드시 409(`MappingRequired`)로 죽고, 그때 사용자는
  * 자기가 누르지 않은 조작의 실패를 보게 된다. 다시 누르는 것은 소비처(`PublishDialog`)의 몫이다.
  *
- * @param workflowKey 대상 워크플로우 키. 마법사가 필요 없으면 빈 문자열을 넘겨 발행본 조회를
- *   끈다 — `useWorkflowDetail` 은 빈 키에서 `enabled: false` 다.
+ * ### ★ 이관이 필요할 때만 발행본을 조회한다(concern 1)
+ * `preview` 가 없거나 `pendingIssueCounts` 가 비어 있으면(= `PublishDialog` 가 마법사 자체를
+ * 그리지 않는 경우) `useWorkflowDetail` 을 **스스로 끈다** — 호출부가 편집기 마운트마다 이
+ * 훅을 불러도, 이관이 필요 없는 대다수 경우엔 추가 GET 이 나가지 않는다.
+ *
+ * @param workflowKey 대상 워크플로우 키. 빈 문자열을 넘기면(워크플로우 키를 아직 모르는 등)
+ *   `needsMigration` 여부와 무관하게 발행본 조회가 꺼진다 — `useWorkflowDetail` 이 빈 키에서
+ *   `enabled: false` 다.
  * @param preview 최신 미리보기. **참조가 바뀌면**(다이얼로그를 다시 열거나, 서버가 갱신된
  *   `pendingIssueCounts` 로 409 를 되돌려줄 때) 이전 세션의 선택·이관 상태를 지운다 — 안 지우면
- *   새 세션이 죽은 이관 id 의 진행률을 계속 든다.
+ *   새 세션이 죽은 이관 id 의 진행률을 계속 든다. 단, **마운트 직후 1회는 지우지 않는다** —
+ *   URL 에서 막 복원한 `operationId`(G-2)를 스스로 지워 버리면 안 되기 때문이다.
  */
 export function useMigrationWizard(
   workflowKey: string,
   preview: PublishPreview | null,
 ): UseMigrationWizardResult {
-  const detail = useWorkflowDetail(workflowKey)
+  const needsMigration = preview !== null && Object.keys(preview.pendingIssueCounts).length > 0
+  const detail = useWorkflowDetail(needsMigration ? workflowKey : '')
   const [selection, setSelection] = React.useState<MigrationSelection>({})
-  const [operationId, setOperationId] = React.useState<string | null>(null)
+  // URL 에 남은 이관 id 를 그대로 이어받는다(G-2) — 새로고침·링크 공유로 재진입해도 그 id 로
+  // 폴링이 다시 붙는다.
+  const [operationId, setOperationId] = React.useState<string | null>(() => readMigrationIdFromUrl())
   const [starting, setStarting] = React.useState(false)
   const [startError, setStartError] = React.useState<string | null>(null)
 
+  const skippedInitialResetRef = React.useRef(false)
   React.useEffect(() => {
+    // 마운트 직후 1회는 건너뛴다 — 안 그러면 위에서 URL 로 복원한 operationId 를 곧바로
+    // 지워 버린다(G-2). 이후 preview 참조가 실제로 바뀔 때만(다이얼로그 재진입 등) 리셋한다.
+    if (!skippedInitialResetRef.current) {
+      skippedInitialResetRef.current = true
+      return
+    }
     setSelection({})
     setOperationId(null)
     setStartError(null)
+    // 지우는 operationId 가 URL 에도 남아 있을 수 있다(예: 폴링 중 다이얼로그를 닫았다 다시
+    // 열어 새 preview 를 받은 경우) — 메모리 상태와 URL 을 같이 정리한다(G-2).
+    writeMigrationIdToUrl(null)
   }, [preview])
 
   const poll = useBulkOperationPolling(operationId, operationId !== null)
+  const { refetch: refetchPoll } = poll
+  const operationStatus = poll.data?.status
+
+  // 종료 상태(COMPLETED·FAILED)에 도달하면 URL 을 정리한다(G-2) — 끝난 작업의 id 가 주소에
+  // 남으면 다음 진입에서 이미 끝난 진행률을 다시 그리게 된다.
+  React.useEffect(() => {
+    if (isMigrationSettled(operationStatus)) {
+      writeMigrationIdToUrl(null)
+    }
+  }, [operationStatus])
 
   const onSelectionChange = React.useCallback((removedKey: string, targetKey: string) => {
     setSelection((current) => ({ ...current, [removedKey]: targetKey }))
@@ -257,12 +364,26 @@ export function useMigrationWizard(
       }
       setStarting(true)
       setStartError(null)
-      void submitMigration(workflowKey, preview.baseVersion, mappings, setOperationId, setStartError).finally(() => {
+      void submitMigration(
+        workflowKey,
+        preview.baseVersion,
+        mappings,
+        (id) => {
+          setOperationId(id)
+          // 접수 즉시 URL 에 싣는다(G-2) — 폴링 첫 응답을 기다리지 않는다.
+          writeMigrationIdToUrl(id)
+        },
+        setStartError,
+      ).finally(() => {
         setStarting(false)
       })
     },
     [workflowKey, preview],
   )
+
+  const retryPoll = React.useCallback(() => {
+    void refetchPoll()
+  }, [refetchPoll])
 
   return {
     published: detail.data !== undefined ? toPublishedDefinition(detail.data) : null,
@@ -274,5 +395,8 @@ export function useMigrationWizard(
     startError,
     operation: poll.data ?? null,
     pollFailed: poll.isError,
+    pollRetryable: poll.isError && isRetryablePollError(poll.error),
+    retryPoll,
+    discardDisabled: operationId !== null && !isMigrationSettled(operationStatus),
   }
 }

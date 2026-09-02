@@ -113,6 +113,17 @@ export const workflowPublishLabels = {
      * 항상 알린다.
      */
     boardColumnsNotice: '이 상태를 쓰는 보드 컬럼이 있다면 이관 후 함께 확인하세요. 컬럼 재배치는 자동으로 되지 않습니다',
+    /**
+     * 폴링이 재시도 상한을 넘겨 멈췄을 때의 안내(concern 2 — `useMigrationWizard.pollRetryable`
+     * 이 `true`일 때만 쓴다. 5xx·네트워크로 멈춘 경우다).
+     *
+     * ★ 4xx 정지에는 이 문구를 쓰지 않는다 — 재시도해도 같은 응답이 오므로, 다시 시도를
+     * 권하면 거짓 희망이 된다(`useBulkOperationPolling.computeRefetchInterval` 의 4xx 즉시
+     * 정지와 짝을 이루는 편차).
+     */
+    pollFailedRetryable: '진행률을 다시 불러오지 못했습니다. 이관 작업 자체는 서버에서 계속 진행 중일 수 있습니다',
+    /** 위 안내와 함께만 뜨는 재시도 버튼 — `pollRetryable` 이 `false`(4xx)면 그리지 않는다 */
+    retryPoll: '다시 시도',
   },
 
   /** 기본값 복원 다이얼로그 */

@@ -8,8 +8,7 @@ import type { TransitionDefinitionInput } from '@/api/workflows-admin'
 import type { WorkflowView } from '@/api/workflows'
 import type { PublishPreview } from '@/api/workflows-draft.types'
 import type { EditableDraft } from '@/lib/workflow-draft'
-import type { PublishFlowDialog } from '@/hooks/use-publish-flow'
-import { useMigrationWizard } from '@/hooks/use-publish-flow'
+import type { PublishFlowDialog, UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { StatusPickerDialog } from './StatusPickerDialog'
 import { TransitionFormDialog } from './TransitionFormDialog'
 import { PublishDialog } from './PublishDialog'
@@ -56,6 +55,14 @@ interface WorkflowEditorDialogsProps {
   onConfirmReset: () => void
   onConfirmDiscard: () => void
   busy: boolean
+  /**
+   * 이관 마법사의 살아 있는 배선(`useMigrationWizard`).
+   *
+   * ★ **여기서 부르지 않고 위에서 받는다.** `WorkflowEditorPage` 가 이 훅을 쥐고 있어야
+   * `discardDisabled`(G-3)를 `DraftStatusBar` 의 초안 폐기 버튼까지 끌어올릴 수 있다 — 이
+   * 컴포넌트는 조립만 한다는 위 주석의 계약을 그대로 따른다(concern 1 정리 겸용).
+   */
+  migration: UseMigrationWizardResult
 }
 
 /**
@@ -90,11 +97,8 @@ function WorkflowEditorDialogs({
   onConfirmReset,
   onConfirmDiscard,
   busy,
+  migration,
 }: WorkflowEditorDialogsProps): React.JSX.Element {
-  // 이관 마법사의 살아 있는 배선. `usePublishFlow` 의 다이얼로그 상태기계에 얹지 않는다 —
-  // `preview` 하나만으로 독립적으로 그릴 수 있는 하위 흐름이라 여기서 직접 잇는다.
-  const migration = useMigrationWizard(draft.key, preview)
-
   return (
     <>
       <StatusPickerDialog
