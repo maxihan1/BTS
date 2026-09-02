@@ -228,6 +228,23 @@ function submitButton(): HTMLElement {
   return screen.getByRole('button', { name: backlogLabels.startSprint })
 }
 
+/**
+ * 시작 다이얼로그.
+ *
+ * ★ **이름 없는 `getByRole('dialog')` 를 쓰지 않는다.** 같은 화면에 다른 스프린트
+ *   다이얼로그(편집·완료)가 함께 뜨는 날 다중 매치로 즉사한다 — 그날 red 가 되는 것은
+ *   구현이 아니라 **이 조회**라서 원인을 엉뚱한 곳에서 찾게 된다.
+ *   `e2e/backlog.spec.ts` 가 잡는 이름과 **같은 값**을 쓴다 (즉사 계약 §2).
+ */
+function startDialog(): HTMLElement {
+  return screen.getByRole('dialog', { name: backlogLabels.startSprint })
+}
+
+/** 시작 다이얼로그 부재 조회. 이름을 붙이는 이유는 {@link startDialog} 와 같다 */
+function queryStartDialog(): HTMLElement | null {
+  return screen.queryByRole('dialog', { name: backlogLabels.startSprint })
+}
+
 /** `PATCH` 호출 횟수 */
 function patchCount(): number {
   return calls.filter((call) => call === 'PATCH').length
@@ -317,7 +334,7 @@ describe('StartSprintDialog — T-DL-2 2단계 요청', () => {
 
     await user.click(submitButton())
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(queryStartDialog()).not.toBeInTheDocument())
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
@@ -336,7 +353,7 @@ describe('StartSprintDialog — T-DL-3 중간 실패', () => {
     await user.click(submitButton())
 
     expect(await screen.findByText(L.startFailed)).toBeInTheDocument()
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(startDialog()).toBeInTheDocument()
     // 「전부 실패」 문구가 화면에 없다 — 하나로 뭉뚱그리면 거짓말이 된다
     expect(screen.queryByText(L.patchFailed)).not.toBeInTheDocument()
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
@@ -356,7 +373,7 @@ describe('StartSprintDialog — T-DL-4 재시도', () => {
 
     await user.click(screen.getByRole('button', { name: backlogLabels.retry }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(queryStartDialog()).not.toBeInTheDocument())
     expect(patchCount()).toBe(1)
     expect(calls).toEqual(['PATCH', 'START', 'START'])
   })
@@ -391,7 +408,7 @@ describe('StartSprintDialog — PATCH 실패 갈래', () => {
 
     expect(await screen.findByText(L.patchConflict)).toBeInTheDocument()
     expect(calls).toEqual(['PATCH'])
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(startDialog()).toBeInTheDocument()
     // 최신 값을 받아오지 않으면 사용자가 「재확인」할 대상이 없다
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['backlog', PROJECT_KEY] })
   })
@@ -554,7 +571,7 @@ describe('StartSprintDialog — E8 기간 검증', () => {
     await user.click(submitButton())
     // 백엔드 왕복을 만들지 않는다
     expect(calls).toEqual([])
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(startDialog()).toBeInTheDocument()
 
     // 양성 대조 — 고치면 같은 클릭이 실제로 나간다. 「0건」이 타이밍 착시가 아님을 증명한다
     setField(L.endDateLabel, '2026-08-20')
@@ -577,7 +594,7 @@ describe('StartSprintDialog — E10 이미 시작된 스프린트', () => {
 
     await user.click(submitButton())
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(queryStartDialog()).not.toBeInTheDocument())
     expect(vi.mocked(toast.error)).toHaveBeenCalledWith(L.startConflict)
     // 재시도해도 반드시 409 다 — 나머지 세 갈래와 정반대 처방
     expect(screen.queryByRole('button', { name: backlogLabels.retry })).not.toBeInTheDocument()
@@ -614,7 +631,7 @@ describe('StartSprintDialog — 닫을 때의 정합', () => {
 
     await user.click(screen.getByRole('button', { name: issueCreateStrings.cancelButton }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(queryStartDialog()).not.toBeInTheDocument())
     expect(invalidateSpy).not.toHaveBeenCalled()
     expect(calls).toEqual([])
   })

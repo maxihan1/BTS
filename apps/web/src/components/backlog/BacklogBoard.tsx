@@ -481,6 +481,7 @@ export function BacklogBoard({
       >
         <BacklogStack
           projectKey={projectKey}
+          boardId={boardId}
           display={display}
           assigneeNames={assigneeNames}
           issueTypesByKey={issueTypesByKey}
@@ -639,6 +640,13 @@ function BacklogBoardHeader({
 interface BacklogStackProps {
   /** 소속 프로젝트 키 — 칸의 접힘 영속·번다운 링크에 쓴다 */
   readonly projectKey: string
+  /**
+   * 화면이 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 칸 → 헤더 → `⋯` → 편집 다이얼로그로 **그대로 흘려보낸다.** 거기서 409 복구가 보드
+   * 스코프 캐시를 완전 일치 키로 읽으므로 중간에서 끊으면 재시도가 409 를 되풀이한다.
+   */
+  readonly boardId: string | undefined
   /** 표시용 파생 한 벌 (필터 적용 후) */
   readonly display: BacklogDisplay
   /** 이슈 키 → 담당자 표시 이름 */
@@ -679,6 +687,7 @@ interface BacklogStackProps {
  */
 function BacklogStack({
   projectKey,
+  boardId,
   display,
   assigneeNames,
   issueTypesByKey,
@@ -713,6 +722,7 @@ function BacklogStack({
         <SprintColumn
           key={meta.sprintId}
           projectKey={projectKey}
+          boardId={boardId}
           sprint={meta}
           issues={issues}
           assigneeNames={assigneeNames}
@@ -727,6 +737,9 @@ function BacklogStack({
             ? () => { onOpenSprintDialog({ kind: 'complete', sprintId: meta.sprintId }) }
             : undefined}
           canCreateIssue={canCreateIssue}
+          // `⋯` 메뉴(편집·삭제)의 게이트. 시작/완료와 **같은 권한**이므로 같은 값을 쓴다 —
+          // 권한이 없으면 버튼이 비활성이 아니라 메뉴가 통째로 부재한다 (FR-5).
+          canManageSprint={canManageSprint}
           onCreateIssue={createIssue.openForSprint(meta.sprintId)}
         />
       ))}

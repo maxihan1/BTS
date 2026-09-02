@@ -1,7 +1,19 @@
 // 백로그 및 스프린트 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BL-01/02 D6/D7)
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
+import { backlogHandlers, LS_KEY_SPRINT_DELETE_FAIL } from '@/mocks/backlog-handlers'
+import {
+  resetBacklogStore,
+  seedBacklog,
+  DEFAULT_BACKLOG,
+} from '@/mocks/backlog-fixtures'
+import {
+  resetBoardStore,
+  createBoardInStore,
+  setBoardActiveSprint,
+  boardStore,
+} from '@/mocks/board-fixtures'
 import {
   backlogIssueSchema,
   sprintMetaSchema,
@@ -15,7 +27,9 @@ import {
   startSprint,
   completeSprint,
   updateSprint,
+  deleteSprint,
 } from './backlog'
+import type { SprintMeta } from './backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 — Zod v4 RFC4122 UUID 형식 필수
@@ -622,5 +636,153 @@ describe('updateSprint — PATCH /api/v1/sprints/{id}', () => {
     await expect(updateSprint(SPRINT_ID, { goal: '새 목표', version: 1 })).rejects.toMatchObject({
       status: 409,
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BL-13. deleteSprint — DELETE /api/v1/sprints/{id} (FR-3)
+//
+// 확인 창은 실패를 **창 안에** 남긴다(E-3). 그러려면 사유가 상태 코드로 갈려야 한다 —
+// 404(이미 지워졌다)와 403(권한이 없다)은 사용자에게 다른 문장으로 나가야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('deleteSprint — DELETE /api/v1/sprints/{id}', () => {
+  it('T-BL-13a: sprintId 경로로 DELETE 를 보내고 204 는 본문 없이 끝난다', async () => {
+    let capturedMethod = ''
+
+    server.use(
+      http.delete('/api/v1/sprints/:sprintId', ({ request, params }) => {
+        expect(params['sprintId']).toBe(SPRINT_ID)
+        capturedMethod = request.method
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    await expect(deleteSprint(SPRINT_ID)).resolves.toBeUndefined()
+    expect(capturedMethod).toBe('DELETE')
+  })
+
+  it('T-BL-13b: signal 을 요청까지 이어준다 — 끊긴 signal 이면 요청이 서버에 닿지 않는다', async () => {
+    // 상한(`lib/delete-timeout.ts`)은 이 인자로만 요청을 끊는다. 여기서 signal 을 흘려버리면
+    // abort 가 아무 일도 하지 않아 반환 Promise 가 영원히 pending 으로 남는다 —
+    // 확인 창이 `confirming` 에 묶인 채 닫히지 못하는 상태가 그것이다.
+    let handlerCalls = 0
+    server.use(
+      http.delete('/api/v1/sprints/:sprintId', () => {
+        handlerCalls += 1
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(deleteSprint(SPRINT_ID, controller.signal)).rejects.toThrow()
+    // ★signal 이 실제로 이어졌다는 유일한 증거다 — 안 이어졌다면 요청이 나가 204 로 성공한다.
+    expect(handlerCalls).toBe(0)
+  })
+
+  it('T-BL-13c: 404 는 status 를 담은 ApiError 로 throw 된다 (이미 지워진 스프린트)', async () => {
+    server.use(
+      http.delete('/api/v1/sprints/:sprintId', () =>
+        HttpResponse.json({ errorCode: 'SPRINT_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+
+    await expect(deleteSprint(SPRINT_ID)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('T-BL-13d: 403 은 status 를 담은 ApiError 로 throw 된다 (권한 미충족)', async () => {
+    server.use(
+      http.delete('/api/v1/sprints/:sprintId', () =>
+        HttpResponse.json({ title: 'Forbidden', status: 403 }, { status: 403 }),
+      ),
+    )
+
+    await expect(deleteSprint(SPRINT_ID)).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BL-14. deleteSprint — MSW 핸들러 배선 (stateful)
+//
+// 핸들러를 만들고 `backlogHandlers` 배열에 **넣지 않으면** MSW 는 그 요청을 미처리로 흘리는데,
+// 그 증상이 「핸들러 부재」와 완전히 같다 — 파일 안에 코드가 있는 것만으로는 아무 보증이 없다.
+// 그래서 이 블록은 개별 핸들러가 아니라 **배열을 통째로** 등록해(`backlog-handlers.test.ts` 와
+// 같은 관례) 배선과 store 반영을 함께 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('deleteSprint — MSW 핸들러 (stateful)', () => {
+  /** DEFAULT_BACKLOG 의 PLANNED 스프린트 — 이슈 ATLAS-3·ATLAS-4 를 들고 있다 */
+  const PLANNED_SPRINT_ID = 'a0000000-0000-4000-8000-000000000001'
+  /** 어느 픽스처에도 없는 UUID — 404 경로용 */
+  const MISSING_SPRINT_ID = 'a0000000-0000-4000-8000-0000000000ff'
+
+  beforeEach(() => {
+    server.use(...backlogHandlers)
+    resetBoardStore()
+    resetBacklogStore()
+    seedBacklog(DEFAULT_BACKLOG)
+  })
+
+  afterEach(() => {
+    globalThis.localStorage.removeItem(LS_KEY_SPRINT_DELETE_FAIL)
+    resetBacklogStore()
+    resetBoardStore()
+  })
+
+  it('T-BL-14a: 지운 스프린트는 사라지고 그 이슈는 백로그 칸으로 돌아온다', async () => {
+    await deleteSprint(PLANNED_SPRINT_ID)
+
+    const view = await fetchBacklog('ATLAS', undefined)
+
+    expect(view.sprints.map((s) => s.sprint.sprintId)).not.toContain(PLANNED_SPRINT_ID)
+    // ★이슈를 어디에도 넣지 않으면 사용자가 이슈를 잃는다. 백엔드는 스프린트만 소프트 삭제하고
+    //   이슈는 어느 스프린트에도 속하지 않게 되어 **모든 보드의** 백로그 칸에 나타난다(E12).
+    expect(view.backlog.map((i) => i.key)).toEqual(
+      expect.arrayContaining(['ATLAS-3', 'ATLAS-4']),
+    )
+  })
+
+  it('T-BL-14b: 없는 스프린트는 404 다', async () => {
+    await expect(deleteSprint(MISSING_SPRINT_ID)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('T-BL-14c: 실패 토글을 켜면 500 이다 (확인 창 안 실패 경로 재현용)', async () => {
+    globalThis.localStorage.setItem(LS_KEY_SPRINT_DELETE_FAIL, 'true')
+
+    await expect(deleteSprint(PLANNED_SPRINT_ID)).rejects.toMatchObject({ status: 500 })
+  })
+
+  it('T-BL-14d: 지운 스프린트가 그 보드의 활성 스프린트였다면 마커도 함께 지운다', async () => {
+    // 백엔드 `findActiveByBoard` 는 `deleted_at IS NULL` 을 걸어 지운 스프린트를 활성으로
+    // 뽑지 않는다. mock 이 마커를 남기면 보드 화면이 **없는 스프린트를 계속 보여준다**.
+    const { detail } = createBoardInStore('ATLAS', '스크럼 보드', 'SCRUM')
+    const activeSprintId = 'a0000000-0000-4000-8000-0000000000aa'
+    const activeSprint: SprintMeta = {
+      sprintId: activeSprintId,
+      name: '진행 중 스프린트',
+      goal: null,
+      status: 'ACTIVE',
+      startDate: null,
+      endDate: null,
+      version: 1,
+    }
+    seedBacklog({
+      projectKey: 'ATLAS',
+      backlog: [],
+      sprints: [{ sprint: activeSprint, issues: [], boardId: detail.boardId }],
+      truncated: false,
+    })
+    setBoardActiveSprint(detail.boardId, {
+      sprintId: activeSprintId,
+      name: activeSprint.name,
+      startDate: null,
+      endDate: null,
+    })
+
+    await deleteSprint(activeSprintId)
+
+    expect(boardStore.get(detail.boardId)?.activeSprint ?? null).toBeNull()
   })
 })

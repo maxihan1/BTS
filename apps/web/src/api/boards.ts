@@ -534,11 +534,15 @@ export async function updateBoardName(boardId: string, name: string): Promise<Bo
  * 같은 BC 의 `deleteQuickFilter`(board-quick-filters.ts) 와 동일한 관례다.
  *
  * @param boardId 보드 UUID
+ * @param signal 요청 취소 신호. 삭제 확인 창의 상한(`lib/delete-timeout.ts`)이 여기로 취소를
+ *   흘려보낸다. 선택 인자라 상한 없이 부르는 호출자는 그대로 둔다.
  * @throws ApiError 비-2xx 응답 시 (403 SOFT_DELETE 권한 없음 · 404 미존재/이미 삭제됨)
+ * @throws DOMException abort 로 요청이 끊겼을 때 (`AbortError`)
  */
-export async function deleteBoard(boardId: string): Promise<void> {
+export async function deleteBoard(boardId: string, signal?: AbortSignal): Promise<void> {
   const res = await apiFetch(`/api/v1/boards/${boardId}`, {
     method: 'DELETE',
+    signal,
   })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))

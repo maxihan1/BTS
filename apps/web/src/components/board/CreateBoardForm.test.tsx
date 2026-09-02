@@ -1,6 +1,7 @@
 // 보드 생성 폼 단위 테스트 — 종류 선택(1단계)+이름 입력(2단계)+제출+성공 네비게이션+422 안내 (FR-BD-01 Task 7 · FR-BD-04 D6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { UserEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -63,8 +64,18 @@ const TYPE_RADIO_NAME: Record<BoardType, string> = {
  *
  * `onCreated` 는 **넘기지 않는 것이 기본**이다 — 그래야 기존 호출 6건이 그대로 남고,
  * 「빈 상태 소비처는 이 prop 을 모른다」는 계약이 헬퍼 기본값으로 드러난다.
+ * `showEmptyStateIntro` 도 같은 이유로 기본이 `undefined` 다 — 넘기지 않으면 컴포넌트의
+ * 기본값(`true`, 빈 상태)이 그대로 걸린다.
+ *
+ * @param projectKey 보드를 추가할 프로젝트 키
+ * @param onCreated 생성 성공 신호
+ * @param showEmptyStateIntro 인트로·빈 상태 여백 노출 여부 (다이얼로그 소비처는 false)
  */
-async function renderForm(projectKey = 'ATLAS', onCreated?: () => void) {
+async function renderForm(
+  projectKey = 'ATLAS',
+  onCreated?: () => void,
+  showEmptyStateIntro?: boolean,
+) {
   const { CreateBoardForm } = await import('@/components/board/CreateBoardForm')
   const client = new QueryClient({
     defaultOptions: {
@@ -74,9 +85,31 @@ async function renderForm(projectKey = 'ATLAS', onCreated?: () => void) {
   })
   return render(
     <QueryClientProvider client={client}>
-      <CreateBoardForm projectKey={projectKey} onCreated={onCreated} />
+      <CreateBoardForm
+        projectKey={projectKey}
+        onCreated={onCreated}
+        showEmptyStateIntro={showEmptyStateIntro}
+      />
     </QueryClientProvider>,
   )
+}
+
+/**
+ * 폼을 감싼 바깥 컨테이너 — 여백 클래스가 붙는 자리다.
+ *
+ * `form` 에는 암묵 role 이 없어 `getByRole` 로는 잡히지 않는다. `view.container` 의 첫 자식을
+ * 쓰지 않는 이유 — 래퍼가 하나 더 끼는 날 조용히 엉뚱한 요소를 재게 된다. 폼에서 한 칸 위로
+ * 올라가면 구조가 바뀔 때 여기서 먼저 터진다.
+ *
+ * @param view render 결과
+ * @returns 폼의 부모 요소
+ */
+function getFormContainer(view: RenderResult): HTMLElement {
+  const parent = view.container.querySelector('form')?.parentElement
+  if (parent === null || parent === undefined) {
+    throw new Error('보드 생성 폼의 바깥 컨테이너를 찾지 못했다')
+  }
+  return parent
 }
 
 /**
@@ -526,5 +559,70 @@ describe('CreateBoardForm', () => {
     await user.click(screen.getByRole('button', { name: /보드 만들기/i }))
 
     expect(mockMutate).not.toHaveBeenCalled()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 빈 상태 여백 (장부 147) — 다이얼로그에는 붙지 않는다
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-BD7-21. 다이얼로그(`showEmptyStateIntro={false}`) 1단계에는 빈 상태 여백이 없다.
+   *
+   * 인트로 **문구**만 끄고 여백을 남긴 것이 장부 147 이다. `DialogContent` 는 이미 `p-6` 을
+   * 갖고 있어 `p-8` 이 겹치면 안쪽 여백이 두 겹이 되고 `min-h-48` 이 창을 세로로 늘린다.
+   */
+  it('T-BD7-21: 다이얼로그 1단계에는 빈 상태 여백이 붙지 않는다', async () => {
+    const view = await renderForm('ATLAS', undefined, false)
+
+    const container = getFormContainer(view)
+    expect(container).not.toHaveClass('p-8')
+    expect(container).not.toHaveClass('min-h-48')
+  })
+
+  /**
+   * T-BD7-22. 다이얼로그 **2단계**에도 빈 상태 여백이 없다.
+   *
+   * 여백 조건에 `step` 을 섞으면(인트로 문구와 같은 `showEmptyStateIntro && step === 'type'`)
+   * 이 경로만 조용히 새어 나간다 — 2단계는 문구가 애초에 없어 「문구가 사라졌으니 됐다」로
+   * 보이지만 여백은 그대로 남는다.
+   */
+  it('T-BD7-22: 다이얼로그 2단계에도 빈 상태 여백이 붙지 않는다', async () => {
+    const user = userEvent.setup()
+    const view = await renderForm('ATLAS', undefined, false)
+    await goToNameStep(user)
+
+    const container = getFormContainer(view)
+    expect(container).not.toHaveClass('p-8')
+    expect(container).not.toHaveClass('min-h-48')
+  })
+
+  /**
+   * T-BD7-23. 빈 상태(기본값)에는 여백이 그대로 남는다.
+   *
+   * T-BD7-21·22 의 비-공허 짝이다. 클래스를 통째로 지워도 그 둘은 초록이라 이 판정이 없으면
+   * 「빈 상태 화면이 납작해졌다」를 아무도 못 잡는다.
+   */
+  it('T-BD7-23: 빈 상태 1단계에는 여백이 유지된다', async () => {
+    const view = await renderForm()
+
+    const container = getFormContainer(view)
+    expect(container).toHaveClass('p-8')
+    expect(container).toHaveClass('min-h-48')
+  })
+
+  /**
+   * T-BD7-24. 빈 상태 **2단계**에도 여백이 유지된다.
+   *
+   * 인트로 문구는 2단계에서 사라지지만(T-BD7-20) 여백까지 함께 걷으면 「다음」을 누른 순간
+   * 폼이 위로 튄다. 빈 상태는 두 단계 모두 같은 자리에 서 있어야 한다.
+   */
+  it('T-BD7-24: 빈 상태 2단계에도 여백이 유지된다', async () => {
+    const user = userEvent.setup()
+    const view = await renderForm()
+    await goToNameStep(user)
+
+    const container = getFormContainer(view)
+    expect(container).toHaveClass('p-8')
+    expect(container).toHaveClass('min-h-48')
   })
 })

@@ -10,6 +10,52 @@
 const BACKLOG_SECTION_NAME = '백로그'
 
 /**
+ * 스프린트 편집 폼(`SprintForm`)이 노출하는 문구 전수.
+ *
+ * **시작 다이얼로그와 편집 다이얼로그가 같은 폼을 쓴다**(NFR-1). 그래서 필드 라벨과
+ * 검증 문구는 여기 한 벌만 두고, `startDialog` 는 이 값을 **참조**한다 —
+ * 두 벌로 적으면 한쪽만 고쳐져 같은 입력칸이 화면마다 다른 이름을 갖는다.
+ * (`BACKLOG_SECTION_NAME` 이 세운 선례와 같은 형태다.)
+ *
+ * ⚠️ `nameLabel`('이름')은 스프린트 **생성** 폼의 `sprintNamePlaceholder`('스프린트 이름')에
+ * **부분 문자열로 포함된다.** 둘은 같은 화면에 공존할 수 있으므로(백로그 칸 헤더의 생성 폼 +
+ * 편집 다이얼로그) 조회는 반드시 **정확 일치**로 한다 — Testing Library 의 문자열 조회는
+ * 기본이 정확 일치지만 **Playwright 는 부분 일치가 기본**이라 `exact: true` 가 필수다.
+ * `retry`('다시 시도') ⊂ `moveFailedError` 와 같은 계약이다.
+ */
+const SPRINT_FORM_LABELS = {
+  /** 이름 필드 라벨 (FR-1) */
+  nameLabel: '이름',
+  /** 시작일 필드 라벨 */
+  startDateLabel: '시작일',
+  /** 종료일 필드 라벨 */
+  endDateLabel: '종료일',
+  /** 목표 필드 라벨 */
+  goalLabel: '목표',
+  /** 이름을 비운 채 제출했을 때. 백엔드가 이름에 `null` 을 허용하지 않는다 */
+  nameRequired: '이름을 입력해 주세요.',
+  /** E8 — 종료일이 시작일보다 빠를 때의 필드 에러. 백엔드 왕복을 만들지 않는다 */
+  endBeforeStart: '종료일은 시작일보다 빠를 수 없습니다.',
+  /**
+   * FR-2 · J1 — 완료된 스프린트에서 날짜 칸이 잠긴 사유.
+   *
+   * 숨기지 않고 **비활성 + 사유**로 둔다. 권한 부재(렌더 자체를 안 한다)와 규율이 갈리는
+   * 것이 의도다 — 상태 제약은 「있는 조작이 지금은 안 되는 이유」를 알려야 한다.
+   */
+  datesLocked: '완료된 스프린트는 이름과 목표만 수정할 수 있습니다.',
+  /**
+   * 낙관적 잠금 409 — 남이 먼저 고쳤다. 기준값(`version`)만 서버 최신으로 갈아끼운다.
+   *
+   * ★「최신 값을 불러왔으니」라고 말하지 않는다. 폼은 **사용자가 친 값을 그대로 유지**하기
+   *   때문이다 — 서버 값으로 덮으면 재시도의 변경분이 0이 되어 남의 값으로 저장된다
+   *   (`SprintForm.SprintFormActions.recoverFromConflict` 주석). 「불러왔다」고 하면
+   *   화면에 남아 있는 내 입력과 안내가 서로 다른 말을 한다.
+   */
+  conflict:
+    '다른 사람이 먼저 수정했습니다. 입력하신 값은 그대로 두었으니 확인 후 다시 시도해 주세요.',
+} as const
+
+/**
  * 백로그·스프린트 칸 및 카드가 노출하는 한국어 라벨.
  *
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
@@ -41,6 +87,29 @@ export const backlogLabels = {
 
   /** 완료 버튼 */
   completeSprint: '스프린트 완료',
+
+  /**
+   * 스프린트 편집 진입점 (FR-1 · J2 *"Edit sprint"*).
+   *
+   * `⋯` 메뉴 항목 · 다이얼로그 제목 · 제출 버튼이 **같은 문자열을 재사용**한다
+   * (`startSprint`·`completeSprint` 가 세운 관례 — 새 문자열을 만들지 않는다).
+   * ★ 세 스프린트 조작 이름(`startSprint`·`completeSprint`·`editSprint`)은 서로
+   *   **부분 문자열 관계가 아니어야** 한다. 겹치면 `getByRole('dialog', { name })` 이
+   *   strict mode 로 즉사한다(`jira-parity-contract.md` §2).
+   *   `EditSprintDialog.test.tsx` 가 그 관계를 전수로 잰다.
+   */
+  editSprint: '스프린트 편집',
+
+  /**
+   * 스프린트 삭제 진입점 (FR-3 · J5).
+   *
+   * `⋯` 메뉴 항목 · 확인 다이얼로그 제목이 **같은 문자열을 재사용**한다
+   * (보드 관리의 `boardLabels.actions.deleteItem`/`deleteDialogTitle` 이 세운 관례).
+   * ★ `editSprint`·`startSprint`·`completeSprint` 와 서로 **부분 문자열 관계가 아니다** —
+   *   겹치면 `getByRole('dialog', { name })` 이 strict mode 로 즉사한다(계약 §2).
+   *   `SprintColumnHeader.test.tsx` H2-2 가 편집 이름과의 관계를 잰다.
+   */
+  deleteSprint: '스프린트 삭제',
 
   /** 빈 이슈 목록 placeholder */
   emptyIssues: '이슈 없음',
@@ -146,18 +215,27 @@ export const backlogLabels = {
   //    새 문자열을 만들면 「이름 중복이 없다」 판별식이 깨지고, 즉사 계약이 고정한
   //    트리거 이름과도 갈린다 (FR-10). 취소 버튼도 `ko.ts` 의 `취소` 를 재사용한다.
 
+  /**
+   * 스프린트 편집 폼(`SprintForm`) 문구군 — 시작·편집 다이얼로그 공용.
+   *
+   * 정본은 모듈 상수 {@link SPRINT_FORM_LABELS} 다. `startDialog` 의 필드 라벨은 같은 값을
+   * 참조하는 **별칭**이라 두 경로가 갈릴 수 없다 — 기존 경로를 유지하는 이유는
+   * `e2e/backlog.spec.ts` 와 `backlog-labels.test.ts` 가 그 경로로 읽고 있어서다.
+   */
+  sprintForm: SPRINT_FORM_LABELS,
+
   /** 스프린트 시작 다이얼로그 문구군 */
   startDialog: {
     /** DialogDescription — aria-describedby 를 채운다 */
     description: '기간과 목표를 확인한 뒤 스프린트를 시작합니다.',
-    /** 시작일 필드 라벨 */
-    startDateLabel: '시작일',
-    /** 종료일 필드 라벨 */
-    endDateLabel: '종료일',
-    /** 목표 필드 라벨 */
-    goalLabel: '목표',
-    /** E8 — 종료일이 시작일보다 빠를 때의 필드 에러. 백엔드 왕복을 만들지 않는다 */
-    endBeforeStart: '종료일은 시작일보다 빠를 수 없습니다.',
+    /** 시작일 필드 라벨. 정본은 `sprintForm` */
+    startDateLabel: SPRINT_FORM_LABELS.startDateLabel,
+    /** 종료일 필드 라벨. 정본은 `sprintForm` */
+    endDateLabel: SPRINT_FORM_LABELS.endDateLabel,
+    /** 목표 필드 라벨. 정본은 `sprintForm` */
+    goalLabel: SPRINT_FORM_LABELS.goalLabel,
+    /** E8 — 종료일이 시작일보다 빠를 때의 필드 에러. 정본은 `sprintForm` */
+    endBeforeStart: SPRINT_FORM_LABELS.endBeforeStart,
     /**
      * 진행 중 제출 버튼 라벨.
      *
@@ -174,13 +252,10 @@ export const backlogLabels = {
     /**
      * ② `PATCH` 409(E9) — 남이 먼저 고쳤다. 기준값(`version`)만 서버 최신으로 갈아끼운다.
      *
-     * ★「최신 값을 불러왔으니」라고 말하지 않는다. 폼은 **사용자가 친 값을 그대로 유지**하기
-     *   때문이다 — 서버 값으로 덮으면 재시도의 변경분이 0이 되어 남의 값으로 스프린트가
-     *   시작된다(`StartSprintDialog.replaceBaselineFromCache` 주석). 「불러왔다」고 하면
-     *   화면에 남아 있는 내 입력과 안내가 서로 다른 말을 한다.
+     * 편집 다이얼로그의 409 와 **같은 상황·같은 처방**이므로 공용 폼 문구를 참조한다
+     * (정본 {@link SPRINT_FORM_LABELS}). 문구가 왜 「불러왔다」고 말하지 않는지도 거기 있다.
      */
-    patchConflict:
-      '다른 사람이 먼저 수정했습니다. 입력하신 값은 그대로 두었으니 확인 후 다시 시도해 주세요.',
+    patchConflict: SPRINT_FORM_LABELS.conflict,
     /** ③ `start` 가 비-409 로 실패 — 수정은 남았다. 재시도는 `start` 만 나간다(변경분 0) */
     startFailed: '기간·목표는 저장했지만 스프린트를 시작하지 못했습니다.',
     /**
@@ -190,6 +265,104 @@ export const backlogLabels = {
      * 백로그를 invalidate 한 뒤 다이얼로그를 닫는다.
      */
     startConflict: '이미 시작된 스프린트입니다.',
+  },
+
+  // ── FR-BL-02 D6 — 스프린트 편집 다이얼로그 (FR-1 · FR-2 · J1 · J2) ─────────
+  //
+  // ⚠️ 다이얼로그 제목과 제출 버튼 이름은 **`editSprint`('스프린트 편집')를 재사용**한다.
+  //    시작·완료 다이얼로그가 세운 관례이고, `⋯` 메뉴 항목도 같은 문자열을 쓴다.
+
+  /** 스프린트 편집 다이얼로그 문구군 */
+  editDialog: {
+    /** DialogDescription — aria-describedby 를 채운다 */
+    description: '스프린트의 이름·기간·목표를 수정합니다.',
+    /**
+     * 진행 중 제출 버튼 라벨.
+     *
+     * `editSprint`('스프린트 편집')를 부분 문자열로 포함하지만 **판별식 목록에 넣지 않는다** —
+     * 한 버튼이 둘 중 하나만 보이므로 「같은 버튼의 다른 상태」다
+     * (`create-entry-point-names.test.ts` §제외 3종 ②).
+     */
+    pending: '스프린트 편집 중…',
+    /**
+     * 비-409 저장 실패. 아무것도 바뀌지 않았으므로 재시도가 그대로 다시 보낸다.
+     *
+     * 시작 다이얼로그의 `patchFailed` 를 재사용하지 않는다 — 그 문구는 「스프린트는
+     * 시작되지 않았습니다」까지 말해 편집 화면에서는 거짓이다(시작을 시도한 적이 없다).
+     */
+    saveFailed: '스프린트를 수정하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    /** 낙관적 잠금 409. 시작 다이얼로그의 409 와 같은 상황이라 공용 폼 문구를 참조한다 */
+    saveConflict: SPRINT_FORM_LABELS.conflict,
+  },
+
+  // ── FR-BL-02 D6 — 스프린트 칸 헤더 `⋯` 관리 메뉴 (FR-3 · FR-5 · J3~J5) ─────
+  //
+  // ⚠️ 메뉴 항목 이름은 최상위 `editSprint`·`deleteSprint` 를 재사용한다. 새 문자열을
+  //    만들면 「이름 중복이 없다」 판별식이 지키는 집합과 화면이 갈린다.
+
+  /** 스프린트 `⋯` 관리 메뉴 문구군 */
+  sprintActions: {
+    /**
+     * `⋯` 트리거의 aria-label.
+     *
+     * 보이는 것은 점 세 개뿐이라 이름이 없으면 「메뉴」로만 읽힌다. **스프린트 이름을
+     * 포함하는 것이 요구사항이다** — 스프린트가 여러 개면 같은 화면에 트리거가 N개 뜨는데
+     * 이름이 같으면 조회가 strict mode 로 깨진다 (`createIssueInSprint` 와 같은 계약).
+     *
+     * @param sprintName 대상 스프린트 이름
+     * @returns "스프린트 관리, {sprintName}"
+     */
+    triggerAriaLabel: (sprintName: string): string => `스프린트 관리, ${sprintName}`,
+
+    /**
+     * 삭제 확인 설명 — **이슈 개수에 따라 갈린다** (Sanity ❓3 · E-5).
+     *
+     * 0건이면 「백로그로 돌아갑니다」를 **아예 넣지 않는다.** 옮길 것이 없는데 옮긴다고
+     * 적으면 문구가 거짓이 되고, 사용자는 있지도 않은 이슈를 백로그에서 찾게 된다.
+     *
+     * 이름은 따옴표로 감싸고 조사는 `을(를)` 형태를 쓴다 — 받침에 따라 갈리기 때문이다
+     * (`boardLabels.actions.deleteDialogDescription` 이 실제 화면에서 확인하고 정한 형태).
+     *
+     * @param sprintName 지울 스프린트 이름
+     * @param issueCount 그 스프린트에 담긴 이슈 수
+     */
+    deleteDescription: (sprintName: string, issueCount: number): string =>
+      issueCount > 0
+        ? `「${sprintName}」을(를) 지웁니다. 이슈 ${issueCount}건은 삭제되지 않고 백로그로 돌아갑니다.`
+        : `「${sprintName}」을(를) 지웁니다.`,
+
+    /** 삭제 확인 버튼 */
+    deleteConfirm: '삭제',
+
+    /** 삭제 취소 버튼 */
+    deleteCancel: '취소',
+
+    /**
+     * 삭제 진행 중 확인 버튼 라벨.
+     *
+     * `deleteConfirm`('삭제')을 부분 문자열로 포함하지만 **판별식 목록에 넣지 않는다** —
+     * 한 버튼이 둘 중 하나만 보이므로 「같은 버튼의 다른 상태」다
+     * (`create-entry-point-names.test.ts` §제외 3종 ②).
+     */
+    deleting: '삭제 중…',
+
+    /** 403 — 권한이 없다. 재시도해도 결과가 같으므로 값이 아니라 사람이 바뀌어야 한다 */
+    deleteForbidden: '이 스프린트를 삭제할 권한이 없습니다.',
+
+    /** 404 — 이미 지워졌다. 창을 닫고 목록을 다시 보면 없다 */
+    deleteNotFound: '스프린트를 찾을 수 없습니다. 이미 지워졌을 수 있습니다.',
+
+    /** 그 밖의 상태 코드 — 그냥 다시 보내면 되는 실패 */
+    deleteFailed: '스프린트를 지우지 못했습니다.',
+
+    /**
+     * 상태 코드조차 없는 실패 — 연결이 끊겼거나 응답이 상한 안에 오지 않았다.
+     *
+     * `useDeleteSprint` 의 `DeleteTimeoutError`(`lib/delete-timeout.ts`)도 여기로 온다.
+     * 사용자가 할 다음 행동이 같기 때문에 두 경우를 한 문구로 묶는다
+     * (`boardLabels.actions.noResponse` 와 같은 규칙).
+     */
+    noResponse: '서버 응답이 없습니다. 연결을 확인하고 다시 시도해 주세요.',
   },
 
   // ── FR-UX-13 F15 — 스프린트 완료 다이얼로그 (FR-5 · FR-6 · FR-7) ─────────
@@ -331,3 +504,38 @@ export const backlogLabels = {
 
 /** backlogLabels const 추론 타입 */
 export type BacklogLabels = typeof backlogLabels
+
+/** 권한 미충족 — `deleteSprint` 의 `ApiError` 계약 */
+const FORBIDDEN_STATUS = 403
+
+/** 스프린트 미존재 — `deleteSprint` 의 `ApiError` 계약 */
+const NOT_FOUND_STATUS = 404
+
+/**
+ * 스프린트 삭제 실패의 HTTP 상태를 사용자 문구로 바꾼다 (FR-3 · E-3).
+ *
+ * ### 왜 화면이 아니라 여기인가
+ * 화면마다 인라인 매핑을 만들면 키가 갈려 raw 코드가 그대로 노출되는 「가짜 그린」이 난다
+ * (PR #106). 형제 `boardManageErrorMessage`(`i18n/board-labels.ts`)가 세운 관례를 따른다.
+ *
+ * ### 왜 errorCode 가 아니라 status 인가
+ * `deleteSprint`(`api/backlog.ts`)가 던지는 `ApiError` 의 계약이 **상태 코드**로 적혀 있고
+ * (`404 = 스프린트 미존재, 403 = 권한 미충족`) 그 두 갈래를 `use-backlog.test.tsx` 가 이미
+ * 고정했다. 보드 쪽이 `errorCode` 를 쓰는 것은 그 엔드포인트가 코드를 4종으로 나눠 주기
+ * 때문이고, 여기서 흉내내면 백엔드가 주지 않는 코드를 기다리는 죽은 분기가 된다.
+ *
+ * @param status 응답 상태 코드. 응답 자체가 없었으면(연결 끊김 · 삭제 상한) `null`
+ * @returns 사용자에게 보여줄 한국어 문구
+ */
+export function sprintDeleteErrorMessage(status: number | null): string {
+  const actions = backlogLabels.sprintActions
+  if (status === null) return actions.noResponse
+  switch (status) {
+    case FORBIDDEN_STATUS:
+      return actions.deleteForbidden
+    case NOT_FOUND_STATUS:
+      return actions.deleteNotFound
+    default:
+      return actions.deleteFailed
+  }
+}

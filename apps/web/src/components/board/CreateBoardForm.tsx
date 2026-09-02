@@ -5,6 +5,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { boardLabels } from '@/i18n/board-labels'
+import { cn } from '@/lib/utils'
 import { useCreateBoard } from '@/hooks/use-boards'
 import type { BoardCreated, BoardType } from '@/api/boards'
 import { Button } from '@/components/ui/button'
@@ -72,6 +73,20 @@ const DEFAULT_BOARD_TYPE: BoardType = 'KANBAN'
 
 /** 라디오 그룹 레이블의 DOM id — `aria-labelledby` 로 `role="radiogroup"` 의 이름이 된다 */
 const TYPE_GROUP_LABEL_ID = 'board-type-group-label'
+
+/**
+ * 빈 상태 전용 여백 — 화면 한복판을 채우는 자리라 최소 높이와 큰 안쪽 여백을 준다.
+ *
+ * 다이얼로그에는 붙이지 않는다. `DialogContent` 가 이미 `p-6` 을 갖고 있어 `p-8` 이 겹치면
+ * 안쪽 여백이 두 겹이 되고 `min-h-48` 이 창을 세로로 늘려 답답해진다(장부 147). 인트로
+ * **문구**만 껐던 것이 그 부채였다 — 여백을 만든 것은 문구가 아니라 이 컨테이너다.
+ *
+ * 조건이 인트로와 같은 `showEmptyStateIntro` 인 이유 — 이 여백은 그 문구를 감싸려고 생겼으니
+ * 문구를 끄는 소비처에서는 존재 이유도 함께 사라진다.
+ * 🛑 `step` 은 섞지 않는다. 2단계에서 문구가 빠질 때 여백까지 걷으면 「다음」을 누른 순간 폼이
+ * 위로 튄다 — 빈 상태는 두 단계 모두 같은 자리에 서 있어야 한다.
+ */
+const EMPTY_STATE_SPACING = 'justify-center min-h-48 gap-6 p-8'
 
 /**
  * Radix `onValueChange` 가 주는 `string` 을 [BoardType] 으로 좁힌다.
@@ -265,7 +280,9 @@ export function CreateBoardForm({
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-48 gap-6 p-8">
+    <div
+      className={cn('flex flex-col items-center', showEmptyStateIntro && EMPTY_STATE_SPACING)}
+    >
       {showEmptyStateIntro && step === 'type' && (
         <div className="text-center space-y-2 max-w-sm">
           <p className="text-lg font-medium">보드가 없습니다</p>

@@ -462,7 +462,6 @@ const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
  * 그건 애매한 신호가 아니라 사실이므로 양보하지 않는다.
  */
 const detectType = (raw: string): TaskType => {
-  const lower = raw.toLowerCase();
   // ★소문자 사본과 **대소문자 원문**을 함께 들고 다닌다 — 험프 판정에 원문이 필요하다.
   const strippedRaw = stripConventionalPrefix(raw);
   const stripped = strippedRaw.toLowerCase();

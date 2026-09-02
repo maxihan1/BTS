@@ -417,3 +417,32 @@ export async function completeSprint(sprintId: string): Promise<SprintMeta> {
   )
   return wrapped.data
 }
+
+/**
+ * 스프린트를 삭제한다 (백엔드는 소프트 삭제).
+ *
+ * DELETE /api/v1/sprints/{id} → 204 No Content. 응답 본문이 없어 파싱하지 않는다.
+ * 같은 파일의 {@link updateSprint} 와 같은 관례 — `apiFetch` + 수동 `ApiError` 다.
+ *
+ * 스프린트만 지워지고 **이슈는 남는다.** 지운 스프린트에 있던 이슈는 어느 스프린트에도
+ * 속하지 않게 되어 그 프로젝트 **모든 보드의** 백로그 칸에 나타난다.
+ *
+ * ### `signal` 을 반드시 이어준다
+ * 삭제 확인 창은 응답을 기다리는 동안 닫힘 경로를 전부 잠그므로 상한이 필요하고
+ * (`lib/delete-timeout.ts`), 그 상한은 이 인자를 통해서만 요청을 끊는다. 여기서 signal 을
+ * 흘려버리면 abort 가 아무 일도 하지 않아 **반환 Promise 가 영원히 pending 으로 남는다.**
+ *
+ * @param sprintId 스프린트 UUID
+ * @param signal 취소 신호. 미지정이면 취소 없는 요청이다
+ * @throws ApiError 비-2xx 응답 시 (404 = 스프린트 미존재, 403 = 권한 미충족)
+ */
+export async function deleteSprint(sprintId: string, signal?: AbortSignal): Promise<void> {
+  const res = await apiFetch(`${SPRINTS_BASE}/${encodeURIComponent(sprintId)}`, {
+    method: 'DELETE',
+    signal,
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}

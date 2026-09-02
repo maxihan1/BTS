@@ -1,6 +1,6 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (499건, 최신순)
+# 시간 축 인덱스 (500건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
@@ -10,6 +10,7 @@
 | 2026-09-01 | board-scrum-schema | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-01 | board-type-and-active-sprint | — | — | — | ✔ | FR-BD-01 FR-BD-04 FR-BL-01 |
 | 2026-09-01 | board-type-create-ui | — | ✔ | — | — | FR-BD-04 FR-BL-02 |
+| 2026-09-01 | sprint-manage-ui | — | ✔ | — | — | FR-BD-01 FR-BD-04 FR-BL-02 FR-RP-01 FR-WF-07 |
 | 2026-08-31 | board-crud-recovery | — | ✔ | — | — | FR-BD-01 FR-WF-07 |
 | 2026-08-31 | workflow-status-migration-wiring | — | ✔ | — | — | FR-WF-02 FR-WF-07 |
 | 2026-08-27 | issue-tracking-status-migration | ✔ | ✔ | — | — | FR-WF-02 FR-WF-05 FR-WF-07 |
