@@ -10,6 +10,7 @@
 //   - `page.goto()` 재진입 금지 — MSW 모듈 재평가로 목 저장소가 리셋된다
 import { test, expect } from '@playwright/test'
 import { loginAsSystemAdmin } from './fixtures/workflow-scheme-fixtures'
+import { workflowPublishLabels as labels } from '../src/i18n/workflow-publish-labels'
 
 const TARGET_NAME = '소프트웨어 개발 기본 워크플로우'
 
@@ -107,4 +108,47 @@ test('P4b 이슈가 남은 상태를 빼면 발행 대신 무엇이 막는지 �
   await expect(dialog).toContainText('3')
   // 보드 컬럼 고지는 사라지는 상태가 있으면 무조건 뜬다.
   await expect(dialog).toContainText('보드 컬럼')
+
+  // ★ D6b — 발행하기 버튼이 없던 그 자리에 마법사(이관 시작)가 들어온다. 별도 다이얼로그가
+  // 아니라 같은 `워크플로우 발행` 다이얼로그의 단계라 위 세 단언이 그대로 살아 있다.
+  await expect(dialog.getByRole('button', { name: labels.migration.start })).toBeVisible()
+})
+
+test('D7 정본 — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (FR-WF-07 D6b)', async ({ page }) => {
+  await loginAsSystemAdmin(page)
+  await openEditor(page)
+
+  // 1. 이슈가 남은 상태를 뺀다 → 발행 → 마법사가 뜬다
+  await removeStatus(page, 'Done')
+  await expect(page.getByText('저장됨')).toBeVisible()
+
+  await page.getByRole('button', { name: '발행' }).click()
+  const dialog = page.getByRole('dialog', { name: labels.publish.dialogTitle })
+  await expect(dialog).toBeVisible()
+  // 발행 버튼은 아직 없다 — 이관을 먼저 끝내야 한다.
+  await expect(dialog.getByRole('button', { name: labels.publish.confirm })).toHaveCount(0)
+
+  const startButton = dialog.getByRole('button', { name: labels.migration.start })
+  await expect(startButton).toBeVisible()
+  await expect(startButton).toBeDisabled()
+
+  // 2. 도착지를 고른다 → 이관 시작 → 진행률이 보인다
+  await dialog.getByRole('combobox', { name: 'Done' }).click()
+  await page.getByRole('option', { name: 'Closed', exact: true }).click()
+  await expect(startButton).toBeEnabled()
+  await startButton.click()
+
+  await expect(dialog.getByRole('progressbar', { name: labels.migration.progressLabel })).toBeVisible()
+  await expect(dialog.getByText(labels.migration.completed)).toBeVisible()
+
+  // ★ G-1 — 이관 완료가 발행을 자동으로 부르지 않는다. 완료 직후에도 여전히 없다가,
+  // 사용자가 다시 눌러야 나타난다.
+  const publishButton = dialog.getByRole('button', { name: labels.publish.confirm })
+  await expect(publishButton).toBeVisible()
+
+  // 3. 완료되면 사용자가 다시 발행을 누른다 → 발행 성공(G-1)
+  await publishButton.click()
+
+  await page.getByRole('button', { name: '목록으로' }).click()
+  await expect(page.getByRole('table', { name: '워크플로우 목록' })).toContainText(TARGET_NAME)
 })
