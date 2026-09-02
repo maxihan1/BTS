@@ -648,7 +648,11 @@ describe('SprintColumn — 섹션 접기/펼치기 (F15 FR-2)', () => {
 function renderSprintColumnWithActions(
   opts: { canManageSprint?: boolean; boardId?: string | undefined } = {},
 ) {
-  const { canManageSprint = true, boardId = BOARD_ID } = opts
+  const { canManageSprint = true } = opts
+  // ★구조분해 기본값을 쓰지 않는다 — `{ boardId: undefined }` 를 명시로 넘긴 것과 아예 안
+  //   넘긴 것이 기본값 앞에서 같아져, 「undefined 를 그대로 흘리는가」를 재려던 테스트가
+  //   기본 UUID 를 받는다.
+  const boardId = 'boardId' in opts ? opts.boardId : BOARD_ID
   return render(
     <DndContext>
       <SprintColumn

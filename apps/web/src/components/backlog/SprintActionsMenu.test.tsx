@@ -100,12 +100,11 @@ interface RenderOptions {
  * @param opts 권한·이슈 수·보드·스프린트 (전부 기본값 있음)
  */
 function renderMenu(opts: RenderOptions = {}) {
-  const {
-    canManage = true,
-    issueCount = 3,
-    boardId = BOARD_ID,
-    sprint = SPRINT,
-  } = opts
+  const { canManage = true, issueCount = 3, sprint = SPRINT } = opts
+  // ★`boardId` 는 구조분해 기본값을 쓸 수 없다 — `{ boardId: undefined }` 를 명시로 넘긴
+  //   것과 아예 안 넘긴 것이 기본값 앞에서 같아져, 「undefined 를 그대로 흘리는가」를
+  //   재려던 테스트가 기본 UUID 를 받고 만다(실측으로 이 함정을 밟았다).
+  const boardId = 'boardId' in opts ? opts.boardId : BOARD_ID
   return render(
     <QueryClientProvider client={makeQueryClient()}>
       <SprintActionsMenu

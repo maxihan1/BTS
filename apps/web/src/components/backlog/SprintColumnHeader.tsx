@@ -8,6 +8,7 @@ import { backlogLabels } from '@/i18n/backlog-labels'
 import { burndownLabels } from '@/i18n/burndown-labels'
 import type { SprintMeta } from '@/api/backlog'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
+import { SprintActionsMenu } from './SprintActionsMenu'
 
 /**
  * 헤더 액션 버튼/링크 공통 베이스 클래스 (시작·완료·번다운 3종이 공유).
@@ -34,6 +35,14 @@ function statusBadgeClass(status: string): string {
 /** SprintColumnHeader Props — 의미는 [SprintColumn] 의 같은 이름 prop 과 동일하다. */
 export interface SprintColumnHeaderProps {
   projectKey: string
+  /**
+   * 화면이 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 🛑 **선택 prop 이 아니다.** `⋯` → 편집 다이얼로그의 409 복구가 보드 스코프 캐시를
+   * 완전 일치 키로 읽는다 — 여기서 끊으면 어느 경로도 에러를 내지 않고 재시도가 409 를
+   * 되풀이한다.
+   */
+  boardId: string | undefined
   sprint: SprintMeta
   issueCount: number
   /** 이 섹션이 접혀 있는지. 헤더는 아이콘과 `aria-expanded` 만 바꾼다 (F15 FR-2) */
@@ -44,6 +53,14 @@ export interface SprintColumnHeaderProps {
   onComplete?: () => void
   onCreateIssue?: () => void
   canCreateIssue: boolean
+  /**
+   * 스프린트 관리 권한(CREATE) — `⋯` 메뉴(편집·삭제)의 게이트 (FR-5).
+   *
+   * **fail-closed** 다. 미전달이면 메뉴를 렌더하지 않는다 — 권한 판정의 출처는
+   * 라우트의 `useProjectPermissions`(`permissions.CREATE`) 하나뿐이고, 여기서 기본값을
+   * `true` 로 두면 그 출처가 아직 안 온 순간에 조작 수단이 먼저 보인다.
+   */
+  canManageSprint?: boolean
 }
 
 /**
@@ -62,6 +79,7 @@ export interface SprintColumnHeaderProps {
  */
 export function SprintColumnHeader({
   projectKey,
+  boardId,
   sprint,
   issueCount,
   collapsed,
@@ -70,6 +88,7 @@ export function SprintColumnHeader({
   onComplete,
   onCreateIssue,
   canCreateIssue,
+  canManageSprint = false,
 }: SprintColumnHeaderProps): JSX.Element {
   const isCompleted = sprint.status === 'COMPLETED'
 
@@ -157,6 +176,17 @@ export function SprintColumnHeader({
       >
         {burndownLabels.toggle.burndown}
       </Link>
+
+      {/* `⋯` 관리 메뉴 — 편집·삭제. **줄의 맨 끝**이다 (Jira 스프린트 헤더와 같은 자리).
+          상태와 무관하게 있다 — 완료된 스프린트도 이름·목표를 고치고(FR-2) 지울 수 있다(FR-3).
+          권한이 없으면 메뉴가 **부재**한다 — 판정은 이 컴포넌트가 아니라 그쪽이 쥔다. */}
+      <SprintActionsMenu
+        projectKey={projectKey}
+        sprint={sprint}
+        boardId={boardId}
+        issueCount={issueCount}
+        canManage={canManageSprint}
+      />
     </div>
   )
 }

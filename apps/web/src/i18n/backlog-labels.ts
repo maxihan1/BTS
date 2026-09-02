@@ -100,6 +100,17 @@ export const backlogLabels = {
    */
   editSprint: '스프린트 편집',
 
+  /**
+   * 스프린트 삭제 진입점 (FR-3 · J5).
+   *
+   * `⋯` 메뉴 항목 · 확인 다이얼로그 제목이 **같은 문자열을 재사용**한다
+   * (보드 관리의 `boardLabels.actions.deleteItem`/`deleteDialogTitle` 이 세운 관례).
+   * ★ `editSprint`·`startSprint`·`completeSprint` 와 서로 **부분 문자열 관계가 아니다** —
+   *   겹치면 `getByRole('dialog', { name })` 이 strict mode 로 즉사한다(계약 §2).
+   *   `SprintColumnHeader.test.tsx` H2-2 가 편집 이름과의 관계를 잰다.
+   */
+  deleteSprint: '스프린트 삭제',
+
   /** 빈 이슈 목록 placeholder */
   emptyIssues: '이슈 없음',
 
@@ -284,6 +295,76 @@ export const backlogLabels = {
     saveConflict: SPRINT_FORM_LABELS.conflict,
   },
 
+  // ── FR-BL-02 D6 — 스프린트 칸 헤더 `⋯` 관리 메뉴 (FR-3 · FR-5 · J3~J5) ─────
+  //
+  // ⚠️ 메뉴 항목 이름은 최상위 `editSprint`·`deleteSprint` 를 재사용한다. 새 문자열을
+  //    만들면 「이름 중복이 없다」 판별식이 지키는 집합과 화면이 갈린다.
+
+  /** 스프린트 `⋯` 관리 메뉴 문구군 */
+  sprintActions: {
+    /**
+     * `⋯` 트리거의 aria-label.
+     *
+     * 보이는 것은 점 세 개뿐이라 이름이 없으면 「메뉴」로만 읽힌다. **스프린트 이름을
+     * 포함하는 것이 요구사항이다** — 스프린트가 여러 개면 같은 화면에 트리거가 N개 뜨는데
+     * 이름이 같으면 조회가 strict mode 로 깨진다 (`createIssueInSprint` 와 같은 계약).
+     *
+     * @param sprintName 대상 스프린트 이름
+     * @returns "스프린트 관리, {sprintName}"
+     */
+    triggerAriaLabel: (sprintName: string): string => `스프린트 관리, ${sprintName}`,
+
+    /**
+     * 삭제 확인 설명 — **이슈 개수에 따라 갈린다** (Sanity ❓3 · E-5).
+     *
+     * 0건이면 「백로그로 돌아갑니다」를 **아예 넣지 않는다.** 옮길 것이 없는데 옮긴다고
+     * 적으면 문구가 거짓이 되고, 사용자는 있지도 않은 이슈를 백로그에서 찾게 된다.
+     *
+     * 이름은 따옴표로 감싸고 조사는 `을(를)` 형태를 쓴다 — 받침에 따라 갈리기 때문이다
+     * (`boardLabels.actions.deleteDialogDescription` 이 실제 화면에서 확인하고 정한 형태).
+     *
+     * @param sprintName 지울 스프린트 이름
+     * @param issueCount 그 스프린트에 담긴 이슈 수
+     */
+    deleteDescription: (sprintName: string, issueCount: number): string =>
+      issueCount > 0
+        ? `「${sprintName}」을(를) 지웁니다. 이슈 ${issueCount}건은 삭제되지 않고 백로그로 돌아갑니다.`
+        : `「${sprintName}」을(를) 지웁니다.`,
+
+    /** 삭제 확인 버튼 */
+    deleteConfirm: '삭제',
+
+    /** 삭제 취소 버튼 */
+    deleteCancel: '취소',
+
+    /**
+     * 삭제 진행 중 확인 버튼 라벨.
+     *
+     * `deleteConfirm`('삭제')을 부분 문자열로 포함하지만 **판별식 목록에 넣지 않는다** —
+     * 한 버튼이 둘 중 하나만 보이므로 「같은 버튼의 다른 상태」다
+     * (`create-entry-point-names.test.ts` §제외 3종 ②).
+     */
+    deleting: '삭제 중…',
+
+    /** 403 — 권한이 없다. 재시도해도 결과가 같으므로 값이 아니라 사람이 바뀌어야 한다 */
+    deleteForbidden: '이 스프린트를 삭제할 권한이 없습니다.',
+
+    /** 404 — 이미 지워졌다. 창을 닫고 목록을 다시 보면 없다 */
+    deleteNotFound: '스프린트를 찾을 수 없습니다. 이미 지워졌을 수 있습니다.',
+
+    /** 그 밖의 상태 코드 — 그냥 다시 보내면 되는 실패 */
+    deleteFailed: '스프린트를 지우지 못했습니다.',
+
+    /**
+     * 상태 코드조차 없는 실패 — 연결이 끊겼거나 응답이 상한 안에 오지 않았다.
+     *
+     * `useDeleteSprint` 의 `DeleteTimeoutError`(`lib/delete-timeout.ts`)도 여기로 온다.
+     * 사용자가 할 다음 행동이 같기 때문에 두 경우를 한 문구로 묶는다
+     * (`boardLabels.actions.noResponse` 와 같은 규칙).
+     */
+    noResponse: '서버 응답이 없습니다. 연결을 확인하고 다시 시도해 주세요.',
+  },
+
   // ── FR-UX-13 F15 — 스프린트 완료 다이얼로그 (FR-5 · FR-6 · FR-7) ─────────
 
   /** 스프린트 완료 다이얼로그 문구군 */
@@ -423,3 +504,38 @@ export const backlogLabels = {
 
 /** backlogLabels const 추론 타입 */
 export type BacklogLabels = typeof backlogLabels
+
+/** 권한 미충족 — `deleteSprint` 의 `ApiError` 계약 */
+const FORBIDDEN_STATUS = 403
+
+/** 스프린트 미존재 — `deleteSprint` 의 `ApiError` 계약 */
+const NOT_FOUND_STATUS = 404
+
+/**
+ * 스프린트 삭제 실패의 HTTP 상태를 사용자 문구로 바꾼다 (FR-3 · E-3).
+ *
+ * ### 왜 화면이 아니라 여기인가
+ * 화면마다 인라인 매핑을 만들면 키가 갈려 raw 코드가 그대로 노출되는 「가짜 그린」이 난다
+ * (PR #106). 형제 `boardManageErrorMessage`(`i18n/board-labels.ts`)가 세운 관례를 따른다.
+ *
+ * ### 왜 errorCode 가 아니라 status 인가
+ * `deleteSprint`(`api/backlog.ts`)가 던지는 `ApiError` 의 계약이 **상태 코드**로 적혀 있고
+ * (`404 = 스프린트 미존재, 403 = 권한 미충족`) 그 두 갈래를 `use-backlog.test.tsx` 가 이미
+ * 고정했다. 보드 쪽이 `errorCode` 를 쓰는 것은 그 엔드포인트가 코드를 4종으로 나눠 주기
+ * 때문이고, 여기서 흉내내면 백엔드가 주지 않는 코드를 기다리는 죽은 분기가 된다.
+ *
+ * @param status 응답 상태 코드. 응답 자체가 없었으면(연결 끊김 · 삭제 상한) `null`
+ * @returns 사용자에게 보여줄 한국어 문구
+ */
+export function sprintDeleteErrorMessage(status: number | null): string {
+  const actions = backlogLabels.sprintActions
+  if (status === null) return actions.noResponse
+  switch (status) {
+    case FORBIDDEN_STATUS:
+      return actions.deleteForbidden
+    case NOT_FOUND_STATUS:
+      return actions.deleteNotFound
+    default:
+      return actions.deleteFailed
+  }
+}

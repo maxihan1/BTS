@@ -18,6 +18,14 @@ import { BacklogCard } from './BacklogCard'
 export interface SprintColumnProps {
   /** 소속 프로젝트 키 — 번다운 링크 경로 params에 사용 */
   projectKey: string
+  /**
+   * 화면이 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 🛑 **선택 prop 이 아니다.** 헤더의 `⋯` → 편집 다이얼로그까지 그대로 흘러가고, 거기서
+   * 409 복구가 보드 스코프 캐시를 **완전 일치** 키로 읽는다. 여기서 `undefined` 를 임의로
+   * 넣으면 재시도가 409 를 되풀이하는데 화면은 똑같아 보인다.
+   */
+  boardId: string | undefined
   /** 스프린트 메타 정보 */
   sprint: SprintMeta
   /** rank 순으로 정렬된 스프린트 이슈 목록 (부모가 정렬해 전달) */
@@ -58,6 +66,14 @@ export interface SprintColumnProps {
    * CREATE 권한 보유 여부. **fail-closed** — 로딩·에러·미보유는 전부 `false` 다.
    */
   canCreateIssue?: boolean
+  /**
+   * 스프린트 관리 권한(CREATE) — 헤더 `⋯` 메뉴(편집·삭제)의 게이트 (FR-5).
+   *
+   * `canCreateIssue` 와 값의 출처는 같지만(`permissions.CREATE`) **이름을 분리한다** —
+   * 「이슈 생성」과 「스프린트 관리」는 다른 행위이고, 한쪽 권한이 갈라지는 날 같은 prop 을
+   * 쓰고 있으면 두 조작이 한꺼번에 잘못된다 (`BacklogBoardProps` 가 세운 관례).
+   */
+  canManageSprint?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +82,7 @@ export interface SprintColumnProps {
 
 function SprintColumnInner({
   projectKey,
+  boardId,
   sprint,
   issues,
   assigneeNames,
@@ -75,6 +92,7 @@ function SprintColumnInner({
   onComplete,
   onCreateIssue,
   canCreateIssue = false,
+  canManageSprint = false,
 }: SprintColumnProps) {
   const isCompleted = sprint.status === 'COMPLETED'
   // droppable id 를 접힘 저장의 섹션 id 로도 그대로 쓴다 (F15 FR-2) — 두 벌로 갈리면
@@ -103,6 +121,7 @@ function SprintColumnInner({
     >
       <SprintColumnHeader
         projectKey={projectKey}
+        boardId={boardId}
         sprint={sprint}
         issueCount={issueCount}
         collapsed={collapsed}
@@ -111,6 +130,7 @@ function SprintColumnInner({
         onComplete={onComplete}
         onCreateIssue={onCreateIssue}
         canCreateIssue={canCreateIssue}
+        canManageSprint={canManageSprint}
       />
 
       {/* 드롭 영역 + 카드 목록 — 접히면 **렌더하지 않는다** (FR-2). 헤더는 남는다. */}
