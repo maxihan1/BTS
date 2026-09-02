@@ -1,9 +1,9 @@
 // 상태 이관 일괄작업의 진행률을 폴링하는 훅 — 종료 상태와 에러에서 멈춘다
 import { useQuery } from '@tanstack/react-query'
-import type { Query } from '@tanstack/react-query'
 import { ZodError } from 'zod'
 import { fetchBulkOperation } from '@/api/bulk-operations'
 import { ApiError } from '@/api/client'
+import type { Query } from '@tanstack/react-query'
 import type { BulkOperationResponse } from '@/api/bulk-operations'
 
 /**
