@@ -120,6 +120,20 @@ function toggleKeys(key: string): string[] {
     .filter((s) => s !== '')
 }
 
+/**
+ * 스프린트 미존재 404 응답 — 스프린트를 다루는 모든 핸들러가 같은 몸을 돌려준다.
+ *
+ * 사본을 늘리면 errorCode 나 문구가 한 곳만 바뀌어도 화면의 에러 매핑이 핸들러마다 갈린다.
+ *
+ * @param sprintId 찾지 못한 스프린트 UUID
+ */
+function sprintNotFound(sprintId: string): HttpResponse<{ errorCode: string; message: string }> {
+  return HttpResponse.json(
+    { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
+    { status: 404 },
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectKey/backlog — 보드 스코프 (FR-BD-04)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -385,10 +399,7 @@ const assignToSprintHandler = http.post(
     // 스프린트 존재 확인
     const entry = findSprintInStore(sprintId)
     if (entry === undefined) {
-      return HttpResponse.json(
-        { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
-        { status: 404 },
-      )
+      return sprintNotFound(sprintId)
     }
 
     // body 파싱
@@ -463,10 +474,7 @@ const unassignFromSprintHandler = http.delete(
     // 스프린트 존재 확인
     const entry = findSprintInStore(sprintId)
     if (entry === undefined) {
-      return HttpResponse.json(
-        { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
-        { status: 404 },
-      )
+      return sprintNotFound(sprintId)
     }
 
     // 부분 실패 토글 — 목록에 든 이슈 키만 500. 나머지는 정상 204 (S7·S18)
@@ -615,10 +623,7 @@ const patchSprintHandler = http.patch('/api/v1/sprints/:id', async ({ params, re
 
   const entry = findSprintInStore(sprintId)
   if (entry === undefined) {
-    return HttpResponse.json(
-      { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
-      { status: 404 },
-    )
+    return sprintNotFound(sprintId)
   }
 
   let body: Record<string, unknown>
@@ -711,10 +716,7 @@ const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) =
 
   const entry = findSprintInStore(sprintId)
   if (entry === undefined) {
-    return HttpResponse.json(
-      { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
-      { status: 404 },
-    )
+    return sprintNotFound(sprintId)
   }
 
   const { storedSprint } = entry
@@ -746,10 +748,7 @@ const completeSprintHandler = http.post('/api/v1/sprints/:id/complete', ({ param
 
   const entry = findSprintInStore(sprintId)
   if (entry === undefined) {
-    return HttpResponse.json(
-      { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
-      { status: 404 },
-    )
+    return sprintNotFound(sprintId)
   }
 
   const { storedSprint } = entry
@@ -794,10 +793,7 @@ const deleteSprintHandler = http.delete('/api/v1/sprints/:id', ({ params }) => {
 
   const entry = findSprintInStore(sprintId)
   if (entry === undefined) {
-    return HttpResponse.json(
-      { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
-      { status: 404 },
-    )
+    return sprintNotFound(sprintId)
   }
 
   const { project, storedSprint } = entry
