@@ -289,7 +289,12 @@ class SprintApplicationService(
         sprintId: UUID,
     ): Sprint {
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
+        // 전환 자체가 무효면 락을 잡기 전에 죽는다 — 잘못된 요청이 남의 시작을 막아 세우지 않는다.
         val started = sprint.start()
+        // 🛑 락을 **조회보다 먼저** 잡는다. 락 밖에서 읽은 값으로 판단하면 락이 무력화된다
+        //    (memory `advisory-lock-bigint-toctou`). DB 는 이 유일성을 못 막는다 —
+        //    `idx_sprints_board_active`(V506)가 선재 다중 ACTIVE 행 보존 때문에 UNIQUE 가 아니다.
+        sprintRepository.acquireSprintStartLock(sprint.boardId)
         if (sprintRepository.findActiveByBoard(sprint.boardId) != null) {
             throw SprintAlreadyActiveException()
         }

@@ -16,6 +16,7 @@ import com.bts.shared.permission.IssueScope
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
@@ -934,6 +935,8 @@ class SprintApplicationServiceTest {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns plannedSprint
+                // FR-BD-04 PR ⑤ — start 는 보드 스코프 advisory lock 을 조회보다 먼저 잡는다.
+                every { it.acquireSprintStartLock(boardId) } returns Unit
                 // FR-BD-04 보드당 활성 1개 가드 — 이 보드에 활성이 없는 정상 경로다.
                 every { it.findActiveByBoard(boardId) } returns null
                 every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
@@ -1007,6 +1010,8 @@ class SprintApplicationServiceTest {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns plannedSprint
+                // FR-BD-04 PR ⑤ — start 는 보드 스코프 advisory lock 을 조회보다 먼저 잡는다.
+                every { it.acquireSprintStartLock(boardId) } returns Unit
                 every { it.findActiveByBoard(boardId) } returns otherActive
             }
 
@@ -1024,6 +1029,8 @@ class SprintApplicationServiceTest {
         val repo =
             mockk<SprintRepository>().also {
                 every { it.findById(sprintId) } returns plannedSprint
+                // FR-BD-04 PR ⑤ — start 는 보드 스코프 advisory lock 을 조회보다 먼저 잡는다.
+                every { it.acquireSprintStartLock(boardId) } returns Unit
                 every { it.findActiveByBoard(boardId) } returns null
                 every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
             }
@@ -1032,6 +1039,32 @@ class SprintApplicationServiceTest {
 
         // 프로젝트 전역이 아니라 보드 스코프다 — 다른 보드의 활성 스프린트는 막지 않는다.
         verify(exactly = 1) { repo.findActiveByBoard(boardId) }
+    }
+
+    /**
+     * 락은 조회보다 **먼저** 잡혀야 한다 (FR-BD-04 PR ⑤-2).
+     *
+     * 순서를 뒤집으면 락 밖에서 읽은 값으로 판단하게 되어 **락이 무력화된다**
+     * (memory `advisory-lock-bigint-toctou`). 그런데 뒤집어도 이 파일의 다른 단위 테스트는 전부
+     * 초록이고, 통합 테스트도 두 스레드가 우연히 안 겹치면 통과할 수 있다 — 순서를 **직접** 잰다.
+     */
+    @Test
+    fun `start 는 활성 조회보다 먼저 보드 락을 잡는다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+                every { it.findActiveByBoard(boardId) } returns null
+                every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
+            }
+
+        makeService(repo = repo).start(actorId, sprintId)
+
+        verifyOrder {
+            repo.acquireSprintStartLock(boardId)
+            repo.findActiveByBoard(boardId)
+            repo.updateStatus(sprintId, SprintStatus.ACTIVE, 0L)
+        }
     }
 
     @Test
