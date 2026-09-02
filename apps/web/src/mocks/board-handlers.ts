@@ -3,6 +3,9 @@
 // 교훈 반영.
 //   - msw-mutation-stateful-refetch: move 후 GET 상세에 즉시 반영되도록 boardStore 변이
 //   - msw-derived-behavior-shared-store-e2e: 파생 응답은 공유 store에서 읽음
+//     ★스크럼 보드의 카드는 **backlogStore 의 활성 스프린트 이슈**에서 파생된다(FR-BD-04).
+//       시작 핸들러가 boardStore 에 심은 마커를 여기서 읽어 배치한다 — 두 요청이 같은 store 를
+//       보지 않으면 「시작해도 보드가 안 바뀐다」가 된다(2026-09-02 D7 E2E S7 실측).
 //   - e2e-msw-scenario-toggle-localstorage-flag: 409 토글은 localStorage 플래그로 분기
 //
 import { http, HttpResponse } from 'msw'
@@ -238,6 +241,37 @@ function withActiveSprintCards(stored: StoredBoardDetail): StoredBoardDetail {
 }
 
 /**
+ * store 카드 한 장을 응답 DTO(`BoardCard`)로 옮긴다.
+ *
+ * store 전용 필터 메타(`componentIds`)는 **싣지 않는다** — 필드를 하나씩 적는 것이 그 계약이다
+ * (스프레드로 바꾸면 메타가 조용히 새고, 그것을 막는 가드는 `board-handlers.test.ts` 뿐이다).
+ * 담당자·우선순위·에픽은 issueOverrides 오버레이({@link resolveLiveField}), rank 는 backlogStore
+ * 오버레이({@link resolveLiveRank})를 각각 적용한다.
+ *
+ * @param projectKey 보드가 속한 프로젝트 키 — rank 오버레이의 조회 축
+ * @param card store 내부 카드
+ */
+function toResponseCard(projectKey: string, card: StoredCard): BoardCard {
+  const liveField = resolveLiveField(card.issueKey, {
+    assigneeId: card.assigneeId,
+    priority: card.priority,
+    epicKey: card.epicKey ?? null,
+  })
+  return {
+    issueKey: card.issueKey,
+    summary: card.summary,
+    assigneeId: liveField.assigneeId,
+    version: card.version,
+    priority: liveField.priority,
+    epicKey: liveField.epicKey,
+    rank: resolveLiveRank(projectKey, card.issueKey, card.rank ?? null),
+    typeKey: card.typeKey,
+    labels: card.labels,
+    originalEstimateSeconds: card.originalEstimateSeconds,
+  }
+}
+
+/**
  * StoredBoardDetail을 BoardDetail 응답 형식으로 변환한다.
  *
  * componentIds는 store 내부 필터용 메타이며 응답 DTO(BoardCard)에 포함하지 않는다.
@@ -259,43 +293,13 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
   const placed = withActiveSprintCards(stored)
   return {
     ...placed,
-    columns: placed.columns.map((col) => {
-      const cards = col.cards
+    columns: placed.columns.map((col) => ({
+      ...col,
+      cards: col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(
-          ({
-            issueKey,
-            summary,
-            assigneeId,
-            version,
-            priority,
-            epicKey,
-            rank,
-            typeKey,
-            labels,
-            originalEstimateSeconds,
-          }): BoardCard => {
-            const liveField = resolveLiveField(issueKey, {
-              assigneeId,
-              priority,
-              epicKey: epicKey ?? null,
-            })
-            return {
-              issueKey,
-              summary,
-              assigneeId: liveField.assigneeId,
-              version,
-              priority: liveField.priority,
-              epicKey: liveField.epicKey,
-              rank: resolveLiveRank(placed.projectKey, issueKey, rank ?? null),
-              typeKey,
-              labels,
-              originalEstimateSeconds,
-            }
-          },
-        )
-      return { ...col, cards: [...cards].sort(byRankNullsLast) }
-    }),
+        .map((card) => toResponseCard(placed.projectKey, card))
+        .sort(byRankNullsLast),
+    })),
     quickFilters: placed.quickFilters ?? [],
     // 백엔드는 단건 조회 응답에 canDelete를 항상 싣는다(FR-BD-01-2d). mock도 항상 실어
     // 「응답에 있다」를 전제로 한 소비자가 mock 위에서만 통과하는 일이 없게 한다.
