@@ -19,6 +19,7 @@ import {
   updateSprint,
 } from '@/api/backlog'
 import type { BacklogView, IssueRankResult, SprintMeta } from '@/api/backlog'
+import type { BoardCardFilterParams } from '@/api/boards'
 import {
   useBacklog,
   useRerankIssue,
@@ -30,6 +31,7 @@ import {
   useUpdateSprint,
   backlogKeys,
 } from './use-backlog'
+import { boardKeys } from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -41,6 +43,27 @@ const SPRINT_ID = 'a0000000-0000-4000-8000-000000000001'
 const BOARD_A = 'b0000000-0000-4000-8000-00000000000a'
 /** 같은 프로젝트의 **다른** 보드 — 캐시가 갈리는지 재는 짝 */
 const BOARD_B = 'b0000000-0000-4000-8000-00000000000b'
+
+/**
+ * 보드 화면이 실제로 쓰는 필터 — 상세 캐시를 3요소 키(`['board', id, filter]`)로 만든다.
+ *
+ * 무효화가 2요소 키만 정확히 짚으면 이 변종이 살아남는다. 화면은 필터를 걸고 보는 쪽이라
+ * 「무효화했는데 화면은 그대로」가 되는 자리가 여기다.
+ */
+const BOARD_FILTER: BoardCardFilterParams = {
+  assigneeIds: [],
+  includeUnassigned: false,
+  labels: ['bug'],
+  componentIds: [],
+}
+
+/**
+ * 보드 상세 캐시 자리를 채우는 표식.
+ *
+ * 내용은 판정에 안 쓴다 — 이 축이 재는 것은 `isInvalidated` 플래그뿐이라 BoardDetail 전체를
+ * 짓는 것은 판정과 무관한 픽스처 유지비만 늘린다.
+ */
+const BOARD_CACHE_MARKER = { marker: 'board-detail' } as const
 
 const MOCK_SPRINT_META: SprintMeta = {
   sprintId: SPRINT_ID,
@@ -105,6 +128,21 @@ function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { readonly children: ReactNode }) {
     return createElement(QueryClientProvider, { client: queryClient }, children)
   }
+}
+
+/**
+ * 스프린트 전환이 덮어야 할 보드 상세 캐시를 미리 심는다.
+ *
+ * 세 자리를 심는 이유. 스프린트가 어느 보드에 속하는지 훅은 모르고(BOARD_B), 화면은 필터를 건
+ * 3요소 키로 본다(BOARD_FILTER). 두 자리 중 하나라도 남으면 `useBoard` 의 staleTime 동안
+ * 옛 보드가 그대로 보인다.
+ *
+ * @param queryClient 캐시를 심을 대상 클라이언트
+ */
+function seedBoardDetailCaches(queryClient: QueryClient): void {
+  queryClient.setQueryData(boardKeys.detail(BOARD_A), BOARD_CACHE_MARKER)
+  queryClient.setQueryData(boardKeys.detail(BOARD_A, BOARD_FILTER), BOARD_CACHE_MARKER)
+  queryClient.setQueryData(boardKeys.detail(BOARD_B), BOARD_CACHE_MARKER)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -443,6 +481,52 @@ describe('useStartSprint', () => {
       expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
   })
+
+  it('T-BL-START-SPRINT-2: 성공 시 **보드 접두 키**도 invalidate 한다 (J18 — 시작하면 보드가 바뀐다)', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    seedBoardDetailCaches(queryClient)
+
+    const { result } = renderHook(() => useStartSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(SPRINT_ID)
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // 어느 키로 불렸는지까지 본다 — 호출 횟수만 세면 백로그 무효화가 그 자리를 채워 통과한다
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.all }),
+    )
+    // 접두 매칭의 결과를 캐시 상태로 되잰다 — 팩토리가 바뀌어도 이 판정은 화면 쪽에 붙어 있다
+    expect(queryClient.getQueryState(boardKeys.detail(BOARD_A))?.isInvalidated).toBe(true)
+    expect(
+      queryClient.getQueryState(boardKeys.detail(BOARD_A, BOARD_FILTER))?.isInvalidated,
+    ).toBe(true)
+    expect(queryClient.getQueryState(boardKeys.detail(BOARD_B))?.isInvalidated).toBe(true)
+  })
+
+  it('T-BL-START-SPRINT-3: 보드 **목록** 키는 건드리지 않는다 (`board` ↔ `boards` 한 글자 차)', async () => {
+    // 시작은 보드의 이름도 종류도 안 바꾼다. 접두가 `boards` 로 미끄러지면 스위처 목록까지
+    // 매번 다시 부르게 되는데, 그 낭비는 화면이 멀쩡해서 아무 테스트에도 안 걸린다.
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryData(boardKeys.list('ATLAS'), BOARD_CACHE_MARKER)
+
+    const { result } = renderHook(() => useStartSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(SPRINT_ID)
+    })
+
+    expect(invalidateSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.list('ATLAS') }),
+    )
+    expect(queryClient.getQueryState(boardKeys.list('ATLAS'))?.isInvalidated).toBe(false)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -485,6 +569,30 @@ describe('useCompleteSprint', () => {
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
     )
+  })
+
+  it('T-BL-COMPLETE-SPRINT-2: 성공 시 **보드 접두 키**도 invalidate 한다 (시작의 대칭 — 보드가 빈다)', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    seedBoardDetailCaches(queryClient)
+
+    const { result } = renderHook(() => useCompleteSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(SPRINT_ID)
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.all }),
+    )
+    expect(queryClient.getQueryState(boardKeys.detail(BOARD_A))?.isInvalidated).toBe(true)
+    expect(
+      queryClient.getQueryState(boardKeys.detail(BOARD_A, BOARD_FILTER))?.isInvalidated,
+    ).toBe(true)
+    expect(queryClient.getQueryState(boardKeys.detail(BOARD_B))?.isInvalidated).toBe(true)
   })
 })
 
