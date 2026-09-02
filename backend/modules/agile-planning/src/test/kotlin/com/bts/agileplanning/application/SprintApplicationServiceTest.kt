@@ -287,6 +287,39 @@ class SprintApplicationServiceTest {
         verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
     }
 
+    // 위 두 테스트가 「권한이 있을 때」의 404 를 고정한다면, 이 테스트는 **검사 순서**를 고정한다.
+    // 권한 판정이 보드 조회보다 **뒤로** 밀리면, 이 프로젝트에 아무 권한도 없는 행위자가 404(그 UUID 는
+    // 이 프로젝트 보드가 아니다)와 403(권한만 없다)의 차이로 **어느 UUID 가 이 프로젝트의 보드인지
+    // 탐침**할 수 있다. 권한이 먼저라 두 경우가 모두 403 으로 합쳐지는 것이 그 구분을 없앤다.
+    // 바로 위 `create CREATE 권한 없으면 403…` 테스트는 **유효한 보드**를 주므로 순서를 판별하지 못한다 —
+    // 순서를 뒤집어도 초록이다. 판별에는 「권한 없음 × 무효한 보드」 조합이 필요하다.
+    @Test
+    fun `create 권한이 없으면 보드가 무효해도 404 가 아니라 403 이다`() {
+        val repo = mockk<SprintRepository>()
+        val resolver = denyResolver(actorId, IssuePermission.CREATE, IssueScope.Project(projectKey))
+
+        assertThatThrownBy {
+            makeService(
+                resolver = resolver,
+                repo = repo,
+                // 등록된 보드가 없으므로 findById 는 어떤 UUID 에도 null 이다 = 보드 조회는 404 감이다.
+                boardRepository = boardRepoOf(),
+            ).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                boardId = UUID.randomUUID(),
+                name = "Sprint X",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(403)
+
+        verify(exactly = 0) { repo.insert(any()) }
+    }
+
     // ── update ────────────────────────────────────────────────────────────────
 
     @Test
