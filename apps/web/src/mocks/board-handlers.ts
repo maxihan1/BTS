@@ -6,7 +6,15 @@
 //   - e2e-msw-scenario-toggle-localstorage-flag: 409 토글은 localStorage 플래그로 분기
 //
 import { http, HttpResponse } from 'msw'
-import type { BoardDetail, BoardCard, BoardCardFilterParams, SwimlaneField, BoardType } from '@/api/boards'
+import type {
+  ActiveSprint,
+  BoardDetail,
+  BoardCard,
+  BoardCardFilterParams,
+  SwimlaneField,
+  BoardType,
+} from '@/api/boards'
+import type { BacklogIssue } from '@/api/backlog'
 import { buildBoardFilterQuery } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
 import { queryStringToSearch, searchToFilter } from '@/lib/board-filter'
@@ -26,7 +34,7 @@ import {
 // 자신의 rank만 읽으면 rerank 후 invalidateQueries 재조회 시 boardStore의 옛 rank로 되돌아간다
 // (msw-mutation-stateful-refetch 회귀 — 새로고침 후 순서가 사라짐). backlogStore에 같은 issueKey가
 // 있으면 그 최신 rank를 읽기 전용으로 오버레이해 두 store가 같은 진실을 공유하도록 한다.
-import { backlogStore, findIssueInProject } from './backlog-fixtures'
+import { backlogStore, findIssueInProject, findSprintInStore } from './backlog-fixtures'
 // FR-UX-06 PR21b Task 6 — 스윔레인 간 드래그 필드변경(담당자/우선순위/에픽) stateful 연결.
 // useChangeCardField는 PATCH /api/v1/issues/:key/assignee(changeAssigneeHandler),
 // PATCH /api/v1/issues/:key(updateIssueHandler), POST/DELETE
@@ -144,6 +152,91 @@ function byRankNullsLast(a: { rank: string | null }, b: { rank: string | null })
   return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 스크럼 보드 — 활성 스프린트 파생 (FR-BD-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 이 보드가 스크럼인지 판정한다. 종류 미설정 시드는 기본값(칸반)으로 본다.
+ *
+ * ★분기가 **조회 시점**에 있는 것이 계약이다. 백엔드 `BoardApplicationService.getBoard` 도
+ * `boardType == SCRUM` 일 때만 활성 스프린트를 조회한다 — 칸반 보드에 붙은 스프린트가
+ * 데이터에 실재해도(백엔드 `sprints.board_id` 에 종류 제약이 없다) 응답에는 나타나지 않는다
+ * (J6 *"Active sprints are only available on Scrum boards."*). 시드나 시작 핸들러 쪽에서
+ * 가리면 나중에 생기는 경로가 그 가드를 조용히 우회한다.
+ *
+ * @param stored store 내부 보드 데이터
+ */
+function isScrumBoard(stored: StoredBoardDetail): boolean {
+  return (stored.boardType ?? DEFAULT_BOARD_TYPE) === 'SCRUM'
+}
+
+/**
+ * 응답에 실을 활성 스프린트를 정한다. **칸반은 언제나 null** 이다 (FR-BD-04).
+ *
+ * @param stored store 내부 보드 데이터
+ */
+function resolveActiveSprint(stored: StoredBoardDetail): ActiveSprint | null {
+  return isScrumBoard(stored) ? stored.activeSprint ?? null : null
+}
+
+/**
+ * 백로그 이슈를 보드 카드로 옮긴다 (FR-BD-04).
+ *
+ * `componentIds` 는 백로그 이슈에 없는 축이라 빈 배열이다 — store 전용 필터 메타이며
+ * 응답 DTO(`BoardCard`)에는 실리지 않는다. 그래서 스크럼 보드 카드는 컴포넌트 필터에 걸리지
+ * 않는다(목의 한계 — 백엔드는 이슈의 실제 컴포넌트로 거른다).
+ *
+ * @param issue backlogStore 의 이슈
+ */
+function sprintIssueToCard(issue: BacklogIssue): StoredCard {
+  return {
+    issueKey: issue.key,
+    summary: issue.summary,
+    assigneeId: issue.assigneeId,
+    version: issue.version,
+    priority: issue.priority,
+    epicKey: issue.epicKey,
+    rank: issue.rank,
+    typeKey: issue.typeKey,
+    labels: issue.labels,
+    originalEstimateSeconds: issue.originalEstimateSeconds,
+    componentIds: [],
+  }
+}
+
+/**
+ * 스크럼 보드의 컬럼을 **활성 스프린트의 이슈만으로** 다시 채운다 (FR-BD-04 · 백엔드 getBoard 미러).
+ *
+ * 배치 축은 `currentStateKey` ↔ 컬럼 `stateKey` 다(백엔드 `BoardCardPlacement.placeCards`).
+ * 어느 컬럼에도 매핑되지 않는 이슈는 카드가 되지 못하고 `unplacedCount` 로 샌다.
+ * 활성 스프린트가 없는 스크럼 보드는 카드가 0건이다 — 백엔드도 스프린트 이슈 키 집합이
+ * 비면 모든 이슈가 걸러진다(그 자리는 「활성 스프린트가 없습니다」 빈 상태다).
+ *
+ * 🛑 **칸반은 이 경로를 아예 타지 않는다.** 기존 보드 시드가 전부 칸반이라 여기서 새면
+ * 보드 E2E 전량이 자기 카드를 잃는다.
+ *
+ * @param stored store 내부 보드 데이터
+ * @returns 스크럼이면 활성 스프린트 이슈로 채운 사본, 칸반이면 원본 그대로
+ */
+function withActiveSprintCards(stored: StoredBoardDetail): StoredBoardDetail {
+  if (!isScrumBoard(stored)) return stored
+
+  const activeSprint = stored.activeSprint ?? null
+  const issues =
+    activeSprint === null
+      ? []
+      : findSprintInStore(activeSprint.sprintId)?.storedSprint.issues ?? []
+
+  const columns = stored.columns.map((col) => ({
+    ...col,
+    cards: issues.filter((i) => i.currentStateKey === col.stateKey).map(sprintIssueToCard),
+  }))
+  const placedCount = columns.reduce((sum, col) => sum + col.cards.length, 0)
+
+  return { ...stored, columns, unplacedCount: issues.length - placedCount }
+}
+
 /**
  * StoredBoardDetail을 BoardDetail 응답 형식으로 변환한다.
  *
@@ -156,13 +249,17 @@ function byRankNullsLast(a: { rank: string | null }, b: { rank: string | null })
  * (FR-UX-06 PR21b Task 6). typeKey/labels/originalEstimateSeconds는 store 시드값을 그대로 반환한다
  * (FR-UX-14 F14 — 필드변경 오버레이 대상이 아니다).
  *
+ * 스크럼 보드는 컬럼 카드가 **활성 스프린트 이슈로 대체된 뒤** 나머지 조립이 돌아간다
+ * ({@link withActiveSprintCards} · FR-BD-04). 칸반은 그 함수를 통과해도 원본 그대로다.
+ *
  * @param stored store 내부 보드 데이터
  * @param params 필터 파라미터 (없으면 전체 카드 반환)
  */
 function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): BoardDetail {
+  const placed = withActiveSprintCards(stored)
   return {
-    ...stored,
-    columns: stored.columns.map((col) => {
+    ...placed,
+    columns: placed.columns.map((col) => {
       const cards = col.cards
         .filter((card) => matchesFilter(card, params))
         .map(
@@ -190,7 +287,7 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
               version,
               priority: liveField.priority,
               epicKey: liveField.epicKey,
-              rank: resolveLiveRank(stored.projectKey, issueKey, rank ?? null),
+              rank: resolveLiveRank(placed.projectKey, issueKey, rank ?? null),
               typeKey,
               labels,
               originalEstimateSeconds,
@@ -199,16 +296,16 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
         )
       return { ...col, cards: [...cards].sort(byRankNullsLast) }
     }),
-    quickFilters: stored.quickFilters ?? [],
+    quickFilters: placed.quickFilters ?? [],
     // 백엔드는 단건 조회 응답에 canDelete를 항상 싣는다(FR-BD-01-2d). mock도 항상 실어
     // 「응답에 있다」를 전제로 한 소비자가 mock 위에서만 통과하는 일이 없게 한다.
-    canDelete: stored.canDelete ?? true,
-    // ★`...stored` 만으로는 두 필드가 `undefined` 로 새어 나간다 — StoredBoardDetail 에서
+    canDelete: placed.canDelete ?? true,
+    // ★`...placed` 만으로는 두 필드가 `undefined` 로 새어 나간다 — StoredBoardDetail 에서
     //   둘 다 optional 이기 때문이다(BoardDetail 과 별개 타입이라 컴파일러가 안 잡는다).
     //   boardDetailSchema 는 둘을 **필수 키**로 요구하므로 여기서 반드시 값을 채운다.
-    boardType: stored.boardType ?? DEFAULT_BOARD_TYPE,
-    // 칸반은 항상 null. 스크럼 시드가 값을 들고 있으면 그대로 흘린다.
-    activeSprint: stored.activeSprint ?? null,
+    boardType: placed.boardType ?? DEFAULT_BOARD_TYPE,
+    // 칸반은 언제나 null — 판정은 조회 시점에 한다({@link resolveActiveSprint}).
+    activeSprint: resolveActiveSprint(placed),
   }
 }
 

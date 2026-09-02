@@ -18,7 +18,12 @@ import type { StoredBacklogProject, StoredSprint } from './backlog-fixtures'
 // FR-BD-04 — 「이 프로젝트의 보드」의 출처는 보드 store 다. 백엔드도 백로그 스코프를
 // `boardRepository.findAllByProjectKey` / `findScrumBoardIdByProject` 로 푼다.
 // import 방향은 backlog-handlers → board-fixtures 한 방향이라 순환이 생기지 않는다.
-import { boardStore, projectBoardIndex } from './board-fixtures'
+import {
+  boardStore,
+  projectBoardIndex,
+  setBoardActiveSprint,
+  clearBoardActiveSprint,
+} from './board-fixtures'
 import type { BacklogView, SprintMeta } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -648,11 +653,31 @@ const patchSprintHandler = http.patch('/api/v1/sprints/:id', async ({ params, re
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 시작한 스프린트를 그 보드의 활성 스프린트로 심는다 (FR-BD-04).
+ *
+ * 「스프린트를 시작하면 보드가 바뀐다」(ADR §D3 · J18)는 **backlog store 와 board store 를
+ * 가로지르는 파생 동작**이다. 시작 응답만 바꾸면 뒤이은 보드 조회가 그것을 모른다 —
+ * 왜 store 를 경유해야 하는지는 {@link setBoardActiveSprint} KDoc 참조.
+ *
+ * 소속 보드를 모르는 스프린트(`boardId: null` — 백엔드 `CreateSprintRequest.boardId` 가 선택
+ * 필드라 생기는 하위 호환 경로)는 심을 자리가 없어 아무것도 하지 않는다.
+ *
+ * @param storedSprint 시작 처리가 끝난 store 안의 스프린트 엔트리
+ */
+function plantActiveSprintOnBoard(storedSprint: StoredSprint): void {
+  if (storedSprint.boardId === null) return
+  const { sprintId, name, startDate, endDate } = storedSprint.sprint
+  // 백엔드 `ActiveSprintResponse` 는 **정확히 4필드다** — goal·status·version 은 싣지 않는다.
+  setBoardActiveSprint(storedSprint.boardId, { sprintId, name, startDate, endDate })
+}
+
+/**
  * POST /api/v1/sprints/{id}/start — 스프린트 시작 (PLANNED → ACTIVE).
  *
  * stateful 동작.
  *   - store에서 스프린트를 찾아 status를 'ACTIVE'로 변경한다.
  *   - version을 +1 증가한다.
+ *   - 그 스프린트의 보드에 활성 스프린트를 심는다 ({@link plantActiveSprintOnBoard} · FR-BD-04).
  *
  * 성공 → 200 { data: SprintMeta }
  * 스프린트 미존재 → 404
@@ -687,6 +712,7 @@ const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) =
   const { storedSprint } = entry
   storedSprint.sprint.status = 'ACTIVE'
   storedSprint.sprint.version = storedSprint.sprint.version + 1
+  plantActiveSprintOnBoard(storedSprint)
 
   return HttpResponse.json({ data: storedSprint.sprint })
 })
@@ -701,6 +727,8 @@ const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) =
  * stateful 동작.
  *   - store에서 스프린트를 찾아 status를 'COMPLETED'로 변경한다.
  *   - version을 +1 증가한다.
+ *   - 그 보드의 활성 스프린트 마커를 지운다 (FR-BD-04 — 시작의 대칭).
+ *     지우지 않으면 완료한 뒤에도 보드가 그 스프린트를 계속 보여준다.
  *
  * 성공 → 200 { data: SprintMeta }
  * 스프린트 미존재 → 404
@@ -719,6 +747,9 @@ const completeSprintHandler = http.post('/api/v1/sprints/:id/complete', ({ param
   const { storedSprint } = entry
   storedSprint.sprint.status = 'COMPLETED'
   storedSprint.sprint.version = storedSprint.sprint.version + 1
+  if (storedSprint.boardId !== null) {
+    clearBoardActiveSprint(storedSprint.boardId, sprintId)
+  }
 
   return HttpResponse.json({ data: storedSprint.sprint })
 })

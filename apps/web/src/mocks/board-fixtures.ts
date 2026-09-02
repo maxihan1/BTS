@@ -214,6 +214,44 @@ export function seedBoardWithMeta(board: StoredBoardDetail): void {
 }
 
 /**
+ * 보드의 활성 스프린트 마커를 심는다 (FR-BD-04).
+ *
+ * ★왜 핸들러 응답이 아니라 store 인가.
+ * 스프린트 시작은 **backlog BC 핸들러**가 처리한다. 그 응답만 바꾸면 **다른 요청이 그것을
+ * 모른다** — 뒤이은 `GET /api/v1/boards/{id}` 는 시드값(`activeSprint: null`)을 그대로 돌려주고
+ * 화면이 시작 전후로 한 픽셀도 변하지 않는다(2026-09-02 D7 E2E S7 실측 · 교훈
+ * `msw-derived-behavior-shared-store-e2e`). 파생 동작은 두 요청이 함께 보는 store 를 거쳐야 한다.
+ *
+ * **보드 종류를 여기서 가리지 않는다.** 백엔드 `sprints.board_id` 에도 종류 제약이 없어
+ * 칸반 보드에 붙은 스프린트가 실재하고(`DEFAULT_BACKLOG`), 칸반이 활성 스프린트를 **보여주지
+ * 않는** 것은 조회 시점 분기다(`BoardApplicationService.getBoard`). 그 분기는 응답 조립부 소관이다.
+ *
+ * @param boardId 대상 보드 UUID. store 에 없으면 아무것도 하지 않는다
+ * @param activeSprint 심을 활성 스프린트 4필드
+ */
+export function setBoardActiveSprint(boardId: string, activeSprint: ActiveSprint): void {
+  const board = boardStore.get(boardId)
+  if (board === undefined) return
+  board.activeSprint = activeSprint
+}
+
+/**
+ * 보드의 활성 스프린트 마커를 지운다 — {@link setBoardActiveSprint} 의 대칭 (FR-BD-04).
+ *
+ * 완료한 스프린트가 **지금 그 보드의 활성 스프린트일 때만** 지운다. 무조건 지우면 다른
+ * 스프린트가 활성인 보드에서 남의 마커를 잃는다 — 시작 핸들러가 상태 전환을 검증하지 않으므로
+ * 그 조합이 실제로 만들어진다. UUID 는 `===` 완전 일치로만 판정한다.
+ *
+ * @param boardId 대상 보드 UUID
+ * @param sprintId 완료된 스프린트 UUID
+ */
+export function clearBoardActiveSprint(boardId: string, sprintId: string): void {
+  const board = boardStore.get(boardId)
+  if (board === undefined || board.activeSprint?.sprintId !== sprintId) return
+  board.activeSprint = null
+}
+
+/**
  * 새 보드를 store에 추가하고 생성 응답 형식으로 반환한다.
  * POST /api/v1/boards 핸들러가 내부적으로 호출한다.
  *
