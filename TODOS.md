@@ -652,29 +652,6 @@ PR #399 는 `settings/details` **하나가** 형제 11개 탭과 236px 어긋난
 
 ---
 
-## ✅ apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · **해소** · T1)
-
-**쉬운 말.** 관리 메뉴에 어떤 항목이 있어야 하는지 검사하는 장치가, 목록에 적힌 것만 확인하고 실제 개수는 세지 않는다.
-
-**방치하면.** 새 메뉴가 늘어도 그 장치는 계속 초록이다. 링크가 잘못 붙거나 빠져도 아무도 모른다.
-
-**무엇.** `components/layout/__tests__/navigation-contract.test.tsx` 의 손 열거 6건에
-2026-08-24 추가된 7번째 링크(`워크플로우 관리`)가 없었다. 개수 단언 없이 **부분집합 루프**라
-8 passed 로 통과했다.
-
-**해소 (PR #433 · Jira 패리티 J9).** 처방이 지목한 `Sidebar.tsx` 의 `ADMIN_NAV_LINKS` 는
-그 PR 이 **없앴다** — 관리 nav 를 상단바 허브 링크로 옮기면서 목록의 정본을
-`routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 하나로 합쳤다. 그래서 처방을 그대로 쓸 수 없고,
-같은 구멍을 다른 자리에서 막았다.
-
-- `navigation-contract.test.tsx` 의 손 열거 6건은 **사라졌다** — 허브 링크 1건 단언으로 대체됐다
-- 개수는 `routes/admin.index.test.tsx` 의 `toHaveLength(EXPECTED_ADMIN_CHILD_PATHS.length)` 가 센다
-- `Sidebar.test.tsx` 는 `ADMIN_HUB_LINKS` 에서 **파생**해 「이 라벨이 사이드바에 하나도 없다」를
-  잰다. 손 사본이 없으므로 9번째 링크가 붙으면 자동으로 부재 단언 대상이 된다
-- 파생이 0건이 되어 루프가 안 도는 경우도 별도 단언으로 막았다
-
----
-
 ## ⬜ apps/web — 상태 순서 변경이 되돌아갔다 오고 표시 순서가 겹칠 수 있다 (신규 · 미착수 · T1)
 
 **쉬운 말.** 상태를 끌어서 순서를 바꾸면 잠깐 원래 자리로 튀었다가 다시 제자리를 찾는다. 그리고 상태를 넣고 빼고를 반복하면 순서 번호가 겹친다.
@@ -3434,6 +3411,32 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 ---
 
 # 해소된 것
+
+## ✅ apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · **해소** · T1)
+
+**쉬운 말.** 관리 메뉴에 어떤 항목이 있어야 하는지 검사하는 장치가, 목록에 적힌 것만 확인하고 실제 개수는 세지 않는다.
+
+**방치하면.** 새 메뉴가 늘어도 그 장치는 계속 초록이다. 링크가 잘못 붙거나 빠져도 아무도 모른다.
+
+**무엇.** `components/layout/__tests__/navigation-contract.test.tsx` 의 손 열거 6건에
+2026-08-24 추가된 7번째 링크(`워크플로우 관리`)가 없다. 개수 단언 없이 **부분집합 루프**라
+8 passed 로 통과한다. 8번째가 붙어도 마찬가지다.
+
+**처방.** `Sidebar.tsx` 의 `ADMIN_NAV_LINKS` 를 직접 import 해 개수와 내용을 함께 단언한다 —
+손 열거를 유지하려면 최소한 `toHaveLength` 를 건다.
+
+**해소 (PR #433 · Jira 패리티 J9).** 위 처방이 지목한 `Sidebar.tsx` 의 `ADMIN_NAV_LINKS` 는
+그 PR 이 **없앴다** — 관리 nav 를 상단바 허브 링크로 옮기면서 목록의 정본을
+`routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 하나로 합쳤다. 그래서 처방을 그대로 쓸 수 없고,
+같은 구멍을 다른 자리에서 막았다.
+
+- `navigation-contract.test.tsx` 의 손 열거 6건은 **사라졌다** — 허브 링크 1건 단언으로 대체됐다
+- 개수는 `routes/admin.index.test.tsx` 의 `toHaveLength(EXPECTED_ADMIN_CHILD_PATHS.length)` 가 센다
+- `Sidebar.test.tsx` 는 `ADMIN_HUB_LINKS` 에서 **파생**해 「이 라벨이 사이드바에 하나도 없다」를
+  잰다. 손 사본이 없으므로 9번째 링크가 붙으면 자동으로 부재 단언 대상이 된다
+- 파생이 0건이 되어 루프가 안 도는 경우도 별도 단언으로 막았다
+
+---
 
 ## ✅ apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · **해소** · T1)
 
