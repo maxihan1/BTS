@@ -17,20 +17,11 @@
 //     (board-manage.spec.ts 가 세운 관례 — reload 금지).
 //   - src 는 **i18n 정본만** import 한다. mock 픽스처/컴포넌트를 끌어오면 `import.meta.env` 를
 //     거쳐 Playwright(Node) 런타임에서 깨진다 — 필요한 값은 미러 + 출처 주석으로 동기화한다.
-//
-// 🛑 S7 은 지금 RED 다 — MSW 가 「시작하면 보드가 바뀐다」를 재현하지 않는다 (2026-09-02 실측).
-//   `POST /sprints/{id}/start` 핸들러(`src/mocks/backlog-handlers.ts`)는 `sprint.status` 만
-//   바꾸고 `boardStore` 를 **건드리지 않는다.** 그래서 보드 상세 조립부
-//   (`src/mocks/board-handlers.ts` `toResponseDetail`)의 `activeSprint` 는 시드값(항상 null)
-//   그대로이고, 새로 만든 보드는 `createBoardInStore` 가 `cards: []` 로 만들어 **카드도 없다.**
-//   → 스프린트를 시작해도 보드가 「활성 스프린트가 없습니다」에서 한 픽셀도 변하지 않는다
-//     (브라우저 눈확인으로 시작 전/후 화면이 동일함을 확인).
-//   재현에 필요한 것 두 가지 — 둘 다 `apps/web/src/mocks/**` 라 이 spec 의 소관이 아니다.
-//     ① 시작 핸들러가 그 스프린트의 `boardId` 보드에 `activeSprint` 를 심는다
-//        (파생 동작은 공유 store 경유 — `msw-derived-behavior-shared-store-e2e`)
-//     ② 스크럼 보드 상세가 활성 스프린트의 이슈를 카드로 배치한다. 매핑 축은 이미 있다 —
-//        `backlogIssueSchema.currentStateKey` ↔ 컬럼 `stateKey` (백엔드 `placeCards` 대응)
-//   ★이 주석은 위 배선이 들어오면 **지운다.** 남겨 두면 낡은 경고가 된다.
+//   - S7 이 성립하려면 mock 이 **파생 동작을 공유 store 로** 재현해야 한다 — 시작 핸들러가
+//     그 스프린트의 보드에 `activeSprint` 를 심고, 스크럼 보드 상세가 활성 스프린트 이슈를
+//     `currentStateKey` ↔ 컬럼 `stateKey` 로 배치한다(task-10·11 이 배선). 그 배선이 빠지면
+//     시작 전/후 화면이 **한 픽셀도 다르지 않고**, 그것이 이 spec 이 잡는 결함이다
+//     (`msw-derived-behavior-shared-store-e2e`).
 import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/auth-fixtures'
