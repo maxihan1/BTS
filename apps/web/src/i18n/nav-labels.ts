@@ -22,7 +22,15 @@ export const navLabels = {
   /** 사이드바 메인 nav aria-label (🔒 e2e 계약) */
   mainNav: '메인 메뉴',
 
-  /** 사이드바 관리 nav aria-label (🔒 e2e 계약) */
+  /**
+   * 관리 진입점 aria-label (🔒 e2e 계약).
+   *
+   * ★ Jira 패리티 J9 로 **역할이 바뀌었다** — 한때 사이드바 `<nav>` 의 이름이었고,
+   * 지금은 상단바 관리 허브 **링크**(`TopBar.tsx` → `/admin`)의 이름이다.
+   * 문자열은 그대로 두었다 — 즉사 계약 4종 중 하나라 글자를 바꾸면 e2e 가 함께 죽는다.
+   * 조회 role 만 `navigation` → `link` 로 옮겨갔고, 그 전환은
+   * `e2e/fixtures/admin-hub.ts` 한 곳이 흡수한다.
+   */
   adminNav: '관리 메뉴',
 
   /**
@@ -86,9 +94,6 @@ export const navLabels = {
 
   /** 상단바 만들기 버튼 라벨 */
   create: '만들기',
-
-  /** 사이드바 관리 nav 제목 라벨 */
-  admin: '관리',
 
   /** 사이드바 접기 토글 aria-label (펼침 상태) */
   collapseSidebar: '사이드바 접기',

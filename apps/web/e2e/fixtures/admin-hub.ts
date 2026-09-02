@@ -21,9 +21,17 @@ export const ADMIN_ENTRY_NAME = '관리 메뉴'
  * @returns 관리 링크들을 담은 컨테이너 Locator
  */
 export async function openAdminLinks(page: Page): Promise<Locator> {
-  const nav = page.getByRole('navigation', { name: ADMIN_ENTRY_NAME, exact: true })
-  await expect(nav).toBeVisible()
-  return nav
+  // 상단바 관리 허브 링크(J9) → `/admin` 카드 그리드. 클릭 이동이라 Service Worker 가 산다.
+  const entry = page.getByRole('link', { name: ADMIN_ENTRY_NAME, exact: true })
+  await expect(entry).toBeVisible()
+  await entry.click()
+  await page.waitForURL('**/admin')
+
+  // 🛑 `main` 으로 좁힌다. 좁히지 않으면 상단바 진입점 링크까지 같은 조회에 잡힐 수 있고,
+  //    카드 이름이 `aria-label` 로 고정돼 있어(`admin.index.tsx`) exact 조회가 성립한다.
+  const hub = page.getByRole('main')
+  await expect(hub).toBeVisible()
+  return hub
 }
 
 /**
@@ -46,7 +54,5 @@ export async function gotoAdminPage(page: Page, linkName: string): Promise<void>
  * @param page Playwright Page
  */
 export async function expectAdminEntryHidden(page: Page): Promise<void> {
-  await expect(
-    page.getByRole('navigation', { name: ADMIN_ENTRY_NAME, exact: true }),
-  ).not.toBeVisible()
+  await expect(page.getByRole('link', { name: ADMIN_ENTRY_NAME, exact: true })).not.toBeVisible()
 }

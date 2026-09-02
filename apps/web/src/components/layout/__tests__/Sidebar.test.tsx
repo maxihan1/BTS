@@ -63,7 +63,13 @@ const BASE_USER: WhoamiResponse = {
   mfaEnrollmentRequired: false,
 }
 
-/** 관리 nav 6링크 계약 — [라벨, href] */
+/**
+ * 관리 링크 계약 — [라벨, href].
+ *
+ * ★J9 이후 이 목록은 **사이드바에 없어야 할 것**의 목록이다. 정본은
+ * `routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 이고, 여기 사본을 두는 이유는
+ * 「사이드바에 하나라도 되살아나면 red」를 재기 위함이다 — 진입점이 둘로 갈리는 것을 막는다.
+ */
 const ADMIN_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
   ['워크플로우 관리', '/admin/workflows'],
   ['워크플로우 스킴', '/admin/workflow-schemes'],
@@ -134,22 +140,25 @@ describe('Sidebar', () => {
     ).toBeInTheDocument()
   })
 
-  it('isSystemAdmin=true이면 관리 메뉴 nav가 기본 펼침 상태로 7링크를 노출한다 (FR4)', () => {
+  it('isSystemAdmin=true 여도 사이드바에 관리 메뉴 nav 가 없다 (J9 — 상단바 허브로 이관)', () => {
+    // ★관리자일 때를 재는 것이 핵심이다. 비관리자에서는 이관 전에도 없었으므로 그 케이스만
+    //   남기면 「옮겼다」를 증명하지 못한다 — 옮기기 전 코드에서도 초록이기 때문이다.
     useAuthStore.setState({
       accessToken: 'test-token',
       user: { ...BASE_USER, isSystemAdmin: true },
     })
     renderSidebar()
 
-    const adminNav = screen.getByRole('navigation', { name: navLabels.adminNav })
-    for (const [label, href] of ADMIN_LINK_CONTRACT) {
-      const link = within(adminNav).getByRole('link', { name: label })
-      expect(link).toBeVisible()
-      expect(link).toHaveAttribute('href', href)
+    expect(screen.queryByRole('navigation', { name: navLabels.adminNav })).not.toBeInTheDocument()
+    for (const [label] of ADMIN_LINK_CONTRACT) {
+      expect(
+        screen.queryByRole('link', { name: label }),
+        `사이드바에 관리 링크 「${label}」 가 남아 있다 — 진입점이 둘로 갈렸다`,
+      ).not.toBeInTheDocument()
     }
   })
 
-  it('isSystemAdmin=false이면 관리 메뉴 nav가 렌더되지 않는다 (FR4)', () => {
+  it('isSystemAdmin=false 에서도 관리 링크가 없다 (게이팅 회귀 방지)', () => {
     renderSidebar()
 
     expect(screen.queryByRole('navigation', { name: navLabels.adminNav })).not.toBeInTheDocument()

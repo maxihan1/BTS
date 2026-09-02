@@ -1,20 +1,7 @@
-// 전역 좌측 사이드바 — 메인 nav(이슈·대시보드·캘린더·즐겨찾기) + 관리 nav(isSystemAdmin 게이팅, 기본 펼침) — FR-UX-06 PR11 Task 5 (아직 트리 미배선, ShellLayout(T7)이 배선)
+// 전역 좌측 사이드바 — 프로젝트 트리 + 메인 nav(이슈·대시보드·캘린더·즐겨찾기·최근 항목). 관리 nav 는 J9 로 상단바 허브로 이관
 import { type JSX } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  CircleDot,
-  LayoutDashboard,
-  Calendar,
-  Workflow,
-  Waypoints,
-  ScrollText,
-  ShieldCheck,
-  Bell,
-  Webhook,
-  MessageSquare,
-  UserCheck,
-  type LucideIcon,
-} from 'lucide-react'
+import { CircleDot, LayoutDashboard, Calendar, UserCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useAuthUser } from '@/auth/authStore'
 import {
@@ -87,20 +74,12 @@ const ISSUES_ACTIVE_OPTIONS: Record<string, { exact: boolean } | undefined> = {
   '/issues': { exact: true },
 }
 
-/** 관리 nav 링크 6종 — `Header.tsx` `ADMIN_LINKS` 정본 그대로(FR4). T7에서 Header 삭제로 중복 해소 */
-const ADMIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIcon }> = [
-  // ★ 라벨을 '워크플로우' 로 줄이지 마라 — 아래 '워크플로우 스킴' 의 substring 이 되어
-  // Playwright `getByRole(name:)` 부분일치가 둘을 함께 잡아 strict mode 로 죽는다.
-  // `i18n/__tests__/nav-labels.test.ts` FR15 substring 판별식은 `navLabels` 키만 훑으므로
-  // 이 리터럴을 잡아 주지 않는다(§2 즉사 계약의 `검색`/`전역 검색` 과 같은 양식).
-  { to: '/admin/workflows', label: '워크플로우 관리', Icon: Waypoints },
-  { to: '/admin/workflow-schemes', label: '워크플로우 스킴', Icon: Workflow },
-  { to: '/admin/audit-logs', label: '감사 로그', Icon: ScrollText },
-  { to: '/admin/global-permissions', label: '전역 권한', Icon: ShieldCheck },
-  { to: '/admin/notification-policies', label: '알림 정책', Icon: Bell },
-  { to: '/admin/webhooks', label: 'Webhook', Icon: Webhook },
-  { to: '/admin/slack', label: 'Slack 연결', Icon: MessageSquare },
-]
+/*
+ * 🛑 관리 nav 는 여기 없다 — Jira 패리티 J9 로 **상단바 관리 허브 링크**(`TopBar.tsx`)로 옮겼다.
+ *    Jira Cloud 는 전역 관리 항목을 사이드바가 아니라 상단 유틸리티 뒤에 둔다.
+ *    링크 목록의 정본은 `routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 하나이고,
+ *    한때 여기와 그 파일 둘이 같은 7링크를 각자 들고 있었다(중복 소멸).
+ */
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
@@ -111,10 +90,13 @@ const ADMIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIc
  *
  * 렌더 순서는 디자인 스펙 §3.1 사이드바 섹션 순서를 그대로 따른다 — {@link ProjectTree}
  * (섹션2, `프로젝트`)가 `메인 메뉴` nav(섹션3, 이슈·대시보드·캘린더) **위**에 온다
- * (FR-UX-06 PR12 Task 3). `관리 메뉴` nav(섹션4)는 가장 아래다.
+ * (FR-UX-06 PR12 Task 3).
  *
- * `메인 메뉴` nav는 항상 렌더되고, `관리 메뉴` nav는 `user.isSystemAdmin === true`일 때만
- * **기본 펼침** 상태로 렌더된다(FR3/FR4). 접힘 상태는 {@link useSidebarCollapsed}로 소비하며,
+ * 🛑 **`관리 메뉴` nav 는 여기 없다.** Jira 패리티 J9 로 상단바 관리 허브 링크(`TopBar.tsx`)로
+ * 옮겼고, 링크 목록의 정본은 `routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 하나다.
+ * 사이드바에 다시 넣지 마라 — 같은 7링크를 두 곳이 들고 있던 상태로 되돌아간다.
+ *
+ * `메인 메뉴` nav는 항상 렌더된다. 접힘 상태는 {@link useSidebarRailCollapsed}로 소비하며,
  * 각 nav 링크는 lucide 아이콘(`aria-hidden`) + 텍스트 라벨로 구성된다 — 펼침 시 아이콘·텍스트
  * 둘 다 보이고, 접힘(64px) 시 텍스트는 `sr-only`로 시각적으로만 숨겨 진짜 아이콘 레일이 되며
  * (잘린 텍스트 노출 방지), DOM에는 남아 있어 `getByRole('link', { name })` 계약(e2e)이
@@ -149,7 +131,6 @@ export function Sidebar(): JSX.Element {
     returnFocusRef.current = null
     if (target !== null && document.contains(target)) target.focus()
   }, [drawerOpen])
-  const isAdmin = user?.isSystemAdmin === true
   // 🛑 모바일에서는 collapsed 를 쓰지 않는다 — 접힘은 **데스크톱 아이콘 레일**의 폭이고,
   //    드로어는 열리면 264px 전체가 떠야 한다. 둘을 겹치면 드로어가 64px 레일로 열리고
   //    라벨까지 `sr-only` 로 숨어 아이콘만 남은 드로어가 된다. 아래 `railCollapsed` 가 정본이다.
@@ -240,22 +221,6 @@ export function Sidebar(): JSX.Element {
         */}
           <RecentIssuesMenu />
         </nav>
-
-        {isAdmin && (
-          <nav aria-label={navLabels.adminNav} className="flex flex-col gap-1 p-2">
-            {!railCollapsed && (
-              <p className="px-2 pt-2 text-xs font-semibold uppercase text-sidebar-foreground/60">
-                {navLabels.admin}
-              </p>
-            )}
-            {ADMIN_NAV_LINKS.map(({ to, label, Icon }) => (
-              <Link key={to} to={to} className={NAV_LINK_CLASS}>
-                <Icon aria-hidden="true" className={NAV_ICON_CLASS} />
-                <span className={railCollapsed ? 'sr-only' : undefined}>{label}</span>
-              </Link>
-            ))}
-          </nav>
-        )}
 
         {/* 🛑 `useSidebarCollapsed().toggle` 을 직접 물리지 마라 — 모바일에서 무동작 버튼이 된다.
           폭에 따른 대상 선택은 `useSidebarToggle` 한 곳이 소유한다(상단바 버튼·`[` 단축키와 동일). */}

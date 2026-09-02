@@ -1,8 +1,17 @@
 // 상단바 컴포넌트 — 사이드바 토글·로고·검색·만들기·알림·도움말·설정·계정 드롭다운 (FR-UX-06 PR11 Task 6, 트리 미배선)
 import { useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { PanelLeftClose, PanelLeftOpen, Search, Plus, HelpCircle, Settings } from 'lucide-react'
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Plus,
+  HelpCircle,
+  Settings,
+  ShieldCheck,
+} from 'lucide-react'
 import { navLabels } from '@/i18n/nav-labels'
+import { useAuthUser } from '@/auth/authStore'
 import { useSidebarToggle, useSidebarShown } from '@/hooks/use-sidebar-drawer'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
 import { toast } from 'sonner'
@@ -48,6 +57,8 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   //    폭에 따른 대상 선택·표시 방향은 `use-sidebar-drawer` 훅 두 개가 소유한다.
   const toggle = useSidebarToggle()
   const sidebarShown = useSidebarShown()
+  // 관리 허브 진입점 게이팅 — 사이드바에서 옮겨 왔다(J9). `=== true` fail-closed.
+  const user = useAuthUser()
 
   // FR-UX-12 F13 — 상단바 전역 검색. 제출 시에만 이동하고 입력 자체는 네트워크를 부르지 않는다(NFR2).
   const [query, setQuery] = useState('')
@@ -84,13 +95,20 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         aria-label={sidebarShown ? navLabels.collapseSidebar : navLabels.expandSidebar}
         onClick={toggle}
       >
-        {sidebarShown ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+        {sidebarShown ? (
+          <PanelLeftClose className="size-4" />
+        ) : (
+          <PanelLeftOpen className="size-4" />
+        )}
       </Button>
 
       {/* 모바일(max-md)에서는 워드마크 텍스트만 감춘다 — A 마크는 남겨 홈 링크를 잃지 않는다.
           🛑 `Atlas` 를 DOM 에서 빼지 마라. `getByRole('link', { name: 'Atlas' })` 계약이 깨진다.
              `sr-only` 는 접근가능 이름을 보존한 채 자리만 돌려준다. */}
-      <Link to="/dashboards" className="ml-1 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+      <Link
+        to="/dashboards"
+        className="ml-1 flex items-center gap-1.5 text-sm font-semibold text-foreground"
+      >
         <span className="flex size-6 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground">
           A
         </span>
@@ -123,7 +141,9 @@ export function TopBar({ onHelpClick }: TopBarProps) {
              남겨서, Chromium 에서 **값이 있을 때만** 디자인 토큰 밖의 브라우저 기본 아이콘이
              입력칸 안에 뜬다 (F13 2차 코드리뷰 I-3). 지움 = 취소는 Esc/직접 삭제로 통일. */
           className="pl-8 [&::-webkit-search-cancel-button]:appearance-none"
-          onChange={(e) => { setQuery(e.target.value) }}
+          onChange={(e) => {
+            setQuery(e.target.value)
+          }}
           onKeyDown={handleSearchKeyDown}
         />
       </div>
@@ -149,7 +169,9 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         variant="default"
         size="default"
         className="ml-auto gap-1 rounded-md px-3 hover:bg-primary/90 max-md:px-2"
-        onClick={() => { setCreateOpen(true) }}
+        onClick={() => {
+          setCreateOpen(true)
+        }}
       >
         <Plus className="size-4" />
         {/* 모바일은 아이콘만 — 컨트롤 종류(button)는 그대로라 §계약 「컨트롤 종류 불변」에 걸리지
@@ -167,11 +189,15 @@ export function TopBar({ onHelpClick }: TopBarProps) {
           toast(`${key} ${issueCreateStrings.createdToast}`, {
             action: {
               label: issueCreateStrings.createdToastAction,
-              onClick: () => { void navigate({ to: '/issues/$key', params: { key } }) },
+              onClick: () => {
+                void navigate({ to: '/issues/$key', params: { key } })
+              },
             },
           })
         }}
-        onCreateProject={() => { void navigate({ to: '/projects/new' }) }}
+        onCreateProject={() => {
+          void navigate({ to: '/projects/new' })
+        }}
       />
 
       <InboxBell />
@@ -189,13 +215,34 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         </Button>
       )}
 
+      {/* 관리 허브 — 사이드바 관리 메뉴를 옮겨 온 **유일한 UI 진입로**다 (Jira 패리티 J9).
+          🛑 `max-md:hidden` 을 붙이지 마라. 설정 톱니는 계정 메뉴의 「모든 설정」이 모바일
+             대체 경로라 감출 수 있지만, 여기는 대체 경로가 없다 — 감추는 순간 관리 화면 8개가
+             모바일에서 통째로 도달 불가가 된다. 짝 단언 = `TopBar.test.tsx` T-TB-A3.
+          🛑 라우터 가드(`requireSystemAdmin`)가 있어도 **링크 자체를 감춘다.** 누르면
+             리다이렉트되는 링크는 「있는데 안 되는」 것이라 fail-closed 가 아니다. */}
+      {user?.isSystemAdmin === true && (
+        <Link
+          to="/admin"
+          className="rounded-md p-1.5 hover:bg-accent"
+          aria-label={navLabels.adminNav}
+        >
+          <ShieldCheck className="size-4" />
+        </Link>
+      )}
+
       {/* 설정 톱니는 모바일에서 감춘다 — 같은 허브 진입점이 **계정 메뉴의 「모든 설정」**에 있다.
-          🛑 「사이드바에도 있다」고 적지 마라 — 거짓이다. 사이드바 관리 메뉴는 `isSystemAdmin`
-             전용이고 `/settings` 루트를 링크하지 않는다. 한때 그 거짓 근거로 이 톱니를 감췄다가
-             `password`·`sessions`·`notifications`·`account-links` 4개가 모바일에서 도달
-             불가가 됐다. 계정 메뉴의 그 항목을 지우면 이 `max-md:hidden` 도 함께 없애야 한다 —
-             짝 판별식 = `__tests__/settings-reachability.test.ts` 가 그 조합을 red 로 잡는다. */}
-      <Link to="/settings" className="rounded-md p-1.5 hover:bg-accent max-md:hidden" aria-label="설정">
+          🛑 「사이드바에도 있다」고 적지 마라 — 거짓이다. 사이드바에는 관리 메뉴가 **없고**
+             (J9 가 위 관리 허브 링크로 옮겼다), 그 진입로도 `/settings` 루트를 링크하지 않는다.
+             한때 그 거짓 근거로 이 톱니를 감췄다가 `password`·`sessions`·`notifications`·
+             `account-links` 4개가 모바일에서 도달 불가가 됐다. 계정 메뉴의 그 항목을 지우면
+             이 `max-md:hidden` 도 함께 없애야 한다 — 짝 판별식 =
+             `__tests__/settings-reachability.test.ts` 가 그 조합을 red 로 잡는다. */}
+      <Link
+        to="/settings"
+        className="rounded-md p-1.5 hover:bg-accent max-md:hidden"
+        aria-label="설정"
+      >
         <Settings className="size-4" />
       </Link>
 

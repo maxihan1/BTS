@@ -115,22 +115,35 @@ export function AdminIndexPage(): JSX.Element {
     <PageLayout>
       <PageHeader title="관리" description="시스템 관리 기능" />
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {ADMIN_HUB_LINKS.map(({ to, label, description, Icon }) => (
-          <li key={to}>
-            <Link
-              to={to}
-              className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Card className="h-full transition-colors hover:bg-accent/50">
-                <CardHeader>
-                  <Icon aria-hidden="true" className="mb-1 size-5 text-muted-foreground" />
-                  <CardTitle>{label}</CardTitle>
-                  <CardDescription>{description}</CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
-          </li>
-        ))}
+        {ADMIN_HUB_LINKS.map(({ to, label, description, Icon }) => {
+          const descriptionId = `admin-hub-desc-${to.replaceAll('/', '-')}`
+          return (
+            <li key={to}>
+              {/*
+                🛑 `aria-label` 없이 두면 링크의 접근 이름이 **제목 + 설명 전문**이 된다
+                   (예: '감사 로그 관리자 작업 이력을 조회합니다'). 그러면
+                   `getByRole('link', { name: '감사 로그', exact: true })` 로 집을 수 없고,
+                   J9 로 이 허브가 관리 진입점이 된 지금 그 셀렉터를 쓰는 e2e 가 6파일이다.
+                   설명은 `aria-describedby` 로 남겨 스크린리더가 여전히 읽는다 —
+                   이름에서 뺐다고 정보까지 버리지 않는다.
+              */}
+              <Link
+                to={to}
+                aria-label={label}
+                aria-describedby={descriptionId}
+                className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Card className="h-full transition-colors hover:bg-accent/50">
+                  <CardHeader>
+                    <Icon aria-hidden="true" className="mb-1 size-5 text-muted-foreground" />
+                    <CardTitle>{label}</CardTitle>
+                    <CardDescription id={descriptionId}>{description}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            </li>
+          )
+        })}
       </ul>
     </PageLayout>
   )
