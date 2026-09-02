@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { withDeleteTimeout, DeleteTimeoutError, DELETE_TIMEOUT_MS } from './delete-timeout'
 import { deleteBoard } from '@/api/boards'
+import { apiFetch } from '@/api/client'
 
 const BOARD_ID = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
 
@@ -23,6 +24,20 @@ function abortableRequest(signal: AbortSignal): Promise<string> {
 /** reject 를 값으로 바꿔 부유 rejection 없이 결과를 단언하게 한다 */
 function settle(promise: Promise<unknown>): Promise<unknown> {
   return promise.catch((error: unknown) => error)
+}
+
+/** 상한이 지났는데도 아직 settle 하지 않은 Promise 를 가리키는 표식 */
+const STILL_PENDING = '반환 Promise 가 아직 settle 하지 않음'
+
+/**
+ * 이미 settle 한 Promise 면 그 결과를, 아직 pending 이면 [STILL_PENDING] 을 준다.
+ *
+ * 그냥 `await` 하면 pending 인 채로 vitest 기본 타임아웃까지 매달려 실패 사유가
+ * 「Test timed out」이 된다 — 「상한이 창을 못 푼다」는 진짜 사유가 가려진다.
+ * `Promise.race` 는 인자 순서대로 반응을 큐에 넣으므로 이미 settle 한 쪽이 항상 먼저 이긴다.
+ */
+function outcomeNow(settled: Promise<unknown>): Promise<unknown> {
+  return Promise.race([settled, Promise.resolve(STILL_PENDING)])
 }
 
 /**
@@ -132,6 +147,56 @@ describe('withDeleteTimeout — api 사슬 배선', () => {
       expect(signals[0]).toBeInstanceOf(AbortSignal)
       expect(signals[0]?.aborted).toBe(true)
       await expect(settled).resolves.toBeInstanceOf(DeleteTimeoutError)
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// abort 가 닿지 않는 구간 (장부 145 회귀 가드)
+//
+// `apiFetch` 는 signal 을 받지만, 401 을 받으면 **signal 이 실리지 않은** refresh 대기
+// (`api/client.ts` 의 `doRefresh`)에 주차한다. refresh Promise 는 여러 요청이 공유하는 전역
+// lock 이라 한 요청의 abort 로 죽일 수 없어서 그렇게 둔 것이고, 그 판단은 유지한다.
+// 그래서 상한은 abort 전파에만 기대면 안 된다 — 요청이 abort 를 관측하지 않는 구간에 걸려
+// 있어도 **반환 Promise 가 거절돼야** `isPending` 이 풀리고 확인 창이 다시 조작 가능해진다.
+//
+// ★이 블록은 파일 맨 끝에 둔다. 여기서 띄운 refresh 는 끝내 응답하지 않아 `client.ts` 의
+//   `refreshPromise` lock 이 풀리지 않은 채 남는다 — 뒤에 401 을 쓰는 테스트가 오면 그 lock 을
+//   물려받는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('withDeleteTimeout — refresh 가 멈춘 401 경로', () => {
+  it('T-DT-6: refresh 응답이 오지 않아도 상한이 반환 Promise 를 거절한다', async () => {
+    const fetchSignals: (AbortSignal | undefined)[] = []
+    vi.stubGlobal('fetch', (_input: unknown, init?: RequestInit) => {
+      fetchSignals.push(init?.signal ?? undefined)
+      // 1회차 = DELETE. access token 이 만료돼 401 이 돌아온다.
+      if (fetchSignals.length === 1) {
+        return Promise.resolve(new Response(null, { status: 401 }))
+      }
+      // 2회차 = /api/v1/auth/refresh. 응답 없이 멈춘 연결 — 상한이 대비하는 바로 그 장애다.
+      return new Promise<Response>(() => {})
+    })
+    vi.useFakeTimers()
+
+    try {
+      const settled = settle(
+        withDeleteTimeout((signal) => apiFetch(`/api/v1/boards/${BOARD_ID}`, { method: 'DELETE', signal })),
+      )
+
+      await vi.advanceTimersByTimeAsync(DELETE_TIMEOUT_MS + 1)
+
+      // 전제 확인 — 401 분기에 실제로 진입했고 refresh 에는 signal 이 실리지 않았다.
+      // 이게 깨지면 아래 단언은 결함이 아니라 다른 것을 재고 있는 것이다.
+      expect(fetchSignals).toHaveLength(2)
+      expect(fetchSignals[1]).toBeUndefined()
+      // 장부 146 은 그대로 — abort 는 여전히 난다.
+      expect(fetchSignals[0]?.aborted).toBe(true)
+      // 장부 145 — abort 가 닿지 않는 구간에 걸려 있어도 반환 Promise 가 **거절된다.**
+      await expect(outcomeNow(settled)).resolves.toBeInstanceOf(DeleteTimeoutError)
     } finally {
       vi.useRealTimers()
       vi.unstubAllGlobals()
