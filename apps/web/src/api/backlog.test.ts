@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { LS_KEY_SPRINT_DELETE_FAIL } from '@/mocks/backlog-handlers'
+import { backlogHandlers, LS_KEY_SPRINT_DELETE_FAIL } from '@/mocks/backlog-handlers'
 import {
   resetBacklogStore,
   seedBacklog,
@@ -704,21 +704,22 @@ describe('deleteSprint — DELETE /api/v1/sprints/{id}', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T-BL-14. deleteSprint — 기본 MSW 핸들러 배선 (stateful)
+// T-BL-14. deleteSprint — MSW 핸들러 배선 (stateful)
 //
 // 핸들러를 만들고 `backlogHandlers` 배열에 **넣지 않으면** MSW 는 그 요청을 미처리로 흘리는데,
 // 그 증상이 「핸들러 부재」와 완전히 같다 — 파일 안에 코드가 있는 것만으로는 아무 보증이 없다.
-// 그래서 이 블록만 `server.use()` 로 덮지 않고 기본 핸들러를 그대로 태워, 배선과 store 반영을
-// 함께 잰다.
+// 그래서 이 블록은 개별 핸들러가 아니라 **배열을 통째로** 등록해(`backlog-handlers.test.ts` 와
+// 같은 관례) 배선과 store 반영을 함께 잰다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('deleteSprint — 기본 MSW 핸들러 (stateful)', () => {
+describe('deleteSprint — MSW 핸들러 (stateful)', () => {
   /** DEFAULT_BACKLOG 의 PLANNED 스프린트 — 이슈 ATLAS-3·ATLAS-4 를 들고 있다 */
   const PLANNED_SPRINT_ID = 'a0000000-0000-4000-8000-000000000001'
   /** 어느 픽스처에도 없는 UUID — 404 경로용 */
   const MISSING_SPRINT_ID = 'a0000000-0000-4000-8000-0000000000ff'
 
   beforeEach(() => {
+    server.use(...backlogHandlers)
     resetBoardStore()
     resetBacklogStore()
     seedBacklog(DEFAULT_BACKLOG)

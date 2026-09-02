@@ -95,6 +95,14 @@ export const LS_KEY_SPRINT_START_FAIL = '__bts_e2e_sprint_start_fail'
  */
 export const LS_KEY_SPRINT_UNASSIGN_FAIL = '__bts_e2e_sprint_unassign_fail'
 
+/**
+ * 스프린트 삭제(`DELETE /sprints/:id`) 실패 강제 플래그.
+ *
+ * 'true'이면 500 을 반환한다 — E-3(삭제 실패 시 확인 창이 **열린 채** 창 안에 사유를 보여준다)
+ * 재현용이다. 404 는 토글 없이도 만들 수 있다 — 없는 UUID 를 지우면 된다.
+ */
+export const LS_KEY_SPRINT_DELETE_FAIL = '__bts_e2e_sprint_delete_fail'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 토글 조회 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
@@ -755,6 +763,54 @@ const completeSprintHandler = http.post('/api/v1/sprints/:id/complete', ({ param
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/v1/sprints/:id
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * DELETE /api/v1/sprints/{id} — 스프린트 삭제 (FR-3).
+ *
+ * stateful 동작.
+ *   - store 에서 스프린트를 빼고 그 이슈를 **프로젝트 백로그로 되돌린다.**
+ *   - 그 스프린트가 보드의 활성 스프린트였다면 마커도 지운다.
+ *
+ * ★이슈를 백로그로 되돌리는 것이 이 핸들러의 핵심이다. 스프린트와 함께 지우면 사용자가
+ * 이슈를 잃는다 — 백엔드는 `sprints` 만 소프트 삭제하고 이슈는 남으므로, 어느 스프린트에도
+ * 속하지 않은 이슈가 되어 그 프로젝트 **모든 보드의** 백로그 칸에 나타난다(E12 · J20).
+ * store 의 `project.backlog` 에는 보드 축이 없어서 그 자리에 넣는 것이 곧 전 보드 반영이다.
+ *
+ * ★활성 마커를 지우는 이유. 백엔드 `SprintRepository.findActiveByBoard` 는
+ * `deleted_at IS NULL` 을 걸어 지운 스프린트를 활성으로 뽑지 않는다. 여기서 안 지우면
+ * 보드가 **없는 스프린트를 계속 보여준다** (`completeSprintHandler` 와 같은 대칭 처리다).
+ *
+ * 성공 → 204 (body 없음)
+ * 스프린트 미존재 → 404 · 실패 토글 시 → 500
+ */
+const deleteSprintHandler = http.delete('/api/v1/sprints/:id', ({ params }) => {
+  const sprintId = params['id'] as string
+
+  if (toggle(LS_KEY_SPRINT_DELETE_FAIL) === 'true') {
+    return HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 })
+  }
+
+  const entry = findSprintInStore(sprintId)
+  if (entry === undefined) {
+    return HttpResponse.json(
+      { errorCode: 'SPRINT_NOT_FOUND', message: `스프린트를 찾을 수 없습니다: ${sprintId}` },
+      { status: 404 },
+    )
+  }
+
+  const { project, storedSprint } = entry
+  project.sprints = project.sprints.filter((sw) => sw.sprint.sprintId !== sprintId)
+  project.backlog.push(...storedSprint.issues)
+  if (storedSprint.boardId !== null) {
+    clearBoardActiveSprint(storedSprint.boardId, sprintId)
+  }
+
+  return new HttpResponse(null, { status: 204 })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -768,6 +824,7 @@ const completeSprintHandler = http.post('/api/v1/sprints/:id/complete', ({ param
  * DELETE /api/v1/sprints/:id/issues/:issueKey
  * POST /api/v1/sprints
  * PATCH /api/v1/sprints/:id
+ * DELETE /api/v1/sprints/:id
  * POST /api/v1/sprints/:id/start
  * POST /api/v1/sprints/:id/complete
  * 모두 포함.
@@ -782,6 +839,7 @@ export const backlogHandlers = [
   unassignFromSprintHandler,
   createSprintHandler,
   patchSprintHandler,
+  deleteSprintHandler,
   startSprintHandler,
   completeSprintHandler,
 ]

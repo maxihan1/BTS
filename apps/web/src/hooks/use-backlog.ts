@@ -9,6 +9,7 @@ import {
   startSprint,
   completeSprint,
   updateSprint,
+  deleteSprint,
 } from '@/api/backlog'
 import type {
   BacklogView,
@@ -18,6 +19,7 @@ import type {
   CreateSprintParams,
   UpdateSprintBody,
 } from '@/api/backlog'
+import { withDeleteTimeout } from '@/lib/delete-timeout'
 import { boardKeys } from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,7 +259,7 @@ export function useUpdateSprint(projectKey: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 스프린트 상태 전환(시작·완료) 뒤 다시 그려야 할 캐시를 전부 무효화한다.
+ * 스프린트 상태 전환(시작·완료·삭제) 뒤 다시 그려야 할 캐시를 전부 무효화한다.
  *
  * ### 왜 백로그만으로는 모자라는가
  * 전환은 백로그의 스프린트 칸만 바꾸는 조작이 아니다 — 스크럼 보드의 **카드 집합 자체가**
@@ -273,7 +275,8 @@ export function useUpdateSprint(projectKey: string) {
  *
  * ### 왜 한 함수인가
  * 시작과 완료는 **대칭**이라 무효화 대상이 같아야 한다. 두 곳에 흩어 두면 한쪽만 늘어난
- * 차이가 실패로 안 드러나고 「가끔 안 바뀌는 화면」으로만 남는다.
+ * 차이가 실패로 안 드러나고 「가끔 안 바뀌는 화면」으로만 남는다. 삭제도 같은 자리를 쓴다 —
+ * 스프린트가 사라지면 백로그 칸과 보드가 동시에 바뀌므로 덮어야 할 캐시가 정확히 같다.
  *
  * @param queryClient 무효화 대상 쿼리 클라이언트
  * @param projectKey 백로그 queryKey 대상 프로젝트 키
@@ -339,6 +342,36 @@ export function useCompleteSprint(projectKey: string) {
 
   return useMutation<SprintMeta, unknown, string>({
     mutationFn: (sprintId) => completeSprint(sprintId),
+    onSuccess: () => invalidateAfterSprintTransition(queryClient, projectKey),
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useDeleteSprint — 스프린트 삭제 (FR-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 스프린트를 삭제한다.
+ *
+ * DELETE /api/v1/sprints/{id} → 204 (본문 없음). 스프린트만 사라지고 그 이슈는 백로그 칸으로
+ * 돌아온다.
+ *
+ * onSuccess → invalidateQueries (invalidate-only). 백로그와 **보드**를 함께 무효화한다 —
+ * 시작·완료와 **같은** {@link invalidateAfterSprintTransition} 을 쓴다. 사본을 만들면 세 조작의
+ * 무효화 규약이 그 순간 갈라지고, 그 차이는 실패가 아니라 「가끔 안 바뀌는 화면」으로만 남는다.
+ *
+ * 요청에는 `DELETE_TIMEOUT_MS`(`@/lib/delete-timeout`) 상한이 걸려 있고 상한을 넘기면
+ * **요청 자체가 취소된다.** 삭제 확인 창이 `isPending` 에 묶여 닫히지 못하는 상태를 끊기 위한
+ * 것이며, 사유는 같은 모듈의 `DeleteTimeoutError` 로 전달된다 — 호출부는 상태 코드가 없는 이
+ * 실패를 「응답이 없다」로 안내하고, `ApiError` 는 status(404·403)로 갈라 안내한다.
+ *
+ * @param projectKey 백로그 queryKey 대상 프로젝트 키
+ */
+export function useDeleteSprint(projectKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<void, unknown, string>({
+    mutationFn: (sprintId) => withDeleteTimeout((signal) => deleteSprint(sprintId, signal)),
     onSuccess: () => invalidateAfterSprintTransition(queryClient, projectKey),
   })
 }
