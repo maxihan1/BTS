@@ -12,6 +12,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { gotoAdminPage, expectAdminEntryHidden } from './fixtures/admin-hub'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -69,16 +70,9 @@ test.describe('S1 Header 게이팅 + 목록 페이지 진입 (FR-API-03)', () =>
     // Given. SYSTEM_ADMIN alice 로그인
     await loginAsSystemAdmin(page)
 
-    // Then. Header "관리 메뉴" nav 노출 확인
-    const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-    await expect(adminNav).toBeVisible()
-
-    // Then. nav 내부에 "Webhook" 링크 노출 — strict mode 회피 위해 nav 컨테이너로 한정
-    const webhookLink = adminNav.getByRole('link', { name: 'Webhook', exact: true })
-    await expect(webhookLink).toBeVisible()
-
-    // When. "Webhook" 링크 클릭 → SPA 내부 이동
-    await webhookLink.click()
+    // Then + When. 관리 진입점 노출 확인 후 "Webhook" 링크 클릭 → SPA 내부 이동
+    // strict mode 회피 위해 컨테이너로 한정한다(헬퍼가 보장)
+    await gotoAdminPage(page, 'Webhook')
     await page.waitForURL(`**${PAGE_URL}`)
     expect(new URL(page.url()).pathname).toBe(PAGE_URL)
 
@@ -254,7 +248,7 @@ test.describe('S6 비관리자 미노출 + 차단 (FR-API-03)', () => {
     await loginAsAlice(page)
 
     // Then (When 1). Header "관리 메뉴" nav 미노출
-    await expect(page.getByRole('navigation', { name: '관리 메뉴' })).not.toBeVisible()
+    await expectAdminEntryHidden(page)
 
     // Then (When 1). "Webhook" 링크 미노출 (nav 없으므로 DOM에도 없음)
     await expect(page.getByRole('link', { name: 'Webhook', exact: true })).not.toBeVisible()

@@ -8,9 +8,9 @@
 //   S4  TopBar 설정아이콘 재랜딩      — 상단바 설정 아이콘(aria-label="설정") 클릭 → /settings 랜딩
 //
 // 교훈 반영.
-//   - playwright-getbyrole-exact-strict-mode: '워크플로우 스킴'·'감사 로그' 등 관리 허브 카드 라벨은
-//     Sidebar ADMIN_NAV_LINKS(관리 nav, <aside> 소속)와 동일 텍스트라 unscoped 조회 시 strict mode
-//     violation 발생 — main 컨테이너로 한정해 회피.
+//   - playwright-getbyrole-exact-strict-mode: 관리 허브 카드 라벨은 main 컨테이너로 한정해 조회한다.
+//     J9 이전에는 Sidebar ADMIN_NAV_LINKS(관리 nav, <aside> 소속)와 텍스트가 겹쳐서였고,
+//     지금 충돌원은 상단바 관리 허브 링크('관리 메뉴')다 — 이름은 다르지만 스코핑은 유지한다.
 //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 금지 — playwright.config.ts 기본 그대로.
 //   - reload 금지(store 리셋 = 가짜그린) — SPA goto/click만 사용, page.reload() 미호출.
 //   - audit-logs.spec.ts S4 패턴 — 비-admin 직접 URL 접근 시 requireSystemAdmin 가드의

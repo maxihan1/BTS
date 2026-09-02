@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { PublishDialog } from '../PublishDialog'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import type { PublishPreview } from '@/api/workflows-draft.types'
+import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
+import type { EditableDraft } from '@/lib/workflow-draft'
+import { calculateProgressRatio } from '@/hooks/use-bulk-operation'
 
 const NAMES = { done: '완료', open: '열림' }
 
@@ -18,6 +21,41 @@ function preview(over: Partial<PublishPreview> = {}): PublishPreview {
   }
 }
 
+/**
+ * 마법사 배선 목(mock).
+ *
+ * `published` 를 채워야 마법사 본체 경로로 들어간다 — null 이면 스켈레톤/로드실패에서 끝난다.
+ *
+ * ★ `progressRatio` 는 `operation` 에서 **파생**시킨다. 실제 화면에서 둘은 같은 폴링 응답에서
+ * 나오므로(`useBulkOperationPolling`), 목이 그 관계를 깨면 도달 불가 조합을 재는 판정이 된다.
+ */
+function migrationMock(over: Partial<UseMigrationWizardResult> = {}): UseMigrationWizardResult {
+  const operation = over.operation ?? null
+  return {
+    published: { states: [], transitions: [] } as unknown as UseMigrationWizardResult['published'],
+    publishedFailed: false,
+    selection: {},
+    onSelectionChange: vi.fn(),
+    onStartMigration: vi.fn(),
+    starting: false,
+    startError: null,
+    operation,
+    progressRatio: calculateProgressRatio(operation ?? undefined),
+    pollFailed: false,
+    pollRetryable: false,
+    retryPoll: vi.fn(),
+    discardDisabled: false,
+    ...over,
+  }
+}
+
+const MIGRATION_DRAFT = { states: [], transitions: [] } as unknown as EditableDraft
+
+/**
+ * ★ `draft`·`migration` 을 **기본 props 에 항상 싣는다.** 유일한 프로덕션 호출처
+ * (`WorkflowEditorDialogs`)가 둘 다 언제나 넘기므로, 목이 그것을 빼면 화면에 없는 분기를
+ * 테스트만 밟게 된다.
+ */
 function renderDialog(over: Partial<React.ComponentProps<typeof PublishDialog>> = {}) {
   const onPublish = vi.fn().mockResolvedValue(undefined)
   const props: React.ComponentProps<typeof PublishDialog> = {
@@ -28,6 +66,8 @@ function renderDialog(over: Partial<React.ComponentProps<typeof PublishDialog>> 
     blockReason: null,
     onPublish,
     publishing: false,
+    draft: MIGRATION_DRAFT,
+    migration: migrationMock(),
     ...over,
   }
   render(<PublishDialog {...props} />)
@@ -93,5 +133,89 @@ describe('발행 다이얼로그', () => {
     renderDialog({ publishing: true })
 
     expect(screen.getByRole('button', { name: labels.publish.confirm })).toBeDisabled()
+  })
+})
+
+/**
+ * COMPLETED 로 끝난 이관 결과. 실패 건수만 바꿔 가며 E1 판정을 잰다.
+ *
+ * 전량 3건 중 앞 `failedCount` 건이 실패한 형태 — 화면이 보는 것은 `status`·`failedCount` 이고
+ * `items` 는 실패 목록 렌더용이다.
+ */
+function completedOperation(failedCount: number): UseMigrationWizardResult['operation'] {
+  const items = Array.from({ length: 3 }, (_, idx) => ({
+    issueKey: `MIGRATION-done-${String(idx)}`,
+    status: idx < failedCount ? ('FAILED' as const) : ('SUCCEEDED' as const),
+    failureReasonCode: idx < failedCount ? ('VERSION_CONFLICT' as const) : null,
+  }))
+  return {
+    id: '00000000-0000-4000-8000-000000000001',
+    operationType: 'STATUS_MIGRATION',
+    status: 'COMPLETED',
+    payload: { mappings: { done: 'closed' }, projectKeys: [] },
+    totalCount: items.length,
+    processedCount: items.length,
+    succeededCount: items.length - failedCount,
+    failedCount,
+    items,
+  }
+}
+
+/** 이관이 필요한 상태의 미리보기 — 이 분기에서만 발행 버튼이 조건부가 된다. */
+function migrationNeededProps(operation: UseMigrationWizardResult['operation']) {
+  return {
+    preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+    draft: MIGRATION_DRAFT,
+    migration: migrationMock({ operation }),
+  }
+}
+
+describe('발행 다이얼로그 — 이관 완료 후 발행 버튼 (G-1 · E1)', () => {
+  it('전량 옮겨졌으면(COMPLETED · 실패 0) 발행 버튼이 되살아난다', () => {
+    renderDialog(migrationNeededProps(completedOperation(0)))
+
+    expect(screen.getByRole('button', { name: labels.publish.confirm })).toBeInTheDocument()
+  })
+
+  it('일부가 안 옮겨졌으면(COMPLETED · 실패 1) 발행 버튼이 **없다**', () => {
+    // 잔여가 남아 있으므로 서버 `requireNoPending` 이 409 로 막는다. 버튼을 두면 사용자가
+    // 눌러 보고서야 그 사실을 알게 된다 — 화면이 먼저 고지한다(E1).
+    renderDialog(migrationNeededProps(completedOperation(1)))
+
+    expect(screen.queryByRole('button', { name: labels.publish.confirm })).not.toBeInTheDocument()
+  })
+})
+
+describe('발행 다이얼로그 — 폴링 실패 재시도 (T6 concern 2)', () => {
+  it('5xx·네트워크로 멈췄으면 재시도 문구와 「다시 시도」 버튼을 준다', () => {
+    renderDialog({
+      preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+      draft: MIGRATION_DRAFT,
+      migration: migrationMock({ pollFailed: true, pollRetryable: true }),
+    })
+
+    expect(screen.getByText(labels.migration.pollFailedRetryable)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: labels.migration.retryPoll })).toBeInTheDocument()
+  })
+
+  it('4xx 로 멈췄으면 재시도 버튼을 주지 않는다 — 다시 불러도 같은 답이라 거짓 희망이 된다', () => {
+    renderDialog({
+      preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+      draft: MIGRATION_DRAFT,
+      migration: migrationMock({ pollFailed: true, pollRetryable: false }),
+    })
+
+    expect(screen.queryByRole('button', { name: labels.migration.retryPoll })).not.toBeInTheDocument()
+    expect(screen.queryByText(labels.migration.pollFailedRetryable)).not.toBeInTheDocument()
+  })
+
+  it('폴링이 멀쩡하면 재시도 자리 자체가 없다', () => {
+    renderDialog({
+      preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+      draft: MIGRATION_DRAFT,
+      migration: migrationMock(),
+    })
+
+    expect(screen.queryByRole('button', { name: labels.migration.retryPoll })).not.toBeInTheDocument()
   })
 })

@@ -17,6 +17,7 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { gotoAdminPage } from './fixtures/admin-hub'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — localStorage 플래그 키 (auth-handlers.ts E2E_IS_SYSTEM_ADMIN_KEY와 동일 문자열)
@@ -123,12 +124,7 @@ async function seedGlobalPermissions(page: Page, seeds: GlobalPermissionSeed[]):
  * @param page Playwright Page 객체
  */
 async function navigateToGlobalPermissionsPage(page: Page): Promise<void> {
-  const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-  await expect(adminNav).toBeVisible()
-
-  const globalPermissionLink = adminNav.getByRole('link', { name: '전역 권한', exact: true })
-  await expect(globalPermissionLink).toBeVisible()
-  await globalPermissionLink.click()
+  await gotoAdminPage(page, '전역 권한')
 
   await page.waitForURL('**/admin/global-permissions')
   await expect(page.getByRole('heading', { name: '전역 권한 관리', level: 1 })).toBeVisible()

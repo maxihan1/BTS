@@ -12,17 +12,16 @@
 //   그 전환 자체가 FR-WF-07 의 내용이므로 판정도 함께 뒤집었다.
 import { test, expect } from '@playwright/test'
 import { loginAsSystemAdmin } from './fixtures/workflow-scheme-fixtures'
+import { gotoAdminPage, openAdminLinks } from './fixtures/admin-hub'
 
 /** 목 픽스처 기준 — software-default 는 5 상태 + 7 전환(INITIAL 1 + NORMAL 6) */
 const TARGET_KEY = 'software-default'
 const TARGET_NAME = '소프트웨어 개발 기본 워크플로우'
 
-/** 사이드바를 통해 목록으로 간다 — 진입점이 실제로 걸려 있는지까지 함께 본다 */
+/** 관리 진입점을 통해 목록으로 간다 — 진입점이 실제로 걸려 있는지까지 함께 본다 */
 async function navigateToWorkflowList(page: import('@playwright/test').Page): Promise<void> {
-  const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-  await expect(adminNav).toBeVisible()
-  // exact 로 집는다 — '워크플로우 관리' 는 '워크플로우 스킴' 과 접두를 공유한다
-  await adminNav.getByRole('link', { name: '워크플로우 관리', exact: true }).click()
+  // exact 로 집는다 — '워크플로우 관리' 는 '워크플로우 스킴' 과 접두를 공유한다(헬퍼가 보장)
+  await gotoAdminPage(page, '워크플로우 관리')
   await expect(page.getByRole('heading', { level: 1, name: '워크플로우 관리' })).toBeVisible()
 }
 
@@ -105,13 +104,13 @@ test('E2E-3 전환 이름을 고치면 초안 목록이 새 이름을 보여준�
   await expect(list).not.toContainText('Start Work')
 })
 
-test('E2E-4 사이드바 링크 이름이 스킴 링크와 겹치지 않는다 (§2 즉사 계약)', async ({ page }) => {
+test('E2E-4 관리 진입점의 워크플로우 링크 이름이 스킴 링크와 겹치지 않는다 (§2 즉사 계약)', async ({ page }) => {
   await loginAsSystemAdmin(page)
-  const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
+  const adminLinks = await openAdminLinks(page)
 
   // 부분일치(기본)로 '워크플로우' 를 집으면 둘이 잡힌다 — 그 사실 자체를 못박는다.
   // 이 단언이 1 로 바뀌면 누군가 라벨을 줄인 것이고, 그때 exact 없는 기존 셀렉터가 죽는다.
-  await expect(adminNav.getByRole('link', { name: '워크플로우' })).toHaveCount(2)
-  await expect(adminNav.getByRole('link', { name: '워크플로우 관리', exact: true })).toHaveCount(1)
-  await expect(adminNav.getByRole('link', { name: '워크플로우 스킴', exact: true })).toHaveCount(1)
+  await expect(adminLinks.getByRole('link', { name: '워크플로우' })).toHaveCount(2)
+  await expect(adminLinks.getByRole('link', { name: '워크플로우 관리', exact: true })).toHaveCount(1)
+  await expect(adminLinks.getByRole('link', { name: '워크플로우 스킴', exact: true })).toHaveCount(1)
 })

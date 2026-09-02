@@ -1,6 +1,7 @@
 // 모바일 사이드바 오프캔버스 드로어 열림 상태 + 아이콘 레일 판정 (jira-parity F24)
 import { create } from 'zustand'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
+import { useSidebarWidth } from '@/hooks/use-sidebar-width'
 import { useMediaQuery } from '@/hooks/use-media-query'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,4 +107,46 @@ export function useSidebarShown(): boolean {
   const drawerOpen = useSidebarDrawer((state) => state.open)
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY)
   return isMobile ? drawerOpen : !collapsed
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 폭 판정 — 지금 실제로 그릴 px 을 정하는 유일한 정본 (Jira 패리티 J6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 아이콘 레일 폭(px) — Tailwind `w-16` 과 같은 값이다 */
+export const RAIL_WIDTH_PX = 64
+
+/**
+ * 지금 사이드바에 실제로 실어야 할 폭(px).
+ *
+ * 세 상태가 각자 다른 폭을 쓴다.
+ * - **모바일 드로어** — `undefined`. 폭은 `max-md:w-[264px]` 클래스가 지배한다.
+ *   🛑 저장된 폭을 그대로 실으면 안 된다 — 480px 로 맞춰 둔 사용자의 드로어가 화면을 거의
+ *   다 덮는다. 드로어는 오버레이라 「내가 맞춰 둔 폭」이 적용될 자리가 아니다.
+ * - **데스크톱 아이콘 레일** — {@link RAIL_WIDTH_PX}. 저장 폭과 무관한 고정값이다.
+ * - **데스크톱 펼침** — 저장된 폭.
+ *
+ * @returns 인라인 `style.width` 에 실을 px, 또는 클래스에 맡길 때 `undefined`
+ */
+export function useSidebarEffectiveWidth(): number | undefined {
+  const width = useSidebarWidth((state) => state.width)
+  const railCollapsed = useSidebarRailCollapsed()
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY)
+  if (isMobile) return undefined
+  return railCollapsed ? RAIL_WIDTH_PX : width
+}
+
+/**
+ * 지금 폭을 드래그로 바꿀 수 있는 상태인지 — 리사이즈 핸들을 렌더할지의 유일한 정본.
+ *
+ * 🛑 레일(64px)·모바일 드로어(264px)에서는 **핸들을 렌더하지 않는다.** 둘 다 고정 폭이라
+ *    `aria-valuenow` 가 거짓말이 되고, 끌어도 아무 일이 일어나지 않는 죽은 컨트롤이 된다.
+ *    스크린리더에는 조작 가능한 splitter 로 읽히므로 「보이지만 안 되는」 것보다 나쁘다.
+ *
+ * @returns 데스크톱이면서 펼쳐져 있을 때만 true
+ */
+export function useSidebarResizable(): boolean {
+  const railCollapsed = useSidebarRailCollapsed()
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY)
+  return !isMobile && !railCollapsed
 }

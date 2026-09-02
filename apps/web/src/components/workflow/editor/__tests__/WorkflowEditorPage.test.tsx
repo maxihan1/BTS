@@ -1,5 +1,5 @@
 // 워크플로우 초안 편집기 인수 테스트 — FR-WF-07 D6 (편집 ≠ 배포 · 캐스케이드 · 발행 흐름)
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -326,6 +326,96 @@ describe('발행 흐름', () => {
     // 토스트로 사라지지 않고 배너로 남는다 — 재시도로는 안 풀리기 때문이다.
     const banner = await screen.findByRole('alert', { name: P.conflict.banner })
     expect(within(banner).getByRole('button', { name: P.conflict.action })).toBeInTheDocument()
+  })
+})
+
+describe('★ 이관 중 새로고침 (G-2)', () => {
+  // 이관 진행률을 URL 에 실은 뒤 새로고침하면 편집기는 마법사 없이 다시 뜬다 —
+  // `flow.preview` 가 null 이라 발행 다이얼로그가 아예 렌더되지 않기 때문이다. 그 자리에서
+  // 진행 상황이 보이지 않으면 사용자는 회색 버튼 셋만 보고 이관이 실패했다고 읽는다.
+  const MIGRATION_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+
+  /** 진행률 폴링 응답 하나를 고정한다. RUNNING 은 종료로 넘어가지 않아 「진행 중」을 잴 수 있다. */
+  function serveMigration(status: 'RUNNING' | 'COMPLETED', processed: number, total: number): void {
+    server.use(
+      http.get('/api/v1/bulk-operations/:id', () =>
+        HttpResponse.json({
+          data: {
+            id: MIGRATION_ID,
+            operationType: 'STATUS_MIGRATION',
+            status,
+            payload: { mappings: { done: 'open' }, projectKeys: [] },
+            totalCount: total,
+            processedCount: processed,
+            succeededCount: processed,
+            failedCount: 0,
+            items: [],
+          },
+        }),
+      ),
+    )
+  }
+
+  /** 새로고침으로 돌아온 상태를 만든다 — 훅은 raw `window.location` 을 읽는다(라우터 없음). */
+  function enterWithMigrationInUrl(): void {
+    window.history.replaceState(null, '', `/?migration=${MIGRATION_ID}`)
+  }
+
+  afterEach(() => {
+    // 다음 테스트가 죽은 이관 id 를 들고 시작하지 않게 주소를 되돌린다.
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('★ 마법사가 없어도 진행률이 화면에 남는다', async () => {
+    serveMigration('RUNNING', 3, 10)
+    enterWithMigrationInUrl()
+    renderEditor()
+    await waitForLoaded()
+
+    expect(await screen.findByText(P.migration.inProgress)).toBeInTheDocument()
+    expect(await screen.findByText('3 / 10')).toBeInTheDocument()
+    // 마법사가 그려지지 않는다는 것이 이 표시가 필요한 이유다 — 전제를 함께 잰다.
+    expect(screen.queryByRole('dialog', { name: P.publish.dialogTitle })).not.toBeInTheDocument()
+  })
+
+  it('잠긴 버튼 옆에 잠긴 이유가 함께 있다', async () => {
+    // 이관 폴링이 발행·폐기·복원을 함께 잠근다(G-3). 이유 없이 회색인 버튼만 남기지 않는다.
+    serveMigration('RUNNING', 3, 10)
+    enterWithMigrationInUrl()
+    renderEditor()
+    await waitForLoaded()
+    await screen.findByText(P.migration.inProgress)
+
+    expect(screen.getByRole('button', { name: P.draft.publish })).toBeDisabled()
+    expect(screen.getByText(P.migration.inProgressNotice)).toBeInTheDocument()
+  })
+
+  it('이관이 없으면 진행 표시도 없고 발행도 열려 있다', async () => {
+    // 위 두 단언이 공허하지 않다는 짝 — 주소에 이관 id 가 없으면 이 줄 자체가 없어야 한다.
+    renderEditor()
+    await waitForLoaded()
+
+    expect(screen.queryByText(P.migration.inProgress)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: P.draft.publish })).toBeEnabled()
+  })
+
+  it('이관이 끝나면 마법사가 사는 발행 다이얼로그로 다시 갈 수 있다', async () => {
+    // 진행 중에는 발행이 잠겨 있다가, 폴링이 종료 상태를 받으면 되돌아온다.
+    serveMigration('COMPLETED', 10, 10)
+    enterWithMigrationInUrl()
+    renderEditor()
+    await waitForLoaded()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: P.draft.publish })).toBeEnabled()
+    })
+    expect(screen.queryByText(P.migration.inProgress)).not.toBeInTheDocument()
+
+    await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
+    await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '이관 뒤 발행')
+    await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
+
+    expect(await screen.findByRole('dialog', { name: P.publish.dialogTitle })).toBeInTheDocument()
   })
 })
 

@@ -56,8 +56,12 @@ describe('navLabels', () => {
       expect(navLabels.create).toBeTruthy()
     })
 
-    it('admin 라벨이 존재한다', () => {
-      expect(navLabels.admin).toBeTruthy()
+    it('admin 라벨이 제거됐다 (J9 — 사이드바 관리 nav 이관으로 소비처 0)', () => {
+      // ★부재를 단언한다. 그냥 지우기만 하면 누군가 「관리」 라벨을 다시 넣어도 아무도 안 본다 —
+      //   그러면 `admin`('관리') ⊂ `adminNav`('관리 메뉴') 면제를 되살려야 하는데,
+      //   면제 없이 넣으면 FR15 substring 판별식이 red 를 낸다(그건 잡힌다).
+      //   여기서 잡는 것은 **면제까지 함께 되살아나는 경우**다.
+      expect('admin' in navLabels).toBe(false)
     })
 
     it('collapseSidebar 라벨이 존재한다', () => {
@@ -112,14 +116,10 @@ describe('navLabels', () => {
      *    substring 매칭이므로 e2e에서 `exact: true`가 필수이며, 그 경고가 `nav-labels.ts`
      *    JSDoc에 이미 있다. 위험을 없앤 게 아니라 **명시적으로 관리**하는 쌍이다.
      *
-     * 2. `admin`('관리') ⊂ `adminNav`('관리 메뉴') —
-     *    **선재 상태이며 현재 위험 0** (2026-07-31 실측, FR-UX-08 PR-B 전수 판별식이 최초 검출).
-     *    `admin`은 `Sidebar.tsx:107`의 `<p>` 표시 텍스트 전용이고 **어디서도 접근성 이름
-     *    (`aria-label`)으로 쓰이지 않는다.** `adminNav` 조회는 Testing Library
-     *    `findByRole('navigation', { name })`인데 TL의 `name`은 기본이 완전일치다.
-     *    e2e에서 `'관리'`로 조회하는 지점도 0건이다.
-     *    ⚠️ **`admin`을 `aria-label`로 쓰기 시작하면 이 면제를 제거하고 라벨을 바꿔야 한다.**
-     *    (2026-07-31 Maxi 확정 — 옵션 B「라벨 변경」은 사용자 문구 변경이라 이 PR 범위 밖)
+     * 2. ~~`admin`('관리') ⊂ `adminNav`('관리 메뉴')~~ — **면제가 사라졌다(Jira 패리티 J9).**
+     *    `admin` 은 사이드바 관리 nav 안 `<p>` 표시 텍스트 전용이었는데, 그 nav 가 상단바
+     *    관리 허브 링크로 옮겨가면서 소비처가 0이 되어 키 자체를 제거했다. 면제를 지운 것이
+     *    아니라 **쌍의 한쪽이 없어진 것**이라 이 자리는 비어 있는 게 맞다.
      *
      * 3. `search`('검색') ⊂ `globalSearch`('전역 검색') — **둘 다 `aria-label`이라 실제
      *    위험이 있다.** FR-UX-12 F13이 **의도적으로** 만든 쌍이다(Jira 패리티 계약 §2
@@ -146,7 +146,6 @@ describe('navLabels', () => {
     const ALLOWED_SUBSTRING_PAIRS: ReadonlyArray<readonly [keyof typeof navLabels, keyof typeof navLabels]> =
       [
         ['projectNav', 'projectViewNav'],
-        ['admin', 'adminNav'],
         ['search', 'globalSearch'],
         ['search', 'globalSearchPlaceholder'],
         ['issues', 'globalSearchPlaceholder'],

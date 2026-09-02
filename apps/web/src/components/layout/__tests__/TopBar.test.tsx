@@ -252,4 +252,61 @@ describe('TopBar', () => {
 
     expect(screen.getByRole('button', { name: /alice.*계정 메뉴/ })).toBeInTheDocument()
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 관리 허브 진입점 (Jira 패리티 J9) — 사이드바에서 옮겨 온 유일한 진입로다
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('T-TB-A1: isSystemAdmin=true 면 관리 허브 링크가 /admin 으로 연결된다', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice',
+        email: 'alice@bts.local',
+        authMethod: 'local',
+        displayName: 'alice',
+        userId: 'u1',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+    renderTopBar()
+
+    const hub = screen.getByRole('link', { name: navLabels.adminNav })
+    expect(hub).toHaveAttribute('href', '/admin')
+  })
+
+  it('T-TB-A2: isSystemAdmin=false 면 관리 허브 링크가 렌더되지 않는다', () => {
+    // 🛑 라우터 가드(requireSystemAdmin)가 있어도 링크를 노출하면 안 된다 — 누르면
+    //    리다이렉트되는 링크는 「있는데 안 되는」 것이라 fail-closed 가 아니다.
+    renderTopBar()
+
+    expect(
+      screen.queryByRole('link', { name: navLabels.adminNav }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('T-TB-A3: 관리 허브 링크는 모바일에서도 보인다 (max-md:hidden 금지)', () => {
+    // ★설정 톱니와 다르다. 톱니는 계정 메뉴의 「모든 설정」이 모바일 대체 경로라 감출 수 있지만,
+    //   관리 허브는 사이드바에서 없어진 뒤로 **유일한 UI 진입로**다. 감추면 모바일에서
+    //   관리 화면 8개가 통째로 도달 불가가 된다.
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice',
+        email: 'alice@bts.local',
+        authMethod: 'local',
+        displayName: 'alice',
+        userId: 'u1',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+    renderTopBar()
+
+    const hub = screen.getByRole('link', { name: navLabels.adminNav })
+    expect(hub.className).not.toContain('max-md:hidden')
+  })
 })

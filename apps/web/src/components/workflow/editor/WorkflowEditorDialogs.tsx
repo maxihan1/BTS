@@ -8,7 +8,7 @@ import type { TransitionDefinitionInput } from '@/api/workflows-admin'
 import type { WorkflowView } from '@/api/workflows'
 import type { PublishPreview } from '@/api/workflows-draft.types'
 import type { EditableDraft } from '@/lib/workflow-draft'
-import type { PublishFlowDialog } from '@/hooks/use-publish-flow'
+import type { PublishFlowDialog, UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { StatusPickerDialog } from './StatusPickerDialog'
 import { TransitionFormDialog } from './TransitionFormDialog'
 import { PublishDialog } from './PublishDialog'
@@ -55,6 +55,31 @@ interface WorkflowEditorDialogsProps {
   onConfirmReset: () => void
   onConfirmDiscard: () => void
   busy: boolean
+  /**
+   * 이관 마법사의 살아 있는 배선(`useMigrationWizard`).
+   *
+   * ★ **여기서 부르지 않고 위에서 받는다.** `WorkflowEditorPage` 가 이 훅을 쥐고 있어야
+   * `discardDisabled`(G-3)를 `DraftStatusBar` 의 초안 폐기 버튼까지 끌어올릴 수 있다 — 이
+   * 컴포넌트는 조립만 한다는 위 주석의 계약을 그대로 따른다(concern 1 정리 겸용).
+   */
+  migration: UseMigrationWizardResult
+}
+
+/**
+ * 초안 폐기 확인 문구. 진행률 폴링이 5xx·네트워크로 멈춘 동안에는 경고 한 줄을 덧붙인다.
+ *
+ * ★ 폴링이 멈추면 잠금이 풀려 **이 다이얼로그에 닿을 수 있다.** 그런데 5xx 정지는 「이관이
+ * 끝났다」가 아니라 「서버 상태를 못 본다」이므로, 기본 문구만 두면 도는 중일지 모르는 이관을 한
+ * 마디도 안 한 채 초안을 버리게 된다 — 이미 옮겨진 이슈는 되돌아오지 않는다(E5).
+ *
+ * 4xx 정지(죽은 id)에는 붙이지 않는다. 진행 중일 가능성 자체가 없다.
+ *
+ * @param pollRetryable 폴링이 5xx·네트워크로 멈췄는가(`useMigrationWizard.pollRetryable`)
+ * @returns 확인 다이얼로그에 실을 설명 문구
+ */
+function discardDescription(pollRetryable: boolean): string {
+  const base = publishLabels.discard.dialogDescription
+  return pollRetryable ? `${base}. ${publishLabels.discard.migrationRunningWarning}` : base
 }
 
 /**
@@ -89,6 +114,7 @@ function WorkflowEditorDialogs({
   onConfirmReset,
   onConfirmDiscard,
   busy,
+  migration,
 }: WorkflowEditorDialogsProps): React.JSX.Element {
   return (
     <>
@@ -151,6 +177,8 @@ function WorkflowEditorDialogs({
           blockReason={blockReason}
           onPublish={onConfirmPublish}
           publishing={busy}
+          draft={draft}
+          migration={migration}
         />
       ) : null}
 
@@ -165,7 +193,7 @@ function WorkflowEditorDialogs({
         open={flowDialog === 'discard'}
         onOpenChange={onFlowClose}
         title={publishLabels.discard.dialogTitle}
-        description={publishLabels.discard.dialogDescription}
+        description={discardDescription(migration.pollRetryable)}
         confirmLabel={publishLabels.discard.confirm}
         cancelLabel={publishLabels.common.cancel}
         confirming={busy}
