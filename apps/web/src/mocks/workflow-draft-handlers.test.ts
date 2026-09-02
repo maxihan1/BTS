@@ -1,5 +1,5 @@
 // 초안·발행 MSW 계약 테스트 — 목이 서버보다 관대하면 프로덕션에서만 터진다
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { server } from '@/test/server'
 import {
   getDraft,
@@ -278,6 +278,46 @@ describe('★ 상태 이관 진행률 폴링 — 접수와 조회를 잇는다 (
 
     expect(pendingIssueStore.get('done')).toBe(0)
     await expect(publishDraft(KEY, anchor)).resolves.toMatchObject({ versionNo: 1 })
+  })
+})
+
+describe('★ 부분 실패 — 목이 서버보다 관대하면 E1 이 프로덕션에서만 터진다', () => {
+  // 일괄 편집과 같은 플래그 하나로 켠다(`isPartialFailEnabled`). 켜 두고 나가면 다음 테스트가
+  // 이유 없이 실패하므로 파일 안에서 반드시 끈다.
+  beforeEach(() => {
+    globalThis.localStorage?.setItem('__bts_e2e_bulk_partial_fail', 'true')
+  })
+  afterEach(() => {
+    globalThis.localStorage?.clear?.()
+  })
+
+  /** 이관을 접수하고 COMPLETED 까지 폴링한다. */
+  async function migrateDoneToClosed(anchor: number) {
+    const accepted = await migrateStatuses(KEY, anchor, [{ fromStatusKey: 'done', toStatusKey: 'closed' }])
+    await fetchBulkOperation(accepted.bulkOperationId) // 1차 폴 — 아직 RUNNING
+    return fetchBulkOperation(accepted.bulkOperationId) // 2차 폴 — COMPLETED
+  }
+
+  it('COMPLETED 여도 옮겨지지 않은 이슈만큼 잔여가 남는다 (서버는 DB 를 다시 센다)', async () => {
+    const anchor = await saveDraftRemovingDone()
+
+    const completed = await migrateDoneToClosed(anchor)
+
+    expect(completed.status).toBe('COMPLETED')
+    expect(completed.failedCount).toBe(1)
+    // ★ 0 이 아니다. 실패한 1건은 아직 `done` 에 있다 — 목이 여기서 0 으로 내리면
+    //   「COMPLETED = 전량 성공」이라는 거짓을 화면에 심는다.
+    expect(pendingIssueStore.get('done')).toBe(1)
+  })
+
+  it('잔여가 남으면 재발행이 서버와 같은 이유로 409 다 (requireNoPending · E1)', async () => {
+    const anchor = await saveDraftRemovingDone()
+    await migrateDoneToClosed(anchor)
+
+    const error = await publishDraft(KEY, anchor).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(WorkflowPublishMappingRequiredError)
+    expect((error as WorkflowPublishMappingRequiredError).pendingIssueCounts).toEqual({ done: 1 })
   })
 })
 

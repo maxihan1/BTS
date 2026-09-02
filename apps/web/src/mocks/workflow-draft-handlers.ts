@@ -4,7 +4,7 @@ import type { WorkflowView } from '@/api/workflows'
 import type { DraftDefinition, StatusMappingInput } from '@/api/workflows-draft.types'
 import { transitionKey } from '@/components/workflow/workflow.types'
 import { workflowStore, statusCatalogStore, nextTransitionId } from './workflow-admin-fixtures'
-import { registerStatusMigration } from './bulk-operation-handlers'
+import { isPartialFailEnabled, registerStatusMigration } from './bulk-operation-handlers'
 import {
   draftStore,
   versionStore,
@@ -298,26 +298,50 @@ export const workflowDraftHandlers = [
       return problem(400, 'WORKFLOW_MIGRATION_INVALID_MAPPING', reason)
     }
 
-    // mappings 배열을 서버 payload 형태(출발 상태 키 → 도착 상태 키 레코드)로 접고,
-    // 이관 대상 총건수를 매핑된 출발 상태들의 잔여 건수 합으로 잡는다.
+    // mappings 배열을 서버 payload 형태(출발 상태 키 → 도착 상태 키 레코드)로 접고, 이관 대상
+    // 이슈를 **출발 상태별로** 만든다. 서버 `requireNoPending` 은 완료 후 DB 를 상태마다 다시
+    // 세므로, 목도 어느 이슈가 어느 상태에서 왔는지 알아야 같은 판정을 낼 수 있다.
     const mappings: Record<string, string> = {}
-    let totalCount = 0
+    const issueKeysByStatus = new Map<string, string[]>()
     for (const mapping of body.mappings) {
       mappings[mapping.fromStatusKey] = mapping.toStatusKey
-      totalCount += pendingIssueStore.get(mapping.fromStatusKey) ?? 0
+      const remaining = pendingIssueStore.get(mapping.fromStatusKey) ?? 0
+      issueKeysByStatus.set(
+        mapping.fromStatusKey,
+        Array.from({ length: remaining }, (_, idx) => `MIGRATION-${mapping.fromStatusKey}-${String(idx)}`),
+      )
+    }
+
+    // ★ 부분 실패(E1) — 출발 상태마다 마지막 1건이 실패한다. 이 분기가 없으면 목의 이관은
+    //   **절대 실패하지 않아** E1 경로가 어디서도 실행되지 않는다. 플래그는 일괄 편집이 쓰는
+    //   것과 같은 하나다(`isPartialFailEnabled`).
+    const failKeys = new Set<string>()
+    if (isPartialFailEnabled()) {
+      for (const issueKeys of issueKeysByStatus.values()) {
+        const last = issueKeys.at(-1)
+        if (last !== undefined) {
+          failKeys.add(last)
+        }
+      }
     }
 
     // ★ 발행하지 않는다 — 큐잉만 한다. 진행률은 `GET /api/v1/bulk-operations/{id}` 가 따로 준다.
     // 그 폴링이 이 작업을 찾으려면 응답을 돌려주기 **전에** bulkOpsStore 에 등록해야 한다.
     const bulkOperationId = generateBulkOperationId()
-    registerStatusMigration(bulkOperationId, { totalCount, mappings, projectKeys: [] }, () => {
-      // 서버 `requireNoPending` 재현 — 이관이 COMPLETED 에 도달하면 옮겨진 출발 상태의 잔여
-      // 건수가 0 이어야 한다. 그러지 않으면 이어지는 발행이 계속 409
-      // (WORKFLOW_PUBLISH_MAPPING_REQUIRED) 로 막혀 E2E 의 「재발행」 단계가 끝나지 않는다.
-      for (const fromStatusKey of Object.keys(mappings)) {
-        pendingIssueStore.set(fromStatusKey, 0)
-      }
-    })
+    registerStatusMigration(
+      bulkOperationId,
+      { issueKeys: [...issueKeysByStatus.values()].flat(), mappings, projectKeys: [], failKeys },
+      (failedIssueKeys) => {
+        // 서버 `requireNoPending` 재현 — COMPLETED 는 「전량 옮겨졌다」가 **아니다.** 서버는 DB 를
+        // 다시 세므로 옮겨지지 않은 이슈가 남아 있으면 이어지는 발행이 계속 409
+        // (WORKFLOW_PUBLISH_MAPPING_REQUIRED) 다. 목이 여기서 0 으로 일괄 초기화하면 목이 서버보다
+        // 관대해지고, 그 차이는 프로덕션에서만 터진다.
+        const failed = new Set(failedIssueKeys)
+        for (const [fromStatusKey, issueKeys] of issueKeysByStatus) {
+          pendingIssueStore.set(fromStatusKey, issueKeys.filter((key) => failed.has(key)).length)
+        }
+      },
+    )
 
     return HttpResponse.json({ data: { bulkOperationId } }, { status: 202 })
   }),

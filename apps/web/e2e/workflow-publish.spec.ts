@@ -118,8 +118,13 @@ test('D7 정본 — 상태를 빼고 발행하면 마법사가 뜨고 이관 후
   await loginAsSystemAdmin(page)
   await openEditor(page)
 
+  // 발행이 실제로 일어났는지는 마지막에 **목록의 상태 수**로 잰다(P3 와 같은 축) — 그 기준선.
+  const statusList = page.getByRole('list', { name: '편성된 상태 목록' })
+  const beforeCount = await statusList.getByRole('listitem').count()
+
   // 1. 이슈가 남은 상태를 뺀다 → 발행 → 마법사가 뜬다
   await removeStatus(page, 'Done')
+  await expect(statusList.getByRole('listitem')).toHaveCount(beforeCount - 1)
   await expect(page.getByText('저장됨')).toBeVisible()
 
   await page.getByRole('button', { name: '발행' }).click()
@@ -149,6 +154,15 @@ test('D7 정본 — 상태를 빼고 발행하면 마법사가 뜨고 이관 후
   // 3. 완료되면 사용자가 다시 발행을 누른다 → 발행 성공(G-1)
   await publishButton.click()
 
+  // ★ 「이름이 목록에 보인다」로는 아무것도 못 잰다 — 이 시나리오는 이름을 바꾸지 않으므로
+  //   그 단언은 발행 전에도, 발행이 409 로 죽어도 참이다. 발행이 정규 정의를 교체했다는 증거는
+  //   **뺀 상태 하나가 목록의 상태 수에서 사라진 것**이다(P3 가 「발행 전에는 안 준다」를 재는
+  //   바로 그 값).
   await page.getByRole('button', { name: '목록으로' }).click()
-  await expect(page.getByRole('table', { name: '워크플로우 목록' })).toContainText(TARGET_NAME)
+  const row = page
+    .getByRole('table', { name: '워크플로우 목록' })
+    .getByRole('row')
+    .filter({ hasText: TARGET_NAME })
+  // 열 순서는 이름 · 키 · 상태 수 · 전환 수 · 조작(`routes/admin.workflows.tsx`).
+  await expect(row.getByRole('cell').nth(2)).toHaveText(String(beforeCount - 1))
 })

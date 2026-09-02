@@ -123,6 +123,56 @@ function migrationMock(over: Partial<UseMigrationWizardResult> = {}): UseMigrati
 
 const MIGRATION_DRAFT = { states: [], transitions: [] } as unknown as EditableDraft
 
+/**
+ * COMPLETED 로 끝난 이관 결과. 실패 건수만 바꿔 가며 E1 판정을 잰다.
+ *
+ * 전량 3건 중 앞 `failedCount` 건이 실패한 형태 — 화면이 보는 것은 `status`·`failedCount` 이고
+ * `items` 는 실패 목록 렌더용이다.
+ */
+function completedOperation(failedCount: number): UseMigrationWizardResult['operation'] {
+  const items = Array.from({ length: 3 }, (_, idx) => ({
+    issueKey: `MIGRATION-done-${String(idx)}`,
+    status: idx < failedCount ? ('FAILED' as const) : ('SUCCEEDED' as const),
+    failureReasonCode: idx < failedCount ? ('VERSION_CONFLICT' as const) : null,
+  }))
+  return {
+    id: '00000000-0000-4000-8000-000000000001',
+    operationType: 'STATUS_MIGRATION',
+    status: 'COMPLETED',
+    payload: { mappings: { done: 'closed' }, projectKeys: [] },
+    totalCount: items.length,
+    processedCount: items.length,
+    succeededCount: items.length - failedCount,
+    failedCount,
+    items,
+  }
+}
+
+/** 이관이 필요한 상태의 미리보기 — 이 분기에서만 발행 버튼이 조건부가 된다. */
+function migrationNeededProps(operation: UseMigrationWizardResult['operation']) {
+  return {
+    preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
+    draft: MIGRATION_DRAFT,
+    migration: migrationMock({ operation }),
+  }
+}
+
+describe('발행 다이얼로그 — 이관 완료 후 발행 버튼 (G-1 · E1)', () => {
+  it('전량 옮겨졌으면(COMPLETED · 실패 0) 발행 버튼이 되살아난다', () => {
+    renderDialog(migrationNeededProps(completedOperation(0)))
+
+    expect(screen.getByRole('button', { name: labels.publish.confirm })).toBeInTheDocument()
+  })
+
+  it('일부가 안 옮겨졌으면(COMPLETED · 실패 1) 발행 버튼이 **없다**', () => {
+    // 잔여가 남아 있으므로 서버 `requireNoPending` 이 409 로 막는다. 버튼을 두면 사용자가
+    // 눌러 보고서야 그 사실을 알게 된다 — 화면이 먼저 고지한다(E1).
+    renderDialog(migrationNeededProps(completedOperation(1)))
+
+    expect(screen.queryByRole('button', { name: labels.publish.confirm })).not.toBeInTheDocument()
+  })
+})
+
 describe('발행 다이얼로그 — 폴링 실패 재시도 (T6 concern 2)', () => {
   it('5xx·네트워크로 멈췄으면 재시도 문구와 「다시 시도」 버튼을 준다', () => {
     renderDialog({
