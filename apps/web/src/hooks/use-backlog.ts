@@ -18,6 +18,7 @@ import type {
   CreateSprintParams,
   UpdateSprintBody,
 } from '@/api/backlog'
+import { boardKeys } from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 팩토리 — 매직 문자열 방지
@@ -260,7 +261,19 @@ export function useUpdateSprint(projectKey: string) {
  *
  * POST /api/v1/sprints/{id}/start → SprintMeta (status: "ACTIVE")
  *
- * onSuccess → invalidateQueries (invalidate-only).
+ * onSuccess → invalidateQueries (invalidate-only). 백로그와 **보드**를 함께 무효화한다.
+ *
+ * ### 왜 보드까지 무효화하는가 (FR-BD-04)
+ * 시작은 백로그의 스프린트 칸만 바꾸는 조작이 아니다 — 스크럼 보드의 **카드 집합 자체가**
+ * 활성 스프린트에서 파생되므로(백엔드 `getBoard` 가 SCRUM 이면 활성 스프린트 이슈를 배치한다)
+ * 시작하는 순간 보드 내용이 통째로 바뀐다. 이 무효화가 없으면 `useBoard` 의 `staleTime` 30초
+ * 동안 **활성 스프린트가 없던 시점의 빈 보드**가 그대로 재사용된다.
+ * J18 「select Start sprint, and the stories will move into the Active sprints view」와
+ * J5 「the board displays only the work items added to the sprint you started」가 그 사이
+ * 깨지고, D7 E2E(`e2e/scrum-board.spec.ts` S7)가 그것을 잡는다.
+ *
+ * `staleTime` 을 낮춰 때우지 않는다 — 그러면 스프린트와 무관한 모든 보드 조회가 함께 느려진다.
+ * 대상을 보드 단위로 좁히지도 않는다 — 이유는 {@link boardKeys.all}.
  *
  * @param projectKey 백로그 queryKey 대상 프로젝트 키
  */
@@ -271,6 +284,7 @@ export function useStartSprint(projectKey: string) {
     mutationFn: (sprintId) => startSprint(sprintId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: boardKeys.all })
     },
   })
 }
@@ -284,7 +298,9 @@ export function useStartSprint(projectKey: string) {
  *
  * POST /api/v1/sprints/{id}/complete → SprintMeta (status: "COMPLETED")
  *
- * onSuccess → invalidateQueries (invalidate-only).
+ * onSuccess → invalidateQueries (invalidate-only). 백로그와 **보드**를 함께 무효화한다 —
+ * 완료는 시작의 대칭이라 스크럼 보드가 다시 빈다(활성 스프린트가 사라진다). 근거는
+ * {@link useStartSprint}.
  *
  * ### ⚠️ 완료는 이슈를 옮기지 않는다 — 되돌릴 수도 없다
  * 이 자리에 있던 「완료 후 미완성 이슈는 백엔드에서 backlog로 이동시키므로」라는 주석은
@@ -305,6 +321,7 @@ export function useCompleteSprint(projectKey: string) {
     mutationFn: (sprintId) => completeSprint(sprintId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: boardKeys.all })
     },
   })
 }

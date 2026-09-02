@@ -37,6 +37,23 @@ function normalizeFilter(filter: BoardCardFilterParams): {
 
 /** 보드 BC queryKey 팩토리 */
 export const boardKeys = {
+  /**
+   * 모든 보드 상세를 덮는 접두 키 — **무효화 전용**.
+   *
+   * 🛑 조회에 쓰지 마라. 이 키로 `getQueryData` 를 부르면 어느 보드의 캐시와도 완전 일치하지
+   * 않아 항상 `undefined` 다 (`backlogKeys.project` 와 같은 규약).
+   *
+   * ### 왜 보드 단위로 좁히지 않는가
+   * 보드 내용을 바꾸는 쪽이 **어느 보드인지 모를 때**가 있다 — 스프린트 시작·완료는 스프린트
+   * UUID 만 쥐고 있고 그 스프린트의 소속 보드는 응답에 없다(`SprintMeta`). 좁히려면 훅이
+   * 보드를 추측해야 하고, 추측이 틀리면 무효화가 조용히 빗나간다. 접두 무효화의 비용은
+   * 지금 열려 있는 보드 화면 하나를 다시 부르는 것뿐이다.
+   *
+   * {@link list} 는 이 접두에 **안 걸린다** — `'boards'` 와 `'board'` 는 다른 원소다.
+   * 보드의 이름·종류는 스프린트 전환으로 바뀌지 않으니 그게 맞다.
+   */
+  all: ['board'] as const,
+
   /** 프로젝트별 보드 목록 queryKey */
   list: (projectKey: string) => ['boards', projectKey] as const,
   /**
