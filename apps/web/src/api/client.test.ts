@@ -388,3 +388,74 @@ describe('apiFetch — 문자열 body pass-through (Task-1)', () => {
     expect(new Headers(init?.headers).get('content-type')).toBe('application/json')
   })
 })
+
+// ─────────────────────────────────────────────
+// 401 재시도와 취소 신호 (`ApiFetchOptions.signal`)
+//
+// `signal` KDoc 이 「401 재시도에도 같은 signal 이 실린다」를 주장하는데 이 파일에 그 주장을
+// 재는 단언이 하나도 없었다. `lib/delete-timeout.test.ts` 의 사슬 테스트도 stub fetch 가 끝내
+// 응답하지 않아 **401 분기에 진입조차 하지 않는다** — 그래서 여기서 잰다.
+// ─────────────────────────────────────────────
+
+describe('apiFetch — 401 재시도와 취소 신호', () => {
+  const BOARD_PATH = '/api/v1/boards/e1f2a3b4-c5d6-4789-abcd-ef0123456789'
+
+  afterEach(() => {
+    // globalThis.fetch를 직접 spy했으므로 다음 테스트가 msw로 되돌아가도록 반드시 복원한다
+    vi.restoreAllMocks()
+  })
+
+  it('T-SIG-1: 401 → refresh 200 → 재시도 fetch 에 첫 요청과 같은 signal 인스턴스가 실린다', async () => {
+    const controller = new AbortController()
+    const signals: (AbortSignal | null | undefined)[] = []
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      signals.push(init?.signal)
+      // 1회차 = DELETE(401) · 2회차 = /auth/refresh(200) · 3회차 = 재시도 DELETE(204)
+      if (signals.length === 1) return Promise.resolve(new Response(null, { status: 401 }))
+      if (signals.length === 2) return Promise.resolve(new Response(JSON.stringify({ access_token: 'fresh-token' })))
+      return Promise.resolve(new Response(null, { status: 204 }))
+    })
+
+    await apiFetch(BOARD_PATH, { method: 'DELETE', signal: controller.signal })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    // 재시도에는 **같은 인스턴스**가 실려야 한다. 여기서 새 AbortController 를 만들면
+    // 상한(`lib/delete-timeout.ts`)이 재시도 요청을 끊지 못해 삭제가 서버에서 계속 산다.
+    expect(signals[0]).toBe(controller.signal)
+    expect(signals[2]).toBe(controller.signal)
+    // 그 사이의 refresh 에는 signal 이 **없다.** `refreshPromise` 는 여러 요청이 공유하는 전역
+    // lock 이라 한 요청의 abort 가 다른 요청들의 refresh 까지 죽이기 때문이다(의도된 설계).
+    // 그래서 이 대기 구간은 abort 를 관측하지 못하고, 상한이 abort 와 별개로 거절을 낸다.
+    expect(signals[1]).toBeUndefined()
+  })
+
+  it('T-SIG-2: 재시도 진입 전에 abort 되면 재시도가 AbortError 로 거절된다', async () => {
+    const controller = new AbortController()
+    let deleteRequests = 0
+
+    server.use(
+      http.delete(BOARD_PATH, () => {
+        deleteRequests += 1
+        return new HttpResponse(null, { status: 401 })
+      }),
+      http.post('/api/v1/auth/refresh', () => {
+        // refresh 를 기다리는 사이에 상한이 끊은 상황을 만든다 — 재시도는 이미 abort 된
+        // signal 로 들어간다.
+        controller.abort()
+        return HttpResponse.json({ access_token: 'fresh-token' })
+      }),
+    )
+
+    let caught: unknown
+    try {
+      await apiFetch(BOARD_PATH, { method: 'DELETE', signal: controller.signal })
+    } catch (error) {
+      caught = error
+    }
+
+    // 재시도가 서버에 닿지 않았다 — signal 이 실렸다는 증거는 「요청이 안 갔다」쪽이 더 세다.
+    expect(deleteRequests).toBe(1)
+    expect((caught as Error | undefined)?.name).toBe('AbortError')
+  })
+})

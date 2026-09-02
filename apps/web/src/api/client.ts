@@ -13,8 +13,15 @@ export interface ApiFetchOptions {
    * 요청 취소 신호. 지정하면 abort 시 fetch 가 `AbortError` 로 reject 한다.
    *
    * **선택 필드다** — 기존 호출자는 전량 무변경이고, 취소가 필요한 호출만 넘긴다
-   * (`lib/delete-timeout.ts` 의 상한이 첫 소비자다). 401 재시도에도 같은 signal 이 실려
-   * 재시도 요청까지 함께 끊긴다.
+   * (`lib/delete-timeout.ts` 의 상한이 첫 소비자다). 401 **재시도 fetch** 에도 같은 인스턴스가
+   * 실려 재시도 요청까지 함께 끊긴다 (`client.test.ts` 의 T-SIG-1 · T-SIG-2).
+   *
+   * ★그러나 **재시도 앞의 refresh 대기는 이 signal 을 관측하지 않는다.** `doRefresh()` 의 fetch 에는
+   * signal 이 없다 — `refreshPromise` 는 여러 요청이 공유하는 전역 lock 이라 한 요청의 abort 가
+   * 다른 요청들의 refresh 까지 죽이기 때문이고, 그래서 일부러 싣지 않는다. 결과적으로 refresh 응답이
+   * 오지 않으면 abort 만으로는 이 함수가 끝나지 않는다. 상한이 abort 와 **함께 거절을 내는** 이유가
+   * 그것이니(`lib/delete-timeout.ts`), 이 문장을 「abort 하나면 충분하다」로 읽고 그 거절을 지우면
+   * 삭제 확인 창이 무기한 잠기는 결함이 그대로 재발한다.
    */
   signal?: AbortSignal
 }
