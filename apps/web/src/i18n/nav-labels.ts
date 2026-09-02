@@ -97,6 +97,15 @@ export const navLabels = {
   expandSidebar: '사이드바 펼치기',
 
   /**
+   * 사이드바 폭 조절 핸들 aria-label (Jira 패리티 J6).
+   *
+   * `role="separator"` 위젯의 접근 가능 이름이다. 기존 `collapseSidebar`·`expandSidebar`
+   * 어느 것과도 substring 관계가 아니라 `getByRole` 조회에서 토글 버튼과 섞이지 않는다
+   * (`nav-labels.test.ts` 전수 판별식이 이 관계를 계속 검사한다).
+   */
+  resizeSidebar: '사이드바 폭 조절',
+
+  /**
    * 페이지 상단 탐색 경로(breadcrumb) nav aria-label (🔒 e2e 계약, FR-UX-06 PR13 PL-3 신규).
    *
    * 신규 추가 — 기존 계약 문자열(`mainNav`·`adminNav`·`projectNav`·`projectViewNav`·`search`)

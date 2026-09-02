@@ -9,19 +9,31 @@ const SRC = resolve(__dirname, '../..')
  * `use-sidebar-width` 를 **직접** 소비해도 되는 프로덕션 파일.
  *
  * - `hooks/use-sidebar-width.ts` — 자기 자신(스토어 정의)
- * - `hooks/use-sidebar-drawer.ts` — 유일한 래퍼. 접힘·모바일 판정을 얹어
+ * - `hooks/use-sidebar-drawer.ts` — 유일한 **판정** 래퍼. 접힘·모바일을 얹어
  *   `useSidebarEffectiveWidth`(지금 실제로 그릴 폭)를 파생시킨다.
+ * - `components/layout/SidebarResizeHandle.tsx` — 유일한 **조작** 지점.
+ *   `setWidth`/`commitWidth` 와 범위 상수가 필요해 스토어를 직접 쥔다.
  *
- * 🛑 여기에 파일을 **추가하지 마라.** 소비처가 늘어난다는 것은 「지금 폭이 얼마인가」를
- *    또 한 곳에서 판정한다는 뜻이다. 형제 축(`use-sidebar-collapsed`)이 정확히 그 양식으로
- *    무너졌다 — `RecentIssuesMenu`(라벨 판정)와 `ShellLayout`(토글 판정)이 뒤처져
- *    모바일 드로어에서 「최근 이슈」가 통째로 사라졌다. 필요한 것은 새 소비가 아니라
- *    `use-sidebar-drawer.ts` 에 파생 훅을 하나 더 만드는 것이다.
+ * 🛑 **판정 소비를 추가하지 마라.** 「지금 폭이 얼마인가」를 두 곳에서 계산하는 순간
+ *    형제 축(`use-sidebar-collapsed`)이 무너진 양식이 재현된다 — `RecentIssuesMenu`(라벨 판정)와
+ *    `ShellLayout`(토글 판정)이 뒤처져 모바일 드로어에서 「최근 이슈」가 통째로 사라졌다.
+ *    폭이 필요하면 `useSidebarEffectiveWidth` 를 쓰고, 새 파생이 필요하면
+ *    `use-sidebar-drawer.ts` 에 만들어라.
  *
- * 특히 **모바일에서 폭을 직접 읽으면 안 된다** — 드로어는 264px 고정이라 저장된 폭(예: 420px)이
- * 그대로 실리면 화면을 거의 다 덮는다. 그 판정은 `useSidebarEffectiveWidth` 하나가 소유한다.
+ * 조작 지점이 예외인 근거는 **렌더 게이트**다 — 핸들은 `useSidebarResizable()` 이 참일 때만
+ * 존재하므로 레일(64px)·모바일 드로어(264px)에서는 아예 마운트되지 않고, 따라서 저장 폭을
+ * 직접 읽어도 그 두 고정 폭과 어긋날 자리가 없다. 그 게이트가 실제로 걸려 있는지는 아래
+ * 「조작 지점은 렌더 게이트를 통과한다」 단언이 소스에서 확인한다 — 게이트를 떼면 이 예외가
+ * 근거를 잃고 red 가 된다.
  */
-const ALLOWED = new Set(['hooks/use-sidebar-width.ts', 'hooks/use-sidebar-drawer.ts'])
+const ALLOWED = new Set([
+  'hooks/use-sidebar-width.ts',
+  'hooks/use-sidebar-drawer.ts',
+  'components/layout/SidebarResizeHandle.tsx',
+])
+
+/** 판정이 아니라 조작 때문에 예외로 둔 파일 — 렌더 게이트를 추가로 검사한다 */
+const MUTATOR = 'components/layout/SidebarResizeHandle.tsx'
 
 /**
  * 이 모듈을 가리키는 **모든 표기**를 잡는다.
@@ -104,6 +116,22 @@ describe('use-sidebar-width 직접 소비 허용목록', () => {
         MODULE_SPECIFIER_RE.test(withoutComments(source)) || rel.endsWith('use-sidebar-width.ts')
       expect(consumesOrDefines, `허용목록 항목이 죽어 있다: ${rel}`).toBe(true)
     }
+  })
+
+  it('조작 지점은 렌더 게이트를 통과한다 (레일·모바일에서 죽은 컨트롤이 되는 것을 막는다)', () => {
+    // ★`SidebarResizeHandle` 이 허용목록에 든 근거는 「판정하지 않고 조작만 한다」인데,
+    //   그 안전성은 전적으로 `useSidebarResizable()` 렌더 게이트에 달려 있다. 게이트를 떼면
+    //   레일(64px)·모바일 드로어(264px)에서도 splitter 가 렌더돼 `aria-valuenow` 가 거짓말을
+    //   하고, 끌어도 아무 일이 없는 죽은 컨트롤이 된다. 예외의 근거를 예외와 같은 곳에서 묶는다.
+    const source = withoutComments(readFileSync(resolve(SRC, MUTATOR), 'utf-8'))
+    expect(
+      source,
+      `${MUTATOR} 가 useSidebarResizable 게이트를 잃었다 — 허용목록 예외의 근거가 사라진다.`,
+    ).toContain('useSidebarResizable')
+    expect(
+      source,
+      `${MUTATOR} 가 게이트에서 조기 반환하지 않는다 — 레일·모바일에서도 렌더된다.`,
+    ).toMatch(/if\s*\(!resizable\)\s*return null/)
   })
 
   it('스캐너가 실제로 파일을 훑는다 (0건 스캔으로 통과하는 것을 막는다)', () => {
