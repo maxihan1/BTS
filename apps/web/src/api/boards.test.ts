@@ -241,6 +241,33 @@ describe('boardCreatedSchema — boardType 필수 계약 (FR-BD-04 D6)', () => {
   })
 })
 
+describe('boardMetaSchema — boardType 필수 계약 (FR-BD-04 PR ⑤)', () => {
+  // 종류를 노출하는 응답이 5개인데 PATCH 응답(boardMetaSchema)만 빠져 있었다.
+  // optional 로 두면 백엔드가 필드를 흘려도 프론트가 조용히 통과해 계약이 다시 갈린다.
+  it('T-BD-11c: boardType 이 있으면 파싱하고 그대로 노출한다', () => {
+    const result = boardMetaSchema.safeParse({
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      swimlaneField: 'ASSIGNEE' as const,
+      boardType: 'SCRUM' as const,
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.boardType).toBe('SCRUM')
+  })
+
+  it('T-BD-11d: boardType 이 없으면 파싱을 거부한다', () => {
+    const result = boardMetaSchema.safeParse({
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      swimlaneField: 'ASSIGNEE' as const,
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // T-BD-5. moveCardResultSchema — 유효 픽스처 파싱
 // ─────────────────────────────────────────────────────────────────────────────

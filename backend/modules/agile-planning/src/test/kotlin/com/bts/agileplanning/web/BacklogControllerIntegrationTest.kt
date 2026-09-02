@@ -112,9 +112,11 @@ class BacklogControllerIntegrationTest {
         sprintId: UUID = UUID.randomUUID(),
         name: String = "Sprint 1",
         status: String = "PLANNED",
+        boardId: UUID = UUID.randomUUID(),
     ): SprintMetaResponse =
         SprintMetaResponse(
             sprintId = sprintId,
+            boardId = boardId,
             name = name,
             goal = null,
             status = status,

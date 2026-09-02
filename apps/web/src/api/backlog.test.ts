@@ -229,6 +229,23 @@ describe('sprintMetaSchema — 유효 픽스처 파싱', () => {
 // T-BL-3. backlogViewSchema — 전체 뷰 파싱
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('sprintMetaSchema — boardId 필수 계약 (FR-BD-04 PR ⑤)', () => {
+  // 스프린트는 프로젝트가 아니라 **보드**에 매달린다(ADR §D2). 이 필드가 없으면 클라이언트가
+  // 소속 보드를 알 방법이 없어 관측이 요청 바디로 밀린다 — 서버가 boardId 를 흘려도 화면이 멀쩡하다.
+  it('T-BL-2e: boardId 가 있으면 파싱하고 그대로 노출한다', () => {
+    const result = sprintMetaSchema.safeParse(sprintMetaFixture)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.boardId).toBe(BOARD_ID)
+  })
+
+  it('T-BL-2f: boardId 가 없으면 파싱을 거부한다', () => {
+    const withoutBoardId: Record<string, unknown> = { ...sprintMetaFixture }
+    delete withoutBoardId['boardId']
+    expect(sprintMetaSchema.safeParse(withoutBoardId).success).toBe(false)
+  })
+})
+
 describe('backlogViewSchema — 전체 뷰 파싱', () => {
   it('T-BL-3a: backlog 목록 + sprints 배열 + truncated를 파싱한다', () => {
     const result = backlogViewSchema.safeParse(backlogViewFixture)
