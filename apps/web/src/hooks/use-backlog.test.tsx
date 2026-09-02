@@ -17,9 +17,11 @@ import {
   startSprint,
   completeSprint,
   updateSprint,
+  deleteSprint,
 } from '@/api/backlog'
 import type { BacklogView, IssueRankResult, SprintMeta } from '@/api/backlog'
 import type { BoardCardFilterParams } from '@/api/boards'
+import { DELETE_TIMEOUT_MS, DeleteTimeoutError } from '@/lib/delete-timeout'
 import {
   useBacklog,
   useRerankIssue,
@@ -29,6 +31,7 @@ import {
   useStartSprint,
   useCompleteSprint,
   useUpdateSprint,
+  useDeleteSprint,
   backlogKeys,
 } from './use-backlog'
 import { boardKeys } from './use-boards'
@@ -658,5 +661,125 @@ describe('useUpdateSprint', () => {
 
     expect(returned?.version).toBe(1)
     expect(returned?.endDate).toBe('2026-07-20')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useDeleteSprint (FR-3)
+//
+// 삭제는 시작·완료와 **같은 무효화 규약**을 쓴다. 규약이 갈리면 「가끔 안 바뀌는 화면」으로만
+// 남아 어떤 실패로도 드러나지 않으므로, 여기서도 보드 축을 함께 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useDeleteSprint', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    vi.mocked(deleteSprint).mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-BL-DELETE-SPRINT-1: 성공 시 취소 신호를 함께 넘기고 backlog 접두 키를 invalidate 한다', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useDeleteSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(SPRINT_ID)
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // 두 번째 인자는 상한 헬퍼가 만든 취소 신호다 — 이게 빠지면 요청을 끊을 방법이 없다.
+    expect(deleteSprint).toHaveBeenCalledWith(SPRINT_ID, expect.any(AbortSignal))
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: backlogKeys.project('ATLAS') }),
+    )
+  })
+
+  it('T-BL-DELETE-SPRINT-2: 지금 보고 있지 않은 보드의 백로그·보드 캐시까지 무효화한다', async () => {
+    // ★이 판정이 이 훅의 존재 이유다. 무효화를 `backlogKeys.detail` 완전 일치로 좁히면
+    //   BOARD_B 의 캐시가 조용히 낡은 채로 남는다(#424 BLOCKER-1 과 같은 양식). 지운 스프린트의
+    //   이슈는 **모든 보드의** 백로그 칸에 나타나므로 무효화는 프로젝트 접두여야 한다(E12).
+    //   보드 축이 함께 필요한 이유는 `useBoard` 의 staleTime 30초다 — 안 덮으면 최대 30초간
+    //   없는 스프린트가 보드에 남는다.
+    queryClient.setQueryData(backlogKeys.detail('ATLAS', BOARD_A), MOCK_BACKLOG_VIEW)
+    queryClient.setQueryData(backlogKeys.detail('ATLAS', BOARD_B), MOCK_BACKLOG_VIEW)
+    seedBoardDetailCaches(queryClient)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useDeleteSprint('ATLAS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(SPRINT_ID)
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(queryClient.getQueryState(backlogKeys.detail('ATLAS', BOARD_A))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(backlogKeys.detail('ATLAS', BOARD_B))?.isInvalidated).toBe(true)
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.all }),
+    )
+    expect(queryClient.getQueryState(boardKeys.detail(BOARD_A))?.isInvalidated).toBe(true)
+    expect(
+      queryClient.getQueryState(boardKeys.detail(BOARD_A, BOARD_FILTER))?.isInvalidated,
+    ).toBe(true)
+    expect(queryClient.getQueryState(boardKeys.detail(BOARD_B))?.isInvalidated).toBe(true)
+  })
+
+  it('T-BL-DELETE-SPRINT-3: 상한이 지나면 요청이 취소되고 isPending 이 풀린다', async () => {
+    // 확인 창은 `confirming` 동안 취소·Esc·오버레이를 전부 잠근다. 응답이 오지 않으면
+    // 사용자가 창에 갇히므로 상한이 요청을 끊고 실패를 창 안으로 돌려줘야 한다(E-4 · 장부 145).
+    // mock 은 실제 요청처럼 **signal 을 존중한다** — 취소를 무시하는 mock 을 쓰면
+    // 「요청이 살아 있다」는 결함이 테스트에서 보이지 않는다.
+    const signals: (AbortSignal | undefined)[] = []
+    vi.mocked(deleteSprint).mockImplementation((_sprintId, signal) => {
+      signals.push(signal)
+      return new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        })
+      })
+    })
+    vi.useFakeTimers()
+
+    try {
+      const { result } = renderHook(() => useDeleteSprint('ATLAS'), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      act(() => {
+        result.current.mutate(SPRINT_ID)
+      })
+
+      // 상한 직전까지는 계속 기다린다 — 판정이 「항상 참」이 아님을 여기서 본다.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELETE_TIMEOUT_MS - 1)
+      })
+      expect(result.current.isPending).toBe(true)
+      expect(signals[0]?.aborted).toBe(false)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2)
+      })
+
+      expect(signals[0]?.aborted).toBe(true)
+      expect(result.current.isPending).toBe(false)
+      expect(result.current.error).toBeInstanceOf(DeleteTimeoutError)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
