@@ -214,21 +214,6 @@ function buildBoardSearch(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 활성 스프린트 헤더 — 스크럼 보드에서만 쓰는 순수 헬퍼 (FR-BD-04 FR-2)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 활성 스프린트 기간 표기를 만든다. 두 날짜가 다 없으면 `null`(=기간을 안 그린다).
- *
- * `startDate`·`endDate` 는 **둘 다 nullable** 이다(`ActiveSprintResponse` 4필드).
- * 한쪽만 있는 스프린트를 `2026-09-01 ~ ` 처럼 반쪽으로 그리면 「끝이 언제인지 모른다」가
- * 「값이 깨졌다」로 읽히므로, 있는 쪽만 물결표의 해당 편에 둔다.
- *
- * @param startDate 시작일(ISO-8601 date) 또는 null
- * @param endDate 종료일(ISO-8601 date) 또는 null
- * @returns "시작 ~ 종료" · "시작 ~" · "~ 종료" · 둘 다 없으면 null
- */
-// ─────────────────────────────────────────────────────────────────────────────
 // 보드 관리 `⋯` — 이름 변경 · 삭제 (FR-BD-01-2a/2b · Jira 근거 J3·J4·J5)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -627,7 +612,6 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   // 활성 스프린트 — 칸반은 항상 null 이므로 `boardType` 을 다시 보지 않는다 (`activeSprintSchema` KDoc).
   const activeSprint = boardDetail?.activeSprint ?? null
-  // 기간 표기 — 두 날짜가 다 없으면 null 이라 이름만 그린다 (FR-2)
 
   // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
   // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
