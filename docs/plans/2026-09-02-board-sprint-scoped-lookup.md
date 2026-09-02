@@ -36,6 +36,27 @@ task 가 실행되지 않아** 2026-09-02 까지 어느 목록에도 없었다(P
 의존 방향은 불변이다 — `agile-planning ──(port)─▶ shared-kernel ◀──(impl)── issue-tracking`.
 같은 성격의 예외를 `docs/plans/2026-09-02-scrum-board-screen.md:112` 가 이미 기록했다.
 
+## Jira 대조
+
+계약 §1-0 **재사용 승계.** 이 PR 은 새 조작을 만들지 않는다 — 스크럼 보드가 「활성 스프린트의
+이슈만」 보여준다는 계약은 [ADR 2026-09-01](../adr/2026-09-01-board-type-and-active-sprint.md)
+이 이미 실물 조회로 확정했다. **출처·조회일을 그대로 승계**한다(조회일 2026-09-01 ·
+전 행 Jira Cloud company-managed). **추가 조회 0건.**
+
+| # | 원문 인용 | 출처 |
+|---|---|---|
+| **J5** | *"Your board only displays work items once you've started the sprint, and **the board displays only the work items added to the sprint you started**."* | [plan-a-sprint](https://support.atlassian.com/jira-software-cloud/docs/plan-a-sprint/) |
+| **J6** | 카드가 보드에 뜨는 조건 3개 — 상태가 컬럼에 매핑 · **"is in an active sprint (for Scrum boards)"** · 보드 필터에 일치 | [use-active-sprints](https://support.atlassian.com/jira-software-cloud/docs/use-active-sprints/) |
+
+**대조 결과 — 이 PR 은 패리티를 새로 만들지 않고 「이미 약속한 패리티가 조용히 깨지던 것」을 고친다.**
+J5 는 *the work items added to the sprint* 를 **전부** 보여준다고 적는다. 그런데 BTS 는 프로젝트
+이슈를 1,001건 먼저 자른 뒤 스프린트로 걸러, 활성 스프린트 이슈가 오래됐으면 **말없이 빠진다.**
+Jira 문서 어디에도 「오래된 이슈는 보드에서 빠진다」는 서술이 없다 — 즉 **의도적 편차가 아니라 결함**이다.
+
+**조회했으나 원문을 확보하지 못한 것.** Jira 가 보드 카드 조회에 **상한을 두는지**, 둔다면 상한 초과를
+사용자에게 어떻게 알리는지. `use-active-sprints` · `plan-a-sprint` 어느 쪽도 다루지 않았다.
+→ BTS 의 `truncated` 플래그는 그 공백에서 **BTS 고유 장치**로 남는다(모른다는 사실을 적는다).
+
 ## 🛑 인계 지침 정정 — 4건 중 2건이 실측에서 뒤집혔다
 
 `docs/plans/2026-09-02-scrum-board-screen.md:309-322` 를 그대로 따르지 않았다. **왜 안 따랐는지를
