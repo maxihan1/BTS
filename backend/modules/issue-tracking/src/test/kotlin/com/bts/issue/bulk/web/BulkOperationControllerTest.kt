@@ -19,6 +19,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.shared.workflow.AvailableTransitionView
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -525,6 +526,10 @@ class BulkOperationControllerTest {
 
     @Test
     fun `GET bulk-operations 작업 id — 미인증이면 401 이고 저장소를 조회하지 않는다`() {
+        // MockK stub 은 Spring 싱글턴 Bean 이라 호출 기록이 테스트 사이에 **누적**된다.
+        // 비우지 않으면 아래 verify 가 남의 테스트 호출까지 세어 이 판정이 늘 실패한다.
+        // answers = false — 스텁은 남기고 기록만 지운다.
+        clearMocks(bulkOperationRepository, answers = false)
         SecurityContextHolder.clearContext()
 
         mockMvc.perform(
