@@ -182,13 +182,19 @@ export interface UseMigrationWizardResult {
   startError: string | null
   /** 진행률 폴링 결과. 아직 시작하지 않았으면 null */
   operation: BulkOperationResponse | null
-  /** 폴링이 에러로 멈췄는가 — 정지 조건 자체는 `useBulkOperationPolling` 이 갖고 있다 */
+  /**
+   * 폴링이 에러로 **멈췄는가** — 정지 조건 자체는 `useBulkOperationPolling` 이 갖고 있다.
+   *
+   * 그 훅은 재시도 예산(`MAX_ERROR_RETRIES` 연속)을 다 쓴 뒤에야 쿼리를 `error` 로 넘기므로,
+   * 스쳐 간 5xx 한 번으로는 켜지지 않는다 — 곧 알아서 재시도할 상황에 에러 배너를 띄우지
+   * 않기 위해서다. 켜졌다면 이 id 로는 더 이상 진행률이 갱신되지 않는다.
+   */
   pollFailed: boolean
   /**
    * `pollFailed` 인 상태에서, 다시 시도가 의미 있는 에러인가(concern 2).
    *
    * 4xx·`ZodError` 는 다시 불러도 같은 응답이 온다 — 그때 재시도 버튼을 주면 거짓 희망이다.
-   * 5xx·네트워크로 `MAX_ERROR_RETRIES` 를 넘겨 멈췄을 때만 `true` 다.
+   * 5xx·네트워크로 재시도 예산까지 쓰고 멈췄을 때만 `true` 다.
    */
   pollRetryable: boolean
   /** `pollRetryable` 일 때만 의미 있는 재시도 — 폴링을 한 번 더 부른다 */
@@ -196,8 +202,14 @@ export interface UseMigrationWizardResult {
   /**
    * 폴링 중이라 초안 폐기를 막아야 하는가(G-3).
    *
-   * 폐기하면 이어지는 발행이 404 이고 이미 옮겨진 이슈는 되돌아오지 않는다(E5). 이관을
-   * 시작하지 않았거나(`operationId` 없음) 종료 상태(`COMPLETED`·`FAILED`)에 도달하면 `false`다.
+   * 폐기하면 이어지는 발행이 404 이고 이미 옮겨진 이슈는 되돌아오지 않는다(E5). `false` 가
+   * 되는 경우는 셋이다 — 이관을 시작하지 않았거나(`operationId` 없음) · 종료 상태
+   * (`COMPLETED`·`FAILED`)에 도달했거나 · **폴링이 실패로 멈췄을 때**(`pollFailed`).
+   *
+   * ★ 마지막 조건이 없으면 편집기가 잠긴다. 404·403 으로 폴링이 죽으면 상태를 영영 못 받아
+   * 종료 판정이 계속 거짓이고, 소비처(`WorkflowEditorPage` → `DraftStatusBar`)가 이 값을
+   * `busy` 로 빌려 써 기본값 복원·초안 폐기·발행을 **전부** 비활성으로 만든다. 초안 폐기는
+   * 409 충돌 상태의 유일한 출구이므로 그 자리를 막으면 나갈 길이 없다.
    */
   discardDisabled: boolean
 }
@@ -253,10 +265,10 @@ function isMigrationSettled(status: BulkOperationResponse['status'] | undefined)
 }
 
 /**
- * 폴링이 재시도 상한을 넘겨 멈췄을 때, 다시 시도가 의미 있는 에러인가(concern 2).
+ * 폴링이 재시도 예산을 다 쓰고 멈췄을 때, 다시 시도가 의미 있는 에러인가(concern 2).
  *
- * 4xx·`ZodError` 는 다시 불러도 같은 응답이 온다(`useBulkOperationPolling.computeRefetchInterval`
- * 의 정지 조건과 같은 판단) — 그때 재시도 버튼을 주면 거짓 희망이다. 5xx·네트워크만 재시도할
+ * 4xx·`ZodError` 는 다시 불러도 같은 응답이 온다(`useBulkOperationPolling.shouldRetryPoll` 의
+ * 즉시 정지 조건과 같은 판단) — 그때 재시도 버튼을 주면 거짓 희망이다. 5xx·네트워크만 재시도할
  * 가치가 있다.
  */
 function isRetryablePollError(error: unknown): boolean {
@@ -344,14 +356,18 @@ export function useMigrationWizard(
   const poll = useBulkOperationPolling(operationId, operationId !== null)
   const { refetch: refetchPoll } = poll
   const operationStatus = poll.data?.status
+  // 폴링이 멈췄는가. `useBulkOperationPolling` 은 재시도 예산을 다 쓴 뒤에만 `error` 로 넘어가므로
+  // `isError` 는 「이 id 로는 더 이상 상태를 받지 못한다」와 같은 말이다.
+  const pollStopped = poll.isError
 
-  // 종료 상태(COMPLETED·FAILED)에 도달하면 URL 을 정리한다(G-2) — 끝난 작업의 id 가 주소에
-  // 남으면 다음 진입에서 이미 끝난 진행률을 다시 그리게 된다.
+  // 종료 상태(COMPLETED·FAILED)에 도달했거나 폴링이 멈추면 URL 을 정리한다(G-2). 끝난 작업의 id 가
+  // 주소에 남으면 다음 진입에서 이미 끝난 진행률을 다시 그리고, **죽은 id(404·403)는 새로고침할
+  // 때마다 같은 막다른 상태로 복귀시킨다** — 종료 상태만 정리하면 그쪽을 못 치운다.
   React.useEffect(() => {
-    if (isMigrationSettled(operationStatus)) {
+    if (isMigrationSettled(operationStatus) || pollStopped) {
       writeMigrationIdToUrl(null)
     }
-  }, [operationStatus])
+  }, [operationStatus, pollStopped])
 
   const onSelectionChange = React.useCallback((removedKey: string, targetKey: string) => {
     setSelection((current) => ({ ...current, [removedKey]: targetKey }))
@@ -394,9 +410,10 @@ export function useMigrationWizard(
     starting,
     startError,
     operation: poll.data ?? null,
-    pollFailed: poll.isError,
-    pollRetryable: poll.isError && isRetryablePollError(poll.error),
+    pollFailed: pollStopped,
+    pollRetryable: pollStopped && isRetryablePollError(poll.error),
     retryPoll,
-    discardDisabled: operationId !== null && !isMigrationSettled(operationStatus),
+    discardDisabled:
+      operationId !== null && !isMigrationSettled(operationStatus) && !pollStopped,
   }
 }

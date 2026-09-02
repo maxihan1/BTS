@@ -14,6 +14,7 @@ import {
   useSubmitBulkOperation,
   useBulkOperationPolling,
   computeRefetchInterval,
+  shouldRetryPoll,
   calculateProgressRatio,
   MAX_ERROR_RETRIES,
   POLL_INTERVAL_MS,
@@ -258,7 +259,8 @@ describe('useBulkOperationPolling', () => {
     await waitFor(() => expect(result.current.status).toBe('error'))
 
     const callCountAfterError = callCount
-    // POLL_INTERVAL_MS(1500ms)보다 짧은 대기 후에도 추가 요청이 없어야 한다
+    // 403 은 재시도 대상이 아니라 즉시 error 로 정착한다 — POLL_INTERVAL_MS 보다 짧은 대기
+    // 뒤에도, 그 뒤로도 추가 요청이 없어야 한다.
     await new Promise((resolve) => setTimeout(resolve, 500))
     expect(callCount).toBe(callCountAfterError)
   })
@@ -293,6 +295,69 @@ describe('useBulkOperationPolling', () => {
     expect(callCount).toBe(callCountAfterDone)
     expect(result.current.data?.status).toBe('COMPLETED')
   }, 15000)
+
+  /** fake timer 위에서 폴링 사이클 `ticks` 번을 진행시킨다 — 재시도 간격도 POLL_INTERVAL_MS 다. */
+  async function advancePolls(ticks: number): Promise<void> {
+    for (let tick = 0; tick < ticks; tick += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+      })
+    }
+  }
+
+  // ★ 게이트 2 concern — 재시도 예산은 「연속 실패 수」여야 한다. 아래 두 판정이 그 축의 양쪽
+  //   끝(간헐 장애는 흡수 · 영구 장애는 정지)을 각각 재며, 목 상태를 손으로 만들지 않고 실제
+  //   훅을 MSW 위에서 돌린다.
+  it('T-BULK-POLL-17: 폴 사이사이 5xx 가 스쳐도 성공이 예산을 되돌려 COMPLETED 까지 간다', async () => {
+    vi.useFakeTimers()
+    // 500 → 200 을 세 번 되풀이한 뒤 COMPLETED. 예산을 쿼리 생애 누적(errorUpdateCount)으로 세면
+    // 세 번째 500 에서 상한에 닿아 진행 중인 채로 영구 정지하므로 COMPLETED 에 닿지 못한다.
+    const script = ['fail', 'ok', 'fail', 'ok', 'fail', 'ok', 'done'] as const
+    let callCount = 0
+    server.use(
+      http.get(`/api/v1/bulk-operations/${BULK_OPERATION_ID}`, () => {
+        const step = script[callCount] ?? 'done'
+        callCount++
+        if (step === 'fail') {
+          return HttpResponse.json({ type: 'about:blank', status: 500 }, { status: 500 })
+        }
+        return HttpResponse.json(step === 'done' ? MOCK_COMPLETED_RESPONSE : MOCK_PENDING_RESPONSE)
+      }),
+    )
+
+    const { result } = renderHook(
+      () => useBulkOperationPolling(BULK_OPERATION_ID, true),
+      { wrapper: createWrapper(queryClient) },
+    )
+    await advancePolls(script.length * 2)
+
+    expect(result.current.data?.status).toBe('COMPLETED')
+    // 스쳐 간 5xx 는 화면에 에러로 새지 않는다 — 배너가 뜨면 사용자가 멀쩡한 작업을 중단한다.
+    expect(result.current.isError).toBe(false)
+  })
+
+  it('T-BULK-POLL-18: 5xx 가 연속되면 예산을 쓴 뒤 멈춘다 — 무한 폴링이 되지 않는다', async () => {
+    vi.useFakeTimers()
+    let callCount = 0
+    server.use(
+      http.get(`/api/v1/bulk-operations/${BULK_OPERATION_ID}`, () => {
+        callCount++
+        return HttpResponse.json({ type: 'about:blank', status: 500 }, { status: 500 })
+      }),
+    )
+
+    const { result } = renderHook(
+      () => useBulkOperationPolling(BULK_OPERATION_ID, true),
+      { wrapper: createWrapper(queryClient) },
+    )
+    await advancePolls(MAX_ERROR_RETRIES + 2)
+
+    expect(result.current.isError).toBe(true)
+    // 최초 1회 + 연속 재시도 MAX_ERROR_RETRIES 회. 그 뒤로는 아무리 기다려도 늘지 않는다.
+    expect(callCount).toBe(MAX_ERROR_RETRIES + 1)
+    await advancePolls(5)
+    expect(callCount).toBe(MAX_ERROR_RETRIES + 1)
+  })
 })
 
 /**
@@ -304,20 +369,18 @@ describe('useBulkOperationPolling', () => {
  * 훅 레벨 축(enabled·id null·403 중단·종단 정지)은 위 MSW 기반 판정이 이미 덮는다.
  */
 
-/** computeRefetchInterval 에 넘길 최소 query.state 목(mock)을 만든다. */
+/**
+ * computeRefetchInterval 에 넘길 최소 query.state 목(mock)을 만든다.
+ *
+ * ★ 재시도 예산은 여기 없다 — `shouldRetryPoll` 이 쥐고 있고, 그건 목이 필요 없는 순수 함수라
+ * 카운터를 손으로 밀어 넣지 않아도 잰다. 목이 들고 있던 `errorUpdateCount` 를 지운 이유다.
+ */
 function buildQueryState(overrides: {
   readonly status: 'pending' | 'success' | 'error'
   readonly data?: BulkOperationResponse
-  readonly error?: unknown
-  readonly errorUpdateCount?: number
 }) {
   return {
-    state: {
-      status: overrides.status,
-      data: overrides.data,
-      error: overrides.error ?? null,
-      errorUpdateCount: overrides.errorUpdateCount ?? 0,
-    },
+    state: { status: overrides.status, data: overrides.data },
   } as Parameters<typeof computeRefetchInterval>[0]
 }
 
@@ -389,65 +452,42 @@ describe('computeRefetchInterval — 성공 응답 축', () => {
   })
 })
 
-describe('computeRefetchInterval — 에러 축 (G4 403 재발 방지)', () => {
+/**
+ * ★ 에러 축의 판정은 `computeRefetchInterval` 에서 `shouldRetryPoll` 로 **옮겼다**. 판정 자체는
+ * 하나도 버리지 않았다(절대 규칙 14) — 옮긴 이유는 재시도 예산이 「연속 실패 수」여야 하는데
+ * 쿼리 상태에는 그 값이 없기 때문이다(`errorUpdateCount` 는 생애 누적 · `fetchFailureCount` 는
+ * 매 fetch 마다 0 으로 리셋). 예산을 TanStack Query 의 `retry` 옵션에 넘기면 그 인자가 정확히
+ * 연속 실패 수다.
+ */
+describe('shouldRetryPoll — 에러 축 (G4 403 재발 방지)', () => {
   it('T-BULK-POLL-10: ApiError 403 이면 재시도 횟수와 무관하게 즉시 정지한다', () => {
-    expect(
-      computeRefetchInterval(
-        buildQueryState({ status: 'error', error: new ApiError(403, {}), errorUpdateCount: 1 }),
-      ),
-    ).toBe(false)
+    expect(shouldRetryPoll(0, new ApiError(403, {}))).toBe(false)
   })
 
   it('T-BULK-POLL-11: ApiError 404 이면 재시도 횟수와 무관하게 즉시 정지한다', () => {
-    expect(
-      computeRefetchInterval(
-        buildQueryState({ status: 'error', error: new ApiError(404, {}), errorUpdateCount: 1 }),
-      ),
-    ).toBe(false)
+    expect(shouldRetryPoll(0, new ApiError(404, {}))).toBe(false)
   })
 
   it('T-BULK-POLL-12: ApiError 500 이 상한 미만이면 재시도한다', () => {
-    expect(
-      computeRefetchInterval(
-        buildQueryState({
-          status: 'error',
-          error: new ApiError(500, {}),
-          errorUpdateCount: MAX_ERROR_RETRIES - 1,
-        }),
-      ),
-    ).toBe(POLL_INTERVAL_MS)
+    expect(shouldRetryPoll(MAX_ERROR_RETRIES - 1, new ApiError(500, {}))).toBe(true)
   })
 
   it('T-BULK-POLL-13: ApiError 500 이 상한에 도달하면 정지한다', () => {
-    expect(
-      computeRefetchInterval(
-        buildQueryState({
-          status: 'error',
-          error: new ApiError(500, {}),
-          errorUpdateCount: MAX_ERROR_RETRIES,
-        }),
-      ),
-    ).toBe(false)
+    expect(shouldRetryPoll(MAX_ERROR_RETRIES, new ApiError(500, {}))).toBe(false)
   })
 
   it('T-BULK-POLL-14: 네트워크 오류(ApiError 아님)도 상한 미만이면 재시도한다', () => {
-    expect(
-      computeRefetchInterval(
-        buildQueryState({
-          status: 'error',
-          error: new TypeError('Failed to fetch'),
-          errorUpdateCount: 1,
-        }),
-      ),
-    ).toBe(POLL_INTERVAL_MS)
+    expect(shouldRetryPoll(1, new TypeError('Failed to fetch'))).toBe(true)
   })
 
   it('T-BULK-POLL-15: ZodError(스키마 불일치)는 재시도 횟수와 무관하게 즉시 정지한다', () => {
-    expect(
-      computeRefetchInterval(
-        buildQueryState({ status: 'error', error: makeZodError(), errorUpdateCount: 1 }),
-      ),
-    ).toBe(false)
+    expect(shouldRetryPoll(0, makeZodError())).toBe(false)
+  })
+})
+
+describe('computeRefetchInterval — 에러 정착 축', () => {
+  it('T-BULK-POLL-16: error 로 정착하면 멈춘다 — 재시도 예산은 shouldRetryPoll 이 이미 다 썼다', () => {
+    expect(computeRefetchInterval(buildQueryState({ status: 'error' }))).toBe(false)
   })
 })
 
