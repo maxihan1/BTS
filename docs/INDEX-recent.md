@@ -45,7 +45,7 @@
 | 2026-08-13 | harness-task-tier-by-change-surface | — | — | — | ✔ | — |
 | 2026-08-12 | backend-ci-module-selection | — | ✔ | — | — | — |
 | 2026-08-12 | debt24-decisions | — | ✔ | — | — | — |
-| 2026-08-12 | debt24-master | — | ✔ | — | — | FR-UX-08 |
+| 2026-08-12 | debt24-master | — | ✔ | — | — | FR-UX-08 FR-WF-07 |
 | 2026-08-12 | debt24-move-dialog | — | ✔ | — | — | FR-MV-01 |
 | 2026-08-12 | debt24-msw-migration | — | ✔ | — | — | — |
 | 2026-08-12 | debt24-runner-reclaim | — | ✔ | — | — | — |
