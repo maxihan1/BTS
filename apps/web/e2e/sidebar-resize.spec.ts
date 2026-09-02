@@ -111,6 +111,23 @@ test.describe('사이드바 폭 조절 (J6)', () => {
     await expect(resizeHandle(page)).toHaveCount(0)
   })
 
+  test('E2 사이드바에 스크롤바가 떠도 핸들을 잡을 수 있다', async ({ page }) => {
+    // ★핸들은 `absolute right-0 w-1.5` 라 `aside` 의 `overflow-y-auto` 스크롤바가 그려지는
+    //   오른쪽 6px 위에 정확히 앉는다. 스크롤바가 뜬 상태에서 잡히는지 실측하지 않으면
+    //   「평소엔 되는데 프로젝트가 많으면 안 되는」 결함이 남는다 (코드 리뷰 C6).
+    await page.setViewportSize({ width: 1280, height: 260 })
+    await loginAndWaitForShell(page)
+
+    const scrolls = await page
+      .getByRole('complementary')
+      .evaluate((el) => el.scrollHeight > el.clientHeight)
+    expect(scrolls, '뷰포트를 줄였는데도 사이드바에 스크롤이 생기지 않았다').toBe(true)
+
+    const before = await widthOf(page)
+    await dragHandle(page, 70)
+    await expect.poll(async () => widthOf(page)).toBeGreaterThan(before)
+  })
+
   test('E1 최대 폭을 넘겨 끌어도 그 이상 넓어지지 않는다', async ({ page }) => {
     await loginAndWaitForShell(page)
 
