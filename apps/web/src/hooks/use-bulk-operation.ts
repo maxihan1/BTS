@@ -90,6 +90,16 @@ export function useSubmitBulkOperation() {
  * - 5xx·네트워크 오류는 `MAX_ERROR_RETRIES` 회까지만 재시도하고 그 뒤 정지한다(일시 장애와
  *   영구 장애를 가른다)
  *
+ * ★ **재시도 예산은 폴링 1회분이 아니라 쿼리 생애 전체다.** `errorUpdateCount` 는 error 진입마다
+ * +1 하고 **`success` 로 리셋되지 않는** 누적 카운터다(`@tanstack/query-core`). 따라서 「3회까지」는
+ * 연속 3회가 아니라 **총 3회**이고, 긴 이관에서 간헐적 5xx 가 상한을 채운 뒤에는 다음 에러 한 번에
+ * 곧바로 멈춘다. 의도한 동작이다 — 폴링은 무한히 도는 쪽이 위험하고, 멈춘 뒤의 출구는 화면의
+ * 「다시 시도」(`useMigrationWizard.retryPoll`)가 쥔다.
+ *
+ * ★ 4xx 즉시 정지에는 **429 도 포함**된다. 지금 이 엔드포인트에 rate limit 이 없어 실제로는 안
+ * 나오지만, 도입한다면 429 만 5xx 쪽(재시도) 으로 옮겨야 한다 — 429 는 「기다리면 된다」가 참인
+ * 유일한 4xx 다.
+ *
  * @param query TanStack Query가 넘기는 현재 쿼리(상태만 사용)
  * @returns 다음 폴까지의 ms, 또는 정지할 경우 false
  */
