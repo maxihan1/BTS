@@ -515,7 +515,8 @@ describe('useDeleteBoard', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(deleteBoard).toHaveBeenCalledWith(RENAME_BOARD_ID)
+    // 두 번째 인자는 상한 헬퍼가 만든 취소 신호다 — 이게 빠지면 요청을 끊을 방법이 없다.
+    expect(deleteBoard).toHaveBeenCalledWith(RENAME_BOARD_ID, expect.any(AbortSignal))
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['boards', 'ATLAS'] }),
     )
@@ -526,11 +527,22 @@ describe('useDeleteBoard', () => {
     )
   })
 
-  it('T-BD-DELETE-2: 타임아웃이 지나면 isPending 이 풀리고 에러가 전달된다', async () => {
-    // 응답이 영원히 오지 않는 요청 — 네트워크가 끊긴 채 pending 에 머무는 상태를 재현한다.
+  it('T-BD-DELETE-2: 타임아웃이 지나면 요청이 취소되고 isPending 이 풀린다', async () => {
+    // 응답이 오지 않는 요청 — 네트워크가 끊긴 채 pending 에 머무는 상태를 재현한다.
     // 이 상태에서 isPending 이 계속 참이면 ConfirmDialog 의 confirming 이 닫힘 경로를 전부
     // 잠근 채 풀리지 않아 사용자가 창에 갇힌다(게이트 1 지시).
-    vi.mocked(deleteBoard).mockReturnValue(new Promise<void>(() => {}))
+    //
+    // mock 은 실제 fetch 처럼 **signal 을 존중한다** — 취소를 무시하는 mock 을 쓰면
+    // 「요청이 살아 있다」는 결함(장부 146)이 테스트에서 보이지 않는다.
+    const signals: (AbortSignal | undefined)[] = []
+    vi.mocked(deleteBoard).mockImplementation((_boardId, signal) => {
+      signals.push(signal)
+      return new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        })
+      })
+    })
     vi.useFakeTimers()
 
     try {
@@ -547,11 +559,14 @@ describe('useDeleteBoard', () => {
         await vi.advanceTimersByTimeAsync(DELETE_BOARD_TIMEOUT_MS - 1)
       })
       expect(result.current.isPending).toBe(true)
+      expect(signals[0]?.aborted).toBe(false)
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2)
       })
 
+      // ★상한이 지난 뒤 요청이 실제로 끊겼다는 유일한 증거다 (장부 146).
+      expect(signals[0]?.aborted).toBe(true)
       expect(result.current.isPending).toBe(false)
       expect(result.current.error).toBeInstanceOf(BoardDeleteTimeoutError)
     } finally {
