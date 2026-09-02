@@ -1,8 +1,8 @@
 // 워크플로우 관리(admin) REST 클라이언트 — 워크플로우·전역 상태·편성·전환 정의 쓰기 API
 import { z } from 'zod'
 import { apiFetch } from './client'
+import { parseData, expectNoContent, seg } from './workflows-admin.http'
 import {
-  dataOf,
   statusSchema,
   createdStatusSchema,
   createdWorkflowSchema,
@@ -22,87 +22,14 @@ import type {
 } from './workflows-admin.types'
 
 export * from './workflows-admin.types'
-
 /**
- * 워크플로우 관리 API 실패 — RFC 7807 `code` 를 `errorCode` 로 보존한다.
+ * HTTP 껍데기를 재노출한다 — `WorkflowAdminApiError` 등의 기존 import 경로를 살린다.
  *
- * `ApiError` 를 쓰지 않는 이유. 그쪽은 body 를 `unknown` 으로만 들고 있어 소비처가 매번
- * 파싱을 다시 해야 하고, 그러면 코드별 한국어 메시지 매핑이 화면마다 흩어진다.
+ * 초안·발행 클라이언트(`workflows-draft.ts`)가 같은 껍데기를 쓰는데, 헬퍼를 그쪽에 복사하면
+ * 봉투 파서가 둘이 된다. 위 `nestedErrorBodySchema` 주석이 기록한 사고가 정확히 파서를
+ * 베껴 생긴 것이라 같은 실수를 구조적으로 막는다.
  */
-export class WorkflowAdminApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly errorCode: string,
-    public readonly detail: string,
-  ) {
-    super(`WorkflowAdminApiError [${errorCode}] ${detail}`)
-    this.name = 'WorkflowAdminApiError'
-  }
-}
-
-/**
- * 중첩 에러 봉투 `{ error: { code, message } }`.
- *
- * ★ **평면 RFC 7807 이 아니다.** 이 파일이 부르는 엔드포인트의 핸들러 4종
- * (`WorkflowExceptionHandler` · `WorkflowStatusCompositionExceptionHandler` ·
- * `TransitionConflictExceptionHandler` · `StatusExceptionHandler`)이 전부
- * `ErrorResponse(error = ErrorBody(code, message))` 를 낸다. 평면 `ProblemDetail` 을 쓰는 것은
- * **스킴** 핸들러뿐이고 그쪽조차 필드명이 `errorCode` 다.
- *
- * 처음에 `workflow-schemes.ts` 의 평면 파서를 그대로 베꼈다가 잡혔다. `z.object` 는 모르는
- * 키를 버리고 `.default()` 가 빈 자리를 메우므로 **safeParse 가 성공한다** — 실패가 아니라
- * 조용히 `code='UNKNOWN'` 이 되어 한국어 메시지 매핑이 통째로 도달 불가가 됐다.
- * 같은 BC 안 `api/post-actions.ts` 가 이미 이 형태를 쓰고 있었다.
- */
-const nestedErrorBodySchema = z.object({
-  error: z.object({
-    code: z.string().default('UNKNOWN'),
-    message: z.string().default(''),
-  }),
-})
-
-/** 비-2xx 를 `WorkflowAdminApiError` 로 바꿔 throw 한다. */
-async function throwAdminApiError(res: Response): Promise<never> {
-  const rawBody: unknown = await res.json().catch(() => ({}))
-  const parsed = nestedErrorBodySchema.safeParse(rawBody)
-  throw new WorkflowAdminApiError(
-    res.status,
-    parsed.success ? parsed.data.error.code : 'UNKNOWN',
-    parsed.success ? parsed.data.error.message : String(rawBody),
-  )
-}
-
-/** ok 확인 후 `{ data: T }` 를 파싱한다. */
-async function parseData<T>(res: Response, schema: z.ZodSchema<T>): Promise<T> {
-  if (!res.ok) {
-    return throwAdminApiError(res)
-  }
-  const raw: unknown = await res.json()
-  return dataOf(schema).parse(raw).data
-}
-
-/**
- * ok 확인만 하고 본문을 읽지 않는다.
- *
- * 편성 추가(201)·제거(204)·삭제(204)는 **본문이 없다**. `res.json()` 을 부르면 빈 본문에서
- * 파싱이 터지므로 본문을 건드리지 않는 경로를 따로 둔다.
- */
-async function expectNoContent(res: Response): Promise<void> {
-  if (!res.ok) {
-    await throwAdminApiError(res)
-  }
-}
-
-/**
- * 경로 세그먼트를 인코딩한다.
- *
- * ★ `key`·`statusId`·`transitionId` 는 **URL 경로 파라미터가 그대로 흘러온 값**이다
- * (`routes/admin.workflows.$workflowKey.tsx`). 인코딩 없이 템플릿에 박으면
- * `..%2F..%2Fusers` 같은 값이 `../../users` 로 디코딩되고 `fetch` 가 `..` 를 정규화해
- * **다른 자원으로 요청이 나간다** — 관리자에게 링크 하나를 보내는 것으로 그 토큰을 빌려
- * 엉뚱한 곳에 GET·PUT 을 쏠 수 있다(confused deputy).
- */
-const seg = (value: string): string => encodeURIComponent(value)
+export * from './workflows-admin.http'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 전역 상태 카탈로그

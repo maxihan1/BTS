@@ -1,33 +1,21 @@
-// 워크플로우 관리 TanStack Query 훅 — 조회·쓰기 + 무효화 결선 (FR-WF-04 D6)
+// 워크플로우 관리 TanStack Query 훅 — 목록·생성·복제·삭제. 편집은 초안 경로가 맡는다
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { QueryClient } from '@tanstack/react-query'
 import { fetchWorkflow } from '@/api/workflows'
 import type { WorkflowView } from '@/api/workflows'
 import {
   fetchStatuses,
   createStatus,
   createWorkflow,
-  updateWorkflow,
   deleteWorkflow,
   duplicateWorkflow,
-  addWorkflowStatus,
-  removeWorkflowStatus,
-  reorderWorkflowStatuses,
-  createTransition,
-  updateTransition,
-  deleteTransition,
 } from '@/api/workflows-admin'
 import type {
   StatusCatalogEntry,
   CreatedStatus,
   CreatedWorkflow,
-  TransitionDefinition,
   CreateStatusInput,
   CreateWorkflowInput,
-  UpdateWorkflowInput,
   DuplicateWorkflowInput,
-  AddWorkflowStatusInput,
-  TransitionDefinitionInput,
 } from '@/api/workflows-admin'
 import { WORKFLOW_QUERY_KEY } from './use-workflows'
 import { notifyWorkflowAdminError } from './workflow-admin-error'
@@ -52,11 +40,16 @@ export const WORKFLOW_ADMIN_KEYS = {
   statusCatalog: ['statuses'] as const,
 } as const
 
-/** 목록·상세를 함께 무효화한다. 쓰기 훅 전부가 이 한 곳을 지난다. */
-async function invalidateWorkflow(client: QueryClient, key: string): Promise<void> {
-  await client.invalidateQueries({ queryKey: WORKFLOW_ADMIN_KEYS.list })
-  await client.invalidateQueries({ queryKey: WORKFLOW_ADMIN_KEYS.detail(key) })
-}
+/**
+ * ★ 정의 편집 훅은 이 파일에 없다.
+ *
+ * 상태 추가·제거·순서와 전환 CRUD 는 FR-WF-07 D6 에서 **초안 경로**로 옮겼다
+ * (`use-workflow-draft` → `PUT /draft` → `POST /publish`). 편집이 곧 배포이던 시절의 훅 일곱은
+ * 그때 소비처가 사라져 함께 지웠다 — 남겨 두면 「아직 직접 쓸 수 있다」는 오해를 남긴다.
+ *
+ * 그 엔드포인트 자체는 백엔드에 여전히 실재하고 MSW 핸들러도 남아 있다. 프론트가 안 부르는
+ * 것과 서버에 없는 것은 다른 사실이다.
+ */
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 조회
@@ -92,16 +85,6 @@ export function useCreateWorkflow() {
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: WORKFLOW_ADMIN_KEYS.list })
     },
-    onError: notifyWorkflowAdminError,
-  })
-}
-
-/** 이름·설명을 고친다. */
-export function useUpdateWorkflow(key: string) {
-  const client = useQueryClient()
-  return useMutation<void, unknown, UpdateWorkflowInput>({
-    mutationFn: (input) => updateWorkflow(key, input),
-    onSuccess: () => invalidateWorkflow(client, key),
     onError: notifyWorkflowAdminError,
   })
 }
@@ -156,66 +139,7 @@ export function useCreateStatus() {
 // 상태 편성
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 카탈로그의 상태를 이 워크플로우에 편성한다. */
-export function useAddWorkflowStatus(key: string) {
-  const client = useQueryClient()
-  return useMutation<void, unknown, AddWorkflowStatusInput>({
-    mutationFn: (input) => addWorkflowStatus(key, input),
-    onSuccess: () => invalidateWorkflow(client, key),
-    onError: notifyWorkflowAdminError,
-  })
-}
-
-/** 편성을 뗀다. 마지막 상태·이슈 사용 중·전환 참조 시 실패하고 사유별 토스트가 뜬다. */
-export function useRemoveWorkflowStatus(key: string) {
-  const client = useQueryClient()
-  return useMutation<void, unknown, string>({
-    mutationFn: (statusId) => removeWorkflowStatus(key, statusId),
-    onSuccess: () => invalidateWorkflow(client, key),
-    onError: notifyWorkflowAdminError,
-  })
-}
-
-/** 표시 순서를 통째로 다시 정한다. 그 워크플로우의 상태 전부를 담아 보내야 한다. */
-export function useReorderWorkflowStatuses(key: string) {
-  const client = useQueryClient()
-  return useMutation<void, unknown, string[]>({
-    mutationFn: (statusIds) => reorderWorkflowStatuses(key, statusIds),
-    onSuccess: () => invalidateWorkflow(client, key),
-    onError: notifyWorkflowAdminError,
-  })
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 전환 정의
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 전환 정의를 만든다. */
-export function useCreateTransition(key: string) {
-  const client = useQueryClient()
-  return useMutation<TransitionDefinition, unknown, TransitionDefinitionInput>({
-    mutationFn: (input) => createTransition(key, input),
-    onSuccess: () => invalidateWorkflow(client, key),
-    onError: notifyWorkflowAdminError,
-  })
-}
-
-/** 전환 정의를 통째로 갈아 끼운다. */
-export function useUpdateTransition(key: string) {
-  const client = useQueryClient()
-  return useMutation<TransitionDefinition, unknown, { transitionId: string; input: TransitionDefinitionInput }>({
-    mutationFn: ({ transitionId, input }) => updateTransition(key, transitionId, input),
-    onSuccess: () => invalidateWorkflow(client, key),
-    onError: notifyWorkflowAdminError,
-  })
-}
-
-/** 전환 정의를 지운다. 최초 전환은 지울 수 없다. */
-export function useDeleteTransition(key: string) {
-  const client = useQueryClient()
-  return useMutation<void, unknown, string>({
-    mutationFn: (transitionId) => deleteTransition(key, transitionId),
-    onSuccess: () => invalidateWorkflow(client, key),
-    onError: notifyWorkflowAdminError,
-  })
-}

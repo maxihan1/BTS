@@ -14,11 +14,20 @@ import java.util.UUID
  * @property baseVersion 발행 요청에 **그대로 되돌려 보내야 하는** 버전. 화면이 이 값을 들고 있다가
  *   발행 시 실어 보내고, 서버는 그 사이 남이 발행했는지를 이것으로 판정한다.
  * @property exists 저장된 초안이 실제로 있었는지. false 면 화면은 「편집 시작 전」으로 표시한다.
+ * @property canResetToDefault 「기본값으로 복원」을 띄울지. `origin` 이 `SEED` 이고 기본값 YAML 이
+ *   실재할 때만 true 다 — `POST /reset-to-default` 가 400 을 던지는 조건 둘 다를 반영한다.
+ *
+ *   ### 왜 `origin` 을 그대로 싣지 않나
+ *   화면이 필요로 하는 것은 「복원을 띄울까」라는 판정이지 출처 문자열이 아니다. `origin` 을
+ *   내보내면 그 판정 규칙(SEED **그리고** YAML 실재)이 화면에 복제되고, 조건이 하나 늘 때
+ *   서버와 화면이 갈린다. 공개 조회 응답인 `WorkflowDto` 대신 편집기 전용 응답인 여기에 두는
+ *   이유도 같다 — 편집기 전용 플래그의 자리는 이미 [exists] 가 열어 놨다.
  */
 data class DraftResponse(
     val definition: WorkflowDraftDefinition,
     val baseVersion: Long,
     val exists: Boolean,
+    val canResetToDefault: Boolean,
 )
 
 /**

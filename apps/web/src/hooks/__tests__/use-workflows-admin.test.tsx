@@ -11,8 +11,8 @@ import {
   WORKFLOW_ADMIN_KEYS,
   useStatusCatalog,
   useWorkflowDetail,
-  useUpdateWorkflow,
-  useRemoveWorkflowStatus,
+  useDeleteWorkflow,
+
 } from '../use-workflows-admin'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
@@ -77,40 +77,47 @@ describe('useWorkflowDetail', () => {
   })
 })
 
-describe('useUpdateWorkflow — 무효화 범위', () => {
-  it('성공하면 목록과 상세를 함께 무효화한다', async () => {
-    server.use(http.put('/api/v1/workflows/custom', () => HttpResponse.json({ data: null })))
+describe('useDeleteWorkflow — 무효화 범위', () => {
+  it('성공하면 목록을 무효화하고 상세 캐시는 제거한다', async () => {
+    // ★ 종전 이 자리는 `useUpdateWorkflow` 를 재고 있었다. 그 훅은 초안 전환(FR-WF-07 D6)으로
+    //   소비처가 사라져 함께 지웠고, 「쓰기 뒤 무효화」 계약은 살아 있는 훅으로 옮겼다 —
+    //   계약을 재는 판정까지 함께 지우면 그 계약이 아무도 안 보는 상태가 된다.
+    server.use(http.delete('/api/v1/workflows/custom', () => new HttpResponse(null, { status: 204 })))
     const client = newClient()
     const spy = vi.spyOn(client, 'invalidateQueries')
+    const removeSpy = vi.spyOn(client, 'removeQueries')
 
-    const { result } = renderHook(() => useUpdateWorkflow('custom'), { wrapper: wrapper(client) })
-    result.current.mutate({ name: '새 이름', description: null })
+    const { result } = renderHook(() => useDeleteWorkflow(), { wrapper: wrapper(client) })
+    result.current.mutate('custom')
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     const invalidated = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey))
     expect(invalidated).toContain(JSON.stringify(WORKFLOW_ADMIN_KEYS.list))
-    expect(invalidated).toContain(JSON.stringify(WORKFLOW_ADMIN_KEYS.detail('custom')))
+    // 지운 워크플로우는 되살릴 대상이 없다 — 무효화가 아니라 제거다.
+    const removed = removeSpy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey))
+    expect(removed).toContain(JSON.stringify(WORKFLOW_ADMIN_KEYS.detail('custom')))
   })
 })
 
 describe('mutation 실패 — 사유별 토스트', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('전환이 가리키는 상태를 빼려 하면 전환 때문이라고 알린다', async () => {
+  it('서버가 실어 보낸 막은 대상 이름을 버리지 않는다', async () => {
+    // 종전에는 상태 편성 제거로 쟀다. 그 훅이 사라져 살아 있는 쓰기 경로로 옮겼고,
+    // 재는 계약(코드별 문구 + 서버 문장 덧붙임)은 그대로다.
     server.use(
-      http.delete(`/api/v1/workflows/custom/statuses/${STATUS_ID}`, () =>
+      http.delete('/api/v1/workflows/custom', () =>
         // 백엔드와 같은 중첩 봉투. 평면으로 적으면 파서가 UNKNOWN 으로 떨어뜨린다.
         HttpResponse.json(
-          { error: { code: 'WORKFLOW_STATUS_REFERENCED_BY_TRANSITION', message: '전환 「검토 요청」이 사용 중' } },
+          { error: { code: 'WORKFLOW_IN_USE', message: '스킴 「기본」이 사용 중' } },
           { status: 409 },
         ),
       ),
     )
-    const { result } = renderHook(() => useRemoveWorkflowStatus('custom'), { wrapper: wrapper(newClient()) })
-    result.current.mutate(STATUS_ID)
+    const { result } = renderHook(() => useDeleteWorkflow(), { wrapper: wrapper(newClient()) })
+    result.current.mutate('custom')
     await waitFor(() => expect(result.current.isError).toBe(true))
-    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toContain('전환')
-    // 백엔드가 실어 보낸 「막은 전환 이름」을 버리지 않는다
-    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toContain('검토 요청')
+
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toContain('스킴')
   })
 })

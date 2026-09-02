@@ -57,7 +57,12 @@ class WorkflowDraftController(
         val actor = CurrentActor.current()
         val view = draftService.get(actor.toUuid(), key)
         return DataResponse(
-            DraftResponse(definition = view.definition, baseVersion = view.baseVersion, exists = view.exists),
+            DraftResponse(
+                definition = view.definition,
+                baseVersion = view.baseVersion,
+                exists = view.exists,
+                canResetToDefault = view.canResetToDefault,
+            ),
         )
     }
 
@@ -189,7 +194,12 @@ class WorkflowDraftController(
         // 「있음」으로 보고하게 된다.
         val view = draftService.resetToDefault(actor.toUuid(), key, request.baseVersion)
         return DataResponse(
-            DraftResponse(definition = view.definition, baseVersion = view.baseVersion, exists = view.exists),
+            DraftResponse(
+                definition = view.definition,
+                baseVersion = view.baseVersion,
+                exists = view.exists,
+                canResetToDefault = view.canResetToDefault,
+            ),
         )
     }
 }

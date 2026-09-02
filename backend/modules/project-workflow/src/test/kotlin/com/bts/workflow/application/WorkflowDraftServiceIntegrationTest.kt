@@ -29,6 +29,7 @@ import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.ValidatorRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -510,6 +511,76 @@ class WorkflowDraftServiceIntegrationTest {
 
         assertThatThrownBy { service.resetToDefault(ACTOR, key, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    // ── 복원 가능 여부의 사전 고지 (FR-WF-07 D6) ──────────────────────────────
+
+    /**
+     * ★ 화면이 눌러 보고 400 을 받아 배우게 두지 않는다.
+     *
+     * 「기본값으로 복원」 버튼의 표시 조건은 `origin == SEED` **그리고** YAML 실재인데, `origin`
+     * 은 [WorkflowVersionRow] 에만 있고 도메인 `Workflow` 와 응답 `WorkflowDto` 어디에도 없다.
+     * 프론트는 CUSTOM 워크플로우에서도 버튼을 띄우고 누르면 400 을 받는다 — 화면이 할 수 없는
+     * 일을 할 수 있는 것처럼 그리는 자리다.
+     *
+     * [DraftView.canResetToDefault] 가 그 답을 미리 싣는다. 편집기가 `GET /draft` 를 반드시
+     * 부르므로 추가 왕복이 없고, `requireLive` 가 이미 origin 을 실은 행을 읽어 추가 조회도 없다.
+     *
+     * ★ **판정과 실행이 같은 근거를 봐야 한다.** 아래 세 케이스는 `canResetToDefault` 와
+     * `resetToDefault` 의 성패가 **짝을 이루는지**를 잰다. 플래그만 따로 재면 둘이 갈린 채로
+     * 초록이 되고, 그때 화면은 버튼을 감춘 채 「복원할 수 있는데 못 하는」 상태가 된다.
+     */
+    @Test
+    fun `SEED 이고 YAML 이 있으면 복원 가능이라고 알린다`() {
+        val key = seedWorkflow(origin = "SEED")
+        defaults.yaml =
+            WorkflowYamlDto(
+                key = key,
+                name = "YAML 원본 이름",
+                states = listOf(StateYamlDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
+                transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
+            )
+
+        assertThat(service.get(ACTOR, key).canResetToDefault).isTrue()
+        // 짝 — 실제로 복원이 된다.
+        assertThatCode { service.resetToDefault(ACTOR, key, baseVersion = 0) }.doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `사용자가 만든 워크플로우는 복원 불가라고 알린다`() {
+        val key = seedWorkflow(origin = "CUSTOM")
+        // YAML 은 있지만 origin 이 CUSTOM 이다 — 두 조건 중 하나만 어긋나도 불가여야 한다.
+        defaults.yaml = WorkflowYamlDto(key = key, name = "쓰이면 안 되는 값")
+
+        assertThat(service.get(ACTOR, key).canResetToDefault).isFalse()
+        assertThatThrownBy { service.resetToDefault(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    @Test
+    fun `SEED 여도 YAML 이 없으면 복원 불가라고 알린다`() {
+        // origin 만 보고 판정하면 이 케이스가 초록으로 새고, 화면은 눌러야 실패를 안다.
+        val key = seedWorkflow(origin = "SEED")
+        defaults.yaml = null
+
+        assertThat(service.get(ACTOR, key).canResetToDefault).isFalse()
+        assertThatThrownBy { service.resetToDefault(ACTOR, key, baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    @Test
+    fun `복원 응답도 같은 플래그를 싣는다`() {
+        // 복원 직후 화면이 그 응답으로 상태를 갱신한다 — 여기서 플래그가 빠지면 버튼이 사라진다.
+        val key = seedWorkflow(origin = "SEED")
+        defaults.yaml =
+            WorkflowYamlDto(
+                key = key,
+                name = "YAML 원본 이름",
+                states = listOf(StateYamlDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
+                transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
+            )
+
+        assertThat(service.resetToDefault(ACTOR, key, baseVersion = 0).canResetToDefault).isTrue()
     }
 
     @Test

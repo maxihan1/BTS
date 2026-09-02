@@ -21,4 +21,17 @@ interface StandardWorkflowDefaults {
      * @throws IllegalStateException YAML 이 있는데 파싱·검증에 실패했을 때. 조용히 null 로 접지 않는다
      */
     fun loadStandardYaml(key: String): WorkflowYamlDto?
+
+    /**
+     * 이 키에 되돌릴 기본값이 있는가. 화면이 「기본값으로 복원」을 보여줄지 정할 때 쓴다.
+     *
+     * ### 왜 default 구현인가 — 판정과 실행이 같은 근거를 봐야 한다
+     * [loadStandardYaml] 이 null 인지로 답한다. 구현이 표준 키 **목록 상수**와 대조하는 별도
+     * 경로를 두면 그 목록과 실제 리소스가 서로를 검사하지 않는 두 번째 목록이 되고, 파일이 빠진
+     * 키를 「복원 가능」이라고 답한 뒤 실행에서만 터진다. 여기서 한 번 정의해 두면 그 갈림이
+     * 구조적으로 생기지 않는다.
+     *
+     * 표준 4종은 클래스패스 리소스라 이 호출은 싸다.
+     */
+    fun hasStandardDefault(key: String): Boolean = loadStandardYaml(key) != null
 }

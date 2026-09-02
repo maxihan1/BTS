@@ -60,15 +60,26 @@ class WorkflowDraftService(
     ): DraftView {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
         val workflow = requireLive(key)
+        val restorable = canResetToDefault(key, workflow)
         val stored = draftRepository.findByWorkflowId(workflow.id)
         if (stored != null) {
-            return DraftView(definition = stored.definition, baseVersion = stored.baseVersion, exists = true)
+            return DraftView(
+                definition = stored.definition,
+                baseVersion = stored.baseVersion,
+                exists = true,
+                canResetToDefault = restorable,
+            )
         }
 
         val current =
             currentDefinitionReader.read(key)
                 ?: throw WorkflowInvalidRequestException(key, "발행된 정의를 읽을 수 없다")
-        return DraftView(definition = current, baseVersion = workflow.version, exists = false)
+        return DraftView(
+            definition = current,
+            baseVersion = workflow.version,
+            exists = false,
+            canResetToDefault = restorable,
+        )
     }
 
     /**
@@ -171,7 +182,14 @@ class WorkflowDraftService(
         val stored =
             draftRepository.findByWorkflowId(workflow.id)
                 ?: error("방금 upsert 한 초안이 같은 트랜잭션에서 읽히지 않는다")
-        return DraftView(definition = stored.definition, baseVersion = stored.baseVersion, exists = true)
+        return DraftView(
+            definition = stored.definition,
+            baseVersion = stored.baseVersion,
+            exists = true,
+            // 방금 복원했으므로 참이지만 상수로 적지 않는다 — 같은 판정을 지나게 두면
+            // 나중에 조건이 늘어도 두 자리가 갈리지 않는다.
+            canResetToDefault = canResetToDefault(key, workflow),
+        )
     }
 
     // ── 내부 ──────────────────────────────────────────────────────────────────
@@ -180,6 +198,18 @@ class WorkflowDraftService(
         val row = publishRepository.findLiveByKey(key)
         return row ?: throw WorkflowNotFoundException(key)
     }
+
+    /**
+     * 「기본값으로 복원」이 가능한가.
+     *
+     * ★ [resetToDefault] 가 거절하는 조건 **둘 다**를 본다 — origin 이 SEED 가 아니거나 기본값
+     * YAML 이 없으면 불가다. 하나만 보면 화면이 「가능」이라 그려 놓고 실행에서만 터지는 자리가
+     * 남는다. 두 함수가 같은 근거를 보게 두는 것이 이 헬퍼의 존재 이유다.
+     */
+    private fun canResetToDefault(
+        key: String,
+        workflow: WorkflowVersionRow,
+    ): Boolean = workflow.origin == SEED_ORIGIN && standardDefaults.hasStandardDefault(key)
 
     /**
      * 후보 권한 중 **하나라도** 있으면 통과한다.
@@ -261,11 +291,15 @@ class WorkflowDraftService(
  * @property definition 초안 정의. 저장된 초안이 없으면 지금 발행된 정의다.
  * @property baseVersion 발행 요청에 그대로 실어 보낼 버전.
  * @property exists 저장된 초안이 실제로 있었는지. false 면 화면은 「편집 시작 전」으로 표시한다.
+ * @property canResetToDefault 「기본값으로 복원」이 가능한지. `origin` 이 `SEED` 이고 기본값 YAML 이
+ *   실재할 때만 true 다 — [WorkflowDraftService.resetToDefault] 가 던지는 조건 **둘 다**를 반영한다.
+ *   화면이 이 값 없이 버튼을 그리면 사용자 워크플로우에서 눌러 보고 400 을 받아야 알게 된다.
  */
 data class DraftView(
     val definition: WorkflowDraftDefinition,
     val baseVersion: Long,
     val exists: Boolean,
+    val canResetToDefault: Boolean,
 )
 
 /**
