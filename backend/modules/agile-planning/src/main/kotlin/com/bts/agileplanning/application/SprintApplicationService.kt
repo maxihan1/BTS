@@ -162,10 +162,7 @@ class SprintApplicationService(
         version: Long,
     ): Sprint {
         val existing = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
-
-        if (existing.status == SprintStatus.COMPLETED && (startDate.isPresent || endDate.isPresent)) {
-            throw SprintDateLockedException()
-        }
+        requireDatesEditable(existing, startDate, endDate)
 
         val mergedName = if (name.isPresent) name.get() else existing.name
         val mergedGoal = if (goal.isPresent) goal.get() else existing.goal
@@ -436,6 +433,39 @@ class SprintApplicationService(
             ?.takeIf { it.projectKey == projectKey }
             ?.id
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다.")
+    }
+
+    /**
+     * COMPLETED 스프린트의 기간 변경을 거부한다 (FR-BL-02 FR-2).
+     *
+     * ### 근거 — Jira Cloud 원문 (계획 문서 J1)
+     * *"You can change its name, goal, and start and end dates. **You can only edit the name and goal
+     * for a complete sprint.**"*
+     * (2026-09-01 조회 · Cloud company-managed ·
+     * `support.atlassian.com/jira-software-cloud/docs/edit-a-sprint-in-a-company-managed-project/`)
+     *
+     * 프론트의 입력 비활성만으로 흉내내지 않고 여기서 거부한다 — 화면을 거치지 않는 PATCH 가 남는다.
+     *
+     * ### 값이 아니라 presence 로 판정하는 이유
+     * [JsonNullable] 3-상태에서 **absent 는 「그 필드를 안 건드린다」**이므로 통과시킨다. 그래야 완료
+     * 스프린트의 이름·목표 편집이 살아 있다. present 는 값이든 explicit null 이든 「기간을 바꾸겠다」는
+     * 의사 표시라 거부한다. 반대로 값 비교(기존과 같으면 통과)로 완화하면 클라이언트가 현재 값을 그대로
+     * 실어 보내는 것만으로 잠금을 통과해 규칙이 사실상 사라진다.
+     *
+     * @param existing 조회된 기존 스프린트. 상태 판정의 기준이다.
+     * @param startDate 요청의 시작일 필드. presence 만 본다.
+     * @param endDate 요청의 종료일 필드. presence 만 본다.
+     * @throws SprintDateLockedException 400 — COMPLETED 스프린트에 기간이 present 로 실려 옴.
+     */
+    private fun requireDatesEditable(
+        existing: Sprint,
+        startDate: JsonNullable<LocalDate?>,
+        endDate: JsonNullable<LocalDate?>,
+    ) {
+        if (existing.status != SprintStatus.COMPLETED) return
+        if (!startDate.isPresent && !endDate.isPresent) return
+        log.debug("완료 스프린트의 기간 변경 거부 — sprintId={}", existing.id)
+        throw SprintDateLockedException()
     }
 
     /**
