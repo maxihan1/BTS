@@ -7,6 +7,7 @@ import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import type { PublishPreview } from '@/api/workflows-draft.types'
 import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import type { EditableDraft } from '@/lib/workflow-draft'
+import { calculateProgressRatio } from '@/hooks/use-bulk-operation'
 
 const NAMES = { done: '완료', open: '열림' }
 
@@ -20,6 +21,41 @@ function preview(over: Partial<PublishPreview> = {}): PublishPreview {
   }
 }
 
+/**
+ * 마법사 배선 목(mock).
+ *
+ * `published` 를 채워야 마법사 본체 경로로 들어간다 — null 이면 스켈레톤/로드실패에서 끝난다.
+ *
+ * ★ `progressRatio` 는 `operation` 에서 **파생**시킨다. 실제 화면에서 둘은 같은 폴링 응답에서
+ * 나오므로(`useBulkOperationPolling`), 목이 그 관계를 깨면 도달 불가 조합을 재는 판정이 된다.
+ */
+function migrationMock(over: Partial<UseMigrationWizardResult> = {}): UseMigrationWizardResult {
+  const operation = over.operation ?? null
+  return {
+    published: { states: [], transitions: [] } as unknown as UseMigrationWizardResult['published'],
+    publishedFailed: false,
+    selection: {},
+    onSelectionChange: vi.fn(),
+    onStartMigration: vi.fn(),
+    starting: false,
+    startError: null,
+    operation,
+    progressRatio: calculateProgressRatio(operation ?? undefined),
+    pollFailed: false,
+    pollRetryable: false,
+    retryPoll: vi.fn(),
+    discardDisabled: false,
+    ...over,
+  }
+}
+
+const MIGRATION_DRAFT = { states: [], transitions: [] } as unknown as EditableDraft
+
+/**
+ * ★ `draft`·`migration` 을 **기본 props 에 항상 싣는다.** 유일한 프로덕션 호출처
+ * (`WorkflowEditorDialogs`)가 둘 다 언제나 넘기므로, 목이 그것을 빼면 화면에 없는 분기를
+ * 테스트만 밟게 된다.
+ */
 function renderDialog(over: Partial<React.ComponentProps<typeof PublishDialog>> = {}) {
   const onPublish = vi.fn().mockResolvedValue(undefined)
   const props: React.ComponentProps<typeof PublishDialog> = {
@@ -30,6 +66,8 @@ function renderDialog(over: Partial<React.ComponentProps<typeof PublishDialog>> 
     blockReason: null,
     onPublish,
     publishing: false,
+    draft: MIGRATION_DRAFT,
+    migration: migrationMock(),
     ...over,
   }
   render(<PublishDialog {...props} />)
@@ -97,31 +135,6 @@ describe('발행 다이얼로그', () => {
     expect(screen.getByRole('button', { name: labels.publish.confirm })).toBeDisabled()
   })
 })
-
-/**
- * 폴링 실패 분기 전용 목(mock).
- *
- * `published` 를 채워야 마법사 본체 경로로 들어간다 — null 이면 스켈레톤/로드실패에서 끝난다.
- */
-function migrationMock(over: Partial<UseMigrationWizardResult> = {}): UseMigrationWizardResult {
-  return {
-    published: { states: [], transitions: [] } as unknown as UseMigrationWizardResult['published'],
-    publishedFailed: false,
-    selection: {},
-    onSelectionChange: vi.fn(),
-    onStartMigration: vi.fn(),
-    starting: false,
-    startError: null,
-    operation: null,
-    pollFailed: false,
-    pollRetryable: false,
-    retryPoll: vi.fn(),
-    discardDisabled: false,
-    ...over,
-  }
-}
-
-const MIGRATION_DRAFT = { states: [], transitions: [] } as unknown as EditableDraft
 
 /**
  * COMPLETED 로 끝난 이관 결과. 실패 건수만 바꿔 가며 E1 판정을 잰다.

@@ -183,6 +183,13 @@ export interface UseMigrationWizardResult {
   /** 진행률 폴링 결과. 아직 시작하지 않았으면 null */
   operation: BulkOperationResponse | null
   /**
+   * 진행률 파생값(0~1). `totalCount` 가 아직 0 이면 나눌 수 없어 null 이다.
+   *
+   * 폴링 훅이 이미 계산한 값을 그대로 실어 나른다 — 같은 두 숫자(`processedCount`·`totalCount`)
+   * 에서 진행률을 각자 뽑는 자리가 늘수록 반올림과 0 나눗셈 처리가 서로 어긋난다.
+   */
+  progressRatio: number | null
+  /**
    * 폴링이 에러로 **멈췄는가** — 정지 조건 자체는 `useBulkOperationPolling` 이 갖고 있다.
    *
    * 그 훅은 재시도 예산(`MAX_ERROR_RETRIES` 연속)을 다 쓴 뒤에야 쿼리를 `error` 로 넘기므로,
@@ -359,15 +366,25 @@ export function useMigrationWizard(
   // 폴링이 멈췄는가. `useBulkOperationPolling` 은 재시도 예산을 다 쓴 뒤에만 `error` 로 넘어가므로
   // `isError` 는 「이 id 로는 더 이상 상태를 받지 못한다」와 같은 말이다.
   const pollStopped = poll.isError
+  // ★ 멈춘 이유를 가른다. 5xx·네트워크는 「서버가 일시적으로 눈이 멀었다」라 이관 자체는 살아
+  // 있을 수 있고, 4xx·`ZodError` 는 이 id 로 다시 물어도 같은 답이 온다(죽은 id).
+  const pollRetryable = pollStopped && isRetryablePollError(poll.error)
 
-  // 종료 상태(COMPLETED·FAILED)에 도달했거나 폴링이 멈추면 URL 을 정리한다(G-2). 끝난 작업의 id 가
-  // 주소에 남으면 다음 진입에서 이미 끝난 진행률을 다시 그리고, **죽은 id(404·403)는 새로고침할
-  // 때마다 같은 막다른 상태로 복귀시킨다** — 종료 상태만 정리하면 그쪽을 못 치운다.
+  // 종료 상태(COMPLETED·FAILED)에 도달했거나 **되살아날 가망이 없는** 정지면 URL 을 정리한다(G-2).
+  // 끝난 작업의 id 가 주소에 남으면 다음 진입에서 이미 끝난 진행률을 다시 그리고, **죽은 id
+  // (404·403)는 새로고침할 때마다 같은 막다른 상태로 복귀시킨다** — 종료 상태만 정리하면 그쪽을
+  // 못 치운다.
+  //
+  // ★ 5xx·네트워크 정지(`pollRetryable`)에서는 id 를 **남긴다.** 그 이관은 서버에서 계속 돌고
+  //   있을 수 있는데 주소에서까지 지우면 새로고침이 살아 있는 작업을 표시줄도 잠금도 없이 잃는다
+  //   — 추적 수단이 메모리뿐인 상태가 된다. 남겨 두면 재진입한 새 쿼리가 회복할 기회를 갖는다.
+  //   잠금(`discardDisabled`)은 그와 별개로 **넓게 푼다** — 좁히면 새로고침 뒤 「다시 시도」
+  //   버튼에 닿을 수 없어 편집기가 영구히 잠긴다(직전 BLOCKER).
   React.useEffect(() => {
-    if (isMigrationSettled(operationStatus) || pollStopped) {
+    if (isMigrationSettled(operationStatus) || (pollStopped && !pollRetryable)) {
       writeMigrationIdToUrl(null)
     }
-  }, [operationStatus, pollStopped])
+  }, [operationStatus, pollStopped, pollRetryable])
 
   const onSelectionChange = React.useCallback((removedKey: string, targetKey: string) => {
     setSelection((current) => ({ ...current, [removedKey]: targetKey }))
@@ -410,8 +427,9 @@ export function useMigrationWizard(
     starting,
     startError,
     operation: poll.data ?? null,
+    progressRatio: poll.progressRatio,
     pollFailed: pollStopped,
-    pollRetryable: pollStopped && isRetryablePollError(poll.error),
+    pollRetryable,
     retryPoll,
     discardDisabled:
       operationId !== null && !isMigrationSettled(operationStatus) && !pollStopped,

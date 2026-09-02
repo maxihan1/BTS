@@ -30,18 +30,31 @@ export interface MigrationWizardProps {
   readonly starting: boolean
   /** 접수된 이관 작업의 폴링 결과. null 이면 아직 시작 전(선택 단계) */
   readonly operation: BulkOperationResponse | null
+  /**
+   * 진행률 0~1. 아직 셀 수 없으면(총 건수 0) null.
+   *
+   * ★ **여기서 다시 계산하지 않는다.** 폴링 훅(`useBulkOperationPolling.progressRatio`)이 이미
+   * 같은 두 숫자로 뽑아 둔 값을 받는다 — 같은 계산을 화면마다 복제하면 0 나눗셈·반올림 처리가
+   * 서로 어긋난다.
+   */
+  readonly progressRatio: number | null
 }
 
-/** 진행률 0~100 정수 퍼센트. totalCount 0 이면 division by zero 를 피해 0. */
-function calcPercent(processedCount: number, totalCount: number): number {
-  if (totalCount === 0) return 0
-  return Math.round((processedCount / totalCount) * 100)
+/** 0~1 진행률을 정수 퍼센트로. 셀 수 없으면(null) 0 으로 그린다. */
+function toPercent(progressRatio: number | null): number {
+  return progressRatio === null ? 0 : Math.round(progressRatio * 100)
 }
 
 /** 의존성 없는 자체 진행률 바(D4) — `role="progressbar"` + `aria-valuenow` 로 ADS A1 준용. */
-function ProgressBar({ operation }: { readonly operation: BulkOperationResponse }): JSX.Element {
+function ProgressBar({
+  operation,
+  progressRatio,
+}: {
+  readonly operation: BulkOperationResponse
+  readonly progressRatio: number | null
+}): JSX.Element {
   const { status, processedCount, totalCount } = operation
-  const percent = calcPercent(processedCount, totalCount)
+  const percent = toPercent(progressRatio)
   const fillColor: 'bg-danger' | 'bg-success' | 'bg-info' =
     status === 'FAILED' ? 'bg-danger' : status === 'COMPLETED' ? 'bg-success' : 'bg-info'
   const badgeVariant: 'red' | 'green' | 'blue' = status === 'FAILED' ? 'red' : status === 'COMPLETED' ? 'green' : 'blue'
@@ -115,6 +128,7 @@ export function MigrationWizard({
   onStartMigration,
   starting,
   operation,
+  progressRatio,
 }: MigrationWizardProps): JSX.Element {
   const removed = removedStatusKeys(draft, published)
   const targets = migrationTargets(draft, published)
@@ -176,7 +190,7 @@ export function MigrationWizard({
         </>
       ) : (
         <div className="flex flex-col gap-4">
-          <ProgressBar operation={operation} />
+          <ProgressBar operation={operation} progressRatio={progressRatio} />
           {failedItems.length > 0 ? <ItemList heading={labels.migration.failuresHeading} items={failedItems} tone="danger" /> : null}
           {excludedItems.length > 0 ? (
             <ItemList heading={failureReasonLabels.PROJECT_ARCHIVED} items={excludedItems} tone="muted" />

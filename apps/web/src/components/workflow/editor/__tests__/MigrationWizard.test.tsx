@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MigrationWizard } from '../MigrationWizard'
+import { calculateProgressRatio } from '@/hooks/use-bulk-operation'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import { failureReasonLabels } from '@/i18n/bulk-operation-labels'
 import type { EditableDraft } from '@/lib/workflow-draft'
@@ -39,9 +40,16 @@ function operation(over: Partial<BulkOperationResponse> = {}): BulkOperationResp
   }
 }
 
+/**
+ * ★ `progressRatio` 를 `operation` 에서 **파생**시킨다.
+ *
+ * 실제 화면에서 이 둘은 같은 폴링 응답에서 나온다(`useBulkOperationPolling`). 목이 그 관계를
+ * 깨면 「4/10 인데 진행률은 셀 수 없음」 같은 도달 불가 조합을 재는 판정이 된다.
+ */
 function renderWizard(over: Partial<React.ComponentProps<typeof MigrationWizard>> = {}) {
   const onSelectionChange = vi.fn()
   const onStartMigration = vi.fn()
+  const operationProp = over.operation ?? null
   const props: React.ComponentProps<typeof MigrationWizard> = {
     draft: draft(),
     published: published(),
@@ -50,7 +58,8 @@ function renderWizard(over: Partial<React.ComponentProps<typeof MigrationWizard>
     onSelectionChange,
     onStartMigration,
     starting: false,
-    operation: null,
+    operation: operationProp,
+    progressRatio: calculateProgressRatio(operationProp ?? undefined),
     ...over,
   }
   render(<MigrationWizard {...props} />)
@@ -130,6 +139,19 @@ describe('상태 이관 마법사 — 진행률·결과 단계', () => {
     expect(bar).toHaveAttribute('aria-valuenow', '4')
     expect(bar).toHaveAttribute('aria-valuemin', '0')
     expect(bar).toHaveAttribute('aria-valuemax', '10')
+  })
+
+  it('퍼센트는 훅이 준 progressRatio 를 그대로 옮긴다 — 화면이 다시 나누지 않는다', () => {
+    renderWizard({ operation: operation({ status: 'RUNNING', processedCount: 4, totalCount: 10 }) })
+
+    expect(screen.getByText('4 / 10 (40%)')).toBeInTheDocument()
+  })
+
+  it('아직 셀 수 없으면(총 건수 0 · progressRatio null) 0% 로 그린다', () => {
+    // 「못 셌다」를 NaN% 로 흘리지 않는다 — 0 나눗셈 처리는 훅 한 곳에만 있다.
+    renderWizard({ operation: operation({ status: 'PENDING', processedCount: 0, totalCount: 0 }) })
+
+    expect(screen.getByText('0 / 0 (0%)')).toBeInTheDocument()
   })
 
   it('완료되면 완료 문구가 보인다', () => {

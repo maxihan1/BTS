@@ -195,6 +195,8 @@ describe('이관 시작', () => {
       expect(result.current.operation?.status).toBe('COMPLETED')
     })
     expect(result.current.operation?.failedCount).toBe(0)
+    // 진행률 파생값도 함께 온다 — 화면이 같은 두 숫자를 다시 나누지 않게 하는 값이다.
+    expect(result.current.progressRatio).toBe(1)
   })
 
   it('접수 실패는 서버 코드를 한국어 문장으로 옮겨 startError 에 담는다', async () => {
@@ -447,6 +449,23 @@ describe('폴링 실패 재시도(concern 2) — 5xx·네트워크만 재시도�
     expect(result.current.pollRetryable).toBe(true)
     // 멈춘 폴링이 편집기를 잠그면 안 된다 — 아래 4xx 판정과 같은 이유다.
     expect(result.current.discardDisabled).toBe(false)
+  })
+
+  // ★ 아래 4xx 판정(「죽은 id 는 URL 에서 치운다」)과 **짝**이다. 정지를 한 덩어리로 다루면
+  //   둘 중 하나는 반드시 틀린다 — 4xx 를 남기면 새로고침이 막다른 상태로 되돌아오고, 5xx 를
+  //   지우면 서버에서 계속 도는 이관을 주소에서까지 잃는다.
+  it('★ 5xx 로 멈춰도 URL 의 migration id 는 남는다 — 이관은 서버에서 계속 돌 수 있다', async () => {
+    vi.useFakeTimers()
+    enterWithMigrationUrl()
+    server.use(
+      http.get(`/api/v1/bulk-operations/${BULK_ID}`, () => HttpResponse.json({}, { status: 500 })),
+    )
+    const { result } = renderMigrationWizard(KEY, preview())
+    await advancePolls(MAX_ERROR_RETRIES + 2)
+
+    expect(result.current.pollFailed).toBe(true)
+    // 남아 있어야 새로고침한 화면이 새 쿼리로 그 이관을 다시 붙들 수 있다(G-2).
+    expect(new URLSearchParams(window.location.search).get('migration')).toBe(BULK_ID)
   })
 
   it('4xx 로 폴링이 멈추면 재시도를 주지 않는다(pollRetryable=false — 같은 응답이 반복된다)', async () => {

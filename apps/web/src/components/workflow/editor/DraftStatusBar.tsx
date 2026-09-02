@@ -34,9 +34,12 @@ interface DraftStatusBarProps {
   /**
    * 진행 중인 이관. null 이면 진행 표시를 그리지 않는다.
    *
-   * ★ **선택 prop 이다.** 이관을 모르는 소비처(`DraftStatusBar.test.tsx`)가 그대로 돌아야 한다.
+   * ★ **필수 prop 이고 null 이 정당한 값이다.** 유일한 소비처(`WorkflowEditorPage`)의
+   * `toMigrationProgress` 가 추적 중인 이관이 없을 때 null 을 돌려준다 — 선택 prop 으로 두면
+   * 테스트만 닿는 「prop 자체가 없는」 분기가 하나 더 생기고, 그 분기를 지키는 판정은 도달 불가
+   * 조합을 지키는 가짜 그린이 된다.
    */
-  migration?: MigrationProgress | null
+  migration: MigrationProgress | null
 }
 
 /** 저장 상태별 문구. 표에 두어 분기와 문구가 한 곳에서 대응한다. */
@@ -69,7 +72,7 @@ function DraftStatusBar({
   onReset,
   onDiscard,
   busy,
-  migration = null,
+  migration,
 }: DraftStatusBarProps): React.JSX.Element {
   const blockedBySave = saveState === 'error'
 

@@ -66,6 +66,23 @@ interface WorkflowEditorDialogsProps {
 }
 
 /**
+ * 초안 폐기 확인 문구. 진행률 폴링이 5xx·네트워크로 멈춘 동안에는 경고 한 줄을 덧붙인다.
+ *
+ * ★ 폴링이 멈추면 잠금이 풀려 **이 다이얼로그에 닿을 수 있다.** 그런데 5xx 정지는 「이관이
+ * 끝났다」가 아니라 「서버 상태를 못 본다」이므로, 기본 문구만 두면 도는 중일지 모르는 이관을 한
+ * 마디도 안 한 채 초안을 버리게 된다 — 이미 옮겨진 이슈는 되돌아오지 않는다(E5).
+ *
+ * 4xx 정지(죽은 id)에는 붙이지 않는다. 진행 중일 가능성 자체가 없다.
+ *
+ * @param pollRetryable 폴링이 5xx·네트워크로 멈췄는가(`useMigrationWizard.pollRetryable`)
+ * @returns 확인 다이얼로그에 실을 설명 문구
+ */
+function discardDescription(pollRetryable: boolean): string {
+  const base = publishLabels.discard.dialogDescription
+  return pollRetryable ? `${base}. ${publishLabels.discard.migrationRunningWarning}` : base
+}
+
+/**
  * 다이얼로그 여섯을 한 곳에 모은다.
  *
  * 셸에 두면 배선(어떤 상태가 어떤 다이얼로그를 여는가)과 조립(각 다이얼로그의 props)이 한
@@ -176,7 +193,7 @@ function WorkflowEditorDialogs({
         open={flowDialog === 'discard'}
         onOpenChange={onFlowClose}
         title={publishLabels.discard.dialogTitle}
-        description={publishLabels.discard.dialogDescription}
+        description={discardDescription(migration.pollRetryable)}
         confirmLabel={publishLabels.discard.confirm}
         cancelLabel={publishLabels.common.cancel}
         confirming={busy}

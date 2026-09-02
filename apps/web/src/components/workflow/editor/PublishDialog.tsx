@@ -33,32 +33,25 @@ interface PublishDialogProps {
   /**
    * 지금 편집 중인 초안 — 이관 마법사가 도착지 후보를 계산하는 데 쓴다.
    *
-   * ★ **선택 prop 이다.** 옛 소비처(`PublishDialog.test.tsx`)는 이 값을 안 주고, 그때는
-   * 마법사 대신 이전의 안내 문구로 대체한다. 실제 화면(`WorkflowEditorDialogs`)은 항상 준다.
+   * ★ **필수다.** 유일한 소비처(`WorkflowEditorDialogs`)가 언제나 넘긴다 — 선택 prop 으로 두면
+   * 테스트만 닿는 undefined 분기가 생기고, 그 분기를 지키는 판정은 도달 불가 조합을 지키는
+   * 가짜 그린이 된다.
    */
-  draft?: EditableDraft
+  draft: EditableDraft
   /** 이관 마법사의 살아 있는 배선(`useMigrationWizard`). `draft` 와 짝으로만 쓴다. */
-  migration?: UseMigrationWizardResult
+  migration: UseMigrationWizardResult
 }
 
 interface MigrationSectionProps {
-  readonly draft: EditableDraft | undefined
-  readonly migration: UseMigrationWizardResult | undefined
+  readonly draft: EditableDraft
+  readonly migration: UseMigrationWizardResult
   readonly pendingIssueCounts: Record<string, number>
 }
 
 /**
- * 이관 마법사 자리. `draft`·`migration` 이 없으면 옛 안내 문구로 대체한다 — 상태 3종(로딩·
- * 에러·본문)은 발행본 조회와 폴링 각각을 따로 본다.
+ * 이관 마법사 자리. 상태 3종(로딩·에러·본문)은 발행본 조회와 폴링 각각을 따로 본다.
  */
 function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSectionProps): React.JSX.Element {
-  if (draft === undefined || migration === undefined) {
-    return (
-      <p role="status" className="text-sm">
-        {labels.migration.intro}
-      </p>
-    )
-  }
   if (migration.published === null) {
     return migration.publishedFailed ? (
       <p role="alert" className="text-destructive text-sm">
@@ -103,6 +96,7 @@ function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSec
         onStartMigration={migration.onStartMigration}
         starting={migration.starting}
         operation={migration.operation}
+        progressRatio={migration.progressRatio}
       />
     </div>
   )
@@ -135,10 +129,9 @@ function PublishDialog({
   const removed = preview.removedStatusKeys
   const pending = preview.pendingIssueCounts
   const needsMigration = Object.keys(pending).length > 0
-  // 이관이 COMPLETED · 실패 0 이어야 발행 버튼이 되살아난다(G-1 · E1). migration 이 없으면(옛
-  // 소비처) 이 조건은 항상 거짓이라 needsMigration 만으로 종전 동작이 그대로 남는다.
+  // 이관이 COMPLETED · 실패 0 이어야 발행 버튼이 되살아난다(G-1 · E1).
   const migrationSucceeded =
-    migration?.operation?.status === 'COMPLETED' && migration.operation.failedCount === 0
+    migration.operation?.status === 'COMPLETED' && migration.operation.failedCount === 0
   const showPublishButton = !needsMigration || migrationSucceeded
 
   /** 키를 사람이 읽는 이름으로. 카탈로그에 없으면 키를 그대로 쓴다(숨기면 더 헷갈린다). */
