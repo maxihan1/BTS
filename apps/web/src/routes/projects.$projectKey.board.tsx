@@ -19,6 +19,7 @@ import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
 import { BoardSelectorDropdown } from '@/components/board/BoardSelectorDropdown'
+import { ActiveSprintSummary } from '@/components/board/ActiveSprintSummary'
 import {
   ScrumSprintEmptyState,
   resolveScrumEmptyVariant,
@@ -227,13 +228,6 @@ function buildBoardSearch(
  * @param endDate 종료일(ISO-8601 date) 또는 null
  * @returns "시작 ~ 종료" · "시작 ~" · "~ 종료" · 둘 다 없으면 null
  */
-function formatSprintPeriod(startDate: string | null, endDate: string | null): string | null {
-  if (startDate === null && endDate === null) return null
-  if (startDate === null) return `~ ${endDate ?? ''}`
-  if (endDate === null) return `${startDate} ~`
-  return `${startDate} ~ ${endDate}`
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 보드 관리 `⋯` — 이름 변경 · 삭제 (FR-BD-01-2a/2b · Jira 근거 J3·J4·J5)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -634,8 +628,6 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   // 활성 스프린트 — 칸반은 항상 null 이므로 `boardType` 을 다시 보지 않는다 (`activeSprintSchema` KDoc).
   const activeSprint = boardDetail?.activeSprint ?? null
   // 기간 표기 — 두 날짜가 다 없으면 null 이라 이름만 그린다 (FR-2)
-  const activeSprintPeriod: string | null =
-    activeSprint === null ? null : formatSprintPeriod(activeSprint.startDate, activeSprint.endDate)
 
   // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
   // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
@@ -829,17 +821,8 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
             />
           )}
 
-          {/* 활성 스프린트 표기 — 스크럼 보드에서만 값이 있다 (FR-BD-04 FR-2 · J5).
-              「지금 이 보드가 무엇을 보여주고 있는가」는 스크럼에서 스프린트가 정하므로
-              보드 이름 옆이 그 자리다. 칸반은 null 이라 이 자리가 통째로 비어 무변경이다. */}
-          {activeSprint !== null && (
-            <div className="flex items-center gap-2 text-sm" data-testid="active-sprint-summary">
-              <span className="font-medium">{activeSprint.name}</span>
-              {activeSprintPeriod !== null && (
-                <span className="text-muted-foreground">{activeSprintPeriod}</span>
-              )}
-            </div>
-          )}
+          {/* 활성 스프린트 표기 — 칸반은 `activeSprint` 가 null 이라 아무것도 안 그린다 (FR-2 · J5) */}
+          <ActiveSprintSummary activeSprint={activeSprint} />
 
           {/* 스윔레인 셀렉터 — 보드 상세 있고 CREATE 권한 있을 때만 */}
           {boardDetail !== undefined && canCreate && (
