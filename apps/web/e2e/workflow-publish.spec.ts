@@ -11,13 +11,13 @@
 import { test, expect } from '@playwright/test'
 import { loginAsSystemAdmin } from './fixtures/workflow-scheme-fixtures'
 import { workflowPublishLabels as labels } from '../src/i18n/workflow-publish-labels'
+import { gotoAdminPage } from './fixtures/admin-hub'
 
 const TARGET_NAME = '소프트웨어 개발 기본 워크플로우'
 
 /** 목록을 거쳐 편집기로 들어간다. */
 async function openEditor(page: import('@playwright/test').Page): Promise<void> {
-  const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-  await adminNav.getByRole('link', { name: '워크플로우 관리', exact: true }).click()
+  await gotoAdminPage(page, '워크플로우 관리')
   await page
     .getByRole('table', { name: '워크플로우 목록' })
     .getByRole('row')

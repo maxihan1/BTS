@@ -168,14 +168,17 @@ describe('ShellLayout', () => {
     expect(screen.queryByRole('button', { name: '도움말' })).not.toBeInTheDocument()
   })
 
-  it('isSystemAdmin=true — 관리 메뉴 nav가 기본 펼침으로 렌더된다 (FR4)', () => {
+  it('isSystemAdmin=true — 셸이 관리 진입점을 상단바 링크로 조립한다 (J9)', () => {
+    // 셸 조립 관점의 단언이다 — 진입점이 사이드바에서 상단바로 옮겨갔어도 **조립된 화면에는
+    // 여전히 있다**를 재는 것이 이 파일의 몫이다. 링크의 목적지·게이팅은 TopBar.test 가 본다.
     useAuthStore.setState({
       accessToken: 'test-token',
       user: { ...BASE_USER, isSystemAdmin: true },
     })
     renderShell()
 
-    expect(screen.getByRole('navigation', { name: navLabels.adminNav })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: navLabels.adminNav })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: navLabels.adminNav })).not.toBeInTheDocument()
   })
 
   it('isAuthenticated=true — banner(header)·main·complementary(aside) 랜드마크가 각 1개다 (C3)', () => {

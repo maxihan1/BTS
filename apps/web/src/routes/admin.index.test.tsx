@@ -10,6 +10,7 @@ import {
   isRedirect,
 } from '@tanstack/react-router'
 import { AdminIndexPage } from './admin.index'
+import { ADMIN_HUB_LINKS } from '@/lib/admin-hub-links'
 import { router } from '@/router'
 import { useAuthStore } from '@/auth/authStore'
 import { makeWhoami } from '@/mocks/auth-fixtures'
@@ -84,6 +85,42 @@ describe('AdminIndexPage', () => {
     const links = screen.getAllByRole('link')
     const hrefs = links.map((link) => link.getAttribute('href'))
     expect(hrefs).toContain(path)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 카드의 접근 이름 (Jira 패리티 J9) — 이 허브가 관리 진입점이 된 뒤 e2e 6파일이 여기 의존한다
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it.each(ADMIN_HUB_LINKS.map((link) => [link.label, link.to] as const))(
+    '카드 「%s」 의 접근 이름이 라벨과 정확히 일치한다 (설명이 이름으로 새지 않는다)',
+    async (label, to) => {
+      // ★`aria-label` 이 없으면 접근 이름이 **제목 + 설명 전문**이 된다
+      //   (예: '감사 로그 관리자 작업 이력을 조회합니다'). 그러면
+      //   `getByRole('link', { name, exact })` 로 못 집는데, J9 이후 그 셀렉터를 쓰는
+      //   e2e 가 6파일이다. RTL 의 `name` 은 문자열이면 완전일치라, 설명이 이름으로 새는
+      //   순간 이 단언이 red 다 — 속성을 지워도 유닛이 초록이던 구멍을 막는다.
+      renderAdminIndex()
+
+      await screen.findByRole('heading', { level: 1, name: '관리' })
+      expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', to)
+    },
+  )
+
+  it('카드 설명이 aria-describedby 로 실제 요소를 가리킨다', async () => {
+    // 이름에서 설명을 뺐으니 그 정보가 어디로도 사라지지 않았음을 함께 잰다 —
+    // `aria-describedby` 가 허공을 가리키면 스크린리더에게는 설명이 없어진 것과 같다.
+    renderAdminIndex()
+
+    await screen.findByRole('heading', { level: 1, name: '관리' })
+    const first = ADMIN_HUB_LINKS[0]
+    // 목록이 비면 아래 단언이 통째로 의미를 잃는다 — 먼저 그것부터 막는다.
+    expect(first, '허브 링크 목록이 비어 있다').toBeDefined()
+    if (first === undefined) return
+
+    const link = screen.getByRole('link', { name: first.label })
+    const describedBy = link.getAttribute('aria-describedby')
+    expect(describedBy, 'aria-describedby 가 없다').not.toBeNull()
+    expect(document.getElementById(describedBy ?? '')).toHaveTextContent(first.description)
   })
 })
 
