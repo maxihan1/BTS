@@ -286,6 +286,25 @@ interface Invocation {
  * 훑기를 공유 헬퍼로 뽑지 않은 것은 의도다(2026-08-14 Maxi 결정) — 형제 판별식이 전부
  * 자기 훑기를 갖고 있고, **강제 장치끼리 결합하면 공유 모듈 버그 1개가 전장을 눈멀게 한다.**
  */
+/**
+ * [dir] 이 링크된 git worktree 의 루트인가.
+ *
+ * worktree 는 `.git` 을 **파일**로 갖는다(본체 저장소는 디렉터리). 그 성질로 거른다.
+ *
+ * ★이름 목록([EXCLUDE_DIRS])에 경로를 더 적지 않는 이유. 이 저장소에 worktree 위치 규약이
+ * **둘**이다 — `.worktrees/`(CLAUDE.md §핵심 패턴)과 `EnterWorktree` 의 `.claude/worktrees/`.
+ * 이름을 세면 규약이 하나 늘 때마다 목록이 뒤처지고, 그 뒤처짐은 「main 에서 push 가 막힌다」로만
+ * 드러난다(2026-09-02 실측 · 위반 78건 전부 남의 worktree 안, main 트리 0건).
+ * 성질로 거르면 규약이 몇 개가 되든 함께 걷힌다.
+ *
+ * @param dir 검사할 디렉터리 절대 경로.
+ * @return `.git` 이 파일로 존재하면 true.
+ */
+function isLinkedWorktree(dir: string): boolean {
+  const dotGit = path.join(dir, '.git')
+  return fs.existsSync(dotGit) && fs.statSync(dotGit).isFile()
+}
+
 function scanTargets(dir: string = REPO_ROOT, acc: string[] = [], root: string = REPO_ROOT): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (EXCLUDE_DIRS.has(entry.name)) continue
@@ -293,6 +312,9 @@ function scanTargets(dir: string = REPO_ROOT, acc: string[] = [], root: string =
     // worktree 는 node_modules 등을 심볼릭으로 갖는다. 따라가면 main 트리를 두 번 세거나 순환한다.
     if (entry.isSymbolicLink()) continue
     if (entry.isDirectory()) {
+      // 남의 worktree 는 이 저장소의 사본이다. 훑으면 같은 파일을 두 번 세고,
+      // 그 안의 docs/plans 옛 기록이 EXCLUDE_PREFIXES 면제를 못 받아 위반으로 잡힌다.
+      if (isLinkedWorktree(full)) continue
       scanTargets(full, acc, root)
       continue
     }
@@ -602,6 +624,10 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
    * 0건이면 「worktree 가 없다」도 공허하게 참이 된다.
    */
   test('★링크된 worktree 안은 훑지 않는다 (이름이 아니라 .git 파일로 판별)', () => {
+    // ★픽스처 본문에 호출문을 적지 않는다. 이 가드는 `.ts` 도 훑으므로 여기 리터럴을 적으면
+    // **가드가 자기 픽스처를 위반으로 잡는다**(실제로 한 번 밟았다). 이 판정이 보는 것은
+    // 훑기의 대상 목록이지 파일 내용이 아니라 본문은 아무래도 좋다.
+    const FIXTURE_BODY = '(fixture)\n'
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-scan-'))
     try {
       // 규약 둘을 모두 재현한다 — 이름을 세는 처방이면 둘 중 하나는 반드시 샌다.
@@ -609,11 +635,11 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
         fs.mkdirSync(path.join(tmp, wt, 'docs/plans'), { recursive: true })
         // worktree 의 서명 — `.git` 이 파일이다.
         fs.writeFileSync(path.join(tmp, wt, '.git'), 'gitdir: /somewhere/.git/worktrees/x\n')
-        fs.writeFileSync(path.join(tmp, wt, 'docs/plans/old-record.md'), 'node --test scripts/a.test.ts\n')
+        fs.writeFileSync(path.join(tmp, wt, 'docs/plans/old-record.md'), FIXTURE_BODY)
       }
       // 대조군 — 일반 파일. 이것이 안 담기면 위 단언이 공허하다.
       fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true })
-      fs.writeFileSync(path.join(tmp, 'scripts/live.md'), 'node --test scripts/b.test.ts\n')
+      fs.writeFileSync(path.join(tmp, 'scripts/live.md'), FIXTURE_BODY)
 
       const scanned = scanTargets(tmp, [], tmp)
 
