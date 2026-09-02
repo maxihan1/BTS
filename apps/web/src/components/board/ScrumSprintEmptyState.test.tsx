@@ -8,17 +8,23 @@ import {
   scrumEmptyStateLabels,
 } from '@/components/board/ScrumSprintEmptyState'
 
-// 라우터 Link — 라우터 컨텍스트 없이 마운트하기 위한 대역. `params` 치환까지 흉내 내
-// 최종 href 를 그대로 잰다(대역이 경로를 삼키면 링크가 깨져도 초록이 된다).
+// 라우터 Link — 라우터 컨텍스트 없이 마운트하기 위한 대역. `params` 치환과 `search` 직렬화까지
+// 흉내 내 최종 href 를 그대로 잰다(대역이 경로를 삼키면 링크가 깨져도 초록이 된다).
+//
+// 🛑 **`search` 를 반드시 직렬화한다.** 대역이 그 prop 을 삼키면 컴포넌트가 보드 스코프를
+//    버려도 유닛은 전부 초록이고 E2E 에서만 red 가 선다 — 이 저장소가 이미 밟은 양식
+//    (memory `mock-swallowed-prop-is-invisible-to-unit-tests`).
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
     params,
+    search,
     children,
     className,
   }: {
     to: string
     params?: Record<string, string>
+    search?: Record<string, string>
     children: React.ReactNode
     className?: string
   }) => {
@@ -26,13 +32,18 @@ vi.mock('@tanstack/react-router', () => ({
       params !== undefined
         ? Object.entries(params).reduce((acc, [key, val]) => acc.replace(`$${key}`, val), to)
         : to
+    const query =
+      search === undefined ? '' : `?${new URLSearchParams(Object.entries(search)).toString()}`
     return (
-      <a href={resolvedTo} className={className}>
+      <a href={`${resolvedTo}${query}`} className={className}>
         {children}
       </a>
     )
   },
 }))
+
+/** 이 화면이 보고 있는 스크럼 보드 UUID. CTA 가 백로그로 실어 날라야 하는 값이다. */
+const VIEWED_BOARD_ID = 'b0a1c2d3-e4f5-4678-9abc-def012345678'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // fixture
@@ -148,18 +159,36 @@ describe('resolveScrumEmptyVariant', () => {
 describe('ScrumSprintEmptyState', () => {
   /** T-BD04-ES-1. no-active-sprint → 「백로그에서 스프린트를 시작하세요」 + 백로그 링크 (FR-1) */
   it('T-BD04-ES-1: no-active-sprint 는 스프린트를 시작하라고 안내하고 백로그로 링크한다', () => {
-    render(<ScrumSprintEmptyState variant="no-active-sprint" projectKey="ATLAS" />)
+    render(<ScrumSprintEmptyState variant="no-active-sprint" projectKey="ATLAS" boardId={VIEWED_BOARD_ID} />)
 
     expect(screen.getByText(scrumEmptyStateLabels.noActiveSprint.title)).toBeInTheDocument()
     expect(screen.getByText(scrumEmptyStateLabels.noActiveSprint.description)).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: scrumEmptyStateLabels.backlogLink }),
-    ).toHaveAttribute('href', '/projects/ATLAS/backlog')
+    ).toHaveAttribute('href', `/projects/ATLAS/backlog?board=${VIEWED_BOARD_ID}`)
+  })
+
+  /**
+   * T-BD04-ES-1b. CTA 가 **보고 있던 보드**를 백로그로 실어 나른다 (PR ⑥).
+   *
+   * 없으면 서버가 `findScrumBoardIdByProject`(created_at ASC LIMIT 1)로 **첫 번째** 스크럼
+   * 보드에 폴백한다 — 두 번째 보드에서 안내를 따랐는데 다른 보드의 백로그가 열린다.
+   * E2E `scrum-board.spec.ts` S3→S4 가 그 결함을 `switchToBoard` 수동 재선택으로 우회하고 있었다.
+   */
+  it('T-BD04-ES-1b: 백로그 링크가 보고 있던 보드를 ?board= 로 싣는다', () => {
+    const otherBoardId = 'c9d8e7f6-a5b4-4321-8fed-cba987654321'
+    render(
+      <ScrumSprintEmptyState variant="empty-sprint" projectKey="ATLAS" boardId={otherBoardId} />,
+    )
+
+    expect(
+      screen.getByRole('link', { name: scrumEmptyStateLabels.backlogLink }),
+    ).toHaveAttribute('href', `/projects/ATLAS/backlog?board=${otherBoardId}`)
   })
 
   /** T-BD04-ES-2. empty-sprint → 「이 스프린트에 이슈가 없습니다」 (E2) */
   it('T-BD04-ES-2: empty-sprint 는 이 스프린트에 이슈가 없다고 안내한다', () => {
-    render(<ScrumSprintEmptyState variant="empty-sprint" projectKey="ATLAS" />)
+    render(<ScrumSprintEmptyState variant="empty-sprint" projectKey="ATLAS" boardId={VIEWED_BOARD_ID} />)
 
     expect(screen.getByText(scrumEmptyStateLabels.emptySprint.title)).toBeInTheDocument()
     // ①의 문구는 나오지 않는다 — 「스프린트를 시작하라」는 이미 시작한 사람에게 할 말이 아니다
