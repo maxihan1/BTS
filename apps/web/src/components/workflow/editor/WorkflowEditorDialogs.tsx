@@ -9,6 +9,7 @@ import type { WorkflowView } from '@/api/workflows'
 import type { PublishPreview } from '@/api/workflows-draft.types'
 import type { EditableDraft } from '@/lib/workflow-draft'
 import type { PublishFlowDialog } from '@/hooks/use-publish-flow'
+import { useMigrationWizard } from '@/hooks/use-publish-flow'
 import { StatusPickerDialog } from './StatusPickerDialog'
 import { TransitionFormDialog } from './TransitionFormDialog'
 import { PublishDialog } from './PublishDialog'
@@ -90,6 +91,10 @@ function WorkflowEditorDialogs({
   onConfirmDiscard,
   busy,
 }: WorkflowEditorDialogsProps): React.JSX.Element {
+  // 이관 마법사의 살아 있는 배선. `usePublishFlow` 의 다이얼로그 상태기계에 얹지 않는다 —
+  // `preview` 하나만으로 독립적으로 그릴 수 있는 하위 흐름이라 여기서 직접 잇는다.
+  const migration = useMigrationWizard(draft.key, preview)
+
   return (
     <>
       <StatusPickerDialog
@@ -151,6 +156,8 @@ function WorkflowEditorDialogs({
           blockReason={blockReason}
           onPublish={onConfirmPublish}
           publishing={busy}
+          draft={draft}
+          migration={migration}
         />
       ) : null}
 
