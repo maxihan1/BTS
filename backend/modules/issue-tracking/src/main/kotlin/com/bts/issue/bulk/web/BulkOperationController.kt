@@ -2,6 +2,7 @@
 
 package com.bts.issue.bulk.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.bulk.application.BulkAvailableTransitionsService
 import com.bts.issue.bulk.application.BulkEditPayload
@@ -13,7 +14,6 @@ import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.config.BEARER_AUTH_SCHEME
-import com.bts.issue.domain.ActorId
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -44,9 +44,16 @@ import java.util.UUID
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
  * 쓰기는 [BulkOperationApplicationService], 읽기는 [BulkOperationRepository] 가 담당한다.
  *
- * ### ActorId 임시 처리
- * security context 연동 전까지 고정 UUID 를 사용한다.
- * 인증 연동은 이후 security-engineer wave 에서 SecurityContextHolder 로 교체 예정.
+ * ### ActorId 결선
+ * 세 엔드포인트 모두 [CurrentActor.current] 로 SecurityContext 의 인증 주체를 actor 로 쓴다.
+ * 미인증이면 401 이다.
+ *
+ * actor 추출은 리소스 조회(404)보다 **앞서** 수행한다. 순서가 뒤집히면 미인증자가 404·403 차이로
+ * 작업 존재를 probe 할 수 있다.
+ *
+ * 고정 sentinel UUID 를 쓰던 시기에는 접수와 조회를 **같은 컨트롤러가 해서** 양쪽 값이 자기들끼리
+ * 맞아 소유자 판정이 통과했다. 컨트롤러 밖(`WorkflowStatusMigrationAdapter`)에서 실제 발행자 UUID 로
+ * 큐잉되는 `STATUS_MIGRATION` 이 생기면서 그 조회가 항상 403 이 됐다.
  *
  * ### PR1 범위
  * 접수(submit) + 조회만 구현한다. 처리/워커(PR2) 호출 금지.
@@ -99,8 +106,7 @@ class BulkOperationController(
             request.issueKeys.size,
         )
 
-        // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val appRequest =
             BulkUpdateRequest(
                 operationType = request.operationType,
@@ -149,8 +155,7 @@ class BulkOperationController(
     ): ResponseEntity<DataResponse<BulkOperationResponse>> {
         log.info("BulkOperationController.get id={}", id)
 
-        // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val operationId = BulkOperationId(id)
 
         val operation =
@@ -204,15 +209,10 @@ class BulkOperationController(
             request.issueKeys.size,
         )
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val result = bulkAvailableTransitionsService.availableCommonTransitions(actor, request.issueKeys)
         val response = BulkAvailableTransitionsResponse.from(result)
         return ResponseEntity.ok(DataResponse(data = response))
-    }
-
-    companion object {
-        /** 인증 연동 전 임시 사용하는 시스템 행위자 UUID. */
-        private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     }
 }
 

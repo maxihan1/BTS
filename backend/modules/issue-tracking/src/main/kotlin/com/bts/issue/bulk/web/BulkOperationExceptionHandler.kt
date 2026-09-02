@@ -9,6 +9,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
 import java.util.UUID
@@ -39,6 +40,7 @@ class BulkOperationForbiddenException(val operationId: UUID, val actorId: UUID) 
  * - [IllegalArgumentException] → 400 + ISSUE_VALIDATION_FAILED (issueKeys 검증 실패 등)
  * - [BulkOperationForbiddenException] → 403 + ISSUE_BULK_FORBIDDEN
  * - [BulkOperationNotFoundException] → 404 + ISSUE_BULK_NOT_FOUND
+ * - [ResponseStatusException] → 예외가 지정한 상태 그대로 (미인증 401 이 대표 경로)
  */
 @RestControllerAdvice(basePackages = ["com.bts.issue.bulk.web"])
 class BulkOperationExceptionHandler {
@@ -150,6 +152,46 @@ class BulkOperationExceptionHandler {
         )
     }
 
+    // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ────────────────
+
+    /**
+     * [ResponseStatusException] — 컨트롤러/헬퍼가 명시한 HTTP 상태를 그대로 전파한다.
+     *
+     * [com.bts.issue.adapter.inbound.rest.CurrentActor.current] 가 미인증 시 던지는 401 이
+     * catch-all [handleInternalError] 에 가로채여 500 으로 변질되던 문제를 차단한다.
+     * `@RestControllerAdvice` 는 Spring 의 `ResponseStatusExceptionResolver` 보다 먼저 실행되므로,
+     * [Exception] 보다 구체적인 이 핸들러를 등록해 Spring 이 우선 선택하도록 한다.
+     * 형제 `IssueExceptionHandler` 가 FR-PM-06 PR-B B1 에서 같은 처방을 이미 쓰고 있다.
+     *
+     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 쓴다.
+     * 원본 사유는 로그에만 남긴다.
+     *
+     * @param ex 컨트롤러 계층에서 던진 상태 코드 보유 예외.
+     */
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatus(ex: ResponseStatusException): ProblemDetail {
+        val status = HttpStatus.valueOf(ex.statusCode.value())
+        log.info("ISSUE_BULK_{} response_status reason='{}'", status.value(), ex.reason)
+        val (errorCode, detail) =
+            when (status) {
+                HttpStatus.UNAUTHORIZED ->
+                    BulkErrorCodes.UNAUTHENTICATED to "인증이 필요합니다. 세션이 만료되었을 수 있습니다."
+                HttpStatus.FORBIDDEN ->
+                    BulkErrorCodes.BULK_FORBIDDEN to "이 일괄 작업에 접근할 권한이 없습니다."
+                HttpStatus.BAD_REQUEST ->
+                    BulkErrorCodes.VALIDATION_FAILED to "요청 파라미터가 올바르지 않습니다."
+                else ->
+                    BulkErrorCodes.INTERNAL_ERROR to "요청을 처리할 수 없습니다."
+            }
+        return problem(
+            status = status,
+            type = "response-status",
+            title = status.reasonPhrase,
+            errorCode = errorCode,
+            detail = detail,
+        )
+    }
+
     // ── 500 INTERNAL_ERROR (catch-all) ────────────────────────────────────────
 
     /**
@@ -212,6 +254,7 @@ class BulkOperationExceptionHandler {
  */
 object BulkErrorCodes {
     const val VALIDATION_FAILED = "ISSUE_BULK_VALIDATION_FAILED"
+    const val UNAUTHENTICATED = "ISSUE_BULK_UNAUTHENTICATED"
     const val BULK_FORBIDDEN = "ISSUE_BULK_FORBIDDEN"
     const val BULK_NOT_FOUND = "ISSUE_BULK_NOT_FOUND"
     const val INTERNAL_ERROR = "ISSUE_BULK_INTERNAL_ERROR"
