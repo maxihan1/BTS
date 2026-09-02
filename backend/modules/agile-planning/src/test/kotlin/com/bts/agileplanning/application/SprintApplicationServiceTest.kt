@@ -3,6 +3,7 @@
 package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
@@ -73,10 +74,19 @@ class SprintApplicationServiceTest {
             every { it.hasPermission(actor, permission, scope) } returns false
         }
 
-    /** 활성 보드 fixture — 소속 검증에 쓰는 것은 id 와 projectKey 뿐이다. */
+    /**
+     * 활성 보드 fixture — 소속 검증에 쓰는 것은 id · projectKey · boardType 셋이다.
+     *
+     * ★기본값이 **SCRUM** 인 것은 도메인 기본값([BoardType.KANBAN])과 **일부러 다르다.**
+     *  스프린트가 붙을 수 있는 보드는 스크럼뿐이므로(ADR 편차 X4 — 칸반은 백로그 없이 간다),
+     *  「정상 경로」 fixture 는 스크럼이어야 한다. 도메인 기본값을 그대로 쓰면 이 파일의 create·start
+     *  테스트 전량이 「칸반 보드에 스프린트를 매다는」 도달 불가 조합을 고정하게 된다
+     *  (memory `unreachable-state-fixture-is-fake-green`).
+     */
     private fun activeBoard(
         id: UUID,
         project: String = projectKey,
+        boardType: BoardType = BoardType.SCRUM,
     ): Board =
         Board(
             id = id,
@@ -85,6 +95,7 @@ class SprintApplicationServiceTest {
             columns = emptyList(),
             createdAt = Instant.EPOCH,
             updatedAt = Instant.EPOCH,
+            boardType = boardType,
         )
 
     /**
@@ -256,6 +267,48 @@ class SprintApplicationServiceTest {
 
         verify(exactly = 0) { repo.insert(any()) }
         // 잘못된 지정을 기본 보드로 조용히 대체하지 않는다 — 읽기 경로 편차 E7 과 같은 규약.
+        verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
+    }
+
+    /**
+     * 칸반 보드에는 스프린트를 매달 수 없다 (FR-BD-04 PR ⑤).
+     *
+     * 막지 않으면 `POST /api/v1/sprints {boardId: <칸반>}` 이 201 이고 `start` 도 200 인데,
+     * `BoardApplicationService.getBoard` 는 `boardType == SCRUM` 일 때만 활성 스프린트를 조회하므로
+     * **그 스프린트는 어느 보드 화면에도 영원히 안 나타난다** — 사용자에게는 「시작했는데 아무 일도
+     * 안 일어남」이다. 오늘 이것을 가리는 것은 백로그 스위처가 스크럼만 노출하는 것
+     * (`projects.$projectKey.backlog.tsx` 의 `scrumBoards`) **하나뿐**이고, 그 KDoc 이 이 실패
+     * 양식을 그대로 적고 있다 — 프론트 필터가 유일한 방어선이라는 뜻이다.
+     *
+     * 상태 코드는 위 두 테스트와 같은 **404** 다. 403 이면 「그 UUID 는 존재한다」가 샌다.
+     */
+    @Test
+    fun `create 칸반 보드 UUID 를 주면 404 를 던지고 삽입하지 않는다`() {
+        val kanbanBoardId = UUID.randomUUID()
+        val repo = mockk<SprintRepository>()
+        val boardService = mockk<BoardApplicationService>(relaxed = true)
+
+        assertThatThrownBy {
+            makeService(
+                repo = repo,
+                boardService = boardService,
+                boardRepository =
+                    boardRepoOf(activeBoard(kanbanBoardId, boardType = BoardType.KANBAN)),
+            ).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                boardId = kanbanBoardId,
+                name = "Sprint X",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+
+        verify(exactly = 0) { repo.insert(any()) }
+        // 잘못된 지정을 스크럼 보드로 조용히 대체하지 않는다 — 편차 E7 과 같은 규약.
         verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
     }
 
