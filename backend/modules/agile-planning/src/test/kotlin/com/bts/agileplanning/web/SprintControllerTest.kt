@@ -4,6 +4,7 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.SprintAlreadyActiveException
 import com.bts.agileplanning.application.SprintApplicationService
+import com.bts.agileplanning.application.SprintDateLockedException
 import com.bts.agileplanning.application.SprintIssueConflictException
 import com.bts.agileplanning.application.SprintNotFoundException
 import com.bts.agileplanning.application.SprintVersionConflictException
@@ -434,6 +435,31 @@ class SprintControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.sprintId").value(sprintId.toString()))
+    }
+
+    // ── PATCH-3. COMPLETED 스프린트의 기간 변경 → 400 전용 코드 ──────────────
+    //
+    // ★ 이 테스트가 잡는 것은 「400 이 나는가」가 아니라 「구별되는 코드가 나는가」다.
+    // SprintDateLockedException 은 ResponseStatusException 을 상속하므로 전용 핸들러가 없으면
+    // 상태 전파 핸들러가 잡아 errorCode 를 AGILE_VALIDATION_FAILED 로 덮어쓴다.
+    // 서비스 계층 테스트는 예외 타입까지만 보므로 그 덮어쓰기를 볼 수 없다 — 여기서만 보인다.
+    // 형제 짝은 위 START-3(AGILE_SPRINT_ALREADY_ACTIVE)이고 같은 사유로 존재한다.
+
+    @Test
+    fun `PATCH sprints id COMPLETED 스프린트의 기간을 바꾸면 400 AGILE_SPRINT_DATE_LOCKED를 반환한다`() {
+        every {
+            sprintApplicationService.update(actorId, sprintId, any(), any(), any(), any(), any())
+        } throws SprintDateLockedException()
+
+        val body = mapOf("endDate" to "2026-08-31", "version" to 0)
+
+        mockMvc.perform(
+            patch("/api/v1/sprints/$sprintId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_DATE_LOCKED"))
     }
 
     // ── DELETE-1. DELETE 정상 → 204 ──────────────────────────────────────────
