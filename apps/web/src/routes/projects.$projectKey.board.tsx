@@ -60,11 +60,53 @@ import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 // 뷰 전환 nav 링크 — ProjectNavTabs에 전달(회귀-무해 원칙: 기존 인라인 nav 링크 집합 그대로)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 보드 페이지 뷰 전환 링크 — 백로그·타임라인 (board.tsx 인라인 nav 원본과 동일 순서) */
+/**
+ * 보드 페이지 뷰 전환 링크 — 백로그·타임라인 (board.tsx 인라인 nav 원본과 동일 순서).
+ *
+ * 보드 스코프(`?board=`)는 여기 없다 — 렌더 시점의 보드에 달려 있어 `useBoardViewNavLinks` 가 얹는다.
+ */
 const BOARD_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
   { to: '/projects/$projectKey/backlog', label: boardLabels.page.backlogLink },
   { to: '/projects/$projectKey/timeline', label: boardLabels.page.timelineLink },
 ]
+
+/** 뷰 전환 nav 의 백로그 링크 경로 — 스코프를 얹을 대상을 문자열 비교로 고른다. */
+const BACKLOG_NAV_TO = '/projects/$projectKey/backlog'
+
+/**
+ * 뷰 전환 nav 링크에 보드 스코프를 얹는다 (FR-BD-04 PR ⑥ · 편차 X7 부분 해소).
+ *
+ * 없으면 보드→백로그 이동에서 `?board=` 가 증발해 서버가
+ * `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에 폴백한다 —
+ * 사용자는 왕복 한 번마다 스위처를 다시 눌러야 한다.
+ *
+ * 🛑 **스크럼일 때만 얹는다.** 백로그 탭은 스크럼 보드만 연다(편차 X4 — 칸반은 백로그 없이 간다).
+ *    칸반 id 를 실어 보내면 그 보드로 스코프된 백로그가 열리고, 거기서 만든 스프린트는
+ *    `getBoard` 가 SCRUM 일 때만 활성 스프린트를 조회하므로 어느 화면에도 안 나타난다.
+ *
+ * 타임라인 링크는 그대로 둔다 — 보드 개념이 없는 화면이다.
+ *
+ * ★컴포넌트 밖에 두는 것은 `BoardPage` 의 줄수 래칫(`lint-ratchet-baseline.ts`) 때문이다.
+ *  안에 두면 그 함수가 동결값을 넘어 red 가 선다 — `ScrumSprintEmptyState` 추출과 같은 이유다.
+ *
+ * @param boardType 현재 보고 있는 보드의 종류. 로딩 중이면 undefined
+ * @param currentBoardId 현재 보고 있는 보드 UUID. 미확정이면 undefined
+ * @returns 백로그 링크에만 `search` 가 실린 링크 목록
+ */
+function useBoardViewNavLinks(
+  boardType: BoardDetail['boardType'] | undefined,
+  currentBoardId: string | undefined,
+): readonly ProjectNavTabLink[] {
+  return useMemo(
+    () =>
+      BOARD_VIEW_NAV_LINKS.map((link) =>
+        link.to === BACKLOG_NAV_TO && boardType === 'SCRUM' && currentBoardId !== undefined
+          ? { ...link, search: { board: currentBoardId } }
+          : link,
+      ),
+    [boardType, currentBoardId],
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 상수
@@ -613,6 +655,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   // 활성 스프린트 — 칸반은 항상 null 이므로 `boardType` 을 다시 보지 않는다 (`activeSprintSchema` KDoc).
   const activeSprint = boardDetail?.activeSprint ?? null
 
+  // 뷰 전환 nav 링크 — 백로그 링크에 보드 스코프를 얹는다 (`useBoardViewNavLinks` KDoc 참조).
+  const viewNavLinks = useBoardViewNavLinks(boardDetail?.boardType, currentBoardId)
+
   // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
   // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
   function handleFilterChange(next: BoardCardFilterParams): void {
@@ -763,7 +808,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {projectFavoriteHeader}
 
       {/* 뷰 전환 nav — 백로그·타임라인 (ProjectNavTabs 공유 컴포넌트, FR-UX-06 PR12 Task 4) */}
-      <ProjectNavTabs projectKey={projectKey} links={BOARD_VIEW_NAV_LINKS} />
+      <ProjectNavTabs projectKey={projectKey} links={viewNavLinks} />
 
       {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터 */}
       {(boards !== undefined && boards.length >= 1) || (boardDetail !== undefined && canCreate) ? (
@@ -886,10 +931,11 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           KanbanBoard 자리만 바꾼다. early-return 으로 만들면 활성 스프린트가 없는 스크럼 보드에서
           `⋯` 메뉴가 사라져 그 보드를 지울 수도 이름을 바꿀 수도 없다
           (`e2e/board-manage.spec.ts` S4·S5 가 정확히 그 경로를 밟는다). */}
-      {scrumEmptyVariant !== null && (
+      {scrumEmptyVariant !== null && currentBoardId !== undefined && (
         <ScrumSprintEmptyState
           variant={scrumEmptyVariant}
           projectKey={projectKey}
+          boardId={currentBoardId}
           className="min-h-48"
         />
       )}

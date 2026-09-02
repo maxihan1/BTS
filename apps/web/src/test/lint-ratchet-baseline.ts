@@ -56,6 +56,15 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   // 먼저 쪼갤 것을 쪼갰다 — 활성 스프린트 표기는 `ActiveSprintSummary`, 빈 상태와 그 판정은
   // `ScrumSprintEmptyState` 로 나갔다(434 에서 11줄 회수). 남은 증가분은 라우트가 지는
   // 오케스트레이션(활성 스프린트 축 · 빈 상태 분기 3곳)이라 더 빼면 인위적이다.
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 422,
+  // 2026-09-02 FR-BD-04 PR ⑥ — 422 → 426. **의도적으로 올린 항목**이다(위 선례들과 같은 성격).
+  // 뷰 전환 nav 가 보드 스코프를 잃던 결함(편차 X7 부분 해소)을 닫는 최소 형태가 4줄이다 —
+  // `viewNavLinks` 호출 1 + 주석 1 + 빈 상태 CTA 에 `boardId` 를 넘기는 prop·가드 2.
+  // 먼저 쪼갤 것을 쪼갰다 — 링크 조립 `useMemo` 와 그 KDoc 은 컴포넌트 **밖**
+  // `useBoardViewNavLinks` 로 나갔다(446 에서 20줄 회수). 남은 4줄은 라우트가 지는 배선이라
+  // 더 빼면 인위적이다.
+  // ⚠️ 갱신 전에 래칫이 실제로 무는지 red 를 **두 번** 봤다(446 요구 → 추출 후 426 요구).
+  //    숫자만 맞추면 그 래칫은 그 뒤로 아무것도 지키지 않는다.
+  // 상환 후보로 이 항목은 그대로 남는다 — 위 `projectFavoriteHeader` 추출 논의와 함께 읽을 것.
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 426,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }
