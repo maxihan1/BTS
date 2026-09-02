@@ -814,3 +814,83 @@ NO UNRESOLVED DECISIONS
 갱신됐으므로 게이트 1 을 다시 받는다. 리뷰 렌즈 2종(design ✅ CLEAR · eng ⚠️ CONCERNS)의
 판정은 그대로 유효하다 — E1 은 게이트 1 에서 확정 해소됐고, 이번 갱신은 **앵커 정정과
 Task 3 의 무효화 규약 교체**이며 둘 다 #424 의 머지된 리뷰 결론에서 직접 나왔다.
+
+---
+
+## 구현 중 이탈 기록 (2026-09-02)
+
+### 이탈 1 — Task 5 가 허용 파일 밖 `BacklogBoard.tsx` 를 수정했다 (+13줄)
+
+**무엇.** T5 의 `files` 메타 5개 밖인 `apps/web/src/components/backlog/BacklogBoard.tsx` 에
+`boardId` 를 흘리는 배선을 더했다. `BacklogStackProps` → `SprintColumn` → `SprintColumnHeader` →
+`SprintActionsMenu` → `EditSprintDialog` 로 이어지는 전 구간이 `string | undefined` **필수 prop** 이라
+중간에서 빠뜨리면 `tsc` 가 잡는다.
+
+**왜 불가피했나.** `EditSprintDialog` 는 `boardId` 를 **선택 prop 이 아니라 필수**로 요구한다 —
+409 복구가 보드 스코프 캐시를 **완전 일치 키**로 읽기 때문이다(T4 가 확정한 계약). 그런데
+`?board=` 는 `routes/projects.$projectKey.backlog.tsx:92` 의 `useSearch({strict:false})` 에서
+`BacklogPage` → `BacklogBoard` 까지만 와 있었고, **T5 의 허용 5파일 안에는 그 출처가 없었다.**
+
+대안 2개를 실측으로 배제했다.
+- **`SprintColumn` 이 `useSearch` 를 직접 읽기** — `BacklogBoard.test.tsx:23` 이
+  `@tanstack/react-router` 를 `Link` 하나로 모킹해 그 파일이 통째로 깨진다. 그 파일도 허용 밖이라
+  고칠 수 없다.
+- **선택 prop + `undefined` 기본값** — 409 복구가 조용히 깨진다. 실패가 아니라 오판이라 어떤
+  가드에도 안 걸린다(#424 BLOCKER-1 과 같은 양식).
+
+**근본 원인은 이 plan 이다.** T5 의 `files` 메타는 **#424(백로그 `?board=` 스코프) 머지 전에** 쓰였고,
+위 「재개」 절의 재측정 표가 T5 를 **「대상 파일 불변(162줄)」로만 확인하고 넘어갔다** — 줄수는
+안 변했지만 **그 파일이 받아야 하는 데이터가 늘었다는 것**은 재지 않았다. 다음 재측정은
+「파일이 그대로인가」가 아니라 **「그 파일에 필요한 입력이 그대로인가」**를 물어야 한다.
+
+**판정 요청.** 되돌리려면 `boardId` 를 포기해야 하므로 되돌리지 않았다. 게이트 2 에서 확인받는다.
+
+### 이탈 2 — Task 5 의 `refactor:` 커밋이 「코드 이동」이 아니다
+
+`SprintActionsMenu.tsx` 분리는 **GREEN 안에서 최종형으로** 냈다(헤더에 100줄을 넣었다 빼는 왕복을
+만들지 않았다). `refactor:` 커밋은 대신 **비-공허 확인에서 실측 적발한 `M1-2` 의 무판별력**을 고쳤다 —
+`queryByRole('menuitem')` 이 **닫힌 메뉴에서도 null** 이라 권한 분기를 무력화해도 초록이었다.
+`toBeEmptyDOMElement()` 를 더해 같은 변이에서 red 2건을 확인했다.
+계획 REFACTOR 의 **요구**(메뉴가 별도 파일에 산다)는 충족했고 커밋 **형태**만 템플릿과 다르다.
+
+### 범위 밖으로 남긴 것 (이 PR 이 만들지 않았다)
+
+- **destructive 버튼 대비 4.49:1**(라이트). `ui/button.tsx:20` 의 공용 `destructive` variant +
+  `ConfirmDialog` 속성이고, 보드 삭제 창(#416)이 이미 같은 값으로 운영 중이다. 고치려면
+  `DESIGN.md` 패치 + 전 소비처 영향이라 이 PR 범위를 넘는다. 메뉴 항목(5.19/5.50)·설명문(5.08/4.98)은 통과.
+- **`SprintColumnHeader.tsx` 가 196줄**로 200 에 근접했다. 다음에 헤더에 무엇이든 얹으면 또 갈라야 한다.
+- **`lint-staged` 글로브가 `scripts/**/*.ts` 를 물지 않는다**(T7 실측). 커밋 훅 린트가 판별식 표면인
+  `scripts/workflow/` 를 통째로 안 본다는 뜻이다. 이 PR 이 만든 것이 아니고 표면도 다르다.
+- **Radix 잠금 잔상** — 메뉴에서 연 다이얼로그를 Esc 로 닫아도 `body { pointer-events: none }` 이
+  남는 경우가 있다(T5 실측). T8 이 한 테스트에서 다이얼로그를 연속으로 두 번 열면 두 번째 클릭이
+  인터셉트로 타임아웃한다. 우회는 `page.reload()`.
+
+### 이탈 3 — Task 9 가 허용 파일 밖 `todos-plain-language-contract.test.ts` 를 수정했다 (+4줄)
+
+**무엇.** `scripts/build-dashboard.mjs` 의 `AREA_CATEGORIES` 에 `agile-planning` 을 더하자
+`scripts/workflow/todos-plain-language-contract.test.ts:293` 의 「영역 → 카테고리 배정이 기대와
+정확히 일치한다」가 **단독으로 red** 였다(그 1건 외 478 pass). `EXPECTED` 에 같은 배정을 더했다.
+
+**왜 불가피했나.** 그 판별식은 `AREA_CATEGORIES` 를 대조하는 **의도적인 두 번째 목록**을 들고 있고,
+자기 주석이 요구한다 — *"기대값을 검사 대상 상수에서 읽으면 동어반복이다 … 배정은 사람 판단이라
+기계 오라클이 없으므로 두 번째 목록을 여기 두고 양방향 대조한다. 표를 의도적으로 바꾸려면
+이 목록도 같은 커밋에서 고쳐라."* 한쪽만 고치면 통과할 방법이 없다.
+
+**이탈 1 과 원인이 같다.** `files` 메타가 **대상 파일만 적고 그것을 짝으로 검사하는 판별식을
+빠뜨렸다.** 다음 plan 은 `files` 를 확정할 때 「이 파일을 읽는 판별식이 있는가」를 함께 물어야 한다
+(`grep -rl '<파일명>' scripts/workflow/*.test.ts` 한 줄이면 난다).
+
+### 🛑 게이트 2 판정 요청 — 장부 145 의 잔여 표면
+
+145 를 `✅` 로 닫았으나 **그 항목이 적은 표면 전부가 닫힌 것은 아니다.** 145 의 「방치하면」이
+*"`ConfirmDialog` 를 쓰는 **다른 소비처는 상한이 없어** …"* 를 적는데, 이 PR 이 상한을 붙인
+삭제 경로는 **보드·스프린트 둘뿐**이다. 나머지 8곳은 그대로다(`grep -rl ConfirmDialog apps/web/src` 전수).
+
+`SlackChannelMappingList` · `ValidatorConfigSection` · `ResetToDefaultDialog` ·
+`WorkflowEditorDialogs` · `GitWebhookSection` · `AutomationRuleList` ·
+`admin.workflows` · `projects.$projectKey.board`
+
+T9 는 **집합 약어로 덮지 않고** 해소 본문에 8곳을 전수 열거하고 「전부 붙였다가 아니라
+**붙일 자리가 생겼다**」로 적었다(`set-word-hides-partial-implementation`).
+**잔여를 별도 장부 항목으로 올릴지는 Maxi 판단이다** — 지시가 신규 등재 2건이라 T9 는
+세 번째 항목을 만들지 않았다.
