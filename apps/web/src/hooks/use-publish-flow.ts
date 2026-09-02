@@ -180,7 +180,7 @@ export interface UseMigrationWizardResult {
   starting: boolean
   /** 접수 실패 사유. 서버 문장을 한국어로 옮긴 것 */
   startError: string | null
-  /** 진행률 폴링 결과. 시작 전이면 null */
+  /** 진행률 폴링 결과. 아직 시작하지 않았으면 null */
   operation: BulkOperationResponse | null
   /** 폴링이 에러로 멈췄는가 — 정지 조건 자체는 `useBulkOperationPolling` 이 갖고 있다 */
   pollFailed: boolean
