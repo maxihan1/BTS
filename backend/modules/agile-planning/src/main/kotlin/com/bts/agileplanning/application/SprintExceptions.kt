@@ -60,3 +60,23 @@ class SprintVersionConflictException :
  */
 class SprintAlreadyActiveException :
     ResponseStatusException(HttpStatus.CONFLICT, "이 보드에는 이미 시작된 스프린트가 있습니다. 먼저 완료해 주세요.")
+
+/**
+ * COMPLETED 스프린트의 기간(start_date · end_date)을 바꾸려 할 때 던지는 예외 (400 · FR-BL-02 FR-2).
+ *
+ * Jira Cloud 는 *"You can change its name, goal, and start and end dates. **You can only edit the name
+ * and goal for a complete sprint.**"* 로 완료 스프린트의 편집 가능 필드를 이름·목표로 못박는다
+ * (2026-09-01 조회 · Cloud · 계획 문서 J1).
+ *
+ * 프론트의 입력 비활성만으로 흉내내지 않고 서버가 거부한다 — 화면을 거치지 않는 PATCH 가 남기 때문이다.
+ *
+ * ★ 전용 [com.bts.agileplanning.web.SprintExceptionHandler] 핸들러가 반드시 필요하다. 이 타입이
+ * [ResponseStatusException] 을 상속하므로 핸들러가 없으면 상태 전파 핸들러가 잡아 errorCode 를
+ * `AGILE_VALIDATION_FAILED` 로 덮어쓴다 — 형제 [SprintAlreadyActiveException] 이 409 에서 겪은 것과
+ * 같은 자리다. 클라이언트가 「입력값이 틀렸다」와 「완료된 스프린트라 잠겼다」를 가려야
+ * UI 가 사유를 안내할 수 있으므로 코드를 나눈다.
+ *
+ * 내부 식별자(sprintId)와 거부된 날짜 값은 message 에 포함하지 않는다.
+ */
+class SprintDateLockedException :
+    ResponseStatusException(HttpStatus.BAD_REQUEST, "완료된 스프린트는 기간을 바꿀 수 없습니다. 이름과 목표만 수정할 수 있습니다.")

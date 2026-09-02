@@ -147,6 +147,7 @@ class SprintApplicationService(
      * @param version 낙관적 잠금 버전.
      * @return 갱신된 스프린트.
      * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintDateLockedException 400 — COMPLETED 스프린트에 기간을 실어 보냄.
      * @throws SprintVersionConflictException 409 — OCC 버전 충돌(스프린트 존재하나 version 불일치).
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      */
@@ -161,6 +162,10 @@ class SprintApplicationService(
         version: Long,
     ): Sprint {
         val existing = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
+
+        if (existing.status == SprintStatus.COMPLETED && (startDate.isPresent || endDate.isPresent)) {
+            throw SprintDateLockedException()
+        }
 
         val mergedName = if (name.isPresent) name.get() else existing.name
         val mergedGoal = if (goal.isPresent) goal.get() else existing.goal

@@ -3,6 +3,7 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.SprintAlreadyActiveException
+import com.bts.agileplanning.application.SprintDateLockedException
 import com.bts.agileplanning.application.SprintDatesRequiredException
 import com.bts.agileplanning.application.SprintNotFoundException
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
@@ -41,6 +42,7 @@ import java.time.Instant
  * - [MethodArgumentTypeMismatchException] → 400 + AGILE_VALIDATION_FAILED
  * - [MissingServletRequestParameterException] → 400 + AGILE_VALIDATION_FAILED
  * - [IllegalArgumentException] → 400 + AGILE_VALIDATION_FAILED (도메인 require 위반 — name 공백·기간 역전)
+ * - [SprintDateLockedException] → 400 + AGILE_SPRINT_DATE_LOCKED (COMPLETED 스프린트 기간 잠금, FR-BL-02)
  * - [SprintNotFoundException] → 404 + AGILE_SPRINT_NOT_FOUND
  * - [InvalidSprintTransitionException] → 409 + AGILE_CONFLICT
  * - [SprintDatesRequiredException] → 422 + AGILE_SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01)
@@ -157,6 +159,31 @@ class SprintExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "요청 값 검증에 실패했습니다.",
+        )
+    }
+
+    /**
+     * [SprintDateLockedException] — COMPLETED 스프린트의 기간 변경 시도 — 400 (FR-BL-02 FR-2).
+     *
+     * ### 왜 전용 핸들러가 필요한가
+     * 이 예외는 [ResponseStatusException] 을 상속하므로 핸들러가 없으면 아래 상태 전파 핸들러
+     * ([handleResponseStatus]) 가 잡아 `BAD_REQUEST -> AGILE_VALIDATION_FAILED` 로 **errorCode 를
+     * 덮어쓴다**. 그러면 「입력값이 틀렸다」와 「완료된 스프린트라 기간이 잠겼다」가 한 코드로
+     * 뭉뚱그려져 UI 가 사유를 안내하지 못한다. 형제 [SprintAlreadyActiveException] 과 같은 규약이다.
+     *
+     * 보안 — 거부된 날짜 값과 내부 식별자를 detail 에 노출하지 않는다. 원인은 로그에만 기록한다.
+     *
+     * @param ex 기간 잠금 예외.
+     */
+    @ExceptionHandler(SprintDateLockedException::class)
+    fun handleSprintDateLocked(ex: SprintDateLockedException): ProblemDetail {
+        log.info("AGILE_400 sprint_date_locked reason='{}'", ex.reason)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-sprint-date-locked",
+            title = "Sprint Date Locked",
+            errorCode = AGILE_SPRINT_DATE_LOCKED,
+            detail = "완료된 스프린트는 기간을 바꿀 수 없습니다. 이름과 목표만 수정할 수 있습니다.",
         )
     }
 
@@ -350,6 +377,7 @@ class SprintExceptionHandler {
         const val AGILE_SPRINT_NOT_FOUND = "AGILE_SPRINT_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
         const val AGILE_SPRINT_ALREADY_ACTIVE = "AGILE_SPRINT_ALREADY_ACTIVE"
+        const val AGILE_SPRINT_DATE_LOCKED = "AGILE_SPRINT_DATE_LOCKED"
         const val AGILE_SPRINT_DATES_REQUIRED = "AGILE_SPRINT_DATES_REQUIRED"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }
