@@ -1,4 +1,4 @@
-// 보드 카드 필터 VO — 담당자·미할당·라벨·컴포넌트·워크플로우 상태 필터 조건을 담는 불변 값 객체
+// 보드 카드 필터 VO — 담당자·미할당·라벨·컴포넌트·워크플로우 상태·이슈 키 필터 조건을 담는 불변 값 객체
 
 package com.bts.shared.board
 
@@ -35,6 +35,18 @@ import java.util.UUID
  * @property componentIds 컴포넌트 UUID 목록. 비어 있으면 컴포넌트 필터 미적용.
  * @property statusKeys 워크플로우 상태 키 목록. 비어 있으면 상태 필터 미적용.
  *   같은 필드 내 값들은 OR 로 해석한다.
+ * @property issueKeys 이슈 키 화이트리스트. 비어 있으면 키 필터 미적용(다른 필드와 같은 규약).
+ *
+ *   🛑 **서버 내부 전용이다.** [statusKeys] 와 같은 취급으로 `BoardFilterQueryParser` 가 이 필드를
+ *   **파싱하지도 직렬화하지도 않는다** — 클라이언트가 쿼리 파라미터로 이슈 키를 주입할 경로도,
+ *   퀵필터 문자열에 새어 나갈 경로도 없다.
+ *
+ *   용도는 스크럼 보드다. 활성 스프린트의 이슈 키를 여기 실어 **`BOARD_CARD_FETCH_LIMIT` 자르기보다
+ *   앞에서** SQL 술어로 거른다. 싣지 않으면 프로젝트 이슈를 1,001건 먼저 자른 뒤 스프린트로 거르게
+ *   되어 오래된 활성 스프린트 이슈가 경고 없이 증발한다 (FR-BD-04 PR ④).
+ *
+ *   ⚠️ **빈 목록은 「해당 이슈 없음」이 아니라 「필터 미적용」이다.** 스프린트 이슈가 0건일 때 빈
+ *   목록을 실어 보내면 전량 조회가 된다 — 호출자가 그 분기를 스스로 단락시켜야 한다.
  */
 data class BoardCardFilter(
     /** 담당자 UUID 목록. 비어 있으면 담당자 필터 미적용. */
@@ -47,6 +59,8 @@ data class BoardCardFilter(
     val componentIds: List<UUID> = emptyList(),
     /** 워크플로우 상태 키 목록. 비어 있으면 상태 필터 미적용. */
     val statusKeys: List<String> = emptyList(),
+    /** 이슈 키 화이트리스트. 비어 있으면 키 필터 미적용. **서버 내부 전용** — KDoc 참조. */
+    val issueKeys: List<String> = emptyList(),
 ) {
     /**
      * 모든 필드가 기본값(빈 목록, false)이면 true 를 반환한다.
@@ -62,7 +76,8 @@ data class BoardCardFilter(
             !includeUnassigned &&
             labels.isEmpty() &&
             componentIds.isEmpty() &&
-            statusKeys.isEmpty()
+            statusKeys.isEmpty() &&
+            issueKeys.isEmpty()
     }
 
     companion object {
