@@ -103,6 +103,20 @@ const BOARD_B: BoardSummary = {
   name: '스프린트 보드 B',
   boardType: 'SCRUM',
 }
+/**
+ * FR-BD-04 — 같은 프로젝트에 실재하는 **칸반** 보드.
+ *
+ * 백로그 탭은 칸반에 없다(편차 X4). 이 보드가 스위처에 뜨면 사용자는 백로그에서 칸반을 고를 수
+ * 있고, 거기서 만든 스프린트는 `boardId=<칸반>` 으로 붙는다 — 그런데 서버 `getBoard` 는
+ * `boardType == SCRUM` 일 때만 활성 스프린트를 조회하므로 **그 스프린트는 어느 보드 화면에도
+ * 영원히 안 나타난다**(엣지 E3 — 「칸반 완전 무변경」).
+ */
+const BOARD_KANBAN: BoardSummary = {
+  boardId: '00000000-0000-4000-8000-0000000000b3',
+  projectKey: 'ATLAS',
+  name: '칸반 보드 C',
+  boardType: 'KANBAN',
+}
 
 /** `useBoards` 가 돌려줄 목록. 「보드 0개」를 재는 테스트가 이 값을 비운다 */
 let mockBoards: BoardSummary[] | undefined = [BOARD_A, BOARD_B]
@@ -628,6 +642,48 @@ describe('BacklogPage — 보드 스코프 `?board=` (FR-BD-04)', () => {
   /** T-BD04-RT-6. 보드가 0개면 스위처를 아예 그리지 않는다 — 고를 것이 없는 빈 드롭다운 금지 */
   it('T-BD04-RT-6: 보드가 0개면 스위처가 없다', () => {
     mockBoards = []
+
+    renderAdapter()
+
+    expect(screen.queryByRole('button', { name: /보드 선택/ })).not.toBeInTheDocument()
+    // 화면 자체는 그대로다 — 스위처가 없다고 백로그가 사라지지는 않는다
+    expect(screen.getByTestId('backlog-board')).toBeInTheDocument()
+  })
+
+  /**
+   * ★T-BD04-RT-7 (X4 · E3). 백로그 스위처는 **스크럼 보드만** 고르게 한다.
+   *
+   * 칸반을 고를 수 있으면 `?board=<칸반>` 으로 백로그가 열리고, 거기서 만든 스프린트는
+   * `boardId=<칸반>` 으로 붙는다. 서버 `getBoard` 는 SCRUM 일 때만 활성 스프린트를 조회하므로
+   * 그 스프린트는 **어느 보드 화면에도 안 나타난다** — 편차 X4(칸반은 백로그 탭 없이 간다)와
+   * 엣지 E3(칸반 완전 무변경)를 동시에 깬다.
+   *
+   * ★「칸반이 없다」가 이 테스트의 핵심이다. 「스크럼이 있다」만 재면 필터를 통째로 지워도 초록이다.
+   */
+  it('★T-BD04-RT-7(X4·E3): 칸반 보드는 스위처 목록에 없고 스크럼 보드만 남는다', async () => {
+    const user = userEvent.setup()
+    mockBoards = [BOARD_A, BOARD_KANBAN]
+    mockUseSearch.mockReturnValue({ board: BOARD_A.boardId })
+
+    renderAdapter()
+    await user.click(boardSwitcherTrigger())
+
+    // ② 스크럼 보드는 있다
+    expect(await screen.findByRole('menuitemradio', { name: BOARD_A.name })).toBeInTheDocument()
+    // ★① 칸반 보드는 없다
+    expect(
+      screen.queryByRole('menuitemradio', { name: BOARD_KANBAN.name }),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * T-BD04-RT-8 (X4). 스크럼 보드가 0개면 스위처를 그리지 않는다 — 칸반만 있는 프로젝트.
+   *
+   * T-BD04-RT-6(보드 자체가 0개)과 다른 축이다. 보드는 실재하는데 **고를 수 있는 것이 없는**
+   * 상태이고, 종류로 좁힌 뒤에도 「빈 드롭다운 금지」 분기가 그대로 받는지를 잰다.
+   */
+  it('T-BD04-RT-8(X4): 칸반 보드만 있으면 스위처가 없다', () => {
+    mockBoards = [BOARD_KANBAN]
 
     renderAdapter()
 

@@ -150,6 +150,21 @@ export function BacklogPage({ projectKey, boardId, filter }: BacklogPageProps): 
   const navigate = useNavigate()
 
   /**
+   * 스위처에 실을 보드 — **스크럼만** 남긴다 (편차 X4 · 엣지 E3).
+   *
+   * 칸반 보드는 백로그 탭 없이 간다. 여기서 칸반을 고를 수 있으면 `?board=<칸반>` 으로 백로그가
+   * 열리고(서버는 200 을 준다) 거기서 만든 스프린트에 `boardId=<칸반>` 이 붙는다. 그런데 서버
+   * `getBoard` 는 `boardType == SCRUM` 일 때만 활성 스프린트를 조회하므로 **그 스프린트는 어느
+   * 보드 화면에도 영원히 안 나타난다** — 사용자에게는 「시작했는데 아무 일도 안 일어남」이다.
+   *
+   * `BoardSummary.boardType` 이 존재하는 이유가 이 자리다(목록 응답에 실리는 유일한 종류 정보).
+   */
+  const scrumBoards = useMemo(
+    () => boards?.filter((b) => b.boardType === 'SCRUM') ?? [],
+    [boards],
+  )
+
+  /**
    * 보드 전환을 URL에 싣는다 (FR-BD-04 E6).
    *
    * 필터 3축을 **그대로 들고 간다**. 담당자·에픽은 보드와 독립된 축이라 보드를 바꿨다고
@@ -220,10 +235,12 @@ export function BacklogPage({ projectKey, boardId, filter }: BacklogPageProps): 
           {/* 보드 스위처 — 백로그는 프로젝트가 아니라 **보드**에 속한다(J14). 보드가 1개여도
               상시 노출해 N개 모델임을 드러낸다(보드 화면과 같은 판단 · J1).
               🛑 `showCreate={false}` — 여기는 보드를 **고르는** 자리다. 「새 보드」가 딸려 오면
-                 사용자는 백로그를 보드 만드는 자리로 읽는다 (BoardSelectorDropdown KDoc). */}
-          {boards !== undefined && boards.length > 0 && (
+                 사용자는 백로그를 보드 만드는 자리로 읽는다 (BoardSelectorDropdown KDoc).
+              🛑 목록은 `scrumBoards` 다 — 칸반이 섞이면 X4·E3 을 깬다(위 KDoc). 스크럼이 0개면
+                 「빈 드롭다운 금지」 분기가 그대로 받아 스위처 자체가 사라진다. */}
+          {scrumBoards.length > 0 && (
             <BoardSelectorDropdown
-              boards={boards}
+              boards={scrumBoards}
               currentBoardId={boardId}
               projectKey={projectKey}
               onSelect={handleBoardChange}
