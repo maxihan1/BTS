@@ -2,6 +2,7 @@
 
 package com.bts.issue.bulk.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.bulk.application.BulkAvailableTransitionsService
 import com.bts.issue.bulk.application.BulkEditPayload
@@ -13,7 +14,6 @@ import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.config.BEARER_AUTH_SCHEME
-import com.bts.issue.domain.ActorId
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -44,9 +44,20 @@ import java.util.UUID
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
  * 쓰기는 [BulkOperationApplicationService], 읽기는 [BulkOperationRepository] 가 담당한다.
  *
- * ### ActorId 임시 처리
- * security context 연동 전까지 고정 UUID 를 사용한다.
- * 인증 연동은 이후 security-engineer wave 에서 SecurityContextHolder 로 교체 예정.
+ * ### ActorId 결선
+ * 세 엔드포인트 모두 [CurrentActor.current] 로 SecurityContext 의 인증 주체를 actor 로 쓴다.
+ * 미인증이면 401 이다.
+ *
+ * actor 추출은 **본문의 첫 문장**이다. 리소스 조회(404)·`require` 검증(400)·로깅보다 먼저라
+ * 미인증자가 응답 차이로 작업 존재나 검증 상한을 읽어 가지 못한다.
+ *
+ * ★단 하나의 예외 — `submit` 의 `@Valid @RequestBody` Bean Validation 은 Spring 이 **메서드 본문에
+ * 진입하기 전에** 수행한다. 그래서 미인증 + 본문 형식 위반이면 401 이 아니라 400 이다. 본문 형식은
+ * 비밀이 아니므로 그대로 두되, 「세 엔드포인트 모두 401 이 먼저」라고 읽지 말 것.
+ *
+ * 고정 sentinel UUID 를 쓰던 시기에는 접수와 조회를 **같은 컨트롤러가 해서** 양쪽 값이 자기들끼리
+ * 맞아 소유자 판정이 통과했다. 컨트롤러 밖(`WorkflowStatusMigrationAdapter`)에서 실제 발행자 UUID 로
+ * 큐잉되는 `STATUS_MIGRATION` 이 생기면서 그 조회가 항상 403 이 됐다.
  *
  * ### PR1 범위
  * 접수(submit) + 조회만 구현한다. 처리/워커(PR2) 호출 금지.
@@ -93,14 +104,13 @@ class BulkOperationController(
     fun submit(
         @Valid @RequestBody request: BulkUpdateWebRequest,
     ): ResponseEntity<DataResponse<BulkOperationAcceptedResponse>> {
+        val actor = CurrentActor.current()
         log.info(
             "BulkOperationController.submit operationType={} issueKeysSize={}",
             request.operationType,
             request.issueKeys.size,
         )
 
-        // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
         val appRequest =
             BulkUpdateRequest(
                 operationType = request.operationType,
@@ -123,14 +133,15 @@ class BulkOperationController(
      * 일괄 작업 단건을 조회한다.
      *
      * 조회 권한: 작업을 접수한 actor 만 허용한다.
-     * 다른 actor 가 조회하면 [BulkOperationForbiddenException] → 403.
-     * 작업이 없으면 [BulkOperationNotFoundException] → 404.
+     * **미존재와 타인 소유를 똑같이 404 로 돌려준다** — FR-PM-05 존재 숨김 정책
+     * (`docs/plans/2026-06-05-fr-pm-05-browse-view.md` §D2. 읽기는 404, mutation 만 403).
+     * 403 과 404 를 가르면 그 차이 자체가 「이 id 의 작업이 존재한다」를 알려 주는 신호가 된다.
+     * 거부 사실은 응답이 아니라 로그에만 남긴다.
      * items 는 cartesian product 방지를 위해 별쿼리로 조회한다 (learnings: jOOQ-cartesian-product).
      *
      * @param id path variable 작업 UUID 문자열.
      * @return 200 OK + [BulkOperationResponse] body
-     * @throws BulkOperationNotFoundException id 에 해당하는 작업이 없을 때 → 404
-     * @throws BulkOperationForbiddenException 요청 actor 가 작업 owner 가 아닐 때 → 403
+     * @throws BulkOperationNotFoundException 작업이 없거나 요청 actor 가 owner 가 아닐 때 → 404
      */
     @Operation(
         summary = "일괄 작업 단건 조회",
@@ -139,18 +150,16 @@ class BulkOperationController(
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "조회 성공"),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
-        ApiResponse(responseCode = "403", description = "작업 owner 가 아님", content = [Content()]),
-        ApiResponse(responseCode = "404", description = "작업 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "작업 없음 또는 owner 가 아님 (존재 숨김)", content = [Content()]),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/api/v1/bulk-operations/{id}")
     fun get(
         @PathVariable id: UUID,
     ): ResponseEntity<DataResponse<BulkOperationResponse>> {
+        val actor = CurrentActor.current()
         log.info("BulkOperationController.get id={}", id)
 
-        // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
         val operationId = BulkOperationId(id)
 
         val operation =
@@ -158,7 +167,9 @@ class BulkOperationController(
                 ?: throw BulkOperationNotFoundException(id)
 
         if (operation.actorId != actor.value) {
-            throw BulkOperationForbiddenException(id, actor.value)
+            // 응답은 미존재와 구별되지 않는다. 누가 남의 작업을 열려 했는지는 로그에만 남는다.
+            log.info("ISSUE_BULK_404 not_owner operationId='{}' actor='{}'", id, actor.value)
+            throw BulkOperationNotFoundException(id)
         }
 
         val items = repo.findItemsByOperationId(operationId)
@@ -192,6 +203,9 @@ class BulkOperationController(
     fun availableTransitions(
         @RequestBody request: BulkAvailableTransitionsRequest,
     ): ResponseEntity<DataResponse<BulkAvailableTransitionsResponse>> {
+        // 인증이 검증보다 먼저다 — 순서가 뒤집히면 미인증자가 400 본문의 상한 값을 읽어 간다.
+        val actor = CurrentActor.current()
+
         require(request.issueKeys.isNotEmpty()) {
             "issueKeys must not be empty"
         }
@@ -204,15 +218,9 @@ class BulkOperationController(
             request.issueKeys.size,
         )
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
         val result = bulkAvailableTransitionsService.availableCommonTransitions(actor, request.issueKeys)
         val response = BulkAvailableTransitionsResponse.from(result)
         return ResponseEntity.ok(DataResponse(data = response))
-    }
-
-    companion object {
-        /** 인증 연동 전 임시 사용하는 시스템 행위자 UUID. */
-        private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     }
 }
 
