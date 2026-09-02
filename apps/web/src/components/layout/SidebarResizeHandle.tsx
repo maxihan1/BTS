@@ -129,10 +129,19 @@ export function SidebarResizeHandle({ controlsId }: SidebarResizeHandleProps): J
         commitWidth(DEFAULT_SIDEBAR_WIDTH)
       }}
       onKeyDown={handleKeyDown}
-      className={
-        'absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize ' +
-        'hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-(--border-focus)'
-      }
-    />
+      // 히트 영역(6px)과 시각 표시(2px)를 분리한다. 영역 전체를 칠하면 사이드바 경계가
+      // 두꺼워진 것처럼 보이고, 반대로 2px 만 두면 조준이 어려워 잡기 전에 포기한다.
+      className="group absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize focus-visible:outline-2 focus-visible:outline-(--border-focus)"
+    >
+      {/*
+        🛑 `hover:bg-sidebar-accent` 로는 안 된다 — 사이드바 배경과 한 스텝 차이라 실측 결과
+           「끌 수 있다」는 신호가 화면에 나타나지 않았다(눈확인 1회차). 브랜드 블루를 써야
+           경계선과 구분된다.
+      */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-transparent transition-colors group-hover:bg-primary group-focus-visible:bg-primary motion-reduce:transition-none"
+      />
+    </div>
   )
 }
