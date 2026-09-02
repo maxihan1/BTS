@@ -73,6 +73,7 @@ const backlogIssueNoAssignee = {
 
 const sprintMetaFixture = {
   sprintId: SPRINT_ID,
+  boardId: BOARD_ID,
   name: '스프린트 1',
   goal: '목표 달성',
   status: 'PLANNED',
@@ -83,6 +84,7 @@ const sprintMetaFixture = {
 
 const sprintMetaNullDates = {
   sprintId: SPRINT_ID,
+  boardId: BOARD_ID,
   name: '날짜 없는 스프린트',
   goal: null,
   status: 'ACTIVE',
@@ -778,6 +780,7 @@ describe('deleteSprint — MSW 핸들러 (stateful)', () => {
     const activeSprintId = 'a0000000-0000-4000-8000-0000000000aa'
     const activeSprint: SprintMeta = {
       sprintId: activeSprintId,
+      boardId: '10000000-0000-4000-8000-000000000001',
       name: '진행 중 스프린트',
       goal: null,
       status: 'ACTIVE',

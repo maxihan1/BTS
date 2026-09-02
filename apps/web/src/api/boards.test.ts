@@ -771,6 +771,7 @@ describe('boardMetaSchema — 유효 픽스처 파싱', () => {
       projectKey: PROJECT_KEY,
       name: 'ATLAS 보드',
       swimlaneField: 'ASSIGNEE' as const,
+      boardType: 'KANBAN' as const,
     }
     const result = boardMetaSchema.safeParse(fixture)
     expect(result.success).toBe(true)
@@ -787,6 +788,7 @@ describe('boardMetaSchema — 유효 픽스처 파싱', () => {
         projectKey: PROJECT_KEY,
         name: 'ATLAS 보드',
         swimlaneField: field,
+        boardType: 'KANBAN' as const,
       })
       expect(result.success, `${field} should be valid`).toBe(true)
     }
@@ -795,6 +797,7 @@ describe('boardMetaSchema — 유효 픽스처 파싱', () => {
       projectKey: PROJECT_KEY,
       name: 'ATLAS 보드',
       swimlaneField: 'COMPONENT',
+      boardType: 'KANBAN' as const,
     })
     expect(invalid.success).toBe(false)
   })
@@ -810,6 +813,7 @@ describe('updateBoardSwimlane', () => {
     projectKey: PROJECT_KEY,
     name: 'ATLAS 보드',
     swimlaneField: 'ASSIGNEE' as const,
+    boardType: 'KANBAN' as const,
   }
 
   it('T-BD-12a: PATCH /api/v1/boards/{id}를 body {swimlaneField} 로 호출하고 BoardMeta를 반환한다', async () => {
@@ -912,6 +916,7 @@ describe('updateBoardName — PATCH /api/v1/boards/{id}', () => {
     projectKey: PROJECT_KEY,
     name: NEW_NAME,
     swimlaneField: 'NONE' as const,
+    boardType: 'KANBAN' as const,
   }
 
   it('T-BD-16a: PATCH 로 { name } 만 보낸다 — swimlaneField 를 함께 보내지 않는다', async () => {

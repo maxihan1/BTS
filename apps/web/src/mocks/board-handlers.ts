@@ -642,7 +642,7 @@ interface UpdateBoardBody {
  *   - boardStore의 해당 보드를 변이한다.
  *   - 이후 GET 상세/목록에 변경이 즉시 반영됨을 보장한다.
  *
- * 성공 → 200 { data: BoardMeta } (boardId, projectKey, name, swimlaneField)
+ * 성공 → 200 { data: BoardMeta } (boardId, projectKey, name, swimlaneField, boardType)
  * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
  * 빈 바디 · 명시 null · 공백 이름 → 400 ProblemDetail { errorCode: 'AGILE_VALIDATION_FAILED' }
  * 잘못된 swimlaneField → 400 ProblemDetail { errorCode: 'INVALID_SWIMLANE_FIELD' }
@@ -726,6 +726,8 @@ const updateBoardHandler = http.patch(
         projectKey: board.projectKey,
         name: board.name,
         swimlaneField: board.swimlaneField,
+        // FR-BD-04 PR ⑤ — 종류를 노출하는 응답 5개가 같은 계약을 쓴다.
+        boardType: board.boardType,
       },
     })
   },

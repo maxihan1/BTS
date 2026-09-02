@@ -70,6 +70,7 @@ const BOARD_CACHE_MARKER = { marker: 'board-detail' } as const
 
 const MOCK_SPRINT_META: SprintMeta = {
   sprintId: SPRINT_ID,
+  boardId: '10000000-0000-4000-8000-000000000001',
   name: '스프린트 1',
   goal: '첫 번째 스프린트 목표',
   status: 'PLANNED',

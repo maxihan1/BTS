@@ -260,6 +260,8 @@ export function createSprintInStore(
 ): SprintMeta {
   const sprint: SprintMeta = {
     sprintId: generateUUID(),
+    // FR-BD-04 PR ⑤ — 스프린트는 보드에 매달린다. 지정이 없으면 이 프로젝트의 기본 보드다.
+    boardId: boardId ?? ATLAS_DEFAULT_BOARD_ID,
     name,
     goal: goal ?? null,
     status: 'PLANNED',
@@ -446,6 +448,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000002',
+        boardId: ATLAS_DEFAULT_BOARD_ID,
         name: '진행 중 스프린트',
         goal: '진행 중 스프린트 목표',
         status: 'ACTIVE',
@@ -487,6 +490,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000001',
+        boardId: ATLAS_DEFAULT_BOARD_ID,
         name: '스프린트 1',
         goal: '첫 번째 스프린트 목표',
         status: 'PLANNED',
@@ -533,6 +537,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000003',
+        boardId: ATLAS_DEFAULT_BOARD_ID,
         name: '완료된 스프린트',
         goal: null,
         status: 'COMPLETED',

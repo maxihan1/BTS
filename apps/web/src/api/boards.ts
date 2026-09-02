@@ -313,6 +313,14 @@ export const boardMetaSchema = z.object({
   name: z.string().min(1),
   /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. */
   swimlaneField: swimlaneFieldSchema,
+  /**
+   * 보드 종류. `"SCRUM"` · `"KANBAN"` (FR-BD-04 PR ⑤).
+   *
+   * 생성 후 변경 경로가 없어(ADR 편차 X3) PATCH 로 바뀌지는 않지만, 종류를 노출하는 응답 5개 중
+   * 여기만 빠져 있으면 소비자가 「PATCH 응답으로는 종류를 알 수 없다」는 예외를 학습한다.
+   * **optional 로 두지 않는다** — 백엔드가 필드를 흘려도 조용히 통과해 계약이 다시 갈린다.
+   */
+  boardType: boardTypeSchema,
 })
 
 /** 보드 메타 타입 (PATCH 응답) */

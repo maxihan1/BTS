@@ -44,6 +44,7 @@ const UNSCOPED_BACKLOG_KEY = ['backlog', PROJECT_KEY] as const
 /** 기간·목표가 **비어 있는** PLANNED 스프린트 — 「빈 값 → 입력」 변경분을 만들기 위한 기준 */
 const EMPTY_SPRINT: SprintMeta = {
   sprintId: '11111111-1111-4111-8111-111111111111',
+  boardId: '10000000-0000-4000-8000-000000000001',
   name: 'Sprint 1',
   goal: null,
   status: 'PLANNED',
