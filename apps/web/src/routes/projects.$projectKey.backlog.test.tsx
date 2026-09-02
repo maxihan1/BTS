@@ -1,8 +1,11 @@
-// 백로그 라우트 페이지 단위 테스트 — RouteAdapter useParams/useSearch 추출 + BacklogPage canManage·URL 필터 전달
+// 백로그 라우트 페이지 단위 테스트 — RouteAdapter useParams/useSearch 추출 + BacklogPage canManage·URL 필터 전달 + 보드 스위처
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/auth/authStore'
+import type { BoardSummary } from '@/api/boards'
+import { boardLabels } from '@/i18n/board-labels'
 import { emptyBacklogFilter } from '@/lib/backlog-filter'
 import type { BacklogFilter } from '@/lib/backlog-filter'
 import {
@@ -56,12 +59,14 @@ let capturedOnFilterChange: ((next: BacklogFilter) => void) | undefined
 vi.mock('@/components/backlog/BacklogBoard', () => ({
   BacklogBoard: ({
     projectKey,
+    boardId,
     canManageSprint,
     canReorderIssue,
     filter,
     onFilterChange,
   }: {
     projectKey: string
+    boardId: string | undefined
     canManageSprint?: boolean
     canReorderIssue?: boolean
     filter: BacklogFilter
@@ -72,6 +77,9 @@ vi.mock('@/components/backlog/BacklogBoard', () => ({
       <div
         data-testid="backlog-board"
         data-project-key={projectKey}
+        // ★`?board=` 가 보드까지 흘러가는지를 재는 유일한 통로다 — 문자열로 굳혀 두지 않으면
+        //   어댑터가 board 를 통째로 버려도 이 파일이 초록으로 남는다 (FR-BD-04)
+        data-board-id={boardId ?? ''}
         data-can-manage-sprint={String(canManageSprint ?? true)}
         data-can-reorder-issue={String(canReorderIssue ?? true)}
         data-filter={JSON.stringify(filter)}
@@ -80,6 +88,30 @@ vi.mock('@/components/backlog/BacklogBoard', () => ({
       </div>
     )
   },
+}))
+
+/** FR-BD-04 — 보드 스위처가 고르는 두 보드. 스크럼·칸반 두 종류를 함께 둔다 */
+const BOARD_A: BoardSummary = {
+  boardId: '00000000-0000-4000-8000-0000000000b1',
+  projectKey: 'ATLAS',
+  name: '스프린트 보드 A',
+  boardType: 'SCRUM',
+}
+const BOARD_B: BoardSummary = {
+  boardId: '00000000-0000-4000-8000-0000000000b2',
+  projectKey: 'ATLAS',
+  name: '스프린트 보드 B',
+  boardType: 'SCRUM',
+}
+
+/** `useBoards` 가 돌려줄 목록. 「보드 0개」를 재는 테스트가 이 값을 비운다 */
+let mockBoards: BoardSummary[] | undefined = [BOARD_A, BOARD_B]
+
+// 보드 목록은 실제 스위처(`BoardSelectorDropdown`)가 소비한다 — 스위처는 **mock 하지 않는다**.
+// 「생성 항목이 없다」는 그 컴포넌트의 실제 렌더로만 확인되고(showCreate=false), mock 으로
+// 바꾸면 prop 을 넘겼다는 사실만 남아 계약이 화면에서 증발해도 초록이 된다.
+vi.mock('@/hooks/use-boards', () => ({
+  useBoards: () => ({ data: mockBoards, isLoading: false, isError: false }),
 }))
 
 // useProjectPermissions mock — 기본값 CREATE=true, UPDATE=true (ADMIN 역할)
@@ -111,10 +143,14 @@ function makeClient(): QueryClient {
   })
 }
 
-function renderPage(projectKey = 'ATLAS', filter: BacklogFilter = emptyBacklogFilter()) {
+function renderPage(
+  projectKey = 'ATLAS',
+  filter: BacklogFilter = emptyBacklogFilter(),
+  boardId: string | undefined = undefined,
+) {
   return render(
     <QueryClientProvider client={makeClient()}>
-      <BacklogPage projectKey={projectKey} filter={filter} />
+      <BacklogPage projectKey={projectKey} boardId={boardId} filter={filter} />
     </QueryClientProvider>,
   )
 }
@@ -417,5 +453,186 @@ describe('BacklogPage — URL search 필터 배선 (FR-UX-13 F16 F16-9)', () => 
 
     expect(mockNavigate).toHaveBeenCalledTimes(1)
     expect(lastNavigateArg()['search']).toEqual({ q: '로그인', epic: ['ATLAS-100'] })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-BD-04 — 보드 스코프 `?board=` + 보드 스위처 (E5 · E6)
+//
+// 백로그는 프로젝트가 아니라 **보드**에 속한다(J14). URL 의 board 축은 서버 쿼리이고
+// 필터 3축은 클라이언트 필터라 **성격이 다르지만 같은 주소에 산다** — 한쪽을 바꿀 때
+// 다른 쪽을 떨어뜨리지 않는 것이 이 절의 계약 전부다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 스위처 트리거 — 접근명이 「보드 선택, 현재 …」이라 정규식으로 잡는다 (e2e `board-manage.spec.ts:54` 선례) */
+function boardSwitcherTrigger(): HTMLElement {
+  return screen.getByRole('button', { name: /보드 선택/ })
+}
+
+describe('BacklogPage — 보드 스코프 `?board=` (FR-BD-04)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseSearch.mockReturnValue({})
+    mockBoards = [BOARD_A, BOARD_B]
+    capturedOnFilterChange = undefined
+    useAuthStore.setState({
+      accessToken: 'mock-access-token-alice',
+      user: {
+        userId: '00000000-0000-4000-8000-000000000001',
+        username: 'alice',
+        email: 'alice@example.com',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: false,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  afterEach(() => {
+    useAuthStore.setState({ accessToken: null, user: null })
+  })
+
+  /** T-BD04-RT-1. URL 의 `?board=` 가 어댑터를 지나 보드까지 그대로 간다 */
+  it('T-BD04-RT-1: URL 의 board 가 BacklogBoard 로 전달된다', () => {
+    mockUseSearch.mockReturnValue({ board: BOARD_B.boardId })
+
+    renderAdapter()
+
+    expect(screen.getByTestId('backlog-board')).toHaveAttribute(
+      'data-board-id',
+      BOARD_B.boardId,
+    )
+  })
+
+  /**
+   * T-BD04-RT-1b (E4). `?board=` 없이 들어오면 **URL 을 고치지 않는다** (편차 X6).
+   *
+   * 프론트가 기본 보드를 골라 주소에 써 넣으면 nav 링크·공유 링크의 모양이 달라진다 —
+   * `project-tree.spec.ts:38,39` · `project-switcher.spec.ts:93,97` 가 그 href 를 글자로 잰다.
+   */
+  it('T-BD04-RT-1b(E4): board 없이 진입하면 URL 을 고치지 않는다', () => {
+    renderAdapter()
+
+    expect(screen.getByTestId('backlog-board')).toHaveAttribute('data-board-id', '')
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * ★T-BD04-RT-2 (E5). 필터를 바꿔도 `?board=` 가 URL 에 **남는다**.
+   *
+   * 종전 구현은 `filterToSearch(next)` 로 search 를 통째 교체해 board 를 증발시켰다.
+   * 그러면 사용자는 필터를 한 번 건드리는 것만으로 모르는 사이 **기본 보드**로 갈아탄다.
+   */
+  it('★T-BD04-RT-2(E5): 필터를 바꿔도 board 가 URL 에 남는다', () => {
+    mockUseSearch.mockReturnValue({ board: BOARD_B.boardId })
+
+    renderAdapter()
+    act(() => {
+      capturedOnFilterChange?.({
+        query: '로그인',
+        assigneeIds: ['11111111-1111-4111-8111-111111111111'],
+        includeUnassigned: true,
+        epicKeys: ['ATLAS-100'],
+      })
+    })
+
+    const search = lastNavigateArg()['search'] as Record<string, unknown>
+    expect(search).toEqual({
+      board: BOARD_B.boardId,
+      q: '로그인',
+      assignee: ['11111111-1111-4111-8111-111111111111', 'unassigned'],
+      epic: ['ATLAS-100'],
+    })
+    // ★키 순서가 계약이다 — `isSameSearch` 가 `JSON.stringify` 비교라 순서가 흔들리면
+    //   같은 URL 을 다르다고 읽어 무한 왕복 가드(T-BL-F4)가 통째로 무력해진다.
+    expect(Object.keys(search)).toEqual(['board', 'q', 'assignee', 'epic'])
+  })
+
+  /** T-BD04-RT-2b (E5 짝). 초기화해도 board 만 남는다 — 빈 필터 키는 안 남는다 */
+  it('T-BD04-RT-2b(E5): 필터를 초기화해도 board 는 남고 빈 필터 키는 안 남는다', () => {
+    mockUseSearch.mockReturnValue({ board: BOARD_B.boardId, q: '로그인' })
+
+    renderAdapter()
+    act(() => {
+      capturedOnFilterChange?.(emptyBacklogFilter())
+    })
+
+    expect(lastNavigateArg()['search']).toEqual({ board: BOARD_B.boardId })
+  })
+
+  /**
+   * ★T-BD04-RT-3 (E6). 보드를 바꿔도 필터 3축이 **유지**된다.
+   *
+   * 담당자·에픽은 보드와 독립된 축이다. 보드를 바꿨다고 조건까지 풀리면 사용자는 방금 세운
+   * 조건을 보드마다 다시 세워야 한다.
+   */
+  it('★T-BD04-RT-3(E6): 보드를 바꿔도 필터 3축이 유지된다', async () => {
+    const user = userEvent.setup()
+    mockUseSearch.mockReturnValue({
+      board: BOARD_A.boardId,
+      q: '로그인',
+      assignee: ['11111111-1111-4111-8111-111111111111', 'unassigned'],
+      epic: ['ATLAS-100'],
+    })
+
+    renderAdapter()
+
+    await user.click(boardSwitcherTrigger())
+    await user.click(await screen.findByRole('menuitemradio', { name: BOARD_B.name }))
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/projects/$projectKey/backlog',
+      params: { projectKey: 'ATLAS' },
+      search: {
+        board: BOARD_B.boardId,
+        q: '로그인',
+        assignee: ['11111111-1111-4111-8111-111111111111', 'unassigned'],
+        epic: ['ATLAS-100'],
+      },
+    })
+  })
+
+  /**
+   * T-BD04-RT-4. 백로그의 스위처에는 「새 보드」가 **없다** (`showCreate={false}`).
+   *
+   * CREATE 권한은 이 파일의 목이 true 로 주고 있으므로 「권한이 없어서 사라진 것」과
+   * 구별된다 — 축이 다르다는 것이 요점이다 (`BoardSelectorDropdown` T-BD04-SEL-4 와 같은 결).
+   */
+  it('T-BD04-RT-4: 백로그 스위처에는 「새 보드」 항목이 없다 (보드 목록은 그대로 나온다)', async () => {
+    const user = userEvent.setup()
+    mockUseSearch.mockReturnValue({ board: BOARD_A.boardId })
+
+    renderAdapter()
+    await user.click(boardSwitcherTrigger())
+
+    expect(await screen.findByRole('menuitemradio', { name: BOARD_A.name })).toBeInTheDocument()
+    expect(screen.getByRole('menuitemradio', { name: BOARD_B.name })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: boardLabels.switcher.createItem }),
+    ).not.toBeInTheDocument()
+  })
+
+  /** T-BD04-RT-5. 같은 보드를 다시 골라도 navigate 하지 않는다 — 무의미한 히스토리·재조회 방지 */
+  it('T-BD04-RT-5: 같은 보드를 다시 고르면 navigate 하지 않는다', async () => {
+    const user = userEvent.setup()
+    mockUseSearch.mockReturnValue({ board: BOARD_A.boardId })
+
+    renderAdapter()
+    await user.click(boardSwitcherTrigger())
+    await user.click(await screen.findByRole('menuitemradio', { name: BOARD_A.name }))
+
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  /** T-BD04-RT-6. 보드가 0개면 스위처를 아예 그리지 않는다 — 고를 것이 없는 빈 드롭다운 금지 */
+  it('T-BD04-RT-6: 보드가 0개면 스위처가 없다', () => {
+    mockBoards = []
+
+    renderAdapter()
+
+    expect(screen.queryByRole('button', { name: /보드 선택/ })).not.toBeInTheDocument()
+    // 화면 자체는 그대로다 — 스위처가 없다고 백로그가 사라지지는 않는다
+    expect(screen.getByTestId('backlog-board')).toBeInTheDocument()
   })
 })

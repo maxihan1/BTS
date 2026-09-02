@@ -170,117 +170,130 @@ interface BacklogQueryOverride {
 }
 let mockBacklogQueryOverride: BacklogQueryOverride = {}
 
+/**
+ * `useBacklog` 가 실제로 받은 인자 (FR-BD-04).
+ *
+ * ★기록하지 않으면 `useBacklog(projectKey, boardId)` 를 `useBacklog(projectKey, undefined)` 로
+ * 바꿔도 이 파일이 전량 초록으로 남는다 — mock 이 삼킨 prop 은 유닛에 보이지 않는다
+ * (`useUsersByIdsChunked` 가 같은 함정을 이미 겪었다, :313). 보드 축이 여기서 끊기면
+ * **캐시가 안 갈려** 보드를 바꿔도 이전 보드의 백로그가 그대로 남는다.
+ */
+const mockUseBacklogArgs = vi.fn<(projectKey: string, boardId: string | undefined) => void>()
+
 vi.mock('@/hooks/use-backlog', () => ({
-  useBacklog: () => ({
-    data: {
-      backlog: [
-        {
-          key: 'ATLAS-1',
-          summary: '백로그 이슈 1',
-          currentStateKey: 'open',
-          assigneeId: null,
-          priority: 1,
-          rank: '0|a:',
-          version: 0,
-          epicKey: null,
-          typeKey: 'task',
-          labels: [],
-          originalEstimateSeconds: null,
-        },
-        {
-          key: 'ATLAS-2',
-          summary: '백로그 이슈 2',
-          currentStateKey: 'open',
-          assigneeId: null,
-          priority: 2,
-          rank: '0|b:',
-          version: 0,
-          epicKey: null,
-          typeKey: 'task',
-          labels: [],
-          originalEstimateSeconds: null,
-        },
-        // FR-UX-13 F5 — 담당자가 배정된 백로그 카드. 나머지 이슈는 미배정으로 남겨
-        // 「이름 있음 / 미배정」 두 상태가 한 화면에 공존하게 둔다.
-        {
-          key: 'ATLAS-4',
-          summary: '담당자 있는 백로그 이슈',
-          currentStateKey: 'open',
-          assigneeId: ALICE_ID,
-          priority: 3,
-          rank: '0|c:',
-          version: 0,
-          epicKey: null,
-          typeKey: 'task',
-          labels: [],
-          originalEstimateSeconds: null,
-        },
-      ],
-      sprints: [
-        {
-          sprint: {
-            sprintId: PLANNED_SPRINT_ID,
-            name: '스프린트 1',
-            goal: null,
-            status: 'PLANNED',
-            startDate: null,
-            endDate: null,
+  useBacklog: (projectKey: string, boardId: string | undefined) => {
+    mockUseBacklogArgs(projectKey, boardId)
+    return {
+      data: {
+        backlog: [
+          {
+            key: 'ATLAS-1',
+            summary: '백로그 이슈 1',
+            currentStateKey: 'open',
+            assigneeId: null,
+            priority: 1,
+            rank: '0|a:',
             version: 0,
+            epicKey: null,
+            typeKey: 'task',
+            labels: [],
+            originalEstimateSeconds: null,
           },
-          issues: [
-            {
-              key: 'ATLAS-3',
-              summary: '스프린트1 이슈',
-              currentStateKey: 'open',
-              assigneeId: null,
-              priority: 1,
-              rank: '0|a:',
-              version: 0,
-              epicKey: null,
-              typeKey: 'task',
-              labels: [],
-              originalEstimateSeconds: null,
-            },
-          ],
-        },
-        {
-          sprint: {
-            sprintId: ACTIVE_SPRINT_ID,
-            name: '스프린트 2 (ACTIVE)',
-            goal: null,
-            status: 'ACTIVE',
-            startDate: '2026-06-01',
-            endDate: '2026-06-14',
+          {
+            key: 'ATLAS-2',
+            summary: '백로그 이슈 2',
+            currentStateKey: 'open',
+            assigneeId: null,
+            priority: 2,
+            rank: '0|b:',
             version: 0,
+            epicKey: null,
+            typeKey: 'task',
+            labels: [],
+            originalEstimateSeconds: null,
           },
-          // FR-UX-13 F5 — 담당자가 배정된 **스프린트** 카드.
-          // 백로그 칸만 배선하고 스프린트 칸을 빠뜨리는 반쪽 봉합을 잡는다.
-          issues: [
-            {
-              key: 'ATLAS-5',
-              summary: '담당자 있는 스프린트 이슈',
-              currentStateKey: 'open',
-              assigneeId: BOB_ID,
-              priority: 3,
-              rank: '0|a:',
+          // FR-UX-13 F5 — 담당자가 배정된 백로그 카드. 나머지 이슈는 미배정으로 남겨
+          // 「이름 있음 / 미배정」 두 상태가 한 화면에 공존하게 둔다.
+          {
+            key: 'ATLAS-4',
+            summary: '담당자 있는 백로그 이슈',
+            currentStateKey: 'open',
+            assigneeId: ALICE_ID,
+            priority: 3,
+            rank: '0|c:',
+            version: 0,
+            epicKey: null,
+            typeKey: 'task',
+            labels: [],
+            originalEstimateSeconds: null,
+          },
+        ],
+        sprints: [
+          {
+            sprint: {
+              sprintId: PLANNED_SPRINT_ID,
+              name: '스프린트 1',
+              goal: null,
+              status: 'PLANNED',
+              startDate: null,
+              endDate: null,
               version: 0,
-              epicKey: null,
-              typeKey: 'task',
-              labels: [],
-              originalEstimateSeconds: null,
             },
-          ],
-        },
-      ],
-      truncated: false,
-    },
-    isLoading: false,
-    isError: false,
-    isFetching: false,
-    refetch: mockRefetch,
-    // ★맨 끝이어야 한다 — 위 기본값을 테스트가 덮어쓰는 자리다 (FR-UX-13 F5)
-    ...mockBacklogQueryOverride,
-  }),
+            issues: [
+              {
+                key: 'ATLAS-3',
+                summary: '스프린트1 이슈',
+                currentStateKey: 'open',
+                assigneeId: null,
+                priority: 1,
+                rank: '0|a:',
+                version: 0,
+                epicKey: null,
+                typeKey: 'task',
+                labels: [],
+                originalEstimateSeconds: null,
+              },
+            ],
+          },
+          {
+            sprint: {
+              sprintId: ACTIVE_SPRINT_ID,
+              name: '스프린트 2 (ACTIVE)',
+              goal: null,
+              status: 'ACTIVE',
+              startDate: '2026-06-01',
+              endDate: '2026-06-14',
+              version: 0,
+            },
+            // FR-UX-13 F5 — 담당자가 배정된 **스프린트** 카드.
+            // 백로그 칸만 배선하고 스프린트 칸을 빠뜨리는 반쪽 봉합을 잡는다.
+            issues: [
+              {
+                key: 'ATLAS-5',
+                summary: '담당자 있는 스프린트 이슈',
+                currentStateKey: 'open',
+                assigneeId: BOB_ID,
+                priority: 3,
+                rank: '0|a:',
+                version: 0,
+                epicKey: null,
+                typeKey: 'task',
+                labels: [],
+                originalEstimateSeconds: null,
+              },
+            ],
+          },
+        ],
+        truncated: false,
+      },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: mockRefetch,
+      // ★맨 끝이어야 한다 — 위 기본값을 테스트가 덮어쓰는 자리다 (FR-UX-13 F5)
+      ...mockBacklogQueryOverride,
+    }
+  },
   useRerankIssue: () => ({ mutate: mockRerankMutate, isPending: false }),
   useAssignToSprint: () => ({ mutate: mockAssignMutate, isPending: false }),
   useUnassignFromSprint: () => ({ mutate: mockUnassignMutate, isPending: false }),
@@ -298,7 +311,13 @@ vi.mock('@/hooks/use-backlog', () => ({
   // ★빠뜨리면 시작 다이얼로그가 마운트되는 순간 「No "useUpdateSprint" export is defined」로
   //   그 테스트들이 통째로 터진다 — 팩토리가 반환하지 않는 export 는 존재하지 않는다.
   useUpdateSprint: () => ({ mutateAsync: mockUpdateSprintMutateAsync, isPending: false }),
-  backlogKeys: { detail: (key: string) => ['backlog', key] },
+  // ★`project` 를 빠뜨리면 이슈 생성 후 무효화(`use-backlog-create-issue.ts`)가
+  //   `backlogKeys.project is not a function` 으로 터진다 — 그 예외는 async 콜백 안이라
+  //   **테스트는 전량 초록인 채 unhandled error 로만** 드러난다 (종료 코드로만 잡힌다).
+  backlogKeys: {
+    detail: (key: string, boardId: string | undefined) => ['backlog', key, boardId],
+    project: (key: string) => ['backlog', key],
+  },
 }))
 
 // FR-UX-13 F5 — 담당자 이름 조회 훅 mock.
@@ -410,6 +429,13 @@ function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
 }
 
+/** 하네스의 보드 전환 버튼 이름 — 화면의 실제 스위처가 아니라 **prop 변화 재현** 장치다 */
+const HARNESS_SWITCH_BOARD_LABEL = '하네스: 보드 전환'
+
+/** FR-BD-04 — 두 보드 UUID. 「캐시가 갈리는가」를 재려면 값이 서로 달라야 한다 */
+const BOARD_A_ID = '00000000-0000-4000-8000-0000000000b1'
+const BOARD_B_ID = '00000000-0000-4000-8000-0000000000b2'
+
 /** {@link renderBoard} 옵션 — 권한 3종 + URL 흉내 */
 interface RenderBoardOptions {
   canManageSprint?: boolean
@@ -419,6 +445,8 @@ interface RenderBoardOptions {
   initialSearch?: BacklogFilterSearch
   /** 보드가 올린 필터 변경을 엿본다 — 「URL 로 무엇이 나가는가」의 관측 지점 */
   onFilterChange?: (next: BacklogFilter) => void
+  /** 화면을 열 때의 `?board=` (FR-BD-04). 미지정이면 서버 기본 보드 폴백 상황이다 */
+  initialBoardId?: string
 }
 
 /**
@@ -447,6 +475,8 @@ function UrlOwningBacklogBoard({
   canManageSprint,
   canReorderIssue,
   canCreateIssue,
+  initialBoardId,
+  switchToBoardId,
 }: {
   projectKey: string
   initialSearch: BacklogFilterSearch
@@ -454,13 +484,27 @@ function UrlOwningBacklogBoard({
   canManageSprint: boolean
   canReorderIssue: boolean
   canCreateIssue: boolean
+  initialBoardId?: string
+  switchToBoardId?: string
 }) {
   const [search, setSearch] = useState<BacklogFilterSearch>(initialSearch)
+  const [boardId, setBoardId] = useState<string | undefined>(initialBoardId)
   const filter = useMemo(() => searchToFilter(search), [search])
 
   return (
+    <>
+    {/* 보드 전환 — 라우트가 `?board=` 를 갈아 끼우는 것을 흉내 낸다 (FR-BD-04 E6·E9).
+        스위처 자체는 라우트가 소유하므로(`projects.$projectKey.backlog.tsx`) 여기서는
+        **결과로 오는 prop 변화**만 재현한다. 필터(=URL 의 나머지)는 건드리지 않는다 —
+        보드 축과 필터 축이 독립이라는 계약이 그 자체로 재현 대상이다. */}
+    {switchToBoardId !== undefined && (
+      <button type="button" onClick={() => { setBoardId(switchToBoardId) }}>
+        {HARNESS_SWITCH_BOARD_LABEL}
+      </button>
+    )}
     <BacklogBoard
       projectKey={projectKey}
+      boardId={boardId}
       filter={filter}
       onFilterChange={(next) => {
         onFilterChange?.(next)
@@ -476,6 +520,7 @@ function UrlOwningBacklogBoard({
       canReorderIssue={canReorderIssue}
       canCreateIssue={canCreateIssue}
     />
+    </>
   )
 }
 
@@ -486,6 +531,7 @@ function renderBoard(projectKey = 'ATLAS', opts: RenderBoardOptions = {}) {
     canCreateIssue = false,
     initialSearch = {},
     onFilterChange,
+    initialBoardId,
   } = opts
   const qc = makeQueryClient()
   return render(
@@ -497,6 +543,33 @@ function renderBoard(projectKey = 'ATLAS', opts: RenderBoardOptions = {}) {
         canManageSprint={canManageSprint}
         canReorderIssue={canReorderIssue}
         canCreateIssue={canCreateIssue}
+        initialBoardId={initialBoardId}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+/**
+ * 보드 전환을 재현할 수 있는 보드를 그린다 (FR-BD-04 E6·E9).
+ *
+ * `renderBoard` 와 나눈 이유는 **버튼 하나 때문**이다. 전환 버튼을 항상 그리면 다른
+ * 테스트의 버튼 조회가 그 버튼까지 세게 된다.
+ */
+function renderBoardWithBoardSwitch(
+  initialSearch: BacklogFilterSearch = {},
+  onFilterChange?: (next: BacklogFilter) => void,
+) {
+  return render(
+    <QueryClientProvider client={makeQueryClient()}>
+      <UrlOwningBacklogBoard
+        projectKey="ATLAS"
+        initialSearch={initialSearch}
+        onFilterChange={onFilterChange}
+        canManageSprint
+        canReorderIssue
+        canCreateIssue={false}
+        initialBoardId={BOARD_A_ID}
+        switchToBoardId={BOARD_B_ID}
       />
     </QueryClientProvider>,
   )
@@ -511,7 +584,12 @@ function renderBoard(projectKey = 'ATLAS', opts: RenderBoardOptions = {}) {
 function renderBoardWithFixedFilter(filter: BacklogFilter, onFilterChange: (next: BacklogFilter) => void) {
   return render(
     <QueryClientProvider client={makeQueryClient()}>
-      <BacklogBoard projectKey="ATLAS" filter={filter} onFilterChange={onFilterChange} />
+      <BacklogBoard
+        projectKey="ATLAS"
+        boardId={undefined}
+        filter={filter}
+        onFilterChange={onFilterChange}
+      />
     </QueryClientProvider>,
   )
 }
@@ -1365,7 +1443,10 @@ describe('BacklogBoard', () => {
         useCreateSprint: () => ({ mutate: mockCreateSprintMutate, isPending: false }),
         useStartSprint: () => ({ mutate: mockStartSprintMutate, isPending: false }),
         useCompleteSprint: () => ({ mutate: mockCompleteSprintMutate, isPending: false }),
-        backlogKeys: { detail: (key: string) => ['backlog', key] },
+        backlogKeys: {
+          detail: (key: string, boardId: string | undefined) => ['backlog', key, boardId],
+          project: (key: string) => ['backlog', key],
+        },
       }))
 
       // truncated 배너는 BacklogBoard 내부 로직에 따라 렌더된다.
@@ -2704,5 +2785,102 @@ describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
       epicList.compareDocumentPosition(stack as HTMLElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-BD-04 — 보드 스코프 (E6 · E9 · E10)
+//
+// ★스위처 자체는 이 컴포넌트가 아니라 **라우트**가 소유한다
+//   (`routes/projects.$projectKey.backlog.tsx` · `BoardSelectorDropdown`).
+//   여기서 재는 것은 그 결과로 들어오는 `boardId` prop 이 ① 조회 키로 흘러가는가
+//   ② 필터바를 건드리지 않는가 ③ 스프린트 생성 body 에 실리는가 셋이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogBoard — 보드 스코프 (FR-BD-04)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockBacklogQueryOverride = {}
+  })
+
+  /**
+   * T-BD04-BB-1. `boardId` 가 `useBacklog` 로 그대로 흘러간다 — **캐시가 갈리는 유일한 통로**다.
+   *
+   * 여기서 끊기면 보드를 바꿔도 queryKey 가 같아 캐시 히트로 끝나고 **이전 보드의 백로그가
+   * 그대로 남는다**. 실패가 아니라 오판이라 화면에는 아무 신호도 없다.
+   */
+  it('T-BD04-BB-1: boardId 를 useBacklog 에 그대로 넘기고, 전환하면 새 boardId 로 다시 부른다', async () => {
+    const user = userEvent.setup()
+
+    renderBoardWithBoardSwitch()
+
+    expect(mockUseBacklogArgs).toHaveBeenCalledWith('ATLAS', BOARD_A_ID)
+
+    await user.click(screen.getByRole('button', { name: HARNESS_SWITCH_BOARD_LABEL }))
+
+    await waitFor(() => {
+      expect(mockUseBacklogArgs).toHaveBeenLastCalledWith('ATLAS', BOARD_B_ID)
+    })
+  })
+
+  /**
+   * ★T-BD04-BB-2 (E9). 보드를 바꿔도 **필터바가 재마운트되지 않는다**.
+   *
+   * `filterBarKey` 는 「초기화가 튕기지 않게」 하는 열쇠라 URL 변경과 맞물려 있다. 보드 전환도
+   * URL 변경이므로 그 열쇠가 함께 오르면 필터바가 통째로 다시 마운트되고, 아직 디바운스로
+   * 올라가지 못한 입력이 **말없이 사라진다**.
+   *
+   * 판정을 「입력값이 같다」로 하지 않는 이유는 그것이 재마운트를 **통과시키기 때문**이다 —
+   * 새로 마운트된 필터바도 같은 URL 값으로 다시 채워지므로 값만 보면 구별되지 않는다
+   * (`fr-ux-13-f16` 이 이 자리를 「유닛 전부 초록인 채 살아 있던」 결함으로 기록했다).
+   * DOM 노드 **동일성**은 재마운트되면 반드시 깨지므로 그것을 직접 잰다.
+   */
+  it('★T-BD04-BB-2(E9): 보드를 바꿔도 필터바가 재마운트되지 않는다 (DOM 동일성 유지)', async () => {
+    const user = userEvent.setup()
+    const onFilterChange = vi.fn()
+
+    renderBoardWithBoardSwitch({ q: '이슈' }, onFilterChange)
+
+    const searchBefore = screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })
+    expect(searchBefore).toHaveValue('이슈')
+
+    await user.click(screen.getByRole('button', { name: HARNESS_SWITCH_BOARD_LABEL }))
+    await waitFor(() => {
+      expect(mockUseBacklogArgs).toHaveBeenLastCalledWith('ATLAS', BOARD_B_ID)
+    })
+
+    // ① 같은 DOM 노드다 — 재마운트되지 않았다
+    expect(screen.getByRole('textbox', { name: BACKLOG_SEARCH_LABEL })).toBe(searchBefore)
+    // ② 값도 그대로다 (①이 성립해야 의미가 있는 두 번째 확인)
+    expect(searchBefore).toHaveValue('이슈')
+    // ③ 보드 전환이 **필터 변경을 올리지 않는다** — 올리면 URL 필터가 보드 축에 끌려간다 (E6)
+    expect(onFilterChange).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T-BD04-BB-3 (E10). 스프린트 생성 요청에 보고 있는 `boardId` 를 싣는다.
+   *
+   * 빼면 백엔드가 **첫 스크럼 보드**로 폴백해(하위 호환 경로) 두 번째 스크럼 보드에서 만든
+   * 스프린트가 남의 보드에 붙는다 — 그것이 부채 E-6 이고 이 한 줄이 그것을 닫는다.
+   */
+  it('T-BD04-BB-3(E10): 스프린트 생성 요청에 현재 boardId 가 실린다', async () => {
+    const user = userEvent.setup()
+
+    renderBoardWithBoardSwitch()
+
+    const section = screen.getByRole('region', {
+      name: new RegExp(`^${backlogLabels.backlogTitle} 칸`),
+    })
+    await user.type(within(section).getByPlaceholderText(/스프린트 이름/i), '보드 A 스프린트')
+    await user.click(within(section).getByRole('button', { name: /스프린트 생성/i }))
+
+    expect(mockCreateSprintMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectKey: 'ATLAS',
+        boardId: BOARD_A_ID,
+        name: '보드 A 스프린트',
+      }),
+      expect.anything(),
+    )
   })
 })
