@@ -661,6 +661,26 @@ PR #400 은 그 죽은 `nav` 블록을 **지웠다** — 소비처 없는 선언
 
 ---
 
+## ⬜ apps/web — 보고 있던 보드가 화면을 옮기면 증발한다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 보드를 두 개 이상 만든 프로젝트에서 보드 화면과 백로그 화면을 오갈 때마다, 방금 보던 보드가 아니라 **맨 처음 만든 보드**로 되돌아간다. 갈 때마다 보드를 다시 골라야 한다.
+
+**방치하면.** 데이터는 안 망가진다. 다만 보드를 여러 개 쓰는 프로젝트에서 왕복 한 번마다 보드 선택이 풀려, 사용자가 「내가 넣은 이슈가 사라졌다」로 읽는다. 스크럼 보드의 「백로그로 이동」 안내를 눌렀을 때가 가장 나쁘다 — 안내를 따랐는데 **다른 보드의 백로그**가 열린다.
+
+**무엇.** 세 자리가 보드 스코프(`?board=`)를 버린다. ① `apps/web/src/components/board/ScrumSprintEmptyState.tsx:122` 의 CTA `<Link to="/projects/$projectKey/backlog" params={{ projectKey }}>` 에 `search` 가 없다. 서버는 `?board=` 가 없으면 `BoardRepository.findScrumBoardIdByProject`(`:256-266`, `created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에 폴백하므로 두 번째 보드에서 누르면 다른 보드가 열린다. ② `apps/web/src/components/project/ProjectNavTabs.tsx:16-21` 의 `ProjectNavTabLink` 이 `to`·`label` 2필드뿐이고 `:57-62` 의 `<Link>` 가 `search` 를 안 싣는다 — 뷰 전환 nav(`board.tsx:64-67` · `backlog.tsx:18-25`)가 양방향으로 스코프를 잃는다. E2E 가 이 결함을 우회하고 있다는 것이 증거다 — `e2e/scrum-board.spec.ts:198` CTA 클릭 직후 `:203` 이, `:257-258` 왕복 직후가 각각 `switchToBoard` 로 **수동 재선택**한다. ③ 편차 X7(`docs/plans/2026-09-02-scrum-board-screen.md:86`)이 「두 탭이 어긋날 수 있다」를 알려진 한계로 남긴 것이 이 상태의 근거다.
+
+**처방.** `ProjectNavTabLink` 에 옵셔널 `search` 를 더하고 `ProjectNavTabs` 가 그것을 `<Link>` 에 싣는다. 빈 상태 CTA 는 `boardId` 를 **필수 prop** 으로 받는다 — 옵셔널로 두면 호출부가 빠뜨려도 초록이다. 보드→백로그 링크는 현재 보드가 SCRUM 일 때만 `board` 를 싣는다(칸반 id 를 백로그에 넘기지 않는다). RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이다. 공유 상태(FR-UX-07 활성 프로젝트 컨텍스트와의 관계 정리)는 범위 밖으로 남긴다 — X7 을 통째로 뒤집는 것이 아니라 링크 전파까지만 해소한다.
+
+## ⬜ apps/web — 「기본 보드」 규칙이 세 곳에서 서로 다르다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 보드를 지정하지 않고 들어왔을 때 어느 보드를 보여줄지가 화면마다 다른 규칙으로 정해진다. 그래서 같은 프로젝트인데 보드 화면과 백로그 화면이 서로 다른 보드를 연다.
+
+**방치하면.** 오동작은 아니다 — 각 규칙은 자기 자리에서는 말이 된다. 다만 스프린트를 시작한 뒤 보드 탭에 들어가면 칸반 보드가 잡혀 「시작했는데 아무 일도 안 일어났다」로 보일 수 있고, 세 규칙 중 하나를 고치는 사람이 나머지 둘을 모른 채 고친다.
+
+**무엇.** ① `apps/web/src/routes/projects.$projectKey.board.tsx:515-523` — `?board=` 가 없으면 `boards[0]`(종류 무관). ② `apps/web/src/routes/projects.$projectKey.backlog.tsx:162-164` — 스위처 목록을 `boardType === 'SCRUM'` 으로 거른다. ③ 백엔드 `BoardRepository.findScrumBoardIdByProject`(`:256-266`) — 첫 **SCRUM** 보드(`created_at ASC LIMIT 1`). 세 규칙이 각자 다른 것을 「기본」이라 부른다.
+
+**처방.** 코드를 바꾸기 전에 결정이 먼저다. 보드 탭은 칸반도 1급 시민이라 `boards[0]` 자체는 방어 가능하고, 진짜 결함은 「마지막으로 본 보드」 기억의 부재다 — 그것은 편차 X7 및 FR-UX-07 활성 프로젝트 컨텍스트와 같은 뿌리다. 셋을 한 규칙으로 합칠지, 기억을 도입할지를 정한 뒤 손댄다. 규칙만 세 곳에 흩어 놓은 채 하나를 고치면 나머지 둘이 조용히 어긋난다.
+
 ## ⬜ apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)
 
 **쉬운 말.** 서버가 보낸 설명을 사용자에게 그대로 보여 줄지 말지를 코드가 목록으로 정해 두었는데, 그 목록이 늘어나도 아무 검사가 막지 않는다.
@@ -1196,6 +1216,56 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 **무엇.** `V503__sprints.sql:39-46` 의 `sprint_issues` 는 `issue_key VARCHAR(20)` 문자열을 들고 있고 issue-tracking `issues` 로 가는 FK 가 없다(BC 격리 — 같은 파일 주석이 근거를 적는다). `sprint_id` 쪽만 `ON DELETE CASCADE` 라 스프린트를 지우면 함께 사라지지만 **이슈 쪽에는 아무 연결도 없다.** issue-tracking 의 `DELETE /api/v1/issues/{key}`(`IssueController.kt:857`)는 소프트 삭제이고, `agile-planning` 모듈 main 소스에는 이벤트 소비자가 **하나도 없다**(`application` · `domain` · `repository` · `web` 넷뿐). 그래서 삭제 사실이 이 BC 에 도달하지 않는다. `BacklogApplicationService` 는 lookup 결과에 없는 이슈를 응답에서 빼므로(그 파일 KDoc 이 「비가시 이슈 누출 차단」으로 명시) 고아 행은 **조회에서만** 보이지 않을 뿐 표에서는 살아 있다. 위생 잡도, 정리 경로도 없다.
 
 **처방.** 결정이 먼저다 — ① issue-tracking 삭제 이벤트를 pgmq 로 받아 지우거나 ② 주기 위생 잡으로 lookup 에 없는 `issue_key` 를 정리하거나 ③ 고아를 정상으로 보고 `issue_key` 의 전역 UNIQUE 를 재고한다. ①은 BC 간 이벤트 신설이라 T2 이상이다.
+
+## ⬜ agile-planning — 스크럼 보드가 활성 스프린트의 오래된 이슈를 조용히 잃는다 (신규 · 미착수 · T3)
+
+**쉬운 말.** 이슈가 많은 프로젝트에서 스프린트를 시작해도 보드가 **비어 보일 수 있다**. 스프린트에 담은 이슈가 오래 전에 만든 것이면 화면에 안 나오고, 안 나온다는 경고도 없다.
+
+**방치하면.** 사용자가 정상적으로 시작한 스프린트가 「고장난 빈 보드」로 보인다. 스크럼 보드는 활성 스프린트 이슈만 그리는 화면이라 다른 확인 경로가 없다 — 백로그로 되돌아가 이슈가 스프린트에 들어 있는 것을 확인해도 보드는 계속 비어 있다. 오늘 실제 피해 보고는 0 이지만 프로젝트 이슈가 1,000건을 넘는 순간 발생하고, **넘었다는 사실도 화면에 안 뜬다**(`truncated` 플래그가 스프린트 필터 뒤에 계산되어 false 로 나올 수 있다).
+
+**무엇.** 자르기와 거르기의 **순서가 뒤집혀 있다.** `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:813-814` 가 `.orderBy(ISSUES.CREATED_AT.desc())` → `.limit(BOARD_CARD_FETCH_LIMIT + 1)` 로 프로젝트 이슈를 **1,001건 먼저 자르고**, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt:264-268` 의 스프린트 필터(`page.issues.filter { it.key in sprintIssueKeys }`)가 **그 뒤**에 온다. 활성 스프린트 이슈의 `created_at` 이 상위 1,001건 밖이면 그 이슈는 포트를 빠져나오지 못한다. 기한이 이미 지난 부채다 — `docs/plans/2026-09-01-board-scrum-schema.md:384` 가 「**PR ③ 전에 닫는다**」로 못박았으나 PR ③(#424)은 닫는 대신 PR ④ 로 분리했고(`docs/plans/2026-09-02-scrum-board-screen.md:300-325`), 그 분리를 장부에 등재하는 task 가 실행되지 않아 2026-09-02 까지 **어느 목록에도 없었다**.
+
+**처방.** 스프린트 술어를 LIMIT **앞**으로 민다. `BoardCardFilter`(shared-kernel)에 서버 내부 전용 `issueKeys` 를 더하고 `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 조립하게 한다 — `statusKeys` 가 이미 같은 모양의 선례다(파서가 만들지도 직렬화하지도 않는 필드). 🛑 세 가지를 지킨다. ① `BacklogApplicationService` 에 같은 술어를 넣지 않는다 — 백로그는 **차집합**이라 술어가 반대로 작용해 백로그 칸이 전멸한다. ② `BoardApplicationService` 의 Kotlin 사후 필터를 지우지 않는다 — 포트 계약(`BoardIssueLookupPort.kt:71-82` CONCERN-1)이 구현체의 filter 드롭을 명시적으로 허용하므로 카드 정확성은 소비측 책임이다. ③ 스프린트 이슈 키가 0건이면 포트를 아예 호출하지 않는다 — 빈 목록은 VO 규약상 「무필터」라 그대로 넘기면 전량 조회 + 허위 `truncated` 가 된다. RED 는 **대상 이슈를 먼저(=오래된) 넣고** 비대상 1,001건을 뒤에 넣어야 성립한다 — 기존 `BoardIssueLookupAdapterTest` S9 처럼 대상을 나중에 넣으면 현재 코드로도 통과한다.
+
+## ⬜ agile-planning — 칸반 보드에 매단 스프린트가 어느 화면에도 나타나지 않는다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 칸반 보드를 지정해 스프린트를 만들면 서버가 그대로 받아 준다. 그런데 그 스프린트는 어느 보드 화면에도 안 보인다. 시작 버튼도 정상 동작하지만 화면에서는 아무 일도 일어나지 않는다.
+
+**방치하면.** 오늘은 화면에서 도달할 수 없다 — 백로그 스위처가 스크럼 보드만 노출해 가리고 있기 때문이다. 즉 **프론트 필터 한 줄이 유일한 방어선**이고, 그 필터를 지우거나 API 를 직접 부르면 즉시 재현된다. 사용자에게는 「만들었는데 사라진 스프린트」가 되고, 그 행은 표에 남아 계속 쌓인다.
+
+**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt:427-437` 의 `resolveTargetBoard` 는 `projectKey` 일치 + `deleted_at IS NULL` 만 본다 — `boardType == SCRUM` 검사가 **없다**. 그래서 `POST /api/v1/sprints {boardId: <칸반 보드>}` 가 201 이고 `start` 도 200 이다. 그런데 `BoardApplicationService.getBoard:260` 은 `boardType == SCRUM` 일 때만 `findActiveByBoard` 를 부르므로 그 스프린트는 **영원히 조회되지 않는다.** 이 실패 양식은 이미 인지돼 있다 — `apps/web/src/routes/projects.$projectKey.backlog.tsx:153-161` 의 KDoc 이 그것을 그대로 적으면서 스크럼만 노출하는 이유로 삼는다. ADR 편차 X4(칸반 보드는 백로그 탭 없이 간다)가 이 비대칭의 근거다.
+
+**처방.** `resolveTargetBoard` 의 `takeIf` 에 `boardType == SCRUM` 을 더한다. 상태 코드는 **404** 를 유지한다 — 같은 함수의 KDoc 이 「403 이면 그 UUID 는 존재한다가 새어 나간다」를 이미 못박았다. 읽기 경로(`BacklogApplicationService.resolveBoardScope:233-243`)는 **건드리지 않는다** — 기존 시드 전량이 칸반 보드 소속 스프린트를 쓰고 있어(`apps/web/src/mocks/board-handlers.test.ts:1149-1155` 가 그 사실을 회귀 가드로 명시) 읽기까지 막으면 시드 마이그레이션이 딸려 온다. 기존 칸반 소속 행도 유지한다(V506 이 선재 다중 ACTIVE 행을 보존한 것과 같은 판단). **그 비대칭과 사유를 `resolveTargetBoard` KDoc 의 「읽기 경로와 같은 규약」 절에 적는다** — 안 적으면 그 KDoc 자체가 거짓이 된다.
+
+## ⬜ agile-planning — 활성 스프린트 1개 가드가 동시 시작 두 건을 다 통과시킨다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 「한 보드에 진행 중인 스프린트는 하나」라는 규칙이 있는데, 두 사람이 거의 동시에 시작 버튼을 누르면 둘 다 통과할 수 있다.
+
+**방치하면.** 한 보드에 활성 스프린트가 둘이 되면 보드 화면이 어느 쪽을 그릴지가 조회 순서에 달린다. 1인 사용 중에는 거의 안 나지만, 재시도하는 클라이언트나 중복 클릭만으로도 열린다. 오늘 실제 피해 보고는 0 이다.
+
+**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt:290-296` 이 `findActiveByBoard` 로 읽고 `updateStatus` 로 쓰는 사이에 **락이 없다**(TOCTOU). DB 도 안 막는다 — `V506__sprint_board_id.sql:63-64` 의 부분 인덱스 `idx_sprints_board_active` 는 `:66-68` 에서 **선재 다중 ACTIVE 행을 보존하려고 의도적으로 UNIQUE 가 아니다.** 같은 BC 가 이 함정을 이미 아는 자리가 있다 — `BoardApplicationService.ensureScrumBoard:178` 은 `BoardRepository.acquireProjectScrumBoardLock`(`:104-142`)을 조회보다 먼저 잡는다.
+
+**처방.** `sprint-start:<boardId>` 키로 같은 형태의 advisory lock(`pg_advisory_xact_lock(hashtextextended(?, 0))`)을 `SprintRepository` 에 추가하고, 🛑 **락을 잡은 뒤에 `findActiveByBoard` 를 재조회**한다 — 락 밖에서 읽은 값으로 판단하면 락이 무력화된다(memory `advisory-lock-bigint-toctou`; `BoardRepository.kt:122-123` 이 같은 경고를 적는다). 인덱스를 UNIQUE 로 승격하는 길은 막혀 있다 — 선재 다중 ACTIVE 행이 있으면 마이그레이션 자체가 실패한다.
+
+## ⬜ agile-planning — V506 을 되돌렸다 재적용하면 스크럼 보드가 중복 생성된다 (선재 · 미착수 · T1)
+
+**쉬운 말.** 데이터베이스 변경 이력을 사람이 손으로 지우고 같은 변경을 다시 적용하면, 자동 생성되는 스크럼 보드가 한 벌 더 만들어진다.
+
+**방치하면.** 정상 운영에서는 도달하지 않는다 — Flyway 이력을 의도적으로 삭제해야 성립한다. 도달하면 프로젝트에 같은 성격의 스크럼 보드가 둘 생기고 어느 쪽이 진짜인지 화면으로 구분할 수 없다.
+
+**무엇.** `backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V506__sprint_board_id.sql` 의 ② 단계(스프린트 보유 프로젝트마다 스크럼 보드 신설)가 **멱등이 아니다.** 되돌리기도 비대칭이라 이미 만들어진 스크럼 보드는 남는다(`:70-72` 가 그 사실을 주석으로 적는다). down 마이그레이션도 정리 스크립트도 없다.
+
+**처방.** 등재만 한다. 고치려면 ② 를 「그 프로젝트에 `board_type = 'SCRUM'` 인 보드가 없을 때만」으로 좁히고, 되돌리기 스크립트를 함께 쓴다. 도달 조건이 운영자의 의도적 조작이라 우선순위는 낮다.
+
+## ⬜ agile-planning — 스크럼 보드 이름 문자열이 SQL 과 코드에 각각 있다 (선재 · 미착수 · T1)
+
+**쉬운 말.** 자동으로 만들어지는 스크럼 보드의 이름이 두 군데에 따로 적혀 있다. 한쪽만 고치면 만들어진 시점에 따라 이름이 달라진다.
+
+**방치하면.** 보드가 중복 생성되지는 않는다 — 조회는 이름이 아니라 `board_type` 으로 찾기 때문이다. 갈리는 것은 **표시 이름뿐**이라 사용자가 「왜 프로젝트마다 보드 이름이 다르지」로 마주친다. 오늘 실제 피해 보고는 0 이다.
+
+**무엇.** 마이그레이션 `V506__sprint_board_id.sql` 의 보드 신설 SQL 과 `BoardApplicationService.ensureScrumBoard`(`:178~`)가 각자 이름 문자열을 든다. 두 목록이 서로를 검사하지 않는 이 저장소의 지배 결함 양식(memory `two-lists-never-check-each-other`)의 작은 판이다.
+
+**처방.** 등재만 한다. 상수를 한 곳에 두려면 SQL 쪽이 코드 상수를 볼 수 없으므로, 반대로 **마이그레이션이 만든 이름을 정본으로 삼고 코드가 그 값을 재사용**하는 방향이 맞다. 이름을 바꾸는 순간 기존 행과 갈리므로 마이그레이션 없이 코드만 고치면 안 된다.
 
 ## ⬜ agile-planning — `BoardRepository.kt` 가 파일 줄수 상한을 크게 넘는다 (신규 · 미착수 · T1)
 

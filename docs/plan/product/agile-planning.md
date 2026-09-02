@@ -128,6 +128,27 @@ Jira Cloud 는 보드를 만들 때 **스크럼/칸반을 먼저 고르고**, �
 - [x] D6. 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 스프린트 없으면 빈 상태) · 백로그 `?board=` 스코프 (책임. frontend-engineer) (PR #422 종류 선택 · PR #424 보드 화면·백로그 스코프)
 - [x] D7. E2E — 스크럼 보드 생성 → 백로그에서 스프린트 시작 → 보드에 그 스프린트만 (책임. qa-engineer) (PR #424 `e2e/scrum-board.spec.ts`)
 
+> **Deviation(PR #424 — D6 잔여·D7)**. ① **`truncated` × 스크럼 보드를 닫지 못했다.** PR ① 의 plan
+> (`docs/plans/2026-09-01-board-scrum-schema.md:384`)이 「**PR ③ 전에 닫는다**」로 기한을 박았으나 ③ 은
+> 닫는 대신 **PR ④ 로 분리**했다(`docs/plans/2026-09-02-scrum-board-screen.md:300-325`, 인계 지침 4건).
+> `IssueRepository.kt:813-814` 가 `created_at DESC` 로 1,001건을 먼저 자르고 스프린트 필터가 그 뒤에 와
+> **오래된 활성 스프린트 이슈가 경고 없이 증발한다** — 사용자에게는 정상 시작한 스프린트가 빈 보드다.
+> ② **그 분리를 장부에 등재하지 못했다.** ③ 의 plan 이 「ADR 3분할 표에 ④ 행 추가를 Task 9(문서 동기화)가
+> 같은 PR 에서 처리한다」(`:324-325`)고 지시했으나 그 plan 의 Task 9 는 E2E 였고(`:583`) **문서 동기화 task
+> 자체가 없었다.** 결과로 ④ 는 ADR 표에도 `TODOS.md` 에도 없이 plan 산문 2곳에만 남았다
+> (memory `two-lists-never-check-each-other`). ③ 이후 등재로 복구했다.
+> ③ **X7 — 보드 탭·백로그 탭의 `?board=` 어긋남**을 알려진 한계로 남겼다(Maxi 확정 2026-09-02). 각 탭이
+> 자기 `?board=` 를 들고 뷰 전환 nav 가 그것을 안 싣는다. PR ⑥ 이 **링크 전파까지만** 해소하고 공유 상태
+> (FR-UX-07 활성 프로젝트 컨텍스트 관계 정리)는 여전히 범위 밖이다.
+> ④ **칸반 보드에 스프린트가 매달리는 것을 백엔드가 막지 않는다.** `SprintApplicationService.kt:427-437`
+> `resolveTargetBoard` 에 `boardType == SCRUM` 술어가 없어, 칸반 `boardId` 로 만든 스프린트는 `getBoard` 가
+> SCRUM 에서만 활성 스프린트를 조회하므로 **어느 화면에도 나타나지 않는다.** 프론트가 스위처에서 스크럼만
+> 노출해 가리는 것이 유일한 방어선이다(`backlog.tsx:153-161` KDoc 이 그 사실을 적는다). PR ⑤ 가 **쓰기
+> 경로만** 막는다 — 읽기 경로까지 막으면 기존 시드(DEFAULT_BACKLOG 스프린트 전량이 칸반 보드 소속)가 깨진다.
+> ⑤ `start` 활성 1개 가드에 **TOCTOU** 가 남았다. `idx_sprints_board_active`(V506:63-64)가 선재 다중 ACTIVE
+> 행 보존을 위해 **UNIQUE 가 아니라** DB 가 막지 않는다. PR ⑤ 가 advisory lock 으로 닫는다.
+> 후속 3분할(④⑤⑥)의 정본은 [ADR 「후속 3분할」](../../adr/2026-09-01-board-type-and-active-sprint.md) 이다.
+
 > **선행 결정 무효화 (2026-09-01).** `§3.2 FR-BL-02` 의 **Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」**
 > 을 이 FR 이 뒤집는다. Jira Cloud 는 *"If you want to have more than one active sprint at a time,
 > you'll need to enable parallel sprints"* 로 **기본 1개**를 못박는다(2026-09-01 조회 · Cloud).
