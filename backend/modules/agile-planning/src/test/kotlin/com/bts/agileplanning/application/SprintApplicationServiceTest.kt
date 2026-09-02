@@ -17,6 +17,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 import org.openapitools.jackson.nullable.JsonNullable
 import org.springframework.http.HttpStatus
@@ -613,6 +614,141 @@ class SprintApplicationServiceTest {
                 startDate = null,
                 endDate = null,
                 version = 0L,
+            )
+        }
+    }
+
+    // ── update 날짜 잠금 (COMPLETED · FR-2 · J1) ──────────────────────────────
+
+    /**
+     * COMPLETED 스프린트 조회 + updateMeta 성공 stub.
+     *
+     * 잠금이 없으면 전달된 날짜가 그대로 저장되는 상태를 재현한다 —
+     * 잠금 판정이 사라지면 이 stub 때문에 저장이 성공해 테스트가 red 가 된다.
+     */
+    private fun completedSprintRepo(): SprintRepository =
+        mockk<SprintRepository>().also {
+            every { it.findById(sprintId) } returns completedSprint
+            every { it.updateMeta(any(), any(), any(), any(), any(), any()) } answers {
+                completedSprint.copy(startDate = arg(3), endDate = arg(4), version = 3L)
+            }
+        }
+
+    @Test
+    fun `update COMPLETED 스프린트에 endDate 를 실으면 400 을 던진다`() {
+        val repo = completedSprintRepo()
+
+        assertThatThrownBy {
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = JsonNullable.undefined(),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.of(LocalDate.of(2026, 8, 31)),
+                version = 2L,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+    }
+
+    @Test
+    fun `update COMPLETED 스프린트에 실은 endDate 는 저장되지 않는다`() {
+        val repo = completedSprintRepo()
+
+        catchThrowable {
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = JsonNullable.undefined(),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.of(LocalDate.of(2026, 8, 31)),
+                version = 2L,
+            )
+        }
+
+        // 거부된 요청은 어떤 값도 영속되지 않아야 한다 (응답 코드와 별개의 축).
+        verify(exactly = 0) { repo.updateMeta(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `update COMPLETED 스프린트에 startDate 를 present null 로 보내도 400 이고 저장되지 않는다`() {
+        val repo = completedSprintRepo()
+
+        assertThatThrownBy {
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = JsonNullable.undefined(),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.of(null),
+                endDate = JsonNullable.undefined(),
+                version = 2L,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+        verify(exactly = 0) { repo.updateMeta(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `update COMPLETED 스프린트도 날짜가 absent 면 이름과 목표는 저장된다`() {
+        val repo = completedSprintRepo()
+
+        val result =
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = JsonNullable.of("회고 반영 이름"),
+                goal = JsonNullable.of("회고 반영 목표"),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
+                version = 2L,
+            )
+
+        assertThat(result.version).isEqualTo(3L)
+        verify(exactly = 1) {
+            repo.updateMeta(
+                id = sprintId,
+                name = "회고 반영 이름",
+                goal = "회고 반영 목표",
+                startDate = completedSprint.startDate,
+                endDate = completedSprint.endDate,
+                version = 2L,
+            )
+        }
+    }
+
+    @Test
+    fun `update ACTIVE 스프린트의 endDate 는 잠기지 않고 저장된다`() {
+        val newEndDate = LocalDate.of(2026, 7, 21)
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns activeSprint
+                every { it.updateMeta(any(), any(), any(), any(), any(), any()) } returns
+                    activeSprint.copy(endDate = newEndDate, version = 2L)
+            }
+
+        makeService(repo = repo).update(
+            actorId = actorId,
+            sprintId = sprintId,
+            name = JsonNullable.undefined(),
+            goal = JsonNullable.undefined(),
+            startDate = JsonNullable.undefined(),
+            endDate = JsonNullable.of(newEndDate),
+            version = 1L,
+        )
+
+        verify(exactly = 1) {
+            repo.updateMeta(
+                id = sprintId,
+                name = activeSprint.name,
+                goal = activeSprint.goal,
+                startDate = activeSprint.startDate,
+                endDate = newEndDate,
+                version = 1L,
             )
         }
     }
