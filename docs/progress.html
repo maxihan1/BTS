@@ -1661,11 +1661,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">119</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 90건 · 전체 209건</span>
+      <span class="big-pct" style="color:#9ca3af;">118</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 91건 · 전체 209건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 119건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">25건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 118건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — FR-WF-07 D6b <b>실서버 눈확인 5경로 미실시</b> (신규 · 미착수 · T1)</span></div>
@@ -1878,16 +1878,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — apps/web — 전환 종류를 고를 수 없어 전역 전환을 만들 방법이 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>components/workflow/editor/TransitionFormDialog.tsx</code> 의 <code>kind</code> state 를 바꾸는 컨트롤이 없다. 생성은 항상 <code>NORMAL</code> 이고 수정은 기존 값을 보존한다. 결과로 <code>TransitionListPanel</code> 의 <code>GLOBAL</code> 배지 분기와 <code>needsFromState</code> 의 비-NORMAL 갈래가 <b>생성 경로로는 도달 불가</b>다(수정 경로로만 닿는다). 픽스처에도 <code>kind: &#39;GLOBAL&#39;</code> 이 0건이라 그 분기를 태우는 판정도 없다.</p><p><b>처방.</b> FR-WF-04 D6 의 범위는 「전환 이름 편집」이라 이 PR 에서는 범위 밖으로 뒀다. 로드맵 PR 9(다이어그램 편집기)가 전역 전환을 그려야 하므로 그때 함께 연다.</p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 관리 메뉴에 어떤 항목이 있어야 하는지 검사하는 장치가, 목록에 적힌 것만 확인하고 실제 개수는 세지 않는다.</p>
-        <p class="todo-risk"><b>방치하면.</b> 새 메뉴가 늘어도 그 장치는 계속 초록이다. 링크가 잘못 붙거나 빠져도 아무도 모른다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p><b>무엇.</b> <code>components/layout/__tests__/navigation-contract.test.tsx</code> 의 손 열거 6건에 2026-08-24 추가된 7번째 링크(<code>워크플로우 관리</code>)가 없다. 개수 단언 없이 <b>부분집합 루프</b>라 8 passed 로 통과한다. 8번째가 붙어도 마찬가지다.</p><p><b>처방.</b> <code>Sidebar.tsx</code> 의 <code>ADMIN_NAV_LINKS</code> 를 직접 import 해 개수와 내용을 함께 단언한다 — 손 열거를 유지하려면 최소한 <code>toHaveLength</code> 를 건다.</p></div>
       </details>
     </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 상태 순서 변경이 되돌아갔다 오고 표시 순서가 겹칠 수 있다 (신규 · 미착수 · T1)</span></div>
@@ -2877,8 +2867,18 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
         <div class="todo-body"><p><b>무엇.</b> <code>~/.claude/plans/cozy-hatching-otter.md</code> §PR 분해 의 10행 표는 PR 8~10 을 전부 <code>/admin/workflows</code>(워크플로우 관리 화면) 쪽에 배정한다. 그런데 <code>docs/plan/product/project-workflow.md</code> §2.5 의 <b>FR-WF-05 D6·D7</b>(이슈 상세 상태 드롭다운)은 그 세 PR 어디에도 없다. 같은 로드맵 §검증 「전체 완료 기준 눈확인」 8번이 그 화면을 문장으로 언급하지만 <b>PR 칸이 없어</b> 어느 PR 의 범위도 되지 못했다.</p><p><b>★이 항목을 만든 PR 이 그 마커를 닫았다.</b> 배정이 없어 「다음 큰 덩어리」를 고르는 자리에서 매번 건너뛰어졌고, 백엔드(#395)가 열린 뒤 화면만 없는 채로 남아 있었다. 드러난 계기도 로드맵 대조가 아니라 <b>손으로 두 문서를 나란히 편 것</b>이다.</p><p><b>★지배 결함 양식이다.</b> 두 목록이 서로를 검사하지 않는다. 처방도 그 양식 그대로다 — ① 로드맵 PR 표가 덮는 FR·D 마커 합집합과 <code>docs/plan/product/*.md</code> 의 D 마커 전량 사이 <b>차집합 판별식</b> ② 비-공허 짝(마커 하나를 빼면 red) ③ 판별식 CI 등재.</p><p><b>★먼저 정할 것이 있다.</b> 로드맵 정본이 저장소 <b>밖</b>(<code>~/.claude/plans/</code>)이라 판별식이 읽을 수 없다. 저장소 안으로 옮길지, 옮긴다면 <code>docs/plans/</code> 인지 별도 자리인지가 선행 결정이다. <b>자의로 정하지 않는다.</b></p></div>
       </details>
     </div></div>
-    <h2>✅ 해소된 것 — 90건</h2>
+    <h2>✅ 해소된 것 — 91건</h2>
     <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 관리 메뉴에 어떤 항목이 있어야 하는지 검사하는 장치가, 목록에 적힌 것만 확인하고 실제 개수는 세지 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 새 메뉴가 늘어도 그 장치는 계속 초록이다. 링크가 잘못 붙거나 빠져도 아무도 모른다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>components/layout/__tests__/navigation-contract.test.tsx</code> 의 손 열거 6건에 2026-08-24 추가된 7번째 링크(<code>워크플로우 관리</code>)가 없다. 개수 단언 없이 <b>부분집합 루프</b>라 8 passed 로 통과한다. 8번째가 붙어도 마찬가지다.</p><p><b>처방.</b> <code>Sidebar.tsx</code> 의 <code>ADMIN_NAV_LINKS</code> 를 직접 import 해 개수와 내용을 함께 단언한다 — 손 열거를 유지하려면 최소한 <code>toHaveLength</code> 를 건다.</p><p><b>해소 (PR #433 · Jira 패리티 J9).</b> 위 처방이 지목한 <code>Sidebar.tsx</code> 의 <code>ADMIN_NAV_LINKS</code> 는 그 PR 이 <b>없앴다</b> — 관리 nav 를 상단바 허브 링크로 옮기면서 목록의 정본을 <code>routes/admin.index.tsx</code> 의 <code>ADMIN_HUB_LINKS</code> 하나로 합쳤다. 그래서 처방을 그대로 쓸 수 없고, 같은 구멍을 다른 자리에서 막았다.</p><ul class="md-list"><li><code>navigation-contract.test.tsx</code> 의 손 열거 6건은 <b>사라졌다</b> — 허브 링크 1건 단언으로 대체됐다</li><li>개수는 <code>routes/admin.index.test.tsx</code> 의 <code>toHaveLength(EXPECTED_ADMIN_CHILD_PATHS.length)</code> 가 센다</li><li><code>Sidebar.test.tsx</code> 는 <code>ADMIN_HUB_LINKS</code> 에서 <b>파생</b>해 「이 라벨이 사이드바에 하나도 없다」를 잰다. 손 사본이 없으므로 9번째 링크가 붙으면 자동으로 부재 단언 대상이 된다</li><li>파생이 0건이 되어 루프가 안 도는 경우도 별도 단언으로 막았다</li></ul></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · <b>해소</b> · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 보드를 지우겠다고 확인을 누른 뒤 서버 응답이 늦으면, 그동안은 취소도 Esc 도 먹지 않고 창이 잠긴다. 지금은 10초가 지나면 자동으로 풀린다.</p>
