@@ -297,7 +297,7 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 > 다. 「T2+ 에서 이 렌즈는 생략 불가」가 그 파일 주석의 못이다. Task 7 이 그 파일을 만진다.
 > 실제 변경은 `validateSearch` 에 `board?: string` 한 줄이라 렌즈는 짧게 끝나지만 **빠뜨리면 안 된다.**
 
-### 🔜 PR ④ 로 분리한 것 — `truncated` 부채 (FR-6 이었던 것)
+### ✅ PR ④ 로 분리한 것 — `truncated` 부채 (FR-6 이었던 것) · **2026-09-02 해소**
 
 **무엇** — `IssueRepository.kt:813-825` 가 `created_at DESC` 로 **1,000건을 먼저 자르고**
 스프린트 필터가 **그 뒤**에 온다(`BoardApplicationService.getBoard:252-268`). 활성 스프린트 이슈가
@@ -323,6 +323,38 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 
 **ADR·부채 장부 동기화** — ADR 3분할 표에 **④ 행 추가**가 필요하다. `fr-sync-checklist.md` 대상이므로
 **Task 9(문서 동기화)가 같은 PR 에서** 처리한다.
+
+---
+
+#### 🛑 2026-09-02 후일담 — 위 동기화 지시가 실행되지 않았다
+
+**이 PR 의 Task 9 는 문서 동기화가 아니라 E2E 였다**(`### Task 9. E2E — D7 신규 + 기존 회귀 (D7)`).
+문서 동기화 task 자체가 task 목록에 없었다. 그래서 ④ 는 ADR 표에도 `TODOS.md` 에도 등재되지 않고
+**이 문단 하나에만** 남았다 — 저장소의 어떤 목록도 세지 않는 상태로 2026-09-02 까지 왔다.
+`two-lists-never-check-each-other` 양식이고, 이 문단이 그것을 경계하면서 스스로 밟았다.
+
+**교훈.** 「Task N 이 처리한다」고 쓸 때 **그 Task 가 실재하는지**를 같은 자리에서 확인한다.
+지시와 task 목록이 갈리면 지시 쪽은 아무도 안 읽는다.
+
+복구는 PR ⓪(장부 동기화)이 했다 — ADR 6분할 표 · `TODOS.md` 7건 · 마스터 전수 매핑 158~164 ·
+`agile-planning.md` §2.4 Deviation.
+
+#### 🛑 인계 지침 3·4 는 실측에서 뒤집혔다 — PR ④ 는 정정본을 따랐다
+
+- **지침 3(abstract 로 전수 드러남)** — 성립하지 않는다. `mockk(relaxed = true)` **3곳**
+  (`BoardApplicationServiceTest.kt:116` · `BacklogApplicationServiceTest.kt:161` ·
+  `SprintApplicationServiceTest.kt:105`)이 조용히 통과한다. 게다가 abstract 화는
+  `BoardPortContractTest.kt:71,80` 의 `object : BoardIssueLookupPort {}` — **fail-safe default 의
+  존재 자체를 검증하는 테스트** — 를 컴파일 불가로 만든다. **새 메서드를 안 만들면 함정이 소멸한다.**
+- **지침 4(`const val` 이라 RED 를 못 만든다)** — 불필요하다. 1,001행 배치 헬퍼가 이미 있다
+  (`BoardIssueLookupAdapterTest.kt:346 insertNonMatchingIssuesBatch`). 가시성을 바꿔 얻는 것이 0 이다.
+- **대신 진짜 함정은 삽입 순서였다.** 기존 `S9`(EC7)는 대상 이슈를 **나중에**(=최신) 넣어
+  LIMIT 창 안에 이미 들어온다 — 그 모양을 베끼면 「LIMIT 뒤 필터」로도 통과한다(가짜 GREEN).
+
+채택안은 `BoardCardFilter.issueKeys`(서버 내부 전용 필드 · `statusKeys` 선례)이고
+포트 시그니처는 바뀌지 않았다. 정본은
+[spec](../specs/2026-09-02-board-sprint-scoped-lookup.md) ·
+[plan](2026-09-02-board-sprint-scoped-lookup.md).
 
 ### Task 1. 백엔드 — 보드 목록에 종류를 싣는다 (FR-5)
 

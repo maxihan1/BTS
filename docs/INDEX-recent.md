@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (500건, 최신순)
+# 시간 축 인덱스 (501건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-09-02 | board-sprint-scoped-lookup | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-02 | scrum-board-screen | — | ✔ | — | — | FR-BD-04 FR-UX-07 |
 | 2026-09-01 | board-scrum-schema | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-01 | board-type-and-active-sprint | — | — | — | ✔ | FR-BD-01 FR-BD-04 FR-BL-01 |
