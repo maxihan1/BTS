@@ -884,13 +884,97 @@ Task 3 의 무효화 규약 교체**이며 둘 다 #424 의 머지된 리뷰 결
 
 145 를 `✅` 로 닫았으나 **그 항목이 적은 표면 전부가 닫힌 것은 아니다.** 145 의 「방치하면」이
 *"`ConfirmDialog` 를 쓰는 **다른 소비처는 상한이 없어** …"* 를 적는데, 이 PR 이 상한을 붙인
-삭제 경로는 **보드·스프린트 둘뿐**이다. 나머지 8곳은 그대로다(`grep -rl ConfirmDialog apps/web/src` 전수).
+삭제 경로는 **보드·스프린트 둘뿐**이다. 나머지 **7곳**은 그대로다(`grep -rl ConfirmDialog apps/web/src` 전수).
 
 `SlackChannelMappingList` · `ValidatorConfigSection` · `ResetToDefaultDialog` ·
-`WorkflowEditorDialogs` · `GitWebhookSection` · `AutomationRuleList` ·
-`admin.workflows` · `projects.$projectKey.board`
+`WorkflowEditorDialogs` · `GitWebhookSection` · `AutomationRuleList` · `admin.workflows`
 
-T9 는 **집합 약어로 덮지 않고** 해소 본문에 8곳을 전수 열거하고 「전부 붙였다가 아니라
+★ **2026-09-02 정정 (코드 리뷰 CONCERNS-1).** 종전 목록은 `projects.$projectKey.board` 를 8번째로
+넣었는데 **그것이 바로 보드 삭제 창**이고 `useDeleteBoard` 의 상한을 이미 받는다(그 파일의
+`ConfirmDialog` 는 1개뿐이고 `:370` KDoc 이 「갇히지 않는 근거는 `useDeleteBoard` 의 타임아웃이다」로
+적고 있다). 즉 **자기 문장과 모순**이었다 — 같은 문단이 「상한을 갖는 삭제 경로는 보드와 스프린트」라
+적으면서 보드를 잔여에도 넣었다. 잔여는 **7곳**이다.
+
+T9 는 **집합 약어로 덮지 않고** 해소 본문에 잔여를 전수 열거하고 「전부 붙였다가 아니라
 **붙일 자리가 생겼다**」로 적었다(`set-word-hides-partial-implementation`).
 **잔여를 별도 장부 항목으로 올릴지는 Maxi 판단이다** — 지시가 신규 등재 2건이라 T9 는
 세 번째 항목을 만들지 않았다.
+
+---
+
+## 코드 리뷰 결과 반영 (2026-09-02)
+
+렌즈 2종 — `code-reviewer`(절대 규칙 + 보안) **BLOCKER 1 · CONCERNS 4** · 구조·안전성 렌즈 **critical 0**.
+
+### 🛑 BLOCKER-1 — 장부 145 의 회귀 (확인 창이 **영원히** 잠긴다)
+
+`withDeleteTimeout` 이 `Promise.race` 를 버리고 **abort 전파 하나에만** 의존하게 됐는데,
+`apiFetch` 의 401 경로 `await doRefresh()`(`api/client.ts:131`)는 abort 를 관측하지 않는다
+(`doRefresh` 내부 fetch 에 `signal` 이 없다 — 그리고 **없는 것이 맞다.** `refreshPromise` 는 전역 공유
+lock 이라 한 요청의 abort 가 다른 요청들의 refresh 까지 죽인다).
+
+토큰 만료 + refresh 가 멈춘 연결 = 10초에 `abort()` 는 불리지만 **아무것도 reject 하지 않아**
+`isPending` 이 영원히 참이고 `ConfirmDialog` 가 취소·Esc·오버레이·X 를 무기한 잠근다.
+
+★ **이 파일 자신의 KDoc(`:42-43`)이 이 결함을 이미 서술하고 있었다** —
+*"이어주지 않으면 abort 가 아무 일도 하지 않아 반환된 Promise 가 영원히 pending 으로 남는다."*
+`apiFetch` 는 signal 을 받으므로 「이어줬다」는 형식은 충족했지만, **그 내부에 signal 을 관측하지
+않는 await 구간이 있다**는 것을 아무도 재지 않았다.
+
+**왜 놓쳤나.** 146(요청 실제 취소)을 닫으면서 145(상한 뒤 조작권 반환)의 보장을 **abort 가 닿는
+구간으로 좁혔는데**, 두 장부 항목을 「한 기전으로 동시에 닫았다」고 적어 그 축소가 기록에서 사라졌다.
+**한 커밋이 두 항목을 닫는다고 적을 때는 각 항목의 보장 범위가 그대로인지를 따로 재야 한다.**
+
+처방 — `withDeleteTimeout` 이 abort **와 거절을 함께** 낸다. 146 은 유지되고 145 가 어느 구간에
+걸려 있든 성립한다.
+
+### CONCERNS 처리
+
+| # | 지적 | 처리 |
+|---|---|---|
+| C-1 | 장부 145 잔여 목록이 **자기 문장과 모순** — `projects.$projectKey.board` 는 **바로 그 보드 삭제 창**이고 `useDeleteBoard` 상한을 이미 받는다 | ✅ `TODOS.md` · plan 양쪽에서 목록을 **7곳**으로 정정. 그 파일의 `ConfirmDialog` 가 1개뿐이고 `:370` KDoc 이 상한을 근거로 적고 있음을 실측 확인 |
+| C-2 | `AGILE_SPRINT_DATE_LOCKED` 를 관측하는 유일한 테스트가 green 뒤에 붙었고 **비-공허 확인 기록이 없다** | ✅ **아래에 기록.** 뮤테이션은 이미 돌렸고 누락된 것은 기록이었다 |
+| C-3 | `EditSprintDialog` 의 `applyServerResponse` 가 **관측 불가**하고 그 KDoc 근거가 사실이 아니다 | ✅ KDoc 정정(호출은 유지). 근거를 「폼 계약의 대칭 유지」로 바꾸고, 재시도를 실제로 지키는 것이 `recoverFromConflict` 임을 명시 |
+| C-4 | `client.ts` 의 `signal` 이 SEC_FE 표면인데 `client.test.ts` 에 단언 0건 | ✅ BLOCKER-1 수정과 같은 묶음에서 2건 추가 |
+
+### C-2 의 비-공허 확인 (누락됐던 기록 · GREEN 선커밋 `2dee9a0bf` 뒤 수행)
+
+| 뮤테이션 | 결과 |
+|---|---|
+| `SprintExceptionHandler.kt` 의 `@ExceptionHandler(SprintDateLockedException::class)` **등록만 제거** | **EXIT=1 · `33 tests completed, 1 failed`** — `PATCH sprints id COMPLETED 스프린트의 기간을 바꾸면 400 AGILE_SPRINT_DATE_LOCKED를 반환한다()` **1건만** red |
+
+즉 그 단언은 「400 이 나는가」가 아니라 **「상태 전파 핸들러가 errorCode 를 `AGILE_VALIDATION_FAILED`
+로 덮어쓰지 않는가」**를 잰다. 서비스 계층 테스트 4건은 이 뮤테이션에 전부 초록으로 남았다 —
+리뷰어가 지적한 「장식 애노테이션」 위험이 실재했고 이 테스트가 그것을 막는다.
+`git checkout --` 원복 후 `git diff HEAD -- backend/` 0줄 확인.
+
+### 이탈 3건 판정 (리뷰어)
+
+- **이탈 1**(`BacklogBoard.tsx` +13줄) ✅ **정당.** 배제 근거 2개를 리뷰어가 독립 실측으로 확인했다.
+  ⚠️ **기록 보완 필요** — 13줄 중 3줄은 `boardId` 가 아니라 **`canManageSprint` 배선**(`:740-742`)이고
+  그것이 FR-5 권한 게이트의 실제 결선이다. 이탈 기록이 `boardId` 만 적었다. 아래에 보완한다.
+- **이탈 2**(판별식 `EXPECTED` +4줄) ✅ **정당.** 주석이 실제로 같은 커밋 수정을 요구하고
+  `assert.deepEqual` 이 완전 일치라 한쪽만 고치면 통과할 방법이 없다.
+- **이탈 3**(`refactor:` 가 코드 이동이 아님) ✅ **위반 아님.** 요구(별도 파일에 산다)는 충족했고,
+  왕복을 안 만든 것이 §1.16 에 오히려 부합한다.
+
+### 이탈 1 기록 보완
+
+`BacklogBoard.tsx` 의 +13줄은 **두 축**이다.
+1. **`boardId` 배선** — `BacklogStackProps` → `SprintColumn` → `SprintColumnHeader` → `SprintActionsMenu` → `EditSprintDialog`.
+2. **`canManageSprint` 배선**(`:740-742`) — **FR-5 권한 게이트의 실제 결선.** 이것이 없으면
+   `SprintActionsMenu` 의 `if (!canManage) return null` 이 무엇을 받을지가 정해지지 않는다.
+
+「권한 게이트가 어느 커밋에서 결선됐나」를 찾는 다음 사람이 이 기록으로 도달할 수 있어야 한다.
+
+### 크기 실측 (plan Task 4 가 게이트 2 요약에 실으라고 요구한 값)
+
+| 파일 | 이전 | 이후 | 컴포넌트 본체 |
+|---|---|---|---|
+| `StartSprintDialog.tsx` | 553줄 | **251줄** (−302) | 143줄 |
+| `SprintForm.tsx` | — | 472줄 (신규) | 137줄 |
+| `EditSprintDialog.tsx` | — | 166줄 (신규) | 83줄 |
+| `SprintColumnHeader.tsx` | 162줄 | **196줄** | — |
+| `SprintActionsMenu.tsx` | — | 194줄 (신규) | — |
+
+§2.2 의 **컴포넌트 200줄** 상한은 전부 충족. 이 PR 이 상한 위반을 새로 만들지 않았다.

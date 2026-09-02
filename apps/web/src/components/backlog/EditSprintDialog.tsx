@@ -72,10 +72,22 @@ export interface EditSprintDialogProps {
  * 거기서 이미 푼 **부분 저장 유실 방어**(편집한 필드만 `PATCH` 에 싣는다)를 그대로 물려받는다.
  * 사본을 만들면 그 방어가 한쪽에서만 살아남는다.
  *
- * ### 응답을 버리지 않는다
- * `useUpdateSprint` KDoc 이 못박는 계약이다 — 저장 응답의 `SprintMeta` 로 폼의 기준값과
- * `version` 을 갱신하지 않으면, 창을 다시 열어 저장할 때 **낡은 `version` 으로 409** 를 받는다.
- * 훅이 invalidate 를 하더라도 재조회는 비동기라 그 사이를 막아주지 못한다.
+ * ### 응답을 버리지 않는다 — 다만 이 창에서 그것을 관측할 갈래는 없다
+ * `useUpdateSprint` KDoc 의 계약(저장 응답의 `SprintMeta` 로 기준값과 `version` 을 갱신한다)을
+ * 대칭으로 지킨다. **그러나 이 창에서 그 갱신은 화면에 남지 않는다** — 성공하면 곧바로 닫히고
+ * 부모(`SprintActionsMenu` 의 `{editOpen && …}`)가 언마운트하므로 갱신된 기준값의 수명이 0이다.
+ * 성공 경로에서 창이 열린 채 남는 갈래가 하나도 없기 때문이다.
+ *
+ * ★ 「창을 다시 열면 낡은 `version` 으로 409」는 **이 창에는 해당하지 않는다.** 다시 열면
+ * [SprintForm] 이 재마운트되며 기준값을 `sprint` prop(무효화된 백로그 뷰)에서 새로 잡는다.
+ * 이 창에서 재시도를 실제로 지키는 것은 `SprintFormActions.recoverFromConflict` 이고
+ * 그쪽에만 테스트가 있다(`EditSprintDialog.test.tsx` 의 `version: 4` 단언).
+ *
+ * 그런데도 호출을 남기는 이유는 **폼의 계약을 소비처마다 다르게 쓰지 않기 위해서**다.
+ * `StartSprintDialog` 에서는 같은 호출이 **필수**다 — PATCH 성공 뒤 `start` 가 실패하면 창이
+ * 열린 채 남고 재시도의 변경분이 0이어야 하기 때문이다(편집 창에는 그 두 번째 단계가 없다).
+ * 「무해하니 지워도 된다」로 읽지 마라 — 폼을 마운트한 채 재저장하는 소비처가 하나라도 생기면
+ * 그 순간 이 호출이 409 를 막는 자리가 된다.
  *
  * ### 완료된 스프린트 (FR-2 · J1)
  * 날짜 잠금은 폼이 `status` 로 판정한다. 프론트 잠금은 안내일 뿐이고 **백엔드가 400 으로
@@ -106,7 +118,8 @@ export function EditSprintDialog({
 
     try {
       const updated = await updateSprint.mutateAsync({ sprintId: sprint.sprintId, body })
-      // ★ 응답 흡수. 다음 저장이 최신 version 으로 나가게 한다 (`useUpdateSprint` KDoc)
+      // 응답 흡수 — 폼 계약의 대칭 유지다. 이 창은 바로 닫혀 언마운트되므로 그 갱신이
+      // 화면에 남지는 않는다(사유는 이 파일 머리 KDoc). 재시도를 지키는 것은 아래 conflict 갈래다.
       actions.applyServerResponse(updated)
       onOpenChange(false)
     } catch (error) {

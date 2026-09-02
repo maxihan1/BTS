@@ -3395,7 +3395,7 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 
 **해소.** PR #418 (2026-09-02). 이 항목이 남긴 **결정**을 「소비처 쪽」으로 확정했다 — 프리미티브는 그대로 두고 상한을 `apps/web/src/lib/delete-timeout.ts` **공용 헬퍼 한 벌**로 옮겼다. 종전의 `Promise.race` 는 상한이 지나도 `isPending` 을 풀어 줄 뿐이었는데, `AbortController` 로 바꾸면서 상한이 **요청을 실제로 끊어** reject 를 만들고 사유가 창 안 `error` 로 흐른다. 프리미티브에 새 상태를 더하지 않았다.
 
-★ **이 항목이 적은 표면 중 남은 것을 여기 밝힌다.** 상한을 갖는 삭제 경로는 보드와 스프린트 둘이고, `ConfirmDialog` 의 나머지 소비처(`SlackChannelMappingList` · `ValidatorConfigSection` · `ResetToDefaultDialog` · `WorkflowEditorDialogs` · `GitWebhookSection` · `AutomationRuleList` · `admin.workflows` · `projects.$projectKey.board`)는 여전히 상한이 없다. 공용 헬퍼가 생겼으므로 그 경로들은 이제 **한 줄로 붙일 수 있다** — 「전부 붙였다」가 아니라 「붙일 자리가 생겼다」가 이 PR 이 한 일이다.
+★ **이 항목이 적은 표면 중 남은 것을 여기 밝힌다.** 상한을 갖는 삭제 경로는 보드와 스프린트 둘이고, `ConfirmDialog` 의 나머지 소비처(`SlackChannelMappingList` · `ValidatorConfigSection` · `ResetToDefaultDialog` · `WorkflowEditorDialogs` · `GitWebhookSection` · `AutomationRuleList` · `admin.workflows`)는 여전히 상한이 없다. ★`projects.$projectKey.board` 는 이 목록에서 뺐다 — 그 파일의 `ConfirmDialog` 는 보드 삭제 창 하나뿐이고 `useDeleteBoard` 의 상한을 이미 받는다(그 자리 KDoc 이 「갇히지 않는 근거는 `useDeleteBoard` 의 타임아웃이다」로 적고 있다). 코드 리뷰 CONCERNS-1 지적. 공용 헬퍼가 생겼으므로 그 경로들은 이제 **한 줄로 붙일 수 있다** — 「전부 붙였다」가 아니라 「붙일 자리가 생겼다」가 이 PR 이 한 일이다.
 
 **해소 커밋.** `261de8ffb`(red) → `791df3b3e`(green) → `f04d99ef0`(refactor).
 
