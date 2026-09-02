@@ -1,6 +1,7 @@
-// 보드 생성 폼(CreateBoardForm) 1단계 종류 선택을 지나가는 e2e 공통 헬퍼 — FR-BD-04 D6
+// 보드 생성 폼(CreateBoardForm) 1단계 종류 선택 + 백로그 스프린트 시작 e2e 공통 헬퍼 — FR-BD-04 D6·D7
 import { expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
+import { backlogLabels } from '../../src/i18n/backlog-labels'
 import { boardLabels } from '../../src/i18n/board-labels'
 
 /**
@@ -59,4 +60,49 @@ export async function selectBoardType(
  */
 export async function goToBoardNameStep(scope: Page | Locator): Promise<void> {
   await scope.getByRole('button', { name: boardLabels.createForm.next, exact: true }).click()
+}
+
+/**
+ * 백로그 화면의 스프린트 칸 locator — `SprintColumn` 의 `aria-label` 은 「{이름} 칸, {n}개 이슈」다.
+ *
+ * 이슈 수는 조작마다 바뀌므로 이름 접두만 정규식으로 맞춘다 (`backlog.spec.ts`
+ * `getColumnLocator` 와 같은 규약이다. 그쪽은 spec 지역 헬퍼라 여기서 다시 적는다).
+ *
+ * @param page Playwright Page
+ * @param sprintName 스프린트 이름
+ */
+export function backlogSprintColumn(page: Page, sprintName: string): Locator {
+  return page.getByRole('region', { name: new RegExp(`^${sprintName} 칸`) })
+}
+
+/**
+ * 백로그에서 그 스프린트를 **시작**한다 — 칸 헤더의 「스프린트 시작」 → 확인 다이얼로그 제출.
+ *
+ * J18 이 이 자리를 못박는다 — *"select **Start sprint**, and the stories will move into the
+ * **Active sprints** view."* 스프린트가 시작되는 화면은 보드가 아니라 백로그다.
+ *
+ * 🛑 트리거·다이얼로그 제목·제출 버튼이 **모두 같은 문구**(`backlogLabels.startSprint`)라
+ *    전역 조회는 strict mode 로 즉사한다. 트리거는 스프린트 칸으로, 제출은 dialog 로 좁힌다
+ *    (`backlog.spec.ts` S7 이 세운 관례).
+ *
+ * 반환 전에 상태 배지가 ACTIVE 인지까지 확인한다 — 다이얼로그가 닫히는 것은 제출이 나갔다는
+ * 뜻일 뿐이고, store 변이 후 refetch 까지 끝났는지는 배지만 말한다.
+ *
+ * @param page Playwright Page
+ * @param sprintName 시작할 스프린트 이름
+ */
+export async function startSprintFromBacklog(page: Page, sprintName: string): Promise<void> {
+  const column = backlogSprintColumn(page, sprintName)
+  const trigger = column.getByRole('button', { name: backlogLabels.startSprint, exact: true })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+
+  const dialog = page.getByRole('dialog', { name: backlogLabels.startSprint, exact: true })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: backlogLabels.startSprint, exact: true }).click()
+  await expect(dialog).toBeHidden()
+
+  await expect(
+    column.getByLabel(`스프린트 상태: ${backlogLabels.status.ACTIVE}`),
+  ).toBeVisible()
 }
