@@ -29,12 +29,19 @@ const MAX_POLLS_TO_COMPLETE = 2
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface BulkOpState {
-  operationType: 'BULK_EDIT' | 'BULK_TRANSITION'
+  operationType: 'BULK_EDIT' | 'BULK_TRANSITION' | 'STATUS_MIGRATION'
   payload: Record<string, unknown>
   issueKeys: string[]
   totalCount: number
   pollCount: number
   failKeys: Set<string>
+  /**
+   * COMPLETED 도달 시(폴링될 때마다, 멱등) 불리는 콜백.
+   *
+   * 이 파일은 어느 도메인의 부수효과(예: 워크플로우 이관 완료 후 잔여 건수를 0 으로 내리는 것)도
+   * 알지 못한다 — 그 지식은 등록하는 쪽(`registerStatusMigration` 호출부)이 클로저로 들고 온다.
+   */
+  onCompleted?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +53,40 @@ let bulkOpsStore: Map<string, BulkOpState> = new Map()
 /** 테스트 격리용 상태 초기화 */
 export function resetBulkOperationState(): void {
   bulkOpsStore = new Map()
+}
+
+/**
+ * 상태 이관 작업을 이 스토어에 등록한다.
+ *
+ * `workflow-draft-handlers.ts` 의 `POST /publish/migrate` 가 202 를 돌려주기 **전에** 불러야
+ * 한다 — 그러지 않으면 접수 직후 폴링(`GET /api/v1/bulk-operations/:id`)이 이 스토어에서 못
+ * 찾아 항상 404 를 준다(이 파일이 봉합하는 갭의 본체).
+ *
+ * `POST /issues/bulk-update` 와 달리 이관은 실제 이슈 키 목록을 받지 않는다 — 워크플로우
+ * 발행 화면은 상태별 잔여 건수만 안다. 자리표시 키를 `totalCount` 개 만들어
+ * `handleGetBulkOperation` 의 기존 진행률 계산(첫 폴 절반 · 둘째 폴 전량)을 그대로 재사용한다.
+ *
+ * @param id 접수 응답에 실을 작업 id
+ * @param params.totalCount 이관 대상 이슈 총수(매핑된 출발 상태들의 잔여 건수 합)
+ * @param params.mappings 출발 상태 키 → 도착 상태 키
+ * @param params.projectKeys 이관 대상 프로젝트 범위. 이관 마법사가 아직 이 값을 모아 보내지
+ *   않아 빈 배열을 준다 — `statusMigrationPayloadSchema` 는 빈 배열을 허용한다
+ * @param onCompleted COMPLETED 도달 시 불릴 콜백. 도메인 부수효과는 호출부가 쥔다
+ */
+export function registerStatusMigration(
+  id: string,
+  params: { totalCount: number; mappings: Record<string, string>; projectKeys: string[] },
+  onCompleted: () => void,
+): void {
+  bulkOpsStore.set(id, {
+    operationType: 'STATUS_MIGRATION',
+    payload: { mappings: params.mappings, projectKeys: params.projectKeys },
+    issueKeys: Array.from({ length: params.totalCount }, (_, idx) => `MIGRATION-${String(idx)}`),
+    totalCount: params.totalCount,
+    pollCount: 0,
+    failKeys: new Set(),
+    onCompleted,
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,6 +215,12 @@ const handleGetBulkOperation = http.get('/api/v1/bulk-operations/:id', ({ params
   const succeededCount = items.filter(i => i.status === 'SUCCEEDED').length
   const failedCount = items.filter(i => i.status === 'FAILED').length
   const status = processed >= op.totalCount ? 'COMPLETED' : 'RUNNING'
+
+  // 멱등 — COMPLETED 도달 뒤에도 다시 폴링될 수 있으니(재발행 재시도 등) 콜백이 여러 번
+  // 불려도 안전해야 한다. 등록하는 쪽(registerStatusMigration 호출부)이 그 책임을 진다.
+  if (status === 'COMPLETED') {
+    op.onCompleted?.()
+  }
 
   return HttpResponse.json({
     data: {

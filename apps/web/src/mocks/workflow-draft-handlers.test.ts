@@ -10,11 +10,13 @@ import {
   migrateStatuses,
   resetToDefault,
 } from '@/api/workflows-draft'
+import { fetchBulkOperation } from '@/api/bulk-operations'
 import { fetchWorkflow } from '@/api/workflows'
 import { WorkflowPublishMappingRequiredError } from '@/api/workflows-admin.http'
 import { workflowHandlers } from './workflow-handlers'
 import { resetWorkflowAdminStore } from './workflow-admin-fixtures'
 import { workflowDraftHandlers } from './workflow-draft-handlers'
+import { bulkOperationHandlers } from './bulk-operation-handlers'
 import { pendingIssueStore, resetWorkflowDraftStore } from './workflow-draft-fixtures'
 
 const KEY = 'software-default'
@@ -23,8 +25,17 @@ beforeEach(() => {
   resetWorkflowAdminStore()
   resetWorkflowDraftStore()
   // 발행이 정규 정의를 교체하는지 보려면 조회 핸들러도 같은 저장소를 읽어야 한다.
-  server.use(...workflowHandlers, ...workflowDraftHandlers)
+  // 이관 진행률 폴링(GET /api/v1/bulk-operations/:id)을 재려면 그 핸들러도 함께 켠다.
+  server.use(...workflowHandlers, ...workflowDraftHandlers, ...bulkOperationHandlers)
 })
+
+/** `done` 을 빼는 초안을 저장하고 그 앵커를 돌려준다 — 이관 테스트가 반복하는 준비 절차. */
+async function saveDraftRemovingDone(): Promise<number> {
+  return saveWith((d) => {
+    d.states = d.states.filter((s) => s.key !== 'done')
+    d.transitions = d.transitions.filter((t) => t.from !== 'done' && t.to !== 'done')
+  })
+}
 
 /** 초안 하나를 저장한다. `mutate` 로 정의를 손봐 준다. */
 async function saveWith(mutate: (d: Awaited<ReturnType<typeof getDraft>>['definition']) => void) {
@@ -224,6 +235,49 @@ describe('★ 상태 이관 큐잉 — 목이 서버보다 관대하면 프로�
     const accepted = await migrateStatuses(KEY, anchor, [{ fromStatusKey: 'done', toStatusKey: 'closed' }])
 
     expect(accepted.bulkOperationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  })
+})
+
+describe('★ 상태 이관 진행률 폴링 — 접수와 조회를 잇는다 (task 7a)', () => {
+  it('접수 직후 같은 id 로 조회하면 200 이다 (404 가 아니다 — 이 갭이 결함의 본체)', async () => {
+    const anchor = await saveDraftRemovingDone()
+    const accepted = await migrateStatuses(KEY, anchor, [{ fromStatusKey: 'done', toStatusKey: 'closed' }])
+
+    // fetchBulkOperation 은 응답을 bulkOperationResponseSchema 로 파싱한다 — 여기서 안 던지면
+    // 형태도 맞는 것이다(.strict() 판별 갈래는 STATUS_MIGRATION payload 여야만 통과한다).
+    const op = await fetchBulkOperation(accepted.bulkOperationId)
+
+    expect(op.id).toBe(accepted.bulkOperationId)
+    expect(op.operationType).toBe('STATUS_MIGRATION')
+    expect(op.payload).toEqual({ mappings: { done: 'closed' }, projectKeys: [] })
+  })
+
+  it('여러 번 폴링하면 종단 상태(COMPLETED)에 도달한다', async () => {
+    const anchor = await saveDraftRemovingDone()
+    const accepted = await migrateStatuses(KEY, anchor, [{ fromStatusKey: 'done', toStatusKey: 'closed' }])
+
+    // MAX_POLLS_TO_COMPLETE(2) 이내에 도달해야 한다. 한 번에 COMPLETED 로 뛰면 E2E 가 진행
+    // 중 상태를 관측할 수 없으므로, 첫 폴은 아직 RUNNING 이어야 한다.
+    const firstPoll = await fetchBulkOperation(accepted.bulkOperationId)
+    expect(firstPoll.status).toBe('RUNNING')
+    expect(firstPoll.processedCount).toBeGreaterThan(0)
+    expect(firstPoll.processedCount).toBeLessThan(firstPoll.totalCount)
+
+    const secondPoll = await fetchBulkOperation(accepted.bulkOperationId)
+    expect(secondPoll.status).toBe('COMPLETED')
+    expect(secondPoll.processedCount).toBe(secondPoll.totalCount)
+  })
+
+  it('완료 후 pendingIssueCounts 가 0 이 돼 재발행이 막히지 않는다 (서버 requireNoPending 재현)', async () => {
+    const anchor = await saveDraftRemovingDone()
+    const accepted = await migrateStatuses(KEY, anchor, [{ fromStatusKey: 'done', toStatusKey: 'closed' }])
+
+    await fetchBulkOperation(accepted.bulkOperationId) // 1차 폴 — 아직 RUNNING
+    const completed = await fetchBulkOperation(accepted.bulkOperationId) // 2차 폴 — COMPLETED
+    expect(completed.status).toBe('COMPLETED')
+
+    expect(pendingIssueStore.get('done')).toBe(0)
+    await expect(publishDraft(KEY, anchor)).resolves.toMatchObject({ versionNo: 1 })
   })
 })
 

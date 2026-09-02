@@ -4,6 +4,7 @@ import type { WorkflowView } from '@/api/workflows'
 import type { DraftDefinition, StatusMappingInput } from '@/api/workflows-draft.types'
 import { transitionKey } from '@/components/workflow/workflow.types'
 import { workflowStore, statusCatalogStore, nextTransitionId } from './workflow-admin-fixtures'
+import { registerStatusMigration } from './bulk-operation-handlers'
 import {
   draftStore,
   versionStore,
@@ -297,8 +298,28 @@ export const workflowDraftHandlers = [
       return problem(400, 'WORKFLOW_MIGRATION_INVALID_MAPPING', reason)
     }
 
+    // mappings 배열을 서버 payload 형태(출발 상태 키 → 도착 상태 키 레코드)로 접고,
+    // 이관 대상 총건수를 매핑된 출발 상태들의 잔여 건수 합으로 잡는다.
+    const mappings: Record<string, string> = {}
+    let totalCount = 0
+    for (const mapping of body.mappings) {
+      mappings[mapping.fromStatusKey] = mapping.toStatusKey
+      totalCount += pendingIssueStore.get(mapping.fromStatusKey) ?? 0
+    }
+
     // ★ 발행하지 않는다 — 큐잉만 한다. 진행률은 `GET /api/v1/bulk-operations/{id}` 가 따로 준다.
-    return HttpResponse.json({ data: { bulkOperationId: generateBulkOperationId() } }, { status: 202 })
+    // 그 폴링이 이 작업을 찾으려면 응답을 돌려주기 **전에** bulkOpsStore 에 등록해야 한다.
+    const bulkOperationId = generateBulkOperationId()
+    registerStatusMigration(bulkOperationId, { totalCount, mappings, projectKeys: [] }, () => {
+      // 서버 `requireNoPending` 재현 — 이관이 COMPLETED 에 도달하면 옮겨진 출발 상태의 잔여
+      // 건수가 0 이어야 한다. 그러지 않으면 이어지는 발행이 계속 409
+      // (WORKFLOW_PUBLISH_MAPPING_REQUIRED) 로 막혀 E2E 의 「재발행」 단계가 끝나지 않는다.
+      for (const fromStatusKey of Object.keys(mappings)) {
+        pendingIssueStore.set(fromStatusKey, 0)
+      }
+    })
+
+    return HttpResponse.json({ data: { bulkOperationId } }, { status: 202 })
   }),
 
   // ── 기본값 복원 ───────────────────────────────────────────────────────────
