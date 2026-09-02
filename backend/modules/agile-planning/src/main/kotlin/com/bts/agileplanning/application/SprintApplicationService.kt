@@ -4,6 +4,7 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -39,6 +40,8 @@ import java.util.UUID
  * @param permissionResolver cross-BC 권한 판정 포트 (fail-closed, non-null 주입)
  * @param sprintRepository sprints / sprint_issues jOOQ repository
  * @param boardIssueLookupPort 이슈 단건 가시성 확인 포트 (issue-tracking 구현). default=fail-closed false.
+ * @param boardRepository boards jOOQ repository — 요청이 지정한 보드의 소속 검증에만 쓴다
+ *   (읽기 경로 [BacklogApplicationService] 가 같은 목적으로 같은 repository 를 주입받는다).
  *
  * ### detekt 억제 사유
  * TooManyFunctions — Sprint aggregate 유스케이스(CRUD + 상태전환 + 이슈 할당/해제)를
@@ -55,6 +58,7 @@ class SprintApplicationService(
     private val sprintRepository: SprintRepository,
     private val boardIssueLookupPort: BoardIssueLookupPort,
     private val boardApplicationService: BoardApplicationService,
+    private val boardRepository: BoardRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 

@@ -2,9 +2,11 @@
 
 package com.bts.agileplanning.application
 
+import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.Test
 import org.openapitools.jackson.nullable.JsonNullable
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -69,6 +72,32 @@ class SprintApplicationServiceTest {
             every { it.hasPermission(actor, permission, scope) } returns false
         }
 
+    /** 활성 보드 fixture — 소속 검증에 쓰는 것은 id 와 projectKey 뿐이다. */
+    private fun activeBoard(
+        id: UUID,
+        project: String = projectKey,
+    ): Board =
+        Board(
+            id = id,
+            projectKey = project,
+            name = "$project 보드",
+            columns = emptyList(),
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+
+    /**
+     * 보드 소속 검증용 stub repository.
+     *
+     * 등록한 보드만 활성으로 취급하고 나머지 UUID 는 null 을 돌려준다 —
+     * 실제 [BoardRepository.findById] 가 `deleted_at IS NULL` 로 거르는 동작(미존재·소프트 삭제 모두 null)과 같다.
+     */
+    private fun boardRepoOf(vararg boards: Board): BoardRepository =
+        mockk<BoardRepository>().also { repo ->
+            every { repo.findById(any()) } returns null
+            boards.forEach { board -> every { repo.findById(board.id) } returns board }
+        }
+
     private fun makeService(
         resolver: IssuePermissionResolver = allowAllResolver(),
         repo: SprintRepository = mockk(relaxed = true),
@@ -78,7 +107,9 @@ class SprintApplicationServiceTest {
                 // 보드를 안 준 create 요청이 붙을 자리. 실제 해소는 BoardApplicationService 의 책임이다.
                 every { ensureScrumBoard(any()) } returns boardId
             },
-    ): SprintApplicationService = SprintApplicationService(resolver, repo, lookupPort, boardService)
+        boardRepository: BoardRepository = boardRepoOf(activeBoard(boardId)),
+    ): SprintApplicationService =
+        SprintApplicationService(resolver, repo, lookupPort, boardService, boardRepository)
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -160,14 +191,20 @@ class SprintApplicationServiceTest {
     }
 
     @Test
-    fun `create boardId 를 주면 스크럼 보드를 찾지 않는다`() {
+    fun `create 같은 프로젝트의 활성 보드를 주면 그 보드에 붙고 스크럼 보드를 찾지 않는다`() {
         val explicitBoardId = UUID.randomUUID()
         val repo = mockk<SprintRepository>()
         every { repo.insert(any()) } answers { firstArg() }
         val boardService = mockk<BoardApplicationService>(relaxed = true)
 
         val result =
-            makeService(repo = repo, boardService = boardService).create(
+            makeService(
+                repo = repo,
+                boardService = boardService,
+                // ★ 폴백을 안 타는 조건은 「boardId 가 있다」가 아니라 「그 보드가 이 프로젝트의 활성 보드다」이다.
+                //   전자로 두면 타 프로젝트 보드도 그대로 통과하는 동작을 이 테스트가 고정해 버린다(BLOCKER-1).
+                boardRepository = boardRepoOf(activeBoard(explicitBoardId, projectKey)),
+            ).create(
                 actorId = actorId,
                 projectKey = projectKey,
                 boardId = explicitBoardId,
@@ -179,6 +216,74 @@ class SprintApplicationServiceTest {
 
         assertThat(result.boardId).isEqualTo(explicitBoardId)
         // PR ③ 이 백로그에서 boardId 를 명시로 넘기기 시작하면 이 경로가 기본이 된다.
+        verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
+    }
+
+    // ── create 의 보드 소속 검증 (BLOCKER-1 · IDOR) ────────────────────────────
+    //
+    // `boardId` 는 HTTP 입력이다(`CreateSprintRequest.boardId`). 권한은 body 의 `projectKey` 로만
+    // 판정되므로, 보드 소속을 검증하지 않으면 A 에 CREATE 만 가진 행위자가 B 의 보드 UUID 를 실어
+    // **B 의 보드에 스프린트를 매달 수 있다**(B 의 보드 헤더 오염 · 카드 0건 · B 의 스프린트 시작 영구 차단).
+    // `sprints` FK 는 `boards(id)` 만 걸려 있어 프로젝트 일치를 DB 가 막지 못한다.
+    //
+    // 상태 코드는 **404** 다 — 읽기 경로 `BacklogApplicationService.resolveBoardScope`(스펙 E8)와 같은 규약.
+    // 403 은 「그 UUID 는 존재한다」를 흘린다(memory `permission-assert-before-existence-makes-403-lie`).
+
+    @Test
+    fun `create 다른 프로젝트의 보드 UUID 를 주면 404 를 던지고 삽입하지 않는다`() {
+        val otherProjectBoardId = UUID.randomUUID()
+        val repo = mockk<SprintRepository>()
+        val boardService = mockk<BoardApplicationService>(relaxed = true)
+
+        assertThatThrownBy {
+            makeService(
+                repo = repo,
+                boardService = boardService,
+                boardRepository = boardRepoOf(activeBoard(otherProjectBoardId, "OTHER")),
+            ).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                boardId = otherProjectBoardId,
+                name = "Sprint X",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+
+        verify(exactly = 0) { repo.insert(any()) }
+        // 잘못된 지정을 기본 보드로 조용히 대체하지 않는다 — 읽기 경로 편차 E7 과 같은 규약.
+        verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
+    }
+
+    @Test
+    fun `create 소프트 삭제된 보드 UUID 를 주면 404 를 던지고 삽입하지 않는다`() {
+        val deletedBoardId = UUID.randomUUID()
+        val repo = mockk<SprintRepository>()
+        val boardService = mockk<BoardApplicationService>(relaxed = true)
+
+        assertThatThrownBy {
+            makeService(
+                repo = repo,
+                boardService = boardService,
+                // BoardRepository.findById 는 deleted_at IS NULL 로 거르므로 소프트 삭제 보드는 null 이다.
+                boardRepository = boardRepoOf(),
+            ).create(
+                actorId = actorId,
+                projectKey = projectKey,
+                boardId = deletedBoardId,
+                name = "Sprint X",
+                goal = null,
+                startDate = null,
+                endDate = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+
+        verify(exactly = 0) { repo.insert(any()) }
         verify(exactly = 0) { boardService.ensureScrumBoard(any()) }
     }
 
