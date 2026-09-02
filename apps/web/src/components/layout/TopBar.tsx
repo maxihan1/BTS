@@ -1,5 +1,5 @@
 // 상단바 컴포넌트 — 사이드바 토글·로고·검색·만들기·알림·도움말·설정·계정 드롭다운 (FR-UX-06 PR11 Task 6, 트리 미배선)
-import { useState, type KeyboardEvent } from 'react'
+import { useState, type JSX, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   PanelLeftClose,
@@ -33,6 +33,30 @@ export interface TopBarProps {
 }
 
 /**
+ * 관리 허브 진입점 — 사이드바 관리 메뉴를 옮겨 온 **유일한 UI 경로**다 (Jira 패리티 J9).
+ *
+ * 🛑 `max-md:hidden` 을 붙이지 마라. 설정 톱니는 계정 메뉴의 「모든 설정」이 모바일 대체
+ *    경로라 감출 수 있지만, 여기는 대체 경로가 없다 — 감추는 순간 관리 화면 8개가 모바일에서
+ *    통째로 도달 불가가 된다. 짝 단언 = `TopBar.test.tsx` T-TB-A3.
+ *
+ * 🛑 라우터 가드(`requireSystemAdmin`)가 있어도 **링크 자체를 감춘다.** 누르면 리다이렉트되는
+ *    링크는 「있는데 안 되는」 것이라 fail-closed 가 아니다.
+ *
+ * 별도 컴포넌트인 이유는 응집도 반, 래칫 반이다 — `TopBar` 가 200줄 상한(`lint-ratchet` R4)에
+ * 닿아 있어 인라인으로 두면 그 한 줄이 넘는다.
+ */
+function AdminHubLink(): JSX.Element | null {
+  const user = useAuthUser()
+  if (user?.isSystemAdmin !== true) return null
+
+  return (
+    <Link to="/admin" className="rounded-md p-1.5 hover:bg-accent" aria-label={navLabels.adminNav}>
+      <ShieldCheck className="size-4" />
+    </Link>
+  )
+}
+
+/**
  * 상단바(48px 고정) — 좌→우: 사이드바 토글 · 로고(Atlas, →`/dashboards`) ·
  * {@link ProjectSwitcher}(FR-UX-08 F12, `role="listbox"` — **`<nav>` 아님**) · 전역 검색 입력창
  * (FR-UX-12 F13, `role="searchbox"` + `aria-label="전역 검색"`, 상단바 단일 — `검색` 은
@@ -57,8 +81,6 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   //    폭에 따른 대상 선택·표시 방향은 `use-sidebar-drawer` 훅 두 개가 소유한다.
   const toggle = useSidebarToggle()
   const sidebarShown = useSidebarShown()
-  // 관리 허브 진입점 게이팅 — 사이드바에서 옮겨 왔다(J9). `=== true` fail-closed.
-  const user = useAuthUser()
 
   // FR-UX-12 F13 — 상단바 전역 검색. 제출 시에만 이동하고 입력 자체는 네트워크를 부르지 않는다(NFR2).
   const [query, setQuery] = useState('')
@@ -215,21 +237,7 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         </Button>
       )}
 
-      {/* 관리 허브 — 사이드바 관리 메뉴를 옮겨 온 **유일한 UI 진입로**다 (Jira 패리티 J9).
-          🛑 `max-md:hidden` 을 붙이지 마라. 설정 톱니는 계정 메뉴의 「모든 설정」이 모바일
-             대체 경로라 감출 수 있지만, 여기는 대체 경로가 없다 — 감추는 순간 관리 화면 8개가
-             모바일에서 통째로 도달 불가가 된다. 짝 단언 = `TopBar.test.tsx` T-TB-A3.
-          🛑 라우터 가드(`requireSystemAdmin`)가 있어도 **링크 자체를 감춘다.** 누르면
-             리다이렉트되는 링크는 「있는데 안 되는」 것이라 fail-closed 가 아니다. */}
-      {user?.isSystemAdmin === true && (
-        <Link
-          to="/admin"
-          className="rounded-md p-1.5 hover:bg-accent"
-          aria-label={navLabels.adminNav}
-        >
-          <ShieldCheck className="size-4" />
-        </Link>
-      )}
+      <AdminHubLink />
 
       {/* 설정 톱니는 모바일에서 감춘다 — 같은 허브 진입점이 **계정 메뉴의 「모든 설정」**에 있다.
           🛑 「사이드바에도 있다」고 적지 마라 — 거짓이다. 사이드바에는 관리 메뉴가 **없고**
