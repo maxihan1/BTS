@@ -4,11 +4,21 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
+import { z } from 'zod'
 import type { ReactNode } from 'react'
+import type { ZodError } from 'zod'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
-import { useSubmitBulkOperation, useBulkOperationPolling } from './use-bulk-operation'
-import type { BulkUpdateInput } from '@/api/bulk-operations'
+import { ApiError } from '@/api/client'
+import {
+  useSubmitBulkOperation,
+  useBulkOperationPolling,
+  computeRefetchInterval,
+  calculateProgressRatio,
+  MAX_ERROR_RETRIES,
+  POLL_INTERVAL_MS,
+} from './use-bulk-operation'
+import type { BulkUpdateInput, BulkOperationResponse } from '@/api/bulk-operations'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -283,4 +293,174 @@ describe('useBulkOperationPolling', () => {
     expect(callCount).toBe(callCountAfterDone)
     expect(result.current.data?.status).toBe('COMPLETED')
   }, 15000)
+})
+
+/**
+ * ★ 아래 블록은 FR-WF-07 D6b Task 3 이 별도 훅(`use-migration-progress`)으로 만들었던 판정을
+ * 이 훅으로 **이전**한 것이다. 같은 엔드포인트를 폴링하는 훅이 둘이 되는 중복을 없애면서
+ * 판정은 하나도 버리지 않는다 — 테스트를 지우는 것이 아니라 옮기는 것이다(절대 규칙 14).
+ *
+ * `computeRefetchInterval` 과 `calculateProgressRatio` 는 순수 함수라 목이 필요 없다.
+ * 훅 레벨 축(enabled·id null·403 중단·종단 정지)은 위 MSW 기반 판정이 이미 덮는다.
+ */
+
+/** computeRefetchInterval 에 넘길 최소 query.state 목(mock)을 만든다. */
+function buildQueryState(overrides: {
+  readonly status: 'pending' | 'success' | 'error'
+  readonly data?: BulkOperationResponse
+  readonly error?: unknown
+  readonly errorUpdateCount?: number
+}) {
+  return {
+    state: {
+      status: overrides.status,
+      data: overrides.data,
+      error: overrides.error ?? null,
+      errorUpdateCount: overrides.errorUpdateCount ?? 0,
+    },
+  } as Parameters<typeof computeRefetchInterval>[0]
+}
+
+function buildResponse(overrides: Partial<BulkOperationResponse>): BulkOperationResponse {
+  return {
+    id: BULK_OPERATION_ID,
+    operationType: 'STATUS_MIGRATION',
+    status: 'PENDING',
+    payload: { mappings: {}, projectKeys: [] },
+    totalCount: 4,
+    processedCount: 0,
+    succeededCount: 0,
+    failedCount: 0,
+    items: [],
+    ...overrides,
+  }
+}
+
+/** ZodError 를 실제로 발생시켜 캡처한다 — 손으로 구성하지 않는다(생성자 형태에 의존하지 않기 위함). */
+function makeZodError(): ZodError {
+  try {
+    z.string().parse(123)
+  } catch (error) {
+    return error as ZodError
+  }
+  throw new Error('unreachable — z.string().parse(123) must throw')
+}
+
+describe('POLL_INTERVAL_MS', () => {
+  it('T-BULK-POLL-5: 폴링 간격은 2초로 고정돼 있다 (FR-WF-07 D6b 리뷰 D3)', () => {
+    expect(POLL_INTERVAL_MS).toBe(2000)
+  })
+})
+
+describe('computeRefetchInterval — 성공 응답 축', () => {
+  it('T-BULK-POLL-6: PENDING 상태면 POLL_INTERVAL_MS 뒤 재조회한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({ status: 'success', data: buildResponse({ status: 'PENDING' }) }),
+      ),
+    ).toBe(POLL_INTERVAL_MS)
+  })
+
+  it('T-BULK-POLL-7: RUNNING 상태면 POLL_INTERVAL_MS 뒤 재조회한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({ status: 'success', data: buildResponse({ status: 'RUNNING' }) }),
+      ),
+    ).toBe(POLL_INTERVAL_MS)
+  })
+
+  it('T-BULK-POLL-8: COMPLETED 상태에 도달하면 폴링을 멈춘다(false)', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({
+          status: 'success',
+          data: buildResponse({ status: 'COMPLETED', processedCount: 4 }),
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('T-BULK-POLL-9: FAILED 상태에 도달해도 멈춘다 — 성공만 멈추면 실패 시 영구 폴링이다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({ status: 'success', data: buildResponse({ status: 'FAILED' }) }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('computeRefetchInterval — 에러 축 (G4 403 재발 방지)', () => {
+  it('T-BULK-POLL-10: ApiError 403 이면 재시도 횟수와 무관하게 즉시 정지한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({ status: 'error', error: new ApiError(403, {}), errorUpdateCount: 1 }),
+      ),
+    ).toBe(false)
+  })
+
+  it('T-BULK-POLL-11: ApiError 404 이면 재시도 횟수와 무관하게 즉시 정지한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({ status: 'error', error: new ApiError(404, {}), errorUpdateCount: 1 }),
+      ),
+    ).toBe(false)
+  })
+
+  it('T-BULK-POLL-12: ApiError 500 이 상한 미만이면 재시도한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({
+          status: 'error',
+          error: new ApiError(500, {}),
+          errorUpdateCount: MAX_ERROR_RETRIES - 1,
+        }),
+      ),
+    ).toBe(POLL_INTERVAL_MS)
+  })
+
+  it('T-BULK-POLL-13: ApiError 500 이 상한에 도달하면 정지한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({
+          status: 'error',
+          error: new ApiError(500, {}),
+          errorUpdateCount: MAX_ERROR_RETRIES,
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('T-BULK-POLL-14: 네트워크 오류(ApiError 아님)도 상한 미만이면 재시도한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({
+          status: 'error',
+          error: new TypeError('Failed to fetch'),
+          errorUpdateCount: 1,
+        }),
+      ),
+    ).toBe(POLL_INTERVAL_MS)
+  })
+
+  it('T-BULK-POLL-15: ZodError(스키마 불일치)는 재시도 횟수와 무관하게 즉시 정지한다', () => {
+    expect(
+      computeRefetchInterval(
+        buildQueryState({ status: 'error', error: makeZodError(), errorUpdateCount: 1 }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('calculateProgressRatio', () => {
+  it('T-BULK-RATIO-1: processedCount/totalCount 비율을 계산한다', () => {
+    expect(calculateProgressRatio(buildResponse({ processedCount: 2, totalCount: 4 }))).toBe(0.5)
+  })
+
+  it('T-BULK-RATIO-2: 데이터가 없으면 null 이다', () => {
+    expect(calculateProgressRatio(undefined)).toBeNull()
+  })
+
+  it('T-BULK-RATIO-3: totalCount 가 0 이면 null 이다 (0 으로 나누기 방지)', () => {
+    expect(calculateProgressRatio(buildResponse({ totalCount: 0, processedCount: 0 }))).toBeNull()
+  })
 })

@@ -1,12 +1,30 @@
 // 일괄 작업 접수 mutation + 진행률 폴링 query 훅
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ZodError } from 'zod'
 import { ApiError } from '@/api/client'
 import { submitBulkOperation, fetchBulkOperation } from '@/api/bulk-operations'
+import type { Query } from '@tanstack/react-query'
 import type { BulkUpdateInput, BulkAccepted, BulkOperationResponse } from '@/api/bulk-operations'
 
-/** 폴링 간격 (ms) — PENDING/RUNNING 상태에서 서버를 재조회하는 주기 */
-const POLL_INTERVAL_MS = 1500
+/**
+ * 폴링 간격 (ms) — PENDING/RUNNING 상태에서 서버를 재조회하는 주기.
+ *
+ * **왜 2초인가.** 일괄 작업은 건수에 따라 수 초~수 분이라 이보다 길면 사용자가 「멈췄다」로
+ * 오해하고, 짧으면 긴 작업에서 불필요한 요청이 쌓인다. FR-WF-07 D6b 리뷰(D3)가 정한 값이며,
+ * 종전 1500 에서 올렸다 — 요청을 줄이는 방향이라 기존 소비처에도 안전하다.
+ * **간격보다 정지 조건이 중요하다** — [computeRefetchInterval] 참조.
+ */
+export const POLL_INTERVAL_MS = 2000
+
+/**
+ * 5xx·네트워크 오류에 대한 재시도 상한(횟수).
+ *
+ * 4xx(403/404)는 재시도해도 서버 응답이 바뀌지 않으므로 이 값과 무관하게 즉시 정지한다.
+ * 이 값은 일시 장애(배포 순단 등)를 흡수하되, 영구 장애를 무한 폴링으로 오인하지 않기 위한
+ * 타협점이다.
+ */
+export const MAX_ERROR_RETRIES = 3
 
 /** 종단 상태 집합 — COMPLETED 또는 FAILED 도달 시 폴링 중단 */
 const TERMINAL_STATUSES = new Set<BulkOperationResponse['status']>(['COMPLETED', 'FAILED'])
@@ -62,33 +80,79 @@ export function useSubmitBulkOperation() {
 }
 
 /**
+ * 다음 폴을 할지, 몇 ms 뒤에 할지 판정한다 — 이 훅의 정지 조건 전부가 여기 있다.
+ *
+ * 정지 조건.
+ * - 종료 상태(`COMPLETED`·`FAILED`) 도달 — 성공만 멈추면 FAILED 에서 영구 폴링이 된다
+ * - `ApiError` 4xx(403·404 등) — 재시도해도 같은 응답이 온다. 기다리게 하는 것이 거짓말이다
+ * - `ZodError`(스키마 불일치) — 목이 서버보다 관대했을 때 여기서 처음 드러난다. 응답 구조가
+ *   바뀌지 않는 한 재시도해도 다시 실패한다
+ * - 5xx·네트워크 오류는 `MAX_ERROR_RETRIES` 회까지만 재시도하고 그 뒤 정지한다(일시 장애와
+ *   영구 장애를 가른다)
+ *
+ * @param query TanStack Query가 넘기는 현재 쿼리(상태만 사용)
+ * @returns 다음 폴까지의 ms, 또는 정지할 경우 false
+ */
+export function computeRefetchInterval(
+  query: Pick<Query<BulkOperationResponse>, 'state'>,
+): number | false {
+  if (query.state.status === 'error') {
+    const error = query.state.error
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+      return false
+    }
+    if (error instanceof ZodError) {
+      return false
+    }
+    return query.state.errorUpdateCount >= MAX_ERROR_RETRIES ? false : POLL_INTERVAL_MS
+  }
+  const status = query.state.data?.status
+  if (status !== undefined && TERMINAL_STATUSES.has(status)) {
+    return false
+  }
+  return POLL_INTERVAL_MS
+}
+
+/**
+ * 일괄 작업 응답으로부터 진행률(0~1)을 계산한다.
+ * `totalCount`가 아직 없거나 0이면(0으로 나누기 방지) 계산할 수 없어 null.
+ *
+ * @param data 최신 조회 응답. 아직 없으면 undefined.
+ * @returns 0~1 진행률, 계산 불가 시 null
+ */
+export function calculateProgressRatio(data: BulkOperationResponse | undefined): number | null {
+  if (data === undefined || data.totalCount === 0) {
+    return null
+  }
+  return data.processedCount / data.totalCount
+}
+
+/**
  * 일괄 작업 진행률 폴링 query 훅.
  *
  * - `GET /api/v1/bulk-operations/{id}` 를 `POLL_INTERVAL_MS` 간격으로 반복 조회
- * - `status`가 COMPLETED 또는 FAILED(종단 상태)에 도달하면 폴링을 자동으로 중단한다
+ * - `computeRefetchInterval` 이 정한 조건(종료 상태·4xx·ZodError·5xx/네트워크 재시도 상한)에서
+ *   멈춘다
  * - `enabled=false` 또는 `id=null`이면 쿼리를 실행하지 않는다
  * - queryKey에 id를 포함해 작업별로 캐시를 분리한다
+ * - `retry: false` — react-query 내장 재시도 대신 `computeRefetchInterval` 로 재시도를
+ *   통일해, 호출 측 QueryClient 설정과 무관하게 훅 스스로 정지 조건을 보장한다
  *
  * @param id 조회할 일괄 작업 UUID. null이면 disabled.
  * @param enabled false이면 쿼리 비활성화
- * @returns TanStack Query useQuery 반환 객체
+ * @returns TanStack Query useQuery 반환 객체 + 진행률 파생값 `progressRatio`(0~1, 계산 불가 시 null)
  */
 export function useBulkOperationPolling(id: string | null, enabled: boolean) {
-  return useQuery<BulkOperationResponse>({
+  const query = useQuery<BulkOperationResponse>({
     queryKey: bulkOperationQueryKey(id),
     queryFn: () => fetchBulkOperation(id as string),
     enabled: enabled && id !== null,
-    refetchInterval: (query) => {
-      // 에러 상태에서는 무한 재시도를 방지하기 위해 폴링을 중단한다.
-      // (403 / 404 / 네트워크 에러 등)
-      if (query.state.status === 'error') {
-        return false
-      }
-      const status = query.state.data?.status
-      if (status !== undefined && TERMINAL_STATUSES.has(status)) {
-        return false
-      }
-      return POLL_INTERVAL_MS
-    },
+    retry: false,
+    refetchInterval: computeRefetchInterval,
   })
+
+  return {
+    ...query,
+    progressRatio: calculateProgressRatio(query.data),
+  }
 }
