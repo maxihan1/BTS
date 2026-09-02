@@ -261,6 +261,17 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 > - `SprintApplicationService.start()` — `findActiveByBoard` 활성 1개 가드가 이미 있다.
 > - `SprintExceptions.kt` · `SprintExceptionHandler.kt` — `SprintAlreadyActiveException`(409)과
 >   그 핸들러가 이미 들어와 있다. 아래 GREEN 의 「전용 핸들러 필수」에 **코드 선례가 생겼다**.
+>
+> 🛑 **앵커가 또 이동했다 (2026-09-02 갱신 · PR #424).** 착수 전 재확인은 이 상태를 기준으로 한다.
+> - 생성자에 **`boardRepository: BoardRepository` 가 6번째로 추가**됐다(`:63`). 테스트의
+>   `makeService` 헬퍼도 그 인자를 받으며 기본값이 있으므로 **기존 호출은 안 바꿔도 된다.**
+> - `create` 는 `resolveTargetBoard(projectKey, boardId)`(`:108` · 본체 `:423`)로 **보드 소속을
+>   검증**한다. 타 프로젝트·소프트 삭제 보드는 404 다. 이 task 는 `update` 만 건드리므로 무관하지만,
+>   **같은 파일의 예외 규약 선례**로 읽을 것 — `resolveTargetBoard` KDoc 이 「왜 `ResponseStatusException`
+>   이고 `BoardNotFoundException` 이 아닌가」를 핸들러 `assignableTypes` 로 설명한다.
+>   `SprintDateLockedException` 도 **같은 이유로 전용 핸들러가 필수**다.
+> - **삽입 지점** — `fun update` 는 `:154`, 복사 생성자의 `boardId = existing.boardId` 는 `:174`.
+>   날짜 잠금 판정은 **`:174` 보다 앞**, 즉 `update` 본문 진입 직후 권한 판정 뒤에 들어간다.
 
 **RED**:
 - COMPLETED 스프린트에 `endDate` 를 실어 `update` 하면 **400** 이어야 하는데 지금은 **200 이고 날짜가 바뀐다**.
@@ -300,7 +311,8 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - 확인 창이 상한 없이 잠긴다(장부 145) — 취소가 배선되면 실패가 즉시 도착해 창이 풀린다.
 
 **GREEN**:
-- `withDeleteTimeout` 을 `hooks/use-boards.ts:227` 에서 `lib/delete-timeout.ts` 로 옮긴다.
+- `withDeleteTimeout` 을 `hooks/use-boards.ts:253` 에서 `lib/delete-timeout.ts` 로 옮긴다.
+  (앵커 갱신 2026-09-02 — 계획 작성 시 `:227` 이었고 #424 가 26줄 밀었다. 호출부는 `:287`.)
   **사본을 만들지 않는다** — 스프린트 삭제가 같은 것을 쓴다.
 - `Promise.race` 를 `AbortController` 로 교체하고 `fetch` 에 `signal` 을 넘긴다.
   `deleteBoard` 시그니처가 `signal` 을 받도록 확장한다.
@@ -318,21 +330,43 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/backlog.ts`, `apps/web/src/api/backlog.test.ts`, `apps/web/src/hooks/use-backlog.ts`, `apps/web/src/hooks/use-backlog.test.tsx`, `apps/web/src/mocks/handlers.ts`]
+- files: [`apps/web/src/api/backlog.ts`, `apps/web/src/api/backlog.test.ts`, `apps/web/src/hooks/use-backlog.ts`, `apps/web/src/hooks/use-backlog.test.tsx`, `apps/web/src/mocks/backlog-handlers.ts`]
 - depends-on: [2]
 - jira: [J3]
 
+> 🛑 **무효화 지시가 뒤집혔다 (2026-09-02 갱신 · PR #424).** 아래 종전 ★ 문단은 **틀렸고 위험하다.**
+> 그대로 쓰면 컴파일도 안 되고, 컴파일을 통과시키려 인자를 맞추면 **#424 가 잡은 BLOCKER 를 재현**한다.
+>
+> | | 계획 작성 시점 | 지금(실측) |
+> |---|---|---|
+> | `backlogKeys` | `detail` 하나뿐 · 1인자 | `detail(projectKey, boardId)` **2인자 필수** + `project(projectKey)` **접두 키** |
+> | 무효화 방법 | `detail` 완전 일치 1회 | `project` **접두** + `boardKeys.all` |
+> | 파일 앵커 | `use-backlog.ts:32-39` | `backlogKeys` `:40-67` · `updateSprint` `api/backlog.ts:360`(계획 `:337`) |
+> | MSW 파일 | `mocks/handlers.ts` | **`mocks/backlog-handlers.ts`** (`resolveBoardScope` `:241`) |
+>
+> **`detail` 로 무효화하지 마라.** 그 키는 **읽기 전용**이고 보드마다 값이 다르다 — 완전 일치라
+> 지금 보고 있지 않은 보드의 백로그 캐시가 **조용히 낡은 채로 남는다**. #424 의 BLOCKER-1 이
+> 정확히 이 양식이었다(409 복구가 무음으로 멈춤). `backlogKeys` KDoc 이 *"🛑 조회에 쓰지 마라"* ·
+> *"무효화 전용"* 으로 두 키의 용도를 이미 갈라 놨다.
+
 **RED**: `deleteSprint` 가 없다. `DELETE /api/v1/sprints/{id}` 호출 · 404·403 매핑 · 성공 시
 스프린트 목록과 백로그 목록 **양쪽** 무효화를 단언한다.
+★ **보드 축을 단언에 넣는다** — 지금 보고 있는 보드가 아닌 보드의 백로그도 무효화되는지 본다.
+그 단언이 없으면 완전 일치로 되돌려도 red 가 안 난다.
 
 **GREEN**:
-- `deleteSprint(sprintId, signal)` 추가. 기존 `updateSprint(:337)` 의 에러 매핑 관례를 따른다.
+- `deleteSprint(sprintId, signal)` 추가. 기존 `updateSprint`(`api/backlog.ts:360`)의 에러 매핑 관례를 따른다.
 - `useDeleteSprint` — Task 2 의 공용 타임아웃을 씌우고 **invalidate-only**.
-  ★ **무효화 키는 하나뿐이다** — `backlogKeys`(`use-backlog.ts:32-39`)에 `detail` 만 있고
-  스프린트와 백로그 이슈가 **같은 `fetchBacklog(projectKey)` 응답**에서 온다.
-  `invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })` 한 번이 양쪽을 덮는다.
-  **별도의 스프린트 키를 찾지 말 것** — 없다(리뷰 E2).
-- MSW 핸들러 + 실패 픽스처.
+  ★ **기존 헬퍼를 쓴다. 새 무효화 코드를 쓰지 마라** —
+  `invalidateAfterSprintTransition(queryClient, projectKey)`(`use-backlog.ts:281`)가
+  `backlogKeys.project` 접두 + `boardKeys.all` 을 이미 함께 덮는다. `useStartSprint`(`:308`)와
+  `useCompleteSprint` 가 같은 것을 쓰므로 **세 상태 전환의 무효화 규약이 한 자리에 남는다** —
+  사본을 만들면 그 순간 갈라진다.
+  ★ **보드도 함께 무효화돼야 한다.** 스프린트를 지우면 그 스프린트를 그리던 스크럼 보드가
+  즉시 바뀌어야 하는데, `useBoard` 는 `staleTime: 30_000` 이라 보드 키를 안 건드리면
+  **최대 30초간 없는 스프린트를 보여준다**(#424 가 `useStartSprint` 에서 고친 것과 같은 결함).
+- MSW 핸들러 + 실패 픽스처. ★ `backlog-handlers.ts` 는 이제 `?board=` 를 읽는다(`resolveBoardScope :241`) —
+  삭제 핸들러도 그 스코프 규약 안에서 동작해야 한다.
 
 **REFACTOR**: 무효화 키 목록을 상수로.
 
@@ -355,7 +389,8 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 
 **GREEN**:
 - `StartSprintDialog` 의 폼을 `SprintForm` 으로 추출해 **공유**한다. 신규 폼을 만들지 않는다(NFR-1).
-- ★ **추출 후 크기를 잰다.** `StartSprintDialog.tsx` 는 지금 **534줄**로 §2.2 상한의 2.6배다.
+- ★ **추출 후 크기를 잰다.** `StartSprintDialog.tsx` 는 지금 **553줄**로 §2.2 상한의 2.8배다.
+  (실측 갱신 2026-09-02 — 계획 작성 시 534줄이었고 #424 가 +19 했다.)
   폼을 뺀 뒤에도 200줄을 넘으면 **그 사실을 게이트 2 요약에 싣는다** — 이 PR 이 상한 위반을
   새로 만들지는 않지만, 줄었는지 늘었는지는 기록에 남긴다(리뷰 E3).
 - `EditSprintDialog` 는 그 폼 + `useUpdateSprint`(기존) + `version` 낙관적 락을 쓴다.
@@ -370,7 +405,8 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
   ★★ **동등이 아니라 부분문자열이 위험하다.** 계약 §2 의 `검색` ↔ `전역 검색` 선례가 같은 양식이고,
   그 면제는 **`exact: true` 유지를 조건으로** 승인됐다. 새 이름이 기존 두 이름의 부분문자열이거나
   그 반대가 되지 않는지 확인하고, 새 셀렉터에도 `exact: true` 를 단다(리뷰 D2).
-- ⚠️ **`StartSprintDialog.test.tsx:317·372·499` 는 이름 없는 `screen.getByRole('dialog')`** 다.
+- ⚠️ **`StartSprintDialog.test.tsx:339·394·557` 은 이름 없는 `screen.getByRole('dialog')`** 다.
+  (앵커 갱신 2026-09-02 — 계획 작성 시 `:317·372·499`. `backlog.spec.ts:524·529` 는 **불변 확인**.)
   추출로 렌더 트리가 바뀌면 다중 매치가 날 수 있다 — **이 3줄을 이름 있는 셀렉터로 좁힌다.**
 
 **REFACTOR**: 라벨을 `backlog-labels.ts` 로 모은다.
@@ -422,9 +458,17 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - files: [`apps/web/src/components/board/CreateBoardForm.tsx`, `apps/web/src/components/board/CreateBoardForm.test.tsx`]
 - depends-on: []
 
+> ⚠️ **파일이 재작성됐지만 부채는 살아 있다 (2026-09-02 실측 · PR #422).** `CreateBoardForm.tsx` 는
+> 2단계 마법사가 되며 **164 → 360줄**이 됐고, #422 는 인트로 **문구**만 `showEmptyStateIntro &&
+> step === 'type'`(`:269`)으로 조건부화했다. 그런데 여백을 만드는 것은 그 문구가 아니라
+> **바깥 컨테이너**(`:268` `min-h-48 gap-6 p-8 justify-center`)이고 그것은 **여전히 무조건** 붙는다.
+> 장부 147 은 유효하다 — 「해소됐겠지」로 지우지 말 것.
+
 **RED**(동반 테스트): `showEmptyStateIntro={false}` 일 때 빈 상태용 여백 클래스가 붙지 않는다.
 
-**GREEN**: 여백을 `showEmptyStateIntro` 에 묶는다. 다이얼로그 안에서는 축소.
+**GREEN**: 컨테이너(`:268`)의 여백을 `showEmptyStateIntro` 에 묶는다. 다이얼로그 안에서는 축소.
+★ **2단계 양쪽을 본다** — `step === 'type'` 과 `step === 'name'` 에서 각각 확인한다.
+문구는 1단계에만 뜨므로 2단계에서 여백만 남는 경로가 따로 있다.
 
 **검증**:
 - `pnpm --filter web test -- CreateBoardForm`
@@ -455,9 +499,19 @@ soft delete 라 데이터도 남아 있다. **이 PR 에서 건드리지 않는�
 - depends-on: [5]
 - jira: [J2, J4]
 
-> 🛑 **이 task 가 이 PR 전체의 홀드 사유다 (2026-09-01 2차).** FR-BD-04 D6(PR ③)이 백로그를
-> `?board=<id>` 스코프로 바꾼다 — 이 스펙이 그 화면 위에서 돈다. **D6 보다 먼저 쓰면 두 번 쓴다.**
-> ADR 「깨질 수 있는 것」 목록에 `backlog.spec.ts` 가 명시돼 있고, 이 스펙도 같은 진입 경로다.
+> ✅ **홀드 해소 (2026-09-02).** 이 task 가 기다리던 FR-BD-04 D6 PR ③ 이 머지됐다(#424 `bb8d2945d`).
+> 이제 백로그는 `?board=<id>` 스코프이며 **그 위에서 한 번만 쓴다.**
+>
+> **그대로 재사용할 자산 2종** — 둘 다 이번 대기 중에 생겼고, 복제하지 말고 import 한다.
+> - `apps/web/e2e/fixtures/board-helpers.ts`(#422) — `selectBoardType` · `goToBoardNameStep`.
+>   보드를 만들어 두고 시작해야 하는 시나리오가 이것을 쓴다.
+> - `apps/web/e2e/scrum-board.spec.ts`(#424) — 「한 줄기」 구조와 **`page.waitForRequest` 로
+>   재요청을 직접 관측**하는 양식. 삭제 뒤 백로그·보드가 실제로 다시 불렸는지를 렌더 단언과
+>   **별개 축으로** 잡는다. ★ 판정식은 `pathname` **완전 일치**로 쓴다 — 느슨한 `includes` 는
+>   기본 보드 조회가 대신 만족시켜 관측점이 증발한다(#424 실측).
+>
+> ★ **진입 URL 에 `?board=` 를 명시한다.** 생략하면 서버가 기본 보드로 폴백하는데 **응답에 그
+> 사실이 없어**(#424 C5) 어느 보드를 보고 있는지 스펙이 확정하지 못한다.
 
 **RED**(동반 테스트):
 - 편집 → 이름이 헤더에서 바뀐다.
@@ -691,3 +745,72 @@ Maxi 의 두 번째 질문(「프로젝트에 다수 보드가 존재할 수 있
   바꾸므로 **D6 PR ③ 뒤로** 미룬다(T8 E2E 이중 작성 회피). E1 은 `apiFetch` 확장으로 확정 해소.
 
 NO UNRESOLVED DECISIONS
+
+---
+
+## 재개 (2026-09-02) — 홀드 해소 + 앵커 전수 재측정
+
+**기다리던 것이 왔다.** FR-BD-04 D6 PR ③ 이 머지됐다(#424 `bb8d2945d` · 2026-09-02T04:08:56Z).
+백로그가 `?board=<id>` 스코프로 바뀌었고, 이 PR 의 Task 5·8 이 그 위에서 돈다.
+`git rebase origin/main` 1회 완료(충돌은 예측대로 자동 생성 INDEX 3종뿐 · 병합하지 않고
+`build-doc-index.mjs` 재생성으로 덮었다).
+
+### 실측 재측정 — 전수 대조
+
+계획이 기록한 값을 **하나도 믿지 않고 다시 쟀다.** 「재확인했다」가 아니라 「무엇이 바뀌었는지」가
+아래 표다.
+
+| 항목 | 계획 기록 | 실측(2026-09-02) | 판정 |
+|---|---|---|---|
+| `api/client.ts` 의 `signal` | 부재 | **여전히 0건** | ✅ E1 결정 유효 |
+| `SprintColumnHeader.tsx` | 162줄 | **162줄** | ✅ 불변 |
+| `BoardRepository.kt` | 439줄 | **439줄** | ✅ 불변 |
+| `backlog.spec.ts` dialog 셀렉터 | `:524·529` | **`:524·529`** | ✅ 불변 |
+| `StartSprintDialog.tsx:75` 부분저장 주석 | `:75` | **`:75`** | ✅ 불변 |
+| `useProjectPermissions` | 존재 | **존재**(`use-project-permissions.ts:31`) | ✅ 불변 |
+| `withDeleteTimeout` | `use-boards.ts:227` | **`:253`** | ⚠️ 앵커 이동 |
+| `StartSprintDialog.tsx` | 534줄 | **553줄** | ⚠️ +19 |
+| `StartSprintDialog.test.tsx` 무명 dialog | `:317·372·499` | **`:339·394·557`** | ⚠️ 앵커 이동 |
+| `updateSprint` | `api/backlog.ts:337` | **`:360`** | ⚠️ 앵커 이동 |
+| `CreateBoardForm.tsx` | 164줄 · 여백 무조건 | **360줄** · 문구만 조건부 · **여백은 여전히 무조건** | ⚠️ 재작성됐으나 **장부 147 유효** |
+| **`backlogKeys`** | **`detail` 하나 · 1인자** | **`detail(pk, boardId)` 2인자 필수 + `project` 접두** | 🛑 **지시가 틀림** |
+| **Task 3 MSW 파일** | **`mocks/handlers.ts`** | **`mocks/backlog-handlers.ts`**(`resolveBoardScope :241`) | 🛑 **경로가 틀림** |
+| `SprintApplicationService` 생성자 | 5인자 | **6인자**(`boardRepository` 추가 `:63`) | ⚠️ `update` `:154` · 복사 `:174` |
+
+### 🛑 가장 중요한 정정 — Task 3 의 무효화
+
+계획은 *"무효화 키는 하나뿐이다 … `backlogKeys.detail(projectKey)` 한 번이 양쪽을 덮는다"* 라고
+적었다. **지금 그대로 쓰면 컴파일이 안 되고, 인자를 맞춰 통과시키면 #424 가 잡은 BLOCKER 를
+그대로 재현한다** — `detail` 은 보드마다 값이 다른 **완전 일치** 키라서, 지금 보고 있지 않은
+보드의 백로그 캐시가 조용히 낡은 채로 남는다.
+
+처방은 **새 코드를 쓰지 않는 것**이다. `invalidateAfterSprintTransition(queryClient, projectKey)`
+(`use-backlog.ts:281`)가 `backlogKeys.project` **접두** + `boardKeys.all` 을 함께 덮고,
+`useStartSprint`·`useCompleteSprint` 가 이미 그것을 쓴다. `useDeleteSprint` 도 같은 것을 쓰면
+**세 상태 전환의 무효화 규약이 한 자리에 남는다.**
+
+`boardKeys.all` 이 함께 필요한 이유도 #424 가 실측했다 — `useBoard` 의 `staleTime` 이 30초라
+보드 키를 안 건드리면 **스프린트를 지운 뒤에도 최대 30초간 없는 스프린트를 보여준다.**
+
+### task 별 영향 요약
+
+| task | 영향 | 조치 |
+|---|---|---|
+| T1 백엔드 날짜 잠금 | 생성자 6인자 · 삽입 지점 이동 | 앵커 갱신 ✅ · 범위 불변 |
+| T2 삭제 타임아웃 | 앵커 26줄 이동 | 앵커 갱신 ✅ · 범위 불변 |
+| **T3 deleteSprint** | **무효화 지시가 틀림 · MSW 경로가 틀림** | **본문 재작성 ✅** |
+| T4 SprintForm 추출 | 원본 +19줄 · 테스트 앵커 이동 | 숫자·앵커 갱신 ✅ · 범위 불변 |
+| T5 `⋯` 메뉴 | 대상 파일 불변(162줄) | 무변경 |
+| T6 다이얼로그 여백 | 파일 재작성(360줄)됐으나 **부채 유효** | 주의 블록 추가 ✅ |
+| T7 죽은 변수 | 무관 | 무변경 |
+| **T8 E2E** | **홀드 사유 해소** · `?board=` 위에서 씀 | **재사용 자산 2종 명시 ✅** |
+| T9 문서 동기화 | `BoardRepository` 439줄 **불변**(재측정) | 무변경 |
+
+**task 수 9 · wave 4 불변. 신규 FR 0 · 총수 144 불변.**
+
+### 게이트 1 재진입 사유
+
+게이트 1 은 **보류**였지 승인이 아니었다. 보류 사유(D6 선행)가 사라졌고 계획이 위와 같이
+갱신됐으므로 게이트 1 을 다시 받는다. 리뷰 렌즈 2종(design ✅ CLEAR · eng ⚠️ CONCERNS)의
+판정은 그대로 유효하다 — E1 은 게이트 1 에서 확정 해소됐고, 이번 갱신은 **앵커 정정과
+Task 3 의 무효화 규약 교체**이며 둘 다 #424 의 머지된 리뷰 결론에서 직접 나왔다.
