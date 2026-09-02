@@ -33,14 +33,22 @@ export class DeleteTimeoutError extends Error {
 }
 
 /**
- * 삭제 요청에 [DELETE_TIMEOUT_MS] 상한을 씌우고, 상한을 넘기면 **요청 자체를 취소한다.**
+ * 삭제 요청에 [DELETE_TIMEOUT_MS] 상한을 씌우고, 상한을 넘기면 **요청을 취소하면서 동시에
+ * 반환 Promise 를 거절한다.** 둘 중 하나만 해서는 안 된다.
  *
- * 상한만 재고 요청을 살려 두면(예: `Promise.race`) 화면은 실패로 돌아섰는데 서버는 계속 지우는
- * 상태가 남는다. 그래서 `request` 는 Promise 가 아니라 **signal 을 받는 함수**다 — 취소 신호를
- * 넘길 자리가 없으면 애초에 끊을 방법이 없다.
+ * **취소해야 하는 이유.** 상한만 재고 요청을 살려 두면 화면은 실패로 돌아섰는데 서버는 계속
+ * 지우는 상태가 남는다. 그래서 `request` 는 Promise 가 아니라 **signal 을 받는 함수**다 —
+ * 취소 신호를 넘길 자리가 없으면 애초에 끊을 방법이 없다.
+ *
+ * **거절도 함께 내야 하는 이유.** abort 전파 하나에 기대면, 요청이 abort 를 관측하지 않는 구간에
+ * 걸려 있을 때 반환 Promise 가 **영원히 pending 으로 남아** 확인 창이 무기한 잠긴다. `apiFetch` 의
+ * 401 경로가 실제로 그런 구간이다 — refresh 대기(`api/client.ts` 의 `doRefresh`)에는 signal 이
+ * 실리지 않는다. refresh Promise 가 여러 요청이 공유하는 전역 lock 이라 한 요청의 abort 로 죽일 수
+ * 없기 때문이고, 그 판단은 옳다. 그래서 상한이 스스로 거절을 낸다.
+ * 금지되는 것은 `Promise.race` 자체가 아니라 **abort 없이 상한만 재는 것**이다.
  *
  * `request` 는 signal 을 실제 요청까지 이어줘야 한다(`api/client.ts` 의 `ApiFetchOptions.signal`).
- * 이어주지 않으면 abort 가 아무 일도 하지 않아 반환된 Promise 가 영원히 pending 으로 남는다.
+ * 이어주지 않으면 abort 가 아무 일도 하지 못해 요청이 서버에서 계속 살아 있다.
  *
  * @param request 취소 신호를 받아 삭제 요청을 시작하는 함수
  * @returns 요청이 상한 안에 끝났을 때의 결과
@@ -50,14 +58,23 @@ export async function withDeleteTimeout<T>(
   request: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), DELETE_TIMEOUT_MS)
+  // 타이머는 이 executor 안에서만 만든다 — abort 와 거절이 **같은 자리**에 있어야
+  // 한쪽만 남기는 수정이 나오지 않는다.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new DeleteTimeoutError())
+    }, DELETE_TIMEOUT_MS)
+  })
 
   try {
-    return await request(controller.signal)
+    return await Promise.race([request(controller.signal), expiry])
   } catch (cause) {
-    // 상한이 끊은 요청은 플랫폼의 AbortError 로 실패한다. 그 원문을 그대로 흘리면 소비자가
-    // 「서버가 준 실패」와 구별할 수 없으므로 사유를 이 헬퍼의 타입으로 옮긴다.
-    // 상한을 넘기지 않았다면 요청 자신의 실패이므로 덮지 않는다.
+    // 상한이 끊은 요청은 플랫폼의 AbortError 로 실패한다. abort 는 동기로 전파되므로 위 race 에서
+    // 요청이 그 사유로 **먼저** 지는 경로가 여전히 있다(상한이 스스로 거절을 내도 마찬가지다).
+    // 그 원문을 그대로 흘리면 소비자가 「서버가 준 실패」와 구별할 수 없으므로 사유를 이 헬퍼의
+    // 타입으로 옮긴다. 상한을 넘기지 않았다면 요청 자신의 실패이므로 덮지 않는다.
     //
     // 판정 근거는 signal 하나다. 이 controller 는 여기서만 만들고 여기서만 abort 하므로
     // `aborted` 가 곧 「상한이 끊었다」이고, 별도 플래그를 두면 같은 사실의 장부가 둘이 된다.
