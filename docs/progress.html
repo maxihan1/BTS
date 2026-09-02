@@ -1661,11 +1661,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">120</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 86건 · 전체 206건</span>
+      <span class="big-pct" style="color:#9ca3af;">118</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 90건 · 전체 208건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 120건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">27건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 118건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">24건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 접힘 레일에서 「최근 항목」 접근 경로 (FR-UX-08 PR-B 의 <b>의도된 대가</b> · 미착수 · T1)</span></div>
@@ -1909,37 +1909,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
       </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 보드를 지우겠다고 확인을 누른 뒤 서버 응답이 늦으면, 그동안은 취소도 Esc 도 먹지 않고 창이 잠긴다. 지금은 10초가 지나면 자동으로 풀린다.</p>
-        <p class="todo-risk"><b>방치하면.</b> 보드 삭제 경로는 10초 상한이 있어 갇히지 않는다. 다만 <code>ConfirmDialog</code> 를 쓰는 <b>다른 소비처는 상한이 없어</b> 응답이 영영 안 오면 창에서 못 빠져나온다. 오늘 실제 피해 보고는 0 이다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/components/ui/confirm-dialog.tsx</code> 의 <code>confirming</code> 은 확인 버튼만이 아니라 취소·Esc·오버레이·X 를 <b>전부</b> 잠근다. 실패가 갈 곳을 구조적으로 보장하려는 설계이고, KDoc 이 <i>&quot;파괴적 조작이고 이미 확인을 누른 뒤라 기다림은 짧다&quot;</i> 를 <b>전제</b>로 명시한다. 네트워크 장애로 그 전제가 깨지면 탈출구가 없다. 보드 삭제는 <code>useDeleteBoard</code> 의 <code>DELETE_BOARD_TIMEOUT_MS</code> 로 소비자 쪽에서 상한을 걸어 풀었으나(PR 「보드 CRUD 회수」), 프리미티브 자체는 그대로다. 프리미티브에 상한을 넣을지, 소비처마다 걸지가 결정 대상이다.</p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 삭제 타임아웃이 이미 나간 요청을 취소하지 않는다 (신규 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 보드 삭제가 10초를 넘기면 화면은 실패로 보이지만, 서버로 간 삭제 요청은 그대로 살아 있어 실제로는 지워질 수 있다.</p>
-        <p class="todo-risk"><b>방치하면.</b> 화면에는 「실패」가 뜨는데 보드는 사라진다. 목록을 다시 불러오면 상태가 맞춰지므로 데이터가 깨지지는 않지만, 그 사이 사용자가 다시 시도하면 이미 없는 보드에 404 를 본다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — apps/web — 삭제 타임아웃이 이미 나간 요청을 취소하지 않는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/hooks/use-boards.ts</code> 의 <code>withDeleteTimeout</code> 이 <code>Promise.race</code> 로만 끊는다. <code>apps/web/src/api/boards.ts</code> 의 <code>apiFetch</code> 에 <code>AbortSignal</code> 배선이 없어 요청 자체를 취소할 수단이 없기 때문이다. abort 를 도입하려면 <code>apiFetch</code> 전면 변경이라 소비처 전수 영향이 있다.</p></div>
-      </details>
-    </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 「새 보드」 다이얼로그가 빈 상태용 여백을 그대로 쓴다 (신규 · 미착수 · T0)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 보드를 새로 만드는 창의 위아래 공백이 필요 이상으로 넓다.</p>
-        <p class="todo-risk"><b>방치하면.</b> 보기에만 어색하고 동작에는 문제가 없다. 오늘 실제 피해는 0 이다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — apps/web — 「새 보드」 다이얼로그가 빈 상태용 여백을 그대로 쓴다 (신규 · 미착수 · T0)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/components/board/CreateBoardForm.tsx</code> 가 빈 상태 화면용 <code>min-h-48 p-8</code> 래퍼를 갖고 있고, 다이얼로그가 그 폼을 재사용한다. PR 「보드 CRUD 회수」는 <code>showEmptyStateIntro</code> prop 으로 <b>문구만</b> 껐고 레이아웃은 손대지 않았다 — 그 PR 의 C1 범위가 인트로 제거뿐이었기 때문이다.</p></div>
-      </details>
-    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">17건</span></h3>
+    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">19건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">issue-tracking — OpenAPI required 오표기 <b>잔여 26 프로퍼티</b> + 전수 판별식 부재 (선재 · 미착수 · T2)</span></div>
@@ -2111,7 +2081,27 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — project-workflow — 아카이브된 프로젝트의 이슈가 워크플로우에 없는 상태로 남는다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> 아카이브 프로젝트의 이슈는 <code>BulkItemApplier</code> 의 아카이브 가드가 변경을 거부한다. 로드맵 PR 7b 는 그 이슈를 <b>카운트에서는 빼고 이관 범위에는 넣는</b> 쪽을 택했다. 카운트에 넣으면 영원히 안 옮겨지는 이슈가 카운트에 계속 잡혀 <b>발행이 관리자가 풀 수 없는 상태로 막히고</b>, 범위에서까지 빼면 그 이슈가 <b>조용히 사라진다.</b> 범위에 넣어 두면 <code>bulk_operation_items</code> 에 <code>PROJECT_ARCHIVED</code> 로 남아 「몇 건이 왜 안 옮겨졌는지」를 셀 수 있다.</p><p><b>즉 이 항목은 「유령을 없앴다」가 아니라 「조용하지 않게 만들었다」의 잔여다.</b> 셀 수 있게 됐을 뿐 유령은 그대로 있다.</p><p><b>처방.</b> 아카이브 해제 시점에 워크플로우 밖 상태를 가진 이슈를 찾아 재이관하거나 관리자에게 알린다. 아카이브 해제는 issue-tracking 소관이라 <b>트리거를 어느 BC 에 둘지부터</b> 정해야 한다.</p><p><b>선행.</b> 로드맵 PR 7b(상태 이관 결선).</p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">56건</span></h3>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">agile-planning — 스프린트에 담아 둔 이슈가 지워져도 그 할당 행이 표에 남는다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 어떤 이슈를 스프린트에 넣어 둔 뒤 그 이슈를 지우면, 「이 이슈는 이 스프린트 소속」이라는 기록만 표에 그대로 남는다. 화면에는 안 보이지만 지워지지도 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면에는 아무 영향이 없다 — 백로그 조회가 볼 수 없는 이슈를 걸러 내기 때문이다. 다만 그 기록이 계속 쌓이고, <code>issue_key</code> 가 전역 UNIQUE 라 <b>같은 키를 다른 스프린트에 다시 담을 수 없는 상태</b>가 화면에서 지울 방법 없이 남는다. 오늘 실제 피해 보고는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — agile-planning — 스프린트에 담아 둔 이슈가 지워져도 그 할당 행이 표에 남는다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>V503__sprints.sql:39-46</code> 의 <code>sprint_issues</code> 는 <code>issue_key VARCHAR(20)</code> 문자열을 들고 있고 issue-tracking <code>issues</code> 로 가는 FK 가 없다(BC 격리 — 같은 파일 주석이 근거를 적는다). <code>sprint_id</code> 쪽만 <code>ON DELETE CASCADE</code> 라 스프린트를 지우면 함께 사라지지만 <b>이슈 쪽에는 아무 연결도 없다.</b> issue-tracking 의 <code>DELETE /api/v1/issues/{key}</code>(<code>IssueController.kt:857</code>)는 소프트 삭제이고, <code>agile-planning</code> 모듈 main 소스에는 이벤트 소비자가 <b>하나도 없다</b>(<code>application</code> · <code>domain</code> · <code>repository</code> · <code>web</code> 넷뿐). 그래서 삭제 사실이 이 BC 에 도달하지 않는다. <code>BacklogApplicationService</code> 는 lookup 결과에 없는 이슈를 응답에서 빼므로(그 파일 KDoc 이 「비가시 이슈 누출 차단」으로 명시) 고아 행은 <b>조회에서만</b> 보이지 않을 뿐 표에서는 살아 있다. 위생 잡도, 정리 경로도 없다.</p><p><b>처방.</b> 결정이 먼저다 — ① issue-tracking 삭제 이벤트를 pgmq 로 받아 지우거나 ② 주기 위생 잡으로 lookup 에 없는 <code>issue_key</code> 를 정리하거나 ③ 고아를 정상으로 보고 <code>issue_key</code> 의 전역 UNIQUE 를 재고한다. ①은 BC 간 이벤트 신설이라 T2 이상이다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">agile-planning — <code>BoardRepository.kt</code> 가 파일 줄수 상한을 크게 넘는다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드 데이터를 다루는 파일 하나가 규칙으로 정한 길이의 한참 위다. 사람도 도구도 한 번에 읽기 어렵다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 동작에는 문제가 없다. 다만 이 파일을 고치는 작업마다 읽어야 할 양이 늘고, 병렬 작업이 같은 파일에 몰려 머지 충돌이 난다. 오늘 실제 피해 보고는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — agile-planning — `BoardRepository.kt` 가 파일 줄수 상한을 크게 넘는다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>DEVELOPMENT.md §2.1</code> 이 「함수 30줄 이내, 파일 300줄 이내」를 적는다. <code>backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt</code> 는 <b>439줄</b>이다(2026-09-02 실측 · <code>wc -l</code>). PR #421 이 보드 종류·활성 스프린트 스키마를 실으면서 이 파일을 밀어 올렸다. 백엔드에는 <code>apps/web</code> 같은 줄수 래칫이 없어 초과가 기계로 잡히지 않는다. 장부 <code>65</code> 와 같은 규칙을 건드리지만 표면이 다르다 — 그쪽은 <b>계획 문서의 숫자가 실측과 갈렸다</b>는 지적이고 이쪽은 <b>이 파일을 쪼갠다</b>는 상환이다.</p><p><b>처방.</b> 조회 계열과 쓰기 계열을 갈라 파일을 나눈다. 나누기 전에 이 BC 의 다른 리포지터리가 어떤 축으로 갈라져 있는지부터 본다 — 축이 파일마다 다르면 그것 자체가 다음 부채다.</p></div>
+      </details>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">55건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)</span></div>
@@ -2647,16 +2637,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="todo-body"><p><b>무엇.</b> <code>backend/modules/project-workflow/.../WorkflowController.kt</code> 와 <code>WorkflowStatusCompositionController.kt</code> 의 <code>@RequestBody</code> 에 <code>@Valid</code> 가 없고 클래스 레벨 <code>@Validated</code> 도 전역 <code>MethodValidationPostProcessor</code> 도 0건이다(보안 재리뷰 실측). 따라서 <code>CreateWorkflowRequest.key</code> 의 <code>@NotBlank @Size(max=100)</code> 이 아무도 안 읽는 장식이다. <code>@Pattern</code> 도 없고 도메인 <code>Workflow.of()</code> 에도 key 형식 검사가 없어 <b><code>key = &quot;../../users&quot;</code> 인 워크플로우를 만들어 저장할 수 있다.</b> PR #400 이 프론트에서 <code>encodeURIComponent</code> 로 막았지만 근본은 백엔드다. MEMORY <code>decorative-annotation-copied-from-sibling</code> 양식이다.</p><p><b>처방.</b> <code>@Valid</code> 를 붙이고 red 를 한 번 눈으로 본 뒤(안 그러면 또 장식이다), key 에 <code>@Pattern</code> 을 건다. 도메인 invariant 로 올리는 편이 더 낫다.</p></div>
       </details>
     </div><div class="todo-entry">
-      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — classify-task 의 detectType 에 쓰이지 않는 지역 변수가 있다 (선재 · 미착수 · T1)</span></div>
-      <div class="todo-plain">
-        <p class="todo-easy"><b>쉬운 말.</b> 작업 종류를 판정하는 코드 안에 만들어 놓고 한 번도 쓰지 않는 변수가 하나 있다.</p>
-        <p class="todo-risk"><b>방치하면.</b> 동작에는 영향이 없다. 다만 다음 사람이 그 변수를 「무언가를 하는 것」으로 오해해 조건을 잘못 얹을 수 있다. 오늘 실제 피해는 0 이다.</p>
-      </div>
-      <details class="todo-item">
-        <summary aria-label="기술 상세 — 워크플로우 — classify-task 의 detectType 에 쓰이지 않는 지역 변수가 있다 (선재 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
-        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/classify-task.ts</code> 의 <code>detectType</code> 안에 <code>const lower = raw.toLowerCase()</code> 가 있는데 함수 본문은 전부 <code>stripped</code> 를 쓴다. PR 「보드 CRUD 회수」의 Task 8 이 같은 함수를 고치다 발견했고, 선재 dead code 라 그 PR 범위 밖으로 두고 보고만 했다.</p></div>
-      </details>
-    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — Jira 대조 가드가 절 안의 HTML 주석까지 본문으로 세어 면제가 오발동한다 (신규 · 미착수 · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 계획 문서가 지라 대조를 제대로 했는지 검사하는 장치가, 화면에 안 보이는 주석까지 본문으로 읽는다. 그래서 주석만 있어도 검사를 통과시킬 수 있다.</p>
@@ -2887,8 +2867,48 @@ ln -s /Users/maxi.moff/Projects/BTS/apps/web/node_modules   .worktrees/&lt;slug&
         <div class="todo-body"><p><b>무엇.</b> <code>~/.claude/plans/cozy-hatching-otter.md</code> §PR 분해 의 10행 표는 PR 8~10 을 전부 <code>/admin/workflows</code>(워크플로우 관리 화면) 쪽에 배정한다. 그런데 <code>docs/plan/product/project-workflow.md</code> §2.5 의 <b>FR-WF-05 D6·D7</b>(이슈 상세 상태 드롭다운)은 그 세 PR 어디에도 없다. 같은 로드맵 §검증 「전체 완료 기준 눈확인」 8번이 그 화면을 문장으로 언급하지만 <b>PR 칸이 없어</b> 어느 PR 의 범위도 되지 못했다.</p><p><b>★이 항목을 만든 PR 이 그 마커를 닫았다.</b> 배정이 없어 「다음 큰 덩어리」를 고르는 자리에서 매번 건너뛰어졌고, 백엔드(#395)가 열린 뒤 화면만 없는 채로 남아 있었다. 드러난 계기도 로드맵 대조가 아니라 <b>손으로 두 문서를 나란히 편 것</b>이다.</p><p><b>★지배 결함 양식이다.</b> 두 목록이 서로를 검사하지 않는다. 처방도 그 양식 그대로다 — ① 로드맵 PR 표가 덮는 FR·D 마커 합집합과 <code>docs/plan/product/*.md</code> 의 D 마커 전량 사이 <b>차집합 판별식</b> ② 비-공허 짝(마커 하나를 빼면 red) ③ 판별식 CI 등재.</p><p><b>★먼저 정할 것이 있다.</b> 로드맵 정본이 저장소 <b>밖</b>(<code>~/.claude/plans/</code>)이라 판별식이 읽을 수 없다. 저장소 안으로 옮길지, 옮긴다면 <code>docs/plans/</code> 인지 별도 자리인지가 선행 결정이다. <b>자의로 정하지 않는다.</b></p></div>
       </details>
     </div></div>
-    <h2>✅ 해소된 것 — 86건</h2>
+    <h2>✅ 해소된 것 — 90건</h2>
     <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드를 지우겠다고 확인을 누른 뒤 서버 응답이 늦으면, 그동안은 취소도 Esc 도 먹지 않고 창이 잠긴다. 지금은 10초가 지나면 자동으로 풀린다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 보드 삭제 경로는 10초 상한이 있어 갇히지 않는다. 다만 <code>ConfirmDialog</code> 를 쓰는 <b>다른 소비처는 상한이 없어</b> 응답이 영영 안 오면 창에서 못 빠져나온다. 오늘 실제 피해 보고는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 삭제 확인 중 응답이 안 오면 정해진 시간 동안 창을 닫을 수 없다 (신규 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/components/ui/confirm-dialog.tsx</code> 의 <code>confirming</code> 은 확인 버튼만이 아니라 취소·Esc·오버레이·X 를 <b>전부</b> 잠근다. 실패가 갈 곳을 구조적으로 보장하려는 설계이고, KDoc 이 <i>&quot;파괴적 조작이고 이미 확인을 누른 뒤라 기다림은 짧다&quot;</i> 를 <b>전제</b>로 명시한다. 네트워크 장애로 그 전제가 깨지면 탈출구가 없다. 보드 삭제는 <code>useDeleteBoard</code> 의 <code>DELETE_BOARD_TIMEOUT_MS</code> 로 소비자 쪽에서 상한을 걸어 풀었으나(PR 「보드 CRUD 회수」), 프리미티브 자체는 그대로다. 프리미티브에 상한을 넣을지, 소비처마다 걸지가 결정 대상이다.</p><p><b>해소.</b> PR #418 (2026-09-02). 이 항목이 남긴 <b>결정</b>을 「소비처 쪽」으로 확정했다 — 프리미티브는 그대로 두고 상한을 <code>apps/web/src/lib/delete-timeout.ts</code> <b>공용 헬퍼 한 벌</b>로 옮겼다. 종전의 <code>Promise.race</code> 는 상한이 지나도 <code>isPending</code> 을 풀어 줄 뿐이었는데, <code>AbortController</code> 로 바꾸면서 상한이 <b>요청을 실제로 끊어</b> reject 를 만들고 사유가 창 안 <code>error</code> 로 흐른다. 프리미티브에 새 상태를 더하지 않았다.</p><p>★ <b>이 항목이 적은 표면 중 남은 것을 여기 밝힌다.</b> 상한을 갖는 삭제 경로는 보드와 스프린트 둘이고, <code>ConfirmDialog</code> 의 나머지 소비처(<code>SlackChannelMappingList</code> · <code>ValidatorConfigSection</code> · <code>ResetToDefaultDialog</code> · <code>WorkflowEditorDialogs</code> · <code>GitWebhookSection</code> · <code>AutomationRuleList</code> · <code>admin.workflows</code>)는 여전히 상한이 없다. ★<code>projects.$projectKey.board</code> 는 이 목록에서 뺐다 — 그 파일의 <code>ConfirmDialog</code> 는 보드 삭제 창 하나뿐이고 <code>useDeleteBoard</code> 의 상한을 이미 받는다(그 자리 KDoc 이 「갇히지 않는 근거는 <code>useDeleteBoard</code> 의 타임아웃이다」로 적고 있다). 코드 리뷰 CONCERNS-1 지적. 공용 헬퍼가 생겼으므로 그 경로들은 이제 <b>한 줄로 붙일 수 있다</b> — 「전부 붙였다」가 아니라 「붙일 자리가 생겼다」가 이 PR 이 한 일이다.</p><p><b>해소 커밋.</b> <code>261de8ffb</code>(red) → <code>791df3b3e</code>(green) → <code>f04d99ef0</code>(refactor).</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 삭제 타임아웃이 이미 나간 요청을 취소하지 않는다 (신규 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드 삭제가 10초를 넘기면 화면은 실패로 보이지만, 서버로 간 삭제 요청은 그대로 살아 있어 실제로는 지워질 수 있다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면에는 「실패」가 뜨는데 보드는 사라진다. 목록을 다시 불러오면 상태가 맞춰지므로 데이터가 깨지지는 않지만, 그 사이 사용자가 다시 시도하면 이미 없는 보드에 404 를 본다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 삭제 타임아웃이 이미 나간 요청을 취소하지 않는다 (신규 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/hooks/use-boards.ts</code> 의 <code>withDeleteTimeout</code> 이 <code>Promise.race</code> 로만 끊는다. <code>apps/web/src/api/boards.ts</code> 의 <code>apiFetch</code> 에 <code>AbortSignal</code> 배선이 없어 요청 자체를 취소할 수단이 없기 때문이다. abort 를 도입하려면 <code>apiFetch</code> 전면 변경이라 소비처 전수 영향이 있다.</p><p><b>해소.</b> PR #418 (2026-09-02). 위 항목과 <b>같은 기전 하나</b>가 둘을 닫았다 — 따로 고친 것이 아니라 취소가 배선되는 순간 둘 다 성립한다. <code>withDeleteTimeout</code> 은 Promise 가 아니라 <b>signal 을 받는 함수</b>를 받고(취소 신호를 넘길 자리가 없으면 애초에 끊을 방법이 없다), <code>api/client.ts</code> 의 <code>ApiFetchOptions</code> 에 <b>선택 필드</b> <code>signal</code> 을 더해 <code>fetch</code> 까지 잇는다. 401 재시도도 같은 옵션을 쓰므로 재시도 요청까지 함께 끊긴다. 선택 필드라 기존 호출자는 전량 무변경이다. 상한이 끊은 실패는 플랫폼 <code>AbortError</code> 가 아니라 <code>DeleteTimeoutError</code> 로 옮겨 서버가 준 실패와 구별한다.</p><p><b>해소 커밋.</b> <code>261de8ffb</code>(red) → <code>791df3b3e</code>(green) → <code>f04d99ef0</code>(refactor).</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 「새 보드」 다이얼로그가 빈 상태용 여백을 그대로 쓴다 (신규 · <b>해소</b> · T0)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 보드를 새로 만드는 창의 위아래 공백이 필요 이상으로 넓다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 보기에만 어색하고 동작에는 문제가 없다. 오늘 실제 피해는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 「새 보드」 다이얼로그가 빈 상태용 여백을 그대로 쓴다 (신규 · **해소** · T0)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>apps/web/src/components/board/CreateBoardForm.tsx</code> 가 빈 상태 화면용 <code>min-h-48 p-8</code> 래퍼를 갖고 있고, 다이얼로그가 그 폼을 재사용한다. PR 「보드 CRUD 회수」는 <code>showEmptyStateIntro</code> prop 으로 <b>문구만</b> 껐고 레이아웃은 손대지 않았다 — 그 PR 의 C1 범위가 인트로 제거뿐이었기 때문이다.</p><p><b>해소.</b> PR #418 (2026-09-02). 여백을 <code>showEmptyStateIntro</code> 에 묶었다 — 문구와 여백이 <b>같은 조건 하나</b>를 보게 만든 것이지 다이얼로그용 예외를 새로 판 것이 아니다. 두 갈래(빈 상태 · 다이얼로그) 양쪽을 재는 판정을 함께 넣었고, 조건을 지우면 red 가 나는 것을 확인했다(비-공허 짝).</p><p><b>해소 커밋.</b> <code>16f79f8dc</code>(test) → <code>b0a7044df</code>(fix).</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">워크플로우 — classify-task 의 detectType 에 쓰이지 않는 지역 변수가 있다 (선재 · <b>해소</b> · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 작업 종류를 판정하는 코드 안에 만들어 놓고 한 번도 쓰지 않는 변수가 하나 있다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 동작에는 영향이 없다. 다만 다음 사람이 그 변수를 「무언가를 하는 것」으로 오해해 조건을 잘못 얹을 수 있다. 오늘 실제 피해는 0 이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — classify-task 의 detectType 에 쓰이지 않는 지역 변수가 있다 (선재 · **해소** · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/classify-task.ts</code> 의 <code>detectType</code> 안에 <code>const lower = raw.toLowerCase()</code> 가 있는데 함수 본문은 전부 <code>stripped</code> 를 쓴다. PR 「보드 CRUD 회수」의 Task 8 이 같은 함수를 고치다 발견했고, 선재 dead code 라 그 PR 범위 밖으로 두고 보고만 했다.</p><p><b>해소.</b> PR #418 (2026-09-02). 그 한 줄을 지웠다. 새 판정을 만들지 않았다 — 죽은 변수는 기존 <code>classify-task</code> 판별식 전량이 이미 덮고 있고, 지운 뒤에도 전부 초록이다.</p><p><b>해소 커밋.</b> <code>48114d810</code>.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">✅</span><span class="todo-title">apps/web — 공용 <code>ConfirmDialog</code> 의 <code>confirming</code> prop 이 설계상 도달 불가 (선재 · <b>해소</b> · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 「정말 지울까요?」 확인 창에 「처리 중…」을 표시하는 스위치가 달려 있는데, 그 창이</p>
