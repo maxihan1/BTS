@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import type { BoardDetail } from '@/api/boards'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 
 /**
@@ -110,15 +111,18 @@ export function ScrumSprintEmptyState({
       description={copy.description}
       className={className}
       action={
-        // 라우터 `Link` 다 — 같은 화면의 뷰 전환 nav(`ProjectNavTabs`)와 같은 경로를 같은 방식으로
-        // 가리킨다. 평문 `<a>` 로 두면 이 CTA 만 전체 리로드가 돼 나란한 두 링크의 동작이 갈린다.
-        <Link
-          to="/projects/$projectKey/backlog"
-          params={{ projectKey }}
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          {scrumEmptyStateLabels.backlogLink}
-        </Link>
+        // `FilteredEmptyState` 와 같은 `outline` 버튼 모양이다 — 같은 자리에 번갈아 뜨는 두 빈
+        // 상태의 CTA 가 서로 다르게 보이면 「다른 화면으로 튀었다」로 읽힌다.
+        //
+        // `asChild` 로 안을 라우터 `Link` 로 바꾼다. 두 가지를 동시에 지키기 위해서다.
+        // ① 역할은 **링크**다 — 실제 라우트 이동이라 새 탭·뒤로가기가 살아야 한다.
+        // ② 다크에서 `text-primary`(#0C66E4) 평문 링크는 어두운 배경 대비가 4.5:1 에 못 미친다.
+        //    outline 은 글자가 `--foreground` 라 양쪽 테마에서 대비가 확보된다.
+        <Button asChild variant="outline" size="sm">
+          <Link to="/projects/$projectKey/backlog" params={{ projectKey }}>
+            {scrumEmptyStateLabels.backlogLink}
+          </Link>
+        </Button>
       }
     />
   )
