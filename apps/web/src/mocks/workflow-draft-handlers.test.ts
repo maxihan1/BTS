@@ -1,7 +1,15 @@
 // 초안·발행 MSW 계약 테스트 — 목이 서버보다 관대하면 프로덕션에서만 터진다
 import { describe, it, expect, beforeEach } from 'vitest'
 import { server } from '@/test/server'
-import { getDraft, saveDraft, discardDraft, previewPublish, publishDraft, resetToDefault } from '@/api/workflows-draft'
+import {
+  getDraft,
+  saveDraft,
+  discardDraft,
+  previewPublish,
+  publishDraft,
+  migrateStatuses,
+  resetToDefault,
+} from '@/api/workflows-draft'
 import { fetchWorkflow } from '@/api/workflows'
 import { WorkflowPublishMappingRequiredError } from '@/api/workflows-admin.http'
 import { workflowHandlers } from './workflow-handlers'
@@ -168,6 +176,54 @@ describe('발행', () => {
     })
 
     await expect(publishDraft(KEY, anchor)).resolves.toMatchObject({ versionNo: 1 })
+  })
+})
+
+describe('★ 상태 이관 큐잉 — 목이 서버보다 관대하면 프로덕션에서만 터진다', () => {
+  it('앵커가 저장된 초안과 다르면 409 다 (write-once 앵커 — 10a 계약과 같은 축)', async () => {
+    const anchor = await saveWith((d) => {
+      d.states = d.states.filter((s) => s.key !== 'done')
+      d.transitions = d.transitions.filter((t) => t.from !== 'done' && t.to !== 'done')
+    })
+
+    await expect(
+      migrateStatuses(KEY, anchor + 1, [{ fromStatusKey: 'done', toStatusKey: 'closed' }]),
+    ).rejects.toMatchObject({ status: 409, errorCode: 'WORKFLOW_VERSION_CONFLICT' })
+  })
+
+  it('초안이 없으면 404 가 아니라 400 이다 (preview 규약과 같은 축)', async () => {
+    await expect(
+      migrateStatuses(KEY, 0, [{ fromStatusKey: 'done', toStatusKey: 'closed' }]),
+    ).rejects.toMatchObject({ status: 400, errorCode: 'WORKFLOW_INVALID_REQUEST' })
+  })
+
+  it('매핑이 비었거나 출발지가 안 빠지는 상태면 400 이다 (서버 requireSoundMappings 재현)', async () => {
+    const anchor = await saveWith((d) => {
+      d.states = d.states.filter((s) => s.key !== 'done')
+      d.transitions = d.transitions.filter((t) => t.from !== 'done' && t.to !== 'done')
+    })
+
+    // E2 — 빈 매핑은 「아무것도 안 옮기는 일괄작업」이다.
+    await expect(migrateStatuses(KEY, anchor, [])).rejects.toMatchObject({
+      status: 400,
+      errorCode: 'WORKFLOW_MIGRATION_INVALID_MAPPING',
+    })
+
+    // F7 — closed 는 이 초안에서 빠지지 않는다. 출발지로 실으면 멀쩡한 이슈까지 옮겨진다.
+    await expect(
+      migrateStatuses(KEY, anchor, [{ fromStatusKey: 'closed', toStatusKey: 'open' }]),
+    ).rejects.toMatchObject({ status: 400, errorCode: 'WORKFLOW_MIGRATION_INVALID_MAPPING' })
+  })
+
+  it('성공하면 202 와 uuid 형태의 bulkOperationId 를 준다', async () => {
+    const anchor = await saveWith((d) => {
+      d.states = d.states.filter((s) => s.key !== 'done')
+      d.transitions = d.transitions.filter((t) => t.from !== 'done' && t.to !== 'done')
+    })
+
+    const accepted = await migrateStatuses(KEY, anchor, [{ fromStatusKey: 'done', toStatusKey: 'closed' }])
+
+    expect(accepted.bulkOperationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   })
 })
 
