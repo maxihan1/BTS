@@ -9,12 +9,14 @@ import { useStatusCatalog } from '@/hooks/use-workflows-admin'
 import { useWorkflowDraft } from '@/hooks/use-workflow-draft'
 import { useWorkflowPublish } from '@/hooks/use-workflow-publish'
 import { usePublishFlow, useMigrationWizard } from '@/hooks/use-publish-flow'
+import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { publishBlockReason } from '@/lib/workflow-draft'
 import type { TransitionInput } from '@/lib/workflow-draft'
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
 import { WorkflowMetaForm } from './WorkflowMetaForm'
 import type { PanelStatus } from './StatusListPanel'
 import { DraftStatusBar } from './DraftStatusBar'
+import type { MigrationProgress } from './DraftStatusBar'
 import { DraftConflictBanner } from './DraftConflictBanner'
 import { WorkflowEditorTabs } from './WorkflowEditorTabs'
 import { WorkflowEditorDialogs } from './WorkflowEditorDialogs'
@@ -45,6 +47,26 @@ function renderLoadGate(loading: boolean, error: unknown): React.JSX.Element | n
   }
   const status = error instanceof ApiError || error instanceof WorkflowAdminApiError ? error.status : null
   return <EmptyState title={status === 404 ? labels.editor.notFound : labels.editor.loadFailed} />
+}
+
+/**
+ * 상태 표시줄에 실을 이관 진행 상황. 추적 중인 이관이 없으면 null.
+ *
+ * ★ 판정에 `discardDisabled` 를 **그대로** 쓴다. 그 값이 곧 「살아 있는 이관을 붙들고 있어
+ * 버튼을 잠갔다」이므로, 잠금과 그 설명이 같은 조건에서 함께 켜지고 꺼진다. 별도 조건을
+ * 세우면 둘이 어긋나 「이유 없이 회색인 버튼」이 다시 생긴다(G-2 기각 사유 그 자체다).
+ *
+ * 폴링 첫 응답 전에는 건수를 모른다 — 0/0 으로 넘기고 표시줄이 건수를 감춘다.
+ *
+ * @param migration 이관 마법사 배선
+ * @returns 진행 표시에 필요한 건수, 추적 중인 이관이 없으면 null
+ */
+function toMigrationProgress(migration: UseMigrationWizardResult): MigrationProgress | null {
+  if (!migration.discardDisabled) {
+    return null
+  }
+  const operation = migration.operation
+  return { processed: operation?.processedCount ?? 0, total: operation?.totalCount ?? 0 }
 }
 
 /**
@@ -164,10 +186,12 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         onReset={flow.openReset}
         onDiscard={flow.openDiscard}
         // ★ 폴링 중에는 초안 폐기도 잠근다(G-3) — `DraftStatusBar` 에 별도 prop 을 낼 자리가
-        //   없어 기존 `busy` 를 빌린다. Reset·상단 발행 버튼도 함께 잠기지만, 그동안은 이관
-        //   마법사가 발행 다이얼로그를 모달로 덮고 있어(`flowDialog === 'publish'`) 실질적으로
-        //   닿지 않는 자리다.
+        //   없어 기존 `busy` 를 빌린다. Reset·상단 발행 버튼도 **함께** 잠긴다.
+        //   마법사가 그 자리를 덮어 주리라 기대하지 않는다 — 새로고침으로 돌아오면
+        //   `flow.preview` 가 null 이라 마법사는 아예 렌더되지 않고, 다이얼로그를 닫아도
+        //   마찬가지다. 그래서 잠긴 이유는 아래 `migration` 이 표시줄에서 직접 말한다(G-2).
         busy={flow.busy || migration.discardDisabled}
+        migration={toMigrationProgress(migration)}
       />
 
       {draft.state.lastRejection !== null ? (
