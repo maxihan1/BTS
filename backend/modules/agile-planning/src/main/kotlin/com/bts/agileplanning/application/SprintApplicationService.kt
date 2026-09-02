@@ -32,7 +32,9 @@ import java.util.UUID
  * 3. IssuePermissionResolver 권한 판정 (403 — 미충족)
  * 4. 동작 수행
  *
- * create 만 리소스가 아직 없으므로 body projectKey 로 scope 를 구성한다.
+ * create 만 리소스가 아직 없으므로 body projectKey 로 scope 를 구성한다. 그래서 create 는 body 가
+ * 지정한 boardId 의 소속을 [resolveTargetBoard] 로 별도 검증한다 — 권한이 본 값과 보드가 다른 값이면
+ * 타 프로젝트 보드에 스프린트가 붙는다.
  *
  * ## no-bump 규칙
  * assignIssue / unassignIssue 는 sprint_issues 만 수정한다. sprints.version 은 no-bump.
@@ -75,14 +77,20 @@ class SprintApplicationService(
      * 생성 시에는 리소스(sprint)가 아직 없으므로 body 의 projectKey 로 권한 scope 를 구성한다.
      * 다른 모든 메서드는 sprint 를 먼저 조회해 projectKey 를 확보한다.
      *
+     * 권한을 projectKey 로만 판정하므로 **body 가 지정한 보드가 그 프로젝트 것인지**를 따로 확인해야
+     * 한다 — 그 판단은 [resolveTargetBoard] 가 갖는다(이유는 해당 KDoc).
+     *
      * @param actorId 행위자 UUID.
-     * @param projectKey 스프린트를 생성할 프로젝트 키.
+     * @param projectKey 스프린트를 생성할 프로젝트 키. 권한 scope 이자 보드 소속의 기준이다.
      * @param name 스프린트 이름.
      * @param goal 스프린트 목표. null 허용.
      * @param startDate 시작일. null 이면 미지정.
      * @param endDate 종료일. null 이면 미지정.
+     * @param boardId 스프린트를 붙일 보드 UUID. **HTTP 입력이다**(`CreateSprintRequest.boardId`).
+     *   null 이면 [projectKey] 의 스크럼 보드로 폴백한다(없으면 만든다).
      * @return 생성된 스프린트 도메인 객체.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
+     * @throws ResponseStatusException 404 — [boardId] 가 [projectKey] 의 활성 보드가 아님.
      */
     @Transactional
     fun create(
