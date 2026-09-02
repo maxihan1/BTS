@@ -14,8 +14,13 @@ import {
 import {
   resetBacklogStore,
   seedBacklog,
+  generateUUID,
   DEFAULT_BACKLOG,
 } from './backlog-fixtures'
+// FR-BD-04 PR ③ — 백로그 보드 스코프. 「이 프로젝트의 보드」의 출처는 boardStore 다
+// (백엔드 `boardRepository.findAllByProjectKey` / `findScrumBoardIdByProject` 대응).
+import { resetBoardStore, createBoardInStore } from './board-fixtures'
+import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트용 MSW 서버 — backlogHandlers만 등록
@@ -45,8 +50,20 @@ interface BacklogResponse {
   }
 }
 
-async function getBacklog(projectKey: string): Promise<BacklogResponse> {
-  const res = await fetch(`/api/v1/projects/${projectKey}/backlog`)
+/**
+ * 백로그 조회 원본 응답. 상태 코드를 재는 단언(E7·E8)이 이 헬퍼를 쓴다.
+ *
+ * @param projectKey 경로 프로젝트 키
+ * @param board `?board=` 로 실을 보드 UUID. 생략하면 파라미터 자체를 붙이지 않는다 —
+ *   「미전송」과 「빈 값 전송」은 서버가 다르게 볼 수 있어 구분해야 한다.
+ */
+async function getBacklogRes(projectKey: string, board?: string): Promise<Response> {
+  const query = board === undefined ? '' : `?board=${encodeURIComponent(board)}`
+  return fetch(`/api/v1/projects/${projectKey}/backlog${query}`)
+}
+
+async function getBacklog(projectKey: string, board?: string): Promise<BacklogResponse> {
+  const res = await getBacklogRes(projectKey, board)
   return res.json() as Promise<BacklogResponse>
 }
 
@@ -69,6 +86,152 @@ describe('GET /api/v1/projects/:projectKey/backlog', () => {
     expect(data.backlog).toEqual([])
     expect(data.sprints).toEqual([])
     expect(data.truncated).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/projects/:projectKey/backlog?board= — 보드 스코프 (FR-BD-04 · PR ③)
+//
+// ★왜 이 describe 가 필요한가.
+// 이 핸들러는 지금까지 `searchParams` 를 **한 번도 읽지 않았다**(`request` 조차 안 받았다).
+// 그래서 `?board=` 를 안 보내도, 남의 보드 UUID 를 보내도 응답이 같았다 — 화면이 보드 축을
+// 배선해도 목이 아무것도 가르지 않아 전부 초록이 된다(`?from=` 사고 2026-06-25 와 같은 자리).
+// 「명시 스코프」와 「미전송 폴백」을 함께 단언해야 서로의 가짜 그린을 막는다. 한쪽만 재면
+// 「무엇을 보내든 전부 반환」이 두 단언을 동시에 만족시킨다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/projects/:projectKey/backlog?board= (보드 스코프)', () => {
+  const SCOPE_PROJECT = 'SCOPE'
+  const OTHER_PROJECT = 'OTHERPRJ'
+
+  let kanbanBoardId = ''
+  let scrumBoardA = ''
+  let scrumBoardB = ''
+  let otherProjectBoardId = ''
+
+  /** 보드 스코프 시나리오 전용 백로그 이슈 — 필드는 BacklogIssue 계약 그대로다 */
+  function scopeIssue(key: string, rank: string): BacklogIssue {
+    return {
+      key,
+      summary: `보드 스코프 테스트 ${key}`,
+      currentStateKey: 'open',
+      assigneeId: null,
+      priority: 1,
+      rank,
+      version: 0,
+      epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
+    }
+  }
+
+  /** 보드 스코프 시나리오 전용 스프린트 메타 — 응답 DTO 에는 boardId 가 없다(store 전용 축) */
+  function scopeSprint(name: string): SprintMeta {
+    return {
+      sprintId: generateUUID(),
+      name,
+      goal: null,
+      status: 'PLANNED',
+      startDate: null,
+      endDate: null,
+      version: 0,
+    }
+  }
+
+  beforeEach(() => {
+    resetBoardStore()
+    // 생성 순서 = 백엔드 created_at ASC. 칸반을 **먼저** 만들어 「첫 보드」와 「첫 스크럼 보드」를
+    // 갈라 둔다 — 폴백이 그냥 첫 보드를 집는 오구현은 여기서 걸린다.
+    kanbanBoardId = createBoardInStore(SCOPE_PROJECT, '칸반 보드', 'KANBAN').created.boardId
+    scrumBoardA = createBoardInStore(SCOPE_PROJECT, '스크럼 보드 A', 'SCRUM').created.boardId
+    scrumBoardB = createBoardInStore(SCOPE_PROJECT, '스크럼 보드 B', 'SCRUM').created.boardId
+    otherProjectBoardId = createBoardInStore(OTHER_PROJECT, '남의 보드', 'SCRUM').created.boardId
+
+    seedBacklog({
+      projectKey: SCOPE_PROJECT,
+      backlog: [scopeIssue('SCOPE-1', '0|a00000:')],
+      sprints: [
+        {
+          sprint: scopeSprint('A 스프린트'),
+          boardId: scrumBoardA,
+          issues: [scopeIssue('SCOPE-2', '0|b00000:')],
+        },
+        {
+          sprint: scopeSprint('B 스프린트'),
+          boardId: scrumBoardB,
+          issues: [scopeIssue('SCOPE-3', '0|c00000:')],
+        },
+      ],
+      truncated: false,
+    })
+  })
+
+  afterEach(() => {
+    resetBoardStore()
+  })
+
+  it('?board=A 는 A 보드의 스프린트만 돌려준다', async () => {
+    const { data } = await getBacklog(SCOPE_PROJECT, scrumBoardA)
+    expect(data.sprints.map((s) => s.sprint.name)).toEqual(['A 스프린트'])
+  })
+
+  it('?board=B 는 B 보드의 스프린트만 돌려준다 (첫 보드 하드코딩 차단)', async () => {
+    const { data } = await getBacklog(SCOPE_PROJECT, scrumBoardB)
+    expect(data.sprints.map((s) => s.sprint.name)).toEqual(['B 스프린트'])
+  })
+
+  it('E12 — 다른 보드 스프린트의 이슈는 백로그 칸에 남는다 (증발 금지)', async () => {
+    const { data } = await getBacklog(SCOPE_PROJECT, scrumBoardA)
+    // 백엔드 BacklogApplicationService 의 차집합이 「이 보드의 스프린트에 없는 이슈」다(J20).
+    // 프로젝트 전체 스프린트를 빼면 SCOPE-3 이 어느 칸에도 없어 화면에서 사라진다.
+    expect(data.backlog.map((i) => i.key)).toEqual(['SCOPE-1', 'SCOPE-3'])
+  })
+
+  it('?board= 미전송이면 기본 보드(첫 스크럼 보드)로 폴백한다 (E4·X5)', async () => {
+    const { data } = await getBacklog(SCOPE_PROJECT)
+    // 칸반 보드가 먼저 만들어졌지만 기본 보드는 **첫 스크럼 보드**다
+    // (백엔드 `findScrumBoardIdByProject` — created_at ASC LIMIT 1).
+    expect(data.sprints.map((s) => s.sprint.name)).toEqual(['A 스프린트'])
+  })
+
+  it('칸반 보드로 스코프하면 스프린트가 없고 모든 이슈가 백로그 칸에 온다', async () => {
+    const { data } = await getBacklog(SCOPE_PROJECT, kanbanBoardId)
+    expect(data.sprints).toEqual([])
+    expect(data.backlog.map((i) => i.key)).toEqual(['SCOPE-1', 'SCOPE-2', 'SCOPE-3'])
+  })
+
+  it('E7 — 존재하지 않는 보드 UUID 는 404 다 (기본 보드로 조용히 폴백하지 않는다)', async () => {
+    const res = await getBacklogRes(SCOPE_PROJECT, '00000000-0000-4000-8000-0000000000ff')
+    expect(res.status).toBe(404)
+  })
+
+  it('E8 — 다른 프로젝트의 보드 UUID 도 404 다 (존재 probe 차단)', async () => {
+    const res = await getBacklogRes(SCOPE_PROJECT, otherProjectBoardId)
+    expect(res.status).toBe(404)
+  })
+
+  it('보드가 하나도 없는 프로젝트는 보드 축 없이 전량을 돌려준다 (기존 시드 회귀 방지)', async () => {
+    // ATLAS 는 boardStore 에 보드가 없다 — 백엔드도 이때 스코프를 null 로 두고 전량을 준다.
+    // 여기서 빈 목록으로 못박으면 DEFAULT_BACKLOG 를 쓰는 백로그 E2E 26개가 전멸한다.
+    const { data } = await getBacklog('ATLAS')
+    expect(data.sprints).toHaveLength(3)
+  })
+
+  it('POST /api/v1/sprints 의 boardId 는 그 보드로 스코프했을 때만 보인다 (E10)', async () => {
+    const res = await fetch('/api/v1/sprints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectKey: SCOPE_PROJECT, name: 'B 보드 새 스프린트', boardId: scrumBoardB }),
+    })
+    expect(res.status).toBe(201)
+
+    const scopedB = await getBacklog(SCOPE_PROJECT, scrumBoardB)
+    expect(scopedB.data.sprints.map((s) => s.sprint.name)).toContain('B 보드 새 스프린트')
+
+    // 두 번째 스크럼 보드에 만든 스프린트가 첫 보드에 붙으면(현행 폴백) 이 단언이 깨진다.
+    const scopedA = await getBacklog(SCOPE_PROJECT, scrumBoardA)
+    expect(scopedA.data.sprints.map((s) => s.sprint.name)).not.toContain('B 보드 새 스프린트')
   })
 })
 

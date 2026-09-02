@@ -1,22 +1,37 @@
 // 칸반 보드 MSW 핸들러 stateful 동작 검증 테스트 (FR-BD-01 D6, FR-BD-02 D6)
 import { server } from '@/test/server'
 import { afterEach, describe, expect, it } from 'vitest'
-import { boardHandlers } from './board-handlers'
+import { boardHandlers, QUICK_FILTER_PERM_SEED } from './board-handlers'
 // FR-BD-04 D6 Task 5 — 보드 생성 응답을 실제 API 함수로 파싱해 검증한다.
 // 이 파일의 다른 테스트처럼 핸들러 JSON 만 직접 읽으면 boardCreatedSchema 를 타지 않아
 // 응답에서 필드가 통째로 빠져도 런타임 테스트가 하나도 깨지지 않는다(Task 1 실측).
 // audit-log-handlers.test.ts(fetchAuditLogs) · workflow-admin-handlers.test.ts(fetchWorkflows)가
 // 같은 관례로 API 함수를 직접 호출한다.
-import { createBoard, boardCreatedSchema } from '@/api/boards'
+import { createBoard, boardCreatedSchema, fetchBoard, fetchBoards } from '@/api/boards'
 import {
   resetBoardStore,
   seedBoard,
   seedBoardWithMeta,
+  createBoardInStore,
   LS_KEY_BOARD_CONFLICT,
   DEFAULT_BOARD,
   FILTER_BOARD,
   SWIMLANE_BOARD,
+  WIP_BOARD,
+  EPIC_SWIMLANE_BOARD,
+  REORDER_SWIMLANE_BOARD,
 } from './board-fixtures'
+// FR-BD-04 Task 10 — 「시작하면 보드가 바뀐다」는 backlog BC 핸들러가 방아쇠다.
+// 스프린트 시작/완료를 실제로 호출해야 파생 동작이 재현되므로 그 핸들러를 함께 등록한다
+// (issueHandlers 를 같은 파일에서 server.use 로 얹은 선례와 동일 — 엔드포인트 중복 없음).
+import { backlogHandlers } from './backlog-handlers'
+import {
+  resetBacklogStore,
+  seedBacklog,
+  generateUUID as generateBacklogUUID,
+  DEFAULT_BACKLOG,
+} from './backlog-fixtures'
+import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 // FR-UX-06 PR21b Task 6 — 필드변경(담당자/우선순위/에픽) MSW stateful 반영 검증.
 // issue-tracking BC 핸들러(changeAssignee/updateIssue/connectEpicChild)를 실제로 호출해
 // issueOverrides를 채운 뒤, board GET이 그 최신값을 오버레이하는지 확인한다(E2E에 가장 근접
@@ -256,15 +271,81 @@ describe('POST /api/v1/boards — 보드 종류 (FR-BD-04 D6)', () => {
     expect(boardCreatedSchema.parse(body.data).boardType).toBe('KANBAN')
   })
 
-  it('고른 종류가 store 에 남아 GET 상세에 실린다 (stateful)', async () => {
+  it('고른 종류가 store 에 남아 GET 상세에 실린다 (stateful · boardDetailSchema 파싱 경유)', async () => {
     const created = await createBoard('ATLAS', '스크럼 보드', 'SCRUM')
 
-    const res = await getBoard(created.boardId)
-    expect(res.status).toBe(200)
-    // 백엔드 BoardDetailResponse.boardType(BoardResponses.kt:274)도 non-null 이다.
-    // 프론트 boardDetailSchema 가 이 필드를 소비하는 것은 PR ③ 소관이라 JSON 으로만 확인한다.
-    const body = (await res.json()) as DataResponse<{ boardType?: string }>
-    expect(body.data.boardType).toBe('SCRUM')
+    // PR ② 에서는 JSON 으로만 확인했다(그때 boardDetailSchema 에 필드가 없었다). PR ③ 이
+    // 필드를 필수로 올렸으므로 화면이 쓰는 경로(fetchBoard → z.parse)로 되읽는다 —
+    // 응답 기본값 'KANBAN' 이 고른 종류를 삼키지 않는지가 여기서 갈린다.
+    const detail = await fetchBoard(created.boardId)
+    expect(detail.boardType).toBe('SCRUM')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/boards — 보드 종류·활성 스프린트 응답 계약 (FR-BD-04 · PR ③)
+//
+// ★왜 스키마 파싱 경유로 재는가.
+// 이 파일의 대부분은 핸들러 JSON 을 그대로 읽어 단언한다. 그러면 `boardDetailSchema` 가
+// 필수로 올린 필드가 응답에서 통째로 빠져도 유닛이 하나도 안 깨진다. 게다가 시드 6개는
+// `StoredBoardDetail`(= `BoardDetail` 과 **별개 타입**) 이라 컴파일러도 못 잡는다 —
+// 컴파일러와 테스트가 **둘 다 침묵**하는 자리다. 화면이 실제로 밟는 경로로 잰다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 모듈 로드 시 자동 시드되는 보드 전량 (board-fixtures.ts 6개 + board-handlers.ts 1개).
+ *
+ * ★`QUICK_FILTER_PERM_SEED` 는 **픽스처 파일 밖**에 있다 — board-fixtures.ts 만 보고 세면
+ * 이 한 건이 빠지고 quick-filter.spec.ts S7 만 죽는다. 목록을 여기 한 곳에 모아 둔다.
+ */
+const SEEDED_BOARDS: [string, Parameters<typeof seedBoard>[0]][] = [
+  ['DEFAULT_BOARD', DEFAULT_BOARD],
+  ['FILTER_BOARD', FILTER_BOARD],
+  ['WIP_BOARD', WIP_BOARD],
+  ['SWIMLANE_BOARD', SWIMLANE_BOARD],
+  ['EPIC_SWIMLANE_BOARD', EPIC_SWIMLANE_BOARD],
+  ['REORDER_SWIMLANE_BOARD', REORDER_SWIMLANE_BOARD],
+  ['QUICK_FILTER_PERM_SEED', QUICK_FILTER_PERM_SEED],
+]
+
+describe('시드 전량 — 보드 종류 계약 (FR-BD-04)', () => {
+  it.each(SEEDED_BOARDS)(
+    '%s 가 boardType 을 명시한다 (응답 기본값이 가리지 못하도록 시드에서 직접 잰다)',
+    (_name, board) => {
+      // 응답만 재면 `toResponseDetail` 의 `?? 'KANBAN'` 이 미설정 시드를 덮어 공허해진다.
+      // 시드 자체를 재는 단언만이 「7개를 전부 고쳤는가」를 잰다.
+      expect(board.boardType).toBe('KANBAN')
+    },
+  )
+
+  it.each(SEEDED_BOARDS)(
+    '%s 의 GET 상세 응답이 boardDetailSchema 를 통과한다 (activeSprint 는 null)',
+    async (_name, board) => {
+      seedBoard(board)
+      const detail = await fetchBoard(board.boardId)
+      expect(detail.boardType).toBe('KANBAN')
+      // 칸반 보드는 활성 스프린트 개념이 없다 — 키가 빠지면 스키마가 거부한다.
+      expect(detail.activeSprint).toBeNull()
+    },
+  )
+
+  it('boardType 이 없는 레거시 stored 는 KANBAN 으로 응답한다 (toResponseDetail 기본값)', async () => {
+    // 위 단언의 짝 — 기본값이 실제로 존재하는지를 「미설정 시드」로만 잴 수 있다.
+    const legacy = { ...SWIMLANE_BOARD, boardId: '10000000-0000-4000-8000-0000000000f1' }
+    delete legacy.boardType
+    seedBoardWithMeta(legacy)
+
+    const detail = await fetchBoard(legacy.boardId)
+    expect(detail.boardType).toBe('KANBAN')
+    expect(detail.activeSprint).toBeNull()
+  })
+
+  it('보드 목록 응답이 boardSummarySchema 를 통과하고 boardType 을 싣는다', async () => {
+    seedBoard(DEFAULT_BOARD)
+    // 목록은 상세와 다른 조립부다 — 상세만 고치면 스위처가 목록 파싱에서 죽는다.
+    const summaries = await fetchBoards('ATLAS')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.boardType).toBe('KANBAN')
   })
 })
 
@@ -878,5 +959,208 @@ describe('resetBoardStore / seedBoard 헬퍼', () => {
     const res = await getBoards('ATLAS')
     const body = (await res.json()) as DataResponse<BoardSummary[]>
     expect(body.data).toHaveLength(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/boards/:id — 스크럼 보드의 활성 스프린트 파생 (FR-BD-04 · Task 10)
+//
+// ★왜 보드 테스트에 「스프린트 시작」이 섞여 있나.
+// 「스프린트를 시작하면 보드가 바뀐다」(ADR §D3 · J18)는 **두 store 를 가로지르는 파생 동작**이다.
+// 시작 핸들러(backlog BC)가 boardStore 를 안 건드리면 보드 상세의 `activeSprint` 는 시드값(null)
+// 그대로고 카드도 0건이다 — 각 핸들러를 따로 재는 한 그 갈림이 **어느 쪽 유닛에도 안 잡힌다**.
+// 실제로 D7 E2E S7 이 이 자리에서 red 였다(2026-09-02 실측 · 화면이 시작 전후로 동일).
+//
+// 각 단언에 「시작 전」짝을 둔다 — 「보였다」는 「바뀌었다」의 증거가 아니다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/boards/:id — 스크럼 보드 활성 스프린트 (FR-BD-04 Task 10)', () => {
+  const SPRINT_PROJECT = 'SPRINTBD'
+  const SCRUM_SPRINT_NAME = '스크럼 스프린트'
+  const SPRINT_START_DATE = '2026-09-01'
+  const SPRINT_END_DATE = '2026-09-14'
+
+  /** createBoardInStore 의 3컬럼(open·in_progress·done) 어디에도 없는 상태 키 — unplaced 관측점 */
+  const UNMAPPED_STATE_KEY = 'archived'
+
+  let kanbanBoardId = ''
+  let scrumBoardId = ''
+  let scrumSprintId = ''
+  let kanbanSprintId = ''
+
+  /** 시나리오 전용 백로그 이슈 — 필드는 BacklogIssue 계약 그대로다 */
+  function sprintIssue(key: string, currentStateKey: string): BacklogIssue {
+    return {
+      key,
+      summary: `활성 스프린트 파생 테스트 ${key}`,
+      currentStateKey,
+      assigneeId: null,
+      priority: 1,
+      rank: `0|${key}:`,
+      version: 0,
+      epicKey: null,
+      typeKey: 'task',
+      labels: [],
+      originalEstimateSeconds: null,
+    }
+  }
+
+  /** 시나리오 전용 스프린트 메타 — 보드 축은 StoredSprint.boardId 에 있다(응답 DTO 에 없음) */
+  function plannedSprint(sprintId: string, name: string): SprintMeta {
+    return {
+      sprintId,
+      name,
+      goal: null,
+      status: 'PLANNED',
+      startDate: SPRINT_START_DATE,
+      endDate: SPRINT_END_DATE,
+      version: 0,
+    }
+  }
+
+  async function startSprint(sprintId: string): Promise<Response> {
+    return fetch(`/api/v1/sprints/${sprintId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+  }
+
+  async function completeSprint(sprintId: string): Promise<Response> {
+    return fetch(`/api/v1/sprints/${sprintId}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+  }
+
+  /** 응답 카드 키 전량 — 컬럼 순서대로 평탄화 (fetchBoard = boardDetailSchema 파싱 경유) */
+  function responseCardKeys(detail: Awaited<ReturnType<typeof fetchBoard>>): string[] {
+    return detail.columns.flatMap((col) => col.cards.map((c) => c.issueKey))
+  }
+
+  beforeEach(() => {
+    server.use(...backlogHandlers)
+    resetBacklogStore()
+
+    // 칸반을 먼저 만든다 — 「첫 보드」와 「첫 스크럼 보드」를 갈라 두는 것이 이 파일의 관례다.
+    kanbanBoardId = createBoardInStore(SPRINT_PROJECT, '칸반 보드', 'KANBAN').created.boardId
+    scrumBoardId = createBoardInStore(SPRINT_PROJECT, '스크럼 보드', 'SCRUM').created.boardId
+    scrumSprintId = generateBacklogUUID()
+    kanbanSprintId = generateBacklogUUID()
+
+    seedBacklog({
+      projectKey: SPRINT_PROJECT,
+      // 어느 스프린트에도 없는 이슈 — 「그 스프린트의 이슈만」의 나머지 절반
+      backlog: [sprintIssue('SPRINTBD-9', 'open')],
+      sprints: [
+        {
+          sprint: plannedSprint(scrumSprintId, SCRUM_SPRINT_NAME),
+          boardId: scrumBoardId,
+          issues: [
+            sprintIssue('SPRINTBD-1', 'open'),
+            sprintIssue('SPRINTBD-2', 'in_progress'),
+            // 컬럼에 매핑되지 않는 상태 — 백엔드 placeCards 의 unplacedCount 대응
+            sprintIssue('SPRINTBD-3', UNMAPPED_STATE_KEY),
+          ],
+        },
+        {
+          // 칸반 보드에도 스프린트가 붙을 수 있다(백엔드 sprints.board_id 는 종류를 가리지 않는다).
+          // 「칸반 무변경」을 재려면 그 대조군이 실재해야 한다.
+          sprint: plannedSprint(kanbanSprintId, '칸반 스프린트'),
+          boardId: kanbanBoardId,
+          issues: [sprintIssue('SPRINTBD-8', 'open')],
+        },
+      ],
+      truncated: false,
+    })
+  })
+
+  afterEach(() => {
+    resetBacklogStore()
+  })
+
+  it('① 시작하면 그 보드의 GET 상세에 activeSprint 4필드가 실린다 (시작 전에는 null)', async () => {
+    // 대조군 — 시작 전에는 없다. 이게 없으면 「원래 실려 있었을 뿐」과 구별되지 않는다.
+    expect((await fetchBoard(scrumBoardId)).activeSprint).toBeNull()
+
+    expect((await startSprint(scrumSprintId)).status).toBe(200)
+
+    // toEqual 로 4필드를 통째로 잰다 — `activeSprintSchema` 는 정확히 4필드다.
+    expect((await fetchBoard(scrumBoardId)).activeSprint).toEqual({
+      sprintId: scrumSprintId,
+      name: SCRUM_SPRINT_NAME,
+      startDate: SPRINT_START_DATE,
+      endDate: SPRINT_END_DATE,
+    })
+  })
+
+  it('② 활성 스프린트의 이슈가 currentStateKey ↔ stateKey 축으로 컬럼에 배치된다 (시작 전 0건)', async () => {
+    // 대조군 — 새 보드는 카드가 0건이다(createBoardInStore). 배치가 「시작」에서 비롯됐음을 잰다.
+    expect(responseCardKeys(await fetchBoard(scrumBoardId))).toEqual([])
+
+    await startSprint(scrumSprintId)
+
+    const detail = await fetchBoard(scrumBoardId)
+    const cardsOf = (stateKey: string): string[] =>
+      detail.columns.find((col) => col.stateKey === stateKey)?.cards.map((c) => c.issueKey) ?? []
+    expect(cardsOf('open')).toEqual(['SPRINTBD-1'])
+    expect(cardsOf('in_progress')).toEqual(['SPRINTBD-2'])
+    expect(cardsOf('done')).toEqual([])
+  })
+
+  it('② 스프린트 밖 이슈는 보드에 없다 — 백로그 이슈도, 남의 스프린트 이슈도 (J5 「만」)', async () => {
+    await startSprint(scrumSprintId)
+
+    const keys = responseCardKeys(await fetchBoard(scrumBoardId))
+    expect(keys).not.toContain('SPRINTBD-9')
+    expect(keys).not.toContain('SPRINTBD-8')
+  })
+
+  it('② 컬럼에 매핑되지 않는 상태의 이슈는 unplacedCount 로 샌다 (백엔드 placeCards 대응)', async () => {
+    await startSprint(scrumSprintId)
+
+    const detail = await fetchBoard(scrumBoardId)
+    expect(responseCardKeys(detail)).not.toContain('SPRINTBD-3')
+    expect(detail.unplacedCount).toBe(1)
+  })
+
+  it('③ 완료하면 activeSprint 가 null 로 돌아가고 카드도 사라진다 (시작의 대칭)', async () => {
+    await startSprint(scrumSprintId)
+    expect((await fetchBoard(scrumBoardId)).activeSprint).not.toBeNull()
+
+    expect((await completeSprint(scrumSprintId)).status).toBe(200)
+
+    const detail = await fetchBoard(scrumBoardId)
+    expect(detail.activeSprint).toBeNull()
+    expect(responseCardKeys(detail)).toEqual([])
+  })
+
+  it('④ 칸반 보드는 그 보드 소속 스프린트를 시작해도 activeSprint 가 안 생긴다', async () => {
+    await startSprint(kanbanSprintId)
+
+    const detail = await fetchBoard(kanbanBoardId)
+    // 백엔드 getBoard 는 boardType 이 SCRUM 일 때만 findActiveByBoard 를 부른다 —
+    // 칸반은 데이터에 활성 스프린트가 있어도 응답에 나타나지 않는다.
+    expect(detail.activeSprint).toBeNull()
+    expect(responseCardKeys(detail)).toEqual([])
+  })
+
+  it('④ DEFAULT_BOARD(칸반) 는 소속 스프린트를 시작해도 카드 구성이 그대로다 (보드 E2E 회귀 가드)', async () => {
+    // 기존 보드 E2E 전량이 이 시드를 쓴다. DEFAULT_BACKLOG 의 스프린트는 전부 이 칸반 보드
+    // 소속이라(ATLAS_DEFAULT_BOARD_ID) 스크럼 경로가 새면 여기서 카드가 통째로 갈린다.
+    seedBoard(DEFAULT_BOARD)
+    seedBacklog(DEFAULT_BACKLOG)
+
+    const before = responseCardKeys(await fetchBoard(DEFAULT_BOARD.boardId))
+    expect(before.length).toBeGreaterThan(0)
+
+    const planned = DEFAULT_BACKLOG.sprints.find((s) => s.sprint.status === 'PLANNED')
+    expect(planned).toBeDefined()
+    expect((await startSprint(planned?.sprint.sprintId ?? '')).status).toBe(200)
+
+    const after = await fetchBoard(DEFAULT_BOARD.boardId)
+    expect(after.activeSprint).toBeNull()
+    expect(responseCardKeys(after)).toEqual(before)
   })
 })

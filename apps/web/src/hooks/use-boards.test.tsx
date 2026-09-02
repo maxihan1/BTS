@@ -41,12 +41,15 @@ const MOCK_BOARD_SUMMARY: BoardSummary = {
   boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
   projectKey: 'ATLAS',
   name: '기본 보드',
+  boardType: 'KANBAN',
 }
 
 const MOCK_BOARD_DETAIL: BoardDetail = {
   boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
   projectKey: 'ATLAS',
   name: '기본 보드',
+  boardType: 'KANBAN',
+  activeSprint: null,
   columns: [],
   truncated: false,
   unplacedCount: 0,
@@ -253,6 +256,18 @@ describe('boardKeys.detail (filter-aware)', () => {
     }
     expect(boardKeys.detail('b1', filterA)[2]).not.toEqual(boardKeys.detail('b1', filterB)[2])
   })
+
+  it('T-BD-KEY-7: boardKeys.all 은 상세 키 두 변종의 공통 접두다 — 무효화 한 번이 필터 변종까지 덮는다', () => {
+    // 스프린트 시작·완료는 어느 보드가 바뀌는지 모른 채 무효화한다(use-backlog.ts). 그 접두가
+    // 상세 키와 어긋나면 무효화는 조용히 아무것도 안 덮는다 — 실패가 아니라 옛 화면이다.
+    expect(boardKeys.all).toEqual(['board'])
+    expect(boardKeys.detail('b1').slice(0, 1)).toEqual([...boardKeys.all])
+    expect(boardKeys.detail('b1', FILTER).slice(0, 1)).toEqual([...boardKeys.all])
+  })
+
+  it('T-BD-KEY-8: boardKeys.all 은 목록 키를 덮지 않는다 — `board` 와 `boards` 는 다른 축이다', () => {
+    expect(boardKeys.list('ATLAS')[0]).not.toBe(boardKeys.all[0])
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,6 +288,8 @@ describe('useBoard (filter-aware)', () => {
     boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
     projectKey: 'ATLAS',
     name: '기본 보드',
+    boardType: 'KANBAN',
+    activeSprint: null,
     columns: [],
     truncated: false,
     unplacedCount: 0,

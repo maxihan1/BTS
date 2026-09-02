@@ -50,6 +50,13 @@ import java.util.UUID
  * - BC-6(음성). 보안등급 이슈는 backlog/sprints 어디에도 누출되지 않는다(viewer 기준 가시성 필터 단언).
  * - BC-7(계약). nullable 필드(originalEstimateSeconds/epicKey/rank)가 null 이어도
  *   응답 키 자체는 존재한다(프론트 Zod `.nullable()` 계약 가드, FR-UX-14 F14 후속).
+ *
+ * ### 보드 스코프 `?board=` (FR-BD-04 D6 · PR ③ Task 3)
+ * - BC-8(양성). `?board={uuid}` 를 주면 그 UUID 가 service 로 그대로 전달된다.
+ * - BC-9(음성 분별). `?board=` 가 없으면 null 이 전달된다 — 컨트롤러가 임의로 보드를 정하지 않는다.
+ * - BC-10(음성). `?board=` 형식이 UUID 가 아니면 400 이고 service 는 호출되지 않는다
+ *   (타입 바인딩이 형식 계약을 못박는다 — learnings 2026-06-25 `?from=` bare date 400).
+ * - BC-11(음성). service 의 404(E7 미존재 · E8 타 프로젝트)가 404 + AGILE_NOT_FOUND 로 나간다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BacklogControllerIntegrationTest.TestMvcConfig::class])
@@ -146,7 +153,7 @@ class BacklogControllerIntegrationTest {
                 sprints = emptyList(),
                 truncated = false,
             )
-        every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
+        every { backlogApplicationService.getBacklog(actorId, projectKey, null) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
             .andExpect(status().isOk)
@@ -177,7 +184,7 @@ class BacklogControllerIntegrationTest {
                     ),
                 truncated = false,
             )
-        every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
+        every { backlogApplicationService.getBacklog(actorId, projectKey, null) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
             .andExpect(status().isOk)
@@ -200,7 +207,7 @@ class BacklogControllerIntegrationTest {
                 sprints = emptyList(),
                 truncated = true,
             )
-        every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
+        every { backlogApplicationService.getBacklog(actorId, projectKey, null) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
             .andExpect(status().isOk)
@@ -212,7 +219,7 @@ class BacklogControllerIntegrationTest {
     @Test
     fun `BROWSE 권한 거부 시 403 과 AGILE_ACCESS_DENIED 를 반환한다`() {
         every {
-            backlogApplicationService.getBacklog(actorId, projectKey)
+            backlogApplicationService.getBacklog(actorId, projectKey, null)
         } throws ResponseStatusException(HttpStatus.FORBIDDEN, "접근 권한이 없습니다.")
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
@@ -229,7 +236,7 @@ class BacklogControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
             .andExpect(status().isUnauthorized)
 
-        verify(exactly = 0) { backlogApplicationService.getBacklog(any(), any()) }
+        verify(exactly = 0) { backlogApplicationService.getBacklog(any(), any(), any()) }
     }
 
     // ── BC-6(음성): 가시성 음성 — 비가시 이슈 누출 0 단언 ────────────────────
@@ -244,7 +251,7 @@ class BacklogControllerIntegrationTest {
                 sprints = emptyList(),
                 truncated = false,
             )
-        every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
+        every { backlogApplicationService.getBacklog(actorId, projectKey, null) } returns result
 
         val response =
             mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
@@ -287,7 +294,7 @@ class BacklogControllerIntegrationTest {
                 sprints = emptyList(),
                 truncated = false,
             )
-        every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
+        every { backlogApplicationService.getBacklog(actorId, projectKey, null) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
             .andExpect(status().isOk)
@@ -296,5 +303,69 @@ class BacklogControllerIntegrationTest {
             .andExpect(jsonPath("$.data.backlog[0].originalEstimateSeconds").hasJsonPath())
             .andExpect(jsonPath("$.data.backlog[0].epicKey").hasJsonPath())
             .andExpect(jsonPath("$.data.backlog[0].rank").hasJsonPath())
+    }
+
+    // ── BC-8(양성): ?board= 가 service 로 전달된다 ───────────────────────────
+
+    @Test
+    fun `board 쿼리 파라미터를 주면 그 UUID 가 service 로 전달된다`() {
+        val boardId = UUID.fromString("aaaaaaaa-1111-1111-1111-111111111111")
+        val result =
+            BacklogResult(
+                backlog = listOf(sampleIssue("BTS-1")),
+                sprints = emptyList(),
+                truncated = false,
+            )
+        every { backlogApplicationService.getBacklog(actorId, projectKey, boardId) } returns result
+
+        mockMvc.perform(get("/api/v1/projects/$projectKey/backlog?board=$boardId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.backlog[0].key").value("BTS-1"))
+
+        verify(exactly = 1) { backlogApplicationService.getBacklog(actorId, projectKey, boardId) }
+    }
+
+    // ── BC-9(음성 분별): ?board= 가 없으면 null 이 전달된다 ──────────────────
+
+    @Test
+    fun `board 쿼리 파라미터가 없으면 service 에 null 이 전달된다`() {
+        // 폴백 판단은 service 몫이다. 컨트롤러가 임의의 보드를 골라 넣으면 안 된다.
+        val result =
+            BacklogResult(
+                backlog = emptyList(),
+                sprints = emptyList(),
+                truncated = false,
+            )
+        every { backlogApplicationService.getBacklog(actorId, projectKey, null) } returns result
+
+        mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
+            .andExpect(status().isOk)
+
+        verify(exactly = 1) { backlogApplicationService.getBacklog(actorId, projectKey, null) }
+    }
+
+    // ── BC-10(음성): UUID 형식이 아니면 400 + service 미호출 ─────────────────
+
+    @Test
+    fun `board 파라미터가 UUID 형식이 아니면 400 을 반환하고 service 가 호출되지 않는다`() {
+        mockMvc.perform(get("/api/v1/projects/$projectKey/backlog?board=not-a-uuid"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+
+        verify(exactly = 0) { backlogApplicationService.getBacklog(any(), any(), any()) }
+    }
+
+    // ── BC-11(음성): service 404(E7·E8) → 404 + AGILE_NOT_FOUND ─────────────
+
+    @Test
+    fun `service 가 404 를 던지면 404 와 AGILE_NOT_FOUND 를 반환한다`() {
+        val unknownBoardId = UUID.fromString("cccccccc-3333-3333-3333-333333333333")
+        every {
+            backlogApplicationService.getBacklog(actorId, projectKey, unknownBoardId)
+        } throws ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다.")
+
+        mockMvc.perform(get("/api/v1/projects/$projectKey/backlog?board=$unknownBoardId"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_NOT_FOUND"))
     }
 }

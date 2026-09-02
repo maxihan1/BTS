@@ -265,12 +265,17 @@ function toStringOrStringArray(value: unknown): string | string[] | undefined {
 
 /**
  * 프로젝트 백로그·스프린트 라우트 — /projects/$projectKey/backlog, requireAuth (FR-BL-01/02).
- * validateSearch로 q(제목 검색)·assignee·epic 필터 파라미터를 선언한다 (FR-UX-13 F16-9).
+ * validateSearch로 board(보드 스코프)·q(제목 검색)·assignee·epic 파라미터를 선언한다
+ * (FR-UX-13 F16-9 · FR-BD-04).
  * 아래 board 라우트와 같은 형태 — 단일 문자열·배열 양쪽 허용, 런타임 정규화는 searchToFilter가 담당.
  *
  * 배열 원소는 `as string[]` 캐스팅이 아니라 **타입 가드로 걸러낸다**. 기본 parseSearch가
  * JSON.parse 기반이라 `?epic=123`은 number로 들어오는데, 캐스팅하면 그 거짓말이 필터 축까지
  * 흘러간다 (EC9 — 미지의 값은 throw 없이 버린다).
+ *
+ * `board`는 아래 board 라우트와 **같은 규약**을 쓴다 — `typeof === 'string'`이 아니면 undefined다.
+ * 값 검증(그 프로젝트의 보드인가)은 서버가 하고 404로 답한다(E7·E8). 프론트가 형식을 추측해
+ * 통과시키면 잘못된 링크가 **기본 보드처럼 보이는** 상태가 만들어진다.
  */
 const projectBacklogRoute = createRoute({
   getParentRoute: () => shellRoute,
@@ -279,10 +284,12 @@ const projectBacklogRoute = createRoute({
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
   validateSearch: (search: Record<string, unknown>): {
+    board?: string
     q?: string
     assignee?: string | string[]
     epic?: string | string[]
   } => ({
+    board: typeof search['board'] === 'string' ? search['board'] : undefined,
     q: typeof search['q'] === 'string' ? search['q'] : undefined,
     assignee: toStringOrStringArray(search['assignee']),
     epic: toStringOrStringArray(search['epic']),

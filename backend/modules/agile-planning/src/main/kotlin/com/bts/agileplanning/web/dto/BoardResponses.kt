@@ -128,11 +128,14 @@ data class BoardResponse(
  * @property boardId 보드 UUID.
  * @property projectKey 소속 프로젝트 키.
  * @property name 보드 표시 이름.
+ * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). 보드 스위처가 종류를 표시하는 유일한 출처다 —
+ *   스위처는 목록만 읽고 항목마다 상세를 조회하지 않으므로 이 필드가 없으면 종류를 알 방법이 없다(FR-BD-04).
  */
 data class BoardSummaryResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
+    val boardType: String,
 ) {
     companion object {
         /** 도메인 [Board] 를 [BoardSummaryResponse](메타만) 로 변환한다. */
@@ -141,6 +144,7 @@ data class BoardSummaryResponse(
                 boardId = board.id,
                 projectKey = board.projectKey,
                 name = board.name,
+                boardType = board.boardType.name,
             )
     }
 }

@@ -52,6 +52,10 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //      숫자만 맞추면 그 래칫은 그 뒤로 아무것도 지키지 않는다.
   //   상환 후보로 이 항목은 그대로 남는다 — 위 2026-08-24 주석의 `projectFavoriteHeader`
   //   추출 논의와 함께 읽을 것.
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 393,
+  // 2026-09-02 FR-BD-04 D6(PR ③) — 393 → 422. 스크럼 보드 화면이 붙으면서 라우트가 그만큼 커졌다.
+  // 먼저 쪼갤 것을 쪼갰다 — 활성 스프린트 표기는 `ActiveSprintSummary`, 빈 상태와 그 판정은
+  // `ScrumSprintEmptyState` 로 나갔다(434 에서 11줄 회수). 남은 증가분은 라우트가 지는
+  // 오케스트레이션(활성 스프린트 축 · 빈 상태 분기 3곳)이라 더 빼면 인위적이다.
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 422,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }

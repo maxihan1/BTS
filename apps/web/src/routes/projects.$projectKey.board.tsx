@@ -1,7 +1,7 @@
 // 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6 + FR-UX-01 Task 9)
 import type { FormEvent, JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -18,6 +18,12 @@ import { useIssueTypes } from '@/hooks/use-issue-types'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
+import { BoardSelectorDropdown } from '@/components/board/BoardSelectorDropdown'
+import { ActiveSprintSummary } from '@/components/board/ActiveSprintSummary'
+import {
+  ScrumSprintEmptyState,
+  resolveScrumEmptyVariant,
+} from '@/components/board/ScrumSprintEmptyState'
 import { BoardFilterBar } from '@/components/board/BoardFilterBar'
 import { QuickFilterChips } from '@/components/board/QuickFilterChips'
 import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
@@ -29,10 +35,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -209,110 +211,6 @@ function buildBoardSearch(
     ...(boardId !== undefined ? { board: boardId } : {}),
     ...filterSearch,
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 내부 서브컴포넌트 — 재사용이 아닌 가독성 분리
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 보드 스위처 props */
-interface BoardSelectorProps {
-  /** 이 프로젝트의 보드 전량 — 1개여도 스위처는 렌더된다 */
-  boards: BoardSummary[]
-  /** 현재 보고 있는 보드 UUID */
-  currentBoardId: string | undefined
-  /** 보드가 속한 프로젝트 키 — 생성 폼과 권한 조회에 쓴다 */
-  projectKey: string
-  /** 다른 보드를 고를 때의 콜백 */
-  onSelect: (id: string) => void
-}
-
-/**
- * 보드 스위처 — 보드가 1개여도 상시 노출되는 전환 드롭다운 (FR-BD-01-2c).
- *
- * - 트리거는 현재 보드 이름. 목록은 `DropdownMenuRadioGroup`(=`role="menuitemradio"`)이라
- *   「지금 어느 보드인가」가 선택 표시로 드러난다.
- * - CREATE 권한이 있을 때만 구분선 + 「새 보드」 항목을 **렌더한다**. 비활성이 아니라 부재다
- *   (Jira 근거 J5 · FR-BD-01-2d). 권한 조회가 아직 안 끝났으면 `=== true` 가 false 라 fail-closed 다.
- * - 권한을 prop 으로 받지 않고 여기서 직접 조회한다 — `useProjectPermissions` 는 캐시 키가 같아
- *   부모의 호출과 합쳐지므로 왕복이 늘지 않고, 「메뉴 항목을 가리는 조건」이 그 항목 옆에 남는다.
- */
-function BoardSelectorDropdown({
-  boards,
-  currentBoardId,
-  projectKey,
-  onSelect,
-}: BoardSelectorProps): JSX.Element {
-  const [createOpen, setCreateOpen] = useState(false)
-  const { data: projectPermissions } = useProjectPermissions(projectKey)
-  const canCreate: boolean = projectPermissions?.permissions.CREATE === true
-
-  const currentName: string =
-    boards.find((b: BoardSummary) => b.boardId === currentBoardId)?.name ??
-    boardLabels.boardSelectPlaceholder
-
-  return (
-    <div className="flex items-center gap-3">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-64 justify-between"
-            aria-label={boardLabels.switcher.triggerAriaLabel(currentName)}
-          >
-            <span className="truncate">{currentName}</span>
-            <ChevronDown aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        {/* 폭은 프리미티브가 트리거 폭(`--radix-dropdown-menu-trigger-width`)에 맞춘다 — 따로 주지 않는다 */}
-        <DropdownMenuContent align="start">
-          <DropdownMenuLabel>{boardLabels.switcher.groupLabel}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={currentBoardId ?? ''} onValueChange={onSelect}>
-            {boards.map((b: BoardSummary) => (
-              <DropdownMenuRadioItem key={b.boardId} value={b.boardId}>
-                <span className="truncate">{b.name}</span>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-          {canCreate && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => {
-                  setCreateOpen(true)
-                }}
-              >
-                <Plus aria-hidden="true" />
-                {boardLabels.switcher.createItem}
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* 생성 다이얼로그 — 빈 상태와 같은 `CreateBoardForm` 을 그대로 쓴다(신규 폼 없음) */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{boardLabels.switcher.createDialogTitle}</DialogTitle>
-          </DialogHeader>
-          {/* 🛑 인트로를 끈다 — 그 2줄은 「보드가 없습니다」로 시작한다. 스위처에서 열었다는
-              것은 보드가 이미 있다는 뜻이라 그 문장이 사실이 아니게 된다 (C1). */}
-          {/* 🛑 닫힘은 `onCreated` 로만 온다 — 보드 **개수 변화**로 성공을 추론하면 목록 refetch 로
-              남이 만든 보드가 들어올 때 입력 중이던 창이 닫혀 「만들어졌다」로 오독된다.
-              실패하면 신호가 안 와 창이 열린 채 폼 안의 사유가 남는다. */}
-          <CreateBoardForm
-            projectKey={projectKey}
-            showEmptyStateIntro={false}
-            onCreated={() => {
-              setCreateOpen(false)
-            }}
-          />
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -704,6 +602,17 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     return boardDetail.columns.every((col) => col.cards.length === 0)
   }, [boardDetail, stableFilter])
 
+  // 스크럼 빈 상태 종류 — 칸반이면 항상 null 이라 칸반 화면에는 이 축이 없다 (E3).
+  // 판정을 여기서 한 번만 하고 아래 세 분기(FilteredEmptyState · 빈 상태 · KanbanBoard)가
+  // 같은 값을 본다 — 조건을 각자 다시 쓰면 두 빈 상태가 겹쳐 뜨는 자리가 생긴다.
+  const scrumEmptyVariant = useMemo(
+    () => resolveScrumEmptyVariant(boardDetail, isFilteredEmpty),
+    [boardDetail, isFilteredEmpty],
+  )
+
+  // 활성 스프린트 — 칸반은 항상 null 이므로 `boardType` 을 다시 보지 않는다 (`activeSprintSchema` KDoc).
+  const activeSprint = boardDetail?.activeSprint ?? null
+
   // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
   // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
   function handleFilterChange(next: BoardCardFilterParams): void {
@@ -896,6 +805,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
             />
           )}
 
+          {/* 활성 스프린트 표기 — 칸반은 `activeSprint` 가 null 이라 아무것도 안 그린다 (FR-2 · J5) */}
+          <ActiveSprintSummary activeSprint={activeSprint} />
+
           {/* 스윔레인 셀렉터 — 보드 상세 있고 CREATE 권한 있을 때만 */}
           {boardDetail !== undefined && canCreate && (
             <SwimlaneSelector
@@ -957,8 +869,10 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         </div>
       )}
 
-      {/* 필터 결과 0건 빈 상태 (D2) */}
-      {boardDetail !== undefined && isFilteredEmpty && (
+      {/* 필터 결과 0건 빈 상태 (D2).
+          ★ 스크럼 빈 상태가 잡은 자리는 비운다 — 활성 스프린트가 없으면 필터를 초기화해도
+          카드가 생기지 않아 「필터 초기화」 CTA 가 거짓 안내가 된다. */}
+      {boardDetail !== undefined && isFilteredEmpty && scrumEmptyVariant === null && (
         <FilteredEmptyState
           title="조건에 맞는 카드가 없습니다"
           resetLabel={boardFilterLabels.filter.reset}
@@ -967,8 +881,21 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         />
       )}
 
+      {/* 스크럼 빈 상태 (FR-BD-04 FR-1 · E1·E2).
+          🛑 **early-return 이 아니라 인라인 대체**다 — 위의 헤더·`⋯` 관리 메뉴·필터바를 유지한 채
+          KanbanBoard 자리만 바꾼다. early-return 으로 만들면 활성 스프린트가 없는 스크럼 보드에서
+          `⋯` 메뉴가 사라져 그 보드를 지울 수도 이름을 바꿀 수도 없다
+          (`e2e/board-manage.spec.ts` S4·S5 가 정확히 그 경로를 밟는다). */}
+      {scrumEmptyVariant !== null && (
+        <ScrumSprintEmptyState
+          variant={scrumEmptyVariant}
+          projectKey={projectKey}
+          className="min-h-48"
+        />
+      )}
+
       {/* KanbanBoard — 필터 결과 있을 때만 */}
-      {boardDetail !== undefined && currentBoardId !== undefined && !isFilteredEmpty && (
+      {boardDetail !== undefined && currentBoardId !== undefined && !isFilteredEmpty && scrumEmptyVariant === null && (
         <KanbanBoard
           boardId={currentBoardId}
           board={boardDetail}

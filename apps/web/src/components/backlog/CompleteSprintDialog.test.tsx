@@ -102,6 +102,9 @@ const L = backlogLabels.completeDialog
 
 const PROJECT_KEY = 'ATLAS'
 
+/** 화면이 보고 있는 보드 — `?board=` 로 들어온 값 (FR-BD-04) */
+const BOARD_ID = 'b0000000-0000-4000-8000-00000000000b'
+
 /** 완료 대상(원본) 스프린트 */
 const SOURCE_ID = '11111111-1111-4111-8111-111111111111'
 /** 이관 후보 — PLANNED */
@@ -184,6 +187,14 @@ let completeStatus = 200
 /** C-7 재검증이 받아 볼 백로그 응답 */
 let freshBacklog: BacklogView = emptyFreshBacklog()
 
+/**
+ * 재검증이 실제로 때린 URL 전수.
+ *
+ * `calls` 는 「몇 번 불렀나」만 재고 **어느 보드를 물었는지**는 못 잰다 — 보드가 빠져도
+ * 응답은 200이라 조용히 다른 보드 기준으로 완료 여부를 판정하게 된다.
+ */
+let backlogRequestUrls: string[] = []
+
 /** DELETE 를 붙잡아 두는 게이트. null 이면 즉시 응답한다 (E19 용) */
 let deleteGate: Promise<void> | null = null
 
@@ -239,8 +250,9 @@ function installHandlers(): void {
       if (completeStatus !== 200) return new HttpResponse(null, { status: completeStatus })
       return HttpResponse.json({ data: { ...SOURCE_META, status: 'COMPLETED', version: 2 } })
     }),
-    http.get('/api/v1/projects/:projectKey/backlog', () => {
+    http.get('/api/v1/projects/:projectKey/backlog', ({ request }) => {
       calls.push(GET_BACKLOG)
+      backlogRequestUrls.push(request.url)
       return HttpResponse.json({ data: freshBacklog })
     }),
   )
@@ -252,6 +264,7 @@ beforeEach(() => {
   postOutcomes = {}
   completeStatus = 200
   freshBacklog = emptyFreshBacklog()
+  backlogRequestUrls = []
   deleteGate = null
   workflowGate = null
   installHandlers()
@@ -271,6 +284,7 @@ function renderDialog(overrides: Partial<CompleteSprintDialogProps> = {}) {
     open: true,
     onOpenChange,
     projectKey: PROJECT_KEY,
+    boardId: BOARD_ID,
     sprint: SOURCE_SPRINT,
     allSprints: ALL_SPRINTS,
     truncated: false,
@@ -570,6 +584,27 @@ describe('CompleteSprintDialog — E11 미완료 0건', () => {
 
     await waitFor(() => expect(calls).toContain(COMPLETE))
     expect(calls).toEqual([GET_BACKLOG, COMPLETE])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-BD-04 — 재검증은 **그 보드의** 백로그를 묻는다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CompleteSprintDialog — 보드 스코프 재검증 (FR-BD-04)', () => {
+  it('완료 직전 재검증이 ?board= 를 실어 보낸다 — 기본 보드로 묻지 않는다', async () => {
+    const { user } = renderDialog({ sprint: DONE_ONLY_SPRINT })
+
+    expect(await screen.findByText(L.noIssuesToMove)).toBeInTheDocument()
+    await user.click(submitButton())
+
+    await waitFor(() => expect(calls).toContain(COMPLETE))
+
+    // ★ 보드가 빠지면 서버가 **기본 보드**로 답하고, 그 보드에는 원본 스프린트가 없으므로
+    //   미완료 0건으로 읽혀 「완료해도 된다」가 된다 — 실패가 아니라 오판이라 아무도 못 잡는다
+    const url = backlogRequestUrls[0]
+    expect(url).toBeDefined()
+    expect(new URL(url ?? '', 'http://localhost').searchParams.get('board')).toBe(BOARD_ID)
   })
 })
 

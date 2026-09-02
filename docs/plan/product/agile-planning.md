@@ -125,8 +125,8 @@ Jira Cloud 는 보드를 만들 때 **스크럼/칸반을 먼저 고르고**, �
 - [x] D3. 마이그레이션 — `boards.board_type` · `sprints.board_id` + 백필(스프린트 보유 프로젝트마다 스크럼 보드 신설) (책임. db-engineer)
 - [x] D4. 백엔드 — 생성 API 종류 인자 · 스크럼 보드 카드 배치(활성 스프린트 필터) · `start` 활성 1개 가드 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 종류별 배치 분기 · 활성 2개 시도 409 · 백필 검증 (책임. backend-engineer)
-- [ ] D6. 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 스프린트 없으면 빈 상태) · 백로그 `?board=` 스코프 (책임. frontend-engineer)
-- [ ] D7. E2E — 스크럼 보드 생성 → 백로그에서 스프린트 시작 → 보드에 그 스프린트만 (책임. qa-engineer)
+- [x] D6. 프론트 — 「보드 만들기」 종류 선택 단계 · 스크럼 보드 화면(활성 스프린트 없으면 빈 상태) · 백로그 `?board=` 스코프 (책임. frontend-engineer) (PR #422 종류 선택 · PR #424 보드 화면·백로그 스코프)
+- [x] D7. E2E — 스크럼 보드 생성 → 백로그에서 스프린트 시작 → 보드에 그 스프린트만 (책임. qa-engineer) (PR #424 `e2e/scrum-board.spec.ts`)
 
 > **선행 결정 무효화 (2026-09-01).** `§3.2 FR-BL-02` 의 **Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」**
 > 을 이 FR 이 뒤집는다. Jira Cloud 는 *"If you want to have more than one active sprint at a time,

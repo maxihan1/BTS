@@ -91,8 +91,11 @@ export function useBacklogCreateIssue(projectKey: string): BacklogCreateIssue {
     // ★그래도 **목록 갱신은 필요하다** (FR-9). 스프린트 경로는 `useAssignToSprint` 의 성공
     // 콜백이 무효화를 걸어주지만, 백로그 경로는 아무도 걸지 않아 만든 이슈가 나타나지 않는다 —
     // E2E S1 이 실측으로 잡은 결함이다.
+    // ★무효화는 **프로젝트 접두 키**다 (FR-BD-04). 새 이슈는 아직 어느 스프린트에도 없으므로
+    // 이 프로젝트 **모든 보드**의 백로그 칸에 나타난다(E12) — 한 보드만 갱신하면 나머지 보드는
+    // 캐시가 낡은 채로 남는다. 같은 이유로 `useAssignToSprint` 도 접두 키를 쓴다.
     if (current === null || current === BACKLOG_TARGET) {
-      void queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      void queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
       return
     }
 

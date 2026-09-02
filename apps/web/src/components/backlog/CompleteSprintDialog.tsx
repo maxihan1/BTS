@@ -106,6 +106,14 @@ export interface CompleteSprintDialogProps {
   readonly onOpenChange: (open: boolean) => void
   /** 백로그 queryKey 대상 프로젝트 키 */
   readonly projectKey: string
+  /**
+   * 화면이 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 🛑 **선택 prop 이 아니다.** 완료 직전 재검증이 백로그를 다시 받는데(`revalidate`), 보드를
+   * 빼면 서버가 **기본 보드**로 답한다. 그 응답에는 이 스프린트가 없어 미완료 0건으로 읽히고
+   * 「완료해도 된다」가 된다 — 실패가 아니라 **오판**이라 부분 실패 가드에도 안 걸린다.
+   */
+  readonly boardId: string | undefined
   /** 완료할 스프린트 + 그 스프린트의 이슈 전량 */
   readonly sprint: SprintWithIssues
   /** 프로젝트의 스프린트 메타 전량. 이관 대상 후보를 여기서 고른다 */
@@ -167,24 +175,43 @@ function buildView(issues: readonly BacklogIssue[], map: StateCategoryMap): Comp
 }
 
 /**
+ * {@link useSprintCompletion} 입력.
+ *
+ * 위치 인자로 두지 않는 이유는 `projectKey` 와 `boardId` 가 **둘 다 문자열**이라는 것 하나다 —
+ * 순서를 바꿔 넘겨도 컴파일이 통과하고, 그러면 「ATLAS 보드의 백로그」를 묻는 요청이
+ * 조용히 만들어진다. 이름이 붙으면 그 실수가 불가능해진다.
+ */
+interface SprintCompletionParams {
+  /** 백로그 queryKey 대상 프로젝트 키 */
+  readonly projectKey: string
+  /** 보고 있는 보드 UUID (`?board=` 미지정이면 undefined). 재검증 스코프다 */
+  readonly boardId: string | undefined
+  /** 완료할 스프린트 + 이슈 */
+  readonly sprint: SprintWithIssues
+  /** 상태 키 → 카테고리 집합 사상 (FR-7) */
+  readonly categoryMap: StateCategoryMap
+  /** 다이얼로그 열림 여부. 닫히면 회차 상태를 비운다 */
+  readonly open: boolean
+  /** 완료가 성공했을 때 호출된다 */
+  readonly onCompleted: () => void
+}
+
+/**
  * 이관 → 재검증 → 완료 흐름의 상태와 실행을 한곳에 모은다.
  *
  * 요청을 **다이얼로그가 직접** 낸다. 콜백 props 로 밀어내면 「요청 순서·호출 수」를
  * 단위 테스트에서 잴 수 없게 된다.
  *
- * @param projectKey 백로그 queryKey 대상 프로젝트 키
- * @param sprint 완료할 스프린트 + 이슈
- * @param categoryMap 상태 키 → 카테고리 집합 사상 (FR-7)
- * @param open 다이얼로그 열림 여부. 닫히면 회차 상태를 비운다
- * @param onCompleted 완료가 성공했을 때 호출된다
+ * @param params 프로젝트·보드 스코프 + 대상 스프린트 + 열림 상태 ({@link SprintCompletionParams})
  */
-function useSprintCompletion(
-  projectKey: string,
-  sprint: SprintWithIssues,
-  categoryMap: StateCategoryMap,
-  open: boolean,
-  onCompleted: () => void,
-) {
+function useSprintCompletion({
+  projectKey,
+  boardId,
+  sprint,
+  categoryMap,
+  open,
+  onCompleted,
+}: SprintCompletionParams) {
   const queryClient = useQueryClient()
   const completeSprint = useCompleteSprint(projectKey)
   const sourceSprintId = sprint.sprint.sprintId
@@ -257,14 +284,18 @@ function useSprintCompletion(
    * ② 남이 원본을 먼저 완료했으면 `DELETE` 가 조용히 204 를 줘서 프론트가 전 행을
    *    「이관됨」으로 **오판**한다 — 실패가 아니므로 부분 실패 가드에도 걸리지 않는다.
    *
+   * ★ 재검증은 **보고 있는 보드**에 묻는다(FR-BD-04). 보드를 빼면 서버가 기본 보드로 답하고
+   *   그 응답에 이 스프린트가 없어 미완료 0건 — 즉 「완료해도 된다」로 읽힌다. 위 ②와 같은
+   *   결의 오판이고, 되돌릴 수 없는 연산 바로 앞이라 대가가 가장 크다.
+   *
    * @returns 완료를 막아야 하면 그 사유. 진행해도 되면 `null`
    */
   async function revalidate(): Promise<FailureState | null> {
     let fresh: BacklogView
     try {
       fresh = await queryClient.fetchQuery({
-        queryKey: backlogKeys.detail(projectKey),
-        queryFn: () => fetchBacklog(projectKey),
+        queryKey: backlogKeys.detail(projectKey, boardId),
+        queryFn: () => fetchBacklog(projectKey, boardId),
         staleTime: 0,
       })
     } catch {
@@ -301,7 +332,7 @@ function useSprintCompletion(
       // 어느 갈래든 사용자가 할 일은 「최신 값을 확인하고 다시 시도」로 같다. 조용히 닫지 않는다.
       setRunning(false)
       setFailure({ kind: 'stale' })
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
     }
   }
 
@@ -327,7 +358,7 @@ function useSprintCompletion(
           ? { kind: 'forbidden' }
           : { kind: 'partial', attempted: targets.length, failed: outcome.failed },
       )
-      await queryClient.invalidateQueries({ queryKey: backlogKeys.detail(projectKey) })
+      await queryClient.invalidateQueries({ queryKey: backlogKeys.project(projectKey) })
       return
     }
     await finish()
@@ -414,6 +445,7 @@ export function CompleteSprintDialog({
   open,
   onOpenChange,
   projectKey,
+  boardId,
   sprint,
   allSprints,
   truncated,
@@ -422,7 +454,14 @@ export function CompleteSprintDialog({
   const workflows = useWorkflows()
   const categoryMap = useMemo(() => buildStateCategoryMap(workflows.data), [workflows.data])
   const [moveTarget, setMoveTarget] = useState<string>(BACKLOG_TARGET_VALUE)
-  const flow = useSprintCompletion(projectKey, sprint, categoryMap, open, () => onOpenChange(false))
+  const flow = useSprintCompletion({
+    projectKey,
+    boardId,
+    sprint,
+    categoryMap,
+    open,
+    onCompleted: () => onOpenChange(false),
+  })
 
   const moveTargets = buildMoveTargets(allSprints, sprint.sprint.sprintId)
   const blockedByTruncation = isSubmitBlockedByTruncation(truncated)

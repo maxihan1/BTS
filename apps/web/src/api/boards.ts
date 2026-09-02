@@ -16,6 +16,15 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 보드 종류 enum 스키마.
+ * 백엔드 `BoardType` enum(SCRUM/KANBAN) 대응 — 값이 늘면 백엔드가 먼저 늘고 여기가 따라간다.
+ *
+ * 선언이 이 자리인 이유. `boardSummarySchema`·`boardDetailSchema`·`boardCreatedSchema` 세 곳이
+ * 참조하므로 **첫 소비자보다 위**에 있어야 한다. 아래로 내리면 `const` TDZ 로 TS2448 이 난다.
+ */
+const boardTypeSchema = z.enum(['SCRUM', 'KANBAN'])
+
+/**
  * 보드 목록 단건 요약 스키마.
  * 백엔드 `BoardSummaryResponse` DTO 대응.
  */
@@ -26,6 +35,11 @@ export const boardSummarySchema = z.object({
   projectKey: z.string().min(1),
   /** 보드 표시 이름 */
   name: z.string().min(1),
+  /**
+   * 보드 종류. 목록만 보고 스크럼/칸반을 갈라야 하는 화면(보드 선택기)의 유일한 근거다 (FR-BD-04).
+   * 백엔드 `BoardSummaryResponse.boardType` 이 non-null String 이라 필수로 둔다.
+   */
+  boardType: boardTypeSchema,
 })
 
 /**
@@ -117,6 +131,26 @@ export const boardColumnSchema = z.object({
 export const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC'])
 
 /**
+ * 활성 스프린트 요약 스키마 (FR-BD-04).
+ * 백엔드 `ActiveSprintResponse` DTO 대응 — **정확히 4필드다**(`goal`·`status`·`version` 없음).
+ * 스프린트 상세는 스프린트 API 소관이라 보드 응답이 중복해 싣지 않는다.
+ *
+ * **칸반 보드는 이 값이 항상 null 이다** — 스프린트라는 개념 자체가 없다.
+ * 그래서 소비자는 `boardType` 이 아니라 `activeSprint` 유무로 스프린트 헤더를 분기해도 안전하다.
+ * 서버가 필드를 늘리면 여기가 따라 늘리되, 추측으로 미리 채우지 않는다.
+ */
+export const activeSprintSchema = z.object({
+  /** 활성 스프린트 UUID */
+  sprintId: z.string().uuid(),
+  /** 스프린트 표시 이름. 예: "Sprint 3" */
+  name: z.string(),
+  /** 시작일(ISO-8601 date). 미설정이면 null */
+  startDate: z.string().nullable(),
+  /** 종료일(ISO-8601 date). 미설정이면 null */
+  endDate: z.string().nullable(),
+})
+
+/**
  * 보드 상세 스키마.
  * 백엔드 `BoardDetailResponse` DTO 대응.
  */
@@ -154,6 +188,16 @@ export const boardDetailSchema = z.object({
    * 소비자는 `canDelete === true` 로만 삭제 UI 를 연다 — undefined 는 fail-closed 다.
    */
   canDelete: z.boolean().optional(),
+  /**
+   * 보드 종류 (FR-BD-04). 화면이 스크럼 헤더를 그릴지 칸반으로 그릴지 가르는 유일한 근거다.
+   *
+   * `canDelete` 와 달리 **필수**다. 서버 `BoardDetailResponse.boardType` 이 non-null String 이라
+   * (`BoardResponses.kt`) 필드가 비면 그것이 곧 결함이고, 기본값으로 때우면 스크럼 보드가
+   * 칸반으로 오인돼 활성 스프린트 헤더가 조용히 사라진다 (Maxi 확정 2026-09-02).
+   */
+  boardType: boardTypeSchema,
+  /** 활성 스프린트. 칸반 보드는 항상 null (FR-BD-04). */
+  activeSprint: activeSprintSchema.nullable(),
 })
 
 /**
@@ -172,12 +216,6 @@ export const boardCreatedColumnSchema = z.object({
   /** 화면 표시 순서 */
   displayOrder: z.number().int(),
 })
-
-/**
- * 보드 종류 enum 스키마.
- * 백엔드 `BoardType` enum(SCRUM/KANBAN) 대응 — 값이 늘면 백엔드가 먼저 늘고 여기가 따라간다.
- */
-const boardTypeSchema = z.enum(['SCRUM', 'KANBAN'])
 
 /**
  * 보드 생성 응답 스키마.
@@ -232,6 +270,9 @@ export type BoardColumn = z.infer<typeof boardColumnSchema>
 
 /** 스윔레인 기준 필드 타입. NONE | ASSIGNEE | PRIORITY */
 export type SwimlaneField = z.infer<typeof swimlaneFieldSchema>
+
+/** 활성 스프린트 요약 타입. 칸반 보드에서는 `BoardDetail.activeSprint` 가 null 이다 */
+export type ActiveSprint = z.infer<typeof activeSprintSchema>
 
 /** 보드 상세 타입 */
 export type BoardDetail = z.infer<typeof boardDetailSchema>

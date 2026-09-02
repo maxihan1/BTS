@@ -29,6 +29,18 @@ vi.mock('sonner', () => ({
 
 const PROJECT_KEY = 'ATLAS'
 
+/** 화면이 보고 있는 보드 — `?board=` 로 들어온 값 (FR-BD-04) */
+const BOARD_ID = 'b0000000-0000-4000-8000-00000000000b'
+
+/**
+ * 보드 축이 **없는** 옛 백로그 키. 미끼를 심는 자리다.
+ *
+ * ★ 팩토리(`backlogKeys.detail`)로 만들지 않는 것이 요점이다 — board 축이 붙기 전에는 두 키가
+ *   같은 배열로 붕괴해 **같은 (틀린) 키로 심고 같은 키로 읽는** 가짜 그린이 된다
+ *   (`two-lists-never-check-each-other`). 리터럴이라야 「보드 스코프 키에서 읽었는가」를 잰다.
+ */
+const UNSCOPED_BACKLOG_KEY = ['backlog', PROJECT_KEY] as const
+
 /** 기간·목표가 **비어 있는** PLANNED 스프린트 — 「빈 값 → 입력」 변경분을 만들기 위한 기준 */
 const EMPTY_SPRINT: SprintMeta = {
   sprintId: '11111111-1111-4111-8111-111111111111',
@@ -160,15 +172,24 @@ function backlogViewOf(sprint: SprintMeta): BacklogView {
 
 /**
  * @param sprint 다이얼로그에 넘길 대상 스프린트 (초기값의 출처)
- * @param cachedSprint 백로그 캐시가 들고 있는 **서버 최신** 스프린트. 주면 캐시에 심는다
+ * @param cachedSprint 백로그 캐시가 들고 있는 **서버 최신** 스프린트. 주면 보드 스코프 키에 심는다
+ * @param unscopedDecoy 보드 축 없는 옛 키({@link UNSCOPED_BACKLOG_KEY})에 심을 미끼.
+ *   주면 「어느 키에서 읽었는가」가 결과로 갈린다
  */
-function renderDialog(sprint: SprintMeta = EMPTY_SPRINT, cachedSprint?: SprintMeta): RenderResult {
+function renderDialog(
+  sprint: SprintMeta = EMPTY_SPRINT,
+  cachedSprint?: SprintMeta,
+  unscopedDecoy?: SprintMeta,
+): RenderResult {
   const onOpenChange = vi.fn()
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   if (cachedSprint !== undefined) {
-    queryClient.setQueryData(backlogKeys.detail(PROJECT_KEY), backlogViewOf(cachedSprint))
+    queryClient.setQueryData(backlogKeys.detail(PROJECT_KEY, BOARD_ID), backlogViewOf(cachedSprint))
+  }
+  if (unscopedDecoy !== undefined) {
+    queryClient.setQueryData(UNSCOPED_BACKLOG_KEY, backlogViewOf(unscopedDecoy))
   }
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
@@ -183,6 +204,7 @@ function renderDialog(sprint: SprintMeta = EMPTY_SPRINT, cachedSprint?: SprintMe
         }}
         sprint={sprint}
         projectKey={PROJECT_KEY}
+        boardId={BOARD_ID}
       />
     )
   }
@@ -476,6 +498,42 @@ describe('StartSprintDialog — E9 충돌 이후 입력 보존', () => {
     expect(screen.getByLabelText(L.startDateLabel)).toHaveValue('2026-09-01')
     expect(screen.getByLabelText(L.endDateLabel)).toHaveValue('2026-09-30')
     expect(screen.getByLabelText(L.goalLabel)).toHaveValue('Q3 목표')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-BD-04 — 409 복구는 **그 보드의** 백로그 캐시에서 기준값을 가져온다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StartSprintDialog — 보드 스코프 백로그 캐시 (FR-BD-04)', () => {
+  /** `?board=B` 백로그가 들고 있는 서버 최신 값 */
+  const SCOPED_FRESH: SprintMeta = { ...EMPTY_SPRINT, version: 9 }
+
+  /**
+   * 보드 축 없는 옛 키에 남아 있는 **낡은** 값.
+   *
+   * 이 미끼가 있어야 「키가 어긋나면 `getQueryData` 가 조용히 남의(또는 없는) 값을 준다」가
+   * 결과로 드러난다. 미끼 없이 재면 캐시 미스로 조기 반환해 **아무 일도 안 일어난 것**과
+   * 구별되지 않는다.
+   */
+  const UNSCOPED_STALE: SprintMeta = { ...EMPTY_SPRINT, version: 1 }
+
+  it('409 뒤 재시도가 보드 스코프 캐시의 version으로 나간다 — 옛 키의 값을 쓰지 않는다', async () => {
+    const user = userEvent.setup()
+    installScenario({ patch: ['conflict', 'ok'] })
+    storedSprint = { ...SCOPED_FRESH }
+    renderDialog(EMPTY_SPRINT, SCOPED_FRESH, UNSCOPED_STALE)
+
+    setField(L.goalLabel, '내 목표')
+    await user.click(submitButton())
+
+    expect(await screen.findByText(L.patchConflict)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: backlogLabels.retry }))
+
+    await waitFor(() => expect(calls).toEqual(['PATCH', 'PATCH', 'START']))
+    // ★ version 9 = 보드 스코프 캐시. 1이면 옛 키를 읽은 것이고, 3(props 초기값)이면
+    //   `getQueryData` 가 undefined 를 돌려줘 **기준값 교체가 무음으로 멈춘** 것이다
+    expect(patchBodies[1]).toEqual({ version: 9, goal: '내 목표' })
   })
 })
 

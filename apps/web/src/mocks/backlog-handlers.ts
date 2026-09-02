@@ -14,7 +14,17 @@ import {
   computeRank,
   findIssueInProject,
 } from './backlog-fixtures'
-import type { SprintMeta } from '@/api/backlog'
+import type { StoredBacklogProject, StoredSprint } from './backlog-fixtures'
+// FR-BD-04 — 「이 프로젝트의 보드」의 출처는 보드 store 다. 백엔드도 백로그 스코프를
+// `boardRepository.findAllByProjectKey` / `findScrumBoardIdByProject` 로 푼다.
+// import 방향은 backlog-handlers → board-fixtures 한 방향이라 순환이 생기지 않는다.
+import {
+  boardStore,
+  projectBoardIndex,
+  setBoardActiveSprint,
+  clearBoardActiveSprint,
+} from './board-fixtures'
+import type { BacklogView, SprintMeta } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글
@@ -103,26 +113,114 @@ function toggleKeys(key: string): string[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/v1/projects/:projectKey/backlog
+// GET /api/v1/projects/:projectKey/backlog — 보드 스코프 (FR-BD-04)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/v1/projects/{projectKey}/backlog — 백로그 전체 뷰 조회.
+ * 백로그를 볼 보드의 해석 결과 (FR-BD-04).
+ *
+ * - `scoped` — 이 보드의 스프린트만 본다.
+ * - `all` — 스코프할 보드가 없다(그 프로젝트에 스크럼 보드가 없다). 보드 축 없이 전량을 본다.
+ * - `not-found` — 지정한 보드가 이 프로젝트의 보드가 아니다 → 404.
+ */
+type BoardScope =
+  | { kind: 'scoped'; boardId: string }
+  | { kind: 'all' }
+  | { kind: 'not-found' }
+
+/**
+ * 백로그를 볼 보드를 정한다 — 백엔드 `BacklogApplicationService.resolveBoardScope` 미러.
+ *
+ * 백로그는 프로젝트가 아니라 **보드**에 속하지만(J14) 사용자가 boardId 를 타이핑하지는
+ * 않는다(J17). 그래서 **지정이 없을 때만** 기본 보드로 폴백한다 — 폴백은 깨진 링크를 막기
+ * 위한 것이지 잘못된 지정을 덮기 위한 것이 아니다(편차 X5·E7).
+ *
+ * 기본 보드는 그 프로젝트의 **첫 스크럼 보드**다. 백엔드 `findScrumBoardIdByProject` 가
+ * `created_at ASC LIMIT 1` 로 고르고, mock 의 `projectBoardIndex` 는 생성 순서를 유지하므로
+ * 같은 판단이 된다. 스크럼 보드가 하나도 없으면 `all` — 여기서 빈 목록으로 못박으면
+ * 보드 종류 개념 이전에 만들어진 시드의 스프린트가 통째로 증발한다.
+ *
+ * @param projectKey 경로 프로젝트 키
+ * @param requested `?board=` 로 지정된 보드 UUID. 미전송이면 null
+ */
+function resolveBoardScope(projectKey: string, requested: string | null): BoardScope {
+  const boardIds = projectBoardIndex.get(projectKey) ?? []
+
+  if (requested !== null) {
+    // ★UUID 는 **완전 일치**로만 판정한다(`includes` = `===` 비교). 사전순 비교로 거르면
+    //   비슷한 문자열이 통과하는 `?from=` 사고(learnings 2026-06-25)와 같은 결함이 된다.
+    //   다른 프로젝트의 보드도 여기서 not-found 가 되어 존재 여부가 새지 않는다(E8).
+    return boardIds.includes(requested)
+      ? { kind: 'scoped', boardId: requested }
+      : { kind: 'not-found' }
+  }
+
+  const defaultBoardId = boardIds.find((id) => boardStore.get(id)?.boardType === 'SCRUM')
+  return defaultBoardId === undefined
+    ? { kind: 'all' }
+    : { kind: 'scoped', boardId: defaultBoardId }
+}
+
+/**
+ * rank 오름차순 비교자. null rank 는 맨 뒤(NULLS LAST) — 백엔드 `issueComparator` 대응.
+ *
+ * rerankIssueHandler 가 rank 를 갱신해도 배열 순서는 그대로라 GET 응답에서 매번 정렬한다.
+ */
+function byRankNullsLast(a: { rank: string | null }, b: { rank: string | null }): number {
+  if (a.rank === null) return b.rank === null ? 0 : 1
+  if (b.rank === null) return -1
+  return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
+}
+
+/**
+ * store 엔트리를 보드 스코프가 적용된 `BacklogView` 로 조립한다 (FR-BD-04).
+ *
+ * ★백로그 칸은 「**그 보드의** 스프린트에 없는 이슈」다(E12 · J20). 스코프 밖 스프린트의
+ * 이슈를 빼기만 하고 어디에도 넣지 않으면 그 이슈는 스프린트 칸에도 백로그 칸에도 없어
+ * 화면에서 **증발**한다 — 사용자가 이슈를 잃는다. 백엔드도 같은 차집합으로 계산한다.
+ *
+ * @param project store 의 프로젝트 엔트리
+ * @param scope 해석된 보드 스코프 (`not-found` 는 호출 전에 걸러진다)
+ */
+function toBacklogView(project: StoredBacklogProject, scope: BoardScope): BacklogView {
+  const inScope = (sw: StoredSprint): boolean =>
+    scope.kind !== 'scoped' || sw.boardId === scope.boardId
+
+  const outOfScopeIssues = project.sprints.filter((sw) => !inScope(sw)).flatMap((sw) => sw.issues)
+
+  return {
+    backlog: [...project.backlog, ...outOfScopeIssues].sort(byRankNullsLast),
+    sprints: project.sprints.filter(inScope).map((sw) => ({
+      sprint: sw.sprint,
+      issues: [...sw.issues].sort(byRankNullsLast),
+    })),
+    // truncated 토글은 픽스처 값을 **덮어쓰지 않고 올리기만** 한다 — 시나리오가 끝나도
+    // 원래 true 였던 프로젝트가 false 로 뒤집히면 안 된다.
+    truncated: project.truncated || toggle(LS_KEY_BACKLOG_TRUNCATED) === 'true',
+  }
+}
+
+/**
+ * GET /api/v1/projects/{projectKey}/backlog[?board={uuid}] — 백로그 전체 뷰 조회.
  *
  * store에서 해당 projectKey의 BacklogProject를 읽어
  * { data: { backlog, sprints, truncated } } 형식으로 반환한다.
  * 프로젝트가 없으면 빈 백로그·스프린트를 반환한다.
+ *
+ * `?board=` 는 **선택**이다 (FR-BD-04). 지정하면 그 보드의 스프린트만, 미지정이면 기본 보드로
+ * 폴백한다 — 해석 규칙은 {@link resolveBoardScope} 참조.
  *
  * 조회 실패 토글 — E2E 시나리오용:
  *   localStorage 플래그 LS_KEY_BACKLOG_FAIL='true'이면 projectKey와 무관하게 매번 500 반환.
  *   플래그가 BACKLOG_FAIL_ONCE이면 이번 요청만 500이고 플래그를 지운다(다음 요청은 정상).
  *
  * 성공 → 200 { data: BacklogView }
+ * 이 프로젝트의 보드가 아닌 board → 404 ProblemDetail (E7·E8)
  * 실패 토글 시 → 500 ProblemDetail
  */
 const getBacklogHandler = http.get(
   '/api/v1/projects/:projectKey/backlog',
-  ({ params }) => {
+  ({ params, request }) => {
     // 조회 실패 토글 — E2E 시나리오 (e2e-msw-scenario-toggle-localstorage-flag)
     const failFlag = globalThis.localStorage?.getItem(LS_KEY_BACKLOG_FAIL)
     if (failFlag === 'true' || failFlag === BACKLOG_FAIL_ONCE) {
@@ -138,6 +236,18 @@ const getBacklogHandler = http.get(
     }
 
     const projectKey = params['projectKey'] as string
+
+    // 보드 스코프 해석은 데이터 조회 **앞**이다 — 백엔드도 권한 다음, 조회 앞에서 404 를 낸다.
+    const scope = resolveBoardScope(projectKey, new URL(request.url).searchParams.get('board'))
+    if (scope.kind === 'not-found') {
+      // 백엔드는 여기서 `ResponseStatusException(404)` 를 던져 errorCode 없는 ProblemDetail 을
+      // 낸다. 없는 errorCode 를 지어내면 화면이 mock 위에서만 도는 분기를 갖게 된다.
+      return HttpResponse.json(
+        { title: 'Not Found', status: 404, detail: '보드를 찾을 수 없습니다.' },
+        { status: 404 },
+      )
+    }
+
     const project = backlogStore.get(projectKey)
 
     if (project === undefined) {
@@ -150,28 +260,7 @@ const getBacklogHandler = http.get(
       })
     }
 
-    // rank 순 정렬 — rerankIssueHandler가 rank를 갱신하지만 배열 순서는 그대로 유지하므로
-    // GET 응답에서 매번 rank 기준으로 정렬해 반환한다. null rank는 맨 뒤(NULLS LAST).
-    const byRankNullsLast = (a: { rank: string | null }, b: { rank: string | null }): number => {
-      if (a.rank === null) return b.rank === null ? 0 : 1
-      if (b.rank === null) return -1
-      return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
-    }
-    const sortedBacklog = [...project.backlog].sort(byRankNullsLast)
-    const sortedSprints = project.sprints.map((sw) => ({
-      sprint: sw.sprint,
-      issues: [...sw.issues].sort(byRankNullsLast),
-    }))
-
-    return HttpResponse.json({
-      data: {
-        backlog: sortedBacklog,
-        sprints: sortedSprints,
-        // truncated 토글은 픽스처 값을 **덮어쓰지 않고 올리기만** 한다 — 시나리오가 끝나도
-        // 원래 true 였던 프로젝트가 false 로 뒤집히면 안 된다.
-        truncated: project.truncated || toggle(LS_KEY_BACKLOG_TRUNCATED) === 'true',
-      },
-    })
+    return HttpResponse.json({ data: toBacklogView(project, scope) })
   },
 )
 
@@ -404,11 +493,15 @@ const unassignFromSprintHandler = http.delete(
 /**
  * POST /api/v1/sprints — 새 스프린트 생성.
  *
- * 요청 body: { projectKey: string, name: string, goal?: string, startDate?: string, endDate?: string }
+ * 요청 body: { projectKey, name, goal?, startDate?, endDate?, boardId? }
  *
  * stateful 동작.
  *   - 새 스프린트를 store에 추가한다.
  *   - 이후 GET backlog 재조회 시 sprints 목록에 등장한다.
+ *
+ * ★`boardId` 를 읽는 이유 (FR-BD-04). 예전에는 body 의 5개 필드만 읽고 boardId 를 **조용히
+ * 버렸다**. 그러면 두 번째 스크럼 보드에서 만든 스프린트가 어느 보드에도 안 붙어
+ * `?board=` 스코프 조회에서 사라진다 — 부채 E-6 의 mock 측 재현이다.
  *
  * 성공 → 201 { data: SprintMeta }
  * body 파싱 실패 → 400
@@ -419,6 +512,7 @@ const createSprintHandler = http.post('/api/v1/sprints', async ({ request }) => 
   let goal: string | undefined
   let startDate: string | undefined
   let endDate: string | undefined
+  let boardId: string | null = null
 
   try {
     const body = (await request.json()) as {
@@ -427,12 +521,14 @@ const createSprintHandler = http.post('/api/v1/sprints', async ({ request }) => 
       goal?: string
       startDate?: string
       endDate?: string
+      boardId?: string
     }
     projectKey = body.projectKey ?? ''
     name = body.name ?? ''
     goal = body.goal
     startDate = body.startDate
     endDate = body.endDate
+    boardId = body.boardId ?? null
   } catch {
     return HttpResponse.json(
       { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
@@ -447,7 +543,7 @@ const createSprintHandler = http.post('/api/v1/sprints', async ({ request }) => 
     )
   }
 
-  const sprint = createSprintInStore(projectKey, name, goal, startDate, endDate)
+  const sprint = createSprintInStore(projectKey, name, goal, startDate, endDate, boardId)
 
   return HttpResponse.json({ data: sprint }, { status: 201 })
 })
@@ -557,11 +653,31 @@ const patchSprintHandler = http.patch('/api/v1/sprints/:id', async ({ params, re
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 시작한 스프린트를 그 보드의 활성 스프린트로 심는다 (FR-BD-04).
+ *
+ * 「스프린트를 시작하면 보드가 바뀐다」(ADR §D3 · J18)는 **backlog store 와 board store 를
+ * 가로지르는 파생 동작**이다. 시작 응답만 바꾸면 뒤이은 보드 조회가 그것을 모른다 —
+ * 왜 store 를 경유해야 하는지는 {@link setBoardActiveSprint} KDoc 참조.
+ *
+ * 소속 보드를 모르는 스프린트(`boardId: null` — 백엔드 `CreateSprintRequest.boardId` 가 선택
+ * 필드라 생기는 하위 호환 경로)는 심을 자리가 없어 아무것도 하지 않는다.
+ *
+ * @param storedSprint 시작 처리가 끝난 store 안의 스프린트 엔트리
+ */
+function plantActiveSprintOnBoard(storedSprint: StoredSprint): void {
+  if (storedSprint.boardId === null) return
+  const { sprintId, name, startDate, endDate } = storedSprint.sprint
+  // 백엔드 `ActiveSprintResponse` 는 **정확히 4필드다** — goal·status·version 은 싣지 않는다.
+  setBoardActiveSprint(storedSprint.boardId, { sprintId, name, startDate, endDate })
+}
+
+/**
  * POST /api/v1/sprints/{id}/start — 스프린트 시작 (PLANNED → ACTIVE).
  *
  * stateful 동작.
  *   - store에서 스프린트를 찾아 status를 'ACTIVE'로 변경한다.
  *   - version을 +1 증가한다.
+ *   - 그 스프린트의 보드에 활성 스프린트를 심는다 ({@link plantActiveSprintOnBoard} · FR-BD-04).
  *
  * 성공 → 200 { data: SprintMeta }
  * 스프린트 미존재 → 404
@@ -596,6 +712,7 @@ const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) =
   const { storedSprint } = entry
   storedSprint.sprint.status = 'ACTIVE'
   storedSprint.sprint.version = storedSprint.sprint.version + 1
+  plantActiveSprintOnBoard(storedSprint)
 
   return HttpResponse.json({ data: storedSprint.sprint })
 })
@@ -610,6 +727,8 @@ const startSprintHandler = http.post('/api/v1/sprints/:id/start', ({ params }) =
  * stateful 동작.
  *   - store에서 스프린트를 찾아 status를 'COMPLETED'로 변경한다.
  *   - version을 +1 증가한다.
+ *   - 그 보드의 활성 스프린트 마커를 지운다 (FR-BD-04 — 시작의 대칭).
+ *     지우지 않으면 완료한 뒤에도 보드가 그 스프린트를 계속 보여준다.
  *
  * 성공 → 200 { data: SprintMeta }
  * 스프린트 미존재 → 404
@@ -628,6 +747,9 @@ const completeSprintHandler = http.post('/api/v1/sprints/:id/complete', ({ param
   const { storedSprint } = entry
   storedSprint.sprint.status = 'COMPLETED'
   storedSprint.sprint.version = storedSprint.sprint.version + 1
+  if (storedSprint.boardId !== null) {
+    clearBoardActiveSprint(storedSprint.boardId, sprintId)
+  }
 
   return HttpResponse.json({ data: storedSprint.sprint })
 })

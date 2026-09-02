@@ -181,6 +181,9 @@ describe('deleteQuickFilter — DELETE /api/v1/boards/{boardId}/quick-filters/{f
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('boardDetailSchema — quickFilters 필드 (FR-UX-01)', () => {
+  // ★`BoardDetail` 애노테이션이 **없어** 컴파일러가 필드 누락을 잡지 못한다 — 스키마가
+  //   `boardType`·`activeSprint` 를 필수로 올린 순간(FR-BD-04) 이 리터럴은 런타임에서만 죽었다.
+  //   인라인 mock 은 스키마 강화 시 전수 점검 대상이다(PR #46 교훈).
   const baseBoard = {
     boardId: BOARD_ID,
     projectKey: 'ATLAS',
@@ -189,6 +192,8 @@ describe('boardDetailSchema — quickFilters 필드 (FR-UX-01)', () => {
     truncated: false,
     unplacedCount: 0,
     swimlaneField: 'NONE' as const,
+    boardType: 'KANBAN' as const,
+    activeSprint: null,
   }
 
   it('T-QF-5a: quickFilters 필드가 없으면 빈 배열로 기본값 처리된다 (레거시 응답·인라인 mock 방어)', () => {

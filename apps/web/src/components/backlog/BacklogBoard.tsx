@@ -65,6 +65,20 @@ export interface BacklogBoardProps {
   /** 프로젝트 키 — 백로그 데이터 조회 + 스프린트 생성에 사용 */
   projectKey: string
   /**
+   * 화면이 보고 있는 보드 UUID. `?board=` 미지정이면 `undefined` (FR-BD-04).
+   *
+   * 🛑 **선택 prop 이 아니다.** 이 값은 조회 키(`backlogKeys.detail`)·스프린트 생성 body ·
+   * 두 다이얼로그로 그대로 흘러간다. 빠뜨리면 어느 경로도 에러를 내지 않고 **기본 보드**로
+   * 조용히 갈아탄다 — 화면은 A 보드인데 판정은 B 보드로 나는 오판이라 어떤 가드에도 안 걸린다.
+   *
+   * 값이 `undefined` 인 것 자체는 정상이다(사용자가 boardId 를 타이핑하지 않는다 · J17).
+   * 그때 기본 보드를 고르는 것은 **서버**이고 프론트는 고르지 않는다.
+   *
+   * ★스프린트 생성 body 에도 **항상 싣는다** (E10). 빼면 백엔드가 첫 스크럼 보드로 폴백해
+   * 두 번째 스크럼 보드에서 만든 스프린트가 남의 보드에 붙는다(부채 E-6).
+   */
+  boardId: string | undefined
+  /**
    * 현재 필터 (F16-9). **이 컴포넌트는 제어형**이라 필터 state 를 갖지 않는다.
    *
    * 진실 출처는 URL 이고 소유자는 라우트다. 여기에 기본값이나 내부 폴백 state 를 두면
@@ -310,6 +324,7 @@ function useBacklogFilterWiring(
  */
 export function BacklogBoard({
   projectKey,
+  boardId,
   filter,
   onFilterChange,
   canManageSprint = true,
@@ -331,7 +346,7 @@ export function BacklogBoard({
    */
   const [sprintDialog, setSprintDialog] = useState<SprintDialogTarget | null>(null)
 
-  const { data: backlogView, isLoading, isError, isFetching, refetch } = useBacklog(projectKey)
+  const { data: backlogView, isLoading, isError, isFetching, refetch } = useBacklog(projectKey, boardId)
 
   // 담당자 이름 — 화면에 등장하는 id 만 모아 50개씩 나눠 전량 조회한다 (스펙 M1).
   // ★조기 반환(`isLoading`)보다 **위**에 있어야 한다. 아래로 내리면 렌더마다 훅 개수가
@@ -384,11 +399,11 @@ export function BacklogBoard({
   const handleCreateSprint = useCallback(
     (name: string) => {
       createSprintMutate(
-        { projectKey, name },
+        { projectKey, boardId, name },
         { onError: () => toast.error(backlogLabels.moveFailedError) },
       )
     },
-    [createSprintMutate, projectKey],
+    [createSprintMutate, projectKey, boardId],
   )
 
   /** 드래그 처리 — 드롭 판정과 이동/재정렬 mutation 을 함께 쥔다. */
@@ -497,6 +512,7 @@ export function BacklogBoard({
       <SprintDialogHost
         target={sprintDialog}
         projectKey={projectKey}
+        boardId={boardId}
         sprints={sprints}
         truncated={truncated}
         canReorderIssue={canReorderIssue}
@@ -741,6 +757,11 @@ interface SprintDialogHostProps {
   readonly target: SprintDialogTarget | null
   /** mutation·invalidate 대상 프로젝트 키. 전역 활성 프로젝트를 경유하지 않는다 */
   readonly projectKey: string
+  /**
+   * 화면이 보고 있는 보드 UUID (FR-BD-04). 두 다이얼로그가 **백로그 캐시를 완전 일치 키로**
+   * 읽으므로 여기서 끊기면 시작의 409 복구와 완료의 재검증이 다른 보드를 본다(각 파일 KDoc).
+   */
+  readonly boardId: string | undefined
   /** 현재 뷰의 스프린트 전량 — 대상 조회와 이관 후보 목록에 함께 쓴다 */
   readonly sprints: readonly SprintWithIssues[]
   /** 백로그 응답의 `truncated`. 완료 제출 차단 조건이다 (FR-13 · E15) */
@@ -768,6 +789,7 @@ interface SprintDialogHostProps {
 function SprintDialogHost({
   target,
   projectKey,
+  boardId,
   sprints,
   truncated,
   canReorderIssue,
@@ -787,6 +809,7 @@ function SprintDialogHost({
         open
         onOpenChange={onOpenChange}
         projectKey={projectKey}
+        boardId={boardId}
         sprint={entry.sprint}
       />
     )
@@ -798,6 +821,7 @@ function SprintDialogHost({
       open
       onOpenChange={onOpenChange}
       projectKey={projectKey}
+      boardId={boardId}
       sprint={entry}
       allSprints={sprints.map((item) => item.sprint)}
       truncated={truncated}

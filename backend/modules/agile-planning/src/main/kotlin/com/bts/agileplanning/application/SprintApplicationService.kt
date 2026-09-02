@@ -4,6 +4,7 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -31,7 +32,9 @@ import java.util.UUID
  * 3. IssuePermissionResolver 권한 판정 (403 — 미충족)
  * 4. 동작 수행
  *
- * create 만 리소스가 아직 없으므로 body projectKey 로 scope 를 구성한다.
+ * create 만 리소스가 아직 없으므로 body projectKey 로 scope 를 구성한다. 그래서 create 는 body 가
+ * 지정한 boardId 의 소속을 [resolveTargetBoard] 로 별도 검증한다 — 권한이 본 값과 보드가 다른 값이면
+ * 타 프로젝트 보드에 스프린트가 붙는다.
  *
  * ## no-bump 규칙
  * assignIssue / unassignIssue 는 sprint_issues 만 수정한다. sprints.version 은 no-bump.
@@ -39,6 +42,8 @@ import java.util.UUID
  * @param permissionResolver cross-BC 권한 판정 포트 (fail-closed, non-null 주입)
  * @param sprintRepository sprints / sprint_issues jOOQ repository
  * @param boardIssueLookupPort 이슈 단건 가시성 확인 포트 (issue-tracking 구현). default=fail-closed false.
+ * @param boardRepository boards jOOQ repository — 요청이 지정한 보드의 소속 검증에만 쓴다
+ *   (읽기 경로 [BacklogApplicationService] 가 같은 목적으로 같은 repository 를 주입받는다).
  *
  * ### detekt 억제 사유
  * TooManyFunctions — Sprint aggregate 유스케이스(CRUD + 상태전환 + 이슈 할당/해제)를
@@ -55,6 +60,7 @@ class SprintApplicationService(
     private val sprintRepository: SprintRepository,
     private val boardIssueLookupPort: BoardIssueLookupPort,
     private val boardApplicationService: BoardApplicationService,
+    private val boardRepository: BoardRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -71,14 +77,20 @@ class SprintApplicationService(
      * 생성 시에는 리소스(sprint)가 아직 없으므로 body 의 projectKey 로 권한 scope 를 구성한다.
      * 다른 모든 메서드는 sprint 를 먼저 조회해 projectKey 를 확보한다.
      *
+     * 권한을 projectKey 로만 판정하므로 **body 가 지정한 보드가 그 프로젝트 것인지**를 따로 확인해야
+     * 한다 — 그 판단은 [resolveTargetBoard] 가 갖는다(이유는 해당 KDoc).
+     *
      * @param actorId 행위자 UUID.
-     * @param projectKey 스프린트를 생성할 프로젝트 키.
+     * @param projectKey 스프린트를 생성할 프로젝트 키. 권한 scope 이자 보드 소속의 기준이다.
      * @param name 스프린트 이름.
      * @param goal 스프린트 목표. null 허용.
      * @param startDate 시작일. null 이면 미지정.
      * @param endDate 종료일. null 이면 미지정.
+     * @param boardId 스프린트를 붙일 보드 UUID. **HTTP 입력이다**(`CreateSprintRequest.boardId`).
+     *   null 이면 [projectKey] 의 스크럼 보드로 폴백한다(없으면 만든다).
      * @return 생성된 스프린트 도메인 객체.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
+     * @throws ResponseStatusException 404 — [boardId] 가 [projectKey] 의 활성 보드가 아님.
      */
     @Transactional
     fun create(
@@ -93,9 +105,7 @@ class SprintApplicationService(
         log.debug("스프린트 생성 시작 — projectKey={}, name={}", projectKey, name)
         requirePermission(actorId, IssuePermission.CREATE, IssueScope.Project(projectKey))
 
-        // 보드를 안 준 요청은 그 프로젝트의 스크럼 보드에 붙인다(없으면 만든다).
-        // 백로그 화면은 아직 보드를 지정하지 않으므로 이 경로가 기본이다 — PR ③ 에서 명시 지정이 붙는다.
-        val targetBoardId = boardId ?: boardApplicationService.ensureScrumBoard(projectKey)
+        val targetBoardId = resolveTargetBoard(projectKey, boardId)
 
         val sprint =
             Sprint(
@@ -375,6 +385,53 @@ class SprintApplicationService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * 스프린트를 붙일 보드를 정한다 — 지정 보드의 **소속 검증**이 이 함수의 존재 이유다.
+     *
+     * ### 왜 검증하는가
+     * [boardId] 는 내부 인자가 아니라 **HTTP 입력**이다(`CreateSprintRequest.boardId`). 그런데 권한은
+     * body 의 [projectKey] 로만 판정된다([create] 는 리소스가 아직 없어 그럴 수밖에 없다). 두 값이
+     * 서로를 검사하지 않으면, 프로젝트 A 에 CREATE 만 가진 행위자가 프로젝트 B 의 보드 UUID
+     * (`?board=<uuid>` 로 URL 에 노출된다)를 실어 **B 의 보드에 스프린트를 매달 수 있다** —
+     * B 의 보드 헤더가 남의 스프린트 이름으로 덮이고, B 의 스크럼 카드가 사라지며,
+     * `findActiveByBoard` 가 그 스프린트를 집어 **B 가 자기 스프린트를 영구히 시작 못 한다**.
+     *
+     * `sprints.board_id` FK 는 `boards(id)` 만 걸려 있어(V506) **프로젝트 일치를 DB 가 막지 못한다.**
+     * `(project_key, board_id)` 불변식(DATA.md §1.2)은 여기서만 지켜진다.
+     *
+     * ### 읽기 경로와 같은 규약
+     * [BacklogApplicationService.resolveBoardScope] 와 술어·상태 코드를 맞춘다. 두 경로가 다른 규약을
+     * 쓰면 그 차이가 다음 결함이 된다.
+     * - 술어는 같다 — `deleted_at IS NULL`([BoardRepository.findById] 가 건다) + `project_key` 일치.
+     *   조회 방식만 다르다(쓰기 경로는 지정 보드 1건만 필요해 단건 조회를 쓴다).
+     * - 상태 코드는 **404** 다(스펙 E8). 403 이면 「그 UUID 는 존재한다」가 새어 나간다
+     *   (memory `permission-assert-before-existence-makes-403-lie`).
+     * - 지정이 틀렸을 때 기본 보드로 **조용히 대체하지 않는다**(편차 E7). 사용자가 의도한 것과
+     *   다른 보드에 스프린트가 생기고 그 사실을 모르게 된다.
+     *
+     * 예외 타입은 [ResponseStatusException] 이다. `BoardNotFoundException` 은
+     * [com.bts.agileplanning.web.BoardExceptionHandler] 가 `assignableTypes` 로
+     * `BoardController` 계열에만 걸려 있어, `SprintController` 요청에서 던지면 catch-all 이 500 으로 바꾼다.
+     *
+     * @param projectKey 권한을 판정한 프로젝트 키. 보드 소속의 기준이다.
+     * @param boardId 요청이 지정한 보드 UUID. null 이면 스크럼 보드로 폴백한다(없으면 만든다).
+     * @return 스프린트를 붙일 보드 UUID.
+     * @throws ResponseStatusException 404 — 지정 보드가 [projectKey] 의 활성 보드가 아닐 때
+     *   (미존재 · 소프트 삭제 · 타 프로젝트 소속을 구분하지 않는다).
+     */
+    private fun resolveTargetBoard(
+        projectKey: String,
+        boardId: UUID?,
+    ): UUID {
+        // 보드를 안 준 요청은 그 프로젝트의 스크럼 보드에 붙인다(없으면 만든다).
+        if (boardId == null) return boardApplicationService.ensureScrumBoard(projectKey)
+        return boardRepository
+            .findById(boardId)
+            ?.takeIf { it.projectKey == projectKey }
+            ?.id
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다.")
+    }
 
     /**
      * [SprintRepository.assignIssue] 를 호출하고 UNIQUE(issue_key) 제약 위반을 [SprintIssueConflictException] 으로 변환한다.
