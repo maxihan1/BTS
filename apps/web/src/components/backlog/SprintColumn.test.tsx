@@ -38,6 +38,22 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
+// 편집 다이얼로그 스텁 — 이 파일이 재는 것은 **칸 → 헤더 → 메뉴 → 다이얼로그** 한 줄이
+// `boardId` 를 잃지 않는가다. 진짜 폼은 `EditSprintDialog.test.tsx` 가 잰다.
+// ★스텁이라야 관측이 가능하다. 진짜 다이얼로그는 `boardId` 를 409 복구에서만 쓰므로
+//   통째로 빠뜨려도 화면이 똑같아 보인다 (무음 회귀).
+const EDIT_DIALOG_STUB_NAME = '스프린트 편집 스텁'
+const NO_BOARD_MARK = '(보드 없음)'
+
+vi.mock('./EditSprintDialog', () => ({
+  EditSprintDialog: ({ open, boardId }: { open: boolean; boardId: string | undefined }) =>
+    open ? (
+      <div role="dialog" aria-label={EDIT_DIALOG_STUB_NAME}>
+        <span data-testid="edit-dialog-board">{boardId ?? NO_BOARD_MARK}</span>
+      </div>
+    ) : null,
+}))
+
 import { SprintColumn } from './SprintColumn'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import {
@@ -89,6 +105,9 @@ const issue1: BacklogIssue = {
   originalEstimateSeconds: null,
 }
 
+/** 화면이 보고 있는 보드 — `?board=` 로 들어온 값 (FR-BD-04) */
+const BOARD_ID = 'b0000000-0000-4000-8000-00000000000b'
+
 function renderSprintColumn(
   sprint: SprintMeta = plannedSprint,
   issues: BacklogIssue[] = [issue1],
@@ -104,6 +123,7 @@ function renderSprintColumn(
     <DndContext>
       <SprintColumn
         projectKey={projectKey}
+        boardId={BOARD_ID}
         sprint={sprint}
         issues={issues}
         assigneeNames={names}
@@ -614,5 +634,87 @@ describe('SprintColumn — 섹션 접기/펼치기 (F15 FR-2)', () => {
       screen.getByRole('button', { name: collapseToggleName(plannedSprint) }),
     ).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('ATLAS-5')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S9. `⋯` 관리 메뉴 배선 (FR-BL-02 D6 FR-3 · FR-5)
+//
+// 칸이 헤더에 흘려보내는 두 값(`canManageSprint`·`boardId`)이 메뉴까지 살아 도착하는지
+// **칸 밖에서** 잰다. 헤더에만 넣고 칸에서 안 넘기는 절반 배선이 이 자리에서 걸린다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `⋯` 메뉴를 켠 칸을 그린다 — 기존 9인자 헬퍼를 더 늘리지 않는다 */
+function renderSprintColumnWithActions(
+  opts: { canManageSprint?: boolean; boardId?: string | undefined } = {},
+) {
+  const { canManageSprint = true, boardId = BOARD_ID } = opts
+  return render(
+    <DndContext>
+      <SprintColumn
+        projectKey="ATLAS"
+        boardId={boardId}
+        sprint={plannedSprint}
+        issues={[issue1]}
+        assigneeNames={new Map()}
+        issueTypesByKey={new Map()}
+        canManageSprint={canManageSprint}
+      />
+    </DndContext>,
+  )
+}
+
+/** `⋯` 트리거 접근 이름 (하드코딩 금지 — i18n 경유) */
+function actionsTriggerName(sprint: SprintMeta): string {
+  return backlogLabels.sprintActions.triggerAriaLabel(sprint.name)
+}
+
+describe('SprintColumn — S9 `⋯` 관리 메뉴 배선', () => {
+  it('S9a: canManageSprint=true 면 헤더에 `⋯` 트리거가 있다', () => {
+    renderSprintColumnWithActions({ canManageSprint: true })
+    expect(
+      screen.getByRole('button', { name: actionsTriggerName(plannedSprint) }),
+    ).toBeInTheDocument()
+  })
+
+  it('S9b: canManageSprint 미지정이면 `⋯` 트리거가 없다 (fail-closed)', () => {
+    renderSprintColumn(plannedSprint)
+    expect(
+      screen.queryByRole('button', { name: actionsTriggerName(plannedSprint) }),
+    ).toBeNull()
+  })
+
+  it('S9c: canManageSprint=false 면 `⋯` 트리거가 없다', () => {
+    renderSprintColumnWithActions({ canManageSprint: false })
+    expect(
+      screen.queryByRole('button', { name: actionsTriggerName(plannedSprint) }),
+    ).toBeNull()
+  })
+
+  /**
+   * S9d. **`boardId` 가 칸에서 편집 다이얼로그까지 살아 도착한다.**
+   *
+   * 임의로 `undefined` 를 넣으면 409 복구가 보드 스코프 캐시를 못 찾아 재시도가 409 를
+   * 되풀이한다. 화면은 똑같아 보이므로 이 단언 말고는 관측 지점이 없다.
+   */
+  it('S9d: 칸이 받은 boardId 가 편집 다이얼로그까지 도착한다', async () => {
+    const user = userEvent.setup()
+    renderSprintColumnWithActions({ boardId: BOARD_ID })
+
+    await user.click(screen.getByRole('button', { name: actionsTriggerName(plannedSprint) }))
+    await user.click(await screen.findByRole('menuitem', { name: backlogLabels.editSprint }))
+
+    expect(await screen.findByTestId('edit-dialog-board')).toHaveTextContent(BOARD_ID)
+  })
+
+  /** S9e. `?board=` 가 없으면 `undefined` 가 그대로 간다 — 기본 보드는 **서버**가 고른다 */
+  it('S9e: boardId 가 undefined 면 undefined 그대로 도착한다', async () => {
+    const user = userEvent.setup()
+    renderSprintColumnWithActions({ boardId: undefined })
+
+    await user.click(screen.getByRole('button', { name: actionsTriggerName(plannedSprint) }))
+    await user.click(await screen.findByRole('menuitem', { name: backlogLabels.editSprint }))
+
+    expect(await screen.findByTestId('edit-dialog-board')).toHaveTextContent(NO_BOARD_MARK)
   })
 })
