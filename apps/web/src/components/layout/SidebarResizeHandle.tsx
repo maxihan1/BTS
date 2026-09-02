@@ -1,11 +1,6 @@
 // 사이드바 폭 조절 핸들 — WAI-ARIA Window Splitter 패턴 (Jira 패리티 J6)
-import { useRef, type JSX, type KeyboardEvent, type PointerEvent } from 'react'
-import {
-  useSidebarWidth,
-  MIN_SIDEBAR_WIDTH,
-  MAX_SIDEBAR_WIDTH,
-  DEFAULT_SIDEBAR_WIDTH,
-} from '@/hooks/use-sidebar-width'
+import { useEffect, useRef, type JSX, type KeyboardEvent, type PointerEvent } from 'react'
+import { useSidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH } from '@/hooks/use-sidebar-width'
 import { useSidebarResizable } from '@/hooks/use-sidebar-drawer'
 import { navLabels } from '@/i18n/nav-labels'
 
@@ -61,6 +56,18 @@ export function SidebarResizeHandle({ controlsId }: SidebarResizeHandleProps): J
   /** 드래그 시작 지점 — null 이면 드래그 중이 아니다 */
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
+  // 🛑 드래그 중 언마운트되면 `userSelect: none` 이 body 에 남아 **앱 전체에서 텍스트 선택이
+  //    죽는다.** `endDrag` 는 요소 자신의 pointerup/pointercancel 에만 물려 있어 복구가 안 된다.
+  //    재현 — 핸들을 누른 채 `[`(전역 사이드바 토글, 의도적으로 살려 둔 키)를 누르면
+  //    `useSidebarResizable()` 이 false 가 되어 아래 조기 반환이 이 컴포넌트를 지운다.
+  //    ⚠️ 이 훅은 조기 반환 **위**에 있어야 한다 — 아래로 내리면 훅 순서 규칙 위반이다.
+  useEffect(
+    () => () => {
+      document.body.style.userSelect = ''
+    },
+    [],
+  )
+
   if (!resizable) return null
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>): void => {
@@ -98,10 +105,13 @@ export function SidebarResizeHandle({ controlsId }: SidebarResizeHandleProps): J
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const step = event.shiftKey ? KEY_STEP_LARGE : KEY_STEP
+    // 폭 읽기를 `endDrag` 와 같은 방식(스토어 최신값)으로 통일한다 — 한 파일에서 클로저와
+    // getState 를 섞으면 「여기는 왜 다른가」를 다음 사람이 매번 다시 판단해야 한다.
+    const current = useSidebarWidth.getState().width
     let next: number | null = null
 
-    if (event.key === 'ArrowLeft') next = width - step
-    else if (event.key === 'ArrowRight') next = width + step
+    if (event.key === 'ArrowLeft') next = current - step
+    else if (event.key === 'ArrowRight') next = current + step
     else if (event.key === 'Home') next = MIN_SIDEBAR_WIDTH
     else if (event.key === 'End') next = MAX_SIDEBAR_WIDTH
 
@@ -120,14 +130,13 @@ export function SidebarResizeHandle({ controlsId }: SidebarResizeHandleProps): J
       aria-valuenow={width}
       aria-valuemin={MIN_SIDEBAR_WIDTH}
       aria-valuemax={MAX_SIDEBAR_WIDTH}
+      // `aria-valuenow` 만 있으면 스크린리더가 「264」라고만 읽어 단위를 알 수 없다.
+      aria-valuetext={`${String(width)}픽셀`}
       tabIndex={0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
-      onDoubleClick={(): void => {
-        commitWidth(DEFAULT_SIDEBAR_WIDTH)
-      }}
       onKeyDown={handleKeyDown}
       // 히트 영역(6px)과 시각 표시(2px)를 분리한다. 영역 전체를 칠하면 사이드바 경계가
       // 두꺼워진 것처럼 보이고, 반대로 2px 만 두면 조준이 어려워 잡기 전에 포기한다.

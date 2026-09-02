@@ -75,10 +75,22 @@ describe('useSidebarWidth', () => {
   it('T-SW-6: 유한수가 아닌 입력은 무시한다 (NaN 이 저장돼 폭이 사라지는 것을 막는다)', () => {
     const { result } = renderHook(() => useSidebarWidth())
 
+    // ★기본값에서 바로 NaN 을 넣으면 「무시」와 「기본값으로 대체」가 구분되지 않는다 —
+    //   clampWidth 를 `return DEFAULT_SIDEBAR_WIDTH` 로 뮤테이션해도 이 갈래는 초록이었다
+    //   (코드 리뷰 N5). 먼저 다른 값으로 옮겨 두고 그 값이 **살아남는지**를 본다.
+    act(() => {
+      result.current.setWidth(320)
+    })
+    expect(result.current.width).toBe(320)
+
     act(() => {
       result.current.setWidth(Number.NaN)
     })
-    expect(result.current.width).toBe(DEFAULT_SIDEBAR_WIDTH)
+    expect(result.current.width, 'NaN 이 기본값으로 대체됐다 — 폭이 조용히 리셋된다').toBe(320)
+
+    act(() => {
+      result.current.setWidth(DEFAULT_SIDEBAR_WIDTH)
+    })
 
     act(() => {
       result.current.commitWidth(Number.POSITIVE_INFINITY)

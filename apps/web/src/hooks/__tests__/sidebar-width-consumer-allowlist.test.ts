@@ -124,13 +124,19 @@ describe('use-sidebar-width 직접 소비 허용목록', () => {
     //   레일(64px)·모바일 드로어(264px)에서도 splitter 가 렌더돼 `aria-valuenow` 가 거짓말을
     //   하고, 끌어도 아무 일이 없는 죽은 컨트롤이 된다. 예외의 근거를 예외와 같은 곳에서 묶는다.
     const source = withoutComments(readFileSync(resolve(SRC, MUTATOR), 'utf-8'))
+
+    // ★두 단언을 **독립된 문자열**로 두면 각각 따로 만족된다 — `toContain('useSidebarResizable')`
+    //   은 import 줄만으로, 조기 반환 정규식은 `const resizable = true` 로 만족된다(코드 리뷰 C5).
+    //   호출과 게이트 변수를 잇는 한 줄이 있어야 둘이 같은 것을 가리킨다.
     expect(
       source,
-      `${MUTATOR} 가 useSidebarResizable 게이트를 잃었다 — 허용목록 예외의 근거가 사라진다.`,
-    ).toContain('useSidebarResizable')
+      `${MUTATOR} 의 게이트 표기가 정규식과 어긋났다 — 동작을 먼저 확인하고, 게이트가 멀쩡하면 ` +
+        '이 정규식을 갱신해라(유령 회귀를 쫓지 마라).',
+    ).toMatch(/const\s+resizable\s*=\s*useSidebarResizable\(\)/)
     expect(
       source,
-      `${MUTATOR} 가 게이트에서 조기 반환하지 않는다 — 레일·모바일에서도 렌더된다.`,
+      `${MUTATOR} 가 게이트에서 조기 반환하지 않는다 — 레일·모바일에서도 렌더된다. ` +
+        '표기만 바뀐 것이라면 위 메시지대로 정규식을 갱신해라.',
     ).toMatch(/if\s*\(!resizable\)\s*return null/)
   })
 
