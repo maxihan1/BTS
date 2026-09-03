@@ -64,6 +64,34 @@
 
 # 화면에서 보이는 것
 
+## ⬜ apps/web — e2e 로그인 헬퍼가 **사본 9벌**이고 아무도 서로를 검사하지 않는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 로그인하는 코드가 e2e 안에 열일곱 군데 복사돼 있다. 로그인 화면을 고치면 열일곱 곳을 다 고쳐야 한다.
+
+**방치하면.** 다음에 로그인 UI 를 건드릴 때 또 17 파일을 손으로 훑어야 한다. 더 나쁜 것은 **놓쳐도 조용하다**는 것이다 —
+e2e 는 타입체크·린트 **양쪽 모두 밖**이라(`tsconfig.app.json` 의 `include:["src"]` · `lint: eslint src`)
+i18n 심볼을 지워도 컴파일이 통과하고, Playwright 런타임에 `getByRole('button', { name: undefined })` 가 되어
+**아무 버튼이나 매칭**된다.
+
+**무엇.** `loginAsAlice`(`fixtures/auth-fixtures.ts`) 와 `loginAsBob`(`fixtures/issue-fixtures.ts`) 을
+`loginAs(page, username)` 하나로 합치고, spec 안에 인라인된 사본 15벌을 그것으로 대체한다.
+
+**실측(2026-09-03).** `grep -rln "loginStrings.continueButton" apps/web/e2e` → **17 파일**.
+그중 4개(`trusted-devices` · `start-page` · `saved-filters` · `active-project`)는 "인증 E2E 16개" 목록 **밖**이었다.
+원인은 픽스처가 alice 전용이라, 변형이 필요할 때마다 복사한 것이다.
+
+**왜 지금 안 했나.** 2026-09-03 로그인 모달 PR 의 요청 범위(로그인 UX 개편) 밖이다.
+그 PR 은 각 사본에서 폐기된 2줄만 지워 동작을 맞췄고, **구조 통합은 손대지 않았다** —
+152 spec 이 걸린 리팩터링을 기능 PR 에 섞으면 회귀 원인을 가릴 수 있다.
+
+**이미 있는 안전망.** `apps/web/src/i18n/__tests__/login-strings-usage.test.ts` 가 폐기된 심볼의 잔존을
+e2e 전수 스캔으로 막는다(개수 상한이 아니라 **목록 전수 비교**). 통합 시 이 테스트를 지우지 말 것 —
+사본이 다시 늘어나는 것을 막는 유일한 기계 장치다.
+
+**착수 시 읽을 것.** `docs/plans/2026-09-03-login-modal-ux/context-notes.md` C2·C3.
+
+---
+
 ## ⬜ apps/web — FR-WF-07 D6b **실서버 눈확인 5경로 미실시** (신규 · 미착수 · T1)
 
 **쉬운 말.** 상태 이관 마법사를 가짜 서버(테스트용 흉내 서버)로만 확인했고 진짜 서버로는 한 번도
