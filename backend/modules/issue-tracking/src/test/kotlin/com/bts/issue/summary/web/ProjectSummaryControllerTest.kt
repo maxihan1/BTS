@@ -158,6 +158,9 @@ class ProjectSummaryControllerTest {
             .andExpect(jsonPath("$.data.statusOverview[0].category").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.statusOverview[0].count").value(9))
             .andExpect(jsonPath("$.data.priorityBreakdown[0].priority").value(1))
+            // 형제 3종(statusName·typeName·assigneeName)처럼 표시명을 함께 싣는다 — 프론트가
+            // 1~5 라벨 맵을 손으로 다시 쓰면 IssuePriority 와 서로를 확인하지 못한다.
+            .andExpect(jsonPath("$.data.priorityBreakdown[0].priorityName").value("Highest"))
             .andExpect(jsonPath("$.data.typesOfWork[0].typeKey").value("story"))
             .andExpect(jsonPath("$.data.typesOfWork[0].typeName").value("스토리"))
             .andExpect(jsonPath("$.data.teamWorkload[0].assigneeId").value(assigneeUuid.toString()))
@@ -174,6 +177,24 @@ class ProjectSummaryControllerTest {
             // 미할당은 값이 없는 게 아니라 「담당자 없음」이라는 정보다 — 키를 지우면 안 된다.
             .andExpect(jsonPath("$.data.teamWorkload[0].assigneeId").doesNotExist())
             .andExpect(jsonPath("$.data.teamWorkload[0].count").value(4))
+    }
+
+    /**
+     * 우선순위가 1~5 밖이면 표시명 키만 빠지고 응답은 200 이다.
+     *
+     * `IssuePriority.fromNumber` 는 범위 밖에서 throw 한다. DB 는 SMALLINT 라 제약이 무너지면
+     * 6 이 들어올 수 있는데, 그때 요약 화면 전체가 500 이 되면 안 된다 — 라벨 하나를 못 붙이는
+     * 것과 화면이 죽는 것은 전혀 다른 사고다.
+     */
+    @Test
+    fun `요약 - 범위 밖 우선순위는 표시명만 빠지고 200 이다`() {
+        every { service.getSummary(ActorId(actorUuid), "TPRJ") } returns
+            sampleSummary(priorityBreakdown = listOf(PrioritySlice(9, 1)))
+
+        mockMvc.perform(get("/api/v1/projects/TPRJ/summary"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.priorityBreakdown[0].priority").value(9))
+            .andExpect(jsonPath("$.data.priorityBreakdown[0].priorityName").doesNotExist())
     }
 
     // ── 활동 응답 계약 ────────────────────────────────────────────────────────
@@ -250,7 +271,10 @@ class ProjectSummaryControllerTest {
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
 
-    private fun sampleSummary(teamWorkload: List<AssigneeSlice> = listOf(AssigneeSlice(assigneeUuid, "홍길동", 7))): ProjectSummary =
+    private fun sampleSummary(
+        teamWorkload: List<AssigneeSlice> = listOf(AssigneeSlice(assigneeUuid, "홍길동", 7)),
+        priorityBreakdown: List<PrioritySlice> = listOf(PrioritySlice(1, 3)),
+    ): ProjectSummary =
         ProjectSummary(
             projectKey = "TPRJ",
             recent =
@@ -262,7 +286,7 @@ class ProjectSummaryControllerTest {
                 ),
             upcoming = UpcomingCounts(windowDays = 7, due = 5, overdue = 2),
             statusOverview = listOf(StatusSlice("doing", "진행 중", StatusCategory.IN_PROGRESS, 9)),
-            priorityBreakdown = listOf(PrioritySlice(1, 3)),
+            priorityBreakdown = priorityBreakdown,
             typesOfWork = listOf(TypeSlice("story", "스토리", 22)),
             teamWorkload = teamWorkload,
         )
