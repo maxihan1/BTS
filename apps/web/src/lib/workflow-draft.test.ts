@@ -11,9 +11,17 @@ import {
 } from './workflow-draft'
 import type { DraftDefinition } from '@/api/workflows-draft.types'
 
-const OPEN = { key: 'open', name: '열림', category: 'TODO', displayOrder: 1 } as const
-const DOING = { key: 'doing', name: '진행 중', category: 'IN_PROGRESS', displayOrder: 2 } as const
-const DONE = { key: 'done', name: '완료', category: 'DONE', displayOrder: 3 } as const
+// 좌표는 서버가 항상 실어 보낸다(필수-nullable). 아직 배치하지 않아 셋 다 null 이다 — FR-WF-07 D8.
+const OPEN = { key: 'open', name: '열림', category: 'TODO', displayOrder: 1, layoutX: null, layoutY: null } as const
+const DOING = {
+  key: 'doing',
+  name: '진행 중',
+  category: 'IN_PROGRESS',
+  displayOrder: 2,
+  layoutX: null,
+  layoutY: null,
+} as const
+const DONE = { key: 'done', name: '완료', category: 'DONE', displayOrder: 3, layoutX: null, layoutY: null } as const
 
 /** 규칙이 붙은 전환 하나를 포함하는 기본 정의 */
 function definition(): DraftDefinition {
@@ -298,5 +306,56 @@ describe('publishBlockReason', () => {
     }
 
     expect(publishBlockReason(state.draft)).toBeTruthy()
+  })
+})
+
+describe('moveState — 다이어그램 노드 배치 (FR-WF-07 D8)', () => {
+  it('좌표를 바꾸고 초안을 dirty 로 만든다', () => {
+    const state = draftReducer(loaded(), { type: 'moveState', key: 'doing', x: 120.5, y: -40 })
+
+    const moved = state.draft.states.find((s) => s.key === 'doing')
+    expect(moved?.layoutX).toBe(120.5)
+    expect(moved?.layoutY).toBe(-40)
+    expect(state.revision).toBeGreaterThan(0)
+  })
+
+  it('다른 상태의 좌표를 건드리지 않는다', () => {
+    const state = draftReducer(loaded(), { type: 'moveState', key: 'doing', x: 10, y: 20 })
+
+    // 옮기지 않은 두 상태는 서버가 준 값(여기서는 null)을 그대로 지킨다.
+    expect(state.draft.states.find((s) => s.key === 'open')?.layoutX).toBeNull()
+    expect(state.draft.states.find((s) => s.key === 'done')?.layoutX).toBeNull()
+  })
+
+  it('유한수가 아닌 좌표는 무시한다', () => {
+    // NaN·Infinity 가 초안에 실리면 PUT 이 400 이 되는데, 화면은 끌던 노드가 제자리로
+    // 돌아가는 것만 보고 이유를 모른다. 리듀서에서 먼저 막는다.
+    const before = loaded()
+    const nan = draftReducer(before, { type: 'moveState', key: 'doing', x: Number.NaN, y: 0 })
+    const inf = draftReducer(before, { type: 'moveState', key: 'doing', x: 0, y: Number.POSITIVE_INFINITY })
+
+    expect(nan.draft.states.find((s) => s.key === 'doing')?.layoutX).toBeNull()
+    expect(inf.draft.states.find((s) => s.key === 'doing')?.layoutY).toBeNull()
+    expect(nan.revision).toBe(before.revision)
+    expect(inf.revision).toBe(before.revision)
+  })
+
+  it('없는 상태 키는 아무것도 바꾸지 않는다', () => {
+    const before = loaded()
+    const state = draftReducer(before, { type: 'moveState', key: 'ghost', x: 1, y: 2 })
+
+    expect(state.draft.states).toEqual(before.draft.states)
+    expect(state.revision).toBe(before.revision)
+  })
+
+  it('새로 추가한 상태는 좌표가 null 이라 자동 배치를 받는다', () => {
+    const state = draftReducer(loaded(), {
+      type: 'addState',
+      entry: { key: 'blocked', name: '막힘', category: 'TODO' },
+    })
+
+    const added = state.draft.states.find((s) => s.key === 'blocked')
+    expect(added?.layoutX).toBeNull()
+    expect(added?.layoutY).toBeNull()
   })
 })

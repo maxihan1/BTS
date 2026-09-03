@@ -138,6 +138,21 @@ class BoardResponsesTest {
             assertThat(BoardResponse.from(board(boardType = BoardType.SCRUM)).boardType).isEqualTo("SCRUM")
             assertThat(BoardResponse.from(board(boardType = BoardType.KANBAN)).boardType).isEqualTo("KANBAN")
         }
+
+        /**
+         * PATCH 응답도 종류를 싣는다 (FR-BD-04 PR ⑤-3).
+         *
+         * 종류를 노출하는 DTO 가 5개인데 `BoardMetaResponse`(PATCH 응답) **하나만** 빠져 있었다.
+         * 종류가 불변(ADR 편차 X3)이라 오늘 버그는 아니지만, **한 개념을 5곳 중 4곳만 싣는 계약**은
+         * 소비자가 「PATCH 응답으로는 종류를 알 수 없다」를 학습하게 만들고 그 예외가 다음 결함이 된다.
+         */
+        @Test
+        fun `PATCH 메타 응답도 board 의 종류를 그대로 노출한다`() {
+            assertThat(BoardMetaResponse.from(board(boardType = BoardType.SCRUM)).boardType)
+                .isEqualTo("SCRUM")
+            assertThat(BoardMetaResponse.from(board(boardType = BoardType.KANBAN)).boardType)
+                .isEqualTo("KANBAN")
+        }
     }
 
     @Nested

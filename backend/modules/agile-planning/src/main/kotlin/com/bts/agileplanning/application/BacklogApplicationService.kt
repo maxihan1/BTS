@@ -174,6 +174,7 @@ class BacklogApplicationService(
                         sprint =
                             SprintMetaResponse(
                                 sprintId = sprint.id,
+                                boardId = sprint.boardId,
                                 name = sprint.name,
                                 goal = sprint.goal,
                                 status = sprint.status.name,

@@ -1030,4 +1030,118 @@ class BoardApplicationServiceTest {
 
         assertThat(boardRepository.findById(saved.id)?.name).isEqualTo("원래 이름")
     }
+
+    // ── (PR ④) 스프린트 술어를 LIMIT **앞**으로 — 포트에 issueKeys 를 실어 보낸다 ─────
+    //
+    // 결함. `listVisibleIssuesByProject` 가 `created_at DESC` 로 BOARD_CARD_FETCH_LIMIT+1 건을
+    //       **먼저 자르고** 스프린트 필터가 그 뒤에 왔다. 활성 스프린트 이슈가 오래됐으면
+    //       경고 없이 증발한다 — 사용자에게는 정상 시작한 스프린트가 빈 보드다.
+    //
+    // 여기서 재는 것은 **포트에 무엇을 넘겼는가** 하나다. 「LIMIT 앞에서 실제로 걸리는가」는
+    // SQL 계층 책임이라 `BoardIssueLookupAdapterTest.S13` 이 Testcontainers 로 잰다.
+
+    /** 포트 호출을 기록하는 스텁 — 넘어온 filter 전량과 호출 횟수를 남긴다. */
+    private class RecordingLookup(
+        private val issues: List<BoardIssueView> = emptyList(),
+    ) : BoardIssueLookupPort {
+        val filters = mutableListOf<BoardCardFilter>()
+
+        override fun listVisibleIssuesByProject(
+            projectKey: String,
+            viewerUserId: UUID,
+            filter: BoardCardFilter,
+        ): BoardIssuePage {
+            filters += filter
+            return BoardIssuePage(issues = issues, truncated = false)
+        }
+    }
+
+    @Test
+    fun `스크럼 보드는 활성 스프린트 이슈 키를 BoardCardFilter_issueKeys 로 포트에 내려보낸다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("KEYS"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("KEYS", "스크럼 보드", BoardType.SCRUM)
+        seedActiveSprint(board.id, "KEYS", listOf("KEYS-1", "KEYS-2"))
+        val lookup = RecordingLookup(eightIssues("KEYS"))
+
+        serviceWith(catalog = catalog, lookup = lookup)
+            .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(lookup.filters).hasSize(1)
+        assertThat(lookup.filters[0].issueKeys).containsExactlyInAnyOrder("KEYS-1", "KEYS-2")
+    }
+
+    @Test
+    fun `스크럼 보드의 issueKeys 는 호출자가 준 필터를 덮어쓰지 않고 함께 실린다`() {
+        // 퀵필터·담당자 필터와 스프린트 술어는 AND 로 결합돼야 한다. copy 대신 새 VO 를 만들면
+        // 호출자 필터가 조용히 사라지고 「필터를 걸었는데 안 걸린다」가 된다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("BOTH"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BOTH", "스크럼 보드", BoardType.SCRUM)
+        seedActiveSprint(board.id, "BOTH", listOf("BOTH-1"))
+        val lookup = RecordingLookup(eightIssues("BOTH"))
+        val callerFilter = BoardCardFilter(labels = listOf("bug"), includeUnassigned = true)
+
+        serviceWith(catalog = catalog, lookup = lookup)
+            .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID(), filter = callerFilter)
+
+        assertThat(lookup.filters[0].labels).containsExactly("bug")
+        assertThat(lookup.filters[0].includeUnassigned).isTrue()
+        assertThat(lookup.filters[0].issueKeys).containsExactly("BOTH-1")
+    }
+
+    @Test
+    fun `칸반 보드는 issueKeys 를 비운 채 포트를 호출한다`() {
+        // NFR-1. 칸반의 의미는 「프로젝트 이슈 전량」이고 이 PR 이 그것을 바꾸지 않는다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("KBFL"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("KBFL", "칸반 보드")
+        seedActiveSprint(board.id, "KBFL", listOf("KBFL-1"))
+        val lookup = RecordingLookup(eightIssues("KBFL"))
+
+        serviceWith(catalog = catalog, lookup = lookup)
+            .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(lookup.filters).hasSize(1)
+        assertThat(lookup.filters[0].issueKeys).isEmpty()
+    }
+
+    @Test
+    fun `스크럼 보드에 활성 스프린트가 없으면 포트를 아예 호출하지 않는다`() {
+        // 🛑 `issueKeys = emptyList()` 는 VO 규약상 **무필터**다. 그대로 넘기면 프로젝트 이슈를
+        //    전량 조회하고 truncated 까지 참으로 올라온다 — 빈 스크럼 보드에 「일부가 누락됐다」가
+        //    뜬다. 그 분기는 호출부가 단락시켜야 한다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("NOSP"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("NOSP", "스크럼 보드", BoardType.SCRUM)
+        val lookup = RecordingLookup(eightIssues("NOSP"))
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookup)
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(lookup.filters).isEmpty()
+        assertThat(result.columns.sumOf { it.cards.size }).isEqualTo(0)
+        assertThat(result.truncated).isFalse()
+    }
+
+    @Test
+    fun `활성 스프린트에 이슈가 0건이면 포트를 아예 호출하지 않는다`() {
+        // 위와 같은 이유. 「활성 스프린트 없음」과 「활성 스프린트가 비었음」은 같은 분기다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("EMSP"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("EMSP", "스크럼 보드", BoardType.SCRUM)
+        val sprint = seedActiveSprint(board.id, "EMSP", emptyList())
+        val lookup = RecordingLookup(eightIssues("EMSP"))
+
+        val result =
+            serviceWith(catalog = catalog, lookup = lookup)
+                .getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(lookup.filters).isEmpty()
+        assertThat(result.columns.sumOf { it.cards.size }).isEqualTo(0)
+        assertThat(result.truncated).isFalse()
+        // 활성 스프린트 자체는 여전히 응답에 실린다 — 빈 상태 문구가 E1/E2 를 구분하는 근거다.
+        assertThat(result.activeSprint?.id).isEqualTo(sprint.id)
+    }
 }

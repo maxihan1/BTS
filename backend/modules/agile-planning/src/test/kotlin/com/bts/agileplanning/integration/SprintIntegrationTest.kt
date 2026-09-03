@@ -4,6 +4,8 @@ package com.bts.agileplanning.integration
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.application.SprintApplicationService
+import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -36,6 +38,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * 스프린트 REST API 실 DB end-to-end 통합 테스트.
@@ -124,6 +129,15 @@ class SprintIntegrationTest {
 
     @Autowired
     lateinit var sprintRepository: SprintRepository
+
+    /**
+     * Spring 이 프록시한 [SprintApplicationService] 빈.
+     *
+     * `start` 의 잠금은 `pg_advisory_xact_lock` 이라 **트랜잭션 경계 안에서만** 의미가 있다.
+     * MockMvc 경유로도 트랜잭션은 걸리지만, 두 요청을 정확히 겹치게 하려면 스레드를 직접 잡아야 한다.
+     */
+    @Autowired
+    lateinit var sprintApplicationService: SprintApplicationService
 
     @Autowired
     lateinit var permissionStub: PermissionStub
@@ -273,6 +287,84 @@ class SprintIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.status").value("ACTIVE"))
             .andExpect(jsonPath("$.data.version").value(1))
+    }
+
+    /**
+     * 동시 start 2건 중 **한 건만** 통과한다 (FR-BD-04 PR ⑤-2).
+     *
+     * ### 왜 DB 가 못 막나
+     * `V506__sprint_board_id.sql` 의 부분 인덱스 `idx_sprints_board_active` 는 **UNIQUE 가 아니다** —
+     * 같은 파일이 선재 다중 ACTIVE 행을 보존하려고 일부러 그렇게 뒀다. 그래서 유일성을 지키는 것은
+     * [SprintApplicationService.start] 의 read-then-write 하나뿐이고, 잠금이 없으면 두 요청이
+     * 둘 다 통과해 한 보드에 활성 스프린트가 둘이 된다. 그러면 보드 화면이 어느 쪽을 그릴지가
+     * **조회 순서에 달린다.**
+     *
+     * ### 정렬 장치가 없으면 이 테스트는 아무것도 재지 않는다
+     * 두 스레드가 순차로 돌면 잠금이 없어도 통과한다 — 「락이 동작한다」와 「애초에 안 겹쳤다」를
+     * 구별하지 못한다. 두 스레드가 진입한 것을 확인한 뒤 동시에 푼다
+     * (선례 `BoardApplicationServiceTest.동시 ensureScrumBoard 후에도 …`).
+     */
+    @Test
+    fun `동시 start 2건 중 한 건만 통과하고 보드의 ACTIVE 스프린트는 1개다`() {
+        val projectKey = uniqueProjectKey()
+        // boardId 를 안 주면 둘 다 그 프로젝트의 스크럼 보드에 붙는다 — 같은 보드를 두고 경쟁한다.
+        val firstId = UUID.fromString(createSprintAndGetId(projectKey, "동시 시작 A"))
+        val secondId = UUID.fromString(createSprintAndGetId(projectKey, "동시 시작 B"))
+        assertThat(sprintRepository.findById(firstId)?.boardId)
+            .`as`("두 스프린트가 다른 보드에 붙었다 — 경쟁이 성립하지 않는다")
+            .isEqualTo(sprintRepository.findById(secondId)?.boardId)
+
+        val entered = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        val futures =
+            listOf(firstId, secondId).map { id ->
+                executor.submit<Result<Unit>> {
+                    SecurityContextHolder.getContext().authentication =
+                        UsernamePasswordAuthenticationToken(
+                            actorId.toString(),
+                            null,
+                            listOf(SimpleGrantedAuthority("ROLE_USER")),
+                        )
+                    entered.countDown()
+                    start.await()
+                    runCatching { sprintApplicationService.start(actorId, id) }.map { }
+                }
+            }
+        assertThat(entered.await(10, TimeUnit.SECONDS))
+            .`as`("두 스레드가 시작하지 못했다 — 경쟁이 재현되지 않았다")
+            .isTrue()
+        start.countDown()
+        executor.shutdown()
+        val results = futures.map { it.get() }
+
+        assertThat(results.count { it.isSuccess })
+            .`as`("동시 start 2건 중 성공이 %d 건이다 — 정확히 1건이어야 한다", results.count { it.isSuccess })
+            .isEqualTo(1)
+
+        val active = sprintRepository.findByProject(projectKey).filter { it.status == SprintStatus.ACTIVE }
+        assertThat(active)
+            .`as`("한 보드에 ACTIVE 스프린트가 %d 개다 — 보드 화면이 어느 쪽을 그릴지가 조회 순서에 달린다", active.size)
+            .hasSize(1)
+    }
+
+    /**
+     * 스프린트 응답이 **소속 보드**를 노출한다 (FR-BD-04 PR ⑤-3).
+     *
+     * `Sprint.boardId` 는 도메인에 있는데 어느 응답 DTO 에도 없었다. 그래서 클라이언트가 스프린트의
+     * 소속 보드를 알 방법이 없고, E2E 는 **요청 바디**를 관측점으로 삼을 수밖에 없었다
+     * (`e2e/scrum-board.spec.ts` S5 주석이 그 사유를 적는다) — 응답을 못 보므로 서버가 boardId 를
+     * 흘려도 화면은 멀쩡하다. 관측점을 응답으로 옮기는 것이 이 필드의 목적이다.
+     */
+    @Test
+    fun `S4b start 응답은 스프린트의 소속 보드를 노출한다`() {
+        val projectKey = uniqueProjectKey()
+        val sprintId = createSprintAndGetId(projectKey)
+        val boardId = sprintRepository.findById(UUID.fromString(sprintId))?.boardId
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.boardId").value(boardId.toString()))
     }
 
     // ── S5. complete (ACTIVE → COMPLETED 200) ────────────────────────────────

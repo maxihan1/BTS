@@ -17,6 +17,7 @@ import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
+import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
@@ -249,20 +250,24 @@ class BoardApplicationService(
                     ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다: boardId=$boardId"),
             )
 
-        val page =
-            boardIssueLookupPort.listVisibleIssuesByProject(
-                projectKey = board.projectKey,
-                viewerUserId = viewerUserId,
-                filter = filter,
-            )
+        val isScrum = board.boardType == BoardType.SCRUM
 
-        // ★ 칸반은 여기서 끝난다 — 스프린트를 조회하지 않는다(NFR-1).
-        val activeSprint =
-            if (board.boardType == BoardType.SCRUM) sprintRepository.findActiveByBoard(boardId) else null
+        // ★ 칸반은 스프린트를 조회하지 않는다(NFR-1). 스크럼만 이 두 줄을 탄다.
+        val activeSprint = if (isScrum) sprintRepository.findActiveByBoard(boardId) else null
+        val sprintIssueKeys = activeSprint?.let { sprintRepository.findIssueKeys(it.id) }.orEmpty()
+
+        val page = fetchBoardIssues(board, viewerUserId, filter, isScrum, sprintIssueKeys)
+
         val issues =
-            if (board.boardType == BoardType.SCRUM) {
-                val sprintIssueKeys = activeSprint?.let { sprintRepository.findIssueKeys(it.id) }?.toSet() ?: emptySet()
-                page.issues.filter { it.key in sprintIssueKeys }
+            if (isScrum) {
+                // 🛑 **이 사후 필터를 지우지 마라.** 포트 계약([BoardIssueLookupPort] 3-인자 KDoc ·
+                //    CONCERN-1)이 「default 구현은 filter 를 **무시하고** 2-인자로 위임한다」를 명시적으로
+                //    허용한다. 즉 filter 는 `truncated` 정확성을 위한 **최적화**이고, 카드 정확성은
+                //    계약상 소비측 책임이다. 지우면 filter 를 드롭하는 구현(포트 default, 또는 override 를
+                //    빠뜨린 미래 adapter)에서 스크럼 보드가 **다른 스프린트·백로그 이슈까지 그린다** —
+                //    이 PR 이 고치는 결함보다 나쁜 회귀다. 죽은 코드가 아니라 계약이 요구하는 안전망이다.
+                val keySet = sprintIssueKeys.toSet()
+                page.issues.filter { it.key in keySet }
             } else {
                 page.issues
             }
@@ -275,6 +280,54 @@ class BoardApplicationService(
             unplacedCount = placed.unplacedCount,
             quickFilters = quickFilters,
             activeSprint = activeSprint,
+        )
+    }
+
+    /**
+     * 보드에 그릴 이슈를 포트에서 가져온다 (FR-BD-04 PR ④).
+     *
+     * ### 스프린트 술어를 LIMIT **앞**으로 미는 자리
+     *
+     * 포트 구현은 `created_at DESC` 로 `BOARD_CARD_FETCH_LIMIT + 1` 건을 자른다. 스프린트를
+     * 조회 **뒤** Kotlin 에서만 거르면 활성 스프린트 이슈가 오래됐을 때 그 창 밖으로 밀려
+     * **경고 없이 증발한다** — 사용자에게는 정상 시작한 스프린트가 빈 보드다.
+     * [BoardCardFilter.issueKeys] 로 실어 보내 SQL 이 자르기 전에 거르게 한다.
+     *
+     * `filter.copy` 인 것이 중요하다. 새 VO 를 만들면 호출자가 건 담당자·라벨·퀵필터가 조용히
+     * 사라진다 — 스프린트 술어는 그것들과 **AND** 로 결합돼야 한다.
+     *
+     * ### 🛑 스프린트 이슈 키가 0건이면 포트를 호출하지 않는다
+     *
+     * [BoardCardFilter.issueKeys] 의 빈 목록은 「해당 이슈 없음」이 아니라 **「필터 미적용」**이다
+     * (다른 필터 필드와 같은 규약). 그대로 넘기면 프로젝트 이슈를 전량 조회하고 `truncated` 까지
+     * 참으로 올라와, 빈 스크럼 보드에 「일부가 누락됐다」가 뜬다. 「활성 스프린트 없음」과
+     * 「활성 스프린트가 비었음」은 화면상 둘 다 빈 보드이므로 같은 분기로 단락시킨다.
+     *
+     * 빈 페이지를 지역값으로 돌려 `placeCards` · `quickFilters` 경로는 그대로 태운다 —
+     * 빈 보드의 응답 **형태**는 바뀌지 않는다(컬럼은 여전히 나온다).
+     *
+     * @param board 조회 대상 보드.
+     * @param viewerUserId 조회자 UUID. visibility 필터 기준.
+     * @param filter 호출자가 건 보드 카드 필터.
+     * @param isScrum 스크럼 보드인지. 칸반이면 [sprintIssueKeys] 는 항상 비어 있다.
+     * @param sprintIssueKeys 활성 스프린트에 담긴 이슈 키. 스크럼이 아니거나 활성 스프린트가
+     *   없거나 비었으면 빈 목록이다.
+     * @return 포트가 돌려준 페이지. 위 단락 조건이면 빈 페이지(`truncated = false`).
+     */
+    private fun fetchBoardIssues(
+        board: Board,
+        viewerUserId: UUID,
+        filter: BoardCardFilter,
+        isScrum: Boolean,
+        sprintIssueKeys: List<String>,
+    ): BoardIssuePage {
+        if (isScrum && sprintIssueKeys.isEmpty()) {
+            return BoardIssuePage(issues = emptyList(), truncated = false)
+        }
+        return boardIssueLookupPort.listVisibleIssuesByProject(
+            projectKey = board.projectKey,
+            viewerUserId = viewerUserId,
+            filter = if (isScrum) filter.copy(issueKeys = sprintIssueKeys) else filter,
         )
     }
 

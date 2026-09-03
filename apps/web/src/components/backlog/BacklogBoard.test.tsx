@@ -751,6 +751,7 @@ const FRESH_AFTER_TRANSFER: BacklogView = {
     {
       sprint: {
         sprintId: ACTIVE_SPRINT_ID,
+        boardId: '10000000-0000-4000-8000-000000000001',
         name: '스프린트 2 (ACTIVE)',
         goal: null,
         status: 'ACTIVE',
@@ -781,6 +782,7 @@ const TWO_ISSUE_SPRINT_VIEW: BacklogView = {
     {
       sprint: {
         sprintId: PLANNED_SPRINT_ID,
+        boardId: '10000000-0000-4000-8000-000000000001',
         name: '스프린트 1',
         goal: null,
         status: 'PLANNED',
@@ -2150,6 +2152,7 @@ const FILTER_VIEW: BacklogView = {
     {
       sprint: {
         sprintId: PLANNED_SPRINT_ID,
+        boardId: '10000000-0000-4000-8000-000000000001',
         name: PLANNED_SPRINT_NAME,
         goal: null,
         status: 'PLANNED',
@@ -2165,6 +2168,7 @@ const FILTER_VIEW: BacklogView = {
     {
       sprint: {
         sprintId: ACTIVE_SPRINT_ID,
+        boardId: '10000000-0000-4000-8000-000000000001',
         name: ACTIVE_SPRINT_NAME,
         goal: null,
         status: 'ACTIVE',

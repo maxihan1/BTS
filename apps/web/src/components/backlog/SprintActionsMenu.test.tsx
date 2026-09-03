@@ -62,6 +62,7 @@ const BOARD_ID = 'b0000000-0000-4000-8000-00000000000b'
 
 const SPRINT: SprintMeta = {
   sprintId: '11111111-1111-4111-8111-111111111111',
+  boardId: '10000000-0000-4000-8000-000000000001',
   name: 'Sprint 1',
   goal: null,
   status: 'PLANNED',

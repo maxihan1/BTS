@@ -415,12 +415,18 @@ data class ColumnMetaResponse(
  * @property projectKey 소속 프로젝트 키.
  * @property name 보드 표시 이름.
  * @property swimlaneField 갱신된 스윔레인 기준 필드 이름.
+ * @property boardType 보드 종류. `"SCRUM"` · `"KANBAN"` (FR-BD-04).
+ *   생성 후 변경 경로가 없어(ADR 편차 X3) 이 응답에서 값이 바뀌는 일은 없지만, **종류를 노출하는
+ *   DTO(BoardResponse · BoardSummaryResponse · BoardDetailResponse · BoardMetaResponse) 중
+ *   여기만 빠져 있으면** 소비자가 「PATCH 응답으로는 종류를 알 수 없다」는 예외를 학습하게 되고
+ *   그 예외가 다음 결함이 된다. 형제 DTO 와 같은 계약으로 맞춘다.
  */
 data class BoardMetaResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
     val swimlaneField: String,
+    val boardType: String,
 ) {
     companion object {
         /** 도메인 [Board] 를 [BoardMetaResponse] 로 변환한다. */
@@ -430,6 +436,7 @@ data class BoardMetaResponse(
                 projectKey = board.projectKey,
                 name = board.name,
                 swimlaneField = board.swimlaneField.name,
+                boardType = board.boardType.name,
             )
     }
 }

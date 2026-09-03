@@ -11,6 +11,7 @@ import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -94,6 +95,42 @@ class SprintRepository(
             .execute()
 
         return findById(sprint.id) ?: error("스프린트 INSERT 후 조회 실패 — id=${sprint.id}")
+    }
+
+    // ── acquireSprintStartLock ────────────────────────────────────────────────
+
+    /**
+     * 그 보드의 **스프린트 시작**을 직렬화하는 advisory lock 을 잡는다 (FR-BD-04 PR ⑤).
+     *
+     * ### 왜 필요한가
+     * [SprintApplicationService.start] 는 [findActiveByBoard] 로 읽고 [updateStatus] 로 쓴다.
+     * 그 사이에 잠금이 없으면 동시 요청 2건이 둘 다 「활성 스프린트 없음」을 보고 **둘 다 시작**한다.
+     * 그러면 한 보드에 활성 스프린트가 둘이 되고, 보드 화면이 어느 쪽을 그릴지가 **조회 순서**에 달린다.
+     *
+     * ### 왜 UNIQUE 인덱스가 아닌가
+     * `V506__sprint_board_id.sql` 의 부분 인덱스 `idx_sprints_board_active` 는 **일부러 UNIQUE 가 아니다** —
+     * 같은 파일이 선재 다중 ACTIVE 행을 보존한다고 적는다. UNIQUE 로 승격하려면 그 행들을 먼저
+     * 정리해야 하고, 정리하지 않으면 마이그레이션 자체가 실패한다. 막아야 하는 것은 「이미 있는 다중」이
+     * 아니라 **새로 생기는 경쟁**이다.
+     *
+     * ### 계약 — 반드시 읽기 **전에** 부른다
+     * `pg_advisory_xact_lock` 은 트랜잭션 종료 시 풀린다. 락 **밖에서** 읽은 값으로 판단하면 락이
+     * 무력화된다(memory `advisory-lock-bigint-toctou`). 호출자는 같은 트랜잭션 안에서
+     * 락 → 재조회 → 쓰기 순서를 지켜야 한다.
+     *
+     * ★ 그래서 전파가 `MANDATORY` 다. `REQUIRED` 로 두면 트랜잭션 **없이** 불렸을 때 자기 트랜잭션을
+     * 열고 즉시 커밋해 **락이 그 자리에서 풀리는데 예외 없이 조용히 성공한다** — 계약 위반이 침묵한다
+     * (형제 락 [BoardRepository.acquireProjectScrumBoardLock] 과 같은 판단).
+     *
+     * 잠금 공간에 `sprint-start:` 접두를 붙여 형제 락(`scrum-board:<projectKey>`)과 공간을 가른다.
+     * `hashtextextended(text, int8)` 가 bigint 를 반환해 `pg_advisory_xact_lock(bigint)` 와 정합한다.
+     *
+     * @param boardId 대상 보드 UUID.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    fun acquireSprintStartLock(boardId: UUID) {
+        // pg_advisory_xact_lock 은 void 를 반환한다 — 결과 행은 소비만 하고 버린다.
+        dsl.fetch("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "sprint-start:$boardId")
     }
 
     // ── findActiveByBoard ─────────────────────────────────────────────────────

@@ -105,7 +105,7 @@ identity-access  ─┐
 |---|---|---|---|---|
 | identity-access | [product/identity-access.md](product/identity-access.md) | 25 (AU 10 + MF 5 + PM 10) | AuthN Provider + Keycloak | ☑ D단계 |
 | issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 37 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☑ D단계 |
-| project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☐ D단계 (WF-07) |
+| project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☑ D단계 |
 | agile-planning | [product/agile-planning.md](product/agile-planning.md) | 15 (BD 4 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☑ D단계 |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☑ D단계 |
@@ -127,6 +127,11 @@ identity-access  ─┐
 > 2026-08-18 갱신 — FR-WF-04~07 신설로 정본이 **139 → 143** 으로 늘었고, 그 시점 **4건(WF-04~07)이 D 미착수**였다.
 > 위 「전량 완료」 문장은 2026-08-07 시점의 기록이며 지금은 참이 아니다 — 숫자만 올리면
 > 거짓 진술이 되므로 시점을 명시해 남긴다. project-workflow 진척 열이 `☐` 로 내려간 이유가 이것이다.
+>
+> 2026-09-03 갱신 — **FR-WF-07 완주**(로드맵 PR 10a·10b #423·#427 로 D6·D7 · 로드맵 PR 9 #434 로
+> D8 — xyflow 다이어그램 편집기). project-workflow 의 미완 D 마커가 0 이 돼 진척 열을 `☑ D단계` 로
+> 올렸다. **D 미착수 FR 은 0 건이다** — 144 FR 전량이 D 단계를 마쳤다. BC 완료 선언은 별개다
+> (§NFR 측정 · README §7 · Maxi 선언이 남는다).
 >
 > 2026-09-02 갱신 — **FR-BD-04 완주**(PR #421 D1~D5 · #422 D6 일부 · #424 D6 잔여·D7). D 미착수는 **1건(FR-WF-07)** 이다.
 > 2026-09-01 갱신 — FR-BD-04 신설로 정본은 **144 FR** 이다. D 미착수는 2건(FR-WF-07 · FR-BD-04)이었다.

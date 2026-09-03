@@ -130,6 +130,7 @@ describe('GET /api/v1/projects/:projectKey/backlog?board= (보드 스코프)', (
   function scopeSprint(name: string): SprintMeta {
     return {
       sprintId: generateUUID(),
+      boardId: '10000000-0000-4000-8000-000000000001',
       name,
       goal: null,
       status: 'PLANNED',

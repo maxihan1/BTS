@@ -16,6 +16,14 @@ interface TransitionFormDialogProps {
   states: WorkflowView['states']
   /** 수정 대상. 없으면 생성이다 */
   editing: WorkflowView['transitions'][number] | null
+  /**
+   * 생성 시 출발·도착을 미리 채운다 (FR-WF-07 D8).
+   *
+   * 다이어그램에서 노드 핸들을 끌어 놓으면 사용자는 **출발과 도착을 이미 지정한 것**이다.
+   * 그것을 다시 고르게 하면 방금 한 조작이 없던 일이 된다. `editing` 이 있을 때는 무시한다 —
+   * 수정은 기존 값이 정본이다.
+   */
+  prefill?: { from: string; to: string } | null
   onSubmit: (input: TransitionDefinitionInput) => void
   submitting?: boolean
 }
@@ -45,6 +53,7 @@ function TransitionFormDialog({
   onOpenChange,
   states,
   editing,
+  prefill = null,
   onSubmit,
   submitting = false,
 }: TransitionFormDialogProps): React.JSX.Element {
@@ -61,9 +70,10 @@ function TransitionFormDialog({
     }
     setName(editing?.name ?? '')
     setKind(editing?.kind ?? 'NORMAL')
-    setFromKey(editing?.fromStateKey ?? null)
-    setToKey(editing?.toStateKey ?? states[0]?.key ?? null)
-  }, [open, editing, states])
+    // 수정이면 기존 값이 정본이고, 생성이면 다이어그램에서 끌어 온 출발·도착을 먼저 쓴다.
+    setFromKey(editing?.fromStateKey ?? prefill?.from ?? null)
+    setToKey(editing?.toStateKey ?? prefill?.to ?? states[0]?.key ?? null)
+  }, [open, editing, prefill, states])
 
   const stateOptions = states.map((s) => ({ value: s.key, label: s.name }))
   const title = editing === null ? labels.dialog.transitionCreate : labels.dialog.transitionEdit
