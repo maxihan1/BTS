@@ -102,6 +102,10 @@ class BoardApplicationServiceTest {
                 ),
                 WorkflowStateView(key = "closed", name = "완료", isDone = true, category = "DONE", displayOrder = 2),
             )
+
+        /** 보드 시드 **뒤에** 워크플로우에 추가된 상태 — 어느 컬럼에도 매핑되지 않는다(R8). */
+        val BLOCKED_STATE =
+            WorkflowStateView(key = "blocked", name = "차단됨", isDone = false, category = "TODO", displayOrder = 3)
     }
 
     /**
@@ -212,6 +216,52 @@ class BoardApplicationServiceTest {
         val inProgressPlaced = result.columns.first { it.column.legacyStateKey == "in-progress" }
         assertThat(inProgressPlaced.cards).hasSize(1)
         assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
+    }
+
+    // ── (c-2) 미매핑 상태 목록 (R8 · J2 · G3) ───────────────────────────────────
+
+    @Test
+    fun `보드 조회가 어느 컬럼에도 없는 상태를 unmappedStates 로 낸다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("UNMAP"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("UNMAP", "미매핑 보드")
+
+        // 보드를 만든 뒤 워크플로우에 상태가 하나 늘었다 — 그것을 담은 컬럼은 아직 없다.
+        // 이 상태의 이슈는 오늘 unplacedCount 로만 세어져 「왜 빠졌는지」를 알 수 없다(E2).
+        every { catalog.listStates(ProjectKey.of("UNMAP"), null) } returns DEFAULT_STATES + BLOCKED_STATE
+
+        val result = service.getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.unmappedStates.map { it.key }).containsExactly("blocked")
+        assertThat(result.unmappedStates.map { it.name }).containsExactly("차단됨")
+    }
+
+    @Test
+    fun `모든 상태가 매핑됐으면 unmappedStates 가 빈 배열이다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("MAPPED"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("MAPPED", "전량 매핑 보드")
+
+        val result = service.getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.unmappedStates).isEmpty()
+    }
+
+    @Test
+    fun `unmappedStates 기준이 listStates projectKey null 이다`() {
+        // G3 — `createBoard` 의 시드와 **같은 호출**이어야 한다. `issueTypeKey` 로 가르면 시드에는
+        // 있는데 미매핑 목록에는 없는(또는 그 반대) 상태가 생겨 두 목록이 서로를 배신한다.
+        // strict mock 이라 다른 인자 조합으로 불리면 그 자체로 실패한다 — 이 verify 는 「불렸다」를 잰다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("GTHREE"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("GTHREE", "G3 보드")
+
+        service.getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        verify(atLeast = 2) { catalog.listStates(ProjectKey.of("GTHREE"), null) }
     }
 
     // ── 스크럼 보드 분기 (FR-BD-04 D4) ──────────────────────────────────────────
