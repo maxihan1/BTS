@@ -85,10 +85,10 @@ of your board as complete."* BTS 는 `category` 스냅샷으로 판정한다.
 
 위치 기반으로 바꾸면 스프린트 완료·번다운·백로그 완료 판정이 전부 흔들린다. 이 PR 범위 밖이다.
 
-**실측으로 안전을 확인했다** — `category` 는 표시용이고 로직 판정에 안 쓰인다. `agile-planning` 의
-`.category` 참조 8곳이 전부 DTO 변환·매핑이다(`V500:27` 이 「표시용 스냅샷」이라 적었고 일치).
-따라서 1:N 에서 한 컬럼에 서로 다른 category 가 섞여도(예: 「완료」에 `done`+`wont_fix`)
-파급이 표시에 한정된다.
+**★이 결정의 초안 근거가 부분적으로 거짓이었다(plan 리뷰 BLOCKER-1).** 초안은 「`category` 는
+표시용이라 파급이 표시에 한정된다」고 적었고 그 실측은 `agile-planning` **백엔드 8곳뿐**이었다.
+프론트를 안 봤다 — `apps/web/src/components/board/board-drop.ts:322` 가 그 값으로
+**해결 방안 모달을 분기**하고 있었다. D7 이 그것을 고친 **뒤에야** 「표시 전용」이 참이 된다.
 
 ### D6. UI 는 후속 PR · 대신 프론트를 최소 수정한다 (편차 X3)
 
@@ -99,6 +99,42 @@ of your board as complete."* BTS 는 `category` 스냅샷으로 판정한다.
 주므로, 사용자가 상태 2개를 묶는 순간 기존 화면이 400 을 받는다 — 「기능은 있는데 쓰면 화면이
 깨진다」. 그래서 프론트가 `toStateKey`(컬럼의 첫 상태)를 보내도록 **최소 수정**한다(R12).
 상태 1개인 오늘의 보드에서는 동작이 완전히 같다.
+
+
+### D7. 해결 방안 판정을 컬럼이 아니라 「카드가 가는 상태」로 옮긴다
+
+plan 리뷰가 BLOCKER 로 잡은 것을 지라 재조회로 풀었다(Maxi 지시 — 「지라 클라우드 리서치해서
+그대로 적용해」).
+
+**지라는 resolution 을 전환(transition)에 붙인다. 컬럼도 상태도 아니다.**
+
+> *"Create a **screen** with the resolution field on it, then map this screen to **the transition**"*
+> *"the workflow **transition**...manages the Resolution field"*
+> — [Best practices on using the Resolution field in Jira Cloud](https://support.atlassian.com/jira/kb/best-practices-on-using-the-resolution-field-in-jira-cloud/) · 2026-09-04 · Cloud (J7·J8)
+
+**BTS 백엔드는 이미 그렇게 한다.** `IssueRepository.kt:373` 이 「워크플로우 validator 가 DONE 진입 시
+resolution 필수 불변식을 강제한다(B7)」이고, `:1917` 은 `targetStateIsDone` 으로 판단한다.
+
+**어긋난 것은 프론트뿐이다.** `board-drop.ts:322` 가 `toColumn.category === 'DONE'` 으로 분기한다.
+
+```
+        오늘 (컬럼:상태 1:1)              1:N 이 된 뒤
+        ─────────────────────            ─────────────────────
+백엔드   대상 상태가 DONE?      ─┐        대상 상태가 DONE?      ─┐
+                                 ├ 항상 같음                      ├ 갈린다
+프론트   컬럼 category DONE?    ─┘        컬럼 category DONE?    ─┘
+```
+
+오늘은 컬럼에 상태가 하나뿐이라 두 기준의 답이 **항상 같아** 불일치가 드러나지 않는다.
+**1:N 이 그것을 드러낸다** — 「진행 중」 컬럼에 `done` 을 넣으면 R5 의 최댓값 규칙으로 그 컬럼이
+`DONE` 이 되고, `in_progress` 로 옮기는 평범한 드래그에도 「어떻게 끝냈나요?」 모달이 뜬다.
+
+**즉 이 PR 이 만든 버그가 아니라 원래 있던 불일치를 드러내는 것이다.** 처방은 프론트를 백엔드에
+맞추는 것이고, 그것이 지라와도 정합한다.
+
+**부수 결정 — 응답 계약이 넓어진다(R11).** 프론트가 대상 상태의 `category` 를 알아야 판정하므로
+컬럼 응답이 `stateKeys: List<String>` 이 아니라 `states: List<ColumnStateResponse>`(`key`·`name`·
+`category`)를 싣는다. 키만 주면 프론트가 상태 메타를 따로 조회해야 하고 그것이 N+1 이다.
 
 ## 기각한 대안
 

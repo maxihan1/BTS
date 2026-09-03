@@ -223,8 +223,12 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 - ⚠️ `board_columns.state_key` 를 **DROP 하지 않는다**(`DATA.md §4` 3단 분할)
 
 **REFACTOR**:
-- 주석 밀도를 `V507` 에 맞춘다. 되돌리기 절을 반드시 적는다 — 이 마이그레이션은 **되돌릴 수 있다**
-  (신설 테이블 DROP + `SET NOT NULL` 복원). `V507` 과 달리 파괴적 변경이 0 이라는 사실을 명시한다
+- 주석 밀도를 `V507` 에 맞춘다. **되돌리기 절을 정확히 적는다(리뷰 CONCERN-3).**
+  초안은 「신설 테이블 DROP + `SET NOT NULL` 복원 · 파괴적 변경 0」이라 적었는데 **거짓이다** —
+  이 PR 은 **상태 0개 컬럼을 허용**하고(E1·N4) R9 의 컬럼 생성이 실제로 그런 컬럼을 만든다
+  (Task 6). 그런 컬럼이 하나라도 있으면 `state_key` 가 NULL 이라 **`SET NOT NULL` 이 실패한다.**
+  정확한 서술은 「**상태 0개 컬럼이 하나도 없을 때만** 되돌릴 수 있다. 있으면 그 컬럼을 먼저
+  처리해야 한다」다. #440 은 같은 자리가 반대로(비관적으로) 틀렸었다
 
 **검증**: `./gradlew :modules:agile-planning:test --tests '*BoardColumnStatesMigrationTest'`
 (파이프 금지 — 종료 코드가 `tail` 것이 된다. 로그는 파일로 받고 `EXIT=$?` 로 읽는다)
@@ -260,8 +264,9 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 - category 우선순위 `DONE > IN_PROGRESS > TODO` 를 상수 맵으로
 
 **REFACTOR**:
-- category 규칙을 `BoardColumn` 의 함수로 응집 + KDoc 에 R5·X2 근거(「`category` 는 표시용
-  스냅샷이고 로직 판정에 안 쓰인다 — `V500:27`」)를 적는다
+- category 규칙을 `BoardColumn` 의 함수로 응집 + KDoc 에 R5·X2 근거를 적는다.
+  ★**「표시 전용」이라고 쓰되 그것이 Task 7(R13) 이후에야 참이 된다는 사실을 함께 적는다** —
+  오늘 프론트 `board-drop.ts:322` 가 이 값으로 해결 방안 모달을 분기하고 있다(리뷰 BLOCKER-1)
 
 **뮤테이션 짝** (GREEN 선커밋 뒤): `placeCards` 가 `stateKeys.first()` 만 보게 되돌리면
 「상태 둘」 테스트 **1건만** red. ← 이 뮤테이션이 결함 지점(집합 매칭)을 실제로 지난다
@@ -316,8 +321,8 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 **RED**:
 - 테스트:
   ```kotlin
-  @Test fun `BoardColumnResponse 가 stateKeys 배열을 낸다`()                          // R11
-  @Test fun `BoardColumnWithCardsResponse 와 ColumnMetaResponse 도 배열을 낸다`()      // R11
+  @Test fun `BoardColumnResponse 가 states 배열을 낸다 key name category 포함`()      // R11
+  @Test fun `BoardColumnWithCardsResponse 와 ColumnMetaResponse 도 같은 형태를 낸다`() // R11
   @Test fun `보드 조회가 어느 컬럼에도 없는 상태를 unmappedStates 로 낸다`()            // R8·J2
   @Test fun `unmappedStates 기준이 listStates projectKey null 이다`()                 // R8·G3
   @Test fun `모든 상태가 매핑됐으면 unmappedStates 가 빈 배열이다`()                    // R8
@@ -325,7 +330,8 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 - 실패 메시지 (예상): `stateKeys` 프로퍼티 없음 / `unmappedStates` 없음
 
 **GREEN**:
-- DTO 3종 `stateKey: String` → `stateKeys: List<String>`
+- DTO 3종 `stateKey: String` → **`states: List<ColumnStateResponse>`**(`key`·`name`·`category`).
+  ★키 배열만으로는 부족하다 — **Task 7 의 R13 이 대상 상태의 `category` 를 읽어야** 한다
 - `getBoard` 가 `listStates(projectKey, null)` 결과에서 매핑된 키를 빼 `unmappedStates` 를 만든다
   — **`createBoard:124` 와 같은 호출**이어야 한다(G3)
 
@@ -409,7 +415,7 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 - agent: `frontend-engineer`
 - files: [`apps/web/src/api/boards.ts`, `apps/web/src/api/boards.test.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/board-fixtures.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/workflow-draft-handlers.ts`, `apps/web/src/components/board/BoardColumn.tsx`, `apps/web/src/components/board/BoardColumn.test.tsx`, `apps/web/src/components/board/KanbanBoard.test.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.test.tsx`, `apps/web/src/components/board/board-drop.ts`, `apps/web/src/components/board/board-drop.test.ts`, `apps/web/src/hooks/use-move-card.test.tsx`, `apps/web/src/hooks/use-reorder-card.test.tsx`, `apps/web/src/hooks/use-change-card-field.test.tsx`, `apps/web/src/lib/backlog-completion.test.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`]
 - depends-on: [4, 5]
-- jira: [J3]
+- jira: [J3, J7, J8]
 
 **RED**:
 - ★**learning 2026-05-30 「Zod 응답 스키마 강화가 산재한 인라인 mock 을 깬다」(PR #46)의 양식이다.**
@@ -419,15 +425,25 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
   터진다) ④RED 에 **기존 mock 회귀 검증**을 포함
 - 테스트:
   ```ts
-  it('boardColumnSchema 가 stateKeys 배열을 파싱한다')                    // R11
+  it('boardColumnSchema 가 states 배열을 파싱한다 key name category')      // R11
   it('카드 이동 요청이 toStateKey 를 보낸다')                              // R12
-  it('상태가 여럿인 컬럼에 떨구면 첫 상태를 보낸다')                        // R12 과도기 동작
+  it('상태가 여럿인 컬럼에 떨구면 display_order 최소 상태를 보낸다')         // R12 · E5 「첫」 정의
+  it('대상 상태가 DONE 이면 해결 방안 모달을 띄운다')                       // ★R13
+  it('컬럼 category 가 DONE 이어도 대상 상태가 DONE 이 아니면 안 띄운다')    // ★R13 결정판
   it('기존 보드 픽스처가 새 스키마로도 파싱된다')                           // ④ 회귀
   ```
 
+**★R13 이 이 task 의 무게중심이다.** `board-drop.ts:322` 가 오늘 `toColumn.category === 'DONE'`
+으로 해결 방안 모달을 분기하는데, 지라는 **전환**에 붙이고(J7·J8) BTS 백엔드도 이미 **대상 상태**로
+판단한다(`IssueRepository.kt:373`). 어긋난 것은 프론트뿐이고 1:N 이 그 불일치를 드러낸다.
+**위 두 번째 R13 테스트가 결정판이다** — 「컬럼은 DONE 인데 대상 상태는 아니다」는 오늘 만들 수
+없는 조합이고, 1:N 이후에만 존재한다. 그 테스트가 red 에서 green 으로 가는 것이 이 수정의 증거다.
+
 **GREEN**:
-- Zod `stateKey: z.string()` → `stateKeys: z.array(z.string())` (2곳)
-- `board-drop.ts` 가 드롭 대상 컬럼의 `stateKeys[0]` 을 `toStateKey` 로 보낸다
+- Zod `stateKey: z.string()` → `states: z.array(columnStateSchema)` (2곳)
+- `board-drop.ts` 가 드롭 대상 컬럼의 **`(display_order, key)` 최소** 상태를 `toStateKey` 로 보낸다
+  (E5 의 「첫」 정의와 **같은 규칙**이어야 한다 — 갈리면 레거시 컬럼과 화면이 어긋난다)
+- ★**R13** — `toColumn.category === 'DONE'` 을 **대상 상태의 `category === 'DONE'`** 으로 바꾼다
 - **드롭존 UI 는 만들지 않는다**(X3). 화면 구조 무변경
 
 **REFACTOR**:
@@ -476,12 +492,121 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 - **구현 규율** TDD red→green→refactor. `test:` 커밋이 `feat:` 보다 먼저 — CI 판별식 ①d 가 대조한다
 - **추가 검증** ktlintCheck · detekt(둘 다 `--rerun-tasks`) · `tsc -p tsconfig.app.json --noEmit` ·
   vitest · Playwright 표적 4 spec · 판별식 전량 · `node scripts/build-doc-index.mjs --check`
-- **Jira 매핑** — J1→T1·T2·T3·T4·T6 · J2→T4·T6 · J3→T2·T5·T7 · J4→T5 · J5→T6 · **J6 기각(X2 — 완료
-  판정을 위치 기반으로 옮기지 않는다)**. 채택 5건 전부 최소 1개 task 에 물렸다 — **차집합 0**
+- **Jira 매핑** — J1→T1·T2·T3·T4·T6 · J2→T4·T6 · J3→T2·T5·T7 · J4→T5 · J5→T6 ·
+  **J7·J8→T7(R13)** · **J6 기각(X2)** · **J9 범위 밖**(재오픈 전환의 resolution clear 는
+  `issue-tracking` 이 이미 `targetStateIsDone=false` 시 null clear 로 처리한다 —
+  `IssueRepository.kt:1917`. 이 PR 이 건드리지 않는다).
+  채택 8건 중 7건이 task 에 물렸고 J9 는 사유와 함께 범위 밖이다 — **차집합 0**
 - **뮤테이션 짝 2건 예고** — T2(집합 매칭을 `first()` 로 되돌리면 그 1건만 red) ·
   T5(보드 매핑 검증을 지우면 404 1건만 red). 둘 다 **결함이 사는 자리를 실제로 지난다**
 - **장부** 이 PR 은 부채를 닫지 않는다. 157 은 N2 로 「더 늘리지 않는다」만 지키고 본문 갱신 대상이
   아니다. 177 은 등재 완료이고 범위 밖이다 — **장부 갱신 task 없음**
 
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### `/plan-eng-review` — **BLOCKER 1 · CONCERNS 4**
+
+흔들 지점 7개를 전부 실측했다. 셋이 실제 결함이었고 그중 하나가 **사용자에게 도달한다.**
+
+#### 🔴 BLOCKER-1. `category` 가 표시용이라는 근거가 프론트에서 거짓이다 (R5 · X2 · ADR D5)
+
+`apps/web/src/components/board/board-drop.ts:322`
+
+```ts
+return toColumn.category === 'DONE' ? { type: 'needs-resolution', ...base } : { type: 'move', ...base }
+```
+
+**프론트가 컬럼 `category` 로 해결 방안(resolution) 모달 여부를 분기한다.** 표시가 아니라 로직이다.
+
+R5 의 「최댓값(`DONE` > `IN_PROGRESS` > `TODO`)」 규칙과 합치면 사용자에게 이렇게 도달한다 —
+「진행 중」 컬럼에 `done` 을 하나 넣는 순간 **그 컬럼 전체가 `DONE` 이 되어, `in_progress` 로 옮기는
+평범한 드래그에도 해결 방안 모달이 뜬다.**
+
+스펙 X2 와 ADR D5 는 「`category` 는 표시용 스냅샷이라 파급이 표시에 한정된다」를 근거로 들었고,
+그 실측은 **`agile-planning` 백엔드 8곳만** 봤다. 프론트를 안 봤다.
+
+`apps/web/src/lib/backlog-completion.ts` 도 `category` 를 쓰지만 **상태 키의 category 를 워크플로우에서
+직접** 읽으므로 영향 없다. 실제 결함은 `board-drop.ts:322` 하나다.
+
+**처방(추천) — resolution 판정을 컬럼이 아니라 대상 상태로 옮긴다.**
+이 PR 은 이미 「컬럼이 아니라 상태를 지목한다」로 계약을 바꾼다(R6·J3). resolution 판정도 같은 축으로
+옮기는 것이 일관되고, `R12` 가 이미 `board-drop.ts` 를 건드리므로 **같은 파일 안에서 끝난다.**
+기각 대안 — ①`category` 최솟값으로 바꾸면 `done` 으로 옮길 때 resolution 을 안 물어 백엔드가 422 로
+거부한다 ②R5 를 「상태 1개일 때만」으로 좁히면 혼합 컬럼의 category 가 미정의로 남는다.
+
+#### ⚠️ CONCERN-2. 「첫 상태」가 4곳에 나오는데 **정의가 없다** (E5 · R12)
+
+`docs/specs/…:98`(R12) · `:199`(E5) · plan `:287` · `:424` 가 전부 「첫 상태」를 쓰는데
+`display_order` 순인지 삽입 순인지 어디에도 없다. 이중 기록(E5)과 프론트 전송(R12)이 **서로 다른
+「첫」을 고르면** 레거시 컬럼과 화면이 갈린다. `(display_order, id)` 로 못박아야 한다 —
+#440 이 `(created_at, id)` tie-break 를 같은 이유로 명시했다.
+
+#### ⚠️ CONCERN-3. 되돌리기 주장이 **낙관적으로 거짓**이다 (plan Task 1 REFACTOR)
+
+plan `:227` — 「신설 테이블 DROP + `SET NOT NULL` 복원 · **파괴적 변경이 0**」.
+
+거짓이다. 이 PR 은 **상태 0개 컬럼을 허용**하고(E1·N4), R9 의 컬럼 생성이 실제로 그런 컬럼을 만든다
+(Task 6 의 `POST columns 로 상태 0개 컬럼을 만들 수 있다`). 그런 컬럼이 하나라도 생기면
+`board_columns.state_key` 가 NULL 이라 **`SET NOT NULL` 이 실패한다.**
+
+정확한 서술은 「**상태 0개 컬럼이 하나도 없을 때만** 되돌릴 수 있다. 있으면 그 컬럼을 먼저
+처리해야 한다」다. #440 에서 V507 되돌리기 주석이 실제보다 **비관적**이라 잡혔는데 이번엔 **낙관적**이다.
+
+#### ⚠️ CONCERN-4. R7 이 소비자 0 인 경로가 된다
+
+`toColumnId` 소비자를 전수 조사했다 — 프론트 구현 5파일(`boards.ts` · `board-drop.ts` ·
+`KanbanBoard.tsx` · `use-move-card.ts` · `board-handlers.ts`)뿐이고 **R12 가 그것을 전부
+`toStateKey` 로 바꾼다.** 그러면 저장소 안에서 `toColumnId` 를 보내는 코드가 0 이 되고
+**테스트만 그 경로를 지킨다** — memory `unreachable-state-fixture-is-fake-green` 에 근접한다.
+
+BTS 는 사내 단일 앱이라 외부 API 소비자가 없다. **판단이 필요하다** — ①R7 을 빼고 `toColumnId` 를
+즉시 제거(그러면 R12 가 「최소 수정」이 아니라 필수 수정이 된다) ②남기되 「외부 클라이언트 안전망」
+이라는 목적을 스펙에 명시하고 그 사실을 인정한다. 지금은 목적이 안 적혀 있다.
+
+#### ⚠️ CONCERN-5. N3(N+1 방지)에 검증 수단이 없다
+
+「컬럼–상태는 조인 1회로 읽는다」가 서술뿐이고 쿼리 수를 세는 판정이 없다. **선례도 같다** —
+`BoardIssueLookupAdapterTest.kt:46` 이 「N+1 없이 단일 쿼리」를 **주석에만** 적고 실제로 세지 않는다.
+즉 N3 은 오늘 「지워도 통과하는」 판정이다. Task 3 의 테스트가 무엇을 재는지 명확히 하거나,
+N3 을 「검증 불가 · 코드 리뷰가 진다」로 낮춰 적어야 한다.
+
+### 흔들었으나 문제없던 것
+
+- **지적 1 (Task 4·5·6 직렬화).** 파일 겹침이 **실제 의존**이다 — 셋 다 `BoardResponses.kt` 의
+  같은 DTO 를 고친다. 인위적 파일 분할이 오히려 나쁘다. 6 wave 는 받아들일 만하다.
+- **지적 7 (Task 8 에 RED 가 없다).** 무회귀 실측 task 다. 「기존 테스트가 여전히 초록인가」가
+  판정이고, red 가 나오면 그 자리가 회귀다. TDD 사이클의 변형으로 정당하다 — 다만 plan 이
+  그 사실을 이미 명시했으므로 추가 조치 불요.
+
+### 반영 결과 — BLOCKER 1 · CONCERNS 4 전부 처리
+
+| # | 처리 |
+|---|---|
+| **BLOCKER-1** | **지라 재조회로 풀었다(Maxi 지시).** 지라는 resolution 을 **전환**에 붙인다(J7·J8) — 컬럼도 상태도 아니다. **BTS 백엔드는 이미 그렇게 한다**(`IssueRepository.kt:373` · `:1917` `targetStateIsDone`). 어긋난 것은 프론트뿐(`board-drop.ts:322`)이고 **1:N 이 원래 있던 불일치를 드러내는 것**이었다. **R13** 신설 + **ADR D7** + Task 7 에 결정판 테스트(「컬럼은 DONE 인데 대상 상태는 아니다」 — 1:N 이후에만 존재하는 조합). 스펙 X2·R5 와 ADR D5 의 거짓 근거도 정정 |
+| **CONCERN-2** | 「첫」을 **`(display_order, state_key)` 오름차순 최소**로 정의. E5 와 R12 가 **같은 규칙**을 쓰도록 Task 7 GREEN 에 명시 |
+| **CONCERN-3** | 되돌리기 주장 정정. 「상태 0개 컬럼이 하나도 없을 때만 되돌릴 수 있다」 — R9 가 그런 컬럼을 실제로 만든다 |
+| **CONCERN-4** | Maxi 결정 — **남기되 목적 명시.** 「외부 클라이언트 안전망이고 저장소 안 소비자는 0. 테스트만 이 경로를 지킨다」를 R7 에 적었다 |
+| **CONCERN-5** | N3 을 **「코드 리뷰가 지는 항목」**으로 낮췄다. 선례도 쿼리 수를 안 센다(`BoardIssueLookupAdapterTest.kt:46` 은 주석뿐). 지켜지는 척하지 않는다 |
+
+**부수 변경 — R11 이 넓어졌다.** 프론트가 대상 상태의 `category` 를 읽어야 R13 이 성립하므로
+컬럼 응답이 `stateKeys: List<String>` → **`states: List<ColumnStateResponse>`**(`key`·`name`·`category`).
+키만 주면 프론트가 상태 메타를 따로 조회해야 하고 그것이 N+1 이다.
+
+## GSTACK REVIEW REPORT
+
+| Runs | Status | Findings |
+|---|---|---|
+| `/plan-eng-review` (7 흔들 지점 실측) | **CONCERNS (해소)** | BLOCKER 1 · CONCERN 4 · PASS 2 → **전부 반영** |
+
+**VERDICT — 반영 완료. 게이트 1 진입 가능.**
+
+BLOCKER-1 이 가장 무거웠고 지라 재조회가 그것을 풀었다. 진단이 바뀌었다 — 내가 만든 버그가
+아니라 **프론트와 백엔드가 이미 다른 기준을 쓰고 있었고 1:N 이 그것을 드러내는 것**이다.
+오늘은 컬럼:상태가 1:1 이라 두 기준의 답이 항상 같아 아무도 몰랐다.
+
+문서 3종에 반영했다 — 스펙(J7~J9 근거 · R5 정정 · R11 확장 · R7 목적 · R13 신설 · X2 근거 정정 ·
+E5 「첫」 정의 · N3 낮춤) · ADR(D5 근거 정정 · **D7** 신설) · plan(Task 2·4·7 · 되돌리기 정정 ·
+Jira 매핑 J7·J8→T7 추가 · J9 범위 밖 사유).
+
+NO UNRESOLVED DECISIONS
