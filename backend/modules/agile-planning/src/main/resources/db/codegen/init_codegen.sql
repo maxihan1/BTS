@@ -22,17 +22,35 @@ CREATE TABLE boards (
 
 CREATE INDEX idx_boards_project_key ON boards (project_key) WHERE deleted_at IS NULL;
 
--- ── board_columns (V500 + V501 미러) ─────────────────────────────────────────────
+-- ── board_columns (V500 + V501 + V508 미러) ──────────────────────────────────────
 CREATE TABLE board_columns (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     board_id      UUID NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
-    state_key     VARCHAR(50) NOT NULL,
+    state_key     VARCHAR(50) NULL,  -- V508: 레거시 단일 매핑(정본은 board_column_states). 상태 0개 컬럼이면 NULL
     name          TEXT NOT NULL,
     category      VARCHAR(16) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
     wip_limit     INTEGER NULL  -- V501: WIP 제한(NULL=무제한, 양수만)
         CONSTRAINT board_columns_wip_limit_positive CHECK (wip_limit IS NULL OR wip_limit > 0),
-    UNIQUE (board_id, state_key)
+    UNIQUE (board_id, state_key),
+    CONSTRAINT uq_board_columns_id_board UNIQUE (id, board_id)  -- V508: 복합 FK 참조 대상
+);
+
+-- ── board_column_states (V508 미러) ──────────────────────────────────────────────
+-- 컬럼 ↔ 상태 키 1:N. 컬럼 하나가 상태 0개 이상을 담는다.
+-- ★ 복합 FK (column_id, board_id) 가 「비정규화된 board_id 가 컬럼의 실제 소유 보드와 같다」를
+--   DB 가 지게 한다. 그것이 없으면 UNIQUE(board_id, state_key) 가 엉뚱한 것을 지킨다.
+CREATE TABLE board_column_states (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    column_id     UUID NOT NULL,
+    board_id      UUID NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    state_key     VARCHAR(50) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (board_id, state_key),
+    UNIQUE (column_id, state_key),
+    FOREIGN KEY (column_id, board_id) REFERENCES board_columns (id, board_id) ON DELETE CASCADE
 );
 
 -- ── sprints (V503 + V506 미러) ─────────────────────────────────────────────────────

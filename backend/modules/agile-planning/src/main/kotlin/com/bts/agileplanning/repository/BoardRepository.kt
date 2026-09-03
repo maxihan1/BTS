@@ -44,6 +44,7 @@ import java.util.UUID
 @Suppress("TooManyFunctions")
 class BoardRepository(
     private val dsl: DSLContext,
+    private val columnStates: BoardColumnStateRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -96,6 +97,8 @@ class BoardRepository(
                 )
             }
             insertStep.execute()
+            // 정본 테이블에도 같은 매핑을 남긴다(V508 이중 기록 · E5).
+            board.columns.forEach { columnStates.replaceStates(board.id, it.id, it.stateKeys) }
         }
 
         return findById(board.id) ?: error("보드 INSERT 후 조회 실패 — id=${board.id}")
@@ -199,6 +202,10 @@ class BoardRepository(
                 .onConflict(BOARD_COLUMNS.BOARD_ID, BOARD_COLUMNS.STATE_KEY)
                 .doNothing()
                 .execute()
+        if (inserted > 0) {
+            // 경쟁에서 이긴 호출만 정본 테이블을 채운다 — 진 호출은 inserted=0 이라 건드리지 않는다.
+            columns.forEach { columnStates.replaceStates(boardId, it.id, it.stateKeys) }
+        }
         log.debug("컬럼 자가 치유 — boardId={}, inserted={}", boardId, inserted)
         return inserted
     }
@@ -226,7 +233,8 @@ class BoardRepository(
                 .orderBy(BOARD_COLUMNS.DISPLAY_ORDER.asc())
                 .fetch()
 
-        return toDomain(boardRecord, columnRecords)
+        // 읽기 정본은 board_column_states 다(V508). 조회 1회로 전 컬럼분을 받는다(N3).
+        return toDomain(boardRecord, columnRecords, columnStates.findStateKeysByBoard(boardId))
     }
 
     /**
@@ -385,7 +393,7 @@ class BoardRepository(
         return dsl.selectFrom(BOARD_COLUMNS)
             .where(BOARD_COLUMNS.ID.eq(columnId))
             .fetchOne()
-            ?.let { toColumnDomain(it) }
+            ?.let { columnStates.toDomain(it) }
     }
 
     /**
@@ -394,6 +402,7 @@ class BoardRepository(
     private fun toDomain(
         boardRecord: BoardsRecord,
         columnRecords: List<BoardColumnsRecord>,
+        stateKeysByColumn: Map<UUID, List<String>> = emptyMap(),
     ): Board {
         val id = boardRecord.id ?: error("boards.id 가 null — DB 데이터 손상")
         val createdAt =
@@ -415,31 +424,12 @@ class BoardRepository(
             id = id,
             projectKey = boardRecord.projectKey,
             name = boardRecord.name,
-            columns = columnRecords.map { toColumnDomain(it) },
+            columns = columnRecords.map { columnStates.toDomain(it, stateKeysByColumn) },
             createdAt = createdAt,
             updatedAt = updatedAt,
             deletedAt = boardRecord.deletedAt?.toInstant(),
             swimlaneField = swimlaneField,
             boardType = boardType,
-        )
-    }
-
-    /**
-     * [BoardColumnsRecord] 를 도메인 [BoardColumn] 으로 변환한다.
-     *
-     * [toDomain] 내 컬럼 변환과 [updateColumnWipLimit] 재조회 변환이 이 헬퍼를 공유한다.
-     */
-    private fun toColumnDomain(col: BoardColumnsRecord): BoardColumn {
-        val colId = col.id ?: error("board_columns.id 가 null — boardId=${col.boardId}")
-        return BoardColumn(
-            id = colId,
-            // 읽기 정본은 board_column_states 다. Task 3 이 조인으로 채우기 전까지는
-            // 레거시 칸을 단일 원소로 감싸 무회귀를 유지한다(E5 이중 기록 창).
-            stateKeys = listOfNotNull(col.stateKey),
-            name = col.name,
-            category = col.category,
-            displayOrder = col.displayOrder ?: 0,
-            wipLimit = col.wipLimit,
         )
     }
 }
