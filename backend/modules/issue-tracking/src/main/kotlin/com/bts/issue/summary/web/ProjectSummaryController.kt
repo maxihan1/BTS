@@ -9,7 +9,9 @@ import com.bts.issue.summary.web.dto.ProjectActivityResponse
 import com.bts.issue.summary.web.dto.ProjectSummaryResponse
 import com.bts.issue.worklog.web.DataResponse
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
@@ -107,6 +109,10 @@ class ProjectSummaryController(
     @GetMapping("/{projectKey}/activity")
     fun activity(
         @PathVariable projectKey: String,
+        @Parameter(
+            description = "반환할 최대 변경 그룹 수. 기본 20, 1~50. 범위 밖이면 400 — 조용히 자르지 않는다.",
+            schema = Schema(type = "integer", minimum = "1", maximum = "50", defaultValue = "20"),
+        )
         @RequestParam(required = false) limit: Int?,
     ): DataResponse<ProjectActivityResponse> {
         // 1. actor 추출 최상단 — 파라미터 검증보다 먼저 (probe 방지)
