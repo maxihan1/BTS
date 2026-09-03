@@ -1,12 +1,13 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (505건, 최신순)
+# 시간 축 인덱스 (506건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-09-03 | project-summary-activity | — | ✔ | — | — | FR-CO-02 FR-MV-01 FR-PM-05 FR-PM-07 FR-WT-01 |
+| 2026-09-03 | project-summary-route-j4 | — | ✔ | — | — | — |
 | 2026-09-03 | xyflow-fr-wf-07-d8-pr-9 | — | ✔ | — | — | FR-WF-05 FR-WF-06 FR-WF-07 |
 | 2026-09-02 | board-sprint-scoped-lookup | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-02 | board-type-invariants | — | ✔ | — | — | FR-BD-04 |
