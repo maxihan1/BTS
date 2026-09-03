@@ -137,15 +137,14 @@ class ProjectSummaryIntegrationTest {
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
-        ): Boolean {
-            if (permission == IssuePermission.BROWSE && scope is IssueScope.Project) {
-                if (scope.key == denyBrowseProject.get()) return false
+        ): Boolean =
+            when {
+                permission == IssuePermission.BROWSE && scope is IssueScope.Project ->
+                    scope.key != denyBrowseProject.get()
+                permission == IssuePermission.VIEW && scope is IssueScope.Issue ->
+                    scope.key != denyViewIssue.get()
+                else -> true
             }
-            if (permission == IssuePermission.VIEW && scope is IssueScope.Issue) {
-                if (scope.key == denyViewIssue.get()) return false
-            }
-            return true
-        }
     }
 
     /**

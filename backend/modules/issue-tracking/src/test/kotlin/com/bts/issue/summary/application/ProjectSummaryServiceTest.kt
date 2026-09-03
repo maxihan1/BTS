@@ -771,7 +771,6 @@ class ProjectSummaryServiceTest : DescribeSpec({
             item.toValue.shouldBeNull()
         }
     }
-
 })
 
 /** 댓글 소속 대조를 따로 검증하지 않는 픽스처가 공유하는 이슈 UUID. */

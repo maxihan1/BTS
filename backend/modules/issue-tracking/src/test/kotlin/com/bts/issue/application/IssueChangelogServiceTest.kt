@@ -47,7 +47,12 @@ class IssueChangelogServiceTest : DescribeSpec({
             issueApplicationService = issueApplicationService,
             changeHistoryRepository = changeHistoryRepository,
             userLookupPort = userLookupPort,
-            masker = IssueChangeItemMasker(issueRepository, commentRepository, AlwaysAllowFieldPermissionResolver()),
+            masker =
+                IssueChangeItemMasker(
+                    issueRepository = issueRepository,
+                    commentRepository = commentRepository,
+                    fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+                ),
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -608,7 +613,12 @@ class IssueChangelogServiceTest : DescribeSpec({
                 changeHistoryRepository = changeHistoryRepository,
                 userLookupPort = userLookupPort,
                 // 필드 권한 마스킹과 직교시킨다 — 여기서 가려지면 원인이 댓글 삭제인지 필드 권한인지 구분 못 한다.
-                masker = IssueChangeItemMasker(issueRepository, commentRepository, AlwaysAllowFieldPermissionResolver()),
+                masker =
+                    IssueChangeItemMasker(
+                        issueRepository = issueRepository,
+                        commentRepository = commentRepository,
+                        fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+                    ),
             )
 
         val activeCommentId = UUID.randomUUID()

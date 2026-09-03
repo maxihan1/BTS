@@ -74,6 +74,7 @@ class IssueChangeItemMasker(
      * **projectId 미해석은 원본 유지(폴백).** 단건 상세([IssueApplicationService] 의 필드 마스킹)와
      * 같은 방어적 선택이다. 두 경로의 폴백이 어긋나면 같은 사용자가 화면에 따라 다른 것을 보게 된다.
      */
+    @Suppress("ReturnCount") // candidates 없음 guard + projectId 미해석 guard + 판정 — 의도적 조기 반환
     private fun resolveInvisibleFields(
         actor: ActorId,
         projectKey: String,
@@ -149,7 +150,10 @@ class IssueChangeItemMask internal constructor(
         items: List<IssueChangeItem>,
     ): List<IssueChangeItem> = items.map { apply(issueId, it) }
 
-    private fun isInvisibleField(field: String): Boolean = maskableFieldRef(field)?.let { it in invisibleFields } == true
+    private fun isInvisibleField(field: String): Boolean {
+        val ref = maskableFieldRef(field) ?: return false
+        return ref in invisibleFields
+    }
 
     /**
      * 댓글 본문 항목이 **가려야 할 상태**인지 판정한다. 판정 불능은 전부 "가림" 으로 수렴한다(fail-closed).
