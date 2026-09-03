@@ -77,6 +77,14 @@ export type DraftAction =
   | { type: 'addState'; entry: StatusCatalogChoice }
   | { type: 'removeState'; key: string }
   | { type: 'reorderStates'; orderedKeys: string[] }
+  /**
+   * 다이어그램에서 노드를 끌어 놓았을 때 (FR-WF-07 D8).
+   *
+   * ★ **자동 배치 결과는 이 액션으로 들어오지 않는다.** `autoLayout` 은 좌표가 없는 상태를
+   * 화면에 그리기 위한 계산일 뿐이고, 그 결과를 초안에 써 넣으면 사용자가 아무것도 안 했는데
+   * 「저장 안 됨」이 뜬다. 사용자가 실제로 끌었을 때만 부른다.
+   */
+  | { type: 'moveState'; key: string; x: number; y: number }
   | { type: 'createTransition'; input: TransitionInput }
   | { type: 'updateTransition'; localId: string; input: TransitionInput }
   | { type: 'deleteTransition'; localId: string }
@@ -223,7 +231,15 @@ export function draftReducer(state: DraftEditorState, action: DraftAction): Draf
       //   `DraftIdentityGuard.requireStatesMatchCatalog` 가 저장을 400 으로 막는다.
       const appended: DraftState[] = [
         ...state.draft.states,
-        { key: action.entry.key, name: action.entry.name, category: action.entry.category, displayOrder: 0 },
+        {
+          key: action.entry.key,
+          name: action.entry.name,
+          category: action.entry.category,
+          displayOrder: 0,
+          // 좌표 없이 넣는다 — 캔버스가 자동 배치로 빈자리를 준다(FR-WF-07 D8).
+          layoutX: null,
+          layoutY: null,
+        },
       ]
       return edited(state, { ...state.draft, states: renumber(appended) })
     }
@@ -248,6 +264,18 @@ export function draftReducer(state: DraftEditorState, action: DraftAction): Draf
       // 목록에 없던 상태가 조용히 사라지지 않게 뒤에 붙인다.
       const missing = state.draft.states.filter((s) => !action.orderedKeys.includes(s.key))
       return edited(state, { ...state.draft, states: renumber([...ordered, ...missing]) })
+    }
+
+    case 'moveState': {
+      // 유한수가 아니면 무시한다. NaN·Infinity 가 초안에 실리면 PUT 이 400 이 되는데,
+      // 화면은 끌던 노드가 제자리로 돌아가는 것만 보고 이유를 모른다.
+      if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) return state
+      if (!state.draft.states.some((s) => s.key === action.key)) return state
+
+      const states = state.draft.states.map((s) =>
+        s.key === action.key ? { ...s, layoutX: action.x, layoutY: action.y } : s,
+      )
+      return edited(state, { ...state.draft, states })
     }
 
     case 'createTransition': {

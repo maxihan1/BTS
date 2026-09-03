@@ -12,6 +12,7 @@ import {
   pendingIssueStore,
   seedWorkflowKeys,
   versionOf,
+  publishedLayouts,
 } from './workflow-draft-fixtures'
 
 /** 백엔드와 같은 중첩 봉투로 실패를 돌려준다. */
@@ -38,8 +39,10 @@ function keyOf(params: Record<string, unknown>): string {
   return typeof params['key'] === 'string' ? params['key'] : ''
 }
 
+
 /** 발행된 정의를 초안 형태로 옮긴다. `GET /draft` 가 초안 없을 때 주는 값이다. */
 function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
+  const layouts = publishedLayouts.get(workflow.key)
   return {
     key: workflow.key,
     name: workflow.name,
@@ -49,6 +52,9 @@ function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
       name: s.name,
       category: s.category,
       displayOrder: s.displayOrder,
+      // 발행 시 실린 좌표를 되읽는다. 없으면 null 이고 캔버스가 자동 배치한다.
+      layoutX: layouts?.get(s.key)?.x ?? null,
+      layoutY: layouts?.get(s.key)?.y ?? null,
     })),
     transitions: workflow.transitions.map((t) => ({
       from: t.fromStateKey,
@@ -64,6 +70,12 @@ function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
 
 /** 초안 정의를 발행본(`WorkflowView`) 형태로 되돌린다. 발행이 정규 테이블을 교체하는 자리다. */
 function toWorkflowView(definition: DraftDefinition): WorkflowView {
+  // 좌표를 옆 저장소에 내려쓴다 — 실서버 `replaceDefinition` 이 `workflow_statuses` 에
+  // LAYOUT_X/LAYOUT_Y 를 함께 싣는 자리와 같다. 전량 교체라 이전 값은 남기지 않는다.
+  publishedLayouts.set(
+    definition.key,
+    new Map(definition.states.map((s) => [s.key, { x: s.layoutX, y: s.layoutY }])),
+  )
   return {
     key: definition.key,
     name: definition.name,
@@ -360,9 +372,16 @@ export const workflowDraftHandlers = [
 
     // 목의 「기본값」은 지금 발행본에 표식을 더한 것이다. 실제 YAML 을 흉내 내는 것이
     // 목적이 아니라 **복원이 초안까지만 간다**는 계약을 재는 것이 목적이다.
+    //
+    // ★ 단 **좌표는 반드시 비운다.** 서버 `resetToDefault` 는 `yaml.toDraftDefinition()` 으로
+    // 정의를 새로 만드는데 YAML 에 좌표가 없어 `DraftStateDto` 기본값 `null` 이 실린다 —
+    // 즉 복원은 배치를 초기화한다. `toDraftDefinition(published)` 를 그대로 쓰면 목이
+    // `publishedLayouts` 의 좌표를 살려 줘 **서버보다 관대해진다**(게이트 2 리뷰 #5).
+    const base = toDraftDefinition(published)
     const restored: DraftDefinition = {
-      ...toDraftDefinition(published),
+      ...base,
       name: `${published.name} (기본값)`,
+      states: base.states.map((s) => ({ ...s, layoutX: null, layoutY: null })),
     }
     const existing = draftStore.get(key)
     draftStore.set(key, { definition: restored, baseVersion: existing?.baseVersion ?? body.baseVersion })

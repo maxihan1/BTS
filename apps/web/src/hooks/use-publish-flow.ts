@@ -221,9 +221,21 @@ export interface UseMigrationWizardResult {
   discardDisabled: boolean
 }
 
-/** `WorkflowView` 를 이관 후보 셀렉터(`lib/workflow-draft.ts`)가 받는 형태로 좁힌다. */
+/**
+ * `WorkflowView` 를 이관 후보 셀렉터(`lib/workflow-draft.ts`)가 받는 형태로 좁힌다.
+ *
+ * ★ 좌표를 `null` 로 채운다. 이 값은 **「어느 상태가 사라지는가」를 키로 비교하는 데만** 쓰이고
+ * (`removedStatusKeys` · `migrationTargets`), `WorkflowView` 에는 애초에 좌표 필드가 없다.
+ * 여기서 지어낸 좌표를 넣으면 그것이 초안으로 새어 발행 때 실제 배치를 덮어쓴다.
+ */
 function toPublishedDefinition(view: WorkflowView): DraftDefinition {
-  return { key: view.key, name: view.name, description: view.description, states: view.states, transitions: [] }
+  return {
+    key: view.key,
+    name: view.name,
+    description: view.description,
+    states: view.states.map((s) => ({ ...s, layoutX: null, layoutY: null })),
+    transitions: [],
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
