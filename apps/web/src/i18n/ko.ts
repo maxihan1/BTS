@@ -37,7 +37,16 @@ export const loginStrings = {
 
 /** /login 페이지 헤딩 */
 export const loginPageStrings = {
+  /**
+   * 🔒 동결. 로그인 모달의 접근 가능한 이름이자 e2e readiness gate 문자열이다.
+   * Radix 가 DialogTitle 을 aria-labelledby 로 연결하므로 이 값이 곧 `role="dialog"` 의 이름이 된다.
+   * 다이얼로그 이름은 단계 전환 중에도 바뀌지 않는다.
+   */
   heading: 'BTS 로그인',
+  /** 첫 진입 시 모달 설명문 */
+  description: '계정 정보를 입력해 로그인하세요.',
+  /** 세션 만료로 열린 모달의 설명문 — 이동 없이 현재 화면 위에 뜬다 */
+  sessionExpiredDescription: '세션이 만료되었습니다. 다시 로그인하면 보던 화면으로 돌아갑니다.',
 } as const
 
 /** 이슈 상세 페이지 관련 문자열 */
