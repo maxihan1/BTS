@@ -1,4 +1,4 @@
-// 로그인 폼 컴포넌트 — identifier-first 2단계 + MFA 3단계 (이메일 → provider+pw → TOTP 코드)
+// 로그인 폼 컴포넌트 — 단일 화면 자격 증명 + MFA 2단계 (provider+id+pw → TOTP 코드)
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -25,6 +25,7 @@ import { useLoginMutation } from './useLoginMutation'
 import { SamlIdpButtons } from './SamlIdpButtons'
 import { OidcIdpButtons } from './OidcIdpButtons'
 import { ssoEntryUrl } from './ssoEntryUrl'
+import { useDomainRouteLookup } from './useDomainRouteLookup'
 import { loginStrings, mfaStrings, mfaErrorMessage } from '@/i18n/ko'
 import { verifyMfa } from '@/api/mfa'
 import { ApiError, apiGet } from '@/api/client'
@@ -33,7 +34,6 @@ import { useAuthStore } from './authStore'
 import { fetchSamlIdps } from '@/api/saml'
 import { fetchOidcProviders } from '@/api/oidc'
 import { fetchProviders } from '@/api/providers'
-import { fetchRoute } from '@/api/route'
 import { authenticateWithSecurityKey } from '@/api/webauthn'
 import { browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import type { SamlIdp } from '@/api/saml'
@@ -86,69 +86,10 @@ const loginFormSchema = z.object({
 type LoginFormValues = z.infer<typeof loginFormSchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1단계 — 이메일 입력 화면
+// 자격 증명 폼 — provider + username + password + SSO (단일 화면)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface Step1Props {
-  /** "계속" 클릭 시 — 이메일 값을 받아 부모가 route 조회를 처리한다 */
-  onContinue: (email: string) => void
-  isPending: boolean
-}
-
-const emailSchema = z.object({ email: z.string() })
-type EmailFormValues = z.infer<typeof emailSchema>
-
-/**
- * 1단계: 이메일 입력 + "계속" 버튼만 렌더한다.
- * provider 드롭다운/username/password/SSO 버튼은 이 단계에서 미표시.
- */
-const LoginStep1 = ({ onContinue, isPending }: Step1Props) => {
-  const form = useForm<EmailFormValues>({
-    resolver: zodResolver(emailSchema),
-    defaultValues: { email: '' },
-  })
-
-  function onSubmit(values: EmailFormValues) {
-    onContinue(values.email)
-  }
-
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel htmlFor="login-email">{loginStrings.emailLabel}</FormLabel>
-              <FormControl>
-                <Input
-                  id="login-email"
-                  type="text"
-                  autoComplete="email"
-                  aria-required="true"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" className="w-full" disabled={isPending}>
-          {loginStrings.continueButton}
-        </Button>
-      </form>
-    </Form>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2단계 — provider + username + password 폼
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface Step2Props {
-  /** 1단계에서 입력한 이메일 — username 필드에 프리필 */
-  prefillEmail: string
+interface CredentialsFormProps {
   onSuccess?: () => void
   /** login 응답이 mfa_required:true일 때 챌린지 토큰을 전달하며 MFA step으로 진입 */
   onMfaRequired: (challengeToken: string) => void
@@ -159,26 +100,31 @@ interface Step2Props {
 }
 
 /**
- * 2단계: 기존 provider 드롭다운 + username + password + SAML/OIDC 버튼 폼.
- * prefillEmail이 username 필드의 초기값으로 설정된다 (사용자 수정 가능).
+ * 로그인 자격 증명 폼. provider 드롭다운 + username + password + SSO 버튼을 **한 화면**에 렌더한다.
  *
- * key prop으로 재마운트되므로 prefillEmail이 바뀌어도 stale state 없음
- * (react-usestate-stale-key-prop 패턴).
+ * 이메일 선입력 1단계는 폐기됐다(FR-AU-07 deviation). 도메인 기반 SSO 라우팅은 사라지지 않고
+ * username 입력의 배경 조회로 옮겨왔다 — blur 또는 500ms 디바운스에 `GET /auth/route` 를 부르고,
+ * 매칭되면 SSO 버튼을 비밀번호 **위**에 노출한다.
+ *
+ * 🛑 자동 리다이렉트는 하지 않는다. 기존 2단계에서 `window.location.assign` 이 안전했던 것은
+ * 트리거가 "계속" 클릭이라는 **명시적 행위**였기 때문이다. 여기서 트리거는 blur/디바운스로
+ * **수동적**이라, 그 상태로 풀 네비게이션을 걸면 타이핑 중이던 비밀번호와 함께 화면이 통째로
+ * 사라지고 되돌릴 수 없다. 매칭 도메인에 LOCAL/LDAP 계정이 공존할 수도 있다(FR-AU-06).
  *
  * providers는 부모 LoginForm이 이미 계산해 prop으로 전달한다.
  * 마운트 시 providers[0].id가 이미 확정돼 있으면 defaultValues에서 직접 설정한다.
  * providers가 아직 빈 배열이면 useEffect에서 첫 항목 도착 시 setValue로 설정한다.
  */
-const LoginStep2 = ({
-  prefillEmail,
+const LoginCredentialsForm = ({
   onSuccess,
   onMfaRequired,
   providers,
   isProvidersLoading,
   samlIdps,
   oidcProviders,
-}: Step2Props) => {
+}: CredentialsFormProps) => {
   const mutation = useLoginMutation()
+  const { matchedRoute, scheduleLookup, flushLookup } = useDomainRouteLookup()
 
   // providers[0]?.id가 이미 있으면 마운트 시 기본값으로 사용한다.
   // 없으면 '' — useEffect에서 채운다.
@@ -188,8 +134,7 @@ const LoginStep2 = ({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
       provider: initialProvider,
-      // 1단계에서 입력한 이메일을 username 초기값으로 설정한다
-      username: prefillEmail,
+      username: '',
       password: '',
     },
   })
@@ -274,12 +219,45 @@ const LoginStep2 = ({
                   autoComplete="username"
                   aria-required="true"
                   {...field}
+                  onChange={(e) => {
+                    field.onChange(e)
+                    scheduleLookup(e.target.value)
+                  }}
+                  onBlur={(e) => {
+                    field.onBlur()
+                    flushLookup(e.target.value)
+                  }}
                 />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        {/* SSO 버튼은 비밀번호 **위**에 둔다 — 사용자가 비밀번호를 치기 전에 보게 하기 위해서다 */}
+        {matchedRoute !== null && (
+          <div className="space-y-2">
+            <Button
+              type="button"
+              className="h-10 w-full"
+              onClick={() => {
+                window.location.assign(
+                  ssoEntryUrl(matchedRoute.type, matchedRoute.registrationId),
+                )
+              }}
+            >
+              {matchedRoute.type === 'SAML'
+                ? loginStrings.samlLoginButtonLabel(matchedRoute.displayName)
+                : loginStrings.oidcLoginButtonLabel(matchedRoute.displayName)}
+            </Button>
+            <p className="text-sm text-muted-foreground">{loginStrings.ssoRoutedHint}</p>
+            <div className="flex items-center gap-2">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">{loginStrings.samlDividerText}</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </div>
+        )}
 
         <FormField
           control={form.control}
@@ -307,7 +285,14 @@ const LoginStep2 = ({
           </p>
         )}
 
-        <Button type="submit" className="w-full" disabled={mutation.isPending}>
+        {/* SSO 로 라우팅된 도메인이어도 로컬 제출은 살려둔다 — 강등만 한다.
+            FR-07 S4 "끊긴 라우트가 사용자를 막지 않는다" 를 그대로 지키는 자리다. */}
+        <Button
+          type="submit"
+          variant={matchedRoute !== null ? 'outline' : 'default'}
+          className="h-10 w-full"
+          disabled={mutation.isPending}
+        >
           {loginStrings.submitButton}
         </Button>
 
@@ -461,7 +446,11 @@ const MfaCodeInput = ({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
-        <p className="text-sm text-muted-foreground">{guideText}</p>
+        {/* 모달 안에서 단계가 바뀌므로 전환을 스크린리더에 알린다 — 페이지 이동이 없어
+            보조기술이 맥락 변화를 스스로 눈치챌 수 없다. 에러는 별도로 role="alert" 가 맡는다. */}
+        <p role="status" className="text-sm text-muted-foreground">
+          {guideText}
+        </p>
 
         <FormField
           control={form.control}
@@ -477,6 +466,9 @@ const MfaCodeInput = ({
                   maxLength={maxLength}
                   autoComplete={autoComplete}
                   aria-required="true"
+                  // Radix 는 다이얼로그가 **열릴 때만** autofocus 하고 콘텐츠 교체는 모른다.
+                  // MfaCodeInput 은 key={mode} 로 재마운트되므로 여기서 발화한다.
+                  autoFocus
                   {...field}
                 />
               </FormControl>
@@ -658,23 +650,20 @@ interface LoginFormProps {
 }
 
 /**
- * identifier-first 로그인 폼. step 상태로 3단계를 오케스트레이션한다.
+ * 로그인 폼. step 상태로 2단계를 오케스트레이션한다.
  *
- * 1단계: 이메일 입력 → "계속"
- * - 이메일에 @가 있으면 도메인으로 route 조회
- * - matched:true → SSO 리다이렉트 (window.location.assign)
- * - matched:false / 조회 에러 / @없음 → 2단계 폼으로 fall-through
+ * 1단계(form): provider 드롭다운 + username + password + SSO 를 **한 화면**에.
+ * - username 의 도메인은 blur/디바운스로 배경 조회해 매칭 시 SSO 버튼을 띄운다
+ * - login 200 mfa_required:true → MFA 단계 진입 (챌린지 토큰은 컴포넌트 메모리 보관)
  *
- * 2단계: provider 드롭다운 + username(이메일 프리필) + password
- * - login 200 mfa_required:true → 3단계 MFA 진입 (챌린지 토큰 컴포넌트 메모리 보관)
+ * 2단계(mfa): TOTP / 백업 코드 / 보안 키 → verify → 성공 시 기존 성공 경로 수렴
  *
- * 3단계: TOTP 코드 입력 → verify → 성공 시 기존 성공 경로 수렴
+ * 이메일 선입력 단계는 폐기됐다(FR-AU-07 deviation). 도메인 라우팅 기능 자체는
+ * {@link LoginCredentialsForm} 의 배경 조회로 보존된다.
  */
 export const LoginForm = ({ onSuccess }: LoginFormProps) => {
-  // step: 'email' | 'form' | 'mfa'
-  const [step, setStep] = useState<'email' | 'form' | 'mfa'>('email')
-  const [prefillEmail, setPrefillEmail] = useState('')
-  const [isRouting, setIsRouting] = useState(false)
+  // step: 'form' | 'mfa'
+  const [step, setStep] = useState<'form' | 'mfa'>('form')
   // 챌린지 토큰은 컴포넌트 메모리에만 보관한다(authStore/sessionStorage 영속 금지 — NFR-1)
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null)
 
@@ -708,56 +697,16 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     staleTime: 60_000,
   })
 
-  /**
-   * 1단계 "계속" 핸들러.
-   * @가 없으면 route 조회 없이 즉시 2단계로 진입한다.
-   * 조회 실패 시에도 fail-safe로 2단계 진입한다(사용자 막지 않음).
-   */
-  async function handleEmailContinue(email: string) {
-    setPrefillEmail(email)
-
-    const atIndex = email.indexOf('@')
-    // @가 없거나 도메인 부분이 비어 있으면 조회 없이 2단계로
-    const domain = atIndex !== -1 ? email.slice(atIndex + 1) : ''
-    if (domain === '') {
-      setStep('form')
-      return
-    }
-
-    setIsRouting(true)
-    try {
-      const result = await fetchRoute(domain)
-      if (result.matched) {
-        // SSO 매칭 — 브라우저를 IdP로 리다이렉트한다
-        window.location.assign(ssoEntryUrl(result.type, result.registrationId))
-        return
-      }
-    } catch (err) {
-      // fetch 에러는 fail-safe: 2단계로 fall-through해 사용자가 폼 로그인 가능하게 한다.
-      // 정상 운영(네트워크 일시 단절 등)에서도 발생할 수 있는 폴백 경로라 error가 아닌 warn으로 남긴다.
-      console.warn('[LoginForm] route 조회 실패 — 2단계로 fall-through', err)
-    } finally {
-      setIsRouting(false)
-    }
-
-    // 미매칭 또는 에러 → 2단계
-    setStep('form')
-  }
-
   /** MFA 챌린지 수신 시 MFA step으로 전환한다. 챌린지 토큰은 메모리에만 보관 */
   function handleMfaRequired(challengeToken: string) {
     setMfaChallengeToken(challengeToken)
     setStep('mfa')
   }
 
-  /** MFA step에서 "다시 로그인" 클릭 시 1단계로 복귀하고 챌린지 토큰을 초기화한다 */
+  /** MFA step에서 "다시 로그인" 클릭 시 자격 증명 폼으로 복귀하고 챌린지 토큰을 폐기한다 */
   function handleBackToLogin() {
     setMfaChallengeToken(null)
-    setStep('email')
-  }
-
-  if (step === 'email') {
-    return <LoginStep1 onContinue={handleEmailContinue} isPending={isRouting} />
+    setStep('form')
   }
 
   if (step === 'mfa' && mfaChallengeToken !== null) {
@@ -771,9 +720,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
   }
 
   return (
-    <LoginStep2
-      key={prefillEmail}
-      prefillEmail={prefillEmail}
+    <LoginCredentialsForm
       onSuccess={onSuccess}
       onMfaRequired={handleMfaRequired}
       providers={effectiveProviders}

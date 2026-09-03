@@ -45,7 +45,7 @@ async function activateMfaForAlice(page: import('@playwright/test').Page): Promi
 }
 
 /**
- * MFA 챌린지 응답을 받는 상태까지 로그인 1+2단계를 진행한다.
+ * MFA 챌린지 응답을 받는 상태까지 로그인를 진행한다.
  * addInitScript 주입은 호출자가 직접 처리한다.
  * 완료 후 TOTP 코드 입력 화면(LoginMfaStep)이 표시된 상태가 된다.
  */
@@ -53,18 +53,15 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-  // 1단계: 이메일 입력 → "계속"
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계: provider 드롭다운 로딩 대기 + Local 선택
+  // provider 드롭다운 로딩 대기 + Local 선택
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
 
-  // 2단계: username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
+  // username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
@@ -222,7 +219,7 @@ test.describe('S3 백업코드 재생성 인라인 확인 (FR-MF-02)', () => {
 // S4 — 로그인 2단계에서 "백업 코드로 로그인" 토글 → 유효 백업코드 입력 → 대시보드
 //
 // Given   MFA_E2E_ENABLED_KEY='true' (addInitScript) → loginHandler가 mfa_required 응답
-// When    로그인 1+2단계 완료 → TOTP 코드 입력 화면
+// When    로그인 완료 → TOTP 코드 입력 화면
 // When    "백업 코드로 로그인" 버튼 클릭 → 백업코드 입력 화면 전환
 // Then    loginBackupStepGuide 안내 문구 + 백업코드 입력 필드 + 확인 버튼 표시
 // When    MFA_VALID_BACKUP_CODE('aaaaa-bbbbb') 입력 → "확인" 클릭
