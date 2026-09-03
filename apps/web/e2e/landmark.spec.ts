@@ -35,11 +35,26 @@ test.describe('FR-UX-06 PR12 C3 랜드마크(banner/main/complementary)', () => 
     await expect(page.getByRole('complementary')).toHaveCount(1)
   })
 
-  test('L2 Given 미인증 When /login 진입 Then main 1', async ({ page }) => {
+  // L2 는 2026-09-03 로그인 모달 전환으로 단언이 바뀌었다.
+  // 전환 전. `/login` 은 전체 페이지였고 접근성 트리에 main 이 1개 있었다.
+  // 전환 후. 로그인이 Radix Dialog 로 뜨고, 열린 모달은 **배경 형제를 aria-hidden 으로 덮는다**.
+  //   그래서 `getByRole('main')` 은 0 이 된다 — 이건 회귀가 아니라 모달의 올바른 접근성 동작이다
+  //   (모달이 떠 있는 동안 배경은 보조기술에서 감춰져야 한다).
+  // 🛑 그러므로 여기서 main 1 을 되살리려 하지 마라. 되살리는 방법은 Dialog 의 modal 을 끄는 것뿐이고,
+  //    그러면 포커스 트랩이 사라져 「닫기 3경로 봉인」(ADR D3)의 근거가 무너진다.
+  // 대신 두 가지를 함께 잰다 — ①모달이 접근성 트리를 점유한다 ②DOM 의 main 은 여전히 정확히 1개다
+  //   (즉 랜드마크가 사라진 게 아니라 가려진 것뿐이라는 사실).
+  test('L2 Given 미인증 When /login 진입 Then 로그인 모달이 트리를 점유하고 DOM main 은 1', async ({
+    page,
+  }) => {
     await page.goto('/login')
     await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-    await expect(page.getByRole('main')).toHaveCount(1)
+    await expect(page.getByRole('dialog', { name: 'BTS 로그인' })).toHaveCount(1)
+    // 접근성 트리에서는 배경이 감춰진다
+    await expect(page.getByRole('main')).toHaveCount(0)
+    // 그러나 문서에는 main 이 정확히 하나 살아 있다 (WCAG 1.3.1 문서당 main 1개)
+    await expect(page.locator('main')).toHaveCount(1)
   })
 
   test('L3 Given alice 로그인 When 이슈 상세(issues.$key) 진입 Then main 1(자체 main→section 강등 실증)', async ({ page }) => {

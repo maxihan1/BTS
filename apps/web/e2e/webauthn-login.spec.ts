@@ -24,11 +24,11 @@ const MFA_E2E_ENABLED_KEY = '__bts_e2e_mfa_enabled'
 const WEBAUTHN_CANCEL_KEY = '__bts_e2e_webauthn_cancel'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 공통 헬퍼 — MFA 챌린지 화면까지 로그인 1+2단계 진행
+// 공통 헬퍼 — MFA 챌린지 화면까지 로그인 진행
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * MFA 챌린지 응답을 받는 상태까지 로그인 1+2단계를 진행한다.
+ * MFA 챌린지 응답을 받는 상태까지 로그인를 진행한다.
  * addInitScript 주입(MFA 플래그 + webauthn stub)은 호출자가 직접 처리한다.
  * 완료 후 LoginMfaStep 화면(loginStepGuide 문구)이 표시된 상태가 된다.
  */
@@ -36,18 +36,15 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-  // 1단계: 이메일 입력 → "계속"
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계: provider 드롭다운 로딩 대기 + Local 선택
+  // provider 드롭다운 로딩 대기 + Local 선택
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
 
-  // 2단계: username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
+  // username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
@@ -61,7 +58,7 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
 //
 // Given   MFA_E2E_ENABLED_KEY = 'true' (addInitScript 주입) → loginHandler 가 mfa_required 응답
 //         navigator.credentials.get 이 stub 으로 교체됨 (유효 credential 반환)
-// When    로그인 1+2단계 완료 → MFA 화면 전환
+// When    로그인 완료 → MFA 화면 전환
 // Then    "보안 키로 인증" 버튼 표시
 // When    "보안 키로 인증" 버튼 클릭
 //         → authenticate/start → stub get → verify(method:'webauthn') → 200 토큰
@@ -78,7 +75,7 @@ test.describe('S3 보안 키 로그인 인증 성공 (FR-MF-03)', () => {
   })
 
   test('Given MFA 화면 When 보안 키로 인증 버튼 표시 확인', async ({ page }) => {
-    // Given + When. 로그인 1+2단계 → MFA 화면
+    // Given + When. 로그인 → MFA 화면
     await loginToMfaStep(page)
 
     // Then. "보안 키로 인증" 버튼 표시 (isWebauthnSupported=true — Chromium 은 지원)

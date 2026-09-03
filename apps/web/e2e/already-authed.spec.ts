@@ -9,8 +9,7 @@ import { loginAsAlice } from './fixtures/auth-fixtures'
 import { dashboardLabels } from '../src/i18n/dashboard-labels'
 
 test('S8 이미 인증된 사용자가 /login 진입 → /dashboards 즉시 리다이렉트', async ({ page }) => {
-  // 1단계. 정상 로그인 — 2단계 identifier-first 흐름 (FR-AU-07). alice 기본 startPage='dashboards'라
-  // 로그인 직후 /dashboards에 도착한다.
+  // 1단계. 정상 로그인 — alice 기본 startPage='dashboards'라 로그인 직후 /dashboards에 도착한다.
   await loginAsAlice(page)
   await expect(page).toHaveURL(/\/dashboards/)
 

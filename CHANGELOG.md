@@ -117,6 +117,19 @@ D1~D7 이 닫혔다 — D 마커는 **완주 단위**라 두 PR 이 모두 끝�
 BC "완료 선언" 은 별개 절차다 — 각 BC 의 §NFR 측정표 · 이 파일 정리 · **Maxi 1인 선언**이 남아 있다
 (`docs/plan/product/<bc>.md §BC 완료 게이트`).
 
+> **2026-09-03 로그인 UX 개편 (identity-access UI, FR 카운트 불변).**
+> `bts.maxihan.com` 미인증 진입에서 로그인 화면이 뜨지 않던 결함을 닫았다 — `router.ts` 의 `indexRoute` 만
+> 60여 라우트 중 유일하게 `beforeLoad` 가드가 없었고 `T13 가드 예정` TODO 만 남아 있었다(배포 번들에서
+> `홈 (T13 가드 추가 전 placeholder)` 문자열 실측 확인).
+> 같이 로그인 UX 를 셋 바꿨다. ① 로그인을 **전역 모달 하나**로 통일하고 닫기 3경로(ESC·오버레이·X)를 봉인
+> ② 세션 만료 시 **페이지를 이동하지 않고** 현재 화면 위에 재로그인 모달 — 작성 중이던 내용을 잃지 않는다
+> ③ 이메일 선입력 1단계 폐기(**단일 화면**), 도메인 SSO 라우팅은 blur ‖ 디바운스 배경 조회로 기능 보존하되
+> 자동 리다이렉트는 폐기하고 SSO 버튼 노출로 바꿨다.
+> **스펙 deviation 2건** — FR-AU-07 S1~S4(identifier-first + 자동 이동) · FR-AU-09 S5(만료 시 `/login` 강제
+> 리다이렉트 + toast). 후자는 **원래 구현된 적이 없어** 이 변경이 스펙-코드 drift 도 함께 해소한다.
+> Jira Cloud 실물과의 의도적 편차 5건은 스펙의 `## Jira 대조` 표에 X1~X5 로 기록했다.
+> 스펙 `docs/specs/2026-09-03-login-modal-ux.md` · ADR `docs/decisions/2026-09-03-login-modal-and-single-screen-form.md`.
+
 ### BC 요약
 
 | BC | FR | 기간 | PR | 대표 산출 |

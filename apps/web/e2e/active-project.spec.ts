@@ -68,7 +68,7 @@ async function seedScenarioFlag(page: Page, key: string): Promise<void> {
 }
 
 /**
- * alice 로 로그인 폼을 제출한다(identifier-first 2단계 흐름) — `fixtures/auth-fixtures.ts` 의
+ * alice 로 로그인 폼을 제출한다(단일 화면 폼) — `fixtures/auth-fixtures.ts` 의
  * `loginAsAlice` 와 동일한 스텝이지만, 로그인 성공 후 도착 URL 을 기다리지 않는다.
  *
  * S8 은 시작 페이지 설정(my_issues)에 따라 `/dashboards` 가 아닌 `/issues`로 도착해야 하므로
@@ -78,8 +78,6 @@ async function seedScenarioFlag(page: Page, key: string): Promise<void> {
  */
 async function submitAliceLoginForm(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()

@@ -6,6 +6,7 @@ import { useCommandPalette } from '@/components/command-palette/useCommandPalett
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { useKeyboardShortcuts } from '@/components/keyboard-shortcuts/useKeyboardShortcuts'
 import { ShortcutsHelpDialog } from '@/components/keyboard-shortcuts/ShortcutsHelpDialog'
+import { LoginDialog } from '@/auth/LoginDialog'
 
 export const RootLayout = () => {
   // 경로 기반 분기 대신 인증 상태로 분기 — 의미적으로 정확하며 /login 외에 미래 공개 라우트도 자동 처리
@@ -27,6 +28,9 @@ export const RootLayout = () => {
       {isAuthenticated && (
         <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} keymap={keymap} />
       )}
+      {/* 로그인 모달은 미인증일 때만 스스로 열린다 — 여기서 조건부 렌더하면 세션 만료 시
+          현재 화면을 유지한 채 뜨는 경로가 끊긴다. 열림 판정은 LoginDialog 가 소유한다. */}
+      <LoginDialog />
       <Outlet />
     </div>
   )

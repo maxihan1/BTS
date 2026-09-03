@@ -11,7 +11,7 @@ import { useAuthStore } from './auth/authStore'
 import { makeWhoami } from './mocks/auth-fixtures'
 
 /** 가드 클래스 — 라우트가 요구하는 보호 수준 */
-type GuardClass = 'ADMIN_4' | 'PROTECTED_3' | 'AUTH_ONLY' | 'LOGIN' | 'PUBLIC'
+type GuardClass = 'ADMIN_4' | 'PROTECTED_3' | 'AUTH_ONLY' | 'LOGIN' | 'PUBLIC' | 'INDEX_ALWAYS_REDIRECT'
 
 /** 경로 목록을 한 클래스로 묶는 헬퍼 — 맵 리터럴의 반복 제거 */
 const cls = (c: GuardClass, ...keys: string[]): [string, GuardClass][] => keys.map((k) => [k, c])
@@ -43,6 +43,7 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
   ),
   ...cls(
     'PROTECTED_3',
+    '/_shell/workflows/$key',
     '/_shell/dashboard',
     '/_shell/dashboards',
     '/_shell/dashboards/$dashboardId',
@@ -98,10 +99,9 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     // 루트는 '__root__', pathless 레이아웃은 '/_shell'(선행 슬래시 있음), 인덱스는 '/_shell/'.
     '__root__',
     '/_shell',
-    '/_shell/',
-    '/_shell/workflows/$key',
     '/_shell/dashboards/shared/$token',
   ),
+  ...cls('INDEX_ALWAYS_REDIRECT', '/_shell/'),
 ])
 
 /**
@@ -115,8 +115,10 @@ const CLASS_NOTES: Record<string, string> = {
     '정당 — 공개 공유 토큰(직교 인증), 세션 불요. 로그인 리다이렉트 금지',
   __root__: '정당 — createRootRoute. 가드 대상 아님',
   '/_shell': '정당 — pathless 레이아웃. ADR 2026-07-17 §70 이 가드 hoist 를 금지',
-  '/_shell/': '후속 판정 필요 — 블록 주석의 "가드에서 dashboard / login 으로 리다이렉트 예정" 미완',
-  '/_shell/workflows/$key': '후속 판정 필요 — 다른 상세 화면은 PROTECTED_3',
+  '/_shell/':
+    '정당 — 2026-09-03 해소. 자체 화면 없이 항상 리다이렉트(가드가 throw). 「리다이렉트 예정」 미완이 닫혔다',
+  '/_shell/workflows/$key':
+    '정당 — 2026-09-03 해소. 다른 상세 화면과 같은 PROTECTED_3 로 정렬. 게이트 2 리뷰가 잡은 구멍이다',
   '/_shell/settings/profile': '후속 판정 필요 — 비번·MFA 강제 대상이 접근 가능',
   '/_shell/settings/preferences': '후속 판정 필요 — 비번·MFA 강제 대상이 접근 가능',
   '/_shell/projects/$projectKey/settings/field-permissions':
@@ -143,11 +145,12 @@ describe('라우트 가드 행렬 — 맵 완전성', () => {
     expect(missing).toEqual([])
   })
 
-  it('후속 판정 필요 5건이 사유 문구로 남아 있다 (본 PR 에서 고치지 않음)', () => {
+  // 2026-09-03 에 5 → 3. `/_shell/` 과 `/_shell/workflows/$key` 를 보호 클래스로 옮겨 닫았다.
+  it('후속 판정 필요 3건이 사유 문구로 남아 있다 (본 PR 에서 고치지 않음)', () => {
     const pending = Object.entries(CLASS_NOTES)
       .filter(([, note]) => note.startsWith('후속 판정 필요'))
       .map(([id]) => id)
-    expect(pending).toHaveLength(5)
+    expect(pending).toHaveLength(3)
   })
 })
 
@@ -181,6 +184,9 @@ const EXPECTED: Record<GuardClass, Signature> = {
   AUTH_ONLY: ['/login', null, null, null],
   LOGIN: [null, '/dashboards', '/dashboards', '/dashboards'],
   PUBLIC: [null, null, null, null],
+  // 인덱스(`/`)는 자체 화면이 없다 — 어느 시나리오에서도 통과하지 않는다.
+  // PROTECTED_3 체인을 다 통과한 뒤 redirectToStartPage 가 start_page 로 보낸다(항상 throw).
+  INDEX_ALWAYS_REDIRECT: ['/login', '/dashboards', '/settings/password', '/settings/mfa'],
 }
 
 /** 시나리오 4종 — 각 시나리오는 나머지 조건을 전부 통과 상태로 두어 판별자를 유일하게 특정한다 */
@@ -281,20 +287,27 @@ describe('라우트 가드 행렬 — 나머지 클래스', () => {
   // ★ 클래스별 개수 어서션 — 이게 없으면 idsOf 가 빈 배열을 돌려줄 때 it.each([]) 가 무음 통과한다.
   //    "발견된 라우트 59개 이상"(routesById 기준)은 이 구멍을 막지 못한다(맵/필터가 죽어도 라우트 수는 그대로).
   it.each([
-    ['PROTECTED_3', 39],
+    ['PROTECTED_3', 40],
     ['AUTH_ONLY', 5],
     ['LOGIN', 1],
+    ['INDEX_ALWAYS_REDIRECT', 1],
   ] as const)('%s 클래스 멤버가 %i개다 (열거 붕괴 시 무음 통과 차단)', (c, n) => {
     expect(idsOf(c)).toHaveLength(n)
   })
 
-  // PUBLIC 은 __root__ 편입으로 5개다. 하한만 두어 라우트 추가가 테스트를 깨지 않게 한다.
-  it('PUBLIC 클래스 멤버가 4개 이상이다', () => {
-    expect(idsOf('PUBLIC').length).toBeGreaterThanOrEqual(4)
+  // PUBLIC 은 2026-09-03 에 5 → 3 으로 줄었다. `/_shell/`(인덱스)와 `/_shell/workflows/$key` 가
+  // 보호 클래스로 이동했기 때문이다 — 둘 다 「후속 판정 필요」로 등재돼 있던 구멍이었고 그 PR 이 닫았다.
+  // 하한만 두어 라우트 추가가 테스트를 깨지 않게 한다.
+  it('PUBLIC 클래스 멤버가 3개 이상이다', () => {
+    expect(idsOf('PUBLIC').length).toBeGreaterThanOrEqual(3)
   })
 
   it.each(idsOf('PROTECTED_3'))('%s — PROTECTED_3 기대와 일치', (id) => {
     expect(observe(id)).toEqual(EXPECTED.PROTECTED_3)
+  })
+
+  it.each(idsOf('INDEX_ALWAYS_REDIRECT'))('%s — INDEX_ALWAYS_REDIRECT 기대와 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.INDEX_ALWAYS_REDIRECT)
   })
 
   it.each(idsOf('AUTH_ONLY'))('%s — AUTH_ONLY 기대와 일치', (id) => {

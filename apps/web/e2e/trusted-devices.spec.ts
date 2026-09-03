@@ -46,25 +46,22 @@ async function resetTrustedDevicesHandlerState(page: import('@playwright/test').
 }
 
 /**
- * MFA 챌린지 화면까지 로그인 1+2단계를 진행한다.
+ * MFA 챌린지 화면까지 로그인를 진행한다.
  * addInitScript(MFA_E2E_ENABLED_KEY) 주입은 호출자가 담당한다.
  */
 async function loginToMfaStep(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-  // 1단계: 이메일 입력 → "계속"
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계: provider 드롭다운 로딩 대기 + Local 선택
+  // provider 드롭다운 로딩 대기 + Local 선택
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
 
-  // 2단계: username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
+  // username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
@@ -278,7 +275,7 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
   // S5 — "이 기기를 30일간 신뢰" 체크 → MFA verify 성공 → dashboard 도달
   //
   // Given   MFA_E2E_ENABLED_KEY = 'true' (addInitScript 주입)
-  // When    로그인 1+2단계 완료 → MFA 코드 입력 화면 전환
+  // When    로그인 완료 → MFA 코드 입력 화면 전환
   //         "이 기기를 30일간 신뢰" 체크박스 체크 → checked 상태 확인
   //         코드 "123456" 입력 → "확인" 버튼 클릭
   //         → POST /api/v1/auth/mfa/verify { trust_device: true, ... }
@@ -297,7 +294,7 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
       localStorage.setItem(key, 'true')
     }, MFA_E2E_ENABLED_KEY)
 
-    // When. 로그인 1+2단계 → MFA 코드 입력 화면 도달
+    // When. 로그인 → MFA 코드 입력 화면 도달
     await loginToMfaStep(page)
 
     // When. "이 기기를 30일간 신뢰" 체크박스 체크
@@ -325,7 +322,7 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
   //
   // Given   MFA_E2E_ENABLED_KEY = 'true' (addInitScript 주입)
   //         MSW trusted-devices store 초기화 (trustedThisBrowser = false)
-  // When    로그인 1+2단계 완료 → MFA 코드 입력 화면 전환
+  // When    로그인 완료 → MFA 코드 입력 화면 전환
   //         신뢰 체크박스 체크 안 함 (기본값)
   //         코드 "123456" 입력 → "확인" 버튼 클릭
   //         → POST /api/v1/auth/mfa/verify { trust_device: false 또는 누락 }
@@ -346,7 +343,7 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
     await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
     await resetTrustedDevicesHandlerState(page)
 
-    // When. 로그인 1+2단계 → MFA 코드 입력 화면 도달
+    // When. 로그인 → MFA 코드 입력 화면 도달
     await loginToMfaStep(page)
 
     // When. 신뢰 체크박스가 기본적으로 unchecked 임을 확인 + 체크 안 함
@@ -372,8 +369,6 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
     await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
     // When. 다시 로그인
-    await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-    await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
     const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
     await expect(providerSelect).toBeVisible()

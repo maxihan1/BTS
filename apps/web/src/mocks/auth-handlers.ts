@@ -174,6 +174,39 @@ const logoutHandler = http.post('/api/v1/auth/logout', () => {
  * 응답 schema: backend AuthController.TokenResponse
  * (auth-pre-session-401-raw-fetch 교훈 — refresh 는 apiFetch 가 아닌 raw fetch 가 호출)
  */
+/**
+ * E2E 전용 localStorage 플래그 — 'true' 이면 **모든 API 가 401** 이 된다 (refresh 포함).
+ *
+ * 세션 만료의 실제 모습이 그것이다. access 도 refresh 도 서버가 거절하는 상태.
+ *
+ * 왜 이 방식뿐인가.
+ * - `page.route` 로는 재현할 수 없다. e2e 는 MSW **서비스워커** 환경이라 MSW 가 처리한 요청은
+ *   네트워크로 나가지 않고, 따라서 Playwright 의 네트워크 가로채기에 도달하지 않는다.
+ * - `sessionStorage` 를 지우는 방식도 안 된다. store 가 비면 `requireAuth` 가 먼저 `/login` 으로
+ *   보내버려서 「이동하지 않는다」는 명제 자체를 검증할 수 없다.
+ * - whoami 하나만 401 로 두는 것도 안 된다. whoami 는 **로그인 시에만** 불리고 reload 로는
+ *   트리거되지 않는다(`useLoginMutation.ts:116` · `LoginForm.tsx:483·625` 가 전부다).
+ *
+ * 배선 위치. `handlers.ts` 배열의 **맨 앞**이어야 뒤의 도메인 핸들러보다 먼저 잡는다.
+ */
+export const E2E_REFRESH_EXPIRED_KEY = '__bts_e2e_refresh_expired'
+
+/** 플래그가 켜졌는지 — 핸들러들이 공유한다 */
+function isSessionExpiredScenario(): boolean {
+  return globalThis.localStorage?.getItem(E2E_REFRESH_EXPIRED_KEY) === 'true'
+}
+
+/**
+ * 세션 만료 시나리오 게이트. 플래그가 꺼져 있으면 `undefined` 를 돌려 **다음 핸들러로 넘긴다** —
+ * 평시에는 존재하지 않는 것과 같다.
+ */
+export const sessionExpiredGateHandlers = [
+  http.all('/api/v1/*', () => {
+    if (!isSessionExpiredScenario()) return undefined
+    return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }),
+]
+
 const refreshHandler = http.post('/api/v1/auth/refresh', () => {
   return HttpResponse.json({
     access_token: mockAccessToken('alice'),

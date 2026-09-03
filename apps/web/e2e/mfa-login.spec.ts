@@ -16,11 +16,11 @@ import { loginStrings, mfaStrings, mfaErrorMessage } from '../src/i18n/ko'
 const MFA_E2E_ENABLED_KEY = '__bts_e2e_mfa_enabled'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 공통 헬퍼 — MFA 활성 상태 로그인 1+2단계 (이메일 → provider/pw → MFA 코드 입력 화면 도달)
+// 공통 헬퍼 — MFA 활성 상태 로그인 (이메일 → provider/pw → MFA 코드 입력 화면 도달)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * MFA 챌린지 응답을 받는 상태까지 로그인 1+2단계를 진행한다.
+ * MFA 챌린지 응답을 받는 상태까지 로그인를 진행한다.
  * addInitScript 주입은 호출자가 직접 처리한다.
  * 완료 후 MFA 코드 입력 화면(LoginMfaStep)이 표시된 상태가 된다.
  */
@@ -28,18 +28,15 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-  // 1단계: 이메일 입력 → "계속"
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계: provider 드롭다운 로딩 대기 + Local 선택
+  // provider 드롭다운 로딩 대기 + Local 선택
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
 
-  // 2단계: username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
+  // username/password 입력 → 로그인 (MFA 플래그 세팅 시 mfa_required 응답)
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
@@ -52,7 +49,7 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
 // S3 — MFA 로그인 2단계 성공
 //
 // Given   MFA_E2E_ENABLED_KEY = 'true' (addInitScript 주입) → loginHandler가 mfa_required 응답
-// When    로그인 1+2단계 완료 → MFA 코드 입력 화면 전환
+// When    로그인 완료 → MFA 코드 입력 화면 전환
 // Then    loginStepGuide 안내 문구 + 코드 입력 필드 + 확인 버튼 표시
 // When    코드 "123456" 입력 → "확인" 버튼 클릭 → POST /api/v1/auth/mfa/verify 호출
 // Then    로그인 성공(목적지는 FR-PF-02 startPage 매핑 부수사항 — alice 기본값 /dashboards)
@@ -67,7 +64,7 @@ test.describe('S3 MFA 로그인 2단계 성공 (FR-MF-01)', () => {
   })
 
   test('Given MFA 활성 When 로그인 완료 Then MFA 코드 입력 화면 표시', async ({ page }) => {
-    // Given + When. 로그인 1+2단계 진행 → MFA 코드 입력 화면 도달
+    // Given + When. 로그인 진행 → MFA 코드 입력 화면 도달
     await loginToMfaStep(page)
 
     // Then. 안내 문구, 코드 입력 필드, 확인 버튼 표시

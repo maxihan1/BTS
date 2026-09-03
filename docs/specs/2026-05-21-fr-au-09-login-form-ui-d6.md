@@ -36,11 +36,20 @@
 - **When** Access JWT 만료 (5분 후) → 백엔드 401 응답
 - **Then** HTTP 인터셉터가 자동으로 `POST /api/v1/auth/refresh` 호출 → 새 access_token 받아 `sessionStorage` 갱신 → 원래 요청 1회 retry → 사용자는 만료 사실 모름
 
-### S5. Refresh 만료 → 강제 로그인
+### S5. Refresh 만료 → 이동 없이 인라인 재로그인
+
+> ⚠️ **2026-09-03 deviation.** 원 규정은 `/login?returnTo=` **강제 리다이렉트 + toast** 였다.
+> 그 리다이렉트와 toast 는 **구현된 적이 없다** — `client.ts` 는 `clearSession()` 만 하고
+> 화면 전환을 하지 않았다. 이 갱신은 스펙-코드 drift 를 함께 해소한다.
+> 정본 `docs/specs/2026-09-03-login-modal-ux.md` S4·S5 · ADR `2026-09-03-login-modal-and-single-screen-form` D2·D4.
 
 - **Given** 24h 후 access + refresh 모두 만료
 - **When** API 호출 → 401 → 인터셉터가 `/refresh` 호출 → 그것도 401
-- **Then** `sessionStorage` 클리어 + Zustand 상태 클리어 + `/login?returnTo=<현재 URL>` 강제 리다이렉트 + "세션이 만료되었습니다. 다시 로그인해 주세요." toast
+- **Then** `sessionStorage` 클리어 + Zustand 상태 클리어 + **비영속 `sessionExpired` 플래그 세팅**.
+  **페이지 이동 없이** 사용자가 보던 화면 위에 로그인 모달이 뜬다 — 작성 중이던 이슈·댓글을 잃지 않는다.
+  재로그인 성공 시 navigate 대신 `invalidateQueries()` 로 같은 화면을 새 데이터로 갱신한다.
+- **단서** 세션이 애초에 없던 요청(미인증 공개 라우트 `dashboards/shared/$token`)의 401 은
+  플래그를 세우지 않는다 — `hadSession` 가드.
 
 ### S6. 동시 401 (race condition)
 

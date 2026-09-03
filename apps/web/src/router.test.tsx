@@ -64,9 +64,10 @@ describe('Router', () => {
   })
 
   // 미인증 상태에서 /dashboard 진입 시 /login 리다이렉트는 routeGuard.test.tsx 가 검증
-  it('/ 라우트 마운트 → 인덱스 placeholder 렌더', async () => {
+  // 인증 상태의 / → start_page 리다이렉트는 routeGuard.test.tsx 의 redirectToStartPage 가 검증
+  it('/ 라우트 — 미인증이면 로그인 모달이 뜬다 (인덱스는 자체 화면을 갖지 않는다)', async () => {
     renderWithRoute('/')
-    expect(await screen.findByText(/홈/)).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
   })
 
   // ─── Task 8: 이슈 라우트 3개 + 네비 링크 ────────────────────────────────────

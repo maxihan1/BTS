@@ -22,14 +22,11 @@ function renderLoginForm() {
 }
 
 /**
- * 이메일 입력 후 "계속" 클릭으로 2단계(폼 로그인 화면)로 진입하는 헬퍼.
- * route API가 미매칭을 반환해야 2단계로 진입한다.
+ * 자격 증명 폼이 준비될 때까지 기다리는 헬퍼(단일 화면 전환 이후 단계 진입이 없다).
+ * SSO 버튼은 폼 하단에 상시 렌더되므로 별도 진입 동작이 필요 없다.
  */
-async function goToStep2(user: ReturnType<typeof userEvent.setup>) {
-  const emailInput = screen.getByLabelText('이메일')
-  await user.type(emailInput, 'alice@example.com')
-  await user.click(screen.getByRole('button', { name: '계속' }))
-  // 2단계(로그인 버튼) 나타날 때까지 대기
+async function waitForCredentialsForm() {
+  // 로그인 버튼이 나타나면 폼 준비 완료
   await screen.findByRole('button', { name: '로그인' })
 }
 
@@ -71,9 +68,8 @@ describe('LoginForm — SAML IdP 버튼', () => {
       ),
     )
 
-    const user = userEvent.setup({ delay: null })
     renderLoginForm()
-    await goToStep2(user)
+    await waitForCredentialsForm()
 
     await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
     await screen.findByRole('button', { name: 'Azure AD 로 로그인' })
@@ -86,9 +82,8 @@ describe('LoginForm — SAML IdP 버튼', () => {
       ),
     )
 
-    const user = userEvent.setup({ delay: null })
     renderLoginForm()
-    await goToStep2(user)
+    await waitForCredentialsForm()
 
     // 로딩이 끝날 때까지 기다린 뒤(로그인 버튼이 이미 보임) SAML 버튼 없음을 확인
     await screen.findByRole('button', { name: '로그인' })
@@ -112,7 +107,7 @@ describe('LoginForm — SAML IdP 버튼', () => {
 
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
-    await goToStep2(user)
+    await waitForCredentialsForm()
 
     const btn = await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
     await user.click(btn)

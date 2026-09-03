@@ -3,11 +3,11 @@
 // 실제 IdP 왕복은 백엔드 통합테스트(Task 7)에 위임한다.
 // 프론트는 버튼 노출 확인 및 SP-initiated 인증 URL 진입 시도까지만 검증한다.
 //
-// FR-AU-07 재조정: SAML/OIDC 버튼은 2단계 폼 안에 있다.
-// 1단계 미매칭 도메인 이메일 → "계속" → 2단계 폼 진입 후 SAML 버튼 검증.
+// SAML/OIDC 버튼은 자격 증명 폼 하단에 상시 렌더된다.
+// 단계 전환 없이 폼 렌더 직후 SAML 버튼을 검증한다.
 //
 // S1 — IdP 버튼 노출 + 클릭 시 SP-initiated 인증 경로로 네비게이션 시도.
-//   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//   Given  /login 진입 후 단일 화면 폼 제출
 //          (MSW 기본 핸들러가 Okta SSO 1개 반환)
 //   When   "Okta SSO 로 로그인" 버튼 클릭
 //   Then   /saml2/authenticate/okta 로 네비게이션 시도 (page.route 인터셉트로 검증)
@@ -15,7 +15,7 @@
 // S5 — IdP 0개이면 SAML 버튼 영역 미노출.
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_saml_no_idps' = 'true' 설정
 //          (MSW 핸들러가 빈 idps 배열 반환)
-//          + 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//          + 단일 화면 폼 제출
 //   When   로그인 폼 로드 완료
 //   Then   SAML 버튼 및 divider("또는") 미노출
 //
@@ -30,14 +30,12 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 import { E2E_SAML_NO_IDPS_KEY } from '../src/mocks/saml-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 헬퍼 — 1단계 이메일 입력 + "계속" → 2단계 폼 진입 대기
+// 헬퍼 — 자격 증명 폼 렌더 대기
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function proceedToStep2(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
-  // 2단계 진입 확인 — 로그인 버튼이 나타날 때까지 대기
+  // 로그인 버튼이 나타나면 폼 준비 완료
   await expect(page.getByRole('button', { name: loginStrings.submitButton, exact: true })).toBeVisible()
 }
 
@@ -57,7 +55,7 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
       void route.fulfill({ status: 200, body: '' })
     })
 
-    // Given. 로그인 페이지 진입 후 1단계 → 2단계 진입
+    // Given. 로그인 페이지 진입 후 폼 준비 대기
     // MSW 기본 핸들러가 Okta SSO 1개 반환
     await page.goto('/login')
     await proceedToStep2(page)
@@ -89,7 +87,7 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
       window.localStorage.setItem(key, 'true')
     }, E2E_SAML_NO_IDPS_KEY)
 
-    // When. 로그인 페이지 진입 후 1단계 → 2단계 진입
+    // When. 로그인 페이지 진입 후 폼 준비 대기
     await page.goto('/login')
     await proceedToStep2(page)
 

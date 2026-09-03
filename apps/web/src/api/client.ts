@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 import type { ZodSchema } from 'zod'
 import { useAuthStore } from '@/auth/authStore'
+import { useLoginPromptStore } from '@/auth/loginPromptStore'
 import { WhoamiResponseSchema } from '@/api/schemas'
 import type { WhoamiResponse } from '@/api/schemas'
 
@@ -69,7 +70,14 @@ function doRefresh(): Promise<string> {
           credentials: 'include',
         })
         if (!res.ok) {
+          // 세션이 실제로 있던 요청만 재로그인 모달을 띄운다.
+          // dashboards/shared/$token 같은 미인증 공개 라우트(staticData:{requireAuth:false})의
+          // 401 로 공개 페이지 위에 로그인 모달을 씌우면 안 된다.
+          const hadSession = useAuthStore.getState().accessToken !== null
           useAuthStore.getState().clearSession()
+          if (hadSession) {
+            useLoginPromptStore.getState().promptSessionExpired()
+          }
           throw new ApiError(res.status, await res.json().catch(() => ({})))
         }
         const data = (await res.json()) as { access_token: string }
