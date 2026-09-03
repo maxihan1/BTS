@@ -16,9 +16,6 @@ import type { BacklogFilter, BacklogFilterSearch } from '@/lib/backlog-filter'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 백로그 페이지 뷰 전환 링크 — 보드·타임라인·벨로시티·CFD·사이클/리드 타임 (backlog.tsx 인라인 nav 원본과 동일 순서) */
-/** 뷰 전환 nav 의 보드 링크 경로 — 스코프를 얹을 대상을 문자열 비교로 고른다. */
-const BOARD_NAV_TO = '/projects/$projectKey/board'
-
 const BACKLOG_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
   { to: '/projects/$projectKey/board', label: backlogLabels.page.boardLink },
   { to: '/projects/$projectKey/timeline', label: backlogLabels.page.timelineLink },
@@ -26,6 +23,9 @@ const BACKLOG_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
   { to: '/projects/$projectKey/reports/cfd', label: backlogLabels.page.cfdLink },
   { to: '/projects/$projectKey/reports/cycle-time', label: backlogLabels.page.cycleTimeLink },
 ]
+
+/** 뷰 전환 nav 의 보드 링크 경로 — 스코프를 얹을 대상을 문자열 비교로 고른다. */
+const BOARD_NAV_TO = '/projects/$projectKey/board'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // URL search 조립 + 무변경 판정 (FR-UX-13 F16-9 · FR-BD-04)

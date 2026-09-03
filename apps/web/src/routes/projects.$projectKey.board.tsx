@@ -89,23 +89,29 @@ const BACKLOG_NAV_TO = '/projects/$projectKey/backlog'
  * ★컴포넌트 밖에 두는 것은 `BoardPage` 의 줄수 래칫(`lint-ratchet-baseline.ts`) 때문이다.
  *  안에 두면 그 함수가 동결값을 넘어 red 가 선다 — `ScrumSprintEmptyState` 추출과 같은 이유다.
  *
- * @param boardType 현재 보고 있는 보드의 종류. 로딩 중이면 undefined
+ * 🛑 종류를 `boardDetail` 이 아니라 **`boards` 요약**에서 읽는다. nav 는 `boardDetail` 을
+ * 기다리지 않고 렌더되므로(`useBoard` 가 in-flight 인 창 — 느린 네트워크·캐시 미스),
+ * 상세에서 읽으면 그 창에서 `boardType` 이 undefined 라 `search` 가 안 붙고 클릭하면
+ * 서버가 첫 스크럼 보드로 폴백한다 — **이 훅이 없애려는 바로 그 증상**이 로딩 중에 재현된다.
+ * `boards` 는 `currentBoardId` 와 같은 시점에 확정되고 `BoardSummary.boardType` 은 필수라
+ * 그 창이 사라진다.
+ *
+ * @param boards 프로젝트 보드 목록. 로딩 중이면 undefined
  * @param currentBoardId 현재 보고 있는 보드 UUID. 미확정이면 undefined
  * @returns 백로그 링크에만 `search` 가 실린 링크 목록
  */
 function useBoardViewNavLinks(
-  boardType: BoardDetail['boardType'] | undefined,
+  boards: readonly BoardSummary[] | undefined,
   currentBoardId: string | undefined,
 ): readonly ProjectNavTabLink[] {
-  return useMemo(
-    () =>
-      BOARD_VIEW_NAV_LINKS.map((link) =>
-        link.to === BACKLOG_NAV_TO && boardType === 'SCRUM' && currentBoardId !== undefined
-          ? { ...link, search: { board: currentBoardId } }
-          : link,
-      ),
-    [boardType, currentBoardId],
-  )
+  return useMemo(() => {
+    const boardType = boards?.find((b: BoardSummary) => b.boardId === currentBoardId)?.boardType
+    return BOARD_VIEW_NAV_LINKS.map((link) =>
+      link.to === BACKLOG_NAV_TO && boardType === 'SCRUM' && currentBoardId !== undefined
+        ? { ...link, search: { board: currentBoardId } }
+        : link,
+    )
+  }, [boards, currentBoardId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -656,7 +662,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   const activeSprint = boardDetail?.activeSprint ?? null
 
   // 뷰 전환 nav 링크 — 백로그 링크에 보드 스코프를 얹는다 (`useBoardViewNavLinks` KDoc 참조).
-  const viewNavLinks = useBoardViewNavLinks(boardDetail?.boardType, currentBoardId)
+  const viewNavLinks = useBoardViewNavLinks(boards, currentBoardId)
 
   // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
   // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
