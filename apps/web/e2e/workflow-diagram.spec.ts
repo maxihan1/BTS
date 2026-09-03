@@ -115,8 +115,14 @@ test('D8-2 핸들을 끌어 전환을 만들면 전환 탭에도 나타난다', 
   //   (기본 20px) 안에 있어야 연결을 성사시키는데, 노드 폭이 140px 를 넘어 중앙은 왼쪽 target
   //   핸들에서 70px 넘게 떨어진다. 처음에 중앙으로 썼다가 red 였다 — 연결이 안 된 것이지
   //   구현이 틀린 것이 아니었다.
-  const sourceHandle = source.locator('.react-flow__handle.source')
-  const targetHandle = target.locator('.react-flow__handle.target')
+  /*
+   * ★ id 로 좁힌다. 노드는 네 면 × (source · target) = 8 개 핸들을 갖는데, 그중 **끌 수 있는
+   *   것은 좌우 둘뿐**이다(나머지는 간선 끝점 계산 전용이라 `pointer-events-none`).
+   *   `.source` 만으로 집으면 4개가 잡혀 strict mode 위반이고, `.first()` 로 넘기면
+   *   「어느 면을 끌었는지」를 판정하지 않게 된다.
+   */
+  const sourceHandle = source.locator('.react-flow__handle[data-handleid="s-right"]')
+  const targetHandle = target.locator('.react-flow__handle[data-handleid="t-left"]')
   const handleBox = await sourceHandle.boundingBox()
   const dropBox = await targetHandle.boundingBox()
   expect(handleBox).not.toBeNull()

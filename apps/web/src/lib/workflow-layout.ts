@@ -213,6 +213,16 @@ export interface RoutedEdge {
    */
   transitionIndex: number
   selfLoop: boolean
+  /**
+   * 간선이 출발 노드의 어느 면에서 나가는가.
+   *
+   * ★ **노드가 놓인 자리에서 나온다.** 좌우 두 면만 쓰면 같은 열에 위아래로 쌓인 두 노드가
+   * 오른쪽으로 나갔다 크게 U 자로 돌아 왼쪽으로 들어온다 — 세로 이웃인데 가로 경로를
+   * 강제당하는 셈이다. 네 면을 다 쓰면 이웃한 방향으로 짧게 잇는다.
+   */
+  sourceSide: EdgeSide
+  /** 간선이 도착 노드의 어느 면으로 들어가는가. */
+  targetSide: EdgeSide
   /** 곡선을 중심선에서 얼마나 벌릴지(px). 0 이면 직선이다. */
   offset: number
   /**
@@ -240,6 +250,14 @@ export interface RoutedEdge {
    */
   labelOffset: LabelOffset
 }
+
+/**
+ * 간선이 노드의 어느 면에 붙는가.
+ *
+ * xyflow 의 `Position` 과 같은 뜻이지만 **문자열로 둔다** — 이 모듈은 순수 함수라
+ * 렌더 라이브러리에 결합하지 않는다. 캔버스가 `Position` 으로 옮긴다.
+ */
+export type EdgeSide = 'left' | 'right' | 'top' | 'bottom'
 
 /** 캔버스 좌표계의 사각형. 라벨이 차지하는 자리다. */
 export interface LabelRect {
@@ -355,9 +373,49 @@ function sourceNodeId(transition: LayoutInputTransition): string | null {
   return transition.from ?? START_NODE_ID
 }
 
-/** 출발·도착 쌍을 Map 키 하나로 접는다. */
+/** 마주 보는 면. 들어가는 쪽은 나가는 쪽의 반대라야 선이 안 꼬인다. */
+const OPPOSITE_SIDE: Record<EdgeSide, EdgeSide> = {
+  left: 'right',
+  right: 'left',
+  top: 'bottom',
+  bottom: 'top',
+}
+
+/**
+ * 두 노드의 상대 위치로 간선이 붙을 면을 고른다.
+ *
+ * **더 많이 떨어진 축을 쓴다.** 가로로 멀면 좌우, 세로로 멀면 상하다 — 가까운 축으로 이으면
+ * 선이 노드를 끼고 크게 돌아야 한다. 축을 정한 뒤에는 진행 방향이 부호를 정한다.
+ *
+ * 두 축이 똑같이 떨어졌으면 가로를 고른다. 워크플로우는 왼쪽에서 오른쪽으로 읽는 그림이라
+ * 가로가 기본 축이고, 대각선 배치에서 그 축을 유지하는 편이 덜 놀랍다.
+ *
+ * @param source 출발 노드 · @param target 도착 노드
+ * @returns `[출발 면, 도착 면]`. 도착 면은 늘 출발 면의 반대다
+ */
+function chooseSides(source: PlacedNode, target: PlacedNode): [EdgeSide, EdgeSide] {
+  const dx = target.x + target.width / 2 - (source.x + source.width / 2)
+  const dy = target.y + target.height / 2 - (source.y + source.height / 2)
+
+  const side: EdgeSide =
+    Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'bottom' : 'top'
+
+  return [side, OPPOSITE_SIDE[side]]
+}
+
+/**
+ * 출발·도착 쌍을 Map 키 하나로 접는다. **방향은 구분하지 않는다.**
+ *
+ * ★ `A → B` 와 `B → A` 를 같은 묶음으로 본다. 네 면을 쓰면서 두 전환이 마주 보는 면을 고르므로
+ * **같은 두 점을 잇는 같은 선분**이 되었고, 벌리지 않으면 완전히 포개져 화면에는 선이 하나로
+ * 보인다 — 전환이 둘이라는 사실이 사라진다. 좌우 두 면만 쓰던 때는 둘 다 오른쪽으로 나가
+ * 한쪽이 크게 돌았기에 우연히 겹치지 않았다(D8 눈확인 ④ 가 통과한 이유가 그것이다).
+ *
+ * 방향 자체를 잃지는 않는다 — `source`·`target` 과 `sourceSide`·`targetSide` 가 들고 있다.
+ */
 function pairKey(source: string, target: string): string {
-  return `${source}${PAIR_KEY_SEPARATOR}${target}`
+  const [first, second] = source <= target ? [source, target] : [target, source]
+  return `${first}${PAIR_KEY_SEPARATOR}${second}`
 }
 
 /**
@@ -432,6 +490,8 @@ interface EdgeSlot {
   readonly source: string
   /** 출발 노드의 폭(px). self-loop 고리가 옆 열을 안 뚫을 만큼만 커지도록 재는 데 쓴다 */
   readonly sourceWidth: number
+  /** 간선이 붙을 면. 좌표를 모르면 가로 기본값이다 */
+  readonly sides: readonly [EdgeSide, EdgeSide]
   /** 같은 상태쌍 안에서 몇 번째인지 (0-based) */
   readonly index: number
   /** 같은 상태쌍의 간선 총수 */
@@ -445,7 +505,7 @@ interface EdgeSlot {
  * @returns 간선. `id` 는 입력 위치를 달고 있어 같은 쌍의 전환이 여럿이어도 겹치지 않는다
  */
 function routedEdge(slot: EdgeSlot): RoutedEdge {
-  const { transition, transitionIndex, source, sourceWidth, index, total } = slot
+  const { transition, transitionIndex, source, sourceWidth, sides, index, total } = slot
   const selfLoop = source === transition.to
 
   return {
@@ -455,6 +515,9 @@ function routedEdge(slot: EdgeSlot): RoutedEdge {
     label: transition.name,
     transitionIndex,
     selfLoop,
+    // self-loop 은 출발과 도착이 같은 점이라 방향을 고를 수 없다 — 고리 경로가 자리를 정한다
+    sourceSide: selfLoop ? 'right' : sides[0],
+    targetSide: selfLoop ? 'right' : sides[1],
     offset: selfLoop ? selfLoopRadius(index, sourceWidth) : bundleOffset(index, total),
     labelOffset: NO_LABEL_OFFSET,
     // 자리는 `spreadLabels` 가 채운다 — 노드 좌표를 알아야 셀 수 있어 여기서는 못 정한다
@@ -474,18 +537,32 @@ export function labelsOverlap(a: LabelRect, b: LabelRect): boolean {
  * 도착 핸들을 왼쪽 중앙에 둔다(`Position.Right` · `Position.Left`). 라벨은 그 두 점 사이에
  * 그려지므로, 노드 top-left 로 셈하면 **그리는 좌표계와 다른 곳에서** 겹침을 판정하게 된다.
  */
-function handlePoints(source: PlacedNode, target: PlacedNode): {
+function sidePoint(node: PlacedNode, side: EdgeSide): { x: number; y: number } {
+  switch (side) {
+    case 'left':
+      return { x: node.x, y: node.y + node.height / 2 }
+    case 'right':
+      return { x: node.x + node.width, y: node.y + node.height / 2 }
+    case 'top':
+      return { x: node.x + node.width / 2, y: node.y }
+    case 'bottom':
+      return { x: node.x + node.width / 2, y: node.y + node.height }
+  }
+}
+
+function handlePoints(
+  source: PlacedNode,
+  target: PlacedNode,
+  edge: RoutedEdge,
+): {
   sourceX: number
   sourceY: number
   targetX: number
   targetY: number
 } {
-  return {
-    sourceX: source.x + source.width,
-    sourceY: source.y + source.height / 2,
-    targetX: target.x,
-    targetY: target.y + target.height / 2,
-  }
+  const from = sidePoint(source, edge.sourceSide)
+  const to = sidePoint(target, edge.targetSide)
+  return { sourceX: from.x, sourceY: from.y, targetX: to.x, targetY: to.y }
 }
 
 /**
@@ -504,7 +581,7 @@ function labelRect(edge: RoutedEdge, byKey: Map<string, PlacedNode>): LabelRect 
   if (source === undefined || target === undefined) return null
 
   const width = textWidthPx(edge.label) + LABEL_PADDING_X_PX
-  const { sourceX, sourceY, targetX, targetY } = handlePoints(source, target)
+  const { sourceX, sourceY, targetX, targetY } = handlePoints(source, target, edge)
 
   if (edge.selfLoop) {
     // ★ 고리 라벨은 **왼쪽 정렬**이다(`TransitionEdge` 가 `translate(0,-50%)` 로 그린다).
@@ -663,8 +740,17 @@ export function edgeRoutes(
     placedPerPair.set(key, index + 1)
     const total = totals.get(key) ?? 1
     // 좌표를 모르는 노드(빈 배치로 부른 경우)는 최소폭으로 본다 — 고리가 안 보이는 것보다 낫다
-    const sourceWidth = byKey.get(source)?.width ?? NODE_MIN_WIDTH_PX
-    edges.push(routedEdge({ transition, transitionIndex, source, sourceWidth, index, total }))
+    const sourceNode = byKey.get(source)
+    const targetNode = byKey.get(transition.to)
+    const sourceWidth = sourceNode?.width ?? NODE_MIN_WIDTH_PX
+    // 좌표를 모르면 가로 기본값이다 — 워크플로우는 왼쪽에서 오른쪽으로 읽는 그림이다
+    const sides =
+      sourceNode !== undefined && targetNode !== undefined
+        ? chooseSides(sourceNode, targetNode)
+        : (['right', 'left'] as const)
+    edges.push(
+      routedEdge({ transition, transitionIndex, source, sourceWidth, sides, index, total }),
+    )
   })
 
   // 시작 노드는 그것을 쓰는 간선이 있을 때만 그린다 — 늘 그리면 빈 원이 홀로 떠다닌다

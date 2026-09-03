@@ -51,7 +51,8 @@ function StartNode(): React.JSX.Element {
       className="bg-foreground/70 h-4 w-4 rounded-full"
       role="img"
     >
-      <Handle type="source" position={Position.Right} isConnectable={false} />
+      {/* 시작점은 오른쪽으로만 나간다. id 규칙은 상태 노드와 같아야 간선이 이 면을 찾는다 */}
+      <Handle type="source" id="s-right" position={Position.Right} isConnectable={false} />
     </div>
   )
 }
@@ -123,6 +124,10 @@ function buildGraph(
     type: 'transition',
     source: e.source,
     target: e.target,
+    // ★ 핸들 id 를 실어야 네 면 중 어느 쪽에 붙을지가 정해진다. 빼면 xyflow 가 기본 핸들
+    //   하나만 써서 모든 간선이 오른쪽→왼쪽으로 고정된다 — 세로 이웃이 U 자로 돈다.
+    sourceHandle: `s-${e.sourceSide}`,
+    targetHandle: `t-${e.targetSide}`,
     data: {
       name: e.label,
       transitionIndex: e.transitionIndex,

@@ -51,7 +51,14 @@ describe('StatusNode', () => {
   it('hover 하면 연결 핸들이 나타난다', () => {
     const { root, handles } = renderNode()
 
-    expect(handles).toHaveLength(2)
+    /*
+     * 네 면 × (source · target) = 8 개다. **끌 수 있는 것은 좌우 둘뿐**이지만 나머지 여섯도
+     * DOM 에 있어야 한다 — xyflow 의 `getEdgePosition` 이 `handleBounds` 로 간선 끝을 잡으므로
+     * 핸들이 없는 면에 붙는 간선은 통째로 안 그려진다.
+     */
+    expect(handles).toHaveLength(8)
+    const draggable = handles.filter((handle) => handle.className.includes('group-hover:'))
+    expect(draggable).toHaveLength(2)
     /*
      * jsdom 은 Tailwind CSS 를 적용하지 않으므로 `userEvent.hover` 로는 opacity 가 변하지 않는다.
      * 그래서 **발화 조건 전부**를 판정한다 — `group-hover:` 는 조상에 `group` 이 있어야만 걸리므로
@@ -63,16 +70,25 @@ describe('StatusNode', () => {
     expect(root.classList.contains('group')).toBe(true)
     for (const handle of handles) {
       expect(root.contains(handle)).toBe(true)
+      // 평소에는 전부 안 보인다 — 드러나는 것은 hover 클래스를 단 좌우 둘뿐이다
       expect(handle.className).toContain('opacity-0')
+    }
+    for (const handle of draggable) {
       expect(handle.className).toContain('group-hover:opacity-100')
     }
+
+    // ★ 네 면이 모두 있는지 id 로 잰다. 개수만 세면 같은 면이 여덟 개여도 통과한다
+    const ids = handles.map((handle) => handle.getAttribute('data-handleid'))
+    expect(new Set(ids)).toEqual(
+      new Set(['s-left', 't-left', 's-right', 't-right', 's-top', 't-top', 's-bottom', 't-bottom']),
+    )
   })
 
   it('잠긴 워크플로우면 핸들이 나타나지 않는다', () => {
     const { handles } = renderNode({ locked: true })
 
     // DOM 에는 남는다 — 지우면 xyflow 가 간선 끝을 못 잡아 잠긴 워크플로우의 간선이 통째로 사라진다
-    expect(handles).toHaveLength(2)
+    expect(handles).toHaveLength(8)
     for (const handle of handles) {
       expect(handle.className).not.toContain('group-hover:opacity-100')
       // xyflow 가 `isConnectable` 을 그대로 클래스로 내린다 — 연결을 시작할 수 없다는 뜻
