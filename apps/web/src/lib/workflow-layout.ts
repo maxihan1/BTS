@@ -28,6 +28,12 @@ const CATEGORY_COLUMN: Record<StateCategory, number> = {
   DONE: 2,
 }
 
+/** 카테고리 열 사이 가로 간격(px). 노드 폭보다 넉넉해야 열 사이 간선 라벨이 노드를 덮지 않는다. */
+const COLUMN_GAP_PX = 260
+
+/** 같은 열 안 행 사이 세로 간격(px). */
+const ROW_GAP_PX = 120
+
 /**
  * 좌표가 이미 정해진 상태인지 판정한다.
  *
@@ -57,7 +63,11 @@ function placeStates(states: readonly LayoutInputState[]): Map<LayoutInputState,
     }
     // 고정 좌표 노드는 행을 차지하지 않는다 — 자동 배치 노드끼리만 열 안에서 쌓인다
     const row = filledRows.get(state.category) ?? 0
-    placed.set(state, { key: state.key, x: CATEGORY_COLUMN[state.category] * 260, y: row * 120 })
+    placed.set(state, {
+      key: state.key,
+      x: CATEGORY_COLUMN[state.category] * COLUMN_GAP_PX,
+      y: row * ROW_GAP_PX,
+    })
     filledRows.set(state.category, row + 1)
   }
 
@@ -71,6 +81,11 @@ function placeStates(states: readonly LayoutInputState[]): Map<LayoutInputState,
  * - 나머지는 카테고리별 열(TODO → IN_PROGRESS → DONE)에 놓고, 같은 열 안에서는
  *   `displayOrder` 순으로 아래로 쌓는다.
  * - 결과 배열은 입력 순서를 유지한다.
+ *
+ * ★ **자동 배치는 표시일 뿐 편집이 아니다 — 이 결과를 초안에 써 넣지 마라.** 좌표를 초안 상태에
+ * 되돌려 쓰면 초안이 열리자마자 dirty 가 되어 **화면을 열기만 해도 「저장 안 됨」이 뜬다.**
+ * 초안의 `layoutX`/`layoutY` 를 바꾸는 것은 사용자가 노드를 실제로 끌어 옮겼을 때뿐이다.
+ * 그래서 이 함수는 입력 배열도, 입력 상태 객체도 변형하지 않는다(`autoLayout` 판정 3번).
  *
  * @param states 배치할 상태 목록
  * @returns 입력과 같은 순서의 노드 좌표 배열
