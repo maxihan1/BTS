@@ -19,10 +19,16 @@ interface SummaryCardProps {
   readonly emphasizeCaption?: boolean
 }
 
-/** 값 하나와 보조 문구 하나를 담는 카드 */
+/**
+ * 값 하나와 보조 문구 하나를 담는 카드.
+ *
+ * `section` 을 쓴다. role 없는 `div` 는 `generic` 으로 매핑되고 ARIA 1.2 는 `generic` 에
+ * `aria-label` 을 **금지**한다 — 스크린리더가 이름을 안 읽는데 RTL `getByLabelText` 는
+ * role 을 안 따지고 속성만 보므로 테스트만 초록이 된다. 형제 `DistributionWidget` 과 같은 형태다.
+ */
 function SummaryCard({ title, value, caption, emphasizeCaption }: SummaryCardProps): JSX.Element {
   return (
-    <div className="bg-card rounded-lg border p-4" aria-label={title}>
+    <section className="bg-card rounded-lg border p-4" aria-label={title}>
       <p className="text-muted-foreground text-sm">{title}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
       <p
@@ -34,7 +40,7 @@ function SummaryCard({ title, value, caption, emphasizeCaption }: SummaryCardPro
       >
         {caption}
       </p>
-    </div>
+    </section>
   )
 }
 
