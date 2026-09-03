@@ -137,7 +137,8 @@ class CommentController(
 
         log.info("CommentController.addComment key={} actor={}", key, actor.value)
 
-        val comment = service.create(actor = actor, issueKey = IssueKey(key), body = body)
+        val comment =
+            service.create(actor = actor, issueKey = IssueKey(key), body = body, bodyHtml = request.bodyHtml)
         return ResponseEntity.status(HttpStatus.CREATED).body(DataResponse(data = CommentResponse.from(comment)))
     }
 
@@ -193,7 +194,14 @@ class CommentController(
 
         log.info("CommentController.updateComment key={} commentId={} actor={}", key, commentId, actor.value)
 
-        val comment = service.update(actor = actor, issueKey = IssueKey(key), commentId = commentId, body = body)
+        val comment =
+            service.update(
+                actor = actor,
+                issueKey = IssueKey(key),
+                commentId = commentId,
+                body = body,
+                bodyHtml = request.bodyHtml,
+            )
         return DataResponse(data = CommentResponse.from(comment))
     }
 

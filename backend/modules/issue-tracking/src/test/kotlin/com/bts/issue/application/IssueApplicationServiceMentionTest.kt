@@ -11,7 +11,6 @@ import com.bts.issue.event.IssueDomainEvent
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueUpdated
-import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -212,7 +211,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                 } returns true
                 every { bulkRepo.findByKey(issueKey) } returns existingIssue
                 every {
-                    bulkRepo.updateFields(issueKey, IssueFieldPatch(description = bulkDescription), existingVersion)
+                    bulkRepo.updateFields(issueKey, any(), existingVersion)
                 } returns 1
                 every { bulkRepo.findByKeyWithType(issueKey) } returns makeResponse()
                 every { bulkEventPublisher.publish(any()) } returns Unit
@@ -241,7 +240,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every {
-                    repo.updateFields(issueKey, IssueFieldPatch(description = "@bob"), existingVersion)
+                    repo.updateFields(issueKey, any(), existingVersion)
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns makeResponse()
             }
@@ -282,7 +281,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every {
-                    repo.updateFields(issueKey, IssueFieldPatch(description = newDescription), existingVersion)
+                    repo.updateFields(issueKey, any(), existingVersion)
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns makeResponse()
             }
@@ -316,7 +315,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every {
-                    repo.updateFields(issueKey, IssueFieldPatch(description = newDescription), existingVersion)
+                    repo.updateFields(issueKey, any(), existingVersion)
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns makeResponse()
             }
@@ -342,7 +341,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every {
-                    repo.updateFields(issueKey, IssueFieldPatch(description = "@alice"), existingVersion)
+                    repo.updateFields(issueKey, any(), existingVersion)
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns makeResponse()
             }
@@ -363,7 +362,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every {
-                    repo.updateFields(issueKey, IssueFieldPatch(description = "@ghost"), existingVersion)
+                    repo.updateFields(issueKey, any(), existingVersion)
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns makeResponse()
             }

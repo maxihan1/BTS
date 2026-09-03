@@ -563,6 +563,7 @@ class IssueApplicationService(
         if (changedFields.isEmpty()) {
             return handleCoreFieldsUnchanged(key, existing, actor, securityChanged)
         }
+        val body = resolveBodyPatch(request)
         val updatedRows =
             repo.updateFields(
                 key = key,
@@ -570,7 +571,8 @@ class IssueApplicationService(
                     IssueFieldPatch(
                         summary = request.summary,
                         typeId = request.typeId,
-                        description = request.description,
+                        description = body.markdown,
+                        descriptionHtml = body.html,
                         priority = request.priority,
                         labels = normalizedLabels,
                         environment = request.environment,
@@ -1307,7 +1309,14 @@ class IssueApplicationService(
         if (request.typeId != null && existing.typeId != request.typeId) fields.add("typeId")
 
         // description: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=설정(기존과 다를 때)
-        if (isTextFieldChanged(existing.description, request.description)) fields.add("description")
+        // ★에디터 경로(descriptionHtml)도 같은 "description" 필드명으로 보고한다 — 변경 이력·
+        //   알림·멘션 발행이 전부 이 이름에 걸려 있고, 사용자에게는 둘 다 「본문 변경」이다.
+        //   HTML 경로에서 기존값과의 비교 기준이 없어(옛 행은 마크다운뿐) 항상 변경으로 본다.
+        if (isTextFieldChanged(existing.description, request.description) ||
+            request.descriptionHtml != null
+        ) {
+            fields.add("description")
+        }
 
         // environment: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=설정(기존과 다를 때)
         if (isTextFieldChanged(existing.environment, request.environment)) fields.add("environment")
@@ -2103,13 +2112,63 @@ class IssueApplicationService(
                 }
             }
         return copy(
-            descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) },
+            // ★HTML 컬럼이 있으면 그대로, 없으면 마크다운을 렌더한다 (V039 읽기 fallback).
+            //
+            // V039 는 기존 행을 백필하지 않는다 — Flyway Java migration 이 조립 앱과 단독 테스트
+            // 두 곳에 각각 등록돼야 해서, 한쪽을 빠뜨리면 백필이 조용히 건너뛰어진다. 대신 이
+            // 한 줄이 옛 행을 흡수하고, 그 이슈가 편집되는 순간 HTML 컬럼이 채워져 이행이 끝난다.
+            //
+            // 렌더 생산 지점이 여기 하나뿐이라(2026-07-27 에 그렇게 굳혔다) fallback 도 한 줄이다.
+            descriptionHtml = descriptionHtml ?: description?.let { MarkdownRenderer.renderSafe(it) },
             resolution = resolvedResolution,
             componentIds = repo.findActiveComponentIdsByIssue(this.id),
             affectsVersionIds = repo.findAffectsVersionIdsByIssue(this.id),
             fixVersionIds = repo.findFixVersionIdsByIssue(this.id),
         )
     }
+
+    /**
+     * 본문 수정 의도를 `description`(마크다운) + `description_html`(HTML) **양쪽 값**으로 푼다.
+     *
+     * ## 왜 둘을 항상 함께 쓰나
+     *
+     * V039 로 본문이 두 컬럼이 됐고, 검색용 `description_plain` 은 HTML 이 있으면 그것을 우선한다.
+     * 한쪽만 갱신하면 원문과 HTML 이 서로 다른 내용을 가리키고 **검색이 옛 본문을 긁는다.**
+     * 그래서 어느 입구로 들어오든 두 값을 같이 만들어 낸다.
+     *
+     * | 입구 | markdown 컬럼 | html 컬럼 |
+     * |---|---|---|
+     * | `description`(마크다운, CSV import·레거시) | 원문 그대로 | `renderSafe` 결과 |
+     * | `descriptionHtml`(리치 에디터) | 빈 문자열(=클리어) | `sanitizeHtml` 결과 |
+     * | 둘 다 null(무변경) | null | null |
+     *
+     * 에디터 경로가 마크다운 컬럼을 **비우는** 이유는, 남겨 두면 그것이 옛 내용을 담은 채
+     * 영원히 굳기 때문이다. 읽기 fallback 은 HTML 이 있으면 마크다운을 보지 않으므로 무해하고,
+     * 오히려 「어느 쪽이 진짜인가」가 컬럼 하나로 확정된다.
+     *
+     * REST 층([com.bts.issue.adapter.inbound.rest.UpdateIssueRequest.isBodyExclusive])이 두 필드의
+     * 동시 전달을 400 으로 막으므로 여기서 우선순위를 다툴 일이 없다.
+     *
+     * @param request 수정 요청.
+     * @return 두 컬럼에 그대로 실을 값 쌍. 무변경이면 둘 다 null.
+     */
+    private fun resolveBodyPatch(request: UpdateIssueRequest): BodyPatch =
+        when {
+            request.descriptionHtml != null ->
+                BodyPatch(markdown = "", html = MarkdownRenderer.sanitizeHtml(request.descriptionHtml))
+            request.description != null ->
+                BodyPatch(markdown = request.description, html = renderOrClear(request.description))
+            else -> BodyPatch(markdown = null, html = null)
+        }
+
+    /** 빈 본문(클리어 sentinel)은 렌더하지 않고 빈 문자열로 둔다 — 저장 시 두 컬럼 모두 NULL 이 된다. */
+    private fun renderOrClear(markdown: String): String {
+        if (markdown.isBlank()) return ""
+        return MarkdownRenderer.renderSafe(markdown)
+    }
+
+    /** [resolveBodyPatch] 결과 — 두 본문 컬럼에 실을 값 쌍. null 이면 그 컬럼은 무변경이다. */
+    private data class BodyPatch(val markdown: String?, val html: String?)
 
     /**
      * 자동 watcher 정책 FR-WT-01 — 시스템이 이슈 관련자를 자동으로 watcher 로 등록한다.

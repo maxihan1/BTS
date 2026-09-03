@@ -11,6 +11,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -286,6 +287,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 summary = null,
                                 typeId = null,
                                 description = "",
+                                descriptionHtml = "",
                                 priority = null,
                                 labels = null,
                                 environment = null,
@@ -308,6 +310,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 summary = null,
                                 typeId = null,
                                 description = "",
+                                descriptionHtml = "",
                                 priority = null,
                                 labels = null,
                                 environment = null,
@@ -330,6 +333,11 @@ class IssueApplicationServiceTest : DescribeSpec({
 
         context("description — 값 설정") {
             val newDescription = "## 재현 방법\n1. 로그인"
+
+            // ★HTML 은 서비스가 renderSafe 로 함께 만들어 싣는다 (V039). 결과 문자열을 하드코딩하면
+            //   렌더러를 고칠 때마다 이 테스트가 무관하게 깨진다 — 렌더러 자체는 MarkdownRendererTest 가
+            //   지키고, 여기 관심사는 「두 컬럼이 짝으로 간다」이다.
+            val newDescriptionHtml = MarkdownRenderer.renderSafe(newDescription)
             val request =
                 UpdateIssueRequest(
                     summary = null,
@@ -354,6 +362,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 summary = null,
                                 typeId = null,
                                 description = newDescription,
+                                descriptionHtml = newDescriptionHtml,
                                 priority = null,
                                 labels = null,
                                 environment = null,
@@ -376,6 +385,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 summary = null,
                                 typeId = null,
                                 description = newDescription,
+                                descriptionHtml = newDescriptionHtml,
                                 priority = null,
                                 labels = null,
                                 environment = null,
@@ -1115,6 +1125,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 summary = "새 제목",
                                 typeId = null,
                                 description = "## 요약",
+                                descriptionHtml = MarkdownRenderer.renderSafe("## 요약"),
                                 priority = 1,
                                 labels = null,
                                 environment = null,
@@ -1137,6 +1148,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 summary = "새 제목",
                                 typeId = null,
                                 description = "## 요약",
+                                descriptionHtml = MarkdownRenderer.renderSafe("## 요약"),
                                 priority = 1,
                                 labels = null,
                                 environment = null,

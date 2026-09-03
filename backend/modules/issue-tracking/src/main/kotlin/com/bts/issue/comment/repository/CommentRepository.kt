@@ -89,6 +89,7 @@ class CommentRepository(
             .set(COMMENTS.ISSUE_ID, comment.issueId)
             .set(COMMENTS.AUTHOR_ID, comment.authorId)
             .set(COMMENTS.BODY, comment.body)
+            .set(COMMENTS.BODY_HTML, comment.bodyHtml)
             .set(COMMENTS.CREATED_AT, comment.createdAt.toOffsetDateTime())
             .set(COMMENTS.UPDATED_AT, comment.updatedAt.toOffsetDateTime())
             .execute()
@@ -192,6 +193,8 @@ class CommentRepository(
      * @param id        수정할 댓글 UUID.
      * @param issueId   댓글이 속해야 하는 이슈 UUID. 클래스 KDoc 참조.
      * @param body      새 본문 (raw markdown 원문).
+     * @param bodyHtml  새 본문의 정화된 HTML (V039). [body] 와 **항상 짝으로** 갱신된다 —
+     *   하나만 바뀌면 원문과 HTML 이 다른 내용을 가리킨다.
      * @param updatedAt 새 수정 시각.
      * @return 영향 행 수. 1 = 갱신됨, 0 = 대상 없음(미존재 · 이미 삭제됨 · 다른 이슈 소속).
      */
@@ -200,11 +203,13 @@ class CommentRepository(
         id: UUID,
         issueId: UUID,
         body: String,
+        bodyHtml: String?,
         updatedAt: Instant,
     ): Int {
         log.debug("updateBody id={} issueId={}", id, issueId)
         return dsl.update(COMMENTS)
             .set(COMMENTS.BODY, body)
+            .set(COMMENTS.BODY_HTML, bodyHtml)
             .set(COMMENTS.UPDATED_AT, updatedAt.toOffsetDateTime())
             .where(COMMENTS.ID.eq(id))
             .and(COMMENTS.ISSUE_ID.eq(issueId))
@@ -257,6 +262,8 @@ class CommentRepository(
             issueId = record.get(COMMENTS.ISSUE_ID) ?: error("comments.issue_id must not be null after DB read"),
             authorId = record.get(COMMENTS.AUTHOR_ID) ?: error("comments.author_id must not be null after DB read"),
             body = record.get(COMMENTS.BODY) ?: error("comments.body must not be null after DB read"),
+            // nullable — 옛 댓글은 마크다운만 있고, CommentView.of 가 렌더해 흡수한다 (V039).
+            bodyHtml = record.get(COMMENTS.BODY_HTML),
             createdAt =
                 (
                     record.get(COMMENTS.CREATED_AT)

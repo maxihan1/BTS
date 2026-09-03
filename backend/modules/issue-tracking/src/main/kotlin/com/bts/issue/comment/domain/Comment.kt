@@ -24,6 +24,11 @@ data class Comment(
     val issueId: UUID,
     val authorId: UUID,
     val body: String,
+    /**
+     * 정화된 HTML 본문 (V039). null 이면 아직 HTML 로 저장된 적 없는 옛 댓글이고,
+     * [com.bts.issue.comment.application.CommentView.of] 가 [body] 를 렌더해 채운다.
+     */
+    val bodyHtml: String? = null,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

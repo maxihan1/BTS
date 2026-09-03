@@ -732,7 +732,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
             serviceAt(Instant.parse("2030-01-01T00:00:00Z"), spyRepository)
                 .update(actor, issue.key, created.id, "동일 본문")
 
-        verify(exactly = 0) { spyRepository.updateBody(any(), any(), any(), any()) }
+        verify(exactly = 0) { spyRepository.updateBody(any(), any(), any(), any(), any()) }
         verify(exactly = 0) { historyRecorder.recordCommentEdited(any(), any(), any(), any(), any(), any()) }
         assertThat(result.updatedAt).isEqualTo(createdAt)
         assertThat(requireNotNull(commentRepository.findActive(created.id, issue.id.value)).updatedAt)

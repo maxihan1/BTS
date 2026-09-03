@@ -8,6 +8,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueTextConstraints
 import com.bts.shared.issue.IssueTypeId
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -56,7 +57,7 @@ import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
  * 테스트 케이스 4건.
  * - C-1. projectKey blank → 400
  * - C-2. summary blank → 400
- * - C-3. summary 200자 초과 → 400
+ * - C-3. summary 상한(IssueTextConstraints.SUMMARY_MAX) 초과 → 400
  * - C-4. 정상 입력 → 201 + IssueResponse body + Location 헤더
  */
 @ExtendWith(SpringExtension::class)
@@ -154,14 +155,17 @@ class IssueControllerCreateTest {
             .andExpect(status().isBadRequest)
     }
 
-    // ── C-3: summary 200자 초과 → 400 ────────────────────────────────────────
+    // ── C-3: summary 상한 초과 → 400 ─────────────────────────────────────────
 
     @Test
-    fun `POST 이슈 생성 — summary 200자 초과이면 400`() {
+    fun `POST 이슈 생성 — summary 상한 초과이면 400`() {
+        // ★숫자를 여기 적지 않는다. 상한이 200 이던 시절 이 테스트가 201 을 하드코딩하고 있었고,
+        //   Jira 패리티로 255 가 되자 「400 기대인데 201 이 왔다」로 깨졌다. 상수에서 파생시키면
+        //   값이 바뀌어도 경계가 따라 움직인다 (IssueTextConstraintsAlignmentTest 와 같은 사고).
         val body =
             mapOf(
                 "projectKey" to "ATLAS",
-                "summary" to "A".repeat(201),
+                "summary" to "A".repeat(IssueTextConstraints.SUMMARY_MAX + 1),
             )
 
         mockMvc.perform(

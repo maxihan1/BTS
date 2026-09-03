@@ -46,7 +46,10 @@ data class CommentView(
                 id = comment.id,
                 authorId = comment.authorId,
                 body = comment.body,
-                bodyHtml = MarkdownRenderer.renderSafe(comment.body),
+                // ★HTML 컬럼이 있으면 그대로, 없으면 마크다운을 렌더한다 (V039 읽기 fallback).
+                // 본문(IssueApplicationService.withSingleDetail)과 같은 규칙이고, 이유도 같다 —
+                // 마이그레이션 백필 대신 읽기 지점 한 곳이 옛 행을 흡수한다.
+                bodyHtml = comment.bodyHtml ?: MarkdownRenderer.renderSafe(comment.body),
                 createdAt = comment.createdAt,
                 updatedAt = comment.updatedAt,
             )

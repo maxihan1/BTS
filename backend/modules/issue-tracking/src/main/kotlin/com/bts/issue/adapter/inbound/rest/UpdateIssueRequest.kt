@@ -3,6 +3,7 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.domain.IssueLabelConstraints
+import com.bts.issue.domain.IssueTextConstraints
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Max
@@ -30,13 +31,18 @@ import java.util.UUID
  * @property summary 새 이슈 제목. null 이면 변경하지 않는다 (Jakarta Bean Validation `@Pattern` 은
  *   null 을 통과시키므로 RFC 7396 시맨틱과 호환). 명시적 빈 문자열 또는 공백만으로 구성된 입력은
  *   400 거부 (PR #23 adversarial F-1 — `?: ""` 제거 후 빈 문자열 명시 입력 가드 추가).
- *   regex `^(?=.*\S).+$` = 비공백 문자 1자 이상 포함 강제. 최대 200자.
+ *   regex `^(?=.*\S).+$` = 비공백 문자 1자 이상 포함 강제.
+ *   최대 255자 ([IssueTextConstraints.SUMMARY_MAX] — DB `VARCHAR(255)`·도메인 `require` 와 같은 값).
  * @property typeId 새 이슈 유형 ID. null 이면 변경하지 않는다 (RFC 7396 JSON Merge Patch).
  *   양수 필수. 존재하지 않거나 비활성 타입이면 404 ISSUE_TYPE_NOT_FOUND.
  * @property expectedVersion 읽어온 시점의 버전 값. DB 버전과 다르면 409 Version Conflict.
  * @property description Markdown 설명. null=무변경, ""=DB NULL 클리어, 값=설정.
  *   @Pattern 적용 없음 — 빈문자열은 클리어 sentinel 로 유효하다.
- *   최대 65535자 (@Size 제한).
+ *   최대 32767자 ([IssueTextConstraints.DESCRIPTION_MAX]).
+ *   서버가 flexmark 로 렌더해 저장한다 — CSV import 와 레거시 클라이언트 경로.
+ * @property descriptionHtml 정화된 HTML 설명 (리치 에디터 경로). [description] 과 같은 3-상태 시맨틱.
+ *   서버가 `MarkdownRenderer.sanitizeHtml` 로 정화해 그대로 저장한다.
+ *   ★[description] 과 **동시에 보낼 수 없다** — [isBodyExclusive] 가 400 으로 막는다.
  * @property priority 우선순위 1..5. null=무변경. 범위 밖이면 400.
  * @property labels 라벨 목록. null=무변경, []=전체 제거, 값=교체.
  *   목록 최대 20개는 `@field:Size` 가, **라벨 하나 최대 50자 + 공백-only 거부는
@@ -67,7 +73,7 @@ import java.util.UUID
  * @property remainingEstimateSeconds 잔여 추정 시간 (FR-TT-01). [originalEstimateSeconds] 와 동일한 3-state 시맨틱.
  */
 data class UpdateIssueRequest(
-    @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
+    @field:Size(max = IssueTextConstraints.SUMMARY_MAX, message = "summary는 255자 이하여야 합니다.")
     @field:Pattern(
         regexp = "^(?=.*\\S).+$",
         message = "summary가 명시되었으면 공백이 아니어야 합니다.",
@@ -77,8 +83,10 @@ data class UpdateIssueRequest(
     val typeId: Long? = null,
     @field:NotNull(message = "expectedVersion은 필수입니다.")
     val expectedVersion: Long,
-    @field:Size(max = 65535, message = "description은 65535자 이하여야 합니다.")
+    @field:Size(max = IssueTextConstraints.DESCRIPTION_MAX, message = "description은 32767자 이하여야 합니다.")
     val description: String? = null,
+    @field:Size(max = IssueTextConstraints.DESCRIPTION_MAX, message = "descriptionHtml은 32767자 이하여야 합니다.")
+    val descriptionHtml: String? = null,
     @field:Min(value = 1, message = "priority는 1 이상이어야 합니다.")
     @field:Max(value = 5, message = "priority는 5 이하여야 합니다.")
     val priority: Int? = null,
@@ -100,6 +108,20 @@ data class UpdateIssueRequest(
     val originalEstimateSeconds: JsonNullable<Int> = JsonNullable.undefined(),
     val remainingEstimateSeconds: JsonNullable<Int> = JsonNullable.undefined(),
 ) {
+    /**
+     * 본문을 **한 표현으로만** 보낸다 — [description](마크다운) 또는 [descriptionHtml](HTML).
+     *
+     * 리치 에디터 전환 중이라 두 입구가 공존한다. 둘 다 오면 어느 쪽이 이기는지가 호출자마다
+     * 달라지고, 그 판정이 서비스 안쪽에 숨으면 「보낸 대로 저장되지 않는다」는 재현 어려운
+     * 버그가 된다. 여기서 400 으로 끊어 호출자가 하나를 고르게 만든다.
+     *
+     * ★`@get:` 타깃과 `@get:JsonIgnore` 가 필수인 이유는 [isLabelsValid] 와 같다.
+     */
+    @get:AssertTrue(message = "description 과 descriptionHtml 은 동시에 보낼 수 없습니다.")
+    @get:JsonIgnore
+    val isBodyExclusive: Boolean
+        get() = description == null || descriptionHtml == null
+
     /**
      * 라벨 **개별 길이 + 공백-only** 검증 (TODOS 「도메인 require 실패가 500 으로 나간다」 봉합).
      *

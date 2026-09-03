@@ -304,7 +304,7 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         commentRepository.insert(comment)
         val editedAt = Instant.parse("2024-03-02T11:30:00Z")
 
-        val affected = commentRepository.updateBody(comment.id, issue.id.value, "수정된 본문", editedAt)
+        val affected = commentRepository.updateBody(comment.id, issue.id.value, "수정된 본문", null, editedAt)
 
         assertThat(affected).isEqualTo(1)
         val reloaded = requireNotNull(commentRepository.findActive(comment.id, issue.id.value))
@@ -332,6 +332,7 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
                 comment.id,
                 issue.id.value,
                 "되살리기 시도",
+                null,
                 Instant.parse("2024-03-02T11:30:00Z"),
             )
 
@@ -354,12 +355,12 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         commentRepository.insert(comment)
         val editedAt = Instant.parse("2024-03-02T11:30:00Z")
 
-        val affected = commentRepository.updateBody(comment.id, issueB.id.value, "위조 경로 수정 시도", editedAt)
+        val affected = commentRepository.updateBody(comment.id, issueB.id.value, "위조 경로 수정 시도", null, editedAt)
 
         assertThat(affected).isZero()
         assertThat(readBody(comment.id)).isEqualTo("이슈 A 원본 본문")
         // 대조군 — 올바른 issueId 로는 갱신된다. 없으면 "무조건 0" 구현도 위 단언을 통과한다.
-        assertThat(commentRepository.updateBody(comment.id, issueA.id.value, "정상 수정", editedAt)).isEqualTo(1)
+        assertThat(commentRepository.updateBody(comment.id, issueA.id.value, "정상 수정", null, editedAt)).isEqualTo(1)
     }
 
     // ── softDelete ────────────────────────────────────────────────────────────
