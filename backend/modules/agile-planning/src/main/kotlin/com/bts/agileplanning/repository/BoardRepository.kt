@@ -88,7 +88,7 @@ class BoardRepository(
                 insertStep.values(
                     col.id,
                     board.id,
-                    col.stateKey,
+                    col.legacyStateKey,
                     col.name,
                     col.category,
                     col.displayOrder,
@@ -187,7 +187,7 @@ class BoardRepository(
             insertStep.values(
                 col.id,
                 boardId,
-                col.stateKey,
+                col.legacyStateKey,
                 col.name,
                 col.category,
                 col.displayOrder,
@@ -433,7 +433,9 @@ class BoardRepository(
         val colId = col.id ?: error("board_columns.id 가 null — boardId=${col.boardId}")
         return BoardColumn(
             id = colId,
-            stateKey = col.stateKey,
+            // 읽기 정본은 board_column_states 다. Task 3 이 조인으로 채우기 전까지는
+            // 레거시 칸을 단일 원소로 감싸 무회귀를 유지한다(E5 이중 기록 창).
+            stateKeys = listOfNotNull(col.stateKey),
             name = col.name,
             category = col.category,
             displayOrder = col.displayOrder ?: 0,

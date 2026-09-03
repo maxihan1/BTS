@@ -85,7 +85,7 @@ data class BoardColumnResponse(
         fun from(column: BoardColumn): BoardColumnResponse =
             BoardColumnResponse(
                 columnId = column.id,
-                stateKey = column.stateKey,
+                stateKey = column.legacyStateKey ?: "",
                 name = column.name,
                 category = column.category,
                 displayOrder = column.displayOrder,
@@ -231,7 +231,7 @@ data class BoardColumnWithCardsResponse(
         fun from(placed: PlacedColumn): BoardColumnWithCardsResponse =
             BoardColumnWithCardsResponse(
                 columnId = placed.column.id,
-                stateKey = placed.column.stateKey,
+                stateKey = placed.column.legacyStateKey ?: "",
                 name = placed.column.name,
                 category = placed.column.category,
                 displayOrder = placed.column.displayOrder,
@@ -399,7 +399,7 @@ data class ColumnMetaResponse(
         fun from(column: BoardColumn): ColumnMetaResponse =
             ColumnMetaResponse(
                 columnId = column.id,
-                stateKey = column.stateKey,
+                stateKey = column.legacyStateKey ?: "",
                 name = column.name,
                 category = column.category,
                 displayOrder = column.displayOrder,

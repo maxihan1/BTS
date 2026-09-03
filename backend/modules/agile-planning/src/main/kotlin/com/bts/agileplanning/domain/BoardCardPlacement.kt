@@ -36,6 +36,9 @@ object BoardCardPlacement {
      * 백로그 이슈 정렬 선례(rank ASC NULLS LAST → key ASC)와 동일한 rank 규칙을 따른다.
      * 보드는 여기에 priority 보조 tiebreaker 를 추가로 유지해, rank 미부여 시 기존 정렬을 무회귀한다.
      */
+    /** category 진행도 — 클수록 진행된 것이다. [resolveCategory] 가 최댓값을 고른다. */
+    private val CATEGORY_RANK = mapOf("TODO" to 0, "IN_PROGRESS" to 1, "DONE" to 2)
+
     private val CARD_COMPARATOR: Comparator<BoardIssueView> =
         compareBy<BoardIssueView, String?>(nullsLast()) { it.rank }
             .thenBy { it.priority }
@@ -56,7 +59,8 @@ object BoardCardPlacement {
             .map { state ->
                 BoardColumn(
                     id = UUID.randomUUID(),
-                    stateKey = state.key,
+                    // 시드는 종전대로 상태 1개당 컬럼 1개다(R4). 1:N 은 매핑 변경으로만 만들어진다.
+                    stateKeys = listOf(state.key),
                     name = state.name,
                     category = state.category,
                     displayOrder = state.displayOrder,
@@ -81,20 +85,37 @@ object BoardCardPlacement {
      * @param issues 배치할 이슈 목록. BoardIssueLookupPort.listVisibleIssuesByProject 반환 값.
      * @return [PlacedBoardResult]. columns 는 입력 [columns] 와 동일 순서. unplacedCount 는 미매핑 이슈 수.
      */
+    /**
+     * 컬럼이 담은 상태들의 category 를 하나로 접는다 — `DONE` > `IN_PROGRESS` > `TODO` 최댓값 (R5).
+     *
+     * ★ **결과는 표시 전용이다.** 어떤 로직 분기도 이 값을 읽지 않는다 —
+     * 완료 판정은 전환 시점에 **대상 상태**로 한다(J7·J8 · `IssueRepository` 의 워크플로우 validator).
+     * 그 사실은 R13 이 프론트의 마지막 분기를 걷어낸 뒤에야 참이 된다.
+     *
+     * 상태가 없으면 `TODO` — 빈 컬럼은 아직 아무 일도 안 하는 자리다.
+     *
+     * @param categories 컬럼이 담은 상태들의 category 목록. 순서는 무관하다.
+     * @return 가장 진행된 category 하나.
+     */
+    fun resolveCategory(categories: List<String>): String =
+        categories.maxByOrNull { CATEGORY_RANK[it] ?: 0 } ?: "TODO"
+
     fun placeCards(
         columns: List<BoardColumn>,
         issues: List<BoardIssueView>,
     ): PlacedBoardResult {
-        val knownStateKeys = columns.map { it.stateKey }.toSet()
+        val knownStateKeys = columns.flatMap { it.stateKeys }.toSet()
         val issuesByStateKey: Map<String, List<BoardIssueView>> =
             issues.groupBy { it.currentStateKey }
 
         val placedColumns =
             columns.map { column ->
+                // 컬럼이 담은 **모든** 상태의 카드를 모아 한 번에 정렬한다(R3).
+                // stateKeys 가 비면 카드 0장이다(E1·N4) — 매핑을 옮기는 중간 상태다.
                 val cards =
-                    issuesByStateKey[column.stateKey]
-                        ?.sortedWith(CARD_COMPARATOR)
-                        ?: emptyList()
+                    column.stateKeys
+                        .flatMap { issuesByStateKey[it].orEmpty() }
+                        .sortedWith(CARD_COMPARATOR)
                 PlacedColumn(column = column, cards = cards)
             }
 

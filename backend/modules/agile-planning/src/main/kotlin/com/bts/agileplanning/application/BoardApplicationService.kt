@@ -414,7 +414,13 @@ class BoardApplicationService(
             BoardTransitionCommand(
                 actorUserId = actorUserId,
                 issueKey = issueKey,
-                toStateKey = targetColumn.stateKey,
+                // Task 5 가 이 줄을 toStateKey 수용으로 바꾼다(R6·R7). 지금은 무회귀 유지 —
+                // 컬럼의 첫 상태가 곧 오늘의 유일한 상태다.
+                toStateKey = targetColumn.legacyStateKey
+                    ?: throw ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "AGILE_COLUMN_HAS_NO_STATE: 상태가 매핑되지 않은 컬럼으로는 이동할 수 없습니다.",
+                    ),
                 expectedVersion = expectedVersion,
                 resolutionId = resolutionId,
             ),
