@@ -139,11 +139,26 @@ Then 컬럼 구성·카드 배치가 **이전과 완전히 같다**. 컬럼당 �
 
 ```jsonc
 {
-  "columns": [ { "columnId": "…", "stateKeys": ["in_progress", "in_review"], "name": "진행 중", … } ],
+  "columns": [
+    {
+      "columnId": "…",
+      // ★키 배열이 아니라 표시 정보가 붙은 객체 배열이다(R11). R13 이 대상 상태의 category 를 읽는다.
+      "states": [
+        { "key": "in_progress", "name": "진행 중", "category": "IN_PROGRESS" },
+        { "key": "in_review", "name": "검토 중", "category": "IN_PROGRESS" }
+      ],
+      "name": "진행 중",
+      "category": "IN_PROGRESS",  // 담은 상태들의 최댓값(R5). 개별 상태와 다를 수 있다
+      …
+    }
+  ],
   "unmappedStates": [ { "key": "blocked", "name": "차단됨", "category": "TODO" } ],  // R8
   "unplacedCount": 2
 }
 ```
+
+`BoardColumnResponse`(생성 응답) · `ColumnMetaResponse`(컬럼 메타 변경 응답)도 **같은 `states` 모양**
+이다 — 프론트가 스키마 하나로 파싱하기 위해서다.
 
 ### 신규 (R9)
 
