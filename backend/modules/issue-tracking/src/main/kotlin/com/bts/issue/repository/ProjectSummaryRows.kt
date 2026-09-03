@@ -45,6 +45,8 @@ data class SummaryIssueRow(
  * 묶어 피드 항목 하나를 만든다.
  *
  * @property groupId 변경 그룹 id (`issue_change_group.id`) — 그룹핑 키 겸 동시각 tie-break.
+ * @property issueId 변경이 기록된 이슈 UUID. 댓글 소속 대조(FR-CO-02 마스킹)에 쓴다 —
+ *           [issueKey] 는 기록 시점 값이라 소속 판정의 근거가 되지 못한다.
  * @property issueKey 기록 시점 이슈 키(예: `BTS-1`). 이슈 이동 후에도 당시 키가 보존된다.
  * @property actorId 변경 주체 UUID. null 이면 시스템 자동 변경.
  * @property createdAt 변경 발생 시각.
@@ -56,6 +58,7 @@ data class SummaryIssueRow(
  */
 data class ProjectActivityRow(
     val groupId: Long,
+    val issueId: UUID,
     val issueKey: String,
     val actorId: UUID?,
     val createdAt: Instant,

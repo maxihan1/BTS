@@ -2658,6 +2658,7 @@ class IssueRepository(
         // 2단계 — 고른 그룹의 항목을 전부 가져온다(그룹이 잘리지 않는다).
         return dsl.select(
             ISSUE_CHANGE_GROUP.ID,
+            ISSUE_CHANGE_GROUP.ISSUE_ID,
             ISSUE_CHANGE_GROUP.ISSUE_KEY,
             ISSUE_CHANGE_GROUP.ACTOR_ID,
             ISSUE_CHANGE_GROUP.CREATED_AT,
@@ -2676,6 +2677,9 @@ class IssueRepository(
                     groupId =
                         record.get(ISSUE_CHANGE_GROUP.ID)
                             ?: error("issue_change_group.id must not be null"),
+                    issueId =
+                        record.get(ISSUE_CHANGE_GROUP.ISSUE_ID)
+                            ?: error("issue_change_group.issue_id must not be null"),
                     issueKey =
                         record.get(ISSUE_CHANGE_GROUP.ISSUE_KEY)
                             ?: error("issue_change_group.issue_key must not be null"),

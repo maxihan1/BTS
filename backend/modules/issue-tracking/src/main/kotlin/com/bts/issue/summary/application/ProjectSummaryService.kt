@@ -3,6 +3,7 @@
 package com.bts.issue.summary.application
 
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
+import com.bts.issue.application.IssueChangeItemMasker
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.history.IssueChangeItem
@@ -64,6 +65,8 @@ import java.util.UUID
  * @param issueTypeRepository 이슈 타입 조회 리포지토리(`id → key/name` 역매핑용).
  * @param workflowStateLookup 워크플로우 상태 목록 격리 조회 Bean(velocity 가 정의한 기존 Bean 재사용).
  * @param userLookupPort 사용자 표시명 일괄 조회 포트. 실패해도 조회를 막지 않는다.
+ * @param masker 변경 이력 항목 마스킹 협력자. 단건 이력 경로와 **같은 판정**을 쓴다
+ *               ([IssueChangeItemMasker] — FR-PM-07 필드 권한 + FR-CO-02 삭제 댓글).
  * @param clock 창 경계 결정을 위한 시계. 모듈에 전역 [Clock] 빈이 없어 기본값을 둔다
  *              (`NoSuchBeanDefinitionException` 방지 — [com.bts.issue.cfd.web.CfdController] 선례).
  */
@@ -78,6 +81,7 @@ class ProjectSummaryService(
     private val issueTypeRepository: IssueTypeRepository,
     private val workflowStateLookup: IsolatedWorkflowStateLookup,
     private val userLookupPort: UserLookupPort,
+    private val masker: IssueChangeItemMasker,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)

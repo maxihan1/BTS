@@ -3,6 +3,8 @@
 package com.bts.issue.summary.application
 
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
+import com.bts.issue.application.IssueChangeItemMasker
+import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.repository.IssueRepository
@@ -14,6 +16,9 @@ import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.FieldKind
+import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -70,9 +75,13 @@ class ProjectSummaryServiceTest : DescribeSpec({
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val workflowStateLookup = mockk<IsolatedWorkflowStateLookup>()
     val userLookupPort = mockk<UserLookupPort>()
+    val commentRepository = mockk<CommentRepository>()
+    val fieldPermissionResolver = mockk<FieldPermissionResolver>()
 
     val now = Instant.parse("2026-09-03T12:00:00Z")
 
+    // 마스킹은 mock 이 아니라 **실물 협력자**로 태운다 — 단건 이력 경로와 같은 판정을 쓰는지가
+    // 검증 대상이므로, 여기서 mock 으로 대체하면 정작 확인하려던 것이 사라진다.
     val sut =
         ProjectSummaryService(
             permissionResolver = permissionResolver,
@@ -81,11 +90,13 @@ class ProjectSummaryServiceTest : DescribeSpec({
             issueTypeRepository = issueTypeRepository,
             workflowStateLookup = workflowStateLookup,
             userLookupPort = userLookupPort,
+            masker = IssueChangeItemMasker(issueRepository, commentRepository, fieldPermissionResolver),
             clock = Clock.fixed(now, ZoneOffset.UTC),
         )
 
     val actor = ActorId(UUID.randomUUID())
     val projectKey = "SUMP"
+    val projectId = UUID.randomUUID()
     val projectScope = IssueScope.Project(projectKey)
 
     val taskTypeId = 1L
@@ -165,8 +176,14 @@ class ProjectSummaryServiceTest : DescribeSpec({
             issueTypeRepository,
             workflowStateLookup,
             userLookupPort,
+            commentRepository,
+            fieldPermissionResolver,
         )
         every { userLookupPort.findDisplayNamesByIds(any()) } returns emptyMap()
+        // 마스킹 기본값 — 필드는 전부 보이고 활성 댓글은 없다. 가림을 검증하는 describe 에서만 override 한다.
+        every { issueRepository.findProjectIdByKey(projectKey) } returns projectId
+        every { fieldPermissionResolver.visibleFields(actor.value, projectId, any()) } answers { thirdArg() }
+        every { commentRepository.findActiveOwners(any()) } returns emptyMap()
     }
 
     // ── 권한 ──────────────────────────────────────────────────────────────────
@@ -635,7 +652,130 @@ class ProjectSummaryServiceTest : DescribeSpec({
         }
     }
 
+    // ── 필드 수준 마스킹 (B1) ─────────────────────────────────────────────────
+
+    describe("활동 피드의 필드 수준 마스킹") {
+        val at = Instant.parse("2026-09-03T09:00:00Z")
+        val descriptionRef = FieldRef(FieldKind.CORE, "description")
+
+        fun stubDescriptionFeed() {
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(1L, "SUMP-1", null, at, "description", "옛 설명", "새 설명", "옛 라벨", "새 라벨"),
+                )
+        }
+
+        it("가려진 필드는 값·라벨 4종이 null 이고 항목 자체는 남는다") {
+            stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1")
+            stubDescriptionFeed()
+            // description 이 candidates 에 있는데 visible 에서 빠진다 = 가려진 필드.
+            every { fieldPermissionResolver.visibleFields(actor.value, projectId, any()) } returns emptySet()
+
+            val item = sut.getActivity(actor, projectKey, 20).single().items.single()
+
+            // 단건 이력과 같은 시맨틱 — 항목은 남기고 값만 가린다.
+            item.field shouldBe "description"
+            item.fromValue.shouldBeNull()
+            item.toValue.shouldBeNull()
+            item.fromLabel.shouldBeNull()
+            item.toLabel.shouldBeNull()
+        }
+
+        it("같은 픽스처에서 필드 권한만 열면 원문이 보인다") {
+            stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1")
+            stubDescriptionFeed()
+            every {
+                fieldPermissionResolver.visibleFields(actor.value, projectId, any())
+            } returns setOf(descriptionRef)
+
+            val item = sut.getActivity(actor, projectKey, 20).single().items.single()
+
+            // 비-공허 짝 — 위 테스트가 "무조건 null" 구현으로도 통과하지 않게 한다.
+            item.fromValue shouldBe "옛 설명"
+            item.toValue shouldBe "새 설명"
+            item.fromLabel shouldBe "옛 라벨"
+            item.toLabel shouldBe "새 라벨"
+        }
+    }
+
+    // ── 삭제된 댓글 본문 마스킹 (B2) ──────────────────────────────────────────
+
+    describe("활동 피드의 삭제된 댓글 본문 마스킹") {
+        val at = Instant.parse("2026-09-03T09:00:00Z")
+        val issueOne = UUID.fromString("00000000-0000-4000-8000-0000000000a1")
+        val issueTwo = UUID.fromString("00000000-0000-4000-8000-0000000000a2")
+        val activeCommentId = UUID.fromString("00000000-0000-4000-8000-0000000000b1")
+        val deletedCommentId = UUID.fromString("00000000-0000-4000-8000-0000000000b2")
+        val activeField = "comment:$activeCommentId"
+        val deletedField = "comment:$deletedCommentId"
+
+        it("삭제된 댓글의 본문은 가려지고 활성 댓글의 본문은 그대로 보인다") {
+            stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1")
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(1L, "SUMP-1", null, at, activeField, "활성 원본", "활성 수정본", null, null, issueOne),
+                    activityRow(1L, "SUMP-1", null, at, deletedField, "위장 본문", "부적절한 본문", null, null, issueOne),
+                )
+            every { commentRepository.findActiveOwners(any()) } returns mapOf(activeCommentId to issueOne)
+
+            val items = sut.getActivity(actor, projectKey, 20).single().items
+
+            val deleted = items.first { it.field == deletedField }
+            deleted.fromValue.shouldBeNull()
+            deleted.toValue.shouldBeNull()
+            // 비-공허 짝 — 같은 그룹의 활성 댓글은 손대지 않는다.
+            val active = items.first { it.field == activeField }
+            active.fromValue shouldBe "활성 원본"
+            active.toValue shouldBe "활성 수정본"
+        }
+
+        it("여러 이슈에 걸쳐도 활성 댓글 조회는 피드당 1회다") {
+            stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1", "SUMP-2")
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(1L, "SUMP-1", null, at, activeField, "본문 A", "수정 A", null, null, issueOne),
+                    activityRow(
+                        2L, "SUMP-2", null, at.minusSeconds(60), deletedField,
+                        "본문 B", "수정 B", null, null, issueTwo,
+                    ),
+                )
+            every { commentRepository.findActiveOwners(any()) } returns mapOf(activeCommentId to issueOne)
+
+            sut.getActivity(actor, projectKey, 20)
+
+            // 이슈당 1회면 N+1 이다 — 이슈가 여럿이어도 한 번으로 묶여야 한다.
+            verify(exactly = 1) {
+                commentRepository.findActiveOwners(
+                    mapOf(issueOne to setOf(activeCommentId), issueTwo to setOf(deletedCommentId)),
+                )
+            }
+        }
+
+        it("다른 이슈 소속으로 확인된 댓글은 활성이어도 가린다") {
+            stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1")
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(1L, "SUMP-1", null, at, activeField, "본문", "수정", null, null, issueOne),
+                )
+            // 활성이지만 소속이 issueTwo — 판정 불능이므로 가린다(fail-closed).
+            every { commentRepository.findActiveOwners(any()) } returns mapOf(activeCommentId to issueTwo)
+
+            val item = sut.getActivity(actor, projectKey, 20).single().items.single()
+
+            item.fromValue.shouldBeNull()
+            item.toValue.shouldBeNull()
+        }
+    }
+
 })
+
+/** 댓글 소속 대조를 따로 검증하지 않는 픽스처가 공유하는 이슈 UUID. */
+private val FIXED_ISSUE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-0000000000f1")
 
 /** project-workflow BC 내부 예외를 simpleName 으로 흉내 낸다 — 직접 import 불가. */
 private class WorkflowSchemeNoDefaultException(message: String) : RuntimeException(message)
@@ -705,9 +845,11 @@ private fun activityRow(
     toValue: String?,
     fromLabel: String?,
     toLabel: String?,
+    issueId: UUID = FIXED_ISSUE_ID,
 ): ProjectActivityRow =
     ProjectActivityRow(
         groupId = groupId,
+        issueId = issueId,
         issueKey = issueKey,
         actorId = actorId,
         createdAt = createdAt,
