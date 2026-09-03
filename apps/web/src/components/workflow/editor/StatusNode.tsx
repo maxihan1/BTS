@@ -55,6 +55,28 @@ const HANDLE_BASE_CLASS = 'opacity-0 transition-opacity'
 const HANDLE_HOVER_CLASS = 'group-hover:opacity-100'
 
 /**
+ * 네 면 모두에 핸들을 둔다 (`id` 는 `lib/workflow-layout.ts` 의 `EdgeSide` 와 짝이다).
+ *
+ * ★ **핸들 DOM 이 없으면 그 면에 붙는 간선이 통째로 안 그려진다.** xyflow 의 `getEdgePosition`
+ * 이 노드의 `handleBounds` 로 간선 양 끝을 잡기 때문이다(실측 `@xyflow/system`). 그래서
+ * 「쓸 때만 만든다」가 성립하지 않는다 — 네 면을 늘 그려 두고 보이는 것만 고른다.
+ */
+const HANDLE_SIDES = [
+  { side: 'left', position: Position.Left },
+  { side: 'right', position: Position.Right },
+  { side: 'top', position: Position.Top },
+  { side: 'bottom', position: Position.Bottom },
+] as const
+
+/**
+ * 간선 끝점 계산에만 쓰이고 화면에는 안 나오는 핸들.
+ *
+ * hover 로 드러나는 어포던스는 **좌우 둘뿐**이다. 넷을 다 드러내면 6px 짜리 점이 노드를
+ * 둘러싸 무엇을 끌라는 것인지 알 수 없고, 전환을 만드는 방향은 어차피 배치가 정한다.
+ */
+const HIDDEN_HANDLE_CLASS = 'opacity-0 pointer-events-none'
+
+/**
  * 선택된 노드에 얹는 링.
  *
  * **카테고리 색과 다른 축이라야 한다** (부채 169). 카테고리는 배경·테두리 *색*으로 말하므로
@@ -101,9 +123,25 @@ function StatusNode({ data, selected = false }: StatusNodeProps): React.JSX.Elem
         selected && SELECTED_CLASS,
       )}
     >
-      <Handle type="target" position={Position.Left} isConnectable={connectable} className={handleClass} />
+      {HANDLE_SIDES.map(({ side, position }) => (
+        <React.Fragment key={side}>
+          <Handle
+            type="target"
+            id={`t-${side}`}
+            position={position}
+            isConnectable={connectable}
+            className={side === 'left' ? handleClass : HIDDEN_HANDLE_CLASS}
+          />
+          <Handle
+            type="source"
+            id={`s-${side}`}
+            position={position}
+            isConnectable={connectable}
+            className={side === 'right' ? handleClass : HIDDEN_HANDLE_CLASS}
+          />
+        </React.Fragment>
+      ))}
       <span className="text-foreground truncate text-sm font-medium">{data.name}</span>
-      <Handle type="source" position={Position.Right} isConnectable={connectable} className={handleClass} />
     </div>
   )
 }

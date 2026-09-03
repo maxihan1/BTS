@@ -444,3 +444,110 @@ describe('라벨 겹침 해소', () => {
     expect(first).toEqual(second)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 간선이 붙는 핸들 방향 (상하좌우)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('핸들 방향', () => {
+  const placed = autoLayout(softwareDefaultStates())
+
+  /** 전환 하나를 놓고 그 간선이 고른 방향쌍을 돌려준다. */
+  function sidesOf(from: string, to: string): [string, string] {
+    const result = edgeRoutes([makeTransition({ from, to })], placed)
+    const edge = edgeAt(result, 0)
+    return [edge.sourceSide, edge.targetSide]
+  }
+
+  it('가로로 떨어진 노드는 좌우 핸들을 쓴다', () => {
+    // 진행 방향이 왼쪽에서 오른쪽이므로 오른쪽으로 나가 왼쪽으로 들어가는 것이 자연스럽다
+    expect(sidesOf('open', 'in_progress')).toEqual(['right', 'left'])
+  })
+
+  it('★세로로 쌓인 노드는 상하 핸들을 쓴다', () => {
+    /*
+     * ★ 좌우 핸들만 있으면 같은 열에 위아래로 쌓인 두 노드가 **오른쪽으로 나갔다 크게 U 자로
+     *   돌아 왼쪽으로** 들어온다. `in_progress` 와 `in_review` 는 둘 다 IN_PROGRESS 카테고리라
+     *   같은 열에 놓이는데, 세로 이웃인데도 가로 경로를 강제당했다.
+     */
+    expect(sidesOf('in_progress', 'in_review')).toEqual(['bottom', 'top'])
+  })
+
+  it('★거꾸로 올라가는 전환은 반대 핸들을 쓴다', () => {
+    // `Request Changes` 는 아래에서 위로 간다 — 위로 나가 아래로 들어가야 선이 안 꼬인다
+    expect(sidesOf('in_review', 'in_progress')).toEqual(['top', 'bottom'])
+  })
+
+  it('★되감는 전환은 왼쪽으로 나간다', () => {
+    // `closed → open` 처럼 뒤로 가는 전환. 오른쪽으로 나가면 선이 노드를 가로질러 되돌아온다
+    expect(sidesOf('closed', 'open')).toEqual(['left', 'right'])
+  })
+
+  it('★역방향 쌍은 서로 벌어진다 — 같은 선분을 두 번 그리지 않는다', () => {
+    /*
+     * ★ 네 면을 쓰면서 새로 생긴 문제다. `A → B` 와 `B → A` 는 마주 보는 면을 고르므로
+     *   **같은 두 점을 잇는 같은 선분**이 되어 완전히 포개진다 — 화면에는 선이 하나로 보이고
+     *   전환이 둘이라는 사실이 사라진다.
+     *
+     *   좌우 두 면만 쓰던 때는 둘 다 오른쪽으로 나가 한쪽이 크게 돌았기 때문에 겹치지 않았다
+     *   (D8 눈확인 ④ 가 통과한 이유가 그것이다). 면을 늘리면서 그 우연한 분리가 사라졌다.
+     */
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'in_progress', to: 'in_review', name: '검토 요청' }),
+        makeTransition({ from: 'in_review', to: 'in_progress', name: '반려' }),
+      ],
+      placed,
+    )
+
+    expect(edgeAt(result, 0).offset).not.toBe(edgeAt(result, 1).offset)
+  })
+
+  it('self-loop 은 좌우 고정이다', () => {
+    // 출발과 도착이 같은 점이라 방향을 고를 수 없다. 고리 경로가 자리를 정한다
+    expect(sidesOf('open', 'open')).toEqual(['right', 'right'])
+  })
+
+  it('시작 노드에서 나가는 간선도 방향을 받는다', () => {
+    // 시작 노드는 첫 열 왼쪽에 있으므로 오른쪽으로 나간다
+    const result = edgeRoutes(
+      [makeTransition({ from: null, to: 'open', kind: 'INITIAL' })],
+      placed,
+    )
+    expect(edgeAt(result, 0).sourceSide).toBe('right')
+    expect(edgeAt(result, 0).targetSide).toBe('left')
+  })
+
+  it('★한 상태에서 여러 상태로 나가도 각자 제 방향을 고른다 (fan-out)', () => {
+    /*
+     * 도메인이 허용한다 — V207 이 `UNIQUE (workflow, from, to)` 를 풀었고, fan-out 은 애초에
+     * 서로 다른 쌍이라 제약 대상이 아니었다. 픽스처에도 `resolved → closed` 와
+     * `resolved → in_progress` 가 함께 있다.
+     */
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'in_progress', to: 'done', name: '완료' }),
+        makeTransition({ from: 'in_progress', to: 'in_review', name: '검토 요청' }),
+      ],
+      placed,
+    )
+
+    // 가로 이웃은 오른쪽으로, 세로 이웃은 아래로 — 같은 노드에서 나가도 방향이 갈린다
+    expect(edgeAt(result, 0).sourceSide).toBe('right')
+    expect(edgeAt(result, 1).sourceSide).toBe('bottom')
+  })
+
+  it('★여러 상태에서 한 상태로 들어와도 각자 제 방향을 고른다 (fan-in)', () => {
+    // `done → closed`(세로)와 `open → closed`(가로)가 같은 노드로 들어온다
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'done', to: 'closed', name: '닫기' }),
+        makeTransition({ from: 'open', to: 'closed', name: '취소' }),
+      ],
+      placed,
+    )
+
+    expect(edgeAt(result, 0).targetSide).toBe('top')
+    expect(edgeAt(result, 1).targetSide).toBe('left')
+  })
+})
