@@ -32,10 +32,20 @@ enum class IssuePriority(val number: Int, val displayName: String) {
     companion object {
         /** 정수 [number]로 [IssuePriority]를 조회한다. 1..5 범위를 벗어나면 [IllegalArgumentException]. */
         fun fromNumber(number: Int): IssuePriority =
-            entries.find { it.number == number }
+            fromNumberOrNull(number)
                 ?: throw IllegalArgumentException(
                     "priority number must be between 1 and 5, but was $number",
                 )
+
+        /**
+         * 정수 [number]로 [IssuePriority]를 조회하되 범위 밖이면 null을 반환한다.
+         *
+         * 표시명이 없어도 화면이 돌아가야 하는 조회 경로용이다. `priority`는 SMALLINT라
+         * 제약이 무너지면 6 같은 값이 들어올 수 있는데, 라벨 하나를 못 붙이는 것과 화면이
+         * 500이 되는 것은 전혀 다른 사고다. try/catch로 예외를 삼키는 대신 여기서
+         * "값이 없음"을 타입으로 표현해 호출자가 조용히 실패를 감추지 않게 한다.
+         */
+        fun fromNumberOrNull(number: Int): IssuePriority? = entries.find { it.number == number }
 
         /** 문자열 [displayName]으로 [IssuePriority]를 조회한다. 미정의 이름이면 [IllegalArgumentException]. */
         fun fromName(displayName: String): IssuePriority =
