@@ -247,8 +247,9 @@ function removeIssueFromProject(
  * @param goal 스프린트 목표 (선택)
  * @param startDate 시작일 ISO 문자열 (선택)
  * @param endDate 종료일 ISO 문자열 (선택)
- * @param boardId 소속 보드 UUID (FR-BD-04). 미지정이면 null — 백엔드 `CreateSprintRequest.boardId`
- *   가 선택 필드라 같은 하위 호환 경로를 둔다. 백로그 화면은 항상 명시한다.
+ * @param boardId 소속 보드 UUID (FR-BD-04). 미지정이면 `ATLAS_DEFAULT_BOARD_ID` 로 폴백한다 —
+ *   백엔드 `CreateSprintRequest.boardId` 가 선택 필드이고 서버는 `ensureScrumBoard` 로 채우기
+ *   때문이다(`sprints.board_id` 는 V506 이 NOT NULL 로 만들었다). 백로그 화면은 항상 명시한다.
  */
 export function createSprintInStore(
   projectKey: string,
@@ -258,8 +259,16 @@ export function createSprintInStore(
   endDate?: string,
   boardId: string | null = null,
 ): SprintMeta {
+  // 🛑 DTO 가 보고하는 값과 store 래퍼(`StoredSprint.boardId`)가 **같은 값**이어야 한다.
+  //    갈라 두면 목이 「이 보드 소속」이라고 응답해 놓고, 스코프 조회(`toBacklogView.inScope`)는
+  //    래퍼를 보므로 그 스프린트가 **자기가 속한다고 말한 보드에서 사라진다**.
+  //    memory `two-lists-never-check-each-other` 양식이라 한 값에서 파생시킨다.
+  const resolvedBoardId = boardId ?? ATLAS_DEFAULT_BOARD_ID
+
   const sprint: SprintMeta = {
     sprintId: generateUUID(),
+    // FR-BD-04 PR ⑤ — 스프린트는 보드에 매달린다. 지정이 없으면 이 프로젝트의 기본 보드다.
+    boardId: resolvedBoardId,
     name,
     goal: goal ?? null,
     status: 'PLANNED',
@@ -270,13 +279,13 @@ export function createSprintInStore(
 
   const project = backlogStore.get(projectKey)
   if (project !== undefined) {
-    project.sprints.push({ sprint, issues: [], boardId })
+    project.sprints.push({ sprint, issues: [], boardId: resolvedBoardId })
   } else {
     // 프로젝트가 없으면 새로 생성
     backlogStore.set(projectKey, {
       projectKey,
       backlog: [],
-      sprints: [{ sprint, issues: [], boardId }],
+      sprints: [{ sprint, issues: [], boardId: resolvedBoardId }],
       truncated: false,
     })
   }
@@ -446,6 +455,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000002',
+        boardId: ATLAS_DEFAULT_BOARD_ID,
         name: '진행 중 스프린트',
         goal: '진행 중 스프린트 목표',
         status: 'ACTIVE',
@@ -487,6 +497,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000001',
+        boardId: ATLAS_DEFAULT_BOARD_ID,
         name: '스프린트 1',
         goal: '첫 번째 스프린트 목표',
         status: 'PLANNED',
@@ -533,6 +544,7 @@ export const DEFAULT_BACKLOG: StoredBacklogProject = {
     {
       sprint: {
         sprintId: 'a0000000-0000-4000-8000-000000000003',
+        boardId: ATLAS_DEFAULT_BOARD_ID,
         name: '완료된 스프린트',
         goal: null,
         status: 'COMPLETED',

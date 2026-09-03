@@ -277,6 +277,7 @@ describe('resolveOverToDropZone', () => {
       {
         sprint: {
           sprintId: SPRINT_A_ID,
+          boardId: '10000000-0000-4000-8000-000000000001',
           name: '스프린트 A',
           goal: null,
           status: 'PLANNED',

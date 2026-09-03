@@ -114,6 +114,7 @@ function card(key: string, epicKey: string | null): BacklogIssue {
 function sprintMeta(index: number): SprintMeta {
   return {
     sprintId: `55555555-5555-4555-8555-${String(index).padStart(12, '0')}`,
+    boardId: '10000000-0000-4000-8000-000000000001',
     name: `스프린트 ${index + 1}`,
     goal: null,
     status: 'PLANNED',

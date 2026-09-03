@@ -209,18 +209,29 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await expect(backlogSprintColumn(page, OTHER_BOARD_SPRINT_NAME)).toHaveCount(0)
     await expect(backlogColumn(page).getByText(OTHER_SPRINT_ISSUE_KEY)).toBeVisible()
 
-    // ── S5. 스프린트 생성 — 바디에 boardId 가 실린다 (E-6) ──────────────────
+    // ── S5. 스프린트 생성 — 요청과 **응답** 양쪽에 boardId 가 실린다 (E-6) ──
     const createSprintRequest = page.waitForRequest(
       (req) => req.url().endsWith('/api/v1/sprints') && req.method() === 'POST',
+    )
+    const createSprintResponse = page.waitForResponse(
+      (res) => res.url().endsWith('/api/v1/sprints') && res.request().method() === 'POST',
     )
     await page.getByLabel(backlogLabels.sprintNamePlaceholder).fill(SPRINT_NAME)
     await page.getByRole('button', { name: backlogLabels.createSprint, exact: true }).click()
 
-    // ★요청 바디가 유일한 관측점이다 — boardId 를 흘려도 스프린트 칸은 그대로 뜬다
-    //   (mock 이 폴백을 갖지 않아 조용히 어느 보드에도 안 붙는다)
+    // 축 ① 요청 — 클라이언트가 보고 있던 보드를 실어 보낸다.
     expect(JSON.parse((await createSprintRequest).postData() ?? '{}')).toMatchObject({
       boardId: scrumBoardId,
     })
+
+    // 축 ② 응답 — 서버가 그 보드에 **실제로 붙였다**.
+    //
+    // 요청 바디가 오래 **유일한 관측점**이었다. `SprintResponse` 에 `boardId` 가 없어
+    // 서버가 그것을 흘려도 스프린트 칸은 그대로 떴기 때문이다(mock 이 폴백을 갖지 않아
+    // 조용히 어느 보드에도 안 붙는다). FR-BD-04 PR ⑤ 가 응답에 필드를 실으면서 이 축이 생겼다 —
+    // 요청만 재면 「보냈다」까지고, 「붙었다」는 못 잰다.
+    const created = (await (await createSprintResponse).json()) as { data: { boardId: string } }
+    expect(created.data.boardId).toBe(scrumBoardId)
 
     const sprintColumn = backlogSprintColumn(page, SPRINT_NAME)
     await expect(sprintColumn).toBeVisible()
