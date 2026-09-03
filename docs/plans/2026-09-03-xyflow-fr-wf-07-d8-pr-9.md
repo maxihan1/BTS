@@ -134,7 +134,7 @@ primary_bc=agile-planning` 을 냈으나 **세 축이 틀렸다**. 교정 근거
 | # | 요구사항 | 근거 |
 |---|---|---|
 | F1 | 편집기에 **「다이어그램」 세 번째 탭**을 둔다. 기본 탭은 지금대로 「상태」 | J2 · X2 |
-| F2 | 노드 = 초안의 상태. 이름 + 카테고리 색(`DESIGN.md` §C 상태 토큰) | J1 |
+| F2 | 노드 = 초안의 상태. 이름 + **`WorkflowDiagram.tsx:162~164` 의 카테고리 매핑을 그대로** — `TODO → --muted`/`--border` · `IN_PROGRESS → --primary 15%`/`--primary` · `DONE → --success 15%`/`--success` | J1 |
 | F3 | 엣지 = 초안의 전환. 전환 **이름을 라벨로** 표시 | J1 |
 | F4 | `layoutX`/`layoutY` 가 `null` 인 상태는 **카테고리 열 자동 배치**로 초기 좌표를 만든다 | A2 |
 | F5 | 노드를 끌어 옮길 수 있다. 놓으면 초안이 dirty 가 된다 | J1 |
@@ -143,10 +143,17 @@ primary_bc=agile-planning` 을 냈으나 **세 축이 틀렸다**. 교정 근거
 | F8 | 노드를 고르면 그 상태의 상세(삭제 포함)를 다이얼로그로 연다 | J1 · J7 · X1 |
 | F9 | 엣지를 고르면 「전환 수정」 다이얼로그가 그 전환 값으로 열린다 | J1 · J7 · X1 |
 | F10 | **self-loop**(from == to) 를 겹치지 않는 곡선으로 그린다 | J5 |
-| F11 | `from == null` 전환을 종류별로 가른다 — `INITIAL` 은 **시작 노드**에서, `GLOBAL` 은 **전역 표시**로. 문자열 `null` 노드를 만들지 않는다 | J6 · learnings 223 |
+| F11 | `from == null` 전환을 종류별로 가른다. **mermaid 화면과 같게 맞춘다**(Maxi 결정) — `INITIAL` 은 mermaid 의 `[*]` 처럼 **작은 무지 원 노드**에서 화살표, `GLOBAL` 은 **캔버스 좌측 상단 「모든 상태에서」 목록 패널**. 문자열 `null` 노드를 만들지 않는다 | J6 · learnings 223 |
+| **F16** | **상태가 0개인 초안에서 캔버스는 `EmptyState` 를 보여준다** — 목록 탭 `StatusListPanel.tsx:132` 와 같은 프리미티브. 빈 캔버스를 그대로 두지 않는다 | **게이트 1 디자인** |
+| **F17** | **hover 핸들의 접근성 대체 경로는 전환 탭의 기존 「전환 추가」 다이얼로그다**(Maxi 결정). 캔버스 드래그는 「빠른 길」이고, 키보드·터치 사용자는 그 버튼으로 같은 일을 한다 | **게이트 1 디자인** |
 | F12 | 같은 상태쌍에 전환이 여럿이면 **간선을 벌려** 겹치지 않게 그린다 | FR-WF-05 다중 전환 |
 | F13 | 발행 시 초안의 좌표를 `workflow_statuses.layout_x/y` 에 내려쓴다 | A1 · X3 |
 | F14 | 팬·줌·「전체 보기」 컨트롤을 둔다 | xyflow 기본 |
+| **F15** | **발행본에서 초안을 새로 만들 때 `workflow_statuses.layout_x/y` 를 읽어 초안에 싣는다** | **게이트 1 P1** |
+
+> **F15 는 게이트 1 리뷰가 추가했다.** F13 만 있으면 좌표가 발행본에 도착한 뒤 **돌아오지 못한다** —
+> 초안 폐기·발행 후 재진입에서 배치가 조용히 사라진다. S5 가 이미 그 왕복을 약속했는데 FR 이
+> 한쪽만 있었다. 근거·처방은 Task 4 의 인용 블록.
 
 ### 비기능 요구사항 (NFR)
 
@@ -154,10 +161,19 @@ primary_bc=agile-planning` 을 냈으나 **세 축이 틀렸다**. 교정 근거
   API(`getBBox`·레이아웃 width)를 구현하지 않아 캔버스 컴포넌트를 단위 테스트로 픽셀 검증할 수 없다.
   `lib/timeline-layout.ts` 가 세운 관례이고 Gantt ADR 이 같은 처방을 적었다. **순수 함수는 vitest ·
   실제 렌더는 Playwright**
-- **N2. 접근성.** 캔버스에 `aria-label` 을 준다. 노드·엣지는 키보드로 도달 가능해야 한다
-- **N3. 번들.** `@xyflow/react@12.11.6` 하나만 추가한다. peer `react >=17` 이라 React 19 와 호환
-  (실측). 다이어그램 탭은 **지연 로드**해 첫 화면 번들에 안 싣는다
+- **N2. 접근성 (WCAG AA — `DESIGN.md` §10 · 원칙 3).** ① 캔버스에 `aria-label` ② 노드는 탭 순서에
+  들어가고 이름이 읽힌다 ③ **hover 전용 어포던스를 유일 경로로 두지 않는다** — F17 이 대체 경로다
+  ④ 노드·엣지의 비텍스트 대비 **3:1**(WCAG 1.4.11), 라벨 텍스트 **4.5:1**
+  ⑤ 캔버스 전체에 `role="application"` 을 씌우지 않는다 — 스크린 리더가 브라우즈 모드를 잃는다
+- **N3. 번들과 스타일시트.** `@xyflow/react@12.11.6` 하나만 추가한다. peer `react >=17` 이라 React 19
+  와 호환(실측). 다이어그램 탭은 **지연 로드**해 첫 화면 번들에 안 싣는다.
+  ★ **`@xyflow/react/dist/style.css` 는 자기 팔레트를 갖고 온다.** 그대로 import 하면 BTS 토큰과
+  어긋나 다크에서 배경·간선이 어색해진다. **`--xy-*` 변수를 BTS 토큰으로 덮어쓰고**, 덮어쓴 목록을
+  `DESIGN.md` §4 프리미티브 표의 캔버스 행에 적는다
 - **N4. 라이트/다크 양쪽**에서 노드·엣지·라벨의 대비가 유지된다
+- **N5. 터치.** `DESIGN.md` §터치 타깃은 최소 44×44px 이다. 노드 자체는 그 이상이지만 **xyflow 기본
+  핸들은 6~8px** 이라 터치로 못 집는다. F17 이 대체 경로를 주므로 **핸들을 터치 타깃으로 만들지
+  않는다** — 대신 터치 기기에서 핸들을 노출하지 않아 「보이는데 못 누르는」 상태를 만들지 않는다
 
 ### API 인터페이스 (REST)
 
@@ -229,8 +245,11 @@ worktree 에서 `pnpm install` 을 돌리면 main 의 `node_modules/.modules.yam
    `workflow-publish.spec.ts`(5건, **P4b·D7 정본 포함**) 전량 통과
 4. `pnpm verify` · `pnpm test:workflow` · doc-index · `verify-master-plan` 초록 (**종료 코드로 판정**)
 5. **브라우저 눈확인 — 라이트/다크 양쪽.** 절대 규칙 14 ui 시각 검증 트랙. 볼 것 —
-   ① 노드 카테고리 색 대비 ② 엣지 라벨 가독성 ③ self-loop 곡선이 노드에 안 가림
-   ④ 다중 전환 간선이 벌어짐 ⑤ hover 핸들이 보임
+   ① 노드 카테고리 색이 **mermaid 화면과 같은 색**인지(`/workflows/{key}` 와 나란히 열어 대조)
+   ② 엣지 라벨 가독성 ③ self-loop 곡선이 노드에 안 가림 ④ 다중 전환 간선이 벌어짐
+   ⑤ hover 핸들이 보임 ⑥ **xyflow 기본 CSS 가 다크에서 배경·간선을 침범하지 않는지**(N3)
+   ⑦ **상태 0개 초안의 빈 캔버스**(F16) ⑧ **노드 선택 상태 표시가 보이는지**
+   ⑨ **`INITIAL` 시작 원과 `GLOBAL` 패널**이 mermaid 와 같은 의미로 읽히는지(F11)
 6. **뮤테이션 3종** — 자동 배치 규칙 · self-loop 곡선 분기 · 좌표 발행 내려쓰기가 각각 「그것만」 red
 
 ## Sanity Check
@@ -306,8 +325,19 @@ it('좌표가 없는 상태를 카테고리 열로 배치한다', () => {
   expect(placed.map((p) => p.x)).toEqual([...])   // TODO < IN_PROGRESS < DONE
 })
 it('이미 좌표가 있는 상태는 그대로 둔다', () => { ... })
+it('자동 배치 결과를 받아도 초안은 pristine 이다', () => {
+  const draft = makeDraft({ layoutX: null, layoutY: null })
+  autoLayout(draft.states)
+  expect(draft.states[0].layoutX).toBeNull()   // 입력을 변형하지 않는다
+})
 ```
 실패 메시지 (예상) — `autoLayout` 없음.
+
+> **★ 세 번째 판정은 리뷰 지적으로 추가됐다** (게이트 1 · P1 · confidence 8/10). Sanity Check 가
+> 「자동 배치는 초안을 dirty 로 만들지 않는다」를 잡았는데 그것이 **산문(E1)과 KDoc 으로만** 있고
+> 어느 task 의 RED 에도 없었다. **주석은 동작을 바꾸지 않는다** — 판정이 없으면 다음 사람이
+> `autoLayout` 결과를 초안에 써 넣어 「화면만 열어도 저장 안 됨」이 매번 뜨는 회귀를 만들고,
+> 테스트는 전부 초록인 채로 통과한다.
 
 **GREEN**: 카테고리별 x 열 + 같은 열 안에서 `displayOrder` 순 y 누적.
 
@@ -350,31 +380,62 @@ it('GLOBAL 전환은 간선을 만들지 않는다', ...)            // J6 — �
 - 기존 E2E: 없음
 - 눈확인: 없음 (T7 에서 화면에 도달)
 
-### Task 4. 백엔드 — 초안 좌표 6필드 + 발행 시 내려쓰기
+### Task 4. 백엔드 — 초안 좌표 6필드 + 발행 시 내려쓰기 + **읽기 경로 왕복**
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowDraftDefinition.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowPublishRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowDraftIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowPublishServiceTest.kt`]
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowDraftDefinition.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowPublishRepository.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/CurrentDefinitionReader.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/WorkflowStatusCompositionRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/WorkflowDraftIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/application/WorkflowPublishServiceTest.kt`]
 - depends-on: []
 - jira: [A1]
 
 **마이그레이션 0.** `workflow_statuses.layout_x`·`layout_y` 는 **V203 에 이미 있고**(`REAL` nullable)
 `init_codegen.sql` 미러도 있다(실측). **새 SQL 파일을 만들지 않는다.** 초안은 JSONB 라 DDL 이 없다.
 
+> ### ★ 게이트 1 리뷰가 잡은 P1 — 돌아오는 길이 없었다 (confidence 9/10)
+>
+> 착수 스펙은 「초안 → 발행 → `workflow_statuses`」 한 방향만 적었다. 실측하니 **되돌아오는 경로가
+> 끊겨 있다.**
+>
+> - `CurrentDefinitionReader.kt:51` 이 `DraftStateDto(key, name, category, displayOrder)` 로만 만든다
+> - `WorkflowRepository.kt:135` 의 SELECT 목록에 `LAYOUT_X`·`LAYOUT_Y` 가 **없다** — 캐시가 안 읽는다
+> - `WorkflowStateView.kt:39` (shared-kernel 도메인) 도 5필드뿐이다
+>
+> ```
+>  초안(layoutX/Y) ──발행──▶ workflow_statuses.layout_x/y ──▶ ✗ 막다른 길
+>       ▲                                                      │
+>       └──────────── 이 화살표가 없었다 ◀────────────────────┘
+> ```
+>
+> 결과 — **초안을 폐기하거나 발행 뒤 새로 뜨면 사용자가 배치한 좌표가 조용히 사라지고** 자동 배치로
+> 돌아간다. 그런데 「발행하면 좌표가 실린다」 테스트는 **그대로 통과**한다. 두 목록이 서로를 검사하지
+> 않는 자리다(`[[two-lists-never-check-each-other]]`).
+>
+> **Maxi 결정 — 「T4 를 넓혀 읽기 경로도 넣는다」.** `WorkflowStateView`(shared-kernel)에 좌표를
+> 얹는 길은 **T3 승격**(SHARED_KERNEL 표면)이고 전환 핫패스가 안 쓰는 값을 지고 다니게 되므로
+> 택하지 않았다. `CurrentDefinitionReader` 가 편성 리포지토리로 좌표를 따로 읽는다 —
+> **관리자 경로 1회 조회**라 런타임 비용이 없다.
+
 **RED**:
 ```kotlin
 @Test fun `초안에 저장한 좌표가 그대로 돌아온다`()          // PUT → GET 왕복
 @Test fun `좌표가 없는 기존 초안은 null 로 돌아온다`()      // 하위호환 — 기본값 null
 @Test fun `발행하면 좌표가 workflow_statuses 에 실린다`()  // replaceDefinition 내려쓰기
+@Test fun `발행한 뒤 초안을 새로 뜨면 그 좌표가 살아 있다`()  // ★ 왕복 — 이 판정이 없으면 위 셋이 다 통과해도 기능이 깨진다
+@Test fun `초안을 폐기해도 발행본의 좌표는 남는다`()          // 엣지 E11 의 좌표 축
 ```
-실패 메시지 (예상) — `DraftStateDto` 에 `layoutX` 없음 / 발행 후 `layout_x` 가 NULL.
+실패 메시지 (예상) — `DraftStateDto` 에 `layoutX` 없음 / 재조회 시 `layoutX` 가 NULL.
 
 **GREEN**: `DraftStateDto` 에 `layoutX: Double? = null` · `layoutY: Double? = null` 추가.
 `replaceDefinition` 이 편성 INSERT 시 두 값을 함께 싣는다.
+`WorkflowStatusCompositionRepository` 에 `findLayouts(workflowId): Map<String, Pair<Double?, Double?>>`
+를 추가하고 `CurrentDefinitionReader.toDefinition` 이 그것으로 `DraftStateDto` 를 채운다.
+**`WorkflowStateView`(shared-kernel)와 `WorkflowRepository` 의 SELECT 는 건드리지 않는다** — 전환
+핫패스가 안 쓰는 값이고, 건드리면 T3 로 승격된다.
 
 **REFACTOR**: `WorkflowStatusCompositionRepository` KDoc 의 「그 두 컬럼은 로드맵 PR 9 의 것이다」를
-**「PR 9(#434)가 발행 경로에서만 쓴다. 편성 변경은 여전히 안 건드린다」**로 갱신 — 그 KDoc 이
-이 PR 로 반쯤 낡기 때문이다. 편성이 좌표를 안 건드린다는 원래 계약은 그대로 유효하다.
+**「PR 9(#434)가 발행 시 쓰고 초안 조회 시 읽는다. 편성·순서 변경은 여전히 안 건드린다」**로 갱신 —
+그 KDoc 이 이 PR 로 반쯤 낡기 때문이다. **편성이 좌표를 흐트러뜨리지 않는다는 원래 계약은 그대로
+유효하고**, `WorkflowStatusCompositionIntegrationTest.kt:408` 이 그것을 이미 판정한다.
 
 **검증**:
 - `cd backend && ./gradlew :modules:project-workflow:test --tests '*WorkflowDraft*' --tests '*WorkflowPublishService*'`
@@ -423,7 +484,7 @@ MSW `workflow-draft-handlers.ts` 가 PUT 으로 받은 좌표를 GET 에서 **�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/workflow/editor/StatusNode.tsx`, `apps/web/src/components/workflow/editor/TransitionEdge.tsx`, `apps/web/src/components/workflow/editor/__tests__/StatusNode.test.tsx`, `apps/web/src/components/workflow/editor/__tests__/TransitionEdge.test.tsx`]
+- files: [`apps/web/src/components/workflow/editor/StatusNode.tsx`, `apps/web/src/components/workflow/editor/TransitionEdge.tsx`, `apps/web/src/components/workflow/editor/__tests__/StatusNode.test.tsx`, `apps/web/src/components/workflow/editor/__tests__/TransitionEdge.test.tsx`, `apps/web/src/components/__tests__/category-color-tokens.test.ts`]
 - depends-on: [1]
 - jira: [J1, J4]
 
@@ -440,6 +501,22 @@ it('전환 이름을 엣지 라벨로 그린다', ...)
 
 **REFACTOR**: 카테고리 → 토큰 맵을 `Record<StateCategory, string>` 으로 — 배열 `find` 는
 `| undefined` 라 죽은 가지가 생기고 카테고리가 늘 때 컴파일이 안 잡는다(PR ② 계약).
+
+> ### ★ 게이트 1 리뷰가 잡은 가드 공백 (confidence 8/10)
+>
+> `apps/web/src/components/__tests__/category-color-tokens.test.ts` 의 `CATEGORY_SOURCES` 는
+> **명시 허용목록 3파일 + `FEATURE_SOURCES` 1파일**이다(실측). 새로 만드는 `StatusNode.tsx` 는
+> 그 목록에 없으므로 **Tailwind 팔레트 리터럴(`bg-emerald-500` 등)을 써도 가드가 조용히 통과**시킨다.
+> 읽지 않는 열은 썩는다(`[[partial-column-parser-lets-unread-column-rot]]`).
+>
+> **처방 — `CATEGORY_SOURCES` 에 `workflow/editor/StatusNode.tsx` 를 같은 커밋에서 추가한다.**
+> 추가한 뒤 일부러 리터럴을 하나 넣어 **red 를 1회 확인**하고 되돌린다 — 목록에 넣기만 하고
+> 발화를 안 보면 「등재했는데 안 잡는」 상태를 물려받는다.
+>
+> 별개로 `WorkflowDiagram.tsx:25` 에 `categoryToClass`(mermaid classDef 이름)가 이미 있다.
+> **그것과 합치지 말 것** — 목적지가 다르다(mermaid classDef 문자열 vs React 토큰 클래스).
+> 다만 `StateCategory` 분기가 두 벌이 되므로, 카테고리가 늘면 둘 다 고쳐야 한다는 것을
+> 양쪽 KDoc 에 **서로를 가리키는 한 줄**로 남긴다.
 
 **검증**:
 - `cd apps/web && node_modules/.bin/vitest run src/components/workflow/editor/__tests__/StatusNode.test.tsx src/components/workflow/editor/__tests__/TransitionEdge.test.tsx`
@@ -581,4 +658,177 @@ it('캔버스에서 전환을 만들면 「전환 수정」 다이얼로그가 f
   `J5`→T3 · `J6`→T3 · `J7`→T7·T8 · 준용 `A1`→T4 · `A2`→T2. **채택 7건 + 준용 2건 전부 물렸다.
   범위 밖 0건.**
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 렌즈 1 — `/plan-eng-review` · **CONCERNS (BLOCKER 0 · P1 2건 해소됨)**
+
+**Step 0 스코프 도전.** 복잡도 게이트(8파일·2클래스)에 걸렸다 — 변경 파일 약 28개, 신규 컴포넌트 3개
+(`StatusNode` · `TransitionEdge` · `WorkflowEditorCanvas`). **Maxi 결정 「한 PR 로 간다」.** 근거 —
+쪼개면 9a 가 「끌어서 전환 생성」 없는 반쪽 편집기가 되고 그 상태로는 D8 체크박스를 못 닫는다.
+파일 수의 절반이 테스트·문서다.
+
+| # | 심각도 | 신뢰도 | 발견 | 처리 |
+|---|---|---|---|---|
+| A1 | **P1** | 9/10 | **좌표 왕복의 돌아오는 길이 없다.** `CurrentDefinitionReader.kt:51` 이 `DraftStateDto(key,name,category,displayOrder)` 로만 만들고 `WorkflowRepository.kt:135` SELECT 에 `LAYOUT_X`/`LAYOUT_Y` 가 없다. 초안 폐기·발행 후 재진입에서 배치가 조용히 사라지는데 「발행하면 실린다」 테스트는 통과 | **해소** — Maxi 결정으로 T4 확장(`CurrentDefinitionReader` 읽기 + 왕복 테스트 2건) · **F15 신설** |
+| A2 | **P1** | 8/10 | **「자동 배치는 초안을 dirty 로 만들지 않는다」가 산문(E1)과 KDoc 으로만 있고 어느 task 의 RED 에도 없다.** 주석은 동작을 바꾸지 않는다 | **해소** — Maxi 결정으로 T2 RED 에 3번째 판정 추가 |
+| C1 | CONCERN | 8/10 | **새 컴포넌트가 범주색 가드의 스캔 목록 밖이다.** `category-color-tokens.test.ts` 의 `CATEGORY_SOURCES`(3) + `FEATURE_SOURCES`(1) 는 명시 허용목록이라 `StatusNode.tsx` 를 안 훑는다 | **plan 반영** — T6 files 에 가드 파일 추가 + 「일부러 red 1회 확인」 명시 |
+| C2 | CONCERN | 7/10 | `StateCategory` 분기가 `categoryToClass`(mermaid)와 새 토큰 맵 두 벌이 된다. 목적지가 달라 합칠 수는 없다 | **plan 반영** — 양쪽 KDoc 에 서로를 가리키는 한 줄 |
+| C3 | CONCERN | 7/10 | T9 시나리오 1 의 「나갔다 재진입」이 `page.goto()` 면 MSW 핸들러 모듈이 재평가돼 저장분이 날아간다(`workflow-editor.spec.ts:76` 이 같은 함정을 이미 적어 뒀다). **앱 내 네비게이션으로 해야 한다** | **미반영 — 구현 시 지킬 것.** T9 담당자에게 전달 |
+| N1 | NOTE | 8/10 | `layout_x`/`layout_y` 가 `REAL`(float4)이라 `z.number()`(float64) 왕복에 정밀도가 깎인다. 픽셀 좌표라 무해하나 **E9 의 「유한수만 허용」이 float4 범위 초과(>3.4e38)를 안 막는다** | **미반영 — 구현 시 판단.** 캔버스 좌표가 그 범위에 갈 일은 실질적으로 없다 |
+| P1 | NOTE | 9/10 | `CurrentDefinitionReader` 가 좌표 조회 쿼리 1회를 더 돈다 | **수용.** 관리자 전용 경로라 런타임 핫패스가 아니다 |
+
+**테스트 커버리지 (게이트 1 시점 · plan 기준)**
+
+```
+CODE PATHS                                   USER FLOWS
+[+] lib/workflow-layout.ts                   [+] 다이어그램 편집
+  ├── autoLayout()                             ├── [★★★] 노드 끌어 옮기고 저장 — T9 S1 [→E2E]
+  │   ├── [★★★ T2] 좌표 없음 → 카테고리 열     ├── [★★★] 핸들 끌어 전환 생성 — T9 S2 [→E2E]
+  │   ├── [★★★ T2] 좌표 있음 → 보존            ├── [★★  T8] 탭 전환 · 기본 탭 보존
+  │   └── [★★★ T2] 입력 불변(초안 pristine)    └── [★★  T8] 전환 다이얼로그 프리필
+  └── edgeRoutes()
+      ├── [★★★ T3] self-loop offset          [+] 에러·경계 상태
+      ├── [★★★ T3] 다중 전환 offset            ├── [★★  T4] 좌표 없는 기존 초안 → null
+      ├── [★★★ T3] INITIAL 시작 노드           ├── [★★  T5] NaN·Infinity 거부
+      └── [★★★ T3] GLOBAL 간선 0 + null 노드 0 ├── [★★  T6] 잠긴 워크플로우 핸들 부재
+[+] 백엔드 왕복                                └── [GAP] 좌표가 float4 범위를 넘을 때
+  ├── [★★★ T4] PUT→GET 왕복
+  ├── [★★★ T4] 발행 → workflow_statuses
+  ├── [★★★ T4] 발행 → 새 초안 (★A1 처방)
+  └── [★★★ T4] 초안 폐기 후 발행본 좌표 생존
+
+COVERAGE: 19/20 경로  |  QUALITY: ★★★:12 ★★:7  |  GAPS: 1 (N1 — 수용)
+```
+
+**실패 모드 — 치명 공백 0.**
+
+| 새 경로 | 프로덕션 실패 시나리오 | 테스트 | 에러 처리 | 사용자에게 보이나 |
+|---|---|---|---|---|
+| 좌표 왕복 | 발행 후 배치 소실 | ✅ T4 (A1 처방) | — | **보였다** (조용한 소실이었음 → 닫음) |
+| `moveState` | 좌표에 NaN 유입 → 400 | ✅ T5 | ✅ 거부 | ✅ |
+| 캔버스 렌더 | `from=null` 이 `null` 노드로 샘 | ✅ T3 | — | ✅ (노드 수로 드러남) |
+| 초안 저장 | 다른 세션이 먼저 저장 → 409 | 기존 `DraftConflictBanner` | ✅ 기존 | ✅ |
+| 범주색 | Tailwind 리터럴이 토큰을 우회 | ✅ C1 처방 후 | — | 다크에서만 드러남 → **가드가 막는다** |
+
+**NOT in scope** (고려했고 명시적으로 미룬 것)
+
+- **미니맵** — xyflow 에 포함돼 있으나 Jira 문서에 대응이 없고(A1·A2 와 같은 이유) 상태 수가 10 내외라 값이 없다
+- **자동 정렬(tidy up) 버튼** — Jira 대응 없음. 자동 배치는 좌표 부재 시에만 돈다
+- **전환 규칙(validator/post-action) 편집을 캔버스에서** — FR-WF-06 소관이고 `/workflows/{key}` 상세에 이미 있다
+- **좌표의 실행 취소(undo)** — 초안 편집 전반의 undo 가 없어 좌표만 넣으면 비대칭이다. 별도 FR
+- **`WorkflowStateView`(shared-kernel) 확장** — T3 승격 비용 대비 이득이 없다(A1 처방으로 대체)
+
+**What already exists** (재사용 자산 — 이 plan 이 새로 만들지 않는 것)
+
+| 자산 | 위치 | plan 의 취급 |
+|---|---|---|
+| `workflow_statuses.layout_x`/`layout_y` | V203 · `init_codegen.sql` 미러 | **재사용.** 마이그레이션 0 |
+| 초안 리듀서 `DraftAction` | `lib/workflow-draft.ts:66` | **확장**(`moveState` 1건 추가) |
+| `TransitionFormDialog` · `StatusPickerDialog` | `components/workflow/editor/` | **재사용.** 새 `role="dialog"` 0개 |
+| `DraftStatusBar` · `DraftConflictBanner` | 〃 | **재사용.** dirty 표시·409 배너 |
+| 탭 셸 `WorkflowEditorTabs` | 〃 (KDoc 이 자리를 남겨 뒀다) | **확장**(3번째 탭) |
+| `lib/timeline-layout.ts` 순수 함수 관례 | `lib/` | **선례 준용**(N1) |
+| `WorkflowDiagram.tsx`(mermaid) | `components/workflow/` | **손대지 않는다.** 다른 라우트 |
+| `WorkflowStatusCompositionIntegrationTest:408` | 백엔드 test | **재사용.** 편성이 좌표를 안 흐트러뜨린다는 판정이 이미 있다 |
+
+**병렬화 (worktree lane)** — 이 plan 은 단일 worktree 로 간다. `apps/web` 과 `backend/modules/project-workflow`
+가 갈리지만 **한 PR = 한 BC** 규칙상 같은 BC 이고, T5 가 T4 의 계약에 의존해 lane 을 나눠도 합류 지점이
+바로 생긴다. wave 5 직렬이 정답이다.
+
+**Outside voice** — **건너뜀.** `codex_reviews=disabled` 이고 codex CLI 미설치. 스킬 규약대로
+Claude 서브에이전트 폴백도 하지 않는다(disabled 는 「추가 리뷰 단계 없음」을 뜻한다).
+되살리려면 `gstack-config set codex_reviews enabled`.
+
+### 렌즈 2 — `/plan-design-review` · **CONCERNS (BLOCKER 0 · 착수 5.4/10 → 8.7/10)**
+
+`DESIGN.md`(517줄 · BTS 디자인 시스템 v2.0 = ADS v2)가 정본이라 모든 판정을 그것에 대조했다.
+
+| 차원 | 착수 | 지금 | 무엇이 모자랐나 |
+|---|---|---|---|
+| 정보 구조 | 7 | 8 | 3탭 구조는 명확. GLOBAL 패널 자리가 미정이었다 |
+| **시각 언어 일관성** | **3** | **9** | **★ 최대 결함. 아래 G1** |
+| **상호작용 상태 커버리지** | **4** | **9** | **빈 상태가 아예 없었다. 아래 G2** |
+| **접근성** | **4** | **8** | hover 전용 어포던스 · 그래프 a11y 가 한 줄. 아래 G3 |
+| 반응형·입력 다양성 | 3 | 8 | 터치 44px 규정 대비 핸들 6~8px. 아래 G4 |
+| AI 슬롭 위험 | 9 | 9 | Jira 실물 7행 대조가 있어 낮다. 「그냥 카드 그리드」로 흐를 여지가 없다 |
+| 사용자 여정 | 7 | 8 | S1~S5 는 좋으나 **빈 워크플로우 진입**이 빠져 있었다 |
+
+**G1 — 시각 언어 (CONCERN · 가장 값나간 발견)**
+
+plan 의 F2 가 노드 색을 「`DESIGN.md` §C 상태 토큰」으로 가리켰다. **§C 는 상태 카테고리색이 아니다** —
+`--warning`/`--success`/`--danger`/`--info` 인 **알림·배너용 시맨틱색**이다. 그대로 구현했으면 TODO 상태가
+경고색으로 칠해졌을 수 있다.
+
+**정본은 이미 있었다.** `WorkflowDiagram.tsx:162~164` 가 세 카테고리를 토큰으로 매핑해 두었고 그 위
+주석이 「세 카테고리 모두 토큰을 참조하므로 라이트/다크가 자동으로 따라온다」라고 적어 뒀다.
+
+```
+TODO         → fill var(--muted)                        stroke var(--border)
+IN_PROGRESS  → fill var(--primary) @ 15%                stroke var(--primary)
+DONE         → fill var(--success) @ 15%                stroke var(--success)
+```
+
+**처방** — F2 를 그 매핑으로 고쳤다. 같은 워크플로우를 읽기 전용(`/workflows/{key}`)과 편집기
+(`/admin/workflows/{key}`)에서 번갈아 볼 때 **같은 제품처럼 보이는 것**이 이 결정의 값이다.
+눈확인 ①을 「mermaid 화면과 나란히 열어 대조」로 바꿨다.
+
+> 렌즈 1 의 C2(「`StateCategory` 분기가 두 벌이 된다」)가 이 발견으로 더 날카로워진다. 두 벌인 것은
+> 맞지만 **같은 색을 내야 한다** — 공유해야 할 것은 mermaid classDef **이름**이 아니라 토큰 **삼중쌍**이다.
+
+**G2 — 빈 상태 (CONCERN)**
+
+「빈 상태는 기능이다」가 디자인 원칙 1인데 plan 에 **상태 0개 초안의 캔버스가 없었다.** 목록 탭은
+`StatusListPanel.tsx:132` 에서 `EmptyState` 를 쓴다. 새 워크플로우를 만들고 다이어그램 탭을 먼저 열면
+**아무 설명 없는 빈 캔버스**를 본다. → **F16 신설**(같은 `EmptyState` 프리미티브 재사용).
+
+**G3 — 접근성 (CONCERN · Maxi 결정으로 해소)**
+
+F7 이 Jira 원문 그대로 hover 핸들인데 **터치·키보드 사용자에게 hover 는 존재하지 않는다.**
+`DESIGN.md` 원칙 3(WCAG AA · 키보드 탐색)과 정면으로 부딪힌다. 「명백히 클릭 가능해야 하고 hover 로
+발견하게 하지 말 것」은 Krug 의 규율이기도 하다.
+
+**Maxi 결정 — 「기존 「전환 추가」 버튼을 대체 경로로 명시」.** 캔버스 드래그는 **빠른 길**이고
+전환 탭의 기존 다이얼로그가 **동등한 경로**다. 구현 0줄이고 plan 에 그 사실을 적는 것이 전부다
+→ **F17 신설.** N2 를 5항목으로 넓혔다(`role="application"` 금지 포함 — 그것을 씌우면 스크린 리더가
+브라우즈 모드를 잃는다).
+
+**G4 — 터치·스타일시트 (CONCERN)**
+
+- `DESIGN.md` §터치 타깃은 44×44px 인데 **xyflow 기본 핸들은 6~8px** 이다. F17 이 대체 경로를 주므로
+  핸들을 억지로 키우지 않고 **터치 기기에서는 노출하지 않는다** — 「보이는데 못 누르는」 상태를
+  만들지 않는 것이 요점이다 → **N5 신설**
+- **`@xyflow/react/dist/style.css` 가 자기 팔레트를 갖고 온다.** plan 이 이 축을 다루지 않았다.
+  `--xy-*` 를 BTS 토큰으로 덮어쓰고 그 목록을 `DESIGN.md` §4 캔버스 행에 적는다 → **N3 확장**
+
+**G5 — E6·E7 모양 확정 (Maxi 결정)**
+
+「mermaid 화면과 같게 맞춘다」. `INITIAL` 은 mermaid 의 `[*]` 처럼 **작은 무지 원 노드**에서 화살표,
+`GLOBAL` 은 **캔버스 좌측 상단 「모든 상태에서」 목록 패널** → **F11 확정.**
+
+**목업 생성 — 건너뜀 (사유 기록).** `DESIGN_READY` 였으나 생성하지 않았다. 이 화면의 시각 언어는
+**G1 이 찾아낸 기존 매핑으로 이미 결정**돼 있고, 남은 판단(E6·E7 모양)은 스타일이 아니라 **구조**라
+목업보다 mermaid 화면 대조가 정확한 근거다. 비교 보드는 응답 대기가 필요해 체인이 멈춘다.
+**대신 눈확인 항목을 5 → 9개로 늘려** 실제 화면에서 재도록 했다.
+
+**Outside design voices — 건너뜀.** codex CLI 미설치 · `codex_reviews=disabled`.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — (type=ui 라 해당 없음) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | SKIPPED | `codex_reviews=disabled` · CLI 미설치 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | **CLEAR** | 7 issues, 0 critical gaps (P1 2건 해소 · CONCERN 3 · NOTE 2) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | **CLEAR** | score 5/10 → 9/10, 2 decisions (G1~G5) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** ENG + DESIGN CLEARED — ready to implement.
+
+Maxi 결정 5건이 plan 에 반영됐다 — ① T4 확장으로 좌표 왕복 닫음(F15 신설) ② T2 RED 에 「자동 배치는
+초안을 dirty 로 만들지 않는다」 판정 추가 ③ 한 PR 로 진행 ④ GLOBAL·INITIAL 을 mermaid 화면과 같게
+(F11 확정) ⑤ hover 핸들의 접근성 대체 경로는 기존 「전환 추가」 버튼(F17 신설).
+리뷰가 추가로 잡아 반영한 것 — F2 의 잘못된 토큰 포인터를 `WorkflowDiagram.tsx:162~164` 정본으로 교정 ·
+F16 빈 상태 신설 · N2 접근성 5항목 확장 · N3 에 `--xy-*` 덮어쓰기 · N5 터치 · 눈확인 5 → 9항목 ·
+T6 에 범주색 가드 등재.
+
+NO UNRESOLVED DECISIONS
