@@ -3545,13 +3545,20 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 > **✅ 2026-09-03 해소 (#440).** 두 가정을 각각 못박았다 — ① `start` 에
 > `@Transactional(isolation = Isolation.READ_COMMITTED)` 를 박고 락 **뒤**에서 스프린트 자체를
 > 재조회한다(락 앞 스냅샷의 `status`·`version` 을 쓰지 않는다). ② `AdvisoryLockBudget` 이
-> `SET LOCAL lock_timeout` 200ms 를 걸고 형제 락 `acquireProjectScrumBoardLock` 까지 같은 예산을
-> 쓴다. 초과는 `CannotAcquireLockException` → **503 `AGILE_UNAVAILABLE`** 로 나간다.
+> `set_config('lock_timeout', '200ms', true)` 로 예산을 걸고 형제 락
+> `acquireProjectScrumBoardLock` 까지 같은 예산을 쓴다. 초과는 `CannotAcquireLockException`
+> → **503 `AGILE_UNAVAILABLE`** 로 나간다.
 >
-> 🛑 예산은 **advisory lock 획득까지**다. 뒤따르는 `findActiveByBoard`·`updateStatus` 의 행 락
-> 대기는 `SET LOCAL` 이 트랜잭션 전체에 걸리므로 같은 200ms 안에서 끊긴다 — 그 사실을
-> `AdvisoryLockBudget` KDoc 이 적는다. 전역 `statement_timeout`·`hikari.*` 는 여전히 0건이고
-> 이 PR 범위 밖이다.
+> 🛑 **예산은 advisory lock 획득 statement 에만 걸린다.** 획득 직후 `set_config` 로 되돌리므로
+> 뒤따르는 `findActiveByBoard`·`updateStatus` 의 **행 락 대기는 상한 없이 그대로 둔다.** 원복하지
+> 않으면 행 락까지 200ms 에 끊겨 **정상 경합이 503 을 받는 신규 회귀**가 된다 — 부채 166 이 지적한
+> 것은 advisory lock 무한 대기뿐이다(spec `N6`).
+>
+> 🛑 **`SET LOCAL lock_timeout` 은 쓰지 않는다.** `SET` 은 리터럴만 받아 `DATA.md §5` 예외의
+> 조건 (i)(`?` 바인딩)를 못 채운다. `set_config(text,text,bool)` 은 함수이면서 바인딩이 되므로
+> (i)+(ii) 를 둘 다 만족한다(ADR `D4`).
+>
+> 전역 `statement_timeout`·`hikari.*` 는 여전히 0건이고 이 PR 범위 밖이다.
 
 **쉬운 말.** 스프린트를 동시에 시작하는 것을 막는 잠금 장치가, 데이터베이스 설정 두 가지가 지금 값 그대로라는 가정 위에 서 있다. 그 설정이 바뀌면 잠금이 조용히 무력해진다.
 

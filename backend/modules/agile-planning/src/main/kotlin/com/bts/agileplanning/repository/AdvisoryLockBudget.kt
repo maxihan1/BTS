@@ -13,6 +13,9 @@ import org.jooq.DSLContext
  */
 internal const val LOCK_WAIT_BUDGET = "200ms"
 
+/** 예산을 걸고 되돌릴 GUC 이름. `?` 로 바인딩해 §5 예외 (i) 를 네 statement 모두가 형태로 만족한다. */
+private const val LOCK_TIMEOUT_SETTING = "lock_timeout"
+
 /**
  * [lockKey] 로 `pg_advisory_xact_lock` 을 **200ms 예산 안에서** 잡는다.
  *
@@ -22,8 +25,9 @@ internal const val LOCK_WAIT_BUDGET = "200ms"
  *
  * ### 왜 `dsl.execute`/`dsl.fetch` raw SQL 인가 — `DATA.md §5` 정식 예외
  * 예외는 (i) `?` 바인딩과 (ii) jOOQ 미지원 PostgreSQL 함수를 **둘 다** 요구한다. 네 statement 모두
- * 값은 전부 `?` 로 바인딩하고(문자열 결합 0), `current_setting(text)`·`set_config(text,text,bool)`·
- * `pg_advisory_xact_lock`·`hashtextextended` 는 jOOQ DSL 에 대응이 없다.
+ * 문자열 결합이 0이고 인자는 전부 `?` 로 바인딩하며(현재 값을 읽는 ① 은 바인딩할 값이 없어 GUC
+ * 이름을 `?` 로 뺐다), `current_setting(text)`·`set_config(text,text,bool)`·`pg_advisory_xact_lock`·
+ * `hashtextextended` 는 jOOQ DSL 에 대응이 없다.
  * 선례는 `docs/adr/2026-05-26-jooq-execute-advisory-lock-exception.md`.
  *
  * **`SET LOCAL lock_timeout = '200ms'` 은 쓰지 않는다** — `SET` 은 리터럴만 받아 바인딩이 불가하므로
@@ -73,7 +77,9 @@ internal const val LOCK_WAIT_BUDGET = "200ms"
  */
 internal fun DSLContext.acquireXactLockWithBudget(lockKey: String) {
     // ① 지금 걸려 있는 상한을 먼저 읽는다 — ④ 가 되돌릴 목적지다. 안 읽고 '0' 을 쓰면 덮어쓰기다(N6).
-    val previous = fetchSingle("SELECT current_setting('lock_timeout')").get(0, String::class.java)
+    //   GUC 이름까지 `?` 로 뺀다 — 이 statement 는 바인딩할 「값」이 없어서, 그대로 두면 §5 예외 (i) 를
+    //   형태로 만족하지 않는 statement 가 하나 생긴다.
+    val previous = fetchSingle("SELECT current_setting(?)", LOCK_TIMEOUT_SETTING).get(0, String::class.java)
     // ② 예산을 건다. is_local = true → 커밋/롤백과 함께 사라진다.
     fetch("SELECT set_config('lock_timeout', ?, true)", LOCK_WAIT_BUDGET)
     // ③ 기존 blocking 락을 그대로 유지한다 — 결과 행은 소비만 하고 버린다(반환값이 void).
