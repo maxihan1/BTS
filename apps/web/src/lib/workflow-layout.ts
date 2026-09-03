@@ -125,7 +125,7 @@ export interface RoutedEdge {
   target: string
   label: string
   /**
-   * 입력 배열에서의 위치. 초안 전환에는 `id` 가 없어서(발행 전이라 DB 행이 아니다) 이것이
+   * 입력 배열에서의 위치. 초안 전환에는 `id` 가 없어서(아직 발행되지 않아 DB 행이 아니다) 이것이
    * 화면과 초안을 잇는 유일한 identity 다 — 간선을 고르면 이 번호로 전환을 되찾는다.
    */
   transitionIndex: number

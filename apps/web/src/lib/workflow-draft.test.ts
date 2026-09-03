@@ -11,7 +11,7 @@ import {
 } from './workflow-draft'
 import type { DraftDefinition } from '@/api/workflows-draft.types'
 
-// 좌표는 서버가 항상 실어 보낸다(필수-nullable). 배치 전이라 셋 다 null 이다 — FR-WF-07 D8.
+// 좌표는 서버가 항상 실어 보낸다(필수-nullable). 아직 배치하지 않아 셋 다 null 이다 — FR-WF-07 D8.
 const OPEN = { key: 'open', name: '열림', category: 'TODO', displayOrder: 1, layoutX: null, layoutY: null } as const
 const DOING = {
   key: 'doing',

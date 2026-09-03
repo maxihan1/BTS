@@ -63,7 +63,7 @@ function buildDiagramTabProps(deps: DiagramTabDeps) {
       setTransitionFormOpen(true)
     },
     onEditTransitionByIndex: (index: number) => {
-      // 초안 전환에는 id 가 없어 배열 위치가 유일한 identity 다(발행 전이라 DB 행이 아니다).
+      // 초안 전환에는 id 가 없어 배열 위치가 유일한 identity 다(아직 발행되지 않아 DB 행이 아니다).
       const target = editable.transitions[index]
       if (target === undefined) return
       setEditingTransition({ localId: target.localId, name: target.name })
