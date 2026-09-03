@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-03 | kanban-sprint-move-and-lock-budget | — | ✔ | — | — | FR-BD-04 |
+| 2026-09-03 | kanban-sprint-move-and-lock-budget | ✔ | ✔ | — | ✔ | FR-BD-04 |
 | 2026-09-03 | xyflow-fr-wf-07-d8-pr-9 | — | ✔ | — | — | FR-WF-05 FR-WF-06 FR-WF-07 |
 | 2026-09-02 | board-sprint-scoped-lookup | ✔ | ✔ | — | — | FR-BD-04 |
 | 2026-09-02 | board-type-invariants | — | ✔ | — | — | FR-BD-04 |
