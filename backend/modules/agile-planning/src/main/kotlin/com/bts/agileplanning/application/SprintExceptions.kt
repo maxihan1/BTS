@@ -62,6 +62,32 @@ class SprintAlreadyActiveException :
     ResponseStatusException(HttpStatus.CONFLICT, "이 보드에는 이미 시작된 스프린트가 있습니다. 먼저 완료해 주세요.")
 
 /**
+ * 스크럼이 아닌 보드에 소속된 스프린트를 시작하려 할 때 던지는 예외 (409 · R8 · 부채 165).
+ *
+ * ### 왜 404 가 아닌가
+ * 스프린트는 **존재한다.** 404 는 거짓말이고
+ * memory `permission-assert-before-existence-makes-403-lie` 와 같은 양식의 오도다.
+ * [SprintApplicationService.resolveTargetBoard] 가 던지는 404 는 「요청이 지정한 보드를 못 찾음」이라
+ * 의미가 다르다.
+ *
+ * ### 왜 필요한가
+ * #431 은 [SprintApplicationService.resolveTargetBoard] 에 `boardType == SCRUM` 술어를 넣어
+ * **생성**만 막았다. 칸반 보드에 소속된 스프린트는 `start` 200 을 받고 ACTIVE 가 되지만
+ * [BoardApplicationService.getBoard] 가 SCRUM 일 때만 활성 스프린트를 조회하므로 **어느 화면에도
+ * 나타나지 않는다.** 사용자에게는 「시작했는데 아무 일도 안 일어남」이다.
+ *
+ * 보드를 못 찾은 경우(소프트 삭제 등)도 이 예외다 — 스크럼임을 확인하지 못했으면 fail-closed 다.
+ *
+ * ★ 전용 [com.bts.agileplanning.web.SprintExceptionHandler] 핸들러가 반드시 필요하다. 이 타입이
+ * [ResponseStatusException] 을 상속하므로 핸들러가 없으면 상태 전파 핸들러가 잡아 errorCode 를
+ * `AGILE_CONFLICT` 로 덮어쓴다 — 형제 [SprintAlreadyActiveException] 이 같은 자리를 겪었다.
+ *
+ * 내부 식별자(sprintId, boardId)는 message 에 포함하지 않는다.
+ */
+class SprintBoardNotScrumException :
+    ResponseStatusException(HttpStatus.CONFLICT, "스크럼 보드에 속한 스프린트만 시작할 수 있습니다.")
+
+/**
  * COMPLETED 스프린트의 기간(start_date · end_date)을 바꾸려 할 때 던지는 예외 (400 · FR-BL-02 FR-2).
  *
  * Jira Cloud 는 *"You can change its name, goal, and start and end dates. **You can only edit the name

@@ -265,9 +265,12 @@ class SprintApplicationService(
      * 도메인 Sprint.start() 에 전환 유효성을 위임한 뒤, **보드당 활성 스프린트 1개**를 강제한다.
      *
      * ### 판정 순서 — FSM 이 보드 가드보다 앞이다
+     * 404(존재) → 403(권한) → 409 FSM → **409 종류** → 락 → 409 활성 순이다.
      * ACTIVE 스프린트를 다시 start 하면 [findActiveByBoard] 가 **자기 자신**을 찾는다. 가드를
      * [Sprint.start] 앞에 두면 「전환 불가」가 「이미 활성이 있다」로 뒤바뀌어 원인이 흐려진다.
      * 그래서 FSM 을 먼저 통과시킨다 — 여기 도달한 스프린트는 PLANNED 였음이 보장된다.
+     * 종류 가드도 같은 이유로 FSM **뒤**다. 대신 락 **앞**이다 — 거부가 확정된 요청이 advisory lock 을
+     * 잡아 같은 보드의 정상 start 를 대기시키지 않는다.
      *
      * ### 선행 결정 무효화 (2026-09-01)
      * `docs/plan/product/agile-planning.md §3.2` 의 Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」을
@@ -278,6 +281,7 @@ class SprintApplicationService(
      * @param sprintId 시작할 스프린트 UUID.
      * @return ACTIVE 상태의 갱신된 스프린트.
      * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintBoardNotScrumException 409 — 소속 보드가 SCRUM 이 아님(R8 · 부채 165).
      * @throws SprintAlreadyActiveException 409 — 같은 보드에 이미 ACTIVE 스프린트가 있음.
      * @throws SprintVersionConflictException 409 — OCC 버전 충돌.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
@@ -291,6 +295,11 @@ class SprintApplicationService(
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
         // 전환 자체가 무효면 락을 잡기 전에 죽는다 — 잘못된 요청이 남의 시작을 막아 세우지 않는다.
         val started = sprint.start()
+        // 소속 보드가 스크럼이 아니면 락을 잡기 전에 거부한다 (R8 · 부채 165). 못 찾은 보드도 거부다 —
+        // 스크럼임을 확인하지 못했으면 fail-closed 이고, 스프린트는 존재하므로 404 를 쓰지 않는다.
+        if (boardRepository.findById(sprint.boardId)?.boardType != BoardType.SCRUM) {
+            throw SprintBoardNotScrumException()
+        }
         // 🛑 락을 **조회보다 먼저** 잡는다. 락 밖에서 읽은 값으로 판단하면 락이 무력화된다
         //    (memory `advisory-lock-bigint-toctou`). DB 는 이 유일성을 못 막는다 —
         //    `idx_sprints_board_active`(V506)가 선재 다중 ACTIVE 행 보존 때문에 UNIQUE 가 아니다.
