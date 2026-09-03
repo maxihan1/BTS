@@ -681,7 +681,39 @@ class ProjectSummaryServiceTest : DescribeSpec({
         val recentTo = Instant.parse("2026-09-04T00:00:00Z")
         val previousFrom = Instant.parse("2026-08-21T00:00:00Z")
 
-        it("recentFrom 정각은 최근 창에 포함되고 recentTo 정각은 제외된다") {
+        it("recentFrom 정각은 최근 창에 포함되고 1초 전은 직전 창으로 떨어진다") {
+            stubBrowseAndAccess()
+            stubTypesAndStates()
+            stubIssues(
+                listOf(
+                    summaryRow(UUID.randomUUID(), createdAt = recentFrom, updatedAt = recentFrom),
+                    // 두 창의 접점 바로 앞 — 실제 이슈가 가질 수 있는 값이다.
+                    summaryRow(
+                        UUID.randomUUID(),
+                        createdAt = recentFrom.minusSeconds(1),
+                        updatedAt = recentFrom.minusSeconds(1),
+                    ),
+                ),
+            )
+            stubChanges(emptyList())
+
+            val summary = sut.getSummary(actor, projectKey)
+
+            // 시작 inclusive. `inRecent` 를 배타로 뒤집으면 current 가 0, previous 가 2 가 된다.
+            summary.recent.created.current shouldBe 1
+            summary.recent.updated.current shouldBe 1
+            summary.recent.created.previous shouldBe 1
+        }
+
+        // 창 끝 배타는 **전방 회귀 가드**다 — 지금 이 상황은 프로덕션에서 도달 불가하다.
+        // `issues.created_at` 은 INSERT 경로가 하나뿐이고(`IssueRepository.insert`) 그 경로가
+        // 컬럼을 SET 하지 않아 DB DEFAULT `NOW()` 가 채운다(V001:48). `updated_at` 도 모든 UPDATE 가
+        // `OffsetDateTime.now(UTC)` 를 넣는다. import 경로(`IssueImportAdapter`)조차 원본 시각을
+        // 보존하는 건 댓글·첨부뿐이고 이슈는 `IssueApplicationService.createIssue` 를 그대로 탄다.
+        // 그러므로 `recentTo`(내일 UTC 자정) 이후 값을 가진 이슈는 존재할 수 없다.
+        // 그래도 남겨 두는 이유 — 이슈 원본 시각 보존이 import 에 추가되는 순간 이 창은 실전에서
+        // 도달 가능해진다. 그때 끝 경계가 포함으로 바뀌어 있으면 미래 이슈가 「최근 7일」에 섞인다.
+        it("recentTo 이후 시각은 최근 창에서 빠진다 (전방 회귀 가드 — 현재 도달 불가)") {
             stubBrowseAndAccess()
             stubTypesAndStates()
             stubIssues(
@@ -694,10 +726,8 @@ class ProjectSummaryServiceTest : DescribeSpec({
 
             val summary = sut.getSummary(actor, projectKey)
 
-            // 시작 inclusive · 끝 exclusive. 한쪽만 뒤집혀도 0 또는 2 가 된다.
             summary.recent.created.current shouldBe 1
             summary.recent.updated.current shouldBe 1
-            summary.recent.created.previous shouldBe 0
         }
 
         it("previousFrom 정각은 직전 창에 들어가고 두 창의 접점은 최근 창에만 센다") {
