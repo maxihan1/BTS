@@ -89,6 +89,7 @@ class ProjectSummaryController(
      *
      * @param projectKey 대상 프로젝트 키.
      * @param limit 반환할 최대 변경 그룹 수. 생략 시 [DEFAULT_ACTIVITY_LIMIT].
+     *   VIEW 게이트로 제거된 만큼 응답은 이보다 짧을 수 있다 — 「짧으면 끝」이 아니다.
      * @return 200 OK + [ProjectActivityResponse].
      * @throws ResponseStatusException 400 — [limit] 이 1~[MAX_ACTIVITY_LIMIT] 범위 밖.
      * @throws ResponseStatusException 401 — 미인증 / nil-UUID / 비-UUID 주체.
@@ -110,7 +111,10 @@ class ProjectSummaryController(
     fun activity(
         @PathVariable projectKey: String,
         @Parameter(
-            description = "반환할 최대 변경 그룹 수. 기본 20, 1~50. 범위 밖이면 400 — 조용히 자르지 않는다.",
+            description =
+                "반환할 최대 변경 그룹 수. 기본 20, 1~50. 범위 밖이면 400 — 조용히 자르지 않는다. " +
+                    "응답 항목 수는 이보다 적을 수 있다 — VIEW 권한이 없는 이슈의 항목이 제거되기 때문이며, " +
+                    "짧다는 것이 다음 페이지가 없다는 뜻은 아니다.",
             schema = Schema(type = "integer", minimum = "1", maximum = "50", defaultValue = "20"),
         )
         @RequestParam(required = false) limit: Int?,
