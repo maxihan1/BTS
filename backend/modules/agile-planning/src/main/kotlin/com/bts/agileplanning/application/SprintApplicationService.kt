@@ -414,7 +414,7 @@ class SprintApplicationService(
      * - 술어는 같다 — `deleted_at IS NULL`([BoardRepository.findById] 가 건다) + `project_key` 일치.
      *   조회 방식만 다르다(쓰기 경로는 지정 보드 1건만 필요해 단건 조회를 쓴다).
      *
-     * ### 🛑 단, 종류 술어는 **쓰기 경로에만** 있다 (비대칭 · FR-BD-04 PR ⑤ · Maxi 확정 2026-09-02)
+     * ### 🛑 단, 종류 술어는 **생성 경로에만** 있다 (비대칭 · FR-BD-04 PR ⑤ · Maxi 확정 2026-09-02)
      *
      * 여기는 `boardType == SCRUM` 을 요구하지만 [BacklogApplicationService.resolveBoardScope] 는
      * 요구하지 않는다. **이 비대칭은 의도적이다** — 안 적으면 위 「같은 규약」 문단이 거짓이 된다.
@@ -423,10 +423,14 @@ class SprintApplicationService(
      *   활성 스프린트를 조회하므로 **어느 보드 화면에도 영원히 안 나타난다.** 사용자에게는
      *   「시작했는데 아무 일도 안 일어남」이다. 오늘 이것을 가리는 것은 백로그 스위처가 스크럼만
      *   노출하는 것 하나뿐이라, 프론트 필터가 유일한 방어선이었다.
-     * - **왜 읽기 경로는 안 막나.** 기존 데이터가 이미 칸반 보드 소속 스프린트를 갖는다
-     *   (`apps/web/src/mocks/board-handlers.test.ts` 의 회귀 가드가 「보드 E2E 전량이 그 시드를 쓴다」를
-     *   명시한다). 읽기까지 막으면 그 데이터가 통째로 404 가 된다. `V506__sprint_board_id.sql` 이
-     *   선재 다중 ACTIVE 행을 보존한 것과 같은 판단이다 — **새로 만드는 것만 막고 있는 것은 둔다.**
+     * - **왜 읽기 경로와 `start` 는 안 막나.** 🛑 「기존 시드가 칸반 소속이다」를 근거로 쓰지 마라 —
+     *   그것은 `apps/web/src/mocks/board-handlers.test.ts` 의 **MSW 목 시드**이지 운영 데이터가 아니다.
+     *   실측은 반대다. `V506__sprint_board_id.sql:49-53` 이 `UPDATE sprints … AND b.board_type = 'SCRUM'`
+     *   으로 **전 행을 스크럼 보드에 붙였다** — 마이그레이션 직후 칸반 소속 스프린트는 0건이다.
+     *   그럼에도 열어 두는 이유는 **V506 이후 ~ 이 PR 사이**에 명시 칸반 `boardId` 로 만들어진 행이
+     *   있을 수 있어서다. 읽기까지 막으면 그 행이 통째로 404 가 된다 — **새로 만드는 것만 막고
+     *   있는 것은 둔다.** 그 결과 남는 구멍(선재 칸반 소속 스프린트는 `start` 200 을 받고도 여전히
+     *   어느 화면에도 안 나타난다)은 `TODOS.md` 에 별건으로 등재했다.
      * - 상태 코드는 **404** 다(스펙 E8). 403 이면 「그 UUID 는 존재한다」가 새어 나간다
      *   (memory `permission-assert-before-existence-makes-403-lie`).
      * - 지정이 틀렸을 때 기본 보드로 **조용히 대체하지 않는다**(편차 E7). 사용자가 의도한 것과
