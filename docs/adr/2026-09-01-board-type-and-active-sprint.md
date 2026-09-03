@@ -239,7 +239,7 @@ Jira 의 parallel sprints 옵션은 이번 범위 밖이다.
 | **①** | 스키마 + 백엔드 — `board_type` · `sprints.board_id` · 백필 · 생성 API 종류 인자 · 스크럼 카드 배치 · `start` 활성 1개 가드 | **T3** | **2** | D1~D5 | ✅ #421 |
 | **②** | 보드 생성 플로우 UI — 「보드 만들기」 종류 선택 단계 | T2 | 0 | D6 일부 | ✅ #422 |
 | **③** | 스크럼 보드 화면 + 백로그 보드 스코프 (`?board=`) + E2E | T2 | 0 | D6 잔여 · D7 | ✅ #424 |
-| **④** | `truncated` × 스크럼 보드 — `BoardCardFilter.issueKeys` 로 스프린트 술어를 LIMIT **앞**으로 | **T3** | 0 | D4 잔여 | ⬜ |
+| **④** | `truncated` × 스크럼 보드 — `BoardCardFilter.issueKeys` 로 스프린트 술어를 LIMIT **앞**으로 | **T3** | 0 | D4 잔여 | ✅ #430 |
 | **⑤** | 보드 종류 불변식 — 스프린트 생성 쓰기 가드 · `start` TOCTOU 락 · DTO 계약 2건 | T2 | 0 | D4·D5 잔여 | ⬜ |
 | **⑥** | 보드 스코프 유실 — 빈 상태 CTA · 뷰 전환 nav 전파 · E2E | T1 | 0 | D6 잔여 | ⬜ |
 
@@ -266,5 +266,6 @@ Jira 의 parallel sprints 옵션은 이번 범위 밖이다.
 
 ## 다음 한 걸음
 
-**PR ④ 착수** — `truncated` 부채. 인계 지침은 `docs/plans/2026-09-02-scrum-board-screen.md:309-322`
-에서 승계하되 **지침 3·4 는 실측에서 뒤집혔다**(후속 plan 이 정정본을 든다).
+**PR ⑤ 착수** — 보드 종류 불변식(스프린트 생성 쓰기 가드 · `start` TOCTOU 락 · DTO 계약 2건).
+④ 는 #430 이 닫았다 — 인계 지침 3·4 는 실측에서 뒤집혔고 그 정정본을
+`docs/plans/2026-09-02-board-sprint-scoped-lookup.md` 가 든다.

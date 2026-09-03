@@ -65,7 +65,7 @@ interface BoardIssueLookupPort {
      *
      * ### filter 의미
      *
-     * [BoardCardFilter] 는 담당자·미할당·라벨·컴포넌트 조건을 담는 불변 VO 다.
+     * [BoardCardFilter] 는 담당자·미할당·라벨·컴포넌트·워크플로우 상태·이슈 키 조건을 담는 불변 VO 다.
      * 동일 필드 내 값은 OR, 필드 간은 AND 로 해석한다(자세한 규칙은 [BoardCardFilter] 참조).
      *
      * ### fail-safe default 위임
