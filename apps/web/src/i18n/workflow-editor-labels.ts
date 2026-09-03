@@ -167,6 +167,22 @@ export const workflowEditorLabels = {
     description: '전환 이름과 오갈 상태를 정합니다',
     /** 저장 버튼 */
     submit: '저장',
+    /**
+     * 전환 종류 라디오 그룹의 이름.
+     *
+     * ★위 KDoc 이 경고한 자리를 여기서 갚는다 — 종전에는 이 항목이 없어서 `GLOBAL` 전환을
+     * **만드는 경로 자체가 없었다**(고르는 컨트롤이 없어 생성은 항상 `NORMAL` 이었다).
+     * 뜻이 다른 문자열을 빌리는 대신 정본에 항목을 낸다.
+     */
+    kind: '전환 종류',
+    /** NORMAL — 출발 상태를 지정하는 보통 전환 */
+    kindNormal: '특정 상태에서',
+    /** NORMAL 설명 — 이름만으로는 두 종류를 가를 수 없다 */
+    kindNormalDescription: '고른 출발 상태에서만 쓸 수 있습니다',
+    /** GLOBAL — 어느 상태에서나 쓸 수 있는 전환 */
+    kindGlobal: '모든 상태에서',
+    /** GLOBAL 설명 */
+    kindGlobalDescription: '이슈가 어느 상태에 있든 쓸 수 있습니다',
   },
 
   /**
