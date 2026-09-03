@@ -73,7 +73,7 @@ class StatusHistoryRepository(
             }
     }
 
-    companion object {
+    internal companion object {
         /**
          * status 전환만 대상으로 하는 `issue_change_item.field` 값.
          *
