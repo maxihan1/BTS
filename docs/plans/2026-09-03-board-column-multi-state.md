@@ -130,11 +130,59 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 
 **채택 판정과 편차 번호(`X*`)는 `/bts-spec` 이 확정한다.** 이 절은 착수 시점 근거 확보 기록이다.
 
-## 도메인 정리 (← /bts-spec §1 채움)
+## 도메인 정리
 
-## 스펙 (← /bts-spec §2 채움)
+**BC — `agile-planning`.** BC 노트가 「보드 (칸반/스크럼) **컬럼 매핑**」을 책임으로, `BoardColumn` 을
+핵심 엔티티로 명시한다. classify 자동 판정의 `project-workflow` 는 「워크플로우」 키워드 오탐이다.
 
-## Sanity Check (← /bts-spec §3 채움)
+**영향 엔티티** — `Board` · `BoardColumn`(수정) · **`BoardColumnState`**(신규 개념).
+
+**새 용어 2개.** Maxi 승인 전까지 `glossary.md` 에 반영하지 않는다.
+- **미매핑 상태 (Unmapped status)** — 워크플로우에는 있으나 그 보드의 어느 컬럼에도 매핑되지 않은 상태.
+  그 상태의 이슈는 보드에 안 보이고 `unplacedCount` 에 잡힌다. 지라 `Unmapped statuses` 패널(J2·J5) 대응.
+- **드롭존 (Drop zone)** — 컬럼 안에서 상태 하나가 차지하는 드롭 영역(J3·J4). 화면은 후속 PR(X3)이나
+  **API 계약이 이 개념 위에 선다** — `toStateKey` 가 드롭존을 지목한다.
+
+### 기존 결정과의 관계
+
+| ADR | 관계 |
+|---|---|
+| [2026-08-18-workflow-global-status-catalog](../adr/2026-08-18-workflow-global-status-catalog.md) | **충돌 없음. 오히려 전제를 깔아 줬다.** 이 ADR 이 상태 키를 전역화하며 `board_columns.state_key` 를 근거로 들었고(§맥락 :18), 「키는 불변」(D3)을 못박았다. 1:N 매핑은 **그 전역 키를 여러 개 묶는 것**이라 키 불변 계약을 건드리지 않는다. 다만 이 ADR 의 기각 사유가 「보드 컬럼은 키로 매핑하므로 **두 상태가 한 컬럼에 섞여 들어간다**」를 **문제**로 규정했음에 주의 — 그것은 「같아 보이는 것이 같지 않은」 중복 상태가 **의도치 않게** 섞이는 경우였고, 이 PR 의 **의도적** 묶음과는 다르다. |
+| [2026-09-01-board-type-and-active-sprint](../adr/2026-09-01-board-type-and-active-sprint.md) | 무관. 보드 **종류**(칸반/스크럼)를 다루고 컬럼 내부 구조를 건드리지 않는다. |
+
+**선례 — 같은 저장소에 이미 있다.** `V203__add_global_status_catalog.sql:36-60` 의 `workflow_statuses`
+가 정확히 같은 형태의 N:M 연결 테이블이다(부모 FK CASCADE · 대상 키 · `display_order` ·
+`UNIQUE(부모, 대상)` · FK 인덱스 명시). `board_column_states` 는 이 서식을 복제한다.
+
+**BC 격리** — `WorkflowStateCatalog.listStates` 포트는 **안 바뀐다**(N5). 상태 목록을 받아
+「어떻게 컬럼으로 묶느냐」만 바뀐다.
+
+## 스펙
+
+정본 **[`docs/specs/2026-09-03-board-column-multi-state.md`](../specs/2026-09-03-board-column-multi-state.md)**
+— R1~R12 · N1~N6 · E1~E11 · 완료 기준 10개 · 편차 X1~X3.
+
+핵심 3줄.
+1. `board_column_states` 연결 테이블로 컬럼:상태를 1:N 화하고, 기존 데이터는 컬럼당 상태 1개로 백필해 **화면을 무회귀**로 둔다.
+2. **`moveCard` 가 `toStateKey` 를 받는다** — 지라가 컬럼을 상태별 드롭존으로 쪼개 사용자가 지목하게 하므로(J3·J4) **서버는 상태를 추론하지 않는다.** 착수 시점 최대 난점이 여기서 소멸했다.
+3. 컬럼 관리 API 3종(생성·삭제·상태 집합 교체)과 **미매핑 상태 목록**을 함께 낸다. 이것이 없으면 1:N 을 쓸 방법이 없다.
+
+**형제 문서** [`docs/specs/2026-09-03-board-settings.md`](../specs/2026-09-03-board-settings.md) —
+Maxi 가 지목한 「보드 설정이 통째로 없다」의 지라 대조(J7~J21)와 갭 실측. **부채 177** 로 등재했고
+**별도 PR** 이다. 이 PR 은 지라 Board settings 7개 탭 중 `Columns` 하나를 담당한다.
+
+## Sanity Check
+
+**gap 4건 발견 · 4건 모두 스스로 보강(1회).** 전문은 스펙의 `## Sanity Check` 절.
+
+- ❓**G1 🔴 스펙 자체의 모순** — E1 이 「상태 0개 컬럼」을 허용하는데 `board_columns.state_key` 가
+  `NOT NULL` 이라 이중 기록에 쓸 값이 없었다. V508 이 `DROP NOT NULL` 을 함께 한다.
+- ❓**G4 🔴 누락 요구사항** — 매핑 변경 API 는 주면서 UI 는 후속이라, 사용자가 상태 2개를 묶는 순간
+  기존 화면이 400 을 받는다. **R12**(프론트가 `toStateKey` 를 보내게 최소 수정)를 추가했다.
+- ❓G2 `display_order` 의 의미 명시 · ❓G3 미매핑 목록의 기준을 `listStates(projectKey, null)` 로 고정.
+
+**흔들었으나 문제없던 것** — R5(컬럼 category)는 완료 판정을 안 흔든다. `category` 는 표시용
+스냅샷이고 `agile-planning` 의 참조 8곳이 전부 DTO 변환이다(`V500:27` 이 그렇게 적었고 실측 일치).
 
 ## Plan (← /bts-plan 채움)
 
