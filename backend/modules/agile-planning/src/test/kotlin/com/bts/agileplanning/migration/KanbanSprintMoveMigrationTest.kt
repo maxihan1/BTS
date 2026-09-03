@@ -22,7 +22,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * `V507__move_kanban_sprints_to_scrum_board.sql` 의 **이관 결과**를 검증한다 (R1·R2·R7).
+ * `V507__move_kanban_sprints_to_scrum_board.sql` 의 **이관 결과**를 검증한다 (R1~R7).
  *
  * `V506` 은 「그때 존재하던」 스프린트를 전부 스크럼 보드에 붙였다. 그 뒤에 칸반 보드를 지정해 만들어진
  * 스프린트는 백로그·보드 어느 화면에도 안 나온다(부채 165). `V507` 이 그 잔여를 정리한다.
@@ -35,7 +35,7 @@ import java.util.UUID
  * 1. `target("504")` — `board_type`·`board_id` 가 아직 없는 시점
  * 2. **V506 시대 픽스처** 시드 (`BKFL`·`NOBD`·`ALLDEL`) — E10 회귀 단언의 재료
  * 3. `target("506")` — `V505`·`V506` 적용. 이때 위 픽스처가 백필된다
- * 4. **V507 시대 픽스처** 시드 (`KMOVE`·`KHAVE`·`KDEL`·`KDEAD`) — 칸반 보드에 붙은 스프린트
+ * 4. **V507 시대 픽스처** 시드 (`KMOVE`·`KHAVE`·`KDEL`·`KDEAD`·`KTIE`) — 칸반 보드에 붙은 스프린트
  * 5. target 없이 `migrate()` — `V507` 적용
  *
  * ★ 5단계에 `target("507")` 을 쓰지 않는다. 버전을 숫자로 고정하면 나중에 `V508` 이 들어올 때 이 클래스가
@@ -49,7 +49,13 @@ import java.util.UUID
  * 멱등 테스트(E11)는 **DB 를 바꾼다** — 칸반 소속 스프린트를 새로 심고 `V507` SQL 을 다시 돌린다.
  * 순서가 안 정해지면 다른 테스트가 그 잔여를 먼저 보게 돼 결과가 실행마다 갈린다. [Order] 로 못박는다.
  *
- * 참조. `docs/specs/2026-09-03-kanban-sprint-move-and-lock-budget.md` R1·R2·R7 · E1~E5 · E10 · E11.
+ * ## ACTIVE 충돌 (R3~R6 · 편차 X9)
+ * 이관은 `board_id` 만 옮기지 않는다. 목표 보드의 활성 스프린트가 둘이 되면 `findActiveByBoard` 가
+ * `limit(1)` 이라 한쪽이 화면에서 사라지므로, **이관 대상**의 `status` 를 `PLANNED` 로 내린다
+ * (ADR 2026-09-03 `D2`). 기존 스크럼 보드의 원래 ACTIVE 는 어떤 경우에도 안 건드린다(R6) — 그 경계를
+ * 지키는지가 이 클래스의 후반부(Order 5~10)다.
+ *
+ * 참조. `docs/specs/2026-09-03-kanban-sprint-move-and-lock-budget.md` R1~R7 · E1~E5 · E10 · E11.
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -156,6 +162,39 @@ class KanbanSprintMoveMigrationTest {
 
         private val kdeadSprintId: UUID = UUID.randomUUID()
 
+        // ── ACTIVE 충돌 픽스처 (R3·R4·R5·R6 · 편차 X9) ───────────────────────────
+
+        /** `KMOVE` 의 이관 대상 ACTIVE 중 `(created_at, id)` **최선두** — 목표 보드에 기존 ACTIVE 가 없어 살아남는다. */
+        private val kmoveOldActiveId: UUID = UUID.randomUUID()
+
+        /** `KMOVE` 의 더 최근 ACTIVE. **다른** 칸반에 붙어 있다 — 같은 목표 보드로 모여 PLANNED 로 내려간다 (R5·E2). */
+        private val kmoveNewActiveId: UUID = UUID.randomUUID()
+
+        /**
+         * `KHAVE` 의 목표 스크럼 보드(`khaveOldScrum`)에 **원래 있던** ACTIVE. 어떤 경우에도 안 건드린다 (R6).
+         *
+         * ★ 이관 대상보다 **더 최근**으로 심는다. 「보드마다 (created_at, id) 최선두만 ACTIVE」를 기존 행까지
+         *   싸잡아 적용하는 구현이면 이 행이 강등되고 이관 대상이 살아남아 R4·R6 이 동시에 red 가 된다.
+         *   나이가 반대 방향이면 그 구현이 초록으로 통과해 판정이 사라진다.
+         */
+        private val khaveIncumbentId: UUID = UUID.randomUUID()
+
+        /** 칸반에 붙은 ACTIVE — 목표 보드에 기존 ACTIVE 가 있으므로 전부 PLANNED 로 내려간다 (R4). */
+        private val khaveMovedActiveId: UUID = UUID.randomUUID()
+
+        /** `KTIE` — `created_at` 이 **정확히 동점**인 ACTIVE 둘만 있는 프로젝트. 판정을 가르는 건 `id` 뿐이다. */
+        private val ktieKanbanId: UUID = UUID.randomUUID()
+
+        /**
+         * 동점 조에서 **id 가 작은** 쪽 — 살아남아야 한다.
+         *
+         * ★ 리터럴로 고정한다. 랜덤 UUID 두 개면 어느 쪽이 작은지가 실행마다 갈려 판정 자체가 흔들린다.
+         */
+        private val ktieWinnerId: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
+
+        /** 동점 조에서 id 가 큰 쪽 — PLANNED 로 내려간다. */
+        private val ktieLoserId: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
+
         private fun flyway(target: String?) =
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -201,6 +240,7 @@ class KanbanSprintMoveMigrationTest {
         private fun seedV507Era(c: Connection) {
             seedKmove(c)
             seedKhave(c)
+            seedKtie(c)
 
             // KDEL — 칸반 소속 스프린트가 soft-deleted 뿐이라 옮길 것이 없다.
             seedBoard(c, kanban(kdelKanbanId, "KDEL", "KDEL 칸반", 15, columns = listOf(ColumnSeed("d", "TODO"))))
@@ -224,6 +264,10 @@ class KanbanSprintMoveMigrationTest {
             seedSprint(c, SprintSeed(kmovePlannedSprintId, "KMOVE", "PLANNED", boardId = src))
             seedSprint(c, SprintSeed(kmoveCompletedSprintId, "KMOVE", "COMPLETED", boardId = kmoveNewerKanbanId))
             seedSprint(c, SprintSeed(kmoveDeletedSprintId, "KMOVE", "PLANNED", deleted = true, boardId = src))
+            // 목표 스크럼 보드는 V507 이 신설한다 → 기존 ACTIVE 가 없다. 둘 중 더 오래된 쪽만 ACTIVE 로 남는다 (R5).
+            val other = kmoveNewerKanbanId
+            seedSprint(c, SprintSeed(kmoveOldActiveId, "KMOVE", "ACTIVE", boardId = src, daysAgo = 9))
+            seedSprint(c, SprintSeed(kmoveNewActiveId, "KMOVE", "ACTIVE", boardId = other, daysAgo = 4))
         }
 
         /** KHAVE — 스크럼 보드가 이미 둘이다. 신설 금지(R7)와 목적지 선정(E3)을 동시에 잰다. */
@@ -235,6 +279,23 @@ class KanbanSprintMoveMigrationTest {
             seedBoard(c, scrum(khaveNewScrumId, "KHAVE", "KHAVE 두 번째 스크럼", 5, columns = newScrumColumns))
             seedSprint(c, SprintSeed(khaveMovedSprintId, "KHAVE", "PLANNED", boardId = khaveKanbanId))
             seedSprint(c, SprintSeed(khaveStaySprintId, "KHAVE", "PLANNED", boardId = khaveNewScrumId))
+            // 목표 보드에 원래 있던 ACTIVE (R6). 이관 대상보다 **나중**이라야 R4·R6 을 동시에 잰다.
+            seedSprint(c, SprintSeed(khaveIncumbentId, "KHAVE", "ACTIVE", boardId = khaveOldScrumId, daysAgo = 2))
+            seedSprint(c, SprintSeed(khaveMovedActiveId, "KHAVE", "ACTIVE", boardId = khaveKanbanId, daysAgo = 8))
+        }
+
+        /**
+         * KTIE — `created_at` 이 동점인 ACTIVE 둘. 같은 트랜잭션의 `now()` 는 고정값이라 `daysAgo` 가 같으면
+         * 두 행의 시각이 **정확히** 같아진다. 그래서 `(created_at, id)` 의 두 번째 열만 판정을 가른다.
+         *
+         * ★ 심는 **순서**가 판정의 재료다. id 가 큰 loser 를 먼저 심어 물리 순서에서 앞세운다 — `ORDER BY` 에서
+         *   `id` 를 빼면 동점 구간의 정렬이 물리 순서로 남아 loser 가 살아남고 tie-break 테스트가 red 가 된다.
+         *   순서를 뒤집으면 `created_at` 만으로도 우연히 초록이라 판정이 사라진다.
+         */
+        private fun seedKtie(c: Connection) {
+            seedBoard(c, kanban(ktieKanbanId, "KTIE", "KTIE 칸반", 22, listOf(ColumnSeed("t", "TODO"))))
+            seedSprint(c, SprintSeed(ktieLoserId, "KTIE", "ACTIVE", boardId = ktieKanbanId, daysAgo = 7))
+            seedSprint(c, SprintSeed(ktieWinnerId, "KTIE", "ACTIVE", boardId = ktieKanbanId, daysAgo = 7))
         }
 
         /** V507 시대 칸반 보드 시드 — `board_type` 을 매 줄에 적지 않게 줄인다. 삭제 상태는 `copy` 로 얹는다. */
@@ -277,13 +338,19 @@ class KanbanSprintMoveMigrationTest {
             val columns: List<ColumnSeed> = emptyList(),
         )
 
-        /** 스프린트 하나의 시드 명세. `boardId` 가 null 이면 V504 시점(`board_id` 컬럼 부재)이다. */
+        /**
+         * 스프린트 하나의 시드 명세. `boardId` 가 null 이면 V504 시점(`board_id` 컬럼 부재)이다.
+         *
+         * `daysAgo` 가 null 이면 `created_at` 을 DB 기본값(`now()`)에 맡긴다. 값을 주면 나이를 벌려 심는데,
+         * `now()` 는 **트랜잭션 고정값**이라 같은 `daysAgo` 두 행은 시각이 정확히 같아진다 — 동점 픽스처의 재료다.
+         */
         data class SprintSeed(
             val id: UUID,
             val projectKey: String,
             val status: String,
             val deleted: Boolean = false,
             val boardId: UUID? = null,
+            val daysAgo: Int? = null,
         )
 
         /** 보드 1개와 그 컬럼을 심는다. `board_type` 은 V506 이후 시드에서만 명시한다. */
@@ -336,9 +403,12 @@ class KanbanSprintMoveMigrationTest {
         ) {
             val boardCol = seed.boardId?.let { ", board_id" } ?: ""
             val boardVal = seed.boardId?.let { ", ?" } ?: ""
+            // 나이는 Int 라 문자열로 엮어도 주입 경로가 없다. `?` 로 빼면 boardId 와 파라미터 인덱스가 얽힌다.
+            val agedCol = seed.daysAgo?.let { ", created_at" } ?: ""
+            val agedVal = seed.daysAgo?.let { ", now() - make_interval(days => $it)" } ?: ""
             c.prepareStatement(
-                "INSERT INTO sprints (id, project_key, name, status, deleted_at$boardCol)" +
-                    " VALUES (?, ?, ?, ?, ${if (seed.deleted) "now()" else "NULL"}$boardVal)",
+                "INSERT INTO sprints (id, project_key, name, status, deleted_at$boardCol$agedCol)" +
+                    " VALUES (?, ?, ?, ?, ${if (seed.deleted) "now()" else "NULL"}$boardVal$agedVal)",
             ).use { stmt ->
                 stmt.setObject(1, seed.id)
                 stmt.setString(2, seed.projectKey)
@@ -415,6 +485,31 @@ class KanbanSprintMoveMigrationTest {
             boardId,
         ) { it.getObject(1) }
 
+    private fun statusOf(sprintId: UUID): String? =
+        queryOne("SELECT status FROM sprints WHERE id = ?", sprintId) { it.getString(1) }
+
+    // 강등된 행만 version 이 오른다 — 「무엇을 건드렸나」를 status 보다 정확히 가리키는 지표다.
+    private fun versionOf(sprintId: UUID): Long? =
+        queryOne("SELECT version FROM sprints WHERE id = ?", sprintId) { it.getLong(1) }
+
+    private fun timestampOf(
+        sprintId: UUID,
+        column: String,
+    ): Timestamp? = queryOne("SELECT $column FROM sprints WHERE id = ?", sprintId) { it.getTimestamp(1) }
+
+    // 보드당 활성 스프린트 수 — R3 사후 불변식과 R6 의 「기존 것이 살아남았나」를 함께 잰다.
+    private fun activeCountOf(boardId: UUID?): Int =
+        queryOne(
+            "SELECT COUNT(*) FROM sprints WHERE board_id = ? AND status = 'ACTIVE' AND deleted_at IS NULL",
+            boardId,
+        ) { it.getInt(1) } ?: 0
+
+    /** `V507` SQL 원문. Flyway 밖에서 직접 재실행하는 두 테스트(E11 멱등 · tie-break 반복 실행)가 함께 쓴다. */
+    private fun v507Sql(): String {
+        val stream = checkNotNull(javaClass.getResourceAsStream(V507_RESOURCE)) { "클래스패스에 $V507_RESOURCE 가 없다" }
+        return stream.bufferedReader().use { it.readText() }
+    }
+
     // ── ① R1 · 칸반 소속 스프린트 이관 ─────────────────────────────────────────
 
     @Test
@@ -479,8 +574,7 @@ class KanbanSprintMoveMigrationTest {
     @Order(3)
     fun `재적용해도 스크럼 보드가 중복 생성되지 않는다`() {
         // Flyway 는 같은 버전을 두 번 적용하지 않으므로 멱등을 Flyway 로는 못 잰다. SQL 원문을 직접 돌린다.
-        val stream = checkNotNull(javaClass.getResourceAsStream(V507_RESOURCE)) { "클래스패스에 $V507_RESOURCE 가 없다" }
-        val sql = stream.bufferedReader().use { it.readText() }
+        val sql = v507Sql()
 
         // ★ 그냥 재실행만 하면 대상이 0건이라 「가드가 없어도 초록」인 공허한 테스트가 된다.
         //   칸반 소속 스프린트를 새로 심어 보드 신설 INSERT 의 대상 프로젝트에 KMOVE 가 다시 오르게 만든다.
@@ -564,5 +658,105 @@ class KanbanSprintMoveMigrationTest {
                 "boards_board_type_allowed",
             ) { it.getString(1) }
         assertThat(checkClause).isNotNull().contains("SCRUM").contains("KANBAN")
+    }
+
+    // ── ⑤ R4 · 목표 보드에 기존 ACTIVE 가 있으면 이관 대상은 전부 내려간다 ───────
+
+    @Test
+    @Order(5)
+    fun `목표 보드에 기존 ACTIVE 가 있으면 이관 대상 ACTIVE 는 PLANNED 가 된다`() {
+        // KHAVE 의 목적지(khaveOldScrum)에는 원래 ACTIVE 가 하나 있다 → 옮겨 오는 ACTIVE 는 전부 내려간다.
+        assertThat(statusOf(khaveMovedActiveId)).isEqualTo("PLANNED")
+        assertThat(boardIdOf(khaveMovedActiveId)).isEqualTo(khaveOldScrumId)
+
+        // 내린 행만 version·updated_at 이 오른다. 이관만 된 행(board_id 만 바뀜)과 여기서 갈린다.
+        assertThat(versionOf(khaveMovedActiveId)).isEqualTo(1L)
+        assertThat(versionOf(khaveMovedSprintId)).isZero()
+        assertThat(timestampOf(khaveMovedActiveId, "updated_at"))
+            .isAfter(timestampOf(khaveMovedSprintId, "updated_at"))
+    }
+
+    // ── ⑥ R5 · 기존 ACTIVE 가 없으면 (created_at, id) 최선두 1건만 남는다 ────────
+
+    @Test
+    @Order(6)
+    fun `목표 보드에 ACTIVE 가 없으면 이관 대상 중 created_at id 최앞 1건만 ACTIVE 다`() {
+        // KMOVE 의 목적지는 V507 이 방금 만든 보드라 기존 ACTIVE 가 없다 → 최선두 1건이 ACTIVE 를 유지한다.
+        val kmoveScrumId = liveScrumBoardIdOf("KMOVE")
+        assertThat(statusOf(kmoveOldActiveId)).isEqualTo("ACTIVE")
+        assertThat(statusOf(kmoveNewActiveId)).isEqualTo("PLANNED")
+
+        // 둘 다 옮겨는 진다 — 상태 조정이 이관을 대신하지 않는다.
+        assertThat(boardIdOf(kmoveOldActiveId)).isEqualTo(kmoveScrumId)
+        assertThat(boardIdOf(kmoveNewActiveId)).isEqualTo(kmoveScrumId)
+
+        // 안 내린 행은 version 도 그대로다(Task 1 의 이관과 같은 취급).
+        assertThat(versionOf(kmoveOldActiveId)).isZero()
+        assertThat(versionOf(kmoveNewActiveId)).isEqualTo(1L)
+        assertThat(activeCountOf(kmoveScrumId)).isEqualTo(1)
+    }
+
+    // ── ⑦ R6 · 기존 스크럼 보드의 원래 ACTIVE 는 성역이다 ───────────────────────
+
+    @Test
+    @Order(7)
+    fun `기존 스크럼 보드의 원래 ACTIVE 스프린트는 상태도 소속도 그대로다`() {
+        assertThat(statusOf(khaveIncumbentId)).isEqualTo("ACTIVE")
+        assertThat(boardIdOf(khaveIncumbentId)).isEqualTo(khaveOldScrumId)
+        assertThat(versionOf(khaveIncumbentId)).isZero()
+
+        // 이 행은 이관 대상보다 **나중에** 만들어졌다. 「보드마다 최선두만 ACTIVE」를 기존 행까지 적용하는
+        // 구현이면 여기가 뒤집혀 red 다 — 강등 대상이 「칸반에서 옮겨 오는 행」으로 한정됐다는 증거다.
+        assertThat(activeCountOf(khaveOldScrumId)).isEqualTo(1)
+
+        // 스크럼에 원래 있던 PLANNED 도 마찬가지 — WHERE 가 새면 version 이 오른다.
+        assertThat(versionOf(khaveStaySprintId)).isZero()
+    }
+
+    // ── ⑧ E4 · COMPLETED 는 상태를 안 건드린다 ─────────────────────────────────
+
+    @Test
+    @Order(8)
+    fun `COMPLETED 스프린트는 board_id 만 옮기고 상태는 그대로다`() {
+        assertThat(boardIdOf(kmoveCompletedSprintId)).isEqualTo(liveScrumBoardIdOf("KMOVE"))
+        // 강등 UPDATE 에서 `status = 'ACTIVE'` 필터를 지우면 COMPLETED 가 PLANNED 로 되살아나 red 다.
+        assertThat(statusOf(kmoveCompletedSprintId)).isEqualTo("COMPLETED")
+        assertThat(versionOf(kmoveCompletedSprintId)).isZero()
+    }
+
+    // ── ⑨ R3 · 사후 불변식 (완료 기준 2) ───────────────────────────────────────
+
+    @Test
+    @Order(9)
+    fun `이관 후 어느 board_id 에도 ACTIVE 가 2건 이상 없다`() {
+        // 완료 기준 2 의 SQL 을 그대로 단언한다. 특정 픽스처가 아니라 **DB 전체**를 훑는다.
+        val offenders =
+            queryList(
+                "SELECT board_id FROM sprints WHERE status = 'ACTIVE' AND deleted_at IS NULL" +
+                    " GROUP BY board_id HAVING COUNT(*) > 1",
+            ) { it.getObject(1) as UUID }
+        assertThat(offenders).isEmpty()
+    }
+
+    // ── ⑩ R5 tie-break · created_at 동점은 id 로 가른다 ────────────────────────
+
+    @Test
+    @Order(10)
+    fun `created_at 동점이면 id 로 갈라 같은 스프린트가 반복 실행에서도 남는다`() {
+        // 동점이 진짜인지부터 잰다. 시각이 갈리면 이 테스트는 (created_at, id) 가 아니라 created_at 을 재게 된다.
+        assertThat(timestampOf(ktieWinnerId, "created_at")).isEqualTo(timestampOf(ktieLoserId, "created_at"))
+
+        // id 가 작은 쪽이 남는다. ORDER BY 에서 id 를 빼면 물리 순서상 먼저인 loser 가 남아 red 다.
+        assertThat(statusOf(ktieWinnerId)).isEqualTo("ACTIVE")
+        assertThat(statusOf(ktieLoserId)).isEqualTo("PLANNED")
+
+        // 반복 실행 — Flyway 밖에서 SQL 을 한 번 더 돌려도 살아남는 쪽이 갈리지 않는다.
+        conn().use { c -> c.createStatement().use { it.execute(v507Sql()) } }
+
+        assertThat(statusOf(ktieWinnerId)).isEqualTo("ACTIVE")
+        assertThat(statusOf(ktieLoserId)).isEqualTo("PLANNED")
+        // 재실행이 이미 내려간 행을 또 내리지 않는다 — 강등 대상이 칸반 소속으로 한정됐다는 증거다.
+        assertThat(versionOf(ktieWinnerId)).isZero()
+        assertThat(versionOf(ktieLoserId)).isEqualTo(1L)
     }
 }
