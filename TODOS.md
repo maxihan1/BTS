@@ -723,16 +723,6 @@ PR #400 은 그 죽은 `nav` 블록을 **지웠다** — 소비처 없는 선언
 
 ---
 
-## ⬜ apps/web — 보고 있던 보드가 화면을 옮기면 증발한다 (신규 · 미착수 · T1)
-
-**쉬운 말.** 보드를 두 개 이상 만든 프로젝트에서 보드 화면과 백로그 화면을 오갈 때마다, 방금 보던 보드가 아니라 **맨 처음 만든 보드**로 되돌아간다. 갈 때마다 보드를 다시 골라야 한다.
-
-**방치하면.** 데이터는 안 망가진다. 다만 보드를 여러 개 쓰는 프로젝트에서 왕복 한 번마다 보드 선택이 풀려, 사용자가 「내가 넣은 이슈가 사라졌다」로 읽는다. 스크럼 보드의 「백로그로 이동」 안내를 눌렀을 때가 가장 나쁘다 — 안내를 따랐는데 **다른 보드의 백로그**가 열린다.
-
-**무엇.** 세 자리가 보드 스코프(`?board=`)를 버린다. ① `apps/web/src/components/board/ScrumSprintEmptyState.tsx:122` 의 CTA `<Link to="/projects/$projectKey/backlog" params={{ projectKey }}>` 에 `search` 가 없다. 서버는 `?board=` 가 없으면 `BoardRepository.findScrumBoardIdByProject`(`:256-266`, `created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에 폴백하므로 두 번째 보드에서 누르면 다른 보드가 열린다. ② `apps/web/src/components/project/ProjectNavTabs.tsx:16-21` 의 `ProjectNavTabLink` 이 `to`·`label` 2필드뿐이고 `:57-62` 의 `<Link>` 가 `search` 를 안 싣는다 — 뷰 전환 nav(`board.tsx:64-67` · `backlog.tsx:18-25`)가 양방향으로 스코프를 잃는다. E2E 가 이 결함을 우회하고 있다는 것이 증거다 — `e2e/scrum-board.spec.ts:198` CTA 클릭 직후 `:203` 이, `:257-258` 왕복 직후가 각각 `switchToBoard` 로 **수동 재선택**한다. ③ 편차 X7(`docs/plans/2026-09-02-scrum-board-screen.md:86`)이 「두 탭이 어긋날 수 있다」를 알려진 한계로 남긴 것이 이 상태의 근거다.
-
-**처방.** `ProjectNavTabLink` 에 옵셔널 `search` 를 더하고 `ProjectNavTabs` 가 그것을 `<Link>` 에 싣는다. 빈 상태 CTA 는 `boardId` 를 **필수 prop** 으로 받는다 — 옵셔널로 두면 호출부가 빠뜨려도 초록이다. 보드→백로그 링크는 현재 보드가 SCRUM 일 때만 `board` 를 싣는다(칸반 id 를 백로그에 넘기지 않는다). RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이다. 공유 상태(FR-UX-07 활성 프로젝트 컨텍스트와의 관계 정리)는 범위 밖으로 남긴다 — X7 을 통째로 뒤집는 것이 아니라 링크 전파까지만 해소한다.
-
 ## ⬜ apps/web — 「기본 보드」 규칙이 세 곳에서 서로 다르다 (신규 · 미착수 · T1)
 
 **쉬운 말.** 보드를 지정하지 않고 들어왔을 때 어느 보드를 보여줄지가 화면마다 다른 규칙으로 정해진다. 그래서 같은 프로젝트인데 보드 화면과 백로그 화면이 서로 다른 보드를 연다.
@@ -3516,6 +3506,28 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 ---
 
 # 해소된 것
+
+## ✅ apps/web — 보고 있던 보드가 화면을 옮기면 증발한다 (신규 · **해소** · T1)
+
+> **✅ 2026-09-03 해소 (#432).** 처방 그대로다 — `ProjectNavTabLink` 에 **옵셔널** `search`,
+> 빈 상태 CTA 의 `boardId` 는 **필수** prop, 보드→백로그는 현재 보드가 SCRUM 일 때만 싣는다.
+> RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이었다.
+>
+> 🛑 **공유 상태(FR-UX-07 활성 프로젝트 컨텍스트 관계 정리)는 처방이 애초에 범위 밖으로**
+> **둔 것**이고 그대로다. X7 을 통째로 뒤집은 것이 아니라 **링크 전파까지만** 해소했다.
+>
+> 게이트 2 가 두 가지를 더 잡았다 — ① `projects.board.test.tsx` 의 라우터 대역이 `search` 를
+> 삼켜 `T-BD04-1` 이 「CTA href 에 `?board=` 가 **없다**」를 계약으로 굳히고 있었다(가짜 그린).
+> ② 종류를 `boardDetail` 에서 읽어, 상세가 in-flight 인 창에서 같은 증상이 재현됐다 —
+> `boards` 요약에서 읽도록 바꾸고 `T-BD7-NAV-2` 로 잠갔다.
+
+**쉬운 말.** 보드를 두 개 이상 만든 프로젝트에서 보드 화면과 백로그 화면을 오갈 때마다, 방금 보던 보드가 아니라 **맨 처음 만든 보드**로 되돌아간다. 갈 때마다 보드를 다시 골라야 한다.
+
+**방치하면.** 데이터는 안 망가진다. 다만 보드를 여러 개 쓰는 프로젝트에서 왕복 한 번마다 보드 선택이 풀려, 사용자가 「내가 넣은 이슈가 사라졌다」로 읽는다. 스크럼 보드의 「백로그로 이동」 안내를 눌렀을 때가 가장 나쁘다 — 안내를 따랐는데 **다른 보드의 백로그**가 열린다.
+
+**무엇.** 세 자리가 보드 스코프(`?board=`)를 버린다. ① `apps/web/src/components/board/ScrumSprintEmptyState.tsx:122` 의 CTA `<Link to="/projects/$projectKey/backlog" params={{ projectKey }}>` 에 `search` 가 없다. 서버는 `?board=` 가 없으면 `BoardRepository.findScrumBoardIdByProject`(`:256-266`, `created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에 폴백하므로 두 번째 보드에서 누르면 다른 보드가 열린다. ② `apps/web/src/components/project/ProjectNavTabs.tsx:16-21` 의 `ProjectNavTabLink` 이 `to`·`label` 2필드뿐이고 `:57-62` 의 `<Link>` 가 `search` 를 안 싣는다 — 뷰 전환 nav(`board.tsx:64-67` · `backlog.tsx:18-25`)가 양방향으로 스코프를 잃는다. E2E 가 이 결함을 우회하고 있다는 것이 증거다 — `e2e/scrum-board.spec.ts:198` CTA 클릭 직후 `:203` 이, `:257-258` 왕복 직후가 각각 `switchToBoard` 로 **수동 재선택**한다. ③ 편차 X7(`docs/plans/2026-09-02-scrum-board-screen.md:86`)이 「두 탭이 어긋날 수 있다」를 알려진 한계로 남긴 것이 이 상태의 근거다.
+
+**처방.** `ProjectNavTabLink` 에 옵셔널 `search` 를 더하고 `ProjectNavTabs` 가 그것을 `<Link>` 에 싣는다. 빈 상태 CTA 는 `boardId` 를 **필수 prop** 으로 받는다 — 옵셔널로 두면 호출부가 빠뜨려도 초록이다. 보드→백로그 링크는 현재 보드가 SCRUM 일 때만 `board` 를 싣는다(칸반 id 를 백로그에 넘기지 않는다). RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이다. 공유 상태(FR-UX-07 활성 프로젝트 컨텍스트와의 관계 정리)는 범위 밖으로 남긴다 — X7 을 통째로 뒤집는 것이 아니라 링크 전파까지만 해소한다.
 
 ## ✅ agile-planning — 칸반 보드에 매단 스프린트가 어느 화면에도 나타나지 않는다 (신규 · **해소** · T2)
 
