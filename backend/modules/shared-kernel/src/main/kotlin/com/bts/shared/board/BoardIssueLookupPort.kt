@@ -65,7 +65,7 @@ interface BoardIssueLookupPort {
      *
      * ### filter 의미
      *
-     * [BoardCardFilter] 는 담당자·미할당·라벨·컴포넌트 조건을 담는 불변 VO 다.
+     * [BoardCardFilter] 는 담당자·미할당·라벨·컴포넌트·워크플로우 상태·이슈 키 조건을 담는 불변 VO 다.
      * 동일 필드 내 값은 OR, 필드 간은 AND 로 해석한다(자세한 규칙은 [BoardCardFilter] 참조).
      *
      * ### fail-safe default 위임
@@ -80,6 +80,18 @@ interface BoardIssueLookupPort {
      * visibility 필터를 SQL 에서 적용하는 방식과 동일하다.
      * 구현체가 3-인자를 override 하지 않으면 filter 가 드롭되므로, filter-aware 구현을
      * 원하는 경우 반드시 이 메서드를 override 해야 한다(CONCERN-1).
+     *
+     * ### 🛑 CONCERN-1 의 귀결 — 소비측은 filter 에 correctness 를 위임할 수 없다
+     *
+     * 위 default 위임이 **계약으로 허용**되므로, filter 는 「이 조건에 맞는 것만 온다」는 보장이
+     * 아니라 **「이 조건을 SQL 로 밀 수 있으면 밀어 달라」는 최적화 요청**이다. 소비측은 결과를
+     * 다시 걸러야 한다. `BoardApplicationService.getBoard` 가 [BoardCardFilter.issueKeys] 를
+     * 실어 보내면서도 Kotlin 사후 필터를 **유지하는** 이유가 이것이다 — 그것을 지우면 filter 를
+     * 드롭하는 구현에서 스크럼 보드가 다른 스프린트·백로그 이슈까지 그린다.
+     *
+     * 그럼에도 SQL 푸시다운이 필요한 이유는 [BoardIssuePage.truncated] 다. 사후 필터는
+     * **이미 잘린 결과**를 거르므로, LIMIT 창 밖으로 밀려난 이슈는 사후 필터가 되살릴 수 없다
+     * (FR-BD-04 PR ④ — [BoardCardFilter.issueKeys] KDoc 참조).
      *
      * ### 빈 필터 동작
      *

@@ -1086,7 +1086,35 @@ class IssueRepository(
             buildAssigneeCondition(filter),
             buildLabelCondition(filter),
             buildComponentCondition(filter),
+            buildIssueKeyCondition(filter),
         ).reduceOrNull { acc, cond -> acc.and(cond) }
+    }
+
+    /**
+     * 이슈 키 화이트리스트 술어를 생성한다 (FR-BD-04 PR ④).
+     *
+     * `key` 컬럼에 대한 IN 술어. `issues.key` 는 `V001__issues_initial.sql:37` 이 UNIQUE 를 걸어
+     * btree 인덱스가 있으므로 IN 은 인덱스 경로다.
+     *
+     * ### 왜 이 술어가 필요한가 — [BOARD_CARD_FETCH_LIMIT] 와의 순서
+     *
+     * 스크럼 보드는 「활성 스프린트의 이슈만」을 그린다. 그 필터를 **조회 뒤 Kotlin 에서만** 걸면
+     * `listVisibleForBoard` 가 `created_at DESC` 로 LIMIT+1 건을 **먼저 자른 뒤**에 스프린트가
+     * 적용되어, 활성 스프린트 이슈가 오래됐으면 창 밖으로 밀려 **경고 없이 증발한다.**
+     * 이 술어가 그 순서를 뒤집는다 — 자르기 전에 SQL 이 거른다.
+     *
+     * 🛑 **`statusKeys` 와 같은 서버 내부 전용 필드다.** `BoardFilterQueryParser` 가 파싱하지도
+     * 직렬화하지도 않으므로 클라이언트가 키를 주입할 경로가 없다. 이슈 목록 API
+     * ([listWithType] · [listWithTypeByCursor])도 같은 [buildFilterCondition] 을 쓰지만
+     * `IssueFilterQueryParser` 가 이 필드를 세팅하지 않아 그쪽에서는 항상 미적용이다.
+     *
+     * @param filter 보드 카드 필터.
+     * @return [BoardCardFilter.issueKeys] 가 비어 있으면 `null`, 아니면 `key IN (...)` [Condition].
+     * @see buildFilterCondition
+     */
+    private fun buildIssueKeyCondition(filter: BoardCardFilter): Condition? {
+        if (filter.issueKeys.isEmpty()) return null
+        return ISSUES.KEY.`in`(filter.issueKeys)
     }
 
     /**
