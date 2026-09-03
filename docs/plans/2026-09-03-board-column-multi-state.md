@@ -618,6 +618,48 @@ N3 을 「검증 불가 · 코드 리뷰가 진다」로 낮춰 적어야 한다
 | **ceo-6** | CONCERN (경미) | UI 없는 기간의 위험은 X3·R7·R12 가 이미 적었다. 추가 조치 불요 |
 | **ceo-5** | **PASS** | R13 회귀 감지는 Task 7 의 **두 테스트가 양방향을 고정**한다 — 「대상 상태가 DONE 이면 뜬다」와 「컬럼이 DONE 이어도 대상 상태가 아니면 안 뜬다」. 후자는 1:N 이후에만 존재하는 조합이라 오늘 만들 수 없다 |
 
+## 구현 실측 (Task 1~8 완료 · 2026-09-04)
+
+### Task 8 무회귀 실측 — 회귀 0
+
+| 측정 대상 | 결과 |
+|---|---|
+| `agile-planning` 모듈 전량 `--rerun-tasks` | **EXIT=0** · 62 클래스 |
+| 선행 마이그레이션 테스트 (E10 함정) | `SprintBoardIdBackfillMigrationTest` 6 · `KanbanSprintMoveMigrationTest` 11 · `BoardColumnStatesMigrationTest` 10 · `BoardSchemaMigrationTest` 47 — **전부 failures 0 · errors 0**. V508 이 선행 테스트의 target 을 흔들지 않았다 |
+| 프론트 `tsc -p tsconfig.app.json --noEmit` | **EXIT=0** (루트 tsconfig 는 `files: []` 라 0개를 검사한다 — 실 검사 경로를 썼다) |
+| 프론트 vitest 전량 | **10570/10570 · EXIT=0** |
+| E2E 표적 4 spec (`scrum-board` `board-manage` `quick-filter` `backlog`) | **44 passed · EXIT=0** |
+| 판별식 전량(`debt-ledger-mapping` 포함) | **483/483 · EXIT=0** |
+| `build-doc-index --check` | drift 0 · 고아 0 · 깨진 링크 0 |
+| `verify-master-plan.sh` | FR 144/144 · EXIT=0 |
+| ktlint + detekt `--rerun-tasks` | **EXIT=0** |
+| N2 (`BoardRepository.kt` 줄수) | **435줄** — 상한 443 유지(부채 157) |
+
+★ 판별식을 처음 `backend/` 에서 돌렸을 때 「483 → 0건 실행 · EXIT=0」이 나왔다. **빈 실행이
+초록으로 보이는 자리**다 — 루트에서 다시 돌려 483건을 확인했다. 실행 건수를 함께 읽지 않으면
+이 경로는 조용히 통과한다.
+
+### 뮤테이션 짝 — 전부 「정확히 그 자리만 red」
+
+| 지운 것 | red |
+|---|---|
+| `BoardCardPlacement.unmappedStates` → `emptyList()` | 3건 (서비스 1 · DTO 2). 「빈 배열」 판정 2건은 초록 유지 |
+| `ColumnStateResponse.resolve` 가 카탈로그 무시 | 4건 (DTO 3 · 컨트롤러 배선 1) |
+| `toStateKey` 보드 매핑 검증 제거 | **1건** — plan 예고와 일치 |
+| `stateKeys.size >= 2` 검사 제거 | **1건** |
+| X1 사전 검사 제거 | **1건** |
+| **R13** 판정을 `toColumn.category` 로 되돌림 | **1건** — 「컬럼이 DONE 이어도 대상 상태가 아니면 안 뜬다」 결정판만 |
+
+### 구현이 드러낸 것 — plan 이 틀렸던 3가지
+
+1. **wave 배치.** Kotlin 모듈은 컴파일 단위가 하나라 「파일 무교집합 ⇒ 병렬」이 성립하지 않는다.
+   도메인 타입을 바꾸면 소비자가 즉시 깨진다(wave 1 에서 7파일 43곳).
+2. **`files` 메타.** `init_codegen.sql` 이 Task 1 에 없었다. jOOQ 코드젠은 마이그레이션이 아니라
+   그 파일을 읽는다(부채 54).
+3. **★훅이 린트를 안 돈다.** wave 1 이 `detekt`·`ktlint` 를 red 로 남긴 채 3커밋이 지나갔다.
+   Task 4 에서 `--rerun-tasks` 로 처음 돌려 5건 적발(`moveCard` ThrowsCount · KDoc 짝 어긋남 ·
+   LongParameterList · MaxLineLength · multiline expression). **매 task 끝에 직접 돌려야 한다.**
+
 ## GSTACK REVIEW REPORT
 
 | Runs | Status | Findings |
