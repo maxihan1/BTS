@@ -346,7 +346,7 @@ function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
  * - nav 최상단에는 "모든 프로젝트" 링크(→ `/projects`, `/projects` 목록 진입점)를 항상 렌더한다
  *   (G2, FR-PJ PR-5 Task 7). "모든 프로젝트"는 nav aria-label "프로젝트"의 substring이 아니므로
  *   `getByRole('link', { name })` exact 매칭과 충돌하지 않는다.
- * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}/board`).
+ * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}` 요약).
  * - 펼침 시 직접 링크 3(보드·백로그·타임라인) + `리포트` 중첩그룹(4) + `프로젝트 설정` 중첩그룹(12,
  *   "일반"이 최상단 — FE-4). 모든 서브링크는 실재 라우트만 사용한다(요약은 라우트 부재로 미포함, S3).
  * - **자동 펼침의 근거는 URL이 담은 프로젝트 키다** — 경로 파라미터(`/projects/$projectKey/*`)

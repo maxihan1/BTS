@@ -51,8 +51,15 @@ export const upcomingCountsSchema = z.object({
 /** 마감 예정·지연 카드 타입 */
 export type UpcomingCounts = z.infer<typeof upcomingCountsSchema>
 
-/** 상태 카테고리 — 백엔드 StatusCategory enum 3값과 1:1 */
-export const statusCategorySchema = z.enum(['TODO', 'IN_PROGRESS', 'DONE'])
+/**
+ * 상태 카테고리 — 백엔드 `StatusCategory` 는 현재 `TODO`/`IN_PROGRESS`/`DONE` 3값이다.
+ *
+ * **`z.enum` 으로 좁히지 않는다.** 이 필드를 읽는 화면 코드가 아직 없는데(분포 막대는
+ * `statusKey`·`statusName`·`count` 만 쓴다), enum 으로 좁히면 백엔드가 값을 하나 늘리는
+ * 순간 **아무도 안 쓰는 필드 때문에 요약 화면 전체가 파싱 에러**가 된다.
+ * 계약을 기록하되 확장에는 견디게 둔다.
+ */
+export const statusCategorySchema = z.string()
 
 /** 상태 카테고리 타입 */
 export type StatusCategory = z.infer<typeof statusCategorySchema>

@@ -7,12 +7,16 @@ import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { makeWhoami } from '@/mocks/auth-fixtures'
 import type { ProjectActivity, ProjectSummary } from '@/api/project-summary'
-import { ProjectSummaryPage } from '@/routes/projects.$projectKey'
+import { ProjectSummaryPage, ProjectSummaryRouteAdapter } from '@/routes/projects.$projectKey'
 import { projectSummaryLabels as labels } from '@/i18n/project-summary-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router Link (라우터 없이 페이지만 검증한다)
 // ─────────────────────────────────────────────────────────────────────────────
+
+const { mockParams } = vi.hoisted(() => ({
+  mockParams: { current: {} as Record<string, string | undefined> },
+}))
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -30,7 +34,7 @@ vi.mock('@tanstack/react-router', () => ({
     )
     return <a href={href}>{children}</a>
   },
-  useParams: () => ({ projectKey: 'ATLAS' }),
+  useParams: () => mockParams.current,
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,6 +127,7 @@ function useHandlers(options: {
 
 beforeEach(() => {
   useAuthStore.setState({ accessToken: 'token', user: makeWhoami() })
+  mockParams.current = { projectKey }
 })
 
 afterEach(() => {
@@ -288,5 +293,27 @@ describe('ProjectSummaryPage — 빈 상태', () => {
 
     const feed = await screen.findByLabelText(labels.activity.title)
     expect(await within(feed).findByText(labels.activity.empty)).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Router adapter — 라우트가 실제로 살아나는 유일한 경로
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectSummaryRouteAdapter', () => {
+  function renderAdapter() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    return render(
+      <QueryClientProvider client={client}>
+        <ProjectSummaryRouteAdapter />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('URL params 의 projectKey 를 페이지로 넘긴다', async () => {
+    useHandlers({})
+    renderAdapter()
+
+    expect(await screen.findByText('Atlas 프로젝트')).toBeInTheDocument()
   })
 })

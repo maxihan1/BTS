@@ -74,12 +74,12 @@ describe('projectSummarySchema — 백엔드 DTO 계약', () => {
     expect(parsed.teamWorkload[0]?.assigneeId).toBeUndefined()
   })
 
-  it('category 가 백엔드 enum 3값 밖이면 거부한다', () => {
-    const bogus = {
+  it('백엔드가 StatusCategory 를 늘려도 파싱이 죽지 않는다 — 화면이 안 쓰는 필드가 전체를 막지 않는다', () => {
+    const widened = {
       ...summaryFixture,
-      statusOverview: [{ statusKey: 'X', statusName: 'X', category: 'ARCHIVED', count: 1 }],
+      statusOverview: [{ statusKey: 'X', statusName: 'X', category: 'BLOCKED', count: 1 }],
     }
-    expect(() => projectSummarySchema.parse(bogus)).toThrow()
+    expect(projectSummarySchema.parse(widened).statusOverview[0]?.category).toBe('BLOCKED')
   })
 
   it('typesOfWork 의 typeName 은 non-null 이라 누락을 거부한다', () => {
