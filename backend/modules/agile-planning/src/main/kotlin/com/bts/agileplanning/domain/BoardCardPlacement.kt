@@ -36,13 +36,13 @@ object BoardCardPlacement {
      * 백로그 이슈 정렬 선례(rank ASC NULLS LAST → key ASC)와 동일한 rank 규칙을 따른다.
      * 보드는 여기에 priority 보조 tiebreaker 를 추가로 유지해, rank 미부여 시 기존 정렬을 무회귀한다.
      */
-    /** category 진행도 — 클수록 진행된 것이다. [resolveCategory] 가 최댓값을 고른다. */
-    private val CATEGORY_RANK = mapOf("TODO" to 0, "IN_PROGRESS" to 1, "DONE" to 2)
-
     private val CARD_COMPARATOR: Comparator<BoardIssueView> =
         compareBy<BoardIssueView, String?>(nullsLast()) { it.rank }
             .thenBy { it.priority }
             .thenBy { it.key }
+
+    /** category 진행도 — 클수록 진행된 것이다. [resolveCategory] 가 최댓값을 고른다. */
+    private val CATEGORY_RANK = mapOf("TODO" to 0, "IN_PROGRESS" to 1, "DONE" to 2)
 
     /**
      * 워크플로우 상태 목록을 보드 컬럼으로 시드한다.
@@ -68,24 +68,6 @@ object BoardCardPlacement {
             }
 
     /**
-     * 이슈 목록을 컬럼에 배치한 결과를 반환한다.
-     *
-     * 이슈의 [BoardIssueView.currentStateKey] 가 [columns] 중 어느 [BoardColumn.stateKey] 와도
-     * 일치하지 않으면 해당 이슈는 결과에서 제외된다 (E2 미매핑 상태 이슈 제외).
-     * 모든 컬럼은 결과에 포함되며, 이슈 없는 컬럼은 빈 [PlacedColumn.cards] 를 갖는다.
-     *
-     * 컬럼 내 카드 정렬 기준.
-     * 1. [BoardIssueView.rank] ASC, NULLS LAST (LexoRank 문자열 사전 순, 미부여 카드는 뒤로).
-     * 2. [BoardIssueView.priority] ASC (1 = 최상위 우선순위, rank 동값·미부여 시 보조 기준).
-     * 3. [BoardIssueView.key] ASC (rank·priority 도 동값인 이슈의 안정 보조 기준).
-     *
-     * 미매핑 이슈 수([PlacedBoardResult.unplacedCount])는 응답에 포함되어 클라이언트가 E2 상황을 인지할 수 있다.
-     *
-     * @param columns 보드 컬럼 목록. 순서는 그대로 유지된다.
-     * @param issues 배치할 이슈 목록. BoardIssueLookupPort.listVisibleIssuesByProject 반환 값.
-     * @return [PlacedBoardResult]. columns 는 입력 [columns] 와 동일 순서. unplacedCount 는 미매핑 이슈 수.
-     */
-    /**
      * 컬럼이 담은 상태들의 category 를 하나로 접는다 — `DONE` > `IN_PROGRESS` > `TODO` 최댓값 (R5).
      *
      * ★ **결과는 표시 전용이다.** 어떤 로직 분기도 이 값을 읽지 않는다 —
@@ -97,9 +79,50 @@ object BoardCardPlacement {
      * @param categories 컬럼이 담은 상태들의 category 목록. 순서는 무관하다.
      * @return 가장 진행된 category 하나.
      */
-    fun resolveCategory(categories: List<String>): String =
-        categories.maxByOrNull { CATEGORY_RANK[it] ?: 0 } ?: "TODO"
+    fun resolveCategory(categories: List<String>): String = categories.maxByOrNull { CATEGORY_RANK[it] ?: 0 } ?: "TODO"
 
+    /**
+     * 어느 컬럼에도 매핑되지 않은 워크플로우 상태를 고른다 (R8 · J2).
+     *
+     * 지라의 **Unmapped statuses** 패널과 같은 목록이다 — 컬럼으로 끌어다 놓을 후보이고,
+     * 그 상태의 이슈가 보드에서 빠진 이유이기도 하다. [placeCards] 의 `unplacedCount`(E2)가
+     * 「몇 건이 빠졌나」만 세는 데 반해 이 목록은 **왜 빠졌나**를 알려준다.
+     *
+     * 기준 목록은 `listStates(projectKey, null)` 이어야 한다 — 컬럼 시드가 쓰는 것과 **같은 호출**이다
+     * (G3). 이슈 타입별로 가르면 시드에는 있는데 미매핑 목록에는 없는(또는 그 반대) 상태가 생겨
+     * 두 목록이 서로를 배신한다.
+     *
+     * @param columns 보드 컬럼 목록.
+     * @param states 워크플로우 상태 목록. `listStates(projectKey, null)` 반환 값.
+     * @return 매핑되지 않은 상태. **[states] 의 순서를 보존한다**(카탈로그 = 워크플로우 표시 순서).
+     */
+    fun unmappedStates(
+        columns: List<BoardColumn>,
+        states: List<WorkflowStateView>,
+    ): List<WorkflowStateView> {
+        val mapped = columns.flatMapTo(mutableSetOf()) { it.stateKeys }
+        return states.filterNot { it.key in mapped }
+    }
+
+    /**
+     * 이슈 목록을 컬럼에 배치한 결과를 반환한다.
+     *
+     * 이슈의 [BoardIssueView.currentStateKey] 가 [columns] 중 어느 [BoardColumn.stateKeys] 에도
+     * 없으면 해당 이슈는 결과에서 제외된다 (E2 미매핑 상태 이슈 제외).
+     * 모든 컬럼은 결과에 포함되며, 이슈 없는 컬럼은 빈 [PlacedColumn.cards] 를 갖는다.
+     *
+     * 컬럼 내 카드 정렬 기준.
+     * 1. [BoardIssueView.rank] ASC, NULLS LAST (LexoRank 문자열 사전 순, 미부여 카드는 뒤로).
+     * 2. [BoardIssueView.priority] ASC (1 = 최상위 우선순위, rank 동값·미부여 시 보조 기준).
+     * 3. [BoardIssueView.key] ASC (rank·priority 도 동값인 이슈의 안정 보조 기준).
+     *
+     * 미매핑 이슈 수([PlacedBoardResult.unplacedCount])는 응답에 포함되어 클라이언트가 E2 상황을 인지할 수 있다.
+     * **어느 상태가** 빠졌는지는 [unmappedStates] 가 따로 답한다(R8).
+     *
+     * @param columns 보드 컬럼 목록. 순서는 그대로 유지된다.
+     * @param issues 배치할 이슈 목록. BoardIssueLookupPort.listVisibleIssuesByProject 반환 값.
+     * @return [PlacedBoardResult]. columns 는 입력 [columns] 와 동일 순서. unplacedCount 는 미매핑 이슈 수.
+     */
     fun placeCards(
         columns: List<BoardColumn>,
         issues: List<BoardIssueView>,

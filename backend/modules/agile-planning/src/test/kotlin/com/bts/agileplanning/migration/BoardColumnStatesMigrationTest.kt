@@ -145,6 +145,7 @@ class BoardColumnStatesMigrationTest {
             return id
         }
 
+        @Suppress("LongParameterList") // board_columns 컬럼과 1:1 — VO 로 묶으면 어느 칸을 심었는지 흐려진다
         private fun seedColumn(
             c: Connection,
             boardId: UUID,
@@ -261,14 +262,16 @@ class BoardColumnStatesMigrationTest {
     @Test
     @Order(4)
     fun `한 보드에서 같은 상태를 두 컬럼에 매핑하면 거부된다`() {
-        val (boardId, takenKey) = conn().use { c ->
-            c.prepareStatement("SELECT board_id, state_key FROM board_column_states LIMIT 1").use { ps ->
-                ps.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject("board_id", UUID::class.java) to rs.getString("state_key")
+        val (boardId, takenKey) =
+            conn().use { c ->
+                val sql = "SELECT board_id, state_key FROM board_column_states LIMIT 1"
+                c.prepareStatement(sql).use { ps ->
+                    ps.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject("board_id", UUID::class.java) to rs.getString("state_key")
+                    }
                 }
             }
-        }
         // 같은 보드에 새 컬럼을 만들고 이미 쓰이는 상태를 매핑한다.
         val newColumnId =
             conn().use { c ->
@@ -377,7 +380,8 @@ class BoardColumnStatesMigrationTest {
         // board_id 는 UNIQUE(board_id, state_key) 의 leftmost prefix 가 덮으므로 따로 두지 않는다.
         val indexes =
             conn().use { c ->
-                c.prepareStatement("SELECT indexdef FROM pg_indexes WHERE tablename = 'board_column_states'").use { ps ->
+                val sql = "SELECT indexdef FROM pg_indexes WHERE tablename = 'board_column_states'"
+                c.prepareStatement(sql).use { ps ->
                     ps.executeQuery().use { rs ->
                         generateSequence { if (rs.next()) rs.getString("indexdef") else null }.toList()
                     }
@@ -438,9 +442,10 @@ class BoardColumnStatesMigrationTest {
         //   그것을 백필하는 것이 **올바른 동작**이다. 그 증가를 비멱등으로 세면 V508 이 옳은데도
         //   red 가 난다(실측으로 한 번 겪었다). 멱등은 「같은 입력에 같은 결과」이고,
         //   그 입력이 고정되는 시점은 1차 재실행 **뒤**다.
-        val sql = requireNotNull(javaClass.getResourceAsStream(V508_RESOURCE)) {
-            "V508 SQL 리소스를 찾을 수 없다: $V508_RESOURCE"
-        }.bufferedReader().readText()
+        val sql =
+            requireNotNull(javaClass.getResourceAsStream(V508_RESOURCE)) {
+                "V508 SQL 리소스를 찾을 수 없다: $V508_RESOURCE"
+            }.bufferedReader().readText()
 
         runRaw(sql)
         val afterFirst = scalarLong("SELECT count(*) FROM board_column_states")

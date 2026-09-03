@@ -11,6 +11,7 @@ import com.bts.agileplanning.web.dto.BoardMetaResponse
 import com.bts.agileplanning.web.dto.BoardResponse
 import com.bts.agileplanning.web.dto.BoardSummaryResponse
 import com.bts.agileplanning.web.dto.ColumnMetaResponse
+import com.bts.agileplanning.web.dto.ColumnStateResponse
 import com.bts.agileplanning.web.dto.CreateBoardRequest
 import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
@@ -112,8 +113,11 @@ class BoardController(
         // 구분해 프로젝트 존재를 떠볼 수 있다(probe). 미지정은 KANBAN 이다.
         val boardType = BoardType.from(request.boardType)
         val board = service.createBoard(request.projectKey, request.name, boardType)
+        // 컬럼 상태의 이름·카테고리(R11)는 워크플로우 카탈로그에만 있다. `listStates` 는
+        // MANDATORY 라 컨트롤러가 직접 못 부르므로 서비스의 읽기 메서드를 거친다.
+        val states = service.listWorkflowStates(board.projectKey)
         val location = URI.create("/api/v1/boards/${board.id}")
-        return ResponseEntity.created(location).body(DataResponse(BoardResponse.from(board)))
+        return ResponseEntity.created(location).body(DataResponse(BoardResponse.from(board, states)))
     }
 
     /**
@@ -341,13 +345,14 @@ class BoardController(
     ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
         log.info("BoardController.updateColumnWipLimit id={} columnId={} wipLimit={}", id, columnId, request.wipLimit)
 
-        loadBoardWithCreate(id)
+        val (_, board) = loadBoardWithCreate(id)
         val wipLimit = request.wipLimit
         if (wipLimit != null && wipLimit < 1) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "wipLimit 는 1 이상이어야 합니다.")
         }
         val updatedColumn = service.updateColumnWipLimit(id, columnId, wipLimit)
-        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn)))
+        val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
+        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn, catalog)))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

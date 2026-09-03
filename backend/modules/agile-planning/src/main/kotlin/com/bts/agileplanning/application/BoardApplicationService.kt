@@ -23,6 +23,7 @@ import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
+import com.bts.shared.workflow.WorkflowStateView
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -44,6 +45,10 @@ import java.util.UUID
  * @property activeSprint 스크럼 보드의 활성 스프린트. **칸반 보드는 항상 `null`** 이고, 스크럼이라도
  *   시작된 스프린트가 없으면 `null` 이다. 클라이언트는 `null` 이면 「스프린트를 시작하세요」 빈 상태를
  *   그린다(FR-BD-04 D6, PR ③).
+ * @property stateCatalog 이 보드 프로젝트의 워크플로우 상태 전량(`listStates(projectKey, null)`).
+ *   컬럼이 담은 상태의 `name`·`category` 는 도메인([BoardColumn])에 없고 여기에만 있다 —
+ *   `board_column_states` 는 키와 순서만 저장하기 때문이다(BC 격리). 기본값 빈 목록은
+ *   기존 테스트 조립을 깨지 않기 위한 것이고, 실제 조회 경로는 항상 채운다.
  */
 data class BoardPlacementResult(
     val columns: List<PlacedColumn>,
@@ -51,7 +56,17 @@ data class BoardPlacementResult(
     val unplacedCount: Int,
     val quickFilters: List<QuickFilter> = emptyList(),
     val activeSprint: Sprint? = null,
-)
+    val stateCatalog: List<WorkflowStateView> = emptyList(),
+) {
+    /**
+     * 어느 컬럼에도 매핑되지 않은 상태 (R8 · J2). [stateCatalog] 순서를 보존한다.
+     *
+     * 저장하지 않고 [columns] 와 [stateCatalog] 에서 매번 도출한다 — 필드로 들고 있으면
+     * 둘 중 하나만 바뀐 조립본이 생겨 「목록은 비었는데 컬럼에는 없는 상태」가 조용히 만들어진다.
+     */
+    val unmappedStates: List<WorkflowStateView>
+        get() = BoardCardPlacement.unmappedStates(columns.map { it.column }, stateCatalog)
+}
 
 /**
  * 보드 CRUD 및 카드 이동 위임 애플리케이션 서비스.
@@ -280,8 +295,43 @@ class BoardApplicationService(
             unplacedCount = placed.unplacedCount,
             quickFilters = quickFilters,
             activeSprint = activeSprint,
+            stateCatalog = stateCatalogOf(board.projectKey),
         )
     }
+
+    /**
+     * 이 프로젝트의 워크플로우 상태 전량을 읽는다 — 컬럼 상태의 이름·카테고리 출처(R11)이자
+     * 미매핑 목록의 기준(R8)이다.
+     *
+     * `listStates(projectKey, null)` 로 고정한다. `createBoard` 의 컬럼 시드가 쓰는 것과 **같은 호출**
+     * 이어야 한다(G3) — 이슈 타입으로 가르면 시드된 컬럼과 미매핑 목록이 서로 다른 모집단을 보게 된다.
+     *
+     * ### 규격 밖 프로젝트 키를 막는 자리
+     *
+     * [healColumnsIfEmpty] 와 같은 이유로 [ProjectKey.REGEX] 를 **먼저** 확인한다. `boards.project_key`
+     * 는 이 정규식보다 넓어, 규격 밖 키로 만들어진 보드를 조회할 때 [ProjectKey.of] 가 던지면
+     * **읽기만 하던 요청이 500 으로 죽는다.** 그때는 빈 카탈로그를 준다 — 상태 이름이 키로 보이지만
+     * 보드는 그려진다.
+     */
+    private fun stateCatalogOf(projectKey: String): List<WorkflowStateView> =
+        if (ProjectKey.REGEX.matches(projectKey)) {
+            workflowStateCatalog.listStates(ProjectKey.of(projectKey), null)
+        } else {
+            emptyList()
+        }
+
+    /**
+     * 컨트롤러가 응답 DTO 를 조립할 때 쓰는 워크플로우 상태 목록(R11).
+     *
+     * `WorkflowStateCatalog.listStates` 는 `@Transactional(MANDATORY)` 라 **컨트롤러가 직접 부를 수
+     * 없다** — 트랜잭션이 없으면 런타임에 거부된다. 그래서 이 얇은 읽기 메서드가 트랜잭션을 연다.
+     * 보드 생성·컬럼 메타 변경 응답에만 쓰이므로 조회 1회가 더 드는 경로는 그 두 쓰기 요청뿐이고,
+     * 보드 조회(hot path)는 [BoardPlacementResult.stateCatalog] 로 같은 트랜잭션 안에서 해결한다.
+     *
+     * @param projectKey 보드가 속한 프로젝트 키. 규격 밖이면 빈 목록.
+     */
+    @Transactional(readOnly = true)
+    fun listWorkflowStates(projectKey: String): List<WorkflowStateView> = stateCatalogOf(projectKey)
 
     /**
      * 보드에 그릴 이슈를 포트에서 가져온다 (FR-BD-04 PR ④).
@@ -410,22 +460,36 @@ class BoardApplicationService(
             board.columns.find { it.id == toColumnId }
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$toColumnId")
 
+        // Task 5 가 이 도출을 `toStateKey` 직접 수용으로 바꾼다(R6·R7). 지금은 무회귀 유지 —
+        // 컬럼의 첫 상태가 곧 오늘의 유일한 상태다.
+        val toStateKey = requireMappedState(targetColumn)
+
         return issueTransitionPort.transition(
             BoardTransitionCommand(
                 actorUserId = actorUserId,
                 issueKey = issueKey,
-                // Task 5 가 이 줄을 toStateKey 수용으로 바꾼다(R6·R7). 지금은 무회귀 유지 —
-                // 컬럼의 첫 상태가 곧 오늘의 유일한 상태다.
-                toStateKey = targetColumn.legacyStateKey
-                    ?: throw ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "AGILE_COLUMN_HAS_NO_STATE: 상태가 매핑되지 않은 컬럼으로는 이동할 수 없습니다.",
-                    ),
+                toStateKey = toStateKey,
                 expectedVersion = expectedVersion,
                 resolutionId = resolutionId,
             ),
         )
     }
+
+    /**
+     * 컬럼이 담은 「첫 상태」를 돌려주고, 상태 0개 컬럼이면 400 으로 거부한다.
+     *
+     * 상태 0개 컬럼은 V508 이후 표현 가능한 상태다(E1·N4) — 매핑을 옮기는 중간 창이거나
+     * Task 6 의 `POST /columns` 로 갓 만들어진 컬럼이다. 어느 쪽이든 「어느 상태로 가라」가 없으므로
+     * 서버가 전환을 지어낼 수 없다.
+     *
+     * [moveCard] 본문에서 뺀 이유는 그 함수의 throw 가 셋이 되기 때문이다(detekt `ThrowsCount`).
+     */
+    private fun requireMappedState(column: BoardColumn): String =
+        column.legacyStateKey
+            ?: throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "AGILE_COLUMN_HAS_NO_STATE: 상태가 매핑되지 않은 컬럼으로는 이동할 수 없습니다.",
+            )
 
     /**
      * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.

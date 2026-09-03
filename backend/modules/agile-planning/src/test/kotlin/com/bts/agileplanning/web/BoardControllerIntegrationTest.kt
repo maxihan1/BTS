@@ -17,6 +17,7 @@ import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.workflow.WorkflowStateView
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -251,6 +252,12 @@ class BoardControllerIntegrationTest {
     fun `POST boards 정상 입력이면 201 + DataResponse 봉투에 컬럼 포함`() {
         val board = sampleBoard()
         every { boardApplicationService.createBoard("BTS", "BTS 개발 보드", BoardType.KANBAN) } returns board
+        // 상태의 이름·카테고리는 워크플로우 카탈로그에서만 온다(R11). 컨트롤러가 이 조회를
+        // 빠뜨리면 응답의 `name` 이 키로 떨어지므로, stub 을 걸어 배선을 실측한다.
+        every { boardApplicationService.listWorkflowStates("BTS") } returns
+            listOf(
+                WorkflowStateView(key = "open", name = "열림", isDone = false, category = "TODO", displayOrder = 0),
+            )
 
         val body = mapOf("projectKey" to "BTS", "name" to "BTS 개발 보드")
 
@@ -263,7 +270,13 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
             .andExpect(jsonPath("$.data.projectKey").value("BTS"))
             .andExpect(jsonPath("$.data.columns.length()").value(3))
-            .andExpect(jsonPath("$.data.columns[0].stateKey").value("open"))
+            // 1:1 시절의 `stateKey` 자리다 — 이제 배열이고 상태별 표시 정보를 함께 낸다(R11).
+            .andExpect(jsonPath("$.data.columns[0].states.length()").value(1))
+            .andExpect(jsonPath("$.data.columns[0].states[0].key").value("open"))
+            .andExpect(jsonPath("$.data.columns[0].states[0].name").value("열림"))
+            .andExpect(jsonPath("$.data.columns[0].states[0].category").value("TODO"))
+            // 카탈로그에 없는 키는 드롭하지 않고 키를 이름으로 쓴다 — 매핑이 남았다는 사실이 보여야 한다.
+            .andExpect(jsonPath("$.data.columns[1].states[0].name").value("in-progress"))
 
         // 권한 게이트가 CREATE + Project(요청 projectKey) 로 판정됐는지 검증 (sec P2)
         assertThat(permissionGate.calls)
