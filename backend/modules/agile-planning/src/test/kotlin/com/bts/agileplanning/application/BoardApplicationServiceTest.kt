@@ -38,6 +38,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.context.annotation.Import
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
@@ -128,6 +129,8 @@ class BoardApplicationServiceTest {
         repo: BoardRepository = boardRepository,
         quickFilterRepo: BoardQuickFilterRepository = mockk(relaxed = true),
         sprintRepo: SprintRepository = sprintRepository,
+        // 기본은 실물 — X1 제약과 CASCADE 가 판정에 들어와야 한다. 경합 변환(B1) 판정만 mock 을 넣는다.
+        columnStateRepo: BoardColumnStateRepository = columnStateRepository,
     ): BoardApplicationService =
         BoardApplicationService(
             workflowStateCatalog = catalog,
@@ -136,8 +139,7 @@ class BoardApplicationServiceTest {
             boardRepository = repo,
             boardQuickFilterRepository = quickFilterRepo,
             sprintRepository = sprintRepo,
-            // 컬럼 관리(R9·R10)는 실물 DB 를 봐야 X1 제약과 CASCADE 가 판정에 들어온다.
-            columnStates = columnStateRepository,
+            columnStates = columnStateRepo,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
@@ -894,7 +896,7 @@ class BoardApplicationServiceTest {
         val board = service.createBoard("COLE", "삭제 테스트 보드")
         val victim = board.columns.first { it.legacyStateKey == "closed" }
 
-        service.deleteColumn(board.id, victim.id)
+        service.deleteColumn(board.id, victim.id, UUID.randomUUID())
 
         val result = service.getBoard(board.id, UUID.randomUUID())
         assertThat(result.columns.map { it.column.id }).doesNotContain(victim.id)
@@ -909,16 +911,99 @@ class BoardApplicationServiceTest {
         val service = serviceWith(catalog = catalog)
         val board = service.createBoard("COLF", "전량 삭제 보드")
 
-        board.columns.forEach { service.deleteColumn(board.id, it.id) }
+        board.columns.forEach { service.deleteColumn(board.id, it.id, UUID.randomUUID()) }
 
         assertThat(requireNotNull(boardRepository.findById(board.id)).columns).isEmpty()
+    }
+
+    // ── 게이트 2 BLOCKER 2건 (B1 경합 변환 · B2 ceo-3) ──────────────────────────
+
+    @Test
+    fun `사전 검사를 통과한 뒤 UNIQUE 에 걸리면 409 로 바뀐다`() {
+        // B1 — 사전 검사(requireAssignableStates)는 사용자에게 「어느 컬럼이 쓰는지」를 주려고 있는 것이지
+        //      제약을 대신하는 것이 아니다. 미매핑 상태 하나를 두 관리자가 서로 다른 컬럼에 동시에
+        //      끌어다 놓으면 둘 다 「주인 없음」을 보고 통과하고, INSERT 하나가 UNIQUE 에 걸린다.
+        //      그때 500 이 나가면 안 된다 — 같은 BC 의 BoardQuickFilterService 가 이미 그렇게 한다.
+        val board = boardWithMergedColumn("RACEA")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        val racing = mockk<BoardColumnStateRepository>()
+        every { racing.findStateKeysByBoard(any()) } returns emptyMap()
+        every { racing.replaceStates(any(), any(), any()) } throws
+            DuplicateKeyException("duplicate key value violates unique constraint")
+
+        assertThatThrownBy {
+            serviceWith(columnStateRepo = racing)
+                .replaceColumnStates(board.id, target.id, listOf("blocked"))
+        }
+            .isInstanceOf(StateAlreadyMappedException::class.java)
+    }
+
+    @Test
+    fun `jOOQ 가 직접 던지는 제약 위반도 409 로 바뀐다`() {
+        // B1 — Spring PersistenceExceptionTranslator 가 개입하지 않으면 jOOQ 가 자기 예외를 던진다.
+        //      선례 BoardQuickFilterService.tryPersist 가 두 경로를 모두 잡는다.
+        val board = boardWithMergedColumn("RACEB")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        val racing = mockk<BoardColumnStateRepository>()
+        every { racing.findStateKeysByBoard(any()) } returns emptyMap()
+        every { racing.replaceStates(any(), any(), any()) } throws
+            org.jooq.exception.IntegrityConstraintViolationException("uq violation")
+
+        assertThatThrownBy {
+            serviceWith(columnStateRepo = racing)
+                .replaceColumnStates(board.id, target.id, listOf("blocked"))
+        }
+            .isInstanceOf(StateAlreadyMappedException::class.java)
+    }
+
+    @Test
+    fun `컬럼 삭제가 사라지는 카드 수를 돌려준다`() {
+        // B2 · R10(ceo-3) — 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.**
+        //      몇 장인지 모르면 되돌릴 판단을 할 수 없다. 되돌리려면 컬럼을 다시 만들고
+        //      상태를 다시 매핑해야 한다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("BLAST"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BLAST", "폭발 반경 보드")
+        val victim = board.columns.first { it.legacyStateKey == "in-progress" }
+
+        // in-progress 2장 · open 1장. 지우는 컬럼의 카드만 세어야 한다.
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(any(), any(), any()) } returns
+                    BoardIssuePage(
+                        issues =
+                            listOf(
+                                issueView("BLAST-1", "in-progress"),
+                                issueView("BLAST-2", "in-progress"),
+                                issueView("BLAST-3", "open"),
+                            ),
+                        truncated = false,
+                    )
+            }
+
+        val removed = serviceWith(catalog = catalog, lookup = lookup).deleteColumn(board.id, victim.id, UUID.randomUUID())
+
+        assertThat(removed).isEqualTo(2)
+    }
+
+    @Test
+    fun `상태 0개 컬럼을 지우면 사라지는 카드가 0 이다`() {
+        // 매핑을 옮기는 중간 창의 컬럼이다(E1). 담긴 카드가 없으니 폭발 반경도 0 이다.
+        val board = boardWithMergedColumn("BLASTZ")
+        val empty = serviceWith().createColumn(board.id, name = "빈 컬럼", stateKeys = emptyList())
+
+        val removed = serviceWith().deleteColumn(board.id, empty.id, UUID.randomUUID())
+
+        assertThat(removed).isZero()
     }
 
     @Test
     fun `없는 컬럼을 지우면 404`() {
         val board = boardWithMergedColumn("COLG")
 
-        assertThatThrownBy { serviceWith().deleteColumn(board.id, UUID.randomUUID()) }
+        assertThatThrownBy { serviceWith().deleteColumn(board.id, UUID.randomUUID(), UUID.randomUUID()) }
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")
             .isEqualTo(404)

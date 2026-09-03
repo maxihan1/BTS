@@ -914,16 +914,18 @@ class BoardControllerIntegrationTest {
     }
 
     @Test
-    fun `DELETE columns 는 204 를 내고 본문이 없다`() {
-        // R10 — 담긴 상태는 미매핑으로 돌아가고 이슈는 그대로다. 돌려줄 표현이 없으므로 204 다.
+    fun `DELETE columns 는 200 과 사라지는 카드 수를 낸다`() {
+        // R10(ceo-3) — 이슈는 안 건드리지만 사용자가 보기엔 카드가 증발한다. 몇 장인지 모르면
+        //              되돌릴 판단을 할 수 없다. 그래서 204 가 아니라 200 + removedCardCount 다.
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.deleteColumn(board.id, board.columns[0].id) } returns Unit
+        every { boardApplicationService.deleteColumn(board.id, board.columns[0].id, actorId) } returns 3
 
         mockMvc.perform(delete("/api/v1/boards/${board.id}/columns/${board.columns[0].id}"))
-            .andExpect(status().isNoContent)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.removedCardCount").value(3))
 
-        verify(exactly = 1) { boardApplicationService.deleteColumn(board.id, board.columns[0].id) }
+        verify(exactly = 1) { boardApplicationService.deleteColumn(board.id, board.columns[0].id, actorId) }
     }
 
     // ── MOVE-5. POST move body 손상 → 400 (catch-all 변질 차단) ────────────────
