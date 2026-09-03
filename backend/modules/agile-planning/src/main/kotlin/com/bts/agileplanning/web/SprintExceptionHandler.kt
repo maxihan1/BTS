@@ -3,6 +3,7 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.SprintAlreadyActiveException
+import com.bts.agileplanning.application.SprintBoardNotScrumException
 import com.bts.agileplanning.application.SprintDateLockedException
 import com.bts.agileplanning.application.SprintDatesRequiredException
 import com.bts.agileplanning.application.SprintNotFoundException
@@ -259,6 +260,40 @@ class SprintExceptionHandler {
         )
     }
 
+    // ── 409 SPRINT_BOARD_NOT_SCRUM (칸반 보드 소속 스프린트 시작, 부채 165) ──
+
+    /**
+     * [SprintBoardNotScrumException] — 소속 보드가 SCRUM 이 아닌 스프린트의 start — 409.
+     *
+     * ★ 전용 핸들러가 없으면 이 예외도 [handleResponseStatus] 가 잡아 errorCode 를
+     * `AGILE_CONFLICT` 로 덮어쓴다 — 형제 [SprintAlreadyActiveException] 이 겪은 자리이고
+     * 그 예외의 KDoc 이 ★ 로 못박아 둔 지점이다. 클라이언트가 「전환이 불가하다」와
+     * 「보드 종류가 다르다」를 가려야 UI 가 「스크럼 보드로 옮긴 뒤 시작」을 안내할 수 있다.
+     *
+     * ### 왜 404 가 아니라 409 인가
+     * 스프린트는 **존재한다.** 404 는 거짓말이고 memory
+     * `permission-assert-before-existence-makes-403-lie` 와 같은 양식의 오도다 —
+     * 「없다」고 답하면 클라이언트는 목록을 다시 받아 사라진 행을 찾다 끝난다.
+     * [com.bts.agileplanning.application.SprintApplicationService] 의 `resolveTargetBoard` 가
+     * 던지는 404 는 「**요청이 지정한** 보드를 못 찾음」이라 의미가 다르다. 여기서 못 찾는 것은
+     * 요청이 아니라 스프린트가 이미 매달려 있는 보드다.
+     *
+     * 보안 — 보드 식별자·종류를 detail 에 노출하지 않는다. 사유는 로그에만 기록한다.
+     *
+     * @param ex 소속 보드 종류 불일치 예외.
+     */
+    @ExceptionHandler(SprintBoardNotScrumException::class)
+    fun handleSprintBoardNotScrum(ex: SprintBoardNotScrumException): ProblemDetail {
+        log.info("AGILE_409 sprint_board_not_scrum reason='{}'", ex.message)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-sprint-board-not-scrum",
+            title = "Sprint Board Not Scrum",
+            errorCode = AGILE_SPRINT_BOARD_NOT_SCRUM,
+            detail = "스크럼 보드에 속한 스프린트만 시작할 수 있습니다.",
+        )
+    }
+
     // ── 422 SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01) ─────────────
 
     /**
@@ -377,6 +412,7 @@ class SprintExceptionHandler {
         const val AGILE_SPRINT_NOT_FOUND = "AGILE_SPRINT_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
         const val AGILE_SPRINT_ALREADY_ACTIVE = "AGILE_SPRINT_ALREADY_ACTIVE"
+        const val AGILE_SPRINT_BOARD_NOT_SCRUM = "AGILE_SPRINT_BOARD_NOT_SCRUM"
         const val AGILE_SPRINT_DATE_LOCKED = "AGILE_SPRINT_DATE_LOCKED"
         const val AGILE_SPRINT_DATES_REQUIRED = "AGILE_SPRINT_DATES_REQUIRED"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
