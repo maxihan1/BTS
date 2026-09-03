@@ -45,14 +45,31 @@ function DialogOverlay({
   )
 }
 
+/**
+ * 가산 prop 2종. 기본값이 기존 동작과 동일하므로 기존 소비자 전체가 무영향이다
+ * (`getByRole('dialog'` 에 의존하는 e2e 215건 포함).
+ */
+interface DialogContentExtraProps {
+  /** 오버레이에 덧붙일 클래스 — 배경 blur 등. 미지정 시 기존 dim 만 적용된다 */
+  overlayClassName?: string
+  /**
+   * 우상단 X 닫기 버튼 렌더 여부. 기본 true(기존 동작).
+   * 닫을 수 없는 다이얼로그는 `disabled` X 대신 이 값을 false 로 두어 아예 렌더하지 않는다 —
+   * disabled X 는 "닫을 수 있는데 지금은 안 된다"는 거짓 신호다.
+   */
+  showCloseButton?: boolean
+}
+
 function DialogContent({
   className,
+  overlayClassName,
+  showCloseButton = true,
   children,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & DialogContentExtraProps) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
@@ -62,13 +79,15 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close
-          data-slot="dialog-close-button"
-          className="absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 hover:bg-(--bg-neutral-hover) focus-visible:outline-2 focus-visible:outline-(--border-focus) focus-visible:outline-offset-2 disabled:pointer-events-none"
-        >
-          <XIcon />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close-button"
+            className="absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 hover:bg-(--bg-neutral-hover) focus-visible:outline-2 focus-visible:outline-(--border-focus) focus-visible:outline-offset-2 disabled:pointer-events-none"
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </DialogPortal>
   )
