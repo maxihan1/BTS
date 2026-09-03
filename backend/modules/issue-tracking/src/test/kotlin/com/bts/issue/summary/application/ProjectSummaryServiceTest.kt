@@ -114,9 +114,16 @@ class ProjectSummaryServiceTest : DescribeSpec({
         every { securityDirectory.accessibleLevels(actor.value, projectKey) } returns unrestrictedAccess
     }
 
-    fun stubTypesAndStates() {
+    /**
+     * 타입 카탈로그와 워크플로우 상태를 stub 한다.
+     *
+     * [IssueTypeKey] 는 value class 라 MockK 의 `any()` 가 `ValueClassAwareCaller` 에서 깨진다.
+     * 타입 키를 하나씩 명시해야 한다([com.bts.issue.cfd.application.CfdServiceTest] 도 같은 방식).
+     */
+    fun stubTypesAndStates(stateList: List<WorkflowStateView> = states) {
         every { issueTypeRepository.findAll() } returns listOf(taskType, bugType)
-        every { workflowStateLookup.listStates(ProjectKey.of(projectKey), any()) } returns states
+        every { workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns stateList
+        every { workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("bug")) } returns stateList
     }
 
     fun stubIssues(rows: List<SummaryIssueRow>) {
@@ -248,10 +255,10 @@ class ProjectSummaryServiceTest : DescribeSpec({
 
         it("DONE 안에서의 상태 이동은 완료로 세지 않는다") {
             stubBrowseAndAccess()
-            every { issueTypeRepository.findAll() } returns listOf(taskType, bugType)
             // done · done2 둘 다 DONE 카테고리 — 사이의 이동은 새 완료가 아니다.
-            every { workflowStateLookup.listStates(ProjectKey.of(projectKey), any()) } returns
-                states + WorkflowStateView(key = "done2", name = "보류 완료", isDone = true, category = "DONE")
+            stubTypesAndStates(
+                states + WorkflowStateView(key = "done2", name = "보류 완료", isDone = true, category = "DONE"),
+            )
             val issueId = UUID.randomUUID()
             stubIssues(listOf(summaryRow(issueId = issueId, stateKey = "done2")))
             stubChanges(
@@ -401,7 +408,7 @@ class ProjectSummaryServiceTest : DescribeSpec({
         it("워크플로우 스킴이 없으면 TODO 로 폴백하고 예외를 전파하지 않는다") {
             stubBrowseAndAccess()
             every { issueTypeRepository.findAll() } returns listOf(taskType, bugType)
-            every { workflowStateLookup.listStates(ProjectKey.of(projectKey), any()) } throws
+            every { workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("task")) } throws
                 WorkflowSchemeNoDefaultException("no default scheme")
             stubIssues(listOf(summaryRow(UUID.randomUUID(), stateKey = "open")))
             stubChanges(emptyList())
