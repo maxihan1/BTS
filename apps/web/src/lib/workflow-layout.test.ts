@@ -93,7 +93,9 @@ describe('autoLayout', () => {
     // ★ 자동 배치는 표시일 뿐 편집이 아니다. 좌표가 초안에 되돌아 실리면
     //   화면을 열기만 해도 「저장 안 됨」이 뜨는 회귀가 된다.
     expect(draftStates[0]?.layoutX).toBeNull()
-    expect(draftStates.every((state) => state.layoutX === null && state.layoutY === null)).toBe(true)
+    expect(draftStates.every((state) => state.layoutX === null && state.layoutY === null)).toBe(
+      true,
+    )
 
     // 입력 배열 자체도 건드리지 않는다 — 제자리 정렬은 초안의 상태 순서를 뒤집는다
     expect(draftStates.map((state) => state.key)).toEqual(['done', 'todo', 'doing'])
