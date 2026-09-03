@@ -797,7 +797,7 @@ export const issueCreateStrings = {
   summaryRequired: '제목을 입력하세요.',
   // 백엔드 CreateIssueRequest.summary 가 @Size(max = 200) 다. 프론트가 500 을 허용하던
   // 선재 결함(201~500자가 프론트 통과 후 400)을 FR-UX-09 F2 에서 200 으로 정렬했다.
-  summaryTooLong: '제목은 200자 이하로 입력하세요.',
+  summaryTooLong: '제목은 255자 이하로 입력하세요.',
 
   /** 백엔드 에러 코드 → 사용자 메시지 */
   errorProjectNotFound: '존재하지 않는 프로젝트입니다.',

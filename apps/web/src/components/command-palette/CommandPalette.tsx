@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components -- runCommand 헬퍼를 컴포넌트와 같은 파일에 배치(응집도 우선, NodeMappingSection.tsx 선례) */
 import { useEffect, useState, type JSX, type KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { Command as CommandPrimitive } from 'cmdk'
 import {
   CommandGroup,
@@ -186,7 +187,10 @@ function buildResultAnnouncement(search: PaletteSearchResult, visibleCount: numb
  */
 export function runCommand(parsed: ParsedCommand, navigate: ReturnType<typeof useNavigate>): void {
   if (parsed.kind === 'goto') {
-    void navigate({ to: '/issues/$key', params: { key: parsed.issueKey } })
+    // ★스토어를 직접 부른다 — `runCommand` 는 export 된 순수 함수라 파라미터를 늘리면
+    //   호출부와 테스트가 전부 따라 바뀐다. zustand 는 컴포넌트 밖 `getState()` 호출을
+    //   지원하므로 시그니처를 건드리지 않고 모달을 연다(J1).
+    useIssueDetailModalStore.getState().open(parsed.issueKey)
   } else if (parsed.kind === 'search') {
     // ★자유 텍스트를 그대로 q 로 보내면 백엔드 AqlParser 가 SEARCH_SYNTAX_ERROR 를 낸다
     // (선재 결함, ADR D-3). text ~ "…" 로 감싸야 유효한 AQL 이다.
@@ -448,6 +452,7 @@ function PaletteSearchSection({
  * @param onOpenChange 열림 상태 변경 콜백
  */
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX.Element {
+  const openIssueDetailModal = useIssueDetailModalStore((s) => s.open)
   const navigate = useNavigate()
   const [inputValue, setInputValue] = useState('')
 
@@ -499,9 +504,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
     handleClose()
   }
 
-  /** 결과 한 줄 선택 — 이슈 상세로 이동 후 닫는다 */
+  /** 결과 한 줄 선택 — 이슈 상세 모달을 열고 팔레트를 닫는다 (J1) */
   function handleIssueSelect(issueKey: string): void {
-    void navigate({ to: '/issues/$key', params: { key: issueKey } })
+    openIssueDetailModal(issueKey)
     handleClose()
   }
 

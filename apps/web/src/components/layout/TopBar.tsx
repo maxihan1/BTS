@@ -1,6 +1,7 @@
 // 상단바 컴포넌트 — 사이드바 토글·로고·검색·만들기·알림·도움말·설정·계정 드롭다운 (FR-UX-06 PR11 Task 6, 트리 미배선)
 import { useState, type JSX, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -77,6 +78,7 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   // FR-12 — 생성 모달을 제자리에서 연다 (URL 불변)
   const [createOpen, setCreateOpen] = useState(false)
   const navigate = useNavigate()
+  const openIssueDetailModal = useIssueDetailModalStore((s) => s.open)
   // 🛑 `useSidebarCollapsed().toggle` 직접 사용 금지 — 모바일에서 무동작 버튼이 된다.
   //    폭에 따른 대상 선택·표시 방향은 `use-sidebar-drawer` 훅 두 개가 소유한다.
   const toggle = useSidebarToggle()
@@ -101,7 +103,8 @@ export function TopBar({ onHelpClick }: TopBarProps) {
     const intent = resolveGlobalSearchInput(query)
     if (intent.kind === 'empty') return
     if (intent.kind === 'issue-key') {
-      void navigate({ to: '/issues/$key', params: { key: intent.issueKey } })
+      // 이슈 키 직접 입력은 상세 모달로 — 보던 화면을 잃지 않는다(J1).
+      openIssueDetailModal(intent.issueKey)
       return
     }
     void navigate({ to: '/search', search: { q: intent.query } })

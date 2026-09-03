@@ -97,15 +97,17 @@ describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(4)
   })
 
-  it('(b) 기본 활성 탭은 이력이다 — IssueChangelog만 초기 렌더되고 작업로그/연결/댓글은 미마운트', () => {
+  it('(b) 기본 활성 탭은 댓글이다 — CommentSection만 초기 렌더되고 이력/작업로그/연결은 미마운트', () => {
+    // ★2026-09-04 Jira 패리티로 「이력」에서 번복했다 — "By default the activity feed shows
+    //   comments"(J3). 근거와 경위는 IssueActivityTabs KDoc 에 남아 있다.
     renderTabs()
 
-    expect(screen.getByTestId('mock-changelog')).toBeInTheDocument()
+    expect(screen.getByTestId('mock-comment')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-changelog')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mock-worklog')).not.toBeInTheDocument()
+    // ★FR-CO-01 리뷰 G6 — 탭이 늘 때 이 열거를 함께 늘리지 않으면 테스트가 초록인 채로
+    // 새 섹션의 초기 마운트 여부를 보지 못한다. 목록이 곧 눈가리개다.
     expect(screen.queryByTestId('mock-links')).not.toBeInTheDocument()
-    // ★FR-CO-01 리뷰 G6 — 댓글 탭 추가 시 이 열거를 늘리지 않으면 테스트가 초록인 채로
-    // 댓글 섹션의 초기 마운트 여부를 보지 못한다. 목록이 곧 눈가리개다.
-    expect(screen.queryByTestId('mock-comment')).not.toBeInTheDocument()
   })
 
   it('(b-2) 댓글 탭 클릭 시 CommentSection이 보이고 canUpdate가 전달된다', async () => {

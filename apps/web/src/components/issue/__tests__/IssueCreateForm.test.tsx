@@ -30,6 +30,7 @@ vi.mock('@/hooks/use-custom-fields', () => ({
 }))
 
 import { useCustomFields } from '@/hooks/use-custom-fields'
+import { SUMMARY_MAX_LENGTH } from '@/components/issue/create/issue-create-schema'
 
 const EMPTY_CUSTOM_FIELDS_RESULT = {
   data: [] as CustomField[],
@@ -167,19 +168,20 @@ describe('IssueCreateForm — 이슈 유형과 본문 (FR-4/FR-5)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// B-2 (선재 결함 정렬) — 제목 상한이 백엔드와 같은 200
+// B-2 (선재 결함 정렬) — 제목 상한이 백엔드와 같다
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('IssueCreateForm — 제목 상한 200 (B-2 선재 결함 정렬)', () => {
-  it('201자 제목은 폼 검증에서 거부된다 — 백엔드 @Size(max=200) 와 정렬', async () => {
+describe('IssueCreateForm — 제목 상한 (B-2 선재 결함 정렬)', () => {
+  it('상한 +1 자 제목은 폼 검증에서 거부된다 — 백엔드 IssueTextConstraints.SUMMARY_MAX 와 정렬', async () => {
     const user = userEvent.setup()
     renderForm()
 
     await waitForProjectSelect()
     const summary = screen.getByLabelText(issueCreateStrings.summaryLabel)
-    // paste 로 넣는다 — 201자를 한 글자씩 타이핑하면 테스트가 매우 느려진다
+    // ★숫자를 적지 않는다 — 상한이 200 → 255 로 움직이며 이 테스트가 무관하게 깨졌다.
+    // paste 로 넣는다 — 한 글자씩 타이핑하면 테스트가 매우 느려진다.
     await user.click(summary)
-    await user.paste('a'.repeat(201))
+    await user.paste('a'.repeat(SUMMARY_MAX_LENGTH + 1))
     await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
 
     expect(await screen.findByText(issueCreateStrings.summaryTooLong)).toBeInTheDocument()

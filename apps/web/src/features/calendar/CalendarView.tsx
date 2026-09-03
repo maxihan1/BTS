@@ -1,7 +1,7 @@
 // 개인 캘린더 월/주 뷰 컨테이너 — 툴바 + 뷰 스위칭 + 데이터 페칭 (FR-CA-01 Task 7)
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useCalendar } from '@/api/useCalendar'
 import { Button } from '@/components/ui/button'
@@ -166,7 +166,7 @@ export interface CalendarViewProps {
  * 상태("일정 없음", 그리드는 계속 렌더)를 각각 분기한다.
  */
 export function CalendarView({ initialDate }: CalendarViewProps = {}): JSX.Element {
-  const navigate = useNavigate()
+  const openIssueDetailModal = useIssueDetailModalStore((s) => s.open)
   const [view, setView] = useState<CalendarViewMode>(getInitialView)
   const [focusDate, setFocusDate] = useState<Date>(() => initialDate ?? new Date())
   const today = useMemo(() => initialDate ?? new Date(), [initialDate])
@@ -198,7 +198,8 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}): JSX.Eleme
     setFocusDate(initialDate ?? new Date())
   }
   function handleNavigateIssue(key: string): void {
-    void navigate({ to: '/issues/$key', params: { key } })
+    // 캘린더 칩 클릭은 상세 모달로 — 달력 맥락을 잃지 않는다(J1).
+    openIssueDetailModal(key)
   }
   function handleShowMore(date: Date): void {
     setView('week')

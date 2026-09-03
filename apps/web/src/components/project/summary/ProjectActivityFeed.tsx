@@ -1,6 +1,7 @@
 // 프로젝트 활동 피드 위젯 — 자체 useQuery 로 요약과 실패를 분리한다 (Jira 패리티 J4)
 import type { JSX } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import { ApiError } from '@/api/client'
 import { useProjectActivity } from '@/hooks/use-project-summary'
 import { formatActivityTime, summarizeEntry } from './summary-view-model'
@@ -30,6 +31,7 @@ export function ProjectActivityFeed({
   projectKey,
   limit = 10,
 }: ProjectActivityFeedProps): JSX.Element {
+  const openIssueDetail = useOpenIssueDetail()
   const { data, isPending, isError, error } = useProjectActivity(projectKey, limit)
 
   const body = ((): JSX.Element => {
@@ -62,6 +64,7 @@ export function ProjectActivityFeed({
                 to="/issues/$key"
                 params={{ key: entry.issueKey }}
                 className="font-medium hover:underline"
+                onClick={(e) => { openIssueDetail(entry.issueKey, e) }}
               >
                 {entry.issueKey}
               </Link>

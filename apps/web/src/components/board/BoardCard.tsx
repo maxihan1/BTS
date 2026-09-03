@@ -8,6 +8,7 @@ import type { BoardCard as BoardCardType } from '@/api/boards'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 담당자 표시 3-상태 discriminated union
@@ -105,6 +106,7 @@ function AssigneeSlot({ assignee }: { assignee: CardAssigneeDisplay }): React.Re
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BoardCardInner({ card, columnId, assignee, typeIconName, typeName }: BoardCardProps) {
+  const openIssueDetail = useOpenIssueDetail()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.issueKey,
     data: { fromColumnId: columnId },
@@ -138,6 +140,9 @@ function BoardCardInner({ card, columnId, assignee, typeIconName, typeName }: Bo
           if (isDragging) {
             e.preventDefault()
           }
+          // 평범한 좌클릭이면 모달로 가로챈다(J1). 드래그 중이면 위에서 이미
+          // preventDefault 됐고 훅이 `defaultPrevented` 를 보고 물러난다.
+          openIssueDetail(card.issueKey, e)
         }}
       >
         {card.summary}

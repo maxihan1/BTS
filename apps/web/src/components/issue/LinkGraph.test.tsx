@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { JSX, ReactNode } from 'react'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mermaid mock — jsdom 환경에서 실제 SVG 렌더 불가
@@ -111,6 +112,8 @@ function createWrapper() {
 describe('LinkGraph', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // 모달 스토어는 모듈 전역이라 테스트 간에 새지 않도록 매번 닫는다.
+    useIssueDetailModalStore.setState({ openKey: null })
   })
 
   async function renderLinkGraph(issueKey = 'ATLAS-1') {
@@ -331,13 +334,12 @@ describe('LinkGraph', () => {
     if (node1 === null) throw new Error('node_1 not found')
     fireEvent.click(node1)
 
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/issues/$key',
-      params: { key: 'ATLAS-2' },
-    })
+    // ★J1 — 노드 클릭은 navigate 가 아니라 상세 모달을 연다. 이 그래프 자체가 상세 안에
+    //   있으므로, 같은 모달이 다른 이슈로 갈아탄다(스토어가 키 하나를 소유).
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-2')
 
     // center 노드(ATLAS-1, node_0) 클릭 → no-op (role=link 없음)
-    mockNavigate.mockClear()
+    useIssueDetailModalStore.setState({ openKey: null })
     const node0 = document.querySelector('g.node:not([role="link"])')
     if (node0 === null) throw new Error('node_0 not found')
     fireEvent.click(node0)
@@ -470,12 +472,9 @@ describe('LinkGraph', () => {
     expect(node1.getAttribute('role')).toBe('link')
     expect(node1.getAttribute('aria-label')).toBe('이슈 ATLAS-2 노드')
 
-    // Enter keydown → navigate
+    // Enter keydown → 상세 모달 (J1)
     fireEvent.keyDown(node1, { key: 'Enter' })
 
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/issues/$key',
-      params: { key: 'ATLAS-2' },
-    })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-2')
   })
 })

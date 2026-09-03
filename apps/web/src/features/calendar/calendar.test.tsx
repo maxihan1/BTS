@@ -8,6 +8,7 @@ import { server } from '@/test/server'
 import type { CalendarResponse } from '@/api/calendar'
 import { calendarLabels } from '@/i18n/calendar-labels'
 import { CalendarView } from './CalendarView'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TanStack Router 모킹 — 라우터 컨텍스트 없이 단위 테스트 가능 (Header.test.tsx 선례)
@@ -124,6 +125,8 @@ function findCellByDate(container: HTMLElement, dateStr: string): HTMLElement {
 }
 
 beforeEach(() => {
+  // 모달 스토어는 모듈 전역이라 테스트 간에 새지 않도록 매번 닫는다.
+  useIssueDetailModalStore.setState({ openKey: null })
   mockNavigate.mockReset()
   stubCalendar()
 })
@@ -239,7 +242,7 @@ describe('CalendarView — S4 이슈 클릭 네비게이션', () => {
     const cell = findCellByDate(container, '2026-07-03')
     await user.click(within(cell).getByText(/ATLAS-12/))
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-12' } })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-12')
   })
 
   it('S4b: 마감일 칩 클릭 시 /issues/{key}로 이동한다', async () => {
@@ -250,7 +253,7 @@ describe('CalendarView — S4 이슈 클릭 네비게이션', () => {
     const cell = findCellByDate(container, '2026-07-25')
     await user.click(within(cell).getByText('ATLAS-30'))
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-30' } })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-30')
   })
 
   it('S4c: 이슈 막대에서 Enter 키 입력 시 /issues/{key}로 이동한다', async () => {
@@ -263,7 +266,7 @@ describe('CalendarView — S4 이슈 클릭 네비게이션', () => {
     bar.focus()
     await user.keyboard('{Enter}')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-12' } })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-12')
   })
 })
 
