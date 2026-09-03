@@ -12,6 +12,7 @@ import {
   pendingIssueStore,
   seedWorkflowKeys,
   versionOf,
+  publishedLayouts,
 } from './workflow-draft-fixtures'
 
 /** 백엔드와 같은 중첩 봉투로 실패를 돌려준다. */
@@ -38,17 +39,6 @@ function keyOf(params: Record<string, unknown>): string {
   return typeof params['key'] === 'string' ? params['key'] : ''
 }
 
-/**
- * 발행본의 다이어그램 좌표 — 실서버 `workflow_statuses.layout_x`/`layout_y` 에 대응한다.
- *
- * ★ **이 저장소가 없으면 좌표 왕복이 목에서 끊긴다.** 프론트 `WorkflowView`(발행본)에는 좌표
- * 필드가 없어서, 발행할 때 좌표가 증발하고 초안을 새로 뜰 때 되읽을 것이 없다. 그러면
- * 「발행 뒤 재진입해도 그 자리」 시나리오가 **목 위에서 성립하지 않는다** — 목이 서버보다
- * 부족하면 프로덕션이 아니라 E2E 가 그 자리에서 못 선다.
- *
- * 키는 워크플로우 키, 값은 상태 키 → 좌표.
- */
-const publishedLayouts = new Map<string, Map<string, { x: number | null; y: number | null }>>()
 
 /** 발행된 정의를 초안 형태로 옮긴다. `GET /draft` 가 초안 없을 때 주는 값이다. */
 function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
@@ -382,9 +372,16 @@ export const workflowDraftHandlers = [
 
     // 목의 「기본값」은 지금 발행본에 표식을 더한 것이다. 실제 YAML 을 흉내 내는 것이
     // 목적이 아니라 **복원이 초안까지만 간다**는 계약을 재는 것이 목적이다.
+    //
+    // ★ 단 **좌표는 반드시 비운다.** 서버 `resetToDefault` 는 `yaml.toDraftDefinition()` 으로
+    // 정의를 새로 만드는데 YAML 에 좌표가 없어 `DraftStateDto` 기본값 `null` 이 실린다 —
+    // 즉 복원은 배치를 초기화한다. `toDraftDefinition(published)` 를 그대로 쓰면 목이
+    // `publishedLayouts` 의 좌표를 살려 줘 **서버보다 관대해진다**(게이트 2 리뷰 #5).
+    const base = toDraftDefinition(published)
     const restored: DraftDefinition = {
-      ...toDraftDefinition(published),
+      ...base,
       name: `${published.name} (기본값)`,
+      states: base.states.map((s) => ({ ...s, layoutX: null, layoutY: null })),
     }
     const existing = draftStore.get(key)
     draftStore.set(key, { definition: restored, baseVersion: existing?.baseVersion ?? body.baseVersion })

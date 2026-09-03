@@ -1,6 +1,15 @@
 // 다이어그램 캔버스 — 초안을 그래프로 그리고 조작을 콜백으로 올린다 (FR-WF-07 D8)
 import * as React from 'react'
-import { ReactFlow, ReactFlowProvider, Background, Controls, Handle, Position } from '@xyflow/react'
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  Controls,
+  Handle,
+  Position,
+  useNodesState,
+  useEdgesState,
+} from '@xyflow/react'
 import type { Connection, Edge, Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Button } from '@/components/ui/button'
@@ -133,6 +142,31 @@ function CanvasInner({
     [states, transitions, locked],
   )
 
+  /**
+   * xyflow 가 자기 상태를 갖게 한다.
+   *
+   * ★ **`nodes`/`edges` 를 controlled 로 주면서 `onNodesChange` 를 안 주면 변경이 전부 버려진다.**
+   * 스토어는 `hasDefaultNodes` 가 거짓이면 `onNodesChange?.(changes)` 를 부르고 끝내는데 그것이
+   * undefined 이기 때문이다. 결과가 둘이었다 — ① 노드를 끌면 커서만 가고 노드는 제자리에 있다가
+   * `onNodeDragStop` 뒤 리렌더에서 점프한다 ② `select` 변경도 같은 경로라 선택이 영영 안 걸려
+   * `--xy-edge-stroke-selected` 가 도달 불가 토큰이 된다.
+   *
+   * E2E 는 `mouse.up` **뒤에** 좌표를 재므로 ①을 못 잡는다 — 게이트 2 리뷰가 코드로 잡았다.
+   *
+   * 초안이 바뀌면(상태 추가·삭제·다른 탭 편집) 계산 결과를 다시 seed 한다. 드래그 중 좌표는
+   * 로컬에만 있고, 놓는 순간 `onNodeDragStop` 이 초안으로 올린다.
+   */
+  const [liveNodes, setLiveNodes, handleNodesChange] = useNodesState(nodes)
+  const [liveEdges, setLiveEdges, handleEdgesChange] = useEdgesState(edges)
+
+  React.useEffect(() => {
+    setLiveNodes(nodes)
+  }, [nodes, setLiveNodes])
+
+  React.useEffect(() => {
+    setLiveEdges(edges)
+  }, [edges, setLiveEdges])
+
   const handleConnect = React.useCallback(
     (connection: Connection) => {
       // 시작점에서 끄는 것은 전환 생성이 아니다 — 그 자리는 INITIAL 전환 편집이 맡는다.
@@ -160,8 +194,10 @@ function CanvasInner({
   return (
     <div aria-label={labels.diagram.canvasLabel} className="relative h-[32rem] w-full" style={XY_TOKEN_OVERRIDES}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={liveNodes}
+        edges={liveEdges}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={handleEdgesChange}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         nodesConnectable={!locked}

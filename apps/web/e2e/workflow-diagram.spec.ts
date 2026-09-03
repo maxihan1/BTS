@@ -50,6 +50,22 @@ test('D8-0 캔버스가 초안의 상태를 노드로 그린다 (셀렉터 전�
   // 상태 5개 + 시작 노드 1개. 시작 노드는 `[*]` 대응이라 상태가 아니다 —
   // 그것을 상태로 세면 mermaid 에서 겪은 +2 어긋남이 여기서 재발한다.
   await expect(page.locator('.react-flow__node')).toHaveCount(6)
+
+  // ★ 간선 축도 함께 고정한다. 이것이 없으면 `buildGraph` 의 간선 매핑이 통째로 깨져
+  //   간선이 0개로 렌더돼도 red 가 안 난다 — 게이트 2 리뷰가 그 공백을 지적했다.
+  //   픽스처 전환 7건이고 GLOBAL 은 0건이라(GLOBAL 은 간선을 안 만든다) 7이 맞다.
+  await expect(page.locator('.react-flow__edge')).toHaveCount(7)
+})
+
+test('D8-0b 간선을 고르면 그 전환의 편집이 열린다', async ({ page }) => {
+  await loginAsSystemAdmin(page)
+  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await openDiagramTab(page)
+
+  // 간선 클릭 → onEditTransition 배선. 이 판정이 없으면 handleEdgeClick 이 죽어도 조용하다.
+  await page.locator('.react-flow__edge').first().click()
+
+  await expect(page.getByRole('dialog', { name: '전환 수정' })).toBeVisible()
 })
 
 test('D8-1 노드를 끌어 옮기고 저장하면 재진입해도 그 자리에 있다', async ({ page }) => {
@@ -111,8 +127,11 @@ test('D8-2 핸들을 끌어 전환을 만들면 전환 탭에도 나타난다', 
   await page.mouse.move(dropBox!.x + dropBox!.width / 2, dropBox!.y + dropBox!.height / 2, { steps: 12 })
   await page.mouse.up()
 
-  // 새 다이얼로그를 만들지 않았다 — 기존 전환 폼이 출발·도착이 채워진 채 열린다.
-  const dialog = page.getByRole('dialog')
+  // ★ 이름으로 좁힌다. 이름 없이 `getByRole('dialog')` 로 잡으면 **어느 다이얼로그가 열렸는지**를
+  //   판정하지 않게 되고, 그 공백에서 문서가 「전환 수정이 열린다」로 잘못 적혔다(게이트 2 리뷰 #6).
+  //   캔버스에서 끌어 만드는 것은 생성이므로 「전환 만들기」다 — 새 이름을 만들지 않았다는 것이
+  //   즉사 계약이고, 그것은 이 이름이 main 에 이미 있다는 뜻이지 「전환 수정」이라는 뜻이 아니다.
+  const dialog = page.getByRole('dialog', { name: '전환 만들기' })
   await expect(dialog).toBeVisible()
   await dialog.getByRole('textbox', { name: '전환 이름' }).fill('다시 열기')
   await dialog.getByRole('button', { name: '저장' }).click()

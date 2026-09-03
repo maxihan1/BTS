@@ -26,6 +26,21 @@ export const publicationStore = new Map<string, number>()
 export const pendingIssueStore = new Map<string, number>()
 
 /**
+ * 발행본의 다이어그램 좌표 — 실서버 `workflow_statuses.layout_x`/`layout_y` 에 대응한다 (D8).
+ *
+ * ★ **이 저장소가 없으면 좌표 왕복이 목에서 끊긴다.** 프론트 `WorkflowView`(발행본)에는 좌표
+ * 필드가 없어서, 발행할 때 좌표가 증발하고 초안을 새로 뜰 때 되읽을 것이 없다. 목이 서버보다
+ * 부족하면 프로덕션이 아니라 **E2E 가 그 자리에서 못 선다.**
+ *
+ * ★★ 핸들러 파일이 아니라 **여기** 두는 이유는 [resetWorkflowDraftStore] 가 비울 수 있어야 하기
+ * 때문이다. 핸들러 안 모듈 비공개로 두면 테스트 간에 좌표가 새어, 앞 테스트가 발행한 배치를
+ * 뒤 테스트의 `GET /draft` 가 되읽는다 — 옆 저장소들과 출처를 같게 둔다.
+ *
+ * 키는 워크플로우 키, 값은 상태 키 → 좌표.
+ */
+export const publishedLayouts = new Map<string, Map<string, { x: number | null; y: number | null }>>()
+
+/**
  * 기본값 YAML 이 있는 워크플로우.
  *
  * 백엔드는 `origin='SEED'` 이고 classpath 에 YAML 이 있을 때만 복원을 허용한다. 목은 그 둘을
@@ -39,6 +54,7 @@ export function resetWorkflowDraftStore(): void {
   versionStore.clear()
   publicationStore.clear()
   pendingIssueStore.clear()
+  publishedLayouts.clear()
   // 이 파일의 `POST /publish/migrate` 핸들러가 `bulk-operation-handlers.ts` 의 스토어에 이관
   // 작업을 등록한다(registerStatusMigration) — `test/setup.ts` 는 그 스토어를 직접 모르므로
   // (resetBulkOperationState 는 전용 테스트 파일만 부른다) 여기서 함께 비워야 이관 작업 id 가
