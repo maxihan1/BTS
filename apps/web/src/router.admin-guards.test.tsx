@@ -54,6 +54,7 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     '/_shell/calendar',
     '/_shell/projects',
     '/_shell/projects/new',
+    '/_shell/projects/$projectKey',
     '/_shell/projects/$projectKey/backlog',
     '/_shell/projects/$projectKey/board',
     '/_shell/projects/$projectKey/timeline',
@@ -280,7 +281,7 @@ describe('라우트 가드 행렬 — 나머지 클래스', () => {
   // ★ 클래스별 개수 어서션 — 이게 없으면 idsOf 가 빈 배열을 돌려줄 때 it.each([]) 가 무음 통과한다.
   //    "발견된 라우트 59개 이상"(routesById 기준)은 이 구멍을 막지 못한다(맵/필터가 죽어도 라우트 수는 그대로).
   it.each([
-    ['PROTECTED_3', 38],
+    ['PROTECTED_3', 39],
     ['AUTH_ONLY', 5],
     ['LOGIN', 1],
   ] as const)('%s 클래스 멤버가 %i개다 (열거 붕괴 시 무음 통과 차단)', (c, n) => {

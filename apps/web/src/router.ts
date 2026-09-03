@@ -23,6 +23,7 @@ import { WorkflowNewRouteAdapter } from './routes/admin.workflows.new'
 import { WorkflowEditorRouteAdapter } from './routes/admin.workflows.$workflowKey'
 import { ProjectListRouteAdapter } from './routes/projects.index'
 import { ProjectCreateRouteAdapter } from './routes/projects.new'
+import { ProjectSummaryRouteAdapter } from './routes/projects.$projectKey'
 import { ProjectDetailsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.details'
 import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
 import { ProjectMembersSettingsRouteAdapter } from './routes/projects.$projectKey.settings.members'
@@ -375,6 +376,20 @@ const projectsNewRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/projects/new',
   component: ProjectCreateRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/**
+ * 프로젝트 요약 라우트 — /projects/$projectKey, requireAuth (Jira 패리티 J4 · 캠페인 PR ④).
+ * 프로젝트의 **기본 착지 화면**이다 — 사이드바 트리·목록 행·즐겨찾기·생성 후 이동이 모두 여기로 온다.
+ * 정적 세그먼트(`new`)를 위에 두어 `/projects/new` 가 이 동적 라우트에 먹히지 않게 한다
+ * (issues.new/issues.$key 선례와 동형).
+ */
+const projectSummaryRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey',
+  component: ProjectSummaryRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
 })
@@ -888,6 +903,7 @@ export const routeTree = rootRoute.addChildren([
     // issue-tracking BC — 프로젝트 목록·생성·일반 설정(details) (FR-PJ PR-5 Task 7)
     projectsIndexRoute,
     projectsNewRoute,
+    projectSummaryRoute,
     projectDetailsSettingsRoute,
     // project-workflow BC — 프로젝트별 스킴 할당
     projectWorkflowSchemeSettingsRoute,

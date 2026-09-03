@@ -67,8 +67,15 @@ const GROUP_DISCLOSURE_BUTTON_CLASS = `${DISCLOSURE_BUTTON_CLASS} w-full justify
 // 상수 — 서브링크 데이터 (router.ts 실측 실 라우트만, S3 죽은 링크 0)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 프로젝트 기본 뷰(보드) 라우트 경로 — 프로젝트명 링크·접힘레일 링크 공통 */
+/** 프로젝트 보드 라우트 경로 — 하위 직접 링크 「보드」 전용 */
 const PROJECT_BOARD_PATH = '/projects/$projectKey/board'
+
+/**
+ * 프로젝트 기본 착지 라우트 경로 — 프로젝트명 링크·접힘레일 링크 공통 (Jira 패리티 J4).
+ * 하위 「보드」 링크와 **다른 상수**다. 하나로 묶으면 요약으로 옮기는 순간 보드 링크가 함께
+ * 끌려가 하위 목록에서 보드로 갈 방법이 사라진다.
+ */
+const PROJECT_SUMMARY_PATH = '/projects/$projectKey'
 
 /** 프로젝트 목록 라우트 경로 — "모든 프로젝트" 진입 링크(G2) */
 const ALL_PROJECTS_PATH = '/projects'
@@ -209,7 +216,7 @@ function ProjectTreeCollapsedRow({
   return (
     <li>
       <Link
-        to={PROJECT_BOARD_PATH}
+        to={PROJECT_SUMMARY_PATH}
         params={{ projectKey: project.key }}
         aria-current={isActive ? 'page' : undefined}
         className={`${projectLinkClassName(isActive)} justify-center`}
@@ -289,7 +296,7 @@ function ProjectTreeRowHeader({ project, isActive, expanded, onToggle }: Project
         )}
       </Button>
       <Link
-        to={PROJECT_BOARD_PATH}
+        to={PROJECT_SUMMARY_PATH}
         params={{ projectKey: project.key }}
         aria-current={isActive ? 'page' : undefined}
         className={projectLinkClassName(isActive)}

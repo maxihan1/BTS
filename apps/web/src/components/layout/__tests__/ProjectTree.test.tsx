@@ -72,6 +72,12 @@ function buildRouter(initialPath: string) {
     path: '/projects/$projectKey/board',
     component: ProjectTree,
   })
+  /** 프로젝트 기본 착지 — 프로젝트명 링크가 가리키는 요약 라우트 (Jira 패리티 J4) */
+  const projectSummaryRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/projects/$projectKey',
+    component: ProjectTree,
+  })
   const outsideRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/dashboards',
@@ -91,7 +97,12 @@ function buildRouter(initialPath: string) {
     component: ProjectTree,
   })
   return createRouter({
-    routeTree: rootRoute.addChildren([projectBoardRoute, outsideRoute, issuesRoute]),
+    routeTree: rootRoute.addChildren([
+      projectBoardRoute,
+      projectSummaryRoute,
+      outsideRoute,
+      issuesRoute,
+    ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
     defaultPreload: false,
   })
@@ -160,13 +171,13 @@ describe('ProjectTree', () => {
     expect(link).toHaveAttribute('href', '/projects')
   })
 
-  it('각 행은 디스클로저 버튼(aria-expanded)과 프로젝트명 링크(→ board)로 구성된다 (FR3)', async () => {
+  it('각 행은 디스클로저 버튼(aria-expanded)과 프로젝트명 링크(→ 요약)로 구성된다 (FR3 · J4)', async () => {
     renderProjectTree()
 
     const nav = await findProjectNav()
     for (const fixture of sortedFixtures) {
       const link = await within(nav).findByRole('link', { name: fixture.name })
-      expect(link).toHaveAttribute('href', `/projects/${fixture.key}/board`)
+      expect(link).toHaveAttribute('href', `/projects/${fixture.key}`)
       const button = within(nav).getByRole('button', { name: `${fixture.name} 하위 메뉴` })
       expect(button).toHaveAttribute('aria-expanded', 'false')
     }
@@ -271,7 +282,7 @@ describe('ProjectTree', () => {
     const nav = await findProjectNav()
     for (const fixture of sortedFixtures) {
       const link = await within(nav).findByRole('link', { name: fixture.name })
-      expect(link).toHaveAttribute('href', `/projects/${fixture.key}/board`)
+      expect(link).toHaveAttribute('href', `/projects/${fixture.key}`)
       expect(link.querySelector('span.sr-only')?.textContent).toBe(fixture.name)
     }
     expect(within(nav).queryAllByRole('button', { name: /하위 메뉴/ })).toHaveLength(0)

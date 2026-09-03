@@ -40,13 +40,13 @@ function baseProps() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('resolveProjectPath', () => {
-  it('활성 프로젝트(archived:false) → /projects/{key}/board', () => {
-    expect(resolveProjectPath(ACTIVE_PROJECT)).toBe('/projects/ATLAS/board')
+  it('활성 프로젝트(archived:false) → /projects/{key} 요약 (J4)', () => {
+    expect(resolveProjectPath(ACTIVE_PROJECT)).toBe('/projects/ATLAS')
   })
 
-  it('archived 필드 부재(undefined) → 활성으로 간주해 /board', () => {
+  it('archived 필드 부재(undefined) → 활성으로 간주해 요약으로 (J4)', () => {
     const noArchivedField: Project = { id: ACTIVE_PROJECT.id, key: 'NOFIELD', name: '이름' }
-    expect(resolveProjectPath(noArchivedField)).toBe('/projects/NOFIELD/board')
+    expect(resolveProjectPath(noArchivedField)).toBe('/projects/NOFIELD')
   })
 
   it('아카이브 프로젝트(archived:true) → /projects/{key}/settings/details (G3)', () => {

@@ -52,7 +52,7 @@ const TYPE_META: Partial<Record<FavoriteTargetType, FavoriteTypeMeta>> = {
   [FAVORITE_TARGET_TYPES.PROJECT]: {
     Icon: FolderKanban,
     groupLabel: favoriteLabels.groupProject,
-    toPath: (id) => `/projects/${id}/board`,
+    toPath: (id) => `/projects/${id}`,
   },
 }
 
