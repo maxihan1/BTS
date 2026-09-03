@@ -205,7 +205,7 @@ AQL(BTS의 이슈 검색 쿼리 언어) 쿼리 입력창의 syntax highlight용 
 
 `apps/web/src/components/ui/`. shadcn/ui는 소스를 프로젝트에 직접 복사하는 "vendoring" 방식이다 — 이 디렉토리의 파일을 직접 수정할 수 있다. 단, 수정 범위를 최소화하고(스타일 조정은 Tailwind 유틸리티 prop으로 먼저 시도), 수정 이유를 파일 상단 주석에 남긴다. shadcn 래퍼가 없는 컴포넌트(RadioGroup, Switch, Checkbox, Tabs 등)는 `radix-ui` 패키지를 직접 import해 BTS 토큰을 입힌 것이다 — 표의 "shadcn 매핑" 열에 "radix-ui 직접"으로 표기.
 
-### 전수 목록 (24개, 테스트 파일 14개 제외)
+### 전수 목록 (25개 — `components/ui/` 24개 + 워크플로우 편집기 캔버스 1개, 테스트 파일 14개 제외)
 
 `.test.tsx`가 붙은 파일(`avatar.test.tsx`, `badge.test.tsx`, `checkbox.test.tsx`, `command.test.tsx`, `dialog.test.tsx`, `empty-state.test.tsx`, `popover.test.tsx`, `radio-group.test.tsx`, `separator.test.tsx`, `sonner.test.tsx`, `switch.test.tsx`, `table.test.tsx`, `tabs.test.tsx`, `tooltip.test.tsx`)는 프리미티브 자체가 아니므로 제외했다.
 
@@ -235,6 +235,7 @@ AQL(BTS의 이슈 검색 쿼리 언어) 쿼리 입력창의 syntax highlight용 
 | Tabs | `tabs.tsx` | radix-ui 직접(같은 라우트 내 패널 전환 전용 — 라우트 이동은 nav+Link 사용) | `muted`/`muted-foreground`(리스트 기본) | `bg-neutral-hover`(hover), `bg-selected`/`text-selected`(active), `border-focus` | |
 | Textarea | `textarea.tsx` | shadcn Textarea | `input`, `muted-foreground`, `destructive` | `border-focus`, `text-disabled` | |
 | Tooltip | `tooltip.tsx` | shadcn Tooltip(radix-ui) | `popover`/`popover-foreground` | — | |
+| WorkflowEditorCanvas | `components/workflow/editor/WorkflowEditorCanvas.tsx` | 없음(@xyflow/react 래퍼) | `muted`, `border`, `primary` | — | ★ `components/ui/` 밖에 있는 유일한 행이다 — 워크플로우 편집기 전용이라 vendoring 대상이 아니다. 노드 카테고리 색은 `WorkflowDiagram.tsx` 의 `classDef category_*` 3행(`:161~163`)을 **그대로** 쓴다 — TODO `--muted`/`--border` · IN_PROGRESS `--primary` 15%/`--primary` · DONE `--success` 15%/`--success`(`--success` 는 §C). 같은 워크플로우를 읽기 전용 `/workflows/{key}` 와 편집기 `/admin/workflows/{key}` 에서 번갈아 볼 때 같은 색이어야 한다. `@xyflow/react/dist/style.css` 가 자기 팔레트를 갖고 오므로 `--xy-*` 를 BTS 토큰으로 덮어쓴다 — **덮어쓰기 목록은 캔버스 구현(plan T8)이 이 행에 채운다** |
 
 ---
 
