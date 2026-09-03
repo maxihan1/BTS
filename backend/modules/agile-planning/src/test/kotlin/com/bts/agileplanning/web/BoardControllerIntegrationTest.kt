@@ -3,6 +3,10 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
+import com.bts.agileplanning.application.BoardCardMoveResult
+import com.bts.agileplanning.application.BoardStateNotMappedException
+import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
@@ -731,6 +735,106 @@ class BoardControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── MOVE-4b. toStateKey 수용 + 하위 호환 응답 계약 (R6 · R7 · E4) ──────────
+
+    @Test
+    fun `POST move 가 toStateKey 를 받으면 200 이고 그 상태를 담은 컬럼을 echo 한다`() {
+        // R6 — 지라는 컬럼 안의 각 상태를 드롭존으로 그린다(J3·J4). 요청이 상태를 지목한다.
+        val board = sampleBoard()
+        val merged = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(
+                boardId = board.id,
+                issueKey = "BTS-1",
+                actorUserId = actorId,
+                toColumnId = null,
+                toStateKey = "in-progress",
+                expectedVersion = 3L,
+                resolutionId = null,
+            )
+        } returns
+            BoardCardMoveResult(
+                transition = BoardTransitionResult(issueKey = "BTS-1", currentStateKey = "in-progress", version = 4L),
+                columnId = merged.id,
+                stateKey = "in-progress",
+            )
+
+        val body = mapOf("toStateKey" to "in-progress", "expectedVersion" to 3)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.currentStateKey").value("in-progress"))
+            // echo 는 **서비스가 해석한** 컬럼이다. 요청이 컬럼을 안 줬으므로 서버가 되돌려 준다.
+            .andExpect(jsonPath("$.data.columnId").value(merged.id.toString()))
+    }
+
+    @Test
+    fun `POST move 의 toStateKey 가 보드에 매핑 안 됐으면 404 AGILE_BOARD_STATE_NOT_MAPPED`() {
+        // E4 — 보드 미존재(AGILE_BOARD_NOT_FOUND)와 코드를 나눠야 UI 가 「컬럼에 상태를 추가하세요」를
+        //      띄울 수 있다. 둘 다 404 라 상태 코드만으로는 구분이 안 된다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+        } throws BoardStateNotMappedException("blocked")
+
+        val body = mapOf("toStateKey" to "blocked", "expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_STATE_NOT_MAPPED"))
+    }
+
+    @Test
+    fun `POST move 의 toColumnId 가 상태 2개 이상 컬럼이면 400 AGILE_COLUMN_STATE_AMBIGUOUS`() {
+        // R7 — 하위 호환 경로의 막다른 골목이다. 프론트가 toStateKey 로 옮겨 가야 한다는 신호.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+        } throws ColumnStateAmbiguousException(board.columns[1].id, 2)
+
+        val body = mapOf("toColumnId" to board.columns[1].id.toString(), "expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_COLUMN_STATE_AMBIGUOUS"))
+    }
+
+    @Test
+    fun `POST move 가 toColumnId 도 toStateKey 도 없으면 400`() {
+        // R7 — 「둘 중 정확히 하나」는 @NotNull 로 표현할 수 없어 서비스가 진다.
+        //      이 판정을 컨트롤러에도 두면 규칙이 두 곳이 되고, 언젠가 갈린다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+        } throws MoveTargetAmbiguousException("toColumnId 와 toStateKey 중 정확히 하나를 보내야 합니다.")
+
+        val body = mapOf("expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
     }
 
     // ── MOVE-5. POST move body 손상 → 400 (catch-all 변질 차단) ────────────────

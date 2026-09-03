@@ -12,6 +12,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
@@ -27,6 +28,7 @@ import com.bts.shared.board.IssueTransitionPort
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
+import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -78,6 +80,10 @@ class BoardApplicationServiceTest {
     /** 스크럼 보드 분기 검증용 — 활성 스프린트와 이슈 할당을 실제 DB 에 심는다(FR-BD-04 D4). */
     @Autowired
     private lateinit var sprintRepository: SprintRepository
+
+    /** 컬럼에 상태를 둘 이상 매핑해 1:N 경로를 만드는 데 쓴다(R6·R7). */
+    @Autowired
+    private lateinit var columnStateRepository: BoardColumnStateRepository
 
     /**
      * Spring 이 프록시한 [BoardApplicationService] 빈.
@@ -641,7 +647,177 @@ class BoardApplicationServiceTest {
         assertThat(cmdSlot.captured.toStateKey).isEqualTo("in-progress")
         assertThat(cmdSlot.captured.issueKey).isEqualTo("CARD-1")
         assertThat(cmdSlot.captured.expectedVersion).isEqualTo(1L)
-        assertThat(result.currentStateKey).isEqualTo("in-progress")
+        assertThat(result.transition.currentStateKey).isEqualTo("in-progress")
+    }
+
+    // ── (d-2) toStateKey 수용 + toColumnId 하위 호환 (R6 · R7 · E3 · E4) ─────────
+
+    /**
+     * 컬럼에 상태 둘을 매핑한 보드를 만든다 — 1:N 경로를 타려면 이 상태가 필요하다.
+     *
+     * `in-progress` 컬럼이 `in-progress` 와 `closed` 를 함께 담는다. `closed` 를 원래 갖고 있던
+     * 컬럼에서 먼저 떼야 X1(한 상태는 한 컬럼에만)을 어기지 않는다.
+     */
+    private fun boardWithMergedColumn(projectKey: String): Board {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of(projectKey), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard(projectKey, "1:N 이동 보드")
+
+        val closedColumn = board.columns.first { it.legacyStateKey == "closed" }
+        val inProgressColumn = board.columns.first { it.legacyStateKey == "in-progress" }
+        columnStateRepository.replaceStates(board.id, closedColumn.id, emptyList())
+        columnStateRepository.replaceStates(board.id, inProgressColumn.id, listOf("in-progress", "closed"))
+
+        return requireNotNull(boardRepository.findById(board.id))
+    }
+
+    private fun capturingTransition(cmdSlot: CapturingSlot<BoardTransitionCommand>): IssueTransitionPort {
+        val transition = mockk<IssueTransitionPort>()
+        every { transition.transition(capture(cmdSlot)) } answers
+            {
+                BoardTransitionResult(
+                    issueKey = cmdSlot.captured.issueKey,
+                    currentStateKey = cmdSlot.captured.toStateKey,
+                    version = cmdSlot.captured.expectedVersion + 1,
+                )
+            }
+        return transition
+    }
+
+    @Test
+    fun `toStateKey 로 옮기면 그 상태로 전환된다`() {
+        // R6 — 지라는 컬럼 안의 각 상태를 드롭존으로 그린다(J3·J4). 클라이언트가 상태를 고르고
+        //      서버는 그것이 이 보드에 매핑됐는지만 본다. 서버가 상태를 추론하지 않는다.
+        val board = boardWithMergedColumn("MOVEA")
+        val cmdSlot = slot<BoardTransitionCommand>()
+
+        val result =
+            serviceWith(transition = capturingTransition(cmdSlot)).moveCard(
+                boardId = board.id,
+                issueKey = "MOVEA-1",
+                actorUserId = UUID.randomUUID(),
+                toStateKey = "closed",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("closed")
+        assertThat(result.transition.currentStateKey).isEqualTo("closed")
+        // echo 되는 컬럼은 그 상태를 **담은** 컬럼이다. 병합된 in-progress 컬럼이어야 한다.
+        assertThat(result.columnId)
+            .isEqualTo(board.columns.first { it.stateKeys.contains("in-progress") }.id)
+    }
+
+    @Test
+    fun `같은 컬럼 안 다른 상태로도 옮길 수 있다`() {
+        // E3 — 1:N 이후에만 존재하는 조합이다. 컬럼은 그대로인데 상태만 바뀐다.
+        val board = boardWithMergedColumn("MOVEB")
+        val merged = board.columns.first { it.stateKeys.contains("in-progress") }
+        val cmdSlot = slot<BoardTransitionCommand>()
+
+        val result =
+            serviceWith(transition = capturingTransition(cmdSlot)).moveCard(
+                boardId = board.id,
+                issueKey = "MOVEB-1",
+                actorUserId = UUID.randomUUID(),
+                toStateKey = "closed",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(result.columnId).isEqualTo(merged.id)
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("closed")
+    }
+
+    @Test
+    fun `toStateKey 가 그 보드의 어느 컬럼에도 없으면 404`() {
+        // E4 — 워크플로우에는 있으나 이 보드가 안 담은 상태다(미매핑 · R8 이 목록으로 알려주는 그것).
+        val board = boardWithMergedColumn("MOVEC")
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEC-1",
+                actorUserId = UUID.randomUUID(),
+                toStateKey = "blocked",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(BoardStateNotMappedException::class.java)
+    }
+
+    @Test
+    fun `toColumnId 만 보내고 그 컬럼의 상태가 1개면 성공한다`() {
+        // R7 — 오늘의 프론트가 보내는 형태다. 상태가 유일하면 해석에 모호함이 없다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("MOVED"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("MOVED", "하위 호환 보드")
+        val cmdSlot = slot<BoardTransitionCommand>()
+
+        val result =
+            serviceWith(transition = capturingTransition(cmdSlot)).moveCard(
+                boardId = board.id,
+                issueKey = "MOVED-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = board.columns.first { it.legacyStateKey == "closed" }.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("closed")
+        assertThat(result.transition.currentStateKey).isEqualTo("closed")
+    }
+
+    @Test
+    fun `toColumnId 만 보내고 그 컬럼의 상태가 2개 이상이면 400`() {
+        // R7 — 서버가 둘 중 하나를 고르면 사용자가 의도하지 않은 전환이 조용히 일어난다.
+        //      「어느 상태로 가라」는 클라이언트만 안다.
+        val board = boardWithMergedColumn("MOVEE")
+        val merged = board.columns.first { it.stateKeys.size >= 2 }
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEE-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = merged.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(ColumnStateAmbiguousException::class.java)
+    }
+
+    @Test
+    fun `toStateKey 와 toColumnId 가 둘 다 없거나 둘 다 있으면 400`() {
+        // R7 — `@NotNull` 로는 「둘 중 정확히 하나」를 표현할 수 없어 서비스가 진다.
+        val board = boardWithMergedColumn("MOVEF")
+        val anyColumn = board.columns.first()
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEF-1",
+                actorUserId = UUID.randomUUID(),
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(MoveTargetAmbiguousException::class.java)
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEF-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = anyColumn.id,
+                toStateKey = "closed",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(MoveTargetAmbiguousException::class.java)
     }
 
     // ── (e) E8: 보드-이슈 프로젝트 정합 ────────────────────────────────────────────
