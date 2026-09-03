@@ -9,12 +9,14 @@ import com.bts.agileplanning.application.QuickFilterNotFoundException
 import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardTypeInvalidException
 import org.slf4j.LoggerFactory
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.WebRequest
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
@@ -64,6 +66,9 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  *   OCC 충돌 문구와 구분)
  * - [QuickFilterNotFoundException] → 404 + AGILE_QUICK_FILTER_NOT_FOUND (퀵필터 미존재를 보드 미존재와 구분)
  * - [QuickFilterEmptyQueryException] → 400 + AGILE_QUICK_FILTER_EMPTY_QUERY (빈 필터 조건을 일반 검증 실패와 구분)
+ * - [CannotAcquireLockException] → 503 + AGILE_UNAVAILABLE (advisory lock 200ms 예산 초과, 부채 166 ②).
+ *   같은 매핑이 [SprintExceptionHandler] 에도 있다 — 형제 락 `scrum-board:<projectKey>` 가 두 경로에서
+ *   도달하므로 한쪽을 지우면 그 경로가 500 을 낸다(스펙 E8). 사유 전문은 [handleLockTimeout] KDoc.
  * - [ResponseStatusException] → 명시 상태 전파(401/404/409/422 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *
@@ -335,6 +340,53 @@ class BoardExceptionHandler {
         )
     }
 
+    // ── 503 UNAVAILABLE (advisory lock 예산 초과 · 부채 166 ② · 스펙 E8) ───────
+
+    /**
+     * [CannotAcquireLockException] — advisory lock 을 200ms 예산 안에 얻지 못했다 — 503.
+     *
+     * ### 왜 보드 쪽에도 필요한가 (스펙 E8)
+     * 형제 락 `scrum-board:<projectKey>` 는 [com.bts.agileplanning.application.BoardApplicationService]
+     * `ensureScrumBoard` 가 잡는다. 그 메서드는 **보드 서비스의 public 메서드**라 스프린트 생성
+     * 경로([SprintExceptionHandler] 관할)와 보드 컨트롤러 경로 **양쪽**에서 도달할 수 있다.
+     * 한쪽에만 매핑을 걸면 다른 쪽이 500 을 낸다 — 그래서 같은 매핑이 두 advice 에 있다.
+     *
+     * 예외 타입은 추측이 아니라 `AdvisoryLockBudget.kt` KDoc 의 실측(2026-09-03)이 정본이다.
+     * PostgreSQL `55P03`(canceling statement due to lock timeout) → jOOQ `JooqExceptionTranslator`
+     * → 이 타입(cause 는 `PSQLException`).
+     *
+     * ### ★ 행 락은 이 타입을 낼 수 없다
+     * 락 획득 **직후** `lock_timeout` 을 `0`(무제한)으로 되돌리므로(N6) 뒤따르는 행 락 대기는
+     * 예산 밖이다. 이 503 은 오직 advisory lock 획득 실패에만 대응한다 — 「행 락도 503 이 되나?」의
+     * 답은 **아니오**다.
+     *
+     * ### ★ 좁게 잡는다 · 왜 도메인 예외로 안 감쌌나
+     * 상위 `PessimisticLockingFailureException` 이 아니라 이 타입만 잡는다. 형제
+     * `DeadlockLoserDataAccessException`(`40P01`) · `CannotSerializeTransactionException`(`40001`) 은
+     * 안 잡힌다(의도한 좁힘). 감싸기를 하지 않은 사유와 나중에 감쌀 때 고칠 세 곳은
+     * [SprintExceptionHandler.handleLockTimeout] KDoc 이 정본이다 — 두 곳에 나눠 적으면 갈린다.
+     *
+     * 보안 — 락 키에 `projectKey` 가, 예외 메시지에 SQL 이 들어 있다. 둘 다 detail 에 노출하지
+     * 않는다. 로그에도 SQL 대신 **어느 엔드포인트에서 났는지**만 남긴다.
+     *
+     * @param ex 락 획득 실패 예외. 메시지에 SQL·락 키가 들어 있어 응답·로그 어디에도 싣지 않는다.
+     * @param request 실패 지점을 식별하기 위한 요청 정보. `uri=…` 만 로그에 남긴다.
+     */
+    @ExceptionHandler(CannotAcquireLockException::class)
+    fun handleLockTimeout(
+        @Suppress("UnusedParameter") ex: CannotAcquireLockException,
+        request: WebRequest,
+    ): ProblemDetail {
+        log.warn("AGILE_503 advisory_lock_timeout at='{}'", request.getDescription(false))
+        return problem(
+            status = HttpStatus.SERVICE_UNAVAILABLE,
+            type = "agile-unavailable",
+            title = "Service Unavailable",
+            errorCode = AGILE_UNAVAILABLE,
+            detail = "다른 작업이 처리 중이라 잠시 후 다시 시도해 주세요.",
+        )
+    }
+
     // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ────────────────
 
     /**
@@ -441,6 +493,7 @@ class BoardExceptionHandler {
         const val AGILE_QUICK_FILTER_NOT_FOUND = "AGILE_QUICK_FILTER_NOT_FOUND"
         const val AGILE_QUICK_FILTER_EMPTY_QUERY = "AGILE_QUICK_FILTER_EMPTY_QUERY"
         const val AGILE_UNPROCESSABLE = "AGILE_UNPROCESSABLE"
+        const val AGILE_UNAVAILABLE = "AGILE_UNAVAILABLE"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }
 }

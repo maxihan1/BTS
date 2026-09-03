@@ -1083,6 +1083,151 @@ class SprintApplicationServiceTest {
         verify(exactly = 0) { repo.findActiveByBoard(any()) }
     }
 
+    // ── start 보드 종류 가드 (R8 · 부채 165) ────────────────────────
+    //
+    // #431 은 resolveTargetBoard 에 종류 술어를 넣어 **생성**만 막았다. 선재 칸반 소속 스프린트는
+    // start 200 을 받고 ACTIVE 가 되는데, BoardApplicationService.getBoard 가 SCRUM 일 때만
+    // findActiveByBoard 를 부르므로 그 스프린트는 어느 화면에도 나타나지 않는다.
+
+    @Test
+    fun `start 칸반 보드 소속 스프린트는 SprintBoardNotScrumException 을 던진다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+            }
+        val boardRepo = boardRepoOf(activeBoard(boardId, boardType = BoardType.KANBAN))
+
+        assertThatThrownBy {
+            makeService(repo = repo, boardRepository = boardRepo).start(actorId, sprintId)
+        }.isInstanceOf(SprintBoardNotScrumException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(409)
+
+        // 상태는 PLANNED 그대로다(S2). 락도 안 잡는다 — 거부가 확정된 요청이 남의 start 를 막지 않는다.
+        verify(exactly = 0) { repo.acquireSprintStartLock(any()) }
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
+    /**
+     * 판정 순서 계약을 직접 잰다 — 404 → 403 → 409 FSM → **409 종류** → 락 → 409 활성.
+     *
+     * 종류 가드를 락 **뒤**로 옮겨도 위 단건 테스트는 초록이다 — 예외 타입만 보므로 순서를 모른다.
+     * 그러나 순서가 뒤집히면 거부가 확정된 요청이 advisory lock 을 잡아 같은 보드의 정상
+     * start 를 대기시킨다 — 순서를 **직접** 재는 이유는 형제 테스트(락 → 활성 조회)와 같다.
+     */
+    @Test
+    fun `start 는 FSM 검증 뒤 종류 가드 뒤 락 순서로 판정한다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+                every { it.findActiveByBoard(boardId) } returns null
+                every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
+            }
+        val boardRepo = boardRepoOf(activeBoard(boardId))
+
+        makeService(repo = repo, boardRepository = boardRepo).start(actorId, sprintId)
+
+        verifyOrder {
+            boardRepo.findById(boardId)
+            repo.acquireSprintStartLock(boardId)
+            repo.findActiveByBoard(boardId)
+            repo.updateStatus(sprintId, SprintStatus.ACTIVE, 0L)
+        }
+    }
+
+    @Test
+    fun `start FSM 위반은 종류 가드보다 먼저 판정된다`() {
+        // 칸반 소속 ACTIVE 스프린트를 다시 start 하면 「전환 불가」여야 한다. 종류 가드를
+        // sprint.start() 앞에 두면 그 구분이 「스크럼이 아니다」로 덮여 원인이 흐려진다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns activeSprint
+            }
+        val boardRepo = boardRepoOf(activeBoard(boardId, boardType = BoardType.KANBAN))
+
+        assertThatThrownBy {
+            makeService(repo = repo, boardRepository = boardRepo).start(actorId, sprintId)
+        }.isInstanceOf(InvalidSprintTransitionException::class.java)
+
+        verify(exactly = 0) { boardRepo.findById(any()) }
+    }
+
+    // ── start 락 뒤 재조회 (R9 · E6 · E7 · 부채 166 ①) ─────────────────────────
+    //
+    // 락 앞 스냅샷의 version 으로 UPDATE 하면, 격리 수준이 REPEATABLE READ 로 올라갔을 때 락을
+    // 잡고도 앞선 트랜잭션의 ACTIVE 를 못 보고 서로 다른 행을 갱신해 **ACTIVE 2건이 커밋된다**(S3).
+    // 격리 명시(N1)는 방어층일 뿐이다 — 자기 파일을 읽어 애너테이션을 단언하는 검사는 리뷰에서만
+    // 도는 약한 판정이라(memory `self-reading-guard-needs-helper-level-tests`) 실효 판정은
+    // 아래 재조회 3건이 진다(ADR D5).
+
+    /**
+     * 락 뒤 재조회의 판별식 — `findById` 가 락 앞 `version = 0L` / 락 뒤 `version = 1L` 로 갈라 답한다.
+     *
+     * 두 답을 같은 값으로 두면 어느 스냅샷을 썼는지 구분이 사라져 **공허 통과**한다. 값을 갈라 두면
+     * 재조회를 지우고 락 앞 스냅샷으로 되돌렸을 때 `updateStatus(…, 0L)` 이 되어 이 1건만 red 다.
+     */
+    @Test
+    fun `start 는 락 뒤에 스프린트를 재조회해 그 version 으로 갱신한다`() {
+        val refreshed = plannedSprint.copy(version = 1L)
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, refreshed)
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+                every { it.findActiveByBoard(boardId) } returns null
+                every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 1L) } returns activeSprint
+            }
+
+        val result = makeService(repo = repo).start(actorId, sprintId)
+
+        assertThat(result.status).isEqualTo(SprintStatus.ACTIVE)
+        verify(exactly = 2) { repo.findById(sprintId) }
+        verify(exactly = 1) { repo.updateStatus(sprintId, SprintStatus.ACTIVE, 1L) }
+        verifyOrder {
+            repo.acquireSprintStartLock(boardId)
+            repo.findById(sprintId)
+            repo.updateStatus(sprintId, SprintStatus.ACTIVE, 1L)
+        }
+    }
+
+    @Test
+    fun `start 락 뒤 재조회에서 스프린트가 사라졌으면 404 다`() {
+        // E6 — 락을 기다리는 사이 다른 트랜잭션이 스프린트를 소프트 삭제했다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, null)
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).start(actorId, sprintId)
+        }.isInstanceOf(SprintNotFoundException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+
+        // 재검증이 활성 조회보다 앞이다 — 사라진 스프린트로 보드 활성 여부를 묻지 않는다.
+        verify(exactly = 0) { repo.findActiveByBoard(any()) }
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
+    @Test
+    fun `start 락 뒤 재조회에서 이미 ACTIVE 면 전환 위반이다`() {
+        // E7 — 락을 기다리는 사이 앞선 트랜잭션이 바로 이 스프린트를 시작했다. 「이미 활성이 있다」가
+        // 아니라 「전환 불가」다. findActiveByBoard 는 자기 자신을 찾아 원인을 흐릴 뿐이다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, activeSprint)
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).start(actorId, sprintId)
+        }.isInstanceOf(InvalidSprintTransitionException::class.java)
+
+        verify(exactly = 0) { repo.findActiveByBoard(any()) }
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
     // ── complete ──────────────────────────────────────────────────────────────
 
     @Test

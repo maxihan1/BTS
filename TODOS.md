@@ -1360,6 +1360,12 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ## ⬜ agile-planning — 스크럼 보드 이름 문자열이 SQL 과 코드에 각각 있다 (선재 · 미착수 · T1)
 
+> **★2026-09-03 · #440 — 사본이 셋이 됐다.** 이 PR 은 162 를 닫지 않고 표면을 하나 늘렸다.
+> ① `V506__sprint_board_id.sql:24` `s.project_key || ' 스크럼 보드'` ·
+> ② `BoardApplicationService.kt:199`(`ensureScrumBoard`) `"$projectKey 스크럼 보드"` ·
+> ③ `V507__move_kanban_sprints_to_scrum_board.sql:36` — 같은 문자열(#440 이 추가).
+> 마이그레이션은 불변 이력이라 ①③ 을 합칠 수 없다. 접을 수 있는 것은 ② 뿐이다.
+
 **쉬운 말.** 자동으로 만들어지는 스크럼 보드의 이름이 두 군데에 따로 적혀 있다. 한쪽만 고치면 만들어진 시점에 따라 이름이 달라진다.
 
 **방치하면.** 보드가 중복 생성되지는 않는다 — 조회는 이름이 아니라 `board_type` 으로 찾기 때문이다. 갈리는 것은 **표시 이름뿐**이라 사용자가 「왜 프로젝트마다 보드 이름이 다르지」로 마주친다. 오늘 실제 피해 보고는 0 이다.
@@ -1368,27 +1374,14 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 **처방.** 등재만 한다. 상수를 한 곳에 두려면 SQL 쪽이 코드 상수를 볼 수 없으므로, 반대로 **마이그레이션이 만든 이름을 정본으로 삼고 코드가 그 값을 재사용**하는 방향이 맞다. 이름을 바꾸는 순간 기존 행과 갈리므로 마이그레이션 없이 코드만 고치면 안 된다.
 
-## ⬜ agile-planning — 칸반 보드에 붙은 스프린트가 start 200 을 받고도 안 나타난다 (신규 · 미착수 · T2)
-
-**쉬운 말.** 예전에 칸반 보드에 만들어 둔 스프린트가 있으면, 시작 버튼이 정상 동작하고 성공했다고 나오는데 화면에는 아무 일도 일어나지 않는다.
-
-**방치하면.** 사용자는 「시작했는데 아무 일도 안 일어남」을 만나고 원인을 알 수 없다. 보드 스위처가 스크럼만 노출하므로 자기가 어느 보드에 있는지도 안 보인다. 도달 경로는 좁다 — `V506` 이후 ~ #431 사이에 명시 칸반 `boardId` 로 만든 행에만 남는다. `V506__sprint_board_id.sql:49-53` 이 선재 스프린트 **전 행을 스크럼 보드에 붙였으므로** 마이그레이션 직후에는 0건이다.
-
-**무엇.** #431 이 `SprintApplicationService.resolveTargetBoard` 에 `boardType == SCRUM` 을 넣어 **생성**을 막았지만, `start`(`SprintApplicationService.kt:286-303`)는 보드를 다시 읽지 않고 종류도 보지 않는다. 그래서 선재 칸반 소속 스프린트는 여전히 200 으로 ACTIVE 가 되고, `BoardApplicationService.getBoard` 는 `boardType == SCRUM` 일 때만 활성 스프린트를 조회하므로 어느 화면에도 안 나타난다. UI 도 막지 않는다 — `SprintColumnHeader.tsx:146` 은 `canManageSprint` 만 본다.
-
-**처방.** 결정이 먼저다 — ① `start` 에도 종류 술어를 넣어 선재 행을 시작 불가로 만들거나 ② 그 행들을 스크럼 보드로 옮기는 마이그레이션을 쓰거나 ③ 「있는 것은 둔다」를 유지하고 UI 에서 시작 버튼을 감춘다. ①은 「있는 것은 둔다」(Maxi 확정 2026-09-02)를 뒤집는 것이라 확인이 필요하다.
-
-## ⬜ agile-planning — 스프린트 시작 락이 격리 수준과 대기 상한을 가정만 한다 (신규 · 미착수 · T2)
-
-**쉬운 말.** 스프린트를 동시에 시작하는 것을 막는 잠금 장치가, 데이터베이스 설정 두 가지가 지금 값 그대로라는 가정 위에 서 있다. 그 설정이 바뀌면 잠금이 조용히 무력해진다.
-
-**방치하면.** ① 격리 수준을 `REPEATABLE READ` 로 올리면 락을 잡고도 앞선 트랜잭션의 ACTIVE 를 못 보고 서로 다른 행을 UPDATE 하므로 **ACTIVE 2건이 커밋된다** — 모든 테스트가 초록인 채로 열리는 문이다. ② 락에 상한이 없어, 느린 트랜잭션이 스프린트 행 락을 쥐면 advisory lock 을 든 채 줄이 서고 연결 풀(기본 10, 9개 BC 공유)이 마르면 무관한 엔드포인트까지 죽는다.
-
-**무엇.** `SprintApplicationService.start`(`:291` vs `:298`)가 락 뒤에서 `findActiveByBoard` 만 재조회하고 **스프린트 자체는 락 앞 스냅샷**(`status`·`version`)을 쓴다. READ COMMITTED 에서만 안전한데 `agile-planning` 은 격리 수준을 어디에도 박지 않는다(identity-access 는 3곳에서 `Isolation.READ_COMMITTED` 를 명시한다). 그리고 `SprintRepository` 의 `pg_advisory_xact_lock` 은 **무한 대기**이고 저장소 전역에 `lock_timeout`·`statement_timeout`·`hikari.*` 설정이 0건이다.
-
-**처방.** ① `start` 에 `@Transactional(isolation = Isolation.READ_COMMITTED)` 를 박거나 락 뒤에서 스프린트를 재조회한다. ② 경계 있는 선례를 따른다 — `WorkflowCache.kt:162` 의 `pg_try_advisory_xact_lock` + 200ms 예산. 최소한 락 직전 `SET LOCAL lock_timeout` 후 55P03 을 409/503 으로 매핑한다. 형제 락 `acquireProjectScrumBoardLock` 도 같은 상태라 **선재 패턴의 확장**이다.
-
 ## ⬜ agile-planning — PR ⑤ 가 세운 불변식 3개에 판별식이 없다 (신규 · 미착수 · T1)
+
+> **②는 #440 에서 닫혔다** — 동시 start 테스트가 `runCatching` 으로 실패 이유를 삼키던 것을
+> `exceptionOrNull()` 로 꺼내 `SprintAlreadyActiveException` 으로 타입 고정하고,
+> `it.get(30, TimeUnit.SECONDS)` 로 「락 미해제 = 행」을 실패로 바꾸고,
+> `executor.shutdownNow()` 를 `try/finally` 로 옮겼다.
+> ①(`BacklogApplicationService.kt:177` `boardId = sprint.boardId` 매핑 커버리지 0)과
+> ③(`board()` fixture `boardType` 하드코딩)은 그대로 남는다.
 
 **쉬운 말.** #431 이 세운 규칙 세 가지가, 규칙을 지우거나 뒤집어도 테스트가 전부 통과한다.
 
@@ -1404,9 +1397,30 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 **방치하면.** 동작에는 문제가 없다. 다만 이 파일을 고치는 작업마다 읽어야 할 양이 늘고, 병렬 작업이 같은 파일에 몰려 머지 충돌이 난다. 오늘 실제 피해 보고는 0 이다.
 
-**무엇.** `DEVELOPMENT.md §2.1` 이 「함수 30줄 이내, 파일 300줄 이내」를 적는다. `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt` 는 **439줄**이다(2026-09-02 실측 · `wc -l`). PR #421 이 보드 종류·활성 스프린트 스키마를 실으면서 이 파일을 밀어 올렸다. 백엔드에는 `apps/web` 같은 줄수 래칫이 없어 초과가 기계로 잡히지 않는다. 장부 `65` 와 같은 규칙을 건드리지만 표면이 다르다 — 그쪽은 **계획 문서의 숫자가 실측과 갈렸다**는 지적이고 이쪽은 **이 파일을 쪼갠다**는 상환이다.
+**무엇.** `DEVELOPMENT.md §2.1` 이 「함수 30줄 이내, 파일 300줄 이내」를 적는다. `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt` 는 2026-09-02 실측에서 **439줄**이었고, 그 뒤로 더 늘었다(아래 **실측** 표가 정본). PR #421 이 보드 종류·활성 스프린트 스키마를 실으면서 이 파일을 밀어 올렸다. 백엔드에는 `apps/web` 같은 줄수 래칫이 없어 초과가 기계로 잡히지 않는다. 장부 `65` 와 같은 규칙을 건드리지만 표면이 다르다 — 그쪽은 **계획 문서의 숫자가 실측과 갈렸다**는 지적이고 이쪽은 **이 파일을 쪼갠다**는 상환이다.
+
+**실측 (2026-09-03 · `wc -l` · 상한 300줄).** 장부가 마지막 하나만 적어 다음 사람이 범위를 절반으로 오산한다. 넷이고, #440 이 그중 셋을 늘렸다.
+
+| 파일 | 줄수 | #440 이 늘린 것 |
+|---|---|---|
+| `SprintApplicationService.kt` | **643** | 종류 가드 + 락 뒤 재조회 |
+| `SprintRepository.kt` | **495** | 락 예산 KDoc |
+| `SprintExceptionHandler.kt` | **494** | 409·503 핸들러 — ★장부에 없던 파일이다 |
+| `BoardRepository.kt` | **443** | 락 예산 KDoc |
+
+**쪼개기는 이 PR 이 안 한다**(Maxi 결정 D8). 항목은 `⬜` 로 남는다.
 
 **처방.** 조회 계열과 쓰기 계열을 갈라 파일을 나눈다. 나누기 전에 이 BC 의 다른 리포지터리가 어떤 축으로 갈라져 있는지부터 본다 — 축이 파일마다 다르면 그것 자체가 다음 부채다.
+
+## ⬜ agile-planning — 보드 화면이 활성 스프린트를 한 개만 그려 다중 ACTIVE 를 흡수하지 못한다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 한 보드에 진행 중인 스프린트가 둘이면, 보드 화면은 먼저 만든 하나만 그린다. 나머지는 어느 화면에도 안 나타나고, 앞의 것이 끝나는 날 예고 없이 튀어나온다.
+
+**방치하면.** 오늘 **새로** 만들어지지는 않는다 — #440 이 `start` 에 advisory lock + 락 뒤 재조회를 넣어 동시 시작을 막았다. 남는 것은 **선재 행**이다. PR #182 Deviation ⑤ 가 「동시 ACTIVE 다중 허용」을 명시로 결정했고 `V506__sprint_board_id.sql:66-71` 이 부분 인덱스를 **일부러 UNIQUE 로 만들지 않아** 그 행들을 보존했다. **선재 스크럼 보드의 다중 ACTIVE 는 #440 이 고치지 않는다** — 그런 보드에서는 지금도 스프린트 하나가 화면에서 사라진다. 오늘 실제 피해 보고는 0 이다.
+
+**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/SprintRepository.kt:161-169` 의 `findActiveByBoard` 가 `orderBy(created_at asc).limit(1)` 이라 한 보드의 ACTIVE 를 **한 건만** 돌려주고, 보드 화면은 그 한 건을 그린다(`BoardApplicationService.kt:256`). Jira 는 같은 상황을 **표시로 흡수**한다 — `J18`(DC 전용 KB · Cloud 아님)은 parallel sprints 를 꺼도 한 보드에 ACTIVE 가 여럿 보이는 것을 정상으로 두고, 처방도 스프린트 **상태를 안 건드린다**. BTS 는 흡수가 구조적으로 불가능해 준용할 수 없고 그 사실이 편차 `X9` 의 근거다(`docs/adr/2026-09-03-kanban-sprint-move-and-lock-budget.md:186-187`). 대가는 이미 치렀다 — `V507` 이관이 ACTIVE 충돌을 만나면 이관 대상을 `PLANNED` 로 **강등**한다(ADR D2). 흡수가 가능했다면 상태를 안 바꿔도 됐다.
+
+**처방.** 등재만 한다 — ADR 기각 대안 `A-6`(`limit(1)` 제거) 이 그 자리이고, 이 항목은 그 **진입점**을 남기는 것이다. `limit(1)` 을 걷어내려면 보드 화면·백로그의 「활성 스프린트」 계약이 **단수에서 복수로** 바뀐다. 편차 `X5`(스프린트가 보드에 직접 소속) 재설계와 얽혀 단독으로 집기 어렵다.
 
 ---
 
@@ -3837,6 +3851,53 @@ CSS 가 없는 것이다. 커스텀 노드가 기본 스타일을 걷어내면�
 실패) 원복했다. 판정이 살아 있다 — 「해소됐다」가 「아무도 안 본다」가 아니다.
 
 ---
+
+## ✅ agile-planning — 칸반 보드에 붙은 스프린트가 start 200 을 받고도 안 나타난다 (해소 · PR #440)
+
+> **✅ 2026-09-03 해소 (#440).** ADR D1·D3 그대로다 — `V507__move_kanban_sprints_to_scrum_board.sql`
+> 이 칸반 소속 스프린트를 그 프로젝트의 스크럼 보드로 옮기고(없으면 신설), `start` 는 소속 보드가
+> `SCRUM` 이 아니면 **409 `AGILE_SPRINT_BOARD_NOT_SCRUM`** 으로 거부한다. 가드는 FSM 검증 **뒤**,
+> 락 **앞**이라 「잘못된 전환 요청이 남의 시작을 막아 세우지 않는다」가 유지된다.
+>
+> 🛑 목표 보드에 이미 ACTIVE 가 있으면 **이관 대상**을 `PLANNED` 로 내린다(D2). 기존 스크럼 보드의
+> 원래 ACTIVE 는 어떤 경우에도 안 건드린다. 그 데이터 변경이 편차 `X9` 이고, 그것을 강제한
+> 구조적 한계(`findActiveByBoard` 의 `limit(1)`)는 **별건으로 등재**했다.
+
+**쉬운 말.** 예전에 칸반 보드에 만들어 둔 스프린트가 있으면, 시작 버튼이 정상 동작하고 성공했다고 나오는데 화면에는 아무 일도 일어나지 않는다.
+
+**방치하면.** 사용자는 「시작했는데 아무 일도 안 일어남」을 만나고 원인을 알 수 없다. 보드 스위처가 스크럼만 노출하므로 자기가 어느 보드에 있는지도 안 보인다. 도달 경로는 좁다 — `V506` 이후 ~ #431 사이에 명시 칸반 `boardId` 로 만든 행에만 남는다. `V506__sprint_board_id.sql:49-53` 이 선재 스프린트 **전 행을 스크럼 보드에 붙였으므로** 마이그레이션 직후에는 0건이다.
+
+**무엇.** #431 이 `SprintApplicationService.resolveTargetBoard` 에 `boardType == SCRUM` 을 넣어 **생성**을 막았지만, `start`(`SprintApplicationService.kt:286-303`)는 보드를 다시 읽지 않고 종류도 보지 않는다. 그래서 선재 칸반 소속 스프린트는 여전히 200 으로 ACTIVE 가 되고, `BoardApplicationService.getBoard` 는 `boardType == SCRUM` 일 때만 활성 스프린트를 조회하므로 어느 화면에도 안 나타난다. UI 도 막지 않는다 — `SprintColumnHeader.tsx:146` 은 `canManageSprint` 만 본다.
+
+**처방.** 결정이 먼저다 — ① `start` 에도 종류 술어를 넣어 선재 행을 시작 불가로 만들거나 ② 그 행들을 스크럼 보드로 옮기는 마이그레이션을 쓰거나 ③ 「있는 것은 둔다」를 유지하고 UI 에서 시작 버튼을 감춘다. ①은 「있는 것은 둔다」(Maxi 확정 2026-09-02)를 뒤집는 것이라 확인이 필요하다.
+
+## ✅ agile-planning — 스프린트 시작 락이 격리 수준과 대기 상한을 가정만 한다 (해소 · PR #440)
+
+> **✅ 2026-09-03 해소 (#440).** 두 가정을 각각 못박았다 — ① `start` 에
+> `@Transactional(isolation = Isolation.READ_COMMITTED)` 를 박고 락 **뒤**에서 스프린트 자체를
+> 재조회한다(락 앞 스냅샷의 `status`·`version` 을 쓰지 않는다). ② `AdvisoryLockBudget` 이
+> `set_config('lock_timeout', '200ms', true)` 로 예산을 걸고 형제 락
+> `acquireProjectScrumBoardLock` 까지 같은 예산을 쓴다. 초과는 `CannotAcquireLockException`
+> → **503 `AGILE_UNAVAILABLE`** 로 나간다.
+>
+> 🛑 **예산은 advisory lock 획득 statement 에만 걸린다.** 획득 직후 `set_config` 로 되돌리므로
+> 뒤따르는 `findActiveByBoard`·`updateStatus` 의 **행 락 대기는 상한 없이 그대로 둔다.** 원복하지
+> 않으면 행 락까지 200ms 에 끊겨 **정상 경합이 503 을 받는 신규 회귀**가 된다 — 부채 166 이 지적한
+> 것은 advisory lock 무한 대기뿐이다(spec `N6`).
+>
+> 🛑 **`SET LOCAL lock_timeout` 은 쓰지 않는다.** `SET` 은 리터럴만 받아 `DATA.md §5` 예외의
+> 조건 (i)(`?` 바인딩)를 못 채운다. `set_config(text,text,bool)` 은 함수이면서 바인딩이 되므로
+> (i)+(ii) 를 둘 다 만족한다(ADR `D4`).
+>
+> 전역 `statement_timeout`·`hikari.*` 는 여전히 0건이고 이 PR 범위 밖이다.
+
+**쉬운 말.** 스프린트를 동시에 시작하는 것을 막는 잠금 장치가, 데이터베이스 설정 두 가지가 지금 값 그대로라는 가정 위에 서 있다. 그 설정이 바뀌면 잠금이 조용히 무력해진다.
+
+**방치하면.** ① 격리 수준을 `REPEATABLE READ` 로 올리면 락을 잡고도 앞선 트랜잭션의 ACTIVE 를 못 보고 서로 다른 행을 UPDATE 하므로 **ACTIVE 2건이 커밋된다** — 모든 테스트가 초록인 채로 열리는 문이다. ② 락에 상한이 없어, 느린 트랜잭션이 스프린트 행 락을 쥐면 advisory lock 을 든 채 줄이 서고 연결 풀(기본 10, 9개 BC 공유)이 마르면 무관한 엔드포인트까지 죽는다.
+
+**무엇.** `SprintApplicationService.start`(`:291` vs `:298`)가 락 뒤에서 `findActiveByBoard` 만 재조회하고 **스프린트 자체는 락 앞 스냅샷**(`status`·`version`)을 쓴다. READ COMMITTED 에서만 안전한데 `agile-planning` 은 격리 수준을 어디에도 박지 않는다(identity-access 는 3곳에서 `Isolation.READ_COMMITTED` 를 명시한다). 그리고 `SprintRepository` 의 `pg_advisory_xact_lock` 은 **무한 대기**이고 저장소 전역에 `lock_timeout`·`statement_timeout`·`hikari.*` 설정이 0건이다.
+
+**처방.** ① `start` 에 `@Transactional(isolation = Isolation.READ_COMMITTED)` 를 박거나 락 뒤에서 스프린트를 재조회한다. ② 경계 있는 선례를 따른다 — `WorkflowCache.kt:162` 의 `pg_try_advisory_xact_lock` + 200ms 예산. 최소한 락 직전 `SET LOCAL lock_timeout` 후 55P03 을 409/503 으로 매핑한다. 형제 락 `acquireProjectScrumBoardLock` 도 같은 상태라 **선재 패턴의 확장**이다.
 
 ## ✅ apps/web — 보고 있던 보드가 화면을 옮기면 증발한다 (신규 · **해소** · T1)
 

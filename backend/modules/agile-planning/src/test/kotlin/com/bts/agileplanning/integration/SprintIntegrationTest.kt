@@ -4,8 +4,13 @@ package com.bts.agileplanning.integration
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.application.SprintAlreadyActiveException
 import com.bts.agileplanning.application.SprintApplicationService
+import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardType
+import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -36,6 +41,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -64,7 +70,8 @@ import java.util.concurrent.TimeUnit
  * E1 잘못된 전환 → 409 / E2 미존재 → 404 / E3 미가시·타프로젝트·미존재 이슈 → 404 /
  * E5 COMPLETED 스프린트 할당 → 409 / E6 권한 없음 → 403 / E7 멱등 재할당 → 200(또는 201) /
  * E8 다른 스프린트 이슈 이동 / E9 없는 이슈 해제 멱등 → 204 /
- * E11 기간 역전 → 400 / E12 소프트삭제 후 sprint_issues 빈 목록.
+ * E11 기간 역전 → 400 / E12 소프트삭제 후 sprint_issues 빈 목록 /
+ * E13 칸반 보드 소속 스프린트 start → 409 AGILE_SPRINT_BOARD_NOT_SCRUM (상태는 PLANNED 유지).
  * T5-1 @NotBlank 검증: name="" → 400.
  */
 @SpringBootTest(
@@ -129,6 +136,10 @@ class SprintIntegrationTest {
 
     @Autowired
     lateinit var sprintRepository: SprintRepository
+
+    /** 칸반 보드를 직접 심기 위한 리포지터리 — API 생성 경로는 SCRUM 보드만 고른다(#431). */
+    @Autowired
+    lateinit var boardRepository: BoardRepository
 
     /**
      * Spring 이 프록시한 [SprintApplicationService] 빈.
@@ -209,6 +220,43 @@ class SprintIntegrationTest {
 
         return mapper.readTree(result.response.contentAsString)
             .get("data").get("sprintId").asText()
+    }
+
+    /**
+     * 칸반 보드와 그 보드에 소속된 `PLANNED` 스프린트를 리포지터리로 직접 심는다.
+     *
+     * API 경로로는 만들 수 없다 — #431 의 `boardType == SCRUM` 술어가 생성을 막는다.
+     * 재현 대상은 그 술어 이전에 들어간 선재 행이므로 리포지터리를 관측점 제작에만 쓴다.
+     *
+     * @param projectKey 격리된 프로젝트 키.
+     * @return 심어진 스프린트 UUID.
+     */
+    private fun plantSprintOnKanbanBoard(projectKey: String): UUID {
+        val board =
+            boardRepository.insert(
+                Board(
+                    id = UUID.randomUUID(),
+                    projectKey = projectKey,
+                    name = "$projectKey 칸반 보드",
+                    columns = emptyList(),
+                    createdAt = Instant.now(),
+                    updatedAt = Instant.now(),
+                    boardType = BoardType.KANBAN,
+                ),
+            )
+        return sprintRepository.insert(
+            Sprint(
+                id = UUID.randomUUID(),
+                projectKey = projectKey,
+                boardId = board.id,
+                name = "칸반 소속 스프린트",
+                goal = null,
+                status = SprintStatus.PLANNED,
+                startDate = null,
+                endDate = null,
+                version = 0L,
+            ),
+        ).id
     }
 
     // ── S1. 스프린트 생성 (201 + PLANNED) ──────────────────────────────────────
@@ -303,6 +351,33 @@ class SprintIntegrationTest {
      * 두 스레드가 순차로 돌면 잠금이 없어도 통과한다 — 「락이 동작한다」와 「애초에 안 겹쳤다」를
      * 구별하지 못한다. 두 스레드가 진입한 것을 확인한 뒤 동시에 푼다
      * (선례 `BoardApplicationServiceTest.동시 ensureScrumBoard 후에도 …`).
+     *
+     * ### `runCatching` 만으로는 무엇이 죽였는지 못 잰다 (부채 167 ②)
+     * `runCatching { … }.map { }` 은 실패를 `Result<Unit>` 으로 뭉갠다. 그래서 「성공 1건」만 세면
+     * 진 쪽이 **무엇으로 죽어도** 초록이다 — 커넥션 타임아웃이든 `MANDATORY` 오설정이든, 심지어
+     * 서비스를 부르지도 않고 죽어도 통과한다(강화 전 상태에서 진 쪽을 `IllegalStateException` 으로
+     * 갈아 끼워 실측했다 · `failures=0`). 그래서 `exceptionOrNull()` 로 꺼내 **타입까지** 고정한다.
+     * 선례 `BoardApplicationServiceTest.kt` 의 「성공 2건 + 보드 id distinct 1개」와 같은 결의 강화다.
+     * 마찬가지로 `it.get()` 에 타임아웃이 없으면 락이 안 풀렸을 때 red 가 아니라 **행**으로 나타나
+     * 테스트가 아니라 CI 가 멈춘다. `executor` 회수는 `try/finally` 라야 그 타임아웃 경로에서도 돈다.
+     *
+     * ### 왜 「둘 중 하나」로 열지 않고 [SprintAlreadyActiveException] 으로 고정하는가 (R10)
+     * Task 6 이 advisory lock 에 200ms 예산을 걸어, 진 쪽이 `CannotAcquireLockException`(503) 으로
+     * 죽을 **여지**가 생겼다. 그래도 열지 않는다.
+     * 1. 계약이 하나다 — spec S3 은 이 시나리오의 진 쪽을 **409 `AGILE_SPRINT_ALREADY_ACTIVE`** 로
+     *    못박는다. 503 은 S4(외부 홀더가 락을 오래 쥔 경우)의 계약이고 `AdvisoryLockBudgetTest` 가
+     *    따로 잰다. 여기서 503 을 받아 주면 **409 계약이 썩어도 이 테스트는 초록이다.**
+     * 2. 여유가 5배다 — 진 쪽의 락 대기 상한은 이긴 쪽의 락 뒤 구간(재조회·`findActiveByBoard`·
+     *    UPDATE·커밋)뿐이다. 경쟁 구간 전체를 3회 실측해 23·41·41ms 였고(2026-09-03 · 로컬
+     *    Testcontainers), 이는 대기 시간의 **상한**이라 실제 대기는 더 짧다.
+     * 3. 어긋나면 그게 정보다 — 여기서 `CannotAcquireLockException` 이 나온다는 것은 이긴 쪽의 락 뒤
+     *    구간이 200ms 를 넘겼다는 뜻이고, 그때는 운영에서도 **정상 경합이 409 대신 503 을 받는다.**
+     *    flaky 로 눈감을 게 아니라 봐야 하는 회귀다. 실패 메시지가 실제 타입을 찍는다.
+     *
+     * 락 뒤 재조회(Task 5)가 `InvalidSprintTransitionException` 을 낼 가능성도 짚어 실측했다 —
+     * 나오지 않는다. 두 스레드는 **서로 다른 스프린트**를 시작하므로 진 쪽이 자기 행을 다시 읽어도
+     * 여전히 `PLANNED` 다. FSM 재검증을 통과한 뒤 `findActiveByBoard` 가드가 잡는다
+     * (`SprintApplicationService.kt` 의 `throw SprintAlreadyActiveException()` 줄에서 잡힌 스택 확인).
      */
     @Test
     fun `동시 start 2건 중 한 건만 통과하고 보드의 ACTIVE 스프린트는 1개다`() {
@@ -317,30 +392,44 @@ class SprintIntegrationTest {
         val entered = CountDownLatch(2)
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
-        val futures =
-            listOf(firstId, secondId).map { id ->
-                executor.submit<Result<Unit>> {
-                    SecurityContextHolder.getContext().authentication =
-                        UsernamePasswordAuthenticationToken(
-                            actorId.toString(),
-                            null,
-                            listOf(SimpleGrantedAuthority("ROLE_USER")),
-                        )
-                    entered.countDown()
-                    start.await()
-                    runCatching { sprintApplicationService.start(actorId, id) }.map { }
-                }
+        val results =
+            try {
+                val futures =
+                    listOf(firstId, secondId).map { id ->
+                        executor.submit<Result<Unit>> {
+                            SecurityContextHolder.getContext().authentication =
+                                UsernamePasswordAuthenticationToken(
+                                    actorId.toString(),
+                                    null,
+                                    listOf(SimpleGrantedAuthority("ROLE_USER")),
+                                )
+                            entered.countDown()
+                            start.await()
+                            runCatching { sprintApplicationService.start(actorId, id) }.map { }
+                        }
+                    }
+                assertThat(entered.await(10, TimeUnit.SECONDS))
+                    .`as`("두 스레드가 시작하지 못했다 — 경쟁이 재현되지 않았다")
+                    .isTrue()
+                start.countDown()
+                // 타임아웃 없는 get() 은 락이 안 풀렸을 때 red 가 아니라 **행**으로 나타난다 — CI 가 멈춘다.
+                futures.map { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                executor.shutdownNow()
             }
-        assertThat(entered.await(10, TimeUnit.SECONDS))
-            .`as`("두 스레드가 시작하지 못했다 — 경쟁이 재현되지 않았다")
-            .isTrue()
-        start.countDown()
-        executor.shutdown()
-        val results = futures.map { it.get() }
 
         assertThat(results.count { it.isSuccess })
             .`as`("동시 start 2건 중 성공이 %d 건이다 — 정확히 1건이어야 한다", results.count { it.isSuccess })
             .isEqualTo(1)
+
+        val failures = results.mapNotNull { it.exceptionOrNull() }
+        assertThat(failures)
+            .`as`(
+                "진 쪽이 %s 로 죽었다 — 계약은 409 AGILE_SPRINT_ALREADY_ACTIVE 하나뿐이다",
+                failures.map { it::class.qualifiedName },
+            )
+            .singleElement()
+            .isInstanceOf(SprintAlreadyActiveException::class.java)
 
         val active = sprintRepository.findByProject(projectKey).filter { it.status == SprintStatus.ACTIVE }
         assertThat(active)
@@ -513,6 +602,36 @@ class SprintIntegrationTest {
         mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("AGILE_CONFLICT"))
+    }
+
+    // ── E13. 칸반 보드 소속 스프린트 start → 409 전용 코드 (S2 · 부채 165) ────
+
+    /**
+     * 칸반 보드에 소속된 PLANNED 스프린트는 시작되지 않는다 (스펙 S2).
+     *
+     * ### 왜 리포지터리로 직접 심는가
+     * #431 이 생성 경로(`SprintApplicationService.resolveTargetBoard`)에 `boardType == SCRUM`
+     * 술어를 넣어 **API 로는 칸반 소속 스프린트를 만들 수 없다.** 그런데 막아야 하는 것은
+     * 그 술어가 생기기 전에 이미 들어간 **선재 행**이라, 관측점을 만들려면 리포지터리를 직접 쓴다.
+     *
+     * ### 무엇을 재는가
+     * 409 라는 상태가 아니라 **구별되는 errorCode** 다. 상태만 재면 상태 전파 핸들러가 덮어쓴
+     * `AGILE_CONFLICT`(FSM 위반)와 구별하지 못해 「전환이 잘못됐다」로 오도된다.
+     * 상태가 `PLANNED` 그대로임을 함께 단언한다 — 200 을 받고 어느 화면에도 안 나타나던
+     * ACTIVE 로 넘어가지 않았음이 이 결함의 본체다.
+     */
+    @Test
+    fun `E13 칸반 보드 소속 스프린트 start 는 409 를 받고 상태가 PLANNED 그대로다`() {
+        val projectKey = uniqueProjectKey()
+        val sprintId = plantSprintOnKanbanBoard(projectKey)
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_BOARD_NOT_SCRUM"))
+
+        assertThat(sprintRepository.findById(sprintId)?.status)
+            .`as`("칸반 소속 스프린트가 시작됐다 — 어느 화면에도 나타나지 않는 ACTIVE 가 생긴다")
+            .isEqualTo(SprintStatus.PLANNED)
     }
 
     // ── E2. 미존재 스프린트 → 404 ────────────────────────────────────────────

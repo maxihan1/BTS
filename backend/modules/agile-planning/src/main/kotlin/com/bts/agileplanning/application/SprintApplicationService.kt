@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
@@ -265,9 +266,19 @@ class SprintApplicationService(
      * 도메인 Sprint.start() 에 전환 유효성을 위임한 뒤, **보드당 활성 스프린트 1개**를 강제한다.
      *
      * ### 판정 순서 — FSM 이 보드 가드보다 앞이다
+     * 404(존재) → 403(권한) → 409 FSM → **409 종류** → 락 → **재조회·재검증** → 409 활성 순이다.
      * ACTIVE 스프린트를 다시 start 하면 [findActiveByBoard] 가 **자기 자신**을 찾는다. 가드를
      * [Sprint.start] 앞에 두면 「전환 불가」가 「이미 활성이 있다」로 뒤바뀌어 원인이 흐려진다.
      * 그래서 FSM 을 먼저 통과시킨다 — 여기 도달한 스프린트는 PLANNED 였음이 보장된다.
+     * 종류 가드도 같은 이유로 FSM **뒤**다. 대신 락 **앞**이다 — 거부가 확정된 요청이 advisory lock 을
+     * 잡아 같은 보드의 정상 start 를 대기시키지 않는다.
+     *
+     * ### 락 앞뒤 판정 — 앞은 거부용, 뒤는 영속용 (R9 · ADR 2026-09-03 D5)
+     * 락 **앞** 판정은 「확실히 틀린 요청을 락 없이 되돌려보내는」 필터라 값이 낡아도 무해하다.
+     * 그러나 **영속에 쓰는 status·version 은 락 뒤 재조회분**이어야 한다 — 락 앞 스냅샷의 version 으로
+     * UPDATE 하면 격리 수준이 `REPEATABLE READ` 로 올라갔을 때 락을 잡고도 앞선 트랜잭션의 커밋을 못 봐
+     * 서로 다른 행을 갱신하고 ACTIVE 2건이 커밋된다. [Isolation.READ_COMMITTED] 명시는 방어층이고,
+     * 격리 수준과 무관한 실효 보장은 [reloadAndRevalidateAfterLock] 이 진다.
      *
      * ### 선행 결정 무효화 (2026-09-01)
      * `docs/plan/product/agile-planning.md §3.2` 의 Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」을
@@ -277,29 +288,39 @@ class SprintApplicationService(
      * @param actorId 행위자 UUID.
      * @param sprintId 시작할 스프린트 UUID.
      * @return ACTIVE 상태의 갱신된 스프린트.
-     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintNotFoundException 404 — 미존재·soft-deleted, 또는 락 뒤 재조회에서 사라짐(E6).
+     * @throws SprintBoardNotScrumException 409 — 소속 보드가 SCRUM 이 아님(R8 · 부채 165).
      * @throws SprintAlreadyActiveException 409 — 같은 보드에 이미 ACTIVE 스프린트가 있음.
      * @throws SprintVersionConflictException 409 — OCC 버전 충돌.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전환.
+     *   락 뒤 재조회에서 이미 ACTIVE 인 경우도 여기다(E7) — 「이미 활성이 있다」가 아니라 「전환 불가」다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     fun start(
         actorId: UUID,
         sprintId: UUID,
     ): Sprint {
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
         // 전환 자체가 무효면 락을 잡기 전에 죽는다 — 잘못된 요청이 남의 시작을 막아 세우지 않는다.
-        val started = sprint.start()
+        // 반환값은 버린다 — 실제로 영속할 status·version 은 락 뒤 재조회분이다.
+        sprint.start()
+        // 소속 보드가 스크럼이 아니면 락을 잡기 전에 거부한다 (R8 · 부채 165). 못 찾은 보드도 거부다 —
+        // 스크럼임을 확인하지 못했으면 fail-closed 이고, 스프린트는 존재하므로 404 를 쓰지 않는다.
+        if (boardRepository.findById(sprint.boardId)?.boardType != BoardType.SCRUM) {
+            throw SprintBoardNotScrumException()
+        }
         // 🛑 락을 **조회보다 먼저** 잡는다. 락 밖에서 읽은 값으로 판단하면 락이 무력화된다
         //    (memory `advisory-lock-bigint-toctou`). DB 는 이 유일성을 못 막는다 —
         //    `idx_sprints_board_active`(V506)가 선재 다중 ACTIVE 행 보존 때문에 UNIQUE 가 아니다.
         sprintRepository.acquireSprintStartLock(sprint.boardId)
+        // 락 앞 스냅샷은 이미 낡았다 — 락 뒤에 다시 읽은 status·version 만 영속에 쓴다 (R9 · E6 · E7).
+        val started = reloadAndRevalidateAfterLock(sprintId)
         if (sprintRepository.findActiveByBoard(sprint.boardId) != null) {
             throw SprintAlreadyActiveException()
         }
-        return sprintRepository.updateStatus(sprintId, started.status, sprint.version)
-            ?: resolveOccNull(sprintId, sprint)
+        return sprintRepository.updateStatus(sprintId, started.status, started.version)
+            ?: resolveOccNull(sprintId, started)
     }
 
     // ── complete ──────────────────────────────────────────────────────────────
@@ -414,7 +435,7 @@ class SprintApplicationService(
      * - 술어는 같다 — `deleted_at IS NULL`([BoardRepository.findById] 가 건다) + `project_key` 일치.
      *   조회 방식만 다르다(쓰기 경로는 지정 보드 1건만 필요해 단건 조회를 쓴다).
      *
-     * ### 🛑 단, 종류 술어는 **생성 경로에만** 있다 (비대칭 · FR-BD-04 PR ⑤ · Maxi 확정 2026-09-02)
+     * ### 🛑 단, 종류 술어는 **쓰기 경로에만** 있다 (비대칭 · FR-BD-04 PR ⑤ · Maxi 확정 2026-09-02)
      *
      * 여기는 `boardType == SCRUM` 을 요구하지만 [BacklogApplicationService.resolveBoardScope] 는
      * 요구하지 않는다. **이 비대칭은 의도적이다** — 안 적으면 위 「같은 규약」 문단이 거짓이 된다.
@@ -423,14 +444,19 @@ class SprintApplicationService(
      *   활성 스프린트를 조회하므로 **어느 보드 화면에도 영원히 안 나타난다.** 사용자에게는
      *   「시작했는데 아무 일도 안 일어남」이다. 오늘 이것을 가리는 것은 백로그 스위처가 스크럼만
      *   노출하는 것 하나뿐이라, 프론트 필터가 유일한 방어선이었다.
-     * - **왜 읽기 경로와 `start` 는 안 막나.** 🛑 「기존 시드가 칸반 소속이다」를 근거로 쓰지 마라 —
+     * - **왜 읽기 경로는 안 막나.** 🛑 「기존 시드가 칸반 소속이다」를 근거로 쓰지 마라 —
      *   그것은 `apps/web/src/mocks/board-handlers.test.ts` 의 **MSW 목 시드**이지 운영 데이터가 아니다.
      *   실측은 반대다. `V506__sprint_board_id.sql:49-53` 이 `UPDATE sprints … AND b.board_type = 'SCRUM'`
      *   으로 **전 행을 스크럼 보드에 붙였다** — 마이그레이션 직후 칸반 소속 스프린트는 0건이다.
-     *   그럼에도 열어 두는 이유는 **V506 이후 ~ 이 PR 사이**에 명시 칸반 `boardId` 로 만들어진 행이
-     *   있을 수 있어서다. 읽기까지 막으면 그 행이 통째로 404 가 된다 — **새로 만드는 것만 막고
-     *   있는 것은 둔다.** 그 결과 남는 구멍(선재 칸반 소속 스프린트는 `start` 200 을 받고도 여전히
-     *   어느 화면에도 안 나타난다)은 `TODOS.md` 에 별건으로 등재했다.
+     *   그럼에도 읽기를 열어 두는 이유는 **V506 이후**에 명시 칸반 `boardId` 로 만들어진 행이 있을 수
+     *   있어서다. 읽기까지 막으면 그 행이 404 가 되어 칸반 보드 백로그가 통째로 사라진다.
+     *   **읽기 경로 비대칭은 이 PR 이후로도 그대로 유지한다**(스펙 R11).
+     * - **🛑 `start` 는 이제 막는다 (2026-09-03 · R8 · 부채 165).** 이 자리에는 원래
+     *   「새로 만드는 것만 막고 있는 것은 둔다 … 남는 구멍(선재 칸반 소속 스프린트는 `start` 200 을
+     *   받고도 어느 화면에도 안 나타난다)은 `TODOS.md` 에 별건으로 등재했다」가 적혀 있었다.
+     *   **더 이상 사실이 아니다** — [SprintApplicationService.start] 가 락 앞에서 같은 술어를 걸어
+     *   409([SprintBoardNotScrumException])로 거부하고, 같은 PR 의 `V507` 이 선재 칸반 소속 행을
+     *   스크럼 보드로 옮긴다. 술어는 **쓰기 경로 전량**(생성 · 시작)에 있고 읽기 경로에만 없다.
      * - 상태 코드는 **404** 다(스펙 E8). 403 이면 「그 UUID 는 존재한다」가 새어 나간다
      *   (memory `permission-assert-before-existence-makes-403-lie`).
      * - 지정이 틀렸을 때 기본 보드로 **조용히 대체하지 않는다**(편차 E7). 사용자가 의도한 것과
@@ -525,6 +551,23 @@ class SprintApplicationService(
             log.warn("이슈 할당 UNIQUE 제약 위반(jOOQ) — sprintId={}", sprintId)
             throw SprintIssueConflictException()
         }
+
+    /**
+     * 락 획득 **후** 스프린트를 다시 읽고 전환 유효성을 재검증한다 (R9 · 부채 166 ①).
+     *
+     * 락 앞에서 읽은 스냅샷은 락을 기다리는 사이 낡는다. 격리 수준이 `REPEATABLE READ` 로 올라가면
+     * 락을 잡고도 앞선 트랜잭션의 커밋을 못 봐 서로 다른 행을 UPDATE 하고 **ACTIVE 2건이 커밋된다.**
+     * 재조회가 있으면 격리 수준이 무엇이든 안전하다 — [start] 의 격리 명시는 방어층일 뿐이다.
+     *
+     * @param sprintId 다시 읽을 스프린트 UUID.
+     * @return ACTIVE 로 전환된 사본. version 은 **재조회 시점** 값이라 그대로 OCC 조건에 쓴다.
+     * @throws SprintNotFoundException 404 — 락 대기 중 삭제됨 (E6).
+     * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 대기 중 이미 시작됨 (E7).
+     */
+    private fun reloadAndRevalidateAfterLock(sprintId: UUID): Sprint {
+        val current = sprintRepository.findById(sprintId) ?: throw SprintNotFoundException()
+        return current.start()
+    }
 
     /**
      * updateMeta / updateStatus 가 null 을 반환했을 때 존재 재확인 후 404 또는 409 를 결정한다.
