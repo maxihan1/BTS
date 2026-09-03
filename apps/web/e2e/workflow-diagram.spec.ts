@@ -212,3 +212,32 @@ test('D8-5 노드를 고르면 화면이 그것을 알려 준다 (부채 169)', 
   await expect(target).toHaveClass(/ring-2/)
   await expect(target).toHaveClass(/bg-muted/)
 })
+
+test('D8-6 고른 노드를 끌어 놓아도 선택 표시가 남는다 (부채 169)', async ({ page }) => {
+  /*
+   * ★ 실측으로 잡은 회귀다. 초안이 바뀌면 캔버스가 노드 배열을 새로 만들어 `setLiveNodes` 로
+   *   갈아끼우는데, 그 배열에는 `selected` 가 없다 — 드래그는 `onNodeDragStop → onMoveState`
+   *   로 초안을 바꾸므로 **놓는 순간 링이 사라졌다.** 부채 169 가 적은 목적("여러 상태를
+   *   오가며 편집할 때 지금 무엇을 고른 상태인지 알려 준다")이 편집을 시작하는 순간 무너진다.
+   *
+   * 단위 테스트는 이걸 못 잡는다 — `StatusNode` 에 `selected` 를 직접 넘겨서 재기 때문이다.
+   */
+  await loginAsSystemAdmin(page)
+  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await openDiagramTab(page)
+
+  const wrapper = node(page, 'open')
+  const inner = wrapper.locator('> div')
+
+  await wrapper.click()
+  await expect(inner).toHaveClass(/ring-2/)
+
+  const box = await wrapper.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + box!.height / 2 + 60, { steps: 10 })
+  await page.mouse.up()
+
+  await expect(inner).toHaveClass(/ring-2/)
+})
