@@ -35,7 +35,7 @@ import java.util.UUID
  * - SUM-2. 소프트 삭제된 이슈는 제외된다.
  * - SUM-3. viewer 가 접근 불가한 보안 등급 이슈는 제외된다.
  * - SUM-4. 타 프로젝트 이슈는 제외된다.
- * - SUM-5. **이슈 1건이면 분포 4종의 합이 각각 정확히 1** — cartesian product 봉인.
+ * - SUM-5. **이슈 1건이면 분포 4종의 합이 각각 정확히 1** — 조인 추가 시 행 부풀림을 잡는 전방 회귀 가드.
  * - HIS-1. 프로젝트 스코프 상태 이력이 since 하한을 지킨다.
  * - HIS-2. 이력 조회도 같은 보안 술어를 통과한다(타 프로젝트·삭제·보안등급 이슈의 이력 0건).
  * - ACT-1. 활동 피드는 최신순이고 limit 을 지킨다.
@@ -144,15 +144,21 @@ class IssueRepositoryProjectSummaryTest : IssueTestcontainersBase() {
         assertThat(rows.map { it.issueId }).containsExactly(ownIssue.id.value)
     }
 
-    // ── SUM-5. cartesian product 봉인 ────────────────────────────────────────
+    // ── SUM-5. 행 부풀림 전방 회귀 가드 ──────────────────────────────────────
 
     /**
-     * Given  라벨·컴포넌트를 여러 개 단 이슈 **1건**.
+     * Given  라벨 3개를 단 이슈 **1건**(`labels` 는 `issues` 의 `TEXT[]` 배열 컬럼 — V006).
      * When   fetchActiveVisibleIssuesForSummary 호출.
      * Then   행이 정확히 1개다 — 상태·우선순위·유형·담당자 어느 축으로 그룹핑해도 합이 1.
      *
-     * 다중 조인으로 건수가 부풀려지는 결함(`IssueTypeRepository` PR#31 학습)을 봉인한다.
-     * 행이 2개가 되면 분포 4종의 합이 전부 2가 되어 화면의 모든 숫자가 동시에 거짓이 된다.
+     * **현재 결함을 봉인하는 테스트가 아니라 전방 회귀 가드다.** 지금 이 쿼리는
+     * `.from(ISSUES).join(PROJECTS)`(N:1 FK) 하나뿐이고 라벨은 조인 테이블이 아니라 배열 컬럼이라,
+     * 라벨을 몇 개 달든 행이 늘어날 수 **구조적으로** 없다. 이 픽스처로 재현되는 현재 결함은 없다.
+     *
+     * 이 테스트가 잡는 것은 앞으로 이 쿼리에 **1:N 조인이 추가되는 변경**이다
+     * (라벨의 조인 테이블 정규화 · `issue_components` · `issue_version_links` 등).
+     * `IssueTypeRepository` PR#31 이 그 양식이었다. 행이 2배가 되면 분포 4종의 합이 전부 2가 되어
+     * 화면의 모든 숫자가 동시에 거짓이 되므로, 어느 축으로 조인이 들어오든 축별 합 단언이 red 가 된다.
      */
     @Test
     fun `SUM-5 - 이슈 1건이면 분포 4종의 합이 각각 정확히 1이다`() {
