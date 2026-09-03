@@ -12,6 +12,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/auth-fixtures'
 import { loginPageStrings, loginStrings } from '../src/i18n/ko'
+import { E2E_REFRESH_EXPIRED_KEY } from '../src/mocks/auth-handlers'
 
 test.describe('전역 로그인 모달', () => {
   test('S1 미인증으로 / 진입 → 로그인 모달이 뜬다', async ({ page }) => {
@@ -53,26 +54,18 @@ test.describe('전역 로그인 모달', () => {
     await loginAsAlice(page)
     await page.goto('/issues')
 
-    // 🛑 sessionStorage 를 지우면 안 된다. store 가 비면 requireAuth 가 먼저 /login 으로
-    //    보내버려서 "이동하지 않는다"는 이 테스트의 명제 자체를 검증할 수 없다.
-    //    만료는 서버 쪽에서만 일어나게 한다 — 토큰은 남아 있고 서버가 거절하는 상태.
-    await page.route('**/api/v1/auth/refresh', (route) =>
-      route.fulfill({
-        status: 401,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'refresh_token_expired' }),
-      }),
-    )
-    await page.route('**/api/v1/issues**', (route) =>
-      route.fulfill({
-        status: 401,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'unauthorized' }),
-      }),
-    )
+    // 🛑 page.route 로는 재현할 수 없다. e2e 는 MSW **서비스워커** 환경이라 MSW 가 처리한
+    //    요청은 네트워크로 나가지 않고, 따라서 Playwright 의 네트워크 가로채기에 도달하지 않는다.
+    //    MSW 쪽 localStorage 토글이 유일한 경로다(e2e-msw-scenario-toggle-localstorage-flag).
+    // 🛑 sessionStorage 를 지우는 방식도 쓸 수 없다. store 가 비면 requireAuth 가 먼저
+    //    /login 으로 보내버려서 「이동하지 않는다」는 이 테스트의 명제를 검증할 수 없다 —
+    //    토큰은 살아 있고 **서버가 거절하는** 상태여야 한다.
+    await page.evaluate((key) => {
+      window.localStorage.setItem(key, 'true')
+    }, E2E_REFRESH_EXPIRED_KEY)
 
-    // 목록 재조회를 유발한다. store 의 토큰은 살아 있으므로 requireAuth 는 통과하고,
-    // 이슈 API 401 → refresh 401 → 만료 프롬프트 경로를 탄다.
+    // 재조회를 유발한다. store 의 토큰은 살아 있어 requireAuth 는 통과하고,
+    // whoami 401 → refresh 401 → 만료 프롬프트 경로를 탄다.
     await page.reload()
 
     await expect(page.getByRole('dialog', { name: loginPageStrings.heading })).toBeVisible()
