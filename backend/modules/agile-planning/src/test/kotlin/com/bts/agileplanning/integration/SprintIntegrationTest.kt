@@ -351,6 +351,33 @@ class SprintIntegrationTest {
      * 두 스레드가 순차로 돌면 잠금이 없어도 통과한다 — 「락이 동작한다」와 「애초에 안 겹쳤다」를
      * 구별하지 못한다. 두 스레드가 진입한 것을 확인한 뒤 동시에 푼다
      * (선례 `BoardApplicationServiceTest.동시 ensureScrumBoard 후에도 …`).
+     *
+     * ### `runCatching` 만으로는 무엇이 죽였는지 못 잰다 (부채 167 ②)
+     * `runCatching { … }.map { }` 은 실패를 `Result<Unit>` 으로 뭉갠다. 그래서 「성공 1건」만 세면
+     * 진 쪽이 **무엇으로 죽어도** 초록이다 — 커넥션 타임아웃이든 `MANDATORY` 오설정이든, 심지어
+     * 서비스를 부르지도 않고 죽어도 통과한다(강화 전 상태에서 진 쪽을 `IllegalStateException` 으로
+     * 갈아 끼워 실측했다 · `failures=0`). 그래서 `exceptionOrNull()` 로 꺼내 **타입까지** 고정한다.
+     * 선례 `BoardApplicationServiceTest.kt` 의 「성공 2건 + 보드 id distinct 1개」와 같은 결의 강화다.
+     * 마찬가지로 `it.get()` 에 타임아웃이 없으면 락이 안 풀렸을 때 red 가 아니라 **행**으로 나타나
+     * 테스트가 아니라 CI 가 멈춘다. `executor` 회수는 `try/finally` 라야 그 타임아웃 경로에서도 돈다.
+     *
+     * ### 왜 「둘 중 하나」로 열지 않고 [SprintAlreadyActiveException] 으로 고정하는가 (R10)
+     * Task 6 이 advisory lock 에 200ms 예산을 걸어, 진 쪽이 `CannotAcquireLockException`(503) 으로
+     * 죽을 **여지**가 생겼다. 그래도 열지 않는다.
+     * 1. 계약이 하나다 — spec S3 은 이 시나리오의 진 쪽을 **409 `AGILE_SPRINT_ALREADY_ACTIVE`** 로
+     *    못박는다. 503 은 S4(외부 홀더가 락을 오래 쥔 경우)의 계약이고 `AdvisoryLockBudgetTest` 가
+     *    따로 잰다. 여기서 503 을 받아 주면 **409 계약이 썩어도 이 테스트는 초록이다.**
+     * 2. 여유가 5배다 — 진 쪽의 락 대기 상한은 이긴 쪽의 락 뒤 구간(재조회·`findActiveByBoard`·
+     *    UPDATE·커밋)뿐이다. 경쟁 구간 전체를 3회 실측해 23·41·41ms 였고(2026-09-03 · 로컬
+     *    Testcontainers), 이는 대기 시간의 **상한**이라 실제 대기는 더 짧다.
+     * 3. 어긋나면 그게 정보다 — 여기서 `CannotAcquireLockException` 이 나온다는 것은 이긴 쪽의 락 뒤
+     *    구간이 200ms 를 넘겼다는 뜻이고, 그때는 운영에서도 **정상 경합이 409 대신 503 을 받는다.**
+     *    flaky 로 눈감을 게 아니라 봐야 하는 회귀다. 실패 메시지가 실제 타입을 찍는다.
+     *
+     * 락 뒤 재조회(Task 5)가 `InvalidSprintTransitionException` 을 낼 가능성도 짚어 실측했다 —
+     * 나오지 않는다. 두 스레드는 **서로 다른 스프린트**를 시작하므로 진 쪽이 자기 행을 다시 읽어도
+     * 여전히 `PLANNED` 다. FSM 재검증을 통과한 뒤 `findActiveByBoard` 가드가 잡는다
+     * (`SprintApplicationService.kt` 의 `throw SprintAlreadyActiveException()` 줄에서 잡힌 스택 확인).
      */
     @Test
     fun `동시 start 2건 중 한 건만 통과하고 보드의 ACTIVE 스프린트는 1개다`() {
