@@ -1,6 +1,9 @@
 // 이슈 설명 필드의 Markdown을 HTML로 변환하고 XSS 페이로드를 제거하는 서버 측 렌더러
 package com.bts.issue.markdown
 
+import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension
+import com.vladsch.flexmark.ext.gfm.tasklist.TaskListExtension
+import com.vladsch.flexmark.ext.tables.TablesExtension
 import com.vladsch.flexmark.html.HtmlRenderer
 import com.vladsch.flexmark.parser.Parser
 import com.vladsch.flexmark.util.data.MutableDataSet
@@ -49,19 +52,44 @@ object MarkdownRenderer {
 
     private val MENTION_EXT: MentionExtension = MentionExtension.create()
 
+    /**
+     * flexmark 확장 전량 — 파서와 렌더러가 **같은 목록**을 본다.
+     *
+     * 목록을 두 벌로 두면 한쪽에만 확장이 붙어 「파싱은 되는데 렌더가 안 되는」(또는 그 반대)
+     * 상태가 조용히 생긴다. 상수 하나를 양쪽이 참조해 그 갈라짐을 원천 차단한다.
+     *
+     * 취소선·표·체크박스는 GFM 확장이라 코어 파서가 모른다 — Jira Cloud 에디터 서식 패리티(J8).
+     */
+    private val EXTENSIONS =
+        listOf(
+            MENTION_EXT,
+            StrikethroughExtension.create(),
+            TablesExtension.create(),
+            TaskListExtension.create(),
+        )
+
     private val PARSER: Parser =
         Parser.builder(FLEXMARK_OPTIONS)
-            .extensions(listOf(MENTION_EXT))
+            .extensions(EXTENSIONS)
             .build()
 
     private val RENDERER: HtmlRenderer =
         HtmlRenderer.builder(FLEXMARK_OPTIONS)
-            .extensions(listOf(MENTION_EXT))
+            .extensions(EXTENSIONS)
             // 인라인 raw HTML 전담 렌더러 — core HtmlInline 핸들러를 override 한다.
             .nodeRendererFactory(RawInlineHtmlNodeRendererFactory)
             .build()
 
     // ── OWASP HTML Sanitizer allowlist 정책 ────────────────────────────────────
+
+    /**
+     * 본문 이미지의 유일한 허용 `src` 형태 — `attachment:<uuid>`.
+     *
+     * 첨부 식별자(UUID v4 형태)까지 정확히 되잰다. 스킴만 검사하면 `attachment:../../etc/passwd`
+     * 같은 경로가 통과해 프론트의 blob 치환 로직에 임의 문자열이 흘러든다.
+     */
+    private val ATTACHMENT_SRC =
+        Regex("^attachment:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
     /**
      * 허용 태그·속성 allowlist.
@@ -83,10 +111,42 @@ object MarkdownRenderer {
         HtmlPolicyBuilder()
             .allowElements("h1", "h2", "h3", "h4", "h5", "h6")
             .allowElements("strong", "em", "b", "i")
+            // 밑줄·취소선 — Jira 에디터 ⌘U · ⌘⇧S 에 대응(J8). 밑줄은 마크다운 문법이 없어
+            // 에디터 경로로만 들어온다(편차 X2). `s` 는 flexmark Strikethrough 가, `del` 은
+            // 에디터가 만든다 — 둘 다 열어야 두 입구가 같은 결과를 낸다.
+            .allowElements("u", "del", "s")
             .allowElements("ul", "ol", "li")
             .allowElements("p", "br")
+            // 구분선 — `---` 및 툴바 구분선 버튼(J8).
+            .allowElements("hr")
             .allowElements("pre", "blockquote")
             .allowElements("code")
+            // 표 — GFM 표 문법과 툴바 표 삽입(J8). 속성 없는 구조 태그만 연다. `colspan`/`rowspan`
+            // 은 열지 않는다 — 지금 만들 수단이 없고, 여는 순간 값 검증이 새 표면이 된다.
+            .allowElements("table", "thead", "tbody", "tfoot", "tr", "th", "td")
+            // 체크박스 목록 — `- [ ]` 및 툴바 액션 아이템(J8). `type` 을 checkbox 로 못 박아
+            // text/password 입력창 주입을 막는다. `disabled`/`checked` 는 값 없는 표시용이다.
+            .allowElements("input")
+            .allowAttributes("type")
+            .matching { v: String -> v.equals("checkbox", ignoreCase = true) }
+            .onElements("input")
+            .allowAttributes("checked", "disabled")
+            .onElements("input")
+            // 이미지 — 첨부 참조(`attachment:<uuid>`)만 허용한다(J7). http(s) 를 열면 외부
+            // 트래킹 픽셀과 혼합 콘텐츠가 함께 들어온다. 첨부 다운로드가 Bearer 헤더 인증이라
+            // 어차피 `<img src="/api/...">` 는 뜨지 않고, 프론트가 렌더 시 blob 으로 바꾼다.
+            //
+            // ★두 겹이 **둘 다** 필요하다. OWASP 는 `src` 를 URL 속성으로 특별 취급해
+            // `allowUrlProtocols` 에 없는 스킴을 `matching` 술어보다 **먼저** 잘라낸다 —
+            // 스킴만 등록하면 `attachment:../../etc/passwd` 가 통과하고, 술어만 두면
+            // `src` 자체가 스킴 단계에서 사라져 `<img alt="…" />` 만 남는다(실측).
+            .allowUrlProtocols("attachment")
+            .allowElements("img")
+            .allowAttributes("src")
+            .matching { v: String -> ATTACHMENT_SRC.matches(v) }
+            .onElements("img")
+            .allowAttributes("alt")
+            .onElements("img")
             // language-* 패턴만 허용 — 임의 class 값 거부 (코드 하이라이팅 보존)
             .allowAttributes("class")
             .matching { v: String -> v.startsWith("language-") }
@@ -105,6 +165,18 @@ object MarkdownRenderer {
             .toFactory()
 
     // ── 공개 API ───────────────────────────────────────────────────────────────
+
+    /**
+     * 이미 HTML 인 입력을 allowlist 로 정화한다 (렌더 없음).
+     *
+     * 리치 에디터(TipTap)가 보낸 본문·댓글이 이 경로로 들어온다. [renderSafe] 와 **같은
+     * [SANITIZE_POLICY]** 를 쓴다 — 정책이 갈라지면 한 입구로 들어온 페이로드가 다른 입구의
+     * 테스트를 통과한 채 살아남는다.
+     *
+     * @param html 사용자 입력 HTML 문자열 (신뢰하지 않는 입력)
+     * @return allowlist 밖 태그·속성이 제거된 안전한 HTML 문자열
+     */
+    fun sanitizeHtml(html: String): String = SANITIZE_POLICY.sanitize(html)
 
     /**
      * Markdown 문자열을 안전한 HTML로 변환한다.

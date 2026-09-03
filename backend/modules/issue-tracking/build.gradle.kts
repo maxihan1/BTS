@@ -181,6 +181,12 @@ dependencies {
     // ── Markdown 렌더링 + XSS sanitization ────────────────────────────────────
     // flexmark — Markdown → HTML 변환 (SDD 03-tech-stack 명시)
     implementation("com.vladsch.flexmark:flexmark:0.64.8")
+    // flexmark 확장 3종 — Jira Cloud 에디터 서식 패리티(J8). 취소선 `~~` · 표 · 체크박스 목록은
+    // 코어 파서가 모르는 GFM 문법이라 확장을 등록해야 노드가 생긴다. 등록하지 않으면 문법이
+    // 그대로 텍스트로 남고, allowlist 를 아무리 열어도 태그가 애초에 만들어지지 않는다.
+    implementation("com.vladsch.flexmark:flexmark-ext-gfm-strikethrough:0.64.8")
+    implementation("com.vladsch.flexmark:flexmark-ext-tables:0.64.8")
+    implementation("com.vladsch.flexmark:flexmark-ext-gfm-tasklist:0.64.8")
     // OWASP Java HTML Sanitizer — allowlist 기반 HTML 정화 (Maxi 게이트1 승인)
     // 출처: https://github.com/owasp/java-html-sanitizer
     implementation("com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1")
@@ -248,8 +254,13 @@ jooq {
                         //   includeExcludeColumns=true 가 있어야 excludes 가 컬럼에 적용된다(기본 false=테이블만 필터).
                         //   search_vector 만 참조하는 idx_issues_search_vector 는 컬럼 제외 시 jOOQ 가 함께 드롭한다.
                         //   flyway_schema_history: Flyway 내부 메타테이블 제외.
+                        //   [V039] description_plain 도 **같은 이유로** 제외한다. STORED generated 컬럼이라
+                        //   search_vector 와 정확히 같은 함정을 밟는다 — 포함시키면 record 기반 INSERT 가
+                        //   "cannot insert a non-DEFAULT value into column description_plain" 으로 죽어
+                        //   이슈 생성이 전수 500 이 된다. AQL trigram 조건은 search_vector 와 동형으로
+                        //   raw DSL.condition("lower(issues.description_plain) like ...") 로 수행한다.
                         setIncludeExcludeColumns(true)
-                        excludes = "flyway_schema_history|search_vector"
+                        excludes = "flyway_schema_history|search_vector|description_plain"
                     }
 
                     generate.apply {
