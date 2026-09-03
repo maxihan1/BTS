@@ -89,10 +89,13 @@ describe('PROJECT_VIEW_TABS — 정본 구성', () => {
     expect(withSearch).toEqual(['issues'])
 
     // 짝 검사 — 라우트가 `projectKey` 를 실제로 파싱하지 않으면 링크가 조용히 무시된다.
-    const issuesRoute = router.routesById[`${SHELL}/issues`]
-    const parsed = issuesRoute?.options.validateSearch?.({ projectKey: PROJECT_KEY }) as
-      | { projectKey?: string }
-      | undefined
+    // `validateSearch` 는 함수 말고도 여러 형태를 받는 유니온이라 좁히고 쓴다. 함수가 아니면
+    // `parsed` 가 undefined 로 남아 아래 단언이 red 가 된다 — 조용히 통과하지 않는다.
+    const validateSearch = router.routesById[`${SHELL}/issues`]?.options.validateSearch
+    const parsed =
+      typeof validateSearch === 'function'
+        ? (validateSearch({ projectKey: PROJECT_KEY }) as { projectKey?: string })
+        : undefined
     expect(parsed?.projectKey).toBe(PROJECT_KEY)
   })
 })
