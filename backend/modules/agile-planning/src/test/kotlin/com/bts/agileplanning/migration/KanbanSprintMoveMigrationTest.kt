@@ -486,11 +486,17 @@ class KanbanSprintMoveMigrationTest {
         ) { it.getObject(1) }
 
     private fun statusOf(sprintId: UUID): String? =
-        queryOne("SELECT status FROM sprints WHERE id = ?", sprintId) { it.getString(1) }
+        queryOne(
+            "SELECT status FROM sprints WHERE id = ?",
+            sprintId,
+        ) { it.getString(1) }
 
     // 강등된 행만 version 이 오른다 — 「무엇을 건드렸나」를 status 보다 정확히 가리키는 지표다.
     private fun versionOf(sprintId: UUID): Long? =
-        queryOne("SELECT version FROM sprints WHERE id = ?", sprintId) { it.getLong(1) }
+        queryOne(
+            "SELECT version FROM sprints WHERE id = ?",
+            sprintId,
+        ) { it.getLong(1) }
 
     private fun timestampOf(
         sprintId: UUID,
