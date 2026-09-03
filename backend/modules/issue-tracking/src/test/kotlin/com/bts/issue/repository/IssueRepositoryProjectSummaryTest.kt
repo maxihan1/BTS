@@ -1,4 +1,7 @@
 // IssueRepository 프로젝트 요약 원천 조회 Testcontainers 통합 테스트 — 보안 술어 재사용 · 분포 봉인 · 활동 피드
+// ktlint(140)와 detekt(120)의 한도가 달라 그 사이 길이의 픽스처 한 줄이 서로 다른 요구를 받는다.
+// 테스트 픽스처는 파일 단위로 억제하는 것이 저장소 관례다(같은 모듈에 21건).
+@file:Suppress("MaxLineLength")
 
 package com.bts.issue.repository
 
@@ -323,6 +326,7 @@ class IssueRepositoryProjectSummaryTest : IssueTestcontainersBase() {
             assigneeLevelIds = emptySet(),
         )
 
+    @Suppress("LongParameterList")
     private fun insertIssue(
         seq: Long,
         projectId: UUID = testProjectId,
@@ -348,8 +352,7 @@ class IssueRepositoryProjectSummaryTest : IssueTestcontainersBase() {
             ),
         )
 
-    private fun softDeleteIssue(id: UUID) =
-        exec("UPDATE issues SET deleted_at = NOW() WHERE id = ?") { it.setObject(1, id) }
+    private fun softDeleteIssue(id: UUID) = exec("UPDATE issues SET deleted_at = NOW() WHERE id = ?") { it.setObject(1, id) }
 
     private fun setDueDate(
         id: UUID,

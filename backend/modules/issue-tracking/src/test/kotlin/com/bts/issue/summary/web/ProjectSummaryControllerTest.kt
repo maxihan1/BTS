@@ -1,4 +1,7 @@
 // ProjectSummaryController MockMvc 슬라이스 테스트 — actor 게이트 · limit 검증 · 에러 매핑 · 응답 계약
+// ktlint(140)와 detekt(120)의 한도가 달라 그 사이 길이의 픽스처 한 줄이 서로 다른 요구를 받는다.
+// 테스트 픽스처는 파일 단위로 억제하는 것이 저장소 관례다(같은 모듈에 21건).
+@file:Suppress("MaxLineLength")
 
 package com.bts.issue.summary.web
 
@@ -247,9 +250,7 @@ class ProjectSummaryControllerTest {
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
 
-    private fun sampleSummary(
-        teamWorkload: List<AssigneeSlice> = listOf(AssigneeSlice(assigneeUuid, "홍길동", 7)),
-    ): ProjectSummary =
+    private fun sampleSummary(teamWorkload: List<AssigneeSlice> = listOf(AssigneeSlice(assigneeUuid, "홍길동", 7))): ProjectSummary =
         ProjectSummary(
             projectKey = "TPRJ",
             recent =

@@ -112,7 +112,11 @@ data class UpcomingCountsResponse(
 ) {
     companion object {
         fun from(counts: UpcomingCounts): UpcomingCountsResponse =
-            UpcomingCountsResponse(counts.windowDays, counts.due, counts.overdue)
+            UpcomingCountsResponse(
+                windowDays = counts.windowDays,
+                due = counts.due,
+                overdue = counts.overdue,
+            )
     }
 }
 
@@ -184,6 +188,10 @@ data class AssigneeSliceResponse(
 ) {
     companion object {
         fun from(slice: AssigneeSlice): AssigneeSliceResponse =
-            AssigneeSliceResponse(slice.assigneeId, slice.assigneeName, slice.count)
+            AssigneeSliceResponse(
+                assigneeId = slice.assigneeId,
+                assigneeName = slice.assigneeName,
+                count = slice.count,
+            )
     }
 }

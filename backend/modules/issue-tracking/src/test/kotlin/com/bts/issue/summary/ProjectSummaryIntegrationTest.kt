@@ -624,6 +624,7 @@ class ProjectSummaryIntegrationTest {
      * 실 전환 서비스는 `created_at=NOW()` 를 박으므로 과거 시각 창을 시드할 수 없다
      * ([com.bts.issue.cfd.CfdIntegrationTest] 와 같은 이유).
      */
+    @Suppress("LongParameterList")
     private fun seedStatusChange(
         issueId: UUID,
         issueKey: String,

@@ -68,7 +68,9 @@ import java.util.UUID
  *              (`NoSuchBeanDefinitionException` 방지 — [com.bts.issue.cfd.web.CfdController] 선례).
  */
 @Service
-@Suppress("LongParameterList")
+// TooManyFunctions — 공개 메서드는 getSummary/getActivity 둘뿐이고 나머지는 카드·분포를 하나씩 만드는
+// private 헬퍼다. 한 화면 한 벌을 조립하는 단일 책임이라 쪼개면 단일 사용처 추상화만 늘어난다.
+@Suppress("LongParameterList", "TooManyFunctions")
 class ProjectSummaryService(
     private val permissionResolver: IssuePermissionResolver,
     private val issueRepository: IssueRepository,
