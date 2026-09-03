@@ -8,13 +8,15 @@ import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
 import { useStatusCatalog } from '@/hooks/use-workflows-admin'
 import { useWorkflowDraft } from '@/hooks/use-workflow-draft'
 import { useWorkflowPublish } from '@/hooks/use-workflow-publish'
-import { usePublishFlow } from '@/hooks/use-publish-flow'
+import { usePublishFlow, useMigrationWizard } from '@/hooks/use-publish-flow'
+import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { publishBlockReason } from '@/lib/workflow-draft'
-import type { TransitionInput } from '@/lib/workflow-draft'
+import type { TransitionInput, EditableDraft, DraftAction } from '@/lib/workflow-draft'
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
 import { WorkflowMetaForm } from './WorkflowMetaForm'
 import type { PanelStatus } from './StatusListPanel'
 import { DraftStatusBar } from './DraftStatusBar'
+import type { MigrationProgress } from './DraftStatusBar'
 import { DraftConflictBanner } from './DraftConflictBanner'
 import { WorkflowEditorTabs } from './WorkflowEditorTabs'
 import { WorkflowEditorDialogs } from './WorkflowEditorDialogs'
@@ -24,6 +26,51 @@ import { toPanelStatuses, toPanelTransition, toStateNames } from './draft-adapte
 interface WorkflowEditorPageProps {
   /** 편집 대상 워크플로우 키 */
   workflowKey: string
+}
+
+/** [buildDiagramTabProps] 가 필요로 하는 것 — 페이지의 리듀서와 다이얼로그 여닫이. */
+interface DiagramTabDeps {
+  editable: EditableDraft
+  dispatch: (action: DraftAction) => void
+  setEditingTransition: (target: TargetTransition | null) => void
+  setTransitionPrefill: (prefill: { from: string; to: string } | null) => void
+  setTransitionFormOpen: (open: boolean) => void
+}
+
+/**
+ * 다이어그램 탭이 받는 props 묶음 (FR-WF-07 D8).
+ *
+ * ★ **컴포넌트 밖으로 뺀 이유는 200줄 상한이다.** 배선을 JSX 안에 인라인으로 두니
+ * `WorkflowEditorPage` 가 203줄이 돼 `lint-ratchet` R4 가 잡았다. 래칫의 기본 처방은
+ * 「쪼갠다」이고 베이스라인 추가는 「200줄 넘는 컴포넌트를 하나 더 승인한다」는 뜻이라
+ * 택하지 않았다.
+ */
+function buildDiagramTabProps(deps: DiagramTabDeps) {
+  const { editable, dispatch, setEditingTransition, setTransitionPrefill, setTransitionFormOpen } = deps
+  return {
+    canvasStates: editable.states,
+    canvasTransitions: editable.transitions,
+    // 잠금은 아직 화면에 실려 오지 않는다 — `workflows.is_locked` 를 응답에 싣는 것이
+    // 별도 과제라, 컴포넌트는 지원하되 지금은 항상 잠기지 않은 것으로 그린다.
+    locked: false,
+    onMoveState: (key: string, x: number, y: number) => {
+      dispatch({ type: 'moveState', key, x, y })
+    },
+    onCreateTransitionFromCanvas: (from: string, to: string) => {
+      // 사용자가 이미 출발·도착을 지정한 조작이다. 다시 고르게 하면 그 조작이 없던 일이 된다.
+      setEditingTransition(null)
+      setTransitionPrefill({ from, to })
+      setTransitionFormOpen(true)
+    },
+    onEditTransitionByIndex: (index: number) => {
+      // 초안 전환에는 id 가 없어 배열 위치가 유일한 identity 다(아직 발행되지 않아 DB 행이 아니다).
+      const target = editable.transitions[index]
+      if (target === undefined) return
+      setEditingTransition({ localId: target.localId, name: target.name })
+      setTransitionPrefill(null)
+      setTransitionFormOpen(true)
+    },
+  }
 }
 
 /**
@@ -48,6 +95,26 @@ function renderLoadGate(loading: boolean, error: unknown): React.JSX.Element | n
 }
 
 /**
+ * 상태 표시줄에 실을 이관 진행 상황. 추적 중인 이관이 없으면 null.
+ *
+ * ★ 판정에 `discardDisabled` 를 **그대로** 쓴다. 그 값이 곧 「살아 있는 이관을 붙들고 있어
+ * 버튼을 잠갔다」이므로, 잠금과 그 설명이 같은 조건에서 함께 켜지고 꺼진다. 별도 조건을
+ * 세우면 둘이 어긋나 「이유 없이 회색인 버튼」이 다시 생긴다(G-2 기각 사유 그 자체다).
+ *
+ * 폴링 첫 응답 전에는 건수를 모른다 — 0/0 으로 넘기고 표시줄이 건수를 감춘다.
+ *
+ * @param migration 이관 마법사 배선
+ * @returns 진행 표시에 필요한 건수, 추적 중인 이관이 없으면 null
+ */
+function toMigrationProgress(migration: UseMigrationWizardResult): MigrationProgress | null {
+  if (!migration.discardDisabled) {
+    return null
+  }
+  const operation = migration.operation
+  return { processed: operation?.processedCount ?? 0, total: operation?.totalCount ?? 0 }
+}
+
+/**
  * 워크플로우 하나를 초안으로 편집한다.
  *
  * ### ★ 편집은 배포가 아니다
@@ -62,12 +129,17 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   const catalog = useStatusCatalog()
   const publish = useWorkflowPublish(workflowKey)
   const flow = usePublishFlow(draft, publish)
+  // 이관 마법사는 여기서 쥔다 — `WorkflowEditorDialogs` 는 조립만 한다는 계약을 지키면서,
+  // `discardDisabled`(G-3)를 아래 `DraftStatusBar` 까지 끌어올릴 수 있는 유일한 자리다.
+  const migration = useMigrationWizard(workflowKey, flow.preview)
 
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [statusToRemove, setStatusToRemove] = React.useState<PanelStatus | null>(null)
   const [transitionFormOpen, setTransitionFormOpen] = React.useState(false)
   const [editingTransition, setEditingTransition] = React.useState<TargetTransition | null>(null)
   const [transitionToRemove, setTransitionToRemove] = React.useState<TargetTransition | null>(null)
+  /** 다이어그램에서 핸들을 끌어 만든 전환의 출발·도착 (FR-WF-07 D8) */
+  const [transitionPrefill, setTransitionPrefill] = React.useState<{ from: string; to: string } | null>(null)
 
   const gate = renderLoadGate(draft.isLoading || catalog.isPending, draft.loadError)
   if (gate !== null) {
@@ -76,6 +148,13 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
 
   const { draft: editable, canResetToDefault, exists } = draft.state
   const catalogEntries = catalog.data ?? []
+  const diagramTab = buildDiagramTabProps({
+    editable,
+    dispatch: draft.dispatch,
+    setEditingTransition,
+    setTransitionPrefill,
+    setTransitionFormOpen,
+  })
   const panelStatuses = toPanelStatuses(editable)
   const panelTransitions = editable.transitions.map(toPanelTransition)
   const stateNames = toStateNames(editable)
@@ -160,7 +239,13 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         onPublish={flow.startPublish}
         onReset={flow.openReset}
         onDiscard={flow.openDiscard}
-        busy={flow.busy}
+        // ★ 폴링 중에는 초안 폐기도 잠근다(G-3) — `DraftStatusBar` 에 별도 prop 을 낼 자리가
+        //   없어 기존 `busy` 를 빌린다. Reset·상단 발행 버튼도 **함께** 잠긴다.
+        //   마법사가 그 자리를 덮어 주리라 기대하지 않는다 — 새로고침으로 돌아오면
+        //   `flow.preview` 가 null 이라 마법사는 아예 렌더되지 않고, 다이얼로그를 닫아도
+        //   마찬가지다. 그래서 잠긴 이유는 아래 `migration` 이 표시줄에서 직접 말한다(G-2).
+        busy={flow.busy || migration.discardDisabled}
+        migration={toMigrationProgress(migration)}
       />
 
       {draft.state.lastRejection !== null ? (
@@ -183,13 +268,16 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         }}
         onAddTransition={() => {
           setEditingTransition(null)
+          setTransitionPrefill(null)
           setTransitionFormOpen(true)
         }}
         onEditTransition={(target) => {
           setEditingTransition(target)
+          setTransitionPrefill(null)
           setTransitionFormOpen(true)
         }}
         onRemoveTransition={setTransitionToRemove}
+        {...diagramTab}
       />
 
       <WorkflowEditorDialogs
@@ -197,6 +285,7 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         catalog={catalogEntries}
         stateNames={stateNames}
         blockReason={blockReason}
+        transitionPrefill={transitionPrefill}
         pickerOpen={pickerOpen}
         onPickerOpenChange={setPickerOpen}
         onAddStatus={handleAddStatus}
@@ -218,6 +307,7 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         onConfirmReset={flow.confirmReset}
         onConfirmDiscard={flow.confirmDiscard}
         busy={flow.busy}
+        migration={migration}
       />
     </div>
   )

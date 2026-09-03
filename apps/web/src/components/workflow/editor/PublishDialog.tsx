@@ -9,8 +9,14 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
+import { workflowEditorLabels } from '@/i18n/workflow-editor-labels'
+import { DEFAULT_WORKFLOW_ADMIN_ERROR_MESSAGE } from '@/hooks/workflow-admin-error'
+import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
+import type { EditableDraft } from '@/lib/workflow-draft'
 import type { PublishPreview } from '@/api/workflows-draft.types'
+import { MigrationWizard } from './MigrationWizard'
 
 interface PublishDialogProps {
   open: boolean
@@ -24,6 +30,76 @@ interface PublishDialogProps {
   /** 발행 실행 */
   onPublish: () => void
   publishing: boolean
+  /**
+   * 지금 편집 중인 초안 — 이관 마법사가 도착지 후보를 계산하는 데 쓴다.
+   *
+   * ★ **필수다.** 유일한 소비처(`WorkflowEditorDialogs`)가 언제나 넘긴다 — 선택 prop 으로 두면
+   * 테스트만 닿는 undefined 분기가 생기고, 그 분기를 지키는 판정은 도달 불가 조합을 지키는
+   * 가짜 그린이 된다.
+   */
+  draft: EditableDraft
+  /** 이관 마법사의 살아 있는 배선(`useMigrationWizard`). `draft` 와 짝으로만 쓴다. */
+  migration: UseMigrationWizardResult
+}
+
+interface MigrationSectionProps {
+  readonly draft: EditableDraft
+  readonly migration: UseMigrationWizardResult
+  readonly pendingIssueCounts: Record<string, number>
+}
+
+/**
+ * 이관 마법사 자리. 상태 3종(로딩·에러·본문)은 발행본 조회와 폴링 각각을 따로 본다.
+ */
+function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSectionProps): React.JSX.Element {
+  if (migration.published === null) {
+    return migration.publishedFailed ? (
+      <p role="alert" className="text-destructive text-sm">
+        {workflowEditorLabels.editor.loadFailed}
+      </p>
+    ) : (
+      <Skeleton className="h-24 w-full" />
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {migration.pollFailed ? (
+        <div role="alert" className="flex flex-col items-start gap-2">
+          <p className="text-destructive text-sm">
+            {migration.pollRetryable
+              ? labels.migration.pollFailedRetryable
+              : DEFAULT_WORKFLOW_ADMIN_ERROR_MESSAGE}
+          </p>
+          {/*
+            ★재시도는 `pollRetryable` 일 때만 준다. 4xx(403·404)는 재시도해도 서버가 같은 답을
+            주므로, 버튼을 띄우면 「기다리면 될 것」이라는 거짓말이 된다. 5xx·네트워크만 재시도가
+            의미 있는 일시 장애다 — 판정은 `useMigrationWizard` 가 한다.
+          */}
+          {migration.pollRetryable ? (
+            <Button type="button" variant="outline" size="sm" onClick={migration.retryPoll}>
+              {labels.migration.retryPoll}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {migration.startError !== null ? (
+        <p role="alert" className="text-destructive text-sm">
+          {migration.startError}
+        </p>
+      ) : null}
+      <MigrationWizard
+        draft={draft}
+        published={migration.published}
+        pendingIssueCounts={pendingIssueCounts}
+        selection={migration.selection}
+        onSelectionChange={migration.onSelectionChange}
+        onStartMigration={migration.onStartMigration}
+        starting={migration.starting}
+        operation={migration.operation}
+        progressRatio={migration.progressRatio}
+      />
+    </div>
+  )
 }
 
 /**
@@ -31,8 +107,13 @@ interface PublishDialogProps {
  *
  * ### 이관이 필요하면 발행 버튼을 **주지 않는다**
  * 빠지는 상태에 이슈가 남아 있으면 서버가 409 로 막는다. 버튼을 두고 눌러 보게 하면 그 409 를
- * 사용자가 받아야 알게 되므로, 미리보기가 알려 준 사실을 화면이 먼저 반영한다. 실제 이관
- * 마법사는 로드맵 PR 10b 몫이라 여기서는 **무엇이 막고 있는지**까지 보여준다.
+ * 사용자가 받아야 알게 되므로, 미리보기가 알려 준 사실을 화면이 먼저 반영한다. 이관이 필요하면
+ * 이 다이얼로그 **안에서** 마법사 단계로 들어간다(별도 다이얼로그가 아니다 — 즉사 계약 §2).
+ *
+ * ### ★ 이관 완료가 발행 버튼을 자동으로 되살리지 않는다(G-1)
+ * 이관이 `COMPLETED` 이고 `failedCount === 0` 이어야 발행 버튼이 다시 보인다. 이관이 끝나도
+ * **사용자가 다시 눌러야** 발행이 나간다 — 자동으로 이어 부르면 일부 실패가 섞였을 때 사용자가
+ * 자기가 누르지 않은 조작의 실패(409)를 보게 된다.
  */
 function PublishDialog({
   open,
@@ -42,10 +123,16 @@ function PublishDialog({
   blockReason,
   onPublish,
   publishing,
+  draft,
+  migration,
 }: PublishDialogProps): React.JSX.Element {
   const removed = preview.removedStatusKeys
   const pending = preview.pendingIssueCounts
   const needsMigration = Object.keys(pending).length > 0
+  // 이관이 COMPLETED · 실패 0 이어야 발행 버튼이 되살아난다(G-1 · E1).
+  const migrationSucceeded =
+    migration.operation?.status === 'COMPLETED' && migration.operation.failedCount === 0
+  const showPublishButton = !needsMigration || migrationSucceeded
 
   /** 키를 사람이 읽는 이름으로. 카탈로그에 없으면 키를 그대로 쓴다(숨기면 더 헷갈린다). */
   const nameOf = (key: string): string => stateNames[key] ?? key
@@ -90,9 +177,7 @@ function PublishDialog({
           ) : null}
 
           {needsMigration ? (
-            <p role="status" className="text-sm">
-              {labels.migration.intro}
-            </p>
+            <MigrationSection draft={draft} migration={migration} pendingIssueCounts={pending} />
           ) : null}
 
           {blockReason !== null ? (
@@ -110,12 +195,13 @@ function PublishDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {labels.common.cancel}
           </Button>
-          {/* 이관이 필요하면 발행 버튼 자체를 두지 않는다 — 눌러 보고 409 를 받게 하지 않는다. */}
-          {needsMigration ? null : (
+          {/* 이관이 필요하면 이관이 성공적으로 끝나기 전까지 발행 버튼 자체를 두지 않는다 —
+              눌러 보고 409 를 받게 하지 않는다(G-1 · E1). */}
+          {showPublishButton ? (
             <Button disabled={publishing || blockReason !== null} onClick={onPublish}>
               {labels.publish.confirm}
             </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

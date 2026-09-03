@@ -928,14 +928,17 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
     fun `S14 - viewer 가 볼 수 없는 보안 등급 이슈는 issueKeys 로 지정해도 제외된다`() {
         val viewer = UUID.randomUUID()
         val secretLevel = UUID.randomUUID()
-        insertIssue(seq = 1, assigneeId = viewer, securityLevelId = secretLevel)
-        insertIssue(seq = 2, assigneeId = viewer, securityLevelId = null)
+        insertIssue(seq = 1, assigneeId = viewer, securityLevelId = secretLevel) // 목록 안 · 비가시
+        insertIssue(seq = 2, assigneeId = viewer, securityLevelId = null) // 목록 안 · 가시
+        // 🛑 목록 **밖**의 가시 이슈. 이것이 없으면 화이트리스트가 아무것도 배제하지 않아
+        //    issueKeys 술어가 통째로 드롭돼도 이 테스트가 통과한다(가짜 그린).
+        insertIssue(seq = 3, assigneeId = viewer, securityLevelId = null)
 
         val filter = BoardCardFilter(issueKeys = listOf("TPRJ-1", "TPRJ-2"))
         val adapter = BoardIssueLookupAdapter(repository, StubSecurityDirectory(restricted()))
         val result = adapter.listVisibleIssuesByProject("TPRJ", viewer, filter)
 
-        // 키로 명시 지정해도 비가시 등급은 끌어올 수 없다.
+        // TPRJ-1 은 visibility 가, TPRJ-3 은 issueKeys 가 뺀다 — 어느 술어가 드롭돼도 red 다.
         assertThat(result.issues.map { it.key }).containsExactly("TPRJ-2")
     }
 }

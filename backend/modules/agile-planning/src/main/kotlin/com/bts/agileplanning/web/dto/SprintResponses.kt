@@ -18,6 +18,10 @@ import java.util.UUID
  *
  * @property sprintId 스프린트 UUID.
  * @property projectKey 소속 프로젝트 키.
+ * @property boardId 소속 보드 UUID (FR-BD-04).
+ *   스프린트는 프로젝트가 아니라 **보드**에 매달린다(ADR §D2). 이 필드가 없으면 클라이언트가
+ *   스프린트의 소속 보드를 알 방법이 없어, 관측이 **요청 바디**로 밀린다 — 서버가 boardId 를
+ *   흘려도 화면이 멀쩡해 결함이 안 보인다.
  * @property name 스프린트 이름.
  * @property goal 스프린트 목표 설명. null 이면 목표 미설정.
  * @property status 현재 상태. `"PLANNED"` · `"ACTIVE"` · `"COMPLETED"`.
@@ -28,6 +32,7 @@ import java.util.UUID
 data class SprintResponse(
     val sprintId: UUID,
     val projectKey: String,
+    val boardId: UUID,
     val name: String,
     val goal: String?,
     val status: String,
@@ -46,6 +51,7 @@ data class SprintResponse(
             SprintResponse(
                 sprintId = sprint.id,
                 projectKey = sprint.projectKey,
+                boardId = sprint.boardId,
                 name = sprint.name,
                 goal = sprint.goal,
                 status = sprint.status.name,

@@ -49,6 +49,7 @@ function view(): BacklogView {
       {
         sprint: {
           sprintId: '33333333-3333-4333-8333-333333333333',
+          boardId: '10000000-0000-4000-8000-000000000001',
           name: '스프린트 1',
           goal: null,
           status: 'ACTIVE',

@@ -16,6 +16,7 @@ function renderBar(over: Partial<React.ComponentProps<typeof DraftStatusBar>> = 
       hasDraft={false}
       canResetToDefault={false}
       busy={false}
+      migration={null}
       {...handlers}
       {...over}
     />,

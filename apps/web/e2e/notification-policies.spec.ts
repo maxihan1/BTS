@@ -10,6 +10,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { gotoAdminPage, expectAdminEntryHidden } from './fixtures/admin-hub'
 import {
   eventTypeLabels,
   recipientRoleLabels,
@@ -79,17 +80,9 @@ test.describe('S1 admin 메뉴 노출 + 알림 정책 페이지 진입 (FR-NT-01
     await loginAsSystemAdmin(page)
     await resetPolicyStore(page)
 
-    // Then. Header "관리 메뉴" nav 노출 확인
-    const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-    await expect(adminNav).toBeVisible()
-
-    // Then. nav 내부에 "알림 정책" 링크 노출
-    // playwright-getbyrole-exact-strict-mode: nav 컨테이너 내부로 한정해 strict mode violation 회피
-    const notifPolicyLink = adminNav.getByRole('link', { name: notificationPolicyLabels.page.heading, exact: true })
-    await expect(notifPolicyLink).toBeVisible()
-
-    // When. "알림 정책" 링크 클릭 → SPA 내부 이동
-    await notifPolicyLink.click()
+    // Then + When. 관리 진입점 노출 확인 후 "알림 정책" 링크 클릭 → SPA 내부 이동
+    // playwright-getbyrole-exact-strict-mode: 컨테이너 내부로 한정해 strict mode violation 회피
+    await gotoAdminPage(page, notificationPolicyLabels.page.heading)
     await page.waitForURL(`**${PAGE_URL}`)
     expect(new URL(page.url()).pathname).toBe(PAGE_URL)
 
@@ -336,8 +329,8 @@ test.describe('S5 비관리자 미노출 + 차단 (FR-NT-01)', () => {
     // Given. 일반 alice 로그인 — isSystemAdmin:false (기본 fixture, LS 플래그 없음)
     await loginAsAlice(page)
 
-    // Then (When 1). Header "관리 메뉴" nav 미노출
-    await expect(page.getByRole('navigation', { name: '관리 메뉴' })).not.toBeVisible()
+    // Then (When 1). 관리 진입점 미노출
+    await expectAdminEntryHidden(page)
 
     // Then (When 1). "알림 정책" 링크 미노출 (nav 없으므로 DOM에도 없음)
     await expect(
@@ -509,17 +502,12 @@ test.describe('S6 활성 역할 정책 생성 영속 (FR-NT-03)', () => {
       // 알림 정책 링크를 다시 클릭해 돌아온다 — Service Worker가 유지되어 store 영속을 확인 가능.
       // (worktree-stale-base-rebase-and-e2e-msw-traps: SPA 내부이동 패턴)
 
-      // When. 관리 메뉴 내 다른 링크(감사 로그)를 클릭해 SPA 내부 이동
-      const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-      const auditLogLink = adminNav.getByRole('link', { name: '감사 로그', exact: true })
-      await expect(auditLogLink).toBeVisible()
-      await auditLogLink.click()
+      // When. 관리 진입점을 거쳐 다른 링크(감사 로그)로 SPA 내부 이동
+      await gotoAdminPage(page, '감사 로그')
       await page.waitForURL('**/admin/audit-logs')
 
       // When. 알림 정책 링크를 클릭해 재진입
-      const notifPolicyLink = adminNav.getByRole('link', { name: notificationPolicyLabels.page.heading, exact: true })
-      await expect(notifPolicyLink).toBeVisible()
-      await notifPolicyLink.click()
+      await gotoAdminPage(page, notificationPolicyLabels.page.heading)
       await page.waitForURL(`**${PAGE_URL}`)
 
       // Then. 7건 그대로 유지 (MSW stateful store — SPA 이동 시 Service Worker 상태 보존)

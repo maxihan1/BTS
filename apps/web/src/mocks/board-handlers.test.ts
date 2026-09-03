@@ -1009,6 +1009,7 @@ describe('GET /api/v1/boards/:id — 스크럼 보드 활성 스프린트 (FR-BD
   function plannedSprint(sprintId: string, name: string): SprintMeta {
     return {
       sprintId,
+      boardId: '10000000-0000-4000-8000-000000000001',
       name,
       goal: null,
       status: 'PLANNED',

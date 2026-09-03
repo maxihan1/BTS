@@ -67,6 +67,8 @@ data class BacklogIssueResponse(
  * [SprintResponse] 를 그대로 미러한다. 별도 타입으로 분리해 백로그 맥락에서 명시적으로 사용한다.
  *
  * @property sprintId 스프린트 UUID.
+ * @property boardId 소속 보드 UUID (FR-BD-04). [SprintResponse] 와 같은 계약이다 —
+ *   두 DTO 가 서로를 미러하므로 한쪽만 필드를 늘리면 그 차이가 다음 결함이 된다.
  * @property name 스프린트 이름.
  * @property goal 스프린트 목표. null 이면 미설정.
  * @property status 스프린트 상태. `"PLANNED"` · `"ACTIVE"` · `"COMPLETED"`.
@@ -76,6 +78,7 @@ data class BacklogIssueResponse(
  */
 data class SprintMetaResponse(
     val sprintId: UUID,
+    val boardId: UUID,
     val name: String,
     val goal: String?,
     val status: String,

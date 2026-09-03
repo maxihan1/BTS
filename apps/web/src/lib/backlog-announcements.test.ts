@@ -49,6 +49,7 @@ function issue(key: string): BacklogIssue {
 function sprintMeta(sprintId: string, name: string): SprintMeta {
   return {
     sprintId,
+    boardId: '10000000-0000-4000-8000-000000000001',
     name,
     goal: null,
     status: 'PLANNED',

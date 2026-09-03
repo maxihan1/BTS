@@ -9,6 +9,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { gotoAdminPage, expectAdminEntryHidden } from './fixtures/admin-hub'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // localStorage 플래그 키 상수 — fr-au-05-signup.spec.ts · auth-handlers.ts 동일
@@ -46,17 +47,9 @@ test.describe('S1 admin 메뉴 노출 + 감사 로그 페이지 진입 (FR-AU-10
     // Given. SYSTEM_ADMIN alice 로그인
     await loginAsSystemAdmin(page)
 
-    // Then. Header "관리 메뉴" nav 노출 확인
-    const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
-    await expect(adminNav).toBeVisible()
-
-    // Then. nav 내부에 "감사 로그" 링크 노출
-    // playwright-getbyrole-exact-strict-mode: nav 컨테이너 내부로 한정해 strict mode violation 회피
-    const auditLogLink = adminNav.getByRole('link', { name: '감사 로그', exact: true })
-    await expect(auditLogLink).toBeVisible()
-
-    // When. "감사 로그" 링크 클릭 → SPA 내부 이동
-    await auditLogLink.click()
+    // Then + When. 관리 진입점 노출 확인 후 "감사 로그" 링크 클릭 → SPA 내부 이동
+    // playwright-getbyrole-exact-strict-mode: 컨테이너 내부로 한정해 strict mode violation 회피
+    await gotoAdminPage(page, '감사 로그')
     await page.waitForURL('**/admin/audit-logs')
     expect(new URL(page.url()).pathname).toBe('/admin/audit-logs')
 
@@ -171,8 +164,8 @@ test.describe('S4 비관리자 미노출 + 차단 (FR-AU-10)', () => {
     // Given. 일반 alice 로그인 — isSystemAdmin:false (기본 fixture, LS 플래그 없음)
     await loginAsAlice(page)
 
-    // Then (When 1). Header "관리 메뉴" nav 미노출
-    await expect(page.getByRole('navigation', { name: '관리 메뉴' })).not.toBeVisible()
+    // Then (When 1). 관리 진입점 미노출
+    await expectAdminEntryHidden(page)
 
     // Then (When 1). "감사 로그" 링크 미노출 (nav 없으므로 DOM에도 없음)
     await expect(page.getByRole('link', { name: '감사 로그', exact: true })).not.toBeVisible()

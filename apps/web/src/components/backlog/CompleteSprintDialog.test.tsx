@@ -120,7 +120,7 @@ const COMPLETED_ID = '44444444-4444-4444-8444-444444444444'
  * `status` 는 백엔드 응답이 문자열이므로 그대로 문자열로 둔다 (`sprintMetaSchema` 미러).
  */
 function meta(sprintId: string, name: string, status: string): SprintMeta {
-  return { sprintId, name, goal: null, status, startDate: null, endDate: null, version: 1 }
+  return { boardId: '10000000-0000-4000-8000-000000000001', sprintId, name, goal: null, status, startDate: null, endDate: null, version: 1 }
 }
 
 /**

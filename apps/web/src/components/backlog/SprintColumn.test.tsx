@@ -67,6 +67,7 @@ import {
 
 const plannedSprint: SprintMeta = {
   sprintId: 'sprint-uuid-0001',
+  boardId: '10000000-0000-4000-8000-000000000001',
   name: '스프린트 1',
   goal: '목표: MVP 출시',
   status: 'PLANNED',

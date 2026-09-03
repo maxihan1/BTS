@@ -24,6 +24,7 @@ const MOCK_BOARD_META_ASSIGNEE: BoardMeta = {
   projectKey: 'ATLAS',
   name: 'ATLAS 보드',
   swimlaneField: 'ASSIGNEE',
+  boardType: 'KANBAN',
 }
 
 const MOCK_BOARD_META_NONE: BoardMeta = {
@@ -31,6 +32,7 @@ const MOCK_BOARD_META_NONE: BoardMeta = {
   projectKey: 'ATLAS',
   name: 'ATLAS 보드',
   swimlaneField: 'NONE',
+  boardType: 'KANBAN',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

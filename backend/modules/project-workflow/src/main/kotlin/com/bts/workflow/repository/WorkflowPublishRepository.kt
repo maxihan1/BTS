@@ -150,7 +150,13 @@ class WorkflowPublishRepository(
         return insertTransitions(workflowId, definition, compositionIds)
     }
 
-    /** 상태 편성을 심고 상태 키 → `workflow_statuses.id` 를 돌려준다. 전환이 이 id 를 가리킨다. */
+    /**
+     * 상태 편성을 심고 상태 키 → `workflow_statuses.id` 를 돌려준다. 전환이 이 id 를 가리킨다.
+     *
+     * ### 다이어그램 좌표를 함께 싣는다
+     * 발행은 전량 교체라 편성 행이 통째로 새로 생긴다. 좌표를 안 실으면 그 순간 NULL 이 되고,
+     * 사용자가 편집기에서 배치해 둔 다이어그램이 **발행할 때마다** 초기화된다.
+     */
     private fun insertStatuses(
         workflowId: UUID,
         definition: WorkflowDraftDefinition,
@@ -165,6 +171,10 @@ class WorkflowPublishRepository(
                     .set(WORKFLOW_STATUSES.WORKFLOW_ID, workflowId)
                     .set(WORKFLOW_STATUSES.STATUS_ID, statusId)
                     .set(WORKFLOW_STATUSES.DISPLAY_ORDER, state.displayOrder)
+                    // 컬럼이 REAL(float4)이라 Double 을 그대로 넣을 수 없다. 좁힘을 조용히
+                    // 맡기지 않고 여기서 명시한다 — null 은 「자동 배치」로 그대로 보존된다.
+                    .set(WORKFLOW_STATUSES.LAYOUT_X, state.layoutX?.toFloat())
+                    .set(WORKFLOW_STATUSES.LAYOUT_Y, state.layoutY?.toFloat())
                     .returning(WORKFLOW_STATUSES.ID)
                     .fetchOne(WORKFLOW_STATUSES.ID)
                     ?: error("workflow_statuses INSERT 가 id 를 돌려주지 않았다")
