@@ -13,6 +13,7 @@ import io.mockk.Called
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.entry
 import org.jooq.DSLContext
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
@@ -45,8 +46,8 @@ import java.util.UUID
  * 세 메서드 모두 `issueId` 를 받으므로 "다른 이슈 소속 차단" 을 **세 번 각각** 검증한다
  * (FR-CO-01 §D4 — 소속 대조를 상위 계층의 성실성에 맡기지 않고 쿼리 술어로 고정).
  *
- * 테스트 시나리오 (FR-CO-02 Task 11 — findActiveIds).
- * - 4건. 활성만 반환 · 삭제 제외 · 타 이슈 소속 제외 · 빈 입력 시 쿼리 미실행.
+ * 테스트 시나리오 (FR-CO-02 Task 11 — findActiveOwners).
+ * - 4건. 활성만 반환 · 삭제 제외 · 이슈-댓글 쌍 어긋남 제외 · 빈 입력 시 쿼리 미실행.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentRepositoryTest : IssueTestcontainersBase() {
@@ -430,19 +431,19 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         assertThat(commentRepository.softDelete(comment.id, issueA.id.value, deletedAt)).isEqualTo(1)
     }
 
-    // ── findActiveIds (FR-CO-02 Task 11 — 삭제 댓글 이력 마스킹 판정용 배치 조회) ──────
+    // ── findActiveOwners (FR-CO-02 Task 11 — 삭제 댓글 이력 마스킹 판정용 배치 조회) ──────
 
     /**
      * Given  같은 이슈에 활성 댓글 2건 + DB 에 없는 id 1건
-     * When   findActiveIds(3개 id, issueId)
-     * Then   실재하는 활성 2건만 반환. 미존재 id 는 조용히 빠진다.
+     * When   findActiveOwners(이슈 → 3개 id)
+     * Then   실재하는 활성 2건만 소속 이슈와 함께 반환. 미존재 id 는 조용히 빠진다.
      *
      * 미존재 id 를 섞는 이유. 마스킹 판정은 "활성 목록에 없으면 가린다" 이므로, 없는 id 에
      * 예외를 던지면 이력 조회 전체가 죽는다. 빠짐 = 마스킹(fail-closed) 이 정답이다.
      */
     @Test
     @Order(12)
-    fun `findActiveIds 는 활성 댓글 id 만 반환한다`() {
+    fun `findActiveOwners 는 활성 댓글만 소속 이슈와 함께 반환한다`() {
         val issue = insertIssue(1L)
         val c1 = buildComment(issue.id.value, body = "활성 댓글 1")
         val c2 = buildComment(issue.id.value, body = "활성 댓글 2")
@@ -450,58 +451,72 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         commentRepository.insert(c2)
         val unknownId = UUID.randomUUID()
 
-        val active = commentRepository.findActiveIds(setOf(c1.id, c2.id, unknownId), issue.id.value)
+        val active = commentRepository.findActiveOwners(mapOf(issue.id.value to setOf(c1.id, c2.id, unknownId)))
 
-        assertThat(active).containsExactlyInAnyOrder(c1.id, c2.id)
+        assertThat(active).containsOnly(entry(c1.id, issue.id.value), entry(c2.id, issue.id.value))
     }
 
     /**
      * Given  같은 이슈에 활성 댓글 2건
-     * When   1건 소프트 삭제 후 같은 id 집합으로 findActiveIds
+     * When   1건 소프트 삭제 후 같은 id 집합으로 findActiveOwners
      * Then   삭제된 id 는 빠지고 활성 id 만 남는다.
      */
     @Test
     @Order(13)
-    fun `findActiveIds 는 삭제된 댓글 id 를 제외한다`() {
+    fun `findActiveOwners 는 삭제된 댓글 id 를 제외한다`() {
         val issue = insertIssue(1L)
         val survivor = buildComment(issue.id.value, body = "남을 댓글")
         val deleted = buildComment(issue.id.value, body = "삭제될 댓글")
         commentRepository.insert(survivor)
         commentRepository.insert(deleted)
-        val ids = setOf(survivor.id, deleted.id)
+        val query = mapOf(issue.id.value to setOf(survivor.id, deleted.id))
         // 대조군 — 삭제 전에는 둘 다 나온다. 없으면 "항상 1건만" 구현도 아래 단언을 통과한다.
-        assertThat(commentRepository.findActiveIds(ids, issue.id.value))
+        assertThat(commentRepository.findActiveOwners(query).keys)
             .containsExactlyInAnyOrder(survivor.id, deleted.id)
 
         softDeleteComment(deleted.id)
 
-        assertThat(commentRepository.findActiveIds(ids, issue.id.value)).containsExactly(survivor.id)
+        assertThat(commentRepository.findActiveOwners(query).keys).containsExactly(survivor.id)
     }
 
     /**
      * Given  이슈 A·B 에 각각 활성 댓글 1건
-     * When   두 id 를 한 집합으로 묶어 각 이슈로 findActiveIds
-     * Then   각자 자기 이슈 소속 id 만 반환. 양방향 대조로 "issueId 를 무시하는 구현" 을 배제한다.
+     * When   두 id 를 **서로 뒤바꾼 이슈**에 묶어 findActiveOwners
+     * Then   빈 맵. 소속 대조가 `WHERE` 안에 있으므로 쌍이 어긋나면 아무것도 안 나온다.
+     *
+     * 대조군으로 올바른 쌍을 함께 확인한다 — 없으면 "항상 빈 맵" 구현도 위 단언을 통과한다.
      */
     @Test
     @Order(14)
-    fun `findActiveIds 는 다른 이슈 소속 id 를 제외한다`() {
+    fun `findActiveOwners 는 이슈-댓글 쌍이 어긋나면 제외한다`() {
         val issueA = insertIssue(1L)
         val issueB = insertIssue(2L)
         val commentA = buildComment(issueA.id.value, body = "이슈 A 댓글")
         val commentB = buildComment(issueB.id.value, body = "이슈 B 댓글")
         commentRepository.insert(commentA)
         commentRepository.insert(commentB)
-        val ids = setOf(commentA.id, commentB.id)
 
-        assertThat(commentRepository.findActiveIds(ids, issueA.id.value)).containsExactly(commentA.id)
-        assertThat(commentRepository.findActiveIds(ids, issueB.id.value)).containsExactly(commentB.id)
+        val swapped =
+            mapOf(
+                issueA.id.value to setOf(commentB.id),
+                issueB.id.value to setOf(commentA.id),
+            )
+        assertThat(commentRepository.findActiveOwners(swapped)).isEmpty()
+
+        val correct =
+            mapOf(
+                issueA.id.value to setOf(commentA.id),
+                issueB.id.value to setOf(commentB.id),
+            )
+        // 여러 이슈를 한 번에 물어도 각자 자기 소속만 나온다 — 프로젝트 활동 피드가 쓰는 경로다.
+        assertThat(commentRepository.findActiveOwners(correct))
+            .containsOnly(entry(commentA.id, issueA.id.value), entry(commentB.id, issueB.id.value))
     }
 
     /**
      * Given  스텁이 하나도 없는 strict mock [DSLContext] 로 조립한 저장소
-     * When   findActiveIds(빈 집합, 임의 issueId)
-     * Then   빈 집합 반환 + DSLContext 를 한 번도 건드리지 않는다.
+     * When   findActiveOwners(빈 맵 / 값이 빈 집합뿐인 맵)
+     * Then   빈 맵 반환 + DSLContext 를 한 번도 건드리지 않는다.
      *
      * 실제 DB 로는 "빈 결과" 와 "쿼리를 안 보냄" 을 구분할 수 없어 왕복 제거를 증명하지 못한다.
      * strict mock 은 스텁하지 않은 호출에 예외를 던지므로, 구현이 `dsl` 을 한 번이라도 만지면
@@ -509,13 +524,13 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
      */
     @Test
     @Order(15)
-    fun `findActiveIds 는 빈 입력에 빈 집합을 반환한다 (쿼리 미실행)`() {
+    fun `findActiveOwners 는 빈 입력에 빈 맵을 반환한다 (쿼리 미실행)`() {
         val unusedDsl = mockk<DSLContext>()
         val repositoryOnMockDsl = CommentRepository(unusedDsl)
 
-        val active = repositoryOnMockDsl.findActiveIds(emptySet(), UUID.randomUUID())
-
-        assertThat(active).isEmpty()
+        assertThat(repositoryOnMockDsl.findActiveOwners(emptyMap())).isEmpty()
+        // 값이 전부 빈 집합이어도 IN () 을 만들지 않는다.
+        assertThat(repositoryOnMockDsl.findActiveOwners(mapOf(UUID.randomUUID() to emptySet()))).isEmpty()
         verify { unusedDsl wasNot Called }
     }
 }
